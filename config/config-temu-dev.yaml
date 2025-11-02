@@ -18,10 +18,10 @@ openai:
   timeout: 120
 
 management:
-  baseURL: "http://localhost:48080"
+  baseURL: "http://getway.linkcloudai.com"
   clientID: "go-listing"
   clientSecret: "go-listing-secret"
-  tokenURL: "http://localhost:48080/admin-api/system/oauth2/token"
+  tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
   scopes: ["user.read"]
   userID: 1001
   storeIDs: [3001, 3002]  # TEMU店铺ID列表

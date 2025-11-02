@@ -34,6 +34,8 @@ func EnsureWorkingDirectory(logger *logrus.Logger) error {
 		return err
 	}
 
+	logger.Printf("当前工作目录: %s", cwd)
+
 	// If currently in cmd/temu-web directory, switch to project root
 	if len(cwd) > 12 && cwd[len(cwd)-12:] == "cmd/temu-web" {
 		rootDir := cwd[:len(cwd)-12]
@@ -41,6 +43,20 @@ func EnsureWorkingDirectory(logger *logrus.Logger) error {
 			return err
 		}
 		logger.Printf("工作目录切换到: %s", rootDir)
+
+		// Verify the config file exists
+		if _, err := os.Stat("config/config-temu-dev.yaml"); err != nil {
+			logger.Printf("警告: 配置文件不存在: %v", err)
+		} else {
+			logger.Printf("配置文件存在: config/config-temu-dev.yaml")
+		}
+	} else {
+		// Check if we're already in the project root
+		if _, err := os.Stat("config/config-temu-dev.yaml"); err != nil {
+			logger.Printf("警告: 当前目录下找不到配置文件: %v", err)
+		} else {
+			logger.Printf("配置文件存在: config/config-temu-dev.yaml")
+		}
 	}
 
 	return nil
