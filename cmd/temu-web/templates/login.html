@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TEMU任务处理器 - 登录</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .login-container {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        width: 100%;
+        max-width: 450px;
+        padding: 40px;
+      }
+
+      .login-header {
+        text-align: center;
+        margin-bottom: 40px;
+      }
+
+      .login-header h1 {
+        color: #ff6b35;
+        font-size: 36px;
+        margin-bottom: 8px;
+        font-weight: 700;
+      }
+
+      .login-header p {
+        color: #666;
+        font-size: 16px;
+      }
+
+      .feature-list {
+        background: #fff3e0;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 30px;
+        border-left: 4px solid #ff6b35;
+      }
+
+      .feature-list h3 {
+        color: #ff6b35;
+        font-size: 16px;
+        margin-bottom: 12px;
+        font-weight: 600;
+      }
+
+      .feature-list ul {
+        list-style: none;
+        padding: 0;
+      }
+
+      .feature-list li {
+        color: #555;
+        font-size: 14px;
+        margin-bottom: 6px;
+        padding-left: 20px;
+        position: relative;
+      }
+
+      .feature-list li:before {
+        content: "✅";
+        position: absolute;
+        left: 0;
+      }
+
+      .form-group {
+        margin-bottom: 24px;
+      }
+
+      .form-group label {
+        display: block;
+        color: #333;
+        font-size: 14px;
+        font-weight: 500;
+        margin-bottom: 8px;
+      }
+
+      .input-wrapper {
+        position: relative;
+      }
+
+      .input-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 18px;
+      }
+
+      .form-control {
+        width: 100%;
+        padding: 14px 14px 14px 45px;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        font-size: 15px;
+        transition: all 0.3s;
+      }
+
+      .form-control:focus {
+        outline: none;
+        border-color: #ff6b35;
+        box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+      }
+
+      .checkbox-group {
+        display: flex;
+        align-items: center;
+        margin-bottom: 24px;
+      }
+
+      .checkbox-group input[type="checkbox"] {
+        margin-right: 8px;
+        transform: scale(1.2);
+      }
+
+      .checkbox-group label {
+        color: #666;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      .btn {
+        width: 100%;
+        padding: 16px;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(255, 107, 53, 0.3);
+      }
+
+      .btn-primary:active {
+        transform: translateY(0);
+      }
+
+      .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .alert {
+        padding: 14px 18px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        display: none;
+      }
+
+      .alert-error {
+        background: #fee;
+        color: #c33;
+        border: 1px solid #fcc;
+      }
+
+      .alert-success {
+        background: #efe;
+        color: #3c3;
+        border: 1px solid #cfc;
+      }
+
+      .loading {
+        display: none;
+        text-align: center;
+        margin-bottom: 20px;
+      }
+
+      .loading-spinner {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #ff6b35;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .footer {
+        text-align: center;
+        margin-top: 30px;
+        color: #999;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="login-container">
+      <div class="login-header">
+        <h1>🛒 TEMU</h1>
+        <p>任务处理器</p>
+      </div>
+
+      <div id="alert" class="alert"></div>
+
+      <div id="loading" class="loading">
+        <div class="loading-spinner"></div>
+        <p style="margin-top: 12px; color: #666">正在登录...</p>
+      </div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="tenantId">租户ID</label>
+          <div class="input-wrapper">
+            <span class="input-icon">🏢</span>
+            <input
+              type="text"
+              id="tenantId"
+              class="form-control"
+              placeholder="可选，留空使用默认"
+              value="{{.TenantID}}"
+            />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="username">用户名</label>
+          <div class="input-wrapper">
+            <span class="input-icon">👤</span>
+            <input
+              type="text"
+              id="username"
+              class="form-control"
+              placeholder="请输入用户名"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">密码</label>
+          <div class="input-wrapper">
+            <span class="input-icon">🔒</span>
+            <input
+              type="password"
+              id="password"
+              class="form-control"
+              placeholder="请输入密码"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="checkbox-group">
+          <input type="checkbox" id="remember" checked />
+          <label for="remember">记住登录状态</label>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="loginBtn">
+          登录
+        </button>
+      </form>
+
+      <div class="footer">
+        Version 1.0.0 | TEMU Task Processor<br>
+        <a href="/dashboard" style="color: #ff6b35; text-decoration: none; font-size: 14px; margin-top: 8px; display: inline-block;">手动跳转到控制台</a>
+      </div>
+    </div>
+
+    <script>
+      const loginForm = document.getElementById("loginForm");
+      const loginBtn = document.getElementById("loginBtn");
+      const alert = document.getElementById("alert");
+      const loading = document.getElementById("loading");
+
+      loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const username = document.getElementById("username").value;
+        const password = document.getElementById("password").value;
+        const tenantId = document.getElementById("tenantId").value || "default";
+
+        // 隐藏提示，显示加载
+        hideAlert();
+        showLoading();
+        loginBtn.disabled = true;
+
+        try {
+          const response = await fetch("/api/login", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              username: username,
+              password: password,
+              tenant_id: tenantId,
+            }),
+          });
+
+          const data = await response.json();
+
+          hideLoading();
+          loginBtn.disabled = false;
+
+          if (data.success) {
+            showAlert("登录成功！正在跳转...", "success");
+            console.log("登录成功，准备跳转到dashboard");
+            
+            // 立即跳转，不等待
+            window.location.href = "/dashboard";
+            
+            // 备用跳转方法
+            setTimeout(() => {
+              if (window.location.pathname !== "/dashboard") {
+                console.log("使用备用跳转方法");
+                window.location.replace("/dashboard");
+              }
+            }, 500);
+          } else {
+            showAlert(data.message || "登录失败", "error");
+            console.error("登录失败:", data);
+          }
+        } catch (error) {
+          hideLoading();
+          loginBtn.disabled = false;
+          showAlert("网络错误，请检查服务器连接", "error");
+          console.error("Login error:", error);
+        }
+      });
+
+      function showAlert(message, type) {
+        alert.textContent = message;
+        alert.className = "alert alert-" + type;
+        alert.style.display = "block";
+      }
+
+      function hideAlert() {
+        alert.style.display = "none";
+      }
+
+      function showLoading() {
+        loading.style.display = "block";
+        loginForm.style.display = "none";
+      }
+
+      function hideLoading() {
+        loading.style.display = "none";
+        loginForm.style.display = "block";
+      }
+    </script>
+  </body>
+</html>

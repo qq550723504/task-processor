@@ -1,0 +1,51 @@
+# TEMU开发环境配置
+processor:
+  maxRetries: 3
+  timeout: 300
+
+worker:
+  concurrency: 5
+  bufferSize: 50
+  taskInterval: 30  # 30秒获取一次任务
+
+server:
+  port: 8081  # TEMU使用8081端口
+
+openai:
+  apiKey: "sk-qns4hBrljHkJ520vwwA2508c7Dj3Oe0zGlh7oq7FWkcWXkx4"
+  model: "gemini-2.0-flash"
+  baseURL: "https://yunwu.ai/v1"
+  timeout: 120
+
+management:
+  baseURL: "http://localhost:48080"
+  clientID: "go-listing"
+  clientSecret: "go-listing-secret"
+  tokenURL: "http://localhost:48080/admin-api/system/oauth2/token"
+  scopes: ["user.read"]
+  userID: 1001
+  storeIDs: [3001, 3002]  # TEMU店铺ID列表
+
+autoPricing:
+  enabled: true
+  interval: 300  # 5分钟
+  batchSize: 50
+
+amazon:
+  enabled: true
+  headless: true
+  browserPath: "./chrome/chrome.exe"
+  poolSize: 2
+  viewportWidth: 1920
+  viewportHeight: 1080
+  proxyServer: ""
+
+updater:
+  enabled: true
+  serverURL: "https://files.linkcloudai.com/api/version"
+  checkInterval: 24  # 24小时检查一次
+  autoApply: true
+  skipChecksum: false
+
+platform:
+  type: "web"  # web界面模式

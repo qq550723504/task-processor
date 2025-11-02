@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEMU任务处理器 - 控制台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+        }
+
+        .header {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #ff6b35;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .user-name {
+            color: #333;
+            font-weight: 500;
+            font-size: 16px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #4caf50;
+            color: white;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .btn-logout {
+            padding: 10px 20px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-logout:hover {
+            background: #d32f2f;
+            transform: translateY(-1px);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 24px;
+        }
+
+        .welcome-card {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .welcome-card h2 {
+            color: #333;
+            font-size: 36px;
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+
+        .welcome-card p {
+            color: #666;
+            font-size: 18px;
+            line-height: 1.6;
+        }
+
+        .tenant-info {
+            margin-top: 12px;
+            padding: 12px 20px;
+            background: #fff3e0;
+            border-radius: 8px;
+            color: #ff6b35;
+            font-weight: 500;
+            display: inline-block;
+        }
+
+        .controls {
+            text-align: center;
+            margin: 40px 0;
+        }
+
+        .control-btn {
+            padding: 14px 28px;
+            margin: 0 12px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+            min-width: 140px;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%);
+            color: white;
+        }
+
+        .btn-status {
+            background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+            color: white;
+        }
+
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .control-btn:active {
+            transform: translateY(0);
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-top: 40px;
+        }
+
+        .info-card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+        }
+
+        .info-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .info-card h3 {
+            color: #ff6b35;
+            font-size: 20px;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        .info-card p {
+            color: #666;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .feature-list {
+            background: #fff3e0;
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            border-left: 4px solid #ff6b35;
+        }
+
+        .feature-list h3 {
+            margin-top: 0;
+            color: #ff6b35;
+            font-size: 20px;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        .feature-list ul {
+            list-style: none;
+            padding: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 8px;
+        }
+
+        .feature-list li {
+            color: #555;
+            font-size: 15px;
+            padding-left: 24px;
+            position: relative;
+        }
+
+        .feature-list li:before {
+            content: "✅";
+            position: absolute;
+            left: 0;
+        }
+
+        #status {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin-top: 30px;
+            border-left: 4px solid #ff6b35;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        #status h3 {
+            color: #ff6b35;
+            margin-bottom: 12px;
+            font-size: 18px;
+        }
+
+        .status-running {
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .status-stopped {
+            color: #dc3545;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛒 TEMU 任务处理器</h1>
+        <div class="user-info">
+            <span class="user-name">👤 {{.Username}}</span>
+            <span class="status-badge">在线</span>
+            <button class="btn-logout" onclick="logout()">登出</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="welcome-card">
+            <h2>欢迎回来, {{.Username}}！</h2>
+            <p>您已成功登录TEMU任务处理系统</p>
+            <div class="tenant-info">租户ID: {{.TenantID}}</div>
+        </div>
+
+        <div class="feature-list">
+            <h3>🚀 核心功能特性</h3>
+            <ul>
+                <li>完整的TEMU产品发布流程</li>
+                <li>集成Amazon爬虫数据获取</li>
+                <li>多店铺并发处理</li>
+                <li>智能图片处理和优化</li>
+                <li>AI驱动的产品描述生成</li>
+                <li>实时任务状态监控</li>
+                <li>智能错误恢复机制</li>
+                <li>Web界面管理控制</li>
+            </ul>
+        </div>
+        
+        <div class="controls">
+            <button class="control-btn btn-start" onclick="startProcessor()">🚀 启动处理器</button>
+            <button class="control-btn btn-stop" onclick="stopProcessor()">⏹️ 停止处理器</button>
+            <button class="control-btn btn-status" onclick="checkStatus()">📊 检查状态</button>
+        </div>
+        
+        <div id="status">
+            <h3>📊 系统状态</h3>
+            <p>状态: <span id="statusText">加载中...</span></p>
+            <p>最后更新: <span id="lastUpdate">-</span></p>
+        </div>
+
+
+
+        <div class="info-grid">
+            <div class="info-card">
+                <h3>✅ 登录状态</h3>
+                <p>您的会话已激活，token已保存到本地。系统会在30天后自动过期，请定期检查登录状态。</p>
+            </div>
+
+            <div class="info-card">
+                <h3>🔐 安全提示</h3>
+                <p>请妥善保管您的登录凭证，不要与他人分享。如发现异常活动请及时修改密码并联系管理员。</p>
+            </div>
+
+            <div class="info-card">
+                <h3>📊 系统功能</h3>
+                <p>您可以使用此会话token调用系统API，处理TEMU任务，查看处理数据，监控任务状态等功能。</p>
+            </div>
+
+            <div class="info-card">
+                <h3>💡 使用提示</h3>
+                <p>登录成功后，您可以关闭此页面。系统会自动保持登录状态并在后台处理任务。</p>
+            </div>
+
+            <div class="info-card">
+                <h3>🛒 TEMU集成</h3>
+                <p>系统已集成TEMU平台API，支持产品发布、库存管理、订单处理等完整电商流程。</p>
+            </div>
+
+            <div class="info-card">
+                <h3>🤖 Amazon数据</h3>
+                <p>内置Amazon爬虫引擎，可自动获取产品信息、价格、图片等数据，提升产品发布效率。</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function startProcessor() {
+            fetch('/api/start-processor', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    alert(data.message);
+                    setTimeout(checkStatus, 1000);
+                })
+                .catch(error => {
+                    console.error('Start processor error:', error);
+                    alert('启动处理器失败');
+                });
+        }
+        
+        function stopProcessor() {
+            if (!confirm('确定要停止任务处理器吗？')) {
+                return;
+            }
+            
+            fetch('/api/stop-processor', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    alert(data.message);
+                    setTimeout(checkStatus, 1000);
+                })
+                .catch(error => {
+                    console.error('Stop processor error:', error);
+                    alert('停止处理器失败');
+                });
+        }
+        
+        function checkStatus() {
+            fetch('/api/processor-status')
+                .then(r => r.json())
+                .then(data => {
+                    const statusText = document.getElementById('statusText');
+                    const lastUpdate = document.getElementById('lastUpdate');
+                    
+                    if (data.running) {
+                        statusText.textContent = '🟢 运行中';
+                        statusText.className = 'status-running';
+                    } else {
+                        statusText.textContent = '🔴 已停止';
+                        statusText.className = 'status-stopped';
+                    }
+                    
+                    lastUpdate.textContent = new Date().toLocaleString();
+                })
+                .catch(error => {
+                    console.error('Check status error:', error);
+                    document.getElementById('statusText').textContent = '❌ 检查失败';
+                });
+        }
+        
+        async function logout() {
+            if (!confirm('确定要登出吗？')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/logout', {
+                    method: 'POST',
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('登出成功');
+                    window.location.href = '/';
+                } else {
+                    alert('登出失败: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                alert('登出失败');
+            }
+        }
+        
+
+
+        // 自动检查状态
+        setInterval(checkStatus, 10000); // 每10秒检查一次
+        checkStatus(); // 页面加载时立即检查
+    </script>
+</body>
+</html>
