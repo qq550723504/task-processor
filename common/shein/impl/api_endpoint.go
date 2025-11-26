@@ -1,0 +1,31 @@
+﻿package impl
+
+// API 路径常量
+const (
+	apiPrefix                      = "/spmp-api-prefix/spmp"
+	dpasPrefix                     = "/dpas-api-prefix/dpas"
+	ssoPrefix                      = "/sso-prefix"
+	certificateRuleEndpoint        = apiPrefix + "/certificate/get_certificate_rule"
+	productRecordEndpoint          = apiPrefix + "/product/publish/record/page_list"
+	batchCheckOnWayEndpoint        = apiPrefix + "/document/web/batch_check_on_way"
+	validateAttributeEndpoint      = apiPrefix + "/attribute/valid_pre_custom_attribute_value"
+	addAttributeValueEndpoint      = apiPrefix + "/attribute/add_pre_custom_attribute_value"
+	getCategoryEndpoint            = apiPrefix + "/product/get_all_category"
+	getCategoryTreeEndpoint        = apiPrefix + "/supplier/query_category_tree"
+	getProductEndpoint             = apiPrefix + "/product/get_product"
+	updateProductEndpoint          = apiPrefix + "/product/update_product"
+	deleteProductEndpoint          = apiPrefix + "/product/delete_product"
+	confirmPublishEndpoint         = apiPrefix + "/product/confirm_publish"
+	saveDraftEndpoint              = apiPrefix + "/product/save_draft"
+	publishProductEndpoint         = apiPrefix + "/product/publish"
+	uploadImageEndpoint            = apiPrefix + "/image/upload_image"
+	translateTextEndpoint          = apiPrefix + "/abc/google_text_translate"
+	getWarehousesEndpoint          = apiPrefix + "/inventory/query_merchant_warehouse"
+	getAttributeTemplatesEndpoint  = apiPrefix + "/basic/query_attribute_templates"
+	getPartInfoEndpoint            = apiPrefix + "/part/get_part_info"
+	batchHandleCostDiscussEndpoint = dpasPrefix + "/discuss/batch_handle_cost_discuss"
+	bargainPageNewEndpoint         = dpasPrefix + "/discuss/bargain_page"
+	getSpuLimitCountEndpoint       = apiPrefix + "/basic/get_spu_limit_count"
+	getUserEndpoint                = ssoPrefix + "/sso-prefix/auth/getUser"
+	getSupplierOperateInfoEndpoint = "/sso/public/account/supplier/getSupplierOperateInfo"
+)

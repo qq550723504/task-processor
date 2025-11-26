@@ -1,10 +1,10 @@
 package amazon
 
 import (
-	"log"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // CategoriesExtractor 分类信息提取器
@@ -14,7 +14,7 @@ type CategoriesExtractor struct{}
 func (ce *CategoriesExtractor) Extract(page playwright.Page, product *Product) error {
 	categories, err := ce.getCategories(page)
 	if err != nil {
-		log.Printf("提取分类信息失败: %v", err)
+		logrus.Infof("提取分类信息失败: %v", err)
 		return err
 	}
 	product.Categories = categories

@@ -1,10 +1,10 @@
 package amazon
 
 import (
-	"log"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // AvailabilityExtractor 可用性提取器
@@ -13,7 +13,7 @@ type AvailabilityExtractor struct{}
 func (e *AvailabilityExtractor) Extract(page playwright.Page, product *Product) error {
 	availability, err := e.getAvailability(page)
 	if err != nil {
-		log.Printf("提取库存信息失败: %v", err)
+		logrus.Infof("提取库存信息失败: %v", err)
 		return err
 	}
 	product.Availability = availability
@@ -60,7 +60,7 @@ func (e *AvailabilityExtractor) getAvailability(page playwright.Page) (string, e
 
 		text = strings.TrimSpace(text)
 		if text != "" && e.isValidAvailabilityText(text) {
-			log.Printf("找到库存信息: %s (选择器: %s)", text, selector)
+			logrus.Infof("找到库存信息: %s (选择器: %s)", text, selector)
 			return e.normalizeAvailabilityText(text), nil
 		}
 	}
@@ -69,12 +69,12 @@ func (e *AvailabilityExtractor) getAvailability(page playwright.Page) (string, e
 	pageText, err := page.TextContent("body")
 	if err == nil {
 		if availability := e.extractAvailabilityFromText(pageText); availability != "" {
-			log.Printf("从页面文本中提取到库存信息: %s", availability)
+			logrus.Infof("从页面文本中提取到库存信息: %s", availability)
 			return availability, nil
 		}
 	}
 
-	log.Printf("未找到库存信息")
+	logrus.Infof("未找到库存信息")
 	return "Unknown", nil
 }
 

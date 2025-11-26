@@ -17,12 +17,13 @@ type TaskContext struct {
 	APIClient       *temu.APIClient // TEMU API客户端
 
 	// 强类型字段 - 参考SHEIN的设计
-	AmazonProduct   *amazon.Product         // Amazon产品数据
-	TemuProduct     *temutypes.Product      // TEMU产品数据
-	StoreInfo       *api.StoreRespDTO       // 店铺信息
-	RawJsonData     *api.RawJsonDataRespDTO // 原始JSON数据
-	DataSource      string                  // 数据源标识
-	NeedsAmazonData bool                    // 是否需要Amazon数据
+	AmazonProduct *amazon.Product    // Amazon产品数据
+	TemuProduct   *temutypes.Product // TEMU产品数据
+	StoreInfo     *api.StoreRespDTO  // 店铺信息
+	DataSource    string             // 数据源标识
+
+	// 变体相关数据
+	AmazonVariants []*amazon.Product // Amazon变体产品数据（强类型，替代通过SetData/GetData访问variants）
 
 	// 处理结果
 	SubmitResult  interface{} // 提交结果
@@ -100,4 +101,22 @@ func (tc *TaskContext) SetAPIClient(client *temu.APIClient) {
 // GetAPIClient 获取API客户端
 func (tc *TaskContext) GetAPIClient() *temu.APIClient {
 	return tc.APIClient
+}
+
+// SetAmazonVariants 设置Amazon变体数据
+func (tc *TaskContext) SetAmazonVariants(variants []*amazon.Product) {
+	tc.AmazonVariants = variants
+}
+
+// GetAmazonVariants 获取Amazon变体数据
+func (tc *TaskContext) GetAmazonVariants() []*amazon.Product {
+	return tc.AmazonVariants
+}
+
+// AddAmazonVariant 添加单个Amazon变体
+func (tc *TaskContext) AddAmazonVariant(variant *amazon.Product) {
+	if tc.AmazonVariants == nil {
+		tc.AmazonVariants = make([]*amazon.Product, 0)
+	}
+	tc.AmazonVariants = append(tc.AmazonVariants, variant)
 }

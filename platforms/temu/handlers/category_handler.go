@@ -71,29 +71,13 @@ func (h *CategoryHandler) processCategoryInfo(ctx *pipeline.TaskContext) error {
 func (h *CategoryHandler) setCategoryBasedProperties(ctx *pipeline.TaskContext, catID int) {
 	h.logger.Infof("根据分类设置产品属性: CatID=%d", catID)
 
-	// 根据不同分类设置不同的属性
-	switch {
-	case catID >= 30000 && catID < 40000: // 服装类
-		ctx.TemuProduct.GoodsBasic.IsClothes = true
-		ctx.TemuProduct.GoodsBasic.CatType = 1
-		h.logger.Info("设置为服装类产品")
-
-	case catID >= 40000 && catID < 50000: // 电子产品类
-		ctx.TemuProduct.GoodsBasic.IsClothes = false
-		ctx.TemuProduct.GoodsBasic.CatType = 2
-		h.logger.Info("设置为电子产品类")
-
-	case catID >= 50000 && catID < 60000: // 图书类
-		ctx.TemuProduct.GoodsBasic.IsBooks = true
-		ctx.TemuProduct.GoodsBasic.CatType = 3
-		h.logger.Info("设置为图书类产品")
-
-	default: // 通用商品
-		ctx.TemuProduct.GoodsBasic.IsClothes = false
-		ctx.TemuProduct.GoodsBasic.IsBooks = false
-		ctx.TemuProduct.GoodsBasic.CatType = 0
-		h.logger.Info("设置为通用商品")
-	}
+	// 不要覆盖TEMU API返回的IsClothes值！
+	// CommitDetailHandler已经从TEMU API获取了正确的IsClothes值
+	// 这里只记录当前状态，不做修改
+	h.logger.Infof("当前产品分类状态: IsClothes=%v, IsBooks=%v, CatType=%d",
+		ctx.TemuProduct.GoodsBasic.IsClothes,
+		ctx.TemuProduct.GoodsBasic.IsBooks,
+		ctx.TemuProduct.GoodsBasic.CatType)
 
 	// 设置其他通用属性
 	ctx.TemuProduct.GoodsBasic.CanSkipRequiredProperty = false
@@ -106,17 +90,14 @@ func (h *CategoryHandler) setCategoryBasedProperties(ctx *pipeline.TaskContext, 
 func (h *CategoryHandler) setCategoryBasedServicePromise(ctx *pipeline.TaskContext, catID int) {
 	h.logger.Infof("根据分类设置服务承诺: CatID=%d", catID)
 
-	// 根据不同分类设置不同的发货时限
-	switch {
-	case catID >= 30000 && catID < 40000: // 服装类 - 48小时发货
+	// 根据IsClothes标志设置发货时限（而不是根据CatID范围）
+	if ctx.TemuProduct.GoodsBasic.IsClothes {
 		ctx.TemuProduct.GoodsServicePromise.ShipmentLimitSecond = 172800 // 48小时
 		h.logger.Info("设置服装类发货时限: 48小时")
-
-	case catID >= 40000 && catID < 50000: // 电子产品类 - 72小时发货
+	} else if ctx.TemuProduct.GoodsBasic.IsBooks {
 		ctx.TemuProduct.GoodsServicePromise.ShipmentLimitSecond = 259200 // 72小时
-		h.logger.Info("设置电子产品发货时限: 72小时")
-
-	default: // 通用商品 - 24小时发货
+		h.logger.Info("设置图书类发货时限: 72小时")
+	} else {
 		ctx.TemuProduct.GoodsServicePromise.ShipmentLimitSecond = 86400 // 24小时
 		h.logger.Info("设置通用商品发货时限: 24小时")
 	}

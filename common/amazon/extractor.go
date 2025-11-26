@@ -1,10 +1,10 @@
 package amazon
 
 import (
-	"log"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // Extractor 提取器接口
@@ -44,11 +44,11 @@ func NewCompositeExtractor() *CompositeExtractor {
 func (ce *CompositeExtractor) Extract(page playwright.Page, product *Product) error {
 	for _, extractor := range ce.extractors {
 		if err := extractor.Extract(page, product); err != nil {
-			log.Printf("提取器执行失败 (%T): %v", extractor, err)
+			logrus.Infof("提取器执行失败 (%T): %v", extractor, err)
 
 			// 检测是否为风控或严重错误（如超时），如果是则立即返回错误
 			if ce.isCriticalError(err) {
-				log.Printf("检测到关键错误，停止后续提取器执行: %v", err)
+				logrus.Infof("检测到关键错误，停止后续提取器执行: %v", err)
 				return err
 			}
 		}
@@ -62,7 +62,17 @@ func (ce *CompositeExtractor) isCriticalError(err error) bool {
 		return false
 	}
 
+	// 检查是否为产品不存在错误（不是关键错误）
+	if _, ok := err.(*ProductNotFoundError); ok {
+		return false
+	}
+
 	errorStr := err.Error()
+
+	// 如果错误信息包含"产品页面不存在"，不是关键错误
+	if strings.Contains(errorStr, "产品页面不存在") || strings.Contains(errorStr, "产品页面缺少必要元素") {
+		return false
+	}
 
 	// 检测关键错误模式，这些错误表明浏览器实例可能被风控或出现严重问题
 	criticalPatterns := []string{

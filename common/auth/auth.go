@@ -1,296 +1,206 @@
 package auth
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"net/http"
-	"net/url"
-	"os"
-	"strings"
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/clientcredentials"
 )
 
-// TokenResponse OAuth2令牌响应
-type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int    `json:"expires_in"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	Scope        string `json:"scope,omitempty"`
-}
-
-// APIResponse API响应包装结构
-type APIResponse struct {
-	Code int            `json:"code"`
-	Msg  string         `json:"msg"`
-	Data *TokenResponse `json:"data"`
-}
-
-// UserSession 用户会话信息
-type UserSession struct {
-	Username     string    `json:"username"`
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token,omitempty"`
-	TenantID     string    `json:"tenant_id"`
-	ExpiresAt    time.Time `json:"expires_at"`
-}
-
-// PasswordAuthClient 密码认证客户端
-type PasswordAuthClient struct {
-	baseURL      string
-	clientID     string
-	clientSecret string
-	httpClient   *http.Client
+// Session 会话信息
+type Session struct {
+	Token        string
+	Username     string
+	TenantID     string // 租户ID
+	AccessToken  string // 访问令牌（用于调用Java API）
+	RefreshToken string // 刷新令牌
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
 }
 
 // SessionManager 会话管理器
 type SessionManager struct {
-	sessions map[string]*UserSession
-	mutex    sync.RWMutex
-	filePath string
-}
-
-// NewPasswordAuthClient 创建密码认证客户端
-func NewPasswordAuthClient(baseURL, clientID, clientSecret string) *PasswordAuthClient {
-	return &PasswordAuthClient{
-		baseURL:      baseURL,
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
-	}
-}
-
-// Login 用户登录
-func (c *PasswordAuthClient) Login(username, password, tenantID string) (*UserSession, error) {
-	tokenURL := c.baseURL + "/admin-api/system/oauth2/token"
-
-	data := url.Values{}
-	data.Set("grant_type", "password")
-	data.Set("username", username)
-	data.Set("password", password)
-	data.Set("client_id", c.clientID)
-	data.Set("client_secret", c.clientSecret)
-	data.Set("scope", "user.read")
-
-	if tenantID != "" {
-		data.Set("tenant_id", tenantID)
-	}
-
-	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(data.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-
-	// 尝试通过Header传递租户ID
-	if tenantID != "" {
-		req.Header.Set("tenant-id", tenantID)
-		req.Header.Set("Tenant-Id", tenantID)
-		req.Header.Set("X-Tenant-Id", tenantID)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("登录失败: %s", string(body))
-	}
-
-	var apiResp APIResponse
-	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return nil, fmt.Errorf("解析API响应失败: %w", err)
-	}
-
-	// 检查API响应状态
-	if apiResp.Code != 0 {
-		return nil, fmt.Errorf("登录失败: %s (code: %d)", apiResp.Msg, apiResp.Code)
-	}
-
-	// 检查data字段是否存在
-	if apiResp.Data == nil {
-		return nil, fmt.Errorf("API响应中缺少data字段")
-	}
-
-	tokenResp := apiResp.Data
-
-	// 计算过期时间，如果服务器返回的过期时间太短，使用默认的24小时
-	expiresIn := tokenResp.ExpiresIn
-	if expiresIn < 3600 { // 如果少于1小时，使用24小时作为默认值
-		expiresIn = 24 * 3600 // 24小时
-	}
-	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
-
-	session := &UserSession{
-		Username:     username,
-		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
-		TenantID:     tenantID,
-		ExpiresAt:    expiresAt,
-	}
-
-	logrus.Infof("创建的用户会话: Username=%s, AccessToken=%s..., TenantID=%s",
-		session.Username, session.AccessToken[:min(len(session.AccessToken), 20)], session.TenantID)
-
-	return session, nil
+	sessions   map[string]*Session
+	tokenStore *TokenStore // token持久化存储
+	mutex      sync.RWMutex
 }
 
 // NewSessionManager 创建会话管理器
 func NewSessionManager() *SessionManager {
 	sm := &SessionManager{
-		sessions: make(map[string]*UserSession),
-		filePath: "data/token.json",
+		sessions:   make(map[string]*Session),
+		tokenStore: NewTokenStore("data/token.json"),
 	}
-	sm.loadSessions()
+	// 启动清理过期会话的协程
+	go sm.cleanupExpiredSessions()
+	// 尝试加载持久化的token
+	sm.loadPersistedToken()
 	return sm
 }
 
-// SaveSession 保存会话
-func (sm *SessionManager) SaveSession(username string, session *UserSession) {
+// loadPersistedToken 加载持久化的token
+func (sm *SessionManager) loadPersistedToken() {
+	storedToken, err := sm.tokenStore.Load()
+	if err != nil {
+		logrus.Infof("加载持久化token失败: %v", err)
+		return
+	}
+
+	if storedToken == nil {
+		logrus.Info("没有找到持久化的token")
+		return
+	}
+
+	// 恢复会话
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
-	sm.sessions[username] = session
-	sm.persistSessions()
+	session := &Session{
+		Token:        storedToken.Token,
+		Username:     storedToken.Username,
+		TenantID:     storedToken.TenantID,
+		AccessToken:  storedToken.AccessToken,
+		RefreshToken: storedToken.RefreshToken,
+		CreatedAt:    storedToken.CreatedAt,
+		ExpiresAt:    storedToken.ExpiresAt,
+	}
+
+	sm.sessions[storedToken.Token] = session
+	logrus.Infof("已恢复会话: 用户=%s, 租户=%s, 剩余有效期=%v",
+		storedToken.Username, storedToken.TenantID, time.Until(storedToken.ExpiresAt).Round(time.Minute))
 }
 
-// GetSession 获取会话
-func (sm *SessionManager) GetSession(username string) (*UserSession, bool) {
+// ValidateToken 验证token
+func (sm *SessionManager) ValidateToken(token string) (*Session, error) {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
 
-	session, exists := sm.sessions[username]
+	session, exists := sm.sessions[token]
 	if !exists {
-		return nil, false
+		return nil, errors.New("invalid token")
 	}
 
-	// 检查会话是否过期
+	// 检查是否过期
 	if time.Now().After(session.ExpiresAt) {
-		return nil, false
+		return nil, errors.New("token expired")
 	}
 
-	return session, true
+	return session, nil
 }
 
-// GetAllSessions 获取所有会话
-func (sm *SessionManager) GetAllSessions() map[string]*UserSession {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
-
-	result := make(map[string]*UserSession)
-	for k, v := range sm.sessions {
-		if time.Now().Before(v.ExpiresAt) {
-			result[k] = v
-		}
-	}
-
-	return result
-}
-
-// RemoveSession 移除会话
-func (sm *SessionManager) RemoveSession(username string) {
+// RevokeToken 撤销token
+func (sm *SessionManager) RevokeToken(token string) {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
-	delete(sm.sessions, username)
-	sm.persistSessions()
+	delete(sm.sessions, token)
+
+	// 删除持久化的token
+	if err := sm.tokenStore.Delete(); err != nil {
+		logrus.Infof("警告: 删除持久化token失败: %v", err)
+	}
 }
 
-// loadSessions 加载持久化的会话
-func (sm *SessionManager) loadSessions() {
-	if _, err := os.Stat(sm.filePath); os.IsNotExist(err) {
-		return
-	}
-
-	data, err := ioutil.ReadFile(sm.filePath)
+// CreateSession 创建用户会话
+func (sm *SessionManager) CreateSession(username, tenantID, accessToken, refreshToken string) (string, error) {
+	// 生成会话token
+	token, err := generateToken()
 	if err != nil {
-		logrus.Warnf("读取会话文件失败: %v", err)
-		return
+		return "", err
 	}
 
-	var sessions map[string]*UserSession
-	if err := json.Unmarshal(data, &sessions); err != nil {
-		logrus.Warnf("解析会话文件失败: %v", err)
-		return
+	// 创建会话
+	session := &Session{
+		Token:        token,
+		Username:     username,
+		TenantID:     tenantID,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		CreatedAt:    time.Now(),
+		ExpiresAt:    time.Now().Add(30 * 24 * time.Hour), // 30天过期
 	}
 
-	sm.sessions = sessions
-	logrus.Infof("加载了 %d 个持久化会话", len(sessions))
+	sm.mutex.Lock()
+	sm.sessions[token] = session
+	sm.mutex.Unlock()
+
+	// 持久化token
+	storedToken := &StoredToken{
+		Token:        token,
+		Username:     username,
+		TenantID:     tenantID,
+		ExpiresAt:    session.ExpiresAt,
+		CreatedAt:    session.CreatedAt,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}
+
+	if err := sm.tokenStore.Save(storedToken); err != nil {
+		logrus.Infof("警告: 保存token失败: %v", err)
+		// 不影响登录流程，继续
+	}
+
+	return token, nil
 }
 
-// persistSessions 持久化会话
-func (sm *SessionManager) persistSessions() {
-	// 确保目录存在
-	if err := os.MkdirAll("data", 0755); err != nil {
-		logrus.Errorf("创建数据目录失败: %v", err)
-		return
-	}
-
-	data, err := json.MarshalIndent(sm.sessions, "", "  ")
+// GetAccessToken 获取用户的访问令牌
+func (sm *SessionManager) GetAccessToken(sessionToken string) (string, error) {
+	session, err := sm.ValidateToken(sessionToken)
 	if err != nil {
-		logrus.Errorf("序列化会话失败: %v", err)
-		return
+		return "", err
 	}
-
-	if err := ioutil.WriteFile(sm.filePath, data, 0644); err != nil {
-		logrus.Errorf("保存会话文件失败: %v", err)
-		return
-	}
+	return session.AccessToken, nil
 }
 
-// ClientCredentialsAuth 客户端凭证认证
-type ClientCredentialsAuth struct {
-	config *clientcredentials.Config
-	token  *oauth2.Token
-	mutex  sync.RWMutex
-}
-
-// NewClientCredentialsAuth 创建客户端凭证认证
-func NewClientCredentialsAuth(tokenURL, clientID, clientSecret string, scopes []string) *ClientCredentialsAuth {
-	config := &clientcredentials.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		TokenURL:     tokenURL,
-		Scopes:       scopes,
-	}
-
-	return &ClientCredentialsAuth{
-		config: config,
-	}
-}
-
-// GetToken 获取访问令牌
-func (c *ClientCredentialsAuth) GetToken(ctx context.Context) (string, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	// 检查现有令牌是否有效
-	if c.token != nil && c.token.Valid() {
-		return c.token.AccessToken, nil
-	}
-
-	// 获取新令牌
-	token, err := c.config.Token(ctx)
+// GetTenantID 获取用户的租户ID
+func (sm *SessionManager) GetTenantID(sessionToken string) (string, error) {
+	session, err := sm.ValidateToken(sessionToken)
 	if err != nil {
-		return "", fmt.Errorf("获取访问令牌失败: %w", err)
+		return "", err
 	}
+	return session.TenantID, nil
+}
 
-	c.token = token
-	return token.AccessToken, nil
+// GetAllSessions 获取所有会话（用于恢复会话）
+func (sm *SessionManager) GetAllSessions() []*Session {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	sessions := make([]*Session, 0, len(sm.sessions))
+	for _, session := range sm.sessions {
+		sessions = append(sessions, session)
+	}
+	return sessions
+}
+
+// cleanupExpiredSessions 清理过期会话
+func (sm *SessionManager) cleanupExpiredSessions() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		sm.mutex.Lock()
+		now := time.Now()
+
+		// 清理过期会话
+		for token, session := range sm.sessions {
+			if now.After(session.ExpiresAt) {
+				delete(sm.sessions, token)
+			}
+		}
+
+		sm.mutex.Unlock()
+	}
+}
+
+// generateToken 生成随机token
+func generateToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
 }

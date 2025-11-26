@@ -37,7 +37,6 @@ func NewPipeline(name string) *Pipeline {
 // AddHandler 添加处理器到管道
 func (p *Pipeline) AddHandler(handler Handler) *Pipeline {
 	p.handlers = append(p.handlers, handler)
-	p.logger.Infof("添加处理器: %s", handler.Name())
 	return p
 }
 

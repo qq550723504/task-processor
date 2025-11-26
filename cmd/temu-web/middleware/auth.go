@@ -22,23 +22,10 @@ func NewAuthMiddleware(sessionManager *auth.SessionManager, logger *logrus.Logge
 	}
 }
 
-// RequireAuth middleware that requires authentication
+// RequireAuth middleware that requires authentication (客户端凭证模式下直接放行)
 func (am *AuthMiddleware) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("session_token")
-		if err != nil {
-			am.logger.Errorf("获取session_token cookie失败: %v", err)
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
-
-		_, exists := am.sessionManager.GetSession(cookie.Value)
-		if !exists {
-			am.logger.Errorf("会话不存在: %s", cookie.Value)
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
-
+		// 使用客户端凭证模式，不需要会话验证，直接放行
 		next(w, r)
 	}
 }

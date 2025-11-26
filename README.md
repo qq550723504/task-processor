@@ -177,7 +177,7 @@ defer amazonProcessor.Shutdown()
 // 处理Amazon产品
 product, err := amazonProcessor.Process(amazonURL, zipcode)
 if err != nil {
-    log.Printf("Amazon爬虫处理失败: %v", err)
+    logrus.Infof("Amazon爬虫处理失败: %v", err)
 }
 ```
 
@@ -191,7 +191,7 @@ amazon:
   poolSize: 3
   zipcodes:
     US: "10001"
-    JP: "100-0001"
+    JP: "153-0064"
   viewportWidth: 1920
   viewportHeight: 1080
 ```

@@ -2,11 +2,11 @@ package amazon
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // ZipcodeSetter 邮编设置器
@@ -28,12 +28,12 @@ func NewZipcodeSetter(browserManager *BrowserManager) *ZipcodeSetter {
 func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode string) error {
 	// 如果邮编为空，跳过设置
 	if zipcode == "" {
-		log.Printf("邮编为空，跳过设置")
+		logrus.Infof("邮编为空，跳过设置")
 		return nil
 	}
 
 	for attempt := 1; attempt <= zs.maxRetries; attempt++ {
-		log.Printf("尝试设置邮编 (第 %d/%d 次): %s", attempt, zs.maxRetries, zipcode)
+		logrus.Infof("尝试设置邮编 (第 %d/%d 次): %s", attempt, zs.maxRetries, zipcode)
 
 		// 检查页面是否仍然有效
 		if page.IsClosed() {
@@ -42,9 +42,9 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 
 		// 如果是第二次尝试，先刷新页面
 		if attempt == 2 {
-			log.Printf("第二次尝试前刷新页面")
+			logrus.Infof("第二次尝试前刷新页面")
 			if _, err := page.Reload(); err != nil {
-				log.Printf("刷新页面失败: %v", err)
+				logrus.Infof("刷新页面失败: %v", err)
 				return fmt.Errorf("刷新页面失败: %w", err)
 			}
 
@@ -52,24 +52,24 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 			if err := page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
 				State: playwright.LoadStateNetworkidle,
 			}); err != nil {
-				log.Printf("等待页面加载失败: %v", err)
+				logrus.Infof("等待页面加载失败: %v", err)
 			}
 
-			log.Printf("页面已刷新，继续尝试设置邮编")
+			logrus.Infof("页面已刷新，继续尝试设置邮编")
 		}
 
 		// 先验证当前邮编是否正确
 		currentZipcode, err := zs.getCurrentZipcode(page)
 		if err == nil && currentZipcode == zipcode {
-			log.Printf("当前邮编已经是目标邮编: %s，无需设置", zipcode)
+			logrus.Infof("当前邮编已经是目标邮编: %s，无需设置", zipcode)
 			return nil
 		}
 
-		log.Printf("当前邮编不匹配，需要设置邮编。当前: %s, 目标: %s", currentZipcode, zipcode)
+		logrus.Infof("当前邮编不匹配，需要设置邮编。当前: %s, 目标: %s", currentZipcode, zipcode)
 
 		// 设置邮编
 		if err := zs.setZipcode(page, zipcode); err != nil {
-			log.Printf("设置邮编失败: %v", err)
+			logrus.Infof("设置邮编失败: %v", err)
 			// 检查是否是页面关闭导致的错误
 			if page.IsClosed() {
 				return fmt.Errorf("页面已关闭: %w", err)
@@ -80,7 +80,7 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 
 			// 第一次失败后等待，第二次失败会在下次循环开始时刷新页面
 			if attempt == 1 {
-				log.Printf("等待 2 秒后重试")
+				logrus.Infof("等待 2 秒后重试")
 				time.Sleep(2 * time.Second)
 			}
 			continue
@@ -88,7 +88,7 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 
 		// 验证邮编
 		if verified, err := zs.verifyZipcode(page, zipcode); err != nil || !verified {
-			log.Printf("验证邮编失败: %v", err)
+			logrus.Infof("验证邮编失败: %v", err)
 			// 检查是否是页面关闭导致的错误
 			if page.IsClosed() {
 				return fmt.Errorf("页面已关闭: %w", err)
@@ -99,13 +99,13 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 
 			// 第一次失败后等待，第二次失败会在下次循环开始时刷新页面
 			if attempt == 1 {
-				log.Printf("等待 2 秒后重试")
+				logrus.Infof("等待 2 秒后重试")
 				time.Sleep(2 * time.Second)
 			}
 			continue
 		}
 
-		log.Printf("成功设置并验证邮编: %s", zipcode)
+		logrus.Infof("成功设置并验证邮编: %s", zipcode)
 		return nil
 	}
 
@@ -125,7 +125,7 @@ func (zs *ZipcodeSetter) getCurrentZipcode(page playwright.Page) (string, error)
 		"#nav-global-location-slot",   // 导航栏位置槽
 	}
 
-	log.Printf("开始查找当前邮编信息")
+	logrus.Infof("开始查找当前邮编信息")
 
 	// 优先从主要位置获取邮编
 	for _, selector := range zipDisplaySelectors {
@@ -143,25 +143,21 @@ func (zs *ZipcodeSetter) getCurrentZipcode(page playwright.Page) (string, error)
 
 		text, err := locator.TextContent()
 		if err == nil && text != "" {
-			log.Printf("从选择器 %s 获取到文本: %s", selector, text)
 			// 提取邮编（通常是数字）
 			zipcode := extractZipcode(text)
 			if zipcode != "" {
-				log.Printf("成功提取邮编: %s", zipcode)
+				logrus.Infof("成功提取邮编: %s", zipcode)
 				return zipcode, nil
 			}
 		}
 	}
 
 	// 如果主要位置没有找到，尝试从导航栏区域查找
-	log.Printf("主要位置未找到邮编，尝试从导航栏区域查找")
 	navLocator := page.Locator("#nav-global-location-popover-link, #nav-packard-glow-loc-icon")
 	if count, err := navLocator.Count(); err == nil && count > 0 {
 		if text, err := navLocator.TextContent(); err == nil && text != "" {
-			log.Printf("从导航栏获取到文本: %s", text)
 			zipcode := extractZipcode(text)
 			if zipcode != "" {
-				log.Printf("从导航栏提取到邮编: %s", zipcode)
 				return zipcode, nil
 			}
 		}
@@ -175,6 +171,26 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 	// 检查页面状态
 	if page.IsClosed() {
 		return fmt.Errorf("页面已关闭，无法设置邮编")
+	}
+
+	// 检测是否出现 "Sign in to update your location" 弹窗
+	signInSelectors := []string{
+		"text=Sign in to update your location",
+		"text=Sign in to see your location",
+		"text=登录以更新您的位置",
+		"text=ログインして配送先を更新",
+		"h1:has-text('Sign in')",
+		"#ap_email", // 登录页面的邮箱输入框
+	}
+
+	for _, selector := range signInSelectors {
+		locator := page.Locator(selector)
+		if count, err := locator.Count(); err == nil && count > 0 {
+			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
+				logrus.Infof("检测到登录弹窗: %s", selector)
+				return fmt.Errorf("SIGN_IN_REQUIRED: 检测到需要登录才能更新位置，需要重建浏览器实例")
+			}
+		}
 	}
 
 	// 尝试点击各种可能触发邮编设置界面的元素（适配英语页面）
@@ -201,36 +217,32 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		locator := page.Locator(selector).First()
 		count, err := locator.Count()
 		if err == nil && count > 0 {
-			log.Printf("找到触发元素: %s", selector)
 			if err := locator.Click(); err != nil {
-				log.Printf("点击触发元素失败 (%s): %v", selector, err)
 				// 检查是否是页面关闭导致的错误
 				if page.IsClosed() {
 					return fmt.Errorf("页面在点击触发元素时被关闭: %w", err)
 				}
 			} else {
-				log.Printf("成功点击触发元素: %s", selector)
+				logrus.Infof("成功点击触发元素: %s", selector)
 				triggered = true
 				time.Sleep(2 * time.Second) // 等待弹窗出现
 				break
 			}
-		} else {
-			log.Printf("未找到触发元素: %s", selector)
 		}
 	}
 
 	if !triggered {
-		log.Printf("警告: 未找到任何可点击的触发元素")
+		logrus.Infof("警告: 未找到任何可点击的触发元素")
 		// 在英语页面上，某些地区可能不需要设置邮编
 		// 尝试检查页面是否已经显示了价格信息
 		if zs.checkIfPriceAvailable(page) {
-			log.Printf("页面已显示价格信息，可能不需要设置邮编，跳过")
+			logrus.Infof("页面已显示价格信息，可能不需要设置邮编，跳过")
 			return nil
 		}
 
 		// 调试：打印导航栏区域的所有元素
 		if err := zs.debugNavigationElements(page); err != nil {
-			log.Printf("调试导航栏元素失败: %v", err)
+			logrus.Infof("调试导航栏元素失败: %v", err)
 		}
 	}
 
@@ -239,24 +251,6 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		return fmt.Errorf("页面在查找邮编输入框前被关闭")
 	}
 
-	// 调试：打印页面上所有可见的输入框信息
-	log.Printf("开始查找邮编输入框...")
-	allInputs := page.Locator("input[type='text'], input:not([type])")
-	if inputCount, err := allInputs.Count(); err == nil {
-		log.Printf("页面上共有 %d 个文本输入框", inputCount)
-		for i := 0; i < inputCount && i < 10; i++ { // 最多打印前10个
-			input := allInputs.Nth(i)
-			if isVisible, err := input.IsVisible(); err == nil && isVisible {
-				name, _ := input.GetAttribute("name")
-				id, _ := input.GetAttribute("id")
-				placeholder, _ := input.GetAttribute("placeholder")
-				maxlength, _ := input.GetAttribute("maxlength")
-				log.Printf("  输入框 %d: name=%s, id=%s, placeholder=%s, maxlength=%s", i, name, id, placeholder, maxlength)
-			}
-		}
-	}
-
-	// 检测是否为日本站的分离式邮编输入框（前3位和后4位分开）
 	// 尝试多种可能的日本邮编输入框选择器
 	jpZipSelectors1 := []string{
 		"input[name='zipCode1']",
@@ -282,7 +276,7 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		locator := page.Locator(selector).First()
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				log.Printf("找到日本邮编第一个输入框: %s", selector)
+				logrus.Infof("找到日本邮编第一个输入框: %s", selector)
 				jpZipInput1 = locator
 				break
 			}
@@ -294,7 +288,7 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		locator := page.Locator(selector).First()
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				log.Printf("找到日本邮编第二个输入框: %s", selector)
+				logrus.Infof("找到日本邮编第二个输入框: %s", selector)
 				jpZipInput2 = locator
 				break
 			}
@@ -303,18 +297,18 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 
 	// 如果两个输入框都找到了，说明是日本站的分离式输入
 	if jpZipInput1 != nil && jpZipInput2 != nil {
-		log.Printf("检测到日本站分离式邮编输入框")
+		logrus.Infof("检测到日本站分离式邮编输入框")
 		// 日本邮编格式: XXX-XXXX，需要分成两部分填写
 		parts := regexp.MustCompile(`(\d{3})-?(\d{4})`).FindStringSubmatch(zipcode)
 		if len(parts) == 3 {
 			part1 := parts[1] // 前3位
 			part2 := parts[2] // 后4位
 
-			log.Printf("填写日本邮编: 前3位=%s, 后4位=%s", part1, part2)
+			logrus.Infof("填写日本邮编: 前3位=%s, 后4位=%s", part1, part2)
 
 			// 清空并填写第一个输入框（前3位）
 			if err := jpZipInput1.Clear(); err != nil {
-				log.Printf("清空第一个输入框失败: %v", err)
+				logrus.Infof("清空第一个输入框失败: %v", err)
 			}
 			if err := jpZipInput1.Fill(part1); err != nil {
 				if page.IsClosed() {
@@ -322,14 +316,14 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 				}
 				return fmt.Errorf("填写日本邮编第一部分失败: %w", err)
 			}
-			log.Printf("成功填写第一个输入框: %s", part1)
+			logrus.Infof("成功填写第一个输入框: %s", part1)
 
 			// 等待一下，确保第一个输入框的值已经设置
 			time.Sleep(300 * time.Millisecond)
 
 			// 清空并填写第二个输入框（后4位）
 			if err := jpZipInput2.Clear(); err != nil {
-				log.Printf("清空第二个输入框失败: %v", err)
+				logrus.Infof("清空第二个输入框失败: %v", err)
 			}
 			if err := jpZipInput2.Fill(part2); err != nil {
 				if page.IsClosed() {
@@ -337,16 +331,14 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 				}
 				return fmt.Errorf("填写日本邮编第二部分失败: %w", err)
 			}
-			log.Printf("成功填写第二个输入框: %s", part2)
+			logrus.Infof("成功填写第二个输入框: %s", part2)
 
-			log.Printf("成功填写日本站分离式邮编")
+			logrus.Infof("成功填写日本站分离式邮编")
 		} else {
 			return fmt.Errorf("日本邮编格式不正确，应为 XXX-XXXX 格式: %s", zipcode)
 		}
 	} else {
-		log.Printf("未检测到日本站分离式邮编输入框，使用标准输入方式")
 		// 标准单一输入框（适配英语页面）
-		log.Printf("使用标准单一邮编输入框")
 		zipInputSelectors := []string{
 			"#GLUXZipUpdateInput",                // Amazon主要的邮编输入框
 			"input[name='zipCode']",              // 邮编输入框（name属性）
@@ -378,16 +370,14 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 			locator := page.Locator(selector).First()
 			count, err := locator.Count()
 			if err == nil && count > 0 {
-				log.Printf("找到邮编输入框: %s", selector)
+				logrus.Infof("找到邮编输入框: %s", selector)
 				zipInput = locator
 				break
-			} else {
-				log.Printf("未找到邮编输入框: %s", selector)
 			}
 		}
 
 		if zipInput == nil {
-			log.Printf("所有邮编输入框选择器都未找到元素")
+			logrus.Infof("所有邮编输入框选择器都未找到元素")
 			return fmt.Errorf("未找到邮编输入框")
 		}
 
@@ -435,7 +425,6 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		if err == nil && count > 0 {
 			// 检查按钮是否可见
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				log.Printf("找到Apply按钮: %s", selector)
 				applyButton = locator
 				break
 			}
@@ -444,7 +433,6 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 
 	if applyButton == nil {
 		// 如果没有找到应用按钮，尝试按回车键
-		log.Printf("未找到Apply按钮，尝试按回车键")
 		if err := page.Keyboard().Press("Enter"); err != nil {
 			if page.IsClosed() {
 				return fmt.Errorf("页面在按回车键时被关闭: %w", err)
@@ -453,7 +441,6 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		}
 	} else {
 		// 点击Apply按钮
-		log.Printf("点击Apply按钮")
 		if err := applyButton.Click(); err != nil {
 			if page.IsClosed() {
 				return fmt.Errorf("页面在点击Apply按钮时被关闭: %w", err)
@@ -470,24 +457,63 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		return fmt.Errorf("页面在Apply按钮处理后被关闭")
 	}
 
-	// 尝试关闭可能存在的模态框（使用ESC键，最简单可靠）
-	log.Printf("按ESC键关闭可能存在的模态框")
 	if err := page.Keyboard().Press("Escape"); err != nil {
-		log.Printf("按ESC键失败: %v", err)
+		logrus.Infof("按ESC键失败: %v", err)
 	} else {
-		log.Printf("成功按ESC键")
+		logrus.Infof("成功按ESC键")
 		// 等待ESC键生效
 		time.Sleep(1 * time.Second)
 	}
 
-	// 检查是否有 "Continue Shopping" 按钮需要点击（英语页面）
+	// 检查是否有 "Continue Shopping" 按钮需要点击（多语言支持）
 	continueShoppingSelectors := []string{
+		// 英语
 		"button:has-text('Continue Shopping')",
 		"button:has-text('Continue shopping')",
 		"a:has-text('Continue Shopping')",
 		"a:has-text('Continue shopping')",
 		"button:has-text('Continue')",
 		"a:has-text('Continue')",
+		// 日语
+		"button:has-text('買い物を続ける')",
+		"a:has-text('買い物を続ける')",
+		"button:has-text('続ける')",
+		"a:has-text('続ける')",
+		// 德语
+		"button:has-text('Weiter einkaufen')",
+		"a:has-text('Weiter einkaufen')",
+		"button:has-text('Weiter')",
+		"a:has-text('Weiter')",
+		// 法语
+		"button:has-text('Continuer mes achats')",
+		"a:has-text('Continuer mes achats')",
+		"button:has-text('Continuer')",
+		"a:has-text('Continuer')",
+		// 西班牙语
+		"button:has-text('Seguir comprando')",
+		"a:has-text('Seguir comprando')",
+		"button:has-text('Continuar')",
+		"a:has-text('Continuar')",
+		// 意大利语
+		"button:has-text('Continua lo shopping')",
+		"a:has-text('Continua lo shopping')",
+		"button:has-text('Continua')",
+		"a:has-text('Continua')",
+		// 葡萄牙语
+		"button:has-text('Continuar comprando')",
+		"a:has-text('Continuar comprando')",
+		"button:has-text('Continuar')",
+		"a:has-text('Continuar')",
+		// 荷兰语
+		"button:has-text('Verder winkelen')",
+		"a:has-text('Verder winkelen')",
+		"button:has-text('Verder')",
+		"a:has-text('Verder')",
+		// 中文
+		"button:has-text('继续购物')",
+		"a:has-text('继续购物')",
+		"button:has-text('继续')",
+		"a:has-text('继续')",
 	}
 
 	for _, selector := range continueShoppingSelectors {
@@ -498,11 +524,11 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		locator := page.Locator(selector)
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				log.Printf("发现 Continue Shopping 按钮，尝试点击")
+				logrus.Infof("发现 Continue Shopping 按钮，尝试点击")
 				if err := locator.Click(); err != nil {
-					log.Printf("点击 Continue Shopping 按钮失败: %v", err)
+					logrus.Infof("点击 Continue Shopping 按钮失败: %v", err)
 				} else {
-					log.Printf("成功点击 Continue Shopping 按钮")
+					logrus.Infof("成功点击 Continue Shopping 按钮")
 					time.Sleep(1 * time.Second)
 					break
 				}
@@ -510,7 +536,7 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		}
 	}
 
-	log.Printf("邮编设置操作完成")
+	logrus.Infof("邮编设置操作完成")
 	return nil
 }
 
@@ -585,7 +611,7 @@ func extractZipcode(text string) string {
 
 // debugNavigationElements 调试导航栏元素（帮助找到正确的选择器）
 func (zs *ZipcodeSetter) debugNavigationElements(page playwright.Page) error {
-	log.Printf("=== 开始调试导航栏元素 ===")
+	logrus.Infof("=== 开始调试导航栏元素 ===")
 
 	// 查找所有导航栏相关的元素
 	navSelectors := []string{
@@ -602,19 +628,19 @@ func (zs *ZipcodeSetter) debugNavigationElements(page playwright.Page) error {
 		locator := page.Locator(selector)
 		count, err := locator.Count()
 		if err == nil && count > 0 {
-			log.Printf("找到元素: %s (数量: %d)", selector, count)
+			logrus.Infof("找到元素: %s (数量: %d)", selector, count)
 			// 尝试获取第一个元素的文本
 			if text, err := locator.First().TextContent(); err == nil && text != "" {
-				log.Printf("  文本内容: %s", text)
+				logrus.Infof("  文本内容: %s", text)
 			}
 			// 尝试获取元素的HTML
 			if html, err := locator.First().InnerHTML(); err == nil && len(html) < 200 {
-				log.Printf("  HTML: %s", html)
+				logrus.Infof("  HTML: %s", html)
 			}
 		}
 	}
 
-	log.Printf("=== 调试完成 ===")
+	logrus.Infof("=== 调试完成 ===")
 	return nil
 }
 
@@ -632,7 +658,7 @@ func (zs *ZipcodeSetter) checkIfPriceAvailable(page playwright.Page) bool {
 		locator := page.Locator(selector)
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.First().IsVisible(); err == nil && isVisible {
-				log.Printf("检测到价格元素: %s", selector)
+				logrus.Infof("检测到价格元素: %s", selector)
 				return true
 			}
 		}

@@ -3,12 +3,12 @@ package amazon
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"task-processor/common/config"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // BrowserManager 浏览器管理器
@@ -86,11 +86,11 @@ func (bm *BrowserManager) Launch() error {
 	if bm.fingerprint != nil && bm.fingerprint.Enable {
 		fingerprintJSON, err := json.Marshal(bm.fingerprint)
 		if err != nil {
-			log.Printf("序列化指纹配置失败: %v", err)
+			logrus.Infof("序列化指纹配置失败: %v", err)
 		} else {
 			kfingerprintArg := fmt.Sprintf("--kfingerprint=%s", string(fingerprintJSON))
 			args = append(args, kfingerprintArg)
-			log.Printf("通过--kfingerprint参数注入指纹配置")
+			logrus.Infof("通过--kfingerprint参数注入指纹配置")
 		}
 	}
 
@@ -104,14 +104,14 @@ func (bm *BrowserManager) Launch() error {
 		// 检查文件是否存在
 		if _, err := os.Stat(bm.config.BrowserPath); err == nil {
 			launchOptions.ExecutablePath = &bm.config.BrowserPath
-			log.Printf("使用指定的浏览器路径: %s", bm.config.BrowserPath)
+			logrus.Infof("使用指定的浏览器路径: %s", bm.config.BrowserPath)
 		} else {
-			log.Printf("警告: 指定的浏览器路径不存在: %s，错误: %v", bm.config.BrowserPath, err)
-			log.Printf("将使用系统默认Chrome或Playwright自带的浏览器")
+			logrus.Infof("警告: 指定的浏览器路径不存在: %s，错误: %v", bm.config.BrowserPath, err)
+			logrus.Infof("将使用系统默认Chrome或Playwright自带的浏览器")
 			// 不设置ExecutablePath，让Playwright使用默认的Chrome
 		}
 	} else {
-		log.Printf("未指定浏览器路径，使用Playwright默认浏览器")
+		logrus.Infof("未指定浏览器路径，使用Playwright默认浏览器")
 	}
 
 	// 配置代理（如果设置了）
@@ -119,7 +119,7 @@ func (bm *BrowserManager) Launch() error {
 		launchOptions.Proxy = &playwright.Proxy{
 			Server: bm.config.ProxyServer,
 		}
-		log.Printf("使用代理服务器: %s", bm.config.ProxyServer)
+		logrus.Infof("使用代理服务器: %s", bm.config.ProxyServer)
 	}
 
 	browser, err := (*bm.pw).Chromium.Launch(launchOptions)
@@ -147,7 +147,7 @@ func (bm *BrowserManager) Launch() error {
 
 	// 如果设置了指纹，应用指纹配置（但保持英语语言）
 	if bm.fingerprint != nil && bm.fingerprint.Enable {
-		log.Println("应用浏览器指纹配置")
+		logrus.Info("应用浏览器指纹配置")
 		// Note: Language is forced to English regardless of fingerprint settings
 		// This ensures Amazon pages are always displayed in English
 	}
@@ -174,7 +174,7 @@ func (bm *BrowserManager) NewPage() (playwright.Page, error) {
 
 	// 指纹已通过--kfingerprint参数在Chrome启动时注入，无需额外处理
 	if bm.fingerprint != nil && bm.fingerprint.Enable {
-		log.Println("指纹已通过--kfingerprint参数注入到Chrome")
+		logrus.Info("指纹已通过--kfingerprint参数注入到Chrome")
 	}
 
 	return page, nil
@@ -184,7 +184,7 @@ func (bm *BrowserManager) NewPage() (playwright.Page, error) {
 func (bm *BrowserManager) NavigateTo(page playwright.Page, url string) error {
 	// Set language preference cookies before navigation
 	if err := bm.setLanguageCookies(url); err != nil {
-		log.Printf("设置语言Cookie失败: %v", err)
+		logrus.Infof("设置语言Cookie失败: %v", err)
 	}
 
 	_, err := page.Goto(url, playwright.PageGotoOptions{
@@ -193,7 +193,7 @@ func (bm *BrowserManager) NavigateTo(page playwright.Page, url string) error {
 	})
 
 	if err != nil {
-		log.Printf("导航失败，尝试重试: %v", err)
+		logrus.Infof("导航失败，尝试重试: %v", err)
 		_, err = page.Goto(url, playwright.PageGotoOptions{
 			WaitUntil: playwright.WaitUntilStateLoad,
 			Timeout:   playwright.Float(30000),
@@ -236,6 +236,12 @@ func (bm *BrowserManager) setLanguageCookies(url string) error {
 	} else if strings.Contains(url, "amazon.com.mx") {
 		domain = ".amazon.com.mx"
 		region = "MX"
+	} else if strings.Contains(url, "amazon.sa") {
+		domain = ".amazon.sa"
+		region = "SA"
+	} else if strings.Contains(url, "amazon.ae") {
+		domain = ".amazon.ae"
+		region = "AE"
 	}
 
 	// Get currency based on region
@@ -261,7 +267,6 @@ func (bm *BrowserManager) setLanguageCookies(url string) error {
 		return fmt.Errorf("添加语言Cookie失败: %w", err)
 	}
 
-	log.Printf("已设置英语语言Cookie for domain: %s, currency: %s", domain, currency)
 	return nil
 }
 
@@ -288,6 +293,10 @@ func getCurrencyByRegion(region string) string {
 		return "CAD"
 	case "MX":
 		return "MXN"
+	case "SA":
+		return "SAR" // 沙特里亚尔
+	case "AE":
+		return "AED" // 阿联酋迪拉姆
 	default:
 		return "USD"
 	}

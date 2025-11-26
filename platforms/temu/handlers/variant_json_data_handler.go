@@ -8,6 +8,9 @@ import (
 	"task-processor/common/config"
 	"task-processor/common/management/api"
 	"task-processor/common/pipeline"
+	"task-processor/common/product"
+	"task-processor/common/utils"
+	"task-processor/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,41 +27,26 @@ type VariantJsonDataHandler struct {
 }
 
 // NewVariantJsonDataHandler 创建新的变体JSON数据处理器
-func NewVariantJsonDataHandler(rawJsonDataClient api.RawJsonDataAPI, amazonConfig *config.AmazonConfig) *VariantJsonDataHandler {
+func NewVariantJsonDataHandler(rawJsonDataClient api.RawJsonDataAPI, amazonConfig *config.AmazonConfig, amazonProcessor interface{}) *VariantJsonDataHandler {
 	handler := &VariantJsonDataHandler{
 		logger:            logrus.WithField("handler", "VariantJsonDataHandler"),
 		rawJsonDataClient: rawJsonDataClient,
 		amazonConfig:      amazonConfig,
 	}
 
-	// 如果启用Amazon爬虫，初始化处理器
-	if amazonConfig != nil && amazonConfig.Enabled {
+	// 使用共享的Amazon处理器（如果提供）
+	if amazonProcessor != nil {
+		if ap, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
+			handler.amazonProcessor = ap
+			logrus.Info("变体数据使用共享的Amazon爬虫实例")
+		}
+	} else if amazonConfig != nil && amazonConfig.Enabled {
+		// 如果没有提供共享实例，则创建新的（向后兼容）
 		handler.amazonProcessor = amazon.NewAmazonProcessor(amazonConfig)
 		logrus.Info("变体数据Amazon爬虫已启用")
 	}
 
 	return handler
-}
-
-// NonRetryableError 不可重试的错误类型
-type NonRetryableError struct {
-	Message string
-	Cause   error
-}
-
-func (e *NonRetryableError) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf("%s: %v", e.Message, e.Cause)
-	}
-	return e.Message
-}
-
-// NewNonRetryableError 创建不可重试错误
-func NewNonRetryableError(message string, cause error) *NonRetryableError {
-	return &NonRetryableError{
-		Message: message,
-		Cause:   cause,
-	}
 }
 
 // Name 返回处理器名称
@@ -91,7 +79,7 @@ func (h *VariantJsonDataHandler) Handle(ctx *pipeline.TaskContext) error {
 	// 检查变体数量限制
 	if len(variantAsins) > 100 {
 		h.logger.Warnf("变体ASIN数量过多（%d），可能会导致处理时间过长或请求失败", len(variantAsins))
-		return NewNonRetryableError("变体ASIN数量过多，停止处理", nil)
+		return types.NewNonRetryableError("变体ASIN数量过多，停止处理", nil)
 	}
 
 	// 获取所有变体数据
@@ -101,8 +89,8 @@ func (h *VariantJsonDataHandler) Handle(ctx *pipeline.TaskContext) error {
 		return fmt.Errorf("获取变体数据失败: %w", err)
 	}
 
-	// 将变体数据存储到上下文中
-	ctx.SetData("variants", variants)
+	// 将变体数据存储到上下文中（使用强类型）
+	ctx.SetAmazonVariants(variants)
 
 	// 处理变体数据
 	err = h.processVariantData(ctx, variants)
@@ -117,7 +105,8 @@ func (h *VariantJsonDataHandler) Handle(ctx *pipeline.TaskContext) error {
 
 // fetchAllVariants 获取所有变体数据
 func (h *VariantJsonDataHandler) fetchAllVariants(ctx *pipeline.TaskContext, variantAsins []string) ([]*amazon.Product, error) {
-	h.logger.Infof("开始获取 %d 个变体的数据", len(variantAsins))
+	h.logger.Infof("🔍 [变体处理] 开始获取 %d 个变体的数据", len(variantAsins))
+	h.logger.Infof("🔍 [变体处理] 变体ASIN列表: %v", variantAsins)
 
 	variants := make([]*amazon.Product, 0, len(variantAsins))
 	missingAsins := make([]string, 0)
@@ -185,7 +174,10 @@ func (h *VariantJsonDataHandler) processSingleProduct(ctx *pipeline.TaskContext)
 	// 设置产品基本信息
 	if ctx.TemuProduct != nil {
 		if productName != "" {
-			ctx.TemuProduct.GoodsBasic.GoodsName = productName
+			// 清理产品标题，移除特殊符号和表情符号
+			cleanedTitle := utils.CleanProductTitle(productName)
+			ctx.TemuProduct.GoodsBasic.GoodsName = cleanedTitle
+			h.logger.Debugf("产品标题已清理: %s -> %s", productName, cleanedTitle)
 		}
 		if description != "" {
 			ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc = description
@@ -212,18 +204,26 @@ func (h *VariantJsonDataHandler) processVariantData(ctx *pipeline.TaskContext, v
 			continue
 		}
 
-		h.logger.Infof("处理变体 %d: %s (ASIN: %s)", i+1, variant.Title, variant.Asin)
+		// 清理变体标题
+		if variant.Title != "" {
+			originalTitle := variant.Title
+			variant.Title = utils.CleanProductTitle(variant.Title)
+			if originalTitle != variant.Title {
+				h.logger.Debugf("变体 %d 标题已清理: %s -> %s", i+1, originalTitle, variant.Title)
+			}
+		}
 
-		// 这里可以添加具体的变体处理逻辑
-		// 例如：创建SKC、处理规格、设置价格等
-		h.processVariantSKU(ctx, variant, i)
+		h.logger.Infof("处理变体 %d: %s (ASIN: %s)", i+1, variant.Title, variant.Asin)
 	}
 
 	// 设置主产品信息（使用第一个变体的信息）
 	if len(variants) > 0 && variants[0] != nil && ctx.TemuProduct != nil {
 		mainVariant := variants[0]
 		if mainVariant.Title != "" {
-			ctx.TemuProduct.GoodsBasic.GoodsName = mainVariant.Title
+			// 清理产品标题，移除特殊符号和表情符号
+			cleanedTitle := utils.CleanProductTitle(mainVariant.Title)
+			ctx.TemuProduct.GoodsBasic.GoodsName = cleanedTitle
+			h.logger.Debugf("主变体标题已清理: %s -> %s", mainVariant.Title, cleanedTitle)
 		}
 		if mainVariant.Description != "" {
 			ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc = mainVariant.Description
@@ -234,61 +234,108 @@ func (h *VariantJsonDataHandler) processVariantData(ctx *pipeline.TaskContext, v
 	return nil
 }
 
-// processVariantSKU 处理变体SKU
-func (h *VariantJsonDataHandler) processVariantSKU(ctx *pipeline.TaskContext, variant *amazon.Product, index int) {
-	// 这里可以实现具体的SKU处理逻辑
-	// 例如：
-	// 1. 生成SKU编号
-	// 2. 设置价格
-	// 3. 处理规格属性
-	// 4. 设置库存
-
-	h.logger.Debugf("处理变体SKU: ASIN=%s, Price=%.2f %s",
-		variant.Asin, variant.FinalPrice, variant.Currency)
-}
-
 // getAsinListFromContext 从上下文中获取ASIN列表
+// 注意：包含所有可售卖的ASIN，包括主产品ASIN（因为主产品也可能是可售卖的SKU）
 func (h *VariantJsonDataHandler) getAsinListFromContext(ctx *pipeline.TaskContext) []string {
-	// 尝试从不同的数据源获取ASIN列表
+	// 获取主产品ASIN（仅用于日志记录）
+	mainProductAsin := strings.TrimSpace(strings.ToUpper(ctx.Task.ProductID))
+
+	// 如果有Amazon产品数据，优先使用其ASIN（更准确）
+	if ctx.AmazonProduct != nil && ctx.AmazonProduct.Asin != "" {
+		mainProductAsin = strings.TrimSpace(strings.ToUpper(ctx.AmazonProduct.Asin))
+	}
+
+	h.logger.Infof("🔍 [变体ASIN提取] 主产品ASIN: %s", mainProductAsin)
 
 	// 1. 从AsinSkuMap中获取
 	if asinSkuMapData, exists := ctx.GetData("AsinSkuMap"); exists {
 		if asinSkuMap, ok := asinSkuMapData.(map[string]string); ok {
-			return h.getAsinListFromMap(asinSkuMap)
+			h.logger.Infof("🔍 [变体ASIN提取] 从AsinSkuMap获取，总数: %d", len(asinSkuMap))
+			return h.getAsinListFromMap(asinSkuMap, mainProductAsin)
 		}
 	}
 
-	// 2. 从Amazon产品的变体中获取
+	// 2. 从Amazon产品的变体中获取（包含所有ASIN）
 	if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Variations) > 0 {
+		h.logger.Infof("🔍 [变体ASIN提取] 从Variations获取，总数: %d", len(ctx.AmazonProduct.Variations))
+
 		asins := make([]string, 0, len(ctx.AmazonProduct.Variations))
+		mainProductCount := 0
+
 		for _, variation := range ctx.AmazonProduct.Variations {
-			if variation.Asin != "" {
-				asins = append(asins, variation.Asin)
+			if variation.Asin == "" {
+				continue
+			}
+
+			h.logger.Infof("✅ [变体ASIN提取] 添加变体: %s", variation.Asin)
+			asins = append(asins, variation.Asin)
+
+			// 统计主产品（仅用于日志）
+			variantAsin := strings.TrimSpace(strings.ToUpper(variation.Asin))
+			if variantAsin == mainProductAsin {
+				mainProductCount++
 			}
 		}
+
+		h.logger.Infof("🔍 [变体ASIN提取] 从Variations获取完成: 总变体数=%d (包含主产品=%d)",
+			len(asins), mainProductCount)
 		return asins
 	}
 
-	// 3. 从其他可能的数据源获取
+	// 3. 从其他可能的数据源获取（包含所有ASIN）
 	if variantAsinsData, exists := ctx.GetData("VariantAsins"); exists {
 		if variantAsins, ok := variantAsinsData.([]string); ok {
-			return variantAsins
+			h.logger.Infof("🔍 [变体ASIN提取] 从VariantAsins获取，总数: %d", len(variantAsins))
+
+			// 包含所有ASIN
+			asins := make([]string, 0, len(variantAsins))
+			mainProductCount := 0
+
+			for _, asin := range variantAsins {
+				h.logger.Infof("✅ [变体ASIN提取] 添加变体: %s", asin)
+				asins = append(asins, asin)
+
+				// 统计主产品（仅用于日志）
+				normalizedAsin := strings.TrimSpace(strings.ToUpper(asin))
+				if normalizedAsin == mainProductAsin {
+					mainProductCount++
+				}
+			}
+
+			h.logger.Infof("🔍 [变体ASIN提取] 从VariantAsins获取完成: 总变体数=%d (包含主产品=%d)",
+				len(asins), mainProductCount)
+			return asins
 		}
 	}
 
+	h.logger.Info("🔍 [变体ASIN提取] 未找到任何变体ASIN数据源")
 	return []string{}
 }
 
-// getAsinListFromMap 从AsinSkuMap中提取所有ASIN
-func (h *VariantJsonDataHandler) getAsinListFromMap(asinSkuMap map[string]string) []string {
+// getAsinListFromMap 从AsinSkuMap中提取所有ASIN（包括主产品ASIN）
+// 注意：主产品ASIN也可能是一个可售卖的SKU，不应该被排除
+func (h *VariantJsonDataHandler) getAsinListFromMap(asinSkuMap map[string]string, mainProductAsin string) []string {
 	if len(asinSkuMap) == 0 {
 		return []string{}
 	}
 
+	// 创建ASIN列表，包含所有ASIN（包括主产品）
 	asinList := make([]string, 0, len(asinSkuMap))
+	mainProductCount := 0
+
 	for asin := range asinSkuMap {
+		h.logger.Infof("✅ [变体ASIN提取] 从AsinSkuMap添加变体: %s", asin)
 		asinList = append(asinList, asin)
+
+		// 统计主产品（仅用于日志）
+		normalizedAsin := strings.TrimSpace(strings.ToUpper(asin))
+		if normalizedAsin == mainProductAsin {
+			mainProductCount++
+		}
 	}
+
+	h.logger.Infof("🔍 [变体ASIN提取] 从AsinSkuMap获取完成: 总变体数=%d (包含主产品=%d)",
+		len(asinList), mainProductCount)
 
 	return asinList
 }
@@ -310,31 +357,34 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *pipeli
 		return []*amazon.Product{}
 	}
 
-	// 根据地区获取邮编
-	zipcode := h.getZipcodeForRegion(ctx.Task.Region)
-
-	// 根据地区获取正确的Amazon域名
-	domain := h.getAmazonDomainByRegion(ctx.Task.Region)
+	// 使用公共函数获取地区信息
+	domain := product.GetAmazonDomainByRegion(ctx.Task.Region)
+	zipcode := product.GetZipcodeForRegion(ctx.Task.Region, h.amazonConfig.Zipcodes)
 
 	// 准备批量请求
 	requests := make([]amazon.ProductRequest, 0, len(asins))
-	for _, asin := range asins {
+	for i, asin := range asins {
 		url := fmt.Sprintf("https://www.%s/dp/%s", domain, asin)
 		requests = append(requests, amazon.ProductRequest{
 			URL:     url,
 			Zipcode: zipcode,
 		})
+		h.logger.Infof("🌐 [变体爬取] 准备请求 [%d/%d]: ASIN=%s, URL=%s", i+1, len(asins), asin, url)
 	}
 
-	h.logger.Infof("开始批量抓取 %d 个变体: Region=%s, Domain=%s, Zipcode=%s",
+	h.logger.Infof("🚀 [变体爬取] 开始批量抓取 %d 个变体: Region=%s, Domain=%s, Zipcode=%s",
 		len(requests), ctx.Task.Region, domain, zipcode)
 
-	// 批量处理
+	// 批量处理（使用同一个浏览器实例）
 	results := h.amazonProcessor.ProcessBatch(requests)
 
-	// 转换结果
+	h.logger.Infof("✅ [变体爬取] 批量抓取完成，收到 %d 个结果", len(results))
+
+	// 转换结果并保存到服务器
 	variants := make([]*amazon.Product, 0, len(results))
 	successCount := 0
+	savedCount := 0
+
 	for i, result := range results {
 		if result.Error != nil {
 			h.logger.Warnf("变体 %s 抓取失败: %v", asins[i], result.Error)
@@ -344,10 +394,24 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *pipeli
 		if result.Product != nil {
 			variants = append(variants, result.Product)
 			successCount++
+
+			// 保存抓取到的变体数据到服务器缓存
+			if err := h.saveVariantToServer(ctx, asins[i], result.Product); err != nil {
+				h.logger.Warnf("保存变体 %s 到服务器失败: %v", asins[i], err)
+			} else {
+				savedCount++
+				h.logger.Debugf("变体 %s 已保存到服务器缓存", asins[i])
+			}
 		}
 	}
 
-	h.logger.Infof("批量抓取完成: 成功 %d/%d", successCount, len(asins))
+	h.logger.Infof("批量抓取完成: 成功抓取 %d/%d，成功保存 %d/%d",
+		successCount, len(asins), savedCount, successCount)
+
+	// 如果有保存失败的情况，记录警告
+	if savedCount < successCount {
+		h.logger.Warnf("有 %d 个变体数据保存失败，下次仍需重新抓取", successCount-savedCount)
+	}
 
 	return variants
 }
@@ -361,53 +425,31 @@ func (h *VariantJsonDataHandler) parseAmazonProduct(jsonData string) (*amazon.Pr
 	return &product, nil
 }
 
-// getZipcodeForRegion 根据地区获取邮编
-func (h *VariantJsonDataHandler) getZipcodeForRegion(region string) string {
-	if h.amazonConfig != nil && h.amazonConfig.Zipcodes != nil {
-		if zipcode, exists := h.amazonConfig.Zipcodes[region]; exists {
-			return zipcode
-		}
+// saveVariantToServer 保存变体数据到服务器缓存
+func (h *VariantJsonDataHandler) saveVariantToServer(ctx *pipeline.TaskContext, asin string, variant *amazon.Product) error {
+	// 将变体数据序列化为JSON
+	jsonData, err := json.Marshal(variant)
+	if err != nil {
+		return fmt.Errorf("序列化变体数据失败: %w", err)
 	}
 
-	// 默认邮编映射
-	defaultZipcodes := map[string]string{
-		"US": "10001",    // New York
-		"UK": "SW1A 1AA", // London
-		"DE": "10115",    // Berlin
-		"FR": "75001",    // Paris
-		"IT": "00118",    // Rome
-		"ES": "28001",    // Madrid
-		"JP": "100-0001", // Tokyo
-		"CA": "K1A 0A6",  // Ottawa
-		"AU": "2000",     // Sydney
+	// 构造保存请求
+	saveReq := &api.RawJsonDataCreateReqDTO{
+		Platform:    ctx.Task.Platform,
+		Region:      ctx.Task.Region,
+		ProductID:   asin,
+		RawJsonData: string(jsonData),
+		Creator:     ctx.Task.Creator,
 	}
 
-	if zipcode, exists := defaultZipcodes[region]; exists {
-		return zipcode
+	// 调用管理系统API保存数据
+	id, err := h.rawJsonDataClient.CreateRawJsonData(saveReq)
+	if err != nil {
+		return fmt.Errorf("调用保存API失败: %w", err)
 	}
 
-	return "10001" // 默认使用美国邮编
-}
-
-// getAmazonDomainByRegion 根据地区获取Amazon域名
-func (h *VariantJsonDataHandler) getAmazonDomainByRegion(region string) string {
-	domainMap := map[string]string{
-		"US": "amazon.com",
-		"UK": "amazon.co.uk",
-		"DE": "amazon.de",
-		"FR": "amazon.fr",
-		"IT": "amazon.it",
-		"ES": "amazon.es",
-		"JP": "amazon.co.jp",
-		"CA": "amazon.ca",
-		"AU": "amazon.com.au",
-	}
-
-	if domain, exists := domainMap[region]; exists {
-		return domain
-	}
-
-	return "amazon.com" // 默认使用美国站点
+	h.logger.Debugf("变体 %s 保存成功，ID: %d", asin, id)
+	return nil
 }
 
 // GetVariantByAsinFromVariants 通过ASIN从变体列表中获取变体
@@ -423,10 +465,8 @@ func (h *VariantJsonDataHandler) GetVariantByAsinFromVariants(variants []*amazon
 	return nil
 }
 
-// Shutdown 关闭处理器，释放资源
+// Shutdown 关闭处理器，释放资源（现在由共享的Amazon处理器管理）
 func (h *VariantJsonDataHandler) Shutdown() {
-	if h.amazonProcessor != nil {
-		h.logger.Info("关闭变体Amazon爬虫处理器...")
-		h.amazonProcessor.Shutdown()
-	}
+	// Amazon处理器由外部管理，不需要在这里关闭
+	h.logger.Debug("VariantJsonDataHandler 关闭（Amazon处理器由外部管理）")
 }

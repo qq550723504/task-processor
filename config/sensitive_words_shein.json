@@ -1,0 +1,74 @@
+{
+  "static_words": {
+    "en": [
+      "brand",
+      "trademark",
+      "logo",
+      "copyright",
+      "best",
+      "top",
+      "number one",
+      "#1",
+      "world's best",
+      "cure",
+      "treat",
+      "medical",
+      "therapeutic",
+      "guarantee",
+      "guaranteed",
+      "100%",
+      "perfect"
+    ],
+    "zh": [
+      "品牌",
+      "商标",
+      "版权"
+    ]
+  },
+  "dynamic_words": {
+    "en": [
+      "(?i)\\b(nike|adidas|apple|samsung|sony)\\b",
+      "(?i)\\b(best|top|#1|number\\s*one)\\b",
+      "Safe",
+      "sales",
+      "seguro",
+      "Trump",
+      "Lee",
+      "venta",
+      "TEFLON",
+      "Food",
+      "Grade",
+      "weed",
+      "Energy",
+      "saving",
+      "whimsy",
+      "spt",
+      "CASO",
+      "LIBRE",
+      "LIBRE Y",
+      "tangle",
+      "your",
+      "your GEAR",
+      "sale",
+      "VHB",
+      "LEVE",
+      "B",
+      "Non-toxic",
+      "Environmentally-friendly",
+      "Environmentally",
+      "Environmentally Friendly",
+      "Environmental",
+      "environmental",
+      "trato"
+    ],
+    "es": [
+      "seguridad"
+    ],
+    "fr": [
+      "environmental protection"
+    ]
+  },
+  "last_updated": "2025-11-23T18:04:36.7518219+08:00",
+  "version": "1.0.0",
+  "platform": "shein"
+}

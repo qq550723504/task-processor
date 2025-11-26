@@ -1,4 +1,4 @@
-package api
+﻿package api
 
 // ProductImportTaskRespDTO 产品导入任务响应DTO
 type ProductImportTaskRespDTO struct {
@@ -34,7 +34,7 @@ type ImportTaskAPI interface {
 	// userId 为可选参数，传0表示不过滤
 	// storeIds 为店铺编号列表，支持多个店铺编号过滤
 	// platform 为平台类型，可选参数，如：amazon、temu、shein等
-	GetPendingAndRetryTasks(limit int, userId int64, storeIds []int64, platform string) ([]ProductImportTaskRespDTO, error)
+	GetPendingAndRetryTasks(limit int, userId int64, storeIds []int64) ([]ProductImportTaskRespDTO, error)
 
 	// UpdateTaskStatus 更新任务状态
 	UpdateTaskStatus(req *ProductImportTaskUpdateReqDTO) error

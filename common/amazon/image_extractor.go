@@ -2,10 +2,10 @@ package amazon
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // ImageExtractor 图片提取器
@@ -21,7 +21,7 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *Product) error 
 	var images []string
 	var mainImageURL string
 
-	log.Printf("开始提取产品图片...")
+	logrus.Infof("开始提取产品图片...")
 
 	// 策略：从页面JavaScript中的colorImages对象提取当前变体的图片
 	// colorImages.initial 包含了当前变体的所有图片及其缩略图的映射关系
@@ -98,13 +98,13 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *Product) error 
 	}`)
 
 	if err != nil {
-		log.Printf("提取图片失败: %v", err)
+		logrus.Infof("提取图片失败: %v", err)
 		return err
 	}
 
 	// 解析结果
 	if resultSlice, ok := result.([]interface{}); ok && len(resultSlice) > 0 {
-		log.Printf("找到 %d 个图片URL", len(resultSlice))
+		logrus.Infof("找到 %d 个图片URL", len(resultSlice))
 		for _, item := range resultSlice {
 			if url, ok := item.(string); ok && url != "" {
 				if !ie.containsURL(images, url) {
@@ -112,7 +112,6 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *Product) error 
 					if mainImageURL == "" {
 						mainImageURL = url
 					}
-					log.Printf("提取到图片 %d: %s", len(images), url)
 				}
 			}
 		}
@@ -120,7 +119,7 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *Product) error 
 
 	// 如果没有提取到图片，使用备用方法
 	if len(images) == 0 {
-		log.Printf("未提取到图片，尝试备用方法")
+		logrus.Infof("未提取到图片，尝试备用方法")
 		return ie.extractFromMainImage(page, product)
 	}
 
@@ -129,7 +128,7 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *Product) error 
 	product.Images = images
 	product.ImagesCount = len(images)
 
-	log.Printf("最终提取到 %d 张产品图片", len(images))
+	logrus.Infof("最终提取到 %d 张产品图片", len(images))
 
 	return nil
 }
@@ -141,7 +140,7 @@ func (ie *ImageExtractor) extractFromMainImage(page playwright.Page, product *Pr
 
 	mainImageElement, err := page.QuerySelector("#landingImage")
 	if err != nil || mainImageElement == nil {
-		log.Printf("未找到主图元素")
+		logrus.Infof("未找到主图元素")
 		return nil
 	}
 
@@ -185,7 +184,7 @@ func (ie *ImageExtractor) extractFromMainImage(page playwright.Page, product *Pr
 	product.Images = images
 	product.ImagesCount = len(images)
 
-	log.Printf("从主图提取到 %d 张产品图片", len(images))
+	logrus.Infof("从主图提取到 %d 张产品图片", len(images))
 	return nil
 }
 

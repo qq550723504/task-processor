@@ -1,7 +1,6 @@
 package amazon
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,7 +15,6 @@ func NewBestsellerExtractor() *BestsellerExtractor {
 }
 
 func (e *BestsellerExtractor) Extract(page playwright.Page, product *Product) error {
-	fmt.Println("开始提取bestseller排名信息")
 
 	// 提取bestseller排名信息
 	bsRank, bsCategory, rootBsRank, rootBsCategory := e.extractBestsellerRank(page)
@@ -25,9 +23,6 @@ func (e *BestsellerExtractor) Extract(page playwright.Page, product *Product) er
 	product.BsCategory = bsCategory
 	product.RootBsRank = rootBsRank
 	product.RootBsCategory = rootBsCategory
-
-	fmt.Printf("提取到bs_rank: %d, bs_category: %s\n", bsRank, bsCategory)
-	fmt.Printf("提取到root_bs_rank: %d, root_bs_category: %s\n", rootBsRank, rootBsCategory)
 
 	return nil
 }

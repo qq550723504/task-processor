@@ -2,13 +2,13 @@ package amazon
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"task-processor/common/config"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // BrowserInstance 浏览器实例
@@ -77,7 +77,7 @@ func NewBrowserPool(cfg *config.AmazonConfig, poolConfig *BrowserPoolConfig) *Br
 	// 如果启用随机指纹，初始化指纹生成器
 	if bp.useRandomFingerprint {
 		bp.fingerprintGen = NewFingerprintGenerator()
-		log.Println("浏览器池启用随机指纹生成")
+		logrus.Info("浏览器池启用随机指纹生成")
 	}
 
 	return bp
@@ -85,12 +85,12 @@ func NewBrowserPool(cfg *config.AmazonConfig, poolConfig *BrowserPoolConfig) *Br
 
 // Initialize 初始化浏览器池
 func (bp *BrowserPool) Initialize() error {
-	log.Printf("初始化浏览器池，大小: %d", bp.poolConfig.PoolSize)
+	logrus.Infof("初始化浏览器池，大小: %d", bp.poolConfig.PoolSize)
 
 	for i := 0; i < bp.poolConfig.PoolSize; i++ {
 		instance, err := bp.createInstance(i)
 		if err != nil {
-			log.Printf("创建浏览器实例 %d 失败: %v", i, err)
+			logrus.Infof("创建浏览器实例 %d 失败: %v", i, err)
 			// 清理已创建的实例
 			bp.Shutdown()
 			return fmt.Errorf("初始化浏览器池失败: %w", err)
@@ -99,10 +99,10 @@ func (bp *BrowserPool) Initialize() error {
 		bp.instances = append(bp.instances, instance)
 		bp.available <- instance
 
-		log.Printf("浏览器实例 %d 创建成功", i)
+		logrus.Infof("浏览器实例 %d 创建成功", i)
 	}
 
-	log.Printf("浏览器池初始化完成，共 %d 个实例", len(bp.instances))
+	logrus.Infof("浏览器池初始化完成，共 %d 个实例", len(bp.instances))
 
 	// 启动健康检查例程
 	bp.StartHealthCheckRoutine()
@@ -119,7 +119,7 @@ func (bp *BrowserPool) createInstance(id int) (*BrowserInstance, error) {
 		userID := fmt.Sprintf("instance_%d_%d", id, time.Now().UnixNano())
 		randomFingerprint := bp.fingerprintGen.GenerateFingerprint(userID)
 		manager.SetFingerprint(randomFingerprint)
-		log.Printf("为浏览器实例 %d 生成随机指纹", id)
+		logrus.Infof("为浏览器实例 %d 生成随机指纹", id)
 	}
 
 	if err := manager.Install(); err != nil {
@@ -151,7 +151,7 @@ func (bp *BrowserPool) Acquire() (*BrowserInstance, error) {
 		instance.mu.Lock()
 		instance.InUse = true
 		instance.mu.Unlock()
-		log.Printf("获取浏览器实例 %d", instance.ID)
+		logrus.Infof("获取浏览器实例 %d", instance.ID)
 		return instance, nil
 	case <-time.After(30 * time.Second):
 		return nil, fmt.Errorf("获取浏览器实例超时")
@@ -164,7 +164,7 @@ func (bp *BrowserPool) Release(instance *BrowserInstance) {
 	instance.InUse = false
 	instance.mu.Unlock()
 
-	log.Printf("释放浏览器实例 %d", instance.ID)
+	logrus.Infof("释放浏览器实例 %d", instance.ID)
 	bp.available <- instance
 }
 
@@ -176,12 +176,12 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 
 	// 检测是否为风控或严重错误
 	if bp.isBlockedOrSeriousError(err) {
-		log.Printf("检测到浏览器实例 %d 被风控或出现严重错误: %v", instance.ID, err)
+		logrus.Infof("检测到浏览器实例 %d 被风控或出现严重错误: %v", instance.ID, err)
 		bp.recreateInstance(instance)
 		return
 	}
 
-	log.Printf("释放浏览器实例 %d", instance.ID)
+	logrus.Infof("释放浏览器实例 %d", instance.ID)
 	bp.available <- instance
 }
 
@@ -191,10 +191,21 @@ func (bp *BrowserPool) isBlockedOrSeriousError(err error) bool {
 		return false
 	}
 
+	// 检查是否为产品不存在错误（不应触发浏览器重建）
+	if _, ok := err.(*ProductNotFoundError); ok {
+		return false
+	}
+
 	errorStr := err.Error()
+
+	// 如果错误信息包含"产品页面不存在"或"产品页面缺少必要元素"，不触发重建
+	if strings.Contains(errorStr, "产品页面不存在") || strings.Contains(errorStr, "产品页面缺少必要元素") {
+		return false
+	}
 
 	// 检测常见的风控和严重错误模式
 	blockPatterns := []string{
+		"SIGN_IN_REQUIRED", // 需要登录才能更新位置
 		"timeout", "Timeout", "TIMEOUT",
 		"blocked", "Blocked", "BLOCKED",
 		"captcha", "CAPTCHA", "Captcha",
@@ -220,16 +231,60 @@ func (bp *BrowserPool) isBlockedOrSeriousError(err error) bool {
 	return false
 }
 
-// recreateInstance 重新创建浏览器实例
+// RecreateInstanceSync 同步重新创建浏览器实例（用于任务内重试）
+func (bp *BrowserPool) RecreateInstanceSync(oldInstance *BrowserInstance) *BrowserInstance {
+	logrus.Infof("开始同步重新创建浏览器实例 %d", oldInstance.ID)
+
+	// 先关闭旧实例
+	if oldInstance.Manager != nil {
+		oldInstance.Manager.Close()
+		logrus.Infof("已关闭出现问题的浏览器实例 %d", oldInstance.ID)
+	}
+
+	// 等待短暂时间，让资源释放
+	time.Sleep(2 * time.Second)
+
+	// 创建新实例
+	newInstance, err := bp.createInstance(oldInstance.ID)
+	if err != nil {
+		logrus.Errorf("同步重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
+
+		// 如果创建失败，等待更长时间后再次尝试
+		logrus.Infof("等待5秒后进行第二次创建尝试...")
+		time.Sleep(5 * time.Second)
+
+		newInstance, err = bp.createInstance(oldInstance.ID)
+		if err != nil {
+			logrus.Errorf("第二次同步重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
+			// 返回nil，让调用方处理
+			return nil
+		}
+	}
+
+	// 更新实例列表
+	bp.mu.Lock()
+	for i, inst := range bp.instances {
+		if inst.ID == oldInstance.ID {
+			bp.instances[i] = newInstance
+			break
+		}
+	}
+	bp.mu.Unlock()
+
+	logrus.Infof("✅ 成功同步重新创建浏览器实例 %d", oldInstance.ID)
+	return newInstance
+}
+
+// recreateInstance 异步重新创建浏览器实例（用于后台健康检查）
 func (bp *BrowserPool) recreateInstance(oldInstance *BrowserInstance) {
-	log.Printf("开始重新创建浏览器实例 %d", oldInstance.ID)
+	logrus.Infof("开始异步重新创建浏览器实例 %d", oldInstance.ID)
 
 	// 异步重新创建实例，避免阻塞
 	go func() {
 		// 先关闭旧实例
 		if oldInstance.Manager != nil {
 			oldInstance.Manager.Close()
-			log.Printf("已关闭被风控的浏览器实例 %d", oldInstance.ID)
+			logrus.Infof("已关闭被风控的浏览器实例 %d", oldInstance.ID)
 		}
 
 		// 等待一段时间再重新创建，避免立即重试
@@ -238,13 +293,13 @@ func (bp *BrowserPool) recreateInstance(oldInstance *BrowserInstance) {
 		// 创建新实例
 		newInstance, err := bp.createInstance(oldInstance.ID)
 		if err != nil {
-			log.Printf("重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
+			logrus.Infof("重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
 
 			// 如果创建失败，等待更长时间后再次尝试
 			time.Sleep(30 * time.Second)
 			newInstance, err = bp.createInstance(oldInstance.ID)
 			if err != nil {
-				log.Printf("第二次重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
+				logrus.Infof("第二次重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
 				// 如果还是失败，可以考虑通知管理员或采取其他措施
 				return
 			}
@@ -262,13 +317,13 @@ func (bp *BrowserPool) recreateInstance(oldInstance *BrowserInstance) {
 
 		// 将新实例放回可用池
 		bp.available <- newInstance
-		log.Printf("✅ 成功重新创建浏览器实例 %d", oldInstance.ID)
+		logrus.Infof("✅ 成功异步重新创建浏览器实例 %d", oldInstance.ID)
 	}()
 }
 
 // Shutdown 关闭浏览器池
 func (bp *BrowserPool) Shutdown() {
-	log.Println("关闭浏览器池...")
+	logrus.Info("关闭浏览器池...")
 
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
@@ -282,7 +337,7 @@ func (bp *BrowserPool) Shutdown() {
 	bp.instances = nil
 	close(bp.available)
 
-	log.Println("浏览器池已关闭")
+	logrus.Info("浏览器池已关闭")
 }
 
 // HealthCheck 检查浏览器实例健康状态
@@ -294,7 +349,7 @@ func (bp *BrowserPool) HealthCheck(instance *BrowserInstance) bool {
 	// 尝试执行简单的JavaScript来检查页面是否响应
 	_, err := instance.Page.Evaluate("() => document.readyState")
 	if err != nil {
-		log.Printf("浏览器实例 %d 健康检查失败: %v", instance.ID, err)
+		logrus.Infof("浏览器实例 %d 健康检查失败: %v", instance.ID, err)
 		return false
 	}
 
@@ -337,7 +392,7 @@ func (bp *BrowserPool) GetPoolStats() map[string]interface{} {
 // LogPoolStats 记录浏览器池统计信息
 func (bp *BrowserPool) LogPoolStats() {
 	stats := bp.GetPoolStats()
-	log.Printf("📊 浏览器池状态: 总计=%d, 可用=%d, 使用中=%d, 健康=%d",
+	logrus.Infof("📊 浏览器池状态: 总计=%d, 可用=%d, 使用中=%d, 健康=%d",
 		stats["total_instances"], stats["available_instances"],
 		stats["in_use_instances"], stats["healthy_instances"])
 }
@@ -353,12 +408,12 @@ func (bp *BrowserPool) StartHealthCheckRoutine() {
 		}
 	}()
 
-	log.Println("🏥 浏览器池健康检查例程已启动")
+	logrus.Info("🏥 浏览器池健康检查例程已启动")
 }
 
 // performHealthCheck 执行健康检查
 func (bp *BrowserPool) performHealthCheck() {
-	log.Println("🔍 开始浏览器池健康检查...")
+	logrus.Info("🔍 开始浏览器池健康检查...")
 
 	bp.LogPoolStats()
 
@@ -380,13 +435,13 @@ func (bp *BrowserPool) performHealthCheck() {
 
 	// 重建不健康的实例
 	for _, instance := range unhealthyInstances {
-		log.Printf("⚠️ 发现不健康的浏览器实例 %d，准备重建", instance.ID)
+		logrus.Infof("⚠️ 发现不健康的浏览器实例 %d，准备重建", instance.ID)
 		bp.recreateInstance(instance)
 	}
 
 	if len(unhealthyInstances) == 0 {
-		log.Println("✅ 所有浏览器实例健康状态良好")
+		logrus.Info("✅ 所有浏览器实例健康状态良好")
 	} else {
-		log.Printf("🔧 发现 %d 个不健康实例，已启动重建", len(unhealthyInstances))
+		logrus.Infof("🔧 发现 %d 个不健康实例，已启动重建", len(unhealthyInstances))
 	}
 }

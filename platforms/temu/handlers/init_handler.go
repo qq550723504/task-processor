@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"task-processor/common/pipeline"
 	"task-processor/platforms/temu/types"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -42,27 +43,44 @@ func (h *InitDataHandler) Handle(ctx *pipeline.TaskContext) error {
 	temuProduct := &types.Product{
 		CanSave: boolPtr(true),
 		Extra: types.ExtraInfo{
-			CreateEmptyGoods: false,
+			CreateEmptyGoods: true,
 			Tab:              1,
 			CurrentTab:       1,
 		},
 		GoodsBasic: types.GoodsBasicInfo{
-			Lang:      "en",
-			AllowSite: []int{1}, // 默认美国站点
-			GoodsType: 1,
-			IsOnSale:  1,
-			Source:    1,
+			Lang:                   "en",
+			AllowSite:              []int{100}, // 默认美国站点
+			GoodsType:              1,
+			IsOnSale:               0,
+			Source:                 0,
+			GoodsCreateTime:        time.Now().UnixMilli(),
+			AgreeMaxRetailPrice:    true,
+			NeedAccessoryInfo:      true,
+			SupportCustomizedGoods: true,
 		},
 		GoodsSaleInfo: types.GoodsSaleInfo{
-			GoodsPattern: 1,
+			GoodsPattern: 0,
 		},
 		GoodsServicePromise: types.ServicePromise{
-			ShipmentLimitSecond: 86400, // 24小时
+			ShipmentLimitSecond: 2, // 24小时
 			FulfillmentType:     1,
 		},
 		GoodsExtensionInfo: types.ExtensionInfo{
 			GoodsDesc:    "",
 			BulletPoints: make([]string, 0),
+			CertificationInfo: types.CertificationInfo{
+				ExtraTemplate: types.ExtraTemplate{
+					ExtraTemplateDetailList: []types.ExtraTemplateDetail{
+						{
+							TemplateID: 1,
+							Properties: map[string][]int{
+								"1000000001": {1000100066},
+							},
+							InputText: map[string]interface{}{},
+						},
+					},
+				},
+			},
 		},
 		PlatformExpressBill:    boolPtr(false),
 		SupportMaxRetailPrice:  boolPtr(true),

@@ -38,6 +38,12 @@ func (h *CategoryDisclaimHandler) Handle(ctx *pipeline.TaskContext) error {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
+	// 检查分类ID是否存在
+	if ctx.TemuProduct.GoodsBasic.CatID == 0 {
+		h.logger.Warn("分类ID为空，跳过免责声明处理")
+		return nil
+	}
+
 	// 获取分类免责声明
 	err := h.getCategoryDisclaimer(ctx)
 	if err != nil {
@@ -58,9 +64,17 @@ func (h *CategoryDisclaimHandler) getCategoryDisclaimer(ctx *pipeline.TaskContex
 
 	h.logger.Infof("获取分类免责声明: CatID=%d", catID)
 
-	// 这里应该调用TEMU API获取分类免责声明
-	// 为了简化，我们模拟免责声明数据
-	disclaimer := h.getDefaultDisclaimer(catID)
+	// 检查API客户端
+	if ctx.APIClient == nil {
+		h.logger.Warn("API客户端未初始化，使用默认免责声明")
+		return nil
+	}
+
+	// 调用TEMU API获取分类免责声明
+	disclaimer, err := h.queryDisclaimerFromAPI(ctx, catID)
+	if err != nil {
+		h.logger.Warnf("API获取免责声明失败，使用默认免责声明: %v", err)
+	}
 
 	// 设置免责声明到产品
 	ctx.TemuProduct.GoodsBasic.CategoryDisclaimer = disclaimer
@@ -69,33 +83,65 @@ func (h *CategoryDisclaimHandler) getCategoryDisclaimer(ctx *pipeline.TaskContex
 	return nil
 }
 
-// getDefaultDisclaimer 获取默认免责声明
-func (h *CategoryDisclaimHandler) getDefaultDisclaimer(catID int) types.Disclaimer {
-	// 根据不同分类返回不同的免责声明
-	switch {
-	case catID >= 30000 && catID < 40000: // 服装类
-		return types.Disclaimer{
-			PromptList: []string{
-				"请确保产品符合当地服装安全标准",
-				"请提供准确的尺码信息",
-				"请注意面料成分标识",
-			},
-		}
-	case catID >= 40000 && catID < 50000: // 电子产品类
-		return types.Disclaimer{
-			PromptList: []string{
-				"请确保产品符合电子产品安全认证",
-				"请提供准确的技术规格",
-				"请注意电池安全要求",
-			},
-		}
-	default: // 通用免责声明
-		return types.Disclaimer{
-			PromptList: []string{
-				"请确保产品符合当地法律法规",
-				"请提供准确的产品信息",
-				"请注意产品质量要求",
-			},
-		}
+// queryDisclaimerFromAPI 从TEMU API获取分类免责声明
+func (h *CategoryDisclaimHandler) queryDisclaimerFromAPI(ctx *pipeline.TaskContext, catID int) (types.Disclaimer, error) {
+	h.logger.Infof("调用TEMU API获取分类免责声明: CatID=%d", catID)
+
+	// 构造请求体
+	requestBody := map[string]any{
+		"cate_id": catID,
 	}
+
+	// 构造API请求
+	apiReq := map[string]any{
+		"method": "POST",
+		"url":    "/mms/marigold/category/query_disclaim",
+		"headers": map[string]string{
+			"accept":             "application/json, text/plain, */*",
+			"accept-language":    "zh-CN,zh;q=0.9",
+			"priority":           "u=1, i",
+			"sec-ch-ua":          "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"Google Chrome\";v=\"140\"",
+			"sec-ch-ua-mobile":   "?0",
+			"sec-ch-ua-platform": "\"Windows\"",
+			"sec-fetch-dest":     "empty",
+			"sec-fetch-mode":     "cors",
+			"sec-fetch-site":     "same-origin",
+			"x-document-referer": "https://seller.temu.com/product-add.html?is_back=1",
+		},
+		"body": requestBody,
+	}
+
+	// 定义响应结构
+	type CategoryDisclaimResponse struct {
+		Success   bool `json:"success"`
+		ErrorCode int  `json:"error_code"`
+		Result    struct {
+			DisclaimerDTO struct {
+				PromptList []string `json:"prompt_list"`
+			} `json:"disclaimer_dto"`
+		} `json:"result"`
+	}
+
+	response := &CategoryDisclaimResponse{}
+	err := ctx.APIClient.SendTEMURequest(apiReq, response)
+	if err != nil {
+		h.logger.Errorf("发送API请求失败: %v", err)
+		return types.Disclaimer{}, fmt.Errorf("发送API请求失败: %w", err)
+	}
+
+	h.logger.Debugf("API响应: Success=%t, ErrorCode=%d", response.Success, response.ErrorCode)
+
+	// 检查响应状态
+	if !response.Success {
+		h.logger.Errorf("API返回失败，错误码: %d", response.ErrorCode)
+		return types.Disclaimer{}, fmt.Errorf("API返回失败，错误码: %d", response.ErrorCode)
+	}
+
+	// 转换响应数据
+	disclaimer := types.Disclaimer{
+		PromptList: response.Result.DisclaimerDTO.PromptList,
+	}
+
+	h.logger.Infof("成功从API获取分类免责声明: %d 条提示", len(disclaimer.PromptList))
+	return disclaimer, nil
 }

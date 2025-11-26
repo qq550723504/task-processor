@@ -2,213 +2,192 @@ package shein
 
 import (
 	"context"
-	"fmt"
-	"task-processor/common/amazon"
 	"task-processor/common/config"
+	"task-processor/common/management"
+	"task-processor/common/management/impl"
+	"task-processor/common/memory"
 	"task-processor/common/processor"
-	"task-processor/common/types"
+	shops "task-processor/common/shein"
+	"task-processor/common/worker"
+	"task-processor/platforms/shein/modules"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
-// SheinProcessor SHEIN平台处理器
+// SheinProcessor SHEIN任务处理器
 type SheinProcessor struct {
-	*processor.BaseProcessor
-	config          *config.Config
-	amazonProcessor *amazon.AmazonProcessor
+	config              *config.Config
+	memoryManager       *memory.MemoryManager
+	managementClientMgr *management.ClientManager
+	shopClientMgr       *shops.ClientManager
+	reListingProcessor  *modules.ReListingProcessor
+	autoPricingHandler  *modules.AutoPricingHandler
+	amazonProcessor     interface{} // 共享的Amazon处理器
+
+	// 组件
+	workerPool  processor.WorkerPool
+	taskHandler *TaskHandler
+	pipeline    *Pipeline
 }
 
-// NewSheinProcessor 创建SHEIN处理器
+// NewSheinProcessor 创建新的SHEIN任务处理器
 func NewSheinProcessor(cfg *config.Config) *SheinProcessor {
-	baseProcessor := processor.NewBaseProcessor(cfg)
-
-	// 初始化Amazon处理器（如果启用）
-	var amazonProcessor *amazon.AmazonProcessor
-	if cfg.Amazon.Enabled {
-		amazonProcessor = amazon.NewAmazonProcessor(&cfg.Amazon)
-		logrus.Info("[SHEIN] Amazon爬虫已启用")
-	}
-
-	return &SheinProcessor{
-		BaseProcessor:   baseProcessor,
-		config:          cfg,
-		amazonProcessor: amazonProcessor,
-	}
+	return NewSheinProcessorWithManagementClient(cfg, nil)
 }
 
-// ProcessTask 处理SHEIN任务
-func (p *SheinProcessor) ProcessTask(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 开始处理任务: ID=%s, ProductID=%s, StoreID=%d",
-		task.ID, task.ProductID, task.StoreID)
-
-	// SHEIN特定的任务处理流程
-	if err := p.processSheinProduct(ctx, task); err != nil {
-		logrus.Errorf("[SHEIN] 处理产品失败: %v", err)
-		return err
-	}
-
-	logrus.Infof("[SHEIN] 任务处理完成: ID=%s", task.ID)
-	return nil
+// NewSheinProcessorWithManagementClient 创建新的SHEIN任务处理器（使用外部managementClient）
+func NewSheinProcessorWithManagementClient(cfg *config.Config, managementClientMgr *management.ClientManager) *SheinProcessor {
+	return NewSheinProcessorWithSharedResources(cfg, managementClientMgr, nil)
 }
 
-// processSheinProduct 处理SHEIN产品
-func (p *SheinProcessor) processSheinProduct(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 处理产品: %s", task.ProductID)
-
-	// 1. 初始化产品数据
-	if err := p.initProductData(ctx, task); err != nil {
-		return err
+// NewSheinProcessorWithSharedResources 创建新的SHEIN任务处理器（使用共享资源）
+func NewSheinProcessorWithSharedResources(cfg *config.Config, managementClientMgr *management.ClientManager, amazonProcessor interface{}) *SheinProcessor {
+	// 如果没有传入managementClient，则创建新的
+	if managementClientMgr == nil {
+		managementClientMgr = management.NewClientManager(&cfg.Management)
 	}
 
-	// 2. 获取原始JSON数据
-	if err := p.getRawJsonData(ctx, task); err != nil {
-		return err
+	memoryManager := memory.NewMemoryManager(managementClientMgr)
+	shopClientMgr := shops.NewClientManager(memoryManager.CookieManager)
+	reListingProcessor := modules.NewReListingProcessor(memoryManager.ReListingQueue)
+	autoPricingHandler := modules.NewAutoPricingHandler(shopClientMgr, managementClientMgr)
+
+	// 初始化全局图片下载客户端管理器
+	imageDownloaderManager := management.NewClientManager(&cfg.Management)
+	_ = imageDownloaderManager.GetImageDownloader()
+
+	p := &SheinProcessor{
+		config:              cfg,
+		memoryManager:       memoryManager,
+		managementClientMgr: managementClientMgr,
+		shopClientMgr:       shopClientMgr,
+		reListingProcessor:  reListingProcessor,
+		autoPricingHandler:  autoPricingHandler,
+		amazonProcessor:     amazonProcessor, // 使用共享的Amazon处理器
 	}
 
-	// 3. 如果需要Amazon数据，使用Amazon爬虫
-	if p.needsAmazonData(task) && p.amazonProcessor != nil {
-		if err := p.fetchAmazonData(ctx, task); err != nil {
-			logrus.Warnf("[SHEIN] Amazon数据获取失败: %v", err)
-			// 不阻塞主流程，继续处理
+	// 设置 ShopPauseManager 的 StoreClient
+	storeClient := managementClientMgr.GetStoreClient()
+	memoryManager.ShopPauseManager.SetStoreClient(storeClient)
+
+	// 初始化组件 - 使用通用的worker.Pool
+	p.workerPool = worker.NewPool(p, cfg.Worker)
+
+	p.taskHandler = NewTaskHandler(cfg, memoryManager, shopClientMgr, managementClientMgr)
+	p.pipeline = CreateTaskProcessingPipeline(p, cfg)
+
+	return p
+}
+
+// Start 启动任务处理器
+func (p *SheinProcessor) Start(ctx context.Context) error {
+	logrus.Info("[SHEIN] 启动任务处理器")
+
+	p.workerPool.Start(ctx)
+
+	// 注意：任务获取现在由统一任务获取器 (UnifiedTaskFetcher) 处理
+	// 不再在这里启动独立的任务获取器
+
+	go p.processReListingTasksPeriodically(ctx)
+	go p.logMetricsPeriodically(ctx)
+
+	// 启动自动核价处理器（如果启用）
+	if p.config.AutoPricing.Shein.Enabled {
+		autoPricingInterval := time.Duration(p.config.AutoPricing.Shein.Interval) * time.Second
+		if autoPricingInterval <= 0 {
+			autoPricingInterval = 5 * time.Minute
 		}
-	}
-
-	// 4. 处理变体JSON数据
-	if err := p.processVariantJsonData(ctx, task); err != nil {
-		return err
-	}
-
-	// 5. 构建属性
-	if err := p.buildAttributes(ctx, task); err != nil {
-		return err
-	}
-
-	// 6. 构建SKC列表
-	if err := p.buildSkcList(ctx, task); err != nil {
-		return err
-	}
-
-	// 7. 构建SPU
-	if err := p.buildSpu(ctx, task); err != nil {
-		return err
-	}
-
-	// 8. 发布产品
-	if err := p.publishProduct(ctx, task); err != nil {
-		return err
-	}
-
-	// 9. 保存发布结果
-	if err := p.savePublishResult(ctx, task); err != nil {
-		return err
+		logrus.Infof("[SHEIN] 启动自动核价处理器，间隔: %v", autoPricingInterval)
+		go p.autoPricingHandler.Start(ctx, autoPricingInterval)
+	} else {
+		logrus.Info("[SHEIN] 自动核价处理器已禁用")
 	}
 
 	return nil
 }
 
-// initProductData 初始化产品数据
-func (p *SheinProcessor) initProductData(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 初始化产品数据: %s", task.ProductID)
-	// 模拟初始化产品数据
-	time.Sleep(100 * time.Millisecond)
-	return nil
+// ProcessTask 处理任务（供Worker调用）
+func (p *SheinProcessor) ProcessTask(ctx context.Context, task modules.Task) error {
+	return p.taskHandler.ProcessTask(ctx, task, p.pipeline)
 }
 
-// getRawJsonData 获取原始JSON数据
-func (p *SheinProcessor) getRawJsonData(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 获取原始JSON数据: %s", task.ProductID)
-	// 模拟获取原始JSON数据
-	time.Sleep(200 * time.Millisecond)
-	return nil
+// GetShopClientManager 获取店铺客户端管理器
+func (p *SheinProcessor) GetShopClientManager() *shops.ClientManager {
+	return p.shopClientMgr
 }
 
-// needsAmazonData 判断是否需要Amazon数据
-func (p *SheinProcessor) needsAmazonData(task types.Task) bool {
-	// 如果平台是Amazon或者产品ID包含Amazon相关信息
-	return task.Platform == "amazon" || task.Platform == "Amazon"
+// GetManagementClientManager 获取管理客户端管理器
+func (p *SheinProcessor) GetManagementClientManager() *management.ClientManager {
+	return p.managementClientMgr
 }
 
-// fetchAmazonData 使用Amazon爬虫获取数据
-func (p *SheinProcessor) fetchAmazonData(ctx context.Context, task types.Task) error {
-	if p.amazonProcessor == nil {
-		return fmt.Errorf("Amazon爬虫未初始化")
-	}
-
-	// 构建Amazon URL
-	amazonURL := fmt.Sprintf("https://www.amazon.com/dp/%s", task.ProductID)
-	zipcode := "10001" // 可以从配置中获取
-
-	logrus.Infof("[SHEIN] 使用Amazon爬虫获取数据: %s", amazonURL)
-
-	product, err := p.amazonProcessor.Process(amazonURL, zipcode)
-	if err != nil {
-		return fmt.Errorf("Amazon爬虫处理失败: %w", err)
-	}
-
-	logrus.Infof("[SHEIN] Amazon数据获取完成: 标题=%s, 价格=%.2f %s",
-		product.Title, product.FinalPrice, product.Currency)
-
-	return nil
+// GetManagementClient 获取管理系统客户端（用于设置token）
+func (p *SheinProcessor) GetManagementClient() *impl.ManagementAPIClientImpl {
+	return p.managementClientMgr.GetClient()
 }
 
-// processVariantJsonData 处理变体JSON数据
-func (p *SheinProcessor) processVariantJsonData(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 处理变体JSON数据: %s", task.ProductID)
-	// 模拟处理变体JSON数据
-	time.Sleep(300 * time.Millisecond)
-	return nil
-}
-
-// buildAttributes 构建属性
-func (p *SheinProcessor) buildAttributes(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 构建属性: %s", task.ProductID)
-	// 模拟构建属性
-	time.Sleep(200 * time.Millisecond)
-	return nil
-}
-
-// buildSkcList 构建SKC列表
-func (p *SheinProcessor) buildSkcList(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 构建SKC列表: %s", task.ProductID)
-	// 模拟构建SKC列表
-	time.Sleep(250 * time.Millisecond)
-	return nil
-}
-
-// buildSpu 构建SPU
-func (p *SheinProcessor) buildSpu(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 构建SPU: %s", task.ProductID)
-	// 模拟构建SPU
-	time.Sleep(300 * time.Millisecond)
-	return nil
-}
-
-// publishProduct 发布产品
-func (p *SheinProcessor) publishProduct(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 发布产品: %s", task.ProductID)
-	// 模拟发布产品
-	time.Sleep(500 * time.Millisecond)
-	return nil
-}
-
-// savePublishResult 保存发布结果
-func (p *SheinProcessor) savePublishResult(ctx context.Context, task types.Task) error {
-	logrus.Infof("[SHEIN] 保存发布结果: %s", task.ProductID)
-	// 模拟保存发布结果
-	time.Sleep(100 * time.Millisecond)
-	return nil
+// GetWorkerPool 获取工作池（供TaskSubmitter使用）
+func (p *SheinProcessor) GetWorkerPool() processor.WorkerPool {
+	return p.workerPool
 }
 
 // Close 关闭处理器
 func (p *SheinProcessor) Close() {
-	logrus.Info("[SHEIN] 关闭SHEIN任务处理器")
+	logrus.Info("[SHEIN] 关闭任务处理器")
 
-	// 关闭Amazon处理器
-	if p.amazonProcessor != nil {
-		p.amazonProcessor.Shutdown()
+	if p.workerPool != nil {
+		ctx := context.Background()
+		p.workerPool.Stop(ctx)
 	}
 
-	// 调用基础处理器的关闭方法
-	p.BaseProcessor.Close()
+	logrus.Info("[SHEIN] 任务处理器已关闭")
+}
+
+// processReListingTasksPeriodically 定期处理重新上架任务
+func (p *SheinProcessor) processReListingTasksPeriodically(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			logrus.Info("[SHEIN] 重新上架任务处理器停止")
+			return
+		case <-ticker.C:
+			if err := p.reListingProcessor.ProcessReListingTasks(ctx); err != nil {
+				logrus.Errorf("[SHEIN] 处理重新上架任务失败: %v", err)
+			}
+		}
+	}
+}
+
+// logMetricsPeriodically 定期输出指标统计
+func (p *SheinProcessor) logMetricsPeriodically(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			logrus.Info("[SHEIN] 指标统计输出器停止")
+			// 最后输出一次统计
+			if metrics := p.getMetrics(); metrics != nil {
+				logrus.Infof("[SHEIN] 最终统计: %+v", metrics)
+			}
+			return
+		case <-ticker.C:
+			if metrics := p.getMetrics(); metrics != nil {
+				logrus.Infof("[SHEIN] 当前统计: %+v", metrics)
+			}
+		}
+	}
+}
+
+// getMetrics 获取指标统计
+func (p *SheinProcessor) getMetrics() map[string]interface{} {
+	// 这里可以实现具体的指标收集逻辑
+	return map[string]interface{}{
+		"available_slots": p.workerPool.AvailableSlots(),
+	}
 }

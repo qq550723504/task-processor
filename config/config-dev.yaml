@@ -1,0 +1,62 @@
+# 统一开发环境配置
+# 支持 TEMU 和 SHEIN 两个平台
+
+# 处理器配置
+processor:
+  maxRetries: 3
+  timeout: 600  # 增加到10分钟，处理图片和变体需要更多时间
+
+# Worker配置
+worker:
+  concurrency: 1           # 1个并发worker
+  bufferSize: 5            # 队列大小5（避免单任务就触发阈值）
+  taskInterval: 30         # 30秒获取一次任务
+  maxFetchPerCycle: 1      # 单次最多获取1个任务
+  queueThreshold: 80       # 队列使用率阈值80%（提高阈值）
+
+# OpenAI配置
+openai:
+  apiKey: "sk-dHmRMt46T7eZxHnm0n97KNlCmtBi08vb7qPqGRwwd0N3HN5U"
+  model: "gemini-2.0-flash"
+  baseURL: "https://new.yunai.link/v1"
+  timeout: 120
+
+# 管理API配置
+management:
+  baseURL: "http://getway.linkcloudai.com"
+  clientID: "go-listing"
+  clientSecret: "go-listing-secret"
+  tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
+  scopes: ["user.read"]
+  tenantID: "1"  # 租户ID
+  storeIDs: [508]  # 店铺ID列表
+
+# 自动定价配置
+autoPricing:
+  # TEMU 平台自动核价
+  temu:
+    enabled: true
+    interval: 300  # 5分钟
+    batchSize: 100
+  # SHEIN 平台自动核价
+  shein:
+    enabled: false
+    interval: 300  # 5分钟
+    batchSize: 100
+
+# Amazon爬虫配置
+amazon:
+  enabled: true
+  headless: true  # false=可见模式（便于调试），true=无头模式
+  browserPath: "./chrome/chrome.exe"
+  poolSize: 3
+  viewportWidth: 1920
+  viewportHeight: 1080
+  proxyServer: ""
+
+# 自动更新配置
+updater:
+  enabled: false  # 开发环境默认禁用自动更新
+  updateURL: "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json"
+  checkInterval: 300  # 检查间隔（秒），默认5分钟
+  insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）

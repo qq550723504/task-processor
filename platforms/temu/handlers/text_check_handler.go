@@ -59,22 +59,6 @@ func (h *TextCheckHandler) checkText(ctx *pipeline.TaskContext, content string) 
 
 	apiClient := ctx.GetAPIClient()
 
-	// 检查cookie状态，如果为空则停止管道流程
-	logrus.WithFields(logrus.Fields{
-		"storeID":     apiClient.GetStoreID(),
-		"tenantID":    apiClient.GetTenantID(),
-		"hasCookies":  apiClient.HasCookies(),
-		"cookieCount": apiClient.GetCookieCount(),
-	}).Info("Cookie状态检查")
-
-	if !apiClient.HasCookies() {
-		logrus.WithFields(logrus.Fields{
-			"storeID":  apiClient.GetStoreID(),
-			"tenantID": apiClient.GetTenantID(),
-		}).Error("店铺没有Cookie数据，停止管道流程")
-		return fmt.Errorf("店铺ID=%d没有Cookie数据，请先在管理系统中设置Cookie", apiClient.GetStoreID())
-	}
-
 	// 构造请求体
 	requestBody := TextCheckRequest{
 		Content: content,
@@ -107,6 +91,6 @@ func (h *TextCheckHandler) checkText(ctx *pipeline.TaskContext, content string) 
 		return fmt.Errorf("发送请求失败: %v", err)
 	}
 
-	logrus.Printf("文本检查成功: %+v", textCheckResult)
+	logrus.Infof("文本检查成功: %+v", textCheckResult)
 	return nil
 }

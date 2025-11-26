@@ -2,18 +2,13 @@ package server
 
 import (
 	"context"
-	"embed"
-	"fmt"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"task-processor/common/auth"
 	"task-processor/common/config"
 	"task-processor/common/management"
-	"task-processor/common/worker"
+	"task-processor/common/task"
+	"task-processor/platforms/shein"
 	"task-processor/platforms/temu"
 
 	"github.com/sirupsen/logrus"
@@ -21,95 +16,91 @@ import (
 
 // Server represents the web server with all its dependencies
 type Server struct {
-	cfg              *config.Config
-	passwordClient   *auth.PasswordAuthClient
-	sessionManager   *auth.SessionManager
-	temuProcessor    *temu.TemuProcessor
-	workerPool       *worker.Pool
-	processorCtx     context.Context
-	processorCancel  context.CancelFunc
-	processorRunning bool
-	templates        embed.FS
-	logger           *logrus.Logger
+	cfg                     *config.Config
+	clientCredentialsClient *auth.ClientCredentialsAuthClient
+	sessionManager          *auth.SessionManager
+	managementClient        *management.ClientManager
+	temuProcessor           *temu.TemuProcessor
+	sheinProcessor          *shein.SheinProcessor
+	processorCtx            context.Context
+	processorCancel         context.CancelFunc
+	processorRunning        bool
+	logger                  *logrus.Logger
 }
 
 // New creates a new server instance
-func New(cfg *config.Config, templates embed.FS, logger *logrus.Logger) *Server {
+func New(cfg *config.Config, logger *logrus.Logger) *Server {
 	return &Server{
-		cfg:       cfg,
-		templates: templates,
-		logger:    logger,
+		cfg:    cfg,
+		logger: logger,
 	}
 }
 
-// Initialize sets up the server components
+// Initialize sets up the server components (deprecated, use InitializeWithClientCredentials)
 func (s *Server) Initialize() error {
-	s.initializeAuth()
-	s.checkAndRestoreSession()
+	s.sessionManager = auth.NewSessionManager()
 	return nil
 }
 
-func (s *Server) setupRoutes() {
-	// This will be implemented to set up routes with handlers
-}
-
-// Start starts the HTTP server
-func (s *Server) Start() error {
-	s.setupRoutes()
-	return s.startServer()
-}
-
-func (s *Server) initializeAuth() {
-	s.passwordClient = auth.NewPasswordAuthClient(
-		s.cfg.Management.BaseURL,
-		s.cfg.Management.ClientID,
-		s.cfg.Management.ClientSecret,
-	)
+// InitializeWithClientCredentials sets up the server with client credentials auth
+func (s *Server) InitializeWithClientCredentials(clientCredentialsClient *auth.ClientCredentialsAuthClient) error {
+	s.clientCredentialsClient = clientCredentialsClient
 	s.sessionManager = auth.NewSessionManager()
+	s.autoStartProcessor()
+	return nil
 }
 
-func (s *Server) checkAndRestoreSession() {
-	sessions := s.sessionManager.GetAllSessions()
-	s.logger.Infof("检查会话恢复: 找到 %d 个会话", len(sessions))
+func (s *Server) autoStartProcessor() {
+	s.logger.Info("使用客户端凭证自动启动任务处理器...")
 
-	if len(sessions) > 0 {
-		for username, session := range sessions {
-			s.logger.Infof("检查会话: 用户=%s, AccessToken=%s..., TenantID=%s",
-				username, session.AccessToken[:min(len(session.AccessToken), 10)], session.TenantID)
-
-			if session.AccessToken != "" && session.TenantID != "" {
-				if session.Username == "" {
-					s.logger.Warn("发现旧的会话数据（用户名为空），跳过自动恢复，请重新登录")
-					continue
-				}
-
-				s.logger.Infof("发现已保存的会话，自动恢复: 用户=%s, 租户=%s", session.Username, session.TenantID)
-
-				s.initializeTaskProcessor()
-				s.setUserTokenToClients(session.AccessToken, session.TenantID)
-				go s.startTaskProcessor()
-				break
-			} else {
-				s.logger.Warnf("会话令牌不完整: 用户=%s, AccessToken为空=%t, TenantID为空=%t",
-					username, session.AccessToken == "", session.TenantID == "")
-			}
-		}
-	} else {
-		s.logger.Info("未找到已保存的会话，需要重新登录")
+	// 获取访问令牌
+	accessToken, err := s.clientCredentialsClient.GetAccessToken()
+	if err != nil {
+		s.logger.Errorf("获取访问令牌失败: %v", err)
+		return
 	}
+
+	tenantID := s.clientCredentialsClient.GetTenantID()
+
+	// 初始化任务处理器
+	s.initializeTaskProcessor()
+	s.setUserTokenToClients(accessToken, tenantID)
+
+	// 启动任务处理器
+	go s.startTaskProcessor()
+
+	s.logger.Info("任务处理器自动启动完成")
 }
 
 func (s *Server) initializeTaskProcessor() {
-	s.logger.Info("创建TEMU任务处理器实例...")
-	s.temuProcessor = temu.NewTemuProcessor(s.cfg)
-	s.workerPool = worker.NewPool(s.temuProcessor, s.cfg.Worker)
+	s.logger.Info("创建任务处理器实例...")
+
+	// 创建共享的 managementClient
+	s.logger.Info("创建共享的管理客户端...")
+	s.managementClient = management.NewClientManager(&s.cfg.Management)
+
+	// 创建 TEMU 处理器（使用共享的 managementClient）
+	// TEMU 处理器内部会创建自己的 WorkerPool
+	s.logger.Info("创建 TEMU 任务处理器...")
+	s.temuProcessor = temu.NewTemuProcessorWithManagementClient(s.cfg, s.logger, s.managementClient)
+
+	// 获取TEMU处理器的共享Amazon处理器
+	sharedAmazonProcessor := s.temuProcessor.GetAmazonProcessor()
+
+	// 创建 SHEIN 处理器（使用共享的 managementClient 和 Amazon处理器）
+	s.logger.Info("创建 SHEIN 任务处理器...")
+	s.sheinProcessor = shein.NewSheinProcessorWithSharedResources(s.cfg, s.managementClient, sharedAmazonProcessor)
+
 	s.processorCtx, s.processorCancel = context.WithCancel(context.Background())
-	s.logger.Info("TEMU任务处理器实例创建完成（未启动）")
+	s.logger.Info("任务处理器实例创建完成（未启动）")
 }
 
 func (s *Server) setUserTokenToClients(accessToken, tenantID string) {
-	if s.temuProcessor != nil {
-		s.temuProcessor.SetUserToken(accessToken, tenantID)
+	// 使用共享的 managementClient 设置 token
+	if s.managementClient != nil {
+		client := s.managementClient.GetClient()
+		client.SetUserToken(accessToken, tenantID)
+		s.logger.Infof("已设置用户令牌到共享管理客户端 (租户: %s)", tenantID)
 	}
 }
 
@@ -119,59 +110,108 @@ func (s *Server) startTaskProcessor() {
 		return
 	}
 
-	if s.temuProcessor == nil {
+	if s.temuProcessor == nil || s.sheinProcessor == nil {
 		s.logger.Info("任务处理器未初始化，正在初始化...")
 		s.initializeTaskProcessor()
 	}
 
-	if s.temuProcessor == nil || s.processorCtx == nil || s.workerPool == nil {
+	if s.temuProcessor == nil || s.sheinProcessor == nil || s.processorCtx == nil {
 		s.logger.Error("任务处理器组件初始化失败，无法启动")
 		return
 	}
 
-	s.logger.Info("启动TEMU任务处理器...")
+	s.logger.Info("启动任务处理器...")
 
+	// 启动 TEMU 任务处理器（内部会启动 WorkerPool）
+	s.logger.Info("启动 TEMU 任务处理器...")
 	if err := s.temuProcessor.Start(s.processorCtx); err != nil {
-		s.logger.Errorf("启动任务处理器失败: %v", err)
+		s.logger.Errorf("启动 TEMU 任务处理器失败: %v", err)
+		s.rollbackStartup()
 		return
 	}
 
-	s.workerPool.Start(s.processorCtx)
-
-	var managementClient *management.Client
-	if s.temuProcessor != nil {
-		managementClient = s.temuProcessor.GetManagementClient()
+	// 启动 SHEIN 任务处理器（内部会启动 WorkerPool）
+	s.logger.Info("启动 SHEIN 任务处理器...")
+	if err := s.sheinProcessor.Start(s.processorCtx); err != nil {
+		s.logger.Errorf("启动 SHEIN 任务处理器失败: %v", err)
+		// 回滚：关闭已启动的 TEMU 处理器
+		s.temuProcessor.Close()
+		s.rollbackStartup()
+		return
 	}
-	taskFetcher := temu.NewTemuTaskFetcher(s.cfg, s.workerPool, managementClient)
-	go taskFetcher.Start(s.processorCtx)
+
+	// 创建任务提交器
+	temuSubmitter := temu.NewTemuTaskSubmitter(s.temuProcessor.GetWorkerPool())
+	sheinSubmitter := shein.NewSheinTaskSubmitter(s.sheinProcessor.GetWorkerPool())
+
+	// 创建统一任务获取器
+	s.logger.Info("启动统一任务获取器...")
+	submitters := map[string]task.TaskSubmitter{
+		"TEMU":  temuSubmitter,
+		"temu":  temuSubmitter,
+		"SHEIN": sheinSubmitter,
+		"shein": sheinSubmitter,
+	}
+
+	// 使用适配器包装管理客户端
+	managementProvider := task.WrapManagementClient(s.managementClient)
+	unifiedFetcher := task.NewUnifiedTaskFetcher(s.cfg, managementProvider, submitters)
+
+	// 设置任务完成通知器（让WorkerPool在任务完成后通知UnifiedTaskFetcher）
+	if temuPool := s.temuProcessor.GetWorkerPool(); temuPool != nil {
+		temuPool.SetCompletionNotifier(unifiedFetcher)
+		s.logger.Info("已设置TEMU任务完成通知器")
+	}
+	if sheinPool := s.sheinProcessor.GetWorkerPool(); sheinPool != nil {
+		sheinPool.SetCompletionNotifier(unifiedFetcher)
+		s.logger.Info("已设置SHEIN任务完成通知器")
+	}
+
+	go unifiedFetcher.Start(s.processorCtx)
 
 	s.processorRunning = true
-	s.logger.Info("TEMU任务处理器启动成功")
+	s.logger.Info("所有任务处理器启动成功 (TEMU + SHEIN + 统一任务获取器)")
+}
+
+// rollbackStartup 回滚启动过程
+func (s *Server) rollbackStartup() {
+	s.logger.Warn("回滚启动过程...")
+	if s.processorCancel != nil {
+		s.processorCancel()
+	}
+	s.processorRunning = false
 }
 
 func (s *Server) stopTaskProcessor() {
 	if !s.processorRunning {
+		s.logger.Info("任务处理器未运行，无需停止")
 		return
 	}
 
-	s.logger.Info("停止TEMU任务处理器...")
+	s.logger.Info("停止任务处理器...")
 
+	// 取消 context，通知所有组件停止
 	if s.processorCancel != nil {
 		s.processorCancel()
 	}
 
-	if s.workerPool != nil {
-		timeoutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		s.workerPool.Stop(timeoutCtx)
-	}
+	// 等待一小段时间让组件响应取消信号
+	time.Sleep(100 * time.Millisecond)
 
+	// 关闭 TEMU 处理器（内部会关闭 WorkerPool）
 	if s.temuProcessor != nil {
+		s.logger.Info("停止 TEMU 任务处理器...")
 		s.temuProcessor.Close()
 	}
 
+	// 关闭 SHEIN 处理器（内部会关闭 WorkerPool）
+	if s.sheinProcessor != nil {
+		s.logger.Info("停止 SHEIN 任务处理器...")
+		s.sheinProcessor.Close()
+	}
+
 	s.processorRunning = false
-	s.logger.Info("TEMU任务处理器已停止")
+	s.logger.Info("所有任务处理器已停止")
 }
 
 // ProcessorManager interface implementation
@@ -202,51 +242,6 @@ func (s *Server) GetSessionManager() *auth.SessionManager {
 	return s.sessionManager
 }
 
-func (s *Server) GetPasswordClient() *auth.PasswordAuthClient {
-	return s.passwordClient
-}
-
-func (s *Server) startServer() error {
-	addr := fmt.Sprintf(":%d", s.cfg.Server.Port)
-
-	s.logger.Infof("配置的服务器端口: %d", s.cfg.Server.Port)
-	s.logger.Infof("监听地址: %s", addr)
-
-	webURL := fmt.Sprintf("http://localhost:%d", s.cfg.Server.Port)
-	s.logger.Infof("TEMU Web登录界面启动在: %s", webURL)
-	s.logger.Info("请在浏览器中打开上述地址进行登录")
-
-	server := &http.Server{Addr: addr}
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			s.logger.Fatalf("启动服务器失败: %v", err)
-		}
-	}()
-
-	s.logger.Info("等待服务器启动...")
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	<-sigChan
-	s.logger.Println("收到终止信号，正在关闭...")
-
-	s.stopTaskProcessor()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		s.logger.Errorf("服务器关闭失败: %v", err)
-	}
-
-	s.logger.Println("关闭完成")
-	return nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+func (s *Server) GetClientCredentialsClient() *auth.ClientCredentialsAuthClient {
+	return s.clientCredentialsClient
 }

@@ -1,4 +1,4 @@
-package temu
+﻿package temu
 
 import (
 	"task-processor/common/management"
@@ -7,7 +7,7 @@ import (
 )
 
 // DebugCookieIssue 调试Cookie问题的辅助函数
-func DebugCookieIssue(storeID int64, managementClient *management.Client) {
+func DebugCookieIssue(storeID int64, managementClient *management.ClientManager) {
 	logger := logrus.WithField("component", "CookieDebug")
 
 	logger.Infof("开始调试StoreID=%d的Cookie问题", storeID)
@@ -20,7 +20,8 @@ func DebugCookieIssue(storeID int64, managementClient *management.Client) {
 	logger.Info("✅ 管理系统客户端已初始化")
 
 	// 2. 测试获取store信息
-	store, err := managementClient.GetStore(storeID)
+	storeClient := managementClient.GetStoreClient()
+	store, err := storeClient.GetStore(storeID)
 	if err != nil {
 		logger.WithError(err).Error("❌ 获取store信息失败")
 		return
@@ -28,7 +29,7 @@ func DebugCookieIssue(storeID int64, managementClient *management.Client) {
 	logger.Infof("✅ 成功获取store信息: %+v", store)
 
 	// 3. 测试获取cookie
-	cookieStr, err := managementClient.GetStoreCookie(storeID)
+	cookieStr, err := storeClient.GetStoreCookie(storeID)
 	if err != nil {
 		logger.WithError(err).Error("❌ 获取Cookie失败")
 		return

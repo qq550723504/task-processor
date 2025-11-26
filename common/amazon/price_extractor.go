@@ -2,16 +2,19 @@ package amazon
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // PriceExtractor 价格提取器
-type PriceExtractor struct{}
+type PriceExtractor struct {
+	// Marketplace 用于区分不同站点 (US, JP, UK, DE, FR, IT, ES, etc.)
+	Marketplace string
+}
 
 // HasValidPrice 快速检查产品是否有有效价格
 func (e *PriceExtractor) HasValidPrice(page playwright.Page) bool {
@@ -33,12 +36,9 @@ func (e *PriceExtractor) HasValidPrice(page playwright.Page) bool {
 		if err == nil && element != nil {
 			text, err := element.TextContent()
 			if err == nil && text != "" {
-				// 检查各种货币符号
-				if strings.Contains(text, "$") || strings.Contains(text, "£") ||
-					strings.Contains(text, "€") || strings.Contains(text, "¥") ||
-					strings.Contains(text, "C$") || strings.Contains(text, "A$") ||
-					strings.Contains(text, "CAD") || strings.Contains(text, "AUD") {
-					log.Printf("找到有效价格: %s", strings.TrimSpace(text))
+				// 检查各种货币符号和代码
+				if e.containsCurrencySymbol(text) {
+					logrus.Infof("找到有效价格: %s", strings.TrimSpace(text))
 					return true
 				}
 			}
@@ -60,21 +60,21 @@ func (e *PriceExtractor) HasValidPrice(page playwright.Page) bool {
 				if strings.Contains(lowerText, "unavailable") ||
 					strings.Contains(lowerText, "out of stock") ||
 					strings.Contains(lowerText, "currently unavailable") {
-					log.Printf("产品不可用: %s", text)
+					logrus.Infof("产品不可用: %s", text)
 					return false
 				}
 			}
 		}
 	}
 
-	log.Println("未找到有效价格")
+	logrus.Info("未找到有效价格")
 	return false
 }
 
 func (e *PriceExtractor) Extract(page playwright.Page, product *Product) error {
 	// 检查产品可用性
 	if product.Availability != "" && e.isUnavailableText(product.Availability) {
-		log.Printf("产品不可用（根据Availability字段: %s），跳过价格提取", product.Availability)
+		logrus.Infof("产品不可用（根据Availability字段: %s），跳过价格提取", product.Availability)
 		product.FinalPrice = 0
 		product.InitialPrice = 0
 		product.Currency = "USD"
@@ -84,7 +84,7 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *Product) error {
 
 	// 如果Availability字段为空或不明确，再检查页面
 	if !e.isProductAvailable(page) {
-		log.Println("产品不可用（根据页面检查），跳过价格提取")
+		logrus.Info("产品不可用（根据页面检查），跳过价格提取")
 		product.FinalPrice = 0
 		product.InitialPrice = 0
 		product.Currency = "USD"
@@ -113,7 +113,6 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *Product) error {
 			text, _ := element.TextContent()
 			if strings.TrimSpace(text) != "" {
 				priceText = text
-				log.Printf("从选择器 %s 获取到完整价格: %s", selector, priceText)
 				break
 			}
 		}
@@ -123,12 +122,12 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *Product) error {
 	if priceText == "" {
 		priceText = e.extractCombinedPrice(page)
 		if priceText != "" {
-			log.Printf("组合价格提取成功: %s", priceText)
+			logrus.Infof("组合价格提取成功: %s", priceText)
 		}
 	}
 
 	if priceText == "" {
-		log.Println("未找到价格信息，使用默认值")
+		logrus.Warn("未找到价格信息，使用默认值")
 		product.FinalPrice = 0
 		product.InitialPrice = 0
 		product.Currency = "USD"
@@ -141,9 +140,9 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *Product) error {
 		product.FinalPrice = price
 		product.InitialPrice = price
 		product.Currency = e.extractCurrency(priceText)
-		log.Printf("解析到价格: %.2f %s", price, product.Currency)
+		logrus.Infof("解析到价格: %.2f %s", price, product.Currency)
 	} else {
-		log.Printf("价格解析失败: %s", priceText)
+		logrus.Warnf("价格解析失败: %s", priceText)
 		product.FinalPrice = 0
 		product.InitialPrice = 0
 		product.Currency = "USD"
@@ -168,81 +167,273 @@ func (e *PriceExtractor) extractCombinedPrice(page playwright.Page) string {
 		"span.a-price-fraction",
 	}
 
-	var wholePart, fractionPart string
+	symbolSelectors := []string{
+		".a-price-symbol",
+		".a-price .a-price-symbol",
+		"span.a-price-symbol",
+	}
 
+	var wholePart, fractionPart, currencySymbol string
+
+	// 提取货币符号
+	for _, selector := range symbolSelectors {
+		element, err := page.QuerySelector(selector)
+		if err == nil && element != nil {
+			text, _ := element.TextContent()
+			currencySymbol = strings.TrimSpace(text)
+			if currencySymbol != "" {
+				break
+			}
+		}
+	}
+
+	// 提取整数部分
 	for _, selector := range wholeSelectors {
 		element, err := page.QuerySelector(selector)
 		if err == nil && element != nil {
 			text, _ := element.TextContent()
 			wholePart = strings.TrimSpace(text)
 			if wholePart != "" {
-				log.Printf("获取到整数部分: %s (选择器: %s)", wholePart, selector)
 				break
 			}
 		}
 	}
 
+	// 提取小数部分
 	for _, selector := range fractionSelectors {
 		element, err := page.QuerySelector(selector)
 		if err == nil && element != nil {
 			text, _ := element.TextContent()
 			fractionPart = strings.TrimSpace(text)
 			if fractionPart != "" {
-				log.Printf("获取到小数部分: %s (选择器: %s)", fractionPart, selector)
 				break
 			}
 		}
 	}
 
 	if wholePart != "" {
+		// 移除可能的尾随点号或逗号
 		wholePart = strings.TrimSuffix(wholePart, ".")
-		if fractionPart != "" {
-			return fmt.Sprintf("$%s.%s", wholePart, fractionPart)
+		wholePart = strings.TrimSuffix(wholePart, ",")
+
+		// 如果没有找到货币符号，使用默认符号
+		if currencySymbol == "" {
+			currencySymbol = e.getDefaultCurrencySymbol()
 		}
-		return fmt.Sprintf("$%s.00", wholePart)
+
+		// 根据站点决定小数分隔符
+		decimalSeparator := e.getDecimalSeparator()
+
+		if fractionPart != "" {
+			return fmt.Sprintf("%s%s%s%s", currencySymbol, wholePart, decimalSeparator, fractionPart)
+		}
+
+		// 日本站通常不显示小数
+		if e.Marketplace == "JP" || e.Marketplace == "co.jp" {
+			return fmt.Sprintf("%s%s", currencySymbol, wholePart)
+		}
+
+		return fmt.Sprintf("%s%s%s00", currencySymbol, wholePart, decimalSeparator)
 	}
 
 	return ""
 }
 
+// getDefaultCurrencySymbol 根据站点返回默认货币符号
+func (e *PriceExtractor) getDefaultCurrencySymbol() string {
+	symbolMap := map[string]string{
+		"US": "$", "com": "$",
+		"UK": "£", "co.uk": "£",
+		"DE": "€", "de": "€",
+		"FR": "€", "fr": "€",
+		"IT": "€", "it": "€",
+		"ES": "€", "es": "€",
+		"JP": "¥", "co.jp": "¥",
+		"CA": "C$", "ca": "C$",
+		"AU": "A$", "com.au": "A$",
+		"IN": "₹", "in": "₹",
+		"CN": "¥", "cn": "¥",
+		"MX": "$", "com.mx": "$",
+		"BR": "R$", "com.br": "R$",
+		"SG": "S$", "sg": "S$",
+		"SA": "SAR", "sa": "SAR",
+		"AE": "AED", "ae": "AED",
+	}
+
+	if symbol, ok := symbolMap[e.Marketplace]; ok {
+		return symbol
+	}
+	return "$"
+}
+
+// getDecimalSeparator 根据站点返回小数分隔符
+func (e *PriceExtractor) getDecimalSeparator() string {
+	// 欧洲大部分国家使用逗号作为小数分隔符
+	europeanMarkets := map[string]bool{
+		"DE": true, "de": true,
+		"FR": true, "fr": true,
+		"IT": true, "it": true,
+		"ES": true, "es": true,
+		"PL": true, "pl": true,
+		"SE": true, "se": true,
+		"BR": true, "com.br": true,
+	}
+
+	if europeanMarkets[e.Marketplace] {
+		return ","
+	}
+	return "."
+}
+
 func (e *PriceExtractor) parsePrice(priceText string) float64 {
 	cleanPrice := strings.TrimSpace(priceText)
-	re := regexp.MustCompile(`\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d+\.\d{2}|\d+`)
-	matches := re.FindAllString(cleanPrice, -1)
 
+	// 检测欧洲格式 (1.234,56) vs 美国格式 (1,234.56)
+	isEuropeanFormat := false
+	if strings.Count(cleanPrice, ",") == 1 && strings.Count(cleanPrice, ".") >= 1 {
+		// 如果逗号在点号后面，可能是欧洲格式
+		commaPos := strings.LastIndex(cleanPrice, ",")
+		dotPos := strings.LastIndex(cleanPrice, ".")
+		if commaPos > dotPos {
+			isEuropeanFormat = true
+		}
+	} else if strings.Count(cleanPrice, ",") == 1 && strings.Count(cleanPrice, ".") == 0 {
+		// 只有逗号，检查逗号后是否是2位数字（小数）
+		parts := strings.Split(cleanPrice, ",")
+		if len(parts) == 2 && len(parts[1]) == 2 {
+			isEuropeanFormat = true
+		}
+	}
+
+	// 提取数字
+	var re *regexp.Regexp
+	if isEuropeanFormat {
+		// 欧洲格式：1.234,56 -> 移除点号，逗号替换为点号
+		re = regexp.MustCompile(`\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+,\d{2}|\d+`)
+	} else {
+		// 美国格式：1,234.56 -> 移除逗号
+		re = regexp.MustCompile(`\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d+\.\d{2}|\d+`)
+	}
+
+	matches := re.FindAllString(cleanPrice, -1)
 	if len(matches) == 0 {
 		return 0
 	}
 
-	priceStr := strings.ReplaceAll(matches[0], ",", "")
+	priceStr := matches[0]
+	if isEuropeanFormat {
+		// 欧洲格式转换：移除点号，逗号改为点号
+		priceStr = strings.ReplaceAll(priceStr, ".", "")
+		priceStr = strings.ReplaceAll(priceStr, ",", ".")
+	} else {
+		// 美国格式：只移除逗号
+		priceStr = strings.ReplaceAll(priceStr, ",", "")
+	}
+
 	price, err := strconv.ParseFloat(priceStr, 64)
 	if err != nil {
-		log.Printf("价格解析错误: %s -> %s", priceText, priceStr)
+		logrus.Warnf("价格解析错误: %s -> %s (欧洲格式: %v)", priceText, priceStr, isEuropeanFormat)
 		return 0
 	}
 
-	log.Printf("价格解析成功: %s -> %s -> %.2f", priceText, priceStr, price)
 	return price
 }
 
 func (e *PriceExtractor) extractCurrency(priceText string) string {
+	// 优先检查明确的货币代码
+	currencyCodes := map[string]string{
+		"USD": "USD", "CAD": "CAD", "AUD": "AUD",
+		"EUR": "EUR", "GBP": "GBP", "JPY": "JPY",
+		"CNY": "CNY", "SGD": "SGD", "INR": "INR",
+		"MXN": "MXN", "BRL": "BRL", "SEK": "SEK",
+		"PLN": "PLN", "TRY": "TRY", "AED": "AED",
+		"SAR": "SAR",
+	}
+
+	upperText := strings.ToUpper(priceText)
+	for code, currency := range currencyCodes {
+		if strings.Contains(upperText, code) {
+			return currency
+		}
+	}
+
 	// 检查货币符号
 	if strings.Contains(priceText, "€") {
 		return "EUR"
 	} else if strings.Contains(priceText, "£") {
 		return "GBP"
 	} else if strings.Contains(priceText, "¥") {
+		// 根据站点区分日元和人民币
+		switch e.Marketplace {
+		case "JP", "co.jp":
+			return "JPY"
+		case "CN", "cn":
+			return "CNY"
+		}
+		// 默认返回JPY（因为Amazon主要是日本站用¥）
 		return "JPY"
-	} else if strings.Contains(priceText, "C$") || strings.Contains(priceText, "CAD") {
+	} else if strings.Contains(priceText, "C$") || strings.Contains(priceText, "CA$") {
 		return "CAD"
 	} else if strings.Contains(priceText, "A$") || strings.Contains(priceText, "AU$") {
 		return "AUD"
+	} else if strings.Contains(priceText, "S$") {
+		return "SGD"
+	} else if strings.Contains(priceText, "₹") {
+		return "INR"
+	} else if strings.Contains(priceText, "kr") {
+		return "SEK"
+	} else if strings.Contains(priceText, "zł") {
+		return "PLN"
 	} else if strings.Contains(priceText, "$") {
-		return "USD" // Default $ to USD
+		// 根据站点区分不同的美元
+		switch e.Marketplace {
+		case "CA", "ca":
+			return "CAD"
+		case "AU", "com.au":
+			return "AUD"
+		case "SG", "sg":
+			return "SGD"
+		case "MX", "com.mx":
+			return "MXN"
+		case "BR", "com.br":
+			return "BRL"
+		default:
+			return "USD"
+		}
 	}
 
-	// 如果没有找到货币符号，返回USD作为默认值
-	return "USD"
+	// 根据站点返回默认货币
+	return e.getDefaultCurrencyByMarketplace()
+}
+
+// getDefaultCurrencyByMarketplace 根据站点返回默认货币
+func (e *PriceExtractor) getDefaultCurrencyByMarketplace() string {
+	marketplaceCurrency := map[string]string{
+		"US": "USD", "com": "USD",
+		"UK": "GBP", "co.uk": "GBP",
+		"DE": "EUR", "de": "EUR",
+		"FR": "EUR", "fr": "EUR",
+		"IT": "EUR", "it": "EUR",
+		"ES": "EUR", "es": "EUR",
+		"JP": "JPY", "co.jp": "JPY",
+		"CA": "CAD", "ca": "CAD",
+		"AU": "AUD", "com.au": "AUD",
+		"IN": "INR", "in": "INR",
+		"CN": "CNY", "cn": "CNY",
+		"MX": "MXN", "com.mx": "MXN",
+		"BR": "BRL", "com.br": "BRL",
+		"SG": "SGD", "sg": "SGD",
+		"AE": "AED", "ae": "AED",
+		"SE": "SEK", "se": "SEK",
+		"PL": "PLN", "pl": "PLN",
+		"TR": "TRY", "com.tr": "TRY",
+	}
+
+	if currency, ok := marketplaceCurrency[e.Marketplace]; ok {
+		return currency
+	}
+
+	return "USD" // 默认返回USD
 }
 
 // extractListPrice 提取原价（list price）
@@ -283,7 +474,6 @@ func (e *PriceExtractor) extractListPrice(page playwright.Page, product *Product
 				if listPrice > 0 && listPrice != product.FinalPrice {
 					if listPrice > product.FinalPrice {
 						product.PricesBreakdown.ListPrice = &listPrice
-						log.Printf("提取到原价: %.2f (选择器: %s, 原文: %s)", listPrice, selector, text)
 						return
 					}
 				}
@@ -291,7 +481,6 @@ func (e *PriceExtractor) extractListPrice(page playwright.Page, product *Product
 		}
 	}
 
-	log.Println("未找到有效的原价信息")
 }
 
 // isProductAvailable 检查产品是否可用
@@ -322,7 +511,7 @@ func (e *PriceExtractor) isProductAvailable(page playwright.Page) bool {
 
 				for _, keyword := range unavailableKeywords {
 					if strings.Contains(lowerText, keyword) {
-						log.Printf("产品不可用: %s", text)
+						logrus.Warnf("产品不可用: %s", text)
 						return false
 					}
 				}
@@ -336,7 +525,7 @@ func (e *PriceExtractor) isProductAvailable(page playwright.Page) bool {
 
 				for _, keyword := range availableKeywords {
 					if strings.Contains(lowerText, keyword) {
-						log.Printf("产品可用: %s", text)
+						logrus.Infof("产品可用: %s", text)
 						return true
 					}
 				}
@@ -357,13 +546,13 @@ func (e *PriceExtractor) isProductAvailable(page playwright.Page) bool {
 			visible, _ := element.IsVisible()
 			disabled, _ := element.IsDisabled()
 			if visible && !disabled {
-				log.Println("找到可用的购买按钮，产品可用")
+				logrus.Info("找到可用的购买按钮，产品可用")
 				return true
 			}
 		}
 	}
 
-	log.Println("未找到明确的可用性信息，假设产品不可用")
+	logrus.Info("未找到明确的可用性信息，假设产品不可用")
 	return false
 }
 
@@ -379,10 +568,51 @@ func (e *PriceExtractor) isUnavailableText(availabilityText string) bool {
 		"not available",
 		"discontinued",
 		"sold out",
+		// 日语
+		"在庫切れ", "取り扱い終了", "現在お取り扱いできません",
+		// 德语
+		"derzeit nicht verfügbar", "nicht auf lager",
+		// 法语
+		"actuellement indisponible", "en rupture de stock",
+		// 西班牙语
+		"actualmente no disponible", "agotado",
+		// 意大利语
+		"attualmente non disponibile", "esaurito",
 	}
 
 	for _, keyword := range unavailableKeywords {
 		if strings.Contains(lowerText, keyword) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// containsCurrencySymbol 检查文本是否包含货币符号或代码
+func (e *PriceExtractor) containsCurrencySymbol(text string) bool {
+	// 货币符号
+	currencySymbols := []string{
+		"$", "£", "€", "¥", "₹", "₽", "₩", "₪", "₱", "₫", "₴", "₦", "₡", "₨",
+		"kr", "zł", "Kč", "Ft", "lei", "kn", "din", "ден", "лв",
+	}
+
+	for _, symbol := range currencySymbols {
+		if strings.Contains(text, symbol) {
+			return true
+		}
+	}
+
+	// 货币代码
+	currencyCodes := []string{
+		"USD", "CAD", "AUD", "EUR", "GBP", "JPY", "CNY", "SGD", "INR",
+		"MXN", "BRL", "SEK", "PLN", "TRY", "AED", "SAR", "EGP", "ZAR",
+		"RUB", "KRW", "THB", "IDR", "MYR", "PHP", "VND", "NZD", "CHF",
+	}
+
+	upperText := strings.ToUpper(text)
+	for _, code := range currencyCodes {
+		if strings.Contains(upperText, code) {
 			return true
 		}
 	}

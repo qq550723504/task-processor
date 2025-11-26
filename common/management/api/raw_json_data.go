@@ -1,4 +1,4 @@
-package api
+﻿package api
 
 // RawJsonDataReqDTO 原始JSON数据请求DTO
 type RawJsonDataReqDTO struct {
@@ -14,7 +14,6 @@ type RawJsonDataReqDTO struct {
 // RawJsonDataRespDTO 原始JSON数据响应DTO
 type RawJsonDataRespDTO struct {
 	ID          int64  `json:"id"`          // 主键ID
-	TaskID      int64  `json:"taskId"`      // 任务ID
 	Platform    string `json:"platform"`    // 平台
 	ProductID   string `json:"productId"`   // 产品ID或ASIN
 	Region      string `json:"region"`      // 区域
@@ -37,8 +36,8 @@ type RawJsonDataCreateReqDTO struct {
 	ImportTaskID int64  `json:"importTaskId"`
 	Platform     string `json:"platform"`
 	Region       string `json:"region"`
-	CategoryID   int64  `json:"categoryId"`
 	ProductID    string `json:"productId"` // ASIN或产品ID
+	CategoryID   int64  `json:"categoryId"`
 	RawJsonData  string `json:"rawJsonData"`
 	Creator      string `json:"creator"`
 }

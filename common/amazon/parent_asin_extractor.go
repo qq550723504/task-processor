@@ -1,10 +1,10 @@
 package amazon
 
 import (
-	"log"
 	"regexp"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // ParentAsinExtractor 父级ASIN提取器
@@ -19,7 +19,7 @@ func NewParentAsinExtractor() *ParentAsinExtractor {
 func (pae *ParentAsinExtractor) Extract(page playwright.Page, product *Product) error {
 	parentAsin, err := pae.getParentAsin(page)
 	if err != nil {
-		log.Printf("提取父级ASIN失败: %v", err)
+		logrus.Infof("提取父级ASIN失败: %v", err)
 		return err
 	}
 	product.ParentAsin = parentAsin
@@ -31,23 +31,23 @@ func (pae *ParentAsinExtractor) getParentAsin(page playwright.Page) (string, err
 	// 尝试从各种位置提取父级ASIN
 	parentAsin := pae.extractFromVariations(page)
 	if parentAsin != "" {
-		log.Printf("从变体信息中找到父级ASIN: %s", parentAsin)
+		logrus.Infof("从变体信息中找到父级ASIN: %s", parentAsin)
 		return parentAsin, nil
 	}
 
 	parentAsin = pae.extractFromPageSource(page)
 	if parentAsin != "" {
-		log.Printf("从页面源码中找到父级ASIN: %s", parentAsin)
+		logrus.Infof("从页面源码中找到父级ASIN: %s", parentAsin)
 		return parentAsin, nil
 	}
 
 	parentAsin = pae.extractFromMetadata(page)
 	if parentAsin != "" {
-		log.Printf("从元数据中找到父级ASIN: %s", parentAsin)
+		logrus.Infof("从元数据中找到父级ASIN: %s", parentAsin)
 		return parentAsin, nil
 	}
 
-	log.Printf("未找到父级ASIN")
+	logrus.Infof("未找到父级ASIN")
 	return "", nil
 }
 
