@@ -364,7 +364,7 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *pipeli
 	// 准备批量请求
 	requests := make([]amazon.ProductRequest, 0, len(asins))
 	for i, asin := range asins {
-		url := fmt.Sprintf("https://www.%s/dp/%s", domain, asin)
+		url := fmt.Sprintf("https://www.%s/dp/%s?th=1&psc=1", domain, asin)
 		requests = append(requests, amazon.ProductRequest{
 			URL:     url,
 			Zipcode: zipcode,
@@ -422,7 +422,62 @@ func (h *VariantJsonDataHandler) parseAmazonProduct(jsonData string) (*amazon.Pr
 	if err := json.Unmarshal([]byte(jsonData), &product); err != nil {
 		return nil, fmt.Errorf("解析Amazon产品数据失败: %w", err)
 	}
+
+	// 重新计算 IsAvailable 字段（修复历史数据中的错误）
+	product.IsAvailable = h.recalculateIsAvailable(&product)
+
 	return &product, nil
+}
+
+// recalculateIsAvailable 重新计算产品是否可用
+func (h *VariantJsonDataHandler) recalculateIsAvailable(product *amazon.Product) bool {
+	lowerText := strings.ToLower(strings.TrimSpace(product.Availability))
+
+	// 不可用的关键词（优先检查）
+	unavailableKeywords := []string{
+		"currently unavailable", "unavailable", "out of stock",
+		"temporarily out of stock", "not available", "discontinued", "sold out",
+		"no disponible", "agotado", "sin stock", "temporalmente agotado",
+		"actualmente no disponible",
+	}
+
+	for _, keyword := range unavailableKeywords {
+		if strings.Contains(lowerText, keyword) {
+			h.logger.WithFields(logrus.Fields{
+				"asin":         product.Asin,
+				"availability": product.Availability,
+				"keyword":      keyword,
+			}).Info("❌ recalculate: 匹配到不可用关键词")
+			return false
+		}
+	}
+
+	// 可用的关键词
+	availableKeywords := []string{
+		"in stock", "available", "ships", "delivery", "arrives",
+		"left in stock", "more on the way", "usually ships", "in stock soon",
+		"disponible", "en stock", "envío", "entrega", "llega",
+	}
+
+	for _, keyword := range availableKeywords {
+		if strings.Contains(lowerText, keyword) {
+			h.logger.WithFields(logrus.Fields{
+				"asin":         product.Asin,
+				"availability": product.Availability,
+				"keyword":      keyword,
+			}).Info("✅ recalculate: 匹配到可用关键词")
+			return true
+		}
+	}
+
+	// 无法明确判断时，保持原有值
+	h.logger.WithFields(logrus.Fields{
+		"asin":           product.Asin,
+		"availability":   product.Availability,
+		"original_value": product.IsAvailable,
+		"lower_text":     lowerText,
+	}).Warn("⚠️ recalculate: 无法明确判断可用性，保持原有值")
+	return product.IsAvailable
 }
 
 // saveVariantToServer 保存变体数据到服务器缓存

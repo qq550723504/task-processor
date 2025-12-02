@@ -75,6 +75,54 @@ func (m *ProductImportMappingAPIClientImpl) GetProductImportMappingByPlatformPro
 	return mapping, nil
 }
 
+// GetProductImportMappingByTaskAndSku 根据任务ID和SKU查询映射关系
+func (m *ProductImportMappingAPIClientImpl) GetProductImportMappingByTaskAndSku(importTaskId int64, sku string) (*api.ProductImportMappingRespDTO, error) {
+	url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/get-by-task-and-sku?importTaskId=%d&sku=%s",
+		m.baseURL, importTaskId, sku)
+
+	var result APIResponse
+	result.Data = &api.ProductImportMappingRespDTO{}
+
+	err := m.apiRequest(http.MethodGet, url, nil, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := m.ProcessAPIResponse(&result, 0); err != nil {
+		return nil, err
+	}
+
+	if result.Data == nil {
+		return nil, nil // 不存在记录时返回nil而不是错误
+	}
+
+	mapping, ok := result.Data.(*api.ProductImportMappingRespDTO)
+	if !ok {
+		return nil, fmt.Errorf("产品导入映射关系数据类型转换失败")
+	}
+
+	return mapping, nil
+}
+
+// UpdateProductImportMapping 更新产品导入映射关系
+func (m *ProductImportMappingAPIClientImpl) UpdateProductImportMapping(updateReqDTO *api.ProductImportMappingCreateReqDTO) error {
+	url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/update", m.baseURL)
+
+	var result APIResponse
+	result.Data = new(bool)
+
+	err := m.apiRequest(http.MethodPost, url, updateReqDTO, &result)
+	if err != nil {
+		return err
+	}
+
+	if err := m.ProcessAPIResponse(&result, 0); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // CheckProductExists 检查产品是否已上架
 func (m *ProductImportMappingAPIClientImpl) CheckProductExists(req *api.ProductImportMappingCheckReqDTO) (bool, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/check-exists?storeId=%d&platform=%s&region=%s&productId=%s",
@@ -129,6 +177,39 @@ func (m *ProductImportMappingAPIClientImpl) GetProductImportMappingBySku(req *ap
 
 	if result.Data == nil {
 		return nil, NewNonRetryableError("产品导入映射关系数据为空: 可能不存在对应的SKU映射关系", nil)
+	}
+
+	mapping, ok := result.Data.(*api.ProductImportMappingRespDTO)
+	if !ok {
+		return nil, fmt.Errorf("产品导入映射关系数据类型转换失败")
+	}
+
+	return mapping, nil
+}
+
+// GetProductImportMappingByPlatformProductIdAndStore 通过平台产品ID和店铺ID获取产品导入映射关系
+func (m *ProductImportMappingAPIClientImpl) GetProductImportMappingByPlatformProductIdAndStore(req *api.ProductImportMappingGetByPlatformProductIdAndStoreReqDTO) (*api.ProductImportMappingRespDTO, error) {
+	url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/get-by-platform-product-id-and-store", m.baseURL)
+
+	params := map[string]any{
+		"platformProductId": req.PlatformProductId,
+		"storeId":           req.StoreId,
+	}
+
+	var result APIResponse
+	result.Data = &api.ProductImportMappingRespDTO{}
+
+	err := m.apiRequest(http.MethodGet, url, params, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := m.ProcessAPIResponse(&result, 0); err != nil {
+		return nil, err
+	}
+
+	if result.Data == nil {
+		return nil, nil // 不存在记录时返回nil而不是错误
 	}
 
 	mapping, ok := result.Data.(*api.ProductImportMappingRespDTO)

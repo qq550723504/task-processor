@@ -43,20 +43,6 @@ func (h *SpuLimitHandler) Handle(ctx *TaskContext) error {
 		return err
 	}
 
-	// if spuLimitCount.AbleStatus == 0 || spuLimitCount.QuotaAvailable < 1 {
-	// 	logrus.Infof("发品额度不足: %+v\n", spuLimitCount)
-
-	// 	// 注意：不再需要清空Redis队列中的待处理任务
-	// 	// 因为任务现在通过API管理，没有本地队列
-	// 	tenantID := fmt.Sprintf("%d", ctx.Task.TenantID)
-	// 	shopID := fmt.Sprintf("%d", ctx.Task.StoreID)
-	// 	logrus.Infof("店铺 %s:%s 发品额度不足，任务将通过API重新调度", tenantID, shopID)
-
-	// 	// 返回不可重试错误，防止任务重新入队
-	// 	return NewNonRetryableError("发品额度不足",
-	// 		fmt.Errorf("发品额度不足: %d", spuLimitCount.QuotaAvailable))
-	// }
-
 	// 输出日志信息
 	logrus.Infof("发品额度信息: 可用状态=%d, 可用额度=%d, 已使用额度=%d, 剩余额度=%d\n",
 		spuLimitCount.AbleStatus,
@@ -67,6 +53,13 @@ func (h *SpuLimitHandler) Handle(ctx *TaskContext) error {
 	// 提交剩余发品额度到管理系统
 	if ctx.MemoryManager != nil && ctx.MemoryManager.DailyCountManager != nil {
 		h.submitRemainingQuota(ctx, spuLimitCount.QuotaRemain)
+	}
+
+	// 检查发品额度是否充足
+	if spuLimitCount.QuotaRemain < 1 {
+		logrus.Warnf("发品额度不足，终止任务: 可用状态=%d, 剩余额度=%d",
+			spuLimitCount.AbleStatus, spuLimitCount.QuotaRemain)
+		return NewFilteredError("发品额度不足")
 	}
 
 	ctx.SpuLimitCount = spuLimitCount

@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.1.2
 	github.com/imroc/req/v3 v3.55.0
 	github.com/playwright-community/playwright-go v0.5200.1
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/sashabaranov/go-openai v1.41.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/viper v1.16.0

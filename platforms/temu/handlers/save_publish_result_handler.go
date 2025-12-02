@@ -104,7 +104,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *pipeline.Task
 					TenantID:     ctx.Task.TenantID,
 					ImportTaskId: taskID,
 					StoreId:      ctx.Task.StoreID,
-					Platform:     ctx.Task.Platform,
+					Platform:     "TEMU",
 					Region:       ctx.Task.Region,
 					Status:       int16Ptr(2), // 2表示已上架
 				}

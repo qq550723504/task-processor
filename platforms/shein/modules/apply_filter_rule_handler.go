@@ -44,5 +44,10 @@ func (h *ApplyFilterRuleHandler) Handle(ctx *TaskContext) error {
 		return err
 	}
 
+	// 校验配送方式
+	if err := h.ruleChecker.CheckFulfillmentType(ctx.FilterRule, ctx.AmazonProduct); err != nil {
+		return err
+	}
+
 	return nil
 }

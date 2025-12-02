@@ -33,36 +33,56 @@ func (h *HasSpuRecordHandler) Handle(ctx *TaskContext) error {
 	// 存储Asin与SKU的对应关系
 	h.storeAsinSkuMap(ctx, asins, skuList)
 
-	// 构建请求参数
-	request := &product.ProductRecordRequest{
-		Language:                  "en",
-		OnlyCurrentMonthRecommend: false,
-		OnlySpmbCopyProduct:       false,
-		QueryTimeOut:              false,
-		SearchDiyCustom:           false,
-		SupplierCodeList:          &skuList,
-		SupplierCodeSearchType:    1,
+	// SHEIN API 限制：供方货号最多支持1000条数据，需要分批查询
+	const batchSize = 1000
+	totalBatches := (len(skuList) + batchSize - 1) / batchSize
+
+	logrus.Infof("开始检查SPU发布记录，共 %d 个SKU，分 %d 批处理", len(skuList), totalBatches)
+
+	// 分批查询
+	for i := 0; i < len(skuList); i += batchSize {
+		end := i + batchSize
+		if end > len(skuList) {
+			end = len(skuList)
+		}
+
+		batchSkuList := skuList[i:end]
+		batchNum := i/batchSize + 1
+
+		logrus.Infof("处理第 %d/%d 批，SKU数量: %d", batchNum, totalBatches, len(batchSkuList))
+
+		// 构建请求参数
+		request := &product.ProductRecordRequest{
+			Language:                  "en",
+			OnlyCurrentMonthRecommend: false,
+			OnlySpmbCopyProduct:       false,
+			QueryTimeOut:              false,
+			SearchDiyCustom:           false,
+			SupplierCodeList:          &batchSkuList,
+			SupplierCodeSearchType:    1,
+		}
+
+		// 调用API检查SPU发布记录
+		response, err := ctx.ShopClient.Record(request)
+		if err != nil {
+			return fmt.Errorf("检查SPU发布记录失败 (批次 %d/%d): %w", batchNum, totalBatches, err)
+		}
+
+		// 检查API调用是否成功
+		if response.Code != "0" {
+			return fmt.Errorf("检查SPU发布记录失败 (批次 %d/%d): %s", batchNum, totalBatches, response.Msg)
+		}
+
+		// 检查是否已存在发布记录
+		if len(response.Info.Data) > 0 {
+			// 记录警告信息，并返回不可重试错误以终止任务
+			logrus.Warnf("检测到已存在发布记录 (批次 %d/%d)，任务将被终止: %v", batchNum, totalBatches, response.Info.Data)
+			// 返回不可重试错误，终止任务且不重试
+			return NewNonRetryableError("已存在发布记录", nil)
+		}
 	}
 
-	// 调用API检查SPU发布记录
-	response, err := ctx.ShopClient.Record(request)
-	if err != nil {
-		return fmt.Errorf("检查SPU发布记录失败: %w", err)
-	}
-
-	// 检查API调用是否成功
-	if response.Code != "0" {
-		return fmt.Errorf("检查SPU发布记录失败: %s", response.Msg)
-	}
-
-	// 检查是否已存在发布记录
-	if len(response.Info.Data) > 0 {
-		// 记录警告信息，并返回不可重试错误以终止任务
-		logrus.Warnf("检测到已存在发布记录，任务将被终止: %v", response.Info.Data)
-		// 返回不可重试错误，终止任务且不重试
-		return NewNonRetryableError("已存在发布记录", nil)
-	}
-
+	logrus.Infof("SPU发布记录检查完成，未发现重复记录")
 	return nil
 }
 

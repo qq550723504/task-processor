@@ -13,13 +13,20 @@ type AvailabilityExtractor struct{}
 func (e *AvailabilityExtractor) Extract(page playwright.Page, product *Product) error {
 	availability, err := e.getAvailability(page)
 	if err != nil {
-		logrus.Infof("提取库存信息失败: %v", err)
+		logrus.Errorf("提取库存信息失败: %v", err)
 		return err
 	}
 	product.Availability = availability
 
 	// 设置IsAvailable字段
 	product.IsAvailable = e.isAvailable(availability)
+
+	// 打印库存信息详情
+	logrus.WithFields(logrus.Fields{
+		"availability": availability,
+		"is_available": product.IsAvailable,
+		"asin":         product.Asin,
+	}).Info("📦 库存信息提取完成")
 
 	return nil
 }
@@ -60,7 +67,10 @@ func (e *AvailabilityExtractor) getAvailability(page playwright.Page) (string, e
 
 		text = strings.TrimSpace(text)
 		if text != "" && e.isValidAvailabilityText(text) {
-			logrus.Infof("找到库存信息: %s (选择器: %s)", text, selector)
+			logrus.WithFields(logrus.Fields{
+				"text":     text,
+				"selector": selector,
+			}).Info("✅ 找到库存信息")
 			return e.normalizeAvailabilityText(text), nil
 		}
 	}
@@ -69,26 +79,48 @@ func (e *AvailabilityExtractor) getAvailability(page playwright.Page) (string, e
 	pageText, err := page.TextContent("body")
 	if err == nil {
 		if availability := e.extractAvailabilityFromText(pageText); availability != "" {
-			logrus.Infof("从页面文本中提取到库存信息: %s", availability)
+			logrus.WithFields(logrus.Fields{
+				"text": availability,
+			}).Info("✅ 从页面文本中提取到库存信息")
 			return availability, nil
 		}
 	}
 
-	logrus.Infof("未找到库存信息")
+	logrus.Warn("⚠️ 未找到库存信息，返回 Unknown")
 	return "Unknown", nil
 }
 
-// isValidAvailabilityText 检查文本是否是有效的库存信息
+// isValidAvailabilityText 检查文本是否是有效的库存信息（多语言支持）
 func (e *AvailabilityExtractor) isValidAvailabilityText(text string) bool {
 	text = strings.ToLower(text)
 
-	// 包含库存相关关键词
+	// 包含库存相关关键词（多语言）
 	stockKeywords := []string{
+		// 英语
 		"in stock", "out of stock", "available", "unavailable",
 		"ships", "delivery", "arrives", "sold out",
 		"temporarily out", "currently unavailable",
 		"only", "left in stock", "more on the way",
 		"usually ships", "in stock soon",
+		// 西班牙语
+		"disponible", "no disponible", "agotado",
+		"envío", "entrega", "llega",
+		"en stock", "sin stock", "temporalmente agotado",
+		"quedan", "en camino",
+		// 日语
+		"在庫あり", "在庫切れ", "一時的に在庫切れ",
+		"配送", "お届け", "発送",
+		// 德语
+		"auf lager", "nicht auf lager", "ausverkauft",
+		"versand", "lieferung",
+		// 法语
+		"en stock", "rupture de stock", "épuisé",
+		"expédition", "livraison",
+		// 意大利语
+		"disponibile", "non disponibile", "esaurito",
+		"spedizione", "consegna",
+		// 阿拉伯语
+		"متوفر", "غير متوفر", "نفذت الكمية",
 	}
 
 	for _, keyword := range stockKeywords {
@@ -129,12 +161,13 @@ func (e *AvailabilityExtractor) extractAvailabilityFromText(pageText string) str
 	return ""
 }
 
-// isAvailable 根据可用性文本判断产品是否可用
+// isAvailable 根据可用性文本判断产品是否可用（多语言支持）
 func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 	lowerText := strings.ToLower(strings.TrimSpace(availabilityText))
 
-	// 不可用的关键词
+	// 不可用的关键词（多语言）
 	unavailableKeywords := []string{
+		// 英语
 		"currently unavailable",
 		"unavailable",
 		"out of stock",
@@ -142,16 +175,47 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 		"not available",
 		"discontinued",
 		"sold out",
+		// 西班牙语
+		"no disponible",
+		"agotado",
+		"sin stock",
+		"temporalmente agotado",
+		"actualmente no disponible",
+		// 日语
+		"在庫切れ",
+		"一時的に在庫切れ",
+		"取り扱い終了",
+		"現在お取り扱いできません",
+		// 德语
+		"nicht auf lager",
+		"ausverkauft",
+		"derzeit nicht verfügbar",
+		// 法语
+		"rupture de stock",
+		"épuisé",
+		"actuellement indisponible",
+		// 意大利语
+		"non disponibile",
+		"esaurito",
+		"attualmente non disponibile",
+		// 阿拉伯语
+		"غير متوفر",
+		"نفذت الكمية",
 	}
 
 	for _, keyword := range unavailableKeywords {
 		if strings.Contains(lowerText, keyword) {
+			logrus.WithFields(logrus.Fields{
+				"keyword": keyword,
+				"result":  "不可用",
+			}).Info("❌ 匹配到不可用关键词")
 			return false
 		}
 	}
 
-	// 可用的关键词
+	// 可用的关键词（多语言）
 	availableKeywords := []string{
+		// 英语
 		"in stock",
 		"available",
 		"ships",
@@ -161,14 +225,51 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 		"more on the way",
 		"usually ships",
 		"in stock soon",
+		// 西班牙语
+		"disponible",
+		"en stock",
+		"envío",
+		"entrega",
+		"llega",
+		"quedan",
+		"en camino",
+		// 日语
+		"在庫あり",
+		"配送",
+		"お届け",
+		"発送",
+		// 德语
+		"auf lager",
+		"versand",
+		"lieferung",
+		"verfügbar",
+		// 法语
+		"en stock",
+		"disponible",
+		"expédition",
+		"livraison",
+		// 意大利语
+		"disponibile",
+		"spedizione",
+		"consegna",
+		// 阿拉伯语
+		"متوفر",
+		"التوصيل",
 	}
 
 	for _, keyword := range availableKeywords {
 		if strings.Contains(lowerText, keyword) {
+			logrus.WithFields(logrus.Fields{
+				"keyword": keyword,
+				"result":  "可用",
+			}).Info("✅ 匹配到可用关键词")
 			return true
 		}
 	}
 
 	// 如果没有明确的关键词，默认为不可用
+	logrus.WithFields(logrus.Fields{
+		"text": availabilityText,
+	}).Warn("⚠️ 未匹配到任何关键词，默认判断为不可用")
 	return false
 }

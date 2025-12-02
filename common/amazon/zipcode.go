@@ -297,14 +297,11 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 
 	// 如果两个输入框都找到了，说明是日本站的分离式输入
 	if jpZipInput1 != nil && jpZipInput2 != nil {
-		logrus.Infof("检测到日本站分离式邮编输入框")
 		// 日本邮编格式: XXX-XXXX，需要分成两部分填写
 		parts := regexp.MustCompile(`(\d{3})-?(\d{4})`).FindStringSubmatch(zipcode)
 		if len(parts) == 3 {
 			part1 := parts[1] // 前3位
 			part2 := parts[2] // 后4位
-
-			logrus.Infof("填写日本邮编: 前3位=%s, 后4位=%s", part1, part2)
 
 			// 清空并填写第一个输入框（前3位）
 			if err := jpZipInput1.Clear(); err != nil {
@@ -316,7 +313,6 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 				}
 				return fmt.Errorf("填写日本邮编第一部分失败: %w", err)
 			}
-			logrus.Infof("成功填写第一个输入框: %s", part1)
 
 			// 等待一下，确保第一个输入框的值已经设置
 			time.Sleep(300 * time.Millisecond)
@@ -331,8 +327,6 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 				}
 				return fmt.Errorf("填写日本邮编第二部分失败: %w", err)
 			}
-			logrus.Infof("成功填写第二个输入框: %s", part2)
-
 			logrus.Infof("成功填写日本站分离式邮编")
 		} else {
 			return fmt.Errorf("日本邮编格式不正确，应为 XXX-XXXX 格式: %s", zipcode)
@@ -465,76 +459,8 @@ func (zs *ZipcodeSetter) setZipcode(page playwright.Page, zipcode string) error 
 		time.Sleep(1 * time.Second)
 	}
 
-	// 检查是否有 "Continue Shopping" 按钮需要点击（多语言支持）
-	continueShoppingSelectors := []string{
-		// 英语
-		"button:has-text('Continue Shopping')",
-		"button:has-text('Continue shopping')",
-		"a:has-text('Continue Shopping')",
-		"a:has-text('Continue shopping')",
-		"button:has-text('Continue')",
-		"a:has-text('Continue')",
-		// 日语
-		"button:has-text('買い物を続ける')",
-		"a:has-text('買い物を続ける')",
-		"button:has-text('続ける')",
-		"a:has-text('続ける')",
-		// 德语
-		"button:has-text('Weiter einkaufen')",
-		"a:has-text('Weiter einkaufen')",
-		"button:has-text('Weiter')",
-		"a:has-text('Weiter')",
-		// 法语
-		"button:has-text('Continuer mes achats')",
-		"a:has-text('Continuer mes achats')",
-		"button:has-text('Continuer')",
-		"a:has-text('Continuer')",
-		// 西班牙语
-		"button:has-text('Seguir comprando')",
-		"a:has-text('Seguir comprando')",
-		"button:has-text('Continuar')",
-		"a:has-text('Continuar')",
-		// 意大利语
-		"button:has-text('Continua lo shopping')",
-		"a:has-text('Continua lo shopping')",
-		"button:has-text('Continua')",
-		"a:has-text('Continua')",
-		// 葡萄牙语
-		"button:has-text('Continuar comprando')",
-		"a:has-text('Continuar comprando')",
-		"button:has-text('Continuar')",
-		"a:has-text('Continuar')",
-		// 荷兰语
-		"button:has-text('Verder winkelen')",
-		"a:has-text('Verder winkelen')",
-		"button:has-text('Verder')",
-		"a:has-text('Verder')",
-		// 中文
-		"button:has-text('继续购物')",
-		"a:has-text('继续购物')",
-		"button:has-text('继续')",
-		"a:has-text('继续')",
-	}
-
-	for _, selector := range continueShoppingSelectors {
-		if page.IsClosed() {
-			break
-		}
-
-		locator := page.Locator(selector)
-		if count, err := locator.Count(); err == nil && count > 0 {
-			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				logrus.Infof("发现 Continue Shopping 按钮，尝试点击")
-				if err := locator.Click(); err != nil {
-					logrus.Infof("点击 Continue Shopping 按钮失败: %v", err)
-				} else {
-					logrus.Infof("成功点击 Continue Shopping 按钮")
-					time.Sleep(1 * time.Second)
-					break
-				}
-			}
-		}
-	}
+	// 检查是否有 "Continue Shopping" 按钮需要点击（使用公共方法）
+	handleContinueShoppingButtonInZipcode(page)
 
 	logrus.Infof("邮编设置操作完成")
 	return nil
@@ -665,4 +591,33 @@ func (zs *ZipcodeSetter) checkIfPriceAvailable(page playwright.Page) bool {
 	}
 
 	return false
+}
+
+// handleContinueShoppingButtonInZipcode 处理"继续购物"按钮（在zipcode设置流程中使用）
+func handleContinueShoppingButtonInZipcode(page playwright.Page) {
+	if page.IsClosed() {
+		return
+	}
+
+	continueShoppingSelectors := getContinueShoppingSelectors()
+
+	for _, selector := range continueShoppingSelectors {
+		if page.IsClosed() {
+			break
+		}
+
+		locator := page.Locator(selector)
+		if count, err := locator.Count(); err == nil && count > 0 {
+			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
+				logrus.Infof("发现 Continue Shopping 按钮，尝试点击")
+				if err := locator.Click(); err != nil {
+					logrus.Infof("点击 Continue Shopping 按钮失败: %v", err)
+				} else {
+					logrus.Infof("成功点击 Continue Shopping 按钮")
+					time.Sleep(1 * time.Second)
+					break
+				}
+			}
+		}
+	}
 }

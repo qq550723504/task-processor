@@ -228,3 +228,196 @@ func (p *ProductAPI) Record(request *product.ProductRecordRequest) (*product.Rec
 
 	return &result, nil
 }
+
+// ListProducts 获取产品列表
+func (p *ProductAPI) ListProducts(pageNum, pageSize int, request *product.ProductListRequest) (*product.ProductListResponse, error) {
+	url := fmt.Sprintf("%s%s?page_num=%d&page_size=%d", p.GetBaseURL(), productListEndpoint, pageNum, pageSize)
+
+	var result product.ProductListResponse
+	if err := p.apiRequest(http.MethodPost, url, request, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理
+	if result.Code != "0" {
+		// 检查认证过期
+		if result.Code == "20302" {
+			return nil, &api.AuthenticationExpiredError{
+				TenantID: p.GetTenantID(),
+				ShopID:   p.GetShopID(),
+				Code:     result.Code,
+				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
+			}
+		}
+		return nil, &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("获取产品列表失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return &result, nil
+}
+
+// QueryStock 查询产品库存
+func (p *ProductAPI) QueryStock(request *product.StockQueryRequest) (*product.StockQueryResponse, error) {
+	url := fmt.Sprintf("%s%s", p.GetBaseURL(), queryStockEndpoint)
+
+	var result product.StockQueryResponse
+	if err := p.apiRequest(http.MethodPost, url, request, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理
+	if result.Code != "0" {
+		// 检查认证过期
+		if result.Code == "20302" {
+			return nil, &api.AuthenticationExpiredError{
+				TenantID: p.GetTenantID(),
+				ShopID:   p.GetShopID(),
+				Code:     result.Code,
+				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
+			}
+		}
+		return nil, &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("查询库存失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return &result, nil
+}
+
+// QueryPrice 查询产品价格
+func (p *ProductAPI) QueryPrice(spuName string) (*product.PriceQueryResponse, error) {
+	url := fmt.Sprintf("%s%s", p.GetBaseURL(), queryPriceEndpoint)
+
+	request := &product.PriceQueryRequest{
+		SpuName: spuName,
+	}
+
+	var result product.PriceQueryResponse
+	if err := p.apiRequest(http.MethodPost, url, request, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理
+	if result.Code != "0" {
+		// 检查认证过期
+		if result.Code == "20302" {
+			return nil, &api.AuthenticationExpiredError{
+				TenantID: p.GetTenantID(),
+				ShopID:   p.GetShopID(),
+				Code:     result.Code,
+				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
+			}
+		}
+		return nil, &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("查询价格失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return &result, nil
+}
+
+// QueryInventory 查询产品库存详情
+func (p *ProductAPI) QueryInventory(spuName string) (*product.InventoryQueryResponse, error) {
+	url := fmt.Sprintf("%s%s", p.GetBaseURL(), queryInventoryEndpoint)
+
+	request := &product.InventoryQueryRequest{
+		SpuName: spuName,
+	}
+
+	var result product.InventoryQueryResponse
+	if err := p.apiRequest(http.MethodPost, url, request, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理
+	if result.Code != "0" {
+		// 检查认证过期
+		if result.Code == "20302" {
+			return nil, &api.AuthenticationExpiredError{
+				TenantID: p.GetTenantID(),
+				ShopID:   p.GetShopID(),
+				Code:     result.Code,
+				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
+			}
+		}
+		return nil, &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("查询库存详情失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return &result, nil
+}
+
+// UpdateInventory 更新产品库存
+func (p *ProductAPI) UpdateInventory(request *product.InventoryUpdateRequest) error {
+	url := fmt.Sprintf("%s%s", p.GetBaseURL(), updateInventoryEndpoint)
+
+	var result product.InventoryUpdateResponse
+	if err := p.apiRequest(http.MethodPost, url, request, &result); err != nil {
+		return err
+	}
+
+	// 统一错误处理
+	if result.Code != "0" {
+		// 检查认证过期
+		if result.Code == "20302" {
+			return &api.AuthenticationExpiredError{
+				TenantID: p.GetTenantID(),
+				ShopID:   p.GetShopID(),
+				Code:     result.Code,
+				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
+			}
+		}
+		return &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("更新库存失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return nil
+}
+
+// QueryCostPrice 查询成本价格（半托店铺）
+func (p *ProductAPI) QueryCostPrice(spuName string, skcNameList []string) (*product.CostPriceQueryResponse, error) {
+	url := fmt.Sprintf("%s%s", p.GetBaseURL(), queryCostPriceEndpoint)
+
+	request := &product.CostPriceQueryRequest{
+		SpuName:     spuName,
+		SkcNameList: skcNameList,
+	}
+
+	var result product.CostPriceQueryResponse
+	if err := p.apiRequest(http.MethodPost, url, request, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理
+	if result.Code != "0" {
+		// 检查认证过期
+		if result.Code == "20302" {
+			return nil, &api.AuthenticationExpiredError{
+				TenantID: p.GetTenantID(),
+				ShopID:   p.GetShopID(),
+				Code:     result.Code,
+				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
+			}
+		}
+		return nil, &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("查询成本价格失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return &result, nil
+}

@@ -189,11 +189,6 @@ func (h *TaskHandler) updateTaskStatusToAPI(taskID string, status types.TaskStat
 	h.updateTaskStatusToAPIWithMode(taskID, status, errorMsg, false)
 }
 
-// updateTaskStatusToAPISync 同步更新任务状态到API
-func (h *TaskHandler) updateTaskStatusToAPISync(taskID string, status types.TaskStatus, errorMsg string) error {
-	return h.updateTaskStatusToAPIWithMode(taskID, status, errorMsg, true)
-}
-
 // updateTaskStatusToAPIWithMode 更新任务状态到API（支持同步/异步模式）
 func (h *TaskHandler) updateTaskStatusToAPIWithMode(taskID string, status types.TaskStatus, errorMsg string, sync bool) error {
 	var id int64

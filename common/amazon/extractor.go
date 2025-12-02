@@ -30,6 +30,8 @@ func NewCompositeExtractor() *CompositeExtractor {
 			&CategoriesExtractor{},   // 分类提取器
 			NewParentAsinExtractor(), // Parent ASIN提取器
 			&SellerExtractor{},       // 卖家提取器
+			&ShipsFromExtractor{},    // 发货地提取器
+			&DeliveryExtractor{},     // 配送信息提取器
 			&DescriptionExtractor{},
 			&ProductDetailsExtractor{},  // 产品详情提取器
 			NewVariationsExtractor(),    // 变体提取器

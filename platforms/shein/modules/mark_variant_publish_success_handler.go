@@ -49,16 +49,26 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *TaskContext) error {
 			}
 		}
 
+		logrus.Infof("📊 开始标记 %d 个 SKU 为已发布", len(skus))
+		successCount := 0
+		failCount := 0
+
 		for _, sku := range skus {
 			// 使用GetAsinBySku函数从AsinSkuMap中反向查找原始ASIN
 			if asin := GetAsinBySku(ctx, sku); asin != "" {
 				if err := h.markVariantPublished(ctx, asin, sku); err != nil {
 					logrus.Errorf("标记变体发布成功失败 (ASIN: %s, SKU: %s): %v", asin, sku, err)
+					failCount++
+				} else {
+					successCount++
 				}
 			} else {
 				logrus.Warnf("⚠️ 未找到SKU %s 对应的ASIN", sku)
+				failCount++
 			}
 		}
+
+		logrus.Infof("📊 标记完成: 成功 %d 个, 失败 %d 个, 总计 %d 个", successCount, failCount, len(skus))
 	} else {
 		logrus.Warnf("⚠️ 任务信息或Shein响应不可用，无法标记任务完成")
 	}
@@ -159,10 +169,21 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *TaskContext
 	// 调用API创建产品导入映射关系
 	id, err := mappingClient.CreateProductImportMapping(createReq)
 	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"asin":                       asin,
+			"sku":                        sku,
+			"platform_parent_product_id": createReq.PlatformParentProductId,
+			"error":                      err.Error(),
+		}).Errorf("❌ 创建产品导入映射关系失败")
 		return fmt.Errorf("创建产品导入映射关系失败: %v", err)
 	}
 
-	logrus.Infof("✅ 成功标记变体为已发布 (ID: %d, ASIN: %s, SKU: %s)", id, asin, sku)
+	logrus.WithFields(logrus.Fields{
+		"id":                         id,
+		"asin":                       asin,
+		"sku":                        sku,
+		"platform_parent_product_id": createReq.PlatformParentProductId,
+	}).Infof("✅ 成功标记变体为已发布")
 	return nil
 }
 

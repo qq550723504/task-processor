@@ -2,6 +2,7 @@ package api
 
 // ProductImportMappingCreateReqDTO 产品导入映射关系创建请求DTO
 type ProductImportMappingCreateReqDTO struct {
+	ID                      *int64   `json:"id,omitempty"` // 映射关系ID（更新时使用）
 	TenantID                int64    `json:"tenantId"`
 	ImportTaskId            int64    `json:"importTaskId"`                      // 导入任务ID
 	StoreId                 int64    `json:"storeId"`                           // 店铺ID
@@ -65,6 +66,18 @@ type ProductImportMappingGetBySkuReqDTO struct {
 	StoreId int64  `json:"storeId"` // 店铺ID
 }
 
+// ProductImportMappingGetByTaskAndSkuReqDTO 根据任务ID和SKU查询映射关系请求DTO
+type ProductImportMappingGetByTaskAndSkuReqDTO struct {
+	ImportTaskId int64  `json:"importTaskId"` // 导入任务ID
+	Sku          string `json:"sku"`          // SKU编号
+}
+
+// ProductImportMappingGetByPlatformProductIdAndStoreReqDTO 通过平台产品ID和店铺ID获取产品导入映射关系请求DTO
+type ProductImportMappingGetByPlatformProductIdAndStoreReqDTO struct {
+	PlatformProductId string `json:"platformProductId"` // 平台产品ID（如SHEIN的SkuCode）
+	StoreId           int64  `json:"storeId"`           // 店铺ID
+}
+
 // ProductImportMappingAPI 产品导入映射API接口定义
 type ProductImportMappingAPI interface {
 	// CreateProductImportMapping 创建产品导入映射关系
@@ -78,4 +91,13 @@ type ProductImportMappingAPI interface {
 
 	// GetProductImportMappingBySku 通过SKU获取产品导入映射关系
 	GetProductImportMappingBySku(req *ProductImportMappingGetBySkuReqDTO) (*ProductImportMappingRespDTO, error)
+
+	// GetProductImportMappingByTaskAndSku 根据任务ID和SKU查询映射关系
+	GetProductImportMappingByTaskAndSku(importTaskId int64, sku string) (*ProductImportMappingRespDTO, error)
+
+	// GetProductImportMappingByPlatformProductIdAndStore 通过平台产品ID和店铺ID获取产品导入映射关系
+	GetProductImportMappingByPlatformProductIdAndStore(req *ProductImportMappingGetByPlatformProductIdAndStoreReqDTO) (*ProductImportMappingRespDTO, error)
+
+	// UpdateProductImportMapping 更新产品导入映射关系
+	UpdateProductImportMapping(updateReqDTO *ProductImportMappingCreateReqDTO) error
 }

@@ -1,6 +1,7 @@
-﻿package management
+package management
 
 import (
+	"fmt"
 	"sync"
 	"task-processor/common/config"
 	"task-processor/common/management/impl"
@@ -22,6 +23,9 @@ type ClientManager struct {
 
 	// 品类限制缓存
 	categoryRestrictionCache *CategoryRestrictionCache
+
+	// 数据新鲜度天数
+	dataFreshnessDays int
 }
 
 // NewClientManager 创建新的客户端管理器
@@ -37,12 +41,21 @@ func NewClientManager(cfg *config.ManagementConfig) *ClientManager {
 		baseURL: baseURL,
 		// 设置默认的图片下载超时时间 - 增加到2分钟适应Amazon图片服务器
 		imageDownloadTimeout: 120 * time.Second,
+		// 默认数据新鲜度7天
+		dataFreshnessDays: 7,
 	}
 
 	// 初始化品类限制缓存
 	cm.categoryRestrictionCache = NewCategoryRestrictionCache(cm)
 
 	return cm
+}
+
+// SetDataFreshnessDays 设置数据新鲜度天数
+func (cm *ClientManager) SetDataFreshnessDays(days int) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.dataFreshnessDays = days
 }
 
 // GetClient 获取或创建管理系统的API客户端
@@ -93,9 +106,14 @@ func (cm *ClientManager) GetStoreClient() *impl.StoreAPIClientImpl {
 func (cm *ClientManager) GetRawJsonDataClient() *impl.RawJsonDataAPIClientImpl {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.RawJsonDataAPIClientImpl{
+	client := &impl.RawJsonDataAPIClientImpl{
 		ManagementAPIClientImpl: baseClient,
 	}
+	// 设置数据新鲜度天数
+	cm.mutex.RLock()
+	client.SetDataFreshnessDays(cm.dataFreshnessDays)
+	cm.mutex.RUnlock()
+	return client
 }
 
 // GetFilterRuleClient 获取筛选规则API客户端
@@ -170,9 +188,46 @@ func (cm *ClientManager) GetProductImportMappingClient() *impl.ProductImportMapp
 	}
 }
 
+// GetProductDataClient 获取产品数据API客户端
+func (cm *ClientManager) GetProductDataClient(storeID int64) *impl.ProductDataAPIClientImpl {
+	// 直接基于基础客户端创建
+	baseClient := cm.GetClient()
+	return &impl.ProductDataAPIClientImpl{
+		ManagementAPIClientImpl: baseClient,
+		StoreID:                 storeID,
+	}
+}
+
+// GetProductDataClientWithTenant 获取产品数据API客户端（指定租户ID）
+func (cm *ClientManager) GetProductDataClientWithTenant(storeID, tenantID int64) *impl.ProductDataAPIClientImpl {
+	// 为每个店铺创建独立的客户端
+	baseClient := impl.NewManagementAPIClientWithBaseURL(cm.baseURL)
+
+	// 从共享客户端获取访问令牌
+	sharedClient := cm.GetClient()
+	accessToken, _ := sharedClient.GetAccessToken()
+
+	// 设置访问令牌和租户ID
+	baseClient.SetUserToken(accessToken, fmt.Sprintf("%d", tenantID))
+
+	return &impl.ProductDataAPIClientImpl{
+		ManagementAPIClientImpl: baseClient,
+		StoreID:                 storeID,
+	}
+}
+
 // GetCategoryRestrictionCache 获取品类限制缓存
 func (cm *ClientManager) GetCategoryRestrictionCache() *CategoryRestrictionCache {
 	return cm.categoryRestrictionCache
+}
+
+// GetInventoryRecordClient 获取库存记录API客户端
+func (cm *ClientManager) GetInventoryRecordClient() *impl.InventoryRecordAPIClientImpl {
+	// 直接基于基础客户端创建
+	baseClient := cm.GetClient()
+	return &impl.InventoryRecordAPIClientImpl{
+		ManagementAPIClientImpl: baseClient,
+	}
 }
 
 // GetImageDownloader 获取图片下载客户端

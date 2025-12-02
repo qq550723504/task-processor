@@ -46,6 +46,8 @@ func NewSheinProcessorWithSharedResources(cfg *config.Config, managementClientMg
 	// 如果没有传入managementClient，则创建新的
 	if managementClientMgr == nil {
 		managementClientMgr = management.NewClientManager(&cfg.Management)
+		// 设置数据新鲜度天数
+		managementClientMgr.SetDataFreshnessDays(cfg.Amazon.DataFreshnessDays)
 	}
 
 	memoryManager := memory.NewMemoryManager(managementClientMgr)
@@ -115,6 +117,11 @@ func (p *SheinProcessor) ProcessTask(ctx context.Context, task modules.Task) err
 // GetShopClientManager 获取店铺客户端管理器
 func (p *SheinProcessor) GetShopClientManager() *shops.ClientManager {
 	return p.shopClientMgr
+}
+
+// GetMemoryManager 获取内存管理器
+func (p *SheinProcessor) GetMemoryManager() *memory.MemoryManager {
+	return p.memoryManager
 }
 
 // GetManagementClientManager 获取管理客户端管理器

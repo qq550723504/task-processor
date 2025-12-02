@@ -25,7 +25,8 @@ type FilterRuleRespDTO struct {
 	RatingMin       *float64 `json:"ratingMin"`       // 最低评分
 	ReviewCountMin  *int     `json:"reviewCountMin"`  // 最低评论数量
 	DeliveryTimeMax *int     `json:"deliveryTimeMax"` // 最大发货时效（小时）
-	Status          int16    `json:"status"`          // 状态：0-禁用，1-启用
+	FulfillmentType string   `json:"fulfillmentType"` // 配送方式：FBA-亚马逊配送，FBM-商家配送，ALL-都可以
+	Status          int16    `json:"status"`          // 状态：1-禁用，0-启用
 	Remark          string   `json:"remark"`          // 备注
 	CreateTime      int64    `json:"createTime"`      // 创建时间
 }

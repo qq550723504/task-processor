@@ -286,6 +286,8 @@ func ParseAmazonProduct(jsonData string) (*amazon.Product, error) {
 	// 首先尝试解析为单个对象
 	var product amazon.Product
 	if err := json.Unmarshal([]byte(jsonData), &product); err == nil {
+		// 重新计算 IsAvailable 字段（修复历史数据中的错误）
+		product.IsAvailable = recalculateIsAvailable(&product)
 		return &product, nil
 	}
 
@@ -293,12 +295,66 @@ func ParseAmazonProduct(jsonData string) (*amazon.Product, error) {
 	var products []amazon.Product
 	if err := json.Unmarshal([]byte(jsonData), &products); err == nil {
 		if len(products) > 0 {
+			// 重新计算 IsAvailable 字段（修复历史数据中的错误）
+			products[0].IsAvailable = recalculateIsAvailable(&products[0])
 			return &products[0], nil
 		}
 		return nil, fmt.Errorf("JSON数组为空")
 	}
 
 	return nil, fmt.Errorf("解析JSON数据失败")
+}
+
+// recalculateIsAvailable 重新计算产品是否可用
+func recalculateIsAvailable(product *amazon.Product) bool {
+	lowerText := strings.ToLower(strings.TrimSpace(product.Availability))
+
+	// 不可用的关键词（优先检查）
+	unavailableKeywords := []string{
+		"currently unavailable", "unavailable", "out of stock",
+		"temporarily out of stock", "not available", "discontinued", "sold out",
+		"no disponible", "agotado", "sin stock", "temporalmente agotado",
+		"actualmente no disponible", "在庫切れ", "一時的に在庫切れ",
+		"取り扱い終了", "現在お取り扱いでき���せん",
+	}
+
+	for _, keyword := range unavailableKeywords {
+		if strings.Contains(lowerText, keyword) {
+			logrus.WithFields(logrus.Fields{
+				"asin":         product.Asin,
+				"availability": product.Availability,
+				"keyword":      keyword,
+			}).Debug("❌ 匹配到不可用关键词，判定为不可用")
+			return false
+		}
+	}
+
+	// 可用的关键词
+	availableKeywords := []string{
+		"in stock", "available", "ships", "delivery", "arrives",
+		"left in stock", "more on the way", "usually ships", "in stock soon",
+		"disponible", "en stock", "envío", "entrega", "llega",
+		"在庫あり", "配送", "お届け", "発送",
+	}
+
+	for _, keyword := range availableKeywords {
+		if strings.Contains(lowerText, keyword) {
+			logrus.WithFields(logrus.Fields{
+				"asin":         product.Asin,
+				"availability": product.Availability,
+				"keyword":      keyword,
+			}).Debug("✅ 匹配到可用关键词，判定为可用")
+			return true
+		}
+	}
+
+	// 无法明确判断时，保持原有值
+	logrus.WithFields(logrus.Fields{
+		"asin":           product.Asin,
+		"availability":   product.Availability,
+		"original_value": product.IsAvailable,
+	}).Debug("⚠️ 无法明确判断可用性，保持原有值")
+	return product.IsAvailable
 }
 
 // GetAmazonDomainByRegion 根据地区获取Amazon域名
@@ -324,6 +380,8 @@ func GetAmazonDomainByRegion(region string) string {
 		"japan":                "amazon.co.jp",
 		"au":                   "amazon.com.au",
 		"australia":            "amazon.com.au",
+		"mx":                   "amazon.com.mx",
+		"mexico":               "amazon.com.mx",
 		"ae":                   "amazon.ae",
 		"uae":                  "amazon.ae",
 		"united arab emirates": "amazon.ae",
@@ -392,6 +450,8 @@ func GetZipcodeForRegion(region string, configZipcodes map[string]string) string
 		"japan":                "153-0064",
 		"au":                   "2000", // 悉尼
 		"australia":            "2000",
+		"mx":                   "11000", // 墨西哥城
+		"mexico":               "11000",
 		"ae":                   "", // 阿联酋（不需要邮编）
 		"uae":                  "",
 		"united arab emirates": "",

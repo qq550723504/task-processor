@@ -84,11 +84,24 @@ func (b *BaseAPIClient) createHeaders(requestURL string) map[string]string {
 
 // extractBaseURL 从完整URL中提取基础URL
 func (b *BaseAPIClient) extractBaseURL(fullURL string) string {
-	parsedURL, err := url.Parse(fullURL)
+	// 如果 URL 不包含协议，添加默认协议以便正确解析
+	urlToParse := fullURL
+	if !strings.HasPrefix(fullURL, "http://") && !strings.HasPrefix(fullURL, "https://") {
+		urlToParse = "https://" + fullURL
+	}
+
+	parsedURL, err := url.Parse(urlToParse)
 	if err != nil {
 		return fullURL
 	}
-	return fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
+
+	// 如果 URL 缺少协议，默认使用 https
+	scheme := parsedURL.Scheme
+	if scheme == "" {
+		scheme = "https"
+	}
+
+	return fmt.Sprintf("%s://%s", scheme, parsedURL.Host)
 }
 
 // extractAPIPath 从完整URL中提取API路径
@@ -215,5 +228,18 @@ func (b *BaseAPIClient) GetShopType() string {
 }
 
 func (b *BaseAPIClient) GetBaseURL() string {
-	return b.baseUrl
+	// 确保 baseUrl 包含协议前缀
+	if b.baseUrl == "" {
+		return ""
+	}
+
+	// 如果已经包含协议，直接返回
+	if strings.HasPrefix(b.baseUrl, "http://") || strings.HasPrefix(b.baseUrl, "https://") {
+		return b.baseUrl
+	}
+
+	// 如果缺少协议，添加 https://
+	// 处理可能以 / 开头的情况
+	cleanURL := strings.TrimPrefix(b.baseUrl, "/")
+	return "https://" + cleanURL
 }

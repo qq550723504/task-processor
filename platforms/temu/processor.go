@@ -49,6 +49,8 @@ func NewTemuProcessorWithManagementClient(cfg *config.Config, logger *logrus.Log
 	// 如果没有传入managementClient，则创建新的
 	if managementClient == nil {
 		managementClient = management.NewClientManager(&cfg.Management)
+		// 设置数据新鲜度天数
+		managementClient.SetDataFreshnessDays(cfg.Amazon.DataFreshnessDays)
 	}
 
 	// 创建内存管理器

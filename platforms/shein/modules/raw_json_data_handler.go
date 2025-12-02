@@ -10,61 +10,48 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// RawJsonDataHandler 获取原始Json数据处理器（使用公共ProductFetcher）
+// RawJsonDataHandler 获取原始Json数据处理器
 type RawJsonDataHandler struct {
-	// 添加管理系统的原始JSON数据客户端（用于变体确认）
-	rawJsonDataClient interface {
-		GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
-		ConfirmProductVariants(req *api.ProductVariantConfirmationReqDTO) (bool, error)
-	}
-	// 产品数据获取器
 	fetcher *product.ProductFetcher
 }
 
-// rawJsonDataClientAdapter 适配器，将SHEIN的客户端接口适配到ProductFetcher需要的接口
-type rawJsonDataClientAdapter struct {
-	client interface {
-		GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
-		ConfirmProductVariants(req *api.ProductVariantConfirmationReqDTO) (bool, error)
-	}
+// sheinRawJsonDataClient SHEIN 原始 JSON 数据客户端（简单包装）
+type sheinRawJsonDataClient struct {
+	client api.RawJsonDataAPI
 }
 
-func (a *rawJsonDataClientAdapter) GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error) {
-	return a.client.GetRawJsonData(req)
+func (c *sheinRawJsonDataClient) GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error) {
+	return c.client.GetRawJsonData(req)
 }
 
-func (a *rawJsonDataClientAdapter) CreateRawJsonData(req *api.RawJsonDataCreateReqDTO) (int64, error) {
-	// SHEIN不需要保存数据到服务器，返回0表示成功
-	logrus.Debug("[SHEIN] CreateRawJsonData 被调用，但SHEIN不需要保存数据")
-	return 0, nil
+func (c *sheinRawJsonDataClient) CreateRawJsonData(req *api.RawJsonDataCreateReqDTO) (int64, error) {
+	return c.client.CreateRawJsonData(req)
 }
 
 // NewRawJsonDataHandler 创建新的获取原始Json数据处理器
-// 注意：在pipeline.go中需要传入管理系统的客户端和Amazon配置
-func NewRawJsonDataHandler(rawJsonDataClient interface {
-	GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
-	ConfirmProductVariants(req *api.ProductVariantConfirmationReqDTO) (bool, error)
-}, amazonConfig *config.AmazonConfig, amazonProcessor interface{}) *RawJsonDataHandler {
-
-	// 提取Amazon处理器
+func NewRawJsonDataHandler(
+	rawJsonDataClient api.RawJsonDataAPI,
+	amazonConfig *config.AmazonConfig,
+	amazonProcessor interface{},
+) *RawJsonDataHandler {
+	// 提取 Amazon 处理器
 	var ap *amazon.AmazonProcessor
 	if amazonProcessor != nil {
 		if processor, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
 			ap = processor
-			logrus.Info("[SHEIN] 使用共享的Amazon爬虫实例")
+			logrus.Info("[SHEIN] 使用共享的 Amazon 爬虫实例")
 		}
 	} else if amazonConfig != nil && amazonConfig.Enabled {
 		// 如果没有提供共享实例，则创建新的（向后兼容）
 		ap = amazon.NewAmazonProcessor(amazonConfig)
-		logrus.Info("[SHEIN] Amazon爬虫已启用")
+		logrus.Info("[SHEIN] Amazon 爬虫已启用")
 	}
 
-	// 使用适配器包装客户端
-	adapter := &rawJsonDataClientAdapter{client: rawJsonDataClient}
+	// 包装客户端
+	client := &sheinRawJsonDataClient{client: rawJsonDataClient}
 
 	return &RawJsonDataHandler{
-		rawJsonDataClient: rawJsonDataClient,
-		fetcher:           product.NewProductFetcher(adapter, amazonConfig, ap),
+		fetcher: product.NewProductFetcher(client, amazonConfig, ap),
 	}
 }
 

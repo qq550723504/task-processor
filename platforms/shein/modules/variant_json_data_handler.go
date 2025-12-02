@@ -1,6 +1,7 @@
 ﻿package modules
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"task-processor/common/amazon"
@@ -13,11 +14,8 @@ import (
 
 // VariantJsonDataHandler 获取所有变体原始Json数据处理器
 type VariantJsonDataHandler struct {
-	// 添加管理系统的原始JSON数据客户端
-	rawJsonDataClient interface {
-		GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
-		ConfirmProductVariants(req *api.ProductVariantConfirmationReqDTO) (bool, error)
-	}
+	// 原始JSON数据客户端
+	rawJsonDataClient api.RawJsonDataAPI
 	// Amazon爬虫处理器
 	amazonProcessor *amazon.AmazonProcessor
 	// Amazon配置
@@ -25,11 +23,11 @@ type VariantJsonDataHandler struct {
 }
 
 // NewVariantJsonDataHandler 创建新的获取变体原始Json数据处理器
-// 注意：在pipeline.go中需要传入管理系统的客户端和Amazon配置
-func NewVariantJsonDataHandler(rawJsonDataClient interface {
-	GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
-	ConfirmProductVariants(req *api.ProductVariantConfirmationReqDTO) (bool, error)
-}, amazonConfig *config.AmazonConfig, amazonProcessor interface{}) *VariantJsonDataHandler {
+func NewVariantJsonDataHandler(
+	rawJsonDataClient api.RawJsonDataAPI,
+	amazonConfig *config.AmazonConfig,
+	amazonProcessor interface{},
+) *VariantJsonDataHandler {
 	handler := &VariantJsonDataHandler{
 		rawJsonDataClient: rawJsonDataClient,
 		amazonConfig:      amazonConfig,
@@ -166,7 +164,7 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *TaskCo
 	// 批量处理
 	results := h.amazonProcessor.ProcessBatch(requests)
 
-	// 转换结果
+	// 收集结果并保存
 	variants := make([]amazon.Product, 0, len(results))
 	successCount := 0
 	for i, result := range results {
@@ -175,10 +173,12 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *TaskCo
 			continue
 		}
 
-		variant := h.convertAmazonProduct(result.Product)
-		if variant != nil {
-			variants = append(variants, *variant)
+		if result.Product != nil {
+			variants = append(variants, *result.Product)
 			successCount++
+
+			// 异步保存抓取到的变体数据
+			go h.saveVariantData(asins[i], ctx.Task.Region, result.Product, ctx.Task.TenantID, ctx.Task.StoreID)
 		}
 	}
 
@@ -187,101 +187,29 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *TaskCo
 	return variants
 }
 
-// fetchVariantFromAmazonCrawler 使用Amazon爬虫抓取单个变体数据（保留用于兼容）
-func (h *VariantJsonDataHandler) fetchVariantFromAmazonCrawler(ctx *TaskContext, asin string) (*amazon.Product, error) {
-	if h.amazonProcessor == nil {
-		return nil, fmt.Errorf("Amazon爬虫未初始化")
-	}
-
-	// 使用公共函数获取地区信息
-	domain := product.GetAmazonDomainByRegion(ctx.Task.Region)
-	zipcode := product.GetZipcodeForRegion(ctx.Task.Region, h.amazonConfig.Zipcodes)
-	url := fmt.Sprintf("https://www.%s/dp/%s?th=1&psc=1", domain, asin)
-
-	logrus.Infof("抓取变体: Region=%s, Domain=%s, URL=%s, Zipcode=%s",
-		ctx.Task.Region, domain, url, zipcode)
-
-	// 调用Amazon爬虫
-	amazonProduct, err := h.amazonProcessor.Process(url, zipcode)
+// saveVariantData 保存变体数据到数据库（异步）
+func (h *VariantJsonDataHandler) saveVariantData(asin, region string, product *amazon.Product, tenantID, storeID int64) {
+	rawJSON, err := json.Marshal(product)
 	if err != nil {
-		return nil, fmt.Errorf("抓取变体失败: %w", err)
+		logrus.WithError(err).WithField("asin", asin).Error("序列化变体数据失败")
+		return
 	}
 
-	// 转换数据格式
-	return h.convertAmazonProduct(amazonProduct), nil
-}
-
-// convertAmazonProduct 转换Amazon产品数据格式
-func (h *VariantJsonDataHandler) convertAmazonProduct(product *amazon.Product) *amazon.Product {
-	if product == nil {
-		return nil
+	createReq := &api.RawJsonDataCreateReqDTO{
+		TenantID:    tenantID,
+		Platform:    "Amazon",
+		Region:      region,
+		ProductID:   asin,
+		RawJsonData: string(rawJSON),
+		StoreID:     storeID,
+		Creator:     "variant_handler",
 	}
 
-	// 转换变体数据
-	variations := make([]amazon.Variation, 0, len(product.Variations))
-	for _, v := range product.Variations {
-		variation := amazon.Variation{
-			Asin:       v.Asin,
-			Name:       v.Name,
-			Price:      v.Price,
-			Currency:   v.Currency,
-			Image:      v.Image,
-			Attributes: v.Attributes,
-		}
-		variations = append(variations, variation)
-	}
-
-	// 转换变体值
-	variationsValues := make([]amazon.VariationValue, 0, len(product.VariationsValues))
-	for _, vv := range product.VariationsValues {
-		variationsValues = append(variationsValues, amazon.VariationValue{
-			VariantName: vv.VariantName,
-			Values:      vv.Values,
-		})
-	}
-
-	// 转换产品详情
-	productDetails := make([]amazon.ProductDetail, 0, len(product.ProductDetails))
-	for _, pd := range product.ProductDetails {
-		productDetails = append(productDetails, amazon.ProductDetail{
-			Type:  pd.Type,
-			Value: pd.Value,
-		})
-	}
-
-	return &amazon.Product{
-		Title:             product.Title,
-		Brand:             product.Brand,
-		Description:       product.Description,
-		Features:          product.Features,
-		FinalPrice:        product.FinalPrice,
-		InitialPrice:      product.InitialPrice,
-		Currency:          product.Currency,
-		Availability:      product.Availability,
-		Rating:            product.Rating,
-		ReviewsCount:      product.ReviewsCount,
-		ImageURL:          product.ImageURL,
-		Images:            product.Images,
-		ImagesCount:       product.ImagesCount,
-		Categories:        product.Categories,
-		ParentAsin:        product.ParentAsin,
-		Asin:              product.Asin,
-		SellerName:        product.SellerName,
-		SellerID:          product.SellerID,
-		Variations:        variations,
-		VariationsValues:  variationsValues,
-		ProductDetails:    productDetails,
-		ProductDimensions: product.ProductDimensions,
-		ItemWeight:        product.ItemWeight,
-		ModelNumber:       product.ModelNumber,
-		Department:        product.Department,
-		Manufacturer:      product.Manufacturer,
-		BsRank:            product.BsRank,
-		BsCategory:        product.BsCategory,
-		RootBsRank:        product.RootBsRank,
-		RootBsCategory:    product.RootBsCategory,
-		Domain:            product.Domain,
-		Zipcode:           product.Zipcode,
+	_, err = h.rawJsonDataClient.CreateRawJsonData(createReq)
+	if err != nil {
+		logrus.WithError(err).WithField("asin", asin).Error("保存变体数据到数据库失败")
+	} else {
+		logrus.WithField("asin", asin).Debug("已保存变体数据到数据库")
 	}
 }
 

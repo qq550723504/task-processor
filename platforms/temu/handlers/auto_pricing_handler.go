@@ -74,13 +74,6 @@ func (h *AutoPricingHandler) Start(ctx context.Context, interval time.Duration) 
 			continue
 		}
 
-		// 如果 EnableAutoPrice 为 nil 或 false，表示启用
-		if storeInfo.EnableAutoPrice == nil {
-			h.logger.Infof("店铺 %s (ID: %d) EnableAutoPrice 未设置，默认启用自动核价", storeInfo.Name, storeID)
-		} else {
-			h.logger.Infof("店铺 %s (ID: %d) EnableAutoPrice=false，启用自动核价", storeInfo.Name, storeID)
-		}
-
 		// 添加店铺调度器
 		if err := h.schedulerManager.AddStore(storeInfo.TenantID, storeID); err != nil {
 			h.logger.Errorf("添加店铺 %d 调度器失败: %v", storeID, err)

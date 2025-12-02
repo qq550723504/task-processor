@@ -47,9 +47,6 @@ type RawJsonDataAPI interface {
 	// GetRawJsonData 获取原始JSON数据
 	GetRawJsonData(req *RawJsonDataReqDTO) (*RawJsonDataRespDTO, error)
 
-	// ConfirmProductVariants 确认产品变体数据
-	ConfirmProductVariants(req *ProductVariantConfirmationReqDTO) (bool, error)
-
 	// CreateRawJsonData 创建原始JSON数据（提交到服务器缓存）
 	CreateRawJsonData(req *RawJsonDataCreateReqDTO) (int64, error)
 }

@@ -2,7 +2,8 @@ package handlers
 
 import (
 	"fmt"
-	"strings"
+	"regexp"
+	"strconv"
 
 	"task-processor/common/amazon"
 	"task-processor/common/management/api"
@@ -208,14 +209,31 @@ func (h *FilterRuleHandler) checkSingleRule(product *amazon.Product, rule *api.F
 		return false
 	}
 
+	// 配送方式检查
+	if !h.checkFulfillmentTypeRule(product, rule) {
+		return false
+	}
+
 	return true
 }
 
 // checkPriceRule 检查价格规则
 func (h *FilterRuleHandler) checkPriceRule(product *amazon.Product, rule *api.FilterRuleRespDTO) bool {
-	price := product.FinalPrice
-	if price <= 0 {
-		price = product.InitialPrice // 如果FinalPrice为0，使用初始价格
+	// 根据价格类型获取价格
+	var price float64
+	if rule.PriceType == "original" {
+		// 原价：优先从 prices_breakdown.list_price 获取
+		if product.PricesBreakdown.ListPrice != nil {
+			price = *product.PricesBreakdown.ListPrice
+		} else {
+			price = product.InitialPrice
+		}
+	} else {
+		// 特价或默认：使用 final_price
+		price = product.FinalPrice
+		if price <= 0 {
+			price = product.InitialPrice
+		}
 	}
 
 	// 最低价格检查
@@ -269,11 +287,8 @@ func (h *FilterRuleHandler) checkStockRule(product *amazon.Product, rule *api.Fi
 		return true
 	}
 
-	// Amazon产品的库存信息通过Availability字段判断
-	stock := 0
-	if product.IsAvailable && strings.Contains(strings.ToLower(product.Availability), "in stock") {
-		stock = 999 // 如果显示有库存但没有具体数量，设为999
-	}
+	// 获取库存数量
+	stock := h.getInventory(product)
 
 	if stock < *rule.StockMin {
 		h.logger.Debugf("库存 %d 低于最低库存 %d", stock, *rule.StockMin)
@@ -281,6 +296,174 @@ func (h *FilterRuleHandler) checkStockRule(product *amazon.Product, rule *api.Fi
 	}
 
 	return true
+}
+
+// getInventory 获取库存数量（支持多语言）
+func (h *FilterRuleHandler) getInventory(product *amazon.Product) int {
+
+	// 优先：如果有明确的最大可用数量
+	if product.MaxQuantityAvailable > 0 {
+		h.logger.WithFields(logrus.Fields{
+			"asin":  product.Asin,
+			"stock": product.MaxQuantityAvailable,
+		}).Debug("✅ 从 MaxQuantityAvailable 获取库存")
+		return product.MaxQuantityAvailable
+	}
+
+	// 其次：尝试从 Availability 文本中提取具体数量
+	availability := product.Availability
+
+	// 支持多语言的库存数量提取
+	patterns := []string{
+		// 英语
+		`(?i)only\s+(\d+)\s+left`,                 // "Only 13 left in stock"
+		`(?i)(\d+)\s+left`,                        // "13 left in stock"
+		`(?i)(\d+)\s+in\s+stock`,                  // "13 in stock"
+		`(?i)(\d+)\s+available`,                   // "13 available"
+		`(?i)(\d+)\s+remaining`,                   // "13 remaining"
+		`(?i)stock:\s*(\d+)`,                      // "Stock: 13"
+		`(?i)quantity:\s*(\d+)`,                   // "Quantity: 13"
+		`(?i)(\d+)\s+units?\s+(?:left|available)`, // "13 units left"
+		// 西班牙语
+		`(?i)quedan\s+(\d+)`,       // "quedan 13"
+		`(?i)(\d+)\s+disponibles?`, // "13 disponibles"
+		`(?i)solo\s+(\d+)`,         // "solo 13"
+		// 日语
+		`(?i)残り\s*(\d+)`, // "残り13"
+		`(?i)(\d+)\s*個`,  // "13個"
+		`(?i)(\d+)\s*点`,  // "13点"
+		// 德语
+		`(?i)noch\s+(\d+)`,       // "noch 13"
+		`(?i)(\d+)\s+verfügbar`,  // "13 verfügbar"
+		`(?i)nur\s+noch\s+(\d+)`, // "nur noch 13"
+		// 法语
+		`(?i)reste\s+(\d+)`,        // "reste 13"
+		`(?i)(\d+)\s+disponibles?`, // "13 disponible(s)"
+		`(?i)seulement\s+(\d+)`,    // "seulement 13"
+		// 意大利语
+		`(?i)rimangono\s+(\d+)`,    // "rimangono 13"
+		`(?i)(\d+)\s+disponibili?`, // "13 disponibili"
+		`(?i)solo\s+(\d+)`,         // "solo 13"
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		if matches := re.FindStringSubmatch(availability); len(matches) > 1 {
+			if stock, err := strconv.Atoi(matches[1]); err == nil {
+				h.logger.WithFields(logrus.Fields{
+					"asin":    product.Asin,
+					"pattern": pattern,
+					"stock":   stock,
+				}).Debug("✅ 从 Availability 文本中提取到库存数量")
+				return stock
+			}
+		}
+	}
+
+	// 再次：检查 IsAvailable 字段
+	if !product.IsAvailable {
+		h.logger.WithFields(logrus.Fields{
+			"asin":         product.Asin,
+			"availability": product.Availability,
+		}).Warn("⚠️ 产品标记为不可用且无法从文本提取库存，返回库存 0")
+		return 0
+	}
+
+	// 最后：如果产品可用但没有具体数量，返回一个较大的值（表示充足库存）
+	// 根据用户说明，In Stock代表库存大于30
+	h.logger.WithFields(logrus.Fields{
+		"asin":         product.Asin,
+		"availability": product.Availability,
+		"stock":        31,
+	}).Debug("✅ 产品可用但无具体数量，返回默认库存 31")
+	return 31
+}
+
+// checkFulfillmentTypeRule 检查配送方式规则
+func (h *FilterRuleHandler) checkFulfillmentTypeRule(product *amazon.Product, rule *api.FilterRuleRespDTO) bool {
+	// 如果规则未设置配送方式或设置为ALL，则不进行筛选
+	if rule.FulfillmentType == "" || rule.FulfillmentType == "ALL" {
+		return true
+	}
+
+	// 判断产品的配送方式
+	isFBA := h.isFBAFulfillment(product.ShipsFrom)
+	isAMZ := h.isAMZSeller(product.SellerName)
+
+	// 根据规则要求进行校验
+	switch rule.FulfillmentType {
+	case "FBA":
+		if !isFBA {
+			h.logger.Debugf("配送方式不符合：规则要求FBA配送，但产品为FBM配送 (ships_from: %s)", product.ShipsFrom)
+			return false
+		}
+	case "FBM":
+		if isFBA {
+			h.logger.Debugf("配送方式不符合：规则要求FBM配送，但产品为FBA配送 (ships_from: %s)", product.ShipsFrom)
+			return false
+		}
+	case "AMZ":
+		if !isAMZ {
+			h.logger.Debugf("配送方式不符合：规则要求亚马逊自营，但卖家为 %s", product.SellerName)
+			return false
+		}
+	default:
+		h.logger.Warnf("未知的配送方式类型: %s", rule.FulfillmentType)
+	}
+
+	return true
+}
+
+// isFBAFulfillment 判断是否为FBA配送
+func (h *FilterRuleHandler) isFBAFulfillment(shipsFrom string) bool {
+	if shipsFrom == "" {
+		return false
+	}
+
+	// 支持多语言站点的 Amazon 关键词匹配
+	amazonKeywords := []string{
+		"Amazon",
+		"amazon",
+		"AMAZON",
+	}
+
+	for _, keyword := range amazonKeywords {
+		if regexp.MustCompile(keyword).MatchString(shipsFrom) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isAMZSeller 判断是否为亚马逊自营
+func (h *FilterRuleHandler) isAMZSeller(sellerName string) bool {
+	if sellerName == "" {
+		return false
+	}
+
+	// 支持多语言站点的 Amazon 卖家名称匹配
+	amazonSellerKeywords := []string{
+		"Amazon",
+		"amazon",
+		"AMAZON",
+		"Amazon.com",
+		"Amazon.co.jp",
+		"Amazon.de",
+		"Amazon.fr",
+		"Amazon.co.uk",
+		"Amazon.es",
+		"Amazon.it",
+		"Amazon.com.mx",
+	}
+
+	for _, keyword := range amazonSellerKeywords {
+		if regexp.MustCompile(keyword).MatchString(sellerName) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // GetFilterRuleStats 获取筛选规则统计信息（用于调试和监控）

@@ -26,6 +26,9 @@
     ]
   },
   "dynamic_words": {
+    "da": [
+      "psychedelic"
+    ],
     "en": [
       "(?i)\\b(nike|adidas|apple|samsung|sony)\\b",
       "(?i)\\b(best|top|#1|number\\s*one)\\b",
@@ -74,15 +77,60 @@
       "eco friendly",
       "SERENE",
       "The",
-      "Hundreds"
+      "Hundreds",
+      "Folclore",
+      "amazon",
+      "Amigable",
+      "con",
+      "el",
+      "medio",
+      "ambiente",
+      "Tendencias",
+      "Trends",
+      "Recyclable",
+      "Biodegradable",
+      "Bambi",
+      "Instagram",
+      "Hollywood",
+      "Earth-friendly",
+      "tendencia",
+      "trend",
+      "trendy",
+      "sexual",
+      "CONCEPT+",
+      "ventas",
+      "blessed",
+      "winnie",
+      "pooh",
+      "Kipling",
+      "CHICKEN",
+      "COOP",
+      "black",
+      "black women",
+      "black girl",
+      "mujeres",
+      "negras",
+      "costa",
+      "Indie",
+      "trippy",
+      "stoner",
+      "Hanukkah",
+      "Fuck",
+      "Taiwan",
+      "AMISTAD",
+      "Recycled",
+      "Vichy"
     ],
     "es": [
       "seguridad"
     ],
     "fr": [
       "environmental protection"
+    ],
+    "nl": [
+      "Kwanzaa"
     ]
   },
-  "last_updated": "2025-11-25T00:21:17.6049703+08:00",
+  "last_updated": "2025-12-01T15:46:54.75566+08:00",
   "version": "1.0.0"
 }

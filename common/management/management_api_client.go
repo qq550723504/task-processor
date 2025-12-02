@@ -5,10 +5,6 @@ import (
 	"task-processor/common/management/impl"
 )
 
-// ManagementAPIClient 管理系统API客户端接口
-// 该接口与api.ManagementAPI保持一致
-type ManagementAPIClient = api.ManagementAPI
-
 // RawJsonDataAPIClient 原始JSON数据API客户端接口
 // 该接口与api.RawJsonDataAPI保持一致
 type RawJsonDataAPIClient = api.RawJsonDataAPI
@@ -44,9 +40,6 @@ type DailyListingCountAPIClient = api.DailyListingCountAPI
 // ProductImportMappingAPIClient 产品导入映射API客户端接口
 // 该接口与api.ProductImportMappingAPI保持一致
 type ProductImportMappingAPIClient = api.ProductImportMappingAPI
-
-// 确保StoreAPIClientImpl实现了ManagementAPIClient接口
-var _ ManagementAPIClient = (*impl.StoreAPIClientImpl)(nil)
 
 // 确保ProductImportMappingAPIClientImpl实现了ProductImportMappingAPIClient接口
 var _ ProductImportMappingAPIClient = (*impl.ProductImportMappingAPIClientImpl)(nil)

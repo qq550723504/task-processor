@@ -79,6 +79,8 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	pipeline.AddHandler(modules.NewReListingHandler())
 	// 获取原始数据（支持从Amazon爬虫抓取，使用共享的Amazon处理器）
 	pipeline.AddHandler(modules.NewRawJsonDataHandler(processor.managementClientMgr.GetRawJsonDataClient(), &cfg.Amazon, processor.amazonProcessor))
+	// 验证图片数量（SHEIN要求至少3张：1张主图+2张细节图）
+	pipeline.AddHandler(modules.NewImageValidationHandler(3))
 	// 提交原始JSON数据到服务器缓存（使用公共缓存逻辑）
 	pipeline.AddHandler(modules.NewSubmitRawJsonDataHandler(processor.managementClientMgr.GetRawJsonDataClient(), &cfg.Amazon, processor.amazonProcessor))
 	// 获取店铺API客户端

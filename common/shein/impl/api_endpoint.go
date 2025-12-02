@@ -2,10 +2,10 @@
 
 // API 路径常量
 const (
-	apiPrefix                      = "/spmp-api-prefix/spmp"
-	dpasPrefix                     = "/dpas-api-prefix/dpas"
-	ssoPrefix                      = "/sso-prefix"
-	certificateRuleEndpoint        = apiPrefix + "/certificate/get_certificate_rule"
+	apiPrefix  = "/spmp-api-prefix/spmp"
+	dpasPrefix = "/dpas-api-prefix/dpas"
+	ssoPrefix  = "/sso-prefix"
+	//certificateRuleEndpoint        = apiPrefix + "/certificate/get_certificate_rule"
 	productRecordEndpoint          = apiPrefix + "/product/publish/record/page_list"
 	batchCheckOnWayEndpoint        = apiPrefix + "/document/web/batch_check_on_way"
 	validateAttributeEndpoint      = apiPrefix + "/attribute/valid_pre_custom_attribute_value"
@@ -28,4 +28,10 @@ const (
 	getSpuLimitCountEndpoint       = apiPrefix + "/basic/get_spu_limit_count"
 	getUserEndpoint                = ssoPrefix + "/sso-prefix/auth/getUser"
 	getSupplierOperateInfoEndpoint = "/sso/public/account/supplier/getSupplierOperateInfo"
+	productListEndpoint            = apiPrefix + "/product/list"
+	queryStockEndpoint             = apiPrefix + "/product/query_msc_stock_for_released_page"
+	queryPriceEndpoint             = apiPrefix + "/product/query_price"
+	queryCostPriceEndpoint         = apiPrefix + "/product/price/query_cost_price"
+	queryInventoryEndpoint         = apiPrefix + "/product/inventory/query"
+	updateInventoryEndpoint        = apiPrefix + "/product/inventory/update"
 )

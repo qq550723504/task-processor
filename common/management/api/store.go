@@ -62,25 +62,3 @@ type StoreAPI interface {
 	// pauseType: auth_expired(认证过期) 或 quota_limit(配额限制)，空字符串时使用默认值 quota_limit
 	SetStorePauseStatus(id int64, pause bool, pauseType string) (bool, error)
 }
-
-// ManagementAPI 管理系统API接口定义
-type ManagementAPI interface {
-	// GetStore 通过店铺ID获取店铺信息
-	GetStore(id int64) (*StoreRespDTO, error)
-
-	// GetStoreCookie 通过店铺ID获取用户Cookie
-	GetStoreCookie(id int64) (string, error)
-
-	// UpdateStoreId 修改店铺的StoreID
-	UpdateStoreId(req *StoreIdUpdateReqDTO) (bool, error)
-
-	// UpdateStoreStatus 更新店铺状态
-	UpdateStoreStatus(req *StoreStatusUpdateReqDTO) (bool, error)
-
-	// DeleteStoreCookie 通过店铺ID删除用户Cookie
-	DeleteStoreCookie(id int64) (bool, error)
-
-	// SetStorePauseStatus 设置店铺任务暂停状态
-	// pauseType: auth_expired(认证过期) 或 quota_limit(配额限制)，空字符串时使用默认值 quota_limit
-	SetStorePauseStatus(id int64, pause bool, pauseType string) (bool, error)
-}

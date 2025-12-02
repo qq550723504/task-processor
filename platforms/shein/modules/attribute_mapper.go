@@ -19,19 +19,19 @@ func NewAttributeMapper() *AttributeMapper {
 // MapAttributeValuesToSheinIDs 将Amazon属性值映射到SHEIN平台属性值ID
 func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *TaskContext, strategy *AttributeStrategy) ([]attribute.CustomAttributeRelation, error) {
 	logrus.Infof("🔄 === 开始属性值ID映射流程 ===")
-	
+
 	var allRelations []attribute.CustomAttributeRelation
 
 	// 处理主要属性值
 	logrus.Infof("📊 步骤1: 处理主要属性值...")
 	logrus.Infof("  - 主要属性ID: %d", strategy.PrimaryAttribute.AttrID)
 	logrus.Infof("  - 主要属性值数量: %d", len(strategy.PrimaryAttribute.AttrValue))
-	
+
 	// 打印映射前的主要属性值状态
 	for i, attrValue := range strategy.PrimaryAttribute.AttrValue {
 		logrus.Infof("  - 主要属性值[%d]: %s (映射前ID: %d)", i+1, attrValue.Value, attrValue.ID.Int())
 	}
-	
+
 	relations, err := m.mapSingleAttributeValues(ctx, &strategy.PrimaryAttribute, true)
 	if err != nil {
 		logrus.Errorf("❌ 映射主要属性值失败: %v", err)
@@ -45,12 +45,12 @@ func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *TaskContext, strateg
 		logrus.Infof("📊 步骤2: 处理次要属性值...")
 		logrus.Infof("  - 次要属性ID: %d", strategy.SecondaryAttribute.AttrID)
 		logrus.Infof("  - 次要属性值数量: %d", len(strategy.SecondaryAttribute.AttrValue))
-		
+
 		// 打印映射前的次要属性值状态
 		for i, attrValue := range strategy.SecondaryAttribute.AttrValue {
 			logrus.Infof("  - 次要属性值[%d]: %s (映射前ID: %d)", i+1, attrValue.Value, attrValue.ID.Int())
 		}
-		
+
 		relations, err := m.mapSingleAttributeValues(ctx, &strategy.SecondaryAttribute, false)
 		if err != nil {
 			logrus.Errorf("❌ 映射次要属性值失败: %v", err)
@@ -74,9 +74,9 @@ func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *TaskContext, strateg
 		}
 		logrus.Infof("  主要属性值[%d]: %s (映射后ID: %d) %s", i+1, attrValue.Value, attrValue.ID.Int(), status)
 	}
-	logrus.Infof("主要属性值有效率: %d/%d (%.1f%%)", validPrimaryCount, len(strategy.PrimaryAttribute.AttrValue), 
+	logrus.Infof("主要属性值有效率: %d/%d (%.1f%%)", validPrimaryCount, len(strategy.PrimaryAttribute.AttrValue),
 		float64(validPrimaryCount)*100/float64(len(strategy.PrimaryAttribute.AttrValue)))
-	
+
 	if strategy.SecondaryAttribute.AttrID > 0 {
 		logrus.Infof("次要属性ID: %d, 属性值数量: %d", strategy.SecondaryAttribute.AttrID, len(strategy.SecondaryAttribute.AttrValue))
 		validSecondaryCount := 0
@@ -88,7 +88,7 @@ func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *TaskContext, strateg
 			}
 			logrus.Infof("  次要属性值[%d]: %s (映射后ID: %d) %s", i+1, attrValue.Value, attrValue.ID.Int(), status)
 		}
-		logrus.Infof("次要属性值有效率: %d/%d (%.1f%%)", validSecondaryCount, len(strategy.SecondaryAttribute.AttrValue), 
+		logrus.Infof("次要属性值有效率: %d/%d (%.1f%%)", validSecondaryCount, len(strategy.SecondaryAttribute.AttrValue),
 			float64(validSecondaryCount)*100/float64(len(strategy.SecondaryAttribute.AttrValue)))
 	}
 
@@ -317,6 +317,34 @@ func (m *AttributeMapper) processCustomAttributeValue(
 		}
 	}
 
+	// 记录验证响应的详细信息
+	logrus.Debugf("验证响应: AttributeID=%d, PreAttributeValueID=%d, NameMultis数量=%d",
+		validateResponse.Data.AttributeID,
+		validateResponse.Data.PreAttributeValueID,
+		len(validateResponse.Data.AttributeValueNameMultis))
+
+	for i, nm := range validateResponse.Data.AttributeValueNameMultis {
+		logrus.Debugf("  验证响应[%d]: 语言=%s, 名称=%s, 警告=%d",
+			i, nm.Language, nm.AttributeValueNameMulti, nm.WarningType)
+	}
+
+	// 转换多语言名称
+	nameMultis := convertToAttributeValueNameMultis(validateResponse.Data.AttributeValueNameMultis)
+
+	// 验证多语言名称不为空
+	if len(nameMultis) == 0 {
+		logrus.Errorf("验证响应中的多语言名称为空，属性值: %s", sanitizedValue)
+		return CustomAttributeResult{
+			Success:        false,
+			ShouldContinue: !isRequired,
+		}
+	}
+
+	logrus.Debugf("多语言名称数量: %d", len(nameMultis))
+	for i, nm := range nameMultis {
+		logrus.Debugf("  [%d] 语言: %s, 名称: %s, 警告类型: %d", i, nm.Language, nm.AttributeValueName, nm.WarningType)
+	}
+
 	// 2. 添加自定义属性值（使用清理后的值）
 	addResponse, err := ctx.ShopClient.AddCustomAttributeValue(&attribute.AddCustomAttributeValueRequest{
 		CategoryID: ctx.ProductData.CategoryID,
@@ -325,7 +353,7 @@ func (m *AttributeMapper) processCustomAttributeValue(
 				AttributeID:              attrID,
 				AttributeValue:           sanitizedValue, // 使用清理后的值
 				PreAttributeValueID:      int64(validateResponse.Data.PreAttributeValueID),
-				AttributeValueNameMultis: convertToAttributeValueNameMultis(validateResponse.Data.AttributeValueNameMultis),
+				AttributeValueNameMultis: nameMultis,
 			},
 		},
 	})
@@ -364,13 +392,35 @@ func convertToAttributeValueNameMultis(source []struct {
 	AttributeValueNameMulti string `json:"attribute_value_name_multi"`
 	WarningType             int    `json:"warning_type"`
 }) []attribute.AttributeValueNameMulti {
-	result := make([]attribute.AttributeValueNameMulti, len(source))
+	if len(source) == 0 {
+		logrus.Warn("源多语言名称列表为空")
+		return []attribute.AttributeValueNameMulti{}
+	}
+
+	result := make([]attribute.AttributeValueNameMulti, 0, len(source))
 	for i, item := range source {
-		result[i] = attribute.AttributeValueNameMulti{
+		// 验证必填字段
+		if item.Language == "" {
+			logrus.Warnf("跳过第 %d 个多语言名称：语言代码为空", i)
+			continue
+		}
+		if item.AttributeValueNameMulti == "" {
+			logrus.Warnf("跳过第 %d 个多语言名称：属性值名称为空 (语言: %s)", i, item.Language)
+			continue
+		}
+
+		result = append(result, attribute.AttributeValueNameMulti{
 			Language:           item.Language,
 			AttributeValueName: item.AttributeValueNameMulti,
 			WarningType:        item.WarningType,
-		}
+		})
+
+		logrus.Debugf("转换多语言名称 [%d]: 语言=%s, 名称=%s", i, item.Language, item.AttributeValueNameMulti)
 	}
+
+	if len(result) == 0 {
+		logrus.Warn("转换后的多语言名称列表为空，所有条目都被过滤")
+	}
+
 	return result
 }

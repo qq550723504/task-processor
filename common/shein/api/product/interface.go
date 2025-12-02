@@ -25,6 +25,9 @@ type ProductAPI interface {
 	ConfirmPublish(product *Product) (bool, string, error)
 
 	Record(request *ProductRecordRequest) (*RecordResponse, error)
+
+	// ListProducts 获取产品列表
+	ListProducts(pageNum, pageSize int, request *ProductListRequest) (*ProductListResponse, error)
 }
 
 type RecordResponse struct {
@@ -431,4 +434,71 @@ type ConfirmPublishResponse struct {
 	Msg  string      `json:"msg"`
 	Info ConfirmInfo `json:"info"`
 	BBL  interface{} `json:"bbl"`
+}
+
+// ProductListRequest 产品列表请求
+type ProductListRequest struct {
+	Language             string `json:"language"`
+	OnlyRecommendResell  bool   `json:"only_recommend_resell"`
+	OnlySpmbCopyProduct  bool   `json:"only_spmb_copy_product"`
+	SearchAbandonProduct bool   `json:"search_abandon_product"`
+	SearchIllegal        bool   `json:"search_illegal"`
+	SearchLessInventory  bool   `json:"search_less_inventory"`
+	ShelfType            string `json:"shelf_type"` // ON_SHELF, OFF_SHELF
+	SortType             int    `json:"sort_type"`
+}
+
+// ProductListResponse 产品列表响应
+type ProductListResponse struct {
+	Code string `json:"code"`
+	Msg  string `json:"msg"`
+	Info struct {
+		Data []ProductListItem `json:"data"`
+		Meta struct {
+			Count int `json:"count"`
+		} `json:"meta"`
+	} `json:"info"`
+	BBL interface{} `json:"bbl"`
+}
+
+// ProductListItem 产品列表项
+type ProductListItem struct {
+	SpuName          string        `json:"spu_name"`
+	SpuCode          string        `json:"spu_code"`
+	CategoryID       int64         `json:"category_id"`
+	BrandCode        string        `json:"brand_code"`
+	BrandName        string        `json:"brand_name"`
+	ProductNameCh    string        `json:"product_name_ch"`
+	ProductNameEn    string        `json:"product_name_en"`
+	ProductNameMulti string        `json:"product_name_multi"`
+	SkcInfoList      []SkcInfoItem `json:"skc_info_list"`
+	ShelfStatus      string        `json:"shelf_status"`
+	CreateTime       string        `json:"create_time"`
+	PublishTime      string        `json:"publish_time"`
+	FirstShelfTime   string        `json:"first_shelf_time"`
+	ExpectShelfTime  *string       `json:"expect_shelf_time"`
+	TagInfoList      []interface{} `json:"tag_info_list"`
+}
+
+// SkcInfoItem SKC 信息项
+type SkcInfoItem struct {
+	SkcName               string        `json:"skc_name"`
+	SkcCode               string        `json:"skc_code"`
+	SaleName              string        `json:"sale_name"`
+	MainImageThumbnailURL string        `json:"main_image_thumbnail_url"`
+	SupplierCode          string        `json:"supplier_code"`
+	BusinessModel         int           `json:"business_model"`
+	IsSaleAttribute       int           `json:"is_sale_attribute"`
+	SupplierID            int64         `json:"supplier_id"`
+	SkuInfo               []SkuInfo     `json:"sku_info"`
+	MallSellStatus        int           `json:"mall_sell_status"`
+	Abandoned             bool          `json:"abandoned"`
+	TagInfoList           []interface{} `json:"tag_info_list"`
+	ShelfFailReason       *string       `json:"shelf_fail_reason"`
+	HasOriginalImage      bool          `json:"has_original_image"`
+}
+
+// SkuInfoItem SKU 信息项
+type SkuInfo struct {
+	SkuCode string `json:"sku_code"`
 }

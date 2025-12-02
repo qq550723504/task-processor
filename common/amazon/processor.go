@@ -301,19 +301,11 @@ func (ap *AmazonProcessor) processWithSingleBrowser(url string, zipcode string, 
 	return product, nil
 }
 
-// handleContinueShoppingButton 处理可能出现的"Continue shopping"按钮
+// handleContinueShoppingButton 处理可能出现的"Continue shopping"按钮（多语言支持）
 func (ap *AmazonProcessor) handleContinueShoppingButton(page playwright.Page) error {
 	time.Sleep(2 * time.Second)
 
-	continueShoppingSelectors := []string{
-		"button:text('Continue shopping')",
-		"button:text('继续购物')",
-		"button:text('ショッピングを続ける')",    // 日语
-		"button:text('متابعة التسوق')", // 阿拉伯语
-		"a:text('Continue shopping')",
-		"a:text('ショッピングを続ける')",    // 日语链接
-		"a:text('متابعة التسوق')", // 阿拉伯语链接
-	}
+	continueShoppingSelectors := getContinueShoppingSelectors()
 
 	for _, selector := range continueShoppingSelectors {
 		element, err := page.QuerySelector(selector)
@@ -330,6 +322,66 @@ func (ap *AmazonProcessor) handleContinueShoppingButton(page playwright.Page) er
 	}
 
 	return nil
+}
+
+// getContinueShoppingSelectors 获取"继续购物"按钮的多语言选择器
+func getContinueShoppingSelectors() []string {
+	return []string{
+		// 英语
+		"button:has-text('Continue Shopping')",
+		"button:has-text('Continue shopping')",
+		"a:has-text('Continue Shopping')",
+		"a:has-text('Continue shopping')",
+		"button:has-text('Continue')",
+		"a:has-text('Continue')",
+		// 中文
+		"button:has-text('继续购物')",
+		"a:has-text('继续购物')",
+		"button:has-text('继续')",
+		"a:has-text('继续')",
+		// 日语
+		"button:has-text('買い物を続ける')",
+		"button:has-text('ショッピングを続ける')",
+		"a:has-text('買い物を続ける')",
+		"a:has-text('ショッピングを続ける')",
+		"button:has-text('続ける')",
+		"a:has-text('続ける')",
+		// 西班牙语
+		"button:has-text('Seguir comprando')",
+		"button:has-text('Continuar comprando')",
+		"a:has-text('Seguir comprando')",
+		"a:has-text('Continuar comprando')",
+		"button:has-text('Continuar')",
+		"a:has-text('Continuar')",
+		// 阿拉伯语
+		"button:has-text('متابعة التسوق')",
+		"a:has-text('متابعة التسوق')",
+		// 德语
+		"button:has-text('Weiter einkaufen')",
+		"a:has-text('Weiter einkaufen')",
+		"button:has-text('Weiter')",
+		"a:has-text('Weiter')",
+		// 法语
+		"button:has-text('Continuer mes achats')",
+		"a:has-text('Continuer mes achats')",
+		"button:has-text('Continuer')",
+		"a:has-text('Continuer')",
+		// 意大利语
+		"button:has-text('Continua lo shopping')",
+		"a:has-text('Continua lo shopping')",
+		"button:has-text('Continua')",
+		"a:has-text('Continua')",
+		// 葡萄牙语
+		"button:has-text('Continuar comprando')",
+		"a:has-text('Continuar comprando')",
+		"button:has-text('Continuar')",
+		"a:has-text('Continuar')",
+		// 荷兰语
+		"button:has-text('Verder winkelen')",
+		"a:has-text('Verder winkelen')",
+		"button:has-text('Verder')",
+		"a:has-text('Verder')",
+	}
 }
 
 // addLanguageParam 添加语言参数，强制使用英语
@@ -397,6 +449,8 @@ func (ap *AmazonProcessor) getCurrencyFromURL(url string) string {
 		return "CAD"
 	} else if strings.Contains(url, "amazon.com.au") {
 		return "AUD"
+	} else if strings.Contains(url, "amazon.com.mx") {
+		return "MXN" // 墨西哥比索
 	} else if strings.Contains(url, "amazon.sa") {
 		return "SAR" // 沙特里亚尔
 	} else if strings.Contains(url, "amazon.ae") {

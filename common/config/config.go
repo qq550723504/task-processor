@@ -68,6 +68,8 @@ type Config struct {
 	AutoPricing AutoPricingConfig
 	Amazon      AmazonConfig
 	Updater     UpdaterConfig
+	Sync        *SyncConfig    // 产品同步配置
+	Monitor     *MonitorConfig // 产品监控配置
 }
 
 // ProcessorConfig 处理器配置
@@ -120,14 +122,15 @@ type PlatformAutoPricingConfig struct {
 
 // AmazonConfig Amazon爬虫配置
 type AmazonConfig struct {
-	Enabled        bool
-	Headless       bool
-	BrowserPath    string
-	PoolSize       int
-	Zipcodes       map[string]string
-	ViewportWidth  int
-	ViewportHeight int
-	ProxyServer    string
+	Enabled           bool
+	Headless          bool
+	BrowserPath       string
+	PoolSize          int
+	Zipcodes          map[string]string
+	ViewportWidth     int
+	ViewportHeight    int
+	ProxyServer       string
+	DataFreshnessDays int // 数据新鲜度天数，默认7天
 }
 
 // UpdaterConfig 自动更新配置
@@ -137,6 +140,24 @@ type UpdaterConfig struct {
 	CheckInterval      int    `yaml:"check_interval"`       // 检查间隔（秒）
 	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"` // 跳过TLS证书验证
 	CurrentVersion     string `yaml:"-"`                    // 当前版本（从编译时注入）
+}
+
+// SyncConfig 产品同步配置
+type SyncConfig struct {
+	Enabled  bool    `yaml:"enabled"`   // 是否启用产品同步
+	StoreIDs []int64 `yaml:"store_ids"` // 需要同步的店铺ID列表
+}
+
+// MonitorConfig 产品监控配置
+type MonitorConfig struct {
+	Enabled              bool    `yaml:"enabled"`                // 是否启用产品监控
+	StoreIDs             []int64 `yaml:"store_ids"`              // 需要监控的店铺ID列表
+	CheckInterval        int     `yaml:"check_interval"`         // 检查间隔（分钟）
+	BatchSize            int     `yaml:"batch_size"`             // 批量处理大小
+	EnablePriceAlert     bool    `yaml:"enable_price_alert"`     // 启用价格告警
+	EnableStockAlert     bool    `yaml:"enable_stock_alert"`     // 启用库存告警
+	PriceChangeThreshold float64 `yaml:"price_change_threshold"` // 价格变化阈值（百分比）
+	StockChangeThreshold int     `yaml:"stock_change_threshold"` // 库存变化阈值
 }
 
 // PlatformConfig 平台特定配置
@@ -185,7 +206,7 @@ func LoadConfig() *Config {
 		logrus.Infof("成功加载配置文件: %s", viper.ConfigFileUsed())
 	}
 
-	return &Config{
+	cfg := &Config{
 		Processor: ProcessorConfig{
 			MaxRetries: viper.GetInt("processor.maxRetries"),
 			Timeout:    viper.GetInt("processor.timeout"),
@@ -226,14 +247,15 @@ func LoadConfig() *Config {
 			},
 		},
 		Amazon: AmazonConfig{
-			Enabled:        viper.GetBool("amazon.enabled"),
-			Headless:       viper.GetBool("amazon.headless"),
-			BrowserPath:    viper.GetString("amazon.browserPath"),
-			PoolSize:       viper.GetInt("amazon.poolSize"),
-			Zipcodes:       viper.GetStringMapString("amazon.zipcodes"),
-			ViewportWidth:  viper.GetInt("amazon.viewportWidth"),
-			ViewportHeight: viper.GetInt("amazon.viewportHeight"),
-			ProxyServer:    viper.GetString("amazon.proxyServer"),
+			Enabled:           viper.GetBool("amazon.enabled"),
+			Headless:          viper.GetBool("amazon.headless"),
+			BrowserPath:       viper.GetString("amazon.browserPath"),
+			PoolSize:          viper.GetInt("amazon.poolSize"),
+			Zipcodes:          viper.GetStringMapString("amazon.zipcodes"),
+			ViewportWidth:     viper.GetInt("amazon.viewportWidth"),
+			ViewportHeight:    viper.GetInt("amazon.viewportHeight"),
+			ProxyServer:       viper.GetString("amazon.proxyServer"),
+			DataFreshnessDays: viper.GetInt("amazon.dataFreshnessDays"),
 		},
 		Updater: UpdaterConfig{
 			Enabled:            viper.GetBool("updater.enabled"),
@@ -242,6 +264,30 @@ func LoadConfig() *Config {
 			InsecureSkipVerify: viper.GetBool("updater.insecureSkipVerify"),
 		},
 	}
+
+	// 加载同步配置（如果存在）
+	if viper.IsSet("sync") {
+		cfg.Sync = &SyncConfig{
+			Enabled:  viper.GetBool("sync.enabled"),
+			StoreIDs: getInt64Slice("sync.storeIDs"),
+		}
+	}
+
+	// 加载监控配置（如果存在）
+	if viper.IsSet("monitor") {
+		cfg.Monitor = &MonitorConfig{
+			Enabled:              viper.GetBool("monitor.enabled"),
+			StoreIDs:             getInt64Slice("monitor.storeIDs"),
+			CheckInterval:        viper.GetInt("monitor.checkInterval"),
+			BatchSize:            viper.GetInt("monitor.batchSize"),
+			EnablePriceAlert:     viper.GetBool("monitor.enablePriceAlert"),
+			EnableStockAlert:     viper.GetBool("monitor.enableStockAlert"),
+			PriceChangeThreshold: viper.GetFloat64("monitor.priceChangeThreshold"),
+			StockChangeThreshold: viper.GetInt("monitor.stockChangeThreshold"),
+		}
+	}
+
+	return cfg
 }
 
 func setDefaults() {
@@ -283,10 +329,24 @@ func setDefaults() {
 	viper.SetDefault("amazon.viewportWidth", 1920)
 	viper.SetDefault("amazon.viewportHeight", 1080)
 	viper.SetDefault("amazon.proxyServer", "")
+	viper.SetDefault("amazon.dataFreshnessDays", 7) // 默认7天
 
 	viper.SetDefault("updater.enabled", true) // 默认禁用，生产环境手动启用
 	viper.SetDefault("updater.updateURL", "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json")
 	viper.SetDefault("updater.checkInterval", 300) // 5分钟
 	viper.SetDefault("updater.insecureSkipVerify", false)
 
+	// 产品同步默认配置
+	viper.SetDefault("sync.enabled", false)
+	viper.SetDefault("sync.storeIDs", []int64{})
+
+	// 产品监控默认配置
+	viper.SetDefault("monitor.enabled", false)
+	viper.SetDefault("monitor.storeIDs", []int64{})
+	viper.SetDefault("monitor.checkInterval", 1440) // 默认24小时（1440分钟）
+	viper.SetDefault("monitor.batchSize", 50)
+	viper.SetDefault("monitor.enablePriceAlert", true)
+	viper.SetDefault("monitor.enableStockAlert", true)
+	viper.SetDefault("monitor.priceChangeThreshold", 5.0)
+	viper.SetDefault("monitor.stockChangeThreshold", 5)
 }

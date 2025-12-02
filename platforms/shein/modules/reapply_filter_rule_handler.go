@@ -96,5 +96,10 @@ func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRule *api.Filt
 		return err
 	}
 
+	// 校验配送方式
+	if err := h.ruleChecker.CheckFulfillmentType(filterRule, &variant); err != nil {
+		return err
+	}
+
 	return nil
 }

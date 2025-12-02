@@ -1,4 +1,4 @@
-﻿package modules
+package modules
 
 import (
 	"fmt"
@@ -79,9 +79,18 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *TaskContext) 
 	createdCount := 0
 
 	// 遍历SheinResponse中的SKC和SKU信息来创建映射关系
+	// 使用map去重，避免同一个SupplierSKU创建多次映射
+	processedSkus := make(map[string]bool)
+
 	if ctx.SheinResponse != nil && len(ctx.SheinResponse.Info.SKCList) > 0 {
 		for _, skc := range ctx.SheinResponse.Info.SKCList {
 			for _, sku := range skc.SKUList {
+				// 检查是否已处理过该SupplierSKU
+				if processedSkus[sku.SupplierSKU] {
+					logrus.Debugf("SKU %s 已处理，跳过重复创建", sku.SupplierSKU)
+					continue
+				}
+				processedSkus[sku.SupplierSKU] = true
 
 				// 构建ProductImportMappingCreateReqDTO结构体
 				taskID, err := strconv.ParseInt(ctx.Task.ID, 10, 64)
@@ -93,7 +102,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *TaskContext) 
 					TenantID:          ctx.Task.TenantID,
 					ImportTaskId:      taskID,
 					StoreId:           ctx.Task.StoreID,
-					Platform:          ctx.Task.Platform,
+					Platform:          "SHEIN",
 					Region:            ctx.Task.Region,
 					Sku:               &sku.SupplierSKU,
 					PlatformProductId: &sku.SKUCode,
@@ -165,15 +174,41 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *TaskContext) 
 					}
 				}
 
-				// 调用API创建产品导入映射关系
-				id, err := mappingClient.CreateProductImportMapping(createReq)
+				// 检查是否已存在映射关系（避免重试时重复插入）
+				existingMapping, err := mappingClient.GetProductImportMappingByTaskAndSku(
+					taskID,
+					sku.SupplierSKU,
+				)
+
 				if err != nil {
-					logrus.Errorf("创建产品导入映射关系失败: %v", err)
-					continue
+					logrus.Warnf("查询已存在的映射关系失败 (SKU: %s): %v，尝试创建新记录", sku.SupplierSKU, err)
 				}
 
-				logrus.Printf("成功创建产品导入映射关系，ID: %d, SKU: %s, PlatformSKU: %s",
-					id, sku.SupplierSKU, sku.SKUCode)
+				var id int64
+				if existingMapping != nil && existingMapping.ID > 0 {
+					// 已存在记录，更新而不是插入
+					logrus.Infof("检测到已存在的映射关系 (ID: %d, SKU: %s)，执行更新操作",
+						existingMapping.ID, sku.SupplierSKU)
+
+					createReq.ID = &existingMapping.ID
+					if err := mappingClient.UpdateProductImportMapping(createReq); err != nil {
+						logrus.Errorf("更新产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, err)
+						continue
+					}
+					id = existingMapping.ID
+					logrus.Infof("✅ 成功更新产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s",
+						id, sku.SupplierSKU, sku.SKUCode)
+				} else {
+					// 不存在记录，创建新记录
+					id, err = mappingClient.CreateProductImportMapping(createReq)
+					if err != nil {
+						logrus.Errorf("创建产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, err)
+						continue
+					}
+					logrus.Infof("✅ 成功创建产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s",
+						id, sku.SupplierSKU, sku.SKUCode)
+				}
+
 				createdCount++
 			}
 		}

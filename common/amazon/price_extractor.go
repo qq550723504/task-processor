@@ -72,9 +72,19 @@ func (e *PriceExtractor) HasValidPrice(page playwright.Page) bool {
 }
 
 func (e *PriceExtractor) Extract(page playwright.Page, product *Product) error {
-	// 检查产品可用性
+	// 记录进入价格提取器时的状态
+	logrus.WithFields(logrus.Fields{
+		"asin":         product.Asin,
+		"availability": product.Availability,
+		"is_available": product.IsAvailable,
+	}).Info("🔍 进入价格提取器")
+
+	// 检查产品可用性（仅在明确不可用时才跳过价格提取）
 	if product.Availability != "" && e.isUnavailableText(product.Availability) {
-		logrus.Infof("产品不可用（根据Availability字段: %s），跳过价格提取", product.Availability)
+		logrus.WithFields(logrus.Fields{
+			"asin":         product.Asin,
+			"availability": product.Availability,
+		}).Warn("❌ 产品不可用（根据Availability字段），跳过价格提取并设置 IsAvailable=false")
 		product.FinalPrice = 0
 		product.InitialPrice = 0
 		product.Currency = "USD"
@@ -82,15 +92,13 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *Product) error {
 		return nil
 	}
 
-	// 如果Availability字段为空或不明确，再检查页面
-	if !e.isProductAvailable(page) {
-		logrus.Info("产品不可用（根据页面检查），跳过价格提取")
-		product.FinalPrice = 0
-		product.InitialPrice = 0
-		product.Currency = "USD"
-		product.IsAvailable = false
-		return nil
-	}
+	// 注意：不再通过 isProductAvailable 覆盖 IsAvailable 字段
+	// IsAvailable 应该由 AvailabilityExtractor 负责设置
+	// 这里只负责提取价格信息
+	logrus.WithFields(logrus.Fields{
+		"asin":         product.Asin,
+		"is_available": product.IsAvailable,
+	}).Info("✅ 产品可用，继续提取价格")
 
 	// 完整价格选择器，按优先级排序
 	completeSelectors := []string{
@@ -582,10 +590,17 @@ func (e *PriceExtractor) isUnavailableText(availabilityText string) bool {
 
 	for _, keyword := range unavailableKeywords {
 		if strings.Contains(lowerText, keyword) {
+			logrus.WithFields(logrus.Fields{
+				"availability": availabilityText,
+				"keyword":      keyword,
+			}).Info("❌ isUnavailableText 匹配到不可用关键词")
 			return true
 		}
 	}
 
+	logrus.WithFields(logrus.Fields{
+		"availability": availabilityText,
+	}).Debug("✅ isUnavailableText 未匹配到不可用关键词")
 	return false
 }
 
