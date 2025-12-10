@@ -59,6 +59,8 @@ func (s *MonitorScheduler) RegisterSheinStore(storeID int64, apiClient *shops.Sh
 		s.amazonProcessor,
 		s.clientManager.GetRawJsonDataClient(),
 		s.clientManager.GetInventoryRecordClient(),
+		s.clientManager.GetOperationStrategyClient(),
+		s.clientManager.GetStoreClient(),
 	)
 
 	// 注册店铺到监控服务

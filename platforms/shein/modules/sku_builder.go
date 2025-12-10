@@ -455,7 +455,7 @@ func (b *SKUBuilder) createSKU(ctx *TaskContext, params SKUCreationParams) (*pro
 	// 1. 价格计算
 	salePriceMultiplier := ctx.ProfitRule.SalePriceMultiplier
 	discountPriceMultiplier := ctx.ProfitRule.DiscountPriceMultiplier
-	productPrice := GetProductPrice(params.ProductInfo, ctx.FilterRule.PriceType)
+	productPrice := GetProductPrice(params.ProductInfo, ctx.StoreInfo.PriceType)
 	originalPrice := math.Round((productPrice)*100) / 100
 	salePrice := math.Round(originalPrice*salePriceMultiplier*100) / 100
 	var specialPrice float64

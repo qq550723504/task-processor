@@ -29,7 +29,7 @@ management:
   tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
-  storeIDs: [556]  # 店铺ID列表
+  storeIDs: [592]  # 店铺ID列表
 
 # 自动定价配置
 autoPricing:
@@ -44,8 +44,9 @@ autoPricing:
     interval: 300  # 5分钟
     batchSize: 100
 
-# Amazon爬虫配置
+# Amazon配置
 amazon:
+  # Amazon 爬虫配置
   enabled: true
   headless: true  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
@@ -54,6 +55,20 @@ amazon:
   viewportHeight: 1080
   proxyServer: ""
   dataFreshnessDays: 15  # 数据新鲜度天数，默认15天
+  # Amazon SP-API 配置（用于上架）
+  # 注意：以下凭证仅为示例，请替换为你自己的真实凭证
+  # 获取方法：登录 Amazon Seller Central > 设置 > 用户权限 > 开发者中心
+  # 详细步骤：config/amazon-spapi-setup.md
+  spapi:
+    enabled: true
+    sandbox: false  # 沙盒模式：true=测试环境（推荐），false=生产环境
+    region: "us-east-1"
+    marketplaceID: "A2X1Q3OH6LFU9X"
+    clientID: "amzn1.application-oa2-client.6125bb74233247eea9cb3fbdffb7b564"  # 请填写你的 Client ID
+    clientSecret: "amzn1.oa2-cs.v1.fa0b6d83fbff90cc2b8a3d042fd894aaa9f980e2072cd749545a7058fc8701f9"  # 请填写你的 Client Secret  
+    refreshToken: "Atzr|IwEBIHcqqqZdMXO747khLVVt_oidUIdjYT9kdeXkXjMp5ZoyT40CSXJX781zo9Bsz4PipQvuoRjwVYtutKNorTDb3DaRrZMicVVr92WMKSDshpKDYvlWDYC_OO0r9Dfp6sIHGp8ZraUl8QAn0k2qsjTb2jjQXaE-_uLeEFiE3BBxOqGkx5Rx94DjHJbkN446ewnB2cFelZ61GXB3uxylgXw7svBoZ94I_nzHDHQnuBYdLXqQIHvZwjtJ5YbvFw22xT_RazVl-R3-Gj_st98ncljHvaOD1xn1LrWc7DRdMJZjeECsScJXwxEtNaZHdMaTb_DQdmiSUHNtPBjvoDOr5eDuOT4W"  # 请填写你的 Refresh Token
+    defaultFulfillmentType: "FBM"
+    defaultCondition: "New"
 
 # 自动更新配置
 updater:
@@ -72,8 +87,4 @@ monitor:
   enabled: true  # 是否启用产品监控功能
   storeIDs: []    # 可选：指定需要监控的店铺ID，如果为空则使用 sync.storeIDs 或 management.storeIDs
   checkInterval: 1440  # 检查间隔（分钟），默认24小时
-  batchSize: 50  # 批量处理大小
-  enablePriceAlert: true  # 启用价格告警
-  enableStockAlert: true  # 启用库存告警
-  priceChangeThreshold: 5.0  # 价格变化阈值（百分比）
-  stockChangeThreshold: 5  # 库存变化阈值
+  batchSize: 100  # 批量处理大小

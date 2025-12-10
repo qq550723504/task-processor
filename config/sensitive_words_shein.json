@@ -29,6 +29,7 @@
     "en": [
       "(?i)\\b(nike|adidas|apple|samsung|sony)\\b",
       "(?i)\\b(best|top|#1|number\\s*one)\\b",
+      "(?i)925\\s*sterling",
       "Safe",
       "sales",
       "seguro",

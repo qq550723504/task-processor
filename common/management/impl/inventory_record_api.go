@@ -39,7 +39,7 @@ func (m *InventoryRecordAPIClientImpl) CreateInventoryRecord(req *api.InventoryR
 
 // GetLatestInventoryRecord 获取最新的库存记录
 func (m *InventoryRecordAPIClientImpl) GetLatestInventoryRecord(platform, productId, region string) (*api.InventoryRecordRespDTO, error) {
-	url := fmt.Sprintf("%s/rpc-api/listing/inventory-record/latest", m.baseURL)
+	url := fmt.Sprintf("%s/rpc-api/listing/inventory-record/get-latest", m.baseURL)
 
 	// 构建查询参数
 	params := map[string]interface{}{

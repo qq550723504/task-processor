@@ -122,15 +122,29 @@ type PlatformAutoPricingConfig struct {
 
 // AmazonConfig Amazon爬虫配置
 type AmazonConfig struct {
-	Enabled           bool
-	Headless          bool
-	BrowserPath       string
-	PoolSize          int
-	Zipcodes          map[string]string
-	ViewportWidth     int
-	ViewportHeight    int
-	ProxyServer       string
-	DataFreshnessDays int // 数据新鲜度天数，默认7天
+	Enabled           bool              `yaml:"enabled"`
+	Headless          bool              `yaml:"headless"`
+	BrowserPath       string            `yaml:"browserPath"`
+	PoolSize          int               `yaml:"poolSize"`
+	Zipcodes          map[string]string `yaml:"zipcodes"`
+	ViewportWidth     int               `yaml:"viewportWidth"`
+	ViewportHeight    int               `yaml:"viewportHeight"`
+	ProxyServer       string            `yaml:"proxyServer"`
+	DataFreshnessDays int               `yaml:"dataFreshnessDays"`
+	SPAPI             SPAPIConfig       `yaml:"spapi"`
+}
+
+// SPAPIConfig Amazon SP-API配置
+type SPAPIConfig struct {
+	Enabled                bool   `yaml:"enabled"`
+	Sandbox                bool   `yaml:"sandbox"` // 是否使用沙盒环境
+	Region                 string `yaml:"region"`
+	MarketplaceID          string `yaml:"marketplaceID"`
+	ClientID               string `yaml:"clientID"`
+	ClientSecret           string `yaml:"clientSecret"`
+	RefreshToken           string `yaml:"refreshToken"`
+	DefaultFulfillmentType string `yaml:"defaultFulfillmentType"`
+	DefaultCondition       string `yaml:"defaultCondition"`
 }
 
 // UpdaterConfig 自动更新配置
@@ -256,6 +270,17 @@ func LoadConfig() *Config {
 			ViewportHeight:    viper.GetInt("amazon.viewportHeight"),
 			ProxyServer:       viper.GetString("amazon.proxyServer"),
 			DataFreshnessDays: viper.GetInt("amazon.dataFreshnessDays"),
+			SPAPI: SPAPIConfig{
+				Enabled:                viper.GetBool("amazon.spapi.enabled"),
+				Sandbox:                viper.GetBool("amazon.spapi.sandbox"),
+				Region:                 viper.GetString("amazon.spapi.region"),
+				MarketplaceID:          viper.GetString("amazon.spapi.marketplaceID"),
+				ClientID:               viper.GetString("amazon.spapi.clientID"),
+				ClientSecret:           viper.GetString("amazon.spapi.clientSecret"),
+				RefreshToken:           viper.GetString("amazon.spapi.refreshToken"),
+				DefaultFulfillmentType: viper.GetString("amazon.spapi.defaultFulfillmentType"),
+				DefaultCondition:       viper.GetString("amazon.spapi.defaultCondition"),
+			},
 		},
 		Updater: UpdaterConfig{
 			Enabled:            viper.GetBool("updater.enabled"),

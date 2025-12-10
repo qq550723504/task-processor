@@ -134,7 +134,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *TaskContext) 
 				}
 
 				variant := GetVariantByAsinFromVariants(ctx.Variants, createReq.ProductId)
-				costPrice := GetProductPrice(variant, ctx.FilterRule.PriceType)
+				costPrice := GetProductPrice(variant, ctx.StoreInfo.PriceType)
 				createReq.CostPrice = &costPrice
 
 				if ctx.AmazonProduct.ParentAsin != "" {

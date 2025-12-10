@@ -34,4 +34,5 @@ const (
 	queryCostPriceEndpoint         = apiPrefix + "/product/price/query_cost_price"
 	queryInventoryEndpoint         = apiPrefix + "/product/inventory/query"
 	updateInventoryEndpoint        = apiPrefix + "/product/inventory/update"
+	operateShelfStatusEndpoint     = apiPrefix + "/product/operate_Shelf_status"
 )

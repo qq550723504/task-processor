@@ -38,7 +38,7 @@ func (h *ReapplyFilterRuleHandler) Handle(ctx *TaskContext) error {
 
 	for _, variant := range *ctx.Variants {
 		// 对变体应用筛选规则
-		if err := h.applyFilterRuleToVariant(ctx.FilterRule, variant); err != nil {
+		if err := h.applyFilterRuleToVariant(ctx.FilterRule, variant, ctx); err != nil {
 			logrus.Infof("变体ASIN %s 不符合筛选规则: %v\n", variant.Asin, err)
 			// 标记该变体不符合规则
 			ctx.SetVariantFiltered(variant.Asin, true, err.Error())
@@ -65,9 +65,15 @@ func (h *ReapplyFilterRuleHandler) Handle(ctx *TaskContext) error {
 }
 
 // applyFilterRuleToVariant 对单个变体应用筛选规则
-func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRule *api.FilterRuleRespDTO, variant amazon.Product) error {
+func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRule *api.FilterRuleRespDTO, variant amazon.Product, ctx *TaskContext) error {
+	// 获取店铺配置的价格类型
+	priceType := "special"
+	if ctx.StoreInfo != nil && ctx.StoreInfo.PriceType != "" {
+		priceType = ctx.StoreInfo.PriceType
+	}
+
 	// 获取产品价格
-	priceValue := GetProductPrice(&variant, filterRule.PriceType)
+	priceValue := GetProductPrice(&variant, priceType)
 
 	// 校验价格范围
 	if err := h.ruleChecker.CheckPriceRange(filterRule, priceValue); err != nil {

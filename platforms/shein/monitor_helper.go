@@ -21,16 +21,6 @@ func abs(x float64) float64 {
 	return x
 }
 
-// parseStock 解析库存字符串为整数
-func parseStock(stock string) int {
-	if stock == "" {
-		return 0
-	}
-	var result int
-	fmt.Sscanf(stock, "%d", &result)
-	return result
-}
-
 // parsePrice 解析价格字符串为浮点数
 func parsePrice(price string) float64 {
 	if price == "" {
@@ -39,14 +29,6 @@ func parsePrice(price string) float64 {
 	var result float64
 	fmt.Sscanf(price, "%f", &result)
 	return result
-}
-
-// getStringValue 安全获取字符串指针的值
-func getStringValue(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 // MappingInfo 映射信息结构
@@ -76,13 +58,29 @@ type AmazonMonitorData struct {
 	LastCheckTime int64   `json:"last_check_time"` // Unix 时间戳（秒）
 }
 
+// CostPriceInfo 成本价格信息
+type CostPriceInfo struct {
+	CostPrice string `json:"cost_price"`
+	Currency  string `json:"currency"`
+}
+
 // SKUInfo SKU 信息结构
 type SKUInfo struct {
 	SKUCode           string             `json:"sku_code"`
 	MappingInfo       *MappingInfo       `json:"mapping_info"`
 	InventoryInfo     []InventoryInfo    `json:"inventory_info"`
 	UsableInventory   int                `json:"usable_inventory"`
+	CostPriceInfo     *CostPriceInfo     `json:"cost_price_info,omitempty"`     // 成本价格信息（从同步服务保存）
+	PriceInfoList     []PriceInfo        `json:"price_info_list,omitempty"`     // 价格信息列表
 	AmazonMonitorData *AmazonMonitorData `json:"amazon_monitor_data,omitempty"` // Amazon 监控数据
+}
+
+// PriceInfo 价格信息
+type PriceInfo struct {
+	SubSite      string  `json:"sub_site"`
+	ShopPrice    float64 `json:"shop_price"`
+	SpecialPrice float64 `json:"special_price"`
+	Currency     string  `json:"currency"`
 }
 
 // SKCInfo SKC 信息结构
@@ -93,8 +91,10 @@ type SKCInfo struct {
 
 // SKUMappingData SKU 映射数据（包含映射信息和库存）
 type SKUMappingData struct {
-	MappingInfo *MappingInfo
-	Stock       int
+	MappingInfo       *MappingInfo
+	Stock             int
+	CostPriceInfo     CostPriceInfo      // SHEIN 销售价格信息
+	AmazonMonitorData *AmazonMonitorData // Amazon 监控数据(成本价)
 }
 
 // extractMappingInfoFromAttributes 从 Attributes JSON 中提取所有映射信息和库存
@@ -108,7 +108,7 @@ func extractMappingInfoFromAttributes(attributesJSON string) []*SKUMappingData {
 		return nil
 	}
 
-	// 收集所有有效的映射信息和库存
+	// 收集所有有效的映射信息、库存和价格
 	var mappings []*SKUMappingData
 	for _, skc := range skcList {
 		for _, sku := range skc.SKUInfo {
@@ -121,9 +121,17 @@ func extractMappingInfoFromAttributes(attributesJSON string) []*SKUMappingData {
 					}
 				}
 
+				// 提取成本价格信息
+				var costPriceInfo CostPriceInfo
+				if sku.CostPriceInfo != nil {
+					costPriceInfo = *sku.CostPriceInfo
+				}
+
 				mappings = append(mappings, &SKUMappingData{
-					MappingInfo: sku.MappingInfo,
-					Stock:       totalStock,
+					MappingInfo:       sku.MappingInfo,
+					Stock:             totalStock,
+					CostPriceInfo:     costPriceInfo,
+					AmazonMonitorData: sku.AmazonMonitorData,
 				})
 			}
 		}

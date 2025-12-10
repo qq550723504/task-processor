@@ -128,8 +128,8 @@ func (s *SyncService) fetchProductList(apiClient *shops.ShopAPIClient) ([]SheinP
 		SearchAbandonProduct: false,
 		SearchIllegal:        false,
 		SearchLessInventory:  false,
-		ShelfType:            "ON_SHELF", // 只获取已上架产品
-		SortType:             1,
+		//ShelfType:            "ON_SHELF", // 只获取已上架产品
+		SortType: 1,
 	}
 
 	// 调用产品列表 API
@@ -371,15 +371,6 @@ func (s *SyncService) enrichProductWithMappingBySku(productData *api.ProductData
 				}
 			}
 		}
-
-		logrus.WithFields(logrus.Fields{
-			"spu_code":      sheinProduct.SpuCode,
-			"product_id":    firstAsin,
-			"parent_id":     firstParentAsin,
-			"region":        productData.Region,
-			"mapping_count": mappingCount,
-			"total_skc":     len(sheinProduct.SkcInfoList),
-		}).Info("从映射表填充 ProductID 和 Region (通过 SKU)")
 
 		// 更新 Attributes，包含 SKU 级别的映射信息
 		s.updateAttributesWithMappings(productData, enrichedSkcList)

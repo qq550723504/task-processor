@@ -1,0 +1,114 @@
+# Amazon 平台配置示例
+
+amazon:
+  # 是否启用 Amazon 平台
+  enabled: true
+  
+  # AWS 区域配置
+  # 北美: us-east-1
+  # 欧洲: eu-west-1
+  # 远东: us-west-2
+  region: "us-east-1"
+  
+  # 市场 ID (Marketplace ID)
+  # 美国: ATVPDKIKX0DER
+  # 加拿大: A2EUQ1WTGCTBG2
+  # 墨西哥: A1AM78C64UM0Y8
+  # 英国: A1F83G8C2ARO7P
+  # 德国: A1PA6795UKMFR9
+  # 法国: A13V1IB3VIYZZH
+  # 意大利: APJ6JRA9NG5V4
+  # 西班牙: A1RKKUPIHCS9HS
+  # 日本: A1VC38T7YXB528
+  marketplaceID: "ATVPDKIKX0DER"
+  
+  # SP-API 认证信息
+  # 从 Amazon Seller Central 获取
+  clientID: "amzn1.application-oa2-client.xxxxx"
+  clientSecret: "xxxxx"
+  refreshToken: "Atzr|xxxxx"
+  
+  # API 端点 (可选，默认根据 region 自动选择)
+  baseURL: ""
+  
+  # 默认配送方式
+  # FBA: Fulfillment by Amazon (亚马逊配送)
+  # FBM: Fulfillment by Merchant (商家自配送)
+  defaultFulfillmentType: "FBM"
+  
+  # 默认产品状态
+  defaultCondition: "New"
+  
+  # 库存配置
+  inventory:
+    # 默认库存数量
+    defaultQuantity: 100
+    # 低库存阈值
+    lowStockThreshold: 10
+    # 是否自动补货
+    autoReplenish: false
+  
+  # 价格配置
+  pricing:
+    # 默认货币
+    defaultCurrency: "USD"
+    # 默认利润率 (%)
+    defaultProfitRate: 30.0
+    # 最低价格
+    minPrice: 1.0
+    # 最高价格
+    maxPrice: 999999.99
+  
+  # 图片配置
+  images:
+    # 最少图片数量
+    minCount: 1
+    # 最多图片数量
+    maxCount: 9
+    # 主图要求白色背景
+    requireWhiteBackground: true
+    # 最小尺寸 (像素)
+    minWidth: 1000
+    minHeight: 1000
+  
+  # API 限流配置
+  rateLimit:
+    # 每秒最大请求数
+    requestsPerSecond: 2
+    # 突发请求数
+    burstSize: 5
+  
+  # 重试配置
+  retry:
+    # 最大重试次数
+    maxRetries: 3
+    # 初始重试延迟 (秒)
+    initialDelay: 1
+    # 最大重试延迟 (秒)
+    maxDelay: 30
+    # 重试延迟倍数
+    multiplier: 2
+  
+  # 自动核价配置
+  autoPricing:
+    # 是否启用自动核价
+    enabled: false
+    # 核价间隔 (秒)
+    interval: 300
+    # 批量处理大小
+    batchSize: 100
+    # 价格调整策略
+    strategy: "competitive" # competitive, fixed, dynamic
+  
+  # 产品监控配置
+  monitoring:
+    # 是否启用监控
+    enabled: false
+    # 监控间隔 (分钟)
+    interval: 60
+    # 监控指标
+    metrics:
+      - "price"
+      - "inventory"
+      - "buybox"
+      - "reviews"

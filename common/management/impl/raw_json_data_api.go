@@ -51,7 +51,7 @@ func (m *RawJsonDataAPIClientImpl) GetRawJsonData(req *api.RawJsonDataReqDTO) (*
 	if freshnessDays <= 0 {
 		freshnessDays = 15 // 默认15天
 	}
-	if !isDataFresh(rawData.CreateTime, freshnessDays) {
+	if !isDataFresh(rawData.CreateTime, rawData.UpdateTime, freshnessDays) {
 		return nil, nil // 数据不新鲜，返回 nil 让调用方重新抓取
 	}
 
@@ -60,14 +60,21 @@ func (m *RawJsonDataAPIClientImpl) GetRawJsonData(req *api.RawJsonDataReqDTO) (*
 
 // isDataFresh 检查数据是否新鲜
 // createTime: 创建时间（毫秒时间戳）
+// updateTime: 更新时间（毫秒时间戳）
 // freshnessDays: 新鲜度天数
-func isDataFresh(createTime int64, freshnessDays int) bool {
-	if createTime == 0 {
+func isDataFresh(createTime, updateTime int64, freshnessDays int) bool {
+	// 取创建时间和更新时间中较新的一个
+	latestTime := createTime
+	if updateTime > latestTime {
+		latestTime = updateTime
+	}
+
+	if latestTime == 0 {
 		return false
 	}
 
 	// 将毫秒时间戳转换为时间对象
-	dataTime := time.Unix(createTime/1000, (createTime%1000)*1000000)
+	dataTime := time.Unix(latestTime/1000, (latestTime%1000)*1000000)
 
 	// 计算数据年龄（天数）
 	age := time.Since(dataTime)

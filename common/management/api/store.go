@@ -1,4 +1,4 @@
-﻿package api
+package api
 
 // StoreRespDTO 店铺信息响应DTO
 type StoreRespDTO struct {
@@ -25,6 +25,7 @@ type StoreRespDTO struct {
 	EnableAutoPrice         *bool  `json:"enableAutoPrice,omitempty"`         // 是否启用自动定价
 	EnableRebargain         *bool  `json:"enableRebargain,omitempty"`         // 是否启用重新议价
 	TemuPriceRejectStrategy string `json:"temuPriceRejectStrategy,omitempty"` // TEMU核价不通过时的处理策略
+	PriceType               string `json:"priceType,omitempty"`               // 价格类型: special(特价) 或 original(原价)
 	Remark                  string `json:"remark"`                            // 备注信息
 	Status                  int16  `json:"status"`                            // 是否启用: 0-禁用 1-启用（管理员用）
 }

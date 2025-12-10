@@ -1,0 +1,86 @@
+========================================
+Amazon 商品上传测试工具 - 使用说明
+========================================
+
+【第 1 步】配置 Amazon SP-API 凭证
+----------------------------------
+编辑文件：config/config-dev.yaml
+
+在 amazon 部分添加以下配置：
+
+amazon:
+  spapi:
+    enabled: true
+    region: "us-east-1"
+    marketplaceID: "ATVPDKIKX0DER"
+    clientID: "你的 Client ID"
+    clientSecret: "你的 Client Secret"
+    refreshToken: "你的 Refresh Token"
+    defaultFulfillmentType: "FBM"
+    defaultCondition: "New"
+
+【第 2 步】运行测试
+----------------------------------
+
+方法 1: 使用批处理脚本（推荐）
+  scripts\test-amazon-upload.bat
+
+方法 2: 直接运行
+  go run ./cmd/amazon-test
+
+方法 3: 编译后运行
+  go build -o test-amazon.exe ./cmd/amazon-test
+  test-amazon.exe
+
+方法 4: 自定义参数
+  go run ./cmd/amazon-test -sku "MY-SKU-001" -title "我的商品" -brand "MyBrand" -price 29.99
+
+【参数说明】
+----------------------------------
+-sku      产品 SKU（默认: TEST-SKU-001）
+-title    商品标题（默认: 测试商品）
+-brand    品牌名称（默认: TestBrand）
+-price    商品价格（默认: 19.99）
+
+【成功示例】
+----------------------------------
+INFO[2025-12-06] === Amazon 商品上传测试 ===
+INFO[2025-12-06] 🔍 检查配置...
+INFO[2025-12-06] ✅ 配置检查通过
+INFO[2025-12-06] ✅ API客户端创建成功
+INFO[2025-12-06] 🔐 测试认证...
+INFO[2025-12-06] ✅ 认证成功
+INFO[2025-12-06] 📦 准备商品数据...
+INFO[2025-12-06] 🚀 开始上传商品...
+INFO[2025-12-06] ✅ 商品上传成功！
+INFO[2025-12-06]    SKU: TEST-SKU-001
+INFO[2025-12-06]    状态: ACCEPTED
+INFO[2025-12-06] === 测试完成 ===
+
+【常见问题】
+----------------------------------
+Q: 如何获取 Amazon SP-API 凭证？
+A: 登录 Amazon Seller Central > 设置 > 用户权限 > 开发者中心
+   详细步骤：https://developer-docs.amazon.com/sp-api/docs/registering-your-application
+
+Q: 认证失败怎么办？
+A: 检查 Client ID、Client Secret 和 Refresh Token 是否正确
+
+Q: 配置文件在哪里？
+A: config/config-dev.yaml
+
+Q: 如何测试不同市场？
+A: 修改配置文件中的 marketplaceID 和 region
+   美国: ATVPDKIKX0DER (us-east-1)
+   英国: A1F83G8C2ARO7P (eu-west-1)
+   日本: A1VC38T7YXB528 (us-west-2)
+
+【更多文档】
+----------------------------------
+- 快速开始：platforms/amazon/docs/QUICK_START.md
+- 完整测试指南：platforms/amazon/docs/TESTING_GUIDE.md
+- 工具说明：cmd/amazon-test/README.md
+
+========================================
+祝你测试顺利！
+========================================

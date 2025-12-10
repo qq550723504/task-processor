@@ -19,6 +19,7 @@ type RawJsonDataRespDTO struct {
 	Region      string `json:"region"`      // 区域
 	RawJSONData string `json:"rawJsonData"` // 原生JSON数据
 	CreateTime  int64  `json:"createTime"`  // 创建时间
+	UpdateTime  int64  `json:"updateTime"`  // 更新时间
 }
 
 // ProductVariantConfirmationReqDTO 产品变体确认请求DTO

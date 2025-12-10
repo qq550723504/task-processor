@@ -17,7 +17,7 @@ func (h *ApplyFilterRuleHandler) Name() string {
 
 func (h *ApplyFilterRuleHandler) Handle(ctx *TaskContext) error {
 	// 校验价格范围
-	priceValue := GetProductPrice(ctx.AmazonProduct, ctx.FilterRule.PriceType)
+	priceValue := GetProductPrice(ctx.AmazonProduct, ctx.StoreInfo.PriceType)
 	if err := h.ruleChecker.CheckPriceRange(ctx.FilterRule, priceValue); err != nil {
 		return err
 	}

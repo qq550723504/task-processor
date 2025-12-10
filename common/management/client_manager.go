@@ -230,6 +230,15 @@ func (cm *ClientManager) GetInventoryRecordClient() *impl.InventoryRecordAPIClie
 	}
 }
 
+// GetOperationStrategyClient 获取运营策略API客户端
+func (cm *ClientManager) GetOperationStrategyClient() *impl.OperationStrategyClientImpl {
+	// 直接基于基础客户端创建
+	baseClient := cm.GetClient()
+	return &impl.OperationStrategyClientImpl{
+		ManagementAPIClientImpl: baseClient,
+	}
+}
+
 // GetImageDownloader 获取图片下载客户端
 func (cm *ClientManager) GetImageDownloader() *impl.ImageDownloader {
 	cm.mutex.RLock()

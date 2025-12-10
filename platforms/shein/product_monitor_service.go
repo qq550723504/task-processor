@@ -10,6 +10,7 @@ import (
 	"task-processor/common/product"
 	shops "task-processor/common/shein"
 	"task-processor/platforms/common"
+	"task-processor/platforms/shein/modules"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,11 +18,13 @@ import (
 // SheinProductMonitorService SHEIN 产品监控服务（价格+库存）
 type SheinProductMonitorService struct {
 	*common.BaseMonitorService
-	syncService           *SyncService
-	apiClients            map[int64]*shops.ShopAPIClient
-	amazonProcessor       *amazon.AmazonProcessor
-	rawJsonDataClient     api.RawJsonDataAPI
-	inventoryRecordClient api.InventoryRecordAPI
+	syncService             *SyncService
+	apiClients              map[int64]*shops.ShopAPIClient
+	amazonProcessor         *amazon.AmazonProcessor
+	rawJsonDataClient       api.RawJsonDataAPI
+	inventoryRecordClient   api.InventoryRecordAPI
+	operationStrategyClient api.OperationStrategyAPI
+	storeClient             api.StoreAPI
 }
 
 // NewSheinProductMonitorService 创建 SHEIN 产品监控服务
@@ -33,14 +36,18 @@ func NewSheinProductMonitorService(
 	amazonProcessor *amazon.AmazonProcessor,
 	rawJsonDataClient api.RawJsonDataAPI,
 	inventoryRecordClient api.InventoryRecordAPI,
+	operationStrategyClient api.OperationStrategyAPI,
+	storeClient api.StoreAPI,
 ) *SheinProductMonitorService {
 	return &SheinProductMonitorService{
-		BaseMonitorService:    common.NewBaseMonitorService(config, mappingClient, eventHandler),
-		syncService:           syncService,
-		apiClients:            make(map[int64]*shops.ShopAPIClient),
-		amazonProcessor:       amazonProcessor,
-		rawJsonDataClient:     rawJsonDataClient,
-		inventoryRecordClient: inventoryRecordClient,
+		BaseMonitorService:      common.NewBaseMonitorService(config, mappingClient, eventHandler),
+		syncService:             syncService,
+		apiClients:              make(map[int64]*shops.ShopAPIClient),
+		amazonProcessor:         amazonProcessor,
+		rawJsonDataClient:       rawJsonDataClient,
+		inventoryRecordClient:   inventoryRecordClient,
+		operationStrategyClient: operationStrategyClient,
+		storeClient:             storeClient,
 	}
 }
 
@@ -91,6 +98,27 @@ func (s *SheinProductMonitorService) CheckProductChanges(storeID, tenantID int64
 
 	logger.Info("开始检查 SHEIN 产品变化（价格+库存）")
 
+	// 获取店铺信息
+	storeInfo, err := s.storeClient.GetStore(storeID)
+	if err != nil {
+		return fmt.Errorf("获取店铺信息失败: %w", err)
+	}
+
+	// 获取店铺的价格类型配置(默认使用特价)
+	priceType := "special"
+	if storeInfo.PriceType != "" {
+		priceType = storeInfo.PriceType
+	}
+	logger.WithField("price_type", priceType).Info("使用店铺配置的价格类型")
+
+	// 获取店铺的运营策略
+	strategy, err := s.operationStrategyClient.GetOperationStrategyByStoreId(storeID)
+	if err != nil {
+		logger.WithError(err).Warn("获取运营策略失败，将跳过策略执行")
+	} else if strategy != nil && strategy.IsEnabled() {
+		logger.WithField("strategy_name", strategy.Name).Info("已加载运营策略")
+	}
+
 	products, err := s.getStoreMappings(storeID, tenantID)
 	if err != nil {
 		return fmt.Errorf("查询店铺产品失败: %w", err)
@@ -105,6 +133,7 @@ func (s *SheinProductMonitorService) CheckProductChanges(storeID, tenantID int64
 
 	priceChangeCount := 0
 	stockChangeCount := 0
+	strategyExecutedCount := 0
 
 	for _, prod := range products {
 		// 从 Attributes 中解析所有 SKU 映射数据（包含映射信息和库存）
@@ -131,7 +160,7 @@ func (s *SheinProductMonitorService) CheckProductChanges(storeID, tenantID int64
 			zipcode := product.GetZipcodeForRegion(region, nil)
 
 			// 先从数据库查询原始 JSON 数据
-			amazonProduct, err := s.getAmazonProductData(asin, region, zipcode, tenantID, storeID)
+			amazonProduct, err := s.getAmazonProductData(asin, region, zipcode, tenantID, storeID, priceType)
 			if err != nil {
 				logger.WithError(err).WithFields(logrus.Fields{
 					"asin":             asin,
@@ -142,10 +171,10 @@ func (s *SheinProductMonitorService) CheckProductChanges(storeID, tenantID int64
 			}
 
 			// 无论是否变化，都更新 attributes 中的 Amazon 数据
-			go s.updateAttributesWithAmazonData(prod, mappingInfo.SKU, amazonProduct, tenantID, storeID)
+			go s.updateAttributesWithAmazonData(prod, mappingInfo.SKU, amazonProduct, tenantID, storeID, priceType)
 
 			// 检查价格变化
-			if s.checkAndNotifyPriceChange(prod, amazonProduct, skuMapping, tenantID, storeID) {
+			if s.checkAndNotifyPriceChange(prod, amazonProduct, skuMapping, tenantID, storeID, priceType) {
 				priceChangeCount++
 			}
 
@@ -153,10 +182,49 @@ func (s *SheinProductMonitorService) CheckProductChanges(storeID, tenantID int64
 			if s.checkAndNotifyStockChange(prod, amazonProduct, skuMapping, tenantID, storeID) {
 				stockChangeCount++
 			}
+
+			// 执行运营策略
+			if strategy != nil && strategy.IsEnabled() {
+				apiClient := s.apiClients[storeID]
+				if apiClient != nil {
+					executor := NewStrategyExecutor(strategy, apiClient)
+
+					// 策略执行优先级：缺货 > 库存变化 > 低利润率
+					// 使用标志位避免重复执行相同操作
+					executed := false
+
+					// 1. 优先执行缺货策略（最高优先级）
+					if !amazonProduct.IsAvailable {
+						if err := executor.ExecuteOutOfStock(prod, skuMapping, amazonProduct); err != nil {
+							logger.WithError(err).Warn("执行缺货策略失败")
+						} else if strategy.OutOfStockAction != "NONE" {
+							strategyExecutedCount++
+							executed = true
+							logger.Debug("已执行缺货策略，跳过库存变化策略")
+						}
+					}
+
+					// 2. 执行库存变化策略（仅当未执行缺货策略时）
+					if !executed {
+						if err := executor.ExecuteStockChange(prod, skuMapping, amazonProduct); err != nil {
+							logger.WithError(err).Warn("执行库存变化策略失败")
+						} else if strategy.StockChangeAction != "NONE" {
+							strategyExecutedCount++
+						}
+					}
+
+					// 3. 执行低利润率策略（独立执行，不受其他策略影响）
+					if err := executor.ExecuteLowProfit(prod, skuMapping, amazonProduct); err != nil {
+						logger.WithError(err).Warn("执行低利润率策略失败")
+					} else if strategy.LowProfitAction != "NONE" {
+						strategyExecutedCount++
+					}
+				}
+			}
 		}
 	}
 
-	logger.Infof("产品检查完成，价格变化: %d, 库存变化: %d", priceChangeCount, stockChangeCount)
+	logger.Infof("产品检查完成，价格变化: %d, 库存变化: %d, 策略执行: %d", priceChangeCount, stockChangeCount, strategyExecutedCount)
 	return nil
 }
 
@@ -172,7 +240,7 @@ func (s *SheinProductMonitorService) getStoreMappings(storeID, tenantID int64) (
 }
 
 // getAmazonProductData 获取 Amazon 产品数据（先查数据库，没有再爬取）
-func (s *SheinProductMonitorService) getAmazonProductData(asin, region, zipcode string, tenantID, storeID int64) (*amazon.Product, error) {
+func (s *SheinProductMonitorService) getAmazonProductData(asin, region, zipcode string, tenantID, storeID int64, priceType string) (*amazon.Product, error) {
 	// 先从数据库查询
 	req := &api.RawJsonDataReqDTO{
 		TenantID:   tenantID,
@@ -187,7 +255,12 @@ func (s *SheinProductMonitorService) getAmazonProductData(asin, region, zipcode 
 	rawData, err := s.rawJsonDataClient.GetRawJsonData(req)
 	if err == nil && rawData != nil && rawData.RawJSONData != "" {
 		// 检查数据新鲜度（24小时内）
-		dataAge := time.Now().Unix() - rawData.CreateTime/1000 // CreateTime 是毫秒时间戳
+		// 优先使用 UpdateTime，如果为0则使用 CreateTime
+		timestamp := rawData.UpdateTime
+		if timestamp == 0 {
+			timestamp = rawData.CreateTime
+		}
+		dataAge := time.Now().Unix() - timestamp/1000 // 时间戳是毫秒
 		if dataAge < 24*3600 {
 			// 数据在24小时内，解析并返回
 			var amazonProduct amazon.Product
@@ -225,7 +298,7 @@ func (s *SheinProductMonitorService) getAmazonProductData(asin, region, zipcode 
 	go s.saveAmazonProductData(asin, region, amazonProduct, tenantID, storeID)
 
 	// 记录库存和价格变动（每天一次）
-	go s.recordInventoryAndPrice(asin, region, amazonProduct)
+	go s.recordInventoryAndPrice(asin, region, amazonProduct, priceType)
 
 	return amazonProduct, nil
 }
@@ -257,7 +330,7 @@ func (s *SheinProductMonitorService) saveAmazonProductData(asin, region string, 
 }
 
 // updateAttributesWithAmazonData 更新产品 attributes 中的 Amazon 数据（异步）
-func (s *SheinProductMonitorService) updateAttributesWithAmazonData(prod *api.ProductDataDTO, platformSKU string, amazonProduct *amazon.Product, tenantID, storeID int64) {
+func (s *SheinProductMonitorService) updateAttributesWithAmazonData(prod *api.ProductDataDTO, platformSKU string, amazonProduct *amazon.Product, tenantID, storeID int64, priceType string) {
 	// 解析现有的 attributes
 	var skcList []SKCInfo
 	if err := json.Unmarshal([]byte(prod.Attributes), &skcList); err != nil {
@@ -275,7 +348,7 @@ func (s *SheinProductMonitorService) updateAttributesWithAmazonData(prod *api.Pr
 				newStock := extractStockFromProduct(amazonProduct)
 				sku.AmazonMonitorData = &AmazonMonitorData{
 					ASIN:          sku.MappingInfo.ProductID,
-					Price:         amazonProduct.FinalPrice,
+					Price:         modules.GetProductPrice(amazonProduct, priceType),
 					Stock:         newStock,
 					LastCheckTime: time.Now().Unix(),
 				}
@@ -284,7 +357,7 @@ func (s *SheinProductMonitorService) updateAttributesWithAmazonData(prod *api.Pr
 				logrus.WithFields(logrus.Fields{
 					"platform_sku": platformSKU,
 					"asin":         sku.MappingInfo.ProductID,
-					"price":        amazonProduct.FinalPrice,
+					"price":        sku.AmazonMonitorData.Price,
 					"stock":        newStock,
 				}).Debug("添加 SKU 的 Amazon 监控数据")
 				break
@@ -320,7 +393,7 @@ func (s *SheinProductMonitorService) updateAttributesWithAmazonData(prod *api.Pr
 }
 
 // recordInventoryAndPrice 记录库存和价格变动（每天一次）
-func (s *SheinProductMonitorService) recordInventoryAndPrice(productId, region string, amazonProduct *amazon.Product) {
+func (s *SheinProductMonitorService) recordInventoryAndPrice(productId, region string, amazonProduct *amazon.Product, priceType string) {
 	// 检查今天是否已经记录过
 	latestRecord, err := s.inventoryRecordClient.GetLatestInventoryRecord("Amazon", productId, region)
 	if err != nil {
@@ -354,8 +427,8 @@ func (s *SheinProductMonitorService) recordInventoryAndPrice(productId, region s
 		originalPrice = amazonProduct.InitialPrice
 	}
 
-	// 获取当前价格（特价，从 FinalPrice）
-	currentPrice := amazonProduct.FinalPrice
+	// 根据店铺配置获取当前价格
+	currentPrice := modules.GetProductPrice(amazonProduct, priceType)
 	currency := amazonProduct.Currency
 
 	// 计算价格变化百分比
@@ -404,6 +477,7 @@ func (s *SheinProductMonitorService) checkAndNotifyPriceChange(
 	amazonProduct *amazon.Product,
 	skuMapping *SKUMappingData,
 	tenantID, storeID int64,
+	priceType string,
 ) bool {
 	mappingInfo := skuMapping.MappingInfo
 
@@ -417,7 +491,8 @@ func (s *SheinProductMonitorService) checkAndNotifyPriceChange(
 		}
 	}
 
-	newPrice := amazonProduct.FinalPrice
+	// 使用店铺配置的价格类型获取 Amazon 价格(包含运费)
+	newPrice := modules.GetProductPrice(amazonProduct, priceType)
 
 	if oldPrice > 0 && newPrice > 0 {
 		changePercent := ((newPrice - oldPrice) / oldPrice) * 100

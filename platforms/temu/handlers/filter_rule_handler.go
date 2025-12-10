@@ -68,7 +68,7 @@ func (h *FilterRuleHandler) Handle(ctx *pipeline.TaskContext) error {
 	}
 
 	// 应用筛选规则到主产品
-	if !h.checkProductAgainstRules(ctx.AmazonProduct, rules) {
+	if !h.checkProductAgainstRules(ctx.AmazonProduct, rules, ctx) {
 		h.logger.Warnf("主产品 %s 不符合筛选规则，任务终止", ctx.AmazonProduct.Asin)
 		return fmt.Errorf("TERMINATED: 主产品不符合筛选规则")
 	}
@@ -110,7 +110,7 @@ func (h *FilterRuleHandler) FilterVariants(ctx *pipeline.TaskContext) error {
 	originalCount := len(ctx.AmazonVariants)
 
 	for _, variant := range ctx.AmazonVariants {
-		if h.checkProductAgainstRules(variant, rules) {
+		if h.checkProductAgainstRules(variant, rules, ctx) {
 			filteredVariants = append(filteredVariants, variant)
 			h.logger.Debugf("变体通过筛选: %s", variant.Asin)
 		} else {
@@ -165,7 +165,7 @@ func (h *FilterRuleHandler) getFilterRules(ctx *pipeline.TaskContext) (*[]api.Fi
 }
 
 // checkProductAgainstRules 检查产品是否符合筛选规则
-func (h *FilterRuleHandler) checkProductAgainstRules(product *amazon.Product, rules *[]api.FilterRuleRespDTO) bool {
+func (h *FilterRuleHandler) checkProductAgainstRules(product *amazon.Product, rules *[]api.FilterRuleRespDTO, ctx *pipeline.TaskContext) bool {
 	if rules == nil || len(*rules) == 0 {
 		h.logger.Debug("没有筛选规则，产品通过")
 		return true
@@ -178,7 +178,7 @@ func (h *FilterRuleHandler) checkProductAgainstRules(product *amazon.Product, ru
 			continue
 		}
 
-		if !h.checkSingleRule(product, &rule) {
+		if !h.checkSingleRule(product, &rule, ctx) {
 			h.logger.Infof("产品 %s 不符合规则 '%s': %s", product.Asin, rule.Name, rule.Description)
 			return false
 		}
@@ -188,9 +188,9 @@ func (h *FilterRuleHandler) checkProductAgainstRules(product *amazon.Product, ru
 }
 
 // checkSingleRule 检查单个规则
-func (h *FilterRuleHandler) checkSingleRule(product *amazon.Product, rule *api.FilterRuleRespDTO) bool {
+func (h *FilterRuleHandler) checkSingleRule(product *amazon.Product, rule *api.FilterRuleRespDTO, ctx *pipeline.TaskContext) bool {
 	// 价格检查
-	if !h.checkPriceRule(product, rule) {
+	if !h.checkPriceRule(product, rule, ctx) {
 		return false
 	}
 
@@ -218,23 +218,15 @@ func (h *FilterRuleHandler) checkSingleRule(product *amazon.Product, rule *api.F
 }
 
 // checkPriceRule 检查价格规则
-func (h *FilterRuleHandler) checkPriceRule(product *amazon.Product, rule *api.FilterRuleRespDTO) bool {
-	// 根据价格类型获取价格
-	var price float64
-	if rule.PriceType == "original" {
-		// 原价：优先从 prices_breakdown.list_price 获取
-		if product.PricesBreakdown.ListPrice != nil {
-			price = *product.PricesBreakdown.ListPrice
-		} else {
-			price = product.InitialPrice
-		}
-	} else {
-		// 特价或默认：使用 final_price
-		price = product.FinalPrice
-		if price <= 0 {
-			price = product.InitialPrice
-		}
+func (h *FilterRuleHandler) checkPriceRule(product *amazon.Product, rule *api.FilterRuleRespDTO, ctx *pipeline.TaskContext) bool {
+	// 获取店铺配置的价格类型
+	priceType := "special"
+	if ctx != nil && ctx.StoreInfo != nil && ctx.StoreInfo.PriceType != "" {
+		priceType = ctx.StoreInfo.PriceType
 	}
+
+	// 根据价格类型获取价格(包含运费)
+	price := getProductPrice(product, priceType)
 
 	// 最低价格检查
 	if rule.PriceMin != nil && price < *rule.PriceMin {

@@ -22,10 +22,16 @@ func (h *SaleAttributeHandler) prepareProductsData(ctx *TaskContext) []map[strin
 		// 单体产品：使用主产品信息
 		logrus.Infof("📦 检测到单体产品，使用主产品信息")
 		if ctx.AmazonProduct != nil {
+			// 获取店铺配置的价格类型
+			priceType := "special"
+			if ctx.StoreInfo != nil && ctx.StoreInfo.PriceType != "" {
+				priceType = ctx.StoreInfo.PriceType
+			}
+
 			productDetails := map[string]string{
 				"asin":              ctx.AmazonProduct.Asin,
 				"title":             ctx.AmazonProduct.Title,
-				"price":             strconv.FormatFloat(ctx.AmazonProduct.FinalPrice, 'f', -1, 64),
+				"price":             strconv.FormatFloat(GetProductPrice(ctx.AmazonProduct, priceType), 'f', -1, 64),
 				"currency":          ctx.AmazonProduct.Currency,
 				"productdimensions": ctx.AmazonProduct.ProductDimensions,
 				"weight":            ctx.AmazonProduct.ItemWeight, // 添加重量信息

@@ -18,7 +18,6 @@ type FilterRuleRespDTO struct {
 	TenantID        int64    `json:"tenantId"`        // 租户编号
 	StoreID         int64    `json:"storeId"`         // 店铺ID（业务ID），为空时为通用规则
 	CategoryID      int64    `json:"categoryId"`      // 分类ID
-	PriceType       string   `json:"priceType"`       // 价格类型
 	PriceMin        *float64 `json:"priceMin"`        // 最低价格
 	PriceMax        *float64 `json:"priceMax"`        // 最高价格
 	StockMin        *int     `json:"stockMin"`        // 最低库存

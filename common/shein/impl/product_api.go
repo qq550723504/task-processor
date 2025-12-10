@@ -421,3 +421,63 @@ func (p *ProductAPI) QueryCostPrice(spuName string, skcNameList []string) (*prod
 
 	return &result, nil
 }
+
+// OffShelf 下架产品
+func (p *ProductAPI) OffShelf(request *product.ShelfOperateRequest) error {
+	url := fmt.Sprintf("%s%s", p.GetBaseURL(), operateShelfStatusEndpoint)
+
+	var result product.ShelfOperateResponse
+	if err := p.apiRequest(http.MethodPost, url, request, &result); err != nil {
+		return err
+	}
+
+	// 统一错误处理
+	if result.Code != "0" {
+		// 检查认证过期
+		if result.Code == "20302" {
+			return &api.AuthenticationExpiredError{
+				TenantID: p.GetTenantID(),
+				ShopID:   p.GetShopID(),
+				Code:     result.Code,
+				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
+			}
+		}
+		return &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("下架产品失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return nil
+}
+
+// OnShelf 上架产品
+func (p *ProductAPI) OnShelf(request *product.ShelfOperateRequest) error {
+	url := fmt.Sprintf("%s%s", p.GetBaseURL(), operateShelfStatusEndpoint)
+
+	var result product.ShelfOperateResponse
+	if err := p.apiRequest(http.MethodPost, url, request, &result); err != nil {
+		return err
+	}
+
+	// 统一错误处理
+	if result.Code != "0" {
+		// 检查认证过期
+		if result.Code == "20302" {
+			return &api.AuthenticationExpiredError{
+				TenantID: p.GetTenantID(),
+				ShopID:   p.GetShopID(),
+				Code:     result.Code,
+				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
+			}
+		}
+		return &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("上架产品失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return nil
+}

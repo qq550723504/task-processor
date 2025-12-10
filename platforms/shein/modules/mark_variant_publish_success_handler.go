@@ -113,7 +113,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *TaskContext
 	}
 
 	// 计算成本价
-	costPrice := GetProductPrice(variant, ctx.FilterRule.PriceType)
+	costPrice := GetProductPrice(variant, ctx.StoreInfo.PriceType)
 
 	// 构建创建请求
 	status := common.TaskStatusPublished.Int16()
@@ -207,7 +207,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *TaskContext, a
 	}
 
 	// 计算成本价
-	costPrice := GetProductPrice(variant, ctx.FilterRule.PriceType)
+	costPrice := GetProductPrice(variant, ctx.StoreInfo.PriceType)
 
 	// 构建创建请求
 	status := common.TaskStatusCrawlFailed.Int16()
