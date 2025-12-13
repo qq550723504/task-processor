@@ -52,7 +52,7 @@ func main() {
 
 		// 默认产品URL
 		languageParam := "en_US"
-		*url = fmt.Sprintf("https://www.%s/dp/B07YQ38RP6?language=%s", domain, languageParam)
+		*url = fmt.Sprintf("https://www.%s/dp/B0DF49ML4P?language=%s", domain, languageParam)
 	} else {
 		// 如果提供了URL但没有提供邮编，则使用默认邮编
 		if *zipcode == "" {

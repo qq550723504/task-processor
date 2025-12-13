@@ -305,6 +305,12 @@ func (ap *AmazonProcessor) processWithSingleBrowser(url string, zipcode string, 
 func (ap *AmazonProcessor) handleContinueShoppingButton(page playwright.Page) error {
 	time.Sleep(2 * time.Second)
 
+	// 先检查是否在登录页面，如果是则不处理Continue按钮
+	if ap.isLoginPage(page) {
+		logrus.Infof("检测到登录页面，跳过Continue shopping按钮处理")
+		return nil
+	}
+
 	continueShoppingSelectors := getContinueShoppingSelectors()
 
 	for _, selector := range continueShoppingSelectors {
@@ -324,21 +330,39 @@ func (ap *AmazonProcessor) handleContinueShoppingButton(page playwright.Page) er
 	return nil
 }
 
+// isLoginPage 检查是否在登录页面
+func (ap *AmazonProcessor) isLoginPage(page playwright.Page) bool {
+	loginSelectors := []string{
+		"#ap_email",
+		"#ap_password",
+		"input[name='email']",
+		"input[name='password']",
+		"text=Sign in",
+		"text=Sign In",
+	}
+
+	for _, selector := range loginSelectors {
+		element, err := page.QuerySelector(selector)
+		if err == nil && element != nil {
+			if visible, err := element.IsVisible(); err == nil && visible {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // getContinueShoppingSelectors 获取"继续购物"按钮的多语言选择器
 func getContinueShoppingSelectors() []string {
 	return []string{
-		// 英语
+		// 英语 - 只保留明确的Continue Shopping相关选择器
 		"button:has-text('Continue Shopping')",
 		"button:has-text('Continue shopping')",
 		"a:has-text('Continue Shopping')",
 		"a:has-text('Continue shopping')",
-		"button:has-text('Continue')",
-		"a:has-text('Continue')",
 		// 中文
 		"button:has-text('继续购物')",
 		"a:has-text('继续购物')",
-		"button:has-text('继续')",
-		"a:has-text('继续')",
 		// 日语
 		"button:has-text('買い物を続ける')",
 		"button:has-text('ショッピングを続ける')",
