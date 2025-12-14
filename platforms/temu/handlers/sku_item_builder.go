@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/pipeline"
 	"task-processor/common/utils"
 	"task-processor/platforms/temu/types"
+	temuUtils "task-processor/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -33,7 +34,7 @@ func NewSkuItemBuilder(logger *logrus.Entry, priceHandler *PriceHandler, regionH
 }
 
 // buildSkuFromVariantWithAI 使用AI映射从变体构建SKU
-func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx *pipeline.TaskContext, variant *amazon.Product, aiSku AIGeneratedSku) types.Sku {
+func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx *pipeline.TaskContext, variant *model.Product, aiSku AIGeneratedSku) types.Sku {
 	// 使用利润规则计算价格
 	supplierPrice := ib.priceHandler.CalculateVariantPriceWithStoreConfig(ctx, variant)
 	basePrice := float64(supplierPrice) / 100 // 转换为元用于显示
@@ -43,9 +44,6 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx *pipeline.TaskContext, v
 
 	// 初始零售价格（将由PriceQueryHandler更新为正确值）
 	maxRetailPrice := int(float64(supplierPrice) * priceMultiplier) // 使用利润规则倍数
-
-	ib.logger.Infof("💰 SKU价格计算 (ASIN: %s): 供应商价格=%.2f元, 倍数=%.2fx, 临时零售价=%.2f元",
-		variant.Asin, basePrice, priceMultiplier, float64(maxRetailPrice)/100)
 
 	// 使用原来的SKU生成逻辑
 	asin := variant.Asin
@@ -60,13 +58,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx *pipeline.TaskContext, v
 	// 从店铺配置读取库存设置（使用统一的方法）
 	quantity := ib.priceHandler.GetDefaultStock(ctx)
 
-	// 直接使用aiSku.Spec，不要复制！
-	// 这样resolveTemporarySpecIDs的修改才能传递到最终的SKU
-	// 注意：aiSku.Spec已经在resolveTemporarySpecIDs中被解析过了
 	specList := aiSku.Spec
-
-	// 调试：记录接收到的spec
-	ib.logger.Debugf("📋 buildSkuFromVariantWithAI 接收到的规格: %+v", specList)
 
 	// 去重：确保每个parent_spec_id只出现一次
 	specList = ib.deduplicateSpecs(specList)
@@ -94,36 +86,34 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx *pipeline.TaskContext, v
 	}
 
 	// 使用AI提取/估算的重量和尺寸（单位：lb和in）
-	weight := aiSku.Weight
-	if weight == "" || weight == "0.22" {
-		weight = "0.22" // 默认0.22磅（约100克）
+	// 格式化重量为两位小数（TEMU API要求）
+	weight := temuUtils.FormatWeight(aiSku.Weight)
+	if aiSku.Weight == "" || aiSku.Weight == "0.22" {
 		ib.logger.Errorf("❌ AI未能估算重量（ASIN: %s），使用兜底默认值: %slb - 这可能不准确！", variant.Asin, weight)
 	} else {
-		ib.logger.Infof("✅ AI提取/估算重量: %slb (ASIN: %s)", weight, variant.Asin)
+		ib.logger.Infof("✅ AI提取/估算重量: %slb -> 格式化为: %slb (ASIN: %s)", aiSku.Weight, weight, variant.Asin)
 	}
 
-	length := aiSku.Length
-	if length == "" || length == "3.94" {
-		length = "3.94" // 默认3.94英寸（约100毫米）
+	// 格式化尺寸为一位小数（TEMU API要求）
+	length := temuUtils.FormatDimension(aiSku.Length)
+	if aiSku.Length == "" || aiSku.Length == "3.94" {
 		ib.logger.Errorf("❌ AI未能估算长度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, length)
 	} else {
-		ib.logger.Infof("✅ AI提取/估算长度: %sin (ASIN: %s)", length, variant.Asin)
+		ib.logger.Infof("✅ AI提取/估算长度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Length, length, variant.Asin)
 	}
 
-	width := aiSku.Width
-	if width == "" || width == "5.91" {
-		width = "5.91" // 默认5.91英寸（约150毫米）
+	width := temuUtils.FormatDimension(aiSku.Width)
+	if aiSku.Width == "" || aiSku.Width == "5.91" {
 		ib.logger.Errorf("❌ AI未能估算宽度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, width)
 	} else {
-		ib.logger.Infof("✅ AI提取/估算宽度: %sin (ASIN: %s)", width, variant.Asin)
+		ib.logger.Infof("✅ AI提取/估算宽度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Width, width, variant.Asin)
 	}
 
-	height := aiSku.Height
-	if height == "" || height == "7.87" {
-		height = "7.87" // 默认7.87英寸（约200毫米）
+	height := temuUtils.FormatDimension(aiSku.Height)
+	if aiSku.Height == "" || aiSku.Height == "7.87" {
 		ib.logger.Errorf("❌ AI未能估算高度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, height)
 	} else {
-		ib.logger.Infof("✅ AI提取/估算高度: %sin (ASIN: %s)", height, variant.Asin)
+		ib.logger.Infof("✅ AI提取/估算高度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Height, height, variant.Asin)
 	}
 
 	// 使用AI判断的多件装信息
@@ -167,10 +157,6 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx *pipeline.TaskContext, v
 		}
 	}
 
-	ib.logger.Infof("✅ AI判断的多件装信息 (ASIN: %s): classification=%d, pieces=%d, unit=%d, individually_packed=%d",
-		variant.Asin, multiplePackage.SkuClassification, multiplePackage.NumberOfPieces,
-		multiplePackage.PieceUnitCode, multiplePackage.IndividuallyPacked)
-
 	// 处理净含量信息
 	var originNetContentNumber string
 	var netContentUnitCode int
@@ -205,15 +191,9 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx *pipeline.TaskContext, v
 		}
 	}
 
-	ib.logger.Infof("📸 SKU图片: 尺寸图=%d张, 轮播图=%d张, 总计=%d张",
-		len(dimensionGallery), len(carouselGallery), len(dimensionGallery)+len(carouselGallery))
-
 	// 计算市场价：供货价 * 2
 	marketPrice := supplierPrice * 2                                    // 市场价（分）
 	marketPriceStr := fmt.Sprintf("%.2f", float64(supplierPrice)*2/100) // 市场价字符串（元）
-
-	ib.logger.Infof("💰 市场价计算: 供货价=%.2f元, 市场价=%.2f元 (供货价*2)",
-		basePrice, float64(marketPrice)/100)
 
 	return types.Sku{
 		// 必需字段（按照正确的JSON格式）
@@ -332,9 +312,6 @@ func (ib *SkuItemBuilder) generateSkuFromStoreConfig(ctx *pipeline.TaskContext, 
 		}
 	}
 
-	ib.logger.Infof("SKU生成配置: prefix=%s, suffix=%s, strategy=%d, asin=%s",
-		prefix, suffix, strategy, asin)
-
 	// 使用工具函数生成SKU
 	sku := utils.GenerateSKU(asin, strategy, prefix, suffix)
 
@@ -358,13 +335,6 @@ func (ib *SkuItemBuilder) deduplicateSpecs(specs []types.SpecInfo) []types.SpecI
 			// 第一次遇到这个parent_spec_id，保留
 			seenParentSpecs[spec.ParentSpecID] = spec
 			result = append(result, spec)
-		} else {
-			// 重复的parent_spec_id，记录警告
-			existingSpec := seenParentSpecs[spec.ParentSpecID]
-			ib.logger.Warnf("⚠️ 检测到重复的规格维度 parent_spec_id=%s (%s):",
-				spec.ParentSpecID, spec.ParentSpecName)
-			ib.logger.Warnf("   保留: %s (spec_id=%s)", existingSpec.SpecName, existingSpec.SpecID)
-			ib.logger.Warnf("   丢弃: %s (spec_id=%s)", spec.SpecName, spec.SpecID)
 		}
 	}
 
@@ -394,5 +364,4 @@ func (ib *SkuItemBuilder) saveAsinSkuMapping(ctx *pipeline.TaskContext, outSkuSN
 	asinSkuMap[outSkuSN] = asin
 	ctx.SetData("asin_sku_map", asinSkuMap)
 
-	ib.logger.Debugf("保存ASIN到SKU映射: SKU=%s -> ASIN=%s", outSkuSN, asin)
 }

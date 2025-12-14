@@ -4,7 +4,7 @@ import (
 	"math"
 	"math/rand"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 	"task-processor/common/pipeline"
 
@@ -71,14 +71,14 @@ func (ph *PriceHandler) CalculateDefaultPrice(ctx *pipeline.TaskContext) int {
 }
 
 // calculatePriceWithMultiplier 使用指定倍数计算价格
-func (ph *PriceHandler) calculatePriceWithMultiplier(product *amazon.Product, multiplier float64, ctx *pipeline.TaskContext) int {
+func (ph *PriceHandler) calculatePriceWithMultiplier(product *model.Product, multiplier float64, ctx *pipeline.TaskContext) int {
 	originalPrice := ph.getSupplierCost(product, ctx)
 	salePrice := math.Round(originalPrice*multiplier*100) / 100
 	return int(math.Round(salePrice * 100))
 }
 
 // CalculateVariantPrice 计算变体价格（使用上下文中的店铺配置）
-func (ph *PriceHandler) CalculateVariantPrice(ctx *pipeline.TaskContext, variant *amazon.Product) int {
+func (ph *PriceHandler) CalculateVariantPrice(ctx *pipeline.TaskContext, variant *model.Product) int {
 	tempCtx := &pipeline.TaskContext{
 		Task:          ctx.Task,
 		AmazonProduct: variant,
@@ -90,7 +90,7 @@ func (ph *PriceHandler) CalculateVariantPrice(ctx *pipeline.TaskContext, variant
 
 // CalculateVariantPriceWithStoreConfig 使用店铺配置计算变体价格（已废弃，使用 CalculateVariantPrice 代替）
 // Deprecated: 使用 CalculateVariantPrice 代替
-func (ph *PriceHandler) CalculateVariantPriceWithStoreConfig(ctx *pipeline.TaskContext, variant *amazon.Product) int {
+func (ph *PriceHandler) CalculateVariantPriceWithStoreConfig(ctx *pipeline.TaskContext, variant *model.Product) int {
 	return ph.CalculateVariantPrice(ctx, variant)
 }
 
@@ -110,7 +110,7 @@ func (ph *PriceHandler) getTenantAndStoreID(ctx *pipeline.TaskContext) (int64, i
 }
 
 // getSupplierCost 获取供应商成本（根据店铺配置的价格类型）
-func (ph *PriceHandler) getSupplierCost(product *amazon.Product, ctx *pipeline.TaskContext) float64 {
+func (ph *PriceHandler) getSupplierCost(product *model.Product, ctx *pipeline.TaskContext) float64 {
 	// 检查产品是否为空
 	if product == nil {
 		ph.logger.Warn("产品信息为空，返回默认价格0")
@@ -132,6 +132,13 @@ func (ph *PriceHandler) GetDefaultStock(ctx *pipeline.TaskContext) int {
 	// 优先从店铺信息获取固定库存数量
 	if ctx != nil && ctx.StoreInfo != nil && ctx.StoreInfo.FixedStockCount != nil {
 		stockCount := *ctx.StoreInfo.FixedStockCount
+
+		// 如果固定库存为-1，设置库存数量为0
+		if stockCount == -1 {
+			ph.logger.Debugf("店铺配置固定库存为-1，设置库存为0")
+			return 0
+		}
+
 		if stockCount > 0 {
 			ph.logger.Debugf("使用店铺配置的固定库存: %d", stockCount)
 			return stockCount
@@ -177,7 +184,7 @@ func (ph *PriceHandler) GetPriceMultiplier(ctx *pipeline.TaskContext) float64 {
 }
 
 // getProductPrice 获取产品价格(包含运费)
-func getProductPrice(amazonProduct *amazon.Product, priceType string) float64 {
+func getProductPrice(amazonProduct *model.Product, priceType string) float64 {
 	if amazonProduct == nil {
 		return 0
 	}
@@ -206,7 +213,7 @@ func getProductPrice(amazonProduct *amazon.Product, priceType string) float64 {
 }
 
 // getFreight 获取运费
-func getFreight(amazonProduct *amazon.Product) float64 {
+func getFreight(amazonProduct *model.Product) float64 {
 	// TODO: 从 delivery 信息中提取运费
 	// 目前假设运费为0
 	return 0

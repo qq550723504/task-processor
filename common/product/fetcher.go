@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/config"
 	"task-processor/common/management/api"
 
@@ -51,7 +52,7 @@ func NewProductFetcher(
 }
 
 // FetchProduct 获取产品数据（优先从API，如果没有则从Amazon爬虫）
-func (f *ProductFetcher) FetchProduct(req *FetchRequest) (*amazon.Product, error) {
+func (f *ProductFetcher) FetchProduct(req *FetchRequest) (*model.Product, error) {
 	f.logger.Infof("🔍 开始获取产品数据: ProductID=%s, Platform=%s, Region=%s",
 		req.ProductID, req.Platform, req.Region)
 
@@ -110,7 +111,7 @@ func (f *ProductFetcher) FetchProduct(req *FetchRequest) (*amazon.Product, error
 
 // CacheProduct 缓存产品数据到服务器（用于已获取的产品数据）
 // 这个方法用于将已经获取到的产品数据（无论来源）保存到服务器缓存
-func (f *ProductFetcher) CacheProduct(req *FetchRequest, product *amazon.Product) error {
+func (f *ProductFetcher) CacheProduct(req *FetchRequest, product *model.Product) error {
 	if product == nil {
 		f.logger.Warn("产品数据为空，跳过缓存")
 		return nil
@@ -148,7 +149,7 @@ func (f *ProductFetcher) shouldUseAmazonCrawler(platform string) bool {
 }
 
 // fetchFromAmazonCrawler 使用Amazon爬虫抓取数据
-func (f *ProductFetcher) fetchFromAmazonCrawler(req *FetchRequest) (*amazon.Product, error) {
+func (f *ProductFetcher) fetchFromAmazonCrawler(req *FetchRequest) (*model.Product, error) {
 	if f.amazonProcessor == nil {
 		return nil, fmt.Errorf("Amazon爬虫未初始化")
 	}
@@ -174,7 +175,7 @@ func (f *ProductFetcher) fetchFromAmazonCrawler(req *FetchRequest) (*amazon.Prod
 
 // CacheVariants 批量缓存变体数据到服务器
 // 这个方法用于将已经获取到的变体数据批量保存到服务器缓存
-func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*amazon.Product) error {
+func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Product) error {
 	if len(variants) == 0 {
 		f.logger.Debug("没有变体数据，跳过缓存")
 		return nil
@@ -244,7 +245,7 @@ func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*amazon.Pro
 }
 
 // saveToServer 保存产品数据到服务器
-func (f *ProductFetcher) saveToServer(req *FetchRequest, product *amazon.Product) error {
+func (f *ProductFetcher) saveToServer(req *FetchRequest, product *model.Product) error {
 	if product == nil {
 		return fmt.Errorf("产品数据为空")
 	}
@@ -278,13 +279,13 @@ func (f *ProductFetcher) saveToServer(req *FetchRequest, product *amazon.Product
 }
 
 // ParseAmazonProduct 解析Amazon产品JSON数据
-func ParseAmazonProduct(jsonData string) (*amazon.Product, error) {
+func ParseAmazonProduct(jsonData string) (*model.Product, error) {
 	if jsonData == "" {
 		return nil, fmt.Errorf("JSON数据为空")
 	}
 
 	// 首先尝试解析为单个对象
-	var product amazon.Product
+	var product model.Product
 	if err := json.Unmarshal([]byte(jsonData), &product); err == nil {
 		// 重新计算 IsAvailable 字段（修复历史数据中的错误）
 		product.IsAvailable = recalculateIsAvailable(&product)
@@ -292,7 +293,7 @@ func ParseAmazonProduct(jsonData string) (*amazon.Product, error) {
 	}
 
 	// 如果解析单个对象失败，尝试解析为数组并取第一个元素
-	var products []amazon.Product
+	var products []model.Product
 	if err := json.Unmarshal([]byte(jsonData), &products); err == nil {
 		if len(products) > 0 {
 			// 重新计算 IsAvailable 字段（修复历史数据中的错误）
@@ -306,7 +307,7 @@ func ParseAmazonProduct(jsonData string) (*amazon.Product, error) {
 }
 
 // recalculateIsAvailable 重新计算产品是否可用
-func recalculateIsAvailable(product *amazon.Product) bool {
+func recalculateIsAvailable(product *model.Product) bool {
 	lowerText := strings.ToLower(strings.TrimSpace(product.Availability))
 
 	// 不可用的关键词（优先检查）
@@ -398,7 +399,7 @@ func GetAmazonDomainByRegion(region string) string {
 }
 
 // needsRefetchForOldFormat 检查产品是否为旧版格式需要重新抓取
-func (f *ProductFetcher) needsRefetchForOldFormat(product *amazon.Product) bool {
+func (f *ProductFetcher) needsRefetchForOldFormat(product *model.Product) bool {
 	if product == nil {
 		return false
 	}

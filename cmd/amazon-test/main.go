@@ -85,7 +85,7 @@ func main() {
 		SKU:          *sku,
 		ProductType:  "PRODUCT",
 		Requirements: "LISTING",
-		Attributes: map[string]interface{}{
+		Attributes: map[string]any{
 			"item_name": []map[string]string{
 				{
 					"value":          *title,
@@ -113,13 +113,13 @@ func main() {
 					"marketplace_id": cfg.Amazon.SPAPI.MarketplaceID,
 				},
 			},
-			"purchasable_offer": []map[string]interface{}{
+			"purchasable_offer": []map[string]any{
 				{
 					"marketplace_id": cfg.Amazon.SPAPI.MarketplaceID,
 					"currency":       "USD",
-					"our_price": []map[string]interface{}{
+					"our_price": []map[string]any{
 						{
-							"schedule": []map[string]interface{}{
+							"schedule": []map[string]any{
 								{
 									"value_with_tax": *price,
 								},

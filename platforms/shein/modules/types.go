@@ -2,7 +2,7 @@
 
 import (
 	"context"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management"
 	management_api "task-processor/common/management/api"
 	"task-processor/common/memory"
@@ -40,9 +40,9 @@ type TaskContext struct {
 	StoreInfo           *management_api.StoreRespDTO
 	SupplierInfo        *other.SupplierOperateInfo
 	SpuLimitCount       *other.SpuLimitCountInfo
-	AmazonProduct       *amazon.Product
-	Variants            *[]amazon.Product
-	UnFilteredVariants  *[]amazon.Product
+	AmazonProduct       *model.Product
+	Variants            *[]model.Product
+	UnFilteredVariants  *[]model.Product
 	VariantFilterMap    map[string]*VariantFilterInfo // ASIN到过滤信息的映射
 	AsinSkuMap          map[string]string             // ASIN与SKU的对应关系
 	SupplierSkuMap      map[string]string

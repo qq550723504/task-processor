@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/config"
 	"task-processor/common/management/api"
 	"task-processor/common/pipeline"
@@ -76,7 +77,7 @@ func (h *RawJsonDataHandlerV2) Handle(ctx *pipeline.TaskContext) error {
 	amazonProduct, err := h.fetcher.FetchProduct(req)
 	if err != nil {
 		// 检查是否为产品不存在错误（不可重试）
-		var productNotFoundErr *amazon.ProductNotFoundError
+		var productNotFoundErr *model.ProductNotFoundError
 		if errors.As(err, &productNotFoundErr) {
 			h.logger.Errorf("❌ 产品不存在或无法访问，标记为不可重试: %v", err)
 			return types.NewNonRetryableError(

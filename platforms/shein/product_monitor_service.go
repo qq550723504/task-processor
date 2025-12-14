@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 	"task-processor/common/product"
 	shops "task-processor/common/shein"
@@ -240,7 +241,7 @@ func (s *SheinProductMonitorService) getStoreMappings(storeID, tenantID int64) (
 }
 
 // getAmazonProductData 获取 Amazon 产品数据（先查数据库，没有再爬取）
-func (s *SheinProductMonitorService) getAmazonProductData(asin, region, zipcode string, tenantID, storeID int64, priceType string) (*amazon.Product, error) {
+func (s *SheinProductMonitorService) getAmazonProductData(asin, region, zipcode string, tenantID, storeID int64, priceType string) (*model.Product, error) {
 	// 先从数据库查询
 	req := &api.RawJsonDataReqDTO{
 		TenantID:   tenantID,
@@ -263,7 +264,7 @@ func (s *SheinProductMonitorService) getAmazonProductData(asin, region, zipcode 
 		dataAge := time.Now().Unix() - timestamp/1000 // 时间戳是毫秒
 		if dataAge < 24*3600 {
 			// 数据在24小时内，解析并返回
-			var amazonProduct amazon.Product
+			var amazonProduct model.Product
 			parseErr := json.Unmarshal([]byte(rawData.RawJSONData), &amazonProduct)
 			if parseErr == nil {
 				logrus.WithFields(logrus.Fields{
@@ -304,7 +305,7 @@ func (s *SheinProductMonitorService) getAmazonProductData(asin, region, zipcode 
 }
 
 // saveAmazonProductData 保存 Amazon 产品数据到数据库（异步）
-func (s *SheinProductMonitorService) saveAmazonProductData(asin, region string, amazonProduct *amazon.Product, tenantID, storeID int64) {
+func (s *SheinProductMonitorService) saveAmazonProductData(asin, region string, amazonProduct *model.Product, tenantID, storeID int64) {
 	rawJSON, err := json.Marshal(amazonProduct)
 	if err != nil {
 		logrus.WithError(err).WithField("asin", asin).Error("序列化 Amazon 产品数据失败")
@@ -330,7 +331,7 @@ func (s *SheinProductMonitorService) saveAmazonProductData(asin, region string, 
 }
 
 // updateAttributesWithAmazonData 更新产品 attributes 中的 Amazon 数据（异步）
-func (s *SheinProductMonitorService) updateAttributesWithAmazonData(prod *api.ProductDataDTO, platformSKU string, amazonProduct *amazon.Product, tenantID, storeID int64, priceType string) {
+func (s *SheinProductMonitorService) updateAttributesWithAmazonData(prod *api.ProductDataDTO, platformSKU string, amazonProduct *model.Product, tenantID, storeID int64, priceType string) {
 	// 解析现有的 attributes
 	var skcList []SKCInfo
 	if err := json.Unmarshal([]byte(prod.Attributes), &skcList); err != nil {
@@ -393,7 +394,7 @@ func (s *SheinProductMonitorService) updateAttributesWithAmazonData(prod *api.Pr
 }
 
 // recordInventoryAndPrice 记录库存和价格变动（每天一次）
-func (s *SheinProductMonitorService) recordInventoryAndPrice(productId, region string, amazonProduct *amazon.Product, priceType string) {
+func (s *SheinProductMonitorService) recordInventoryAndPrice(productId, region string, amazonProduct *model.Product, priceType string) {
 	// 检查今天是否已经记录过
 	latestRecord, err := s.inventoryRecordClient.GetLatestInventoryRecord("Amazon", productId, region)
 	if err != nil {
@@ -474,7 +475,7 @@ func (s *SheinProductMonitorService) recordInventoryAndPrice(productId, region s
 // checkAndNotifyPriceChange 检查并通知价格变化
 func (s *SheinProductMonitorService) checkAndNotifyPriceChange(
 	prod *api.ProductDataDTO,
-	amazonProduct *amazon.Product,
+	amazonProduct *model.Product,
 	skuMapping *SKUMappingData,
 	tenantID, storeID int64,
 	priceType string,
@@ -525,7 +526,7 @@ func (s *SheinProductMonitorService) checkAndNotifyPriceChange(
 // checkAndNotifyStockChange 检查并通知库存变化
 func (s *SheinProductMonitorService) checkAndNotifyStockChange(
 	prod *api.ProductDataDTO,
-	amazonProduct *amazon.Product,
+	amazonProduct *model.Product,
 	skuMapping *SKUMappingData,
 	tenantID, storeID int64,
 ) bool {

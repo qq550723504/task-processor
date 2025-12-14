@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -259,7 +259,7 @@ func (sh *SkuSpecHandler) ValidateSpecs(specs []types.SpecInfo) error {
 // CreateDefaultSpec 创建默认规格（当没有规格时使用）
 // 注意：不应该使用默认规格，必须从模板中选择规格
 // 这个方法现在返回空切片并记录错误
-func (sh *SkuSpecHandler) CreateDefaultSpec(variant *amazon.Product) []types.SpecInfo {
+func (sh *SkuSpecHandler) CreateDefaultSpec(variant *model.Product) []types.SpecInfo {
 	sh.logger.Error("❌ 尝试创建默认规格！这是不允许的，必须使用TEMU模板中的规格")
 	sh.logger.Error("❌ 请检查AI映射是否正确生成了规格，或者模板规格是否正确配置")
 

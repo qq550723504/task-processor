@@ -2,7 +2,7 @@ package modules
 
 import (
 	"strings"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -226,7 +226,7 @@ func (h *SaleAttributeHandler) validateVariantAttributes(data ResultSaleAttribut
 }
 
 // filterValidASINs 过滤有效的ASIN
-func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]amazon.Product, saleAttributeData ResultSaleAttribute) ResultSaleAttribute {
+func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product, saleAttributeData ResultSaleAttribute) ResultSaleAttribute {
 	providedASINs := make(map[string]bool)
 
 	// 如果没有变体，说明是单体产品，不需要过滤
@@ -264,7 +264,7 @@ func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]amazon.Produc
 }
 
 // validateAttributeValueConsistency 验证属性值与原始数据的一致性
-func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct amazon.Product, data ResultSaleAttribute) ResultSaleAttribute {
+func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct model.Product, data ResultSaleAttribute) ResultSaleAttribute {
 
 	if amazonProduct.VariationsValues == nil {
 		return data

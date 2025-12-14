@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"time"
 
-	"task-processor/common"
 	management_api "task-processor/common/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -375,7 +375,7 @@ func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *TaskContext)
 	// 构建更新请求
 	req := &management_api.ProductImportTaskUpdateReqDTO{
 		ID:     taskID,
-		Status: common.TaskStatusPublished.Int16(),
+		Status: model.TaskStatusPublished.Int16(),
 	}
 
 	// 异步更新状态

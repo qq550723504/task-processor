@@ -3,7 +3,7 @@ package handlers
 import (
 	"testing"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/pipeline"
 	"task-processor/platforms/temu/types"
 
@@ -39,7 +39,7 @@ func TestBuildUserPrompt(t *testing.T) {
 	logger := logrus.WithField("test", "ai_content_rewriter")
 	rewriter := NewAIContentRewriter(logger, nil)
 
-	product := &amazon.Product{
+	product := &model.Product{
 		Title:             "Ergonomic Office Chair",
 		Brand:             "Test Brand",
 		Description:       "High quality office chair",
@@ -148,7 +148,7 @@ func TestHandleWithoutOpenAI(t *testing.T) {
 				GoodsName: "Original Title",
 			},
 		},
-		AmazonProduct: &amazon.Product{
+		AmazonProduct: &model.Product{
 			Title: "Test Product",
 		},
 	}

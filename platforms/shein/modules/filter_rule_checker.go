@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -19,7 +19,7 @@ func NewFilterRuleChecker() *FilterRuleChecker {
 }
 
 // getProductPrice 获取产品价格
-func GetProductPrice(amazonProduct *amazon.Product, priceType string) float64 {
+func GetProductPrice(amazonProduct *model.Product, priceType string) float64 {
 	// 空指针检查
 	if amazonProduct == nil {
 		logrus.Warn("⚠️ GetProductPrice 接收到 nil 产品指针，返回价格 0")
@@ -51,7 +51,7 @@ func GetProductPrice(amazonProduct *amazon.Product, priceType string) float64 {
 }
 
 // getFreight 获取运费//TODO:还要处理运费
-func getFreight(amazonProduct *amazon.Product) float64 {
+func getFreight(amazonProduct *model.Product) float64 {
 	// 从delivery信息中提取运费
 
 	// 假设运费为0
@@ -59,7 +59,7 @@ func getFreight(amazonProduct *amazon.Product) float64 {
 }
 
 // getInventory 获取库存（根据JSON数据实现，支持多语言）
-func (h *FilterRuleChecker) getInventory(amazonProduct *amazon.Product) int {
+func (h *FilterRuleChecker) getInventory(amazonProduct *model.Product) int {
 	logrus.WithFields(logrus.Fields{
 		"asin":         amazonProduct.Asin,
 		"availability": amazonProduct.Availability,
@@ -142,7 +142,7 @@ func (h *FilterRuleChecker) getInventory(amazonProduct *amazon.Product) int {
 }
 
 // getDeliveryTime 获取发货时效（根据JSON数据实现）
-func (h *FilterRuleChecker) getDeliveryTime(amazonProduct *amazon.Product) int {
+func (h *FilterRuleChecker) getDeliveryTime(amazonProduct *model.Product) int {
 	// 从delivery信息中提取发货时效
 	// 简化处理：默认返回24小时
 	// 实际项目中可能需要解析delivery数组中的文本信息来获取更准确的发货时效
@@ -229,7 +229,7 @@ func (c *FilterRuleChecker) CheckReviewCount(filterRule *api.FilterRuleRespDTO, 
 }
 
 // CheckFulfillmentType 校验配送方式
-func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *api.FilterRuleRespDTO, amazonProduct *amazon.Product) error {
+func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *api.FilterRuleRespDTO, amazonProduct *model.Product) error {
 	// 如果规则未设置配送方式或设置为ALL，则不进行筛选
 	if filterRule.FulfillmentType == "" || filterRule.FulfillmentType == "ALL" {
 		return nil

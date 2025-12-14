@@ -3,7 +3,7 @@ package handlers
 import (
 	"fmt"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/pipeline"
 	"task-processor/platforms/temu/types"
 
@@ -27,7 +27,7 @@ func NewSkuSkcBuilder(logger *logrus.Entry, itemBuilder *SkuItemBuilder) *SkuSkc
 }
 
 // buildMultipleSkcsFromTemplate 使用模板属性构建多个SKC（按主变体分组）
-func (sb *SkuSkcBuilder) buildMultipleSkcsFromTemplate(ctx *pipeline.TaskContext, variants []*amazon.Product, aiMapping *AISkuMappingResponse, templateSpecs []GoodsSpecProperty) []types.Skc {
+func (sb *SkuSkcBuilder) buildMultipleSkcsFromTemplate(ctx *pipeline.TaskContext, variants []*model.Product, aiMapping *AISkuMappingResponse, templateSpecs []GoodsSpecProperty) []types.Skc {
 	// 按颜色分组SKU
 	colorGroups := make(map[string][]int)
 	for i, aiSku := range aiMapping.SkuList {
@@ -57,7 +57,7 @@ func (sb *SkuSkcBuilder) buildMultipleSkcsFromTemplate(ctx *pipeline.TaskContext
 }
 
 // buildCompleteSkuListForColor 为特定颜色构建完整的SKU列表
-func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx *pipeline.TaskContext, variants []*amazon.Product, aiMapping *AISkuMappingResponse, skuIndices []int, colorSpecID string, templateSpecs []GoodsSpecProperty) []types.Sku {
+func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx *pipeline.TaskContext, variants []*model.Product, aiMapping *AISkuMappingResponse, skuIndices []int, colorSpecID string, templateSpecs []GoodsSpecProperty) []types.Sku {
 	// 收集该颜色下所有可能的非颜色规格组合
 	nonColorSpecs := sb.specHandler.collectNonColorSpecsForColor(aiMapping, skuIndices, templateSpecs)
 
@@ -120,7 +120,7 @@ func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx *pipeline.TaskContext,
 }
 
 // buildSingleSkcFromUserInput 使用规格构建单个SKC（包含多个SKU）
-func (sb *SkuSkcBuilder) buildSingleSkcFromUserInput(ctx *pipeline.TaskContext, variants []*amazon.Product, aiMapping *AISkuMappingResponse, templateSpecs []GoodsSpecProperty) []types.Skc {
+func (sb *SkuSkcBuilder) buildSingleSkcFromUserInput(ctx *pipeline.TaskContext, variants []*model.Product, aiMapping *AISkuMappingResponse, templateSpecs []GoodsSpecProperty) []types.Skc {
 	// 1. 检查规格维度一致性
 	if err := sb.validateSpecDimensionConsistency(aiMapping); err != nil {
 		sb.logger.Errorf("❌ 规格维度不一致: %v", err)

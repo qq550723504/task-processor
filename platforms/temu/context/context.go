@@ -4,6 +4,7 @@ package context
 import (
 	"context"
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 	commonPipeline "task-processor/common/pipeline"
 	"task-processor/common/types"
@@ -20,13 +21,13 @@ type TemuTaskContext struct {
 	APIClient       *client.APIClient
 
 	// 强类型字段
-	AmazonProduct *amazon.Product
+	AmazonProduct *model.Product
 	TemuProduct   *temutypes.Product
 	StoreInfo     *api.StoreRespDTO
 	DataSource    string
 
 	// 变体相关数据
-	AmazonVariants []*amazon.Product
+	AmazonVariants []*model.Product
 
 	// 处理结果
 	SubmitResult  interface{}
@@ -38,7 +39,7 @@ type TemuTaskContext struct {
 func NewTemuTaskContext(ctx context.Context, task *types.Task) *TemuTaskContext {
 	return &TemuTaskContext{
 		BaseTaskContext: commonPipeline.NewBaseTaskContext(ctx, task),
-		AmazonVariants:  make([]*amazon.Product, 0),
+		AmazonVariants:  make([]*model.Product, 0),
 	}
 }
 
@@ -63,12 +64,12 @@ func (ttc *TemuTaskContext) GetAPIClient() *client.APIClient {
 }
 
 // SetAmazonProduct 设置Amazon产品数据
-func (ttc *TemuTaskContext) SetAmazonProduct(product *amazon.Product) {
+func (ttc *TemuTaskContext) SetAmazonProduct(product *model.Product) {
 	ttc.AmazonProduct = product
 }
 
 // GetAmazonProduct 获取Amazon产品数据
-func (ttc *TemuTaskContext) GetAmazonProduct() *amazon.Product {
+func (ttc *TemuTaskContext) GetAmazonProduct() *model.Product {
 	return ttc.AmazonProduct
 }
 
@@ -93,19 +94,19 @@ func (ttc *TemuTaskContext) GetStoreInfo() *api.StoreRespDTO {
 }
 
 // SetAmazonVariants 设置Amazon变体数据
-func (ttc *TemuTaskContext) SetAmazonVariants(variants []*amazon.Product) {
+func (ttc *TemuTaskContext) SetAmazonVariants(variants []*model.Product) {
 	ttc.AmazonVariants = variants
 }
 
 // GetAmazonVariants 获取Amazon变体数据
-func (ttc *TemuTaskContext) GetAmazonVariants() []*amazon.Product {
+func (ttc *TemuTaskContext) GetAmazonVariants() []*model.Product {
 	return ttc.AmazonVariants
 }
 
 // AddAmazonVariant 添加单个Amazon变体
-func (ttc *TemuTaskContext) AddAmazonVariant(variant *amazon.Product) {
+func (ttc *TemuTaskContext) AddAmazonVariant(variant *model.Product) {
 	if ttc.AmazonVariants == nil {
-		ttc.AmazonVariants = make([]*amazon.Product, 0)
+		ttc.AmazonVariants = make([]*model.Product, 0)
 	}
 	ttc.AmazonVariants = append(ttc.AmazonVariants, variant)
 }

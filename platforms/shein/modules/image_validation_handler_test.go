@@ -1,7 +1,7 @@
 package modules
 
 import (
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"testing"
 )
 
@@ -66,7 +66,7 @@ func TestImageValidationHandler_Handle(t *testing.T) {
 			handler := NewImageValidationHandler(tt.minImageCount)
 
 			ctx := &TaskContext{
-				AmazonProduct: &amazon.Product{
+				AmazonProduct: &model.Product{
 					Asin:   "B001TEST",
 					Images: tt.images,
 				},

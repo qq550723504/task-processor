@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 	shops "task-processor/common/shein"
 	"task-processor/common/shein/api/product"
@@ -32,7 +32,7 @@ func NewStrategyExecutor(strategy *api.OperationStrategyDTO, apiClient *shops.Sh
 func (e *StrategyExecutor) ExecuteStockChange(
 	prod *api.ProductDataDTO,
 	skuMapping *SKUMappingData,
-	amazonProduct *amazon.Product,
+	amazonProduct *model.Product,
 ) error {
 	if !e.strategy.IsEnabled() || e.strategy.StockChangeAction == "NONE" {
 		return nil
@@ -76,7 +76,7 @@ func (e *StrategyExecutor) ExecuteStockChange(
 func (e *StrategyExecutor) ExecuteOutOfStock(
 	prod *api.ProductDataDTO,
 	skuMapping *SKUMappingData,
-	amazonProduct *amazon.Product,
+	amazonProduct *model.Product,
 ) error {
 	if !e.strategy.IsEnabled() || e.strategy.OutOfStockAction == "NONE" {
 		return nil
@@ -107,7 +107,7 @@ func (e *StrategyExecutor) ExecuteOutOfStock(
 func (e *StrategyExecutor) ExecuteLowProfit(
 	prod *api.ProductDataDTO,
 	skuMapping *SKUMappingData,
-	amazonProduct *amazon.Product,
+	amazonProduct *model.Product,
 ) error {
 	if !e.strategy.IsEnabled() || e.strategy.LowProfitAction == "NONE" {
 		return nil

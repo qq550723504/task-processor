@@ -3,13 +3,13 @@ package modules
 import (
 	"fmt"
 	"strings"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 
 	"github.com/sirupsen/logrus"
 )
 
 // compareAttributeDataDifferences 对比AI生成前后的属性数据差异
-func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct amazon.Product, generatedData ResultSaleAttribute) {
+func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct model.Product, generatedData ResultSaleAttribute) {
 	logrus.Info("⚖️ [AI属性对比] 开始对比原始数据与AI生成数据的差异")
 
 	if amazonProduct.VariationsValues == nil {

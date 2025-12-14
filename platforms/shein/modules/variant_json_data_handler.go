@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/config"
 	"task-processor/common/management/api"
 	"task-processor/common/product"
@@ -63,7 +64,7 @@ func (h *VariantJsonDataHandler) Handle(ctx *TaskContext) error {
 	// 如果没有变体（单品情况），初始化空列表并继续
 	if len(variantAsins) == 0 {
 		logrus.Infof("✅ 产品 %s 没有变体（单品），跳过变体数据获取", mainProductAsin)
-		emptyVariants := make([]amazon.Product, 0)
+		emptyVariants := make([]model.Product, 0)
 		ctx.Variants = &emptyVariants
 		return nil
 	}
@@ -76,7 +77,7 @@ func (h *VariantJsonDataHandler) Handle(ctx *TaskContext) error {
 	}
 
 	// 为每个变体ASIN获取JSON数据
-	variants := make([]amazon.Product, 0, len(variantAsins))
+	variants := make([]model.Product, 0, len(variantAsins))
 
 	// 第一步：先检查服务器是否有所有变体的历史数据
 	logrus.Infof("检查服务器是否有 %d 个变体的历史数据", len(variantAsins))
@@ -138,10 +139,10 @@ func (h *VariantJsonDataHandler) shouldUseAmazonCrawler(ctx *TaskContext) bool {
 }
 
 // fetchVariantsBatchFromAmazonCrawler 批量抓取变体数据
-func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *TaskContext, asins []string) []amazon.Product {
+func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *TaskContext, asins []string) []model.Product {
 	if h.amazonProcessor == nil {
 		logrus.Error("Amazon爬虫未初始化")
-		return []amazon.Product{}
+		return []model.Product{}
 	}
 
 	// 使用公共函数获取地区信息
@@ -149,10 +150,10 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *TaskCo
 	zipcode := product.GetZipcodeForRegion(ctx.Task.Region, h.amazonConfig.Zipcodes)
 
 	// 准备批量请求
-	requests := make([]amazon.ProductRequest, 0, len(asins))
+	requests := make([]model.ProductRequest, 0, len(asins))
 	for _, asin := range asins {
 		url := fmt.Sprintf("https://www.%s/dp/%s?th=1&psc=1", domain, asin)
-		requests = append(requests, amazon.ProductRequest{
+		requests = append(requests, model.ProductRequest{
 			URL:     url,
 			Zipcode: zipcode,
 		})
@@ -165,7 +166,7 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *TaskCo
 	results := h.amazonProcessor.ProcessBatch(requests)
 
 	// 收集结果并保存
-	variants := make([]amazon.Product, 0, len(results))
+	variants := make([]model.Product, 0, len(results))
 	successCount := 0
 	for i, result := range results {
 		if result.Error != nil {
@@ -188,7 +189,7 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *TaskCo
 }
 
 // saveVariantData 保存变体数据到数据库（异步）
-func (h *VariantJsonDataHandler) saveVariantData(asin, region string, product *amazon.Product, tenantID, storeID int64) {
+func (h *VariantJsonDataHandler) saveVariantData(asin, region string, product *model.Product, tenantID, storeID int64) {
 	rawJSON, err := json.Marshal(product)
 	if err != nil {
 		logrus.WithError(err).WithField("asin", asin).Error("序列化变体数据失败")
@@ -248,7 +249,7 @@ func getAsinListFromMap(asinSkuMap map[string]string, mainProductAsin string) []
 }
 
 // getVariantByAsinFromVariants 通过ASIN从Variants中获取变体
-func GetVariantByAsinFromVariants(variants *[]amazon.Product, asin string) *amazon.Product {
+func GetVariantByAsinFromVariants(variants *[]model.Product, asin string) *model.Product {
 	if variants == nil {
 		return nil
 	}

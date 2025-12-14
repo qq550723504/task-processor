@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/shein/api/attribute"
 	"task-processor/common/shein/api/product"
 
@@ -143,7 +143,7 @@ func (b *SKUBuilder) buildSingleSKU(ctx *TaskContext, req SKUBuildRequest) ([]pr
 
 	// 使用统一的SKU创建函数
 	logrus.Infof("🏗️ 步骤4: 创建SKU...")
-	var productInfo *amazon.Product
+	var productInfo *model.Product
 	if ctx.Variants != nil {
 		for _, v := range *ctx.Variants {
 			if v.Asin == matchedVariant.ASIN {
@@ -270,7 +270,7 @@ func (b *SKUBuilder) buildSKUListForMultipleVariants(ctx *TaskContext, variantIn
 		usedAttributeValueIDs[varInfo.valueID] = true
 
 		// 从上下文中的变体数据中查找对应的产品信息
-		var productInfo *amazon.Product
+		var productInfo *model.Product
 		if ctx.Variants != nil {
 			for _, v := range *ctx.Variants {
 				if v.Asin == varInfo.variant.ASIN {
@@ -347,7 +347,7 @@ func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *TaskContext, variant Vari
 	}
 
 	// 遍历变体来找到对应的productInfo
-	var productInfo *amazon.Product
+	var productInfo *model.Product
 	if ctx.Variants != nil {
 		for _, v := range *ctx.Variants {
 			if v.Asin == variant.ASIN {

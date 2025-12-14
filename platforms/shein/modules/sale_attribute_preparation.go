@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
@@ -226,7 +226,7 @@ func (h *SaleAttributeHandler) filterVariantsByRules(ctx *TaskContext) {
 	if ctx.Variants == nil {
 		return
 	}
-	filteredVariants := make([]amazon.Product, 0, len(*ctx.Variants))
+	filteredVariants := make([]model.Product, 0, len(*ctx.Variants))
 	filteredOutCount := 0
 	for _, variant := range *ctx.Variants {
 		filterInfo := ctx.GetVariantFilterInfo(variant.Asin)
@@ -358,7 +358,7 @@ func (h *SaleAttributeHandler) buildGenerationRequest(
 
 	variationAttributeValues := &ctx.AmazonProduct.VariationsValues
 	if ctx.Variants == nil || len(*ctx.Variants) == 0 {
-		emptyVariations := []amazon.VariationValue{}
+		emptyVariations := []model.VariationValue{}
 		variationAttributeValues = &emptyVariations
 	}
 

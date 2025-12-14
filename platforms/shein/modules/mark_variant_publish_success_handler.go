@@ -1,10 +1,10 @@
-﻿package modules
+package modules
 
 import (
 	"fmt"
 	"strconv"
-	"task-processor/common"
 	management_api "task-processor/common/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -116,7 +116,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *TaskContext
 	costPrice := GetProductPrice(variant, ctx.StoreInfo.PriceType)
 
 	// 构建创建请求
-	status := common.TaskStatusPublished.Int16()
+	status := model.TaskStatusPublished.Int16()
 	createReq := &management_api.ProductImportMappingCreateReqDTO{
 		TenantID:     ctx.Task.TenantID,
 		ImportTaskId: taskID,
@@ -210,7 +210,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *TaskContext, a
 	costPrice := GetProductPrice(variant, ctx.StoreInfo.PriceType)
 
 	// 构建创建请求
-	status := common.TaskStatusCrawlFailed.Int16()
+	status := model.TaskStatusCrawlFailed.Int16()
 	remark := reason
 	createReq := &management_api.ProductImportMappingCreateReqDTO{
 		TenantID:     ctx.Task.TenantID,
@@ -267,7 +267,7 @@ func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *Task
 	// 构建更新请求
 	req := &management_api.ProductImportTaskUpdateReqDTO{
 		ID:     taskID,
-		Status: common.TaskStatusPublished.Int16(),
+		Status: model.TaskStatusPublished.Int16(),
 	}
 
 	// 异步更新状态

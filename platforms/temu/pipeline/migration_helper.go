@@ -3,7 +3,7 @@ package pipeline
 
 import (
 	"context"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 	commonPipeline "task-processor/common/pipeline"
 	"task-processor/common/types"
@@ -36,7 +36,7 @@ func (mh *MigrationHelper) ConvertLegacyContext(legacyCtx *commonPipeline.BaseTa
 func (mh *MigrationHelper) migrateDataToTypedFields(temuCtx *temuContext.TemuTaskContext) {
 	// 迁移Amazon产品数据
 	if amazonProduct, exists := temuCtx.GetData("amazon_product"); exists {
-		if product, ok := amazonProduct.(*amazon.Product); ok {
+		if product, ok := amazonProduct.(*model.Product); ok {
 			temuCtx.SetAmazonProduct(product)
 		}
 	}
@@ -50,7 +50,7 @@ func (mh *MigrationHelper) migrateDataToTypedFields(temuCtx *temuContext.TemuTas
 
 	// 迁移变体数据
 	if variants, exists := temuCtx.GetData("variants"); exists {
-		if variantList, ok := variants.([]*amazon.Product); ok {
+		if variantList, ok := variants.([]*model.Product); ok {
 			temuCtx.SetAmazonVariants(variantList)
 		}
 	}

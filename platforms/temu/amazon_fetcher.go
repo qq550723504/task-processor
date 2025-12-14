@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/product"
 
 	"github.com/sirupsen/logrus"
@@ -13,7 +14,7 @@ import (
 func fetchAmazonProduct(
 	amazonProcessor *amazon.AmazonProcessor,
 	asin, region, zipcode string,
-) (*amazon.Product, error) {
+) (*model.Product, error) {
 	if asin == "" {
 		return nil, fmt.Errorf("ASIN 为空")
 	}
@@ -46,7 +47,7 @@ func fetchAmazonProduct(
 }
 
 // extractStockFromProduct 从 Amazon 产品信息中提取库存数量
-func extractStockFromProduct(prod *amazon.Product) int {
+func extractStockFromProduct(prod *model.Product) int {
 	if !prod.IsAvailable {
 		return 0
 	}

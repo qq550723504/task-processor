@@ -1,10 +1,9 @@
-﻿package shein
+package shein
 
 import (
 	"context"
 	"fmt"
 	"sync"
-	"task-processor/common"
 	"task-processor/common/config"
 	"task-processor/common/management"
 	management_api "task-processor/common/management/api"
@@ -12,6 +11,7 @@ import (
 	shops "task-processor/common/shein"
 	"task-processor/common/shein/api"
 	"task-processor/common/types"
+	"task-processor/internal/utils"
 	"task-processor/platforms/shein/modules"
 	"time"
 
@@ -73,12 +73,12 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task modules.Task, pipeli
 
 	if taskCtx.Task.CreateTime > 0 {
 		processTime := time.Since(time.Unix(taskCtx.Task.CreateTime/1000, 0))
-		common.GetGlobalMetrics().RecordProcessTime(processTime)
+		utils.GetGlobalMetrics().RecordProcessTime(processTime)
 	}
 
 	// Pipeline包含完整的发品流程，成功后状态应为已上架而非已抓取
 	h.updateTaskStatusToAPI(task.ID, types.TaskStatusPublished, "")
-	common.GetGlobalMetrics().IncrementCompleted()
+	utils.GetGlobalMetrics().IncrementCompleted()
 
 	logrus.Infof("任务处理成功: ID=%s, TenantID=%d, StoreID=%d, ProductID=%s", taskCtx.Task.ID, taskCtx.Task.TenantID, taskCtx.Task.StoreID, taskCtx.Task.ProductID)
 	return nil
@@ -91,7 +91,7 @@ func (h *TaskHandler) handleTaskFailure(task modules.Task, err error) {
 
 	if !isRetryable {
 		h.updateTaskStatusToAPI(task.ID, types.TaskStatusTerminated, err.Error())
-		common.GetGlobalMetrics().IncrementFailed()
+		utils.GetGlobalMetrics().IncrementFailed()
 
 		// 区分业务过滤和真正的错误
 		if modules.IsFilteredError(err) {
@@ -113,12 +113,12 @@ func (h *TaskHandler) handleTaskFailure(task modules.Task, err error) {
 
 	if task.RetryCount >= h.config.Processor.MaxRetries {
 		h.updateTaskStatusToAPI(task.ID, types.TaskStatusTerminated, err.Error())
-		common.GetGlobalMetrics().IncrementFailed()
+		utils.GetGlobalMetrics().IncrementFailed()
 		logrus.Errorf("任务处理失败且达到最大重试次数: ID=%s, Priority=%d, 重试次数=%d, 错误=%v", task.ID, task.Priority, task.RetryCount, err)
 	} else {
 		h.updateTaskStatusToAPI(task.ID, types.TaskStatusPendingRetry, err.Error())
 		logrus.Warnf("任务处理失败，等待重试: ID=%s, Priority=%d->%d, 重试次数=%d", task.ID, originalPriority, task.Priority, task.RetryCount)
-		common.GetGlobalMetrics().IncrementRequeued()
+		utils.GetGlobalMetrics().IncrementRequeued()
 	}
 }
 
@@ -169,7 +169,7 @@ func (h *TaskHandler) handleAuthenticationExpired(authErr *api.AuthenticationExp
 	h.updateTaskStatusToAPI(task.ID, types.TaskStatusPendingRetry, fmt.Sprintf("认证过期: %s", authErr.Message))
 
 	logrus.Infof("认证过期任务已标记为待重试: TaskID=%s, TenantID=%d, ShopID=%d", task.ID, tenantID, shopID)
-	common.GetGlobalMetrics().IncrementRequeued()
+	utils.GetGlobalMetrics().IncrementRequeued()
 }
 
 // pauseShopWithCacheCleanup 暂停店铺并清理相关缓存

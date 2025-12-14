@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/pipeline"
 	"task-processor/platforms/temu/types"
 
@@ -28,7 +28,7 @@ func NewImageProcessor() *ImageProcessor {
 }
 
 // BuildVariantImagesWithUpload 构建变体图片并上传到TEMU
-func (ip *ImageProcessor) BuildVariantImagesWithUpload(ctx *pipeline.TaskContext, variant *amazon.Product) []types.ImageInfo {
+func (ip *ImageProcessor) BuildVariantImagesWithUpload(ctx *pipeline.TaskContext, variant *model.Product) []types.ImageInfo {
 	// 收集需要上传的图片URL
 	var imageURLs []string
 	for _, img := range variant.Images {
@@ -55,7 +55,7 @@ func (ip *ImageProcessor) BuildVariantImagesWithUpload(ctx *pipeline.TaskContext
 }
 
 // BuildDimensionImages 构建尺寸图片（通常是第一张图片）
-func (ip *ImageProcessor) BuildDimensionImages(variant *amazon.Product) []types.ImageInfo {
+func (ip *ImageProcessor) BuildDimensionImages(variant *model.Product) []types.ImageInfo {
 	var images []types.ImageInfo
 
 	// 使用第4张图片作为尺寸图片（如果存在）
@@ -80,7 +80,7 @@ func (ip *ImageProcessor) BuildDimensionImages(variant *amazon.Product) []types.
 }
 
 // BuildDimensionImagesWithUpload 构建尺寸图片并上传到TEMU（检测所有图片，优先使用已有标注的图片）
-func (ip *ImageProcessor) BuildDimensionImagesWithUpload(ctx *pipeline.TaskContext, variant *amazon.Product) []types.ImageInfo {
+func (ip *ImageProcessor) BuildDimensionImagesWithUpload(ctx *pipeline.TaskContext, variant *model.Product) []types.ImageInfo {
 	var images []types.ImageInfo
 
 	if len(variant.Images) == 0 {
@@ -291,7 +291,7 @@ func (ip *ImageProcessor) padImagesIfNeeded(ctx *pipeline.TaskContext, imageURLs
 }
 
 // addDimensionAnnotationToContext 为图片添加尺寸标注并返回图片数据
-func (ip *ImageProcessor) addDimensionAnnotationToContext(ctx *pipeline.TaskContext, imageURL string, variant *amazon.Product) ([]byte, error) {
+func (ip *ImageProcessor) addDimensionAnnotationToContext(ctx *pipeline.TaskContext, imageURL string, variant *model.Product) ([]byte, error) {
 	// 从上下文获取AI生成的尺寸信息
 	aiMapping, exists := ctx.GetData("ai_sku_mapping")
 	if !exists {
@@ -358,7 +358,7 @@ func (ip *ImageProcessor) addDimensionAnnotationToContext(ctx *pipeline.TaskCont
 }
 
 // addDimensionAnnotation 为图片添加尺寸标注（会自动检测是否已有标注）- 已废弃，保留用于兼容
-func (ip *ImageProcessor) addDimensionAnnotation(ctx *pipeline.TaskContext, imageURL string, variant *amazon.Product) (string, error) {
+func (ip *ImageProcessor) addDimensionAnnotation(ctx *pipeline.TaskContext, imageURL string, variant *model.Product) (string, error) {
 	// 从上下文获取AI生成的尺寸信息
 	aiMapping, exists := ctx.GetData("ai_sku_mapping")
 	if !exists {

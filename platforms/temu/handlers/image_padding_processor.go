@@ -83,6 +83,17 @@ func (p *ImagePaddingProcessor) PadImageToAspectRatio(imageURL string, targetRat
 		newWidth = int(float64(originalHeight) * targetRatio)
 	}
 
+	// 对于1:1比例，确保宽高完全相等
+	if targetRatio == 1.0 {
+		maxDimension := newWidth
+		if newHeight > maxDimension {
+			maxDimension = newHeight
+		}
+		newWidth = maxDimension
+		newHeight = maxDimension
+		p.logger.Infof("🔧 强制1:1比例: %dx%d -> %dx%d", originalWidth, originalHeight, newWidth, newHeight)
+	}
+
 	// 确保满足最小尺寸要求
 	if newWidth < minWidth {
 		scale := float64(minWidth) / float64(newWidth)
@@ -181,6 +192,16 @@ func (p *ImagePaddingProcessor) CalculatePaddingDimensions(width, height int, ta
 		// 图片太高，需要在左右添加白边
 		newHeight = height
 		newWidth = int(float64(height) * targetRatio)
+	}
+
+	// 对于1:1比例，确保宽高完全相等
+	if targetRatio == 1.0 {
+		maxDimension := newWidth
+		if newHeight > maxDimension {
+			maxDimension = newHeight
+		}
+		newWidth = maxDimension
+		newHeight = maxDimension
 	}
 
 	// 确保满足最小尺寸要求

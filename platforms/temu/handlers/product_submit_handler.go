@@ -116,9 +116,6 @@ func (h *ProductSubmitHandler) submitProduct(ctx *pipeline.TaskContext) error {
 		return fmt.Errorf("API客户端未初始化")
 	}
 
-	// 【调试】输出属性映射详细信息
-	DebugPropertyMapping(ctx, h.logger)
-
 	// 【最后的格式检查】在提交前确保产品名称格式正确
 	if ctx.TemuProduct != nil && ctx.TemuProduct.GoodsBasic.GoodsName != "" {
 		originalName := ctx.TemuProduct.GoodsBasic.GoodsName
@@ -168,20 +165,12 @@ func (h *ProductSubmitHandler) submitProduct(ctx *pipeline.TaskContext) error {
 	if !response.Success {
 		h.logger.Errorf("TEMU API响应失败: success=%v, error_code=%d, error_message=%v", response.Success, response.ErrorCode, response.Message)
 
-		// 记录商品属性信息（用于调试）
-		if ctx.TemuProduct != nil {
-			h.logger.Infof("📋 商品属性数量: %d", len(ctx.TemuProduct.GoodsExtensionInfo.GoodsProperty.GoodsProperties))
-			for i, prop := range ctx.TemuProduct.GoodsExtensionInfo.GoodsProperty.GoodsProperties {
-				h.logger.Infof("  属性[%d]: PID=%d, VID=%d, Value=%s, RefPid=%d, TemplatePid=%d",
-					i, prop.Pid, prop.Vid, prop.Value, prop.RefPid, prop.TemplatePid)
-			}
-		}
-
 		// 记录提交的产品信息（用于调试）
 		requestJSON, err := h.marshalWithoutHTMLEscape(request)
 		if err != nil {
 			h.logger.Errorf("序列化提交请求失败: %v", err)
 		} else {
+
 			h.logger.Infof("=== 最终提交的JSON数据 ===")
 			h.logger.Infof("%s", string(requestJSON))
 			h.logger.Infof("=== JSON数据结束 ===")

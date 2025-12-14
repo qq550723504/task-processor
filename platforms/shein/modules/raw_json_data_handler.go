@@ -3,6 +3,7 @@
 import (
 	"strings"
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/config"
 	"task-processor/common/management/api"
 	"task-processor/common/product"
@@ -67,7 +68,7 @@ func isProductNotFoundError(err error) bool {
 	}
 
 	// 检查是否为 ProductNotFoundError 类型
-	if _, ok := err.(*amazon.ProductNotFoundError); ok {
+	if _, ok := err.(*model.ProductNotFoundError); ok {
 		return true
 	}
 

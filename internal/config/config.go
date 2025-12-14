@@ -1,0 +1,67 @@
+// Package config 提供配置管理功能
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
+)
+
+// Config 配置结构体
+type Config struct {
+	Processor   ProcessorConfig
+	Worker      WorkerConfig
+	OpenAI      OpenAIConfig
+	Management  ManagementConfig
+	AutoPricing AutoPricingConfig
+	Amazon      AmazonConfig
+	Updater     UpdaterConfig
+	Sync        *SyncConfig    // 产品同步配置
+	Monitor     *MonitorConfig // 产品监控配置
+}
+
+// LoadConfig 加载配置
+func LoadConfig() *Config {
+	env := os.Getenv("TASK_PROCESSOR_ENV")
+	if env == "" {
+		env = "dev"
+	}
+
+	// 加载统一配置文件 config-dev.yaml
+	configName := fmt.Sprintf("config-%s", env)
+	logrus.Infof("加载配置文件: %s.yaml", configName)
+
+	viper.SetConfigName(configName)
+	viper.SetConfigType("yaml")
+
+	// 获取可执行文件所在目录
+	exePath, err := os.Executable()
+	if err == nil {
+		exeDir := filepath.Dir(exePath)
+		viper.AddConfigPath(filepath.Join(exeDir, "config"))
+		viper.AddConfigPath(exeDir)
+	}
+
+	viper.AddConfigPath("./config")
+	viper.AddConfigPath(".")
+	viper.AddConfigPath("/etc/task-processor/")
+
+	viper.SetEnvPrefix("TASK_PROCESSOR")
+	viper.AutomaticEnv()
+
+	// 设置默认值
+	setDefaults()
+
+	// 读取配置文件
+	if err := viper.ReadInConfig(); err != nil {
+		logrus.Warnf("无法读取配置文件: %v", err)
+		logrus.Info("使用默认配置和环境变量")
+	} else {
+		logrus.Infof("成功加载配置文件: %s", viper.ConfigFileUsed())
+	}
+
+	return buildConfig()
+}

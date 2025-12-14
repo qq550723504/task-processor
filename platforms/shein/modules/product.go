@@ -1,14 +1,14 @@
 ﻿package modules
 
 import (
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/shein/api/product"
 )
 
 // SKUCreationParams SKU创建参数
 type SKUCreationParams struct {
 	ASIN              string
-	ProductInfo       *amazon.Product
+	ProductInfo       *model.Product
 	WarehouseCode     string
 	SaleAttributeList []product.SaleAttribute
 	Variant           Variant

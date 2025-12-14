@@ -1,7 +1,7 @@
 ﻿package modules
 
 import (
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -28,13 +28,13 @@ func (h *ReapplyFilterRuleHandler) Name() string {
 func (h *ReapplyFilterRuleHandler) Handle(ctx *TaskContext) error {
 	// 检查ctx.Variants是否为nil，如果是则初始化
 	if ctx.Variants == nil {
-		variants := make([]amazon.Product, 0)
+		variants := make([]model.Product, 0)
 		ctx.Variants = &variants
 	}
 
 	// 对每个变体应用筛选规则
-	filteredVariants := make([]amazon.Product, 0, len(*ctx.Variants))
-	unFilteredVariants := make([]amazon.Product, 0, len(*ctx.Variants))
+	filteredVariants := make([]model.Product, 0, len(*ctx.Variants))
+	unFilteredVariants := make([]model.Product, 0, len(*ctx.Variants))
 
 	for _, variant := range *ctx.Variants {
 		// 对变体应用筛选规则
@@ -55,7 +55,7 @@ func (h *ReapplyFilterRuleHandler) Handle(ctx *TaskContext) error {
 
 	// 检查ctx.UnFilteredVariants是否为nil，如果是则初始化
 	if ctx.UnFilteredVariants == nil {
-		unFilteredVariantsPtr := make([]amazon.Product, 0)
+		unFilteredVariantsPtr := make([]model.Product, 0)
 		ctx.UnFilteredVariants = &unFilteredVariantsPtr
 	}
 	*ctx.UnFilteredVariants = unFilteredVariants
@@ -65,7 +65,7 @@ func (h *ReapplyFilterRuleHandler) Handle(ctx *TaskContext) error {
 }
 
 // applyFilterRuleToVariant 对单个变体应用筛选规则
-func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRule *api.FilterRuleRespDTO, variant amazon.Product, ctx *TaskContext) error {
+func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRule *api.FilterRuleRespDTO, variant model.Product, ctx *TaskContext) error {
 	// 获取店铺配置的价格类型
 	priceType := "special"
 	if ctx.StoreInfo != nil && ctx.StoreInfo.PriceType != "" {

@@ -29,7 +29,7 @@ management:
   tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
-  storeIDs: [592]  # 店铺ID列表
+  storeIDs: [617]  # 店铺ID列表
 
 # 自动定价配置
 autoPricing:

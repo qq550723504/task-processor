@@ -3,7 +3,7 @@
 import (
 	"encoding/json"
 	"strconv"
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/shein/api/attribute"
 )
 
@@ -161,12 +161,12 @@ type AttributeImportanceResult struct {
 
 // GenerationRequest AI生成请求
 type GenerationRequest struct {
-	ProductsData             []ProductVariantData     `json:"products_data"`
-	VariationData            []amazon.Product         `json:"variation_data"`
-	VariationAttributeValues *[]amazon.VariationValue `json:"variations_values"`
-	SaleAttributesData       []AttributeMetadata      `json:"sale_attributes_data"`
-	AttributeMappings        []AttributeNameMapping   `json:"attribute_mappings"`
-	RequiredVariantCount     int                      `json:"required_variant_count"`
+	ProductsData             []ProductVariantData    `json:"products_data"`
+	VariationData            []model.Product         `json:"variation_data"`
+	VariationAttributeValues *[]model.VariationValue `json:"variations_values"`
+	SaleAttributesData       []AttributeMetadata     `json:"sale_attributes_data"`
+	AttributeMappings        []AttributeNameMapping  `json:"attribute_mappings"`
+	RequiredVariantCount     int                     `json:"required_variant_count"`
 }
 
 // AttributeNameMapping 属性名称映射

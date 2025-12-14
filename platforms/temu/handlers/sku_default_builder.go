@@ -3,14 +3,14 @@ package handlers
 import (
 	"fmt"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/pipeline"
 	"task-processor/common/utils"
 	"task-processor/platforms/temu/types"
 )
 
 // buildVariantSkcsDefault 默认变体SKC构建（备用方案）
-func (sb *SkuBuilder) buildVariantSkcsDefault(ctx *pipeline.TaskContext, variants []*amazon.Product) error {
+func (sb *SkuBuilder) buildVariantSkcsDefault(ctx *pipeline.TaskContext, variants []*model.Product) error {
 	sb.logger.Warn("⚠️ 使用默认SKC构建器（备用方案）")
 	sb.logger.Warn("⚠️ 注意：默认构建器不生成规格信息，可能导致TEMU提交失败")
 
@@ -36,7 +36,7 @@ func (sb *SkuBuilder) buildVariantSkcsDefault(ctx *pipeline.TaskContext, variant
 }
 
 // buildSkuFromVariant 从变体构建SKU（默认方式）
-func (sb *SkuBuilder) buildSkuFromVariant(ctx *pipeline.TaskContext, variant *amazon.Product) types.Sku {
+func (sb *SkuBuilder) buildSkuFromVariant(ctx *pipeline.TaskContext, variant *model.Product) types.Sku {
 	supplierPrice := sb.priceHandler.CalculateVariantPrice(ctx, variant)
 
 	// 使用SKU生成器生成OutSkuSN，使用variant的ASIN作为基础

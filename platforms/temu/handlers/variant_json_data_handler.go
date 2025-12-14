@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/config"
 	"task-processor/common/management/api"
 	"task-processor/common/pipeline"
@@ -104,15 +105,10 @@ func (h *VariantJsonDataHandler) Handle(ctx *pipeline.TaskContext) error {
 }
 
 // fetchAllVariants 获取所有变体数据
-func (h *VariantJsonDataHandler) fetchAllVariants(ctx *pipeline.TaskContext, variantAsins []string) ([]*amazon.Product, error) {
-	h.logger.Infof("🔍 [变体处理] 开始获取 %d 个变体的数据", len(variantAsins))
-	h.logger.Infof("🔍 [变体处理] 变体ASIN列表: %v", variantAsins)
+func (h *VariantJsonDataHandler) fetchAllVariants(ctx *pipeline.TaskContext, variantAsins []string) ([]*model.Product, error) {
 
-	variants := make([]*amazon.Product, 0, len(variantAsins))
+	variants := make([]*model.Product, 0, len(variantAsins))
 	missingAsins := make([]string, 0)
-
-	// 第一步：检查服务器是否有所有变体的历史数据
-	h.logger.Infof("检查服务器是否有 %d 个变体的历史数据", len(variantAsins))
 
 	for _, asin := range variantAsins {
 		task := &api.RawJsonDataReqDTO{
@@ -188,7 +184,7 @@ func (h *VariantJsonDataHandler) processSingleProduct(ctx *pipeline.TaskContext)
 }
 
 // processVariantData 处理变体数据
-func (h *VariantJsonDataHandler) processVariantData(ctx *pipeline.TaskContext, variants []*amazon.Product) error {
+func (h *VariantJsonDataHandler) processVariantData(ctx *pipeline.TaskContext, variants []*model.Product) error {
 	h.logger.Info("开始处理产品变体数据")
 
 	if len(variants) == 0 {
@@ -351,10 +347,10 @@ func (h *VariantJsonDataHandler) shouldUseAmazonCrawler(ctx *pipeline.TaskContex
 }
 
 // fetchVariantsBatchFromAmazonCrawler 批量抓取变体数据
-func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *pipeline.TaskContext, asins []string) []*amazon.Product {
+func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *pipeline.TaskContext, asins []string) []*model.Product {
 	if h.amazonProcessor == nil {
 		h.logger.Error("Amazon爬虫未初始化")
-		return []*amazon.Product{}
+		return []*model.Product{}
 	}
 
 	// 使用公共函数获取地区信息
@@ -362,10 +358,10 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *pipeli
 	zipcode := product.GetZipcodeForRegion(ctx.Task.Region, h.amazonConfig.Zipcodes)
 
 	// 准备批量请求
-	requests := make([]amazon.ProductRequest, 0, len(asins))
+	requests := make([]model.ProductRequest, 0, len(asins))
 	for i, asin := range asins {
 		url := fmt.Sprintf("https://www.%s/dp/%s?th=1&psc=1", domain, asin)
-		requests = append(requests, amazon.ProductRequest{
+		requests = append(requests, model.ProductRequest{
 			URL:     url,
 			Zipcode: zipcode,
 		})
@@ -381,7 +377,7 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *pipeli
 	h.logger.Infof("✅ [变体爬取] 批量抓取完成，收到 %d 个结果", len(results))
 
 	// 转换结果并保存到服务器
-	variants := make([]*amazon.Product, 0, len(results))
+	variants := make([]*model.Product, 0, len(results))
 	successCount := 0
 	savedCount := 0
 
@@ -417,8 +413,8 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *pipeli
 }
 
 // parseAmazonProduct 解析Amazon产品JSON数据
-func (h *VariantJsonDataHandler) parseAmazonProduct(jsonData string) (*amazon.Product, error) {
-	var product amazon.Product
+func (h *VariantJsonDataHandler) parseAmazonProduct(jsonData string) (*model.Product, error) {
+	var product model.Product
 	if err := json.Unmarshal([]byte(jsonData), &product); err != nil {
 		return nil, fmt.Errorf("解析Amazon产品数据失败: %w", err)
 	}
@@ -430,7 +426,7 @@ func (h *VariantJsonDataHandler) parseAmazonProduct(jsonData string) (*amazon.Pr
 }
 
 // recalculateIsAvailable 重新计算产品是否可用
-func (h *VariantJsonDataHandler) recalculateIsAvailable(product *amazon.Product) bool {
+func (h *VariantJsonDataHandler) recalculateIsAvailable(product *model.Product) bool {
 	lowerText := strings.ToLower(strings.TrimSpace(product.Availability))
 
 	// 不可用的关键词（优先检查）
@@ -481,7 +477,7 @@ func (h *VariantJsonDataHandler) recalculateIsAvailable(product *amazon.Product)
 }
 
 // saveVariantToServer 保存变体数据到服务器缓存
-func (h *VariantJsonDataHandler) saveVariantToServer(ctx *pipeline.TaskContext, asin string, variant *amazon.Product) error {
+func (h *VariantJsonDataHandler) saveVariantToServer(ctx *pipeline.TaskContext, asin string, variant *model.Product) error {
 	// 将变体数据序列化为JSON
 	jsonData, err := json.Marshal(variant)
 	if err != nil {
@@ -508,7 +504,7 @@ func (h *VariantJsonDataHandler) saveVariantToServer(ctx *pipeline.TaskContext, 
 }
 
 // GetVariantByAsinFromVariants 通过ASIN从变体列表中获取变体
-func (h *VariantJsonDataHandler) GetVariantByAsinFromVariants(variants []*amazon.Product, asin string) *amazon.Product {
+func (h *VariantJsonDataHandler) GetVariantByAsinFromVariants(variants []*model.Product, asin string) *model.Product {
 	if variants == nil {
 		return nil
 	}

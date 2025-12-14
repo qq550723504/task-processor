@@ -12,6 +12,7 @@ import (
 
 	"task-processor/common/pipeline"
 	"task-processor/platforms/temu/types"
+	"task-processor/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -99,6 +100,13 @@ func (h *ImageValidator) Handle(ctx *pipeline.TaskContext) error {
 
 	// 设置需要上传图片的标志
 	ctx.SetData("requires_image_upload", true)
+
+	// 使用新的尺寸验证工具进行最终验证
+	dimensionValidator := utils.NewImageDimensionValidator()
+	if err := dimensionValidator.ValidateProductImages(ctx.TemuProduct); err != nil {
+		h.logger.Errorf("❌ 图片尺寸最终验证失败: %v", err)
+		return fmt.Errorf("图片尺寸验证失败: %w", err)
+	}
 
 	h.logger.Info("图片验证完成")
 	return nil

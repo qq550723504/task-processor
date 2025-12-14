@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 	"task-processor/common/pipeline"
 	"task-processor/openai"
@@ -51,7 +51,7 @@ func NewSkuBuilder(logger *logrus.Entry, aiClient *openai.Client, profitRuleClie
 }
 
 // BuildVariantSkcs 构建变体SKC
-func (sb *SkuBuilder) BuildVariantSkcs(ctx *pipeline.TaskContext, variants []*amazon.Product) error {
+func (sb *SkuBuilder) BuildVariantSkcs(ctx *pipeline.TaskContext, variants []*model.Product) error {
 	sb.logger.Infof("构建变体SKC，变体数量: %d", len(variants))
 
 	// 使用AI分析变体并生成SKU映射
@@ -78,7 +78,7 @@ func (sb *SkuBuilder) BuildVariantSkcs(ctx *pipeline.TaskContext, variants []*am
 }
 
 // buildSkcsFromAIMapping 根据AI映射构建SKC
-func (sb *SkuBuilder) buildSkcsFromAIMapping(ctx *pipeline.TaskContext, variants []*amazon.Product, aiMapping *AISkuMappingResponse) ([]types.Skc, error) {
+func (sb *SkuBuilder) buildSkcsFromAIMapping(ctx *pipeline.TaskContext, variants []*model.Product, aiMapping *AISkuMappingResponse) ([]types.Skc, error) {
 	// 检查AI映射数量
 	if len(aiMapping.SkuList) != len(variants) {
 		sb.logger.Warnf("⚠️ AI映射数量(%d)与变体数量(%d)不匹配", len(aiMapping.SkuList), len(variants))
@@ -185,7 +185,7 @@ func (sb *SkuBuilder) buildSkcsFromAIMapping(ctx *pipeline.TaskContext, variants
 }
 
 // removeDuplicateOrExcessMappings 移除重复或多余的AI映射
-func (sb *SkuBuilder) removeDuplicateOrExcessMappings(aiMapping *AISkuMappingResponse, variants []*amazon.Product) error {
+func (sb *SkuBuilder) removeDuplicateOrExcessMappings(aiMapping *AISkuMappingResponse, variants []*model.Product) error {
 	// 创建变体ASIN集合
 	validAsins := make(map[string]bool)
 	for _, variant := range variants {
@@ -260,7 +260,7 @@ func (sb *SkuBuilder) removeDuplicateOrExcessMappings(aiMapping *AISkuMappingRes
 }
 
 // supplementMissingMappings 为缺失的变体补充默认映射
-func (sb *SkuBuilder) supplementMissingMappings(aiMapping *AISkuMappingResponse, variants []*amazon.Product) error {
+func (sb *SkuBuilder) supplementMissingMappings(aiMapping *AISkuMappingResponse, variants []*model.Product) error {
 	// 创建已映射的ASIN集合
 	mappedAsins := make(map[string]bool)
 	for _, sku := range aiMapping.SkuList {
@@ -356,7 +356,7 @@ func (sb *SkuBuilder) CreateDefaultSkc(ctx *pipeline.TaskContext) (types.Skc, er
 	}
 
 	// 将单一产品包装成变体列表，让AI处理
-	variants := []*amazon.Product{ctx.AmazonProduct}
+	variants := []*model.Product{ctx.AmazonProduct}
 
 	// 使用AI生成SKU映射
 	aiMapping, err := sb.generateAISkuMapping(ctx, variants)

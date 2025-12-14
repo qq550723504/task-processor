@@ -3,6 +3,9 @@ package amazon
 import (
 	"fmt"
 	"strings"
+	"task-processor/common/amazon/browser"
+	"task-processor/common/amazon/extractor"
+	"task-processor/common/amazon/model"
 	"task-processor/common/config"
 	"time"
 
@@ -12,7 +15,7 @@ import (
 
 // AmazonProcessor Amazon爬虫处理器
 type AmazonProcessor struct {
-	browserPool *BrowserPool
+	browserPool *browser.BrowserPool
 	config      *config.AmazonConfig
 	usePool     bool
 }
@@ -20,7 +23,7 @@ type AmazonProcessor struct {
 // NewAmazonProcessor 使用全局配置创建Amazon处理器
 func NewAmazonProcessor(cfg *config.AmazonConfig) *AmazonProcessor {
 	// 创建浏览器池
-	poolConfig := DefaultBrowserPoolConfig()
+	poolConfig := browser.DefaultBrowserPoolConfig()
 
 	// 如果配置中的PoolSize为0，使用默认值
 	if cfg.PoolSize > 0 {
@@ -28,7 +31,7 @@ func NewAmazonProcessor(cfg *config.AmazonConfig) *AmazonProcessor {
 	}
 
 	logrus.Infof("创建Amazon处理器，浏览器池大小: %d (配置值: %d)", poolConfig.PoolSize, cfg.PoolSize)
-	browserPool := NewBrowserPool(cfg, poolConfig)
+	browserPool := browser.NewBrowserPool(cfg, poolConfig)
 
 	// 初始化浏览器池
 	if err := browserPool.Initialize(); err != nil {
@@ -49,7 +52,7 @@ func NewAmazonProcessor(cfg *config.AmazonConfig) *AmazonProcessor {
 }
 
 // Process 处理Amazon产品页面
-func (ap *AmazonProcessor) Process(url string, zipcode string) (*Product, error) {
+func (ap *AmazonProcessor) Process(url string, zipcode string) (*model.Product, error) {
 	startTime := time.Now()
 	logrus.Infof("开始处理Amazon产品: %s", url)
 
@@ -61,15 +64,15 @@ func (ap *AmazonProcessor) Process(url string, zipcode string) (*Product, error)
 
 // ProcessBatch 批量处理多个Amazon产品页面
 // 使用同一个浏览器实例处理多个产品，提高效率
-func (ap *AmazonProcessor) ProcessBatch(requests []ProductRequest) []ProductResult {
+func (ap *AmazonProcessor) ProcessBatch(requests []model.ProductRequest) []model.ProductResult {
 	if len(requests) == 0 {
-		return []ProductResult{}
+		return []model.ProductResult{}
 	}
 
 	logrus.Infof("开始批量处理 %d 个Amazon产品", len(requests))
 	startTime := time.Now()
 
-	results := make([]ProductResult, len(requests))
+	results := make([]model.ProductResult, len(requests))
 
 	if ap.usePool {
 		// 使用浏览器池批量处理
@@ -77,7 +80,7 @@ func (ap *AmazonProcessor) ProcessBatch(requests []ProductRequest) []ProductResu
 		if err != nil {
 			// 如果获取实例失败，所有任务都失败
 			for i := range results {
-				results[i] = ProductResult{
+				results[i] = model.ProductResult{
 					Product: nil,
 					Error:   fmt.Errorf("获取浏览器实例失败: %w", err),
 				}
@@ -93,7 +96,7 @@ func (ap *AmazonProcessor) ProcessBatch(requests []ProductRequest) []ProductResu
 		// 使用同一个实例处理所有请求
 		for i, req := range requests {
 			product, err := ap.processWithInstance(instance, req.URL, req.Zipcode)
-			results[i] = ProductResult{
+			results[i] = model.ProductResult{
 				Product: product,
 				Error:   err,
 			}
@@ -103,11 +106,11 @@ func (ap *AmazonProcessor) ProcessBatch(requests []ProductRequest) []ProductResu
 				logrus.Infof("批量处理 [%d/%d] 失败: %s - %v", i+1, len(requests), req.URL, err)
 
 				// 如果检测到风控或严重错误，停止批量处理
-				if ap.browserPool.isBlockedOrSeriousError(err) {
+				if ap.browserPool.IsBlockedOrSeriousError(err) {
 					logrus.Infof("检测到浏览器实例 %d 被风控，停止批量处理", instance.ID)
 					// 将剩余任务标记为失败
 					for j := i + 1; j < len(requests); j++ {
-						results[j] = ProductResult{
+						results[j] = model.ProductResult{
 							Product: nil,
 							Error:   fmt.Errorf("浏览器实例被风控，跳过处理"),
 						}
@@ -125,7 +128,7 @@ func (ap *AmazonProcessor) ProcessBatch(requests []ProductRequest) []ProductResu
 		// 单浏览器模式，逐个处理
 		for i, req := range requests {
 			product, err := ap.Process(req.URL, req.Zipcode)
-			results[i] = ProductResult{
+			results[i] = model.ProductResult{
 				Product: product,
 				Error:   err,
 			}
@@ -146,7 +149,7 @@ func (ap *AmazonProcessor) ProcessBatch(requests []ProductRequest) []ProductResu
 }
 
 // processWithInstance 使用指定实例处理产品
-func (ap *AmazonProcessor) processWithInstance(instance *BrowserInstance, url string, zipcode string) (*Product, error) {
+func (ap *AmazonProcessor) processWithInstance(instance *browser.BrowserInstance, url string, zipcode string) (*model.Product, error) {
 	page := instance.Page
 	browserManager := instance.Manager
 
@@ -175,16 +178,16 @@ func (ap *AmazonProcessor) processWithInstance(instance *BrowserInstance, url st
 
 	// 提取产品信息
 	now := time.Now()
-	product := &Product{
+	product := &model.Product{
 		URL:       url,
 		Zipcode:   zipcode,
 		Asin:      ap.extractASINFromURL(url),
 		Currency:  ap.getCurrencyFromURL(url), // Set currency based on Amazon domain
-		Timestamp: NullableTime{Time: &now},
+		Timestamp: model.NullableTime{Time: &now},
 	}
 
-	extractor := NewCompositeExtractor()
-	if err := extractor.Extract(page, product); err != nil {
+	ext := extractor.NewCompositeExtractor()
+	if err := ext.Extract(page, product); err != nil {
 		return nil, fmt.Errorf("提取产品信息失败: %w", err)
 	}
 
@@ -192,7 +195,7 @@ func (ap *AmazonProcessor) processWithInstance(instance *BrowserInstance, url st
 }
 
 // processWithPool 使用浏览器池处理
-func (ap *AmazonProcessor) processWithPool(url string, zipcode string, startTime time.Time) (*Product, error) {
+func (ap *AmazonProcessor) processWithPool(url string, zipcode string, startTime time.Time) (*model.Product, error) {
 	maxRetries := 2 // 最多重试2次（即总共尝试3次）
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -210,7 +213,7 @@ func (ap *AmazonProcessor) processWithPool(url string, zipcode string, startTime
 		product, processErr := ap.processWithInstance(instance, url, zipcode)
 
 		// 检查是否为严重错误
-		if processErr != nil && ap.browserPool.isBlockedOrSeriousError(processErr) {
+		if processErr != nil && ap.browserPool.IsBlockedOrSeriousError(processErr) {
 			logrus.Warnf("检测到浏览器实例 %d 出现严重错误: %v", instance.ID, processErr)
 
 			// 同步重建浏览器实例
@@ -250,8 +253,8 @@ func (ap *AmazonProcessor) processWithPool(url string, zipcode string, startTime
 }
 
 // processWithSingleBrowser 使用单浏览器处理
-func (ap *AmazonProcessor) processWithSingleBrowser(url string, zipcode string, startTime time.Time) (*Product, error) {
-	browserManager := NewBrowserManager(ap.config)
+func (ap *AmazonProcessor) processWithSingleBrowser(url string, zipcode string, startTime time.Time) (*model.Product, error) {
+	browserManager := browser.NewBrowserManager(ap.config)
 
 	if err := browserManager.Install(); err != nil {
 		return nil, fmt.Errorf("初始化Playwright失败: %w", err)
@@ -279,22 +282,22 @@ func (ap *AmazonProcessor) processWithSingleBrowser(url string, zipcode string, 
 	}
 
 	// 设置邮编
-	zipcodeSetter := NewZipcodeSetter(browserManager)
+	zipcodeSetter := browser.NewZipcodeSetter(browserManager)
 	if err := zipcodeSetter.SetAndVerifyZipcode(page, zipcode); err != nil {
 		return nil, fmt.Errorf("设置邮编失败: %w", err)
 	}
 
 	now := time.Now()
-	product := &Product{
+	product := &model.Product{
 		URL:       url,
 		Zipcode:   zipcode,
 		Asin:      ap.extractASINFromURL(url),
 		Currency:  ap.getCurrencyFromURL(url), // Set currency based on Amazon domain
-		Timestamp: NullableTime{Time: &now},
+		Timestamp: model.NullableTime{Time: &now},
 	}
 
-	extractor := NewCompositeExtractor()
-	if err := extractor.Extract(page, product); err != nil {
+	ext2 := extractor.NewCompositeExtractor()
+	if err := ext2.Extract(page, product); err != nil {
 		return nil, fmt.Errorf("提取产品信息失败: %w", err)
 	}
 
@@ -311,7 +314,7 @@ func (ap *AmazonProcessor) handleContinueShoppingButton(page playwright.Page) er
 		return nil
 	}
 
-	continueShoppingSelectors := getContinueShoppingSelectors()
+	continueShoppingSelectors := browser.GetContinueShoppingSelectors()
 
 	for _, selector := range continueShoppingSelectors {
 		element, err := page.QuerySelector(selector)
@@ -350,62 +353,6 @@ func (ap *AmazonProcessor) isLoginPage(page playwright.Page) bool {
 		}
 	}
 	return false
-}
-
-// getContinueShoppingSelectors 获取"继续购物"按钮的多语言选择器
-func getContinueShoppingSelectors() []string {
-	return []string{
-		// 英语 - 只保留明确的Continue Shopping相关选择器
-		"button:has-text('Continue Shopping')",
-		"button:has-text('Continue shopping')",
-		"a:has-text('Continue Shopping')",
-		"a:has-text('Continue shopping')",
-		// 中文
-		"button:has-text('继续购物')",
-		"a:has-text('继续购物')",
-		// 日语
-		"button:has-text('買い物を続ける')",
-		"button:has-text('ショッピングを続ける')",
-		"a:has-text('買い物を続ける')",
-		"a:has-text('ショッピングを続ける')",
-		"button:has-text('続ける')",
-		"a:has-text('続ける')",
-		// 西班牙语
-		"button:has-text('Seguir comprando')",
-		"button:has-text('Continuar comprando')",
-		"a:has-text('Seguir comprando')",
-		"a:has-text('Continuar comprando')",
-		"button:has-text('Continuar')",
-		"a:has-text('Continuar')",
-		// 阿拉伯语
-		"button:has-text('متابعة التسوق')",
-		"a:has-text('متابعة التسوق')",
-		// 德语
-		"button:has-text('Weiter einkaufen')",
-		"a:has-text('Weiter einkaufen')",
-		"button:has-text('Weiter')",
-		"a:has-text('Weiter')",
-		// 法语
-		"button:has-text('Continuer mes achats')",
-		"a:has-text('Continuer mes achats')",
-		"button:has-text('Continuer')",
-		"a:has-text('Continuer')",
-		// 意大利语
-		"button:has-text('Continua lo shopping')",
-		"a:has-text('Continua lo shopping')",
-		"button:has-text('Continua')",
-		"a:has-text('Continua')",
-		// 葡萄牙语
-		"button:has-text('Continuar comprando')",
-		"a:has-text('Continuar comprando')",
-		"button:has-text('Continuar')",
-		"a:has-text('Continuar')",
-		// 荷兰语
-		"button:has-text('Verder winkelen')",
-		"a:has-text('Verder winkelen')",
-		"button:has-text('Verder')",
-		"a:has-text('Verder')",
-	}
 }
 
 // addLanguageParam 添加语言参数，强制使用英语
@@ -512,7 +459,7 @@ func (ap *AmazonProcessor) checkProductExists(page playwright.Page) error {
 			if err == nil && visible {
 				logrus.Errorf("❌ 检测到产品不存在或页面异常: selector=%s, URL=%s, PageTitle=%s",
 					selector, currentURL, pageTitle)
-				return &ProductNotFoundError{Message: fmt.Sprintf("产品页面不存在或无法访问: %s, URL: %s", selector, currentURL)}
+				return &model.ProductNotFoundError{Message: fmt.Sprintf("产品页面不存在或无法访问: %s, URL: %s", selector, currentURL)}
 			}
 		}
 	}
@@ -551,7 +498,7 @@ func (ap *AmazonProcessor) checkProductExists(page playwright.Page) error {
 		//logrus.Warnf("页面HTML前500字符: %v", bodyHTML)
 		logrus.Warnf("尝试的选择器: %v", titleSelectors)
 
-		return &ProductNotFoundError{Message: fmt.Sprintf("❌ 产品页面缺少必要元素 (URL: %s, Title: %s)", currentURL, pageTitle)}
+		return &model.ProductNotFoundError{Message: fmt.Sprintf("❌ 产品页面缺少必要元素 (URL: %s, Title: %s)", currentURL, pageTitle)}
 	}
 
 	logrus.Infof("产品页面有效性检查通过: selector=%s", foundSelector)
@@ -560,10 +507,10 @@ func (ap *AmazonProcessor) checkProductExists(page playwright.Page) error {
 }
 
 // setAndVerifyZipcodeWithCache 设置并验证邮编（带缓存检查）
-func (ap *AmazonProcessor) setAndVerifyZipcodeWithCache(instance *BrowserInstance, zipcode string) error {
-	instance.mu.Lock()
+func (ap *AmazonProcessor) setAndVerifyZipcodeWithCache(instance *browser.BrowserInstance, zipcode string) error {
+	instance.Mu.Lock()
 	currentZipcode := instance.CurrentZipcode
-	instance.mu.Unlock()
+	instance.Mu.Unlock()
 
 	// 如果当前邮编已经是目标邮编，跳过设置
 	if currentZipcode == zipcode {
@@ -574,15 +521,15 @@ func (ap *AmazonProcessor) setAndVerifyZipcodeWithCache(instance *BrowserInstanc
 	logrus.Infof("浏览器实例 %d 需要设置邮编: %s -> %s", instance.ID, currentZipcode, zipcode)
 
 	// 创建邮编设置器并设置邮编
-	zipcodeSetter := NewZipcodeSetter(instance.Manager)
+	zipcodeSetter := browser.NewZipcodeSetter(instance.Manager)
 	if err := zipcodeSetter.SetAndVerifyZipcode(instance.Page, zipcode); err != nil {
 		return err
 	}
 
 	// 更新缓存的邮编
-	instance.mu.Lock()
+	instance.Mu.Lock()
 	instance.CurrentZipcode = zipcode
-	instance.mu.Unlock()
+	instance.Mu.Unlock()
 
 	logrus.Infof("浏览器实例 %d 邮编已更新为: %s", instance.ID, zipcode)
 	return nil

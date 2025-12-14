@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/common"
 	management_api "task-processor/common/management/api"
 	product "task-processor/common/shein/api/product"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -826,7 +826,7 @@ func (h *PublishProductHandler) updateTaskStatusToDraft(ctx *TaskContext) {
 	// 构建更新请求
 	req := &management_api.ProductImportTaskUpdateReqDTO{
 		ID:     taskID,
-		Status: common.TaskStatusDraft.Int16(),
+		Status: model.TaskStatusDraft.Int16(),
 	}
 
 	// 异步更新状态

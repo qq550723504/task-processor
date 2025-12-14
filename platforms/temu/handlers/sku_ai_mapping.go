@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/pipeline"
 	"task-processor/openai"
 	"task-processor/platforms/temu/types"
@@ -62,7 +62,7 @@ type AIGeneratedSku struct {
 }
 
 // generateAISkuMapping 使用AI生成SKU映射
-func (sb *SkuBuilder) generateAISkuMapping(ctx *pipeline.TaskContext, variants []*amazon.Product) (*AISkuMappingResponse, error) {
+func (sb *SkuBuilder) generateAISkuMapping(ctx *pipeline.TaskContext, variants []*model.Product) (*AISkuMappingResponse, error) {
 	if sb.aiClient == nil {
 		return nil, fmt.Errorf("AI客户端未初始化")
 	}
@@ -89,7 +89,7 @@ func (sb *SkuBuilder) generateAISkuMapping(ctx *pipeline.TaskContext, variants [
 }
 
 // generateAISkuMappingInBatches 分批生成AI SKU映射
-func (sb *SkuBuilder) generateAISkuMappingInBatches(ctx *pipeline.TaskContext, variants []*amazon.Product, batchSize int) (*AISkuMappingResponse, error) {
+func (sb *SkuBuilder) generateAISkuMappingInBatches(ctx *pipeline.TaskContext, variants []*model.Product, batchSize int) (*AISkuMappingResponse, error) {
 	totalBatches := (len(variants) + batchSize - 1) / batchSize
 	sb.logger.Infof("📦 开始分批处理: 总变体数=%d, 批次大小=%d, 总批次=%d", len(variants), batchSize, totalBatches)
 
@@ -144,7 +144,7 @@ func (sb *SkuBuilder) generateAISkuMappingInBatches(ctx *pipeline.TaskContext, v
 }
 
 // generateAISkuMappingSingleBatch 单批次生成AI SKU映射
-func (sb *SkuBuilder) generateAISkuMappingSingleBatch(ctx *pipeline.TaskContext, variants []*amazon.Product) (*AISkuMappingResponse, error) {
+func (sb *SkuBuilder) generateAISkuMappingSingleBatch(ctx *pipeline.TaskContext, variants []*model.Product) (*AISkuMappingResponse, error) {
 
 	// 准备AI请求数据
 	sb.logger.Infof("开始准备AI请求数据，变体数量: %d", len(variants))
@@ -156,7 +156,7 @@ func (sb *SkuBuilder) generateAISkuMappingSingleBatch(ctx *pipeline.TaskContext,
 	failedCount := 0
 
 	// 创建ASIN到完整变体信息的映射
-	asinToFullVariant := make(map[string]*amazon.Product)
+	asinToFullVariant := make(map[string]*model.Product)
 	if ctx.AmazonVariants != nil {
 		for _, fullVariant := range ctx.AmazonVariants {
 			asinToFullVariant[fullVariant.Asin] = fullVariant

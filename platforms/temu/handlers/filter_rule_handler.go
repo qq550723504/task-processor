@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 	"task-processor/common/pipeline"
 
@@ -106,7 +106,7 @@ func (h *FilterRuleHandler) FilterVariants(ctx *pipeline.TaskContext) error {
 	}
 
 	// 筛选变体
-	var filteredVariants []*amazon.Product
+	var filteredVariants []*model.Product
 	originalCount := len(ctx.AmazonVariants)
 
 	for _, variant := range ctx.AmazonVariants {
@@ -165,7 +165,7 @@ func (h *FilterRuleHandler) getFilterRules(ctx *pipeline.TaskContext) (*[]api.Fi
 }
 
 // checkProductAgainstRules 检查产品是否符合筛选规则
-func (h *FilterRuleHandler) checkProductAgainstRules(product *amazon.Product, rules *[]api.FilterRuleRespDTO, ctx *pipeline.TaskContext) bool {
+func (h *FilterRuleHandler) checkProductAgainstRules(product *model.Product, rules *[]api.FilterRuleRespDTO, ctx *pipeline.TaskContext) bool {
 	if rules == nil || len(*rules) == 0 {
 		h.logger.Debug("没有筛选规则，产品通过")
 		return true
@@ -188,7 +188,7 @@ func (h *FilterRuleHandler) checkProductAgainstRules(product *amazon.Product, ru
 }
 
 // checkSingleRule 检查单个规则
-func (h *FilterRuleHandler) checkSingleRule(product *amazon.Product, rule *api.FilterRuleRespDTO, ctx *pipeline.TaskContext) bool {
+func (h *FilterRuleHandler) checkSingleRule(product *model.Product, rule *api.FilterRuleRespDTO, ctx *pipeline.TaskContext) bool {
 	// 价格检查
 	if !h.checkPriceRule(product, rule, ctx) {
 		return false
@@ -218,7 +218,7 @@ func (h *FilterRuleHandler) checkSingleRule(product *amazon.Product, rule *api.F
 }
 
 // checkPriceRule 检查价格规则
-func (h *FilterRuleHandler) checkPriceRule(product *amazon.Product, rule *api.FilterRuleRespDTO, ctx *pipeline.TaskContext) bool {
+func (h *FilterRuleHandler) checkPriceRule(product *model.Product, rule *api.FilterRuleRespDTO, ctx *pipeline.TaskContext) bool {
 	// 获取店铺配置的价格类型
 	priceType := "special"
 	if ctx != nil && ctx.StoreInfo != nil && ctx.StoreInfo.PriceType != "" {
@@ -244,7 +244,7 @@ func (h *FilterRuleHandler) checkPriceRule(product *amazon.Product, rule *api.Fi
 }
 
 // checkRatingRule 检查评分规则
-func (h *FilterRuleHandler) checkRatingRule(product *amazon.Product, rule *api.FilterRuleRespDTO) bool {
+func (h *FilterRuleHandler) checkRatingRule(product *model.Product, rule *api.FilterRuleRespDTO) bool {
 	if rule.RatingMin == nil {
 		return true
 	}
@@ -259,7 +259,7 @@ func (h *FilterRuleHandler) checkRatingRule(product *amazon.Product, rule *api.F
 }
 
 // checkReviewCountRule 检查评论数量规则
-func (h *FilterRuleHandler) checkReviewCountRule(product *amazon.Product, rule *api.FilterRuleRespDTO) bool {
+func (h *FilterRuleHandler) checkReviewCountRule(product *model.Product, rule *api.FilterRuleRespDTO) bool {
 	if rule.ReviewCountMin == nil {
 		return true
 	}
@@ -274,7 +274,7 @@ func (h *FilterRuleHandler) checkReviewCountRule(product *amazon.Product, rule *
 }
 
 // checkStockRule 检查库存规则
-func (h *FilterRuleHandler) checkStockRule(product *amazon.Product, rule *api.FilterRuleRespDTO) bool {
+func (h *FilterRuleHandler) checkStockRule(product *model.Product, rule *api.FilterRuleRespDTO) bool {
 	if rule.StockMin == nil {
 		return true
 	}
@@ -291,7 +291,7 @@ func (h *FilterRuleHandler) checkStockRule(product *amazon.Product, rule *api.Fi
 }
 
 // getInventory 获取库存数量（支持多语言）
-func (h *FilterRuleHandler) getInventory(product *amazon.Product) int {
+func (h *FilterRuleHandler) getInventory(product *model.Product) int {
 
 	// 优先：如果有明确的最大可用数量
 	if product.MaxQuantityAvailable > 0 {
@@ -372,7 +372,7 @@ func (h *FilterRuleHandler) getInventory(product *amazon.Product) int {
 }
 
 // checkFulfillmentTypeRule 检查配送方式规则
-func (h *FilterRuleHandler) checkFulfillmentTypeRule(product *amazon.Product, rule *api.FilterRuleRespDTO) bool {
+func (h *FilterRuleHandler) checkFulfillmentTypeRule(product *model.Product, rule *api.FilterRuleRespDTO) bool {
 	// 如果规则未设置配送方式或设置为ALL，则不进行筛选
 	if rule.FulfillmentType == "" || rule.FulfillmentType == "ALL" {
 		return true

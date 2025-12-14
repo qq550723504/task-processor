@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/management/api"
 	"task-processor/common/product"
 	"task-processor/platforms/common"
@@ -133,7 +134,7 @@ func (s *TemuProductMonitorService) getStoreMappings(storeID, tenantID int64) ([
 // checkAndNotifyPriceChange 检查并通知价格变化
 func (s *TemuProductMonitorService) checkAndNotifyPriceChange(
 	prod *api.ProductDataDTO,
-	amazonProduct *amazon.Product,
+	amazonProduct *model.Product,
 	tenantID, storeID int64,
 ) bool {
 	oldPrice := parsePrice(prod.OriginalPrice.String())
@@ -174,7 +175,7 @@ func (s *TemuProductMonitorService) checkAndNotifyPriceChange(
 // checkAndNotifyStockChange 检查并通知库存变化
 func (s *TemuProductMonitorService) checkAndNotifyStockChange(
 	prod *api.ProductDataDTO,
-	amazonProduct *amazon.Product,
+	amazonProduct *model.Product,
 	tenantID, storeID int64,
 ) bool {
 	oldStock := parseStock(prod.Stock.String())

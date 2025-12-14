@@ -3,6 +3,7 @@
 import (
 	"fmt"
 	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/config"
 	management_api "task-processor/common/management/api"
 	"task-processor/common/product"
@@ -142,7 +143,7 @@ func (h *SubmitVariantRawJsonDataHandler) Handle(ctx *TaskContext) error {
 	}
 
 	// 将 []amazon.Product 转换为 []*amazon.Product
-	variants := make([]*amazon.Product, len(*ctx.Variants))
+	variants := make([]*model.Product, len(*ctx.Variants))
 	for i := range *ctx.Variants {
 		variants[i] = &(*ctx.Variants)[i]
 	}

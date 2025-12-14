@@ -3,7 +3,7 @@ package handlers
 import (
 	"fmt"
 
-	"task-processor/common/amazon"
+	"task-processor/common/amazon/model"
 	"task-processor/common/pipeline"
 	"task-processor/openai"
 
@@ -59,7 +59,7 @@ func (h *AISkuMappingHandler) Handle(ctx *pipeline.TaskContext) error {
 	if len(variants) == 0 {
 		if ctx.AmazonProduct != nil {
 			h.logger.Info("没有变体，使用主产品生成AI映射")
-			variants = []*amazon.Product{ctx.AmazonProduct}
+			variants = []*model.Product{ctx.AmazonProduct}
 		} else {
 			h.logger.Info("没有变体也没有主产品，跳过AI映射生成")
 			return nil
@@ -83,7 +83,7 @@ func (h *AISkuMappingHandler) Handle(ctx *pipeline.TaskContext) error {
 }
 
 // getVariants 从context获取变体列表
-func (h *AISkuMappingHandler) getVariants(ctx *pipeline.TaskContext) ([]*amazon.Product, error) {
+func (h *AISkuMappingHandler) getVariants(ctx *pipeline.TaskContext) ([]*model.Product, error) {
 	// 使用TaskContext的GetAmazonVariants方法
 	variants := ctx.GetAmazonVariants()
 	// 返回变体列表（可能为空），由调用方决定如何处理

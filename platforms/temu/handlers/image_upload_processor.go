@@ -10,6 +10,7 @@ import (
 
 	"task-processor/common/pipeline"
 	"task-processor/platforms/temu/types"
+	"task-processor/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -103,6 +104,13 @@ func (h *ImageUploadProcessor) Handle(ctx *pipeline.TaskContext) error {
 	// 上传SKU图片
 	if err := h.uploadSkuImages(ctx); err != nil {
 		return fmt.Errorf("上传SKU图片失败: %w", err)
+	}
+
+	// 上传完成后，进行最终的尺寸验证
+	dimensionValidator := utils.NewImageDimensionValidator()
+	if err := dimensionValidator.ValidateProductImages(ctx.TemuProduct); err != nil {
+		h.logger.Errorf("❌ 上传后图片尺寸验证失败: %v", err)
+		return fmt.Errorf("上传后图片尺寸验证失败: %w", err)
 	}
 
 	h.logger.Info("图片上传处理完成")
@@ -336,12 +344,26 @@ func (h *ImageUploadProcessor) uploadSingleImage(ctx *pipeline.TaskContext, imag
 		resultURL = uploadResult.URL // 兼容处理
 	}
 
-	// 如果使用了填充图片，使用填充后的尺寸，否则使用上传返回的尺寸
+	// 如果使用了填充图片，强制使用填充后的尺寸，忽略API返回的尺寸
 	width := uploadResult.Width
 	height := uploadResult.Height
 	if usePaddedImage && paddedWidth > 0 && paddedHeight > 0 {
 		width = paddedWidth
 		height = paddedHeight
+		h.logger.Infof("🔧 使用填充后的尺寸: %dx%d (API返回: %dx%d)",
+			width, height, uploadResult.Width, uploadResult.Height)
+	}
+
+	// 验证最终尺寸是否为1:1比例（非服装类产品）
+	if width != height {
+		h.logger.Errorf("❌ 图片尺寸不是1:1比例: %dx%d, URL: %s", width, height, imageURL)
+		// 对于非1:1的图片，强制调整为正方形（取较大值）
+		if width > height {
+			height = width
+		} else {
+			width = height
+		}
+		h.logger.Warnf("🔧 强制调整为1:1比例: %dx%d", width, height)
 	}
 
 	imageInfo := &types.ImageInfo{

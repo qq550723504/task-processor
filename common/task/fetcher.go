@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/common"
 	"task-processor/common/config"
 	"task-processor/common/types"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -311,7 +311,7 @@ func (f *UnifiedTaskFetcher) updateTaskStatusToProcessing(taskID int64) {
 		}
 
 		// 更新状态为"处理中"（状态码1）
-		if err := importTaskClient.UpdateTaskStatus(taskID, common.TaskStatusProcessing.Int16(), ""); err != nil {
+		if err := importTaskClient.UpdateTaskStatus(taskID, model.TaskStatusProcessing.Int16(), ""); err != nil {
 			logrus.Warnf("更新任务状态为处理中失败: TaskID=%d, Error=%v", taskID, err)
 		} else {
 			logrus.Debugf("✅ 任务状态已更新为处理中: TaskID=%d", taskID)
