@@ -308,7 +308,7 @@ func (h *ProductSubmitHandler) isNonRetryableError(errorCode int, errorMessage s
 }
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
-func (h *ProductSubmitHandler) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
+func (h *ProductSubmitHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false) // 关闭HTML转义，避免&被转义为\u0026
@@ -324,80 +324,4 @@ func (h *ProductSubmitHandler) marshalWithoutHTMLEscape(v interface{}) ([]byte, 
 	}
 
 	return result, nil
-}
-
-// checkProductExists 检查产品是否已上架
-func (h *ProductSubmitHandler) checkProductExists(ctx *pipeline.TaskContext) error {
-	// 检查必要的上下文信息
-	if h.mappingClient == nil {
-		h.logger.Error("产品导入映射客户端未初始化，无法检查产品是否已上架")
-		return fmt.Errorf("产品导入映射客户端未初始化")
-	}
-
-	if ctx.Task == nil {
-		h.logger.Error("任务信息未初始化，无法检查产品是否已上架")
-		return fmt.Errorf("任务信息未初始化")
-	}
-
-	// 检查主产品是否已上架
-	if ctx.Task.ProductID != "" {
-		req := &management_api.ProductImportMappingCheckReqDTO{
-			StoreId:   ctx.Task.StoreID,
-			Platform:  ctx.Task.Platform,
-			Region:    ctx.Task.Region,
-			ProductId: ctx.Task.ProductID,
-		}
-
-		exists, err := h.mappingClient.CheckProductExists(req)
-		if err != nil {
-			h.logger.Errorf("检查产品 %s 是否已上架失败: %v", ctx.Task.ProductID, err)
-			return err
-		}
-
-		if exists {
-			h.logger.Warnf("⚠️ 产品 %s 已经上架过，跳过本次上架", ctx.Task.ProductID)
-			return fmt.Errorf("NONRETRYABLE: 产品 %s 已经上架过", ctx.Task.ProductID)
-		}
-
-		h.logger.Infof("✅ 产品 %s 未上架，可以继续上架流程", ctx.Task.ProductID)
-	}
-
-	// 检查所有变体是否已上架
-	if len(ctx.AmazonVariants) > 0 {
-		allVariantsExist := true
-		for _, variant := range ctx.AmazonVariants {
-			if variant.Asin == "" {
-				continue
-			}
-
-			req := &management_api.ProductImportMappingCheckReqDTO{
-				StoreId:   ctx.Task.StoreID,
-				Platform:  ctx.Task.Platform,
-				Region:    ctx.Task.Region,
-				ProductId: variant.Asin,
-			}
-
-			exists, err := h.mappingClient.CheckProductExists(req)
-			if err != nil {
-				h.logger.Errorf("检查变体 %s 是否已上架失败: %v", variant.Asin, err)
-				// 单个变体检查失败不影响整体流程，继续检查下一个
-				continue
-			}
-
-			if exists {
-				h.logger.Warnf("⚠️ 变体 %s 已经上架过", variant.Asin)
-			} else {
-				h.logger.Debugf("✅ 变体 %s 未上架", variant.Asin)
-				allVariantsExist = false
-			}
-		}
-
-		// 如果所有变体都已上架，则跳过本次上架
-		if allVariantsExist && len(ctx.AmazonVariants) > 0 {
-			h.logger.Warnf("⚠️ 所有变体都已经上架过，跳过本次上架")
-			return fmt.Errorf("NONRETRYABLE: 所有变体都已经上架过")
-		}
-	}
-
-	return nil
 }
