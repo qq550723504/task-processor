@@ -2,8 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"task-processor/common/amazon/model"
 	"task-processor/common/pipeline"
 	"task-processor/platforms/temu/types"
@@ -86,38 +84,6 @@ func (ip *ImageProcessor) BuildDimensionImagesWithUpload(ctx *pipeline.TaskConte
 	if len(variant.Images) == 0 {
 		return images
 	}
-
-	// 暂时注释掉检测逻辑，直接使用第三张图片添加标注
-	// // 先检测所有图片，看是否已有尺寸标注
-	// annotator := NewImageDimensionAnnotator()
-	// for i, imageURL := range variant.Images {
-	// 	if imageURL == "" {
-	// 		continue
-	// 	}
-
-	// 	// 下载并检测图片
-	// 	img, _, err := annotator.DownloadImage(imageURL)
-	// 	if err != nil {
-	// 		ip.logger.Warnf("下载图片%d失败，跳过检测: %v", i+1, err)
-	// 		continue
-	// 	}
-
-	// 	// 检测是否已有标注
-	// 	hasAnnotation, details := annotator.HasDimensionAnnotationWithDetails(img)
-	// 	if hasAnnotation {
-	// 		ip.logger.Infof("✅ 图片%d已包含尺寸标注，直接使用 - %s", i+1, details)
-
-	// 		// 先进行图片填充处理
-	// 		ip.padImagesIfNeeded(ctx, []string{imageURL})
-
-	// 		// 直接使用这张已有标注的图片
-	// 		image := ip.uploadImageWithFallback(ctx, imageURL, "dimension", 1500, 1500)
-	// 		images = append(images, image)
-	// 		return images
-	// 	}
-
-	// 	ip.logger.Debugf("图片%d未检测到尺寸标注", i+1)
-	// }
 
 	// 优先使用第三张图片添加标注（如果有的话）
 	var imageURL string
@@ -355,60 +321,4 @@ func (ip *ImageProcessor) addDimensionAnnotationToContext(ctx *pipeline.TaskCont
 
 	// 直接返回图片数据
 	return annotatedImageBytes, nil
-}
-
-// addDimensionAnnotation 为图片添加尺寸标注（会自动检测是否已有标注）- 已废弃，保留用于兼容
-func (ip *ImageProcessor) addDimensionAnnotation(ctx *pipeline.TaskContext, imageURL string, variant *model.Product) (string, error) {
-	// 从上下文获取AI生成的尺寸信息
-	aiMapping, exists := ctx.GetData("ai_sku_mapping")
-	if !exists {
-		return "", fmt.Errorf("未找到AI SKU映射数据")
-	}
-
-	mapping, ok := aiMapping.(*AISkuMappingResponse)
-	if !ok {
-		return "", fmt.Errorf("AI SKU映射数据类型错误")
-	}
-
-	// 查找当前变体的尺寸信息
-	var dimensions DimensionInfo
-	for _, aiSku := range mapping.SkuList {
-		if aiSku.Asin == variant.Asin {
-			dimensions = DimensionInfo{
-				Length: aiSku.Length,
-				Width:  aiSku.Width,
-				Height: aiSku.Height,
-			}
-			break
-		}
-	}
-
-	// 如果没有找到尺寸信息，返回错误
-	if dimensions.Length == "" && dimensions.Width == "" && dimensions.Height == "" {
-		return "", fmt.Errorf("未找到变体 %s 的尺寸信息", variant.Asin)
-	}
-
-	// 创建标注器
-	annotator := NewImageDimensionAnnotator()
-
-	// 生成标注图片（内部会自动检测是否已有标注）
-	// 如果已有标注，会返回原图；如果没有，会添加标注
-	annotatedImageBytes, err := annotator.AnnotateImage(imageURL, dimensions)
-	if err != nil {
-		return "", fmt.Errorf("标注图片失败: %w", err)
-	}
-
-	// 将标注后的图片保存为临时文件
-	tempFile := fmt.Sprintf("temp_annotated_%s.png", variant.Asin)
-	tempPath := filepath.Join(os.TempDir(), tempFile)
-
-	if err := os.WriteFile(tempPath, annotatedImageBytes, 0644); err != nil {
-		return "", fmt.Errorf("保存标注图片失败: %w", err)
-	}
-
-	ip.logger.Infof("✅ 尺寸标注图片已处理: %s (L:%s W:%s H:%s)",
-		tempPath, dimensions.Length, dimensions.Width, dimensions.Height)
-
-	// 返回临时文件路径（后续会被上传）
-	return tempPath, nil
 }
