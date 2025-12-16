@@ -114,7 +114,7 @@ func (h *TaskHandler) handleTaskFailure(task types.Task, err error) {
 		task.Priority = max(0, task.Priority-10)
 	}
 
-	maxRetries := h.processor.config.Processor.MaxRetries
+	maxRetries := h.processor.GetConfig().Processor.MaxRetries
 	if maxRetries <= 0 {
 		maxRetries = 3 // 默认最大重试次数
 	}

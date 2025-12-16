@@ -15,8 +15,8 @@ type UnifiedTaskContextInterface interface {
 	// 基础方法
 	GetContext() context.Context
 	GetTask() *types.Task
-	SetData(key string, value interface{})
-	GetData(key string) (interface{}, bool)
+	SetData(key string, value any)
+	GetData(key string) (any, bool)
 	GetStringData(key string) (string, bool)
 	GetIntData(key string) (int, bool)
 	GetBoolData(key string) (bool, bool)

@@ -27,11 +27,11 @@ type TaskContext struct {
 	AmazonVariants []*model.Product // Amazon变体产品数据（强类型，替代通过SetData/GetData访问variants）
 
 	// 处理结果
-	SubmitResult  interface{} // 提交结果
-	SaveResult    interface{} // 保存结果
-	PublishResult interface{} // 发布结果
+	SubmitResult  any // 提交结果
+	SaveResult    any // 保存结果
+	PublishResult any // 发布结果
 
-	Data map[string]interface{} // 用于在处理器之间传递数据（保留兼容性）
+	Data map[string]any // 用于在处理器之间传递数据（保留兼容性）
 }
 
 // NewTaskContext 创建新的任务上下文
@@ -64,12 +64,12 @@ func (tc *TaskContext) GetAmazonProcessor() *amazon.AmazonProcessor {
 }
 
 // SetData 设置数据
-func (tc *TaskContext) SetData(key string, value interface{}) {
+func (tc *TaskContext) SetData(key string, value any) {
 	tc.Data[key] = value
 }
 
 // GetData 获取数据
-func (tc *TaskContext) GetData(key string) (interface{}, bool) {
+func (tc *TaskContext) GetData(key string) (any, bool) {
 	value, exists := tc.Data[key]
 	return value, exists
 }

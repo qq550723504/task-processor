@@ -62,41 +62,6 @@ func (p *Processor) Stop(ctx context.Context) error {
 	return nil
 }
 
-// ProcessTask 处理任务
-func (p *Processor) ProcessTask(ctx context.Context, taskData map[string]interface{}) error {
-	p.logger.Info("[Amazon] 开始处理任务")
-
-	// 解析任务数据
-	taskContext := &model.TaskContext{
-		TaskID:        "task-001",
-		MarketplaceID: "ATVPDKIKX0DER", // 美国市场
-		LanguageTag:   "en_US",
-		Currency:      "USD",
-		Data:          taskData,
-	}
-
-	// 执行简单的处理流程
-	if err := p.processProductData(ctx, taskContext); err != nil {
-		p.logger.Errorf("[Amazon] 处理产品失败: %v", err)
-		return err
-	}
-
-	p.logger.Info("[Amazon] 任务处理完成")
-	return nil
-}
-
-// processProductData 处理产品数据
-func (p *Processor) processProductData(ctx context.Context, taskContext *model.TaskContext) error {
-	p.logger.WithField("task_id", taskContext.TaskID).Info("处理产品数据")
-
-	// 示例：使用产品类型推荐服务
-	if productTypeService := p.services.GetProductTypeService(); productTypeService != nil {
-		p.logger.Info("产品类型服务可用")
-	}
-
-	return nil
-}
-
 // createAPIClient 创建API客户端
 func createAPIClient(cfg *config.Config) *api.Client {
 	apiConfig := &api.Config{

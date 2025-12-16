@@ -70,10 +70,6 @@ func runPipelineTest(ctx context.Context, processor *amazon.Processor, productID
 	// 创建测试产品数据
 	testData := createTestProductData(productID)
 
-	// 打印测试数据
-	logrus.Info("📋 测试产品数据:")
-	printProductData(testData)
-
 	// 使用处理器的管道流程处理
 	return processor.ProcessTaskWithPipeline(ctx, testData)
 }
@@ -131,29 +127,6 @@ func createTestProductData(productID string) map[string]interface{} {
 		"language_tag":    "en_US",
 		"currency_target": "USD",
 	}
-}
-
-// printProductData 打印产品数据
-func printProductData(data map[string]interface{}) {
-	// 解析原始JSON数据用于美化显示
-	if rawJSON, ok := data["raw_json_data"].(string); ok {
-		var productData map[string]interface{}
-		if err := json.Unmarshal([]byte(rawJSON), &productData); err == nil {
-			logrus.Infof("  📝 产品标题: %v", productData["title"])
-			logrus.Infof("  🏷️  产品品牌: %v", productData["brand"])
-			logrus.Infof("  💰 产品价格: %v %s", productData["price"], productData["currency"])
-			logrus.Infof("  🎨 产品颜色: %v", productData["color"])
-			logrus.Infof("  📏 产品尺寸: %v", productData["size"])
-
-			if variants, ok := productData["variants"].([]interface{}); ok {
-				logrus.Infof("  🔄 变体数量: %d", len(variants))
-			}
-		}
-	}
-
-	logrus.Infof("  🆔 产品ID: %v", data["product_id"])
-	logrus.Infof("  🏪 店铺ID: %v", data["store_id"])
-	logrus.Infof("  🌍 目标市场: %v", data["marketplace_id"])
 }
 
 // printStatus 打印状态信息
