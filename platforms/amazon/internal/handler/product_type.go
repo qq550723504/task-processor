@@ -1,245 +1,127 @@
-// Package handler 提供Amazon产品类型推荐处理器
 package handler
 
 import (
 	"context"
 	"fmt"
 	"strings"
-	"task-processor/internal/amazon/service"
 	"task-processor/platforms/amazon/internal/model"
 )
 
-// ProductTypeHandler 产品类型推荐处理器
 type ProductTypeHandler struct {
 	*BaseHandler
+	services      *model.Services
 	marketplaceID string
 }
 
-// NewProductTypeHandler 创建产品类型推荐处理器
-func NewProductTypeHandler() *ProductTypeHandler {
+func NewProductTypeHandler(services *model.Services) *ProductTypeHandler {
 	return &ProductTypeHandler{
-		BaseHandler:   NewBaseHandler("产品类型推荐器"),
-		marketplaceID: "ATVPDKIKX0DER", // 默认美国市场
+		BaseHandler:   NewBaseHandler("产品类型处理器"),
+		services:      services,
+		marketplaceID: "ATVPDKIKX0DER",
 	}
 }
 
-// Execute 处理逻辑
-func (h *ProductTypeHandler) Execute(services *model.Services, data map[string]any) error {
-	h.logger.Info("开始推荐产品类型")
+func (h *ProductTypeHandler) Handle(ctx context.Context, taskContext *model.TaskContext) error {
+	h.logger.Info("开始产品类型识别")
 
-	// 验证服务
-	if err := h.ValidateServices(services); err != nil {
-		return err
+	sourceData := taskContext.Data
+	if sourceData == nil {
+		return fmt.Errorf("源数据为空")
 	}
 
-	// 获取产品类型缓存服务
-	cache := services.GetProductTypeCache()
-	if cache == nil {
-		return fmt.Errorf("产品类型缓存服务未初始化")
-	}
-
-	// 获取原始产品数据
-	rawData, exists := data["raw_product_data"]
-	if !exists {
-		return fmt.Errorf("原始产品数据不存在")
-	}
-
-	sourceData, ok := rawData.(map[string]any)
-	if !ok {
-		return fmt.Errorf("产品数据格式错误")
-	}
-
-	// 获取上下文
-	ctxValue, exists := data["context"]
-	if !exists {
-		return fmt.Errorf("上下文不存在")
-	}
-
-	ctx, ok := ctxValue.(context.Context)
-	if !ok {
-		return fmt.Errorf("上下文类型错误")
-	}
-
-	// 类型断言获取ProductTypeCache
-	productTypeCache, ok := cache.(*service.ProductTypeCache)
-	if !ok {
-		return fmt.Errorf("产品类型缓存类型错误")
-	}
-
-	// 1. 优先使用源数据中指定的产品类型
 	if productType := h.getExplicitProductType(sourceData); productType != "" {
-		if h.validateProductType(productTypeCache, ctx, productType) {
+		if h.isValidProductType(productType) {
 			h.logger.Infof("使用指定的产品类型: %s", productType)
-			h.SetResult(data, "product_type", productType)
+			taskContext.SetResult("product_type", productType)
 			return nil
 		}
-		h.logger.Warnf("指定的产品类型无效: %s，将自动推荐", productType)
 	}
 
-	// 2. 从产品信息推荐产品类型
-	productType, err := h.recommendProductType(productTypeCache, ctx, sourceData)
-	if err != nil {
-		h.logger.Warnf("推荐失败，使用默认类型: %v", err)
-		productType = "PRODUCT"
+	productType := h.recommendProductType(sourceData)
+	if productType != "" {
+		h.logger.Infof("推荐产品类型: %s", productType)
+		taskContext.SetResult("product_type", productType)
+		return nil
 	}
 
-	h.logger.Infof("推荐的产品类型: %s", productType)
-	h.SetResult(data, "product_type", productType)
+	defaultType := "PRODUCT"
+	h.logger.Warnf("无法确定产品类型，使用默认类型: %s", defaultType)
+	taskContext.SetResult("product_type", defaultType)
 
 	return nil
 }
 
-// getExplicitProductType 获取显式指定的产品类型
 func (h *ProductTypeHandler) getExplicitProductType(sourceData map[string]any) string {
-	// 检查 product_type 字段
-	if pt, ok := sourceData["product_type"].(string); ok && pt != "" {
-		return strings.ToUpper(strings.TrimSpace(pt))
-	}
+	fields := []string{"product_type", "productType", "category", "type"}
 
-	// 检查 productType 字段（驼峰命名）
-	if pt, ok := sourceData["productType"].(string); ok && pt != "" {
-		return strings.ToUpper(strings.TrimSpace(pt))
-	}
-
-	// 检查 amazon_product_type 字段
-	if pt, ok := sourceData["amazon_product_type"].(string); ok && pt != "" {
-		return strings.ToUpper(strings.TrimSpace(pt))
+	for _, field := range fields {
+		if value, exists := sourceData[field]; exists {
+			if str, ok := value.(string); ok && str != "" {
+				return strings.ToUpper(str)
+			}
+		}
 	}
 
 	return ""
 }
 
-// validateProductType 验证产品类型是否有效
-func (h *ProductTypeHandler) validateProductType(cache *service.ProductTypeCache, ctx context.Context, productType string) bool {
-	return cache.IsValidProductType(ctx, h.marketplaceID, productType)
-}
-
-// recommendProductType 根据产品信息推荐产品类型
-func (h *ProductTypeHandler) recommendProductType(cache *service.ProductTypeCache, ctx context.Context, sourceData map[string]any) (string, error) {
-	// 提取关键词
-	keywords := h.extractKeywords(sourceData)
-	if len(keywords) == 0 {
-		return "PRODUCT", nil
+func (h *ProductTypeHandler) isValidProductType(productType string) bool {
+	validTypes := map[string]bool{
+		"PRODUCT": true, "APPAREL": true, "ELECTRONICS": true,
+		"HOME": true, "BEAUTY": true, "SPORTS": true,
+		"AUTOMOTIVE": true, "BOOKS": true, "TOYS": true, "LUGGAGE": true,
 	}
 
-	h.logger.Debugf("提取的关键词: %v", keywords)
+	return validTypes[strings.ToUpper(productType)]
+}
 
-	// 用关键词搜索匹配的产品类型
-	var bestMatch *service.ProductTypeSummary
-	var bestScore int
+func (h *ProductTypeHandler) recommendProductType(sourceData map[string]any) string {
+	keywords := h.extractKeywords(sourceData)
 
 	for _, keyword := range keywords {
-		results, err := cache.SearchByKeyword(ctx, h.marketplaceID, keyword, 10)
-		if err != nil {
-			continue
-		}
-
-		for _, pt := range results {
-			score := h.calculateMatchScore(pt, keyword, sourceData)
-			if score > bestScore {
-				bestScore = score
-				ptCopy := pt
-				bestMatch = &ptCopy
-			}
+		if productType := h.matchKeywordToProductType(keyword); productType != "" {
+			return productType
 		}
 	}
 
-	if bestMatch != nil && bestScore >= 2 {
-		h.logger.Infof("最佳匹配: %s (分数: %d)", bestMatch.ProductType, bestScore)
-		return bestMatch.ProductType, nil
-	}
-
-	return "PRODUCT", nil
+	return ""
 }
 
-// extractKeywords 从产品数据中提取关键词
 func (h *ProductTypeHandler) extractKeywords(sourceData map[string]any) []string {
 	var keywords []string
-	seen := make(map[string]bool)
+	fields := []string{"title", "name", "description", "category"}
 
-	addKeyword := func(word string) {
-		word = strings.ToLower(strings.TrimSpace(word))
-		if len(word) >= 3 && !seen[word] {
-			seen[word] = true
-			keywords = append(keywords, word)
+	for _, field := range fields {
+		if value, exists := sourceData[field]; exists {
+			if str, ok := value.(string); ok {
+				words := strings.Fields(strings.ToLower(str))
+				keywords = append(keywords, words...)
+			}
 		}
-	}
-
-	// 从分类提取
-	if category, ok := sourceData["category"].(string); ok {
-		for _, word := range strings.Fields(category) {
-			addKeyword(word)
-		}
-	}
-
-	// 从标题提取关键词
-	if title, ok := sourceData["title"].(string); ok {
-		words := h.extractSignificantWords(title)
-		for _, word := range words[:min(5, len(words))] {
-			addKeyword(word)
-		}
-	}
-
-	// 从 subject 提取
-	if subject, ok := sourceData["subject"].(string); ok {
-		words := h.extractSignificantWords(subject)
-		for _, word := range words[:min(3, len(words))] {
-			addKeyword(word)
-		}
-	}
-
-	// 限制关键词数量
-	if len(keywords) > 8 {
-		keywords = keywords[:8]
 	}
 
 	return keywords
 }
 
-// extractSignificantWords 提取有意义的词
-func (h *ProductTypeHandler) extractSignificantWords(text string) []string {
-	stopWords := map[string]bool{
-		"the": true, "and": true, "or": true, "for": true, "with": true,
-		"a": true, "an": true, "of": true, "to": true, "in": true, "on": true,
-		"is": true, "are": true, "new": true, "hot": true, "sale": true,
+func (h *ProductTypeHandler) matchKeywordToProductType(keyword string) string {
+	keyword = strings.ToLower(keyword)
+
+	typeMapping := map[string]string{
+		"shirt": "APPAREL", "dress": "APPAREL", "clothing": "APPAREL",
+		"phone": "ELECTRONICS", "computer": "ELECTRONICS", "laptop": "ELECTRONICS",
+		"furniture": "HOME", "kitchen": "HOME",
+		"makeup": "BEAUTY", "skincare": "BEAUTY",
+		"sports": "SPORTS", "fitness": "SPORTS",
+		"car": "AUTOMOTIVE", "auto": "AUTOMOTIVE",
+		"book": "BOOKS", "toy": "TOYS",
+		"luggage": "LUGGAGE", "bag": "LUGGAGE",
 	}
 
-	var words []string
-	for _, word := range strings.Fields(strings.ToLower(text)) {
-		word = strings.Trim(word, ".,!?;:()[]{}\"'-")
-		if len(word) >= 3 && !stopWords[word] {
-			words = append(words, word)
-		}
-	}
-	return words
-}
-
-// calculateMatchScore 计算匹配分数
-func (h *ProductTypeHandler) calculateMatchScore(pt service.ProductTypeSummary, keyword string, sourceData map[string]any) int {
-	score := 0
-	ptLower := strings.ToLower(pt.ProductType)
-	displayLower := strings.ToLower(pt.DisplayName)
-	keywordLower := strings.ToLower(keyword)
-
-	// 精确匹配产品类型名称
-	if ptLower == keywordLower {
-		score += 5
-	} else if strings.Contains(ptLower, keywordLower) {
-		score += 3
-	}
-
-	// 匹配显示名称
-	if strings.Contains(displayLower, keywordLower) {
-		score += 2
-	}
-
-	// 检查分类匹配
-	if category, ok := sourceData["category"].(string); ok {
-		categoryLower := strings.ToLower(category)
-		if strings.Contains(displayLower, categoryLower) || strings.Contains(categoryLower, displayLower) {
-			score += 2
+	for key, productType := range typeMapping {
+		if strings.Contains(keyword, key) {
+			return productType
 		}
 	}
 
-	return score
+	return ""
 }

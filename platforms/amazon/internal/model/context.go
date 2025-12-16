@@ -10,10 +10,12 @@ import (
 // Services Amazon平台服务集合
 // 用于依赖注入，避免循环导入
 type Services struct {
-	APIClient        *api.Client
-	ProductTypeCache any // 使用any避免循环导入
-	ManagementClient *management.ClientManager
-	MemoryManager    *memory.MemoryManager
+	APIClient          *api.Client
+	ProductTypeCache   any // 使用any避免循环导入
+	ProductTypeService any // 产品类型推荐服务
+	ManagementClient   *management.ClientManager
+	MemoryManager      *memory.MemoryManager
+	LLMAttributeMapper any // LLM属性映射器
 }
 
 // NewServices 创建服务集合
@@ -44,4 +46,24 @@ func (s *Services) SetManagementClient(client *management.ClientManager) {
 // SetMemoryManager 设置内存管理器
 func (s *Services) SetMemoryManager(manager *memory.MemoryManager) {
 	s.MemoryManager = manager
+}
+
+// SetProductTypeService 设置产品类型服务
+func (s *Services) SetProductTypeService(service any) {
+	s.ProductTypeService = service
+}
+
+// GetProductTypeService 获取产品类型服务
+func (s *Services) GetProductTypeService() any {
+	return s.ProductTypeService
+}
+
+// SetLLMAttributeMapper 设置LLM属性映射器
+func (s *Services) SetLLMAttributeMapper(mapper any) {
+	s.LLMAttributeMapper = mapper
+}
+
+// GetLLMAttributeMapper 获取LLM属性映射器
+func (s *Services) GetLLMAttributeMapper() any {
+	return s.LLMAttributeMapper
 }

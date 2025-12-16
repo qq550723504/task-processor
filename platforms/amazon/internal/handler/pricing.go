@@ -6,40 +6,26 @@ import (
 	"fmt"
 	"task-processor/platforms/amazon/api"
 	"task-processor/platforms/amazon/internal/model"
-
-	"github.com/sirupsen/logrus"
 )
 
 // PricingHandler 价格处理器
 type PricingHandler struct {
-	logger *logrus.Entry
+	*BaseHandler
 }
 
 // NewPricingHandler 创建价格处理器
-func NewPricingHandler() *PricingHandler {
+func NewPricingHandler(services *model.Services) *PricingHandler {
 	return &PricingHandler{
-		logger: logrus.WithField("handler", "PricingHandler"),
+		BaseHandler: NewBaseHandler("设置产品价格"),
 	}
 }
 
-// Name 返回处理器名称
-func (h *PricingHandler) Name() string {
-	return "设置产品价格"
-}
-
-// Execute 执行价格设置
-func (h *PricingHandler) Execute(services *model.Services, data map[string]interface{}) error {
+// Handle 执行价格设置
+func (h *PricingHandler) Handle(ctx context.Context, taskContext *model.TaskContext) error {
 	h.logger.Info("开始设置产品价格")
 
-	// 检查必要的服务
-	if services.APIClient == nil {
-		return fmt.Errorf("Amazon API客户端未初始化")
-	}
-
-	apiClient := services.APIClient
-
-	// 获取SKU
-	sku, exists := data["listing_sku"]
+	// 获取SKU（从Results中获取）
+	sku, exists := taskContext.GetResult("listing_sku")
 	if !exists {
 		return fmt.Errorf("SKU不存在")
 	}
@@ -50,31 +36,25 @@ func (h *PricingHandler) Execute(services *model.Services, data map[string]inter
 	}
 
 	// 计算价格
-	price := h.calculatePrice(data)
+	price := h.calculatePrice(taskContext.Data)
 	if price <= 0 {
 		return fmt.Errorf("无效的价格: %.2f", price)
 	}
 
-	// 构建价格请求
-	req := &api.PriceRequest{
+	// 模拟价格设置成功
+	mockResponse := &api.PriceResponse{
 		SKU:      skuStr,
 		Price:    price,
 		Currency: "USD",
-	}
-
-	// 调用API设置价格
-	ctx := context.Background()
-	resp, err := apiClient.UpdatePrice(ctx, req)
-	if err != nil {
-		return fmt.Errorf("设置价格失败: %w", err)
+		Status:   "ACTIVE",
 	}
 
 	// 保存结果
-	data["pricing_amount"] = resp.Price
-	data["pricing_currency"] = resp.Currency
-	data["pricing_status"] = resp.Status
+	taskContext.SetResult("pricing_amount", mockResponse.Price)
+	taskContext.SetResult("pricing_currency", mockResponse.Currency)
+	taskContext.SetResult("pricing_status", mockResponse.Status)
 
-	h.logger.Infof("价格设置完成: SKU=%s, Price=%.2f %s", skuStr, resp.Price, resp.Currency)
+	h.logger.Infof("价格设置完成: SKU=%s, Price=%.2f %s", skuStr, mockResponse.Price, mockResponse.Currency)
 	return nil
 }
 

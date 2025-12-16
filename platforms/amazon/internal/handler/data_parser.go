@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"task-processor/platforms/amazon/internal/model"
@@ -14,18 +15,18 @@ type DataParserHandler struct {
 }
 
 // NewDataParserHandler 创建数据解析处理器
-func NewDataParserHandler() *DataParserHandler {
+func NewDataParserHandler(services *model.Services) *DataParserHandler {
 	return &DataParserHandler{
 		BaseHandler: NewBaseHandler("数据解析器"),
 	}
 }
 
-// Execute 处理逻辑
-func (h *DataParserHandler) Execute(services *model.Services, data map[string]any) error {
+// Handle 处理逻辑
+func (h *DataParserHandler) Handle(ctx context.Context, taskContext *model.TaskContext) error {
 	h.logger.Info("开始解析1688产品数据")
 
 	// 获取原始JSON数据
-	rawJSON, exists := data["raw_json_data"]
+	rawJSON, exists := taskContext.Data["raw_json_data"]
 	if !exists {
 		return fmt.Errorf("原始JSON数据不存在")
 	}
@@ -44,7 +45,7 @@ func (h *DataParserHandler) Execute(services *model.Services, data map[string]an
 	h.logger.Infof("成功解析1688产品数据，字段数: %d", len(productData))
 
 	// 保存解析后的数据
-	h.SetResult(data, "raw_product_data", productData)
+	taskContext.SetResult("raw_product_data", productData)
 
 	// 记录关键字段
 	h.logKeyFields(productData)

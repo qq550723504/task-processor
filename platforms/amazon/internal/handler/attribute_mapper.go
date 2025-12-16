@@ -2,95 +2,146 @@
 package handler
 
 import (
+	"context"
 	"fmt"
-	"strings"
 	"task-processor/platforms/amazon/internal/model"
-	"task-processor/platforms/amazon/utils"
+	"task-processor/platforms/amazon/internal/service"
 )
 
 // AttributeMapperHandler 属性映射处理器
 type AttributeMapperHandler struct {
 	*BaseHandler
-	mapper    *utils.AttributeMapper
-	validator *utils.AttributeValidator
+	services *model.Services
 }
 
 // NewAttributeMapperHandler 创建属性映射处理器
-func NewAttributeMapperHandler() *AttributeMapperHandler {
+func NewAttributeMapperHandler(services *model.Services) *AttributeMapperHandler {
 	return &AttributeMapperHandler{
-		BaseHandler: NewBaseHandler("属性映射器"),
+		BaseHandler: NewBaseHandler("LLM属性映射器"),
+		services:    services,
 	}
 }
 
-// Execute 处理逻辑
-func (h *AttributeMapperHandler) Execute(services *model.Services, data map[string]any) error {
-	h.logger.Info("开始映射产品属性")
-
-	// 初始化映射器（如果需要）
-	if err := h.initMapper(); err != nil {
-		return fmt.Errorf("初始化映射器失败: %w", err)
-	}
+// Handle 处理逻辑
+func (h *AttributeMapperHandler) Handle(ctx context.Context, taskContext *model.TaskContext) error {
+	h.logger.Info("开始LLM智能属性映射")
 
 	// 获取原始产品数据
-	rawData, exists := data["raw_product_data"]
+	rawData, exists := taskContext.GetResult("raw_product_data")
 	if !exists {
 		return fmt.Errorf("原始产品数据不存在")
 	}
 
-	// 转换为 map
-	sourceData, ok := rawData.(map[string]any)
+	sourceData, ok := rawData.(map[string]interface{})
 	if !ok {
 		return fmt.Errorf("产品数据格式错误")
 	}
 
+	// 获取LLM属性映射器
+	llmMapper := h.getLLMAttributeMapper()
+	if llmMapper == nil {
+		// 如果没有LLM服务，回退到基础映射
+		h.logger.Warn("LLM服务不可用，使用基础映射")
+		return h.handleBasicMapping(ctx, taskContext, sourceData)
+	}
+
+	// 使用LLM进行智能映射
+	return h.handleLLMMapping(ctx, taskContext, sourceData, llmMapper)
+}
+
+// getLLMAttributeMapper 获取LLM属性映射器
+func (h *AttributeMapperHandler) getLLMAttributeMapper() *service.LLMAttributeMapper {
+	if h.services == nil {
+		return nil
+	}
+
+	mapper := h.services.GetLLMAttributeMapper()
+	if mapper == nil {
+		return nil
+	}
+
+	llmMapper, ok := mapper.(*service.LLMAttributeMapper)
+	if !ok {
+		h.logger.Warn("LLM属性映射器类型转换失败")
+		return nil
+	}
+
+	return llmMapper
+}
+
+// handleLLMMapping 使用LLM进行智能映射
+func (h *AttributeMapperHandler) handleLLMMapping(ctx context.Context, taskContext *model.TaskContext, sourceData map[string]interface{}, llmMapper *service.LLMAttributeMapper) error {
 	// 获取产品类型
-	productType := h.getProductType(sourceData, data)
-	h.logger.Infof("产品类型: %s", productType)
+	productType := h.getProductType(sourceData, taskContext.Data)
 
-	// 映射属性
-	attributes, err := h.mapper.MapAttributes(sourceData, productType)
+	// 构建LLM映射请求
+	req := &service.AttributeMappingRequest{
+		SourcePlatform: "1688",
+		TargetPlatform: "Amazon",
+		ProductData:    sourceData,
+		ProductType:    productType,
+	}
+
+	// 调用LLM进行映射
+	resp, err := llmMapper.MapAttributes(ctx, req)
 	if err != nil {
-		return fmt.Errorf("属性映射失败: %w", err)
+		h.logger.WithError(err).Error("LLM属性映射失败，回退到基础映射")
+		return h.handleBasicMapping(ctx, taskContext, sourceData)
 	}
 
-	h.logger.Infof("成功映射 %d 个属性", len(attributes))
-
-	// 验证属性
-	if err := h.validator.ValidateAttributes(attributes, productType); err != nil {
-		return fmt.Errorf("属性验证失败: %w", err)
+	// 验证映射结果
+	if err := llmMapper.ValidateMapping(resp.MappedAttributes); err != nil {
+		h.logger.WithError(err).Warn("LLM映射结果验证失败，回退到基础映射")
+		return h.handleBasicMapping(ctx, taskContext, sourceData)
 	}
 
-	h.logger.Info("属性验证通过")
+	h.logger.WithFields(map[string]interface{}{
+		"mapped_count": len(resp.MappedAttributes),
+		"confidence":   resp.Confidence,
+		"product_type": resp.ProductType,
+	}).Info("LLM属性映射成功")
 
-	// 保存映射后的属性
-	h.SetResult(data, "mapped_attributes", attributes)
-	h.SetResult(data, "product_type", productType)
+	// 保存映射结果
+	taskContext.SetResult("mapped_attributes", resp.MappedAttributes)
+	taskContext.SetResult("product_type", resp.ProductType)
+	taskContext.SetResult("mapping_confidence", resp.Confidence)
+	taskContext.SetResult("mapping_reasoning", resp.Reasoning)
 
-	// 记录映射详情
-	h.logMappingDetails(attributes)
-
-	h.logger.Info("属性映射完成")
 	return nil
 }
 
-// initMapper 初始化映射器
-func (h *AttributeMapperHandler) initMapper() error {
-	if h.mapper == nil {
-		// 创建属性映射器
-		mapper, err := utils.NewAttributeMapper("config/attribute_mapping.json")
-		if err != nil {
-			return fmt.Errorf("创建属性映射器失败: %w", err)
-		}
-		h.mapper = mapper
+// handleBasicMapping 基础映射（回退方案）
+func (h *AttributeMapperHandler) handleBasicMapping(ctx context.Context, taskContext *model.TaskContext, sourceData map[string]interface{}) error {
+	h.logger.Info("使用基础属性映射")
 
-		// 创建属性验证器
-		h.validator = utils.NewAttributeValidator(mapper)
+	attributes := make(map[string]interface{})
+
+	// 基础属性映射
+	if title, ok := sourceData["title"].(string); ok {
+		attributes["item_name"] = title
 	}
+	if brand, ok := sourceData["brand"].(string); ok {
+		attributes["brand"] = brand
+	}
+	if desc, ok := sourceData["description"].(string); ok {
+		attributes["product_description"] = desc
+	}
+
+	// 获取产品类型
+	productType := h.getProductType(sourceData, taskContext.Data)
+
+	h.logger.Infof("基础映射完成，映射了 %d 个属性", len(attributes))
+
+	// 保存映射结果
+	taskContext.SetResult("mapped_attributes", attributes)
+	taskContext.SetResult("product_type", productType)
+	taskContext.SetResult("mapping_confidence", 0.6) // 基础映射置信度较低
+
 	return nil
 }
 
 // getProductType 获取产品类型
-func (h *AttributeMapperHandler) getProductType(sourceData map[string]any, data map[string]any) string {
+func (h *AttributeMapperHandler) getProductType(sourceData map[string]interface{}, data map[string]interface{}) string {
 	// 1. 优先使用已推荐的产品类型
 	if productType, exists := data["product_type"]; exists {
 		if pt, ok := productType.(string); ok && pt != "" {
@@ -103,60 +154,6 @@ func (h *AttributeMapperHandler) getProductType(sourceData map[string]any, data 
 		return productType
 	}
 
-	// 3. 从分类推断产品类型
-	if category, ok := sourceData["category"].(string); ok {
-		return h.inferProductType(category)
-	}
-
-	// 4. 默认使用标准产品类型
+	// 3. 默认使用标准产品类型
 	return "PRODUCT"
-}
-
-// inferProductType 从分类推断产品类型
-func (h *AttributeMapperHandler) inferProductType(category string) string {
-	category = strings.ToLower(strings.TrimSpace(category))
-
-	// 服装类
-	if h.containsAny(category, []string{"clothing", "apparel", "fashion", "wear"}) {
-		return "CLOTHING"
-	}
-
-	// 电子产品类
-	if h.containsAny(category, []string{"electronics", "computer", "phone", "digital"}) {
-		return "ELECTRONICS"
-	}
-
-	// 默认标准产品
-	return "PRODUCT"
-}
-
-// containsAny 检查字符串是否包含任意一个子串
-func (h *AttributeMapperHandler) containsAny(s string, substrs []string) bool {
-	for _, substr := range substrs {
-		if strings.Contains(s, substr) {
-			return true
-		}
-	}
-	return false
-}
-
-// logMappingDetails 记录映射详情
-func (h *AttributeMapperHandler) logMappingDetails(attributes map[string]any) {
-	h.logger.Info("映射属性详情:")
-
-	// 记录关键属性
-	keyAttributes := []string{
-		"item_name",
-		"brand",
-		"manufacturer",
-		"product_description",
-		"color",
-		"size",
-	}
-
-	for _, key := range keyAttributes {
-		if value, exists := attributes[key]; exists {
-			h.logger.Infof("  - %s: %v", key, value)
-		}
-	}
 }

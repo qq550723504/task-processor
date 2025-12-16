@@ -39,8 +39,26 @@ func NewAPIError(code, message string) *APIError {
 	}
 }
 
-// doRequest 执行 HTTP 请求的通用方法
+// doRequest 执行 HTTP 请求的通用方法（带重试和速率限制）
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
+	// 获取对应的速率限制器
+	limiter := c.rateLimits.GetLimiterForPath(path)
+
+	// 等待速率限制
+	if err := limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("速率限制等待失败: %w", err)
+	}
+
+	// 使用断路器和重试机制执行请求
+	operation := fmt.Sprintf("%s %s", method, path)
+
+	return c.ExecuteWithRetry(ctx, operation, func(ctx context.Context) (*http.Response, error) {
+		return c.doRequestInternal(ctx, method, path, body)
+	})
+}
+
+// doRequestInternal 执行单次HTTP请求（内部方法）
+func (c *Client) doRequestInternal(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
 	// 构建完整 URL
 	url := c.buildURL(path)
 

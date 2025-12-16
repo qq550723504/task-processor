@@ -12,14 +12,16 @@ import (
 
 // Client Amazon SP-API客户端
 type Client struct {
-	httpClient    *http.Client
-	baseURL       string
-	authManager   *AuthManager
-	awsSigner     *AWSSigner
-	region        string
-	marketplaceID string
-	sellerID      string
-	logger        *logrus.Entry
+	httpClient     *http.Client
+	baseURL        string
+	authManager    *AuthManager
+	awsSigner      *AWSSigner
+	region         string
+	marketplaceID  string
+	sellerID       string
+	logger         *logrus.Entry
+	rateLimits     *APIRateLimits
+	circuitBreaker *CircuitBreaker
 }
 
 // Config 客户端配置
@@ -64,13 +66,15 @@ func NewClient(cfg *Config) *Client {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		baseURL:       cfg.BaseURL,
-		authManager:   authManager,
-		awsSigner:     awsSigner,
-		region:        cfg.Region,
-		marketplaceID: cfg.MarketplaceID,
-		sellerID:      cfg.SellerID,
-		logger:        logger,
+		baseURL:        cfg.BaseURL,
+		authManager:    authManager,
+		awsSigner:      awsSigner,
+		region:         cfg.Region,
+		marketplaceID:  cfg.MarketplaceID,
+		sellerID:       cfg.SellerID,
+		logger:         logger,
+		rateLimits:     NewAPIRateLimits(),
+		circuitBreaker: NewCircuitBreaker(5, 3, 60*time.Second),
 	}
 }
 
