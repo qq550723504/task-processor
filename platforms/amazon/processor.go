@@ -1,40 +1,45 @@
+// Package amazon 提供Amazon平台主处理器
 package amazon
 
 import (
 	"context"
-	"task-processor/common/config"
 	"task-processor/common/management"
 	"task-processor/common/memory"
 	"task-processor/common/processor"
 	"task-processor/common/types"
 	"task-processor/common/worker"
+	"task-processor/internal/amazon/service"
+	"task-processor/internal/config"
+	"task-processor/platforms/amazon/api"
+	"task-processor/platforms/amazon/internal/model"
+	amazonService "task-processor/platforms/amazon/internal/service"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
-// AmazonProcessor Amazon平台处理器
-type AmazonProcessor struct {
+// Processor Amazon平台处理器
+type Processor struct {
 	config           *config.Config
-	taskHandler      *TaskHandler
-	pipeline         *Pipeline
+	services         *model.Services
+	pipelineService  *amazonService.PipelineService
 	managementClient *management.ClientManager
 	memoryManager    *memory.MemoryManager
 	workerPool       processor.WorkerPool
 	logger           *logrus.Logger
 }
 
-// NewAmazonProcessor 创建Amazon处理器
-func NewAmazonProcessor(cfg *config.Config, logger *logrus.Logger) *AmazonProcessor {
-	return NewAmazonProcessorWithManagementClient(cfg, logger, nil)
+// NewProcessor 创建Amazon处理器
+func NewProcessor(cfg *config.Config, logger *logrus.Logger) *Processor {
+	return NewProcessorWithManagementClient(cfg, logger, nil)
 }
 
-// NewAmazonProcessorWithManagementClient 创建Amazon处理器（使用外部managementClient）
-func NewAmazonProcessorWithManagementClient(
+// NewProcessorWithManagementClient 创建Amazon处理器（使用外部managementClient）
+func NewProcessorWithManagementClient(
 	cfg *config.Config,
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
-) *AmazonProcessor {
+) *Processor {
 	// 如果没有传入managementClient，则创建新的
 	if managementClient == nil {
 		managementClient = management.NewClientManager(&cfg.Management)
@@ -48,8 +53,22 @@ func NewAmazonProcessorWithManagementClient(
 	storeClient := managementClient.GetStoreClient()
 	memoryManager.ShopPauseManager.SetStoreClient(storeClient)
 
-	p := &AmazonProcessor{
+	// 创建服务集合
+	services := model.NewServices()
+	services.SetManagementClient(managementClient)
+	services.SetMemoryManager(memoryManager)
+
+	// 创建 API 客户端
+	apiClient := createAPIClient(cfg)
+	services.SetAPIClient(apiClient)
+
+	// 创建产品类型缓存服务
+	productTypeCache := service.NewProductTypeCache(apiClient, "cache/product_types")
+	services.SetProductTypeCache(productTypeCache)
+
+	p := &Processor{
 		config:           cfg,
+		services:         services,
 		managementClient: managementClient,
 		memoryManager:    memoryManager,
 		logger:           logger,
@@ -58,36 +77,63 @@ func NewAmazonProcessorWithManagementClient(
 	// 创建 WorkerPool
 	p.workerPool = worker.NewPool(p, cfg.Worker)
 
-	// 初始化任务处理器
-	p.taskHandler = NewTaskHandler(p)
-
 	// 构建处理管道
-	p.pipeline = p.buildPipeline()
+	p.buildPipeline()
 
 	return p
 }
 
-// SetUserToken 设置用户访问令牌
-func (p *AmazonProcessor) SetUserToken(accessToken, tenantID string) {
-	if p.managementClient != nil {
-		client := p.managementClient.GetClient()
-		client.SetUserToken(accessToken, tenantID)
-		p.logger.Infof("[Amazon] 已设置用户令牌到管理系统客户端 (租户: %s)", tenantID)
+// createAPIClient 创建 Amazon SP-API 客户端
+func createAPIClient(cfg *config.Config) *api.Client {
+	spapi := cfg.Amazon.SPAPI
+	marketplaceID := spapi.DefaultMarketplace
+	if marketplaceID == "" {
+		marketplaceID = spapi.MarketplaceID
 	}
+
+	sellerID := spapi.SellerID
+	if m, ok := spapi.Marketplaces[marketplaceID]; ok && m.SellerID != "" {
+		sellerID = m.SellerID
+	}
+
+	apiCfg := &api.Config{
+		Region:         spapi.Region,
+		MarketplaceID:  marketplaceID,
+		SellerID:       sellerID,
+		ClientID:       spapi.ClientID,
+		ClientSecret:   spapi.ClientSecret,
+		RefreshToken:   spapi.RefreshToken,
+		AWSAccessKeyID: spapi.AWSAccessKeyID,
+		AWSSecretKey:   spapi.AWSSecretKey,
+	}
+
+	return api.NewClient(apiCfg)
 }
 
-// GetManagementClient 获取管理系统客户端
-func (p *AmazonProcessor) GetManagementClient() *management.ClientManager {
-	return p.managementClient
+// buildPipeline 构建处理管道
+func (p *Processor) buildPipeline() {
+	builder := amazonService.NewPipelineBuilder(p.services)
+	p.pipelineService = builder.BuildAmazonPipeline()
+
+	p.logger.Infof("[Amazon] 处理管道已构建，共 %d 个步骤", p.pipelineService.GetHandlerCount())
 }
 
 // ProcessTask 处理Amazon任务
-func (p *AmazonProcessor) ProcessTask(ctx context.Context, task types.Task) error {
+func (p *Processor) ProcessTask(ctx context.Context, task types.Task) error {
 	p.logger.Infof("[Amazon] 开始处理任务: ID=%s, ProductID=%s, StoreID=%d",
 		task.ID, task.ProductID, task.StoreID)
 
-	// 使用任务处理器处理任务
-	if err := p.taskHandler.ProcessTask(ctx, task, p.pipeline); err != nil {
+	// 创建任务数据
+	data := map[string]interface{}{
+		"task_id":    task.ID,
+		"product_id": task.ProductID,
+		"store_id":   task.StoreID,
+		"tenant_id":  task.TenantID,
+		"context":    ctx,
+	}
+
+	// 执行管道处理
+	if err := p.pipelineService.Execute(p.services, data); err != nil {
 		p.logger.Errorf("[Amazon] 处理产品失败: %v", err)
 		return err
 	}
@@ -96,19 +142,8 @@ func (p *AmazonProcessor) ProcessTask(ctx context.Context, task types.Task) erro
 	return nil
 }
 
-// buildPipeline 构建处理管道
-func (p *AmazonProcessor) buildPipeline() *Pipeline {
-	pipeline := NewPipeline()
-
-	// 注意：由于Go的循环导入限制，Handler的初始化需要在运行时完成
-	// 当前管道为空，实际的Handler会在TaskHandler中动态添加
-
-	p.logger.Info("[Amazon] 处理管道已创建（Handler将在运行时添加）")
-	return pipeline
-}
-
 // Start 启动Amazon处理器
-func (p *AmazonProcessor) Start(ctx context.Context) error {
+func (p *Processor) Start(ctx context.Context) error {
 	p.logger.Info("[Amazon] 启动任务处理器")
 
 	// 启动 WorkerPool
@@ -121,12 +156,12 @@ func (p *AmazonProcessor) Start(ctx context.Context) error {
 }
 
 // GetWorkerPool 获取工作池
-func (p *AmazonProcessor) GetWorkerPool() processor.WorkerPool {
+func (p *Processor) GetWorkerPool() processor.WorkerPool {
 	return p.workerPool
 }
 
 // Close 关闭处理器
-func (p *AmazonProcessor) Close() {
+func (p *Processor) Close() {
 	p.logger.Info("[Amazon] 关闭任务处理器")
 
 	// 关闭 WorkerPool

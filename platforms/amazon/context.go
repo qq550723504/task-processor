@@ -1,54 +1,27 @@
+// Package amazon 提供Amazon平台核心上下文定义
 package amazon
 
 import (
 	"context"
+	"task-processor/common/pipeline"
 	"task-processor/common/types"
 )
 
-// TaskContext 任务上下文
+// TaskContext Amazon任务处理上下文
+// 组合通用BaseTaskContext，遵循组合优于继承原则
 type TaskContext struct {
-	Context context.Context
-	Task    *types.Task
-	Data    map[string]interface{}
+	*pipeline.BaseTaskContext
 }
 
-// SetData 设置上下文数据
-func (c *TaskContext) SetData(key string, value interface{}) {
-	c.Data[key] = value
-}
-
-// GetData 获取上下文数据
-func (c *TaskContext) GetData(key string) (interface{}, bool) {
-	value, exists := c.Data[key]
-	return value, exists
-}
-
-// GetString 获取字符串类型数据
-func (c *TaskContext) GetString(key string) string {
-	if value, exists := c.Data[key]; exists {
-		if str, ok := value.(string); ok {
-			return str
-		}
+// NewTaskContext 创建Amazon任务上下文
+func NewTaskContext(ctx context.Context, task *types.Task) *TaskContext {
+	return &TaskContext{
+		BaseTaskContext: pipeline.NewBaseTaskContext(ctx, task),
 	}
-	return ""
 }
 
-// GetInt 获取整数类型数据
-func (c *TaskContext) GetInt(key string) int {
-	if value, exists := c.Data[key]; exists {
-		if num, ok := value.(int); ok {
-			return num
-		}
-	}
-	return 0
-}
-
-// GetBool 获取布尔类型数据
-func (c *TaskContext) GetBool(key string) bool {
-	if value, exists := c.Data[key]; exists {
-		if b, ok := value.(bool); ok {
-			return b
-		}
-	}
-	return false
+// StepHandler Amazon步骤处理器接口
+type StepHandler interface {
+	Name() string
+	Handle(ctx *TaskContext) error
 }

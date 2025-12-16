@@ -15,26 +15,30 @@ type Client struct {
 	httpClient    *http.Client
 	baseURL       string
 	authManager   *AuthManager
+	awsSigner     *AWSSigner
 	region        string
 	marketplaceID string
+	sellerID      string
 	logger        *logrus.Entry
 }
 
 // Config 客户端配置
 type Config struct {
-	Region        string
-	MarketplaceID string
-	ClientID      string
-	ClientSecret  string
-	RefreshToken  string
-	BaseURL       string
-	Sandbox       bool // 是否使用沙盒环境
+	Region         string
+	MarketplaceID  string
+	SellerID       string // 卖家ID
+	ClientID       string
+	ClientSecret   string
+	RefreshToken   string
+	AWSAccessKeyID string // AWS访问密钥ID（可选，用于签名）
+	AWSSecretKey   string // AWS密钥（可选，用于签名）
+	BaseURL        string
 }
 
 // NewClient 创建Amazon SP-API客户端
 func NewClient(cfg *Config) *Client {
 	if cfg.BaseURL == "" {
-		cfg.BaseURL = getRegionEndpoint(cfg.Region, cfg.Sandbox)
+		cfg.BaseURL = getRegionEndpoint(cfg.Region)
 	}
 
 	// 创建认证管理器
@@ -43,11 +47,17 @@ func NewClient(cfg *Config) *Client {
 	logger := logrus.WithFields(logrus.Fields{
 		"component": "AmazonAPIClient",
 		"region":    cfg.Region,
-		"sandbox":   cfg.Sandbox,
 	})
 
-	if cfg.Sandbox {
-		logger.Warn("⚠️  使用沙盒环境 - 所有操作不会影响真实数据")
+	logger.Info("✅ 使用生产环境 - 所有操作将影响真实数据")
+
+	// 创建AWS签名器（如果提供了AWS凭证）
+	var awsSigner *AWSSigner
+	if cfg.AWSAccessKeyID != "" && cfg.AWSSecretKey != "" {
+		awsSigner = NewAWSSigner(cfg.AWSAccessKeyID, cfg.AWSSecretKey, cfg.Region)
+		logger.Info("✅ AWS签名器已启用")
+	} else {
+		logger.Warn("⚠️  未配置AWS凭证，将仅使用LWA令牌认证")
 	}
 
 	return &Client{
@@ -56,14 +66,16 @@ func NewClient(cfg *Config) *Client {
 		},
 		baseURL:       cfg.BaseURL,
 		authManager:   authManager,
+		awsSigner:     awsSigner,
 		region:        cfg.Region,
 		marketplaceID: cfg.MarketplaceID,
+		sellerID:      cfg.SellerID,
 		logger:        logger,
 	}
 }
 
 // getRegionEndpoint 获取区域端点
-func getRegionEndpoint(region string, sandbox bool) string {
+func getRegionEndpoint(region string) string {
 	// 生产环境端点
 	prodEndpoints := map[string]string{
 		"us-east-1": "https://sellingpartnerapi-na.amazon.com",
@@ -71,26 +83,11 @@ func getRegionEndpoint(region string, sandbox bool) string {
 		"us-west-2": "https://sellingpartnerapi-fe.amazon.com",
 	}
 
-	// 沙盒环境端点
-	sandboxEndpoints := map[string]string{
-		"us-east-1": "https://sandbox.sellingpartnerapi-na.amazon.com",
-		"eu-west-1": "https://sandbox.sellingpartnerapi-eu.amazon.com",
-		"us-west-2": "https://sandbox.sellingpartnerapi-fe.amazon.com",
-	}
-
 	endpoints := prodEndpoints
-	if sandbox {
-		endpoints = sandboxEndpoints
-	}
-
 	if endpoint, exists := endpoints[region]; exists {
 		return endpoint
 	}
 
-	// 默认使用北美端点
-	if sandbox {
-		return sandboxEndpoints["us-east-1"]
-	}
 	return prodEndpoints["us-east-1"]
 }
 
@@ -104,7 +101,7 @@ func (c *Client) SetAccessToken(token string, expiresIn int) {
 	c.authManager.SetAccessToken(token, expiresIn)
 }
 
-// GetMarketplaceID 获取市场ID
+// GetMarketplaceID 获取市场ID（已废弃，请使用 GetMarketplaceID(ctx)）
 func (c *Client) GetMarketplaceID() string {
 	return c.marketplaceID
 }
