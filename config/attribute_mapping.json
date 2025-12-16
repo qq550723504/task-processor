@@ -1,0 +1,131 @@
+{
+  "product_types": {
+    "PRODUCT": {
+      "display_name": "标准产品",
+      "required_attributes": [
+        "item_name",
+        "brand",
+        "manufacturer",
+        "product_description"
+      ],
+      "optional_attributes": [
+        "color",
+        "size",
+        "material",
+        "model_number",
+        "package_dimensions"
+      ]
+    },
+    "CLOTHING": {
+      "display_name": "服装",
+      "required_attributes": [
+        "item_name",
+        "brand",
+        "manufacturer",
+        "product_description",
+        "size_map",
+        "color_map"
+      ],
+      "optional_attributes": [
+        "material_type",
+        "care_instructions",
+        "fit_type",
+        "sleeve_type"
+      ]
+    },
+    "ELECTRONICS": {
+      "display_name": "电子产品",
+      "required_attributes": [
+        "item_name",
+        "brand",
+        "manufacturer",
+        "product_description",
+        "model_number"
+      ],
+      "optional_attributes": [
+        "wattage",
+        "voltage",
+        "battery_type",
+        "connectivity_technology"
+      ]
+    }
+  },
+  "attribute_mappings": {
+    "item_name": {
+      "source_fields": ["title", "name", "subject"],
+      "max_length": 200,
+      "required": true
+    },
+    "brand": {
+      "source_fields": ["brand", "brandName"],
+      "max_length": 50,
+      "required": true,
+      "default": "Generic"
+    },
+    "manufacturer": {
+      "source_fields": ["manufacturer", "brand", "brandName"],
+      "max_length": 50,
+      "required": true,
+      "default": "Generic"
+    },
+    "product_description": {
+      "source_fields": ["description", "desc", "detail"],
+      "max_length": 2000,
+      "required": true
+    },
+    "color": {
+      "source_fields": ["color", "颜色"],
+      "max_length": 30,
+      "required": false
+    },
+    "size": {
+      "source_fields": ["size", "尺码", "尺寸"],
+      "max_length": 30,
+      "required": false
+    },
+    "material": {
+      "source_fields": ["material", "材质"],
+      "max_length": 100,
+      "required": false
+    },
+    "model_number": {
+      "source_fields": ["model", "modelNumber", "型号"],
+      "max_length": 50,
+      "required": false
+    }
+  },
+  "value_transformations": {
+    "color": {
+      "红色": "Red",
+      "蓝色": "Blue",
+      "绿色": "Green",
+      "黑色": "Black",
+      "白色": "White"
+    },
+    "size": {
+      "小": "Small",
+      "中": "Medium", 
+      "大": "Large",
+      "特大": "X-Large"
+    }
+  },
+  "validation_rules": {
+    "item_name": {
+      "min_length": 1,
+      "max_length": 200
+    },
+    "brand": {
+      "min_length": 1,
+      "max_length": 50
+    },
+    "product_description": {
+      "min_length": 10,
+      "max_length": 2000
+    }
+  },
+  "default_values": {
+    "brand": "Generic",
+    "manufacturer": "Generic",
+    "condition_type": "New"
+  }
+}
