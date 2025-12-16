@@ -55,17 +55,7 @@ func buildConfig() *Config {
 			ViewportHeight:    viper.GetInt("amazon.viewportHeight"),
 			ProxyServer:       viper.GetString("amazon.proxyServer"),
 			DataFreshnessDays: viper.GetInt("amazon.dataFreshnessDays"),
-			SPAPI: SPAPIConfig{
-				Enabled:                viper.GetBool("amazon.spapi.enabled"),
-				Sandbox:                viper.GetBool("amazon.spapi.sandbox"),
-				Region:                 viper.GetString("amazon.spapi.region"),
-				MarketplaceID:          viper.GetString("amazon.spapi.marketplaceID"),
-				ClientID:               viper.GetString("amazon.spapi.clientID"),
-				ClientSecret:           viper.GetString("amazon.spapi.clientSecret"),
-				RefreshToken:           viper.GetString("amazon.spapi.refreshToken"),
-				DefaultFulfillmentType: viper.GetString("amazon.spapi.defaultFulfillmentType"),
-				DefaultCondition:       viper.GetString("amazon.spapi.defaultCondition"),
-			},
+			SPAPI:             loadSPAPIConfig(),
 		},
 		Updater: UpdaterConfig{
 			Enabled:            viper.GetBool("updater.enabled"),

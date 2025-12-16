@@ -74,9 +74,9 @@ func (sv *SpuValidator) ValidateProductData(ctx *pipeline.TaskContext) error {
 			// }
 
 			// 验证库存（现在是字符串类型）
-			if sku.Quantity == "" || sku.Quantity == "0" {
-				return fmt.Errorf("SKC[%d]的SKU[%d]的库存不能为空或0", i, j)
-			}
+			// if sku.Quantity == "" || sku.Quantity == "0" {
+			// 	return fmt.Errorf("SKC[%d]的SKU[%d]的库存不能为空或0", i, j)
+			// }
 		}
 	}
 

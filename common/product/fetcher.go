@@ -6,8 +6,8 @@ import (
 	"strings"
 	"task-processor/common/amazon"
 	"task-processor/common/amazon/model"
-	"task-processor/common/config"
 	"task-processor/common/management/api"
+	"task-processor/internal/config"
 
 	"github.com/sirupsen/logrus"
 )
@@ -78,6 +78,9 @@ func (f *ProductFetcher) FetchProduct(req *FetchRequest) (*model.Product, error)
 			needsRefetch := f.needsRefetchForOldFormat(product)
 			if needsRefetch {
 				f.logger.Warnf("⚠️ 检测到旧版数据格式（variations 缺少 attributes），需要重新抓取: ProductID=%s", req.ProductID)
+			} else if f.needsRefetchForMissingShipsFrom(product) {
+				// 检查是否缺少 ShipsFrom 字段
+				f.logger.Warnf("⚠️ 检测到缓存数据缺少 ShipsFrom 字段，需要重新抓取: ProductID=%s", req.ProductID)
 			} else {
 				f.logger.Infof("✅ 成功解析服务器数据: ProductID=%s, Title=%s", req.ProductID, product.Title)
 				return product, nil
@@ -415,6 +418,20 @@ func (f *ProductFetcher) needsRefetchForOldFormat(product *model.Product) bool {
 			// 发现旧版格式（没有 attributes）
 			return true
 		}
+	}
+
+	return false
+}
+
+// needsRefetchForMissingShipsFrom 检查产品是否缺少 ShipsFrom 字段需要重新抓取
+func (f *ProductFetcher) needsRefetchForMissingShipsFrom(product *model.Product) bool {
+	if product == nil {
+		return false
+	}
+
+	// 如果产品可用但缺少 ShipsFrom 字段，需要重新抓取
+	if product.IsAvailable && strings.TrimSpace(product.ShipsFrom) == "" {
+		return true
 	}
 
 	return false

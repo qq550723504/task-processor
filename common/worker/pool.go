@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
-	"task-processor/common/config"
 	"task-processor/common/processor"
 	"task-processor/common/types"
+	"task-processor/internal/config"
 	"time"
 
 	"github.com/sirupsen/logrus"

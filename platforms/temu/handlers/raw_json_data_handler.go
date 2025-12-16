@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"task-processor/common/amazon"
 	"task-processor/common/amazon/model"
-	"task-processor/common/config"
 	"task-processor/common/management/api"
 	"task-processor/common/pipeline"
 	"task-processor/common/product"
+	"task-processor/internal/config"
 	"task-processor/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

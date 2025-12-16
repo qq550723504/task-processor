@@ -2,9 +2,9 @@
 package pipeline
 
 import (
-	"task-processor/common/config"
 	"task-processor/common/management/api"
 	commonPipeline "task-processor/common/pipeline"
+	"task-processor/internal/config"
 	"task-processor/openai"
 )
 

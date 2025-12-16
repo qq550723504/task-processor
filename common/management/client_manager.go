@@ -3,8 +3,8 @@ package management
 import (
 	"fmt"
 	"sync"
-	"task-processor/common/config"
 	"task-processor/common/management/impl"
+	"task-processor/internal/config"
 	"time"
 )
 

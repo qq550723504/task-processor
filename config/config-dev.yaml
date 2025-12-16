@@ -61,14 +61,42 @@ amazon:
   # 详细步骤：config/amazon-spapi-setup.md
   spapi:
     enabled: true
-    sandbox: false  # 沙盒模式：true=测试环境（推荐），false=生产环境
     region: "us-east-1"
-    marketplaceID: "A2X1Q3OH6LFU9X"
+    marketplaceID: "ATVPDKIKX0DER"  # 美国市场ID
     clientID: "amzn1.application-oa2-client.6125bb74233247eea9cb3fbdffb7b564"  # 请填写你的 Client ID
-    clientSecret: "amzn1.oa2-cs.v1.fa0b6d83fbff90cc2b8a3d042fd894aaa9f980e2072cd749545a7058fc8701f9"  # 请填写你的 Client Secret  
-    refreshToken: "Atzr|IwEBIHcqqqZdMXO747khLVVt_oidUIdjYT9kdeXkXjMp5ZoyT40CSXJX781zo9Bsz4PipQvuoRjwVYtutKNorTDb3DaRrZMicVVr92WMKSDshpKDYvlWDYC_OO0r9Dfp6sIHGp8ZraUl8QAn0k2qsjTb2jjQXaE-_uLeEFiE3BBxOqGkx5Rx94DjHJbkN446ewnB2cFelZ61GXB3uxylgXw7svBoZ94I_nzHDHQnuBYdLXqQIHvZwjtJ5YbvFw22xT_RazVl-R3-Gj_st98ncljHvaOD1xn1LrWc7DRdMJZjeECsScJXwxEtNaZHdMaTb_DQdmiSUHNtPBjvoDOr5eDuOT4W"  # 请填写你的 Refresh Token
+    clientSecret: "amzn1.oa2-cs.v1.ce6327083ebcdb06ee5e7cbb044fbff007be3edc5e756decfc5867bb94c6f57b"  # 请填写你的 Client Secret  
+    refreshToken: "Atzr|IwEBIApLq3Y7KlAlMEiN2tSPzH8vgxMTik1IQzZzcXxDuX0Z0ZzuAjudiiG2rPpZNa6yjz-919nJeNcC25-7_9U_W6WkkIsk2dLHuTpUYANNr3c3JA7mLtiFH332Z2bM3ETiJLsO_vfFqECnJclZcLP_R-REvpUDBI0aDoRFva8ZgPJ2v99WiFcDMxtUyYmMfd3RvKPIz6vMBJpxMeJNx9TSX3tuyKu4Vygw47XkAUdE_n8w2z4oH3i7aGTBu_NudxEb9oRZxNc6mhyv72vQ0ufXbHfPgM9sArCvYqNDQr-WIRKac-Zkjezf6DG5R8RHEa9tRBkhyebRPvRQ4LCuXTLeZVnT"  # 请填写你的 Refresh Token
+    # AWS凭证（可选，用于API签名，某些操作可能需要）
+    awsAccessKeyID: ""    # AWS Access Key ID（可选）
+    awsSecretKey: ""      # AWS Secret Access Key（可选）
     defaultFulfillmentType: "FBM"
     defaultCondition: "New"
+    
+    # 多市场配置（可选，用于切换不同市场）
+    defaultMarketplace: "us"
+    markets:
+      us:
+        name: "Amazon.com"
+        marketplaceID: "ATVPDKIKX0DER"
+        currency: "USD"
+        sellerID: "A3G4LX4BVICE56"  # 与主配置保持一致
+        enabled: true
+      ca:
+        name: "Amazon.ca"
+        marketplaceID: "A2EUQ1WTGCTBG2"
+        currency: "CAD"
+        sellerID: "A3G4LX4BVICE56"
+        enabled: true
+      mx:
+        name: "Amazon.com.mx"
+        marketplaceID: "A1AM78C64UM0Y8"
+        currency: "MXN"
+        sellerID: "A3G4LX4BVICE56"
+      br:
+        name: "Amazon.com.br"
+        marketplaceID: "A2Q3Y263D00KWC"
+        currency: "BRL"
+        sellerID: "A3G4LX4BVICE56"
 
 # 自动更新配置
 updater:

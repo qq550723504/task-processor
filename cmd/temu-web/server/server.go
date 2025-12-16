@@ -8,12 +8,12 @@ import (
 
 	"task-processor/common/amazon"
 	"task-processor/common/auth"
-	"task-processor/common/config"
 	"task-processor/common/management"
 	"task-processor/common/management/api"
 	shops "task-processor/common/shein"
 	"task-processor/common/task"
 	temuapi "task-processor/common/temu"
+	"task-processor/internal/config"
 	"task-processor/platforms/common"
 	"task-processor/platforms/scheduler"
 	"task-processor/platforms/shein"

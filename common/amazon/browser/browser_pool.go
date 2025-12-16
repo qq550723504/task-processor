@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 	"task-processor/common/amazon/model"
-	"task-processor/common/config"
+	"task-processor/internal/config"
 	"time"
 
 	"github.com/playwright-community/playwright-go"

@@ -10,7 +10,6 @@ import (
 	"task-processor/cmd/temu-web/server"
 	"task-processor/common/auth"
 	"task-processor/internal/config"
-	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -30,9 +29,8 @@ func NewServerService(logger *logrus.Logger) *ServerService {
 
 // InitializeServer 初始化服务器
 func (s *ServerService) InitializeServer(cfg *config.Config, authClient *auth.ClientCredentialsAuthClient) error {
-	// 转换配置并创建服务器实例
-	commonCfg := utils.ConvertToCommonConfig(cfg)
-	s.server = server.New(commonCfg, s.logger)
+	// 创建服务器实例
+	s.server = server.New(cfg, s.logger)
 
 	// 使用客户端凭证初始化服务器组件
 	if err := s.server.InitializeWithClientCredentials(authClient); err != nil {

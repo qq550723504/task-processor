@@ -53,8 +53,14 @@ Write-Host "SHA256: $sha256" -ForegroundColor Cyan
 # 3. Generate version info
 Write-Host "`n[3/5] Generating version info..." -ForegroundColor Yellow
 
+# 处理版本号格式，避免重复前缀
+$cleanVersion = $Version
+if ($Version.StartsWith("task-processor-")) {
+    $cleanVersion = $Version.Substring("task-processor-".Length)
+}
+
 $cosUrl = "https://$CosBucket.cos.$CosRegion.myqcloud.com"
-$downloadUrl = "$cosUrl/$CosPath/task-processor-$Version.exe"
+$downloadUrl = "$cosUrl/$CosPath/task-processor-$cleanVersion.exe"
 
 $versionInfo = @{
     version = $Version
@@ -73,7 +79,7 @@ Write-Host "Download URL: $downloadUrl" -ForegroundColor Cyan
 
 # 4. Copy file
 Write-Host "`n[4/5] Preparing files..." -ForegroundColor Yellow
-Copy-Item "dist/task-processor.exe" "dist/task-processor-$Version.exe"
+Copy-Item "dist/task-processor.exe" "dist/task-processor-$cleanVersion.exe"
 
 # 5. Upload to COS
 Write-Host "`n[5/5] Uploading to Tencent Cloud COS..." -ForegroundColor Yellow
@@ -84,7 +90,7 @@ if ($AutoUpload) {
         
         try {
             Write-Host "Uploading program file..." -ForegroundColor Yellow
-            coscmd upload "dist/task-processor-$Version.exe" "$CosPath/task-processor-$Version.exe"
+            coscmd upload "dist/task-processor-$cleanVersion.exe" "$CosPath/task-processor-$cleanVersion.exe"
             
             Write-Host "Updating version info..." -ForegroundColor Yellow
             coscmd upload "dist/version.json" "$CosPath/version.json" -f

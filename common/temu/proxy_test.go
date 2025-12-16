@@ -1,10 +1,10 @@
 package temu
 
 import (
-	"task-processor/common/config"
 	"task-processor/common/management"
 	"task-processor/common/management/api"
 	"task-processor/common/management/impl"
+	"task-processor/internal/config"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

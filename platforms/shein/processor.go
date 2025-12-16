@@ -2,13 +2,13 @@ package shein
 
 import (
 	"context"
-	"task-processor/common/config"
 	"task-processor/common/management"
 	"task-processor/common/management/impl"
 	"task-processor/common/memory"
 	"task-processor/common/processor"
 	shops "task-processor/common/shein"
 	"task-processor/common/worker"
+	"task-processor/internal/config"
 	"task-processor/platforms/shein/modules"
 	"time"
 

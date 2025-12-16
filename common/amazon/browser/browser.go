@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"task-processor/common/config"
+	"task-processor/internal/config"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"

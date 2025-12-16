@@ -1,7 +1,7 @@
 package shein
 
 import (
-	"task-processor/common/config"
+	"task-processor/internal/config"
 	"task-processor/openai"
 	"task-processor/platforms/shein/modules"
 

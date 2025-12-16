@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"task-processor/common/amazon"
 	"task-processor/common/amazon/model"
-	"task-processor/common/config"
 	management_api "task-processor/common/management/api"
 	"task-processor/common/product"
+	"task-processor/internal/config"
 
 	"github.com/sirupsen/logrus"
 )

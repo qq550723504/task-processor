@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/common/config"
 	"task-processor/common/types"
+	"task-processor/internal/config"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"

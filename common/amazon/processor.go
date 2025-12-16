@@ -6,7 +6,7 @@ import (
 	"task-processor/common/amazon/browser"
 	"task-processor/common/amazon/extractor"
 	"task-processor/common/amazon/model"
-	"task-processor/common/config"
+	"task-processor/internal/config"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
