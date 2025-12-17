@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/common/utils"
+	"task-processor/internal/common/utils"
 	"task-processor/internal/config"
 	"task-processor/internal/dispatcher"
 	"task-processor/internal/dispatcher/adapters"
 	"task-processor/internal/model"
 	"task-processor/internal/service"
-	"task-processor/platforms/amazon"
-	"task-processor/platforms/shein"
-	"task-processor/platforms/temu"
+	"task-processor/internal/platforms/amazon"
+	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/temu"
 
 	"github.com/sirupsen/logrus"
 )

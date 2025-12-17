@@ -1,0 +1,252 @@
+package handlers
+
+import (
+	"fmt"
+	"task-processor/internal/common/pipeline"
+	"task-processor/internal/common/utils"
+
+	"github.com/sirupsen/logrus"
+)
+
+// OutGoodsSnCheckHandler SKU编码批量检查处理器
+type OutGoodsSnCheckHandler struct {
+	logger *logrus.Entry
+}
+
+// OutSkuSnItem SKU编码项
+type OutSkuSnItem struct {
+	OutSkuSn string `json:"out_sku_sn"`
+}
+
+// OutGoodsSnCheckRequest SKU编码批量检查请求结构体
+type OutGoodsSnCheckRequest struct {
+	GoodsID   string         `json:"goods_id"`
+	OutSnList []OutSkuSnItem `json:"out_sn_list"`
+}
+
+// OutGoodsSnCheckResponse SKU编码批量检查响应结构体
+type OutGoodsSnCheckResponse struct {
+	Success   bool                   `json:"success"`
+	ErrorCode int                    `json:"error_code"`
+	Result    *OutGoodsSnCheckResult `json:"result,omitempty"`
+	Message   string                 `json:"error_msg,omitempty"`
+}
+
+// OutGoodsSnCheckResult SKU编码检查结果
+type OutGoodsSnCheckResult struct {
+	FailList []OutSkuSnFailItem `json:"fail_list"`
+}
+
+// OutSkuSnFailItem 失败的SKU编码项
+type OutSkuSnFailItem struct {
+	OutSkuSn    string `json:"out_sku_sn"`
+	UsedGoodsID string `json:"used_goods_id"`
+	UsedSkuID   string `json:"used_sku_id"`
+	FailReason  string `json:"fail_reason"`
+}
+
+// NewOutGoodsSnCheckHandler 创建新的SKU编码检查处理器
+func NewOutGoodsSnCheckHandler() *OutGoodsSnCheckHandler {
+	return &OutGoodsSnCheckHandler{
+		logger: logrus.WithField("handler", "OutGoodsSnCheckHandler"),
+	}
+}
+
+// Name 返回处理器名称
+func (h *OutGoodsSnCheckHandler) Name() string {
+	return "SKU编码批量检查处理器"
+}
+
+// Handle 处理任务
+func (h *OutGoodsSnCheckHandler) Handle(ctx *pipeline.TaskContext) error {
+	h.logger.Info("开始检查SKU编码")
+
+	// 检查任务上下文中的必要数据
+	if ctx.Task == nil {
+		return fmt.Errorf("任务信息为空")
+	}
+
+	// 从Amazon数据生成OutSkuSN进行检查
+	h.logger.Debug("从Amazon数据生成SKU编码进行检查")
+	outSkuSnList := h.generateOutSkuSnFromAmazon(ctx)
+
+	if len(outSkuSnList) == 0 {
+		h.logger.Info("没有找到SKU编码，跳过检查")
+		return nil
+	}
+
+	h.logger.Infof("收集到 %d 个SKU编码，开始检查", len(outSkuSnList))
+
+	// 执行SKU编码检查
+	err := h.checkOutSkuSn(ctx, outSkuSnList)
+	if err != nil {
+		h.logger.WithError(err).Error("SKU编码检查失败")
+		return fmt.Errorf("SKU编码检查失败: %w", err)
+	}
+
+	h.logger.Info("SKU编码检查完成")
+	return nil
+}
+
+// checkOutSkuSn 执行SKU编码检查
+func (h *OutGoodsSnCheckHandler) checkOutSkuSn(ctx *pipeline.TaskContext, outSkuSnList []OutSkuSnItem) error {
+	// 检查API客户端
+	if ctx.APIClient == nil {
+		h.logger.Error("API客户端未初始化，无法执行SKU编码检查")
+		return fmt.Errorf("API客户端未初始化，无法执行SKU编码检查")
+	}
+
+	// 构造请求体
+	requestBody := OutGoodsSnCheckRequest{
+		GoodsID:   ctx.TemuProduct.GoodsBasic.GoodsID,
+		OutSnList: outSkuSnList,
+	}
+
+	h.logger.WithFields(logrus.Fields{
+		"goodsID":    requestBody.GoodsID,
+		"outSnCount": len(requestBody.OutSnList),
+	}).Info("发送SKU编码检查请求")
+
+	// 构造API请求
+	apiReq := map[string]interface{}{
+		"method": "POST",
+		"url":    "/mms/marigold/query/commit/out_sku_sn_batch_check",
+		"headers": map[string]string{
+			"accept":             "application/json, text/plain, */*",
+			"accept-language":    "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+			"content-type":       "application/json;charset=UTF-8",
+			"priority":           "u=1, i",
+			"sec-ch-ua":          "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
+			"sec-ch-ua-mobile":   "?0",
+			"sec-ch-ua-platform": "\"Windows\"",
+			"sec-fetch-dest":     "empty",
+			"sec-fetch-mode":     "cors",
+			"sec-fetch-site":     "same-origin",
+		},
+		"body": requestBody,
+	}
+
+	// 发送API请求
+	response := &OutGoodsSnCheckResponse{}
+	err := ctx.APIClient.SendTEMURequest(apiReq, response)
+	if err != nil {
+		h.logger.WithError(err).Error("SKU编码检查API调用失败")
+		return fmt.Errorf("SKU编码检查API调用失败: %w", err)
+	}
+
+	h.logger.WithFields(logrus.Fields{
+		"success":   response.Success,
+		"errorCode": response.ErrorCode,
+	}).Info("SKU编码检查API响应")
+
+	if !response.Success {
+		errorMsg := fmt.Sprintf("SKU编码检查失败，API返回失败状态 (错误码: %d)", response.ErrorCode)
+		if response.Message != "" {
+			errorMsg = fmt.Sprintf("%s: %s", errorMsg, response.Message)
+		}
+		return fmt.Errorf("%s", errorMsg)
+	}
+
+	// 处理检查结果
+	if response.Result != nil {
+		err := h.handleCheckResult(ctx, response.Result)
+		if err != nil {
+			return err
+		}
+	}
+
+	h.logger.Info("SKU编码检查成功")
+	return nil
+}
+
+// handleCheckResult 处理检查结果
+func (h *OutGoodsSnCheckHandler) handleCheckResult(ctx *pipeline.TaskContext, result *OutGoodsSnCheckResult) error {
+	// 将检查结果存储到上下文中，供其他处理器使用
+	ctx.SetData("out_sku_sn_check_result", result)
+
+	if len(result.FailList) == 0 {
+		h.logger.Info("所有SKU编码检查通过，没有重复")
+		return nil
+	}
+
+	// 记录失败的SKU编码
+	h.logger.Errorf("发现 %d 个重复的SKU编码，任务失败", len(result.FailList))
+
+	var duplicateErrors []string
+	for _, failItem := range result.FailList {
+		errorMsg := fmt.Sprintf("SKU编码 '%s' 已被商品 %s 使用 (SKU ID: %s): %s",
+			failItem.OutSkuSn, failItem.UsedGoodsID, failItem.UsedSkuID, failItem.FailReason)
+
+		h.logger.WithFields(logrus.Fields{
+			"outSkuSn":    failItem.OutSkuSn,
+			"usedGoodsID": failItem.UsedGoodsID,
+			"usedSkuID":   failItem.UsedSkuID,
+			"failReason":  failItem.FailReason,
+		}).Error("SKU编码重复")
+
+		duplicateErrors = append(duplicateErrors, errorMsg)
+	}
+
+	// 直接返回错误，中断流程
+	return fmt.Errorf("发现SKU编码重复，请检查并修改重复的编码: %v", duplicateErrors)
+}
+
+// generateOutSkuSnFromAmazon 从Amazon数据生成OutSkuSN列表进行检查
+func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(ctx *pipeline.TaskContext) []OutSkuSnItem {
+	var outSkuSnList []OutSkuSnItem
+
+	// 获取店铺配置（前缀、后缀、策略）
+	prefix := ""
+	suffix := ""
+	strategy := utils.StrategyASINOnly // 默认策略：仅使用ASIN
+
+	if ctx.StoreInfo != nil {
+		if ctx.StoreInfo.Prefix != "" {
+			prefix = ctx.StoreInfo.Prefix
+		}
+		if ctx.StoreInfo.Suffix != "" {
+			suffix = ctx.StoreInfo.Suffix
+		}
+		// SkuGenerateStrategy 是字符串类型，暂时使用默认策略
+		// 如果需要可以添加字符串到int的转换逻辑
+	}
+
+	h.logger.Debugf("使用SKU生成策略: strategy=%d, prefix=%s, suffix=%s", strategy, prefix, suffix)
+
+	// 使用 map 去重
+	outSkuSnMap := make(map[string]bool)
+
+	// 1. 为主产品生成OutSkuSN
+	if ctx.AmazonProduct != nil && ctx.AmazonProduct.Asin != "" {
+		outSkuSN := utils.GenerateSKU(ctx.AmazonProduct.Asin, strategy, prefix, suffix)
+		if !outSkuSnMap[outSkuSN] {
+			outSkuSnMap[outSkuSN] = true
+			outSkuSnList = append(outSkuSnList, OutSkuSnItem{
+				OutSkuSn: outSkuSN,
+			})
+			h.logger.Debugf("主产品 ASIN=%s -> OutSkuSN=%s", ctx.AmazonProduct.Asin, outSkuSN)
+		}
+	}
+
+	// 2. 为所有变体生成OutSkuSN
+	if len(ctx.AmazonVariants) > 0 {
+		h.logger.Debugf("为 %d 个变体生成OutSkuSN", len(ctx.AmazonVariants))
+		for _, variant := range ctx.AmazonVariants {
+			if variant.Asin != "" {
+				outSkuSN := utils.GenerateSKU(variant.Asin, strategy, prefix, suffix)
+				if !outSkuSnMap[outSkuSN] {
+					outSkuSnMap[outSkuSN] = true
+					outSkuSnList = append(outSkuSnList, OutSkuSnItem{
+						OutSkuSn: outSkuSN,
+					})
+					h.logger.Debugf("变体 ASIN=%s -> OutSkuSN=%s", variant.Asin, outSkuSN)
+				} else {
+					h.logger.Debugf("跳过重复的SKU: ASIN=%s -> OutSkuSN=%s", variant.Asin, outSkuSN)
+				}
+			}
+		}
+	}
+
+	h.logger.Infof("从Amazon数据生成了 %d 个唯一的OutSkuSN", len(outSkuSnList))
+	return outSkuSnList
+}

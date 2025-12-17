@@ -2,8 +2,8 @@
 package utils
 
 import (
-	commonAuth "task-processor/common/auth"
 	internalAuth "task-processor/internal/auth"
+	commonAuth "task-processor/internal/common/auth"
 )
 
 // ClientCredentialsAdapter 客户端凭证适配器

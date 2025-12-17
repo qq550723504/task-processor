@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log"
 
-	"task-processor/common/amazon"
-	amazonModel "task-processor/common/amazon/model"
+	"task-processor/internal/common/amazon"
+	amazonModel "task-processor/internal/common/amazon/model"
 	"task-processor/internal/model"
 	"task-processor/internal/repo"
 	"task-processor/internal/utils"

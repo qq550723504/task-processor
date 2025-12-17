@@ -5,11 +5,12 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/common/processor"
+	"task-processor/internal/common/processor"
+	"task-processor/internal/common/types"
 	"task-processor/internal/dispatcher"
 	"task-processor/internal/model"
-	"task-processor/platforms/shein"
-	"task-processor/platforms/shein/modules"
+	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/modules"
 
 	"github.com/sirupsen/logrus"
 )
@@ -43,7 +44,8 @@ func (s *SheinProcessorAdapter) ProcessTask(ctx context.Context, task *model.Uni
 	}
 
 	// 调用SHEIN处理器
-	err = s.processor.ProcessTask(ctx, *sheinTask)
+	typesTask := (*types.Task)(sheinTask)
+	err = s.processor.ProcessTask(ctx, typesTask)
 	if err != nil {
 		s.OnTaskFailure(task.ID, fmt.Errorf("SHEIN处理器执行失败: %w", err))
 		return fmt.Errorf("SHEIN处理器执行失败: %w", err)
@@ -146,7 +148,7 @@ func (s *SheinProcessorAdapter) GetShopClientManager() interface{} {
 // GetManagementClientManager 获取管理客户端管理器
 func (s *SheinProcessorAdapter) GetManagementClientManager() interface{} {
 	if s.processor != nil {
-		return s.processor.GetManagementClientManager()
+		return s.processor.GetManagementClient()
 	}
 	return nil
 }

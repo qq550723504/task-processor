@@ -1,0 +1,168 @@
+﻿package impl
+
+import (
+	"fmt"
+	"net/http"
+	"task-processor/internal/platforms/shein/client/api"
+	"task-processor/internal/platforms/shein/client/api/other"
+)
+
+// OtherAPI 其他相关API实现
+type OtherAPI struct {
+	*BaseAPIClient
+}
+
+// NewOtherAPI 创建新的其他API实现
+func NewOtherAPI(baseClient *BaseAPIClient) *OtherAPI {
+	return &OtherAPI{
+		BaseAPIClient: baseClient,
+	}
+}
+
+// GetUser 获取用户信息
+func (o *OtherAPI) GetUser(uuid int64) (*other.UserInfo, error) {
+	url := fmt.Sprintf("%s%s?uuid=%d", o.GetBaseURL(), getUserEndpoint, uuid)
+
+	var result struct {
+		api.APIResponse
+		Info *other.UserInfo `json:"info"`
+	}
+
+	if err := o.apiRequest(http.MethodGet, url, nil, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理 - 使用 ProcessAPIResponse 检查认证过期
+	if err := o.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
+		// 如果是认证过期错误，直接返回
+		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
+			return nil, err
+		}
+		// 其他错误，包装为 APIError
+		return nil, &api.APIError{
+			StatusCode: 0, // 业务错误码
+			Message:    fmt.Sprintf("获取用户信息失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return result.Info, nil
+}
+
+// BatchCheckOnWay 批量检查在途商品
+func (o *OtherAPI) BatchCheckOnWay(spuNameList []string) (*other.BatchCheckOnWayResponse, error) {
+	url := fmt.Sprintf("%s%s", o.GetBaseURL(), batchCheckOnWayEndpoint)
+
+	reqBody := map[string]interface{}{
+		"spu_name_list": spuNameList,
+	}
+
+	var result struct {
+		api.APIResponse
+		Info []struct {
+			SpuName    string `json:"spu_name"`
+			SkcName    string `json:"skc_name"`
+			DocumentSn string `json:"document_sn"`
+		} `json:"info"`
+	}
+
+	if err := o.apiRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理 - 使用 ProcessAPIResponse 检查认证过期
+	if err := o.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
+		// 如果是认证过期错误，直接返回
+		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
+			return nil, err
+		}
+		// 其他错误，包装为 APIError
+		return nil, &api.APIError{
+			StatusCode: 0, // 业务错误码
+			Message:    fmt.Sprintf("批量检查在途商品失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	// 构造返回结果
+	response := &other.BatchCheckOnWayResponse{
+		Code: result.Code,
+		Msg:  result.Msg,
+		Info: result.Info,
+		BBL:  result.BBL,
+	}
+
+	return response, nil
+}
+
+// GetSupplierOperateInfo 获取供应商操作信息
+func (o *OtherAPI) GetSupplierOperateInfo() (*other.SupplierOperateInfoResponse, error) {
+	url := fmt.Sprintf("%s%s", o.GetBaseURL(), getSupplierOperateInfoEndpoint)
+
+	var result struct {
+		api.APIResponse
+		Info other.SupplierOperateInfo `json:"info"`
+		BBL  *string                   `json:"bbl"`
+	}
+
+	if err := o.apiRequest(http.MethodPost, url, nil, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理 - 使用 ProcessAPIResponse 检查认证过期
+	if err := o.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
+		// 如果是认证过期错误，直接返回
+		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
+			return nil, err
+		}
+		// 其他错误，包装为 APIError
+		return nil, &api.APIError{
+			StatusCode: 0, // 业务错误码
+			Message:    fmt.Sprintf("获取供应商操作信息失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	// 构造返回结果
+	response := &other.SupplierOperateInfoResponse{
+		Code: result.Code,
+		Msg:  result.Msg,
+		Info: result.Info,
+		BBL:  result.BBL,
+	}
+
+	return response, nil
+}
+
+// GetSpuLimitCount 获取SPU限制数量
+func (o *OtherAPI) GetSpuLimitCount() (*other.SpuLimitCountInfo, error) {
+	url := fmt.Sprintf("%s%s", o.GetBaseURL(), getSpuLimitCountEndpoint)
+
+	var result struct {
+		api.APIResponse
+		Info struct {
+			Data other.SpuLimitCountInfo `json:"data"`
+		} `json:"info"`
+		Bbl *string `json:"bbl"`
+	}
+
+	if err := o.apiRequest(http.MethodGet, url, nil, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理 - 使用 ProcessAPIResponse 检查认证过期
+	if err := o.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
+		// 如果是认证过期错误，直接返回
+		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
+			return nil, err
+		}
+		// 其他错误，包装为 APIError
+		return nil, &api.APIError{
+			StatusCode: 0, // 业务错误码
+			Message:    fmt.Sprintf("获取SPU限制数量失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return &result.Info.Data, nil
+}

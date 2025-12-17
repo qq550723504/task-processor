@@ -2,9 +2,8 @@
 package model
 
 import (
+	"task-processor/internal/common/types"
 	"time"
-
-	"task-processor/common/types"
 )
 
 // UnifiedTask 统一任务结构，兼容三个平台的需求
@@ -23,36 +22,36 @@ type UnifiedTask struct {
 	Creator    string `json:"creator"`
 
 	// 扩展字段
-	TargetPlatform   string                 `json:"target_platform"`   // 目标平台（amazon, temu, shein）
-	MarketplaceID    string                 `json:"marketplace_id"`    // 目标市场ID
-	LanguageTag      string                 `json:"language_tag"`      // 语言标签
-	Currency         string                 `json:"currency"`          // 目标货币
-	RawJSONData      string                 `json:"raw_json_data"`     // 原始产品数据
-	SourcePlatform   string                 `json:"source_platform"`   // 数据来源平台
-	ProcessingConfig map[string]interface{} `json:"processing_config"` // 处理配置
-	Metadata         map[string]interface{} `json:"metadata"`          // 元数据
+	TargetPlatform   string         `json:"target_platform"`   // 目标平台（amazon, temu, shein）
+	MarketplaceID    string         `json:"marketplace_id"`    // 目标市场ID
+	LanguageTag      string         `json:"language_tag"`      // 语言标签
+	Currency         string         `json:"currency"`          // 目标货币
+	RawJSONData      string         `json:"raw_json_data"`     // 原始产品数据
+	SourcePlatform   string         `json:"source_platform"`   // 数据来源平台
+	ProcessingConfig map[string]any `json:"processing_config"` // 处理配置
+	Metadata         map[string]any `json:"metadata"`          // 元数据
 
 	// 状态管理
-	Status      types.TaskStatus `json:"status"`
-	StatusMsg   string           `json:"status_msg"`
-	StartTime   *time.Time       `json:"start_time,omitempty"`
-	EndTime     *time.Time       `json:"end_time,omitempty"`
-	ProcessTime time.Duration    `json:"process_time"`
+	Status      TaskStatus    `json:"status"`
+	StatusMsg   string        `json:"status_msg"`
+	StartTime   *time.Time    `json:"start_time,omitempty"`
+	EndTime     *time.Time    `json:"end_time,omitempty"`
+	ProcessTime time.Duration `json:"process_time"`
 }
 
 // TaskData 任务数据结构，用于传递给处理器
 type TaskData struct {
-	ProductID        string                 `json:"product_id"`
-	StoreID          int64                  `json:"store_id"`
-	TenantID         int64                  `json:"tenant_id"`
-	RawJSONData      string                 `json:"raw_json_data"`
-	SourcePlatform   string                 `json:"source_platform"`
-	TargetPlatform   string                 `json:"target_platform"`
-	MarketplaceID    string                 `json:"marketplace_id"`
-	LanguageTag      string                 `json:"language_tag"`
-	Currency         string                 `json:"currency"`
-	ProcessingConfig map[string]interface{} `json:"processing_config"`
-	Metadata         map[string]interface{} `json:"metadata"`
+	ProductID        string         `json:"product_id"`
+	StoreID          int64          `json:"store_id"`
+	TenantID         int64          `json:"tenant_id"`
+	RawJSONData      string         `json:"raw_json_data"`
+	SourcePlatform   string         `json:"source_platform"`
+	TargetPlatform   string         `json:"target_platform"`
+	MarketplaceID    string         `json:"marketplace_id"`
+	LanguageTag      string         `json:"language_tag"`
+	Currency         string         `json:"currency"`
+	ProcessingConfig map[string]any `json:"processing_config"`
+	Metadata         map[string]any `json:"metadata"`
 }
 
 // ToTaskData 将UnifiedTask转换为TaskData
@@ -104,23 +103,23 @@ func NewUnifiedTaskFromCommon(task *types.Task, targetPlatform string) *UnifiedT
 		Priority:         task.Priority,
 		Creator:          task.Creator,
 		TargetPlatform:   targetPlatform,
-		Status:           types.TaskStatusPending,
-		Metadata:         make(map[string]interface{}),
-		ProcessingConfig: make(map[string]interface{}),
+		Status:           TaskStatusPending,
+		Metadata:         make(map[string]any),
+		ProcessingConfig: make(map[string]any),
 	}
 }
 
 // UpdateStatus 更新任务状态
-func (t *UnifiedTask) UpdateStatus(status types.TaskStatus, message string) {
+func (t *UnifiedTask) UpdateStatus(status TaskStatus, message string) {
 	t.Status = status
 	t.StatusMsg = message
 
 	now := time.Now()
-	if status == types.TaskStatusProcessing && t.StartTime == nil {
+	if status == TaskStatusProcessing && t.StartTime == nil {
 		t.StartTime = &now
 	}
 
-	if status == types.TaskStatusPublished || status == types.TaskStatusCrawlFailed {
+	if status == TaskStatusPublished || status == TaskStatusCrawlFailed {
 		t.EndTime = &now
 		if t.StartTime != nil {
 			t.ProcessTime = now.Sub(*t.StartTime)
@@ -130,14 +129,14 @@ func (t *UnifiedTask) UpdateStatus(status types.TaskStatus, message string) {
 
 // IsCompleted 检查任务是否已完成
 func (t *UnifiedTask) IsCompleted() bool {
-	return t.Status == types.TaskStatusPublished ||
-		t.Status == types.TaskStatusCrawlFailed ||
-		t.Status == types.TaskStatusCancelled ||
-		t.Status == types.TaskStatusTerminated
+	return t.Status == TaskStatusPublished ||
+		t.Status == TaskStatusCrawlFailed ||
+		t.Status == TaskStatusCancelled ||
+		t.Status == TaskStatusTerminated
 }
 
 // CanRetry 检查任务是否可以重试
 func (t *UnifiedTask) CanRetry(maxRetries int) bool {
 	return t.RetryCount < maxRetries &&
-		(t.Status == types.TaskStatusCrawlFailed || t.Status == types.TaskStatusPendingRetry)
+		(t.Status == TaskStatusCrawlFailed || t.Status == TaskStatusPendingRetry)
 }

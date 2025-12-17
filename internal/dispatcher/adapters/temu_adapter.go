@@ -5,11 +5,11 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/common/processor"
-	"task-processor/common/types"
+	"task-processor/internal/common/processor"
+	"task-processor/internal/common/types"
 	"task-processor/internal/dispatcher"
 	"task-processor/internal/model"
-	"task-processor/platforms/temu"
+	"task-processor/internal/platforms/temu"
 
 	"github.com/sirupsen/logrus"
 )
@@ -43,7 +43,7 @@ func (t *TemuProcessorAdapter) ProcessTask(ctx context.Context, task *model.Unif
 	}
 
 	// 调用TEMU处理器
-	err = t.processor.ProcessTask(ctx, *temuTask)
+	err = t.processor.ProcessTask(ctx, temuTask)
 	if err != nil {
 		t.OnTaskFailure(task.ID, fmt.Errorf("TEMU处理器执行失败: %w", err))
 		return fmt.Errorf("TEMU处理器执行失败: %w", err)

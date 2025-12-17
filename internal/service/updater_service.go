@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"task-processor/internal/config"
-	"task-processor/updater"
+	"task-processor/internal/updater"
 
 	"github.com/sirupsen/logrus"
 )

@@ -4,7 +4,7 @@ package service
 import (
 	"fmt"
 
-	"task-processor/common/auth"
+	"task-processor/internal/auth"
 	"task-processor/internal/config"
 
 	"github.com/sirupsen/logrus"
@@ -37,6 +37,7 @@ func (s *AuthService) InitializeClientCredentials(cfg *config.Config) (*auth.Cli
 		cfg.Management.ClientID,
 		cfg.Management.ClientSecret,
 		tenantID,
+		s.logger,
 	)
 
 	// 立即获取一次token，验证配置是否正确

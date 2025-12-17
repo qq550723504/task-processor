@@ -1,0 +1,274 @@
+package handlers
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"regexp"
+	"strings"
+
+	"task-processor/internal/common/pipeline"
+
+	"github.com/sirupsen/logrus"
+)
+
+// SensitiveWordsFilter TEMU敏感词过滤器
+type SensitiveWordsFilter struct {
+	logger       *logrus.Entry
+	staticWords  map[string][]string
+	dynamicWords map[string][]*regexp.Regexp
+	configPath   string
+}
+
+// SensitiveWordsConfig 敏感词配置结构
+type SensitiveWordsConfig struct {
+	StaticWords  map[string][]string `json:"static_words"`
+	DynamicWords map[string][]string `json:"dynamic_words"`
+	LastUpdated  string              `json:"last_updated"`
+	Version      string              `json:"version"`
+	Platform     string              `json:"platform"`
+}
+
+// NewSensitiveWordsFilter 创建TEMU敏感词过滤器
+func NewSensitiveWordsFilter() *SensitiveWordsFilter {
+	filter := &SensitiveWordsFilter{
+		logger:       logrus.WithField("handler", "SensitiveWordsFilter"),
+		staticWords:  make(map[string][]string),
+		dynamicWords: make(map[string][]*regexp.Regexp),
+		configPath:   "config/sensitive_words_temu.json",
+	}
+
+	if err := filter.loadConfig(); err != nil {
+		filter.logger.WithError(err).Warn("加载敏感词配置失败，使用默认配置")
+		filter.loadDefaultConfig()
+	}
+
+	return filter
+}
+
+// Name 返回处理器名称
+func (f *SensitiveWordsFilter) Name() string {
+	return "TEMU敏感词过滤处理器"
+}
+
+// Handle 处理任务
+func (f *SensitiveWordsFilter) Handle(ctx *pipeline.TaskContext) error {
+	f.logger.Info("开始过滤TEMU敏感词")
+
+	if ctx.TemuProduct == nil {
+		return fmt.Errorf("TEMU产品信息为空")
+	}
+
+	// 过滤标题
+	originalTitle := ctx.TemuProduct.GoodsBasic.GoodsName
+	filteredTitle, titleViolations := f.FilterText(originalTitle)
+	if len(titleViolations) > 0 {
+		f.logger.Warnf("标题包含敏感词: %v", titleViolations)
+		ctx.TemuProduct.GoodsBasic.GoodsName = filteredTitle
+		f.logger.Infof("标题已过滤: %s -> %s", originalTitle, filteredTitle)
+	}
+
+	// 过滤描述
+	originalDesc := ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc
+	filteredDesc, descViolations := f.FilterText(originalDesc)
+	if len(descViolations) > 0 {
+		f.logger.Warnf("描述包含敏感词: %v", descViolations)
+		ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc = filteredDesc
+		f.logger.Infof("描述已过滤，长度: %d -> %d", len(originalDesc), len(filteredDesc))
+	}
+
+	// 过滤要点
+	originalPoints := ctx.TemuProduct.GoodsExtensionInfo.BulletPoints
+	filteredPoints := []string{}
+	pointsModified := false
+
+	for i, point := range originalPoints {
+		filteredPoint, pointViolations := f.FilterText(point)
+		if len(pointViolations) > 0 {
+			f.logger.Warnf("要点[%d]包含敏感词: %v", i+1, pointViolations)
+			pointsModified = true
+		}
+		if strings.TrimSpace(filteredPoint) != "" {
+			filteredPoints = append(filteredPoints, filteredPoint)
+		}
+	}
+
+	if pointsModified {
+		ctx.TemuProduct.GoodsExtensionInfo.BulletPoints = filteredPoints
+		f.logger.Infof("要点已过滤: %d -> %d个", len(originalPoints), len(filteredPoints))
+	}
+
+	f.logger.Info("TEMU敏感词过滤完成")
+	return nil
+}
+
+// FilterText 过滤文本中的敏感词
+func (f *SensitiveWordsFilter) FilterText(text string) (string, []string) {
+	violations := []string{}
+	filtered := text
+
+	// 1. 过滤静态敏感词（英文）
+	if words, ok := f.staticWords["en"]; ok {
+		for _, word := range words {
+			pattern := regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(word) + `\b`)
+			if pattern.MatchString(filtered) {
+				violations = append(violations, word)
+				filtered = pattern.ReplaceAllString(filtered, "")
+			}
+		}
+	}
+
+	// 2. 过滤静态敏感词（中文）
+	if words, ok := f.staticWords["zh"]; ok {
+		for _, word := range words {
+			if strings.Contains(filtered, word) {
+				violations = append(violations, word)
+				filtered = strings.ReplaceAll(filtered, word, "")
+			}
+		}
+	}
+
+	// 3. 过滤动态敏感词（正则表达式）
+	if patterns, ok := f.dynamicWords["en"]; ok {
+		for _, pattern := range patterns {
+			if pattern.MatchString(filtered) {
+				violations = append(violations, pattern.String())
+				filtered = pattern.ReplaceAllString(filtered, "")
+			}
+		}
+	}
+
+	// 4. 清理过滤后的多余空格
+	filtered = f.cleanFilteredText(filtered)
+
+	return filtered, violations
+}
+
+// cleanFilteredText 清理过滤后的文本
+func (f *SensitiveWordsFilter) cleanFilteredText(text string) string {
+	// 移除多余的空格
+	spacePattern := regexp.MustCompile(`\s+`)
+	text = spacePattern.ReplaceAllString(text, " ")
+
+	// 移除首尾空格
+	text = strings.TrimSpace(text)
+
+	// 移除多余的标点符号
+	text = regexp.MustCompile(`[,;.]\s*[,;.]`).ReplaceAllString(text, ",")
+
+	return text
+}
+
+// loadConfig 加载敏感词配置
+func (f *SensitiveWordsFilter) loadConfig() error {
+	data, err := os.ReadFile(f.configPath)
+	if err != nil {
+		return fmt.Errorf("读取配置文件失败: %w", err)
+	}
+
+	var config SensitiveWordsConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("解析配置文件失败: %w", err)
+	}
+
+	// 加载静态敏感词
+	f.staticWords = config.StaticWords
+
+	// 编译动态敏感词正则表达式
+	for lang, patterns := range config.DynamicWords {
+		f.dynamicWords[lang] = []*regexp.Regexp{}
+		for _, pattern := range patterns {
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				f.logger.WithError(err).Warnf("编译正则表达式失败: %s", pattern)
+				continue
+			}
+			f.dynamicWords[lang] = append(f.dynamicWords[lang], re)
+		}
+	}
+
+	f.logger.Infof("加载敏感词配置成功: 静态词=%d, 动态模式=%d",
+		len(f.staticWords["en"])+len(f.staticWords["zh"]),
+		len(f.dynamicWords["en"]))
+
+	return nil
+}
+
+// loadDefaultConfig 加载默认配置
+func (f *SensitiveWordsFilter) loadDefaultConfig() {
+	// 默认环保相关敏感词
+	f.staticWords["en"] = []string{
+		"environmentally friendly",
+		"eco-friendly",
+		"eco friendly",
+		"environment friendly",
+		"sustainable",
+		"sustainability",
+		"biodegradable",
+		"recyclable",
+		"recycled",
+		"organic",
+		"green product",
+		"earth friendly",
+		"planet friendly",
+		"carbon neutral",
+		"zero waste",
+	}
+
+	f.staticWords["zh"] = []string{
+		"环保",
+		"环境友好",
+		"生态友好",
+		"可持续",
+		"可降解",
+		"可回收",
+		"有机",
+	}
+
+	// 编译默认动态模式
+	defaultPatterns := []string{
+		`(?i)\b(eco[\\s-]?friendly|ecofriendly)\b`,
+		`(?i)\b(environment[\\s-]?friendly|environment friendly)\b`,
+		`(?i)\b(environmentally[\\s-]?friendly|environmentally friendly)\b`,
+		`(?i)\b(environmental|environmentally)\b`,
+		`(?i)\b(sustainable|sustainability)\b`,
+		`(?i)\b(biodegradable)\b`,
+		`(?i)\b(recyclable|recycled)\b`,
+		`(?i)\b(organic)\b`,
+	}
+
+	f.dynamicWords["en"] = []*regexp.Regexp{}
+	for _, pattern := range defaultPatterns {
+		if re, err := regexp.Compile(pattern); err == nil {
+			f.dynamicWords["en"] = append(f.dynamicWords["en"], re)
+		}
+	}
+
+	f.logger.Info("使用默认敏感词配置")
+}
+
+// CheckText 检查文本是否包含敏感词（不修改文本）
+func (f *SensitiveWordsFilter) CheckText(text string) []string {
+	violations := []string{}
+
+	// 检查静态敏感词
+	if words, ok := f.staticWords["en"]; ok {
+		for _, word := range words {
+			pattern := regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(word) + `\b`)
+			if pattern.MatchString(text) {
+				violations = append(violations, word)
+			}
+		}
+	}
+
+	// 检查动态敏感词
+	if patterns, ok := f.dynamicWords["en"]; ok {
+		for _, pattern := range patterns {
+			if pattern.MatchString(text) {
+				violations = append(violations, pattern.String())
+			}
+		}
+	}
+
+	return violations
+}

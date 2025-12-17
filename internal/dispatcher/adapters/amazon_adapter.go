@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/dispatcher"
 	"task-processor/internal/model"
-	"task-processor/platforms/amazon"
+	"task-processor/internal/platforms/amazon"
 
 	"github.com/sirupsen/logrus"
 )
@@ -136,10 +136,7 @@ func (a *AmazonProcessorAdapter) Stop(ctx context.Context) error {
 	a.logger.Info("[AmazonAdapter] 停止Amazon处理器适配器")
 
 	// 停止底层Amazon处理器
-	if err := a.processor.Stop(ctx); err != nil {
-		a.status.ErrorMessage = err.Error()
-		return fmt.Errorf("停止Amazon处理器失败: %w", err)
-	}
+	a.processor.Close()
 
 	// 更新状态
 	a.status.Status = "stopped"

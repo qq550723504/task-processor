@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/common/types"
 	"task-processor/internal/dispatcher"
 	"task-processor/internal/model"
 
@@ -84,7 +83,7 @@ type TaskStore interface {
 // TaskFilter 任务过滤器
 type TaskFilter struct {
 	Platform  string           `json:"platform"`
-	Status    types.TaskStatus `json:"status"`
+	Status    model.TaskStatus `json:"status"`
 	StoreID   int64            `json:"store_id"`
 	TenantID  int64            `json:"tenant_id"`
 	StartTime *time.Time       `json:"start_time"`
@@ -139,7 +138,7 @@ func (s *taskService) SubmitTask(ctx context.Context, task *model.UnifiedTask) e
 	// 提交到分发器
 	if err := s.dispatcher.DispatchTask(ctx, task); err != nil {
 		// 更新任务状态
-		task.UpdateStatus(types.TaskStatusCrawlFailed, fmt.Sprintf("分发失败: %v", err))
+		task.UpdateStatus(model.TaskStatusCrawlFailed, fmt.Sprintf("分发失败: %v", err))
 		s.updateTaskInStore(task)
 		return fmt.Errorf("任务分发失败: %w", err)
 	}
@@ -221,7 +220,7 @@ func (s *taskService) CancelTask(taskID string) error {
 	}
 
 	// 更新任务状态
-	task.UpdateStatus(types.TaskStatusCancelled, "任务已被用户取消")
+	task.UpdateStatus(model.TaskStatusCancelled, "任务已被用户取消")
 
 	// 更新存储
 	if err := s.updateTaskInStore(task); err != nil {
@@ -253,7 +252,7 @@ func (s *taskService) RetryTask(ctx context.Context, taskID string) error {
 
 	// 重置任务状态
 	task.RetryCount++
-	task.UpdateStatus(types.TaskStatusPending, "任务准备重试")
+	task.UpdateStatus(model.TaskStatusPending, "任务准备重试")
 
 	// 更新存储
 	if err := s.updateTaskInStore(task); err != nil {
@@ -310,7 +309,7 @@ func (s *taskService) setTaskDefaults(task *model.UnifiedTask) {
 		task.CreateTime = now.Unix()
 	}
 	if task.Status == 0 {
-		task.Status = types.TaskStatusPending
+		task.Status = model.TaskStatusPending
 	}
 	if task.Priority == 0 {
 		task.Priority = 5 // 默认优先级

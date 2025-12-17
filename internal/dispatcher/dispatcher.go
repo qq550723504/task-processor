@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/common/types"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -108,25 +107,25 @@ func (d *taskDispatcher) DispatchTask(ctx context.Context, task *model.UnifiedTa
 	d.mutex.RUnlock()
 
 	// 更新任务状态
-	task.UpdateStatus(types.TaskStatusQueued, "任务已进入分发队列")
+	task.UpdateStatus(model.TaskStatusQueued, "任务已进入分发队列")
 
 	// 路由任务
 	targetPlatform, err := d.router.Route(task)
 	if err != nil {
-		task.UpdateStatus(types.TaskStatusCrawlFailed, fmt.Sprintf("路由失败: %v", err))
+		task.UpdateStatus(model.TaskStatusCrawlFailed, fmt.Sprintf("路由失败: %v", err))
 		return fmt.Errorf("路由任务失败: %w", err)
 	}
 
 	// 获取目标处理器
 	processor, err := d.registry.Get(targetPlatform)
 	if err != nil {
-		task.UpdateStatus(types.TaskStatusCrawlFailed, fmt.Sprintf("获取处理器失败: %v", err))
+		task.UpdateStatus(model.TaskStatusCrawlFailed, fmt.Sprintf("获取处理器失败: %v", err))
 		return fmt.Errorf("获取处理器失败: %w", err)
 	}
 
 	// 检查处理器是否可以处理任务
 	if !processor.CanHandle(task) {
-		task.UpdateStatus(types.TaskStatusCrawlFailed, "处理器无法处理此任务")
+		task.UpdateStatus(model.TaskStatusCrawlFailed, "处理器无法处理此任务")
 		return fmt.Errorf("处理器 %s 无法处理任务 %s", targetPlatform, task.ID)
 	}
 
@@ -148,7 +147,7 @@ func (d *taskDispatcher) executeTask(ctx context.Context, processor PlatformProc
 	}
 
 	// 更新任务状态
-	task.UpdateStatus(types.TaskStatusProcessing, fmt.Sprintf("开始在平台 %s 上处理", platform))
+	task.UpdateStatus(model.TaskStatusProcessing, fmt.Sprintf("开始在平台 %s 上处理", platform))
 
 	d.logger.Infof("[Dispatcher] 开始处理任务: ID=%s, Platform=%s", task.ID, platform)
 
@@ -159,7 +158,7 @@ func (d *taskDispatcher) executeTask(ctx context.Context, processor PlatformProc
 
 	// 记录结果
 	if err != nil {
-		task.UpdateStatus(types.TaskStatusCrawlFailed, fmt.Sprintf("处理失败: %v", err))
+		task.UpdateStatus(model.TaskStatusCrawlFailed, fmt.Sprintf("处理失败: %v", err))
 		if d.config.EnableMetrics {
 			d.metricsCollector.RecordTaskFailure(platform, task.ID, duration, err)
 		}
@@ -175,7 +174,7 @@ func (d *taskDispatcher) executeTask(ctx context.Context, processor PlatformProc
 	}
 
 	// 处理成功
-	task.UpdateStatus(types.TaskStatusPublished, "任务处理完成")
+	task.UpdateStatus(model.TaskStatusPublished, "任务处理完成")
 	if d.config.EnableMetrics {
 		d.metricsCollector.RecordTaskSuccess(platform, task.ID, duration)
 	}
@@ -187,7 +186,7 @@ func (d *taskDispatcher) executeTask(ctx context.Context, processor PlatformProc
 // retryTask 重试任务
 func (d *taskDispatcher) retryTask(ctx context.Context, processor PlatformProcessor, task *model.UnifiedTask) error {
 	task.RetryCount++
-	task.UpdateStatus(types.TaskStatusPendingRetry, fmt.Sprintf("准备第 %d 次重试", task.RetryCount))
+	task.UpdateStatus(model.TaskStatusPendingRetry, fmt.Sprintf("准备第 %d 次重试", task.RetryCount))
 
 	d.logger.Warnf("[Dispatcher] 任务重试: ID=%s, RetryCount=%d", task.ID, task.RetryCount)
 
