@@ -105,23 +105,44 @@ func (s *PricingDecisionService) MakeDecision(item *Sku, storeId int64) (*Pricin
 
 	// 通过核价规则获取利润率
 	profitRate := 1.5 // 默认利润率
+	var minAcceptablePrice float64
 	pricingRule, err := s.getPricingRule(storeId)
 	if err != nil {
 		s.logger.Warnf("获取核价规则失败: %v，使用默认利润率%.2f", err, profitRate)
+		minAcceptablePrice = originCostPrice * profitRate
 	} else if pricingRule != nil && pricingRule.RuleValue != nil {
-		// 使用核价规则中的目标利润率
-		profitRate = *pricingRule.RuleValue
-		s.logger.Infof("使用核价规则 %s 的目标利润率: %.2f%%", pricingRule.Name, profitRate)
+		// 根据规则类型计算最低可接受价格
+		// 规则类型：fixed=固定加价， multiple=倍率，fixed_price=固定值，multiple_fixed=倍率加固定值
+		switch pricingRule.RuleType {
+		case "multiple_fixed": // 倍率加固定值
+			// 先按倍率计算，再加上固定值
+			minAcceptablePrice = originCostPrice*(*pricingRule.RuleValue) + s.getFixedValueOrDefault(pricingRule.FixedValue, 0)
+			s.logger.Infof("使用核价规则 %s (倍率加固定值): 倍率=%.2f, 固定值=%.2f", pricingRule.Name, *pricingRule.RuleValue, s.getFixedValueOrDefault(pricingRule.FixedValue, 0))
+		case "multiple": // 倍率
+			minAcceptablePrice = originCostPrice * (*pricingRule.RuleValue)
+			s.logger.Infof("使用核价规则 %s (倍率): 倍率=%.2f", pricingRule.Name, *pricingRule.RuleValue)
+		case "fixed": // 固定加价
+			minAcceptablePrice = originCostPrice + *pricingRule.RuleValue
+			s.logger.Infof("使用核价规则 %s (固定加价): 固定值=%.2f", pricingRule.Name, *pricingRule.RuleValue)
+		case "fixed_price": // 固定值
+			minAcceptablePrice = *pricingRule.RuleValue
+			s.logger.Infof("使用核价规则 %s (固定价格): 价格=%.2f", pricingRule.Name, *pricingRule.RuleValue)
+		default:
+			// 默认使用倍率计算
+			minAcceptablePrice = originCostPrice * (*pricingRule.RuleValue)
+			s.logger.Infof("使用核价规则 %s 的默认计算方式(倍率): %.2f", pricingRule.Name, *pricingRule.RuleValue)
+		}
+	} else {
+		// 没有规则值时使用默认利润率
+		minAcceptablePrice = originCostPrice * profitRate
 	}
 
-	s.logger.Infof("商品 %s: SKU=%s, 原始成本=%.2f, 平台推荐价=%.2f, 利润率=%.2f%%",
-		item.GoodsName, item.SkuSN, originCostPrice, item.SupplierPrice, profitRate)
-
-	minAcceptablePrice := originCostPrice * profitRate
+	s.logger.Infof("商品 %s: SKU=%s, 原始成本=%.2f, 平台推荐价=%.2f, 最低可接受价=%.2f",
+		item.GoodsName, item.SkuSN, originCostPrice, item.SupplierPrice, minAcceptablePrice)
 	if item.SupplierPrice >= minAcceptablePrice {
 		decision.Action = DecisionAccept
-		decision.Reason = fmt.Sprintf("平台推荐价%.2f >= 最低可接受价%.2f，利润率%.2f%%",
-			item.SupplierPrice, minAcceptablePrice, profitRate)
+		decision.Reason = fmt.Sprintf("平台推荐价%.2f >= 最低可接受价%.2f，满足要求",
+			item.SupplierPrice, minAcceptablePrice)
 	} else {
 		// 根据店铺配置决定拒绝策略
 		strategy := s.getPriceRejectStrategy()
@@ -206,6 +227,14 @@ func (s *PricingDecisionService) calculateOriginCostPrice(mapping *api.ProductIm
 	return 0
 }
 
+// getFixedValueOrDefault 获取固定值或默认值
+func (s *PricingDecisionService) getFixedValueOrDefault(fixedValue *float64, defaultValue float64) float64 {
+	if fixedValue != nil {
+		return *fixedValue
+	}
+	return defaultValue
+}
+
 // MakeDecisionForSalesBoost 对销量提升场景的商品做出核价决策
 func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGoods, sku *SalesBoostSku, storeId int64) (*PricingDecision, error) {
 	decision := &PricingDecision{}
@@ -248,12 +277,36 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 
 	// 获取核价规则
 	profitRate := 1.5 // 默认利润率
+	var minAcceptablePrice float64
 	pricingRule, err := s.getPricingRule(storeId)
 	if err != nil {
 		s.logger.Warnf("获取核价规则失败: %v，使用默认利润率%.2f", err, profitRate)
+		minAcceptablePrice = originCostPrice * profitRate
 	} else if pricingRule != nil && pricingRule.RuleValue != nil {
-		profitRate = *pricingRule.RuleValue
-		s.logger.Infof("使用核价规则 %s 的目标利润率: %.2f", pricingRule.Name, profitRate)
+		// 根据规则类型计算最低可接受价格
+		// 规则类型：fixed=固定加价， multiple=倍率，fixed_price=固定值，multiple_fixed=倍率加固定值
+		switch pricingRule.RuleType {
+		case "multiple_fixed": // 倍率加固定值
+			// 先按倍率计算，再加上固定值
+			minAcceptablePrice = originCostPrice*(*pricingRule.RuleValue) + s.getFixedValueOrDefault(pricingRule.FixedValue, 0)
+			s.logger.Infof("使用核价规则 %s (倍率加固定值): 倍率=%.2f, 固定值=%.2f", pricingRule.Name, *pricingRule.RuleValue, s.getFixedValueOrDefault(pricingRule.FixedValue, 0))
+		case "multiple": // 倍率
+			minAcceptablePrice = originCostPrice * (*pricingRule.RuleValue)
+			s.logger.Infof("使用核价规则 %s (倍率): 倍率=%.2f", pricingRule.Name, *pricingRule.RuleValue)
+		case "fixed": // 固定加价
+			minAcceptablePrice = originCostPrice + *pricingRule.RuleValue
+			s.logger.Infof("使用核价规则 %s (固定加价): 固定值=%.2f", pricingRule.Name, *pricingRule.RuleValue)
+		case "fixed_price": // 固定值
+			minAcceptablePrice = *pricingRule.RuleValue
+			s.logger.Infof("使用核价规则 %s (固定价格): 价格=%.2f", pricingRule.Name, *pricingRule.RuleValue)
+		default:
+			// 默认使用倍率计算
+			minAcceptablePrice = originCostPrice * (*pricingRule.RuleValue)
+			s.logger.Infof("使用核价规则 %s 的默认计算方式(倍率): %.2f", pricingRule.Name, *pricingRule.RuleValue)
+		}
+	} else {
+		// 没有规则值时使用默认利润率
+		minAcceptablePrice = originCostPrice * profitRate
 	}
 
 	// 计算利润率
@@ -261,16 +314,15 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 		decision.ProfitMargin = (targetSupplierPrice - originCostPrice) / originCostPrice * 100
 	}
 
-	s.logger.Infof("商品 %s SKU %s: 原始成本=%.2f, 当前价格=%.2f, 目标价格=%.2f, 利润率=%.2f%%",
+	s.logger.Infof("商品 %s SKU %s: 原始成本=%.2f, 当前价格=%.2f, 目标价格=%.2f, 最低可接受价=%.2f, 利润率=%.2f%%",
 		goods.SalesBoostGoodsBasicInfo.GoodsName, sku.OutSkuSN,
-		originCostPrice, currentSupplierPrice, targetSupplierPrice, decision.ProfitMargin)
+		originCostPrice, currentSupplierPrice, targetSupplierPrice, minAcceptablePrice, decision.ProfitMargin)
 
 	// 决策逻辑：如果目标价格能满足利润率要求，则接受；否则根据店铺配置决定
-	minAcceptablePrice := originCostPrice * profitRate
 	if targetSupplierPrice >= minAcceptablePrice {
 		decision.Action = DecisionAccept
-		decision.Reason = fmt.Sprintf("目标价格%.2f满足利润率要求(%.2f%%), 最低可接受价格%.2f",
-			targetSupplierPrice, profitRate*100, minAcceptablePrice)
+		decision.Reason = fmt.Sprintf("目标价格%.2f >= 最低可接受价%.2f，满足要求",
+			targetSupplierPrice, minAcceptablePrice)
 	} else {
 		// 根据店铺配置决定拒绝策略
 		strategy := s.getPriceRejectStrategy()
