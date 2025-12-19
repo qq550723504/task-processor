@@ -1,117 +1,90 @@
-// Package config 提供配置辅助函数
+// Package config 提供配置管理功能
 package config
 
-import (
-	"strconv"
-	"strings"
-
-	"github.com/spf13/viper"
-)
-
-// getInt64Slice 从viper获取int64切片的辅助函数
-func getInt64Slice(key string) []int64 {
-	if ifaceSlice := viper.Get(key); ifaceSlice != nil {
-		switch v := ifaceSlice.(type) {
-		case []any:
-			result := make([]int64, len(v))
-			for i, val := range v {
-				switch val := val.(type) {
-				case int64:
-					result[i] = val
-				case int:
-					result[i] = int64(val)
-				case float64:
-					result[i] = int64(val)
-				case string:
-					if intVal, err := strconv.ParseInt(val, 10, 64); err == nil {
-						result[i] = intVal
-					}
-				}
-			}
-			return result
-		case []int64:
-			return v
-		case []int:
-			result := make([]int64, len(v))
-			for i, val := range v {
-				result[i] = int64(val)
-			}
-			return result
-		case string:
-			if v != "" {
-				parts := strings.Split(v, ",")
-				result := make([]int64, 0, len(parts))
-				for _, part := range parts {
-					part = strings.TrimSpace(part)
-					if part != "" {
-						if intVal, err := strconv.ParseInt(part, 10, 64); err == nil {
-							result = append(result, intVal)
-						}
-					}
-				}
-				return result
-			}
-		}
+// GetPlatformConfig 获取指定平台的完整配置
+func (c *Config) GetPlatformConfig(platform string) *PlatformConfig {
+	switch platform {
+	case "temu":
+		return &c.Platforms.Temu
+	case "shein":
+		return &c.Platforms.Shein
+	default:
+		return nil
 	}
-	return []int64{}
 }
 
-// loadSPAPIConfig 加载SP-API配置，包括markets
-func loadSPAPIConfig() SPAPIConfig {
-	config := SPAPIConfig{
-		Enabled:                viper.GetBool("amazon.spapi.enabled"),
-		Region:                 viper.GetString("amazon.spapi.region"),
-		DefaultMarketplace:     viper.GetString("amazon.spapi.defaultMarketplace"),
-		ClientID:               viper.GetString("amazon.spapi.clientID"),
-		ClientSecret:           viper.GetString("amazon.spapi.clientSecret"),
-		RefreshToken:           viper.GetString("amazon.spapi.refreshToken"),
-		AWSAccessKeyID:         viper.GetString("amazon.spapi.awsAccessKeyID"),
-		AWSSecretKey:           viper.GetString("amazon.spapi.awsSecretKey"),
-		DefaultFulfillmentType: viper.GetString("amazon.spapi.defaultFulfillmentType"),
-		DefaultCondition:       viper.GetString("amazon.spapi.defaultCondition"),
-		// 向后兼容字段
-		MarketplaceID: viper.GetString("amazon.spapi.marketplaceID"),
-		SellerID:      viper.GetString("amazon.spapi.sellerID"),
+// GetPlatformSyncConfig 获取指定平台的同步配置
+func (c *Config) GetPlatformSyncConfig(platform string) *SyncConfig {
+	platformConfig := c.GetPlatformConfig(platform)
+	if platformConfig == nil {
+		return nil
 	}
-
-	// 加载markets配置
-	marketsConfig := viper.GetStringMap("amazon.spapi.markets")
-	if marketsConfig != nil && len(marketsConfig) > 0 {
-		config.Marketplaces = make(map[string]MarketplaceConfig)
-
-		for marketCode, marketData := range marketsConfig {
-			if marketMap, ok := marketData.(map[string]interface{}); ok {
-				marketplace := MarketplaceConfig{
-					Name:          getStringFromMap(marketMap, "name"),
-					MarketplaceID: getStringFromMap(marketMap, "marketplaceid"),
-					Currency:      getStringFromMap(marketMap, "currency"),
-					SellerID:      getStringFromMap(marketMap, "sellerid"),
-					Enabled:       getBoolFromMap(marketMap, "enabled"),
-				}
-				config.Marketplaces[marketCode] = marketplace
-			}
-		}
-	}
-
-	return config
+	return &platformConfig.Sync
 }
 
-// getStringFromMap 从map中安全获取字符串值
-func getStringFromMap(m map[string]interface{}, key string) string {
-	if val, ok := m[key]; ok {
-		if str, ok := val.(string); ok {
-			return str
-		}
+// GetPlatformMonitorConfig 获取指定平台的监控配置
+func (c *Config) GetPlatformMonitorConfig(platform string) *MonitorConfig {
+	platformConfig := c.GetPlatformConfig(platform)
+	if platformConfig == nil {
+		return nil
 	}
-	return ""
+	return &platformConfig.Monitor
 }
 
-// getBoolFromMap 从map中安全获取布尔值
-func getBoolFromMap(m map[string]interface{}, key string) bool {
-	if val, ok := m[key]; ok {
-		if b, ok := val.(bool); ok {
-			return b
+// GetPlatformAutoPricingConfig 获取指定平台的自动定价配置
+func (c *Config) GetPlatformAutoPricingConfig(platform string) *AutoPricingConfig {
+	platformConfig := c.GetPlatformConfig(platform)
+	if platformConfig == nil {
+		return nil
+	}
+	return &platformConfig.AutoPricing
+}
+
+// IsSyncEnabled 检查指定平台是否启用同步
+func (c *Config) IsSyncEnabled(platform string) bool {
+	config := c.GetPlatformSyncConfig(platform)
+	return config != nil && config.Enabled
+}
+
+// IsMonitorEnabled 检查指定平台是否启用监控
+func (c *Config) IsMonitorEnabled(platform string) bool {
+	config := c.GetPlatformMonitorConfig(platform)
+	return config != nil && config.Enabled
+}
+
+// IsAutoPricingEnabled 检查指定平台是否启用自动定价
+func (c *Config) IsAutoPricingEnabled(platform string) bool {
+	config := c.GetPlatformAutoPricingConfig(platform)
+	return config != nil && config.Enabled
+}
+
+// GetEnabledPlatforms 获取启用了指定功能的平台列表
+func (c *Config) GetEnabledPlatforms(feature string) []string {
+	var platforms []string
+
+	switch feature {
+	case "sync":
+		if c.IsSyncEnabled("temu") {
+			platforms = append(platforms, "temu")
+		}
+		if c.IsSyncEnabled("shein") {
+			platforms = append(platforms, "shein")
+		}
+	case "monitor":
+		if c.IsMonitorEnabled("temu") {
+			platforms = append(platforms, "temu")
+		}
+		if c.IsMonitorEnabled("shein") {
+			platforms = append(platforms, "shein")
+		}
+	case "autoPricing":
+		if c.IsAutoPricingEnabled("temu") {
+			platforms = append(platforms, "temu")
+		}
+		if c.IsAutoPricingEnabled("shein") {
+			platforms = append(platforms, "shein")
 		}
 	}
-	return false
+
+	return platforms
 }

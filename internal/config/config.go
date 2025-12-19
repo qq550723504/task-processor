@@ -12,15 +12,13 @@ import (
 
 // Config 配置结构体
 type Config struct {
-	Processor   ProcessorConfig
-	Worker      WorkerConfig
-	OpenAI      OpenAIConfig
-	Management  ManagementConfig
-	AutoPricing AutoPricingConfig
-	Amazon      AmazonConfig
-	Updater     UpdaterConfig
-	Sync        *SyncConfig    // 产品同步配置
-	Monitor     *MonitorConfig // 产品监控配置
+	Processor  ProcessorConfig
+	Worker     WorkerConfig
+	OpenAI     OpenAIConfig
+	Management ManagementConfig
+	Amazon     AmazonConfig
+	Updater    UpdaterConfig
+	Platforms  PlatformsConfig // 平台配置
 }
 
 // LoadConfig 加载配置

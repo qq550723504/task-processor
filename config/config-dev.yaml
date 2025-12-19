@@ -32,18 +32,53 @@ management:
   #userID: 1      # 用户ID
   storeIDs: [621]  # 店铺ID列表
 
-# 自动定价配置
-autoPricing:
-  # TEMU 平台自动核价
+# 平台配置（按平台组织所有相关配置）
+platforms:
+  # TEMU 平台配置
   temu:
-    enabled: false
-    interval: 300  # 5分钟
-    batchSize: 100
-  # SHEIN 平台自动核价
+    # 自动定价配置
+    autoPricing:
+      enabled: false
+      interval: 300     # 5分钟
+      batchSize: 100
+    # 产品同步配置
+    sync:
+      enabled: true
+      interval: 60      # 同步间隔（分钟），默认1小时
+      batchSize: 50     # 批量处理大小
+    # 产品监控配置
+    monitor:
+      enabled: true               # 是否启用TEMU产品监控
+      checkInterval: 1440         # 检查间隔（分钟），默认24小时
+      batchSize: 100              # 批量处理大小
+      enablePriceAlert: true      # 启用价格告警
+      enableStockAlert: true      # 启用库存告警
+      priceChangeThreshold: 10.0  # 价格变化阈值（百分比）
+      stockChangeThreshold: 5     # 库存变化阈值
+
+  # SHEIN 平台配置
   shein:
-    enabled: false
-    interval: 300  # 5分钟
-    batchSize: 100
+    # 自动定价配置
+    autoPricing:
+      enabled: false
+      interval: 300     # 5分钟
+      batchSize: 100
+    # 产品同步配置
+    sync:
+      enabled: true
+      storeIDs: []      # SHEIN店铺ID列表，为空则使用 management.storeIDs
+      interval: 60      # 同步间隔（分钟），默认1小时
+      batchSize: 50     # 批量处理大小
+    # 产品监控配置
+    monitor:
+      enabled: true               # 是否启用SHEIN产品监控
+      storeIDs: []                # SHEIN店铺ID列表，为空则使用对应平台的sync配置
+      checkInterval: 1440         # 检查间隔（分钟），默认24小时
+      batchSize: 100              # 批量处理大小
+      enablePriceAlert: true      # 启用价格告警
+      enableStockAlert: true      # 启用库存告警
+      priceChangeThreshold: 10.0  # 价格变化阈值（百分比）
+      stockChangeThreshold: 5     # 库存变化阈值
 
 # Amazon配置
 amazon:
@@ -106,14 +141,3 @@ updater:
   checkInterval: 300  # 检查间隔（秒），默认5分钟
   insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）
 
-# 产品同步配置
-sync:
-  enabled: true  # 是否启用产品同步功能
-  storeIDs: []    # 可选：指定需要同步的店铺ID，如果为空则使用 management.storeIDs
-
-# 产品监控配置
-monitor:
-  enabled: true  # 是否启用产品监控功能
-  storeIDs: []    # 可选：指定需要监控的店铺ID，如果为空则使用 sync.storeIDs 或 management.storeIDs
-  checkInterval: 1440  # 检查间隔（分钟），默认24小时
-  batchSize: 100  # 批量处理大小

@@ -33,16 +33,52 @@ func buildConfig() *Config {
 			UserID:       viper.GetInt64("management.userID"),
 			StoreIDs:     getInt64Slice("management.storeIDs"),
 		},
-		AutoPricing: AutoPricingConfig{
-			Temu: PlatformAutoPricingConfig{
-				Enabled:   viper.GetBool("autoPricing.temu.enabled"),
-				Interval:  viper.GetInt("autoPricing.temu.interval"),
-				BatchSize: viper.GetInt("autoPricing.temu.batchSize"),
+		Platforms: PlatformsConfig{
+			Temu: PlatformConfig{
+				AutoPricing: AutoPricingConfig{
+					Enabled:   viper.GetBool("platforms.temu.autoPricing.enabled"),
+					Interval:  viper.GetInt("platforms.temu.autoPricing.interval"),
+					BatchSize: viper.GetInt("platforms.temu.autoPricing.batchSize"),
+				},
+				Sync: SyncConfig{
+					Enabled:   viper.GetBool("platforms.temu.sync.enabled"),
+					StoreIDs:  getInt64Slice("platforms.temu.sync.storeIDs"),
+					Interval:  viper.GetInt("platforms.temu.sync.interval"),
+					BatchSize: viper.GetInt("platforms.temu.sync.batchSize"),
+				},
+				Monitor: MonitorConfig{
+					Enabled:              viper.GetBool("platforms.temu.monitor.enabled"),
+					StoreIDs:             getInt64Slice("platforms.temu.monitor.storeIDs"),
+					CheckInterval:        viper.GetInt("platforms.temu.monitor.checkInterval"),
+					BatchSize:            viper.GetInt("platforms.temu.monitor.batchSize"),
+					EnablePriceAlert:     viper.GetBool("platforms.temu.monitor.enablePriceAlert"),
+					EnableStockAlert:     viper.GetBool("platforms.temu.monitor.enableStockAlert"),
+					PriceChangeThreshold: viper.GetFloat64("platforms.temu.monitor.priceChangeThreshold"),
+					StockChangeThreshold: viper.GetInt("platforms.temu.monitor.stockChangeThreshold"),
+				},
 			},
-			Shein: PlatformAutoPricingConfig{
-				Enabled:   viper.GetBool("autoPricing.shein.enabled"),
-				Interval:  viper.GetInt("autoPricing.shein.interval"),
-				BatchSize: viper.GetInt("autoPricing.shein.batchSize"),
+			Shein: PlatformConfig{
+				AutoPricing: AutoPricingConfig{
+					Enabled:   viper.GetBool("platforms.shein.autoPricing.enabled"),
+					Interval:  viper.GetInt("platforms.shein.autoPricing.interval"),
+					BatchSize: viper.GetInt("platforms.shein.autoPricing.batchSize"),
+				},
+				Sync: SyncConfig{
+					Enabled:   viper.GetBool("platforms.shein.sync.enabled"),
+					StoreIDs:  getInt64Slice("platforms.shein.sync.storeIDs"),
+					Interval:  viper.GetInt("platforms.shein.sync.interval"),
+					BatchSize: viper.GetInt("platforms.shein.sync.batchSize"),
+				},
+				Monitor: MonitorConfig{
+					Enabled:              viper.GetBool("platforms.shein.monitor.enabled"),
+					StoreIDs:             getInt64Slice("platforms.shein.monitor.storeIDs"),
+					CheckInterval:        viper.GetInt("platforms.shein.monitor.checkInterval"),
+					BatchSize:            viper.GetInt("platforms.shein.monitor.batchSize"),
+					EnablePriceAlert:     viper.GetBool("platforms.shein.monitor.enablePriceAlert"),
+					EnableStockAlert:     viper.GetBool("platforms.shein.monitor.enableStockAlert"),
+					PriceChangeThreshold: viper.GetFloat64("platforms.shein.monitor.priceChangeThreshold"),
+					StockChangeThreshold: viper.GetInt("platforms.shein.monitor.stockChangeThreshold"),
+				},
 			},
 		},
 		Amazon: AmazonConfig{
@@ -63,28 +99,6 @@ func buildConfig() *Config {
 			CheckInterval:      viper.GetInt("updater.checkInterval"),
 			InsecureSkipVerify: viper.GetBool("updater.insecureSkipVerify"),
 		},
-	}
-
-	// 加载同步配置（如果存在）
-	if viper.IsSet("sync") {
-		cfg.Sync = &SyncConfig{
-			Enabled:  viper.GetBool("sync.enabled"),
-			StoreIDs: getInt64Slice("sync.storeIDs"),
-		}
-	}
-
-	// 加载监控配置（如果存在）
-	if viper.IsSet("monitor") {
-		cfg.Monitor = &MonitorConfig{
-			Enabled:              viper.GetBool("monitor.enabled"),
-			StoreIDs:             getInt64Slice("monitor.storeIDs"),
-			CheckInterval:        viper.GetInt("monitor.checkInterval"),
-			BatchSize:            viper.GetInt("monitor.batchSize"),
-			EnablePriceAlert:     viper.GetBool("monitor.enablePriceAlert"),
-			EnableStockAlert:     viper.GetBool("monitor.enableStockAlert"),
-			PriceChangeThreshold: viper.GetFloat64("monitor.priceChangeThreshold"),
-			StockChangeThreshold: viper.GetInt("monitor.stockChangeThreshold"),
-		}
 	}
 
 	return cfg

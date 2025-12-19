@@ -90,8 +90,8 @@ func (p *SheinProcessor) Start(ctx context.Context) error {
 
 	// 启动自动核价处理器（如果启用）
 	config := p.GetConfig()
-	if config.AutoPricing.Shein.Enabled {
-		autoPricingInterval := time.Duration(config.AutoPricing.Shein.Interval) * time.Second
+	if config.Platforms.Shein.AutoPricing.Enabled {
+		autoPricingInterval := time.Duration(config.Platforms.Shein.AutoPricing.Interval) * time.Second
 		if autoPricingInterval <= 0 {
 			autoPricingInterval = 5 * time.Minute
 		}

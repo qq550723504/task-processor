@@ -36,17 +36,24 @@ type ManagementConfig struct {
 	StoreIDs     []int64
 }
 
-// AutoPricingConfig 自动核价配置
-type AutoPricingConfig struct {
-	Temu  PlatformAutoPricingConfig
-	Shein PlatformAutoPricingConfig
+// PlatformsConfig 平台配置
+type PlatformsConfig struct {
+	Temu  PlatformConfig `yaml:"temu"`  // TEMU平台配置
+	Shein PlatformConfig `yaml:"shein"` // SHEIN平台配置
 }
 
-// PlatformAutoPricingConfig 平台自动核价配置
-type PlatformAutoPricingConfig struct {
-	Enabled   bool
-	Interval  int
-	BatchSize int
+// PlatformConfig 单个平台的完整配置
+type PlatformConfig struct {
+	AutoPricing AutoPricingConfig `yaml:"autoPricing"` // 自动定价配置
+	Sync        SyncConfig        `yaml:"sync"`        // 产品同步配置
+	Monitor     MonitorConfig     `yaml:"monitor"`     // 产品监控配置
+}
+
+// AutoPricingConfig 自动定价配置
+type AutoPricingConfig struct {
+	Enabled   bool `yaml:"enabled"`   // 是否启用自动定价
+	Interval  int  `yaml:"interval"`  // 定价间隔（秒）
+	BatchSize int  `yaml:"batchSize"` // 批量处理大小
 }
 
 // AmazonConfig Amazon爬虫配置
@@ -102,24 +109,20 @@ type UpdaterConfig struct {
 
 // SyncConfig 产品同步配置
 type SyncConfig struct {
-	Enabled  bool    `yaml:"enabled"`   // 是否启用产品同步
-	StoreIDs []int64 `yaml:"store_ids"` // 需要同步的店铺ID列表
+	Enabled   bool    `yaml:"enabled"`   // 是否启用产品同步
+	StoreIDs  []int64 `yaml:"storeIDs"`  // 需要同步的店铺ID列表
+	Interval  int     `yaml:"interval"`  // 同步间隔（分钟）
+	BatchSize int     `yaml:"batchSize"` // 批量处理大小
 }
 
 // MonitorConfig 产品监控配置
 type MonitorConfig struct {
-	Enabled              bool    `yaml:"enabled"`                // 是否启用产品监控
-	StoreIDs             []int64 `yaml:"store_ids"`              // 需要监控的店铺ID列表
-	CheckInterval        int     `yaml:"check_interval"`         // 检查间隔（分钟）
-	BatchSize            int     `yaml:"batch_size"`             // 批量处理大小
-	EnablePriceAlert     bool    `yaml:"enable_price_alert"`     // 启用价格告警
-	EnableStockAlert     bool    `yaml:"enable_stock_alert"`     // 启用库存告警
-	PriceChangeThreshold float64 `yaml:"price_change_threshold"` // 价格变化阈值（百分比）
-	StockChangeThreshold int     `yaml:"stock_change_threshold"` // 库存变化阈值
-}
-
-// PlatformConfig 平台特定配置
-type PlatformConfig struct {
-	Name string // "temu" 或 "shein"
-	Type string // "web" 或 "cli"
+	Enabled              bool    `yaml:"enabled"`              // 是否启用产品监控
+	StoreIDs             []int64 `yaml:"storeIDs"`             // 需要监控的店铺ID列表
+	CheckInterval        int     `yaml:"checkInterval"`        // 检查间隔（分钟）
+	BatchSize            int     `yaml:"batchSize"`            // 批量处理大小
+	EnablePriceAlert     bool    `yaml:"enablePriceAlert"`     // 启用价格告警
+	EnableStockAlert     bool    `yaml:"enableStockAlert"`     // 启用库存告警
+	PriceChangeThreshold float64 `yaml:"priceChangeThreshold"` // 价格变化阈值（百分比）
+	StockChangeThreshold int     `yaml:"stockChangeThreshold"` // 库存变化阈值
 }

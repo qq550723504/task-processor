@@ -34,6 +34,9 @@ func (c *Config) Validate() []error {
 	// 验证 Amazon 配置
 	errors = append(errors, c.validateAmazonConfig()...)
 
+	// 验证平台配置
+	errors = append(errors, c.validatePlatformsConfig()...)
+
 	return errors
 }
 
@@ -175,4 +178,78 @@ func (c *Config) ValidateOrPanic() {
 	}
 
 	panic(fmt.Sprintf("配置验证失败:\n%s", strings.Join(messages, "\n")))
+}
+
+// validatePlatformsConfig 验证平台配置
+func (c *Config) validatePlatformsConfig() []error {
+	var errors []error
+
+	// 验证 TEMU 平台配置
+	errors = append(errors, c.validatePlatformConfig("temu", &c.Platforms.Temu)...)
+
+	// 验证 SHEIN 平台配置
+	errors = append(errors, c.validatePlatformConfig("shein", &c.Platforms.Shein)...)
+
+	return errors
+}
+
+// validatePlatformConfig 验证单个平台配置
+func (c *Config) validatePlatformConfig(platformName string, platform *PlatformConfig) []error {
+	var errors []error
+
+	// 验证自动定价配置
+	if platform.AutoPricing.Enabled {
+		if platform.AutoPricing.Interval <= 0 {
+			errors = append(errors, &ValidationError{
+				Field:   fmt.Sprintf("platforms.%s.autoPricing.interval", platformName),
+				Message: fmt.Sprintf("%s 自动定价间隔必须大于 0", strings.ToUpper(platformName)),
+			})
+		}
+		if platform.AutoPricing.BatchSize <= 0 {
+			errors = append(errors, &ValidationError{
+				Field:   fmt.Sprintf("platforms.%s.autoPricing.batchSize", platformName),
+				Message: fmt.Sprintf("%s 自动定价批量大小必须大于 0", strings.ToUpper(platformName)),
+			})
+		}
+	}
+
+	// 验证同步配置
+	if platform.Sync.Enabled {
+		if platform.Sync.Interval <= 0 {
+			errors = append(errors, &ValidationError{
+				Field:   fmt.Sprintf("platforms.%s.sync.interval", platformName),
+				Message: fmt.Sprintf("%s 同步间隔必须大于 0", strings.ToUpper(platformName)),
+			})
+		}
+		if platform.Sync.BatchSize <= 0 {
+			errors = append(errors, &ValidationError{
+				Field:   fmt.Sprintf("platforms.%s.sync.batchSize", platformName),
+				Message: fmt.Sprintf("%s 同步批量大小必须大于 0", strings.ToUpper(platformName)),
+			})
+		}
+	}
+
+	// 验证监控配置
+	if platform.Monitor.Enabled {
+		if platform.Monitor.CheckInterval <= 0 {
+			errors = append(errors, &ValidationError{
+				Field:   fmt.Sprintf("platforms.%s.monitor.checkInterval", platformName),
+				Message: fmt.Sprintf("%s 监控检查间隔必须大于 0", strings.ToUpper(platformName)),
+			})
+		}
+		if platform.Monitor.BatchSize <= 0 {
+			errors = append(errors, &ValidationError{
+				Field:   fmt.Sprintf("platforms.%s.monitor.batchSize", platformName),
+				Message: fmt.Sprintf("%s 监控批量大小必须大于 0", strings.ToUpper(platformName)),
+			})
+		}
+		if platform.Monitor.PriceChangeThreshold < 0 {
+			errors = append(errors, &ValidationError{
+				Field:   fmt.Sprintf("platforms.%s.monitor.priceChangeThreshold", platformName),
+				Message: fmt.Sprintf("%s 价格变化阈值不能为负数", strings.ToUpper(platformName)),
+			})
+		}
+	}
+
+	return errors
 }

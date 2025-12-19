@@ -30,30 +30,14 @@ func setDefaults() {
 	viper.SetDefault("management.scopes", []string{"user.read"})
 	viper.SetDefault("management.tenantID", "1")
 
-	// 自动核价默认配置
-	setAutoPricingDefaults()
-
 	// Amazon默认配置
 	setAmazonDefaults()
 
 	// 更新器默认配置
 	setUpdaterDefaults()
 
-	// 同步和监控默认配置
-	setSyncMonitorDefaults()
-}
-
-// setAutoPricingDefaults 设置自动核价默认配置
-func setAutoPricingDefaults() {
-	// TEMU 自动核价默认配置
-	viper.SetDefault("autoPricing.temu.enabled", true)
-	viper.SetDefault("autoPricing.temu.interval", 300)
-	viper.SetDefault("autoPricing.temu.batchSize", 100)
-
-	// SHEIN 自动核价默认配置
-	viper.SetDefault("autoPricing.shein.enabled", false)
-	viper.SetDefault("autoPricing.shein.interval", 300)
-	viper.SetDefault("autoPricing.shein.batchSize", 100)
+	// 平台配置默认值
+	setPlatformDefaults()
 }
 
 // setAmazonDefaults 设置Amazon默认配置
@@ -76,19 +60,59 @@ func setUpdaterDefaults() {
 	viper.SetDefault("updater.insecureSkipVerify", false)
 }
 
-// setSyncMonitorDefaults 设置同步和监控默认配置
-func setSyncMonitorDefaults() {
+// setPlatformDefaults 设置平台配置默认值
+func setPlatformDefaults() {
+	// TEMU 平台默认配置
+	setTemuDefaults()
+
+	// SHEIN 平台默认配置
+	setSheinDefaults()
+}
+
+// setTemuDefaults 设置TEMU平台默认配置
+func setTemuDefaults() {
+	// 自动定价默认配置
+	viper.SetDefault("platforms.temu.autoPricing.enabled", false)
+	viper.SetDefault("platforms.temu.autoPricing.interval", 300)
+	viper.SetDefault("platforms.temu.autoPricing.batchSize", 100)
+
 	// 产品同步默认配置
-	viper.SetDefault("sync.enabled", false)
-	viper.SetDefault("sync.storeIDs", []int64{})
+	viper.SetDefault("platforms.temu.sync.enabled", true)
+	viper.SetDefault("platforms.temu.sync.storeIDs", []int64{})
+	viper.SetDefault("platforms.temu.sync.interval", 60)
+	viper.SetDefault("platforms.temu.sync.batchSize", 50)
 
 	// 产品监控默认配置
-	viper.SetDefault("monitor.enabled", false)
-	viper.SetDefault("monitor.storeIDs", []int64{})
-	viper.SetDefault("monitor.checkInterval", 1440) // 默认24小时
-	viper.SetDefault("monitor.batchSize", 50)
-	viper.SetDefault("monitor.enablePriceAlert", true)
-	viper.SetDefault("monitor.enableStockAlert", true)
-	viper.SetDefault("monitor.priceChangeThreshold", 5.0)
-	viper.SetDefault("monitor.stockChangeThreshold", 5)
+	viper.SetDefault("platforms.temu.monitor.enabled", true)
+	viper.SetDefault("platforms.temu.monitor.storeIDs", []int64{})
+	viper.SetDefault("platforms.temu.monitor.checkInterval", 1440)
+	viper.SetDefault("platforms.temu.monitor.batchSize", 100)
+	viper.SetDefault("platforms.temu.monitor.enablePriceAlert", true)
+	viper.SetDefault("platforms.temu.monitor.enableStockAlert", true)
+	viper.SetDefault("platforms.temu.monitor.priceChangeThreshold", 10.0)
+	viper.SetDefault("platforms.temu.monitor.stockChangeThreshold", 5)
+}
+
+// setSheinDefaults 设置SHEIN平台默认配置
+func setSheinDefaults() {
+	// 自动定价默认配置
+	viper.SetDefault("platforms.shein.autoPricing.enabled", false)
+	viper.SetDefault("platforms.shein.autoPricing.interval", 300)
+	viper.SetDefault("platforms.shein.autoPricing.batchSize", 100)
+
+	// 产品同步默认配置
+	viper.SetDefault("platforms.shein.sync.enabled", true)
+	viper.SetDefault("platforms.shein.sync.storeIDs", []int64{})
+	viper.SetDefault("platforms.shein.sync.interval", 60)
+	viper.SetDefault("platforms.shein.sync.batchSize", 50)
+
+	// 产品监控默认配置
+	viper.SetDefault("platforms.shein.monitor.enabled", true)
+	viper.SetDefault("platforms.shein.monitor.storeIDs", []int64{})
+	viper.SetDefault("platforms.shein.monitor.checkInterval", 1440)
+	viper.SetDefault("platforms.shein.monitor.batchSize", 100)
+	viper.SetDefault("platforms.shein.monitor.enablePriceAlert", true)
+	viper.SetDefault("platforms.shein.monitor.enableStockAlert", true)
+	viper.SetDefault("platforms.shein.monitor.priceChangeThreshold", 10.0)
+	viper.SetDefault("platforms.shein.monitor.stockChangeThreshold", 5)
 }

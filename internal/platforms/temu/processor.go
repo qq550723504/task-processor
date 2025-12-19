@@ -204,8 +204,8 @@ func (p *TemuProcessor) Start(ctx context.Context) error {
 
 	// 启动自动核价处理器（如果启用）
 	config := p.GetConfig()
-	if config.AutoPricing.Temu.Enabled {
-		autoPricingInterval := time.Duration(config.AutoPricing.Temu.Interval) * time.Second
+	if config.Platforms.Temu.AutoPricing.Enabled {
+		autoPricingInterval := time.Duration(config.Platforms.Temu.AutoPricing.Interval) * time.Second
 		if autoPricingInterval <= 0 {
 			autoPricingInterval = 30 * time.Minute
 		}
