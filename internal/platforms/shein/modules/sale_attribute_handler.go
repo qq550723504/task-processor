@@ -3,6 +3,7 @@ package modules
 import (
 	"fmt"
 	openaiClient "task-processor/internal/clients/openai"
+	"task-processor/internal/common/shein/api/attribute"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/sirupsen/logrus"
@@ -10,13 +11,15 @@ import (
 
 // SaleAttributeHandler 销售属性处理器
 type SaleAttributeHandler struct {
-	openaiClient *openaiClient.Client
+	openaiClient       *openaiClient.Client
+	preparationHandler *SaleAttributePreparationHandler
 }
 
 // NewSaleAttributeHandler 创建新的销售属性处理器
 func NewSaleAttributeHandler(config *openaiClient.ClientConfig) *SaleAttributeHandler {
 	return &SaleAttributeHandler{
-		openaiClient: openaiClient.NewClient(config),
+		openaiClient:       openaiClient.NewClient(config),
+		preparationHandler: NewSaleAttributePreparationHandler(),
 	}
 }
 
@@ -84,6 +87,10 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *TaskContext) error {
 	// 8. 调用GPT API
 	logrus.Info("📡 调用GPT API生成销售属性...")
 	saleAttributeData := h.callGPTAPI(ctx, request)
+
+	if saleAttributeData.SaleAttributes == nil {
+		return fmt.Errorf("GPT API生成销售属性失败")
+	}
 
 	// 9. 验证AI返回的数据
 	if len(saleAttributeData.Variants) == 0 {
@@ -165,6 +172,44 @@ func (h *SaleAttributeHandler) createChatCompletionRequest(systemPrompt, userPro
 		},
 		Temperature: &temperature,
 		Seed:        &seed,
-		MaxTokens:   nil, // 不限制token数量，让AI根据需要生成完整响应
 	}
+}
+
+// 以下方法委托给preparationHandler，保持原有业务逻辑
+
+// prepareProductsData 准备产品数据
+func (h *SaleAttributeHandler) prepareProductsData(ctx *TaskContext) []map[string]string {
+	return h.preparationHandler.prepareProductsData(ctx)
+}
+
+// buildAttributeMetadata 构建属性元数据
+func (h *SaleAttributeHandler) buildAttributeMetadata(ctx *TaskContext, importanceCalc *AttributeImportanceCalculator) []AttributeMetadata {
+	return h.preparationHandler.buildAttributeMetadata(ctx, importanceCalc)
+}
+
+// buildAttributeNameMappings 构建属性名称映射
+func (h *SaleAttributeHandler) buildAttributeNameMappings(
+	attributeData BuildAttributeInfo,
+	attributeTemplates *attribute.AttributeTemplateInfo,
+) map[int]string {
+	return h.preparationHandler.buildAttributeNameMappings(attributeData, attributeTemplates)
+}
+
+// buildGenerationRequest 构建生成请求
+func (h *SaleAttributeHandler) buildGenerationRequest(
+	ctx *TaskContext,
+	productsData []map[string]string,
+	attributeMetadata []AttributeMetadata,
+	attributeNameMappings map[int]string) *GenerationRequest {
+	return h.preparationHandler.buildGenerationRequest(ctx, productsData, attributeMetadata, attributeNameMappings)
+}
+
+// filterVariantsByRules 在生成销售属性之前过滤变体
+func (h *SaleAttributeHandler) filterVariantsByRules(ctx *TaskContext) {
+	h.preparationHandler.filterVariantsByRules(ctx)
+}
+
+// buildUserPrompt 构建用户提示词
+func (h *SaleAttributeHandler) buildUserPrompt(ctx *TaskContext, request *GenerationRequest) string {
+	return h.preparationHandler.buildUserPrompt(ctx, request)
 }

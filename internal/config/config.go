@@ -63,3 +63,27 @@ func LoadConfig() *Config {
 
 	return buildConfig()
 }
+
+// LoadConfigFromFile 从指定文件加载配置
+func LoadConfigFromFile(configFile string) *Config {
+	logrus.Infof("加载指定配置文件: %s", configFile)
+
+	viper.SetConfigFile(configFile)
+	viper.SetConfigType("yaml")
+
+	viper.SetEnvPrefix("TASK_PROCESSOR")
+	viper.AutomaticEnv()
+
+	// 设置默认值
+	setDefaults()
+
+	// 读取配置文件
+	if err := viper.ReadInConfig(); err != nil {
+		logrus.Warnf("无法读取配置文件 %s: %v", configFile, err)
+		logrus.Info("使用默认配置和环境变量")
+	} else {
+		logrus.Infof("成功加载配置文件: %s", viper.ConfigFileUsed())
+	}
+
+	return buildConfig()
+}

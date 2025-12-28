@@ -3,10 +3,9 @@ package handlers
 import (
 	"fmt"
 
-	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
 	openaiClient "task-processor/internal/clients/openai"
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/common/management/api"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,20 +35,15 @@ func (h *BuildSpuHandler) Name() string {
 }
 
 // Handle 处理SPU构建（优化版：AI内容重写与SKU构建并行）
-func (h *BuildSpuHandler) Handle(ctx *pipeline.TaskContext) error {
+func (h *BuildSpuHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始构建TEMU产品SPU")
 
-	// 初始化TEMU产品结构
-	if ctx.TemuProduct == nil {
-		ctx.TemuProduct = &types.Product{}
-	}
-
 	// 构建基本信息和扩展信息（AI重写需要这些数据）
-	if err := h.builder.BuildBasicInfo(ctx); err != nil {
+	if err := h.builder.BuildBasicInfo(temuCtx, temuCtx.TemuProduct); err != nil {
 		return fmt.Errorf("构建基本信息失败: %w", err)
 	}
 
-	if err := h.builder.BuildExtensionInfo(ctx); err != nil {
+	if err := h.builder.BuildExtensionInfo(temuCtx, temuCtx.TemuProduct); err != nil {
 		return fmt.Errorf("构建扩展信息失败: %w", err)
 	}
 
@@ -62,22 +56,22 @@ func (h *BuildSpuHandler) Handle(ctx *pipeline.TaskContext) error {
 	// 并行执行AI内容重写
 	go func() {
 		defer close(done)
-		aiErr = h.triggerAIContentRewrite(ctx)
+		aiErr = h.triggerAIContentRewrite(temuCtx)
 	}()
 
 	// 主线程继续构建SKU、服务承诺和销售信息
-	if err := h.builder.BuildSkcAndSku(ctx); err != nil {
+	if err := h.builder.BuildSkcAndSku(temuCtx, temuCtx.TemuProduct); err != nil {
 		skuErr = fmt.Errorf("构建SKC和SKU失败: %w", err)
 	}
 
 	if skuErr == nil {
-		if err := h.builder.BuildServicePromise(ctx); err != nil {
+		if err := h.builder.BuildServicePromise(temuCtx, temuCtx.TemuProduct); err != nil {
 			serviceErr = fmt.Errorf("构建服务承诺失败: %w", err)
 		}
 	}
 
 	if serviceErr == nil {
-		if err := h.builder.BuildSaleInfo(ctx); err != nil {
+		if err := h.builder.BuildSaleInfo(temuCtx, temuCtx.TemuProduct); err != nil {
 			saleErr = fmt.Errorf("构建销售信息失败: %w", err)
 		}
 	}
@@ -102,19 +96,19 @@ func (h *BuildSpuHandler) Handle(ctx *pipeline.TaskContext) error {
 	}
 
 	// 验证产品数据
-	if err := h.validator.ValidateProductData(ctx); err != nil {
+	if err := h.validator.ValidateProductData(temuCtx, temuCtx.TemuProduct); err != nil {
 		return fmt.Errorf("产品数据验证失败: %w", err)
 	}
 
 	// 记录产品摘要
-	h.validator.LogProductSummary(ctx)
+	h.validator.LogProductSummary(temuCtx, temuCtx.TemuProduct)
 
 	h.logger.Info("TEMU产品SPU构建完成")
 	return nil
 }
 
 // triggerAIContentRewrite 触发AI内容重写
-func (h *BuildSpuHandler) triggerAIContentRewrite(ctx *pipeline.TaskContext) error {
+func (h *BuildSpuHandler) triggerAIContentRewrite(temuCtx *temucontext.TemuTaskContext) error {
 	// 检查是否配置了OpenAI
 	if h.openaiConfig == nil {
 		h.logger.Info("OpenAI未配置，跳过AI内容重写")
@@ -127,7 +121,7 @@ func (h *BuildSpuHandler) triggerAIContentRewrite(ctx *pipeline.TaskContext) err
 	rewriter := NewAIContentRewriterHandler(h.openaiConfig)
 
 	// 执行重写
-	if err := rewriter.Handle(ctx); err != nil {
+	if err := rewriter.HandleTemu(temuCtx); err != nil {
 		return fmt.Errorf("AI内容重写失败: %w", err)
 	}
 

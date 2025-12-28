@@ -1,4 +1,4 @@
-﻿package impl
+package impl
 
 // API 路径常量
 const (

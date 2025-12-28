@@ -3,8 +3,8 @@ package config
 
 // ProcessorConfig 处理器配置
 type ProcessorConfig struct {
-	MaxRetries int
-	Timeout    int // 单位：秒
+	MaxRetries int `yaml:"maxRetries"` // 最大重试次数
+	Timeout    int `yaml:"timeout"`    // 超时时间（秒）
 }
 
 // WorkerConfig 工作池配置
@@ -44,6 +44,7 @@ type PlatformsConfig struct {
 
 // PlatformConfig 单个平台的完整配置
 type PlatformConfig struct {
+	Enabled     bool              `yaml:"enabled"`     // 是否启用该平台处理器
 	AutoPricing AutoPricingConfig `yaml:"autoPricing"` // 自动定价配置
 	Sync        SyncConfig        `yaml:"sync"`        // 产品同步配置
 	Monitor     MonitorConfig     `yaml:"monitor"`     // 产品监控配置
@@ -61,7 +62,7 @@ type AmazonConfig struct {
 	Enabled           bool              `yaml:"enabled"`
 	Headless          bool              `yaml:"headless"`
 	BrowserPath       string            `yaml:"browserPath"`
-	PoolSize          int               `yaml:"poolSize"`
+	PoolSize          int               `yaml:"poolSize"` // 浏览器池大小，同时也是并发处理数
 	Zipcodes          map[string]string `yaml:"zipcodes"`
 	ViewportWidth     int               `yaml:"viewportWidth"`
 	ViewportHeight    int               `yaml:"viewportHeight"`

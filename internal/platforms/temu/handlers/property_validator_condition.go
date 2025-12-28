@@ -3,7 +3,7 @@ package handlers
 import "task-processor/internal/platforms/temu/types"
 
 // filterByPropertyRelations 根据属性关联关系过滤属性（基于ShowCondition）
-func (v *PropertyValidator) filterByPropertyRelations(properties []types.PropertyItem, data PropertyMappingData) []types.PropertyItem {
+func (v *PropertyValidator) filterByPropertyRelations(properties []types.PropertyItem, data types.PropertyMappingData) []types.PropertyItem {
 	v.logger.Info("开始应用属性关联过滤规则（基于ShowCondition）")
 
 	// 创建RefPID到已选择VID的映射
@@ -22,7 +22,7 @@ func (v *PropertyValidator) filterByPropertyRelations(properties []types.Propert
 	}
 
 	// 创建PID到模板属性的映射
-	pidToTemplate := make(map[int]TemuPropertyOption)
+	pidToTemplate := make(map[int]types.TemplateRespGoodsProperty)
 	for _, templateProp := range data.TemuProperties {
 		pidToTemplate[templateProp.PID] = templateProp
 	}
@@ -54,7 +54,7 @@ func (v *PropertyValidator) filterByPropertyRelations(properties []types.Propert
 }
 
 // checkShowCondition 检查属性的显示条件是否满足
-func (v *PropertyValidator) checkShowCondition(templateProp TemuPropertyOption, refPidToSelectedVids map[int]map[int]bool) bool {
+func (v *PropertyValidator) checkShowCondition(templateProp types.TemplateRespGoodsProperty, refPidToSelectedVids map[int]map[int]bool) bool {
 	// 如果没有ShowCondition，说明无条件显示
 	if len(templateProp.ShowCondition) == 0 {
 		return true

@@ -13,10 +13,6 @@ import (
 // PricingAction 核价操作类型
 type PricingAction string
 
-const (
-	ActionSmart PricingAction = "smart" // 智能核价（根据利润率规则）
-)
-
 // PricingScheduler 自动核价调度器
 type PricingScheduler struct {
 	apiClient        *APIClient
@@ -30,15 +26,15 @@ type PricingScheduler struct {
 }
 
 // NewPricingScheduler 创建自动核价调度器
-func NewPricingScheduler(apiClient *APIClient, managementClient *management.ClientManager, interval time.Duration, action PricingAction) *PricingScheduler {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewPricingScheduler(ctx context.Context, apiClient *APIClient, managementClient *management.ClientManager, interval time.Duration, action PricingAction) *PricingScheduler {
+	schedulerCtx, cancel := context.WithCancel(ctx)
 
 	return &PricingScheduler{
 		apiClient:        apiClient,
 		managementClient: managementClient,
 		interval:         interval,
 		action:           action,
-		ctx:              ctx,
+		ctx:              schedulerCtx,
 		cancel:           cancel,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TEMUPricingScheduler",

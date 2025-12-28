@@ -1,3 +1,4 @@
+// Package handlers 提供TEMU平台的各种处理器，包括AI内容重构等功能
 package handlers
 
 import (
@@ -5,11 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
-	"task-processor/internal/common/pipeline"
 	openaiClient "task-processor/internal/clients/openai"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/sirupsen/logrus"
 )
 
@@ -51,8 +53,8 @@ func (r *AIContentRewriter) Name() string {
 	return "AI内容重构处理器"
 }
 
-// Handle 处理任务
-func (r *AIContentRewriter) Handle(ctx *pipeline.TaskContext) error {
+// HandleTemu 处理TEMU任务（实现TemuHandler接口）
+func (r *AIContentRewriter) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	r.logger.Info("🤖 开始使用AI重构产品标题和描述")
 
 	// 检查AI客户端是否可用
@@ -61,34 +63,38 @@ func (r *AIContentRewriter) Handle(ctx *pipeline.TaskContext) error {
 		return nil
 	}
 
-	if ctx.TemuProduct == nil {
-		return fmt.Errorf("TEMU产品信息为空")
-	}
-
-	// 记录当前的标题和描述
-	r.logger.Infof("📋 当前标题: %s", ctx.TemuProduct.GoodsBasic.GoodsName)
-	r.logger.Infof("📋 当前描述长度: %d", len(ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc))
-	r.logger.Infof("📋 当前要点数量: %d", len(ctx.TemuProduct.GoodsExtensionInfo.BulletPoints))
-
 	// 构建提示词
 	systemPrompt := r.buildSystemPrompt()
-	userPrompt := r.buildUserPrompt(ctx)
+	userPrompt := r.buildUserPrompt(temuCtx)
 
 	r.logger.Infof("📝 系统提示词长度: %d", len(systemPrompt))
 	r.logger.Infof("📝 用户提示词长度: %d", len(userPrompt))
 
-	// 调用AI进行重构
-	result, err := r.callAIForRewrite(systemPrompt, userPrompt)
+	// 调用AI进行重构 - 使用传入的context，添加超时控制
+	aiCtx, cancel := context.WithTimeout(temuCtx.GetContext(), 60*time.Second)
+	defer cancel()
+
+	result, err := r.callAIForRewrite(aiCtx, systemPrompt, userPrompt)
 	if err != nil {
 		r.logger.WithError(err).Warn("❌ AI重构失败，保持原内容")
 		return nil // 不返回错误，继续使用原内容
 	}
 
 	// 应用重构结果
-	r.applyRewriteResult(ctx, result)
+	r.applyRewriteResult(temuCtx, result)
 
 	r.logger.Info("✅ AI内容重构完成")
 	return nil
+}
+
+// Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
+func (r *AIContentRewriter) Handle(ctx pipeline.TaskContext) error {
+	// 尝试类型断言为TemuTaskContext
+	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
+		return r.HandleTemu(temuCtx)
+	}
+	// 如果不是TemuTaskContext，返回错误
+	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
 }
 
 // buildSystemPrompt 构建系统提示词
@@ -167,11 +173,16 @@ Return JSON format (IN ENGLISH ONLY):
 }
 
 // buildUserPrompt 构建用户提示词
-func (r *AIContentRewriter) buildUserPrompt(ctx *pipeline.TaskContext) string {
-	product := ctx.AmazonProduct
-	if product == nil {
+func (r *AIContentRewriter) buildUserPrompt(temuCtx *temucontext.TemuTaskContext) string {
+	// 直接从强类型上下文获取Amazon产品信息
+	amazonProduct := temuCtx.GetAmazonProduct()
+	if amazonProduct == nil {
+		r.logger.Warn("Amazon产品数据为空")
 		return ""
 	}
+
+	title := amazonProduct.Title
+	brand := amazonProduct.Brand
 
 	prompt := fmt.Sprintf(`【原始产品信息】
 
@@ -180,34 +191,33 @@ func (r *AIContentRewriter) buildUserPrompt(ctx *pipeline.TaskContext) string {
 描述: %s
 
 特性:
-`, product.Title, product.Brand, product.Description)
+`, title, brand, "基于Amazon产品信息生成")
 
-	for i, feature := range product.Features {
-		prompt += fmt.Sprintf("%d. %s\n", i+1, feature)
+	// 使用标题作为特性
+	prompt += fmt.Sprintf("1. %s\n", title)
+
+	if amazonProduct.ProductDimensions != "" {
+		prompt += fmt.Sprintf("\n尺寸: %s", amazonProduct.ProductDimensions)
+	}
+	if amazonProduct.ItemWeight != "" {
+		prompt += fmt.Sprintf("\n重量: %s", amazonProduct.ItemWeight)
+	}
+	if amazonProduct.ModelNumber != "" {
+		prompt += fmt.Sprintf("\n型号: %s", amazonProduct.ModelNumber)
+	}
+	if amazonProduct.Department != "" {
+		prompt += fmt.Sprintf("\n部门: %s", amazonProduct.Department)
 	}
 
-	if product.ProductDimensions != "" {
-		prompt += fmt.Sprintf("\n尺寸: %s", product.ProductDimensions)
-	}
-	if product.ItemWeight != "" {
-		prompt += fmt.Sprintf("\n重量: %s", product.ItemWeight)
-	}
-	if product.ModelNumber != "" {
-		prompt += fmt.Sprintf("\n型号: %s", product.ModelNumber)
-	}
-	if product.Department != "" {
-		prompt += fmt.Sprintf("\n部门: %s", product.Department)
-	}
-
-	if len(product.ProductDetails) > 0 {
+	if len(amazonProduct.ProductDetails) > 0 {
 		prompt += "\n\n产品详情:\n"
-		for _, detail := range product.ProductDetails {
+		for _, detail := range amazonProduct.ProductDetails {
 			prompt += fmt.Sprintf("- %s: %s\n", detail.Type, detail.Value)
 		}
 	}
 
-	if len(product.Categories) > 0 {
-		prompt += fmt.Sprintf("\n类别: %v", product.Categories)
+	if len(amazonProduct.Categories) > 0 {
+		prompt += fmt.Sprintf("\n类别: %v", amazonProduct.Categories)
 	}
 
 	prompt += `
@@ -233,7 +243,7 @@ REMEMBER: Your entire response must be in English!`
 }
 
 // callAIForRewrite 调用AI进行重构
-func (r *AIContentRewriter) callAIForRewrite(systemPrompt, userPrompt string) (*RewriteResult, error) {
+func (r *AIContentRewriter) callAIForRewrite(ctx context.Context, systemPrompt, userPrompt string) (*RewriteResult, error) {
 	r.logger.Info("调用AI进行内容重构")
 
 	// 创建请求
@@ -244,11 +254,11 @@ func (r *AIContentRewriter) callAIForRewrite(systemPrompt, userPrompt string) (*
 		Model: r.openaiClient.GetDefaultModel(),
 		Messages: []openaiClient.ChatCompletionMessage{
 			{
-				Role:    openai.ChatMessageRoleSystem,
+				Role:    "system",
 				Content: systemPrompt,
 			},
 			{
-				Role:    openai.ChatMessageRoleUser,
+				Role:    "user",
 				Content: userPrompt,
 			},
 		},
@@ -257,7 +267,6 @@ func (r *AIContentRewriter) callAIForRewrite(systemPrompt, userPrompt string) (*
 	}
 
 	// 调用API
-	ctx := context.Background()
 	response, err := r.openaiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("调用AI服务失败: %w", err)
@@ -296,7 +305,7 @@ func (r *AIContentRewriter) cleanJSONContent(content string) string {
 }
 
 // applyRewriteResult 应用重构结果
-func (r *AIContentRewriter) applyRewriteResult(ctx *pipeline.TaskContext, result *RewriteResult) {
+func (r *AIContentRewriter) applyRewriteResult(temuCtx *temucontext.TemuTaskContext, result *RewriteResult) {
 	if result == nil {
 		r.logger.Warn("⚠️ AI重构结果为nil，无法应用")
 		return
@@ -307,32 +316,28 @@ func (r *AIContentRewriter) applyRewriteResult(ctx *pipeline.TaskContext, result
 
 	// 更新标题
 	if result.Title != "" {
-		originalTitle := ctx.TemuProduct.GoodsBasic.GoodsName
-		ctx.TemuProduct.GoodsBasic.GoodsName = result.Title
-		r.logger.Infof("✅ 标题已更新:\n  原始: %s\n  重构: %s", originalTitle, result.Title)
+		temuCtx.TemuProduct.GoodsBasic.GoodsName = result.Title
 	} else {
-		r.logger.Warnf("⚠️ AI返回的标题为空，保持原标题: %s", ctx.TemuProduct.GoodsBasic.GoodsName)
+		r.logger.Warnf("⚠️ AI返回的标题为空，保持原标题: %s", temuCtx.TemuProduct.GoodsBasic.GoodsName)
 	}
 
 	// 更新描述
 	if result.Description != "" {
-		originalDesc := ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc
-		ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc = result.Description
-		r.logger.Infof("✅ 描述已更新 (原始长度: %d, 重构长度: %d)",
-			len(originalDesc), len(result.Description))
+		temuCtx.TemuProduct.GoodsExtensionInfo.GoodsDesc = result.Description
 	} else {
 		r.logger.Warnf("⚠️ AI返回的描述为空，保持原描述长度: %d",
-			len(ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc))
+			len(temuCtx.TemuProduct.GoodsExtensionInfo.GoodsDesc))
 	}
 
 	// 更新要点
 	if len(result.BulletPoints) > 0 {
-		originalCount := len(ctx.TemuProduct.GoodsExtensionInfo.BulletPoints)
-		ctx.TemuProduct.GoodsExtensionInfo.BulletPoints = result.BulletPoints
+		originalCount := len(temuCtx.TemuProduct.GoodsExtensionInfo.BulletPoints)
+		temuCtx.TemuProduct.GoodsExtensionInfo.BulletPoints = result.BulletPoints
 		r.logger.Infof("✅ 要点已更新 (原始数量: %d, 重构数量: %d)",
 			originalCount, len(result.BulletPoints))
 	} else {
 		r.logger.Warnf("⚠️ AI返回的要点为空，保持原要点数量: %d",
-			len(ctx.TemuProduct.GoodsExtensionInfo.BulletPoints))
+			len(temuCtx.TemuProduct.GoodsExtensionInfo.BulletPoints))
 	}
+
 }

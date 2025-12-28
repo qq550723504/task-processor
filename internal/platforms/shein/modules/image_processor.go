@@ -1,4 +1,5 @@
-﻿package modules
+﻿// Package modules 提供SHEIN平台的各种处理模块，包括图片处理、上传等功能
+package modules
 
 import (
 	"bytes"
@@ -21,6 +22,11 @@ type ImageProcessor struct {
 }
 
 // NewImageProcessor 创建新的图片处理器
+// 参数:
+//   - imageDownloader: 图片下载器接口，用于下载图片数据
+//
+// 返回值:
+//   - *ImageProcessor: 图片处理器实例
 func NewImageProcessor(imageDownloader interface {
 	DownloadImage(url string) ([]byte, error)
 }) *ImageProcessor {
@@ -30,6 +36,14 @@ func NewImageProcessor(imageDownloader interface {
 }
 
 // BuildImageInfo 构建图片信息
+// 处理图片列表，包括下载、上传、排序等操作，生成SHEIN平台所需的图片信息结构
+// 参数:
+//   - ctx: 任务上下文，包含店铺客户端等信息
+//   - images: 图片URL列表，第一张为主图
+//
+// 返回值:
+//   - product.ImageInfo: 构建完成的图片信息结构
+//   - error: 处理过程中的错误，如果为nil表示处理成功
 func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (product.ImageInfo, error) {
 	imageInfo := product.ImageInfo{
 		ImageInfoList:         []product.ImageDetail{},
@@ -51,19 +65,10 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 	totalImageSort := validImageCount + 1
 
 	// 上传结果
-	type imageUploadResult struct {
-		index     int
-		url       string
-		err       error
-		isMain    bool
-		isColor   bool
-		colorData []byte
-	}
-
 	// 设置并发数（默认 5）
 	maxConcurrent := 5
 	semaphore := make(chan struct{}, maxConcurrent)
-	resultChan := make(chan imageUploadResult, len(images)+1)
+	resultChan := make(chan ImageUploadResult, len(images)+1)
 	var wg sync.WaitGroup
 
 	// 并行上传图片
@@ -83,11 +88,11 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 			// 下载、处理并上传图片
 			uploadedURL, err := ctx.ShopClient.DownloadAndUploadImage(url)
 
-			resultChan <- imageUploadResult{
-				index:  index,
-				url:    uploadedURL,
-				err:    err,
-				isMain: index == 0,
+			resultChan <- ImageUploadResult{
+				Index:  index,
+				URL:    uploadedURL,
+				Err:    err,
+				IsMain: index == 0,
 			}
 		}(i, imageURL)
 	}
@@ -103,33 +108,39 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 			logrus.Info("并行提取色块图")
 			colorBlockData, err := p.extractColorBlockImage(images[0])
 
-			resultChan <- imageUploadResult{
-				index:     -1,
-				colorData: colorBlockData,
-				err:       err,
-				isColor:   true,
+			resultChan <- ImageUploadResult{
+				Index:     -1,
+				ColorData: colorBlockData,
+				Err:       err,
+				IsColor:   true,
 			}
 		}()
 	}
 
 	// 等待结果
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logrus.Errorf("等待结果goroutine panic recovered: %v", r)
+			}
+		}()
+
 		wg.Wait()
 		close(resultChan)
 	}()
 
-	uploadResults := make(map[int]imageUploadResult)
-	var colorBlockResult *imageUploadResult
+	uploadResults := make(map[int]ImageUploadResult)
+	var colorBlockResult *ImageUploadResult
 	var mainImageURL string
 
 	for result := range resultChan {
-		if result.isColor {
+		if result.IsColor {
 			tmp := result // ⚠️ 必须复制，避免 &result 指针复用问题
 			colorBlockResult = &tmp
 		} else {
-			uploadResults[result.index] = result
-			if result.isMain && result.err == nil {
-				mainImageURL = result.url
+			uploadResults[result.Index] = result
+			if result.IsMain && result.Err == nil {
+				mainImageURL = result.URL
 			}
 		}
 	}
@@ -137,14 +148,14 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 	// 检查上传失败
 	var uploadErrors []string
 	for i, r := range uploadResults {
-		if r.err != nil {
-			uploadErrors = append(uploadErrors, fmt.Sprintf("图片[%d]上传失败: %v", i, r.err))
+		if r.Err != nil {
+			uploadErrors = append(uploadErrors, fmt.Sprintf("图片[%d]上传失败: %v", i, r.Err))
 		}
 	}
 	if len(uploadErrors) > 0 {
 		logrus.Warnf("部分图片上传失败: %s", strings.Join(uploadErrors, "; "))
-		if uploadResults[0].err != nil {
-			return product.ImageInfo{}, fmt.Errorf("主图上传失败: %v", uploadResults[0].err)
+		if uploadResults[0].Err != nil {
+			return product.ImageInfo{}, fmt.Errorf("主图上传失败: %w", uploadResults[0].Err)
 		}
 	}
 
@@ -154,14 +165,14 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 
 	for i := 0; i < len(images); i++ {
 		r, ok := uploadResults[i]
-		if !ok || r.err != nil || r.url == "" {
+		if !ok || r.Err != nil || r.URL == "" {
 			continue
 		}
 
 		if i == 0 && !mainImageProcessed {
 			// 主图（类型1）- 确保排序始终为1
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, product.ImageDetail{
-				ImageURL:             r.url,
+				ImageURL:             r.URL,
 				ImageType:            1,
 				ImageSort:            1, // 主图排序必须为1
 				AISStatus:            0,
@@ -172,16 +183,16 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 			})
 			// 主图复制为类型5，放在最后
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, product.ImageDetail{
-				ImageURL:  r.url,
+				ImageURL:  r.URL,
 				ImageType: 5,
 				ImageSort: totalImageSort,
 			})
 			mainImageProcessed = true
-			logrus.Infof("✅ 主图处理完成，ImageSort=1, ImageType=1, URL: %s", r.url)
+			logrus.Infof("✅ 主图处理完成，ImageSort=1, ImageType=1, URL: %s", r.URL)
 		} else if !mainImageProcessed {
 			// 如果第一张图片失败，将第一张成功的图片作为主图
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, product.ImageDetail{
-				ImageURL:             r.url,
+				ImageURL:             r.URL,
 				ImageType:            1,
 				ImageSort:            1, // 主图排序必须为1
 				AISStatus:            0,
@@ -192,16 +203,16 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 			})
 			// 主图复制为类型5，放在最后
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, product.ImageDetail{
-				ImageURL:  r.url,
+				ImageURL:  r.URL,
 				ImageType: 5,
 				ImageSort: totalImageSort,
 			})
 			mainImageProcessed = true
-			logrus.Warnf("⚠️ 原主图失败，使用第%d张图片作为主图，ImageSort=1, ImageType=1, URL: %s", i+1, r.url)
+			logrus.Warnf("⚠️ 原主图失败，使用第%d张图片作为主图，ImageSort=1, ImageType=1, URL: %s", i+1, r.URL)
 		} else {
 			// 其他图片（类型2）
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, product.ImageDetail{
-				ImageURL:             r.url,
+				ImageURL:             r.URL,
 				ImageType:            2,
 				ImageSort:            currentImageSort,
 				AISStatus:            0,
@@ -210,7 +221,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 				SizeImgFlag:          false,
 				TransformCVSizeImage: false,
 			})
-			logrus.Debugf("✅ 副图处理完成，ImageSort=%d, ImageType=2, URL: %s", currentImageSort, r.url)
+			logrus.Debugf("✅ 副图处理完成，ImageSort=%d, ImageType=2, URL: %s", currentImageSort, r.URL)
 			currentImageSort++
 		}
 	}
@@ -222,9 +233,9 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 	}
 
 	// 处理色块图
-	if colorBlockResult != nil && colorBlockResult.err == nil && len(colorBlockResult.colorData) > 0 {
+	if colorBlockResult != nil && colorBlockResult.Err == nil && len(colorBlockResult.ColorData) > 0 {
 
-		colorBlockURL, err := ctx.ShopClient.UploadOriginalImage(colorBlockResult.colorData)
+		colorBlockURL, err := ctx.ShopClient.UploadOriginalImage(colorBlockResult.ColorData)
 		if err != nil {
 			logrus.Warnf("上传色块图失败: %v，回退为主图", err)
 			colorBlockURL = mainImageURL
@@ -236,8 +247,8 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 				ImageSort: totalImageSort + 1,
 			})
 		}
-	} else if colorBlockResult != nil && colorBlockResult.err != nil {
-		logrus.Warnf("提取色块图失败: %v，回退为主图", colorBlockResult.err)
+	} else if colorBlockResult != nil && colorBlockResult.Err != nil {
+		logrus.Warnf("提取色块图失败: %v，回退为主图", colorBlockResult.Err)
 		if mainImageURL != "" {
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, product.ImageDetail{
 				ImageURL:  mainImageURL,
@@ -250,7 +261,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *TaskContext, images []string) (prod
 	// 最终验证图片排序
 	if err := p.validateImageSorting(&imageInfo); err != nil {
 		logrus.Errorf("❌ 图片排序验证失败: %v", err)
-		return product.ImageInfo{}, fmt.Errorf("图片排序验证失败: %v", err)
+		return product.ImageInfo{}, fmt.Errorf("图片排序验证失败: %w", err)
 	}
 
 	logrus.Infof("🎉 图片信息构建完成，共%d张图片", len(imageInfo.ImageInfoList))
@@ -314,13 +325,13 @@ func (p *ImageProcessor) extractColorBlockImage(imageURL string) ([]byte, error)
 	// 下载图片数据
 	imageData, err := p.imageDownloader.DownloadImage(imageURL)
 	if err != nil {
-		return nil, fmt.Errorf("下载图片失败: %v", err)
+		return nil, fmt.Errorf("下载图片失败: %w", err)
 	}
 
 	// 2. 解码图片
 	img, _, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
-		return nil, fmt.Errorf("解码图片失败: %v", err)
+		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
 
 	// 3. 提取主要颜色
@@ -340,7 +351,7 @@ func (p *ImageProcessor) extractColorBlockImage(imageURL string) ([]byte, error)
 	var buf bytes.Buffer
 	err = jpeg.Encode(&buf, colorBlockImg, &jpeg.Options{Quality: 95})
 	if err != nil {
-		return nil, fmt.Errorf("编码图片失败: %v", err)
+		return nil, fmt.Errorf("编码图片失败: %w", err)
 	}
 
 	return buf.Bytes(), nil

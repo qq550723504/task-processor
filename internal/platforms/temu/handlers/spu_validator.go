@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -24,22 +24,20 @@ func NewSpuValidator(logger *logrus.Entry) *SpuValidator {
 }
 
 // ValidateProductData 验证产品数据
-func (sv *SpuValidator) ValidateProductData(ctx *pipeline.TaskContext) error {
+func (sv *SpuValidator) ValidateProductData(ctx pipeline.TaskContext, temuProduct *types.Product) error {
 	sv.logger.Info("验证产品数据")
 
-	product := ctx.TemuProduct
-
 	// 验证基本信息
-	if product.GoodsBasic.GoodsName == "" {
+	if temuProduct.GoodsBasic.GoodsName == "" {
 		return fmt.Errorf("商品名称不能为空")
 	}
 
-	if len(product.SkcList) == 0 {
+	if len(temuProduct.SkcList) == 0 {
 		return fmt.Errorf("SKC列表不能为空")
 	}
 
 	// 验证每个SKC
-	for i, skc := range product.SkcList {
+	for i, skc := range temuProduct.SkcList {
 
 		if len(skc.SkuList) == 0 {
 			return fmt.Errorf("SKC[%d]的SKU列表不能为空", i)
@@ -85,23 +83,21 @@ func (sv *SpuValidator) ValidateProductData(ctx *pipeline.TaskContext) error {
 }
 
 // LogProductSummary 记录产品摘要
-func (sv *SpuValidator) LogProductSummary(ctx *pipeline.TaskContext) {
-	product := ctx.TemuProduct
-
+func (sv *SpuValidator) LogProductSummary(ctx pipeline.TaskContext, temuProduct *types.Product) {
 	sv.logger.Info("=== 产品构建摘要 ===")
-	sv.logger.Infof("商品名称: %s", product.GoodsBasic.GoodsName)
-	sv.logger.Infof("外部商品编号: %s", product.GoodsBasic.OutGoodsSN)
-	sv.logger.Infof("语言: %s", product.GoodsBasic.Lang)
-	sv.logger.Infof("允许站点: %v", product.GoodsBasic.AllowSite)
-	sv.logger.Infof("SKC数量: %d", len(product.SkcList))
+	sv.logger.Infof("商品名称: %s", temuProduct.GoodsBasic.GoodsName)
+	sv.logger.Infof("外部商品编号: %s", temuProduct.GoodsBasic.OutGoodsSN)
+	sv.logger.Infof("语言: %s", temuProduct.GoodsBasic.Lang)
+	sv.logger.Infof("允许站点: %v", temuProduct.GoodsBasic.AllowSite)
+	sv.logger.Infof("SKC数量: %d", len(temuProduct.SkcList))
 
 	// 注意：这里应该从context或processor传入profitRuleClient，暂时使用nil
 	var profitRuleClient api.ProfitRuleAPI = nil
 	skuBuilder := NewSkuBuilder(sv.logger, nil, profitRuleClient)
-	sv.logger.Infof("总SKU数量: %d", skuBuilder.GetTotalSkuCount(product.SkcList))
+	sv.logger.Infof("总SKU数量: %d", skuBuilder.GetTotalSkuCount(temuProduct.SkcList))
 
 	// 记录价格范围
-	minPrice, maxPrice := sv.getPriceRange(product.SkcList)
+	minPrice, maxPrice := sv.getPriceRange(temuProduct.SkcList)
 	if minPrice == maxPrice {
 		sv.logger.Infof("价格: %.2f", float64(minPrice)/100)
 	} else {
@@ -109,7 +105,7 @@ func (sv *SpuValidator) LogProductSummary(ctx *pipeline.TaskContext) {
 	}
 
 	// 记录库存总量
-	totalStock := sv.getTotalStock(product.SkcList)
+	totalStock := sv.getTotalStock(temuProduct.SkcList)
 	sv.logger.Infof("总库存: %d", totalStock)
 
 	sv.logger.Info("==================")

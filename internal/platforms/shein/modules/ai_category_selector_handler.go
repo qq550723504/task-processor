@@ -34,7 +34,7 @@ func (h *AICategorySelectorHandler) Handle(ctx *TaskContext) error {
 	categoryManager := NewCategoryManager(aiSelector)
 
 	// 使用AI选择分类
-	selectedCategoryID, err := categoryManager.GetCategoryIDByTitleWithTree(productTitle, ctx.CategoryTree)
+	selectedCategoryID, err := categoryManager.GetCategoryIDByTitleWithTree(ctx.Context, productTitle, ctx.CategoryTree)
 	if err != nil {
 		return fmt.Errorf("AI选择分类失败: %w", err)
 	}

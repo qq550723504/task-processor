@@ -267,13 +267,26 @@ func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product
 func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct model.Product, data ResultSaleAttribute) ResultSaleAttribute {
 
 	if amazonProduct.VariationsValues == nil {
+		logrus.Info("原始产品无变体属性值，跳过一致性验证")
 		return data
 	}
+
 	// 构建原始属性值映射
 	originalValues := make(map[string][]string)
 	for _, variation := range amazonProduct.VariationsValues {
 		originalValues[strings.ToLower(variation.VariantName)] = variation.Values
 	}
+
+	// 定义AI可以合理添加的默认属性值（用于满足SHEIN必填要求）
+	// 注意：匹配时会忽略大小写
+	allowedDefaultValues := map[string][]string{
+		"size":  {"one-size", "One-Size", "ONE-SIZE"}, // AI实际使用的默认size值，支持多种大小写形式
+		"style": {"Standard", "Classic", "Basic", "Default"},
+		"color": {"Default", "Multi-Color", "Default-Color"},
+	}
+
+	// 构建忽略大小写的默认值映射，提高匹配性能
+	allowedDefaultValuesLower := h.buildCaseInsensitiveDefaultValues(allowedDefaultValues)
 
 	inconsistentCount := 0
 
@@ -282,28 +295,25 @@ func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct m
 		saleAttr := &data.SaleAttributes[i]
 		for j := range saleAttr.AttrValue {
 			attrValue := &saleAttr.AttrValue[j]
+
 			// 检查是否存在对应的原始属性值
-			found := false
-			for _, originalValueList := range originalValues {
-				for _, originalValue := range originalValueList {
-					if attrValue.Value == originalValue {
-						found = true
-						break
-					}
-				}
-				if found {
-					break
-				}
-			}
+			found := h.isValueInOriginalData(attrValue.Value, originalValues)
 
 			if !found {
-				logrus.Warnf("发现不一致的属性值: '%s'，不在原始属性值列表中", attrValue.Value)
-				inconsistentCount++
+				// 检查是否为允许的默认值（使用优化后的忽略大小写匹配）
+				isAllowedDefault := h.isAllowedDefaultValueOptimized(attrValue.Value, allowedDefaultValuesLower)
 
-				// 尝试找到最相似的原始值进行修正
-				if correctedValue := h.findMostSimilarValue(attrValue.Value, originalValues); correctedValue != "" {
-					logrus.Infof("将属性值 '%s' 修正为原始值 '%s'", attrValue.Value, correctedValue)
-					attrValue.Value = correctedValue
+				if isAllowedDefault {
+					logrus.Infof("✅ AI添加的合理默认属性值: '%s'（用于满足SHEIN必填要求）", attrValue.Value)
+				} else {
+					logrus.Warnf("发现不一致的属性值: '%s'，不在原始属性值列表中", attrValue.Value)
+					inconsistentCount++
+
+					// 尝试找到最相似的原始值进行修正
+					if correctedValue := h.findMostSimilarValue(attrValue.Value, originalValues); correctedValue != "" {
+						logrus.Infof("将属性值 '%s' 修正为原始值 '%s'", attrValue.Value, correctedValue)
+						attrValue.Value = correctedValue
+					}
 				}
 			}
 		}
@@ -312,27 +322,23 @@ func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct m
 	// 验证变体中的属性值
 	for i, variant := range data.Variants {
 		for attrName, attrValue := range variant.Attributes {
-			found := false
-			for _, originalValueList := range originalValues {
-				for _, originalValue := range originalValueList {
-					if attrValue == originalValue {
-						found = true
-						break
-					}
-				}
-				if found {
-					break
-				}
-			}
+			found := h.isValueInOriginalData(attrValue, originalValues)
 
 			if !found {
-				logrus.Warnf("变体 %s 中发现不一致的属性值: %s='%s'", variant.ASIN, attrName, attrValue)
-				inconsistentCount++
+				// 检查是否为允许的默认值（使用优化后的忽略大小写匹配）
+				isAllowedDefault := h.isAllowedDefaultValueOptimized(attrValue, allowedDefaultValuesLower)
 
-				// 尝试找到最相似的原始值进行修正
-				if correctedValue := h.findMostSimilarValue(attrValue, originalValues); correctedValue != "" {
-					logrus.Infof("将变体 %s 的属性值 '%s' 修正为原始值 '%s'", variant.ASIN, attrValue, correctedValue)
-					data.Variants[i].Attributes[attrName] = correctedValue
+				if isAllowedDefault {
+					logrus.Infof("✅ 变体 %s 中AI添加的合理默认属性值: %s='%s'", variant.ASIN, attrName, attrValue)
+				} else {
+					logrus.Warnf("变体 %s 中发现不一致的属性值: %s='%s'", variant.ASIN, attrName, attrValue)
+					inconsistentCount++
+
+					// 尝试找到最相似的原始值进行修正
+					if correctedValue := h.findMostSimilarValue(attrValue, originalValues); correctedValue != "" {
+						logrus.Infof("将变体 %s 的属性值 '%s' 修正为原始值 '%s'", variant.ASIN, attrValue, correctedValue)
+						data.Variants[i].Attributes[attrName] = correctedValue
+					}
 				}
 			}
 		}
@@ -341,10 +347,57 @@ func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct m
 	if inconsistentCount > 0 {
 		logrus.Warnf("共发现 %d 个不一致的属性值", inconsistentCount)
 	} else {
-		logrus.Info("所有属性值与原始数据保持一致")
+		logrus.Info("所有属性值与原始数据保持一致或为合理的AI默认值")
 	}
 
 	return data
+}
+
+// isValueInOriginalData 检查值是否在原始数据中
+func (h *SaleAttributeHandler) isValueInOriginalData(value string, originalValues map[string][]string) bool {
+	for _, originalValueList := range originalValues {
+		for _, originalValue := range originalValueList {
+			if value == originalValue {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// buildCaseInsensitiveDefaultValues 构建忽略大小写的默认值映射，提高匹配性能
+func (h *SaleAttributeHandler) buildCaseInsensitiveDefaultValues(allowedDefaults map[string][]string) map[string]bool {
+	caseInsensitiveMap := make(map[string]bool)
+
+	for _, defaultList := range allowedDefaults {
+		for _, defaultValue := range defaultList {
+			normalizedValue := strings.ToLower(strings.TrimSpace(defaultValue))
+			caseInsensitiveMap[normalizedValue] = true
+		}
+	}
+
+	return caseInsensitiveMap
+}
+
+// isAllowedDefaultValueOptimized 使用预处理的映射进行优化的默认值检查（忽略大小写）
+func (h *SaleAttributeHandler) isAllowedDefaultValueOptimized(value string, allowedDefaultsLower map[string]bool) bool {
+	valueLower := strings.ToLower(strings.TrimSpace(value))
+	return allowedDefaultsLower[valueLower]
+}
+
+// isAllowedDefaultValue 检查是否为允许的默认值（忽略大小写）
+func (h *SaleAttributeHandler) isAllowedDefaultValue(value string, allowedDefaults map[string][]string) bool {
+	valueLower := strings.ToLower(strings.TrimSpace(value))
+
+	for _, defaultList := range allowedDefaults {
+		for _, defaultValue := range defaultList {
+			defaultLower := strings.ToLower(strings.TrimSpace(defaultValue))
+			if defaultLower == valueLower {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // findMostSimilarValue 找到最相似的原始属性值

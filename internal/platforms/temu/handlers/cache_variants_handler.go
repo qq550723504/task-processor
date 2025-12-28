@@ -3,10 +3,10 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/product"
 	"task-processor/internal/config"
+	"task-processor/internal/pipeline"
 
 	"github.com/sirupsen/logrus"
 )
@@ -19,22 +19,14 @@ type CacheVariantsHandler struct {
 }
 
 // NewCacheVariantsHandler 创建缓存变体数据处理器
-func NewCacheVariantsHandler(rawJsonDataClient interface {
-	GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
-	CreateRawJsonData(req *api.RawJsonDataCreateReqDTO) (int64, error)
-}, amazonConfig *config.AmazonConfig, amazonProcessor interface{}) *CacheVariantsHandler {
-
-	// 提取Amazon处理器
-	var ap *amazon.AmazonProcessor
-	if amazonProcessor != nil {
-		if processor, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
-			ap = processor
-		}
-	}
-
+func NewCacheVariantsHandler(
+	rawJsonDataClient product.RawJsonDataClient,
+	amazonConfig *config.AmazonConfig,
+	amazonProcessor *amazon.AmazonProcessor,
+) *CacheVariantsHandler {
 	return &CacheVariantsHandler{
 		logger:  logrus.WithField("handler", "CacheVariantsHandler"),
-		fetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, ap),
+		fetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor),
 	}
 }
 
@@ -44,36 +36,42 @@ func (h *CacheVariantsHandler) Name() string {
 }
 
 // Handle 处理任务
-func (h *CacheVariantsHandler) Handle(ctx *pipeline.TaskContext) error {
+func (h *CacheVariantsHandler) Handle(ctx pipeline.TaskContext) error {
 	// 检查是否有变体数据
-	if len(ctx.AmazonVariants) == 0 {
+	var variants []*model.Product
+	if amazonCtx, ok := ctx.(pipeline.AmazonContext); ok {
+		variants = amazonCtx.GetVariants()
+	}
+
+	if len(variants) == 0 {
 		h.logger.Debug("没有变体数据，跳过缓存步骤")
 		return nil
 	}
 
 	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	task := ctx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
 	// 构建缓存请求
 	req := &product.FetchRequest{
-		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.Platform,
-		Region:     ctx.Task.Region,
-		ProductID:  ctx.Task.ProductID,
-		StoreID:    ctx.Task.StoreID,
-		CategoryID: ctx.Task.CategoryID,
-		Creator:    ctx.Task.Creator,
+		TenantID:   task.TenantID,
+		Platform:   task.Platform,
+		Region:     task.Region,
+		ProductID:  task.ProductID,
+		StoreID:    task.StoreID,
+		CategoryID: task.CategoryID,
+		Creator:    task.Creator,
 	}
 
 	// 缓存变体数据
-	if err := h.fetcher.CacheVariants(req, ctx.AmazonVariants); err != nil {
+	if err := h.fetcher.CacheVariants(req, variants); err != nil {
 		h.logger.Warnf("⚠️ 缓存变体数据失败: %v", err)
 		// 缓存失败不影响主流程，只记录警告
 		return nil
 	}
 
-	h.logger.Infof("✅ 变体数据已缓存: 数量=%d", len(ctx.AmazonVariants))
+	h.logger.Infof("✅ 变体数据已缓存: 数量=%d", len(variants))
 	return nil
 }

@@ -30,15 +30,15 @@ type PricingScheduler struct {
 }
 
 // NewPricingScheduler 创建自动核价调度器
-func NewPricingScheduler(apiClient *APIClient, managementClient *management.ClientManager, interval time.Duration, action PricingAction) *PricingScheduler {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewPricingScheduler(ctx context.Context, apiClient *APIClient, managementClient *management.ClientManager, interval time.Duration, action PricingAction) *PricingScheduler {
+	schedulerCtx, cancel := context.WithCancel(ctx)
 
 	return &PricingScheduler{
 		apiClient:        apiClient,
 		managementClient: managementClient,
 		interval:         interval,
 		action:           action,
-		ctx:              ctx,
+		ctx:              schedulerCtx,
 		cancel:           cancel,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TEMUPricingScheduler",

@@ -6,7 +6,9 @@ import (
 	"strings"
 	"unicode"
 
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
+	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -40,19 +42,32 @@ func (h *BulletPointsValidator) Name() string {
 	return "产品要点验证处理器"
 }
 
-// Handle 处理任务
-func (h *BulletPointsValidator) Handle(ctx *pipeline.TaskContext) error {
+// Handle 处理任务（兼容pipeline.Handler接口）
+func (h *BulletPointsValidator) Handle(ctx pipeline.TaskContext) error {
+	// 类型断言为强类型上下文
+	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
+	if !ok {
+		return fmt.Errorf("上下文类型错误，期望TemuTaskContext")
+	}
+	return h.HandleTemu(temuCtx)
+}
+
+// HandleTemu 处理任务（强类型上下文）
+func (h *BulletPointsValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始验证和优化产品要点")
 
-	if ctx.TemuProduct == nil {
+	// 从强类型上下文获取TEMU产品信息
+	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
-	originalPoints := ctx.TemuProduct.GoodsExtensionInfo.BulletPoints
+	temuProduct := temuCtx.TemuProduct
+
+	originalPoints := temuProduct.GoodsExtensionInfo.BulletPoints
 	if len(originalPoints) == 0 {
 		h.logger.Info("未找到产品要点，尝试生成默认要点")
-		defaultPoints := h.generateDefaultBulletPoints(ctx)
-		ctx.TemuProduct.GoodsExtensionInfo.BulletPoints = defaultPoints
+		defaultPoints := h.generateDefaultBulletPoints(temuCtx, temuProduct)
+		temuProduct.GoodsExtensionInfo.BulletPoints = defaultPoints
 		h.logger.Infof("生成了 %d 个默认要点", len(defaultPoints))
 		return nil
 	}
@@ -61,27 +76,11 @@ func (h *BulletPointsValidator) Handle(ctx *pipeline.TaskContext) error {
 	result := h.validateAndOptimizeBulletPoints(originalPoints)
 
 	// 使用高级优化器进一步优化
-	productName := ctx.TemuProduct.GoodsBasic.GoodsName
-	optimizedPoints, optimizations := h.optimizer.OptimizeForTemu(result.ValidatedPoints, productName)
-
-	// 记录处理结果
-	if len(result.Violations) > 0 {
-		h.logger.Warnf("产品要点存在违规内容: %v", result.Violations)
-	}
-	if len(result.Suggestions) > 0 {
-		h.logger.Infof("产品要点验证建议: %v", result.Suggestions)
-	}
-	if len(optimizations) > 0 {
-		h.logger.Infof("产品要点优化: %v", optimizations)
-	}
-
-	if !h.arePointsEqual(originalPoints, optimizedPoints) {
-		h.logger.Infof("原始要点: %v", originalPoints)
-		h.logger.Infof("最终要点: %v", optimizedPoints)
-	}
+	productName := temuProduct.GoodsBasic.GoodsName
+	optimizedPoints, _ := h.optimizer.OptimizeForTemu(result.ValidatedPoints, productName)
 
 	// 更新产品要点
-	ctx.TemuProduct.GoodsExtensionInfo.BulletPoints = optimizedPoints
+	temuProduct.GoodsExtensionInfo.BulletPoints = optimizedPoints
 
 	// 计算最终长度
 	finalLength := 0
@@ -91,9 +90,6 @@ func (h *BulletPointsValidator) Handle(ctx *pipeline.TaskContext) error {
 
 	h.logger.Infof("产品要点验证完成: %d个要点, 总长度: %d字符",
 		len(optimizedPoints), finalLength)
-
-	h.logger.Infof("产品要点验证完成: %d个要点, 总长度: %d字符",
-		len(result.ValidatedPoints), result.TotalLength)
 	return nil
 }
 
@@ -308,8 +304,8 @@ func (h *BulletPointsValidator) checkForKeyFeatures(points []string) bool {
 }
 
 // generateDefaultBulletPoints 生成默认要点
-func (h *BulletPointsValidator) generateDefaultBulletPoints(ctx *pipeline.TaskContext) []string {
-	productName := ctx.TemuProduct.GoodsBasic.GoodsName
+func (h *BulletPointsValidator) generateDefaultBulletPoints(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) []string {
+	productName := temuProduct.GoodsBasic.GoodsName
 
 	// 基于产品名称生成默认要点
 	defaultPoints := []string{}
@@ -366,7 +362,7 @@ func (h *BulletPointsValidator) arePointsEqual(points1, points2 []string) bool {
 }
 
 // ValidateBulletPointsAPI 调用TEMU API验证要点（如果需要）
-func (h *BulletPointsValidator) ValidateBulletPointsAPI(ctx *pipeline.TaskContext, bulletPoints []string) error {
+func (h *BulletPointsValidator) ValidateBulletPointsAPI(ctx pipeline.TaskContext, bulletPoints []string) error {
 	// 这里可以调用TEMU的违规词汇检查API
 	// temu.local.goods.illegal.vocabulary.check
 

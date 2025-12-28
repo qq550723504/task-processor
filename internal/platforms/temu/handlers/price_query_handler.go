@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -60,27 +61,29 @@ func (h *PriceQueryHandler) Name() string {
 	return "价格查询处理器"
 }
 
-// Handle 处理任务
-func (h *PriceQueryHandler) Handle(ctx *pipeline.TaskContext) error {
+// HandleTemu 处理TEMU任务（实现TemuHandler接口）
+func (h *PriceQueryHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始查询SKU最大零售价格")
 
-	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	// 直接使用强类型上下文
+	task := temuCtx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	if ctx.TemuProduct == nil {
+	// 检查TEMU产品信息
+	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
 	// 检查是否有商品ID
-	if ctx.TemuProduct.GoodsBasic.GoodsID == "" {
+	if temuCtx.TemuProduct.GoodsBasic.GoodsID == "" {
 		h.logger.Warn("商品ID为空，跳过价格查询")
 		return nil
 	}
 
 	// 查询价格信息
-	err := h.queryMaxRetailPrices(ctx)
+	err := h.queryMaxRetailPrices(temuCtx)
 	if err != nil {
 		h.logger.Errorf("查询价格失败: %v", err)
 		return fmt.Errorf("查询价格失败: %w", err)
@@ -91,16 +94,11 @@ func (h *PriceQueryHandler) Handle(ctx *pipeline.TaskContext) error {
 }
 
 // queryMaxRetailPrices 查询最大零售价格
-func (h *PriceQueryHandler) queryMaxRetailPrices(ctx *pipeline.TaskContext) error {
+func (h *PriceQueryHandler) queryMaxRetailPrices(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始查询TEMU最大零售价格")
 
-	// 检查API客户端
-	if ctx.APIClient == nil {
-		return fmt.Errorf("API客户端未初始化")
-	}
-
 	// 收集所有SKU的供应商价格
-	priceItems := h.collectSkuPrices(ctx)
+	priceItems := h.collectSkuPrices(temuCtx)
 	if len(priceItems) == 0 {
 		h.logger.Warn("没有找到SKU价格信息，跳过价格查询")
 		return nil
@@ -108,7 +106,7 @@ func (h *PriceQueryHandler) queryMaxRetailPrices(ctx *pipeline.TaskContext) erro
 
 	// 构造价格查询请求
 	request := &PriceQueryRequest{
-		GoodsID:                      ctx.TemuProduct.GoodsBasic.GoodsID,
+		GoodsID:                      temuCtx.TemuProduct.GoodsBasic.GoodsID,
 		MmsSkuMaxRetailPriceQryItems: priceItems,
 	}
 
@@ -133,7 +131,8 @@ func (h *PriceQueryHandler) queryMaxRetailPrices(ctx *pipeline.TaskContext) erro
 
 	// 发送请求到TEMU API
 	response := &PriceQueryResponse{}
-	err := ctx.APIClient.SendTEMURequest(apiReq, response)
+
+	err := temuCtx.APIClient.SendTEMURequest(apiReq, response)
 	if err != nil {
 		h.logger.Errorf("发送TEMU价格查询请求失败: %v", err)
 		return fmt.Errorf("发送价格查询请求失败: %w", err)
@@ -157,21 +156,30 @@ func (h *PriceQueryHandler) queryMaxRetailPrices(ctx *pipeline.TaskContext) erro
 		h.logger.Infof("获取到 %d 个价格信息", len(response.Result.MmsSkuMaxRetailPriceItems))
 
 		// 更新SKU的最大零售价格
-		h.updateSkuMaxRetailPrices(ctx, response.Result.MmsSkuMaxRetailPriceItems)
+		h.updateSkuMaxRetailPrices(temuCtx, response.Result.MmsSkuMaxRetailPriceItems)
 	}
 
-	// 将查询结果存储到上下文
-	ctx.SetData("price_query_response", response)
+	// 将查询结果存储到强类型上下文
+	temuCtx.PriceQueryResponse = response
+
+	// 保持兼容性，也设置到通用数据存储（可选）
+	temuCtx.SetData("price_query_response", response)
 
 	return nil
 }
 
 // collectSkuPrices 收集所有SKU的供应商价格
-func (h *PriceQueryHandler) collectSkuPrices(ctx *pipeline.TaskContext) []MaxRetailPriceQueryItem {
+func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContext) []MaxRetailPriceQueryItem {
 	var priceItems []MaxRetailPriceQueryItem
 	priceMap := make(map[string]bool) // 用于去重
 
-	for _, skc := range ctx.TemuProduct.SkcList {
+	// 直接使用强类型上下文中的TEMU产品信息
+	if temuCtx.TemuProduct == nil {
+		h.logger.Warn("TEMU产品信息为空")
+		return priceItems
+	}
+
+	for _, skc := range temuCtx.TemuProduct.SkcList {
 		for _, sku := range skc.SkuList {
 			// 跳过删除的SKU
 			if sku.SkuDeleted {
@@ -205,7 +213,13 @@ func (h *PriceQueryHandler) collectSkuPrices(ctx *pipeline.TaskContext) []MaxRet
 }
 
 // updateSkuMaxRetailPrices 更新SKU的最大零售价格
-func (h *PriceQueryHandler) updateSkuMaxRetailPrices(ctx *pipeline.TaskContext, priceResults []MaxRetailPriceResultItem) {
+func (h *PriceQueryHandler) updateSkuMaxRetailPrices(temuCtx *temucontext.TemuTaskContext, priceResults []MaxRetailPriceResultItem) {
+	// 直接使用强类型上下文中的TEMU产品信息
+	if temuCtx.TemuProduct == nil {
+		h.logger.Warn("TEMU产品信息为空")
+		return
+	}
+
 	// 创建价格映射
 	priceMap := make(map[string]string)
 	for _, result := range priceResults {
@@ -216,9 +230,9 @@ func (h *PriceQueryHandler) updateSkuMaxRetailPrices(ctx *pipeline.TaskContext, 
 
 	// 更新所有SKU的最大零售价格
 	updatedCount := 0
-	for skcIndex := range ctx.TemuProduct.SkcList {
-		for skuIndex := range ctx.TemuProduct.SkcList[skcIndex].SkuList {
-			sku := &ctx.TemuProduct.SkcList[skcIndex].SkuList[skuIndex]
+	for skcIndex := range temuCtx.TemuProduct.SkcList {
+		for skuIndex := range temuCtx.TemuProduct.SkcList[skcIndex].SkuList {
+			sku := &temuCtx.TemuProduct.SkcList[skcIndex].SkuList[skuIndex]
 
 			// 跳过删除的SKU
 			if sku.SkuDeleted {
@@ -262,4 +276,14 @@ func (h *PriceQueryHandler) marshalWithoutHTMLEscape(v interface{}) ([]byte, err
 	}
 
 	return result, nil
+}
+
+// Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
+func (h *PriceQueryHandler) Handle(ctx pipeline.TaskContext) error {
+	// 尝试类型断言为TemuTaskContext
+	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
+		return h.HandleTemu(temuCtx)
+	}
+	// 如果不是TemuTaskContext，返回错误
+	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
 }

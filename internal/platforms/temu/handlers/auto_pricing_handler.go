@@ -33,11 +33,8 @@ func NewAutoPricingHandler(managementClient *management.ClientManager, storeIDs 
 func (h *AutoPricingHandler) Start(ctx context.Context, interval time.Duration) {
 	h.logger.Infof("启动TEMU自动核价处理器，间隔: %v, 店铺数量: %d", interval, len(h.storeIDs))
 
-	// 使用智能核价模式（根据利润率规则自动决策）
-	action := temu.ActionSmart
-
 	// 创建调度器管理器
-	h.schedulerManager = temu.NewSchedulerManager(h.managementClient, interval, action)
+	h.schedulerManager = temu.NewSchedulerManager(ctx, h.managementClient, interval)
 
 	// 为每个店铺添加调度器
 	successCount := 0

@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -50,29 +51,29 @@ func (h *StoreInfoHandler) Name() string {
 	return "店铺信息处理器"
 }
 
-// Handle 处理任务
-func (h *StoreInfoHandler) Handle(ctx *pipeline.TaskContext) error {
+// HandleTemu 处理TEMU任务（实现TemuHandler接口）
+func (h *StoreInfoHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始获取店铺信息")
-
-	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	task := temuCtx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	if ctx.Task.StoreID == 0 {
+	if task.StoreID == 0 {
 		return fmt.Errorf("店铺ID为空")
 	}
 
 	// 尝试从缓存获取
-	storeInfo, fromCache := h.getStoreWithCache(ctx.Task.StoreID)
+	storeInfo, fromCache := getStoreWithCache(task.StoreID)
 	if fromCache {
 		h.logger.Infof("✅ 从缓存获取店铺信息: StoreID=%d, StoreName=%s", storeInfo.ID, storeInfo.Name)
-		ctx.StoreInfo = storeInfo
+		// 直接赋值到强类型字段
+		temuCtx.StoreInfo = storeInfo
 		return nil
 	}
 
 	// 缓存未命中，从API获取
-	storeInfo, err := h.storeClient.GetStore(ctx.Task.StoreID)
+	storeInfo, err := h.storeClient.GetStore(task.StoreID)
 	if err != nil {
 		h.logger.Errorf("获取店铺信息失败: %v", err)
 		return fmt.Errorf("获取店铺信息失败: %w", err)
@@ -82,19 +83,20 @@ func (h *StoreInfoHandler) Handle(ctx *pipeline.TaskContext) error {
 		return fmt.Errorf("店铺信息为空")
 	}
 
-	// 存入缓存
-	h.setStoreCache(ctx.Task.StoreID, storeInfo)
+	// 缓存店铺信息
+	setStoreCache(task.StoreID, storeInfo)
 
-	// 将店铺信息存储到上下文中
-	ctx.StoreInfo = storeInfo
+	// 直接赋值到强类型字段
+	temuCtx.StoreInfo = storeInfo
 
-	h.logger.Infof("成功获取店铺信息（已缓存）: StoreID=%d, StoreName=%s",
-		storeInfo.ID, storeInfo.Name)
+	h.logger.Infof("✅ 获取店铺信息成功: StoreID=%d, StoreName=%s, PriceType=%s",
+		storeInfo.ID, storeInfo.Name, storeInfo.PriceType)
+
 	return nil
 }
 
 // getStoreWithCache 从缓存获取店铺信息
-func (h *StoreInfoHandler) getStoreWithCache(storeID int64) (*api.StoreRespDTO, bool) {
+func getStoreWithCache(storeID int64) (*api.StoreRespDTO, bool) {
 	if cached, ok := storeCache.Load(storeID); ok {
 		entry := cached.(storeCacheEntry)
 		// 检查是否过期
@@ -113,12 +115,11 @@ func (h *StoreInfoHandler) getStoreWithCache(storeID int64) (*api.StoreRespDTO, 
 	storeCacheStats.mu.Lock()
 	storeCacheStats.misses++
 	storeCacheStats.mu.Unlock()
-
 	return nil, false
 }
 
-// setStoreCache 设置店铺缓存
-func (h *StoreInfoHandler) setStoreCache(storeID int64, store *api.StoreRespDTO) {
+// setStoreCache 设置店铺信息到缓存
+func setStoreCache(storeID int64, store *api.StoreRespDTO) {
 	entry := storeCacheEntry{
 		store:      store,
 		expireTime: time.Now().Add(storeCacheTTL),
@@ -131,4 +132,14 @@ func GetStoreCacheStats() (hits, misses int64) {
 	storeCacheStats.mu.Lock()
 	defer storeCacheStats.mu.Unlock()
 	return storeCacheStats.hits, storeCacheStats.misses
+}
+
+// Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
+func (h *StoreInfoHandler) Handle(ctx pipeline.TaskContext) error {
+	// 尝试类型断言为TemuTaskContext
+	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
+		return h.HandleTemu(temuCtx)
+	}
+	// 如果不是TemuTaskContext，返回错误
+	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
 }

@@ -2,6 +2,7 @@
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/shein/api/attribute"
@@ -48,16 +49,44 @@ type ResultSaleAttribute struct {
 
 type Variant struct {
 	Attributes   map[string]string `json:"attributes"`
-	Length       string            `json:"length"`
-	Width        string            `json:"width"`
-	Height       string            `json:"height"`
-	Weight       string            `json:"weight"`
+	Length       FlexibleString    `json:"length"`
+	Width        FlexibleString    `json:"width"`
+	Height       FlexibleString    `json:"height"`
+	Weight       FlexibleString    `json:"weight"`
 	LengthUnit   string            `json:"lengthUnit"`
 	ASIN         string            `json:"asin"`
 	Price        float64           `json:"price"`
 	QuantityType int               `json:"quantityType"` // 单品、同款多件、单套、多套
 	UnitType     int               `json:"unitType"`     // 单位类型: "件" 、"双"、"套"
 	Quantity     int               `json:"quantity"`     // 数量
+}
+
+// FlexibleString 可以接受字符串或数字的灵活字符串类型
+type FlexibleString string
+
+// UnmarshalJSON 自定义JSON解析，支持字符串和数字
+func (fs *FlexibleString) UnmarshalJSON(data []byte) error {
+	// 尝试解析为字符串
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		*fs = FlexibleString(str)
+		return nil
+	}
+
+	// 尝试解析为数字
+	var num float64
+	if err := json.Unmarshal(data, &num); err == nil {
+		*fs = FlexibleString(fmt.Sprintf("%.2f", num))
+		return nil
+	}
+
+	// 如果都失败，返回错误
+	return fmt.Errorf("cannot unmarshal %s into FlexibleString", string(data))
+}
+
+// String 返回字符串值
+func (fs FlexibleString) String() string {
+	return string(fs)
 }
 
 // AttributeNameMapper 属性名称映射器
@@ -162,7 +191,7 @@ type AttributeImportanceResult struct {
 // GenerationRequest AI生成请求
 type GenerationRequest struct {
 	ProductsData             []ProductVariantData    `json:"products_data"`
-	VariationData            []model.Product         `json:"variation_data"`
+	VariationData            []model.Variation       `json:"variation_data"`
 	VariationAttributeValues *[]model.VariationValue `json:"variations_values"`
 	SaleAttributesData       []AttributeMetadata     `json:"sale_attributes_data"`
 	AttributeMappings        []AttributeNameMapping  `json:"attribute_mappings"`

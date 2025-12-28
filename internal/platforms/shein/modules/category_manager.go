@@ -1,12 +1,14 @@
-﻿package modules
+// Package modules 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
+package modules
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
-	"task-processor/internal/common/shein/api/category"
 	openaiClient "task-processor/internal/clients/openai"
+	"task-processor/internal/common/shein/api/category"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,9 +22,9 @@ type CategorySelectionResult struct {
 // AISelector AI选择器接口
 type AISelector interface {
 	// SelectLevelOneCategoryByAI 通过AI选择一级分类
-	SelectLevelOneCategoryByAI(title string, levelOneIDs []int, levelOneMap map[int]string) (int, error)
+	SelectLevelOneCategoryByAI(ctx context.Context, title string, levelOneIDs []int, levelOneMap map[int]string) (int, error)
 	// SelectCategoryByAI 通过AI选择最终分类
-	SelectCategoryByAI(title string, leafIDs []int, leafMap map[int]string) (int, error)
+	SelectCategoryByAI(ctx context.Context, title string, leafIDs []int, leafMap map[int]string) (int, error)
 }
 
 // OpenAISelector OpenAI选择器实现
@@ -38,7 +40,7 @@ func NewOpenAISelector(client *openaiClient.Client) *OpenAISelector {
 }
 
 // SelectLevelOneCategoryByAI 通过AI选择一级分类
-func (s *OpenAISelector) SelectLevelOneCategoryByAI(title string, levelOneIDs []int, levelOneMap map[int]string) (int, error) {
+func (s *OpenAISelector) SelectLevelOneCategoryByAI(ctx context.Context, title string, levelOneIDs []int, levelOneMap map[int]string) (int, error) {
 	// 构建分类列表描述
 	categoryInfo := s.buildCategoryInfo(levelOneIDs, levelOneMap, "可用一级分类列表：\n", func(id int, name string) string {
 		return fmt.Sprintf("分类ID: %d, 分类名称: %s\n", id, name)
@@ -93,8 +95,6 @@ func (s *OpenAISelector) SelectLevelOneCategoryByAI(title string, levelOneIDs []
 		Seed:        &seed,
 	}
 
-	ctx := context.Background()
-
 	resp, err := s.openaiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return 0, fmt.Errorf("调用OpenAI API失败: %w", err)
@@ -122,7 +122,7 @@ func (s *OpenAISelector) SelectLevelOneCategoryByAI(title string, levelOneIDs []
 }
 
 // SelectCategoryByAI 通过AI选择最终分类
-func (s *OpenAISelector) SelectCategoryByAI(title string, leafIDs []int, leafMap map[int]string) (int, error) {
+func (s *OpenAISelector) SelectCategoryByAI(ctx context.Context, title string, leafIDs []int, leafMap map[int]string) (int, error) {
 	// 构建分类列表描述
 	categoryInfo := s.buildCategoryInfo(leafIDs, leafMap, "可选的最终分类列表：\n", func(id int, path string) string {
 		return fmt.Sprintf("分类ID: %d, 分类路径: %s\n", id, path)
@@ -176,8 +176,6 @@ func (s *OpenAISelector) SelectCategoryByAI(title string, leafIDs []int, leafMap
 		Temperature: &temperature,
 		Seed:        &seed,
 	}
-
-	ctx := context.Background()
 
 	resp, err := s.openaiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
@@ -250,7 +248,6 @@ func NewCategoryManager(aiSelector AISelector) *CategoryManager {
 
 // GetCategoryIDListWithTree 通过SHEIN接口获取分类ID列表
 func (m *CategoryManager) GetCategoryIDListWithTree(ctx *TaskContext, categoryID int) ([]int, int, int, error) {
-
 	// 调用API获取分类信息
 	categoryInfo, err := ctx.ShopClient.GetCategory(categoryID)
 	if err != nil {
@@ -280,7 +277,7 @@ func (m *CategoryManager) GetCategoryIDListWithTree(ctx *TaskContext, categoryID
 }
 
 // GetCategoryIDByTitleWithTree 用产品标题获取分类ID
-func (m *CategoryManager) GetCategoryIDByTitleWithTree(title string, categoryTree *category.CategoryTreeResponse) (int, error) {
+func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, title string, categoryTree *category.CategoryTreeResponse) (int, error) {
 	// 1. 获取所有一级分类节点
 	levelOneNodes := getLevelOneCategories(categoryTree.Data)
 	levelOneIDs := make([]int, 0, len(levelOneNodes))
@@ -290,8 +287,11 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(title string, categoryTre
 		levelOneMap[node.CategoryID] = node.CategoryName
 	}
 
-	// 2. AI选择一级分类
-	selectedLevelOneID, err := m.aiSelector.SelectLevelOneCategoryByAI(title, levelOneIDs, levelOneMap)
+	// 2. AI选择一级分类 - 使用传入的context，添加超时控制
+	aiCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	selectedLevelOneID, err := m.aiSelector.SelectLevelOneCategoryByAI(aiCtx, title, levelOneIDs, levelOneMap)
 	if err != nil {
 		logrus.Infof("AI选择一级分类失败: %v\n", err)
 		return 0, fmt.Errorf("AI选择一级分类失败且无可用分类: %w", err)
@@ -309,8 +309,11 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(title string, categoryTre
 		leafMap[node.CategoryID] = buildFullCategoryPath(node)
 	}
 
-	// 4. AI在这些叶子节点中做最终选择
-	selectedCategoryID, err := m.aiSelector.SelectCategoryByAI(title, leafIDs, leafMap)
+	// 4. AI在这些叶子节点中做最终选择 - 使用传入的context，添加超时控制
+	aiCtx2, cancel2 := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel2()
+
+	selectedCategoryID, err := m.aiSelector.SelectCategoryByAI(aiCtx2, title, leafIDs, leafMap)
 	if err != nil {
 		return 0, fmt.Errorf("AI选择最终分类失败: %w", err)
 	}

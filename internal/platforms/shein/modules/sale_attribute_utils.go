@@ -40,60 +40,60 @@ func parseFloat(str string) float64 {
 
 // convertMillimetersToCentimeters 将毫米转换为厘米
 func convertMillimetersToCentimeters(variant *Variant) {
-	if length := parseFloat(variant.Length); length > 0 {
-		variant.Length = fmt.Sprintf("%.1f", length/10)
+	if length := parseFloat(variant.Length.String()); length > 0 {
+		variant.Length = FlexibleString(fmt.Sprintf("%.1f", length/10))
 	}
-	if width := parseFloat(variant.Width); width > 0 {
-		variant.Width = fmt.Sprintf("%.1f", width/10)
+	if width := parseFloat(variant.Width.String()); width > 0 {
+		variant.Width = FlexibleString(fmt.Sprintf("%.1f", width/10))
 	}
-	if height := parseFloat(variant.Height); height > 0 {
-		variant.Height = fmt.Sprintf("%.1f", height/10)
+	if height := parseFloat(variant.Height.String()); height > 0 {
+		variant.Height = FlexibleString(fmt.Sprintf("%.1f", height/10))
 	}
 	logrus.Infof("ASIN %s: 已将尺寸从毫米转换为厘米", variant.ASIN)
 }
 
 // convertMetersToCentimeters 将米转换为厘米
 func convertMetersToCentimeters(variant *Variant) {
-	if length := parseFloat(variant.Length); length > 0 {
-		variant.Length = fmt.Sprintf("%.1f", length*100)
+	if length := parseFloat(variant.Length.String()); length > 0 {
+		variant.Length = FlexibleString(fmt.Sprintf("%.1f", length*100))
 	}
-	if width := parseFloat(variant.Width); width > 0 {
-		variant.Width = fmt.Sprintf("%.1f", width*100)
+	if width := parseFloat(variant.Width.String()); width > 0 {
+		variant.Width = FlexibleString(fmt.Sprintf("%.1f", width*100))
 	}
-	if height := parseFloat(variant.Height); height > 0 {
-		variant.Height = fmt.Sprintf("%.1f", height*100)
+	if height := parseFloat(variant.Height.String()); height > 0 {
+		variant.Height = FlexibleString(fmt.Sprintf("%.1f", height*100))
 	}
 	logrus.Infof("ASIN %s: 已将尺寸从米转换为厘米", variant.ASIN)
 }
 
 // convertInchesToCentimeters 将英寸转换为厘米 (1 inch = 2.54 cm)
 func convertInchesToCentimeters(variant *Variant) {
-	if length := parseFloat(variant.Length); length > 0 {
-		variant.Length = fmt.Sprintf("%.1f", length*2.54)
+	if length := parseFloat(variant.Length.String()); length > 0 {
+		variant.Length = FlexibleString(fmt.Sprintf("%.1f", length*2.54))
 	}
-	if width := parseFloat(variant.Width); width > 0 {
-		variant.Width = fmt.Sprintf("%.1f", width*2.54)
+	if width := parseFloat(variant.Width.String()); width > 0 {
+		variant.Width = FlexibleString(fmt.Sprintf("%.1f", width*2.54))
 	}
-	if height := parseFloat(variant.Height); height > 0 {
-		variant.Height = fmt.Sprintf("%.1f", height*2.54)
+	if height := parseFloat(variant.Height.String()); height > 0 {
+		variant.Height = FlexibleString(fmt.Sprintf("%.1f", height*2.54))
 	}
 	logrus.Infof("ASIN %s: 已将尺寸从英寸转换为厘米 (长=%s, 宽=%s, 高=%s)",
-		variant.ASIN, variant.Length, variant.Width, variant.Height)
+		variant.ASIN, variant.Length.String(), variant.Width.String(), variant.Height.String())
 }
 
 // convertFeetToCentimeters 将英尺转换为厘米 (1 ft = 30.48 cm)
 func convertFeetToCentimeters(variant *Variant) {
-	if length := parseFloat(variant.Length); length > 0 {
-		variant.Length = fmt.Sprintf("%.1f", length*30.48)
+	if length := parseFloat(variant.Length.String()); length > 0 {
+		variant.Length = FlexibleString(fmt.Sprintf("%.1f", length*30.48))
 	}
-	if width := parseFloat(variant.Width); width > 0 {
-		variant.Width = fmt.Sprintf("%.1f", width*30.48)
+	if width := parseFloat(variant.Width.String()); width > 0 {
+		variant.Width = FlexibleString(fmt.Sprintf("%.1f", width*30.48))
 	}
-	if height := parseFloat(variant.Height); height > 0 {
-		variant.Height = fmt.Sprintf("%.1f", height*30.48)
+	if height := parseFloat(variant.Height.String()); height > 0 {
+		variant.Height = FlexibleString(fmt.Sprintf("%.1f", height*30.48))
 	}
 	logrus.Infof("ASIN %s: 已将尺寸从英尺转换为厘米 (长=%s, 宽=%s, 高=%s)",
-		variant.ASIN, variant.Length, variant.Width, variant.Height)
+		variant.ASIN, variant.Length.String(), variant.Width.String(), variant.Height.String())
 }
 
 // isAttributeNameSimilar 检查两个属性名是否相似

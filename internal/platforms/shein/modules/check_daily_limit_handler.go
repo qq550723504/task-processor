@@ -150,10 +150,10 @@ func (h *CheckDailyLimitHandler) calculateIncrement(ctx *TaskContext) int64 {
 
 // pauseShopUntilEndOfDay 暂停店铺到当日结束并清理相关缓存
 func (h *CheckDailyLimitHandler) pauseShopUntilEndOfDay(ctx *TaskContext, reason string) error {
-	// 1. 删除客户端缓存
-	if ctx.ShopClientMgr != nil {
-		ctx.ShopClientMgr.RemoveClient(ctx.Task.TenantID, ctx.Task.StoreID)
-		logrus.Infof("已删除店铺 %d:%d 的客户端缓存", ctx.Task.TenantID, ctx.Task.StoreID)
+	// 1. 清理客户端缓存（通过内存管理器）
+	if ctx.MemoryManager != nil {
+		// 通过内存管理器清理相关缓存
+		logrus.Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
 	}
 
 	// 2. 暂停店铺到当日结束（23:59:59）

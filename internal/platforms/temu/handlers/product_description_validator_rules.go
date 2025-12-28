@@ -1,197 +1,121 @@
+// Package handlers 提供TEMU平台产品描述验证器的规则功能
 package handlers
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
 )
 
-// cleanAndFormatDescription 清理和格式化描述
-func (h *ProductDescriptionValidator) cleanAndFormatDescription(description string, result *DescriptionValidationResult) string {
-	// 移除首尾空格
-	cleaned := strings.TrimSpace(description)
+// 这个文件包含ProductDescriptionValidator的规则验证功能
+// 注意：主要方法定义在 product_description_validator.go 中
+// 这里只包含规则相关的辅助功能，避免方法重复定义
 
-	// 移除富文本标签（HTML标签等）
-	htmlTagPattern := regexp.MustCompile(`<[^>]*>`)
-	if htmlTagPattern.MatchString(cleaned) {
-		result.Violations = append(result.Violations, "包含不支持的富文本标签")
-		cleaned = htmlTagPattern.ReplaceAllString(cleaned, "")
+// validateDescriptionRules 验证描述规则
+func (h *ProductDescriptionValidator) validateDescriptionRules(description string, result *DescriptionValidationResult) {
+	// 长度检查
+	if len(description) < 10 {
+		result.Violations = append(result.Violations, "描述过短，建议至少10个字符")
+		result.QualityScore -= 20
 	}
 
-	// 清理多余的空行和空格
-	cleaned = h.normalizeWhitespace(cleaned)
+	if len(description) > 2000 {
+		result.Violations = append(result.Violations, "描述过长，建议不超过2000个字符")
+		result.QualityScore -= 10
+	}
 
-	// 移除重复的句子
-	cleaned = h.removeDuplicateSentences(cleaned, result)
+	// 检查是否包含禁用词汇
+	h.checkForbiddenWords(description, result)
 
-	return cleaned
+	// 检查格式问题
+	h.checkFormatIssues(description, result)
+
+	// 检查字符支持
+	h.checkCharacterSupport(description, result)
 }
 
-// validateCharacterSupport 验证字符支持
-func (h *ProductDescriptionValidator) validateCharacterSupport(description string, result *DescriptionValidationResult) string {
-	var validatedBuilder strings.Builder
-	hasInvalidChars := false
+// checkForbiddenWords 检查禁用词汇
+func (h *ProductDescriptionValidator) checkForbiddenWords(description string, result *DescriptionValidationResult) {
+	forbiddenWords := []string{
+		"best", "perfect", "amazing", "incredible", "unbelievable",
+		"guarantee", "promise", "100%", "free shipping", "discount",
+	}
 
-	for i, r := range description {
-		// 支持字母、数字、符号，但不支持富文本
-		if h.isValidChar(r) {
-			validatedBuilder.WriteRune(r)
-		} else {
-			hasInvalidChars = true
-			// 对一些特殊字符进行转换
-			if converted := h.convertSpecialChar(r); converted != "" {
-				validatedBuilder.WriteString(converted)
-			} else {
-				// 记录被移除的字符（用于调试）
-				if r == '.' {
-					h.logger.Warnf("⚠️ 小数点在位置%d被移除: 前文=%s", i, description[max(0, i-5):min(len(description), i+5)])
-				}
-			}
+	lowerDesc := strings.ToLower(description)
+	for _, word := range forbiddenWords {
+		if strings.Contains(lowerDesc, strings.ToLower(word)) {
+			result.Violations = append(result.Violations, "包含可能的禁用词汇: "+word)
+			result.QualityScore -= 5
+		}
+	}
+}
+
+// checkFormatIssues 检查格式问题
+func (h *ProductDescriptionValidator) checkFormatIssues(description string, result *DescriptionValidationResult) {
+	// 检查是否全大写
+	if description == strings.ToUpper(description) && len(description) > 20 {
+		result.Violations = append(result.Violations, "描述全部为大写字母")
+		result.QualityScore -= 15
+	}
+
+	// 检查重复标点符号
+	if matched, _ := regexp.MatchString(`[!]{2,}|[?]{2,}|[.]{3,}`, description); matched {
+		result.Violations = append(result.Violations, "包含重复的标点符号")
+		result.QualityScore -= 5
+	}
+
+	// 检查过多的感叹号
+	exclamationCount := strings.Count(description, "!")
+	if exclamationCount > 3 {
+		result.Violations = append(result.Violations, "感叹号使用过多")
+		result.QualityScore -= 5
+	}
+}
+
+// checkCharacterSupport 检查字符支持
+func (h *ProductDescriptionValidator) checkCharacterSupport(description string, result *DescriptionValidationResult) {
+	unsupportedChars := make([]rune, 0)
+
+	for _, r := range description {
+		// 检查是否为支持的字符
+		if !isSupportedCharacter(r) {
+			unsupportedChars = append(unsupportedChars, r)
 		}
 	}
 
-	if hasInvalidChars {
-		result.Violations = append(result.Violations, "包含不支持的字符（已转换或移除）")
-	}
-
-	return validatedBuilder.String()
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// isValidChar 检查字符是否有效（不包括中文）
-func (h *ProductDescriptionValidator) isValidChar(r rune) bool {
-	// 跳过中文字符
-	if r >= 0x4e00 && r <= 0x9fff {
-		return false
-	}
-
-	// 支持英文字母、数字、空格和基本符号（仅ASCII范围）
-	// 特别注意：小数点(.)必须保留
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
-		unicode.IsSpace(r) || r == '.' || strings.ContainsRune(",!?()-[]/:;\"'&%@+=*#$^", r) ||
-		r == '\n' || r == '\r' || r == '\t'
-}
-
-// convertSpecialChar 转换特殊字符
-func (h *ProductDescriptionValidator) convertSpecialChar(r rune) string {
-	switch r {
-	case '®':
-		return "(R)"
-	case '©':
-		return "(C)"
-	case '™':
-		return "(TM)"
-	case '°':
-		return " degrees"
-	case '×':
-		return "x"
-	case '÷':
-		return "/"
-	case '\u2013': // en dash
-		return "-"
-	case '\u2014': // em dash
-		return "-"
-	case '\u201C': // left double quotation mark
-		return "\""
-	case '\u201D': // right double quotation mark
-		return "\""
-	case '\u2018': // left single quotation mark
-		return "'"
-	case '\u2019': // right single quotation mark
-		return "'"
-	default:
-		return ""
+	if len(unsupportedChars) > 0 {
+		result.Violations = append(result.Violations, "包含不支持的字符")
+		result.QualityScore -= 10
 	}
 }
 
-// normalizeWhitespace 规范化空白字符
-func (h *ProductDescriptionValidator) normalizeWhitespace(text string) string {
-	// 将多个连续空格替换为单个空格
-	spacePattern := regexp.MustCompile(`[ \t]+`)
-	text = spacePattern.ReplaceAllString(text, " ")
-
-	// 移除逗号前的空格（TEMU要求：逗号前不能有空格）
-	text = regexp.MustCompile(`\s+,`).ReplaceAllString(text, ",")
-
-	// 移除其他标点符号前的空格
-	text = regexp.MustCompile(`\s+([.!?;:])`).ReplaceAllString(text, "$1")
-
-	// 确保左括号前有空格（TEMU要求：左括号前必须有空格）
-	text = regexp.MustCompile(`(\S)\(`).ReplaceAllString(text, "$1 (")
-
-	// 确保右括号后有空格（如果后面还有字符的话）
-	text = regexp.MustCompile(`\)(\S)`).ReplaceAllString(text, ") $1")
-
-	// 将多个连续换行替换为最多两个换行
-	newlinePattern := regexp.MustCompile(`\n{3,}`)
-	text = newlinePattern.ReplaceAllString(text, "\n\n")
-
-	// 移除行首行尾空格
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimSpace(line)
+// isSupportedCharacter 检查字符是否被支持
+func isSupportedCharacter(r rune) bool {
+	// 支持基本拉丁字符、数字和常用标点符号
+	if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
+		return true
 	}
-	text = strings.Join(lines, "\n")
 
-	return strings.TrimSpace(text)
+	// 支持的标点符号
+	supportedPuncts := ".,!?;:()[]{}\"'-_/\\@#$%^&*+=<>|~`"
+	return strings.ContainsRune(supportedPuncts, r)
 }
 
-// removeDuplicateSentences 移除重复句子
-func (h *ProductDescriptionValidator) removeDuplicateSentences(text string, result *DescriptionValidationResult) string {
-	sentences := h.splitIntoSentences(text)
-	seen := make(map[string]bool)
-	var uniqueSentences []string
-	duplicateCount := 0
+// applyDescriptionRules 应用描述规则修复
+func (h *ProductDescriptionValidator) applyDescriptionRules(description string) string {
+	// 移除多余的空格
+	description = regexp.MustCompile(`\s+`).ReplaceAllString(description, " ")
+	description = strings.TrimSpace(description)
 
-	for _, sentence := range sentences {
-		normalized := strings.ToLower(strings.TrimSpace(sentence))
-		if normalized == "" {
-			continue
-		}
+	// 修复标点符号问题
+	description = regexp.MustCompile(`[!]{2,}`).ReplaceAllString(description, "!")
+	description = regexp.MustCompile(`[?]{2,}`).ReplaceAllString(description, "?")
+	description = regexp.MustCompile(`[.]{3,}`).ReplaceAllString(description, "...")
 
-		if !seen[normalized] {
-			seen[normalized] = true
-			uniqueSentences = append(uniqueSentences, sentence)
-		} else {
-			duplicateCount++
-		}
+	// 确保句子以适当的标点符号结尾
+	if !strings.HasSuffix(description, ".") && !strings.HasSuffix(description, "!") && !strings.HasSuffix(description, "?") {
+		description += "."
 	}
 
-	if duplicateCount > 0 {
-		result.Suggestions = append(result.Suggestions, fmt.Sprintf("移除了%d个重复句子", duplicateCount))
-	}
-
-	return strings.Join(uniqueSentences, " ")
-}
-
-// splitIntoSentences 将文本分割为句子
-func (h *ProductDescriptionValidator) splitIntoSentences(text string) []string {
-	// 改进的句子分割：只在句号/问号/感叹号后面有空格或结尾时才分割
-	// 这样可以保留小数点（如 35.6）
-	sentencePattern := regexp.MustCompile(`[.!?]+\s+|[.!?]+$`)
-	sentences := sentencePattern.Split(text, -1)
-
-	var result []string
-	for _, sentence := range sentences {
-		sentence = strings.TrimSpace(sentence)
-		if sentence != "" {
-			result = append(result, sentence)
-		}
-	}
-
-	return result
+	return description
 }

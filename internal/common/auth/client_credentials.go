@@ -71,7 +71,8 @@ func (c *ClientCredentialsAuthClient) fetchAccessToken() (string, error) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("tenant-id", c.tenantID)
 
-	logrus.Infof("请求客户端凭证令牌: URL=%s, ClientID=%s, TenantID=%s", tokenURL, c.clientID, c.tenantID)
+	// 不输出敏感信息到日志
+	logrus.Infof("请求客户端凭证令牌: URL=%s", tokenURL)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

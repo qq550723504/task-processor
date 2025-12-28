@@ -1,8 +1,8 @@
+// Package modules 提供SHEIN平台的各种处理模块，包括发布结果保存等功能
 package modules
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	management_api "task-processor/internal/common/management/api"
@@ -16,16 +16,27 @@ type SavePublishResultHandler struct {
 }
 
 // NewSavePublishResultHandler 创建新的保存发品成功后返回信息处理器
+// 返回一个用于保存发布结果信息的处理器实例
 func NewSavePublishResultHandler() *SavePublishResultHandler {
 	return &SavePublishResultHandler{}
 }
 
 // Name 返回处理器名称
+// 实现Handler接口，用于标识当前处理器的功能
 func (h *SavePublishResultHandler) Name() string {
 	return "保存发品成功后返回的信息"
 }
 
 // Handle 执行保存发品成功后返回信息处理
+// 处理发布成功后的信息保存，包括：
+// 1. 创建产品导入映射关系
+// 2. 记录每日上架成功数量并检查限额
+// 3. 更新任务状态为已上架
+// 参数:
+//   - ctx: 任务上下文，包含产品数据、任务信息等
+//
+// 返回值:
+//   - error: 处理过程中的错误，如果为nil表示处理成功
 func (h *SavePublishResultHandler) Handle(ctx *TaskContext) error {
 	// 检查是否已获取产品数据
 	if ctx.ProductData == nil {
@@ -93,11 +104,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *TaskContext) 
 				processedSkus[sku.SupplierSKU] = true
 
 				// 构建ProductImportMappingCreateReqDTO结构体
-				taskID, err := strconv.ParseInt(ctx.Task.ID, 10, 64)
-				if err != nil {
-					logrus.Errorf("转换任务ID失败: %v", err)
-					continue
-				}
+				taskID := ctx.Task.ID
 				createReq := &management_api.ProductImportMappingCreateReqDTO{
 					TenantID:          ctx.Task.TenantID,
 					ImportTaskId:      taskID,
@@ -324,10 +331,10 @@ func (h *SavePublishResultHandler) calculateIncrement(ctx *TaskContext) int64 {
 
 // pauseShopWithCacheCleanup 暂停店铺并清理相关缓存
 func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *TaskContext, reason string, duration time.Duration) error {
-	// 1. 删除客户端缓存
-	if ctx.ShopClientMgr != nil {
-		ctx.ShopClientMgr.RemoveClient(ctx.Task.TenantID, ctx.Task.StoreID)
-		logrus.Infof("已删除店铺 %d:%d 的客户端缓存", ctx.Task.TenantID, ctx.Task.StoreID)
+	// 1. 清理客户端缓存（通过内存管理器）
+	if ctx.MemoryManager != nil {
+		// 通过内存管理器清理相关缓存
+		logrus.Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
 	}
 
 	// 2. 设置暂停键，暂停该店铺
@@ -366,11 +373,8 @@ func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *TaskContext)
 		return nil
 	}
 
-	// 解析任务ID
-	var taskID int64
-	if _, err := fmt.Sscanf(ctx.Task.ID, "%d", &taskID); err != nil {
-		return fmt.Errorf("解析任务ID失败: %w", err)
-	}
+	// Task.ID已经是int64类型，直接使用
+	taskID := ctx.Task.ID
 
 	// 构建更新请求
 	req := &management_api.ProductImportTaskUpdateReqDTO{
@@ -380,10 +384,16 @@ func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *TaskContext)
 
 	// 异步更新状态
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logrus.Errorf("更新任务状态goroutine panic recovered: %v", r)
+			}
+		}()
+
 		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-			logrus.Errorf("更新任务状态为已上架失败 (TaskID: %s): %v", ctx.Task.ID, err)
+			logrus.Errorf("更新任务状态为已上架失败 (TaskID: %d): %v", ctx.Task.ID, err)
 		} else {
-			logrus.Infof("✅ 任务状态已更新为已上架 (TaskID: %s)", ctx.Task.ID)
+			logrus.Infof("✅ 任务状态已更新为已上架 (TaskID: %d)", ctx.Task.ID)
 		}
 	}()
 

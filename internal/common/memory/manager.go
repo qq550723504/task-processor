@@ -1,6 +1,7 @@
 ﻿package memory
 
 import (
+	"context"
 	"task-processor/internal/common/management"
 
 	"github.com/sirupsen/logrus"
@@ -15,7 +16,7 @@ type MemoryManager struct {
 }
 
 // NewMemoryManager 创建内存管理器
-func NewMemoryManager(managementClientMgr *management.ClientManager) *MemoryManager {
+func NewMemoryManager(ctx context.Context, managementClientMgr *management.ClientManager) *MemoryManager {
 	logrus.Info("初始化内存管理器...")
 
 	manager := &MemoryManager{
@@ -25,8 +26,8 @@ func NewMemoryManager(managementClientMgr *management.ClientManager) *MemoryMana
 		ReListingQueue:    NewReListingQueueManager(),
 	}
 
-	// 启动清理任务
-	manager.ShopPauseManager.StartCleanupTask()
+	// 启动清理任务 - 传递context
+	manager.ShopPauseManager.StartCleanupTask(ctx)
 
 	logrus.Info("内存管理器初始化完成")
 	return manager

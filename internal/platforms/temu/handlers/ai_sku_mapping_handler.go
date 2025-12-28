@@ -3,9 +3,10 @@ package handlers
 import (
 	"fmt"
 
-	"task-processor/internal/common/amazon/model"
-	"task-processor/internal/common/pipeline"
 	"task-processor/internal/clients/openai"
+	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -40,8 +41,8 @@ func (h *AISkuMappingHandler) Name() string {
 	return "AI SKU映射处理器"
 }
 
-// Handle 处理任务
-func (h *AISkuMappingHandler) Handle(ctx *pipeline.TaskContext) error {
+// HandleTemu 处理TEMU任务（实现TemuHandler接口）
+func (h *AISkuMappingHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始生成AI SKU映射")
 
 	if h.aiClient == nil {
@@ -50,16 +51,18 @@ func (h *AISkuMappingHandler) Handle(ctx *pipeline.TaskContext) error {
 	}
 
 	// 获取变体列表
-	variants, err := h.getVariants(ctx)
+	variants, err := h.getVariants(temuCtx)
 	if err != nil {
 		return fmt.Errorf("获取变体列表失败: %w", err)
 	}
 
 	// 如果没有变体，尝试使用主产品
 	if len(variants) == 0 {
-		if ctx.AmazonProduct != nil {
+		// 直接从强类型上下文获取Amazon产品
+		amazonProduct := temuCtx.GetAmazonProduct()
+		if amazonProduct != nil {
 			h.logger.Info("没有变体，使用主产品生成AI映射")
-			variants = []*model.Product{ctx.AmazonProduct}
+			variants = []*model.Product{amazonProduct}
 		} else {
 			h.logger.Info("没有变体也没有主产品，跳过AI映射生成")
 			return nil
@@ -69,23 +72,33 @@ func (h *AISkuMappingHandler) Handle(ctx *pipeline.TaskContext) error {
 	h.logger.Infof("开始为 %d 个产品生成AI映射", len(variants))
 
 	// 生成AI SKU映射
-	aiMapping, err := h.skuBuilder.generateAISkuMapping(ctx, variants)
+	aiMapping, err := h.skuBuilder.variantProcessor.generateAISkuMapping(temuCtx, variants)
 	if err != nil {
 		h.logger.Errorf("❌ AI生成SKU映射失败: %v", err)
 		return fmt.Errorf("AI生成SKU映射失败: %w", err)
 	}
 
-	// 将AI映射存储到context中
-	ctx.SetData("ai_sku_mapping", aiMapping)
+	// 将AI映射存储到强类型字段中
+	temuCtx.AISkuMapping = aiMapping
+
 	h.logger.Infof("✅ AI SKU映射已生成并存储，包含 %d 个SKU", len(aiMapping.SkuList))
 
 	return nil
 }
 
 // getVariants 从context获取变体列表
-func (h *AISkuMappingHandler) getVariants(ctx *pipeline.TaskContext) ([]*model.Product, error) {
-	// 使用TaskContext的GetAmazonVariants方法
-	variants := ctx.GetAmazonVariants()
-	// 返回变体列表（可能为空），由调用方决定如何处理
+func (h *AISkuMappingHandler) getVariants(temuCtx *temucontext.TemuTaskContext) ([]*model.Product, error) {
+	// 直接从强类型上下文获取变体
+	variants := temuCtx.GetVariants()
 	return variants, nil
+}
+
+// Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
+func (h *AISkuMappingHandler) Handle(ctx pipeline.TaskContext) error {
+	// 尝试类型断言为TemuTaskContext
+	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
+		return h.HandleTemu(temuCtx)
+	}
+	// 如果不是TemuTaskContext，返回错误
+	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
 }

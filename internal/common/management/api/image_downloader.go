@@ -1,6 +1,9 @@
 ﻿package api
 
-import "io"
+import (
+	"context"
+	"io"
+)
 
 // ImageDownloader 图片下载客户端接口
 type ImageDownloader interface {
@@ -8,10 +11,10 @@ type ImageDownloader interface {
 	DownloadImage(url string) ([]byte, error)
 
 	// DownloadImageToWriter 下载图片并写入到指定的writer
-	DownloadImageToWriter(url string, writer io.Writer) error
+	DownloadImageToWriter(ctx context.Context, url string, writer io.Writer) error
 
 	// GetImageInfo 获取图片信息（大小、格式等）
-	GetImageInfo(url string) (*ImageInfo, error)
+	GetImageInfo(ctx context.Context, url string) (*ImageInfo, error)
 }
 
 // ImageInfo 图片信息结构

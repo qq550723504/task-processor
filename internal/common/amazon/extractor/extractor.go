@@ -19,21 +19,21 @@ type CompositeExtractor struct {
 }
 
 // NewCompositeExtractor 创建组合提取器
-func NewCompositeExtractor() *CompositeExtractor {
+func NewCompositeExtractor(marketplace string) *CompositeExtractor {
 	return &CompositeExtractor{
 		extractors: []Extractor{
 			&TitleExtractor{},
-			&AvailabilityExtractor{}, // 先提取可用性，价格提取器需要依赖这个信息
-			&PriceExtractor{},
+			&AvailabilityExtractor{},       // 先提取可用性，价格提取器需要依赖这个信息
+			NewPriceExtractor(marketplace), // 使用构造函数正确初始化
 			&BrandExtractor{},
 			&RatingExtractor{}, // 包含评分和评论数量提取
 			&ImageExtractor{},
-			&CategoriesExtractor{},   // 分类提取器
-			NewParentAsinExtractor(), // Parent ASIN提取器
-			&SellerExtractor{},       // 卖家提取器
-			&ShipsFromExtractor{},    // 发货地提取器
-			&DeliveryExtractor{},     // 配送信息提取器
-			&DescriptionExtractor{},
+			&CategoriesExtractor{},      // 分类提取器
+			NewParentAsinExtractor(),    // Parent ASIN提取器
+			&SellerExtractor{},          // 卖家提取器
+			&ShipsFromExtractor{},       // 发货地提取器
+			&DeliveryExtractor{},        // 配送信息提取器
+			NewDescriptionExtractor(),   // 使用构造函数正确初始化
 			&ProductDetailsExtractor{},  // 产品详情提取器
 			NewVariationsExtractor(),    // 变体提取器
 			NewBestsellerExtractor(),    // 畅销排名提取器

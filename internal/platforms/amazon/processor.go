@@ -5,27 +5,27 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/common/processor"
 	"task-processor/internal/config"
 	"task-processor/internal/platforms/amazon/api"
 	"task-processor/internal/platforms/amazon/internal/handler"
 	"task-processor/internal/platforms/amazon/internal/model"
 	"task-processor/internal/platforms/amazon/internal/service"
+	"task-processor/internal/worker"
 
 	"github.com/sirupsen/logrus"
 )
 
 // Processor Amazon平台处理器
 type Processor struct {
-	*processor.BaseProcessor                 // 继承基础处理器
-	services                 *model.Services // Amazon特定：服务容器
-	apiClient                *api.Client     // Amazon特定：API客户端
+	*worker.BaseProcessor                 // 继承基础处理器
+	services              *model.Services // Amazon特定：服务容器
+	apiClient             *api.Client     // Amazon特定：API客户端
 }
 
 // NewProcessor 创建Amazon处理器
-func NewProcessor(cfg *config.Config, logger *logrus.Logger) *Processor {
+func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger) *Processor {
 	// 创建基础处理器
-	baseProcessor := processor.NewBaseProcessor(&processor.BaseProcessorConfig{
+	baseProcessor := worker.NewBaseProcessor(ctx, &worker.BaseProcessorConfig{
 		Config:           cfg,
 		ManagementClient: nil, // Amazon处理器可能不需要管理客户端
 		Logger:           logger,
@@ -69,11 +69,11 @@ func (p *Processor) Start(ctx context.Context) error {
 }
 
 // Close 关闭处理器
-func (p *Processor) Close() {
+func (p *Processor) Close(ctx context.Context) {
 	p.GetLogger().Info("[Amazon] 关闭处理器")
 
 	// 关闭基础组件
-	p.CloseBase()
+	p.CloseBase(ctx)
 
 	p.GetLogger().Info("[Amazon] 处理器已关闭")
 }

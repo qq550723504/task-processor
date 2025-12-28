@@ -1,0 +1,146 @@
+// Package handlers 提供TEMU平台SKU图片验证功能
+package handlers
+
+import (
+	"fmt"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
+	"task-processor/internal/platforms/temu/services"
+	"task-processor/internal/platforms/temu/types"
+
+	"github.com/sirupsen/logrus"
+)
+
+// SkuImageValidator SKU图片验证器
+type SkuImageValidator struct {
+	logger          *logrus.Entry
+	singleValidator *SingleImageValidator
+}
+
+// NewSkuImageValidator 创建新的SKU图片验证器
+func NewSkuImageValidator() *SkuImageValidator {
+	return &SkuImageValidator{
+		logger:          logrus.WithField("component", "SkuImageValidator"),
+		singleValidator: NewSingleImageValidator(),
+	}
+}
+
+// Name 返回处理器名称
+func (v *SkuImageValidator) Name() string {
+	return "SKU图片验证器"
+}
+
+// Handle 处理任务（兼容pipeline.Handler接口）
+func (v *SkuImageValidator) Handle(ctx pipeline.TaskContext) error {
+	// 类型断言为强类型上下文
+	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
+	if !ok {
+		return fmt.Errorf("上下文类型错误，期望TemuTaskContext")
+	}
+	return v.HandleTemu(temuCtx)
+}
+
+// HandleTemu 处理任务（强类型上下文）
+func (v *SkuImageValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
+	// 使用默认的图片要求
+	requirement := services.ImageRequirement{
+		MaxSizeMB:     3.0,
+		MinWidth:      1340,
+		MinHeight:     1785,
+		AspectRatio:   0.75, // 3:4 = 0.75 (严格要求)
+		MinImageCount: 1,
+		MaxImageCount: 10,
+	}
+	return v.ValidateSkuImages(temuCtx, requirement)
+}
+
+// ValidateSkuImages 验证SKU图片
+func (v *SkuImageValidator) ValidateSkuImages(temuCtx *temucontext.TemuTaskContext, requirement services.ImageRequirement) error {
+	totalSkuImages := 0
+	totalPaddedImages := 0
+
+	// 获取或创建填充图片映射
+	if temuCtx.PaddedImages == nil {
+		temuCtx.PaddedImages = make(map[string][]byte)
+	}
+	if temuCtx.PaddedImageSizes == nil {
+		temuCtx.PaddedImageSizes = make(map[string][2]int)
+	}
+
+	// 检查TEMU产品数据
+	if temuCtx.TemuProduct == nil {
+		return fmt.Errorf("TEMU产品数据不存在")
+	}
+
+	for skcIndex, skc := range temuCtx.TemuProduct.SkcList {
+		for skuIndex, sku := range skc.SkuList {
+			// 验证轮播图片
+			validCarouselImages := v.validateCarouselImages(sku.CarouselGallery, skcIndex, skuIndex, requirement, temuCtx.PaddedImages, temuCtx.PaddedImageSizes, &totalPaddedImages)
+
+			// 验证尺寸图片
+			validDimensionImages := v.validateDimensionImages(sku.DimensionGallery, skcIndex, skuIndex, requirement, temuCtx.PaddedImages, temuCtx.PaddedImageSizes, &totalPaddedImages)
+
+			// 更新SKU图片
+			temuCtx.TemuProduct.SkcList[skcIndex].SkuList[skuIndex].CarouselGallery = validCarouselImages
+			temuCtx.TemuProduct.SkcList[skcIndex].SkuList[skuIndex].DimensionGallery = validDimensionImages
+
+			totalSkuImages += len(validCarouselImages) + len(validDimensionImages)
+		}
+	}
+
+	return nil
+}
+
+// validateCarouselImages 验证轮播图片
+func (v *SkuImageValidator) validateCarouselImages(images []types.ImageInfo, skcIndex, skuIndex int, requirement services.ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []types.ImageInfo {
+	validImages := []types.ImageInfo{}
+
+	for imgIndex, img := range images {
+		result := v.singleValidator.ValidateSingleImage(img.URL, fmt.Sprintf("SKU[%d-%d]轮播图[%d]", skcIndex, skuIndex, imgIndex), requirement)
+
+		if result.IsValid {
+			if result.NeedsPadding {
+				img.Width = result.PaddedWidth
+				img.Height = result.PaddedHeight
+				paddedImagesMap[img.URL] = result.PaddedImage
+				paddedSizesMap[img.URL] = [2]int{result.PaddedWidth, result.PaddedHeight}
+				*totalPaddedImages++
+			} else {
+				img.Width = result.Width
+				img.Height = result.Height
+			}
+			validImages = append(validImages, img)
+		} else {
+			v.logger.Warnf("SKU[%d-%d]轮播图[%d] 验证失败: %v", skcIndex, skuIndex, imgIndex, result.Violations)
+		}
+	}
+
+	return validImages
+}
+
+// validateDimensionImages 验证尺寸图片
+func (v *SkuImageValidator) validateDimensionImages(images []types.ImageInfo, skcIndex, skuIndex int, requirement services.ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []types.ImageInfo {
+	validImages := []types.ImageInfo{}
+
+	for imgIndex, img := range images {
+		result := v.singleValidator.ValidateSingleImage(img.URL, fmt.Sprintf("SKU[%d-%d]尺寸图[%d]", skcIndex, skuIndex, imgIndex), requirement)
+
+		if result.IsValid {
+			if result.NeedsPadding {
+				img.Width = result.PaddedWidth
+				img.Height = result.PaddedHeight
+				paddedImagesMap[img.URL] = result.PaddedImage
+				paddedSizesMap[img.URL] = [2]int{result.PaddedWidth, result.PaddedHeight}
+				*totalPaddedImages++
+			} else {
+				img.Width = result.Width
+				img.Height = result.Height
+			}
+			validImages = append(validImages, img)
+		} else {
+			v.logger.Warnf("SKU[%d-%d]尺寸图[%d] 验证失败: %v", skcIndex, skuIndex, imgIndex, result.Violations)
+		}
+	}
+
+	return validImages
+}

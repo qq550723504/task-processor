@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
 
 // ProductSaveHandler 产品保存处理器
 type ProductSaveHandler struct {
-	logger *logrus.Entry
+	logger    *logrus.Entry
+	fileUtils *utils.FileUtils
 }
 
 // ProductSaveRequest TEMU产品保存请求结构体
@@ -47,7 +50,8 @@ type ProductSaveResult struct {
 // NewProductSaveHandler 创建新的产品保存处理器
 func NewProductSaveHandler() *ProductSaveHandler {
 	return &ProductSaveHandler{
-		logger: logrus.WithField("handler", "ProductSaveHandler"),
+		logger:    logrus.WithField("handler", "ProductSaveHandler"),
+		fileUtils: utils.NewFileUtils(),
 	}
 }
 
@@ -56,51 +60,60 @@ func (h *ProductSaveHandler) Name() string {
 	return "产品保存处理器"
 }
 
-// Handle 处理任务
-func (h *ProductSaveHandler) Handle(ctx *pipeline.TaskContext) error {
+// HandleTemu 处理TEMU任务（实现TemuHandler接口）
+func (h *ProductSaveHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始保存产品到草稿箱")
 
 	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	task := temuCtx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	if ctx.TemuProduct == nil {
+	// 检查TEMU产品信息
+	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
-	// 保存产品到草稿箱
-	err := h.saveProduct(ctx)
+	// 保存产品
+	err := h.saveProduct(temuCtx)
 	if err != nil {
 		h.logger.Errorf("保存产品失败: %v", err)
 		return fmt.Errorf("保存产品失败: %w", err)
 	}
 
-	h.logger.Info("产品保存到草稿箱完成")
+	h.logger.Info("产品保存完成")
 	return nil
 }
 
+// Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
+func (h *ProductSaveHandler) Handle(ctx pipeline.TaskContext) error {
+	// 尝试类型断言为TemuTaskContext
+	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
+		return h.HandleTemu(temuCtx)
+	}
+	// 如果不是TemuTaskContext，返回错误
+	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
+}
+
 // saveProduct 保存产品到草稿箱
-func (h *ProductSaveHandler) saveProduct(ctx *pipeline.TaskContext) error {
+func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始保存产品到TEMU草稿箱")
 
-	// 检查API客户端
-	if ctx.APIClient == nil {
+	// 获取API客户端
+	if temuCtx.APIClient == nil {
 		return fmt.Errorf("API客户端未初始化")
 	}
 
-	// 构造TEMU产品保存请求
-	request := h.buildSaveRequest(ctx)
-
-	// 记录保存的产品信息（用于调试）
-	requestJSON, err := h.marshalWithoutHTMLEscape(request)
-	if err != nil {
-		h.logger.Errorf("序列化保存请求失败: %v", err)
-	} else {
-		h.logger.Infof("=== 保存到草稿箱的JSON数据 ===")
-		h.logger.Infof("%s", string(requestJSON))
-		h.logger.Infof("=== JSON数据结束 ===")
+	// 获取TEMU产品信息
+	if temuCtx.TemuProduct == nil {
+		return fmt.Errorf("TEMU产品信息为空")
 	}
+
+	// 构造TEMU产品保存请求
+	request := h.buildSaveRequest(temuCtx)
+
+	// 移除调试文件输出，仅保留app.log
 
 	// 构造API请求
 	apiReq := map[string]any{
@@ -123,7 +136,8 @@ func (h *ProductSaveHandler) saveProduct(ctx *pipeline.TaskContext) error {
 
 	// 发送请求到TEMU API
 	response := &ProductSaveResponse{}
-	err = ctx.APIClient.SendTEMURequest(apiReq, response)
+
+	err := temuCtx.APIClient.SendTEMURequest(apiReq, response)
 	if err != nil {
 		h.logger.Errorf("发送TEMU API请求失败: %v", err)
 		h.logger.Errorf("请求URL: %s", apiReq["url"])
@@ -149,20 +163,21 @@ func (h *ProductSaveHandler) saveProduct(ctx *pipeline.TaskContext) error {
 	// 记录保存结果
 	if response.Result != nil {
 		// 更新产品信息中的ID
-		h.updateProductWithSaveResult(ctx, response.Result)
+		h.updateProductWithSaveResult(temuCtx, response.Result)
 	} else {
 		h.logger.Info("产品保存成功，但未返回详细结果")
 	}
 
-	// 将保存结果存储到上下文
-	ctx.SetData("save_response", response)
+	// 将保存结果存储到强类型字段
+	temuCtx.SaveResult = response
 
 	return nil
 }
 
 // buildSaveRequest 构建保存请求
-func (h *ProductSaveHandler) buildSaveRequest(ctx *pipeline.TaskContext) *ProductSaveRequest {
-	temuProduct := ctx.TemuProduct
+func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskContext) *ProductSaveRequest {
+	// 获取TEMU产品信息
+	temuProduct := temuCtx.TemuProduct
 
 	// 转换Extra类型
 	extra := types.Extra{
@@ -198,8 +213,15 @@ func (h *ProductSaveHandler) buildSaveRequest(ctx *pipeline.TaskContext) *Produc
 }
 
 // updateProductWithSaveResult 使用保存结果更新产品信息
-func (h *ProductSaveHandler) updateProductWithSaveResult(ctx *pipeline.TaskContext, result *ProductSaveResult) {
-	basic := &ctx.TemuProduct.GoodsBasic
+func (h *ProductSaveHandler) updateProductWithSaveResult(temuCtx *temucontext.TemuTaskContext, result *ProductSaveResult) {
+	// 获取TEMU产品信息
+	temuProduct := temuCtx.TemuProduct
+	if temuProduct == nil {
+		h.logger.Error("TEMU产品信息为空")
+		return
+	}
+
+	basic := &temuProduct.GoodsBasic
 
 	// 更新产品ID信息
 	if result.ListingCommitID != "" {
@@ -216,6 +238,8 @@ func (h *ProductSaveHandler) updateProductWithSaveResult(ctx *pipeline.TaskConte
 		basic.GoodsCommitID = result.GoodsCommitID
 		h.logger.Infof("更新GoodsCommitID: %s", basic.GoodsCommitID)
 	}
+
+	h.logger.Info("产品信息已更新")
 }
 
 // getTotalSkuCount 获取总SKU数量

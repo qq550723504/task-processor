@@ -54,12 +54,9 @@
       "VHB",
       "LEVE",
       "B",
-      "Non-toxic",
-      "Environmentally-friendly",
-      "Environmentally",
-      "Environmentally Friendly",
-      "Environmental",
-      "environmental",
+      "(?i)non[\\s-]*toxic",
+      "(?i)environmentally[\\s-]*friendly",
+      "(?i)environmental",
       "trato"
     ],
     "es": [

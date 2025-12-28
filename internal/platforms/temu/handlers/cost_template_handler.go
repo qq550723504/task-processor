@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
+	temuTypes "task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -55,29 +57,43 @@ func (h *CostTemplateHandler) Name() string {
 	return "成本模板处理器"
 }
 
-func (h *CostTemplateHandler) Handle(ctx *pipeline.TaskContext) error {
+// Handle 兼容性方法，实现pipeline.Handler接口
+func (h *CostTemplateHandler) Handle(ctx pipeline.TaskContext) error {
+	// 类型断言转换为强类型上下文
+	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
+	if !ok {
+		return pipeline.NewHandlerError(h.Name(), "上下文类型错误：期望 *TemuTaskContext")
+	}
+
+	return h.HandleTemu(temuCtx)
+}
+
+func (h *CostTemplateHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始查询成本模板")
 
+	// 检查TEMU产品信息
+	if temuCtx.TemuProduct == nil {
+		return fmt.Errorf("TEMU产品信息为空")
+	}
+
+	temuProduct := temuCtx.TemuProduct
+
 	// 检查API客户端
-	if ctx.APIClient == nil {
+	if temuCtx.APIClient == nil {
 		h.logger.Warn("API客户端未初始化，使用默认成本模板")
-		if ctx.TemuProduct != nil {
-			ctx.TemuProduct.GoodsServicePromise.CostTemplateID = "default_template_001"
-		}
+		temuProduct.GoodsServicePromise.CostTemplateID = "default_template_001"
 		return nil
 	}
 
 	// 构造成本模板查询请求
-	request := h.buildCostTemplateRequest(ctx)
+	request := h.buildCostTemplateRequest(temuProduct)
 
 	// 发送成本模板查询请求
-	err := h.queryCostTemplate(ctx, request)
+	err := h.queryCostTemplate(temuCtx, temuCtx.APIClient, temuProduct, request)
 	if err != nil {
 		h.logger.WithError(err).Warn("查询成本模板失败，使用默认模板")
 		// 设置默认成本模板
-		if ctx.TemuProduct != nil {
-			ctx.TemuProduct.GoodsServicePromise.CostTemplateID = "default_template_001"
-		}
+		temuProduct.GoodsServicePromise.CostTemplateID = "default_template_001"
 		// 继续执行，不返回错误
 	}
 
@@ -86,26 +102,26 @@ func (h *CostTemplateHandler) Handle(ctx *pipeline.TaskContext) error {
 }
 
 // buildCostTemplateRequest 构造成本模板查询请求
-func (h *CostTemplateHandler) buildCostTemplateRequest(ctx *pipeline.TaskContext) *CostTemplateRequest {
+func (h *CostTemplateHandler) buildCostTemplateRequest(temuProduct *temuTypes.Product) *CostTemplateRequest {
 	request := &CostTemplateRequest{
 		ClickType:            "8",  // 根据实际API调用设置
 		ListingCommitVersion: "1",  // 默认版本
 		QueryAll:             true, // 查询所有模板
 	}
 
-	// 从上下文中获取实际的参数值
-	if ctx.TemuProduct != nil {
-		if ctx.TemuProduct.GoodsBasic.ListingCommitID != "" {
-			request.ListingCommitID = ctx.TemuProduct.GoodsBasic.ListingCommitID
+	// 从产品数据中获取实际的参数值
+	if temuProduct != nil {
+		if temuProduct.GoodsBasic.ListingCommitID != "" {
+			request.ListingCommitID = temuProduct.GoodsBasic.ListingCommitID
 		}
-		if ctx.TemuProduct.GoodsBasic.GoodsCommitID != "" {
-			request.GoodsCommitID = ctx.TemuProduct.GoodsBasic.GoodsCommitID
+		if temuProduct.GoodsBasic.GoodsCommitID != "" {
+			request.GoodsCommitID = temuProduct.GoodsBasic.GoodsCommitID
 		}
-		if ctx.TemuProduct.GoodsBasic.GoodsID != "" {
-			request.GoodsID = ctx.TemuProduct.GoodsBasic.GoodsID
+		if temuProduct.GoodsBasic.GoodsID != "" {
+			request.GoodsID = temuProduct.GoodsBasic.GoodsID
 		}
-		if ctx.TemuProduct.GoodsBasic.CatID > 0 {
-			request.CatID = ctx.TemuProduct.GoodsBasic.CatID
+		if temuProduct.GoodsBasic.CatID > 0 {
+			request.CatID = temuProduct.GoodsBasic.CatID
 		}
 	}
 
@@ -113,7 +129,7 @@ func (h *CostTemplateHandler) buildCostTemplateRequest(ctx *pipeline.TaskContext
 }
 
 // queryCostTemplate 发送成本模板查询请求到TEMU API
-func (h *CostTemplateHandler) queryCostTemplate(ctx *pipeline.TaskContext, request *CostTemplateRequest) error {
+func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskContext, apiClient any, temuProduct *temuTypes.Product, request *CostTemplateRequest) error {
 	// 构造API请求
 	apiReq := map[string]any{
 		"method": "POST",
@@ -133,46 +149,55 @@ func (h *CostTemplateHandler) queryCostTemplate(ctx *pipeline.TaskContext, reque
 		"body": request,
 	}
 
-	// 发送请求
-	response := &CostTemplateResponse{}
-	err := ctx.APIClient.SendTEMURequest(apiReq, response)
-	if err != nil {
-		return fmt.Errorf("发送请求失败: %v", err)
+	// 类型断言获取TEMU API客户端
+	type TEMUAPIClient interface {
+		SendTEMURequest(request map[string]any, response any) error
 	}
 
-	templateCount := 0
-	if response.Result != nil {
-		templateCount = len(response.Result.CostTemplateList)
-	}
-
-	h.logger.WithFields(logrus.Fields{
-		"listingCommitID": request.ListingCommitID,
-		"goodsCommitID":   request.GoodsCommitID,
-		"catID":           request.CatID,
-		"success":         response.Success,
-		"errorCode":       response.ErrorCode,
-		"templateCount":   templateCount,
-	}).Info("成本模板查询响应")
-
-	// 检查响应是否成功
-	if !response.Success {
-		return fmt.Errorf("成本模板查询失败: error_code=%d", response.ErrorCode)
-	}
-
-	// 从响应中解析成本模板ID
-	if ctx.TemuProduct != nil {
-		costTemplateID := h.extractCostTemplateID(response)
-		if costTemplateID != "" {
-			ctx.TemuProduct.GoodsServicePromise.CostTemplateID = costTemplateID
-			h.logger.Infof("设置成本模板ID: %s", costTemplateID)
-		} else {
-			// 如果无法解析，使用默认模板
-			ctx.TemuProduct.GoodsServicePromise.CostTemplateID = "default_template_001"
-			h.logger.Warn("无法解析成本模板ID，使用默认模板")
+	if temuClient, ok := apiClient.(TEMUAPIClient); ok {
+		// 发送请求
+		response := &CostTemplateResponse{}
+		err := temuClient.SendTEMURequest(apiReq, response)
+		if err != nil {
+			return fmt.Errorf("发送请求失败: %v", err)
 		}
-	}
 
-	return nil
+		templateCount := 0
+		if response.Result != nil {
+			templateCount = len(response.Result.CostTemplateList)
+		}
+
+		h.logger.WithFields(logrus.Fields{
+			"listingCommitID": request.ListingCommitID,
+			"goodsCommitID":   request.GoodsCommitID,
+			"catID":           request.CatID,
+			"success":         response.Success,
+			"errorCode":       response.ErrorCode,
+			"templateCount":   templateCount,
+		}).Info("成本模板查询响应")
+
+		// 检查响应是否成功
+		if !response.Success {
+			return fmt.Errorf("成本模板查询失败: error_code=%d", response.ErrorCode)
+		}
+
+		// 从响应中解析成本模板ID
+		if temuProduct != nil {
+			costTemplateID := h.extractCostTemplateID(response)
+			if costTemplateID != "" {
+				temuProduct.GoodsServicePromise.CostTemplateID = costTemplateID
+				h.logger.Infof("设置成本模板ID: %s", costTemplateID)
+			} else {
+				// 如果无法解析，使用默认模板
+				temuProduct.GoodsServicePromise.CostTemplateID = "default_template_001"
+				h.logger.Warn("无法解析成本模板ID，使用默认模板")
+			}
+		}
+
+		return nil
+	} else {
+		return fmt.Errorf("API客户端不支持TEMU请求")
+	}
 }
 
 // extractCostTemplateID 从响应中提取成本模板ID

@@ -6,24 +6,26 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"image/jpeg"
-	"image/png"
-	"io"
-	"net/http"
-	"strings"
+
+	"task-processor/internal/common/downloader"
+	"task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
 )
 
 // ImagePaddingProcessor 图片填充处理器
 type ImagePaddingProcessor struct {
-	logger *logrus.Entry
+	logger     *logrus.Entry
+	downloader *downloader.ImageDownloader
+	encoder    *utils.ImageEncoder
 }
 
 // NewImagePaddingProcessor 创建新的图片填充处理器
 func NewImagePaddingProcessor() *ImagePaddingProcessor {
 	return &ImagePaddingProcessor{
-		logger: logrus.WithField("processor", "ImagePaddingProcessor"),
+		logger:     logrus.WithField("processor", "ImagePaddingProcessor"),
+		downloader: downloader.NewImageDownloader(),
+		encoder:    utils.NewImageEncoder(),
 	}
 }
 
@@ -121,7 +123,7 @@ func (p *ImagePaddingProcessor) PadImageToAspectRatio(imageURL string, targetRat
 
 	// 编码图片
 	var buf bytes.Buffer
-	if err := p.encodeImage(&buf, paddedImg, format); err != nil {
+	if err := p.encoder.EncodeImage(&buf, paddedImg, format); err != nil {
 		result.Error = fmt.Errorf("编码图片失败: %w", err)
 		return result, result.Error
 	}
@@ -134,87 +136,19 @@ func (p *ImagePaddingProcessor) PadImageToAspectRatio(imageURL string, targetRat
 	return result, nil
 }
 
-// downloadImage 下载图片
+// downloadImage 下载图片（使用统一的下载器）
 func (p *ImagePaddingProcessor) downloadImage(imageURL string) (image.Image, string, error) {
-	resp, err := http.Get(imageURL)
+	// 使用现有的图片下载器
+	imageData, _, err := p.downloader.DownloadImage(imageURL)
 	if err != nil {
-		return nil, "", fmt.Errorf("HTTP请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("HTTP状态码错误: %d", resp.StatusCode)
-	}
-
-	// 读取图片数据
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", fmt.Errorf("读取响应失败: %w", err)
+		return nil, "", fmt.Errorf("下载图片失败: %w", err)
 	}
 
 	// 解码图片
-	img, format, err := image.Decode(bytes.NewReader(data))
+	img, format, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
 		return nil, "", fmt.Errorf("解码图片失败: %w", err)
 	}
 
 	return img, format, nil
-}
-
-// encodeImage 编码图片
-func (p *ImagePaddingProcessor) encodeImage(w io.Writer, img image.Image, format string) error {
-	switch strings.ToLower(format) {
-	case "jpeg", "jpg":
-		return jpeg.Encode(w, img, &jpeg.Options{Quality: 95})
-	case "png":
-		return png.Encode(w, img)
-	default:
-		// 默认使用JPEG
-		return jpeg.Encode(w, img, &jpeg.Options{Quality: 95})
-	}
-}
-
-// CalculatePaddingDimensions 计算填充后的尺寸（不实际处理图片）
-func (p *ImagePaddingProcessor) CalculatePaddingDimensions(width, height int, targetRatio float64, minWidth, minHeight int) (newWidth, newHeight int, needsPadding bool) {
-	currentRatio := float64(width) / float64(height)
-
-	// 检查是否需要填充 - 严格匹配，不允许容差
-	if currentRatio == targetRatio && width >= minWidth && height >= minHeight {
-		return width, height, false
-	}
-
-	// 计算新的尺寸
-	if currentRatio > targetRatio {
-		// 图片太宽，需要在上下添加白边
-		newWidth = width
-		newHeight = int(float64(width) / targetRatio)
-	} else {
-		// 图片太高，需要在左右添加白边
-		newHeight = height
-		newWidth = int(float64(height) * targetRatio)
-	}
-
-	// 对于1:1比例，确保宽高完全相等
-	if targetRatio == 1.0 {
-		maxDimension := newWidth
-		if newHeight > maxDimension {
-			maxDimension = newHeight
-		}
-		newWidth = maxDimension
-		newHeight = maxDimension
-	}
-
-	// 确保满足最小尺寸要求
-	if newWidth < minWidth {
-		scale := float64(minWidth) / float64(newWidth)
-		newWidth = minWidth
-		newHeight = int(float64(newHeight) * scale)
-	}
-	if newHeight < minHeight {
-		scale := float64(minHeight) / float64(newHeight)
-		newHeight = minHeight
-		newWidth = int(float64(newWidth) * scale)
-	}
-
-	return newWidth, newHeight, true
 }

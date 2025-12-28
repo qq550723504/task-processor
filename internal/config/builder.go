@@ -35,6 +35,7 @@ func buildConfig() *Config {
 		},
 		Platforms: PlatformsConfig{
 			Temu: PlatformConfig{
+				Enabled: viper.GetBool("platforms.temu.enabled"),
 				AutoPricing: AutoPricingConfig{
 					Enabled:   viper.GetBool("platforms.temu.autoPricing.enabled"),
 					Interval:  viper.GetInt("platforms.temu.autoPricing.interval"),
@@ -58,6 +59,7 @@ func buildConfig() *Config {
 				},
 			},
 			Shein: PlatformConfig{
+				Enabled: viper.GetBool("platforms.shein.enabled"),
 				AutoPricing: AutoPricingConfig{
 					Enabled:   viper.GetBool("platforms.shein.autoPricing.enabled"),
 					Interval:  viper.GetInt("platforms.shein.autoPricing.interval"),

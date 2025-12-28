@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
+	temuTypes "task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -140,21 +142,35 @@ func (h *CommitDetailHandler) Name() string {
 	return "提交详情查询处理器"
 }
 
-// Handle 处理任务
-func (h *CommitDetailHandler) Handle(ctx *pipeline.TaskContext) error {
+// Handle 处理任务（兼容pipeline.Handler接口）
+func (h *CommitDetailHandler) Handle(ctx pipeline.TaskContext) error {
+	// 类型断言为强类型上下文
+	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
+	if !ok {
+		return fmt.Errorf("上下文类型错误，期望TemuTaskContext")
+	}
+	return h.HandleTemu(temuCtx)
+}
+
+// HandleTemu 处理任务（强类型上下文）
+func (h *CommitDetailHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始查询提交详情")
 
-	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	// 获取任务信息
+	task := temuCtx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	if ctx.TemuProduct == nil {
+	// 从上下文获取TEMU产品信息
+	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
+	temuProduct := temuCtx.TemuProduct
+
 	// 查询提交详情
-	err := h.queryCommitDetail(ctx)
+	err := h.queryCommitDetail(temuCtx, temuProduct)
 	if err != nil {
 		h.logger.WithError(err).Error("查询提交详情失败")
 		return fmt.Errorf("查询提交详情失败: %w", err)
@@ -165,8 +181,8 @@ func (h *CommitDetailHandler) Handle(ctx *pipeline.TaskContext) error {
 }
 
 // validateCommitInfo 验证提交信息
-func (h *CommitDetailHandler) validateCommitInfo(ctx *pipeline.TaskContext) error {
-	basic := ctx.TemuProduct.GoodsBasic
+func (h *CommitDetailHandler) validateCommitInfo(temuProduct *temuTypes.Product) error {
+	basic := temuProduct.GoodsBasic
 
 	if basic.ListingCommitID == "" {
 		return fmt.Errorf("ListingCommitID不能为空")
@@ -195,13 +211,13 @@ func (h *CommitDetailHandler) validateCommitInfo(ctx *pipeline.TaskContext) erro
 }
 
 // queryCommitDetail 查询提交详情
-func (h *CommitDetailHandler) queryCommitDetail(ctx *pipeline.TaskContext) error {
-	// 检查API客户端
-	if ctx.APIClient == nil {
+func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskContext, temuProduct *temuTypes.Product) error {
+	// 获取API客户端
+	if temuCtx.APIClient == nil {
 		return fmt.Errorf("API客户端未初始化")
 	}
 
-	basic := ctx.TemuProduct.GoodsBasic
+	basic := temuProduct.GoodsBasic
 
 	// 构造查询请求体
 	requestBody := CommitDetailRequest{
@@ -240,10 +256,20 @@ func (h *CommitDetailHandler) queryCommitDetail(ctx *pipeline.TaskContext) error
 
 	// 发送API请求
 	response := &CommitDetailResponse{}
-	err := ctx.APIClient.SendTEMURequest(apiReq, response)
-	if err != nil {
-		h.logger.WithError(err).Error("查询提交详情API调用失败")
-		return fmt.Errorf("查询提交详情API调用失败: %w", err)
+
+	// 类型断言获取TEMU API客户端
+	type TEMUAPIClient interface {
+		SendTEMURequest(request map[string]interface{}, response interface{}) error
+	}
+
+	if temuClient, ok := interface{}(temuCtx.APIClient).(TEMUAPIClient); ok {
+		err := temuClient.SendTEMURequest(apiReq, response)
+		if err != nil {
+			h.logger.WithError(err).Error("查询提交详情API调用失败")
+			return fmt.Errorf("查询提交详情API调用失败: %w", err)
+		}
+	} else {
+		return fmt.Errorf("API客户端不支持TEMU请求")
 	}
 
 	h.logger.WithFields(logrus.Fields{
@@ -267,7 +293,7 @@ func (h *CommitDetailHandler) queryCommitDetail(ctx *pipeline.TaskContext) error
 
 	// 解析并更新产品数据
 	if response.Result != nil {
-		err := h.updateProductFromCommitDetail(ctx, response.Result)
+		err := h.updateProductFromCommitDetail(temuProduct, response.Result)
 		if err != nil {
 			h.logger.WithError(err).Warn("更新产品数据失败，但继续执行")
 		}
@@ -280,7 +306,7 @@ func (h *CommitDetailHandler) queryCommitDetail(ctx *pipeline.TaskContext) error
 }
 
 // updateProductFromCommitDetail 从提交详情更新产品数据
-func (h *CommitDetailHandler) updateProductFromCommitDetail(ctx *pipeline.TaskContext, result *CommitDetailResult) error {
+func (h *CommitDetailHandler) updateProductFromCommitDetail(temuProduct *temuTypes.Product, result *CommitDetailResult) error {
 	if result.GoodsBasic == nil {
 		return fmt.Errorf("商品基础信息为空")
 	}
@@ -289,106 +315,106 @@ func (h *CommitDetailHandler) updateProductFromCommitDetail(ctx *pipeline.TaskCo
 
 	// 更新商品基础信息
 	if basic.GoodsName != "" {
-		ctx.TemuProduct.GoodsBasic.GoodsName = basic.GoodsName
+		temuProduct.GoodsBasic.GoodsName = basic.GoodsName
 		h.logger.Infof("更新商品名称: %s", basic.GoodsName)
 	}
 
 	if basic.CatID > 0 {
-		ctx.TemuProduct.GoodsBasic.CatID = basic.CatID
+		temuProduct.GoodsBasic.CatID = basic.CatID
 		h.logger.Infof("更新分类ID: %d", basic.CatID)
 	}
 
 	if len(basic.CatIDs) > 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = basic.CatIDs
+		temuProduct.GoodsBasic.CatIDs = basic.CatIDs
 		h.logger.Infof("更新分类ID列表: %v", basic.CatIDs)
 	}
 
 	// 更新分类树信息
 	if basic.CategoryTree != nil {
-		h.updateCategoryTree(ctx, basic.CategoryTree)
+		h.updateCategoryTree(temuProduct, basic.CategoryTree)
 	}
 
 	// 更新分类免责声明
 	if basic.CategoryDisclaimer != nil && len(basic.CategoryDisclaimer.PromptList) > 0 {
-		ctx.TemuProduct.GoodsBasic.CategoryDisclaimer.PromptList = basic.CategoryDisclaimer.PromptList
+		temuProduct.GoodsBasic.CategoryDisclaimer.PromptList = basic.CategoryDisclaimer.PromptList
 		h.logger.Infof("更新分类免责声明: %d条", len(basic.CategoryDisclaimer.PromptList))
 	}
 
 	// 更新商品类型信息
-	ctx.TemuProduct.GoodsBasic.GoodsType = basic.GoodsType
-	ctx.TemuProduct.GoodsBasic.IsClothes = basic.IsClothes
-	ctx.TemuProduct.GoodsBasic.IsBooks = basic.IsBooks
-	ctx.TemuProduct.GoodsBasic.Customized = basic.Customized
-	ctx.TemuProduct.GoodsBasic.SecondHand = basic.SecondHand
-	ctx.TemuProduct.GoodsBasic.MadeToOrder = basic.MadeToOrder
+	temuProduct.GoodsBasic.GoodsType = basic.GoodsType
+	temuProduct.GoodsBasic.IsClothes = basic.IsClothes
+	temuProduct.GoodsBasic.IsBooks = basic.IsBooks
+	temuProduct.GoodsBasic.Customized = basic.Customized
+	temuProduct.GoodsBasic.SecondHand = basic.SecondHand
+	temuProduct.GoodsBasic.MadeToOrder = basic.MadeToOrder
 
 	// 更新外部商品编号
 	if basic.OutGoodsSn != "" {
-		ctx.TemuProduct.GoodsBasic.OutGoodsSN = basic.OutGoodsSn
+		temuProduct.GoodsBasic.OutGoodsSN = basic.OutGoodsSn
 		h.logger.Infof("更新外部商品编号: %s", basic.OutGoodsSn)
 	}
 
 	// 更新销售信息
 	if result.GoodsSaleInfo != nil {
-		ctx.TemuProduct.GoodsSaleInfo.GoodsPattern = result.GoodsSaleInfo.GoodsPattern
+		temuProduct.GoodsSaleInfo.GoodsPattern = result.GoodsSaleInfo.GoodsPattern
 	}
 
 	// 更新额外信息
 	if result.Extra != nil {
-		ctx.TemuProduct.Extra.Tab = result.Extra.Tab
-		ctx.TemuProduct.Extra.MinSkuImageSize = result.Extra.MinSkuImageSize
-		ctx.TemuProduct.Extra.MaxSkuImageSize = result.Extra.MaxSkuImageSize
+		temuProduct.Extra.Tab = result.Extra.Tab
+		temuProduct.Extra.MinSkuImageSize = result.Extra.MinSkuImageSize
+		temuProduct.Extra.MaxSkuImageSize = result.Extra.MaxSkuImageSize
 	}
 
 	// 更新支持标志
-	ctx.TemuProduct.CanSave = &result.CanSave
-	ctx.TemuProduct.SupportMaxRetailPrice = &result.SupportMaxRetailPrice
-	ctx.TemuProduct.PlatformExpressBill = &result.PlatformExpressBill
+	temuProduct.CanSave = &result.CanSave
+	temuProduct.SupportMaxRetailPrice = &result.SupportMaxRetailPrice
+	temuProduct.PlatformExpressBill = &result.PlatformExpressBill
 
 	h.logger.WithFields(logrus.Fields{
-		"goodsName":             ctx.TemuProduct.GoodsBasic.GoodsName,
-		"catID":                 ctx.TemuProduct.GoodsBasic.CatID,
-		"goodsType":             ctx.TemuProduct.GoodsBasic.GoodsType,
-		"isClothes":             ctx.TemuProduct.GoodsBasic.IsClothes,
-		"canSave":               ctx.TemuProduct.CanSave,
-		"supportMaxRetailPrice": ctx.TemuProduct.SupportMaxRetailPrice,
+		"goodsName":             temuProduct.GoodsBasic.GoodsName,
+		"catID":                 temuProduct.GoodsBasic.CatID,
+		"goodsType":             temuProduct.GoodsBasic.GoodsType,
+		"isClothes":             temuProduct.GoodsBasic.IsClothes,
+		"canSave":               temuProduct.CanSave,
+		"supportMaxRetailPrice": temuProduct.SupportMaxRetailPrice,
 	}).Info("产品数据更新完成")
 
 	return nil
 }
 
 // updateCategoryTree 更新分类树信息
-func (h *CommitDetailHandler) updateCategoryTree(ctx *pipeline.TaskContext, tree *CommitDetailCategoryTree) {
+func (h *CommitDetailHandler) updateCategoryTree(temuProduct *temuTypes.Product, tree *CommitDetailCategoryTree) {
 	// 更新分类层级信息
-	ctx.TemuProduct.GoodsBasic.CategoryTree.Level = tree.Level
-	ctx.TemuProduct.GoodsBasic.CategoryTree.CateType = tree.CateType
-	ctx.TemuProduct.GoodsBasic.CategoryTree.CatID = tree.CatID
+	temuProduct.GoodsBasic.CategoryTree.Level = tree.Level
+	temuProduct.GoodsBasic.CategoryTree.CateType = tree.CateType
+	temuProduct.GoodsBasic.CategoryTree.CatID = tree.CatID
 
 	// 更新各级分类信息
 	if tree.Cate1ID > 0 {
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate1ID = tree.Cate1ID
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate1Name = tree.Cate1Name
+		temuProduct.GoodsBasic.CategoryTree.Cate1ID = tree.Cate1ID
+		temuProduct.GoodsBasic.CategoryTree.Cate1Name = tree.Cate1Name
 	}
 	if tree.Cate2ID > 0 {
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate2ID = tree.Cate2ID
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate2Name = tree.Cate2Name
+		temuProduct.GoodsBasic.CategoryTree.Cate2ID = tree.Cate2ID
+		temuProduct.GoodsBasic.CategoryTree.Cate2Name = tree.Cate2Name
 	}
 	if tree.Cate3ID > 0 {
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate3ID = tree.Cate3ID
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate3Name = tree.Cate3Name
+		temuProduct.GoodsBasic.CategoryTree.Cate3ID = tree.Cate3ID
+		temuProduct.GoodsBasic.CategoryTree.Cate3Name = tree.Cate3Name
 	}
 	if tree.Cate4ID > 0 {
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate4ID = tree.Cate4ID
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate4Name = tree.Cate4Name
+		temuProduct.GoodsBasic.CategoryTree.Cate4ID = tree.Cate4ID
+		temuProduct.GoodsBasic.CategoryTree.Cate4Name = tree.Cate4Name
 	}
 	if tree.Cate5ID > 0 {
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate5ID = tree.Cate5ID
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate5Name = tree.Cate5Name
+		temuProduct.GoodsBasic.CategoryTree.Cate5ID = tree.Cate5ID
+		temuProduct.GoodsBasic.CategoryTree.Cate5Name = tree.Cate5Name
 	}
 
 	// 更新分类名称列表
 	if len(tree.CateNameList) > 0 {
-		ctx.TemuProduct.GoodsBasic.CategoryTree.CateNameList = tree.CateNameList
+		temuProduct.GoodsBasic.CategoryTree.CateNameList = tree.CateNameList
 	}
 
 	h.logger.WithFields(logrus.Fields{
@@ -398,9 +424,15 @@ func (h *CommitDetailHandler) updateCategoryTree(ctx *pipeline.TaskContext, tree
 	}).Info("分类树信息更新完成")
 }
 
-// GetCommitDetailFromContext 从上下文中获取提交详情
-func GetCommitDetailFromContext(ctx *pipeline.TaskContext) (interface{}, bool) {
-	if data, exists := ctx.GetData("commit_detail"); exists {
+// GetCommitDetailFromContext 从强类型上下文中获取提交详情
+func GetCommitDetailFromContext(temuCtx *temucontext.TemuTaskContext) (interface{}, bool) {
+	// 优先从强类型上下文字段获取
+	if temuCtx.CommitDetail != nil {
+		return temuCtx.CommitDetail, true
+	}
+
+	// 兼容性：从基础上下文的GetData方法获取
+	if data, exists := temuCtx.DefaultTaskContext.GetData("commit_detail"); exists {
 		return data, true
 	}
 	return nil, false

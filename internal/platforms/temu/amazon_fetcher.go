@@ -19,7 +19,8 @@ func fetchAmazonProduct(
 		return nil, fmt.Errorf("ASIN 为空")
 	}
 
-	domain := product.GetAmazonDomainByRegion(region)
+	domainResolver := product.NewDomainResolver()
+	domain := domainResolver.GetAmazonDomainByRegion(region)
 	url := fmt.Sprintf("https://%s/dp/%s?th=1&psc=1&language=en_US", domain, asin)
 
 	logger := logrus.WithFields(logrus.Fields{

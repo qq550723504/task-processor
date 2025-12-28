@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
+	temuTypes "task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,21 +26,34 @@ func (h *CategoryHandler) Name() string {
 	return "分类处理器"
 }
 
-// Handle 处理任务
-func (h *CategoryHandler) Handle(ctx *pipeline.TaskContext) error {
+// Handle 兼容性方法，实现pipeline.Handler接口
+func (h *CategoryHandler) Handle(ctx pipeline.TaskContext) error {
+	// 类型断言转换为强类型上下文
+	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
+	if !ok {
+		return pipeline.NewHandlerError(h.Name(), "上下文类型错误：期望 *TemuTaskContext")
+	}
+
+	return h.HandleTemu(temuCtx)
+}
+
+// HandleTemu 处理任务（强类型上下文）
+func (h *CategoryHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始处理分类信息")
 
-	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	// 获取任务信息
+	task := temuCtx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	if ctx.TemuProduct == nil {
+	// 检查TEMU产品信息
+	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
 	// 处理分类相关信息
-	err := h.processCategoryInfo(ctx)
+	err := h.processCategoryInfo(temuCtx.TemuProduct)
 	if err != nil {
 		h.logger.Errorf("处理分类信息失败: %v", err)
 		return fmt.Errorf("处理分类信息失败: %w", err)
@@ -49,8 +64,8 @@ func (h *CategoryHandler) Handle(ctx *pipeline.TaskContext) error {
 }
 
 // processCategoryInfo 处理分类信息
-func (h *CategoryHandler) processCategoryInfo(ctx *pipeline.TaskContext) error {
-	catID := ctx.TemuProduct.GoodsBasic.CatID
+func (h *CategoryHandler) processCategoryInfo(temuProduct *temuTypes.Product) error {
+	catID := temuProduct.GoodsBasic.CatID
 	if catID == 0 {
 		return fmt.Errorf("分类ID为空")
 	}
@@ -58,50 +73,50 @@ func (h *CategoryHandler) processCategoryInfo(ctx *pipeline.TaskContext) error {
 	h.logger.Infof("处理分类信息: CatID=%d", catID)
 
 	// 设置分类相关的产品属性
-	h.setCategoryBasedProperties(ctx, catID)
+	h.setCategoryBasedProperties(temuProduct, catID)
 
 	// 设置分类相关的服务承诺
-	h.setCategoryBasedServicePromise(ctx, catID)
+	h.setCategoryBasedServicePromise(temuProduct, catID)
 
 	h.logger.Info("分类信息处理完成")
 	return nil
 }
 
 // setCategoryBasedProperties 根据分类设置产品属性
-func (h *CategoryHandler) setCategoryBasedProperties(ctx *pipeline.TaskContext, catID int) {
+func (h *CategoryHandler) setCategoryBasedProperties(temuProduct *temuTypes.Product, catID int) {
 	h.logger.Infof("根据分类设置产品属性: CatID=%d", catID)
 
 	// 不要覆盖TEMU API返回的IsClothes值！
 	// CommitDetailHandler已经从TEMU API获取了正确的IsClothes值
 	// 这里只记录当前状态，不做修改
 	h.logger.Infof("当前产品分类状态: IsClothes=%v, IsBooks=%v, CatType=%d",
-		ctx.TemuProduct.GoodsBasic.IsClothes,
-		ctx.TemuProduct.GoodsBasic.IsBooks,
-		ctx.TemuProduct.GoodsBasic.CatType)
+		temuProduct.GoodsBasic.IsClothes,
+		temuProduct.GoodsBasic.IsBooks,
+		temuProduct.GoodsBasic.CatType)
 
 	// 设置其他通用属性
-	ctx.TemuProduct.GoodsBasic.CanSkipRequiredProperty = false
-	ctx.TemuProduct.GoodsBasic.IsShop = false
-	ctx.TemuProduct.GoodsBasic.FromCopy = false
-	ctx.TemuProduct.GoodsBasic.HasSubmitted = false
+	temuProduct.GoodsBasic.CanSkipRequiredProperty = false
+	temuProduct.GoodsBasic.IsShop = false
+	temuProduct.GoodsBasic.FromCopy = false
+	temuProduct.GoodsBasic.HasSubmitted = false
 }
 
 // setCategoryBasedServicePromise 根据分类设置服务承诺
-func (h *CategoryHandler) setCategoryBasedServicePromise(ctx *pipeline.TaskContext, catID int) {
+func (h *CategoryHandler) setCategoryBasedServicePromise(temuProduct *temuTypes.Product, catID int) {
 	h.logger.Infof("根据分类设置服务承诺: CatID=%d", catID)
 
 	// 根据IsClothes标志设置发货时限（而不是根据CatID范围）
-	if ctx.TemuProduct.GoodsBasic.IsClothes {
-		ctx.TemuProduct.GoodsServicePromise.ShipmentLimitSecond = 172800 // 48小时
+	if temuProduct.GoodsBasic.IsClothes {
+		temuProduct.GoodsServicePromise.ShipmentLimitSecond = 172800 // 48小时
 		h.logger.Info("设置服装类发货时限: 48小时")
-	} else if ctx.TemuProduct.GoodsBasic.IsBooks {
-		ctx.TemuProduct.GoodsServicePromise.ShipmentLimitSecond = 259200 // 72小时
+	} else if temuProduct.GoodsBasic.IsBooks {
+		temuProduct.GoodsServicePromise.ShipmentLimitSecond = 259200 // 72小时
 		h.logger.Info("设置图书类发货时限: 72小时")
 	} else {
-		ctx.TemuProduct.GoodsServicePromise.ShipmentLimitSecond = 86400 // 24小时
+		temuProduct.GoodsServicePromise.ShipmentLimitSecond = 86400 // 24小时
 		h.logger.Info("设置通用商品发货时限: 24小时")
 	}
 
 	// 设置履约类型
-	ctx.TemuProduct.GoodsServicePromise.FulfillmentType = 1 // 自发货
+	temuProduct.GoodsServicePromise.FulfillmentType = 1 // 自发货
 }

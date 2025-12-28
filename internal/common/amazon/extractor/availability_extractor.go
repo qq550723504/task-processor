@@ -22,13 +22,6 @@ func (e *AvailabilityExtractor) Extract(page playwright.Page, product *model.Pro
 	// 设置IsAvailable字段
 	product.IsAvailable = e.isAvailable(availability)
 
-	// 打印库存信息详情
-	logrus.WithFields(logrus.Fields{
-		"availability": availability,
-		"is_available": product.IsAvailable,
-		"asin":         product.Asin,
-	}).Info("📦 库存信息提取完成")
-
 	return nil
 }
 
@@ -68,10 +61,6 @@ func (e *AvailabilityExtractor) getAvailability(page playwright.Page) (string, e
 
 		text = strings.TrimSpace(text)
 		if text != "" && e.isValidAvailabilityText(text) {
-			logrus.WithFields(logrus.Fields{
-				"text":     text,
-				"selector": selector,
-			}).Info("✅ 找到库存信息")
 			return e.normalizeAvailabilityText(text), nil
 		}
 	}
@@ -260,10 +249,6 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 
 	for _, keyword := range availableKeywords {
 		if strings.Contains(lowerText, keyword) {
-			logrus.WithFields(logrus.Fields{
-				"keyword": keyword,
-				"result":  "可用",
-			}).Info("✅ 匹配到可用关键词")
 			return true
 		}
 	}

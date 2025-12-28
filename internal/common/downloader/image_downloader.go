@@ -41,7 +41,6 @@ type BlockDetector struct {
 // NewImageDownloader 创建新的图片下载器 - 参考SHEIN实现
 func NewImageDownloader() *ImageDownloader {
 	timeout := 30 * time.Second
-	logrus.Infof("🔧 创建增强反风控图片下载器，超时时间: %v", timeout)
 
 	// 多样化的User-Agent池，模拟不同浏览器和设备
 	userAgents := []string{

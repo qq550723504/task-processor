@@ -324,17 +324,13 @@ func (h *AttributeStrategyHandler) GetDynamicAttributePriorityConfig(attributeTe
 	}
 
 	// 分析销售属性的重要性
-	type AttributeImportance struct {
-		AttrID     int
-		Importance int // 重要性评分，数值越高越重要
-	}
-
 	var saleAttributes []AttributeImportance
 
 	for _, attribute := range attributeTemplates.Data[0].AttributeInfos {
 		if attribute.AttributeType == 1 { // 销售属性
 			// 使用统一的重要性计算函数
-			importanceResult := CalculateAttributeImportance(&attribute)
+			calc := NewAttributeImportanceCalculator()
+			importanceResult := calc.CalculateAttributeImportance(&attribute)
 			saleAttributes = append(saleAttributes, AttributeImportance{
 				AttrID:     attribute.AttributeID,
 				Importance: importanceResult.Importance,

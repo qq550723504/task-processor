@@ -2,8 +2,9 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/common/pipeline"
 	"task-processor/internal/common/utils"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -57,18 +58,29 @@ func (h *OutGoodsSnCheckHandler) Name() string {
 	return "SKU编码批量检查处理器"
 }
 
-// Handle 处理任务
-func (h *OutGoodsSnCheckHandler) Handle(ctx *pipeline.TaskContext) error {
+// Handle 处理任务（兼容pipeline.Handler接口）
+func (h *OutGoodsSnCheckHandler) Handle(ctx pipeline.TaskContext) error {
+	// 类型断言为强类型上下文
+	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
+	if !ok {
+		return fmt.Errorf("上下文类型错误，期望TemuTaskContext")
+	}
+	return h.HandleTemu(temuCtx)
+}
+
+// HandleTemu 处理任务（强类型上下文）
+func (h *OutGoodsSnCheckHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始检查SKU编码")
 
-	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	// 获取任务信息
+	task := temuCtx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
 	// 从Amazon数据生成OutSkuSN进行检查
 	h.logger.Debug("从Amazon数据生成SKU编码进行检查")
-	outSkuSnList := h.generateOutSkuSnFromAmazon(ctx)
+	outSkuSnList := h.generateOutSkuSnFromAmazon(temuCtx)
 
 	if len(outSkuSnList) == 0 {
 		h.logger.Info("没有找到SKU编码，跳过检查")
@@ -78,7 +90,7 @@ func (h *OutGoodsSnCheckHandler) Handle(ctx *pipeline.TaskContext) error {
 	h.logger.Infof("收集到 %d 个SKU编码，开始检查", len(outSkuSnList))
 
 	// 执行SKU编码检查
-	err := h.checkOutSkuSn(ctx, outSkuSnList)
+	err := h.checkOutSkuSn(temuCtx, outSkuSnList)
 	if err != nil {
 		h.logger.WithError(err).Error("SKU编码检查失败")
 		return fmt.Errorf("SKU编码检查失败: %w", err)
@@ -89,16 +101,23 @@ func (h *OutGoodsSnCheckHandler) Handle(ctx *pipeline.TaskContext) error {
 }
 
 // checkOutSkuSn 执行SKU编码检查
-func (h *OutGoodsSnCheckHandler) checkOutSkuSn(ctx *pipeline.TaskContext, outSkuSnList []OutSkuSnItem) error {
-	// 检查API客户端
-	if ctx.APIClient == nil {
+func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskContext, outSkuSnList []OutSkuSnItem) error {
+	// 获取API客户端
+	if temuCtx.APIClient == nil {
 		h.logger.Error("API客户端未初始化，无法执行SKU编码检查")
 		return fmt.Errorf("API客户端未初始化，无法执行SKU编码检查")
 	}
 
+	// 从强类型上下文获取TEMU产品信息
+	if temuCtx.TemuProduct == nil {
+		return fmt.Errorf("TEMU产品信息为空")
+	}
+
+	temuProduct := temuCtx.TemuProduct
+
 	// 构造请求体
 	requestBody := OutGoodsSnCheckRequest{
-		GoodsID:   ctx.TemuProduct.GoodsBasic.GoodsID,
+		GoodsID:   temuProduct.GoodsBasic.GoodsID,
 		OutSnList: outSkuSnList,
 	}
 
@@ -126,12 +145,23 @@ func (h *OutGoodsSnCheckHandler) checkOutSkuSn(ctx *pipeline.TaskContext, outSku
 		"body": requestBody,
 	}
 
+	// 类型断言获取TEMU API客户端
+	type TEMUAPIClient interface {
+		SendTEMURequest(request map[string]interface{}, response interface{}) error
+	}
+
 	// 发送API请求
 	response := &OutGoodsSnCheckResponse{}
-	err := ctx.APIClient.SendTEMURequest(apiReq, response)
-	if err != nil {
-		h.logger.WithError(err).Error("SKU编码检查API调用失败")
-		return fmt.Errorf("SKU编码检查API调用失败: %w", err)
+
+	// 直接使用APIClient，假设它实现了SendTEMURequest方法
+	if temuClient, ok := interface{}(temuCtx.APIClient).(TEMUAPIClient); ok {
+		err := temuClient.SendTEMURequest(apiReq, response)
+		if err != nil {
+			h.logger.WithError(err).Error("SKU编码检查API调用失败")
+			return fmt.Errorf("SKU编码检查API调用失败: %w", err)
+		}
+	} else {
+		return fmt.Errorf("API客户端不支持TEMU请求")
 	}
 
 	h.logger.WithFields(logrus.Fields{
@@ -149,7 +179,7 @@ func (h *OutGoodsSnCheckHandler) checkOutSkuSn(ctx *pipeline.TaskContext, outSku
 
 	// 处理检查结果
 	if response.Result != nil {
-		err := h.handleCheckResult(ctx, response.Result)
+		err := h.handleCheckResult(temuCtx, response.Result)
 		if err != nil {
 			return err
 		}
@@ -160,9 +190,10 @@ func (h *OutGoodsSnCheckHandler) checkOutSkuSn(ctx *pipeline.TaskContext, outSku
 }
 
 // handleCheckResult 处理检查结果
-func (h *OutGoodsSnCheckHandler) handleCheckResult(ctx *pipeline.TaskContext, result *OutGoodsSnCheckResult) error {
-	// 将检查结果存储到上下文中，供其他处理器使用
-	ctx.SetData("out_sku_sn_check_result", result)
+func (h *OutGoodsSnCheckHandler) handleCheckResult(temuCtx *temucontext.TemuTaskContext, result *OutGoodsSnCheckResult) error {
+	// 将检查结果存储到强类型上下文中，供其他处理器使用
+	// 这里可以添加一个字段到TemuTaskContext来存储检查结果
+	// 暂时先不存储，直接处理
 
 	if len(result.FailList) == 0 {
 		h.logger.Info("所有SKU编码检查通过，没有重复")
@@ -192,7 +223,7 @@ func (h *OutGoodsSnCheckHandler) handleCheckResult(ctx *pipeline.TaskContext, re
 }
 
 // generateOutSkuSnFromAmazon 从Amazon数据生成OutSkuSN列表进行检查
-func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(ctx *pipeline.TaskContext) []OutSkuSnItem {
+func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext.TemuTaskContext) []OutSkuSnItem {
 	var outSkuSnList []OutSkuSnItem
 
 	// 获取店铺配置（前缀、后缀、策略）
@@ -200,15 +231,14 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(ctx *pipeline.TaskCo
 	suffix := ""
 	strategy := utils.StrategyASINOnly // 默认策略：仅使用ASIN
 
-	if ctx.StoreInfo != nil {
-		if ctx.StoreInfo.Prefix != "" {
-			prefix = ctx.StoreInfo.Prefix
+	// 从强类型上下文获取店铺信息
+	if temuCtx.StoreInfo != nil {
+		if temuCtx.StoreInfo.Prefix != "" {
+			prefix = temuCtx.StoreInfo.Prefix
 		}
-		if ctx.StoreInfo.Suffix != "" {
-			suffix = ctx.StoreInfo.Suffix
+		if temuCtx.StoreInfo.Suffix != "" {
+			suffix = temuCtx.StoreInfo.Suffix
 		}
-		// SkuGenerateStrategy 是字符串类型，暂时使用默认策略
-		// 如果需要可以添加字符串到int的转换逻辑
 	}
 
 	h.logger.Debugf("使用SKU生成策略: strategy=%d, prefix=%s, suffix=%s", strategy, prefix, suffix)
@@ -217,21 +247,23 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(ctx *pipeline.TaskCo
 	outSkuSnMap := make(map[string]bool)
 
 	// 1. 为主产品生成OutSkuSN
-	if ctx.AmazonProduct != nil && ctx.AmazonProduct.Asin != "" {
-		outSkuSN := utils.GenerateSKU(ctx.AmazonProduct.Asin, strategy, prefix, suffix)
+	amazonProduct := temuCtx.GetAmazonProduct()
+	if amazonProduct != nil && amazonProduct.Asin != "" {
+		outSkuSN := utils.GenerateSKU(amazonProduct.Asin, strategy, prefix, suffix)
 		if !outSkuSnMap[outSkuSN] {
 			outSkuSnMap[outSkuSN] = true
 			outSkuSnList = append(outSkuSnList, OutSkuSnItem{
 				OutSkuSn: outSkuSN,
 			})
-			h.logger.Debugf("主产品 ASIN=%s -> OutSkuSN=%s", ctx.AmazonProduct.Asin, outSkuSN)
+			h.logger.Debugf("主产品 ASIN=%s -> OutSkuSN=%s", amazonProduct.Asin, outSkuSN)
 		}
 	}
 
 	// 2. 为所有变体生成OutSkuSN
-	if len(ctx.AmazonVariants) > 0 {
-		h.logger.Debugf("为 %d 个变体生成OutSkuSN", len(ctx.AmazonVariants))
-		for _, variant := range ctx.AmazonVariants {
+	variants := temuCtx.GetVariants()
+	if len(variants) > 0 {
+		h.logger.Debugf("为 %d 个变体生成OutSkuSN", len(variants))
+		for _, variant := range variants {
 			if variant.Asin != "" {
 				outSkuSN := utils.GenerateSKU(variant.Asin, strategy, prefix, suffix)
 				if !outSkuSnMap[outSkuSN] {

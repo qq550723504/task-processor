@@ -1,19 +1,22 @@
 ﻿package modules
 
 import (
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/common/shein/api/attribute"
+
+	"github.com/sirupsen/logrus"
 )
 
 // AttributeClassifier 属性分类器
 type AttributeClassifier struct {
 	builder *AttributeBuilder
+	filter  *SaleAttributeSmartFilter
 }
 
 // NewAttributeClassifier 创建新的属性分类器
 func NewAttributeClassifier(builder *AttributeBuilder) *AttributeClassifier {
 	return &AttributeClassifier{
 		builder: builder,
+		filter:  NewSaleAttributeSmartFilter(),
 	}
 }
 

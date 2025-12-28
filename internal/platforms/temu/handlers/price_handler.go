@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 
 	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -25,10 +27,32 @@ func NewPriceHandler(profitRuleClient api.ProfitRuleAPI) *PriceHandler {
 	}
 }
 
+// Name 返回处理器名称
+func (ph *PriceHandler) Name() string {
+	return "价格处理器"
+}
+
+// Handle 处理任务（兼容pipeline.Handler接口）
+func (ph *PriceHandler) Handle(ctx pipeline.TaskContext) error {
+	// 类型断言为强类型上下文
+	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
+	if !ok {
+		return fmt.Errorf("上下文类型错误，期望TemuTaskContext")
+	}
+	return ph.HandleTemu(temuCtx)
+}
+
+// HandleTemu 处理任务（强类型上下文）
+func (ph *PriceHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
+	// 这里可以根据需要进行价格相关的处理
+	// 例如预加载利润规则等
+	return nil
+}
+
 // CalculateDefaultPrice 计算默认价格（参考SHEIN的价格计算逻辑）
-func (ph *PriceHandler) CalculateDefaultPrice(ctx *pipeline.TaskContext) int {
+func (ph *PriceHandler) CalculateDefaultPrice(temuCtx *temucontext.TemuTaskContext, variant *model.Product) int {
 	// 获取租户ID和店铺ID
-	tenantID, storeID := ph.getTenantAndStoreID(ctx)
+	tenantID, storeID := ph.getTenantAndStoreID(temuCtx)
 
 	// 获取利润规则
 	profitRule, err := ph.profitRuleClient.GetProfitRule(&api.ProfitRuleReqDTO{
@@ -38,27 +62,27 @@ func (ph *PriceHandler) CalculateDefaultPrice(ctx *pipeline.TaskContext) int {
 	if err != nil {
 		ph.logger.Warnf("获取利润规则失败: %v，使用默认倍数", err)
 		// 使用默认倍数
-		return ph.calculatePriceWithMultiplier(ctx.AmazonProduct, 2.0, ctx)
+		return ph.calculatePriceWithMultiplier(temuCtx, variant, 2.0)
 	}
 
 	// 检查规则是否为空
 	if profitRule == nil {
 		ph.logger.Warn("利润规则数据为空，使用默认倍数")
-		return ph.calculatePriceWithMultiplier(ctx.AmazonProduct, 2.0, ctx)
+		return ph.calculatePriceWithMultiplier(temuCtx, variant, 2.0)
 	}
 
 	// 检查规则是否启用（Status = 1 表示禁用，0 表示启用）
 	if profitRule.Status == 1 {
 		ph.logger.Warnf("利润规则已禁用，使用默认倍数")
-		return ph.calculatePriceWithMultiplier(ctx.AmazonProduct, 2.0, ctx)
+		return ph.calculatePriceWithMultiplier(temuCtx, variant, 2.0)
 	}
 
-	// 保存利润规则到 context，供后续保存使用
-	ctx.SetData("profit_rule", profitRule)
+	// 保存利润规则到强类型上下文
+	temuCtx.ProfitRule = profitRule
 	ph.logger.Infof("保存利润规则到context: ID=%d, Name=%s", profitRule.ID, profitRule.Name)
 
 	// 获取产品原始价格（根据店铺配置的价格类型）
-	originalPrice := ph.getSupplierCost(ctx.AmazonProduct, ctx)
+	originalPrice := ph.getSupplierCost(temuCtx, variant)
 
 	// 应用利润规则：原始价格 * 售价倍数（参考SHEIN的计算方式）
 	salePrice := math.Round(originalPrice*profitRule.SalePriceMultiplier*100) / 100
@@ -71,38 +95,27 @@ func (ph *PriceHandler) CalculateDefaultPrice(ctx *pipeline.TaskContext) int {
 }
 
 // calculatePriceWithMultiplier 使用指定倍数计算价格
-func (ph *PriceHandler) calculatePriceWithMultiplier(product *model.Product, multiplier float64, ctx *pipeline.TaskContext) int {
-	originalPrice := ph.getSupplierCost(product, ctx)
+func (ph *PriceHandler) calculatePriceWithMultiplier(temuCtx *temucontext.TemuTaskContext, variant *model.Product, multiplier float64) int {
+	originalPrice := ph.getSupplierCost(temuCtx, variant)
 	salePrice := math.Round(originalPrice*multiplier*100) / 100
 	return int(math.Round(salePrice * 100))
 }
 
 // CalculateVariantPrice 计算变体价格（使用上下文中的店铺配置）
-func (ph *PriceHandler) CalculateVariantPrice(ctx *pipeline.TaskContext, variant *model.Product) int {
-	tempCtx := &pipeline.TaskContext{
-		Task:          ctx.Task,
-		AmazonProduct: variant,
-		StoreInfo:     ctx.StoreInfo,
-		Data:          ctx.Data, // 复用原始context的Data，保留profit_rule等数据
-	}
-	return ph.CalculateDefaultPrice(tempCtx)
-}
-
-// CalculateVariantPriceWithStoreConfig 使用店铺配置计算变体价格（已废弃，使用 CalculateVariantPrice 代替）
-// Deprecated: 使用 CalculateVariantPrice 代替
-func (ph *PriceHandler) CalculateVariantPriceWithStoreConfig(ctx *pipeline.TaskContext, variant *model.Product) int {
-	return ph.CalculateVariantPrice(ctx, variant)
+func (ph *PriceHandler) CalculateVariantPrice(temuCtx *temucontext.TemuTaskContext, variant *model.Product) int {
+	return ph.CalculateDefaultPrice(temuCtx, variant)
 }
 
 // getTenantAndStoreID 获取租户ID和店铺ID
-func (ph *PriceHandler) getTenantAndStoreID(ctx *pipeline.TaskContext) (int64, int64) {
+func (ph *PriceHandler) getTenantAndStoreID(temuCtx *temucontext.TemuTaskContext) (int64, int64) {
 	tenantID := int64(1) // 默认租户ID
 	storeID := int64(1)  // 默认店铺ID
 
-	if ctx.Task != nil && ctx.Task.StoreID != 0 {
-		storeID = int64(ctx.Task.StoreID)
-		if ctx.Task.TenantID != 0 {
-			tenantID = int64(ctx.Task.TenantID)
+	task := temuCtx.GetTask()
+	if task != nil && task.StoreID != 0 {
+		storeID = int64(task.StoreID)
+		if task.TenantID != 0 {
+			tenantID = int64(task.TenantID)
 		}
 	}
 
@@ -110,28 +123,28 @@ func (ph *PriceHandler) getTenantAndStoreID(ctx *pipeline.TaskContext) (int64, i
 }
 
 // getSupplierCost 获取供应商成本（根据店铺配置的价格类型）
-func (ph *PriceHandler) getSupplierCost(product *model.Product, ctx *pipeline.TaskContext) float64 {
-	// 检查产品是否为空
-	if product == nil {
-		ph.logger.Warn("产品信息为空，返回默认价格0")
-		return 0
-	}
-
+func (ph *PriceHandler) getSupplierCost(temuCtx *temucontext.TemuTaskContext, variant *model.Product) float64 {
 	// 获取店铺配置的价格类型(默认使用特价)
-	priceType := "special"
-	if ctx != nil && ctx.StoreInfo != nil && ctx.StoreInfo.PriceType != "" {
-		priceType = ctx.StoreInfo.PriceType
-	}
+	priceType := ph.getPriceTypeFromContext(temuCtx)
 
 	// 根据价格类型获取价格(包含运费)
-	return getProductPrice(product, priceType)
+	return getProductPrice(variant, priceType)
 }
 
-// GetDefaultStock 获取默认库存（参考SHEIN从店铺信息获取）
-func (ph *PriceHandler) GetDefaultStock(ctx *pipeline.TaskContext) int {
-	// 优先从店铺信息获取固定库存数量
-	if ctx != nil && ctx.StoreInfo != nil && ctx.StoreInfo.FixedStockCount != nil {
-		stockCount := *ctx.StoreInfo.FixedStockCount
+// getPriceTypeFromContext 从上下文获取价格类型
+func (ph *PriceHandler) getPriceTypeFromContext(temuCtx *temucontext.TemuTaskContext) string {
+	// 从强类型上下文获取店铺信息
+	if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.PriceType != "" {
+		return temuCtx.StoreInfo.PriceType
+	}
+	return "special" // 默认值
+}
+
+// GetDefaultStock 获取默认库存
+func (ph *PriceHandler) GetDefaultStock(temuCtx *temucontext.TemuTaskContext) int {
+	// 从强类型上下文获取店铺信息
+	if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.FixedStockCount != nil {
+		stockCount := *temuCtx.StoreInfo.FixedStockCount
 
 		// 如果固定库存为-1，设置库存数量为0
 		if stockCount == -1 {
@@ -146,16 +159,59 @@ func (ph *PriceHandler) GetDefaultStock(ctx *pipeline.TaskContext) int {
 	}
 
 	// 如果店铺未配置或配置为0，返回随机库存（10-1009之间）
-	// 参考 SHEIN: rand.Intn(1000) + 10
+	randomStock := rand.Intn(1000) + 10
+	ph.logger.Debugf("使用随机库存: %d", randomStock)
+	return randomStock
+}
+
+// getStockFromStoreRespDTO 从 StoreRespDTO 获取库存（强类型，类型安全）
+func (ph *PriceHandler) getStockFromStoreRespDTO(storeInfo *api.StoreRespDTO) int {
+	if storeInfo.FixedStockCount != nil {
+		stockCount := *storeInfo.FixedStockCount
+
+		// 如果固定库存为-1，设置库存数量为0
+		if stockCount == -1 {
+			ph.logger.Debugf("店铺配置固定库存为-1，设置库存为0")
+			return 0
+		}
+
+		if stockCount > 0 {
+			ph.logger.Debugf("使用店铺配置的固定库存: %d", stockCount)
+			return stockCount
+		}
+	}
+
+	// 返回随机库存
+	randomStock := rand.Intn(1000) + 10
+	ph.logger.Debugf("使用随机库存: %d", randomStock)
+	return randomStock
+}
+
+// getStockFromStoreInfo 从自定义 StoreInfo 获取库存
+func (ph *PriceHandler) getStockFromStoreInfo(storeInfo *api.StoreRespDTO) int {
+	if storeInfo.FixedStockCount != nil {
+		stockCount := *storeInfo.FixedStockCount
+
+		if stockCount == -1 {
+			ph.logger.Debugf("店铺配置固定库存为-1，设置库存为0")
+			return 0
+		}
+
+		if stockCount > 0 {
+			ph.logger.Debugf("使用店铺配置的固定库存: %d", stockCount)
+			return stockCount
+		}
+	}
+
 	randomStock := rand.Intn(1000) + 10
 	ph.logger.Debugf("使用随机库存: %d", randomStock)
 	return randomStock
 }
 
 // GetPriceMultiplier 获取价格倍数（用于计算最大零售价格）
-func (ph *PriceHandler) GetPriceMultiplier(ctx *pipeline.TaskContext) float64 {
+func (ph *PriceHandler) GetPriceMultiplier(temuCtx *temucontext.TemuTaskContext) float64 {
 	// 获取租户ID和店铺ID
-	tenantID, storeID := ph.getTenantAndStoreID(ctx)
+	tenantID, storeID := ph.getTenantAndStoreID(temuCtx)
 
 	// 获取利润规则
 	profitRule, err := ph.profitRuleClient.GetProfitRule(&api.ProfitRuleReqDTO{

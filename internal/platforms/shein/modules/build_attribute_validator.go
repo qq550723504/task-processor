@@ -1,6 +1,7 @@
-﻿package modules
+package modules
 
 import (
+	"strings"
 	"task-processor/internal/common/shein/api/attribute"
 )
 
@@ -33,18 +34,23 @@ func (v *AttributeValidator) IsAttributeRequired(attr attribute.AttributeInfo) b
 	}
 }
 
-// IsSaleSpecRequired 判断销售属性是否必填
+// IsSaleSpecRequired 判断销售属性是否必填（基于属性名称的智能判断）
 func (v *AttributeValidator) IsSaleSpecRequired(attr attribute.AttributeInfo) bool {
-	// 销售属性的必填判断逻辑
-	switch {
-	case len(attr.AttributeRemarkList) > 0:
-		return true
-	case attr.AttributeLabel == 1:
-		return true
-	case attr.IsSample == 1:
-		// IsSample为1表示是示例属性，通常必填
-		return true
-	default:
+	// 基础条件：必须有属性值列表
+	if len(attr.AttributeValueInfoList) == 0 {
 		return false
 	}
+
+	// 基于属性名称进行智能判断，只有核心变化属性才标记为必填
+	attrNameLower := strings.ToLower(attr.AttributeNameEn)
+
+	// 只有Size和Color这类核心变化属性才标记为必填
+	isCoreAttribute := strings.Contains(attrNameLower, "size") ||
+		strings.Contains(attrNameLower, "color") ||
+		strings.Contains(attrNameLower, "colour")
+
+	// 必须是核心属性且有多个候选值
+	hasMultipleValues := len(attr.AttributeValueInfoList) >= 2
+
+	return isCoreAttribute && hasMultipleValues
 }

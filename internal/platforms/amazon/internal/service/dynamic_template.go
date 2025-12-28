@@ -36,14 +36,14 @@ func (t *DynamicTemplate) BuildListingRequest(
 	productSchema, err := t.schemaManager.GetProductTypeSchema(ctx, productType)
 	if err != nil {
 		t.logger.WithError(err).Warn("获取Schema失败，使用通用模板")
-		return t.buildGenericRequest(productType, marketplaceID, data), nil
+		return t.buildGenericRequest(ctx, productType, marketplaceID, data), nil
 	}
 
 	// 解析必需属性
 	requiredAttrs, err := t.schemaManager.ParseProductTypeAttributes(ctx, productType)
 	if err != nil {
 		t.logger.WithError(err).Warn("解析必需属性失败，使用通用模板")
-		return t.buildGenericRequest(productType, marketplaceID, data), nil
+		return t.buildGenericRequest(ctx, productType, marketplaceID, data), nil
 	}
 
 	t.logger.WithField("required_count", len(requiredAttrs)).Info("解析必需属性")
@@ -62,6 +62,7 @@ func (t *DynamicTemplate) BuildListingRequest(
 
 // buildGenericRequest 构建通用请求（Schema获取失败时使用）
 func (t *DynamicTemplate) buildGenericRequest(
+	ctx context.Context,
 	productType string,
 	marketplaceID string,
 	data *model.ProductData,
@@ -69,7 +70,7 @@ func (t *DynamicTemplate) buildGenericRequest(
 	builder := NewSchemaBuilder(marketplaceID, "en_US")
 
 	// 使用属性构建器构建基础属性
-	attrs := t.attributeBuilder.BuildAttributes(context.Background(), builder, []model.AttributeInfo{}, data, nil)
+	attrs := t.attributeBuilder.BuildAttributes(ctx, builder, []model.AttributeInfo{}, data, nil)
 
 	return &api.ListingRequest{
 		SKU:          data.SKU,

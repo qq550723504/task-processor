@@ -59,6 +59,10 @@ func initializeDependencies() *Dependencies {
 
 // Run 运行应用
 func (d *Dependencies) Run() error {
+	// 创建可取消的根context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// 显示版本信息
 	versionInfo := internalUtils.VersionInfo{
 		Version:   appVersion,
@@ -86,19 +90,19 @@ func (d *Dependencies) Run() error {
 		return err
 	}
 
-	// 启动任务处理器
-	if err := d.processorService.StartProcessors(context.Background(), cfg, authClient); err != nil {
+	// 启动任务处理器 - 传递正确的context
+	if err := d.processorService.StartProcessors(ctx, cfg, authClient); err != nil {
 		return err
 	}
 
 	// 等待程序退出信号
-	d.waitForShutdown()
+	d.waitForShutdown(cancel)
 
 	return nil
 }
 
 // waitForShutdown 等待程序退出信号
-func (d *Dependencies) waitForShutdown() {
+func (d *Dependencies) waitForShutdown(cancel context.CancelFunc) {
 	// 导入必要的包
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -106,6 +110,9 @@ func (d *Dependencies) waitForShutdown() {
 	// 等待信号
 	sig := <-sigChan
 	d.logger.Infof("收到信号: %v，开始优雅关闭...", sig)
+
+	// 取消context，通知所有子组件停止
+	cancel()
 
 	// 停止任务处理器
 	if err := d.processorService.StopProcessors(); err != nil {

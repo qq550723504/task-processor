@@ -2,8 +2,12 @@ package handlers
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
+	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,25 +40,36 @@ func (h *ProductDescriptionValidator) Name() string {
 	return "产品描述验证处理器"
 }
 
-// Handle 处理任务
-func (h *ProductDescriptionValidator) Handle(ctx *pipeline.TaskContext) error {
+// Handle 处理任务（兼容pipeline.Handler接口）
+func (h *ProductDescriptionValidator) Handle(ctx pipeline.TaskContext) error {
+	// 类型断言为强类型上下文
+	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
+	if !ok {
+		return fmt.Errorf("上下文类型错误，期望TemuTaskContext")
+	}
+	return h.HandleTemu(temuCtx)
+}
+
+// HandleTemu 处理任务（强类型上下文）
+func (h *ProductDescriptionValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始验证和优化产品描述")
 
-	if ctx.TemuProduct == nil {
+	// 检查TEMU产品信息
+	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
-	originalDesc := ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc
+	originalDesc := temuCtx.TemuProduct.GoodsExtensionInfo.GoodsDesc
 	if originalDesc == "" {
 		h.logger.Info("未找到产品描述，生成默认描述")
-		defaultDesc := h.generateDefaultDescription(ctx)
-		ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc = defaultDesc
+		defaultDesc := h.generateDefaultDescription(temuCtx, temuCtx.TemuProduct)
+		temuCtx.TemuProduct.GoodsExtensionInfo.GoodsDesc = defaultDesc
 		h.logger.Infof("生成了默认描述，长度: %d字符", len(defaultDesc))
 		return nil
 	}
 
 	// 验证和优化描述
-	result := h.validateAndOptimizeDescription(originalDesc, ctx)
+	result := h.validateAndOptimizeDescription(originalDesc, temuCtx, temuCtx.TemuProduct)
 
 	// 记录处理结果
 	if len(result.Violations) > 0 {
@@ -71,7 +86,7 @@ func (h *ProductDescriptionValidator) Handle(ctx *pipeline.TaskContext) error {
 	}
 
 	// 更新产品描述
-	ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc = result.ValidatedDescription
+	temuCtx.TemuProduct.GoodsExtensionInfo.GoodsDesc = result.ValidatedDescription
 
 	h.logger.Infof("产品描述验证完成: 长度=%d字符, 质量评分=%d/100",
 		result.Length, result.QualityScore)
@@ -79,7 +94,7 @@ func (h *ProductDescriptionValidator) Handle(ctx *pipeline.TaskContext) error {
 }
 
 // validateAndOptimizeDescription 验证和优化产品描述
-func (h *ProductDescriptionValidator) validateAndOptimizeDescription(description string, ctx *pipeline.TaskContext) *DescriptionValidationResult {
+func (h *ProductDescriptionValidator) validateAndOptimizeDescription(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) *DescriptionValidationResult {
 	result := &DescriptionValidationResult{
 		OriginalDescription:  description,
 		ValidatedDescription: description,
@@ -103,11 +118,11 @@ func (h *ProductDescriptionValidator) validateAndOptimizeDescription(description
 	}
 
 	// 4. 增强描述内容
-	enhanced := h.enhanceDescription(result.ValidatedDescription, ctx, result)
+	enhanced := h.enhanceDescription(result.ValidatedDescription, temuCtx, temuProduct, result)
 	result.ValidatedDescription = enhanced
 
 	// 5. 计算质量评分
-	result.QualityScore = h.calculateQualityScore(result.ValidatedDescription, ctx)
+	result.QualityScore = h.calculateQualityScore(result.ValidatedDescription, temuCtx, temuProduct)
 
 	// 6. 设置最终状态
 	result.Length = len(result.ValidatedDescription)
@@ -117,7 +132,7 @@ func (h *ProductDescriptionValidator) validateAndOptimizeDescription(description
 }
 
 // ValidateDescriptionAPI 调用TEMU API验证描述（如果需要）
-func (h *ProductDescriptionValidator) ValidateDescriptionAPI(ctx *pipeline.TaskContext, description string) error {
+func (h *ProductDescriptionValidator) ValidateDescriptionAPI(temuCtx *temucontext.TemuTaskContext, description string) error {
 	// 这里可以调用TEMU的违规词汇检查API
 	// temu.local.goods.illegal.vocabulary.check
 
@@ -125,4 +140,89 @@ func (h *ProductDescriptionValidator) ValidateDescriptionAPI(ctx *pipeline.TaskC
 
 	// 暂时返回nil，实际实现时需要调用真实的API
 	return nil
+}
+
+// generateDefaultDescription 生成默认产品描述
+func (h *ProductDescriptionValidator) generateDefaultDescription(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) string {
+	productName := temuProduct.GoodsBasic.GoodsName
+
+	// 基于产品名称生成默认描述
+	defaultDesc := fmt.Sprintf("High-quality %s with excellent features and reliable performance. Perfect for various applications and designed to meet your needs.", productName)
+
+	return defaultDesc
+}
+
+// cleanAndFormatDescription 清理和格式化描述
+func (h *ProductDescriptionValidator) cleanAndFormatDescription(description string, result *DescriptionValidationResult) string {
+	// 基本清理逻辑
+	cleaned := strings.TrimSpace(description)
+
+	// 移除多余的空格
+	cleaned = regexp.MustCompile(`\s+`).ReplaceAllString(cleaned, " ")
+
+	return cleaned
+}
+
+// validateCharacterSupport 验证字符支持
+func (h *ProductDescriptionValidator) validateCharacterSupport(description string, result *DescriptionValidationResult) string {
+	// 移除不支持的字符（保留英文字母、数字和基本符号）
+	var cleaned strings.Builder
+
+	for _, r := range description {
+		// 跳过中文字符
+		if r >= 0x4e00 && r <= 0x9fff {
+			continue
+		}
+
+		// 保留ASCII字符
+		if r <= 127 {
+			cleaned.WriteRune(r)
+		}
+	}
+
+	return cleaned.String()
+}
+
+// truncateDescription 截断描述到指定长度
+func (h *ProductDescriptionValidator) truncateDescription(description string, maxLength int) string {
+	if len(description) <= maxLength {
+		return description
+	}
+
+	// 截断到最大长度，但尝试在单词边界截断
+	truncated := description[:maxLength-3]
+	lastSpace := strings.LastIndex(truncated, " ")
+	if lastSpace > maxLength/2 {
+		truncated = truncated[:lastSpace]
+	}
+
+	return truncated + "..."
+}
+
+// enhanceDescription 增强描述内容
+func (h *ProductDescriptionValidator) enhanceDescription(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product, result *DescriptionValidationResult) string {
+	// 基本增强逻辑
+	return description
+}
+
+// calculateQualityScore 计算质量评分
+func (h *ProductDescriptionValidator) calculateQualityScore(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) int {
+	score := 50 // 基础分数
+
+	// 根据长度评分
+	length := len(description)
+	if length >= 200 && length <= 2000 {
+		score += 20
+	}
+
+	// 根据内容质量评分
+	if strings.Contains(strings.ToLower(description), "quality") {
+		score += 10
+	}
+
+	if score > 100 {
+		score = 100
+	}
+
+	return score
 }

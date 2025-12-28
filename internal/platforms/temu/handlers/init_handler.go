@@ -2,7 +2,8 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 	"time"
 
@@ -26,20 +27,20 @@ func (h *InitDataHandler) Name() string {
 	return "初始化数据处理器"
 }
 
-// Handle 处理任务
-func (h *InitDataHandler) Handle(ctx *pipeline.TaskContext) error {
+func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始执行初始化数据处理")
 
-	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	// 直接使用强类型上下文，无需类型断言！
+	task := temuCtx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	if ctx.Task.ProductID == "" {
+	if task.ProductID == "" {
 		return fmt.Errorf("产品ID为空")
 	}
 
-	// 初始化TEMU产品结构体（使用types包中定义的结构体）
+	// 初始化TEMU产品结构体
 	temuProduct := &types.Product{
 		CanSave: boolPtr(true),
 		Extra: types.ExtraInfo{
@@ -76,7 +77,7 @@ func (h *InitDataHandler) Handle(ctx *pipeline.TaskContext) error {
 							Properties: map[string][]int{
 								"1000000001": {1000100066},
 							},
-							InputText: map[string]interface{}{},
+							InputText: map[string]any{},
 						},
 					},
 				},
@@ -88,12 +89,25 @@ func (h *InitDataHandler) Handle(ctx *pipeline.TaskContext) error {
 		SkcList:                make([]types.Skc, 0),
 	}
 
-	// 使用强类型字段设置产品到上下文
-	ctx.TemuProduct = temuProduct
+	// 直接赋值到强类型字段（这就是你想要的方式！）
+	temuCtx.TemuProduct = temuProduct
+
+	// 也可以同时保持兼容性，设置到通用数据存储（可选）
+	temuCtx.SetData("temu_product", temuProduct)
 
 	h.logger.Infof("初始化TEMU产品结构完成: ProductID=%s, Platform=%s",
-		ctx.Task.ProductID, ctx.Task.Platform)
+		task.ProductID, task.Platform)
 	return nil
+}
+
+// Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
+func (h *InitDataHandler) Handle(ctx pipeline.TaskContext) error {
+	// 尝试类型断言为TemuTaskContext
+	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
+		return h.HandleTemu(temuCtx)
+	}
+	// 如果不是TemuTaskContext，返回错误
+	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
 }
 
 // boolPtr 返回bool指针

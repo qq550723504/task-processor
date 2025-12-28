@@ -2,13 +2,13 @@ package temu
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	"task-processor/internal/common"
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/product"
-	"task-processor/internal/common"
 
 	"github.com/sirupsen/logrus"
 )
@@ -96,7 +96,7 @@ func (s *TemuProductMonitorService) CheckProductChanges(storeID, tenantID int64)
 			region = "US"
 		}
 
-		zipcode := product.GetZipcodeForRegion(region, nil)
+		zipcode := s.getDefaultZipcode(region)
 
 		// 从 Amazon 获取产品信息（一次获取价格和库存）
 		amazonProduct, err := fetchAmazonProduct(s.amazonProcessor, asin, region, zipcode)
@@ -205,4 +205,30 @@ func (s *TemuProductMonitorService) checkAndNotifyStockChange(
 	}
 
 	return false
+}
+
+// getDefaultZipcode 获取默认邮编
+func (s *TemuProductMonitorService) getDefaultZipcode(region string) string {
+	// 使用默认邮编映射
+	defaultZipcodes := map[string]string{
+		"us": "10001",     // 纽约
+		"ca": "M5V 3A8",   // 多伦多
+		"uk": "SW1A 1AA",  // 伦敦
+		"de": "10115",     // 柏林
+		"fr": "75001",     // 巴黎
+		"it": "00118",     // 罗马
+		"es": "28001",     // 马德里
+		"jp": "100-0001",  // 东京
+		"au": "2000",      // 悉尼
+		"in": "110001",    // 新德里
+		"mx": "01000",     // 墨西哥城
+		"br": "01310-100", // 圣保罗
+	}
+
+	if zipcode, exists := defaultZipcodes[strings.ToLower(region)]; exists {
+		return zipcode
+	}
+
+	// 默认返回美国邮编
+	return "10001"
 }

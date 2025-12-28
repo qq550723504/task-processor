@@ -29,13 +29,13 @@ func (h *ReListingHandler) Handle(ctx *TaskContext) error {
 
 	// 检查任务是否为重新上架任务（状态7）
 	if h.isReListingTask(ctx.Task) {
-		logrus.Infof("处理重新上架任务: TaskID=%s, ProductID=%s", ctx.Task.ID, ctx.Task.ProductID)
+		logrus.Infof("处理重新上架任务: TaskID=%d, ProductID=%s", ctx.Task.ID, ctx.Task.ProductID)
 
 		// 可以在这里添加重新上架的具体逻辑
 		// 例如：检查产品当前状态、重新验证变体信息等
 
 		// 示例：记录重新上架时间
-		logrus.Infof("任务 %s 已重新上架，原始上架时间: %d", ctx.Task.ID, ctx.Task.CreateTime)
+		logrus.Infof("任务 %d 已重新上架，原始上架时间: %d", ctx.Task.ID, ctx.Task.CreateTime)
 	}
 
 	return nil
@@ -102,8 +102,8 @@ func (h *ReListingHandler) markTaskAsReListing(ctx *TaskContext, reason string) 
 
 	// 不再需要标记任务为完成状态
 	// 任务状态由API管理
-	logrus.Infof("原始任务已添加到重新上架队列: TaskID=%s", ctx.Task.ID)
+	logrus.Infof("原始任务已添加到重新上架队列: TaskID=%d", ctx.Task.ID)
 
-	logrus.Infof("任务 %s 已标记为待重新上架，原因: %s", ctx.Task.ID, reason)
+	logrus.Infof("任务 %d 已标记为待重新上架，原因: %s", ctx.Task.ID, reason)
 	return nil
 }

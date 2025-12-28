@@ -2,8 +2,9 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -29,7 +30,7 @@ func (h *ProductExistsCheckHandler) Name() string {
 }
 
 // Handle 处理任务 - 检查主产品和所有变体是否已上架
-func (h *ProductExistsCheckHandler) Handle(ctx *pipeline.TaskContext) error {
+func (h *ProductExistsCheckHandler) Handle(ctx pipeline.TaskContext) error {
 	h.logger.Info("🔍 开始检查产品和变体是否已上架")
 
 	// 检查必要的上下文信息
@@ -38,21 +39,27 @@ func (h *ProductExistsCheckHandler) Handle(ctx *pipeline.TaskContext) error {
 		return fmt.Errorf("产品导入映射客户端未初始化")
 	}
 
-	if ctx.Task == nil {
+	task := ctx.GetTask()
+	if task == nil {
 		h.logger.Error("任务信息未初始化，无法检查产品是否已上架")
 		return fmt.Errorf("任务信息未初始化")
 	}
 
 	// 检查主产品是否已上架
-	if ctx.Task.ProductID != "" {
-		if err := h.checkProductExists(ctx.Task.StoreID, ctx.Task.Platform, ctx.Task.Region, ctx.Task.ProductID, "主产品"); err != nil {
+	if task.ProductID != "" {
+		if err := h.checkProductExists(task.StoreID, task.Platform, task.Region, task.ProductID, "主产品"); err != nil {
 			return err
 		}
 	}
 
 	// 从主产品信息中检查所有变体ASIN是否已上架
-	if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Variations) > 0 {
-		variantCount := len(ctx.AmazonProduct.Variations)
+	var amazonProduct *model.Product
+	if amazonCtx, ok := ctx.(pipeline.AmazonContext); ok {
+		amazonProduct = amazonCtx.GetAmazonProduct()
+	}
+
+	if amazonProduct != nil && len(amazonProduct.Variations) > 0 {
+		variantCount := len(amazonProduct.Variations)
 		h.logger.Infof("📦 检查 %d 个变体是否已上架...", variantCount)
 
 		// 检查变体数量限制
@@ -61,9 +68,9 @@ func (h *ProductExistsCheckHandler) Handle(ctx *pipeline.TaskContext) error {
 			return types.NewNonRetryableError(fmt.Sprintf("变体数量过多（%d个），超过限制（500个）", variantCount), nil)
 		}
 
-		for i, variation := range ctx.AmazonProduct.Variations {
+		for i, variation := range amazonProduct.Variations {
 			if variation.Asin != "" {
-				if err := h.checkProductExists(ctx.Task.StoreID, ctx.Task.Platform, ctx.Task.Region, variation.Asin, fmt.Sprintf("变体[%d/%d]", i+1, variantCount)); err != nil {
+				if err := h.checkProductExists(task.StoreID, task.Platform, task.Region, variation.Asin, fmt.Sprintf("变体[%d/%d]", i+1, variantCount)); err != nil {
 					return err
 				}
 			}

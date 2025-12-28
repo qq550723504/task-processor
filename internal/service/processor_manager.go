@@ -2,6 +2,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"task-processor/internal/config"
@@ -10,34 +11,47 @@ import (
 )
 
 // startProcessors 启动所有平台处理器
-func (s *processorServiceImpl) startProcessors(cfg *config.Config) error {
-	// 启动TEMU处理器
-	if err := s.startTemuProcessor(cfg); err != nil {
-		return fmt.Errorf("启动TEMU处理器失败: %w", err)
+func (s *processorServiceImpl) startProcessors(ctx context.Context, cfg *config.Config) error {
+	s.logger.Info("开始启动处理器...")
+
+	// 检查并启动TEMU处理器
+	if cfg.Platforms.Temu.Enabled {
+		s.logger.Info("TEMU处理器已启用，正在启动...")
+		if err := s.startTemuProcessor(ctx, cfg); err != nil {
+			return fmt.Errorf("启动TEMU处理器失败: %w", err)
+		}
+	} else {
+		s.logger.Info("TEMU处理器已禁用，跳过启动")
 	}
 
-	// 启动SHEIN处理器
-	if err := s.startSheinProcessor(cfg); err != nil {
-		return fmt.Errorf("启动SHEIN处理器失败: %w", err)
+	// 检查并启动SHEIN处理器
+	if cfg.Platforms.Shein.Enabled {
+		s.logger.Info("SHEIN处理器已启用，正在启动...")
+		if err := s.startSheinProcessor(ctx, cfg); err != nil {
+			return fmt.Errorf("启动SHEIN处理器失败: %w", err)
+		}
+	} else {
+		s.logger.Info("SHEIN处理器已禁用，跳过启动")
 	}
 
+	// 检查是否至少启用了一个处理器
+	if !cfg.Platforms.Temu.Enabled && !cfg.Platforms.Shein.Enabled {
+		s.logger.Warn("⚠️ 所有处理器都已禁用，系统将以空闲模式运行")
+	}
+
+	s.logger.Info("处理器启动流程完成")
 	return nil
 }
 
 // startTemuProcessor 启动TEMU处理器
-func (s *processorServiceImpl) startTemuProcessor(cfg *config.Config) error {
+func (s *processorServiceImpl) startTemuProcessor(ctx context.Context, cfg *config.Config) error {
 	s.logger.Info("启动TEMU处理器...")
 
-	// 获取共享的Amazon处理器
+	// 获取已初始化的共享Amazon处理器
 	sharedAmazonProcessor := GetSharedAmazonProcessor(cfg, s.logger)
 
-	// 创建TEMU处理器，使用共享Amazon处理器
-	s.temuProcessor = temu.NewTemuProcessorWithSharedAmazon(cfg, s.logger, s.managementClient, sharedAmazonProcessor)
-
-	// 设置用户令牌
-	client := s.managementClient.GetClient()
-	accessToken, _ := client.GetAccessToken()
-	s.temuProcessor.SetUserToken(accessToken, cfg.Management.TenantID)
+	// 创建TEMU处理器，使用共享资源
+	s.temuProcessor = temu.NewTemuProcessor(ctx, cfg, s.logger, s.managementClient, sharedAmazonProcessor)
 
 	// 启动处理器
 	if err := s.temuProcessor.Start(s.ctx); err != nil {
@@ -49,19 +63,14 @@ func (s *processorServiceImpl) startTemuProcessor(cfg *config.Config) error {
 }
 
 // startSheinProcessor 启动SHEIN处理器
-func (s *processorServiceImpl) startSheinProcessor(cfg *config.Config) error {
+func (s *processorServiceImpl) startSheinProcessor(ctx context.Context, cfg *config.Config) error {
 	s.logger.Info("启动SHEIN处理器...")
 
-	// 获取共享的Amazon处理器
+	// 获取已初始化的共享Amazon处理器
 	sharedAmazonProcessor := GetSharedAmazonProcessor(cfg, s.logger)
 
-	// 创建SHEIN处理器，使用共享Amazon处理器
-	s.sheinProcessor = shein.NewSheinProcessorWithSharedResources(cfg, s.managementClient, sharedAmazonProcessor)
-
-	// 设置用户令牌
-	client := s.managementClient.GetClient()
-	accessToken, _ := client.GetAccessToken()
-	s.sheinProcessor.SetUserToken(accessToken, cfg.Management.TenantID)
+	// 创建SHEIN处理器，使用共享资源
+	s.sheinProcessor = shein.NewSheinProcessor(ctx, cfg, s.logger, s.managementClient, sharedAmazonProcessor)
 
 	// 启动处理器
 	if err := s.sheinProcessor.Start(s.ctx); err != nil {
@@ -73,19 +82,22 @@ func (s *processorServiceImpl) startSheinProcessor(cfg *config.Config) error {
 }
 
 // stopAllProcessors 停止所有处理器
-func (s *processorServiceImpl) stopAllProcessors() {
+func (s *processorServiceImpl) stopAllProcessors(ctx context.Context) {
 	// 停止TEMU处理器
 	if s.temuProcessor != nil {
-		s.temuProcessor.Close()
+		s.temuProcessor.Close(ctx)
 		s.logger.Info("TEMU处理器已停止")
 	}
 
 	// 停止SHEIN处理器
 	if s.sheinProcessor != nil {
-		s.sheinProcessor.Close()
+		s.sheinProcessor.Close(ctx)
 		s.logger.Info("SHEIN处理器已停止")
 	}
 
 	// 关闭共享的Amazon处理器
 	CloseSharedAmazonProcessor(s.logger)
+
+	// 关闭共享的管理客户端
+	CloseSharedManagementClient(s.logger)
 }

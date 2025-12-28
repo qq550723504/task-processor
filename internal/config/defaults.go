@@ -45,7 +45,7 @@ func setAmazonDefaults() {
 	viper.SetDefault("amazon.enabled", true)
 	viper.SetDefault("amazon.headless", true)
 	viper.SetDefault("amazon.browserPath", "./chrome/chrome.exe")
-	viper.SetDefault("amazon.poolSize", 3)
+	viper.SetDefault("amazon.poolSize", 3) // 浏览器池大小，同时也是并发处理数
 	viper.SetDefault("amazon.viewportWidth", 1920)
 	viper.SetDefault("amazon.viewportHeight", 1080)
 	viper.SetDefault("amazon.proxyServer", "")
@@ -71,6 +71,9 @@ func setPlatformDefaults() {
 
 // setTemuDefaults 设置TEMU平台默认配置
 func setTemuDefaults() {
+	// 平台启用状态默认配置
+	viper.SetDefault("platforms.temu.enabled", true)
+
 	// 自动定价默认配置
 	viper.SetDefault("platforms.temu.autoPricing.enabled", false)
 	viper.SetDefault("platforms.temu.autoPricing.interval", 300)
@@ -95,6 +98,9 @@ func setTemuDefaults() {
 
 // setSheinDefaults 设置SHEIN平台默认配置
 func setSheinDefaults() {
+	// 平台启用状态默认配置
+	viper.SetDefault("platforms.shein.enabled", true)
+
 	// 自动定价默认配置
 	viper.SetDefault("platforms.shein.autoPricing.enabled", false)
 	viper.SetDefault("platforms.shein.autoPricing.interval", 300)

@@ -207,9 +207,27 @@ func (cm *ClientManager) convertToCookies(cookieDict map[string]interface{}, isS
 	}
 
 	for name, value := range cookieDict {
+		// 安全地转换Cookie值为字符串
+		var cookieValue string
+		switch v := value.(type) {
+		case string:
+			cookieValue = v
+		case []byte:
+			cookieValue = string(v)
+		case nil:
+			continue // 跳过空值
+		default:
+			cookieValue = fmt.Sprintf("%v", v)
+		}
+
+		// 跳过空值Cookie
+		if cookieValue == "" {
+			continue
+		}
+
 		cookie := &http.Cookie{
 			Name:  name,
-			Value: fmt.Sprintf("%v", value),
+			Value: cookieValue,
 		}
 
 		// 根据目标域名动态设置Cookie域名

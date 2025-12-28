@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/common/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -68,35 +68,50 @@ func (h *CategoryRecommendHandler) Name() string {
 	return "分类推荐处理器"
 }
 
-// Handle 处理任务
-func (h *CategoryRecommendHandler) Handle(ctx *pipeline.TaskContext) error {
+// HandleTemu 处理任务（强类型上下文）
+func (h *CategoryRecommendHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始执行分类推荐")
 
 	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	task := temuCtx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	if ctx.TemuProduct == nil {
+	// 获取TEMU产品信息
+	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
+	temuProduct := temuCtx.TemuProduct
+
 	// 检查是否已经有分类信息
-	if ctx.TemuProduct.GoodsBasic.CatID != 0 {
-		h.logger.Infof("产品已有分类信息: CatID=%d，跳过分类推荐", ctx.TemuProduct.GoodsBasic.CatID)
+	if temuProduct.GoodsBasic.CatID != 0 {
+		h.logger.Infof("产品已有分类信息: CatID=%d，跳过分类推荐", temuProduct.GoodsBasic.CatID)
 		return nil
 	}
-
 	// 获取商品名称
 	var goodsName string
-	if ctx.AmazonProduct != nil && ctx.AmazonProduct.Title != "" {
-		goodsName = ctx.AmazonProduct.Title
+	amazonProduct := temuCtx.GetAmazonProduct()
+	if amazonProduct != nil && amazonProduct.Title != "" {
+		goodsName = amazonProduct.Title
+	}
+
+	if goodsName == "" {
+		// 尝试从temuProduct获取商品名称
+		if temuProduct.GoodsBasic.GoodsName != "" {
+			goodsName = temuProduct.GoodsBasic.GoodsName
+		}
+	}
+
+	if goodsName == "" {
+		return fmt.Errorf("无法获取商品名称")
 	}
 
 	// 执行分类推荐
-	err := h.recommendCategory(ctx, goodsName)
+	err := h.recommendCategory(temuCtx, goodsName)
 	if err != nil {
-		return fmt.Errorf("分类推荐错误")
+		return fmt.Errorf("分类推荐错误: %w", err)
 	}
 
 	h.logger.Info("分类推荐处理完成")
@@ -104,11 +119,11 @@ func (h *CategoryRecommendHandler) Handle(ctx *pipeline.TaskContext) error {
 }
 
 // recommendCategory 执行分类推荐逻辑
-func (h *CategoryRecommendHandler) recommendCategory(ctx *pipeline.TaskContext, goodsName string) error {
+func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTaskContext, goodsName string) error {
 	h.logger.Infof("为商品推荐分类: %s", goodsName)
 
 	// 检查API客户端
-	if ctx.APIClient == nil {
+	if temuCtx.APIClient == nil {
 		return fmt.Errorf("API客户端未初始化")
 	}
 
@@ -137,9 +152,17 @@ func (h *CategoryRecommendHandler) recommendCategory(ctx *pipeline.TaskContext, 
 		"body": requestBody,
 	}
 
+	// 类型断言获取TEMU API客户端
+	temuAPIClient, ok := interface{}(temuCtx.APIClient).(interface {
+		SendTEMURequest(apiReq map[string]interface{}, response interface{}) error
+	})
+	if !ok {
+		return fmt.Errorf("API客户端不支持TEMU请求")
+	}
+
 	// 发送API请求（Cookie检查和重试逻辑已在API客户端中处理）
 	response := &CategoryRecommendResponse{}
-	err := ctx.APIClient.SendTEMURequest(apiReq, response)
+	err := temuAPIClient.SendTEMURequest(apiReq, response)
 	if err != nil {
 		h.logger.Errorf("分类推荐API调用失败: %v", err)
 		return fmt.Errorf("分类推荐API调用失败: %w", err)
@@ -158,20 +181,27 @@ func (h *CategoryRecommendHandler) recommendCategory(ctx *pipeline.TaskContext, 
 	}
 
 	// 构建分类ID层级列表，并找到最深层级的分类ID
-	ctx.TemuProduct.GoodsBasic.CatIDs = []int{category.Cate1ID}
+	// 从强类型上下文获取TEMU产品信息
+	if temuCtx.TemuProduct == nil {
+		return fmt.Errorf("无法获取TEMU产品信息")
+	}
+
+	temuProduct := temuCtx.TemuProduct
+
+	temuProduct.GoodsBasic.CatIDs = []int{category.Cate1ID}
 	lastLevelCatID := category.Cate1ID // 默认使用第一级
 
 	if category.Cate2ID != 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = append(ctx.TemuProduct.GoodsBasic.CatIDs, category.Cate2ID)
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, category.Cate2ID)
 		lastLevelCatID = category.Cate2ID
 	}
 	if category.Cate3ID != 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = append(ctx.TemuProduct.GoodsBasic.CatIDs, category.Cate3ID)
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, category.Cate3ID)
 		lastLevelCatID = category.Cate3ID
 	}
 
 	// 设置分类树信息
-	ctx.TemuProduct.GoodsBasic.CategoryTree = types.CategoryTree{
+	temuProduct.GoodsBasic.CategoryTree = types.CategoryTree{
 		Level:        category.Level,
 		CateType:     category.CateType,
 		CatID:        lastLevelCatID, // 使用最深层级的分类ID
@@ -186,47 +216,47 @@ func (h *CategoryRecommendHandler) recommendCategory(ctx *pipeline.TaskContext, 
 
 	// 如果有更深层级的分类，也要设置，并更新最深层级ID
 	if category.Cate4ID != nil && *category.Cate4ID != 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = append(ctx.TemuProduct.GoodsBasic.CatIDs, *category.Cate4ID)
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate4ID = *category.Cate4ID
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate4ID)
+		temuProduct.GoodsBasic.CategoryTree.Cate4ID = *category.Cate4ID
 		lastLevelCatID = *category.Cate4ID
 		if category.Cate4Name != nil {
-			ctx.TemuProduct.GoodsBasic.CategoryTree.Cate4Name = *category.Cate4Name
+			temuProduct.GoodsBasic.CategoryTree.Cate4Name = *category.Cate4Name
 		}
 	}
 
 	if category.Cate5ID != nil && *category.Cate5ID != 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = append(ctx.TemuProduct.GoodsBasic.CatIDs, *category.Cate5ID)
-		ctx.TemuProduct.GoodsBasic.CategoryTree.Cate5ID = *category.Cate5ID
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate5ID)
+		temuProduct.GoodsBasic.CategoryTree.Cate5ID = *category.Cate5ID
 		lastLevelCatID = *category.Cate5ID
 		if category.Cate5Name != nil {
-			ctx.TemuProduct.GoodsBasic.CategoryTree.Cate5Name = *category.Cate5Name
+			temuProduct.GoodsBasic.CategoryTree.Cate5Name = *category.Cate5Name
 		}
 	}
 
-	// 添加对更深层级分类的支持，并持续更新最深层级ID
 	if category.Cate6ID != nil && *category.Cate6ID != 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = append(ctx.TemuProduct.GoodsBasic.CatIDs, *category.Cate6ID)
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate6ID)
 		lastLevelCatID = *category.Cate6ID
 	}
 	if category.Cate7ID != nil && *category.Cate7ID != 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = append(ctx.TemuProduct.GoodsBasic.CatIDs, *category.Cate7ID)
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate7ID)
 		lastLevelCatID = *category.Cate7ID
 	}
 	if category.Cate8ID != nil && *category.Cate8ID != 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = append(ctx.TemuProduct.GoodsBasic.CatIDs, *category.Cate8ID)
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate8ID)
 		lastLevelCatID = *category.Cate8ID
 	}
 	if category.Cate9ID != nil && *category.Cate9ID != 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = append(ctx.TemuProduct.GoodsBasic.CatIDs, *category.Cate9ID)
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate9ID)
 		lastLevelCatID = *category.Cate9ID
 	}
 	if category.Cate10ID != nil && *category.Cate10ID != 0 {
-		ctx.TemuProduct.GoodsBasic.CatIDs = append(ctx.TemuProduct.GoodsBasic.CatIDs, *category.Cate10ID)
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate10ID)
 		lastLevelCatID = *category.Cate10ID
 	}
 
 	// 设置最深层级的分类ID作为主要CatID
-	ctx.TemuProduct.GoodsBasic.CatID = lastLevelCatID
+	temuProduct.GoodsBasic.CatID = lastLevelCatID
 
+	h.logger.Infof("成功设置分类信息: CatID=%d, 层级=%d", lastLevelCatID, len(temuProduct.GoodsBasic.CatIDs))
 	return nil
 }

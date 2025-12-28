@@ -1,3 +1,4 @@
+// Package handlers 提供TEMU平台的原始JSON数据处理功能
 package handlers
 
 import (
@@ -5,10 +6,9 @@ import (
 	"fmt"
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/amazon/model"
-	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
 	"task-processor/internal/common/product"
 	"task-processor/internal/config"
+	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -21,27 +21,14 @@ type RawJsonDataHandlerV2 struct {
 }
 
 // NewRawJsonDataHandlerV2 创建新的原始JSON数据处理器V2
-func NewRawJsonDataHandlerV2(rawJsonDataClient interface {
-	GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
-	CreateRawJsonData(req *api.RawJsonDataCreateReqDTO) (int64, error)
-}, amazonConfig *config.AmazonConfig, amazonProcessor interface{}) *RawJsonDataHandlerV2 {
-
-	// 提取Amazon处理器
-	var ap *amazon.AmazonProcessor
-	if amazonProcessor != nil {
-		if processor, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
-			ap = processor
-			logrus.Info("[TEMU] 使用共享的Amazon爬虫实例")
-		}
-	} else if amazonConfig != nil && amazonConfig.Enabled {
-		// 如果没有提供共享实例，则创建新的（向后兼容）
-		ap = amazon.NewAmazonProcessor(amazonConfig)
-		logrus.Info("[TEMU] Amazon爬虫已启用")
-	}
-
+func NewRawJsonDataHandlerV2(
+	rawJsonDataClient product.RawJsonDataClient,
+	amazonConfig *config.AmazonConfig,
+	amazonProcessor *amazon.AmazonProcessor,
+) *RawJsonDataHandlerV2 {
 	return &RawJsonDataHandlerV2{
 		logger:  logrus.WithField("handler", "RawJsonDataHandlerV2"),
-		fetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, ap),
+		fetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor),
 	}
 }
 
@@ -51,27 +38,28 @@ func (h *RawJsonDataHandlerV2) Name() string {
 }
 
 // Handle 处理任务（使用公共ProductFetcher）
-func (h *RawJsonDataHandlerV2) Handle(ctx *pipeline.TaskContext) error {
+func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 	h.logger.Info("开始获取原始JSON数据")
 
 	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	task := ctx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	if ctx.Task.ProductID == "" {
+	if task.ProductID == "" {
 		return fmt.Errorf("产品id为空")
 	}
 
 	// 使用公共ProductFetcher获取产品数据
 	req := &product.FetchRequest{
-		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.Platform,
-		Region:     ctx.Task.Region,
-		ProductID:  ctx.Task.ProductID,
-		StoreID:    ctx.Task.StoreID,
-		CategoryID: ctx.Task.CategoryID,
-		Creator:    ctx.Task.Creator,
+		TenantID:   task.TenantID,
+		Platform:   task.Platform,
+		Region:     task.Region,
+		ProductID:  task.ProductID,
+		StoreID:    task.StoreID,
+		CategoryID: task.CategoryID,
+		Creator:    task.Creator,
 	}
 
 	amazonProduct, err := h.fetcher.FetchProduct(req)
@@ -89,13 +77,13 @@ func (h *RawJsonDataHandlerV2) Handle(ctx *pipeline.TaskContext) error {
 	}
 
 	// 将Amazon产品数据存储到上下文中
-	ctx.AmazonProduct = amazonProduct
-
+	if amazonCtx, ok := ctx.(pipeline.AmazonContext); ok {
+		amazonCtx.SetAmazonProduct(amazonProduct)
+	}
 	return nil
 }
 
-// Shutdown 关闭处理器，释放资源（现在由共享的Amazon处理器管理）
+// Shutdown 关闭处理器，释放资源
 func (h *RawJsonDataHandlerV2) Shutdown() {
-	// Amazon处理器由外部管理，不需要在这里关闭
-	h.logger.Debug("RawJsonDataHandlerV2 关闭（Amazon处理器由外部管理）")
+	h.logger.Debug("RawJsonDataHandlerV2 关闭")
 }

@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
-	"task-processor/internal/common/utils"
 	openaiClient "task-processor/internal/clients/openai"
+	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/common/management/api"
+	"task-processor/internal/common/utils"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -22,7 +24,6 @@ type SpuBuilder struct {
 	logger         *logrus.Entry
 	textProcessor  *TextProcessor
 	priceHandler   *PriceHandler
-	regionHandler  *RegionHandler
 	skuBuilder     *SkuBuilder
 	propertyMapper *AIPropertyMapper
 	openaiClient   *openaiClient.Client
@@ -39,9 +40,8 @@ func NewSpuBuilder(logger *logrus.Entry, openaiConfig *openaiClient.ClientConfig
 		logger:         logger,
 		textProcessor:  NewTextProcessor(),
 		priceHandler:   NewPriceHandler(profitRuleClient),
-		regionHandler:  NewRegionHandler(),
 		skuBuilder:     NewSkuBuilder(logger, aiClient, profitRuleClient),
-		propertyMapper: NewAIPropertyMapper(logger, aiClient),
+		propertyMapper: NewAIPropertyMapper(logger, aiClient, openaiConfig),
 		openaiClient:   aiClient,
 	}
 }
@@ -51,24 +51,27 @@ func NewSpuBuilder(logger *logrus.Entry, openaiConfig *openaiClient.ClientConfig
 // =============================================================================
 
 // BuildBasicInfo 构建基本信息
-func (b *SpuBuilder) BuildBasicInfo(ctx *pipeline.TaskContext) error {
+func (b *SpuBuilder) BuildBasicInfo(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) error {
 	b.logger.Info("构建产品基本信息")
 
-	basic := &ctx.TemuProduct.GoodsBasic
+	basic := &temuProduct.GoodsBasic
+
+	// 获取Amazon产品信息
+	amazonProduct := temuCtx.GetAmazonProduct()
 
 	// 设置商品名称
-	b.setProductName(ctx, basic)
+	b.setProductName(amazonProduct, basic)
 
 	// 设置外部商品编号
-	b.setOutGoodsSN(ctx, basic)
+	b.setOutGoodsSN(temuCtx, amazonProduct, basic)
 
 	// 设置地区和语言信息
-	basic.Lang = b.regionHandler.GetLanguageByRegion(ctx.Task.Region)
-	basic.AllowSite = b.regionHandler.GetAllowSitesByRegion(ctx.Task.Region)
+	basic.Lang = "en"
+	basic.AllowSite = []int{100}
 
 	// 记录品牌信息
-	if ctx.AmazonProduct != nil && ctx.AmazonProduct.Brand != "" {
-		b.logger.Infof("Amazon品牌信息: %s", ctx.AmazonProduct.Brand)
+	if amazonProduct != nil && amazonProduct.Brand != "" {
+		b.logger.Infof("Amazon品牌信息: %s", amazonProduct.Brand)
 	}
 
 	b.logger.Info("产品基本信息构建完成")
@@ -76,25 +79,28 @@ func (b *SpuBuilder) BuildBasicInfo(ctx *pipeline.TaskContext) error {
 }
 
 // BuildExtensionInfo 构建扩展信息
-func (b *SpuBuilder) BuildExtensionInfo(ctx *pipeline.TaskContext) error {
+func (b *SpuBuilder) BuildExtensionInfo(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) error {
 	b.logger.Info("构建产品扩展信息")
 
-	ext := &ctx.TemuProduct.GoodsExtensionInfo
+	ext := &temuProduct.GoodsExtensionInfo
 
 	// 构建商品属性（使用AI智能映射）
-	if err := b.propertyMapper.BuildGoodsProperties(ctx, ext); err != nil {
+	if err := b.propertyMapper.BuildGoodsProperties(temuCtx, ext); err != nil {
 		b.logger.WithError(err).Warn("构建商品属性失败，使用默认属性")
 	}
 
+	// 从强类型上下文获取Amazon产品信息
+	amazonProduct := temuCtx.GetAmazonProduct()
+
 	// 设置产品描述
-	b.setProductDescription(ctx, ext)
+	b.setProductDescription(amazonProduct, ext)
 
 	// 设置要点描述
-	b.setBulletPoints(ctx, ext)
+	b.setBulletPoints(amazonProduct, ext)
 
 	// 设置原产地信息
 	if ext.GoodsOriginInfo.OriginRegionName1 == "" {
-		ext.GoodsOriginInfo.OriginRegionName1 = b.regionHandler.GetOriginByRegion(ctx.Task.Region)
+		ext.GoodsOriginInfo.OriginRegionName1 = "United States"
 	}
 
 	b.logger.Info("产品扩展信息构建完成")
@@ -102,65 +108,65 @@ func (b *SpuBuilder) BuildExtensionInfo(ctx *pipeline.TaskContext) error {
 }
 
 // BuildSkcAndSku 构建SKC和SKU
-func (b *SpuBuilder) BuildSkcAndSku(ctx *pipeline.TaskContext) error {
+func (b *SpuBuilder) BuildSkcAndSku(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) error {
 	b.logger.Info("构建SKC和SKU信息")
 
 	// 创建SKC列表
-	if len(ctx.TemuProduct.SkcList) == 0 {
+	if len(temuProduct.SkcList) == 0 {
 		// 创建SKC
-		if err := b.createSkcList(ctx); err != nil {
+		if err := b.createSkcList(temuCtx, temuProduct); err != nil {
 			return fmt.Errorf("创建SKC列表失败: %w", err)
 		}
 	} else {
-		b.logger.Infof("使用现有的 %d 个SKC", len(ctx.TemuProduct.SkcList))
+		b.logger.Infof("使用现有的 %d 个SKC", len(temuProduct.SkcList))
 	}
 
 	// 处理每个SKC
-	for i := range ctx.TemuProduct.SkcList {
-		if err := b.skuBuilder.ProcessSkcItem(ctx, i); err != nil {
+	for i := range temuProduct.SkcList {
+		if err := b.skuBuilder.ProcessSkcItem(temuCtx, i); err != nil {
 			return fmt.Errorf("处理SKC[%d]失败: %w", i, err)
 		}
 	}
 
 	// 构建商品规格属性（基于SKU中使用的规格）
-	if err := b.buildGoodsSpecProperties(ctx); err != nil {
+	if err := b.buildGoodsSpecProperties(temuProduct); err != nil {
 		b.logger.WithError(err).Warn("构建商品规格属性失败")
 	}
 
-	b.logger.Infof("SKC和SKU构建完成: %d个SKC, 总计%d个SKU",
-		len(ctx.TemuProduct.SkcList), b.skuBuilder.GetTotalSkuCount(ctx.TemuProduct.SkcList))
+	b.logger.Infof("SKC和SKU构建完成: %d个SKC",
+		len(temuProduct.SkcList))
 	return nil
 }
 
 // BuildServicePromise 构建服务承诺
-func (b *SpuBuilder) BuildServicePromise(ctx *pipeline.TaskContext) error {
+func (b *SpuBuilder) BuildServicePromise(ctx pipeline.TaskContext, temuProduct *types.Product) error {
 	b.logger.Info("构建服务承诺信息")
 
 	// 验证CostTemplateID是否已设置
-	if ctx.TemuProduct.GoodsServicePromise.CostTemplateID == "" {
+	if temuProduct.GoodsServicePromise.CostTemplateID == "" {
 		b.logger.Warn("运费模板ID未设置，这可能导致后续处理失败")
 	} else {
-		b.logger.Infof("运费模板ID已设置: %s", ctx.TemuProduct.GoodsServicePromise.CostTemplateID)
+		b.logger.Infof("运费模板ID已设置: %s", temuProduct.GoodsServicePromise.CostTemplateID)
 	}
 
 	// 只设置其他必要的服务承诺字段
-	ctx.TemuProduct.GoodsServicePromise.ShipmentLimitSecond = 2 // 2天发货
-	ctx.TemuProduct.GoodsServicePromise.FulfillmentType = 1     // 自发货
+	temuProduct.GoodsServicePromise.ShipmentLimitSecond = 2 // 2天发货
+	temuProduct.GoodsServicePromise.FulfillmentType = 1     // 自发货
 
 	b.logger.Info("服务承诺信息构建完成")
 	return nil
 }
 
 // BuildSaleInfo 构建销售信息
-func (b *SpuBuilder) BuildSaleInfo(ctx *pipeline.TaskContext) error {
+func (b *SpuBuilder) BuildSaleInfo(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) error {
 	b.logger.Info("验证销售信息")
 
 	// 验证销售信息是否已在初始化时设置
-	if ctx.TemuProduct.GoodsSaleInfo.GoodsPattern == 0 {
+	if temuProduct.GoodsSaleInfo.GoodsPattern == 0 {
 		b.logger.Warn("商品模式未设置，使用默认值")
-		ctx.TemuProduct.GoodsSaleInfo.GoodsPattern = 0 // 修改为11，与成功提交的JSON一致
+		temuProduct.GoodsSaleInfo.GoodsPattern = 0
 	} else {
-		b.logger.Infof("商品模式已设置: %d", ctx.TemuProduct.GoodsSaleInfo.GoodsPattern)
+		b.logger.Infof("商品模式已设置: %d", temuProduct.GoodsSaleInfo.GoodsPattern)
 	}
 
 	b.logger.Info("销售信息验证完成")
@@ -171,17 +177,26 @@ func (b *SpuBuilder) BuildSaleInfo(ctx *pipeline.TaskContext) error {
 // 辅助构建方法
 // =============================================================================
 
+// getAmazonProductFromContext 从上下文获取Amazon产品信息
+func (b *SpuBuilder) getAmazonProductFromContext(ctx pipeline.TaskContext) *model.Product {
+	if amazonCtx, ok := ctx.(pipeline.AmazonContext); ok {
+		return amazonCtx.GetAmazonProduct()
+	}
+	b.logger.Warn("无法从上下文获取Amazon产品信息")
+	return nil
+}
+
 // setProductName 设置商品名称
-func (b *SpuBuilder) setProductName(ctx *pipeline.TaskContext, basic *types.GoodsBasicInfo) {
-	if basic.GoodsName == "" && ctx.AmazonProduct != nil {
-		basic.GoodsName = b.textProcessor.ProcessProductTitle(ctx.AmazonProduct.Title)
+func (b *SpuBuilder) setProductName(amazonProduct *model.Product, basic *types.GoodsBasicInfo) {
+	if basic.GoodsName == "" && amazonProduct != nil {
+		basic.GoodsName = b.textProcessor.ProcessProductTitle(amazonProduct.Title)
 		b.logger.Infof("从Amazon设置商品名称: %s", basic.GoodsName)
 	}
 }
 
 // setOutGoodsSN 设置外部商品编号
-func (b *SpuBuilder) setOutGoodsSN(ctx *pipeline.TaskContext, basic *types.GoodsBasicInfo) {
-	if basic.OutGoodsSN != "" || ctx.AmazonProduct == nil {
+func (b *SpuBuilder) setOutGoodsSN(temuCtx *temucontext.TemuTaskContext, amazonProduct *model.Product, basic *types.GoodsBasicInfo) {
+	if basic.OutGoodsSN != "" || amazonProduct == nil {
 		return
 	}
 
@@ -189,9 +204,10 @@ func (b *SpuBuilder) setOutGoodsSN(ctx *pipeline.TaskContext, basic *types.Goods
 	prefix := ""
 	suffix := ""
 
-	// 从店铺信息中获取SKU生成配置
-	if ctx.StoreInfo != nil {
-		switch ctx.StoreInfo.SkuGenerateStrategy {
+	// 从强类型上下文中获取店铺信息
+	if temuCtx.StoreInfo != nil {
+		storeInfo := temuCtx.StoreInfo
+		switch storeInfo.SkuGenerateStrategy {
 		case "asin_only":
 			strategy = utils.StrategyASINOnly
 		case "random":
@@ -204,27 +220,27 @@ func (b *SpuBuilder) setOutGoodsSN(ctx *pipeline.TaskContext, basic *types.Goods
 			strategy = utils.StrategyASINOnly
 		}
 
-		prefix = ctx.StoreInfo.Prefix
-		suffix = ctx.StoreInfo.Suffix
+		prefix = storeInfo.Prefix
+		suffix = storeInfo.Suffix
 
 		b.logger.Infof("使用店铺SKU配置: 策略=%s, 前缀=%s, 后缀=%s",
-			ctx.StoreInfo.SkuGenerateStrategy, prefix, suffix)
+			storeInfo.SkuGenerateStrategy, prefix, suffix)
 	} else {
 		b.logger.Warn("店铺信息为空，使用默认SKU生成配置")
 	}
 
-	basic.OutGoodsSN = utils.GenerateSKU(ctx.AmazonProduct.ParentAsin, strategy, prefix, suffix)
-	b.logger.Infof("设置外部商品编号: %s (基于ASIN: %s)", basic.OutGoodsSN, ctx.AmazonProduct.Asin)
+	basic.OutGoodsSN = utils.GenerateSKU(amazonProduct.Asin, strategy, prefix, suffix)
+	b.logger.Infof("设置外部商品编号: %s (基于ASIN: %s)", basic.OutGoodsSN, amazonProduct.Asin)
 }
 
 // setProductDescription 设置产品描述
-func (b *SpuBuilder) setProductDescription(ctx *pipeline.TaskContext, ext *types.ExtensionInfo) {
+func (b *SpuBuilder) setProductDescription(amazonProduct *model.Product, ext *types.ExtensionInfo) {
 	if ext.GoodsDesc != "" {
 		return
 	}
 
-	if ctx.AmazonProduct != nil && ctx.AmazonProduct.Description != "" {
-		ext.GoodsDesc = b.textProcessor.ProcessDescription(ctx.AmazonProduct.Description)
+	if amazonProduct != nil && amazonProduct.Title != "" {
+		ext.GoodsDesc = b.textProcessor.ProcessDescription(amazonProduct.Title)
 		b.logger.Infof("从Amazon设置产品描述，长度: %d", len(ext.GoodsDesc))
 	} else {
 		ext.GoodsDesc = "High quality product with excellent features."
@@ -232,58 +248,65 @@ func (b *SpuBuilder) setProductDescription(ctx *pipeline.TaskContext, ext *types
 }
 
 // setBulletPoints 设置要点描述
-func (b *SpuBuilder) setBulletPoints(ctx *pipeline.TaskContext, ext *types.ExtensionInfo) {
+func (b *SpuBuilder) setBulletPoints(amazonProduct *model.Product, ext *types.ExtensionInfo) {
 	if len(ext.BulletPoints) > 0 {
 		return
 	}
 
-	if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Features) > 0 {
-		ext.BulletPoints = b.textProcessor.ProcessBulletPoints(ctx.AmazonProduct.Features)
+	if amazonProduct != nil && len(amazonProduct.Features) > 0 {
+		ext.BulletPoints = b.textProcessor.ProcessBulletPoints(amazonProduct.Features)
 		b.logger.Infof("从Amazon设置要点描述，数量: %d", len(ext.BulletPoints))
 	} else {
 		ext.BulletPoints = b.textProcessor.GetDefaultBulletPoints()
+		b.logger.Infof("设置默认要点描述，数量: %d", len(ext.BulletPoints))
 	}
 }
 
 // createSkcList 创建SKC列表
-func (b *SpuBuilder) createSkcList(ctx *pipeline.TaskContext) error {
-	if variants := ctx.GetAmazonVariants(); len(variants) > 0 {
-		// 有变体，创建变体SKC
-		b.logger.Infof("发现 %d 个变体数据，尝试创建变体SKC", len(variants))
-		if err := b.skuBuilder.BuildVariantSkcs(ctx, variants); err != nil {
-			b.logger.Errorf("❌ 创建变体SKC失败: %v", err)
-			return fmt.Errorf("创建变体SKC失败: %w", err)
+func (b *SpuBuilder) createSkcList(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) error {
+	// 尝试将上下文转换为AmazonContext以获取变体数据
+	if amazonCtx, ok := interface{}(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
+		variants := amazonCtx.GetVariants()
+		if len(variants) > 0 {
+			// 有变体，创建变体SKC
+			b.logger.Infof("发现 %d 个变体数据，尝试创建变体SKC", len(variants))
+			if err := b.skuBuilder.BuildVariantSkcs(temuCtx, variants); err != nil {
+				b.logger.Errorf("❌ 创建变体SKC失败: %v", err)
+				return fmt.Errorf("创建变体SKC失败: %w", err)
+			}
+			return nil
 		}
-		return nil
-	} else {
-		// 没有变体，创建默认SKC（从模板中选择规格）
-		b.logger.Info("没有找到Amazon变体数据，创建默认SKC")
-		skc, err := b.skuBuilder.CreateDefaultSkc(ctx)
-		if err != nil {
-			b.logger.Errorf("❌ 创建默认SKC失败: %v", err)
-			return fmt.Errorf("创建默认SKC失败: %w", err)
-		}
-		ctx.TemuProduct.SkcList = []types.Skc{skc}
-		b.logger.Info("✅ 成功创建默认SKC")
-		return nil
 	}
+
+	// 没有变体，创建默认SKC（从模板中选择规格）
+	b.logger.Info("没有找到Amazon变体数据，创建默认SKC")
+	skc, err := b.skuBuilder.CreateDefaultSkc(temuCtx)
+	if err != nil {
+		b.logger.Errorf("❌ 创建默认SKC失败: %v", err)
+		return fmt.Errorf("创建默认SKC失败: %w", err)
+	}
+
+	// 将创建的SKC添加到产品中
+	temuProduct.SkcList = []types.Skc{skc}
+
+	b.logger.Info("✅ 成功创建默认SKC")
+	return nil
 }
 
 // buildGoodsSpecProperties 构建商品规格属性（基于SKU中使用的规格）
-func (b *SpuBuilder) buildGoodsSpecProperties(ctx *pipeline.TaskContext) error {
+func (b *SpuBuilder) buildGoodsSpecProperties(temuProduct *types.Product) error {
 	b.logger.Info("开始构建商品规格属性")
 
 	// 收集所有SKU中使用的规格
-	specMap := make(map[string]*types.GoodsSpecProperty) // key: parent_spec_id_spec_id
+	specMap := make(map[string]*types.GoodSpecProperty) // key: parent_spec_id_spec_id
 
-	for _, skc := range ctx.TemuProduct.SkcList {
+	for _, skc := range temuProduct.SkcList {
 		for _, sku := range skc.SkuList {
 			for _, spec := range sku.Spec {
 				// 检查是否还有临时ID（不应该出现）
 				if strings.HasPrefix(spec.SpecID, "TEMP_") {
 					b.logger.Errorf("❌ 发现未解析的临时规格ID: %s (parent: %s, name: %s)",
 						spec.SpecID, spec.ParentSpecID, spec.SpecName)
-					b.logger.Error("❌ 这表明resolveTemporarySpecIDs没有正确工作")
 					return fmt.Errorf("发现未解析的临时规格ID: %s，请检查规格解析逻辑", spec.SpecID)
 				}
 
@@ -291,11 +314,10 @@ func (b *SpuBuilder) buildGoodsSpecProperties(ctx *pipeline.TaskContext) error {
 				if _, exists := specMap[key]; !exists {
 					// 根据规格类型设置feature值
 					feature := 0
-					if b.skuBuilder.isSizeSpec(strings.ToLower(spec.ParentSpecName)) {
+					if b.skuBuilder.specHandler.isSizeSpec(strings.ToLower(spec.ParentSpecName)) {
 						feature = 2 // 尺码规格
 					}
-
-					specMap[key] = &types.GoodsSpecProperty{
+					specMap[key] = &types.GoodSpecProperty{
 						Value:          spec.SpecName,
 						SpecID:         spec.SpecID,
 						ParentSpecID:   spec.ParentSpecID,
@@ -313,13 +335,13 @@ func (b *SpuBuilder) buildGoodsSpecProperties(ctx *pipeline.TaskContext) error {
 	}
 
 	// 转换为切片
-	var goodsSpecProperties []types.GoodsSpecProperty
+	var goodsSpecProperties []types.GoodSpecProperty
 	for _, specProp := range specMap {
 		goodsSpecProperties = append(goodsSpecProperties, *specProp)
 	}
 
 	// 设置到产品扩展信息中
-	ctx.TemuProduct.GoodsExtensionInfo.GoodsProperty.GoodsSpecProperties = goodsSpecProperties
+	temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsSpecProperties = goodsSpecProperties
 
 	b.logger.Infof("商品规格属性构建完成，共%d个规格", len(goodsSpecProperties))
 	return nil

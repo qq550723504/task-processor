@@ -1,8 +1,8 @@
+// Package modules 提供SHEIN平台的各种处理模块，包括变体发布成功标记等功能
 package modules
 
 import (
 	"fmt"
-	"strconv"
 	management_api "task-processor/internal/common/management/api"
 	"task-processor/internal/model"
 
@@ -13,17 +13,28 @@ import (
 type MarkVariantPublishSuccessHandler struct {
 }
 
-// NewMarkVariantBuildSuccessHandler 创建新的标记变体发布成功处理器
+// NewMarkVariantPublishSuccessHandler 创建新的标记变体发布成功处理器
+// 返回一个用于标记产品变体发布成功状态的处理器实例
 func NewMarkVariantPublishSuccessHandler() *MarkVariantPublishSuccessHandler {
 	return &MarkVariantPublishSuccessHandler{}
 }
 
 // Name 返回处理器名称
+// 实现Handler接口，用于标识当前处理器的功能
 func (h *MarkVariantPublishSuccessHandler) Name() string {
 	return "开始标记产品发布成功"
 }
 
 // Handle 执行标记变体发布成功处理
+// 处理发布成功后的变体标记，包括：
+// 1. 标记成功发布的变体
+// 2. 标记被筛选掉的变体为失败
+// 3. 更新任务状态为已上架
+// 参数:
+//   - ctx: 任务上下文，包含任务信息、响应数据等
+//
+// 返回值:
+//   - error: 处理过程中的错误，如果为nil表示处理成功
 func (h *MarkVariantPublishSuccessHandler) Handle(ctx *TaskContext) error {
 	logrus.Infof("=== 开始标记产品发布成功 ===")
 
@@ -100,11 +111,8 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *TaskContext
 		return fmt.Errorf("产品导入映射客户端未初始化")
 	}
 
-	// 解析任务ID
-	taskID, err := strconv.ParseInt(ctx.Task.ID, 10, 64)
-	if err != nil {
-		return fmt.Errorf("转换任务ID失败: %v", err)
-	}
+	// Task.ID已经是int64类型，直接使用
+	taskID := ctx.Task.ID
 
 	// 获取变体信息
 	variant := GetVariantByAsinFromVariants(ctx.Variants, asin)
@@ -175,7 +183,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *TaskContext
 			"platform_parent_product_id": createReq.PlatformParentProductId,
 			"error":                      err.Error(),
 		}).Errorf("❌ 创建产品导入映射关系失败")
-		return fmt.Errorf("创建产品导入映射关系失败: %v", err)
+		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
 	}
 
 	logrus.WithFields(logrus.Fields{
@@ -194,11 +202,8 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *TaskContext, a
 		return fmt.Errorf("产品导入映射客户端未初始化")
 	}
 
-	// 解析任务ID
-	taskID, err := strconv.ParseInt(ctx.Task.ID, 10, 64)
-	if err != nil {
-		return fmt.Errorf("转换任务ID失败: %v", err)
-	}
+	// Task.ID已经是int64类型，直接使用
+	taskID := ctx.Task.ID
 
 	// 获取变体信息
 	variant := GetVariantByAsinFromVariants(ctx.UnFilteredVariants, asin)
@@ -242,7 +247,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *TaskContext, a
 	// 调用API创建产品导入映射关系
 	id, err := mappingClient.CreateProductImportMapping(createReq)
 	if err != nil {
-		return fmt.Errorf("创建产品导入映射关系失败: %v", err)
+		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
 	}
 
 	logrus.Infof("❌ 成功标记变体为失败 (ID: %d, ASIN: %s, Reason: %s)", id, asin, reason)
@@ -258,11 +263,8 @@ func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *Task
 		return nil
 	}
 
-	// 解析任务ID
-	taskID, err := strconv.ParseInt(ctx.Task.ID, 10, 64)
-	if err != nil {
-		return fmt.Errorf("解析任务ID失败: %v", err)
-	}
+	// Task.ID已经是int64类型，直接使用
+	taskID := ctx.Task.ID
 
 	// 构建更新请求
 	req := &management_api.ProductImportTaskUpdateReqDTO{
@@ -272,10 +274,16 @@ func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *Task
 
 	// 异步更新状态
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logrus.Errorf("更新任务状态goroutine panic recovered: %v", r)
+			}
+		}()
+
 		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-			logrus.Errorf("更新任务状态为已上架失败 (TaskID: %s): %v", ctx.Task.ID, err)
+			logrus.Errorf("更新任务状态为已上架失败 (TaskID: %d): %v", ctx.Task.ID, err)
 		} else {
-			logrus.Infof("✅ 任务状态已更新为已上架 (TaskID: %s)", ctx.Task.ID)
+			logrus.Infof("✅ 任务状态已更新为已上架 (TaskID: %d)", ctx.Task.ID)
 		}
 	}()
 

@@ -1,3 +1,4 @@
+// Package temu 提供TEMU平台核价决策服务功能
 package temu
 
 import (
@@ -10,28 +11,30 @@ import (
 
 // PricingDecisionService 核价决策服务
 type PricingDecisionService struct {
-	managementClient *management.ClientManager
-	tenantID         int64
-	storeID          int64
-	storeConfig      *api.StoreRespDTO // 店铺配置缓存
-	logger           *logrus.Entry
+	storeID        int64
+	storeConfig    *api.StoreRespDTO // 店铺配置缓存
+	dataService    *PricingDataService
+	ruleCalculator *PricingRuleCalculator
+	logger         *logrus.Entry
 }
 
 // NewPricingDecisionService 创建核价决策服务
 func NewPricingDecisionService(managementClient *management.ClientManager, tenantID, storeID int64) *PricingDecisionService {
+	logger := logrus.WithFields(logrus.Fields{
+		"component": "PricingDecisionService",
+		"tenantID":  tenantID,
+		"storeID":   storeID,
+	})
+
 	service := &PricingDecisionService{
-		managementClient: managementClient,
-		tenantID:         tenantID,
-		storeID:          storeID,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "PricingDecisionService",
-			"tenantID":  tenantID,
-			"storeID":   storeID,
-		}),
+		storeID:        storeID,
+		dataService:    NewPricingDataService(managementClient, tenantID, logger),
+		ruleCalculator: NewPricingRuleCalculator(logger),
+		logger:         logger,
 	}
 
 	// 初始化时加载店铺配置
-	if err := service.loadStoreConfig(); err != nil {
+	if err := service.loadStoreConfig(managementClient); err != nil {
 		service.logger.Warnf("加载店铺配置失败: %v", err)
 	}
 
@@ -39,8 +42,8 @@ func NewPricingDecisionService(managementClient *management.ClientManager, tenan
 }
 
 // loadStoreConfig 加载店铺配置
-func (s *PricingDecisionService) loadStoreConfig() error {
-	storeClient := s.managementClient.GetStoreClient()
+func (s *PricingDecisionService) loadStoreConfig(managementClient *management.ClientManager) error {
+	storeClient := managementClient.GetStoreClient()
 	if storeClient == nil {
 		return fmt.Errorf("店铺客户端未初始化")
 	}
@@ -86,7 +89,7 @@ func (s *PricingDecisionService) MakeDecision(item *Sku, storeId int64) (*Pricin
 	}
 
 	// 从上架记录映射获取原始成本价
-	mapping, err := s.getProductImportMapping(item, storeId)
+	mapping, err := s.dataService.GetProductImportMapping(item, storeId)
 	if err != nil {
 		decision.Action = DecisionSkip
 		decision.Reason = fmt.Sprintf("获取上架记录失败: %v", err)
@@ -95,7 +98,7 @@ func (s *PricingDecisionService) MakeDecision(item *Sku, storeId int64) (*Pricin
 	}
 
 	// 计算原始成本价
-	originCostPrice := s.calculateOriginCostPrice(mapping, item.SupplierPrice)
+	originCostPrice := s.dataService.CalculateOriginCostPrice(mapping, item.SupplierPrice)
 	if originCostPrice <= 0 {
 		decision.Action = DecisionSkip
 		decision.Reason = "无法计算原始成本价"
@@ -103,136 +106,19 @@ func (s *PricingDecisionService) MakeDecision(item *Sku, storeId int64) (*Pricin
 		return decision, nil
 	}
 
-	// 通过核价规则获取利润率
-	profitRate := 1.5 // 默认利润率
-	var minAcceptablePrice float64
-	pricingRule, err := s.getPricingRule(storeId)
+	// 获取核价规则并计算最低可接受价格
+	pricingRule, err := s.dataService.GetPricingRule(storeId)
 	if err != nil {
-		s.logger.Warnf("获取核价规则失败: %v，使用默认利润率%.2f", err, profitRate)
-		minAcceptablePrice = originCostPrice * profitRate
-	} else if pricingRule != nil && pricingRule.RuleValue != nil {
-		// 根据规则类型计算最低可接受价格
-		// 规则类型：fixed=固定加价， multiple=倍率，fixed_price=固定值，multiple_fixed=倍率加固定值
-		switch pricingRule.RuleType {
-		case "multiple_fixed": // 倍率加固定值
-			// 先按倍率计算，再加上固定值
-			minAcceptablePrice = originCostPrice*(*pricingRule.RuleValue) + s.getFixedValueOrDefault(pricingRule.FixedValue, 0)
-			s.logger.Infof("使用核价规则 %s (倍率加固定值): 倍率=%.2f, 固定值=%.2f", pricingRule.Name, *pricingRule.RuleValue, s.getFixedValueOrDefault(pricingRule.FixedValue, 0))
-		case "multiple": // 倍率
-			minAcceptablePrice = originCostPrice * (*pricingRule.RuleValue)
-			s.logger.Infof("使用核价规则 %s (倍率): 倍率=%.2f", pricingRule.Name, *pricingRule.RuleValue)
-		case "fixed": // 固定加价
-			minAcceptablePrice = originCostPrice + *pricingRule.RuleValue
-			s.logger.Infof("使用核价规则 %s (固定加价): 固定值=%.2f", pricingRule.Name, *pricingRule.RuleValue)
-		case "fixed_price": // 固定值
-			minAcceptablePrice = *pricingRule.RuleValue
-			s.logger.Infof("使用核价规则 %s (固定价格): 价格=%.2f", pricingRule.Name, *pricingRule.RuleValue)
-		default:
-			// 默认使用倍率计算
-			minAcceptablePrice = originCostPrice * (*pricingRule.RuleValue)
-			s.logger.Infof("使用核价规则 %s 的默认计算方式(倍率): %.2f", pricingRule.Name, *pricingRule.RuleValue)
-		}
-	} else {
-		// 没有规则值时使用默认利润率
-		minAcceptablePrice = originCostPrice * profitRate
+		s.logger.Warnf("获取核价规则失败: %v", err)
 	}
+
+	minAcceptablePrice := s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingRule)
 
 	s.logger.Infof("商品 %s: SKU=%s, 原始成本=%.2f, 平台推荐价=%.2f, 最低可接受价=%.2f",
 		item.GoodsName, item.SkuSN, originCostPrice, item.SupplierPrice, minAcceptablePrice)
-	if item.SupplierPrice >= minAcceptablePrice {
-		decision.Action = DecisionAccept
-		decision.Reason = fmt.Sprintf("平台推荐价%.2f >= 最低可接受价%.2f，满足要求",
-			item.SupplierPrice, minAcceptablePrice)
-	} else {
-		// 根据店铺配置决定拒绝策略
-		strategy := s.getPriceRejectStrategy()
-		if strategy == "TAKE_OFFLINE" {
-			decision.Action = DecisionReject
-			decision.Reason = fmt.Sprintf("平台推荐价%.2f < 最低可接受价%.2f，根据店铺配置执行下架",
-				item.SupplierPrice, minAcceptablePrice)
-		} else {
-			// KEEP_ONLINE - 保留在售
-			if s.isRebargainEnabled() {
-				decision.Action = DecisionReappeal
-				decision.Reason = fmt.Sprintf("平台推荐价%.2f < 最低可接受价%.2f，根据店铺配置保留在售并重新报价",
-					item.SupplierPrice, minAcceptablePrice)
-			} else {
-				decision.Action = DecisionSkip
-				decision.Reason = fmt.Sprintf("平台推荐价%.2f < 最低可接受价%.2f，店铺未启用重新议价，保留在售",
-					item.SupplierPrice, minAcceptablePrice)
-			}
-		}
-	}
 
-	return decision, nil
-}
-
-// getPricingRule 获取核价规则
-func (s *PricingDecisionService) getPricingRule(storeId int64) (*api.PricingRuleRespDTO, error) {
-	pricingRuleClient := s.managementClient.GetPricingRuleClient()
-	if pricingRuleClient == nil {
-		return nil, fmt.Errorf("核价规则客户端未初始化")
-	}
-
-	req := &api.PricingRuleReqDTO{
-		TenantID: s.tenantID,
-		StoreID:  &storeId,
-	}
-
-	pricingRule, err := pricingRuleClient.GetPricingRule(req)
-	if err != nil {
-		return nil, fmt.Errorf("获取核价规则失败: %w", err)
-	}
-
-	// 验证核价规则是否启用
-	if pricingRule.Status != 0 {
-		return nil, fmt.Errorf("核价规则未启用: %s", pricingRule.Name)
-	}
-
-	return pricingRule, nil
-}
-
-// getProductImportMapping 获取产品上架记录映射
-func (s *PricingDecisionService) getProductImportMapping(item *Sku, storeId int64) (*api.ProductImportMappingRespDTO, error) {
-	mappingClient := s.managementClient.GetProductImportMappingClient()
-	if mappingClient == nil {
-		return nil, fmt.Errorf("产品导入映射客户端未初始化")
-	}
-
-	// 使用SKU SN作为平台产品ID查询
-	req := &api.ProductImportMappingGetBySkuReqDTO{
-		Sku:     item.SkuSN,
-		StoreId: storeId,
-	}
-
-	mapping, err := mappingClient.GetProductImportMappingBySku(req)
-	if err != nil {
-		return nil, fmt.Errorf("获取产品导入映射失败: %w", err)
-	}
-
-	return mapping, nil
-}
-
-// calculateOriginCostPrice 计算原始成本价
-func (s *PricingDecisionService) calculateOriginCostPrice(mapping *api.ProductImportMappingRespDTO, currentPrice float64) float64 {
-	if mapping == nil {
-		return 0
-	}
-
-	// 如果没有成本价，使用售价倍数反推
-	if mapping.SalePriceMultiplier != nil && *mapping.SalePriceMultiplier > 0 {
-		return currentPrice / *mapping.SalePriceMultiplier
-	}
-
-	return 0
-}
-
-// getFixedValueOrDefault 获取固定值或默认值
-func (s *PricingDecisionService) getFixedValueOrDefault(fixedValue *float64, defaultValue float64) float64 {
-	if fixedValue != nil {
-		return *fixedValue
-	}
-	return defaultValue
+	// 执行决策逻辑
+	return s.makeDecisionByPrice(item.SupplierPrice, minAcceptablePrice), nil
 }
 
 // MakeDecisionForSalesBoost 对销量提升场景的商品做出核价决策
@@ -247,7 +133,7 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 	}
 
 	// 从上架记录映射获取原始成本价
-	mapping, err := s.getProductImportMappingBySku(sku.OutSkuSN, storeId)
+	mapping, err := s.dataService.GetProductImportMappingBySku(sku.OutSkuSN, storeId)
 	if err != nil {
 		decision.Action = DecisionSkip
 		decision.Reason = fmt.Sprintf("获取上架记录失败: %v", err)
@@ -266,7 +152,7 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 	}
 
 	// 计算原始成本价
-	originCostPrice := s.calculateOriginCostPrice(mapping, currentSupplierPrice)
+	originCostPrice := s.dataService.CalculateOriginCostPrice(mapping, currentSupplierPrice)
 	if originCostPrice <= 0 {
 		decision.Action = DecisionSkip
 		decision.Reason = "无法计算原始成本价"
@@ -275,39 +161,13 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 		return decision, nil
 	}
 
-	// 获取核价规则
-	profitRate := 1.5 // 默认利润率
-	var minAcceptablePrice float64
-	pricingRule, err := s.getPricingRule(storeId)
+	// 获取核价规则并计算最低可接受价格
+	pricingRule, err := s.dataService.GetPricingRule(storeId)
 	if err != nil {
-		s.logger.Warnf("获取核价规则失败: %v，使用默认利润率%.2f", err, profitRate)
-		minAcceptablePrice = originCostPrice * profitRate
-	} else if pricingRule != nil && pricingRule.RuleValue != nil {
-		// 根据规则类型计算最低可接受价格
-		// 规则类型：fixed=固定加价， multiple=倍率，fixed_price=固定值，multiple_fixed=倍率加固定值
-		switch pricingRule.RuleType {
-		case "multiple_fixed": // 倍率加固定值
-			// 先按倍率计算，再加上固定值
-			minAcceptablePrice = originCostPrice*(*pricingRule.RuleValue) + s.getFixedValueOrDefault(pricingRule.FixedValue, 0)
-			s.logger.Infof("使用核价规则 %s (倍率加固定值): 倍率=%.2f, 固定值=%.2f", pricingRule.Name, *pricingRule.RuleValue, s.getFixedValueOrDefault(pricingRule.FixedValue, 0))
-		case "multiple": // 倍率
-			minAcceptablePrice = originCostPrice * (*pricingRule.RuleValue)
-			s.logger.Infof("使用核价规则 %s (倍率): 倍率=%.2f", pricingRule.Name, *pricingRule.RuleValue)
-		case "fixed": // 固定加价
-			minAcceptablePrice = originCostPrice + *pricingRule.RuleValue
-			s.logger.Infof("使用核价规则 %s (固定加价): 固定值=%.2f", pricingRule.Name, *pricingRule.RuleValue)
-		case "fixed_price": // 固定值
-			minAcceptablePrice = *pricingRule.RuleValue
-			s.logger.Infof("使用核价规则 %s (固定价格): 价格=%.2f", pricingRule.Name, *pricingRule.RuleValue)
-		default:
-			// 默认使用倍率计算
-			minAcceptablePrice = originCostPrice * (*pricingRule.RuleValue)
-			s.logger.Infof("使用核价规则 %s 的默认计算方式(倍率): %.2f", pricingRule.Name, *pricingRule.RuleValue)
-		}
-	} else {
-		// 没有规则值时使用默认利润率
-		minAcceptablePrice = originCostPrice * profitRate
+		s.logger.Warnf("获取核价规则失败: %v", err)
 	}
+
+	minAcceptablePrice := s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingRule)
 
 	// 计算利润率
 	if targetSupplierPrice > 0 {
@@ -318,63 +178,53 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 		goods.SalesBoostGoodsBasicInfo.GoodsName, sku.OutSkuSN,
 		originCostPrice, currentSupplierPrice, targetSupplierPrice, minAcceptablePrice, decision.ProfitMargin)
 
-	// 决策逻辑：如果目标价格能满足利润率要求，则接受；否则根据店铺配置决定
-	if targetSupplierPrice >= minAcceptablePrice {
-		decision.Action = DecisionAccept
-		decision.Reason = fmt.Sprintf("目标价格%.2f >= 最低可接受价%.2f，满足要求",
+	// 执行决策逻辑
+	finalDecision := s.makeDecisionByPrice(targetSupplierPrice, minAcceptablePrice)
+
+	// 销量提升场景的特殊处理
+	if finalDecision.Action == DecisionReappeal && !sku.ActionInfo.AllowCreateAppealOrder {
+		finalDecision.Action = DecisionSkip
+		finalDecision.Reason = fmt.Sprintf("目标价格%.2f低于最低可接受价格%.2f，但不允许创建申诉订单(allow_create_appeal_order=false)，保留在售",
 			targetSupplierPrice, minAcceptablePrice)
+	}
+
+	// 设置销量提升特有字段
+	finalDecision.TargetPrice = targetSupplierPrice
+	finalDecision.TargetMargin = 1.5 // 默认目标利润率
+	finalDecision.MinMargin = 1.5    // 默认最小利润率
+	finalDecision.AcceptablePrice = minAcceptablePrice
+
+	return finalDecision, nil
+}
+
+// makeDecisionByPrice 根据价格做出决策
+func (s *PricingDecisionService) makeDecisionByPrice(actualPrice, minAcceptablePrice float64) *PricingDecision {
+	decision := &PricingDecision{}
+
+	if actualPrice >= minAcceptablePrice {
+		decision.Action = DecisionAccept
+		decision.Reason = fmt.Sprintf("价格%.2f >= 最低可接受价%.2f，满足要求",
+			actualPrice, minAcceptablePrice)
 	} else {
 		// 根据店铺配置决定拒绝策略
 		strategy := s.getPriceRejectStrategy()
 		if strategy == "TAKE_OFFLINE" {
 			decision.Action = DecisionReject
-			decision.Reason = fmt.Sprintf("目标价格%.2f低于最低可接受价格%.2f，根据店铺配置执行下架",
-				targetSupplierPrice, minAcceptablePrice)
+			decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，根据店铺配置执行下架",
+				actualPrice, minAcceptablePrice)
 		} else {
 			// KEEP_ONLINE - 保留在售
 			if s.isRebargainEnabled() {
-				// 检查是否允许创建申诉订单
-				if !sku.ActionInfo.AllowCreateAppealOrder {
-					decision.Action = DecisionSkip
-					decision.Reason = fmt.Sprintf("目标价格%.2f低于最低可接受价格%.2f，但不允许创建申诉订单(allow_create_appeal_order=false)，保留在售",
-						targetSupplierPrice, minAcceptablePrice)
-				} else {
-					decision.Action = DecisionReappeal
-					decision.Reason = fmt.Sprintf("目标价格%.2f低于最低可接受价格%.2f，根据店铺配置保留在售并重新报价",
-						targetSupplierPrice, minAcceptablePrice)
-				}
+				decision.Action = DecisionReappeal
+				decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，根据店铺配置保留在售并重新报价",
+					actualPrice, minAcceptablePrice)
 			} else {
 				decision.Action = DecisionSkip
-				decision.Reason = fmt.Sprintf("目标价格%.2f低于最低可接受价格%.2f，店铺未启用重新议价，保留在售",
-					targetSupplierPrice, minAcceptablePrice)
+				decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，店铺未启用重新议价，保留在售",
+					actualPrice, minAcceptablePrice)
 			}
 		}
 	}
 
-	decision.TargetPrice = targetSupplierPrice
-	decision.TargetMargin = profitRate
-	decision.MinMargin = profitRate
-	decision.AcceptablePrice = minAcceptablePrice
-
-	return decision, nil
-}
-
-// getProductImportMappingBySku 通过SKU获取产品上架记录映射
-func (s *PricingDecisionService) getProductImportMappingBySku(skuSN string, storeId int64) (*api.ProductImportMappingRespDTO, error) {
-	mappingClient := s.managementClient.GetProductImportMappingClient()
-	if mappingClient == nil {
-		return nil, fmt.Errorf("产品导入映射客户端未初始化")
-	}
-
-	req := &api.ProductImportMappingGetBySkuReqDTO{
-		Sku:     skuSN,
-		StoreId: storeId,
-	}
-
-	mapping, err := mappingClient.GetProductImportMappingBySku(req)
-	if err != nil {
-		return nil, fmt.Errorf("获取产品导入映射失败: %w", err)
-	}
-
-	return mapping, nil
+	return decision
 }

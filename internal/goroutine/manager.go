@@ -65,6 +65,12 @@ type GoroutineFunc func(ctx context.Context) error
 type RetryableGoroutineFunc func(ctx context.Context, retryCount int) error
 
 // NewGoroutineManager 创建goroutine管理器
+// 参数:
+//   - ctx: 上下文，用于控制管理器的生命周期
+//   - logger: 日志记录器，如果为nil则使用默认logger
+//
+// 返回值:
+//   - *GoroutineManager: goroutine管理器实例
 func NewGoroutineManager(ctx context.Context, logger *logrus.Entry) *GoroutineManager {
 	if logger == nil {
 		logger = logrus.WithField("component", "goroutine_manager")
@@ -82,6 +88,13 @@ func NewGoroutineManager(ctx context.Context, logger *logrus.Entry) *GoroutineMa
 }
 
 // Start 启动一个goroutine
+// 启动一个由管理器管理的goroutine，自动处理panic recovery
+// 参数:
+//   - name: goroutine的名称，用于标识和日志记录
+//   - fn: 要执行的函数
+//
+// 返回值:
+//   - string: goroutine的唯一ID
 func (gm *GoroutineManager) Start(name string, fn GoroutineFunc) string {
 	return gm.StartWithRetry(name, func(ctx context.Context, retryCount int) error {
 		return fn(ctx)
@@ -89,6 +102,13 @@ func (gm *GoroutineManager) Start(name string, fn GoroutineFunc) string {
 }
 
 // StartWithRetry 启动一个可重试的goroutine
+// 启动一个支持自动重试的goroutine，在执行失败时会自动重试
+// 参数:
+//   - name: goroutine的名称
+//   - fn: 要执行的可重试函数，接收重试次数作为参数
+//
+// 返回值:
+//   - string: goroutine的唯一ID
 func (gm *GoroutineManager) StartWithRetry(name string, fn RetryableGoroutineFunc) string {
 	id := gm.generateID(name)
 
@@ -115,6 +135,14 @@ func (gm *GoroutineManager) StartWithRetry(name string, fn RetryableGoroutineFun
 }
 
 // StartPeriodic 启动周期性执行的goroutine
+// 启动一个按指定间隔周期性执行的goroutine
+// 参数:
+//   - name: goroutine的名称
+//   - interval: 执行间隔时间
+//   - fn: 要周期性执行的函数
+//
+// 返回值:
+//   - string: goroutine的唯一ID
 func (gm *GoroutineManager) StartPeriodic(name string, interval time.Duration, fn GoroutineFunc) string {
 	return gm.Start(name, func(ctx context.Context) error {
 		ticker := time.NewTicker(interval)
@@ -163,6 +191,12 @@ func (gm *GoroutineManager) Wait() {
 func (gm *GoroutineManager) WaitWithTimeout(timeout time.Duration) error {
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logrus.Errorf("等待goroutine管理器完成goroutine panic recovered: %v", r)
+			}
+		}()
+
 		gm.wg.Wait()
 		close(done)
 	}()

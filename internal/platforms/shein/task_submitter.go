@@ -1,27 +1,28 @@
 package shein
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"task-processor/internal/common/processor"
+	"task-processor/internal/worker"
 
 	"github.com/sirupsen/logrus"
 )
 
 // SheinTaskSubmitter SHEIN任务提交器（适配器）
 type SheinTaskSubmitter struct {
-	workerPool processor.WorkerPool
+	workerPool worker.WorkerPool
 }
 
 // NewSheinTaskSubmitter 创建SHEIN任务提交器
-func NewSheinTaskSubmitter(workerPool processor.WorkerPool) *SheinTaskSubmitter {
+func NewSheinTaskSubmitter(workerPool worker.WorkerPool) *SheinTaskSubmitter {
 	return &SheinTaskSubmitter{
 		workerPool: workerPool,
 	}
 }
 
 // SubmitTask 提交任务
-func (s *SheinTaskSubmitter) SubmitTask(taskData string) error {
+func (s *SheinTaskSubmitter) SubmitTask(ctx context.Context, taskData string) error {
 	if s.workerPool == nil {
 		return nil // SHEIN的workerPool可能未初始化
 	}
@@ -35,7 +36,7 @@ func (s *SheinTaskSubmitter) SubmitTask(taskData string) error {
 		return err
 	}
 
-	job := processor.WorkerJob{
+	job := worker.WorkerJob{
 		TenantID: fmt.Sprintf("%d", task.TenantID),
 		ShopID:   fmt.Sprintf("%d", task.StoreID),
 		TaskData: taskData,
@@ -63,9 +64,9 @@ func (s *SheinTaskSubmitter) GetAvailableSlots() int {
 }
 
 // GetQueueStats 获取队列统计信息
-func (s *SheinTaskSubmitter) GetQueueStats() processor.QueueStats {
+func (s *SheinTaskSubmitter) GetQueueStats() worker.QueueStats {
 	if s.workerPool == nil {
-		return processor.QueueStats{}
+		return worker.QueueStats{}
 	}
 	return s.workerPool.GetQueueStats()
 }

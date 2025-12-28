@@ -75,7 +75,6 @@ func (m *ImportTaskAPIClientImpl) GetPendingAndRetryTasks(limit int, userId int6
 		if taskCount == 0 {
 			logrus.Warnf("[GetPendingAndRetryTasks] ⚠ 未获取到任何任务！请求参数: limit=%d, userId=%d, storeIds=%v",
 				limit, userId, storeIds)
-			logrus.Warn("[GetPendingAndRetryTasks] 可能原因: 1) 数据库中没有符合条件的任务 2) 过滤条件过于严格 3) 任务已被其他进程获取")
 		} else {
 			// 记录前几个任务的基本信息（用于调试）
 			logrus.Debug("[GetPendingAndRetryTasks] 任务列表详情:")
@@ -113,6 +112,6 @@ func (m *ImportTaskAPIClientImpl) UpdateTaskStatus(req *api.ProductImportTaskUpd
 		return fmt.Errorf("处理API响应失败: %w", err)
 	}
 
-	logrus.Infof("成功更新任务状态: TaskID=%d, Status=%d", req.ID, req.Status)
+	// 注意：成功日志由上层TaskStatusUpdater统一记录，避免重复日志
 	return nil
 }

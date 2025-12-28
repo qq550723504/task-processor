@@ -37,7 +37,7 @@ func NewSkuSpecHandler(logger *logrus.Entry) *SkuSpecHandler {
 }
 
 // collectNonColorSpecsForColor 收集特定颜色下的非颜色规格
-func (sh *SkuSpecHandler) collectNonColorSpecsForColor(aiMapping *AISkuMappingResponse, skuIndices []int, templateSpecs []GoodsSpecProperty) map[string]*SpecDimension {
+func (sh *SkuSpecHandler) collectNonColorSpecsForColor(aiMapping *types.AISkuMappingResponse, skuIndices []int, templateSpecs []types.TemplateRespGoodsSpecProperty) map[string]*SpecDimension {
 	dimensions := make(map[string]*SpecDimension)
 
 	// 从该颜色组的SKU中收集非颜色规格
@@ -185,30 +185,6 @@ func (sh *SkuSpecHandler) createSpecCombinationKeyFromSpecs(specs []types.SpecIn
 	return strings.Join(parts, "|")
 }
 
-// addColorSpecToCombination 将颜色规格添加到组合中
-func (sh *SkuSpecHandler) addColorSpecToCombination(nonColorSpecs []types.SpecInfo, colorSpecID string, aiMapping *AISkuMappingResponse, skuIndices []int) []types.SpecInfo {
-	// 找到颜色规格信息
-	var colorSpec types.SpecInfo
-	for _, skuIndex := range skuIndices {
-		aiSku := aiMapping.SkuList[skuIndex]
-		for _, spec := range aiSku.Spec {
-			if spec.SpecID == colorSpecID {
-				colorSpec = spec
-				break
-			}
-		}
-		if colorSpec.SpecID != "" {
-			break
-		}
-	}
-
-	// 将颜色规格添加到组合的开头
-	fullSpecs := []types.SpecInfo{colorSpec}
-	fullSpecs = append(fullSpecs, nonColorSpecs...)
-
-	return fullSpecs
-}
-
 // isColorSpec 判断是否为颜色规格
 func (sh *SkuSpecHandler) isColorSpec(specName string) bool {
 	colorKeywords := []string{"color", "colour", "颜色", "色"}
@@ -221,16 +197,49 @@ func (sh *SkuSpecHandler) isColorSpec(specName string) bool {
 	return false
 }
 
-// convertUserInputSpecsToGoodsSpecProperties 转换用户输入规格为商品规格属性
-func (sh *SkuSpecHandler) convertUserInputSpecsToGoodsSpecProperties(userInputSpecs []UserInputParentSpec) []GoodsSpecProperty {
-	var templateSpecs []GoodsSpecProperty
-	for _, userSpec := range userInputSpecs {
-		templateSpecs = append(templateSpecs, GoodsSpecProperty{
-			ParentSpecID: userSpec.ParentSpecID,
-			Name:         userSpec.ParentSpecName,
-		})
+// isSizeSpec 判断是否为尺寸规格
+func (sh *SkuSpecHandler) isSizeSpec(specName string) bool {
+	sizeKeywords := []string{
+		"size", "尺寸", "尺码", "大小", "码数",
+		"length", "width", "height", "长度", "宽度", "高度",
+		"dimension", "dimensions", "规格",
 	}
-	return templateSpecs
+
+	specNameLower := strings.ToLower(specName)
+	for _, keyword := range sizeKeywords {
+		if strings.Contains(specNameLower, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// convertUserInputSpecsToGoodsSpecProperties 转换用户输入规格为商品规格属性
+func (sh *SkuSpecHandler) convertUserInputSpecsToGoodsSpecProperties(userInputSpecs []types.UserInputParentSpec) []types.TemplateRespGoodsSpecProperty {
+	var specProperties []types.TemplateRespGoodsSpecProperty
+	for i, userSpec := range userInputSpecs {
+		specProperty := types.TemplateRespGoodsSpecProperty{
+			PID:               i + 1000, // 使用临时ID
+			TemplateModuleID:  0,
+			TemplatePID:       0,
+			RefPID:            0,
+			Name:              userSpec.ParentSpecName,
+			PropertyValueType: 1, // 假设为选择类型
+			ValueUnit:         []string{},
+			Values:            []types.PropertyValue{}, // 用户输入规格通常没有预定义值
+			MaxValue:          "",
+			MinValue:          "",
+			ValuePrecision:    0,
+			Required:          false,
+			IsSale:            true,
+			ParentSpecID:      userSpec.ParentSpecID,
+			MainSale:          true,
+			Feature:           0,
+			ControlType:       1,
+		}
+		specProperties = append(specProperties, specProperty)
+	}
+	return specProperties
 }
 
 // ValidateSpecs 验证规格是否有效

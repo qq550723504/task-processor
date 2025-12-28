@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -25,66 +27,65 @@ func (h *BrandClearHandler) Name() string {
 	return "BrandClearHandler"
 }
 
-// Handle 处理品牌清除逻辑
-func (h *BrandClearHandler) Handle(ctx *pipeline.TaskContext) error {
+// HandleTemu 处理品牌清除逻辑（实现TemuHandler接口）
+func (h *BrandClearHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始从TEMU产品文本字段中清除品牌名称")
 
-	// 检查TEMU产品数据是否存在
-	if ctx.TemuProduct == nil {
-		h.logger.Warn("TEMU产品数据不存在，跳过Brand清除")
-		return nil
+	// 直接从强类型上下文获取品牌名称
+	brandName := ""
+	amazonProduct := temuCtx.GetAmazonProduct()
+	if amazonProduct != nil && amazonProduct.Brand != "" {
+		brandName = amazonProduct.Brand
+		h.logger.Infof("检测到品牌名称: %s", brandName)
 	}
 
-	// 获取品牌名称
-	brandName := ""
-	if ctx.AmazonProduct != nil && ctx.AmazonProduct.Brand != "" {
-		brandName = ctx.AmazonProduct.Brand
-		h.logger.Infof("检测到品牌名称: %s", brandName)
-	} else {
+	if brandName == "" {
 		h.logger.Info("未检测到品牌名称，跳过清除")
 		return nil
 	}
 
+	temuProduct := temuCtx.TemuProduct
+
 	// 清除商品名称中的品牌
-	if ctx.TemuProduct.GoodsBasic.GoodsName != "" {
-		originalName := ctx.TemuProduct.GoodsBasic.GoodsName
-		ctx.TemuProduct.GoodsBasic.GoodsName = h.removeBrandFromText(ctx.TemuProduct.GoodsBasic.GoodsName, brandName)
-		if originalName != ctx.TemuProduct.GoodsBasic.GoodsName {
-			h.logger.Infof("商品名称已清除品牌: %s -> %s", originalName, ctx.TemuProduct.GoodsBasic.GoodsName)
+	if temuProduct.GoodsBasic.GoodsName != "" {
+		originalName := temuProduct.GoodsBasic.GoodsName
+		temuProduct.GoodsBasic.GoodsName = h.removeBrandFromText(temuProduct.GoodsBasic.GoodsName, brandName)
+		if originalName != temuProduct.GoodsBasic.GoodsName {
+			h.logger.Infof("商品名称已清除品牌: %s -> %s", originalName, temuProduct.GoodsBasic.GoodsName)
 		}
 	}
 
 	// 清除商品描述中的品牌
-	if ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc != "" {
-		originalDesc := ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc
-		ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc = h.removeBrandFromText(ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc, brandName)
-		if originalDesc != ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc {
+	if temuProduct.GoodsExtensionInfo.GoodsDesc != "" {
+		originalDesc := temuProduct.GoodsExtensionInfo.GoodsDesc
+		temuProduct.GoodsExtensionInfo.GoodsDesc = h.removeBrandFromText(temuProduct.GoodsExtensionInfo.GoodsDesc, brandName)
+		if originalDesc != temuProduct.GoodsExtensionInfo.GoodsDesc {
 			h.logger.Info("商品描述已清除品牌")
 		}
 	}
 
 	// 清除要点描述中的品牌
-	if len(ctx.TemuProduct.GoodsExtensionInfo.BulletPoints) > 0 {
-		for i, point := range ctx.TemuProduct.GoodsExtensionInfo.BulletPoints {
+	if len(temuProduct.GoodsExtensionInfo.BulletPoints) > 0 {
+		for i, point := range temuProduct.GoodsExtensionInfo.BulletPoints {
 			originalPoint := point
-			ctx.TemuProduct.GoodsExtensionInfo.BulletPoints[i] = h.removeBrandFromText(point, brandName)
-			if originalPoint != ctx.TemuProduct.GoodsExtensionInfo.BulletPoints[i] {
+			temuProduct.GoodsExtensionInfo.BulletPoints[i] = h.removeBrandFromText(point, brandName)
+			if originalPoint != temuProduct.GoodsExtensionInfo.BulletPoints[i] {
 				h.logger.Infof("要点[%d]已清除品牌", i)
 			}
 		}
 	}
 
 	// 清除GoodsBrandProperties（品牌属性列表）
-	if len(ctx.TemuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties) > 0 {
+	if len(temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties) > 0 {
 		h.logger.Infof("清除GoodsBrandProperties，原有%d个品牌属性",
-			len(ctx.TemuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties))
-		ctx.TemuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties = []interface{}{}
+			len(temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties))
+		temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties = []interface{}{}
 	}
 
 	// 设置NotSelectBrand为true（表示不选择品牌）
-	if !ctx.TemuProduct.GoodsExtensionInfo.GoodsTrademark.NotSelectBrand {
+	if !temuProduct.GoodsExtensionInfo.GoodsTrademark.NotSelectBrand {
 		h.logger.Info("设置NotSelectBrand为true")
-		ctx.TemuProduct.GoodsExtensionInfo.GoodsTrademark.NotSelectBrand = true
+		temuProduct.GoodsExtensionInfo.GoodsTrademark.NotSelectBrand = true
 	}
 
 	h.logger.Info("TEMU产品文本字段中的品牌名称已清除")
@@ -134,4 +135,14 @@ func (h *BrandClearHandler) removeBrandFromText(text, brandName string) string {
 	result = regexp.MustCompile(`\)(\S)`).ReplaceAllString(result, ") $1")
 
 	return result
+}
+
+// Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
+func (h *BrandClearHandler) Handle(ctx pipeline.TaskContext) error {
+	// 尝试类型断言为TemuTaskContext
+	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
+		return h.HandleTemu(temuCtx)
+	}
+	// 如果不是TemuTaskContext，返回错误
+	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
 }

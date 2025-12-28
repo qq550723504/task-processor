@@ -1,6 +1,10 @@
+// Package handlers 提供TEMU平台的各种处理器，包括属性验证等功能
 package handlers
 
 import (
+	"fmt"
+	"strings"
+
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -18,109 +22,315 @@ func NewPropertyValidator(logger *logrus.Entry) *PropertyValidator {
 	}
 }
 
-// ValidateAndFixProperties 验证和修复属性值
-func (v *PropertyValidator) ValidateAndFixProperties(properties []types.PropertyItem, data PropertyMappingData) []types.PropertyItem {
-	// 先应用属性关联过滤规则（基于ShowCondition）
-	properties = v.filterByPropertyRelations(properties, data)
+// ValidateProperties 验证属性列表
+func (v *PropertyValidator) ValidateProperties(properties []types.PropertyItem, templateProps []types.GoodsProperty) error {
+	v.logger.Info("🔍 开始验证属性列表")
 
-	// 创建属性映射
-	propMap := make(map[int]TemuPropertyOption)
-	refPidToPropMap := make(map[int]TemuPropertyOption) // RefPID到属性的映射
-	for _, prop := range data.TemuProperties {
-		propMap[prop.PID] = prop
-		refPidToPropMap[prop.RefPID] = prop
+	// 验证属性完整性
+	if err := v.validatePropertyCompleteness(properties); err != nil {
+		return fmt.Errorf("属性完整性验证失败: %w", err)
 	}
 
-	var validatedProperties []types.PropertyItem
-	processedPIDs := make(map[int]bool)
-	refPidCounts := make(map[int]int) // 统计每个RefPID的属性项数量（这是关键修复）
+	// 验证必填属性
+	if err := v.validateRequiredProperties(properties, templateProps); err != nil {
+		return fmt.Errorf("必填属性验证失败: %w", err)
+	}
 
-	// 调试：记录AI返回的原始属性
-	v.logger.Infof("AI返回了 %d 个属性，开始验证", len(properties))
+	v.logger.Infof("✅ 属性验证通过，共 %d 个属性", len(properties))
+	return nil
+}
+
+// validatePropertyCompleteness 验证属性完整性
+func (v *PropertyValidator) validatePropertyCompleteness(properties []types.PropertyItem) error {
 	for i, prop := range properties {
-		v.logger.Debugf("AI属性[%d]: PID=%d, RefPid=%d, Value=%s, Vid=%d",
-			i, prop.Pid, prop.RefPid, prop.Value, prop.Vid)
-	}
+		if prop.Pid == 0 {
+			return fmt.Errorf("属性 %d 缺少PID", i)
+		}
 
-	// 预处理：确保所有属性都有正确的RefPid、TemplatePid等字段
-	for i := range properties {
-		if templateProp, exists := propMap[properties[i].Pid]; exists {
-			properties[i].RefPid = templateProp.RefPID
-			properties[i].TemplatePid = templateProp.TemplatePID
-			properties[i].TemplateModuleID = templateProp.TemplateModuleID
+		if prop.Value == "" {
+			v.logger.Warnf("⚠️ 属性 %d (PID=%d) 值为空", i, prop.Pid)
 		}
 	}
 
-	// 验证AI选择的属性
+	return nil
+}
+
+// validateRequiredProperties 验证必填属性
+func (v *PropertyValidator) validateRequiredProperties(properties []types.PropertyItem, templateProps []types.GoodsProperty) error {
+	// 创建已填充属性的映射
+	filledMap := make(map[string]bool)
 	for _, prop := range properties {
-		templateProp, exists := propMap[prop.Pid]
-		if !exists {
-			v.logger.Warnf("属性PID %d 不在模板中，跳过", prop.Pid)
+		key := fmt.Sprintf("%d_%d", prop.Pid, prop.RefPid)
+		filledMap[key] = true
+	}
+
+	// 检查必填属性
+	missingRequired := []string{}
+	for _, templateProp := range templateProps {
+		if templateProp.Required {
+			key := fmt.Sprintf("%d_%d", templateProp.PID, templateProp.RefPID)
+			if !filledMap[key] {
+				missingRequired = append(missingRequired, templateProp.Name)
+			}
+		}
+	}
+
+	if len(missingRequired) > 0 {
+		return fmt.Errorf("缺少必填属性: %v", missingRequired)
+	}
+
+	return nil
+}
+
+// ValidatePropertyValue 验证单个属性值
+func (v *PropertyValidator) ValidatePropertyValue(prop types.PropertyItem, templateProp types.GoodsProperty) error {
+	// 验证属性ID匹配
+	if prop.Pid != templateProp.PID {
+		return fmt.Errorf("属性ID不匹配: 期望 %d，实际 %d", templateProp.PID, prop.Pid)
+	}
+
+	// 验证属性值类型
+	switch templateProp.PropertyValueType {
+	case 1: // 文本类型
+		if prop.Value == "" {
+			return fmt.Errorf("文本属性值不能为空")
+		}
+	case 2: // 数值类型
+		if prop.Vid == 0 && prop.Value == "" {
+			return fmt.Errorf("数值属性必须有值或VID")
+		}
+	case 3: // 选择类型
+		if prop.Vid == 0 {
+			return fmt.Errorf("选择类型属性必须有VID")
+		}
+	}
+
+	return nil
+}
+
+// IsPropertyFilled 检查属性是否已填充
+func (v *PropertyValidator) IsPropertyFilled(properties []types.PropertyItem, pid, refPid int) bool {
+	for _, prop := range properties {
+		if prop.Pid == pid && prop.RefPid == refPid {
+			return true
+		}
+	}
+	return false
+}
+
+// GetPropertyByPID 根据PID获取属性
+func (v *PropertyValidator) GetPropertyByPID(properties []types.PropertyItem, pid int) *types.PropertyItem {
+	for _, prop := range properties {
+		if prop.Pid == pid {
+			return &prop
+		}
+	}
+	return nil
+}
+
+// ValidateAndFixProperties 验证和修复属性值（集成新的严格验证逻辑）
+// 参数:
+//   - properties: AI返回的属性列表
+//   - data: 属性映射数据
+//
+// 返回值:
+//   - []types.PropertyItem: 验证和修复后的属性列表
+func (v *PropertyValidator) ValidateAndFixProperties(properties []types.PropertyItem, data types.PropertyMappingData) []types.PropertyItem {
+	v.logger.Info("🔍 开始严格验证和修复AI返回的属性")
+
+	// 创建专门的修复器
+	fixer := NewPropertyValueFixer(v.logger)
+
+	// 使用新的修复器进行批量修复
+	fixedProperties := fixer.FixAllInvalidProperties(properties, data.TemuProperties)
+
+	// 应用属性关联过滤规则（基于ShowCondition）
+	filteredProperties := v.filterByPropertyRelations(fixedProperties, data)
+
+	// 进行最终验证
+	validatedProperties := make([]types.PropertyItem, 0, len(filteredProperties))
+
+	for i, prop := range filteredProperties {
+		v.logger.Debugf("最终验证属性 %d: PID=%d, VID=%d, Value=%s", i, prop.Pid, prop.Vid, prop.Value)
+
+		// 基本验证
+		if prop.Pid == 0 {
+			v.logger.Warnf("⚠️ 属性 %d 缺少PID，跳过", i)
 			continue
 		}
 
-		// 确保使用正确的template_pid和ref_pid
-		prop.RefPid = templateProp.RefPID
-		prop.TemplatePid = templateProp.TemplatePID
-		prop.TemplateModuleID = templateProp.TemplateModuleID
+		// 查找对应的模板属性
+		var templateProp *types.TemplateRespGoodsProperty
+		for _, tmplProp := range data.TemuProperties {
+			if tmplProp.PID == prop.Pid {
+				templateProp = &tmplProp
+				break
+			}
+		}
 
-		// 检查选择数量限制（使用RefPID进行统计）
-		if templateProp.PropertyValueType == 1 && templateProp.ChooseMaxNum > 0 {
-			currentCount := refPidCounts[templateProp.RefPID]
-			if currentCount >= templateProp.ChooseMaxNum {
+		if templateProp == nil {
+			v.logger.Warnf("⚠️ 未找到PID=%d对应的模板属性，跳过", prop.Pid)
+			continue
+		}
+
+		// 设置基本信息
+		finalProp := prop
+		finalProp.RefPid = templateProp.RefPID
+		finalProp.TemplatePid = templateProp.TemplatePID
+
+		// 对选择类型属性进行最终的严格验证
+		if templateProp.PropertyValueType == 1 {
+			validator := NewPropertyValueValidator(v.logger)
+			isValid, validVID, validValue, err := validator.ValidateSelectionValue(finalProp, *templateProp)
+
+			if !isValid {
+				v.logger.Errorf("❌ 属性值最终验证失败: PID=%d, Error=%v", prop.Pid, err)
 				continue
 			}
+
+			// 确保使用验证通过的值
+			finalProp.Vid = validVID
+			finalProp.Value = validValue
 		}
 
-		if v.isValidPropertyValue(prop, templateProp) {
-			validatedProperties = append(validatedProperties, prop)
-			processedPIDs[prop.Pid] = true
-			refPidCounts[templateProp.RefPID]++
+		validatedProperties = append(validatedProperties, finalProp)
+		v.logger.Debugf("✅ 属性最终验证通过: PID=%d, VID=%d, Value=%s",
+			finalProp.Pid, finalProp.Vid, finalProp.Value)
+	}
+
+	v.logger.Infof("✅ 严格属性验证完成，有效属性: %d/%d", len(validatedProperties), len(properties))
+	return validatedProperties
+}
+
+// fixPropertyValue 修复单个属性值
+func (v *PropertyValidator) fixPropertyValue(prop types.PropertyItem, templateProp types.GoodsProperty) *types.PropertyItem {
+	fixedProp := prop
+
+	// 设置基本信息
+	fixedProp.RefPid = templateProp.RefPID
+	fixedProp.TemplatePid = templateProp.TemplatePID
+
+	// 根据属性类型进行验证和修复
+	switch templateProp.PropertyValueType {
+	case 1: // 选择类型
+		return v.fixSelectionProperty(fixedProp, templateProp)
+	case 2: // 数值类型
+		return v.fixNumericProperty(fixedProp, templateProp)
+	case 3: // 文本类型
+		return v.fixTextProperty(fixedProp, templateProp)
+	default:
+		v.logger.Warnf("⚠️ 未知属性类型: %d", templateProp.PropertyValueType)
+		return &fixedProp
+	}
+}
+
+// fixSelectionProperty 修复选择类型属性
+func (v *PropertyValidator) fixSelectionProperty(prop types.PropertyItem, templateProp types.GoodsProperty) *types.PropertyItem {
+	// 如果已有有效的VID，验证是否在候选列表中
+	if prop.Vid != 0 {
+		for _, value := range templateProp.Values {
+			if value.VID == prop.Vid {
+				prop.Value = value.Value // 确保Value与VID匹配
+				return &prop
+			}
+		}
+	}
+
+	// 如果有Value但没有VID，尝试匹配
+	if prop.Value != "" {
+		for _, value := range templateProp.Values {
+			if value.Value == prop.Value {
+				prop.Vid = value.VID
+				return &prop
+			}
+		}
+	}
+
+	// 如果都没有匹配，选择默认值
+	if len(templateProp.Values) > 0 {
+		defaultValue := v.selectBestDefaultValue(templateProp)
+		prop.Vid = defaultValue.VID
+		prop.Value = defaultValue.Value
+		v.logger.Debugf("🔧 选择类型属性使用默认值: %s (VID=%d)", prop.Value, prop.Vid)
+		return &prop
+	}
+
+	v.logger.Warnf("⚠️ 选择类型属性无候选值: PID=%d", prop.Pid)
+	return nil
+}
+
+// fixNumericProperty 修复数值类型属性
+func (v *PropertyValidator) fixNumericProperty(prop types.PropertyItem, templateProp types.GoodsProperty) *types.PropertyItem {
+	// 如果有候选值列表，按选择类型处理
+	if len(templateProp.Values) > 0 {
+		return v.fixSelectionProperty(prop, templateProp)
+	}
+
+	// 纯数值类型，验证范围
+	if prop.Value == "" {
+		if templateProp.MinValue != "" {
+			prop.Value = templateProp.MinValue
 		} else {
-			// 属性值无效
-			if templateProp.Required {
-				// 必填属性：尝试修复
-				v.logger.Warnf("⚠️ 必填属性 %s (RefPID=%d) 值无效，尝试修复", templateProp.Name, templateProp.RefPID)
-				if fixedProp := v.fixPropertyValue(prop, templateProp); fixedProp != nil {
-					// 在修复后也要检查选择数量限制
-					if templateProp.PropertyValueType == 1 && templateProp.ChooseMaxNum > 0 {
-						if refPidCounts[templateProp.RefPID] >= templateProp.ChooseMaxNum {
-							v.logger.Warnf("修复后的属性RefPID %d (PID: %d) 超过最大选择数量限制 %d，跳过",
-								templateProp.RefPID, prop.Pid, templateProp.ChooseMaxNum)
-							continue
-						}
-					}
-					// 确保修复后的属性也使用正确的template_pid和ref_pid
-					fixedProp.RefPid = templateProp.RefPID
-					fixedProp.TemplatePid = templateProp.TemplatePID
-					fixedProp.TemplateModuleID = templateProp.TemplateModuleID
-					validatedProperties = append(validatedProperties, *fixedProp)
-					processedPIDs[prop.Pid] = true
-					refPidCounts[templateProp.RefPID]++
-				} else {
-					v.logger.Errorf("❌ 必填属性 %s (RefPID=%d) 修复失败", templateProp.Name, templateProp.RefPID)
-				}
-			} else {
-				// 可选属性：直接跳过，不修复
-				v.logger.Infof("⭕ 可选属性 %s (RefPID=%d) 值无效，直接跳过", templateProp.Name, templateProp.RefPID)
+			prop.Value = "1"
+		}
+		v.logger.Debugf("🔧 数值类型属性使用默认值: %s", prop.Value)
+	}
+
+	// 设置单位
+	if len(templateProp.ValueUnit) > 0 {
+		prop.ValueUnit = templateProp.ValueUnit[0]
+	}
+
+	return &prop
+}
+
+// fixTextProperty 修复文本类型属性
+func (v *PropertyValidator) fixTextProperty(prop types.PropertyItem, templateProp types.GoodsProperty) *types.PropertyItem {
+	// 如果有候选值列表，按选择类型处理
+	if len(templateProp.Values) > 0 {
+		return v.fixSelectionProperty(prop, templateProp)
+	}
+
+	// 纯文本类型
+	if prop.Value == "" {
+		prop.Value = "Not specified"
+		v.logger.Debugf("🔧 文本类型属性使用默认值: %s", prop.Value)
+	}
+
+	return &prop
+}
+
+// selectBestDefaultValue 选择最佳的默认值（优先选择英文中性选项）
+func (v *PropertyValidator) selectBestDefaultValue(templateProp types.GoodsProperty) types.PropertyValue {
+	// 优先选择的英文关键词
+	englishNeutralKeywords := []string{
+		"Other", "N/A", "None", "Not Applicable", "No", "Without",
+		"Mixed", "General", "Universal", "Standard",
+	}
+
+	// 中文关键词作为备选
+	chineseNeutralKeywords := []string{
+		"其他", "其它", "不适用", "无需", "混合", "通用",
+	}
+
+	// 首先尝试找到包含英文中性关键词的选项
+	for _, keyword := range englishNeutralKeywords {
+		for _, value := range templateProp.Values {
+			if strings.Contains(value.Value, keyword) {
+				return value
 			}
 		}
 	}
 
-	// 添加缺失的必填属性
-	for _, templateProp := range data.TemuProperties {
-		if templateProp.Required && !processedPIDs[templateProp.PID] {
-			if defaultProp := v.createDefaultProperty(templateProp); defaultProp != nil {
-				validatedProperties = append(validatedProperties, *defaultProp)
-				v.logger.Infof("添加缺失的必填属性: PID=%d, RefPID=%d, 值=%s",
-					templateProp.PID, templateProp.RefPID, defaultProp.Value)
+	// 尝试找中文中性选项
+	for _, keyword := range chineseNeutralKeywords {
+		for _, value := range templateProp.Values {
+			if strings.Contains(value.Value, keyword) {
+				return value
 			}
 		}
 	}
 
-	// 最终去重：确保单选属性的RefPID只出现一次
-	finalProperties := v.deduplicateProperties(validatedProperties, data.TemuProperties)
-
-	v.logger.Infof("属性验证完成: 原始=%d, 去重后=%d", len(validatedProperties), len(finalProperties))
-	return finalProperties
+	// 返回第一个可选值
+	return templateProp.Values[0]
 }

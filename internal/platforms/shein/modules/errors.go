@@ -1,5 +1,7 @@
 ﻿package modules
 
+import "errors"
+
 // RetryableError 可重试错误接口
 type RetryableError interface {
 	error
@@ -208,11 +210,33 @@ func isNonRetryableError(err error) bool {
 		return false
 	}
 
+	// 首先使用 errors.As 检查是否为 retryableError 类型且不可重试
+	var retryableErr *retryableError
+	if errors.As(err, &retryableErr) {
+		return !retryableErr.IsRetryable()
+	}
+
+	// 检查是否为 FilteredError 类型（业务过滤错误，不可重试）
+	var filteredErr *FilteredError
+	if errors.As(err, &filteredErr) {
+		return !filteredErr.IsRetryable()
+	}
+
+	// 检查是否为Cookie加载失败错误（不可重试）
+	if contains(err.Error(), "Cookie加载失败") {
+		return true
+	}
+
 	// 检查错误消息中是否包含不可重试的关键字
 	errMsg := err.Error()
 
 	// 检查是否包含"卖家SKU重复"错误
 	if contains(errMsg, "卖家SKU重复") {
+		return true
+	}
+
+	// 检查是否包含"变体ASIN数量过多"错误
+	if contains(errMsg, "变体ASIN数量过多") {
 		return true
 	}
 
@@ -223,6 +247,12 @@ func isNonRetryableError(err error) bool {
 	for err != nil {
 		errMsg := err.Error()
 		if contains(errMsg, "卖家SKU重复") {
+			return true
+		}
+		if contains(errMsg, "Cookie加载失败") {
+			return true
+		}
+		if contains(errMsg, "变体ASIN数量过多") {
 			return true
 		}
 

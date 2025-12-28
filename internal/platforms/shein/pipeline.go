@@ -1,8 +1,8 @@
 package shein
 
 import (
-	"task-processor/internal/config"
 	"task-processor/internal/clients/openai"
+	"task-processor/internal/config"
 	"task-processor/internal/platforms/shein/modules"
 
 	"github.com/sirupsen/logrus"
@@ -76,18 +76,18 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 获取店铺信息
 	pipeline.AddHandler(modules.NewStoreInfoHandler(storeClient))
 	// 重新上架任务处理器
-	pipeline.AddHandler(modules.NewReListingHandler())
+	//pipeline.AddHandler(modules.NewReListingHandler())
 	// 获取原始数据（支持从Amazon爬虫抓取，使用共享的Amazon处理器）
 	pipeline.AddHandler(modules.NewRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataClient(), &cfg.Amazon, processor.amazonProcessor))
+	// 早期检查产品是否已上架（避免后续无效处理）
+	pipeline.AddHandler(modules.NewProductExistsCheckHandler())
 	// 验证图片数量（SHEIN要求至少3张：1张主图+2张细节图）
 	pipeline.AddHandler(modules.NewImageValidationHandler(3))
 	// 提交原始JSON数据到服务器缓存（使用公共缓存逻辑）
 	pipeline.AddHandler(modules.NewSubmitRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataClient(), &cfg.Amazon, processor.amazonProcessor))
-	// 获取店铺API客户端
-	pipeline.AddHandler(modules.NewShopClientHandler(
-		processor.shopClientMgr,
+	// 获取店铺API客户端（直接使用具体类型）
+	pipeline.AddHandler(modules.NewStoreInfoHandler(
 		processor.GetManagementClient().GetStoreClient(),
-		processor.GetMemoryManager().CookieManager,
 	))
 	// 初始化产品数据
 	pipeline.AddHandler(modules.NewInitProductDataHandler())

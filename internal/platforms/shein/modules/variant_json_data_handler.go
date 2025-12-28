@@ -97,7 +97,8 @@ func (h *VariantJsonDataHandler) Handle(ctx *TaskContext) error {
 		rawJsonData, err := h.rawJsonDataClient.GetRawJsonData(task)
 		if err == nil && rawJsonData != nil && rawJsonData.RawJSONData != "" {
 			// 服务器有历史数据，直接使用
-			variant, parseErr := product.ParseAmazonProduct(rawJsonData.RawJSONData)
+			dataParser := product.NewDataParser(logrus.NewEntry(logrus.StandardLogger()))
+			variant, parseErr := dataParser.ParseAmazonProduct(rawJsonData.RawJSONData)
 			if parseErr == nil {
 				variants = append(variants, *variant)
 				logrus.Infof("变体 %s 使用服务器历史数据", asin)
@@ -146,8 +147,8 @@ func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *TaskCo
 	}
 
 	// 使用公共函数获取地区信息
-	domain := product.GetAmazonDomainByRegion(ctx.Task.Region)
-	zipcode := product.GetZipcodeForRegion(ctx.Task.Region, h.amazonConfig.Zipcodes)
+	domain := GetAmazonDomainByRegion(ctx.Task.Region)
+	zipcode := GetZipcodeForRegion(ctx.Task.Region, h.amazonConfig.Zipcodes)
 
 	// 准备批量请求
 	requests := make([]model.ProductRequest, 0, len(asins))

@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -28,12 +30,22 @@ func (h *VariantFilterHandler) Name() string {
 	return "变体筛选处理器"
 }
 
-// Handle 处理任务 - 筛选变体产品
-func (h *VariantFilterHandler) Handle(ctx *pipeline.TaskContext) error {
+// Handle 处理任务（兼容pipeline.Handler接口）
+func (h *VariantFilterHandler) Handle(ctx pipeline.TaskContext) error {
+	// 类型断言为强类型上下文
+	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
+	if !ok {
+		return fmt.Errorf("上下文类型错误，期望TemuTaskContext")
+	}
+	return h.HandleTemu(temuCtx)
+}
+
+// HandleTemu 处理任务 - 筛选变体产品（强类型上下文）
+func (h *VariantFilterHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始筛选变体产品")
 
 	// 调用筛选规则处理器的变体筛选方法
-	if err := h.filterHandler.FilterVariants(ctx); err != nil {
+	if err := h.filterHandler.FilterVariants(temuCtx); err != nil {
 		return err
 	}
 

@@ -25,8 +25,8 @@ type SchedulerManager struct {
 }
 
 // NewSchedulerManager 创建调度器管理器
-func NewSchedulerManager(managementClient *management.ClientManager, interval time.Duration, action PricingAction) *SchedulerManager {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewSchedulerManager(ctx context.Context, managementClient *management.ClientManager, interval time.Duration, action PricingAction) *SchedulerManager {
+	managerCtx, cancel := context.WithCancel(ctx)
 
 	return &SchedulerManager{
 		schedulers:       make(map[string]*PricingScheduler),
@@ -34,7 +34,7 @@ func NewSchedulerManager(managementClient *management.ClientManager, interval ti
 		managementClient: managementClient,
 		interval:         interval,
 		action:           action,
-		ctx:              ctx,
+		ctx:              managerCtx,
 		cancel:           cancel,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TEMUSchedulerManager",
@@ -61,7 +61,7 @@ func (sm *SchedulerManager) AddStore(tenantID, storeID int64) error {
 	sm.apiClients[key] = apiClient
 
 	// 创建调度器
-	scheduler := NewPricingScheduler(apiClient, sm.managementClient, sm.interval, sm.action)
+	scheduler := NewPricingScheduler(sm.ctx, apiClient, sm.managementClient, sm.interval, sm.action)
 	sm.schedulers[key] = scheduler
 
 	// 启动调度器

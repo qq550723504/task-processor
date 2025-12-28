@@ -7,7 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -52,33 +53,37 @@ func (f *SensitiveWordsFilter) Name() string {
 }
 
 // Handle 处理任务
-func (f *SensitiveWordsFilter) Handle(ctx *pipeline.TaskContext) error {
+// HandleTemu 处理TEMU任务（实现TemuHandler接口）
+func (f *SensitiveWordsFilter) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	f.logger.Info("开始过滤TEMU敏感词")
 
-	if ctx.TemuProduct == nil {
+	// 检查TEMU产品信息
+	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
+	temuProduct := temuCtx.TemuProduct
+
 	// 过滤标题
-	originalTitle := ctx.TemuProduct.GoodsBasic.GoodsName
+	originalTitle := temuProduct.GoodsBasic.GoodsName
 	filteredTitle, titleViolations := f.FilterText(originalTitle)
 	if len(titleViolations) > 0 {
 		f.logger.Warnf("标题包含敏感词: %v", titleViolations)
-		ctx.TemuProduct.GoodsBasic.GoodsName = filteredTitle
+		temuProduct.GoodsBasic.GoodsName = filteredTitle
 		f.logger.Infof("标题已过滤: %s -> %s", originalTitle, filteredTitle)
 	}
 
 	// 过滤描述
-	originalDesc := ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc
+	originalDesc := temuProduct.GoodsExtensionInfo.GoodsDesc
 	filteredDesc, descViolations := f.FilterText(originalDesc)
 	if len(descViolations) > 0 {
 		f.logger.Warnf("描述包含敏感词: %v", descViolations)
-		ctx.TemuProduct.GoodsExtensionInfo.GoodsDesc = filteredDesc
+		temuProduct.GoodsExtensionInfo.GoodsDesc = filteredDesc
 		f.logger.Infof("描述已过滤，长度: %d -> %d", len(originalDesc), len(filteredDesc))
 	}
 
 	// 过滤要点
-	originalPoints := ctx.TemuProduct.GoodsExtensionInfo.BulletPoints
+	originalPoints := temuProduct.GoodsExtensionInfo.BulletPoints
 	filteredPoints := []string{}
 	pointsModified := false
 
@@ -94,12 +99,22 @@ func (f *SensitiveWordsFilter) Handle(ctx *pipeline.TaskContext) error {
 	}
 
 	if pointsModified {
-		ctx.TemuProduct.GoodsExtensionInfo.BulletPoints = filteredPoints
+		temuProduct.GoodsExtensionInfo.BulletPoints = filteredPoints
 		f.logger.Infof("要点已过滤: %d -> %d个", len(originalPoints), len(filteredPoints))
 	}
 
 	f.logger.Info("TEMU敏感词过滤完成")
 	return nil
+}
+
+// Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
+func (f *SensitiveWordsFilter) Handle(ctx pipeline.TaskContext) error {
+	// 尝试类型断言为TemuTaskContext
+	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
+		return f.HandleTemu(temuCtx)
+	}
+	// 如果不是TemuTaskContext，返回错误
+	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
 }
 
 // FilterText 过滤文本中的敏感词

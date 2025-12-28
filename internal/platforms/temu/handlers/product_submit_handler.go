@@ -4,18 +4,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	management_api "task-processor/internal/common/management/api"
-	"task-processor/internal/common/pipeline"
+	"task-processor/internal/pipeline"
+	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
-
-	"github.com/sirupsen/logrus"
 )
 
 // ProductSubmitHandler 产品提交处理器
 type ProductSubmitHandler struct {
-	logger        *logrus.Entry
+	*BaseTemuHandler
 	saveHandler   *ProductSaveHandler
 	mappingClient management_api.ProductImportMappingAPI
 }
@@ -51,9 +52,9 @@ type ProductSubmitResult struct {
 // NewProductSubmitHandler 创建新的产品提交处理器
 func NewProductSubmitHandler(mappingClient management_api.ProductImportMappingAPI) *ProductSubmitHandler {
 	return &ProductSubmitHandler{
-		logger:        logrus.WithField("handler", "ProductSubmitHandler"),
-		saveHandler:   NewProductSaveHandler(),
-		mappingClient: mappingClient,
+		BaseTemuHandler: NewBaseTemuHandler("产品提交处理器"),
+		saveHandler:     NewProductSaveHandler(),
+		mappingClient:   mappingClient,
 	}
 }
 
@@ -83,21 +84,23 @@ func (h *ProductSubmitHandler) ensureProperFormatting(name string) string {
 	return name
 }
 
-// Handle 处理任务
-func (h *ProductSubmitHandler) Handle(ctx *pipeline.TaskContext) error {
+// HandleTemu 处理TEMU任务（实现TemuHandler接口）
+func (h *ProductSubmitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始提交产品")
 
 	// 检查任务上下文中的必要数据
-	if ctx.Task == nil {
+	task := temuCtx.GetTask()
+	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	if ctx.TemuProduct == nil {
+	// 检查TEMU产品信息
+	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
 	// 提交产品（产品存在性检查已在第3步完成）
-	err := h.submitProduct(ctx)
+	err := h.submitProduct(temuCtx)
 	if err != nil {
 		h.logger.Errorf("提交产品失败: %v", err)
 		return fmt.Errorf("提交产品失败: %w", err)
@@ -107,28 +110,51 @@ func (h *ProductSubmitHandler) Handle(ctx *pipeline.TaskContext) error {
 	return nil
 }
 
+// Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
+func (h *ProductSubmitHandler) Handle(ctx pipeline.TaskContext) error {
+	// 尝试类型断言为TemuTaskContext
+	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
+		return h.HandleTemu(temuCtx)
+	}
+	// 如果不是TemuTaskContext，返回错误
+	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
+}
+
 // submitProduct 提交产品
-func (h *ProductSubmitHandler) submitProduct(ctx *pipeline.TaskContext) error {
+func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始提交产品到TEMU")
 
-	// 检查API客户端
-	if ctx.APIClient == nil {
-		return fmt.Errorf("API客户端未初始化")
-	}
+	temuProduct := temuCtx.TemuProduct
 
 	// 【最后的格式检查】在提交前确保产品名称格式正确
-	if ctx.TemuProduct != nil && ctx.TemuProduct.GoodsBasic.GoodsName != "" {
-		originalName := ctx.TemuProduct.GoodsBasic.GoodsName
+	if temuProduct.GoodsBasic.GoodsName != "" {
+		originalName := temuProduct.GoodsBasic.GoodsName
 		fixedName := h.ensureProperFormatting(originalName)
 
 		if fixedName != originalName {
 			h.logger.Warnf("⚠️ 提交前修复产品名称格式: '%s' -> '%s'", originalName, fixedName)
-			ctx.TemuProduct.GoodsBasic.GoodsName = fixedName
+			temuProduct.GoodsBasic.GoodsName = fixedName
 		}
 	}
 
 	// 构造TEMU产品提交请求
-	request := h.buildSubmitRequest(ctx)
+	request := h.buildSubmitRequest(temuCtx)
+
+	// 序列化请求用于调试和错误处理
+	requestJSON, jsonErr := h.marshalWithoutHTMLEscape(request)
+	if jsonErr != nil {
+		h.logger.Errorf("序列化请求JSON失败: %v", jsonErr)
+		return fmt.Errorf("序列化请求失败: %w", jsonErr)
+	}
+
+	// 保存JSON到文件用于调试
+	task := temuCtx.GetTask()
+	if task != nil {
+		taskID := fmt.Sprintf("%d", task.ID)
+		if saveErr := h.saveJSONToFile(taskID, requestJSON, task.ProductID); saveErr != nil {
+			h.logger.Errorf("保存JSON文件失败: %v", saveErr)
+		}
+	}
 
 	// 构造API请求
 	apiReq := map[string]any{
@@ -151,11 +177,17 @@ func (h *ProductSubmitHandler) submitProduct(ctx *pipeline.TaskContext) error {
 
 	// 发送请求到TEMU API
 	response := &ProductSubmitResponse{}
-	err := ctx.APIClient.SendTEMURequest(apiReq, response)
+	err := temuCtx.APIClient.SendTEMURequest(apiReq, response)
 	if err != nil {
+		// 保存JSON数据到文件用于调试
+		task := temuCtx.GetTask()
+		if task != nil {
+			taskID := fmt.Sprintf("%d", task.ID)
+			if saveErr := h.saveJSONToFile(taskID, requestJSON, "product_submit"); saveErr != nil {
+				h.logger.Errorf("保存JSON文件失败: %v", saveErr)
+			}
+		}
 		h.logger.Errorf("发送TEMU API请求失败: %v", err)
-		h.logger.Errorf("请求URL: %s", apiReq["url"])
-		h.logger.Errorf("请求方法: %s", apiReq["method"])
 		return fmt.Errorf("发送提交请求失败: %w", err)
 	}
 
@@ -165,28 +197,17 @@ func (h *ProductSubmitHandler) submitProduct(ctx *pipeline.TaskContext) error {
 	if !response.Success {
 		h.logger.Errorf("TEMU API响应失败: success=%v, error_code=%d, error_message=%v", response.Success, response.ErrorCode, response.Message)
 
-		// 记录提交的产品信息（用于调试）
-		requestJSON, err := h.marshalWithoutHTMLEscape(request)
-		if err != nil {
-			h.logger.Errorf("序列化提交请求失败: %v", err)
-		} else {
-
-			h.logger.Infof("=== 最终提交的JSON数据 ===")
-			h.logger.Infof("%s", string(requestJSON))
-			h.logger.Infof("=== JSON数据结束 ===")
-		}
-
 		// 检查是否为不可重试的错误
 		if h.isNonRetryableError(response.ErrorCode, response.Message) {
 			h.logger.Errorf("❌ 检测到不可重试错误(error_code=%d): %s", response.ErrorCode, response.Message)
-			h.logger.Error("❌ 此错误无法通过重试解决，任+务将被标记为失败")
+			h.logger.Error("❌ 此错误无法通过重试解决，任务将被标记为失败")
 			// 返回特殊错误，让上层知道这是不可重试的
 			return fmt.Errorf("NONRETRYABLE: 产品提交失败(error_code=%d): %s", response.ErrorCode, response.Message)
 		}
 
 		// 可重试的错误，尝试保存到草稿箱
 		h.logger.Warnf("产品提交失败，尝试保存到草稿箱...")
-		if saveErr := h.saveHandler.Handle(ctx); saveErr != nil {
+		if saveErr := h.saveHandler.Handle(temuCtx); saveErr != nil {
 			h.logger.Errorf("保存到草稿箱也失败: %v", saveErr)
 			h.logger.Error("❌ 提交和保存草稿都失败，任务将被标记为不可重试")
 			// 提交失败且保存草稿也失败，标记为不可重试
@@ -194,7 +215,7 @@ func (h *ProductSubmitHandler) submitProduct(ctx *pipeline.TaskContext) error {
 		}
 		h.logger.Infof("✅ 产品已保存到草稿箱，任务标记为已完成")
 		// 保存到草稿箱成功，标记为特殊的成功状态，避免重复处理
-		ctx.SetData("saved_to_draft", true)
+		temuCtx.SavedToDraft = true
 		return nil // 返回nil表示处理成功，不再重试
 	}
 
@@ -205,7 +226,7 @@ func (h *ProductSubmitHandler) submitProduct(ctx *pipeline.TaskContext) error {
 
 		// 提交结果失败时保存到草稿箱
 		h.logger.Warnf("产品提交结果失败，尝试保存到草稿箱...")
-		if saveErr := h.saveHandler.Handle(ctx); saveErr != nil {
+		if saveErr := h.saveHandler.Handle(temuCtx); saveErr != nil {
 			h.logger.Errorf("保存到草稿箱也失败: %v", saveErr)
 			h.logger.Error("❌ 提交和保存草稿都失败，任务将被标记为不可重试")
 			// 提交失败且保存草稿也失败，标记为不可重试
@@ -213,22 +234,22 @@ func (h *ProductSubmitHandler) submitProduct(ctx *pipeline.TaskContext) error {
 		}
 		h.logger.Infof("✅ 产品已保存到草稿箱，任务标记为已完成")
 		// 保存到草稿箱成功，标记为特殊的成功状态，避免重复处理
-		ctx.SetData("saved_to_draft", true)
+		temuCtx.SavedToDraft = true
 		return nil // 返回nil表示处理成功，不再重试
 	}
 
-	// 保存提交响应和产品数据，供后续处理器使用
-	ctx.SetData("submit_response", response)
-	ctx.SetData("product_data", ctx.TemuProduct)
+	// 保存提交响应到强类型字段
+	temuCtx.SubmitResult = response
 
-	h.logger.Infof("🎉 产品发布成功！商品ID: %s, 商品名称: %s", ctx.TemuProduct.GoodsBasic.GoodsID, ctx.TemuProduct.GoodsBasic.GoodsName)
+	h.logger.Infof("🎉 产品发布成功！商品ID: %s, 商品名称: %s", temuProduct.GoodsBasic.GoodsID, temuProduct.GoodsBasic.GoodsName)
 
 	return nil
 }
 
 // buildSubmitRequest 构建提交请求
-func (h *ProductSubmitHandler) buildSubmitRequest(ctx *pipeline.TaskContext) *ProductSubmitRequest {
-	temuProduct := ctx.TemuProduct
+func (h *ProductSubmitHandler) buildSubmitRequest(temuCtx *temucontext.TemuTaskContext) *ProductSubmitRequest {
+	// 获取TEMU产品信息
+	temuProduct := temuCtx.TemuProduct
 
 	// 转换Extra类型
 	extra := types.Extra{
@@ -253,12 +274,6 @@ func (h *ProductSubmitHandler) buildSubmitRequest(ctx *pipeline.TaskContext) *Pr
 
 	h.logger.Infof("构建提交请求完成: SKC数量=%d, 总SKU数量=%d",
 		len(request.SkcList), h.getTotalSkuCount(request.SkcList))
-
-	// 打印关键字段信息用于调试
-	h.logger.Infof("商品基本信息: ID=%s, 名称=%s", request.GoodsBasic.GoodsID, request.GoodsBasic.GoodsName)
-	h.logger.Infof("分类信息: CatID=%d", request.GoodsBasic.CatID)
-	h.logger.Infof("请求标志: CanSave=%v, SupportMaxRetailPrice=%v, PlatformExpressBill=%v",
-		request.CanSave, request.SupportMaxRetailPrice, request.PlatformExpressBill)
 
 	return request
 }
@@ -324,4 +339,24 @@ func (h *ProductSubmitHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
 	}
 
 	return result, nil
+}
+
+// saveJSONToFile 保存JSON数据到文件
+func (h *ProductSubmitHandler) saveJSONToFile(taskID string, jsonData []byte, prefix string) error {
+	// 创建文件名
+	filename := fmt.Sprintf("%s_%s.json", prefix, taskID)
+
+	// 确保目录存在
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		return fmt.Errorf("创建日志目录失败: %w", err)
+	}
+
+	// 写入文件
+	filePath := filepath.Join("logs", filename)
+	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
+		return fmt.Errorf("写入文件失败: %w", err)
+	}
+
+	h.logger.Infof("JSON数据已保存到文件: %s", filePath)
+	return nil
 }
