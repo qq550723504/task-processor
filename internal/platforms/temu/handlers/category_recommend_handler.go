@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"strings"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -11,6 +12,13 @@ import (
 // CategoryRecommendHandler 分类推荐处理器
 type CategoryRecommendHandler struct {
 	logger *logrus.Entry
+}
+
+// 儿童相关关键词列表
+var childrenRelatedKeywords = []string{
+	"儿童", "童装", "童鞋", "玩具", "婴儿", "宝宝", "幼儿", "小孩",
+	"children", "child", "kids", "kid", "baby", "infant", "toddler", "toy",
+	"童", "婴", "幼", "小朋友", "儿", "孩子",
 }
 
 // Category 分类信息
@@ -172,12 +180,15 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 		return fmt.Errorf("分类推荐失败或无推荐结果")
 	}
 
-	// 获取第一个推荐分类（通常API会返回按相关度排序的分类列表）
-	category := response.Result.CategoryTreeList[0]
+	// 选择合适的分类（避免儿童相关类目）
+	selectedCategory, err := h.selectNonChildrenCategory(response.Result.CategoryTreeList)
+	if err != nil {
+		return fmt.Errorf("无法选择合适的分类: %w", err)
+	}
 
 	// 验证分类数据的完整性
-	if category.CatID == 0 || category.Cate1ID == 0 {
-		return fmt.Errorf("推荐的分类数据不完整: CatID=%d, Cate1ID=%d", category.CatID, category.Cate1ID)
+	if selectedCategory.CatID == 0 || selectedCategory.Cate1ID == 0 {
+		return fmt.Errorf("推荐的分类数据不完整: CatID=%d, Cate1ID=%d", selectedCategory.CatID, selectedCategory.Cate1ID)
 	}
 
 	// 构建分类ID层级列表，并找到最深层级的分类ID
@@ -188,70 +199,70 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 
 	temuProduct := temuCtx.TemuProduct
 
-	temuProduct.GoodsBasic.CatIDs = []int{category.Cate1ID}
-	lastLevelCatID := category.Cate1ID // 默认使用第一级
+	temuProduct.GoodsBasic.CatIDs = []int{selectedCategory.Cate1ID}
+	lastLevelCatID := selectedCategory.Cate1ID // 默认使用第一级
 
-	if category.Cate2ID != 0 {
-		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, category.Cate2ID)
-		lastLevelCatID = category.Cate2ID
+	if selectedCategory.Cate2ID != 0 {
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, selectedCategory.Cate2ID)
+		lastLevelCatID = selectedCategory.Cate2ID
 	}
-	if category.Cate3ID != 0 {
-		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, category.Cate3ID)
-		lastLevelCatID = category.Cate3ID
+	if selectedCategory.Cate3ID != 0 {
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, selectedCategory.Cate3ID)
+		lastLevelCatID = selectedCategory.Cate3ID
 	}
 
 	// 设置分类树信息
 	temuProduct.GoodsBasic.CategoryTree = types.CategoryTree{
-		Level:        category.Level,
-		CateType:     category.CateType,
+		Level:        selectedCategory.Level,
+		CateType:     selectedCategory.CateType,
 		CatID:        lastLevelCatID, // 使用最深层级的分类ID
-		Cate1ID:      category.Cate1ID,
-		Cate1Name:    category.Cate1Name,
-		Cate2ID:      category.Cate2ID,
-		Cate2Name:    category.Cate2Name,
-		Cate3ID:      category.Cate3ID,
-		Cate3Name:    category.Cate3Name,
-		CateNameList: category.CateNameList,
+		Cate1ID:      selectedCategory.Cate1ID,
+		Cate1Name:    selectedCategory.Cate1Name,
+		Cate2ID:      selectedCategory.Cate2ID,
+		Cate2Name:    selectedCategory.Cate2Name,
+		Cate3ID:      selectedCategory.Cate3ID,
+		Cate3Name:    selectedCategory.Cate3Name,
+		CateNameList: selectedCategory.CateNameList,
 	}
 
 	// 如果有更深层级的分类，也要设置，并更新最深层级ID
-	if category.Cate4ID != nil && *category.Cate4ID != 0 {
-		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate4ID)
-		temuProduct.GoodsBasic.CategoryTree.Cate4ID = *category.Cate4ID
-		lastLevelCatID = *category.Cate4ID
-		if category.Cate4Name != nil {
-			temuProduct.GoodsBasic.CategoryTree.Cate4Name = *category.Cate4Name
+	if selectedCategory.Cate4ID != nil && *selectedCategory.Cate4ID != 0 {
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *selectedCategory.Cate4ID)
+		temuProduct.GoodsBasic.CategoryTree.Cate4ID = *selectedCategory.Cate4ID
+		lastLevelCatID = *selectedCategory.Cate4ID
+		if selectedCategory.Cate4Name != nil {
+			temuProduct.GoodsBasic.CategoryTree.Cate4Name = *selectedCategory.Cate4Name
 		}
 	}
 
-	if category.Cate5ID != nil && *category.Cate5ID != 0 {
-		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate5ID)
-		temuProduct.GoodsBasic.CategoryTree.Cate5ID = *category.Cate5ID
-		lastLevelCatID = *category.Cate5ID
-		if category.Cate5Name != nil {
-			temuProduct.GoodsBasic.CategoryTree.Cate5Name = *category.Cate5Name
+	if selectedCategory.Cate5ID != nil && *selectedCategory.Cate5ID != 0 {
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *selectedCategory.Cate5ID)
+		temuProduct.GoodsBasic.CategoryTree.Cate5ID = *selectedCategory.Cate5ID
+		lastLevelCatID = *selectedCategory.Cate5ID
+		if selectedCategory.Cate5Name != nil {
+			temuProduct.GoodsBasic.CategoryTree.Cate5Name = *selectedCategory.Cate5Name
 		}
 	}
 
-	if category.Cate6ID != nil && *category.Cate6ID != 0 {
-		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate6ID)
-		lastLevelCatID = *category.Cate6ID
+	if selectedCategory.Cate6ID != nil && *selectedCategory.Cate6ID != 0 {
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *selectedCategory.Cate6ID)
+		lastLevelCatID = *selectedCategory.Cate6ID
 	}
-	if category.Cate7ID != nil && *category.Cate7ID != 0 {
-		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate7ID)
-		lastLevelCatID = *category.Cate7ID
+	if selectedCategory.Cate7ID != nil && *selectedCategory.Cate7ID != 0 {
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *selectedCategory.Cate7ID)
+		lastLevelCatID = *selectedCategory.Cate7ID
 	}
-	if category.Cate8ID != nil && *category.Cate8ID != 0 {
-		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate8ID)
-		lastLevelCatID = *category.Cate8ID
+	if selectedCategory.Cate8ID != nil && *selectedCategory.Cate8ID != 0 {
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *selectedCategory.Cate8ID)
+		lastLevelCatID = *selectedCategory.Cate8ID
 	}
-	if category.Cate9ID != nil && *category.Cate9ID != 0 {
-		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate9ID)
-		lastLevelCatID = *category.Cate9ID
+	if selectedCategory.Cate9ID != nil && *selectedCategory.Cate9ID != 0 {
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *selectedCategory.Cate9ID)
+		lastLevelCatID = *selectedCategory.Cate9ID
 	}
-	if category.Cate10ID != nil && *category.Cate10ID != 0 {
-		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *category.Cate10ID)
-		lastLevelCatID = *category.Cate10ID
+	if selectedCategory.Cate10ID != nil && *selectedCategory.Cate10ID != 0 {
+		temuProduct.GoodsBasic.CatIDs = append(temuProduct.GoodsBasic.CatIDs, *selectedCategory.Cate10ID)
+		lastLevelCatID = *selectedCategory.Cate10ID
 	}
 
 	// 设置最深层级的分类ID作为主要CatID
@@ -259,4 +270,78 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 
 	h.logger.Infof("成功设置分类信息: CatID=%d, 层级=%d", lastLevelCatID, len(temuProduct.GoodsBasic.CatIDs))
 	return nil
+}
+
+// isChildrenRelatedCategory 检查分类是否与儿童相关
+func (h *CategoryRecommendHandler) isChildrenRelatedCategory(category Category) bool {
+	// 检查所有分类名称
+	categoryNames := []string{
+		category.Cate1Name,
+		category.Cate2Name,
+		category.Cate3Name,
+	}
+
+	// 添加可选的分类名称
+	if category.Cate4Name != nil {
+		categoryNames = append(categoryNames, *category.Cate4Name)
+	}
+	if category.Cate5Name != nil {
+		categoryNames = append(categoryNames, *category.Cate5Name)
+	}
+	if category.Cate6Name != nil {
+		categoryNames = append(categoryNames, *category.Cate6Name)
+	}
+	if category.Cate7Name != nil {
+		categoryNames = append(categoryNames, *category.Cate7Name)
+	}
+	if category.Cate8Name != nil {
+		categoryNames = append(categoryNames, *category.Cate8Name)
+	}
+	if category.Cate9Name != nil {
+		categoryNames = append(categoryNames, *category.Cate9Name)
+	}
+	if category.Cate10Name != nil {
+		categoryNames = append(categoryNames, *category.Cate10Name)
+	}
+
+	// 检查分类名称列表
+	categoryNames = append(categoryNames, category.CateNameList...)
+
+	// 检查是否包含儿童相关关键词
+	for _, categoryName := range categoryNames {
+		if categoryName == "" {
+			continue
+		}
+
+		categoryNameLower := strings.ToLower(categoryName)
+		for _, keyword := range childrenRelatedKeywords {
+			if strings.Contains(categoryNameLower, strings.ToLower(keyword)) {
+				h.logger.Warnf("检测到儿童相关分类: %s (包含关键词: %s)", categoryName, keyword)
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// selectNonChildrenCategory 选择非儿童相关的分类
+func (h *CategoryRecommendHandler) selectNonChildrenCategory(categories []Category) (Category, error) {
+	maxAttempts := 3
+
+	// 检查前三个推荐分类
+	for i := 0; i < len(categories) && i < maxAttempts; i++ {
+		category := categories[i]
+
+		if !h.isChildrenRelatedCategory(category) {
+			h.logger.Infof("选择第%d个推荐分类 (非儿童相关): %s", i+1, category.Cate1Name)
+			return category, nil
+		}
+
+		h.logger.Warnf("第%d个推荐分类包含儿童相关内容，跳过: %s", i+1, category.Cate1Name)
+	}
+
+	// 如果前三个都是儿童相关，终止任务
+	h.logger.Errorf("前%d个推荐分类都包含儿童相关内容，终止任务", maxAttempts)
+	return Category{}, fmt.Errorf("NONRETRYABLE: 前%d个推荐分类都包含儿童相关内容，无法继续处理", maxAttempts)
 }
