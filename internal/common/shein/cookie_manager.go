@@ -102,7 +102,12 @@ type CookieData struct {
 	SameSite string  `json:"sameSite"`
 }
 
-// parseCookieString 解析Cookie字符串为http.Cookie对象
+// parseCookieString 解析Cookie字符串为http.Cookie对象（导出方法供ClientManager使用）
+func (cm *CookieManager) ParseCookieString(cookieStr string) ([]*http.Cookie, error) {
+	return cm.parseCookieString(cookieStr)
+}
+
+// parseCookieString 解析Cookie字符串为http.Cookie对象（内部方法）
 func (cm *CookieManager) parseCookieString(cookieStr string) ([]*http.Cookie, error) {
 	if cookieStr == "" {
 		return nil, nil

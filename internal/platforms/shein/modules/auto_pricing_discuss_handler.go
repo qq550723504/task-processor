@@ -14,21 +14,19 @@ import (
 type AutoPricingDiscussHandler struct{}
 
 // NewAutoPricingDiscussHandler 创建新的自动核价讨论处理器
-// 返回值:
-//   - *AutoPricingDiscussHandler: 讨论处理器实例
 func NewAutoPricingDiscussHandler() *AutoPricingDiscussHandler {
 	return &AutoPricingDiscussHandler{}
 }
 
 // HandleCostDiscuss 处理成本讨论
-// 参数:
-//   - client: SHEIN API客户端
-//   - req: 批量处理成本讨论请求
-//
-// 返回值:
-//   - error: 错误信息
-func (h *AutoPricingDiscussHandler) HandleCostDiscuss(client sheinapi.APIClient, req *pricing.BatchHandleCostDiscussRequest) error {
-	response, err := client.BatchHandleCostDiscuss(req)
+func (h *AutoPricingDiscussHandler) HandleCostDiscuss(client sheinapi.APIClient, req interface{}) error {
+	// 类型断言获取具体的批量请求
+	batchReq, ok := req.(*pricing.BatchHandleCostDiscussRequest)
+	if !ok {
+		return fmt.Errorf("批量请求类型断言失败")
+	}
+
+	response, err := client.BatchHandleCostDiscuss(batchReq)
 	if err != nil {
 		return fmt.Errorf("调用批量处理成本讨论接口失败: %w", err)
 	}

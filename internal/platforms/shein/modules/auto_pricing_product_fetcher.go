@@ -15,11 +15,6 @@ type AutoPricingProductFetcher struct {
 }
 
 // NewAutoPricingProductFetcher 创建新的自动核价产品获取器
-// 参数:
-//   - shopClientMgr: 店铺客户端管理器
-//
-// 返回值:
-//   - *AutoPricingProductFetcher: 产品获取器实例
 func NewAutoPricingProductFetcher(shopClientMgr *shops.ClientManager) *AutoPricingProductFetcher {
 	return &AutoPricingProductFetcher{
 		shopClientMgr: shopClientMgr,
@@ -27,14 +22,6 @@ func NewAutoPricingProductFetcher(shopClientMgr *shops.ClientManager) *AutoPrici
 }
 
 // GetPendingPricingProducts 获取待核价的产品列表
-// 参数:
-//   - tenantID: 租户ID
-//   - shopID: 店铺ID
-//   - storeInfo: 店铺信息
-//
-// 返回值:
-//   - []pricing.BargainPageData: 待核价产品列表
-//   - error: 错误信息
 func (f *AutoPricingProductFetcher) GetPendingPricingProducts(tenantID, shopID int64, storeInfo *managementapi.StoreRespDTO) ([]pricing.BargainPageData, error) {
 	var allProducts []pricing.BargainPageData
 

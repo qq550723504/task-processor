@@ -30,7 +30,7 @@ management:
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [685]  # 店铺ID列表
+  storeIDs: [413]  # 店铺ID列表
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
@@ -59,21 +59,21 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: true  # 是否启用SHEIN处理器
+    enabled: false  # 是否启用SHEIN处理器
     # 自动定价配置
     autoPricing:
-      enabled: false
+      enabled: true
       interval: 300     # 5分钟
       batchSize: 100
     # 产品同步配置
     sync:
-      enabled: true
+      enabled: false
       storeIDs: []      # SHEIN店铺ID列表，为空则使用 management.storeIDs
       interval: 60      # 同步间隔（分钟），默认1小时
       batchSize: 50     # 批量处理大小
     # 产品监控配置
     monitor:
-      enabled: true               # 是否启用SHEIN产品监控
+      enabled: false               # 是否启用SHEIN产品监控
       storeIDs: []                # SHEIN店铺ID列表，为空则使用对应平台的sync配置
       checkInterval: 1440         # 检查间隔（分钟），默认24小时
       batchSize: 100              # 批量处理大小

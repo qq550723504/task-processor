@@ -9,19 +9,11 @@ import (
 type AutoPricingCalculator struct{}
 
 // NewAutoPricingCalculator 创建新的自动核价计算器
-// 返回值:
-//   - *AutoPricingCalculator: 价格计算器实例
 func NewAutoPricingCalculator() *AutoPricingCalculator {
 	return &AutoPricingCalculator{}
 }
 
 // GetAutoPrice 获取自动核价
-// 参数:
-//   - originPrice: 原始价格
-//   - rules: 定价规则列表
-//
-// 返回值:
-//   - float64: 计算后的价格
 func (c *AutoPricingCalculator) GetAutoPrice(originPrice float64, rules []managementapi.PricingRuleRespDTO) float64 {
 	for _, rule := range rules {
 		// 判断是否在规则范围内
@@ -34,12 +26,6 @@ func (c *AutoPricingCalculator) GetAutoPrice(originPrice float64, rules []manage
 }
 
 // ApplyRule 应用自动核价规则
-// 参数:
-//   - originPrice: 原始价格
-//   - rule: 定价规则
-//
-// 返回值:
-//   - float64: 应用规则后的价格
 func (c *AutoPricingCalculator) ApplyRule(originPrice float64, rule managementapi.PricingRuleRespDTO) float64 {
 	if rule.RuleValue == nil {
 		return originPrice

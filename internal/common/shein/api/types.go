@@ -1,164 +1,56 @@
-﻿package api
+﻿// Package api 提供SHEIN API的通用类型定义
+package api
 
 import "fmt"
 
+// APIResponse 通用API响应结构
+type APIResponse struct {
+	Code string `json:"code"` // 响应码
+	Msg  string `json:"msg"`  // 响应消息
+}
+
 // APIError API错误类型
 type APIError struct {
-	StatusCode int
-	Message    string
-	URL        string
+	StatusCode int    // HTTP状态码
+	Message    string // 错误消息
+	URL        string // 请求URL
 }
 
 // Error 实现error接口
 func (e *APIError) Error() string {
-	return e.Message
+	return fmt.Sprintf("API错误 [%d]: %s (URL: %s)", e.StatusCode, e.Message, e.URL)
 }
 
-// AuthenticationExpiredError 认证过期错误类型
+// AuthenticationExpiredError 认证过期错误
 type AuthenticationExpiredError struct {
-	TenantID int64
-	ShopID   int64
-	Code     string
-	Message  string
+	TenantID int64  // 租户ID
+	ShopID   int64  // 店铺ID
+	Code     string // 错误码
+	Message  string // 错误消息
 }
 
 // Error 实现error接口
 func (e *AuthenticationExpiredError) Error() string {
-	return e.Message
+	return fmt.Sprintf("认证过期 [%s]: %s (TenantID: %d, ShopID: %d)", e.Code, e.Message, e.TenantID, e.ShopID)
 }
 
-// CookieError Cookie获取失败错误类型
+// CookieError Cookie相关错误
 type CookieError struct {
-	TenantID int64
-	ShopID   int64
-	Code     string
-	Message  string
+	TenantID int64  // 租户ID
+	ShopID   int64  // 店铺ID
+	Code     string // 错误码
+	Message  string // 错误消息
 }
 
 // Error 实现error接口
 func (e *CookieError) Error() string {
-	return e.Message
+	return fmt.Sprintf("Cookie错误 [%s]: %s (TenantID: %d, ShopID: %d)", e.Code, e.Message, e.TenantID, e.ShopID)
 }
 
-// RedisCookieError 保留用于向后兼容
-type RedisCookieError = CookieError
-
-// IsAuthenticationExpired 检查是否为认证过期错误
+// IsAuthenticationExpired 检查错误是否为认证过期错误
 func IsAuthenticationExpired(err error) (*AuthenticationExpiredError, bool) {
-	// 直接检查是否为认证过期错误
 	if authErr, ok := err.(*AuthenticationExpiredError); ok {
 		return authErr, true
 	}
-
-	// 检查是否为Cookie错误
-	if cookieErr, ok := err.(*CookieError); ok {
-		// 将Cookie错误转换为认证过期错误
-		return &AuthenticationExpiredError{
-			TenantID: cookieErr.TenantID,
-			ShopID:   cookieErr.ShopID,
-			Code:     "COOKIE_FAILED",
-			Message:  fmt.Sprintf("Cookie获取失败，需要重新登录: %s", cookieErr.Message),
-		}, true
-	}
-
-	// 检查错误消息是否包含认证过期信息
-	if err != nil {
-		errMsg := err.Error()
-		if contains(errMsg, "20302") && contains(errMsg, "子系统登录重定向") {
-			// 创建一个认证过期错误对象
-			return &AuthenticationExpiredError{
-				Code:    "20302",
-				Message: "子系统登录重定向",
-			}, true
-		}
-		if contains(errMsg, "认证已过期") || contains(errMsg, "需要重新登录") {
-			return &AuthenticationExpiredError{
-				Code:    "AUTH_EXPIRED",
-				Message: errMsg,
-			}, true
-		}
-		// 检查Cookie获取失败的错误消息
-		if contains(errMsg, "从内存获取Cookie失败") || contains(errMsg, "Cookie不存在") {
-			return &AuthenticationExpiredError{
-				Code:    "COOKIE_FAILED",
-				Message: "Cookie获取失败，需要重新登录: " + errMsg,
-			}, true
-		}
-	}
-
-	// 递归检查包装的错误
-	for err != nil {
-		if authErr, ok := err.(*AuthenticationExpiredError); ok {
-			return authErr, true
-		}
-
-		// 检查是否为Cookie错误
-		if cookieErr, ok := err.(*CookieError); ok {
-			return &AuthenticationExpiredError{
-				TenantID: cookieErr.TenantID,
-				ShopID:   cookieErr.ShopID,
-				Code:     "COOKIE_FAILED",
-				Message:  fmt.Sprintf("Cookie获取失败，需要重新登录: %s", cookieErr.Message),
-			}, true
-		}
-
-		// 检查错误消息
-		errMsg := err.Error()
-		if contains(errMsg, "20302") && contains(errMsg, "子系统登录重定向") {
-			return &AuthenticationExpiredError{
-				Code:    "20302",
-				Message: "子系统登录重定向",
-			}, true
-		}
-		if contains(errMsg, "认证已过期") || contains(errMsg, "需要重新登录") {
-			return &AuthenticationExpiredError{
-				Code:    "AUTH_EXPIRED",
-				Message: errMsg,
-			}, true
-		}
-		// 检查Cookie获取失败的错误消息
-		if contains(errMsg, "从内存获取Cookie失败") || contains(errMsg, "Cookie不存在") {
-			return &AuthenticationExpiredError{
-				Code:    "COOKIE_FAILED",
-				Message: "Cookie获取失败，需要重新登录: " + errMsg,
-			}, true
-		}
-
-		// 检查是否实现了 Unwrap 方法
-		if unwrapper, ok := err.(interface{ Unwrap() error }); ok {
-			err = unwrapper.Unwrap()
-		} else {
-			break
-		}
-	}
-
 	return nil, false
-}
-
-// contains 检查字符串是否包含子字符串
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || (len(s) > len(substr) && findSubstring(s, substr)))
-}
-
-// findSubstring 查找子字符串
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-// APIResponse 通用API响应结构
-type APIResponse struct {
-	Code string      `json:"code"`
-	Msg  string      `json:"msg"`
-	Info interface{} `json:"info"`
-	BBL  interface{} `json:"bbl"`
-}
-
-// Success 检查API调用是否成功
-func (r *APIResponse) Success() bool {
-	return r.Code == "0"
 }

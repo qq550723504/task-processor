@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"task-processor/internal/common/pricing/model"
 	"task-processor/internal/common/pricing/service"
-	sheinpricing "task-processor/internal/platforms/shein/client/api/pricing"
+	sheinpricing "task-processor/internal/common/shein/api/pricing"
 
 	"github.com/sirupsen/logrus"
 )

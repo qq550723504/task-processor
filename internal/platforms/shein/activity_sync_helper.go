@@ -4,7 +4,7 @@ package shein
 import (
 	"fmt"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/platforms/shein/client/api/marketing"
+	"task-processor/internal/common/shein/api/marketing"
 
 	"github.com/sirupsen/logrus"
 )

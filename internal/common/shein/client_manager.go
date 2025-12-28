@@ -1,12 +1,11 @@
 ﻿package shops
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
+	"task-processor/internal/common/management"
 	management_api "task-processor/internal/common/management/api"
 	"task-processor/internal/common/memory"
 	shein_api "task-processor/internal/common/shein/api"
@@ -15,24 +14,29 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ClientManager 店铺API客户端管理器
+// ClientManager 店铺API客户端管理器（简化版，参考TEMU设计）
 type ClientManager struct {
-	clients       map[string]shein_api.APIClient
-	cookieManager *memory.CookieManager
-	mutex         sync.RWMutex
+	clients          map[string]shein_api.APIClient
+	cookieManager    *memory.CookieManager
+	managementClient *management.ClientManager
+	mutex            sync.RWMutex
+	logger           *logrus.Entry
 }
 
 // NewClientManager 创建新的客户端管理器
-func NewClientManager(cookieManager *memory.CookieManager) *ClientManager {
+func NewClientManager(cookieManager *memory.CookieManager, managementClient *management.ClientManager) *ClientManager {
 	return &ClientManager{
-		clients:       make(map[string]shein_api.APIClient),
-		cookieManager: cookieManager,
+		clients:          make(map[string]shein_api.APIClient),
+		cookieManager:    cookieManager,
+		managementClient: managementClient,
+		logger: logrus.WithFields(logrus.Fields{
+			"component": "SHEINClientManager",
+		}),
 	}
 }
 
 // GetClient 获取或创建店铺API客户端
 func (cm *ClientManager) GetClient(tenantID, shopID int64, storeInfo *management_api.StoreRespDTO) (shein_api.APIClient, error) {
-
 	key := fmt.Sprintf("shein:cookie:%d:%d", tenantID, shopID)
 
 	// 先尝试读锁获取已存在的客户端
@@ -46,26 +50,22 @@ func (cm *ClientManager) GetClient(tenantID, shopID int64, storeInfo *management
 
 	// 双重检查锁模式：再次检查以避免重复创建
 	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
 	client, exists = cm.clients[key]
 	if exists {
-		cm.mutex.Unlock()
 		return client, nil
 	}
 
 	// 创建新的客户端
 	client, err := cm.createClient(tenantID, shopID, storeInfo)
 	if err != nil {
-		cm.mutex.Unlock()
-		// 直接返回原始错误，不包装，以便类型断言能够工作
 		return nil, err
 	}
 
-	// 存储客户端
 	cm.clients[key] = client
-	logrus.Infof("已创建并存储店铺API客户端: %s", key)
-	cm.mutex.Unlock()
 
-	logrus.Infof("成功创建并缓存店铺API客户端: 租户=%d, 店铺=%d", tenantID, shopID)
+	cm.logger.Infof("成功创建并缓存店铺API客户端: 租户=%d, 店铺=%d", tenantID, shopID)
 	return client, nil
 }
 
@@ -78,7 +78,7 @@ func (cm *ClientManager) RemoveClient(tenantID, shopID int64) {
 
 	if _, exists := cm.clients[key]; exists {
 		delete(cm.clients, key)
-		logrus.Infof("已删除店铺API客户端缓存: 租户=%d, 店铺=%d", tenantID, shopID)
+		cm.logger.Infof("已删除店铺API客户端缓存: 租户=%d, 店铺=%d", tenantID, shopID)
 	}
 }
 
@@ -96,175 +96,91 @@ func (cm *ClientManager) GetAllClients() map[string]shein_api.APIClient {
 	return clientsCopy
 }
 
-// GetTenantShopPairs 从客户端键中提取所有租户和店铺对
-func (cm *ClientManager) GetTenantShopPairs() []struct {
-	TenantID int64
-	ShopID   int64
-} {
-	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
-
-	// 添加调试日志
-	logrus.Infof("ClientManager中当前有 %d 个客户端", len(cm.clients))
-	for key := range cm.clients {
-		logrus.Infof("客户端键: %s", key)
-	}
-
-	var pairs []struct {
-		TenantID int64
-		ShopID   int64
-	}
-
-	for key := range cm.clients {
-		// 解析键格式: shein:cookie:{tenantID}:{shopID}
-		var tenantID, shopID int64
-		if n, err := fmt.Sscanf(key, "shein:cookie:%d:%d", &tenantID, &shopID); err == nil && n == 2 {
-			pairs = append(pairs, struct {
-				TenantID int64
-				ShopID   int64
-			}{TenantID: tenantID, ShopID: shopID})
-			logrus.Infof("解析到租户店铺对: 租户=%d, 店铺=%d", tenantID, shopID)
-		} else {
-			logrus.Infof("无法解析客户端键: %s, 错误: %v", key, err)
-		}
-	}
-
-	logrus.Infof("最终获取到 %d 个租户店铺对", len(pairs))
-	return pairs
-}
-
-// createClient 创建新的店铺API客户端
+// createClient 创建新的店铺API客户端（使用已有的CookieManager）
 func (cm *ClientManager) createClient(tenantID, shopID int64, storeInfo *management_api.StoreRespDTO) (shein_api.APIClient, error) {
-	// 从内存获取Cookie
+	// 尝试从内存获取Cookie
 	cookieJSON, err := cm.cookieManager.GetCookie(tenantID, shopID)
 	if err != nil {
-		// Cookie 不存在，尝试从 API 获取
-		logrus.Warnf("内存中没有Cookie (租户=%d, 店铺=%d)，尝试从API获取", tenantID, shopID)
+		// 内存中没有Cookie，尝试从管理系统获取
+		cm.logger.Warnf("内存中没有Cookie (租户=%d, 店铺=%d)，尝试从管理系统获取", tenantID, shopID)
 
-		// 注意：这里需要从外部传入 managementClient 来调用 GetStoreCookie
-		// 由于当前架构限制，我们返回一个特殊的错误，让调用方处理
-		return nil, &shein_api.CookieError{
-			TenantID: tenantID,
-			ShopID:   shopID,
-			Code:     "COOKIE_NOT_FOUND",
-			Message:  fmt.Sprintf("Cookie不存在，需要从API获取: 租户=%d, 店铺=%d", tenantID, shopID),
+		if cm.managementClient != nil {
+			if storeClient := cm.managementClient.GetStoreClient(); storeClient != nil {
+				if cookieStr, err := storeClient.GetStoreCookie(shopID); err == nil && cookieStr != "" {
+					// 成功获取，存储到内存
+					cm.cookieManager.SetCookie(tenantID, shopID, cookieStr)
+					cm.logger.Infof("✅ 成功从管理系统获取并存储Cookie: 租户=%d, 店铺=%d", tenantID, shopID)
+					cookieJSON = cookieStr
+				} else {
+					return nil, &shein_api.CookieError{
+						TenantID: tenantID,
+						ShopID:   shopID,
+						Code:     "COOKIE_NOT_FOUND",
+						Message:  fmt.Sprintf("无法获取Cookie: 租户=%d, 店铺=%d", tenantID, shopID),
+					}
+				}
+			}
+		}
+
+		if cookieJSON == "" {
+			return nil, &shein_api.CookieError{
+				TenantID: tenantID,
+				ShopID:   shopID,
+				Code:     "COOKIE_NOT_FOUND",
+				Message:  fmt.Sprintf("Cookie不存在: 租户=%d, 店铺=%d", tenantID, shopID),
+			}
 		}
 	}
 
-	// 根据storeType设置baseURL和店铺类型
-	var baseURL string
-	var isSelfOperated bool
+	// 确定baseURL
+	baseURL := "https://sellerhub.shein.com"
 	if storeInfo != nil && storeInfo.LoginUrl == "sso.geiwohuo.com" {
 		baseURL = "https://sso.geiwohuo.com"
-		isSelfOperated = false
-	} else {
-		baseURL = "https://sellerhub.shein.com"
-		isSelfOperated = true
 	}
 
-	// 解析键值对格式的Cookie数据
-	var simpleCookies map[string]interface{}
-	if err := json.Unmarshal([]byte(cookieJSON), &simpleCookies); err != nil {
-		return nil, fmt.Errorf("解析Cookie JSON数据失败: %w", err)
-	}
+	cm.logger.Infof("🔧 创建客户端: 租户=%d, 店铺=%d, baseURL=%s", tenantID, shopID, baseURL)
 
-	// 转换为http.Cookie格式
-	cookies := cm.convertToCookies(simpleCookies, isSelfOperated)
-
-	// 初始化HTTP客户端
+	// 创建HTTP客户端
 	httpClient := req.C().
 		SetCommonHeaders(map[string]string{
 			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
 		}).
-		SetTimeout(120 * time.Second) // 增加到2分钟适应Amazon图片服务器
+		SetTimeout(120 * time.Second)
 
-	// 检查是否有代理地址
+	// 设置代理
 	if storeInfo != nil && storeInfo.Proxy != "" {
-		logrus.Infof("店铺 %d:%d 使用代理地址: %s", tenantID, shopID, storeInfo.Proxy)
 		httpClient = httpClient.SetProxyURL(storeInfo.Proxy)
+		cm.logger.Infof("🌐 设置代理: %s", storeInfo.Proxy)
 	}
 
-	if cookies != nil {
-		httpClient = httpClient.SetCommonCookies(cookies...)
-	}
-
-	logrus.Infof("成功创建HTTP客户端: 租户=%d, 店铺=%d", tenantID, shopID)
-
-	// 返回实际的API客户端
-	return NewShopAPIClient(baseURL, tenantID, shopID, httpClient), nil
-}
-
-// convertToCookies 将键值对Cookie数据转换为http.Cookie对象
-func (cm *ClientManager) convertToCookies(cookieDict map[string]interface{}, isSelfOperated bool) []*http.Cookie {
-	cookies := make([]*http.Cookie, 0, len(cookieDict))
-
-	// 获取目标域名用于Cookie域名设置
-	var targetDomain string
-	if isSelfOperated {
-		targetDomain = "shein.com"
-	} else {
-		targetDomain = "geiwohuo.com"
-	}
-
-	for name, value := range cookieDict {
-		// 安全地转换Cookie值为字符串
-		var cookieValue string
-		switch v := value.(type) {
-		case string:
-			cookieValue = v
-		case []byte:
-			cookieValue = string(v)
-		case nil:
-			continue // 跳过空值
-		default:
-			cookieValue = fmt.Sprintf("%v", v)
+	// 解析并设置Cookie - 使用专门的CookieManager
+	if cookieJSON != "" {
+		// 创建临时的CookieManager来解析Cookie
+		tempCookieManager := NewCookieManager(shopID, cm.managementClient)
+		cookies, err := tempCookieManager.ParseCookieString(cookieJSON)
+		if err != nil {
+			cm.logger.Errorf("❌ Cookie解析失败: %v", err)
+			return nil, fmt.Errorf("Cookie解析失败: %w", err)
 		}
 
-		// 跳过空值Cookie
-		if cookieValue == "" {
-			continue
-		}
+		if len(cookies) > 0 {
+			httpClient = httpClient.SetCommonCookies(cookies...)
+			cm.logger.Infof("🍪 成功设置Cookie: 租户=%d, 店铺=%d, Cookie数量=%d", tenantID, shopID, len(cookies))
 
-		cookie := &http.Cookie{
-			Name:  name,
-			Value: cookieValue,
-		}
-
-		// 根据目标域名动态设置Cookie域名
-		if targetDomain == "geiwohuo.com" {
-			switch name {
-			case "accept-language", "ssoEnvDevice", "gmp_trace", "gsp_trace", "gsp_store_site",
-				"issso", "SITE_ID", "sso_login_trace":
-				cookie.Domain = "sso.geiwohuo.com"
-				cookie.Path = "/"
-			case "_ga_BY7EZRXJL2":
-				cookie.Domain = ".geiwohuo.com"
-				cookie.Path = "/"
-			case "armorUuid", "_ga", "smidV2", "zpnvSrwrNdywdz", "_ga_SJ3CWCK1VV":
-				cookie.Domain = ".geiwohuo.com"
-				cookie.Path = "/"
-			default:
-				cookie.Domain = ".geiwohuo.com"
-				cookie.Path = "/"
+			// 调试：打印前3个Cookie的名称
+			for i, cookie := range cookies {
+				if i < 3 {
+					valuePreview := cookie.Value
+					if len(valuePreview) > 10 {
+						valuePreview = valuePreview[:10] + "..."
+					}
+					cm.logger.Debugf("Cookie[%d]: %s=%s (Domain: %s)", i, cookie.Name, valuePreview, cookie.Domain)
+				}
 			}
 		} else {
-			// 自营店铺的Cookie域名设置
-			switch name {
-			case "accept-language", "ssoEnvDevice", "gmp_trace", "gsp_trace", "gsp_store_site",
-				"issso", "SITE_ID", "sso_login_trace", "_ga_BY7EZRXJL2":
-				cookie.Domain = "sellerhub.shein.com"
-				cookie.Path = "/"
-			case "armorUuid", "_ga", "smidV2", "tfstk", "zpnvSrwrNdywdz", "_ga_SJ3CWCK1VV", "sessionID_shein", "req_central_p2_dc":
-				cookie.Domain = ".shein.com"
-				cookie.Path = "/"
-			default:
-				cookie.Domain = ".shein.com"
-				cookie.Path = "/"
-			}
+			cm.logger.Warnf("⚠️ 解析后Cookie数量为0: 租户=%d, 店铺=%d", tenantID, shopID)
 		}
-
-		cookies = append(cookies, cookie)
 	}
 
-	return cookies
+	return NewShopAPIClient(baseURL, tenantID, shopID, httpClient), nil
 }

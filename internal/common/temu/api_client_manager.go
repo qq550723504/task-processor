@@ -84,36 +84,3 @@ func (m *APIClientManager) GetAllClients() map[string]*APIClient {
 
 	return clientsCopy
 }
-
-// GetTenantShopPairs 从客户端键中提取所有租户和店铺对
-func (m *APIClientManager) GetTenantShopPairs() []struct {
-	TenantID int64
-	StoreID  int64
-} {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	m.logger.Infof("APIClientManager中当前有 %d 个客户端", len(m.clients))
-
-	var pairs []struct {
-		TenantID int64
-		StoreID  int64
-	}
-
-	for key := range m.clients {
-		// 解析键格式: {tenantID}:{storeID}
-		var tenantID, storeID int64
-		if n, err := fmt.Sscanf(key, "%d:%d", &tenantID, &storeID); err == nil && n == 2 {
-			pairs = append(pairs, struct {
-				TenantID int64
-				StoreID  int64
-			}{TenantID: tenantID, StoreID: storeID})
-			m.logger.Debugf("解析到租户店铺对: 租户=%d, 店铺=%d", tenantID, storeID)
-		} else {
-			m.logger.Warnf("无法解析客户端键: %s", key)
-		}
-	}
-
-	m.logger.Infof("获取到 %d 个租户店铺对", len(pairs))
-	return pairs
-}

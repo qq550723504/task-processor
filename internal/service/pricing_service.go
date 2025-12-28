@@ -5,7 +5,8 @@ import (
 	"context"
 
 	"task-processor/internal/common/management"
-	"task-processor/internal/platforms/temu/handlers"
+	sheinHandlers "task-processor/internal/platforms/shein/handlers"
+	temuHandlers "task-processor/internal/platforms/temu/handlers"
 
 	"github.com/sirupsen/logrus"
 )
@@ -19,12 +20,13 @@ type PricingService interface {
 
 // pricingServiceImpl 核价服务实现
 type pricingServiceImpl struct {
-	logger                 *logrus.Logger
-	managementClient       *management.ClientManager
-	temuAutoPricingHandler *handlers.AutoPricingHandler
-	ctx                    context.Context
-	cancel                 context.CancelFunc
-	running                bool
+	logger                  *logrus.Logger
+	managementClient        *management.ClientManager
+	temuAutoPricingHandler  *temuHandlers.AutoPricingHandler
+	sheinAutoPricingHandler *sheinHandlers.AutoPricingHandler
+	ctx                     context.Context
+	cancel                  context.CancelFunc
+	running                 bool
 }
 
 // NewPricingService 创建核价服务

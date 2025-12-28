@@ -3,66 +3,35 @@ package shein
 
 import (
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/platforms/shein/client/api/marketing"
+	"task-processor/internal/common/shein/api/marketing"
+	"task-processor/internal/common/shein/service"
 )
 
-// CostProfitCalculator 成本利润计算器
-type CostProfitCalculator struct{}
+// CostProfitCalculator 成本利润计算器（适配器模式）
+type CostProfitCalculator struct {
+	calculator *service.CostProfitCalculator
+}
 
 // NewCostProfitCalculator 创建成本利润计算器
 func NewCostProfitCalculator() *CostProfitCalculator {
-	return &CostProfitCalculator{}
+	return &CostProfitCalculator{
+		calculator: service.NewCostProfitCalculator(),
+	}
 }
 
 // CalculateCostAndProfit 计算成本价和利润率
 func (c *CostProfitCalculator) CalculateCostAndProfit(product marketing.SkcInfo) (costPrice, profitRate float64) {
-	// 基于供货价格计算成本价（假设成本价为供货价格的85%）
-	costPrice = product.SupplyPrice * 0.85
-
-	// 计算平均销售价格
-	avgSalePrice := c.calculateAverageSalePrice(product.SitePriceInfoList)
-
-	// 计算利润率：(销售价格 - 成本价) / 成本价 * 100
-	if costPrice > 0 && avgSalePrice > costPrice {
-		profitRate = ((avgSalePrice - costPrice) / costPrice) * 100
-	}
-
-	return costPrice, profitRate
-}
-
-// calculateAverageSalePrice 计算平均销售价格
-func (c *CostProfitCalculator) calculateAverageSalePrice(sitePrices []marketing.SitePriceInfo) float64 {
-	if len(sitePrices) == 0 {
-		return 0
-	}
-
-	var totalPrice float64
-	var validPriceCount int
-
-	for _, sitePrice := range sitePrices {
-		if sitePrice.IsAvailable && sitePrice.SalePrice > 0 {
-			totalPrice += sitePrice.SalePrice
-			validPriceCount++
-		}
-	}
-
-	if validPriceCount == 0 {
-		return 0
-	}
-
-	return totalPrice / float64(validPriceCount)
+	return c.calculator.CalculateCostAndProfit(product)
 }
 
 // EnrichActivityProductWithCostProfit 为活动产品添加成本利润信息
 func (c *CostProfitCalculator) EnrichActivityProductWithCostProfit(product *api.ActivityProductDTO, skcInfo marketing.SkcInfo) {
-	costPrice, profitRate := c.CalculateCostAndProfit(skcInfo)
-	product.CostPrice = costPrice
-	product.ProfitRate = profitRate
+	enricher := service.NewActivityEnricher()
+	enricher.EnrichActivityProductWithCostProfit(product, skcInfo)
 }
 
 // EnrichRegistrationWithCostProfit 为报名记录添加成本利润信息
 func (c *CostProfitCalculator) EnrichRegistrationWithCostProfit(registration *api.ActivityRegistrationDTO, skcInfo marketing.SkcInfo) {
-	costPrice, profitRate := c.CalculateCostAndProfit(skcInfo)
-	registration.CostPrice = costPrice
-	registration.ProfitRate = profitRate
+	enricher := service.NewActivityEnricher()
+	enricher.EnrichRegistrationWithCostProfit(registration, skcInfo)
 }

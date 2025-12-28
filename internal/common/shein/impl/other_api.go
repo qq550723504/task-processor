@@ -64,6 +64,7 @@ func (o *OtherAPI) BatchCheckOnWay(spuNameList []string) (*other.BatchCheckOnWay
 			SkcName    string `json:"skc_name"`
 			DocumentSn string `json:"document_sn"`
 		} `json:"info"`
+		BBL any `json:"bbl"`
 	}
 
 	if err := o.apiRequest(http.MethodPost, url, reqBody, &result); err != nil {

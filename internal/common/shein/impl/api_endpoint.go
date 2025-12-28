@@ -5,6 +5,7 @@ const (
 	apiPrefix  = "/spmp-api-prefix/spmp"
 	dpasPrefix = "/dpas-api-prefix/dpas"
 	ssoPrefix  = "/sso-prefix"
+	mbrsPrefix = "/mrs-api-prefix/mbrs"
 	//certificateRuleEndpoint        = apiPrefix + "/certificate/get_certificate_rule"
 	productRecordEndpoint          = apiPrefix + "/product/publish/record/page_list"
 	batchCheckOnWayEndpoint        = apiPrefix + "/document/web/batch_check_on_way"
@@ -35,4 +36,8 @@ const (
 	queryInventoryEndpoint         = apiPrefix + "/product/inventory/query"
 	updateInventoryEndpoint        = apiPrefix + "/product/inventory/update"
 	operateShelfStatusEndpoint     = apiPrefix + "/product/operate_Shelf_status"
+
+	getAvailableSkcListEndpoint = mbrsPrefix + "/activity/auto_partake/get_available_skc_list"
+	saveConfigEndpoint          = mbrsPrefix + "/activity/auto_partake/save_config"
+	getConfigListEndpoint       = mbrsPrefix + "/activity/auto_partake/get_config_list"
 )

@@ -17,6 +17,7 @@ type ShopAPIClient struct {
 	*impl.CategoryAPI
 	*impl.PricingAPI
 	*impl.ImageAPI
+	*impl.MarketingAPI
 	*impl.OtherAPI
 }
 
@@ -33,6 +34,7 @@ func NewShopAPIClient(baseURL string, tenantID, shopID int64, httpClient *req.Cl
 	categoryAPI := impl.NewCategoryAPI(baseClient)
 	pricingAPI := impl.NewPricingAPI(baseClient)
 	imageAPI := impl.NewImageAPI(baseClient)
+	marketingAPI := impl.NewMarketingAPI(baseClient)
 	otherAPI := impl.NewOtherAPI(baseClient)
 
 	return &ShopAPIClient{
@@ -44,6 +46,7 @@ func NewShopAPIClient(baseURL string, tenantID, shopID int64, httpClient *req.Cl
 		CategoryAPI:   categoryAPI,
 		PricingAPI:    pricingAPI,
 		ImageAPI:      imageAPI,
+		MarketingAPI:  marketingAPI,
 		OtherAPI:      otherAPI,
 	}
 }

@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"task-processor/internal/config"
-	"task-processor/internal/platforms/temu/handlers"
+	sheinHandlers "task-processor/internal/platforms/shein/handlers"
+	temuHandlers "task-processor/internal/platforms/temu/handlers"
 )
 
 // initializePricingResources 初始化核价资源
@@ -57,7 +58,7 @@ func (s *pricingServiceImpl) startTemuPricingHandler(cfg *config.Config) error {
 	s.logger.Info("启动TEMU核价处理器...")
 
 	// 创建TEMU核价处理器
-	s.temuAutoPricingHandler = handlers.NewAutoPricingHandler(s.managementClient, cfg.Management.StoreIDs)
+	s.temuAutoPricingHandler = temuHandlers.NewAutoPricingHandler(s.managementClient, cfg.Management.StoreIDs)
 
 	// 启动核价处理器
 	autoPricingInterval := time.Duration(cfg.Platforms.Temu.AutoPricing.Interval) * time.Second
@@ -79,7 +80,16 @@ func (s *pricingServiceImpl) startSheinPricingHandler(cfg *config.Config) error 
 	}
 
 	s.logger.Info("启动SHEIN核价处理器...")
-	s.logger.Info("✅ SHEIN核价处理器启动完成（功能待实现）")
+	// 创建SHEIN核价处理器
+	s.sheinAutoPricingHandler = sheinHandlers.NewAutoPricingHandler(s.managementClient, cfg.Management.StoreIDs)
 
+	// 启动核价处理器
+	autoPricingInterval := time.Duration(cfg.Platforms.Shein.AutoPricing.Interval) * time.Second
+	if autoPricingInterval <= 0 {
+		autoPricingInterval = 30 * time.Minute
+	}
+
+	s.logger.Infof("启动SHEIN自动核价处理器，间隔: %v", autoPricingInterval)
+	go s.sheinAutoPricingHandler.Start(s.ctx, autoPricingInterval)
 	return nil
 }
