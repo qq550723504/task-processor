@@ -24,18 +24,35 @@ func (p *PromptBuilder) BuildSystemPrompt() string {
 📝 智能推理填充：基于产品类型和常识进行合理的属性推断
 
 【🚨 严格约束 - 违反将导致失败】
-1. **RefPID唯一性**：每个RefPID在结果中只能出现指定次数
+1. **必填属性绝对不能跳过**：
+   - ✅ **所有必填属性都必须填充**，即使找不到完美匹配
+   - 🎯 **降级匹配策略**：精确匹配 → 模糊匹配 → 中性选项 → 第一个选项
+   - ❌ **绝对禁止跳过任何必填属性**
+
+2. **条件依赖属性强制处理**：
+   - 🔗 **识别条件依赖**：检查template_property_value_parent_list字段
+   - 🔍 **父属性检查**：确认父属性是否已填充且值正确
+   - ⚠️ **子属性约束**：子属性值必须在父属性约束的范围内
+   - 🚨 **条件必填规则**：当父属性满足条件时，子属性立即变为必填
+   - 📋 **处理流程**：
+     * 填充父属性 → 检查是否触发条件依赖 → 强制填充对应的子属性
+
+3. **RefPID唯一性**：每个RefPID在结果中只能出现指定次数
    - 单选属性（最大选择数量=1）：该RefPID只能出现1次
    - 多选属性（最大选择数量=N）：该RefPID最多出现N次
 
-2. **选择类型属性规则**：
+4. **选择类型属性规则**：
    - ❌ **绝对禁止使用VID=0**
    - ❌ **绝对禁止自创任何值**（如"Other"、"不适用"、"Unknown"等）
    - ✅ **必须从可选值列表中选择**，使用对应的VID（VID > 0）
-   - 🎯 **选择策略**：优先选择列表中的"不适用"、"无"、"其他"、"混合"等中性选项
+   - 🎯 **选择策略**：精确匹配 → 包含匹配 → 中性选项（"不适用"、"无"、"其他"、"混合"）→ 第一个选项
 
 【属性填充策略】
-- **必填属性**：100%必须填写
+- **必填属性**：🚨 **100%必须填写，绝对不能跳过**
+  * 找到精确匹配 → 使用精确匹配
+  * 找到模糊匹配 → 使用最佳模糊匹配
+  * 找不到匹配 → 使用中性选项（"其他"、"不适用"、"无"、"混合"等）
+  * 没有中性选项 → 使用第一个可选值
 - **重要可选属性**：积极填写（材质、颜色、尺寸、重量、风格、场景、用途、品牌、型号、功能特性等）
 - **一般可选属性**：有明确信息时填写
 - **不相关属性**：确实无关时才跳过
@@ -43,7 +60,8 @@ func (p *PromptBuilder) BuildSystemPrompt() string {
 【信息提取优先级】
 1️⃣ **直接提取**：从标题、描述、特性、产品详情中直接获取
 2️⃣ **智能推理**：根据产品类型推断相关属性
-3️⃣ **常识填充**：使用合理的默认值
+3️⃣ **模糊匹配**：当找不到精确匹配时，选择最相近的选项
+4️⃣ **降级填充**：使用中性选项或第一个可选值确保必填属性不为空
 
 【特殊属性处理】
 - **材质属性**：必须与产品标题/描述中的材质描述完全一致
@@ -63,11 +81,13 @@ func (p *PromptBuilder) BuildSystemPrompt() string {
 对于数值输入属性，还需包含：number_input_value
 
 【最终检查清单】
+✅ **所有必填属性都已填充**（这是最重要的检查项）
+✅ **所有条件依赖属性都已正确处理**（当父属性满足条件时，子属性必须填充）
 ✅ 每个RefPID出现次数不超过其最大选择数量
-✅ 所有必填属性都有值
 ✅ 选择类型属性使用了正确的VID（>0）且值在可选列表中
+✅ 条件依赖的子属性值在父属性约束的范围内
 ✅ 尽可能多的可选属性被填充
-✅ 材质选择与标题/描述严格一致
+✅ 当找不到精确匹配时，使用了合理的降级选项
 ✅ 绝对没有自创任何不在可选列表中的值`
 }
 
@@ -127,8 +147,30 @@ func (p *PromptBuilder) BuildUserPrompt(data types.PropertyMappingData) string {
 			requiredMark = "⭕可选"
 		}
 
-		builder.WriteString(fmt.Sprintf("%d. %s%s %s %s\n", i+1, constraintIcon, prop.Name, requiredMark, selectionDesc))
+		// 条件依赖标记
+		conditionMark := ""
+		if prop.ParentTemplatePID > 0 || len(prop.TemplatePropertyValueParentList) > 0 {
+			conditionMark = "🔗条件依赖"
+			if prop.Required {
+				requiredMark = "🔗条件必填"
+			}
+		}
+
+		builder.WriteString(fmt.Sprintf("%d. %s%s %s %s %s\n", i+1, constraintIcon, prop.Name, requiredMark, conditionMark, selectionDesc))
 		builder.WriteString(fmt.Sprintf("   PID=%d | RefPID=%d | 类型=%d | 控制类型=%d\n", prop.PID, prop.RefPID, prop.PropertyValueType, prop.ControlType))
+
+		// 添加条件依赖说明
+		if prop.ParentTemplatePID > 0 {
+			builder.WriteString(fmt.Sprintf("   🔗 依赖父属性: template_pid=%d\n", prop.ParentTemplatePID))
+		}
+		if len(prop.TemplatePropertyValueParentList) > 0 {
+			builder.WriteString("   🔗 条件约束: 只有当父属性为特定值时才需要填充\n")
+			for _, parentList := range prop.TemplatePropertyValueParentList {
+				if len(parentList.ParentVIDs) > 0 {
+					builder.WriteString(fmt.Sprintf("   🔗 父条件VID: %v\n", parentList.ParentVIDs))
+				}
+			}
+		}
 
 		// 特殊说明数值输入属性
 		if prop.ControlType == 16 {
@@ -189,15 +231,22 @@ func (p *PromptBuilder) BuildUserPrompt(data types.PropertyMappingData) string {
    - **供电**：根据产品判断（LED/电器→对应供电方式，装饰品→无需供电）
 
 【填充原则】
-- ✅必填属性：100%必须填写
-- ⭕可选属性：能填的尽量填，提高信息完整度
-- 🚨选择约束：必须使用有效VID（>0），严禁自创值
+- 🚨**必填属性**：**绝对不能跳过**，必须使用降级匹配策略
+  * 精确匹配 → 模糊匹配 → 中性选项 → 第一个选项
+- 🔗**条件依赖属性**：**当父属性满足条件时立即变为必填**
+  * 检查template_property_value_parent_list → 确认父属性VID → 从约束范围选择子属性值
+  * 例如：Power Mode选择"USB Charging"时，Operating Voltage必须从[≤36V, 120V, 125V等]中选择
+- ⭕**可选属性**：能填的尽量填，提高信息完整度
+- 🎯**匹配策略**：优先精确匹配，找不到时使用最相近选项
+- 🚨**选择约束**：必须使用有效VID（>0），严禁自创值
 
 【最终检查】
+🚨 **所有必填属性都已填充**（最重要！）
+🔗 **所有条件依赖属性都已正确处理**（父属性触发时子属性必填）
 ✅ RefPID出现次数符合限制
-✅ 必填属性都有值  
 ✅ 选择类型属性VID>0且在可选列表中
-✅ 材质选择与描述一致
+✅ 条件依赖的子属性值在父属性约束范围内
+✅ 使用了合理的降级匹配策略
 ✅ 没有自创任何值
 
 请返回JSON格式：{"properties": [...]}`)

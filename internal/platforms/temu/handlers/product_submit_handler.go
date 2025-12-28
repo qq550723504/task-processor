@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
+	"time"
 )
 
 // ProductSubmitHandler 产品提交处理器
@@ -197,6 +198,9 @@ func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContex
 	if !response.Success {
 		h.logger.Errorf("TEMU API响应失败: success=%v, error_code=%d, error_message=%v", response.Success, response.ErrorCode, response.Message)
 
+		// 🔍 简单记录错误信息用于分析
+		h.logErrorForAnalysis(temuCtx, response.ErrorCode, response.Message)
+
 		// 检查是否为不可重试的错误
 		if h.isNonRetryableError(response.ErrorCode, response.Message) {
 			h.logger.Errorf("❌ 检测到不可重试错误(error_code=%d): %s", response.ErrorCode, response.Message)
@@ -339,6 +343,71 @@ func (h *ProductSubmitHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
 	}
 
 	return result, nil
+}
+
+// logErrorForAnalysis 记录错误信息和模板数据用于分析
+func (h *ProductSubmitHandler) logErrorForAnalysis(temuCtx *temucontext.TemuTaskContext, errorCode int, errorMessage string) {
+	// 解析错误消息中的必填属性
+	if strings.Contains(errorMessage, "keyword attribute") && strings.Contains(errorMessage, "required") {
+		start := strings.Index(errorMessage, "[")
+		end := strings.Index(errorMessage, "]")
+		if start != -1 && end != -1 && end > start {
+			requiredProps := errorMessage[start+1 : end]
+			h.logger.Warnf("🔍 TEMU API要求的必填属性: %s", requiredProps)
+
+			// 保存模板数据用于分析
+			if err := h.saveTemplateDataForError(temuCtx, errorCode, errorMessage, requiredProps); err != nil {
+				h.logger.Errorf("保存模板数据失败: %v", err)
+			}
+		}
+	}
+}
+
+// saveTemplateDataForError 保存模板数据用于错误分析
+func (h *ProductSubmitHandler) saveTemplateDataForError(temuCtx *temucontext.TemuTaskContext, errorCode int, errorMessage string, requiredProps string) error {
+	// 获取模板信息
+	templateInfo, exists := GetTemplateInfoFromContext(temuCtx)
+	if !exists {
+		h.logger.Warn("未找到模板信息，无法保存模板数据")
+		return nil
+	}
+
+	// 构建分析数据
+	analysisData := map[string]any{
+		"timestamp":       time.Now().Format("2006-01-02 15:04:05"),
+		"error_code":      errorCode,
+		"error_message":   errorMessage,
+		"required_by_api": strings.Split(requiredProps, ", "),
+		"product_info": map[string]any{
+			"out_goods_sn": temuCtx.TemuProduct.GoodsBasic.OutGoodsSN,
+			"goods_name":   temuCtx.TemuProduct.GoodsBasic.GoodsName,
+			"cat_id":       temuCtx.TemuProduct.GoodsBasic.CatID,
+		},
+		"template_info": map[string]any{
+			"template_id":      templateInfo.TemplateID,
+			"goods_properties": templateInfo.GoodsProperties,
+		},
+		"current_properties": temuCtx.TemuProduct.GoodsExtensionInfo.GoodsProperty.GoodsProperties,
+	}
+
+	// 序列化数据
+	jsonData, err := h.marshalWithoutHTMLEscape(analysisData)
+	if err != nil {
+		return fmt.Errorf("序列化模板分析数据失败: %w", err)
+	}
+
+	// 保存到文件
+	filename := fmt.Sprintf("template_error_%s_%s.json",
+		temuCtx.TemuProduct.GoodsBasic.OutGoodsSN,
+		time.Now().Format("20060102_150405"))
+	filePath := filepath.Join("logs", filename)
+
+	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
+		return fmt.Errorf("写入模板分析文件失败: %w", err)
+	}
+
+	h.logger.Infof("🔍 模板错误分析数据已保存到文件: %s", filePath)
+	return nil
 }
 
 // saveJSONToFile 保存JSON数据到文件

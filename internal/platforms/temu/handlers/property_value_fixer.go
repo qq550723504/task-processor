@@ -39,20 +39,22 @@ func (f *PropertyValueFixer) FixInvalidSelectionValue(
 		fixedProp := prop
 		fixedProp.Vid = validVID
 		fixedProp.Value = validValue
+		f.logger.Infof("✅ 属性值验证通过: PID=%d, Value='%s', VID=%d",
+			fixedProp.Pid, fixedProp.Value, fixedProp.Vid)
 		return &fixedProp
 	}
 
 	// 值无效，需要修复
-	f.logger.Warnf("⚠️ 检测到无效属性值，开始修复: PID=%d, 属性名='%s'",
-		prop.Pid, templateProp.Name)
+	f.logger.Warnf("⚠️ 检测到无效属性值，开始修复: PID=%d, 属性名='%s', 当前值='%s', 当前VID=%d",
+		prop.Pid, templateProp.Name, prop.Value, prop.Vid)
 
 	// 尝试智能匹配
 	if matchedValue := f.tryIntelligentMatch(prop, templateProp); matchedValue != nil {
 		fixedProp := prop
 		fixedProp.Vid = matchedValue.VID
 		fixedProp.Value = matchedValue.Value
-		f.logger.Infof("🎯 智能匹配成功: '%s' → '%s' (VID=%d)",
-			prop.Value, matchedValue.Value, matchedValue.VID)
+		f.logger.Infof("🎯 智能匹配成功: PID=%d, '%s' (VID=%d) → '%s' (VID=%d)",
+			prop.Pid, prop.Value, prop.Vid, matchedValue.Value, matchedValue.VID)
 		return &fixedProp
 	}
 
@@ -62,8 +64,8 @@ func (f *PropertyValueFixer) FixInvalidSelectionValue(
 	fixedProp.Vid = defaultValue.VID
 	fixedProp.Value = defaultValue.Value
 
-	f.logger.Warnf("🔧 使用默认值修复: PID=%d, '%s' → '%s' (VID=%d)",
-		prop.Pid, prop.Value, defaultValue.Value, defaultValue.VID)
+	f.logger.Warnf("🔧 智能匹配失败，使用默认值修复: PID=%d, '%s' (VID=%d) → '%s' (VID=%d)",
+		prop.Pid, prop.Value, prop.Vid, defaultValue.Value, defaultValue.VID)
 
 	return &fixedProp
 }
@@ -286,9 +288,42 @@ func (f *PropertyValueFixer) FixAllInvalidProperties(
 			if fixedProp.Value != prop.Value || fixedProp.Vid != prop.Vid {
 				fixedCount++
 			}
+		} else if templateProp.Required {
+			// 🚨 必填属性不能跳过，强制提供默认值
+			f.logger.Warnf("🚨 必填属性修复失败，强制使用默认值: %s (PID=%d)", templateProp.Name, templateProp.PID)
+			defaultProp := f.forceCreateValidProperty(prop, templateProp)
+			if defaultProp != nil {
+				fixedProperties = append(fixedProperties, *defaultProp)
+				fixedCount++
+			}
 		}
 	}
 
 	f.logger.Infof("✅ 属性修复完成: 总数=%d, 修复=%d", len(properties), fixedCount)
 	return fixedProperties
+}
+
+// forceCreateValidProperty 强制为必填属性创建有效值
+func (f *PropertyValueFixer) forceCreateValidProperty(
+	prop types.PropertyItem,
+	templateProp types.TemplateRespGoodsProperty,
+) *types.PropertyItem {
+	f.logger.Warnf("🚨 强制为必填属性创建有效值: %s (PID=%d)", templateProp.Name, templateProp.PID)
+
+	if len(templateProp.Values) == 0 {
+		f.logger.Errorf("❌ 必填属性没有可选值列表: %s", templateProp.Name)
+		return nil
+	}
+
+	// 选择最佳默认值
+	defaultValue := f.selectBestDefaultValue(templateProp)
+
+	validProp := prop
+	validProp.Vid = defaultValue.VID
+	validProp.Value = defaultValue.Value
+
+	f.logger.Infof("✅ 必填属性强制修复完成: %s → '%s' (VID=%d)",
+		templateProp.Name, defaultValue.Value, defaultValue.VID)
+
+	return &validProp
 }

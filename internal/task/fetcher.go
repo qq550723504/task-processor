@@ -49,8 +49,13 @@ func NewUnifiedTaskFetcher(
 func (f *TaskFetcher) Start(ctx context.Context) {
 	logrus.Infof("统一任务获取器启动，间隔: %v", f.interval)
 
-	// 启动定期清理过期任务的协程
-	go f.cleanupExpiredTasks(ctx)
+	// 创建统一服务
+	cleanupService := NewCleanupService(f, f.config)
+	monitorService := NewMonitorService(f)
+
+	// 启动统一服务
+	go cleanupService.Start(ctx)
+	go monitorService.StartMonitoring(ctx)
 
 	// 启动时立即执行一次任务获取
 	logrus.Info("🚀 启动时立即执行首次任务获取")

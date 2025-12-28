@@ -30,6 +30,7 @@ type AIPropertyMapper struct {
 	statsCollector     *PropertyValidationStatsCollector
 	deduplicator       *PropertyDeduplicator
 	selectionValidator *PropertySelectionValidator
+	propertyGuardian   *RequiredPropertyGuardian
 }
 
 // NewAIPropertyMapper 创建新的AI属性映射器
@@ -53,6 +54,7 @@ func NewAIPropertyMapper(logger *logrus.Entry, openaiClient *openaiClient.Client
 	statsCollector := NewPropertyValidationStatsCollector(logger)
 	deduplicator := NewPropertyDeduplicator(logger)
 	selectionValidator := NewPropertySelectionValidator(logger)
+	propertyGuardian := NewRequiredPropertyGuardian(logger)
 
 	return &AIPropertyMapper{
 		logger:             logger,
@@ -65,6 +67,7 @@ func NewAIPropertyMapper(logger *logrus.Entry, openaiClient *openaiClient.Client
 		statsCollector:     statsCollector,
 		deduplicator:       deduplicator,
 		selectionValidator: selectionValidator,
+		propertyGuardian:   propertyGuardian,
 	}
 }
 
@@ -202,6 +205,12 @@ func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskCon
 	missingRequired := m.verifyAndFillMissingRequired(templateInfo.GoodsProperties, ext)
 	if missingRequired > 0 {
 		m.logger.Warnf("⚠️ AI遗漏了%d个必填属性，已用默认值补充", missingRequired)
+	}
+
+	// 🛡️ 最终保障：使用属性守护者进行全面的必填属性检查
+	if err := m.propertyGuardian.GuardAllRequiredProperties(templateInfo.GoodsProperties, ext); err != nil {
+		m.logger.WithError(err).Error("❌ 必填属性保障失败")
+		return fmt.Errorf("必填属性保障失败: %w", err)
 	}
 
 	m.logger.Infof("✅ AI属性映射完成，共处理 %d 个属性（必填=%d, 可选=%d）",

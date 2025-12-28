@@ -69,6 +69,12 @@ func (f *DefaultPropertyFiller) getDefaultValueForProperty(templateProp types.Te
 		return f.getDefaultNumberInputSelectionValue(templateProp)
 	}
 
+	// 处理PropertyValueType为0但有Values的属性（通常是选择类型）
+	if templateProp.PropertyValueType == 0 && len(templateProp.Values) > 0 {
+		f.logger.Infof("🔧 处理PropertyValueType=0但有Values的属性: %s", templateProp.Name)
+		return f.getDefaultSelectionValue(templateProp)
+	}
+
 	switch templateProp.PropertyValueType {
 	case 1: // 文本类型
 		return f.getDefaultTextValue(templateProp)
@@ -77,7 +83,11 @@ func (f *DefaultPropertyFiller) getDefaultValueForProperty(templateProp types.Te
 	case 3: // 选择类型
 		return f.getDefaultSelectionValue(templateProp)
 	default:
-		f.logger.Warnf("⚠️ 未知的属性值类型: %d", templateProp.PropertyValueType)
+		f.logger.Warnf("⚠️ 未知的属性值类型: %d，尝试作为选择类型处理", templateProp.PropertyValueType)
+		// 如果有可选值，尝试作为选择类型处理
+		if len(templateProp.Values) > 0 {
+			return f.getDefaultSelectionValue(templateProp)
+		}
 		return nil
 	}
 }
@@ -110,22 +120,68 @@ func (f *DefaultPropertyFiller) getDefaultNumericValue(templateProp types.Templa
 func (f *DefaultPropertyFiller) getDefaultSelectionValue(templateProp types.TemplateRespGoodsProperty) *types.PropertyItem {
 	// 优先使用第一个候选值
 	if len(templateProp.Values) > 0 {
+		// 如果有父条件依赖，需要选择匹配的值
+		selectedValue := f.selectValueBasedOnParentCondition(templateProp)
+		if selectedValue != nil {
+			return &types.PropertyItem{
+				Pid:              templateProp.PID,
+				RefPid:           templateProp.RefPID,
+				TemplatePid:      templateProp.TemplatePID,
+				TemplateModuleID: templateProp.TemplateModuleID,
+				Vid:              selectedValue.VID,
+				Value:            selectedValue.Value,
+			}
+		}
+
+		// 如果没有找到匹配的值，使用第一个候选值
 		firstCandidate := templateProp.Values[0]
 		return &types.PropertyItem{
-			Pid:    templateProp.PID,
-			RefPid: templateProp.RefPID,
-			Vid:    firstCandidate.VID,
-			Value:  firstCandidate.Value,
+			Pid:              templateProp.PID,
+			RefPid:           templateProp.RefPID,
+			TemplatePid:      templateProp.TemplatePID,
+			TemplateModuleID: templateProp.TemplateModuleID,
+			Vid:              firstCandidate.VID,
+			Value:            firstCandidate.Value,
 		}
 	}
 
 	// 如果没有候选值，生成通用默认值
 	return &types.PropertyItem{
-		Pid:    templateProp.PID,
-		RefPid: templateProp.RefPID,
-		Vid:    1, // 通用默认VID
-		Value:  "默认值",
+		Pid:              templateProp.PID,
+		RefPid:           templateProp.RefPID,
+		TemplatePid:      templateProp.TemplatePID,
+		TemplateModuleID: templateProp.TemplateModuleID,
+		Vid:              1, // 通用默认VID
+		Value:            "Default",
 	}
+}
+
+// selectValueBasedOnParentCondition 根据父条件选择合适的值
+func (f *DefaultPropertyFiller) selectValueBasedOnParentCondition(templateProp types.TemplateRespGoodsProperty) *types.PropertyValue {
+	// 如果没有父条件依赖，返回nil
+	if len(templateProp.TemplatePropertyValueParentList) == 0 {
+		return nil
+	}
+
+	f.logger.Infof("🔍 为属性 %s 根据父条件选择合适的值", templateProp.Name)
+
+	// 这里简化处理：选择第一个有效的值
+	// 在实际应用中，应该根据已填充的父属性值来选择
+	for _, parentList := range templateProp.TemplatePropertyValueParentList {
+		if len(parentList.VIDs) > 0 {
+			// 查找对应的值
+			for _, value := range templateProp.Values {
+				for _, vid := range parentList.VIDs {
+					if value.VID == vid {
+						f.logger.Infof("✅ 选择了匹配父条件的值: %s (vid=%d)", value.Value, value.VID)
+						return &value
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // getDefaultNumberInputSelectionValue 获取需要数值输入的选择类型默认值（control_type: 16）
@@ -223,19 +279,19 @@ func (f *DefaultPropertyFiller) generateDefaultTextByName(name string) string {
 	// 根据常见属性名生成合适的默认值
 	switch name {
 	case "品牌", "Brand", "brand":
-		return "无品牌"
+		return "No Brand"
 	case "型号", "Model", "model":
-		return "通用型号"
+		return "General"
 	case "颜色", "Color", "color":
-		return "多色"
+		return "mulite-color"
 	case "尺寸", "Size", "size":
-		return "均码"
+		return "one-size"
 	case "材质", "Material", "material":
-		return "其他材质"
+		return "other"
 	case "产地", "Origin", "origin":
-		return "中国"
+		return "China"
 	default:
-		return fmt.Sprintf("默认%s", name)
+		return fmt.Sprintf("Default%s", name)
 	}
 }
 

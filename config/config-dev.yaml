@@ -8,11 +8,14 @@ processor:
 
 # Worker配置
 worker:
-  concurrency: 5           # 1个并发worker
-  bufferSize: 5            # 队列大小5（避免单任务就触发阈值）
+  concurrency: 1           # 并发worker数量
+  bufferSize: 9           # 队列大小增加到20，提供更多缓冲空间
   taskInterval: 30         # 30秒获取一次任务
-  maxFetchPerCycle: 5      # 单次最多获取1个任务
-  queueThreshold: 80       # 队列使用率阈值80%（提高阈值）
+  maxFetchPerCycle: 3      # 单次最多获取3个任务，避免突发压力
+  queueThreshold: 65       # 队列使用率阈值降低到65%，更早触发保护
+  cleanupInterval: 300     # 清理间隔2分钟，更频繁清理
+  taskTimeout: 900         # 任务超时15分钟，更合理的超时时间
+  forceCleanupAfter: 1800  # 30分钟强制清理阈值（秒）
 
 # OpenAI配置
 openai:
@@ -30,13 +33,13 @@ management:
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [413]  # 店铺ID列表
+  storeIDs: [621]  # 店铺ID列表
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
   # TEMU 平台配置
   temu:
-    enabled: false  # 是否启用TEMU处理器
+    enabled: true  # 是否启用TEMU处理器
     # 自动定价配置
     autoPricing:
       enabled: false
@@ -62,7 +65,7 @@ platforms:
     enabled: false  # 是否启用SHEIN处理器
     # 自动定价配置
     autoPricing:
-      enabled: true
+      enabled: false
       interval: 300     # 5分钟
       batchSize: 100
     # 产品同步配置
@@ -88,7 +91,7 @@ amazon:
   enabled: true
   headless: true  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
-  poolSize: 10     # 浏览器池大小，同时也是并发处理数
+  poolSize: 3     # 浏览器池大小，同时也是并发处理数
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
