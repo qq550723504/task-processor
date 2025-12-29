@@ -118,6 +118,52 @@ func (c *APIClient) GetCookieCount() int {
 	return len(c.cookies)
 }
 
+// GetCookieValue 获取指定名称的Cookie值
+func (c *APIClient) GetCookieValue(name string) string {
+	for _, cookie := range c.cookies {
+		if cookie.Name == name {
+			return cookie.Value
+		}
+	}
+	return ""
+}
+
+// GetMallID 从Cookie中获取MALL_ID
+func (c *APIClient) GetMallID() string {
+	return c.GetCookieValue("MALL_ID")
+}
+
+// SetCookieValue 设置指定名称的Cookie值
+func (c *APIClient) SetCookieValue(name, value string) {
+	// 查找并更新现有Cookie
+	for _, cookie := range c.cookies {
+		if cookie.Name == name {
+			cookie.Value = value
+			c.logger.Infof("更新Cookie %s 的值为: %s", name, value)
+			// 更新req客户端的Cookie
+			c.client.SetCommonCookies(c.cookies...)
+			return
+		}
+	}
+
+	// 如果Cookie不存在，创建新的Cookie
+	newCookie := &http.Cookie{
+		Name:   name,
+		Value:  value,
+		Domain: ".temu.com",
+		Path:   "/",
+	}
+	c.cookies = append(c.cookies, newCookie)
+	c.logger.Infof("创建新Cookie %s 的值为: %s", name, value)
+	// 更新req客户端的Cookie
+	c.client.SetCommonCookies(c.cookies...)
+}
+
+// SetMallID 设置Cookie中的MALL_ID
+func (c *APIClient) SetMallID(mallID string) {
+	c.SetCookieValue("MALL_ID", mallID)
+}
+
 // SendTEMURequest 发送TEMU API请求（带Cookie检查和重试逻辑）
 func (c *APIClient) SendTEMURequest(request map[string]any, result any) error {
 	return c.authManager.SendRequestWithAuth(c, request, result)

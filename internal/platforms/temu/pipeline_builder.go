@@ -36,11 +36,11 @@ func (pb *PipelineBuilder) BuildPipeline() *TemuPipelineExecutor {
 	// 添加所有处理器（使用强类型适配器）
 	pb.addCommonHandlers(p)   // 0: 公共处理器
 	pb.addInitHandlers(p)     // 1-5: 初始化和数据获取
-	pb.addFilterHandlers(p)   // 6-11: 筛选和验证
-	pb.addCategoryHandlers(p) // 12-18: 分类和SKU处理
-	pb.addImageHandlers(p)    // 19-25: 图片处理和AI映射
-	pb.addContentHandlers(p)  // 26-28: 内容构建和优化
-	pb.addSubmitHandlers(p)   // 29-31: 提交和保存
+	pb.addFilterHandlers(p)   // 6-12: 筛选和验证
+	pb.addCategoryHandlers(p) // 13-19: 分类和SKU处理
+	pb.addImageHandlers(p)    // 20-26: 图片处理和AI映射
+	pb.addContentHandlers(p)  // 27-29: 内容构建和优化
+	pb.addSubmitHandlers(p)   // 30-32: 提交和保存
 
 	// 返回TEMU专用执行器
 	return NewTemuPipelineExecutor(p)
@@ -67,31 +67,32 @@ func (pb *PipelineBuilder) addInitHandlers(p pipeline.Pipeline) {
 							AddHandler(handlers.NewProductExistsCheckHandler(managementClient.GetProductImportMappingClient()))                                // 5. 产品存在性检查（TEMU特定）
 }
 
-// addFilterHandlers 添加筛选和验证阶段处理器（6-11）
+// addFilterHandlers 添加筛选和验证阶段处理器（6-12）
 func (pb *PipelineBuilder) addFilterHandlers(p pipeline.Pipeline) {
 	managementClient := pb.processor.GetManagementClient()
 	amazonConfig := &pb.processor.GetConfig().Amazon
 
 	p.AddHandler(handlers.NewFilterRuleHandler(managementClient.GetFilterRuleClient())). // 6. 主产品筛选规则检查
-												AddHandler(handlers.NewTextCheckHandler()).                                                                                          // 7. 文本检查
-												AddHandler(handlers.NewParallelVariantHandler(managementClient.GetRawJsonDataClient(), amazonConfig, pb.processor.amazonProcessor)). // 8. 并行获取变体JSON数据（使用poolSize作为并发数）
-												AddHandler(handlers.NewCacheVariantsHandler(managementClient.GetRawJsonDataClient(), amazonConfig, pb.processor.amazonProcessor)).   // 9. 缓存变体数据
-												AddHandler(handlers.NewVariantFilterHandler(managementClient.GetFilterRuleClient())).                                                // 10. 变体筛选规则检查
-												AddHandler(handlers.NewCheckDailyLimitHandler(pb.processor.GetMemoryManager()))                                                      // 11. 检查每日上架限制
+												AddHandler(handlers.NewStoreIDHandler(managementClient.GetStoreClient())).                                                           // 7. 店铺ID检查和保存
+												AddHandler(handlers.NewTextCheckHandler()).                                                                                          // 8. 文本检查
+												AddHandler(handlers.NewParallelVariantHandler(managementClient.GetRawJsonDataClient(), amazonConfig, pb.processor.amazonProcessor)). // 9. 并行获取变体JSON数据（使用poolSize作为并发数）
+												AddHandler(handlers.NewCacheVariantsHandler(managementClient.GetRawJsonDataClient(), amazonConfig, pb.processor.amazonProcessor)).   // 10. 缓存变体数据
+												AddHandler(handlers.NewVariantFilterHandler(managementClient.GetFilterRuleClient())).                                                // 11. 变体筛选规则检查
+												AddHandler(handlers.NewCheckDailyLimitHandler(pb.processor.GetMemoryManager()))                                                      // 12. 检查每日上架限制
 }
 
-// addCategoryHandlers 添加分类和SKU处理阶段处理器（12-18）
+// addCategoryHandlers 添加分类和SKU处理阶段处理器（13-19）
 func (pb *PipelineBuilder) addCategoryHandlers(p pipeline.Pipeline) {
-	p.AddHandler(NewTemuHandlerAdapter("category_recommend", handlers.NewCategoryRecommendHandler())). // 12. 分类推荐
-														AddHandler(NewTemuHandlerAdapter("category_disclaim", handlers.NewCategoryDisclaimHandler())). // 13. 分类免责声明
-														AddHandler(NewTemuHandlerAdapter("commit_create", handlers.NewCommitCreateHandler())).         // 14. 提交创建
-														AddHandler(NewTemuHandlerAdapter("commit_detail", handlers.NewCommitDetailHandler())).         // 15. 提交详情查询
-														AddHandler(NewTemuHandlerAdapter("cost_template", handlers.NewCostTemplateHandler())).         // 16. 成本模板
-														AddHandler(NewTemuHandlerAdapter("out_goods_sn_check", handlers.NewOutGoodsSnCheckHandler())). // 17. SKU编码重复检查
-														AddHandler(NewTemuHandlerAdapter("category", handlers.NewCategoryHandler()))                   // 18. 分类处理
+	p.AddHandler(NewTemuHandlerAdapter("category_recommend", handlers.NewCategoryRecommendHandler())). // 13. 分类推荐
+														AddHandler(NewTemuHandlerAdapter("category_disclaim", handlers.NewCategoryDisclaimHandler())). // 14. 分类免责声明
+														AddHandler(NewTemuHandlerAdapter("commit_create", handlers.NewCommitCreateHandler())).         // 15. 提交创建
+														AddHandler(NewTemuHandlerAdapter("commit_detail", handlers.NewCommitDetailHandler())).         // 16. 提交详情查询
+														AddHandler(NewTemuHandlerAdapter("cost_template", handlers.NewCostTemplateHandler())).         // 17. 成本模板
+														AddHandler(NewTemuHandlerAdapter("out_goods_sn_check", handlers.NewOutGoodsSnCheckHandler())). // 18. SKU编码重复检查
+														AddHandler(NewTemuHandlerAdapter("category", handlers.NewCategoryHandler()))                   // 19. 分类处理
 }
 
-// addImageHandlers 添加图片处理阶段处理器（19-25）
+// addImageHandlers 添加图片处理阶段处理器（20-26）
 func (pb *PipelineBuilder) addImageHandlers(p pipeline.Pipeline) {
 	// 创建OpenAI客户端配置
 	openaiConfig := openai.NewClientConfig(
@@ -101,14 +102,14 @@ func (pb *PipelineBuilder) addImageHandlers(p pipeline.Pipeline) {
 		pb.processor.GetConfig().OpenAI.Timeout,
 	)
 
-	p.AddHandler(NewTemuHandlerAdapter("image_init", handlers.NewImageInitHandler())). // 19. 图片初始化
-												AddHandler(NewTemuHandlerAdapter("image_validator", handlers.NewImageValidator())).                // 20. 图片验证（包含白边填充）
-												AddHandler(NewTemuHandlerAdapter("image_upload_processor", handlers.NewImageUploadProcessor())).   // 21. 图片上传（包含尺寸标注）
-												AddHandler(NewTemuHandlerAdapter("template_query", handlers.NewTemplateQueryHandler())).           // 22. 模板查询
-												AddHandler(NewTemuHandlerAdapter("ai_sku_mapping", handlers.NewAISkuMappingHandler(openaiConfig))) // 23. AI SKU映射
+	p.AddHandler(NewTemuHandlerAdapter("image_init", handlers.NewImageInitHandler())). // 20. 图片初始化
+												AddHandler(NewTemuHandlerAdapter("image_validator", handlers.NewImageValidator())).                // 21. 图片验证（包含白边填充）
+												AddHandler(NewTemuHandlerAdapter("image_upload_processor", handlers.NewImageUploadProcessor())).   // 22. 图片上传（包含尺寸标注）
+												AddHandler(NewTemuHandlerAdapter("template_query", handlers.NewTemplateQueryHandler())).           // 23. 模板查询
+												AddHandler(NewTemuHandlerAdapter("ai_sku_mapping", handlers.NewAISkuMappingHandler(openaiConfig))) // 24. AI SKU映射
 }
 
-// addContentHandlers 添加内容构建和优化阶段处理器（26-28）
+// addContentHandlers 添加内容构建和优化阶段处理器（27-29）
 func (pb *PipelineBuilder) addContentHandlers(p pipeline.Pipeline) {
 	managementClient := pb.processor.GetManagementClient()
 
@@ -120,8 +121,8 @@ func (pb *PipelineBuilder) addContentHandlers(p pipeline.Pipeline) {
 		pb.processor.GetConfig().OpenAI.Timeout,
 	)
 
-	p.AddHandler(NewTemuHandlerAdapter("build_spu", handlers.NewBuildSpuHandler(openaiConfig, managementClient.GetProfitRuleClient()))). // 26. 构建SPU（内含AI内容重写并行优化）
-		// 27. 并行执行内容验证器
+	p.AddHandler(NewTemuHandlerAdapter("build_spu", handlers.NewBuildSpuHandler(openaiConfig, managementClient.GetProfitRuleClient()))). // 27. 构建SPU（内含AI内容重写并行优化）
+		// 28. 并行执行内容验证器
 		AddHandler(commonPipeline.NewParallelHandler(
 			"内容验证并行处理",
 			handlers.NewProductNameValidator(),
@@ -129,16 +130,16 @@ func (pb *PipelineBuilder) addContentHandlers(p pipeline.Pipeline) {
 			handlers.NewProductDescriptionValidator(),
 			handlers.NewSensitiveWordsFilter(),
 		)).
-		AddHandler(handlers.NewBrandClearHandler()) // 28. 清除品牌名称
+		AddHandler(handlers.NewBrandClearHandler()) // 29. 清除品牌名称
 }
 
-// addSubmitHandlers 添加提交和保存阶段处理器（29-31）
+// addSubmitHandlers 添加提交和保存阶段处理器（30-32）
 func (pb *PipelineBuilder) addSubmitHandlers(p pipeline.Pipeline) {
 	managementClient := pb.processor.GetManagementClient()
 
-	p.AddHandler(handlers.NewPriceQueryHandler()). // 29. 价格查询
-							AddHandler(handlers.NewProductSubmitHandler(managementClient.GetProductImportMappingClient())).                                     // 30. 产品提交
-							AddHandler(handlers.NewSavePublishResultHandler(managementClient.GetProductImportMappingClient(), pb.processor.GetMemoryManager())) // 31. 保存发品结果
+	p.AddHandler(handlers.NewPriceQueryHandler()). // 30. 价格查询
+							AddHandler(handlers.NewProductSubmitHandler(managementClient.GetProductImportMappingClient())).                                     // 31. 产品提交
+							AddHandler(handlers.NewSavePublishResultHandler(managementClient.GetProductImportMappingClient(), pb.processor.GetMemoryManager())) // 32. 保存发品结果
 }
 
 // =============================================================================
