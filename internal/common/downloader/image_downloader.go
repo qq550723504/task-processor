@@ -1,8 +1,12 @@
 package downloader
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"math/rand"
 	"path/filepath"
 	"strings"
@@ -21,6 +25,7 @@ type ImageDownloader struct {
 	rateLimit     *RateLimit
 	blockDetector *BlockDetector
 	logger        *logrus.Entry
+	processor     *ImageProcessor // 图片处理器V2
 }
 
 // RateLimit 速率限制器
@@ -186,7 +191,8 @@ func NewImageDownloader() *ImageDownloader {
 		blockDetector: &BlockDetector{
 			blockCount: 0,
 		},
-		logger: logrus.WithField("component", "ImageDownloader"),
+		logger:    logrus.WithField("component", "ImageDownloader"),
+		processor: NewImageProcessor(), // 初始化图片处理器V2
 	}
 
 	return downloader
@@ -297,6 +303,125 @@ func (d *ImageDownloader) DownloadImage(imageURL string) ([]byte, string, error)
 	return imageData, filename, nil
 }
 
+// GetImageInfo 获取图片信息（宽高和大小）- 只下载图片头部数据以提高性能
+func (d *ImageDownloader) GetImageInfo(imageURL string) (width, height int, size int64, err error) {
+	startTime := time.Now()
+	originalURL := imageURL
+
+	// 清理URL中的双引号和其他异常字符
+	imageURL = strings.Trim(imageURL, "\"")
+	imageURL = strings.TrimSpace(imageURL)
+
+	// 预检查URL格式
+	if imageURL == "" {
+		return 0, 0, 0, fmt.Errorf("图片URL为空")
+	}
+
+	if !strings.HasPrefix(imageURL, "http://") && !strings.HasPrefix(imageURL, "https://") {
+		return 0, 0, 0, fmt.Errorf("无效的图片URL格式: %s", imageURL)
+	}
+
+	// 检查是否被风控阻止
+	if d.isBlocked() {
+		blockTime := d.getBlockRemainTime()
+		d.logger.Printf("🚫 检测到风控阻止，等待 %v 后重试", blockTime)
+		time.Sleep(blockTime)
+	}
+
+	// 应用速率限制
+	d.applyRateLimit()
+
+	// 创建动态请求，使用Range请求只下载前8KB数据（足够解析图片头部）
+	req := d.createDynamicRequest(imageURL).
+		SetHeader("Range", "bytes=0-8191") // 只下载前8KB
+
+	resp, err := req.Get(imageURL)
+	elapsed := time.Since(startTime)
+
+	if err != nil {
+		d.logger.Printf("❌ 获取图片信息失败 [耗时: %v]: %v", elapsed, err)
+		d.handleRequestError(err)
+
+		// 如果清理后的URL失败，尝试使用原始URL
+		if originalURL != imageURL {
+			d.logger.Printf("🔄 尝试原始URL: %s", originalURL)
+			retryStart := time.Now()
+			retryReq := d.createDynamicRequest(originalURL).
+				SetHeader("Range", "bytes=0-8191")
+			resp, retryErr := retryReq.Get(originalURL)
+			retryElapsed := time.Since(retryStart)
+
+			if retryErr == nil && (resp.IsSuccessState() || resp.StatusCode == 206) {
+				d.logger.Printf("✅ 原始URL成功 [耗时: %v]", retryElapsed)
+				d.handleRequestSuccess()
+				return d.parseImageConfig(resp, originalURL)
+			}
+			d.logger.Printf("❌ 原始URL也失败 [耗时: %v]: %v", retryElapsed, retryErr)
+		}
+
+		return 0, 0, 0, fmt.Errorf("获取图片信息失败: %w", err)
+	}
+
+	// 检测风控响应
+	if d.detectBlock(resp) {
+		statusCode := resp.StatusCode
+		d.handleBlockDetection(statusCode)
+		return 0, 0, 0, fmt.Errorf("触发风控检测，HTTP状态码: %d", statusCode)
+	}
+
+	// 检查响应状态（200 OK 或 206 Partial Content）
+	if resp == nil || (!resp.IsSuccessState() && resp.StatusCode != 206) {
+		statusCode := 0
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
+		d.logger.Printf("❌ HTTP错误 [耗时: %v]: 状态码=%d", elapsed, statusCode)
+		return 0, 0, 0, fmt.Errorf("获取图片信息失败，HTTP状态码: %d", statusCode)
+	}
+
+	// 成功处理
+	d.handleRequestSuccess()
+	return d.parseImageConfig(resp, imageURL)
+}
+
+// parseImageConfig 解析图片配置信息
+func (d *ImageDownloader) parseImageConfig(resp *req.Response, _ string) (width, height int, size int64, err error) {
+	// 获取完整文件大小
+	size = resp.ContentLength
+	if contentRange := resp.Header.Get("Content-Range"); contentRange != "" {
+		// 解析 Content-Range: bytes 0-8191/123456 格式
+		if strings.Contains(contentRange, "/") {
+			parts := strings.Split(contentRange, "/")
+			if len(parts) == 2 && parts[1] != "*" {
+				if totalSize, parseErr := fmt.Sscanf(parts[1], "%d", &size); parseErr != nil || totalSize != 1 {
+					d.logger.Printf("⚠️ 无法解析Content-Range中的文件大小: %s", contentRange)
+				}
+			}
+		}
+	}
+
+	// 解析图片头部获取尺寸
+	imageData := resp.Bytes()
+	if len(imageData) == 0 {
+		return 0, 0, 0, fmt.Errorf("获取的图片数据为空")
+	}
+
+	// 使用bytes.NewReader创建io.Reader
+	reader := bytes.NewReader(imageData)
+
+	// 解析图片配置
+	config, _, err := image.DecodeConfig(reader)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("解析图片配置失败: %w", err)
+	}
+
+	width = config.Width
+	height = config.Height
+
+	d.logger.Printf("✅ 获取图片信息成功: %dx%d, 大小=%d bytes", width, height, size)
+	return width, height, size, nil
+}
+
 // getFilenameFromURL 从URL获取文件名
 func (d *ImageDownloader) getFilenameFromURL(imageURL string) string {
 	parts := strings.Split(imageURL, "/")
@@ -313,4 +438,57 @@ func (d *ImageDownloader) getFilenameFromURL(imageURL string) string {
 		return filename
 	}
 	return "image.jpg"
+}
+
+// DownloadImageForPlatform 为特定平台下载并处理图片，生成不同的MD5
+func (d *ImageDownloader) DownloadImageForPlatform(imageURL, platform string) ([]byte, string, string, error) {
+	// 先下载原始图片
+	originalData, filename, err := d.DownloadImage(imageURL)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	// 为平台处理图片
+	processedData, md5Hash, err := d.processor.ProcessAndGetMD5(originalData, platform)
+	if err != nil {
+		d.logger.Printf("⚠️ 图片处理失败，使用原始数据: %v", err)
+		// 如果处理失败，返回原始数据
+		originalMD5 := d.processor.GetImageMD5(originalData)
+		return originalData, filename, originalMD5, nil
+	}
+
+	d.logger.Printf("✅ 图片已为平台 %s 处理，MD5: %s", platform, md5Hash)
+	return processedData, filename, md5Hash, nil
+}
+
+// DownloadImageForPlatformUnique 为特定平台下载并处理图片，每次都生成唯一MD5
+func (d *ImageDownloader) DownloadImageForPlatformUnique(imageURL, platform string) ([]byte, string, string, error) {
+	// 先下载原始图片
+	originalData, filename, err := d.DownloadImage(imageURL)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	// 使用多重策略处理图片，确保每次都不同
+	processedData, md5Hash, err := d.processor.ProcessWithMultipleStrategies(originalData, platform)
+	if err != nil {
+		d.logger.Printf("⚠️ 图片处理失败，使用原始数据: %v", err)
+		// 如果处理失败，返回原始数据
+		originalMD5 := d.processor.GetImageMD5(originalData)
+		return originalData, filename, originalMD5, nil
+	}
+
+	d.logger.Printf("✅ 图片已为平台 %s 处理（唯一），MD5: %s", platform, md5Hash)
+	return processedData, filename, md5Hash, nil
+}
+
+// DownloadImageWithMD5 下载图片并返回MD5值
+func (d *ImageDownloader) DownloadImageWithMD5(imageURL string) ([]byte, string, string, error) {
+	data, filename, err := d.DownloadImage(imageURL)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	md5Hash := d.processor.GetImageMD5(data)
+	return data, filename, md5Hash, nil
 }

@@ -5,7 +5,6 @@ import (
 	openaiClient "task-processor/internal/clients/openai"
 	"task-processor/internal/common/shein/api/attribute"
 
-	"github.com/sashabaranov/go-openai"
 	"github.com/sirupsen/logrus"
 )
 
@@ -160,13 +159,13 @@ func (h *SaleAttributeHandler) createChatCompletionRequest(systemPrompt, userPro
 
 	return &openaiClient.ChatCompletionRequest{
 		Model: h.openaiClient.GetDefaultModel(),
-		Messages: []openai.ChatCompletionMessage{
+		Messages: []openaiClient.ChatCompletionMessage{
 			{
-				Role:    openai.ChatMessageRoleSystem,
+				Role:    "system",
 				Content: systemPrompt,
 			},
 			{
-				Role:    openai.ChatMessageRoleUser,
+				Role:    "user",
 				Content: userPrompt,
 			},
 		},

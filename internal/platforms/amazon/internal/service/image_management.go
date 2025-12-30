@@ -45,20 +45,22 @@ type ImageDownloadResult struct {
 	Size     int64  `json:"size"`
 	Format   string `json:"format"`
 	Filename string `json:"filename"`
+	MD5      string `json:"md5"` // 添加MD5字段
 }
 
-// DownloadImage 下载单张图片
+// DownloadImage 下载单张图片（为Amazon平台优化）
 func (s *ImageManagementService) DownloadImage(url string) (*ImageDownloadResult, error) {
 	s.logger.Infof("开始下载图片: %s", url)
 
 	// 检查缓存
-	if cached, ok := s.downloadCache.Load(url); ok {
+	cacheKey := fmt.Sprintf("amazon_%s", url)
+	if cached, ok := s.downloadCache.Load(cacheKey); ok {
 		s.logger.Info("使用缓存的图片数据")
 		return cached.(*ImageDownloadResult), nil
 	}
 
-	// 使用通用下载器下载
-	data, filename, err := s.downloader.DownloadImage(url)
+	// 使用平台特定下载器下载（为Amazon平台生成唯一MD5，每次都不同）
+	data, filename, md5Hash, err := s.downloader.DownloadImageForPlatformUnique(url, "amazon")
 	if err != nil {
 		return nil, fmt.Errorf("下载图片失败: %w", err)
 	}
@@ -74,14 +76,16 @@ func (s *ImageManagementService) DownloadImage(url string) (*ImageDownloadResult
 		Size:     int64(len(data)),
 		Format:   format,
 		Filename: filename,
+		MD5:      md5Hash, // 添加MD5字段
 	}
 
 	// 缓存结果
-	s.downloadCache.Store(url, result)
+	s.downloadCache.Store(cacheKey, result)
 
 	s.logger.WithFields(logrus.Fields{
 		"size":   result.Size,
 		"format": result.Format,
+		"md5":    result.MD5,
 	}).Info("图片下载完成")
 
 	return result, nil

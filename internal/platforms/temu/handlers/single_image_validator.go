@@ -3,12 +3,9 @@ package handlers
 
 import (
 	"fmt"
-	"image"
-	_ "image/jpeg"
-	_ "image/png"
-	"net/http"
 	"path/filepath"
 	"strings"
+	"task-processor/internal/common/downloader"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -18,6 +15,7 @@ import (
 type SingleImageValidator struct {
 	logger           *logrus.Entry
 	paddingProcessor *ImagePaddingProcessor
+	imageDownloader  *downloader.ImageDownloader
 }
 
 // NewSingleImageValidator 创建新的单张图片验证器
@@ -25,6 +23,7 @@ func NewSingleImageValidator() *SingleImageValidator {
 	return &SingleImageValidator{
 		logger:           logrus.WithField("component", "SingleImageValidator"),
 		paddingProcessor: NewImagePaddingProcessor(),
+		imageDownloader:  downloader.NewImageDownloader(),
 	}
 }
 
@@ -182,27 +181,7 @@ func (v *SingleImageValidator) getImageInfo(imageURL string) (width, height int,
 	return v.getImageInfoByDownload(imageURL)
 }
 
-// getImageInfoByDownload 通过下载获取真实图片信息
+// getImageInfoByDownload 通过统一下载器获取真实图片信息
 func (v *SingleImageValidator) getImageInfoByDownload(imageURL string) (width, height int, size int64, err error) {
-	resp, err := http.Get(imageURL)
-	if err != nil {
-		return 0, 0, 0, fmt.Errorf("下载图片失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, 0, 0, fmt.Errorf("图片URL返回错误状态: %d", resp.StatusCode)
-	}
-
-	// 解析图片获取尺寸
-	img, _, err := image.DecodeConfig(resp.Body)
-	if err != nil {
-		return 0, 0, 0, fmt.Errorf("解析图片失败: %w", err)
-	}
-
-	width = img.Width
-	height = img.Height
-	size = resp.ContentLength
-
-	return width, height, size, nil
+	return v.imageDownloader.GetImageInfo(imageURL)
 }

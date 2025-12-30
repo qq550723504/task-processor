@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,7 +28,12 @@ func NewVersionManager(currentVersion, updateURL string) *VersionManager {
 
 // FetchLatestVersion 获取最新版本信息
 func (vm *VersionManager) FetchLatestVersion() (*VersionInfo, error) {
-	resp, err := http.Get(vm.updateURL)
+	// 创建带超时的HTTP客户端
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := client.Get(vm.updateURL)
 	if err != nil {
 		return nil, fmt.Errorf("请求失败: %w", err)
 	}

@@ -28,6 +28,9 @@ func NewCleanupService(fetcher *TaskFetcher, cfg *config.Config) *CleanupService
 	if cfg != nil && cfg.Worker.TaskTimeout > 0 {
 		cleanupConfig.TaskTimeout = time.Duration(cfg.Worker.TaskTimeout) * time.Second
 	}
+	if cfg != nil && cfg.Worker.StuckTaskThreshold > 0 {
+		cleanupConfig.StuckTaskThreshold = time.Duration(cfg.Worker.StuckTaskThreshold) * time.Second
+	}
 	if cfg != nil && cfg.Worker.ForceCleanupAfter > 0 {
 		cleanupConfig.ForceCleanupAfter = time.Duration(cfg.Worker.ForceCleanupAfter) * time.Second
 	}

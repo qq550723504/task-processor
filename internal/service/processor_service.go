@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/auth"
 	"task-processor/internal/config"
+	"task-processor/internal/lifecycle"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,6 +24,7 @@ type ProcessorService interface {
 // NewProcessorService 创建处理器服务
 func NewProcessorService(logger *logrus.Logger) ProcessorService {
 	return &processorServiceImpl{
-		logger: logger,
+		logger:           logger,
+		lifecycleManager: lifecycle.NewManager(logger),
 	}
 }

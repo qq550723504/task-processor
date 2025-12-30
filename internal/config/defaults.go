@@ -15,6 +15,10 @@ func setDefaults() {
 	viper.SetDefault("worker.taskInterval", 60)
 	viper.SetDefault("worker.maxFetchPerCycle", 5)
 	viper.SetDefault("worker.queueThreshold", 75)
+	viper.SetDefault("worker.cleanupInterval", 120)    // 2分钟清理间隔
+	viper.SetDefault("worker.taskTimeout", 900)        // 15分钟任务超时
+	viper.SetDefault("worker.stuckTaskThreshold", 300) // 5分钟卡住阈值
+	viper.SetDefault("worker.forceCleanupAfter", 1800) // 30分钟强制清理
 
 	// OpenAI默认配置
 	viper.SetDefault("openai.apiKey", "sk-qns4hBrljHkJ520vwwA2508c7Dj3Oe0zGlh7oq7FWkcWXkx4")
