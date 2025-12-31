@@ -5,8 +5,8 @@ import (
 	"context"
 
 	"task-processor/internal/auth"
-	"task-processor/internal/config"
-	"task-processor/internal/lifecycle"
+	"task-processor/internal/core/config"
+	"task-processor/internal/core/lifecycle"
 
 	"github.com/sirupsen/logrus"
 )

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/auth"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 )
 
 // initializeSharedResources 初始化所有共享资源

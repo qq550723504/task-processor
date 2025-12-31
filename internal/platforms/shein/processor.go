@@ -4,7 +4,7 @@ import (
 	"context"
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 	types "task-processor/internal/model"
 	commonPipeline "task-processor/internal/pipeline"
 	"task-processor/internal/task"

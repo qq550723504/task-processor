@@ -2,7 +2,7 @@
 package utils
 
 import (
-	"task-processor/internal/logger"
+	"task-processor/internal/core/logger"
 
 	"github.com/sirupsen/logrus"
 )

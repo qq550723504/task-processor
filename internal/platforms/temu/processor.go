@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 	"task-processor/internal/model"
 	"task-processor/internal/task"
 	"task-processor/internal/worker"

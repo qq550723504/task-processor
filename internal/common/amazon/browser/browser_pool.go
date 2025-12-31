@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 	"time"
 
 	"github.com/playwright-community/playwright-go"

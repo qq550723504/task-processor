@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"task-processor/internal/common/management"
-	"task-processor/internal/config"
-	"task-processor/internal/errors"
-	"task-processor/internal/lifecycle"
+	"task-processor/internal/core/config"
+	"task-processor/internal/core/errors"
+	"task-processor/internal/core/lifecycle"
 
 	"github.com/sirupsen/logrus"
 )

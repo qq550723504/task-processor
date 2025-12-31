@@ -6,10 +6,9 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"task-processor/internal/core/errors"
+	"task-processor/internal/core/lifecycle"
 	"time"
-
-	"task-processor/internal/errors"
-	"task-processor/internal/lifecycle"
 
 	"github.com/sirupsen/logrus"
 )

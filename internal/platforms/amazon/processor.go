@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 	"task-processor/internal/platforms/amazon/api"
 	"task-processor/internal/platforms/amazon/internal/handler"
 	"task-processor/internal/platforms/amazon/internal/model"

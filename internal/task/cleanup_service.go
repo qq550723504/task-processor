@@ -3,9 +3,8 @@ package task
 
 import (
 	"context"
+	"task-processor/internal/core/config"
 	"time"
-
-	"task-processor/internal/config"
 
 	"github.com/sirupsen/logrus"
 )

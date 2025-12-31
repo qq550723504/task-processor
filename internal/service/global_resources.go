@@ -4,7 +4,7 @@ package service
 import (
 	"task-processor/internal/common/management"
 	"task-processor/internal/common/memory"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 )
 
 var (

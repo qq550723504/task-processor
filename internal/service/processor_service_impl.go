@@ -8,9 +8,9 @@ import (
 
 	"task-processor/internal/auth"
 	"task-processor/internal/common/management"
-	"task-processor/internal/config"
-	"task-processor/internal/errors"
-	"task-processor/internal/lifecycle"
+	"task-processor/internal/core/config"
+	"task-processor/internal/core/errors"
+	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/monitoring"
 	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/temu"

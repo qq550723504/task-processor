@@ -4,8 +4,7 @@ package service
 import (
 	"log"
 	"os"
-
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 )
 
 // ConfigService 配置服务

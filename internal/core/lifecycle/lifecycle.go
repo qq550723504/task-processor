@@ -4,9 +4,8 @@ package lifecycle
 import (
 	"context"
 	"sync"
+	"task-processor/internal/core/errors"
 	"time"
-
-	"task-processor/internal/errors"
 
 	"github.com/sirupsen/logrus"
 )

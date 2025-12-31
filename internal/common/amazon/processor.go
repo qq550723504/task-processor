@@ -4,7 +4,7 @@ package amazon
 import (
 	"fmt"
 	"task-processor/internal/common/amazon/browser"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 	"task-processor/internal/model"
 	"time"
 

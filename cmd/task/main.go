@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/container"
-	"task-processor/internal/errors"
+	"task-processor/internal/core/errors"
 	"task-processor/internal/monitoring"
 	"task-processor/internal/utils"
 	internalUtils "task-processor/internal/utils"

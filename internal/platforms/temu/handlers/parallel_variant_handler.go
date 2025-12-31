@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/product"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/auth"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 
 	"github.com/sirupsen/logrus"
 )

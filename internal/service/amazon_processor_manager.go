@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 
 	"github.com/sirupsen/logrus"
 )

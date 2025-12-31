@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"task-processor/internal/logger"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"

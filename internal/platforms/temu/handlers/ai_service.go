@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	openaiClient "task-processor/internal/clients/openai"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

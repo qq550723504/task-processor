@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/common/product"
 	"task-processor/internal/common/product/repo/impl"
 	"task-processor/internal/common/product/service"
-	"task-processor/internal/config"
+	"task-processor/internal/core/config"
 
 	"github.com/sirupsen/logrus"
 )
