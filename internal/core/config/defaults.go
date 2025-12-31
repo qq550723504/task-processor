@@ -34,6 +34,9 @@ func setDefaults() {
 	viper.SetDefault("management.scopes", []string{"user.read"})
 	viper.SetDefault("management.tenantID", "1")
 
+	// 浏览器默认配置
+	setBrowserDefaults()
+
 	// Amazon默认配置
 	setAmazonDefaults()
 
@@ -44,16 +47,57 @@ func setDefaults() {
 	setPlatformDefaults()
 }
 
+// setBrowserDefaults 设置浏览器默认配置
+func setBrowserDefaults() {
+	viper.SetDefault("browser.enabled", true)
+	viper.SetDefault("browser.headless", true)
+	viper.SetDefault("browser.browserPath", "./chrome/chrome.exe")
+	viper.SetDefault("browser.poolSize", 3) // 浏览器池大小
+	viper.SetDefault("browser.viewportWidth", 1920)
+	viper.SetDefault("browser.viewportHeight", 1080)
+	viper.SetDefault("browser.proxyServer", "")
+
+	// 随机配置默认值
+	viper.SetDefault("browser.randomConfig.enabled", true)
+	viper.SetDefault("browser.randomConfig.strategy", "random")
+	viper.SetDefault("browser.randomConfig.presetName", "windows_high_end")
+	viper.SetDefault("browser.randomConfig.fingerprintStrategy", "random")
+	viper.SetDefault("browser.randomConfig.healthCheckEnabled", true)
+	viper.SetDefault("browser.randomConfig.maxRetries", 3)
+}
+
 // setAmazonDefaults 设置Amazon默认配置
 func setAmazonDefaults() {
 	viper.SetDefault("amazon.enabled", true)
-	viper.SetDefault("amazon.headless", true)
-	viper.SetDefault("amazon.browserPath", "./chrome/chrome.exe")
-	viper.SetDefault("amazon.poolSize", 3) // 浏览器池大小，同时也是并发处理数
-	viper.SetDefault("amazon.viewportWidth", 1920)
-	viper.SetDefault("amazon.viewportHeight", 1080)
-	viper.SetDefault("amazon.proxyServer", "")
 	viper.SetDefault("amazon.dataFreshnessDays", 7)
+
+	// SPAPI 默认配置
+	viper.SetDefault("amazon.spapi.enabled", false) // 默认禁用，需要用户配置凭证
+	viper.SetDefault("amazon.spapi.region", "us-east-1")
+	viper.SetDefault("amazon.spapi.defaultMarketplace", "us")
+	viper.SetDefault("amazon.spapi.defaultFulfillmentType", "FBM")
+	viper.SetDefault("amazon.spapi.defaultCondition", "New")
+	viper.SetDefault("amazon.spapi.clientID", "")
+	viper.SetDefault("amazon.spapi.clientSecret", "")
+	viper.SetDefault("amazon.spapi.refreshToken", "")
+	viper.SetDefault("amazon.spapi.awsAccessKeyID", "")
+	viper.SetDefault("amazon.spapi.awsSecretKey", "")
+
+	// 默认市场配置
+	viper.SetDefault("amazon.spapi.markets.us.name", "Amazon.com")
+	viper.SetDefault("amazon.spapi.markets.us.marketplaceID", "ATVPDKIKX0DER")
+	viper.SetDefault("amazon.spapi.markets.us.currency", "USD")
+	viper.SetDefault("amazon.spapi.markets.us.enabled", true)
+
+	viper.SetDefault("amazon.spapi.markets.ca.name", "Amazon.ca")
+	viper.SetDefault("amazon.spapi.markets.ca.marketplaceID", "A2EUQ1WTGCTBG2")
+	viper.SetDefault("amazon.spapi.markets.ca.currency", "CAD")
+	viper.SetDefault("amazon.spapi.markets.ca.enabled", false)
+
+	viper.SetDefault("amazon.spapi.markets.mx.name", "Amazon.com.mx")
+	viper.SetDefault("amazon.spapi.markets.mx.marketplaceID", "A1AM78C64UM0Y8")
+	viper.SetDefault("amazon.spapi.markets.mx.currency", "MXN")
+	viper.SetDefault("amazon.spapi.markets.mx.enabled", false)
 }
 
 // setUpdaterDefaults 设置更新器默认配置

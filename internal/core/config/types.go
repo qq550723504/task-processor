@@ -61,18 +61,43 @@ type AutoPricingConfig struct {
 	BatchSize int  `yaml:"batchSize"` // 批量处理大小
 }
 
+// BrowserConfig 浏览器通用配置
+type BrowserConfig struct {
+	Enabled        bool                `yaml:"enabled"`
+	Headless       bool                `yaml:"headless"`
+	BrowserPath    string              `yaml:"browserPath"`
+	PoolSize       int                 `yaml:"poolSize"` // 浏览器池大小
+	ViewportWidth  int                 `yaml:"viewportWidth"`
+	ViewportHeight int                 `yaml:"viewportHeight"`
+	ProxyServer    string              `yaml:"proxyServer"`
+	RandomConfig   BrowserRandomConfig `yaml:"randomConfig"` // 随机配置选项
+}
+
+// BrowserRandomConfig 浏览器随机配置
+type BrowserRandomConfig struct {
+	Enabled             bool   `yaml:"enabled"`             // 是否启用随机配置
+	Strategy            string `yaml:"strategy"`            // 配置策略: random, stable, preset, windows
+	PresetName          string `yaml:"presetName"`          // 预设名称（当strategy为preset时使用）
+	FingerprintStrategy string `yaml:"fingerprintStrategy"` // 指纹策略: random, stable
+	HealthCheckEnabled  bool   `yaml:"healthCheckEnabled"`  // 是否启用健康检查
+	MaxRetries          int    `yaml:"maxRetries"`          // 最大重试次数
+}
+
 // AmazonConfig Amazon爬虫配置
 type AmazonConfig struct {
 	Enabled           bool              `yaml:"enabled"`
-	Headless          bool              `yaml:"headless"`
-	BrowserPath       string            `yaml:"browserPath"`
-	PoolSize          int               `yaml:"poolSize"` // 浏览器池大小，同时也是并发处理数
 	Zipcodes          map[string]string `yaml:"zipcodes"`
-	ViewportWidth     int               `yaml:"viewportWidth"`
-	ViewportHeight    int               `yaml:"viewportHeight"`
-	ProxyServer       string            `yaml:"proxyServer"`
 	DataFreshnessDays int               `yaml:"dataFreshnessDays"`
 	SPAPI             SPAPIConfig       `yaml:"spapi"`
+
+	// 临时兼容性字段（从 Browser 配置继承）
+	Headless       bool                `yaml:"-"` // 不序列化，从 Browser 配置获取
+	BrowserPath    string              `yaml:"-"` // 不序列化，从 Browser 配置获取
+	PoolSize       int                 `yaml:"-"` // 不序列化，从 Browser 配置获取
+	ViewportWidth  int                 `yaml:"-"` // 不序列化，从 Browser 配置获取
+	ViewportHeight int                 `yaml:"-"` // 不序列化，从 Browser 配置获取
+	ProxyServer    string              `yaml:"-"` // 不序列化，从 Browser 配置获取
+	RandomConfig   BrowserRandomConfig `yaml:"-"` // 不序列化，从 Browser 配置获取
 }
 
 // MarketplaceConfig 单个市场配置

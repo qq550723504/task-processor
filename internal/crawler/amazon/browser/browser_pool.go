@@ -39,25 +39,36 @@ type BrowserPool struct {
 
 // BrowserPoolConfig 浏览器池配置
 type BrowserPoolConfig struct {
-	PoolSize             int
-	UseRandomFingerprint bool
+	Size                 int    // 池大小
+	MaxRetries           int    // 最大重试次数
+	HealthCheckEnabled   bool   // 是否启用健康检查
+	UseRandomFingerprint bool   // 是否使用随机指纹
+	FingerprintStrategy  string // "random", "stable", "preset"
+	PresetName           string // 预设配置名称
 }
 
 // DefaultBrowserPoolConfig 默认浏览器池配置
 func DefaultBrowserPoolConfig() *BrowserPoolConfig {
 	return &BrowserPoolConfig{
-		PoolSize:             1,
+		Size:                 1,
 		UseRandomFingerprint: true, // 默认启用随机指纹
+		FingerprintStrategy:  "random",
+		PresetName:           "windows_high_end",
 	}
 }
 
 // NewBrowserPool 创建浏览器池
 func NewBrowserPool(cfg *config.AmazonConfig, poolConfig *BrowserPoolConfig) *BrowserPool {
+
+	if poolConfig.Size == 0 {
+		poolConfig.Size = 1 // 默认值
+	}
+
 	bp := &BrowserPool{
 		config:               cfg,
 		poolConfig:           poolConfig,
-		instances:            make([]*BrowserInstance, 0, poolConfig.PoolSize),
-		available:            make(chan *BrowserInstance, poolConfig.PoolSize),
+		instances:            make([]*BrowserInstance, 0, poolConfig.Size),
+		available:            make(chan *BrowserInstance, poolConfig.Size),
 		useRandomFingerprint: poolConfig.UseRandomFingerprint,
 	}
 
@@ -77,9 +88,15 @@ func NewBrowserPool(cfg *config.AmazonConfig, poolConfig *BrowserPoolConfig) *Br
 
 // Initialize 初始化浏览器池
 func (bp *BrowserPool) Initialize() error {
-	logrus.Infof("初始化浏览器池，大小: %d", bp.poolConfig.PoolSize)
+	poolSize := bp.poolConfig.Size
 
-	for i := 0; i < bp.poolConfig.PoolSize; i++ {
+	if poolSize == 0 {
+		poolSize = 1 // 默认值
+	}
+
+	logrus.Infof("初始化浏览器池，大小: %d", poolSize)
+
+	for i := 0; i < poolSize; i++ {
 		instance, err := bp.instanceManager.CreateInstance(i)
 		if err != nil {
 			logrus.Infof("创建浏览器实例 %d 失败: %v", i, err)
@@ -97,8 +114,10 @@ func (bp *BrowserPool) Initialize() error {
 	logrus.Infof("浏览器池初始化完成，共 %d 个实例", len(bp.instances))
 
 	// 启动健康检查例程 - 使用长期运行的context
-	ctx := context.Background()
-	bp.healthChecker.StartHealthCheckRoutine(ctx)
+	if bp.poolConfig.HealthCheckEnabled {
+		ctx := context.Background()
+		bp.healthChecker.StartHealthCheckRoutine(ctx)
+	}
 
 	return nil
 }

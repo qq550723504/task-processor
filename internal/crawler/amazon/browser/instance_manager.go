@@ -3,6 +3,7 @@ package browser
 
 import (
 	"fmt"
+	sharedbrowser "task-processor/internal/crawler/shared/browser"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -22,13 +23,38 @@ func NewInstanceManager(pool *BrowserPool) *InstanceManager {
 
 // CreateInstance 创建浏览器实例
 func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error) {
-	manager := NewBrowserManager(im.pool.GetConfig())
+	// 根据池配置决定使用的策略
+	strategy := im.pool.poolConfig.FingerprintStrategy
+	presetName := im.pool.poolConfig.PresetName
 
-	// 如果启用随机指纹，为每个实例生成完全随机的Python风格指纹
+	// 使用新的配置管理器创建管理器
+	manager := NewBrowserManagerWithConfig(im.pool.GetConfig(), strategy, presetName, id)
+
+	// 如果启用随机指纹，为每个实例生成指纹
 	if im.pool.UseRandomFingerprint() && im.pool.GetFingerprintGenerator() != nil {
-		// 使用随机指纹，每次都不同
-		randomFingerprint := im.pool.GetFingerprintGenerator().GenerateRandomFingerprint("")
-		manager.SetFingerprint(randomFingerprint)
+		var fingerprint *sharedbrowser.FingerprintConfig
+
+		// 根据策略决定指纹生成方式
+		switch strategy {
+		case "random":
+			fingerprint = im.pool.GetFingerprintGenerator().GenerateRandomFingerprint("")
+			logrus.Infof("实例 %d 使用随机指纹", id)
+		case "stable":
+			userID := fmt.Sprintf("instance_%d", id)
+			fingerprint = im.pool.GetFingerprintGenerator().GenerateStableFingerprint(userID)
+			logrus.Infof("实例 %d 使用稳定指纹 (用户ID: %s)", id, userID)
+		default:
+			// 默认使用随机指纹
+			fingerprint = im.pool.GetFingerprintGenerator().GenerateRandomFingerprint("")
+			logrus.Infof("实例 %d 使用默认随机指纹", id)
+		}
+
+		manager.SetFingerprint(fingerprint)
+
+		// 记录指纹详情
+		if browserConfig := manager.Manager.GetConfig(); browserConfig != nil {
+			sharedbrowser.LogConfigDetails(browserConfig, fingerprint)
+		}
 	}
 
 	if err := manager.Install(); err != nil {

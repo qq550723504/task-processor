@@ -93,7 +93,26 @@ func (g *SaleAttributePromptGenerator) GenerateSystemPrompt() string {
 
 	## quantity 和 quantity_unit 规则
 	- quantity_unit: 1=件, 2=双, 3=套
-	- quantity: 从标题/规格中提取数字
+	- quantity: 从标题/规格中提取数字，**必须精确提取关键词前的数字**
+	
+	### 数字提取规则（重要）
+	**必须从以下模式中精确提取数字：**
+	- "X Pack" → quantity = X（如"6 Pack" → quantity = 6）
+	- "X Pcs/Pieces" → quantity = X（如"10 Pcs" → quantity = 10）
+	- "X Pairs" → quantity = X（如"5 Pairs" → quantity = 5）
+	- "X Count" → quantity = X（如"12 Count" → quantity = 12）
+	- "X Sets" → quantity = X（如"2 Sets" → quantity = 2）
+	
+	**提取示例：**
+	- "6 pack car headrest hooks" → quantity = 6
+	- "3-Pack T-Shirts" → quantity = 3
+	- "10 Pieces Makeup Brushes" → quantity = 10
+	- "5 Pairs Socks" → quantity = 5
+	- "2 Sets Bedding" → quantity = 2
+	
+	**注意：不要被其他数字干扰，只提取数量关键词前的数字！**
+
+	### 各类型的quantity和quantity_unit设置
 	- 单品：quantity=1, quantity_unit=1
 	- 同款多件：quantity=提取的数量(≥2), quantity_unit根据单位判断(件=1,双=2)
 	- 单套：quantity=1, quantity_unit=3

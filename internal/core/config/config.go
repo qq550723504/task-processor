@@ -16,6 +16,7 @@ type Config struct {
 	Worker     WorkerConfig
 	OpenAI     OpenAIConfig
 	Management ManagementConfig
+	Browser    BrowserConfig // 浏览器通用配置
 	Amazon     AmazonConfig
 	Updater    UpdaterConfig
 	Platforms  PlatformsConfig // 平台配置

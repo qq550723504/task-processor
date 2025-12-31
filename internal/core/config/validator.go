@@ -31,6 +31,9 @@ func (c *Config) Validate() []error {
 	// 验证 OpenAI 配置
 	errors = append(errors, c.validateOpenAIConfig()...)
 
+	// 验证浏览器配置
+	errors = append(errors, c.validateBrowserConfig()...)
+
 	// 验证 Amazon 配置
 	errors = append(errors, c.validateAmazonConfig()...)
 
@@ -132,21 +135,13 @@ func (c *Config) validateAmazonConfig() []error {
 		return errors
 	}
 
-	if c.Amazon.PoolSize <= 0 {
-		errors = append(errors, &ValidationError{
-			Field:   "amazon.poolSize",
-			Message: "Amazon 爬虫池大小必须大于 0",
-		})
-	}
-
-	if c.Amazon.ViewportWidth <= 0 || c.Amazon.ViewportHeight <= 0 {
-		errors = append(errors, &ValidationError{
-			Field:   "amazon.viewport",
-			Message: "视口尺寸必须大于 0",
-		})
-	}
-
 	return errors
+}
+
+// validateBrowserRandomConfig 验证浏览器随机配置（已废弃，使用 validateNewBrowserRandomConfig）
+func (c *Config) validateBrowserRandomConfig() []error {
+	// 这个函数已废弃，为了向后兼容保留
+	return []error{}
 }
 
 // ValidateAndLog 验证配置并记录错误
@@ -249,6 +244,112 @@ func (c *Config) validatePlatformConfig(platformName string, platform *PlatformC
 				Message: fmt.Sprintf("%s 价格变化阈值不能为负数", strings.ToUpper(platformName)),
 			})
 		}
+	}
+
+	return errors
+}
+
+// validateBrowserConfig 验证浏览器配置
+func (c *Config) validateBrowserConfig() []error {
+	var errors []error
+
+	if !c.Browser.Enabled {
+		return errors
+	}
+
+	if c.Browser.PoolSize <= 0 {
+		errors = append(errors, &ValidationError{
+			Field:   "browser.poolSize",
+			Message: "浏览器池大小必须大于 0",
+		})
+	}
+
+	if c.Browser.ViewportWidth <= 0 || c.Browser.ViewportHeight <= 0 {
+		errors = append(errors, &ValidationError{
+			Field:   "browser.viewport",
+			Message: "视口尺寸必须大于 0",
+		})
+	}
+
+	// 验证随机配置
+	errors = append(errors, c.validateNewBrowserRandomConfig()...)
+
+	return errors
+}
+
+// validateNewBrowserRandomConfig 验证新的浏览器随机配置
+func (c *Config) validateNewBrowserRandomConfig() []error {
+	var errors []error
+
+	randomConfig := c.Browser.RandomConfig
+
+	if !randomConfig.Enabled {
+		return errors
+	}
+
+	// 验证策略
+	validStrategies := []string{"random", "stable", "preset", "windows"}
+	isValidStrategy := false
+	for _, strategy := range validStrategies {
+		if randomConfig.Strategy == strategy {
+			isValidStrategy = true
+			break
+		}
+	}
+	if !isValidStrategy {
+		errors = append(errors, &ValidationError{
+			Field:   "browser.randomConfig.strategy",
+			Message: fmt.Sprintf("无效的配置策略: %s，支持的策略: %v", randomConfig.Strategy, validStrategies),
+		})
+	}
+
+	// 验证指纹策略
+	validFingerprintStrategies := []string{"random", "stable"}
+	isValidFingerprintStrategy := false
+	for _, strategy := range validFingerprintStrategies {
+		if randomConfig.FingerprintStrategy == strategy {
+			isValidFingerprintStrategy = true
+			break
+		}
+	}
+	if !isValidFingerprintStrategy {
+		errors = append(errors, &ValidationError{
+			Field:   "browser.randomConfig.fingerprintStrategy",
+			Message: fmt.Sprintf("无效的指纹策略: %s，支持的策略: %v", randomConfig.FingerprintStrategy, validFingerprintStrategies),
+		})
+	}
+
+	// 验证预设名称（当策略为preset时）
+	if randomConfig.Strategy == "preset" {
+		validPresets := []string{"windows_high_end", "windows_mid_range", "mac_high_end"}
+		isValidPreset := false
+		for _, preset := range validPresets {
+			if randomConfig.PresetName == preset {
+				isValidPreset = true
+				break
+			}
+		}
+		if !isValidPreset {
+			errors = append(errors, &ValidationError{
+				Field:   "browser.randomConfig.presetName",
+				Message: fmt.Sprintf("无效的预设名称: %s，支持的预设: %v", randomConfig.PresetName, validPresets),
+			})
+		}
+	}
+
+	// 验证最大重试次数
+	if randomConfig.MaxRetries < 0 {
+		errors = append(errors, &ValidationError{
+			Field:   "browser.randomConfig.maxRetries",
+			Message: "最大重试次数不能为负数",
+		})
+	}
+
+	if randomConfig.MaxRetries > 10 {
+		errors = append(errors, &ValidationError{
+			Field:   "browser.randomConfig.maxRetries",
+			Message: "最大重试次数不应超过 10",
+		})
 	}
 
 	return errors

@@ -8,10 +8,10 @@ processor:
 
 # Worker配置
 worker:
-  concurrency: 1           # 并发worker数量
+  concurrency: 3           # 并发worker数量
   bufferSize: 30          # 进一步增加队列大小，提供更多缓冲空间
-  taskInterval: 60         # 60秒获取一次任务，减少获取频率
-  maxFetchPerCycle: 1      # 单次只获取1个任务，更保守的策略
+  taskInterval: 50         # 60秒获取一次任务，减少获取频率
+  maxFetchPerCycle: 2      # 单次只获取1个任务，更保守的策略
   queueThreshold: 75       # 降低队列使用率阈值，更早触发保护
   cleanupInterval: 1800    # 清理间隔30分钟
   taskTimeout: 2400        # 任务超时40分钟
@@ -110,16 +110,29 @@ platforms:
       priceChangeThreshold: 10.0  # 价格变化阈值（百分比）
       stockChangeThreshold: 5     # 库存变化阈值
 
+# 浏览器配置（通用）
+browser:
+  enabled: true
+  headless: false  # false=可见模式（便于调试），true=无头模式
+  browserPath: "./chrome/chrome.exe"
+  poolSize: 3     # 浏览器池大小
+  viewportWidth: 1920
+  viewportHeight: 1080
+  proxyServer: ""
+  
+  # 随机配置选项
+  randomConfig:
+    enabled: true  # 启用随机配置
+    strategy: "random"  # 配置策略: random, stable, preset, windows
+    presetName: "windows_high_end"  # 预设名称（当strategy为preset时使用）
+    fingerprintStrategy: "random"  # 指纹策略: random, stable
+    healthCheckEnabled: true  # 启用健康检查
+    maxRetries: 3  # 最大重试次数
+
 # Amazon配置
 amazon:
   # Amazon 爬虫配置
   enabled: true
-  headless: false  # false=可见模式（便于调试），true=无头模式
-  browserPath: "./chrome/chrome.exe"
-  poolSize: 3     # 浏览器池大小，同时也是并发处理数
-  viewportWidth: 1920
-  viewportHeight: 1080
-  proxyServer: ""
   dataFreshnessDays: 15  # 数据新鲜度天数，默认15天
   
   # Amazon SP-API 配置（用于上架）

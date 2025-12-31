@@ -143,10 +143,6 @@ func (u *SKUUtils) BuildQuantityInfo(params SKUCreationParams) *product.Quantity
 
 // BuildSKUImageInfoForMultiPiece 为多件商品构建SKU图片信息
 func (u *SKUUtils) BuildSKUImageInfoForMultiPiece(ctx *TaskContext, params SKUCreationParams) *product.ImageInfo {
-	// 检查是否为多件商品
-	if !u.isMultiPieceProduct(params.Variant) {
-		return nil
-	}
 
 	// 为多件商品构建SKU级别的图片信息
 	var skuImages []product.ImageDetail
@@ -160,7 +156,7 @@ func (u *SKUUtils) BuildSKUImageInfoForMultiPiece(ctx *TaskContext, params SKUCr
 	// 如果变体没有图片，使用主产品图片
 	if len(sourceImages) == 0 && params.ProductInfo != nil && len(params.ProductInfo.Images) > 0 {
 		// 对于主产品图片，限制数量
-		maxImages := 3
+		maxImages := 1
 		if len(params.ProductInfo.Images) < maxImages {
 			maxImages = len(params.ProductInfo.Images)
 		}
@@ -207,42 +203,6 @@ func (u *SKUUtils) BuildSKUImageInfoForMultiPiece(ctx *TaskContext, params SKUCr
 	return &product.ImageInfo{
 		ImageInfoList: skuImages,
 	}
-}
-
-// isMultiPieceProduct 判断是否为多件商品
-func (u *SKUUtils) isMultiPieceProduct(variant Variant) bool {
-	// 检查ASIN中是否包含多件商品的关键词（如果有title字段的话）
-	if titleAttr, exists := variant.Attributes["title"]; exists {
-		title := strings.ToLower(titleAttr)
-		multiPieceKeywords := []string{
-			"pack", "set", "piece", "pcs", "count",
-			"multi", "bundle", "kit", "collection",
-		}
-
-		for _, keyword := range multiPieceKeywords {
-			if strings.Contains(title, keyword) {
-				return true
-			}
-		}
-	}
-
-	// 检查属性中是否有数量相关信息
-	for key, value := range variant.Attributes {
-		key = strings.ToLower(key)
-		value = strings.ToLower(value)
-
-		if strings.Contains(key, "count") || strings.Contains(key, "quantity") ||
-			strings.Contains(key, "piece") || strings.Contains(key, "pack") {
-			return true
-		}
-
-		if strings.Contains(value, "pack") || strings.Contains(value, "set") ||
-			strings.Contains(value, "piece") || strings.Contains(value, "pcs") {
-			return true
-		}
-	}
-
-	return false
 }
 
 // correctQuantityTypeAndValue 智能修正数量类型和数量值的匹配性

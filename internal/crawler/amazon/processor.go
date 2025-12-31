@@ -24,15 +24,30 @@ type AmazonProcessor struct {
 
 // NewAmazonProcessor 使用全局配置创建Amazon处理器
 func NewAmazonProcessor(cfg *config.AmazonConfig) *AmazonProcessor {
-	// 创建浏览器池
+	// 创建浏览器池配置
 	poolConfig := browser.DefaultBrowserPoolConfig()
 
 	// 如果配置中的PoolSize为0，使用默认值
 	if cfg.PoolSize > 0 {
-		poolConfig.PoolSize = cfg.PoolSize
+		poolConfig.Size = cfg.PoolSize
 	}
 
-	logrus.Infof("创建Amazon处理器，浏览器池大小: %d (配置值: %d)", poolConfig.PoolSize, cfg.PoolSize)
+	// 应用随机配置设置
+	if cfg.RandomConfig.Enabled {
+		poolConfig.UseRandomFingerprint = true
+		poolConfig.FingerprintStrategy = cfg.RandomConfig.Strategy
+		poolConfig.PresetName = cfg.RandomConfig.PresetName
+		poolConfig.HealthCheckEnabled = cfg.RandomConfig.HealthCheckEnabled
+		poolConfig.MaxRetries = cfg.RandomConfig.MaxRetries
+
+		logrus.Infof("启用随机配置 - 策略: %s, 预设: %s, 指纹策略: %s",
+			cfg.RandomConfig.Strategy, cfg.RandomConfig.PresetName, cfg.RandomConfig.FingerprintStrategy)
+	} else {
+		poolConfig.UseRandomFingerprint = false
+		logrus.Info("使用传统浏览器配置")
+	}
+
+	logrus.Infof("创建Amazon处理器，浏览器池大小: %d (配置值: %d)", poolConfig.Size, cfg.PoolSize)
 	browserPool := browser.NewBrowserPool(cfg, poolConfig)
 
 	// 初始化浏览器池
@@ -68,7 +83,7 @@ func (ap *AmazonProcessor) Process(url string, zipcode string) (*model.Product, 
 	logrus.Infof("开始处理Amazon产品: %s", url)
 
 	if ap.usePool {
-		return ap.processWithPool(url, zipcode, startTime)
+		return ap.processWithPool(url, zipcode)
 	}
 	return ap.singleProcessor.ProcessWithSingleBrowser(url, zipcode, startTime)
 }
@@ -102,7 +117,7 @@ func (ap *AmazonProcessor) ProcessBatch(requests []model.ProductRequest) []model
 }
 
 // processWithPool 使用浏览器池处理
-func (ap *AmazonProcessor) processWithPool(url string, zipcode string, startTime time.Time) (*model.Product, error) {
+func (ap *AmazonProcessor) processWithPool(url string, zipcode string) (*model.Product, error) {
 	maxRetries := 2 // 最多重试2次（即总共尝试3次）
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
