@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/app/worker"
 	"task-processor/internal/core/errors"
-	"task-processor/internal/worker"
 
 	"github.com/sirupsen/logrus"
 )

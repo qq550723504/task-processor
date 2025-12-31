@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"task-processor/internal/app/worker"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/worker"
 	"time"
 
 	"github.com/sirupsen/logrus"

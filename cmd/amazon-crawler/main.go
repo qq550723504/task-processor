@@ -4,9 +4,9 @@ import (
 	"context"
 	"log"
 
-	"task-processor/internal/api"
+	"task-processor/internal/app/api"
+	"task-processor/internal/app/service"
 	"task-processor/internal/infra/repo"
-	"task-processor/internal/service"
 	"task-processor/internal/utils"
 )
 

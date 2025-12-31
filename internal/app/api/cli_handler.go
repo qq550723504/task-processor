@@ -5,7 +5,7 @@ import (
 	"context"
 	"flag"
 
-	"task-processor/internal/service"
+	"task-processor/internal/app/service"
 	"task-processor/internal/utils"
 )
 

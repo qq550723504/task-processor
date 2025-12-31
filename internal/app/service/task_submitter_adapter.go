@@ -4,8 +4,7 @@ package service
 import (
 	"context"
 	"fmt"
-
-	"task-processor/internal/worker"
+	"task-processor/internal/app/worker"
 
 	"github.com/sirupsen/logrus"
 )

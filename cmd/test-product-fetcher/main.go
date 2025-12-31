@@ -4,8 +4,7 @@ package main
 import (
 	"fmt"
 	"log"
-
-	"task-processor/internal/bootstrap"
+	"task-processor/internal/app/bootstrap"
 )
 
 func main() {

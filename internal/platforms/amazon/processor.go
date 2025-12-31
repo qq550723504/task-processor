@@ -5,12 +5,12 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
 	"task-processor/internal/platforms/amazon/api"
 	"task-processor/internal/platforms/amazon/internal/handler"
 	"task-processor/internal/platforms/amazon/internal/model"
 	"task-processor/internal/platforms/amazon/internal/service"
-	"task-processor/internal/worker"
 
 	"github.com/sirupsen/logrus"
 )

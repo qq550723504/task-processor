@@ -2,9 +2,8 @@
 package task
 
 import (
+	"task-processor/internal/app/worker"
 	"time"
-
-	"task-processor/internal/worker"
 )
 
 // QueueTaskInfo 队列任务信息

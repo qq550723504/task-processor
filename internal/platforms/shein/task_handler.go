@@ -4,6 +4,7 @@ package shein
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/app/worker"
 	management_api "task-processor/internal/common/management/api"
 	shops "task-processor/internal/common/shein"
 	"task-processor/internal/common/shein/api"
@@ -11,7 +12,6 @@ import (
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/shein/modules"
 	"task-processor/internal/utils"
-	"task-processor/internal/worker"
 
 	"github.com/sirupsen/logrus"
 )

@@ -4,8 +4,8 @@ package service
 import (
 	"time"
 
+	"task-processor/internal/app/updater"
 	"task-processor/internal/core/config"
-	"task-processor/internal/updater"
 
 	"github.com/sirupsen/logrus"
 )
