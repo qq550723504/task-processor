@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	openaiClient "task-processor/internal/clients/openai"
 	"task-processor/internal/core/config"
+	openaiClient "task-processor/internal/infra/clients/openai"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 

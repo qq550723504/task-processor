@@ -10,8 +10,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	openaiClient "task-processor/internal/clients/openai"
 	"task-processor/internal/common/downloader"
+	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/temu/utils"
 )
 

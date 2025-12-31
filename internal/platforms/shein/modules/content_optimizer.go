@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	openaiClient "task-processor/internal/clients/openai"
+	openaiClient "task-processor/internal/infra/clients/openai"
 )
 
 // ContentOptimizer 内容优化器

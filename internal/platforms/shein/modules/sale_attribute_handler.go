@@ -2,8 +2,8 @@ package modules
 
 import (
 	"fmt"
-	openaiClient "task-processor/internal/clients/openai"
 	"task-processor/internal/common/shein/api/attribute"
+	openaiClient "task-processor/internal/infra/clients/openai"
 
 	"github.com/sirupsen/logrus"
 )

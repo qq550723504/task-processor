@@ -7,8 +7,8 @@ import (
 
 	"task-processor/internal/common/management"
 	management_api "task-processor/internal/common/management/api"
-	"task-processor/internal/common/memory"
 	shein_api "task-processor/internal/common/shein/api"
+	"task-processor/internal/infra/memory"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"

@@ -3,8 +3,8 @@ package handlers
 import (
 	"fmt"
 
-	openaiClient "task-processor/internal/clients/openai"
 	"task-processor/internal/common/management/api"
+	openaiClient "task-processor/internal/infra/clients/openai"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"

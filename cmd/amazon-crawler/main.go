@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"task-processor/internal/api"
-	"task-processor/internal/repo"
+	"task-processor/internal/infra/repo"
 	"task-processor/internal/service"
 	"task-processor/internal/utils"
 )

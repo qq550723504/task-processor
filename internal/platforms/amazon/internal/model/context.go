@@ -3,7 +3,7 @@ package model
 
 import (
 	"task-processor/internal/common/management"
-	"task-processor/internal/common/memory"
+	"task-processor/internal/infra/memory"
 	"task-processor/internal/platforms/amazon/api"
 )
 

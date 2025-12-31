@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	openaiClient "task-processor/internal/clients/openai"
+	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 

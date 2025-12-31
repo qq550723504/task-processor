@@ -9,8 +9,8 @@ import (
 
 	"task-processor/internal/common/management"
 	managementapi "task-processor/internal/common/management/api"
-	"task-processor/internal/common/memory"
 	shops "task-processor/internal/common/shein"
+	"task-processor/internal/infra/memory"
 	"task-processor/internal/platforms/shein/modules"
 
 	"github.com/sirupsen/logrus"

@@ -4,8 +4,8 @@ package service
 import (
 	"fmt"
 
-	"task-processor/internal/auth"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/auth"
 )
 
 // initializeSharedResources 初始化所有共享资源

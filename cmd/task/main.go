@@ -7,11 +7,10 @@ import (
 	"syscall"
 	"time"
 
-	"task-processor/internal/container"
 	"task-processor/internal/core/errors"
-	"task-processor/internal/monitoring"
+	"task-processor/internal/infra/container"
+	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/utils"
-	internalUtils "task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -52,11 +51,11 @@ func runApplication(container *container.Container) error {
 	logger := container.GetLogger()
 
 	// 显示版本信息
-	versionInfo := internalUtils.VersionInfo{
+	versionInfo := utils.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	}
-	internalUtils.PrintVersionInfo(logger, versionInfo)
+	utils.PrintVersionInfo(logger, versionInfo)
 
 	// 初始化容器
 	if err := container.Initialize(); err != nil {

@@ -3,8 +3,7 @@ package middleware
 
 import (
 	"net/http"
-
-	"task-processor/internal/auth"
+	"task-processor/internal/infra/auth"
 
 	"github.com/sirupsen/logrus"
 )

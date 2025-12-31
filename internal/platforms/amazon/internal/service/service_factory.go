@@ -2,8 +2,8 @@
 package service
 
 import (
-	"task-processor/internal/clients/openai"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/amazon/internal/model"
 
 	"github.com/sirupsen/logrus"

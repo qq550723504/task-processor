@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"task-processor/internal/common/management"
-	"task-processor/internal/common/memory"
 	shops "task-processor/internal/common/shein"
+	"task-processor/internal/infra/memory"
 
 	"github.com/sirupsen/logrus"
 )

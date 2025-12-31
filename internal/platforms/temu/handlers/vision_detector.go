@@ -13,7 +13,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	openaiClient "task-processor/internal/clients/openai"
+	openaiClient "task-processor/internal/infra/clients/openai"
 )
 
 // VisionDetector Vision API检测器

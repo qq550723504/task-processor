@@ -4,7 +4,7 @@ package service
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/clients/openai"
+	"task-processor/internal/infra/clients/openai"
 
 	"github.com/sirupsen/logrus"
 )

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"task-processor/internal/common/memory"
+	"task-processor/internal/infra/memory"
 	"time"
 
 	"github.com/sirupsen/logrus"

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/memory"
+	"task-processor/internal/infra/memory"
 	commontypes "task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"

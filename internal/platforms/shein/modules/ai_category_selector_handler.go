@@ -2,7 +2,7 @@
 
 import (
 	"fmt"
-	openaiClient "task-processor/internal/clients/openai"
+	openaiClient "task-processor/internal/infra/clients/openai"
 )
 
 // AICategorySelectorHandler AI分类选择处理器

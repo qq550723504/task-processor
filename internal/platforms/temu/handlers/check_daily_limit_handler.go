@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/common/memory"
+	"task-processor/internal/infra/memory"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"

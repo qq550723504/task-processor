@@ -4,9 +4,9 @@ package service
 import (
 	"context"
 
-	"task-processor/internal/auth"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/infra/auth"
 
 	"github.com/sirupsen/logrus"
 )

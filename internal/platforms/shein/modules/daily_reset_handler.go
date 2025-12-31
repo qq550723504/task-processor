@@ -2,7 +2,7 @@
 
 import (
 	"context"
-	"task-processor/internal/common/memory"
+	"task-processor/internal/infra/memory"
 	"task-processor/internal/utils"
 	"time"
 

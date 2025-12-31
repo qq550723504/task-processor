@@ -2,7 +2,7 @@
 package temu
 
 import (
-	"task-processor/internal/clients/openai"
+	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
 	commonPipeline "task-processor/internal/pipeline"
 	commonHandlers "task-processor/internal/pipeline/handlers"

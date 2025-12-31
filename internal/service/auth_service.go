@@ -4,8 +4,8 @@ package service
 import (
 	"fmt"
 
-	"task-processor/internal/auth"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/auth"
 
 	"github.com/sirupsen/logrus"
 )

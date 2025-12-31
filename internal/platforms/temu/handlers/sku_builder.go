@@ -3,8 +3,8 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/clients/openai"
 	"task-processor/internal/common/management/api"
+	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/model"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"

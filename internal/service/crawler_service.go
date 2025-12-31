@@ -7,7 +7,7 @@ import (
 	"log"
 
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/repo"
+	"task-processor/internal/infra/repo"
 	"task-processor/internal/utils"
 )
 

@@ -5,12 +5,12 @@ import (
 	"context"
 	"sync"
 
-	"task-processor/internal/auth"
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/infra/auth"
 	"task-processor/internal/service"
 
 	"github.com/sirupsen/logrus"

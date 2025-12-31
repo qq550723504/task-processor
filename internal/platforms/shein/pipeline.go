@@ -1,8 +1,8 @@
 package shein
 
 import (
-	"task-processor/internal/clients/openai"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/shein/modules"
 
 	"github.com/sirupsen/logrus"
