@@ -3,8 +3,8 @@ package shein
 import (
 	"context"
 	"task-processor/internal/app/worker"
-	"task-processor/internal/common/amazon"
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/domain/task"
 	commonPipeline "task-processor/internal/pipeline"

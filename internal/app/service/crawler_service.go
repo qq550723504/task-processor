@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"task-processor/internal/common/amazon"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/repo"
 	"task-processor/internal/pkg/utils"
 )

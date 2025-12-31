@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"task-processor/internal/common"
-	"task-processor/internal/common/amazon"
 	shops "task-processor/internal/common/shein"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"

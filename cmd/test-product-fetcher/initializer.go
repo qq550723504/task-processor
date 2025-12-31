@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/common/amazon"
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/pkg/management"
 

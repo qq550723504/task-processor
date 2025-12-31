@@ -3,7 +3,7 @@ package shein
 import (
 	"fmt"
 
-	"task-processor/internal/common/amazon"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 

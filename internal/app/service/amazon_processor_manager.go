@@ -4,8 +4,8 @@ package service
 import (
 	"sync"
 
-	"task-processor/internal/common/amazon"
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
 
 	"github.com/sirupsen/logrus"
 )

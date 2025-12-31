@@ -3,7 +3,7 @@ package pipeline
 
 import (
 	"context"
-	"task-processor/internal/common/amazon"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pkg/management"

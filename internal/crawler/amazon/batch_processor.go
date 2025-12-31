@@ -3,7 +3,7 @@ package amazon
 
 import (
 	"fmt"
-	"task-processor/internal/common/amazon/browser"
+	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/domain/model"
 
 	"github.com/sirupsen/logrus"

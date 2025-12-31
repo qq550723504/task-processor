@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"task-processor/internal/common"
-	"task-processor/internal/common/amazon"
 	shops "task-processor/internal/common/shein"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/shein"
 

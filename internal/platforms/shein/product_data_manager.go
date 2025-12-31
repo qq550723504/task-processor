@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/common/amazon"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein/modules"

@@ -4,8 +4,8 @@ package product
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/common/amazon"
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 
 	"github.com/sirupsen/logrus"

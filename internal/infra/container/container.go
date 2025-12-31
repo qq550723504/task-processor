@@ -6,10 +6,10 @@ import (
 	"sync"
 
 	"task-processor/internal/app/service"
-	"task-processor/internal/common/amazon"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/pkg/management"
 

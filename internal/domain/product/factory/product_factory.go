@@ -2,8 +2,8 @@
 package factory
 
 import (
-	"task-processor/internal/common/amazon"
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/domain/product/repo/impl"
 	"task-processor/internal/domain/product/service"
