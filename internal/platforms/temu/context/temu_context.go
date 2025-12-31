@@ -6,9 +6,9 @@ import (
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management/api"
 	"task-processor/internal/common/temu"
+	"task-processor/internal/model"
 	commonPipeline "task-processor/internal/pipeline"
 	temutypes "task-processor/internal/platforms/temu/types"
-	"task-processor/internal/types"
 )
 
 // TemuTaskContext TEMU平台特定的任务上下文
@@ -65,7 +65,7 @@ type TemuTaskContext struct {
 }
 
 // NewTemuTaskContext 创建TEMU任务上下文
-func NewTemuTaskContext(ctx context.Context, task *types.Task) *TemuTaskContext {
+func NewTemuTaskContext(ctx context.Context, task *model.Task) *TemuTaskContext {
 	baseContext := commonPipeline.NewTaskContext(ctx, task).(*commonPipeline.DefaultTaskContext)
 	return &TemuTaskContext{
 		DefaultTaskContext: baseContext,

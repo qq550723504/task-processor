@@ -1,4 +1,4 @@
-package types
+package model
 
 // Task 任务结构体
 type Task struct {

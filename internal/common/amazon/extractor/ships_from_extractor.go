@@ -1,7 +1,7 @@
 package extractor
 
 import (
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 )

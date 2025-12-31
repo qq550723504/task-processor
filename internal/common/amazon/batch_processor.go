@@ -4,7 +4,7 @@ package amazon
 import (
 	"fmt"
 	"task-processor/internal/common/amazon/browser"
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )

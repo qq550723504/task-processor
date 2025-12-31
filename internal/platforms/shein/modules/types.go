@@ -2,7 +2,6 @@
 
 import (
 	"context"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/management"
 	management_api "task-processor/internal/common/management/api"
 	"task-processor/internal/common/memory"
@@ -12,7 +11,8 @@ import (
 	"task-processor/internal/common/shein/api/other"
 	"task-processor/internal/common/shein/api/product"
 	"task-processor/internal/common/shein/api/warehouse"
-	"task-processor/internal/types"
+	"task-processor/internal/model"
+	types "task-processor/internal/model"
 )
 
 // StepHandler 任务处理步骤接口

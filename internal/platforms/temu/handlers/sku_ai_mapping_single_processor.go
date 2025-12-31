@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"task-processor/internal/clients/openai"
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"

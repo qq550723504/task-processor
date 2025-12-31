@@ -3,8 +3,8 @@ package modules
 
 import (
 	"fmt"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/shein/api/product"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )

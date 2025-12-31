@@ -5,16 +5,15 @@ import (
 	"context"
 	"sync"
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/management"
 	"task-processor/internal/common/memory"
-	"task-processor/internal/types"
+	"task-processor/internal/model"
 )
 
 // DefaultTaskContext 默认任务上下文实现
 type DefaultTaskContext struct {
 	ctx              context.Context
-	task             *types.Task
+	task             *model.Task
 	data             map[string]any
 	managementClient *management.ClientManager
 	memoryManager    *memory.MemoryManager
@@ -28,7 +27,7 @@ type DefaultTaskContext struct {
 }
 
 // NewTaskContext 创建新的任务上下文
-func NewTaskContext(ctx context.Context, task *types.Task) TaskContext {
+func NewTaskContext(ctx context.Context, task *model.Task) TaskContext {
 	return &DefaultTaskContext{
 		ctx:  ctx,
 		task: task,
@@ -37,7 +36,7 @@ func NewTaskContext(ctx context.Context, task *types.Task) TaskContext {
 }
 
 // NewTemuTaskContext 创建TEMU任务上下文
-func NewTemuTaskContext(ctx context.Context, task *types.Task) TemuTaskContext {
+func NewTemuTaskContext(ctx context.Context, task *model.Task) TemuTaskContext {
 	return &DefaultTaskContext{
 		ctx:  ctx,
 		task: task,
@@ -46,7 +45,7 @@ func NewTemuTaskContext(ctx context.Context, task *types.Task) TemuTaskContext {
 }
 
 // NewSheinTaskContext 创建SHEIN任务上下文
-func NewSheinTaskContext(ctx context.Context, task *types.Task) SheinTaskContext {
+func NewSheinTaskContext(ctx context.Context, task *model.Task) SheinTaskContext {
 	return &DefaultTaskContext{
 		ctx:  ctx,
 		task: task,
@@ -59,7 +58,7 @@ func (tc *DefaultTaskContext) GetContext() context.Context {
 	return tc.ctx
 }
 
-func (tc *DefaultTaskContext) GetTask() *types.Task {
+func (tc *DefaultTaskContext) GetTask() *model.Task {
 	return tc.task
 }
 

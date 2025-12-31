@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 	"task-processor/internal/utils"

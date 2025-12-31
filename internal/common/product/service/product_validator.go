@@ -4,8 +4,8 @@ package service
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/product/types"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )

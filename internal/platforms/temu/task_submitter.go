@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"task-processor/internal/types"
+	"task-processor/internal/model"
 	"task-processor/internal/worker"
 	"time"
 
@@ -25,7 +25,7 @@ func NewTemuTaskSubmitter(workerPool worker.WorkerPool) *TemuTaskSubmitter {
 
 // SubmitTask 提交任务
 func (s *TemuTaskSubmitter) SubmitTask(ctx context.Context, taskData string) error {
-	var task types.Task
+	var task model.Task
 	if err := json.Unmarshal([]byte(taskData), &task); err != nil {
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}

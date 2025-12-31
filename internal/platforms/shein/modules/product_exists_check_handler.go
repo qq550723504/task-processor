@@ -4,8 +4,8 @@ package modules
 import (
 	"fmt"
 
-	"task-processor/internal/common/amazon/model"
 	management_api "task-processor/internal/common/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )

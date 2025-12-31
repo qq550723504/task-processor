@@ -3,8 +3,8 @@ package repo
 
 import (
 	"context"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/product/types"
+	"task-processor/internal/model"
 )
 
 // CacheRepository 缓存仓储接口

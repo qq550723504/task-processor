@@ -10,10 +10,10 @@ import (
 
 	"task-processor/internal/common/management/api"
 	"task-processor/internal/common/memory"
+	commontypes "task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
-	commontypes "task-processor/internal/types"
 
 	"github.com/sirupsen/logrus"
 )

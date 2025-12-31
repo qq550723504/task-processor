@@ -6,8 +6,8 @@ import (
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management"
 	"task-processor/internal/config"
+	"task-processor/internal/model"
 	"task-processor/internal/task"
-	"task-processor/internal/types"
 	"task-processor/internal/worker"
 
 	"github.com/sirupsen/logrus"
@@ -64,7 +64,7 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Lo
 }
 
 // ProcessTask 处理TEMU任务
-func (p *TemuProcessor) ProcessTask(ctx context.Context, task *types.Task) error {
+func (p *TemuProcessor) ProcessTask(ctx context.Context, task *model.Task) error {
 	logger := p.GetLogger()
 	logger.Infof("[TEMU] 开始处理任务: ID=%d, ProductID=%s, StoreID=%d",
 		task.ID, task.ProductID, task.StoreID)
@@ -80,7 +80,7 @@ func (p *TemuProcessor) ProcessTask(ctx context.Context, task *types.Task) error
 }
 
 // processTemuProduct 处理TEMU产品
-func (p *TemuProcessor) processTemuProduct(ctx context.Context, task types.Task) error {
+func (p *TemuProcessor) processTemuProduct(ctx context.Context, task model.Task) error {
 	logger := p.GetLogger()
 	logger.Infof("[TEMU] 处理产品: %s", task.ProductID)
 

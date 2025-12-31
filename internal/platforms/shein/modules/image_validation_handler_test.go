@@ -1,7 +1,7 @@
 package modules
 
 import (
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 	"testing"
 )
 

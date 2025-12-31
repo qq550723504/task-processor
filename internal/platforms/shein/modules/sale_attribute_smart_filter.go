@@ -3,8 +3,8 @@ package modules
 
 import (
 	"strings"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/shein/api/attribute"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )

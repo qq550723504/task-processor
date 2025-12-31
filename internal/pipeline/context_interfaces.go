@@ -4,17 +4,16 @@ package pipeline
 import (
 	"context"
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/management"
 	"task-processor/internal/common/memory"
-	"task-processor/internal/types"
+	"task-processor/internal/model"
 )
 
 // TaskContext 核心任务上下文接口
 type TaskContext interface {
 	// 基础方法
 	GetContext() context.Context
-	GetTask() *types.Task
+	GetTask() *model.Task
 
 	// 通用数据存储
 	SetData(key string, value any)

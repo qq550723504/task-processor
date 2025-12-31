@@ -3,7 +3,7 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 	"task-processor/internal/platforms/temu/utils"

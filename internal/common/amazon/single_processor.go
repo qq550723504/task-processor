@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"task-processor/internal/common/amazon/browser"
 	"task-processor/internal/common/amazon/extractor"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/config"
+	"task-processor/internal/model"
 	"time"
 )
 

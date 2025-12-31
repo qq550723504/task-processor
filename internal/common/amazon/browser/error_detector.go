@@ -3,7 +3,7 @@ package browser
 
 import (
 	"strings"
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 )
 
 // ErrorDetector 错误检测器

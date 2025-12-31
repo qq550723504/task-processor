@@ -3,13 +3,13 @@ package worker
 
 import (
 	"context"
-	"task-processor/internal/types"
+	"task-processor/internal/model"
 )
 
 // Processor 任务处理器接口
 type Processor interface {
 	Start(ctx context.Context) error
-	ProcessTask(ctx context.Context, task *types.Task) error
+	ProcessTask(ctx context.Context, task *model.Task) error
 	Close(ctx context.Context)
 }
 

@@ -2,7 +2,7 @@
 package extractor
 
 import (
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

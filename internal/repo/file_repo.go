@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 )
 
 // FileRepository 文件操作仓储

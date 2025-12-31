@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/shein/api/attribute"
+	"task-processor/internal/model"
 )
 
 // CustomAttributeResult 自定义属性处理结果

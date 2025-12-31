@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/common/temu"
 	"task-processor/internal/model"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/types"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -30,7 +29,7 @@ func NewTaskHandler(processor *TemuProcessor) *TaskHandler {
 }
 
 // ProcessTask 处理任务（使用强类型管道执行器）
-func (h *TaskHandler) ProcessTask(ctx context.Context, task types.Task, executor *TemuPipelineExecutor) error {
+func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, executor *TemuPipelineExecutor) error {
 	h.logger.Infof("开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
 
 	// 创建任务上下文
@@ -71,7 +70,7 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task types.Task, executor
 }
 
 // createTaskContext 创建任务上下文
-func (h *TaskHandler) createTaskContext(ctx context.Context, task *types.Task) *temucontext.TemuTaskContext {
+func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *temucontext.TemuTaskContext {
 	// 直接使用新的context包中的TemuTaskContext
 	taskCtx := temucontext.NewTemuTaskContext(ctx, task)
 
@@ -91,7 +90,7 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *types.Task) *
 }
 
 // handleTaskFailure 处理任务失败
-func (h *TaskHandler) handleTaskFailure(task types.Task, err error) {
+func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 	// 首先检查是否为认证过期错误（Cookie为空）
 	isAuthExpired := IsAuthExpiredError(err)
 	if isAuthExpired {
@@ -209,7 +208,7 @@ func (h *TaskHandler) updateTaskStatusSync(taskID int64, status, errorMsg string
 }
 
 // initAPIClient 初始化API客户端
-func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *types.Task) {
+func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *model.Task) {
 	// 从任务中获取租户ID和店铺ID
 	storeID := task.StoreID
 

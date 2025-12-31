@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"sync"
 	"task-processor/internal/config"
-	"task-processor/internal/types"
+	"task-processor/internal/model"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -183,14 +183,14 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
 						logrus.Errorf("堆栈跟踪:\n%s", string(buf[:n]))
 
 						// 尝试解析任务以记录更多信息
-						var task types.Task
+						var task model.Task
 						if err := json.Unmarshal([]byte(job.TaskData), &task); err == nil {
 							logrus.Errorf("Panic 发生在任务: TaskID=%d, ProductID=%s", task.ID, task.ProductID)
 						}
 					}
 				}()
 
-				var task types.Task
+				var task model.Task
 				if err := json.Unmarshal([]byte(job.TaskData), &task); err != nil {
 					logrus.Errorf("工作协程 %d 解析任务数据失败: %v, 原始数据: %s", w.id, err, job.TaskData)
 					return

@@ -3,7 +3,7 @@ package modules
 
 import (
 	"strings"
-	"task-processor/internal/common/amazon/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )

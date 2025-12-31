@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/clients/openai"
-	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/shein/api/product"
+	"task-processor/internal/model"
 	"time"
 )
 

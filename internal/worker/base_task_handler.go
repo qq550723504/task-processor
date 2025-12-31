@@ -3,8 +3,8 @@ package worker
 
 import (
 	"context"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/types"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -29,7 +29,7 @@ func NewBaseTaskHandler(processor Processor, platform string) *BaseTaskHandler {
 }
 
 // ProcessTask 统一的任务处理方法
-func (h *BaseTaskHandler) ProcessTask(ctx context.Context, task types.Task, pipeline pipeline.Pipeline) error {
+func (h *BaseTaskHandler) ProcessTask(ctx context.Context, task model.Task, pipeline pipeline.Pipeline) error {
 	h.logger.Infof("开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
 
 	// 记录开始时间
