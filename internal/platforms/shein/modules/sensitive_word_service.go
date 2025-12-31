@@ -7,7 +7,7 @@ import (
 
 // NewSensitiveWordService 创建敏感词服务
 func NewSensitiveWordService() *SensitiveWordService {
-	return NewSensitiveWordServiceWithPath("config/sensitive_words.json")
+	return NewSensitiveWordServiceWithPath("data/sensitive_words.json")
 }
 
 // NewSensitiveWordServiceWithPath 使用指定路径创建敏感词服务

@@ -36,7 +36,7 @@ func NewSensitiveWordsFilter() *SensitiveWordsFilter {
 		logger:       logrus.WithField("handler", "SensitiveWordsFilter"),
 		staticWords:  make(map[string][]string),
 		dynamicWords: make(map[string][]*regexp.Regexp),
-		configPath:   "config/sensitive_words_temu.json",
+		configPath:   "data/sensitive_words_temu.json",
 	}
 
 	if err := filter.loadConfig(); err != nil {
