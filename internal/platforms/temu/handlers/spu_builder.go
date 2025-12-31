@@ -7,10 +7,10 @@ import (
 	openaiClient "task-processor/internal/clients/openai"
 	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/utils"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

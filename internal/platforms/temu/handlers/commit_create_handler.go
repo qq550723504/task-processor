@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"task-processor/internal/common/utils"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	temuTypes "task-processor/internal/platforms/temu/types"
 	"task-processor/internal/types"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

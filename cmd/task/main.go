@@ -7,10 +7,10 @@ import (
 	"syscall"
 	"time"
 
-	"task-processor/internal/common/utils"
 	"task-processor/internal/container"
 	"task-processor/internal/errors"
 	"task-processor/internal/monitoring"
+	"task-processor/internal/utils"
 	internalUtils "task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"

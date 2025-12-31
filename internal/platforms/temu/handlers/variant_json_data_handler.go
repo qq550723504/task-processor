@@ -8,11 +8,11 @@ import (
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/amazon/model"
 	"task-processor/internal/common/product"
-	"task-processor/internal/common/utils"
 	"task-processor/internal/config"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/utils"
 	"time"
 
 	"github.com/sirupsen/logrus"

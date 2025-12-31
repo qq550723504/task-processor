@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	"task-processor/internal/common/amazon/model"
-	"task-processor/internal/common/utils"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 	temuUtils "task-processor/internal/platforms/temu/utils"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

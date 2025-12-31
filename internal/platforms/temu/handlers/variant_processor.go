@@ -3,8 +3,8 @@ package handlers
 
 import (
 	"task-processor/internal/common/amazon/model"
-	"task-processor/internal/common/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/common/utils"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
