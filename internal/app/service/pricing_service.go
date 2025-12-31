@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/pkg/management"
 	sheinHandlers "task-processor/internal/platforms/shein/handlers"
-	temuHandlers "task-processor/internal/platforms/temu/handlers"
+	temuHandlers "task-processor/internal/platforms/temu"
 
 	"github.com/sirupsen/logrus"
 )

@@ -220,3 +220,26 @@ func (c *APIClient) ListOnShelfProducts(pageNo, pageSize int) ([]TemuProductResp
 func (c *APIClient) GetProduct(goodsID string) (*TemuProductResponse, error) {
 	return c.productAPI.GetProduct(goodsID)
 }
+
+// ==================== 接口适配器方法 ====================
+// 以下方法用于实现 types.APIClientInterface 接口，避免循环依赖
+
+// ListProductsInterface 获取产品列表（接口适配器）
+func (c *APIClient) ListProductsInterface(pageNo, pageSize int) (interface{}, error) {
+	return c.ListProducts(pageNo, pageSize)
+}
+
+// ListOnShelfProductsInterface 获取已上架的产品列表（接口适配器）
+func (c *APIClient) ListOnShelfProductsInterface(pageNo, pageSize int) (interface{}, error) {
+	return c.ListOnShelfProducts(pageNo, pageSize)
+}
+
+// GetProductInterface 获取单个产品详情（接口适配器）
+func (c *APIClient) GetProductInterface(goodsID string) (interface{}, error) {
+	return c.GetProduct(goodsID)
+}
+
+// SendHTTPRequestInterface 发送HTTP请求（接口适配器）
+func (c *APIClient) SendHTTPRequestInterface(method, url string, headers map[string]string, body any, formFields map[string]string, fileFields map[string]any) (interface{}, error) {
+	return c.SendHTTPRequest(method, url, headers, body, formFields, fileFields)
+}

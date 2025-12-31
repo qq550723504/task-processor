@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"task-processor/internal/platforms/temu/types"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"
@@ -38,7 +39,7 @@ func (a *AuthManager) SendRequestWithAuth(client APIClientInterface, request map
 				a.logger.Errorf("设置暂停键失败: %v", pauseErr)
 			}
 			// 返回AuthExpiredError以便任务处理器识别并暂停任务
-			return NewAuthExpiredError(
+			return types.NewAuthExpiredError(
 				fmt.Sprintf("店铺ID=%d没有Cookie数据且重新加载失败，请先在管理系统中设置Cookie", client.GetStoreID()),
 				err,
 			)
@@ -52,7 +53,7 @@ func (a *AuthManager) SendRequestWithAuth(client APIClientInterface, request map
 				a.logger.Errorf("设置暂停键失败: %v", pauseErr)
 			}
 			// 返回AuthExpiredError以便任务处理器识别并暂停任务
-			return NewAuthExpiredError(
+			return types.NewAuthExpiredError(
 				fmt.Sprintf("店铺ID=%d没有Cookie数据，请先在管理系统中设置Cookie", client.GetStoreID()),
 				nil,
 			)

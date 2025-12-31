@@ -3,7 +3,6 @@ package context
 
 import (
 	"context"
-	"task-processor/internal/common/temu"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	commonPipeline "task-processor/internal/pipeline"
@@ -17,7 +16,7 @@ type TemuTaskContext struct {
 
 	// TEMU特定字段（直接访问，无需getter/setter）
 	AmazonProcessor *amazon.AmazonProcessor
-	APIClient       *temu.APIClient
+	APIClient       temutypes.APIClientInterface // 使用接口避免循环依赖
 
 	// TEMU特定产品数据
 	TemuProduct *temutypes.Product

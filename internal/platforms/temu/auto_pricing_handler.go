@@ -1,10 +1,9 @@
-package handlers
+package temu
 
 import (
 	"context"
 	"time"
 
-	"task-processor/internal/common/temu"
 	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
@@ -12,7 +11,7 @@ import (
 
 // AutoPricingHandler TEMU自动核价处理器
 type AutoPricingHandler struct {
-	schedulerManager *temu.SchedulerManager
+	schedulerManager *SchedulerManager
 	managementClient *management.ClientManager
 	storeIDs         []int64
 	logger           *logrus.Entry
@@ -34,7 +33,7 @@ func (h *AutoPricingHandler) Start(ctx context.Context, interval time.Duration) 
 	h.logger.Infof("启动TEMU自动核价处理器，间隔: %v, 店铺数量: %d", interval, len(h.storeIDs))
 
 	// 创建调度器管理器
-	h.schedulerManager = temu.NewSchedulerManager(ctx, h.managementClient, interval)
+	h.schedulerManager = NewSchedulerManager(ctx, h.managementClient, interval)
 
 	// 为每个店铺添加调度器
 	successCount := 0

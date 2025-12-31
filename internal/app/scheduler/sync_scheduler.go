@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"fmt"
-	temuapi "task-processor/internal/common/temu"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein"
@@ -19,7 +18,7 @@ type SyncScheduler struct {
 	cron            *cron.Cron
 	sheinServices   map[int64]*shein.SyncService   // storeID -> SyncService
 	sheinAPIClients map[int64]*shops.ShopAPIClient // storeID -> APIClient
-	temuAPIClients  map[int64]*temuapi.APIClient   // storeID -> APIClient
+	temuAPIClients  map[int64]*temu.APIClient      // storeID -> APIClient
 	temuServices    map[int64]*temu.SyncService    // storeID -> SyncService
 	clientManager   *management.ClientManager
 }
@@ -30,7 +29,7 @@ func NewSyncScheduler(clientManager *management.ClientManager) *SyncScheduler {
 		cron:            cron.New(),
 		sheinServices:   make(map[int64]*shein.SyncService),
 		sheinAPIClients: make(map[int64]*shops.ShopAPIClient),
-		temuAPIClients:  make(map[int64]*temuapi.APIClient),
+		temuAPIClients:  make(map[int64]*temu.APIClient),
 		temuServices:    make(map[int64]*temu.SyncService),
 		clientManager:   clientManager,
 	}
@@ -53,7 +52,7 @@ func (s *SyncScheduler) RegisterSheinStore(storeID int64, apiClient *shops.ShopA
 
 // RegisterTemuStore 注册 TEMU 店铺
 func (s *SyncScheduler) RegisterTemuStore(storeID int64, temuAPIClient interface{}) {
-	apiClient := temuAPIClient.(*temuapi.APIClient)
+	apiClient := temuAPIClient.(*temu.APIClient)
 	s.temuAPIClients[storeID] = apiClient
 
 	// 获取租户ID

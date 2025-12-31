@@ -3,7 +3,6 @@ package utils
 
 import (
 	"fmt"
-
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

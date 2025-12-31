@@ -2,7 +2,6 @@ package temu
 
 import (
 	"fmt"
-	temuapi "task-processor/internal/common/temu"
 	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -11,12 +10,12 @@ import (
 // SyncService TEMU 产品同步服务
 type SyncService struct {
 	repositoryFactory func(storeID, tenantID int64) api.ProductDataAPI
-	apiClient         *temuapi.APIClient
+	apiClient         *APIClient
 	mappingClient     api.ProductImportMappingAPI
 }
 
 // NewSyncService 创建 TEMU 同步服务
-func NewSyncService(repositoryFactory func(storeID, tenantID int64) api.ProductDataAPI, temuAPIClient *temuapi.APIClient) *SyncService {
+func NewSyncService(repositoryFactory func(storeID, tenantID int64) api.ProductDataAPI, temuAPIClient *APIClient) *SyncService {
 	return &SyncService{
 		repositoryFactory: repositoryFactory,
 		apiClient:         temuAPIClient,
@@ -77,7 +76,7 @@ func (s *SyncService) SyncProducts(tenantID, storeID int64) (int, error) {
 }
 
 // fetchProductList 获取 TEMU 产品列表
-func (s *SyncService) fetchProductList() ([]temuapi.TemuProductResponse, error) {
+func (s *SyncService) fetchProductList() ([]TemuProductResponse, error) {
 	// 调用 TEMU API 获取已上架产品
 	products, err := s.apiClient.ListOnShelfProducts(1, 100)
 	if err != nil {
@@ -122,7 +121,7 @@ func (s *SyncService) SyncSingleProduct(tenantID, storeID int64, goodsID string)
 }
 
 // fetchSingleProduct 获取单个产品详情
-func (s *SyncService) fetchSingleProduct(goodsID string) (*temuapi.TemuProductResponse, error) {
+func (s *SyncService) fetchSingleProduct(goodsID string) (*TemuProductResponse, error) {
 	product, err := s.apiClient.GetProduct(goodsID)
 	if err != nil {
 		return nil, fmt.Errorf("调用 TEMU 产品详情 API 失败: %w", err)
@@ -136,7 +135,7 @@ func (s *SyncService) GetPlatformName() string {
 }
 
 // GetAPIClient 获取 API 客户端
-func (s *SyncService) GetAPIClient() *temuapi.APIClient {
+func (s *SyncService) GetAPIClient() *APIClient {
 	return s.apiClient
 }
 
@@ -151,7 +150,7 @@ func (s *SyncService) MapShelfStatus(platformStatus interface{}) int {
 
 // convertToLocalProductWithMapping 将 common/temu 的 TemuProductResponse 转换为 platforms/temu 的 TemuProductResponse
 // 并通过 SKU 查询映射关系，填充 ASIN 等信息
-func (s *SyncService) convertToLocalProductWithMapping(apiProduct *temuapi.TemuProductResponse, tenantID, storeID int64) *TemuProductResponse {
+func (s *SyncService) convertToLocalProductWithMapping(apiProduct *TemuProductResponse, tenantID, storeID int64) *TemuProductResponse {
 	if apiProduct == nil {
 		return nil
 	}

@@ -331,13 +331,3 @@ func (c *APIClient) executeDecisionForSalesBoost(decision *PricingDecision, good
 		return fmt.Errorf("未知的决策动作: %s", decision.Action)
 	}
 }
-
-// parsePrice 解析价格字符串为浮点数
-func parsePrice(priceStr string) float64 {
-	if priceStr == "" {
-		return 0
-	}
-	var price float64
-	fmt.Sscanf(priceStr, "%f", &price)
-	return price
-}

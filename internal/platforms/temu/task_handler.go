@@ -2,10 +2,10 @@ package temu
 
 import (
 	"context"
-	"task-processor/internal/common/temu"
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/pkg/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
+	"task-processor/internal/platforms/temu/types"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -92,7 +92,7 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 // handleTaskFailure 处理任务失败
 func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 	// 首先检查是否为认证过期错误（Cookie为空）
-	isAuthExpired := IsAuthExpiredError(err)
+	isAuthExpired := types.IsAuthExpiredError(err)
 	if isAuthExpired {
 		// 认证过期错误，暂停任务等待Cookie更新
 		h.updateTaskStatusSync(task.ID, "paused", err.Error())
@@ -138,7 +138,7 @@ func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 
 // isRetryableError 判断错误是否可重试
 func (h *TaskHandler) isRetryableError(err error) bool {
-	return IsRetryableError(err)
+	return types.IsRetryableError(err)
 }
 
 // updateTaskStatusSync 同步更新任务状态
@@ -225,7 +225,7 @@ func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *
 	}).Debug("开始初始化API客户端")
 
 	// 创建API客户端，会自动加载Cookie
-	apiClient := temu.NewAPIClient(task.TenantID, storeID, managementClient)
+	apiClient := NewAPIClient(task.TenantID, storeID, managementClient)
 
 	// 检查cookie加载状态
 	if apiClient.HasCookies() {

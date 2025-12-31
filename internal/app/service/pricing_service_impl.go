@@ -7,7 +7,7 @@ import (
 
 	"task-processor/internal/core/config"
 	sheinHandlers "task-processor/internal/platforms/shein/handlers"
-	temuHandlers "task-processor/internal/platforms/temu/handlers"
+	temuHandlers "task-processor/internal/platforms/temu"
 )
 
 // initializePricingResources 初始化核价资源
