@@ -148,7 +148,7 @@ func (s *SyncService) MapShelfStatus(platformStatus interface{}) int {
 	return MapShelfStatus(status)
 }
 
-// convertToLocalProductWithMapping 将 common/temu 的 TemuProductResponse 转换为 platforms/temu 的 TemuProductResponse
+// convertToLocalProductWithMapping 将 TemuProductResponse 转换为本地格式
 // 并通过 SKU 查询映射关系，填充 ASIN 等信息
 func (s *SyncService) convertToLocalProductWithMapping(apiProduct *TemuProductResponse, tenantID, storeID int64) *TemuProductResponse {
 	if apiProduct == nil {

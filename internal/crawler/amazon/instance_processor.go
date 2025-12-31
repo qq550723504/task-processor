@@ -74,7 +74,12 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 		zipcodeSetter := browser.NewZipcodeSetter(instance.Manager)
 		if err := zipcodeSetter.SetAndVerifyZipcode(page, zipcode); err != nil {
 			logrus.Warnf("设置邮编失败: %v", err)
-			// 不返回错误，继续处理
+
+			// 检查是否需要重建浏览器实例
+			if ip.shouldRecreateInstance(err) {
+				return nil, fmt.Errorf("需要重建浏览器实例: %w", err)
+			}
+			// 其他错误继续处理
 		}
 	}
 
@@ -174,6 +179,28 @@ func (ip *InstanceProcessor) ProcessWithRetry(instance *browser.BrowserInstance,
 	}
 
 	return nil, fmt.Errorf("重试%d次后仍然失败: %w", maxRetries, lastErr)
+}
+
+// shouldRecreateInstance 判断是否需要重建浏览器实例
+func (ip *InstanceProcessor) shouldRecreateInstance(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errorMsg := err.Error()
+	recreateErrors := []string{
+		"SIGN_IN_REQUIRED",
+		"需要登录才能更新位置",
+		"需要重建浏览器实例",
+	}
+
+	for _, recreateError := range recreateErrors {
+		if contains(errorMsg, recreateError) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isSeriousError 判断是否为严重错误

@@ -56,8 +56,11 @@ func (zih *ZipcodeInputHandler) checkSignInDialog(page playwright.Page) error {
 		"text=Sign in to see your location",
 		"text=登录以更新您的位置",
 		"text=ログインして配送先を更新",
+		"text=Inicia sesión para actualizar tu ubicación", // 西班牙语
+		"text=Iniciar sesión para ver tu ubicación",       // 西班牙语
 		"h1:has-text('Sign in')",
-		"#ap_email", // 登录页面的邮箱输入框
+		"h1:has-text('Iniciar sesión')", // 西班牙语
+		"#ap_email",                     // 登录页面的邮箱输入框
 	}
 
 	for _, selector := range signInSelectors {

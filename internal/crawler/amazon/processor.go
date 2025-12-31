@@ -3,8 +3,8 @@ package amazon
 
 import (
 	"fmt"
-	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/domain/model"
 	"time"
 

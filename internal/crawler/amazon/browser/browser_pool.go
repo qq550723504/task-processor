@@ -45,7 +45,7 @@ type BrowserPoolConfig struct {
 // DefaultBrowserPoolConfig 默认浏览器池配置
 func DefaultBrowserPoolConfig() *BrowserPoolConfig {
 	return &BrowserPoolConfig{
-		PoolSize:             3,
+		PoolSize:             1,
 		UseRandomFingerprint: true, // 默认启用随机指纹
 	}
 }

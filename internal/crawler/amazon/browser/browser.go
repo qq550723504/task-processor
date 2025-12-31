@@ -22,8 +22,8 @@ type BrowserManager struct {
 
 // FingerprintConfig 浏览器指纹配置
 type FingerprintConfig struct {
-	Enable bool                   `json:"enable"`
-	GPU    map[string]interface{} `json:"gpu,omitempty"`
+	Enable bool           `json:"enable"`
+	GPU    map[string]any `json:"gpu,omitempty"`
 }
 
 // NewBrowserManager 创建浏览器管理器
@@ -84,13 +84,14 @@ func (bm *BrowserManager) Launch() error {
 
 	// 如果设置了指纹，通过--kfingerprint参数传递
 	if bm.fingerprint != nil && bm.fingerprint.Enable {
-		fingerprintJSON, err := json.Marshal(bm.fingerprint)
+		// 序列化指纹的GPU数据（实际的指纹内容）
+		fingerprintJSON, err := json.Marshal(bm.fingerprint.GPU)
 		if err != nil {
 			logrus.Infof("序列化指纹配置失败: %v", err)
 		} else {
 			kfingerprintArg := fmt.Sprintf("--kfingerprint=%s", string(fingerprintJSON))
 			args = append(args, kfingerprintArg)
-			logrus.Infof("通过--kfingerprint参数注入指纹配置")
+			logrus.Infof("通过--kfingerprint参数注入指纹配置: %s", string(fingerprintJSON)[:100]+"...")
 		}
 	}
 
@@ -144,13 +145,6 @@ func (bm *BrowserManager) Launch() error {
 	}
 	// Force English language in HTTP headers for all regions
 	contextOptions.ExtraHttpHeaders["Accept-Language"] = "en-US,en;q=0.9"
-
-	// 如果设置了指纹，应用指纹配置（但保持英语语言）
-	if bm.fingerprint != nil && bm.fingerprint.Enable {
-		logrus.Info("应用浏览器指纹配置")
-		// Note: Language is forced to English regardless of fingerprint settings
-		// This ensures Amazon pages are always displayed in English
-	}
 
 	context, err := browser.NewContext(contextOptions)
 	if err != nil {

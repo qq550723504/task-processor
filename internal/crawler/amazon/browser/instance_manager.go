@@ -24,11 +24,11 @@ func NewInstanceManager(pool *BrowserPool) *InstanceManager {
 func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error) {
 	manager := NewBrowserManager(im.pool.GetConfig())
 
-	// 如果启用随机指纹，为每个实例生成唯一指纹
+	// 如果启用随机指纹，为每个实例生成完全随机的Python风格指纹
 	if im.pool.UseRandomFingerprint() && im.pool.GetFingerprintGenerator() != nil {
-		randomFingerprint := im.pool.GetFingerprintGenerator().GenerateUniqueFingerprint(id)
+		// 使用Python风格的完全随机指纹，每次都不同
+		randomFingerprint := im.pool.GetFingerprintGenerator().GenerateCompletelyRandomFingerprint()
 		manager.SetFingerprint(randomFingerprint)
-		logrus.Infof("为浏览器实例 %d 生成随机指纹", id)
 	}
 
 	if err := manager.Install(); err != nil {

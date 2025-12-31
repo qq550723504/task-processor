@@ -1,5 +1,14 @@
 package antidetection
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"math/rand"
+	"strconv"
+	"time"
+)
+
 // GPUConfig GPU配置
 type GPUConfig struct {
 	Vendor      string `json:"vendor"`
@@ -20,7 +29,18 @@ type IPConfig struct {
 	Private string `json:"private"`
 }
 
-// FingerprintConfig 指纹配置
+// AdvancedFingerprintConfig 高级指纹配置，与Python版本保持一致
+type AdvancedFingerprintConfig struct {
+	Enable     bool              `json:"enable"`
+	Canvas     map[string]any    `json:"canvas"`
+	WebGL      map[string]string `json:"webgl"`
+	WebRTC     map[string]string `json:"webrtc"`
+	ClientRect float64           `json:"clientRect"`
+	GPU        map[string]string `json:"gpu"`
+	Languages  LanguageConfig    `json:"languages"`
+}
+
+// FingerprintConfig 指纹配置（保持向后兼容）
 type FingerprintConfig struct {
 	Enable     bool                   `json:"enable"`
 	Canvas     map[string]interface{} `json:"canvas"`
@@ -31,7 +51,7 @@ type FingerprintConfig struct {
 	Languages  LanguageConfig         `json:"languages"`
 }
 
-// FingerprintGenerator 指纹生成器
+// FingerprintGenerator 指纹生成器，基于Python版本实现
 type FingerprintGenerator struct {
 	gpuConfigs      []GPUConfig
 	languageConfigs []LanguageConfig
@@ -44,25 +64,25 @@ func NewFingerprintGenerator() *FingerprintGenerator {
 		gpuConfigs: []GPUConfig{
 			{
 				Vendor:      "Google Inc. (NVIDIA)",
-				Renderer:    "ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Direct3D11 vs_5_0 ps_5_0)",
+				Renderer:    "Google Inc. (NVIDIA) ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 (0x00002684) Direct3D11 vs_5_0 ps_5_0, D3D11)",
 				Description: "NVIDIA GeForce RTX 3080",
 				Device:      "1.0003",
 			},
 			{
 				Vendor:      "Google Inc. (NVIDIA)",
-				Renderer:    "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 Direct3D11 vs_5_0 ps_5_0)",
+				Renderer:    "Google Inc. (NVIDIA) ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 (0x00002684) Direct3D11 vs_5_0 ps_5_0, D3D11)",
 				Description: "NVIDIA GeForce RTX 4090",
 				Device:      "1.0004",
 			},
 			{
 				Vendor:      "Google Inc. (AMD)",
-				Renderer:    "ANGLE (AMD, AMD Radeon RX 6800 XT Direct3D11 vs_5_0 ps_5_0)",
+				Renderer:    "Google Inc. (AMD) ANGLE (AMD, AMD Radeon RX 6800 XT (0x000073BF) Direct3D11 vs_5_0 ps_5_0, D3D11)",
 				Description: "AMD Radeon RX 6800 XT",
 				Device:      "2.0001",
 			},
 			{
 				Vendor:      "Google Inc. (Intel)",
-				Renderer:    "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)",
+				Renderer:    "Google Inc. (Intel) ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E9B) Direct3D11 vs_5_0 ps_5_0, D3D11)",
 				Description: "Intel UHD Graphics 630",
 				Device:      "3.0001",
 			},
@@ -79,4 +99,196 @@ func NewFingerprintGenerator() *FingerprintGenerator {
 			{Public: "114.114.114.114", Private: "192.168.2.1"},
 		},
 	}
+}
+
+// getStableSeed 生成稳定的种子值，确保跨进程一致性（模拟Python版本）
+func (fg *FingerprintGenerator) getStableSeed(userID, suffix string) int64 {
+	hashInput := userID + suffix
+	hash := sha256.Sum256([]byte(hashInput))
+	hashHex := hex.EncodeToString(hash[:])
+
+	// 取前8位十六进制转为整数作为种子
+	seed, _ := strconv.ParseInt(hashHex[:8], 16, 64)
+	return seed
+}
+
+// GenerateCanvasFingerprint 基于用户ID生成canvas指纹
+func (fg *FingerprintGenerator) GenerateCanvasFingerprint(userID string) []int {
+	seed := fg.getStableSeed(userID, "canvas")
+	r := rand.New(rand.NewSource(seed))
+
+	result := make([]int, 3)
+	for i := range result {
+		result[i] = r.Intn(5) + 1 // 1-5的随机数
+	}
+	return result
+}
+
+// GenerateClientRectNoise 生成clientRect噪声
+func (fg *FingerprintGenerator) GenerateClientRectNoise(userID string) float64 {
+	seed := fg.getStableSeed(userID, "rect")
+	r := rand.New(rand.NewSource(seed))
+
+	// 生成0.0001到0.01之间的随机数，保留6位小数
+	noise := r.Float64()*(0.01-0.0001) + 0.0001
+	return float64(int(noise*1000000)) / 1000000 // 保留6位小数
+}
+
+// SelectGPUConfig 为用户选择GPU配置
+func (fg *FingerprintGenerator) SelectGPUConfig(userID string) GPUConfig {
+	seed := fg.getStableSeed(userID, "gpu")
+	r := rand.New(rand.NewSource(seed))
+
+	return fg.gpuConfigs[r.Intn(len(fg.gpuConfigs))]
+}
+
+// SelectLanguageConfig 为用户选择语言配置
+func (fg *FingerprintGenerator) SelectLanguageConfig(userID string) LanguageConfig {
+	seed := fg.getStableSeed(userID, "lang")
+	r := rand.New(rand.NewSource(seed))
+
+	return fg.languageConfigs[r.Intn(len(fg.languageConfigs))]
+}
+
+// SelectIPConfig 为用户选择IP配置
+func (fg *FingerprintGenerator) SelectIPConfig(userID string) IPConfig {
+	seed := fg.getStableSeed(userID, "ip")
+	r := rand.New(rand.NewSource(seed))
+
+	return fg.ipConfigs[r.Intn(len(fg.ipConfigs))]
+}
+
+// GenerateAdvancedFingerprint 为指定用户生成完整的指纹配置（稳定版本）
+func (fg *FingerprintGenerator) GenerateAdvancedFingerprint(userID string) *AdvancedFingerprintConfig {
+	gpuConfig := fg.SelectGPUConfig(userID)
+	languageConfig := fg.SelectLanguageConfig(userID)
+	ipConfig := fg.SelectIPConfig(userID)
+	canvasFingerprint := fg.GenerateCanvasFingerprint(userID)
+
+	return &AdvancedFingerprintConfig{
+		Enable: true,
+		Canvas: map[string]any{
+			"toDataUrl": canvasFingerprint,
+		},
+		WebGL: map[string]string{
+			"vendor":   gpuConfig.Vendor,
+			"renderer": gpuConfig.Renderer,
+		},
+		WebRTC: map[string]string{
+			"public":  ipConfig.Public,
+			"private": ipConfig.Private,
+		},
+		ClientRect: fg.GenerateClientRectNoise(userID),
+		GPU: map[string]string{
+			"description": gpuConfig.Description,
+			"device":      gpuConfig.Device,
+		},
+		Languages: languageConfig,
+	}
+}
+
+// GenerateRandomNvidiaGPU 生成随机NVIDIA GPU信息（匹配Python版本）
+func (fg *FingerprintGenerator) GenerateRandomNvidiaGPU() string {
+	// 创建临时随机数生成器
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// 固定的厂商和引擎部分
+	vendor := "Google Inc."
+	engine := "ANGLE"
+	gpuVendor := "NVIDIA"
+
+	// 定义NVIDIA显卡型号
+	rtxModels := []string{
+		"NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 4080", "NVIDIA GeForce RTX 4070",
+		"NVIDIA GeForce RTX 4060", "NVIDIA GeForce RTX 3060", "NVIDIA GeForce RTX 3070",
+	}
+	gtxModels := []string{
+		"NVIDIA GeForce GTX 1660 Ti", "NVIDIA GeForce GTX 1650",
+		"NVIDIA GeForce GTX 1080", "NVIDIA GeForce GTX 1070",
+		"NVIDIA GeForce GTX 1060", "NVIDIA GeForce GTX 1050 Ti",
+	}
+
+	// 合并所有型号
+	allModels := append(rtxModels, gtxModels...)
+	selectedModel := allModels[r.Intn(len(allModels))]
+
+	// 随机生成设备ID（16进制格式）
+	prefix := "0x0000"
+	suffix := fmt.Sprintf("%04d", r.Intn(8978-1514)+1514)
+	deviceID := prefix + suffix
+
+	// 固定渲染API和shader版本
+	renderAPI := "D3D11"
+	vsVersion := "vs_5_0"
+	psVersion := "ps_5_0"
+
+	// 构建最终的GPU信息字符串（匹配Python格式）
+	gpuInfo := fmt.Sprintf("%s (%s) %s (%s, %s (%s) %s %s %s, %s)",
+		vendor, gpuVendor, engine, gpuVendor, selectedModel, deviceID,
+		renderAPI, vsVersion, psVersion, renderAPI)
+
+	return gpuInfo
+}
+
+// GeneratePythonStyleFingerprint 生成完全匹配Python版本的随机指纹
+func (fg *FingerprintGenerator) GeneratePythonStyleFingerprint(publicIP string) map[string]any {
+	// 创建临时随机数生成器，确保每次都是随机的
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// 生成随机的 canvas toDataUrl 数组（1-100，3个元素）
+	canvasToDataURL := make([]int, 3)
+	for i := range canvasToDataURL {
+		canvasToDataURL[i] = r.Intn(100) + 1
+	}
+
+	// 生成随机NVIDIA GPU
+	renderer := fg.GenerateRandomNvidiaGPU()
+
+	// 随机生成 private IP 地址
+	privateIP := fmt.Sprintf("192.168.%d.%d",
+		r.Intn(255)+1, r.Intn(255)+1)
+
+	// 随机生成 clientRect 浮点数（0-1之间，5位小数）
+	clientRect := float64(r.Intn(100000)) / 100000.0
+
+	// 随机生成 GPU description（5位随机大写字母+数字）
+	chars := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	gpuDescription := make([]byte, 5)
+	for i := range gpuDescription {
+		gpuDescription[i] = chars[r.Intn(len(chars))]
+	}
+
+	// 随机生成 GPU device（0-2之间，4位小数）
+	gpuDevice := float64(r.Intn(20000)) / 10000.0
+
+	// 随机生成 webaudio（1-500）
+	webaudio := r.Intn(500) + 1
+
+	// 构造最终的指纹对象（完全匹配Python格式）
+	fingerprint := map[string]any{
+		"enable": true,
+		"canvas": map[string]any{
+			"toDataUrl": canvasToDataURL,
+		},
+		"webgl": map[string]string{
+			"vendor":   "Google Inc. (NVIDIA)",
+			"renderer": renderer,
+		},
+		"webrtc": map[string]string{
+			"public":  publicIP,
+			"private": privateIP,
+		},
+		"clientRect": clientRect,
+		"gpu": map[string]string{
+			"description": string(gpuDescription),
+			"device":      fmt.Sprintf("%.4f", gpuDevice),
+		},
+		"languages": map[string]string{
+			"http": "en-US,en;q=0.9",
+			"js":   "en-US",
+		},
+		"webaudio": webaudio,
+	}
+
+	return fingerprint
 }
