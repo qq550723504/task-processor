@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 	temuUtils "task-processor/internal/platforms/temu/utils"

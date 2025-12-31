@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/product/repo"
-	"task-processor/internal/common/product/types"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product/repo"
+	"task-processor/internal/domain/product/types"
 
 	"github.com/sirupsen/logrus"
 )

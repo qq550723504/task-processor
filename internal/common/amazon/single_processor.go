@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/common/amazon/browser"
 	"task-processor/internal/common/amazon/extractor"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	"time"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	management_api "task-processor/internal/common/management/api"
 	"task-processor/internal/common/temu"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"time"
 

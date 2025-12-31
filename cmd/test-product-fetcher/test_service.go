@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/common/product"
 	"task-processor/internal/core/config"
+	"task-processor/internal/domain/product"
 
 	"github.com/sirupsen/logrus"
 )

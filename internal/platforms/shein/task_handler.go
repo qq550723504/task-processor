@@ -7,7 +7,7 @@ import (
 	management_api "task-processor/internal/common/management/api"
 	shops "task-processor/internal/common/shein"
 	"task-processor/internal/common/shein/api"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/shein/modules"
 	"task-processor/internal/utils"

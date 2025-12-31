@@ -6,8 +6,8 @@ import (
 	"sync"
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management"
+	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/memory"
-	"task-processor/internal/model"
 )
 
 // DefaultTaskContext 默认任务上下文实现

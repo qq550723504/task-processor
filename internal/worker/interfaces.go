@@ -3,7 +3,7 @@ package worker
 
 import (
 	"context"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 )
 
 // Processor 任务处理器接口

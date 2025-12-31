@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 
 	"github.com/sirupsen/logrus"
 )

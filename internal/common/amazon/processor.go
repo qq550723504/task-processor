@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/common/amazon/browser"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	"time"
 
 	"github.com/sirupsen/logrus"

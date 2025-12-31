@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"task-processor/internal/common/management/api"
-	types "task-processor/internal/model"
+	types "task-processor/internal/domain/model"
 
 	"github.com/sirupsen/logrus"
 )

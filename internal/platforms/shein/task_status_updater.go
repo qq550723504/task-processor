@@ -4,7 +4,7 @@ package shein
 import (
 	"fmt"
 	management_api "task-processor/internal/common/management/api"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	"time"
 
 	"github.com/sirupsen/logrus"

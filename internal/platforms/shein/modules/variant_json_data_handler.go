@@ -6,9 +6,9 @@ import (
 	"strings"
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/product"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 
 	"github.com/sirupsen/logrus"
 )

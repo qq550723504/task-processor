@@ -5,9 +5,9 @@ import (
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management"
 	"task-processor/internal/core/config"
-	types "task-processor/internal/model"
+	types "task-processor/internal/domain/model"
+	"task-processor/internal/domain/task"
 	commonPipeline "task-processor/internal/pipeline"
-	"task-processor/internal/task"
 	"task-processor/internal/worker"
 
 	"github.com/sirupsen/logrus"

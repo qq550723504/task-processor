@@ -3,8 +3,8 @@ package repo
 
 import (
 	"context"
-	"task-processor/internal/common/product/types"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product/types"
 )
 
 // CacheRepository 缓存仓储接口

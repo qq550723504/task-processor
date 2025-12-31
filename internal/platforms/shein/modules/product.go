@@ -2,7 +2,7 @@
 
 import (
 	"task-processor/internal/common/shein/api/product"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 )
 
 // SKUCreationParams SKU创建参数

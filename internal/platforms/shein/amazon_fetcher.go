@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/product"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 
 	"github.com/sirupsen/logrus"
 )

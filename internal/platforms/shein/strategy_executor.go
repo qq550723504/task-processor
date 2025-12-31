@@ -4,7 +4,7 @@ package shein
 import (
 	"task-processor/internal/common/management/api"
 	shops "task-processor/internal/common/shein"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 )
 
 // StrategyExecutor 运营策略执行器

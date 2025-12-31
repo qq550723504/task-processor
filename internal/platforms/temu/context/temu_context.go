@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management/api"
 	"task-processor/internal/common/temu"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	commonPipeline "task-processor/internal/pipeline"
 	temutypes "task-processor/internal/platforms/temu/types"
 )

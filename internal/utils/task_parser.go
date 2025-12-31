@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
-	types "task-processor/internal/model"
+	types "task-processor/internal/domain/model"
 )
 
 // TaskParser 任务解析器

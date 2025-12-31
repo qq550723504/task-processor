@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"sync"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	"time"
 
 	"github.com/sirupsen/logrus"

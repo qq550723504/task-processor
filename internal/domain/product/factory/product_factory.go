@@ -4,10 +4,10 @@ package factory
 import (
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/common/product"
-	"task-processor/internal/common/product/repo/impl"
-	"task-processor/internal/common/product/service"
 	"task-processor/internal/core/config"
+	"task-processor/internal/domain/product"
+	"task-processor/internal/domain/product/repo/impl"
+	"task-processor/internal/domain/product/service"
 
 	"github.com/sirupsen/logrus"
 )

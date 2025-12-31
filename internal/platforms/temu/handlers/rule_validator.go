@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"task-processor/internal/common/management/api"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 

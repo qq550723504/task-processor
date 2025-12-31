@@ -3,7 +3,7 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

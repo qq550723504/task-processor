@@ -5,7 +5,7 @@ import (
 	"math"
 	"task-processor/internal/common/management/api"
 	shops "task-processor/internal/common/shein"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 
 	"github.com/sirupsen/logrus"
 )

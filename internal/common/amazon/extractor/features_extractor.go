@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 
 	"github.com/playwright-community/playwright-go"
 )

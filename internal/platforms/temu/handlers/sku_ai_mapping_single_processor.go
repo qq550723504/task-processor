@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
-	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"

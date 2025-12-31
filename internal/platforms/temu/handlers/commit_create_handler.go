@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	types "task-processor/internal/model"
+	types "task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	temuTypes "task-processor/internal/platforms/temu/types"

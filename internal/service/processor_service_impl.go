@@ -10,11 +10,11 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/temu"
-	"task-processor/internal/task"
 
 	"github.com/sirupsen/logrus"
 )

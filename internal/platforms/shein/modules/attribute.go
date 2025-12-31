@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"task-processor/internal/common/shein/api/attribute"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 )
 
 // CustomAttributeResult 自定义属性处理结果

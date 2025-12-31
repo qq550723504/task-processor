@@ -10,9 +10,9 @@ import (
 	"task-processor/internal/common/shein/api/other"
 	"task-processor/internal/common/shein/api/product"
 	"task-processor/internal/common/shein/api/warehouse"
+	"task-processor/internal/domain/model"
+	types "task-processor/internal/domain/model"
 	"task-processor/internal/infra/memory"
-	"task-processor/internal/model"
-	types "task-processor/internal/model"
 )
 
 // StepHandler 任务处理步骤接口

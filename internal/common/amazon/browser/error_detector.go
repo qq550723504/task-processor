@@ -3,7 +3,7 @@ package browser
 
 import (
 	"strings"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 )
 
 // ErrorDetector 错误检测器

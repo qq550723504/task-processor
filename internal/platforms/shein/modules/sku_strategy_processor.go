@@ -6,7 +6,7 @@ import (
 	"strings"
 	"task-processor/internal/common/shein/api/attribute"
 	"task-processor/internal/common/shein/api/product"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 
 	"github.com/sirupsen/logrus"
 )

@@ -3,9 +3,9 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/product"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
 
 	"github.com/sirupsen/logrus"

@@ -2,7 +2,7 @@
 package extractor
 
 import (
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"task-processor/internal/common/management/api"
+	"task-processor/internal/domain/model"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"

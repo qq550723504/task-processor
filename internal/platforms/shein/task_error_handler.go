@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"task-processor/internal/common/shein/api"
-	"task-processor/internal/model"
+	"task-processor/internal/domain/model"
 	"task-processor/internal/platforms/shein/modules"
 	"task-processor/internal/utils"
 	"time"
