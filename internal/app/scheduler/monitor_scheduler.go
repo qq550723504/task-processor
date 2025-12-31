@@ -3,8 +3,8 @@ package scheduler
 import (
 	"fmt"
 
-	"task-processor/internal/common"
 	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/shein"
 	shops "task-processor/internal/platforms/shein"
@@ -20,16 +20,16 @@ type MonitorScheduler struct {
 	sheinAPIClients map[int64]*shops.ShopAPIClient
 	clientManager   *management.ClientManager
 	amazonProcessor *amazon.AmazonProcessor
-	monitorConfig   *common.MonitorConfig
-	eventHandler    common.MonitorEventHandler
+	monitorConfig   *domain.MonitorConfig
+	eventHandler    domain.MonitorEventHandler
 }
 
 // NewMonitorScheduler 创建监控调度器
 func NewMonitorScheduler(
 	clientManager *management.ClientManager,
 	amazonProcessor *amazon.AmazonProcessor,
-	monitorConfig *common.MonitorConfig,
-	eventHandler common.MonitorEventHandler,
+	monitorConfig *domain.MonitorConfig,
+	eventHandler domain.MonitorEventHandler,
 ) *MonitorScheduler {
 	return &MonitorScheduler{
 		cron:            cron.New(),

@@ -4,7 +4,7 @@ package shein
 import (
 	"time"
 
-	"task-processor/internal/common"
+	"task-processor/internal/domain"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein/modules"
@@ -14,12 +14,12 @@ import (
 
 // ChangeDetector 变化检测器
 type ChangeDetector struct {
-	config       *common.MonitorConfig
-	eventHandler common.MonitorEventHandler
+	config       *domain.MonitorConfig
+	eventHandler domain.MonitorEventHandler
 }
 
 // NewChangeDetector 创建变化检测器
-func NewChangeDetector(config *common.MonitorConfig, eventHandler common.MonitorEventHandler) *ChangeDetector {
+func NewChangeDetector(config *domain.MonitorConfig, eventHandler domain.MonitorEventHandler) *ChangeDetector {
 	return &ChangeDetector{
 		config:       config,
 		eventHandler: eventHandler,
@@ -53,7 +53,7 @@ func (d *ChangeDetector) CheckAndNotifyPriceChange(
 		changePercent := ((newPrice - oldPrice) / oldPrice) * 100
 
 		if abs(changePercent) >= d.config.PriceChangeThreshold {
-			event := &common.PriceChangeEvent{
+			event := &domain.PriceChangeEvent{
 				TenantID:          tenantID,
 				StoreID:           storeID,
 				Platform:          "SHEIN",
@@ -93,7 +93,7 @@ func (d *ChangeDetector) CheckAndNotifyStockChange(
 	changeAmount := newStock - oldStock
 
 	if absInt(changeAmount) >= d.config.StockChangeThreshold {
-		event := &common.StockChangeEvent{
+		event := &domain.StockChangeEvent{
 			TenantID:          tenantID,
 			StoreID:           storeID,
 			Platform:          "SHEIN",

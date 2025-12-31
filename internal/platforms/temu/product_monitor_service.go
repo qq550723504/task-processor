@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/common"
 	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/management/api"
 
@@ -15,21 +15,21 @@ import (
 
 // TemuProductMonitorService TEMU 产品监控服务（价格+库存）
 type TemuProductMonitorService struct {
-	*common.BaseMonitorService
+	*domain.BaseMonitorService
 	syncService     *SyncService
 	amazonProcessor *amazon.AmazonProcessor
 }
 
 // NewTemuProductMonitorService 创建 TEMU 产品监控服务
 func NewTemuProductMonitorService(
-	config *common.MonitorConfig,
+	config *domain.MonitorConfig,
 	mappingClient api.ProductImportMappingAPI,
-	eventHandler common.MonitorEventHandler,
+	eventHandler domain.MonitorEventHandler,
 	syncService *SyncService,
 	amazonProcessor *amazon.AmazonProcessor,
 ) *TemuProductMonitorService {
 	return &TemuProductMonitorService{
-		BaseMonitorService: common.NewBaseMonitorService(config, mappingClient, eventHandler),
+		BaseMonitorService: domain.NewBaseMonitorService(config, mappingClient, eventHandler),
 		syncService:        syncService,
 		amazonProcessor:    amazonProcessor,
 	}
@@ -148,7 +148,7 @@ func (s *TemuProductMonitorService) checkAndNotifyPriceChange(
 		changePercent := ((newPrice - oldPrice) / oldPrice) * 100
 
 		if abs(changePercent) >= s.Config.PriceChangeThreshold {
-			event := &common.PriceChangeEvent{
+			event := &domain.PriceChangeEvent{
 				TenantID:          tenantID,
 				StoreID:           storeID,
 				Platform:          "TEMU",
@@ -184,7 +184,7 @@ func (s *TemuProductMonitorService) checkAndNotifyStockChange(
 	changeAmount := newStock - oldStock
 
 	if absInt(changeAmount) >= s.Config.StockChangeThreshold {
-		event := &common.StockChangeEvent{
+		event := &domain.StockChangeEvent{
 			TenantID:          tenantID,
 			StoreID:           storeID,
 			Platform:          "TEMU",

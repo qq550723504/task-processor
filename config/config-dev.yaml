@@ -8,7 +8,7 @@ processor:
 
 # Worker配置
 worker:
-  concurrency: 3           # 并发worker数量
+  concurrency: 1           # 并发worker数量
   bufferSize: 30          # 进一步增加队列大小，提供更多缓冲空间
   taskInterval: 60         # 60秒获取一次任务，减少获取频率
   maxFetchPerCycle: 1      # 单次只获取1个任务，更保守的策略

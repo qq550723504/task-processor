@@ -1,4 +1,4 @@
-package common
+package domain
 
 import (
 	"task-processor/internal/pkg/management/api"

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/common"
 	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain"
 	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -14,7 +14,7 @@ import (
 
 // SheinProductMonitorService SHEIN 产品监控服务（价格+库存）
 type SheinProductMonitorService struct {
-	*common.BaseMonitorService
+	*domain.BaseMonitorService
 	syncService             *SyncService
 	apiClients              map[int64]*ShopAPIClient
 	productDataManager      *ProductDataManager
@@ -26,9 +26,9 @@ type SheinProductMonitorService struct {
 
 // NewSheinProductMonitorService 创建 SHEIN 产品监控服务
 func NewSheinProductMonitorService(
-	config *common.MonitorConfig,
+	config *domain.MonitorConfig,
 	mappingClient api.ProductImportMappingAPI,
-	eventHandler common.MonitorEventHandler,
+	eventHandler domain.MonitorEventHandler,
 	syncService *SyncService,
 	amazonProcessor *amazon.AmazonProcessor,
 	rawJsonDataClient api.RawJsonDataAPI,
@@ -51,7 +51,7 @@ func NewSheinProductMonitorService(
 	strategyManager := NewStrategyManager(operationStrategyClient)
 
 	return &SheinProductMonitorService{
-		BaseMonitorService:      common.NewBaseMonitorService(config, mappingClient, eventHandler),
+		BaseMonitorService:      domain.NewBaseMonitorService(config, mappingClient, eventHandler),
 		syncService:             syncService,
 		apiClients:              make(map[int64]*ShopAPIClient),
 		productDataManager:      productDataManager,
