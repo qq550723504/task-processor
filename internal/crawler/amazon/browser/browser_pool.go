@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"task-processor/internal/core/config"
+	sharedbrowser "task-processor/internal/crawler/shared/browser"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -29,7 +30,7 @@ type BrowserPool struct {
 	instances            []*BrowserInstance
 	available            chan *BrowserInstance
 	Mu                   sync.Mutex
-	fingerprintGen       *FingerprintGenerator
+	fingerprintGen       *sharedbrowser.FingerprintGenerator
 	useRandomFingerprint bool
 	instanceManager      *InstanceManager
 	healthChecker        *HealthChecker
@@ -62,7 +63,7 @@ func NewBrowserPool(cfg *config.AmazonConfig, poolConfig *BrowserPoolConfig) *Br
 
 	// 如果启用随机指纹，初始化指纹生成器
 	if bp.useRandomFingerprint {
-		bp.fingerprintGen = NewFingerprintGenerator()
+		bp.fingerprintGen = sharedbrowser.NewFingerprintGenerator()
 		logrus.Info("浏览器池启用随机指纹生成")
 	}
 
@@ -200,7 +201,7 @@ func (bp *BrowserPool) GetConfig() *config.AmazonConfig {
 }
 
 // GetFingerprintGenerator 获取指纹生成器（用于内部管理器访问）
-func (bp *BrowserPool) GetFingerprintGenerator() *FingerprintGenerator {
+func (bp *BrowserPool) GetFingerprintGenerator() *sharedbrowser.FingerprintGenerator {
 	return bp.fingerprintGen
 }
 

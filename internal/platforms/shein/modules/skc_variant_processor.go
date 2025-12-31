@@ -4,6 +4,7 @@ package modules
 import (
 	"fmt"
 	"strings"
+	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
 
@@ -16,15 +17,17 @@ type SKCVariantProcessor struct {
 	attributeMapper *AttributeMapper
 	skuBuilder      *SKUBuilder
 	taskContext     *TaskContext
+	openaiConfig    *openaiClient.ClientConfig
 }
 
 // NewSKCVariantProcessor 创建新的SKC变体处理器
-func NewSKCVariantProcessor(imageProcessor *ImageProcessor, attributeMapper *AttributeMapper, skuBuilder *SKUBuilder, taskContext *TaskContext) *SKCVariantProcessor {
+func NewSKCVariantProcessor(imageProcessor *ImageProcessor, attributeMapper *AttributeMapper, skuBuilder *SKUBuilder, taskContext *TaskContext, openaiConfig *openaiClient.ClientConfig) *SKCVariantProcessor {
 	return &SKCVariantProcessor{
 		imageProcessor:  imageProcessor,
 		attributeMapper: attributeMapper,
 		skuBuilder:      skuBuilder,
 		taskContext:     taskContext,
+		openaiConfig:    openaiConfig,
 	}
 }
 
@@ -189,7 +192,7 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *TaskContext, strateg
 
 		// 使用统一的SKC创建函数
 		logrus.Debugf("🏗️ 创建SKC...")
-		translationHandler := NewSKCTranslationHandler(p.taskContext)
+		translationHandler := NewSKCTranslationHandler(p.taskContext, p.openaiConfig)
 		skc := translationHandler.CreateSKC(ctx, SKCCreationParams{
 			AttributeID:      strategy.PrimaryAttribute.AttrID,
 			AttributeValueID: attribute.ID.Int(),
@@ -251,7 +254,7 @@ func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *TaskContext, variant
 	}
 
 	// 使用统一的SKC创建函数
-	translationHandler := NewSKCTranslationHandler(p.taskContext)
+	translationHandler := NewSKCTranslationHandler(p.taskContext, p.openaiConfig)
 	skc := translationHandler.CreateSKC(ctx, SKCCreationParams{
 		AttributeID:      strategy.PrimaryAttribute.AttrID,
 		AttributeValueID: primaryAttrValue.ID.Int(),

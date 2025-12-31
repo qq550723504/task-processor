@@ -114,13 +114,14 @@ platforms:
 amazon:
   # Amazon 爬虫配置
   enabled: true
-  headless: true  # false=可见模式（便于调试），true=无头模式
+  headless: false  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
   poolSize: 3     # 浏览器池大小，同时也是并发处理数
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
   dataFreshnessDays: 15  # 数据新鲜度天数，默认15天
+  
   # Amazon SP-API 配置（用于上架）
   # 注意：以下凭证仅为示例，请替换为你自己的真实凭证
   # 获取方法：登录 Amazon Seller Central > 设置 > 用户权限 > 开发者中心

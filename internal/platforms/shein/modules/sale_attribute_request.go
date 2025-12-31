@@ -165,6 +165,7 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *TaskContext, request 
 1. saleAttributes中的attrValue数组只包含变体实际使用的属性值，不要包含所有可选项
 2. 避免重复数据：同一个属性值在attrValue数组中只能出现一次
 3. 属性值必须与原始数据完全一致，包括大小写、空格、标点符号
+4. quantityType判断：仔细分析每个变体的Title，识别"X Pack/Pcs/Pairs"(同款多件=2)、"Set/Kit"(单套=3)、"X Sets"(多套=4)等关键词，无则为单品=1
 
 请生成准确的销售属性和变体数据。`,
 		request.RequiredVariantCount,

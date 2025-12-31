@@ -2,6 +2,7 @@
 
 import (
 	"fmt"
+	openaiClient "task-processor/internal/infra/clients/openai"
 
 	"github.com/sirupsen/logrus"
 )
@@ -13,24 +14,26 @@ type BuildSkcListHandler struct {
 	}
 	strategyHandler *AttributeStrategyHandler
 	skcBuilder      *SKCBuilder
+	openaiConfig    *openaiClient.ClientConfig
 }
 
 // NewBuildSkcListHandler 创建新的构建SKC列表处理器
 func NewBuildSkcListHandler(imageDownloader interface {
 	DownloadImage(url string) ([]byte, error)
-}) *BuildSkcListHandler {
+}, openaiConfig *openaiClient.ClientConfig) *BuildSkcListHandler {
 	// 创建依赖组件
 	imageProcessor := NewImageProcessor(imageDownloader)
 	attributeMapper := NewAttributeMapper()
 	variantMatcher := NewVariantMatcher()
 	skuBuilder := NewSKUBuilder(variantMatcher)
-	skcBuilder := NewSKCBuilder(imageProcessor, attributeMapper, variantMatcher, skuBuilder)
+	skcBuilder := NewSKCBuilder(imageProcessor, attributeMapper, variantMatcher, skuBuilder, openaiConfig)
 	strategyHandler := NewAttributeStrategyHandler()
 
 	return &BuildSkcListHandler{
 		imageDownloader: imageDownloader,
 		strategyHandler: strategyHandler,
 		skcBuilder:      skcBuilder,
+		openaiConfig:    openaiConfig,
 	}
 }
 

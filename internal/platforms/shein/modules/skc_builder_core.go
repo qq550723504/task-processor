@@ -3,6 +3,7 @@ package modules
 
 import (
 	"fmt"
+	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
 
@@ -16,15 +17,17 @@ type SKCBuilder struct {
 	variantMatcher  *VariantMatcher
 	skuBuilder      *SKUBuilder
 	taskContext     *TaskContext // 添加TaskContext字段
+	openaiConfig    *openaiClient.ClientConfig
 }
 
 // NewSKCBuilder 创建新的SKC构建器
-func NewSKCBuilder(imageProcessor *ImageProcessor, attributeMapper *AttributeMapper, variantMatcher *VariantMatcher, skuBuilder *SKUBuilder) *SKCBuilder {
+func NewSKCBuilder(imageProcessor *ImageProcessor, attributeMapper *AttributeMapper, variantMatcher *VariantMatcher, skuBuilder *SKUBuilder, openaiConfig *openaiClient.ClientConfig) *SKCBuilder {
 	return &SKCBuilder{
 		imageProcessor:  imageProcessor,
 		attributeMapper: attributeMapper,
 		variantMatcher:  variantMatcher,
 		skuBuilder:      skuBuilder,
+		openaiConfig:    openaiConfig,
 	}
 }
 
@@ -71,13 +74,13 @@ func (b *SKCBuilder) BuildSKCListWithSpecAdaptation(ctx *TaskContext, strategyHa
 	// 特殊处理单变体情况
 	if len(ctx.SaleSpecResult.Variants) == 1 {
 		logrus.Infof("🎯 检测到单变体情况，使用单变体构建流程")
-		processor := NewSKCVariantProcessor(b.imageProcessor, b.attributeMapper, b.skuBuilder, b.taskContext)
+		processor := NewSKCVariantProcessor(b.imageProcessor, b.attributeMapper, b.skuBuilder, b.taskContext, b.openaiConfig)
 		return processor.BuildSingleVariantSKC(ctx, strategy)
 	}
 
 	// 构建多变体SKC列表
 	logrus.Infof("🎯 检测到多变体情况，使用多变体构建流程")
-	processor := NewSKCVariantProcessor(b.imageProcessor, b.attributeMapper, b.skuBuilder, b.taskContext)
+	processor := NewSKCVariantProcessor(b.imageProcessor, b.attributeMapper, b.skuBuilder, b.taskContext, b.openaiConfig)
 	return processor.BuildMultiVariantSKCList(ctx, strategy, b.variantMatcher)
 }
 

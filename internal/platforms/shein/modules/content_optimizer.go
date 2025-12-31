@@ -3,6 +3,7 @@ package modules
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
@@ -101,26 +102,44 @@ func (o *ContentOptimizer) parseOptimizedContent(content, defaultTitle, defaultD
 	title = defaultTitle
 	description = defaultDescription
 
-	// 查找"优化标题："和"优化描述："标记
+	// 尝试解析JSON格式的响应
+	type OptimizedContent struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+
+	var optimized OptimizedContent
+
+	// 清理内容，移除可能的markdown代码块标记
+	cleanContent := strings.TrimSpace(content)
+	cleanContent = strings.TrimPrefix(cleanContent, "```json")
+	cleanContent = strings.TrimPrefix(cleanContent, "```")
+	cleanContent = strings.TrimSuffix(cleanContent, "```")
+	cleanContent = strings.TrimSpace(cleanContent)
+
+	// 尝试解析JSON
+	if err := json.Unmarshal([]byte(cleanContent), &optimized); err == nil {
+		if strings.TrimSpace(optimized.Title) != "" {
+			title = strings.TrimSpace(optimized.Title)
+		}
+		if strings.TrimSpace(optimized.Description) != "" {
+			description = strings.TrimSpace(optimized.Description)
+		}
+		return title, description
+	}
+
+	// 如果JSON解析失败，尝试查找中文标记（向后兼容）
 	titlePrefix := "优化标题："
 	descPrefix := "优化描述："
 
-	lines := strings.SplitSeq(content, "\n")
-	for line := range lines {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if after, ok := strings.CutPrefix(line, titlePrefix); ok {
 			title = strings.TrimSpace(after)
 		} else if after, ok := strings.CutPrefix(line, descPrefix); ok {
 			description = strings.TrimSpace(after)
 		}
-	}
-
-	// 如果解析失败，返回原始内容
-	if title == "" {
-		title = defaultTitle
-	}
-	if description == "" {
-		description = defaultDescription
 	}
 
 	return title, description

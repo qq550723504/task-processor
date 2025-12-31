@@ -26,8 +26,8 @@ func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error) {
 
 	// 如果启用随机指纹，为每个实例生成完全随机的Python风格指纹
 	if im.pool.UseRandomFingerprint() && im.pool.GetFingerprintGenerator() != nil {
-		// 使用Python风格的完全随机指纹，每次都不同
-		randomFingerprint := im.pool.GetFingerprintGenerator().GenerateCompletelyRandomFingerprint()
+		// 使用随机指纹，每次都不同
+		randomFingerprint := im.pool.GetFingerprintGenerator().GenerateRandomFingerprint("")
 		manager.SetFingerprint(randomFingerprint)
 	}
 

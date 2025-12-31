@@ -2,21 +2,33 @@
 package modules
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
+	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/shein/api/product"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
 // SKCTranslationHandler SKC翻译处理器
 type SKCTranslationHandler struct {
-	taskContext *TaskContext
+	taskContext      *TaskContext
+	contentOptimizer *ContentOptimizer
 }
 
 // NewSKCTranslationHandler 创建新的SKC翻译处理器
-func NewSKCTranslationHandler(taskContext *TaskContext) *SKCTranslationHandler {
+func NewSKCTranslationHandler(taskContext *TaskContext, openaiConfig *openaiClient.ClientConfig) *SKCTranslationHandler {
+	var contentOptimizer *ContentOptimizer
+	if openaiConfig != nil {
+		contentOptimizer = NewContentOptimizer(openaiClient.NewClient(openaiConfig))
+	}
+
 	return &SKCTranslationHandler{
-		taskContext: taskContext,
+		taskContext:      taskContext,
+		contentOptimizer: contentOptimizer,
 	}
 }
 
@@ -37,7 +49,10 @@ func (h *SKCTranslationHandler) CreateSKC(ctx *TaskContext, params SKCCreationPa
 	// 5. 翻译到所有目标语言
 	h.translateToAllLanguages(ctx, sourceTitle, sourceLang, &multiLanguageNameList)
 
-	// 6. 选择主要显示语言
+	// 6. 使用AI优化多语言内容
+	h.optimizeMultiLanguageContent(ctx, &multiLanguageNameList, sourceTitle)
+
+	// 7. 选择主要显示语言
 	primaryLanguageContent := h.selectPrimaryDisplayLanguage(targetLanguages, multiLanguageNameList, sourceTitle)
 
 	skc := product.SKC{
@@ -195,6 +210,266 @@ func (h *SKCTranslationHandler) translateToAllLanguages(ctx *TaskContext, source
 
 		langContent.Name = translatedTitle
 	}
+}
+
+// optimizeMultiLanguageContent 使用AI优化多语言内容
+func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *TaskContext, multiLanguageNameList *[]product.LanguageContent, sourceTitle string) {
+	logrus.Debugf("🤖 开始AI优化多语言内容...")
+
+	// 检查前置条件
+	if multiLanguageNameList == nil || len(*multiLanguageNameList) == 0 {
+		logrus.Warnf("⚠️ 跳过AI优化：多语言内容为空")
+		return
+	}
+
+	// 检查是否有内容优化器
+	if h.contentOptimizer == nil || h.contentOptimizer.openaiClient == nil {
+		logrus.Warnf("⚠️ 跳过AI优化：OpenAI客户端未配置")
+		return
+	}
+
+	// 收集所有需要优化的英文内容
+	var englishContents []string
+	var englishIndexes []int
+
+	for i := range *multiLanguageNameList {
+		langContent := &(*multiLanguageNameList)[i]
+
+		// 只收集英文内容
+		if langContent.Language == "en" && langContent.Name != "" {
+			englishContents = append(englishContents, langContent.Name)
+			englishIndexes = append(englishIndexes, i)
+		}
+	}
+
+	if len(englishContents) == 0 {
+		logrus.Debugf("⚠️ 没有找到需要优化的英文内容")
+		return
+	}
+
+	// 创建带超时的上下文
+	aiCtx, cancel := context.WithTimeout(ctx.Context, 30*time.Second)
+	defer cancel()
+
+	// 一次性批量优化所有英文内容
+	optimizedContents, err := h.batchOptimizeEnglishContent(aiCtx, englishContents, sourceTitle)
+	if err != nil {
+		logrus.Warnf("❌ 批量优化英文内容失败: %v，保持原内容", err)
+		return
+	}
+
+	// 更新优化后的内容
+	for i, optimizedContent := range optimizedContents {
+		if i >= len(englishIndexes) {
+			break
+		}
+
+		langContent := &(*multiLanguageNameList)[englishIndexes[i]]
+
+		// 验证和清理优化后的内容
+		cleanedName := strings.TrimSpace(optimizedContent)
+		if len(cleanedName) < 10 {
+			logrus.Warnf("⚠️ 优化后的英文内容太短，保持原内容")
+			continue
+		}
+
+		if len(cleanedName) > 800 {
+			cleanedName = h.truncateContent(cleanedName, 800)
+			logrus.Debugf("✂️ 截断英文内容到800字符")
+		}
+
+		// 更新内容
+		langContent.Name = cleanedName
+		logrus.Infof("✅ 英文内容优化完成: %s", cleanedName)
+	}
+
+	logrus.Infof("🎉 AI批量优化多语言内容完成")
+}
+
+// batchOptimizeEnglishContent 批量优化英文内容
+func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context, contents []string, sourceTitle string) ([]string, error) {
+	// 构建批量优化的系统提示词
+	systemPrompt := `你是一个专业的电商产品内容优化专家。请批量优化产品标题，使其更适合SHEIN平台销售。
+
+要求：
+1. 所有标题必须是英文，长度在10-800个字符之间
+2. 突出产品主要特征和卖点
+3. 使用简洁、吸引人的描述
+4. 避免使用品牌名称和敏感词汇
+5. 符合英语语法规范
+6. 返回JSON格式：{"optimized_titles": ["优化后的标题1", "优化后的标题2", ...]}`
+
+	// 构建用户提示词，包含所有需要优化的内容
+	var contentList strings.Builder
+	for i, content := range contents {
+		contentList.WriteString(fmt.Sprintf("%d. %s\n", i+1, content))
+	}
+
+	userPrompt := fmt.Sprintf(`原始标题：%s
+
+需要优化的英文内容列表：
+%s
+请批量优化这些英文产品标题，使其更适合SHEIN平台销售。返回JSON格式：{"optimized_titles": ["优化后的标题1", "优化后的标题2", ...]}`,
+		sourceTitle,
+		contentList.String())
+
+	// 调用OpenAI API
+	return h.callOpenAIForBatchOptimization(ctx, systemPrompt, userPrompt, len(contents))
+}
+
+// callOpenAIForBatchOptimization 调用OpenAI API进行批量优化
+func (h *SKCTranslationHandler) callOpenAIForBatchOptimization(ctx context.Context, systemPrompt, userPrompt string, expectedCount int) ([]string, error) {
+	temperature := float32(0.7)
+
+	// 构建消息
+	messages := []openaiClient.ChatCompletionMessage{
+		{
+			Role:    "system",
+			Content: systemPrompt,
+		},
+		{
+			Role:    "user",
+			Content: userPrompt,
+		},
+	}
+
+	// 构建请求
+	req := &openaiClient.ChatCompletionRequest{
+		Model:       h.contentOptimizer.openaiClient.GetDefaultModel(),
+		Messages:    messages,
+		Temperature: &temperature,
+	}
+
+	// 调用OpenAI API
+	resp, err := h.contentOptimizer.openaiClient.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("调用OpenAI API失败: %w", err)
+	}
+
+	// 检查响应是否有效
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("OpenAI API返回空响应")
+	}
+
+	// 解析响应内容
+	content := resp.Choices[0].Message.Content
+
+	// 解析批量JSON响应
+	return h.parseBatchOptimizedResponse(content, expectedCount)
+}
+
+// parseBatchOptimizedResponse 解析批量优化响应
+func (h *SKCTranslationHandler) parseBatchOptimizedResponse(content string, expectedCount int) ([]string, error) {
+	// 清理内容
+	cleanContent := strings.TrimSpace(content)
+	cleanContent = strings.TrimPrefix(cleanContent, "```json")
+	cleanContent = strings.TrimPrefix(cleanContent, "```")
+	cleanContent = strings.TrimSuffix(cleanContent, "```")
+	cleanContent = strings.TrimSpace(cleanContent)
+
+	// 尝试解析JSON
+	type BatchOptimizedResponse struct {
+		OptimizedTitles []string `json:"optimized_titles"`
+	}
+
+	var response BatchOptimizedResponse
+	if err := json.Unmarshal([]byte(cleanContent), &response); err != nil {
+		return nil, fmt.Errorf("解析JSON响应失败: %w", err)
+	}
+
+	if len(response.OptimizedTitles) == 0 {
+		return nil, fmt.Errorf("优化后的标题列表为空")
+	}
+
+	// 如果返回的数量不匹配，记录警告但继续处理
+	if len(response.OptimizedTitles) != expectedCount {
+		logrus.Warnf("⚠️ 返回的优化标题数量(%d)与期望数量(%d)不匹配", len(response.OptimizedTitles), expectedCount)
+	}
+
+	return response.OptimizedTitles, nil
+}
+
+// callOpenAIForOptimization 调用OpenAI API进行优化
+func (h *SKCTranslationHandler) callOpenAIForOptimization(ctx context.Context, client *openaiClient.Client, systemPrompt, userPrompt string) (string, error) {
+	temperature := float32(0.7)
+
+	// 构建消息
+	messages := []openaiClient.ChatCompletionMessage{
+		{
+			Role:    "system",
+			Content: systemPrompt,
+		},
+		{
+			Role:    "user",
+			Content: userPrompt,
+		},
+	}
+
+	// 构建请求
+	req := &openaiClient.ChatCompletionRequest{
+		Model:       client.GetDefaultModel(),
+		Messages:    messages,
+		Temperature: &temperature,
+	}
+
+	// 调用OpenAI API
+	resp, err := client.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("调用OpenAI API失败: %w", err)
+	}
+
+	// 检查响应是否有效
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("OpenAI API返回空响应")
+	}
+
+	// 解析响应内容
+	content := resp.Choices[0].Message.Content
+
+	// 解析JSON响应
+	return h.parseOptimizedResponse(content)
+}
+
+// parseOptimizedResponse 解析优化响应
+func (h *SKCTranslationHandler) parseOptimizedResponse(content string) (string, error) {
+	// 清理内容
+	cleanContent := strings.TrimSpace(content)
+	cleanContent = strings.TrimPrefix(cleanContent, "```json")
+	cleanContent = strings.TrimPrefix(cleanContent, "```")
+	cleanContent = strings.TrimSuffix(cleanContent, "```")
+	cleanContent = strings.TrimSpace(cleanContent)
+
+	// 尝试解析JSON
+	type OptimizedResponse struct {
+		OptimizedTitle string `json:"optimized_title"`
+	}
+
+	var response OptimizedResponse
+	if err := json.Unmarshal([]byte(cleanContent), &response); err != nil {
+		return "", fmt.Errorf("解析JSON响应失败: %w", err)
+	}
+
+	if response.OptimizedTitle == "" {
+		return "", fmt.Errorf("优化后的标题为空")
+	}
+
+	return response.OptimizedTitle, nil
+}
+
+// truncateContent 截断内容到指定长度
+func (h *SKCTranslationHandler) truncateContent(content string, maxLength int) string {
+	if len(content) <= maxLength {
+		return content
+	}
+
+	// 在单词边界处截断
+	truncated := content[:maxLength]
+	lastSpace := strings.LastIndex(truncated, " ")
+	if lastSpace > 0 && lastSpace > maxLength-50 {
+		truncated = truncated[:lastSpace]
+	}
+
+	return strings.TrimSpace(truncated)
 }
 
 // selectPrimaryDisplayLanguage 选择主要显示语言

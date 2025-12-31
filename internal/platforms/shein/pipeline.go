@@ -134,7 +134,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 验证修复销售属性
 	pipeline.AddHandler(modules.NewValidateRepairSaleAttributeHandler())
 	// 构建SKC列表
-	pipeline.AddHandler(modules.NewBuildSkcListHandler(imageDownloder))
+	pipeline.AddHandler(modules.NewBuildSkcListHandler(imageDownloder, openaiConfig))
 	// 构建最终的发品数据
 	pipeline.AddHandler(modules.NewBuildSpuHandler())
 	// 清理敏感词（集成硬编码敏感词检查）
