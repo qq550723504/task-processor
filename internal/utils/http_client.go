@@ -115,3 +115,25 @@ func GetDefaultHTTPClientConfig() HTTPClientConfig {
 		SkipTLSVerify: false,
 	}
 }
+
+// CreateSimpleHTTPClient 创建简单的HTTP客户端（用于替换重复的http.Client创建）
+func CreateSimpleHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+	}
+}
+
+// CreateSimpleHTTPClientWithTimeout 创建指定超时的简单HTTP客户端
+func CreateSimpleHTTPClientWithTimeout(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+	}
+}
+
+// CreateHTTPClientWithTransport 创建带自定义Transport的HTTP客户端
+func CreateHTTPClientWithTransport(timeout time.Duration, transport *http.Transport) *http.Client {
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+	}
+}

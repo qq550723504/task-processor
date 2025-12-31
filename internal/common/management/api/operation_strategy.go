@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -49,10 +49,8 @@ type OperationStrategyClient struct {
 // NewOperationStrategyClient 创建自动化运营策略客户端
 func NewOperationStrategyClient(baseURL string) *OperationStrategyClient {
 	return &OperationStrategyClient{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		baseURL:    baseURL,
+		httpClient: utils.CreateSimpleHTTPClient(),
 	}
 }
 

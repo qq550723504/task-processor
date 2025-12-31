@@ -20,6 +20,22 @@ func (g *SaleAttributePromptGenerator) GenerateSystemPrompt() string {
 	# 核心任务
 	基于Amazon产品信息，智能生成SHEIN平台的销售属性（saleAttributes）和变体（variants）数据，确保属性选择准确、变体区分清晰。
 
+	# ⚠️ 最重要规则：属性维度数量必须匹配
+	**输出的销售属性数量 = Amazon输入的属性维度数量**，这是最关键的规则：
+	- 查看输入的variations_values数组长度N
+	- saleAttributes数组必须恰好有N个属性
+	- 每个variant的attributes必须恰好有N个键
+	- 违反此规则的输出是错误的！
+
+	## 属性映射策略
+	- 找到【可用销售属性】中Required=true的必填属性
+	- 用SHEIN必填属性替换Amazon的第一个属性维度
+	- Amazon的其他属性维度保持不变
+
+	## 示例说明
+	- Amazon单属性(color) + SHEIN必填属性(Style Type) → 输出只有1个属性(Style Type)，值用Amazon的color值
+	- Amazon双属性(size+color) + SHEIN必填属性(Style Type) → 输出2个属性(Style Type+Color)，Style Type用size值
+
 	# 目标与核心规则
 	- variants数组长度必须等于输入ASIN数量，且每个ASIN都必须有且仅有一个变体。
 	- 所有Required=true的销售属性必须包含。
@@ -29,11 +45,12 @@ func (g *SaleAttributePromptGenerator) GenerateSystemPrompt() string {
 	- 物理信息如无数据请合理估算（尺寸单位必须严格使用: cm，不允许使用其他单位如inch、Inch、Ft等，重量单位: g，范围0.01g-250000g）。
 	- quantityType 为单品=1、同款多件=2、单套=3、多套=4
 	- UnitType 单位类型 件=1，双=2，套=3
-	- **重要规则：当quantityType为3(单套)或4(多套)时，UnitType必须为3(套)**
 	- Quantity 数量，如果是多件或多套时，数量必须大于等于2。
 
 	# 属性值严格保持原样规则（重要）
 	**必须严格使用用户提供的原始属性值，不得进行任何修改、翻译或简化**：
+	- 属性值的大小写、空格、标点符号都必须与原始数据完全一致
+	- 禁止对属性值进行任何形式的"优化"、"标准化"或"翻译"
 
 	# 属性名映射规则（重要）
 	- 用户会在提示中提供【属性名称映射】，包含每个属性ID对应的variantAttributeName
@@ -46,28 +63,13 @@ func (g *SaleAttributePromptGenerator) GenerateSystemPrompt() string {
 	- 如果【产品物理信息】中某个ASIN包含属性（如"Color": "Black"），则该ASIN的variant必须在attributes中包含该属性
 	- 属性值必须与【产品物理信息】中提供的值完全一致，不得修改
 
-	# 变体完整性检查规则（关键）
-	**每个变体都必须包含所有选定的销售属性，不允许缺失**：
-	- 如果选择了N个销售属性，那么每个变体的attributes字段都必须包含这N个属性
-	- 如果某个ASIN的原始数据缺少某个属性值，必须进行合理推断或使用适当的默认值
-	- 不允许出现部分变体有完整属性，部分变体缺少属性的情况
-	- 所有变体的属性数量必须完全一致
-
-	# 缺失属性值的处理策略
-	**当某个ASIN缺少属性值时的处理方法**：
-	- 根据产品特征和其他变体的属性值进行合理推断
-	- 使用产品的通用特征作为默认值
-	- 确保推断的属性值在对应的saleAttributes.attrValue列表中存在
-	- 优先使用已有的属性值，避免创造新的属性值
-
-	# 销售属性值列表生成规则（关键修正）
-	**saleAttributes中的attrValue数组只能包含变体中实际使用的属性值**：
-	- 不要生成所有可用的属性选项，只生成变体实际需要的属性值
-	- 从【原始属性值列表】中提取变体实际使用的值，避免包含未使用的选项
-	- 例如：如果13个变体只使用了["Light Brown", "Teal", "Grey"]这3个颜色，则saleAttributes中Color属性的attrValue只包含这3个值，不要包含所有9个可选颜色
+	# 销售属性值列表生成规则（关键）
+	**saleAttributes中的attrValue数组必须包含所有变体中出现的不同属性值**：
+	- 用户在【⚠️ 重要：原始属性值列表】中提供了variations_values数据，这是所有属性值的完整列表
+	- 必须使用这个列表中的值来生成saleAttributes，不要自己创造或简化
+	- 例如：如果原始属性值列表中color的values是["Green Wire-Red", "Green Wire-Pink", "Green Wire-Yellow"]，则saleAttributes中Color属性的attrValue必须包含这3个值，不要简化为["Red", "Pink", "Yellow"]或合并为["Multi-Color"]
 	- 每个变体的属性值都必须在对应的saleAttributes.attrValue列表中存在
 	- 属性值的顺序、大小写、空格、标点符号都必须与原始数据完全一致
-	- **避免重复数据**：同一个属性值在attrValue数组中只能出现一次
 
 	# 特殊情况处理
 	- 必填主属性在变体中为空，仍需按【变体属性值】生成。
@@ -115,7 +117,7 @@ func (g *SaleAttributePromptGenerator) GenerateSystemPrompt() string {
 		"asin": "B1234567890",
 		"quantity": 1,
 		"quantityType": 1,
-		"unitType": 1
+		"quantity_unit": 1,
 		},
 		{
 		"attributes": {
@@ -130,7 +132,7 @@ func (g *SaleAttributePromptGenerator) GenerateSystemPrompt() string {
 		"asin": "B1234567891",
 		"quantity": 2,
 		"quantityType": 2,
-		"unitType": 1
+		"quantity_unit": 1,
 		},
 		{
 		"attributes": {
@@ -144,13 +146,18 @@ func (g *SaleAttributePromptGenerator) GenerateSystemPrompt() string {
 		"lengthUnit": "cm",
 		"asin": "B1234567892",
 		"quantity": 1,
-		"quantityType": 3,
-		"unitType": 3
+		"quantityType": 1,
+		"quantity_unit": 2,
 		}
 	]
 	}
 
 	⚠️ 重要提醒：
 	1. 属性值必须与用户提供的原始数据完全一致，包括大小写、空格、标点符号
-	2. 只返回JSON格式数据，不要输出任何解释或多余内容`
+	2. 只返回JSON格式数据，不要输出任何解释或多余内容
+
+	# 输出前必须验证
+	1. ✓ saleAttributes数组长度 = variations_values数组长度
+	2. ✓ 每个variant的attributes键数量 = variations_values数组长度
+	3. ✓ 第一个saleAttribute使用的是SHEIN必填属性(Required=true)`
 }

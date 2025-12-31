@@ -1,7 +1,11 @@
 ﻿package modules
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 )
@@ -41,5 +45,56 @@ func (h *AttributeTemplateHandler) Handle(ctx *TaskContext) error {
 	// 将属性模板信息存储到上下文中
 	ctx.AttributeTemplates = attributeTemplates
 
+	// // 保存属性模板数据到JSON文件用于调试
+	// if ctx.Task != nil && attributeTemplates != nil {
+	// 	taskID := fmt.Sprintf("%d", ctx.Task.ID)
+	// 	if jsonData, jsonErr := h.marshalWithoutHTMLEscape(attributeTemplates); jsonErr == nil {
+	// 		filename := fmt.Sprintf("%s_%s_attribute_templates.json", ctx.Task.ProductID, taskID)
+	// 		if saveErr := h.saveJSONToFileWithName(filename, jsonData); saveErr != nil {
+	// 			logrus.Errorf("保存属性模板JSON文件失败: %v", saveErr)
+	// 		} else {
+	// 			logrus.Infof("📄 属性模板数据已保存: %s", filename)
+	// 		}
+	// 	} else {
+	// 		logrus.Errorf("序列化属性模板数据失败: %v", jsonErr)
+	// 	}
+	// }
+
+	return nil
+}
+
+// marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
+func (h *AttributeTemplateHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false) // 关闭HTML转义，避免&被转义为\u0026
+
+	if err := encoder.Encode(v); err != nil {
+		return nil, err
+	}
+
+	// 移除最后的换行符
+	result := buf.Bytes()
+	if len(result) > 0 && result[len(result)-1] == '\n' {
+		result = result[:len(result)-1]
+	}
+
+	return result, nil
+}
+
+// saveJSONToFileWithName 使用指定文件名保存JSON数据到文件
+func (h *AttributeTemplateHandler) saveJSONToFileWithName(filename string, jsonData []byte) error {
+	// 确保目录存在
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		return fmt.Errorf("创建日志目录失败: %w", err)
+	}
+
+	// 写入文件
+	filePath := filepath.Join("logs", filename)
+	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
+		return fmt.Errorf("写入文件失败: %w", err)
+	}
+
+	logrus.Infof("JSON数据已保存到文件: %s", filePath)
 	return nil
 }

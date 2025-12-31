@@ -30,25 +30,38 @@ func (f *SaleAttributeSmartFilter) FilterRelevantAttributes(
 
 	var relevantAttributes []attribute.AttributeInfo
 
-	// 分析产品数据中的实际变化
-	variationAnalysis := f.analyzeProductVariations(ctx)
+	// 第一步：优先添加SHEIN平台的必填销售属性
+	requiredSaleAttrs := f.getRequiredSaleAttributes(attributeTemplates.Data[0].AttributeInfos)
+	relevantAttributes = append(relevantAttributes, requiredSaleAttrs...)
 
-	logrus.Infof("🔍 产品变化分析结果: %+v", variationAnalysis)
+	logrus.Infof("🎯 SHEIN平台必填销售属性: 找到 %d 个", len(requiredSaleAttrs))
+	for _, attr := range requiredSaleAttrs {
+		logrus.Infof("  ⭐ 必填销售属性: %s (ID:%d, Label:%d)", attr.AttributeNameEn, attr.AttributeID, attr.AttributeLabel)
+	}
 
-	// 遍历所有销售属性（AttributeType == 1）
-	for _, attr := range attributeTemplates.Data[0].AttributeInfos {
-		if attr.AttributeType != 1 { // 只处理销售属性
-			continue
-		}
+	// 第二步：如果没有必填销售属性，则基于产品变化进行智能筛选
+	if len(relevantAttributes) == 0 {
+		logrus.Info("🔍 没有找到必填销售属性，开始基于产品变化进行智能筛选")
 
-		// 检查该属性是否与实际产品变化相关
-		if f.isAttributeRelevant(attr, variationAnalysis) {
-			relevantAttributes = append(relevantAttributes, attr)
-			logrus.Infof("✅ 属性 %s (ID:%d) 与产品变化相关，已包含",
-				attr.AttributeNameEn, attr.AttributeID)
-		} else {
-			logrus.Infof("❌ 属性 %s (ID:%d) 与产品变化无关，已过滤",
-				attr.AttributeNameEn, attr.AttributeID)
+		// 分析产品数据中的实际变化
+		variationAnalysis := f.analyzeProductVariations(ctx)
+		logrus.Infof("🔍 产品变化分析结果: %+v", variationAnalysis)
+
+		// 遍历所有销售属性（AttributeType == 1）
+		for _, attr := range attributeTemplates.Data[0].AttributeInfos {
+			if attr.AttributeType != 1 { // 只处理销售属性
+				continue
+			}
+
+			// 检查该属性是否与实际产品变化相关
+			if f.isAttributeRelevant(attr, variationAnalysis) {
+				relevantAttributes = append(relevantAttributes, attr)
+				logrus.Infof("✅ 属性 %s (ID:%d) 与产品变化相关，已包含",
+					attr.AttributeNameEn, attr.AttributeID)
+			} else {
+				logrus.Infof("❌ 属性 %s (ID:%d) 与产品变化无关，已过滤",
+					attr.AttributeNameEn, attr.AttributeID)
+			}
 		}
 	}
 
@@ -56,7 +69,33 @@ func (f *SaleAttributeSmartFilter) FilterRelevantAttributes(
 		f.countSaleAttributes(attributeTemplates.Data[0].AttributeInfos),
 		len(relevantAttributes))
 
+	// 确保至少有一个销售规格属性
+	if len(relevantAttributes) == 0 {
+		logrus.Warn("⚠️ 没有筛选出任何销售属性，将选择一个默认属性")
+		defaultAttr := f.selectDefaultSaleAttribute(attributeTemplates.Data[0].AttributeInfos)
+		if defaultAttr != nil {
+			relevantAttributes = append(relevantAttributes, *defaultAttr)
+			logrus.Infof("✅ 已添加默认销售属性: %s (ID:%d)", defaultAttr.AttributeNameEn, defaultAttr.AttributeID)
+		}
+	}
+
 	return relevantAttributes
+}
+
+// getRequiredSaleAttributes 获取SHEIN平台的必填销售属性
+func (f *SaleAttributeSmartFilter) getRequiredSaleAttributes(attributes []attribute.AttributeInfo) []attribute.AttributeInfo {
+	var requiredSaleAttrs []attribute.AttributeInfo
+
+	for _, attr := range attributes {
+		// 只处理销售属性（AttributeType == 1）且必填（AttributeLabel == 1）
+		if attr.AttributeType == 1 && attr.AttributeLabel == 1 {
+			requiredSaleAttrs = append(requiredSaleAttrs, attr)
+			logrus.Infof("🎯 发现必填销售属性: %s (ID:%d, Type:%d, Label:%d)",
+				attr.AttributeNameEn, attr.AttributeID, attr.AttributeType, attr.AttributeLabel)
+		}
+	}
+
+	return requiredSaleAttrs
 }
 
 // ProductVariationAnalysis 产品变化分析结果
@@ -75,9 +114,13 @@ type ProductVariationAnalysis struct {
 func (f *SaleAttributeSmartFilter) analyzeProductVariations(ctx *TaskContext) ProductVariationAnalysis {
 	analysis := ProductVariationAnalysis{}
 
-	// 如果是单变体产品，直接返回无变化
+	// 如果是单变体产品，仍需要分析基础属性信息
 	if ctx.Variants == nil || len(*ctx.Variants) <= 1 {
-		logrus.Info("单变体产品，无需分析变化")
+		logrus.Info("单变体产品，分析基础属性信息")
+		// 对于单变体产品，从主产品中提取基础属性信息
+		if ctx.AmazonProduct != nil {
+			f.extractBasicAttributesFromSingleVariant(ctx.AmazonProduct, &analysis)
+		}
 		return analysis
 	}
 
@@ -121,6 +164,44 @@ func (f *SaleAttributeSmartFilter) analyzeProductVariations(ctx *TaskContext) Pr
 	}
 
 	return analysis
+}
+
+// extractBasicAttributesFromSingleVariant 从单变体产品中提取基础属性信息
+func (f *SaleAttributeSmartFilter) extractBasicAttributesFromSingleVariant(
+	product *model.Product,
+	analysis *ProductVariationAnalysis,
+) {
+	// 从产品标题和描述中推断可能的属性
+	title := strings.ToLower(product.Title)
+
+	// 检查标题中是否包含颜色、尺寸等关键词
+	colorKeywords := []string{"black", "white", "red", "blue", "green", "yellow", "pink", "purple", "gray", "brown", "orange"}
+	sizeKeywords := []string{"small", "medium", "large", "xl", "xxl", "xs", "s", "m", "l"}
+
+	for _, color := range colorKeywords {
+		if strings.Contains(title, color) {
+			analysis.UniqueColors = append(analysis.UniqueColors, color)
+			analysis.HasColorVariation = true
+			logrus.Infof("🎨 从产品标题中检测到颜色: %s", color)
+			break // 只取第一个匹配的颜色
+		}
+	}
+
+	for _, size := range sizeKeywords {
+		if strings.Contains(title, size) {
+			analysis.UniqueSizes = append(analysis.UniqueSizes, size)
+			analysis.HasSizeVariation = true
+			logrus.Infof("📏 从产品标题中检测到尺寸: %s", size)
+			break // 只取第一个匹配的尺寸
+		}
+	}
+
+	// 如果从标题中没有检测到明显的属性，则标记为需要基础属性
+	if !analysis.HasColorVariation && !analysis.HasSizeVariation {
+		// 对于单变体产品，我们假设它至少需要颜色或尺寸属性之一
+		analysis.HasColorVariation = true // 默认认为需要颜色属性
+		logrus.Info("🔧 单变体产品默认需要颜色属性")
+	}
 }
 
 // extractVariationValues 从Variation中提取变化值
@@ -186,6 +267,13 @@ func (f *SaleAttributeSmartFilter) isAttributeRelevant(
 	attr attribute.AttributeInfo,
 	analysis ProductVariationAnalysis,
 ) bool {
+	// 必填属性(attribute_label=1)总是相关的，但这里不应该被调用到
+	// 因为必填属性已经在FilterRelevantAttributes的第一步中处理了
+	if attr.AttributeLabel == 1 {
+		logrus.Infof("⭐ 属性 %s (ID:%d) 是必填属性，应该已在第一步处理", attr.AttributeNameEn, attr.AttributeID)
+		return true
+	}
+
 	attrNameLower := strings.ToLower(attr.AttributeNameEn)
 
 	// 基于属性名称和实际变化进行匹配
@@ -213,4 +301,63 @@ func (f *SaleAttributeSmartFilter) countSaleAttributes(attributes []attribute.At
 		}
 	}
 	return count
+}
+
+// selectDefaultSaleAttribute 选择一个默认的销售属性
+func (f *SaleAttributeSmartFilter) selectDefaultSaleAttribute(attributes []attribute.AttributeInfo) *attribute.AttributeInfo {
+	// 优先级顺序：必填属性(attribute_label=1) > 颜色 > 尺寸 > 其他销售属性
+	var requiredAttr, colorAttr, sizeAttr, otherSaleAttr *attribute.AttributeInfo
+
+	for _, attr := range attributes {
+		if attr.AttributeType != 1 { // 只处理销售属性
+			continue
+		}
+
+		attrNameLower := strings.ToLower(attr.AttributeNameEn)
+
+		// 首先检查是否为必填属性
+		if attr.AttributeLabel == 1 {
+			if requiredAttr == nil {
+				requiredAttr = &attr
+			}
+			continue
+		}
+
+		// 然后按类型分类
+		switch {
+		case strings.Contains(attrNameLower, "color") || strings.Contains(attrNameLower, "colour"):
+			if colorAttr == nil {
+				colorAttr = &attr
+			}
+		case strings.Contains(attrNameLower, "size"):
+			if sizeAttr == nil {
+				sizeAttr = &attr
+			}
+		default:
+			if otherSaleAttr == nil {
+				otherSaleAttr = &attr
+			}
+		}
+	}
+
+	// 按优先级返回
+	if requiredAttr != nil {
+		logrus.Infof("⭐ 选择必填属性作为默认销售属性: %s (label=%d)", requiredAttr.AttributeNameEn, requiredAttr.AttributeLabel)
+		return requiredAttr
+	}
+	if colorAttr != nil {
+		logrus.Infof("🎨 选择颜色属性作为默认销售属性: %s", colorAttr.AttributeNameEn)
+		return colorAttr
+	}
+	if sizeAttr != nil {
+		logrus.Infof("📏 选择尺寸属性作为默认销售属性: %s", sizeAttr.AttributeNameEn)
+		return sizeAttr
+	}
+	if otherSaleAttr != nil {
+		logrus.Infof("🔧 选择其他销售属性作为默认: %s", otherSaleAttr.AttributeNameEn)
+		return otherSaleAttr
+	}
+
+	logrus.Warn("❌ 未找到任何销售属性")
+	return nil
 }

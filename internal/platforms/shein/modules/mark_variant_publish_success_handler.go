@@ -52,6 +52,13 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *TaskContext) error {
 
 	// 标记成功发布的变体
 	if ctx.Task != nil && ctx.SheinResponse != nil {
+		if len(ctx.SheinResponse.Info.PreValidResult) > 0 {
+			logrus.Warnf("发现 %d 个错误项", len(ctx.SheinResponse.Info.PreValidResult))
+			for _, preValidResult := range ctx.SheinResponse.Info.PreValidResult {
+				logrus.Warnf("错误项: %+v", preValidResult)
+			}
+			return nil
+		}
 		// 遍历发布后的响应数据来构建任务数据
 		skus := []string{}
 		for _, skc := range ctx.SheinResponse.Info.SKCList {

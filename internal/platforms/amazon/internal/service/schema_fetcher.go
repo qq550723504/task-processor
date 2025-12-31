@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sync"
 	"task-processor/internal/platforms/amazon/internal/model"
-	"time"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,10 +24,8 @@ type SchemaFetcher struct {
 // NewSchemaFetcher 创建Schema获取器
 func NewSchemaFetcher() *SchemaFetcher {
 	return &SchemaFetcher{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-		logger: logrus.WithField("component", "SchemaFetcher"),
+		httpClient: utils.CreateSimpleHTTPClient(),
+		logger:     logrus.WithField("component", "SchemaFetcher"),
 	}
 }
 

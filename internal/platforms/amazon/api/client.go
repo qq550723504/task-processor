@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"task-processor/internal/utils"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -63,9 +64,7 @@ func NewClient(cfg *Config) *Client {
 	}
 
 	return &Client{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient:     utils.CreateSimpleHTTPClient(),
 		baseURL:        cfg.BaseURL,
 		authManager:    authManager,
 		awsSigner:      awsSigner,

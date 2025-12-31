@@ -32,6 +32,15 @@ func (h *CollectCategoryRestrictionsHandler) Handle(ctx *TaskContext) error {
 		// 收集分类限制信息失败，但不影响主流程，记录警告日志即可
 	}
 
+	// 检查是否真的存在主规格相关的错误
+	hasMainSpecError := h.hasMainSpecificationError(ctx)
+	if hasMainSpecError {
+		logrus.Warnf("检测到主规格配置错误，终止处理流程")
+		return NewNonRetryableError("主规格错误", nil)
+	}
+
+	// 如果没有主规格错误，处理成功
+	logrus.Info("分类限制信息收集完成，无主规格错误")
 	return nil
 }
 
@@ -69,12 +78,12 @@ func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *Ta
 	for _, result := range errorResults {
 		if result.Module == "specification_info" && result.Form == "main_specification" {
 			// 解析错误信息中的属性信息
-			forbiddenAttrID, forbiddenAttrName, defaultAttrID, defaultAttrName := h.parseSpecificationError(result.Messages)
+			forbiddenAttrID, forbiddenAttrName, defaultAttrID, defaultAttrName := h.parseSpecificationError(ctx, result.Messages)
 
 			// 创建品类限制集合请求DTO
 			req := &management_api.CategoryRestrictionCollectionsCreateReqDTO{
-				CategoryId:             int(ctx.Task.CategoryID),
-				PlatformName:           ctx.Task.Platform,
+				CategoryId:             int(ctx.ProductData.CategoryID),
+				PlatformName:           "Shein",
 				ForbiddenAttributeId:   forbiddenAttrID,
 				ForbiddenAttributeName: forbiddenAttrName,
 				DefaultAttributeId:     defaultAttrID,
@@ -101,7 +110,7 @@ func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *Ta
 }
 
 // parseSpecificationError 解析规格配置错误信息
-func (h *CollectCategoryRestrictionsHandler) parseSpecificationError(messages []string) (int, string, int, string) {
+func (h *CollectCategoryRestrictionsHandler) parseSpecificationError(ctx *TaskContext, messages []string) (int, string, int, string) {
 	forbiddenAttrID := 0
 	forbiddenAttrName := ""
 	defaultAttrID := 27
@@ -145,5 +154,37 @@ func (h *CollectCategoryRestrictionsHandler) parseSpecificationError(messages []
 		}
 	}
 
+	if forbiddenAttrID == 0 {
+		if len(ctx.ProductData.SKCList) == 0 {
+			logrus.Warnf("没有找到主规格信息")
+			return 0, "", 0, ""
+		}
+		forbiddenAttrID = ctx.ProductData.SKCList[0].SaleAttribute.AttributeID
+	}
+
 	return forbiddenAttrID, forbiddenAttrName, defaultAttrID, defaultAttrName
+}
+
+// hasMainSpecificationError 检查是否存在主规格相关的错误
+func (h *CollectCategoryRestrictionsHandler) hasMainSpecificationError(ctx *TaskContext) bool {
+	// 检查规格配置错误信息
+	errorResults := ctx.SpecificationErrors
+
+	// 如果没有规格配置错误信息，则没有主规格错误
+	if len(errorResults) == 0 {
+		logrus.Debug("没有检测到规格配置错误信息")
+		return false
+	}
+
+	// 检查是否存在主规格相关的错误
+	for _, result := range errorResults {
+		if result.Module == "specification_info" && result.Form == "main_specification" {
+			logrus.Warnf("发现主规格配置错误: Module=%s, Form=%s, Messages=%v",
+				result.Module, result.Form, result.Messages)
+			return true
+		}
+	}
+
+	logrus.Debug("没有发现主规格相关的错误")
+	return false
 }

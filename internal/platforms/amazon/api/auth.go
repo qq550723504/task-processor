@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"task-processor/internal/utils"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -40,9 +41,7 @@ func NewAuthManager(clientID, clientSecret, refreshToken string) *AuthManager {
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		refreshToken: refreshToken,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient:   utils.CreateSimpleHTTPClient(),
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "AuthManager",
 		}),

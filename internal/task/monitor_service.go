@@ -103,7 +103,6 @@ func (s *MonitorService) performHealthCheck() {
 
 	if len(problemPlatforms) > 0 {
 		logrus.Warnf("⚠️ 发现队列压力过大的平台: %v", problemPlatforms)
-		s.suggestOptimizations(problemPlatforms)
 	}
 }
 
@@ -157,15 +156,6 @@ func (s *MonitorService) getLongRunningTasks(threshold time.Duration) []QueueTas
 	}
 
 	return longRunningTasks
-}
-
-// suggestOptimizations 建议优化措施
-func (s *MonitorService) suggestOptimizations(problemPlatforms []string) {
-	logrus.Warnf("💡 建议优化措施:")
-	logrus.Warnf("   1. 考虑增加 bufferSize 配置")
-	logrus.Warnf("   2. 降低 queueThreshold 阈值")
-	logrus.Warnf("   3. 减少 maxFetchPerCycle 数量")
-	logrus.Warnf("   4. 检查任务处理性能")
 }
 
 // GenerateReport 生成监控报告

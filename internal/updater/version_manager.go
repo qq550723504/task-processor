@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"task-processor/internal/utils"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -28,10 +29,8 @@ func NewVersionManager(currentVersion, updateURL string) *VersionManager {
 
 // FetchLatestVersion 获取最新版本信息
 func (vm *VersionManager) FetchLatestVersion() (*VersionInfo, error) {
-	// 创建带超时的HTTP客户端
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	// 使用统一的HTTP客户端工厂
+	client := utils.CreateSimpleHTTPClientWithTimeout(30 * time.Second)
 
 	resp, err := client.Get(vm.updateURL)
 	if err != nil {

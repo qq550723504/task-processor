@@ -27,7 +27,7 @@ openai:
   
   # 请求池配置 - 更保守的设置
   pool:
-    maxConcurrent: 5         # 降低最大并发请求数，减少API压力
+    maxConcurrent: 1         # 降低最大并发请求数，减少API压力
     rateLimit: 3.0          # 降低每秒请求数限制，更稳定
     burstLimit: 8.0         # 降低突发请求限制
     
@@ -58,7 +58,7 @@ management:
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [683,685,536,537]  # 店铺ID列表
+  storeIDs: [687]  # 店铺ID列表
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
@@ -116,7 +116,7 @@ amazon:
   enabled: true
   headless: true  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
-  poolSize: 12     # 浏览器池大小，同时也是并发处理数
+  poolSize: 3     # 浏览器池大小，同时也是并发处理数
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""

@@ -63,11 +63,43 @@ func (h *SKCTranslationHandler) CreateSKC(ctx *TaskContext, params SKCCreationPa
 func (h *SKCTranslationHandler) findBestSourceTitle(ctx *TaskContext, params SKCCreationParams) string {
 	logrus.Debugf("🔍 开始查找源标题...")
 
-	// 从变体中查找标题
+	// 优先尝试根据SKU的SupplierSKU反向查找对应的ASIN，然后匹配变体标题
 	if ctx.Variants != nil && len(*ctx.Variants) > 0 && len(params.SKUS) > 0 {
+		// 获取当前SKC对应的SupplierSKU（从第一个SKU获取）
+		if len(params.SKUS) > 0 && params.SKUS[0].SupplierSKU != "" {
+			supplierSKU := params.SKUS[0].SupplierSKU
+			logrus.Debugf("🎯 通过SupplierSKU %s 反向查找对应的ASIN", supplierSKU)
+
+			// 通过AsinSkuMap反向查找ASIN
+			var targetASIN string
+			if ctx.AsinSkuMap != nil {
+				for asin, sku := range ctx.AsinSkuMap {
+					if sku == supplierSKU {
+						targetASIN = asin
+						logrus.Debugf("✅ 找到对应的ASIN: %s -> %s", supplierSKU, targetASIN)
+						break
+					}
+				}
+			}
+
+			// 如果找到了ASIN，查找对应的变体标题
+			if targetASIN != "" {
+				for _, variant := range *ctx.Variants {
+					if variant.Asin == targetASIN && variant.Title != "" {
+						logrus.Infof("✅ 找到匹配变体标题: ASIN=%s, Title=%s", variant.Asin, variant.Title)
+						return variant.Title
+					}
+				}
+				logrus.Debugf("⚠️ ASIN %s 对应的变体标题为空", targetASIN)
+			} else {
+				logrus.Debugf("⚠️ 未找到SupplierSKU %s 对应的ASIN", supplierSKU)
+			}
+		}
+
+		// 如果没有找到匹配的变体标题，尝试使用任何有效的变体标题
 		for _, variant := range *ctx.Variants {
 			if variant.Title != "" {
-				logrus.Infof("✅ 找到变体标题: %s", variant.Title)
+				logrus.Infof("✅ 使用其他变体标题: ASIN=%s, Title=%s", variant.Asin, variant.Title)
 				return variant.Title
 			}
 		}

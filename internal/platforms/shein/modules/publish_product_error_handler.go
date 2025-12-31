@@ -41,6 +41,16 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *TaskContext, res
 					return nil
 				}
 
+				// 检查是否为数量类型错误，尝试自动修复
+				if h.isQuantityTypeError(validResults) {
+					logrus.Warnf("检测到数量类型错误，尝试自动修复并重新提交")
+					if h.autoFixQuantityTypeAndResubmit(ctx, validResults) {
+						logrus.Info("数量类型错误自动修复成功")
+						return nil
+					}
+					// 如果自动修复失败，继续后续处理
+				}
+
 				// 检查是否为SKU重复错误
 				if h.isDuplicateSKUError(validResults) {
 					logrus.Errorf("检测到卖家SKU重复错误，标记为不可重试")
@@ -97,7 +107,7 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *T
 	logrus.Info("开始检查敏感词错误并尝试自动替换重试...")
 
 	// 创建敏感词服务实例
-	sensitiveWordService := h.getSensitiveWordService(ctx)
+	sensitiveWordService := h.getSensitiveWordService()
 	if sensitiveWordService == nil {
 		logrus.Error("无法创建敏感词服务，跳过敏感词处理")
 		return false
@@ -150,7 +160,7 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *T
 }
 
 // getSensitiveWordService 获取敏感词服务实例
-func (h *PublishProductErrorHandler) getSensitiveWordService(ctx *TaskContext) *SensitiveWordService {
+func (h *PublishProductErrorHandler) getSensitiveWordService() *SensitiveWordService {
 	// 创建简化的敏感词服务实例
 	service := NewSensitiveWordService()
 
@@ -165,17 +175,27 @@ func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult interfac
 		return []PreValidResult{}, nil
 	}
 
+	// 添加调试代码：打印实际的响应数据结构
+	logrus.Infof("🔍 调试 - PreValidResult 原始数据类型: %T", preValidResult)
+
 	// 将interface{}转换为JSON字符串，再解析为结构体
 	jsonData, err := json.Marshal(preValidResult)
 	if err != nil {
+		logrus.Errorf("❌ 调试 - 序列化 PreValidResult 失败: %v", err)
 		return nil, err
 	}
+
+	// 打印实际的JSON结构
+	logrus.Infof("🔍 调试 - PreValidResult JSON 数据: %s", string(jsonData))
 
 	var results []PreValidResult
 	if err := json.Unmarshal(jsonData, &results); err != nil {
+		logrus.Errorf("❌ 调试 - 反序列化 PreValidResult 失败: %v", err)
+		logrus.Errorf("❌ 调试 - 尝试反序列化的JSON: %s", string(jsonData))
 		return nil, err
 	}
 
+	logrus.Infof("✅ 调试 - 成功解析 PreValidResult，共 %d 项", len(results))
 	return results, nil
 }
 
@@ -352,4 +372,131 @@ type PreValidResult struct {
 type SkcErrorMessage struct {
 	Messages                []string            `json:"messages"`
 	OtherLanguageMessageMap map[string][]string `json:"otherLanguageMessageMap"`
+}
+
+// isQuantityTypeError 检查是否为数量类型错误
+func (h *PublishProductErrorHandler) isQuantityTypeError(results []PreValidResult) bool {
+	quantityErrorPatterns := []string{
+		"SKU件数类型为同款多件时，有效范围2-99999",
+		"数量必须大于等于2",
+		"quantityType",
+		"quantity",
+	}
+
+	for _, result := range results {
+		// 检查错误消息中是否包含数量相关关键词
+		for _, message := range result.Messages {
+			for _, pattern := range quantityErrorPatterns {
+				if strings.Contains(message, pattern) {
+					logrus.Infof("检测到数量类型错误: %s", message)
+					return true
+				}
+			}
+		}
+
+		// 检查SKC错误消息中的数量错误
+		for _, skcError := range result.SkcErrorMessageMap {
+			for _, message := range skcError.Messages {
+				for _, pattern := range quantityErrorPatterns {
+					if strings.Contains(message, pattern) {
+						logrus.Infof("检测到SKC数量类型错误: %s", message)
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// autoFixQuantityTypeAndResubmit 自动修复数量类型错误并重新提交
+func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *TaskContext, results []PreValidResult) bool {
+	logrus.Info("开始自动修复数量类型错误...")
+
+	if ctx.ProductData == nil || len(ctx.ProductData.SKCList) == 0 {
+		logrus.Error("产品数据为空，无法修复数量类型错误")
+		return false
+	}
+
+	fixed := false
+
+	// 遍历所有SKC和SKU，修复数量类型问题
+	for skcIndex, skc := range ctx.ProductData.SKCList {
+		for skuIndex, sku := range skc.SKUS {
+			if sku.QuantityInfo != nil {
+				originalQuantityType := 1
+				originalQuantity := 1
+
+				if sku.QuantityInfo.QuantityType != nil {
+					originalQuantityType = *sku.QuantityInfo.QuantityType
+				}
+				if sku.QuantityInfo.Quantity != nil {
+					originalQuantity = *sku.QuantityInfo.Quantity
+				}
+
+				// 使用SKUUtils的修正逻辑
+				skuUtils := NewSKUUtils()
+				correctedQuantityType, correctedQuantity := skuUtils.correctQuantityTypeAndValue(
+					originalQuantityType, originalQuantity, sku.SupplierSKU)
+
+				// 如果有修正，应用修正
+				if correctedQuantityType != originalQuantityType || correctedQuantity != originalQuantity {
+					sku.QuantityInfo.QuantityType = &correctedQuantityType
+					sku.QuantityInfo.Quantity = &correctedQuantity
+
+					logrus.Infof("修复SKC[%d] SKU[%d] %s: quantityType %d->%d, quantity %d->%d",
+						skcIndex, skuIndex, sku.SupplierSKU,
+						originalQuantityType, correctedQuantityType,
+						originalQuantity, correctedQuantity)
+					fixed = true
+				}
+			}
+		}
+	}
+
+	if !fixed {
+		logrus.Warn("未发现需要修复的数量类型问题")
+		return false
+	}
+
+	// 重新提交产品
+	logrus.Info("开始执行数量类型修复后的产品重新提交...")
+	handler := &PublishProductHandler{}
+	response, err := handler.publishProduct(ctx)
+	if err != nil {
+		logrus.Errorf("数量类型修复重试失败 - 重新提交产品时发生错误: %v", err)
+		return false
+	}
+
+	logrus.Info("数量类型修复重试 - 产品重新提交完成，正在检查结果...")
+
+	// 检查重新提交的结果
+	if response == nil || response.Code != "0" {
+		logrus.Warnf("数量类型修复重试失败 - 产品发布失败，响应码: %s", response.Code)
+		return false
+	}
+
+	// 检查是否还有验证错误
+	validResults, parseErr := h.parsePreValidResult(response.Info.PreValidResult)
+	if parseErr != nil {
+		logrus.Warnf("解析重新提交的验证结果失败: %v", parseErr)
+		return false
+	}
+
+	// 如果还有验证错误，说明修复没有完全解决问题
+	if h.hasValidationError(validResults) {
+		logrus.Warnf("数量类型修复重试后仍有验证错误，修复未完全解决问题")
+		return false
+	}
+
+	// 保存发布成功后的结果
+	saver := NewPublishProductSaver()
+	if err := saver.SavePublishResult(ctx, response); err != nil {
+		logrus.Errorf("数量类型修复重试成功但保存结果失败: %v", err)
+		return false
+	}
+
+	logrus.Info("数量类型修复重试成功 - 产品发布成功")
+	return true
 }

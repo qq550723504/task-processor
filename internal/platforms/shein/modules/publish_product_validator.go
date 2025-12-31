@@ -136,6 +136,11 @@ func (v *PublishProductValidator) validateSKCAndSKUData(ctx *TaskContext) error 
 				issue := fmt.Sprintf("SKC[%d] SKU[%d]缺少库存信息", skcIndex, skuIndex)
 				issues = append(issues, issue)
 			}
+
+			// 验证数量类型和数量值的匹配性
+			if quantityIssue := v.validateQuantityTypeAndValue(sku, skcIndex, skuIndex); quantityIssue != "" {
+				issues = append(issues, quantityIssue)
+			}
 		}
 	}
 
@@ -146,6 +151,49 @@ func (v *PublishProductValidator) validateSKCAndSKUData(ctx *TaskContext) error 
 
 	logrus.Debugf("✅ SKC和SKU数据验证通过，共%d个SKC，%d个SKU", len(product.SKCList), totalSKUs)
 	return nil
+}
+
+// validateQuantityTypeAndValue 验证数量类型和数量值的匹配性
+func (v *PublishProductValidator) validateQuantityTypeAndValue(sku interface{}, skcIndex, skuIndex int) string {
+	// 由于SKU可能是不同的类型，我们需要通过反射或类型断言来获取数量信息
+	// 这里假设sku有QuantityInfo字段
+
+	// 尝试获取数量信息（这里需要根据实际的SKU结构来调整）
+	var quantityType, quantity *int
+
+	// 如果是map类型（JSON反序列化后）
+	if skuMap, ok := sku.(map[string]interface{}); ok {
+		if quantityInfo, exists := skuMap["quantity_info"]; exists {
+			if qiMap, ok := quantityInfo.(map[string]interface{}); ok {
+				if qt, exists := qiMap["quantity_type"]; exists {
+					if qtInt, ok := qt.(float64); ok {
+						qtIntVal := int(qtInt)
+						quantityType = &qtIntVal
+					}
+				}
+				if q, exists := qiMap["quantity"]; exists {
+					if qInt, ok := q.(float64); ok {
+						qIntVal := int(qInt)
+						quantity = &qIntVal
+					}
+				}
+			}
+		}
+	}
+
+	// 如果无法获取数量信息，跳过验证
+	if quantityType == nil || quantity == nil {
+		return ""
+	}
+
+	// 使用数量验证器进行验证
+	validator := NewQuantityValidator()
+	if err := validator.ValidateQuantity(*quantity, *quantityType); err != nil {
+		return fmt.Sprintf("SKC[%d] SKU[%d]数量配置错误: %v (quantityType=%d, quantity=%d)",
+			skcIndex, skuIndex, err, *quantityType, *quantity)
+	}
+
+	return ""
 }
 
 // ValidationReport 验证报告

@@ -105,6 +105,9 @@ func (u *SKUUtils) BuildQuantityInfo(params SKUCreationParams) *product.Quantity
 		quantityUnit = params.Variant.UnitType
 	}
 
+	// 智能修正：检查数量类型和数量值的匹配性
+	quantityType, quantity = u.correctQuantityTypeAndValue(quantityType, quantity, params.ASIN)
+
 	// 创建验证器并修正数量单位
 	validator := NewQuantityValidator()
 
@@ -214,7 +217,6 @@ func (u *SKUUtils) isMultiPieceProduct(variant Variant) bool {
 		multiPieceKeywords := []string{
 			"pack", "set", "piece", "pcs", "count",
 			"multi", "bundle", "kit", "collection",
-			"套装", "件套", "多件", "组合",
 		}
 
 		for _, keyword := range multiPieceKeywords {
@@ -241,4 +243,49 @@ func (u *SKUUtils) isMultiPieceProduct(variant Variant) bool {
 	}
 
 	return false
+}
+
+// correctQuantityTypeAndValue 智能修正数量类型和数量值的匹配性
+func (u *SKUUtils) correctQuantityTypeAndValue(quantityType, quantity int, asin string) (int, int) {
+	// 检查当前设置是否符合规则
+	validator := NewQuantityValidator()
+	if err := validator.ValidateQuantity(quantity, quantityType); err == nil {
+		// 当前设置正确，无需修正
+		return quantityType, quantity
+	}
+
+	logrus.Warnf("ASIN %s 的数量设置不符合规则: quantityType=%d, quantity=%d", asin, quantityType, quantity)
+
+	// 修正策略1：如果是同款多件(2)但数量为1，改为单品(1)
+	if quantityType == 2 && quantity == 1 {
+		logrus.Infof("ASIN %s: 将同款多件(quantityType=2, quantity=1) 修正为单品(quantityType=1, quantity=1)", asin)
+		return 1, 1
+	}
+
+	// 修正策略2：如果是多套(4)但数量为1，改为单套(3)
+	if quantityType == 4 && quantity == 1 {
+		logrus.Infof("ASIN %s: 将多套(quantityType=4, quantity=1) 修正为单套(quantityType=3, quantity=1)", asin)
+		return 3, 1
+	}
+
+	// 修正策略3：如果是单品(1)或单套(3)但数量>1，根据类型调整
+	if (quantityType == 1 || quantityType == 3) && quantity > 1 {
+		if quantityType == 1 {
+			logrus.Infof("ASIN %s: 将单品(quantityType=1, quantity=%d) 修正为同款多件(quantityType=2, quantity=%d)", asin, quantity, quantity)
+			return 2, quantity
+		} else {
+			logrus.Infof("ASIN %s: 将单套(quantityType=3, quantity=%d) 修正为多套(quantityType=4, quantity=%d)", asin, quantity, quantity)
+			return 4, quantity
+		}
+	}
+
+	// 修正策略4：如果是同款多件(2)或多套(4)但数量<2，强制设为2
+	if (quantityType == 2 || quantityType == 4) && quantity < 2 {
+		logrus.Infof("ASIN %s: 将数量从 %d 修正为 2 (quantityType=%d 要求数量≥2)", asin, quantity, quantityType)
+		return quantityType, 2
+	}
+
+	// 默认策略：如果无法修正，使用最安全的单品设置
+	logrus.Warnf("ASIN %s: 无法智能修正，使用默认单品设置(quantityType=1, quantity=1)", asin)
+	return 1, 1
 }

@@ -11,13 +11,13 @@ type SheinResponse struct {
 
 // ResponseInfo 响应信息
 type ResponseInfo struct {
-	Success        bool          `json:"success"`
-	SPUName        string        `json:"spu_name"`
-	SKCList        []ResponseSKC `json:"skc_list"`
-	Version        string        `json:"version"`
-	PreValidResult interface{}   `json:"pre_valid_result"`
-	MCCValidResult interface{}   `json:"mcc_valid_result"`
-	Extra          struct{}      `json:"extra"`
+	Success        bool             `json:"success"`
+	SPUName        string           `json:"spu_name"`
+	SKCList        []ResponseSKC    `json:"skc_list"`
+	Version        string           `json:"version"`
+	PreValidResult []PreValidResult `json:"pre_valid_result"`
+	MCCValidResult interface{}      `json:"mcc_valid_result"`
+	Extra          struct{}         `json:"extra"`
 }
 
 // ResponseSKC 响应SKC信息
@@ -188,4 +188,20 @@ type SkcInfoItem struct {
 // SkuInfo SKU 信息项
 type SkuInfo struct {
 	SkuCode string `json:"sku_code"`
+}
+
+// PreValidResult 预验证结果
+type PreValidResult struct {
+	Form                    string                     `json:"form"`
+	FormName                string                     `json:"form_name"`
+	Messages                []string                   `json:"messages"`
+	Module                  string                     `json:"module"`
+	OtherLanguageMessageMap map[string][]string        `json:"other_language_message_map"`
+	SkcErrorMessageMap      map[string]SkcErrorMessage `json:"skc_error_message_map"`
+}
+
+// SkcErrorMessage SKC错误信息
+type SkcErrorMessage struct {
+	Messages                []string            `json:"messages"`
+	OtherLanguageMessageMap map[string][]string `json:"otherLanguageMessageMap"`
 }
