@@ -5,9 +5,9 @@ import (
 	"context"
 	"time"
 
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pkg/management"
+	shops "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )

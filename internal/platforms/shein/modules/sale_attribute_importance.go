@@ -2,7 +2,7 @@
 package modules
 
 import (
-	"task-processor/internal/common/shein/api/attribute"
+	"task-processor/internal/platforms/shein/api/attribute"
 )
 
 // NewAttributeImportanceCalculatorForSaleAttribute 创建销售属性专用的重要性计算器实例

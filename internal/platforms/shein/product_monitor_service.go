@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"task-processor/internal/common"
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/pkg/management/api"
 
@@ -17,7 +16,7 @@ import (
 type SheinProductMonitorService struct {
 	*common.BaseMonitorService
 	syncService             *SyncService
-	apiClients              map[int64]*shops.ShopAPIClient
+	apiClients              map[int64]*ShopAPIClient
 	productDataManager      *ProductDataManager
 	changeDetector          *ChangeDetector
 	strategyManager         *StrategyManager
@@ -54,7 +53,7 @@ func NewSheinProductMonitorService(
 	return &SheinProductMonitorService{
 		BaseMonitorService:      common.NewBaseMonitorService(config, mappingClient, eventHandler),
 		syncService:             syncService,
-		apiClients:              make(map[int64]*shops.ShopAPIClient),
+		apiClients:              make(map[int64]*ShopAPIClient),
 		productDataManager:      productDataManager,
 		changeDetector:          changeDetector,
 		strategyManager:         strategyManager,
@@ -64,7 +63,7 @@ func NewSheinProductMonitorService(
 }
 
 // RegisterStore 注册店铺 API 客户端
-func (s *SheinProductMonitorService) RegisterStore(storeID int64, apiClient *shops.ShopAPIClient) {
+func (s *SheinProductMonitorService) RegisterStore(storeID int64, apiClient *ShopAPIClient) {
 	s.apiClients[storeID] = apiClient
 	logrus.WithField("store_id", storeID).Info("注册 SHEIN 店铺到产品监控服务")
 }

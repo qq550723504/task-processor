@@ -2,7 +2,6 @@
 package shein
 
 import (
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -10,12 +9,12 @@ import (
 
 // ShelfOperationManager 上下架操作管理器
 type ShelfOperationManager struct {
-	apiClient      *shops.ShopAPIClient
+	apiClient      *ShopAPIClient
 	requestBuilder *StrategyRequestBuilder
 }
 
 // NewShelfOperationManager 创建上下架操作管理器
-func NewShelfOperationManager(apiClient *shops.ShopAPIClient) *ShelfOperationManager {
+func NewShelfOperationManager(apiClient *ShopAPIClient) *ShelfOperationManager {
 	return &ShelfOperationManager{
 		apiClient:      apiClient,
 		requestBuilder: NewStrategyRequestBuilder(),

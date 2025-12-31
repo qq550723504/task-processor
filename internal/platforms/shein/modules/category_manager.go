@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"task-processor/internal/common/shein/api/category"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/platforms/shein/api/category"
 	"time"
 
 	"github.com/sirupsen/logrus"

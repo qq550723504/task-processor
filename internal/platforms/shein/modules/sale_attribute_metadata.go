@@ -3,8 +3,8 @@ package modules
 
 import (
 	"fmt"
-	"task-processor/internal/common/shein/api/attribute"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )

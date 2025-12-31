@@ -3,7 +3,6 @@ package shein
 
 import (
 	"fmt"
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/management/api"
 
@@ -13,14 +12,14 @@ import (
 // ProfitStrategyManager 利润策略管理器
 type ProfitStrategyManager struct {
 	strategy     *api.OperationStrategyDTO
-	apiClient    *shops.ShopAPIClient
+	apiClient    *ShopAPIClient
 	shelfManager *ShelfOperationManager
 	priceUpdater *PriceUpdater
 	stockUpdater *StockUpdater
 }
 
 // NewProfitStrategyManager 创建利润策略管理器
-func NewProfitStrategyManager(strategy *api.OperationStrategyDTO, apiClient *shops.ShopAPIClient) *ProfitStrategyManager {
+func NewProfitStrategyManager(strategy *api.OperationStrategyDTO, apiClient *ShopAPIClient) *ProfitStrategyManager {
 	return &ProfitStrategyManager{
 		strategy:     strategy,
 		apiClient:    apiClient,

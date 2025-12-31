@@ -4,9 +4,9 @@ package adapter
 import (
 	"context"
 	"fmt"
-	sheinpricing "task-processor/internal/common/shein/api/pricing"
 	"task-processor/internal/pkg/pricing/model"
 	"task-processor/internal/pkg/pricing/service"
+	sheinpricing "task-processor/internal/platforms/shein/api/pricing"
 
 	"github.com/sirupsen/logrus"
 )

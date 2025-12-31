@@ -2,7 +2,6 @@
 package shein
 
 import (
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/management/api"
 )
@@ -10,7 +9,7 @@ import (
 // StrategyExecutor 运营策略执行器
 type StrategyExecutor struct {
 	strategy       *api.OperationStrategyDTO
-	apiClient      *shops.ShopAPIClient
+	apiClient      *ShopAPIClient
 	stockManager   *StockStrategyManager
 	profitManager  *ProfitStrategyManager
 	shelfManager   *ShelfOperationManager
@@ -18,7 +17,7 @@ type StrategyExecutor struct {
 }
 
 // NewStrategyExecutor 创建策略执行器
-func NewStrategyExecutor(strategy *api.OperationStrategyDTO, apiClient *shops.ShopAPIClient) *StrategyExecutor {
+func NewStrategyExecutor(strategy *api.OperationStrategyDTO, apiClient *ShopAPIClient) *StrategyExecutor {
 	return &StrategyExecutor{
 		strategy:       strategy,
 		apiClient:      apiClient,

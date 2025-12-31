@@ -2,9 +2,9 @@
 package modules
 
 import (
-	product "task-processor/internal/common/shein/api/product"
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/pkg/management/api"
+	product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )

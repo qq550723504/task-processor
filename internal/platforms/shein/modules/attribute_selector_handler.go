@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"task-processor/internal/common/shein/api/attribute"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )

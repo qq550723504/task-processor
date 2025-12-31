@@ -3,8 +3,8 @@
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/common/shein/api"
-	"task-processor/internal/common/shein/api/warehouse"
+	"task-processor/internal/platforms/shein/api"
+	"task-processor/internal/platforms/shein/api/warehouse"
 )
 
 type WarehouseAPI struct {

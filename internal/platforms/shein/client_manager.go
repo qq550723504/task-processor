@@ -1,14 +1,14 @@
-﻿package shops
+﻿package shein
 
 import (
 	"fmt"
 	"sync"
 	"time"
 
-	shein_api "task-processor/internal/common/shein/api"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pkg/management"
 	management_api "task-processor/internal/pkg/management/api"
+	shein_api "task-processor/internal/platforms/shein/api"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"

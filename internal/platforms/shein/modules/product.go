@@ -1,8 +1,8 @@
 ﻿package modules
 
 import (
-	"task-processor/internal/common/shein/api/product"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/platforms/shein/api/product"
 )
 
 // SKUCreationParams SKU创建参数

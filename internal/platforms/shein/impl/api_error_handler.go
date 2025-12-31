@@ -3,7 +3,7 @@ package impl
 
 import (
 	"fmt"
-	"task-processor/internal/common/shein/api"
+	"task-processor/internal/platforms/shein/api"
 )
 
 // APIErrorHandler API错误处理器

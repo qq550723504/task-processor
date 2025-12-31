@@ -4,8 +4,8 @@ package modules
 import (
 	"fmt"
 
-	sheinapi "task-processor/internal/common/shein/api"
-	"task-processor/internal/common/shein/api/pricing"
+	sheinapi "task-processor/internal/platforms/shein/api"
+	"task-processor/internal/platforms/shein/api/pricing"
 
 	"github.com/sirupsen/logrus"
 )

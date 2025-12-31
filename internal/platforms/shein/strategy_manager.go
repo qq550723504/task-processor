@@ -2,7 +2,6 @@
 package shein
 
 import (
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/management/api"
 
@@ -24,7 +23,7 @@ func NewStrategyManager(operationStrategyClient api.OperationStrategyAPI) *Strat
 // ExecuteStrategy 执行运营策略
 func (m *StrategyManager) ExecuteStrategy(
 	strategy *api.OperationStrategyDTO,
-	apiClient *shops.ShopAPIClient,
+	apiClient *ShopAPIClient,
 	prod *api.ProductDataDTO,
 	skuMapping *SKUMappingData,
 	amazonProduct *model.Product,

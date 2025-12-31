@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/common/shein/api/attribute"
+	"task-processor/internal/platforms/shein/api/attribute"
 )
 
 // AttributePromptGenerator 属性提示词生成器

@@ -4,8 +4,8 @@ package impl
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/common/shein/api"
-	"task-processor/internal/common/shein/api/product"
+	"task-processor/internal/platforms/shein/api"
+	"task-processor/internal/platforms/shein/api/product"
 )
 
 // InventoryManager 库存管理器

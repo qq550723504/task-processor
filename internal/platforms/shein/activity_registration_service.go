@@ -3,9 +3,8 @@ package shein
 
 import (
 	"fmt"
-	shops "task-processor/internal/common/shein"
-	"task-processor/internal/common/shein/api/marketing"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/shein/api/marketing"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,7 +22,7 @@ func NewActivityRegistrationService(repositoryFactory func(storeID, tenantID int
 }
 
 // RegisterActivityProducts 报名活动产品
-func (s *ActivityRegistrationService) RegisterActivityProducts(apiClient *shops.ShopAPIClient, tenantID, storeID int64, activityID, activityName string, products []marketing.SkcInfo) (int, error) {
+func (s *ActivityRegistrationService) RegisterActivityProducts(apiClient *ShopAPIClient, tenantID, storeID int64, activityID, activityName string, products []marketing.SkcInfo) (int, error) {
 	logrus.WithFields(logrus.Fields{
 		"platform":      "SHEIN",
 		"tenant_id":     tenantID,

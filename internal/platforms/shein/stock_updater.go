@@ -3,7 +3,6 @@ package shein
 
 import (
 	"fmt"
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -12,12 +11,12 @@ import (
 // StockUpdater 库存更新器
 type StockUpdater struct {
 	strategy       *api.OperationStrategyDTO
-	apiClient      *shops.ShopAPIClient
+	apiClient      *ShopAPIClient
 	requestBuilder *StrategyRequestBuilder
 }
 
 // NewStockUpdater 创建库存更新器
-func NewStockUpdater(strategy *api.OperationStrategyDTO, apiClient *shops.ShopAPIClient) *StockUpdater {
+func NewStockUpdater(strategy *api.OperationStrategyDTO, apiClient *ShopAPIClient) *StockUpdater {
 	return &StockUpdater{
 		strategy:       strategy,
 		apiClient:      apiClient,

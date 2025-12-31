@@ -4,9 +4,9 @@ package shein
 import (
 	"fmt"
 	"sync"
-	"task-processor/internal/common/shein/api"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/utils"
+	"task-processor/internal/platforms/shein/api"
 	"task-processor/internal/platforms/shein/modules"
 	"time"
 

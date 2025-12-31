@@ -3,8 +3,8 @@
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/common/shein/api"
-	"task-processor/internal/common/shein/api/attribute"
+	"task-processor/internal/platforms/shein/api"
+	"task-processor/internal/platforms/shein/api/attribute"
 )
 
 // AttributeAPI 属性相关API实现

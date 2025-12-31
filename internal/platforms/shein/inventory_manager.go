@@ -3,9 +3,8 @@ package shein
 
 import (
 	"fmt"
-	shops "task-processor/internal/common/shein"
-	"task-processor/internal/common/shein/api/product"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,7 +22,7 @@ func NewInventoryManager() *InventoryManager {
 }
 
 // FetchInventoryInfo 获取产品的 SKU 级别库存信息
-func (m *InventoryManager) FetchInventoryInfo(apiClient *shops.ShopAPIClient, sheinProduct *SheinProductResponse) (*LocalInventoryInfo, error) {
+func (m *InventoryManager) FetchInventoryInfo(apiClient *ShopAPIClient, sheinProduct *SheinProductResponse) (*LocalInventoryInfo, error) {
 	// 调用库存详情查询 API
 	response, err := apiClient.QueryInventory(sheinProduct.SpuName)
 	if err != nil {

@@ -2,8 +2,8 @@
 package modules
 
 import (
-	"task-processor/internal/common/shein/api/product"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/shein/api/product"
 )
 
 // ImageUploadResult 图片上传结果结构体

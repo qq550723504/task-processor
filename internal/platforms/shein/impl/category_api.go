@@ -3,8 +3,8 @@
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/common/shein/api"
-	"task-processor/internal/common/shein/api/category"
+	"task-processor/internal/platforms/shein/api"
+	"task-processor/internal/platforms/shein/api/category"
 )
 
 // CategoryAPI 分类相关API实现

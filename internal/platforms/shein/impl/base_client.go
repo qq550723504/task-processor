@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"task-processor/internal/common/shein/api"
+	"task-processor/internal/platforms/shein/api"
 
 	"github.com/imroc/req/v3"
 )

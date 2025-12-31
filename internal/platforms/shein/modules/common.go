@@ -1,6 +1,6 @@
 ﻿package modules
 
-import "task-processor/internal/common/shein/api/product"
+import "task-processor/internal/platforms/shein/api/product"
 
 // getSiteListByRegion 根据区域获取站点列表
 func GetSiteListByRegion(region string) []product.SiteInfo {

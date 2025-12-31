@@ -4,8 +4,8 @@ package impl
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/common/shein/api"
-	"task-processor/internal/common/shein/api/marketing"
+	"task-processor/internal/platforms/shein/api"
+	"task-processor/internal/platforms/shein/api/marketing"
 )
 
 // MarketingAPI 营销活动相关API实现

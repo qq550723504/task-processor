@@ -3,8 +3,7 @@ package shein
 
 import (
 	"fmt"
-	shops "task-processor/internal/common/shein"
-	"task-processor/internal/common/shein/api/product"
+	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -22,7 +21,7 @@ func NewProductFetcher() *ProductFetcher {
 }
 
 // FetchProductList 获取 SHEIN 产品列表
-func (f *ProductFetcher) FetchProductList(apiClient *shops.ShopAPIClient) ([]SheinProductResponse, error) {
+func (f *ProductFetcher) FetchProductList(apiClient *ShopAPIClient) ([]SheinProductResponse, error) {
 	// 构建请求参数
 	request := &product.ProductListRequest{
 		Language:             "en",

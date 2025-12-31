@@ -1,7 +1,7 @@
 ﻿package modules
 
 import (
-	product "task-processor/internal/common/shein/api/product"
+	product "task-processor/internal/platforms/shein/api/product"
 )
 
 // InitProductDataHandler 初始化产品数据处理器

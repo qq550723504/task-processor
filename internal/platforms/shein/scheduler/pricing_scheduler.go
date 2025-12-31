@@ -7,10 +7,11 @@ import (
 	"sync"
 	"time"
 
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pkg/management"
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/shein"
+	shops "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/modules"
 
 	"github.com/sirupsen/logrus"
@@ -29,7 +30,7 @@ type PricingScheduler struct {
 	logger           *logrus.Entry
 
 	// 保留原有的组件化设计
-	productFetcher  *modules.AutoPricingProductFetcher
+	productFetcher  *shein.AutoPricingProductFetcher
 	ruleEvaluator   *modules.AutoPricingRuleEvaluator
 	priceCalculator *modules.AutoPricingCalculator
 	discussHandler  *modules.AutoPricingDiscussHandler
@@ -57,7 +58,7 @@ func NewPricingScheduler(ctx context.Context, tenantID, storeID int64, managemen
 			"storeID":   storeID,
 		}),
 		// 初始化组件
-		productFetcher:  modules.NewAutoPricingProductFetcher(shopClientMgr),
+		productFetcher:  shein.NewAutoPricingProductFetcher(shopClientMgr),
 		ruleEvaluator:   modules.NewAutoPricingRuleEvaluator(managementClient),
 		priceCalculator: modules.NewAutoPricingCalculator(),
 		discussHandler:  modules.NewAutoPricingDiscussHandler(),
@@ -85,7 +86,7 @@ func NewPricingSchedulerWithPrewarmer(ctx context.Context, tenantID, storeID int
 			"storeID":   storeID,
 		}),
 		// 初始化组件
-		productFetcher:  modules.NewAutoPricingProductFetcher(shopClientMgr),
+		productFetcher:  shein.NewAutoPricingProductFetcher(shopClientMgr),
 		ruleEvaluator:   modules.NewAutoPricingRuleEvaluator(managementClient),
 		priceCalculator: modules.NewAutoPricingCalculator(),
 		discussHandler:  modules.NewAutoPricingDiscussHandler(),

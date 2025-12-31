@@ -7,8 +7,8 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
-	"task-processor/internal/common/shein/api"
 	"task-processor/internal/pkg/management/impl"
+	"task-processor/internal/platforms/shein/api"
 	"time"
 
 	"golang.org/x/image/draw"

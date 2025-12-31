@@ -2,7 +2,7 @@
 
 import (
 	"fmt"
-	"task-processor/internal/common/shein/api/attribute"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 	"golang.org/x/text/cases"

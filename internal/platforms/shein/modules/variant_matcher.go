@@ -2,7 +2,7 @@ package modules
 
 import (
 	"strings"
-	"task-processor/internal/common/shein/api/attribute"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )

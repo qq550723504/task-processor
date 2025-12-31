@@ -2,7 +2,7 @@
 
 import (
 	"fmt"
-	"task-processor/internal/common/shein/api/product"
+	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )

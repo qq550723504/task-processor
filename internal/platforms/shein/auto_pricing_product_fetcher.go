@@ -1,21 +1,20 @@
 // Package modules 提供SHEIN平台的自动核价产品获取功能
-package modules
+package shein
 
 import (
-	shops "task-processor/internal/common/shein"
-	"task-processor/internal/common/shein/api/pricing"
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/shein/api/pricing"
 
 	"github.com/sirupsen/logrus"
 )
 
 // AutoPricingProductFetcher 自动核价产品获取器，负责获取待核价的产品列表
 type AutoPricingProductFetcher struct {
-	shopClientMgr *shops.ClientManager
+	shopClientMgr *ClientManager
 }
 
 // NewAutoPricingProductFetcher 创建新的自动核价产品获取器
-func NewAutoPricingProductFetcher(shopClientMgr *shops.ClientManager) *AutoPricingProductFetcher {
+func NewAutoPricingProductFetcher(shopClientMgr *ClientManager) *AutoPricingProductFetcher {
 	return &AutoPricingProductFetcher{
 		shopClientMgr: shopClientMgr,
 	}

@@ -5,12 +5,11 @@ import (
 	"context"
 	"fmt"
 	"task-processor/internal/app/worker"
-	shops "task-processor/internal/common/shein"
-	"task-processor/internal/common/shein/api"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	management_api "task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/utils"
+	"task-processor/internal/platforms/shein/api"
 	"task-processor/internal/platforms/shein/modules"
 
 	"github.com/sirupsen/logrus"
@@ -116,7 +115,7 @@ func (h *TaskHandler) initShopClient(taskCtx *modules.TaskContext) error {
 	}
 
 	// 创建SHEIN API客户端（会自动根据loginUrl设置端点并加载Cookie）
-	apiClient := shops.NewAPIClient(
+	apiClient := NewAPIClient(
 		taskCtx.Task.TenantID,
 		taskCtx.Task.StoreID,
 		managementClient,

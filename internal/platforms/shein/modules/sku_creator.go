@@ -6,8 +6,8 @@ import (
 	"math"
 	"math/rand"
 	"strings"
-	"task-processor/internal/common/shein/api/attribute"
-	"task-processor/internal/common/shein/api/product"
+	"task-processor/internal/platforms/shein/api/attribute"
+	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )

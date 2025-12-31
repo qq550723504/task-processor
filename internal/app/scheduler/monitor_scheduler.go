@@ -4,10 +4,10 @@ import (
 	"fmt"
 
 	"task-processor/internal/common"
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/shein"
+	shops "task-processor/internal/platforms/shein"
 
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"

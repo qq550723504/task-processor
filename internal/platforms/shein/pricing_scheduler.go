@@ -1,5 +1,5 @@
 // Package shops 提供SHEIN平台的核价调度器功能
-package shops
+package shein
 
 import (
 	"context"

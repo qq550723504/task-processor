@@ -4,7 +4,7 @@ package modules
 import (
 	"strings"
 
-	"task-processor/internal/common/shein/api/attribute"
+	"task-processor/internal/platforms/shein/api/attribute"
 )
 
 // NewAttributeImportanceCalculator 创建新的属性重要性计算器

@@ -2,11 +2,11 @@ package scheduler
 
 import (
 	"fmt"
-	shops "task-processor/internal/common/shein"
 	temuapi "task-processor/internal/common/temu"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein"
+	shops "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/temu"
 	"time"
 

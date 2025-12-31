@@ -3,7 +3,6 @@ package shein
 
 import (
 	"fmt"
-	shops "task-processor/internal/common/shein"
 	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -39,7 +38,7 @@ func (s *SyncService) SetMappingClient(mappingClient api.ProductImportMappingAPI
 
 // SyncProducts 同步 SHEIN 产品列表
 // shopType: 0-半托管, 1-全托管, 2-自营
-func (s *SyncService) SyncProducts(apiClient *shops.ShopAPIClient, tenantID, storeID int64, shopType string) (int, error) {
+func (s *SyncService) SyncProducts(apiClient *ShopAPIClient, tenantID, storeID int64, shopType string) (int, error) {
 	logrus.WithFields(logrus.Fields{
 		"platform":  "SHEIN",
 		"tenant_id": tenantID,

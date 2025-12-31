@@ -1,5 +1,5 @@
 // Package shops 提供SHEIN平台的核价功能
-package shops
+package shein
 
 import (
 	"task-processor/internal/pkg/management"

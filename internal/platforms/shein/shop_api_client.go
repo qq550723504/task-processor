@@ -1,8 +1,8 @@
-﻿package shops
+﻿package shein
 
 import (
-	"task-processor/internal/common/shein/api"
-	"task-processor/internal/common/shein/impl"
+	"task-processor/internal/platforms/shein/api"
+	"task-processor/internal/platforms/shein/impl"
 
 	"github.com/imroc/req/v3"
 )

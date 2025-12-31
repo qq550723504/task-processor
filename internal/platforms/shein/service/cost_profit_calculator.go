@@ -2,7 +2,7 @@
 package service
 
 import (
-	"task-processor/internal/common/shein/api/marketing"
+	"task-processor/internal/platforms/shein/api/marketing"
 )
 
 // CostProfitCalculator 成本利润计算器

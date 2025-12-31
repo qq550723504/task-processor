@@ -2,7 +2,7 @@
 package modules
 
 import (
-	"task-processor/internal/common/shein/api/attribute"
+	"task-processor/internal/platforms/shein/api/attribute"
 )
 
 // SaleAttributePreparationHandler 销售属性准备处理器（专门用于属性准备功能）

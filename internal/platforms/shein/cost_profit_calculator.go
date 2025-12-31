@@ -2,9 +2,9 @@
 package shein
 
 import (
-	"task-processor/internal/common/shein/api/marketing"
-	"task-processor/internal/common/shein/service"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/shein/api/marketing"
+	"task-processor/internal/platforms/shein/service"
 )
 
 // CostProfitCalculator 成本利润计算器（适配器模式）

@@ -1,5 +1,5 @@
 // Package shops 提供SHEIN平台的API客户端
-package shops
+package shein
 
 import (
 	"fmt"

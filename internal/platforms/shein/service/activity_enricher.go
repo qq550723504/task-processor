@@ -2,8 +2,8 @@
 package service
 
 import (
-	"task-processor/internal/common/shein/api/marketing"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/shein/api/marketing"
 )
 
 // ActivityEnricher 活动数据丰富化器

@@ -3,9 +3,8 @@ package shein
 
 import (
 	"fmt"
-	shops "task-processor/internal/common/shein"
-	"task-processor/internal/common/shein/api/product"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,7 +22,7 @@ func NewPriceManager() *PriceManager {
 }
 
 // ProcessPriceByShopType 根据店铺类型处理价格信息
-func (m *PriceManager) ProcessPriceByShopType(apiClient *shops.ShopAPIClient, sheinProduct *SheinProductResponse, productData *api.ProductDataDTO, shopType string) (map[string]*product.SkuPriceInfo, map[string]*product.SkuCostInfo, error) {
+func (m *PriceManager) ProcessPriceByShopType(apiClient *ShopAPIClient, sheinProduct *SheinProductResponse, productData *api.ProductDataDTO, shopType string) (map[string]*product.SkuPriceInfo, map[string]*product.SkuCostInfo, error) {
 	var priceMap map[string]*product.SkuPriceInfo
 	var costMap map[string]*product.SkuCostInfo
 
@@ -65,7 +64,7 @@ func (m *PriceManager) ProcessPriceByShopType(apiClient *shops.ShopAPIClient, sh
 }
 
 // FetchPriceInfo 获取产品价格信息，返回 SKU 级别的完整价格数据（自营店铺）
-func (m *PriceManager) FetchPriceInfo(apiClient *shops.ShopAPIClient, sheinProduct *SheinProductResponse) (map[string]*product.SkuPriceInfo, error) {
+func (m *PriceManager) FetchPriceInfo(apiClient *ShopAPIClient, sheinProduct *SheinProductResponse) (map[string]*product.SkuPriceInfo, error) {
 	// 查询价格信息
 	priceResponse, err := apiClient.QueryPrice(sheinProduct.SpuName)
 	if err != nil {
@@ -96,7 +95,7 @@ func (m *PriceManager) FetchPriceInfo(apiClient *shops.ShopAPIClient, sheinProdu
 }
 
 // FetchCostPriceInfo 获取产品成本价信息，返回 SKU 级别的完整成本数据（半托店铺）
-func (m *PriceManager) FetchCostPriceInfo(apiClient *shops.ShopAPIClient, sheinProduct *SheinProductResponse) (map[string]*product.SkuCostInfo, error) {
+func (m *PriceManager) FetchCostPriceInfo(apiClient *ShopAPIClient, sheinProduct *SheinProductResponse) (map[string]*product.SkuCostInfo, error) {
 	// 构建 SKC 名称列表
 	var skcNameList []string
 	for _, skc := range sheinProduct.SkcInfoList {

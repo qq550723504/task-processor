@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"task-processor/internal/common/shein/api/attribute"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/platforms/shein/api/attribute"
 )
 
 // CustomAttributeResult 自定义属性处理结果

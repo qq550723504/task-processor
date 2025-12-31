@@ -2,17 +2,17 @@
 
 import (
 	"context"
-	shein_api "task-processor/internal/common/shein/api"
-	"task-processor/internal/common/shein/api/attribute"
-	"task-processor/internal/common/shein/api/category"
-	"task-processor/internal/common/shein/api/other"
-	"task-processor/internal/common/shein/api/product"
-	"task-processor/internal/common/shein/api/warehouse"
 	"task-processor/internal/domain/model"
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pkg/management"
 	management_api "task-processor/internal/pkg/management/api"
+	shein_api "task-processor/internal/platforms/shein/api"
+	"task-processor/internal/platforms/shein/api/attribute"
+	"task-processor/internal/platforms/shein/api/category"
+	"task-processor/internal/platforms/shein/api/other"
+	"task-processor/internal/platforms/shein/api/product"
+	"task-processor/internal/platforms/shein/api/warehouse"
 )
 
 // StepHandler 任务处理步骤接口

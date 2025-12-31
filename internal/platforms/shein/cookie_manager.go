@@ -1,5 +1,5 @@
 // Package shops 提供SHEIN平台的Cookie管理功能
-package shops
+package shein
 
 import (
 	"encoding/json"
