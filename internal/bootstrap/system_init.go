@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"task-processor/internal/goroutine"
 	"task-processor/internal/logger"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -18,7 +18,7 @@ import (
 // SystemInitializer 系统初始化器
 type SystemInitializer struct {
 	logManager       *logger.LogManager
-	goroutineManager *goroutine.GoroutineManager
+	goroutineManager *utils.GoroutineManager
 	logger           *logrus.Entry
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -53,7 +53,7 @@ func NewSystemInitializer(config *SystemConfig) *SystemInitializer {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// 创建goroutine管理器
-	goroutineManager := goroutine.NewGoroutineManager(ctx, componentLogger)
+	goroutineManager := utils.NewGoroutineManager(ctx, componentLogger)
 
 	return &SystemInitializer{
 		logManager:       logManager,
@@ -84,7 +84,7 @@ func (si *SystemInitializer) GetContext() context.Context {
 }
 
 // GetGoroutineManager 获取goroutine管理器
-func (si *SystemInitializer) GetGoroutineManager() *goroutine.GoroutineManager {
+func (si *SystemInitializer) GetGoroutineManager() *utils.GoroutineManager {
 	return si.goroutineManager
 }
 

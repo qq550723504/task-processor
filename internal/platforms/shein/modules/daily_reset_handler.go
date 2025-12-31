@@ -3,7 +3,7 @@
 import (
 	"context"
 	"task-processor/internal/common/memory"
-	"task-processor/internal/goroutine"
+	"task-processor/internal/utils"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -24,7 +24,7 @@ func NewDailyResetHandler(memoryManager *memory.MemoryManager) *DailyResetHandle
 // Start 启动每日重置任务
 func (h *DailyResetHandler) Start(ctx context.Context) {
 	// 使用统一的goroutine管理器
-	goroutineManager := goroutine.NewGoroutineManager(ctx, logrus.WithField("component", "daily_reset_handler"))
+	goroutineManager := utils.NewGoroutineManager(ctx, logrus.WithField("component", "daily_reset_handler"))
 
 	goroutineManager.Start("daily_reset_scheduler", func(ctx context.Context) error {
 		// 等待到下一个UTC时间的00:00:00

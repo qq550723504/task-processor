@@ -1,5 +1,5 @@
-// Package goroutine 提供统一的goroutine管理功能
-package goroutine
+// Package utils 提供统一的goroutine管理功能
+package utils
 
 import (
 	"context"

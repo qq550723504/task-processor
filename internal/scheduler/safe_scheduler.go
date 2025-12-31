@@ -7,15 +7,15 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/goroutine"
 	"task-processor/internal/logger"
+	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )
 
 // SafeScheduler 安全的调度器，使用统一的goroutine管理
 type SafeScheduler struct {
-	goroutineManager *goroutine.GoroutineManager
+	goroutineManager *utils.GoroutineManager
 	logger           *logrus.Entry
 	tasks            map[string]*ScheduledTask
 	mutex            sync.RWMutex
@@ -38,7 +38,7 @@ func NewSafeScheduler(ctx context.Context) *SafeScheduler {
 	logger := logger.GetGlobalLogger("safe_scheduler")
 
 	return &SafeScheduler{
-		goroutineManager: goroutine.NewGoroutineManager(schedulerCtx, logger),
+		goroutineManager: utils.NewGoroutineManager(schedulerCtx, logger),
 		logger:           logger,
 		tasks:            make(map[string]*ScheduledTask),
 		ctx:              schedulerCtx,
