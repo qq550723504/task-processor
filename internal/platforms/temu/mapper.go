@@ -3,7 +3,7 @@ package temu
 import (
 	"encoding/json"
 	"fmt"
-	"task-processor/internal/common/management/api"
+	"task-processor/internal/pkg/management/api"
 	"time"
 )
 

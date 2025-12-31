@@ -1,7 +1,7 @@
 package common
 
 import (
-	"task-processor/internal/common/management/api"
+	"task-processor/internal/pkg/management/api"
 )
 
 // ProductSyncService 产品同步服务接口

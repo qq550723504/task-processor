@@ -6,8 +6,8 @@ import (
 	"sync"
 	"task-processor/internal/common/shein/api"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/shein/modules"
-	"task-processor/internal/utils"
 	"time"
 
 	"github.com/sirupsen/logrus"

@@ -1,8 +1,8 @@
 ﻿package memory
 
 import (
-	"task-processor/internal/common/management"
-	"task-processor/internal/common/management/api"
+	"task-processor/internal/pkg/management"
+	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

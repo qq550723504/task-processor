@@ -2,8 +2,8 @@ package temu
 
 import (
 	"fmt"
-	"task-processor/internal/common/management/api"
 	temuapi "task-processor/internal/common/temu"
+	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

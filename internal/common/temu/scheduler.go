@@ -4,7 +4,7 @@ import (
 	"context"
 	"runtime"
 	"sync"
-	"task-processor/internal/common/management"
+	"task-processor/internal/pkg/management"
 	"time"
 
 	"github.com/sirupsen/logrus"

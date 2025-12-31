@@ -3,9 +3,9 @@ package worker
 
 import (
 	"context"
-	"task-processor/internal/common/management"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/memory"
+	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
 )

@@ -4,7 +4,7 @@ package temu
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/common/management"
+	"task-processor/internal/pkg/management"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"

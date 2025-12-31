@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"task-processor/internal/common/management/api"
 	commontypes "task-processor/internal/domain/model"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 

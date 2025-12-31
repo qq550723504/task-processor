@@ -2,8 +2,8 @@
 package shein
 
 import (
-	"task-processor/internal/common/management/api"
 	shops "task-processor/internal/common/shein"
+	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

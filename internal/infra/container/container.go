@@ -7,11 +7,11 @@ import (
 
 	"task-processor/internal/app/service"
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/management"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
+	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
 )

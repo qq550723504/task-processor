@@ -7,8 +7,8 @@ import (
 
 	"task-processor/internal/common"
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

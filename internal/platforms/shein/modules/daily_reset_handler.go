@@ -3,7 +3,7 @@
 import (
 	"context"
 	"task-processor/internal/infra/memory"
-	"task-processor/internal/utils"
+	"task-processor/internal/pkg/utils"
 	"time"
 
 	"github.com/sirupsen/logrus"

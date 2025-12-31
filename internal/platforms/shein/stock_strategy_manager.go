@@ -3,9 +3,9 @@ package shein
 
 import (
 	"math"
-	"task-processor/internal/common/management/api"
 	shops "task-processor/internal/common/shein"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

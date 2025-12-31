@@ -2,9 +2,9 @@ package temu
 
 import (
 	"context"
-	management_api "task-processor/internal/common/management/api"
 	"task-processor/internal/common/temu"
 	"task-processor/internal/domain/model"
+	management_api "task-processor/internal/pkg/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"time"
 

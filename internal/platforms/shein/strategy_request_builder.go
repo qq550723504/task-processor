@@ -3,9 +3,9 @@ package shein
 
 import (
 	"encoding/json"
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/common/shein/api/product"
 	"task-processor/internal/common/shein/api/warehouse"
+	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

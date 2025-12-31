@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
-	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

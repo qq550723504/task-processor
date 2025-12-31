@@ -5,13 +5,13 @@ import (
 	"context"
 	"fmt"
 	"task-processor/internal/app/worker"
-	management_api "task-processor/internal/common/management/api"
 	shops "task-processor/internal/common/shein"
 	"task-processor/internal/common/shein/api"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/shein/modules"
-	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

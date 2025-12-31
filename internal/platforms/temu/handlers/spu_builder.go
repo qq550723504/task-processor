@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/domain/model"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
-	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product/repo"
 	"task-processor/internal/domain/product/types"
+	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

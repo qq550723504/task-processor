@@ -4,10 +4,10 @@ package context
 import (
 	"context"
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/common/temu"
 	"task-processor/internal/domain/model"
 	commonPipeline "task-processor/internal/pipeline"
+	"task-processor/internal/pkg/management/api"
 	temutypes "task-processor/internal/platforms/temu/types"
 )
 

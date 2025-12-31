@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	"task-processor/internal/common/amazon"
-	"task-processor/internal/common/management"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/auth"
+	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
 )

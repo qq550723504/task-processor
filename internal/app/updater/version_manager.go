@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"task-processor/internal/utils"
+	"task-processor/internal/pkg/utils"
 	"time"
 
 	"github.com/sirupsen/logrus"

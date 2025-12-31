@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/app/api"
 	"task-processor/internal/app/service"
 	"task-processor/internal/infra/repo"
-	"task-processor/internal/utils"
+	"task-processor/internal/pkg/utils"
 )
 
 // go run cmd/amazon-crawler/main.go -url "https://www.amazon.com.mx/dp/B07W4BKR1T" -region "mx" -zipcode "11000" -output "test_B07W4BKR1T_mx.json"

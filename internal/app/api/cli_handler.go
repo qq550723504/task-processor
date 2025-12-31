@@ -6,7 +6,7 @@ import (
 	"flag"
 
 	"task-processor/internal/app/service"
-	"task-processor/internal/utils"
+	"task-processor/internal/pkg/utils"
 )
 
 // CLIHandler 命令行处理器

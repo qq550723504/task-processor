@@ -2,7 +2,7 @@ package temu
 
 import (
 	"fmt"
-	"task-processor/internal/common/management"
+	"task-processor/internal/pkg/management"
 )
 
 const (

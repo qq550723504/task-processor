@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/common/management"
-	management_api "task-processor/internal/common/management/api"
 	shein_api "task-processor/internal/common/shein/api"
 	"task-processor/internal/infra/memory"
+	"task-processor/internal/pkg/management"
+	management_api "task-processor/internal/pkg/management/api"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"

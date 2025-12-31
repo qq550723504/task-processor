@@ -3,8 +3,8 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

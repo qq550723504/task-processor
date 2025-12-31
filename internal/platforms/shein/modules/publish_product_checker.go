@@ -4,7 +4,7 @@ package modules
 import (
 	"fmt"
 
-	management_api "task-processor/internal/common/management/api"
+	management_api "task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

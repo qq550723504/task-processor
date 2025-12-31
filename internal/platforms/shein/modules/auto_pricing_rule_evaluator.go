@@ -4,9 +4,9 @@ package modules
 import (
 	"fmt"
 
-	"task-processor/internal/common/management"
-	managementapi "task-processor/internal/common/management/api"
 	"task-processor/internal/common/shein/api/pricing"
+	"task-processor/internal/pkg/management"
+	managementapi "task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
 )

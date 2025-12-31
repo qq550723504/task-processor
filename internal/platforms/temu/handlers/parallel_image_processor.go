@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
-	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

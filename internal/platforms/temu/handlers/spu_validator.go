@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

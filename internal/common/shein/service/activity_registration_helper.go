@@ -2,9 +2,9 @@
 package service
 
 import (
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/common/shein/api/marketing"
 	"task-processor/internal/common/shein/utils"
+	"task-processor/internal/pkg/management/api"
 )
 
 // ActivityRegistrationHelper 活动报名辅助器

@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/common/amazon"
 	"task-processor/internal/infra/repo"
-	"task-processor/internal/utils"
+	"task-processor/internal/pkg/utils"
 )
 
 // CrawlerService 爬虫服务

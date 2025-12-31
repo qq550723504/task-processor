@@ -2,7 +2,7 @@
 package shein
 
 import (
-	"task-processor/internal/common/management/api"
+	"task-processor/internal/pkg/management/api"
 )
 
 // RecordManager 记录管理器

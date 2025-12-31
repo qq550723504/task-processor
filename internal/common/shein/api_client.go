@@ -4,7 +4,7 @@ package shops
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/common/management"
+	"task-processor/internal/pkg/management"
 	"time"
 
 	"github.com/imroc/req/v3"

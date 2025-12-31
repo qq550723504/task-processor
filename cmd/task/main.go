@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/core/errors"
 	"task-processor/internal/infra/container"
 	"task-processor/internal/infra/monitoring"
-	"task-processor/internal/utils"
+	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
 )

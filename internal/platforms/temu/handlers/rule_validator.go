@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"

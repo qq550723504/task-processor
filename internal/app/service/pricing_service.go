@@ -4,7 +4,7 @@ package service
 import (
 	"context"
 
-	"task-processor/internal/common/management"
+	"task-processor/internal/pkg/management"
 	sheinHandlers "task-processor/internal/platforms/shein/handlers"
 	temuHandlers "task-processor/internal/platforms/temu/handlers"
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"task-processor/internal/common/management"
 	"task-processor/internal/common/temu"
+	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
 )

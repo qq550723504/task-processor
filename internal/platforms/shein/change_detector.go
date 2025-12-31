@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"task-processor/internal/common"
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein/modules"
 
 	"github.com/sirupsen/logrus"

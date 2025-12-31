@@ -3,7 +3,7 @@ package task
 import (
 	"context"
 	"task-processor/internal/app/worker"
-	"task-processor/internal/common/management/api"
+	"task-processor/internal/pkg/management/api"
 )
 
 // TaskSubmitter 任务提交器接口

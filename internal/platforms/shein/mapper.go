@@ -2,7 +2,7 @@ package shein
 
 import (
 	"encoding/json"
-	"task-processor/internal/common/management/api"
+	"task-processor/internal/pkg/management/api"
 	"time"
 
 	"github.com/sirupsen/logrus"

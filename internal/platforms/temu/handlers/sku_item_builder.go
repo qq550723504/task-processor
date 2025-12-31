@@ -6,10 +6,10 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 	temuUtils "task-processor/internal/platforms/temu/utils"
-	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

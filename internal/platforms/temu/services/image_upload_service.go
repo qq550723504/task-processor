@@ -3,7 +3,7 @@ package services
 
 import (
 	"fmt"
-	"task-processor/internal/common/downloader"
+	"task-processor/internal/pkg/downloader"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

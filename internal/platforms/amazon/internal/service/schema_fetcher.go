@@ -8,8 +8,8 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/amazon/internal/model"
-	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

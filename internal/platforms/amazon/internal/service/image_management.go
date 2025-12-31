@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"task-processor/internal/common/downloader"
+	"task-processor/internal/pkg/downloader"
 	"task-processor/internal/platforms/amazon/api"
 	"time"
 

@@ -2,7 +2,7 @@
 package modules
 
 import (
-	managementapi "task-processor/internal/common/management/api"
+	managementapi "task-processor/internal/pkg/management/api"
 )
 
 // AutoPricingCalculator 自动核价计算器，负责根据规则计算价格

@@ -2,8 +2,6 @@
 
 import (
 	"context"
-	"task-processor/internal/common/management"
-	management_api "task-processor/internal/common/management/api"
 	shein_api "task-processor/internal/common/shein/api"
 	"task-processor/internal/common/shein/api/attribute"
 	"task-processor/internal/common/shein/api/category"
@@ -13,6 +11,8 @@ import (
 	"task-processor/internal/domain/model"
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/infra/memory"
+	"task-processor/internal/pkg/management"
+	management_api "task-processor/internal/pkg/management/api"
 )
 
 // StepHandler 任务处理步骤接口

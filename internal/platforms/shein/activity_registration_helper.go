@@ -2,9 +2,9 @@
 package shein
 
 import (
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/common/shein/api/marketing"
 	"task-processor/internal/common/shein/service"
+	"task-processor/internal/pkg/management/api"
 )
 
 // buildActivityConfig 构建活动配置

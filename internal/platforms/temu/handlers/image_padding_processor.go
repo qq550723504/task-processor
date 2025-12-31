@@ -7,7 +7,7 @@ import (
 	"image/color"
 	"image/draw"
 
-	"task-processor/internal/common/downloader"
+	"task-processor/internal/pkg/downloader"
 	"task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"

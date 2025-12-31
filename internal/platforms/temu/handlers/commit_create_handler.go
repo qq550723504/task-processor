@@ -6,9 +6,9 @@ import (
 	"strings"
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
 	temuTypes "task-processor/internal/platforms/temu/types"
-	"task-processor/internal/utils"
 
 	"github.com/sirupsen/logrus"
 )

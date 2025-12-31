@@ -2,7 +2,7 @@
 package shops
 
 import (
-	"task-processor/internal/common/management"
+	"task-processor/internal/pkg/management"
 )
 
 // PricingStats 核价统计信息

@@ -3,8 +3,8 @@ package handlers
 import (
 	"fmt"
 	"sync"
-	"task-processor/internal/common/management/api"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"time"
 

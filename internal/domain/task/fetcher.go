@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/common/management"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
 )

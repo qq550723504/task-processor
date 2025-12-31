@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"task-processor/internal/common/management"
+	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/shein/scheduler"
 
 	"github.com/sirupsen/logrus"

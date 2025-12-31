@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/utils"
+	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
 )

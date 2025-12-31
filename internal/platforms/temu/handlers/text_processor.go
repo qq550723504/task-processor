@@ -3,7 +3,7 @@ package handlers
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/utils"
+	"task-processor/internal/pkg/utils"
 )
 
 // TextProcessor 文本处理器
