@@ -33,8 +33,8 @@ func (sb *SkuSkcBuilder) initParallelBuilder() {
 		return // 已经初始化
 	}
 
-	// 使用默认的并行worker数量（与Amazon poolSize保持一致）
-	maxWorkers := 3 // 默认值，与配置文件中的amazon.poolSize保持一致
+	// 使用默认的并行worker数量（与浏览器池大小保持一致）
+	maxWorkers := 3 // 默认值，与配置文件中的browser.poolSize保持一致
 
 	sb.parallelBuilder = NewSkuParallelBuilder(sb.itemBuilder, maxWorkers)
 	sb.logger.Infof("✅ 并行SKU构建器初始化完成，worker数量: %d", maxWorkers)
