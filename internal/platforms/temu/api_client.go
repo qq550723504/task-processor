@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"task-processor/internal/pkg/management"
+	"task-processor/internal/pkg/management/api"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"
@@ -79,7 +80,65 @@ func NewAPIClient(tenantID, storeID int64, managementClient *management.ClientMa
 		}
 	}
 
+	// 初始化时处理MallID设置逻辑
+	apiClient.initializeMallID(managementClient)
+
 	return apiClient
+}
+
+// initializeMallID 初始化时处理MallID设置逻辑
+func (c *APIClient) initializeMallID(managementClient *management.ClientManager) {
+	if managementClient == nil {
+		c.logger.Warn("管理客户端为空，跳过MallID初始化")
+		return
+	}
+
+	storeClient := managementClient.GetStoreClient()
+	if storeClient == nil {
+		c.logger.Warn("店铺客户端为空，跳过MallID初始化")
+		return
+	}
+
+	// 获取店铺信息
+	storeInfo, err := storeClient.GetStore(c.storeID)
+	if err != nil {
+		c.logger.WithError(err).Error("获取店铺信息失败，跳过MallID初始化")
+		return
+	}
+
+	if storeInfo == nil {
+		c.logger.Error("店铺信息为空，跳过MallID初始化")
+		return
+	}
+
+	// 从Cookie中获取当前的MALL_ID
+	cookieMallID := c.GetMallID()
+	c.logger.Infof("Cookie中的MALL_ID: %s, 管理系统中的StoreID: %s", cookieMallID, storeInfo.StoreID)
+
+	// 如果管理系统中的StoreID为空，但Cookie中有MALL_ID，则更新管理系统
+	if storeInfo.StoreID == "" && cookieMallID != "" {
+		c.logger.Infof("管理系统StoreID为空，使用Cookie中的MALL_ID更新: %s", cookieMallID)
+
+		req := &api.StoreIdUpdateReqDTO{
+			ID:      storeInfo.ID,
+			StoreID: cookieMallID,
+		}
+
+		if _, err := storeClient.UpdateStoreId(req); err != nil {
+			c.logger.WithError(err).Error("更新管理系统StoreID失败")
+		} else {
+			c.logger.Infof("成功更新管理系统StoreID为: %s", cookieMallID)
+		}
+	} else if storeInfo.StoreID != "" && cookieMallID != storeInfo.StoreID {
+		// 如果管理系统中有StoreID，且与Cookie中的不一致，则更新Cookie
+		c.logger.Infof("Cookie中的MALL_ID与管理系统不一致，更新Cookie: %s -> %s", cookieMallID, storeInfo.StoreID)
+		c.SetMallID(storeInfo.StoreID)
+		c.logger.Infof("成功更新Cookie中的MALL_ID为: %s", storeInfo.StoreID)
+	} else if storeInfo.StoreID != "" && cookieMallID == storeInfo.StoreID {
+		c.logger.Infof("MallID验证通过: %s", cookieMallID)
+	} else {
+		c.logger.Warn("管理系统StoreID和Cookie MALL_ID都为空")
+	}
 }
 
 // SetCookies 设置Cookie
