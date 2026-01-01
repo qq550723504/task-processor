@@ -32,6 +32,10 @@ func (c *AutoPricingCalculator) ApplyRule(originPrice float64, rule managementap
 	}
 
 	switch rule.RuleType {
+	case "multiple_fixed":
+		// 倍率加固定值
+		fixedValue := c.getFixedValueOrDefault(rule.FixedValue, 0)
+		return originPrice*(*rule.RuleValue) + fixedValue
 	case "fixed":
 		// 固定加价
 		return originPrice + *rule.RuleValue
@@ -49,4 +53,12 @@ func (c *AutoPricingCalculator) ApplyRule(originPrice float64, rule managementap
 		return *rule.RuleValue
 	}
 	return originPrice
+}
+
+// getFixedValueOrDefault 获取固定值或默认值
+func (c *AutoPricingCalculator) getFixedValueOrDefault(fixedValue *float64, defaultValue float64) float64 {
+	if fixedValue != nil {
+		return *fixedValue
+	}
+	return defaultValue
 }
