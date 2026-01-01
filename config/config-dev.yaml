@@ -64,7 +64,7 @@ management:
 platforms:
   # TEMU 平台配置
   temu:
-    enabled: true  # 是否启用TEMU处理器
+    enabled: false  # 是否启用TEMU处理器
     # 自动定价配置
     autoPricing:
       enabled: false
@@ -72,12 +72,12 @@ platforms:
       batchSize: 100
     # 产品同步配置0000000000
     sync:
-      enabled: true
+      enabled: false
       interval: 60      # 同步间隔（分钟），默认1小时
       batchSize: 50     # 批量处理大小
     # 产品监控配置
     monitor:
-      enabled: true               # 是否启用TEMU产品监控
+      enabled: false               # 是否启用TEMU产品监控
       checkInterval: 1440         # 检查间隔（分钟），默认24小时
       batchSize: 100              # 批量处理大小
       enablePriceAlert: true      # 启用价格告警
@@ -90,7 +90,7 @@ platforms:
     enabled: true  # 是否启用SHEIN处理器
     # 自动定价配置
     autoPricing:
-      enabled: false
+      enabled: true
       interval: 300     # 5分钟
       batchSize: 100
     # 产品同步配置

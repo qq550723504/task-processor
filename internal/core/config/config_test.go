@@ -91,6 +91,22 @@ func TestConfigBuild(t *testing.T) {
 func TestConfigValidation(t *testing.T) {
 	// 测试有效配置
 	validConfig := &Config{
+		Worker: WorkerConfig{
+			Concurrency:      5,
+			BufferSize:       100,
+			TaskInterval:     60,
+			MaxFetchPerCycle: 5,
+		},
+		Management: ManagementConfig{
+			BaseURL:      "http://example.com",
+			ClientID:     "test-client",
+			ClientSecret: "test-secret",
+			TenantID:     "1",
+		},
+		OpenAI: OpenAIConfig{
+			APIKey: "test-key",
+			Model:  "test-model",
+		},
 		Browser: BrowserConfig{
 			Enabled:        true,
 			PoolSize:       3,
@@ -106,6 +122,46 @@ func TestConfigValidation(t *testing.T) {
 		},
 		Amazon: AmazonConfig{
 			Enabled: true,
+		},
+		Platforms: PlatformsConfig{
+			Temu: PlatformConfig{
+				Enabled: true,
+				AutoPricing: AutoPricingConfig{
+					Enabled:   false,
+					Interval:  300,
+					BatchSize: 100,
+				},
+				Sync: SyncConfig{
+					Enabled:   true,
+					Interval:  60,
+					BatchSize: 50,
+				},
+				Monitor: MonitorConfig{
+					Enabled:              true,
+					CheckInterval:        1440,
+					BatchSize:            100,
+					PriceChangeThreshold: 10.0,
+				},
+			},
+			Shein: PlatformConfig{
+				Enabled: true,
+				AutoPricing: AutoPricingConfig{
+					Enabled:   false,
+					Interval:  300,
+					BatchSize: 100,
+				},
+				Sync: SyncConfig{
+					Enabled:   false,
+					Interval:  60,
+					BatchSize: 50,
+				},
+				Monitor: MonitorConfig{
+					Enabled:              false,
+					CheckInterval:        1440,
+					BatchSize:            100,
+					PriceChangeThreshold: 10.0,
+				},
+			},
 		},
 	}
 

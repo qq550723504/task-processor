@@ -46,8 +46,8 @@ func validateConfig(cfg *config.Config) error {
 		logrus.Warn("Amazon爬虫未启用，某些测试可能失败")
 	}
 
-	if cfg.Amazon.BrowserPath == "" {
-		logrus.Warn("Amazon浏览器路径未配置，将使用系统默认浏览器")
+	if cfg.Browser.BrowserPath == "" {
+		logrus.Warn("浏览器路径未配置，将使用系统默认浏览器")
 	}
 
 	// 验证租户和店铺配置
