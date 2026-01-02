@@ -174,7 +174,7 @@ func (c *Container) GetSharedManagementClient() (*management.ClientManager, erro
 }
 
 // StartAll 启动所有组件
-func (c *Container) StartAll(ctx context.Context) error {
+func (c *Container) StartAll(ctx context.Context, appVersion string) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -191,7 +191,7 @@ func (c *Container) StartAll(ctx context.Context) error {
 	}
 
 	// 启动自动更新器
-	c.updaterService.StartAutoUpdater(c.config, "1.0.0") // TODO: 从外部传入版本号
+	c.updaterService.StartAutoUpdater(c.config, appVersion)
 
 	// 启动处理器服务
 	if err := c.processorService.StartProcessors(ctx, c.config, c.authClient); err != nil {

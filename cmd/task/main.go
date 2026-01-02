@@ -77,7 +77,7 @@ func runApplication(container *container.Container) error {
 	defer cancel()
 
 	// 启动所有组件
-	if err := container.StartAll(ctx); err != nil {
+	if err := container.StartAll(ctx, appVersion); err != nil {
 		return err
 	}
 

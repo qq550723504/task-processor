@@ -87,10 +87,10 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: true  # 是否启用SHEIN处理器
+    enabled: false  # 是否启用SHEIN处理器
     # 自动定价配置
     autoPricing:
-      enabled: true
+      enabled: false
       interval: 300     # 5分钟
       batchSize: 100
     # 产品同步配置
@@ -180,7 +180,7 @@ amazon:
 
 # 自动更新配置
 updater:
-  enabled: false  # 开发环境默认禁用自动更新
+  enabled: true  # 开发环境默认禁用自动更新
   updateURL: "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json"
   checkInterval: 300  # 检查间隔（秒），默认5分钟
   insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）

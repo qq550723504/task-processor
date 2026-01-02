@@ -45,11 +45,14 @@ func (fm *FileManager) ReplaceExecutable(tmpFile string) error {
 		logrus.Info("已备份当前版本为 .old")
 
 		// 将新文件移动到正确位置
-		if err := os.Rename(tmpFile, currentExe); err != nil {
+		if err := fm.copyFile(tmpFile, currentExe); err != nil {
 			// 如果失败，尝试恢复
 			os.Rename(oldExe, currentExe)
-			return fmt.Errorf("移动新程序失败: %w", err)
+			return fmt.Errorf("复制新程序失败: %w", err)
 		}
+
+		// 删除临时文件
+		os.Remove(tmpFile)
 
 		logrus.Info("程序文件已更新")
 		return nil

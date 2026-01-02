@@ -33,7 +33,11 @@ if (-not (Test-Path "dist")) {
 
 # Inject version
 $buildTime = Get-Date -Format 'yyyy-MM-dd_HH:mm:ss'
-$ldflags = "-X 'main.appVersion=$Version' -X 'main.buildTime=$buildTime'"
+$ldflags = "-X main.appVersion=$Version -X main.buildTime=$buildTime"
+
+Write-Host "Debug: Version = $Version" -ForegroundColor Magenta
+Write-Host "Debug: BuildTime = $buildTime" -ForegroundColor Magenta
+Write-Host "Debug: ldflags = $ldflags" -ForegroundColor Magenta
 
 go build -ldflags $ldflags -o "dist/task-processor.exe" ./cmd/task
 
