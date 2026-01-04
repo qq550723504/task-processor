@@ -110,6 +110,28 @@ platforms:
       priceChangeThreshold: 10.0  # 价格变化阈值（百分比）
       stockChangeThreshold: 5     # 库存变化阈值
 
+  # 1688 平台配置
+  alibaba1688:
+    enabled: true   # 是否启用1688处理器
+    timeout: 120    # 处理超时时间（秒）
+    poolSize: 3     # 浏览器池大小
+    
+    # 浏览器配置
+    browserConfig:
+      headless: false
+      viewportWidth: 1920
+      viewportHeight: 1080
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    
+    # 随机配置选项
+    randomConfig:
+      enabled: true
+      strategy: "random"
+      presetName: "windows_high_end"
+      fingerprintStrategy: "random"
+      healthCheckEnabled: true
+      maxRetries: 3
+    
 # 浏览器配置（通用）
 browser:
   enabled: true

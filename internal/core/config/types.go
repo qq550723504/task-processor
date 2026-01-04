@@ -42,8 +42,9 @@ type ManagementConfig struct {
 
 // PlatformsConfig 平台配置
 type PlatformsConfig struct {
-	Temu  PlatformConfig `yaml:"temu"`  // TEMU平台配置
-	Shein PlatformConfig `yaml:"shein"` // SHEIN平台配置
+	Temu        PlatformConfig    `yaml:"temu"`        // TEMU平台配置
+	Shein       PlatformConfig    `yaml:"shein"`       // SHEIN平台配置
+	Alibaba1688 Alibaba1688Config `yaml:"alibaba1688"` // 1688平台配置
 }
 
 // PlatformConfig 单个平台的完整配置
@@ -155,4 +156,13 @@ type MonitorConfig struct {
 	EnableStockAlert     bool    `yaml:"enableStockAlert"`     // 启用库存告警
 	PriceChangeThreshold float64 `yaml:"priceChangeThreshold"` // 价格变化阈值（百分比）
 	StockChangeThreshold int     `yaml:"stockChangeThreshold"` // 库存变化阈值
+}
+
+// Alibaba1688Config 1688平台配置
+type Alibaba1688Config struct {
+	Enabled       bool                `yaml:"enabled"`       // 是否启用1688处理器
+	Timeout       int                 `yaml:"timeout"`       // 处理超时时间（秒）
+	PoolSize      int                 `yaml:"poolSize"`      // 浏览器池大小
+	BrowserConfig BrowserConfig       `yaml:"browserConfig"` // 浏览器配置
+	RandomConfig  BrowserRandomConfig `yaml:"randomConfig"`  // 随机配置选项
 }
