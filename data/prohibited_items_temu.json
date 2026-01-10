@@ -1,0 +1,119 @@
+{
+  "static_keywords": {
+    "weapons": [
+      "gun", "rifle", "pistol", "firearm", "weapon", "ammunition", "bullet", "cartridge",
+      "shotgun", "revolver", "handgun", "assault", "sniper", "scope", "trigger", "barrel",
+      "magazine", "clip", "holster", "silencer", "suppressor", "muzzle", "stock",
+      "knife", "blade", "sword", "dagger", "machete", "bayonet", "tactical",
+      "airsoft", "bb gun", "pellet gun", "replica gun", "toy gun", "fake gun",
+      "枪", "步枪", "手枪", "火器", "武器", "弹药", "子弹", "弹夹", "刀具", "刀片"
+    ],
+    "drugs": [
+      "drug", "narcotic", "cocaine", "heroin", "marijuana", "cannabis", "opium",
+      "methamphetamine", "ecstasy", "lsd", "mdma", "steroid", "anabolic",
+      "prescription drug", "controlled substance", "illegal drug",
+      "毒品", "大麻", "可卡因", "海洛因", "鸦片", "兴奋剂", "违禁药物"
+    ],
+    "adult_content": [
+      "adult", "sex", "porn", "erotic", "sexual", "intimate", "xxx",
+      "vibrator", "dildo", "condom", "lubricant", "adult toy", "sex toy",
+      "成人", "性", "色情", "情趣", "性用品"
+    ],
+    "counterfeit": [
+      "replica", "fake", "counterfeit", "imitation", "knockoff", "copy",
+      "1:1", "aaa quality", "super copy", "mirror quality",
+      "仿制", "假货", "山寨", "高仿", "A货", "原单"
+    ],
+    "dangerous": [
+      "explosive", "bomb", "grenade", "dynamite", "fireworks", "flammable",
+      "toxic", "poison", "chemical", "radioactive", "hazardous", "corrosive",
+      "爆炸", "炸弹", "烟花", "易燃", "有毒", "化学品", "危险品"
+    ],
+    "medical": [
+      "medical device", "prescription", "medicine", "pharmaceutical", "syringe",
+      "needle", "scalpel", "surgical", "diagnostic", "therapeutic",
+      "医疗器械", "处方药", "药品", "注射器", "手术刀", "医用"
+    ],
+    "tobacco": [
+      "cigarette", "tobacco", "cigar", "smoking", "nicotine", "vape", "e-cigarette",
+      "hookah", "pipe tobacco", "chewing tobacco",
+      "香烟", "烟草", "雪茄", "尼古丁", "电子烟", "水烟"
+    ],
+    "live_animals": [
+      "live animal", "pet", "puppy", "kitten", "bird", "fish", "reptile",
+      "exotic animal", "wildlife", "endangered species",
+      "活体动物", "宠物", "小狗", "小猫", "鸟类", "鱼类", "爬虫", "野生动物"
+    ],
+    "illegal_services": [
+      "hacking", "cracking", "piracy", "illegal download", "fake id",
+      "money laundering", "tax evasion", "fraud", "scam",
+      "黑客", "破解", "盗版", "假证", "洗钱", "逃税", "诈骗"
+    ],
+    "body_parts": [
+      "human organ", "body part", "blood", "plasma", "tissue", "bone",
+      "人体器官", "身体部位", "血液", "血浆", "组织", "骨骼"
+    ]
+  },
+  "dynamic_patterns": {
+    "weapons": [
+      "(?i)\\b(gun|rifle|pistol|firearm)\\b",
+      "(?i)\\b(weapon|ammunition|bullet)\\b",
+      "(?i)\\b(knife|blade|sword|dagger)\\b",
+      "(?i)\\b(tactical|military|combat)\\b",
+      "(?i)\\b(airsoft|bb\\s*gun|pellet\\s*gun)\\b",
+      "(?i)\\b(replica\\s*gun|toy\\s*gun|fake\\s*gun)\\b"
+    ],
+    "drugs": [
+      "(?i)\\b(drug|narcotic|cocaine|heroin)\\b",
+      "(?i)\\b(marijuana|cannabis|weed)\\b",
+      "(?i)\\b(steroid|anabolic)\\b",
+      "(?i)\\b(controlled\\s*substance)\\b",
+      "(?i)\\b(prescription\\s*drug)\\b"
+    ],
+    "adult_content": [
+      "(?i)\\b(adult|sex|porn|erotic)\\b",
+      "(?i)\\b(sexual|intimate|xxx)\\b",
+      "(?i)\\b(adult\\s*toy|sex\\s*toy)\\b"
+    ],
+    "counterfeit": [
+      "(?i)\\b(replica|fake|counterfeit)\\b",
+      "(?i)\\b(imitation|knockoff|copy)\\b",
+      "(?i)\\b(1:1|aaa\\s*quality)\\b",
+      "(?i)\\b(super\\s*copy|mirror\\s*quality)\\b"
+    ],
+    "dangerous": [
+      "(?i)\\b(explosive|bomb|grenade)\\b",
+      "(?i)\\b(toxic|poison|chemical)\\b",
+      "(?i)\\b(flammable|hazardous|corrosive)\\b",
+      "(?i)\\b(radioactive)\\b"
+    ],
+    "medical": [
+      "(?i)\\b(medical\\s*device|prescription)\\b",
+      "(?i)\\b(pharmaceutical|medicine)\\b",
+      "(?i)\\b(surgical|diagnostic|therapeutic)\\b"
+    ],
+    "tobacco": [
+      "(?i)\\b(cigarette|tobacco|cigar)\\b",
+      "(?i)\\b(vape|e-cigarette|smoking)\\b",
+      "(?i)\\b(nicotine|hookah)\\b"
+    ],
+    "live_animals": [
+      "(?i)\\b(live\\s*animal|pet)\\b",
+      "(?i)\\b(puppy|kitten|bird|fish)\\b",
+      "(?i)\\b(exotic\\s*animal|wildlife)\\b"
+    ]
+  },
+  "category_keywords": {
+    "high_risk_categories": [
+      "Sports & Outdoors > Hunting & Fishing",
+      "Sports & Outdoors > Outdoor Recreation > Airsoft",
+      "Toys & Games > Toy Figures & Playsets > Toy Weapons",
+      "Health & Personal Care > Medical Supplies & Equipment",
+      "Health & Personal Care > Sexual Wellness"
+    ]
+  },
+  "last_updated": "2025-01-10T00:00:00+08:00",
+  "version": "1.0.0",
+  "platform": "temu",
+  "description": "TEMU平台违禁品检测配置，包含武器、毒品、成人内容、假冒伪劣、危险品、医疗器械、烟草制品、活体动物等违禁品类别"
+}
