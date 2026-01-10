@@ -6,7 +6,12 @@
       "magazine", "clip", "holster", "silencer", "suppressor", "muzzle", "stock",
       "knife", "blade", "sword", "dagger", "machete", "bayonet", "tactical",
       "airsoft", "bb gun", "pellet gun", "replica gun", "toy gun", "fake gun",
-      "枪", "步枪", "手枪", "火器", "武器", "弹药", "子弹", "弹夹", "刀具", "刀片"
+      "1911", "ar-15", "ak-47", "glock", "beretta", "smith wesson", "colt",
+      "gun parts", "gun accessories", "firearm parts", "firearm accessories",
+      "gun grips", "pistol grips", "gun stock", "gun barrel", "gun sight",
+      "shooting accessories", "gun cleaning", "gun maintenance", "gun tools",
+      "枪", "步枪", "手枪", "火器", "武器", "弹药", "子弹", "弹夹", "刀具", "刀片",
+      "枪支配件", "枪械配件", "握把", "枪托", "枪管", "瞄准镜"
     ],
     "drugs": [
       "drug", "narcotic", "cocaine", "heroin", "marijuana", "cannabis", "opium",
@@ -61,7 +66,12 @@
       "(?i)\\b(knife|blade|sword|dagger)\\b",
       "(?i)\\b(tactical|military|combat)\\b",
       "(?i)\\b(airsoft|bb\\s*gun|pellet\\s*gun)\\b",
-      "(?i)\\b(replica\\s*gun|toy\\s*gun|fake\\s*gun)\\b"
+      "(?i)\\b(replica\\s*gun|toy\\s*gun|fake\\s*gun)\\b",
+      "(?i)\\b(1911|ar-15|ak-47|glock|beretta)\\b",
+      "(?i)\\b(gun\\s*parts|gun\\s*accessories|firearm\\s*parts|firearm\\s*accessories)\\b",
+      "(?i)\\b(gun\\s*grips|pistol\\s*grips|gun\\s*stock|gun\\s*barrel)\\b",
+      "(?i)\\b(shooting\\s*accessories|gun\\s*cleaning|gun\\s*maintenance)\\b",
+      "(?i)\\b(government\\s*frame|commander\\s*frame)\\b"
     ],
     "drugs": [
       "(?i)\\b(drug|narcotic|cocaine|heroin)\\b",
