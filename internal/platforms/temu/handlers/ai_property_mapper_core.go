@@ -4,6 +4,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"task-processor/internal/core/config"
@@ -117,6 +118,10 @@ func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskCon
 		m.logger.Infof("✅ 默认属性填充完成，共处理 %d 个属性", len(ext.GoodsProperty.GoodsProperties))
 		return nil
 	}
+
+	// 🔧 关键修复：为AI返回的属性补充模板相关字段
+	// 修复template_module_id字段缺失导致TEMU API忽略属性的问题
+	m.enrichPropertiesWithTemplateInfo(mappedProperties, templateInfo.GoodsProperties)
 
 	// 应用AI映射的结果并进行严格验证
 	m.logger.Infof("📝 AI映射返回 %d 个属性，开始严格验证", len(mappedProperties))
@@ -237,6 +242,13 @@ func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templatePr
 		TemuProperties: make([]types.TemplateRespGoodsProperty, 0, len(templateProps)),
 	}
 
+	// 检查模板属性是否为空
+	if len(templateProps) == 0 {
+		logrus.Warn("⚠️ 模板属性列表为空，属性修复可能无法正常工作")
+	} else {
+		logrus.Infof("📋 准备属性映射数据，模板属性数量: %d", len(templateProps))
+	}
+
 	// 组织Amazon产品数据
 	if temuCtx.GetAmazonProduct() != nil {
 		data.AmazonProduct = convertAmazonProductData(temuCtx)
@@ -245,9 +257,54 @@ func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templatePr
 	// 组织TEMU属性选项
 	for _, templateProp := range templateProps {
 		data.TemuProperties = append(data.TemuProperties, templateProp)
+		// 记录Material属性的详细信息
+		if strings.ToLower(templateProp.Name) == "material" {
+			logrus.Infof("🔍 发现Material属性: PID=%d, 有效值数量=%d", templateProp.PID, len(templateProp.Values))
+			if len(templateProp.Values) > 0 {
+				logrus.Debugf("Material有效值: %v", func() []string {
+					values := make([]string, len(templateProp.Values))
+					for i, v := range templateProp.Values {
+						values[i] = v.Value
+					}
+					return values
+				}())
+			}
+		}
 	}
 
 	return data
+}
+
+// enrichPropertiesWithTemplateInfo 为AI返回的属性补充模板相关字段
+// 修复template_module_id字段缺失导致TEMU API忽略属性的问题
+func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []types.PropertyItem, templateProps []types.TemplateRespGoodsProperty) {
+	m.logger.Info("🔧 开始为AI属性补充模板信息")
+
+	// 创建模板属性映射表，便于快速查找
+	templateMap := make(map[int]types.TemplateRespGoodsProperty)
+	for _, templateProp := range templateProps {
+		templateMap[templateProp.PID] = templateProp
+	}
+
+	enrichedCount := 0
+	for i := range properties {
+		prop := &properties[i]
+
+		// 根据PID查找对应的模板属性
+		if templateProp, exists := templateMap[prop.Pid]; exists {
+			// 补充关键的模板字段
+			prop.TemplatePid = templateProp.TemplatePID
+			prop.TemplateModuleID = templateProp.TemplateModuleID
+
+			enrichedCount++
+			m.logger.Debugf("✅ 属性 %s (PID=%d) 补充模板信息: TemplateModuleID=%d, TemplatePID=%d",
+				templateProp.Name, prop.Pid, prop.TemplateModuleID, prop.TemplatePid)
+		} else {
+			m.logger.Warnf("⚠️ 未找到PID=%d对应的模板属性", prop.Pid)
+		}
+	}
+
+	m.logger.Infof("✅ 模板信息补充完成，共处理 %d/%d 个属性", enrichedCount, len(properties))
 }
 
 // convertAmazonProductData 将Amazon产品数据转换为AI映射所需的格式

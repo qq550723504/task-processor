@@ -119,14 +119,20 @@ func (f *PropertyValueFixer) matchMaterialValue(value string, validValues []type
 
 	// 材质关键词映射
 	materialKeywords := map[string][]string{
-		"steel":   {"钢", "不锈钢", "金属", "steel", "stainless"},
-		"plastic": {"塑料", "PP", "ABS", "plastic", "polymer"},
-		"wood":    {"木", "木质", "竹", "wood", "bamboo"},
-		"glass":   {"玻璃", "glass"},
-		"fabric":  {"布", "纺织", "fabric", "textile", "cloth"},
-		"leather": {"皮", "皮革", "leather"},
-		"ceramic": {"陶瓷", "ceramic"},
-		"rubber":  {"橡胶", "rubber"},
+		"steel":    {"钢", "不锈钢", "金属", "steel", "stainless"},
+		"plastic":  {"塑料", "PP", "ABS", "plastic", "polymer"},
+		"wood":     {"木", "木质", "竹", "wood", "bamboo"},
+		"glass":    {"玻璃", "glass"},
+		"fabric":   {"布", "纺织", "fabric", "textile", "cloth"},
+		"leather":  {"皮", "皮革", "leather"},
+		"ceramic":  {"陶瓷", "ceramic"},
+		"rubber":   {"橡胶", "rubber", "neoprene", "氯丁橡胶"},
+		"silicone": {"硅胶", "silicone", "硅橡胶"},
+		"foam":     {"泡沫", "foam", "海绵"},
+		"eva":      {"EVA", "eva", "乙烯醋酸乙烯"},
+		"pu":       {"PU", "pu", "聚氨酯", "polyurethane"},
+		"pvc":      {"PVC", "pvc", "聚氯乙烯"},
+		"tpu":      {"TPU", "tpu", "热塑性聚氨酯"},
 	}
 
 	// 查找匹配的材质
@@ -257,11 +263,16 @@ func (f *PropertyValueFixer) FixAllInvalidProperties(
 ) []types.PropertyItem {
 
 	f.logger.Info("🔧 开始批量修复无效属性值")
+	f.logger.Infof("📊 输入属性数量: %d, 模板属性数量: %d", len(properties), len(templateProps))
 
 	// 创建模板属性映射
 	templateMap := make(map[int]types.TemplateRespGoodsProperty)
 	for _, tmpl := range templateProps {
 		templateMap[tmpl.PID] = tmpl
+		// 特别记录Material属性
+		if strings.ToLower(tmpl.Name) == "material" {
+			f.logger.Infof("🔍 模板中发现Material属性: PID=%d, 有效值数量=%d", tmpl.PID, len(tmpl.Values))
+		}
 	}
 
 	fixedProperties := make([]types.PropertyItem, 0, len(properties))
@@ -272,7 +283,13 @@ func (f *PropertyValueFixer) FixAllInvalidProperties(
 		templateProp, exists := templateMap[prop.Pid]
 		if !exists {
 			// 模板中不存在的属性，跳过
+			f.logger.Warnf("⚠️ 属性PID=%d在模板中不存在，跳过修复", prop.Pid)
 			continue
+		}
+
+		// 特别处理Material属性
+		if strings.ToLower(templateProp.Name) == "material" {
+			f.logger.Infof("🔍 处理Material属性: PID=%d, Value='%s', VID=%d", prop.Pid, prop.Value, prop.Vid)
 		}
 
 		// 只修复选择类型属性
@@ -287,6 +304,8 @@ func (f *PropertyValueFixer) FixAllInvalidProperties(
 			fixedProperties = append(fixedProperties, *fixedProp)
 			if fixedProp.Value != prop.Value || fixedProp.Vid != prop.Vid {
 				fixedCount++
+				f.logger.Infof("🔧 属性修复: PID=%d, '%s'(VID=%d) → '%s'(VID=%d)",
+					prop.Pid, prop.Value, prop.Vid, fixedProp.Value, fixedProp.Vid)
 			}
 		} else if templateProp.Required {
 			// 🚨 必填属性不能跳过，强制提供默认值

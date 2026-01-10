@@ -141,8 +141,14 @@ func (v *PropertyValidator) ValidateAndFixProperties(properties []types.Property
 	// 创建专门的修复器
 	fixer := NewPropertyValueFixer(v.logger)
 
+	// 优先使用最新的模板信息，如果没有则使用映射数据中的模板信息
+	templateProps := data.TemuProperties
+	if len(templateProps) == 0 {
+		v.logger.Warn("⚠️ 映射数据中没有模板属性信息，属性修复可能不准确")
+	}
+
 	// 使用新的修复器进行批量修复
-	fixedProperties := fixer.FixAllInvalidProperties(properties, data.TemuProperties)
+	fixedProperties := fixer.FixAllInvalidProperties(properties, templateProps)
 
 	// 应用属性关联过滤规则（基于ShowCondition）
 	filteredProperties := v.filterByPropertyRelations(fixedProperties, data)

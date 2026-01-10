@@ -171,8 +171,10 @@ func (m *Mapper) isMaterial(valueStr string) bool {
 		"nylon", "spandex", "bamboo", "cashmere", "velvet", "satin", "chiffon",
 		"plastic", "metal", "wood", "glass", "ceramic", "rubber", "foam", "mesh",
 		"microfiber", "fleece", "jersey", "twill", "corduroy", "suede", "vinyl",
+		"neoprene", "latex", "silicone", "eva", "pu", "pvc", "tpu",
 		"棉", "聚酯", "羊毛", "丝绸", "皮革", "牛仔", "帆布", "亚麻",
 		"尼龙", "氨纶", "竹纤维", "羊绒", "天鹅绒", "缎子", "塑料", "金属",
+		"氯丁橡胶", "乳胶", "硅胶", "EVA", "聚氨酯", "PVC", "TPU",
 	}
 
 	for _, material := range materialKeywords {
