@@ -128,6 +128,14 @@ func (vp *SkuVariantProcessor) buildUserPrompt(request types.VariantMappingReque
 		builder.WriteString("\n")
 	}
 
+	// 添加重要的变体处理规则
+	builder.WriteString("【重要：变体处理规则】\n")
+	builder.WriteString("1. 每个Amazon变体必须对应一个唯一的TEMU SKU\n")
+	builder.WriteString("2. 如果Amazon属性值包含复合信息（如'Rectangular,Flower Pattern'），请将整个值作为规格名称使用\n")
+	builder.WriteString("3. 不要将复合属性值拆分，保持原始完整性\n")
+	builder.WriteString("4. 确保每个SKU的规格组合都是唯一的\n")
+	builder.WriteString("5. 如果多个变体有相似属性，请通过添加序号或其他标识符来区分\n\n")
+
 	// 添加TEMU规格模板信息 - 直接使用types.GoodsSpecProperty
 	builder.WriteString("【TEMU规格模板】\n")
 	builder.WriteString(vp.buildTemuSpecsInfo(request.TemuSpecProperties))

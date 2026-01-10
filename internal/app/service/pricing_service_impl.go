@@ -57,8 +57,32 @@ func (s *pricingServiceImpl) startTemuPricingHandler(cfg *config.Config) error {
 
 	s.logger.Info("启动TEMU核价处理器...")
 
-	// 创建TEMU核价处理器
-	s.temuAutoPricingHandler = temuHandlers.NewAutoPricingHandler(s.managementClient, cfg.Management.StoreIDs)
+	// 检查是否启用Amazon增强功能
+	if cfg.Amazon.Enabled {
+		s.logger.Info("Amazon配置已启用，使用Amazon增强版TEMU核价处理器")
+
+		// 获取Amazon处理器
+		amazonProcessor := GetSharedAmazonProcessor(cfg, s.logger)
+		if amazonProcessor == nil {
+			s.logger.Warn("Amazon处理器未初始化，使用基础版TEMU核价处理器")
+			s.temuAutoPricingHandler = temuHandlers.NewAutoPricingHandler(s.managementClient, cfg.Management.StoreIDs)
+		} else {
+			// 创建配置提供者
+			configProvider := temuHandlers.NewDefaultConfigProvider(&cfg.Amazon, amazonProcessor, &cfg.Platforms.Temu)
+
+			// 创建Amazon增强版TEMU核价处理器
+			s.temuAutoPricingHandler = temuHandlers.NewAutoPricingHandlerWithAmazon(
+				s.managementClient,
+				configProvider,
+				cfg.Management.StoreIDs,
+			)
+			s.logger.Info("✅ 成功创建Amazon增强版TEMU核价处理器")
+		}
+	} else {
+		s.logger.Info("Amazon配置未启用，使用基础版TEMU核价处理器")
+		// 创建基础版TEMU核价处理器
+		s.temuAutoPricingHandler = temuHandlers.NewAutoPricingHandler(s.managementClient, cfg.Management.StoreIDs)
+	}
 
 	// 启动核价处理器
 	autoPricingInterval := time.Duration(cfg.Platforms.Temu.AutoPricing.Interval) * time.Second

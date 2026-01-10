@@ -3,6 +3,10 @@ package temu
 
 import (
 	"fmt"
+	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/pkg/management/api"
 
@@ -15,6 +19,8 @@ type PricingDecisionService struct {
 	storeConfig    *api.StoreRespDTO // 店铺配置缓存
 	dataService    *PricingDataService
 	ruleCalculator *PricingRuleCalculator
+	productFetcher *product.ProductFetcher // 用于获取Amazon产品数据
+	useAmazonPrice bool                    // 是否使用Amazon价格数据（从配置读取）
 	logger         *logrus.Entry
 }
 
@@ -30,6 +36,53 @@ func NewPricingDecisionService(managementClient *management.ClientManager, tenan
 		storeID:        storeID,
 		dataService:    NewPricingDataService(managementClient, tenantID, logger),
 		ruleCalculator: NewPricingRuleCalculator(logger),
+		useAmazonPrice: true, // 默认值，向后兼容
+		logger:         logger,
+	}
+
+	// 初始化时加载店铺配置
+	if err := service.loadStoreConfig(managementClient); err != nil {
+		service.logger.Warnf("加载店铺配置失败: %v", err)
+	}
+
+	return service
+}
+
+// NewPricingDecisionServiceWithAmazon 创建支持Amazon数据的核价决策服务
+func NewPricingDecisionServiceWithAmazon(
+	managementClient *management.ClientManager,
+	tenantID, storeID int64,
+	amazonConfig *config.AmazonConfig,
+	amazonProcessor *amazon.AmazonProcessor,
+	platformConfig *config.PlatformConfig, // 改为平台配置参数
+) *PricingDecisionService {
+	logger := logrus.WithFields(logrus.Fields{
+		"component": "PricingDecisionService",
+		"tenantID":  tenantID,
+		"storeID":   storeID,
+	})
+
+	// 创建ProductFetcher用于获取Amazon产品数据
+	var productFetcher *product.ProductFetcher
+	if managementClient != nil && amazonConfig != nil && amazonProcessor != nil {
+		rawJsonDataClient := managementClient.GetRawJsonDataClient()
+		if rawJsonDataClient != nil {
+			productFetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor)
+		}
+	}
+
+	// 从配置获取useAmazonPrice，如果配置为空则使用默认值true
+	useAmazonPrice := true
+	if platformConfig != nil {
+		useAmazonPrice = platformConfig.AutoPricing.UseAmazonPrice
+	}
+
+	service := &PricingDecisionService{
+		storeID:        storeID,
+		dataService:    NewPricingDataService(managementClient, tenantID, logger),
+		ruleCalculator: NewPricingRuleCalculator(logger),
+		productFetcher: productFetcher,
+		useAmazonPrice: useAmazonPrice, // 使用配置值
 		logger:         logger,
 	}
 
@@ -67,12 +120,44 @@ func (s *PricingDecisionService) isRebargainEnabled() bool {
 	return *s.storeConfig.EnableRebargain
 }
 
+// getPriceType 获取店铺配置的价格类型
+func (s *PricingDecisionService) getPriceType() string {
+	if s.storeConfig == nil || s.storeConfig.PriceType == "" {
+		return "special" // 默认使用特价
+	}
+	return s.storeConfig.PriceType
+}
+
 // getPriceRejectStrategy 获取核价拒绝策略
 func (s *PricingDecisionService) getPriceRejectStrategy() string {
 	if s.storeConfig == nil || s.storeConfig.TemuPriceRejectStrategy == "" {
 		return "KEEP_ONLINE" // 默认保留在售
 	}
 	return s.storeConfig.TemuPriceRejectStrategy
+}
+
+// getAmazonProduct 获取Amazon产品数据
+func (s *PricingDecisionService) getAmazonProduct(productID, platform, region string, tenantID, storeID int64) (*model.Product, error) {
+	if s.productFetcher == nil {
+		s.logger.Debug("ProductFetcher未初始化，无法获取Amazon产品数据，使用倍数反推逻辑")
+		return nil, nil
+	}
+
+	req := &product.FetchRequest{
+		TenantID:  tenantID,
+		Platform:  platform,
+		Region:    region,
+		ProductID: productID,
+		StoreID:   storeID,
+	}
+
+	amazonProduct, err := s.productFetcher.FetchProduct(req)
+	if err != nil {
+		s.logger.Warnf("获取Amazon产品数据失败: %v", err)
+		return nil, err
+	}
+
+	return amazonProduct, nil
 }
 
 // MakeDecision 对单个商品做出核价决策
@@ -98,7 +183,30 @@ func (s *PricingDecisionService) MakeDecision(item *Sku, storeId int64) (*Pricin
 	}
 
 	// 计算原始成本价
-	originCostPrice := s.dataService.CalculateOriginCostPrice(mapping, item.SupplierPrice)
+	// 尝试获取Amazon产品数据来使用原始价格
+	var amazonProduct *model.Product
+
+	if mapping != nil && mapping.ProductId != "" {
+		// 从mapping中获取Amazon产品ID和区域信息
+		amazonProduct, err = s.getAmazonProduct(mapping.ProductId, mapping.Platform, mapping.Region,
+			mapping.TenantId, storeId)
+		if err != nil {
+			s.logger.Warnf("获取Amazon产品数据失败，将使用倍数反推: %v", err)
+		} else if amazonProduct != nil {
+			s.logger.Debugf("成功获取Amazon产品数据: %s", mapping.ProductId)
+		}
+	}
+
+	// 获取店铺配置的价格类型
+	priceType := s.getPriceType()
+
+	originCostPrice := s.dataService.CalculateOriginCostPriceWithAmazon(
+		mapping,
+		item.SupplierPrice,
+		amazonProduct,
+		s.useAmazonPrice, // 使用配置值而不是硬编码
+		priceType,
+	)
 	if originCostPrice <= 0 {
 		decision.Action = DecisionSkip
 		decision.Reason = "无法计算原始成本价"
@@ -152,7 +260,30 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 	}
 
 	// 计算原始成本价
-	originCostPrice := s.dataService.CalculateOriginCostPrice(mapping, currentSupplierPrice)
+	// 尝试获取Amazon产品数据来使用原始价格
+	var amazonProduct *model.Product
+
+	if mapping != nil && mapping.ProductId != "" {
+		// 从mapping中获取Amazon产品ID和区域信息
+		amazonProduct, err = s.getAmazonProduct(mapping.ProductId, mapping.Platform, mapping.Region,
+			mapping.TenantId, storeId)
+		if err != nil {
+			s.logger.Warnf("获取Amazon产品数据失败，将使用倍数反推: %v", err)
+		} else if amazonProduct != nil {
+			s.logger.Debugf("成功获取Amazon产品数据: %s", mapping.ProductId)
+		}
+	}
+
+	// 获取店铺配置的价格类型
+	priceType := s.getPriceType()
+
+	originCostPrice := s.dataService.CalculateOriginCostPriceWithAmazon(
+		mapping,
+		currentSupplierPrice,
+		amazonProduct,
+		s.useAmazonPrice, // 使用配置值而不是硬编码
+		priceType,
+	)
 	if originCostPrice <= 0 {
 		decision.Action = DecisionSkip
 		decision.Reason = "无法计算原始成本价"

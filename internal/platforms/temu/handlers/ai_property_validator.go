@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"fmt"
+	"strings"
 
 	"task-processor/internal/platforms/temu/types"
 )
@@ -64,4 +65,47 @@ func (m *AIPropertyMapper) validatePropertyValues(templateProps []types.Template
 
 	m.logger.Info("✅ 属性值验证通过")
 	return nil
+}
+
+// isValidVID 检查VID是否在模板的有效值列表中
+func (m *AIPropertyMapper) isValidVID(vid int, values []types.PropertyValue) bool {
+	for _, value := range values {
+		if value.VID == vid {
+			return true
+		}
+	}
+	return false
+}
+
+// isValidVIDForTemplate 检查VID是否在指定模板的有效值列表中
+// 注意：这个函数与isValidVID功能相同，保留是为了兼容性
+func (m *AIPropertyMapper) isValidVIDForTemplate(vid int, values []types.PropertyValue) bool {
+	return m.isValidVID(vid, values)
+}
+
+// findCorrectVIDByValue 通过值匹配找到正确的VID
+func (m *AIPropertyMapper) findCorrectVIDByValue(propValue string, values []types.PropertyValue) (int, string) {
+	propValue = strings.ToLower(propValue)
+
+	// 精确匹配
+	for _, value := range values {
+		if strings.ToLower(value.Value) == propValue {
+			return value.VID, value.Value
+		}
+	}
+
+	// 模糊匹配
+	for _, value := range values {
+		if strings.Contains(strings.ToLower(value.Value), propValue) ||
+			strings.Contains(propValue, strings.ToLower(value.Value)) {
+			return value.VID, value.Value
+		}
+	}
+
+	// 如果都没有匹配，返回第一个值作为默认值
+	if len(values) > 0 {
+		return values[0].VID, values[0].Value
+	}
+
+	return 0, ""
 }

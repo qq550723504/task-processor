@@ -34,6 +34,18 @@ func (u *ProductSubmitUtils) IsNonRetryableError(errorCode int, errorMessage str
 		// 可以根据实际情况添加更多不可重试的错误码
 	}
 
+	// 定义可重试的错误码（即使看起来像配置错误，但我们可以自动修复）
+	retryableErrorCodes := map[int]string{
+		999999999: "规格模板错误 - 可通过规格完整性验证修复",
+		10000414:  "多件套包装配置错误 - 可通过包装验证修复",
+	}
+
+	// 检查是否为可重试的错误码
+	if reason, exists := retryableErrorCodes[errorCode]; exists {
+		u.logger.Infof("识别到可重试错误: %s (error_code=%d)", reason, errorCode)
+		return false // 返回false表示可重试
+	}
+
 	// 检查错误码
 	if reason, exists := nonRetryableErrorCodes[errorCode]; exists {
 		u.logger.Infof("识别到不可重试错误: %s (error_code=%d)", reason, errorCode)

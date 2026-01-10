@@ -58,7 +58,7 @@ management:
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [736]  # 店铺ID列表
+  storeIDs: [627]  # 店铺ID列表
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
@@ -70,6 +70,7 @@ platforms:
       enabled: false
       interval: 300     # 5分钟
       batchSize: 100
+      useAmazonPrice: true  # 是否使用Amazon价格数据进行定价决策
     # 产品同步配置0000000000
     sync:
       enabled: false

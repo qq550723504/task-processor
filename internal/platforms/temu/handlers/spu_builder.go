@@ -129,7 +129,7 @@ func (b *SpuBuilder) BuildSkcAndSku(temuCtx *temucontext.TemuTaskContext, temuPr
 	}
 
 	// 构建商品规格属性（基于SKU中使用的规格）
-	if err := b.buildGoodsSpecProperties(temuProduct); err != nil {
+	if err := b.buildGoodsSpecProperties(temuCtx, temuProduct); err != nil {
 		b.logger.WithError(err).Warn("构建商品规格属性失败")
 	}
 
@@ -294,11 +294,17 @@ func (b *SpuBuilder) createSkcList(temuCtx *temucontext.TemuTaskContext, temuPro
 }
 
 // buildGoodsSpecProperties 构建商品规格属性（基于SKU中使用的规格）
-func (b *SpuBuilder) buildGoodsSpecProperties(temuProduct *types.Product) error {
+func (b *SpuBuilder) buildGoodsSpecProperties(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) error {
 	b.logger.Info("开始构建商品规格属性")
 
 	// 收集所有SKU中使用的规格
 	specMap := make(map[string]*types.GoodSpecProperty) // key: parent_spec_id_spec_id
+
+	// 尝试获取模板信息以获取vid值
+	var templateSpecMap map[string]map[string]int // parent_spec_id -> spec_id -> vid
+	if temuCtx != nil {
+		templateSpecMap = b.buildTemplateSpecMap(temuCtx)
+	}
 
 	for _, skc := range temuProduct.SkcList {
 		for _, sku := range skc.SkuList {
@@ -310,6 +316,13 @@ func (b *SpuBuilder) buildGoodsSpecProperties(temuProduct *types.Product) error 
 					return fmt.Errorf("发现未解析的临时规格ID: %s，请检查规格解析逻辑", spec.SpecID)
 				}
 
+				// 🔧 新增：规格值标准化处理
+				standardizedSpecName := b.standardizeSpecValue(spec.SpecName, spec.ParentSpecName)
+				if standardizedSpecName != spec.SpecName {
+					b.logger.Infof("🔧 规格值标准化: %s → %s (规格: %s)", spec.SpecName, standardizedSpecName, spec.ParentSpecName)
+					spec.SpecName = standardizedSpecName
+				}
+
 				key := fmt.Sprintf("%s_%s", spec.ParentSpecID, spec.SpecID)
 				if _, exists := specMap[key]; !exists {
 					// 根据规格类型设置feature值
@@ -317,17 +330,47 @@ func (b *SpuBuilder) buildGoodsSpecProperties(temuProduct *types.Product) error 
 					if b.skuBuilder.specHandler.isSizeSpec(strings.ToLower(spec.ParentSpecName)) {
 						feature = 2 // 尺码规格
 					}
+
+					// 尝试从模板中获取vid值和模板信息
+					vid := 0
+					templateModuleID := 0
+					templatePid := 0
+					if templateSpecMap != nil {
+						if specMap, exists := templateSpecMap[spec.ParentSpecID]; exists {
+							if v, exists := specMap[spec.SpecID]; exists {
+								vid = v
+								b.logger.Debugf("从模板获取vid: %s_%s -> %d", spec.ParentSpecID, spec.SpecID, vid)
+							}
+						}
+					}
+
+					// 从模板信息中获取TemplateModuleID和TemplatePid
+					if templateInfo, exists := GetTemplateInfoFromContext(temuCtx); exists {
+						for _, templateSpec := range templateInfo.GoodsSpecProperties {
+							if templateSpec.ParentSpecID == spec.ParentSpecID {
+								templateModuleID = templateSpec.TemplateModuleID
+								templatePid = templateSpec.TemplatePID
+								b.logger.Debugf("从模板获取规格模板信息: %s -> TemplateModuleID=%d, TemplatePid=%d",
+									spec.ParentSpecName, templateModuleID, templatePid)
+								break
+							}
+						}
+					}
+
 					specMap[key] = &types.GoodSpecProperty{
-						Value:          spec.SpecName,
-						SpecID:         spec.SpecID,
-						ParentSpecID:   spec.ParentSpecID,
-						ParentSpecName: spec.ParentSpecName,
-						Feature:        feature,
-						Checked:        false,
-						ControlType:    0,
-						Disabled:       false,
-						Name:           spec.ParentSpecName,
-						IsCustomized:   1, // 1表示用户自定义规格
+						Value:            spec.SpecName,
+						SpecID:           spec.SpecID,
+						ParentSpecID:     spec.ParentSpecID,
+						ParentSpecName:   spec.ParentSpecName,
+						Feature:          feature,
+						Checked:          true, // 修复：实际使用的规格应该设置为true
+						ControlType:      0,
+						Disabled:         false,
+						Name:             spec.ParentSpecName,
+						IsCustomized:     1,                // 1表示用户自定义规格
+						Vid:              vid,              // 设置从模板获取的vid值
+						TemplateModuleID: templateModuleID, // 设置模板模块ID
+						TemplatePid:      templatePid,      // 设置模板PID
 					}
 				}
 			}
@@ -345,4 +388,47 @@ func (b *SpuBuilder) buildGoodsSpecProperties(temuProduct *types.Product) error 
 
 	b.logger.Infof("商品规格属性构建完成，共%d个规格", len(goodsSpecProperties))
 	return nil
+}
+
+// standardizeSpecValue 标准化规格值
+func (b *SpuBuilder) standardizeSpecValue(specValue, parentSpecName string) string {
+	// 针对"Number Of Products"规格进行特殊处理
+	if strings.ToLower(parentSpecName) == "number of products" {
+		// 移除"pcs"后缀，统一为纯数字格式
+		if strings.HasSuffix(strings.ToLower(specValue), "pcs") {
+			return strings.TrimSuffix(specValue, "pcs")
+		}
+	}
+
+	return specValue
+}
+
+// buildTemplateSpecMap 从模板信息中构建规格映射 (parent_spec_id -> spec_id -> vid)
+func (b *SpuBuilder) buildTemplateSpecMap(temuCtx *temucontext.TemuTaskContext) map[string]map[string]int {
+	templateSpecMap := make(map[string]map[string]int)
+
+	// 尝试从上下文获取模板信息
+	if templateInfo, exists := GetTemplateInfoFromContext(temuCtx); exists {
+		for _, specProp := range templateInfo.GoodsSpecProperties {
+			if specProp.ParentSpecID != "" && len(specProp.Values) > 0 {
+				if templateSpecMap[specProp.ParentSpecID] == nil {
+					templateSpecMap[specProp.ParentSpecID] = make(map[string]int)
+				}
+
+				// 遍历所有可能的规格值，建立spec_id到vid的映射
+				for _, value := range specProp.Values {
+					if value.SpecID != "" {
+						templateSpecMap[specProp.ParentSpecID][value.SpecID] = value.VID
+						b.logger.Debugf("添加规格映射: %s_%s -> vid:%d (value:%s)",
+							specProp.ParentSpecID, value.SpecID, value.VID, value.Value)
+					}
+				}
+			}
+		}
+		b.logger.Infof("构建模板规格映射完成，共%d个父规格", len(templateSpecMap))
+	} else {
+		b.logger.Warn("未找到模板信息，无法获取vid值")
+	}
+
+	return templateSpecMap
 }

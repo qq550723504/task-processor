@@ -97,15 +97,29 @@ func (p *ImagePaddingProcessor) PadImageToAspectRatio(imageURL string, targetRat
 	}
 
 	// 确保满足最小尺寸要求
-	if newWidth < minWidth {
-		scale := float64(minWidth) / float64(newWidth)
-		newWidth = minWidth
-		newHeight = int(float64(newHeight) * scale)
-	}
-	if newHeight < minHeight {
-		scale := float64(minHeight) / float64(newHeight)
-		newHeight = minHeight
-		newWidth = int(float64(newWidth) * scale)
+	if newWidth < minWidth || newHeight < minHeight {
+		// 对于1:1比例，使用最大的最小尺寸要求
+		if targetRatio == 1.0 {
+			requiredSize := minWidth
+			if minHeight > requiredSize {
+				requiredSize = minHeight
+			}
+			newWidth = requiredSize
+			newHeight = requiredSize
+			p.logger.Infof("🔧 1:1比例最小尺寸调整: %dx%d -> %dx%d", originalWidth, originalHeight, newWidth, newHeight)
+		} else {
+			// 非1:1比例的处理
+			if newWidth < minWidth {
+				scale := float64(minWidth) / float64(newWidth)
+				newWidth = minWidth
+				newHeight = int(float64(newHeight) * scale)
+			}
+			if newHeight < minHeight {
+				scale := float64(minHeight) / float64(newHeight)
+				newHeight = minHeight
+				newWidth = int(float64(newWidth) * scale)
+			}
+		}
 	}
 
 	// 创建新的白色背景图片

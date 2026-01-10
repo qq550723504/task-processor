@@ -57,9 +57,10 @@ type PlatformConfig struct {
 
 // AutoPricingConfig 自动定价配置
 type AutoPricingConfig struct {
-	Enabled   bool `yaml:"enabled"`   // 是否启用自动定价
-	Interval  int  `yaml:"interval"`  // 定价间隔（秒）
-	BatchSize int  `yaml:"batchSize"` // 批量处理大小
+	Enabled        bool `yaml:"enabled"`        // 是否启用自动定价
+	Interval       int  `yaml:"interval"`       // 定价间隔（秒）
+	BatchSize      int  `yaml:"batchSize"`      // 批量处理大小
+	UseAmazonPrice bool `yaml:"useAmazonPrice"` // 是否使用Amazon价格数据进行定价决策
 }
 
 // BrowserConfig 浏览器通用配置

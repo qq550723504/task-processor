@@ -60,6 +60,14 @@ func (c *CrawlerClient) FetchFromCrawler(req *FetchRequest) (*model.Product, err
 	// 调用Amazon爬虫
 	product, err := c.amazonProcessor.Process(url, zipcode)
 	if err != nil {
+		// 检查是否为404或页面不存在错误
+		if c.isPageNotFoundError(err) {
+			return nil, &model.ProductNotFoundError{
+				ProductID: req.ProductID,
+				Message:   err.Error(),
+				Cause:     err,
+			}
+		}
 		return nil, fmt.Errorf("抓取失败: %w", err)
 	}
 
@@ -123,4 +131,29 @@ func (c *CrawlerClient) getDefaultZipcode(region string) string {
 	}
 
 	return "10001" // 默认美国邮编
+}
+
+// isPageNotFoundError 检查是否为页面不存在错误
+func (c *CrawlerClient) isPageNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := strings.ToLower(err.Error())
+	pageNotFoundPatterns := []string{
+		"页面不存在(404)",
+		"页面不存在",
+		"page not found",
+		"404",
+		"产品页面不存在",
+		"产品页面缺少必要元素",
+	}
+
+	for _, pattern := range pageNotFoundPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
 }

@@ -20,24 +20,24 @@
       "毒品", "大麻", "可卡因", "海洛因", "鸦片", "兴奋剂", "违禁药物"
     ],
     "adult_content": [
-      "adult", "sex", "porn", "erotic", "sexual", "intimate", "xxx",
-      "vibrator", "dildo", "condom", "lubricant", "adult toy", "sex toy",
-      "成人", "性", "色情", "情趣", "性用品"
+      "adult content", "adult entertainment", "sex", "porn", "erotic", "sexual", "intimate", "xxx",
+      "vibrator", "dildo", "condom", "lubricant", "adult toy", "sex toy", "adult video", "adult film",
+      "成人内容", "成人娱乐", "性", "色情", "情趣", "性用品", "成人影片"
     ],
     "counterfeit": [
-      "replica", "fake", "counterfeit", "imitation", "knockoff", "copy",
-      "1:1", "aaa quality", "super copy", "mirror quality",
-      "仿制", "假货", "山寨", "高仿", "A货", "原单"
+      "replica weapon", "replica gun", "fake brand", "counterfeit brand", "imitation brand", "knockoff brand",
+      "1:1 replica", "aaa quality replica", "super copy brand", "mirror quality brand",
+      "仿制品牌", "假冒品牌", "山寨品牌", "高仿品牌", "A货品牌", "原单品牌"
     ],
     "dangerous": [
-      "explosive", "bomb", "grenade", "dynamite", "fireworks", "flammable",
-      "toxic", "poison", "chemical", "radioactive", "hazardous", "corrosive",
-      "爆炸", "炸弹", "烟花", "易燃", "有毒", "化学品", "危险品"
+      "explosive", "bomb", "grenade", "dynamite", "fireworks", "flammable liquid", "flammable gas",
+      "toxic substance", "poison", "dangerous chemical", "radioactive", "hazardous material", "corrosive acid",
+      "爆炸物", "炸弹", "烟花", "易燃液体", "有毒物质", "危险化学品", "危险品", "腐蚀性酸"
     ],
     "medical": [
-      "medical device", "prescription", "medicine", "pharmaceutical", "syringe",
-      "needle", "scalpel", "surgical", "diagnostic", "therapeutic",
-      "医疗器械", "处方药", "药品", "注射器", "手术刀", "医用"
+      "medical device", "prescription medicine", "prescription drug", "pharmaceutical drug", "syringe",
+      "needle", "scalpel", "surgical instrument", "diagnostic equipment", "therapeutic device",
+      "医疗器械", "处方药", "处方药品", "注射器", "手术刀", "医用器械", "诊断设备"
     ],
     "tobacco": [
       "cigarette", "tobacco", "cigar", "smoking", "nicotine", "vape", "e-cigarette",
@@ -45,9 +45,9 @@
       "香烟", "烟草", "雪茄", "尼古丁", "电子烟", "水烟"
     ],
     "live_animals": [
-      "live animal", "pet", "puppy", "kitten", "bird", "fish", "reptile",
-      "exotic animal", "wildlife", "endangered species",
-      "活体动物", "宠物", "小狗", "小猫", "鸟类", "鱼类", "爬虫", "野生动物"
+      "live animal", "live pet", "puppy for sale", "kitten for sale", "live bird", "live fish", "live reptile",
+      "exotic animal", "wildlife", "endangered species", "breeding animal",
+      "活体动物", "活体宠物", "小狗出售", "小猫出售", "活鸟", "活鱼", "爬虫", "野生动物", "繁殖动物"
     ],
     "illegal_services": [
       "hacking", "cracking", "piracy", "illegal download", "fake id",
@@ -64,7 +64,7 @@
       "(?i)\\b(gun|rifle|pistol|firearm)\\b",
       "(?i)\\b(weapon|ammunition|bullet)\\b",
       "(?i)\\b(knife|blade|sword|dagger)\\b",
-      "(?i)\\b(tactical|military|combat)\\b",
+      "(?i)\\b(tactical)\\s+(knife|weapon|gun|gear)\\b",
       "(?i)\\b(airsoft|bb\\s*gun|pellet\\s*gun)\\b",
       "(?i)\\b(replica\\s*gun|toy\\s*gun|fake\\s*gun)\\b",
       "(?i)\\b(1911|ar-15|ak-47|glock|beretta)\\b",
@@ -81,20 +81,24 @@
       "(?i)\\b(prescription\\s*drug)\\b"
     ],
     "adult_content": [
-      "(?i)\\b(adult|sex|porn|erotic)\\b",
+      "(?i)\\b(adult\\s*(content|entertainment|video|film))\\b",
+      "(?i)\\b(sex|porn|erotic)\\b",
       "(?i)\\b(sexual|intimate|xxx)\\b",
       "(?i)\\b(adult\\s*toy|sex\\s*toy)\\b"
     ],
     "counterfeit": [
-      "(?i)\\b(replica|fake|counterfeit)\\b",
-      "(?i)\\b(imitation|knockoff|copy)\\b",
-      "(?i)\\b(1:1|aaa\\s*quality)\\b",
-      "(?i)\\b(super\\s*copy|mirror\\s*quality)\\b"
+      "(?i)\\b(replica\\s*(weapon|gun|brand))\\b",
+      "(?i)\\b(fake|counterfeit)\\s*(brand|designer|luxury)\\b",
+      "(?i)\\b(imitation|knockoff)\\s*(brand|designer)\\b",
+      "(?i)\\b(1:1|aaa\\s*quality)\\s*(replica|copy)\\b",
+      "(?i)\\b(super\\s*copy|mirror\\s*quality)\\s*(brand|designer)\\b"
     ],
     "dangerous": [
       "(?i)\\b(explosive|bomb|grenade)\\b",
-      "(?i)\\b(toxic|poison|chemical)\\b",
-      "(?i)\\b(flammable|hazardous|corrosive)\\b",
+      "(?i)\\b(toxic\\s*substance|poison)\\b",
+      "(?i)\\b(dangerous\\s*chemical|hazardous\\s*material)\\b",
+      "(?i)\\b(flammable\\s*(liquid|gas))\\b",
+      "(?i)\\b(corrosive\\s*acid)\\b",
       "(?i)\\b(radioactive)\\b"
     ],
     "medical": [
@@ -108,9 +112,10 @@
       "(?i)\\b(nicotine|hookah)\\b"
     ],
     "live_animals": [
-      "(?i)\\b(live\\s*animal|pet)\\b",
-      "(?i)\\b(puppy|kitten|bird|fish)\\b",
-      "(?i)\\b(exotic\\s*animal|wildlife)\\b"
+      "(?i)\\b(live\\s*(animal|pet|dog|cat|bird|fish|reptile))\\b",
+      "(?i)\\b(puppy|kitten|bird|fish)\\s*(for\\s*sale|breeding|live)\\b",
+      "(?i)\\b(exotic\\s*animal|wildlife|endangered\\s*species)\\b",
+      "(?i)\\b(breeding\\s*(animal|dog|cat|bird))\\b"
     ]
   },
   "category_keywords": {

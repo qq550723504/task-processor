@@ -130,6 +130,7 @@ func (f *DefaultPropertyFiller) getDefaultSelectionValue(templateProp types.Temp
 				TemplateModuleID: templateProp.TemplateModuleID,
 				Vid:              selectedValue.VID,
 				Value:            selectedValue.Value,
+				ValueUnit:        f.getValueUnit(templateProp), // 添加单位设置
 			}
 		}
 
@@ -142,6 +143,7 @@ func (f *DefaultPropertyFiller) getDefaultSelectionValue(templateProp types.Temp
 			TemplateModuleID: templateProp.TemplateModuleID,
 			Vid:              firstCandidate.VID,
 			Value:            firstCandidate.Value,
+			ValueUnit:        f.getValueUnit(templateProp), // 添加单位设置
 		}
 	}
 
@@ -153,6 +155,7 @@ func (f *DefaultPropertyFiller) getDefaultSelectionValue(templateProp types.Temp
 		TemplateModuleID: templateProp.TemplateModuleID,
 		Vid:              1, // 通用默认VID
 		Value:            "Default",
+		ValueUnit:        f.getValueUnit(templateProp), // 添加单位设置
 	}
 }
 
@@ -426,4 +429,20 @@ func (f *DefaultPropertyFiller) fixMaterialCompositionTotal(materialProps []*typ
 			}
 		}
 	}
+}
+
+// getValueUnit 获取属性的单位信息
+func (f *DefaultPropertyFiller) getValueUnit(templateProp types.TemplateRespGoodsProperty) string {
+	// 优先使用ValueUnit字段
+	if len(templateProp.ValueUnit) > 0 {
+		return templateProp.ValueUnit[0]
+	}
+
+	// 如果ValueUnit为空，尝试使用ValueUnitDTOList
+	if len(templateProp.ValueUnitDTOList) > 0 {
+		return templateProp.ValueUnitDTOList[0].ValueUnit
+	}
+
+	// 如果都没有，返回空字符串
+	return ""
 }

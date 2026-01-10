@@ -39,7 +39,12 @@ func (ea *ProductSubmitErrorAnalyzer) AnalyzeError(temuCtx *temucontext.TemuTask
 		strings.Contains(errorMessage, "is not valid") ||
 		strings.Contains(errorMessage, "Keyword attribute")
 
-	if isTemplateError || isAttributeError {
+	// 检查是否为多件套包装错误
+	isMultiplePackageError := strings.Contains(errorMessage, "Multi-piece set") ||
+		strings.Contains(errorMessage, "Total packaging quantity") ||
+		strings.Contains(errorMessage, "needs to be greater than 1")
+
+	if isTemplateError || isAttributeError || isMultiplePackageError {
 		ea.logger.Warnf("🔍 检测到模板/属性相关错误，开始保存详细信息用于分析")
 		if err := ea.saveDetailedTemplateDataForError(temuCtx, errorCode, errorMessage); err != nil {
 			ea.logger.Errorf("保存详细模板数据失败: %v", err)
@@ -179,10 +184,18 @@ func (ea *ProductSubmitErrorAnalyzer) saveDetailedTemplateDataForError(temuCtx *
 		diagnostics = append(diagnostics, "检查AI生成的规格值是否在TEMU模板的预定义值列表中")
 		diagnostics = append(diagnostics, "验证parent_spec_id和spec_id的对应关系是否正确")
 		diagnostics = append(diagnostics, "确认规格名称和值的映射是否符合TEMU要求")
+		diagnostics = append(diagnostics, "🔧 建议：启用规格完整性验证，自动修复缺失的规格配置")
 	}
 	if strings.Contains(errorMessage, "required variants") {
 		diagnostics = append(diagnostics, "检查必需的规格维度是否缺失")
 		diagnostics = append(diagnostics, "验证规格组合是否完整")
+		diagnostics = append(diagnostics, "🔧 建议：确保goods_spec_properties包含所有SKU使用的规格")
+	}
+	if strings.Contains(errorMessage, "Multi-piece set") && strings.Contains(errorMessage, "Total packaging quantity") {
+		diagnostics = append(diagnostics, "检查产品属性是否设置为'Multiple Sets'但包装数量为1")
+		diagnostics = append(diagnostics, "验证multiple_package.number_of_pieces是否大于1")
+		diagnostics = append(diagnostics, "🔧 建议：将产品属性改为单件，避免多件套配置复杂性")
+		diagnostics = append(diagnostics, "🔧 建议：自动将SKU包装配置修改为单品模式")
 	}
 	if strings.Contains(errorMessage, "verification error") {
 		diagnostics = append(diagnostics, "检查属性值是否在TEMU模板的预定义值列表中")

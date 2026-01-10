@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"task-processor/internal/domain/model"
 	commontypes "task-processor/internal/domain/model"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pipeline"
@@ -135,7 +137,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 					ImportTaskId: taskID,
 					TenantID:     task.TenantID,
 					StoreId:      task.StoreID,
-					Platform:     task.Platform,
+					Platform:     "TEMU",
 					Region:       task.Region,
 					Sku:          &sku.OutSkuSN,
 					ProductId:    "",          // 将在下面设置
@@ -150,20 +152,42 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 					}
 				}
 
-				// 设置父产品ASIN
+				// 设置父产品ASIN和成本价
 				amazonProduct := temuCtx.GetAmazonProduct()
 				if amazonProduct != nil && amazonProduct.ParentAsin != "" {
 					createReq.ParentProductId = &amazonProduct.ParentAsin
+
+					// 根据店铺设置获取成本价（原价或特价）
+					if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.PriceType != "" {
+						costPrice := h.getProductPrice(amazonProduct, temuCtx.StoreInfo.PriceType)
+						if costPrice > 0 {
+							createReq.CostPrice = &costPrice
+						}
+					}
 				}
 
 				// 设置筛选规则信息
 				if temuCtx.FilterRule != nil {
 					createReq.FilterRuleId = &temuCtx.FilterRule.ID
+					// 设置筛选规则范围，格式为 "价格范围:最小价格-最大价格"
+					filterRuleRange := h.buildFilterRuleRange(temuCtx.FilterRule)
+					if filterRuleRange != "" {
+						createReq.FilterRuleRange = &filterRuleRange
+					}
 				}
 
 				// 设置利润规则信息
 				if temuCtx.ProfitRule != nil {
 					createReq.ProfitRuleId = &temuCtx.ProfitRule.ID
+					// 将float64转换为string指针
+					if temuCtx.ProfitRule.SalePriceMultiplier > 0 {
+						salePriceMultiplierStr := fmt.Sprintf("%.4f", temuCtx.ProfitRule.SalePriceMultiplier)
+						createReq.SalePriceMultiplier = &salePriceMultiplierStr
+					}
+					if temuCtx.ProfitRule.DiscountPriceMultiplier > 0 {
+						discountPriceMultiplierStr := fmt.Sprintf("%.4f", temuCtx.ProfitRule.DiscountPriceMultiplier)
+						createReq.DiscountPriceMultiplier = &discountPriceMultiplierStr
+					}
 				}
 
 				// 调用API创建映射关系
@@ -428,4 +452,98 @@ func (h *SavePublishResultHandler) marshalWithoutHTMLEscape(v interface{}) ([]by
 	}
 
 	return result, nil
+}
+
+// getProductPrice 根据价格类型获取产品价格（包含运费）
+func (h *SavePublishResultHandler) getProductPrice(amazonProduct *model.Product, priceType string) float64 {
+	// 空指针检查
+	if amazonProduct == nil {
+		h.logger.Warn("getProductPrice 接收到 nil 产品指针，返回价格 0")
+		return 0
+	}
+
+	// 获取运费（暂时设为0，后续可扩展）
+	freight := h.getFreight(amazonProduct)
+	var price float64
+
+	// 根据价格类型获取价格
+	switch priceType {
+	case "special":
+		// 特价，使用最终价格
+		price = amazonProduct.FinalPrice
+	case "original":
+		// 原价，优先使用list_price，否则使用initial_price
+		if amazonProduct.PricesBreakdown.ListPrice != nil {
+			price = *amazonProduct.PricesBreakdown.ListPrice
+		} else {
+			price = amazonProduct.InitialPrice
+		}
+	default:
+		// 默认使用最终价格
+		price = amazonProduct.FinalPrice
+	}
+
+	return freight + price
+}
+
+// getFreight 获取运费（暂时返回0，后续可扩展）
+func (h *SavePublishResultHandler) getFreight(amazonProduct *model.Product) float64 {
+	// TODO: 从delivery信息中提取运费
+	// 暂时返回0
+	return 0.0
+}
+
+// buildFilterRuleRange 构建筛选规则范围字符串
+func (h *SavePublishResultHandler) buildFilterRuleRange(filterRule *api.FilterRuleRespDTO) string {
+	if filterRule == nil {
+		return ""
+	}
+
+	var rangeParts []string
+
+	// 价格范围
+	if filterRule.PriceMin != nil || filterRule.PriceMax != nil {
+		var priceRange string
+		if filterRule.PriceMin != nil && filterRule.PriceMax != nil {
+			priceRange = fmt.Sprintf("价格:%.2f-%.2f", *filterRule.PriceMin, *filterRule.PriceMax)
+		} else if filterRule.PriceMin != nil {
+			priceRange = fmt.Sprintf("价格:>=%.2f", *filterRule.PriceMin)
+		} else if filterRule.PriceMax != nil {
+			priceRange = fmt.Sprintf("价格:<=%.2f", *filterRule.PriceMax)
+		}
+		if priceRange != "" {
+			rangeParts = append(rangeParts, priceRange)
+		}
+	}
+
+	// 库存范围
+	if filterRule.StockMin != nil {
+		rangeParts = append(rangeParts, fmt.Sprintf("库存:>=%d", *filterRule.StockMin))
+	}
+
+	// 评分范围
+	if filterRule.RatingMin != nil {
+		rangeParts = append(rangeParts, fmt.Sprintf("评分:>=%.1f", *filterRule.RatingMin))
+	}
+
+	// 评论数量范围
+	if filterRule.ReviewCountMin != nil {
+		rangeParts = append(rangeParts, fmt.Sprintf("评论数:>=%d", *filterRule.ReviewCountMin))
+	}
+
+	// 发货时效
+	if filterRule.DeliveryTimeMax != nil {
+		rangeParts = append(rangeParts, fmt.Sprintf("发货时效:<=%d天", *filterRule.DeliveryTimeMax))
+	}
+
+	// 配送方式
+	if filterRule.FulfillmentType != "" && filterRule.FulfillmentType != "ALL" {
+		rangeParts = append(rangeParts, fmt.Sprintf("配送:%s", filterRule.FulfillmentType))
+	}
+
+	if len(rangeParts) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("[%s]", strings.Join(rangeParts, ","))
 }

@@ -78,6 +78,8 @@ func isProductNotFoundError(err error) bool {
 		"产品页面不存在",
 		"产品页面缺少必要元素",
 		"page not found",
+		"页面不存在(404)",
+		"页面不存在",
 		"产品不存在",
 		"asin无效",
 		"产品已下架",

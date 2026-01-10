@@ -126,6 +126,7 @@ func setTemuDefaults() {
 	viper.SetDefault("platforms.temu.autoPricing.enabled", false)
 	viper.SetDefault("platforms.temu.autoPricing.interval", 300)
 	viper.SetDefault("platforms.temu.autoPricing.batchSize", 100)
+	viper.SetDefault("platforms.temu.autoPricing.useAmazonPrice", true) // 默认使用Amazon价格数据
 
 	// 产品同步默认配置
 	viper.SetDefault("platforms.temu.sync.enabled", true)

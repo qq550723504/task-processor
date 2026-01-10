@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -210,11 +211,20 @@ type ProductResult struct {
 
 // ProductNotFoundError 产品不存在错误（不应触发浏览器重建）
 type ProductNotFoundError struct {
-	Message string
+	ProductID string
+	Message   string
+	Cause     error
 }
 
 func (e *ProductNotFoundError) Error() string {
-	return e.Message
+	if e.Cause != nil {
+		return fmt.Sprintf("产品不存在: %s (ProductID: %s): %v", e.Message, e.ProductID, e.Cause)
+	}
+	return fmt.Sprintf("产品不存在: %s (ProductID: %s)", e.Message, e.ProductID)
+}
+
+func (e *ProductNotFoundError) Unwrap() error {
+	return e.Cause
 }
 
 // NullableTime 可空时间类型，支持空字符串解析为nil

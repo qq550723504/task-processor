@@ -184,19 +184,49 @@ func (v *PropertyValidator) ValidateAndFixProperties(properties []types.Property
 		finalProp.RefPid = templateProp.RefPID
 		finalProp.TemplatePid = templateProp.TemplatePID
 
-		// 对选择类型属性进行最终的严格验证
+		// 对选择类型属性进行最终的严格验证（包含条件依赖）
 		if templateProp.PropertyValueType == 1 {
 			validator := NewPropertyValueValidator(v.logger)
-			isValid, validVID, validValue, err := validator.ValidateSelectionValue(finalProp, *templateProp)
 
-			if !isValid {
-				v.logger.Errorf("❌ 属性值最终验证失败: PID=%d, Error=%v", prop.Pid, err)
-				continue
+			// 检查是否有条件依赖
+			if len(templateProp.TemplatePropertyValueParentList) > 0 {
+				// 使用条件依赖验证
+				isValid, validVID, validValue, err := validator.ValidateSelectionValueWithDependency(finalProp, *templateProp, validatedProperties)
+
+				if !isValid {
+					v.logger.Errorf("❌ 条件依赖属性值验证失败: PID=%d, Error=%v", prop.Pid, err)
+
+					// 尝试自动修复：从有效值中选择第一个
+					validValues := validator.GetValidValuesWithDependency(*templateProp, validatedProperties)
+					if len(validValues) > 0 {
+						// 选择最佳默认值
+						bestValue := v.selectBestDefaultValueFromList(validValues)
+						finalProp.Vid = bestValue.VID
+						finalProp.Value = bestValue.Value
+						v.logger.Warnf("🔧 自动修复条件依赖属性: PID=%d, 使用默认值 '%s' (VID=%d)",
+							prop.Pid, bestValue.Value, bestValue.VID)
+					} else {
+						v.logger.Errorf("❌ 无法修复条件依赖属性: PID=%d, 没有有效值", prop.Pid)
+						continue
+					}
+				} else {
+					// 确保使用验证通过的值
+					finalProp.Vid = validVID
+					finalProp.Value = validValue
+				}
+			} else {
+				// 使用普通验证
+				isValid, validVID, validValue, err := validator.ValidateSelectionValue(finalProp, *templateProp)
+
+				if !isValid {
+					v.logger.Errorf("❌ 属性值最终验证失败: PID=%d, Error=%v", prop.Pid, err)
+					continue
+				}
+
+				// 确保使用验证通过的值
+				finalProp.Vid = validVID
+				finalProp.Value = validValue
 			}
-
-			// 确保使用验证通过的值
-			finalProp.Vid = validVID
-			finalProp.Value = validValue
 		}
 
 		validatedProperties = append(validatedProperties, finalProp)
@@ -339,4 +369,39 @@ func (v *PropertyValidator) selectBestDefaultValue(templateProp types.GoodsPrope
 
 	// 返回第一个可选值
 	return templateProp.Values[0]
+}
+
+// selectBestDefaultValueFromList 从给定的值列表中选择最佳默认值
+func (v *PropertyValidator) selectBestDefaultValueFromList(values []types.PropertyValue) types.PropertyValue {
+	// 优先选择的英文关键词
+	englishNeutralKeywords := []string{
+		"Other", "N/A", "None", "Not Applicable", "No", "Without",
+		"Mixed", "General", "Universal", "Standard",
+	}
+
+	// 中文关键词作为备选
+	chineseNeutralKeywords := []string{
+		"其他", "其它", "不适用", "无需", "混合", "通用",
+	}
+
+	// 首先尝试找到包含英文中性关键词的选项
+	for _, keyword := range englishNeutralKeywords {
+		for _, value := range values {
+			if strings.Contains(value.Value, keyword) {
+				return value
+			}
+		}
+	}
+
+	// 尝试找中文中性选项
+	for _, keyword := range chineseNeutralKeywords {
+		for _, value := range values {
+			if strings.Contains(value.Value, keyword) {
+				return value
+			}
+		}
+	}
+
+	// 返回第一个可选值
+	return values[0]
 }

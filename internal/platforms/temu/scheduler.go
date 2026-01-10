@@ -17,6 +17,7 @@ type PricingAction string
 type PricingScheduler struct {
 	apiClient        *APIClient
 	managementClient *management.ClientManager
+	configProvider   ConfigProvider // 配置提供者，用于Amazon增强功能
 	interval         time.Duration
 	action           PricingAction
 	ctx              context.Context
@@ -32,6 +33,7 @@ func NewPricingScheduler(ctx context.Context, apiClient *APIClient, managementCl
 	return &PricingScheduler{
 		apiClient:        apiClient,
 		managementClient: managementClient,
+		configProvider:   nil, // 默认不使用Amazon增强功能
 		interval:         interval,
 		action:           action,
 		ctx:              schedulerCtx,
@@ -41,6 +43,35 @@ func NewPricingScheduler(ctx context.Context, apiClient *APIClient, managementCl
 			"tenantID":  apiClient.GetTenantID(),
 			"storeID":   apiClient.GetStoreID(),
 			"action":    action,
+		}),
+	}
+}
+
+// NewPricingSchedulerWithAmazon 创建支持Amazon的自动核价调度器
+func NewPricingSchedulerWithAmazon(
+	ctx context.Context,
+	apiClient *APIClient,
+	managementClient *management.ClientManager,
+	configProvider ConfigProvider,
+	interval time.Duration,
+	action PricingAction,
+) *PricingScheduler {
+	schedulerCtx, cancel := context.WithCancel(ctx)
+
+	return &PricingScheduler{
+		apiClient:        apiClient,
+		managementClient: managementClient,
+		configProvider:   configProvider,
+		interval:         interval,
+		action:           action,
+		ctx:              schedulerCtx,
+		cancel:           cancel,
+		logger: logrus.WithFields(logrus.Fields{
+			"component": "TEMUPricingScheduler",
+			"tenantID":  apiClient.GetTenantID(),
+			"storeID":   apiClient.GetStoreID(),
+			"action":    action,
+			"amazon":    configProvider != nil,
 		}),
 	}
 }
@@ -112,7 +143,7 @@ func (s *PricingScheduler) executeTask() {
 		return
 	}
 
-	stats, err := s.apiClient.AutoProcessPendingPricesWithRules(s.managementClient)
+	stats, err := s.executeWithBestAvailableMethod()
 	if err != nil {
 		s.logger.WithError(err).Error("智能核价任务执行失败")
 	} else {
@@ -120,4 +151,17 @@ func (s *PricingScheduler) executeTask() {
 			time.Since(startTime), stats.TotalProcessed, stats.AcceptCount,
 			stats.RejectCount, stats.ReappealCount, stats.SkipCount)
 	}
+}
+
+// executeWithBestAvailableMethod 使用最佳可用方法执行核价
+func (s *PricingScheduler) executeWithBestAvailableMethod() (*PricingStatistics, error) {
+	// 如果有配置提供者，优先使用Amazon增强版本
+	if s.configProvider != nil {
+		s.logger.Info("使用Amazon增强版核价方法")
+		return s.apiClient.AutoProcessPendingPricesWithRulesAndAmazon(s.managementClient, s.configProvider)
+	}
+
+	// 否则使用基础版本
+	s.logger.Info("使用基础版核价方法")
+	return s.apiClient.AutoProcessPendingPricesWithRules(s.managementClient)
 }

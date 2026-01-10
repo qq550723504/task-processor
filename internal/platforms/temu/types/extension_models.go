@@ -43,16 +43,19 @@ type GoodsPropertys struct {
 
 // GoodsSpecProperty 商品规格属性
 type GoodSpecProperty struct {
-	Value          string `json:"value"`
-	SpecID         string `json:"spec_id"`
-	ParentSpecID   string `json:"parent_spec_id"`
-	ParentSpecName string `json:"parent_spec_name"`
-	Feature        int    `json:"feature,omitempty"`
-	Checked        bool   `json:"checked"`
-	ControlType    int    `json:"control_type"`
-	Disabled       bool   `json:"disabled"`
-	Name           string `json:"name"`
-	IsCustomized   int    `json:"is_customized"`
+	Value            string `json:"value"`
+	SpecID           string `json:"spec_id"`
+	ParentSpecID     string `json:"parent_spec_id"`
+	ParentSpecName   string `json:"parent_spec_name"`
+	Feature          int    `json:"feature,omitempty"`
+	Checked          bool   `json:"checked"`
+	ControlType      int    `json:"control_type"`
+	Disabled         bool   `json:"disabled"`
+	Name             string `json:"name"`
+	IsCustomized     int    `json:"is_customized"`
+	Vid              int    `json:"vid,omitempty"`                // 添加vid字段
+	TemplateModuleID int    `json:"template_module_id,omitempty"` // 添加模板模块ID
+	TemplatePid      int    `json:"template_pid,omitempty"`       // 添加模板PID
 }
 
 // MarshalJSON 实现自定义JSON序列化

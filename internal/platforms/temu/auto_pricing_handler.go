@@ -13,6 +13,7 @@ import (
 type AutoPricingHandler struct {
 	schedulerManager *SchedulerManager
 	managementClient *management.ClientManager
+	configProvider   ConfigProvider // 配置提供者，用于Amazon增强功能
 	storeIDs         []int64
 	logger           *logrus.Entry
 }
@@ -21,9 +22,27 @@ type AutoPricingHandler struct {
 func NewAutoPricingHandler(managementClient *management.ClientManager, storeIDs []int64) *AutoPricingHandler {
 	return &AutoPricingHandler{
 		managementClient: managementClient,
+		configProvider:   nil, // 默认不使用Amazon增强功能
 		storeIDs:         storeIDs,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TEMUAutoPricingHandler",
+		}),
+	}
+}
+
+// NewAutoPricingHandlerWithAmazon 创建支持Amazon的自动核价处理器
+func NewAutoPricingHandlerWithAmazon(
+	managementClient *management.ClientManager,
+	configProvider ConfigProvider,
+	storeIDs []int64,
+) *AutoPricingHandler {
+	return &AutoPricingHandler{
+		managementClient: managementClient,
+		configProvider:   configProvider,
+		storeIDs:         storeIDs,
+		logger: logrus.WithFields(logrus.Fields{
+			"component": "TEMUAutoPricingHandler",
+			"amazon":    configProvider != nil,
 		}),
 	}
 }
@@ -33,7 +52,15 @@ func (h *AutoPricingHandler) Start(ctx context.Context, interval time.Duration) 
 	h.logger.Infof("启动TEMU自动核价处理器，间隔: %v, 店铺数量: %d", interval, len(h.storeIDs))
 
 	// 创建调度器管理器
-	h.schedulerManager = NewSchedulerManager(ctx, h.managementClient, interval)
+	if h.configProvider != nil {
+		// 使用Amazon增强版本
+		h.schedulerManager = NewSchedulerManagerWithAmazon(ctx, h.managementClient, h.configProvider, interval)
+		h.logger.Info("使用Amazon增强版调度器管理器")
+	} else {
+		// 使用基础版本
+		h.schedulerManager = NewSchedulerManager(ctx, h.managementClient, interval)
+		h.logger.Info("使用基础版调度器管理器")
+	}
 
 	// 为每个店铺添加调度器
 	successCount := 0

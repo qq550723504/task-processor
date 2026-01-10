@@ -156,11 +156,11 @@ func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.T
 	sb.initParallelBuilder()
 
 	// 准备AI SKU数据
-	specCombinationMap := make(map[string]bool) // 用于去重
+	asinMap := make(map[string]bool) // 用于去重，基于ASIN而不是规格组合
 	validVariants := make([]*model.Product, 0, len(variants))
 	validAiSkus := make([]types.AIGeneratedSku, 0, len(variants))
 
-	// 过滤重复的规格组合
+	// 过滤重复的ASIN
 	for i, variant := range variants {
 		// 边界检查：防止数组越界
 		if i >= len(aiMapping.SkuList) {
@@ -171,13 +171,12 @@ func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.T
 
 		aiSku := aiMapping.SkuList[i]
 
-		// 检查规格组合是否重复
-		specKey := sb.specHandler.createSpecCombinationKey(aiSku.Spec)
-		if specCombinationMap[specKey] {
-			sb.logger.Warnf("⚠️ 跳过重复的SKU[%d]，规格组合: %s", i, specKey)
+		// 检查ASIN是否重复
+		if asinMap[variant.Asin] {
+			sb.logger.Warnf("⚠️ 跳过重复的ASIN[%d]: %s", i, variant.Asin)
 			continue
 		}
-		specCombinationMap[specKey] = true
+		asinMap[variant.Asin] = true
 
 		validVariants = append(validVariants, variant)
 		validAiSkus = append(validAiSkus, aiSku)
@@ -206,7 +205,7 @@ func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.T
 // buildSingleSkcSerial 串行构建单个SKC（兼容旧接口）
 func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse) []types.Skc {
 	var skuList []types.Sku
-	specCombinationMap := make(map[string]bool) // 用于去重
+	asinMap := make(map[string]bool) // 用于去重，基于ASIN而不是规格组合
 
 	// 直接为每个变体创建SKU，不生成缺失的组合
 	// 因为这是单SKC模式，所有变体都在同一个SKC中
@@ -220,17 +219,16 @@ func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants
 
 		aiSku := aiMapping.SkuList[i]
 
-		// 检查规格组合是否重复
-		specKey := sb.specHandler.createSpecCombinationKey(aiSku.Spec)
-		if specCombinationMap[specKey] {
-			sb.logger.Warnf("⚠️ 跳过重复的SKU[%d]，规格组合: %s", i, specKey)
+		// 检查ASIN是否重复
+		if asinMap[variant.Asin] {
+			sb.logger.Warnf("⚠️ 跳过重复的ASIN[%d]: %s", i, variant.Asin)
 			continue
 		}
-		specCombinationMap[specKey] = true
+		asinMap[variant.Asin] = true
 
 		sku := sb.itemBuilder.buildSkuFromVariantWithAI(ctx, variant, aiSku)
 		skuList = append(skuList, sku)
-		sb.logger.Infof("为变体[%d]创建SKU，规格: %+v", i, aiSku.Spec)
+		sb.logger.Infof("为变体[%d]创建SKU，ASIN: %s，规格: %+v", i, variant.Asin, aiSku.Spec)
 	}
 
 	sb.logger.Infof("SKU去重完成: 原始=%d, 去重后=%d", len(variants), len(skuList))

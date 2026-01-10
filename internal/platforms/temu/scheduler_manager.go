@@ -16,6 +16,7 @@ type SchedulerManager struct {
 	schedulers       map[string]*PricingScheduler
 	apiClients       map[string]*APIClient
 	managementClient *management.ClientManager
+	configProvider   ConfigProvider // 配置提供者，用于Amazon增强功能
 	interval         time.Duration
 	action           PricingAction
 	mutex            sync.RWMutex
@@ -32,11 +33,36 @@ func NewSchedulerManager(ctx context.Context, managementClient *management.Clien
 		schedulers:       make(map[string]*PricingScheduler),
 		apiClients:       make(map[string]*APIClient),
 		managementClient: managementClient,
+		configProvider:   nil, // 默认不使用Amazon增强功能
 		interval:         interval,
 		ctx:              managerCtx,
 		cancel:           cancel,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TEMUSchedulerManager",
+		}),
+	}
+}
+
+// NewSchedulerManagerWithAmazon 创建支持Amazon的调度器管理器
+func NewSchedulerManagerWithAmazon(
+	ctx context.Context,
+	managementClient *management.ClientManager,
+	configProvider ConfigProvider,
+	interval time.Duration,
+) *SchedulerManager {
+	managerCtx, cancel := context.WithCancel(ctx)
+
+	return &SchedulerManager{
+		schedulers:       make(map[string]*PricingScheduler),
+		apiClients:       make(map[string]*APIClient),
+		managementClient: managementClient,
+		configProvider:   configProvider,
+		interval:         interval,
+		ctx:              managerCtx,
+		cancel:           cancel,
+		logger: logrus.WithFields(logrus.Fields{
+			"component": "TEMUSchedulerManager",
+			"amazon":    configProvider != nil,
 		}),
 	}
 }
@@ -59,7 +85,16 @@ func (sm *SchedulerManager) AddStore(tenantID, storeID int64) error {
 	sm.apiClients[key] = apiClient
 
 	// 创建调度器
-	scheduler := NewPricingScheduler(sm.ctx, apiClient, sm.managementClient, sm.interval, sm.action)
+	var scheduler *PricingScheduler
+	if sm.configProvider != nil {
+		// 使用Amazon增强版本
+		scheduler = NewPricingSchedulerWithAmazon(sm.ctx, apiClient, sm.managementClient, sm.configProvider, sm.interval, sm.action)
+		sm.logger.Infof("创建Amazon增强版调度器: %s", key)
+	} else {
+		// 使用基础版本
+		scheduler = NewPricingScheduler(sm.ctx, apiClient, sm.managementClient, sm.interval, sm.action)
+		sm.logger.Infof("创建基础版调度器: %s", key)
+	}
 	sm.schedulers[key] = scheduler
 
 	// 启动调度器

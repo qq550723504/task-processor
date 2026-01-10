@@ -30,12 +30,15 @@ func (p *PromptBuilder) BuildSystemPrompt() string {
    - ❌ **绝对禁止跳过任何必填属性**
 
 2. **条件依赖属性强制处理**：
-   - 🔗 **识别条件依赖**：检查template_property_value_parent_list字段
+   - 🔗 **识别条件依赖**：检查template_property_value_parent_list字段和parent_vids
    - 🔍 **父属性检查**：确认父属性是否已填充且值正确
-   - ⚠️ **子属性约束**：子属性值必须在父属性约束的范围内
+   - ⚠️ **子属性约束**：子属性值必须在父属性约束的范围内（检查parent_vids匹配）
    - 🚨 **条件必填规则**：当父属性满足条件时，子属性立即变为必填
    - 📋 **处理流程**：
-     * 填充父属性 → 检查是否触发条件依赖 → 强制填充对应的子属性
+     * 填充父属性 → 检查是否触发条件依赖 → 从约束范围内选择子属性值 → 强制填充对应的子属性
+   - 🔥 **关键示例**：
+     * Power Supply = "Plug Powered" (vid:36781) → Operating Voltage 必须从parent_vids=[36781]的选项中选择
+     * Power Supply = "DC Power Supply" (vid:69104) → Operating Voltage 必须从parent_vids=[69104]的选项中选择
 
 3. **RefPID唯一性**：每个RefPID在结果中只能出现指定次数
    - 单选属性（最大选择数量=1）：该RefPID只能出现1次
@@ -45,6 +48,8 @@ func (p *PromptBuilder) BuildSystemPrompt() string {
    - ❌ **绝对禁止使用VID=0**
    - ❌ **绝对禁止自创任何值**（如"Other"、"不适用"、"Unknown"等）
    - ✅ **必须从可选值列表中选择**，使用对应的VID（VID > 0）
+   - 🚨 **VID约束严格匹配**：每个template_pid只能使用该属性模板中列出的VID，绝对不能混用其他属性的VID
+   - 🔥 **关键规则**：相同PID但不同template_pid的属性有完全不同的VID列表，必须严格区分
    - 🎯 **选择策略**：精确匹配 → 包含匹配 → 中性选项（"不适用"、"无"、"其他"、"混合"）→ 第一个选项
 
 【属性填充策略】
@@ -78,6 +83,7 @@ func (p *PromptBuilder) BuildSystemPrompt() string {
 【输出格式】
 返回JSON格式：{"properties": [...]}
 每个属性项包含：ref_pid, pid, template_pid, template_module_id, value, vid, value_unit
+🚨 **template_pid必须准确**：对于相同PID的多个属性，必须使用正确的template_pid进行区分
 对于数值输入属性，还需包含：number_input_value
 
 【最终检查清单】
@@ -157,7 +163,7 @@ func (p *PromptBuilder) BuildUserPrompt(data types.PropertyMappingData) string {
 		}
 
 		builder.WriteString(fmt.Sprintf("%d. %s%s %s %s %s\n", i+1, constraintIcon, prop.Name, requiredMark, conditionMark, selectionDesc))
-		builder.WriteString(fmt.Sprintf("   PID=%d | RefPID=%d | 类型=%d | 控制类型=%d\n", prop.PID, prop.RefPID, prop.PropertyValueType, prop.ControlType))
+		builder.WriteString(fmt.Sprintf("   PID=%d | TemplatePID=%d | RefPID=%d | 类型=%d | 控制类型=%d\n", prop.PID, prop.TemplatePID, prop.RefPID, prop.PropertyValueType, prop.ControlType))
 
 		// 添加条件依赖说明
 		if prop.ParentTemplatePID > 0 {
@@ -167,9 +173,10 @@ func (p *PromptBuilder) BuildUserPrompt(data types.PropertyMappingData) string {
 			builder.WriteString("   🔗 条件约束: 只有当父属性为特定值时才需要填充\n")
 			for _, parentList := range prop.TemplatePropertyValueParentList {
 				if len(parentList.ParentVIDs) > 0 {
-					builder.WriteString(fmt.Sprintf("   🔗 父条件VID: %v\n", parentList.ParentVIDs))
+					builder.WriteString(fmt.Sprintf("   🔗 父条件VID: %v → 可选子VID: %v\n", parentList.ParentVIDs, parentList.VIDs))
 				}
 			}
+			builder.WriteString("   🚨 重要：子属性的VID必须从对应父VID的约束范围内选择！\n")
 		}
 
 		// 特殊说明数值输入属性
@@ -181,14 +188,63 @@ func (p *PromptBuilder) BuildUserPrompt(data types.PropertyMappingData) string {
 		}
 
 		if len(prop.Values) > 0 {
-			builder.WriteString("   🚨 必须从以下值中选择: ")
-			for j, value := range prop.Values {
-				if j > 0 {
-					builder.WriteString(", ")
+			// 检查是否有条件依赖
+			if len(prop.TemplatePropertyValueParentList) > 0 {
+				builder.WriteString("   🔗 条件依赖可选值（按父属性分组）:\n")
+
+				// 按父VID分组显示可选值
+				for _, parentList := range prop.TemplatePropertyValueParentList {
+					if len(parentList.ParentVIDs) > 0 && len(parentList.VIDs) > 0 {
+						builder.WriteString(fmt.Sprintf("   🔗 当父属性VID为 %v 时，可选VID: %v\n",
+							parentList.ParentVIDs, parentList.VIDs))
+
+						// 显示对应的值
+						builder.WriteString("      对应的可选值: ")
+						validValues := make([]string, 0)
+						for _, vid := range parentList.VIDs {
+							for _, value := range prop.Values {
+								if value.VID == vid {
+									validValues = append(validValues, fmt.Sprintf("'%s'(VID:%d)", value.Value, value.VID))
+									break
+								}
+							}
+						}
+						builder.WriteString(strings.Join(validValues, ", "))
+						builder.WriteString("\n")
+					}
 				}
-				builder.WriteString(fmt.Sprintf("'%s'(VID:%d)", value.Value, value.VID))
+
+				// 显示无条件的值（如果有）
+				unconditionalValues := make([]string, 0)
+				for _, value := range prop.Values {
+					if len(value.ParentVIDs) == 0 {
+						unconditionalValues = append(unconditionalValues, fmt.Sprintf("'%s'(VID:%d)", value.Value, value.VID))
+					}
+				}
+				if len(unconditionalValues) > 0 {
+					builder.WriteString("   🔗 无条件可选值: ")
+					builder.WriteString(strings.Join(unconditionalValues, ", "))
+					builder.WriteString("\n")
+				}
+			} else {
+				// 普通属性，显示所有可选值
+				builder.WriteString("   🚨 必须从以下值中选择: ")
+				for j, value := range prop.Values {
+					if j > 0 {
+						builder.WriteString(", ")
+					}
+					builder.WriteString(fmt.Sprintf("'%s'(VID:%d)", value.Value, value.VID))
+				}
+				builder.WriteString("\n")
 			}
-			builder.WriteString("\n")
+
+			// 🔥 强化VID约束说明
+			builder.WriteString(fmt.Sprintf("   🔥 VID约束：template_pid=%d 只能使用上述VID，绝对不能使用其他属性的VID\n", prop.TemplatePID))
+
+			// 特别强调条件属性的值约束
+			if len(prop.TemplatePropertyValueParentList) > 0 {
+				builder.WriteString("   ⚠️ 条件属性：当父属性不满足条件时，此属性不应填充\n")
+			}
 		} else {
 			builder.WriteString("   📝 文本输入类型\n")
 		}
@@ -234,8 +290,14 @@ func (p *PromptBuilder) BuildUserPrompt(data types.PropertyMappingData) string {
 - 🚨**必填属性**：**绝对不能跳过**，必须使用降级匹配策略
   * 精确匹配 → 模糊匹配 → 中性选项 → 第一个选项
 - 🔗**条件依赖属性**：**当父属性满足条件时立即变为必填**
-  * 检查template_property_value_parent_list → 确认父属性VID → 从约束范围选择子属性值
-  * 例如：Power Mode选择"USB Charging"时，Operating Voltage必须从[≤36V, 120V, 125V等]中选择
+  * 🔍 **步骤1**：先确定父属性的VID值
+  * 🔍 **步骤2**：根据父VID找到对应的子属性可选VID列表
+  * 🔍 **步骤3**：只能从对应的VID列表中选择，绝对不能选择其他VID
+  * 🔥 **关键规则**：子属性的VID必须在对应父VID的约束范围内
+  * 🔥 **具体示例**：
+    - Power Supply选择"Plug Powered"(vid:36781) → Operating Voltage只能从parent_vids=[36781]对应的VID列表中选择
+    - Power Supply选择"DC Power Supply"(vid:69104) → Operating Voltage只能从parent_vids=[69104]对应的VID列表中选择
+  * ❌ **严禁跨条件选择**：不能将DC Power Supply的电压值用于Plug Powered
 - ⭕**可选属性**：能填的尽量填，提高信息完整度
 - 🎯**匹配策略**：优先精确匹配，找不到时使用最相近选项
 - 🚨**选择约束**：必须使用有效VID（>0），严禁自创值

@@ -279,32 +279,276 @@ func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templatePr
 // 修复template_module_id字段缺失导致TEMU API忽略属性的问题
 func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []types.PropertyItem, templateProps []types.TemplateRespGoodsProperty) {
 	m.logger.Info("🔧 开始为AI属性补充模板信息")
+	m.logger.Infof("🔧 AI返回属性数量: %d, 模板属性数量: %d", len(properties), len(templateProps))
 
-	// 创建模板属性映射表，便于快速查找
-	templateMap := make(map[int]types.TemplateRespGoodsProperty)
+	// 记录所有AI返回的属性
+	for i, prop := range properties {
+		m.logger.Infof("🔧 AI属性[%d]: PID=%d, TemplatePID=%d, Value=%s, VID=%d",
+			i, prop.Pid, prop.TemplatePid, prop.Value, prop.Vid)
+	}
+
+	// 创建模板属性映射表，使用PID+TemplatePID组合键来处理相同PID的不同属性
+	templateMap := make(map[string]types.TemplateRespGoodsProperty)
+	pidToTemplateProps := make(map[int][]types.TemplateRespGoodsProperty)
+
 	for _, templateProp := range templateProps {
-		templateMap[templateProp.PID] = templateProp
+		// 使用PID+TemplatePID作为唯一键
+		key := fmt.Sprintf("%d_%d", templateProp.PID, templateProp.TemplatePID)
+		templateMap[key] = templateProp
+
+		// 同时维护PID到属性列表的映射，用于处理AI只返回PID的情况
+		pidToTemplateProps[templateProp.PID] = append(pidToTemplateProps[templateProp.PID], templateProp)
+
+		// 记录Material相关的模板属性
+		if strings.ToLower(templateProp.Name) == "material" {
+			m.logger.Infof("🔍 发现Material模板属性: PID=%d, TemplatePID=%d, 可选值数量=%d",
+				templateProp.PID, templateProp.TemplatePID, len(templateProp.Values))
+		}
 	}
 
 	enrichedCount := 0
 	for i := range properties {
 		prop := &properties[i]
+		m.logger.Infof("🔧 处理属性[%d]: PID=%d, TemplatePID=%d, Value=%s, VID=%d",
+			i, prop.Pid, prop.TemplatePid, prop.Value, prop.Vid)
 
-		// 根据PID查找对应的模板属性
-		if templateProp, exists := templateMap[prop.Pid]; exists {
+		var templateProp *types.TemplateRespGoodsProperty
+
+		// 首先尝试使用PID+TemplatePID精确匹配
+		if prop.TemplatePid != 0 {
+			key := fmt.Sprintf("%d_%d", prop.Pid, prop.TemplatePid)
+			m.logger.Infof("🔍 尝试精确匹配: key=%s", key)
+			if tmplProp, exists := templateMap[key]; exists {
+				templateProp = &tmplProp
+				m.logger.Infof("✅ 精确匹配成功: %s (PID=%d, TemplatePID=%d)", templateProp.Name, prop.Pid, prop.TemplatePid)
+			} else {
+				m.logger.Warnf("⚠️ 精确匹配失败: key=%s", key)
+			}
+		}
+
+		// 如果精确匹配失败，尝试使用PID匹配
+		if templateProp == nil {
+			if templateProps, exists := pidToTemplateProps[prop.Pid]; exists {
+				if len(templateProps) == 1 {
+					// 只有一个匹配的模板属性，直接使用
+					templateProp = &templateProps[0]
+				} else {
+					// 多个匹配的模板属性，使用智能选择策略
+					templateProp = m.selectBestTemplate(prop, templateProps)
+				}
+			}
+		}
+
+		if templateProp != nil {
 			// 补充关键的模板字段
 			prop.TemplatePid = templateProp.TemplatePID
 			prop.TemplateModuleID = templateProp.TemplateModuleID
+			prop.RefPid = templateProp.RefPID
+
+			// 🔧 新增：设置单位信息
+			if len(templateProp.ValueUnit) > 0 {
+				prop.ValueUnit = templateProp.ValueUnit[0]
+				m.logger.Debugf("🔧 设置属性单位: %s (PID=%d) -> %s", templateProp.Name, prop.Pid, prop.ValueUnit)
+			} else if len(templateProp.ValueUnitDTOList) > 0 {
+				prop.ValueUnit = templateProp.ValueUnitDTOList[0].ValueUnit
+				m.logger.Debugf("🔧 从DTO设置属性单位: %s (PID=%d) -> %s", templateProp.Name, prop.Pid, prop.ValueUnit)
+			}
+
+			// 🔧 新增：验证和修复VID/Value组合
+			if templateProp.PropertyValueType == 1 && len(templateProp.Values) > 0 {
+				m.logger.Infof("🔍 检查属性 %s (template_pid=%d) VID=%d 是否有效", templateProp.Name, templateProp.TemplatePID, prop.Vid)
+
+				// 打印可选值列表用于调试
+				validVIDs := make([]int, len(templateProp.Values))
+				for i, v := range templateProp.Values {
+					validVIDs[i] = v.VID
+				}
+				m.logger.Infof("🔍 可选VID列表: %v", validVIDs)
+
+				if !m.isValidVIDForTemplate(prop.Vid, templateProp.Values) {
+					m.logger.Warnf("⚠️ 属性 %s (template_pid=%d) 的VID=%d不在可选值中，使用第一个可选值修复", templateProp.Name, templateProp.TemplatePID, prop.Vid)
+
+					// 直接使用第一个可选值，避免复杂的语义匹配
+					if len(templateProp.Values) > 0 {
+						firstValue := templateProp.Values[0]
+						m.logger.Infof("🔧 修复VID: %s template_pid=%d VID %d->%d, Value %s->%s",
+							templateProp.Name, templateProp.TemplatePID, prop.Vid, firstValue.VID, prop.Value, firstValue.Value)
+						prop.Vid = firstValue.VID
+						prop.Value = firstValue.Value
+					}
+				} else {
+					m.logger.Infof("✅ 属性 %s (template_pid=%d) VID=%d 验证通过", templateProp.Name, templateProp.TemplatePID, prop.Vid)
+				}
+			}
 
 			enrichedCount++
-			m.logger.Debugf("✅ 属性 %s (PID=%d) 补充模板信息: TemplateModuleID=%d, TemplatePID=%d",
-				templateProp.Name, prop.Pid, prop.TemplateModuleID, prop.TemplatePid)
+			m.logger.Debugf("✅ 属性 %s (PID=%d) 补充模板信息: TemplateModuleID=%d, TemplatePID=%d, RefPID=%d",
+				templateProp.Name, prop.Pid, prop.TemplateModuleID, prop.TemplatePid, prop.RefPid)
 		} else {
 			m.logger.Warnf("⚠️ 未找到PID=%d对应的模板属性", prop.Pid)
 		}
 	}
 
 	m.logger.Infof("✅ 模板信息补充完成，共处理 %d/%d 个属性", enrichedCount, len(properties))
+
+	// 🔧 新增：条件属性依赖验证和清理
+	validator := NewConditionalPropertyValidator(m.logger)
+	validator.ValidateAndCleanConditionalProperties(&properties, templateProps)
+}
+
+// selectBestTemplate 从多个相同PID的模板中选择最佳匹配
+// 改进的智能选择策略，避免硬编码，通过通用的匹配算法解决属性选择问题
+func (m *AIPropertyMapper) selectBestTemplate(prop *types.PropertyItem, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
+	m.logger.Debugf("🎯 为PID=%d选择最佳模板，候选数量: %d", prop.Pid, len(templates))
+
+	// 策略1: 通过VID精确匹配（最高优先级）
+	for _, template := range templates {
+		if m.isValidVID(prop.Vid, template.Values) {
+			m.logger.Debugf("✅ VID精确匹配: %s (VID=%d)", template.Name, prop.Vid)
+			return &template
+		}
+	}
+
+	// 策略2: 通过属性值语义匹配（使用评分系统）
+	bestMatch := m.findBestValueMatch(prop.Value, templates)
+	if bestMatch != nil {
+		m.logger.Debugf("✅ 值语义匹配: %s ← %s", bestMatch.Name, prop.Value)
+		return bestMatch
+	}
+
+	// 策略3: 根据依赖关系选择（处理条件属性）
+	dependentMatch := m.selectByDependency(prop, templates)
+	if dependentMatch != nil {
+		m.logger.Debugf("✅ 依赖关系匹配: %s", dependentMatch.Name)
+		return dependentMatch
+	}
+
+	// 策略4: 优先选择必填属性
+	for _, template := range templates {
+		if template.Required {
+			m.logger.Debugf("✅ 选择必填属性: %s", template.Name)
+			return &template
+		}
+	}
+
+	// 策略5: 默认选择第一个
+	m.logger.Debugf("⚠️ 使用默认选择: %s", templates[0].Name)
+	return &templates[0]
+}
+
+// findBestValueMatch 找到最佳的值匹配模板（使用评分系统）
+func (m *AIPropertyMapper) findBestValueMatch(propValue string, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
+	propValue = strings.ToLower(propValue)
+
+	var bestMatch *types.TemplateRespGoodsProperty
+	var bestScore int
+
+	for _, template := range templates {
+		score := m.calculateValueMatchScore(propValue, template)
+		if score > bestScore {
+			bestScore = score
+			bestMatch = &template
+		}
+	}
+
+	// 只有当匹配分数足够高时才返回
+	if bestScore > 0 {
+		return bestMatch
+	}
+	return nil
+}
+
+// calculateValueMatchScore 计算值匹配分数（通用评分算法）
+func (m *AIPropertyMapper) calculateValueMatchScore(propValue string, template types.TemplateRespGoodsProperty) int {
+	score := 0
+
+	// 检查模板的候选值
+	for _, value := range template.Values {
+		templateValue := strings.ToLower(value.Value)
+
+		// 精确匹配得分最高
+		if propValue == templateValue {
+			return 100
+		}
+
+		// 包含匹配
+		if strings.Contains(propValue, templateValue) || strings.Contains(templateValue, propValue) {
+			score = max(score, 50)
+		}
+
+		// 关键词匹配
+		if m.hasKeywordMatch(propValue, templateValue) {
+			score = max(score, 30)
+		}
+	}
+
+	return score
+}
+
+// hasKeywordMatch 检查关键词匹配（通用关键词匹配算法）
+func (m *AIPropertyMapper) hasKeywordMatch(propValue, templateValue string) bool {
+	// 提取关键词进行匹配
+	propWords := strings.Fields(propValue)
+	templateWords := strings.Fields(templateValue)
+
+	// 检查是否有共同的关键词
+	for _, propWord := range propWords {
+		for _, templateWord := range templateWords {
+			if len(propWord) > 2 && len(templateWord) > 2 { // 忽略太短的词
+				if strings.Contains(propWord, templateWord) || strings.Contains(templateWord, propWord) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// selectByDependency 根据依赖关系选择模板（通用依赖关系处理）
+func (m *AIPropertyMapper) selectByDependency(prop *types.PropertyItem, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
+	// 对于条件属性，检查是否有合适的父依赖
+	for _, template := range templates {
+		if len(template.TemplatePropertyValueParentList) > 0 {
+			// 这是一个条件属性，检查依赖关系是否合理
+			if m.isDependencyReasonable(prop, template) {
+				return &template
+			}
+		}
+	}
+
+	return nil
+}
+
+// isDependencyReasonable 检查依赖关系是否合理（通用依赖关系验证）
+func (m *AIPropertyMapper) isDependencyReasonable(prop *types.PropertyItem, template types.TemplateRespGoodsProperty) bool {
+	// 通用的依赖关系检查：如果属性值与模板名称或候选值相关，则认为依赖关系合理
+	propValue := strings.ToLower(prop.Value)
+	templateName := strings.ToLower(template.Name)
+
+	// 检查属性值是否与模板名称相关
+	propWords := strings.Fields(propValue)
+	templateWords := strings.Fields(templateName)
+
+	for _, propWord := range propWords {
+		for _, templateWord := range templateWords {
+			if len(propWord) > 2 && len(templateWord) > 2 {
+				if strings.Contains(propWord, templateWord) || strings.Contains(templateWord, propWord) {
+					return true
+				}
+			}
+		}
+	}
+
+	// 检查属性值是否在模板的候选值中有相关性
+	for _, value := range template.Values {
+		templateValue := strings.ToLower(value.Value)
+		if strings.Contains(propValue, templateValue) || strings.Contains(templateValue, propValue) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // convertAmazonProductData 将Amazon产品数据转换为AI映射所需的格式

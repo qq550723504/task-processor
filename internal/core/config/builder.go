@@ -41,9 +41,10 @@ func buildConfig() *Config {
 			Temu: PlatformConfig{
 				Enabled: viper.GetBool("platforms.temu.enabled"),
 				AutoPricing: AutoPricingConfig{
-					Enabled:   viper.GetBool("platforms.temu.autoPricing.enabled"),
-					Interval:  viper.GetInt("platforms.temu.autoPricing.interval"),
-					BatchSize: viper.GetInt("platforms.temu.autoPricing.batchSize"),
+					Enabled:        viper.GetBool("platforms.temu.autoPricing.enabled"),
+					Interval:       viper.GetInt("platforms.temu.autoPricing.interval"),
+					BatchSize:      viper.GetInt("platforms.temu.autoPricing.batchSize"),
+					UseAmazonPrice: viper.GetBool("platforms.temu.autoPricing.useAmazonPrice"),
 				},
 				Sync: SyncConfig{
 					Enabled:   viper.GetBool("platforms.temu.sync.enabled"),
