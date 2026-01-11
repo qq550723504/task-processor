@@ -36,6 +36,6 @@ type PricingRuleReqDTO struct {
 
 // PricingRuleAPI 自动核价规则API接口定义
 type PricingRuleAPI interface {
-	// GetPricingRule 获取自动核价规则
-	GetPricingRule(req *PricingRuleReqDTO) (*PricingRuleRespDTO, error)
+	// GetPricingRule 获取自动核价规则（返回数组）
+	GetPricingRule(req *PricingRuleReqDTO) ([]PricingRuleRespDTO, error)
 }

@@ -58,16 +58,16 @@ management:
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [627]  # 店铺ID列表
+  storeIDs: [647]  # 店铺ID列表
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
   # TEMU 平台配置
   temu:
-    enabled: true  # 是否启用TEMU处理器
+    enabled: false  # 是否启用TEMU处理器
     # 自动定价配置
     autoPricing:
-      enabled: false
+      enabled: true
       interval: 300     # 5分钟
       batchSize: 100
       useAmazonPrice: true  # 是否使用Amazon价格数据进行定价决策
@@ -136,9 +136,9 @@ platforms:
 # 浏览器配置（通用）
 browser:
   enabled: true
-  headless: true  # false=可见模式（便于调试），true=无头模式
+  headless: false  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
-  poolSize: 3     # 浏览器池大小
+  poolSize: 10     # 浏览器池大小
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""

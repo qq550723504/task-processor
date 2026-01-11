@@ -46,10 +46,6 @@ func (c *APIClient) RelistProduct(goodsID string, skuIDs []string) (*RelistProdu
 		return nil, fmt.Errorf("重新上架产品失败: %w", err)
 	}
 
-	// 添加详细的调试信息
-	c.logger.Infof("重新上架响应详情: success=%v, errorCode=%d, result.result=%v, 完整响应=%+v",
-		result.Success, result.ErrorCode, result.Result.Result, result)
-
 	// 特别检查错误码
 	if result.ErrorCode != 1000000 {
 		c.logger.Errorf("重新上架产品错误码异常: errorCode=%d, 通常1000000表示成功", result.ErrorCode)

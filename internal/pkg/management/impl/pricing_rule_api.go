@@ -1,6 +1,7 @@
 ﻿package impl
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"task-processor/internal/pkg/management/api"
@@ -11,8 +12,8 @@ type PricingRuleAPIClientImpl struct {
 	*ManagementAPIClientImpl
 }
 
-// GetPricingRule 获取自动核价规则
-func (m *PricingRuleAPIClientImpl) GetPricingRule(req *api.PricingRuleReqDTO) (*api.PricingRuleRespDTO, error) {
+// GetPricingRule 获取自动核价规则（返回数组）
+func (m *PricingRuleAPIClientImpl) GetPricingRule(req *api.PricingRuleReqDTO) ([]api.PricingRuleRespDTO, error) {
 	// 构建URL，根据参数情况添加查询参数
 	url := fmt.Sprintf("%s/rpc-api/listing/pricing-rule/get?tenantId=%d", m.baseURL, req.TenantID)
 
@@ -24,8 +25,10 @@ func (m *PricingRuleAPIClientImpl) GetPricingRule(req *api.PricingRuleReqDTO) (*
 		url = fmt.Sprintf("%s&categoryId=%d", url, *req.CategoryID)
 	}
 
+	// 使用 json.RawMessage 来处理不确定的数据结构
 	var result APIResponse
-	result.Data = &api.PricingRuleRespDTO{}
+	var rawData json.RawMessage
+	result.Data = &rawData
 
 	err := m.apiRequest(http.MethodGet, url, nil, &result)
 	if err != nil {
@@ -37,15 +40,21 @@ func (m *PricingRuleAPIClientImpl) GetPricingRule(req *api.PricingRuleReqDTO) (*
 	}
 
 	// 检查 Data 是否为 nil
-	if result.Data == nil {
-		return nil, fmt.Errorf("自动核价规则数据为空")
+	if result.Data == nil || len(rawData) == 0 {
+		return []api.PricingRuleRespDTO{}, nil
 	}
 
-	// 安全的类型断言
-	pricingRule, ok := result.Data.(*api.PricingRuleRespDTO)
-	if !ok {
-		return nil, fmt.Errorf("自动核价规则数据类型转换失败")
+	// 先尝试解析为数组
+	var rulesArray []api.PricingRuleRespDTO
+	if err := json.Unmarshal(rawData, &rulesArray); err == nil {
+		return rulesArray, nil
 	}
 
-	return pricingRule, nil
+	// 如果数组解析失败，尝试解析为单个对象
+	var singleRule api.PricingRuleRespDTO
+	if err := json.Unmarshal(rawData, &singleRule); err == nil {
+		return []api.PricingRuleRespDTO{singleRule}, nil
+	}
+
+	return nil, fmt.Errorf("无法解析自动核价规则数据")
 }

@@ -74,3 +74,18 @@ func (c *PricingRuleCalculator) getFixedValueOrDefault(fixedValue *float64, defa
 	}
 	return defaultValue
 }
+
+// getDefaultPricingRules 获取默认核价规则
+func (c *PricingRuleCalculator) GetDefaultPricingRules(costPrice float64, rules *[]api.PricingRuleRespDTO) *api.PricingRuleRespDTO {
+	if rules == nil || len(*rules) == 0 {
+		return nil
+	}
+
+	for _, rule := range *rules {
+		if costPrice > *rule.PriceMin && costPrice < *rule.PriceMax {
+			return &rule
+		}
+	}
+
+	return nil
+}

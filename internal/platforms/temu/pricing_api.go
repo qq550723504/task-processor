@@ -55,7 +55,6 @@ func (c *APIClient) GetPendingPriceList(pageNo, pageSize int) (*PendingPriceList
 
 // RejectPrice 拒绝平台报价
 func (c *APIClient) RejectPrice(goodsID string, skuIDs []string) (*RejectPriceResponse, error) {
-	c.logger.Infof("拒绝平台报价: goodsID=%s, skuIDs数量=%d", goodsID, len(skuIDs))
 
 	if goodsID == "" {
 		return nil, fmt.Errorf("商品ID不能为空")
@@ -84,16 +83,16 @@ func (c *APIClient) RejectPrice(goodsID string, skuIDs []string) (*RejectPriceRe
 
 	var result RejectPriceResponse
 	if err := c.SendTEMURequest(request, &result); err != nil {
-		c.logger.WithError(err).Error("拒绝平台报价失败")
+		c.logger.WithError(err).Error("❌ 拒绝平台报价失败")
 		return nil, fmt.Errorf("拒绝平台报价失败: %w", err)
 	}
 
 	if !result.Success {
-		c.logger.Errorf("拒绝平台报价失败: errorCode=%d", result.ErrorCode)
+		c.logger.Errorf("❌ 拒绝平台报价失败: errorCode=%d", result.ErrorCode)
 		return nil, fmt.Errorf("拒绝平台报价失败: errorCode=%d", result.ErrorCode)
 	}
 
-	c.logger.Info("成功拒绝平台报价")
+	c.logger.Info("✅ 已拒绝平台报价")
 	return &result, nil
 }
 
@@ -144,7 +143,7 @@ func (c *APIClient) ReappealPrice(goodsID string, skuInfoList []ReappealSkuInfo,
 
 // AcceptPrice 接受平台报价
 func (c *APIClient) AcceptPrice(goodsID string, skuList []AcceptPriceSkuInfo, scene int) (*AcceptPriceResponse, error) {
-	c.logger.Infof("接受平台报价: goodsID=%s, SKU数量=%d, scene=%d", goodsID, len(skuList), scene)
+	c.logger.Infof("✅ 接受平台报价: goodsID=%s, SKU数量=%d, scene=%d", goodsID, len(skuList), scene)
 
 	if goodsID == "" {
 		return nil, fmt.Errorf("商品ID不能为空")
@@ -173,16 +172,16 @@ func (c *APIClient) AcceptPrice(goodsID string, skuList []AcceptPriceSkuInfo, sc
 
 	var result AcceptPriceResponse
 	if err := c.SendTEMURequest(request, &result); err != nil {
-		c.logger.WithError(err).Error("接受平台报价失败")
+		c.logger.WithError(err).Error("❌ 接受平台报价失败")
 		return nil, fmt.Errorf("接受平台报价失败: %w", err)
 	}
 
 	if !result.Success {
-		c.logger.Errorf("接受平台报价失败: errorCode=%d", result.ErrorCode)
+		c.logger.Errorf("❌ 接受平台报价失败: errorCode=%d", result.ErrorCode)
 		return nil, fmt.Errorf("接受平台报价失败: errorCode=%d", result.ErrorCode)
 	}
 
-	c.logger.Info("成功接受平台报价")
+	c.logger.Info("🎉 成功接受平台报价")
 	return &result, nil
 }
 
@@ -329,7 +328,7 @@ func (c *APIClient) processWithService(decisionService *PricingDecisionService) 
 		pageNo++
 	}
 
-	c.logger.Infof("智能核价完成: 总数=%d, 接受=%d, 拒绝=%d, 重新报价=%d, 跳过=%d, 成功=%d, 失败=%d",
+	c.logger.Infof("📊 智能核价完成: 总数=%d, 接受=%d, 拒绝=%d, 重新报价=%d, 跳过=%d, 成功=%d, 失败=%d",
 		stats.TotalProcessed, stats.AcceptCount, stats.RejectCount,
 		stats.ReappealCount, stats.SkipCount, stats.SuccessCount, stats.FailCount)
 
@@ -340,7 +339,7 @@ func (c *APIClient) processWithService(decisionService *PricingDecisionService) 
 func (c *APIClient) executeDecisionForSalesBoost(decision *PricingDecision, goods *SalesBoostGoods, sku *SalesBoostSku) error {
 	switch decision.Action {
 	case DecisionAccept:
-		// 接受平台报价
+		// ✅ 接受平台报价
 		if sku.TargetSupplierPrice.Amount == "" || sku.TargetSupplierPrice.Currency == "" {
 			return fmt.Errorf("目标价格信息不完整")
 		}
@@ -355,7 +354,7 @@ func (c *APIClient) executeDecisionForSalesBoost(decision *PricingDecision, good
 		return err
 
 	case DecisionReject:
-		// 拒绝报价
+		// ❌ 拒绝报价
 		skuIDs := []string{sku.SkuID}
 		_, err := c.RejectPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, skuIDs)
 		return err

@@ -145,9 +145,9 @@ func (s *PricingScheduler) executeTask() {
 
 	stats, err := s.executeWithBestAvailableMethod()
 	if err != nil {
-		s.logger.WithError(err).Error("智能核价任务执行失败")
+		s.logger.WithError(err).Error("❌ 智能核价任务执行失败")
 	} else {
-		s.logger.Infof("智能核价任务执行成功，耗时: %v, 统计: 总数=%d, 接受=%d, 拒绝=%d, 重新报价=%d, 跳过=%d",
+		s.logger.Infof("🎉 智能核价任务执行成功，耗时: %v, 统计: 总数=%d, 接受=%d, 拒绝=%d, 重新报价=%d, 跳过=%d",
 			time.Since(startTime), stats.TotalProcessed, stats.AcceptCount,
 			stats.RejectCount, stats.ReappealCount, stats.SkipCount)
 	}

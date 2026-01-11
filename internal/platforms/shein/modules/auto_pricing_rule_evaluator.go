@@ -49,15 +49,9 @@ func (e *AutoPricingRuleEvaluator) getAutoPriceRules(tenantID, storeID int64) ([
 	// 调用管理端API获取定价规则
 	pricingRuleAPI := e.storeClient.GetPricingRuleClient()
 	reqDto := &managementapi.PricingRuleReqDTO{StoreID: &storeID, TenantID: tenantID}
-	rule, err := pricingRuleAPI.GetPricingRule(reqDto)
+	rules, err := pricingRuleAPI.GetPricingRule(reqDto)
 	if err != nil {
 		return nil, fmt.Errorf("获取定价规则失败: %w", err)
-	}
-
-	// 将单个规则转换为规则数组
-	rules := []managementapi.PricingRuleRespDTO{}
-	if rule != nil {
-		rules = append(rules, *rule)
 	}
 
 	return rules, nil

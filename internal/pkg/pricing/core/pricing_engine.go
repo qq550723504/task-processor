@@ -68,17 +68,24 @@ func (e *PricingEngine) GetPricingRule(tenantID, storeID int64) (*api.PricingRul
 		StoreID:  &storeID,
 	}
 
-	pricingRule, err := pricingRuleClient.GetPricingRule(req)
+	pricingRules, err := pricingRuleClient.GetPricingRule(req)
 	if err != nil {
 		return nil, fmt.Errorf("获取核价规则失败: %w", err)
 	}
 
-	// 验证核价规则是否启用
-	if pricingRule.Status != 0 {
-		return nil, fmt.Errorf("核价规则未启用: %s", pricingRule.Name)
+	// 如果没有规则，返回错误
+	if len(pricingRules) == 0 {
+		return nil, fmt.Errorf("未找到核价规则")
 	}
 
-	return pricingRule, nil
+	// 返回第一个启用的规则
+	for _, rule := range pricingRules {
+		if rule.Status == 1 { // 1表示启用
+			return &rule, nil
+		}
+	}
+
+	return nil, fmt.Errorf("没有启用的核价规则")
 }
 
 // GetProductImportMapping 获取产品导入映射 (来自TEMU的原有逻辑)

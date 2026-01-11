@@ -17,9 +17,11 @@ type BulkRelistService struct {
 
 // NewBulkRelistService 创建批量重新上架服务
 func NewBulkRelistService(apiClient *APIClient) *BulkRelistService {
+	logger := apiClient.GetLogger()
+
 	return &BulkRelistService{
 		apiClient: apiClient,
-		logger:    apiClient.GetLogger(),
+		logger:    logger,
 	}
 }
 
@@ -55,14 +57,16 @@ func (s *BulkRelistService) RelistAllOfflineProducts(options *BulkRelistOptions)
 		return s.processFirstPageLoop(options, result, pageSize)
 	}
 
-	s.logger.Info("开始流式处理：获取一页，处理一页")
-	return s.processAllPages(options, result, pageSize)
+	s.logger.Info("开始批量获取模式：先获取所有商品ID，再逐个处理")
+	return s.processBatchMode(options, result, pageSize)
 }
 
 // processFirstPageLoop 循环处理第一页
 func (s *BulkRelistService) processFirstPageLoop(options *BulkRelistOptions, result *RelistAllResult, pageSize int) (*RelistAllResult, error) {
 	pageNo := 1
 	roundCount := 0
+	consecutiveNoSuccessRounds := 0 // 连续无成功上架的轮数
+	maxNoSuccessRounds := 3         // 最大连续无成功轮数
 
 	for {
 		roundCount++
@@ -84,6 +88,9 @@ func (s *BulkRelistService) processFirstPageLoop(options *BulkRelistOptions, res
 		result.TotalOfflineCount = resp.Result.Total
 		s.logger.Infof("第一页获取到 %d 个产品，总下架数: %d", len(resp.Result.SkuList), result.TotalOfflineCount)
 
+		// 记录本轮处理前的成功数量
+		beforeSuccessCount := result.SuccessCount
+
 		// 处理当前页的产品
 		pageResult, err := s.processPageProducts(resp.Result.SkuList, options)
 		if err != nil {
@@ -98,9 +105,25 @@ func (s *BulkRelistService) processFirstPageLoop(options *BulkRelistOptions, res
 		result.SkippedCount += pageResult.SkippedCount
 		result.Results = append(result.Results, pageResult.Results...)
 
+		// 检查本轮是否有成功上架的商品
+		roundSuccessCount := result.SuccessCount - beforeSuccessCount
+		if roundSuccessCount == 0 {
+			consecutiveNoSuccessRounds++
+			s.logger.Warnf("第 %d 轮无成功上架商品，连续无成功轮数: %d/%d",
+				roundCount, consecutiveNoSuccessRounds, maxNoSuccessRounds)
+		} else {
+			consecutiveNoSuccessRounds = 0 // 重置计数器
+		}
+
 		s.logger.Infof("第 %d 轮处理完成: 处理=%d, 成功=%d, 失败=%d, 跳过=%d",
 			roundCount, pageResult.ProcessedCount, pageResult.SuccessCount,
 			pageResult.FailCount, pageResult.SkippedCount)
+
+		// 如果连续多轮都没有成功上架，停止循环
+		if consecutiveNoSuccessRounds >= maxNoSuccessRounds {
+			s.logger.Warnf("连续 %d 轮无成功上架商品，停止循环处理", consecutiveNoSuccessRounds)
+			break
+		}
 
 		// 如果第一页处理的商品数量少于页面大小，说明已经处理完了
 		if len(resp.Result.SkuList) < pageSize {
@@ -185,6 +208,157 @@ func (s *BulkRelistService) processAllPages(options *BulkRelistOptions, result *
 	return result, nil
 }
 
+// processBatchMode 批量获取模式：先获取所有商品ID，再逐个处理
+func (s *BulkRelistService) processBatchMode(options *BulkRelistOptions, result *RelistAllResult, pageSize int) (*RelistAllResult, error) {
+	s.logger.Info("开始批量获取所有下架商品信息")
+
+	// 第一步：获取所有下架商品的完整信息
+	var allProducts []OfflineProductItem
+	pageNo := 1
+	totalExpected := 0
+
+	for {
+		s.logger.Infof("获取第 %d 页商品信息", pageNo)
+		resp, err := s.apiClient.GetOfflineProducts(pageNo, pageSize)
+		if err != nil {
+			s.logger.WithError(err).Errorf("获取第%d页已下架产品失败，跳过此页继续处理", pageNo)
+			pageNo++
+			continue // 跳过失败的页面，继续处理
+		}
+
+		if resp == nil {
+			s.logger.Warnf("第 %d 页返回空响应，跳过", pageNo)
+			pageNo++
+			continue
+		}
+
+		if len(resp.Result.SkuList) == 0 {
+			s.logger.Infof("第 %d 页没有商品，结束获取", pageNo)
+			break
+		}
+
+		// 更新总数（第一次获取时）
+		if pageNo == 1 {
+			totalExpected = resp.Result.Total
+			result.TotalOfflineCount = totalExpected
+			s.logger.Infof("API显示总共有 %d 个已下架产品", totalExpected)
+		}
+
+		// 收集完整的商品信息
+		beforeCount := len(allProducts)
+		allProducts = append(allProducts, resp.Result.SkuList...)
+		afterCount := len(allProducts)
+
+		s.logger.Infof("第 %d 页获取到 %d 个商品信息，累计收集 %d 个商品",
+			pageNo, len(resp.Result.SkuList), afterCount)
+
+		// 强制显示前几个商品的信息用于调试
+		if pageNo <= 2 && len(resp.Result.SkuList) > 0 {
+			s.logger.Infof("第 %d 页前3个商品ID: %v", pageNo, func() []string {
+				var ids []string
+				for i, p := range resp.Result.SkuList {
+					if i >= 3 {
+						break
+					}
+					ids = append(ids, p.GoodsID)
+				}
+				return ids
+			}())
+		}
+
+		// 检查是否有重复商品
+		if afterCount-beforeCount != len(resp.Result.SkuList) {
+			s.logger.Warnf("第 %d 页商品数量异常：期望增加 %d，实际增加 %d",
+				pageNo, len(resp.Result.SkuList), afterCount-beforeCount)
+		}
+
+		pageNo++
+	}
+
+	s.logger.Infof("批量获取完成：API显示总数=%d，实际收集=%d，获取了 %d 页",
+		totalExpected, len(allProducts), pageNo-1)
+
+	// 如果收集的数量远少于预期，给出警告
+	if totalExpected > 0 && len(allProducts) < totalExpected/2 {
+		s.logger.Warnf("警告：收集的商品数量(%d)远少于API显示的总数(%d)，可能存在分页获取问题",
+			len(allProducts), totalExpected)
+	}
+
+	// 第二步：处理商品
+	if len(allProducts) == 0 {
+		s.logger.Info("没有需要处理的商品")
+		return result, nil
+	}
+
+	// 去重商品（基于SkuID）
+	s.logger.Infof("开始去重处理，原始商品数量: %d", len(allProducts))
+	uniqueProducts := make(map[string]OfflineProductItem)
+	duplicateCount := 0
+
+	for _, product := range allProducts {
+		if _, exists := uniqueProducts[product.SkuID]; exists {
+			duplicateCount++
+			s.logger.Debugf("发现重复SKU ID: %s", product.SkuID)
+		}
+		uniqueProducts[product.SkuID] = product
+	}
+
+	// 转换为切片
+	var deduplicatedProducts []OfflineProductItem
+	for _, product := range uniqueProducts {
+		deduplicatedProducts = append(deduplicatedProducts, product)
+	}
+
+	s.logger.Infof("去重完成：原始=%d，重复=%d，去重后=%d",
+		len(allProducts), duplicateCount, len(deduplicatedProducts))
+
+	// 分批处理商品
+	batchSize := pageSize
+	for i := 0; i < len(deduplicatedProducts); i += batchSize {
+		end := i + batchSize
+		if end > len(deduplicatedProducts) {
+			end = len(deduplicatedProducts)
+		}
+
+		batchProducts := deduplicatedProducts[i:end]
+		batchNo := (i / batchSize) + 1
+
+		s.logger.Infof("处理第 %d 批商品 (%d-%d/%d)", batchNo, i+1, end, len(deduplicatedProducts))
+
+		// 处理这一批商品
+		batchResult, err := s.processPageProducts(batchProducts, options)
+		if err != nil {
+			s.logger.WithError(err).Errorf("处理第%d批商品失败", batchNo)
+			continue
+		}
+
+		// 合并结果
+		result.ProcessedCount += batchResult.ProcessedCount
+		result.SuccessCount += batchResult.SuccessCount
+		result.FailCount += batchResult.FailCount
+		result.SkippedCount += batchResult.SkippedCount
+		result.Results = append(result.Results, batchResult.Results...)
+
+		s.logger.Infof("第 %d 批处理完成: 处理=%d, 成功=%d, 失败=%d, 跳过=%d",
+			batchNo, batchResult.ProcessedCount, batchResult.SuccessCount,
+			batchResult.FailCount, batchResult.SkippedCount)
+
+		// 显示总体进度
+		progress := float64(end) / float64(len(deduplicatedProducts)) * 100
+		s.logger.Infof("总体进度: %.1f%% (%d/%d)", progress, end, len(deduplicatedProducts))
+
+		// 批次间延迟
+		if i+batchSize < len(deduplicatedProducts) && options.DelayBetweenRequests > 0 {
+			time.Sleep(time.Duration(options.DelayBetweenRequests) * time.Millisecond)
+		}
+	}
+
+	s.logger.Infof("批量处理完成: 总商品数=%d, 处理数=%d, 成功=%d, 失败=%d, 跳过=%d",
+		len(deduplicatedProducts), result.ProcessedCount, result.SuccessCount, result.FailCount, result.SkippedCount)
+
+	return result, nil
+}
+
 // processPageProducts 处理单页产品
 func (s *BulkRelistService) processPageProducts(products []OfflineProductItem, options *BulkRelistOptions) (*RelistAllResult, error) {
 	pageResult := &RelistAllResult{
@@ -257,7 +431,6 @@ func (s *BulkRelistService) processPageProductsSequential(goodsSkuMap map[string
 					s.logger.Infof("✓ 单SKU上架成功: %s", productInfo.GoodsName)
 				} else {
 					// 单SKU上架也失败，打印详细信息
-					s.logger.Warnf("单SKU上架失败的商品详情: %+v", *productInfo)
 					lastError = "上架请求成功但结果为false"
 				}
 			} else {
@@ -287,7 +460,7 @@ func (s *BulkRelistService) processPageProductsSequential(goodsSkuMap map[string
 							s.logger.Infof("✓ SKU %s 上架成功 (%d/%d)", skuID, i+1, len(skuIDs))
 						} else {
 							s.logger.Warnf("SKU %s 上架结果为false", skuID)
-							lastError = fmt.Sprintf("部分SKU上架结果为false")
+							lastError = "部分SKU上架结果为false"
 						}
 
 						// SKU间添加小延迟
@@ -323,8 +496,8 @@ func (s *BulkRelistService) processPageProductsSequential(goodsSkuMap map[string
 
 		result.Results = append(result.Results, detailResult)
 
-		// 添加延迟
-		if result.ProcessedCount < len(goodsSkuMap) && options.DelayBetweenRequests > 0 {
+		// 添加延迟 - 只有在实际处理商品（非跳过）且不是最后一个商品时才延迟
+		if !detailResult.Skipped && result.ProcessedCount < len(goodsSkuMap) && options.DelayBetweenRequests > 0 {
 			time.Sleep(time.Duration(options.DelayBetweenRequests) * time.Millisecond)
 		}
 	}
@@ -400,9 +573,6 @@ func (s *BulkRelistService) processPageProductsConcurrent(goodsSkuMap map[string
 							success = true
 							s.logger.Infof("✓ 批量上架成功: %s", work.productInfo.GoodsName)
 						} else {
-							// 批量上架失败，尝试逐个SKU上架
-							s.logger.Warnf("并发批量上架失败的商品详情: %+v", *work.productInfo)
-
 							successCount := 0
 							for _, skuID := range work.skuIDs {
 								singleResp, singleErr := s.apiClient.RelistProduct(work.goodsID, []string{skuID})
@@ -436,6 +606,7 @@ func (s *BulkRelistService) processPageProductsConcurrent(goodsSkuMap map[string
 					// 设置结果
 					if success {
 						detailResult.Success = true
+
 					} else {
 						detailResult.Success = false
 						detailResult.Error = lastError
@@ -444,8 +615,8 @@ func (s *BulkRelistService) processPageProductsConcurrent(goodsSkuMap map[string
 
 				resultChan <- detailResult
 
-				// 并发时的延迟控制
-				if options.DelayBetweenRequests > 0 {
+				// 并发时的延迟控制 - 只有在实际处理商品（非跳过）时才延迟
+				if !detailResult.Skipped && options.DelayBetweenRequests > 0 {
 					time.Sleep(time.Duration(options.DelayBetweenRequests) * time.Millisecond)
 				}
 			}
@@ -587,12 +758,28 @@ func (s *BulkRelistService) shouldSkipProduct(product *OfflineProductItem, condi
 		return false
 	}
 
-	// 检查是否需要整改
-	if conditions.SkipNeedRectification && product.CategoryRectificationInfo.NeedRectification {
+	// 基于日志分析的核心跳过条件 - 这些是导致上架失败的关键标识
+
+	// 1. 检查惩罚标签 - PunishTags = 1 的商品通常上架失败，PunishTags = 0 的商品通常成功
+	if product.PunishTags == 1 {
+		s.logger.Debugf("跳过惩罚商品: %s (PunishTags=1)", product.GoodsName)
 		return true
 	}
 
-	// 检查是否被严重惩罚
+	// 2. 检查商品状态异常 - ShowSubStatus4VO = 3001 的商品通常失败，ShowSubStatus4VO = 3002 的商品通常成功
+	if product.ShowSubStatus4VO == 3001 {
+		s.logger.Debugf("跳过状态异常商品: %s (ShowSubStatus4VO=3001)", product.GoodsName)
+		return true
+	}
+
+	// 原有的跳过条件保持不变
+
+	// // 检查是否需要整改
+	// if conditions.SkipNeedRectification && product.CategoryRectificationInfo.NeedRectification {
+	// 	return true
+	// }
+
+	// 检查是否被严重惩罚 (PunishTags > 1)
 	if conditions.SkipSeverelyPunished && product.PunishTags > 1 {
 		return true
 	}
@@ -600,7 +787,7 @@ func (s *BulkRelistService) shouldSkipProduct(product *OfflineProductItem, condi
 	// 检查锁定状态 - 修正锁定状态判断逻辑
 	if conditions.SkipLocked {
 		// 检查是否允许上架操作
-		if !product.LockInfo.CloseListingMMS.AllowOperate {
+		if product.LockInfo.CloseListingMMS.AllowOperate {
 			s.logger.Debugf("商品 %s 被锁定: AllowOperate=false", product.GoodsName)
 			return true
 		}
@@ -624,6 +811,20 @@ func (s *BulkRelistService) getSkipReason(product *OfflineProductItem, condition
 	if conditions == nil {
 		return "未知原因"
 	}
+
+	// 基于日志分析的核心跳过原因 - 优先检查这些导致上架失败的关键标识
+
+	// 1. 惩罚标签检查 - PunishTags = 1 的商品通常失败
+	if product.PunishTags == 1 {
+		return "商品存在惩罚标签 (PunishTags=1)"
+	}
+
+	// 2. 状态异常检查 - ShowSubStatus4VO = 3001 的商品通常失败
+	if product.ShowSubStatus4VO == 3001 {
+		return "商品状态异常 (ShowSubStatus4VO=3001)"
+	}
+
+	// 原有的跳过原因检查
 
 	if conditions.SkipNeedRectification && product.CategoryRectificationInfo.NeedRectification {
 		return "商品需要分类整改"

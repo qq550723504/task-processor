@@ -26,8 +26,8 @@ func NewPricingDataService(managementClient *management.ClientManager, tenantID 
 	}
 }
 
-// GetPricingRule 获取核价规则
-func (s *PricingDataService) GetPricingRule(storeId int64) (*api.PricingRuleRespDTO, error) {
+// GetPricingRule 获取核价规则（返回数组）
+func (s *PricingDataService) GetPricingRules(storeId int64) ([]api.PricingRuleRespDTO, error) {
 	pricingRuleClient := s.managementClient.GetPricingRuleClient()
 	if pricingRuleClient == nil {
 		return nil, fmt.Errorf("核价规则客户端未初始化")
@@ -38,17 +38,20 @@ func (s *PricingDataService) GetPricingRule(storeId int64) (*api.PricingRuleResp
 		StoreID:  &storeId,
 	}
 
-	pricingRule, err := pricingRuleClient.GetPricingRule(req)
+	pricingRules, err := pricingRuleClient.GetPricingRule(req)
 	if err != nil {
 		return nil, fmt.Errorf("获取核价规则失败: %w", err)
 	}
 
-	// 验证核价规则是否启用
-	if pricingRule.Status != 0 {
-		return nil, fmt.Errorf("核价规则未启用: %s", pricingRule.Name)
+	// 过滤出启用的规则
+	enabledRules := make([]api.PricingRuleRespDTO, 0)
+	for _, rule := range pricingRules {
+		if rule.Status == 0 { // 1表示启用
+			enabledRules = append(enabledRules, rule)
+		}
 	}
 
-	return pricingRule, nil
+	return enabledRules, nil
 }
 
 // GetProductImportMapping 获取产品上架记录映射

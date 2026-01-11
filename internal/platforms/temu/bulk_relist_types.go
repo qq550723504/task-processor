@@ -7,6 +7,7 @@ type BulkRelistOptions struct {
 	MaxConcurrency       int             `json:"max_concurrency"`         // 最大并发数
 	DryRun               bool            `json:"dry_run"`                 // 是否为试运行
 	ProcessFirstPageOnly bool            `json:"process_first_page_only"` // 只处理第一页（循环处理）
+	PrintProductData     bool            `json:"print_product_data"`      // 是否打印详细商品数据
 }
 
 // SkipConditions 跳过条件

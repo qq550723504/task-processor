@@ -312,18 +312,28 @@ func (h *ProductSubmitHandler) validateSpecCompleteness(temuCtx *temucontext.Tem
 		}
 	}
 
-	// 验证规格属性配置是否包含所有使用的规格
-	configuredSpecs := make(map[string]map[string]bool) // parent_spec_id -> spec_id -> exists
+	// 验证规格属性配置是否包含所有使用的规格，并检查关键字段
+	configuredSpecs := make(map[string]map[string]bool)   // parent_spec_id -> spec_id -> exists
+	incompleteSpecs := make(map[string]map[string]string) // parent_spec_id -> spec_id -> missing_field
 
 	for _, specProp := range temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsSpecProperties {
 		if configuredSpecs[specProp.ParentSpecID] == nil {
 			configuredSpecs[specProp.ParentSpecID] = make(map[string]bool)
+			incompleteSpecs[specProp.ParentSpecID] = make(map[string]string)
 		}
 		configuredSpecs[specProp.ParentSpecID][specProp.SpecID] = true
+
+		// 检查关键字段是否缺失
+		if specProp.Vid == 0 {
+			incompleteSpecs[specProp.ParentSpecID][specProp.SpecID] = "missing_vid"
+			h.logger.Warnf("🔍 规格配置缺少vid字段: %s(%s) -> %s(%s)",
+				specProp.ParentSpecName, specProp.ParentSpecID, specProp.Value, specProp.SpecID)
+		}
 	}
 
-	// 检查是否有缺失的规格配置
+	// 检查是否有缺失的规格配置或不完整的规格
 	var missingSpecs []string
+	var incompleteSpecsList []string
 
 	for parentSpecID, specIDs := range specDimensions {
 		for specID := range specIDs {
@@ -331,18 +341,27 @@ func (h *ProductSubmitHandler) validateSpecCompleteness(temuCtx *temucontext.Tem
 				// 查找规格名称
 				specName := h.findSpecName(temuCtx, parentSpecID, specID)
 				missingSpecs = append(missingSpecs, fmt.Sprintf("%s(%s)", specName, specID))
+			} else if incompleteSpecs[parentSpecID] != nil && incompleteSpecs[parentSpecID][specID] != "" {
+				// 规格存在但不完整
+				specName := h.findSpecName(temuCtx, parentSpecID, specID)
+				incompleteSpecsList = append(incompleteSpecsList, fmt.Sprintf("%s(%s)-%s", specName, specID, incompleteSpecs[parentSpecID][specID]))
 			}
 		}
 	}
 
-	if len(missingSpecs) > 0 {
-		h.logger.Errorf("🔍 检测到缺失的规格配置: %v", missingSpecs)
+	if len(missingSpecs) > 0 || len(incompleteSpecsList) > 0 {
+		if len(missingSpecs) > 0 {
+			h.logger.Errorf("🔍 检测到缺失的规格配置: %v", missingSpecs)
+		}
+		if len(incompleteSpecsList) > 0 {
+			h.logger.Errorf("🔍 检测到不完整的规格配置: %v", incompleteSpecsList)
+		}
 		h.logger.Error("🔍 这可能导致TEMU API返回'reset the variants template'错误")
 
 		// 尝试自动修复规格配置
 		if err := h.autoFixSpecConfiguration(temuCtx, specDimensions); err != nil {
 			h.logger.Errorf("自动修复规格配置失败: %v", err)
-			return fmt.Errorf("缺失规格配置且无法自动修复: %v", missingSpecs)
+			return fmt.Errorf("缺失或不完整的规格配置且无法自动修复: missing=%v, incomplete=%v", missingSpecs, incompleteSpecsList)
 		}
 
 		h.logger.Info("✅ 已自动修复规格配置")
@@ -384,6 +403,35 @@ func (h *ProductSubmitHandler) autoFixSpecConfiguration(temuCtx *temucontext.Tem
 
 	// 获取模板信息用于验证
 	templateInfo, hasTemplate := GetTemplateInfoFromContext(temuCtx)
+
+	// 首先修复现有规格的缺失字段
+	for i := range temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsSpecProperties {
+		specProp := &temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsSpecProperties[i]
+
+		// 如果vid缺失，尝试从模板中获取
+		if specProp.Vid == 0 && hasTemplate {
+			if vid := h.findVidFromTemplate(templateInfo, specProp.ParentSpecID, specProp.SpecID); vid > 0 {
+				specProp.Vid = vid
+				h.logger.Infof("🔧 已为规格配置添加vid: %s(%s) -> %s(%s) vid=%d",
+					specProp.ParentSpecName, specProp.ParentSpecID, specProp.Value, specProp.SpecID, vid)
+			}
+		}
+
+		// 如果template相关字段缺失，尝试从模板中获取
+		if specProp.TemplatePid == 0 && hasTemplate {
+			if templatePid := h.findTemplatePidFromTemplate(templateInfo, specProp.ParentSpecID); templatePid > 0 {
+				specProp.TemplatePid = templatePid
+			}
+		}
+
+		if specProp.TemplateModuleID == 0 && hasTemplate {
+			if moduleId := h.findTemplateModuleIdFromTemplate(templateInfo, specProp.ParentSpecID); moduleId > 0 {
+				specProp.TemplateModuleID = moduleId
+			}
+		}
+	}
+
+	// 然后添加缺失的规格配置
 
 	for parentSpecID, specIDs := range specDimensions {
 		for specID := range specIDs {

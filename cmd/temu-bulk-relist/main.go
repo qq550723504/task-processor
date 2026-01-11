@@ -26,7 +26,7 @@ func main() {
 		storeIndex        = flag.Int("store-index", 0, "使用配置文件中第几个店铺ID（从0开始）")
 		allStores         = flag.Bool("all-stores", false, "处理配置文件中的所有店铺")
 		delay             = flag.Int("delay", 1000, "请求间隔（毫秒）")
-		concurrency       = flag.Int("concurrency", 1, "并发数量（1=串行，>1=并发）")
+		concurrency       = flag.Int("concurrency", 25, "并发数量（1=串行，>1=并发）")
 		skipRectify       = flag.Bool("skip-rectify", true, "跳过需要整改的商品")
 		skipPunished      = flag.Bool("skip-punished", true, "跳过被严重惩罚的商品")
 		skipLocked        = flag.Bool("skip-locked", true, "跳过被锁定的商品（推荐启用）")
@@ -42,7 +42,9 @@ func main() {
 		logFile           = flag.String("log-file", "", "日志输出文件路径（如：relist.log）")
 		verbose           = flag.Bool("verbose", false, "详细日志输出")
 		listStores        = flag.Bool("list-stores", false, "列出配置文件中的所有店铺ID")
-		firstPageOnly     = flag.Bool("first-page-only", false, "只循环处理第一页（推荐，避免数据变化问题）")
+		firstPageOnly     = flag.Bool("first-page-only", false, "循环处理第一页模式（true=循环第一页，false=批量获取模式，推荐false）")
+		processMode       = flag.String("mode", "batch", "处理模式：batch=批量获取模式（推荐），loop=循环第一页模式")
+		showFailedStats   = flag.Bool("show-failed-stats", false, "显示失败商品统计信息并退出")
 	)
 	flag.Parse()
 
@@ -53,38 +55,70 @@ func main() {
 		logrus.SetLevel(logrus.InfoLevel)
 	}
 
-	// 设置日志输出到文件
+	// 设置日志输出到文件（必须在创建任何组件之前设置）
+	var logFileHandle *os.File
+	var logWriter io.Writer = os.Stdout // 默认只输出到控制台
+
 	if *logFile != "" {
 		file, err := os.OpenFile(*logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
-			fmt.Printf("错误: 无法创建日志文件 %s: %v\n", *logFile, err)
 			os.Exit(1)
 		}
-		defer file.Close()
+		logFileHandle = file
 
 		// 同时输出到控制台和文件
-		logrus.SetOutput(io.MultiWriter(os.Stdout, file))
-		fmt.Printf("日志将同时输出到控制台和文件: %s\n", *logFile)
+		logWriter = io.MultiWriter(os.Stdout, file)
+		logrus.SetOutput(logWriter)
 	}
 
+	// 确保在程序结束时关闭日志文件
+	if logFileHandle != nil {
+		defer logFileHandle.Close()
+	}
+
+	// 创建自定义输出函数，确保所有输出都能写入日志文件
+	logPrintf := func(format string, args ...interface{}) {
+		message := fmt.Sprintf(format, args...)
+		fmt.Fprint(logWriter, message)
+		// 强制刷新输出缓冲区，确保在调试时能立即看到输出
+		if logFileHandle != nil {
+			logFileHandle.Sync()
+		}
+	}
+
+	// 添加启动日志，确保程序正常运行
+	logrus.Info("程序启动，开始解析命令行参数")
+	logPrintf("TEMU批量重新上架工具启动中...\n")
+
 	// 加载配置
+	logrus.Info("开始加载配置文件")
 	cfg := config.LoadConfig()
 	if cfg == nil {
-		fmt.Println("错误: 无法加载配置文件")
+		logrus.Error("无法加载配置文件")
+		logPrintf("错误: 无法加载配置文件\n")
 		os.Exit(1)
 	}
+	logrus.Info("配置文件加载完成")
 
 	// 如果用户要求列出店铺ID，则显示并退出
 	if *listStores {
-		fmt.Printf("配置文件中的店铺ID列表:\n")
+		logrus.Info("用户请求列出店铺ID")
+		logPrintf("配置文件中的店铺ID列表:\n")
 		if len(cfg.Management.StoreIDs) == 0 {
-			fmt.Printf("  (无店铺ID配置)\n")
+			logPrintf("  (无店铺ID配置)\n")
 		} else {
 			for i, storeID := range cfg.Management.StoreIDs {
-				fmt.Printf("  [%d] %d\n", i, storeID)
+				logPrintf("  [%d] %d\n", i, storeID)
 			}
 		}
-		fmt.Printf("租户ID: %s\n", cfg.Management.TenantID)
+		logPrintf("租户ID: %s\n", cfg.Management.TenantID)
+		logrus.Info("店铺ID列表显示完成，程序退出")
+		os.Exit(0)
+	}
+
+	// 如果用户要求显示失败商品统计信息
+	if *showFailedStats {
+		logPrintf("失败商品统计功能已移除\n")
 		os.Exit(0)
 	}
 
@@ -94,7 +128,7 @@ func main() {
 		if cfg.Management.TenantID != "" {
 			if tid, err := strconv.ParseInt(cfg.Management.TenantID, 10, 64); err == nil {
 				*tenantID = tid
-				fmt.Printf("从配置文件读取租户ID: %d\n", *tenantID)
+				logPrintf("从配置文件读取租户ID: %d\n", *tenantID)
 			}
 		}
 
@@ -111,7 +145,7 @@ func main() {
 	if *allStores {
 		// 使用配置文件中的所有店铺
 		targetStoreIDs = cfg.Management.StoreIDs
-		fmt.Printf("使用配置文件中的所有店铺: %v\n", targetStoreIDs)
+		logPrintf("使用配置文件中的所有店铺: %v\n", targetStoreIDs)
 	} else if *storeIDs != "" {
 		// 解析命令行指定的多个店铺ID
 		storeIDStrings := strings.Split(*storeIDs, ",")
@@ -120,27 +154,27 @@ func main() {
 			if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
 				targetStoreIDs = append(targetStoreIDs, id)
 			} else {
-				fmt.Printf("错误: 无效的店铺ID '%s'\n", idStr)
+				logPrintf("错误: 无效的店铺ID '%s'\n", idStr)
 				os.Exit(1)
 			}
 		}
-		fmt.Printf("使用指定的店铺ID: %v\n", targetStoreIDs)
+		logPrintf("使用指定的店铺ID: %v\n", targetStoreIDs)
 	} else if *storeID != 0 {
 		// 使用单个店铺ID
 		targetStoreIDs = []int64{*storeID}
-		fmt.Printf("使用单个店铺ID: %d\n", *storeID)
+		logPrintf("使用单个店铺ID: %d\n", *storeID)
 	} else {
 		// 根据storeIndex选择店铺ID
 		if len(cfg.Management.StoreIDs) > 0 {
 			if *storeIndex >= 0 && *storeIndex < len(cfg.Management.StoreIDs) {
 				targetStoreIDs = []int64{cfg.Management.StoreIDs[*storeIndex]}
-				fmt.Printf("从配置文件读取店铺ID[%d]: %d\n", *storeIndex, targetStoreIDs[0])
+				logPrintf("从配置文件读取店铺ID[%d]: %d\n", *storeIndex, targetStoreIDs[0])
 			} else if *storeIndex == 0 {
 				// 默认使用第一个
 				targetStoreIDs = []int64{cfg.Management.StoreIDs[0]}
-				fmt.Printf("从配置文件读取店铺ID（默认第一个）: %d\n", targetStoreIDs[0])
+				logPrintf("从配置文件读取店铺ID（默认第一个）: %d\n", targetStoreIDs[0])
 			} else {
-				fmt.Printf("错误: 店铺索引 %d 超出范围，配置文件中共有 %d 个店铺ID\n", *storeIndex, len(cfg.Management.StoreIDs))
+				logPrintf("错误: 店铺索引 %d 超出范围，配置文件中共有 %d 个店铺ID\n", *storeIndex, len(cfg.Management.StoreIDs))
 				fmt.Println("使用 -list-stores 查看所有可用的店铺ID")
 				os.Exit(1)
 			}
@@ -159,22 +193,29 @@ func main() {
 		}
 	}
 
-	fmt.Printf("=== TEMU 批量重新上架工具 ===\n")
-	fmt.Printf("租户ID: %d\n", *tenantID)
-	fmt.Printf("店铺数量: %d\n", len(targetStoreIDs))
-	fmt.Printf("店铺ID列表: %v\n", targetStoreIDs)
-	fmt.Printf("请求间隔: %d毫秒\n", *delay)
-	fmt.Printf("并发数量: %d\n", *concurrency)
-	fmt.Printf("处理模式: %s\n", func() string {
-		if *firstPageOnly {
-			return "循环处理第一页"
+	logPrintf("=== TEMU 批量重新上架工具 ===\n")
+	logPrintf("租户ID: %d\n", *tenantID)
+	logPrintf("店铺数量: %d\n", len(targetStoreIDs))
+	logPrintf("店铺ID列表: %v\n", targetStoreIDs)
+	logPrintf("请求间隔: %d毫秒\n", *delay)
+	logPrintf("并发数量: %d\n", *concurrency)
+	logPrintf("处理模式: %s\n", func() string {
+		switch *processMode {
+		case "loop":
+			return "循环处理第一页（适合少量商品）"
+		case "batch":
+			return "批量获取模式（推荐，处理所有商品）"
+		default:
+			if *firstPageOnly {
+				return "循环处理第一页（适合少量商品）"
+			}
+			return "批量获取模式（推荐，处理所有商品）"
 		}
-		return "处理所有页面"
 	}())
 	if *dryRun {
-		fmt.Printf("模式: 试运行（不会实际上架）\n")
+		logPrintf("模式: 试运行（不会实际上架）\n")
 	}
-	fmt.Printf("================================\n\n")
+	logPrintf("================================\n\n")
 
 	// 创建认证客户端
 	authClient := auth.NewClientCredentialsAuthClient(
@@ -188,7 +229,7 @@ func main() {
 	// 获取访问令牌
 	accessToken, err := authClient.GetAccessToken()
 	if err != nil {
-		fmt.Printf("错误: 获取访问令牌失败: %v\n", err)
+		logPrintf("错误: 获取访问令牌失败: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -217,12 +258,12 @@ func main() {
 	totalProcessed := 0
 
 	for i, storeID := range targetStoreIDs {
-		fmt.Printf("\n=== 处理店铺 %d (%d/%d) ===\n", storeID, i+1, len(targetStoreIDs))
+		logPrintf("\n=== 处理店铺 %d (%d/%d) ===\n", storeID, i+1, len(targetStoreIDs))
 
 		// 创建TEMU API客户端
 		apiClient := temu.NewAPIClient(*tenantID, storeID, managementClient)
 		if apiClient == nil {
-			fmt.Printf("错误: 无法创建店铺 %d 的TEMU API客户端\n", storeID)
+			logPrintf("错误: 无法创建店铺 %d 的TEMU API客户端\n", storeID)
 			allResults = append(allResults, StoreResult{
 				StoreID: storeID,
 				Error:   "无法创建TEMU API客户端",
@@ -233,11 +274,23 @@ func main() {
 		// 创建批量重新上架服务
 		service := temu.NewBulkRelistService(apiClient)
 
+		// 处理模式参数
+		var useFirstPageOnly bool
+		switch *processMode {
+		case "loop":
+			useFirstPageOnly = true
+		case "batch":
+			useFirstPageOnly = false
+		default:
+			// 如果模式参数无效，使用 first-page-only 参数
+			useFirstPageOnly = *firstPageOnly
+		}
+
 		// 构建选项
 		options := &temu.BulkRelistOptions{
 			DelayBetweenRequests: *delay,
 			MaxConcurrency:       *concurrency,
-			ProcessFirstPageOnly: *firstPageOnly,
+			ProcessFirstPageOnly: useFirstPageOnly,
 			SkipConditions: &temu.SkipConditions{
 				SkipNeedRectification: *skipRectify,
 				SkipSeverelyPunished:  *skipPunished,
@@ -283,16 +336,16 @@ func main() {
 				}
 			}
 
-			fmt.Printf("店铺 %d: 使用过滤条件进行批量上架...\n", storeID)
+			logPrintf("店铺 %d: 使用过滤条件进行批量上架...\n", storeID)
 			result, err = service.RelistOfflineProductsWithFilter(filter, options)
 		} else {
 			// 全部上架
-			fmt.Printf("店铺 %d: 开始全部批量上架...\n", storeID)
+			logPrintf("店铺 %d: 开始全部批量上架...\n", storeID)
 			result, err = service.RelistAllOfflineProducts(options)
 		}
 
 		if err != nil {
-			fmt.Printf("店铺 %d 处理失败: %v\n", storeID, err)
+			logPrintf("店铺 %d 处理失败: %v\n", storeID, err)
 			allResults = append(allResults, StoreResult{
 				StoreID: storeID,
 				Error:   err.Error(),
@@ -313,43 +366,43 @@ func main() {
 		totalProcessed += result.ProcessedCount
 
 		// 显示店铺结果摘要
-		fmt.Printf("店铺 %d 完成: 下架数=%d, 处理数=%d, 成功=%d, 失败=%d, 跳过=%d\n",
+		logPrintf("店铺 %d 完成: 下架数=%d, 处理数=%d, 成功=%d, 失败=%d, 跳过=%d\n",
 			storeID, result.TotalOfflineCount, result.ProcessedCount,
 			result.SuccessCount, result.FailCount, result.SkippedCount)
 
 		// 店铺间添加延迟
 		if i < len(targetStoreIDs)-1 {
-			fmt.Printf("等待 %d 毫秒后处理下一个店铺...\n", *delay)
+			logPrintf("等待 %d 毫秒后处理下一个店铺...\n", *delay)
 			time.Sleep(time.Duration(*delay) * time.Millisecond)
 		}
 	}
 
 	// 显示总体结果摘要
-	fmt.Printf("\n=== 多店铺批量上架完成 ===\n")
-	fmt.Printf("处理店铺数: %d\n", len(targetStoreIDs))
-	fmt.Printf("总处理商品数: %d\n", totalProcessed)
-	fmt.Printf("总成功上架数: %d\n", totalSuccess)
-	fmt.Printf("总失败数: %d\n", totalFail)
-	fmt.Printf("总跳过数: %d\n", totalSkipped)
+	logPrintf("\n=== 多店铺批量上架完成 ===\n")
+	logPrintf("处理店铺数: %d\n", len(targetStoreIDs))
+	logPrintf("总处理商品数: %d\n", totalProcessed)
+	logPrintf("总成功上架数: %d\n", totalSuccess)
+	logPrintf("总失败数: %d\n", totalFail)
+	logPrintf("总跳过数: %d\n", totalSkipped)
 
 	if totalProcessed > 0 {
 		successRate := float64(totalSuccess) / float64(totalProcessed) * 100
-		fmt.Printf("总体成功率: %.2f%%\n", successRate)
+		logPrintf("总体成功率: %.2f%%\n", successRate)
 	}
 
 	// 显示各店铺详细结果
-	fmt.Printf("\n=== 各店铺详细结果 ===\n")
+	logPrintf("\n=== 各店铺详细结果 ===\n")
 	for _, storeResult := range allResults {
 		if storeResult.Error != "" {
-			fmt.Printf("店铺 %d: 处理失败 - %s\n", storeResult.StoreID, storeResult.Error)
+			logPrintf("店铺 %d: 处理失败 - %s\n", storeResult.StoreID, storeResult.Error)
 		} else if storeResult.Result != nil {
 			result := storeResult.Result
-			fmt.Printf("店铺 %d: 下架数=%d, 处理数=%d, 成功=%d, 失败=%d, 跳过=%d",
+			logPrintf("店铺 %d: 下架数=%d, 处理数=%d, 成功=%d, 失败=%d, 跳过=%d",
 				storeResult.StoreID, result.TotalOfflineCount, result.ProcessedCount,
 				result.SuccessCount, result.FailCount, result.SkippedCount)
 			if result.ProcessedCount > 0 {
 				rate := float64(result.SuccessCount) / float64(result.ProcessedCount) * 100
-				fmt.Printf(" (成功率: %.1f%%)", rate)
+				logPrintf(" (成功率: %.1f%%)", rate)
 			}
 			fmt.Println()
 		}
@@ -357,10 +410,10 @@ func main() {
 
 	// 显示详细结果（仅在verbose模式下）
 	if *verbose {
-		fmt.Printf("\n=== 详细商品结果 ===\n")
+		logPrintf("\n=== 详细商品结果 ===\n")
 		for _, storeResult := range allResults {
 			if storeResult.Result != nil && len(storeResult.Result.Results) > 0 {
-				fmt.Printf("\n店铺 %d 的商品详情:\n", storeResult.StoreID)
+				logPrintf("\n店铺 %d 的商品详情:\n", storeResult.StoreID)
 				for i, detail := range storeResult.Result.Results {
 					status := "✓ 成功"
 					if detail.Skipped {
@@ -369,11 +422,11 @@ func main() {
 						status = "✗ 失败"
 					}
 
-					fmt.Printf("  [%d] %s - %s (SKU数: %d)\n",
+					logPrintf("  [%d] %s - %s (SKU数: %d)\n",
 						i+1, status, detail.GoodsName, detail.SkuCount)
 
 					if detail.Error != "" {
-						fmt.Printf("      原因: %s\n", detail.Error)
+						logPrintf("      原因: %s\n", detail.Error)
 					}
 				}
 			}
@@ -400,13 +453,13 @@ func main() {
 		}
 
 		if err := saveResultToFile(outputData, *outputFile); err != nil {
-			fmt.Printf("警告: 保存结果到文件失败: %v\n", err)
+			logPrintf("警告: 保存结果到文件失败: %v\n", err)
 		} else {
-			fmt.Printf("结果已保存到: %s\n", *outputFile)
+			logPrintf("结果已保存到: %s\n", *outputFile)
 		}
 	}
 
-	fmt.Printf("===================\n")
+	logPrintf("===================\n")
 }
 
 // saveResultToFile 保存结果到文件
@@ -427,51 +480,74 @@ func printUsageExamples() {
 1. 查看配置文件中的店铺ID:
    ./temu-bulk-relist -list-stores
 
-2. 基本用法 - 使用配置文件中的默认值:
+2. 查看失败商品统计信息:
+   ./temu-bulk-relist -show-failed-stats
+
+3. 基本用法 - 使用配置文件中的默认值:
    ./temu-bulk-relist
 
-3. 处理所有配置的店铺:
+4. 处理所有配置的店铺:
    ./temu-bulk-relist -all-stores
 
-4. 处理指定的多个店铺:
+5. 处理指定的多个店铺:
    ./temu-bulk-relist -store-ids="627,628,629"
 
-5. 使用配置文件中的第二个店铺ID:
+6. 使用配置文件中的第二个店铺ID:
    ./temu-bulk-relist -store-index=1
 
-6. 覆盖配置文件，使用指定的租户和单个店铺ID:
+7. 覆盖配置文件，使用指定的租户和单个店铺ID:
    ./temu-bulk-relist -tenant=123 -store=456
 
-7. 自定义延迟、并发和跳过条件:
+8. 自定义延迟、并发和跳过条件:
    ./temu-bulk-relist -delay=500 -concurrency=3 -skip-no-stock=true -min-stock=5
 
-8. 高并发快速上架（谨慎使用）:
+9. 高并发快速上架（谨慎使用）:
    ./temu-bulk-relist -concurrency=5 -delay=200
 
-9. 按分类筛选:
-   ./temu-bulk-relist -include-categories="电子产品,家居用品"
+10. 按分类筛选:
+    ./temu-bulk-relist -include-categories="电子产品,家居用品"
 
-10. 按价格范围筛选:
+11. 按价格范围筛选:
     ./temu-bulk-relist -min-price=10.0 -max-price=100.0
 
-11. 按商品名称关键词筛选:
+12. 按商品名称关键词筛选:
     ./temu-bulk-relist -name-keywords="热销,新品"
 
-12. 试运行模式（不实际上架）:
+13. 试运行模式（不实际上架）:
     ./temu-bulk-relist -dry-run=true
 
-13. 详细输出并保存结果和日志:
+14. 详细输出并保存结果和日志:
     ./temu-bulk-relist -verbose=true -output=result.json -log-file=relist.log
 
-14. 多店铺组合条件:
+15. 清理超过7天的失败记录:
+    ./temu-bulk-relist -clean-failed-days=7
+
+16. 重置失败商品列表（清空所有失败记录）:
+    ./temu-bulk-relist -reset-failed-list
+
+18. 打印详细商品数据进行分析:
+    ./temu-bulk-relist -store=508 -print-product-data=true -verbose=true
+
+19. 多店铺组合条件:
     ./temu-bulk-relist \
       -all-stores \
       -include-categories="电子产品" \
       -min-price=5.0 \
       -min-stock=10 \
       -delay=1500 \
+      -clean-failed-days=30 \
+      -print-product-data=true \
       -log-file=multi_store_relist.log \
       -output=multi_store_result.json
+
+失败商品管理说明:
+- 系统会自动记录上架失败的商品ID到文件中
+- 下次运行时会自动跳过这些失败的商品，避免重复尝试
+- 使用 -show-failed-stats 查看当前失败商品统计
+- 使用 -clean-failed-days=N 清理N天前的失败记录
+- 使用 -reset-failed-list 清空所有失败记录
+- 使用 -print-product-data=true 打印成功和失败商品的详细原始数据，用于分析哪些字段导致上架失败
+- 失败记录文件位置: data/failed_goods/failed_goods_tenant_X_store_Y.json
 `)
 }
 
