@@ -139,8 +139,7 @@ func (s *PricingDecisionService) getPriceRejectStrategy() string {
 // getAmazonProduct 获取Amazon产品数据
 func (s *PricingDecisionService) getAmazonProduct(productID, platform, region string, tenantID, storeID int64) (*model.Product, error) {
 	if s.productFetcher == nil {
-		s.logger.Debug("ProductFetcher未初始化，无法获取Amazon产品数据，使用倍数反推逻辑")
-		return nil, nil
+		return nil, fmt.Errorf("ProductFetcher未初始化，无法获取Amazon产品数据")
 	}
 
 	req := &product.FetchRequest{
@@ -158,6 +157,41 @@ func (s *PricingDecisionService) getAmazonProduct(productID, platform, region st
 	}
 
 	return amazonProduct, nil
+}
+
+// getAmazonProductWithRetry 获取Amazon产品数据（带重试机制）
+func (s *PricingDecisionService) getAmazonProductWithRetry(productID, region string, tenantID, storeID int64) (*model.Product, error) {
+	if s.productFetcher == nil {
+		return nil, fmt.Errorf("ProductFetcher未初始化，无法获取Amazon产品数据")
+	}
+
+	req := &product.FetchRequest{
+		TenantID:  tenantID,
+		Platform:  "Amazon",
+		Region:    region,
+		ProductID: productID,
+		StoreID:   storeID,
+	}
+
+	// 最多重试3次
+	maxRetries := 3
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		amazonProduct, err := s.productFetcher.FetchProduct(req)
+		if err == nil {
+			s.logger.Debugf("第%d次尝试成功获取Amazon产品数据: %s", attempt, productID)
+			return amazonProduct, nil
+		}
+
+		s.logger.Warnf("第%d次获取Amazon产品数据失败: %v", attempt, err)
+
+		// 如果不是最后一次尝试，继续重试
+		if attempt < maxRetries {
+			s.logger.Infof("将进行第%d次重试获取Amazon产品数据: %s", attempt+1, productID)
+		}
+	}
+
+	// 所有重试都失败了
+	return nil, fmt.Errorf("经过%d次重试后仍无法获取Amazon产品数据", maxRetries)
 }
 
 // MakeDecision 对单个商品做出核价决策
@@ -188,10 +222,13 @@ func (s *PricingDecisionService) MakeDecision(item *Sku, storeId int64) (*Pricin
 
 	if mapping != nil && mapping.ProductId != "" {
 		// 从mapping中获取Amazon产品ID和区域信息
-		amazonProduct, err = s.getAmazonProduct(mapping.ProductId, mapping.Platform, mapping.Region,
+		amazonProduct, err = s.getAmazonProductWithRetry(mapping.ProductId, mapping.Region,
 			mapping.TenantId, storeId)
 		if err != nil {
-			s.logger.Warnf("获取Amazon产品数据失败，将使用倍数反推: %v", err)
+			decision.Action = DecisionSkip
+			decision.Reason = fmt.Sprintf("获取Amazon产品数据失败: %v", err)
+			s.logger.Errorf("商品 %s 获取Amazon产品数据失败，跳过处理: %v", item.GoodsName, err)
+			return decision, nil
 		} else if amazonProduct != nil {
 			s.logger.Debugf("成功获取Amazon产品数据: %s", mapping.ProductId)
 		}
@@ -215,9 +252,15 @@ func (s *PricingDecisionService) MakeDecision(item *Sku, storeId int64) (*Pricin
 	}
 
 	// 获取核价规则并计算最低可接受价格
-	pricingRule, err := s.dataService.GetPricingRule(storeId)
+	pricingRules, err := s.dataService.GetPricingRules(storeId)
 	if err != nil {
 		s.logger.Warnf("获取核价规则失败: %v", err)
+	}
+
+	// 根据成本价获取合适的规则
+	var pricingRule *api.PricingRuleRespDTO
+	if len(pricingRules) > 0 {
+		pricingRule = s.ruleCalculator.GetDefaultPricingRules(originCostPrice, &pricingRules)
 	}
 
 	minAcceptablePrice := s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingRule)
@@ -265,10 +308,14 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 
 	if mapping != nil && mapping.ProductId != "" {
 		// 从mapping中获取Amazon产品ID和区域信息
-		amazonProduct, err = s.getAmazonProduct(mapping.ProductId, mapping.Platform, mapping.Region,
+		amazonProduct, err = s.getAmazonProductWithRetry(mapping.ProductId, mapping.Region,
 			mapping.TenantId, storeId)
 		if err != nil {
-			s.logger.Warnf("获取Amazon产品数据失败，将使用倍数反推: %v", err)
+			decision.Action = DecisionSkip
+			decision.Reason = fmt.Sprintf("获取Amazon产品数据失败: %v", err)
+			s.logger.Errorf("商品ID %s SKU %s 获取Amazon产品数据失败，跳过处理: %v",
+				goods.SalesBoostGoodsBasicInfo.GoodsID, sku.SkuID, err)
+			return decision, nil
 		} else if amazonProduct != nil {
 			s.logger.Debugf("成功获取Amazon产品数据: %s", mapping.ProductId)
 		}
@@ -287,15 +334,21 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 	if originCostPrice <= 0 {
 		decision.Action = DecisionSkip
 		decision.Reason = "无法计算原始成本价"
-		s.logger.Warnf("商品 %s SKU %s 无法计算原始成本价，跳过",
-			goods.SalesBoostGoodsBasicInfo.GoodsName, sku.SkuID)
+		s.logger.Warnf("商品ID %s SKU %s 无法计算原始成本价，跳过",
+			goods.SalesBoostGoodsBasicInfo.GoodsID, sku.SkuID)
 		return decision, nil
 	}
 
 	// 获取核价规则并计算最低可接受价格
-	pricingRule, err := s.dataService.GetPricingRule(storeId)
+	pricingRules, err := s.dataService.GetPricingRules(storeId)
 	if err != nil {
 		s.logger.Warnf("获取核价规则失败: %v", err)
+	}
+
+	// 根据成本价获取合适的规则
+	var pricingRule *api.PricingRuleRespDTO
+	if len(pricingRules) > 0 {
+		pricingRule = s.ruleCalculator.GetDefaultPricingRules(originCostPrice, &pricingRules)
 	}
 
 	minAcceptablePrice := s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingRule)
@@ -305,8 +358,8 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *SalesBoostGood
 		decision.ProfitMargin = (targetSupplierPrice - originCostPrice) / originCostPrice * 100
 	}
 
-	s.logger.Infof("商品 %s SKU %s: 原始成本=%.2f, 当前价格=%.2f, 目标价格=%.2f, 最低可接受价=%.2f, 利润率=%.2f%%",
-		goods.SalesBoostGoodsBasicInfo.GoodsName, sku.OutSkuSN,
+	s.logger.Infof("商品ID %s SKU %s: 原始成本=%.2f, 当前价格=%.2f, 目标价格=%.2f, 最低可接受价=%.2f, 利润率=%.2f%%",
+		goods.SalesBoostGoodsBasicInfo.GoodsID, sku.OutSkuSN,
 		originCostPrice, currentSupplierPrice, targetSupplierPrice, minAcceptablePrice, decision.ProfitMargin)
 
 	// 执行决策逻辑
