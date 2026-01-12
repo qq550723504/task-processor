@@ -4,9 +4,9 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/services"
-	"task-processor/internal/platforms/temu/types"
 	"task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
@@ -67,7 +67,7 @@ func (h *ImageUploadProcessor) HandleTemu(temuCtx *temucontext.TemuTaskContext) 
 }
 
 // UploadSingleImage 上传单张图片（核心方法）
-func (h *ImageUploadProcessor) UploadSingleImage(temuCtx *temucontext.TemuTaskContext, imageURL, imageType string) (*types.ImageInfo, error) {
+func (h *ImageUploadProcessor) UploadSingleImage(temuCtx *temucontext.TemuTaskContext, imageURL, imageType string) (*models.ImageInfo, error) {
 	// 检查是否需要上传
 	if !h.configService.NeedsUpload(imageURL) {
 		// 如果是TEMU的CDN地址，直接使用
@@ -108,8 +108,8 @@ func (h *ImageUploadProcessor) UploadSingleImage(temuCtx *temucontext.TemuTaskCo
 }
 
 // BatchUploadImages 批量上传图片
-func (h *ImageUploadProcessor) BatchUploadImages(temuCtx *temucontext.TemuTaskContext, imageURLs []string, imageType string) ([]*types.ImageInfo, error) {
-	var results []*types.ImageInfo
+func (h *ImageUploadProcessor) BatchUploadImages(temuCtx *temucontext.TemuTaskContext, imageURLs []string, imageType string) ([]*models.ImageInfo, error) {
+	var results []*models.ImageInfo
 
 	for i, url := range imageURLs {
 		uploadedImg, err := h.UploadSingleImage(temuCtx, url, imageType)
@@ -186,7 +186,7 @@ func (h *ImageUploadProcessor) uploadSkuImages(temuCtx *temucontext.TemuTaskCont
 }
 
 // uploadCarouselImages 上传轮播图
-func (h *ImageUploadProcessor) uploadCarouselImages(temuCtx *temucontext.TemuTaskContext, sku *types.Sku) error {
+func (h *ImageUploadProcessor) uploadCarouselImages(temuCtx *temucontext.TemuTaskContext, sku *models.Sku) error {
 	if len(sku.CarouselGallery) == 0 {
 		return nil
 	}
@@ -214,7 +214,7 @@ func (h *ImageUploadProcessor) uploadCarouselImages(temuCtx *temucontext.TemuTas
 }
 
 // uploadDimensionImages 上传尺寸图
-func (h *ImageUploadProcessor) uploadDimensionImages(temuCtx *temucontext.TemuTaskContext, sku *types.Sku) error {
+func (h *ImageUploadProcessor) uploadDimensionImages(temuCtx *temucontext.TemuTaskContext, sku *models.Sku) error {
 	if len(sku.DimensionGallery) == 0 {
 		return nil
 	}
@@ -255,7 +255,7 @@ func (h *ImageUploadProcessor) getImageData(temuCtx *temucontext.TemuTaskContext
 }
 
 // processUploadResult 处理上传结果
-func (h *ImageUploadProcessor) processUploadResult(temuCtx *temucontext.TemuTaskContext, imageURL string, uploadResult *types.UploadResult) (*types.ImageInfo, error) {
+func (h *ImageUploadProcessor) processUploadResult(temuCtx *temucontext.TemuTaskContext, imageURL string, uploadResult *models.UploadResult) (*models.ImageInfo, error) {
 	// 获取填充信息
 	var width, height int
 	if temuCtx.PaddedImageSizes != nil {
@@ -294,8 +294,8 @@ func (h *ImageUploadProcessor) getDefaultImageDimensions(imageType string) (int,
 }
 
 // createImageInfo 创建图片信息
-func (h *ImageUploadProcessor) createImageInfo(url string, width, height int) *types.ImageInfo {
-	return &types.ImageInfo{
+func (h *ImageUploadProcessor) createImageInfo(url string, width, height int) *models.ImageInfo {
+	return &models.ImageInfo{
 		URL:    url,
 		Width:  width,
 		Height: height,

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"task-processor/internal/pkg/downloader"
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
 )
@@ -28,8 +28,8 @@ func NewSingleImageValidator() *SingleImageValidator {
 }
 
 // ValidateSingleImage 验证单张图片
-func (v *SingleImageValidator) ValidateSingleImage(imageURL, context string, requirement ImageRequirement) *types.ImageValidationResult {
-	result := &types.ImageValidationResult{
+func (v *SingleImageValidator) ValidateSingleImage(imageURL, context string, requirement ImageRequirement) *models.ImageValidationResult {
+	result := &models.ImageValidationResult{
 		URL:         imageURL,
 		IsValid:     true,
 		Violations:  []string{},

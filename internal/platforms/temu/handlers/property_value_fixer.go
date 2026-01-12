@@ -4,6 +4,7 @@ package handlers
 import (
 	"strings"
 
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -25,9 +26,9 @@ func NewPropertyValueFixer(logger *logrus.Entry) *PropertyValueFixer {
 
 // FixInvalidSelectionValue 修复无效的选择类型属性值
 func (f *PropertyValueFixer) FixInvalidSelectionValue(
-	prop types.PropertyItem,
+	prop models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
-) *types.PropertyItem {
+) *models.PropertyItem {
 
 	f.logger.Debugf("🔧 开始修复属性值: PID=%d, Value='%s', VID=%d",
 		prop.Pid, prop.Value, prop.Vid)
@@ -72,7 +73,7 @@ func (f *PropertyValueFixer) FixInvalidSelectionValue(
 
 // tryIntelligentMatch 尝试智能匹配属性值
 func (f *PropertyValueFixer) tryIntelligentMatch(
-	prop types.PropertyItem,
+	prop models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
 ) *types.PropertyValue {
 
@@ -258,9 +259,9 @@ func (f *PropertyValueFixer) isColorProperty(propertyName string) bool {
 
 // FixAllInvalidProperties 批量修复所有无效属性
 func (f *PropertyValueFixer) FixAllInvalidProperties(
-	properties []types.PropertyItem,
+	properties []models.PropertyItem,
 	templateProps []types.TemplateRespGoodsProperty,
-) []types.PropertyItem {
+) []models.PropertyItem {
 
 	f.logger.Info("🔧 开始批量修复无效属性值")
 	f.logger.Infof("📊 输入属性数量: %d, 模板属性数量: %d", len(properties), len(templateProps))
@@ -275,7 +276,7 @@ func (f *PropertyValueFixer) FixAllInvalidProperties(
 		}
 	}
 
-	fixedProperties := make([]types.PropertyItem, 0, len(properties))
+	fixedProperties := make([]models.PropertyItem, 0, len(properties))
 	fixedCount := 0
 
 	// 修复每个属性
@@ -324,9 +325,9 @@ func (f *PropertyValueFixer) FixAllInvalidProperties(
 
 // forceCreateValidProperty 强制为必填属性创建有效值
 func (f *PropertyValueFixer) forceCreateValidProperty(
-	prop types.PropertyItem,
+	prop models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
-) *types.PropertyItem {
+) *models.PropertyItem {
 	f.logger.Warnf("🚨 强制为必填属性创建有效值: %s (PID=%d)", templateProp.Name, templateProp.PID)
 
 	if len(templateProp.Values) == 0 {

@@ -4,6 +4,7 @@ package handlers
 import (
 	"fmt"
 
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -24,7 +25,7 @@ func NewPropertyValueValidator(logger *logrus.Entry) *PropertyValueValidator {
 // ValidateSelectionValue 验证选择类型属性值是否有效（包含条件依赖验证）
 // 返回: (isValid bool, validVID int, validValue string, error)
 func (v *PropertyValueValidator) ValidateSelectionValue(
-	prop types.PropertyItem,
+	prop models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
 ) (bool, int, string, error) {
 
@@ -75,9 +76,9 @@ func (v *PropertyValueValidator) ValidateSelectionValue(
 //
 // 返回: (isValid bool, validVID int, validValue string, error)
 func (v *PropertyValueValidator) ValidateSelectionValueWithDependency(
-	prop types.PropertyItem,
+	prop models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
-	parentProperties []types.PropertyItem,
+	parentProperties []models.PropertyItem,
 ) (bool, int, string, error) {
 
 	v.logger.Debugf("🔍 验证条件依赖属性: PID=%d, Value='%s', VID=%d",
@@ -129,7 +130,7 @@ func (v *PropertyValueValidator) ValidateSelectionValueWithDependency(
 // getValidValuesWithDependency 获取考虑条件依赖的有效值列表
 func (v *PropertyValueValidator) getValidValuesWithDependency(
 	templateProp types.TemplateRespGoodsProperty,
-	parentProperties []types.PropertyItem,
+	parentProperties []models.PropertyItem,
 ) []types.PropertyValue {
 
 	// 如果没有条件依赖，返回所有值
@@ -233,7 +234,7 @@ func (v *PropertyValueValidator) GetValidValueByValue(value string, validValues 
 
 // ValidateAllSelectionProperties 批量验证所有选择类型属性
 func (v *PropertyValueValidator) ValidateAllSelectionProperties(
-	properties []types.PropertyItem,
+	properties []models.PropertyItem,
 	templateProps []types.TemplateRespGoodsProperty,
 ) []ValidationResult {
 
@@ -276,7 +277,7 @@ func (v *PropertyValueValidator) ValidateAllSelectionProperties(
 
 // ValidationResult 验证结果
 type ValidationResult struct {
-	Property     types.PropertyItem
+	Property     models.PropertyItem
 	TemplateProp types.TemplateRespGoodsProperty
 	IsValid      bool
 	ValidVID     int
@@ -287,7 +288,7 @@ type ValidationResult struct {
 // GetValidValuesWithDependency 获取考虑条件依赖的有效值列表（公开方法）
 func (v *PropertyValueValidator) GetValidValuesWithDependency(
 	templateProp types.TemplateRespGoodsProperty,
-	parentProperties []types.PropertyItem,
+	parentProperties []models.PropertyItem,
 ) []types.PropertyValue {
 	return v.getValidValuesWithDependency(templateProp, parentProperties)
 }

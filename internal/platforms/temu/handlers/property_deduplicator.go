@@ -3,7 +3,7 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,7 +23,7 @@ func NewPropertyDeduplicator(logger *logrus.Entry) *PropertyDeduplicator {
 // DeduplicateProperties 去除重复的属性
 // 去重规则：相同的 pid + ref_pid + template_pid 组合视为重复
 // 保留最后一个（最新的）属性值
-func (d *PropertyDeduplicator) DeduplicateProperties(properties []types.PropertyItem) []types.PropertyItem {
+func (d *PropertyDeduplicator) DeduplicateProperties(properties []models.PropertyItem) []models.PropertyItem {
 	if len(properties) <= 1 {
 		return properties
 	}
@@ -32,7 +32,7 @@ func (d *PropertyDeduplicator) DeduplicateProperties(properties []types.Property
 
 	// 使用map记录每个属性的唯一标识
 	// key: "pid_refpid_templatepid"
-	propertyMap := make(map[string]types.PropertyItem)
+	propertyMap := make(map[string]models.PropertyItem)
 	duplicateCount := 0
 
 	for _, prop := range properties {
@@ -53,7 +53,7 @@ func (d *PropertyDeduplicator) DeduplicateProperties(properties []types.Property
 	}
 
 	// 转换回切片
-	result := make([]types.PropertyItem, 0, len(propertyMap))
+	result := make([]models.PropertyItem, 0, len(propertyMap))
 	for _, prop := range propertyMap {
 		result = append(result, prop)
 	}
@@ -69,7 +69,7 @@ func (d *PropertyDeduplicator) DeduplicateProperties(properties []types.Property
 }
 
 // buildPropertyKey 构建属性的唯一标识
-func (d *PropertyDeduplicator) buildPropertyKey(prop types.PropertyItem) string {
+func (d *PropertyDeduplicator) buildPropertyKey(prop models.PropertyItem) string {
 	// 使用 pid + ref_pid + template_pid 作为唯一标识
 	// 这三个字段的组合应该能唯一标识一个属性
 	return fmt.Sprintf("%d_%d_%d", prop.Pid, prop.RefPid, prop.TemplatePid)
@@ -77,7 +77,7 @@ func (d *PropertyDeduplicator) buildPropertyKey(prop types.PropertyItem) string 
 
 // DeduplicateByPidOnly 仅根据PID去重（更宽松的去重策略）
 // 当同一个PID有多个值时，保留最后一个
-func (d *PropertyDeduplicator) DeduplicateByPidOnly(properties []types.PropertyItem) []types.PropertyItem {
+func (d *PropertyDeduplicator) DeduplicateByPidOnly(properties []models.PropertyItem) []models.PropertyItem {
 	if len(properties) <= 1 {
 		return properties
 	}
@@ -85,7 +85,7 @@ func (d *PropertyDeduplicator) DeduplicateByPidOnly(properties []types.PropertyI
 	d.logger.Infof("🔄 开始按PID去重，原始属性数量: %d", len(properties))
 
 	// 使用map记录每个PID的最新属性
-	propertyMap := make(map[int]types.PropertyItem)
+	propertyMap := make(map[int]models.PropertyItem)
 	duplicateCount := 0
 
 	for _, prop := range properties {
@@ -104,7 +104,7 @@ func (d *PropertyDeduplicator) DeduplicateByPidOnly(properties []types.PropertyI
 	}
 
 	// 转换回切片
-	result := make([]types.PropertyItem, 0, len(propertyMap))
+	result := make([]models.PropertyItem, 0, len(propertyMap))
 	for _, prop := range propertyMap {
 		result = append(result, prop)
 	}

@@ -9,6 +9,7 @@ import (
 
 	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -38,13 +39,13 @@ func NewAIService(openaiClient *openaiClient.Client, config *config.OpenAIConfig
 // 返回值:
 //   - []types.PropertyItem: 映射后的属性列表
 //   - error: 错误信息
-func (s *AIService) CallAIForPropertyMapping(ctx context.Context, data types.PropertyMappingData) ([]types.PropertyItem, error) {
+func (s *AIService) CallAIForPropertyMapping(ctx context.Context, data types.PropertyMappingData) ([]models.PropertyItem, error) {
 	s.logger.Info("🤖 开始调用AI进行属性映射")
 
 	// 检查AI客户端是否可用
 	if s.openaiClient == nil {
 		s.logger.Warn("OpenAI客户端未配置，返回空结果")
-		return []types.PropertyItem{}, nil
+		return []models.PropertyItem{}, nil
 	}
 
 	// 构建提示词
@@ -95,7 +96,7 @@ func (s *AIService) createChatCompletionRequest(systemPrompt, userPrompt string)
 }
 
 // processAIResponse 处理AI响应
-func (s *AIService) processAIResponse(response *openaiClient.ChatCompletionResponse, data types.PropertyMappingData) ([]types.PropertyItem, error) {
+func (s *AIService) processAIResponse(response *openaiClient.ChatCompletionResponse, data types.PropertyMappingData) ([]models.PropertyItem, error) {
 	content := strings.TrimSpace(response.Choices[0].Message.Content)
 
 	// 清理JSON格式
@@ -109,7 +110,7 @@ func (s *AIService) processAIResponse(response *openaiClient.ChatCompletionRespo
 
 	// 解析AI响应
 	var aiResponse struct {
-		Properties []types.PropertyItem `json:"properties"`
+		Properties []models.PropertyItem `json:"properties"`
 	}
 
 	if err := json.Unmarshal([]byte(content), &aiResponse); err != nil {

@@ -4,9 +4,9 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/services"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -92,8 +92,8 @@ func (v *SkuImageValidator) ValidateSkuImages(temuCtx *temucontext.TemuTaskConte
 }
 
 // validateCarouselImages 验证轮播图片
-func (v *SkuImageValidator) validateCarouselImages(images []types.ImageInfo, skcIndex, skuIndex int, requirement services.ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []types.ImageInfo {
-	validImages := []types.ImageInfo{}
+func (v *SkuImageValidator) validateCarouselImages(images []models.ImageInfo, skcIndex, skuIndex int, requirement services.ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []models.ImageInfo {
+	validImages := []models.ImageInfo{}
 
 	for imgIndex, img := range images {
 		result := v.singleValidator.ValidateSingleImage(img.URL, fmt.Sprintf("SKU[%d-%d]轮播图[%d]", skcIndex, skuIndex, imgIndex), requirement)
@@ -119,8 +119,8 @@ func (v *SkuImageValidator) validateCarouselImages(images []types.ImageInfo, skc
 }
 
 // validateDimensionImages 验证尺寸图片
-func (v *SkuImageValidator) validateDimensionImages(images []types.ImageInfo, skcIndex, skuIndex int, requirement services.ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []types.ImageInfo {
-	validImages := []types.ImageInfo{}
+func (v *SkuImageValidator) validateDimensionImages(images []models.ImageInfo, skcIndex, skuIndex int, requirement services.ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []models.ImageInfo {
+	validImages := []models.ImageInfo{}
 
 	for imgIndex, img := range images {
 		result := v.singleValidator.ValidateSingleImage(img.URL, fmt.Sprintf("SKU[%d-%d]尺寸图[%d]", skcIndex, skuIndex, imgIndex), requirement)

@@ -3,6 +3,7 @@ package handlers
 import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -41,7 +42,7 @@ func (sb *SkuSkcBuilder) initParallelBuilder() {
 }
 
 // buildMultipleSkcsFromTemplate 使用模板属性构建多个SKC（按主变体分组）
-func (sb *SkuSkcBuilder) buildMultipleSkcsFromTemplate(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse, templateSpecs []types.TemplateRespGoodsSpecProperty) []types.Skc {
+func (sb *SkuSkcBuilder) buildMultipleSkcsFromTemplate(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse, templateSpecs []types.TemplateRespGoodsSpecProperty) []models.Skc {
 	// 按颜色分组SKU
 	colorGroups := make(map[string][]int)
 	for i, aiSku := range aiMapping.SkuList {
@@ -52,7 +53,7 @@ func (sb *SkuSkcBuilder) buildMultipleSkcsFromTemplate(ctx pipeline.TaskContext,
 		colorGroups[colorSpecID] = append(colorGroups[colorSpecID], i)
 	}
 
-	skcList := make([]types.Skc, 0, len(colorGroups))
+	skcList := make([]models.Skc, 0, len(colorGroups))
 
 	// 为每个颜色组创建一个SKC
 	for colorSpecID, skuIndices := range colorGroups {
@@ -60,7 +61,7 @@ func (sb *SkuSkcBuilder) buildMultipleSkcsFromTemplate(ctx pipeline.TaskContext,
 		skuList := sb.buildCompleteSkuListForColor(ctx, variants, aiMapping, skuIndices, colorSpecID, templateSpecs)
 
 		// 创建SKC
-		skc := types.Skc{
+		skc := models.Skc{
 			SkuList: skuList,
 		}
 
@@ -71,7 +72,7 @@ func (sb *SkuSkcBuilder) buildMultipleSkcsFromTemplate(ctx pipeline.TaskContext,
 }
 
 // buildCompleteSkuListForColor 为特定颜色构建完整的SKU列表
-func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse, skuIndices []int, colorSpecID string, templateSpecs []types.TemplateRespGoodsSpecProperty) []types.Sku {
+func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse, skuIndices []int, colorSpecID string, templateSpecs []types.TemplateRespGoodsSpecProperty) []models.Sku {
 	// 收集该颜色下所有可能的非颜色规格组合
 	nonColorSpecs := sb.specHandler.collectNonColorSpecsForColor(aiMapping, skuIndices, templateSpecs)
 
@@ -80,7 +81,7 @@ func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx pipeline.TaskContext, 
 	// 如果没有非颜色规格，直接使用现有的SKU（只有颜色规格）
 	if len(nonColorSpecs) == 0 {
 		sb.logger.Info("没有非颜色规格，直接使用现有SKU")
-		skuList := make([]types.Sku, 0, len(skuIndices))
+		skuList := make([]models.Sku, 0, len(skuIndices))
 		for _, skuIndex := range skuIndices {
 			variant := variants[skuIndex]
 			aiSku := aiMapping.SkuList[skuIndex]
@@ -106,7 +107,7 @@ func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx pipeline.TaskContext, 
 
 	sb.logger.Infof("现有SKU映射数量: %d", len(existingSkuMap))
 
-	var skuList []types.Sku
+	var skuList []models.Sku
 
 	// 为每个可能的非颜色规格组合创建SKU
 	for _, nonColorCombination := range allNonColorCombinations {
@@ -134,7 +135,7 @@ func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx pipeline.TaskContext, 
 }
 
 // buildSingleSkcFromUserInput 使用规格构建单个SKC（包含多个SKU）
-func (sb *SkuSkcBuilder) buildSingleSkcFromUserInput(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse, templateSpecs []types.TemplateRespGoodsSpecProperty) []types.Skc {
+func (sb *SkuSkcBuilder) buildSingleSkcFromUserInput(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse, templateSpecs []types.TemplateRespGoodsSpecProperty) []models.Skc {
 	// 注意：templateSpecs 参数保留用于未来可能的规格验证和修复功能
 	// 当前实现中暂未使用，因为AI已经能够生成合理的规格组合
 	_ = templateSpecs // 明确标记参数暂未使用
@@ -149,7 +150,7 @@ func (sb *SkuSkcBuilder) buildSingleSkcFromUserInput(ctx pipeline.TaskContext, v
 }
 
 // buildSingleSkcWithParallelImages 使用并行图片处理构建单个SKC
-func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse) []types.Skc {
+func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse) []models.Skc {
 	sb.logger.Infof("🚀 开始并行构建单个SKC，包含%d个变体", len(variants))
 
 	// 初始化并行构建器
@@ -194,17 +195,17 @@ func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.T
 	}
 
 	// 创建单个SKC
-	skc := types.Skc{
+	skc := models.Skc{
 		SkuList: skuList,
 	}
 
 	sb.logger.Infof("🎉 并行SKC构建完成: %d个SKU", len(skuList))
-	return []types.Skc{skc}
+	return []models.Skc{skc}
 }
 
 // buildSingleSkcSerial 串行构建单个SKC（兼容旧接口）
-func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse) []types.Skc {
-	var skuList []types.Sku
+func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse) []models.Skc {
+	var skuList []models.Sku
 	asinMap := make(map[string]bool) // 用于去重，基于ASIN而不是规格组合
 
 	// 直接为每个变体创建SKU，不生成缺失的组合
@@ -234,9 +235,9 @@ func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants
 	sb.logger.Infof("SKU去重完成: 原始=%d, 去重后=%d", len(variants), len(skuList))
 
 	// 创建单个SKC
-	skc := types.Skc{
+	skc := models.Skc{
 		SkuList: skuList,
 	}
 
-	return []types.Skc{skc}
+	return []models.Skc{skc}
 }

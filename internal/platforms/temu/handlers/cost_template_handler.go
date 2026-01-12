@@ -3,8 +3,8 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	temuTypes "task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -102,7 +102,7 @@ func (h *CostTemplateHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 }
 
 // buildCostTemplateRequest 构造成本模板查询请求
-func (h *CostTemplateHandler) buildCostTemplateRequest(temuProduct *temuTypes.Product) *CostTemplateRequest {
+func (h *CostTemplateHandler) buildCostTemplateRequest(temuProduct *models.Product) *CostTemplateRequest {
 	request := &CostTemplateRequest{
 		ClickType:            "8",  // 根据实际API调用设置
 		ListingCommitVersion: "1",  // 默认版本
@@ -129,7 +129,7 @@ func (h *CostTemplateHandler) buildCostTemplateRequest(temuProduct *temuTypes.Pr
 }
 
 // queryCostTemplate 发送成本模板查询请求到TEMU API
-func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskContext, apiClient any, temuProduct *temuTypes.Product, request *CostTemplateRequest) error {
+func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskContext, apiClient any, temuProduct *models.Product, request *CostTemplateRequest) error {
 	// 构造API请求
 	apiReq := map[string]any{
 		"method": "POST",

@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"sync"
 	"task-processor/internal/pkg/management"
+	"task-processor/internal/platforms/temu/api"
+	"task-processor/internal/platforms/temu/api/models"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -15,7 +17,7 @@ type PricingAction string
 
 // PricingScheduler 自动核价调度器
 type PricingScheduler struct {
-	apiClient        *APIClient
+	apiClient        api.APIClientInterface
 	managementClient *management.ClientManager
 	configProvider   ConfigProvider // 配置提供者，用于Amazon增强功能
 	interval         time.Duration
@@ -27,7 +29,7 @@ type PricingScheduler struct {
 }
 
 // NewPricingScheduler 创建自动核价调度器
-func NewPricingScheduler(ctx context.Context, apiClient *APIClient, managementClient *management.ClientManager, interval time.Duration, action PricingAction) *PricingScheduler {
+func NewPricingScheduler(ctx context.Context, apiClient api.APIClientInterface, managementClient *management.ClientManager, interval time.Duration, action PricingAction) *PricingScheduler {
 	schedulerCtx, cancel := context.WithCancel(ctx)
 
 	return &PricingScheduler{
@@ -50,7 +52,7 @@ func NewPricingScheduler(ctx context.Context, apiClient *APIClient, managementCl
 // NewPricingSchedulerWithAmazon 创建支持Amazon的自动核价调度器
 func NewPricingSchedulerWithAmazon(
 	ctx context.Context,
-	apiClient *APIClient,
+	apiClient api.APIClientInterface,
 	managementClient *management.ClientManager,
 	configProvider ConfigProvider,
 	interval time.Duration,
@@ -154,7 +156,7 @@ func (s *PricingScheduler) executeTask() {
 }
 
 // executeWithBestAvailableMethod 使用最佳可用方法执行核价
-func (s *PricingScheduler) executeWithBestAvailableMethod() (*PricingStatistics, error) {
+func (s *PricingScheduler) executeWithBestAvailableMethod() (*models.PricingStatistics, error) {
 	// 如果有配置提供者，优先使用Amazon增强版本
 	if s.configProvider != nil {
 		s.logger.Info("使用Amazon增强版核价方法")

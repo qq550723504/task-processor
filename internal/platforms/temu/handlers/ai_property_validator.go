@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 )
 
 // validatePropertyConstraints 验证属性约束
-func (m *AIPropertyMapper) validatePropertyConstraints(templateProps []types.TemplateRespGoodsProperty, ext *types.ExtensionInfo) error {
+func (m *AIPropertyMapper) validatePropertyConstraints(templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
 	m.logger.Info("🔍 开始验证属性约束")
 
 	// 统计每个RefPID的使用次数
@@ -33,7 +34,7 @@ func (m *AIPropertyMapper) validatePropertyConstraints(templateProps []types.Tem
 }
 
 // validatePropertyValues 验证属性值的有效性
-func (m *AIPropertyMapper) validatePropertyValues(templateProps []types.TemplateRespGoodsProperty, ext *types.ExtensionInfo) error {
+func (m *AIPropertyMapper) validatePropertyValues(templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
 	m.logger.Info("🔍 开始验证属性值有效性")
 
 	// 构建模板属性映射

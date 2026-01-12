@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
 )
@@ -111,7 +111,7 @@ func (u *ProductSubmitUtils) SaveJSONToFile(taskID string, jsonData []byte, pref
 }
 
 // GetTotalSkuCount 获取总SKU数量
-func (u *ProductSubmitUtils) GetTotalSkuCount(skcList []types.Skc) int {
+func (u *ProductSubmitUtils) GetTotalSkuCount(skcList []models.Skc) int {
 	total := 0
 	for _, skc := range skcList {
 		total += len(skc.SkuList)

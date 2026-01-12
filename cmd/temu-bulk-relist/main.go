@@ -11,7 +11,9 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/pkg/management"
-	"task-processor/internal/platforms/temu"
+	"task-processor/internal/platforms/temu/api"
+	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/platforms/temu/services/product"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -246,9 +248,9 @@ func main() {
 
 	// 多店铺处理
 	type StoreResult struct {
-		StoreID int64                 `json:"store_id"`
-		Result  *temu.RelistAllResult `json:"result"`
-		Error   string                `json:"error,omitempty"`
+		StoreID int64                   `json:"store_id"`
+		Result  *models.RelistAllResult `json:"result"`
+		Error   string                  `json:"error,omitempty"`
 	}
 
 	var allResults []StoreResult
@@ -261,7 +263,7 @@ func main() {
 		logPrintf("\n=== 处理店铺 %d (%d/%d) ===\n", storeID, i+1, len(targetStoreIDs))
 
 		// 创建TEMU API客户端
-		apiClient := temu.NewAPIClient(*tenantID, storeID, managementClient)
+		apiClient := api.NewAPIClient(*tenantID, storeID, managementClient)
 		if apiClient == nil {
 			logPrintf("错误: 无法创建店铺 %d 的TEMU API客户端\n", storeID)
 			allResults = append(allResults, StoreResult{
@@ -272,7 +274,7 @@ func main() {
 		}
 
 		// 创建批量重新上架服务
-		service := temu.NewBulkRelistService(apiClient)
+		service := product.NewBulkRelistService(apiClient)
 
 		// 处理模式参数
 		var useFirstPageOnly bool
@@ -287,11 +289,11 @@ func main() {
 		}
 
 		// 构建选项
-		options := &temu.BulkRelistOptions{
+		options := &models.BulkRelistOptions{
 			DelayBetweenRequests: *delay,
 			MaxConcurrency:       *concurrency,
 			ProcessFirstPageOnly: useFirstPageOnly,
-			SkipConditions: &temu.SkipConditions{
+			SkipConditions: &models.SkipConditions{
 				SkipNeedRectification: *skipRectify,
 				SkipSeverelyPunished:  *skipPunished,
 				SkipLocked:            *skipLocked,
@@ -301,7 +303,7 @@ func main() {
 			DryRun: *dryRun,
 		}
 
-		var result *temu.RelistAllResult
+		var result *models.RelistAllResult
 		var err error
 
 		// 检查是否有过滤条件
@@ -310,7 +312,7 @@ func main() {
 
 		if hasFilter {
 			// 使用过滤条件
-			filter := &temu.ProductFilter{
+			filter := &models.ProductFilter{
 				MinPrice: *minPrice,
 				MaxPrice: *maxPrice,
 			}

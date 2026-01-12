@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -94,7 +94,7 @@ func (h *ProductDescriptionValidator) HandleTemu(temuCtx *temucontext.TemuTaskCo
 }
 
 // validateAndOptimizeDescription 验证和优化产品描述
-func (h *ProductDescriptionValidator) validateAndOptimizeDescription(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) *DescriptionValidationResult {
+func (h *ProductDescriptionValidator) validateAndOptimizeDescription(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) *DescriptionValidationResult {
 	result := &DescriptionValidationResult{
 		OriginalDescription:  description,
 		ValidatedDescription: description,
@@ -143,7 +143,7 @@ func (h *ProductDescriptionValidator) ValidateDescriptionAPI(temuCtx *temucontex
 }
 
 // generateDefaultDescription 生成默认产品描述
-func (h *ProductDescriptionValidator) generateDefaultDescription(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) string {
+func (h *ProductDescriptionValidator) generateDefaultDescription(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) string {
 	productName := temuProduct.GoodsBasic.GoodsName
 
 	// 基于产品名称生成默认描述
@@ -200,13 +200,13 @@ func (h *ProductDescriptionValidator) truncateDescription(description string, ma
 }
 
 // enhanceDescription 增强描述内容
-func (h *ProductDescriptionValidator) enhanceDescription(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product, result *DescriptionValidationResult) string {
+func (h *ProductDescriptionValidator) enhanceDescription(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product, result *DescriptionValidationResult) string {
 	// 基本增强逻辑
 	return description
 }
 
 // calculateQualityScore 计算质量评分
-func (h *ProductDescriptionValidator) calculateQualityScore(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) int {
+func (h *ProductDescriptionValidator) calculateQualityScore(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) int {
 	score := 50 // 基础分数
 
 	// 根据长度评分

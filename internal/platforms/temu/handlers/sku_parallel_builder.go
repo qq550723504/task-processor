@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 	temuUtils "task-processor/internal/platforms/temu/utils"
@@ -30,9 +31,9 @@ func NewSkuParallelBuilder(itemBuilder *SkuItemBuilder, maxWorkers int) *SkuPara
 }
 
 // BuildSkusWithParallelImages 并行构建SKU（图片处理并行化）
-func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiSkus []types.AIGeneratedSku) ([]types.Sku, error) {
+func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiSkus []types.AIGeneratedSku) ([]models.Sku, error) {
 	if len(variants) == 0 {
-		return []types.Sku{}, nil
+		return []models.Sku{}, nil
 	}
 
 	spb.logger.Infof("🚀 开始并行构建%d个SKU", len(variants))
@@ -46,7 +47,7 @@ func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.
 
 	// 第二步：串行构建SKU（除了图片处理）
 	spb.logger.Info("🔧 第二步：构建SKU基础数据")
-	skus := make([]types.Sku, len(variants))
+	skus := make([]models.Sku, len(variants))
 
 	for i, variant := range variants {
 		// 获取对应的AI SKU数据
@@ -71,7 +72,7 @@ func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.
 }
 
 // buildSkuWithoutImages 构建SKU（不包含图片处理）
-func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku, index int) types.Sku {
+func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku, index int) models.Sku {
 	// 使用利润规则计算最终销售价格
 	finalSalePrice := spb.itemBuilder.priceHandler.CalculateVariantPrice(temuCtx, variant)
 
@@ -101,17 +102,17 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTa
 	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
 
 	// 构建SKU（不包含图片，图片将在后续步骤中添加）
-	return types.Sku{
+	return models.Sku{
 		Spec:                     specList,
 		Currency:                 "USD",
 		UseEstimateSupplierPrice: true,
-		DimensionGallery:         []types.ImageInfo{}, // 稍后填充
-		CarouselGallery:          []types.ImageInfo{}, // 稍后填充
-		FoodIngredientGallery:    []types.ImageInfo{},
+		DimensionGallery:         []models.ImageInfo{}, // 稍后填充
+		CarouselGallery:          []models.ImageInfo{}, // 稍后填充
+		FoodIngredientGallery:    []models.ImageInfo{},
 		Quantity:                 fmt.Sprintf("%d", quantity),
-		ProductExpressInfo: types.ProductExpressInfo{
-			WeightInfo: types.WeightInfo{Weight: weight},
-			VolumeInfo: types.VolumeInfo{Length: length, Width: width, Height: height},
+		ProductExpressInfo: models.ProductExpressInfo{
+			WeightInfo: models.WeightInfo{Weight: weight},
+			VolumeInfo: models.VolumeInfo{Length: length, Width: width, Height: height},
 		},
 		SupplierPriceStr:       fmt.Sprintf("%.2f", float64(finalSalePrice)/100),
 		OutSkuSN:               outSkuSN,
@@ -127,7 +128,7 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTa
 }
 
 // buildSpecList 构建规格列表
-func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku) []types.SpecInfo {
+func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku) []models.SpecInfo {
 	specList := aiSku.Spec
 
 	// 去重：确保每个parent_spec_id只出现一次
@@ -146,7 +147,7 @@ func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContex
 	if hasTemp {
 		spb.logger.Error("❌ 存在未解析的临时规格ID，这表明resolveTemporarySpecIDs没有正确工作")
 		// 返回空规格的SKU，让后续流程能够检测到问题
-		specList = []types.SpecInfo{}
+		specList = []models.SpecInfo{}
 	}
 
 	if err := spb.itemBuilder.specHandler.ValidateSpecs(specList); err != nil {
@@ -195,9 +196,9 @@ func (spb *SkuParallelBuilder) buildProductExpressInfo(variant *model.Product, a
 }
 
 // buildMultiplePackage 构建多件装信息
-func (spb *SkuParallelBuilder) buildMultiplePackage(variant *model.Product, aiSku types.AIGeneratedSku) types.MultiplePackage {
+func (spb *SkuParallelBuilder) buildMultiplePackage(variant *model.Product, aiSku types.AIGeneratedSku) models.MultiplePackage {
 	// 使用AI判断的多件装信息
-	multiplePackage := types.MultiplePackage{
+	multiplePackage := models.MultiplePackage{
 		SkuClassification:  aiSku.SkuClassification,
 		NumberOfPieces:     aiSku.NumberOfPieces,
 		IndividuallyPacked: aiSku.IndividuallyPacked,

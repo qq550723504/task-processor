@@ -3,8 +3,8 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -71,7 +71,7 @@ func (h *CategoryDisclaimHandler) HandleTemu(temuCtx *temucontext.TemuTaskContex
 }
 
 // getCategoryDisclaimer 获取分类免责声明
-func (h *CategoryDisclaimHandler) getCategoryDisclaimer(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) error {
+func (h *CategoryDisclaimHandler) getCategoryDisclaimer(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) error {
 	catID := temuProduct.GoodsBasic.CatID
 	if catID == 0 {
 		return fmt.Errorf("分类ID为空")
@@ -99,7 +99,7 @@ func (h *CategoryDisclaimHandler) getCategoryDisclaimer(temuCtx *temucontext.Tem
 }
 
 // queryDisclaimerFromAPI 从TEMU API获取分类免责声明
-func (h *CategoryDisclaimHandler) queryDisclaimerFromAPI(temuCtx *temucontext.TemuTaskContext, apiClient any, catID int) (types.Disclaimer, error) {
+func (h *CategoryDisclaimHandler) queryDisclaimerFromAPI(temuCtx *temucontext.TemuTaskContext, apiClient any, catID int) (models.Disclaimer, error) {
 	h.logger.Infof("调用TEMU API获取分类免责声明: CatID=%d", catID)
 
 	// 构造请求体
@@ -138,10 +138,10 @@ func (h *CategoryDisclaimHandler) queryDisclaimerFromAPI(temuCtx *temucontext.Te
 		err := temuClient.SendTEMURequest(apiReq, response)
 		if err != nil {
 			h.logger.Errorf("发送API请求失败: %v", err)
-			return types.Disclaimer{}, fmt.Errorf("发送API请求失败: %w", err)
+			return models.Disclaimer{}, fmt.Errorf("发送API请求失败: %w", err)
 		}
 	} else {
-		return types.Disclaimer{}, fmt.Errorf("API客户端不支持TEMU请求")
+		return models.Disclaimer{}, fmt.Errorf("API客户端不支持TEMU请求")
 	}
 
 	h.logger.Debugf("API响应: Success=%t, ErrorCode=%d", response.Success, response.ErrorCode)
@@ -149,11 +149,11 @@ func (h *CategoryDisclaimHandler) queryDisclaimerFromAPI(temuCtx *temucontext.Te
 	// 检查响应状态
 	if !response.Success {
 		h.logger.Errorf("API返回失败，错误码: %d", response.ErrorCode)
-		return types.Disclaimer{}, fmt.Errorf("API返回失败，错误码: %d", response.ErrorCode)
+		return models.Disclaimer{}, fmt.Errorf("API返回失败，错误码: %d", response.ErrorCode)
 	}
 
 	// 转换响应数据
-	disclaimer := types.Disclaimer{
+	disclaimer := models.Disclaimer{
 		PromptList: response.Result.DisclaimerDTO.PromptList,
 	}
 

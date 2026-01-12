@@ -9,8 +9,8 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/utils"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -48,8 +48,8 @@ type ImageProcessingTask struct {
 // ImageProcessingResult 图片处理结果
 type ImageProcessingResult struct {
 	VariantIndex     int
-	DimensionGallery []types.ImageInfo
-	CarouselGallery  []types.ImageInfo
+	DimensionGallery []models.ImageInfo
+	CarouselGallery  []models.ImageInfo
 	Error            error
 	Success          bool
 }
@@ -118,8 +118,8 @@ func (pip *ParallelImageProcessor) ProcessVariantImagesParallel(temuCtx *temucon
 			// 创建失败结果
 			imageResults[result.Index] = &ImageProcessingResult{
 				VariantIndex:     result.Index,
-				DimensionGallery: []types.ImageInfo{},
-				CarouselGallery:  []types.ImageInfo{},
+				DimensionGallery: []models.ImageInfo{},
+				CarouselGallery:  []models.ImageInfo{},
 				Error:            result.Error,
 				Success:          false,
 			}
@@ -137,8 +137,8 @@ func (pip *ParallelImageProcessor) ProcessVariantImagesParallel(temuCtx *temucon
 func (pip *ParallelImageProcessor) processVariantImages(ctx context.Context, task *ImageProcessingTask) (*ImageProcessingResult, error) {
 	result := &ImageProcessingResult{
 		VariantIndex:     task.VariantIndex,
-		DimensionGallery: []types.ImageInfo{},
-		CarouselGallery:  []types.ImageInfo{},
+		DimensionGallery: []models.ImageInfo{},
+		CarouselGallery:  []models.ImageInfo{},
 		Success:          false,
 	}
 
@@ -170,7 +170,7 @@ func (pip *ParallelImageProcessor) processVariantImages(ctx context.Context, tas
 }
 
 // ApplyImageResults 将图片处理结果应用到SKU中
-func (pip *ParallelImageProcessor) ApplyImageResults(skuList []types.Sku, imageResults []*ImageProcessingResult) {
+func (pip *ParallelImageProcessor) ApplyImageResults(skuList []models.Sku, imageResults []*ImageProcessingResult) {
 	pip.logger.Info("📋 开始应用图片处理结果到SKU")
 
 	for i, result := range imageResults {
@@ -198,7 +198,7 @@ func (pip *ParallelImageProcessor) ApplyImageResults(skuList []types.Sku, imageR
 			if remainingSlots < 0 {
 				// 如果尺寸图就超过10张，只保留前10张尺寸图
 				sku.DimensionGallery = sku.DimensionGallery[:maxTotalImages]
-				sku.CarouselGallery = []types.ImageInfo{}
+				sku.CarouselGallery = []models.ImageInfo{}
 				pip.logger.Warnf("⚠️ SKU[%d]图片总数超限，尺寸图截断为%d张，轮播图清空", i, maxTotalImages)
 			} else if remainingSlots < len(sku.CarouselGallery) {
 				// 截断轮播图

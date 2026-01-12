@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/pkg/management"
+	"task-processor/internal/platforms/temu/api"
 
 	"github.com/sirupsen/logrus"
 )
@@ -14,7 +15,7 @@ import (
 // SchedulerManager 调度器管理器
 type SchedulerManager struct {
 	schedulers       map[string]*PricingScheduler
-	apiClients       map[string]*APIClient
+	apiClients       map[string]*api.APIClient
 	managementClient *management.ClientManager
 	configProvider   ConfigProvider // 配置提供者，用于Amazon增强功能
 	interval         time.Duration
@@ -31,7 +32,7 @@ func NewSchedulerManager(ctx context.Context, managementClient *management.Clien
 
 	return &SchedulerManager{
 		schedulers:       make(map[string]*PricingScheduler),
-		apiClients:       make(map[string]*APIClient),
+		apiClients:       make(map[string]*api.APIClient),
 		managementClient: managementClient,
 		configProvider:   nil, // 默认不使用Amazon增强功能
 		interval:         interval,
@@ -54,7 +55,7 @@ func NewSchedulerManagerWithAmazon(
 
 	return &SchedulerManager{
 		schedulers:       make(map[string]*PricingScheduler),
-		apiClients:       make(map[string]*APIClient),
+		apiClients:       make(map[string]*api.APIClient),
 		managementClient: managementClient,
 		configProvider:   configProvider,
 		interval:         interval,
@@ -81,7 +82,7 @@ func (sm *SchedulerManager) AddStore(tenantID, storeID int64) error {
 	}
 
 	// 创建API客户端
-	apiClient := NewAPIClient(tenantID, storeID, sm.managementClient)
+	apiClient := api.NewAPIClient(tenantID, storeID, sm.managementClient)
 	sm.apiClients[key] = apiClient
 
 	// 创建调度器
@@ -133,7 +134,7 @@ func (sm *SchedulerManager) StopAll() {
 	}
 
 	sm.schedulers = make(map[string]*PricingScheduler)
-	sm.apiClients = make(map[string]*APIClient)
+	sm.apiClients = make(map[string]*api.APIClient)
 	sm.logger.Info("所有调度器已停止")
 }
 

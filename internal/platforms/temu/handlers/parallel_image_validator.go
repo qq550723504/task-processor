@@ -4,7 +4,7 @@ package handlers
 import (
 	"fmt"
 	"sync"
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,9 +24,9 @@ func NewParallelImageValidator() *ParallelImageValidator {
 }
 
 // ValidateImagesInParallel 并行验证多张图片
-func (v *ParallelImageValidator) ValidateImagesInParallel(images []types.ImageInfo, imageType string, requirement ImageRequirement) []*types.ImageValidationResult {
+func (v *ParallelImageValidator) ValidateImagesInParallel(images []models.ImageInfo, imageType string, requirement ImageRequirement) []*models.ImageValidationResult {
 	if len(images) == 0 {
-		return []*types.ImageValidationResult{}
+		return []*models.ImageValidationResult{}
 	}
 
 	// 控制并发数，避免过多goroutine
@@ -36,7 +36,7 @@ func (v *ParallelImageValidator) ValidateImagesInParallel(images []types.ImageIn
 	}
 
 	semaphore := make(chan struct{}, maxConcurrency)
-	results := make([]*types.ImageValidationResult, len(images))
+	results := make([]*models.ImageValidationResult, len(images))
 	var wg sync.WaitGroup
 
 	for i, img := range images {

@@ -3,8 +3,8 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	temuTypes "task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -64,7 +64,7 @@ func (h *CategoryHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 }
 
 // processCategoryInfo 处理分类信息
-func (h *CategoryHandler) processCategoryInfo(temuProduct *temuTypes.Product) error {
+func (h *CategoryHandler) processCategoryInfo(temuProduct *models.Product) error {
 	catID := temuProduct.GoodsBasic.CatID
 	if catID == 0 {
 		return fmt.Errorf("分类ID为空")
@@ -83,7 +83,7 @@ func (h *CategoryHandler) processCategoryInfo(temuProduct *temuTypes.Product) er
 }
 
 // setCategoryBasedProperties 根据分类设置产品属性
-func (h *CategoryHandler) setCategoryBasedProperties(temuProduct *temuTypes.Product, catID int) {
+func (h *CategoryHandler) setCategoryBasedProperties(temuProduct *models.Product, catID int) {
 	h.logger.Infof("根据分类设置产品属性: CatID=%d", catID)
 
 	// 不要覆盖TEMU API返回的IsClothes值！
@@ -102,7 +102,7 @@ func (h *CategoryHandler) setCategoryBasedProperties(temuProduct *temuTypes.Prod
 }
 
 // setCategoryBasedServicePromise 根据分类设置服务承诺
-func (h *CategoryHandler) setCategoryBasedServicePromise(temuProduct *temuTypes.Product, catID int) {
+func (h *CategoryHandler) setCategoryBasedServicePromise(temuProduct *models.Product, catID int) {
 	h.logger.Infof("根据分类设置服务承诺: CatID=%d", catID)
 
 	// 根据IsClothes标志设置发货时限（而不是根据CatID范围）

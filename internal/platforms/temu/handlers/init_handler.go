@@ -3,8 +3,8 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -41,14 +41,14 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 	}
 
 	// 初始化TEMU产品结构体
-	temuProduct := &types.Product{
+	temuProduct := &models.Product{
 		CanSave: boolPtr(true),
-		Extra: types.ExtraInfo{
+		Extra: models.ExtraInfo{
 			CreateEmptyGoods: true,
 			Tab:              1,
 			CurrentTab:       1,
 		},
-		GoodsBasic: types.GoodsBasicInfo{
+		GoodsBasic: models.GoodsBasicInfo{
 			Lang:                   "en",
 			AllowSite:              []int{100}, // 默认美国站点
 			GoodsType:              1,
@@ -59,19 +59,19 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 			NeedAccessoryInfo:      true,
 			SupportCustomizedGoods: true,
 		},
-		GoodsSaleInfo: types.GoodsSaleInfo{
+		GoodsSaleInfo: models.GoodsSaleInfo{
 			GoodsPattern: 0,
 		},
-		GoodsServicePromise: types.ServicePromise{
+		GoodsServicePromise: models.ServicePromise{
 			ShipmentLimitSecond: 2, // 24小时
 			FulfillmentType:     1,
 		},
-		GoodsExtensionInfo: types.ExtensionInfo{
+		GoodsExtensionInfo: models.ExtensionInfo{
 			GoodsDesc:    "",
 			BulletPoints: make([]string, 0),
-			CertificationInfo: types.CertificationInfo{
-				ExtraTemplate: types.ExtraTemplate{
-					ExtraTemplateDetailList: []types.ExtraTemplateDetail{
+			CertificationInfo: models.CertificationInfo{
+				ExtraTemplate: models.ExtraTemplate{
+					ExtraTemplateDetailList: []models.ExtraTemplateDetail{
 						{
 							TemplateID: 1,
 							Properties: map[string][]int{
@@ -86,7 +86,7 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 		PlatformExpressBill:    boolPtr(false),
 		SupportMaxRetailPrice:  boolPtr(true),
 		ReplicateToRelateGoods: boolPtr(false),
-		SkcList:                make([]types.Skc, 0),
+		SkcList:                make([]models.Skc, 0),
 	}
 
 	// 直接赋值到强类型字段（这就是你想要的方式！）

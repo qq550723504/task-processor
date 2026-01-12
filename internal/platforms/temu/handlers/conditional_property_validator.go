@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -19,7 +20,7 @@ func NewConditionalPropertyValidator(logger *logrus.Entry) *ConditionalPropertyV
 }
 
 // ValidateAndCleanConditionalProperties 验证和清理条件属性依赖关系
-func (v *ConditionalPropertyValidator) ValidateAndCleanConditionalProperties(properties *[]types.PropertyItem, templateProps []types.TemplateRespGoodsProperty) {
+func (v *ConditionalPropertyValidator) ValidateAndCleanConditionalProperties(properties *[]models.PropertyItem, templateProps []types.TemplateRespGoodsProperty) {
 	v.logger.Info("🔍 开始验证条件属性依赖关系")
 
 	// 创建模板属性映射
@@ -29,7 +30,7 @@ func (v *ConditionalPropertyValidator) ValidateAndCleanConditionalProperties(pro
 	}
 
 	// 创建当前属性值映射（按TemplatePID）
-	currentValues := make(map[int]types.PropertyItem)
+	currentValues := make(map[int]models.PropertyItem)
 	for _, prop := range *properties {
 		if prop.TemplatePid != 0 {
 			currentValues[prop.TemplatePid] = prop
@@ -37,7 +38,7 @@ func (v *ConditionalPropertyValidator) ValidateAndCleanConditionalProperties(pro
 	}
 
 	// 检查每个条件属性
-	validProperties := make([]types.PropertyItem, 0, len(*properties))
+	validProperties := make([]models.PropertyItem, 0, len(*properties))
 	removedCount := 0
 
 	for i, prop := range *properties {
@@ -89,7 +90,7 @@ func (v *ConditionalPropertyValidator) ValidateAndCleanConditionalProperties(pro
 
 // checkParentCondition 检查父属性条件是否满足
 func (v *ConditionalPropertyValidator) checkParentCondition(parentList types.TemplatePropertyValueParent,
-	currentValues map[int]types.PropertyItem, templateMap map[int]types.TemplateRespGoodsProperty) bool {
+	currentValues map[int]models.PropertyItem, templateMap map[int]types.TemplateRespGoodsProperty) bool {
 
 	// 找到父属性的TemplatePID
 	var parentTemplatePID int

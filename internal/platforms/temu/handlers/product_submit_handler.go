@@ -6,6 +6,7 @@ import (
 	"strings"
 	"task-processor/internal/pipeline"
 	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 )
@@ -21,15 +22,15 @@ type ProductSubmitHandler struct {
 
 // ProductSubmitRequest TEMU产品提交请求结构体（完整版）
 type ProductSubmitRequest struct {
-	GoodsBasic            types.GoodsBasic          `json:"goods_basic"`
-	GoodsSaleInfo         types.GoodsSaleInfo       `json:"goods_sale_info"`
-	GoodsServicePromise   types.GoodsServicePromise `json:"goods_service_promise"`
-	GoodsExtensionInfo    types.GoodsExtensionInfo  `json:"goods_extension_info"`
-	Extra                 types.Extra               `json:"extra"`
-	CanSave               bool                      `json:"can_save"`
-	SupportMaxRetailPrice bool                      `json:"support_max_retail_price"`
-	PlatformExpressBill   bool                      `json:"platform_express_bill"`
-	SkcList               []types.Skc               `json:"skc_list"`
+	GoodsBasic            models.GoodsBasicInfo `json:"goods_basic"`
+	GoodsSaleInfo         models.GoodsSaleInfo  `json:"goods_sale_info"`
+	GoodsServicePromise   models.ServicePromise `json:"goods_service_promise"`
+	GoodsExtensionInfo    models.ExtensionInfo  `json:"goods_extension_info"`
+	Extra                 models.Extra          `json:"extra"`
+	CanSave               bool                  `json:"can_save"`
+	SupportMaxRetailPrice bool                  `json:"support_max_retail_price"`
+	PlatformExpressBill   bool                  `json:"platform_express_bill"`
+	SkcList               []models.Skc          `json:"skc_list"`
 	//BatchSkuInfo          types.BatchSkuInfo        `json:"batch_sku_info"`
 }
 
@@ -268,7 +269,7 @@ func (h *ProductSubmitHandler) buildSubmitRequest(temuCtx *temucontext.TemuTaskC
 	temuProduct := temuCtx.TemuProduct
 
 	// 转换Extra类型
-	extra := types.Extra{
+	extra := models.Extra{
 		Tab:              temuProduct.Extra.Tab,
 		MinSkuImageSize:  temuProduct.Extra.MinSkuImageSize,
 		MaxSkuImageSize:  temuProduct.Extra.MaxSkuImageSize,
@@ -450,7 +451,7 @@ func (h *ProductSubmitHandler) autoFixSpecConfiguration(temuCtx *temucontext.Tem
 				parentSpecName := h.findParentSpecName(temuCtx, parentSpecID)
 
 				// 创建规格属性配置
-				specProp := types.GoodSpecProperty{
+				specProp := models.GoodSpecProperty{
 					Value:          specName,
 					SpecID:         specID,
 					ParentSpecID:   parentSpecID,

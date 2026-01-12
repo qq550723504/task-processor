@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 	temuUtils "task-processor/internal/platforms/temu/utils"
@@ -33,7 +34,7 @@ func NewSkuItemBuilder(logger *logrus.Entry, priceHandler *PriceHandler, imagePr
 }
 
 // buildSkuFromVariantWithAI 使用AI映射从变体构建SKU（兼容接口）
-func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx pipeline.TaskContext, variant *model.Product, aiSku types.AIGeneratedSku) types.Sku {
+func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx pipeline.TaskContext, variant *model.Product, aiSku types.AIGeneratedSku) models.Sku {
 	// 类型断言为强类型上下文
 	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
 		return ib.buildSkuFromVariantWithAITemu(temuCtx, variant, aiSku)
@@ -44,7 +45,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx pipeline.TaskContext, va
 }
 
 // buildSkuFromVariantWithAITemu 使用AI映射从变体构建SKU（强类型上下文）
-func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku) types.Sku {
+func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku) models.Sku {
 	// 使用利润规则计算最终销售价格（已经应用了利润倍数）
 	finalSalePrice := ib.priceHandler.CalculateVariantPrice(temuCtx, variant)
 	basePrice := float64(finalSalePrice) / 100 // 转换为元用于显示
@@ -81,7 +82,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	if hasTemp {
 		ib.logger.Error("❌ 存在未解析的临时规格ID，这表明resolveTemporarySpecIDs没有正确工作")
 		// 返回空规格的SKU，让后续流程能够检测到问题
-		specList = []types.SpecInfo{}
+		specList = []models.SpecInfo{}
 	}
 
 	if err := ib.specHandler.ValidateSpecs(specList); err != nil {
@@ -122,7 +123,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	}
 
 	// 使用AI判断的多件装信息
-	multiplePackage := types.MultiplePackage{
+	multiplePackage := models.MultiplePackage{
 		SkuClassification:  aiSku.SkuClassification,
 		NumberOfPieces:     aiSku.NumberOfPieces,
 		IndividuallyPacked: aiSku.IndividuallyPacked,
@@ -177,14 +178,14 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	dimensionGallery, err := ib.imageProcessor.BuildDimensionImagesWithUpload(temuCtx, variant)
 	if err != nil {
 		ib.logger.Errorf("❌ 构建尺寸图片失败: %v", err)
-		dimensionGallery = []types.ImageInfo{} // 使用空数组作为降级处理
+		dimensionGallery = []models.ImageInfo{} // 使用空数组作为降级处理
 	}
 
 	// CarouselGallery: 使用非标注的轮播图（排除标注过的图片）
 	carouselGallery, err := ib.imageProcessor.BuildCarouselImagesWithoutAnnotation(temuCtx, variant)
 	if err != nil {
 		ib.logger.Errorf("❌ 构建轮播图片失败: %v", err)
-		carouselGallery = []types.ImageInfo{} // 使用空数组作为降级处理
+		carouselGallery = []models.ImageInfo{} // 使用空数组作为降级处理
 	}
 
 	// 限制图片总数不超过10张
@@ -196,7 +197,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 		if remainingSlots < 0 {
 			// 如果尺寸图就超过10张，只保留前10张尺寸图
 			dimensionGallery = dimensionGallery[:maxTotalImages]
-			carouselGallery = []types.ImageInfo{}
+			carouselGallery = []models.ImageInfo{}
 			ib.logger.Warnf("⚠️ SKU图片总数超限，尺寸图=%d，已截断为%d张，轮播图清空",
 				len(dimensionGallery), maxTotalImages)
 		} else if remainingSlots < len(carouselGallery) {
@@ -211,18 +212,18 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	marketPrice := int(finalSalePrice * 2)                               // 市场价（分）
 	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100) // 市场价字符串（元）
 
-	return types.Sku{
+	return models.Sku{
 		// 必需字段（按照正确的JSON格式）
 		Spec:                     specList,
 		Currency:                 "USD",
 		UseEstimateSupplierPrice: true, // 根据正确JSON设置为true
 		DimensionGallery:         dimensionGallery,
 		CarouselGallery:          carouselGallery,
-		FoodIngredientGallery:    []types.ImageInfo{},         // 空数组
+		FoodIngredientGallery:    []models.ImageInfo{},        // 空数组
 		Quantity:                 fmt.Sprintf("%d", quantity), // 转换为字符串
-		ProductExpressInfo: types.ProductExpressInfo{
-			WeightInfo: types.WeightInfo{Weight: weight},
-			VolumeInfo: types.VolumeInfo{Length: length, Width: width, Height: height},
+		ProductExpressInfo: models.ProductExpressInfo{
+			WeightInfo: models.WeightInfo{Weight: weight},
+			VolumeInfo: models.VolumeInfo{Length: length, Width: width, Height: height},
 		},
 		SupplierPriceStr:       fmt.Sprintf("%.2f", basePrice), // 保留两位小数，单位：元
 		OutSkuSN:               outSkuSN,
@@ -238,7 +239,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 }
 
 // buildSkuFromVariantBasic 基本SKU构建（不依赖上下文）
-func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku types.AIGeneratedSku) types.Sku {
+func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku types.AIGeneratedSku) models.Sku {
 	// 基本实现，使用默认值
 	asin := variant.Asin
 	outSkuSN := asin // 简单使用ASIN作为SKU
@@ -258,7 +259,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 	height := temuUtils.FormatDimension(aiSku.Height)
 
 	// 使用AI判断的多件装信息
-	multiplePackage := types.MultiplePackage{
+	multiplePackage := models.MultiplePackage{
 		SkuClassification:  aiSku.SkuClassification,
 		NumberOfPieces:     aiSku.NumberOfPieces,
 		IndividuallyPacked: aiSku.IndividuallyPacked,
@@ -289,24 +290,24 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 	}
 
 	// 基本图片处理（空数组）
-	dimensionGallery := []types.ImageInfo{}
-	carouselGallery := []types.ImageInfo{}
+	dimensionGallery := []models.ImageInfo{}
+	carouselGallery := []models.ImageInfo{}
 
 	// 计算市场价：最终销售价格 * 2
 	marketPrice := int(finalSalePrice * 2)
 	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
 
-	return types.Sku{
+	return models.Sku{
 		Spec:                     specList,
 		Currency:                 "USD",
 		UseEstimateSupplierPrice: true,
 		DimensionGallery:         dimensionGallery,
 		CarouselGallery:          carouselGallery,
-		FoodIngredientGallery:    []types.ImageInfo{},
+		FoodIngredientGallery:    []models.ImageInfo{},
 		Quantity:                 fmt.Sprintf("%d", quantity),
-		ProductExpressInfo: types.ProductExpressInfo{
-			WeightInfo: types.WeightInfo{Weight: weight},
-			VolumeInfo: types.VolumeInfo{Length: length, Width: width, Height: height},
+		ProductExpressInfo: models.ProductExpressInfo{
+			WeightInfo: models.WeightInfo{Weight: weight},
+			VolumeInfo: models.VolumeInfo{Length: length, Width: width, Height: height},
 		},
 		SupplierPriceStr:       fmt.Sprintf("%.2f", basePrice),
 		OutSkuSN:               outSkuSN,
@@ -411,14 +412,14 @@ func (ib *SkuItemBuilder) generateSkuFromStoreConfigTemu(temuCtx *temucontext.Te
 }
 
 // deduplicateSpecs 去重规格，确保每个parent_spec_id只出现一次
-func (ib *SkuItemBuilder) deduplicateSpecs(specs []types.SpecInfo) []types.SpecInfo {
+func (ib *SkuItemBuilder) deduplicateSpecs(specs []models.SpecInfo) []models.SpecInfo {
 	if len(specs) <= 1 {
 		return specs
 	}
 
 	// 使用map记录每个parent_spec_id的第一个规格
-	seenParentSpecs := make(map[string]types.SpecInfo)
-	var result []types.SpecInfo
+	seenParentSpecs := make(map[string]models.SpecInfo)
+	var result []models.SpecInfo
 
 	for _, spec := range specs {
 		if _, exists := seenParentSpecs[spec.ParentSpecID]; !exists {

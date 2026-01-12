@@ -4,6 +4,7 @@ import (
 	"context"
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 	"time"
@@ -225,7 +226,7 @@ func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *
 	}).Debug("开始初始化API客户端")
 
 	// 创建API客户端，会自动加载Cookie
-	apiClient := NewAPIClient(task.TenantID, storeID, managementClient)
+	apiClient := api.NewAPIClient(task.TenantID, storeID, managementClient)
 
 	// 检查cookie加载状态
 	if apiClient.HasCookies() {

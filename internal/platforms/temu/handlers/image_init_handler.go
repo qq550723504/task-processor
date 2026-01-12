@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 	"task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
@@ -52,10 +52,10 @@ func (h *ImageInitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 	}
 
 	// 初始化主图（DetailImage）
-	var detailImages []types.ImageInfo
+	var detailImages []models.ImageInfo
 	for _, imgURL := range amazonProduct.Images {
 		if imgURL != "" {
-			detailImages = append(detailImages, types.ImageInfo{
+			detailImages = append(detailImages, models.ImageInfo{
 				URL:    imgURL,
 				Width:  0, // 尺寸将在验证时获取
 				Height: 0,
@@ -76,7 +76,7 @@ func (h *ImageInitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 }
 
 // initSkuImages 初始化SKU图片
-func (h *ImageInitHandler) initSkuImages(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) {
+func (h *ImageInitHandler) initSkuImages(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) {
 	if len(temuProduct.SkcList) == 0 {
 		h.logger.Debug("暂无SKU，跳过SKU图片初始化")
 		return
@@ -100,11 +100,11 @@ func (h *ImageInitHandler) initSkuImages(temuCtx *temucontext.TemuTaskContext, t
 			}
 
 			// 从Amazon产品中获取图片
-			var carouselImages []types.ImageInfo
+			var carouselImages []models.ImageInfo
 			if amazonProduct != nil {
 				for _, imgURL := range amazonProduct.Images {
 					if imgURL != "" {
-						carouselImages = append(carouselImages, types.ImageInfo{
+						carouselImages = append(carouselImages, models.ImageInfo{
 							URL:    imgURL,
 							Width:  0,
 							Height: 0,

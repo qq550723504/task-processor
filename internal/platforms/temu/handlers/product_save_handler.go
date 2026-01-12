@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,16 +20,16 @@ type ProductSaveHandler struct {
 
 // ProductSaveRequest TEMU产品保存请求结构体
 type ProductSaveRequest struct {
-	GoodsBasic            types.GoodsBasic          `json:"goods_basic"`
-	GoodsSaleInfo         types.GoodsSaleInfo       `json:"goods_sale_info"`
-	GoodsServicePromise   types.GoodsServicePromise `json:"goods_service_promise"`
-	GoodsExtensionInfo    types.GoodsExtensionInfo  `json:"goods_extension_info"`
-	Extra                 types.Extra               `json:"extra"`
-	CanSave               bool                      `json:"can_save"`
-	SupportMaxRetailPrice bool                      `json:"support_max_retail_price"`
-	PlatformExpressBill   bool                      `json:"platform_express_bill"`
-	SkcList               []types.Skc               `json:"skc_list"`
-	BatchSkuInfo          types.BatchSkuInfo        `json:"batch_sku_info"`
+	GoodsBasic            models.GoodsBasicInfo `json:"goods_basic"`
+	GoodsSaleInfo         models.GoodsSaleInfo  `json:"goods_sale_info"`
+	GoodsServicePromise   models.ServicePromise `json:"goods_service_promise"`
+	GoodsExtensionInfo    models.ExtensionInfo  `json:"goods_extension_info"`
+	Extra                 models.Extra          `json:"extra"`
+	CanSave               bool                  `json:"can_save"`
+	SupportMaxRetailPrice bool                  `json:"support_max_retail_price"`
+	PlatformExpressBill   bool                  `json:"platform_express_bill"`
+	SkcList               []models.Skc          `json:"skc_list"`
+	BatchSkuInfo          models.BatchSkuInfo   `json:"batch_sku_info"`
 }
 
 // ProductSaveResponse TEMU产品保存响应结构体
@@ -180,7 +180,7 @@ func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskConte
 	temuProduct := temuCtx.TemuProduct
 
 	// 转换Extra类型
-	extra := types.Extra{
+	extra := models.Extra{
 		Tab:              temuProduct.Extra.Tab,
 		MinSkuImageSize:  temuProduct.Extra.MinSkuImageSize,
 		MaxSkuImageSize:  temuProduct.Extra.MaxSkuImageSize,
@@ -243,7 +243,7 @@ func (h *ProductSaveHandler) updateProductWithSaveResult(temuCtx *temucontext.Te
 }
 
 // getTotalSkuCount 获取总SKU数量
-func (h *ProductSaveHandler) getTotalSkuCount(skcList []types.Skc) int {
+func (h *ProductSaveHandler) getTotalSkuCount(skcList []models.Skc) int {
 	total := 0
 	for _, skc := range skcList {
 		total += len(skc.SkuList)

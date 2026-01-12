@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -23,7 +24,7 @@ func NewPropertyValidator(logger *logrus.Entry) *PropertyValidator {
 }
 
 // ValidateProperties 验证属性列表
-func (v *PropertyValidator) ValidateProperties(properties []types.PropertyItem, templateProps []types.GoodsProperty) error {
+func (v *PropertyValidator) ValidateProperties(properties []models.PropertyItem, templateProps []types.GoodsProperty) error {
 	v.logger.Info("🔍 开始验证属性列表")
 
 	// 验证属性完整性
@@ -41,7 +42,7 @@ func (v *PropertyValidator) ValidateProperties(properties []types.PropertyItem, 
 }
 
 // validatePropertyCompleteness 验证属性完整性
-func (v *PropertyValidator) validatePropertyCompleteness(properties []types.PropertyItem) error {
+func (v *PropertyValidator) validatePropertyCompleteness(properties []models.PropertyItem) error {
 	for i, prop := range properties {
 		if prop.Pid == 0 {
 			return fmt.Errorf("属性 %d 缺少PID", i)
@@ -56,7 +57,7 @@ func (v *PropertyValidator) validatePropertyCompleteness(properties []types.Prop
 }
 
 // validateRequiredProperties 验证必填属性
-func (v *PropertyValidator) validateRequiredProperties(properties []types.PropertyItem, templateProps []types.GoodsProperty) error {
+func (v *PropertyValidator) validateRequiredProperties(properties []models.PropertyItem, templateProps []types.GoodsProperty) error {
 	// 创建已填充属性的映射
 	filledMap := make(map[string]bool)
 	for _, prop := range properties {
@@ -83,7 +84,7 @@ func (v *PropertyValidator) validateRequiredProperties(properties []types.Proper
 }
 
 // ValidatePropertyValue 验证单个属性值
-func (v *PropertyValidator) ValidatePropertyValue(prop types.PropertyItem, templateProp types.GoodsProperty) error {
+func (v *PropertyValidator) ValidatePropertyValue(prop models.PropertyItem, templateProp types.GoodsProperty) error {
 	// 验证属性ID匹配
 	if prop.Pid != templateProp.PID {
 		return fmt.Errorf("属性ID不匹配: 期望 %d，实际 %d", templateProp.PID, prop.Pid)
@@ -109,7 +110,7 @@ func (v *PropertyValidator) ValidatePropertyValue(prop types.PropertyItem, templ
 }
 
 // IsPropertyFilled 检查属性是否已填充
-func (v *PropertyValidator) IsPropertyFilled(properties []types.PropertyItem, pid, refPid int) bool {
+func (v *PropertyValidator) IsPropertyFilled(properties []models.PropertyItem, pid, refPid int) bool {
 	for _, prop := range properties {
 		if prop.Pid == pid && prop.RefPid == refPid {
 			return true
@@ -119,7 +120,7 @@ func (v *PropertyValidator) IsPropertyFilled(properties []types.PropertyItem, pi
 }
 
 // GetPropertyByPID 根据PID获取属性
-func (v *PropertyValidator) GetPropertyByPID(properties []types.PropertyItem, pid int) *types.PropertyItem {
+func (v *PropertyValidator) GetPropertyByPID(properties []models.PropertyItem, pid int) *models.PropertyItem {
 	for _, prop := range properties {
 		if prop.Pid == pid {
 			return &prop
@@ -135,7 +136,7 @@ func (v *PropertyValidator) GetPropertyByPID(properties []types.PropertyItem, pi
 //
 // 返回值:
 //   - []types.PropertyItem: 验证和修复后的属性列表
-func (v *PropertyValidator) ValidateAndFixProperties(properties []types.PropertyItem, data types.PropertyMappingData) []types.PropertyItem {
+func (v *PropertyValidator) ValidateAndFixProperties(properties []models.PropertyItem, data types.PropertyMappingData) []models.PropertyItem {
 	v.logger.Info("🔍 开始严格验证和修复AI返回的属性")
 
 	// 创建专门的修复器
@@ -154,7 +155,7 @@ func (v *PropertyValidator) ValidateAndFixProperties(properties []types.Property
 	filteredProperties := v.filterByPropertyRelations(fixedProperties, data)
 
 	// 进行最终验证
-	validatedProperties := make([]types.PropertyItem, 0, len(filteredProperties))
+	validatedProperties := make([]models.PropertyItem, 0, len(filteredProperties))
 
 	for i, prop := range filteredProperties {
 		v.logger.Debugf("最终验证属性 %d: PID=%d, VID=%d, Value=%s", i, prop.Pid, prop.Vid, prop.Value)
@@ -239,7 +240,7 @@ func (v *PropertyValidator) ValidateAndFixProperties(properties []types.Property
 }
 
 // fixPropertyValue 修复单个属性值
-func (v *PropertyValidator) fixPropertyValue(prop types.PropertyItem, templateProp types.GoodsProperty) *types.PropertyItem {
+func (v *PropertyValidator) fixPropertyValue(prop models.PropertyItem, templateProp types.GoodsProperty) *models.PropertyItem {
 	fixedProp := prop
 
 	// 设置基本信息
@@ -261,7 +262,7 @@ func (v *PropertyValidator) fixPropertyValue(prop types.PropertyItem, templatePr
 }
 
 // fixSelectionProperty 修复选择类型属性
-func (v *PropertyValidator) fixSelectionProperty(prop types.PropertyItem, templateProp types.GoodsProperty) *types.PropertyItem {
+func (v *PropertyValidator) fixSelectionProperty(prop models.PropertyItem, templateProp types.GoodsProperty) *models.PropertyItem {
 	// 如果已有有效的VID，验证是否在候选列表中
 	if prop.Vid != 0 {
 		for _, value := range templateProp.Values {
@@ -296,7 +297,7 @@ func (v *PropertyValidator) fixSelectionProperty(prop types.PropertyItem, templa
 }
 
 // fixNumericProperty 修复数值类型属性
-func (v *PropertyValidator) fixNumericProperty(prop types.PropertyItem, templateProp types.GoodsProperty) *types.PropertyItem {
+func (v *PropertyValidator) fixNumericProperty(prop models.PropertyItem, templateProp types.GoodsProperty) *models.PropertyItem {
 	// 如果有候选值列表，按选择类型处理
 	if len(templateProp.Values) > 0 {
 		return v.fixSelectionProperty(prop, templateProp)
@@ -321,7 +322,7 @@ func (v *PropertyValidator) fixNumericProperty(prop types.PropertyItem, template
 }
 
 // fixTextProperty 修复文本类型属性
-func (v *PropertyValidator) fixTextProperty(prop types.PropertyItem, templateProp types.GoodsProperty) *types.PropertyItem {
+func (v *PropertyValidator) fixTextProperty(prop models.PropertyItem, templateProp types.GoodsProperty) *models.PropertyItem {
 	// 如果有候选值列表，按选择类型处理
 	if len(templateProp.Values) > 0 {
 		return v.fixSelectionProperty(prop, templateProp)

@@ -3,7 +3,7 @@ package utils
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/platforms/temu/api"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +21,7 @@ func NewImageDimensionValidator() *ImageDimensionValidator {
 }
 
 // ValidateProductImages 验证产品所有图片尺寸
-func (v *ImageDimensionValidator) ValidateProductImages(product *types.Product) error {
+func (v *ImageDimensionValidator) ValidateProductImages(product *api.Product) error {
 	v.logger.Info("开始验证产品图片尺寸")
 
 	// 验证主图
@@ -39,7 +39,7 @@ func (v *ImageDimensionValidator) ValidateProductImages(product *types.Product) 
 }
 
 // validateMainImages 验证主图尺寸
-func (v *ImageDimensionValidator) validateMainImages(product *types.Product) error {
+func (v *ImageDimensionValidator) validateMainImages(product *api.Product) error {
 	mainImages := product.GoodsBasic.GoodsGallery.DetailImage
 	isClothes := product.GoodsBasic.IsClothes
 
@@ -53,7 +53,7 @@ func (v *ImageDimensionValidator) validateMainImages(product *types.Product) err
 }
 
 // validateSkuImages 验证SKU图片尺寸
-func (v *ImageDimensionValidator) validateSkuImages(product *types.Product) error {
+func (v *ImageDimensionValidator) validateSkuImages(product *api.Product) error {
 	isClothes := product.GoodsBasic.IsClothes
 
 	for skcIndex, skc := range product.SkcList {
@@ -80,7 +80,7 @@ func (v *ImageDimensionValidator) validateSkuImages(product *types.Product) erro
 }
 
 // validateSingleImage 验证单张图片尺寸
-func (v *ImageDimensionValidator) validateSingleImage(img types.ImageInfo, context string, isClothes bool) error {
+func (v *ImageDimensionValidator) validateSingleImage(img api.ImageInfo, context string, isClothes bool) error {
 	if img.Width <= 0 || img.Height <= 0 {
 		return fmt.Errorf("%s 尺寸信息无效: %dx%d", context, img.Width, img.Height)
 	}

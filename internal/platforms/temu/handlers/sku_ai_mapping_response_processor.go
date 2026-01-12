@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 )
 
@@ -80,7 +81,7 @@ func (vp *SkuVariantProcessor) enforceSpecCountLimit(aiResponse *types.AISkuMapp
 	// 5. 过滤每个SKU的规格，只保留选中的维度
 	for i := range aiResponse.SkuList {
 		sku := &aiResponse.SkuList[i]
-		filteredSpecs := make([]types.SpecInfo, 0, 2)
+		filteredSpecs := make([]models.SpecInfo, 0, 2)
 
 		for _, spec := range sku.Spec {
 			if selectedSpecs[spec.ParentSpecID] {

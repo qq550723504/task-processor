@@ -3,8 +3,8 @@ package handlers
 import (
 	"fmt"
 	"strings"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -212,7 +212,7 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 	}
 
 	// 设置分类树信息
-	temuProduct.GoodsBasic.CategoryTree = types.CategoryTree{
+	temuProduct.GoodsBasic.CategoryTree = models.CategoryTree{
 		Level:        selectedCategory.Level,
 		CateType:     selectedCategory.CateType,
 		CatID:        lastLevelCatID, // 使用最深层级的分类ID

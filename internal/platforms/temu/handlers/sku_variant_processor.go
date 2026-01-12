@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -52,7 +53,7 @@ func (vp *SkuVariantProcessor) BuildVariantSkcs(temuCtx *temucontext.TemuTaskCon
 }
 
 // buildSkcsFromAIMapping 根据AI映射构建SKC
-func (vp *SkuVariantProcessor) buildSkcsFromAIMapping(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse) ([]types.Skc, error) {
+func (vp *SkuVariantProcessor) buildSkcsFromAIMapping(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse) ([]models.Skc, error) {
 	// 检查AI映射数量
 	if len(aiMapping.SkuList) != len(variants) {
 		vp.logger.Warnf("⚠️ AI映射数量(%d)与变体数量(%d)不匹配", len(aiMapping.SkuList), len(variants))
@@ -108,7 +109,7 @@ func (vp *SkuVariantProcessor) buildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 		}
 	}
 
-	var skcList []types.Skc
+	var skcList []models.Skc
 
 	// 检查是否应该创建多SKC：GoodsSpecProperties不为空且有预置规格值
 	shouldCreateMultipleSkcs := false
@@ -150,13 +151,13 @@ func (vp *SkuVariantProcessor) buildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 }
 
 // CreateDefaultSkc 创建默认SKC（用于没有变体的产品）
-func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskContext) (types.Skc, error) {
+func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskContext) (models.Skc, error) {
 	vp.logger.Info("创建默认SKC（产品没有变体）")
 
 	// 直接从强类型上下文获取Amazon产品信息
 	amazonProduct := temuCtx.GetAmazonProduct()
 	if amazonProduct == nil {
-		return types.Skc{}, fmt.Errorf("没有Amazon产品信息")
+		return models.Skc{}, fmt.Errorf("没有Amazon产品信息")
 	}
 
 	// 优先使用AISkuMappingHandler已经生成的AI映射
@@ -178,12 +179,12 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 		aiMapping, err = vp.generateAISkuMapping(temuCtx, variants)
 		if err != nil {
 			vp.logger.Errorf("❌ AI生成SKU映射失败: %v", err)
-			return types.Skc{}, fmt.Errorf("AI生成SKU映射失败: %w", err)
+			return models.Skc{}, fmt.Errorf("AI生成SKU映射失败: %w", err)
 		}
 	}
 
 	if len(aiMapping.SkuList) == 0 {
-		return types.Skc{}, fmt.Errorf("AI未生成任何SKU")
+		return models.Skc{}, fmt.Errorf("AI未生成任何SKU")
 	}
 
 	// 使用第一个AI生成的SKU
@@ -192,7 +193,7 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 	// 验证规格
 	if err := vp.specHandler.ValidateSpecs(aiSku.Spec); err != nil {
 		vp.logger.Errorf("❌ AI生成的规格验证失败: %v", err)
-		return types.Skc{}, fmt.Errorf("AI生成的规格无效: %w", err)
+		return models.Skc{}, fmt.Errorf("AI生成的规格无效: %w", err)
 	}
 
 	vp.logger.Infof("✅ AI成功生成规格: %+v", aiSku.Spec)
@@ -201,15 +202,15 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 
 	if err := vp.specResolver.ResolveTemporarySpecIDs(temuCtx, aiMapping); err != nil {
 		vp.logger.Errorf("❌ 解析规格ID失败: %v", err)
-		return types.Skc{}, fmt.Errorf("解析临时规格ID失败: %w", err)
+		return models.Skc{}, fmt.Errorf("解析临时规格ID失败: %w", err)
 	}
 	vp.logger.Info("✅ 成功解析所有临时规格ID")
 
 	// 使用AI生成的SKU构建完整的SKU
 	sku := vp.itemBuilder.buildSkuFromVariantWithAI(temuCtx, amazonProduct, aiSku)
 
-	return types.Skc{
-		SkuList: []types.Sku{sku},
+	return models.Skc{
+		SkuList: []models.Sku{sku},
 	}, nil
 }
 

@@ -4,8 +4,8 @@ package handlers
 import (
 	"fmt"
 	"path/filepath"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -55,7 +55,7 @@ func (h *ImageUploadHelpers) GetImageData(temuCtx *temucontext.TemuTaskContext, 
 }
 
 // ProcessUploadResult 处理上传结果
-func (h *ImageUploadHelpers) ProcessUploadResult(uploadResult *types.UploadResult,
+func (h *ImageUploadHelpers) ProcessUploadResult(uploadResult *models.UploadResult,
 	usePaddedImage bool, paddedWidth, paddedHeight int) (string, int, int) {
 
 	resultURL := uploadResult.ImageURL

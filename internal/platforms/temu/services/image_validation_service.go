@@ -2,14 +2,15 @@
 package services
 
 import (
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/platforms/temu/api"
+	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
 )
 
 // TemuProductProvider TEMU产品数据提供者接口（避免循环导入）
 type TemuProductProvider interface {
-	GetTemuProduct() *types.Product
+	GetTemuProduct() *api.Product
 	SetData(key string, value any)
 }
 
@@ -28,8 +29,8 @@ func NewImageValidationService() *ImageValidationService {
 }
 
 // ValidateImage 验证单张图片
-func (s *ImageValidationService) ValidateImage(imageURL string, requirement ImageRequirement) (*types.ImageValidationResult, error) {
-	result := &types.ImageValidationResult{
+func (s *ImageValidationService) ValidateImage(imageURL string, requirement ImageRequirement) (*models.ImageValidationResult, error) {
+	result := &models.ImageValidationResult{
 		URL:         imageURL,
 		IsValid:     false,
 		Violations:  make([]string, 0),

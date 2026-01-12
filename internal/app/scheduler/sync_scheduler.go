@@ -3,10 +3,8 @@ package scheduler
 import (
 	"fmt"
 	"task-processor/internal/pkg/management"
-	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein"
 	shops "task-processor/internal/platforms/shein"
-	"task-processor/internal/platforms/temu"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -18,9 +16,9 @@ type SyncScheduler struct {
 	cron            *cron.Cron
 	sheinServices   map[int64]*shein.SyncService   // storeID -> SyncService
 	sheinAPIClients map[int64]*shops.ShopAPIClient // storeID -> APIClient
-	temuAPIClients  map[int64]*temu.APIClient      // storeID -> APIClient
-	temuServices    map[int64]*temu.SyncService    // storeID -> SyncService
-	clientManager   *management.ClientManager
+	//temuAPIClients  map[int64]*temu.APIClient      // storeID -> APIClient
+	//temuServices    map[int64]*temu.SyncService    // storeID -> SyncService
+	clientManager *management.ClientManager
 }
 
 // NewSyncScheduler 创建同步调度器
@@ -29,9 +27,9 @@ func NewSyncScheduler(clientManager *management.ClientManager) *SyncScheduler {
 		cron:            cron.New(),
 		sheinServices:   make(map[int64]*shein.SyncService),
 		sheinAPIClients: make(map[int64]*shops.ShopAPIClient),
-		temuAPIClients:  make(map[int64]*temu.APIClient),
-		temuServices:    make(map[int64]*temu.SyncService),
-		clientManager:   clientManager,
+		//temuAPIClients:  make(map[int64]*temu.APIClient),
+		//temuServices:    make(map[int64]*temu.SyncService),
+		clientManager: clientManager,
 	}
 }
 
@@ -52,29 +50,29 @@ func (s *SyncScheduler) RegisterSheinStore(storeID int64, apiClient *shops.ShopA
 
 // RegisterTemuStore 注册 TEMU 店铺
 func (s *SyncScheduler) RegisterTemuStore(storeID int64, temuAPIClient interface{}) {
-	apiClient := temuAPIClient.(*temu.APIClient)
-	s.temuAPIClients[storeID] = apiClient
+	//apiClient := temuAPIClient.(*temu.APIClient)
+	//s.temuAPIClients[storeID] = apiClient
 
 	// 获取租户ID
-	tenantID := apiClient.GetTenantID()
+	//tenantID := apiClient.GetTenantID()
 
 	// 创建 repository 工厂函数
-	repositoryFactory := func(storeID, tenantID int64) api.ProductDataAPI {
-		return s.clientManager.GetProductDataClientWithTenant(storeID, tenantID)
-	}
+	// repositoryFactory := func(storeID, tenantID int64) api.ProductDataAPI {
+	// 	return s.clientManager.GetProductDataClientWithTenant(storeID, tenantID)
+	// }
 
 	// 为每个店铺创建独立的同步服务
-	syncService := temu.NewSyncService(repositoryFactory, apiClient)
+	//syncService := temu.NewSyncService(repositoryFactory, apiClient)
 
 	// 设置映射客户端，用于查询 ASIN
-	syncService.SetMappingClient(s.clientManager.GetProductImportMappingClient())
+	// syncService.SetMappingClient(s.clientManager.GetProductImportMappingClient())
 
-	s.temuServices[storeID] = syncService
+	// s.temuServices[storeID] = syncService
 
-	logrus.WithFields(logrus.Fields{
-		"store_id":  storeID,
-		"tenant_id": tenantID,
-	}).Info("注册 TEMU 店铺")
+	// logrus.WithFields(logrus.Fields{
+	// 	"store_id":  storeID,
+	// 	"tenant_id": tenantID,
+	// }).Info("注册 TEMU 店铺")
 }
 
 // Start 启动调度器
@@ -133,13 +131,13 @@ func (s *SyncScheduler) syncAllStores(frequency string) {
 	}
 
 	// 同步所有 TEMU 店铺
-	for storeID, syncService := range s.temuServices {
-		go func(sid int64, service *temu.SyncService) {
-			if err := s.syncTemuStore(sid, service); err != nil {
-				logrus.WithError(err).WithField("store_id", sid).Error("TEMU 店铺同步失败")
-			}
-		}(storeID, syncService)
-	}
+	// for storeID, syncService := range s.temuServices {
+	// 	go func(sid int64, service *temu.SyncService) {
+	// 		if err := s.syncTemuStore(sid, service); err != nil {
+	// 			logrus.WithError(err).WithField("store_id", sid).Error("TEMU 店铺同步失败")
+	// 		}
+	// 	}(storeID, syncService)
+	// }
 }
 
 // syncSheinStore 同步单个 SHEIN 店铺
@@ -182,36 +180,36 @@ func (s *SyncScheduler) syncSheinStore(storeID int64, apiClient *shops.ShopAPICl
 }
 
 // syncTemuStore 同步单个 TEMU 店铺
-func (s *SyncScheduler) syncTemuStore(storeID int64, syncService *temu.SyncService) error {
-	start := time.Now()
+// func (s *SyncScheduler) syncTemuStore(storeID int64, syncService *temu.SyncService) error {
+// 	start := time.Now()
 
-	// 从管理系统 API 获取店铺信息
-	storeInfo, err := s.clientManager.GetStoreClient().GetStore(storeID)
-	if err != nil {
-		return fmt.Errorf("获取店铺信息失败: %w", err)
-	}
+// 	// 从管理系统 API 获取店铺信息
+// 	storeInfo, err := s.clientManager.GetStoreClient().GetStore(storeID)
+// 	if err != nil {
+// 		return fmt.Errorf("获取店铺信息失败: %w", err)
+// 	}
 
-	tenantID := storeInfo.TenantID
+// 	tenantID := storeInfo.TenantID
 
-	logrus.WithFields(logrus.Fields{
-		"store_id":  storeID,
-		"tenant_id": tenantID,
-	}).Info("开始同步 TEMU 店铺")
+// 	logrus.WithFields(logrus.Fields{
+// 		"store_id":  storeID,
+// 		"tenant_id": tenantID,
+// 	}).Info("开始同步 TEMU 店铺")
 
-	count, err := syncService.SyncProducts(tenantID, storeID)
-	if err != nil {
-		return err
-	}
+// 	count, err := syncService.SyncProducts(tenantID, storeID)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	duration := time.Since(start)
-	logrus.WithFields(logrus.Fields{
-		"store_id": storeID,
-		"count":    count,
-		"duration": duration,
-	}).Info("TEMU 店铺同步完成")
+// 	duration := time.Since(start)
+// 	logrus.WithFields(logrus.Fields{
+// 		"store_id": storeID,
+// 		"count":    count,
+// 		"duration": duration,
+// 	}).Info("TEMU 店铺同步完成")
 
-	return nil
-}
+// 	return nil
+// }
 
 // SyncNow 立即同步指定店铺
 func (s *SyncScheduler) SyncNow(platform string, storeID int64) error {
@@ -230,14 +228,14 @@ func (s *SyncScheduler) SyncNow(platform string, storeID int64) error {
 		}
 		return s.syncSheinStore(storeID, apiClient)
 
-	case "TEMU":
-		syncService, ok := s.temuServices[storeID]
-		if !ok {
-			err := fmt.Errorf("TEMU 店铺 %d 未注册", storeID)
-			logrus.WithError(err).Error("店铺未注册")
-			return err
-		}
-		return s.syncTemuStore(storeID, syncService)
+	// case "TEMU":
+	// 	syncService, ok := s.temuServices[storeID]
+	// 	if !ok {
+	// 		err := fmt.Errorf("TEMU 店铺 %d 未注册", storeID)
+	// 		logrus.WithError(err).Error("店铺未注册")
+	// 		return err
+	// 	}
+	// 	return s.syncTemuStore(storeID, syncService)
 
 	default:
 		err := fmt.Errorf("不支持的平台: %s", platform)

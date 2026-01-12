@@ -3,8 +3,8 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	temuTypes "task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -181,7 +181,7 @@ func (h *CommitDetailHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 }
 
 // validateCommitInfo 验证提交信息
-func (h *CommitDetailHandler) validateCommitInfo(temuProduct *temuTypes.Product) error {
+func (h *CommitDetailHandler) validateCommitInfo(temuProduct *models.Product) error {
 	basic := temuProduct.GoodsBasic
 
 	if basic.ListingCommitID == "" {
@@ -211,7 +211,7 @@ func (h *CommitDetailHandler) validateCommitInfo(temuProduct *temuTypes.Product)
 }
 
 // queryCommitDetail 查询提交详情
-func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskContext, temuProduct *temuTypes.Product) error {
+func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) error {
 	// 获取API客户端
 	if temuCtx.APIClient == nil {
 		return fmt.Errorf("API客户端未初始化")
@@ -306,7 +306,7 @@ func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskCon
 }
 
 // updateProductFromCommitDetail 从提交详情更新产品数据
-func (h *CommitDetailHandler) updateProductFromCommitDetail(temuProduct *temuTypes.Product, result *CommitDetailResult) error {
+func (h *CommitDetailHandler) updateProductFromCommitDetail(temuProduct *models.Product, result *CommitDetailResult) error {
 	if result.GoodsBasic == nil {
 		return fmt.Errorf("商品基础信息为空")
 	}
@@ -384,7 +384,7 @@ func (h *CommitDetailHandler) updateProductFromCommitDetail(temuProduct *temuTyp
 }
 
 // updateCategoryTree 更新分类树信息
-func (h *CommitDetailHandler) updateCategoryTree(temuProduct *temuTypes.Product, tree *CommitDetailCategoryTree) {
+func (h *CommitDetailHandler) updateCategoryTree(temuProduct *models.Product, tree *CommitDetailCategoryTree) {
 	// 更新分类层级信息
 	temuProduct.GoodsBasic.CategoryTree.Level = tree.Level
 	temuProduct.GoodsBasic.CategoryTree.CateType = tree.CateType

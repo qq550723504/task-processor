@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -99,11 +100,11 @@ func (sh *SkuSpecHandler) collectNonColorSpecsForColor(aiMapping *types.AISkuMap
 }
 
 // generateNonColorSpecCombinations 生成非颜色规格的所有组合
-func (sh *SkuSpecHandler) generateNonColorSpecCombinations(dimensions map[string]*SpecDimension) [][]types.SpecInfo {
+func (sh *SkuSpecHandler) generateNonColorSpecCombinations(dimensions map[string]*SpecDimension) [][]models.SpecInfo {
 	if len(dimensions) == 0 {
 		// 如果没有非颜色规格，返回空切片（不是包含空数组的切片）
 		sh.logger.Warn("没有非颜色规格维度，返回空组合列表")
-		return [][]types.SpecInfo{}
+		return [][]models.SpecInfo{}
 	}
 
 	// 将维度转换为切片以便处理
@@ -113,23 +114,23 @@ func (sh *SkuSpecHandler) generateNonColorSpecCombinations(dimensions map[string
 	}
 
 	// 生成笛卡尔积
-	return sh.generateCartesianProduct(dimensionList, 0, []types.SpecInfo{})
+	return sh.generateCartesianProduct(dimensionList, 0, []models.SpecInfo{})
 }
 
 // generateCartesianProduct 生成笛卡尔积
-func (sh *SkuSpecHandler) generateCartesianProduct(dimensions []*SpecDimension, index int, current []types.SpecInfo) [][]types.SpecInfo {
+func (sh *SkuSpecHandler) generateCartesianProduct(dimensions []*SpecDimension, index int, current []models.SpecInfo) [][]models.SpecInfo {
 	if index == len(dimensions) {
 		// 复制当前组合
-		combination := make([]types.SpecInfo, len(current))
+		combination := make([]models.SpecInfo, len(current))
 		copy(combination, current)
-		return [][]types.SpecInfo{combination}
+		return [][]models.SpecInfo{combination}
 	}
 
-	var results [][]types.SpecInfo
+	var results [][]models.SpecInfo
 	dimension := dimensions[index]
 
 	for _, value := range dimension.Values {
-		spec := types.SpecInfo{
+		spec := models.SpecInfo{
 			ParentSpecID:   dimension.ParentSpecID,
 			ParentSpecName: dimension.ParentSpecName,
 			SpecID:         value.SpecID,
@@ -145,7 +146,7 @@ func (sh *SkuSpecHandler) generateCartesianProduct(dimensions []*SpecDimension, 
 }
 
 // createSpecCombinationKey 创建规格组合的唯一键
-func (sh *SkuSpecHandler) createSpecCombinationKey(specs []types.SpecInfo) string {
+func (sh *SkuSpecHandler) createSpecCombinationKey(specs []models.SpecInfo) string {
 	if len(specs) == 0 {
 		return "empty_spec"
 	}
@@ -158,7 +159,7 @@ func (sh *SkuSpecHandler) createSpecCombinationKey(specs []types.SpecInfo) strin
 }
 
 // createNonColorSpecKey 创建非颜色规格的键
-func (sh *SkuSpecHandler) createNonColorSpecKey(specs []types.SpecInfo) string {
+func (sh *SkuSpecHandler) createNonColorSpecKey(specs []models.SpecInfo) string {
 	var parts []string
 	for _, spec := range specs {
 		// 跳过颜色规格
@@ -173,7 +174,7 @@ func (sh *SkuSpecHandler) createNonColorSpecKey(specs []types.SpecInfo) string {
 }
 
 // createSpecCombinationKeyFromSpecs 从规格列表创建组合键
-func (sh *SkuSpecHandler) createSpecCombinationKeyFromSpecs(specs []types.SpecInfo) string {
+func (sh *SkuSpecHandler) createSpecCombinationKeyFromSpecs(specs []models.SpecInfo) string {
 	if len(specs) == 0 {
 		return "empty_spec"
 	}
@@ -243,7 +244,7 @@ func (sh *SkuSpecHandler) convertUserInputSpecsToGoodsSpecProperties(userInputSp
 }
 
 // ValidateSpecs 验证规格是否有效
-func (sh *SkuSpecHandler) ValidateSpecs(specs []types.SpecInfo) error {
+func (sh *SkuSpecHandler) ValidateSpecs(specs []models.SpecInfo) error {
 	if len(specs) == 0 {
 		return fmt.Errorf("规格列表为空")
 	}
@@ -268,10 +269,10 @@ func (sh *SkuSpecHandler) ValidateSpecs(specs []types.SpecInfo) error {
 // CreateDefaultSpec 创建默认规格（当没有规格时使用）
 // 注意：不应该使用默认规格，必须从模板中选择规格
 // 这个方法现在返回空切片并记录错误
-func (sh *SkuSpecHandler) CreateDefaultSpec(variant *model.Product) []types.SpecInfo {
+func (sh *SkuSpecHandler) CreateDefaultSpec(variant *model.Product) []models.SpecInfo {
 	sh.logger.Error("❌ 尝试创建默认规格！这是不允许的，必须使用TEMU模板中的规格")
 	sh.logger.Error("❌ 请检查AI映射是否正确生成了规格，或者模板规格是否正确配置")
 
 	// 返回空切片，让调用方知道出错了
-	return []types.SpecInfo{}
+	return []models.SpecInfo{}
 }

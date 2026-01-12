@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,7 +24,7 @@ func NewSpuValidator(logger *logrus.Entry) *SpuValidator {
 }
 
 // ValidateProductData 验证产品数据
-func (sv *SpuValidator) ValidateProductData(ctx pipeline.TaskContext, temuProduct *types.Product) error {
+func (sv *SpuValidator) ValidateProductData(ctx pipeline.TaskContext, temuProduct *models.Product) error {
 	sv.logger.Info("验证产品数据")
 
 	// 验证基本信息
@@ -83,7 +83,7 @@ func (sv *SpuValidator) ValidateProductData(ctx pipeline.TaskContext, temuProduc
 }
 
 // LogProductSummary 记录产品摘要
-func (sv *SpuValidator) LogProductSummary(ctx pipeline.TaskContext, temuProduct *types.Product) {
+func (sv *SpuValidator) LogProductSummary(ctx pipeline.TaskContext, temuProduct *models.Product) {
 	sv.logger.Info("=== 产品构建摘要 ===")
 	sv.logger.Infof("商品名称: %s", temuProduct.GoodsBasic.GoodsName)
 	sv.logger.Infof("外部商品编号: %s", temuProduct.GoodsBasic.OutGoodsSN)
@@ -112,7 +112,7 @@ func (sv *SpuValidator) LogProductSummary(ctx pipeline.TaskContext, temuProduct 
 }
 
 // getPriceRange 获取价格范围
-func (sv *SpuValidator) getPriceRange(skcList []types.Skc) (int, int) {
+func (sv *SpuValidator) getPriceRange(skcList []models.Skc) (int, int) {
 	if len(skcList) == 0 {
 		return 0, 0
 	}
@@ -141,7 +141,7 @@ func (sv *SpuValidator) getPriceRange(skcList []types.Skc) (int, int) {
 }
 
 // getTotalStock 获取总库存
-func (sv *SpuValidator) getTotalStock(skcList []types.Skc) int {
+func (sv *SpuValidator) getTotalStock(skcList []models.Skc) int {
 	total := 0
 	for _, skc := range skcList {
 		for _, sku := range skc.SkuList {

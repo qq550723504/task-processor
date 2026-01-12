@@ -6,8 +6,9 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	commonPipeline "task-processor/internal/pipeline"
-	"task-processor/internal/pkg/management/api"
-	temutypes "task-processor/internal/platforms/temu/types"
+	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/temu/api"
+	"task-processor/internal/platforms/temu/types"
 )
 
 // TemuTaskContext TEMU平台特定的任务上下文
@@ -16,14 +17,14 @@ type TemuTaskContext struct {
 
 	// TEMU特定字段（直接访问，无需getter/setter）
 	AmazonProcessor *amazon.AmazonProcessor
-	APIClient       temutypes.APIClientInterface // 使用接口避免循环依赖
+	APIClient       api.APIClientInterface // 使用接口避免循环依赖
 
 	// TEMU特定产品数据
-	TemuProduct *temutypes.Product
-	StoreInfo   *api.StoreRespDTO
+	TemuProduct *api.Product
+	StoreInfo   *management_api.StoreRespDTO
 
 	// AI处理结果
-	AISkuMapping *temutypes.AISkuMappingResponse
+	AISkuMapping *types.AISkuMappingResponse
 
 	// 模板信息
 	TemplateInfo            interface{} // 模板信息
@@ -51,8 +52,8 @@ type TemuTaskContext struct {
 	ProductDescription string            // 产品描述
 
 	// 业务规则相关
-	ProfitRule *api.ProfitRuleRespDTO // 利润规则
-	FilterRule *api.FilterRuleRespDTO // 筛选规则
+	ProfitRule *management_api.ProfitRuleRespDTO // 利润规则
+	FilterRule *management_api.FilterRuleRespDTO // 筛选规则
 
 	// 价格查询相关
 	PriceQueryResponse interface{} // 价格查询响应

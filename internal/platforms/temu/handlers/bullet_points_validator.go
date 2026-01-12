@@ -7,8 +7,8 @@ import (
 	"unicode"
 
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -304,7 +304,7 @@ func (h *BulletPointsValidator) checkForKeyFeatures(points []string) bool {
 }
 
 // generateDefaultBulletPoints 生成默认要点
-func (h *BulletPointsValidator) generateDefaultBulletPoints(temuCtx *temucontext.TemuTaskContext, temuProduct *types.Product) []string {
+func (h *BulletPointsValidator) generateDefaultBulletPoints(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) []string {
 	productName := temuProduct.GoodsBasic.GoodsName
 
 	// 基于产品名称生成默认要点

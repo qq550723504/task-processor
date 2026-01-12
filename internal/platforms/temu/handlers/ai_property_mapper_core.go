@@ -9,6 +9,7 @@ import (
 
 	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -89,7 +90,7 @@ func (m *AIPropertyMapper) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 }
 
 // BuildGoodsProperties 构建商品属性（使用AI智能映射）
-func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskContext, ext *types.ExtensionInfo) error {
+func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskContext, ext *models.ExtensionInfo) error {
 	// 获取模板信息
 	templateInfo, exists := GetTemplateInfoFromContext(temuCtx)
 	if !exists {
@@ -133,7 +134,7 @@ func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskCon
 	validatedProperties := m.valueFixer.FixAllInvalidProperties(mappedProperties, templateInfo.GoodsProperties)
 
 	// 最终验证确保所有属性都有效
-	finalProperties := make([]types.PropertyItem, 0, len(validatedProperties))
+	finalProperties := make([]models.PropertyItem, 0, len(validatedProperties))
 	for _, prop := range validatedProperties {
 		// 查找模板属性
 		var templateProp *types.TemplateRespGoodsProperty
@@ -277,7 +278,7 @@ func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templatePr
 
 // enrichPropertiesWithTemplateInfo 为AI返回的属性补充模板相关字段
 // 修复template_module_id字段缺失导致TEMU API忽略属性的问题
-func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []types.PropertyItem, templateProps []types.TemplateRespGoodsProperty) {
+func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.PropertyItem, templateProps []types.TemplateRespGoodsProperty) {
 	m.logger.Info("🔧 开始为AI属性补充模板信息")
 	m.logger.Infof("🔧 AI返回属性数量: %d, 模板属性数量: %d", len(properties), len(templateProps))
 
@@ -398,7 +399,7 @@ func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []types.P
 
 // selectBestTemplate 从多个相同PID的模板中选择最佳匹配
 // 改进的智能选择策略，避免硬编码，通过通用的匹配算法解决属性选择问题
-func (m *AIPropertyMapper) selectBestTemplate(prop *types.PropertyItem, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
+func (m *AIPropertyMapper) selectBestTemplate(prop *models.PropertyItem, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
 	m.logger.Debugf("🎯 为PID=%d选择最佳模板，候选数量: %d", prop.Pid, len(templates))
 
 	// 策略1: 通过VID精确匹配（最高优先级）
@@ -506,7 +507,7 @@ func (m *AIPropertyMapper) hasKeywordMatch(propValue, templateValue string) bool
 }
 
 // selectByDependency 根据依赖关系选择模板（通用依赖关系处理）
-func (m *AIPropertyMapper) selectByDependency(prop *types.PropertyItem, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
+func (m *AIPropertyMapper) selectByDependency(prop *models.PropertyItem, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
 	// 对于条件属性，检查是否有合适的父依赖
 	for _, template := range templates {
 		if len(template.TemplatePropertyValueParentList) > 0 {
@@ -521,7 +522,7 @@ func (m *AIPropertyMapper) selectByDependency(prop *types.PropertyItem, template
 }
 
 // isDependencyReasonable 检查依赖关系是否合理（通用依赖关系验证）
-func (m *AIPropertyMapper) isDependencyReasonable(prop *types.PropertyItem, template types.TemplateRespGoodsProperty) bool {
+func (m *AIPropertyMapper) isDependencyReasonable(prop *models.PropertyItem, template types.TemplateRespGoodsProperty) bool {
 	// 通用的依赖关系检查：如果属性值与模板名称或候选值相关，则认为依赖关系合理
 	propValue := strings.ToLower(prop.Value)
 	templateName := strings.ToLower(template.Name)

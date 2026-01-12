@@ -1,9 +1,12 @@
 package handlers
 
-import "task-processor/internal/platforms/temu/types"
+import (
+	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/platforms/temu/types"
+)
 
 // filterByPropertyRelations 根据属性关联关系过滤属性（基于ShowCondition）
-func (v *PropertyValidator) filterByPropertyRelations(properties []types.PropertyItem, data types.PropertyMappingData) []types.PropertyItem {
+func (v *PropertyValidator) filterByPropertyRelations(properties []models.PropertyItem, data types.PropertyMappingData) []models.PropertyItem {
 	v.logger.Info("开始应用属性关联过滤规则（基于ShowCondition）")
 
 	// 创建RefPID到已选择VID的映射
@@ -28,7 +31,7 @@ func (v *PropertyValidator) filterByPropertyRelations(properties []types.Propert
 	}
 
 	// 过滤属性
-	var filteredProperties []types.PropertyItem
+	var filteredProperties []models.PropertyItem
 
 	for _, prop := range properties {
 		templateProp, exists := pidToTemplate[prop.Pid]

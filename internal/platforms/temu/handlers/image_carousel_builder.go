@@ -3,8 +3,8 @@ package handlers
 
 import (
 	"task-processor/internal/domain/model"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -28,7 +28,7 @@ func NewImageCarouselBuilder() *ImageCarouselBuilder {
 }
 
 // BuildCarouselImagesWithoutAnnotation 构建轮播图片（排除标注过的图片）
-func (icb *ImageCarouselBuilder) BuildCarouselImagesWithoutAnnotation(temuCtx *temucontext.TemuTaskContext, variant *model.Product) []types.ImageInfo {
+func (icb *ImageCarouselBuilder) BuildCarouselImagesWithoutAnnotation(temuCtx *temucontext.TemuTaskContext, variant *model.Product) []models.ImageInfo {
 	// 收集需要上传的图片URL，但排除用于标注的图片
 	var imageURLs []string
 
@@ -49,7 +49,7 @@ func (icb *ImageCarouselBuilder) BuildCarouselImagesWithoutAnnotation(temuCtx *t
 
 	if len(imageURLs) == 0 {
 		icb.logger.Warn("⚠️ 排除标注图片后，没有可用的轮播图片")
-		return []types.ImageInfo{}
+		return []models.ImageInfo{}
 	}
 
 	// 限制图片数量不超过9张（为尺寸图预留1张位置）
@@ -68,7 +68,7 @@ func (icb *ImageCarouselBuilder) BuildCarouselImagesWithoutAnnotation(temuCtx *t
 }
 
 // BuildVariantImagesWithUpload 构建变体图片并上传到TEMU
-func (icb *ImageCarouselBuilder) BuildVariantImagesWithUpload(temuCtx *temucontext.TemuTaskContext, variant *model.Product) []types.ImageInfo {
+func (icb *ImageCarouselBuilder) BuildVariantImagesWithUpload(temuCtx *temucontext.TemuTaskContext, variant *model.Product) []models.ImageInfo {
 	// 收集需要上传的图片URL
 	var imageURLs []string
 	for _, img := range variant.Images {
@@ -78,7 +78,7 @@ func (icb *ImageCarouselBuilder) BuildVariantImagesWithUpload(temuCtx *temuconte
 	}
 
 	if len(imageURLs) == 0 {
-		return []types.ImageInfo{}
+		return []models.ImageInfo{}
 	}
 
 	// 限制图片数量不超过10张
@@ -95,7 +95,7 @@ func (icb *ImageCarouselBuilder) BuildVariantImagesWithUpload(temuCtx *temuconte
 }
 
 // GetProductImagesWithUpload 获取产品图片并上传到TEMU
-func (icb *ImageCarouselBuilder) GetProductImagesWithUpload(temuCtx *temucontext.TemuTaskContext) []types.ImageInfo {
+func (icb *ImageCarouselBuilder) GetProductImagesWithUpload(temuCtx *temucontext.TemuTaskContext) []models.ImageInfo {
 	// 收集需要上传的图片URL
 	var imageURLs []string
 

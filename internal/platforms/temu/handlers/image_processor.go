@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -30,13 +30,13 @@ func NewImageProcessor() *ImageProcessor {
 }
 
 // BuildCarouselImagesWithoutAnnotation 构建轮播图片（排除标注过的图片）
-func (ip *ImageProcessor) BuildCarouselImagesWithoutAnnotation(temuCtx *temucontext.TemuTaskContext, variant *model.Product) ([]types.ImageInfo, error) {
+func (ip *ImageProcessor) BuildCarouselImagesWithoutAnnotation(temuCtx *temucontext.TemuTaskContext, variant *model.Product) ([]models.ImageInfo, error) {
 
 	return ip.carouselBuilder.BuildCarouselImagesWithoutAnnotation(temuCtx, variant), nil
 }
 
 // BuildVariantImagesWithUpload 构建变体图片并上传到TEMU
-func (ip *ImageProcessor) BuildVariantImagesWithUpload(ctx pipeline.TaskContext, variant *model.Product) ([]types.ImageInfo, error) {
+func (ip *ImageProcessor) BuildVariantImagesWithUpload(ctx pipeline.TaskContext, variant *model.Product) ([]models.ImageInfo, error) {
 	// 类型断言：将通用上下文转换为TEMU强类型上下文
 	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
 	if !ok {
@@ -47,12 +47,12 @@ func (ip *ImageProcessor) BuildVariantImagesWithUpload(ctx pipeline.TaskContext,
 }
 
 // BuildDimensionImages 构建尺寸图片（通常是第一张图片）
-func (ip *ImageProcessor) BuildDimensionImages(variant *model.Product) []types.ImageInfo {
+func (ip *ImageProcessor) BuildDimensionImages(variant *model.Product) []models.ImageInfo {
 	return ip.dimensionBuilder.BuildDimensionImages(variant)
 }
 
 // BuildMainImageWithDimensionAnnotation 为主图添加尺寸标注（专用于主图展示）
-func (ip *ImageProcessor) BuildMainImageWithDimensionAnnotation(ctx pipeline.TaskContext, variant *model.Product) ([]types.ImageInfo, error) {
+func (ip *ImageProcessor) BuildMainImageWithDimensionAnnotation(ctx pipeline.TaskContext, variant *model.Product) ([]models.ImageInfo, error) {
 	// 类型断言：将通用上下文转换为TEMU强类型上下文
 	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
 	if !ok {
@@ -63,13 +63,13 @@ func (ip *ImageProcessor) BuildMainImageWithDimensionAnnotation(ctx pipeline.Tas
 }
 
 // BuildDimensionImagesWithUpload 构建尺寸图片并上传到TEMU（检测所有图片，优先使用已有标注的图片）
-func (ip *ImageProcessor) BuildDimensionImagesWithUpload(temuCtx *temucontext.TemuTaskContext, variant *model.Product) ([]types.ImageInfo, error) {
+func (ip *ImageProcessor) BuildDimensionImagesWithUpload(temuCtx *temucontext.TemuTaskContext, variant *model.Product) ([]models.ImageInfo, error) {
 
 	return ip.dimensionBuilder.BuildDimensionImagesWithUpload(temuCtx, variant), nil
 }
 
 // GetProductImagesWithUpload 获取产品图片并上传到TEMU
-func (ip *ImageProcessor) GetProductImagesWithUpload(temuCtx *temucontext.TemuTaskContext) ([]types.ImageInfo, error) {
+func (ip *ImageProcessor) GetProductImagesWithUpload(temuCtx *temucontext.TemuTaskContext) ([]models.ImageInfo, error) {
 
 	return ip.carouselBuilder.GetProductImagesWithUpload(temuCtx), nil
 }

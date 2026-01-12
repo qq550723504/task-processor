@@ -6,8 +6,8 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -81,7 +81,7 @@ func (sb *SkuBuilder) BuildVariantSkcs(temuCtx *temucontext.TemuTaskContext, var
 }
 
 // CreateDefaultSkc 创建默认SKC（用于没有变体的产品）
-func (sb *SkuBuilder) CreateDefaultSkc(temuCtx *temucontext.TemuTaskContext) (types.Skc, error) {
+func (sb *SkuBuilder) CreateDefaultSkc(temuCtx *temucontext.TemuTaskContext) (models.Skc, error) {
 	return sb.variantProcessor.CreateDefaultSkc(temuCtx)
 }
 
@@ -109,7 +109,7 @@ func (sb *SkuBuilder) ProcessSkcItem(temuCtx *temucontext.TemuTaskContext, skcIn
 }
 
 // GetTotalSkuCount 获取总SKU数量
-func (sb *SkuBuilder) GetTotalSkuCount(skcList []types.Skc) int {
+func (sb *SkuBuilder) GetTotalSkuCount(skcList []models.Skc) int {
 	total := 0
 	for _, skc := range skcList {
 		total += len(skc.SkuList)

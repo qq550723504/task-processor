@@ -4,9 +4,9 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/services"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -95,7 +95,7 @@ type temuProductProvider struct {
 }
 
 // GetTemuProduct 实现 TemuProductProvider 接口
-func (p *temuProductProvider) GetTemuProduct() *types.Product {
+func (p *temuProductProvider) GetTemuProduct() *models.Product {
 	return p.temuCtx.TemuProduct
 }
 

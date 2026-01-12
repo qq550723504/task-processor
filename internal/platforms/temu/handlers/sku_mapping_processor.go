@@ -4,6 +4,7 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -173,21 +174,21 @@ func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *types.AISkuM
 }
 
 // analyzeSpecPattern 分析已有映射的spec模式，返回一个spec模板
-func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *types.AISkuMappingResponse) []types.SpecInfo {
+func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *types.AISkuMappingResponse) []models.SpecInfo {
 	if len(aiMapping.SkuList) == 0 {
-		return []types.SpecInfo{}
+		return []models.SpecInfo{}
 	}
 
 	// 统计每个spec_id出现的频率
 	specFrequency := make(map[string]int)
-	specExamples := make(map[string]types.SpecInfo)
+	specExamples := make(map[string]models.SpecInfo)
 
 	for _, sku := range aiMapping.SkuList {
 		for _, spec := range sku.Spec {
 			specFrequency[spec.SpecID]++
 			if _, exists := specExamples[spec.SpecID]; !exists {
 				// 保存第一个遇到的spec作为示例（但清空具体的值）
-				specExamples[spec.SpecID] = types.SpecInfo{
+				specExamples[spec.SpecID] = models.SpecInfo{
 					SpecID:         spec.SpecID,
 					SpecName:       spec.SpecName,
 					ParentSpecID:   spec.ParentSpecID,
@@ -199,7 +200,7 @@ func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *types.AISkuMappingR
 	}
 
 	// 选择出现频率最高的spec作为模板
-	var template []types.SpecInfo
+	var template []models.SpecInfo
 	for specID, spec := range specExamples {
 		if specFrequency[specID] > len(aiMapping.SkuList)/2 {
 			// 如果这个spec在超过一半的SKU中出现，认为它是必需的

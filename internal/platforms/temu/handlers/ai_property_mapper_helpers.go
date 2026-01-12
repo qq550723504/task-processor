@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 )
 
@@ -16,7 +17,7 @@ func (m *AIPropertyMapper) isRequiredProperty(pid int64, templateProps []types.T
 }
 
 // verifyAndFillMissingRequired 验证并填充缺失的必填属性
-func (m *AIPropertyMapper) verifyAndFillMissingRequired(templateProps []types.TemplateRespGoodsProperty, ext *types.ExtensionInfo) int {
+func (m *AIPropertyMapper) verifyAndFillMissingRequired(templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) int {
 	// 构建已填充属性的PID集合
 	filledPIDs := make(map[int64]bool)
 	for _, prop := range ext.GoodsProperty.GoodsProperties {
@@ -51,6 +52,6 @@ func (m *AIPropertyMapper) verifyAndFillMissingRequired(templateProps []types.Te
 }
 
 // verifyRequiredProperties 验证必填属性完整性（保留原有方法以兼容）
-func (m *AIPropertyMapper) verifyRequiredProperties(templateProps []types.TemplateRespGoodsProperty, ext *types.ExtensionInfo) {
+func (m *AIPropertyMapper) verifyRequiredProperties(templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) {
 	m.verifyAndFillMissingRequired(templateProps, ext)
 }

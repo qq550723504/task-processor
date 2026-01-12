@@ -4,8 +4,8 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 	"task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
@@ -30,12 +30,12 @@ func NewImageDimensionBuilder() *ImageDimensionBuilder {
 }
 
 // BuildDimensionImages 构建尺寸图片（通常是第一张图片）
-func (idb *ImageDimensionBuilder) BuildDimensionImages(variant *model.Product) []types.ImageInfo {
-	var images []types.ImageInfo
+func (idb *ImageDimensionBuilder) BuildDimensionImages(variant *model.Product) []models.ImageInfo {
+	var images []models.ImageInfo
 
 	// 使用第4张图片作为尺寸图片（如果存在）
 	if len(variant.Images) > 3 && variant.Images[3] != "" {
-		images = append(images, types.ImageInfo{
+		images = append(images, models.ImageInfo{
 			URL:    variant.Images[3],
 			Width:  1500,
 			Height: 1500,
@@ -43,7 +43,7 @@ func (idb *ImageDimensionBuilder) BuildDimensionImages(variant *model.Product) [
 		})
 	} else if len(variant.Images) > 0 && variant.Images[0] != "" {
 		// 如果没有第4张图片，使用第1张作为备选
-		images = append(images, types.ImageInfo{
+		images = append(images, models.ImageInfo{
 			URL:    variant.Images[0],
 			Width:  1500,
 			Height: 1500,
@@ -55,8 +55,8 @@ func (idb *ImageDimensionBuilder) BuildDimensionImages(variant *model.Product) [
 }
 
 // BuildMainImageWithDimensionAnnotation 为主图添加尺寸标注（专用于主图展示）
-func (idb *ImageDimensionBuilder) BuildMainImageWithDimensionAnnotation(temuCtx *temucontext.TemuTaskContext, variant *model.Product) []types.ImageInfo {
-	var images []types.ImageInfo
+func (idb *ImageDimensionBuilder) BuildMainImageWithDimensionAnnotation(temuCtx *temucontext.TemuTaskContext, variant *model.Product) []models.ImageInfo {
+	var images []models.ImageInfo
 
 	if len(variant.Images) == 0 {
 		return images
@@ -105,7 +105,7 @@ func (idb *ImageDimensionBuilder) BuildMainImageWithDimensionAnnotation(temuCtx 
 
 // BuildDimensionImagesWithUpload 构建尺寸图片并上传到TEMU（检测所有图片，优先使用已有标注的图片）
 // 用途：为SKU的DimensionGallery提供标注过的尺寸图
-func (idb *ImageDimensionBuilder) BuildDimensionImagesWithUpload(temuCtx *temucontext.TemuTaskContext, variant *model.Product) []types.ImageInfo {
+func (idb *ImageDimensionBuilder) BuildDimensionImagesWithUpload(temuCtx *temucontext.TemuTaskContext, variant *model.Product) []models.ImageInfo {
 	return idb.BuildMainImageWithDimensionAnnotation(temuCtx, variant)
 }
 

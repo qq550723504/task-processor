@@ -14,8 +14,8 @@ import (
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -110,9 +110,9 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 	taskID := task.ID
 
 	// 检查产品数据
-	var temuProduct *types.Product
+	var temuProduct *models.Product
 	if temuCtx.ProductData != nil {
-		if product, ok := temuCtx.ProductData.(*types.Product); ok {
+		if product, ok := temuCtx.ProductData.(*models.Product); ok {
 			temuProduct = product
 		}
 	}

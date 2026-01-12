@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -136,8 +137,8 @@ func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *types.AISkuMapp
 }
 
 // extractTargetSpecs 提取目标维度的规格
-func (u *SpecDimensionUnifier) extractTargetSpecs(specs []types.SpecInfo, targetDimensions []string) []types.SpecInfo {
-	var result []types.SpecInfo
+func (u *SpecDimensionUnifier) extractTargetSpecs(specs []models.SpecInfo, targetDimensions []string) []models.SpecInfo {
+	var result []models.SpecInfo
 
 	for _, targetDim := range targetDimensions {
 		for _, spec := range specs {
@@ -152,31 +153,31 @@ func (u *SpecDimensionUnifier) extractTargetSpecs(specs []types.SpecInfo, target
 }
 
 // createDefaultSpec 创建默认规格
-func (u *SpecDimensionUnifier) createDefaultSpec(parentSpecID string) types.SpecInfo {
+func (u *SpecDimensionUnifier) createDefaultSpec(parentSpecID string) models.SpecInfo {
 	switch parentSpecID {
 	case "1001": // Color
-		return types.SpecInfo{
+		return models.SpecInfo{
 			SpecID:         "DEFAULT_COLOR",
 			SpecName:       "Default Color",
 			ParentSpecID:   "1001",
 			ParentSpecName: "Color",
 		}
 	case "3001": // Size
-		return types.SpecInfo{
+		return models.SpecInfo{
 			SpecID:         "DEFAULT_SIZE",
 			SpecName:       "Default Size",
 			ParentSpecID:   "3001",
 			ParentSpecName: "Size",
 		}
 	case "18014": // Capacity
-		return types.SpecInfo{
+		return models.SpecInfo{
 			SpecID:         "DEFAULT_CAPACITY",
 			SpecName:       "Default Capacity",
 			ParentSpecID:   "18014",
 			ParentSpecName: "Capacity",
 		}
 	default:
-		return types.SpecInfo{
+		return models.SpecInfo{
 			SpecID:         fmt.Sprintf("DEFAULT_%s", parentSpecID),
 			SpecName:       "Default",
 			ParentSpecID:   parentSpecID,

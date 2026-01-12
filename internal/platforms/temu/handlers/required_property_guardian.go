@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -24,7 +25,7 @@ func NewRequiredPropertyGuardian(logger *logrus.Entry) *RequiredPropertyGuardian
 // GuardAllRequiredProperties 保障所有必填属性（包括条件依赖的）
 func (g *RequiredPropertyGuardian) GuardAllRequiredProperties(
 	templateProps []types.TemplateRespGoodsProperty,
-	ext *types.ExtensionInfo,
+	ext *models.ExtensionInfo,
 ) error {
 	g.logger.Info("🛡️ 开始必填属性保障检查")
 
@@ -54,7 +55,7 @@ func (g *RequiredPropertyGuardian) GuardAllRequiredProperties(
 // checkBasicRequiredProperties 检查基础必填属性
 func (g *RequiredPropertyGuardian) checkBasicRequiredProperties(
 	templateProps []types.TemplateRespGoodsProperty,
-	ext *types.ExtensionInfo,
+	ext *models.ExtensionInfo,
 ) []types.TemplateRespGoodsProperty {
 	filledPIDs := make(map[int]bool)
 	for _, prop := range ext.GoodsProperty.GoodsProperties {
@@ -75,7 +76,7 @@ func (g *RequiredPropertyGuardian) checkBasicRequiredProperties(
 // checkConditionalRequiredProperties 检查条件依赖的必填属性（通用逻辑）
 func (g *RequiredPropertyGuardian) checkConditionalRequiredProperties(
 	templateProps []types.TemplateRespGoodsProperty,
-	ext *types.ExtensionInfo,
+	ext *models.ExtensionInfo,
 ) []types.TemplateRespGoodsProperty {
 	var missing []types.TemplateRespGoodsProperty
 
@@ -111,7 +112,7 @@ func (g *RequiredPropertyGuardian) checkConditionalRequiredProperties(
 }
 
 // isPropertyFilledByTemplatePID 根据TemplatePID检查属性是否已填充
-func (g *RequiredPropertyGuardian) isPropertyFilledByTemplatePID(ext *types.ExtensionInfo, templatePID int) bool {
+func (g *RequiredPropertyGuardian) isPropertyFilledByTemplatePID(ext *models.ExtensionInfo, templatePID int) bool {
 	for _, prop := range ext.GoodsProperty.GoodsProperties {
 		if prop.TemplatePid == templatePID {
 			return true
@@ -140,7 +141,7 @@ func (g *RequiredPropertyGuardian) isParentConditionMet(prop types.TemplateRespG
 }
 
 // isPropertyFilled 检查属性是否已填充
-func (g *RequiredPropertyGuardian) isPropertyFilled(ext *types.ExtensionInfo, pid int) bool {
+func (g *RequiredPropertyGuardian) isPropertyFilled(ext *models.ExtensionInfo, pid int) bool {
 	for _, prop := range ext.GoodsProperty.GoodsProperties {
 		if prop.Pid == pid {
 			return true
@@ -152,7 +153,7 @@ func (g *RequiredPropertyGuardian) isPropertyFilled(ext *types.ExtensionInfo, pi
 // fillMissingProperties 填充缺失的属性
 func (g *RequiredPropertyGuardian) fillMissingProperties(
 	missingProps []types.TemplateRespGoodsProperty,
-	ext *types.ExtensionInfo,
+	ext *models.ExtensionInfo,
 ) {
 	for _, prop := range missingProps {
 		g.filler.FillSingleRequiredProperty(prop, ext)

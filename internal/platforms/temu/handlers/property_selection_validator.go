@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -22,9 +23,9 @@ func NewPropertySelectionValidator(logger *logrus.Entry) *PropertySelectionValid
 // ValidateSelectionConstraints 验证并修复选择约束
 // 确保单选属性只有一个值，多选属性不超过最大选择数
 func (v *PropertySelectionValidator) ValidateSelectionConstraints(
-	properties []types.PropertyItem,
+	properties []models.PropertyItem,
 	templateProps []types.TemplateRespGoodsProperty,
-) []types.PropertyItem {
+) []models.PropertyItem {
 
 	v.logger.Info("🔍 开始验证属性选择约束")
 
@@ -35,12 +36,12 @@ func (v *PropertySelectionValidator) ValidateSelectionConstraints(
 	}
 
 	// 按PID分组属性
-	pidGroups := make(map[int][]types.PropertyItem)
+	pidGroups := make(map[int][]models.PropertyItem)
 	for _, prop := range properties {
 		pidGroups[prop.Pid] = append(pidGroups[prop.Pid], prop)
 	}
 
-	var result []types.PropertyItem
+	var result []models.PropertyItem
 	violationCount := 0
 
 	// 检查每个PID组
@@ -90,9 +91,9 @@ func (v *PropertySelectionValidator) ValidateSelectionConstraints(
 
 // applySelectionConstraint 应用选择约束修复策略
 func (v *PropertySelectionValidator) applySelectionConstraint(
-	propGroup []types.PropertyItem,
+	propGroup []models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
-) []types.PropertyItem {
+) []models.PropertyItem {
 
 	maxChoose := templateProp.ChooseMaxNum
 
@@ -107,9 +108,9 @@ func (v *PropertySelectionValidator) applySelectionConstraint(
 
 // selectBestSingleChoice 为单选属性选择最佳选项
 func (v *PropertySelectionValidator) selectBestSingleChoice(
-	propGroup []types.PropertyItem,
+	propGroup []models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
-) []types.PropertyItem {
+) []models.PropertyItem {
 
 	v.logger.Debugf("🎯 为单选属性 %s (PID=%d) 选择最佳选项", templateProp.Name, templateProp.PID)
 
@@ -117,7 +118,7 @@ func (v *PropertySelectionValidator) selectBestSingleChoice(
 	for _, prop := range propGroup {
 		if v.isValidVID(prop.Vid, templateProp.Values) {
 			v.logger.Debugf("   选择: %s (VID=%d) - 有效VID", prop.Value, prop.Vid)
-			return []types.PropertyItem{prop}
+			return []models.PropertyItem{prop}
 		}
 	}
 
@@ -125,7 +126,7 @@ func (v *PropertySelectionValidator) selectBestSingleChoice(
 	for _, prop := range propGroup {
 		if v.isValueInCandidates(prop.Value, templateProp.Values) {
 			v.logger.Debugf("   选择: %s (VID=%d) - 候选值匹配", prop.Value, prop.Vid)
-			return []types.PropertyItem{prop}
+			return []models.PropertyItem{prop}
 		}
 	}
 
@@ -133,18 +134,18 @@ func (v *PropertySelectionValidator) selectBestSingleChoice(
 	if len(propGroup) > 0 {
 		selected := propGroup[0]
 		v.logger.Debugf("   选择: %s (VID=%d) - 默认第一个", selected.Value, selected.Vid)
-		return []types.PropertyItem{selected}
+		return []models.PropertyItem{selected}
 	}
 
-	return []types.PropertyItem{}
+	return []models.PropertyItem{}
 }
 
 // selectBestMultipleChoices 为多选属性选择最佳选项组合
 func (v *PropertySelectionValidator) selectBestMultipleChoices(
-	propGroup []types.PropertyItem,
+	propGroup []models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
 	maxChoose int,
-) []types.PropertyItem {
+) []models.PropertyItem {
 
 	v.logger.Debugf("🎯 为多选属性 %s (PID=%d) 选择最多%d个选项",
 		templateProp.Name, templateProp.PID, maxChoose)
@@ -164,13 +165,13 @@ func (v *PropertySelectionValidator) selectBestMultipleChoices(
 
 // sortPropertiesByPriority 按优先级排序属性
 func (v *PropertySelectionValidator) sortPropertiesByPriority(
-	propGroup []types.PropertyItem,
+	propGroup []models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
-) []types.PropertyItem {
+) []models.PropertyItem {
 
 	// 创建带优先级的属性列表
 	type prioritizedProp struct {
-		prop     types.PropertyItem
+		prop     models.PropertyItem
 		priority int
 	}
 
@@ -191,7 +192,7 @@ func (v *PropertySelectionValidator) sortPropertiesByPriority(
 	}
 
 	// 提取排序后的属性
-	result := make([]types.PropertyItem, len(prioritized))
+	result := make([]models.PropertyItem, len(prioritized))
 	for i, p := range prioritized {
 		result[i] = p.prop
 	}
@@ -201,7 +202,7 @@ func (v *PropertySelectionValidator) sortPropertiesByPriority(
 
 // calculatePriority 计算属性的优先级
 func (v *PropertySelectionValidator) calculatePriority(
-	prop types.PropertyItem,
+	prop models.PropertyItem,
 	templateProp types.TemplateRespGoodsProperty,
 ) int {
 	priority := 0

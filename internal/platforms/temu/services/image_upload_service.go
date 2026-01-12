@@ -4,7 +4,7 @@ package services
 import (
 	"fmt"
 	"task-processor/internal/pkg/downloader"
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
 )
@@ -41,7 +41,7 @@ func (s *ImageUploadService) DownloadImage(imageURL string) ([]byte, string, err
 }
 
 // GetUploadSignature 获取上传签名（统一实现）
-func (s *ImageUploadService) GetUploadSignature(apiClient TemuAPIClient) (*types.UploadSignature, error) {
+func (s *ImageUploadService) GetUploadSignature(apiClient TemuAPIClient) (*models.UploadSignature, error) {
 	// 构造请求体
 	requestBody := map[string]any{
 		"upload_file_type": 1,
@@ -67,7 +67,7 @@ func (s *ImageUploadService) GetUploadSignature(apiClient TemuAPIClient) (*types
 	}
 
 	// 发送请求获取签名
-	response := &types.SignatureResponse{}
+	response := &models.SignatureResponse{}
 	err := apiClient.SendTEMURequest(apiReq, response)
 	if err != nil {
 		return nil, fmt.Errorf("发送获取签名请求失败: %w", err)
@@ -82,7 +82,7 @@ func (s *ImageUploadService) GetUploadSignature(apiClient TemuAPIClient) (*types
 }
 
 // UploadImageWithSignature 使用签名上传图片数据（统一实现）
-func (s *ImageUploadService) UploadImageWithSignature(apiClient TemuAPIClient, imageData []byte, filename string, signature *types.UploadSignature) (*types.UploadResult, error) {
+func (s *ImageUploadService) UploadImageWithSignature(apiClient TemuAPIClient, imageData []byte, filename string, signature *models.UploadSignature) (*models.UploadResult, error) {
 	// 构造API请求 - 使用fileFields和formFields
 	apiReq := map[string]any{
 		"method": "POST",
@@ -112,7 +112,7 @@ func (s *ImageUploadService) UploadImageWithSignature(apiClient TemuAPIClient, i
 	}
 
 	// 发送上传请求
-	response := &types.TemuImageUploadResponse{}
+	response := &models.TemuImageUploadResponse{}
 	err := apiClient.SendTEMURequest(apiReq, response)
 	if err != nil {
 		return nil, fmt.Errorf("发送图片上传请求失败: %w", err)
@@ -124,7 +124,7 @@ func (s *ImageUploadService) UploadImageWithSignature(apiClient TemuAPIClient, i
 	}
 
 	// 构造返回结果
-	result := &types.UploadResult{
+	result := &models.UploadResult{
 		ImageURL: response.URL,
 		URL:      response.URL,
 		Width:    response.Width,

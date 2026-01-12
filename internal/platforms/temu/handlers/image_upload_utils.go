@@ -2,9 +2,9 @@
 package handlers
 
 import (
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/services"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -26,7 +26,7 @@ func NewImageUploadUtils() *ImageUploadUtils {
 }
 
 // uploadImageWithFallback 上传图片，失败时返回空图片信息（不使用Amazon原始链接）
-func (iuu *ImageUploadUtils) uploadImageWithFallback(temuCtx *temucontext.TemuTaskContext, imageURL, imageType string, defaultWidth, defaultHeight int) types.ImageInfo {
+func (iuu *ImageUploadUtils) uploadImageWithFallback(temuCtx *temucontext.TemuTaskContext, imageURL, imageType string, defaultWidth, defaultHeight int) models.ImageInfo {
 	// 检查是否需要上传
 	configService := services.NewImageConfigService()
 	if configService.NeedsUpload(imageURL) {
@@ -37,7 +37,7 @@ func (iuu *ImageUploadUtils) uploadImageWithFallback(temuCtx *temucontext.TemuTa
 		// 上传失败，记录错误日志
 		iuu.logger.Errorf("❌ 图片上传失败，不使用Amazon原始链接: %s, 错误: %v", imageURL, err)
 		// 返回空的图片信息，不使用Amazon原始链接
-		return types.ImageInfo{
+		return models.ImageInfo{
 			URL:    "",
 			Width:  0,
 			Height: 0,
@@ -46,7 +46,7 @@ func (iuu *ImageUploadUtils) uploadImageWithFallback(temuCtx *temucontext.TemuTa
 	}
 
 	// 如果是TEMU的CDN地址，直接使用
-	return types.ImageInfo{
+	return models.ImageInfo{
 		URL:    imageURL,
 		Width:  defaultWidth,
 		Height: defaultHeight,
@@ -55,8 +55,8 @@ func (iuu *ImageUploadUtils) uploadImageWithFallback(temuCtx *temucontext.TemuTa
 }
 
 // batchUploadImagesWithFallback 批量上传图片，失败时跳过该图片（不使用Amazon原始链接）
-func (iuu *ImageUploadUtils) batchUploadImagesWithFallback(temuCtx *temucontext.TemuTaskContext, imageURLs []string, imageType string, defaultWidth, defaultHeight int) []types.ImageInfo {
-	var images []types.ImageInfo
+func (iuu *ImageUploadUtils) batchUploadImagesWithFallback(temuCtx *temucontext.TemuTaskContext, imageURLs []string, imageType string, defaultWidth, defaultHeight int) []models.ImageInfo {
+	var images []models.ImageInfo
 
 	// 尝试批量上传
 	uploadedImages, err := iuu.uploadProcessor.BatchUploadImages(temuCtx, imageURLs, imageType)

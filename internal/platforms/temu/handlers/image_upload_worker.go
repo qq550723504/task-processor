@@ -3,8 +3,8 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -12,7 +12,7 @@ import (
 // uploadResult 内部上传结果结构体（用于并行上传结果收集）
 type uploadResult struct {
 	index int
-	img   *types.ImageInfo
+	img   *models.ImageInfo
 	err   error
 }
 
@@ -22,7 +22,7 @@ type uploadSkuResult struct {
 	skuIndex int
 	imgIndex int
 	imgType  string // "carousel" or "dimension"
-	img      *types.ImageInfo
+	img      *models.ImageInfo
 	err      error
 }
 
@@ -40,7 +40,7 @@ func NewImageUploadWorker() *ImageUploadWorker {
 
 // UploadMainImagesParallel 并行上传主图
 func (w *ImageUploadWorker) UploadMainImagesParallel(ctx *temucontext.TemuTaskContext,
-	mainImages []types.ImageInfo, uploadFunc func(*temucontext.TemuTaskContext, string, string) (*types.ImageInfo, error)) error {
+	mainImages []models.ImageInfo, uploadFunc func(*temucontext.TemuTaskContext, string, string) (*models.ImageInfo, error)) error {
 
 	if len(mainImages) == 0 {
 		return nil
@@ -107,7 +107,7 @@ func (w *ImageUploadWorker) UploadMainImagesParallel(ctx *temucontext.TemuTaskCo
 
 // UploadSkuImagesParallel 并行上传SKU图片
 func (w *ImageUploadWorker) UploadSkuImagesParallel(ctx *temucontext.TemuTaskContext,
-	uploadFunc func(*temucontext.TemuTaskContext, string, string) (*types.ImageInfo, error)) error {
+	uploadFunc func(*temucontext.TemuTaskContext, string, string) (*models.ImageInfo, error)) error {
 
 	// 检查TEMU产品信息
 	if ctx.TemuProduct == nil {
@@ -176,7 +176,7 @@ func (w *ImageUploadWorker) UploadSkuImagesParallel(ctx *temucontext.TemuTaskCon
 
 // uploadSkuImageWorkerWithContext SKU图片上传工作协程（带上下文）
 func (w *ImageUploadWorker) uploadSkuImageWorkerWithContext(ctx *temucontext.TemuTaskContext, skcIndex, skuIndex, imgIndex int,
-	imageURL, imgType, contextKey string, uploadFunc func(*temucontext.TemuTaskContext, string, string) (*types.ImageInfo, error),
+	imageURL, imgType, contextKey string, uploadFunc func(*temucontext.TemuTaskContext, string, string) (*models.ImageInfo, error),
 	resultChan chan uploadSkuResult) {
 
 	defer func() {
@@ -217,7 +217,7 @@ func (w *ImageUploadWorker) uploadSkuImageWorkerWithContext(ctx *temucontext.Tem
 
 // uploadWithContext 带上下文的图片上传（通过反射调用带上下文的方法）
 func (w *ImageUploadWorker) uploadWithContext(ctx *temucontext.TemuTaskContext, imageURL, imgType, contextKey string,
-	uploadFunc func(*temucontext.TemuTaskContext, string, string) (*types.ImageInfo, error)) (*types.ImageInfo, error) {
+	uploadFunc func(*temucontext.TemuTaskContext, string, string) (*models.ImageInfo, error)) (*models.ImageInfo, error) {
 
 	// 临时将上下文存储在TemuTaskContext中
 	originalContext := ctx.CurrentSkuContext

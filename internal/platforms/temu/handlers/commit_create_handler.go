@@ -7,8 +7,8 @@ import (
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	temuTypes "task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -119,7 +119,7 @@ func (h *CommitCreateHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 }
 
 // createCommit 创建商品提交
-func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext, temuProduct *temuTypes.Product) error {
+func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) error {
 	// 获取API客户端
 	if temuCtx.APIClient == nil {
 		h.logger.Error("API客户端未初始化")
@@ -216,7 +216,7 @@ func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext,
 }
 
 // validateProductInfo 验证产品信息
-func (h *CommitCreateHandler) validateProductInfo(task *types.Task, temuProduct *temuTypes.Product) error {
+func (h *CommitCreateHandler) validateProductInfo(task *types.Task, temuProduct *models.Product) error {
 	// 检查店铺ID（这是创建提交必需的）
 	if task.StoreID == 0 {
 		return fmt.Errorf("店铺ID不能为空")

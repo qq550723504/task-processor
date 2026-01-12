@@ -4,6 +4,7 @@ package handlers
 import (
 	"fmt"
 	"strings"
+	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -81,7 +82,7 @@ func (p *MixedAttributesProcessor) ForceUnification(aiMapping *types.AISkuMappin
 		sku := &aiMapping.SkuList[i]
 
 		// 查找当前SKU是否已有该维度的规格
-		var existingSpec *types.SpecInfo
+		var existingSpec *models.SpecInfo
 		for j := range sku.Spec {
 			if sku.Spec[j].ParentSpecID == unifiedDimension {
 				existingSpec = &sku.Spec[j]
@@ -91,18 +92,18 @@ func (p *MixedAttributesProcessor) ForceUnification(aiMapping *types.AISkuMappin
 
 		if existingSpec != nil {
 			// 如果已有该维度的规格，只保留这一个
-			sku.Spec = []types.SpecInfo{*existingSpec}
+			sku.Spec = []models.SpecInfo{*existingSpec}
 			p.logger.Infof("✅ SKU[%d] 保留现有规格: %s = %s", i, existingSpec.ParentSpecID, existingSpec.SpecName)
 		} else {
 			// 如果没有该维度的规格，需要转换现有规格
 			convertedSpec := p.convertToUnifiedDimension(sku.Spec, unifiedDimension)
 			if convertedSpec != nil {
-				sku.Spec = []types.SpecInfo{*convertedSpec}
+				sku.Spec = []models.SpecInfo{*convertedSpec}
 				p.logger.Infof("🔄 SKU[%d] 转换规格到统一维度: %s = %s", i, convertedSpec.ParentSpecID, convertedSpec.SpecName)
 			} else {
 				// 如果无法转换，创建默认规格
 				defaultSpec := p.createDefaultSpec(unifiedDimension)
-				sku.Spec = []types.SpecInfo{defaultSpec}
+				sku.Spec = []models.SpecInfo{defaultSpec}
 				p.logger.Warnf("⚠️ SKU[%d] 无法转换，使用默认规格: %s = %s", i, defaultSpec.ParentSpecID, defaultSpec.SpecName)
 			}
 		}
@@ -141,7 +142,7 @@ func (p *MixedAttributesProcessor) selectBestUniversalDimension(dimensions []str
 }
 
 // convertToUnifiedDimension 将现有规格转换到统一维度
-func (p *MixedAttributesProcessor) convertToUnifiedDimension(specs []types.SpecInfo, targetDimension string) *types.SpecInfo {
+func (p *MixedAttributesProcessor) convertToUnifiedDimension(specs []models.SpecInfo, targetDimension string) *models.SpecInfo {
 	if len(specs) == 0 {
 		return nil
 	}
@@ -152,7 +153,7 @@ func (p *MixedAttributesProcessor) convertToUnifiedDimension(specs []types.SpecI
 	// 根据目标维度创建转换后的规格
 	switch targetDimension {
 	case "18012": // Style - 可以接受任何值
-		return &types.SpecInfo{
+		return &models.SpecInfo{
 			SpecID:         fmt.Sprintf("TEMP_%s", sourceSpec.SpecName),
 			SpecName:       sourceSpec.SpecName, // 保持原始值
 			ParentSpecID:   "18012",
@@ -164,7 +165,7 @@ func (p *MixedAttributesProcessor) convertToUnifiedDimension(specs []types.SpecI
 		if !p.containsQuantityInfo(specName) {
 			specName = "Single"
 		}
-		return &types.SpecInfo{
+		return &models.SpecInfo{
 			SpecID:         fmt.Sprintf("TEMP_%s", specName),
 			SpecName:       specName,
 			ParentSpecID:   "17020",
@@ -176,7 +177,7 @@ func (p *MixedAttributesProcessor) convertToUnifiedDimension(specs []types.SpecI
 		if !p.containsSizeInfo(specName) {
 			specName = "Standard"
 		}
-		return &types.SpecInfo{
+		return &models.SpecInfo{
 			SpecID:         fmt.Sprintf("TEMP_%s", specName),
 			SpecName:       specName,
 			ParentSpecID:   "3001",
@@ -184,7 +185,7 @@ func (p *MixedAttributesProcessor) convertToUnifiedDimension(specs []types.SpecI
 		}
 	default:
 		// 对于其他维度，直接转换
-		return &types.SpecInfo{
+		return &models.SpecInfo{
 			SpecID:         fmt.Sprintf("TEMP_%s", sourceSpec.SpecName),
 			SpecName:       sourceSpec.SpecName,
 			ParentSpecID:   targetDimension,
@@ -218,31 +219,31 @@ func (p *MixedAttributesProcessor) containsSizeInfo(value string) bool {
 }
 
 // createDefaultSpec 创建默认规格
-func (p *MixedAttributesProcessor) createDefaultSpec(parentSpecID string) types.SpecInfo {
+func (p *MixedAttributesProcessor) createDefaultSpec(parentSpecID string) models.SpecInfo {
 	switch parentSpecID {
 	case "1001": // Color
-		return types.SpecInfo{
+		return models.SpecInfo{
 			SpecID:         "DEFAULT_COLOR",
 			SpecName:       "Default Color",
 			ParentSpecID:   "1001",
 			ParentSpecName: "Color",
 		}
 	case "3001": // Size
-		return types.SpecInfo{
+		return models.SpecInfo{
 			SpecID:         "DEFAULT_SIZE",
 			SpecName:       "Default Size",
 			ParentSpecID:   "3001",
 			ParentSpecName: "Size",
 		}
 	case "18014": // Capacity
-		return types.SpecInfo{
+		return models.SpecInfo{
 			SpecID:         "DEFAULT_CAPACITY",
 			SpecName:       "Default Capacity",
 			ParentSpecID:   "18014",
 			ParentSpecName: "Capacity",
 		}
 	default:
-		return types.SpecInfo{
+		return models.SpecInfo{
 			SpecID:         fmt.Sprintf("DEFAULT_%s", parentSpecID),
 			SpecName:       "Default",
 			ParentSpecID:   parentSpecID,

@@ -4,9 +4,9 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/services"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -75,7 +75,7 @@ func (v *MainImageValidator) ValidateMainImages(temuCtx *temucontext.TemuTaskCon
 	// 使用并行处理
 	results := v.parallelValidator.ValidateImagesInParallel(mainImages, "主图", requirement)
 
-	validImages := []types.ImageInfo{}
+	validImages := []models.ImageInfo{}
 	paddedImagesMap := make(map[string][]byte) // URL -> 填充后的图片数据
 	paddedSizesMap := make(map[string][2]int)  // URL -> [宽度, 高度]
 
