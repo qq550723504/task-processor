@@ -7,7 +7,6 @@ import (
 	"unicode"
 
 	"task-processor/internal/pipeline"
-	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -65,11 +64,7 @@ func (h *BulletPointsValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext)
 
 	originalPoints := temuProduct.GoodsExtensionInfo.BulletPoints
 	if len(originalPoints) == 0 {
-		h.logger.Info("未找到产品要点，尝试生成默认要点")
-		defaultPoints := h.generateDefaultBulletPoints(temuCtx, temuProduct)
-		temuProduct.GoodsExtensionInfo.BulletPoints = defaultPoints
-		h.logger.Infof("生成了 %d 个默认要点", len(defaultPoints))
-		return nil
+		return fmt.Errorf("TEMU产品卖点为空")
 	}
 
 	// 验证和优化要点
@@ -303,49 +298,6 @@ func (h *BulletPointsValidator) checkForKeyFeatures(points []string) bool {
 	return false
 }
 
-// generateDefaultBulletPoints 生成默认要点
-func (h *BulletPointsValidator) generateDefaultBulletPoints(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) []string {
-	productName := temuProduct.GoodsBasic.GoodsName
-
-	// 基于产品名称生成默认要点
-	defaultPoints := []string{}
-
-	// 分析产品名称中的关键词
-	nameLower := strings.ToLower(productName)
-
-	if strings.Contains(nameLower, "chair") {
-		defaultPoints = append(defaultPoints, "Ergonomic design for comfortable seating")
-		defaultPoints = append(defaultPoints, "High-quality materials for durability")
-		defaultPoints = append(defaultPoints, "Adjustable features for personalized comfort")
-	}
-
-	if strings.Contains(nameLower, "gaming") {
-		defaultPoints = append(defaultPoints, "Designed for extended gaming sessions")
-		defaultPoints = append(defaultPoints, "Professional gaming chair features")
-	}
-
-	if strings.Contains(nameLower, "office") {
-		defaultPoints = append(defaultPoints, "Perfect for office and work environments")
-		defaultPoints = append(defaultPoints, "Professional appearance and functionality")
-	}
-
-	// 如果没有生成任何要点，使用通用要点
-	if len(defaultPoints) == 0 {
-		defaultPoints = []string{
-			"High-quality construction and materials",
-			"Easy to assemble and use",
-			"Suitable for various applications",
-		}
-	}
-
-	// 限制在6个要点以内
-	if len(defaultPoints) > 6 {
-		defaultPoints = defaultPoints[:6]
-	}
-
-	return defaultPoints
-}
-
 // arePointsEqual 比较两个要点列表是否相等
 func (h *BulletPointsValidator) arePointsEqual(points1, points2 []string) bool {
 	if len(points1) != len(points2) {
@@ -370,18 +322,4 @@ func (h *BulletPointsValidator) ValidateBulletPointsAPI(ctx pipeline.TaskContext
 
 	// 暂时返回nil，实际实现时需要调用真实的API
 	return nil
-}
-
-// GetBulletPointsOptimizationTips 获取要点优化建议
-func (h *BulletPointsValidator) GetBulletPointsOptimizationTips() []string {
-	return []string{
-		"突出产品的主要特性和优势",
-		"使用简洁明了的语言",
-		"每个要点控制在120字符以内",
-		"避免重复相似的内容",
-		"包含关键的产品特性词汇",
-		"确保语法正确，首字母大写",
-		"避免使用过多的技术术语",
-		"关注用户最关心的功能点",
-	}
 }

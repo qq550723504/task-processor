@@ -13,23 +13,22 @@ import (
 
 // AutoPricingService 自动核价服务
 type AutoPricingService struct {
-	apiClient  api.APIClientInterface
-	pricingAPI *api.PricingAPI
-	logger     *logrus.Entry
+	apiClient      api.APIClientInterface
+	pricingService *api.PricingService
+	logger         *logrus.Entry
 }
 
 // NewAutoPricingService 创建自动核价服务
 func NewAutoPricingService(apiClient api.APIClientInterface) *AutoPricingService {
 	logger := logrus.WithFields(logrus.Fields{
 		"component": "AutoPricingService",
-		"tenantID":  apiClient.GetTenantID(),
 		"storeID":   apiClient.GetStoreID(),
 	})
 
 	return &AutoPricingService{
-		apiClient:  apiClient,
-		pricingAPI: api.NewPricingAPI(apiClient, logger),
-		logger:     logger,
+		apiClient:      apiClient,
+		pricingService: api.NewPricingService(apiClient, logger),
+		logger:         logger,
 	}
 }
 
@@ -44,9 +43,9 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRules(managementClient 
 
 	// 使用基础决策服务
 	s.logger.Info("使用基础决策服务处理待核价商品")
-	decisionService := NewPricingDecisionService(managementClient, s.apiClient.GetTenantID(), s.apiClient.GetStoreID())
-	if decisionService == nil {
-		return nil, fmt.Errorf("创建决策服务失败")
+	decisionService, err := NewPricingDecisionService(managementClient, s.apiClient.GetStoreID(), nil, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建决策服务失败: %w", err)
 	}
 
 	return s.processWithService(decisionService)
@@ -72,9 +71,9 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRulesAndAmazon(
 	// 获取Amazon配置和处理器
 	amazonConfig := configProvider.GetAmazonConfig()
 	amazonProcessor := configProvider.GetAmazonProcessor()
-	platformConfig := configProvider.GetPlatformConfig() // 获取平台配置
+	platformConfig := configProvider.GetPlatformConfig()
 
-	if amazonConfig == nil || !amazonConfig.Enabled {
+	if amazonConfig == nil {
 		s.logger.Warn("Amazon配置未启用，使用基础决策服务")
 		return s.AutoProcessPendingPricesWithRules(managementClient)
 	}
@@ -86,31 +85,30 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRulesAndAmazon(
 
 	// 创建支持Amazon的决策服务
 	s.logger.Info("使用Amazon增强的决策服务")
-	decisionService := NewPricingDecisionServiceWithAmazon(
+	decisionService, err := NewPricingDecisionService(
 		managementClient,
-		s.apiClient.GetTenantID(),
 		s.apiClient.GetStoreID(),
 		amazonConfig,
 		amazonProcessor,
-		platformConfig, // 传递平台配置
+		platformConfig,
 	)
 
-	if decisionService == nil {
-		return nil, fmt.Errorf("创建Amazon增强决策服务失败")
+	if err != nil {
+		return nil, fmt.Errorf("创建Amazon增强决策服务失败: %w", err)
 	}
 
 	return s.processWithService(decisionService)
 }
 
 // processWithService 使用指定的决策服务处理待核价商品
-func (s *AutoPricingService) processWithService(decisionService *PricingDecisionService) (*models.PricingStatistics, error) {
+func (s *AutoPricingService) processWithService(decisionService DecisionMaker) (*models.PricingStatistics, error) {
 	stats := &models.PricingStatistics{}
 	pageNo := 1
 	pageSize := 25
 
 	for {
 		// 获取待核价列表
-		resp, err := s.pricingAPI.GetPendingPriceList(pageNo, pageSize)
+		resp, err := s.pricingService.GetPendingPriceList(pageNo, pageSize)
 		if err != nil {
 			return stats, fmt.Errorf("获取待核价列表失败: %w", err)
 		}
@@ -188,42 +186,11 @@ func (s *AutoPricingService) executeDecisionForSalesBoost(decision *models.Prici
 	switch decision.Action {
 	case models.DecisionAccept:
 		// ✅ 接受平台报价
-		if sku.TargetSupplierPrice.Amount == "" || sku.TargetSupplierPrice.Currency == "" {
-			return fmt.Errorf("目标价格信息不完整")
-		}
-		skuList := []models.AcceptPriceSkuInfo{
-			{
-				SkuID:                  sku.SkuID,
-				Currency:               sku.TargetSupplierPrice.Currency,
-				TargetSupplierPriceStr: sku.TargetSupplierPrice.Amount, // 使用平台推荐的目标价格
-			},
-		}
-		_, err := s.pricingAPI.AcceptPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, skuList, 2)
-		return err
+		return s.pricingService.AcceptPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, sku)
 
 	case models.DecisionReject:
 		// ❌ 拒绝报价
-		skuIDs := []string{sku.SkuID}
-		_, err := s.pricingAPI.RejectPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, skuIDs)
-		return err
-
-	case models.DecisionReappeal:
-		if sku.CurrentSupplierPrice.Amount == "" || sku.TargetSupplierPrice.Amount == "" || sku.CurrentSupplierPrice.Currency == "" {
-			return fmt.Errorf("价格信息不完整")
-		}
-		skuInfoList := []models.ReappealSkuInfo{
-			{
-				SkuID:                       sku.SkuID,
-				SupplierPriceStr:            sku.CurrentSupplierPrice.Amount,
-				RecommendedSupplierPriceStr: sku.TargetSupplierPrice.Amount,
-				TargetSupplierPriceStr:      fmt.Sprintf("%.2f", decision.AcceptablePrice),
-				Currency:                    sku.CurrentSupplierPrice.Currency,
-			},
-		}
-		// 使用 TEMU API 要求的申诉原因枚举值
-		appealReasons := []string{"HIGH_COST"}
-		_, err := s.pricingAPI.ReappealPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, skuInfoList, 100, appealReasons)
-		return err
+		return s.pricingService.RejectPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, []string{sku.SkuID})
 
 	case models.DecisionSkip:
 		// 跳过，不做任何操作

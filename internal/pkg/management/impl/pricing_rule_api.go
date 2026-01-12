@@ -15,11 +15,7 @@ type PricingRuleAPIClientImpl struct {
 // GetPricingRule 获取自动核价规则（返回数组）
 func (m *PricingRuleAPIClientImpl) GetPricingRule(req *api.PricingRuleReqDTO) ([]api.PricingRuleRespDTO, error) {
 	// 构建URL，根据参数情况添加查询参数
-	url := fmt.Sprintf("%s/rpc-api/listing/pricing-rule/get?tenantId=%d", m.baseURL, req.TenantID)
-
-	if req.StoreID != nil {
-		url = fmt.Sprintf("%s&storeId=%d", url, *req.StoreID)
-	}
+	url := fmt.Sprintf("%s/rpc-api/listing/pricing-rule/get?storeId=%d", m.baseURL, req.StoreID)
 
 	if req.CategoryID != nil {
 		url = fmt.Sprintf("%s&categoryId=%d", url, *req.CategoryID)

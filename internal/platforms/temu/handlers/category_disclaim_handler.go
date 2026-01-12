@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -85,78 +86,22 @@ func (h *CategoryDisclaimHandler) getCategoryDisclaimer(temuCtx *temucontext.Tem
 		return nil
 	}
 
-	// 调用TEMU API获取分类免责声明
-	disclaimer, err := h.queryDisclaimerFromAPI(temuCtx, temuCtx.APIClient, catID)
+	// 创建CategoryAPI
+	categoryAPI := api.NewCategoryAPI(temuCtx.APIClient, h.logger)
+
+	// 调用API获取分类免责声明
+	response, err := categoryAPI.GetCategoryDisclaimer(int(catID))
 	if err != nil {
 		h.logger.Warnf("API获取免责声明失败，使用默认免责声明: %v", err)
+		return err
 	}
 
 	// 设置免责声明到产品
+	disclaimer := models.Disclaimer{
+		PromptList: response.Result.DisclaimerDTO.PromptList,
+	}
 	temuProduct.GoodsBasic.CategoryDisclaimer = disclaimer
 
 	h.logger.Infof("成功设置分类免责声明: %d 条提示", len(disclaimer.PromptList))
 	return nil
-}
-
-// queryDisclaimerFromAPI 从TEMU API获取分类免责声明
-func (h *CategoryDisclaimHandler) queryDisclaimerFromAPI(temuCtx *temucontext.TemuTaskContext, apiClient any, catID int) (models.Disclaimer, error) {
-	h.logger.Infof("调用TEMU API获取分类免责声明: CatID=%d", catID)
-
-	// 构造请求体
-	requestBody := map[string]any{
-		"cate_id": catID,
-	}
-
-	// 构造API请求
-	apiReq := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/category/query_disclaim",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"Google Chrome\";v=\"140\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-			"x-document-referer": "https://seller.temu.com/product-add.html?is_back=1",
-		},
-		"body": requestBody,
-	}
-
-	// 定义响应结构
-	response := &CategoryDisclaimResponse{}
-
-	// 类型断言获取TEMU API客户端
-	type TEMUAPIClient interface {
-		SendTEMURequest(request map[string]any, response any) error
-	}
-
-	if temuClient, ok := apiClient.(TEMUAPIClient); ok {
-		err := temuClient.SendTEMURequest(apiReq, response)
-		if err != nil {
-			h.logger.Errorf("发送API请求失败: %v", err)
-			return models.Disclaimer{}, fmt.Errorf("发送API请求失败: %w", err)
-		}
-	} else {
-		return models.Disclaimer{}, fmt.Errorf("API客户端不支持TEMU请求")
-	}
-
-	h.logger.Debugf("API响应: Success=%t, ErrorCode=%d", response.Success, response.ErrorCode)
-
-	// 检查响应状态
-	if !response.Success {
-		h.logger.Errorf("API返回失败，错误码: %d", response.ErrorCode)
-		return models.Disclaimer{}, fmt.Errorf("API返回失败，错误码: %d", response.ErrorCode)
-	}
-
-	// 转换响应数据
-	disclaimer := models.Disclaimer{
-		PromptList: response.Result.DisclaimerDTO.PromptList,
-	}
-
-	h.logger.Infof("成功从API获取分类免责声明: %d 条提示", len(disclaimer.PromptList))
-	return disclaimer, nil
 }

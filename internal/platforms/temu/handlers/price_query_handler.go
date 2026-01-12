@@ -1,11 +1,11 @@
 package handlers
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -14,39 +14,6 @@ import (
 // PriceQueryHandler 价格查询处理器
 type PriceQueryHandler struct {
 	logger *logrus.Entry
-}
-
-// PriceQueryRequest 价格查询请求结构体
-type PriceQueryRequest struct {
-	GoodsID                      string                    `json:"goods_id"`
-	MmsSkuMaxRetailPriceQryItems []MaxRetailPriceQueryItem `json:"mms_sku_max_retail_price_qry_items"`
-}
-
-// MaxRetailPriceQueryItem 最大零售价查询项
-type MaxRetailPriceQueryItem struct {
-	BasePriceStr string `json:"base_price_str"`
-	Currency     string `json:"currency"`
-}
-
-// PriceQueryResponse 价格查询响应结构体
-type PriceQueryResponse struct {
-	Success   bool              `json:"success"`
-	ErrorCode int               `json:"error_code"`
-	ErrorMsg  string            `json:"error_msg,omitempty"`
-	Result    *PriceQueryResult `json:"result,omitempty"`
-}
-
-// PriceQueryResult 价格查询结果
-type PriceQueryResult struct {
-	MmsSkuMaxRetailPriceItems []MaxRetailPriceResultItem `json:"mms_sku_max_retail_price_items"`
-}
-
-// MaxRetailPriceResultItem 最大零售价结果项
-type MaxRetailPriceResultItem struct {
-	BasePriceStr        string `json:"base_price_str"`
-	Currency            string `json:"currency"`
-	MaxRetailPriceStr   string `json:"max_retail_price_str"`
-	RetailPriceCurrency string `json:"retail_price_currency"`
 }
 
 // NewPriceQueryHandler 创建新的价格查询处理器
@@ -104,50 +71,20 @@ func (h *PriceQueryHandler) queryMaxRetailPrices(temuCtx *temucontext.TemuTaskCo
 		return nil
 	}
 
+	// 创建QueryAPI实例
+	queryAPI := api.NewQueryAPI(temuCtx.APIClient, h.logger)
+
 	// 构造价格查询请求
-	request := &PriceQueryRequest{
+	request := &models.PriceQueryRequest{
 		GoodsID:                      temuCtx.TemuProduct.GoodsBasic.GoodsID,
 		MmsSkuMaxRetailPriceQryItems: priceItems,
 	}
 
-	// 构造API请求
-	apiReq := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/price/retail/max/info",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-			"content-type":       "application/json;charset=UTF-8",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Chromium\";v=\"142\", \"Microsoft Edge\";v=\"142\", \"Not_A Brand\";v=\"99\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-		},
-		"body": request,
-	}
-
 	// 发送请求到TEMU API
-	response := &PriceQueryResponse{}
-
-	err := temuCtx.APIClient.SendTEMURequest(apiReq, response)
+	response, err := queryAPI.QueryMaxRetailPrice(request)
 	if err != nil {
-		h.logger.Errorf("发送TEMU价格查询请求失败: %v", err)
-		return fmt.Errorf("发送价格查询请求失败: %w", err)
-	}
-
-	// 检查响应结果
-	if !response.Success {
-		h.logger.Errorf("TEMU价格查询API响应失败: success=%v, error_code=%d", response.Success, response.ErrorCode)
-		if response.ErrorMsg != "" {
-			h.logger.Errorf("错误信息: %s", response.ErrorMsg)
-		}
-		responseJSON, _ := h.marshalWithoutHTMLEscape(response)
-		h.logger.Errorf("完整响应: %s", string(responseJSON))
-
-		return fmt.Errorf("价格查询失败: error_code=%d, message=%s", response.ErrorCode, response.ErrorMsg)
+		h.logger.Errorf("价格查询API调用失败: %v", err)
+		return fmt.Errorf("价格查询失败: %w", err)
 	}
 
 	// 记录查询结果
@@ -169,8 +106,8 @@ func (h *PriceQueryHandler) queryMaxRetailPrices(temuCtx *temucontext.TemuTaskCo
 }
 
 // collectSkuPrices 收集所有SKU的供应商价格
-func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContext) []MaxRetailPriceQueryItem {
-	var priceItems []MaxRetailPriceQueryItem
+func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContext) []models.MaxRetailPriceQueryItem {
+	var priceItems []models.MaxRetailPriceQueryItem
 	priceMap := make(map[string]bool) // 用于去重
 
 	// 直接使用强类型上下文中的TEMU产品信息
@@ -198,7 +135,7 @@ func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContex
 				continue // 已存在，跳过
 			}
 
-			priceItems = append(priceItems, MaxRetailPriceQueryItem{
+			priceItems = append(priceItems, models.MaxRetailPriceQueryItem{
 				BasePriceStr: basePriceStr,
 				Currency:     sku.Currency,
 			})
@@ -213,7 +150,7 @@ func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContex
 }
 
 // updateSkuMaxRetailPrices 更新SKU的最大零售价格
-func (h *PriceQueryHandler) updateSkuMaxRetailPrices(temuCtx *temucontext.TemuTaskContext, priceResults []MaxRetailPriceResultItem) {
+func (h *PriceQueryHandler) updateSkuMaxRetailPrices(temuCtx *temucontext.TemuTaskContext, priceResults []models.MaxRetailPriceResultItem) {
 	// 直接使用强类型上下文中的TEMU产品信息
 	if temuCtx.TemuProduct == nil {
 		h.logger.Warn("TEMU产品信息为空")
@@ -256,26 +193,6 @@ func (h *PriceQueryHandler) updateSkuMaxRetailPrices(temuCtx *temucontext.TemuTa
 	}
 
 	h.logger.Infof("成功更新 %d 个SKU的最大零售价格", updatedCount)
-}
-
-// marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
-func (h *PriceQueryHandler) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false) // 关闭HTML转义，避免&被转义为\u0026
-	encoder.SetIndent("", "  ")  // 设置缩进以便于阅读
-
-	if err := encoder.Encode(v); err != nil {
-		return nil, err
-	}
-
-	// 移除最后的换行符
-	result := buf.Bytes()
-	if len(result) > 0 && result[len(result)-1] == '\n' {
-		result = result[:len(result)-1]
-	}
-
-	return result, nil
 }
 
 // Handle 兼容原有的Handler接口（用于pipeline.AddHandler）

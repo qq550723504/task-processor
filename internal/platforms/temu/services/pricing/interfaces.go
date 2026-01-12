@@ -2,8 +2,10 @@
 package pricing
 
 import (
+	"context"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/temu/api/models"
 )
 
 // StoreConfigProvider 店铺配置提供者接口
@@ -35,5 +37,17 @@ type PriceCalculator interface {
 
 // ProductFetcher 产品获取器接口
 type ProductFetcher interface {
-	FetchProductWithRetry(productID, region string, tenantID, storeID int64, maxRetries int) (*model.Product, error)
+	FetchProductWithRetry(productID, region string, storeID int64, maxRetries int) (*model.Product, error)
+}
+
+// DecisionMaker 决策制定者接口
+type DecisionMaker interface {
+	MakeDecision(item *models.PricingSku, storeID int64) (*models.PricingDecision, error)
+	MakeDecisionForSalesBoost(goods *models.SalesBoostGoods, sku *models.SalesBoostSku, storeID int64) (*models.PricingDecision, error)
+}
+
+// PricingProcessor 核价处理器接口
+type PricingProcessor interface {
+	ProcessPendingPrices(ctx context.Context) (*models.PricingStatistics, error)
+	ProcessPendingPricesWithAmazon(ctx context.Context, configProvider any) (*models.PricingStatistics, error)
 }

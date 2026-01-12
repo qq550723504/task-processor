@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/management/api"
+	temuapi "task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -117,23 +118,6 @@ func (sb *SkuBuilder) GetTotalSkuCount(skcList []models.Skc) int {
 	return total
 }
 
-// SpecQueryRequest 规格查询请求
-type SpecQueryRequest struct {
-	GoodsID       string   `json:"goods_id"`
-	ChildSpecName string   `json:"child_spec_name"`
-	ParentSpecID  string   `json:"parent_spec_id"`
-	ExistSpecList []string `json:"exist_spec_list"`
-}
-
-// SpecQueryResponse 规格查询响应
-type SpecQueryResponse struct {
-	Success   bool `json:"success"`
-	ErrorCode int  `json:"error_code"`
-	Result    struct {
-		SpecID string `json:"spec_id"`
-	} `json:"result"`
-}
-
 // QuerySpecID 实现SpecQueryAPI接口，查询规格ID
 func (sb *SkuBuilder) QuerySpecID(temuCtx *temucontext.TemuTaskContext, parentSpecID, specName string) (string, error) {
 	return sb.querySpecID(temuCtx, parentSpecID, specName)
@@ -156,52 +140,25 @@ func (sb *SkuBuilder) querySpecID(temuCtx *temucontext.TemuTaskContext, parentSp
 	sb.logger.Infof("🔍 查询规格ID: goods_id=%s, parent_spec_id=%s, spec_name=%s",
 		goodsID, parentSpecID, specName)
 
+	// 创建QueryAPI实例
+	queryAPI := temuapi.NewQueryAPI(temuCtx.APIClient, sb.logger)
+
 	// 构建请求
-	request := SpecQueryRequest{
+	request := &models.SpecQueryRequest{
 		GoodsID:       goodsID,
 		ChildSpecName: specName,
 		ParentSpecID:  parentSpecID,
 		ExistSpecList: []string{}, // 可以传入已存在的规格列表
 	}
 
-	// 构造API请求
-	apiReq := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/edit/commit/spec_query",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-			"content-type":       "application/json;charset=UTF-8",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-		},
-		"body": request,
-	}
-
 	// 发送请求
-	response := &SpecQueryResponse{}
-	err := temuCtx.APIClient.SendTEMURequest(apiReq, response)
+	response, err := queryAPI.QuerySpec(request)
 	if err != nil {
 		return "", fmt.Errorf("规格查询API调用失败: %w", err)
 	}
 
-	if !response.Success {
-		// 错误码10000019表示规格不存在或无效，这是数据问题，不应该重试
-		if response.ErrorCode == 10000019 {
-			sb.logger.Errorf("❌ 规格查询失败: 规格'%s'在TEMU模板中不存在 (parent_spec_id=%s, error_code=%d)",
-				specName, parentSpecID, response.ErrorCode)
-			sb.logger.Error("💡 可能的原因:")
-			sb.logger.Error("   1. AI生成的规格名称与TEMU模板不匹配")
-			sb.logger.Error("   2. parent_spec_id不正确")
-			sb.logger.Error("   3. 需要在TEMU模板中添加这个规格值")
-			return "", fmt.Errorf("NONRETRYABLE: 规格'%s'不存在于TEMU模板中 (error_code=%d)", specName, response.ErrorCode)
-		}
-		return "", fmt.Errorf("规格查询失败: error_code=%d", response.ErrorCode)
+	if response.Result == nil {
+		return "", fmt.Errorf("规格查询响应结果为空")
 	}
 
 	sb.logger.Infof("✅ 规格查询成功: %s -> %s", specName, response.Result.SpecID)

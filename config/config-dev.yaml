@@ -64,10 +64,16 @@ management:
 platforms:
   # TEMU 平台配置
   temu:
-    enabled: false  # 是否启用TEMU处理器
+    enabled: false  # 是否启用TEMU处理器（任务处理）
+    # API配置
+    api:
+      timeout: 120          # API请求超时时间（秒）
+      maxTimeout: 180       # 最大超时时间（秒，包含重试）
+      retryCount: 3         # 重试次数
+      retryInterval: 2      # 重试间隔（秒）
     # 自动定价配置
     autoPricing:
-      enabled: true
+      enabled: true   # 启用自动核价
       interval: 300     # 5分钟
       batchSize: 100
       useAmazonPrice: true  # 是否使用Amazon价格数据进行定价决策
@@ -138,7 +144,7 @@ browser:
   enabled: true
   headless: false  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
-  poolSize: 10     # 浏览器池大小
+  poolSize: 3     # 浏览器池大小
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""

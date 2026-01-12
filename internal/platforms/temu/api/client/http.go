@@ -14,6 +14,7 @@ import (
 type HTTPManager struct {
 	proxyURL string
 	logger   *logrus.Entry
+	config   *Config // 添加配置引用
 }
 
 // NewHTTPManager 创建新的HTTP管理器
@@ -21,6 +22,7 @@ func NewHTTPManager(proxyURL string, logger *logrus.Entry) *HTTPManager {
 	return &HTTPManager{
 		proxyURL: proxyURL,
 		logger:   logger,
+		config:   DefaultConfig(), // 使用默认配置
 	}
 }
 
@@ -31,24 +33,27 @@ func (h *HTTPManager) CreateClient() *req.Client {
 		EnableAutoDecompress().
 		SetTLSClientConfig(h.getTLSConfig()).
 		SetCommonHeaders(h.getDefaultHeaders()).
-		SetCommonRetryCount(3).
+		SetCommonRetryCount(h.config.RetryCount).
 		SetCommonRetryInterval(func(resp *req.Response, attempt int) time.Duration {
-			// 动态退避策略
-			baseDelay := time.Duration(attempt*attempt) * time.Second
+			// 使用配置的重试间隔，并应用指数退避
+			baseDelay := h.config.RetryInterval * time.Duration(attempt)
+			h.logger.Infof("重试第%d次，等待%v", attempt, baseDelay)
 			return baseDelay
 		}).
 		SetCommonRetryCondition(func(resp *req.Response, err error) bool {
 			// 网络错误重试
 			if err != nil {
+				h.logger.WithError(err).Warn("网络错误，准备重试")
 				return true
 			}
 			// HTTP错误重试
 			if resp != nil && (resp.StatusCode >= 500 || resp.StatusCode == 429) {
+				h.logger.Warnf("HTTP错误 %d，准备重试", resp.StatusCode)
 				return true
 			}
 			return false
 		}).
-		SetTimeout(90) //todo://统一管理
+		SetTimeout(h.config.MaxTimeout) // 使用配置文件中的超时设置
 
 	// 如果配置了代理，则设置代理
 	if h.proxyURL != "" {

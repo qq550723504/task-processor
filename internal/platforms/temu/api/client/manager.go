@@ -51,7 +51,7 @@ func (m *APIClientManager) GetClient(tenantID, storeID int64) (*APIClient, error
 	}
 
 	// 创建新的客户端
-	client = NewAPIClient(tenantID, storeID, m.managementClient)
+	client = NewAPIClient(storeID, m.managementClient)
 	m.clients[key] = client
 
 	m.logger.Infof("成功创建并缓存API客户端: 租户=%d, 店铺=%d", tenantID, storeID)

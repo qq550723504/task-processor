@@ -28,11 +28,11 @@ func NewBulkRelistEntry(managementClient *management.ClientManager) *BulkRelistE
 }
 
 // ExecuteSimpleRelist 执行简单的全部重新上架
-func (e *BulkRelistEntry) ExecuteSimpleRelist(tenantID, storeID int64) (*models.RelistAllResult, error) {
-	e.logger.Infof("开始执行简单的全部重新上架: tenantID=%d, storeID=%d", tenantID, storeID)
+func (e *BulkRelistEntry) ExecuteSimpleRelist(storeID int64) (*models.RelistAllResult, error) {
+	e.logger.Infof("开始执行简单的全部重新上架: storeID=%d", storeID)
 
 	// 创建API客户端
-	apiClient := api.NewAPIClient(tenantID, storeID, e.managementClient)
+	apiClient := api.NewAPIClient(storeID, e.managementClient)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
@@ -45,11 +45,11 @@ func (e *BulkRelistEntry) ExecuteSimpleRelist(tenantID, storeID int64) (*models.
 }
 
 // ExecuteCustomRelist 执行自定义配置的重新上架
-func (e *BulkRelistEntry) ExecuteCustomRelist(tenantID, storeID int64, options *models.BulkRelistOptions) (*models.RelistAllResult, error) {
-	e.logger.Infof("开始执行自定义重新上架: tenantID=%d, storeID=%d", tenantID, storeID)
+func (e *BulkRelistEntry) ExecuteCustomRelist(storeID int64, options *models.BulkRelistOptions) (*models.RelistAllResult, error) {
+	e.logger.Infof("开始执行自定义重新上架: storeID=%d", storeID)
 
 	// 创建API客户端
-	apiClient := api.NewAPIClient(tenantID, storeID, e.managementClient)
+	apiClient := api.NewAPIClient(storeID, e.managementClient)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
@@ -62,11 +62,11 @@ func (e *BulkRelistEntry) ExecuteCustomRelist(tenantID, storeID int64, options *
 }
 
 // ExecuteFilteredRelist 执行带过滤条件的重新上架
-func (e *BulkRelistEntry) ExecuteFilteredRelist(tenantID, storeID int64, filter *models.ProductFilter, options *models.BulkRelistOptions) (*models.RelistAllResult, error) {
-	e.logger.Infof("开始执行过滤重新上架: tenantID=%d, storeID=%d", tenantID, storeID)
+func (e *BulkRelistEntry) ExecuteFilteredRelist(storeID int64, filter *models.ProductFilter, options *models.BulkRelistOptions) (*models.RelistAllResult, error) {
+	e.logger.Infof("开始执行过滤重新上架: storeID=%d", storeID)
 
 	// 创建API客户端
-	apiClient := api.NewAPIClient(tenantID, storeID, e.managementClient)
+	apiClient := api.NewAPIClient(storeID, e.managementClient)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
@@ -79,11 +79,11 @@ func (e *BulkRelistEntry) ExecuteFilteredRelist(tenantID, storeID int64, filter 
 }
 
 // GetOfflineProductsPreview 获取已下架产品预览（不执行上架）
-func (e *BulkRelistEntry) GetOfflineProductsPreview(tenantID, storeID int64, filter *models.ProductFilter) (*models.OfflineProductPreview, error) {
-	e.logger.Infof("获取已下架产品预览: tenantID=%d, storeID=%d", tenantID, storeID)
+func (e *BulkRelistEntry) GetOfflineProductsPreview(storeID int64, filter *models.ProductFilter) (*models.OfflineProductPreview, error) {
+	e.logger.Infof("获取已下架产品预览: storeID=%d", storeID)
 
 	// 创建API客户端
-	apiClient := api.NewAPIClient(tenantID, storeID, e.managementClient)
+	apiClient := api.NewAPIClient(storeID, e.managementClient)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
@@ -169,11 +169,11 @@ func (e *BulkRelistEntry) QuickRelistByCategories(tenantID, storeID int64, categ
 		},
 	}
 
-	return e.ExecuteFilteredRelist(tenantID, storeID, filter, options)
+	return e.ExecuteFilteredRelist(storeID, filter, options)
 }
 
 // QuickRelistByStock 快速按库存条件重新上架
-func (e *BulkRelistEntry) QuickRelistByStock(tenantID, storeID int64, minStock int, delayMs int) (*models.RelistAllResult, error) {
+func (e *BulkRelistEntry) QuickRelistByStock(storeID int64, minStock int, delayMs int) (*models.RelistAllResult, error) {
 	filter := &models.ProductFilter{
 		MinStock: minStock,
 	}
@@ -188,7 +188,7 @@ func (e *BulkRelistEntry) QuickRelistByStock(tenantID, storeID int64, minStock i
 		},
 	}
 
-	return e.ExecuteFilteredRelist(tenantID, storeID, filter, options)
+	return e.ExecuteFilteredRelist(storeID, filter, options)
 }
 
 // QuickRelistByPriceRange 快速按价格范围重新上架
@@ -207,5 +207,5 @@ func (e *BulkRelistEntry) QuickRelistByPriceRange(tenantID, storeID int64, minPr
 		},
 	}
 
-	return e.ExecuteFilteredRelist(tenantID, storeID, filter, options)
+	return e.ExecuteFilteredRelist(storeID, filter, options)
 }

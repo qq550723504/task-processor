@@ -4,9 +4,8 @@ package service
 import (
 	"context"
 
+	"task-processor/internal/app/scheduler"
 	"task-processor/internal/pkg/management"
-	sheinHandlers "task-processor/internal/platforms/shein/handlers"
-	temuHandlers "task-processor/internal/platforms/temu"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,13 +19,12 @@ type PricingService interface {
 
 // pricingServiceImpl 核价服务实现
 type pricingServiceImpl struct {
-	logger                  *logrus.Logger
-	managementClient        *management.ClientManager
-	temuAutoPricingHandler  *temuHandlers.AutoPricingHandler
-	sheinAutoPricingHandler *sheinHandlers.AutoPricingHandler
-	ctx                     context.Context
-	cancel                  context.CancelFunc
-	running                 bool
+	logger           *logrus.Logger
+	managementClient *management.ClientManager
+	scheduler        *scheduler.SafeScheduler
+	ctx              context.Context
+	cancel           context.CancelFunc
+	running          bool
 }
 
 // NewPricingService 创建核价服务
@@ -70,10 +68,12 @@ func (s *pricingServiceImpl) Stop(ctx context.Context) error {
 
 	s.logger.Info("🛑 开始停止核价服务...")
 
-	// 停止TEMU核价处理器
-	if s.temuAutoPricingHandler != nil {
-		s.temuAutoPricingHandler.Stop()
-		s.logger.Info("✅ TEMU核价处理器已停止")
+	// 停止调度器
+	if s.scheduler != nil {
+		if err := s.scheduler.Stop(); err != nil {
+			s.logger.Errorf("停止调度器失败: %v", err)
+		}
+		s.logger.Info("✅ 调度器已停止")
 	}
 
 	// 取消上下文
@@ -89,10 +89,13 @@ func (s *pricingServiceImpl) Stop(ctx context.Context) error {
 
 // GetStatus 获取核价服务状态
 func (s *pricingServiceImpl) GetStatus() map[string]any {
-	return map[string]any{
+	status := map[string]any{
 		"running": s.running,
-		"handlers": map[string]any{
-			"temu": s.temuAutoPricingHandler != nil,
-		},
 	}
+
+	if s.scheduler != nil {
+		status["scheduler"] = s.scheduler.GetStatus()
+	}
+
+	return status
 }

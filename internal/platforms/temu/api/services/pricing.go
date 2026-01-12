@@ -1,3 +1,4 @@
+// Package services 提供TEMU平台定价相关的业务服务
 package services
 
 import (
@@ -8,33 +9,22 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	// 待核价列表接口
-	pendingPriceListEndpoint = "/mms/marigold/price/v2/search_sales_boost"
-	// 拒绝平台报价接口
-	rejectPriceEndpoint = "/mms/marigold/sku/offline"
-	// 重新报价接口
-	reappealPriceEndpoint = "/mms/marigold/price/appeal/order/create"
-	// 接受平台报价接口
-	acceptPriceEndpoint = "/mms/marigold/price/goods/change"
-)
-
-// PricingAPI 定价API管理器
-type PricingAPI struct {
+// PricingService 定价服务 - 处理所有定价相关的业务逻辑
+type PricingService struct {
 	client client.APIClientInterface
 	logger *logrus.Entry
 }
 
-// NewPricingAPI 创建新的定价API管理器
-func NewPricingAPI(client client.APIClientInterface, logger *logrus.Entry) *PricingAPI {
-	return &PricingAPI{
+// NewPricingService 创建新的定价服务
+func NewPricingService(client client.APIClientInterface, logger *logrus.Entry) *PricingService {
+	return &PricingService{
 		client: client,
 		logger: logger,
 	}
 }
 
-// GetPendingPriceList 获取待核价列表
-func (p *PricingAPI) GetPendingPriceList(pageNo, pageSize int) (*models.PendingPriceListResponse, error) {
+// getPendingPriceList 获取待核价列表
+func (p *PricingService) getPendingPriceList(pageNo, pageSize int) (*models.PendingPriceListResponse, error) {
 	p.logger.Infof("获取待核价列表: pageNo=%d, pageSize=%d", pageNo, pageSize)
 
 	req := &models.PendingPriceListRequest{
@@ -47,16 +37,25 @@ func (p *PricingAPI) GetPendingPriceList(pageNo, pageSize int) (*models.PendingP
 	headers["content-type"] = "application/json;charset=UTF-8"
 	headers["x-document-referer"] = "https://seller.temu.com/"
 
-	request := map[string]interface{}{
+	request := map[string]any{
 		"method":  "POST",
-		"url":     pendingPriceListEndpoint,
+		"url":     "/mms/marigold/price/v2/search_sales_boost",
 		"headers": headers,
 		"body":    req,
 	}
 
+	p.logger.Infof("发送API请求: %s", request["url"])
+
 	var result models.PendingPriceListResponse
 	if err := p.client.SendTEMURequest(request, &result); err != nil {
 		p.logger.WithError(err).Error("获取待核价列表失败")
+
+		// 检查是否是超时错误
+		if isTimeoutError(err) {
+			p.logger.Error("API调用超时，建议检查网络连接或增加超时时间")
+			return nil, fmt.Errorf("API调用超时: %w", err)
+		}
+
 		return nil, fmt.Errorf("获取待核价列表失败: %w", err)
 	}
 
@@ -71,17 +70,85 @@ func (p *PricingAPI) GetPendingPriceList(pageNo, pageSize int) (*models.PendingP
 	return &result, nil
 }
 
-// RejectPrice 拒绝平台报价
-func (p *PricingAPI) RejectPrice(goodsID string, skuIDs []string) (*models.RejectPriceResponse, error) {
+// isTimeoutError 检查是否是超时错误
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return contains(errStr, "timeout") ||
+		contains(errStr, "deadline exceeded") ||
+		contains(errStr, "context deadline exceeded") ||
+		contains(errStr, "Client.Timeout exceeded")
+}
+
+// contains 检查字符串是否包含子字符串（不区分大小写）
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			(len(s) > len(substr) &&
+				(s[:len(substr)] == substr ||
+					s[len(s)-len(substr):] == substr ||
+					containsInMiddle(s, substr))))
+}
+
+// containsInMiddle 检查字符串中间是否包含子字符串
+func containsInMiddle(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// acceptPrice 接受平台报价
+func (p *PricingService) acceptPrice(goodsID string, sku *models.SalesBoostSku) error {
+	p.logger.Infof("接受平台报价: goodsID=%s, skuID=%s", goodsID, sku.SkuID)
+
+	skuList := []models.AcceptPriceSkuInfo{
+		{
+			SkuID:                  sku.SkuID,
+			Currency:               sku.TargetSupplierPrice.Currency,
+			TargetSupplierPriceStr: sku.TargetSupplierPrice.Amount,
+		},
+	}
+
+	req := &models.AcceptPriceRequest{
+		Scene:   2,
+		GoodsID: goodsID,
+		SkuList: skuList,
+	}
+
+	headers := client.GetDefaultHeaders()
+	headers["content-type"] = "application/json;charset=UTF-8"
+	headers["x-document-referer"] = "https://seller.temu.com/products.html"
+
+	request := map[string]any{
+		"method":  "POST",
+		"url":     "/mms/marigold/price/goods/change",
+		"headers": headers,
+		"body":    req,
+	}
+
+	var result models.AcceptPriceResponse
+	if err := p.client.SendTEMURequest(request, &result); err != nil {
+		p.logger.WithError(err).Error("接受平台报价失败")
+		return fmt.Errorf("接受平台报价失败: %w", err)
+	}
+
+	if !result.Success {
+		p.logger.Errorf("接受平台报价失败: errorCode=%d", result.ErrorCode)
+		return fmt.Errorf("接受平台报价失败: errorCode=%d", result.ErrorCode)
+	}
+
+	p.logger.Info("成功接受平台报价")
+	return nil
+}
+
+// rejectPrice 拒绝平台报价
+func (p *PricingService) rejectPrice(goodsID string, skuIDs []string) error {
 	p.logger.Infof("拒绝平台报价: goodsID=%s, skuIDs=%v", goodsID, skuIDs)
-
-	if goodsID == "" {
-		return nil, fmt.Errorf("商品ID不能为空")
-	}
-
-	if len(skuIDs) == 0 {
-		return nil, fmt.Errorf("SKU ID列表不能为空")
-	}
 
 	req := &models.RejectPriceRequest{
 		GoodsID:         goodsID,
@@ -93,9 +160,9 @@ func (p *PricingAPI) RejectPrice(goodsID string, skuIDs []string) (*models.Rejec
 	headers["content-type"] = "application/json;charset=UTF-8"
 	headers["x-document-referer"] = "https://seller.temu.com/products.html"
 
-	request := map[string]interface{}{
+	request := map[string]any{
 		"method":  "POST",
-		"url":     rejectPriceEndpoint,
+		"url":     "/mms/marigold/sku/offline",
 		"headers": headers,
 		"body":    req,
 	}
@@ -103,103 +170,29 @@ func (p *PricingAPI) RejectPrice(goodsID string, skuIDs []string) (*models.Rejec
 	var result models.RejectPriceResponse
 	if err := p.client.SendTEMURequest(request, &result); err != nil {
 		p.logger.WithError(err).Error("拒绝平台报价失败")
-		return nil, fmt.Errorf("拒绝平台报价失败: %w", err)
+		return fmt.Errorf("拒绝平台报价失败: %w", err)
 	}
 
 	if !result.Success {
 		p.logger.Errorf("拒绝平台报价失败: errorCode=%d", result.ErrorCode)
-		return nil, fmt.Errorf("拒绝平台报价失败: errorCode=%d", result.ErrorCode)
+		return fmt.Errorf("拒绝平台报价失败: errorCode=%d", result.ErrorCode)
 	}
 
 	p.logger.Info("成功拒绝平台报价")
-	return &result, nil
+	return nil
 }
 
-// ReappealPrice 重新报价
-func (p *PricingAPI) ReappealPrice(goodsID string, skuInfoList []models.ReappealSkuInfo, appealSource int, appealReasons []string) (*models.ReappealPriceResponse, error) {
-	p.logger.Infof("重新报价: goodsID=%s, SKU数量=%d", goodsID, len(skuInfoList))
-
-	if goodsID == "" {
-		return nil, fmt.Errorf("商品ID不能为空")
-	}
-
-	if len(skuInfoList) == 0 {
-		return nil, fmt.Errorf("SKU信息列表不能为空")
-	}
-
-	req := &models.ReappealPriceRequest{
-		GoodsID:              goodsID,
-		AppealSource:         appealSource,
-		MerchantAppealReason: appealReasons,
-		SkuInfoList:          skuInfoList,
-	}
-
-	headers := client.GetDefaultHeaders()
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["x-document-referer"] = "https://seller.temu.com/products.html"
-
-	request := map[string]interface{}{
-		"method":  "POST",
-		"url":     reappealPriceEndpoint,
-		"headers": headers,
-		"body":    req,
-	}
-
-	var result models.ReappealPriceResponse
-	if err := p.client.SendTEMURequest(request, &result); err != nil {
-		p.logger.WithError(err).Error("重新报价失败")
-		return nil, fmt.Errorf("重新报价失败: %w", err)
-	}
-
-	if !result.Success {
-		p.logger.Errorf("重新报价失败: errorCode=%d", result.ErrorCode)
-		return nil, fmt.Errorf("重新报价失败: errorCode=%d", result.ErrorCode)
-	}
-
-	p.logger.Info("成功提交重新报价")
-	return &result, nil
+// GetPendingPriceList 获取待核价列表（公开方法）
+func (p *PricingService) GetPendingPriceList(pageNo, pageSize int) (*models.PendingPriceListResponse, error) {
+	return p.getPendingPriceList(pageNo, pageSize)
 }
 
-// AcceptPrice 接受平台报价
-func (p *PricingAPI) AcceptPrice(goodsID string, skuList []models.AcceptPriceSkuInfo, scene int) (*models.AcceptPriceResponse, error) {
-	p.logger.Infof("接受平台报价: goodsID=%s, SKU数量=%d, scene=%d", goodsID, len(skuList), scene)
+// AcceptPrice 接受平台报价（简化接口）
+func (p *PricingService) AcceptPrice(goodsID string, sku *models.SalesBoostSku) error {
+	return p.acceptPrice(goodsID, sku)
+}
 
-	if goodsID == "" {
-		return nil, fmt.Errorf("商品ID不能为空")
-	}
-
-	if len(skuList) == 0 {
-		return nil, fmt.Errorf("SKU列表不能为空")
-	}
-
-	req := &models.AcceptPriceRequest{
-		Scene:   scene,
-		GoodsID: goodsID,
-		SkuList: skuList,
-	}
-
-	headers := client.GetDefaultHeaders()
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["x-document-referer"] = "https://seller.temu.com/products.html"
-
-	request := map[string]interface{}{
-		"method":  "POST",
-		"url":     acceptPriceEndpoint,
-		"headers": headers,
-		"body":    req,
-	}
-
-	var result models.AcceptPriceResponse
-	if err := p.client.SendTEMURequest(request, &result); err != nil {
-		p.logger.WithError(err).Error("接受平台报价失败")
-		return nil, fmt.Errorf("接受平台报价失败: %w", err)
-	}
-
-	if !result.Success {
-		p.logger.Errorf("接受平台报价失败: errorCode=%d", result.ErrorCode)
-		return nil, fmt.Errorf("接受平台报价失败: errorCode=%d", result.ErrorCode)
-	}
-
-	p.logger.Info("成功接受平台报价")
-	return &result, nil
+// RejectPrice 拒绝平台报价（简化接口）
+func (p *PricingService) RejectPrice(goodsID string, skuIDs []string) error {
+	return p.rejectPrice(goodsID, skuIDs)
 }

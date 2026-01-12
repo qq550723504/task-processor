@@ -26,10 +26,13 @@ type (
 // 重新导出服务相关类型
 type (
 	ProductAPI     = services.ProductAPI
-	PricingAPI     = services.PricingAPI
+	PricingService = services.PricingService
 	ListingAPI     = services.ListingAPI
 	OfflineAPI     = services.OfflineAPI
 	ImageUploadAPI = services.ImageUploadAPI
+	CategoryAPI    = services.CategoryAPI
+	QueryAPI       = services.QueryAPI
+	SubmitAPI      = services.SubmitAPI
 )
 
 // 重新导出模型相关类型
@@ -78,6 +81,36 @@ type (
 
 	// SKU相关
 	Skc = models.Skc
+
+	// 查询相关
+	TextCheckRequest         = models.TextCheckRequest
+	TextCheckResponse        = models.TextCheckResponse
+	TemplateQueryRequest     = models.TemplateQueryRequest
+	TemplateQueryResponse    = models.TemplateQueryResponse
+	SpecQueryRequest         = models.SpecQueryRequest
+	SpecQueryResponse        = models.SpecQueryResponse
+	SkuSnCheckRequest        = models.SkuSnCheckRequest
+	SkuSnCheckResponse       = models.SkuSnCheckResponse
+	CostTemplateRequest      = models.CostTemplateRequest
+	CostTemplateResponse     = models.CostTemplateResponse
+	CommitDetailRequest      = models.CommitDetailRequest
+	CommitDetailResponse     = models.CommitDetailResponse
+	PriceQueryRequest        = models.PriceQueryRequest
+	PriceQueryResponse       = models.PriceQueryResponse
+	MaxRetailPriceQueryItem  = models.MaxRetailPriceQueryItem
+	MaxRetailPriceResultItem = models.MaxRetailPriceResultItem
+
+	// 提交相关
+	ProductSubmitRequest  = models.ProductSubmitRequest
+	ProductSubmitResponse = models.ProductSubmitResponse
+	CreateCommitRequest   = models.CreateCommitRequest
+	CreateCommitResponse  = models.CreateCommitResponse
+
+	// 分类相关
+	CategoryDisclaimRequest   = models.CategoryDisclaimRequest
+	CategoryDisclaimResponse  = models.CategoryDisclaimResponse
+	CategoryRecommendRequest  = models.CategoryRecommendRequest
+	CategoryRecommendResponse = models.CategoryRecommendResponse
 )
 
 // 重新导出构造函数
@@ -85,10 +118,13 @@ var (
 	NewAPIClient        = client.NewAPIClient
 	NewAPIClientManager = client.NewAPIClientManager
 	NewProductAPI       = services.NewProductAPI
-	NewPricingAPI       = services.NewPricingAPI
+	NewPricingService   = services.NewPricingService
 	NewListingAPI       = services.NewListingAPI
 	NewOfflineAPI       = services.NewOfflineAPI
 	NewImageUploadAPI   = services.NewImageUploadAPI
+	NewCategoryAPI      = services.NewCategoryAPI
+	NewQueryAPI         = services.NewQueryAPI
+	NewSubmitAPI        = services.NewSubmitAPI
 	NewCookieManager    = client.NewCookieManager
 	NewHTTPManager      = client.NewHTTPManager
 	NewAuthManager      = client.NewAuthManager

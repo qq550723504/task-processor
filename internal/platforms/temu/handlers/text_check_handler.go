@@ -3,6 +3,8 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/platforms/temu/api"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -10,17 +12,6 @@ import (
 
 // TextCheckHandler 文本检查处理器
 type TextCheckHandler struct{}
-
-// TextCheckRequest 文本检查请求结构体
-type TextCheckRequest struct {
-	Content string `json:"content"`
-	Type    int    `json:"type"`
-}
-
-// TextCheckResult 文本检查结果结构体
-type TextCheckResult struct {
-	Success bool `json:"success"`
-}
 
 // NewTextCheckHandler 创建新的文本检查处理器
 func NewTextCheckHandler() *TextCheckHandler {
@@ -83,50 +74,27 @@ func (h *TextCheckHandler) checkText(temuCtx *temucontext.TemuTaskContext, conte
 		return fmt.Errorf("API客户端未初始化")
 	}
 
-	// 构造请求体
-	requestBody := TextCheckRequest{
-		Content: content,
-		Type:    1,
+	// 创建QueryAPI
+	queryAPI := api.NewQueryAPI(temuCtx.APIClient, logrus.WithField("handler", "TextCheckHandler"))
+
+	// 构造请求
+	request := &models.TextCheckRequest{
+		Text: content,
 	}
 
-	// 构造API请求
-	apiReq := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/query/commit/check_text",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"Google Chrome\";v=\"140\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-			"x-document-referer": "https://seller.temu.com/product-add.html?is_back=1",
-		},
-		"body": requestBody,
+	// 调用API检查文本
+	response, err := queryAPI.CheckText(request)
+	if err != nil {
+		logrus.Errorf("文本检查失败: %v", err)
+		return fmt.Errorf("文本检查失败: %v", err)
 	}
 
-	textCheckResult := &TextCheckResult{}
+	logrus.Infof("文本检查成功: 有效=%v, 消息=%s", response.Result.IsValid, response.Result.Message)
 
-	// 进行类型断言获取TEMU API客户端
-	type TEMUAPIClient interface {
-		SendTEMURequest(request map[string]any, response any) error
+	if !response.Result.IsValid {
+		return fmt.Errorf("文本检查未通过: %s", response.Result.Message)
 	}
 
-	// 使用类型断言检查API客户端是否支持TEMU请求
-	if temuClient, ok := interface{}(temuCtx.APIClient).(TEMUAPIClient); ok {
-		err := temuClient.SendTEMURequest(apiReq, textCheckResult)
-		if err != nil {
-			logrus.Errorf("发送请求失败: %v", err)
-			return fmt.Errorf("发送请求失败: %v", err)
-		}
-	} else {
-		return fmt.Errorf("API客户端不支持TEMU请求")
-	}
-
-	logrus.Infof("文本检查成功: %+v", textCheckResult)
 	return nil
 }
 

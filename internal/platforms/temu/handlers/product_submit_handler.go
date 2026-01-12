@@ -6,6 +6,7 @@ import (
 	"strings"
 	"task-processor/internal/pipeline"
 	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
@@ -18,34 +19,6 @@ type ProductSubmitHandler struct {
 	mappingClient management_api.ProductImportMappingAPI
 	errorAnalyzer *ProductSubmitErrorAnalyzer
 	utils         *ProductSubmitUtils
-}
-
-// ProductSubmitRequest TEMU产品提交请求结构体（完整版）
-type ProductSubmitRequest struct {
-	GoodsBasic            models.GoodsBasicInfo `json:"goods_basic"`
-	GoodsSaleInfo         models.GoodsSaleInfo  `json:"goods_sale_info"`
-	GoodsServicePromise   models.ServicePromise `json:"goods_service_promise"`
-	GoodsExtensionInfo    models.ExtensionInfo  `json:"goods_extension_info"`
-	Extra                 models.Extra          `json:"extra"`
-	CanSave               bool                  `json:"can_save"`
-	SupportMaxRetailPrice bool                  `json:"support_max_retail_price"`
-	PlatformExpressBill   bool                  `json:"platform_express_bill"`
-	SkcList               []models.Skc          `json:"skc_list"`
-	//BatchSkuInfo          types.BatchSkuInfo        `json:"batch_sku_info"`
-}
-
-// ProductSubmitResponse TEMU产品提交响应结构体
-type ProductSubmitResponse struct {
-	Success   bool                `json:"success"`
-	ErrorCode int                 `json:"error_code"`
-	Message   string              `json:"error_msg"`
-	Result    ProductSubmitResult `json:"result"`
-}
-
-// ProductSubmitResult 产品提交结果
-type ProductSubmitResult struct {
-	SubmitSuccess           bool `json:"submit_success"`
-	EditCustomizedInfoAlert bool `json:"edit_customized_info_alert"`
 }
 
 // NewProductSubmitHandler 创建新的产品提交处理器
@@ -170,28 +143,11 @@ func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContex
 		}
 	}
 
-	// 构造API请求
-	apiReq := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/edit/commit/submit",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-			"content-type":       "application/json;charset=UTF-8",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-		},
-		"body": request,
-	}
+	// 创建SubmitAPI
+	submitAPI := api.NewSubmitAPI(temuCtx.APIClient, h.logger)
 
-	// 发送请求到TEMU API
-	response := &ProductSubmitResponse{}
-	err := temuCtx.APIClient.SendTEMURequest(apiReq, response)
+	// 调用API提交产品
+	response, err := submitAPI.SubmitProduct(request)
 	if err != nil {
 		// 保存JSON数据到文件用于调试
 		task := temuCtx.GetTask()
@@ -201,8 +157,8 @@ func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContex
 				h.logger.Errorf("保存JSON文件失败: %v", saveErr)
 			}
 		}
-		h.logger.Errorf("发送TEMU API请求失败: %v", err)
-		return fmt.Errorf("发送提交请求失败: %w", err)
+		h.logger.Errorf("产品提交失败: %v", err)
+		return fmt.Errorf("产品提交失败: %w", err)
 	}
 
 	h.logger.Infof("out_goods_sn: %s", request.GoodsBasic.OutGoodsSN)
@@ -236,25 +192,6 @@ func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContex
 		return nil // 返回nil表示处理成功，不再重试
 	}
 
-	if !response.Result.SubmitSuccess {
-		h.logger.Errorf("产品提交结果失败: submit_success=%v", response.Result.SubmitSuccess)
-		responseJSON, _ := h.utils.MarshalWithoutHTMLEscape(response)
-		h.logger.Errorf("完整响应: %s", string(responseJSON))
-
-		// 提交结果失败时保存到草稿箱
-		h.logger.Warnf("产品提交结果失败，尝试保存到草稿箱...")
-		if saveErr := h.saveHandler.Handle(temuCtx); saveErr != nil {
-			h.logger.Errorf("保存到草稿箱也失败: %v", saveErr)
-			h.logger.Error("❌ 提交和保存草稿都失败，任务将被标记为不可重试")
-			// 提交失败且保存草稿也失败，标记为不可重试
-			return fmt.Errorf("NONRETRYABLE: 产品提交未成功且保存草稿失败: %w", saveErr)
-		}
-		h.logger.Infof("✅ 产品已保存到草稿箱，任务标记为已完成")
-		// 保存到草稿箱成功，标记为特殊的成功状态，避免重复处理
-		temuCtx.SavedToDraft = true
-		return nil // 返回nil表示处理成功，不再重试
-	}
-
 	// 保存提交响应到强类型字段
 	temuCtx.SubmitResult = response
 
@@ -264,7 +201,7 @@ func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContex
 }
 
 // buildSubmitRequest 构建提交请求
-func (h *ProductSubmitHandler) buildSubmitRequest(temuCtx *temucontext.TemuTaskContext) *ProductSubmitRequest {
+func (h *ProductSubmitHandler) buildSubmitRequest(temuCtx *temucontext.TemuTaskContext) *models.ProductSubmitRequest {
 	// 获取TEMU产品信息
 	temuProduct := temuCtx.TemuProduct
 
@@ -276,7 +213,7 @@ func (h *ProductSubmitHandler) buildSubmitRequest(temuCtx *temucontext.TemuTaskC
 		CreateEmptyGoods: temuProduct.Extra.CreateEmptyGoods,
 	}
 
-	request := &ProductSubmitRequest{
+	request := &models.ProductSubmitRequest{
 		GoodsBasic:            temuProduct.GoodsBasic,
 		GoodsSaleInfo:         temuProduct.GoodsSaleInfo,
 		GoodsServicePromise:   temuProduct.GoodsServicePromise,

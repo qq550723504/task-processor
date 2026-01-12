@@ -109,3 +109,52 @@ func (p *ProductAPI) GetProduct(goodsID string) (*models.TemuProductResponse, er
 
 	return nil, fmt.Errorf("未找到产品: %s", goodsID)
 }
+
+// SaveProduct 保存产品到草稿箱
+func (p *ProductAPI) SaveProduct(request *models.ProductSaveRequest) (*models.ProductSaveResponse, error) {
+	p.logger.Info("开始保存产品到TEMU草稿箱")
+
+	if request == nil {
+		return nil, fmt.Errorf("保存请求不能为空")
+	}
+
+	headers := client.GetDefaultHeaders()
+	headers["accept"] = "application/json, text/plain, */*"
+	headers["accept-language"] = "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
+	headers["content-type"] = "application/json;charset=UTF-8"
+	headers["priority"] = "u=1, i"
+	headers["sec-ch-ua"] = "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""
+	headers["sec-ch-ua-mobile"] = "?0"
+	headers["sec-ch-ua-platform"] = "\"Windows\""
+	headers["sec-fetch-dest"] = "empty"
+	headers["sec-fetch-mode"] = "cors"
+	headers["sec-fetch-site"] = "same-origin"
+
+	apiReq := map[string]interface{}{
+		"method":  "POST",
+		"url":     "/mms/marigold/edit/commit/save",
+		"headers": headers,
+		"body":    request,
+	}
+
+	var result models.ProductSaveResponse
+	if err := p.client.SendTEMURequest(apiReq, &result); err != nil {
+		p.logger.WithError(err).Error("发送产品保存请求失败")
+		return nil, fmt.Errorf("发送产品保存请求失败: %w", err)
+	}
+
+	if !result.Success {
+		p.logger.Errorf("产品保存失败: errorCode=%d, message=%s", result.ErrorCode, result.Message)
+		return nil, fmt.Errorf("产品保存失败: errorCode=%d, message=%s", result.ErrorCode, result.Message)
+	}
+
+	p.logger.Infof("产品保存成功: ListingCommitID=%s",
+		func() string {
+			if result.Result != nil {
+				return result.Result.ListingCommitID
+			}
+			return "未返回"
+		}())
+
+	return &result, nil
+}

@@ -6,44 +6,15 @@ import (
 	"net/http"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/pkg/management/api"
-	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"
 )
 
-// ConfigProvider 配置提供者接口（避免循环导入）
-type ConfigProvider interface {
-	GetAmazonConfig() interface{}
-	GetAmazonProcessor() interface{}
-	GetPlatformConfig() interface{}
-}
-
-// AutoPricingService 自动核价服务接口（避免循环导入）
-type AutoPricingService interface {
-	AutoProcessPendingPricesWithRules(managementClient *management.ClientManager) (*models.PricingStatistics, error)
-	AutoProcessPendingPricesWithRulesAndAmazon(managementClient *management.ClientManager, configProvider ConfigProvider) (*models.PricingStatistics, error)
-}
-
-// PricingAPI 定价API管理器（避免循环导入）
-type PricingAPI struct {
-	client APIClientInterface
-	logger *logrus.Entry
-}
-
-// NewPricingAPI 创建新的定价API管理器
-func NewPricingAPI(client APIClientInterface, logger *logrus.Entry) *PricingAPI {
-	return &PricingAPI{
-		client: client,
-		logger: logger,
-	}
-}
-
-// APIClient TEMU API客户端 - 使用req库的增强版本
+// APIClient TEMU API客户端 - 核心客户端，只负责基础的HTTP通信
 type APIClient struct {
 	config        *Config
 	client        *req.Client
-	tenantID      int64
 	storeID       int64
 	cookies       []*http.Cookie
 	cookieManager *CookieManager
@@ -54,18 +25,16 @@ type APIClient struct {
 }
 
 // NewAPIClient 创建TEMU API客户端
-func NewAPIClient(tenantID, storeID int64, managementClient *management.ClientManager) *APIClient {
+func NewAPIClient(storeID int64, managementClient *management.ClientManager) *APIClient {
 	config := DefaultConfig()
 
 	logger := logrus.WithFields(logrus.Fields{
 		"component": "TEMUAPIClient",
-		"tenantID":  tenantID,
 		"storeID":   storeID,
 	})
 
 	apiClient := &APIClient{
 		config:        config,
-		tenantID:      tenantID,
 		storeID:       storeID,
 		cookieManager: NewCookieManager(storeID, managementClient),
 		logger:        logger,
@@ -259,11 +228,6 @@ func (c *APIClient) SendHTTPRequest(method, url string, headers map[string]strin
 	return c.httpManager.SendRequest(c.client, method, url, headers, body, formFields, fileFields)
 }
 
-// GetTenantID 获取租户ID
-func (c *APIClient) GetTenantID() int64 {
-	return c.tenantID
-}
-
 // GetStoreID 获取店铺ID
 func (c *APIClient) GetStoreID() int64 {
 	return c.storeID
@@ -275,7 +239,7 @@ func (c *APIClient) GetBaseURL() string {
 }
 
 // GetConfig 获取配置
-func (c *APIClient) GetConfig() interface{} {
+func (c *APIClient) GetConfig() any {
 	return c.config
 }
 
@@ -285,246 +249,11 @@ func (c *APIClient) GetLogger() *logrus.Entry {
 }
 
 // GetCookieManager 获取Cookie管理器
-func (c *APIClient) GetCookieManager() interface{} {
+func (c *APIClient) GetCookieManager() any {
 	return c.cookieManager
 }
 
 // SendHTTPRequestInterface 发送HTTP请求（接口适配器）
-func (c *APIClient) SendHTTPRequestInterface(method, url string, headers map[string]string, body any, formFields map[string]string, fileFields map[string]any) (interface{}, error) {
+func (c *APIClient) SendHTTPRequestInterface(method, url string, headers map[string]string, body any, formFields map[string]string, fileFields map[string]any) (any, error) {
 	return c.SendHTTPRequest(method, url, headers, body, formFields, fileFields)
-}
-
-// AutoProcessPendingPricesWithRules 根据利润率规则智能处理待核价商品
-func (c *APIClient) AutoProcessPendingPricesWithRules(managementClient *management.ClientManager) (*models.PricingStatistics, error) {
-	c.logger.Info("开始智能核价处理")
-
-	// 参数校验
-	if managementClient == nil {
-		return nil, fmt.Errorf("managementClient不能为空")
-	}
-
-	// 处理待核价商品
-	return c.processWithBasicRules(managementClient)
-}
-
-// AutoProcessPendingPricesWithRulesAndAmazon 根据利润率规则智能处理待核价商品（支持Amazon数据）
-func (c *APIClient) AutoProcessPendingPricesWithRulesAndAmazon(managementClient *management.ClientManager, configProvider interface{}) (*models.PricingStatistics, error) {
-	c.logger.Info("开始智能核价处理（Amazon增强版）")
-
-	// 参数校验
-	if managementClient == nil {
-		return nil, fmt.Errorf("managementClient不能为空")
-	}
-
-	if configProvider == nil {
-		c.logger.Warn("配置提供者为空，使用基础决策服务")
-		return c.AutoProcessPendingPricesWithRules(managementClient)
-	}
-
-	// 处理待核价商品（Amazon增强版）
-	return c.processWithAmazonRules(managementClient, configProvider)
-}
-
-// processWithBasicRules 使用基础规则处理待核价商品
-func (c *APIClient) processWithBasicRules(managementClient *management.ClientManager) (*models.PricingStatistics, error) {
-	stats := &models.PricingStatistics{}
-	pageNo := 1
-	pageSize := 25
-
-	for {
-		// 获取待核价列表
-		resp, err := c.getPendingPriceList(pageNo, pageSize)
-		if err != nil {
-			return stats, fmt.Errorf("获取待核价列表失败: %w", err)
-		}
-
-		if resp == nil || len(resp.Result.SalesBoostGoodsList) == 0 {
-			c.logger.Info("没有更多待核价商品")
-			break
-		}
-
-		// 遍历商品列表
-		for _, goods := range resp.Result.SalesBoostGoodsList {
-			for _, sku := range goods.SalesBoostSkuList {
-				stats.TotalProcessed++
-
-				// 简单的决策逻辑：接受所有价格
-				decision := &models.PricingDecision{
-					Action: models.DecisionAccept,
-					Reason: "基础规则：接受平台报价",
-				}
-
-				// 执行决策
-				if err := c.executeDecisionForSalesBoost(decision, &goods, &sku); err != nil {
-					c.logger.WithError(err).Warnf("商品 %s SKU %s 执行决策失败",
-						goods.SalesBoostGoodsBasicInfo.GoodsName, sku.SkuID)
-					stats.FailCount++
-				} else {
-					stats.SuccessCount++
-					stats.AcceptCount++
-				}
-			}
-		}
-
-		// 检查是否处理完所有商品
-		if stats.TotalProcessed >= resp.Result.Total {
-			break
-		}
-
-		pageNo++
-	}
-
-	c.logger.Infof("📊 智能核价完成: 总数=%d, 接受=%d, 成功=%d, 失败=%d",
-		stats.TotalProcessed, stats.AcceptCount, stats.SuccessCount, stats.FailCount)
-
-	return stats, nil
-}
-
-// processWithAmazonRules 使用Amazon增强规则处理待核价商品
-func (c *APIClient) processWithAmazonRules(managementClient *management.ClientManager, configProvider interface{}) (*models.PricingStatistics, error) {
-	// 目前先使用基础规则，后续可以扩展Amazon逻辑
-	c.logger.Info("Amazon增强功能暂未实现，使用基础规则")
-	return c.processWithBasicRules(managementClient)
-}
-
-// getPendingPriceList 获取待核价列表
-func (c *APIClient) getPendingPriceList(pageNo, pageSize int) (*models.PendingPriceListResponse, error) {
-	c.logger.Infof("获取待核价列表: pageNo=%d, pageSize=%d", pageNo, pageSize)
-
-	req := &models.PendingPriceListRequest{
-		PageSize: pageSize,
-		PageNo:   pageNo,
-		Scene:    "PRICING_HEALTH_SALES_BOOST", // 价格健康-销量提升场景
-	}
-
-	headers := GetDefaultHeaders()
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["x-document-referer"] = "https://seller.temu.com/"
-
-	request := map[string]interface{}{
-		"method":  "POST",
-		"url":     "/mms/marigold/price/v2/search_sales_boost",
-		"headers": headers,
-		"body":    req,
-	}
-
-	var result models.PendingPriceListResponse
-	if err := c.SendTEMURequest(request, &result); err != nil {
-		c.logger.WithError(err).Error("获取待核价列表失败")
-		return nil, fmt.Errorf("获取待核价列表失败: %w", err)
-	}
-
-	if !result.Success {
-		c.logger.Errorf("获取待核价列表失败: errorCode=%d", result.ErrorCode)
-		return nil, fmt.Errorf("获取待核价列表失败: errorCode=%d", result.ErrorCode)
-	}
-
-	c.logger.Infof("成功获取待核价列表: 总数=%d, 当前页商品数=%d",
-		result.Result.Total, len(result.Result.SalesBoostGoodsList))
-
-	return &result, nil
-}
-
-// executeDecisionForSalesBoost 执行核价决策
-func (c *APIClient) executeDecisionForSalesBoost(decision *models.PricingDecision, goods *models.SalesBoostGoods, sku *models.SalesBoostSku) error {
-	switch decision.Action {
-	case models.DecisionAccept:
-		// 接受平台报价
-		if sku.TargetSupplierPrice.Amount == "" || sku.TargetSupplierPrice.Currency == "" {
-			return fmt.Errorf("目标价格信息不完整")
-		}
-		return c.acceptPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, sku)
-
-	case models.DecisionReject:
-		// 拒绝报价
-		return c.rejectPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, []string{sku.SkuID})
-
-	case models.DecisionSkip:
-		// 跳过，不做任何操作
-		c.logger.Info("跳过")
-		return nil
-
-	default:
-		return fmt.Errorf("未知的决策动作: %s", decision.Action)
-	}
-}
-
-// acceptPrice 接受平台报价
-func (c *APIClient) acceptPrice(goodsID string, sku *models.SalesBoostSku) error {
-	c.logger.Infof("接受平台报价: goodsID=%s, skuID=%s", goodsID, sku.SkuID)
-
-	skuList := []models.AcceptPriceSkuInfo{
-		{
-			SkuID:                  sku.SkuID,
-			Currency:               sku.TargetSupplierPrice.Currency,
-			TargetSupplierPriceStr: sku.TargetSupplierPrice.Amount,
-		},
-	}
-
-	req := &models.AcceptPriceRequest{
-		Scene:   2,
-		GoodsID: goodsID,
-		SkuList: skuList,
-	}
-
-	headers := GetDefaultHeaders()
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["x-document-referer"] = "https://seller.temu.com/products.html"
-
-	request := map[string]interface{}{
-		"method":  "POST",
-		"url":     "/mms/marigold/price/goods/change",
-		"headers": headers,
-		"body":    req,
-	}
-
-	var result models.AcceptPriceResponse
-	if err := c.SendTEMURequest(request, &result); err != nil {
-		c.logger.WithError(err).Error("接受平台报价失败")
-		return fmt.Errorf("接受平台报价失败: %w", err)
-	}
-
-	if !result.Success {
-		c.logger.Errorf("接受平台报价失败: errorCode=%d", result.ErrorCode)
-		return fmt.Errorf("接受平台报价失败: errorCode=%d", result.ErrorCode)
-	}
-
-	c.logger.Info("成功接受平台报价")
-	return nil
-}
-
-// rejectPrice 拒绝平台报价
-func (c *APIClient) rejectPrice(goodsID string, skuIDs []string) error {
-	c.logger.Infof("拒绝平台报价: goodsID=%s, skuIDs=%v", goodsID, skuIDs)
-
-	req := &models.RejectPriceRequest{
-		GoodsID:         goodsID,
-		SkuIDs:          skuIDs,
-		OperationSource: 1005,
-	}
-
-	headers := GetDefaultHeaders()
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["x-document-referer"] = "https://seller.temu.com/products.html"
-
-	request := map[string]interface{}{
-		"method":  "POST",
-		"url":     "/mms/marigold/sku/offline",
-		"headers": headers,
-		"body":    req,
-	}
-
-	var result models.RejectPriceResponse
-	if err := c.SendTEMURequest(request, &result); err != nil {
-		c.logger.WithError(err).Error("拒绝平台报价失败")
-		return fmt.Errorf("拒绝平台报价失败: %w", err)
-	}
-
-	if !result.Success {
-		c.logger.Errorf("拒绝平台报价失败: errorCode=%d", result.ErrorCode)
-		return fmt.Errorf("拒绝平台报价失败: errorCode=%d", result.ErrorCode)
-	}
-
-	c.logger.Info("成功拒绝平台报价")
-	return nil
 }

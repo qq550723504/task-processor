@@ -1,170 +1,184 @@
-// Package temu 提供TEMU平台核价决策服务功能
+// Package pricing 提供TEMU平台核价决策服务功能
 package pricing
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"strconv"
+	"sync"
+	"time"
+
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/management"
 	managementapi "task-processor/internal/pkg/management/api"
-	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
 )
 
+// ServiceConfig 服务配置
+type ServiceConfig struct {
+	TenantID       int64
+	StoreID        int64
+	UseAmazonPrice bool
+	MaxRetries     int
+	CacheTimeout   time.Duration
+}
+
 // PricingDecisionService 核价决策服务
 type PricingDecisionService struct {
-	storeID        int64
-	storeConfig    *managementapi.StoreRespDTO // 店铺配置缓存
-	dataService    *PricingDataService
-	ruleCalculator *PricingRuleCalculator
-	productFetcher *product.ProductFetcher // 用于获取Amazon产品数据
-	useAmazonPrice bool                    // 是否使用Amazon价格数据（从配置读取）
+	config         *ServiceConfig
+	storeConfig    StoreConfigProvider
+	dataService    ProductDataProvider
+	ruleCalculator PriceCalculator
+	productFetcher *product.ProductFetcher
 	logger         *logrus.Entry
+
+	// 缓存相关
+	cache      sync.Map
+	cacheMutex sync.RWMutex
+}
+
+// CacheKey 缓存键
+type CacheKey struct {
+	Type      string
+	ProductID string
+	StoreID   int64
+}
+
+// CacheItem 缓存项
+type CacheItem struct {
+	Data      interface{}
+	ExpiresAt time.Time
+}
+
+// PricingContext 定价上下文
+type PricingContext struct {
+	ProductID          string
+	SkuSN              string
+	GoodsName          string
+	SupplierPrice      float64
+	StoreID            int64
+	Mapping            *managementapi.ProductImportMappingRespDTO
+	AmazonProduct      *model.Product
+	OriginCostPrice    float64
+	PricingRule        *managementapi.PricingRuleRespDTO
+	MinAcceptablePrice float64
 }
 
 // NewPricingDecisionService 创建核价决策服务
-func NewPricingDecisionService(managementClient *management.ClientManager, tenantID, storeID int64) *PricingDecisionService {
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "PricingDecisionService",
-		"tenantID":  tenantID,
-		"storeID":   storeID,
-	})
-
-	service := &PricingDecisionService{
-		storeID:        storeID,
-		dataService:    NewPricingDataService(managementClient, tenantID, logger),
-		ruleCalculator: NewPricingRuleCalculator(logger),
-		useAmazonPrice: true, // 默认值，向后兼容
-		logger:         logger,
-	}
-
-	// 初始化时加载店铺配置
-	if err := service.loadStoreConfig(managementClient); err != nil {
-		service.logger.Warnf("加载店铺配置失败: %v", err)
-	}
-
-	return service
-}
-
-// NewPricingDecisionServiceWithAmazon 创建支持Amazon数据的核价决策服务
-func NewPricingDecisionServiceWithAmazon(
+func NewPricingDecisionService(
 	managementClient *management.ClientManager,
-	tenantID, storeID int64,
+	storeID int64,
 	amazonConfig *config.AmazonConfig,
 	amazonProcessor *amazon.AmazonProcessor,
-	platformConfig *config.PlatformConfig, // 改为平台配置参数
-) *PricingDecisionService {
+	platformConfig *config.PlatformConfig,
+) (DecisionMaker, error) {
+	config := &ServiceConfig{
+		StoreID:        storeID,
+		UseAmazonPrice: true,
+		MaxRetries:     3,
+		CacheTimeout:   5 * time.Minute,
+	}
+
+	// 从配置获取useAmazonPrice
+	if platformConfig != nil {
+		config.UseAmazonPrice = platformConfig.AutoPricing.UseAmazonPrice
+	}
+
+	return newPricingDecisionServiceWithConfig(managementClient, config, amazonConfig, amazonProcessor)
+}
+
+// newPricingDecisionServiceWithConfig 内部构造函数
+func newPricingDecisionServiceWithConfig(
+	managementClient *management.ClientManager,
+	config *ServiceConfig,
+	amazonConfig *config.AmazonConfig,
+	amazonProcessor *amazon.AmazonProcessor,
+) (DecisionMaker, error) {
+	if managementClient == nil {
+		return nil, errors.New("managementClient不能为空")
+	}
+	if config == nil {
+		return nil, errors.New("config不能为空")
+	}
+
 	logger := logrus.WithFields(logrus.Fields{
 		"component": "PricingDecisionService",
-		"tenantID":  tenantID,
-		"storeID":   storeID,
+		"storeID":   config.StoreID,
 	})
+
+	// 创建依赖服务
+	storeConfig, err := NewStoreConfigService(config.StoreID, managementClient)
+	if err != nil {
+		return nil, fmt.Errorf("创建店铺配置服务失败: %w", err)
+	}
+
+	dataService := NewPricingDataService(managementClient, logger)
+	ruleCalculator := NewPricingRuleCalculator(logger)
 
 	// 创建ProductFetcher用于获取Amazon产品数据
 	var productFetcher *product.ProductFetcher
-	if managementClient != nil && amazonConfig != nil && amazonProcessor != nil {
+	if amazonConfig != nil && amazonProcessor != nil {
 		rawJsonDataClient := managementClient.GetRawJsonDataClient()
 		if rawJsonDataClient != nil {
 			productFetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor)
 		}
 	}
 
-	// 从配置获取useAmazonPrice，如果配置为空则使用默认值true
-	useAmazonPrice := true
-	if platformConfig != nil {
-		useAmazonPrice = platformConfig.AutoPricing.UseAmazonPrice
-	}
-
-	service := &PricingDecisionService{
-		storeID:        storeID,
-		dataService:    NewPricingDataService(managementClient, tenantID, logger),
-		ruleCalculator: NewPricingRuleCalculator(logger),
+	return &PricingDecisionService{
+		config:         config,
+		storeConfig:    storeConfig,
+		dataService:    dataService,
+		ruleCalculator: ruleCalculator,
 		productFetcher: productFetcher,
-		useAmazonPrice: useAmazonPrice, // 使用配置值
 		logger:         logger,
-	}
-
-	// 初始化时加载店铺配置
-	if err := service.loadStoreConfig(managementClient); err != nil {
-		service.logger.Warnf("加载店铺配置失败: %v", err)
-	}
-
-	return service
+	}, nil
 }
 
-// loadStoreConfig 加载店铺配置
-func (s *PricingDecisionService) loadStoreConfig(managementClient *management.ClientManager) error {
-	storeClient := managementClient.GetStoreClient()
-	if storeClient == nil {
-		return fmt.Errorf("店铺客户端未初始化")
+// getFromCache 从缓存获取数据
+func (s *PricingDecisionService) getFromCache(key CacheKey) (interface{}, bool) {
+	if item, ok := s.cache.Load(key); ok {
+		cacheItem := item.(CacheItem)
+		if time.Now().Before(cacheItem.ExpiresAt) {
+			return cacheItem.Data, true
+		}
+		s.cache.Delete(key)
 	}
-
-	store, err := storeClient.GetStore(s.storeID)
-	if err != nil {
-		return fmt.Errorf("获取店铺配置失败: %w", err)
-	}
-
-	s.storeConfig = store
-	s.logger.Infof("店铺配置加载成功: 重新议价=%v, 核价拒绝策略=%s",
-		s.isRebargainEnabled(), s.getPriceRejectStrategy())
-	return nil
+	return nil, false
 }
 
-// isRebargainEnabled 是否启用重新议价
-func (s *PricingDecisionService) isRebargainEnabled() bool {
-	if s.storeConfig == nil || s.storeConfig.EnableRebargain == nil {
-		return false
+// setCache 设置缓存
+func (s *PricingDecisionService) setCache(key CacheKey, data interface{}) {
+	item := CacheItem{
+		Data:      data,
+		ExpiresAt: time.Now().Add(s.config.CacheTimeout),
 	}
-	return *s.storeConfig.EnableRebargain
+	s.cache.Store(key, item)
 }
 
-// getPriceType 获取店铺配置的价格类型
-func (s *PricingDecisionService) getPriceType() string {
-	if s.storeConfig == nil || s.storeConfig.PriceType == "" {
-		return "special" // 默认使用特价
-	}
-	return s.storeConfig.PriceType
-}
-
-// getPriceRejectStrategy 获取核价拒绝策略
-func (s *PricingDecisionService) getPriceRejectStrategy() string {
-	if s.storeConfig == nil || s.storeConfig.TemuPriceRejectStrategy == "" {
-		return "KEEP_ONLINE" // 默认保留在售
-	}
-	return s.storeConfig.TemuPriceRejectStrategy
-}
-
-// getAmazonProduct 获取Amazon产品数据
-func (s *PricingDecisionService) getAmazonProduct(productID, platform, region string, tenantID, storeID int64) (*model.Product, error) {
+// getAmazonProductWithCache 获取Amazon产品数据（带缓存）
+func (s *PricingDecisionService) getAmazonProductWithCache(ctx context.Context, productID, region string, tenantID, storeID int64) (*model.Product, error) {
 	if s.productFetcher == nil {
-		return nil, fmt.Errorf("ProductFetcher未初始化，无法获取Amazon产品数据")
+		return nil, errors.New("ProductFetcher未初始化，无法获取Amazon产品数据")
 	}
 
-	req := &product.FetchRequest{
-		TenantID:  tenantID,
-		Platform:  platform,
-		Region:    region,
-		ProductID: productID,
+	// 尝试从缓存获取
+	cacheKey := CacheKey{
+		Type:      "amazon_product",
+		ProductID: fmt.Sprintf("%s_%s_%d_%d", productID, region, tenantID, storeID),
 		StoreID:   storeID,
 	}
 
-	amazonProduct, err := s.productFetcher.FetchProduct(req)
-	if err != nil {
-		s.logger.Warnf("获取Amazon产品数据失败: %v", err)
-		return nil, err
-	}
-
-	return amazonProduct, nil
-}
-
-// getAmazonProductWithRetry 获取Amazon产品数据（带重试机制）
-func (s *PricingDecisionService) getAmazonProductWithRetry(productID, region string, tenantID, storeID int64) (*model.Product, error) {
-	if s.productFetcher == nil {
-		return nil, fmt.Errorf("ProductFetcher未初始化，无法获取Amazon产品数据")
+	if cached, found := s.getFromCache(cacheKey); found {
+		if product, ok := cached.(*model.Product); ok {
+			s.logger.Debugf("从缓存获取Amazon产品数据: %s", productID)
+			return product, nil
+		}
 	}
 
 	req := &product.FetchRequest{
@@ -175,29 +189,40 @@ func (s *PricingDecisionService) getAmazonProductWithRetry(productID, region str
 		StoreID:   storeID,
 	}
 
-	// 最多重试3次
-	maxRetries := 3
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		amazonProduct, err := s.productFetcher.FetchProduct(req)
-		if err == nil {
+	// 带重试机制获取数据
+	var amazonProduct *model.Product
+	var lastErr error
+
+	for attempt := 1; attempt <= s.config.MaxRetries; attempt++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		amazonProduct, lastErr = s.productFetcher.FetchProduct(req)
+		if lastErr == nil {
 			s.logger.Debugf("第%d次尝试成功获取Amazon产品数据: %s", attempt, productID)
+			// 缓存成功结果
+			s.setCache(cacheKey, amazonProduct)
 			return amazonProduct, nil
 		}
 
-		s.logger.Warnf("第%d次获取Amazon产品数据失败: %v", attempt, err)
-
-		// 如果不是最后一次尝试，继续重试
-		if attempt < maxRetries {
+		s.logger.Warnf("第%d次获取Amazon产品数据失败: %v", attempt, lastErr)
+		if attempt < s.config.MaxRetries {
 			s.logger.Infof("将进行第%d次重试获取Amazon产品数据: %s", attempt+1, productID)
+			// 简单的退避策略
+			time.Sleep(time.Duration(attempt) * time.Second)
 		}
 	}
 
-	// 所有重试都失败了
-	return nil, fmt.Errorf("经过%d次重试后仍无法获取Amazon产品数据", maxRetries)
+	return nil, fmt.Errorf("经过%d次重试后仍无法获取Amazon产品数据: %w", s.config.MaxRetries, lastErr)
 }
 
 // MakeDecision 对单个商品做出核价决策
-func (s *PricingDecisionService) MakeDecision(item *models.PricingSku, storeId int64) (*models.PricingDecision, error) {
+func (s *PricingDecisionService) MakeDecision(item *models.PricingSku, storeID int64) (*models.PricingDecision, error) {
+	ctx := context.Background()
+
 	decision := &models.PricingDecision{
 		Sku: item,
 	}
@@ -209,73 +234,103 @@ func (s *PricingDecisionService) MakeDecision(item *models.PricingSku, storeId i
 		return decision, nil
 	}
 
-	// 从上架记录映射获取原始成本价
-	mapping, err := s.dataService.GetProductImportMapping(item.SkuSN, storeId)
+	// 使用配置中的storeID，如果传入的storeID不为0则使用传入的
+	targetStoreID := s.config.StoreID
+	if storeID != 0 {
+		targetStoreID = storeID
+	}
+
+	// 构建定价上下文 - 这里需要tenantID，我们从配置或其他地方获取
+	// 由于接口限制，我们需要从其他地方获取tenantID
+	tenantID := int64(1) // 默认租户ID，实际应该从配置或上下文获取
+
+	pricingCtx, err := s.buildPricingContext(ctx, item.SkuSN, item.GoodsName, item.SupplierPrice, tenantID, targetStoreID)
 	if err != nil {
 		decision.Action = models.DecisionSkip
-		decision.Reason = fmt.Sprintf("获取上架记录失败: %v", err)
-		s.logger.Warnf("获取商品 %s 的上架记录失败: %v", item.GoodsName, err)
+		decision.Reason = err.Error()
+		s.logger.WithError(err).Warnf("构建定价上下文失败: %s", item.GoodsName)
 		return decision, nil
+	}
+
+	// 记录定价信息
+	s.logPricingInfo(pricingCtx)
+
+	// 执行决策逻辑
+	return s.makeDecisionByPrice(pricingCtx.SupplierPrice, pricingCtx.MinAcceptablePrice), nil
+}
+
+// buildPricingContext 构建定价上下文
+func (s *PricingDecisionService) buildPricingContext(ctx context.Context, skuSN, goodsName string, supplierPrice float64, tenantID, storeID int64) (*PricingContext, error) {
+	pricingCtx := &PricingContext{
+		SkuSN:         skuSN,
+		GoodsName:     goodsName,
+		SupplierPrice: supplierPrice,
+		StoreID:       storeID,
+	}
+
+	// 获取上架记录映射
+	mapping, err := s.dataService.GetProductImportMapping(skuSN, storeID)
+	if err != nil {
+		return nil, fmt.Errorf("获取上架记录失败: %w", err)
+	}
+	pricingCtx.Mapping = mapping
+
+	// 获取Amazon产品数据
+	if mapping != nil && mapping.ProductId != "" {
+		amazonProduct, err := s.getAmazonProductWithCache(ctx, mapping.ProductId, mapping.Region, mapping.TenantId, storeID)
+		if err != nil {
+			return nil, fmt.Errorf("获取Amazon产品数据失败: %w", err)
+		}
+		pricingCtx.AmazonProduct = amazonProduct
+		pricingCtx.ProductID = mapping.ProductId
 	}
 
 	// 计算原始成本价
-	// 尝试获取Amazon产品数据来使用原始价格
-	var amazonProduct *model.Product
-
-	if mapping != nil && mapping.ProductId != "" {
-		// 从mapping中获取Amazon产品ID和区域信息
-		amazonProduct, err = s.getAmazonProductWithRetry(mapping.ProductId, mapping.Region,
-			mapping.TenantId, storeId)
-		if err != nil {
-			decision.Action = models.DecisionSkip
-			decision.Reason = fmt.Sprintf("获取Amazon产品数据失败: %v", err)
-			s.logger.Errorf("商品 %s 获取Amazon产品数据失败，跳过处理: %v", item.GoodsName, err)
-			return decision, nil
-		} else if amazonProduct != nil {
-			s.logger.Debugf("成功获取Amazon产品数据: %s", mapping.ProductId)
-		}
-	}
-
-	// 获取店铺配置的价格类型
-	priceType := s.getPriceType()
-
+	priceType := s.storeConfig.GetPriceType()
 	originCostPrice := s.dataService.CalculateOriginCostPriceWithAmazon(
 		mapping,
-		item.SupplierPrice,
-		amazonProduct,
-		s.useAmazonPrice, // 使用配置值而不是硬编码
+		supplierPrice,
+		pricingCtx.AmazonProduct,
+		s.config.UseAmazonPrice,
 		priceType,
 	)
-	if originCostPrice <= 0 {
-		decision.Action = models.DecisionSkip
-		decision.Reason = "无法计算原始成本价"
-		s.logger.Warnf("商品 %s 无法计算原始成本价，跳过", item.GoodsName)
-		return decision, nil
-	}
 
-	// 获取核价规则并计算最低可接受价格
-	pricingRules, err := s.dataService.GetPricingRules(storeId)
+	if originCostPrice <= 0 {
+		return nil, errors.New("无法计算原始成本价")
+	}
+	pricingCtx.OriginCostPrice = originCostPrice
+
+	// 获取核价规则
+	pricingRules, err := s.dataService.GetPricingRules(storeID)
 	if err != nil {
 		s.logger.Warnf("获取核价规则失败: %v", err)
 	}
 
 	// 根据成本价获取合适的规则
-	var pricingRule *managementapi.PricingRuleRespDTO
 	if len(pricingRules) > 0 {
-		pricingRule = s.ruleCalculator.GetDefaultPricingRules(originCostPrice, &pricingRules)
+		pricingCtx.PricingRule = s.ruleCalculator.GetDefaultPricingRules(originCostPrice, &pricingRules)
 	}
 
-	minAcceptablePrice := s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingRule)
+	// 计算最低可接受价格
+	pricingCtx.MinAcceptablePrice = s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingCtx.PricingRule)
 
-	s.logger.Infof("商品 %s: SKU=%s, 原始成本=%.2f, 平台推荐价=%.2f, 最低可接受价=%.2f",
-		item.GoodsName, item.SkuSN, originCostPrice, item.SupplierPrice, minAcceptablePrice)
+	return pricingCtx, nil
+}
 
-	// 执行决策逻辑
-	return s.makeDecisionByPrice(item.SupplierPrice, minAcceptablePrice), nil
+// logPricingInfo 记录定价信息
+func (s *PricingDecisionService) logPricingInfo(pricingCtx *PricingContext) {
+	s.logger.WithFields(logrus.Fields{
+		"goods_name":           pricingCtx.GoodsName,
+		"sku_sn":               pricingCtx.SkuSN,
+		"origin_cost_price":    pricingCtx.OriginCostPrice,
+		"supplier_price":       pricingCtx.SupplierPrice,
+		"min_acceptable_price": pricingCtx.MinAcceptablePrice,
+	}).Info("定价信息")
 }
 
 // MakeDecisionForSalesBoost 对销量提升场景的商品做出核价决策
-func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *api.SalesBoostGoods, sku *models.SalesBoostSku, storeId int64) (*models.PricingDecision, error) {
+func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *models.SalesBoostGoods, sku *models.SalesBoostSku, storeID int64) (*models.PricingDecision, error) {
+	ctx := context.Background()
 	decision := &models.PricingDecision{}
 
 	// 参数校验
@@ -285,102 +340,126 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *api.SalesBoost
 		return decision, nil
 	}
 
-	// 从上架记录映射获取原始成本价
-	mapping, err := s.dataService.GetProductImportMappingBySku(sku.OutSkuSN, storeId)
+	// 使用配置中的storeID，如果传入的storeID不为0则使用传入的
+	targetStoreID := s.config.StoreID
+	if storeID != 0 {
+		targetStoreID = storeID
+	}
+
+	// 解析价格
+	currentSupplierPrice := parsePrice(sku.CurrentSupplierPrice.Amount)
+	targetSupplierPrice := parsePrice(sku.TargetSupplierPrice.Amount)
+
+	// 由于接口限制，我们需要从其他地方获取tenantID
+	tenantID := int64(1) // 默认租户ID，实际应该从配置或上下文获取
+
+	// 构建定价上下文（使用当前供应商价格）
+	pricingCtx, err := s.buildPricingContextForSalesBoost(ctx, sku.OutSkuSN, goods.SalesBoostGoodsBasicInfo.GoodsName, currentSupplierPrice, tenantID, targetStoreID)
 	if err != nil {
 		decision.Action = models.DecisionSkip
-		decision.Reason = fmt.Sprintf("获取上架记录失败: %v", err)
-		s.logger.Warnf("获取商品 %s SKU %s 的上架记录失败: %v",
-			goods.SalesBoostGoodsBasicInfo.GoodsName, sku.SkuID, err)
+		decision.Reason = err.Error()
+		s.logger.WithError(err).Warnf("构建销量提升定价上下文失败: %s", goods.SalesBoostGoodsBasicInfo.GoodsName)
 		return decision, nil
 	}
-
-	// 解析当前供应商价格
-	var currentSupplierPrice, targetSupplierPrice float64
-	if sku.CurrentSupplierPrice.Amount != "" {
-		currentSupplierPrice = parsePrice(sku.CurrentSupplierPrice.Amount)
-	}
-	if sku.TargetSupplierPrice.Amount != "" {
-		targetSupplierPrice = parsePrice(sku.TargetSupplierPrice.Amount)
-	}
-
-	// 计算原始成本价
-	// 尝试获取Amazon产品数据来使用原始价格
-	var amazonProduct *model.Product
-
-	if mapping != nil && mapping.ProductId != "" {
-		// 从mapping中获取Amazon产品ID和区域信息
-		amazonProduct, err = s.getAmazonProductWithRetry(mapping.ProductId, mapping.Region,
-			mapping.TenantId, storeId)
-		if err != nil {
-			decision.Action = models.DecisionSkip
-			decision.Reason = fmt.Sprintf("获取Amazon产品数据失败: %v", err)
-			s.logger.Errorf("商品ID %s SKU %s 获取Amazon产品数据失败，跳过处理: %v",
-				goods.SalesBoostGoodsBasicInfo.GoodsID, sku.SkuID, err)
-			return decision, nil
-		} else if amazonProduct != nil {
-			s.logger.Debugf("成功获取Amazon产品数据: %s", mapping.ProductId)
-		}
-	}
-
-	// 获取店铺配置的价格类型
-	priceType := s.getPriceType()
-
-	originCostPrice := s.dataService.CalculateOriginCostPriceWithAmazon(
-		mapping,
-		currentSupplierPrice,
-		amazonProduct,
-		s.useAmazonPrice, // 使用配置值而不是硬编码
-		priceType,
-	)
-	if originCostPrice <= 0 {
-		decision.Action = models.DecisionSkip
-		decision.Reason = "无法计算原始成本价"
-		s.logger.Warnf("商品ID %s SKU %s 无法计算原始成本价，跳过",
-			goods.SalesBoostGoodsBasicInfo.GoodsID, sku.SkuID)
-		return decision, nil
-	}
-
-	// 获取核价规则并计算最低可接受价格
-	pricingRules, err := s.dataService.GetPricingRules(storeId)
-	if err != nil {
-		s.logger.Warnf("获取核价规则失败: %v", err)
-	}
-
-	// 根据成本价获取合适的规则
-	var pricingRule *managementapi.PricingRuleRespDTO
-	if len(pricingRules) > 0 {
-		pricingRule = s.ruleCalculator.GetDefaultPricingRules(originCostPrice, &pricingRules)
-	}
-
-	minAcceptablePrice := s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingRule)
 
 	// 计算利润率
 	if targetSupplierPrice > 0 {
-		decision.ProfitMargin = (targetSupplierPrice - originCostPrice) / originCostPrice * 100
+		decision.ProfitMargin = (targetSupplierPrice - pricingCtx.OriginCostPrice) / pricingCtx.OriginCostPrice * 100
 	}
 
-	s.logger.Infof("商品ID %s SKU %s: 原始成本=%.2f, 当前价格=%.2f, 目标价格=%.2f, 最低可接受价=%.2f, 利润率=%.2f%%",
-		goods.SalesBoostGoodsBasicInfo.GoodsID, sku.OutSkuSN,
-		originCostPrice, currentSupplierPrice, targetSupplierPrice, minAcceptablePrice, decision.ProfitMargin)
+	// 记录销量提升定价信息
+	s.logSalesBoostPricingInfo(goods, sku, pricingCtx, targetSupplierPrice, decision.ProfitMargin)
 
 	// 执行决策逻辑
-	finalDecision := s.makeDecisionByPrice(targetSupplierPrice, minAcceptablePrice)
+	finalDecision := s.makeDecisionByPrice(targetSupplierPrice, pricingCtx.MinAcceptablePrice)
 
 	// 销量提升场景的特殊处理
 	if finalDecision.Action == models.DecisionReappeal && !sku.ActionInfo.AllowCreateAppealOrder {
 		finalDecision.Action = models.DecisionSkip
 		finalDecision.Reason = fmt.Sprintf("目标价格%.2f低于最低可接受价格%.2f，但不允许创建申诉订单(allow_create_appeal_order=false)，保留在售",
-			targetSupplierPrice, minAcceptablePrice)
+			targetSupplierPrice, pricingCtx.MinAcceptablePrice)
 	}
 
 	// 设置销量提升特有字段
 	finalDecision.TargetPrice = targetSupplierPrice
 	finalDecision.TargetMargin = 1.5 // 默认目标利润率
 	finalDecision.MinMargin = 1.5    // 默认最小利润率
-	finalDecision.AcceptablePrice = minAcceptablePrice
+	finalDecision.AcceptablePrice = pricingCtx.MinAcceptablePrice
+	finalDecision.ProfitMargin = decision.ProfitMargin
 
 	return finalDecision, nil
+}
+
+// buildPricingContextForSalesBoost 为销量提升场景构建定价上下文
+func (s *PricingDecisionService) buildPricingContextForSalesBoost(ctx context.Context, skuSN, goodsName string, supplierPrice float64, tenantID, storeID int64) (*PricingContext, error) {
+	pricingCtx := &PricingContext{
+		SkuSN:         skuSN,
+		GoodsName:     goodsName,
+		SupplierPrice: supplierPrice,
+		StoreID:       storeID,
+	}
+
+	// 获取上架记录映射（使用SKU方式）
+	mapping, err := s.dataService.GetProductImportMappingBySku(skuSN, storeID)
+	if err != nil {
+		return nil, fmt.Errorf("获取上架记录失败: %w", err)
+	}
+	pricingCtx.Mapping = mapping
+
+	// 获取Amazon产品数据
+	if mapping != nil && mapping.ProductId != "" {
+		amazonProduct, err := s.getAmazonProductWithCache(ctx, mapping.ProductId, mapping.Region, mapping.TenantId, storeID)
+		if err != nil {
+			return nil, fmt.Errorf("获取Amazon产品数据失败: %w", err)
+		}
+		pricingCtx.AmazonProduct = amazonProduct
+		pricingCtx.ProductID = mapping.ProductId
+	}
+
+	// 计算原始成本价
+	priceType := s.storeConfig.GetPriceType()
+	originCostPrice := s.dataService.CalculateOriginCostPriceWithAmazon(
+		mapping,
+		supplierPrice,
+		pricingCtx.AmazonProduct,
+		s.config.UseAmazonPrice,
+		priceType,
+	)
+
+	if originCostPrice <= 0 {
+		return nil, errors.New("无法计算原始成本价")
+	}
+	pricingCtx.OriginCostPrice = originCostPrice
+
+	// 获取核价规则
+	pricingRules, err := s.dataService.GetPricingRules(storeID)
+	if err != nil {
+		s.logger.Warnf("获取核价规则失败: %v", err)
+		return nil, errors.New("获取核价规则失败")
+	}
+
+	// 根据成本价获取合适的规则
+	if len(pricingRules) > 0 {
+		pricingCtx.PricingRule = s.ruleCalculator.GetDefaultPricingRules(originCostPrice, &pricingRules)
+	}
+
+	// 计算最低可接受价格
+	pricingCtx.MinAcceptablePrice = s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingCtx.PricingRule)
+
+	return pricingCtx, nil
+}
+
+// logSalesBoostPricingInfo 记录销量提升定价信息
+func (s *PricingDecisionService) logSalesBoostPricingInfo(goods *models.SalesBoostGoods, sku *models.SalesBoostSku, pricingCtx *PricingContext, targetPrice, profitMargin float64) {
+	s.logger.WithFields(logrus.Fields{
+		"goods_id":             goods.SalesBoostGoodsBasicInfo.GoodsID,
+		"sku_sn":               sku.OutSkuSN,
+		"origin_cost_price":    pricingCtx.OriginCostPrice,
+		"current_price":        pricingCtx.SupplierPrice,
+		"target_price":         targetPrice,
+		"min_acceptable_price": pricingCtx.MinAcceptablePrice,
+		"profit_margin":        profitMargin,
+	}).Info("销量提升定价信息")
 }
 
 // makeDecisionByPrice 根据价格做出决策
@@ -393,14 +472,14 @@ func (s *PricingDecisionService) makeDecisionByPrice(actualPrice, minAcceptableP
 			actualPrice, minAcceptablePrice)
 	} else {
 		// 根据店铺配置决定拒绝策略
-		strategy := s.getPriceRejectStrategy()
+		strategy := s.storeConfig.GetPriceRejectStrategy()
 		if strategy == "TAKE_OFFLINE" {
 			decision.Action = models.DecisionReject
 			decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，根据店铺配置执行下架",
 				actualPrice, minAcceptablePrice)
 		} else {
 			// KEEP_ONLINE - 保留在售
-			if s.isRebargainEnabled() {
+			if s.storeConfig.IsRebargainEnabled() {
 				decision.Action = models.DecisionReappeal
 				decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，根据店铺配置保留在售并重新报价",
 					actualPrice, minAcceptablePrice)
@@ -420,7 +499,11 @@ func parsePrice(price string) float64 {
 	if price == "" {
 		return 0.0
 	}
-	var result float64
-	fmt.Sscanf(price, "%f", &result)
+
+	result, err := strconv.ParseFloat(price, 64)
+	if err != nil {
+		// 如果解析失败，尝试使用fmt.Sscanf作为备选方案
+		fmt.Sscanf(price, "%f", &result)
+	}
 	return result
 }

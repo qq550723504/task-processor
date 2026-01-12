@@ -226,7 +226,7 @@ func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *
 	}).Debug("开始初始化API客户端")
 
 	// 创建API客户端，会自动加载Cookie
-	apiClient := api.NewAPIClient(task.TenantID, storeID, managementClient)
+	apiClient := api.NewAPIClient(storeID, managementClient)
 
 	// 检查cookie加载状态
 	if apiClient.HasCookies() {

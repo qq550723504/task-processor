@@ -263,7 +263,7 @@ func main() {
 		logPrintf("\n=== 处理店铺 %d (%d/%d) ===\n", storeID, i+1, len(targetStoreIDs))
 
 		// 创建TEMU API客户端
-		apiClient := api.NewAPIClient(*tenantID, storeID, managementClient)
+		apiClient := api.NewAPIClient(storeID, managementClient)
 		if apiClient == nil {
 			logPrintf("错误: 无法创建店铺 %d 的TEMU API客户端\n", storeID)
 			allResults = append(allResults, StoreResult{

@@ -82,7 +82,7 @@ func (sm *SchedulerManager) AddStore(tenantID, storeID int64) error {
 	}
 
 	// 创建API客户端
-	apiClient := api.NewAPIClient(tenantID, storeID, sm.managementClient)
+	apiClient := api.NewAPIClient(storeID, sm.managementClient)
 	sm.apiClients[key] = apiClient
 
 	// 创建调度器

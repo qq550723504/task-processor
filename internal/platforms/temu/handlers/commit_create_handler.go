@@ -7,6 +7,7 @@ import (
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
+	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -16,35 +17,6 @@ import (
 // CommitCreateHandler 提交创建处理器
 type CommitCreateHandler struct {
 	logger *logrus.Entry
-}
-
-// CommitCreateRequest 提交创建请求结构体
-type CommitCreateRequest struct {
-	GoodsName  string `json:"goods_name"`
-	CatID      int    `json:"cat_id"`
-	StoreID    int64  `json:"store_id"`
-	Lang       string `json:"lang,omitempty"`
-	GoodsType  int    `json:"goods_type,omitempty"`
-	Source     int    `json:"source,omitempty"`
-	OutGoodsSN string `json:"out_goods_sn,omitempty"`
-	Customized bool   `json:"customized,omitempty"`
-	SecondHand bool   `json:"second_hand,omitempty"`
-}
-
-// CommitCreateResponse 提交创建响应结构体
-type CommitCreateResponse struct {
-	Success   bool                `json:"success"`
-	ErrorCode int                 `json:"error_code"`
-	Result    *CommitCreateResult `json:"result,omitempty"`
-	Message   string              `json:"error_msg,omitempty"`
-}
-
-// CommitCreateResult 提交创建结果数据
-type CommitCreateResult struct {
-	GoodsID              string `json:"goods_id"`
-	ListingCommitID      string `json:"listing_commit_id"`
-	ListingCommitVersion string `json:"listing_commit_version"`
-	GoodsCommitID        string `json:"goods_commit_id"`
 }
 
 // NewCommitCreateHandler 创建新的提交创建处理器
@@ -137,65 +109,34 @@ func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext,
 	}
 
 	// 构造请求体 - 使用简化的结构匹配工作版本
-	requestBody := map[string]interface{}{
-		"cat_ids":      temuProduct.GoodsBasic.CatIDs,
-		"cat_id":       temuProduct.GoodsBasic.CatID,
-		"goods_name":   cleanedGoodsName,
-		"operate_type": 1,
-		//"select_category_source": 1,
+	request := &models.CreateCommitRequest{
+		CatIDs:      temuProduct.GoodsBasic.CatIDs,
+		CatID:       temuProduct.GoodsBasic.CatID,
+		GoodsName:   cleanedGoodsName,
+		OperateType: 1,
 	}
 
-	// 构造API请求
-	apiReq := map[string]interface{}{
-		"method": "POST",
-		"url":    "/mms/marigold/edit/commit/create_new",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9",
-			"content-type":       "application/json;charset=UTF-8",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"Google Chrome\";v=\"140\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-			"x-document-referer": "https://seller.temu.com/product-add.html?is_back=1",
-		},
-		"body": requestBody,
-	}
+	// 创建SubmitAPI实例
+	submitAPI := api.NewSubmitAPI(temuCtx.APIClient, h.logger)
 
-	// 发送API请求（Cookie检查和重试逻辑已在API客户端中处理）
-	response := &CommitCreateResponse{}
+	// 发送API请求
+	response, err := submitAPI.CreateCommit(request)
+	if err != nil {
+		h.logger.Errorf("创建商品提交API调用失败: %v", err)
 
-	// 类型断言获取TEMU API客户端
-	type TEMUAPIClient interface {
-		SendTEMURequest(request map[string]any, response any) error
-	}
-
-	if temuClient, ok := interface{}(temuCtx.APIClient).(TEMUAPIClient); ok {
-		err := temuClient.SendTEMURequest(apiReq, response)
-		if err != nil {
-			h.logger.Errorf("创建商品提交API调用失败: %v", err)
-			return fmt.Errorf("创建商品提交API调用失败: %w", err)
-		}
-	} else {
-		return fmt.Errorf("API客户端不支持TEMU请求")
-	}
-
-	if !response.Success {
-		errorMsg := fmt.Sprintf("创建商品提交失败，API返回失败状态 (错误码: %d)", response.ErrorCode)
-		if response.Message != "" {
-			errorMsg = fmt.Sprintf("%s: %s", errorMsg, response.Message)
+		// 检查是否为不可重试的错误（从错误消息中解析）
+		if strings.Contains(err.Error(), "errorCode=") {
+			// 尝试从错误消息中提取错误码
+			if strings.Contains(err.Error(), "errorCode=10000003") ||
+				strings.Contains(err.Error(), "errorCode=10000046") ||
+				strings.Contains(err.Error(), "errorCode=10000104") ||
+				strings.Contains(err.Error(), "errorCode=10000105") {
+				h.logger.Errorf("检测到不可重试错误: %v", err)
+				return fmt.Errorf("TERMINATED: %w", err)
+			}
 		}
 
-		// 检查是否为不可重试的错误
-		if h.isNonRetryableError(response.ErrorCode) {
-			h.logger.Errorf("检测到不可重试错误: %s", errorMsg)
-			return fmt.Errorf("TERMINATED: %s", errorMsg)
-		}
-
-		return fmt.Errorf("%s", errorMsg)
+		return fmt.Errorf("创建商品提交API调用失败: %w", err)
 	}
 
 	// 检查结果数据

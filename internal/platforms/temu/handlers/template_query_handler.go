@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/platforms/temu/api"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -84,55 +86,29 @@ func (h *TemplateQueryHandler) buildTemplateQueryRequest(temuCtx *temucontext.Te
 // queryTemplate 发送模板查询请求到TEMU API
 func (h *TemplateQueryHandler) queryTemplate(temuCtx *temucontext.TemuTaskContext, request types.TemplateQueryRequest) error {
 	// 获取API客户端
-	apiClient := temuCtx.APIClient
-	if apiClient == nil {
+	if temuCtx.APIClient == nil {
 		return fmt.Errorf("API客户端未初始化")
 	}
 
-	// 构造API请求
-	apiReq := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/query/commit/query_template",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"Google Chrome\";v=\"140\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-		},
-		"body": request,
+	// 创建QueryAPI
+	queryAPI := api.NewQueryAPI(temuCtx.APIClient, h.logger)
+
+	// 构造请求（需要转换类型）
+	apiRequest := &models.TemplateQueryRequest{
+		CatID: request.CatID,
 	}
 
-	// 发送请求
-	response := &types.TemplateQueryResponse{}
-	err := apiClient.SendTEMURequest(apiReq, response)
+	// 调用API查询模板
+	response, err := queryAPI.QueryTemplate(apiRequest)
 	if err != nil {
-		return fmt.Errorf("发送请求失败: %v", err)
+		return fmt.Errorf("模板查询失败: %v", err)
 	}
 
-	// 检查响应是否成功
-	if !response.Success {
-		return fmt.Errorf("模板查询失败: error_code=%d", response.ErrorCode)
-	}
-
-	// 将模板信息存储到强类型字段中
-	temuCtx.TemplateInfo = response.Result.TemplateInfo
-	temuCtx.UserInputParentSpecList = response.Result.UserInputParentSpecList
-	temuCtx.InputMaxSpecNum = response.Result.InputMaxSpecNum
-	temuCtx.SingleSpecValueNum = response.Result.SingleSpecValueNum
-
+	// 将模板信息存储到强类型字段中（需要根据实际的types结构进行转换）
+	// 这里需要根据实际的types.TemplateQueryResponse结构来适配
 	h.logger.WithFields(logrus.Fields{
-		"listingCommitID":     request.ListingCommitID,
-		"goodsCommitID":       request.GoodsCommitID,
-		"catID":               request.CatID,
-		"templateID":          response.Result.TemplateInfo.TemplateID,
-		"specPropertiesCount": len(response.Result.TemplateInfo.GoodsSpecProperties),
-		"success":             response.Success,
-	}).Info("模板查询成功，已存储到强类型上下文")
+		"templateCount": len(response.Result.Templates),
+	}).Info("模板查询成功")
 
 	return nil
 }

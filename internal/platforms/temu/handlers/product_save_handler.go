@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
+	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -16,35 +17,6 @@ import (
 type ProductSaveHandler struct {
 	logger    *logrus.Entry
 	fileUtils *utils.FileUtils
-}
-
-// ProductSaveRequest TEMU产品保存请求结构体
-type ProductSaveRequest struct {
-	GoodsBasic            models.GoodsBasicInfo `json:"goods_basic"`
-	GoodsSaleInfo         models.GoodsSaleInfo  `json:"goods_sale_info"`
-	GoodsServicePromise   models.ServicePromise `json:"goods_service_promise"`
-	GoodsExtensionInfo    models.ExtensionInfo  `json:"goods_extension_info"`
-	Extra                 models.Extra          `json:"extra"`
-	CanSave               bool                  `json:"can_save"`
-	SupportMaxRetailPrice bool                  `json:"support_max_retail_price"`
-	PlatformExpressBill   bool                  `json:"platform_express_bill"`
-	SkcList               []models.Skc          `json:"skc_list"`
-	BatchSkuInfo          models.BatchSkuInfo   `json:"batch_sku_info"`
-}
-
-// ProductSaveResponse TEMU产品保存响应结构体
-type ProductSaveResponse struct {
-	Success   bool               `json:"success"`
-	ErrorCode int                `json:"error_code"`
-	Message   string             `json:"error_msg,omitempty"`
-	Result    *ProductSaveResult `json:"result,omitempty"`
-}
-
-// ProductSaveResult 产品保存结果
-type ProductSaveResult struct {
-	ListingCommitID      string `json:"listing_commit_id"`
-	ListingCommitVersion string `json:"listing_commit_version"`
-	GoodsCommitID        string `json:"goods_commit_id"`
 }
 
 // NewProductSaveHandler 创建新的产品保存处理器
@@ -113,52 +85,15 @@ func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) e
 	// 构造TEMU产品保存请求
 	request := h.buildSaveRequest(temuCtx)
 
-	// 移除调试文件输出，仅保留app.log
+	// 创建ProductAPI
+	productAPI := api.NewProductAPI(temuCtx.APIClient, h.logger)
 
-	// 构造API请求
-	apiReq := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/edit/commit/save",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-			"content-type":       "application/json;charset=UTF-8",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-		},
-		"body": request,
-	}
-
-	// 发送请求到TEMU API
-	response := &ProductSaveResponse{}
-
-	err := temuCtx.APIClient.SendTEMURequest(apiReq, response)
+	// 调用API保存产品
+	response, err := productAPI.SaveProduct(request)
 	if err != nil {
-		h.logger.Errorf("发送TEMU API请求失败: %v", err)
-		h.logger.Errorf("请求URL: %s", apiReq["url"])
-		h.logger.Errorf("请求方法: %s", apiReq["method"])
-		return fmt.Errorf("发送保存请求失败: %w", err)
+		h.logger.Errorf("保存产品失败: %v", err)
+		return fmt.Errorf("保存产品失败: %w", err)
 	}
-
-	// 检查响应结果
-	if !response.Success {
-		h.logger.Errorf("TEMU API响应失败: success=%v, error_code=%d", response.Success, response.ErrorCode)
-		if response.Message != "" {
-			h.logger.Errorf("错误信息: %s", response.Message)
-		}
-		responseJSON, _ := h.marshalWithoutHTMLEscape(response)
-		h.logger.Errorf("完整响应: %s", string(responseJSON))
-
-		return fmt.Errorf("产品保存失败: error_code=%d, message=%s", response.ErrorCode, response.Message)
-	}
-
-	// 记录成功的响应信息
-	h.logger.Infof("TEMU API响应成功: success=%v, error_code=%d", response.Success, response.ErrorCode)
 
 	// 记录保存结果
 	if response.Result != nil {
@@ -175,7 +110,7 @@ func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) e
 }
 
 // buildSaveRequest 构建保存请求
-func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskContext) *ProductSaveRequest {
+func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskContext) *models.ProductSaveRequest {
 	// 获取TEMU产品信息
 	temuProduct := temuCtx.TemuProduct
 
@@ -187,7 +122,7 @@ func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskConte
 		CreateEmptyGoods: temuProduct.Extra.CreateEmptyGoods,
 	}
 
-	request := &ProductSaveRequest{
+	request := &models.ProductSaveRequest{
 		GoodsBasic:            temuProduct.GoodsBasic,
 		GoodsSaleInfo:         temuProduct.GoodsSaleInfo,
 		GoodsServicePromise:   temuProduct.GoodsServicePromise,
@@ -213,7 +148,7 @@ func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskConte
 }
 
 // updateProductWithSaveResult 使用保存结果更新产品信息
-func (h *ProductSaveHandler) updateProductWithSaveResult(temuCtx *temucontext.TemuTaskContext, result *ProductSaveResult) {
+func (h *ProductSaveHandler) updateProductWithSaveResult(temuCtx *temucontext.TemuTaskContext, result *models.ProductSaveResult2) {
 	// 获取TEMU产品信息
 	temuProduct := temuCtx.TemuProduct
 	if temuProduct == nil {

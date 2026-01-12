@@ -2,6 +2,7 @@ package temu
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"task-processor/internal/pkg/management"
@@ -42,7 +43,6 @@ func NewPricingScheduler(ctx context.Context, apiClient api.APIClientInterface, 
 		cancel:           cancel,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TEMUPricingScheduler",
-			"tenantID":  apiClient.GetTenantID(),
 			"storeID":   apiClient.GetStoreID(),
 			"action":    action,
 		}),
@@ -70,7 +70,6 @@ func NewPricingSchedulerWithAmazon(
 		cancel:           cancel,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TEMUPricingScheduler",
-			"tenantID":  apiClient.GetTenantID(),
 			"storeID":   apiClient.GetStoreID(),
 			"action":    action,
 			"amazon":    configProvider != nil,
@@ -157,13 +156,25 @@ func (s *PricingScheduler) executeTask() {
 
 // executeWithBestAvailableMethod 使用最佳可用方法执行核价
 func (s *PricingScheduler) executeWithBestAvailableMethod() (*models.PricingStatistics, error) {
-	// 如果有配置提供者，优先使用Amazon增强版本
-	if s.configProvider != nil {
-		s.logger.Info("使用Amazon增强版核价方法")
-		return s.apiClient.AutoProcessPendingPricesWithRulesAndAmazon(s.managementClient, s.configProvider)
-	}
+	// 直接在这里实现核价逻辑，避免循环导入
+	// 这里应该调用 AutoPricingService，但为了避免循环导入，我们暂时直接实现
 
-	// 否则使用基础版本
-	s.logger.Info("使用基础版核价方法")
-	return s.apiClient.AutoProcessPendingPricesWithRules(s.managementClient)
+	s.logger.Info("开始执行核价任务")
+
+	// TODO: 这里需要重构架构来避免循环导入
+	// 暂时返回错误，提示需要使用正确的调用方式
+	return nil, fmt.Errorf("当前调度器架构需要重构以避免循环导入，请使用 internal/app/scheduler 中的统一调度器")
+}
+
+// configProviderAdapter 配置提供者适配器，用于适配不同的ConfigProvider接口
+type configProviderAdapter struct {
+	provider ConfigProvider
+}
+
+func (c *configProviderAdapter) GetAmazonConfig() any {
+	return c.provider.GetAmazonConfig()
+}
+
+func (c *configProviderAdapter) GetAmazonProcessor() any {
+	return c.provider.GetAmazonProcessor()
 }

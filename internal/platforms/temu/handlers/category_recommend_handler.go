@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"strings"
+	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -19,49 +20,6 @@ var childrenRelatedKeywords = []string{
 	"儿童", "童装", "童鞋", "玩具", "婴儿", "宝宝", "幼儿", "小孩",
 	"children", "child", "kids", "kid", "baby", "infant", "toddler", "toy",
 	"童", "婴", "幼", "小朋友", "儿", "孩子",
-}
-
-// Category 分类信息
-type Category struct {
-	CatID        int      `json:"cat_id"`
-	Cate1ID      int      `json:"cate1_id"`
-	Cate1Name    string   `json:"cate1_name"`
-	Cate2ID      int      `json:"cate2_id"`
-	Cate2Name    string   `json:"cate2_name"`
-	Cate3ID      int      `json:"cate3_id"`
-	Cate3Name    string   `json:"cate3_name"`
-	Cate4ID      *int     `json:"cate4_id"`
-	Cate4Name    *string  `json:"cate4_name"`
-	Cate5ID      *int     `json:"cate5_id"`
-	Cate5Name    *string  `json:"cate5_name"`
-	Cate6ID      *int     `json:"cate6_id"`
-	Cate6Name    *string  `json:"cate6_name"`
-	Cate7ID      *int     `json:"cate7_id"`
-	Cate7Name    *string  `json:"cate7_name"`
-	Cate8ID      *int     `json:"cate8_id"`
-	Cate8Name    *string  `json:"cate8_name"`
-	Cate9ID      *int     `json:"cate9_id"`
-	Cate9Name    *string  `json:"cate9_name"`
-	Cate10ID     *int     `json:"cate10_id"`
-	Cate10Name   *string  `json:"cate10_name"`
-	CateNameList []string `json:"cate_name_list"`
-	CateType     int      `json:"cate_type"`
-	Level        int      `json:"level"`
-}
-
-// CategoryRecommendRequest 分类推荐请求结构体
-type CategoryRecommendRequest struct {
-	GoodsName string `json:"goods_name"`
-}
-
-// CategoryRecommendResponse 分类推荐响应结构体
-type CategoryRecommendResponse struct {
-	Success bool       `json:"success"`
-	Result  ResultData `json:"result"`
-}
-
-type ResultData struct {
-	CategoryTreeList []Category `json:"category_tree_list"`
 }
 
 // NewCategoryRecommendHandler 创建新的分类推荐处理器
@@ -135,48 +93,22 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 		return fmt.Errorf("API客户端未初始化")
 	}
 
+	// 创建CategoryAPI实例
+	categoryAPI := api.NewCategoryAPI(temuCtx.APIClient, h.logger)
+
 	// 构造请求体
-	requestBody := CategoryRecommendRequest{
+	request := &models.CategoryRecommendRequest{
 		GoodsName: goodsName,
 	}
 
-	// 构造API请求
-	apiReq := map[string]interface{}{
-		"method": "POST",
-		"url":    "/mms/marigold/category/recommend",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9",
-			"content-type":       "application/json;charset=UTF-8",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"Google Chrome\";v=\"140\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-			"x-document-referer": "https://seller.temu.com/product-add.html?is_back=1",
-		},
-		"body": requestBody,
-	}
-
-	// 类型断言获取TEMU API客户端
-	temuAPIClient, ok := interface{}(temuCtx.APIClient).(interface {
-		SendTEMURequest(apiReq map[string]interface{}, response interface{}) error
-	})
-	if !ok {
-		return fmt.Errorf("API客户端不支持TEMU请求")
-	}
-
-	// 发送API请求（Cookie检查和重试逻辑已在API客户端中处理）
-	response := &CategoryRecommendResponse{}
-	err := temuAPIClient.SendTEMURequest(apiReq, response)
+	// 发送API请求
+	response, err := categoryAPI.RecommendCategory(request)
 	if err != nil {
 		h.logger.Errorf("分类推荐API调用失败: %v", err)
 		return fmt.Errorf("分类推荐API调用失败: %w", err)
 	}
 
-	if !response.Success || len(response.Result.CategoryTreeList) == 0 {
+	if len(response.Result.CategoryTreeList) == 0 {
 		return fmt.Errorf("分类推荐失败或无推荐结果")
 	}
 
@@ -273,7 +205,7 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 }
 
 // isChildrenRelatedCategory 检查分类是否与儿童相关
-func (h *CategoryRecommendHandler) isChildrenRelatedCategory(category Category) bool {
+func (h *CategoryRecommendHandler) isChildrenRelatedCategory(category models.Category) bool {
 	// 检查所有分类名称
 	categoryNames := []string{
 		category.Cate1Name,
@@ -326,7 +258,7 @@ func (h *CategoryRecommendHandler) isChildrenRelatedCategory(category Category) 
 }
 
 // selectNonChildrenCategory 选择非儿童相关的分类
-func (h *CategoryRecommendHandler) selectNonChildrenCategory(categories []Category) (Category, error) {
+func (h *CategoryRecommendHandler) selectNonChildrenCategory(categories []models.Category) (models.Category, error) {
 	maxAttempts := 3
 
 	// 检查前三个推荐分类
@@ -343,5 +275,5 @@ func (h *CategoryRecommendHandler) selectNonChildrenCategory(categories []Catego
 
 	// 如果前三个都是儿童相关，终止任务
 	h.logger.Errorf("前%d个推荐分类都包含儿童相关内容，终止任务", maxAttempts)
-	return Category{}, fmt.Errorf("NONRETRYABLE: 前%d个推荐分类都包含儿童相关内容，无法继续处理", maxAttempts)
+	return models.Category{}, fmt.Errorf("NONRETRYABLE: 前%d个推荐分类都包含儿童相关内容，无法继续处理", maxAttempts)
 }

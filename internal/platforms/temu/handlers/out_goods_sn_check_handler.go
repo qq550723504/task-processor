@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
+	"task-processor/internal/platforms/temu/api"
+	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -12,38 +14,6 @@ import (
 // OutGoodsSnCheckHandler SKU编码批量检查处理器
 type OutGoodsSnCheckHandler struct {
 	logger *logrus.Entry
-}
-
-// OutSkuSnItem SKU编码项
-type OutSkuSnItem struct {
-	OutSkuSn string `json:"out_sku_sn"`
-}
-
-// OutGoodsSnCheckRequest SKU编码批量检查请求结构体
-type OutGoodsSnCheckRequest struct {
-	GoodsID   string         `json:"goods_id"`
-	OutSnList []OutSkuSnItem `json:"out_sn_list"`
-}
-
-// OutGoodsSnCheckResponse SKU编码批量检查响应结构体
-type OutGoodsSnCheckResponse struct {
-	Success   bool                   `json:"success"`
-	ErrorCode int                    `json:"error_code"`
-	Result    *OutGoodsSnCheckResult `json:"result,omitempty"`
-	Message   string                 `json:"error_msg,omitempty"`
-}
-
-// OutGoodsSnCheckResult SKU编码检查结果
-type OutGoodsSnCheckResult struct {
-	FailList []OutSkuSnFailItem `json:"fail_list"`
-}
-
-// OutSkuSnFailItem 失败的SKU编码项
-type OutSkuSnFailItem struct {
-	OutSkuSn    string `json:"out_sku_sn"`
-	UsedGoodsID string `json:"used_goods_id"`
-	UsedSkuID   string `json:"used_sku_id"`
-	FailReason  string `json:"fail_reason"`
 }
 
 // NewOutGoodsSnCheckHandler 创建新的SKU编码检查处理器
@@ -101,7 +71,7 @@ func (h *OutGoodsSnCheckHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 }
 
 // checkOutSkuSn 执行SKU编码检查
-func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskContext, outSkuSnList []OutSkuSnItem) error {
+func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskContext, outSkuSnList []models.OutSkuSnItem) error {
 	// 获取API客户端
 	if temuCtx.APIClient == nil {
 		h.logger.Error("API客户端未初始化，无法执行SKU编码检查")
@@ -115,67 +85,31 @@ func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskCont
 
 	temuProduct := temuCtx.TemuProduct
 
+	// 创建QueryAPI实例
+	queryAPI := api.NewQueryAPI(temuCtx.APIClient, h.logger)
+
 	// 构造请求体
-	requestBody := OutGoodsSnCheckRequest{
+	request := &models.SkuSnCheckRequest{
 		GoodsID:   temuProduct.GoodsBasic.GoodsID,
 		OutSnList: outSkuSnList,
 	}
 
 	h.logger.WithFields(logrus.Fields{
-		"goodsID":    requestBody.GoodsID,
-		"outSnCount": len(requestBody.OutSnList),
+		"goodsID":    request.GoodsID,
+		"outSnCount": len(request.OutSnList),
 	}).Info("发送SKU编码检查请求")
 
-	// 构造API请求
-	apiReq := map[string]interface{}{
-		"method": "POST",
-		"url":    "/mms/marigold/query/commit/out_sku_sn_batch_check",
-		"headers": map[string]string{
-			"accept":             "application/json, text/plain, */*",
-			"accept-language":    "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-			"content-type":       "application/json;charset=UTF-8",
-			"priority":           "u=1, i",
-			"sec-ch-ua":          "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
-			"sec-ch-ua-mobile":   "?0",
-			"sec-ch-ua-platform": "\"Windows\"",
-			"sec-fetch-dest":     "empty",
-			"sec-fetch-mode":     "cors",
-			"sec-fetch-site":     "same-origin",
-		},
-		"body": requestBody,
-	}
-
-	// 类型断言获取TEMU API客户端
-	type TEMUAPIClient interface {
-		SendTEMURequest(request map[string]interface{}, response interface{}) error
-	}
-
 	// 发送API请求
-	response := &OutGoodsSnCheckResponse{}
-
-	// 直接使用APIClient，假设它实现了SendTEMURequest方法
-	if temuClient, ok := interface{}(temuCtx.APIClient).(TEMUAPIClient); ok {
-		err := temuClient.SendTEMURequest(apiReq, response)
-		if err != nil {
-			h.logger.WithError(err).Error("SKU编码检查API调用失败")
-			return fmt.Errorf("SKU编码检查API调用失败: %w", err)
-		}
-	} else {
-		return fmt.Errorf("API客户端不支持TEMU请求")
+	response, err := queryAPI.CheckSkuSn(request)
+	if err != nil {
+		h.logger.WithError(err).Error("SKU编码检查API调用失败")
+		return fmt.Errorf("SKU编码检查API调用失败: %w", err)
 	}
 
 	h.logger.WithFields(logrus.Fields{
 		"success":   response.Success,
 		"errorCode": response.ErrorCode,
 	}).Info("SKU编码检查API响应")
-
-	if !response.Success {
-		errorMsg := fmt.Sprintf("SKU编码检查失败，API返回失败状态 (错误码: %d)", response.ErrorCode)
-		if response.Message != "" {
-			errorMsg = fmt.Sprintf("%s: %s", errorMsg, response.Message)
-		}
-		return fmt.Errorf("%s", errorMsg)
-	}
 
 	// 处理检查结果
 	if response.Result != nil {
@@ -190,7 +124,7 @@ func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskCont
 }
 
 // handleCheckResult 处理检查结果
-func (h *OutGoodsSnCheckHandler) handleCheckResult(temuCtx *temucontext.TemuTaskContext, result *OutGoodsSnCheckResult) error {
+func (h *OutGoodsSnCheckHandler) handleCheckResult(temuCtx *temucontext.TemuTaskContext, result *models.OutGoodsSnCheckResult) error {
 	// 将检查结果存储到强类型上下文中，供其他处理器使用
 	// 这里可以添加一个字段到TemuTaskContext来存储检查结果
 	// 暂时先不存储，直接处理
@@ -223,8 +157,8 @@ func (h *OutGoodsSnCheckHandler) handleCheckResult(temuCtx *temucontext.TemuTask
 }
 
 // generateOutSkuSnFromAmazon 从Amazon数据生成OutSkuSN列表进行检查
-func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext.TemuTaskContext) []OutSkuSnItem {
-	var outSkuSnList []OutSkuSnItem
+func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext.TemuTaskContext) []models.OutSkuSnItem {
+	var outSkuSnList []models.OutSkuSnItem
 
 	// 获取店铺配置（前缀、后缀、策略）
 	prefix := ""
@@ -252,7 +186,7 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext
 		outSkuSN := utils.GenerateSKU(amazonProduct.Asin, strategy, prefix, suffix)
 		if !outSkuSnMap[outSkuSN] {
 			outSkuSnMap[outSkuSN] = true
-			outSkuSnList = append(outSkuSnList, OutSkuSnItem{
+			outSkuSnList = append(outSkuSnList, models.OutSkuSnItem{
 				OutSkuSn: outSkuSN,
 			})
 			h.logger.Debugf("主产品 ASIN=%s -> OutSkuSN=%s", amazonProduct.Asin, outSkuSN)
@@ -268,7 +202,7 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext
 				outSkuSN := utils.GenerateSKU(variant.Asin, strategy, prefix, suffix)
 				if !outSkuSnMap[outSkuSN] {
 					outSkuSnMap[outSkuSN] = true
-					outSkuSnList = append(outSkuSnList, OutSkuSnItem{
+					outSkuSnList = append(outSkuSnList, models.OutSkuSnItem{
 						OutSkuSn: outSkuSN,
 					})
 					h.logger.Debugf("变体 ASIN=%s -> OutSkuSN=%s", variant.Asin, outSkuSN)

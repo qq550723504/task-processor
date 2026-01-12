@@ -108,3 +108,32 @@ type TemuProductResponse struct {
 	EasyGainsTag          int      `json:"easy_gains_tag"`
 	IsBooks               bool     `json:"is_books"`
 }
+
+// ProductSaveRequest TEMU产品保存请求结构体
+type ProductSaveRequest struct {
+	GoodsBasic            GoodsBasicInfo `json:"goods_basic"`
+	GoodsSaleInfo         GoodsSaleInfo  `json:"goods_sale_info"`
+	GoodsServicePromise   ServicePromise `json:"goods_service_promise"`
+	GoodsExtensionInfo    ExtensionInfo  `json:"goods_extension_info"`
+	Extra                 Extra          `json:"extra"`
+	CanSave               bool           `json:"can_save"`
+	SupportMaxRetailPrice bool           `json:"support_max_retail_price"`
+	PlatformExpressBill   bool           `json:"platform_express_bill"`
+	SkcList               []Skc          `json:"skc_list"`
+	BatchSkuInfo          BatchSkuInfo   `json:"batch_sku_info"`
+}
+
+// ProductSaveResponse TEMU产品保存响应结构体
+type ProductSaveResponse struct {
+	Success   bool                `json:"success"`
+	ErrorCode int                 `json:"error_code"`
+	Message   string              `json:"error_msg,omitempty"`
+	Result    *ProductSaveResult2 `json:"result,omitempty"`
+}
+
+// ProductSaveResult2 产品保存结果（避免与现有结构体冲突）
+type ProductSaveResult2 struct {
+	ListingCommitID      string `json:"listing_commit_id"`
+	ListingCommitVersion string `json:"listing_commit_version"`
+	GoodsCommitID        string `json:"goods_commit_id"`
+}
