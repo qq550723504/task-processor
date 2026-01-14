@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/service/pipeline"
 	"task-processor/internal/platforms/temu"
 )
 
@@ -70,7 +70,7 @@ func (s *processorServiceImpl) startSheinProcessor(ctx context.Context, cfg *con
 	sharedAmazonProcessor := GetSharedAmazonProcessor(cfg, s.logger)
 
 	// 创建SHEIN处理器，使用共享资源
-	s.sheinProcessor = shein.NewSheinProcessor(ctx, cfg, s.logger, s.managementClient, sharedAmazonProcessor)
+	s.sheinProcessor = pipeline.NewSheinProcessor(ctx, cfg, s.logger, s.managementClient, sharedAmazonProcessor)
 
 	// 启动处理器
 	if err := s.sheinProcessor.Start(s.ctx); err != nil {

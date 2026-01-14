@@ -26,7 +26,6 @@ type ProductImportMappingCreateReqDTO struct {
 // ProductImportMappingGetReqDTO 通过店铺ID、平台、区域和平台产品ID获取产品导入映射关系请求DTO
 type ProductImportMappingGetReqDTO struct {
 	PlatformProductId string `json:"platformProductId"` // 平台产品ID
-	StoreId           int64  `json:"storeId"`           // 店铺ID
 }
 
 // ProductImportMappingCheckReqDTO 检查产品是否已上架请求DTO

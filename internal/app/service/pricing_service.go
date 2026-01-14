@@ -21,7 +21,7 @@ type PricingService interface {
 type pricingServiceImpl struct {
 	logger           *logrus.Logger
 	managementClient *management.ClientManager
-	scheduler        *scheduler.SafeScheduler
+	schedulerManager *scheduler.Manager // 使用新的统一调度器
 	ctx              context.Context
 	cancel           context.CancelFunc
 	running          bool
@@ -69,10 +69,8 @@ func (s *pricingServiceImpl) Stop(ctx context.Context) error {
 	s.logger.Info("🛑 开始停止核价服务...")
 
 	// 停止调度器
-	if s.scheduler != nil {
-		if err := s.scheduler.Stop(); err != nil {
-			s.logger.Errorf("停止调度器失败: %v", err)
-		}
+	if s.schedulerManager != nil {
+		s.schedulerManager.StopAll()
 		s.logger.Info("✅ 调度器已停止")
 	}
 
@@ -93,8 +91,20 @@ func (s *pricingServiceImpl) GetStatus() map[string]any {
 		"running": s.running,
 	}
 
-	if s.scheduler != nil {
-		status["scheduler"] = s.scheduler.GetStatus()
+	if s.schedulerManager != nil {
+		tasks := s.schedulerManager.ListTasks()
+		taskStatus := make([]map[string]any, 0, len(tasks))
+		for _, task := range tasks {
+			taskStatus = append(taskStatus, map[string]any{
+				"id":       task.GetID(),
+				"type":     task.GetType(),
+				"platform": task.GetPlatform(),
+				"status":   task.GetStatus(),
+				"interval": task.GetInterval().String(),
+			})
+		}
+		status["tasks"] = taskStatus
+		status["task_count"] = s.schedulerManager.GetTaskCount()
 	}
 
 	return status

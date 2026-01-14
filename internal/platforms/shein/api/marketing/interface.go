@@ -9,6 +9,12 @@ type MarketingAPI interface {
 	SaveConfig(req *SaveConfigRequest) (*SaveConfigResponse, error)
 	// GetConfigList 获取已报名活动的产品列表
 	GetConfigList(req *GetConfigListRequest) (*GetConfigListResponse, error)
+	// QueryPromotionGoods 查询促销活动商品列表
+	QueryPromotionGoods(req *QueryPromotionGoodsRequest) (*QueryPromotionGoodsResponse, error)
+	// CalculateSupplyPrice 计算供货价格和利润
+	CalculateSupplyPrice(req *CalculateSupplyPriceRequest) (*CalculateSupplyPriceResponse, error)
+	// CreateActivity 创建促销活动
+	CreateActivity(req *CreateActivityRequest) (*CreateActivityResponse, error)
 }
 
 // GetAvailableSkcListRequest 获取可报名活动产品列表请求参数

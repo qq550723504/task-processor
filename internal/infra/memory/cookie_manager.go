@@ -28,42 +28,42 @@ func NewCookieManager() *CookieManager {
 }
 
 // SetCookie 设置Cookie
-func (m *CookieManager) SetCookie(tenantID, shopID int64, cookie string) {
+func (m *CookieManager) SetCookie(shopID int64, cookie string) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	key := fmt.Sprintf("%d:%d", tenantID, shopID)
+	key := fmt.Sprintf("%d", shopID)
 	m.cookies[key] = &CookieInfo{
 		Cookie:     cookie,
 		UpdateTime: time.Now(),
 	}
 
-	logrus.Infof("Cookie已保存到内存: 租户=%d, 店铺=%d", tenantID, shopID)
+	logrus.Infof("Cookie已保存到内存: 店铺=%d", shopID)
 }
 
 // GetCookie 获取Cookie
-func (m *CookieManager) GetCookie(tenantID, shopID int64) (string, error) {
+func (m *CookieManager) GetCookie(shopID int64) (string, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
-	key := fmt.Sprintf("%d:%d", tenantID, shopID)
+	key := fmt.Sprintf("%d", shopID)
 	info, exists := m.cookies[key]
 	if !exists {
-		return "", fmt.Errorf("Cookie不存在: 租户=%d, 店铺=%d", tenantID, shopID)
+		return "", fmt.Errorf("Cookie不存在:店铺=%d", shopID)
 	}
 
 	return info.Cookie, nil
 }
 
 // DeleteCookie 删除Cookie
-func (m *CookieManager) DeleteCookie(tenantID, shopID int64) {
+func (m *CookieManager) DeleteCookie(shopID int64) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	key := fmt.Sprintf("%d:%d", tenantID, shopID)
+	key := fmt.Sprintf("%d", shopID)
 	delete(m.cookies, key)
 
-	logrus.Infof("Cookie已从内存删除: 租户=%d, 店铺=%d", tenantID, shopID)
+	logrus.Infof("Cookie已从内存删除: 店铺=%d", shopID)
 }
 
 // GetAllCookies 获取所有Cookie（用于调试）
