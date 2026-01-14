@@ -56,3 +56,4 @@ cache
 test_data
 logs
 .venv
+.kiro
