@@ -58,7 +58,7 @@ management:
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [647]  # 店铺ID列表
+  storeIDs: [687]  # 店铺ID列表
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
@@ -97,7 +97,7 @@ platforms:
     enabled: false  # 是否启用SHEIN处理器
     # 自动定价配置
     autoPricing:
-      enabled: false
+      enabled: true
       interval: 300     # 5分钟
       batchSize: 100
     # 产品同步配置
