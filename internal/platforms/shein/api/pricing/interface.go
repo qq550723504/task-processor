@@ -23,11 +23,22 @@ type ConfirmInfo struct {
 }
 
 type CreateCostDiscuss struct {
-	DiscussSn   string `json:"discuss_sn"`
-	DiscussStep int    `json:"discuss_step"`
-	DocumentSn  string `json:"document_sn"`
-	SkcName     string `json:"skc_name"`
-	Reason      string `json:"reason"`
+	DiscussSn       string                   `json:"discuss_sn"`
+	DiscussStep     int                      `json:"discuss_step"`
+	DocumentSn      string                   `json:"document_sn"`
+	SkcName         string                   `json:"skc_name"`
+	Reason          string                   `json:"reason"`
+	FileUploadList  []string                 `json:"file_upload_list,omitempty"`
+	SkuCostInfoList []SkuCostInfoForReappeal `json:"sku_cost_info_list,omitempty"`
+}
+
+// SkuCostInfoForReappeal 重新议价时的SKU成本信息
+type SkuCostInfoForReappeal struct {
+	Cost         float64 `json:"cost"`
+	Currency     string  `json:"currency"`
+	LastCost     float64 `json:"last_cost"`
+	LastCurrency string  `json:"last_currency"`
+	SkuCode      string  `json:"sku_code"`
 }
 
 type BatchHandleCostDiscussResponse struct {
