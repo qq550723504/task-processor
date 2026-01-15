@@ -47,14 +47,7 @@ func fetchAmazonProduct(
 	return amazonProduct, nil
 }
 
-// extractStockFromProduct 从 Amazon 产品信息中提取库存数量
+// extractStockFromProduct 从 Amazon 产品信息中提取库存数量（使用公共函数）
 func extractStockFromProduct(prod *model.Product) int {
-	if !prod.IsAvailable {
-		return 0
-	}
-	if prod.MaxQuantityAvailable > 0 {
-		return prod.MaxQuantityAvailable
-	}
-	// 如果没有明确的库存数量，默认返回 31（Amazon 常见的最大可购买数量）
-	return 31
+	return product.GetInventory(prod)
 }

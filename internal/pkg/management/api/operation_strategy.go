@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"task-processor/internal/pkg/types"
 	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
@@ -18,21 +19,21 @@ type OperationStrategyAPI interface {
 
 // OperationStrategyDTO 自动化运营策略 DTO
 type OperationStrategyDTO struct {
-	ID                    int64          `json:"id"`
-	TenantID              int64          `json:"tenantId"`
-	StoreID               int64          `json:"storeId"`
-	Name                  string         `json:"name"`
-	Platform              string         `json:"platform"`
-	Status                int16          `json:"status"` // 0=启用, 1=禁用
-	StockChangeThreshold  int            `json:"stockChangeThreshold"`
-	StockChangeAction     string         `json:"stockChangeAction"`
-	OutOfStockAction      string         `json:"outOfStockAction"`
-	MinProfitRate         float64        `json:"minProfitRate"`
-	LowProfitAction       string         `json:"lowProfitAction"`
-	PriceUpdateMultiplier float64        `json:"priceUpdateMultiplier"`
-	StockUpdateRatio      float64        `json:"stockUpdateRatio"`
-	Remark                string         `json:"remark"`
-	CreateTime            FlexibleString `json:"createTime"` // 支持字符串或数字
+	ID                    int64                `json:"id"`
+	TenantID              int64                `json:"tenantId"`
+	StoreID               int64                `json:"storeId"`
+	Name                  string               `json:"name"`
+	Platform              string               `json:"platform"`
+	Status                int16                `json:"status"` // 0=启用, 1=禁用
+	StockChangeThreshold  int                  `json:"stockChangeThreshold"`
+	StockChangeAction     string               `json:"stockChangeAction"`
+	OutOfStockAction      string               `json:"outOfStockAction"`
+	MinProfitRate         float64              `json:"minProfitRate"`
+	LowProfitAction       string               `json:"lowProfitAction"`
+	PriceUpdateMultiplier float64              `json:"priceUpdateMultiplier"`
+	StockUpdateRatio      float64              `json:"stockUpdateRatio"`
+	Remark                string               `json:"remark"`
+	CreateTime            types.FlexibleString `json:"createTime"` // 支持字符串或数字
 }
 
 // IsEnabled 判断策略是否启用

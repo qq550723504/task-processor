@@ -209,14 +209,14 @@ func (c *Config) validatePlatformConfig(platformName string, platform *PlatformC
 	}
 
 	// 验证同步配置
-	if platform.Sync.Enabled {
-		if platform.Sync.Interval <= 0 {
+	if platform.SyncProduct.Enabled {
+		if platform.SyncProduct.Interval <= 0 {
 			errors = append(errors, &ValidationError{
 				Field:   fmt.Sprintf("platforms.%s.sync.interval", platformName),
 				Message: fmt.Sprintf("%s 同步间隔必须大于 0", strings.ToUpper(platformName)),
 			})
 		}
-		if platform.Sync.BatchSize <= 0 {
+		if platform.SyncProduct.BatchSize <= 0 {
 			errors = append(errors, &ValidationError{
 				Field:   fmt.Sprintf("platforms.%s.sync.batchSize", platformName),
 				Message: fmt.Sprintf("%s 同步批量大小必须大于 0", strings.ToUpper(platformName)),

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/types"
 )
 
 // ProductDataAPIClientImpl 产品数据API客户端实现
@@ -152,29 +153,29 @@ func parsePrice(price string) float64 {
 
 // ProductListItem 产品列表项（API 响应结构）
 type ProductListItem struct {
-	ID                int64              `json:"id"`
-	Platform          string             `json:"platform"`
-	StoreID           int64              `json:"storeId"`
-	PlatformProductID string             `json:"platformProductId"`
-	ProductID         string             `json:"productId"`
-	ParentProductID   string             `json:"parentProductId"`
-	Title             string             `json:"title"`
-	Description       string             `json:"description"`
-	OriginalPrice     api.FlexibleString `json:"originalPrice"`
-	SpecialPrice      api.FlexibleString `json:"specialPrice"`
-	PriceCurrency     string             `json:"priceCurrency"`
-	Stock             api.FlexibleString `json:"stock"`
-	ShelfStatus       int                `json:"shelfStatus"`
-	Brand             string             `json:"brand"`
-	Category          string             `json:"category"`
-	CategoryID        int64              `json:"categoryId"`
-	Region            string             `json:"region"`
-	MainImageURL      string             `json:"mainImageUrl"`
-	ImageURLs         string             `json:"imageUrls"`
-	Attributes        string             `json:"attributes"`
-	SourceURL         string             `json:"sourceUrl"`
-	PlatformStatus    string             `json:"platformStatus"`
-	PlatformData      string             `json:"platformData"`
+	ID                int64                `json:"id"`
+	Platform          string               `json:"platform"`
+	StoreID           int64                `json:"storeId"`
+	PlatformProductID string               `json:"platformProductId"`
+	ProductID         string               `json:"productId"`
+	ParentProductID   string               `json:"parentProductId"`
+	Title             string               `json:"title"`
+	Description       string               `json:"description"`
+	OriginalPrice     types.FlexibleString `json:"originalPrice"`
+	SpecialPrice      types.FlexibleString `json:"specialPrice"`
+	PriceCurrency     string               `json:"priceCurrency"`
+	Stock             types.FlexibleString `json:"stock"`
+	ShelfStatus       int                  `json:"shelfStatus"`
+	Brand             string               `json:"brand"`
+	Category          string               `json:"category"`
+	CategoryID        int64                `json:"categoryId"`
+	Region            string               `json:"region"`
+	MainImageURL      string               `json:"mainImageUrl"`
+	ImageURLs         string               `json:"imageUrls"`
+	Attributes        string               `json:"attributes"`
+	SourceURL         string               `json:"sourceUrl"`
+	PlatformStatus    string               `json:"platformStatus"`
+	PlatformData      string               `json:"platformData"`
 }
 
 // ProductListResponse 产品列表响应

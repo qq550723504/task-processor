@@ -26,26 +26,8 @@ func main() {
 	fmt.Println("3. 更精细的人类行为模拟")
 	fmt.Println("4. 复杂的缓动函数和轨迹控制")
 	fmt.Println()
-
-	// 创建1688配置
-	cfg := &config.Alibaba1688Config{
-		Enabled:  true,
-		Timeout:  300, // 5分钟超时
-		PoolSize: 1,
-		BrowserConfig: config.BrowserConfig{
-			Enabled:        true,
-			Headless:       false, // 必须为false以便观察
-			BrowserPath:    "./chrome/chrome.exe",
-			ViewportWidth:  1920,
-			ViewportHeight: 1080,
-		},
-		RandomConfig: config.BrowserRandomConfig{
-			Enabled:            false,
-			Strategy:           "stable",
-			HealthCheckEnabled: false,
-			MaxRetries:         3,
-		},
-	}
+	// 加载配置
+	cfg := config.LoadConfig()
 
 	// 创建1688处理器
 	processor := alibaba1688.NewAlibaba1688Processor(cfg)

@@ -70,34 +70,6 @@ func setBrowserDefaults() {
 func setAmazonDefaults() {
 	viper.SetDefault("amazon.enabled", true)
 	viper.SetDefault("amazon.dataFreshnessDays", 7)
-
-	// SPAPI 默认配置
-	viper.SetDefault("amazon.spapi.enabled", false) // 默认禁用，需要用户配置凭证
-	viper.SetDefault("amazon.spapi.region", "us-east-1")
-	viper.SetDefault("amazon.spapi.defaultMarketplace", "us")
-	viper.SetDefault("amazon.spapi.defaultFulfillmentType", "FBM")
-	viper.SetDefault("amazon.spapi.defaultCondition", "New")
-	viper.SetDefault("amazon.spapi.clientID", "")
-	viper.SetDefault("amazon.spapi.clientSecret", "")
-	viper.SetDefault("amazon.spapi.refreshToken", "")
-	viper.SetDefault("amazon.spapi.awsAccessKeyID", "")
-	viper.SetDefault("amazon.spapi.awsSecretKey", "")
-
-	// 默认市场配置
-	viper.SetDefault("amazon.spapi.markets.us.name", "Amazon.com")
-	viper.SetDefault("amazon.spapi.markets.us.marketplaceID", "ATVPDKIKX0DER")
-	viper.SetDefault("amazon.spapi.markets.us.currency", "USD")
-	viper.SetDefault("amazon.spapi.markets.us.enabled", true)
-
-	viper.SetDefault("amazon.spapi.markets.ca.name", "Amazon.ca")
-	viper.SetDefault("amazon.spapi.markets.ca.marketplaceID", "A2EUQ1WTGCTBG2")
-	viper.SetDefault("amazon.spapi.markets.ca.currency", "CAD")
-	viper.SetDefault("amazon.spapi.markets.ca.enabled", false)
-
-	viper.SetDefault("amazon.spapi.markets.mx.name", "Amazon.com.mx")
-	viper.SetDefault("amazon.spapi.markets.mx.marketplaceID", "A1AM78C64UM0Y8")
-	viper.SetDefault("amazon.spapi.markets.mx.currency", "MXN")
-	viper.SetDefault("amazon.spapi.markets.mx.enabled", false)
 }
 
 // setUpdaterDefaults 设置更新器默认配置
@@ -120,15 +92,28 @@ func setPlatformDefaults() {
 // setTemuDefaults 设置TEMU平台默认配置
 func setTemuDefaults() {
 	// 平台启用状态默认配置
-	viper.SetDefault("platforms.temu.enabled", true)
+	viper.SetDefault("platforms.temu.enabled", true)           // 默认启用处理器（上架任务）
+	viper.SetDefault("platforms.temu.schedulerEnabled", false) // 默认禁用调度任务
 
-	// 自动定价默认配置
+	// 自动核价默认配置
 	viper.SetDefault("platforms.temu.autoPricing.enabled", false)
 	viper.SetDefault("platforms.temu.autoPricing.interval", 300)
 	viper.SetDefault("platforms.temu.autoPricing.batchSize", 100)
-	viper.SetDefault("platforms.temu.autoPricing.useAmazonPrice", true) // 默认使用Amazon价格数据
+	viper.SetDefault("platforms.temu.autoPricing.useAmazonPrice", false) // 默认使用Amazon价格数据
 
 	// 产品同步默认配置
+	viper.SetDefault("platforms.temu.productSync.enabled", false)
+	viper.SetDefault("platforms.temu.productSync.interval", 3600) // 1小时
+
+	// 库存同步默认配置
+	viper.SetDefault("platforms.temu.inventorySync.enabled", false)
+	viper.SetDefault("platforms.temu.inventorySync.interval", 1800) // 30分钟
+
+	// 活动报名默认配置
+	viper.SetDefault("platforms.temu.activityRegistration.enabled", false)
+	viper.SetDefault("platforms.temu.activityRegistration.interval", 7200) // 2小时
+
+	// 旧版产品同步默认配置（保留兼容）
 	viper.SetDefault("platforms.temu.sync.enabled", true)
 	viper.SetDefault("platforms.temu.sync.storeIDs", []int64{})
 	viper.SetDefault("platforms.temu.sync.interval", 60)
@@ -148,14 +133,27 @@ func setTemuDefaults() {
 // setSheinDefaults 设置SHEIN平台默认配置
 func setSheinDefaults() {
 	// 平台启用状态默认配置
-	viper.SetDefault("platforms.shein.enabled", true)
+	viper.SetDefault("platforms.shein.enabled", true)           // 默认启用处理器（上架任务）
+	viper.SetDefault("platforms.shein.schedulerEnabled", false) // 默认禁用调度任务
 
-	// 自动定价默认配置
+	// 自动核价默认配置
 	viper.SetDefault("platforms.shein.autoPricing.enabled", false)
 	viper.SetDefault("platforms.shein.autoPricing.interval", 300)
 	viper.SetDefault("platforms.shein.autoPricing.batchSize", 100)
 
 	// 产品同步默认配置
+	viper.SetDefault("platforms.shein.productSync.enabled", false)
+	viper.SetDefault("platforms.shein.productSync.interval", 3600) // 1小时
+
+	// 库存同步默认配置
+	viper.SetDefault("platforms.shein.inventorySync.enabled", false)
+	viper.SetDefault("platforms.shein.inventorySync.interval", 1800) // 30分钟
+
+	// 活动报名默认配置
+	viper.SetDefault("platforms.shein.activityRegistration.enabled", false)
+	viper.SetDefault("platforms.shein.activityRegistration.interval", 7200) // 2小时
+
+	// 旧版产品同步默认配置（保留兼容）
 	viper.SetDefault("platforms.shein.sync.enabled", true)
 	viper.SetDefault("platforms.shein.sync.storeIDs", []int64{})
 	viper.SetDefault("platforms.shein.sync.interval", 60)

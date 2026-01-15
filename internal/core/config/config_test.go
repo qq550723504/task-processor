@@ -131,7 +131,7 @@ func TestConfigValidation(t *testing.T) {
 					Interval:  300,
 					BatchSize: 100,
 				},
-				Sync: SyncConfig{
+				SyncProduct: SyncProductConfig{
 					Enabled:   true,
 					Interval:  60,
 					BatchSize: 50,
@@ -150,7 +150,7 @@ func TestConfigValidation(t *testing.T) {
 					Interval:  300,
 					BatchSize: 100,
 				},
-				Sync: SyncConfig{
+				SyncProduct: SyncProductConfig{
 					Enabled:   false,
 					Interval:  60,
 					BatchSize: 50,

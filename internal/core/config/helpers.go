@@ -14,12 +14,12 @@ func (c *Config) GetPlatformConfig(platform string) *PlatformConfig {
 }
 
 // GetPlatformSyncConfig 获取指定平台的同步配置
-func (c *Config) GetPlatformSyncConfig(platform string) *SyncConfig {
+func (c *Config) GetPlatformSyncConfig(platform string) *SyncProductConfig {
 	platformConfig := c.GetPlatformConfig(platform)
 	if platformConfig == nil {
 		return nil
 	}
-	return &platformConfig.Sync
+	return &platformConfig.SyncProduct
 }
 
 // GetPlatformMonitorConfig 获取指定平台的监控配置

@@ -64,80 +64,54 @@ management:
 platforms:
   # TEMU 平台配置
   temu:
-    enabled: false  # 是否启用TEMU处理器（任务处理）
-    # API配置
-    api:
-      timeout: 120          # API请求超时时间（秒）
-      maxTimeout: 180       # 最大超时时间（秒，包含重试）
-      retryCount: 3         # 重试次数
-      retryInterval: 2      # 重试间隔（秒）
-    # 自动定价配置
+    enabled: false           # 是否启用TEMU处理器（处理上架任务）
+    schedulerEnabled: false  # 是否启用TEMU调度任务（核价、同步等）
+    # 自动核价配置
     autoPricing:
-      enabled: true   # 启用自动核价
-      interval: 300     # 5分钟
+      enabled: true         # 启用自动核价
+      interval: 12         # 执行间隔（秒），默认5分钟
       batchSize: 100
       useAmazonPrice: true  # 是否使用Amazon价格数据进行定价决策
-    # 产品同步配置0000000000
-    sync:
-      enabled: false
-      interval: 60      # 同步间隔（分钟），默认1小时
-      batchSize: 50     # 批量处理大小
-    # 产品监控配置
-    monitor:
-      enabled: false               # 是否启用TEMU产品监控
-      checkInterval: 1440         # 检查间隔（分钟），默认24小时
-      batchSize: 100              # 批量处理大小
-      enablePriceAlert: true      # 启用价格告警
-      enableStockAlert: true      # 启用库存告警
-      priceChangeThreshold: 10.0  # 价格变化阈值（百分比）
-      stockChangeThreshold: 5     # 库存变化阈值
+    # 产品同步配置
+    productSync:
+      enabled: false        # 启用产品同步
+      interval: 3600        # 执行间隔（秒），默认1小时
+    # 库存同步配置
+    inventorySync:
+      enabled: false        # 启用库存同步
+      interval: 1800        # 执行间隔（秒），默认30分钟
+    # 活动报名配置
+    activityRegistration:
+      enabled: false        # 启用活动报名
+      interval: 7200        # 执行间隔（秒），默认2小时
 
   # SHEIN 平台配置
   shein:
-    enabled: false  # 是否启用SHEIN处理器
-    # 自动定价配置
+    enabled: false           # 是否启用SHEIN处理器（处理上架任务）
+    schedulerEnabled: true  # 是否启用SHEIN调度任务（核价、同步等）
+    # 自动核价配置
     autoPricing:
-      enabled: true
-      interval: 300     # 5分钟
+      enabled: false        # 启用自动核价
+      interval: 300         # 执行间隔（秒），默认5分钟
       batchSize: 100
     # 产品同步配置
-    sync:
-      enabled: false
-      storeIDs: []      # SHEIN店铺ID列表，为空则使用 management.storeIDs
-      interval: 60      # 同步间隔（分钟），默认1小时
-      batchSize: 50     # 批量处理大小
-    # 产品监控配置
-    monitor:
-      enabled: false               # 是否启用SHEIN产品监控
-      storeIDs: []                # SHEIN店铺ID列表，为空则使用对应平台的sync配置
-      checkInterval: 1440         # 检查间隔（分钟），默认24小时
-      batchSize: 100              # 批量处理大小
-      enablePriceAlert: true      # 启用价格告警
-      enableStockAlert: true      # 启用库存告警
-      priceChangeThreshold: 10.0  # 价格变化阈值（百分比）
-      stockChangeThreshold: 5     # 库存变化阈值
+    productSync:
+      enabled: false         # 启用产品同步
+      interval: 3600        # 执行间隔（秒），默认1小时
+    # 库存同步配置
+    inventorySync:
+      enabled: false        # 启用库存同步
+      interval: 1800        # 执行间隔（秒），默认30分钟
+    # 活动报名配置
+    activityRegistration:
+      enabled: true        # 启用活动报名
+      interval: 7200        # 执行间隔（秒），默认2小时
 
   # 1688 平台配置
   alibaba1688:
     enabled: true   # 是否启用1688处理器
     timeout: 120    # 处理超时时间（秒）
     poolSize: 3     # 浏览器池大小
-    
-    # 浏览器配置
-    browserConfig:
-      headless: false
-      viewportWidth: 1920
-      viewportHeight: 1080
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    
-    # 随机配置选项
-    randomConfig:
-      enabled: true
-      strategy: "random"
-      presetName: "windows_high_end"
-      fingerprintStrategy: "random"
-      healthCheckEnabled: true
-      maxRetries: 3
     
 # 浏览器配置（通用）
 browser:
@@ -149,15 +123,6 @@ browser:
   viewportHeight: 1080
   proxyServer: ""
   
-  # 随机配置选项
-  randomConfig:
-    enabled: true  # 启用随机配置
-    strategy: "random"  # 配置策略: random, stable, preset, windows
-    presetName: "windows_high_end"  # 预设名称（当strategy为preset时使用）
-    fingerprintStrategy: "random"  # 指纹策略: random, stable
-    healthCheckEnabled: true  # 启用健康检查
-    maxRetries: 3  # 最大重试次数
-
 # Amazon配置
 amazon:
   # Amazon 爬虫配置
@@ -209,7 +174,7 @@ amazon:
 
 # 自动更新配置
 updater:
-  enabled: true  # 开发环境默认禁用自动更新
+  enabled: false  # 开发环境默认禁用自动更新
   updateURL: "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json"
   checkInterval: 300  # 检查间隔（秒），默认5分钟
   insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）

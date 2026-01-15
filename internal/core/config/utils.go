@@ -28,8 +28,6 @@ func loadSPAPIConfig() SPAPIConfig {
 		AWSSecretKey:           viper.GetString("amazon.spapi.awsSecretKey"),
 		DefaultFulfillmentType: viper.GetString("amazon.spapi.defaultFulfillmentType"),
 		DefaultCondition:       viper.GetString("amazon.spapi.defaultCondition"),
-		MarketplaceID:          viper.GetString("amazon.spapi.marketplaceID"),
-		SellerID:               viper.GetString("amazon.spapi.sellerID"),
 	}
 
 	// 加载市场配置

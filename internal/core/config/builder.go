@@ -39,14 +39,27 @@ func buildConfig() *Config {
 		},
 		Platforms: PlatformsConfig{
 			Temu: PlatformConfig{
-				Enabled: viper.GetBool("platforms.temu.enabled"),
+				Enabled:          viper.GetBool("platforms.temu.enabled"),
+				SchedulerEnabled: viper.GetBool("platforms.temu.schedulerEnabled"),
 				AutoPricing: AutoPricingConfig{
 					Enabled:        viper.GetBool("platforms.temu.autoPricing.enabled"),
 					Interval:       viper.GetInt("platforms.temu.autoPricing.interval"),
 					BatchSize:      viper.GetInt("platforms.temu.autoPricing.batchSize"),
 					UseAmazonPrice: viper.GetBool("platforms.temu.autoPricing.useAmazonPrice"),
 				},
-				Sync: SyncConfig{
+				ProductSync: ScheduledTaskConfig{
+					Enabled:  viper.GetBool("platforms.temu.productSync.enabled"),
+					Interval: viper.GetInt("platforms.temu.productSync.interval"),
+				},
+				InventorySync: ScheduledTaskConfig{
+					Enabled:  viper.GetBool("platforms.temu.inventorySync.enabled"),
+					Interval: viper.GetInt("platforms.temu.inventorySync.interval"),
+				},
+				ActivityRegistration: ScheduledTaskConfig{
+					Enabled:  viper.GetBool("platforms.temu.activityRegistration.enabled"),
+					Interval: viper.GetInt("platforms.temu.activityRegistration.interval"),
+				},
+				SyncProduct: SyncProductConfig{
 					Enabled:   viper.GetBool("platforms.temu.sync.enabled"),
 					StoreIDs:  getInt64Slice("platforms.temu.sync.storeIDs"),
 					Interval:  viper.GetInt("platforms.temu.sync.interval"),
@@ -64,13 +77,26 @@ func buildConfig() *Config {
 				},
 			},
 			Shein: PlatformConfig{
-				Enabled: viper.GetBool("platforms.shein.enabled"),
+				Enabled:          viper.GetBool("platforms.shein.enabled"),
+				SchedulerEnabled: viper.GetBool("platforms.shein.schedulerEnabled"),
 				AutoPricing: AutoPricingConfig{
 					Enabled:   viper.GetBool("platforms.shein.autoPricing.enabled"),
 					Interval:  viper.GetInt("platforms.shein.autoPricing.interval"),
 					BatchSize: viper.GetInt("platforms.shein.autoPricing.batchSize"),
 				},
-				Sync: SyncConfig{
+				ProductSync: ScheduledTaskConfig{
+					Enabled:  viper.GetBool("platforms.shein.productSync.enabled"),
+					Interval: viper.GetInt("platforms.shein.productSync.interval"),
+				},
+				InventorySync: ScheduledTaskConfig{
+					Enabled:  viper.GetBool("platforms.shein.inventorySync.enabled"),
+					Interval: viper.GetInt("platforms.shein.inventorySync.interval"),
+				},
+				ActivityRegistration: ScheduledTaskConfig{
+					Enabled:  viper.GetBool("platforms.shein.activityRegistration.enabled"),
+					Interval: viper.GetInt("platforms.shein.activityRegistration.interval"),
+				},
+				SyncProduct: SyncProductConfig{
 					Enabled:   viper.GetBool("platforms.shein.sync.enabled"),
 					StoreIDs:  getInt64Slice("platforms.shein.sync.storeIDs"),
 					Interval:  viper.GetInt("platforms.shein.sync.interval"),
@@ -91,31 +117,6 @@ func buildConfig() *Config {
 				Enabled:  viper.GetBool("platforms.alibaba1688.enabled"),
 				Timeout:  viper.GetInt("platforms.alibaba1688.timeout"),
 				PoolSize: viper.GetInt("platforms.alibaba1688.poolSize"),
-				BrowserConfig: BrowserConfig{
-					Enabled:        viper.GetBool("platforms.alibaba1688.browserConfig.enabled"),
-					Headless:       viper.GetBool("platforms.alibaba1688.browserConfig.headless"),
-					BrowserPath:    viper.GetString("platforms.alibaba1688.browserConfig.browserPath"),
-					PoolSize:       viper.GetInt("platforms.alibaba1688.browserConfig.poolSize"),
-					ViewportWidth:  viper.GetInt("platforms.alibaba1688.browserConfig.viewportWidth"),
-					ViewportHeight: viper.GetInt("platforms.alibaba1688.browserConfig.viewportHeight"),
-					ProxyServer:    viper.GetString("platforms.alibaba1688.browserConfig.proxyServer"),
-					RandomConfig: BrowserRandomConfig{
-						Enabled:             viper.GetBool("platforms.alibaba1688.browserConfig.randomConfig.enabled"),
-						Strategy:            viper.GetString("platforms.alibaba1688.browserConfig.randomConfig.strategy"),
-						PresetName:          viper.GetString("platforms.alibaba1688.browserConfig.randomConfig.presetName"),
-						FingerprintStrategy: viper.GetString("platforms.alibaba1688.browserConfig.randomConfig.fingerprintStrategy"),
-						HealthCheckEnabled:  viper.GetBool("platforms.alibaba1688.browserConfig.randomConfig.healthCheckEnabled"),
-						MaxRetries:          viper.GetInt("platforms.alibaba1688.browserConfig.randomConfig.maxRetries"),
-					},
-				},
-				RandomConfig: BrowserRandomConfig{
-					Enabled:             viper.GetBool("platforms.alibaba1688.randomConfig.enabled"),
-					Strategy:            viper.GetString("platforms.alibaba1688.randomConfig.strategy"),
-					PresetName:          viper.GetString("platforms.alibaba1688.randomConfig.presetName"),
-					FingerprintStrategy: viper.GetString("platforms.alibaba1688.randomConfig.fingerprintStrategy"),
-					HealthCheckEnabled:  viper.GetBool("platforms.alibaba1688.randomConfig.healthCheckEnabled"),
-					MaxRetries:          viper.GetInt("platforms.alibaba1688.randomConfig.maxRetries"),
-				},
 			},
 		},
 		Browser: BrowserConfig{
@@ -139,7 +140,6 @@ func buildConfig() *Config {
 			Enabled:           viper.GetBool("amazon.enabled"),
 			Zipcodes:          viper.GetStringMapString("amazon.zipcodes"),
 			DataFreshnessDays: viper.GetInt("amazon.dataFreshnessDays"),
-			SPAPI:             loadSPAPIConfig(),
 
 			// 从浏览器配置复制兼容性字段
 			Headless:       viper.GetBool("browser.headless"),

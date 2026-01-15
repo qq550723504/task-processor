@@ -6,6 +6,7 @@ import (
 	"math/rand"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -127,8 +128,8 @@ func (ph *PriceHandler) getSupplierCost(temuCtx *temucontext.TemuTaskContext, va
 	// 获取店铺配置的价格类型(默认使用特价)
 	priceType := ph.getPriceTypeFromContext(temuCtx)
 
-	// 根据价格类型获取价格(包含运费)
-	return getProductPrice(variant, priceType)
+	// 根据价格类型获取价格(包含运费) - 使用公共函数
+	return product.GetProductPrice(variant, priceType)
 }
 
 // getPriceTypeFromContext 从上下文获取价格类型
@@ -220,57 +221,21 @@ func (ph *PriceHandler) GetPriceMultiplier(temuCtx *temucontext.TemuTaskContext)
 	})
 	if err != nil {
 		ph.logger.Warnf("获取利润规则失败: %v，使用默认倍数2.0", err)
-		return 2.0
+		return 3.0
 	}
 
 	// 检查规则是否为空
 	if profitRule == nil {
 		ph.logger.Warn("利润规则数据为空，使用默认倍数2.0")
-		return 2.0
+		return 3.0
 	}
 
 	// 检查规则是否启用（Status = 1 表示禁用，0 表示启用）
 	if profitRule.Status == 1 {
 		ph.logger.Warnf("利润规则已禁用，使用默认倍数2.0")
-		return 2.0
+		return 3.0
 	}
 
 	ph.logger.Infof("使用利润规则 '%s' 的倍数: %.2fx", profitRule.Name, profitRule.SalePriceMultiplier)
 	return profitRule.SalePriceMultiplier
-}
-
-// getProductPrice 获取产品价格(包含运费)
-func getProductPrice(amazonProduct *model.Product, priceType string) float64 {
-	if amazonProduct == nil {
-		return 0
-	}
-
-	// 获取运费
-	freight := getFreight(amazonProduct)
-
-	var price float64
-	switch priceType {
-	case "special":
-		// 特价
-		price = amazonProduct.FinalPrice
-	case "original":
-		// 原价
-		if amazonProduct.PricesBreakdown.ListPrice != nil {
-			price = *amazonProduct.PricesBreakdown.ListPrice
-		} else {
-			price = amazonProduct.InitialPrice
-		}
-	default:
-		// 默认使用特价
-		price = amazonProduct.FinalPrice
-	}
-
-	return freight + price
-}
-
-// getFreight 获取运费
-func getFreight(amazonProduct *model.Product) float64 {
-	// TODO: 从 delivery 信息中提取运费
-	// 目前假设运费为0
-	return 0
 }

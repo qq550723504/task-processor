@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/shein/model"
 	"time"
 
@@ -85,16 +86,16 @@ func MapToProductData(sheinProduct *model.SheinProductResponse, tenantID, storeI
 		Title:             sheinProduct.ProductNameMulti,
 		CategoryID:        sheinProduct.CategoryID,
 		Brand:             sheinProduct.BrandName,
-		OriginalPrice:     api.FlexibleString(originalPrice),
-		Stock:             api.FlexibleString(stock),
+		OriginalPrice:     types.FlexibleString(originalPrice),
+		Stock:             types.FlexibleString(stock),
 		MainImageURL:      mainImageURL,
 		ImageURLs:         string(imageURLsJSON),
 		Attributes:        string(attributesJSON),
 		PlatformStatus:    string(platformStatusJSON),
 		ShelfStatus:       MapShelfStatus(sheinProduct.ShelfStatus),
-		PublishTime:       publishTime,
-		ShelfTime:         shelfTime,
-		LastSyncTime:      &now,
+		PublishTime:       types.ToFlexibleTime(publishTime),
+		ShelfTime:         types.ToFlexibleTime(shelfTime),
+		LastSyncTime:      types.ToFlexibleTime(&now),
 		PlatformData:      "", // 留空，不存储完整原始数据
 		Status:            2,  // 已上架
 	}, nil

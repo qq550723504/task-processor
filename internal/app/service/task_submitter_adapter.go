@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"task-processor/internal/app/worker"
 
@@ -40,12 +41,24 @@ func (a TaskSubmitterAdapter) SubmitTask(ctx context.Context, taskData string) e
 		return fmt.Errorf("工作池未初始化")
 	}
 
+	// 从 taskData JSON 中解析任务信息
+	var task struct {
+		TenantID int64 `json:"tenantId"`
+		StoreID  int64 `json:"storeId"`
+	}
+
+	if err := json.Unmarshal([]byte(taskData), &task); err != nil {
+		a.logger.Errorf("解析任务数据失败: %v", err)
+		// 如果解析失败，使用默认值（向后兼容）
+		task.TenantID = 0
+		task.StoreID = 0
+	}
+
 	// 创建WorkerJob并提交
 	job := worker.WorkerJob{
 		TaskData: taskData,
-		// 注意：这里简化处理，实际应该从taskData中解析TenantID和ShopID
-		TenantID: "default",
-		ShopID:   "default",
+		TenantID: fmt.Sprintf("%d", task.TenantID),
+		ShopID:   fmt.Sprintf("%d", task.StoreID),
 	}
 
 	return workerPool.Submit(job)

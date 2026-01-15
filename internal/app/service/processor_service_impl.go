@@ -24,10 +24,10 @@ type processorServiceImpl struct {
 	lifecycleManager *lifecycle.Manager
 
 	// 处理器组件
-	temuProcessor  *temu.TemuProcessor
-	sheinProcessor *pipeline.SheinProcessor
-	taskFetcher    *task.TaskFetcher
-	pricingService PricingService
+	temuProcessor    *temu.TemuProcessor
+	sheinProcessor   *pipeline.SheinProcessor
+	taskFetcher      *task.TaskFetcher
+	schedulerService SchedulerService
 
 	// 监控组件
 	metricsCollector *monitoring.MetricsCollector
@@ -78,22 +78,22 @@ func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
 	return nil
 }
 
-// startPricingService 启动核价服务
-func (s *processorServiceImpl) startPricingService(ctx context.Context, cfg *config.Config) error {
-	s.logger.Info("启动核价服务...")
+// startSchedulerService 启动调度服务
+func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *config.Config) error {
+	s.logger.Info("启动调度服务...")
 
 	// 设置全局资源
 	SetGlobalConfig(cfg)
 
-	// 创建核价服务
-	s.pricingService = NewPricingService(s.logger)
+	// 创建调度服务
+	s.schedulerService = NewSchedulerService(s.logger)
 
-	// 启动核价服务
-	if err := s.pricingService.Start(ctx); err != nil {
-		return errors.Wrap(err, errors.ErrCodeSystem, "核价服务启动失败")
+	// 启动调度服务
+	if err := s.schedulerService.Start(ctx); err != nil {
+		return errors.Wrap(err, errors.ErrCodeSystem, "调度服务启动失败")
 	}
 
-	s.logger.Info("✅ 核价服务启动完成")
+	s.logger.Info("✅ 调度服务启动完成")
 	return nil
 }
 

@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	appscheduler "task-processor/internal/app/scheduler"
+	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/shein/repo"
@@ -20,11 +22,14 @@ type SheinTaskFactory struct {
 	managementClient *management.ClientManager
 	cookieManager    *memory.CookieManager
 	clientManager    *client.ClientManager
+	amazonProcessor  *amazon.AmazonProcessor
+	amazonConfig     *config.AmazonConfig
+	monitorConfig    *config.MonitorConfig
 	logger           *logrus.Entry
 }
 
 // NewSheinTaskFactory 创建SHEIN任务工厂
-func NewSheinTaskFactory(managementClient *management.ClientManager) *SheinTaskFactory {
+func NewSheinTaskFactory(managementClient *management.ClientManager, amazonProcessor *amazon.AmazonProcessor, amazonConfig *config.AmazonConfig, monitorConfig *config.MonitorConfig) *SheinTaskFactory {
 	cookieManager := memory.NewCookieManager()
 	clientManager := client.NewClientManager(cookieManager, managementClient)
 
@@ -32,6 +37,9 @@ func NewSheinTaskFactory(managementClient *management.ClientManager) *SheinTaskF
 		managementClient: managementClient,
 		cookieManager:    cookieManager,
 		clientManager:    clientManager,
+		amazonProcessor:  amazonProcessor,
+		amazonConfig:     amazonConfig,
+		monitorConfig:    monitorConfig,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "SheinTaskFactory",
 		}),
@@ -98,15 +106,51 @@ func (f *SheinTaskFactory) createPricingTask(ctx context.Context, config appsche
 
 // createProductSyncTask 创建产品同步任务
 func (f *SheinTaskFactory) createProductSyncTask(ctx context.Context, config appscheduler.TaskConfig, baseClient *client.BaseAPIClient) (appscheduler.Task, error) {
+	// 创建错误处理器
+	errorHandler := client.NewAPIErrorHandler(baseClient)
+
+	// 创建所需的 API 和管理器
 	productAPI := repo.NewProductAPI(baseClient)
-	syncService := schedulerservice.NewProductSyncService(f.managementClient, productAPI)
+	inventoryManager := repo.NewInventoryManager(baseClient, errorHandler)
+	priceManager := repo.NewPriceManager(baseClient, errorHandler)
+
+	// 获取映射客户端
+	mappingClient := f.managementClient.GetProductImportMappingClient()
+
+	// 创建产品同步服务
+	syncService := schedulerservice.NewProductSyncService(
+		f.managementClient,
+		productAPI,
+		inventoryManager,
+		priceManager,
+		mappingClient,
+	)
+
 	return NewProductSyncTask(ctx, config, f.managementClient, f.clientManager, syncService), nil
 }
 
-// createInventoryTask 创建库存同步任务
+// createInventoryTask 创建库存监控任务
 func (f *SheinTaskFactory) createInventoryTask(ctx context.Context, config appscheduler.TaskConfig, baseClient *client.BaseAPIClient) (appscheduler.Task, error) {
+	// 创建 ProductAPI
 	productAPI := repo.NewProductAPI(baseClient)
-	inventoryService := schedulerservice.NewInventorySyncService(f.managementClient, productAPI)
+
+	// 获取 RawJsonData 客户端
+	rawJsonDataClient := f.managementClient.GetRawJsonDataClient()
+
+	// 获取 InventoryRecord 客户端
+	inventoryRecordClient := f.managementClient.GetInventoryRecordClient()
+
+	// 创建库存监控服务
+	inventoryService := schedulerservice.NewInventorySyncService(
+		f.managementClient,
+		productAPI,
+		f.amazonProcessor,
+		f.amazonConfig,
+		f.monitorConfig,
+		rawJsonDataClient,
+		inventoryRecordClient,
+	)
+
 	return NewInventoryTask(ctx, config, f.managementClient, f.clientManager, inventoryService), nil
 }
 

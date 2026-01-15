@@ -49,10 +49,14 @@ type PlatformsConfig struct {
 
 // PlatformConfig 单个平台的完整配置
 type PlatformConfig struct {
-	Enabled     bool              `yaml:"enabled"`     // 是否启用该平台处理器
-	AutoPricing AutoPricingConfig `yaml:"autoPricing"` // 自动定价配置
-	Sync        SyncConfig        `yaml:"sync"`        // 产品同步配置
-	Monitor     MonitorConfig     `yaml:"monitor"`     // 产品监控配置
+	Enabled              bool                `yaml:"enabled"`              // 是否启用该平台处理器（上架任务处理）
+	SchedulerEnabled     bool                `yaml:"schedulerEnabled"`     // 是否启用调度任务（核价、同步等）
+	AutoPricing          AutoPricingConfig   `yaml:"autoPricing"`          // 自动核价配置
+	ProductSync          ScheduledTaskConfig `yaml:"productSync"`          // 产品同步配置
+	InventorySync        ScheduledTaskConfig `yaml:"inventorySync"`        // 库存同步配置
+	ActivityRegistration ScheduledTaskConfig `yaml:"activityRegistration"` // 活动报名配置
+	SyncProduct          SyncProductConfig   `yaml:"sync"`                 // 产品同步配置（旧版，保留兼容）
+	Monitor              MonitorConfig       `yaml:"monitor"`              // 产品监控配置
 }
 
 // AutoPricingConfig 自动定价配置
@@ -61,6 +65,12 @@ type AutoPricingConfig struct {
 	Interval       int  `yaml:"interval"`       // 定价间隔（秒）
 	BatchSize      int  `yaml:"batchSize"`      // 批量处理大小
 	UseAmazonPrice bool `yaml:"useAmazonPrice"` // 是否使用Amazon价格数据进行定价决策
+}
+
+// ScheduledTaskConfig 调度任务配置
+type ScheduledTaskConfig struct {
+	Enabled  bool `yaml:"enabled"`  // 是否启用
+	Interval int  `yaml:"interval"` // 执行间隔（秒）
 }
 
 // BrowserConfig 浏览器通用配置
@@ -124,10 +134,6 @@ type SPAPIConfig struct {
 	AWSSecretKey           string                       `yaml:"awsSecretKey"`
 	DefaultFulfillmentType string                       `yaml:"defaultFulfillmentType"`
 	DefaultCondition       string                       `yaml:"defaultCondition"`
-
-	// 向后兼容字段（已废弃）
-	MarketplaceID string `yaml:"marketplaceID,omitempty"`
-	SellerID      string `yaml:"sellerID,omitempty"`
 }
 
 // UpdaterConfig 自动更新配置
@@ -140,7 +146,7 @@ type UpdaterConfig struct {
 }
 
 // SyncConfig 产品同步配置
-type SyncConfig struct {
+type SyncProductConfig struct {
 	Enabled   bool    `yaml:"enabled"`   // 是否启用产品同步
 	StoreIDs  []int64 `yaml:"storeIDs"`  // 需要同步的店铺ID列表
 	Interval  int     `yaml:"interval"`  // 同步间隔（分钟）
@@ -161,9 +167,7 @@ type MonitorConfig struct {
 
 // Alibaba1688Config 1688平台配置
 type Alibaba1688Config struct {
-	Enabled       bool                `yaml:"enabled"`       // 是否启用1688处理器
-	Timeout       int                 `yaml:"timeout"`       // 处理超时时间（秒）
-	PoolSize      int                 `yaml:"poolSize"`      // 浏览器池大小
-	BrowserConfig BrowserConfig       `yaml:"browserConfig"` // 浏览器配置
-	RandomConfig  BrowserRandomConfig `yaml:"randomConfig"`  // 随机配置选项
+	Enabled  bool `yaml:"enabled"`  // 是否启用1688处理器
+	Timeout  int  `yaml:"timeout"`  // 处理超时时间（秒）
+	PoolSize int  `yaml:"poolSize"` // 浏览器池大小
 }

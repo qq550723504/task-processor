@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 )
 
 // FlexibleID 灵活的ID类型，可以处理字符串或整数
@@ -71,4 +72,80 @@ func (fs *FlexibleString) UnmarshalJSON(data []byte) error {
 // String 返回字符串值
 func (fs FlexibleString) String() string {
 	return string(fs)
+}
+
+// FlexibleTime 灵活的时间类型，可以处理多种时间格式
+type FlexibleTime struct {
+	time.Time
+}
+
+// UnmarshalJSON 自定义 JSON 反序列化，支持多种时间格式
+func (ft *FlexibleTime) UnmarshalJSON(data []byte) error {
+	// 如果是 null，返回零值
+	if string(data) == "null" {
+		return nil
+	}
+
+	// 尝试作为字符串解析
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		if str == "" {
+			return nil
+		}
+
+		// 尝试多种时间格式
+		formats := []string{
+			"2006-01-02 15:04:05",
+			"2006-01-02T15:04:05Z",
+			"2006-01-02T15:04:05.000Z",
+			"2006-01-02T15:04:05+08:00",
+			"2006-01-02T15:04:05.000+08:00",
+			time.RFC3339,
+			time.RFC3339Nano,
+		}
+
+		for _, format := range formats {
+			if t, err := time.Parse(format, str); err == nil {
+				ft.Time = t
+				return nil
+			}
+		}
+
+		return fmt.Errorf("无法解析时间格式: %s", str)
+	}
+
+	// 尝试作为时间戳（秒）解析
+	var timestamp int64
+	if err := json.Unmarshal(data, &timestamp); err == nil {
+		ft.Time = time.Unix(timestamp, 0)
+		return nil
+	}
+
+	return fmt.Errorf("无法解析时间: %s", string(data))
+}
+
+// MarshalJSON 自定义 JSON 序列化
+func (ft FlexibleTime) MarshalJSON() ([]byte, error) {
+	if ft.Time.IsZero() {
+		return []byte("null"), nil
+	}
+	return json.Marshal(ft.Time.Format("2006-01-02 15:04:05"))
+}
+
+// Format 格式化时间
+func (ft FlexibleTime) Format(layout string) string {
+	return ft.Time.Format(layout)
+}
+
+// IsZero 判断是否为零值
+func (ft FlexibleTime) IsZero() bool {
+	return ft.Time.IsZero()
+}
+
+// ToFlexibleTime 将 *time.Time 转换为 *FlexibleTime
+func ToFlexibleTime(t *time.Time) *FlexibleTime {
+	if t == nil {
+		return nil
+	}
+	return &FlexibleTime{Time: *t}
 }

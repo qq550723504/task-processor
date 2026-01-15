@@ -39,9 +39,9 @@ func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.
 		return errors.Wrap(err, errors.ErrCodeSystem, "启动任务获取器失败")
 	}
 
-	// 启动核价服务
-	if err := s.startPricingService(ctx, cfg); err != nil {
-		return errors.Wrap(err, errors.ErrCodeSystem, "启动核价服务失败")
+	// 启动调度服务
+	if err := s.startSchedulerService(ctx, cfg); err != nil {
+		return errors.Wrap(err, errors.ErrCodeSystem, "启动调度服务失败")
 	}
 
 	// 初始化监控组件
@@ -95,10 +95,10 @@ func (s *processorServiceImpl) StopProcessors() error {
 	// 停止其他处理器
 	s.stopAllProcessors(stopCtx)
 
-	// 停止核价服务
-	if s.pricingService != nil {
-		if err := s.pricingService.Stop(stopCtx); err != nil {
-			s.logger.Errorf("停止核价服务失败: %v", err)
+	// 停止调度服务
+	if s.schedulerService != nil {
+		if err := s.schedulerService.Stop(stopCtx); err != nil {
+			s.logger.Errorf("停止调度服务失败: %v", err)
 			lastError = err
 		}
 	}
@@ -129,9 +129,9 @@ func (s *processorServiceImpl) GetStatus() map[string]any {
 		"components":  s.lifecycleManager.GetComponentStatus(),
 	}
 
-	// 添加核价服务状态
-	if s.pricingService != nil {
-		status["pricingService"] = s.pricingService.GetStatus()
+	// 添加调度服务状态
+	if s.schedulerService != nil {
+		status["schedulerService"] = s.schedulerService.GetStatus()
 	}
 
 	// 添加监控组件状态

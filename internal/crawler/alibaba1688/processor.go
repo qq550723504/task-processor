@@ -11,14 +11,14 @@ import (
 
 // Alibaba1688Processor 1688爬虫处理器
 type Alibaba1688Processor struct {
-	config          *config.Alibaba1688Config
+	config          *config.Config
 	singleProcessor *SingleProcessor
 	urlHelper       *URLHelper
 	productChecker  *ProductChecker
 }
 
 // NewAlibaba1688Processor 使用全局配置创建1688处理器
-func NewAlibaba1688Processor(cfg *config.Alibaba1688Config) *Alibaba1688Processor {
+func NewAlibaba1688Processor(cfg *config.Config) *Alibaba1688Processor {
 	logrus.Infof("创建1688处理器")
 
 	// 创建辅助组件

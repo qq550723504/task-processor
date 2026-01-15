@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/domain/model"
 	commontypes "task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
@@ -157,9 +157,9 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 				if amazonProduct != nil && amazonProduct.ParentAsin != "" {
 					createReq.ParentProductId = &amazonProduct.ParentAsin
 
-					// 根据店铺设置获取成本价（原价或特价）
+					// 根据店铺设置获取成本价（原价或特价）- 使用公共函数
 					if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.PriceType != "" {
-						costPrice := h.getProductPrice(amazonProduct, temuCtx.StoreInfo.PriceType)
+						costPrice := product.GetProductPrice(amazonProduct, temuCtx.StoreInfo.PriceType)
 						if costPrice > 0 {
 							createReq.CostPrice = &costPrice
 						}
@@ -452,45 +452,6 @@ func (h *SavePublishResultHandler) marshalWithoutHTMLEscape(v interface{}) ([]by
 	}
 
 	return result, nil
-}
-
-// getProductPrice 根据价格类型获取产品价格（包含运费）
-func (h *SavePublishResultHandler) getProductPrice(amazonProduct *model.Product, priceType string) float64 {
-	// 空指针检查
-	if amazonProduct == nil {
-		h.logger.Warn("getProductPrice 接收到 nil 产品指针，返回价格 0")
-		return 0
-	}
-
-	// 获取运费（暂时设为0，后续可扩展）
-	freight := h.getFreight(amazonProduct)
-	var price float64
-
-	// 根据价格类型获取价格
-	switch priceType {
-	case "special":
-		// 特价，使用最终价格
-		price = amazonProduct.FinalPrice
-	case "original":
-		// 原价，优先使用list_price，否则使用initial_price
-		if amazonProduct.PricesBreakdown.ListPrice != nil {
-			price = *amazonProduct.PricesBreakdown.ListPrice
-		} else {
-			price = amazonProduct.InitialPrice
-		}
-	default:
-		// 默认使用最终价格
-		price = amazonProduct.FinalPrice
-	}
-
-	return freight + price
-}
-
-// getFreight 获取运费（暂时返回0，后续可扩展）
-func (h *SavePublishResultHandler) getFreight(amazonProduct *model.Product) float64 {
-	// TODO: 从delivery信息中提取运费
-	// 暂时返回0
-	return 0.0
 }
 
 // buildFilterRuleRange 构建筛选规则范围字符串

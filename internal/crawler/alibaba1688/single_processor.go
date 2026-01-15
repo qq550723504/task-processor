@@ -16,7 +16,7 @@ import (
 
 // SingleProcessor 单个产品处理器
 type SingleProcessor struct {
-	config         *config.Alibaba1688Config
+	config         *config.Config
 	urlHelper      *URLHelper
 	productChecker *ProductChecker
 	extractor      *extractor.ProductExtractor
@@ -24,7 +24,7 @@ type SingleProcessor struct {
 }
 
 // NewSingleProcessor 创建新的单个产品处理器
-func NewSingleProcessor(cfg *config.Alibaba1688Config, urlHelper *URLHelper, productChecker *ProductChecker) *SingleProcessor {
+func NewSingleProcessor(cfg *config.Config, urlHelper *URLHelper, productChecker *ProductChecker) *SingleProcessor {
 	return &SingleProcessor{
 		config:         cfg,
 		urlHelper:      urlHelper,
@@ -46,10 +46,10 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.T
 
 	// 创建浏览器配置
 	browserConfig := &browser.BrowserConfig{
-		Headless:       sp.config.BrowserConfig.Headless,
-		BrowserPath:    sp.config.BrowserConfig.BrowserPath,
-		ViewportWidth:  sp.config.BrowserConfig.ViewportWidth,
-		ViewportHeight: sp.config.BrowserConfig.ViewportHeight,
+		Headless:       sp.config.Browser.Headless,
+		BrowserPath:    sp.config.Browser.BrowserPath,
+		ViewportWidth:  sp.config.Browser.ViewportWidth,
+		ViewportHeight: sp.config.Browser.ViewportHeight,
 		UserAgent:      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	}
 
@@ -83,7 +83,7 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.T
 	}
 
 	// 设置超时
-	page.SetDefaultTimeout(float64(sp.config.Timeout * 1000)) // 转换为毫秒
+	page.SetDefaultTimeout(float64(sp.config.Platforms.Alibaba1688.Timeout * 1000)) // 转换为毫秒
 
 	// 导航到产品页面
 	if err := sp.navigateToProduct(page, normalizedURL); err != nil {

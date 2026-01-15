@@ -83,7 +83,6 @@ func createAPIClient(cfg *config.Config) *api.Client {
 	apiConfig := &api.Config{
 		Region:         cfg.Amazon.SPAPI.Region,
 		MarketplaceID:  cfg.Amazon.SPAPI.DefaultMarketplace,
-		SellerID:       cfg.Amazon.SPAPI.SellerID,
 		ClientID:       cfg.Amazon.SPAPI.ClientID,
 		ClientSecret:   cfg.Amazon.SPAPI.ClientSecret,
 		RefreshToken:   cfg.Amazon.SPAPI.RefreshToken,
