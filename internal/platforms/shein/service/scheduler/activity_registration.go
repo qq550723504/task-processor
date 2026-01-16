@@ -7,7 +7,6 @@ import (
 
 	"task-processor/internal/pkg/management"
 	managementapi "task-processor/internal/pkg/management/api"
-	managementimpl "task-processor/internal/pkg/management/impl"
 	"task-processor/internal/platforms/shein/api/marketing"
 	"task-processor/internal/platforms/shein/repo"
 
@@ -16,23 +15,14 @@ import (
 
 // ActivityRegistrationService 活动报名服务接口
 type ActivityRegistrationService interface {
-	// FetchAvailableProducts 获取可报名活动的产品列表
-	FetchAvailableProducts(ctx context.Context) ([]marketing.SkcInfo, error)
+	// RegisterPromotionActivity 根据运营策略报名促销活动（完整流程）
+	RegisterPromotionActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) (int, error)
 
-	// RegisterProducts 自动报名产品到活动
-	RegisterProducts(ctx context.Context, products []marketing.SkcInfo) (int, error)
+	// CreateTimeLimitedDiscountActivity 根据运营策略创建限时折扣活动（完整流程）
+	CreateTimeLimitedDiscountActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) (int, error)
 
-	// QueryPromotionGoods 查询促销活动商品列表
-	QueryPromotionGoods(ctx context.Context, req *marketing.QueryPromotionGoodsRequest) (*marketing.QueryPromotionGoodsResponse, error)
-
-	// CalculateSupplyPrice 计算供货价格和利润
-	CalculateSupplyPrice(ctx context.Context, req *marketing.CalculateSupplyPriceRequest) (*marketing.CalculateSupplyPriceResponse, error)
-
-	// CreateTimeLimitedDiscount 创建限时折扣活动
-	CreateTimeLimitedDiscount(ctx context.Context, req *marketing.CreateActivityRequest) (*marketing.CreateActivityResponse, error)
-
-	// AutoCreateTimeLimitedDiscount 自动创建限时折扣活动（完整流程）
-	AutoCreateTimeLimitedDiscount(ctx context.Context, config TimeLimitedDiscountConfig) error
+	// RegisterMixedActivity 根据运营策略按比例执行混合活动（部分促销 + 部分限时折扣）
+	RegisterMixedActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) (promotionCount int, timeLimitedCount int, err error)
 }
 
 // activityRegistrationServiceImpl 活动报名服务实现
@@ -54,8 +44,8 @@ func NewActivityRegistrationService(
 	}
 }
 
-// FetchAvailableProducts 获取可报名活动的产品列表
-func (s *activityRegistrationServiceImpl) FetchAvailableProducts(ctx context.Context) ([]marketing.SkcInfo, error) {
+// fetchAvailableProducts 获取可报名活动的产品列表（私有方法）
+func (s *activityRegistrationServiceImpl) fetchAvailableProducts(ctx context.Context) ([]marketing.SkcInfo, error) {
 	s.logger.Debug("开始获取可报名活动的产品列表")
 
 	var allProducts []marketing.SkcInfo
@@ -96,8 +86,8 @@ func (s *activityRegistrationServiceImpl) FetchAvailableProducts(ctx context.Con
 	return allProducts, nil
 }
 
-// RegisterProducts 自动报名产品到活动
-func (s *activityRegistrationServiceImpl) RegisterProducts(ctx context.Context, products []marketing.SkcInfo) (int, error) {
+// RegisterProducts 自动报名产品到活动（使用默认配置，私有方法）
+func (s *activityRegistrationServiceImpl) registerProducts(ctx context.Context, products []marketing.SkcInfo) (int, error) {
 	s.logger.WithField("product_count", len(products)).Debug("开始报名产品到活动")
 
 	if len(products) == 0 {
@@ -105,8 +95,8 @@ func (s *activityRegistrationServiceImpl) RegisterProducts(ctx context.Context, 
 		return 0, nil
 	}
 
-	// 构建活动配置列表
-	configList := s.buildActivityConfigs(products)
+	// 构建活动配置列表（使用默认配置）
+	configList := s.buildActivityConfigs(products, 10, 1.0) // 默认降价10%，使用全部库存
 
 	// 调用 SHEIN API 保存活动配置（报名）
 	saveReq := &marketing.SaveConfigRequest{
@@ -127,114 +117,72 @@ func (s *activityRegistrationServiceImpl) RegisterProducts(ctx context.Context, 
 	return len(products), nil
 }
 
-// buildActivityConfigs 构建活动配置列表
-func (s *activityRegistrationServiceImpl) buildActivityConfigs(products []marketing.SkcInfo) []marketing.ActivityConfig {
-	configList := make([]marketing.ActivityConfig, 0, len(products))
+// RegisterPromotionActivity 根据运营策略报名促销活动（完整流程）
+func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
+	ctx context.Context,
+	strategy *managementapi.OperationStrategyDTO,
+) (int, error) {
+	s.logger.WithFields(logrus.Fields{
+		"store_id":      strategy.StoreID,
+		"price_mode":    strategy.ActivityPriceMode,
+		"discount_rate": strategy.ActivityDiscountRate,
+		"min_profit":    strategy.ActivityMinProfitRate,
+		"stock_ratio":   strategy.ActivityStockRatio,
+	}).Info("开始根据运营策略报名促销活动")
 
-	for _, product := range products {
-		// 跳过已配置的产品
-		if product.IsConfigured {
-			s.logger.Debugf("产品 [%s] 已配置，跳过", product.Skc)
-			continue
-		}
-
-		// 构建活动配置
-		config := marketing.ActivityConfig{
-			Skc:               product.Skc,
-			ActStock:          product.Stock, // 使用全部库存作为活动库存
-			DropRate:          10,            // 默认降价10%
-			ReservedActStock:  0,             // 不预留库存
-			SitePriceInfoList: s.convertSitePriceInfo(product.SitePriceInfoList),
-		}
-
-		configList = append(configList, config)
+	// 1. 获取可报名活动的产品列表
+	products, err := s.fetchAvailableProducts(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("获取可报名产品列表失败: %w", err)
 	}
 
-	return configList
-}
-
-// convertSitePriceInfo 转换站点价格信息
-func (s *activityRegistrationServiceImpl) convertSitePriceInfo(siteInfoList []marketing.SitePriceInfo) []marketing.ActivitySitePriceInfo {
-	activitySiteInfoList := make([]marketing.ActivitySitePriceInfo, 0, len(siteInfoList))
-
-	for _, siteInfo := range siteInfoList {
-		activitySiteInfo := marketing.ActivitySitePriceInfo{
-			SiteCode:    siteInfo.SiteCode,
-			SalePrice:   siteInfo.SalePrice * 0.9, // 降价10%
-			Currency:    siteInfo.Currency,
-			IsAvailable: siteInfo.IsAvailable,
-		}
-		activitySiteInfoList = append(activitySiteInfoList, activitySiteInfo)
-	}
-
-	return activitySiteInfoList
-}
-
-// SyncRegistrationsToManagement 同步报名记录到管理系统
-func (s *activityRegistrationServiceImpl) SyncRegistrationsToManagement(ctx context.Context, products []marketing.SkcInfo, tenantID, storeID int64, activityID, activityName string) error {
-	s.logger.WithField("count", len(products)).Debug("开始同步报名记录到管理系统")
+	s.logger.Infof("获取到 %d 个可报名产品", len(products))
 
 	if len(products) == 0 {
-		s.logger.Info("没有报名记录需要同步")
-		return nil
+		s.logger.Info("没有可报名的产品")
+		return 0, nil
 	}
 
-	// 转换为报名记录格式
-	registrations := s.convertToRegistrations(products, tenantID, storeID, activityID, activityName)
+	// 2. 根据定价模式构建活动配置
+	var configList []marketing.ActivityConfig
 
-	// 创建 ActivityRegistrationAPI 客户端
-	baseClient := s.managementClient.GetClient()
-	activityRegistrationAPI := &managementimpl.ActivityRegistrationAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
-		StoreID:                 storeID,
+	priceMode := strategy.ActivityPriceMode
+	if priceMode == "" {
+		priceMode = "DISCOUNT" // 默认按折扣率
 	}
 
-	// 保存到管理系统
-	if err := activityRegistrationAPI.BatchSaveActivityRegistrations(registrations); err != nil {
-		s.logger.Errorf("保存报名记录失败: %v", err)
-		return fmt.Errorf("保存报名记录失败: %w", err)
-	}
-
-	s.logger.Infof("成功同步 %d 条报名记录到管理系统", len(registrations))
-	return nil
-}
-
-// convertToRegistrations 转换为报名记录
-func (s *activityRegistrationServiceImpl) convertToRegistrations(
-	products []marketing.SkcInfo,
-	tenantID, storeID int64,
-	activityID, activityName string,
-) []*managementapi.ActivityRegistrationDTO {
-	registrations := make([]*managementapi.ActivityRegistrationDTO, 0, len(products))
-
-	for _, product := range products {
-		// 转换站点价格信息
-		sitePriceInfoList := make([]managementapi.ActivityRegistrationSitePriceDTO, 0, len(product.SitePriceInfoList))
-		for _, siteInfo := range product.SitePriceInfoList {
-			sitePriceInfoList = append(sitePriceInfoList, managementapi.ActivityRegistrationSitePriceDTO{
-				SiteCode:  siteInfo.SiteCode,
-				SalePrice: siteInfo.SalePrice * 0.9, // 活动价格（降价10%）
-				Currency:  siteInfo.Currency,
-			})
+	if priceMode == "PROFIT" {
+		// 按最低利润率定价
+		configList = s.buildActivityConfigsByProfit(products, strategy.ActivityMinProfitRate, strategy.ActivityStockRatio, strategy.StoreID)
+	} else {
+		// 按折扣率定价
+		dropRate := int(strategy.ActivityDiscountRate * 100)
+		if dropRate <= 0 || dropRate > 100 {
+			dropRate = 10 // 默认10%
 		}
-
-		registration := &managementapi.ActivityRegistrationDTO{
-			SKC:                product.Skc,
-			SupplierNo:         product.SupplierNo,
-			ActStock:           product.Stock,
-			DropRate:           10, // 降价10%
-			ReservedActStock:   0,
-			SitePriceInfoList:  sitePriceInfoList,
-			RegistrationStatus: 1, // 1:已报名
-			TenantID:           tenantID,
-			StoreID:            storeID,
-			Region:             "US", // 默认美国站
-			ActivityID:         activityID,
-			ActivityName:       activityName,
-		}
-
-		registrations = append(registrations, registration)
+		configList = s.buildActivityConfigsWithStrategy(products, dropRate, strategy.ActivityStockRatio, strategy.StoreID)
 	}
 
-	return registrations
+	if len(configList) == 0 {
+		s.logger.Info("没有符合条件的产品需要报名")
+		return 0, nil
+	}
+
+	// 3. 调用 SHEIN API 保存活动配置（报名）
+	saveReq := &marketing.SaveConfigRequest{
+		ConfigList: configList,
+	}
+
+	response, err := s.marketingAPI.SaveConfig(saveReq)
+	if err != nil {
+		s.logger.Errorf("保存活动配置失败: %v", err)
+		return 0, fmt.Errorf("保存活动配置失败: %w", err)
+	}
+
+	if response.Code != "0" {
+		return 0, fmt.Errorf("保存活动配置失败: %s", response.Msg)
+	}
+
+	s.logger.Infof("成功报名 %d 个产品到促销活动", len(configList))
+	return len(configList), nil
 }

@@ -12,21 +12,23 @@ import (
 
 // TaskExecutor 任务执行器
 type TaskExecutor struct {
-	task   Task
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	logger *logrus.Entry
+	task              Task
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	logger            *logrus.Entry
+	dependencyManager *DependencyManager
 }
 
 // NewTaskExecutor 创建新的任务执行器
-func NewTaskExecutor(ctx context.Context, task Task) *TaskExecutor {
+func NewTaskExecutor(ctx context.Context, task Task, depManager *DependencyManager) *TaskExecutor {
 	executorCtx, cancel := context.WithCancel(ctx)
 
 	return &TaskExecutor{
-		task:   task,
-		ctx:    executorCtx,
-		cancel: cancel,
+		task:              task,
+		ctx:               executorCtx,
+		cancel:            cancel,
+		dependencyManager: depManager,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TaskExecutor",
 			"task_id":   task.GetID(),
@@ -96,10 +98,34 @@ func (e *TaskExecutor) executeTask() {
 	taskCtx, cancel := context.WithTimeout(e.ctx, 30*time.Minute)
 	defer cancel()
 
+	// 检查依赖任务是否满足
+	if e.dependencyManager != nil {
+		err := e.dependencyManager.WaitForDependencies(taskCtx, e.task.GetPlatform(), e.task.GetType(), e.task.GetStoreID())
+		if err != nil {
+			e.logger.WithError(err).Warn("依赖任务未满足,跳过本次执行")
+			e.dependencyManager.UpdateTaskStatus(e.task.GetPlatform(), e.task.GetType(), e.task.GetStoreID(), "skipped", err)
+			return
+		}
+	}
+
+	// 更新任务状态为运行中
+	if e.dependencyManager != nil {
+		e.dependencyManager.UpdateTaskStatus(e.task.GetPlatform(), e.task.GetType(), e.task.GetStoreID(), "running", nil)
+	}
+
 	// 执行任务
 	err := e.task.Execute(taskCtx)
 
 	duration := time.Since(startTime)
+
+	// 更新任务执行状态
+	if e.dependencyManager != nil {
+		if err != nil {
+			e.dependencyManager.UpdateTaskStatus(e.task.GetPlatform(), e.task.GetType(), e.task.GetStoreID(), "failed", err)
+		} else {
+			e.dependencyManager.UpdateTaskStatus(e.task.GetPlatform(), e.task.GetType(), e.task.GetStoreID(), "success", nil)
+		}
+	}
 
 	if err != nil {
 		e.logger.WithError(err).Errorf("任务执行失败，耗时: %v", duration)

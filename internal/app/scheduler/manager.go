@@ -11,23 +11,31 @@ import (
 
 // Manager 调度器管理器
 type Manager struct {
-	registry  *Registry
-	executors map[string]*TaskExecutor // key: taskID
-	mutex     sync.RWMutex
-	ctx       context.Context
-	cancel    context.CancelFunc
-	logger    *logrus.Entry
+	registry          *Registry
+	executors         map[string]*TaskExecutor // key: taskID
+	dependencyManager *DependencyManager
+	mutex             sync.RWMutex
+	ctx               context.Context
+	cancel            context.CancelFunc
+	logger            *logrus.Entry
 }
 
 // NewManager 创建新的调度器管理器
 func NewManager(ctx context.Context) *Manager {
 	managerCtx, cancel := context.WithCancel(ctx)
 
+	// 创建依赖管理器并注册默认依赖关系
+	depManager := NewDependencyManager()
+	for _, dep := range GetDefaultDependencies() {
+		depManager.RegisterDependency(dep)
+	}
+
 	return &Manager{
-		registry:  NewRegistry(),
-		executors: make(map[string]*TaskExecutor),
-		ctx:       managerCtx,
-		cancel:    cancel,
+		registry:          NewRegistry(),
+		executors:         make(map[string]*TaskExecutor),
+		dependencyManager: depManager,
+		ctx:               managerCtx,
+		cancel:            cancel,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "SchedulerManager",
 		}),
@@ -63,7 +71,7 @@ func (m *Manager) CreateAndStartTask(config TaskConfig) error {
 	}
 
 	// 创建任务执行器
-	executor := NewTaskExecutor(m.ctx, task)
+	executor := NewTaskExecutor(m.ctx, task, m.dependencyManager)
 	m.executors[taskID] = executor
 	m.mutex.Unlock()
 
@@ -183,4 +191,9 @@ func (m *Manager) GetTaskCount() int {
 // GetRegistry 获取注册表
 func (m *Manager) GetRegistry() *Registry {
 	return m.registry
+}
+
+// GetDependencyManager 获取依赖管理器
+func (m *Manager) GetDependencyManager() *DependencyManager {
+	return m.dependencyManager
 }

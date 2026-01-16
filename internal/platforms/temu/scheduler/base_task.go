@@ -54,6 +54,11 @@ func (t *BaseTask) GetPlatform() string {
 	return t.platform
 }
 
+// GetStoreID 获取店铺ID
+func (t *BaseTask) GetStoreID() int64 {
+	return t.storeID
+}
+
 // GetInterval 获取执行间隔
 func (t *BaseTask) GetInterval() time.Duration {
 	return t.interval
@@ -72,9 +77,4 @@ func (t *BaseTask) SetStatus(status appscheduler.TaskStatus) {
 // GetTenantID 获取租户ID
 func (t *BaseTask) GetTenantID() int64 {
 	return t.tenantID
-}
-
-// GetStoreID 获取店铺ID
-func (t *BaseTask) GetStoreID() int64 {
-	return t.storeID
 }

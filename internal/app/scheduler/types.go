@@ -36,6 +36,9 @@ type Task interface {
 	// GetPlatform 获取平台名称
 	GetPlatform() string
 
+	// GetStoreID 获取店铺ID
+	GetStoreID() int64
+
 	// Execute 执行任务
 	Execute(ctx context.Context) error
 

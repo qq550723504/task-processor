@@ -14,8 +14,13 @@ type TimeLimitedDiscountConfig struct {
 	SubTypeID    int       // 子类型ID（默认2）
 
 	// 活动规则
-	GoodsLimit    int // 商品限制（1:限制）
-	GoodsLimitNum int // 商品限制数量
+	DiscountRate  float64 // 折扣率（0-1之间，如0.4表示打6折，即40%off）
+	MinProfitRate float64 // 最低利润率（0-1之间，如0.15表示15%利润率）
+	PriceMode     string  // 定价模式（DISCOUNT:按折扣率, PROFIT:按最低利润率）
+	GoodsLimit    int     // 商品限制（0:不限购, 1:限购）
+	GoodsLimitNum int     // 商品限制数量（单用户限购数量）
+	StockLimit    bool    // 是否启用活动库存限量
+	StockPercent  int     // 活动库存限量百分比（1-100）
 
 	// 商品筛选条件
 	EffectiveCenterList []int // 生效中心列表
@@ -32,8 +37,8 @@ type TimeLimitedDiscountConfig struct {
 	DefaultStockNum  int // 默认库存数量
 
 	// 价格风险控制
-	AllowRiskProducts bool // 是否允许有风险的商品
-	MaxWarningValue   int  // 最大警告值
+	AllowRiskProducts bool    // 是否允许有风险的商品
+	MaxWarningValue   float64 // 最大警告值
 }
 
 // DefaultTimeLimitedDiscountConfig 返回默认配置
@@ -42,11 +47,16 @@ func DefaultTimeLimitedDiscountConfig() TimeLimitedDiscountConfig {
 		TimeZone:            "America/Los_Angeles",
 		RefToolID:           30,
 		SubTypeID:           2,
-		GoodsLimit:          1,
-		GoodsLimitNum:       1,
+		DiscountRate:        0.4,        // 默认40%off（打6折）
+		MinProfitRate:       0.15,       // 默认15%利润率
+		PriceMode:           "DISCOUNT", // 默认按折扣率定价
+		GoodsLimit:          0,          // 默认不限购
+		GoodsLimitNum:       1,          // 默认限购数量为1
+		StockLimit:          false,      // 默认不限量
+		StockPercent:        100,        // 默认100%库存
 		EffectiveCenterList: []int{2},
 		IsShelf:             1,
-		PageSize:            30,
+		PageSize:            100,
 		Currency:            "USD",
 		SceneID:             1,
 		PricingType:         2,

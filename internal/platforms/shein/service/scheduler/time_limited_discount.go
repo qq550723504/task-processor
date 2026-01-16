@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	managementapi "task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein/api/marketing"
 
 	"github.com/sirupsen/logrus"
 )
 
-// QueryPromotionGoods 查询促销活动商品列表
-func (s *activityRegistrationServiceImpl) QueryPromotionGoods(
-	ctx context.Context,
+// queryPromotionGoods 查询促销活动商品列表（私有方法）
+func (s *activityRegistrationServiceImpl) queryPromotionGoods(
 	req *marketing.QueryPromotionGoodsRequest,
 ) (*marketing.QueryPromotionGoodsResponse, error) {
 	s.logger.Debug("开始查询促销活动商品列表")
@@ -31,12 +31,11 @@ func (s *activityRegistrationServiceImpl) QueryPromotionGoods(
 	return response, nil
 }
 
-// CalculateSupplyPrice 计算供货价格和利润
-func (s *activityRegistrationServiceImpl) CalculateSupplyPrice(
-	ctx context.Context,
+// calculateSupplyPrice 计算供货价格和利润（私有方法）
+func (s *activityRegistrationServiceImpl) calculateSupplyPrice(
 	req *marketing.CalculateSupplyPriceRequest,
 ) (*marketing.CalculateSupplyPriceResponse, error) {
-	s.logger.Debug("开始计算供货价格")
+	s.logger.Info("开始计算供货价格")
 
 	response, err := s.marketingAPI.CalculateSupplyPrice(req)
 	if err != nil {
@@ -48,9 +47,8 @@ func (s *activityRegistrationServiceImpl) CalculateSupplyPrice(
 	return response, nil
 }
 
-// CreateTimeLimitedDiscount 创建限时折扣活动
-func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscount(
-	ctx context.Context,
+// createTimeLimitedDiscount 创建限时折扣活动（私有方法）
+func (s *activityRegistrationServiceImpl) createTimeLimitedDiscount(
 	req *marketing.CreateActivityRequest,
 ) (*marketing.CreateActivityResponse, error) {
 	s.logger.WithField("activity_name", req.ActivityBaseInfoRequest.ActName).Debug("开始创建限时折扣活动")
@@ -68,64 +66,44 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscount(
 	return response, nil
 }
 
-// AutoCreateTimeLimitedDiscount 自动创建限时折扣活动（完整流程）
-func (s *activityRegistrationServiceImpl) AutoCreateTimeLimitedDiscount(
+// queryAllPromotionGoods 分页查询所有促销活动商品
+func (s *activityRegistrationServiceImpl) queryAllPromotionGoods(
 	ctx context.Context,
 	config TimeLimitedDiscountConfig,
-) error {
-	s.logger.WithField("activity_name", config.ActivityName).Info("开始自动创建限时折扣活动")
+) ([]marketing.PromotionGoodsData, error) {
+	allGoods := make([]marketing.PromotionGoodsData, 0)
+	pageNum := 1
 
-	// 1. 验证配置
-	if err := config.Validate(); err != nil {
-		return fmt.Errorf("配置验证失败: %w", err)
+	for {
+		// 构建查询请求
+		queryReq := s.buildQueryRequest(config)
+		queryReq.PageNum = pageNum
+
+		// 查询当前页
+		queryResp, err := s.queryPromotionGoods(queryReq)
+		if err != nil {
+			return nil, fmt.Errorf("查询第 %d 页商品失败: %w", pageNum, err)
+		}
+
+		// 检查响应
+		if queryResp.Info == nil || len(queryResp.Info.Data) == 0 {
+			break
+		}
+
+		// 追加当前页数据
+		allGoods = append(allGoods, queryResp.Info.Data...)
+		s.logger.Infof("已查询第 %d 页，获取 %d 个商品，累计 %d 个", pageNum, len(queryResp.Info.Data), len(allGoods))
+
+		// 检查是否还有更多数据
+		if len(allGoods) >= queryResp.Info.Meta.Count {
+			break
+		}
+
+		// 继续下一页
+		pageNum++
 	}
 
-	// 2. 查询可参加活动的商品
-	queryReq := s.buildQueryRequest(config)
-	queryResp, err := s.QueryPromotionGoods(ctx, queryReq)
-	if err != nil {
-		return fmt.Errorf("查询商品失败: %w", err)
-	}
-
-	if queryResp.Info == nil || len(queryResp.Info.Data) == 0 {
-		s.logger.Warn("没有可参加活动的商品")
-		return ErrNoAvailableProducts
-	}
-
-	s.logger.Infof("查询到 %d 个可参加活动的商品", len(queryResp.Info.Data))
-
-	// 3. 计算商品价格和利润
-	calcReq := s.buildCalculateRequest(config, queryResp.Info.Data)
-	calcResp, err := s.CalculateSupplyPrice(ctx, calcReq)
-	if err != nil {
-		return fmt.Errorf("计算价格失败: %w", err)
-	}
-
-	// 4. 检查价格风险
-	if err := s.validatePriceRisk(calcResp, config); err != nil {
-		return fmt.Errorf("价格风险检查失败: %w", err)
-	}
-
-	// 5. 构建活动创建请求
-	createReq := s.buildCreateActivityRequest(config, queryResp.Info.Data, calcResp)
-
-	// 6. 创建限时折扣活动
-	createResp, err := s.CreateTimeLimitedDiscount(ctx, createReq)
-	if err != nil {
-		return fmt.Errorf("创建活动失败: %w", err)
-	}
-
-	// 7. 检查创建结果
-	if err := s.checkCreateResult(createResp); err != nil {
-		return fmt.Errorf("活动创建结果异常: %w", err)
-	}
-
-	s.logger.WithFields(logrus.Fields{
-		"activity_id":   createResp.Info.ActivityID,
-		"product_count": len(queryResp.Info.Data),
-	}).Info("限时折扣活动创建成功")
-
-	return nil
+	return allGoods, nil
 }
 
 // buildQueryRequest 构建查询请求
@@ -148,40 +126,6 @@ func (s *activityRegistrationServiceImpl) buildQueryRequest(
 	}
 }
 
-// buildCalculateRequest 构建价格计算请求
-func (s *activityRegistrationServiceImpl) buildCalculateRequest(
-	config TimeLimitedDiscountConfig,
-	goods []marketing.PromotionGoodsData,
-) *marketing.CalculateSupplyPriceRequest {
-	skcInfoList := make([]marketing.SkcPriceInfo, 0, len(goods))
-
-	for _, g := range goods {
-		skuInfoList := make([]marketing.SkuPriceInfo, 0, len(g.SkuInfoList))
-		for _, sku := range g.SkuInfoList {
-			skuInfoList = append(skuInfoList, marketing.SkuPriceInfo{
-				SkuCode:       sku.Sku,
-				ProductPrice:  g.USSupplyPrice,
-				DiscountValue: g.USSupplyPrice * 0.6, // 默认6折
-			})
-		}
-
-		skcInfoList = append(skcInfoList, marketing.SkcPriceInfo{
-			SkcName:     g.Skc,
-			SkuInfoList: skuInfoList,
-		})
-	}
-
-	return &marketing.CalculateSupplyPriceRequest{
-		Currency:      config.Currency,
-		RefToolID:     config.RefToolID,
-		SceneID:       config.SceneID,
-		SkcInfoList:   skcInfoList,
-		TimeZone:      config.TimeZone,
-		ZoneStartTime: config.StartTime.Format("2006-01-02 15:04:05"),
-		ZoneEndTime:   config.EndTime.Format("2006-01-02 15:04:05"),
-	}
-}
-
 // validatePriceRisk 验证价格风险
 func (s *activityRegistrationServiceImpl) validatePriceRisk(
 	calcResp *marketing.CalculateSupplyPriceResponse,
@@ -197,7 +141,7 @@ func (s *activityRegistrationServiceImpl) validatePriceRisk(
 
 			// 检查警告值
 			if skuInfo.WarningValue > config.MaxWarningValue {
-				s.logger.Warnf("SKU %s 警告值过高: %d", skuInfo.SkuCode, skuInfo.WarningValue)
+				s.logger.Warnf("SKU %s 警告值过高: %.2f", skuInfo.SkuCode, skuInfo.WarningValue)
 				return ErrProductPriceRisk
 			}
 		}
@@ -212,9 +156,51 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 	goods []marketing.PromotionGoodsData,
 	calcResp *marketing.CalculateSupplyPriceResponse,
 ) *marketing.CreateActivityRequest {
+	// 构建SKC到计算结果的映射,方便快速查找
+	skcPriceMap := make(map[string]*marketing.SkcCalculationResult)
+	for i := range calcResp.Info {
+		skcPriceMap[calcResp.Info[i].SkcName] = &calcResp.Info[i]
+	}
+
 	costAndStockList := make([]marketing.CostAndStockInfo, 0, len(goods))
 
+	// 【调试代码】记录已添加的商品数量
+	addedCount := 0
+	maxProductsPerActivity := 500 // SHEIN平台限制:一次活动最多500个商品
+
 	for _, g := range goods {
+		// 检查是否已达到商品数量上限
+		if addedCount >= maxProductsPerActivity {
+			s.logger.Warnf("已达到单次活动商品数量上限(%d),停止添加商品", maxProductsPerActivity)
+			break
+		}
+
+		// 检查是否已参加其他活动
+		if g.ErrorCode != "" {
+			s.logger.Warnf("商品 %s 已参加其他活动(活动: %v),跳过该商品", g.Skc, g.ErrorCode)
+			continue
+		}
+
+		// 检查库存是否满足最低要求(至少15个)
+		minStockRequired := 15
+		if g.InventoryNum < minStockRequired {
+			s.logger.Warnf("商品 %s 库存不足(%d < %d),跳过该商品", g.Skc, g.InventoryNum, minStockRequired)
+			continue
+		}
+
+		// 额外检查平台的库存要求
+		if g.CheckStock != nil && g.InventoryNum < g.CheckStock.MinStock {
+			s.logger.Warnf("商品 %s 库存不足(%d < 平台要求%d),跳过该商品", g.Skc, g.InventoryNum, g.CheckStock.MinStock)
+			continue
+		}
+
+		// 从第5步的计算结果中获取该SKC的价格信息
+		skcCalcResult, exists := skcPriceMap[g.Skc]
+		if !exists {
+			s.logger.Warnf("商品 %s 未找到价格计算结果,跳过", g.Skc)
+			continue
+		}
+
 		// 构建SKU列表
 		addSkuList := make([]marketing.SkuCostInfo, 0, len(g.SkuInfoList))
 		for _, sku := range g.SkuInfoList {
@@ -227,23 +213,91 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		}
 
 		// 确定库存数量
-		stockNum := config.DefaultStockNum
-		if g.InventoryNum > 0 && g.InventoryNum < stockNum {
+		var stockNum int
+
+		// 如果启用了库存限量，按百分比计算
+		if config.StockLimit && g.InventoryNum > 0 {
+			stockNum = int(float64(g.InventoryNum) * float64(config.StockPercent) / 100.0)
+			if stockNum < 1 {
+				stockNum = 1 // 至少1个
+			}
+		} else {
+			// 如果不限量，使用实际库存
 			stockNum = g.InventoryNum
 		}
 
+		// 检查活动库存是否满足平台要求
+		if g.CheckStock != nil {
+			if stockNum < g.CheckStock.MinStock {
+				s.logger.Warnf("商品 %s 活动库存(%d)低于平台最低要求(%d),跳过该商品", g.Skc, stockNum, g.CheckStock.MinStock)
+				continue
+			}
+			if stockNum > g.CheckStock.MaxStock {
+				s.logger.Warnf("商品 %s 活动库存(%d)超过平台最大限制(%d),调整为最大值", g.Skc, stockNum, g.CheckStock.MaxStock)
+				stockNum = g.CheckStock.MaxStock
+			}
+		}
+
+		// 使用第5步已经计算并验证过的活动价格
+		// 从SKU列表中获取第一个SKU的促销金额作为活动价格
+		var activityPrice float64
+		if len(skcCalcResult.SkuInfoList) > 0 {
+			// 活动价格 = 商品金额 - 促销金额
+			priceInfo := skcCalcResult.SkuInfoList[0].PriceInfo
+			activityPrice = priceInfo.ProductAmount - priceInfo.PromotionAmount
+		} else {
+			s.logger.Warnf("商品 %s 没有SKU价格信息,跳过", g.Skc)
+			continue
+		}
+
+		// 检查折扣率是否满足要求(活动价必须小于销售价的95%)
+		maxDiscountRate := 0.95 // 最大折扣率95%,即至少5%折扣
+		if activityPrice >= g.USSupplyPrice*maxDiscountRate {
+			actualDiscountRate := activityPrice / g.USSupplyPrice
+			s.logger.Warnf("商品 %s 折扣不足(活动价:%.2f, 原价:%.2f, 折扣率:%.2f%%, 要求<%.2f%%),跳过该商品",
+				g.Skc, activityPrice, g.USSupplyPrice, actualDiscountRate*100, maxDiscountRate*100)
+			continue
+		}
+
+		// 【调试代码】打印详细的商品信息
+		s.logger.Infof("========== 调试信息: 商品 #%d ==========", addedCount+1)
+		s.logger.Infof("SKC: %s", g.Skc)
+		s.logger.Infof("原价(USSupplyPrice): %.2f", g.USSupplyPrice)
+		s.logger.Infof("最大原价(MaxUSSupplyPrice): %.2f", g.MaxUSSupplyPrice)
+		s.logger.Infof("库存数量(InventoryNum): %d", g.InventoryNum)
+		s.logger.Infof("计算后的活动价格(ProductActPrice): %.2f", activityPrice)
+		s.logger.Infof("活动库存(AttendNum/StockNum): %d", stockNum)
+		s.logger.Infof("SKU数量: %d", len(addSkuList))
+		if len(skcCalcResult.SkuInfoList) > 0 {
+			priceInfo := skcCalcResult.SkuInfoList[0].PriceInfo
+			s.logger.Infof("价格详情 - ProductAmount: %.2f", priceInfo.ProductAmount)
+			s.logger.Infof("价格详情 - PromotionAmount: %.2f", priceInfo.PromotionAmount)
+			s.logger.Infof("价格详情 - SettlementAmount: %.2f", priceInfo.SettlementAmount)
+			s.logger.Infof("价格详情 - RiskTag: %d", skcCalcResult.SkuInfoList[0].RiskTag)
+			s.logger.Infof("价格详情 - WarningValue: %.2f", skcCalcResult.SkuInfoList[0].WarningValue)
+		}
+		s.logger.Infof("========================================")
+
 		costAndStockList = append(costAndStockList, marketing.CostAndStockInfo{
 			Skc:                g.Skc,
-			AttendNum:          config.DefaultAttendNum,
-			StockNum:           stockNum,
+			AttendNum:          stockNum, // 活动库存
+			StockNum:           stockNum, // 也设为活动库存
 			CenterList:         config.EffectiveCenterList,
 			IsSaleAttribute:    g.IsSaleAttribute,
 			PromotionIDList:    nil,
 			CostPrice:          g.USSupplyPrice,
 			MaxProductActPrice: g.MaxUSSupplyPrice,
-			ProductActPrice:    g.USSupplyPrice * 0.6, // 6折
+			ProductActPrice:    activityPrice,
 			AddSkuList:         addSkuList,
 		})
+
+		addedCount++
+
+		// 【调试代码】只处理第一个商品后就退出循环
+		// if addedCount >= 10 {
+		// 	s.logger.Warnf("【调试模式】已添加 %d 个商品,终止循环进行测试", addedCount)
+		// 	break
+		// }
 	}
 
 	return &marketing.CreateActivityRequest{
@@ -294,4 +348,78 @@ func GenerateActivityName(username string, sequence int) string {
 	now := time.Now()
 	dateStr := now.Format("2006-01-02")
 	return fmt.Sprintf("#%s#限时折扣#%s#%d", username, dateStr, sequence)
+}
+
+// CreateTimeLimitedDiscountActivity 根据运营策略创建限时折扣活动（完整流程）
+func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
+	ctx context.Context,
+	strategy *managementapi.OperationStrategyDTO,
+) (int, error) {
+	s.logger.WithFields(logrus.Fields{
+		"store_id":      strategy.StoreID,
+		"discount_rate": strategy.ActivityDiscountRate,
+		"stock_ratio":   strategy.ActivityStockRatio,
+	}).Info("开始根据运营策略创建限时折扣活动")
+
+	// 1. 获取店铺信息
+	storeClient := s.managementClient.GetStoreClient()
+	storeInfo, err := storeClient.GetStore(strategy.StoreID)
+	if err != nil {
+		s.logger.WithError(err).Error("获取店铺信息失败")
+		return 0, fmt.Errorf("获取店铺信息失败: %w", err)
+	}
+
+	// 2. 构建限时折扣配置
+	config := s.buildTimeLimitedDiscountConfig(storeInfo, strategy)
+
+	// 3. 验证配置
+	if err := config.Validate(); err != nil {
+		return 0, fmt.Errorf("配置验证失败: %w", err)
+	}
+
+	// 4. 分页查询所有可参加活动的商品
+	allGoods, err := s.queryAllPromotionGoods(ctx, config)
+	if err != nil {
+		return 0, fmt.Errorf("查询商品失败: %w", err)
+	}
+
+	if len(allGoods) == 0 {
+		s.logger.Warn("没有可参加活动的商品")
+		return 0, ErrNoAvailableProducts
+	}
+
+	s.logger.Infof("共查询到 %d 个可参加活动的商品", len(allGoods))
+
+	// 5. 计算商品价格和利润
+	calcReq := s.buildCalculateRequestWithPriceMode(config, allGoods, strategy.StoreID)
+	calcResp, err := s.calculateSupplyPrice(calcReq)
+	if err != nil {
+		return 0, fmt.Errorf("计算价格失败: %w", err)
+	}
+
+	// 6. 检查价格风险
+	if err := s.validatePriceRisk(calcResp, config); err != nil {
+		return 0, fmt.Errorf("价格风险检查失败: %w", err)
+	}
+
+	// 7. 构建活动创建请求
+	createReq := s.buildCreateActivityRequest(config, allGoods, calcResp)
+
+	// 8. 创建限时折扣活动
+	createResp, err := s.createTimeLimitedDiscount(createReq)
+	if err != nil {
+		return 0, fmt.Errorf("创建活动失败: %w", err)
+	}
+
+	// 9. 检查创建结果
+	if err := s.checkCreateResult(createResp); err != nil {
+		return 0, fmt.Errorf("活动创建结果异常: %w", err)
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"activity_id":   createResp.Info.ActivityID,
+		"product_count": len(allGoods),
+	}).Info("限时折扣活动创建成功")
+
+	return len(allGoods), nil
 }

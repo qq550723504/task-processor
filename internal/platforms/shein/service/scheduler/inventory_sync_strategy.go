@@ -74,7 +74,7 @@ func (s *inventorySyncServiceImpl) handleOutOfStock(
 	case "DELIST":
 		// 下架产品
 		return s.delistProductViaSHEINAPI(ctx, prod, storeID)
-	case "UPDATE_STOCK":
+	case "UPDATE_STOCK", "SET_ZERO_STOCK":
 		// 更新库存为0
 		return s.updateProductStockViaSHEINAPI(prod, skuMapping, 0, storeID)
 	case "NONE":

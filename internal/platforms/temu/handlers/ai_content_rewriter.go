@@ -259,8 +259,7 @@ func (r *AIContentRewriter) callAIForRewrite(ctx context.Context, systemPrompt, 
 	r.logger.Info("调用AI进行内容重构")
 
 	// 创建请求
-	seed := 42
-	temperature := float32(0.7) // 使用较高的temperature以获得更有创意的输出
+	temperature := float32(0.8) // 使用较高的temperature以获得更有创意和多样化的输出
 
 	req := &openaiClient.ChatCompletionRequest{
 		Model: r.openaiClient.GetDefaultModel(),
@@ -275,7 +274,7 @@ func (r *AIContentRewriter) callAIForRewrite(ctx context.Context, systemPrompt, 
 			},
 		},
 		Temperature: &temperature,
-		Seed:        &seed,
+		// 不设置Seed，让每次调用产生不同的随机输出
 	}
 
 	// 调用API

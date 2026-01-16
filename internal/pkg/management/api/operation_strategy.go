@@ -19,21 +19,40 @@ type OperationStrategyAPI interface {
 
 // OperationStrategyDTO 自动化运营策略 DTO
 type OperationStrategyDTO struct {
-	ID                    int64                `json:"id"`
-	TenantID              int64                `json:"tenantId"`
-	StoreID               int64                `json:"storeId"`
-	Name                  string               `json:"name"`
-	Platform              string               `json:"platform"`
-	Status                int16                `json:"status"` // 0=启用, 1=禁用
-	StockChangeThreshold  int                  `json:"stockChangeThreshold"`
-	StockChangeAction     string               `json:"stockChangeAction"`
-	OutOfStockAction      string               `json:"outOfStockAction"`
-	MinProfitRate         float64              `json:"minProfitRate"`
-	LowProfitAction       string               `json:"lowProfitAction"`
-	PriceUpdateMultiplier float64              `json:"priceUpdateMultiplier"`
-	StockUpdateRatio      float64              `json:"stockUpdateRatio"`
-	Remark                string               `json:"remark"`
-	CreateTime            types.FlexibleString `json:"createTime"` // 支持字符串或数字
+	ID                    int64   `json:"id"`
+	TenantID              int64   `json:"tenantId"`
+	StoreID               int64   `json:"storeId"`
+	Name                  string  `json:"name"`
+	Platform              string  `json:"platform"`
+	Status                int16   `json:"status"` // 0=启用, 1=禁用
+	StockChangeThreshold  int     `json:"stockChangeThreshold"`
+	StockChangeAction     string  `json:"stockChangeAction"`
+	OutOfStockAction      string  `json:"outOfStockAction"`
+	MinProfitRate         float64 `json:"minProfitRate"`
+	LowProfitAction       string  `json:"lowProfitAction"`
+	PriceUpdateMultiplier float64 `json:"priceUpdateMultiplier"`
+	StockUpdateRatio      float64 `json:"stockUpdateRatio"`
+
+	// 活动相关配置
+	ActivityEnabled       bool    `json:"activityEnabled"`       // 是否启用活动功能
+	ActivityType          string  `json:"activityType"`          // 活动类型: PROMOTION(促销活动), TIME_LIMITED(限时折扣), MIXED(混合模式)
+	ActivityDiscountRate  float64 `json:"activityDiscountRate"`  // 活动折扣率（0-1之间，如0.1表示打9折）
+	ActivityStockRatio    float64 `json:"activityStockRatio"`    // 活动库存比例（0-1之间，如0.5表示50%库存用于活动）
+	PromotionRatio        float64 `json:"promotionRatio"`        // 促销活动比例（仅MIXED模式，0-1之间，如0.5表示50%产品用于促销，剩余用于限时折扣）
+	ActivityMinProfitRate float64 `json:"activityMinProfitRate"` // 活动最低利润率（0-1之间，如0.15表示15%利润率）
+	ActivityPriceMode     string  `json:"activityPriceMode"`     // 活动定价模式（DISCOUNT:按折扣率, PROFIT:按最低利润率）
+
+	// 限时折扣专属配置
+	TimeLimitedDiscountRate      float64 `json:"timeLimitedDiscountRate"`      // 限时折扣-折扣率（0-1之间，如0.4表示打6折，即40%off）
+	TimeLimitedMinProfitRate     float64 `json:"timeLimitedMinProfitRate"`     // 限时折扣-最低利润率（0-1之间，如0.15表示15%利润率，优先级高于通用配置）
+	TimeLimitedPriceMode         string  `json:"timeLimitedPriceMode"`         // 限时折扣-定价模式（DISCOUNT:按折扣率, PROFIT:按最低利润率，优先级高于通用配置）
+	TimeLimitedUserLimit         bool    `json:"timeLimitedUserLimit"`         // 限时折扣-是否启用单用户限购（true:限购, false:不限购）
+	TimeLimitedUserLimitNum      int     `json:"timeLimitedUserLimitNum"`      // 限时折扣-单用户限购数量（当UserLimit=true时生效）
+	TimeLimitedStockLimit        bool    `json:"timeLimitedStockLimit"`        // 限时折扣-是否启用活动库存限量（true:限量, false:不限量）
+	TimeLimitedStockLimitPercent int     `json:"timeLimitedStockLimitPercent"` // 限时折扣-活动库存限量百分比（当StockLimit=true时生效，1-100）
+
+	Remark     string               `json:"remark"`
+	CreateTime types.FlexibleString `json:"createTime"` // 支持字符串或数字
 }
 
 // IsEnabled 判断策略是否启用

@@ -114,10 +114,18 @@ func (ft *FlexibleTime) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("无法解析时间格式: %s", str)
 	}
 
-	// 尝试作为时间戳（秒）解析
+	// 尝试作为时间戳解析（自动检测秒级或毫秒级）
 	var timestamp int64
 	if err := json.Unmarshal(data, &timestamp); err == nil {
-		ft.Time = time.Unix(timestamp, 0)
+		// 如果时间戳大于 10000000000（表示 2286-11-20），则视为毫秒级时间戳
+		// 正常的秒级时间戳在可预见的未来不会超过这个值
+		if timestamp > 10000000000 {
+			// 毫秒级时间戳，转换为秒和纳秒
+			ft.Time = time.Unix(timestamp/1000, (timestamp%1000)*1000000)
+		} else {
+			// 秒级时间戳
+			ft.Time = time.Unix(timestamp, 0)
+		}
 		return nil
 	}
 

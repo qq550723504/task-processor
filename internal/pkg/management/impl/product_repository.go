@@ -176,6 +176,11 @@ type ProductListItem struct {
 	SourceURL         string               `json:"sourceUrl"`
 	PlatformStatus    string               `json:"platformStatus"`
 	PlatformData      string               `json:"platformData"`
+	PublishTime       *types.FlexibleTime  `json:"publishTime"`
+	ShelfTime         *types.FlexibleTime  `json:"shelfTime"`
+	LastSyncTime      *types.FlexibleTime  `json:"lastSyncTime"`
+	CreateTime        *types.FlexibleTime  `json:"createTime"`
+	UpdateTime        *types.FlexibleTime  `json:"updateTime"`
 }
 
 // ProductListResponse 产品列表响应
@@ -239,6 +244,11 @@ func (c *ProductDataAPIClientImpl) ListByStore(platform string, tenantID, storeI
 			SourceURL:         item.SourceURL,
 			PlatformStatus:    item.PlatformStatus,
 			PlatformData:      item.PlatformData,
+			PublishTime:       item.PublishTime,
+			ShelfTime:         item.ShelfTime,
+			LastSyncTime:      item.LastSyncTime,
+			CreateTime:        item.CreateTime,
+			UpdateTime:        item.UpdateTime,
 			TenantID:          tenantID,
 		}
 		products = append(products, product)

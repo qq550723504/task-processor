@@ -122,3 +122,36 @@ func (s *inventorySyncServiceImpl) getStoreSiteAbbr(storeID int64) (string, erro
 
 	return siteAbbr, nil
 }
+
+// checkHasAmazonMonitorData 检查产品Attributes中是否有Amazon监控数据
+func (s *inventorySyncServiceImpl) checkHasAmazonMonitorData(attributesJSON string, platformSKU string) bool {
+	if attributesJSON == "" {
+		return false
+	}
+
+	var skcList []EnrichedSkcInfo
+	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
+		s.logger.WithError(err).Debug("解析产品Attributes失败")
+		return false
+	}
+
+	// 查找对应的SKU并检查是否有AmazonMonitorData
+	for _, skc := range skcList {
+		for _, sku := range skc.SkuInfo {
+			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
+				// 找到对应的SKU，检查是否有AmazonMonitorData
+				if sku.AmazonMonitorData != nil && sku.AmazonMonitorData.LastCheckTime > 0 {
+					s.logger.WithFields(map[string]interface{}{
+						"platform_sku":    platformSKU,
+						"asin":            sku.AmazonMonitorData.ASIN,
+						"last_check_time": sku.AmazonMonitorData.LastCheckTime,
+					}).Debug("找到Amazon监控数据")
+					return true
+				}
+				return false
+			}
+		}
+	}
+
+	return false
+}

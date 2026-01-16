@@ -4,6 +4,8 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
@@ -19,6 +21,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	skuMapping *SKUMappingData,
 	tenantID, storeID int64,
 	result *MonitorResult,
+	resultMutex *sync.Mutex,
 ) error {
 	mappingInfo := skuMapping.MappingInfo
 	asin := mappingInfo.ProductId
@@ -27,24 +30,72 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 		return nil
 	}
 
+	// 检查上次更新时间和库存监控记录，如果小于24小时且有监控记录则跳过
+	if prod.UpdateTime != nil && !prod.UpdateTime.IsZero() {
+		timeSinceLastUpdate := time.Since(prod.UpdateTime.Time)
+		if timeSinceLastUpdate < 24*time.Hour {
+			// 检查 Attributes 中是否有 Amazon 监控数据
+			hasMonitorData := s.checkHasAmazonMonitorData(prod.Attributes, s.getStringValue(mappingInfo.Sku))
+
+			if hasMonitorData {
+				// 有监控记录且在24小时内更新过，跳过
+				s.logger.WithFields(logrus.Fields{
+					"product_id":         prod.ProductID,
+					"asin":               asin,
+					"platform_sku":       s.getStringValue(mappingInfo.Sku),
+					"last_update_time":   prod.UpdateTime.Format("2006-01-02 15:04:05"),
+					"time_since_update":  timeSinceLastUpdate.Round(time.Minute).String(),
+					"has_monitor_record": true,
+				}).Debug("产品在24小时内已更新且有监控记录，跳过")
+				return nil
+			} else {
+				// 没有监控记录，即使在24小时内更新过也要继续监控（首次监控）
+				s.logger.WithFields(logrus.Fields{
+					"product_id":         prod.ProductID,
+					"asin":               asin,
+					"platform_sku":       s.getStringValue(mappingInfo.Sku),
+					"last_update_time":   prod.UpdateTime.Format("2006-01-02 15:04:05"),
+					"has_monitor_record": false,
+				}).Debug("产品在24小时内已更新但无监控记录，继续监控")
+			}
+		}
+	}
+
 	region := mappingInfo.Region
 	if region == "" {
 		region = "US"
 	}
 
+	// 为单个产品设置2分钟超时
+	productCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
 	// 使用 ProductFetcher 获取Amazon产品数据（自动处理缓存）
-	amazonProduct, err := s.getAmazonProductData(asin, region, tenantID, storeID)
+	amazonProduct, err := s.getAmazonProductData(productCtx, asin, region, tenantID, storeID)
 	if err != nil {
-		s.logger.WithError(err).WithFields(logrus.Fields{
-			"asin":             asin,
-			"platform_sku":     s.getStringValue(mappingInfo.Sku),
-			"platform_product": prod.ProductID,
-		}).Warn("获取Amazon产品信息失败")
+		// 检查是否是超时错误
+		if productCtx.Err() == context.DeadlineExceeded {
+			s.logger.WithFields(logrus.Fields{
+				"asin":             asin,
+				"platform_sku":     s.getStringValue(mappingInfo.Sku),
+				"platform_product": prod.ProductID,
+			}).Warn("获取Amazon产品信息超时，跳过该产品")
+		} else {
+			s.logger.WithError(err).WithFields(logrus.Fields{
+				"asin":             asin,
+				"platform_sku":     s.getStringValue(mappingInfo.Sku),
+				"platform_product": prod.ProductID,
+			}).Warn("获取Amazon产品信息失败")
+		}
+		resultMutex.Lock()
 		result.AmazonFailed++
+		resultMutex.Unlock()
 		return err
 	}
 
+	resultMutex.Lock()
 	result.AmazonFetched++
+	resultMutex.Unlock()
 
 	// 异步更新Attributes中的Amazon数据
 	go s.updateAttributesWithAmazonData(prod, s.getStringValue(mappingInfo.Sku), amazonProduct, storeID)
@@ -54,12 +105,16 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 
 	// 检查价格变化
 	if s.checkPriceChange(prod, amazonProduct, skuMapping, storeID) {
+		resultMutex.Lock()
 		result.PriceChanges++
+		resultMutex.Unlock()
 	}
 
 	// 检查库存变化
 	if s.checkStockChange(amazonProduct, skuMapping, storeID) {
+		resultMutex.Lock()
 		result.StockChanges++
+		resultMutex.Unlock()
 
 		// 根据营销策略处理库存变化（异步）
 		go func() {
@@ -83,6 +138,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 
 // getAmazonProductData 获取Amazon产品数据（使用ProductFetcher，自动处理缓存）
 func (s *inventorySyncServiceImpl) getAmazonProductData(
+	ctx context.Context,
 	asin, region string,
 	tenantID, storeID int64,
 ) (*model.Product, error) {
@@ -106,12 +162,35 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 		s.amazonProcessor,
 	)
 
-	amazonProduct, err := productFetcher.FetchProduct(fetchReq)
-	if err != nil {
-		return nil, fmt.Errorf("获取Amazon产品失败: %w", err)
+	// 使用 channel 实现超时控制
+	type fetchResult struct {
+		product *model.Product
+		err     error
 	}
+	resultChan := make(chan fetchResult, 1)
 
-	return amazonProduct, nil
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				s.logger.WithField("panic", r).Error("获取Amazon产品时发生panic")
+				resultChan <- fetchResult{nil, fmt.Errorf("获取产品时发生panic: %v", r)}
+			}
+		}()
+
+		amazonProduct, err := productFetcher.FetchProduct(fetchReq)
+		resultChan <- fetchResult{amazonProduct, err}
+	}()
+
+	// 等待结果或超时
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("获取Amazon产品超时: %w", ctx.Err())
+	case result := <-resultChan:
+		if result.err != nil {
+			return nil, fmt.Errorf("获取Amazon产品失败: %w", result.err)
+		}
+		return result.product, nil
+	}
 }
 
 // checkPriceChange 检查价格变化

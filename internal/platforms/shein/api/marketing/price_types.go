@@ -44,7 +44,7 @@ type SkuCalculationInfo struct {
 	SkuCode      string    `json:"sku_code"`      // SKU编码
 	PriceInfo    PriceInfo `json:"price_info"`    // 价格信息
 	RiskTag      int       `json:"risk_tag"`      // 风险标签（0:无风险）
-	WarningValue int       `json:"warning_value"` // 警告值
+	WarningValue float64   `json:"warning_value"` // 警告值
 }
 
 // PriceInfo 价格详细信息

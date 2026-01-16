@@ -69,8 +69,8 @@ type PromotionGoodsData struct {
 	SkuInfoList                 []PromotionSkuInfo `json:"sku_info_list"`                  // SKU信息列表
 	SupplyPriceInfo             *SupplyPriceInfo   `json:"supply_price_info"`              // 供货价格信息
 	CheckSupplyPrice            *CheckSupplyPrice  `json:"check_supply_price"`             // 检查供货价格
-	RateWarning                 int                `json:"rate_warning"`                   // 警告比率
-	RateIntercept               int                `json:"rate_intercept"`                 // 拦截比率
+	RateWarning                 float64            `json:"rate_warning"`                   // 警告比率
+	RateIntercept               float64            `json:"rate_intercept"`                 // 拦截比率
 	CheckStock                  *CheckStock        `json:"check_stock"`                    // 检查库存
 	MinActSupplyPrice           *float64           `json:"min_act_supply_price"`           // 最小活动供货价格
 	MinActSupplyPriceCurrency   *string            `json:"min_act_supply_price_currency"`  // 最小活动供货价格币种

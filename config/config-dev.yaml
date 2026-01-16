@@ -87,8 +87,8 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: false           # 是否启用SHEIN处理器（处理上架任务）
-    schedulerEnabled: true  # 是否启用SHEIN调度任务（核价、同步等）
+    enabled: false            # 是否启用SHEIN处理器（处理上架任务）
+    schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
       enabled: false        # 启用自动核价
@@ -96,11 +96,11 @@ platforms:
       batchSize: 100
     # 产品同步配置
     productSync:
-      enabled: false         # 启用产品同步
+      enabled: true         # 启用产品同步
       interval: 3600        # 执行间隔（秒），默认1小时
     # 库存同步配置
     inventorySync:
-      enabled: false        # 启用库存同步
+      enabled: true        # 启用库存同步
       interval: 1800        # 执行间隔（秒），默认30分钟
     # 活动报名配置
     activityRegistration:
@@ -116,7 +116,7 @@ platforms:
 # 浏览器配置（通用）
 browser:
   enabled: true
-  headless: false  # false=可见模式（便于调试），true=无头模式
+  headless: true  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
   poolSize: 3     # 浏览器池大小
   viewportWidth: 1920

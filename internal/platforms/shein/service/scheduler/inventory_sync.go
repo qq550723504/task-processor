@@ -4,6 +4,8 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
@@ -79,7 +81,7 @@ func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Con
 // MonitorInventoryChanges 监控库存和价格变化
 func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, products []*managementapi.ProductDataDTO, tenantID, storeID int64) (*MonitorResult, error) {
 	totalCount := len(products)
-	s.logger.WithField("count", totalCount).Info("开始监控产品库存和价格变化")
+	s.logger.WithField("count", totalCount).Info("开始监控产品库存和价格变化（并发模式）")
 
 	if totalCount == 0 {
 		s.logger.Info("没有产品需要监控")
@@ -90,35 +92,76 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 		TotalProducts: totalCount,
 	}
 
+	// 使用互斥锁保护结果统计
+	var resultMutex sync.Mutex
+
+	// 使用 WaitGroup 等待所有 goroutine 完成
+	var wg sync.WaitGroup
+
+	// 控制并发数量（使用浏览器池大小）
+	concurrency := s.amazonConfig.PoolSize
+	if concurrency <= 0 {
+		concurrency = 3 // 默认值
+	}
+	if totalCount < concurrency {
+		concurrency = totalCount
+	}
+
+	s.logger.Infof("使用并发模式监控库存，并发数: %d (浏览器池大小: %d)", concurrency, s.amazonConfig.PoolSize)
+
+	semaphore := make(chan struct{}, concurrency)
+
 	progressInterval := s.calculateProgressInterval(totalCount)
+	var processedCount int32 // 使用原子操作计数
 
 	for i, prod := range products {
-		// 从 Attributes 中解析所有 SKU 映射数据
-		skuMappingList := s.extractMappingInfoFromAttributes(prod.Attributes)
-		if len(skuMappingList) == 0 {
-			s.logger.WithField("product_id", prod.ProductID).Debug("产品没有映射信息，跳过")
-			result.SkippedProducts++
-			continue
-		}
+		wg.Add(1)
+		semaphore <- struct{}{} // 获取信号量
 
-		// 遍历所有 SKU 的映射数据
-		for _, skuMapping := range skuMappingList {
-			if err := s.monitorSingleSKU(ctx, prod, skuMapping, tenantID, storeID, result); err != nil {
-				s.logger.WithError(err).WithFields(logrus.Fields{
-					"product_id": prod.ProductID,
-					"sku":        s.getStringValue(skuMapping.MappingInfo.Sku),
-				}).Warn("监控SKU失败")
+		go func(index int, product *managementapi.ProductDataDTO) {
+			defer func() {
+				<-semaphore // 释放信号量
+				wg.Done()
+
+				// 原子递增已处理数量
+				processed := atomic.AddInt32(&processedCount, 1)
+
+				// 输出进度日志
+				if int(processed)%progressInterval == 0 || int(processed) == totalCount {
+					resultMutex.Lock()
+					s.logProgress(int(processed), totalCount, result)
+					resultMutex.Unlock()
+				}
+			}()
+
+			// 从 Attributes 中解析所有 SKU 映射数据
+			skuMappingList := s.extractMappingInfoFromAttributes(product.Attributes)
+			if len(skuMappingList) == 0 {
+				s.logger.WithField("product_id", product.ProductID).Debug("产品没有映射信息，跳过")
+				resultMutex.Lock()
+				result.SkippedProducts++
+				resultMutex.Unlock()
+				return
 			}
-		}
 
-		result.ProcessedProducts++
+			// 遍历所有 SKU 的映射数据
+			for _, skuMapping := range skuMappingList {
+				if err := s.monitorSingleSKU(ctx, product, skuMapping, tenantID, storeID, result, &resultMutex); err != nil {
+					s.logger.WithError(err).WithFields(logrus.Fields{
+						"product_id": product.ProductID,
+						"sku":        s.getStringValue(skuMapping.MappingInfo.Sku),
+					}).Warn("监控SKU失败")
+				}
+			}
 
-		// 输出进度日志
-		currentIndex := i + 1
-		if currentIndex%progressInterval == 0 || currentIndex == totalCount {
-			s.logProgress(currentIndex, totalCount, result)
-		}
+			resultMutex.Lock()
+			result.ProcessedProducts++
+			resultMutex.Unlock()
+		}(i, prod)
 	}
+
+	// 等待所有 goroutine 完成
+	wg.Wait()
 
 	s.logger.WithFields(logrus.Fields{
 		"total":          result.TotalProducts,
@@ -128,7 +171,7 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 		"stock_changes":  result.StockChanges,
 		"amazon_fetched": result.AmazonFetched,
 		"amazon_failed":  result.AmazonFailed,
-	}).Info("监控产品库存和价格变化完成")
+	}).Info("监控产品库存和价格变化完成（并发模式）")
 
 	return result, nil
 }
