@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/pkg/management"
+	"task-processor/internal/pkg/management/api"
 	managementapi "task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/shein/api/product"
@@ -35,6 +36,7 @@ type productSyncServiceImpl struct {
 	inventoryManager *repo.InventoryManager
 	priceManager     *repo.PriceManager
 	mappingClient    managementapi.ProductImportMappingAPI
+	storeAPI         managementapi.StoreAPI
 	logger           *logrus.Entry
 }
 
@@ -45,6 +47,7 @@ func NewProductSyncService(
 	inventoryManager *repo.InventoryManager,
 	priceManager *repo.PriceManager,
 	mappingClient managementapi.ProductImportMappingAPI,
+	storeAPI managementapi.StoreAPI,
 ) ProductSyncService {
 	return &productSyncServiceImpl{
 		managementClient: managementClient,
@@ -52,6 +55,7 @@ func NewProductSyncService(
 		inventoryManager: inventoryManager,
 		priceManager:     priceManager,
 		mappingClient:    mappingClient,
+		storeAPI:         storeAPI,
 		logger:           logrus.WithField("component", "ProductSyncService"),
 	}
 }
@@ -146,6 +150,12 @@ func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products [
 func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *product.ProductListItem, tenantID, storeID int64) *managementapi.ProductDataDTO {
 	productData := s.buildBaseProductData(sheinProduct, tenantID, storeID)
 
+	// 获取店铺信息
+	storeInfo, err := s.storeAPI.GetStore(storeID)
+	if err != nil {
+		s.logger.WithError(err).WithField("store_id", storeID).Warn("获取店铺信息失败，使用默认处理")
+	}
+
 	// 获取库存信息（所有店铺类型都需要）
 	inventoryInfo, err := s.fetchInventoryInfo(sheinProduct.SpuName)
 	if err != nil {
@@ -154,51 +164,50 @@ func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *product.Prod
 		s.fillProductLevelInventory(productData, inventoryInfo)
 	}
 
-	// 根据店铺的 BusinessModel 决定查询价格还是成本价
-	// 从第一个 SKC 获取 BusinessModel（假设同一个 SPU 下的所有 SKC 的 BusinessModel 相同）
-	var businessModel int
-	if len(sheinProduct.SkcInfoList) > 0 {
-		businessModel = sheinProduct.SkcInfoList[0].BusinessModel
-	}
-
 	var priceMap map[string]*product.SkuPriceInfo
 	var costMap map[string]*product.SkuCostInfo
 
-	switch businessModel {
-	case 0:
+	// 根据店铺类型决定价格处理策略
+	shopType := ""
+	if storeInfo != nil {
+		shopType = storeInfo.ShopType
+	}
+
+	switch shopType {
+	case "0":
 		// 半托管店铺：只查询成本价
 		costMap, err = s.fetchCostPriceInfo(sheinProduct)
 		if err != nil {
 			s.logger.WithError(err).WithField("spu_name", sheinProduct.SpuName).Warn("获取成本价信息失败")
 		}
 		s.logger.WithFields(logrus.Fields{
-			"spu_name":       sheinProduct.SpuName,
-			"business_model": businessModel,
+			"spu_name":  sheinProduct.SpuName,
+			"shop_type": shopType,
 		}).Debug("半托管店铺，查询成本价")
 
-	case 2:
+	case "2":
 		// 自营店铺：只查询价格
 		priceMap, err = s.fetchPriceInfo(sheinProduct.SpuName)
 		if err != nil {
 			s.logger.WithError(err).WithField("spu_name", sheinProduct.SpuName).Warn("获取价格信息失败")
 		}
 		s.logger.WithFields(logrus.Fields{
-			"spu_name":       sheinProduct.SpuName,
-			"business_model": businessModel,
+			"spu_name":  sheinProduct.SpuName,
+			"shop_type": shopType,
 		}).Debug("自营店铺，查询价格")
 
-	case 1:
+	case "1":
 		// 全托管店铺：暂不处理价格
 		s.logger.WithFields(logrus.Fields{
-			"spu_name":       sheinProduct.SpuName,
-			"business_model": businessModel,
+			"spu_name":  sheinProduct.SpuName,
+			"shop_type": shopType,
 		}).Debug("全托管店铺，暂不处理价格")
 
 	default:
 		s.logger.WithFields(logrus.Fields{
-			"spu_name":       sheinProduct.SpuName,
-			"business_model": businessModel,
-		}).Warn("未知的BusinessModel类型")
+			"spu_name":  sheinProduct.SpuName,
+			"shop_type": shopType,
+		}).Warn("未知的店铺类型，使用默认处理")
 	}
 
 	s.fillProductLevelPrice(productData, priceMap, costMap)
@@ -312,7 +321,7 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 	}
 
 	for i, productData := range productDataList {
-		if err := productDataAPI.CreateOrUpdate(productData); err != nil {
+		if err := productDataAPI.BatchCreateOrUpdate([]*api.ProductDataDTO{productData}); err != nil {
 			s.logger.WithFields(logrus.Fields{
 				"spu_code": productData.PlatformProductID,
 				"error":    err,

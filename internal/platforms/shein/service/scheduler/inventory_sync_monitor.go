@@ -30,34 +30,21 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 		return nil
 	}
 
-	// 检查上次更新时间和库存监控记录，如果小于24小时且有监控记录则跳过
-	if prod.UpdateTime != nil && !prod.UpdateTime.IsZero() {
-		timeSinceLastUpdate := time.Since(prod.UpdateTime.Time)
-		if timeSinceLastUpdate < 24*time.Hour {
-			// 检查 Attributes 中是否有 Amazon 监控数据
-			hasMonitorData := s.checkHasAmazonMonitorData(prod.Attributes, s.getStringValue(mappingInfo.Sku))
-
-			if hasMonitorData {
-				// 有监控记录且在24小时内更新过，跳过
-				s.logger.WithFields(logrus.Fields{
-					"product_id":         prod.ProductID,
-					"asin":               asin,
-					"platform_sku":       s.getStringValue(mappingInfo.Sku),
-					"last_update_time":   prod.UpdateTime.Format("2006-01-02 15:04:05"),
-					"time_since_update":  timeSinceLastUpdate.Round(time.Minute).String(),
-					"has_monitor_record": true,
-				}).Debug("产品在24小时内已更新且有监控记录，跳过")
-				return nil
-			} else {
-				// 没有监控记录，即使在24小时内更新过也要继续监控（首次监控）
-				s.logger.WithFields(logrus.Fields{
-					"product_id":         prod.ProductID,
-					"asin":               asin,
-					"platform_sku":       s.getStringValue(mappingInfo.Sku),
-					"last_update_time":   prod.UpdateTime.Format("2006-01-02 15:04:05"),
-					"has_monitor_record": false,
-				}).Debug("产品在24小时内已更新但无监控记录，继续监控")
-			}
+	// 检查Amazon监控数据的最后检查时间，如果小于24小时则跳过
+	lastCheckTime := s.getAmazonMonitorLastCheckTime(prod.Attributes, s.getStringValue(mappingInfo.Sku))
+	if lastCheckTime > 0 {
+		lastCheckTimeObj := time.Unix(lastCheckTime, 0)
+		timeSinceLastCheck := time.Since(lastCheckTimeObj)
+		if timeSinceLastCheck < 24*time.Hour {
+			// Amazon监控数据在24小时内已检查过，跳过
+			s.logger.WithFields(logrus.Fields{
+				"product_id":       prod.ProductID,
+				"asin":             asin,
+				"platform_sku":     s.getStringValue(mappingInfo.Sku),
+				"last_check_time":  lastCheckTimeObj.Format("2006-01-02 15:04:05"),
+				"time_since_check": timeSinceLastCheck.Round(time.Minute).String(),
+			}).Debug("Amazon监控数据在24小时内已检查过，跳过")
+			return nil
 		}
 	}
 

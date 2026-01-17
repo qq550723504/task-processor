@@ -155,3 +155,31 @@ func (s *inventorySyncServiceImpl) checkHasAmazonMonitorData(attributesJSON stri
 
 	return false
 }
+
+// getAmazonMonitorLastCheckTime 获取Amazon监控数据的最后检查时间
+func (s *inventorySyncServiceImpl) getAmazonMonitorLastCheckTime(attributesJSON string, platformSKU string) int64 {
+	if attributesJSON == "" {
+		return 0
+	}
+
+	var skcList []EnrichedSkcInfo
+	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
+		s.logger.WithError(err).Debug("解析产品Attributes失败")
+		return 0
+	}
+
+	// 查找对应的SKU并获取LastCheckTime
+	for _, skc := range skcList {
+		for _, sku := range skc.SkuInfo {
+			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
+				// 找到对应的SKU，返回LastCheckTime
+				if sku.AmazonMonitorData != nil {
+					return sku.AmazonMonitorData.LastCheckTime
+				}
+				return 0
+			}
+		}
+	}
+
+	return 0
+}

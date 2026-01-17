@@ -9,7 +9,7 @@ import (
 // EnrichedSkuInfo 增强的SKU数据结构（用于序列化到Attributes）
 type EnrichedSkuInfo struct {
 	product.SkuInfo
-	MappingInfo       *api.ProductImportMappingRespDTO `json:"mapping_info,omitempty"`
+	MappingInfo       *api.ProductImportMappingRespDTO `json:"mapping_info,omitempty"`        //管理系统映射
 	SaleNameInfo      []product.SaleNameInfo           `json:"sale_name_info,omitempty"`      // 自营店铺：销售属性
 	PriceInfoList     []product.SkuPriceDetail         `json:"price_info_list,omitempty"`     // 自营店铺：价格列表
 	SaleAttributeList []product.SaleAttributeItem      `json:"sale_attribute_list,omitempty"` // 半托店铺：销售属性

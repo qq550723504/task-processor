@@ -92,20 +92,20 @@ platforms:
     # 自动核价配置
     autoPricing:
       enabled: false        # 启用自动核价
-      interval: 300         # 执行间隔（秒），默认5分钟
+      interval: 300         # 执行间隔（秒），默认30分钟
       batchSize: 100
     # 产品同步配置
     productSync:
-      enabled: true         # 启用产品同步
-      interval: 3600        # 执行间隔（秒），默认1小时
+      enabled: false         # 启用产品同步
+      interval: 86400        # 执行间隔（秒），默认24小时
     # 库存同步配置
     inventorySync:
-      enabled: true        # 启用库存同步
-      interval: 1800        # 执行间隔（秒），默认30分钟
+      enabled: false        # 启用库存同步
+      interval: 43200        # 执行间隔（秒），默认12小时
     # 活动报名配置
     activityRegistration:
       enabled: true        # 启用活动报名
-      interval: 7200        # 执行间隔（秒），默认2小时
+      interval: 86400        # 执行间隔（秒），默认24小时
 
   # 1688 平台配置
   alibaba1688:

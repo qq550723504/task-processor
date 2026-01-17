@@ -68,7 +68,6 @@ func (s *activityRegistrationServiceImpl) createTimeLimitedDiscount(
 
 // queryAllPromotionGoods 分页查询所有促销活动商品
 func (s *activityRegistrationServiceImpl) queryAllPromotionGoods(
-	ctx context.Context,
 	config TimeLimitedDiscountConfig,
 ) ([]marketing.PromotionGoodsData, error) {
 	allGoods := make([]marketing.PromotionGoodsData, 0)
@@ -378,7 +377,7 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 	}
 
 	// 4. 分页查询所有可参加活动的商品
-	allGoods, err := s.queryAllPromotionGoods(ctx, config)
+	allGoods, err := s.queryAllPromotionGoods(config)
 	if err != nil {
 		return 0, fmt.Errorf("查询商品失败: %w", err)
 	}

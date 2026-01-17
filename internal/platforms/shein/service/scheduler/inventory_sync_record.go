@@ -192,11 +192,24 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 		return
 	}
 
-	prod.Attributes = string(updatedAttributes)
+	// 使用批量更新attributes接口
 	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-	if err := productDataAPI.CreateOrUpdate(prod); err != nil {
-		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("保存更新后的产品数据失败")
+	updateReq := &managementapi.ProductDataBatchUpdateAttributesReqDTO{
+		Platform: "SHEIN",
+		TenantID: prod.TenantID,
+		StoreID:  storeID,
+		Region:   prod.Region,
+		Products: []managementapi.ProductAttributesItemDTO{
+			{
+				PlatformProductID: prod.PlatformProductID,
+				Attributes:        string(updatedAttributes),
+			},
+		},
+	}
+
+	if _, err := productDataAPI.BatchUpdateAttributes(updateReq); err != nil {
+		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("更新产品attributes失败")
 	} else {
-		s.logger.WithField("product_id", prod.ProductID).Debug("已保存更新后的产品数据")
+		s.logger.WithField("product_id", prod.ProductID).Debug("已更新产品attributes")
 	}
 }

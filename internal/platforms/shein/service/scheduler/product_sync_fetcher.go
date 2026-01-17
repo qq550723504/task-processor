@@ -61,7 +61,7 @@ func (s *productSyncServiceImpl) fetchCostPriceInfo(sheinProduct *product.Produc
 	// 收集所有SKC名称
 	skcNameList := make([]string, 0, len(sheinProduct.SkcInfoList))
 	for _, skc := range sheinProduct.SkcInfoList {
-		skcNameList = append(skcNameList, skc.SkcCode)
+		skcNameList = append(skcNameList, skc.SkcName)
 	}
 
 	if len(skcNameList) == 0 {
@@ -69,7 +69,7 @@ func (s *productSyncServiceImpl) fetchCostPriceInfo(sheinProduct *product.Produc
 	}
 
 	// 调用成本价查询接口
-	response, err := s.priceManager.QueryCostPrice(sheinProduct.SpuCode, skcNameList)
+	response, err := s.priceManager.QueryCostPrice(sheinProduct.SpuName, skcNameList)
 	if err != nil {
 		return nil, fmt.Errorf("查询成本价信息失败: %w", err)
 	}

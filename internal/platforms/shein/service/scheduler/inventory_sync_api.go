@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"task-processor/internal/pkg/management/api"
 	managementapi "task-processor/internal/pkg/management/api"
-	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
@@ -81,7 +81,7 @@ func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
 	prod.PlatformStatus = string(platformStatusJSON)
 
 	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-	if err := productDataAPI.CreateOrUpdate(prod); err != nil {
+	if err := productDataAPI.BatchCreateOrUpdate([]*api.ProductDataDTO{prod}); err != nil {
 		s.logger.WithError(err).Warn("更新管理系统中的产品状态失败")
 	}
 
@@ -209,12 +209,23 @@ func (s *inventorySyncServiceImpl) updateProductStockViaSHEINAPI(
 		return fmt.Errorf("序列化更新后的attributes失败: %w", err)
 	}
 
-	prod.Attributes = string(updatedAttributes)
-	prod.Stock = types.FlexibleString(fmt.Sprintf("%d", targetStock))
-
+	// 使用批量更新attributes接口
 	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-	if err := productDataAPI.CreateOrUpdate(prod); err != nil {
-		s.logger.WithError(err).Warn("更新管理系统中的产品数据失败")
+	attributesUpdateReq := &managementapi.ProductDataBatchUpdateAttributesReqDTO{
+		Platform: "SHEIN",
+		TenantID: prod.TenantID,
+		StoreID:  storeID,
+		Region:   prod.Region,
+		Products: []managementapi.ProductAttributesItemDTO{
+			{
+				PlatformProductID: prod.PlatformProductID,
+				Attributes:        string(updatedAttributes),
+			},
+		},
+	}
+
+	if _, err := productDataAPI.BatchUpdateAttributes(attributesUpdateReq); err != nil {
+		s.logger.WithError(err).Warn("更新产品attributes失败")
 	}
 
 	s.logger.WithFields(logrus.Fields{

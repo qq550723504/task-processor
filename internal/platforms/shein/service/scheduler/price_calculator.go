@@ -2,8 +2,6 @@
 package scheduler
 
 import (
-	"encoding/json"
-
 	"task-processor/internal/platforms/shein/api/marketing"
 )
 
@@ -68,35 +66,13 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 
 	// 如果使用利润率模式,需要获取产品的Attributes来提取Amazon价格
 	var skcDataMap map[string]*EnrichedSkcInfo
+	var helper *ProductDataHelper
 	if config.PriceMode == "PROFIT" {
-		productClient := s.managementClient.GetProductDataClient(storeID)
-		shelfStatus := 2 // 2表示在售状态
-		allProducts, err := productClient.ListByStore("SHEIN", 0, storeID, &shelfStatus)
+		helper = NewProductDataHelper(s.managementClient, s.logger.Logger)
+		var err error
+		skcDataMap, err = helper.BuildSkcDataMap(storeID)
 		if err != nil {
-			s.logger.WithError(err).Warn("获取店铺产品列表失败，无法使用利润率模式")
-		} else {
-			// 构建 SKC -> EnrichedSkcInfo 的映射
-			skcDataMap = make(map[string]*EnrichedSkcInfo)
-			for _, prod := range allProducts {
-				if prod.Attributes == "" {
-					continue
-				}
-
-				// 解析Attributes,提取每个SKC的数据
-				var skcList []EnrichedSkcInfo
-				if err := json.Unmarshal([]byte(prod.Attributes), &skcList); err != nil {
-					s.logger.WithError(err).Debugf("解析产品Attributes失败: %s", prod.ProductID)
-					continue
-				}
-
-				// 为每个SKC建立映射
-				for i := range skcList {
-					if skcList[i].SkcName != "" {
-						skcDataMap[skcList[i].SkcName] = &skcList[i]
-					}
-				}
-			}
-			s.logger.Warningf("构建了 %d 个SKC的数据映射", len(skcDataMap))
+			s.logger.WithError(err).Warn("构建SKC数据映射失败，无法使用利润率模式")
 		}
 	}
 
@@ -107,8 +83,8 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 			// 从映射中获取SKC数据
 			var costPrice float64
 			if skcData, exists := skcDataMap[g.Skc]; exists {
-				// 从SKC的SKU列表中提取Amazon价格
-				costPrice = s.extractAmazonPriceFromSkcData(skcData)
+				// 使用助手函数提取Amazon价格
+				costPrice = helper.ExtractAmazonPriceFromSkcData(skcData)
 			}
 
 			if costPrice > 0 {
@@ -160,22 +136,4 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 		ZoneStartTime: config.StartTime.Format("2006-01-02 15:04:05"),
 		ZoneEndTime:   config.EndTime.Format("2006-01-02 15:04:05"),
 	}
-}
-
-// extractAmazonPriceFromSkcData 从EnrichedSkcInfo中提取Amazon价格
-func (s *activityRegistrationServiceImpl) extractAmazonPriceFromSkcData(skcData *EnrichedSkcInfo) float64 {
-	if skcData == nil {
-		return 0
-	}
-
-	// 遍历SKU，查找Amazon监控数据
-	for _, sku := range skcData.SkuInfo {
-		if sku.AmazonMonitorData != nil && sku.AmazonMonitorData.Price > 0 {
-			s.logger.Debugf("产品 [%s] 找到Amazon价格: %.2f (ASIN: %s)",
-				skcData.SkcCode, sku.AmazonMonitorData.Price, sku.AmazonMonitorData.ASIN)
-			return sku.AmazonMonitorData.Price
-		}
-	}
-
-	return 0
 }
