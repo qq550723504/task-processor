@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/shein/api"
 	shein_model "task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein/repo"
 	"task-processor/internal/platforms/shein/repo/client"
 
 	"github.com/sirupsen/logrus"
@@ -120,6 +121,24 @@ func (h *TaskHandler) initShopClient(taskCtx *shein_model.TaskContext) error {
 		taskCtx.Task.StoreID,
 		managementClient,
 	)
+
+	// 创建BaseAPIClient用于各个API调用
+	baseAPIClient := client.NewBaseAPIClient(
+		apiClient.GetBaseURL(),
+		apiClient.GetTenantID(),
+		taskCtx.Task.StoreID,
+		apiClient.GetHTTPClient(),
+	)
+
+	// 初始化各个具体的API实例
+	taskCtx.ProductAPI = repo.NewProductAPI(baseAPIClient)
+	taskCtx.CategoryAPI = repo.NewCategoryAPI(baseAPIClient)
+	taskCtx.AttributeAPI = repo.NewAttributeAPI(baseAPIClient)
+	taskCtx.WarehouseAPI = repo.NewWarehouseAPI(baseAPIClient)
+	taskCtx.TranslateAPI = repo.NewTranslateAPI(baseAPIClient)
+	taskCtx.PricingAPI = repo.NewPricingAPI(baseAPIClient)
+	taskCtx.ImageAPI = repo.NewImageAPI(baseAPIClient)
+	taskCtx.OtherAPI = repo.NewOtherAPI(baseAPIClient)
 
 	// 检查Cookie加载状态（参考TEMU的检查方式）
 	if apiClient.HasCookies() {

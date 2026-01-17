@@ -1,4 +1,4 @@
-﻿package info
+package info
 
 import (
 	"fmt"
@@ -25,7 +25,12 @@ func (h *SupplierInfoHandler) Name() string {
 }
 
 func (h *SupplierInfoHandler) Handle(ctx *model.TaskContext) error {
-	soi, err := ctx.ShopClient.GetSupplierOperateInfo()
+	// 检查 OtherAPI 是否为 nil
+	if ctx.OtherAPI == nil {
+		return model.NewRetryableError("OtherAPI客户端未初始化", nil)
+	}
+
+	soi, err := ctx.OtherAPI.GetSupplierOperateInfo()
 	if err != nil {
 		return model.NewRetryableError(fmt.Sprintf("获取供应商操作信息失败: %v", err), err)
 	}

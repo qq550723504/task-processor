@@ -1,4 +1,4 @@
-﻿package model
+package model
 
 import (
 	"context"
@@ -7,12 +7,12 @@ import (
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pkg/management"
 	management_api "task-processor/internal/pkg/management/api"
-	shein_api "task-processor/internal/platforms/shein/api"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/category"
 	"task-processor/internal/platforms/shein/api/other"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/api/warehouse"
+	"task-processor/internal/platforms/shein/repo"
 )
 
 // StepHandler 任务处理步骤接口
@@ -32,20 +32,28 @@ type VariantFilterInfo struct {
 
 // TaskContext 任务处理上下文
 type TaskContext struct {
-	Context             context.Context
-	Task                *Task
-	MemoryManager       *memory.MemoryManager // 内存管理器
-	StoreInfo           *management_api.StoreRespDTO
-	SupplierInfo        *other.SupplierOperateInfo
-	SpuLimitCount       *other.SpuLimitCountInfo
-	AmazonProduct       *model.Product
-	Variants            *[]model.Product
-	UnFilteredVariants  *[]model.Product
-	VariantFilterMap    map[string]*VariantFilterInfo // ASIN到过滤信息的映射
-	AsinSkuMap          map[string]string             // ASIN与SKU的对应关系
-	SupplierSkuMap      map[string]string
-	ProductData         *product.Product
-	ShopClient          shein_api.APIClient               // 店铺API客户端
+	Context            context.Context
+	Task               *Task
+	MemoryManager      *memory.MemoryManager // 内存管理器
+	StoreInfo          *management_api.StoreRespDTO
+	SupplierInfo       *other.SupplierOperateInfo
+	SpuLimitCount      *other.SpuLimitCountInfo
+	AmazonProduct      *model.Product
+	Variants           *[]model.Product
+	UnFilteredVariants *[]model.Product
+	VariantFilterMap   map[string]*VariantFilterInfo // ASIN到过滤信息的映射
+	AsinSkuMap         map[string]string             // ASIN与SKU的对应关系
+	SupplierSkuMap     map[string]string
+	ProductData        *product.Product
+	// API客户端（拆分为具体的API实例，避免巨大接口）
+	ProductAPI          *repo.ProductAPI
+	CategoryAPI         *repo.CategoryAPI
+	AttributeAPI        *repo.AttributeAPI
+	WarehouseAPI        *repo.WarehouseAPI
+	TranslateAPI        *repo.TranslateAPI
+	PricingAPI          *repo.PricingAPI
+	ImageAPI            *repo.ImageAPI
+	OtherAPI            *repo.OtherAPI
 	FilterRule          *management_api.FilterRuleRespDTO // 筛选规则
 	ProfitRule          *management_api.ProfitRuleRespDTO // 利润规则
 	Warehouses          *warehouse.WarehouseResponse      // 仓库信息
