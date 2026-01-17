@@ -45,7 +45,7 @@ func NewActivityRegistrationService(
 }
 
 // fetchAvailableProducts 获取可报名活动的产品列表（私有方法）
-func (s *activityRegistrationServiceImpl) fetchAvailableProducts(ctx context.Context) ([]marketing.SkcInfo, error) {
+func (s *activityRegistrationServiceImpl) fetchAvailableProducts() ([]marketing.SkcInfo, error) {
 	s.logger.Debug("开始获取可报名活动的产品列表")
 
 	var allProducts []marketing.SkcInfo
@@ -86,37 +86,6 @@ func (s *activityRegistrationServiceImpl) fetchAvailableProducts(ctx context.Con
 	return allProducts, nil
 }
 
-// RegisterProducts 自动报名产品到活动（使用默认配置，私有方法）
-func (s *activityRegistrationServiceImpl) registerProducts(ctx context.Context, products []marketing.SkcInfo) (int, error) {
-	s.logger.WithField("product_count", len(products)).Debug("开始报名产品到活动")
-
-	if len(products) == 0 {
-		s.logger.Info("没有产品需要报名")
-		return 0, nil
-	}
-
-	// 构建活动配置列表（使用默认配置）
-	configList := s.buildActivityConfigs(products, 10, 1.0) // 默认降价10%，使用全部库存
-
-	// 调用 SHEIN API 保存活动配置（报名）
-	saveReq := &marketing.SaveConfigRequest{
-		ConfigList: configList,
-	}
-
-	response, err := s.marketingAPI.SaveConfig(saveReq)
-	if err != nil {
-		s.logger.Errorf("保存活动配置失败: %v", err)
-		return 0, fmt.Errorf("保存活动配置失败: %w", err)
-	}
-
-	if response.Code != "0" {
-		return 0, fmt.Errorf("保存活动配置失败: %s", response.Msg)
-	}
-
-	s.logger.Infof("成功报名 %d 个产品到活动", len(products))
-	return len(products), nil
-}
-
 // RegisterPromotionActivity 根据运营策略报名促销活动（完整流程）
 func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 	ctx context.Context,
@@ -131,7 +100,7 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 	}).Info("开始根据运营策略报名促销活动")
 
 	// 1. 获取可报名活动的产品列表
-	products, err := s.fetchAvailableProducts(ctx)
+	products, err := s.fetchAvailableProducts()
 	if err != nil {
 		return 0, fmt.Errorf("获取可报名产品列表失败: %w", err)
 	}
