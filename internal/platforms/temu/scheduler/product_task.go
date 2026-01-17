@@ -11,7 +11,7 @@ import (
 )
 
 // SyncTask TEMU产品同步任务
-type SyncTask struct {
+type ProductSyncTask struct {
 	*BaseTask
 	managementClient *management.ClientManager
 	logger           *logrus.Entry
@@ -22,10 +22,10 @@ func NewSyncTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
-) *SyncTask {
+) *ProductSyncTask {
 	baseTask := NewBaseTask(config)
 
-	return &SyncTask{
+	return &ProductSyncTask{
 		BaseTask:         baseTask,
 		managementClient: managementClient,
 		logger: logrus.WithFields(logrus.Fields{
@@ -38,7 +38,7 @@ func NewSyncTask(
 }
 
 // Execute 执行同步任务
-func (t *SyncTask) Execute(ctx context.Context) error {
+func (t *ProductSyncTask) Execute(ctx context.Context) error {
 	t.SetStatus(appscheduler.TaskStatusRunning)
 	defer t.SetStatus(appscheduler.TaskStatusStopped)
 
