@@ -7,14 +7,17 @@ import (
 
 // ProductDataAPI 产品数据API接口定义
 type ProductDataAPI interface {
-	// CreateOrUpdate 创建或更新单个产品数据
-	CreateOrUpdate(product *ProductDataDTO) error
-
 	// BatchCreateOrUpdate 批量创建或更新产品数据
 	BatchCreateOrUpdate(products []*ProductDataDTO) error
 
 	// ListByStore 查询店铺的所有产品数据
 	ListByStore(platform string, tenantID, storeID int64, shelfStatus *int) ([]*ProductDataDTO, error)
+
+	// BatchUpdateAttributes 批量更新产品属性
+	BatchUpdateAttributes(req *ProductDataBatchUpdateAttributesReqDTO) (int, error)
+
+	// PageProductDataByStore 分页查询店铺产品数据
+	PageProductDataByStore(req *ProductDataListByStorePageReqDTO) (*PageResult[*ProductDataRespDTO], error)
 }
 
 // ProductDataDTO 产品数据传输对象
@@ -71,3 +74,54 @@ const (
 	ShelfStatusRejected  = 4 // 审核拒绝
 	ShelfStatusDeleted   = 5 // 已删除
 )
+
+// ProductDataBatchUpdateAttributesReqDTO 批量更新产品属性请求DTO
+type ProductDataBatchUpdateAttributesReqDTO struct {
+	Platform string                     `json:"platform" validate:"required"`
+	TenantID int64                      `json:"tenantId" validate:"required"`
+	Region   string                     `json:"region"`
+	StoreID  int64                      `json:"storeId" validate:"required"`
+	Products []ProductAttributesItemDTO `json:"products" validate:"required,dive"`
+}
+
+// ProductAttributesItemDTO 产品属性项DTO
+type ProductAttributesItemDTO struct {
+	PlatformProductID string `json:"platformProductId" validate:"required"`
+	Attributes        string `json:"attributes" validate:"required"`
+	UpdateTime        *int64 `json:"updateTime"`
+}
+
+// ProductDataListByStorePageReqDTO 分页查询店铺产品数据请求DTO
+type ProductDataListByStorePageReqDTO struct {
+	Platform          string `json:"platform" validate:"required"`
+	Region            string `json:"region"`
+	TenantID          int64  `json:"tenantId" validate:"required"`
+	StoreID           int64  `json:"storeId" validate:"required"`
+	ShelfStatus       *int   `json:"shelfStatus"`
+	Title             string `json:"title"`
+	Brand             string `json:"brand"`
+	Category          string `json:"category"`
+	PlatformProductID string `json:"platformProductId"`
+	PageNo            int    `json:"pageNo"`
+	PageSize          int    `json:"pageSize"`
+}
+
+// ProductDataRespDTO 产品数据响应DTO
+type ProductDataRespDTO struct {
+	*ProductDataDTO
+}
+
+// PageResult 分页结果
+type PageResult[T any] struct {
+	List     []T   `json:"list"`
+	Total    int64 `json:"total"`
+	PageNo   int   `json:"pageNo"`
+	PageSize int   `json:"pageSize"`
+}
+
+// CommonResult 通用响应结果
+type CommonResult[T any] struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data T      `json:"data"`
+}

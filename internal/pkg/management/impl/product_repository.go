@@ -14,12 +14,6 @@ type ProductDataAPIClientImpl struct {
 	StoreID int64
 }
 
-// CreateOrUpdate 创建或更新单个产品数据
-func (c *ProductDataAPIClientImpl) CreateOrUpdate(product *api.ProductDataDTO) error {
-	// 使用批量接口保存单条记录
-	return c.BatchCreateOrUpdate([]*api.ProductDataDTO{product})
-}
-
 // BatchCreateOrUpdate 批量创建或更新产品数据
 func (c *ProductDataAPIClientImpl) BatchCreateOrUpdate(products []*api.ProductDataDTO) error {
 	if len(products) == 0 {
@@ -63,11 +57,11 @@ func groupProductsByPlatform(products []*api.ProductDataDTO) map[string][]*api.P
 }
 
 // buildBatchSaveRequest 构建批量保存请求体
-func (c *ProductDataAPIClientImpl) buildBatchSaveRequest(platform string, products []*api.ProductDataDTO) map[string]interface{} {
-	productItems := make([]map[string]interface{}, 0, len(products))
+func (c *ProductDataAPIClientImpl) buildBatchSaveRequest(platform string, products []*api.ProductDataDTO) map[string]any {
+	productItems := make([]map[string]any, 0, len(products))
 
 	for _, product := range products {
-		item := map[string]interface{}{
+		item := map[string]any{
 			"platformProductId":  product.PlatformProductID,
 			"productName":        product.Title,
 			"productSku":         product.ProductID,
@@ -120,7 +114,7 @@ func (c *ProductDataAPIClientImpl) buildBatchSaveRequest(platform string, produc
 		region = products[0].Region
 	}
 
-	reqBody := map[string]interface{}{
+	reqBody := map[string]any{
 		"platform": platform,
 		"tenantId": tenantID,
 		"storeId":  c.StoreID,
@@ -194,7 +188,7 @@ type ProductListResponse struct {
 func (c *ProductDataAPIClientImpl) ListByStore(platform string, tenantID, storeID int64, shelfStatus *int) ([]*api.ProductDataDTO, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/product-data/list-by-store", c.baseURL)
 
-	reqBody := map[string]interface{}{
+	reqBody := map[string]any{
 		"platform": platform,
 		"tenantId": tenantID,
 		"storeId":  storeID,
@@ -255,4 +249,136 @@ func (c *ProductDataAPIClientImpl) ListByStore(platform string, tenantID, storeI
 	}
 
 	return products, nil
+}
+
+// BatchUpdateAttributes 批量更新产品属性
+func (c *ProductDataAPIClientImpl) BatchUpdateAttributes(req *api.ProductDataBatchUpdateAttributesReqDTO) (int, error) {
+	url := fmt.Sprintf("%s/rpc-api/listing/product-data/batch-update-attributes", c.baseURL)
+
+	// 构建请求体
+	reqBody := map[string]any{
+		"platform": req.Platform,
+		"tenantId": req.TenantID,
+		"storeId":  req.StoreID,
+		"region":   req.Region,
+		"products": convertToProductAttributesItems(req.Products),
+	}
+
+	var result api.CommonResult[int]
+	if err := c.apiRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return 0, fmt.Errorf("批量更新产品属性失败: %w", err)
+	}
+
+	if result.Code != 0 {
+		return 0, fmt.Errorf("批量更新产品属性失败: %s", result.Msg)
+	}
+
+	return result.Data, nil
+}
+
+// convertToProductAttributesItems 转换产品属性项
+func convertToProductAttributesItems(items []api.ProductAttributesItemDTO) []map[string]any {
+	result := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		itemMap := map[string]any{
+			"platformProductId": item.PlatformProductID,
+			"attributes":        item.Attributes,
+		}
+		if item.UpdateTime != nil {
+			itemMap["updateTime"] = *item.UpdateTime
+		}
+		result = append(result, itemMap)
+	}
+	return result
+}
+
+// PageProductDataByStore 分页查询店铺产品数据
+func (c *ProductDataAPIClientImpl) PageProductDataByStore(req *api.ProductDataListByStorePageReqDTO) (*api.PageResult[*api.ProductDataRespDTO], error) {
+	url := fmt.Sprintf("%s/rpc-api/listing/product-data/page-by-store", c.baseURL)
+
+	// 构建请求体
+	reqBody := map[string]any{
+		"platform": req.Platform,
+		"tenantId": req.TenantID,
+		"storeId":  req.StoreID,
+		"pageNo":   req.PageNo,
+		"pageSize": req.PageSize,
+	}
+
+	// 添加可选参数
+	if req.Region != "" {
+		reqBody["region"] = req.Region
+	}
+	if req.ShelfStatus != nil {
+		reqBody["shelfStatus"] = *req.ShelfStatus
+	}
+	if req.Title != "" {
+		reqBody["title"] = req.Title
+	}
+	if req.Brand != "" {
+		reqBody["brand"] = req.Brand
+	}
+	if req.Category != "" {
+		reqBody["category"] = req.Category
+	}
+	if req.PlatformProductID != "" {
+		reqBody["platformProductId"] = req.PlatformProductID
+	}
+
+	var result api.CommonResult[api.PageResult[ProductListItem]]
+	if err := c.apiRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return nil, fmt.Errorf("分页查询店铺产品数据失败: %w", err)
+	}
+
+	if result.Code != 0 {
+		return nil, fmt.Errorf("分页查询店铺产品数据失败: %s", result.Msg)
+	}
+
+	// 转换为响应DTO
+	respList := make([]*api.ProductDataRespDTO, 0, len(result.Data.List))
+	for _, item := range result.Data.List {
+		respDTO := &api.ProductDataRespDTO{
+			ProductDataDTO: &api.ProductDataDTO{
+				ID:                item.ID,
+				Platform:          item.Platform,
+				StoreID:           item.StoreID,
+				PlatformProductID: item.PlatformProductID,
+				ProductID:         item.ProductID,
+				ParentProductID:   item.ParentProductID,
+				Title:             item.Title,
+				Description:       item.Description,
+				OriginalPrice:     item.OriginalPrice,
+				SpecialPrice:      item.SpecialPrice,
+				PriceCurrency:     item.PriceCurrency,
+				Stock:             item.Stock,
+				ShelfStatus:       item.ShelfStatus,
+				Brand:             item.Brand,
+				Category:          item.Category,
+				CategoryID:        item.CategoryID,
+				Region:            item.Region,
+				MainImageURL:      item.MainImageURL,
+				ImageURLs:         item.ImageURLs,
+				Attributes:        item.Attributes,
+				SourceURL:         item.SourceURL,
+				PlatformStatus:    item.PlatformStatus,
+				PlatformData:      item.PlatformData,
+				PublishTime:       item.PublishTime,
+				ShelfTime:         item.ShelfTime,
+				LastSyncTime:      item.LastSyncTime,
+				CreateTime:        item.CreateTime,
+				UpdateTime:        item.UpdateTime,
+				TenantID:          req.TenantID,
+			},
+		}
+		respList = append(respList, respDTO)
+	}
+
+	pageResult := &api.PageResult[*api.ProductDataRespDTO]{
+		List:     respList,
+		Total:    result.Data.Total,
+		PageNo:   result.Data.PageNo,
+		PageSize: result.Data.PageSize,
+	}
+
+	return pageResult, nil
 }
