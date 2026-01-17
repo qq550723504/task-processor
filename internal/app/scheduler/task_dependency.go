@@ -185,16 +185,16 @@ func GetDefaultDependencies() []*TaskDependency {
 			RetryOnError: false,
 		},
 		{
-			TaskType: TaskTypeInventory,
-			//DependsOn: []TaskType{TaskTypeProductSync}, // 库存监控依赖产品同步
-			DependsOn:    []TaskType{}, // 库存监控依赖产品同步
+			TaskType:  TaskTypeInventory,
+			DependsOn: []TaskType{TaskTypeProductSync}, // 库存监控依赖产品同步
+			//DependsOn:    []TaskType{}, // 库存监控依赖产品同步
 			WaitTimeout:  90 * time.Minute,
 			RetryOnError: true,
 		},
 		{
-			TaskType: TaskTypeActivity,
-			//DependsOn: []TaskType{TaskTypeProductSync, TaskTypeInventory}, // 活动报名依赖产品同步和库存监控
-			DependsOn:    []TaskType{}, // 活动报名依赖产品同步和库存监控
+			TaskType:  TaskTypeActivity,
+			DependsOn: []TaskType{TaskTypeProductSync, TaskTypeInventory}, // 活动报名依赖产品同步和库存监控
+			//DependsOn:    []TaskType{}, // 活动报名依赖产品同步和库存监控
 			WaitTimeout:  180 * time.Minute,
 			RetryOnError: true,
 		},
