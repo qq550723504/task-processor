@@ -2,7 +2,7 @@
 package scheduler
 
 import (
-	"encoding/json"
+	"strconv"
 	"time"
 
 	managementapi "task-processor/internal/pkg/management/api"
@@ -16,30 +16,91 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigs(
 	products []marketing.SkcInfo,
 	dropRate int,
 	stockRatio float64,
+	storeID int64,
 ) []marketing.ActivityConfig {
 	configList := make([]marketing.ActivityConfig, 0, len(products))
+
+	// 使用公共的ProductDataHelper构建SKC属性映射
+	helper := NewProductDataHelper(s.managementClient, s.logger.Logger)
+	skcAttributesMap, err := helper.BuildSkcAttributesMap(storeID)
+	if err != nil {
+		s.logger.WithError(err).Warn("构建SKC属性映射失败，使用原有逻辑")
+	}
+
+	successCount := 0
+	skippedConfigured := 0
+	skippedNoAttributes := 0
+	skippedNoPriceData := 0
 
 	for _, product := range products {
 		// 跳过已配置的产品
 		if product.IsConfigured {
 			s.logger.Debugf("产品 [%s] 已配置，跳过", product.Skc)
+			skippedConfigured++
+			continue
+		}
+
+		// 从映射中获取Attributes
+		attributes, exists := skcAttributesMap[product.Skc]
+		if !exists || attributes == "" {
+			s.logger.Warningf("产品 [%s] 没有Attributes数据，跳过", product.Skc)
+			skippedNoAttributes++
+			continue
+		}
+
+		// 使用公共方法从Attributes中提取SKC的完整信息
+		skcInfo := helper.ExtractSkcInfoFromAttributes(attributes, product.Skc)
+		if skcInfo == nil {
+			s.logger.Warningf("产品 [%s] 无法从Attributes中获取SKC信息，跳过", product.Skc)
+			skippedNoAttributes++
+			continue
+		}
+
+		// 验证该SKC下的所有SKU是否都有必要的价格数据
+		hasValidPriceData := false
+		for _, sku := range skcInfo.SkuInfo {
+			// 检查Amazon价格数据
+			hasAmazonPrice := sku.AmazonMonitorData != nil && sku.AmazonMonitorData.Price > 0
+
+			// 检查映射价格信息
+			var hasMappingPrice bool
+			if sku.MappingInfo != nil && sku.MappingInfo.CostPrice != nil && *sku.MappingInfo.CostPrice > 0 {
+				if parsedPrice, parseErr := strconv.ParseFloat(sku.CostPriceInfo.CostPrice, 64); parseErr == nil && parsedPrice > 0 {
+					hasMappingPrice = true
+				}
+			}
+
+			// 只要有一个SKU有完整的价格数据，就认为这个SKC可用
+			if hasAmazonPrice && hasMappingPrice {
+				hasValidPriceData = true
+				break
+			}
+		}
+
+		if !hasValidPriceData {
+			s.logger.Warningf("产品 [%s] 没有有效的价格数据，跳过", product.Skc)
+			skippedNoPriceData++
 			continue
 		}
 
 		// 计算活动库存
 		actStock := s.calculateActivityStock(product.Stock, stockRatio)
-
+		sitePriceInfoList := []marketing.ActivitySitePriceInfo{}
 		// 构建活动配置
 		config := marketing.ActivityConfig{
 			Skc:               product.Skc,
 			ActStock:          actStock,
 			DropRate:          dropRate,
-			ReservedActStock:  0, // 不预留库存
-			SitePriceInfoList: s.convertSitePriceInfoWithDiscount(product.SitePriceInfoList, float64(dropRate)/100),
+			ReservedActStock:  product.Stock,
+			SitePriceInfoList: sitePriceInfoList,
 		}
 
 		configList = append(configList, config)
+		successCount++
 	}
+
+	s.logger.Infof("按固定折扣率模式构建完成 - 成功: %d, 已配置: %d, 无Attributes: %d, 无价格数据: %d (折扣率: %d%%)",
+		successCount, skippedConfigured, skippedNoAttributes, skippedNoPriceData, dropRate)
 
 	return configList
 }
@@ -55,7 +116,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsWithStrategy(
 	filteredProducts := s.filterProductsByProfitMargin(products, float64(dropRate)/100, storeID)
 
 	// 构建活动配置
-	return s.buildActivityConfigs(filteredProducts, dropRate, stockRatio)
+	return s.buildActivityConfigs(filteredProducts, dropRate, stockRatio, storeID)
 }
 
 // buildActivityConfigsByProfit 根据最低利润率构建活动配置列表
@@ -72,138 +133,143 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 		minProfitRate = 0.15 // 默认15%利润率
 	}
 
-	// 从管理系统获取店铺所有产品数据（包含Attributes）
-	productClient := s.managementClient.GetProductDataClient(storeID)
-	shelfStatus := 2 // 2表示在售状态
-	allProducts, err := productClient.ListByStore("SHEIN", 0, storeID, &shelfStatus)
+	// 【调试代码】记录已添加的商品数量
+	addedCount := 0
+	maxProductsPerActivity := 500 // SHEIN平台限制:一次活动最多500个商品
+
+	// 使用公共的ProductDataHelper构建SKC属性映射
+	helper := NewProductDataHelper(s.managementClient, s.logger.Logger)
+	skcAttributesMap, err := helper.BuildSkcAttributesMap(storeID)
 	if err != nil {
-		s.logger.WithError(err).Warn("获取店铺产品列表失败，无法使用利润率模式")
+		s.logger.WithError(err).Warn("构建SKC属性映射失败，无法使用利润率模式")
 		return configList
 	}
 
-	// 构建 SKC -> Attributes 的映射
-	skcAttributesMap := make(map[string]string)
-	for _, prod := range allProducts {
-		if prod.PlatformProductID != "" && prod.Attributes != "" {
-			skcAttributesMap[prod.PlatformProductID] = prod.Attributes
-		}
-	}
-
-	s.logger.Infof("从管理系统获取了 %d 个产品，构建了 %d 个SKC映射", len(allProducts), len(skcAttributesMap))
-
 	successCount := 0
 	skippedNoAttributes := 0
-	skippedNoPrice := 0
+	skippedInsufficientProfit := 0
 
 	for _, product := range products {
+		// 检查是否已达到商品数量上限
+		if addedCount >= maxProductsPerActivity {
+			s.logger.Warnf("已达到单次活动商品数量上限(%d),停止添加商品", maxProductsPerActivity)
+			break
+		}
+
 		// 跳过已配置的产品
 		if product.IsConfigured {
-			s.logger.Debugf("产品 [%s] 已配置，跳过", product.SupplierNo)
+			s.logger.Warningf("产品 [%s] 已配置，跳过", product.SupplierNo)
 			continue
 		}
 
 		// 从映射中获取Attributes
 		attributes, exists := skcAttributesMap[product.Skc]
 		if !exists || attributes == "" {
-			s.logger.Debugf("产品 [%s] 没有Attributes数据，跳过", product.Skc)
+			s.logger.Warningf("产品 [%s] 没有Attributes数据，跳过", product.Skc)
 			skippedNoAttributes++
 			continue
 		}
 
-		// 从Attributes中提取Amazon价格作为成本价
-		amazonPrice := s.extractAmazonPriceFromAttributes(attributes, product.Skc)
-		if amazonPrice <= 0 {
-			s.logger.Debugf("产品 [%s] 无法获取Amazon价格，跳过", product.Skc)
-			skippedNoPrice++
+		// 使用公共方法从Attributes中提取SKC的完整信息
+		skcInfo := helper.ExtractSkcInfoFromAttributes(attributes, product.Skc)
+		if skcInfo == nil {
+			s.logger.Warningf("产品 [%s] 无法从Attributes中获取SKC信息，跳过", product.Skc)
+			skippedNoAttributes++
 			continue
+		}
+
+		// 检查该SKC下的所有SKU是否都满足利润率要求
+		validSkus := make([]EnrichedSkuInfo, 0, len(skcInfo.SkuInfo))
+		totalOriginalPrice := 0.0
+		totalActivityPrice := 0.0
+		skuCount := 0
+		allSkusValid := true
+
+		for _, sku := range skcInfo.SkuInfo {
+			// 获取Amazon价格作为成本价
+			var costPrice float64
+			if sku.AmazonMonitorData != nil && sku.AmazonMonitorData.Price > 0 {
+				costPrice = sku.AmazonMonitorData.Price
+			} else {
+				s.logger.Warningf("SKU [%s] 无Amazon价格数据，跳过", sku.SkuCode)
+				continue
+			}
+
+			// 获取映射信息中的原价
+			var originalPrice float64
+			if sku.MappingInfo != nil && sku.MappingInfo.CostPrice != nil && *sku.MappingInfo.CostPrice > 0 {
+				// 半托从CostPriceInfo中解析价格字符串，//todo:自营全托
+				if parsedPrice, err := strconv.ParseFloat(sku.CostPriceInfo.CostPrice, 64); err == nil && parsedPrice > 0 {
+					originalPrice = parsedPrice
+				} else {
+					s.logger.Warningf("SKU [%s] 价格解析失败: %s", sku.SkuCode, sku.CostPriceInfo.CostPrice)
+					continue
+				}
+			} else {
+				s.logger.Warningf("SKU [%s] 无映射价格信息，跳过", sku.SkuCode)
+				continue
+			}
+
+			// 按最低利润率计算活动价格
+			activityPrice := calculatePriceByProfit(originalPrice, costPrice, minProfitRate)
+			if activityPrice <= 0 {
+				s.logger.Warningf("SKU [%s] 利润率不足 (原价: %.2f, 成本: %.2f, 要求利润率: %.2f%%)，整个SKC跳过",
+					sku.SkuCode, originalPrice, costPrice, minProfitRate*100)
+				// 如果有任何一个SKU不满足利润率要求，整个SKC都跳过
+				allSkusValid = false
+				break
+			}
+
+			validSkus = append(validSkus, sku)
+			totalOriginalPrice += originalPrice
+			totalActivityPrice += activityPrice
+			skuCount++
+		}
+
+		// 如果不是所有SKU都满足要求，或者没有有效的SKU，跳过该产品
+		if !allSkusValid || len(validSkus) == 0 {
+			s.logger.Warningf("产品 [%s] 没有满足利润率要求的SKU，跳过", product.Skc)
+			skippedInsufficientProfit++
+			continue
+		}
+
+		// 计算平均折扣率
+		avgOriginalPrice := totalOriginalPrice / float64(skuCount)
+		avgActivityPrice := totalActivityPrice / float64(skuCount)
+		discountRate := (avgOriginalPrice - avgActivityPrice) / avgOriginalPrice
+		dropRate := int(discountRate * 100)
+
+		// 确保折扣率在合理范围内
+		if dropRate < 0 {
+			dropRate = 0
+		} else if dropRate > 100 {
+			dropRate = 100
 		}
 
 		// 计算活动库存
 		actStock := s.calculateActivityStock(product.Stock, stockRatio)
 
-		// 按最低利润率计算活动价格
-		sitePriceInfoList := s.convertSitePriceInfoByProfitWithCost(product.SitePriceInfoList, minProfitRate, amazonPrice)
-
-		// 如果没有有效的价格信息，跳过该产品
-		if len(sitePriceInfoList) == 0 {
-			s.logger.Debugf("产品 [%s] 无法按利润率定价，跳过", product.Skc)
-			continue
-		}
-
-		// 计算等效的降价百分比（用于显示）
-		dropRate := s.calculateEquivalentDropRate(product.SitePriceInfoList, sitePriceInfoList)
+		// 由于Attributes中没有SitePriceInfoList，且提交时可以为空，我们构造一个空的站点价格信息列表
+		sitePriceInfoList := []marketing.ActivitySitePriceInfo{}
 
 		// 构建活动配置
 		config := marketing.ActivityConfig{
 			Skc:               product.Skc,
 			ActStock:          actStock,
 			DropRate:          dropRate,
-			ReservedActStock:  0, // 不预留库存
+			ReservedActStock:  product.Stock, // todo:改为配置
 			SitePriceInfoList: sitePriceInfoList,
 		}
 
 		configList = append(configList, config)
 		successCount++
+		addedCount++ // 增加已添加商品计数
 	}
 
-	s.logger.Infof("按利润率模式构建完成 - 成功: %d, 无Attributes: %d, 无Amazon价格: %d (最低利润率: %.2f%%)",
-		successCount, skippedNoAttributes, skippedNoPrice, minProfitRate*100)
+	s.logger.Infof("按利润率模式构建完成 - 成功: %d, 无Attributes: %d, 利润率不足: %d (最低利润率: %.2f%%, 最大限制: %d)",
+		successCount, skippedNoAttributes, skippedInsufficientProfit, minProfitRate*100, maxProductsPerActivity)
 
 	return configList
-}
-
-// extractAmazonPriceFromAttributes 从Attributes中提取Amazon价格
-func (s *activityRegistrationServiceImpl) extractAmazonPriceFromAttributes(attributesJSON string, skcCode string) float64 {
-	if attributesJSON == "" {
-		return 0
-	}
-
-	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
-		s.logger.WithError(err).Debugf("解析产品Attributes失败: %s", skcCode)
-		return 0
-	}
-
-	// 查找对应的SKC
-	for _, skc := range skcList {
-		if skc.SkcCode == skcCode {
-			// 遍历SKU，查找Amazon监控数据
-			for _, sku := range skc.SkuInfo {
-				if sku.AmazonMonitorData != nil && sku.AmazonMonitorData.Price > 0 {
-					s.logger.Debugf("产品 [%s] 找到Amazon价格: %.2f (ASIN: %s)",
-						skcCode, sku.AmazonMonitorData.Price, sku.AmazonMonitorData.ASIN)
-					return sku.AmazonMonitorData.Price
-				}
-			}
-		}
-	}
-
-	s.logger.Debugf("产品 [%s] 未找到Amazon价格", skcCode)
-	return 0
-}
-
-// convertSitePriceInfoByProfitWithCost 按最低利润率和实际成本价转换站点价格信息
-func (s *activityRegistrationServiceImpl) convertSitePriceInfoByProfitWithCost(
-	siteInfoList []marketing.SitePriceInfo,
-	minProfitRate float64,
-	costPrice float64,
-) []marketing.ActivitySitePriceInfo {
-	activitySiteInfoList := make([]marketing.ActivitySitePriceInfo, 0, len(siteInfoList))
-
-	for _, siteInfo := range siteInfoList {
-		// 按最低利润率和实际成本价计算活动价格
-		activityPrice := calculatePriceByProfit(siteInfo.SalePrice, costPrice, minProfitRate)
-
-		activitySiteInfo := marketing.ActivitySitePriceInfo{
-			SiteCode:    siteInfo.SiteCode,
-			SalePrice:   activityPrice,
-			Currency:    siteInfo.Currency,
-			IsAvailable: siteInfo.IsAvailable,
-		}
-		activitySiteInfoList = append(activitySiteInfoList, activitySiteInfo)
-	}
-
-	return activitySiteInfoList
 }
 
 // calculateEquivalentDropRate 计算等效的降价百分比
@@ -254,36 +320,6 @@ func (s *activityRegistrationServiceImpl) calculateActivityStock(totalStock int,
 	}
 
 	return actStock
-}
-
-// convertSitePriceInfo 转换站点价格信息（使用默认10%折扣）
-func (s *activityRegistrationServiceImpl) convertSitePriceInfo(
-	siteInfoList []marketing.SitePriceInfo,
-) []marketing.ActivitySitePriceInfo {
-	return s.convertSitePriceInfoWithDiscount(siteInfoList, 0.1)
-}
-
-// convertSitePriceInfoWithDiscount 转换站点价格信息（使用指定折扣率）
-func (s *activityRegistrationServiceImpl) convertSitePriceInfoWithDiscount(
-	siteInfoList []marketing.SitePriceInfo,
-	discountRate float64,
-) []marketing.ActivitySitePriceInfo {
-	activitySiteInfoList := make([]marketing.ActivitySitePriceInfo, 0, len(siteInfoList))
-
-	for _, siteInfo := range siteInfoList {
-		// 计算活动价格：原价 * (1 - 折扣率)
-		activityPrice := siteInfo.SalePrice * (1 - discountRate)
-
-		activitySiteInfo := marketing.ActivitySitePriceInfo{
-			SiteCode:    siteInfo.SiteCode,
-			SalePrice:   activityPrice,
-			Currency:    siteInfo.Currency,
-			IsAvailable: siteInfo.IsAvailable,
-		}
-		activitySiteInfoList = append(activitySiteInfoList, activitySiteInfo)
-	}
-
-	return activitySiteInfoList
 }
 
 // buildTimeLimitedDiscountConfig 构建限时折扣配置
