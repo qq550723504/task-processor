@@ -113,7 +113,7 @@ func (f *SheinTaskFactory) createProductSyncTask(ctx context.Context, config app
 	productAPI := repo.NewProductAPI(baseClient)
 	inventoryManager := repo.NewInventoryManager(baseClient, errorHandler)
 	priceManager := repo.NewPriceManager(baseClient, errorHandler)
-
+	storeInfoClient := f.managementClient.GetStoreClient()
 	// 获取映射客户端
 	mappingClient := f.managementClient.GetProductImportMappingClient()
 
@@ -124,6 +124,7 @@ func (f *SheinTaskFactory) createProductSyncTask(ctx context.Context, config app
 		inventoryManager,
 		priceManager,
 		mappingClient,
+		storeInfoClient,
 	)
 
 	return NewProductSyncTask(ctx, config, f.managementClient, f.clientManager, syncService), nil
