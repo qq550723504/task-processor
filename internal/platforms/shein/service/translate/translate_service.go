@@ -38,10 +38,6 @@ func (h *TranslateHandler) Name() string {
 
 // Handle 执行翻译处理
 func (h *TranslateHandler) Handle(ctx *shein_model.TaskContext) error {
-	// 检查是否已获取店铺客户端
-	if ctx.ShopClient == nil {
-		return fmt.Errorf("店铺客户端未获取，请先执行获取店铺API客户端步骤")
-	}
 
 	features := strings.Join(ctx.AmazonProduct.Features, ", ")
 
@@ -167,7 +163,7 @@ func (h *TranslateHandler) translateProductName(ctx *shein_model.TaskContext, ta
 			continue
 		}
 
-		translatedName, err := ctx.ShopClient.Translate(originalName, sourceLang, targetLang)
+		translatedName, err := ctx.TranslateAPI.Translate(originalName, sourceLang, targetLang)
 		if err != nil {
 			return fmt.Errorf("翻译产品名称为目标语言 %s 失败: %w", targetLang, err)
 		}
@@ -210,7 +206,7 @@ func (h *TranslateHandler) translateProductDescription(ctx *shein_model.TaskCont
 			continue
 		}
 
-		translatedDesc, err := ctx.ShopClient.Translate(productDescription, sourceLang, targetLang)
+		translatedDesc, err := ctx.TranslateAPI.Translate(productDescription, sourceLang, targetLang)
 		if err != nil {
 			return fmt.Errorf("翻译产品描述为目标语言 %s 失败: %w", targetLang, err)
 		}

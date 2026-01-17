@@ -44,14 +44,6 @@ func (h *PublishProductHandler) Handle(ctx *model.TaskContext) error {
 		return model.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
 	}
 
-	// 检查是否已获取店铺客户端
-	if ctx.ShopClient == nil {
-		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return model.NewNonRetryableError("店铺客户端未获取，请先执行获取店铺API客户端步骤", nil)
-	}
-
-	// 产品存在性检查已移至管道早期阶段执行
-
 	// 方案3：发布前预验证
 	logrus.Info("🔍 开始发布前预验证...")
 
@@ -103,7 +95,7 @@ func (h *PublishProductHandler) Handle(ctx *model.TaskContext) error {
 
 // publishProduct 统一的产品发布方法
 func (h *PublishProductHandler) publishProduct(ctx *model.TaskContext) (*product.SheinResponse, error) {
-	response, _, err := ctx.ShopClient.PublishProduct(ctx.ProductData)
+	response, _, err := ctx.ProductAPI.PublishProduct(ctx.ProductData)
 
 	// 保存产品发布结果
 	ctx.SheinResponse = response
@@ -113,7 +105,7 @@ func (h *PublishProductHandler) publishProduct(ctx *model.TaskContext) (*product
 
 // SaveDraftProduct 保存产品到草稿箱
 func (h *PublishProductHandler) SaveDraftProduct(ctx *model.TaskContext) (*product.SheinResponse, error) {
-	response, _, err := ctx.ShopClient.SaveDraftProduct(ctx.ProductData)
+	response, _, err := ctx.ProductAPI.SaveDraftProduct(ctx.ProductData)
 	if err != nil {
 		return nil, err
 	}

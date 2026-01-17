@@ -182,10 +182,6 @@ func (h *SKCTranslationHandler) initializeMultiLanguageContent(targetLanguages [
 
 // translateToAllLanguages 翻译到所有目标语言
 func (h *SKCTranslationHandler) translateToAllLanguages(ctx *model.TaskContext, sourceTitle string, sourceLang string, multiLanguageNameList *[]product.LanguageContent) {
-	if ctx.ShopClient == nil || sourceTitle == "" {
-		logrus.Warnf("⚠️ 跳过翻译：ShopClient为空(%v) 或 源标题为空(%v)", ctx.ShopClient == nil, sourceTitle == "")
-		return
-	}
 
 	for i := range *multiLanguageNameList {
 		langContent := &(*multiLanguageNameList)[i]
@@ -198,7 +194,7 @@ func (h *SKCTranslationHandler) translateToAllLanguages(ctx *model.TaskContext, 
 		}
 
 		// 翻译到目标语言
-		translatedTitle, err := ctx.ShopClient.Translate(sourceTitle, sourceLang, langContent.Language)
+		translatedTitle, err := ctx.TranslateAPI.Translate(sourceTitle, sourceLang, langContent.Language)
 		if err != nil {
 			logrus.Warnf("❌ 翻译到语言 %s 失败: %v，使用源标题作为后备", langContent.Language, err)
 			langContent.Name = sourceTitle // 翻译失败时使用源标题作为后备

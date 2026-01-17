@@ -65,7 +65,7 @@ func (h *HasSpuRecordHandler) Handle(ctx *model.TaskContext) error {
 		}
 
 		// 调用API检查SPU发布记录
-		response, err := ctx.ShopClient.Record(request)
+		response, err := ctx.ProductAPI.Record(request)
 		if err != nil {
 			return fmt.Errorf("检查SPU发布记录失败 (批次 %d/%d): %w", batchNum, totalBatches, err)
 		}

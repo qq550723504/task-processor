@@ -250,7 +250,7 @@ func NewCategoryManager(aiSelector AISelector) *CategoryManager {
 // GetCategoryIDListWithTree 通过SHEIN接口获取分类ID列表
 func (m *CategoryManager) GetCategoryIDListWithTree(ctx *model.TaskContext, categoryID int) ([]int, int, int, error) {
 	// 调用API获取分类信息
-	categoryInfo, err := ctx.ShopClient.GetCategory(categoryID)
+	categoryInfo, err := ctx.CategoryAPI.GetCategory(categoryID)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("获取分类信息失败: %w", err)
 	}

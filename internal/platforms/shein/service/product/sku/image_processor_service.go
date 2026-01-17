@@ -133,7 +133,7 @@ func (b *SKUBuilder) uploadSingleImageWithRetry(ctx *model.TaskContext, params m
 			break
 		}
 
-		uploadedURL, err := ctx.ShopClient.DownloadAndUploadImage(imageURL)
+		uploadedURL, err := ctx.ImageAPI.DownloadAndUploadImage(imageURL)
 		if err != nil {
 			logrus.Warnf("⚠️ 上传第%d张SKU图片失败 (重试%d/%d)，ASIN: %s, 错误: %v", imageIndex, retry, maxRetries, params.ASIN, err)
 

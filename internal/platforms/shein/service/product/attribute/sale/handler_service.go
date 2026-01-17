@@ -40,11 +40,6 @@ func (h *SaleAttributeHandler) Handle(ctx *model.TaskContext) error {
 		return fmt.Errorf("产品数据未获取，请先执行获取产品数据步骤")
 	}
 
-	// 检查是否已获取店铺客户端
-	if ctx.ShopClient == nil {
-		return fmt.Errorf("店铺客户端未获取，请先执行获取店铺API客户端步骤")
-	}
-
 	// 为每个SKC生成销售属性
 	if err := h.generateSaleSpec(ctx); err != nil {
 		return fmt.Errorf("生成销售属性失败: %w", err)

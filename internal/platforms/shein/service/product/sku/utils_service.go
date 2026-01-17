@@ -176,7 +176,7 @@ func (u *SKUUtils) BuildSKUImageInfoForMultiPiece(ctx *model.TaskContext, params
 		}
 
 		// 使用ShopClient上传图片
-		uploadedURL, err := ctx.ShopClient.DownloadAndUploadImage(imageURL)
+		uploadedURL, err := ctx.ImageAPI.DownloadAndUploadImage(imageURL)
 		if err != nil {
 			logrus.Warnf("上传多件商品SKU图片失败，ASIN: %s, 原始URL: %s, 错误: %v", params.ASIN, imageURL, err)
 			continue

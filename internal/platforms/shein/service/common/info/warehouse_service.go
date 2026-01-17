@@ -19,7 +19,7 @@ func (h *WarehouseInfoHandler) Name() string {
 // Handle 执行步骤处理
 func (h *WarehouseInfoHandler) Handle(ctx *model.TaskContext) error {
 	// 调用API获取仓库信息
-	warehouseInfo, err := ctx.ShopClient.GetWarehouses()
+	warehouseInfo, err := ctx.WarehouseAPI.GetWarehouses()
 	if err != nil {
 		// 网络请求失败可重试
 		return model.NewRetryableError("获取仓库信息失败", err)

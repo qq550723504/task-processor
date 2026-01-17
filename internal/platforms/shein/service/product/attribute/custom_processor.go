@@ -53,7 +53,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	}
 
 	// 1. 验证自定义属性值（使用清理后的值）
-	validateResponse, err := ctx.ShopClient.ValidateCustomAttributeValue(attrID, sanitizedValue, ctx.ProductData.CategoryID, ctx.AmazonProduct.Title)
+	validateResponse, err := ctx.AttributeAPI.ValidateCustomAttributeValue(attrID, sanitizedValue, ctx.ProductData.CategoryID, ctx.AmazonProduct.Title)
 	if err != nil {
 		logrus.Errorf("验证自定义属性值失败: %v", err)
 		return model.CustomAttributeResult{
@@ -99,7 +99,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	}
 
 	// 2. 添加自定义属性值（使用清理后的值）
-	addResponse, err := ctx.ShopClient.AddCustomAttributeValue(&attribute.AddCustomAttributeValueRequest{
+	addResponse, err := ctx.AttributeAPI.AddCustomAttributeValue(&attribute.AddCustomAttributeValueRequest{
 		CategoryID: ctx.ProductData.CategoryID,
 		PreAttributeValueList: []attribute.PreAttributeValue{
 			{

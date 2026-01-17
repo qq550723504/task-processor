@@ -39,7 +39,7 @@ func (h *SpuLimitHandler) submitRemainingQuota(ctx *model.TaskContext, quota int
 }
 
 func (h *SpuLimitHandler) Handle(ctx *model.TaskContext) error {
-	spuLimitCount, err := ctx.ShopClient.GetSpuLimitCount()
+	spuLimitCount, err := ctx.OtherAPI.GetSpuLimitCount()
 	if err != nil {
 		logrus.Infof("获取发品额度失败: %v\n", err)
 		return err

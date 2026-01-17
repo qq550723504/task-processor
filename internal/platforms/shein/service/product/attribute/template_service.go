@@ -36,7 +36,7 @@ func (h *AttributeTemplateHandler) Handle(ctx *model.TaskContext) error {
 	logrus.Debugf("开始获取属性模板，分类ID: %d", categoryID)
 
 	// 调用API获取属性模板
-	attributeTemplates, err := ctx.ShopClient.GetAttributeTemplates(categoryID)
+	attributeTemplates, err := ctx.AttributeAPI.GetAttributeTemplates(categoryID)
 	if err != nil {
 		return fmt.Errorf("获取属性模板失败: %w", err)
 	}

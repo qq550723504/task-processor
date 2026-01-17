@@ -87,7 +87,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *model.TaskContext, images []string)
 			logrus.Debugf("处理图片URL[%d]: %s", index, url)
 
 			// 下载、处理并上传图片
-			uploadedURL, err := ctx.ShopClient.DownloadAndUploadImage(url)
+			uploadedURL, err := ctx.ImageAPI.DownloadAndUploadImage(url)
 
 			resultChan <- model.ImageUploadResult{
 				Index:  index,
@@ -236,7 +236,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *model.TaskContext, images []string)
 	// 处理色块图
 	if colorBlockResult != nil && colorBlockResult.Err == nil && len(colorBlockResult.ColorData) > 0 {
 
-		colorBlockURL, err := ctx.ShopClient.UploadOriginalImage(colorBlockResult.ColorData)
+		colorBlockURL, err := ctx.ImageAPI.UploadOriginalImage(colorBlockResult.ColorData)
 		if err != nil {
 			logrus.Warnf("上传色块图失败: %v，回退为主图", err)
 			colorBlockURL = mainImageURL
