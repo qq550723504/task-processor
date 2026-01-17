@@ -51,6 +51,13 @@ type OperationStrategyDTO struct {
 	TimeLimitedStockLimit        bool    `json:"timeLimitedStockLimit"`        // 限时折扣-是否启用活动库存限量（true:限量, false:不限量）
 	TimeLimitedStockLimitPercent int     `json:"timeLimitedStockLimitPercent"` // 限时折扣-活动库存限量百分比（当StockLimit=true时生效，1-100）
 
+	// 价格变化处理策略
+	PriceIncreaseThreshold float64 `json:"priceIncreaseThreshold"` // 价格上涨阈值（百分比，如10.0表示10%）
+	PriceDecreaseThreshold float64 `json:"priceDecreaseThreshold"` // 价格下降阈值（百分比，如5.0表示5%）
+	PriceIncreaseAction    string  `json:"priceIncreaseAction"`    // 价格上涨时的处理动作（SET_ZERO_STOCK:设置库存为0, DELIST:下架产品, NONE:不处理）
+	PriceDecreaseAction    string  `json:"priceDecreaseAction"`    // 价格下降时的处理动作（RESTORE_STOCK:恢复库存, UPDATE_STOCK:更新库存, NONE:不处理）
+	RestoreStockAmount     int     `json:"restoreStockAmount"`     // 恢复库存时的数量（当PriceDecreaseAction=RESTORE_STOCK时生效）
+
 	Remark     string               `json:"remark"`
 	CreateTime types.FlexibleString `json:"createTime"` // 支持字符串或数字
 }

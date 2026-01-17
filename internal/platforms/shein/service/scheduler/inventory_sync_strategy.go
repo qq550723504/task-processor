@@ -43,7 +43,7 @@ func (s *inventorySyncServiceImpl) handleStockChangeWithStrategy(
 	// 处理库存变化
 	changeAmount := newStock - oldStock
 	if s.absInt(changeAmount) >= strategy.StockChangeThreshold {
-		return s.handleStockChange(prod, skuMapping, strategy, storeID, oldStock, newStock)
+		return s.handleStockChange(ctx, prod, skuMapping, strategy, storeID, oldStock, newStock)
 	}
 
 	return nil
@@ -76,7 +76,7 @@ func (s *inventorySyncServiceImpl) handleOutOfStock(
 		return s.delistProductViaSHEINAPI(ctx, prod, storeID)
 	case "UPDATE_STOCK", "SET_ZERO_STOCK":
 		// 更新库存为0
-		return s.updateProductStockViaSHEINAPI(prod, skuMapping, 0, storeID)
+		return s.updateProductStockViaSHEINAPI(ctx, prod, skuMapping, 0, storeID)
 	case "NONE":
 		// 不执行任何操作
 		s.logger.Debug("缺货策略为NONE，不执行操作")
@@ -89,6 +89,7 @@ func (s *inventorySyncServiceImpl) handleOutOfStock(
 
 // handleStockChange 处理库存变化
 func (s *inventorySyncServiceImpl) handleStockChange(
+	ctx context.Context,
 	prod *managementapi.ProductDataDTO,
 	skuMapping *SKUMappingData,
 	strategy *managementapi.OperationStrategyDTO,
@@ -115,7 +116,7 @@ func (s *inventorySyncServiceImpl) handleStockChange(
 	case "UPDATE_STOCK":
 		// 根据比例更新库存
 		targetStock := s.calculateTargetStock(newStock, strategy.StockUpdateRatio)
-		return s.updateProductStockViaSHEINAPI(prod, skuMapping, targetStock, storeID)
+		return s.updateProductStockViaSHEINAPI(ctx, prod, skuMapping, targetStock, storeID)
 	case "NONE":
 		// 不执行任何操作
 		s.logger.Debug("库存变化策略为NONE，不执行操作")

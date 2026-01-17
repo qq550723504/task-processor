@@ -3,12 +3,9 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
-	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
 	managementapi "task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -95,6 +92,22 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 		resultMutex.Lock()
 		result.PriceChanges++
 		resultMutex.Unlock()
+
+		// 根据价格变化策略处理库存（异步）
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.WithField("panic", r).Error("处理价格变化策略时发生panic")
+				}
+			}()
+
+			if err := s.handlePriceChangeWithStrategy(ctx, prod, amazonProduct, skuMapping, storeID); err != nil {
+				s.logger.WithError(err).WithFields(logrus.Fields{
+					"product_id": prod.ProductID,
+					"sku":        s.getStringValue(skuMapping.MappingInfo.Sku),
+				}).Error("处理价格变化策略失败")
+			}
+		}()
 	}
 
 	// 检查库存变化
@@ -121,157 +134,4 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	}
 
 	return nil
-}
-
-// getAmazonProductData 获取Amazon产品数据（使用ProductFetcher，自动处理缓存）
-func (s *inventorySyncServiceImpl) getAmazonProductData(
-	ctx context.Context,
-	asin, region string,
-	tenantID, storeID int64,
-) (*model.Product, error) {
-	// 使用 ProductFetcher 获取产品（自动处理缓存和爬取）
-	fetchReq := &product.FetchRequest{
-		TenantID:  tenantID,
-		Platform:  "Amazon",
-		Region:    region,
-		ProductID: asin,
-		StoreID:   storeID,
-		Creator:   "monitor",
-	}
-
-	// 为库存监控创建专用的 rawJsonDataClient，设置24小时数据新鲜度
-	inventoryRawJsonClient := s.managementClient.GetRawJsonDataClient()
-	inventoryRawJsonClient.SetDataFreshnessDays(1) // 24小时 = 1天
-
-	productFetcher := product.NewProductFetcher(
-		inventoryRawJsonClient,
-		s.amazonConfig,
-		s.amazonProcessor,
-	)
-
-	// 使用 channel 实现超时控制
-	type fetchResult struct {
-		product *model.Product
-		err     error
-	}
-	resultChan := make(chan fetchResult, 1)
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				s.logger.WithField("panic", r).Error("获取Amazon产品时发生panic")
-				resultChan <- fetchResult{nil, fmt.Errorf("获取产品时发生panic: %v", r)}
-			}
-		}()
-
-		amazonProduct, err := productFetcher.FetchProduct(fetchReq)
-		resultChan <- fetchResult{amazonProduct, err}
-	}()
-
-	// 等待结果或超时
-	select {
-	case <-ctx.Done():
-		return nil, fmt.Errorf("获取Amazon产品超时: %w", ctx.Err())
-	case result := <-resultChan:
-		if result.err != nil {
-			return nil, fmt.Errorf("获取Amazon产品失败: %w", result.err)
-		}
-		return result.product, nil
-	}
-}
-
-// checkPriceChange 检查价格变化
-func (s *inventorySyncServiceImpl) checkPriceChange(
-	prod *managementapi.ProductDataDTO,
-	amazonProduct *model.Product,
-	skuMapping *SKUMappingData,
-	storeID int64,
-) bool {
-	mappingInfo := skuMapping.MappingInfo
-	oldPrice := s.getFloatValue(mappingInfo.CostPrice)
-	if oldPrice <= 0 {
-		oldPrice = s.parsePrice(prod.OriginalPrice.String())
-		if oldPrice <= 0 {
-			oldPrice = s.parsePrice(prod.SpecialPrice.String())
-		}
-	}
-
-	// 获取店铺配置的价格类型
-	priceType := s.getStorePriceType(storeID)
-
-	// 使用公共函数获取新价格
-	newPrice := product.GetProductPrice(amazonProduct, priceType)
-
-	if oldPrice > 0 && newPrice > 0 {
-		changePercent := ((newPrice - oldPrice) / oldPrice) * 100
-
-		// 获取价格变化阈值（优先使用平台配置）
-		threshold := s.getPriceChangeThreshold(storeID)
-
-		if s.abs(changePercent) >= threshold {
-			s.logger.WithFields(logrus.Fields{
-				"asin":           mappingInfo.ProductId,
-				"sku":            s.getStringValue(mappingInfo.Sku),
-				"old_price":      oldPrice,
-				"new_price":      newPrice,
-				"price_type":     priceType,
-				"change_percent": changePercent,
-				"threshold":      threshold,
-			}).Info("检测到价格变化")
-			return true
-		}
-	}
-	return false
-}
-
-// checkStockChange 检查库存变化
-func (s *inventorySyncServiceImpl) checkStockChange(
-	amazonProduct *model.Product,
-	skuMapping *SKUMappingData,
-	storeID int64,
-) bool {
-	oldStock := skuMapping.Stock
-	newStock := s.extractStockFromProduct(amazonProduct)
-	changeAmount := newStock - oldStock
-
-	// 获取库存变化阈值（优先使用店铺级策略）
-	threshold := s.getStockChangeThreshold(storeID)
-
-	if s.absInt(changeAmount) >= threshold {
-		s.logger.WithFields(logrus.Fields{
-			"asin":          skuMapping.MappingInfo.ProductId,
-			"sku":           s.getStringValue(skuMapping.MappingInfo.Sku),
-			"old_stock":     oldStock,
-			"new_stock":     newStock,
-			"change_amount": changeAmount,
-			"threshold":     threshold,
-		}).Info("检测到库存变化")
-		return true
-	}
-	return false
-}
-
-// getPriceChangeThreshold 获取价格变化阈值（从平台配置）
-func (s *inventorySyncServiceImpl) getPriceChangeThreshold(storeID int64) float64 {
-	if s.monitorConfig != nil {
-		return s.monitorConfig.PriceChangeThreshold
-	}
-	return 5.0 // 默认5%
-}
-
-// getStockChangeThreshold 获取库存变化阈值（优先从店铺级策略获取）
-func (s *inventorySyncServiceImpl) getStockChangeThreshold(storeID int64) int {
-	// 尝试从管理系统获取店铺级策略
-	strategy, err := s.managementClient.GetOperationStrategyClient().GetOperationStrategyByStoreId(storeID)
-	if err == nil && strategy != nil && strategy.IsEnabled() {
-		if strategy.StockChangeThreshold > 0 {
-			return strategy.StockChangeThreshold
-		}
-	}
-
-	// 使用平台配置作为默认值
-	if s.monitorConfig != nil {
-		return s.monitorConfig.StockChangeThreshold
-	}
-	return 5 // 默认5个
 }

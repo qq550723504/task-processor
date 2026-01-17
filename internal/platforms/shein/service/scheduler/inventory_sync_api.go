@@ -95,6 +95,7 @@ func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
 
 // updateProductStockViaSHEINAPI 通过SHEIN API更新产品库存
 func (s *inventorySyncServiceImpl) updateProductStockViaSHEINAPI(
+	ctx context.Context,
 	prod *managementapi.ProductDataDTO,
 	skuMapping *SKUMappingData,
 	targetStock int,
