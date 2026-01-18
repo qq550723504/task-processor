@@ -38,6 +38,7 @@ func GetEndpoint(name string) string {
 		"queryPromotionGoods":    queryPromotionGoodsEndpoint,
 		"calculateSupplyPrice":   calculateSupplyPriceEndpoint,
 		"createActivity":         createActivityEndpoint,
+		"queryShelfQuota":        queryShelfQuotaEndpoint,
 	}
 
 	return endpoints[name]
@@ -79,3 +80,4 @@ func GetConfigListEndpoint() string             { return getConfigListEndpoint }
 func GetQueryPromotionGoodsEndpoint() string    { return queryPromotionGoodsEndpoint }
 func GetCalculateSupplyPriceEndpoint() string   { return calculateSupplyPriceEndpoint }
 func GetCreateActivityEndpoint() string         { return createActivityEndpoint }
+func GetQueryShelfQuotaEndpoint() string        { return queryShelfQuotaEndpoint }

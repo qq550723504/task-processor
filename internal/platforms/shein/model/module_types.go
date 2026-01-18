@@ -38,6 +38,7 @@ type TaskContext struct {
 	StoreInfo          *management_api.StoreRespDTO
 	SupplierInfo       *other.SupplierOperateInfo
 	SpuLimitCount      *other.SpuLimitCountInfo
+	ShelfQuotaInfo     *other.ShelfQuotaInfo // SKC上架额度信息
 	AmazonProduct      *model.Product
 	Variants           *[]model.Product
 	UnFilteredVariants *[]model.Product

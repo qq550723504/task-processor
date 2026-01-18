@@ -33,13 +33,13 @@ func (o *OtherAPI) GetUser(uuid int64) (*other.UserInfo, error) {
 		return nil, err
 	}
 
-	// 统一错误处理 - 使用 ProcessAPIResponse 检查认证过期
+	// 统一错误处理 - 认证过期错误直接返回，其他错误包装为 APIError
 	if err := o.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
-		// 如果是认证过期错误，直接返回
+		// 如果是认证过期错误，直接返回不包装
 		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
 			return nil, err
 		}
-		// 其他错误，包装为 APIError
+		// 其他错误包装为 APIError
 		return nil, &api.APIError{
 			StatusCode: 0, // 业务错误码
 			Message:    fmt.Sprintf("获取用户信息失败: %s", result.Msg),
@@ -72,13 +72,13 @@ func (o *OtherAPI) BatchCheckOnWay(spuNameList []string) (*other.BatchCheckOnWay
 		return nil, err
 	}
 
-	// 统一错误处理 - 使用 ProcessAPIResponse 检查认证过期
+	// 统一错误处理 - 认证过期错误直接返回，其他错误包装为 APIError
 	if err := o.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
-		// 如果是认证过期错误，直接返回
+		// 如果是认证过期错误，直接返回不包装
 		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
 			return nil, err
 		}
-		// 其他错误，包装为 APIError
+		// 其他错误包装为 APIError
 		return nil, &api.APIError{
 			StatusCode: 0, // 业务错误码
 			Message:    fmt.Sprintf("批量检查在途商品失败: %s", result.Msg),
@@ -111,13 +111,13 @@ func (o *OtherAPI) GetSupplierOperateInfo() (*other.SupplierOperateInfoResponse,
 		return nil, err
 	}
 
-	// 统一错误处理 - 使用 ProcessAPIResponse 检查认证过期
+	// 统一错误处理 - 认证过期错误直接返回，其他错误包装为 APIError
 	if err := o.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
-		// 如果是认证过期错误，直接返回
+		// 如果是认证过期错误，直接返回不包装
 		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
 			return nil, err
 		}
-		// 其他错误，包装为 APIError
+		// 其他错误包装为 APIError
 		return nil, &api.APIError{
 			StatusCode: 0, // 业务错误码
 			Message:    fmt.Sprintf("获取供应商操作信息失败: %s", result.Msg),
@@ -152,13 +152,13 @@ func (o *OtherAPI) GetSpuLimitCount() (*other.SpuLimitCountInfo, error) {
 		return nil, err
 	}
 
-	// 统一错误处理 - 使用 ProcessAPIResponse 检查认证过期
+	// 统一错误处理 - 认证过期错误直接返回，其他错误包装为 APIError
 	if err := o.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
-		// 如果是认证过期错误，直接返回
+		// 如果是认证过期错误，直接返回不包装
 		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
 			return nil, err
 		}
-		// 其他错误，包装为 APIError
+		// 其他错误包装为 APIError
 		return nil, &api.APIError{
 			StatusCode: 0, // 业务错误码
 			Message:    fmt.Sprintf("获取SPU限制数量失败: %s", result.Msg),
@@ -167,4 +167,46 @@ func (o *OtherAPI) GetSpuLimitCount() (*other.SpuLimitCountInfo, error) {
 	}
 
 	return &result.Info.Data, nil
+}
+
+// QueryShelfQuota 查询商品上架配额
+func (o *OtherAPI) QueryShelfQuota() (*other.ShelfQuotaResponse, error) {
+	url := fmt.Sprintf("%s%s", o.GetBaseURL(), client.GetQueryShelfQuotaEndpoint())
+
+	// 请求体为空对象
+	reqBody := map[string]interface{}{}
+
+	var result struct {
+		api.APIResponse
+		Info other.ShelfQuotaInfo `json:"info"`
+		Bbl  *string              `json:"bbl"`
+	}
+
+	if err := o.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理 - 认证过期错误直接返回，其他错误包装为 APIError
+	if err := o.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
+		// 如果是认证过期错误，直接返回不包装
+		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
+			return nil, err
+		}
+		// 其他错误包装为 APIError
+		return nil, &api.APIError{
+			StatusCode: 0, // 业务错误码
+			Message:    fmt.Sprintf("查询商品上架配额失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	// 构造返回结果
+	response := &other.ShelfQuotaResponse{
+		Code: result.Code,
+		Msg:  result.Msg,
+		Info: result.Info,
+		Bbl:  result.Bbl,
+	}
+
+	return response, nil
 }

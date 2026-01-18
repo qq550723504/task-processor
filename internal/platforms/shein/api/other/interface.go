@@ -52,6 +52,7 @@ type OtherAPI interface {
 	GetUser(uuid int64) (*UserInfo, error)
 	GetSupplierOperateInfo() (*SupplierOperateInfoResponse, error)
 	GetSpuLimitCount() (*SpuLimitCountInfo, error)
+	QueryShelfQuota() (*ShelfQuotaResponse, error)
 }
 
 // SpuLimitCountResponse 查询发品额度响应结构
@@ -166,4 +167,24 @@ type UserInfo struct {
 	AreaTimezone     string  `json:"areaTimezone"`     // 区域时区
 	Lv1CategoryName  string  `json:"lv1CategoryName"`  // 一级分类名称
 	Lv2CategoryName  string  `json:"lv2CategoryName"`  // 二级分类名称
+}
+
+// ShelfQuotaResponse 商品上架配额查询响应结构
+type ShelfQuotaResponse struct {
+	Code string         `json:"code"`
+	Msg  string         `json:"msg"`
+	Info ShelfQuotaInfo `json:"info"`
+	Bbl  *string        `json:"bbl"`
+}
+
+// ShelfQuotaInfo 商品上架配额信息
+type ShelfQuotaInfo struct {
+	// 是否需要配额检查
+	Need bool `json:"need"`
+	// 剩余配额数量
+	RemainCount int `json:"remain_count"`
+	// 总配额数量
+	TotalQuotaCount int `json:"total_quota_count"`
+	// 已上架商品数量
+	OnShelfCount int `json:"on_shelf_count"`
 }

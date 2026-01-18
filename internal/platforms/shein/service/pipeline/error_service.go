@@ -89,6 +89,11 @@ func (h *TaskErrorHandler) HandleAuthenticationExpired(authErr *api.Authenticati
 		logrus.Infof("店铺 %d 距离上次删除Cookie不足10分钟，跳过删除操作", shopID)
 	}
 
+	// 设置店铺暂停状态到管理系统
+	if err := h.setPauseKeyForAuthExpired(shopID, "认证过期(20302)"); err != nil {
+		logrus.WithError(err).Warnf("设置店铺 %d 的认证过期暂停键失败", shopID)
+	}
+
 	if err := h.pauseShopWithCacheCleanup(tenantID, shopID, "认证过期(20302)", 10*time.Minute); err != nil {
 		logrus.WithError(err).Warnf("暂停店铺并清理缓存失败: tenantID=%d, shopID=%d", tenantID, shopID)
 	} else {
@@ -157,4 +162,29 @@ func (h *TaskErrorHandler) updateTaskStatusToAPI(taskID string, status model.Tas
 	// 委托给状态更新器处理
 	statusUpdater := NewTaskStatusUpdater(h.processor)
 	statusUpdater.UpdateTaskStatusAsync(taskID, status, errorMsg)
+}
+
+// setPauseKeyForAuthExpired 设置认证过期暂停键到管理系统
+func (h *TaskErrorHandler) setPauseKeyForAuthExpired(shopID int64, reason string) error {
+	storeClient := h.processor.GetManagementClient().GetStoreClient()
+	if storeClient == nil {
+		logrus.Warn("店铺客户端未初始化，无法设置暂停键")
+		return fmt.Errorf("店铺客户端未初始化")
+	}
+
+	logrus.Infof("设置店铺 %d 的认证过期暂停键，原因: %s", shopID, reason)
+	success, err := storeClient.SetStorePauseStatus(shopID, true, "auth_expired")
+	if err != nil {
+		logrus.Errorf("设置店铺 %d 的暂停状态失败: %v", shopID, err)
+		return fmt.Errorf("设置暂停状态失败: %w", err)
+	}
+
+	if success {
+		logrus.Infof("✓ 成功设置店铺 %d 的认证过期暂停键", shopID)
+	} else {
+		logrus.Warnf("设置店铺 %d 的暂停状态返回失败", shopID)
+		return fmt.Errorf("设置暂停状态返回失败")
+	}
+
+	return nil
 }

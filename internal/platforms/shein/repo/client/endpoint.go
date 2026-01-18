@@ -49,4 +49,7 @@ const (
 	// 资金损益相关
 	capitalPrefix                = "/mrs-api-prefix/capital"
 	calculateSupplyPriceEndpoint = capitalPrefix + "/loss/calculate_supply_price"
+
+	// 商品上架配额相关
+	queryShelfQuotaEndpoint = apiPrefix + "/product/skc/shelf/query_quota"
 )

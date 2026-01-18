@@ -138,6 +138,22 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 			continue
 		}
 
+		// 检查店铺是否被暂停
+		isPaused, err := storeClient.GetStorePauseStatus(apiTaskPtr.StoreID)
+		if err != nil {
+			logrus.Warnf("获取店铺 %d 暂停状态失败: %v，跳过任务", apiTaskPtr.StoreID, err)
+			f.rollbackProcessingStatus(taskID)
+			errorCount++
+			continue
+		}
+
+		if isPaused {
+			logrus.Infof("🛑 店铺 %d 已被暂停，跳过任务: TaskID=%s, ProductID=%s",
+				apiTaskPtr.StoreID, taskID, apiTaskPtr.ProductID)
+			f.rollbackProcessingStatus(taskID)
+			continue
+		}
+
 		// 转换为内部任务格式并提交
 		success, isQueueFull := f.submitTask(ctx, apiTaskPtr, storeInfo)
 		if success {

@@ -169,13 +169,13 @@ func (i *ImageAPI) UploadOriginalImage(imageData []byte) (string, error) {
 		}
 	}
 
-	// 统一错误处理 - 使用 ProcessAPIResponse 检查认证过期
+	// 统一错误处理 - 认证过期错误直接返回，其他错误包装为 APIError
 	if err := i.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
-		// 如果是认证过期错误，直接返回
+		// 如果是认证过期错误，直接返回不包装
 		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
 			return "", err
 		}
-		// 其他错误，包装为 APIError
+		// 其他错误包装为 APIError
 		return "", &api.APIError{
 			StatusCode: 0, // 业务错误码
 			Message:    fmt.Sprintf("上传原始图片失败: %s", result.Msg),

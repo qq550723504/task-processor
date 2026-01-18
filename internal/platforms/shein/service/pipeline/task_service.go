@@ -176,6 +176,9 @@ func (h *TaskHandler) initShopClient(taskCtx *shein_model.TaskContext) error {
 
 // handleError 处理错误
 func (h *TaskHandler) handleError(task model.Task, err error) {
+	// 添加调试日志，查看错误的具体类型和内容
+	logrus.Infof("处理错误: 类型=%T, 内容=%v", err, err)
+
 	// 检查是否是Cookie加载失败错误
 	if cookieErr, isCookieError := shein_model.IsCookieLoadError(err); isCookieError {
 		logrus.Errorf("检测到Cookie加载失败错误: %v", cookieErr)
@@ -190,6 +193,9 @@ func (h *TaskHandler) handleError(task model.Task, err error) {
 		h.errorHandler.HandleAuthenticationExpired(authErr, task)
 		return
 	}
+
+	// 添加调试日志，显示未匹配到认证过期错误
+	logrus.Debugf("未检测到认证过期错误，按一般错误处理: %v", err)
 
 	// 处理一般错误
 	h.errorHandler.HandleTaskFailure(task, err)

@@ -167,7 +167,22 @@ func (b *BaseAPIClient) apiRequest(method, url string, requestBody interface{}, 
 
 	// 检查响应状态码
 	if !resp.IsSuccessState() {
-		// 尝试获取错误信息
+		// 特殊处理：SHEIN的认证过期响应（HTTP 302 + JSON）
+		if resp.StatusCode == 302 {
+			// 尝试解析JSON响应体，检查是否为认证过期
+			var tempResult api.APIResponse
+			if parseErr := resp.UnmarshalJson(&tempResult); parseErr == nil {
+				if tempResult.Code == "20302" && strings.Contains(tempResult.Msg, "子系统登录重定向") {
+					// 这是认证过期响应，需要解析到result中让ProcessAPIResponse处理
+					if unmarshalErr := resp.UnmarshalJson(result); unmarshalErr != nil {
+						return fmt.Errorf("解析认证过期响应失败: %w", unmarshalErr)
+					}
+					return nil // 让ProcessAPIResponse处理认证过期逻辑
+				}
+			}
+		}
+
+		// 其他HTTP错误的处理
 		errorMessage := resp.String()
 		if errorMessage == "" {
 			errorMessage = http.StatusText(resp.StatusCode)

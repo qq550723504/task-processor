@@ -106,6 +106,8 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	pipeline.AddHandler(info.NewStoreIDHandler(storeClient))
 	// 检查发品额度
 	pipeline.AddHandler(product.NewSpuLimitHandler())
+	// 检查SKC上架额度
+	pipeline.AddHandler(product.NewShelfQuotaHandler())
 	// 验证任务（筛选规则和利润规则）
 	pipeline.AddHandler(validation.NewTaskValidatorHandler(processor.GetManagementClient()))
 	// 应用筛选规则

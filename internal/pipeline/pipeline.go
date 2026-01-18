@@ -3,6 +3,7 @@ package pipeline
 
 import (
 	"fmt"
+	"task-processor/internal/platforms/shein/api"
 
 	"github.com/sirupsen/logrus"
 )
@@ -49,6 +50,14 @@ func (p *BasePipeline) Process(ctx TaskContext) error {
 		if err := handler.Handle(ctx); err != nil {
 			p.logger.Errorf("处理器 %s 执行失败: %v", handler.Name(), err)
 			ctx.SetError(err)
+
+			// 检查是否为认证过期错误，如果是则直接透传，不包装
+			if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
+				p.logger.Warnf("检测到认证过期错误，直接透传: %v", err)
+				return err
+			}
+
+			// 其他错误正常包装
 			return fmt.Errorf("处理器 %s 执行失败: %w", handler.Name(), err)
 		}
 
