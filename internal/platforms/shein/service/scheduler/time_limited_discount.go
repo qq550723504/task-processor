@@ -167,16 +167,25 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 	addedCount := 0
 	maxProductsPerActivity := 500 // SHEIN平台限制:一次活动最多500个商品
 
-	for _, g := range goods {
-		// 检查是否已达到商品数量上限
-		if addedCount >= maxProductsPerActivity {
-			s.logger.Warnf("已达到单次活动商品数量上限(%d),停止添加商品", maxProductsPerActivity)
-			break
-		}
+	// 统计各种过滤原因的商品数量
+	var (
+		totalGoods             = len(goods)
+		skippedByActivity      = 0
+		skippedByStock         = 0
+		skippedByPlatform      = 0
+		skippedByPriceCalc     = 0
+		skippedByActivityStock = 0
+		skippedByPriceInfo     = 0
+		skippedByDiscount      = 0
+	)
 
+	s.logger.Infof("开始筛选商品，总共 %d 个商品", totalGoods)
+
+	for _, g := range goods {
 		// 检查是否已参加其他活动
 		if g.ErrorCode != "" {
 			s.logger.Warnf("商品 %s 已参加其他活动(活动: %v),跳过该商品", g.Skc, g.ErrorCode)
+			skippedByActivity++
 			continue
 		}
 
@@ -184,12 +193,14 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		minStockRequired := 15
 		if g.InventoryNum < minStockRequired {
 			s.logger.Warnf("商品 %s 库存不足(%d < %d),跳过该商品", g.Skc, g.InventoryNum, minStockRequired)
+			skippedByStock++
 			continue
 		}
 
 		// 额外检查平台的库存要求
 		if g.CheckStock != nil && g.InventoryNum < g.CheckStock.MinStock {
 			s.logger.Warnf("商品 %s 库存不足(%d < 平台要求%d),跳过该商品", g.Skc, g.InventoryNum, g.CheckStock.MinStock)
+			skippedByPlatform++
 			continue
 		}
 
@@ -197,6 +208,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		skcCalcResult, exists := skcPriceMap[g.Skc]
 		if !exists {
 			s.logger.Warnf("商品 %s 未找到价格计算结果,跳过", g.Skc)
+			skippedByPriceCalc++
 			continue
 		}
 
@@ -229,6 +241,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		if g.CheckStock != nil {
 			if stockNum < g.CheckStock.MinStock {
 				s.logger.Warnf("商品 %s 活动库存(%d)低于平台最低要求(%d),跳过该商品", g.Skc, stockNum, g.CheckStock.MinStock)
+				skippedByActivityStock++
 				continue
 			}
 			if stockNum > g.CheckStock.MaxStock {
@@ -246,6 +259,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 			activityPrice = priceInfo.ProductAmount - priceInfo.PromotionAmount
 		} else {
 			s.logger.Warnf("商品 %s 没有SKU价格信息,跳过", g.Skc)
+			skippedByPriceInfo++
 			continue
 		}
 
@@ -255,27 +269,9 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 			actualDiscountRate := activityPrice / g.USSupplyPrice
 			s.logger.Warnf("商品 %s 折扣不足(活动价:%.2f, 原价:%.2f, 折扣率:%.2f%%, 要求<%.2f%%),跳过该商品",
 				g.Skc, activityPrice, g.USSupplyPrice, actualDiscountRate*100, maxDiscountRate*100)
+			skippedByDiscount++
 			continue
 		}
-
-		// 【调试代码】打印详细的商品信息
-		s.logger.Infof("========== 调试信息: 商品 #%d ==========", addedCount+1)
-		s.logger.Infof("SKC: %s", g.Skc)
-		s.logger.Infof("原价(USSupplyPrice): %.2f", g.USSupplyPrice)
-		s.logger.Infof("最大原价(MaxUSSupplyPrice): %.2f", g.MaxUSSupplyPrice)
-		s.logger.Infof("库存数量(InventoryNum): %d", g.InventoryNum)
-		s.logger.Infof("计算后的活动价格(ProductActPrice): %.2f", activityPrice)
-		s.logger.Infof("活动库存(AttendNum/StockNum): %d", stockNum)
-		s.logger.Infof("SKU数量: %d", len(addSkuList))
-		if len(skcCalcResult.SkuInfoList) > 0 {
-			priceInfo := skcCalcResult.SkuInfoList[0].PriceInfo
-			s.logger.Infof("价格详情 - ProductAmount: %.2f", priceInfo.ProductAmount)
-			s.logger.Infof("价格详情 - PromotionAmount: %.2f", priceInfo.PromotionAmount)
-			s.logger.Infof("价格详情 - SettlementAmount: %.2f", priceInfo.SettlementAmount)
-			s.logger.Infof("价格详情 - RiskTag: %d", skcCalcResult.SkuInfoList[0].RiskTag)
-			s.logger.Infof("价格详情 - WarningValue: %.2f", skcCalcResult.SkuInfoList[0].WarningValue)
-		}
-		s.logger.Infof("========================================")
 
 		costAndStockList = append(costAndStockList, marketing.CostAndStockInfo{
 			Skc:                g.Skc,
@@ -292,12 +288,28 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 
 		addedCount++
 
-		// 【调试代码】只处理第一个商品后就退出循环
-		// if addedCount >= 10 {
-		// 	s.logger.Warnf("【调试模式】已添加 %d 个商品,终止循环进行测试", addedCount)
-		// 	break
-		// }
+		// 检查是否已达到商品数量上限
+		if addedCount >= maxProductsPerActivity {
+			s.logger.Warnf("已达到单次活动商品数量上限(%d),停止添加商品", maxProductsPerActivity)
+			break
+		}
+
 	}
+
+	// 输出详细的筛选统计信息
+	s.logger.WithFields(logrus.Fields{
+		"total_goods":               totalGoods,
+		"skipped_by_activity":       skippedByActivity,
+		"skipped_by_stock":          skippedByStock,
+		"skipped_by_platform":       skippedByPlatform,
+		"skipped_by_price_calc":     skippedByPriceCalc,
+		"skipped_by_activity_stock": skippedByActivityStock,
+		"skipped_by_price_info":     skippedByPriceInfo,
+		"skipped_by_discount":       skippedByDiscount,
+		"final_selected":            len(costAndStockList),
+	}).Info("商品筛选统计")
+
+	s.logger.Infof("成功筛选出 %d 个符合条件的商品用于活动", len(costAndStockList))
 
 	return &marketing.CreateActivityRequest{
 		ActivityBaseInfoRequest: marketing.ActivityBaseInfo{
@@ -403,6 +415,14 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 
 	// 7. 构建活动创建请求
 	createReq := s.buildCreateActivityRequest(config, allGoods, calcResp)
+
+	// 检查是否有符合条件的商品
+	if len(createReq.AddCostAndStockInfoList) == 0 {
+		s.logger.Warn("没有符合条件的商品可以参加活动")
+		return 0, ErrNoAvailableProducts
+	}
+
+	s.logger.Infof("准备创建活动，包含 %d 个商品", len(createReq.AddCostAndStockInfoList))
 
 	// 8. 创建限时折扣活动
 	createResp, err := s.createTimeLimitedDiscount(createReq)

@@ -1,4 +1,4 @@
-﻿// Package impl 提供SHEIN通用客户端API实现
+// Package impl 提供SHEIN通用客户端API实现
 package repo
 
 import (

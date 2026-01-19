@@ -51,10 +51,6 @@ func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error) {
 
 		manager.SetFingerprint(fingerprint)
 
-		// 记录指纹详情
-		if browserConfig := manager.Manager.GetConfig(); browserConfig != nil {
-			sharedbrowser.LogConfigDetails(browserConfig, fingerprint)
-		}
 	}
 
 	if err := manager.Install(); err != nil {

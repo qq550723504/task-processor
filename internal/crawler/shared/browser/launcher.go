@@ -129,7 +129,6 @@ func AddFingerprintArgs(args []string, cfg *BrowserConfig, fingerprint *Fingerpr
 	// WebRTC保护
 	args = append(args, "--disable-non-proxied-udp")
 
-	logrus.Infof("使用fingerprint-chromium参数: %v", args)
 	return args
 }
 

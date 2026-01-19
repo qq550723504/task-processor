@@ -20,7 +20,10 @@ type TemuTaskFactory struct {
 }
 
 // NewTemuTaskFactory 创建TEMU任务工厂
-func NewTemuTaskFactory(managementClient *management.ClientManager, configProvider temu.ConfigProvider) *TemuTaskFactory {
+func NewTemuTaskFactory(
+	managementClient *management.ClientManager,
+	configProvider temu.ConfigProvider,
+) *TemuTaskFactory {
 	return &TemuTaskFactory{
 		managementClient: managementClient,
 		configProvider:   configProvider,
@@ -40,7 +43,9 @@ func (f *TemuTaskFactory) CreateTask(ctx context.Context, config appscheduler.Ta
 	case appscheduler.TaskTypePricing:
 		return NewPricingTask(ctx, config, f.managementClient, f.configProvider), nil
 	case appscheduler.TaskTypeProductSync:
-		return NewSyncTask(ctx, config, f.managementClient), nil
+		// 创建产品同步服务
+		// TODO: 需要创建clientManager，这里暂时传nil
+		return NewProductSyncTask(ctx, config, f.managementClient, nil, nil), nil
 	case appscheduler.TaskTypeInventory:
 		return NewInventoryTask(ctx, config, f.managementClient), nil
 	case appscheduler.TaskTypeActivity:

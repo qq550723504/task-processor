@@ -1,0 +1,54 @@
+// Package scheduler 提供TEMU调度服务工厂
+package scheduler
+
+import (
+	"task-processor/internal/pkg/management"
+	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/temu/api/services"
+)
+
+// ServiceFactory TEMU调度服务工厂
+type ServiceFactory struct {
+	managementClient *management.ClientManager
+	productAPI       *services.ProductAPI
+	mappingClient    managementapi.ProductImportMappingAPI
+	storeAPI         managementapi.StoreAPI
+}
+
+// NewServiceFactory 创建TEMU服务工厂
+func NewServiceFactory(
+	managementClient *management.ClientManager,
+	productAPI *services.ProductAPI,
+	mappingClient managementapi.ProductImportMappingAPI,
+	storeAPI managementapi.StoreAPI,
+) *ServiceFactory {
+	return &ServiceFactory{
+		managementClient: managementClient,
+		productAPI:       productAPI,
+		mappingClient:    mappingClient,
+		storeAPI:         storeAPI,
+	}
+}
+
+// CreateProductSyncService 创建产品同步服务
+func (f *ServiceFactory) CreateProductSyncService() ProductSyncService {
+	return NewProductSyncService(
+		f.managementClient,
+		f.productAPI,
+		f.mappingClient,
+		f.storeAPI,
+		nil, // 使用默认配置
+	)
+}
+
+// CreateInventorySyncService 创建库存同步服务
+func (f *ServiceFactory) CreateInventorySyncService() InventorySyncService {
+	// TODO: 返回具体实现
+	return nil
+}
+
+// CreatePriceSyncService 创建价格同步服务
+func (f *ServiceFactory) CreatePriceSyncService() PriceSyncService {
+	// TODO: 返回具体实现
+	return nil
+}

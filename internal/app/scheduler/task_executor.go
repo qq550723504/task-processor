@@ -5,6 +5,7 @@ import (
 	"context"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -18,6 +19,9 @@ type TaskExecutor struct {
 	wg                sync.WaitGroup
 	logger            *logrus.Entry
 	dependencyManager *DependencyManager
+	isRunning         int32          // 任务执行状态标志 (0: 空闲, 1: 执行中)
+	skipCount         int64          // 跳过执行次数统计
+	stats             *ExecutorStats // 执行统计
 }
 
 // NewTaskExecutor 创建新的任务执行器
@@ -29,6 +33,7 @@ func NewTaskExecutor(ctx context.Context, task Task, depManager *DependencyManag
 		ctx:               executorCtx,
 		cancel:            cancel,
 		dependencyManager: depManager,
+		stats:             NewExecutorStats(),
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TaskExecutor",
 			"task_id":   task.GetID(),
@@ -64,7 +69,7 @@ func (e *TaskExecutor) run() {
 	}()
 
 	// 立即执行一次
-	e.executeTask()
+	e.executeTaskWithConcurrencyControl()
 
 	ticker := time.NewTicker(e.task.GetInterval())
 	defer ticker.Stop()
@@ -75,9 +80,30 @@ func (e *TaskExecutor) run() {
 			e.logger.Info("收到停止信号，退出任务执行器")
 			return
 		case <-ticker.C:
-			e.executeTask()
+			e.executeTaskWithConcurrencyControl()
 		}
 	}
+}
+
+// executeTaskWithConcurrencyControl 带并发控制的任务执行
+func (e *TaskExecutor) executeTaskWithConcurrencyControl() {
+	// 使用原子操作检查并设置执行状态
+	if !atomic.CompareAndSwapInt32(&e.isRunning, 0, 1) {
+		// 任务正在执行中，跳过本次执行
+		skipCount := atomic.AddInt64(&e.skipCount, 1)
+		e.stats.RecordSkip()
+
+		e.logger.WithFields(logrus.Fields{
+			"skip_count": skipCount,
+		}).Warn("上一个任务还在执行中，跳过本次执行")
+		return
+	}
+
+	// 执行完成后重置状态
+	defer atomic.StoreInt32(&e.isRunning, 0)
+
+	// 执行实际任务
+	e.executeTask()
 }
 
 // executeTask 执行任务
@@ -95,7 +121,7 @@ func (e *TaskExecutor) executeTask() {
 	e.logger.Info("开始执行任务")
 
 	// 创建任务上下文，设置超时
-	taskCtx, cancel := context.WithTimeout(e.ctx, 30*time.Minute)
+	taskCtx, cancel := context.WithTimeout(e.ctx, 60*time.Minute)
 	defer cancel()
 
 	// 检查依赖任务是否满足
@@ -117,6 +143,10 @@ func (e *TaskExecutor) executeTask() {
 	err := e.task.Execute(taskCtx)
 
 	duration := time.Since(startTime)
+	success := err == nil
+
+	// 记录执行统计
+	e.stats.RecordExecution(duration, success)
 
 	// 更新任务执行状态
 	if e.dependencyManager != nil {
@@ -128,13 +158,45 @@ func (e *TaskExecutor) executeTask() {
 	}
 
 	if err != nil {
-		e.logger.WithError(err).Errorf("任务执行失败，耗时: %v", duration)
+		e.logger.WithError(err).WithFields(logrus.Fields{
+			"duration": duration,
+		}).Error("任务执行失败")
 	} else {
-		e.logger.Infof("任务执行成功，耗时: %v", duration)
+		e.logger.WithFields(logrus.Fields{
+			"duration": duration,
+		}).Info("任务执行成功")
 	}
 }
 
 // GetTask 获取任务
 func (e *TaskExecutor) GetTask() Task {
 	return e.task
+}
+
+// IsRunning 检查任务是否正在执行
+func (e *TaskExecutor) IsRunning() bool {
+	return atomic.LoadInt32(&e.isRunning) == 1
+}
+
+// GetSkipCount 获取跳过执行次数
+func (e *TaskExecutor) GetSkipCount() int64 {
+	return atomic.LoadInt64(&e.skipCount)
+}
+
+// ResetSkipCount 重置跳过执行次数统计
+func (e *TaskExecutor) ResetSkipCount() {
+	atomic.StoreInt64(&e.skipCount, 0)
+	e.logger.Info("已重置跳过执行次数统计")
+}
+
+// GetStats 获取执行统计信息
+func (e *TaskExecutor) GetStats() ExecutorStatsSnapshot {
+	return e.stats.GetStats()
+}
+
+// ResetStats 重置统计信息
+func (e *TaskExecutor) ResetStats() {
+	e.stats.Reset()
+	e.ResetSkipCount()
+	e.logger.Info("已重置所有统计信息")
 }

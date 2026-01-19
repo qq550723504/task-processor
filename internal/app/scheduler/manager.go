@@ -14,6 +14,7 @@ type Manager struct {
 	registry          *Registry
 	executors         map[string]*TaskExecutor // key: taskID
 	dependencyManager *DependencyManager
+	monitorService    *MonitorService
 	mutex             sync.RWMutex
 	ctx               context.Context
 	cancel            context.CancelFunc
@@ -30,7 +31,7 @@ func NewManager(ctx context.Context) *Manager {
 		depManager.RegisterDependency(dep)
 	}
 
-	return &Manager{
+	manager := &Manager{
 		registry:          NewRegistry(),
 		executors:         make(map[string]*TaskExecutor),
 		dependencyManager: depManager,
@@ -40,6 +41,11 @@ func NewManager(ctx context.Context) *Manager {
 			"component": "SchedulerManager",
 		}),
 	}
+
+	// 创建监控服务
+	manager.monitorService = NewMonitorService(manager)
+
+	return manager
 }
 
 // RegisterFactory 注册任务工厂
@@ -196,4 +202,9 @@ func (m *Manager) GetRegistry() *Registry {
 // GetDependencyManager 获取依赖管理器
 func (m *Manager) GetDependencyManager() *DependencyManager {
 	return m.dependencyManager
+}
+
+// GetMonitorService 获取监控服务
+func (m *Manager) GetMonitorService() *MonitorService {
+	return m.monitorService
 }

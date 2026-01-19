@@ -191,17 +191,51 @@ func (s *productSyncServiceImpl) buildEnrichedSkuInfo(
 	}
 
 	// 查询映射关系
-	mapping, err := s.mappingClient.GetProductImportMappingByPlatformProductIdAndStore(&managementapi.ProductImportMappingGetByPlatformProductIdAndStoreReqDTO{
+	mapping, err := s.mappingClient.GetProductImportMappingByPlatformProductId(&managementapi.ProductImportMappingGetReqDTO{
 		PlatformProductId: sku.SkuCode,
-		StoreId:           storeID,
 	})
 
-	if err != nil {
+	if err != nil || mapping == nil {
 		s.logger.WithError(err).WithFields(logrus.Fields{
 			"sku_code": sku.SkuCode,
 			"store_id": storeID,
-		}).Debug("查询SKU映射关系失败")
-	} else if mapping != nil {
+		}).Warn("查询SKU映射关系失败")
+
+		// 尝试自动修复映射关系
+		// if s.repairService != nil {
+		// 	s.logger.WithFields(logrus.Fields{
+		// 		"sku_code": sku.SkuCode,
+		// 		"store_id": storeID,
+		// 	}).Info("尝试自动修复SKU映射关系")
+
+		// 	repairResult, repairErr := s.repairService.AutoRepairMapping(
+		// 		context.Background(),
+		// 		sku.SkuCode,
+		// 		storeID,
+		// 		fmt.Sprintf("查询映射关系失败: %v", err),
+		// 	)
+
+		// 	if repairErr != nil {
+		// 		s.logger.WithError(repairErr).WithFields(logrus.Fields{
+		// 			"sku_code": sku.SkuCode,
+		// 			"store_id": storeID,
+		// 		}).Warn("自动修复SKU映射关系失败")
+		// 	} else if repairResult != nil && repairResult.Success {
+		// 		s.logger.WithFields(logrus.Fields{
+		// 			"sku_code": sku.SkuCode,
+		// 			"store_id": storeID,
+		// 		}).Info("自动修复SKU映射关系成功")
+		// 		enrichedSku.MappingInfo = repairResult.MappingInfo
+		// 	} else {
+		// 		s.logger.WithFields(logrus.Fields{
+		// 			"sku_code": sku.SkuCode,
+		// 			"store_id": storeID,
+		// 			"error":    repairResult.Error,
+		// 		}).Warn("自动修复SKU映射关系未成功")
+		// 	}
+		// }
+	} else {
+		// 查询成功，mapping不为nil
 		enrichedSku.MappingInfo = mapping
 	}
 

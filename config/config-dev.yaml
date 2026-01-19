@@ -58,7 +58,7 @@ management:
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [689]  # 店铺ID列表
+  storeIDs: [691]  # 店铺ID列表
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
@@ -87,7 +87,7 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: true            # 是否启用SHEIN处理器（处理上架任务）
+    enabled: false            # 是否启用SHEIN处理器（处理上架任务）
     schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
@@ -100,7 +100,7 @@ platforms:
       interval: 86400        # 执行间隔（秒），默认24小时
     # 库存同步配置
     inventorySync:
-      enabled: false        # 启用库存同步
+      enabled: true        # 启用库存同步
       interval: 43200        # 执行间隔（秒），默认12小时
     # 活动报名配置
     activityRegistration:

@@ -3,6 +3,8 @@ package scheduler
 
 import (
 	"task-processor/internal/platforms/shein/api/marketing"
+
+	"github.com/sirupsen/logrus"
 )
 
 // calculateActivityPrice 根据定价模式计算活动价格
@@ -64,6 +66,16 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 ) *marketing.CalculateSupplyPriceRequest {
 	skcInfoList := make([]marketing.SkcPriceInfo, 0, len(goods))
 
+	// 统计价格计算阶段的过滤情况
+	var (
+		totalInputGoods    = len(goods)
+		skippedByProfit    = 0
+		skippedByCostPrice = 0
+		skippedByZeroPrice = 0
+	)
+
+	s.logger.Infof("开始构建价格计算请求，输入商品数量: %d，定价模式: %s", totalInputGoods, config.PriceMode)
+
 	// 如果使用利润率模式,需要获取产品的Attributes来提取Amazon价格
 	var skcDataMap map[string]*EnrichedSkcInfo
 	var helper *ProductDataHelper
@@ -93,12 +105,14 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 				if discountValue <= 0 {
 					// 利润率不足 - 计算实际需要的最低售价
 					minPrice := costPrice / (1 - config.MinProfitRate)
-					s.logger.Warningf("商品 %s 利润率不足 (原价: %.2f, 成本: %.2f, 最低售价: %.2f, 要求利润率: %.2f%%)，跳过",
+					s.logger.Warnf("商品 %s 利润率不足 (原价: %.2f, 成本: %.2f, 最低售价: %.2f, 要求利润率: %.2f%%)，跳过",
 						g.Skc, g.USSupplyPrice, costPrice, minPrice, config.MinProfitRate*100)
+					skippedByProfit++
 				}
 			} else {
 				// 无法获取成本价
-				s.logger.Warningf("商品 %s 无法获取Amazon成本价 (原价: %.2f)，跳过", g.Skc, g.USSupplyPrice)
+				s.logger.Warnf("商品 %s 无法获取Amazon成本价 (原价: %.2f)，跳过", g.Skc, g.USSupplyPrice)
+				skippedByCostPrice++
 			}
 		} else {
 			// 按折扣率计算
@@ -107,7 +121,8 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 
 		// 如果活动价格为0或负数,跳过该商品(利润不足或无法定价)
 		if discountValue <= 0 {
-			s.logger.Warningf("商品 %s 活动价格为 %.2f (原价: %.2f)，跳过", g.Skc, discountValue, g.USSupplyPrice)
+			s.logger.Warnf("商品 %s 活动价格为 %.2f (原价: %.2f)，跳过", g.Skc, discountValue, g.USSupplyPrice)
+			skippedByZeroPrice++
 			continue
 		}
 
@@ -126,6 +141,15 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 			SkuInfoList: skuInfoList,
 		})
 	}
+
+	// 输出价格计算阶段的统计信息
+	s.logger.WithFields(logrus.Fields{
+		"total_input_goods":     totalInputGoods,
+		"skipped_by_profit":     skippedByProfit,
+		"skipped_by_cost_price": skippedByCostPrice,
+		"skipped_by_zero_price": skippedByZeroPrice,
+		"final_calc_goods":      len(skcInfoList),
+	}).Info("价格计算阶段统计")
 
 	return &marketing.CalculateSupplyPriceRequest{
 		Currency:      config.Currency,

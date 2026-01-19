@@ -1,7 +1,6 @@
 package browser
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -223,38 +222,4 @@ func GetDefaultUserDataDir(identifier string) string {
 	}
 	execDir := filepath.Dir(execPath)
 	return filepath.Join(execDir, "chromeData", identifier)
-}
-
-// LogFingerprintConfig 打印指纹配置（调试用）
-func LogFingerprintConfig(fingerprint *FingerprintConfig) {
-	if fingerprint == nil {
-		return
-	}
-	data, _ := json.MarshalIndent(fingerprint, "", "  ")
-	logrus.Debugf("指纹配置: %s", string(data))
-}
-
-// LogConfigDetails 详细记录配置信息
-func LogConfigDetails(config *BrowserConfig, fingerprint *FingerprintConfig) {
-	logrus.WithFields(logrus.Fields{
-		"platform":         config.FingerprintPlatform,
-		"platform_version": config.FingerprintPlatformVersion,
-		"brand":            config.FingerprintBrand,
-		"brand_version":    config.FingerprintBrandVersion,
-		"hardware_cores":   config.FingerprintHardwareConcurrency,
-		"gpu_vendor":       config.FingerprintGPUVendor,
-		"gpu_renderer":     config.FingerprintGPURenderer,
-		"language":         config.Language,
-		"timezone":         config.Timezone,
-		"viewport":         fmt.Sprintf("%dx%d", config.ViewportWidth, config.ViewportHeight),
-		"fingerprint_seed": config.FingerprintSeed,
-	}).Info("浏览器配置详情")
-
-	if fingerprint != nil {
-		logrus.WithFields(logrus.Fields{
-			"gpu_info":   fingerprint.GPU,
-			"webrtc_ips": fingerprint.WebRTC,
-			"languages":  fingerprint.Languages,
-		}).Info("指纹配置详情")
-	}
 }

@@ -37,6 +37,7 @@ type productSyncServiceImpl struct {
 	priceManager     *repo.PriceManager
 	mappingClient    managementapi.ProductImportMappingAPI
 	storeAPI         managementapi.StoreAPI
+	repairService    MappingRepairService // 新增修复服务
 	logger           *logrus.Entry
 }
 
@@ -49,7 +50,7 @@ func NewProductSyncService(
 	mappingClient managementapi.ProductImportMappingAPI,
 	storeAPI managementapi.StoreAPI,
 ) ProductSyncService {
-	return &productSyncServiceImpl{
+	service := &productSyncServiceImpl{
 		managementClient: managementClient,
 		productAPI:       productAPI,
 		inventoryManager: inventoryManager,
@@ -58,6 +59,16 @@ func NewProductSyncService(
 		storeAPI:         storeAPI,
 		logger:           logrus.WithField("component", "ProductSyncService"),
 	}
+
+	// 创建修复服务
+	service.repairService = NewMappingRepairService(
+		mappingClient,
+		storeAPI,
+		productAPI,
+		DefaultMappingRepairConfig(),
+	)
+
+	return service
 }
 
 // FetchProductList 获取产品列表
