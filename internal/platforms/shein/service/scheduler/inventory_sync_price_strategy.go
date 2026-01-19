@@ -106,7 +106,7 @@ func (s *inventorySyncServiceImpl) handleLowProfitRate(
 ) error {
 	action := strategy.LowProfitAction
 	if action == "" {
-		action = "SET_ZERO_STOCK" // 默认设置库存为0
+		action = "NONE" // 默认设置库存为0
 	}
 
 	s.logger.WithFields(logrus.Fields{

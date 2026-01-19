@@ -16,11 +16,12 @@ type TimeLimitedDiscountConfig struct {
 	// 活动规则
 	DiscountRate  float64 // 折扣率（0-1之间，如0.4表示打6折，即40%off）
 	MinProfitRate float64 // 最低利润率（0-1之间，如0.15表示15%利润率）
-	PriceMode     string  // 定价模式（DISCOUNT:按折扣率, PROFIT:按最低利润率）
-	GoodsLimit    int     // 商品限制（0:不限购, 1:限购）
-	GoodsLimitNum int     // 商品限制数量（单用户限购数量）
-	StockLimit    bool    // 是否启用活动库存限量
-	StockPercent  int     // 活动库存限量百分比（1-100）
+
+	PriceMode     string // 定价模式（DISCOUNT:按折扣率, PROFIT:按最低利润率）
+	GoodsLimit    int    // 商品限制（0:不限购, 1:限购）
+	GoodsLimitNum int    // 商品限制数量（单用户限购数量）
+	StockLimit    bool   // 是否启用活动库存限量
+	StockPercent  int    // 活动库存限量百分比（1-100）
 
 	// 商品筛选条件
 	EffectiveCenterList []int // 生效中心列表
@@ -39,31 +40,35 @@ type TimeLimitedDiscountConfig struct {
 	// 价格风险控制
 	AllowRiskProducts bool    // 是否允许有风险的商品
 	MaxWarningValue   float64 // 最大警告值
+
+	// 价格调整
+	FixedPriceAdjustment float64 // 固定价格调整值（在最低售价基础上增加的固定金额）
 }
 
 // DefaultTimeLimitedDiscountConfig 返回默认配置
 func DefaultTimeLimitedDiscountConfig() TimeLimitedDiscountConfig {
 	return TimeLimitedDiscountConfig{
-		TimeZone:            "America/Los_Angeles",
-		RefToolID:           30,
-		SubTypeID:           2,
-		DiscountRate:        0.4,        // 默认40%off（打6折）
-		MinProfitRate:       0.15,       // 默认15%利润率
-		PriceMode:           "DISCOUNT", // 默认按折扣率定价
-		GoodsLimit:          0,          // 默认不限购
-		GoodsLimitNum:       1,          // 默认限购数量为1
-		StockLimit:          false,      // 默认不限量
-		StockPercent:        100,        // 默认100%库存
-		EffectiveCenterList: []int{2},
-		IsShelf:             1,
-		PageSize:            100,
-		Currency:            "USD",
-		SceneID:             1,
-		PricingType:         2,
-		DefaultAttendNum:    30,
-		DefaultStockNum:     30,
-		AllowRiskProducts:   false,
-		MaxWarningValue:     0,
+		TimeZone:             "America/Los_Angeles",
+		RefToolID:            30,
+		SubTypeID:            2,
+		DiscountRate:         0.4,        // 默认40%off（打6折）
+		MinProfitRate:        0.15,       // 默认15%利润率
+		PriceMode:            "DISCOUNT", // 默认按折扣率定价
+		GoodsLimit:           0,          // 默认不限购
+		GoodsLimitNum:        1,          // 默认限购数量为1
+		StockLimit:           false,      // 默认不限量
+		StockPercent:         100,        // 默认100%库存
+		EffectiveCenterList:  []int{2},
+		IsShelf:              1,
+		PageSize:             100,
+		Currency:             "USD",
+		SceneID:              1,
+		PricingType:          2,
+		DefaultAttendNum:     30,
+		DefaultStockNum:      30,
+		AllowRiskProducts:    false,
+		MaxWarningValue:      0,
+		FixedPriceAdjustment: 0, // 默认不添加固定调整值
 	}
 }
 

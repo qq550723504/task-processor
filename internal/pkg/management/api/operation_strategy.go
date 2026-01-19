@@ -51,6 +51,9 @@ type OperationStrategyDTO struct {
 	TimeLimitedStockLimit        bool    `json:"timeLimitedStockLimit"`        // 限时折扣-是否启用活动库存限量（true:限量, false:不限量）
 	TimeLimitedStockLimitPercent int     `json:"timeLimitedStockLimitPercent"` // 限时折扣-活动库存限量百分比（当StockLimit=true时生效，1-100）
 
+	// 价格调整配置
+	FixedPriceAdjustment float64 `json:"fixedPriceAdjustment"` // 固定价格调整值（在最低售价基础上增加的固定金额）
+
 	// 价格变化处理策略
 	PriceIncreaseThreshold float64 `json:"priceIncreaseThreshold"` // 价格上涨阈值（百分比，如10.0表示10%）
 	PriceDecreaseThreshold float64 `json:"priceDecreaseThreshold"` // 价格下降阈值（百分比，如5.0表示5%）

@@ -49,7 +49,7 @@ func NewUnifiedTaskFetcher(
 	}
 
 	fetcher := &TaskFetcher{
-		BaseComponent:    lifecycle.NewBaseComponent("TaskFetcher"),
+		BaseComponent:    lifecycle.NewBaseComponent("TaskFetcher", []string{}, 50),
 		config:           cfg,
 		managementClient: managementClient,
 		submitters:       submitters,

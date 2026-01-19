@@ -34,13 +34,6 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 		timeSinceLastCheck := time.Since(lastCheckTimeObj)
 		if timeSinceLastCheck < 24*time.Hour {
 			// Amazon监控数据在24小时内已检查过，跳过
-			s.logger.WithFields(logrus.Fields{
-				"product_id":       prod.ProductID,
-				"asin":             asin,
-				"platform_sku":     s.getStringValue(mappingInfo.Sku),
-				"last_check_time":  lastCheckTimeObj.Format("2006-01-02 15:04:05"),
-				"time_since_check": timeSinceLastCheck.Round(time.Minute).String(),
-			}).Debug("Amazon监控数据在24小时内已检查过，跳过")
 			return nil
 		}
 	}
@@ -81,10 +74,10 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	result.AmazonFetched++
 	resultMutex.Unlock()
 
-	// 异步更新Attributes中的Amazon数据
+	// 更新Attributes中的Amazon数据
 	go s.updateAttributesWithAmazonData(prod, s.getStringValue(mappingInfo.Sku), amazonProduct, storeID)
 
-	// 异步记录库存和价格历史（每天一次）
+	// 记录库存和价格历史（每天一次）
 	go s.recordInventoryAndPrice(asin, region, amazonProduct, prod, skuMapping, storeID)
 
 	// 检查价格变化

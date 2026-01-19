@@ -121,14 +121,12 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 	}
 
 	if priceMode == "PROFIT" {
-		// 按最低利润率定价
-		configList = s.buildActivityConfigsByProfit(products, strategy.ActivityMinProfitRate, strategy.ActivityStockRatio, strategy.StoreID)
+		// 按最低利润率定价，使用管理系统配置的固定价格调整值
+		configList = s.buildActivityConfigsByProfit(products, strategy.ActivityMinProfitRate, strategy.ActivityStockRatio, strategy.StoreID, strategy.FixedPriceAdjustment)
 	} else {
 		// 按折扣率定价
-		dropRate := int(strategy.ActivityDiscountRate * 100)
-		if dropRate <= 0 || dropRate > 100 {
-			dropRate = 10 // 默认10%
-		}
+		dropRate := CalculateDropRateFromDiscount(strategy.ActivityDiscountRate, s.logger)
+		s.logger.Debugf("使用折扣率: %d%%", dropRate)
 		configList = s.buildActivityConfigsWithStrategy(products, dropRate, strategy.ActivityStockRatio, strategy.StoreID)
 	}
 

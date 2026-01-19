@@ -35,10 +35,8 @@ func (s *activityRegistrationServiceImpl) registerPromotionProducts(
 	}
 
 	// 计算折扣率
-	dropRate := int(strategy.ActivityDiscountRate * 100)
-	if dropRate <= 0 || dropRate > 100 {
-		dropRate = 10
-	}
+	dropRate := CalculateDropRateFromDiscount(strategy.ActivityDiscountRate, s.logger)
+	s.logger.Debugf("使用折扣率: %d%%", dropRate)
 
 	// 构建活动配置列表
 	configList := s.buildActivityConfigsWithStrategy(products, dropRate, strategy.ActivityStockRatio, strategy.StoreID)

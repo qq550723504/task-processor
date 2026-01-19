@@ -31,7 +31,7 @@ func NewMetricsCollector(logger *logrus.Logger, interval time.Duration) *Metrics
 	}
 
 	return &MetricsCollector{
-		BaseComponent: lifecycle.NewBaseComponent("MetricsCollector"),
+		BaseComponent: lifecycle.NewBaseComponent("MetricsCollector", []string{}, 100),
 		logger:        logger,
 		metrics:       make(map[string]*Metric),
 		interval:      interval,

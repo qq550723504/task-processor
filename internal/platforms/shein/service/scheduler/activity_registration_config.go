@@ -85,13 +85,28 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigs(
 
 		// 计算活动库存
 		actStock := s.calculateActivityStock(product.Stock, stockRatio)
+
+		// 确保活动库存和预留库存都是正整数
+		if actStock <= 0 {
+			s.logger.Warnf("产品 [%s] 活动库存为0，跳过", product.Skc)
+			skippedNoPriceData++
+			continue
+		}
+
+		reservedStock := product.Stock
+		if reservedStock <= 0 {
+			s.logger.Warnf("产品 [%s] 预留库存为0，跳过", product.Skc)
+			skippedNoPriceData++
+			continue
+		}
+
 		sitePriceInfoList := []marketing.ActivitySitePriceInfo{}
 		// 构建活动配置
 		config := marketing.ActivityConfig{
 			Skc:               product.Skc,
 			ActStock:          actStock,
 			DropRate:          dropRate,
-			ReservedActStock:  product.Stock,
+			ReservedActStock:  reservedStock,
 			SitePriceInfoList: sitePriceInfoList,
 		}
 
@@ -125,6 +140,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 	minProfitRate float64,
 	stockRatio float64,
 	storeID int64,
+	fixedPriceAdjustment float64, // 添加固定价格调整值参数
 ) []marketing.ActivityConfig {
 	configList := make([]marketing.ActivityConfig, 0, len(products))
 
@@ -210,11 +226,11 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 				continue
 			}
 
-			// 按最低利润率计算活动价格
-			activityPrice := calculatePriceByProfit(originalPrice, costPrice, minProfitRate)
+			// 按最低利润率计算活动价格（使用固定价格调整值）
+			activityPrice := calculatePriceByProfit(originalPrice, costPrice, minProfitRate, fixedPriceAdjustment)
 			if activityPrice <= 0 {
-				s.logger.Warningf("SKU [%s] 利润率不足 (原价: %.2f, 成本: %.2f, 要求利润率: %.2f%%)，整个SKC跳过",
-					sku.SkuCode, originalPrice, costPrice, minProfitRate*100)
+				s.logger.Warningf("SKU [%s] 利润率不足 (原价: %.2f, 成本: %.2f, 要求利润率: %.2f%%, 固定调整: %.2f)，整个SKC跳过",
+					sku.SkuCode, originalPrice, costPrice, minProfitRate*100, fixedPriceAdjustment)
 				// 如果有任何一个SKU不满足利润率要求，整个SKC都跳过
 				allSkusValid = false
 				break
@@ -239,15 +255,25 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 		discountRate := (avgOriginalPrice - avgActivityPrice) / avgOriginalPrice
 		dropRate := int(discountRate * 100)
 
-		// 确保折扣率在合理范围内
-		if dropRate < 0 {
-			dropRate = 0
-		} else if dropRate > 100 {
-			dropRate = 100
-		}
+		// 确保折扣率在合理范围内（SHEIN API要求1-99）
+		dropRate = ValidateDropRate(dropRate, discountRate, s.logger)
 
 		// 计算活动库存
 		actStock := s.calculateActivityStock(product.Stock, stockRatio)
+
+		// 确保活动库存和预留库存都是正整数
+		if actStock <= 0 {
+			s.logger.Warnf("产品 [%s] 活动库存为0，跳过", product.Skc)
+			skippedInsufficientProfit++
+			continue
+		}
+
+		reservedStock := product.Stock
+		if reservedStock <= 0 {
+			s.logger.Warnf("产品 [%s] 预留库存为0，跳过", product.Skc)
+			skippedInsufficientProfit++
+			continue
+		}
 
 		// 由于Attributes中没有SitePriceInfoList，且提交时可以为空，我们构造一个空的站点价格信息列表
 		sitePriceInfoList := []marketing.ActivitySitePriceInfo{}
@@ -257,7 +283,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 			Skc:               product.Skc,
 			ActStock:          actStock,
 			DropRate:          dropRate,
-			ReservedActStock:  product.Stock, // todo:改为配置
+			ReservedActStock:  reservedStock,
 			SitePriceInfoList: sitePriceInfoList,
 		}
 
@@ -293,12 +319,8 @@ func (s *activityRegistrationServiceImpl) calculateEquivalentDropRate(
 	discountRate := (originalPrice - activityPrice) / originalPrice
 	dropRate := int(discountRate * 100)
 
-	// 确保在合理范围内
-	if dropRate < 0 {
-		dropRate = 0
-	} else if dropRate > 100 {
-		dropRate = 100
-	}
+	// 确保在合理范围内（SHEIN API要求1-99）
+	dropRate = ValidateDropRate(dropRate, discountRate, s.logger)
 
 	return dropRate
 }
@@ -369,18 +391,22 @@ func (s *activityRegistrationServiceImpl) buildTimeLimitedDiscountConfig(
 		config.StockPercent = strategy.TimeLimitedStockLimitPercent
 	}
 
+	// 配置固定价格调整值
+	config.FixedPriceAdjustment = strategy.FixedPriceAdjustment
+
 	s.logger.WithFields(logrus.Fields{
-		"activity_name":   config.ActivityName,
-		"start_time":      config.StartTime.Format("2006-01-02 15:04:05"),
-		"end_time":        config.EndTime.Format("2006-01-02 15:04:05"),
-		"price_mode":      config.PriceMode,
-		"discount_rate":   config.DiscountRate,
-		"min_profit_rate": config.MinProfitRate,
-		"goods_limit":     config.GoodsLimit,
-		"goods_limit_num": config.GoodsLimitNum,
-		"stock_limit":     config.StockLimit,
-		"stock_percent":   config.StockPercent,
-		"default_stock":   config.DefaultStockNum,
+		"activity_name":          config.ActivityName,
+		"start_time":             config.StartTime.Format("2006-01-02 15:04:05"),
+		"end_time":               config.EndTime.Format("2006-01-02 15:04:05"),
+		"price_mode":             config.PriceMode,
+		"discount_rate":          config.DiscountRate,
+		"min_profit_rate":        config.MinProfitRate,
+		"goods_limit":            config.GoodsLimit,
+		"goods_limit_num":        config.GoodsLimitNum,
+		"stock_limit":            config.StockLimit,
+		"stock_percent":          config.StockPercent,
+		"default_stock":          config.DefaultStockNum,
+		"fixed_price_adjustment": config.FixedPriceAdjustment,
 	}).Debug("构建限时折扣配置完成")
 
 	return config

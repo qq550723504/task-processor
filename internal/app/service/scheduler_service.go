@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"task-processor/internal/app/scheduler"
+	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
@@ -22,6 +23,7 @@ type SchedulerService interface {
 type schedulerServiceImpl struct {
 	logger           *logrus.Logger
 	managementClient *management.ClientManager
+	config           *config.Config
 	schedulerManager *scheduler.Manager
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -29,9 +31,11 @@ type schedulerServiceImpl struct {
 }
 
 // NewSchedulerService 创建调度服务
-func NewSchedulerService(logger *logrus.Logger) SchedulerService {
+func NewSchedulerService(logger *logrus.Logger, managementClient *management.ClientManager, cfg *config.Config) SchedulerService {
 	return &schedulerServiceImpl{
-		logger: logger,
+		logger:           logger,
+		managementClient: managementClient,
+		config:           cfg,
 	}
 }
 

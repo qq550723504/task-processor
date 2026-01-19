@@ -1,6 +1,12 @@
 # 统一开发环境配置
 # 支持 TEMU 和 SHEIN 两个平台
 
+# 日志配置
+logging:
+  level: "DEBUG"  # 设置为 DEBUG 级别以显示详细调试信息
+  format: "text"  # text 或 json
+  file: "logs/app.log"
+
 # 处理器配置
 processor:
   maxRetries: 3
@@ -58,7 +64,7 @@ management:
   scopes: ["user.read"]
   tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [691]  # 店铺ID列表
+  storeIDs: [690]  # 店铺ID列表
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
@@ -74,7 +80,7 @@ platforms:
       useAmazonPrice: true  # 是否使用Amazon价格数据进行定价决策
     # 产品同步配置
     productSync:
-      enabled: false        # 启用产品同步
+      enabled: true        # 启用产品同步
       interval: 3600        # 执行间隔（秒），默认1小时
     # 库存同步配置
     inventorySync:
@@ -100,11 +106,11 @@ platforms:
       interval: 86400        # 执行间隔（秒），默认24小时
     # 库存同步配置
     inventorySync:
-      enabled: true        # 启用库存同步
+      enabled: false        # 启用库存同步
       interval: 43200        # 执行间隔（秒），默认12小时
     # 活动报名配置
     activityRegistration:
-      enabled: false        # 启用活动报名
+      enabled: true        # 启用活动报名
       interval: 86400        # 执行间隔（秒），默认24小时
 
   # 1688 平台配置

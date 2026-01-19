@@ -190,45 +190,6 @@ func (s *inventorySyncServiceImpl) updateProductStockViaSHEINAPI(
 		return fmt.Errorf("调用SHEIN API更新库存失败: %w", err)
 	}
 
-	// 更新管理系统中的Attributes
-	for i := range skcList {
-		for j := range skcList[i].SkuInfo {
-			sku := &skcList[i].SkuInfo[j]
-			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
-				sku.UsableInventory = &targetStock
-				if len(sku.InventoryInfo) > 0 {
-					sku.InventoryInfo[0].InventoryNum = targetStock
-					sku.InventoryInfo[0].UsableInventory = targetStock
-				}
-				break
-			}
-		}
-	}
-
-	updatedAttributes, err := json.Marshal(skcList)
-	if err != nil {
-		return fmt.Errorf("序列化更新后的attributes失败: %w", err)
-	}
-
-	// 使用批量更新attributes接口
-	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-	attributesUpdateReq := &managementapi.ProductDataBatchUpdateAttributesReqDTO{
-		Platform: "SHEIN",
-		TenantID: prod.TenantID,
-		StoreID:  storeID,
-		Region:   prod.Region,
-		Products: []managementapi.ProductAttributesItemDTO{
-			{
-				PlatformProductID: prod.PlatformProductID,
-				Attributes:        string(updatedAttributes),
-			},
-		},
-	}
-
-	if _, err := productDataAPI.BatchUpdateAttributes(attributesUpdateReq); err != nil {
-		s.logger.WithError(err).Warn("更新产品attributes失败")
-	}
-
 	s.logger.WithFields(logrus.Fields{
 		"product_id":   prod.ProductID,
 		"spu_name":     spuName,

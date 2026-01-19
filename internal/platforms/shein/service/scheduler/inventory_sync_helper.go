@@ -8,22 +8,51 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
+
+	"github.com/sirupsen/logrus"
 )
 
 // extractMappingInfoFromAttributes 从Attributes JSON中提取所有映射信息和库存
 func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJSON string) []*SKUMappingData {
 	if attributesJSON == "" {
+		s.logger.Debug("产品Attributes为空")
 		return nil
 	}
 
 	var skcList []EnrichedSkcInfo
 	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
+		s.logger.WithError(err).WithField("attributes_length", len(attributesJSON)).Error("解析产品Attributes JSON失败")
 		return nil
 	}
 
+	s.logger.WithField("skc_count", len(skcList)).Debug("成功解析产品Attributes")
+
 	var mappings []*SKUMappingData
-	for _, skc := range skcList {
-		for _, sku := range skc.SkuInfo {
+	totalSkuCount := 0
+	validMappingCount := 0
+
+	for skcIndex, skc := range skcList {
+		s.logger.WithFields(map[string]interface{}{
+			"skc_index": skcIndex,
+			"skc_code":  skc.SkcCode,
+			"sku_count": len(skc.SkuInfo),
+		}).Debug("处理SKC数据")
+
+		for skuIndex, sku := range skc.SkuInfo {
+			totalSkuCount++
+
+			s.logger.WithFields(map[string]interface{}{
+				"skc_index":        skcIndex,
+				"sku_index":        skuIndex,
+				"has_mapping_info": sku.MappingInfo != nil,
+				"product_id": func() string {
+					if sku.MappingInfo != nil {
+						return sku.MappingInfo.ProductId
+					}
+					return "nil"
+				}(),
+			}).Debug("检查SKU映射信息")
+
 			if sku.MappingInfo != nil && sku.MappingInfo.ProductId != "" {
 				totalStock := 0
 				if sku.UsableInventory != nil {
@@ -34,9 +63,25 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 					MappingInfo: sku.MappingInfo,
 					Stock:       totalStock,
 				})
+				validMappingCount++
+
+				s.logger.WithFields(map[string]interface{}{
+					"skc_code":     skc.SkcCode,
+					"sku_index":    skuIndex,
+					"asin":         sku.MappingInfo.ProductId,
+					"platform_sku": s.getStringValue(sku.MappingInfo.Sku),
+					"stock":        totalStock,
+				}).Debug("找到有效的SKU映射")
 			}
 		}
 	}
+
+	s.logger.WithFields(map[string]interface{}{
+		"total_skc":         len(skcList),
+		"total_sku":         totalSkuCount,
+		"valid_mappings":    validMappingCount,
+		"returned_mappings": len(mappings),
+	}).Info("提取映射信息完成")
 
 	return mappings
 }
@@ -182,4 +227,55 @@ func (s *inventorySyncServiceImpl) getAmazonMonitorLastCheckTime(attributesJSON 
 	}
 
 	return 0
+}
+
+// validateAttributesStructure 验证 Attributes JSON 结构
+func (s *inventorySyncServiceImpl) validateAttributesStructure(attributesJSON string) error {
+	if attributesJSON == "" {
+		return fmt.Errorf("attributes JSON 为空")
+	}
+
+	// 尝试解析为通用 JSON 结构
+	var genericData interface{}
+	if err := json.Unmarshal([]byte(attributesJSON), &genericData); err != nil {
+		return fmt.Errorf("JSON 格式无效: %w", err)
+	}
+
+	// 尝试解析为 EnrichedSkcInfo 数组
+	var skcList []EnrichedSkcInfo
+	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
+		return fmt.Errorf("无法解析为 EnrichedSkcInfo 数组: %w", err)
+	}
+
+	s.logger.WithFields(map[string]interface{}{
+		"skc_count":   len(skcList),
+		"json_length": len(attributesJSON),
+	}).Debug("Attributes JSON 结构验证通过")
+
+	return nil
+}
+
+// enableDebugLogging 启用调试日志（用于问题排查）
+func (s *inventorySyncServiceImpl) enableDebugLogging() {
+	logrus.SetLevel(logrus.DebugLevel)
+	s.logger.Debug("已启用 Debug 级别日志")
+}
+
+// debugProductAttributes 调试产品属性结构
+func (s *inventorySyncServiceImpl) debugProductAttributes(productID string, attributesJSON string) {
+	s.logger.WithFields(map[string]interface{}{
+		"product_id":        productID,
+		"attributes_length": len(attributesJSON),
+		"attributes_sample": func() string {
+			if len(attributesJSON) > 500 {
+				return attributesJSON[:500] + "..."
+			}
+			return attributesJSON
+		}(),
+	}).Debug("产品属性详情")
+
+	// 验证 JSON 结构
+	if err := s.validateAttributesStructure(attributesJSON); err != nil {
+		s.logger.WithError(err).WithField("product_id", productID).Error("产品属性结构验证失败")
+	}
 }

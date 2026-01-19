@@ -21,7 +21,7 @@ import (
 // processorServiceImpl 处理器服务实现
 type processorServiceImpl struct {
 	logger           *logrus.Logger
-	lifecycleManager *lifecycle.Manager
+	lifecycleManager lifecycle.LifecycleManager
 
 	// 处理器组件
 	temuProcessor    *temu.TemuProcessor
@@ -86,7 +86,7 @@ func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *c
 	SetGlobalConfig(cfg)
 
 	// 创建调度服务
-	s.schedulerService = NewSchedulerService(s.logger)
+	s.schedulerService = NewSchedulerService(s.logger, s.managementClient, cfg)
 
 	// 启动调度服务
 	if err := s.schedulerService.Start(ctx); err != nil {

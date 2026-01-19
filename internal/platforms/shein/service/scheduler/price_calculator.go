@@ -16,13 +16,13 @@ func calculateActivityPrice(
 	switch config.PriceMode {
 	case "PROFIT":
 		// 按最低利润率定价
-		return calculatePriceByProfit(originalPrice, costPrice, config.MinProfitRate)
+		return calculatePriceByProfit(originalPrice, costPrice, config.MinProfitRate, config.FixedPriceAdjustment)
 	case "DISCOUNT":
 		// 按折扣率定价
 		return calculatePriceByDiscount(originalPrice, config.DiscountRate)
 	default:
 		// 默认按折扣率定价
-		return calculatePriceByProfit(originalPrice, costPrice, config.MinProfitRate)
+		return calculatePriceByProfit(originalPrice, costPrice, config.MinProfitRate, config.FixedPriceAdjustment)
 	}
 }
 
@@ -32,9 +32,9 @@ func calculatePriceByDiscount(originalPrice float64, discountRate float64) float
 }
 
 // calculatePriceByProfit 按最低利润率计算价格
-func calculatePriceByProfit(originalPrice float64, costPrice float64, minProfitRate float64) float64 {
-	// 计算最低售价 = 成本价 / (1 - 最低利润率)
-	minPrice := costPrice / (1 - minProfitRate)
+func calculatePriceByProfit(originalPrice float64, costPrice float64, minProfitRate float64, fixedAdjustment float64) float64 {
+	// 计算最低售价 = 成本价 / (1 - 最低利润率) + 固定调整值
+	minPrice := costPrice/(1-minProfitRate) + fixedAdjustment
 
 	// 如果原价低于最低售价
 	if originalPrice < minPrice {
@@ -101,12 +101,12 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 
 			if costPrice > 0 {
 				// 按最低利润率和实际成本价计算
-				discountValue = calculatePriceByProfit(g.USSupplyPrice, costPrice, config.MinProfitRate)
+				discountValue = calculatePriceByProfit(g.USSupplyPrice, costPrice, config.MinProfitRate, config.FixedPriceAdjustment)
 				if discountValue <= 0 {
-					// 利润率不足 - 计算实际需要的最低售价
-					minPrice := costPrice / (1 - config.MinProfitRate)
-					s.logger.Warnf("商品 %s 利润率不足 (原价: %.2f, 成本: %.2f, 最低售价: %.2f, 要求利润率: %.2f%%)，跳过",
-						g.Skc, g.USSupplyPrice, costPrice, minPrice, config.MinProfitRate*100)
+					// 利润率不足 - 计算实际需要的最低售价并添加固定调整值
+					minPrice := costPrice/(1-config.MinProfitRate) + config.FixedPriceAdjustment
+					s.logger.Warnf("商品 %s 利润率不足 (原价: %.2f, 成本: %.2f, 最低售价: %.2f, 固定调整: %.2f, 要求利润率: %.2f%%)，跳过",
+						g.Skc, g.USSupplyPrice, costPrice, minPrice, config.FixedPriceAdjustment, config.MinProfitRate*100)
 					skippedByProfit++
 				}
 			} else {

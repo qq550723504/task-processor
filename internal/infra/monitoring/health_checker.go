@@ -36,7 +36,7 @@ func NewHealthChecker(logger *logrus.Logger, interval time.Duration) *HealthChec
 	}
 
 	return &HealthChecker{
-		BaseComponent: lifecycle.NewBaseComponent("HealthChecker"),
+		BaseComponent: lifecycle.NewBaseComponent("HealthChecker", []string{}, 100),
 		logger:        logger,
 		checks:        make(map[string]HealthCheck),
 		interval:      interval,

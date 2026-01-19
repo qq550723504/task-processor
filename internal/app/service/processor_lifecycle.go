@@ -126,7 +126,7 @@ func (s *processorServiceImpl) GetStatus() map[string]any {
 			"shein": s.sheinProcessor != nil,
 		},
 		"taskFetcher": s.taskFetcher != nil && s.taskFetcher.IsRunning(),
-		"components":  s.lifecycleManager.GetComponentStatus(),
+		"components":  s.lifecycleManager.GetStatus(),
 	}
 
 	// 添加调度服务状态

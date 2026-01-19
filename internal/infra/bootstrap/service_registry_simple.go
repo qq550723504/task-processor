@@ -1,0 +1,213 @@
+// Package bootstrap 提供简化的服务注册表实现
+package bootstrap
+
+import (
+	"fmt"
+
+	"task-processor/internal/app/service"
+	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/infra/auth"
+	"task-processor/internal/infra/di"
+	"task-processor/internal/pkg/management"
+
+	"github.com/sirupsen/logrus"
+)
+
+// ServiceRegistrySimple 简化的服务注册表
+type ServiceRegistrySimple struct {
+	logger *logrus.Logger
+}
+
+// NewServiceRegistrySimple 创建简化的服务注册表
+func NewServiceRegistrySimple(logger *logrus.Logger) *ServiceRegistrySimple {
+	return &ServiceRegistrySimple{
+		logger: logger,
+	}
+}
+
+// RegisterAllServices 注册所有业务服务到容器
+func (s *ServiceRegistrySimple) RegisterAllServices(container di.Container, cfg *config.Config) error {
+	// 注册基础服务
+	if err := s.registerBaseServices(container); err != nil {
+		return fmt.Errorf("注册基础服务失败: %w", err)
+	}
+
+	// 注册认证服务
+	if err := s.registerAuthServices(container); err != nil {
+		return fmt.Errorf("注册认证服务失败: %w", err)
+	}
+
+	// 注册共享资源
+	if err := s.registerSharedResources(container); err != nil {
+		return fmt.Errorf("注册共享资源失败: %w", err)
+	}
+
+	// 注册应用服务
+	if err := s.registerApplicationServices(container); err != nil {
+		return fmt.Errorf("注册应用服务失败: %w", err)
+	}
+
+	return nil
+}
+
+// registerBaseServices 注册基础服务
+func (s *ServiceRegistrySimple) registerBaseServices(container di.Container) error {
+	s.logger.Debug("注册基础服务...")
+
+	// 注册配置服务
+	if err := container.RegisterSingleton("configService", func(c di.Container) (any, error) {
+		return service.NewConfigService(), nil
+	}); err != nil {
+		return err
+	}
+
+	// 注册更新服务
+	if err := container.RegisterSingleton("updaterService", func(c di.Container) (any, error) {
+		loggerInstance, err := c.Get("logger")
+		if err != nil {
+			return nil, fmt.Errorf("获取日志器失败: %w", err)
+		}
+		return service.NewUpdaterService(loggerInstance.(*logrus.Logger)), nil
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// registerAuthServices 注册认证服务
+func (s *ServiceRegistrySimple) registerAuthServices(container di.Container) error {
+	s.logger.Debug("注册认证服务...")
+
+	// 注册认证服务
+	if err := container.RegisterSingleton("authService", func(c di.Container) (any, error) {
+		loggerInstance, err := c.Get("logger")
+		if err != nil {
+			return nil, fmt.Errorf("获取日志器失败: %w", err)
+		}
+		return service.NewAuthService(loggerInstance.(*logrus.Logger)), nil
+	}); err != nil {
+		return err
+	}
+
+	// 注册认证客户端
+	if err := container.RegisterSingleton("authClient", func(c di.Container) (any, error) {
+		authServiceInstance, err := c.Get("authService")
+		if err != nil {
+			return nil, fmt.Errorf("获取认证服务失败: %w", err)
+		}
+		configInstance, err := c.Get("config")
+		if err != nil {
+			return nil, fmt.Errorf("获取配置失败: %w", err)
+		}
+
+		authService := authServiceInstance.(*service.AuthService)
+		config := configInstance.(*config.Config)
+
+		return authService.InitializeClientCredentials(config)
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// registerSharedResources 注册共享资源
+func (s *ServiceRegistrySimple) registerSharedResources(container di.Container) error {
+	s.logger.Debug("注册共享资源...")
+
+	// 注册Amazon处理器
+	if err := container.RegisterSingleton("amazonProcessor", func(c di.Container) (any, error) {
+		configInstance, err := c.Get("config")
+		if err != nil {
+			return nil, fmt.Errorf("获取配置失败: %w", err)
+		}
+		config := configInstance.(*config.Config)
+		return amazon.NewAmazonProcessor(&config.Amazon), nil
+	}); err != nil {
+		return err
+	}
+
+	// 注册管理客户端
+	if err := container.RegisterSingleton("managementClient", func(c di.Container) (any, error) {
+		configInstance, err := c.Get("config")
+		if err != nil {
+			return nil, fmt.Errorf("获取配置失败: %w", err)
+		}
+		authClientInstance, err := c.Get("authClient")
+		if err != nil {
+			return nil, fmt.Errorf("获取认证客户端失败: %w", err)
+		}
+
+		config := configInstance.(*config.Config)
+		authClient := authClientInstance.(*auth.ClientCredentialsAuthClient)
+
+		// 获取访问令牌
+		accessToken, err := authClient.GetAccessToken()
+		if err != nil {
+			return nil, fmt.Errorf("获取访问令牌失败: %w", err)
+		}
+
+		// 创建管理客户端
+		managementClient := management.NewClientManager(&config.Management)
+
+		// 设置访问令牌
+		client := managementClient.GetClient()
+		client.SetUserToken(accessToken, config.Management.TenantID)
+
+		return managementClient, nil
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// registerApplicationServices 注册应用服务
+func (s *ServiceRegistrySimple) registerApplicationServices(container di.Container) error {
+	s.logger.Debug("注册应用服务...")
+
+	// 注册处理器服务
+	if err := container.RegisterSingleton("processorService", func(c di.Container) (any, error) {
+		loggerInstance, err := c.Get("logger")
+		if err != nil {
+			return nil, fmt.Errorf("获取日志器失败: %w", err)
+		}
+		return service.NewProcessorService(loggerInstance.(*logrus.Logger)), nil
+	}); err != nil {
+		return err
+	}
+
+	// 注册平台处理器
+	platformRegistry := NewPlatformProcessorRegistry(s.logger)
+	if err := platformRegistry.RegisterPlatformProcessors(container); err != nil {
+		return fmt.Errorf("注册平台处理器失败: %w", err)
+	}
+
+	// 注册调度服务
+	if err := container.RegisterSingleton("schedulerService", func(c di.Container) (any, error) {
+		loggerInstance, err := c.Get("logger")
+		if err != nil {
+			return nil, fmt.Errorf("获取日志器失败: %w", err)
+		}
+		managementClientInstance, err := c.Get("managementClient")
+		if err != nil {
+			return nil, fmt.Errorf("获取管理客户端失败: %w", err)
+		}
+		configInstance, err := c.Get("config")
+		if err != nil {
+			return nil, fmt.Errorf("获取配置失败: %w", err)
+		}
+
+		logger := loggerInstance.(*logrus.Logger)
+		managementClient := managementClientInstance.(*management.ClientManager)
+		config := configInstance.(*config.Config)
+
+		return service.NewSchedulerService(logger, managementClient, config), nil
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}

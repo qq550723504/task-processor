@@ -47,6 +47,9 @@ func NewInventorySyncService(
 	rawJsonDataClient managementapi.RawJsonDataAPI,
 	inventoryRecordClient managementapi.InventoryRecordAPI,
 ) InventorySyncService {
+	// 临时设置 Debug 级别以便调试映射问题
+	logrus.SetLevel(logrus.DebugLevel)
+
 	return &inventorySyncServiceImpl{
 		managementClient:      managementClient,
 		productAPI:            productAPI,
@@ -134,10 +137,32 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 				}
 			}()
 
+			// 启用调试日志（仅在需要时）
+			s.enableDebugLogging()
+
+			// 调试产品属性
+			s.debugProductAttributes(product.ProductID, product.Attributes)
+
 			// 从 Attributes 中解析所有 SKU 映射数据
 			skuMappingList := s.extractMappingInfoFromAttributes(product.Attributes)
+
+			s.logger.WithFields(logrus.Fields{
+				"product_id":        product.ProductID,
+				"attributes_length": len(product.Attributes),
+				"mapping_count":     len(skuMappingList),
+			}).Debug("提取产品映射信息")
+
 			if len(skuMappingList) == 0 {
-				s.logger.WithField("product_id", product.ProductID).Debug("产品没有映射信息，跳过")
+				s.logger.WithFields(logrus.Fields{
+					"product_id":        product.ProductID,
+					"attributes_length": len(product.Attributes),
+					"attributes_preview": func() string {
+						if len(product.Attributes) > 200 {
+							return product.Attributes[:200] + "..."
+						}
+						return product.Attributes
+					}(),
+				}).Debug("产品没有映射信息，跳过")
 				resultMutex.Lock()
 				result.SkippedProducts++
 				resultMutex.Unlock()

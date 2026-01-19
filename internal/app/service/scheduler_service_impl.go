@@ -11,10 +11,9 @@ import (
 func (s *schedulerServiceImpl) initializeResources() error {
 	s.logger.Info("初始化调度服务资源...")
 
-	// 获取共享的管理客户端
-	s.managementClient = GetSharedManagementClientInstance()
+	// 验证管理客户端是否已注入
 	if s.managementClient == nil {
-		return fmt.Errorf("无法获取共享管理客户端")
+		return fmt.Errorf("管理客户端未注入")
 	}
 
 	s.logger.Info("✅ 调度服务资源初始化完成")
@@ -25,10 +24,10 @@ func (s *schedulerServiceImpl) initializeResources() error {
 func (s *schedulerServiceImpl) startScheduledTasks() error {
 	s.logger.Info("启动所有调度任务...")
 
-	// 获取配置
-	cfg := GetGlobalConfig()
+	// 使用注入的配置
+	cfg := s.config
 	if cfg == nil {
-		return fmt.Errorf("无法获取全局配置")
+		return fmt.Errorf("配置未注入")
 	}
 
 	// 创建统一调度器管理器

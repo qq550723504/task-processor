@@ -21,7 +21,7 @@ type Container struct {
 	mu               sync.RWMutex
 	logger           *logrus.Logger
 	config           *config.Config
-	lifecycleManager *lifecycle.Manager
+	lifecycleManager lifecycle.LifecycleManager
 
 	// 服务实例
 	configService    *service.ConfigService
@@ -42,7 +42,7 @@ type Container struct {
 func NewContainer(logger *logrus.Logger) *Container {
 	return &Container{
 		logger:           logger,
-		lifecycleManager: lifecycle.NewManager(logger),
+		lifecycleManager: lifecycle.NewLifecycleManager(logger),
 	}
 }
 

@@ -25,6 +25,6 @@ type ProcessorService interface {
 func NewProcessorService(logger *logrus.Logger) ProcessorService {
 	return &processorServiceImpl{
 		logger:           logger,
-		lifecycleManager: lifecycle.NewManager(logger),
+		lifecycleManager: lifecycle.NewLifecycleManager(logger),
 	}
 }
