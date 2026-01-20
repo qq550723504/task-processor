@@ -15,72 +15,63 @@ type ProductDataAPIClientImpl struct {
 }
 
 // BatchCreateOrUpdate 批量创建或更新产品数据
-func (c *ProductDataAPIClientImpl) BatchCreateOrUpdate(products []*api.ProductDataDTO) error {
-	if len(products) == 0 {
-		return nil
+func (c *ProductDataAPIClientImpl) BatchCreateOrUpdate(req *api.ProductDataBatchSaveReqDTO) (int, error) {
+	if req == nil || len(req.Products) == 0 {
+		return 0, nil
 	}
 
 	// 使用新的 RPC API 路径
 	url := fmt.Sprintf("%s/rpc-api/listing/product-data/batch-save", c.baseURL)
 
-	// 按平台分组
-	platformGroups := groupProductsByPlatform(products)
+	// 构建请求体
+	reqBody := c.buildBatchSaveRequestFromDTO(req)
 
-	// 按平台分别调用
-	for platform, groupProducts := range platformGroups {
-		reqBody := c.buildBatchSaveRequest(platform, groupProducts)
-
-		var result APIResponse
-		if err := c.apiRequest(http.MethodPost, url, reqBody, &result); err != nil {
-			return fmt.Errorf("批量保存平台 %s 的产品失败: %w", platform, err)
-		}
-
-		if err := c.ProcessAPIResponse(&result, 0); err != nil {
-			return fmt.Errorf("处理平台 %s 的API响应失败: %w", platform, err)
-		}
+	var result api.CommonResult[int]
+	if err := c.apiRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return 0, fmt.Errorf("批量保存产品失败: %w", err)
 	}
 
-	return nil
-}
-
-// groupProductsByPlatform 按平台分组产品
-func groupProductsByPlatform(products []*api.ProductDataDTO) map[string][]*api.ProductDataDTO {
-	platformGroups := make(map[string][]*api.ProductDataDTO)
-	for _, product := range products {
-		platform := product.Platform
-		if platform == "" {
-			platform = "UNKNOWN"
-		}
-		platformGroups[platform] = append(platformGroups[platform], product)
+	if result.Code != 0 {
+		return 0, fmt.Errorf("批量保存产品失败: %s", result.Msg)
 	}
-	return platformGroups
+
+	return result.Data, nil
 }
 
-// buildBatchSaveRequest 构建批量保存请求体
-func (c *ProductDataAPIClientImpl) buildBatchSaveRequest(platform string, products []*api.ProductDataDTO) map[string]any {
-	productItems := make([]map[string]any, 0, len(products))
+// buildBatchSaveRequestFromDTO 从DTO构建批量保存请求体
+func (c *ProductDataAPIClientImpl) buildBatchSaveRequestFromDTO(req *api.ProductDataBatchSaveReqDTO) map[string]any {
+	productItems := make([]map[string]any, 0, len(req.Products))
 
-	for _, product := range products {
+	for _, product := range req.Products {
 		item := map[string]any{
 			"platformProductId":  product.PlatformProductID,
-			"productName":        product.Title,
-			"productSku":         product.ProductID,
-			"productPrice":       parsePrice(product.OriginalPrice.String()),
-			"productStock":       parseStock(product.Stock.String()),
-			"productCategory":    product.Category,
-			"productImage":       product.MainImageURL,
-			"productDescription": product.Description,
-			"shelfStatus":        product.ShelfStatus,
+			"productName":        product.ProductName,
+			"productSku":         product.ProductSku,
+			"productPrice":       parseFlexiblePrice(product.ProductPrice),
+			"productStock":       product.ProductStock,
+			"productCategory":    product.ProductCategory,
+			"productImage":       product.ProductImage,
+			"productDescription": product.ProductDescription,
 		}
 
+		// 可选字段
+		if product.ShelfStatus != nil {
+			item["shelfStatus"] = *product.ShelfStatus
+		}
+		if product.Brand != "" {
+			item["brand"] = product.Brand
+		}
+		if product.CategoryID != nil {
+			item["categoryId"] = *product.CategoryID
+		}
 		if product.SpecialPrice.String() != "" {
-			item["specialPrice"] = parsePrice(product.SpecialPrice.String())
+			item["specialPrice"] = parseFlexiblePrice(product.SpecialPrice)
 		}
 		if product.PriceCurrency != "" {
 			item["priceCurrency"] = product.PriceCurrency
 		}
-		if product.ImageURLs != "" {
-			item["imageUrls"] = product.ImageURLs
+		if product.ImageUrls != "" {
+			item["imageUrls"] = product.ImageUrls
 		}
 		if product.Attributes != "" {
 			item["attributes"] = product.Attributes
@@ -102,27 +93,36 @@ func (c *ProductDataAPIClientImpl) buildBatchSaveRequest(platform string, produc
 		if product.ShelfTime != nil && !product.ShelfTime.IsZero() {
 			item["shelfTime"] = product.ShelfTime.UnixMilli()
 		}
+		if product.CreateTime != nil && !product.CreateTime.IsZero() {
+			item["createTime"] = product.CreateTime.Format("2006-01-02T15:04:05")
+		}
+		if product.UpdateTime != nil && !product.UpdateTime.IsZero() {
+			item["updateTime"] = product.UpdateTime.Format("2006-01-02T15:04:05")
+		}
 
 		productItems = append(productItems, item)
 	}
 
-	// 从第一个产品中获取租户ID和区域（所有产品应该属于同一租户和区域）
-	var tenantID int64
-	var region string
-	if len(products) > 0 {
-		tenantID = products[0].TenantID
-		region = products[0].Region
-	}
-
 	reqBody := map[string]any{
-		"platform": platform,
-		"tenantId": tenantID,
-		"storeId":  c.StoreID,
-		"region":   region,
+		"platform": req.Platform,
+		"tenantId": req.TenantID,
+		"storeId":  req.StoreID,
+		"region":   req.Region,
 		"products": productItems,
 	}
 
 	return reqBody
+}
+
+// parseFlexiblePrice 解析FlexibleString价格为浮点数
+func parseFlexiblePrice(price types.FlexibleString) float64 {
+	priceStr := price.String()
+	if priceStr == "" {
+		return 0.0
+	}
+	var result float64
+	fmt.Sscanf(priceStr, "%f", &result)
+	return result
 }
 
 // parseStock 解析库存字符串为整数

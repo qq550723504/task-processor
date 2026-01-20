@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"task-processor/internal/pkg/management"
-	"task-processor/internal/pkg/management/api"
 	managementapi "task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/shein/api/product"
@@ -317,49 +316,59 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 		return 0, nil
 	}
 
-	successCount := 0
-	failedCount := 0
 	firstProduct := productDataList[0]
 	productDataAPI := s.managementClient.GetProductDataClient(firstProduct.StoreID)
 
-	// 每处理10%或每10个产品输出一次进度
-	progressInterval := totalCount / 10
-	if progressInterval < 10 {
-		progressInterval = 10
-	}
-	if progressInterval > 100 {
-		progressInterval = 100
+	// 转换为批量请求格式
+	products := make([]managementapi.ProductDataItemDTO, 0, totalCount)
+	for _, productData := range productDataList {
+		item := managementapi.ProductDataItemDTO{
+			PlatformProductID:  productData.PlatformProductID,
+			ProductName:        productData.Title,
+			ProductSku:         productData.ProductID,
+			ProductPrice:       productData.OriginalPrice,
+			ProductStock:       0, // 默认库存，需要根据实际情况设置
+			ProductCategory:    productData.Category,
+			ProductImage:       productData.MainImageURL,
+			ProductDescription: productData.Description,
+			ShelfStatus:        &productData.ShelfStatus,
+			PublishTime:        productData.PublishTime,
+			ShelfTime:          productData.ShelfTime,
+			Brand:              productData.Brand,
+			CategoryID:         &productData.CategoryID,
+			SpecialPrice:       productData.SpecialPrice,
+			PriceCurrency:      productData.PriceCurrency,
+			ImageUrls:          productData.ImageURLs,
+			Attributes:         productData.Attributes,
+			PlatformStatus:     productData.PlatformStatus,
+			PlatformData:       productData.PlatformData,
+			ParentProductID:    productData.ParentProductID,
+			CreateTime:         productData.CreateTime,
+			UpdateTime:         productData.UpdateTime,
+		}
+		products = append(products, item)
 	}
 
-	for i, productData := range productDataList {
-		if err := productDataAPI.BatchCreateOrUpdate([]*api.ProductDataDTO{productData}); err != nil {
-			s.logger.WithFields(logrus.Fields{
-				"spu_code": productData.PlatformProductID,
-				"error":    err,
-			}).Error("保存产品失败")
-			failedCount++
-			continue
-		}
-		successCount++
+	// 构建批量请求
+	batchReq := &managementapi.ProductDataBatchSaveReqDTO{
+		Platform: firstProduct.Platform,
+		TenantID: firstProduct.TenantID,
+		Region:   firstProduct.Region,
+		StoreID:  firstProduct.StoreID,
+		Products: products,
+	}
 
-		// 输出进度日志
-		currentIndex := i + 1
-		if currentIndex%progressInterval == 0 || currentIndex == totalCount {
-			progress := float64(currentIndex) / float64(totalCount) * 100
-			s.logger.WithFields(logrus.Fields{
-				"processed": currentIndex,
-				"total":     totalCount,
-				"progress":  fmt.Sprintf("%.1f%%", progress),
-				"success":   successCount,
-				"failed":    failedCount,
-			}).Infof("产品保存进度: %d/%d (%.1f%%)", currentIndex, totalCount, progress)
-		}
+	// 执行批量保存
+	successCount, err := productDataAPI.BatchCreateOrUpdate(batchReq)
+	if err != nil {
+		s.logger.WithError(err).Error("批量保存产品失败")
+		return 0, fmt.Errorf("批量保存产品失败: %w", err)
 	}
 
 	s.logger.WithFields(logrus.Fields{
 		"total":   totalCount,
 		"success": successCount,
-		"failed":  failedCount,
-	}).Info("保存产品完成")
+	}).Info("批量保存产品完成")
+
 	return successCount, nil
 }

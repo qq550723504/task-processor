@@ -159,41 +159,66 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 		return 0, nil
 	}
 
-	successCount := 0
-	failedCount := 0
 	firstProduct := productDataList[0]
 	productDataAPI := s.managementClient.GetProductDataClient(firstProduct.StoreID)
 
-	// 计算进度输出间隔
-	progressInterval := s.calculateProgressInterval(totalCount)
-
-	for i, productData := range productDataList {
+	// 转换为批量请求格式
+	products := make([]managementapi.ProductDataItemDTO, 0, totalCount)
+	for _, productData := range productDataList {
 		// 检查上下文是否被取消
 		select {
 		case <-ctx.Done():
-			return successCount, ctx.Err()
+			return 0, ctx.Err()
 		default:
 		}
 
-		if err := productDataAPI.BatchCreateOrUpdate([]*managementapi.ProductDataDTO{productData}); err != nil {
-			s.logger.WithFields(logrus.Fields{
-				"goods_id": productData.PlatformProductID,
-				"error":    err,
-			}).Error("保存TEMU产品失败")
-			failedCount++
-			continue
+		item := managementapi.ProductDataItemDTO{
+			PlatformProductID:  productData.PlatformProductID,
+			ProductName:        productData.Title,
+			ProductSku:         productData.ProductID,
+			ProductPrice:       productData.OriginalPrice,
+			ProductStock:       0, // 默认库存，需要根据实际情况设置
+			ProductCategory:    productData.Category,
+			ProductImage:       productData.MainImageURL,
+			ProductDescription: productData.Description,
+			ShelfStatus:        &productData.ShelfStatus,
+			PublishTime:        productData.PublishTime,
+			ShelfTime:          productData.ShelfTime,
+			Brand:              productData.Brand,
+			CategoryID:         &productData.CategoryID,
+			SpecialPrice:       productData.SpecialPrice,
+			PriceCurrency:      productData.PriceCurrency,
+			ImageUrls:          productData.ImageURLs,
+			Attributes:         productData.Attributes,
+			PlatformStatus:     productData.PlatformStatus,
+			PlatformData:       productData.PlatformData,
+			ParentProductID:    productData.ParentProductID,
+			CreateTime:         productData.CreateTime,
+			UpdateTime:         productData.UpdateTime,
 		}
-		successCount++
+		products = append(products, item)
+	}
 
-		// 输出进度日志
-		s.logProgress(i+1, totalCount, successCount, progressInterval, "产品保存进度")
+	// 构建批量请求
+	batchReq := &managementapi.ProductDataBatchSaveReqDTO{
+		Platform: firstProduct.Platform,
+		TenantID: firstProduct.TenantID,
+		Region:   firstProduct.Region,
+		StoreID:  firstProduct.StoreID,
+		Products: products,
+	}
+
+	// 执行批量保存
+	successCount, err := productDataAPI.BatchCreateOrUpdate(batchReq)
+	if err != nil {
+		s.logger.WithError(err).Error("批量保存TEMU产品失败")
+		return 0, fmt.Errorf("批量保存TEMU产品失败: %w", err)
 	}
 
 	s.logger.WithFields(logrus.Fields{
 		"total":   totalCount,
 		"success": successCount,
-		"failed":  failedCount,
-	}).Info("保存TEMU产品完成")
+	}).Info("批量保存TEMU产品完成")
 
 	return successCount, nil
 }

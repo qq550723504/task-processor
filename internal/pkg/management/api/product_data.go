@@ -8,7 +8,7 @@ import (
 // ProductDataAPI 产品数据API接口定义
 type ProductDataAPI interface {
 	// BatchCreateOrUpdate 批量创建或更新产品数据
-	BatchCreateOrUpdate(products []*ProductDataDTO) error
+	BatchCreateOrUpdate(req *ProductDataBatchSaveReqDTO) (int, error)
 
 	// ListByStore 查询店铺的所有产品数据
 	ListByStore(platform string, tenantID, storeID int64, shelfStatus *int) ([]*ProductDataDTO, error)
@@ -74,6 +74,41 @@ const (
 	ShelfStatusRejected  = 4 // 审核拒绝
 	ShelfStatusDeleted   = 5 // 已删除
 )
+
+// ProductDataBatchSaveReqDTO 批量保存产品数据请求DTO
+type ProductDataBatchSaveReqDTO struct {
+	Platform string               `json:"platform" validate:"required"`      // 平台类型
+	TenantID int64                `json:"tenantId" validate:"required"`      // 租户ID
+	Region   string               `json:"region"`                            // 区域
+	StoreID  int64                `json:"storeId" validate:"required"`       // 店铺ID
+	Products []ProductDataItemDTO `json:"products" validate:"required,dive"` // 商品数据列表
+}
+
+// ProductDataItemDTO 产品数据项DTO (对应Java的ProductDataItemDTO)
+type ProductDataItemDTO struct {
+	PlatformProductID  string               `json:"platformProductId" validate:"required"` // 平台商品ID
+	ProductName        string               `json:"productName" validate:"required"`       // 商品名称
+	ProductSku         string               `json:"productSku"`                            // 商品SKU
+	ProductPrice       types.FlexibleString `json:"productPrice" validate:"required"`      // 商品价格
+	ProductStock       int                  `json:"productStock" validate:"required"`      // 商品库存
+	ProductCategory    string               `json:"productCategory"`                       // 商品分类
+	ProductImage       string               `json:"productImage"`                          // 商品图片URL
+	ProductDescription string               `json:"productDescription"`                    // 商品描述
+	ShelfStatus        *int                 `json:"shelfStatus"`                           // 上架状态
+	PublishTime        *types.FlexibleTime  `json:"publishTime"`                           // 发布时间
+	ShelfTime          *types.FlexibleTime  `json:"shelfTime"`                             // 上架时间
+	Brand              string               `json:"brand"`                                 // 品牌
+	CategoryID         *int64               `json:"categoryId"`                            // 分类ID
+	SpecialPrice       types.FlexibleString `json:"specialPrice"`                          // 特价
+	PriceCurrency      string               `json:"priceCurrency"`                         // 价格货币
+	ImageUrls          string               `json:"imageUrls"`                             // 图片URLs(JSON数组)
+	Attributes         string               `json:"attributes"`                            // 产品属性(JSON)
+	PlatformStatus     string               `json:"platformStatus"`                        // 平台状态(JSON)
+	PlatformData       string               `json:"platformData"`                          // 平台完整数据(JSON)
+	ParentProductID    string               `json:"parentProductId"`                       // 父产品ID
+	CreateTime         *types.FlexibleTime  `json:"createTime"`                            // 创建时间
+	UpdateTime         *types.FlexibleTime  `json:"updateTime"`                            // 更新时间
+}
 
 // ProductDataBatchUpdateAttributesReqDTO 批量更新产品属性请求DTO
 type ProductDataBatchUpdateAttributesReqDTO struct {
