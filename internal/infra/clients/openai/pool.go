@@ -1,3 +1,4 @@
+// Package openai 提供OpenAI API客户端功能
 package openai
 
 import (
@@ -10,7 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// RequestPool OpenAI请求池，用于控制并发和速率限制
+// RequestPool OpenAI请求池，负责并发控制、速率限制和负载均衡
 type RequestPool struct {
 	clients    []*BaseClient
 	semaphore  chan struct{}
@@ -20,14 +21,51 @@ type RequestPool struct {
 	logger     *logrus.Entry
 }
 
-// BaseClient 基础OpenAI客户端（直接使用sashabaranov/go-openai）
+// BaseClient 基础OpenAI客户端封装
 type BaseClient struct {
 	client *openai.Client
 	config *ClientConfig
 }
 
-// NewBaseClient 创建基础客户端
-func NewBaseClient(config *ClientConfig) *BaseClient {
+// RateLimiter 速率限制器
+type RateLimiter struct {
+	tokens     float64
+	maxTokens  float64
+	refillRate float64 // tokens per second
+	lastRefill time.Time
+	mutex      sync.Mutex
+}
+
+// NewRequestPool 创建新的请求池
+func NewRequestPool(config *PoolConfig) (*RequestPool, error) {
+	if len(config.ClientConfigs) == 0 {
+		return nil, fmt.Errorf("至少需要一个客户端配置")
+	}
+
+	// 创建多个客户端实例
+	clients := make([]*BaseClient, len(config.ClientConfigs))
+	for i, clientConfig := range config.ClientConfigs {
+		clients[i] = newBaseClient(clientConfig)
+	}
+
+	// 创建速率限制器
+	rateLimiter := &RateLimiter{
+		tokens:     config.BurstLimit,
+		maxTokens:  config.BurstLimit,
+		refillRate: config.RateLimit,
+		lastRefill: time.Now(),
+	}
+
+	return &RequestPool{
+		clients:   clients,
+		semaphore: make(chan struct{}, config.MaxConcurrent),
+		rateLimit: rateLimiter,
+		logger:    logrus.WithField("component", "OpenAIRequestPool"),
+	}, nil
+}
+
+// newBaseClient 创建基础客户端
+func newBaseClient(config *ClientConfig) *BaseClient {
 	// 创建OpenAI客户端配置
 	clientConfig := openai.DefaultConfig(config.APIKey)
 	if config.BaseURL != "" {
@@ -43,8 +81,37 @@ func NewBaseClient(config *ClientConfig) *BaseClient {
 	}
 }
 
-// CreateChatCompletion 基础客户端的聊天完成
-func (bc *BaseClient) CreateChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
+// CreateChatCompletion 通过请求池创建聊天完成
+func (p *RequestPool) CreateChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
+	// 1. 等待速率限制
+	if err := p.waitForRateLimit(ctx); err != nil {
+		return nil, fmt.Errorf("速率限制等待失败: %w", err)
+	}
+
+	// 2. 获取并发控制信号量
+	select {
+	case p.semaphore <- struct{}{}:
+		defer func() { <-p.semaphore }()
+	case <-ctx.Done():
+		return nil, fmt.Errorf("等待并发槽位时上下文取消: %w", ctx.Err())
+	}
+
+	// 3. 选择客户端（轮询负载均衡）
+	client := p.getNextClient()
+
+	// 4. 执行请求
+	startTime := time.Now()
+	resp, err := client.createChatCompletion(ctx, req)
+	duration := time.Since(startTime)
+
+	// 5. 记录指标
+	p.logMetrics(duration, err)
+
+	return resp, err
+}
+
+// createChatCompletion 基础客户端的聊天完成实现
+func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
 	var lastErr error
 
 	for attempt := 0; attempt <= bc.config.MaxRetries; attempt++ {
@@ -73,11 +140,9 @@ func (bc *BaseClient) CreateChatCompletion(ctx context.Context, req *ChatComplet
 		if req.Temperature != nil {
 			openaiReq.Temperature = *req.Temperature
 		}
-
 		if req.Seed != nil {
 			openaiReq.Seed = req.Seed
 		}
-
 		if req.MaxTokens != nil {
 			openaiReq.MaxTokens = *req.MaxTokens
 		}
@@ -104,129 +169,6 @@ func (bc *BaseClient) CreateChatCompletion(ctx context.Context, req *ChatComplet
 	}
 
 	return nil, fmt.Errorf("调用OpenAI API失败，已重试%d次: %w", bc.config.MaxRetries, lastErr)
-}
-
-// convertMessages 转换消息格式
-func convertMessages(messages []ChatCompletionMessage) []openai.ChatCompletionMessage {
-	result := make([]openai.ChatCompletionMessage, len(messages))
-	for i, msg := range messages {
-		result[i] = openai.ChatCompletionMessage{
-			Role:    msg.Role,
-			Content: msg.Content,
-		}
-	}
-	return result
-}
-
-// convertResponse 转换响应格式
-func convertResponse(resp *openai.ChatCompletionResponse) *ChatCompletionResponse {
-	choices := make([]ChatCompletionChoice, len(resp.Choices))
-	for i, choice := range resp.Choices {
-		choices[i] = ChatCompletionChoice{
-			Index: choice.Index,
-			Message: ChatCompletionMessage{
-				Role:    choice.Message.Role,
-				Content: choice.Message.Content,
-			},
-			FinishReason: string(choice.FinishReason),
-		}
-	}
-
-	return &ChatCompletionResponse{
-		ID:      resp.ID,
-		Object:  resp.Object,
-		Created: resp.Created,
-		Model:   resp.Model,
-		Choices: choices,
-		Usage: Usage{
-			PromptTokens:     resp.Usage.PromptTokens,
-			CompletionTokens: resp.Usage.CompletionTokens,
-			TotalTokens:      resp.Usage.TotalTokens,
-		},
-	}
-}
-
-// shouldRetry 判断错误是否应该重试
-func shouldRetry(err error) bool {
-	if err == nil {
-		return false
-	}
-	// 这里简化处理，大部分错误都重试
-	return true
-}
-
-// RateLimiter 速率限制器
-type RateLimiter struct {
-	tokens     float64
-	maxTokens  float64
-	refillRate float64 // tokens per second
-	lastRefill time.Time
-	mutex      sync.Mutex
-}
-
-// PoolConfig 请求池配置
-type PoolConfig struct {
-	MaxConcurrent int             // 最大并发请求数
-	RateLimit     float64         // 每秒请求数限制
-	BurstLimit    float64         // 突发请求限制
-	ClientConfigs []*ClientConfig // 多个客户端配置（支持多个API Key）
-}
-
-// NewRequestPool 创建新的请求池
-func NewRequestPool(config *PoolConfig) (*RequestPool, error) {
-	if len(config.ClientConfigs) == 0 {
-		return nil, fmt.Errorf("至少需要一个客户端配置")
-	}
-
-	// 创建多个客户端实例
-	clients := make([]*BaseClient, len(config.ClientConfigs))
-	for i, clientConfig := range config.ClientConfigs {
-		clients[i] = NewBaseClient(clientConfig)
-	}
-
-	// 创建速率限制器
-	rateLimiter := &RateLimiter{
-		tokens:     config.BurstLimit,
-		maxTokens:  config.BurstLimit,
-		refillRate: config.RateLimit,
-		lastRefill: time.Now(),
-	}
-
-	return &RequestPool{
-		clients:   clients,
-		semaphore: make(chan struct{}, config.MaxConcurrent),
-		rateLimit: rateLimiter,
-		logger:    logrus.WithField("component", "OpenAIRequestPool"),
-	}, nil
-}
-
-// CreateChatCompletion 通过请求池创建聊天完成
-func (p *RequestPool) CreateChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
-	// 1. 等待速率限制
-	if err := p.waitForRateLimit(ctx); err != nil {
-		return nil, fmt.Errorf("速率限制等待失败: %w", err)
-	}
-
-	// 2. 获取并发控制信号量
-	select {
-	case p.semaphore <- struct{}{}:
-		defer func() { <-p.semaphore }()
-	case <-ctx.Done():
-		return nil, fmt.Errorf("等待并发槽位时上下文取消: %w", ctx.Err())
-	}
-
-	// 3. 选择客户端（轮询）
-	client := p.getNextClient()
-
-	// 4. 执行请求
-	startTime := time.Now()
-	resp, err := client.CreateChatCompletion(ctx, req)
-	duration := time.Since(startTime)
-
-	// 5. 记录指标
-	p.logMetrics(duration, err)
-
-	return resp, err
 }
 
 // waitForRateLimit 等待速率限制
@@ -289,11 +231,11 @@ func (p *RequestPool) logMetrics(duration time.Duration, err error) {
 }
 
 // GetStats 获取请求池统计信息
-func (p *RequestPool) GetStats() map[string]interface{} {
+func (p *RequestPool) GetStats() map[string]any {
 	p.rateLimit.mutex.Lock()
 	defer p.rateLimit.mutex.Unlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"available_tokens": p.rateLimit.tokens,
 		"max_tokens":       p.rateLimit.maxTokens,
 		"refill_rate":      p.rateLimit.refillRate,
@@ -312,4 +254,54 @@ func (p *RequestPool) Close() error {
 
 	p.logger.Info("OpenAI请求池已关闭")
 	return nil
+}
+
+// convertMessages 转换消息格式
+func convertMessages(messages []ChatCompletionMessage) []openai.ChatCompletionMessage {
+	result := make([]openai.ChatCompletionMessage, len(messages))
+	for i, msg := range messages {
+		result[i] = openai.ChatCompletionMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		}
+	}
+	return result
+}
+
+// convertResponse 转换响应格式
+func convertResponse(resp *openai.ChatCompletionResponse) *ChatCompletionResponse {
+	choices := make([]ChatCompletionChoice, len(resp.Choices))
+	for i, choice := range resp.Choices {
+		choices[i] = ChatCompletionChoice{
+			Index: choice.Index,
+			Message: ChatCompletionMessage{
+				Role:    choice.Message.Role,
+				Content: choice.Message.Content,
+			},
+			FinishReason: string(choice.FinishReason),
+		}
+	}
+
+	return &ChatCompletionResponse{
+		ID:      resp.ID,
+		Object:  resp.Object,
+		Created: resp.Created,
+		Model:   resp.Model,
+		Choices: choices,
+		Usage: Usage{
+			PromptTokens:     resp.Usage.PromptTokens,
+			CompletionTokens: resp.Usage.CompletionTokens,
+			TotalTokens:      resp.Usage.TotalTokens,
+		},
+	}
+}
+
+// shouldRetry 判断错误是否应该重试
+func shouldRetry(err error) bool {
+	if err == nil {
+		return false
+	}
+	// 这里可以根据具体错误类型判断是否重试
+	// 简化处理，大部分错误都重试
+	return true
 }

@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/pkg/management"
@@ -33,8 +34,9 @@ type processorServiceImpl struct {
 	metricsCollector *monitoring.MetricsCollector
 	healthChecker    *monitoring.HealthChecker
 
-	// 共享资源
+	// 共享资源（通过依赖注入获取）
 	managementClient *management.ClientManager
+	amazonProcessor  *amazon.AmazonProcessor
 
 	// 生命周期管理
 	ctx     context.Context
@@ -50,18 +52,24 @@ func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
 	// 收集所有平台的任务提交器
 	submitters := make(map[string]task.TaskSubmitter)
 
+	s.logger.Infof("检查处理器状态: TEMU=%v, SHEIN=%v", s.temuProcessor != nil, s.sheinProcessor != nil)
+
 	if s.temuProcessor != nil {
 		submitters["temu"] = NewTaskSubmitterAdapter(s.temuProcessor, "temu", s.logger)
+		s.logger.Info("✅ TEMU任务提交器已注册")
 	}
 
 	if s.sheinProcessor != nil {
 		submitters["shein"] = NewTaskSubmitterAdapter(s.sheinProcessor, "shein", s.logger)
+		s.logger.Info("✅ SHEIN任务提交器已注册")
 	}
 
 	if len(submitters) == 0 {
 		s.logger.Warn("没有可用的平台处理器，跳过任务获取器启动")
 		return nil
 	}
+
+	s.logger.Infof("创建任务获取器，支持平台: %v", getMapKeys(submitters))
 
 	// 创建任务获取器
 	s.taskFetcher = task.NewUnifiedTaskFetcher(
@@ -78,15 +86,21 @@ func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
 	return nil
 }
 
+// getMapKeys 获取map的所有键
+func getMapKeys(m map[string]task.TaskSubmitter) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // startSchedulerService 启动调度服务
 func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *config.Config) error {
 	s.logger.Info("启动调度服务...")
 
-	// 设置全局资源
-	SetGlobalConfig(cfg)
-
-	// 创建调度服务
-	s.schedulerService = NewSchedulerService(s.logger, s.managementClient, cfg)
+	// 创建调度服务（通过依赖注入，不再使用全局状态）
+	s.schedulerService = NewSchedulerServiceWithAmazon(s.logger, s.managementClient, cfg, s.amazonProcessor)
 
 	// 启动调度服务
 	if err := s.schedulerService.Start(ctx); err != nil {

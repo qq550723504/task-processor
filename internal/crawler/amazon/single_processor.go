@@ -12,13 +12,13 @@ import (
 
 // SingleProcessor 单浏览器处理器
 type SingleProcessor struct {
-	config         *config.AmazonConfig
+	config         *config.Config
 	urlHelper      *URLHelper
 	productChecker *ProductChecker
 }
 
 // NewSingleProcessor 创建单浏览器处理器
-func NewSingleProcessor(config *config.AmazonConfig, urlHelper *URLHelper, productChecker *ProductChecker) *SingleProcessor {
+func NewSingleProcessor(config *config.Config, urlHelper *URLHelper, productChecker *ProductChecker) *SingleProcessor {
 	return &SingleProcessor{
 		config:         config,
 		urlHelper:      urlHelper,

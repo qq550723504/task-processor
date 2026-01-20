@@ -2,7 +2,8 @@ package models
 
 // TextCheckRequest 文本检查请求
 type TextCheckRequest struct {
-	Text string `json:"text"`
+	Content string `json:"content"`
+	Type    int    `json:"type"`
 }
 
 // TextCheckResponse 文本检查响应
@@ -10,8 +11,7 @@ type TextCheckResponse struct {
 	Success   bool `json:"success"`
 	ErrorCode int  `json:"error_code"`
 	Result    struct {
-		IsValid bool   `json:"is_valid"`
-		Message string `json:"message,omitempty"`
+		Success bool `json:"success"`
 	} `json:"result"`
 }
 

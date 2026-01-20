@@ -6,7 +6,9 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
+	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
 )
@@ -26,5 +28,19 @@ func NewProcessorService(logger *logrus.Logger) ProcessorService {
 	return &processorServiceImpl{
 		logger:           logger,
 		lifecycleManager: lifecycle.NewLifecycleManager(logger),
+	}
+}
+
+// NewProcessorServiceWithDependencies 创建处理器服务（带依赖注入）
+func NewProcessorServiceWithDependencies(
+	logger *logrus.Logger,
+	managementClient *management.ClientManager,
+	amazonProcessor *amazon.AmazonProcessor,
+) ProcessorService {
+	return &processorServiceImpl{
+		logger:           logger,
+		lifecycleManager: lifecycle.NewLifecycleManager(logger),
+		managementClient: managementClient,
+		amazonProcessor:  amazonProcessor,
 	}
 }

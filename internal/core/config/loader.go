@@ -44,9 +44,9 @@ func NewDefaultConfig() *Config {
 			ForceCleanupAfter:  1800,
 		},
 		OpenAI: OpenAIConfig{
-			APIKey:  "sk-qns4hBrljHkJ520vwwA2508c7Dj3Oe0zGlh7oq7FWkcWXkx4",
+			APIKey:  "sk-nqXpijKPU98tXPskfCYviSJXNhThh6wFi5y9oBbEMXwUo8p8",
 			Model:   "gemini-2.0-flash",
-			BaseURL: "https://yunwu.ai/v1",
+			BaseURL: "https://new.apifast.top/v1",
 			Timeout: 120,
 		},
 		Management: ManagementConfig{
@@ -78,14 +78,14 @@ func NewDefaultConfig() *Config {
 			DataFreshnessDays: 7,
 		},
 		Updater: UpdaterConfig{
-			Enabled:            true,
+			Enabled:            false,
 			UpdateURL:          "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json",
 			CheckInterval:      300,
 			InsecureSkipVerify: false,
 		},
 		Platforms: PlatformsConfig{
 			Temu: PlatformConfig{
-				Enabled:          true,
+				Enabled:          false,
 				SchedulerEnabled: false,
 				AutoPricing: AutoPricingConfig{
 					Enabled:        false,
@@ -123,7 +123,7 @@ func NewDefaultConfig() *Config {
 				},
 			},
 			Shein: PlatformConfig{
-				Enabled:          true,
+				Enabled:          false,
 				SchedulerEnabled: false,
 				AutoPricing: AutoPricingConfig{
 					Enabled:   false,
@@ -244,5 +244,19 @@ func applyDefaults(cfg *Config) {
 	// 应用更新器默认配置
 	if cfg.Updater.CheckInterval == 0 {
 		cfg.Updater.CheckInterval = defaultCfg.Updater.CheckInterval
+	}
+
+	// 应用OpenAI默认配置
+	if cfg.OpenAI.APIKey == "" {
+		cfg.OpenAI.APIKey = defaultCfg.OpenAI.APIKey
+	}
+	if cfg.OpenAI.Model == "" {
+		cfg.OpenAI.Model = defaultCfg.OpenAI.Model
+	}
+	if cfg.OpenAI.BaseURL == "" {
+		cfg.OpenAI.BaseURL = defaultCfg.OpenAI.BaseURL
+	}
+	if cfg.OpenAI.Timeout == 0 {
+		cfg.OpenAI.Timeout = defaultCfg.OpenAI.Timeout
 	}
 }

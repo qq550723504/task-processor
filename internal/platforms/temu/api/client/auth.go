@@ -137,6 +137,10 @@ func (a *AuthManager) sendRequestOnce(client APIClientInterface, request map[str
 	// 发送HTTP请求
 	response, err := client.SendHTTPRequest(method, fullURL, headers, body, formFields, fileFields)
 	if err != nil {
+		a.logger.WithError(err).WithFields(map[string]interface{}{
+			"method": method,
+			"url":    fullURL,
+		}).Error("发送HTTP请求失败")
 		return fmt.Errorf("发送HTTP请求失败: %w", err)
 	}
 
@@ -145,7 +149,12 @@ func (a *AuthManager) sendRequestOnce(client APIClientInterface, request map[str
 	if !httpManager.IsSuccess(response) {
 		// 尝试读取错误响应体
 		if errorBody, err := response.ToBytes(); err == nil {
-			a.logger.Errorf("HTTP请求失败，状态码: %d, 响应体: %s", response.StatusCode, string(errorBody))
+			a.logger.WithFields(map[string]interface{}{
+				"statusCode":   response.StatusCode,
+				"responseBody": string(errorBody),
+				"method":       method,
+				"url":          fullURL,
+			}).Error("HTTP请求失败")
 		}
 		return fmt.Errorf("HTTP请求失败，状态码: %d", response.StatusCode)
 	}
@@ -153,10 +162,21 @@ func (a *AuthManager) sendRequestOnce(client APIClientInterface, request map[str
 	// 解析响应体
 	respBody, err := response.ToBytes()
 	if err != nil {
+		a.logger.WithError(err).Error("读取响应体失败")
 		return fmt.Errorf("读取响应体失败: %w", err)
 	}
 
-	return json.Unmarshal(respBody, result)
+	// 尝试解析JSON
+	if err := json.Unmarshal(respBody, result); err != nil {
+		a.logger.WithError(err).WithFields(map[string]interface{}{
+			"responseBody": string(respBody),
+			"method":       method,
+			"url":          fullURL,
+		}).Error("JSON解析失败")
+		return fmt.Errorf("JSON解析失败: %w", err)
+	}
+
+	return nil
 }
 
 // isAuthenticationError 判断是否为认证相关错误

@@ -124,7 +124,7 @@ func (s *ServiceRegistrySimple) registerSharedResources(container di.Container) 
 			return nil, fmt.Errorf("获取配置失败: %w", err)
 		}
 		config := configInstance.(*config.Config)
-		return amazon.NewAmazonProcessor(&config.Amazon), nil
+		return amazon.NewAmazonProcessor(config), nil
 	}); err != nil {
 		return err
 	}
@@ -174,7 +174,20 @@ func (s *ServiceRegistrySimple) registerApplicationServices(container di.Contain
 		if err != nil {
 			return nil, fmt.Errorf("获取日志器失败: %w", err)
 		}
-		return service.NewProcessorService(loggerInstance.(*logrus.Logger)), nil
+		managementClientInstance, err := c.Get("managementClient")
+		if err != nil {
+			return nil, fmt.Errorf("获取管理客户端失败: %w", err)
+		}
+		amazonProcessorInstance, err := c.Get("amazonProcessor")
+		if err != nil {
+			return nil, fmt.Errorf("获取Amazon处理器失败: %w", err)
+		}
+
+		logger := loggerInstance.(*logrus.Logger)
+		managementClient := managementClientInstance.(*management.ClientManager)
+		amazonProcessor := amazonProcessorInstance.(*amazon.AmazonProcessor)
+
+		return service.NewProcessorServiceWithDependencies(logger, managementClient, amazonProcessor), nil
 	}); err != nil {
 		return err
 	}
@@ -199,12 +212,17 @@ func (s *ServiceRegistrySimple) registerApplicationServices(container di.Contain
 		if err != nil {
 			return nil, fmt.Errorf("获取配置失败: %w", err)
 		}
+		amazonProcessorInstance, err := c.Get("amazonProcessor")
+		if err != nil {
+			return nil, fmt.Errorf("获取Amazon处理器失败: %w", err)
+		}
 
 		logger := loggerInstance.(*logrus.Logger)
 		managementClient := managementClientInstance.(*management.ClientManager)
 		config := configInstance.(*config.Config)
+		amazonProcessor := amazonProcessorInstance.(*amazon.AmazonProcessor)
 
-		return service.NewSchedulerService(logger, managementClient, config), nil
+		return service.NewSchedulerServiceWithAmazon(logger, managementClient, config, amazonProcessor), nil
 	}); err != nil {
 		return err
 	}

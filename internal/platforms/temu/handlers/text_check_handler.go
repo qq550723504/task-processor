@@ -79,22 +79,30 @@ func (h *TextCheckHandler) checkText(temuCtx *temucontext.TemuTaskContext, conte
 
 	// 构造请求
 	request := &models.TextCheckRequest{
-		Text: content,
+		Content: content,
+		Type:    1,
 	}
 
 	// 调用API检查文本
 	response, err := queryAPI.CheckText(request)
 	if err != nil {
-		logrus.Errorf("文本检查失败: %v", err)
+		logrus.WithError(err).WithField("content", content).Error("文本检查API调用失败")
 		return fmt.Errorf("文本检查失败: %v", err)
 	}
 
-	logrus.Infof("文本检查成功: 有效=%v, 消息=%s", response.Result.IsValid, response.Result.Message)
-
-	if !response.Result.IsValid {
-		return fmt.Errorf("文本检查未通过: %s", response.Result.Message)
+	if response == nil {
+		logrus.Error("文本检查响应为空")
+		return fmt.Errorf("文本检查响应为空")
 	}
 
+	if !response.Result.Success {
+		logrus.WithFields(logrus.Fields{
+			"content": content,
+		}).Warn("文本检查未通过")
+		return fmt.Errorf("文本检查未通过")
+	}
+
+	logrus.WithField("content", content).Info("文本检查通过")
 	return nil
 }
 

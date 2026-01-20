@@ -25,7 +25,7 @@ type BrowserInstance struct {
 
 // BrowserPool 浏览器池
 type BrowserPool struct {
-	config               *config.AmazonConfig
+	config               *config.Config
 	poolConfig           *BrowserPoolConfig
 	instances            []*BrowserInstance
 	available            chan *BrowserInstance
@@ -58,7 +58,7 @@ func DefaultBrowserPoolConfig() *BrowserPoolConfig {
 }
 
 // NewBrowserPool 创建浏览器池
-func NewBrowserPool(cfg *config.AmazonConfig, poolConfig *BrowserPoolConfig) *BrowserPool {
+func NewBrowserPool(cfg *config.Config, poolConfig *BrowserPoolConfig) *BrowserPool {
 
 	if poolConfig.Size == 0 {
 		poolConfig.Size = 1 // 默认值
@@ -215,7 +215,7 @@ func (bp *BrowserPool) GetAvailableChannel() chan *BrowserInstance {
 }
 
 // GetConfig 获取配置（用于内部管理器访问）
-func (bp *BrowserPool) GetConfig() *config.AmazonConfig {
+func (bp *BrowserPool) GetConfig() *config.Config {
 	return bp.config
 }
 

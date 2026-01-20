@@ -13,27 +13,27 @@ import (
 // BrowserManager Amazon专用的浏览器管理器，继承shared的功能
 type BrowserManager struct {
 	*sharedbrowser.Manager
-	amazonConfig  *config.AmazonConfig
+	config        *config.Config
 	configManager *ConfigManager
 }
 
 // NewBrowserManager 创建Amazon浏览器管理器（保持向后兼容）
-func NewBrowserManager(cfg *config.AmazonConfig) *BrowserManager {
+func NewBrowserManager(cfg *config.Config) *BrowserManager {
 	return NewBrowserManagerWithConfig(cfg, "windows", "windows_high_end", 0)
 }
 
 // NewBrowserManagerWithConfig 使用指定配置创建Amazon浏览器管理器
-func NewBrowserManagerWithConfig(cfg *config.AmazonConfig, strategy string, presetName string, instanceID int) *BrowserManager {
+func NewBrowserManagerWithConfig(cfg *config.Config, strategy string, presetName string, instanceID int) *BrowserManager {
 	configManager := NewConfigManager()
 
 	var browserConfig *sharedbrowser.BrowserConfig
 
 	// 如果应该使用随机配置
-	if configManager.ShouldUseRandomConfig(cfg) || cfg.RandomConfig.Enabled {
+	if configManager.ShouldUseRandomConfig(&cfg.Amazon) || cfg.Browser.RandomConfig.Enabled {
 		// 优先使用主配置中的策略设置
-		if cfg.RandomConfig.Enabled {
-			strategy = cfg.RandomConfig.Strategy
-			presetName = cfg.RandomConfig.PresetName
+		if cfg.Browser.RandomConfig.Enabled {
+			strategy = cfg.Browser.RandomConfig.Strategy
+			presetName = cfg.Browser.RandomConfig.PresetName
 		}
 
 		browserConfig = configManager.GenerateBrowserConfig(cfg, strategy, presetName, instanceID)
@@ -41,11 +41,11 @@ func NewBrowserManagerWithConfig(cfg *config.AmazonConfig, strategy string, pres
 	} else {
 		// 使用传统配置方式
 		browserConfig = &sharedbrowser.BrowserConfig{
-			Headless:       cfg.Headless,
-			BrowserPath:    cfg.BrowserPath,
-			ProxyServer:    cfg.ProxyServer,
-			ViewportWidth:  cfg.ViewportWidth,
-			ViewportHeight: cfg.ViewportHeight,
+			Headless:       cfg.Browser.Headless,
+			BrowserPath:    cfg.Browser.BrowserPath,
+			ProxyServer:    cfg.Browser.ProxyServer,
+			ViewportWidth:  cfg.Browser.ViewportWidth,
+			ViewportHeight: cfg.Browser.ViewportHeight,
 			UserAgent:      "", // 使用默认用户代理
 		}
 		logrus.Infof("实例 %d 使用传统浏览器配置", instanceID)
@@ -53,7 +53,7 @@ func NewBrowserManagerWithConfig(cfg *config.AmazonConfig, strategy string, pres
 
 	return &BrowserManager{
 		Manager:       sharedbrowser.NewManager(browserConfig),
-		amazonConfig:  cfg,
+		config:        cfg,
 		configManager: configManager,
 	}
 }

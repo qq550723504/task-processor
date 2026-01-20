@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/app/service"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/di"
 	"task-processor/internal/platforms/shein/service/pipeline"
 	"task-processor/internal/platforms/temu"
@@ -38,6 +39,11 @@ func (c *ComponentAdapters) RegisterAllComponents(lifecycleManager lifecycle.Lif
 
 	// 注册平台处理器组件
 	if err := c.registerProcessorComponents(lifecycleManager, cfg); err != nil {
+		return err
+	}
+
+	// 注册任务获取器组件
+	if err := c.registerTaskFetcherComponent(lifecycleManager, cfg); err != nil {
 		return err
 	}
 
@@ -91,6 +97,34 @@ func (c *ComponentAdapters) registerProcessorComponents(lifecycleManager lifecyc
 	}
 
 	return nil
+}
+
+// registerTaskFetcherComponent 注册任务获取器组件
+func (c *ComponentAdapters) registerTaskFetcherComponent(lifecycleManager lifecycle.LifecycleManager, cfg *config.Config) error {
+	// 检查是否有启用的处理器
+	hasEnabledProcessors := cfg.Platforms.Temu.Enabled || cfg.Platforms.Shein.Enabled
+	if !hasEnabledProcessors {
+		c.logger.Info("没有启用的处理器，跳过任务获取器组件注册")
+		return nil
+	}
+
+	// 构建依赖列表
+	dependencies := []string{"updater"}
+	if cfg.Platforms.Temu.Enabled {
+		dependencies = append(dependencies, "temu-processor")
+	}
+	if cfg.Platforms.Shein.Enabled {
+		dependencies = append(dependencies, "shein-processor")
+	}
+
+	component := &TaskFetcherComponent{
+		BaseComponent: lifecycle.NewBaseComponent("task-fetcher", dependencies, 25),
+		container:     c.container,
+		logger:        c.logger,
+		config:        cfg,
+	}
+
+	return lifecycleManager.Register(component)
 }
 
 // registerSchedulerComponent 注册调度服务组件
@@ -292,5 +326,65 @@ func (s *SchedulerServiceComponent) Stop(ctx context.Context) error {
 
 	s.SetRunning(false)
 	s.logger.Info("✅ 调度服务组件停止成功")
+	return nil
+}
+
+// TaskFetcherComponent 任务获取器组件适配器
+type TaskFetcherComponent struct {
+	*lifecycle.BaseComponent
+	container di.Container
+	logger    *logrus.Logger
+	config    *config.Config
+}
+
+// Start 启动任务获取器
+func (t *TaskFetcherComponent) Start(ctx context.Context) error {
+	t.logger.Info("启动任务获取器组件...")
+
+	// 获取处理器服务
+	processorService, err := t.container.Get("processorService")
+	if err != nil {
+		return fmt.Errorf("获取处理器服务失败: %w", err)
+	}
+
+	// 通过处理器服务启动任务获取器
+	processorSvc := processorService.(service.ProcessorService)
+
+	// 获取认证客户端
+	authClient, err := t.container.Get("authClient")
+	if err != nil {
+		return fmt.Errorf("获取认证客户端失败: %w", err)
+	}
+
+	// 启动处理器服务（这会启动任务获取器）
+	if err := processorSvc.StartProcessors(ctx, t.config, authClient.(*auth.ClientCredentialsAuthClient)); err != nil {
+		return fmt.Errorf("启动任务获取器失败: %w", err)
+	}
+
+	t.SetRunning(true)
+	t.logger.Info("✅ 任务获取器组件启动成功")
+	return nil
+}
+
+// Stop 停止任务获取器
+func (t *TaskFetcherComponent) Stop(ctx context.Context) error {
+	t.logger.Info("停止任务获取器组件...")
+
+	// 获取处理器服务
+	processorService, err := t.container.Get("processorService")
+	if err != nil {
+		t.logger.Errorf("获取处理器服务失败: %v", err)
+		t.SetRunning(false)
+		return nil
+	}
+
+	// 停止处理器服务
+	processorSvc := processorService.(service.ProcessorService)
+	if err := processorSvc.StopProcessors(); err != nil {
+		t.logger.Errorf("停止任务获取器失败: %v", err)
+	}
+
+	t.SetRunning(false)
+	t.logger.Info("✅ 任务获取器组件停止成功")
 	return nil
 }

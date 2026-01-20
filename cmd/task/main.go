@@ -1,14 +1,15 @@
+// Package main 提供应用程序入口点
 package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"task-processor/internal/core/errors"
-	"task-processor/internal/infra/container"
+	"task-processor/internal/infra/bootstrap"
 	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/pkg/utils"
 
@@ -21,35 +22,38 @@ var (
 	buildTime  = "unknown"
 )
 
+// main 程序入口点
 func main() {
+	// 检查是否是测试模式
+	if len(os.Args) > 1 && os.Args[1] == "test" {
+		// 运行测试
+		testNewArchitecture()
+		return
+	}
+
+	// 正常启动应用
+	mainApp()
+}
+
+// mainApp 应用主函数
+func mainApp() {
 	// 记录进程启动时间
 	monitoring.RecordProcessStartTime()
 
 	// 设置日志
 	logger := utils.SetupLogger()
 
-	// 创建依赖注入容器
-	container := container.NewContainer(logger)
+	// 创建应用启动器
+	app := bootstrap.NewApplicationBootstrap(logger)
 
 	// 运行应用
-	if err := runApplication(container); err != nil {
-		if appErr, ok := err.(*errors.AppError); ok {
-			logger.WithFields(logrus.Fields{
-				"code":    appErr.Code,
-				"details": appErr.Details,
-				"file":    appErr.File,
-				"line":    appErr.Line,
-			}).Fatalf("应用启动失败: %v", appErr)
-		} else {
-			logger.Fatalf("应用启动失败: %v", err)
-		}
+	if err := runApplication(app, logger); err != nil {
+		logger.Fatalf("应用启动失败: %v", err)
 	}
 }
 
 // runApplication 运行应用
-func runApplication(container *container.Container) error {
-	logger := container.GetLogger()
-
+func runApplication(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger) error {
 	// 显示版本信息
 	versionInfo := utils.VersionInfo{
 		Version:   appVersion,
@@ -57,18 +61,9 @@ func runApplication(container *container.Container) error {
 	}
 	utils.PrintVersionInfo(logger, versionInfo)
 
-	// 初始化容器
-	if err := container.Initialize(); err != nil {
-		return errors.Wrap(err, errors.ErrCodeSystem, "初始化容器失败")
-	}
-
-	// 加载配置
-	if err := container.LoadConfig(""); err != nil {
-		return err
-	}
-
-	// 初始化认证
-	if err := container.InitializeAuth(); err != nil {
+	// 初始化应用（使用默认配置文件路径）
+	configPath := "config/config-dev.yaml"
+	if err := app.Initialize(configPath); err != nil {
 		return err
 	}
 
@@ -76,16 +71,16 @@ func runApplication(container *container.Container) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 启动所有组件
-	if err := container.StartAll(ctx, appVersion); err != nil {
+	// 启动应用
+	if err := app.Start(ctx, appVersion); err != nil {
 		return err
 	}
 
 	// 等待程序退出信号
 	waitForShutdown(logger, cancel)
 
-	// 优雅关闭所有组件
-	return gracefulShutdown(container)
+	// 优雅关闭应用
+	return gracefulShutdown(app, logger)
 }
 
 // waitForShutdown 等待程序退出信号
@@ -101,10 +96,8 @@ func waitForShutdown(logger *logrus.Logger, cancel context.CancelFunc) {
 	cancel()
 }
 
-// gracefulShutdown 优雅关闭
-func gracefulShutdown(container *container.Container) error {
-	logger := container.GetLogger()
-
+// gracefulShutdown 优雅关闭应用
+func gracefulShutdown(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger) error {
 	// 设置关闭超时
 	shutdownTimeout := 30 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -112,10 +105,10 @@ func gracefulShutdown(container *container.Container) error {
 
 	logger.Infof("开始优雅关闭，超时时间: %v", shutdownTimeout)
 
-	// 停止所有组件
+	// 停止应用
 	done := make(chan error, 1)
 	go func() {
-		done <- container.StopAll(ctx)
+		done <- app.Stop(ctx)
 	}()
 
 	select {
@@ -129,6 +122,99 @@ func gracefulShutdown(container *container.Container) error {
 
 	case <-ctx.Done():
 		logger.Warn("⚠️ 关闭超时，强制退出")
-		return errors.New(errors.ErrCodeTimeout, "优雅关闭超时")
+		return ctx.Err()
 	}
+}
+
+// testNewArchitecture 测试新架构运行
+func testNewArchitecture() {
+	fmt.Println("🚀 开始测试新架构...")
+
+	// 设置日志
+	logger := utils.SetupLogger()
+	logger.SetLevel(logrus.InfoLevel)
+
+	// 创建应用启动器
+	app := bootstrap.NewApplicationBootstrap(logger)
+
+	// 初始化应用
+	fmt.Println("📋 初始化应用...")
+	if err := app.Initialize("config/config-dev.yaml"); err != nil {
+		fmt.Printf("❌ 应用初始化失败: %v\n", err)
+		return
+	}
+	fmt.Println("✅ 应用初始化成功")
+
+	// 测试依赖注入容器
+	fmt.Println("🔧 测试依赖注入容器...")
+	container := app.GetContainer()
+
+	// 测试获取配置
+	config, err := container.Get("config")
+	if err != nil {
+		fmt.Printf("❌ 获取配置失败: %v\n", err)
+		return
+	}
+	fmt.Printf("✅ 配置获取成功: %T\n", config)
+
+	// 测试获取服务
+	services := []string{"logger", "configService", "authService", "updaterService"}
+	for _, serviceName := range services {
+		service, err := container.Get(serviceName)
+		if err != nil {
+			fmt.Printf("❌ 获取服务 %s 失败: %v\n", serviceName, err)
+			continue
+		}
+		fmt.Printf("✅ 服务 %s 获取成功: %T\n", serviceName, service)
+	}
+
+	// 测试生命周期管理器
+	fmt.Println("🔄 测试生命周期管理器...")
+	lifecycleManager := app.GetLifecycleManager()
+	status := lifecycleManager.GetStatus()
+	fmt.Printf("✅ 发现 %d 个注册组件:\n", len(status))
+	for name, componentStatus := range status {
+		fmt.Printf("  - %s: 优先级=%d, 依赖=%v\n",
+			name, componentStatus.Priority, componentStatus.Dependencies)
+	}
+
+	// 短时间启动测试
+	fmt.Println("🎯 测试应用启动...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 启动应用
+	if err := app.Start(ctx, "test-1.0.0"); err != nil {
+		fmt.Printf("❌ 应用启动失败: %v\n", err)
+		return
+	}
+	fmt.Println("✅ 应用启动成功")
+
+	// 等待一段时间让组件运行
+	fmt.Println("⏳ 让应用运行3秒...")
+	time.Sleep(3 * time.Second)
+
+	// 检查组件状态
+	fmt.Println("📊 检查组件运行状态...")
+	status = lifecycleManager.GetStatus()
+	for name, componentStatus := range status {
+		runningStatus := "❌ 未运行"
+		if componentStatus.Running {
+			runningStatus = "✅ 运行中"
+		}
+		fmt.Printf("  - %s: %s\n", name, runningStatus)
+	}
+
+	// 停止应用
+	fmt.Println("🛑 停止应用...")
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stopCancel()
+
+	if err := app.Stop(stopCtx); err != nil {
+		fmt.Printf("❌ 应用停止失败: %v\n", err)
+		return
+	}
+	fmt.Println("✅ 应用停止成功")
+
+	fmt.Println("🎉 新架构测试完成！")
 }

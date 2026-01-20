@@ -109,6 +109,7 @@ func (a *ApplicationBootstrap) GetLifecycleManager() lifecycle.LifecycleManager 
 // loadConfiguration 加载配置
 func (a *ApplicationBootstrap) loadConfiguration(configPath string) error {
 	a.logger.Info("加载应用配置...")
+	a.logger.Infof("配置文件路径: %s", configPath)
 
 	// 创建配置源
 	source := config.NewFileConfigSource(configPath)
@@ -120,6 +121,13 @@ func (a *ApplicationBootstrap) loadConfiguration(configPath string) error {
 	}
 
 	a.logger.Infof("配置加载成功，来源: %s", source.Name())
+
+	// 添加调试信息，验证配置是否正确加载
+	a.logger.Infof("浏览器配置 - 启用: %v, 路径: %s, 池大小: %d",
+		cfg.Browser.Enabled, cfg.Browser.BrowserPath, cfg.Browser.PoolSize)
+	a.logger.Infof("管理系统配置 - URL: %s, 客户端ID: %s",
+		cfg.Management.BaseURL, cfg.Management.ClientID)
+
 	_ = cfg // 配置已经存储在configManager中
 	return nil
 }

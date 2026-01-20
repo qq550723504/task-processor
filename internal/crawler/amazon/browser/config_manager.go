@@ -24,7 +24,7 @@ func NewConfigManager() *ConfigManager {
 }
 
 // GenerateBrowserConfig 根据策略生成浏览器配置
-func (cm *ConfigManager) GenerateBrowserConfig(cfg *config.AmazonConfig, strategy string, presetName string, instanceID int) *sharedbrowser.BrowserConfig {
+func (cm *ConfigManager) GenerateBrowserConfig(cfg *config.Config, strategy string, presetName string, instanceID int) *sharedbrowser.BrowserConfig {
 	var browserConfig *sharedbrowser.BrowserConfig
 
 	switch strategy {
@@ -73,12 +73,13 @@ func (cm *ConfigManager) GenerateBrowserConfig(cfg *config.AmazonConfig, strateg
 }
 
 // applyBaseConfig 应用基础配置
-func (cm *ConfigManager) applyBaseConfig(browserConfig *sharedbrowser.BrowserConfig, cfg *config.AmazonConfig) {
-	browserConfig.Headless = cfg.Headless
-	browserConfig.BrowserPath = cfg.BrowserPath
-	browserConfig.ProxyServer = cfg.ProxyServer
-	browserConfig.ViewportWidth = cfg.ViewportWidth
-	browserConfig.ViewportHeight = cfg.ViewportHeight
+func (cm *ConfigManager) applyBaseConfig(browserConfig *sharedbrowser.BrowserConfig, cfg *config.Config) {
+	// 从主配置的Browser部分获取浏览器配置
+	browserConfig.Headless = cfg.Browser.Headless
+	browserConfig.BrowserPath = cfg.Browser.BrowserPath
+	browserConfig.ProxyServer = cfg.Browser.ProxyServer
+	browserConfig.ViewportWidth = cfg.Browser.ViewportWidth
+	browserConfig.ViewportHeight = cfg.Browser.ViewportHeight
 }
 
 // copyBrowserConfig 复制浏览器配置

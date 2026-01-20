@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"task-processor/internal/platforms/temu/api/client"
 	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -41,23 +42,29 @@ func NewQueryAPI(client client.APIClientInterface, logger *logrus.Entry) *QueryA
 
 // CheckText 检查文本内容
 func (q *QueryAPI) CheckText(request *models.TextCheckRequest) (*models.TextCheckResponse, error) {
-	q.logger.Info("开始检查文本内容")
+	q.logger.WithField("Content", request.Content).Info("开始检查文本内容")
 
 	if request == nil {
 		return nil, fmt.Errorf("检查请求不能为空")
 	}
 
-	headers := client.GetDefaultHeaders()
-	headers["accept"] = "application/json, text/plain, */*"
-	headers["accept-language"] = "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["priority"] = "u=1, i"
-	headers["sec-ch-ua"] = "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""
-	headers["sec-ch-ua-mobile"] = "?0"
-	headers["sec-ch-ua-platform"] = "\"Windows\""
-	headers["sec-fetch-dest"] = "empty"
-	headers["sec-fetch-mode"] = "cors"
-	headers["sec-fetch-site"] = "same-origin"
+	if request.Content == "" {
+		return nil, fmt.Errorf("检查文本不能为空")
+	}
+
+	// 构建请求头，使用与之前工作版本完全相同的配置
+	headers := map[string]string{
+		"accept":             "application/json, text/plain, */*",
+		"accept-language":    "zh-CN,zh;q=0.9",
+		"priority":           "u=1, i",
+		"sec-ch-ua":          "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"Google Chrome\";v=\"140\"",
+		"sec-ch-ua-mobile":   "?0",
+		"sec-ch-ua-platform": "\"Windows\"",
+		"sec-fetch-dest":     "empty",
+		"sec-fetch-mode":     "cors",
+		"sec-fetch-site":     "same-origin",
+		"x-document-referer": "https://seller.temu.com/product-add.html?is_back=1",
+	}
 
 	apiReq := map[string]interface{}{
 		"method":  "POST",
@@ -68,16 +75,40 @@ func (q *QueryAPI) CheckText(request *models.TextCheckRequest) (*models.TextChec
 
 	var result models.TextCheckResponse
 	if err := q.client.SendTEMURequest(apiReq, &result); err != nil {
-		q.logger.WithError(err).Error("文本检查请求失败")
+		q.logger.WithError(err).WithFields(map[string]interface{}{
+			"endpoint": textCheckEndpoint,
+			"content":  request.Content,
+		}).Error("文本检查请求失败")
 		return nil, fmt.Errorf("文本检查请求失败: %w", err)
 	}
 
+	// 记录详细的响应信息
+	q.logger.WithFields(map[string]interface{}{
+		"success":       result.Success,
+		"errorCode":     result.ErrorCode,
+		"resultSuccess": result.Result.Success,
+	}).Info("收到文本检查响应")
+
 	if !result.Success {
-		q.logger.Errorf("文本检查失败: errorCode=%d", result.ErrorCode)
+		q.logger.WithFields(map[string]interface{}{
+			"errorCode": result.ErrorCode,
+			"content":   request.Content,
+		}).Error("文本检查API返回失败状态")
 		return nil, fmt.Errorf("文本检查失败: errorCode=%d", result.ErrorCode)
 	}
 
-	q.logger.Info("文本检查完成")
+	// 检查结果中的 success 字段
+	if !result.Result.Success {
+		q.logger.WithFields(map[string]interface{}{
+			"content": request.Content,
+		}).Warn("文本检查未通过")
+		return nil, fmt.Errorf("文本检查未通过")
+	}
+
+	q.logger.WithFields(map[string]interface{}{
+		"resultSuccess": result.Result.Success,
+	}).Info("文本检查完成")
+
 	return &result, nil
 }
 
@@ -89,23 +120,10 @@ func (q *QueryAPI) QueryTemplate(request *models.TemplateQueryRequest) (*models.
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
 
-	headers := client.GetDefaultHeaders()
-	headers["accept"] = "application/json, text/plain, */*"
-	headers["accept-language"] = "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["priority"] = "u=1, i"
-	headers["sec-ch-ua"] = "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""
-	headers["sec-ch-ua-mobile"] = "?0"
-	headers["sec-ch-ua-platform"] = "\"Windows\""
-	headers["sec-fetch-dest"] = "empty"
-	headers["sec-fetch-mode"] = "cors"
-	headers["sec-fetch-site"] = "same-origin"
-
 	apiReq := map[string]interface{}{
-		"method":  "POST",
-		"url":     templateQueryEndpoint,
-		"headers": headers,
-		"body":    request,
+		"method": "POST",
+		"url":    templateQueryEndpoint,
+		"body":   request,
 	}
 
 	var result models.TemplateQueryResponse
@@ -131,23 +149,10 @@ func (q *QueryAPI) QuerySpec(request *models.SpecQueryRequest) (*models.SpecQuer
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
 
-	headers := client.GetDefaultHeaders()
-	headers["accept"] = "application/json, text/plain, */*"
-	headers["accept-language"] = "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["priority"] = "u=1, i"
-	headers["sec-ch-ua"] = "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""
-	headers["sec-ch-ua-mobile"] = "?0"
-	headers["sec-ch-ua-platform"] = "\"Windows\""
-	headers["sec-fetch-dest"] = "empty"
-	headers["sec-fetch-mode"] = "cors"
-	headers["sec-fetch-site"] = "same-origin"
-
 	apiReq := map[string]interface{}{
-		"method":  "POST",
-		"url":     specQueryEndpoint,
-		"headers": headers,
-		"body":    request,
+		"method": "POST",
+		"url":    specQueryEndpoint,
+		"body":   request,
 	}
 
 	var result models.SpecQueryResponse
@@ -173,23 +178,10 @@ func (q *QueryAPI) CheckSkuSn(request *models.SkuSnCheckRequest) (*models.SkuSnC
 		return nil, fmt.Errorf("检查请求不能为空")
 	}
 
-	headers := client.GetDefaultHeaders()
-	headers["accept"] = "application/json, text/plain, */*"
-	headers["accept-language"] = "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["priority"] = "u=1, i"
-	headers["sec-ch-ua"] = "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""
-	headers["sec-ch-ua-mobile"] = "?0"
-	headers["sec-ch-ua-platform"] = "\"Windows\""
-	headers["sec-fetch-dest"] = "empty"
-	headers["sec-fetch-mode"] = "cors"
-	headers["sec-fetch-site"] = "same-origin"
-
 	apiReq := map[string]interface{}{
-		"method":  "POST",
-		"url":     skuSnCheckEndpoint,
-		"headers": headers,
-		"body":    request,
+		"method": "POST",
+		"url":    skuSnCheckEndpoint,
+		"body":   request,
 	}
 
 	var result models.SkuSnCheckResponse
@@ -215,23 +207,10 @@ func (q *QueryAPI) QueryCostTemplate(request *models.CostTemplateRequest) (*mode
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
 
-	headers := client.GetDefaultHeaders()
-	headers["accept"] = "application/json, text/plain, */*"
-	headers["accept-language"] = "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["priority"] = "u=1, i"
-	headers["sec-ch-ua"] = "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""
-	headers["sec-ch-ua-mobile"] = "?0"
-	headers["sec-ch-ua-platform"] = "\"Windows\""
-	headers["sec-fetch-dest"] = "empty"
-	headers["sec-fetch-mode"] = "cors"
-	headers["sec-fetch-site"] = "same-origin"
-
 	apiReq := map[string]interface{}{
-		"method":  "POST",
-		"url":     costTemplateEndpoint,
-		"headers": headers,
-		"body":    request,
+		"method": "POST",
+		"url":    costTemplateEndpoint,
+		"body":   request,
 	}
 
 	var result models.CostTemplateResponse
@@ -257,23 +236,10 @@ func (q *QueryAPI) QueryCommitDetail(request *models.CommitDetailRequest) (*mode
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
 
-	headers := client.GetDefaultHeaders()
-	headers["accept"] = "application/json, text/plain, */*"
-	headers["accept-language"] = "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["priority"] = "u=1, i"
-	headers["sec-ch-ua"] = "\"Microsoft Edge\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\""
-	headers["sec-ch-ua-mobile"] = "?0"
-	headers["sec-ch-ua-platform"] = "\"Windows\""
-	headers["sec-fetch-dest"] = "empty"
-	headers["sec-fetch-mode"] = "cors"
-	headers["sec-fetch-site"] = "same-origin"
-
 	apiReq := map[string]interface{}{
-		"method":  "POST",
-		"url":     commitDetailEndpoint,
-		"headers": headers,
-		"body":    request,
+		"method": "POST",
+		"url":    commitDetailEndpoint,
+		"body":   request,
 	}
 
 	var result models.CommitDetailResponse
@@ -291,6 +257,54 @@ func (q *QueryAPI) QueryCommitDetail(request *models.CommitDetailRequest) (*mode
 	return &result, nil
 }
 
+// QueryTemplateAdvanced 查询模板信息（高级版本，支持完整的types结构）
+func (q *QueryAPI) QueryTemplateAdvanced(request *types.TemplateQueryRequest) (*types.TemplateQueryResponse, error) {
+	q.logger.Info("开始查询模板信息（高级版本）")
+
+	if request == nil {
+		return nil, fmt.Errorf("查询请求不能为空")
+	}
+
+	// 构建请求头，使用与之前工作版本完全相同的配置
+	headers := map[string]string{
+		"accept":             "application/json, text/plain, */*",
+		"accept-language":    "zh-CN,zh;q=0.9",
+		"priority":           "u=1, i",
+		"sec-ch-ua":          "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"Google Chrome\";v=\"140\"",
+		"sec-ch-ua-mobile":   "?0",
+		"sec-ch-ua-platform": "\"Windows\"",
+		"sec-fetch-dest":     "empty",
+		"sec-fetch-mode":     "cors",
+		"sec-fetch-site":     "same-origin",
+	}
+
+	apiReq := map[string]any{
+		"method":  "POST",
+		"url":     templateQueryEndpoint,
+		"headers": headers,
+		"body":    request,
+	}
+
+	var result types.TemplateQueryResponse
+	if err := q.client.SendTEMURequest(apiReq, &result); err != nil {
+		q.logger.WithError(err).Error("模板查询请求失败")
+		return nil, fmt.Errorf("模板查询请求失败: %w", err)
+	}
+
+	if !result.Success {
+		q.logger.Errorf("模板查询失败: errorCode=%d", result.ErrorCode)
+		return nil, fmt.Errorf("模板查询失败: errorCode=%d", result.ErrorCode)
+	}
+
+	q.logger.WithFields(map[string]any{
+		"templateID":          result.Result.TemplateInfo.TemplateID,
+		"specPropertiesCount": len(result.Result.TemplateInfo.GoodsSpecProperties),
+		"success":             result.Success,
+	}).Info("模板查询完成（高级版本）")
+
+	return &result, nil
+}
+
 // QueryMaxRetailPrice 查询最大零售价格
 func (q *QueryAPI) QueryMaxRetailPrice(request *models.PriceQueryRequest) (*models.PriceQueryResponse, error) {
 	q.logger.Info("开始查询最大零售价格")
@@ -299,23 +313,10 @@ func (q *QueryAPI) QueryMaxRetailPrice(request *models.PriceQueryRequest) (*mode
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
 
-	headers := client.GetDefaultHeaders()
-	headers["accept"] = "application/json, text/plain, */*"
-	headers["accept-language"] = "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6"
-	headers["content-type"] = "application/json;charset=UTF-8"
-	headers["priority"] = "u=1, i"
-	headers["sec-ch-ua"] = "\"Chromium\";v=\"142\", \"Microsoft Edge\";v=\"142\", \"Not_A Brand\";v=\"99\""
-	headers["sec-ch-ua-mobile"] = "?0"
-	headers["sec-ch-ua-platform"] = "\"Windows\""
-	headers["sec-fetch-dest"] = "empty"
-	headers["sec-fetch-mode"] = "cors"
-	headers["sec-fetch-site"] = "same-origin"
-
-	apiReq := map[string]interface{}{
-		"method":  "POST",
-		"url":     priceQueryEndpoint,
-		"headers": headers,
-		"body":    request,
+	apiReq := map[string]any{
+		"method": "POST",
+		"url":    priceQueryEndpoint,
+		"body":   request,
 	}
 
 	var result models.PriceQueryResponse

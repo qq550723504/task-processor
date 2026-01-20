@@ -94,7 +94,7 @@ func (ti *TestInitializer) initializeAmazonProcessor() error {
 	ti.logger.Info("初始化Amazon处理器...")
 
 	// 创建Amazon处理器
-	amazonProcessor := amazon.NewAmazonProcessor(&ti.cfg.Amazon)
+	amazonProcessor := amazon.NewAmazonProcessor(ti.cfg)
 	if amazonProcessor == nil {
 		return fmt.Errorf("创建Amazon处理器失败")
 	}

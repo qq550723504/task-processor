@@ -68,11 +68,15 @@ func (m *managerImpl) Load(source ConfigSource) (*Config, error) {
 		return nil, fmt.Errorf("读取配置失败: %w", err)
 	}
 
+	m.logger.Infof("读取到配置数据，长度: %d 字节", len(data))
+
 	// 解析配置
 	cfg, err := LoadFromBytes(data)
 	if err != nil {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
+
+	m.logger.Infof("配置解析成功，浏览器路径: %s", cfg.Browser.BrowserPath)
 
 	// 验证配置
 	if err := m.Validate(cfg); err != nil {

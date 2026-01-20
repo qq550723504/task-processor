@@ -244,4 +244,7 @@ func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *
 
 	// 设置到任务上下文（直接赋值）
 	taskCtx.APIClient = apiClient
+
+	// 创建并设置QueryAPI服务
+	taskCtx.QueryAPI = api.NewQueryAPI(apiClient, h.logger.WithField("service", "QueryAPI"))
 }

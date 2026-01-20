@@ -17,6 +17,10 @@ func (f *TaskFetcher) fetchTasksFromAPI(maxTasks int) ([]api.ProductImportTaskRe
 	managementClientProvider := f.managementClient
 	importTaskClient := managementClientProvider.GetImportTaskClient()
 
+	// 添加调试日志
+	logrus.Infof("🔍 任务获取参数: maxTasks=%d, userID=%d, storeIDs=%v",
+		maxTasks, f.config.Management.UserID, f.config.Management.StoreIDs)
+
 	return importTaskClient.GetPendingAndRetryTasks(
 		maxTasks,
 		f.config.Management.UserID,

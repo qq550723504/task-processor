@@ -26,9 +26,9 @@ worker:
 
 # OpenAI配置
 openai:
-  apiKey: "sk-dHmRMt46T7eZxHnm0n97KNlCmtBi08vb7qPqGRwwd0N3HN5U"
+  apiKey: "sk-nqXpijKPU98tXPskfCYviSJXNhThh6wFi5y9oBbEMXwUo8p8"
   model: "gemini-2.0-flash"
-  baseURL: "https://new.yunai.link/v1"
+  baseURL: "https://new.apifast.top/v1"
   timeout: 300  # API调用超时5分钟
   
   # 请求池配置 - 更保守的设置
@@ -62,15 +62,15 @@ management:
   clientSecret: "go-listing-secret"
   tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
   scopes: ["user.read"]
-  tenantID: "1"  # 租户ID
+  #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [690]  # 店铺ID列表
+  storeIDs: [661]  # 店铺ID列表
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
   # TEMU 平台配置
   temu:
-    enabled: false           # 是否启用TEMU处理器（处理上架任务）
+    enabled: true           # 是否启用TEMU处理器（处理上架任务）
     schedulerEnabled: false  # 是否启用TEMU调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
@@ -94,7 +94,7 @@ platforms:
   # SHEIN 平台配置
   shein:
     enabled: false            # 是否启用SHEIN处理器（处理上架任务）
-    schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
+    schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
       enabled: false        # 启用自动核价
@@ -110,7 +110,7 @@ platforms:
       interval: 43200        # 执行间隔（秒），默认12小时
     # 活动报名配置
     activityRegistration:
-      enabled: true        # 启用活动报名
+      enabled: false        # 启用活动报名
       interval: 86400        # 执行间隔（秒），默认24小时
 
   # 1688 平台配置

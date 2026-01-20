@@ -418,7 +418,6 @@ func (d *ImageDownloader) parseImageConfig(resp *req.Response, _ string) (width,
 	width = config.Width
 	height = config.Height
 
-	d.logger.Printf("✅ 获取图片信息成功: %dx%d, 大小=%d bytes", width, height, size)
 	return width, height, size, nil
 }
 

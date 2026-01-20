@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
@@ -24,6 +25,7 @@ type schedulerServiceImpl struct {
 	logger           *logrus.Logger
 	managementClient *management.ClientManager
 	config           *config.Config
+	amazonProcessor  *amazon.AmazonProcessor
 	schedulerManager *scheduler.Manager
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -36,6 +38,21 @@ func NewSchedulerService(logger *logrus.Logger, managementClient *management.Cli
 		logger:           logger,
 		managementClient: managementClient,
 		config:           cfg,
+	}
+}
+
+// NewSchedulerServiceWithAmazon 创建调度服务（带Amazon处理器）
+func NewSchedulerServiceWithAmazon(
+	logger *logrus.Logger,
+	managementClient *management.ClientManager,
+	cfg *config.Config,
+	amazonProcessor *amazon.AmazonProcessor,
+) SchedulerService {
+	return &schedulerServiceImpl{
+		logger:           logger,
+		managementClient: managementClient,
+		config:           cfg,
+		amazonProcessor:  amazonProcessor,
 	}
 }
 

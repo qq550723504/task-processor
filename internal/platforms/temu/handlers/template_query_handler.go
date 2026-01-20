@@ -2,8 +2,7 @@ package handlers
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/platforms/temu/api/services"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -85,30 +84,42 @@ func (h *TemplateQueryHandler) buildTemplateQueryRequest(temuCtx *temucontext.Te
 
 // queryTemplate 发送模板查询请求到TEMU API
 func (h *TemplateQueryHandler) queryTemplate(temuCtx *temucontext.TemuTaskContext, request types.TemplateQueryRequest) error {
-	// 获取API客户端
+	// 检查API客户端
 	if temuCtx.APIClient == nil {
 		return fmt.Errorf("API客户端未初始化")
 	}
 
-	// 创建QueryAPI
-	queryAPI := api.NewQueryAPI(temuCtx.APIClient, h.logger)
-
-	// 构造请求（需要转换类型）
-	apiRequest := &models.TemplateQueryRequest{
-		CatID: request.CatID,
+	// 检查QueryAPI服务是否存在
+	if temuCtx.QueryAPI == nil {
+		return fmt.Errorf("QueryAPI服务未初始化")
 	}
 
-	// 调用API查询模板
-	response, err := queryAPI.QueryTemplate(apiRequest)
+	// 类型断言获取QueryAPI实例
+	queryAPI, ok := temuCtx.QueryAPI.(*services.QueryAPI)
+	if !ok {
+		return fmt.Errorf("QueryAPI类型断言失败")
+	}
+
+	// 使用QueryAPI服务发送请求
+	response, err := queryAPI.QueryTemplateAdvanced(&request)
 	if err != nil {
-		return fmt.Errorf("模板查询失败: %v", err)
+		return fmt.Errorf("发送请求失败: %v", err)
 	}
 
-	// 将模板信息存储到强类型字段中（需要根据实际的types结构进行转换）
-	// 这里需要根据实际的types.TemplateQueryResponse结构来适配
+	// 将模板信息存储到强类型字段中
+	temuCtx.TemplateInfo = response.Result.TemplateInfo
+	temuCtx.UserInputParentSpecList = response.Result.UserInputParentSpecList
+	temuCtx.InputMaxSpecNum = response.Result.InputMaxSpecNum
+	temuCtx.SingleSpecValueNum = response.Result.SingleSpecValueNum
+
 	h.logger.WithFields(logrus.Fields{
-		"templateCount": len(response.Result.Templates),
-	}).Info("模板查询成功")
+		"listingCommitID":     request.ListingCommitID,
+		"goodsCommitID":       request.GoodsCommitID,
+		"catID":               request.CatID,
+		"templateID":          response.Result.TemplateInfo.TemplateID,
+		"specPropertiesCount": len(response.Result.TemplateInfo.GoodsSpecProperties),
+		"success":             response.Success,
+	}).Info("模板查询成功，已存储到强类型上下文")
 
 	return nil
 }

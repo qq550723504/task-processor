@@ -43,9 +43,9 @@ func NewVariantJsonDataHandler(
 			logrus.Info("[SHEIN] 变体数据使用共享的Amazon爬虫实例")
 		}
 	} else if amazonConfig != nil && amazonConfig.Enabled {
-		// 如果没有提供共享实例，则创建新的（向后兼容）
-		handler.amazonProcessor = amazon.NewAmazonProcessor(amazonConfig)
-		logrus.Info("变体数据Amazon爬虫已启用")
+		// 如果没有提供共享实例，记录警告但不创建新实例
+		// 因为我们没有完整的配置对象来创建新的处理器
+		logrus.Warn("变体数据处理器：没有提供Amazon处理器实例，Amazon功能将被禁用")
 	}
 
 	return handler

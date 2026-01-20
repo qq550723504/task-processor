@@ -14,7 +14,7 @@ import (
 // AmazonProcessor Amazon爬虫处理器
 type AmazonProcessor struct {
 	browserPool     *browser.BrowserPool
-	config          *config.AmazonConfig
+	config          *config.Config
 	usePool         bool
 	singleProcessor *SingleProcessor
 	batchProcessor  *BatchProcessor
@@ -23,31 +23,31 @@ type AmazonProcessor struct {
 }
 
 // NewAmazonProcessor 使用全局配置创建Amazon处理器
-func NewAmazonProcessor(cfg *config.AmazonConfig) *AmazonProcessor {
+func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 	// 创建浏览器池配置
 	poolConfig := browser.DefaultBrowserPoolConfig()
 
 	// 如果配置中的PoolSize为0，使用默认值
-	if cfg.PoolSize > 0 {
-		poolConfig.Size = cfg.PoolSize
+	if cfg.Browser.PoolSize > 0 {
+		poolConfig.Size = cfg.Browser.PoolSize
 	}
 
 	// 应用随机配置设置
-	if cfg.RandomConfig.Enabled {
+	if cfg.Browser.RandomConfig.Enabled {
 		poolConfig.UseRandomFingerprint = true
-		poolConfig.FingerprintStrategy = cfg.RandomConfig.Strategy
-		poolConfig.PresetName = cfg.RandomConfig.PresetName
-		poolConfig.HealthCheckEnabled = cfg.RandomConfig.HealthCheckEnabled
-		poolConfig.MaxRetries = cfg.RandomConfig.MaxRetries
+		poolConfig.FingerprintStrategy = cfg.Browser.RandomConfig.FingerprintStrategy
+		poolConfig.PresetName = cfg.Browser.RandomConfig.PresetName
+		poolConfig.HealthCheckEnabled = cfg.Browser.RandomConfig.HealthCheckEnabled
+		poolConfig.MaxRetries = cfg.Browser.RandomConfig.MaxRetries
 
 		logrus.Infof("启用随机配置 - 策略: %s, 预设: %s, 指纹策略: %s",
-			cfg.RandomConfig.Strategy, cfg.RandomConfig.PresetName, cfg.RandomConfig.FingerprintStrategy)
+			cfg.Browser.RandomConfig.Strategy, cfg.Browser.RandomConfig.PresetName, cfg.Browser.RandomConfig.FingerprintStrategy)
 	} else {
 		poolConfig.UseRandomFingerprint = false
 		logrus.Info("使用传统浏览器配置")
 	}
 
-	logrus.Infof("创建Amazon处理器，浏览器池大小: %d (配置值: %d)", poolConfig.Size, cfg.PoolSize)
+	logrus.Infof("创建Amazon处理器，浏览器池大小: %d (配置值: %d)", poolConfig.Size, cfg.Browser.PoolSize)
 	browserPool := browser.NewBrowserPool(cfg, poolConfig)
 
 	// 初始化浏览器池

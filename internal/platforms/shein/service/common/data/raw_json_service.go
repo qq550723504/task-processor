@@ -33,7 +33,7 @@ func (c *sheinRawJsonDataClient) CreateRawJsonData(req *api.RawJsonDataCreateReq
 // NewRawJsonDataHandler 创建新的获取原始Json数据处理器
 func NewRawJsonDataHandler(
 	rawJsonDataClient api.RawJsonDataAPI,
-	amazonConfig *config.AmazonConfig,
+	amazonConfig *config.Config,
 	amazonProcessor interface{},
 ) *RawJsonDataHandler {
 	// 提取 Amazon 处理器
@@ -43,7 +43,7 @@ func NewRawJsonDataHandler(
 			ap = processor
 			logrus.Info("[SHEIN] 使用共享的 Amazon 爬虫实例")
 		}
-	} else if amazonConfig != nil && amazonConfig.Enabled {
+	} else if amazonConfig != nil {
 		// 如果没有提供共享实例，则创建新的（向后兼容）
 		ap = amazon.NewAmazonProcessor(amazonConfig)
 		logrus.Info("[SHEIN] Amazon 爬虫已启用")
@@ -53,7 +53,7 @@ func NewRawJsonDataHandler(
 	client := &sheinRawJsonDataClient{client: rawJsonDataClient}
 
 	return &RawJsonDataHandler{
-		fetcher: product.NewProductFetcher(client, amazonConfig, ap),
+		fetcher: product.NewProductFetcher(client, &amazonConfig.Amazon, ap),
 	}
 }
 

@@ -91,7 +91,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 重新上架任务处理器
 	//pipeline.AddHandler(modules.NewReListingHandler())
 	// 获取原始数据（支持从Amazon爬虫抓取，使用共享的Amazon处理器）
-	pipeline.AddHandler(data.NewRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataClient(), &cfg.Amazon, processor.amazonProcessor))
+	pipeline.AddHandler(data.NewRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataClient(), cfg, processor.amazonProcessor))
 	// 早期检查产品是否已上架（避免后续无效处理）
 	pipeline.AddHandler(publish.NewProductExistsCheckHandler())
 	// 验证图片数量（SHEIN要求至少3张：1张主图+2张细节图）

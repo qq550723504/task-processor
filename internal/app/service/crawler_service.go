@@ -49,7 +49,7 @@ func (s *CrawlerService) ProcessProduct(ctx context.Context, req *CrawlerRequest
 	cfg := s.configService.LoadConfig(req.ConfigFile)
 
 	// 创建处理器
-	processor := amazon.NewAmazonProcessor(&cfg.Amazon)
+	processor := amazon.NewAmazonProcessor(cfg)
 	defer processor.Shutdown()
 
 	// 处理页面

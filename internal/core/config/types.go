@@ -30,14 +30,14 @@ type OpenAIConfig struct {
 
 // ManagementConfig 管理系统配置
 type ManagementConfig struct {
-	BaseURL      string
-	ClientID     string
-	ClientSecret string
-	TokenURL     string
-	Scopes       []string
-	TenantID     string // 租户ID
-	UserID       int64
-	StoreIDs     []int64
+	BaseURL      string   `yaml:"baseURL"`
+	ClientID     string   `yaml:"clientID"`
+	ClientSecret string   `yaml:"clientSecret"`
+	TokenURL     string   `yaml:"tokenURL"`
+	Scopes       []string `yaml:"scopes"`
+	TenantID     string   `yaml:"tenantID"` // 租户ID
+	UserID       int64    `yaml:"userID"`
+	StoreIDs     []int64  `yaml:"storeIDs"`
 }
 
 // PlatformsConfig 平台配置

@@ -47,14 +47,16 @@ func (s *processorServiceImpl) startProcessors(ctx context.Context, cfg *config.
 func (s *processorServiceImpl) startTemuProcessor(ctx context.Context, cfg *config.Config) error {
 	s.logger.Info("启动TEMU处理器...")
 
-	// 获取已初始化的共享Amazon处理器
-	sharedAmazonProcessor := GetSharedAmazonProcessor(cfg, s.logger)
+	// 使用注入的Amazon处理器
+	if s.amazonProcessor == nil {
+		return fmt.Errorf("Amazon处理器未初始化")
+	}
 
-	// 创建TEMU处理器，使用共享资源
-	s.temuProcessor = temu.NewTemuProcessor(ctx, cfg, s.logger, s.managementClient, sharedAmazonProcessor)
+	// 创建TEMU处理器，使用注入的资源
+	s.temuProcessor = temu.NewTemuProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor)
 
 	// 启动处理器
-	if err := s.temuProcessor.Start(s.ctx); err != nil {
+	if err := s.temuProcessor.Start(ctx); err != nil {
 		return fmt.Errorf("TEMU处理器启动失败: %w", err)
 	}
 
@@ -66,14 +68,16 @@ func (s *processorServiceImpl) startTemuProcessor(ctx context.Context, cfg *conf
 func (s *processorServiceImpl) startSheinProcessor(ctx context.Context, cfg *config.Config) error {
 	s.logger.Info("启动SHEIN处理器...")
 
-	// 获取已初始化的共享Amazon处理器
-	sharedAmazonProcessor := GetSharedAmazonProcessor(cfg, s.logger)
+	// 使用注入的Amazon处理器
+	if s.amazonProcessor == nil {
+		return fmt.Errorf("Amazon处理器未初始化")
+	}
 
-	// 创建SHEIN处理器，使用共享资源
-	s.sheinProcessor = pipeline.NewSheinProcessor(ctx, cfg, s.logger, s.managementClient, sharedAmazonProcessor)
+	// 创建SHEIN处理器，使用注入的资源
+	s.sheinProcessor = pipeline.NewSheinProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor)
 
 	// 启动处理器
-	if err := s.sheinProcessor.Start(s.ctx); err != nil {
+	if err := s.sheinProcessor.Start(ctx); err != nil {
 		return fmt.Errorf("SHEIN处理器启动失败: %w", err)
 	}
 
@@ -95,9 +99,7 @@ func (s *processorServiceImpl) stopAllProcessors(ctx context.Context) {
 		s.logger.Info("SHEIN处理器已停止")
 	}
 
-	// 关闭共享的Amazon处理器
-	CloseSharedAmazonProcessor(s.logger)
-
-	// 关闭共享的管理客户端
-	CloseSharedManagementClient(s.logger)
+	// Amazon处理器和管理客户端由依赖注入容器管理生命周期
+	// 不需要手动关闭，容器会在应用关闭时自动处理
+	s.logger.Info("✅ 所有处理器已停止")
 }

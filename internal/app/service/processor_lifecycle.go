@@ -24,9 +24,12 @@ func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.
 	// 创建上下文
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
-	// 初始化共享资源
-	if err := s.initializeSharedResources(cfg, authClient); err != nil {
-		return errors.Wrap(err, errors.ErrCodeSystem, "初始化共享资源失败")
+	// 验证依赖注入的资源
+	if s.managementClient == nil {
+		return errors.New(errors.ErrCodeSystem, "管理客户端未注入")
+	}
+	if s.amazonProcessor == nil {
+		return errors.New(errors.ErrCodeSystem, "Amazon处理器未注入")
 	}
 
 	// 启动处理器

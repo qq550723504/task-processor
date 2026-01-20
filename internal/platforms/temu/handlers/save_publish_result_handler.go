@@ -372,14 +372,14 @@ func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTa
 		"response":   string(responseJSON),
 	}).Info("TEMU产品提交响应数据")
 
-	// 保存响应数据到文件（用于调试和审计）
-	if err := h.saveResponseToFile(task.ID, responseJSON); err != nil {
-		h.logger.Warnf("保存响应数据到文件失败: %v", err)
-		// 不返回错误，因为这不是关键功能
-	}
+	// // 保存响应数据到文件（用于调试和审计）
+	// if err := h.saveResponseToFile(task.ID, responseJSON); err != nil {
+	// 	h.logger.Warnf("保存响应数据到文件失败: %v", err)
+	// 	// 不返回错误，因为这不是关键功能
+	// }
 
 	// 提取关键信息进行详细记录
-	h.logResponseDetails(submitResponse, task)
+	//h.logResponseDetails(submitResponse, task)
 
 	return nil
 }

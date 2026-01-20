@@ -18,6 +18,7 @@ type TemuTaskContext struct {
 	// TEMU特定字段（直接访问，无需getter/setter）
 	AmazonProcessor *amazon.AmazonProcessor
 	APIClient       api.APIClientInterface // 使用接口避免循环依赖
+	QueryAPI        interface{}            // 查询API服务
 
 	// TEMU特定产品数据
 	TemuProduct *api.Product
