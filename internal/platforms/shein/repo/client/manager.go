@@ -155,17 +155,6 @@ func (cm *ClientManager) createClient(shopID int64, storeInfo *management_api.St
 		if len(cookies) > 0 {
 			httpClient = httpClient.SetCommonCookies(cookies...)
 			cm.logger.Infof("🍪 成功设置Cookie: 店铺=%d, Cookie数量=%d", shopID, len(cookies))
-
-			// 调试：打印前3个Cookie的名称
-			for i, cookie := range cookies {
-				if i < 3 {
-					valuePreview := cookie.Value
-					if len(valuePreview) > 10 {
-						valuePreview = valuePreview[:10] + "..."
-					}
-					cm.logger.Debugf("Cookie[%d]: %s=%s (Domain: %s)", i, cookie.Name, valuePreview, cookie.Domain)
-				}
-			}
 		} else {
 			cm.logger.Warnf("⚠️ 解析后Cookie数量为0: 店铺=%d", shopID)
 		}

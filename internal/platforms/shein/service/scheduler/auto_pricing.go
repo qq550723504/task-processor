@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/platforms/shein/api/pricing"
 	"task-processor/internal/platforms/shein/repo"
 	pricingservice "task-processor/internal/platforms/shein/service/pricing"
+	"task-processor/internal/platforms/shein/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,7 +18,7 @@ import (
 // AutoPricingService 自动核价服务接口
 type AutoPricingService interface {
 	// FetchPendingPriceProducts 获取待核价产品列表
-	FetchPendingPriceProducts(ctx context.Context) ([]pricing.BargainPageData, error)
+	FetchPendingPriceProducts(ctx context.Context, startTime, endTime string) ([]pricing.BargainPageData, error)
 
 	// ApplyPricingRules 应用核价规则
 	ApplyPricingRules(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]PricingDecision, error)
@@ -49,6 +50,7 @@ type autoPricingServiceImpl struct {
 	pricingAPI       repo.PricingAPIInterface
 	calculator       *pricingservice.AutoPricingCalculator
 	requestBuilder   *PricingRequestBuilder
+	timeHelper       *utils.TimeHelper
 	logger           *logrus.Entry
 }
 
@@ -62,13 +64,29 @@ func NewAutoPricingService(
 		pricingAPI:       pricingAPI,
 		calculator:       pricingservice.NewAutoPricingCalculator(),
 		requestBuilder:   NewPricingRequestBuilder(),
+		timeHelper:       utils.NewTimeHelper(),
 		logger:           logrus.WithField("component", "AutoPricingService"),
 	}
 }
 
 // FetchPendingPriceProducts 获取待核价产品列表
-func (s *autoPricingServiceImpl) FetchPendingPriceProducts(ctx context.Context) ([]pricing.BargainPageData, error) {
-	s.logger.Debug("开始获取待核价产品列表")
+func (s *autoPricingServiceImpl) FetchPendingPriceProducts(ctx context.Context, startTime, endTime string) ([]pricing.BargainPageData, error) {
+	// 调整时间范围以符合API限制（不超过三个月）
+	adjustedStart, adjustedEnd, err := s.timeHelper.AdjustTimeRangeToLimit(startTime, endTime)
+	if err != nil {
+		s.logger.Errorf("时间参数处理失败: %v", err)
+		return nil, fmt.Errorf("时间参数处理失败: %w", err)
+	}
+
+	// 如果调整了时间范围，记录日志
+	if adjustedStart != startTime || adjustedEnd != endTime {
+		s.logger.Infof("时间范围已调整以符合API限制: %s 到 %s", adjustedStart, adjustedEnd)
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"start_time": adjustedStart,
+		"end_time":   adjustedEnd,
+	}).Debug("开始获取待核价产品列表")
 
 	var allProducts []pricing.BargainPageData
 
@@ -78,8 +96,10 @@ func (s *autoPricingServiceImpl) FetchPendingPriceProducts(ctx context.Context) 
 
 	for {
 		req := &pricing.PageRequest{
-			PageNum:  pageNum,
-			PageSize: pageSize,
+			PageNum:   pageNum,
+			PageSize:  pageSize,
+			StartTime: adjustedStart,
+			EndTime:   adjustedEnd,
 		}
 
 		// 调用 SHEIN API 获取议价页面数据
@@ -89,7 +109,7 @@ func (s *autoPricingServiceImpl) FetchPendingPriceProducts(ctx context.Context) 
 			return nil, fmt.Errorf("获取议价页面数据失败: %w", err)
 		}
 
-		s.logger.Debugf("页面%d获取到%d个议价数据", pageNum, len(response.Info.Data))
+		s.logger.Infof("页面%d获取到%d个议价数据", pageNum, len(response.Info.Data))
 
 		allProducts = append(allProducts, response.Info.Data...)
 

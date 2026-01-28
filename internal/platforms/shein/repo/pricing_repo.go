@@ -59,6 +59,14 @@ func (p *PricingAPI) BargainPage(req *pricing.PageRequest, status int) (*pricing
 		"bargain_status": status,
 	}
 
+	// 添加时间参数（如果提供）
+	if req.StartTime != "" {
+		reqBody["start_time"] = req.StartTime
+	}
+	if req.EndTime != "" {
+		reqBody["end_time"] = req.EndTime
+	}
+
 	var result pricing.BargainPageResponse
 
 	if err := p.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {

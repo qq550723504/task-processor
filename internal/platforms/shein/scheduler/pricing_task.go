@@ -71,8 +71,8 @@ func (t *PricingTask) Execute(ctx context.Context) error {
 		return fmt.Errorf("获取店铺API客户端失败: %w", err)
 	}
 
-	// 1. 获取待核价产品列表
-	pendingProducts, err := t.pricingService.FetchPendingPriceProducts(ctx)
+	// 1. 获取待核价产品列表（使用默认时间范围：明天往前推一年）
+	pendingProducts, err := t.pricingService.FetchPendingPriceProducts(ctx, "", "")
 	if err != nil {
 		return fmt.Errorf("获取待核价产品失败: %w", err)
 	}

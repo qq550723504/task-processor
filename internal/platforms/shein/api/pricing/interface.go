@@ -7,8 +7,10 @@ type PricingAPI interface {
 }
 
 type PageRequest struct {
-	PageNum  int `json:"page_num"`
-	PageSize int `json:"page_size"`
+	PageNum   int    `json:"page_num"`
+	PageSize  int    `json:"page_size"`
+	StartTime string `json:"start_time,omitempty"` // 开始时间，格式：2025-10-30 00:00:00
+	EndTime   string `json:"end_time,omitempty"`   // 结束时间，格式：2026-01-30 23:59:59
 }
 
 type BatchHandleCostDiscussRequest struct {
