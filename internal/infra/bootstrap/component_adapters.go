@@ -31,9 +31,9 @@ func NewComponentAdapters(container di.Container, logger *logrus.Logger) *Compon
 }
 
 // RegisterAllComponents 注册所有组件到生命周期管理器
-func (c *ComponentAdapters) RegisterAllComponents(lifecycleManager lifecycle.LifecycleManager, cfg *config.Config) error {
+func (c *ComponentAdapters) RegisterAllComponents(lifecycleManager lifecycle.LifecycleManager, cfg *config.Config, appVersion string) error {
 	// 注册更新服务组件
-	if err := c.registerUpdaterComponent(lifecycleManager, cfg); err != nil {
+	if err := c.registerUpdaterComponent(lifecycleManager, cfg, appVersion); err != nil {
 		return err
 	}
 
@@ -56,7 +56,7 @@ func (c *ComponentAdapters) RegisterAllComponents(lifecycleManager lifecycle.Lif
 }
 
 // registerUpdaterComponent 注册更新服务组件
-func (c *ComponentAdapters) registerUpdaterComponent(lifecycleManager lifecycle.LifecycleManager, cfg *config.Config) error {
+func (c *ComponentAdapters) registerUpdaterComponent(lifecycleManager lifecycle.LifecycleManager, cfg *config.Config, appVersion string) error {
 	// 总是注册更新服务组件，但根据配置决定是否启动自动更新功能
 	c.logger.Debug("注册更新服务组件...")
 
@@ -65,6 +65,7 @@ func (c *ComponentAdapters) registerUpdaterComponent(lifecycleManager lifecycle.
 		container:     c.container,
 		logger:        c.logger,
 		config:        cfg,
+		appVersion:    appVersion,
 	}
 
 	return lifecycleManager.Register(component)
@@ -151,9 +152,10 @@ func (c *ComponentAdapters) registerSchedulerComponent(lifecycleManager lifecycl
 // UpdaterServiceComponent 更新服务组件适配器
 type UpdaterServiceComponent struct {
 	*lifecycle.BaseComponent
-	container di.Container
-	logger    *logrus.Logger
-	config    *config.Config
+	container  di.Container
+	logger     *logrus.Logger
+	config     *config.Config
+	appVersion string
 }
 
 // Start 启动更新服务
@@ -167,9 +169,9 @@ func (u *UpdaterServiceComponent) Start(ctx context.Context) error {
 
 	// 根据配置决定是否启动自动更新器
 	if u.config.Updater.Enabled {
-		// 启动自动更新器（保持原有逻辑）
-		updaterService.(*service.UpdaterService).StartAutoUpdater(u.config, "")
-		u.logger.Info("自动更新器已启动")
+		// 启动自动更新器，传递正确的版本信息
+		updaterService.(*service.UpdaterService).StartAutoUpdater(u.config, u.appVersion)
+		u.logger.Infof("自动更新器已启动 (当前版本: %s)", u.appVersion)
 	} else {
 		u.logger.Info("自动更新功能已禁用")
 	}

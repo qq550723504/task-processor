@@ -63,7 +63,7 @@ func runApplication(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger) 
 
 	// 初始化应用（使用默认配置文件路径）
 	configPath := "config/config-dev.yaml"
-	if err := app.Initialize(configPath); err != nil {
+	if err := app.Initialize(configPath, appVersion); err != nil {
 		return err
 	}
 
@@ -139,7 +139,7 @@ func testNewArchitecture() {
 
 	// 初始化应用
 	fmt.Println("📋 初始化应用...")
-	if err := app.Initialize("config/config-dev.yaml"); err != nil {
+	if err := app.Initialize("config/config-dev.yaml", "test-1.0.0"); err != nil {
 		fmt.Printf("❌ 应用初始化失败: %v\n", err)
 		return
 	}

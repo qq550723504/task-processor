@@ -19,6 +19,7 @@ type ApplicationBootstrap struct {
 	configManager    config.ConfigManager
 	lifecycleManager lifecycle.LifecycleManager
 	serviceRegistry  *ServiceRegistrySimple
+	appVersion       string
 }
 
 // NewApplicationBootstrap 创建应用启动器
@@ -33,8 +34,11 @@ func NewApplicationBootstrap(logger *logrus.Logger) *ApplicationBootstrap {
 }
 
 // Initialize 初始化应用
-func (a *ApplicationBootstrap) Initialize(configPath string) error {
+func (a *ApplicationBootstrap) Initialize(configPath, appVersion string) error {
 	a.logger.Info("开始初始化应用...")
+
+	// 保存版本信息
+	a.appVersion = appVersion
 
 	// 1. 加载配置
 	if err := a.loadConfiguration(configPath); err != nil {
@@ -198,8 +202,8 @@ func (a *ApplicationBootstrap) registerComponents() error {
 	// 创建组件适配器
 	adapters := NewComponentAdapters(a.container, a.logger)
 
-	// 注册所有组件适配器
-	if err := adapters.RegisterAllComponents(a.lifecycleManager, cfg); err != nil {
+	// 注册所有组件适配器，传递版本信息
+	if err := adapters.RegisterAllComponents(a.lifecycleManager, cfg, a.appVersion); err != nil {
 		return err
 	}
 

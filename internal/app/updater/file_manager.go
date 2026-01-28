@@ -31,30 +31,26 @@ func (fm *FileManager) ReplaceExecutable(tmpFile string) error {
 
 	// 替换程序（Windows 需要特殊处理）
 	if runtime.GOOS == "windows" {
-		// Windows 下使用重命名方式：先将当前exe改名为.old作为备份
-		oldExe := currentExe + ".old"
+		// Windows 下使用延迟替换策略：
+		// 1. 将新文件复制到临时位置
+		// 2. 使用 Go 代码进行延迟替换和重启
 
-		// 删除旧的.old文件（如果存在）
-		os.Remove(oldExe)
+		newExePath := currentExe + ".new"
+		oldExePath := currentExe + ".old"
 
-		// 将当前exe重命名为.old（Windows允许重命名正在运行的exe）
-		if err := os.Rename(currentExe, oldExe); err != nil {
-			return fmt.Errorf("重命名当前程序失败: %w", err)
+		// 删除可能存在的旧文件
+		os.Remove(newExePath)
+		os.Remove(oldExePath)
+
+		// 将新文件复制到 .new 位置
+		if err := fm.copyFile(tmpFile, newExePath); err != nil {
+			return fmt.Errorf("复制新程序到临时位置失败: %w", err)
 		}
 
-		logrus.Info("已备份当前版本为 .old")
-
-		// 将新文件移动到正确位置
-		if err := fm.copyFile(tmpFile, currentExe); err != nil {
-			// 如果失败，尝试恢复
-			os.Rename(oldExe, currentExe)
-			return fmt.Errorf("复制新程序失败: %w", err)
-		}
-
-		// 删除临时文件
+		// 删除临时下载文件
 		os.Remove(tmpFile)
 
-		logrus.Info("程序文件已更新")
+		logrus.Info("已准备延迟更新文件，程序将在重启后完成更新")
 		return nil
 	}
 
@@ -91,16 +87,48 @@ func (fm *FileManager) RestartProgram() {
 	logrus.Info("准备启动新版本程序...")
 
 	if runtime.GOOS == "windows" {
-		// Windows: 使用 cmd /c start 在新窗口中启动程序
-		// 构建参数
-		args := []string{"/c", "start", "Task Processor", "/D", workDir, currentExe}
-		args = append(args, os.Args[1:]...)
-
-		cmd := exec.Command("cmd", args...)
-
-		if err := cmd.Start(); err != nil {
-			logrus.Errorf("启动新程序失败: %v", err)
+		// Windows: 检查是否有 .new 文件需要更新
+		newExePath := currentExe + ".new"
+		if _, err := os.Stat(newExePath); err == nil {
+			// 使用 Go 代码进行延迟更新和重启
+			logrus.Info("检测到更新文件，启动延迟更新程序...")
+			fm.performDelayedUpdate(currentExe, workDir)
 			return
+		} else {
+			// 普通重启（无更新）
+			args := []string{"/c", "start", "Task Processor", "/D", workDir, currentExe}
+			args = append(args, os.Args[1:]...)
+
+			cmd := exec.Command("cmd", args...)
+			if err := cmd.Start(); err != nil {
+				logrus.Errorf("启动新程序失败: %v", err)
+				return
+			}
+
+			logrus.Info("新程序启动命令已执行，当前程序即将退出...")
+			logrus.Info("提示: 旧版本已备份为 .old 文件，确认新版本正常后可手动删除")
+
+			// 刷新日志缓冲区
+			time.Sleep(500 * time.Millisecond)
+
+			// 在 Windows 上使用 taskkill 强制终止当前进程
+			pid := os.Getpid()
+			logrus.Infof("强制终止当前进程 (PID: %d)...", pid)
+
+			// 使用 taskkill 强制终止 - 添加panic recovery
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logrus.Errorf("强制终止进程goroutine panic recovered: %v", r)
+					}
+				}()
+				time.Sleep(1 * time.Second)
+				exec.Command("taskkill", "/F", "/PID", fmt.Sprintf("%d", pid)).Run()
+			}()
+
+			// 正常退出
+			time.Sleep(1 * time.Second)
+			os.Exit(0)
 		}
 	} else {
 		// Linux/Mac: 直接启动
@@ -111,35 +139,16 @@ func (fm *FileManager) RestartProgram() {
 			logrus.Errorf("启动新程序失败: %v", err)
 			return
 		}
+
+		logrus.Info("新程序启动命令已执行，当前程序即将退出...")
+		logrus.Info("提示: 旧版本已备份为 .old 文件，确认新版本正常后可手动删除")
+
+		// 刷新日志缓冲区
+		time.Sleep(500 * time.Millisecond)
+
+		// 正常退出
+		os.Exit(0)
 	}
-
-	logrus.Info("新程序已启动，当前程序即将退出...")
-	logrus.Info("提示: 旧版本已备份为 .old 文件，确认新版本正常后可手动删除")
-
-	// 刷新日志缓冲区
-	time.Sleep(500 * time.Millisecond)
-
-	// 在 Windows 上使用 taskkill 强制终止当前进程
-	if runtime.GOOS == "windows" {
-		// 获取当前进程 PID
-		pid := os.Getpid()
-		logrus.Infof("强制终止当前进程 (PID: %d)...", pid)
-
-		// 使用 taskkill 强制终止 - 添加panic recovery
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					logrus.Errorf("强制终止进程goroutine panic recovered: %v", r)
-				}
-			}()
-			time.Sleep(1 * time.Second)
-			exec.Command("taskkill", "/F", "/PID", fmt.Sprintf("%d", pid)).Run()
-		}()
-	}
-
-	// 正常退出
-	time.Sleep(1 * time.Second)
-	os.Exit(0)
 }
 
 // copyFile 复制文件
@@ -158,6 +167,66 @@ func (fm *FileManager) copyFile(src, dst string) error {
 
 	_, err = io.Copy(destination, source)
 	return err
+}
+
+// performDelayedUpdate 执行延迟更新（Windows专用）
+func (fm *FileManager) performDelayedUpdate(currentExe, workDir string) {
+	newExePath := currentExe + ".new"
+	oldExePath := currentExe + ".old"
+
+	// 使用 PowerShell 脚本进行延迟更新
+	psScript := fmt.Sprintf(`
+Start-Sleep -Seconds 5
+Write-Host "Starting file replacement..."
+
+$currentExe = "%s"
+$newExePath = "%s"
+$oldExePath = "%s"
+$workDir = "%s"
+
+if (Test-Path $oldExePath) {
+    Write-Host "Removing old backup file..."
+    Remove-Item $oldExePath -Force
+}
+
+if (Test-Path $currentExe) {
+    Write-Host "Backing up current program..."
+    Move-Item $currentExe $oldExePath
+}
+
+if (Test-Path $newExePath) {
+    Write-Host "Installing new version..."
+    Move-Item $newExePath $currentExe
+}
+
+Write-Host "Program update completed, starting new version..."
+Start-Process -FilePath $currentExe -WorkingDirectory $workDir
+Write-Host "New version started successfully"
+
+# Clean up script itself
+Start-Sleep -Seconds 2
+Remove-Item $PSCommandPath -Force
+`, currentExe, newExePath, oldExePath, workDir)
+
+	// 创建临时 PowerShell 脚本
+	scriptPath := "temp_update.ps1"
+	if err := os.WriteFile(scriptPath, []byte(psScript), 0644); err != nil {
+		logrus.Errorf("创建更新脚本失败: %v", err)
+		return
+	}
+
+	// 启动 PowerShell 脚本
+	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
+	if err := cmd.Start(); err != nil {
+		logrus.Errorf("启动更新脚本失败: %v", err)
+		os.Remove(scriptPath)
+		return
+	}
+
+	// 立即退出当前程序
+	logrus.Info("PowerShell更新脚本已启动，当前程序立即退出...")
+	time.Sleep(100 * time.Millisecond) // 短暂等待确保日志输出
+	os.Exit(0)
 }
 
 // SaveUpdateError 保存更新错误到文件
