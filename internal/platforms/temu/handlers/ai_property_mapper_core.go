@@ -257,19 +257,6 @@ func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templatePr
 	// 组织TEMU属性选项
 	for _, templateProp := range templateProps {
 		data.TemuProperties = append(data.TemuProperties, templateProp)
-		// 记录Material属性的详细信息
-		if strings.ToLower(templateProp.Name) == "material" {
-			logrus.Infof("🔍 发现Material属性: PID=%d, 有效值数量=%d", templateProp.PID, len(templateProp.Values))
-			if len(templateProp.Values) > 0 {
-				logrus.Debugf("Material有效值: %v", func() []string {
-					values := make([]string, len(templateProp.Values))
-					for i, v := range templateProp.Values {
-						values[i] = v.Value
-					}
-					return values
-				}())
-			}
-		}
 	}
 
 	return data
@@ -298,12 +285,6 @@ func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.
 
 		// 同时维护PID到属性列表的映射，用于处理AI只返回PID的情况
 		pidToTemplateProps[templateProp.PID] = append(pidToTemplateProps[templateProp.PID], templateProp)
-
-		// 记录Material相关的模板属性
-		if strings.ToLower(templateProp.Name) == "material" {
-			m.logger.Infof("🔍 发现Material模板属性: PID=%d, TemplatePID=%d, 可选值数量=%d",
-				templateProp.PID, templateProp.TemplatePID, len(templateProp.Values))
-		}
 	}
 
 	enrichedCount := 0

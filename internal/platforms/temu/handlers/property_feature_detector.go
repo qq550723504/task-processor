@@ -9,17 +9,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// PropertyFeature 属性特征
-type PropertyFeature struct {
-	IsPercentageSum bool   // 是否为百分比总和属性
-	IsRequired      bool   // 是否必填
-	IsSelection     bool   // 是否为选择类型
-	HasNumericInput bool   // 是否需要数值输入
-	RequiredSum     int    // 要求的总和（如100）
-	HasValueUnit    bool   // 是否有值单位
-	ValueUnit       string // 值单位
-}
-
 // PropertyFeatureDetector 属性特征识别器
 type PropertyFeatureDetector struct {
 	logger *logrus.Entry
@@ -35,7 +24,10 @@ func NewPropertyFeatureDetector(logger *logrus.Entry) *PropertyFeatureDetector {
 // DetectFeatures 识别属性特征
 func (d *PropertyFeatureDetector) DetectFeatures(templateProp types.TemplateRespGoodsProperty) PropertyFeature {
 	feature := PropertyFeature{
-		IsRequired: templateProp.Required,
+		PID:         templateProp.PID,
+		Name:        templateProp.Name,
+		IsRequired:  templateProp.Required,
+		ControlType: templateProp.ControlType,
 	}
 
 	// 识别是否为选择类型

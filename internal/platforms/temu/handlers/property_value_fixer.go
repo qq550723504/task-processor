@@ -101,97 +101,59 @@ func (f *PropertyValueFixer) tryIntelligentMatch(
 		}
 	}
 
-	// 3. 材质属性特殊匹配
-	if f.isMaterialProperty(templateProp.Name) {
-		return f.matchMaterialValue(prop.Value, templateProp.Values)
-	}
-
-	// 4. 颜色属性特殊匹配
-	if f.isColorProperty(templateProp.Name) {
-		return f.matchColorValue(prop.Value, templateProp.Values)
-	}
-
-	return nil
+	// 3. 通用关键词匹配（基于属性值内容，而非属性名称）
+	return f.matchByValueContent(prop.Value, templateProp.Values)
 }
 
-// matchMaterialValue 材质属性特殊匹配
-func (f *PropertyValueFixer) matchMaterialValue(value string, validValues []types.PropertyValue) *types.PropertyValue {
+// matchByValueContent 基于值内容进行通用匹配
+func (f *PropertyValueFixer) matchByValueContent(value string, validValues []types.PropertyValue) *types.PropertyValue {
 	valueLower := strings.ToLower(value)
 
-	// 材质关键词映射
-	materialKeywords := map[string][]string{
-		"steel":    {"钢", "不锈钢", "金属", "steel", "stainless"},
-		"plastic":  {"塑料", "PP", "ABS", "plastic", "polymer"},
-		"wood":     {"木", "木质", "竹", "wood", "bamboo"},
-		"glass":    {"玻璃", "glass"},
-		"fabric":   {"布", "纺织", "fabric", "textile", "cloth"},
-		"leather":  {"皮", "皮革", "leather"},
-		"ceramic":  {"陶瓷", "ceramic"},
-		"rubber":   {"橡胶", "rubber", "neoprene", "氯丁橡胶"},
-		"silicone": {"硅胶", "silicone", "硅橡胶"},
-		"foam":     {"泡沫", "foam", "海绵"},
-		"eva":      {"EVA", "eva", "乙烯醋酸乙烯"},
-		"pu":       {"PU", "pu", "聚氨酯", "polyurethane"},
-		"pvc":      {"PVC", "pvc", "聚氯乙烯"},
-		"tpu":      {"TPU", "tpu", "热塑性聚氨酯"},
-	}
+	// 通用关键词匹配 - 基于值的实际内容而非属性名称
+	for _, validValue := range validValues {
+		validValueLower := strings.ToLower(validValue.Value)
 
-	// 查找匹配的材质
-	for material, keywords := range materialKeywords {
-		for _, keyword := range keywords {
-			if strings.Contains(valueLower, keyword) {
-				// 在有效值中查找对应的材质
-				for _, validValue := range validValues {
-					validValueLower := strings.ToLower(validValue.Value)
-					if strings.Contains(validValueLower, material) ||
-						strings.Contains(validValueLower, keyword) {
-						f.logger.Debugf("🎯 材质匹配: '%s' → '%s'", value, validValue.Value)
-						return &validValue
-					}
-				}
-			}
+		// 检查是否有共同的关键词
+		if f.hasCommonKeywords(valueLower, validValueLower) {
+			f.logger.Debugf("🎯 关键词匹配: '%s' → '%s'", value, validValue.Value)
+			return &validValue
 		}
 	}
 
 	return nil
 }
 
-// matchColorValue 颜色属性特殊匹配
-func (f *PropertyValueFixer) matchColorValue(value string, validValues []types.PropertyValue) *types.PropertyValue {
-	valueLower := strings.ToLower(value)
+// hasCommonKeywords 检查两个字符串是否有共同的关键词
+func (f *PropertyValueFixer) hasCommonKeywords(value1, value2 string) bool {
+	// 提取关键词（长度大于2的单词）
+	words1 := f.extractKeywords(value1)
+	words2 := f.extractKeywords(value2)
 
-	// 颜色关键词映射
-	colorKeywords := map[string][]string{
-		"black":  {"黑", "black"},
-		"white":  {"白", "white"},
-		"red":    {"红", "red"},
-		"blue":   {"蓝", "blue"},
-		"green":  {"绿", "green"},
-		"yellow": {"黄", "yellow"},
-		"gray":   {"灰", "gray", "grey"},
-		"brown":  {"棕", "brown"},
-		"pink":   {"粉", "pink"},
-		"purple": {"紫", "purple"},
-	}
-
-	// 查找匹配的颜色
-	for color, keywords := range colorKeywords {
-		for _, keyword := range keywords {
-			if strings.Contains(valueLower, keyword) {
-				// 在有效值中查找对应的颜色
-				for _, validValue := range validValues {
-					validValueLower := strings.ToLower(validValue.Value)
-					if strings.Contains(validValueLower, color) ||
-						strings.Contains(validValueLower, keyword) {
-						f.logger.Debugf("🎯 颜色匹配: '%s' → '%s'", value, validValue.Value)
-						return &validValue
-					}
-				}
+	// 检查是否有共同关键词
+	for _, word1 := range words1 {
+		for _, word2 := range words2 {
+			if strings.Contains(word1, word2) || strings.Contains(word2, word1) {
+				return true
 			}
 		}
 	}
 
-	return nil
+	return false
+}
+
+// extractKeywords 提取关键词
+func (f *PropertyValueFixer) extractKeywords(text string) []string {
+	words := strings.Fields(text)
+	keywords := make([]string, 0, len(words))
+
+	for _, word := range words {
+		// 只保留长度大于2的词作为关键词
+		if len(word) > 2 {
+			keywords = append(keywords, word)
+		}
+	}
+
+	return keywords
 }
 
 // selectBestDefaultValue 选择最佳的默认值
@@ -231,32 +193,6 @@ func (f *PropertyValueFixer) selectBestDefaultValue(templateProp types.TemplateR
 	return defaultValue
 }
 
-// isMaterialProperty 判断是否为材质属性
-func (f *PropertyValueFixer) isMaterialProperty(propertyName string) bool {
-	materialNames := []string{"材质", "Material", "material", "材料"}
-	propertyNameLower := strings.ToLower(propertyName)
-
-	for _, name := range materialNames {
-		if strings.Contains(propertyNameLower, strings.ToLower(name)) {
-			return true
-		}
-	}
-	return false
-}
-
-// isColorProperty 判断是否为颜色属性
-func (f *PropertyValueFixer) isColorProperty(propertyName string) bool {
-	colorNames := []string{"颜色", "Color", "color", "色彩"}
-	propertyNameLower := strings.ToLower(propertyName)
-
-	for _, name := range colorNames {
-		if strings.Contains(propertyNameLower, strings.ToLower(name)) {
-			return true
-		}
-	}
-	return false
-}
-
 // FixAllInvalidProperties 批量修复所有无效属性
 func (f *PropertyValueFixer) FixAllInvalidProperties(
 	properties []models.PropertyItem,
@@ -270,10 +206,6 @@ func (f *PropertyValueFixer) FixAllInvalidProperties(
 	templateMap := make(map[int]types.TemplateRespGoodsProperty)
 	for _, tmpl := range templateProps {
 		templateMap[tmpl.PID] = tmpl
-		// 特别记录Material属性
-		if strings.ToLower(tmpl.Name) == "material" {
-			f.logger.Infof("🔍 模板中发现Material属性: PID=%d, 有效值数量=%d", tmpl.PID, len(tmpl.Values))
-		}
 	}
 
 	fixedProperties := make([]models.PropertyItem, 0, len(properties))
@@ -286,11 +218,6 @@ func (f *PropertyValueFixer) FixAllInvalidProperties(
 			// 模板中不存在的属性，跳过
 			f.logger.Warnf("⚠️ 属性PID=%d在模板中不存在，跳过修复", prop.Pid)
 			continue
-		}
-
-		// 特别处理Material属性
-		if strings.ToLower(templateProp.Name) == "material" {
-			f.logger.Infof("🔍 处理Material属性: PID=%d, Value='%s', VID=%d", prop.Pid, prop.Value, prop.Vid)
 		}
 
 		// 只修复选择类型属性

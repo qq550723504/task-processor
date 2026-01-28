@@ -25,7 +25,7 @@ type SpuBuilder struct {
 	textProcessor  *TextProcessor
 	priceHandler   *PriceHandler
 	skuBuilder     *SkuBuilder
-	propertyMapper *AIPropertyMapper
+	propertyMapper *PropertyMapper
 	openaiClient   *openaiClient.Client
 }
 
@@ -41,7 +41,7 @@ func NewSpuBuilder(logger *logrus.Entry, openaiConfig *openaiClient.ClientConfig
 		textProcessor:  NewTextProcessor(),
 		priceHandler:   NewPriceHandler(profitRuleClient),
 		skuBuilder:     NewSkuBuilder(logger, aiClient, profitRuleClient),
-		propertyMapper: NewAIPropertyMapper(logger, aiClient, openaiConfig),
+		propertyMapper: NewPropertyMapper(logger),
 		openaiClient:   aiClient,
 	}
 }

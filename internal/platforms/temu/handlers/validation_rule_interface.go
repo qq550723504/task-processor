@@ -23,9 +23,9 @@ type ValidationRule interface {
 
 // RuleValidationResult 规则验证结果
 type RuleValidationResult struct {
-	IsValid       bool
-	ErrorMessage  string
-	CurrentValue  interface{}
-	ExpectedValue interface{}
-	CanAutoFix    bool
+	IsValid       bool        // 是否有效
+	ErrorMessage  string      // 错误消息
+	CurrentValue  interface{} // 当前值
+	ExpectedValue interface{} // 期望值
+	CanAutoFix    bool        // 是否可以自动修复
 }
