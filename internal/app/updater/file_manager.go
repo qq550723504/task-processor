@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -22,7 +23,7 @@ func NewFileManager() *FileManager {
 }
 
 // ReplaceExecutable 替换可执行文件
-func (fm *FileManager) ReplaceExecutable(tmpFile string) error {
+func (fm *FileManager) ReplaceExecutable(tmpFile string, newVersion string) error {
 	// 获取当前程序路径
 	currentExe, err := os.Executable()
 	if err != nil {
@@ -35,22 +36,43 @@ func (fm *FileManager) ReplaceExecutable(tmpFile string) error {
 		// 1. 将新文件复制到临时位置
 		// 2. 使用 Go 代码进行延迟替换和重启
 
-		newExePath := currentExe + ".new"
+		// 生成新版本的文件名
+		dir := filepath.Dir(currentExe)
+		baseName := filepath.Base(currentExe)
+
+		// 提取基础名称（去掉版本号和扩展名）
+		// 例如：task-processor-2.8.8.exe -> task-processor
+		nameWithoutExt := strings.TrimSuffix(baseName, filepath.Ext(baseName))
+		parts := strings.Split(nameWithoutExt, "-")
+		var baseNameOnly string
+		if len(parts) >= 2 {
+			// 假设格式是 task-processor-x.x.x，取前两部分
+			baseNameOnly = strings.Join(parts[:2], "-")
+		} else {
+			baseNameOnly = nameWithoutExt
+		}
+
+		// 生成新版本文件名
+		newExeName := fmt.Sprintf("%s-%s.exe", baseNameOnly, newVersion)
+		newExePath := filepath.Join(dir, newExeName)
+
+		// 临时文件路径
+		tempNewPath := newExePath + ".new"
 		oldExePath := currentExe + ".old"
 
 		// 删除可能存在的旧文件
-		os.Remove(newExePath)
+		os.Remove(tempNewPath)
 		os.Remove(oldExePath)
 
-		// 将新文件复制到 .new 位置
-		if err := fm.copyFile(tmpFile, newExePath); err != nil {
+		// 将新文件复制到临时位置
+		if err := fm.copyFile(tmpFile, tempNewPath); err != nil {
 			return fmt.Errorf("复制新程序到临时位置失败: %w", err)
 		}
 
 		// 删除临时下载文件
 		os.Remove(tmpFile)
 
-		logrus.Info("已准备延迟更新文件，程序将在重启后完成更新")
+		logrus.Infof("已准备延迟更新文件，新版本文件名: %s", newExeName)
 		return nil
 	}
 
@@ -88,11 +110,15 @@ func (fm *FileManager) RestartProgram() {
 
 	if runtime.GOOS == "windows" {
 		// Windows: 检查是否有 .new 文件需要更新
-		newExePath := currentExe + ".new"
-		if _, err := os.Stat(newExePath); err == nil {
-			// 使用 Go 代码进行延迟更新和重启
-			logrus.Info("检测到更新文件，启动延迟更新程序...")
-			fm.performDelayedUpdate(currentExe, workDir)
+		dir := filepath.Dir(currentExe)
+
+		// 查找所有 .new 文件
+		files, err := filepath.Glob(filepath.Join(dir, "*.exe.new"))
+		if err == nil && len(files) > 0 {
+			// 找到更新文件，使用第一个
+			newFilePath := files[0]
+			logrus.Infof("检测到更新文件: %s", filepath.Base(newFilePath))
+			fm.performDelayedUpdate(currentExe, newFilePath, workDir)
 			return
 		} else {
 			// 普通重启（无更新）
@@ -170,8 +196,10 @@ func (fm *FileManager) copyFile(src, dst string) error {
 }
 
 // performDelayedUpdate 执行延迟更新（Windows专用）
-func (fm *FileManager) performDelayedUpdate(currentExe, workDir string) {
-	newExePath := currentExe + ".new"
+func (fm *FileManager) performDelayedUpdate(currentExe, newFilePath, workDir string) {
+	// 从 .new 文件路径获取目标文件名
+	// 例如：task-processor-2.8.9.exe.new -> task-processor-2.8.9.exe
+	targetExePath := strings.TrimSuffix(newFilePath, ".new")
 	oldExePath := currentExe + ".old"
 
 	// 使用 PowerShell 脚本进行延迟更新
@@ -180,7 +208,8 @@ Start-Sleep -Seconds 5
 Write-Host "Starting file replacement..."
 
 $currentExe = "%s"
-$newExePath = "%s"
+$newFilePath = "%s"
+$targetExePath = "%s"
 $oldExePath = "%s"
 $workDir = "%s"
 
@@ -194,19 +223,19 @@ if (Test-Path $currentExe) {
     Move-Item $currentExe $oldExePath
 }
 
-if (Test-Path $newExePath) {
+if (Test-Path $newFilePath) {
     Write-Host "Installing new version..."
-    Move-Item $newExePath $currentExe
+    Move-Item $newFilePath $targetExePath
 }
 
 Write-Host "Program update completed, starting new version..."
-Start-Process -FilePath $currentExe -WorkingDirectory $workDir
+Start-Process -FilePath $targetExePath -WorkingDirectory $workDir
 Write-Host "New version started successfully"
 
 # Clean up script itself
 Start-Sleep -Seconds 2
 Remove-Item $PSCommandPath -Force
-`, currentExe, newExePath, oldExePath, workDir)
+`, currentExe, newFilePath, targetExePath, oldExePath, workDir)
 
 	// 创建临时 PowerShell 脚本
 	scriptPath := "temp_update.ps1"
@@ -224,7 +253,7 @@ Remove-Item $PSCommandPath -Force
 	}
 
 	// 立即退出当前程序
-	logrus.Info("PowerShell更新脚本已启动，当前程序立即退出...")
+	logrus.Infof("PowerShell更新脚本已启动，将更新为: %s", filepath.Base(targetExePath))
 	time.Sleep(100 * time.Millisecond) // 短暂等待确保日志输出
 	os.Exit(0)
 }

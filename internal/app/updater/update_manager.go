@@ -81,7 +81,7 @@ func (um *UpdateManager) downloadAndUpdate(version *VersionInfo) error {
 	}
 
 	// 替换可执行文件
-	return um.fileManager.ReplaceExecutable(tmpFile)
+	return um.fileManager.ReplaceExecutable(tmpFile, version.Version)
 }
 
 // IsRecentlyUpdated 检查是否最近刚更新过
