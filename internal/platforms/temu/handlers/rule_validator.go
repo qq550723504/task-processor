@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	domainvalidation "task-processor/internal/domain/validation"
@@ -54,6 +55,11 @@ func (v *RuleValidator) CheckSingleRuleDetailed(product *model.Product, rule *ap
 
 // CheckSingleRuleDetailedTemu 详细检查单个规则（强类型上下文）
 func (v *RuleValidator) CheckSingleRuleDetailedTemu(amazonProduct *model.Product, rule *api.FilterRuleRespDTO, temuCtx *temucontext.TemuTaskContext) *FilterCheckResult {
+	// 图片数量检查（优先检查，如果不满足直接终止）
+	if result := v.checkImageCountRuleDetailed(amazonProduct); !result.Passed {
+		return result
+	}
+
 	// 价格检查
 	if result := v.checkPriceRuleDetailedTemu(amazonProduct, rule, temuCtx); !result.Passed {
 		return result
@@ -84,6 +90,11 @@ func (v *RuleValidator) CheckSingleRuleDetailedTemu(amazonProduct *model.Product
 
 // checkBasicRules 基本规则检查（不依赖上下文）
 func (v *RuleValidator) checkBasicRules(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *FilterCheckResult {
+	// 图片数量检查（优先检查，如果不满足直接终止）
+	if result := v.checkImageCountRuleDetailed(amazonProduct); !result.Passed {
+		return result
+	}
+
 	// 价格检查（使用默认价格类型）
 	if result := v.checkPriceRuleBasic(amazonProduct, rule); !result.Passed {
 		return result
@@ -251,6 +262,30 @@ func (v *RuleValidator) checkStockRuleDetailed(amazonProduct *model.Product, rul
 			FailureReason: err.Error(),
 			ProductValue:  stock,
 			RuleValue:     *rule.StockMin,
+		}
+	}
+
+	return &FilterCheckResult{Passed: true}
+}
+
+// checkImageCountRuleDetailed 详细检查图片数量规则
+func (v *RuleValidator) checkImageCountRuleDetailed(amazonProduct *model.Product) *FilterCheckResult {
+	const minImageCount = 3 // Amazon原始数据至少需要3张图片
+
+	imageCount := len(amazonProduct.Images)
+
+	v.logger.WithFields(logrus.Fields{
+		"asin":         amazonProduct.Asin,
+		"image_count":  imageCount,
+		"min_required": minImageCount,
+	}).Debug("检查图片数量规则")
+
+	if imageCount < minImageCount {
+		return &FilterCheckResult{
+			Passed:        false,
+			FailureReason: fmt.Sprintf("Amazon原始数据图片不足，当前%d张，至少需要%d张", imageCount, minImageCount),
+			ProductValue:  float64(imageCount),
+			RuleValue:     float64(minImageCount),
 		}
 	}
 

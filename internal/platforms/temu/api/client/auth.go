@@ -70,6 +70,7 @@ func (a *AuthManager) SendRequestWithAuth(client APIClientInterface, request map
 // sendRequestWithRetry 发送请求（带重试逻辑）
 func (a *AuthManager) sendRequestWithRetry(client APIClientInterface, request map[string]any, result any) error {
 	maxRetries := 3
+	consecutiveAuthErrors := 0
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		a.logger.Debugf("API调用尝试 %d/%d", attempt, maxRetries)
@@ -84,19 +85,41 @@ func (a *AuthManager) sendRequestWithRetry(client APIClientInterface, request ma
 
 		// 如果是认证相关错误，尝试重新加载Cookie
 		if a.isAuthenticationError(err) {
-			a.logger.Infof("检测到认证错误，尝试重新加载Cookie...")
+			consecutiveAuthErrors++
+			a.logger.Infof("检测到认证错误 (连续第%d次)，尝试重新加载Cookie...", consecutiveAuthErrors)
+
 			if reloadErr := client.ReloadCookies(); reloadErr != nil {
 				a.logger.Warnf("重新加载Cookie失败: %v", reloadErr)
-				// 如果是最后一次尝试且Cookie加载失败，设置暂停键
+				// 如果是最后一次尝试且Cookie加载失败，设置暂停键并立即返回
 				if attempt == maxRetries {
 					a.logger.Error("所有重试均失败，设置认证过期暂停键")
 					if pauseErr := a.setPauseKeyForAuthExpired(client, fmt.Sprintf("认证错误且Cookie重新加载失败: %v", reloadErr)); pauseErr != nil {
 						a.logger.Errorf("设置暂停键失败: %v", pauseErr)
 					}
+					// 立即返回AuthExpiredError，不再继续重试
+					return types.NewAuthExpiredError(
+						fmt.Sprintf("店铺ID=%d认证过期且Cookie重新加载失败，已设置暂停键", client.GetStoreID()),
+						reloadErr,
+					)
 				}
 			} else {
 				a.logger.Infof("成功重新加载Cookie，数量: %d", client.GetCookieCount())
+				// 如果连续多次认证错误且已经是最后一次尝试，即使Cookie加载成功也设置暂停键
+				if consecutiveAuthErrors >= 2 && attempt == maxRetries {
+					a.logger.Error("连续多次认证错误，Cookie可能已失效，设置认证过期暂停键")
+					if pauseErr := a.setPauseKeyForAuthExpired(client, fmt.Sprintf("连续%d次认证错误，Cookie可能已失效", consecutiveAuthErrors)); pauseErr != nil {
+						a.logger.Errorf("设置暂停键失败: %v", pauseErr)
+					}
+					// 立即返回AuthExpiredError
+					return types.NewAuthExpiredError(
+						fmt.Sprintf("店铺ID=%d连续认证错误，Cookie可能已失效，已设置暂停键", client.GetStoreID()),
+						err,
+					)
+				}
 			}
+		} else {
+			// 重置连续认证错误计数
+			consecutiveAuthErrors = 0
 		}
 
 		// 如果不是最后一次尝试，记录重试信息
@@ -155,6 +178,8 @@ func (a *AuthManager) sendRequestOnce(client APIClientInterface, request map[str
 				"method":       method,
 				"url":          fullURL,
 			}).Error("HTTP请求失败")
+			// 返回包含响应体的错误信息，以便认证错误检测
+			return fmt.Errorf("HTTP请求失败，状态码: %d，响应体: %s", response.StatusCode, string(errorBody))
 		}
 		return fmt.Errorf("HTTP请求失败，状态码: %d", response.StatusCode)
 	}
@@ -186,6 +211,21 @@ func (a *AuthManager) isAuthenticationError(err error) bool {
 	}
 
 	errStr := strings.ToLower(err.Error())
+
+	// 检查TEMU特定的认证错误码
+	temuAuthErrors := []string{
+		"40001", // TEMU认证失效错误码
+		"40002", // 可能的其他认证错误码
+		"40003", // 可能的其他认证错误码
+	}
+
+	for _, errorCode := range temuAuthErrors {
+		if strings.Contains(errStr, errorCode) {
+			a.logger.Debugf("检测到TEMU认证错误码: %s", errorCode)
+			return true
+		}
+	}
+
 	// 检查常见的认证错误关键词
 	authErrors := []string{
 		"401",

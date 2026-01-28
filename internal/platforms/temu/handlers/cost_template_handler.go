@@ -49,7 +49,6 @@ func (h *CostTemplateHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 	// 检查API客户端
 	if temuCtx.APIClient == nil {
 		h.logger.Warn("API客户端未初始化，使用默认成本模板")
-		temuProduct.GoodsServicePromise.CostTemplateID = "default_template_001"
 		return nil
 	}
 
@@ -57,12 +56,11 @@ func (h *CostTemplateHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 	request := h.buildCostTemplateRequest(temuProduct)
 
 	// 发送成本模板查询请求
-	err := h.queryCostTemplate(temuCtx, temuCtx.APIClient, temuProduct, request)
+	err := h.queryCostTemplate(temuCtx, temuProduct, request)
 	if err != nil {
 		h.logger.WithError(err).Warn("查询成本模板失败，使用默认模板")
 		// 设置默认成本模板
-		temuProduct.GoodsServicePromise.CostTemplateID = "default_template_001"
-		// 继续执行，不返回错误
+		return fmt.Errorf("无法解析成本模板ID，终止处理")
 	}
 
 	h.logger.Info("成本模板处理完成")
@@ -97,7 +95,7 @@ func (h *CostTemplateHandler) buildCostTemplateRequest(temuProduct *models.Produ
 }
 
 // queryCostTemplate 发送成本模板查询请求到TEMU API
-func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskContext, apiClient any, temuProduct *models.Product, request *models.CostTemplateRequest) error {
+func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product, request *models.CostTemplateRequest) error {
 	// 创建QueryAPI实例
 	queryAPI := api.NewQueryAPI(temuCtx.APIClient, h.logger)
 
@@ -128,9 +126,8 @@ func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskCon
 			temuProduct.GoodsServicePromise.CostTemplateID = costTemplateID
 			h.logger.Infof("设置成本模板ID: %s", costTemplateID)
 		} else {
-			// 如果无法解析，使用默认模板
-			temuProduct.GoodsServicePromise.CostTemplateID = "default_template_001"
-			h.logger.Warn("无法解析成本模板ID，使用默认模板")
+			// 如果无法解析成本模板ID，终止处理
+			return fmt.Errorf("无法解析成本模板ID，终止处理")
 		}
 	}
 
