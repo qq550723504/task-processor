@@ -44,13 +44,7 @@ func (p *ProductAPI) ListProducts(pageNo, pageSize int) (*models.ProductListResp
 	}
 
 	var result models.ProductListResponse
-	// 通过认证管理器发送请求
-	cookieManagerInterface := p.client.GetCookieManager()
-	cookieManager, ok := cookieManagerInterface.(*client.CookieManager)
-	if !ok {
-		return nil, fmt.Errorf("无法获取Cookie管理器")
-	}
-	authManager := client.NewAuthManager(cookieManager, p.logger)
+	authManager := client.NewAuthManager(p.logger)
 	if err := authManager.SendRequestWithAuth(p.client, request, &result); err != nil {
 		return nil, fmt.Errorf("调用产品列表 API 失败: %w", err)
 	}
