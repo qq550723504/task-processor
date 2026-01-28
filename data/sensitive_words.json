@@ -270,9 +270,25 @@
       "kuromi",
       "cinnamoroll",
       "isuzu",
-      "polaroid"
+      "polaroid",
+      "tangle",
+      "ikea",
+      "lv",
+      "gd",
+      "snoopy",
+      "bosk",
+      "umbra",
+      "venom",
+      "stake"
+    ],
+    "ja": [
+      "環境に優しい",
+      "サンリオ",
+      "マイメロディ",
+      "クロミ",
+      "持続可能"
     ]
   },
-  "last_updated": "2026-01-01T13:54:27.4222903+08:00",
+  "last_updated": "2026-01-27T03:38:50.2558681+08:00",
   "version": "1.0"
 }

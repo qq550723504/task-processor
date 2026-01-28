@@ -126,7 +126,7 @@ Write-Host "2. Clients will auto-update within 1 hour" -ForegroundColor White
 Write-Host "3. Use Redis to trigger immediate update (optional)" -ForegroundColor White
 
 # # 基本用法
-# .\scripts\deploy-windows.ps1 -Version "2.8.4"
+# .\scripts\deploy-windows.ps1 -Version "2.8.8"
 
 # # 完整参数
 # .\scripts\deploy-windows.ps1 `
