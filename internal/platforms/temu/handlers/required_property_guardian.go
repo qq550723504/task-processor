@@ -159,3 +159,8 @@ func (g *RequiredPropertyGuardian) fillMissingProperties(
 		g.filler.FillSingleRequiredProperty(prop, ext)
 	}
 }
+
+// GetDefaultFiller 获取内部的DefaultPropertyFiller实例
+func (g *RequiredPropertyGuardian) GetDefaultFiller() *DefaultPropertyFiller {
+	return g.filler
+}

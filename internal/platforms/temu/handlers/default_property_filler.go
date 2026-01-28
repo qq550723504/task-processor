@@ -13,15 +13,17 @@ import (
 
 // DefaultPropertyFiller 默认属性填充器
 type DefaultPropertyFiller struct {
-	logger       *logrus.Entry
-	deduplicator *PropertyDeduplicator
+	logger           *logrus.Entry
+	deduplicator     *PropertyDeduplicator
+	validationEngine *ValidationRuleEngine
 }
 
 // NewDefaultPropertyFiller 创建新的默认属性填充器
 func NewDefaultPropertyFiller(logger *logrus.Entry) *DefaultPropertyFiller {
 	return &DefaultPropertyFiller{
-		logger:       logger,
-		deduplicator: NewPropertyDeduplicator(logger),
+		logger:           logger,
+		deduplicator:     NewPropertyDeduplicator(logger),
+		validationEngine: NewValidationRuleEngine(logger),
 	}
 }
 
@@ -40,8 +42,10 @@ func (f *DefaultPropertyFiller) FillRequiredPropertiesWithDefaults(templateProps
 		}
 	}
 
-	// 特殊处理：验证和修正面料成分总和
-	f.validateAndFixMaterialComposition(templateProps, ext)
+	// 使用验证引擎验证和修复所有属性
+	if err := f.validationEngine.ValidateAndFixAll(templateProps, ext); err != nil {
+		f.logger.Warnf("⚠️ 属性验证修复过程中出现错误: %v", err)
+	}
 
 	// 填充完成后进行去重
 	ext.GoodsProperty.GoodsProperties = f.deduplicator.DeduplicateByPidOnly(ext.GoodsProperty.GoodsProperties)
@@ -326,110 +330,6 @@ func (f *DefaultPropertyFiller) isPropertyAlreadyFilled(templateProp types.Templ
 		}
 	}
 	return false
-}
-
-// validateAndFixMaterialComposition 验证和修正面料成分总和
-func (f *DefaultPropertyFiller) validateAndFixMaterialComposition(templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) {
-	// 找到面料成分属性
-	var materialCompositionTemplate *types.TemplateRespGoodsProperty
-	for _, templateProp := range templateProps {
-		if templateProp.Name == "面料成分" && templateProp.ControlType == 16 {
-			materialCompositionTemplate = &templateProp
-			break
-		}
-	}
-
-	if materialCompositionTemplate == nil {
-		return // 没有面料成分属性
-	}
-
-	// 收集所有面料成分属性项
-	var materialProps []*models.PropertyItem
-	for i := range ext.GoodsProperty.GoodsProperties {
-		prop := &ext.GoodsProperty.GoodsProperties[i]
-		if prop.Pid == materialCompositionTemplate.PID && prop.RefPid == materialCompositionTemplate.RefPID {
-			materialProps = append(materialProps, prop)
-		}
-	}
-
-	if len(materialProps) == 0 {
-		return // 没有面料成分数据
-	}
-
-	// 计算当前总和
-	totalPercentage := f.calculateMaterialCompositionTotal(materialProps)
-	f.logger.Infof("📊 当前面料成分总和: %d%%", totalPercentage)
-
-	// 如果总和不是100%，进行修正
-	if totalPercentage != 100 {
-		f.fixMaterialCompositionTotal(materialProps, totalPercentage)
-	}
-}
-
-// calculateMaterialCompositionTotal 计算面料成分总和
-func (f *DefaultPropertyFiller) calculateMaterialCompositionTotal(materialProps []*models.PropertyItem) int {
-	total := 0
-	for _, prop := range materialProps {
-		if prop.NumberInputValue != "" {
-			if percentage, err := strconv.Atoi(prop.NumberInputValue); err == nil {
-				total += percentage
-			}
-		}
-	}
-	return total
-}
-
-// fixMaterialCompositionTotal 修正面料成分总和为100%
-func (f *DefaultPropertyFiller) fixMaterialCompositionTotal(materialProps []*models.PropertyItem, currentTotal int) {
-	if len(materialProps) == 0 {
-		return
-	}
-
-	f.logger.Infof("🔧 修正面料成分总和: %d%% -> 100%%", currentTotal)
-
-	if len(materialProps) == 1 {
-		// 只有一个材料，直接设置为100%
-		materialProps[0].NumberInputValue = "100"
-		f.logger.Infof("✅ 单一材料修正为100%%: %s", materialProps[0].Value)
-	} else {
-		// 多个材料，按比例调整
-		if currentTotal > 0 {
-			// 按比例缩放到100%
-			remaining := 100
-			for i, prop := range materialProps {
-				if prop.NumberInputValue != "" {
-					if currentPercentage, err := strconv.Atoi(prop.NumberInputValue); err == nil {
-						if i == len(materialProps)-1 {
-							// 最后一个材料使用剩余百分比
-							prop.NumberInputValue = strconv.Itoa(remaining)
-						} else {
-							// 按比例计算
-							newPercentage := (currentPercentage * 100) / currentTotal
-							if newPercentage < 1 {
-								newPercentage = 1 // 最小1%
-							}
-							prop.NumberInputValue = strconv.Itoa(newPercentage)
-							remaining -= newPercentage
-						}
-						f.logger.Infof("✅ 材料 %s 调整为: %s%%", prop.Value, prop.NumberInputValue)
-					}
-				}
-			}
-		} else {
-			// 当前总和为0，平均分配
-			averagePercentage := 100 / len(materialProps)
-			remaining := 100 - (averagePercentage * (len(materialProps) - 1))
-
-			for i, prop := range materialProps {
-				if i == len(materialProps)-1 {
-					prop.NumberInputValue = strconv.Itoa(remaining)
-				} else {
-					prop.NumberInputValue = strconv.Itoa(averagePercentage)
-				}
-				f.logger.Infof("✅ 材料 %s 平均分配为: %s%%", prop.Value, prop.NumberInputValue)
-			}
-		}
-	}
 }
 
 // getValueUnit 获取属性的单位信息

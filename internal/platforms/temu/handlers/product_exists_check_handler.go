@@ -63,9 +63,9 @@ func (h *ProductExistsCheckHandler) Handle(ctx pipeline.TaskContext) error {
 		h.logger.Infof("📦 检查 %d 个变体是否已上架...", variantCount)
 
 		// 检查变体数量限制
-		if variantCount > 500 {
-			h.logger.Errorf("❌ 变体数量过多（%d个），超过限制（500个），停止处理", variantCount)
-			return types.NewNonRetryableError(fmt.Sprintf("变体数量过多（%d个），超过限制（500个）", variantCount), nil)
+		if variantCount > 100 {
+			h.logger.Errorf("❌ 变体数量过多（%d个），超过限制（100个），停止处理", variantCount)
+			return types.NewNonRetryableError(fmt.Sprintf("变体数量过多（%d个），超过限制（100个）", variantCount), nil)
 		}
 
 		for i, variation := range amazonProduct.Variations {

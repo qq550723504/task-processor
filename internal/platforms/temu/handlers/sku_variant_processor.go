@@ -221,7 +221,7 @@ func (vp *SkuVariantProcessor) generateAISkuMapping(temuCtx *temucontext.TemuTas
 	}
 
 	// // 检查变体数量限制（超过100个变体无法处理，不应重试）
-	if len(variants) > 500 {
+	if len(variants) > 100 {
 		vp.logger.Errorf("❌ 变体数量超过限制: %d > 100，系统无法处理如此多的变体", len(variants))
 		vp.logger.Error("❌ 此错误不应重试，请检查产品数据或联系技术支持")
 		return nil, fmt.Errorf("变体数量超过限制: %d > 100，系统无法处理", len(variants))

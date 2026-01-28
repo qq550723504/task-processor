@@ -57,3 +57,5 @@ test_data
 logs
 .venv
 .kiro
+.new
+.update-marker

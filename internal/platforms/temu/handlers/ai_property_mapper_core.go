@@ -48,7 +48,6 @@ func NewAIPropertyMapper(logger *logrus.Entry, openaiClient *openaiClient.Client
 
 	aiService := NewAIService(openaiClient, configOpenAI, logger)
 	propertyValidator := NewPropertyValidator(logger)
-	defaultFiller := NewDefaultPropertyFiller(logger)
 
 	// 创建新的严格验证组件
 	valueValidator := NewPropertyValueValidator(logger)
@@ -63,7 +62,7 @@ func NewAIPropertyMapper(logger *logrus.Entry, openaiClient *openaiClient.Client
 		openaiClient:       openaiClient,
 		aiService:          aiService,
 		propertyValidator:  propertyValidator,
-		defaultFiller:      defaultFiller,
+		defaultFiller:      propertyGuardian.GetDefaultFiller(), // 使用propertyGuardian中的DefaultPropertyFiller
 		valueValidator:     valueValidator,
 		valueFixer:         valueFixer,
 		statsCollector:     statsCollector,

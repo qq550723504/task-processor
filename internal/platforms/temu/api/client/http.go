@@ -57,7 +57,6 @@ func (h *HTTPManager) CreateClient() *req.Client {
 
 	// 如果配置了代理，则设置代理
 	if h.proxyURL != "" {
-		h.logger.Infof("使用代理地址: %s", h.proxyURL)
 		client = client.SetProxyURL(h.proxyURL)
 	}
 
