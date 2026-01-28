@@ -21,9 +21,9 @@ func setDefaults() {
 	viper.SetDefault("worker.forceCleanupAfter", 1800) // 30分钟强制清理
 
 	// OpenAI默认配置
-	viper.SetDefault("openai.apiKey", "sk-nqXpijKPU98tXPskfCYviSJXNhThh6wFi5y9oBbEMXwUo8p8")
+	viper.SetDefault("openai.apiKey", "sk-yJ3RQprPLyBcoqEkeBNimE6Dhj86CAjY2uHAc5yqLZd1KHa3")
 	viper.SetDefault("openai.model", "gemini-2.0-flash")
-	viper.SetDefault("openai.baseURL", "https://new.apifast.top/v1")
+	viper.SetDefault("openai.baseURL", "https://ai.linkcloudai.com/v1")
 	viper.SetDefault("openai.timeout", 300)
 
 	// 管理系统默认配置

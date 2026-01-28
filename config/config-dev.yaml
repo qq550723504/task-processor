@@ -26,9 +26,9 @@ worker:
 
 # OpenAI配置
 openai:
-  apiKey: "sk-nqXpijKPU98tXPskfCYviSJXNhThh6wFi5y9oBbEMXwUo8p8"
+  apiKey: "sk-yJ3RQprPLyBcoqEkeBNimE6Dhj86CAjY2uHAc5yqLZd1KHa3"
   model: "gemini-2.0-flash"
-  baseURL: "https://new.apifast.top/v1"
+  baseURL: "https://ai.linkcloudai.com/v1"
   timeout: 300  # API调用超时5分钟
   
   # 请求池配置 - 更保守的设置
@@ -64,13 +64,13 @@ management:
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [661]  # 店铺ID列表
+  storeIDs: [582]# 店铺ID列表 ->775
 
 # 平台配置（按平台组织所有相关配置）
 platforms:
   # TEMU 平台配置
   temu:
-    enabled: true           # 是否启用TEMU处理器（处理上架任务）
+    enabled: True          # 是否启用TEMU处理器（处理上架任务）
     schedulerEnabled: false  # 是否启用TEMU调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
@@ -80,7 +80,7 @@ platforms:
       useAmazonPrice: true  # 是否使用Amazon价格数据进行定价决策
     # 产品同步配置
     productSync:
-      enabled: true        # 启用产品同步
+      enabled: false        # 启用产品同步
       interval: 3600        # 执行间隔（秒），默认1小时
     # 库存同步配置
     inventorySync:
@@ -93,11 +93,11 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: false            # 是否启用SHEIN处理器（处理上架任务）
-    schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
+    enabled: true            # 是否启用SHEIN处理器（处理上架任务）
+    schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
-      enabled: false        # 启用自动核价
+      enabled: true        # 启用自动核价
       interval: 300         # 执行间隔（秒），默认30分钟
       batchSize: 100
     # 产品同步配置
@@ -180,7 +180,7 @@ amazon:
 
 # 自动更新配置
 updater:
-  enabled: false  # 开发环境默认禁用自动更新
+  enabled: true  # 开发环境默认禁用自动更新
   updateURL: "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json"
   checkInterval: 300  # 检查间隔（秒），默认5分钟
   insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）

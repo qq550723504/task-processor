@@ -44,9 +44,9 @@ func NewDefaultConfig() *Config {
 			ForceCleanupAfter:  1800,
 		},
 		OpenAI: OpenAIConfig{
-			APIKey:  "sk-nqXpijKPU98tXPskfCYviSJXNhThh6wFi5y9oBbEMXwUo8p8",
+			APIKey:  "sk-yJ3RQprPLyBcoqEkeBNimE6Dhj86CAjY2uHAc5yqLZd1KHa3",
 			Model:   "gemini-2.0-flash",
-			BaseURL: "https://new.apifast.top/v1",
+			BaseURL: "https://ai.linkcloudai.com/v1",
 			Timeout: 120,
 		},
 		Management: ManagementConfig{
