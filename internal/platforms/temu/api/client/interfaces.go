@@ -22,7 +22,7 @@ type APIClientInterface interface {
 
 	// 请求相关方法
 	SendTEMURequest(request map[string]any, result any) error
-	SendHTTPRequestInterface(method, url string, headers map[string]string, body any, formFields map[string]string, fileFields map[string]any) (any, error)
+	SendHTTPRequest(method, url string, headers map[string]string, body any, formFields map[string]string, fileFields map[string]any) (*req.Response, error)
 
 	// 基础信息获取方法
 	GetStoreID() int64
@@ -32,5 +32,4 @@ type APIClientInterface interface {
 	// 认证管理需要的方法
 	GetConfig() any
 	GetCookieManager() any
-	SendHTTPRequest(method, url string, headers map[string]string, body any, formFields map[string]string, fileFields map[string]any) (*req.Response, error)
 }

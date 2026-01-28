@@ -55,7 +55,7 @@ func NewAPIClient(storeID int64, managementClient *management.ClientManager) *AP
 
 	// 初始化各个管理器
 	apiClient.httpManager = NewHTTPManager(apiClient.proxyURL, logger)
-	apiClient.authManager = NewAuthManager(apiClient.cookieManager, logger)
+	apiClient.authManager = NewAuthManager(logger)
 
 	// 初始化HTTP客户端
 	apiClient.client = apiClient.httpManager.CreateClient()
@@ -251,9 +251,4 @@ func (c *APIClient) GetLogger() *logrus.Entry {
 // GetCookieManager 获取Cookie管理器
 func (c *APIClient) GetCookieManager() any {
 	return c.cookieManager
-}
-
-// SendHTTPRequestInterface 发送HTTP请求（接口适配器）
-func (c *APIClient) SendHTTPRequestInterface(method, url string, headers map[string]string, body any, formFields map[string]string, fileFields map[string]any) (any, error) {
-	return c.SendHTTPRequest(method, url, headers, body, formFields, fileFields)
 }
