@@ -17,6 +17,7 @@ import (
 type productSyncServiceImpl struct {
 	managementClient *management.ClientManager
 	productAPI       *services.ProductAPI
+	skuQueryAPI      *services.SkuQueryAPI
 	mappingClient    managementapi.ProductImportMappingAPI
 	storeAPI         managementapi.StoreAPI
 	config           *ProductSyncConfig
@@ -27,6 +28,7 @@ type productSyncServiceImpl struct {
 func NewProductSyncService(
 	managementClient *management.ClientManager,
 	productAPI *services.ProductAPI,
+	skuQueryAPI *services.SkuQueryAPI,
 	mappingClient managementapi.ProductImportMappingAPI,
 	storeAPI managementapi.StoreAPI,
 	config *ProductSyncConfig,
@@ -34,7 +36,7 @@ func NewProductSyncService(
 	if config == nil {
 		config = &ProductSyncConfig{
 			PageSize:        100,
-			MaxPages:        0, // 0表示不限制
+			MaxPages:        1, // 暂时只处理一页数据用于调试
 			Language:        "en",
 			IncludeInactive: false,
 		}
@@ -43,6 +45,7 @@ func NewProductSyncService(
 	return &productSyncServiceImpl{
 		managementClient: managementClient,
 		productAPI:       productAPI,
+		skuQueryAPI:      skuQueryAPI,
 		mappingClient:    mappingClient,
 		storeAPI:         storeAPI,
 		config:           config,
@@ -51,10 +54,13 @@ func NewProductSyncService(
 }
 
 // FetchProductList 获取TEMU产品列表
-func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]models.TemuProductResponse, error) {
-	s.logger.Debug("开始获取TEMU产品列表")
+func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]models.GoodsSearchItem, error) {
+	s.logger.WithFields(logrus.Fields{
+		"max_pages": s.config.MaxPages,
+		"page_size": s.config.PageSize,
+	}).Info("开始获取TEMU产品列表（调试模式：只处理一页数据）")
 
-	var allProducts []models.TemuProductResponse
+	var allProducts []models.GoodsSearchItem
 	pageNo := 1
 
 	for {
@@ -67,51 +73,51 @@ func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]models
 
 		// 检查是否达到最大页数限制
 		if s.config.MaxPages > 0 && pageNo > s.config.MaxPages {
-			s.logger.Infof("达到最大页数限制: %d", s.config.MaxPages)
+			s.logger.WithFields(logrus.Fields{
+				"current_page": pageNo,
+				"max_pages":    s.config.MaxPages,
+			}).Info("达到最大页数限制，停止获取")
 			break
 		}
 
 		// 调用TEMU API获取产品列表
-		var products []models.TemuProductResponse
-		var err error
-
-		if s.config.IncludeInactive {
-			// 获取所有产品（包括未上架的）
-			response, apiErr := s.productAPI.ListProducts(pageNo, s.config.PageSize)
-			if apiErr != nil {
-				return nil, fmt.Errorf("获取TEMU产品列表失败(页面%d): %w", pageNo, apiErr)
-			}
-			products = response.Result.GoodsList
-		} else {
-			// 只获取已上架的产品
-			products, err = s.productAPI.ListOnShelfProducts(pageNo, s.config.PageSize)
-			if err != nil {
-				return nil, fmt.Errorf("获取TEMU已上架产品列表失败(页面%d): %w", pageNo, err)
-			}
+		options := services.NewGoodsSearchOptions(pageNo, s.config.PageSize)
+		response, apiErr := s.productAPI.SearchGoods(options)
+		if apiErr != nil {
+			return nil, fmt.Errorf("获取TEMU产品列表失败(页面%d): %w", pageNo, apiErr)
 		}
+		products := response.Result.GoodsList
 
-		s.logger.Debugf("页面%d获取到%d个产品", pageNo, len(products))
+		s.logger.WithFields(logrus.Fields{
+			"page_no":        pageNo,
+			"products_count": len(products),
+			"page_size":      s.config.PageSize,
+		}).Info("成功获取页面数据")
+
 		allProducts = append(allProducts, products...)
 
 		// 如果返回的产品数量小于页面大小，说明已经是最后一页
 		if len(products) < s.config.PageSize {
+			s.logger.WithFields(logrus.Fields{
+				"products_count": len(products),
+				"page_size":      s.config.PageSize,
+			}).Info("当前页产品数量小于页面大小，已是最后一页")
 			break
 		}
 		pageNo++
 	}
 
-	s.logger.Infof("获取TEMU产品列表完成，共%d个产品", len(allProducts))
+	s.logger.WithFields(logrus.Fields{
+		"total_products":  len(allProducts),
+		"pages_processed": pageNo,
+	}).Info("获取TEMU产品列表完成")
+
 	return allProducts, nil
 }
 
 // ConvertProducts 转换TEMU产品格式为管理系统格式
-func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []models.TemuProductResponse, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
 	totalCount := len(products)
-	s.logger.WithFields(logrus.Fields{
-		"tenant_id": tenantID,
-		"store_id":  storeID,
-		"count":     totalCount,
-	}).Info("开始转换TEMU产品格式")
 
 	productDataList := make([]*managementapi.ProductDataDTO, 0, totalCount)
 
@@ -126,7 +132,7 @@ func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products [
 		default:
 		}
 
-		productData, err := s.convertSingleProduct(ctx, &temuProduct, tenantID, storeID)
+		productData, err := s.convertSingleGoodsProduct(&temuProduct, tenantID, storeID)
 		if err != nil {
 			s.logger.WithError(err).WithField("goods_id", temuProduct.GoodsID).Warn("转换TEMU产品失败，跳过")
 			continue
@@ -139,12 +145,6 @@ func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products [
 		// 输出进度日志
 		s.logProgress(i+1, totalCount, len(productDataList), progressInterval, "产品转换进度")
 	}
-
-	s.logger.WithFields(logrus.Fields{
-		"total":   totalCount,
-		"success": len(productDataList),
-		"failed":  totalCount - len(productDataList),
-	}).Info("转换TEMU产品格式完成")
 
 	return productDataList, nil
 }
@@ -177,7 +177,7 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 			ProductName:        productData.Title,
 			ProductSku:         productData.ProductID,
 			ProductPrice:       productData.OriginalPrice,
-			ProductStock:       0, // 默认库存，需要根据实际情况设置
+			ProductStock:       productData.Stock, // 默认库存，需要根据实际情况设置
 			ProductCategory:    productData.Category,
 			ProductImage:       productData.MainImageURL,
 			ProductDescription: productData.Description,
