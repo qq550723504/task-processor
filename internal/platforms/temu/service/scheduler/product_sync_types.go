@@ -11,10 +11,10 @@ import (
 // ProductSyncService TEMU产品同步服务接口
 type ProductSyncService interface {
 	// FetchProductList 获取TEMU产品列表
-	FetchProductList(ctx context.Context) ([]models.TemuProductResponse, error)
+	FetchProductList(ctx context.Context) ([]models.GoodsSearchItem, error)
 
 	// ConvertProducts 转换TEMU产品格式为管理系统格式
-	ConvertProducts(ctx context.Context, products []models.TemuProductResponse, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
+	ConvertProducts(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
 
 	// SaveProducts 保存产品到管理系统
 	SaveProducts(ctx context.Context, productDataList []*managementapi.ProductDataDTO) (int, error)

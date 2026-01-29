@@ -11,6 +11,7 @@ import (
 type ServiceFactory struct {
 	managementClient *management.ClientManager
 	productAPI       *services.ProductAPI
+	skuQueryAPI      *services.SkuQueryAPI
 	mappingClient    managementapi.ProductImportMappingAPI
 	storeAPI         managementapi.StoreAPI
 }
@@ -19,12 +20,14 @@ type ServiceFactory struct {
 func NewServiceFactory(
 	managementClient *management.ClientManager,
 	productAPI *services.ProductAPI,
+	skuQueryAPI *services.SkuQueryAPI,
 	mappingClient managementapi.ProductImportMappingAPI,
 	storeAPI managementapi.StoreAPI,
 ) *ServiceFactory {
 	return &ServiceFactory{
 		managementClient: managementClient,
 		productAPI:       productAPI,
+		skuQueryAPI:      skuQueryAPI,
 		mappingClient:    mappingClient,
 		storeAPI:         storeAPI,
 	}
@@ -35,6 +38,7 @@ func (f *ServiceFactory) CreateProductSyncService() ProductSyncService {
 	return NewProductSyncService(
 		f.managementClient,
 		f.productAPI,
+		f.skuQueryAPI,
 		f.mappingClient,
 		f.storeAPI,
 		nil, // 使用默认配置

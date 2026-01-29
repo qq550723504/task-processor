@@ -52,7 +52,7 @@ func (s *schedulerServiceImpl) getPlatformConfigs(cfg *config.Config) []platform
 				Interval: cfg.Platforms.Temu.ActivityRegistration.Interval,
 			},
 			FactoryCreator: func() scheduler.TaskFactory {
-				return s.createTemuFactory(cfg)
+				return s.createTemuFactory()
 			},
 		}
 		configs = append(configs, temuConfig)

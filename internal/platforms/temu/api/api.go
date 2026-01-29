@@ -38,12 +38,10 @@ type (
 // 重新导出模型相关类型
 type (
 	// 产品相关
-	Product             = models.Product
-	ProductSaveResult   = models.ProductSaveResult
-	SourceProduct       = models.SourceProduct
-	ProductListRequest  = models.ProductListRequest
-	ProductListResponse = models.ProductListResponse
-	TemuProductResponse = models.TemuProductResponse
+	Product            = models.Product
+	ProductSaveResult  = models.ProductSaveResult
+	SourceProduct      = models.SourceProduct
+	ProductListRequest = models.ProductListRequest
 
 	// 定价相关
 	PendingPriceListRequest  = models.PendingPriceListRequest

@@ -6,20 +6,13 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	sheinscheduler "task-processor/internal/platforms/shein/scheduler"
-	"task-processor/internal/platforms/temu"
 	temuscheduler "task-processor/internal/platforms/temu/scheduler"
 )
 
 // createTemuFactory 创建TEMU任务工厂
-func (s *schedulerServiceImpl) createTemuFactory(cfg *config.Config) scheduler.TaskFactory {
-	// 创建配置提供者
-	var configProvider temu.ConfigProvider
-	if cfg.Amazon.Enabled && s.amazonProcessor != nil {
-		configProvider = temu.NewDefaultConfigProvider(&cfg.Amazon, s.amazonProcessor, &cfg.Platforms.Temu)
-		s.logger.Info("✅ TEMU启用Amazon增强版核价")
-	}
+func (s *schedulerServiceImpl) createTemuFactory() scheduler.TaskFactory {
 
-	return temuscheduler.NewTemuTaskFactory(s.managementClient, configProvider)
+	return temuscheduler.NewTemuTaskFactory(s.managementClient)
 }
 
 // createSheinFactory 创建SHEIN任务工厂

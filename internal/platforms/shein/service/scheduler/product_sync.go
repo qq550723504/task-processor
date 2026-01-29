@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/pkg/management"
+	"task-processor/internal/pkg/management/api"
 	managementapi "task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/shein/api/product"
@@ -158,13 +159,12 @@ func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products [
 
 // convertSingleProduct 转换单个产品
 func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *product.ProductListItem, tenantID, storeID int64) *managementapi.ProductDataDTO {
-	productData := s.buildBaseProductData(sheinProduct, tenantID, storeID)
-
 	// 获取店铺信息
 	storeInfo, err := s.storeAPI.GetStore(storeID)
 	if err != nil {
 		s.logger.WithError(err).WithField("store_id", storeID).Warn("获取店铺信息失败，使用默认处理")
 	}
+	productData := s.buildBaseProductData(sheinProduct, storeInfo)
 
 	// 获取库存信息（所有店铺类型都需要）
 	inventoryInfo, err := s.fetchInventoryInfo(sheinProduct.SpuName)
@@ -227,7 +227,7 @@ func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *product.Prod
 }
 
 // buildBaseProductData 构建基础产品数据
-func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *product.ProductListItem, tenantID, storeID int64) *managementapi.ProductDataDTO {
+func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *product.ProductListItem, storeInfo *api.StoreRespDTO) *managementapi.ProductDataDTO {
 	var publishTime *time.Time
 	if sheinProduct.PublishTime != "" {
 		if t, err := s.parseTime(sheinProduct.PublishTime); err == nil {
@@ -260,8 +260,9 @@ func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *product.Prod
 	})
 
 	return &managementapi.ProductDataDTO{
-		TenantID:          tenantID,
-		StoreID:           storeID,
+		TenantID:          storeInfo.TenantID,
+		StoreID:           storeInfo.ID,
+		Region:            storeInfo.Region,
 		Platform:          "SHEIN",
 		PlatformProductID: sheinProduct.SpuCode,
 		Title:             sheinProduct.ProductNameMulti,
@@ -327,7 +328,7 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 			ProductName:        productData.Title,
 			ProductSku:         productData.ProductID,
 			ProductPrice:       productData.OriginalPrice,
-			ProductStock:       0, // 默认库存，需要根据实际情况设置
+			ProductStock:       productData.Stock, // 默认库存，需要根据实际情况设置
 			ProductCategory:    productData.Category,
 			ProductImage:       productData.MainImageURL,
 			ProductDescription: productData.Description,

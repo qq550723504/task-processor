@@ -27,7 +27,6 @@ func NewProductSyncTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
-	clientManager *client.ClientManager,
 	syncService schedulerservice.ProductSyncService,
 ) *ProductSyncTask {
 	baseTask := NewBaseTask(config)
@@ -35,7 +34,6 @@ func NewProductSyncTask(
 	return &ProductSyncTask{
 		BaseTask:         baseTask,
 		managementClient: managementClient,
-		clientManager:    clientManager,
 		syncService:      syncService,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TemuProductSyncTask",

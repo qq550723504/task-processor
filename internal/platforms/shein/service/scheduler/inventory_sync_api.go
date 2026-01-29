@@ -85,7 +85,7 @@ func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
 		ProductName:        prod.Title,
 		ProductSku:         prod.ProductID,
 		ProductPrice:       prod.OriginalPrice,
-		ProductStock:       0, // 库存设为0，因为已下架
+		ProductStock:       prod.Stock,
 		ProductCategory:    prod.Category,
 		ProductImage:       prod.MainImageURL,
 		ProductDescription: prod.Description,

@@ -7,7 +7,6 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/pkg/management"
-	"task-processor/internal/platforms/temu"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/services/pricing"
 
@@ -18,7 +17,6 @@ import (
 type PricingTask struct {
 	*BaseTask
 	managementClient *management.ClientManager
-	configProvider   temu.ConfigProvider
 	logger           *logrus.Entry
 }
 
@@ -27,14 +25,12 @@ func NewPricingTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
-	configProvider temu.ConfigProvider,
 ) *PricingTask {
 	baseTask := NewBaseTask(config)
 
 	return &PricingTask{
 		BaseTask:         baseTask,
 		managementClient: managementClient,
-		configProvider:   configProvider,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TemuPricingTask",
 			"task_id":   baseTask.GetID(),
@@ -63,16 +59,7 @@ func (t *PricingTask) Execute(ctx context.Context) error {
 	// 执行核价任务
 	var stats interface{}
 	var err error
-
-	if t.configProvider != nil {
-		// 使用Amazon增强版本
-		t.logger.Info("使用Amazon增强版核价方法")
-		stats, err = autoPricingService.AutoProcessPendingPricesWithRulesAndAmazon(t.managementClient, t.configProvider)
-	} else {
-		// 使用基础版本
-		t.logger.Info("使用基础版核价方法")
-		stats, err = autoPricingService.AutoProcessPendingPricesWithRules(t.managementClient)
-	}
+	stats, err = autoPricingService.AutoProcessPendingPricesWithRules(t.managementClient)
 
 	if err != nil {
 		t.logger.WithError(err).Error("TEMU智能核价任务执行失败")

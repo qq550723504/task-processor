@@ -4,7 +4,6 @@ package pricing
 import (
 	"fmt"
 	"task-processor/internal/pkg/management"
-	"task-processor/internal/platforms/temu"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 
@@ -54,7 +53,6 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRules(managementClient 
 // AutoProcessPendingPricesWithRulesAndAmazon 根据利润率规则智能处理待核价商品（支持Amazon数据）
 func (s *AutoPricingService) AutoProcessPendingPricesWithRulesAndAmazon(
 	managementClient *management.ClientManager,
-	configProvider temu.ConfigProvider,
 ) (*models.PricingStatistics, error) {
 	s.logger.Info("开始智能核价处理（Amazon增强版）")
 
@@ -63,41 +61,8 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRulesAndAmazon(
 		return nil, fmt.Errorf("managementClient不能为空")
 	}
 
-	if configProvider == nil {
-		s.logger.Warn("配置提供者为空，使用基础决策服务")
-		return s.AutoProcessPendingPricesWithRules(managementClient)
-	}
-
-	// 获取Amazon配置和处理器
-	amazonConfig := configProvider.GetAmazonConfig()
-	amazonProcessor := configProvider.GetAmazonProcessor()
-	platformConfig := configProvider.GetPlatformConfig()
-
-	if amazonConfig == nil {
-		s.logger.Warn("Amazon配置未启用，使用基础决策服务")
-		return s.AutoProcessPendingPricesWithRules(managementClient)
-	}
-
-	if amazonProcessor == nil {
-		s.logger.Warn("Amazon处理器未初始化，使用基础决策服务")
-		return s.AutoProcessPendingPricesWithRules(managementClient)
-	}
-
-	// 创建支持Amazon的决策服务
-	s.logger.Info("使用Amazon增强的决策服务")
-	decisionService, err := NewPricingDecisionService(
-		managementClient,
-		s.apiClient.GetStoreID(),
-		amazonConfig,
-		amazonProcessor,
-		platformConfig,
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("创建Amazon增强决策服务失败: %w", err)
-	}
-
-	return s.processWithService(decisionService)
+	s.logger.Warn("配置提供者为空，使用基础决策服务")
+	return s.AutoProcessPendingPricesWithRules(managementClient)
 }
 
 // processWithService 使用指定的决策服务处理待核价商品

@@ -90,7 +90,7 @@ type ProductDataItemDTO struct {
 	ProductName        string               `json:"productName" validate:"required"`       // 商品名称
 	ProductSku         string               `json:"productSku"`                            // 商品SKU
 	ProductPrice       types.FlexibleString `json:"productPrice" validate:"required"`      // 商品价格
-	ProductStock       int                  `json:"productStock" validate:"required"`      // 商品库存
+	ProductStock       types.FlexibleString `json:"productStock" validate:"required"`      // 商品库存
 	ProductCategory    string               `json:"productCategory"`                       // 商品分类
 	ProductImage       string               `json:"productImage"`                          // 商品图片URL
 	ProductDescription string               `json:"productDescription"`                    // 商品描述
