@@ -15,29 +15,25 @@ func (s *productSyncServiceImpl) buildEnrichedMappingData(
 	temuProduct *models.GoodsSearchItem,
 	skuDetails *models.SkuQueryResponse,
 	storeID int64,
-) ([]*models.TemuMappingData, error) {
+) ([]*TemuMappingData, error) {
 	if s.mappingClient == nil {
 		return nil, fmt.Errorf("映射客户端未设置")
 	}
 
 	// 为每个SKU创建独立的映射对象
-	var result []*models.TemuMappingData
+	var result []*TemuMappingData
 
 	for i, skuItem := range skuDetails.Result.SkuList {
 		// 为每个SKU创建独立的映射数据对象
-		skuInfo := models.TemuSkuInfo{
+		skuInfo := TemuSkuInfo{
 			SkuCode: skuItem.SkuID,
 			// 初始化空的映射信息，后续会通过查询填充
-			MappingInfo: models.TemuMappingInfo{},
+			MappingInfo: TemuMappingInfo{},
 			// 填充成本价格信息
-			CostPriceInfo: models.TemuCostPriceInfo{
+			CostPriceInfo: TemuCostPriceInfo{
 				Currency:  skuItem.Currency, // 使用SKU的货币
 				CostPrice: fmt.Sprintf("%.2f", skuItem.Price),
 			},
-			// 填充TEMU库存信息
-			// TemuInventoryInfo: models.TemuInventoryInfo{
-			// 	UsableInventory: skuItem.Stock, // 使用SKU的库存数量
-			// },
 			UsableInventory: skuItem.Stock,
 		}
 
@@ -56,7 +52,7 @@ func (s *productSyncServiceImpl) buildEnrichedMappingData(
 			// 继续处理其他SKU，不中断整个流程
 		} else if mapping != nil {
 			// 将查询到的映射信息填充到SKU中
-			skuInfo.MappingInfo = models.TemuMappingInfo{
+			skuInfo.MappingInfo = TemuMappingInfo{
 				ID:                      mapping.ID,
 				ImportTaskId:            mapping.ImportTaskId,
 				StoreId:                 mapping.StoreId,
@@ -87,10 +83,10 @@ func (s *productSyncServiceImpl) buildEnrichedMappingData(
 		}
 
 		// 为每个SKU创建独立的映射数据对象（SHEIN格式）
-		mappingData := &models.TemuMappingData{
+		mappingData := &TemuMappingData{
 			SkcCode:               skuItem.SkuID,                                  // 使用SKU ID作为skc_code
 			SkcName:               fmt.Sprintf("%s_%d", temuProduct.GoodsID, i+1), // 生成唯一的skc_name
-			SkuInfo:               []models.TemuSkuInfo{skuInfo},                  // 每个对象只包含一个SKU
+			SkuInfo:               []TemuSkuInfo{skuInfo},                         // 每个对象只包含一个SKU
 			SaleName:              skuItem.SpecName,                               // 使用SKU的SpecName作为SaleName
 			SupplierID:            0,                                              // 需要根据实际情况填充
 			SupplierCode:          skuItem.SkuSN,                                  // 使用SkuSN作为SupplierCode
@@ -107,7 +103,7 @@ func (s *productSyncServiceImpl) buildEnrichedMappingData(
 // fillProductLevelMappingInfo 使用第一个找到的映射信息填充产品级别的ProductID和Region
 func (s *productSyncServiceImpl) fillProductLevelMappingInfo(
 	productData *managementapi.ProductDataDTO,
-	mappingDataList []*models.TemuMappingData,
+	mappingDataList []*TemuMappingData,
 ) {
 	if len(mappingDataList) == 0 {
 		return
@@ -136,5 +132,4 @@ func (s *productSyncServiceImpl) fillProductLevelMappingInfo(
 		}
 	}
 
-	s.logger.Debug("未找到有效的SKU映射信息，产品级别数据保持原值")
 }

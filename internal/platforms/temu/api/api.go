@@ -25,14 +25,15 @@ type (
 
 // 重新导出服务相关类型
 type (
-	ProductAPI     = services.ProductAPI
-	PricingService = services.PricingService
-	ListingAPI     = services.ListingAPI
-	OfflineAPI     = services.OfflineAPI
-	ImageUploadAPI = services.ImageUploadAPI
-	CategoryAPI    = services.CategoryAPI
-	QueryAPI       = services.QueryAPI
-	SubmitAPI      = services.SubmitAPI
+	ProductAPI       = services.ProductAPI
+	PricingService   = services.PricingService
+	ListingAPI       = services.ListingAPI
+	OfflineAPI       = services.OfflineAPI
+	ImageUploadAPI   = services.ImageUploadAPI
+	CategoryAPI      = services.CategoryAPI
+	QueryAPI         = services.QueryAPI
+	SubmitAPI        = services.SubmitAPI
+	InventoryService = services.InventoryService
 )
 
 // 重新导出模型相关类型
@@ -68,6 +69,22 @@ type (
 	UploadResult            = models.UploadResult
 	TemuImageUploadResponse = models.TemuImageUploadResponse
 	ImageValidationResult   = models.ImageValidationResult
+
+	// 库存管理相关
+	StockEditRequest  = models.StockEditRequest
+	SkuStockChange    = models.SkuStockChange
+	StockEditResponse = models.StockEditResponse
+	StockEditResult   = models.StockEditResult
+
+	// 下架产品相关
+	OfflineProductRequest  = models.OfflineProductRequest
+	OfflineProductResponse = models.OfflineProductResponse
+	OfflineProductResult   = models.OfflineProductResult
+
+	// 上架产品相关
+	OnlineProductRequest  = models.OnlineProductRequest
+	OnlineProductResponse = models.OnlineProductResponse
+	OnlineProductResult   = models.OnlineProductResult
 
 	// 通用类型
 	ImageInfo          = models.ImageInfo
@@ -123,6 +140,7 @@ var (
 	NewCategoryAPI      = services.NewCategoryAPI
 	NewQueryAPI         = services.NewQueryAPI
 	NewSubmitAPI        = services.NewSubmitAPI
+	NewInventoryService = services.NewInventoryService
 	NewCookieManager    = client.NewCookieManager
 	NewHTTPManager      = client.NewHTTPManager
 	NewAuthManager      = client.NewAuthManager

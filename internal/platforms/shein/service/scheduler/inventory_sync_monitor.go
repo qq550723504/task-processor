@@ -74,9 +74,6 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	result.AmazonFetched++
 	resultMutex.Unlock()
 
-	// 更新Attributes中的Amazon数据
-	go s.updateAttributesWithAmazonData(prod, s.getStringValue(mappingInfo.Sku), amazonProduct, storeID)
-
 	// 记录库存和价格历史（每天一次）
 	go s.recordInventoryAndPrice(asin, region, amazonProduct, prod, skuMapping, storeID)
 
@@ -125,6 +122,10 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 			}
 		}()
 	}
+
+	// 更新管理系统中的产品库存（添加到批量收集器）
+	newInventory := s.extractStockFromProduct(amazonProduct)
+	s.addInventoryUpdate(prod.ProductID, s.getStringValue(skuMapping.MappingInfo.Sku), newInventory, amazonProduct, storeID)
 
 	return nil
 }

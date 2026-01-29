@@ -1,4 +1,4 @@
-// Package scheduler 提供SHEIN平台调度器相关服务
+// Package scheduler 提供TEMU平台调度器相关服务
 package scheduler
 
 import (
@@ -13,77 +13,19 @@ import (
 )
 
 // extractMappingInfoFromAttributes 从Attributes JSON中提取所有映射信息和库存
-func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJSON string) []*SKUMappingData {
+func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJSON string) []*TemuMappingData {
 	if attributesJSON == "" {
 		s.logger.Debug("产品Attributes为空")
 		return nil
 	}
 
-	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
+	var mappingList []*TemuMappingData
+	if err := json.Unmarshal([]byte(attributesJSON), &mappingList); err != nil {
 		s.logger.WithError(err).WithField("attributes_length", len(attributesJSON)).Error("解析产品Attributes JSON失败")
 		return nil
 	}
 
-	s.logger.WithField("skc_count", len(skcList)).Debug("成功解析产品Attributes")
-
-	var mappings []*SKUMappingData
-	totalSkuCount := 0
-	validMappingCount := 0
-
-	for skcIndex, skc := range skcList {
-		s.logger.WithFields(map[string]interface{}{
-			"skc_index": skcIndex,
-			"skc_code":  skc.SkcCode,
-			"sku_count": len(skc.SkuInfo),
-		}).Debug("处理SKC数据")
-
-		for skuIndex, sku := range skc.SkuInfo {
-			totalSkuCount++
-
-			s.logger.WithFields(map[string]interface{}{
-				"skc_index":        skcIndex,
-				"sku_index":        skuIndex,
-				"has_mapping_info": sku.MappingInfo != nil,
-				"product_id": func() string {
-					if sku.MappingInfo != nil {
-						return sku.MappingInfo.ProductId
-					}
-					return "nil"
-				}(),
-			}).Debug("检查SKU映射信息")
-
-			if sku.MappingInfo != nil && sku.MappingInfo.ProductId != "" {
-				totalStock := 0
-				if sku.UsableInventory != nil {
-					totalStock = *sku.UsableInventory
-				}
-
-				mappings = append(mappings, &SKUMappingData{
-					MappingInfo: sku.MappingInfo,
-					Stock:       totalStock,
-				})
-				validMappingCount++
-
-				s.logger.WithFields(map[string]interface{}{
-					"skc_code":     skc.SkcCode,
-					"sku_index":    skuIndex,
-					"asin":         sku.MappingInfo.ProductId,
-					"platform_sku": s.getStringValue(sku.MappingInfo.Sku),
-					"stock":        totalStock,
-				}).Debug("找到有效的SKU映射")
-			}
-		}
-	}
-
-	s.logger.WithFields(map[string]interface{}{
-		"total_skc":         len(skcList),
-		"total_sku":         totalSkuCount,
-		"valid_mappings":    validMappingCount,
-		"returned_mappings": len(mappings),
-	}).Info("提取映射信息完成")
-
-	return mappings
+	return mappingList
 }
 
 // extractStockFromProduct 从Amazon产品中提取库存（使用公共函数）
@@ -162,8 +104,8 @@ func (s *inventorySyncServiceImpl) getStoreSiteAbbr(storeID int64) (string, erro
 		return "", fmt.Errorf("店铺未配置站点信息(Region字段为空)")
 	}
 
-	// 将 Region 转换为 SHEIN 站点缩写格式（如：US -> shein-us）
-	siteAbbr := fmt.Sprintf("shein-%s", strings.ToLower(storeInfo.Region))
+	// 将 Region 转换为 TEMU 站点缩写格式（如：US -> temu-us）
+	siteAbbr := fmt.Sprintf("temu-%s", strings.ToLower(storeInfo.Region))
 
 	return siteAbbr, nil
 }
@@ -174,27 +116,21 @@ func (s *inventorySyncServiceImpl) checkHasAmazonMonitorData(attributesJSON stri
 		return false
 	}
 
-	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
+	var skuList []TemuSkuInfo
+	if err := json.Unmarshal([]byte(attributesJSON), &skuList); err != nil {
 		s.logger.WithError(err).Debug("解析产品Attributes失败")
 		return false
 	}
 
-	// 查找对应的SKU并检查是否有AmazonMonitorData
-	for _, skc := range skcList {
-		for _, sku := range skc.SkuInfo {
-			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
-				// 找到对应的SKU，检查是否有AmazonMonitorData
-				if sku.AmazonMonitorData != nil && sku.AmazonMonitorData.LastCheckTime > 0 {
-					s.logger.WithFields(map[string]interface{}{
-						"platform_sku":    platformSKU,
-						"asin":            sku.AmazonMonitorData.ASIN,
-						"last_check_time": sku.AmazonMonitorData.LastCheckTime,
-					}).Debug("找到Amazon监控数据")
-					return true
-				}
-				return false
-			}
+	// 查找对应的SKU并检查是否有映射信息
+	for _, sku := range skuList {
+		if s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
+			// 找到对应的SKU，TEMU结构中直接检查映射信息是否存在
+			s.logger.WithFields(map[string]interface{}{
+				"platform_sku": platformSKU,
+				"asin":         sku.MappingInfo.ProductId,
+			}).Debug("找到SKU映射信息")
+			return true
 		}
 	}
 
@@ -207,22 +143,17 @@ func (s *inventorySyncServiceImpl) getAmazonMonitorLastCheckTime(attributesJSON 
 		return 0
 	}
 
-	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
+	var skuList []TemuSkuInfo
+	if err := json.Unmarshal([]byte(attributesJSON), &skuList); err != nil {
 		s.logger.WithError(err).Debug("解析产品Attributes失败")
 		return 0
 	}
 
-	// 查找对应的SKU并获取LastCheckTime
-	for _, skc := range skcList {
-		for _, sku := range skc.SkuInfo {
-			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
-				// 找到对应的SKU，返回LastCheckTime
-				if sku.AmazonMonitorData != nil {
-					return sku.AmazonMonitorData.LastCheckTime
-				}
-				return 0
-			}
+	// 查找对应的SKU
+	for _, sku := range skuList {
+		if s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
+			// TEMU结构中没有LastCheckTime字段，返回0表示需要检查
+			return 0
 		}
 	}
 
@@ -241,10 +172,10 @@ func (s *inventorySyncServiceImpl) validateAttributesStructure(attributesJSON st
 		return fmt.Errorf("JSON 格式无效: %w", err)
 	}
 
-	// 尝试解析为 EnrichedSkcInfo 数组
-	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
-		return fmt.Errorf("无法解析为 EnrichedSkcInfo 数组: %w", err)
+	// 尝试解析为 SKUMappingData 数组
+	var skuList []TemuSkuInfo
+	if err := json.Unmarshal([]byte(attributesJSON), &skuList); err != nil {
+		return fmt.Errorf("无法解析为 SKUMappingData 数组: %w", err)
 	}
 
 	return nil
@@ -254,13 +185,4 @@ func (s *inventorySyncServiceImpl) validateAttributesStructure(attributesJSON st
 func (s *inventorySyncServiceImpl) enableDebugLogging() {
 	logrus.SetLevel(logrus.DebugLevel)
 	s.logger.Debug("已启用 Debug 级别日志")
-}
-
-// debugProductAttributes 调试产品属性结构
-func (s *inventorySyncServiceImpl) debugProductAttributes(productID string, attributesJSON string) {
-
-	// 验证 JSON 结构
-	if err := s.validateAttributesStructure(attributesJSON); err != nil {
-		s.logger.WithError(err).WithField("product_id", productID).Error("产品属性结构验证失败")
-	}
 }

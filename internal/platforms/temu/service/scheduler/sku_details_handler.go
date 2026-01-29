@@ -160,6 +160,6 @@ func (s *productSyncServiceImpl) fillMappingAttributesWithSkuDetails(
 }
 
 // serializeMappingData 序列化映射数据
-func (s *productSyncServiceImpl) serializeMappingData(mappingDataList []*models.TemuMappingData) ([]byte, error) {
+func (s *productSyncServiceImpl) serializeMappingData(mappingDataList []*TemuMappingData) ([]byte, error) {
 	return json.Marshal(mappingDataList)
 }

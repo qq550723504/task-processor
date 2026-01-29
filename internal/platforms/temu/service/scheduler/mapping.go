@@ -1,5 +1,10 @@
 // Package models 提供TEMU平台映射数据结构定义
-package models
+package scheduler
+
+import (
+	"task-processor/internal/domain/model"
+	managementapi "task-processor/internal/pkg/management/api"
+)
 
 // TemuMappingData TEMU映射到管理系统的数据结构（产品级别对象，包含多个SKU）
 type TemuMappingData struct {
@@ -44,11 +49,6 @@ type TemuMappingInfo struct {
 	TenantId                int64    `json:"tenantId"`                // 租户ID
 }
 
-// TemuInventoryInfo TEMU库存信息
-type TemuInventoryInfo struct {
-	UsableInventory int `json:"usable_inventory"` // 库存数量
-}
-
 // TemuCostPriceInfo TEMU成本价格信息
 type TemuCostPriceInfo struct {
 	Currency  string `json:"currency"`   // 货币
@@ -61,4 +61,31 @@ type TemuAmazonMonitorData struct {
 	Price         float64 `json:"price"`           // 价格
 	Stock         int     `json:"stock"`           // 库存
 	LastCheckTime int64   `json:"last_check_time"` // 最后检查时间
+}
+
+// MonitorResult 监控结果
+type MonitorResult struct {
+	TotalProducts     int // 总产品数
+	ProcessedProducts int // 已处理产品数
+	SkippedProducts   int // 跳过的产品数
+	PriceChanges      int // 价格变化数
+	StockChanges      int // 库存变化数
+	AmazonFetched     int // 成功获取Amazon数据数
+	AmazonFailed      int // 获取Amazon数据失败数
+}
+
+// InventoryUpdateBatch 批量库存更新数据结构
+type InventoryUpdateBatch struct {
+	Product *managementapi.ProductDataDTO // 产品信息
+	Updates []SkuInventoryUpdate          // SKU更新列表
+	StoreID int64                         // 店铺ID
+}
+
+// SkuInventoryUpdate SKU库存更新信息
+type SkuInventoryUpdate struct {
+	PlatformSKU   string         // 平台SKU编号
+	NewInventory  int64          // 新库存数量
+	AmazonProduct *model.Product // Amazon产品数据
+	SkuInfo       *TemuSkuInfo   // TEMU SKU信息
+	StoreID       int64          // 店铺ID（用于获取价格类型）
 }

@@ -64,18 +64,6 @@ func (s *productSyncServiceImpl) parseTime(timeStr string) (*time.Time, error) {
 	return nil, fmt.Errorf("无法解析时间: %s", timeStr)
 }
 
-// mapShelfStatus 映射上架状态
-func (s *productSyncServiceImpl) mapShelfStatus(status4VO int) int {
-	switch status4VO {
-	case 3: // TEMU已上架状态
-		return 2 // 管理系统上架状态
-	case 1, 2, 4, 5: // TEMU其他状态（草稿、审核中、下架等）
-		return 3 // 管理系统下架状态
-	default:
-		return 0 // 未知状态
-	}
-}
-
 // calculateProgressInterval 计算进度输出间隔
 func (s *productSyncServiceImpl) calculateProgressInterval(totalCount int) int {
 	progressInterval := totalCount / 10

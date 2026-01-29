@@ -41,15 +41,6 @@ func (s *productSyncServiceImpl) convertSingleProduct(temuProduct *models.SkuRes
 		return nil, fmt.Errorf("产品数据验证失败: %w", err)
 	}
 
-	s.logger.WithFields(logrus.Fields{
-		"goods_id":   temuProduct.GoodsID,
-		"goods_name": temuProduct.GoodsName,
-		"status":     temuProduct.Status4VO,
-		"price":      temuProduct.Price,
-		"stock":      temuProduct.OrdinaryStock,
-		"currency":   temuProduct.Currency,
-	}).Debug("TEMU产品转换完成")
-
 	return productData, nil
 }
 
@@ -89,7 +80,7 @@ func (s *productSyncServiceImpl) buildBaseProductData(temuProduct *models.SkuRes
 		Description:       description,
 		MainImageURL:      temuProduct.ThumbURL,
 		ImageURLs:         string(imageURLsJSON),
-		ShelfStatus:       s.mapShelfStatus(temuProduct.Status4VO),
+		ShelfStatus:       2,
 		PublishTime:       types.ToFlexibleTime(publishTime),
 		ShelfTime:         types.ToFlexibleTime(shelfTime),
 		PriceCurrency:     temuProduct.Currency,
@@ -186,7 +177,7 @@ func (s *productSyncServiceImpl) buildBaseGoodsProductData(temuProduct *models.G
 		Description:       description,
 		MainImageURL:      temuProduct.ThumbURL,
 		ImageURLs:         string(imageURLsJSON),
-		ShelfStatus:       s.mapShelfStatus(temuProduct.Status4VO),
+		ShelfStatus:       2,
 		PublishTime:       types.ToFlexibleTime(publishTime),
 		ShelfTime:         types.ToFlexibleTime(shelfTime),
 		PriceCurrency:     temuProduct.Currency,

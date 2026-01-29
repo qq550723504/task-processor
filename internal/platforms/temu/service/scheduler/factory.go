@@ -50,9 +50,3 @@ func (f *ServiceFactory) CreateInventorySyncService() InventorySyncService {
 	// TODO: 返回具体实现
 	return nil
 }
-
-// CreatePriceSyncService 创建价格同步服务
-func (f *ServiceFactory) CreatePriceSyncService() PriceSyncService {
-	// TODO: 返回具体实现
-	return nil
-}

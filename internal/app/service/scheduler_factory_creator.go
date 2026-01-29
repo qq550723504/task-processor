@@ -10,9 +10,20 @@ import (
 )
 
 // createTemuFactory 创建TEMU任务工厂
-func (s *schedulerServiceImpl) createTemuFactory() scheduler.TaskFactory {
+func (s *schedulerServiceImpl) createTemuFactory(cfg *config.Config) scheduler.TaskFactory {
+	// 使用注入的Amazon处理器（用于库存监控）
+	var amazonProcessor *amazon.AmazonProcessor
+	if cfg.Amazon.Enabled && s.amazonProcessor != nil {
+		amazonProcessor = s.amazonProcessor
+		s.logger.Info("✅ TEMU启用Amazon库存监控")
+	}
 
-	return temuscheduler.NewTemuTaskFactory(s.managementClient)
+	return temuscheduler.NewTemuTaskFactory(
+		s.managementClient,
+		amazonProcessor,
+		&cfg.Amazon,
+		&cfg.Platforms.Temu.Monitor,
+	)
 }
 
 // createSheinFactory 创建SHEIN任务工厂
