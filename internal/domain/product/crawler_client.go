@@ -7,25 +7,33 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
 // CrawlerClient Amazon爬虫客户端
 type CrawlerClient struct {
-	amazonProcessor *amazon.AmazonProcessor
-	amazonConfig    *config.AmazonConfig
-	domainResolver  *DomainResolver
-	logger          *logrus.Entry
+	amazonProcessor  *amazon.AmazonProcessor
+	processorWrapper *amazon.ProcessorWrapper
+	amazonConfig     *config.AmazonConfig
+	domainResolver   *DomainResolver
+	logger           *logrus.Entry
 }
 
 // NewCrawlerClient 创建爬虫客户端
 func NewCrawlerClient(amazonProcessor *amazon.AmazonProcessor, amazonConfig *config.AmazonConfig, logger *logrus.Entry) *CrawlerClient {
+	var processorWrapper *amazon.ProcessorWrapper
+	if amazonProcessor != nil {
+		processorWrapper = amazon.NewProcessorWrapper(amazonProcessor)
+	}
+
 	return &CrawlerClient{
-		amazonProcessor: amazonProcessor,
-		amazonConfig:    amazonConfig,
-		domainResolver:  NewDomainResolver(),
-		logger:          logger.WithField("component", "CrawlerClient"),
+		amazonProcessor:  amazonProcessor,
+		processorWrapper: processorWrapper,
+		amazonConfig:     amazonConfig,
+		domainResolver:   NewDomainResolver(),
+		logger:           logger.WithField("component", "CrawlerClient"),
 	}
 }
 
@@ -44,7 +52,7 @@ func (c *CrawlerClient) ShouldUseCrawler(platform string) bool {
 
 // FetchFromCrawler 使用Amazon爬虫抓取数据
 func (c *CrawlerClient) FetchFromCrawler(req *FetchRequest) (*model.Product, error) {
-	if c.amazonProcessor == nil {
+	if c.processorWrapper == nil {
 		return nil, fmt.Errorf("Amazon爬虫未初始化")
 	}
 
@@ -57,8 +65,8 @@ func (c *CrawlerClient) FetchFromCrawler(req *FetchRequest) (*model.Product, err
 
 	c.logger.Infof("🚀 开始爬取: URL=%s, Zipcode=%s", url, zipcode)
 
-	// 调用Amazon爬虫
-	product, err := c.amazonProcessor.Process(url, zipcode)
+	// 使用包装器调用Amazon爬虫，设置3分钟超时
+	product, err := c.processorWrapper.ProcessWithTimeout(url, zipcode, 3*time.Minute)
 	if err != nil {
 		// 检查是否为404或页面不存在错误
 		if c.isPageNotFoundError(err) {

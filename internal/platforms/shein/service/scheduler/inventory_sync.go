@@ -153,32 +153,10 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 				}
 			}()
 
-			// 启用调试日志（仅在需要时）
-			s.enableDebugLogging()
-
-			// 调试产品属性
-			s.debugProductAttributes(product.ProductID, product.Attributes)
-
 			// 从 Attributes 中解析所有 SKU 映射数据
 			skuMappingList := s.extractMappingInfoFromAttributes(product.Attributes)
 
-			s.logger.WithFields(logrus.Fields{
-				"product_id":        product.ProductID,
-				"attributes_length": len(product.Attributes),
-				"mapping_count":     len(skuMappingList),
-			}).Debug("提取产品映射信息")
-
 			if len(skuMappingList) == 0 {
-				s.logger.WithFields(logrus.Fields{
-					"product_id":        product.ProductID,
-					"attributes_length": len(product.Attributes),
-					"attributes_preview": func() string {
-						if len(product.Attributes) > 200 {
-							return product.Attributes[:200] + "..."
-						}
-						return product.Attributes
-					}(),
-				}).Debug("产品没有映射信息，跳过")
 				resultMutex.Lock()
 				result.SkippedProducts++
 				resultMutex.Unlock()
@@ -195,6 +173,22 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 				}
 			}
 
+			// 获取当前产品收集到的所有库存更新并立即处理
+			if value, exists := s.inventoryUpdates.LoadAndDelete(product.ProductID); exists {
+				updates := value.([]InventoryUpdateRequest)
+				if len(updates) > 0 {
+					// 立即处理当前产品的库存更新（参考TEMU的方式）
+					if err := s.processSingleProductInventoryUpdates(ctx, product, updates, storeID); err != nil {
+						s.logger.WithError(err).WithField("product_id", product.ProductID).Error("处理产品库存更新失败")
+					} else {
+						s.logger.WithFields(logrus.Fields{
+							"product_id":   product.ProductID,
+							"update_count": len(updates),
+						}).Debug("成功处理单个产品的库存更新")
+					}
+				}
+			}
+
 			resultMutex.Lock()
 			result.ProcessedProducts++
 			resultMutex.Unlock()
@@ -203,9 +197,6 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 
 	// 等待所有 goroutine 完成
 	wg.Wait()
-
-	// 批量处理所有收集到的库存更新
-	s.processBatchInventoryUpdates(ctx, products, storeID)
 
 	s.logger.WithFields(logrus.Fields{
 		"total":          result.TotalProducts,

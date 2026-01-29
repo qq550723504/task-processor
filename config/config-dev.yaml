@@ -101,7 +101,7 @@ platforms:
       batchSize: 100
     # 产品同步配置
     productSync:
-      enabled: true         # 启用产品同步
+      enabled: false         # 启用产品同步
       interval: 86400        # 执行间隔（秒），默认24小时
     # 库存同步配置
     inventorySync:

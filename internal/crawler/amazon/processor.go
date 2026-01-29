@@ -2,6 +2,7 @@
 package amazon
 
 import (
+	"context"
 	"fmt"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon/browser"
@@ -14,12 +15,14 @@ import (
 // AmazonProcessor Amazon爬虫处理器
 type AmazonProcessor struct {
 	browserPool     *browser.BrowserPool
+	poolManager     *browser.PoolManager
 	config          *config.Config
 	usePool         bool
 	singleProcessor *SingleProcessor
 	batchProcessor  *BatchProcessor
 	urlHelper       *URLHelper
 	productChecker  *ProductChecker
+	timeoutManager  *TimeoutManager
 }
 
 // NewAmazonProcessor 使用全局配置创建Amazon处理器
@@ -50,30 +53,36 @@ func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 	logrus.Infof("创建Amazon处理器，浏览器池大小: %d (配置值: %d)", poolConfig.Size, cfg.Browser.PoolSize)
 	browserPool := browser.NewBrowserPool(cfg, poolConfig)
 
+	// 创建辅助组件（需要在浏览器池初始化前创建，因为池管理器需要它们）
+	urlHelper := NewURLHelper()
+	productChecker := NewProductChecker()
+
 	// 初始化浏览器池
 	usePool := true
+	var poolManager *browser.PoolManager
 	if err := browserPool.Initialize(); err != nil {
 		logrus.Infof("初始化浏览器池失败: %v，将使用单浏览器模式", err)
 		usePool = false
 		browserPool = nil
 	} else {
 		logrus.Info("浏览器池初始化成功")
+		poolManager = browser.NewPoolManager(browserPool)
 	}
 
-	// 创建辅助组件
-	urlHelper := NewURLHelper()
-	productChecker := NewProductChecker()
 	singleProcessor := NewSingleProcessor(cfg, urlHelper, productChecker)
 	batchProcessor := NewBatchProcessor(browserPool, urlHelper, productChecker)
+	timeoutManager := NewTimeoutManager(5 * time.Minute) // 默认5分钟超时
 
 	return &AmazonProcessor{
 		browserPool:     browserPool,
+		poolManager:     poolManager,
 		config:          cfg,
 		usePool:         usePool,
 		singleProcessor: singleProcessor,
 		batchProcessor:  batchProcessor,
 		urlHelper:       urlHelper,
 		productChecker:  productChecker,
+		timeoutManager:  timeoutManager,
 	}
 }
 
@@ -82,10 +91,21 @@ func (ap *AmazonProcessor) Process(url string, zipcode string) (*model.Product, 
 	startTime := time.Now()
 	logrus.Infof("开始处理Amazon产品: %s", url)
 
-	if ap.usePool {
-		return ap.processWithPool(url, zipcode)
+	if ap.usePool && ap.poolManager != nil {
+		return ap.processWithPoolManager(url, zipcode)
 	}
 	return ap.singleProcessor.ProcessWithSingleBrowser(url, zipcode, startTime)
+}
+
+// processWithPoolManager 使用池管理器处理
+func (ap *AmazonProcessor) processWithPoolManager(url string, zipcode string) (*model.Product, error) {
+	ctx := context.Background()
+	timeout := 3 * time.Minute // 单个产品处理超时3分钟
+
+	// 创建实例处理器
+	processor := NewInstanceProcessor(ap.urlHelper, ap.productChecker)
+
+	return ap.poolManager.ProcessWithTimeout(ctx, url, zipcode, timeout, processor)
 }
 
 // ProcessBatch 批量处理多个Amazon产品页面
@@ -182,8 +202,23 @@ func (ap *AmazonProcessor) processWithInstance(instance *browser.BrowserInstance
 
 // Shutdown 关闭处理器
 func (ap *AmazonProcessor) Shutdown() {
+	logrus.Info("开始关闭Amazon处理器")
+
+	// 取消所有超时管理器中的活跃任务
+	if ap.timeoutManager != nil {
+		ap.timeoutManager.CancelAll()
+	}
+
+	// 关闭池管理器
+	if ap.poolManager != nil {
+		ap.poolManager.Shutdown()
+	}
+
+	// 关闭浏览器池
 	if ap.usePool && ap.browserPool != nil {
 		logrus.Info("关闭浏览器池...")
 		ap.browserPool.Shutdown()
 	}
+
+	logrus.Info("Amazon处理器已关闭")
 }

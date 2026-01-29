@@ -173,7 +173,6 @@ func (zih *ZipcodeInputHandler) handleJapaneseZipcode(page playwright.Page, zipc
 		locator := page.Locator(selector).First()
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				logrus.Infof("找到日本邮编第一个输入框: %s", selector)
 				jpZipInput1 = locator
 				break
 			}
@@ -185,7 +184,6 @@ func (zih *ZipcodeInputHandler) handleJapaneseZipcode(page playwright.Page, zipc
 		locator := page.Locator(selector).First()
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				logrus.Infof("找到日本邮编第二个输入框: %s", selector)
 				jpZipInput2 = locator
 				break
 			}

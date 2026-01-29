@@ -27,9 +27,23 @@ func (ed *ErrorDetector) IsBlockedOrSeriousError(err error) bool {
 
 	errorStr := err.Error()
 
-	// 如果错误信息包含"产品页面不存在"或"产品页面缺少必要元素"，不触发重建
-	if strings.Contains(errorStr, "产品页面不存在") || strings.Contains(errorStr, "产品页面缺少必要元素") {
-		return false
+	// 404相关错误不应触发浏览器重建
+	notFoundPatterns := []string{
+		"产品页面不存在",
+		"产品页面缺少必要元素",
+		"页面不存在(404)",
+		"页面不存在",
+		"404",
+		"page not found",
+		"Page not found",
+		"页面未准备就绪: 页面不存在",
+		"不是有效的产品页面",
+	}
+
+	for _, pattern := range notFoundPatterns {
+		if strings.Contains(errorStr, pattern) {
+			return false
+		}
 	}
 
 	// 检测常见的风控和严重错误模式
@@ -214,6 +228,10 @@ func (ed *ErrorDetector) IsProductNotFoundError(err error) bool {
 	notFoundPatterns := []string{
 		"产品页面不存在",
 		"产品页面缺少必要元素",
+		"页面不存在(404)",
+		"页面不存在",
+		"页面未准备就绪: 页面不存在",
+		"不是有效的产品页面",
 		"product not found", "Product not found",
 		"404",
 	}
