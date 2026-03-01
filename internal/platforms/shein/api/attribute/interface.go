@@ -59,7 +59,7 @@ type AttributeInfo struct {
 	SiteURL                     *string          `json:"site_url"`
 	CascadeAttributeID          int              `json:"cascade_attribute_id"`
 	CascadeAttributeValueIDList *string          `json:"cascade_attribute_value_id_list"`
-	SKCScope                    *string          `json:"skc_scope"`
+	SKCScope                    *bool            `json:"skc_scope"`
 }
 
 // AttributeTemplate 属性模板

@@ -15,14 +15,15 @@ import (
 // SubmitRawJsonDataHandler 提交原始JSON数据到服务器缓存处理器（使用公共缓存逻辑）
 type SubmitRawJsonDataHandler struct {
 	logger  *logrus.Entry
-	fetcher *product.ProductFetcher
+	fetcher product.ProductFetcherInterface
 }
 
-// NewSubmitRawJsonDataHandler 创建新的提交原始JSON数据处理器
+// NewSubmitRawJsonDataHandler 创建新的提交原始JSON数据处理器（支持分布式获取器）
 func NewSubmitRawJsonDataHandler(rawJsonDataClient interface {
 	GetRawJsonData(req *management_api.RawJsonDataReqDTO) (*management_api.RawJsonDataRespDTO, error)
 	CreateRawJsonData(req *management_api.RawJsonDataCreateReqDTO) (int64, error)
-}, amazonConfig *config.AmazonConfig, amazonProcessor interface{}) *SubmitRawJsonDataHandler {
+}, cfg *config.Config, amazonProcessor interface{}) *SubmitRawJsonDataHandler {
+	logger := logrus.WithField("handler", "SubmitRawJsonDataHandler")
 
 	// 提取Amazon处理器
 	var ap *amazon.AmazonProcessor
@@ -32,9 +33,20 @@ func NewSubmitRawJsonDataHandler(rawJsonDataClient interface {
 		}
 	}
 
+	// 使用工厂模式创建获取器
+	factory := product.NewFetcherFactory()
+
+	// 根据配置创建获取器
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap)
+	if err != nil {
+		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		// 降级到本地获取器
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, ap)
+	}
+
 	return &SubmitRawJsonDataHandler{
-		logger:  logrus.WithField("handler", "SubmitRawJsonDataHandler"),
-		fetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, ap),
+		logger:  logger,
+		fetcher: fetcher,
 	}
 }
 
@@ -91,14 +103,15 @@ func (h *SubmitRawJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
 // SubmitVariantRawJsonDataHandler 提交变体原始JSON数据到服务器缓存处理器（使用公共缓存逻辑）
 type SubmitVariantRawJsonDataHandler struct {
 	logger  *logrus.Entry
-	fetcher *product.ProductFetcher
+	fetcher product.ProductFetcherInterface
 }
 
-// NewSubmitVariantRawJsonDataHandler 创建新的提交变体原始JSON数据处理器
+// NewSubmitVariantRawJsonDataHandler 创建新的提交变体原始JSON数据处理器（支持分布式获取器）
 func NewSubmitVariantRawJsonDataHandler(rawJsonDataClient interface {
 	GetRawJsonData(req *management_api.RawJsonDataReqDTO) (*management_api.RawJsonDataRespDTO, error)
 	CreateRawJsonData(req *management_api.RawJsonDataCreateReqDTO) (int64, error)
-}, amazonConfig *config.AmazonConfig, amazonProcessor interface{}) *SubmitVariantRawJsonDataHandler {
+}, cfg *config.Config, amazonProcessor interface{}) *SubmitVariantRawJsonDataHandler {
+	logger := logrus.WithField("handler", "SubmitVariantRawJsonDataHandler")
 
 	// 提取Amazon处理器
 	var ap *amazon.AmazonProcessor
@@ -108,9 +121,20 @@ func NewSubmitVariantRawJsonDataHandler(rawJsonDataClient interface {
 		}
 	}
 
+	// 使用工厂模式创建获取器
+	factory := product.NewFetcherFactory()
+
+	// 根据配置创建获取器
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap)
+	if err != nil {
+		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		// 降级到本地获取器
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, ap)
+	}
+
 	return &SubmitVariantRawJsonDataHandler{
-		logger:  logrus.WithField("handler", "SubmitVariantRawJsonDataHandler"),
-		fetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, ap),
+		logger:  logger,
+		fetcher: fetcher,
 	}
 }
 

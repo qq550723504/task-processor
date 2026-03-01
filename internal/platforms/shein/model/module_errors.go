@@ -1,6 +1,8 @@
 ﻿package model
 
-import "errors"
+import (
+	"errors"
+)
 
 // RetryableError 可重试错误接口
 type RetryableError interface {
@@ -120,6 +122,7 @@ func IsRetryableError(err error) bool {
 	if retryableErr, ok := err.(RetryableError); ok {
 		return retryableErr.IsRetryable()
 	}
+
 	// 默认情况下，如果未明确标记，认为是可重试的
 	return true
 }
@@ -210,25 +213,49 @@ func isNonRetryableError(err error) bool {
 		return false
 	}
 
+	errMsg := err.Error()
+
 	// 首先使用 errors.As 检查是否为 retryableError 类型且不可重试
 	var retryableErr *retryableError
 	if errors.As(err, &retryableErr) {
-		return !retryableErr.IsRetryable()
+		if !retryableErr.IsRetryable() {
+			return true
+		}
 	}
 
 	// 检查是否为 FilteredError 类型（业务过滤错误，不可重试）
 	var filteredErr *FilteredError
 	if errors.As(err, &filteredErr) {
-		return !filteredErr.IsRetryable()
+		if !filteredErr.IsRetryable() {
+			return true
+		}
 	}
 
 	// 检查是否为Cookie加载失败错误（不可重试）
-	if contains(err.Error(), "Cookie加载失败") {
+	if contains(errMsg, "Cookie加载失败") {
 		return true
 	}
 
-	// 检查错误消息中是否包含不可重试的关键字
-	errMsg := err.Error()
+	// 检查是否包含404类错误（产品不存在，不可重试）
+	notFoundPatterns := []string{
+		"不是有效的产品页面",
+		"产品页面不存在",
+		"产品页面缺少必要元素",
+		"页面不存在(404)",
+		"页面不存在",
+		"页面未准备就绪: 页面不存在",
+		"product not found",
+		"Product not found",
+		"404",
+		"not found",
+		"Not Found",
+	}
+
+	for _, pattern := range notFoundPatterns {
+		if contains(errMsg, pattern) {
+			return true
+		}
+	}
 
 	// 检查是否包含"卖家SKU重复"错误
 	if contains(errMsg, "卖家SKU重复") {
@@ -240,12 +267,17 @@ func isNonRetryableError(err error) bool {
 		return true
 	}
 
-	// 可以添加其他不可重试的错误类型
-	// ...
-
 	// 递归检查包装的错误
 	for err != nil {
 		errMsg := err.Error()
+
+		// 检查404类错误
+		for _, pattern := range notFoundPatterns {
+			if contains(errMsg, pattern) {
+				return true
+			}
+		}
+
 		if contains(errMsg, "卖家SKU重复") {
 			return true
 		}

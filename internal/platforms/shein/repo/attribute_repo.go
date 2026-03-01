@@ -44,7 +44,6 @@ func (a *AttributeAPI) GetAttributeTemplates(categoryID int) (*attribute.Attribu
 		api.APIResponse
 		Info attribute.AttributeTemplateInfo `json:"info"`
 	}
-
 	// 执行请求
 	if err := a.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
 		return nil, err

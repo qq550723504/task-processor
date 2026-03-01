@@ -208,7 +208,7 @@ type EnhancedGenerateAttribute struct {
 	AttributeDoc                *string                  `json:"attribute_doc"`
 	CascadeAttributeID          int                      `json:"cascade_attribute_id"`
 	CascadeAttributeValueIDList *string                  `json:"cascade_attribute_value_id_list"`
-	SKCScope                    *string                  `json:"skc_scope"`
+	SKCScope                    *bool                    `json:"skc_scope"`
 	Importance                  int                      `json:"importance"`          // 重要性评分
 	HasRemarkList               bool                     `json:"has_remark_list"`     // 是否有备注列表
 	IsLabelAttribute            bool                     `json:"is_label_attribute"`  // 是否为标签属性

@@ -97,7 +97,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 验证图片数量（SHEIN要求至少3张：1张主图+2张细节图）
 	pipeline.AddHandler(image.NewImageValidationHandler(3))
 	// 提交原始JSON数据到服务器缓存（使用公共缓存逻辑）
-	pipeline.AddHandler(data.NewSubmitRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataClient(), &cfg.Amazon, processor.amazonProcessor))
+	pipeline.AddHandler(data.NewSubmitRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataClient(), cfg, processor.amazonProcessor))
 	// 初始化产品数据
 	pipeline.AddHandler(product.NewInitProductDataHandler())
 	// 获取店铺ID
@@ -105,7 +105,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 处理店铺ID
 	pipeline.AddHandler(info.NewStoreIDHandler(storeClient))
 	// 检查发品额度
-	pipeline.AddHandler(product.NewSpuLimitHandler())
+	//pipeline.AddHandler(product.NewSpuLimitHandler())
 	// 检查SKC上架额度
 	pipeline.AddHandler(product.NewShelfQuotaHandler())
 	// 验证任务（筛选规则和利润规则）
@@ -117,7 +117,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 获取所有变体的Json数据（支持从Amazon爬虫抓取，使用共享的Amazon处理器）
 	pipeline.AddHandler(data.NewVariantJsonDataHandler(processor.GetManagementClient().GetRawJsonDataClient(), &cfg.Amazon, processor.amazonProcessor))
 	// 提交变体原始JSON数据到服务器缓存（使用公共缓存逻辑）
-	pipeline.AddHandler(data.NewSubmitVariantRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataClient(), &cfg.Amazon, processor.amazonProcessor))
+	pipeline.AddHandler(data.NewSubmitVariantRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataClient(), cfg, processor.amazonProcessor))
 	// 重新应用筛选规则到变体
 	pipeline.AddHandler(validation.NewReapplyFilterRuleHandler())
 	// 检查每日上架限制（在获取变体数据后检查，以便准确计算SKC/SKU数量）

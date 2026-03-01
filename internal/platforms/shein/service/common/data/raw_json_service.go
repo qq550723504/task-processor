@@ -14,7 +14,7 @@ import (
 
 // RawJsonDataHandler 获取原始Json数据处理器
 type RawJsonDataHandler struct {
-	fetcher *product.ProductFetcher
+	fetcher product.ProductFetcherInterface
 }
 
 // sheinRawJsonDataClient SHEIN 原始 JSON 数据客户端（简单包装）
@@ -30,30 +30,45 @@ func (c *sheinRawJsonDataClient) CreateRawJsonData(req *api.RawJsonDataCreateReq
 	return c.client.CreateRawJsonData(req)
 }
 
-// NewRawJsonDataHandler 创建新的获取原始Json数据处理器
+// NewRawJsonDataHandler 创建新的获取原始Json数据处理器（支持分布式获取器）
 func NewRawJsonDataHandler(
 	rawJsonDataClient api.RawJsonDataAPI,
-	amazonConfig *config.Config,
+	cfg *config.Config,
 	amazonProcessor interface{},
 ) *RawJsonDataHandler {
+	logger := logrus.WithField("handler", "RawJsonDataHandler")
+
 	// 提取 Amazon 处理器
 	var ap *amazon.AmazonProcessor
 	if amazonProcessor != nil {
 		if processor, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
 			ap = processor
-			logrus.Info("[SHEIN] 使用共享的 Amazon 爬虫实例")
+			logger.Info("[SHEIN] 使用共享的 Amazon 爬虫实例")
 		}
-	} else if amazonConfig != nil {
+	} else if cfg != nil {
 		// 如果没有提供共享实例，则创建新的（向后兼容）
-		ap = amazon.NewAmazonProcessor(amazonConfig)
-		logrus.Info("[SHEIN] Amazon 爬虫已启用")
+		ap = amazon.NewAmazonProcessor(cfg)
+		logger.Info("[SHEIN] Amazon 爬虫已启用")
 	}
 
 	// 包装客户端
 	client := &sheinRawJsonDataClient{client: rawJsonDataClient}
 
+	// 使用工厂模式创建获取器
+	factory := product.NewFetcherFactory()
+
+	// 根据配置创建获取器
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, client, ap)
+	if err != nil {
+		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		// 降级到本地获取器
+		fetcher = product.NewProductFetcher(client, &cfg.Amazon, ap)
+	}
+
+	logger.Infof("✅ SHEIN产品获取器创建成功，类型: %s", factory.GetRecommendedFetcher(cfg))
+
 	return &RawJsonDataHandler{
-		fetcher: product.NewProductFetcher(client, &amazonConfig.Amazon, ap),
+		fetcher: fetcher,
 	}
 }
 

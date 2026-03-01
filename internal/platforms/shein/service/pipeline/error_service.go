@@ -32,6 +32,7 @@ func NewTaskErrorHandler(processor *SheinProcessor) *TaskErrorHandler {
 // HandleTaskFailure 处理任务失败
 func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
 	isRetryable := shein_model.IsRetryableError(err)
+
 	logrus.Infof("错误类型: %T, 错误值: %v, 是否可重试: %t", err, err, isRetryable)
 
 	if !isRetryable {
