@@ -14,21 +14,36 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// RawJsonDataHandlerV2 原始JSON数据处理器V2（使用公共ProductFetcher）
+// RawJsonDataHandlerV2 原始JSON数据处理器V2（使用工厂模式选择获取器）
 type RawJsonDataHandlerV2 struct {
 	logger  *logrus.Entry
-	fetcher *product.ProductFetcher
+	fetcher product.ProductFetcherInterface
 }
 
-// NewRawJsonDataHandlerV2 创建新的原始JSON数据处理器V2
+// NewRawJsonDataHandlerV2 创建新的原始JSON数据处理器V2（支持分布式获取器）
 func NewRawJsonDataHandlerV2(
 	rawJsonDataClient product.RawJsonDataClient,
-	amazonConfig *config.AmazonConfig,
+	cfg *config.Config,
 	amazonProcessor *amazon.AmazonProcessor,
 ) *RawJsonDataHandlerV2 {
+	logger := logrus.WithField("handler", "RawJsonDataHandlerV2")
+
+	// 使用工厂模式创建获取器
+	factory := product.NewFetcherFactory()
+
+	// 根据配置创建获取器
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor)
+	if err != nil {
+		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		// 降级到本地获取器
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+	}
+
+	logger.Infof("✅ 产品获取器创建成功，类型: %s", factory.GetRecommendedFetcher(cfg))
+
 	return &RawJsonDataHandlerV2{
-		logger:  logrus.WithField("handler", "RawJsonDataHandlerV2"),
-		fetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor),
+		logger:  logger,
+		fetcher: fetcher,
 	}
 }
 

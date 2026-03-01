@@ -15,18 +15,31 @@ import (
 // 将已获取的产品数据缓存到服务器
 type CacheProductHandler struct {
 	logger  *logrus.Entry
-	fetcher *product.ProductFetcher
+	fetcher product.ProductFetcherInterface
 }
 
-// NewCacheProductHandler 创建缓存产品数据处理器
+// NewCacheProductHandler 创建缓存产品数据处理器（支持分布式获取器）
 func NewCacheProductHandler(
 	rawJsonDataClient product.RawJsonDataClient,
-	amazonConfig *config.AmazonConfig,
+	cfg *config.Config,
 	amazonProcessor *amazon.AmazonProcessor,
 ) *CacheProductHandler {
+	logger := logrus.WithField("handler", "CacheProductHandler")
+
+	// 使用工厂模式创建获取器
+	factory := product.NewFetcherFactory()
+
+	// 根据配置创建获取器
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor)
+	if err != nil {
+		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		// 降级到本地获取器
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+	}
+
 	return &CacheProductHandler{
-		logger:  logrus.WithField("handler", "CacheProductHandler"),
-		fetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor),
+		logger:  logger,
+		fetcher: fetcher,
 	}
 }
 

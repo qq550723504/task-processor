@@ -21,28 +21,41 @@ import (
 // ParallelVariantHandler 并行变体数据处理器
 type ParallelVariantHandler struct {
 	logger         *logrus.Entry
-	productFetcher *product.ProductFetcher
+	productFetcher product.ProductFetcherInterface
 	amazonConfig   *config.AmazonConfig
 	maxWorkers     int
 	timeout        time.Duration
 }
 
-// NewParallelVariantHandler 创建并行变体数据处理器
+// NewParallelVariantHandler 创建并行变体数据处理器（支持分布式获取器）
 func NewParallelVariantHandler(
 	rawJsonDataClient product.RawJsonDataClient,
-	amazonConfig *config.AmazonConfig,
+	cfg *config.Config,
 	amazonProcessor interface{},
 ) *ParallelVariantHandler {
+	logger := logrus.WithField("handler", "ParallelVariantHandler")
+
 	// 直接使用浏览器池大小作为并发数，确保资源利用最优
-	maxWorkers := amazonConfig.PoolSize
+	maxWorkers := cfg.Amazon.PoolSize
 	if maxWorkers <= 0 {
 		maxWorkers = 3 // 默认3个并发
 	}
 
+	// 使用工厂模式创建获取器
+	factory := product.NewFetcherFactory()
+
+	// 根据配置创建获取器
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor.(*amazon.AmazonProcessor))
+	if err != nil {
+		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		// 降级到本地获取器
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor.(*amazon.AmazonProcessor))
+	}
+
 	return &ParallelVariantHandler{
-		logger:         logrus.WithField("handler", "ParallelVariantHandler"),
-		productFetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor.(*amazon.AmazonProcessor)),
-		amazonConfig:   amazonConfig,
+		logger:         logger,
+		productFetcher: fetcher,
+		amazonConfig:   &cfg.Amazon,
 		maxWorkers:     maxWorkers,
 		timeout:        2 * time.Minute, // 每个变体2分钟超时
 	}

@@ -58,28 +58,28 @@ func (pb *PipelineBuilder) addCommonHandlers(p pipeline.Pipeline) {
 // addInitHandlers 添加初始化阶段处理器（1-6）
 func (pb *PipelineBuilder) addInitHandlers(p pipeline.Pipeline) {
 	managementClient := pb.processor.GetManagementClient()
-	amazonConfig := &pb.processor.GetConfig().Amazon
+	cfg := pb.processor.GetConfig() // 获取完整配置
 
 	p.AddHandler(handlers.NewInitDataHandler()). // 1. 初始化产品数据（TEMU特定）
-							AddHandler(handlers.NewStoreInfoHandler(managementClient.GetStoreClient())).                                                       // 2. 获取店铺信息（使用公共基类）
-							AddHandler(handlers.NewRawJsonDataHandlerV2(managementClient.GetRawJsonDataClient(), amazonConfig, pb.processor.amazonProcessor)). // 3. 获取原始JSON数据（TEMU特定）
-							AddHandler(NewTemuHandlerAdapter("prohibited_items_detector", handlers.NewProhibitedItemsDetector())).                             // 4. 违禁品检测（TEMU特定）
-							AddHandler(handlers.NewCacheProductHandler(managementClient.GetRawJsonDataClient(), amazonConfig, pb.processor.amazonProcessor)).  // 5. 缓存产品数据（TEMU特定）
-							AddHandler(handlers.NewProductExistsCheckHandler(managementClient.GetProductImportMappingClient()))                                // 6. 产品存在性检查（TEMU特定）
+							AddHandler(handlers.NewStoreInfoHandler(managementClient.GetStoreClient())).                                              // 2. 获取店铺信息（使用公共基类）
+							AddHandler(handlers.NewRawJsonDataHandlerV2(managementClient.GetRawJsonDataClient(), cfg, pb.processor.amazonProcessor)). // 3. 获取原始JSON数据（支持分布式）
+							AddHandler(NewTemuHandlerAdapter("prohibited_items_detector", handlers.NewProhibitedItemsDetector())).                    // 4. 违禁品检测（TEMU特定）
+							AddHandler(handlers.NewCacheProductHandler(managementClient.GetRawJsonDataClient(), cfg, pb.processor.amazonProcessor)).  // 5. 缓存产品数据（支持分布式）
+							AddHandler(handlers.NewProductExistsCheckHandler(managementClient.GetProductImportMappingClient()))                       // 6. 产品存在性检查（TEMU特定）
 }
 
 // addFilterHandlers 添加筛选和验证阶段处理器（7-13）
 func (pb *PipelineBuilder) addFilterHandlers(p pipeline.Pipeline) {
 	managementClient := pb.processor.GetManagementClient()
-	amazonConfig := &pb.processor.GetConfig().Amazon
+	cfg := pb.processor.GetConfig() // 获取完整配置
 
 	p.AddHandler(handlers.NewFilterRuleHandler(managementClient.GetFilterRuleClient())). // 7. 主产品筛选规则检查
-												AddHandler(handlers.NewStoreIDHandler(managementClient.GetStoreClient())).                                                           // 8. 店铺ID检查和保存
-												AddHandler(handlers.NewTextCheckHandler()).                                                                                          // 9. 文本检查
-												AddHandler(handlers.NewParallelVariantHandler(managementClient.GetRawJsonDataClient(), amazonConfig, pb.processor.amazonProcessor)). // 10. 并行获取变体JSON数据（使用poolSize作为并发数）
-												AddHandler(handlers.NewCacheVariantsHandler(managementClient.GetRawJsonDataClient(), amazonConfig, pb.processor.amazonProcessor)).   // 11. 缓存变体数据
-												AddHandler(handlers.NewVariantFilterHandler(managementClient.GetFilterRuleClient())).                                                // 12. 变体筛选规则检查
-												AddHandler(handlers.NewCheckDailyLimitHandler(pb.processor.GetMemoryManager()))                                                      // 13. 检查每日上架限制
+												AddHandler(handlers.NewStoreIDHandler(managementClient.GetStoreClient())).                                                  // 8. 店铺ID检查和保存
+												AddHandler(handlers.NewTextCheckHandler()).                                                                                 // 9. 文本检查
+												AddHandler(handlers.NewParallelVariantHandler(managementClient.GetRawJsonDataClient(), cfg, pb.processor.amazonProcessor)). // 10. 并行获取变体JSON数据（支持分布式）
+												AddHandler(handlers.NewCacheVariantsHandler(managementClient.GetRawJsonDataClient(), cfg, pb.processor.amazonProcessor)).   // 11. 缓存变体数据（支持分布式）
+												AddHandler(handlers.NewVariantFilterHandler(managementClient.GetFilterRuleClient())).                                       // 12. 变体筛选规则检查
+												AddHandler(handlers.NewCheckDailyLimitHandler(pb.processor.GetMemoryManager()))                                             // 13. 检查每日上架限制
 }
 
 // addCategoryHandlers 添加分类和SKU处理阶段处理器（14-20）

@@ -15,18 +15,31 @@ import (
 // 将已获取的变体数据批量缓存到服务器
 type CacheVariantsHandler struct {
 	logger  *logrus.Entry
-	fetcher *product.ProductFetcher
+	fetcher product.ProductFetcherInterface
 }
 
-// NewCacheVariantsHandler 创建缓存变体数据处理器
+// NewCacheVariantsHandler 创建缓存变体数据处理器（支持分布式获取器）
 func NewCacheVariantsHandler(
 	rawJsonDataClient product.RawJsonDataClient,
-	amazonConfig *config.AmazonConfig,
+	cfg *config.Config,
 	amazonProcessor *amazon.AmazonProcessor,
 ) *CacheVariantsHandler {
+	logger := logrus.WithField("handler", "CacheVariantsHandler")
+
+	// 使用工厂模式创建获取器
+	factory := product.NewFetcherFactory()
+
+	// 根据配置创建获取器
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor)
+	if err != nil {
+		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		// 降级到本地获取器
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+	}
+
 	return &CacheVariantsHandler{
-		logger:  logrus.WithField("handler", "CacheVariantsHandler"),
-		fetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor),
+		logger:  logger,
+		fetcher: fetcher,
 	}
 }
 
