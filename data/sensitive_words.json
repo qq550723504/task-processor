@@ -279,7 +279,19 @@
       "bosk",
       "umbra",
       "venom",
-      "stake"
+      "stake",
+      "oral",
+      "b",
+      "ventas",
+      "degradable",
+      "alcohol",
+      "wipes",
+      "rienda",
+      "ninja",
+      "luce",
+      "freesip",
+      "kenmore",
+      "verso"
     ],
     "ja": [
       "環境に優しい",
@@ -289,6 +301,6 @@
       "持続可能"
     ]
   },
-  "last_updated": "2026-01-27T03:38:50.2558681+08:00",
+  "last_updated": "2026-02-07T22:56:34.8388772+08:00",
   "version": "1.0"
 }
