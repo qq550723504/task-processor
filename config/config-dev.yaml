@@ -64,13 +64,12 @@ management:
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [739]# 店铺ID列表 ->775
+  storeIDs: [601]# 店铺ID列表 ->775
 
-# 平台配置（按平台组织所有相关配置）
 platforms:
   # TEMU 平台配置
   temu:
-    enabled: false          # 是否启用TEMU处理器（处理上架任务）
+    enabled: true          # 是否启用TEMU处理器（处理上架任务）
     schedulerEnabled: false  # 是否启用TEMU调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
@@ -92,7 +91,7 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: false            # 是否启用SHEIN处理器（处理上架任务）
+    enabled: true            # 是否启用SHEIN处理器（处理上架任务）
     schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
@@ -105,7 +104,7 @@ platforms:
       interval: 86400        # 执行间隔（秒），默认24小时
     # 库存同步配置
     inventorySync:
-      enabled: true        # 启用库存同步
+      enabled: false        # 启用库存同步
       interval: 43200        # 执行间隔（秒），默认12小时
     # 活动报名配置
     activityRegistration:
@@ -121,18 +120,26 @@ platforms:
 # 浏览器配置（通用）
 browser:
   enabled: true
-  headless: true  # false=可见模式（便于调试），true=无头模式
+  headless: false  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
   poolSize: 3     # 浏览器池大小
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
+
+# RabbitMQ配置（分布式爬虫）
+rabbitmq:
+  enabled: false  # 是否启用分布式爬虫（设为true启用）
+  url: "amqp://guest:guest@localhost:5672/"  # RabbitMQ连接URL
+  reconnectInterval: 5   # 重连间隔（秒）
+  maxReconnectTries: 10  # 最大重连次数
   
 # Amazon配置
 amazon:
   # Amazon 爬虫配置
   enabled: true
   dataFreshnessDays: 15  # 数据新鲜度天数，默认15天
+  crawlTimeout: 300      # 爬虫超时时间（秒），默认5分钟
   
   # Amazon SP-API 配置（用于上架）
   # 注意：以下凭证仅为示例，请替换为你自己的真实凭证
