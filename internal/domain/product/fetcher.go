@@ -124,3 +124,16 @@ func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Prod
 	f.logger.Infof("💾 开始批量缓存变体数据到服务器: 数量=%d", len(variants))
 	return f.cacheManager.CacheVariants(req, variants)
 }
+
+// GetStats 获取统计信息
+func (f *ProductFetcher) GetStats() map[string]interface{} {
+	stats := map[string]interface{}{
+		"type": "local",
+	}
+
+	if f.amazonProcessor != nil {
+		stats["amazon_enabled"] = f.amazonConfig != nil && f.amazonConfig.Enabled
+	}
+
+	return stats
+}
