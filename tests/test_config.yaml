@@ -1,0 +1,51 @@
+# 集成测试配置文件
+
+# RabbitMQ配置
+rabbitmq:
+  url: "amqp://guest:guest@localhost:5672/"
+  reconnect_interval: 2s
+  max_reconnect_tries: 3
+  consumer:
+    prefetch_count: 1
+    prefetch_size: 0
+    retry_delay: 2s
+    max_retries: 2
+
+# 结果上报器配置
+result_reporter:
+  report_url: "http://localhost:8080/api/task/result"
+  node_id: "test-node"
+  timeout: 10s
+  buffer_size: 100
+  retry:
+    max_retries: 2
+    initial_delay: 1s
+    max_delay: 5s
+    backoff_factor: 2.0
+    timeout: 5s
+
+# 负载监控配置
+load_monitor:
+  update_interval: 10s
+  enable_cpu: true
+  enable_memory: true
+  enable_tasks: true
+
+# 节点配置
+node:
+  node_id: "test-crawler-node"
+  max_concurrency: 2
+  health_check_port: 18081
+  metrics_port: 18082
+  log_level: "info"
+  shutdown_timeout: 10s
+
+# 测试特定配置
+test:
+  timeout: 30s
+  concurrent_tasks: 3
+  test_products:
+    - "B08BKKQ2NL"  # Echo Dot 4th Gen
+    - "B07XJ8C8F5"  # Echo Dot 3rd Gen
+    - "B08KGG7ZY3"  # Echo Show 8
+  invalid_product: "INVALID_TEST_PRODUCT"
