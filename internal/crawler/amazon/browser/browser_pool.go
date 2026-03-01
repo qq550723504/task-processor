@@ -35,6 +35,8 @@ type BrowserPool struct {
 	instanceManager      *InstanceManager
 	healthChecker        *HealthChecker
 	errorDetector        *ErrorDetector
+	shutdownOnce         sync.Once // 确保只关闭一次
+	closed               bool      // 标记是否已关闭
 }
 
 // BrowserPoolConfig 浏览器池配置
@@ -124,8 +126,18 @@ func (bp *BrowserPool) Initialize() error {
 
 // Acquire 获取浏览器实例
 func (bp *BrowserPool) Acquire() (*BrowserInstance, error) {
+	bp.Mu.Lock()
+	if bp.closed {
+		bp.Mu.Unlock()
+		return nil, fmt.Errorf("浏览器池已关闭")
+	}
+	bp.Mu.Unlock()
+
 	select {
 	case instance := <-bp.available:
+		if instance == nil {
+			return nil, fmt.Errorf("浏览器池已关闭")
+		}
 		instance.Mu.Lock()
 		instance.InUse = true
 		instance.Mu.Unlock()
@@ -138,19 +150,52 @@ func (bp *BrowserPool) Acquire() (*BrowserInstance, error) {
 
 // Release 释放浏览器实例
 func (bp *BrowserPool) Release(instance *BrowserInstance) {
+	if instance == nil {
+		return
+	}
+
 	instance.Mu.Lock()
 	instance.InUse = false
 	instance.Mu.Unlock()
 
+	bp.Mu.Lock()
+	if bp.closed || bp.available == nil {
+		bp.Mu.Unlock()
+		logrus.Infof("浏览器池已关闭，无法释放实例 %d", instance.ID)
+		return
+	}
+	bp.Mu.Unlock()
+
 	logrus.Infof("释放浏览器实例 %d", instance.ID)
-	bp.available <- instance
+
+	// 使用 select 防止在关闭过程中阻塞
+	select {
+	case bp.available <- instance:
+		// 成功释放
+	default:
+		// 通道已满或已关闭，忽略
+		logrus.Warnf("无法释放浏览器实例 %d，通道可能已满或已关闭", instance.ID)
+	}
 }
 
 // ReleaseWithError 释放浏览器实例（带错误检测）
 func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
+	if instance == nil {
+		return
+	}
+
 	instance.Mu.Lock()
 	instance.InUse = false
 	instance.Mu.Unlock()
+
+	// 检查池是否已关闭
+	bp.Mu.Lock()
+	if bp.closed {
+		bp.Mu.Unlock()
+		logrus.Infof("浏览器池已关闭，无法释放实例 %d", instance.ID)
+		return
+	}
+	bp.Mu.Unlock()
 
 	// 检测是否为风控或严重错误
 	if bp.errorDetector.IsBlockedOrSeriousError(err) {
@@ -160,7 +205,15 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 	}
 
 	logrus.Infof("释放浏览器实例 %d", instance.ID)
-	bp.available <- instance
+
+	// 使用 select 防止在关闭过程中阻塞
+	select {
+	case bp.available <- instance:
+		// 成功释放
+	default:
+		// 通道已满或已关闭，忽略
+		logrus.Warnf("无法释放浏览器实例 %d，通道可能已满或已关闭", instance.ID)
+	}
 }
 
 // RecreateInstanceSync 同步重新创建浏览器实例（用于任务内重试）
@@ -170,21 +223,33 @@ func (bp *BrowserPool) RecreateInstanceSync(oldInstance *BrowserInstance) *Brows
 
 // Shutdown 关闭浏览器池
 func (bp *BrowserPool) Shutdown() {
-	logrus.Info("关闭浏览器池...")
+	bp.shutdownOnce.Do(func() {
+		logrus.Info("关闭浏览器池...")
 
-	bp.Mu.Lock()
-	defer bp.Mu.Unlock()
+		bp.Mu.Lock()
+		defer bp.Mu.Unlock()
 
-	for _, instance := range bp.instances {
-		if instance.Manager != nil {
-			instance.Manager.Close()
+		// 标记为已关闭
+		bp.closed = true
+
+		// 关闭所有浏览器实例
+		for _, instance := range bp.instances {
+			if instance.Manager != nil {
+				instance.Manager.Close()
+			}
 		}
-	}
 
-	bp.instances = nil
-	close(bp.available)
+		// 清空实例列表
+		bp.instances = nil
 
-	logrus.Info("浏览器池已关闭")
+		// 关闭可用实例通道
+		if bp.available != nil {
+			close(bp.available)
+			bp.available = nil
+		}
+
+		logrus.Info("浏览器池已关闭")
+	})
 }
 
 // GetPoolStats 获取浏览器池统计信息

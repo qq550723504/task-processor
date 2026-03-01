@@ -7,9 +7,10 @@ import (
 
 	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
+	"task-processor/internal/domain/model"
 	"task-processor/internal/platforms/amazon/api"
 	"task-processor/internal/platforms/amazon/internal/handler"
-	"task-processor/internal/platforms/amazon/internal/model"
+	amazonModel "task-processor/internal/platforms/amazon/internal/model"
 	"task-processor/internal/platforms/amazon/internal/service"
 
 	"github.com/sirupsen/logrus"
@@ -17,9 +18,9 @@ import (
 
 // Processor Amazon平台处理器
 type Processor struct {
-	*worker.BaseProcessor                 // 继承基础处理器
-	services              *model.Services // Amazon特定：服务容器
-	apiClient             *api.Client     // Amazon特定：API客户端
+	*worker.BaseProcessor                       // 继承基础处理器
+	services              *amazonModel.Services // Amazon特定：服务容器
+	apiClient             *api.Client           // Amazon特定：API客户端
 }
 
 // NewProcessor 创建Amazon处理器
@@ -33,7 +34,7 @@ func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger
 	})
 
 	// 创建服务容器
-	services := model.NewServices()
+	services := amazonModel.NewServices()
 
 	// 创建 API 客户端
 	apiClient := createAPIClient(cfg)
@@ -65,6 +66,34 @@ func (p *Processor) Start(ctx context.Context) error {
 	}
 
 	p.GetLogger().Info("[Amazon] 处理器启动完成")
+	return nil
+}
+
+// ProcessTask 处理任务 - 实现worker.Processor接口
+func (p *Processor) ProcessTask(ctx context.Context, task *model.Task) error {
+	logger := p.GetLogger()
+	logger.Infof("[Amazon] 开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
+
+	// 将任务转换为处理所需的数据格式
+	taskData := map[string]any{
+		"taskId":     task.ID,
+		"tenantId":   task.TenantID,
+		"storeId":    task.StoreID,
+		"platform":   task.Platform,
+		"region":     task.Region,
+		"categoryId": task.CategoryID,
+		"productId":  task.ProductID,
+		"priority":   task.Priority,
+	}
+
+	// 使用现有的管道处理逻辑
+	err := p.ProcessTaskWithPipeline(ctx, taskData)
+	if err != nil {
+		logger.Errorf("[Amazon] 任务处理失败: ID=%d, Error=%v", task.ID, err)
+		return fmt.Errorf("Amazon任务处理失败: %w", err)
+	}
+
+	logger.Infof("[Amazon] 任务处理成功: ID=%d", task.ID)
 	return nil
 }
 
@@ -125,8 +154,8 @@ func (p *Processor) ProcessTaskWithPipeline(ctx context.Context, taskData map[st
 }
 
 // createTaskContext 创建任务上下文
-func (p *Processor) createTaskContext(taskData map[string]any) *model.TaskContext {
-	return &model.TaskContext{
+func (p *Processor) createTaskContext(taskData map[string]any) *amazonModel.TaskContext {
+	return &amazonModel.TaskContext{
 		TaskID:        "pipeline-task-001",
 		MarketplaceID: "ATVPDKIKX0DER",
 		LanguageTag:   "en_US",

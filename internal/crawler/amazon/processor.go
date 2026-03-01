@@ -4,6 +4,7 @@ package amazon
 import (
 	"context"
 	"fmt"
+	"sync"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/domain/model"
@@ -23,6 +24,9 @@ type AmazonProcessor struct {
 	urlHelper       *URLHelper
 	productChecker  *ProductChecker
 	timeoutManager  *TimeoutManager
+	shutdownOnce    sync.Once    // 确保只关闭一次
+	closed          bool         // 标记是否已关闭
+	mu              sync.RWMutex // 保护 closed 字段
 }
 
 // NewAmazonProcessor 使用全局配置创建Amazon处理器
@@ -83,11 +87,20 @@ func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 		urlHelper:       urlHelper,
 		productChecker:  productChecker,
 		timeoutManager:  timeoutManager,
+		closed:          false,
 	}
 }
 
 // Process 处理Amazon产品页面
 func (ap *AmazonProcessor) Process(url string, zipcode string) (*model.Product, error) {
+	// 检查处理器是否已关闭
+	ap.mu.RLock()
+	if ap.closed {
+		ap.mu.RUnlock()
+		return nil, fmt.Errorf("Amazon处理器已关闭")
+	}
+	ap.mu.RUnlock()
+
 	startTime := time.Now()
 	logrus.Infof("开始处理Amazon产品: %s", url)
 
@@ -110,6 +123,22 @@ func (ap *AmazonProcessor) processWithPoolManager(url string, zipcode string) (*
 
 // ProcessBatch 批量处理多个Amazon产品页面
 func (ap *AmazonProcessor) ProcessBatch(requests []model.ProductRequest) []model.ProductResult {
+	// 检查处理器是否已关闭
+	ap.mu.RLock()
+	if ap.closed {
+		ap.mu.RUnlock()
+		// 返回所有请求的错误结果
+		results := make([]model.ProductResult, len(requests))
+		for i := range requests {
+			results[i] = model.ProductResult{
+				Product: nil,
+				Error:   fmt.Errorf("Amazon处理器已关闭"),
+			}
+		}
+		return results
+	}
+	ap.mu.RUnlock()
+
 	if len(requests) == 0 {
 		return []model.ProductResult{}
 	}
@@ -202,23 +231,29 @@ func (ap *AmazonProcessor) processWithInstance(instance *browser.BrowserInstance
 
 // Shutdown 关闭处理器
 func (ap *AmazonProcessor) Shutdown() {
-	logrus.Info("开始关闭Amazon处理器")
+	ap.shutdownOnce.Do(func() {
+		logrus.Info("开始关闭Amazon处理器")
 
-	// 取消所有超时管理器中的活跃任务
-	if ap.timeoutManager != nil {
-		ap.timeoutManager.CancelAll()
-	}
+		ap.mu.Lock()
+		ap.closed = true
+		ap.mu.Unlock()
 
-	// 关闭池管理器
-	if ap.poolManager != nil {
-		ap.poolManager.Shutdown()
-	}
+		// 取消所有超时管理器中的活跃任务
+		if ap.timeoutManager != nil {
+			ap.timeoutManager.CancelAll()
+		}
 
-	// 关闭浏览器池
-	if ap.usePool && ap.browserPool != nil {
-		logrus.Info("关闭浏览器池...")
-		ap.browserPool.Shutdown()
-	}
+		// 关闭池管理器
+		if ap.poolManager != nil {
+			ap.poolManager.Shutdown()
+		}
 
-	logrus.Info("Amazon处理器已关闭")
+		// 关闭浏览器池
+		if ap.usePool && ap.browserPool != nil {
+			logrus.Info("关闭浏览器池...")
+			ap.browserPool.Shutdown()
+		}
+
+		logrus.Info("Amazon处理器已关闭")
+	})
 }
