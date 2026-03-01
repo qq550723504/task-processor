@@ -17,6 +17,7 @@ func (e *ShipsFromExtractor) Extract(page playwright.Page, product *model.Produc
 		// 多语言关键词列表
 		const keywords = [
 			'Ships from',      // 英语
+			'Fulfilled by',    // 英语（FBA配送）- 沙特站点使用
 			'Shipper',         // 英语（新格式）
 			'Dispatched from', // 英语（英国站）
 			'Envío desde',     // 西班牙语（墨西哥）
@@ -33,6 +34,10 @@ func (e *ShipsFromExtractor) Extract(page playwright.Page, product *model.Produc
 			'Mittente',        // 意大利语（新格式）
 			'Enviado por',     // 葡萄牙语（巴西站）
 			'Remetente',       // 葡萄牙语（新格式）
+			'يشحن من',        // 阿拉伯语（沙特、阿联酋等）
+			'الشاحن',         // 阿拉伯语（发货人）
+			'يتم الشحن من',   // 阿拉伯语（另一种）
+			'تم التنفيذ بواسطة', // 阿拉伯语（Fulfilled by）
 		];
 		
 		// 方法1: 查找 heading + 下一个元素
@@ -43,6 +48,14 @@ func (e *ShipsFromExtractor) Extract(page playwright.Page, product *model.Produc
 				if (heading.nextElementSibling) {
 					const value = heading.nextElementSibling.textContent.trim();
 					if (value) return value;
+				}
+				// 如果下一个兄弟元素不是文本,尝试查找父元素的下一个兄弟
+				const parent = heading.parentElement;
+				if (parent && parent.nextElementSibling) {
+					const value = parent.nextElementSibling.textContent.trim();
+					if (value && !keywords.some(kw => value.includes(kw))) {
+						return value;
+					}
 				}
 			}
 		}
@@ -141,12 +154,65 @@ func (e *ShipsFromExtractor) Extract(page playwright.Page, product *model.Produc
 			for (const row of rows) {
 				const rowText = row.textContent || '';
 				// 检查是否包含 Shipper/Seller 或 Ships from 相关文本
-				if (/Shipper|Ships from|Remitente/i.test(rowText)) {
+				if (/Shipper|Ships from|Remitente|يشحن من|الشاحن/i.test(rowText)) {
 					// 查找包含 Amazon 的文本
 					const amazonMatch = rowText.match(/Amazon[^,\n]*/i);
 					if (amazonMatch) {
 						return amazonMatch[0].trim();
 					}
+				}
+			}
+		}
+		
+		// 方法6: 针对沙特站点 - 查找所有包含关键词的元素
+		const allTextElements = Array.from(document.querySelectorAll('span, div, p, td, th'));
+		for (const element of allTextElements) {
+			const text = element.textContent?.trim() || '';
+			// 检查是否包含 Ships from 关键词
+			if (keywords.some(kw => text.includes(kw))) {
+				// 查找同级或父级元素中包含 Amazon 的文本
+				const parent = element.parentElement;
+				if (parent) {
+					const parentText = parent.textContent?.trim() || '';
+					if (parentText.includes('Amazon')) {
+						// 提取 Amazon 相关文本
+						const amazonMatch = parentText.match(/Amazon[^,\n<>]*/i);
+						if (amazonMatch) {
+							return amazonMatch[0].trim();
+						}
+					}
+				}
+				
+				// 查找下一个兄弟元素
+				let nextSibling = element.nextElementSibling;
+				while (nextSibling) {
+					const siblingText = nextSibling.textContent?.trim() || '';
+					if (siblingText && siblingText.includes('Amazon')) {
+						const amazonMatch = siblingText.match(/Amazon[^,\n<>]*/i);
+						if (amazonMatch) {
+							return amazonMatch[0].trim();
+						}
+					}
+					nextSibling = nextSibling.nextElementSibling;
+					// 只查找前3个兄弟元素
+					if (Array.from(element.parentElement?.children || []).indexOf(nextSibling) - 
+					    Array.from(element.parentElement?.children || []).indexOf(element) > 3) {
+						break;
+					}
+				}
+			}
+		}
+		
+		// 方法7: 最后的兜底方案 - 在整个页面中查找 "Ships from" + "Amazon" 的组合
+		const bodyText = document.body.textContent || '';
+		for (const keyword of keywords) {
+			const keywordIndex = bodyText.indexOf(keyword);
+			if (keywordIndex !== -1) {
+				// 在关键词后的200个字符内查找 Amazon
+				const searchText = bodyText.substring(keywordIndex, keywordIndex + 200);
+				const amazonMatch = searchText.match(/Amazon[^,\n<>]*/i);
+				if (amazonMatch) {
+					return amazonMatch[0].trim();
 				}
 			}
 		}

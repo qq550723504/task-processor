@@ -21,7 +21,7 @@ func fetchAmazonProduct(
 
 	domainResolver := product.NewDomainResolver()
 	domain := domainResolver.GetAmazonDomainByRegion(region)
-	url := fmt.Sprintf("https://%s/dp/%s?th=1&psc=1&language=en_US", domain, asin)
+	url := domainResolver.BuildAmazonProductURL(region, asin)
 
 	logger := logrus.WithFields(logrus.Fields{
 		"asin":    asin,

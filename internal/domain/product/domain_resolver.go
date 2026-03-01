@@ -126,3 +126,55 @@ func (r *DomainResolver) GetRegionDisplayName(region string) string {
 
 	return region
 }
+
+// GetLanguageByRegion 根据地区获取语言代码
+func (r *DomainResolver) GetLanguageByRegion(region string) string {
+	languageMap := map[string]string{
+		"us":                   "en_US",
+		"usa":                  "en_US",
+		"united states":        "en_US",
+		"uk":                   "en_GB",
+		"gb":                   "en_GB",
+		"united kingdom":       "en_GB",
+		"de":                   "de_DE",
+		"germany":              "de_DE",
+		"fr":                   "fr_FR",
+		"france":               "fr_FR",
+		"it":                   "it_IT",
+		"italy":                "it_IT",
+		"es":                   "es_ES",
+		"spain":                "es_ES",
+		"ca":                   "en_CA",
+		"canada":               "en_CA",
+		"jp":                   "ja_JP",
+		"japan":                "ja_JP",
+		"au":                   "en_AU",
+		"australia":            "en_AU",
+		"mx":                   "es_MX",
+		"mexico":               "es_MX",
+		"ae":                   "en_AE",
+		"uae":                  "en_AE",
+		"united arab emirates": "en_AE",
+		"sa":                   "en_AE",
+		"saudi":                "en_AE",
+		"saudi arabia":         "en_AE",
+	}
+
+	if language, exists := languageMap[strings.ToLower(region)]; exists {
+		return language
+	}
+
+	return "en_US" // 默认英语(美国)
+}
+
+// BuildAmazonProductURL 构建Amazon产品URL(统一入口)
+func (r *DomainResolver) BuildAmazonProductURL(region, asin string) string {
+	domain := r.GetAmazonDomainByRegion(region)
+	language := r.GetLanguageByRegion(region)
+	return buildAmazonURL(domain, asin, language)
+}
+
+// buildAmazonURL 构建Amazon URL的内部实现
+func buildAmazonURL(domain, asin, language string) string {
+	return "https://www." + domain + "/dp/" + asin + "?th=1&psc=1&language=" + language
+}

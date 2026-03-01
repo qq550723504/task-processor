@@ -56,12 +56,11 @@ func (c *CrawlerClient) FetchFromCrawler(req *FetchRequest) (*model.Product, err
 		return nil, fmt.Errorf("Amazon爬虫未初始化")
 	}
 
-	// 根据地区获取Amazon域名和邮编
-	domain := c.domainResolver.GetAmazonDomainByRegion(req.Region)
+	// 获取邮编
 	zipcode := c.getZipcodeForRegion(req.Region)
 
-	// 构建URL
-	url := fmt.Sprintf("https://www.%s/dp/%s?th=1&psc=1&language=en_US", domain, req.ProductID)
+	// 构建URL(使用统一方法)
+	url := c.domainResolver.BuildAmazonProductURL(req.Region, req.ProductID)
 
 	c.logger.Infof("🚀 开始爬取: URL=%s, Zipcode=%s", url, zipcode)
 

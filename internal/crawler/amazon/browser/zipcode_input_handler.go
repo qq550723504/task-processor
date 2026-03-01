@@ -4,6 +4,7 @@ package browser
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -79,6 +80,7 @@ func (zih *ZipcodeInputHandler) checkSignInDialog(page playwright.Page) error {
 func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) error {
 	triggerSelectors := []string{
 		"#nav-global-location-slot",           // 导航栏位置槽（英语页面主要入口）
+		"button:has-text('Delivering to')",    // 沙特站点的配送按钮
 		"#glow-ingress-block",                 // 配送区块
 		"#glow-ingress-line2",                 // Amazon配送地址显示区域
 		"#nav-global-location-popover-link",   // 导航栏位置链接
@@ -106,8 +108,34 @@ func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) er
 					return fmt.Errorf("页面在点击触发元素时被关闭: %w", err)
 				}
 			} else {
+				logrus.Infof("成功点击触发元素: %s", selector)
 				triggered = true
-				time.Sleep(2 * time.Second) // 等待弹窗出现
+
+				// 等待弹窗出现(等待对话框或下拉框)
+				dialogSelectors := []string{
+					"div[role='dialog']",
+					"select#GLUXCountryList",
+					"span.a-dropdown-container select",
+					"#GLUXZipUpdateInput",
+				}
+
+				waitSuccess := false
+				for _, dialogSelector := range dialogSelectors {
+					if err := page.Locator(dialogSelector).First().WaitFor(playwright.LocatorWaitForOptions{
+						State:   playwright.WaitForSelectorStateVisible,
+						Timeout: playwright.Float(3000),
+					}); err == nil {
+						logrus.Infof("弹窗已出现: %s", dialogSelector)
+						waitSuccess = true
+						break
+					}
+				}
+
+				if !waitSuccess {
+					logrus.Infof("等待弹窗超时,继续尝试")
+				}
+
+				time.Sleep(1 * time.Second) // 额外等待确保弹窗完全加载
 				break
 			}
 		}
@@ -136,6 +164,13 @@ func (zih *ZipcodeInputHandler) handleZipcodeInput(page playwright.Page, zipcode
 		return fmt.Errorf("页面在查找邮编输入框前被关闭")
 	}
 
+	// 尝试城市下拉框选择(沙特、阿联酋等站点)
+	if handled, err := zih.handleCityDropdown(page, zipcode); err != nil {
+		return err
+	} else if handled {
+		return nil
+	}
+
 	// 尝试日本站的分离式输入
 	if handled, err := zih.handleJapaneseZipcode(page, zipcode); err != nil {
 		return err
@@ -145,6 +180,168 @@ func (zih *ZipcodeInputHandler) handleZipcodeInput(page playwright.Page, zipcode
 
 	// 处理标准单一输入框
 	return zih.handleStandardZipcode(page, zipcode)
+}
+
+// handleCityDropdown 处理城市下拉框选择(沙特、阿联酋等站点)
+func (zih *ZipcodeInputHandler) handleCityDropdown(page playwright.Page, zipcode string) (bool, error) {
+	// 城市下拉框选择器(沙特站点使用城市选择而非邮编输入)
+	cityDropdownSelectors := []string{
+		"div[role='dialog'] [role='combobox']",    // 沙特站点对话框中的combobox(主要选择器)
+		"[role='combobox'][aria-haspopup='menu']", // 带菜单弹出的combobox
+		"select#GLUXCityList",                     // 城市列表select
+		"select#GLUXCountryList",                  // 国家/城市列表
+		"span.a-dropdown-container select",        // 下拉容器中的select
+		"select[name='locationType']",             // 位置类型选择
+		"select[name='district']",                 // 地区选择
+		"select.a-native-dropdown",                // Amazon原生下拉框
+		"div[role='dialog'] select",               // 对话框中的select
+		"div[aria-label*='location'] select",      // 位置对话框中的select
+		"div[aria-label*='delivery'] select",      // 配送对话框中的select
+		"#GLUXChangePostalCodeLink + select",      // 邮编链接旁的select
+	}
+
+	var cityDropdown playwright.Locator
+	var isCombobox bool
+
+	// 查找城市下拉框
+	for _, selector := range cityDropdownSelectors {
+		locator := page.Locator(selector).First()
+		if count, err := locator.Count(); err == nil && count > 0 {
+			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
+				cityDropdown = locator
+				// 检查是否是combobox类型
+				if role, err := locator.GetAttribute("role"); err == nil && role == "combobox" {
+					isCombobox = true
+				}
+				logrus.Infof("找到城市下拉框: %s (combobox: %v)", selector, isCombobox)
+				break
+			}
+		}
+	}
+
+	// 如果没有找到下拉框,返回false让其他方法处理
+	if cityDropdown == nil {
+		return false, nil
+	}
+
+	// 根据邮编映射到城市
+	cityName := zih.mapZipcodeToCityName(zipcode)
+	if cityName == "" {
+		logrus.Infof("无法将邮编 %s 映射到城市名称", zipcode)
+		return false, nil
+	}
+
+	logrus.Infof("尝试选择城市: %s (邮编: %s)", cityName, zipcode)
+
+	// 如果是combobox,使用点击方式选择
+	if isCombobox {
+		// 点击combobox打开选项列表
+		if err := cityDropdown.Click(); err != nil {
+			return false, fmt.Errorf("点击combobox失败: %w", err)
+		}
+		time.Sleep(500 * time.Millisecond) // 等待选项列表出现
+
+		// 查找并点击匹配的选项
+		optionSelectors := []string{
+			fmt.Sprintf("div[role='option']:has-text('%s')", cityName),
+			fmt.Sprintf("li[role='option']:has-text('%s')", cityName),
+			fmt.Sprintf("[role='option']:has-text('%s')", cityName),
+			fmt.Sprintf("div.a-popover-inner [data-value='%s']", cityName),
+			fmt.Sprintf("div.a-popover-inner:has-text('%s')", cityName),
+		}
+
+		for _, optSelector := range optionSelectors {
+			optionLocator := page.Locator(optSelector).First()
+			if count, err := optionLocator.Count(); err == nil && count > 0 {
+				if err := optionLocator.Click(); err == nil {
+					logrus.Infof("成功点击城市选项: %s", cityName)
+					time.Sleep(1 * time.Second)
+					return true, nil
+				}
+			}
+		}
+
+		return false, fmt.Errorf("无法找到或点击城市选项: %s", cityName)
+	}
+
+	// 如果是select元素,使用SelectOption方式
+	if _, err := cityDropdown.SelectOption(playwright.SelectOptionValues{
+		Labels: &[]string{cityName},
+	}); err != nil {
+		// 如果通过标签选择失败,尝试通过值选择
+		logrus.Infof("通过标签选择失败,尝试其他方式: %v", err)
+
+		// 获取所有选项并查找匹配项
+		options := page.Locator("select option")
+		count, _ := options.Count()
+
+		for i := 0; i < count; i++ {
+			option := options.Nth(i)
+			text, _ := option.TextContent()
+			if text != "" && (text == cityName || containsIgnoreCase(text, cityName)) {
+				value, _ := option.GetAttribute("value")
+				if value != "" {
+					if _, err := cityDropdown.SelectOption(playwright.SelectOptionValues{
+						Values: &[]string{value},
+					}); err == nil {
+						logrus.Infof("成功通过值选择城市: %s", cityName)
+						time.Sleep(1 * time.Second)
+						return true, nil
+					}
+				}
+			}
+		}
+
+		return false, fmt.Errorf("无法选择城市 %s: %w", cityName, err)
+	}
+
+	logrus.Infof("成功选择城市: %s", cityName)
+	time.Sleep(1 * time.Second) // 等待选择生效
+	return true, nil
+}
+
+// mapZipcodeToCityName 将邮编映射到城市名称
+func (zih *ZipcodeInputHandler) mapZipcodeToCityName(zipcode string) string {
+	// 沙特城市映射
+	saudiCityMap := map[string]string{
+		"11564": "Riyadh",   // 利雅得
+		"21432": "Jeddah",   // 吉达
+		"23218": "Dammam",   // 达曼
+		"31952": "Mecca",    // 麦加
+		"24231": "Medina",   // 麦地那
+		"32272": "Khobar",   // 胡拜尔
+		"13521": "Buraidah", // 布赖代
+		"51431": "Abha",     // 艾卜哈
+		"82723": "Tabuk",    // 塔布克
+		"41311": "Hail",     // 哈伊勒
+	}
+
+	// 阿联酋城市映射
+	uaeCityMap := map[string]string{
+		"00000": "Dubai",     // 迪拜
+		"00001": "Abu Dhabi", // 阿布扎比
+		"00002": "Sharjah",   // 沙迦
+		"00003": "Ajman",     // 阿治曼
+	}
+
+	// 先尝试沙特映射
+	if city, exists := saudiCityMap[zipcode]; exists {
+		return city
+	}
+
+	// 再尝试阿联酋映射
+	if city, exists := uaeCityMap[zipcode]; exists {
+		return city
+	}
+
+	return ""
+}
+
+// containsIgnoreCase 不区分大小写的字符串包含检查
+func containsIgnoreCase(s, substr string) bool {
+	s = strings.ToLower(s)
+	substr = strings.ToLower(substr)
+	return strings.Contains(s, substr)
 }
 
 // handleJapaneseZipcode 处理日本站的分离式邮编输入
@@ -293,25 +490,27 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 	}
 
 	applyButtonSelectors := []string{
-		"button:has-text('Apply')",                        // 英文版的Apply按钮（推荐）
+		// 最精确的选择器 - 排除购物车按钮
+		"div[role='dialog'] button:has-text('Apply'):not(:has-text('Cart')):not(:has-text('Buy'))",
+		"div[role='dialog'] button:has-text('Done'):not(:has-text('Cart')):not(:has-text('Buy'))",
 		"input[aria-labelledby='GLUXZipUpdate-announce']", // Amazon邮编更新按钮
-		"#GLUXZipUpdate",                                  // Amazon主要的设置按钮
-		"button:text('Apply')",                            // 英文版的Apply按钮（精确匹配）
-		"input[type='submit'][aria-labelledby]",           // 带aria-labelledby的提交按钮
-		"span#GLUXZipUpdate input",                        // GLUXZipUpdate内的input
-		"button:has-text('Done')",                         // Done按钮
-		"button:has-text('Save')",                         // Save按钮
-		"input[type='submit']",                            // 通用提交按钮
-		"button[type='submit']",                           // 通用提交按钮
-		"button.a-button-primary",                         // Amazon主要按钮
-		"input.a-button-input",                            // Amazon输入按钮
-		"#zip-code-apply",                                 // 邮编应用按钮
-		"#postal-code-apply",                              // 邮编应用按钮
-		".apply-button",                                   // 应用按钮类
-		".save-button",                                    // 保存按钮类
+		"#GLUXZipUpdate",           // Amazon主要的设置按钮
+		"span#GLUXZipUpdate input", // GLUXZipUpdate内的input
+		"button:has-text('Apply'):not(:has-text('Cart')):not(:has-text('Buy'))", // 英文版的Apply按钮(排除购物车)
+		"button:text('Apply')", // 英文版的Apply按钮（精确匹配）
+		"input[type='submit'][aria-labelledby='GLUXZipUpdate-announce']",       // 带特定aria-labelledby的提交按钮
+		"button:has-text('Done'):not(:has-text('Cart')):not(:has-text('Buy'))", // Done按钮(排除购物车)
+		"button:has-text('Save'):not(:has-text('Cart')):not(:has-text('Buy'))", // Save按钮(排除购物车)
+		"#zip-code-apply",    // 邮编应用按钮
+		"#postal-code-apply", // 邮编应用按钮
+		".apply-button",      // 应用按钮类
+		".save-button",       // 保存按钮类
 	}
 
 	var applyButton playwright.Locator
+	var selectedSelector string
+	var buttonText string
+
 	for _, selector := range applyButtonSelectors {
 		if page.IsClosed() {
 			return fmt.Errorf("页面在查找Apply按钮过程中被关闭")
@@ -322,7 +521,41 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 		if err == nil && count > 0 {
 			// 检查按钮是否可见
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
+				// 双重检查:确保不是购物车相关按钮
+				if text, err := locator.TextContent(); err == nil {
+					lowerText := strings.ToLower(strings.TrimSpace(text))
+					logrus.Infof("检查按钮文本: '%s' (选择器: %s)", text, selector)
+
+					// 严格排除购物车相关按钮
+					if strings.Contains(lowerText, "cart") ||
+						strings.Contains(lowerText, "buy") ||
+						strings.Contains(lowerText, "add to") ||
+						strings.Contains(lowerText, "purchase") {
+						logrus.Infof("跳过购物车相关按钮: %s", text)
+						continue
+					}
+
+					// 只接受明确的确认按钮文本
+					validTexts := []string{"apply", "done", "save", "ok", "confirm", "submit"}
+					isValid := false
+					for _, validText := range validTexts {
+						if strings.Contains(lowerText, validText) {
+							isValid = true
+							break
+						}
+					}
+
+					if !isValid {
+						logrus.Infof("按钮文本不符合确认按钮要求: %s", text)
+						continue
+					}
+
+					buttonText = text
+				}
+
 				applyButton = locator
+				selectedSelector = selector
+				logrus.Infof("找到确认按钮: %s (文本: %s)", selector, buttonText)
 				break
 			}
 		}
@@ -330,6 +563,7 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 
 	if applyButton == nil {
 		// 如果没有找到应用按钮，尝试按回车键
+		logrus.Infof("未找到Apply按钮,尝试按回车键")
 		if err := page.Keyboard().Press("Enter"); err != nil {
 			if page.IsClosed() {
 				return fmt.Errorf("页面在按回车键时被关闭: %w", err)
@@ -338,12 +572,14 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 		}
 	} else {
 		// 点击Apply按钮
+		logrus.Infof("准备点击确认按钮: %s", selectedSelector)
 		if err := applyButton.Click(); err != nil {
 			if page.IsClosed() {
 				return fmt.Errorf("页面在点击Apply按钮时被关闭: %w", err)
 			}
 			return fmt.Errorf("点击Apply按钮失败: %w", err)
 		}
+		logrus.Infof("成功点击确认按钮")
 	}
 
 	// 等待Apply按钮处理完成

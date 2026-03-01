@@ -3,6 +3,7 @@ package browser
 
 import (
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -17,7 +18,7 @@ func NewZipcodeGetter() *ZipcodeGetter {
 	return &ZipcodeGetter{}
 }
 
-// GetCurrentZipcode 获取当前邮编
+// GetCurrentZipcode 获取当前邮编或城市名称
 func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error) {
 	// 等待页面稳定
 	time.Sleep(500 * time.Millisecond)
@@ -30,7 +31,7 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 		"#nav-global-location-slot",   // 导航栏位置槽
 	}
 
-	logrus.Infof("开始查找当前邮编信息")
+	logrus.Infof("开始查找当前邮编或城市信息")
 
 	// 优先从主要位置获取邮编
 	for _, selector := range zipDisplaySelectors {
@@ -48,11 +49,18 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 
 		text, err := locator.TextContent()
 		if err == nil && text != "" {
-			// 提取邮编（通常是数字）
+			// 先尝试提取邮编（通常是数字）
 			zipcode := ExtractZipcode(text)
 			if zipcode != "" {
 				logrus.Infof("成功提取邮编: %s", zipcode)
 				return zipcode, nil
+			}
+
+			// 如果没有提取到邮编,尝试提取城市名称(沙特等站点)
+			cityName := extractCityName(text)
+			if cityName != "" {
+				logrus.Infof("成功提取城市名称: %s", cityName)
+				return cityName, nil
 			}
 		}
 	}
@@ -65,8 +73,34 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 			if zipcode != "" {
 				return zipcode, nil
 			}
+
+			cityName := extractCityName(text)
+			if cityName != "" {
+				return cityName, nil
+			}
 		}
 	}
 
-	return "", fmt.Errorf("未找到当前邮编信息")
+	return "", fmt.Errorf("未找到当前邮编或城市信息")
+}
+
+// extractCityName 从文本中提取城市名称
+func extractCityName(text string) string {
+	// 已知的城市列表(沙特、阿联酋等)
+	knownCities := []string{
+		"Riyadh", "Jeddah", "Makkah Al Mukarramah", "Dammam",
+		"Al Madinah Al Munawwarah", "Al Khobar", "Al Ahsa", "At Taif",
+		"Al Jubail", "Tabuk", "Abha", "Khamis Mushayt", "Hail", "Yanbu", "Jazan",
+		"Dubai", "Abu Dhabi", "Sharjah", "Ajman",
+		"Mecca", "Medina", "Khobar", "Buraidah", // 别名
+	}
+
+	// 检查文本中是否包含已知城市名称
+	for _, city := range knownCities {
+		if regexp.MustCompile(`(?i)` + regexp.QuoteMeta(city)).MatchString(text) {
+			return city
+		}
+	}
+
+	return ""
 }

@@ -26,6 +26,7 @@ type CrawlerRepositoryImpl struct {
 // DomainResolver 域名解析器接口
 type DomainResolver interface {
 	GetAmazonDomainByRegion(region string) string
+	BuildAmazonProductURL(region, asin string) string
 }
 
 // NewCrawlerRepositoryImpl 创建爬虫仓储实现
@@ -144,8 +145,8 @@ func (r *CrawlerRepositoryImpl) buildCrawlURL(req *types.FetchRequest) (string, 
 	// 获取邮编
 	zipcode := r.getZipcodeForRegion(req.Region)
 
-	// 构建URL
-	url := fmt.Sprintf("https://www.%s/dp/%s?th=1&psc=1&language=en_US", domain, req.ProductID)
+	// 构建URL(使用统一方法)
+	url := r.domainResolver.BuildAmazonProductURL(req.Region, req.ProductID)
 
 	return url, zipcode, nil
 }
@@ -161,7 +162,8 @@ func (r *CrawlerRepositoryImpl) buildBatchRequests(req *types.FetchRequest, prod
 	requests := make([]model.ProductRequest, 0, len(productIDs))
 
 	for _, productID := range productIDs {
-		url := fmt.Sprintf("https://www.%s/dp/%s?th=1&psc=1", domain, productID)
+		// 使用统一的URL构建方法
+		url := r.domainResolver.BuildAmazonProductURL(req.Region, productID)
 		requests = append(requests, model.ProductRequest{
 			URL:     url,
 			Zipcode: zipcode,
