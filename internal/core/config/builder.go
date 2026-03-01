@@ -140,6 +140,7 @@ func buildConfig() *Config {
 			Enabled:           viper.GetBool("amazon.enabled"),
 			Zipcodes:          viper.GetStringMapString("amazon.zipcodes"),
 			DataFreshnessDays: viper.GetInt("amazon.dataFreshnessDays"),
+			CrawlTimeout:      viper.GetInt("amazon.crawlTimeout"),
 
 			// 从浏览器配置复制兼容性字段
 			Headless:       viper.GetBool("browser.headless"),
@@ -163,6 +164,16 @@ func buildConfig() *Config {
 			CheckInterval:      viper.GetInt("updater.checkInterval"),
 			InsecureSkipVerify: viper.GetBool("updater.insecureSkipVerify"),
 		},
+	}
+
+	// 构建RabbitMQ配置（可选）
+	if viper.GetBool("rabbitmq.enabled") {
+		cfg.RabbitMQ = &RabbitMQConfig{
+			Enabled:           viper.GetBool("rabbitmq.enabled"),
+			URL:               viper.GetString("rabbitmq.url"),
+			ReconnectInterval: viper.GetInt("rabbitmq.reconnectInterval"),
+			MaxReconnectTries: viper.GetInt("rabbitmq.maxReconnectTries"),
+		}
 	}
 
 	return cfg

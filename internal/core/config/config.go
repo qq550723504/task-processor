@@ -18,6 +18,7 @@ type Config struct {
 	Management ManagementConfig
 	Browser    BrowserConfig // 浏览器通用配置
 	Amazon     AmazonConfig
+	RabbitMQ   *RabbitMQConfig // RabbitMQ配置（可选）
 	Updater    UpdaterConfig
 	Platforms  PlatformsConfig // 平台配置
 }

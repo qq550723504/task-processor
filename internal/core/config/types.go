@@ -100,6 +100,7 @@ type AmazonConfig struct {
 	Enabled           bool              `yaml:"enabled"`
 	Zipcodes          map[string]string `yaml:"zipcodes"`
 	DataFreshnessDays int               `yaml:"dataFreshnessDays"`
+	CrawlTimeout      int               `yaml:"crawlTimeout"` // 爬虫超时时间（秒）
 	SPAPI             SPAPIConfig       `yaml:"spapi"`
 
 	// 临时兼容性字段（从 Browser 配置继承）
@@ -110,6 +111,14 @@ type AmazonConfig struct {
 	ViewportHeight int                 `yaml:"-"` // 不序列化，从 Browser 配置获取
 	ProxyServer    string              `yaml:"-"` // 不序列化，从 Browser 配置获取
 	RandomConfig   BrowserRandomConfig `yaml:"-"` // 不序列化，从 Browser 配置获取
+}
+
+// RabbitMQConfig RabbitMQ配置
+type RabbitMQConfig struct {
+	Enabled           bool   `yaml:"enabled"`           // 是否启用RabbitMQ分布式爬虫
+	URL               string `yaml:"url"`               // RabbitMQ连接URL
+	ReconnectInterval int    `yaml:"reconnectInterval"` // 重连间隔（秒）
+	MaxReconnectTries int    `yaml:"maxReconnectTries"` // 最大重连次数
 }
 
 // MarketplaceConfig 单个市场配置
