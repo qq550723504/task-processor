@@ -28,6 +28,7 @@ func NewCompositeExtractor(marketplace string) *CompositeExtractor {
 			&BrandExtractor{},
 			&RatingExtractor{}, // 包含评分和评论数量提取
 			&ImageExtractor{},
+			NewVideoExtractor(),         // 视频提取器
 			&CategoriesExtractor{},      // 分类提取器
 			NewParentAsinExtractor(),    // Parent ASIN提取器
 			&SellerExtractor{},          // 卖家提取器

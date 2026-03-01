@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/pkg/utils"
 )
 
-// go run cmd/amazon-crawler/main.go -url "https://www.amazon.com/dp/B0FBRLT8TK" -region "us" -zipcode "10001" -output "test_B0FBRLT8TK.json""
+// go run cmd/amazon-crawler/main.go -url "https://www.amazon.com/dp/B0CDBPPHWH" -region "us" -zipcode "10001" -output "test_B0CDBPPHWH.json""
 func main() {
 	// 初始化依赖
 	deps := initializeDependencies()

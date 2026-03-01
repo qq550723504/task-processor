@@ -135,10 +135,10 @@ func convertToAmazonVariations(varList []variations.Variation) []model.Variation
 	result := make([]model.Variation, len(varList))
 	for i, v := range varList {
 		result[i] = model.Variation{
-			Name:       v.Name,
-			Asin:       v.Asin,
-			Price:      v.Price,
-			Currency:   v.Currency,
+			Name: v.Name,
+			Asin: v.Asin,
+			//Price:      v.Price,
+			//Currency:   v.Currency,
 			Attributes: v.Attributes,
 		}
 	}

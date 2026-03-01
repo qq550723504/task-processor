@@ -20,6 +20,7 @@ type AmazonProduct struct {
 	CategoryID      string      `json:"category_id"`
 	CategoryName    string      `json:"category_name"`
 	ImageURL        string      `json:"image_url"`
+	VideoURLs       []VideoInfo `json:"video_urls,omitempty"` // 产品视频链接列表
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
 	ListingID       string      `json:"listing_id"`
@@ -32,10 +33,19 @@ type Variation struct {
 	SKU        string            `json:"sku"`
 	ASIN       string            `json:"asin,omitempty"`
 	Attributes map[string]string `json:"attributes"` // 变体属性 (color, size等)
-	Price      float64           `json:"price"`
-	Quantity   int               `json:"quantity"`
-	ImageURL   string            `json:"image_url"`
-	Status     string            `json:"status"`
+	//Price      float64           `json:"price"`
+	Quantity int    `json:"quantity"`
+	ImageURL string `json:"image_url"`
+	Status   string `json:"status"`
+}
+
+// VideoInfo 视频信息
+type VideoInfo struct {
+	VideoID      string `json:"video_id"`                // 视频ID
+	VideoURL     string `json:"video_url"`               // HLS视频流地址 (.m3u8)
+	ThumbnailURL string `json:"thumbnail_url,omitempty"` // 视频缩略图
+	Duration     int    `json:"duration,omitempty"`      // 视频时长(秒)
+	Title        string `json:"title,omitempty"`         // 视频标题
 }
 
 // ProductCondition 产品状态常量

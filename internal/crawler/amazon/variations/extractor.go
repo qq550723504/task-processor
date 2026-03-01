@@ -93,7 +93,7 @@ func (e *Extractor) BuildVariations(
 		}
 
 		// 获取价格和货币信息
-		price, currency := e.getPriceForASIN(matchedASIN, priceMapping, defaultPrice, defaultCurrency)
+		_, currency := e.getPriceForASIN(matchedASIN, priceMapping, defaultPrice, defaultCurrency)
 
 		// 映射属性名为语义化名称
 		mappedAttributes := e.mapper.MapAttributeNames(combo)
@@ -102,9 +102,9 @@ func (e *Extractor) BuildVariations(
 		}
 
 		variation := Variation{
-			Name:       e.buildNameFromAttributes(mappedAttributes),
-			Asin:       matchedASIN,
-			Price:      price,
+			Name: e.buildNameFromAttributes(mappedAttributes),
+			Asin: matchedASIN,
+			//Price:      price,
 			Currency:   currency,
 			Attributes: mappedAttributes,
 		}

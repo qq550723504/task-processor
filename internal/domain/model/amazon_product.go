@@ -60,10 +60,11 @@ type Product struct {
 	ImagesCount int      `json:"images_count"`
 
 	// 视频
-	Videos             []string `json:"videos,omitempty"`
-	VideoCount         int      `json:"video_count,omitempty"`
-	Video              bool     `json:"video,omitempty"`
-	DownloadableVideos []string `json:"downloadable_videos,omitempty"`
+	Videos             []string    `json:"videos,omitempty"`
+	VideoURLs          []VideoInfo `json:"video_urls,omitempty"` // 详细视频信息
+	VideoCount         int         `json:"video_count,omitempty"`
+	Video              bool        `json:"video,omitempty"`
+	DownloadableVideos []string    `json:"downloadable_videos,omitempty"`
 
 	// 产品特性
 	Features         []string         `json:"features"`
@@ -154,10 +155,10 @@ type InactiveBuyBox struct {
 
 // Variation 变体信息
 type Variation struct {
-	Name       string                 `json:"name"`
-	Asin       string                 `json:"asin"`
-	Price      float64                `json:"price"`
-	Currency   string                 `json:"currency"`
+	Name string `json:"name"`
+	Asin string `json:"asin"`
+	//Price      float64                `json:"price"`
+	//Currency   string                 `json:"currency"`
 	Image      string                 `json:"image,omitempty"`
 	Attributes map[string]interface{} `json:"attributes,omitempty"`
 }
@@ -195,6 +196,15 @@ func (vv *VariationValue) UnmarshalJSON(data []byte) error {
 type ProductDetail struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`
+}
+
+// VideoInfo 视频信息
+type VideoInfo struct {
+	VideoID      string `json:"video_id"`                // 视频ID
+	VideoURL     string `json:"video_url"`               // HLS视频流地址 (.m3u8)
+	ThumbnailURL string `json:"thumbnail_url,omitempty"` // 视频缩略图
+	Duration     int    `json:"duration,omitempty"`      // 视频时长(秒)
+	Title        string `json:"title,omitempty"`         // 视频标题
 }
 
 // ProductRequest 产品请求

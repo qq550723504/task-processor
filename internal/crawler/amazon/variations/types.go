@@ -16,9 +16,9 @@ type VariationValue struct {
 
 // Variation 变体信息
 type Variation struct {
-	Name       string                 `json:"name"`
-	Asin       string                 `json:"asin"`
-	Price      float64                `json:"price"`
+	Name string `json:"name"`
+	Asin string `json:"asin"`
+	//Price      float64                `json:"price"`
 	Currency   string                 `json:"currency"`
 	Attributes map[string]interface{} `json:"attributes"`
 }
