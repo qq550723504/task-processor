@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product/repo"
 	"task-processor/internal/domain/product/types"
+	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -182,27 +183,8 @@ func (r *CrawlerRepositoryImpl) getZipcodeForRegion(region string) string {
 		}
 	}
 
-	// 使用默认邮编
-	defaultZipcodes := map[string]string{
-		"us": "10001",    // 纽约
-		"ca": "K1A 0A6",  // 渥太华
-		"uk": "SW1A 1AA", // 伦敦
-		"de": "10115",    // 柏林
-		"fr": "75001",    // 巴黎
-		"it": "00118",    // 罗马
-		"es": "28001",    // 马德里
-		"jp": "100-0001", // 东京
-		"au": "2000",     // 悉尼
-		"mx": "01000",    // 墨西哥城
-		"ae": "00000",    // 迪拜
-		"sa": "11564",    // 利雅得
-	}
-
-	if zipcode, exists := defaultZipcodes[strings.ToLower(region)]; exists {
-		return zipcode
-	}
-
-	return "10001" // 默认美国邮编
+	// 使用统一的工具方法获取默认邮编
+	return utils.GetDefaultZipcode(strings.ToLower(region))
 }
 
 // SetMaxConcurrent 设置最大并发数

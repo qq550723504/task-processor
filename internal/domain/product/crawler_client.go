@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/utils"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -102,42 +103,8 @@ func (c *CrawlerClient) getZipcodeForRegion(region string) string {
 
 // getDefaultZipcode 获取默认邮编
 func (c *CrawlerClient) getDefaultZipcode(region string) string {
-	defaultZipcodes := map[string]string{
-		"us":                   "10001", // 纽约
-		"usa":                  "10001",
-		"united states":        "10001",
-		"uk":                   "SW1A 1AA", // 伦敦
-		"gb":                   "SW1A 1AA",
-		"united kingdom":       "SW1A 1AA",
-		"de":                   "10115", // 柏林
-		"germany":              "10115",
-		"fr":                   "75001", // 巴黎
-		"france":               "75001",
-		"it":                   "00118", // 罗马
-		"italy":                "00118",
-		"es":                   "28001", // 马德里
-		"spain":                "28001",
-		"ca":                   "K1A 0A6", // 渥太华
-		"canada":               "K1A 0A6",
-		"jp":                   "100-0001", // 东京
-		"japan":                "100-0001",
-		"au":                   "2000", // 悉尼
-		"australia":            "2000",
-		"mx":                   "01000", // 墨西哥城
-		"mexico":               "01000",
-		"ae":                   "00000", // 迪拜
-		"uae":                  "00000",
-		"united arab emirates": "00000",
-		"sa":                   "11564", // 利雅得
-		"saudi":                "11564",
-		"saudi arabia":         "11564",
-	}
-
-	if zipcode, exists := defaultZipcodes[strings.ToLower(region)]; exists {
-		return zipcode
-	}
-
-	return "10001" // 默认美国邮编
+	// 使用统一的工具方法获取默认邮编
+	return utils.GetDefaultZipcode(strings.ToLower(region))
 }
 
 // isPageNotFoundError 检查是否为页面不存在错误

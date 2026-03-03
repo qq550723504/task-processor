@@ -22,7 +22,7 @@ func GetDomainMap() map[string]string {
 // GetZipcodeMap 获取地区到默认邮编的映射
 func GetZipcodeMap() map[string]string {
 	return map[string]string{
-		"us": "94107",     // 旧金山
+		"us": "94107",     // 旧金山（默认）
 		"uk": "SW1A 1AA",  // 伦敦
 		"de": "10115",     // 柏林
 		"fr": "75001",     // 巴黎
@@ -34,6 +34,8 @@ func GetZipcodeMap() map[string]string {
 		"mx": "11000",     // 墨西哥城
 		"br": "01310-100", // 圣保罗
 		"au": "2000",      // 悉尼
+		"ae": "00000",     // 迪拜
+		"sa": "11564",     // 利雅得
 	}
 }
 

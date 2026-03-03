@@ -4,11 +4,13 @@ package product
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/crawler"
+	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -148,22 +150,8 @@ func (f *DistributedProductFetcher) buildProductURL(req *FetchRequest) string {
 
 // getZipcode 获取区域对应的邮编
 func (f *DistributedProductFetcher) getZipcode(region string) string {
-	zipcodes := map[string]string{
-		"us": "10001",    // 纽约
-		"uk": "SW1A 1AA", // 伦敦
-		"de": "10115",    // 柏林
-		"fr": "75001",    // 巴黎
-		"it": "00118",    // 罗马
-		"es": "28001",    // 马德里
-		"ca": "K1A 0A6",  // 渥太华
-		"jp": "100-0001", // 东京
-		"au": "2000",     // 悉尼
-	}
-
-	if zipcode, exists := zipcodes[region]; exists {
-		return zipcode
-	}
-	return "10001" // 默认美国邮编
+	// 使用统一的工具方法获取默认邮编
+	return utils.GetDefaultZipcode(strings.ToLower(region))
 }
 
 // calculatePriority 计算任务优先级
