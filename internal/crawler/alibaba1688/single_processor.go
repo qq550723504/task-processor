@@ -111,13 +111,22 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.T
 func (sp *SingleProcessor) navigateToProduct(page playwright.Page, url string) error {
 	logrus.Debugf("导航到1688产品页面: %s", url)
 
-	// 导航到页面
+	// 导航到页面，使用 domcontentloaded 而不是 networkidle，因为验证码页面可能阻止 networkidle
 	_, err := page.Goto(url, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateNetworkidle,
-		Timeout:   playwright.Float(30000), // 30秒超时
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(60000), // 增加到60秒超时
 	})
 	if err != nil {
 		return fmt.Errorf("导航失败: %w", err)
+	}
+
+	// 等待页面基本加载
+	time.Sleep(3 * time.Second)
+
+	// 先处理验证码（如果有的话）
+	if err := sp.captchaHandler.HandlePageCaptcha(page); err != nil {
+		logrus.Warnf("验证码处理失败: %v", err)
+		// 不直接返回错误，继续尝试
 	}
 
 	// 等待页面加载
@@ -125,9 +134,14 @@ func (sp *SingleProcessor) navigateToProduct(page playwright.Page, url string) e
 		return fmt.Errorf("等待页面就绪失败: %w", err)
 	}
 
-	// 处理验证码和页面交互
-	if err := sp.handlePageInteractions(page); err != nil {
-		return fmt.Errorf("处理页面交互失败: %w", err)
+	// 再次处理可能出现的验证码
+	if err := sp.captchaHandler.HandlePageCaptcha(page); err != nil {
+		logrus.Warnf("二次验证码处理失败: %v", err)
+	}
+
+	// 滚动页面以触发懒加载
+	if err := sp.scrollPage(page); err != nil {
+		logrus.Warnf("滚动页面失败: %v", err)
 	}
 
 	return nil

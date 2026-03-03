@@ -23,6 +23,22 @@ func NewCaptchaHandler() *CaptchaHandler {
 
 // HandlePageCaptcha 处理页面中的各种验证码
 func (ch *CaptchaHandler) HandlePageCaptcha(page playwright.Page) error {
+	// 先等待一下，让验证码有时间显示
+	time.Sleep(2 * time.Second)
+
+	// 检查页面URL和标题，判断是否在验证码页面
+	currentURL := page.URL()
+	title, _ := page.Title()
+
+	logrus.Debugf("当前页面URL: %s, 标题: %s", currentURL, title)
+
+	// 如果在验证码拦截页面，直接处理验证码
+	if strings.Contains(strings.ToLower(title), "captcha") ||
+		strings.Contains(strings.ToLower(title), "验证") ||
+		strings.Contains(currentURL, "captcha") {
+		logrus.Info("检测到验证码拦截页面，开始处理验证码")
+	}
+
 	// 检查是否有登录提示
 	if err := ch.handleLoginPrompt(page); err != nil {
 		logrus.Warnf("处理登录提示失败: %v", err)
@@ -93,14 +109,17 @@ func (ch *CaptchaHandler) handleLoginPrompt(page playwright.Page) error {
 
 // handleSliderCaptcha 处理滑动验证码
 func (ch *CaptchaHandler) handleSliderCaptcha(page playwright.Page) error {
-	// 常见的滑动验证码选择器
+	// 常见的滑动验证码选择器（包含新版验证码）
 	sliderSelectors := []string{
-		".nc_iconfont.btn_slide",                       // 阿里系滑动验证码
+		".nc_iconfont.btn_slide",                       // 阿里系滑动验证码（旧版）
+		"#nc_1_n1z",                                    // 阿里系滑动验证码（新版ID）
+		".nc-container .nc_iconfont",                   // 阿里系容器内的滑块
 		".slider-button",                               // 通用滑动按钮
 		".captcha-slider-button",                       // 验证码滑动按钮
 		"[class*='slider'][class*='button']",           // 包含slider和button的类名
 		".verify-slider-track .verify-slider-button",   // 另一种滑动验证码
 		".slide-verify .slide-verify-slider-mask-item", // 其他滑动验证码
+		"span.btn_slide",                               // 新版span标签滑块
 	}
 
 	for _, selector := range sliderSelectors {
@@ -207,16 +226,17 @@ func (ch *CaptchaHandler) calculateSlideDistance(page playwright.Page, buttonBox
 		return 0, fmt.Errorf("按钮位置信息为空")
 	}
 
-	// 尝试多种轨道选择器
+	// 尝试多种轨道选择器（包含新版验证码）
 	trackSelectors := []string{
-		".nc-lang-cnt", // 阿里系主要轨道
+		".nc-lang-cnt",      // 阿里系主要轨道
+		"#nc_1__scale_text", // 新版轨道文本容器
+		".nc_scale",         // 阿里系轨道容器
+		".nc_wrapper",       // 阿里系包装器
 		".slider-track",
 		".captcha-slider-track",
 		".slide-verify",
 		"[class*='track']",
 		"[class*='slider-container']",
-		".nc_scale",   // 阿里系轨道容器
-		".nc_wrapper", // 阿里系包装器
 	}
 
 	for _, selector := range trackSelectors {
@@ -234,8 +254,9 @@ func (ch *CaptchaHandler) calculateSlideDistance(page playwright.Page, buttonBox
 		var distance float64
 		if strings.Contains(selector, "nc-lang-cnt") || strings.Contains(selector, "nc_") {
 			// 阿里系验证码：需要滑动到轨道最右边
-			// 根据实际测试和Chrome DevTools测量，需要滑动到轨道宽度减去按钮宽度，不留余量
-			distance = trackBox.Width - buttonBox.Width + 2 // 稍微超出一点，确保滑动到底
+			// 根据实际测试和Chrome DevTools测量，需要滑动到轨道宽度减去按钮宽度
+			// 新版验证码可能需要更精确的距离
+			distance = trackBox.Width - buttonBox.Width + 5 // 稍微超出一点，确保滑动到底
 		} else {
 			// 其他验证码：滑动到轨道末端减去按钮宽度和余量
 			distance = trackBox.Width - buttonBox.Width - 15
