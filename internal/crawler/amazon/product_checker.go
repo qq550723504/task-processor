@@ -42,17 +42,25 @@ func (pc *ProductChecker) HandleContinueShoppingButton(page playwright.Page) err
 		}
 
 		if count > 0 {
+			// 检查元素是否可见
+			isVisible, err := continueButton.IsVisible()
+			if err != nil || !isVisible {
+				continue
+			}
+
 			logrus.Infof("发现Continue shopping按钮 (选择器: %s)，尝试点击", selector)
 
-			// 尝试点击按钮
-			err = continueButton.Click()
+			// 尝试点击按钮，设置短超时避免长时间等待
+			err = continueButton.Click(playwright.LocatorClickOptions{
+				Timeout: playwright.Float(5000), // 5秒超时
+			})
 			if err != nil {
 				logrus.Warnf("点击Continue shopping按钮失败: %v", err)
 				continue // 尝试下一个选择器
 			}
 
 			// 等待页面跳转
-			time.Sleep(3 * time.Second)
+			time.Sleep(2 * time.Second)
 			logrus.Info("已成功点击Continue shopping按钮")
 			return nil
 		}

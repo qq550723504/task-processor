@@ -138,7 +138,9 @@ func HandleContinueShoppingButtonInZipcode(page playwright.Page) {
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
 				logrus.Infof("发现 Continue Shopping 按钮，尝试点击")
-				if err := locator.Click(); err != nil {
+				if err := locator.Click(playwright.LocatorClickOptions{
+					Timeout: playwright.Float(5000), // 5秒超时
+				}); err != nil {
 					logrus.Infof("点击 Continue Shopping 按钮失败: %v", err)
 				} else {
 					logrus.Infof("成功点击 Continue Shopping 按钮")
