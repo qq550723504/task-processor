@@ -189,15 +189,16 @@ func (zih *ZipcodeInputHandler) handleCityDropdown(page playwright.Page, zipcode
 		"div[role='dialog'] [role='combobox']",    // 沙特站点对话框中的combobox(主要选择器)
 		"[role='combobox'][aria-haspopup='menu']", // 带菜单弹出的combobox
 		"select#GLUXCityList",                     // 城市列表select
-		"select#GLUXCountryList",                  // 国家/城市列表
-		"span.a-dropdown-container select",        // 下拉容器中的select
-		"select[name='locationType']",             // 位置类型选择
-		"select[name='district']",                 // 地区选择
-		"select.a-native-dropdown",                // Amazon原生下拉框
-		"div[role='dialog'] select",               // 对话框中的select
-		"div[aria-label*='location'] select",      // 位置对话框中的select
-		"div[aria-label*='delivery'] select",      // 配送对话框中的select
-		"#GLUXChangePostalCodeLink + select",      // 邮编链接旁的select
+		// 注意：不包含 select#GLUXCountryList，因为那是国家选择器，不是城市选择器
+		"span.a-dropdown-container select[name='city']",     // 下拉容器中的城市select
+		"span.a-dropdown-container select[name='district']", // 下拉容器中的地区select
+		"select[name='locationType']",                       // 位置类型选择
+		"select[name='district']",                           // 地区选择
+		"select.a-native-dropdown",                          // Amazon原生下拉框
+		"div[role='dialog'] select[name='city']",            // 对话框中的城市select
+		"div[aria-label*='location'] select[name='city']",   // 位置对话框中的城市select
+		"div[aria-label*='delivery'] select[name='city']",   // 配送对话框中的城市select
+		"#GLUXChangePostalCodeLink + select[name='city']",   // 邮编链接旁的城市select
 	}
 
 	var cityDropdown playwright.Locator
@@ -208,6 +209,16 @@ func (zih *ZipcodeInputHandler) handleCityDropdown(page playwright.Page, zipcode
 		locator := page.Locator(selector).First()
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
+				// 额外检查：确保不是国家选择器
+				if id, err := locator.GetAttribute("id"); err == nil && id == "GLUXCountryList" {
+					logrus.Infof("跳过国家选择器: %s", selector)
+					continue
+				}
+				if name, err := locator.GetAttribute("name"); err == nil && name == "country" {
+					logrus.Infof("跳过国家选择器(name=country): %s", selector)
+					continue
+				}
+
 				cityDropdown = locator
 				// 检查是否是combobox类型
 				if role, err := locator.GetAttribute("role"); err == nil && role == "combobox" {
@@ -227,7 +238,7 @@ func (zih *ZipcodeInputHandler) handleCityDropdown(page playwright.Page, zipcode
 	// 根据邮编映射到城市
 	cityName := zih.mapZipcodeToCityName(zipcode)
 	if cityName == "" {
-		logrus.Infof("无法将邮编 %s 映射到城市名称", zipcode)
+		logrus.Infof("无法将邮编 %s 映射到城市名称，跳过城市下拉框处理", zipcode)
 		return false, nil
 	}
 
