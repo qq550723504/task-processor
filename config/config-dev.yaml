@@ -64,7 +64,7 @@ management:
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [809]# 店铺ID列表 ->775
+  storeIDs: [189]# 店铺ID列表 ->775
 
 platforms:
   # TEMU 平台配置
