@@ -70,8 +70,8 @@ func (p *PlatformProcessorRegistry) registerTemuProcessor(container di.Container
 		managementClient := managementClientInstance.(*management.ClientManager)
 		amazonProcessor := amazonProcessorInstance.(*amazon.AmazonProcessor)
 
-		// 使用原有的构造函数，不修改任何业务逻辑
-		return temu.NewTemuProcessor(context.Background(), config, logger, managementClient, amazonProcessor), nil
+		// 使用原有的构造函数，现在返回 error
+		return temu.NewTemuProcessor(context.Background(), config, logger, managementClient, amazonProcessor)
 	})
 }
 
@@ -100,7 +100,7 @@ func (p *PlatformProcessorRegistry) registerSheinProcessor(container di.Containe
 		managementClient := managementClientInstance.(*management.ClientManager)
 		amazonProcessor := amazonProcessorInstance.(*amazon.AmazonProcessor)
 
-		// 使用原有的构造函数，不修改任何业务逻辑
-		return pipeline.NewSheinProcessor(context.Background(), config, logger, managementClient, amazonProcessor), nil
+		// 使用原有的构造函数，现在返回 error
+		return pipeline.NewSheinProcessor(context.Background(), config, logger, managementClient, amazonProcessor)
 	})
 }

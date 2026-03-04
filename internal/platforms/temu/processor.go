@@ -22,17 +22,18 @@ type TemuProcessor struct {
 }
 
 // NewTemuProcessor 创建TEMU处理器
-func NewTemuProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor) *TemuProcessor {
+// 返回 error 而不是 panic，让调用方决定如何处理错误
+func NewTemuProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor) (*TemuProcessor, error) {
 	// ManagementClient必须由调用方提供（共享实例）
 	if managementClient == nil {
 		logger.Error("[TEMU] ManagementClient不能为空，必须使用共享实例")
-		panic("ManagementClient不能为空")
+		return nil, fmt.Errorf("managementClient不能为空")
 	}
 
 	// Amazon处理器必须使用共享实例（资源优化）
 	if sharedAmazonProcessor == nil {
 		logger.Error("[TEMU] SharedAmazonProcessor不能为空，必须使用共享实例")
-		panic("SharedAmazonProcessor不能为空")
+		return nil, fmt.Errorf("sharedAmazonProcessor不能为空")
 	}
 
 	logger.Info("[TEMU] 使用共享的Amazon爬虫实例和管理客户端")
@@ -60,7 +61,7 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Lo
 	// 使用统一的管道构建方法
 	p.pipelineExecutor = p.buildPipelineExecutor()
 
-	return p
+	return p, nil
 }
 
 // ProcessTask 处理TEMU任务

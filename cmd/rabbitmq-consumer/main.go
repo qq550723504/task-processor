@@ -149,7 +149,10 @@ func registerProcessors(serviceManager *rabbitmq.ServiceManager, appCfg *config.
 		// 创建共享的Amazon处理器（TEMU需要）
 		sharedAmazonProcessor := createSharedAmazonProcessor(appCfg, logger)
 
-		temuProcessor := temu.NewTemuProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
+		temuProcessor, err := temu.NewTemuProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
+		if err != nil {
+			return fmt.Errorf("创建TEMU处理器失败: %w", err)
+		}
 		if err := serviceManager.RegisterProcessor("temu", temuProcessor); err != nil {
 			return fmt.Errorf("注册TEMU处理器失败: %w", err)
 		}
@@ -163,7 +166,10 @@ func registerProcessors(serviceManager *rabbitmq.ServiceManager, appCfg *config.
 		// 创建共享的Amazon处理器（SHEIN需要）
 		sharedAmazonProcessor := createSharedAmazonProcessor(appCfg, logger)
 
-		sheinProcessor := pipeline.NewSheinProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
+		sheinProcessor, err := pipeline.NewSheinProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
+		if err != nil {
+			return fmt.Errorf("创建SHEIN处理器失败: %w", err)
+		}
 		if err := serviceManager.RegisterProcessor("shein", sheinProcessor); err != nil {
 			return fmt.Errorf("注册SHEIN处理器失败: %w", err)
 		}
