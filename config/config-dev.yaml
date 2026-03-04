@@ -64,7 +64,7 @@ management:
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [189]# 店铺ID列表 ->775
+  storeIDs: [169]# 店铺ID列表 ->775
 
 platforms:
   # TEMU 平台配置
@@ -91,11 +91,11 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: true            # 是否启用SHEIN处理器（处理上架任务）
+    enabled: false            # 是否启用SHEIN处理器（处理上架任务）
     schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
-      enabled: false        # 启用自动核价
+      enabled: true        # 启用自动核价
       interval: 300         # 执行间隔（秒），默认30分钟
       batchSize: 100
     # 产品同步配置
