@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/management"
 	amazonPlatform "task-processor/internal/platforms/amazon"
+	"task-processor/internal/platforms/shein/service/pipeline"
 	"task-processor/internal/platforms/temu"
 
 	"github.com/sirupsen/logrus"
@@ -22,7 +23,7 @@ var (
 	configPath = flag.String("config", "config/rabbitmq-config.yaml", "RabbitMQ配置文件路径")
 	appConfig  = flag.String("app-config", "config/config-dev.yaml", "应用配置文件路径")
 	logLevel   = flag.String("log-level", "info", "日志级别")
-	platforms  = flag.String("platforms", "amazon,temu", "启用的平台，用逗号分隔")
+	platforms  = flag.String("platforms", "amazon,temu,shein", "启用的平台，用逗号分隔")
 )
 
 func main() {
@@ -146,7 +147,7 @@ func registerProcessors(serviceManager *rabbitmq.ServiceManager, appCfg *config.
 		logger.Info("📦 注册TEMU处理器...")
 
 		// 创建共享的Amazon处理器（TEMU需要）
-		sharedAmazonProcessor := createSharedAmazonProcessor(ctx, appCfg, logger)
+		sharedAmazonProcessor := createSharedAmazonProcessor(appCfg, logger)
 
 		temuProcessor := temu.NewTemuProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
 		if err := serviceManager.RegisterProcessor("temu", temuProcessor); err != nil {
@@ -158,15 +159,22 @@ func registerProcessors(serviceManager *rabbitmq.ServiceManager, appCfg *config.
 	// 注册SHEIN处理器
 	if containsPlatform(enabledPlatforms, "shein") {
 		logger.Info("📦 注册SHEIN处理器...")
-		// TODO: 实现SHEIN处理器
-		logger.Warn("⚠️  SHEIN处理器暂未实现")
+
+		// 创建共享的Amazon处理器（SHEIN需要）
+		sharedAmazonProcessor := createSharedAmazonProcessor(appCfg, logger)
+
+		sheinProcessor := pipeline.NewSheinProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
+		if err := serviceManager.RegisterProcessor("shein", sheinProcessor); err != nil {
+			return fmt.Errorf("注册SHEIN处理器失败: %w", err)
+		}
+		logger.Info("✅ SHEIN处理器注册成功")
 	}
 
 	return nil
 }
 
 // createSharedAmazonProcessor 创建共享的Amazon处理器
-func createSharedAmazonProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger) *amazon.AmazonProcessor {
+func createSharedAmazonProcessor(cfg *config.Config, logger *logrus.Logger) *amazon.AmazonProcessor {
 	logger.Info("🔧 创建共享Amazon爬虫处理器...")
 
 	// 确保浏览器配置合理
