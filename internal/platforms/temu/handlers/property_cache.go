@@ -30,6 +30,8 @@ type InMemoryPropertyCache struct {
 	templateCache map[int]*CacheItem[types.TemplateRespGoodsProperty]
 	mutex         sync.RWMutex
 	ttl           time.Duration
+	cleanupQueue  chan func() // 清理任务队列
+	stopCleanup   chan struct{}
 }
 
 // CacheItem 缓存项
@@ -40,20 +42,42 @@ type CacheItem[T any] struct {
 
 // NewPropertyCache 创建新的属性缓存
 func NewPropertyCache() PropertyCache {
-	return &InMemoryPropertyCache{
+	cache := &InMemoryPropertyCache{
 		featureCache:  make(map[string]*CacheItem[PropertyFeature]),
 		templateCache: make(map[int]*CacheItem[types.TemplateRespGoodsProperty]),
 		ttl:           30 * time.Minute,
+		cleanupQueue:  make(chan func(), 100),
+		stopCleanup:   make(chan struct{}),
 	}
+	cache.startCleanupWorker()
+	return cache
 }
 
 // NewPropertyCacheWithTTL 创建带TTL的属性缓存
 func NewPropertyCacheWithTTL(ttl time.Duration) PropertyCache {
-	return &InMemoryPropertyCache{
+	cache := &InMemoryPropertyCache{
 		featureCache:  make(map[string]*CacheItem[PropertyFeature]),
 		templateCache: make(map[int]*CacheItem[types.TemplateRespGoodsProperty]),
 		ttl:           ttl,
+		cleanupQueue:  make(chan func(), 100),
+		stopCleanup:   make(chan struct{}),
 	}
+	cache.startCleanupWorker()
+	return cache
+}
+
+// startCleanupWorker 启动清理工作协程（单个协程处理所有清理任务）
+func (c *InMemoryPropertyCache) startCleanupWorker() {
+	go func() {
+		for {
+			select {
+			case cleanupFn := <-c.cleanupQueue:
+				cleanupFn()
+			case <-c.stopCleanup:
+				return
+			}
+		}
+	}()
 }
 
 // GetFeature 获取属性特征缓存
@@ -68,12 +92,21 @@ func (c *InMemoryPropertyCache) GetFeature(key string) (PropertyFeature, bool) {
 
 	// 检查是否过期
 	if time.Now().After(item.ExpiresAt) {
-		// 异步清理过期项
-		go func() {
+		// 提交清理任务到队列，避免为每个过期项创建新的 goroutine
+		select {
+		case c.cleanupQueue <- func() {
 			c.mutex.Lock()
 			delete(c.featureCache, key)
 			c.mutex.Unlock()
-		}()
+		}:
+		default:
+			// 队列满了，直接在当前协程清理
+			c.mutex.RUnlock()
+			c.mutex.Lock()
+			delete(c.featureCache, key)
+			c.mutex.Unlock()
+			c.mutex.RLock()
+		}
 		return PropertyFeature{}, false
 	}
 
@@ -103,12 +136,21 @@ func (c *InMemoryPropertyCache) GetTemplateProperty(pid int) (types.TemplateResp
 
 	// 检查是否过期
 	if time.Now().After(item.ExpiresAt) {
-		// 异步清理过期项
-		go func() {
+		// 提交清理任务到队列，避免为每个过期项创建新的 goroutine
+		select {
+		case c.cleanupQueue <- func() {
 			c.mutex.Lock()
 			delete(c.templateCache, pid)
 			c.mutex.Unlock()
-		}()
+		}:
+		default:
+			// 队列满了，直接在当前协程清理
+			c.mutex.RUnlock()
+			c.mutex.Lock()
+			delete(c.templateCache, pid)
+			c.mutex.Unlock()
+			c.mutex.RLock()
+		}
 		return types.TemplateRespGoodsProperty{}, false
 	}
 
@@ -180,4 +222,10 @@ func (c *InMemoryPropertyCache) GetStats() CacheStats {
 		TemplateCacheSize: len(c.templateCache),
 		// TODO: 实现命中率统计
 	}
+}
+
+// Close 关闭缓存，停止清理工作协程
+func (c *InMemoryPropertyCache) Close() {
+	close(c.stopCleanup)
+	close(c.cleanupQueue)
 }
