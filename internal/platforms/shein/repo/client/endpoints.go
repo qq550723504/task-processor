@@ -64,6 +64,7 @@ func GetAttributeTemplatesEndpoint() string     { return getAttributeTemplatesEn
 func GetPartInfoEndpoint() string               { return getPartInfoEndpoint }
 func GetBatchHandleCostDiscussEndpoint() string { return batchHandleCostDiscussEndpoint }
 func GetBargainPageNewEndpoint() string         { return bargainPageNewEndpoint }
+func GetBatchReQuoteEndpoint() string           { return batchReQuoteEndpoint }
 func GetSpuLimitCountEndpoint() string          { return getSpuLimitCountEndpoint }
 func GetUserEndpoint() string                   { return getUserEndpoint }
 func GetSupplierOperateInfoEndpoint() string    { return getSupplierOperateInfoEndpoint }

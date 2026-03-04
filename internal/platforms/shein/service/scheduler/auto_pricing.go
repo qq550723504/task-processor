@@ -38,10 +38,10 @@ type PricingStatistics struct {
 
 // PricingDecision 核价决策
 type PricingDecision struct {
-	Product  pricing.BargainPageData
-	Action   string // accept, reject, reappeal, skip
-	Reason   string
-	BatchReq *pricing.BatchHandleCostDiscussRequest
+	Product      pricing.BargainPageData
+	Action       string // accept, reject, reappeal, skip
+	Reason       string
+	BatchReQuote *pricing.BatchReQuoteRequest // 新接口(所有操作)
 }
 
 // autoPricingServiceImpl 自动核价服务实现
@@ -180,15 +180,15 @@ func (s *autoPricingServiceImpl) SubmitPricingResults(ctx context.Context, resul
 
 	for _, decision := range results {
 		// 跳过不需要提交的决策
-		if decision.Action == "skip" || decision.BatchReq == nil {
+		if decision.Action == "skip" || decision.BatchReQuote == nil {
 			stats.SkipCount++
 			continue
 		}
 
 		stats.TotalProcessed++
 
-		// 调用 SHEIN API 提交核价决策
-		_, err := s.pricingAPI.BatchHandleCostDiscuss(decision.BatchReq)
+		// 使用新接口提交所有核价决策
+		_, err := s.pricingAPI.BatchReQuote(decision.BatchReQuote)
 		if err != nil {
 			s.logger.Errorf("提交核价决策失败 [%s]: %v", decision.Product.BargainSn, err)
 			continue

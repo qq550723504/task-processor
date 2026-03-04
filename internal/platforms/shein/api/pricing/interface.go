@@ -4,6 +4,8 @@ type PricingAPI interface {
 	BatchHandleCostDiscuss(reqBody *BatchHandleCostDiscussRequest) (*BatchHandleCostDiscussResponse, error)
 
 	BargainPage(req *PageRequest, status int) (*BargainPageResponse, error)
+
+	BatchReQuote(reqBody *BatchReQuoteRequest) (*BatchReQuoteResponse, error)
 }
 
 type PageRequest struct {
@@ -126,4 +128,27 @@ type BargainPageCustomObj struct {
 	BargainStatus     int    `json:"bargain_status"`
 	BargainStatusDesc string `json:"bargain_status_desc"`
 	TotalQuantity     int    `json:"total_quantity"`
+}
+
+// BatchReQuoteRequest 批量重新核价请求
+type BatchReQuoteRequest struct {
+	ConfirmInfos []ReQuoteConfirmInfo `json:"confirm_infos"`
+}
+
+// ReQuoteConfirmInfo 重新核价确认信息
+type ReQuoteConfirmInfo struct {
+	DiscussAuditType int    `json:"discuss_audit_type"` // 讨论审核类型: 1-接受, 2-拒绝
+	DiscussSn        string `json:"discuss_sn"`         // 讨论单号
+	DocumentSn       string `json:"document_sn"`        // 文档单号
+}
+
+// BatchReQuoteResponse 批量重新核价响应
+type BatchReQuoteResponse struct {
+	Code string `json:"code"`
+	Msg  string `json:"msg"`
+	Info struct {
+		SuccessCount int `json:"success_count"` // 成功数量
+		FailCount    int `json:"fail_count"`    // 失败数量
+	} `json:"info"`
+	Data interface{} `json:"data"`
 }

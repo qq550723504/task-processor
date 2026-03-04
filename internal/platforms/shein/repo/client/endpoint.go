@@ -26,6 +26,7 @@ const (
 	getPartInfoEndpoint            = apiPrefix + "/part/get_part_info"
 	batchHandleCostDiscussEndpoint = dpasPrefix + "/discuss/batch_handle_cost_discuss"
 	bargainPageNewEndpoint         = dpasPrefix + "/discuss/bargain_page"
+	batchReQuoteEndpoint           = dpasPrefix + "/dpas/nonClothReceiptApi/batch_re_quote"
 	getSpuLimitCountEndpoint       = apiPrefix + "/basic/get_spu_limit_count"
 	getUserEndpoint                = ssoPrefix + "/sso-prefix/auth/getUser"
 	getSupplierOperateInfoEndpoint = "/sso/public/account/supplier/getSupplierOperateInfo"

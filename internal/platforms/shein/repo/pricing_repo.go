@@ -15,6 +15,9 @@ type PricingAPIInterface interface {
 
 	// BargainPage 获取议价页面数据
 	BargainPage(req *pricing.PageRequest, status int) (*pricing.BargainPageResponse, error)
+
+	// BatchReQuote 批量重新核价
+	BatchReQuote(reqBody *pricing.BatchReQuoteRequest) (*pricing.BatchReQuoteResponse, error)
 }
 
 // PricingAPI 定价相关API实现
@@ -78,6 +81,28 @@ func (p *PricingAPI) BargainPage(req *pricing.PageRequest, status int) (*pricing
 		return nil, &api.APIError{
 			StatusCode: 0, // 业务错误码
 			Message:    fmt.Sprintf("获取议价页面失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return &result, nil
+}
+
+// BatchReQuote 批量重新核价
+func (p *PricingAPI) BatchReQuote(reqBody *pricing.BatchReQuoteRequest) (*pricing.BatchReQuoteResponse, error) {
+	url := fmt.Sprintf("%s%s", p.GetBaseURL(), client.GetBatchReQuoteEndpoint())
+
+	var result pricing.BatchReQuoteResponse
+
+	if err := p.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return nil, err
+	}
+
+	// 统一错误处理
+	if result.Code != "0" {
+		return nil, &api.APIError{
+			StatusCode: 0, // 业务错误码
+			Message:    fmt.Sprintf("批量重新核价失败: %s", result.Msg),
 			URL:        url,
 		}
 	}
