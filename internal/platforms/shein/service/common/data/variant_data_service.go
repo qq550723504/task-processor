@@ -1,231 +1,235 @@
 ﻿package data
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"strings"
+	"time"
+
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/utils"
 	shein_model "task-processor/internal/platforms/shein/model"
-	"task-processor/internal/platforms/shein/service/common"
 
 	"github.com/sirupsen/logrus"
 )
 
-// VariantJsonDataHandler 获取所有变体原始Json数据处理器
+// VariantJsonDataHandler 获取所有变体原始Json数据处理器（并行处理版本）
 type VariantJsonDataHandler struct {
-	// 原始JSON数据客户端
-	rawJsonDataClient api.RawJsonDataAPI
-	// Amazon爬虫处理器
-	amazonProcessor *amazon.AmazonProcessor
-	// Amazon配置
-	amazonConfig *config.AmazonConfig
+	logger         *logrus.Entry
+	productFetcher product.ProductFetcherInterface
+	amazonConfig   *config.AmazonConfig
+	maxWorkers     int
+	timeout        time.Duration
 }
 
 // NewVariantJsonDataHandler 创建新的获取变体原始Json数据处理器
 func NewVariantJsonDataHandler(
 	rawJsonDataClient api.RawJsonDataAPI,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor interface{},
+	amazonProcessor any,
 ) *VariantJsonDataHandler {
-	handler := &VariantJsonDataHandler{
-		rawJsonDataClient: rawJsonDataClient,
-		amazonConfig:      amazonConfig,
+	logger := logrus.WithField("handler", "VariantJsonDataHandler")
+
+	// 直接使用浏览器池大小作为并发数，确保资源利用最优
+	maxWorkers := amazonConfig.PoolSize
+	if maxWorkers <= 0 {
+		maxWorkers = 3 // 默认3个并发
 	}
 
-	// 使用共享的Amazon处理器（如果提供）
-	if amazonProcessor != nil {
-		if ap, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
-			handler.amazonProcessor = ap
-			logrus.Info("[SHEIN] 变体数据使用共享的Amazon爬虫实例")
+	// 使用工厂模式创建获取器
+	factory := product.NewFetcherFactory()
+
+	// 创建配置对象（用于工厂方法）
+	cfg := &config.Config{
+		Amazon: *amazonConfig,
+	}
+
+	// 根据配置创建获取器
+	var fetcher product.ProductFetcherInterface
+	var err error
+
+	if ap, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
+		fetcher, err = factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap)
+		if err != nil {
+			logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+			// 降级到本地获取器
+			fetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, ap)
 		}
-	} else if amazonConfig != nil && amazonConfig.Enabled {
-		// 如果没有提供共享实例，记录警告但不创建新实例
-		// 因为我们没有完整的配置对象来创建新的处理器
-		logrus.Warn("变体数据处理器：没有提供Amazon处理器实例，Amazon功能将被禁用")
+		logger.Info("[SHEIN] 变体数据使用共享的Amazon爬虫实例")
+	} else {
+		logger.Warn("变体数据处理器：没有提供Amazon处理器实例，Amazon功能将被禁用")
+		// 创建一个基础的获取器（仅支持缓存）
+		fetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, nil)
 	}
 
-	return handler
+	return &VariantJsonDataHandler{
+		logger:         logger,
+		productFetcher: fetcher,
+		amazonConfig:   amazonConfig,
+		maxWorkers:     maxWorkers,
+		timeout:        2 * time.Minute, // 每个变体2分钟超时
+	}
 }
 
 // Name 返回处理器名称
 func (h *VariantJsonDataHandler) Name() string {
-	return "获取所有变体的Json数据"
+	return "并行变体JSON数据处理器"
 }
 
 // Handle 执行获取所有变体的Json数据处理
 func (h *VariantJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
+	// 创建性能跟踪器
+	tracker := utils.NewPerformanceTracker("并行变体数据处理", h.logger)
+	defer tracker.Finish()
 
-	// 从上下文中获取所有变体ASIN列表（包括主产品，因为主产品也可能是可售卖的SKU）
+	tracker.StartStep("初始化和验证")
+
+	// 检查任务上下文
+	if ctx.Task == nil {
+		return fmt.Errorf("任务信息为空")
+	}
+
+	// 从上下文中获取所有变体ASIN列表
 	mainProductAsin := ctx.Task.ProductID
-	variantAsins := getAsinListFromMap(ctx.AsinSkuMap, mainProductAsin)
+	variantAsins := h.getAsinListFromContext(ctx, mainProductAsin)
 
 	// 如果没有变体（单品情况），初始化空列表并继续
 	if len(variantAsins) == 0 {
-		logrus.Infof("✅ 产品 %s 没有变体（单品），跳过变体数据获取", mainProductAsin)
+		h.logger.Infof("✅ 产品 %s 没有变体（单品），跳过变体数据获取", mainProductAsin)
 		emptyVariants := make([]model.Product, 0)
 		ctx.Variants = &emptyVariants
+		tracker.EndStep()
 		return nil
 	}
 
-	logrus.Infof("找到 %d 个变体ASIN（包含所有可售卖的SKU）\n", len(variantAsins))
+	h.logger.Infof("找到 %d 个变体ASIN（包含所有可售卖的SKU）", len(variantAsins))
 
+	// 检查变体数量限制
 	if len(variantAsins) > 100 {
-		logrus.Infof("警告：变体ASIN数量过多（%d），可能会导致处理时间过长或请求失败\n", len(variantAsins))
+		h.logger.Warnf("变体ASIN数量过多（%d），可能会导致处理时间过长", len(variantAsins))
 		return shein_model.NewNonRetryableError("变体ASIN数量过多，停止处理", nil)
 	}
 
-	// 为每个变体ASIN获取JSON数据
-	variants := make([]model.Product, 0, len(variantAsins))
+	tracker.EndStep()
+	tracker.StartStep("并行获取变体数据")
 
-	// 第一步：先检查服务器是否有所有变体的历史数据
-	logrus.Infof("检查服务器是否有 %d 个变体的历史数据", len(variantAsins))
-	missingAsins := make([]string, 0)
-
-	for _, asin := range variantAsins {
-		task := &api.RawJsonDataReqDTO{
-			TenantID:   ctx.Task.TenantID,
-			Platform:   ctx.Task.Platform,
-			ProductID:  asin,
-			Region:     ctx.Task.Region,
-			StoreID:    ctx.Task.StoreID,
-			CategoryID: ctx.Task.CategoryID,
-			Creator:    ctx.Task.Creator,
-		}
-
-		rawJsonData, err := h.rawJsonDataClient.GetRawJsonData(task)
-		if err == nil && rawJsonData != nil && rawJsonData.RawJSONData != "" {
-			// 服务器有历史数据，直接使用
-			dataParser := product.NewDataParser(logrus.NewEntry(logrus.StandardLogger()))
-			variant, parseErr := dataParser.ParseAmazonProduct(rawJsonData.RawJSONData)
-			if parseErr == nil {
-				variants = append(variants, *variant)
-				logrus.Infof("变体 %s 使用服务器历史数据", asin)
-				continue
-			}
-			logrus.Warnf("变体 %s 服务器数据解析失败: %v", asin, parseErr)
-		}
-
-		// 服务器没有数据或解析失败，记录需要抓取的ASIN
-		missingAsins = append(missingAsins, asin)
+	// 并行获取变体数据
+	variants, err := h.fetchVariantsParallel(ctx, variantAsins)
+	if err != nil {
+		h.logger.Errorf("并行获取变体数据失败: %v", err)
+		return fmt.Errorf("并行获取变体数据失败: %w", err)
 	}
 
-	logrus.Infof("服务器有 %d/%d 个变体的历史数据，需要抓取 %d 个",
-		len(variants), len(variantAsins), len(missingAsins))
+	tracker.EndStep()
+	tracker.StartStep("处理变体数据")
 
-	// 第二步：对于服务器没有数据的变体，判断是否使用爬虫抓取
-	if len(missingAsins) > 0 {
-		if h.amazonConfig != nil && h.amazonConfig.Enabled && h.shouldUseAmazonCrawler(ctx) {
-			logrus.Infof("使用Amazon爬虫批量抓取 %d 个缺失的变体", len(missingAsins))
-			crawledVariants := h.fetchVariantsBatchFromAmazonCrawler(ctx, missingAsins)
-			variants = append(variants, crawledVariants...)
-		} else {
-			logrus.Warnf("服务器缺少 %d 个变体数据且无法抓取（非Amazon平台或未启用爬虫）", len(missingAsins))
-			// 非Amazon平台或未启用爬虫，只使用已有的数据
+	// 转换为 []model.Product 类型（去指针）
+	variantList := make([]model.Product, 0, len(variants))
+	for _, v := range variants {
+		if v != nil {
+			variantList = append(variantList, *v)
 		}
 	}
 
-	logrus.Infof("最终获取到 %d/%d 个变体数据", len(variants), len(variantAsins))
+	// 将变体数据存储到上下文中
+	ctx.Variants = &variantList
 
-	ctx.Variants = &variants
+	tracker.EndStep()
 
+	h.logger.Infof("✅ 最终获取到 %d/%d 个变体数据", len(variantList), len(variantAsins))
 	return nil
 }
 
-// shouldUseAmazonCrawler 判断是否应该使用Amazon爬虫
-func (h *VariantJsonDataHandler) shouldUseAmazonCrawler(ctx *shein_model.TaskContext) bool {
-	platform := ctx.Task.Platform
-	return platform == "amazon" || platform == "Amazon" || platform == "AMAZON"
-}
-
-// fetchVariantsBatchFromAmazonCrawler 批量抓取变体数据
-func (h *VariantJsonDataHandler) fetchVariantsBatchFromAmazonCrawler(ctx *shein_model.TaskContext, asins []string) []model.Product {
-	if h.amazonProcessor == nil {
-		logrus.Error("Amazon爬虫未初始化")
-		return []model.Product{}
+// fetchVariantsParallel 并行获取变体数据
+func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein_model.TaskContext, variantAsins []string) ([]*model.Product, error) {
+	if ctx.Task == nil {
+		return nil, fmt.Errorf("任务信息为空")
 	}
 
-	// 使用公共函数获取地区信息
-	domain := common.GetAmazonDomainByRegion(ctx.Task.Region)
-	zipcode := common.GetZipcodeForRegion(ctx.Task.Region, h.amazonConfig.Zipcodes)
+	// 创建并行处理器
+	processor := utils.NewParallelProcessor(h.maxWorkers, h.timeout, h.logger)
 
-	// 准备批量请求
-	requests := make([]model.ProductRequest, 0, len(asins))
-	for _, asin := range asins {
-		url := fmt.Sprintf("https://www.%s/dp/%s?th=1&psc=1", domain, asin)
-		requests = append(requests, model.ProductRequest{
-			URL:     url,
-			Zipcode: zipcode,
-		})
+	// 创建处理任务
+	tasks := make([]*utils.ProcessTask, len(variantAsins))
+	for i, asin := range variantAsins {
+		tasks[i] = &utils.ProcessTask{
+			Index: i,
+			ID:    asin,
+			Data: &product.FetchRequest{
+				TenantID:   ctx.Task.TenantID,
+				Platform:   ctx.Task.Platform,
+				Region:     ctx.Task.Region,
+				ProductID:  asin,
+				StoreID:    ctx.Task.StoreID,
+				CategoryID: ctx.Task.CategoryID,
+				Creator:    ctx.Task.Creator,
+			},
+		}
 	}
 
-	logrus.Infof("开始批量抓取 %d 个变体: Region=%s, Domain=%s, Zipcode=%s",
-		len(requests), ctx.Task.Region, domain, zipcode)
+	// 定义处理函数
+	processFunc := func(taskCtx context.Context, task *utils.ProcessTask) (interface{}, error) {
+		req, ok := task.Data.(*product.FetchRequest)
+		if !ok {
+			return nil, fmt.Errorf("任务数据类型错误")
+		}
 
-	// 批量处理
-	results := h.amazonProcessor.ProcessBatch(requests)
+		return h.productFetcher.FetchProduct(req)
+	}
 
-	// 收集结果并保存
-	variants := make([]model.Product, 0, len(results))
+	// 并行执行处理
+	results := processor.ProcessParallel(context.Background(), tasks, processFunc)
+
+	// 处理结果
+	variants := make([]*model.Product, 0, len(results))
 	successCount := 0
-	for i, result := range results {
-		if result.Error != nil {
-			logrus.Warnf("变体 %s 抓取失败: %v", asins[i], result.Error)
-			continue
-		}
 
-		if result.Product != nil {
-			variants = append(variants, *result.Product)
-			successCount++
-
-			// 异步保存抓取到的变体数据
-			go h.saveVariantData(asins[i], ctx.Task.Region, result.Product, ctx.Task.TenantID, ctx.Task.StoreID)
+	for _, result := range results {
+		if result.Success && result.Data != nil {
+			if variant, ok := result.Data.(*model.Product); ok {
+				variants = append(variants, variant)
+				successCount++
+			}
 		}
 	}
 
-	logrus.Infof("批量抓取完成: 成功 %d/%d", successCount, len(asins))
+	h.logger.Infof("🎉 并行获取完成: 成功 %d/%d 个变体数据", successCount, len(variantAsins))
 
-	return variants
+	return variants, nil
 }
 
-// saveVariantData 保存变体数据到数据库（异步）
-func (h *VariantJsonDataHandler) saveVariantData(asin, region string, product *model.Product, tenantID, storeID int64) {
-	rawJSON, err := json.Marshal(product)
-	if err != nil {
-		logrus.WithError(err).WithField("asin", asin).Error("序列化变体数据失败")
-		return
+// getAsinListFromContext 从上下文中获取ASIN列表
+func (h *VariantJsonDataHandler) getAsinListFromContext(ctx *shein_model.TaskContext, mainProductAsin string) []string {
+	h.logger.Infof("🔍 [变体ASIN提取] 主产品ASIN: %s", mainProductAsin)
+
+	// 1. 从AsinSkuMap中获取
+	if len(ctx.AsinSkuMap) > 0 {
+		h.logger.Infof("🔍 [变体ASIN提取] 从AsinSkuMap获取，总数: %d", len(ctx.AsinSkuMap))
+		return h.getAsinListFromMap(ctx.AsinSkuMap, mainProductAsin)
 	}
 
-	createReq := &api.RawJsonDataCreateReqDTO{
-		TenantID:    tenantID,
-		Platform:    "Amazon",
-		Region:      region,
-		ProductID:   asin,
-		RawJsonData: string(rawJSON),
-		StoreID:     storeID,
-		Creator:     "variant_handler",
+	// 2. 从Amazon产品的变体中获取
+	if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Variations) > 0 {
+		h.logger.Infof("🔍 [变体ASIN提取] 从Variations获取，总数: %d", len(ctx.AmazonProduct.Variations))
+		asins := make([]string, 0, len(ctx.AmazonProduct.Variations))
+		for _, variation := range ctx.AmazonProduct.Variations {
+			if variation.Asin != "" {
+				asins = append(asins, variation.Asin)
+			}
+		}
+		return asins
 	}
 
-	_, err = h.rawJsonDataClient.CreateRawJsonData(createReq)
-	if err != nil {
-		logrus.WithError(err).WithField("asin", asin).Error("保存变体数据到数据库失败")
-	} else {
-		logrus.WithField("asin", asin).Debug("已保存变体数据到数据库")
-	}
-}
-
-// Shutdown 关闭处理器，释放资源（现在由共享的Amazon处理器管理）
-func (h *VariantJsonDataHandler) Shutdown() {
-	// Amazon处理器由外部管理，不需要在这里关闭
-	logrus.Debug("[SHEIN] VariantJsonDataHandler 关闭（Amazon处理器由外部管理）")
+	h.logger.Info("🔍 [变体ASIN提取] 未找到任何变体ASIN数据源")
+	return []string{}
 }
 
 // getAsinListFromMap 从AsinSkuMap中提取所有ASIN（包括主产品ASIN）
-// 注意：主产品ASIN也可能是一个可售卖的SKU，不应该被排除
-func getAsinListFromMap(asinSkuMap map[string]string, mainProductAsin string) []string {
+func (h *VariantJsonDataHandler) getAsinListFromMap(asinSkuMap map[string]string, mainProductAsin string) []string {
 	if len(asinSkuMap) == 0 {
 		return []string{}
 	}
@@ -245,10 +249,15 @@ func getAsinListFromMap(asinSkuMap map[string]string, mainProductAsin string) []
 		}
 	}
 
-	logrus.Infof("🔍 [SHEIN变体] 从AsinSkuMap获取完成: 总变体数=%d (包含主产品=%d)",
+	h.logger.Infof("🔍 [SHEIN变体] 从AsinSkuMap获取完成: 总变体数=%d (包含主产品=%d)",
 		len(asinList), mainProductCount)
 
 	return asinList
+}
+
+// Shutdown 关闭处理器，释放资源
+func (h *VariantJsonDataHandler) Shutdown() {
+	h.logger.Debug("[SHEIN] VariantJsonDataHandler 关闭")
 }
 
 // getVariantByAsinFromVariants 通过ASIN从Variants中获取变体
