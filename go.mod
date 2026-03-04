@@ -10,12 +10,11 @@ require (
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/google/uuid v1.1.2
 	github.com/imroc/req/v3 v3.55.0
-	github.com/playwright-community/playwright-go v0.5200.1
+	github.com/playwright-community/playwright-go v0.5700.1
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/sashabaranov/go-openai v1.41.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/viper v1.16.0
-	github.com/streadway/amqp v1.1.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/image v0.0.0-20191009234506-e7c1f5e7dbb8
 	golang.org/x/text v0.27.0
@@ -35,7 +34,7 @@ require (
 	github.com/aws/smithy-go v1.24.0 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/deckarep/golang-set/v2 v2.7.0 // indirect
+	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
