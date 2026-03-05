@@ -1,0 +1,94 @@
+package product
+
+import (
+	"fmt"
+	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
+	"task-processor/internal/pipeline"
+
+	"github.com/sirupsen/logrus"
+)
+
+// CacheProductHandler 缓存产品数据处理器
+// 将已获取的产品数据缓存到服务器
+type CacheProductHandler struct {
+	logger  *logrus.Entry
+	fetcher product.ProductFetcherInterface
+}
+
+// NewCacheProductHandler 创建缓存产品数据处理器（支持分布式获取器）
+func NewCacheProductHandler(
+	rawJsonDataClient product.RawJsonDataClient,
+	cfg *config.Config,
+	amazonProcessor *amazon.AmazonProcessor,
+) *CacheProductHandler {
+	logger := logrus.WithField("handler", "CacheProductHandler")
+
+	// 使用工厂模式创建获取器
+	factory := product.NewFetcherFactory()
+
+	// 根据配置创建获取器
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor)
+	if err != nil {
+		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		// 降级到本地获取器
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+	}
+
+	return &CacheProductHandler{
+		logger:  logger,
+		fetcher: fetcher,
+	}
+}
+
+// Name 返回处理器名称
+func (h *CacheProductHandler) Name() string {
+	return "缓存产品数据到服务器"
+}
+
+// Handle 处理任务
+func (h *CacheProductHandler) Handle(ctx pipeline.TaskContext) error {
+	// 检查是否已获取产品数据
+	var amazonProduct *model.Product
+	if amazonCtx, ok := ctx.(pipeline.AmazonContext); ok {
+		amazonProduct = amazonCtx.GetAmazonProduct()
+	}
+
+	if amazonProduct == nil {
+		h.logger.Warn("产品数据未获取，跳过缓存步骤")
+		return nil
+	}
+
+	// 检查任务上下文中的必要数据
+	task := ctx.GetTask()
+	if task == nil {
+		return fmt.Errorf("任务信息为空")
+	}
+
+	if task.ProductID == "" {
+		return fmt.Errorf("产品ID为空")
+	}
+
+	// 构建缓存请求
+	req := &product.FetchRequest{
+		TenantID:   task.TenantID,
+		Platform:   task.Platform,
+		Region:     task.Region,
+		ProductID:  task.ProductID,
+		StoreID:    task.StoreID,
+		CategoryID: task.CategoryID,
+		Creator:    task.Creator,
+	}
+
+	// 缓存产品数据
+	if err := h.fetcher.CacheProduct(req, amazonProduct); err != nil {
+		h.logger.Warnf("⚠️ 缓存产品数据失败: %v", err)
+		// 缓存失败不影响主流程，只记录警告
+		return nil
+	}
+
+	h.logger.Infof("✅ 产品数据已缓存: ProductID=%s", task.ProductID)
+	return nil
+}
