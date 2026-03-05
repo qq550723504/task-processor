@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/monitoring"
@@ -47,29 +48,33 @@ type processorServiceImpl struct {
 
 // startTaskFetcher 启动任务获取器
 func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
-	s.logger.Info("启动任务获取器...")
+	log := logger.GetGlobalLogger("service.processor")
+	log.Info("启动任务获取器...")
 
 	// 收集所有平台的任务提交器
 	submitters := make(map[string]task.TaskSubmitter)
 
-	s.logger.Infof("检查处理器状态: TEMU=%v, SHEIN=%v", s.temuProcessor != nil, s.sheinProcessor != nil)
+	log.WithFields(map[string]interface{}{
+		"temu_available":  s.temuProcessor != nil,
+		"shein_available": s.sheinProcessor != nil,
+	}).Info("检查处理器状态")
 
 	if s.temuProcessor != nil {
 		submitters["temu"] = NewTaskSubmitterAdapter(s.temuProcessor, "temu", s.logger)
-		s.logger.Info("✅ TEMU任务提交器已注册")
+		log.Info("✅ TEMU任务提交器已注册")
 	}
 
 	if s.sheinProcessor != nil {
 		submitters["shein"] = NewTaskSubmitterAdapter(s.sheinProcessor, "shein", s.logger)
-		s.logger.Info("✅ SHEIN任务提交器已注册")
+		log.Info("✅ SHEIN任务提交器已注册")
 	}
 
 	if len(submitters) == 0 {
-		s.logger.Warn("没有可用的平台处理器，跳过任务获取器启动")
+		log.Warn("没有可用的平台处理器，跳过任务获取器启动")
 		return nil
 	}
 
-	s.logger.Infof("创建任务获取器，支持平台: %v", getMapKeys(submitters))
+	log.WithField("platforms", getMapKeys(submitters)).Info("创建任务获取器")
 
 	// 创建任务获取器
 	s.taskFetcher = task.NewUnifiedTaskFetcher(
@@ -82,7 +87,7 @@ func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
 	// 注册到生命周期管理器
 	s.lifecycleManager.Register(s.taskFetcher)
 
-	s.logger.Info("✅ 任务获取器创建完成")
+	log.Info("✅ 任务获取器创建完成")
 	return nil
 }
 
@@ -97,7 +102,8 @@ func getMapKeys(m map[string]task.TaskSubmitter) []string {
 
 // startSchedulerService 启动调度服务
 func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *config.Config) error {
-	s.logger.Info("启动调度服务...")
+	log := logger.GetGlobalLogger("service.processor")
+	log.Info("启动调度服务...")
 
 	// 创建调度服务（通过依赖注入，不再使用全局状态）
 	s.schedulerService = NewSchedulerServiceWithAmazon(s.logger, s.managementClient, cfg, s.amazonProcessor)
@@ -107,13 +113,14 @@ func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *c
 		return errors.Wrap(err, errors.ErrCodeSystem, "调度服务启动失败")
 	}
 
-	s.logger.Info("✅ 调度服务启动完成")
+	log.Info("✅ 调度服务启动完成")
 	return nil
 }
 
 // initializeMonitoring 初始化监控组件
 func (s *processorServiceImpl) initializeMonitoring(cfg *config.Config) error {
-	s.logger.Info("初始化监控组件...")
+	log := logger.GetGlobalLogger("service.processor")
+	log.Info("初始化监控组件...")
 
 	// 创建指标收集器
 	s.metricsCollector = monitoring.NewMetricsCollector(s.logger, 30*time.Second)
@@ -131,7 +138,7 @@ func (s *processorServiceImpl) initializeMonitoring(cfg *config.Config) error {
 	// 启动业务指标收集
 	go s.collectBusinessMetrics()
 
-	s.logger.Info("✅ 监控组件初始化完成")
+	log.Info("✅ 监控组件初始化完成")
 	return nil
 }
 
@@ -168,10 +175,12 @@ func (s *processorServiceImpl) collectBusinessMetrics() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
+	log := logger.GetGlobalLogger("service.processor")
+
 	for {
 		select {
 		case <-s.ctx.Done():
-			s.logger.Info("业务指标收集停止")
+			log.Info("业务指标收集停止")
 			return
 		case <-ticker.C:
 			s.updateBusinessMetrics()

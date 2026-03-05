@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"sync"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -41,7 +42,7 @@ func NewStoreInfoHandler(storeClient interface {
 	GetStore(id int64) (*api.StoreRespDTO, error)
 }) *StoreInfoHandler {
 	return &StoreInfoHandler{
-		logger:      logrus.WithField("handler", "StoreInfoHandler"),
+		logger:      logger.GetGlobalLogger("temu.handlers.store_info").WithField("handler", "StoreInfoHandler"),
 		storeClient: storeClient,
 	}
 }
@@ -66,7 +67,10 @@ func (h *StoreInfoHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 	// 尝试从缓存获取
 	storeInfo, fromCache := getStoreWithCache(task.StoreID)
 	if fromCache {
-		h.logger.Infof("✅ 从缓存获取店铺信息: StoreID=%d, StoreName=%s", storeInfo.ID, storeInfo.Name)
+		h.logger.WithFields(map[string]interface{}{
+			"store_id":   storeInfo.ID,
+			"store_name": storeInfo.Name,
+		}).Info("✅ 从缓存获取店铺信息")
 		// 直接赋值到强类型字段
 		temuCtx.StoreInfo = storeInfo
 		return nil
@@ -75,7 +79,7 @@ func (h *StoreInfoHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 	// 缓存未命中，从API获取
 	storeInfo, err := h.storeClient.GetStore(task.StoreID)
 	if err != nil {
-		h.logger.Errorf("获取店铺信息失败: %v", err)
+		h.logger.WithError(err).Error("获取店铺信息失败")
 		return fmt.Errorf("获取店铺信息失败: %w", err)
 	}
 
@@ -89,8 +93,11 @@ func (h *StoreInfoHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 	// 直接赋值到强类型字段
 	temuCtx.StoreInfo = storeInfo
 
-	h.logger.Infof("✅ 获取店铺信息成功: StoreID=%d, StoreName=%s, PriceType=%s",
-		storeInfo.ID, storeInfo.Name, storeInfo.PriceType)
+	h.logger.WithFields(map[string]interface{}{
+		"store_id":   storeInfo.ID,
+		"store_name": storeInfo.Name,
+		"price_type": storeInfo.PriceType,
+	}).Info("✅ 获取店铺信息成功")
 
 	return nil
 }

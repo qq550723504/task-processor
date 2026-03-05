@@ -4,6 +4,7 @@ package scheduler
 import (
 	"fmt"
 	"sync"
+	"task-processor/internal/core/logger"
 
 	"github.com/sirupsen/logrus"
 )
@@ -19,9 +20,9 @@ type Registry struct {
 func NewRegistry() *Registry {
 	return &Registry{
 		factories: make(map[string]TaskFactory),
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "TaskRegistry",
-		}),
+		logger: logger.GetGlobalLogger("task_registry").WithField(
+			logger.FieldComponent, "task_registry",
+		),
 	}
 }
 
@@ -44,8 +45,10 @@ func (r *Registry) Register(factory TaskFactory) error {
 	}
 
 	r.factories[platform] = factory
-	r.logger.Infof("成功注册平台 %s 的任务工厂，支持任务类型: %v",
-		platform, factory.SupportedTaskTypes())
+	r.logger.WithFields(logrus.Fields{
+		logger.FieldPlatform: platform,
+		"task_types":         factory.SupportedTaskTypes(),
+	}).Info("成功注册平台任务工厂")
 
 	return nil
 }

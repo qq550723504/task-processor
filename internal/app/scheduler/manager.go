@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"task-processor/internal/core/logger"
 
 	"github.com/sirupsen/logrus"
 )
@@ -37,9 +38,9 @@ func NewManager(ctx context.Context) *Manager {
 		dependencyManager: depManager,
 		ctx:               managerCtx,
 		cancel:            cancel,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "SchedulerManager",
-		}),
+		logger: logger.GetGlobalLogger("scheduler_manager").WithField(
+			logger.FieldComponent, "scheduler_manager",
+		),
 	}
 
 	// 创建监控服务
@@ -84,11 +85,18 @@ func (m *Manager) CreateAndStartTask(config TaskConfig) error {
 	// 启动任务
 	if config.AutoStart {
 		executor.Start()
-		m.logger.Infof("成功创建并启动任务: %s (平台: %s, 类型: %s)",
-			taskID, config.Platform, config.TaskType)
+		m.logger.WithFields(logrus.Fields{
+			"task_id":   taskID,
+			"platform":  config.Platform,
+			"task_type": config.TaskType,
+		}).Info("成功创建并启动任务")
 	} else {
-		m.logger.Infof("成功创建任务: %s (平台: %s, 类型: %s, 未启动)",
-			taskID, config.Platform, config.TaskType)
+		m.logger.WithFields(logrus.Fields{
+			"task_id":    taskID,
+			"platform":   config.Platform,
+			"task_type":  config.TaskType,
+			"auto_start": false,
+		}).Info("成功创建任务（未启动）")
 	}
 
 	return nil
@@ -105,7 +113,7 @@ func (m *Manager) StartTask(taskID string) error {
 	}
 
 	executor.Start()
-	m.logger.Infof("启动任务: %s", taskID)
+	m.logger.WithField("task_id", taskID).Info("启动任务")
 	return nil
 }
 
@@ -120,7 +128,7 @@ func (m *Manager) StopTask(taskID string) error {
 	}
 
 	executor.Stop()
-	m.logger.Infof("停止任务: %s", taskID)
+	m.logger.WithField("task_id", taskID).Info("停止任务")
 	return nil
 }
 
@@ -140,7 +148,7 @@ func (m *Manager) RemoveTask(taskID string) error {
 	// 从映射中删除
 	delete(m.executors, taskID)
 
-	m.logger.Infof("移除任务: %s", taskID)
+	m.logger.WithField("task_id", taskID).Info("移除任务")
 	return nil
 }
 
@@ -180,7 +188,7 @@ func (m *Manager) StopAll() {
 
 	for taskID, executor := range m.executors {
 		executor.Stop()
-		m.logger.Infof("已停止任务: %s", taskID)
+		m.logger.WithField("task_id", taskID).Info("已停止任务")
 	}
 
 	m.executors = make(map[string]*TaskExecutor)

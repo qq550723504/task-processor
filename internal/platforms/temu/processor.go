@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/task"
@@ -23,26 +24,28 @@ type TemuProcessor struct {
 
 // NewTemuProcessor 创建TEMU处理器
 // 返回 error 而不是 panic，让调用方决定如何处理错误
-func NewTemuProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor) (*TemuProcessor, error) {
+func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor) (*TemuProcessor, error) {
+	log := logger.GetGlobalLogger("temu_processor").WithField(logger.FieldPlatform, "temu")
+
 	// ManagementClient必须由调用方提供（共享实例）
 	if managementClient == nil {
-		logger.Error("[TEMU] ManagementClient不能为空，必须使用共享实例")
+		log.Error("ManagementClient不能为空，必须使用共享实例")
 		return nil, fmt.Errorf("managementClient不能为空")
 	}
 
 	// Amazon处理器必须使用共享实例（资源优化）
 	if sharedAmazonProcessor == nil {
-		logger.Error("[TEMU] SharedAmazonProcessor不能为空，必须使用共享实例")
+		log.Error("SharedAmazonProcessor不能为空，必须使用共享实例")
 		return nil, fmt.Errorf("sharedAmazonProcessor不能为空")
 	}
 
-	logger.Info("[TEMU] 使用共享的Amazon爬虫实例和管理客户端")
+	log.Info("使用共享的Amazon爬虫实例和管理客户端")
 
 	// 创建基础处理器
 	baseProcessor := worker.NewBaseProcessor(ctx, &worker.BaseProcessorConfig{
 		Config:           cfg,
 		ManagementClient: managementClient,
-		Logger:           logger,
+		Logger:           loggerInstance,
 		Platform:         "TEMU",
 	})
 
@@ -66,31 +69,34 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Lo
 
 // ProcessTask 处理TEMU任务
 func (p *TemuProcessor) ProcessTask(ctx context.Context, task *model.Task) error {
-	logger := p.GetLogger()
-	logger.Infof("[TEMU] 开始处理任务: ID=%d, ProductID=%s, StoreID=%d",
-		task.ID, task.ProductID, task.StoreID)
+	log := p.GetLogger()
+	log.WithFields(logrus.Fields{
+		logger.FieldTaskID:    task.ID,
+		logger.FieldProductID: task.ProductID,
+		logger.FieldStoreID:   task.StoreID,
+	}).Info("开始处理任务")
 
 	// TEMU特定的任务处理逻辑
 	if err := p.processTemuProduct(ctx, *task); err != nil {
-		logger.Errorf("[TEMU] 处理产品失败: %v", err)
+		log.WithError(err).WithField(logger.FieldTaskID, task.ID).Error("处理产品失败")
 		return err
 	}
 
-	logger.Infof("[TEMU] 任务处理完成: ID=%d", task.ID)
+	log.WithField(logger.FieldTaskID, task.ID).Info("任务处理完成")
 	return nil
 }
 
 // processTemuProduct 处理TEMU产品
 func (p *TemuProcessor) processTemuProduct(ctx context.Context, task model.Task) error {
-	logger := p.GetLogger()
-	logger.Infof("[TEMU] 处理产品: %s", task.ProductID)
+	log := p.GetLogger()
+	log.WithField(logger.FieldProductID, task.ProductID).Info("处理产品")
 
 	// 使用任务处理器处理任务
 	if err := p.taskHandler.ProcessTask(ctx, task, p.pipelineExecutor); err != nil {
 		return fmt.Errorf("任务处理失败: %w", err)
 	}
 
-	logger.Infof("[TEMU] 产品处理完成: %s", task.ProductID)
+	log.WithField(logger.FieldProductID, task.ProductID).Info("产品处理完成")
 	return nil
 }
 
@@ -108,7 +114,7 @@ func (p *TemuProcessor) Start(ctx context.Context) error {
 		return err
 	}
 
-	p.GetLogger().Info("[TEMU] 任务处理器启动完成")
+	p.GetLogger().Info("任务处理器启动完成")
 	return nil
 }
 
@@ -124,7 +130,8 @@ func (p *TemuProcessor) CreateTaskSubmitter(workerPool worker.WorkerPool) task.T
 
 // Close 关闭处理器
 func (p *TemuProcessor) Close(ctx context.Context) {
-	p.GetLogger().Info("[TEMU] 关闭TEMU任务处理器")
+	log := p.GetLogger()
+	log.Info("关闭TEMU任务处理器")
 
 	// 关闭基础组件
 	p.CloseBase(ctx)
@@ -134,5 +141,5 @@ func (p *TemuProcessor) Close(ctx context.Context) {
 		p.amazonProcessor.Shutdown()
 	}
 
-	p.GetLogger().Info("[TEMU] 任务处理器已关闭")
+	log.Info("任务处理器已关闭")
 }

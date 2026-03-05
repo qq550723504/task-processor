@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
@@ -18,7 +19,7 @@ type CommitDetailHandler struct {
 // NewCommitDetailHandler 创建新的提交详情查询处理器
 func NewCommitDetailHandler() *CommitDetailHandler {
 	return &CommitDetailHandler{
-		logger: logrus.WithField("handler", "CommitDetailHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.commit_detail").WithField("handler", "CommitDetailHandler"),
 	}
 }
 

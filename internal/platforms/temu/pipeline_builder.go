@@ -2,6 +2,7 @@
 package temu
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
 	commonPipeline "task-processor/internal/pipeline"
@@ -29,7 +30,8 @@ func (pb *PipelineBuilder) BuildPipeline() *TemuPipelineExecutor {
 	// 获取管理客户端
 	managementClient := pb.processor.GetManagementClient()
 	if managementClient == nil {
-		pb.processor.GetLogger().Error("管理客户端未初始化，无法构建管道")
+		log := logger.GetGlobalLogger("temu.pipeline_builder")
+		log.Error("管理客户端未初始化，无法构建管道")
 		return NewTemuPipelineExecutor(p)
 	}
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -25,7 +26,7 @@ var childrenRelatedKeywords = []string{
 // NewCategoryRecommendHandler 创建新的分类推荐处理器
 func NewCategoryRecommendHandler() *CategoryRecommendHandler {
 	return &CategoryRecommendHandler{
-		logger: logrus.WithField("handler", "CategoryRecommendHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.category_recommend").WithField("handler", "CategoryRecommendHandler"),
 	}
 }
 
@@ -53,7 +54,7 @@ func (h *CategoryRecommendHandler) HandleTemu(temuCtx *temucontext.TemuTaskConte
 
 	// 检查是否已经有分类信息
 	if temuProduct.GoodsBasic.CatID != 0 {
-		h.logger.Infof("产品已有分类信息: CatID=%d，跳过分类推荐", temuProduct.GoodsBasic.CatID)
+		h.logger.WithField("cat_id", temuProduct.GoodsBasic.CatID).Info("产品已有分类信息，跳过分类推荐")
 		return nil
 	}
 	// 获取商品名称
@@ -86,7 +87,7 @@ func (h *CategoryRecommendHandler) HandleTemu(temuCtx *temucontext.TemuTaskConte
 
 // recommendCategory 执行分类推荐逻辑
 func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTaskContext, goodsName string) error {
-	h.logger.Infof("为商品推荐分类: %s", goodsName)
+	h.logger.WithField("goods_name", goodsName).Info("为商品推荐分类")
 
 	// 检查API客户端
 	if temuCtx.APIClient == nil {
@@ -104,7 +105,7 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 	// 发送API请求
 	response, err := categoryAPI.RecommendCategory(request)
 	if err != nil {
-		h.logger.Errorf("分类推荐API调用失败: %v", err)
+		h.logger.WithError(err).Error("分类推荐API调用失败")
 		return fmt.Errorf("分类推荐API调用失败: %w", err)
 	}
 
@@ -200,7 +201,10 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 	// 设置最深层级的分类ID作为主要CatID
 	temuProduct.GoodsBasic.CatID = lastLevelCatID
 
-	h.logger.Infof("成功设置分类信息: CatID=%d, 层级=%d", lastLevelCatID, len(temuProduct.GoodsBasic.CatIDs))
+	h.logger.WithFields(map[string]interface{}{
+		"cat_id": lastLevelCatID,
+		"level":  len(temuProduct.GoodsBasic.CatIDs),
+	}).Info("成功设置分类信息")
 	return nil
 }
 
@@ -248,7 +252,10 @@ func (h *CategoryRecommendHandler) isChildrenRelatedCategory(category models.Cat
 		categoryNameLower := strings.ToLower(categoryName)
 		for _, keyword := range childrenRelatedKeywords {
 			if strings.Contains(categoryNameLower, strings.ToLower(keyword)) {
-				h.logger.Warnf("检测到儿童相关分类: %s (包含关键词: %s)", categoryName, keyword)
+				h.logger.WithFields(map[string]interface{}{
+					"category_name": categoryName,
+					"keyword":       keyword,
+				}).Warn("检测到儿童相关分类")
 				return true
 			}
 		}
@@ -266,14 +273,20 @@ func (h *CategoryRecommendHandler) selectNonChildrenCategory(categories []models
 		category := categories[i]
 
 		if !h.isChildrenRelatedCategory(category) {
-			h.logger.Infof("选择第%d个推荐分类 (非儿童相关): %s", i+1, category.Cate1Name)
+			h.logger.WithFields(map[string]interface{}{
+				"index":     i + 1,
+				"cate_name": category.Cate1Name,
+			}).Info("选择推荐分类（非儿童相关）")
 			return category, nil
 		}
 
-		h.logger.Warnf("第%d个推荐分类包含儿童相关内容，跳过: %s", i+1, category.Cate1Name)
+		h.logger.WithFields(map[string]interface{}{
+			"index":     i + 1,
+			"cate_name": category.Cate1Name,
+		}).Warn("推荐分类包含儿童相关内容，跳过")
 	}
 
 	// 如果前三个都是儿童相关，终止任务
-	h.logger.Errorf("前%d个推荐分类都包含儿童相关内容，终止任务", maxAttempts)
+	h.logger.WithField("max_attempts", maxAttempts).Error("推荐分类都包含儿童相关内容，终止任务")
 	return models.Category{}, fmt.Errorf("NONRETRYABLE: 前%d个推荐分类都包含儿童相关内容，无法继续处理", maxAttempts)
 }

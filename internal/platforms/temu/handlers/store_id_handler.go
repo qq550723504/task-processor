@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"os"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -25,7 +26,7 @@ func NewStoreIDHandler(storeClient interface {
 	UpdateStoreStatus(req *api.StoreStatusUpdateReqDTO) (bool, error)
 }) *StoreIDHandler {
 	return &StoreIDHandler{
-		logger:      logrus.WithField("handler", "StoreIDHandler"),
+		logger:      logger.GetGlobalLogger("temu.handlers.store_id").WithField("handler", "StoreIDHandler"),
 		storeClient: storeClient,
 	}
 }
@@ -81,17 +82,23 @@ func (h *StoreIDHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error 
 		return fmt.Errorf("Cookie中未找到MALL_ID，请检查登录状态")
 	}
 
-	h.logger.Infof("从Cookie中获取到MALL_ID: %s", mallID)
+	h.logger.WithField("mall_id", mallID).Info("从Cookie中获取到MALL_ID")
 
 	// 验证MallID与店铺信息的一致性
 	if storeInfo.StoreID != "" && storeInfo.StoreID != mallID {
-		h.logger.Warnf("[实例%s] 店铺ID不一致: StoreInfo.StoreID=%s, Cookie.MALL_ID=%s",
-			GetInstanceID(), storeInfo.StoreID, mallID)
+		h.logger.WithFields(map[string]interface{}{
+			"instance_id":    GetInstanceID(),
+			"store_info_id":  storeInfo.StoreID,
+			"cookie_mall_id": mallID,
+		}).Warn("店铺ID不一致")
 
 		// 这种情况应该在APIClient初始化时已经处理了，这里只是记录警告
-		h.logger.Warnf("[实例%s] MallID不一致问题应该在APIClient初始化时已处理", GetInstanceID())
+		h.logger.WithField("instance_id", GetInstanceID()).Warn("MallID不一致问题应该在APIClient初始化时已处理")
 	} else {
-		h.logger.Infof("[实例%s] 店铺ID验证通过: StoreID=%s", GetInstanceID(), mallID)
+		h.logger.WithFields(map[string]interface{}{
+			"instance_id": GetInstanceID(),
+			"store_id":    mallID,
+		}).Info("店铺ID验证通过")
 	}
 
 	h.logger.Info("✅ 店铺ID检查和保存处理完成")

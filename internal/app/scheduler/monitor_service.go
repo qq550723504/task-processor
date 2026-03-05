@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -21,9 +22,9 @@ type MonitorService struct {
 func NewMonitorService(manager *Manager) *MonitorService {
 	return &MonitorService{
 		manager: manager,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "MonitorService",
-		}),
+		logger: logger.GetGlobalLogger("monitor_service").WithField(
+			logger.FieldComponent, "monitor_service",
+		),
 	}
 }
 
@@ -246,7 +247,7 @@ func (m *MonitorService) ResetTaskStats(taskID string) error {
 	}
 
 	executor.ResetStats()
-	m.logger.Infof("已重置任务 %s 的统计信息", taskID)
+	m.logger.WithField("task_id", taskID).Info("已重置任务统计信息")
 	return nil
 }
 
@@ -257,7 +258,7 @@ func (m *MonitorService) ResetAllTasksStats() {
 
 	for taskID, executor := range m.manager.executors {
 		executor.ResetStats()
-		m.logger.Infof("已重置任务 %s 的统计信息", taskID)
+		m.logger.WithField("task_id", taskID).Info("已重置任务统计信息")
 	}
 
 	m.logger.Info("已重置所有任务的统计信息")

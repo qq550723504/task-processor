@@ -3,7 +3,9 @@ package config
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,6 +25,36 @@ func LoadFromBytes(data []byte) (*Config, error) {
 	applyDefaults(&cfg)
 
 	return &cfg, nil
+}
+
+// LoadConfigWithFallback 加载配置，失败时使用默认配置（统一入口）
+// 用于替代各个cmd中重复的配置加载逻辑
+func LoadConfigWithFallback(configPath string, logger *logrus.Logger) *Config {
+	// 检查配置文件是否存在
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		if logger != nil {
+			logger.Warnf("⚠️  配置文件不存在: %s，使用默认配置", configPath)
+		}
+		return NewDefaultConfig()
+	}
+
+	// 加载配置
+	if logger != nil {
+		logger.Infof("📄 加载应用配置: %s", configPath)
+	}
+
+	cfg := LoadConfigFromFile(configPath)
+	if cfg == nil {
+		if logger != nil {
+			logger.Warn("⚠️  配置加载失败，使用默认配置")
+		}
+		return NewDefaultConfig()
+	}
+
+	if logger != nil {
+		logger.Info("✅ 配置加载成功")
+	}
+	return cfg
 }
 
 // NewDefaultConfig 创建默认配置

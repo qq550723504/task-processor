@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -18,7 +19,7 @@ type InitDataHandler struct {
 // NewInitDataHandler 创建新的初始化数据处理器
 func NewInitDataHandler() *InitDataHandler {
 	return &InitDataHandler{
-		logger: logrus.WithField("handler", "InitDataHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.init").WithField("handler", "InitDataHandler"),
 	}
 }
 
@@ -95,8 +96,10 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 	// 也可以同时保持兼容性，设置到通用数据存储（可选）
 	temuCtx.SetData("temu_product", temuProduct)
 
-	h.logger.Infof("初始化TEMU产品结构完成: ProductID=%s, Platform=%s",
-		task.ProductID, task.Platform)
+	h.logger.WithFields(map[string]interface{}{
+		logger.FieldProductID: task.ProductID,
+		logger.FieldPlatform:  task.Platform,
+	}).Info("初始化TEMU产品结构完成")
 	return nil
 }
 

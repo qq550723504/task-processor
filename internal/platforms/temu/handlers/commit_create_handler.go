@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"task-processor/internal/core/logger"
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
@@ -22,7 +23,7 @@ type CommitCreateHandler struct {
 // NewCommitCreateHandler 创建新的提交创建处理器
 func NewCommitCreateHandler() *CommitCreateHandler {
 	return &CommitCreateHandler{
-		logger: logrus.WithField("handler", "CommitCreateHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.commit_create").WithField("handler", "CommitCreateHandler"),
 	}
 }
 
@@ -75,14 +76,14 @@ func (h *CommitCreateHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 
 	// 验证必要的产品信息
 	if err := h.validateProductInfo(task, temuProduct); err != nil {
-		h.logger.Errorf("产品信息验证失败: %v", err)
+		h.logger.WithError(err).Error("产品信息验证失败")
 		return fmt.Errorf("产品信息验证失败: %w", err)
 	}
 
 	// 创建商品提交
 	err := h.createCommit(temuCtx, temuProduct)
 	if err != nil {
-		h.logger.Errorf("创建商品提交失败: %v", err)
+		h.logger.WithError(err).Error("创建商品提交失败")
 		return fmt.Errorf("创建商品提交失败: %w", err)
 	}
 
@@ -122,7 +123,7 @@ func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext,
 	// 发送API请求
 	response, err := submitAPI.CreateCommit(request)
 	if err != nil {
-		h.logger.Errorf("创建商品提交API调用失败: %v", err)
+		h.logger.WithError(err).Error("创建商品提交API调用失败")
 
 		// 检查是否为不可重试的错误（从错误消息中解析）
 		if strings.Contains(err.Error(), "errorCode=") {
@@ -131,7 +132,7 @@ func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext,
 				strings.Contains(err.Error(), "errorCode=10000046") ||
 				strings.Contains(err.Error(), "errorCode=10000104") ||
 				strings.Contains(err.Error(), "errorCode=10000105") {
-				h.logger.Errorf("检测到不可重试错误: %v", err)
+				h.logger.WithError(err).Error("检测到不可重试错误")
 				return fmt.Errorf("TERMINATED: %w", err)
 			}
 		}
@@ -184,7 +185,10 @@ func (h *CommitCreateHandler) isNonRetryableError(errorCode int) bool {
 
 	// 检查错误码
 	if reason, exists := nonRetryableErrorCodes[errorCode]; exists {
-		h.logger.Infof("识别到不可重试错误: %s (error_code=%d)", reason, errorCode)
+		h.logger.WithFields(map[string]interface{}{
+			"error_code": errorCode,
+			"reason":     reason,
+		}).Info("识别到不可重试错误")
 		return true
 	}
 

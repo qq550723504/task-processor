@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
@@ -36,12 +37,13 @@ func (h *TextCheckHandler) Handle(ctx pipeline.TaskContext) error {
 // HandleTemu 处理任务（强类型上下文）
 func (h *TextCheckHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	// 实现文本检查逻辑
-	logrus.Println("执行文本检查")
+	log := logger.GetGlobalLogger("temu.handlers.text_check")
+	log.Info("执行文本检查")
 
 	// 获取Amazon产品数据
 	amazonProduct := temuCtx.GetAmazonProduct()
 	if amazonProduct == nil {
-		logrus.Warn("Amazon产品数据为空，跳过文本检查")
+		log.Warn("Amazon产品数据为空，跳过文本检查")
 		return nil
 	}
 
@@ -51,26 +53,28 @@ func (h *TextCheckHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 	// 发送文本检查请求
 	err := h.checkText(temuCtx, content)
 	if err != nil {
-		logrus.Errorf("文本检查失败: %v", err)
+		log.WithError(err).Error("文本检查失败")
 		return err
 	}
 
 	// 文本检查通过后，将标题赋值给TEMU产品
 	err = h.assignTitleToTemuProduct(temuCtx, content)
 	if err != nil {
-		logrus.Errorf("赋值标题到TEMU产品失败: %v", err)
+		log.WithError(err).Error("赋值标题到TEMU产品失败")
 		return err
 	}
 
-	logrus.Println("文本检查完成")
+	log.Info("文本检查完成")
 	return nil
 }
 
 // checkText 发送文本检查请求到TEMU API
 func (h *TextCheckHandler) checkText(temuCtx *temucontext.TemuTaskContext, content string) error {
+	log := logger.GetGlobalLogger("temu.handlers.text_check")
+
 	// 检查API客户端
 	if temuCtx.APIClient == nil {
-		logrus.Error("API客户端未初始化")
+		log.Error("API客户端未初始化")
 		return fmt.Errorf("API客户端未初始化")
 	}
 
@@ -86,28 +90,30 @@ func (h *TextCheckHandler) checkText(temuCtx *temucontext.TemuTaskContext, conte
 	// 调用API检查文本
 	response, err := queryAPI.CheckText(request)
 	if err != nil {
-		logrus.WithError(err).WithField("content", content).Error("文本检查API调用失败")
+		log.WithFields(map[string]interface{}{
+			"content": content,
+		}).WithError(err).Error("文本检查API调用失败")
 		return fmt.Errorf("文本检查失败: %v", err)
 	}
 
 	if response == nil {
-		logrus.Error("文本检查响应为空")
+		log.Error("文本检查响应为空")
 		return fmt.Errorf("文本检查响应为空")
 	}
 
 	if !response.Result.Success {
-		logrus.WithFields(logrus.Fields{
-			"content": content,
-		}).Warn("文本检查未通过")
+		log.WithField("content", content).Warn("文本检查未通过")
 		return fmt.Errorf("文本检查未通过")
 	}
 
-	logrus.WithField("content", content).Info("文本检查通过")
+	log.WithField("content", content).Info("文本检查通过")
 	return nil
 }
 
 // assignTitleToTemuProduct 将检查通过的标题赋值给TEMU产品
 func (h *TextCheckHandler) assignTitleToTemuProduct(temuCtx *temucontext.TemuTaskContext, checkedTitle string) error {
+	log := logger.GetGlobalLogger("temu.handlers.text_check")
+
 	// 检查TEMU产品信息
 	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
@@ -116,6 +122,6 @@ func (h *TextCheckHandler) assignTitleToTemuProduct(temuCtx *temucontext.TemuTas
 	// 设置商品名称到GoodsBasic中
 	temuCtx.TemuProduct.GoodsBasic.GoodsName = checkedTitle
 
-	logrus.Infof("已将检查通过的标题设置到TEMU产品: %s", checkedTitle)
+	log.WithField("title", checkedTitle).Info("已将检查通过的标题设置到TEMU产品")
 	return nil
 }

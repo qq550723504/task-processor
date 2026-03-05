@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/temu/api"
@@ -19,7 +20,7 @@ type OutGoodsSnCheckHandler struct {
 // NewOutGoodsSnCheckHandler 创建新的SKU编码检查处理器
 func NewOutGoodsSnCheckHandler() *OutGoodsSnCheckHandler {
 	return &OutGoodsSnCheckHandler{
-		logger: logrus.WithField("handler", "OutGoodsSnCheckHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.out_goods_sn_check").WithField("handler", "OutGoodsSnCheckHandler"),
 	}
 }
 
@@ -57,7 +58,7 @@ func (h *OutGoodsSnCheckHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		return nil
 	}
 
-	h.logger.Infof("收集到 %d 个SKU编码，开始检查", len(outSkuSnList))
+	h.logger.WithField("sku_count", len(outSkuSnList)).Info("收集到SKU编码，开始检查")
 
 	// 执行SKU编码检查
 	err := h.checkOutSkuSn(temuCtx, outSkuSnList)
@@ -135,18 +136,18 @@ func (h *OutGoodsSnCheckHandler) handleCheckResult(temuCtx *temucontext.TemuTask
 	}
 
 	// 记录失败的SKU编码
-	h.logger.Errorf("发现 %d 个重复的SKU编码，任务失败", len(result.FailList))
+	h.logger.WithField("fail_count", len(result.FailList)).Error("发现重复的SKU编码，任务失败")
 
 	var duplicateErrors []string
 	for _, failItem := range result.FailList {
 		errorMsg := fmt.Sprintf("SKU编码 '%s' 已被商品 %s 使用 (SKU ID: %s): %s",
 			failItem.OutSkuSn, failItem.UsedGoodsID, failItem.UsedSkuID, failItem.FailReason)
 
-		h.logger.WithFields(logrus.Fields{
-			"outSkuSn":    failItem.OutSkuSn,
-			"usedGoodsID": failItem.UsedGoodsID,
-			"usedSkuID":   failItem.UsedSkuID,
-			"failReason":  failItem.FailReason,
+		h.logger.WithFields(map[string]interface{}{
+			"out_sku_sn":    failItem.OutSkuSn,
+			"used_goods_id": failItem.UsedGoodsID,
+			"used_sku_id":   failItem.UsedSkuID,
+			"fail_reason":   failItem.FailReason,
 		}).Error("SKU编码重复")
 
 		duplicateErrors = append(duplicateErrors, errorMsg)
@@ -189,14 +190,17 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext
 			outSkuSnList = append(outSkuSnList, models.OutSkuSnItem{
 				OutSkuSn: outSkuSN,
 			})
-			h.logger.Debugf("主产品 ASIN=%s -> OutSkuSN=%s", amazonProduct.Asin, outSkuSN)
+			h.logger.WithFields(map[string]interface{}{
+				"asin":       amazonProduct.Asin,
+				"out_sku_sn": outSkuSN,
+			}).Debug("主产品SKU生成")
 		}
 	}
 
 	// 2. 为所有变体生成OutSkuSN
 	variants := temuCtx.GetVariants()
 	if len(variants) > 0 {
-		h.logger.Debugf("为 %d 个变体生成OutSkuSN", len(variants))
+		h.logger.WithField("variant_count", len(variants)).Debug("为变体生成OutSkuSN")
 		for _, variant := range variants {
 			if variant.Asin != "" {
 				outSkuSN := utils.GenerateSKU(variant.Asin, strategy, prefix, suffix)
@@ -205,14 +209,20 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext
 					outSkuSnList = append(outSkuSnList, models.OutSkuSnItem{
 						OutSkuSn: outSkuSN,
 					})
-					h.logger.Debugf("变体 ASIN=%s -> OutSkuSN=%s", variant.Asin, outSkuSN)
+					h.logger.WithFields(map[string]interface{}{
+						"asin":       variant.Asin,
+						"out_sku_sn": outSkuSN,
+					}).Debug("变体SKU生成")
 				} else {
-					h.logger.Debugf("跳过重复的SKU: ASIN=%s -> OutSkuSN=%s", variant.Asin, outSkuSN)
+					h.logger.WithFields(map[string]interface{}{
+						"asin":       variant.Asin,
+						"out_sku_sn": outSkuSN,
+					}).Debug("跳过重复的SKU")
 				}
 			}
 		}
 	}
 
-	h.logger.Infof("从Amazon数据生成了 %d 个唯一的OutSkuSN", len(outSkuSnList))
+	h.logger.WithField("unique_count", len(outSkuSnList)).Info("从Amazon数据生成唯一的OutSkuSN")
 	return outSkuSnList
 }

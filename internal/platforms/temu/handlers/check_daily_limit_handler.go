@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -22,7 +23,7 @@ type CheckDailyLimitHandler struct {
 func NewCheckDailyLimitHandler(memoryManager *memory.MemoryManager) *CheckDailyLimitHandler {
 	return &CheckDailyLimitHandler{
 		memoryManager: memoryManager,
-		logger:        logrus.WithField("handler", "CheckDailyLimitHandler"),
+		logger:        logger.GetGlobalLogger("temu.handlers.daily_limit").WithField("handler", "CheckDailyLimitHandler"),
 	}
 }
 
@@ -65,7 +66,7 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 
 	// 检查店铺是否有每日上架限额
 	if storeInfo.DailyLimit == nil || *storeInfo.DailyLimit <= 0 {
-		h.logger.Debugf("店铺 %d 没有设置每日上架限额，跳过限额检查", task.StoreID)
+		h.logger.WithField(logger.FieldStoreID, task.StoreID).Debug("店铺没有设置每日上架限额，跳过限额检查")
 		return nil
 	}
 
@@ -75,7 +76,11 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		dailyLimitType = "SPU"
 	}
 
-	h.logger.Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", task.StoreID, dailyLimit, dailyLimitType)
+	h.logger.WithFields(map[string]interface{}{
+		logger.FieldStoreID: task.StoreID,
+		"daily_limit":       dailyLimit,
+		"limit_type":        dailyLimitType,
+	}).Debug("店铺每日上架限额")
 
 	// 获取当前日期（格式：YYYY-MM-DD）
 	currentDate := time.Now().Format("2006-01-02")
@@ -90,27 +95,40 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 	// 计算本次发布会增加的数量
 	increment := h.calculateIncrement(temuCtx, dailyLimitType)
 	if increment <= 0 {
-		h.logger.Warnf("计算增量失败，跳过限制检查")
+		h.logger.Warn("计算增量失败，跳过限制检查")
 		return nil
 	}
 
 	// 预测发布后的总数量
 	predictedCount := currentCount + increment
 
-	h.logger.Infof("店铺 %d 在 %s 的上架情况: 当前=%d, 本次增加=%d, 预计=%d, 限额=%d (类型: %s)",
-		task.StoreID, currentDate, currentCount, increment, predictedCount, dailyLimit, dailyLimitType)
+	h.logger.WithFields(map[string]interface{}{
+		logger.FieldStoreID: task.StoreID,
+		"date":              currentDate,
+		"current_count":     currentCount,
+		"increment":         increment,
+		"predicted_count":   predictedCount,
+		"daily_limit":       dailyLimit,
+		"limit_type":        dailyLimitType,
+	}).Info("店铺上架情况")
 
 	// 检查是否会超过限额
 	if predictedCount > int64(dailyLimit) {
-		h.logger.Warnf("店铺 %d 在 %s 的上架数量即将超过限额: 当前=%d, 本次增加=%d, 预计=%d, 限额=%d",
-			task.StoreID, currentDate, currentCount, increment, predictedCount, dailyLimit)
+		h.logger.WithFields(map[string]interface{}{
+			logger.FieldStoreID: task.StoreID,
+			"date":              currentDate,
+			"current_count":     currentCount,
+			"increment":         increment,
+			"predicted_count":   predictedCount,
+			"daily_limit":       dailyLimit,
+		}).Warn("店铺上架数量即将超过限额")
 
 		// 暂停店铺上架到当日结束
 		if err := h.pauseShopUntilEndOfDay(
 			temuCtx,
 			fmt.Sprintf("达到每日上架限额(%d/%d)", currentCount, dailyLimit),
 		); err != nil {
-			h.logger.Errorf("暂停店铺上架失败: %v", err)
+			h.logger.WithError(err).Error("暂停店铺上架失败")
 		}
 
 		// 返回不可重试错误，阻止产品发布
@@ -120,7 +138,10 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		)
 	}
 
-	h.logger.Infof("店铺 %d 在 %s 的上架数量未超过限额，允许继续发布", task.StoreID, currentDate)
+	h.logger.WithFields(map[string]interface{}{
+		logger.FieldStoreID: task.StoreID,
+		"date":              currentDate,
+	}).Info("店铺上架数量未超过限额，允许继续发布")
 	return nil
 }
 

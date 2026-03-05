@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"task-processor/internal/app/worker"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/domain/model"
 	"time"
 
@@ -14,12 +15,14 @@ import (
 // TemuTaskSubmitter TEMU任务提交器（适配器）
 type TemuTaskSubmitter struct {
 	workerPool worker.WorkerPool
+	logger     *logrus.Entry
 }
 
 // NewTemuTaskSubmitter 创建TEMU任务提交器
 func NewTemuTaskSubmitter(workerPool worker.WorkerPool) *TemuTaskSubmitter {
 	return &TemuTaskSubmitter{
 		workerPool: workerPool,
+		logger:     logger.GetGlobalLogger("temu_task_submitter"),
 	}
 }
 
@@ -30,11 +33,18 @@ func (s *TemuTaskSubmitter) SubmitTask(ctx context.Context, taskData string) err
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
+	fields := logrus.Fields{
+		logger.FieldTaskID:    task.ID,
+		logger.FieldProductID: task.ProductID,
+		logger.FieldPlatform:  "temu",
+		"priority":            task.Priority,
+	}
+
 	// 记录等待时间
 	if task.CreateTime > 0 {
 		waitTime := time.Since(time.Unix(task.CreateTime/1000, 0))
-		logrus.Infof("[TEMU] Task %d: Pending -> Processing (Priority: %d, WaitTime: %v)",
-			task.ID, task.Priority, waitTime.Truncate(time.Millisecond))
+		fields["wait_time_ms"] = waitTime.Milliseconds()
+		s.logger.WithFields(fields).Info("任务状态变更: Pending -> Processing")
 	}
 
 	// 提交到工作池
@@ -43,10 +53,11 @@ func (s *TemuTaskSubmitter) SubmitTask(ctx context.Context, taskData string) err
 		ShopID:   fmt.Sprintf("%d", task.StoreID),
 		TaskData: taskData,
 	}); err != nil {
+		s.logger.WithError(err).WithFields(fields).Error("提交任务到工作池失败")
 		return fmt.Errorf("提交任务到工作池失败: %w", err)
 	}
 
-	logrus.Infof("[TEMU] ✅ 任务已提交到工作池: ID=%d, ProductID=%s", task.ID, task.ProductID)
+	s.logger.WithFields(fields).Info("任务已提交到工作池")
 	return nil
 }
 

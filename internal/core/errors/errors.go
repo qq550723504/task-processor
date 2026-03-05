@@ -179,3 +179,99 @@ func IsCritical(err error) bool {
 	}
 	return false
 }
+
+// ErrorHandler 错误处理器接口
+type ErrorHandler interface {
+	Handle(err error) error
+	ShouldRetry(err error) bool
+	ShouldTerminate(err error) bool
+}
+
+// DefaultErrorHandler 默认错误处理器
+type DefaultErrorHandler struct {
+	logger Logger
+}
+
+// Logger 日志接口
+type Logger interface {
+	Error(args ...interface{})
+	Errorf(format string, args ...interface{})
+	Warn(args ...interface{})
+	Warnf(format string, args ...interface{})
+	Info(args ...interface{})
+	Infof(format string, args ...interface{})
+}
+
+// NewDefaultErrorHandler 创建默认错误处理器
+func NewDefaultErrorHandler(logger Logger) *DefaultErrorHandler {
+	return &DefaultErrorHandler{
+		logger: logger,
+	}
+}
+
+// Handle 处理错误
+func (h *DefaultErrorHandler) Handle(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	// 记录错误日志
+	if appErr, ok := err.(*AppError); ok {
+		if IsCritical(err) {
+			h.logger.Errorf("[CRITICAL] %s", appErr.Error())
+		} else if IsRetryable(err) {
+			h.logger.Warnf("[RETRYABLE] %s", appErr.Error())
+		} else {
+			h.logger.Errorf("[ERROR] %s", appErr.Error())
+		}
+		return appErr
+	}
+
+	// 非AppError，包装后返回
+	h.logger.Errorf("[ERROR] %v", err)
+	return Wrap(err, ErrCodeSystem, "未知错误")
+}
+
+// ShouldRetry 判断是否应该重试
+func (h *DefaultErrorHandler) ShouldRetry(err error) bool {
+	return IsRetryable(err)
+}
+
+// ShouldTerminate 判断是否应该终止
+func (h *DefaultErrorHandler) ShouldTerminate(err error) bool {
+	return IsCritical(err)
+}
+
+// RecoverFromPanic 从panic中恢复
+func RecoverFromPanic(logger Logger) {
+	if r := recover(); r != nil {
+		var err error
+		switch x := r.(type) {
+		case string:
+			err = New(ErrCodeSystem, x)
+		case error:
+			err = Wrap(x, ErrCodeSystem, "panic recovered")
+		default:
+			err = Newf(ErrCodeSystem, "panic recovered: %v", x)
+		}
+
+		if logger != nil {
+			logger.Errorf("Panic recovered: %v", err)
+		}
+	}
+}
+
+// Must 如果错误不为nil则panic（仅用于初始化阶段）
+func Must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+// MustValue 如果错误不为nil则panic，否则返回值（仅用于初始化阶段）
+func MustValue[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}

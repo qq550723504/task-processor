@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/platforms/temu/api/services"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
@@ -15,7 +16,7 @@ type TemplateQueryHandler struct {
 
 func NewTemplateQueryHandler() *TemplateQueryHandler {
 	return &TemplateQueryHandler{
-		logger: logrus.WithField("handler", "TemplateQueryHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.template_query").WithField("handler", "TemplateQueryHandler"),
 	}
 }
 

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
@@ -17,7 +18,7 @@ type CostTemplateHandler struct {
 
 func NewCostTemplateHandler() *CostTemplateHandler {
 	return &CostTemplateHandler{
-		logger: logrus.WithField("handler", "CostTemplateHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.cost_template").WithField("handler", "CostTemplateHandler"),
 	}
 }
 
@@ -124,7 +125,7 @@ func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskCon
 		costTemplateID := h.extractCostTemplateID(response)
 		if costTemplateID != "" {
 			temuProduct.GoodsServicePromise.CostTemplateID = costTemplateID
-			h.logger.Infof("设置成本模板ID: %s", costTemplateID)
+			h.logger.WithField("cost_template_id", costTemplateID).Info("设置成本模板ID")
 		} else {
 			// 如果无法解析成本模板ID，终止处理
 			return fmt.Errorf("无法解析成本模板ID，终止处理")
@@ -149,7 +150,10 @@ func (h *CostTemplateHandler) extractCostTemplateID(response *models.CostTemplat
 	// 优先选择默认模板
 	for _, template := range response.Result.CostTemplateList {
 		if template.DefaultTemplate && !template.Disabled {
-			h.logger.Infof("选择默认成本模板: %s (%s)", template.TemplateName, template.CostTemplateID)
+			h.logger.WithFields(map[string]interface{}{
+				"template_name": template.TemplateName,
+				"template_id":   template.CostTemplateID,
+			}).Info("选择默认成本模板")
 			return template.CostTemplateID
 		}
 	}
@@ -157,7 +161,10 @@ func (h *CostTemplateHandler) extractCostTemplateID(response *models.CostTemplat
 	// 如果没有默认模板，选择第一个可用的模板
 	for _, template := range response.Result.CostTemplateList {
 		if !template.Disabled {
-			h.logger.Infof("选择第一个可用成本模板: %s (%s)", template.TemplateName, template.CostTemplateID)
+			h.logger.WithFields(map[string]interface{}{
+				"template_name": template.TemplateName,
+				"template_id":   template.CostTemplateID,
+			}).Info("选择第一个可用成本模板")
 			return template.CostTemplateID
 		}
 	}
@@ -165,7 +172,10 @@ func (h *CostTemplateHandler) extractCostTemplateID(response *models.CostTemplat
 	// 如果所有模板都被禁用，选择第一个模板
 	if len(response.Result.CostTemplateList) > 0 {
 		template := response.Result.CostTemplateList[0]
-		h.logger.Warnf("所有模板都被禁用，强制选择第一个: %s (%s)", template.TemplateName, template.CostTemplateID)
+		h.logger.WithFields(map[string]interface{}{
+			"template_name": template.TemplateName,
+			"template_id":   template.CostTemplateID,
+		}).Warn("所有模板都被禁用，强制选择第一个")
 		return template.CostTemplateID
 	}
 

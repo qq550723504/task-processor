@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -17,7 +18,7 @@ type CategoryHandler struct {
 // NewCategoryHandler 创建新的分类处理器
 func NewCategoryHandler() *CategoryHandler {
 	return &CategoryHandler{
-		logger: logrus.WithField("handler", "CategoryHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.category").WithField("handler", "CategoryHandler"),
 	}
 }
 
@@ -55,7 +56,7 @@ func (h *CategoryHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 	// 处理分类相关信息
 	err := h.processCategoryInfo(temuCtx.TemuProduct)
 	if err != nil {
-		h.logger.Errorf("处理分类信息失败: %v", err)
+		h.logger.WithError(err).Error("处理分类信息失败")
 		return fmt.Errorf("处理分类信息失败: %w", err)
 	}
 
@@ -70,7 +71,7 @@ func (h *CategoryHandler) processCategoryInfo(temuProduct *models.Product) error
 		return fmt.Errorf("分类ID为空")
 	}
 
-	h.logger.Infof("处理分类信息: CatID=%d", catID)
+	h.logger.WithField("cat_id", catID).Info("处理分类信息")
 
 	// 设置分类相关的产品属性
 	h.setCategoryBasedProperties(temuProduct, catID)
@@ -84,15 +85,16 @@ func (h *CategoryHandler) processCategoryInfo(temuProduct *models.Product) error
 
 // setCategoryBasedProperties 根据分类设置产品属性
 func (h *CategoryHandler) setCategoryBasedProperties(temuProduct *models.Product, catID int) {
-	h.logger.Infof("根据分类设置产品属性: CatID=%d", catID)
+	h.logger.WithField("cat_id", catID).Info("根据分类设置产品属性")
 
 	// 不要覆盖TEMU API返回的IsClothes值！
 	// CommitDetailHandler已经从TEMU API获取了正确的IsClothes值
 	// 这里只记录当前状态，不做修改
-	h.logger.Infof("当前产品分类状态: IsClothes=%v, IsBooks=%v, CatType=%d",
-		temuProduct.GoodsBasic.IsClothes,
-		temuProduct.GoodsBasic.IsBooks,
-		temuProduct.GoodsBasic.CatType)
+	h.logger.WithFields(map[string]interface{}{
+		"is_clothes": temuProduct.GoodsBasic.IsClothes,
+		"is_books":   temuProduct.GoodsBasic.IsBooks,
+		"cat_type":   temuProduct.GoodsBasic.CatType,
+	}).Info("当前产品分类状态")
 
 	// 设置其他通用属性
 	temuProduct.GoodsBasic.CanSkipRequiredProperty = false
@@ -103,7 +105,7 @@ func (h *CategoryHandler) setCategoryBasedProperties(temuProduct *models.Product
 
 // setCategoryBasedServicePromise 根据分类设置服务承诺
 func (h *CategoryHandler) setCategoryBasedServicePromise(temuProduct *models.Product, catID int) {
-	h.logger.Infof("根据分类设置服务承诺: CatID=%d", catID)
+	h.logger.WithField("cat_id", catID).Info("根据分类设置服务承诺")
 
 	// 根据IsClothes标志设置发货时限（而不是根据CatID范围）
 	if temuProduct.GoodsBasic.IsClothes {

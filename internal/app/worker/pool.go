@@ -8,10 +8,9 @@ import (
 	"runtime"
 	"sync"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/domain/model"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Pool 工作池实现
@@ -61,7 +60,7 @@ func (p *Pool) SetCompletionNotifier(notifier TaskCompletionNotifier) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.completionNotifier = notifier
-	logrus.Info("已设置任务完成通知器")
+	logger.GetGlobalLogger("worker.pool").Info("已设置任务完成通知器")
 }
 
 // Start 启动工作池
@@ -69,7 +68,11 @@ func (p *Pool) SetCompletionNotifier(notifier TaskCompletionNotifier) {
 // 参数:
 //   - ctx: 上下文，用于控制工作池的生命周期
 func (p *Pool) Start(ctx context.Context) {
-	logrus.Infof("启动工作池: 并发数=%d, 缓冲区大小=%d", p.concurrency, p.bufferSize)
+	log := logger.GetGlobalLogger("worker.pool")
+	log.WithFields(map[string]interface{}{
+		"concurrency": p.concurrency,
+		"buffer_size": p.bufferSize,
+	}).Info("启动工作池")
 
 	for i := 0; i < p.concurrency; i++ {
 		worker := &Worker{
@@ -83,7 +86,7 @@ func (p *Pool) Start(ctx context.Context) {
 		go worker.Run(ctx, &p.wg)
 	}
 
-	logrus.Infof("工作池已启动，%d 个工作协程就绪", p.concurrency)
+	log.WithField("worker_count", p.concurrency).Info("工作池已启动")
 }
 
 // Stop 停止工作池
@@ -91,7 +94,8 @@ func (p *Pool) Start(ctx context.Context) {
 // 参数:
 //   - ctx: 上下文，用于控制关闭超时
 func (p *Pool) Stop(ctx context.Context) {
-	logrus.Info("开始优雅关闭工作池")
+	log := logger.GetGlobalLogger("worker.pool")
+	log.Info("开始优雅关闭工作池")
 
 	p.mu.Lock()
 	if !p.closed {
@@ -104,7 +108,7 @@ func (p *Pool) Stop(ctx context.Context) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.Errorf("等待工作池完成goroutine panic recovered: %v", r)
+				log.WithField("panic", r).Error("等待工作池完成goroutine panic recovered")
 			}
 		}()
 
@@ -114,12 +118,12 @@ func (p *Pool) Stop(ctx context.Context) {
 
 	select {
 	case <-done:
-		logrus.Info("所有工作协程已停止")
+		log.Info("所有工作协程已停止")
 	case <-ctx.Done():
-		logrus.Warn("等待工作协程停止超时")
+		log.Warn("等待工作协程停止超时")
 	}
 
-	logrus.Info("工作池已完成优雅关闭")
+	log.Info("工作池已完成优雅关闭")
 }
 
 // Submit 提交任务
@@ -141,7 +145,10 @@ func (p *Pool) Submit(job WorkerJob) error {
 	case p.jobQueue <- job:
 		return nil
 	default:
-		logrus.Warnf("工作池队列已满，任务提交失败: TenantID=%s, ShopID=%s", job.TenantID, job.ShopID)
+		logger.GetGlobalLogger("worker.pool").WithFields(map[string]interface{}{
+			"tenant_id": job.TenantID,
+			"shop_id":   job.ShopID,
+		}).Warn("工作池队列已满，任务提交失败")
 		return ErrQueueFull
 	}
 }
@@ -158,16 +165,17 @@ func (p *Pool) AvailableSlots() int {
 func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	logrus.Infof("工作协程 %d 已启动", w.id)
+	log := logger.GetGlobalLogger("worker.pool")
+	log.WithField("worker_id", w.id).Info("工作协程已启动")
 
 	for {
 		select {
 		case <-ctx.Done():
-			logrus.Infof("工作协程 %d 正在停止", w.id)
+			log.WithField("worker_id", w.id).Info("工作协程正在停止")
 			return
 		case job, ok := <-w.jobQueue:
 			if !ok {
-				logrus.Infof("工作协程 %d 任务队列已关闭", w.id)
+				log.WithField("worker_id", w.id).Info("工作协程任务队列已关闭")
 				return
 			}
 
@@ -175,24 +183,33 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						logrus.Errorf("工作协程 %d 发生 panic: %v", w.id, r)
+						log.WithFields(map[string]interface{}{
+							"worker_id": w.id,
+							"panic":     r,
+						}).Error("工作协程发生panic")
 
 						// 打印堆栈跟踪
 						buf := make([]byte, 4096)
 						n := runtime.Stack(buf, false)
-						logrus.Errorf("堆栈跟踪:\n%s", string(buf[:n]))
+						log.WithField("stack_trace", string(buf[:n])).Error("堆栈跟踪")
 
 						// 尝试解析任务以记录更多信息
 						var task model.Task
 						if err := json.Unmarshal([]byte(job.TaskData), &task); err == nil {
-							logrus.Errorf("Panic 发生在任务: TaskID=%d, ProductID=%s", task.ID, task.ProductID)
+							log.WithFields(map[string]interface{}{
+								logger.FieldTaskID:    task.ID,
+								logger.FieldProductID: task.ProductID,
+							}).Error("Panic发生在任务")
 						}
 					}
 				}()
 
 				var task model.Task
 				if err := json.Unmarshal([]byte(job.TaskData), &task); err != nil {
-					logrus.Errorf("工作协程 %d 解析任务数据失败: %v, 原始数据: %s", w.id, err, job.TaskData)
+					log.WithFields(map[string]interface{}{
+						"worker_id": w.id,
+						"task_data": job.TaskData,
+					}).WithError(err).Error("工作协程解析任务数据失败")
 					return
 				}
 
@@ -200,7 +217,11 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
 				processCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 				defer cancel()
 
-				logrus.Infof("工作协程 %d 开始处理任务: TaskID=%d, ProductID=%s", w.id, task.ID, task.ProductID)
+				log.WithFields(map[string]interface{}{
+					"worker_id":           w.id,
+					logger.FieldTaskID:    task.ID,
+					logger.FieldProductID: task.ProductID,
+				}).Info("工作协程开始处理任务")
 
 				// 确保任务处理完成后清理（无论成功或失败）
 				defer func() {
@@ -211,9 +232,15 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
 				}()
 
 				if err := w.processor.ProcessTask(processCtx, &task); err != nil {
-					logrus.Errorf("工作协程 %d 处理任务失败: TaskID=%d, Error=%v", w.id, task.ID, err)
+					log.WithFields(map[string]interface{}{
+						"worker_id":        w.id,
+						logger.FieldTaskID: task.ID,
+					}).WithError(err).Error("工作协程处理任务失败")
 				} else {
-					logrus.Infof("工作协程 %d 任务处理完成: TaskID=%d", w.id, task.ID)
+					log.WithFields(map[string]interface{}{
+						"worker_id":        w.id,
+						logger.FieldTaskID: task.ID,
+					}).Info("工作协程任务处理完成")
 				}
 			}()
 		}

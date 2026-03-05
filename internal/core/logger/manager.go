@@ -2,9 +2,12 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -12,29 +15,43 @@ import (
 
 // LogManager 统一日志管理器
 type LogManager struct {
-	logger    *logrus.Logger
-	level     logrus.Level
-	formatter logrus.Formatter
-	outputs   []io.Writer
+	logger     *logrus.Logger
+	level      logrus.Level
+	formatter  logrus.Formatter
+	outputs    []io.Writer
+	config     *LogConfig
+	fileWriter *rotatingFileWriter
+	mutex      sync.RWMutex
 }
 
 // LogConfig 日志配置
 type LogConfig struct {
-	Level      string `yaml:"level" json:"level"`             // 日志级别: debug, info, warn, error
-	Format     string `yaml:"format" json:"format"`           // 日志格式: json, text
-	OutputFile string `yaml:"output_file" json:"output_file"` // 输出文件路径
-	MaxSize    int    `yaml:"max_size" json:"max_size"`       // 最大文件大小(MB)
-	Console    bool   `yaml:"console" json:"console"`         // 是否输出到控制台
+	Level        string `yaml:"level" json:"level"`                 // 日志级别: debug, info, warn, error
+	Format       string `yaml:"format" json:"format"`               // 日志格式: json, text
+	OutputFile   string `yaml:"output_file" json:"output_file"`     // 输出文件路径
+	MaxSize      int    `yaml:"max_size" json:"max_size"`           // 最大文件大小(MB)
+	MaxBackups   int    `yaml:"max_backups" json:"max_backups"`     // 保留的旧日志文件数量
+	MaxAge       int    `yaml:"max_age" json:"max_age"`             // 保留的旧日志文件天数
+	Compress     bool   `yaml:"compress" json:"compress"`           // 是否压缩旧日志文件
+	Console      bool   `yaml:"console" json:"console"`             // 是否输出到控制台
+	EnableCaller bool   `yaml:"enable_caller" json:"enable_caller"` // 是否记录调用者信息
+	CallerSkip   int    `yaml:"caller_skip" json:"caller_skip"`     // 调用栈跳过层数
+	ReportCaller bool   `yaml:"report_caller" json:"report_caller"` // 是否在日志中包含文件名和行号
 }
 
 // DefaultLogConfig 默认日志配置
 func DefaultLogConfig() *LogConfig {
 	return &LogConfig{
-		Level:      "info",
-		Format:     "json",
-		OutputFile: "logs/app.log",
-		MaxSize:    100,
-		Console:    true,
+		Level:        "info",
+		Format:       "json",
+		OutputFile:   "logs/app.log",
+		MaxSize:      100,
+		MaxBackups:   10,
+		MaxAge:       30,
+		Compress:     true,
+		Console:      true,
+		ReportCaller: false,
+		CallerSkip:   0,
 	}
 }
 
@@ -51,21 +68,28 @@ func NewLogManager(config *LogConfig) *LogManager {
 	logger.SetLevel(level)
 
 	// 设置日志格式
-	formatter := createFormatter(config.Format)
+	formatter := createFormatter(config.Format, config.ReportCaller)
 	logger.SetFormatter(formatter)
 
+	// 设置是否报告调用者
+	logger.SetReportCaller(config.ReportCaller)
+
+	// 创建日志管理器
+	lm := &LogManager{
+		logger:    logger,
+		level:     level,
+		formatter: formatter,
+		config:    config,
+	}
+
 	// 设置输出
-	outputs := createOutputs(config)
+	outputs := lm.createOutputs()
+	lm.outputs = outputs
 	if len(outputs) > 0 {
 		logger.SetOutput(io.MultiWriter(outputs...))
 	}
 
-	return &LogManager{
-		logger:    logger,
-		level:     level,
-		formatter: formatter,
-		outputs:   outputs,
-	}
+	return lm
 }
 
 // GetLogger 获取带组件标识的日志记录器
@@ -93,9 +117,23 @@ func (lm *LogManager) GetLevel() string {
 
 // Close 关闭日志管理器
 func (lm *LogManager) Close() error {
-	// 如果有文件输出，确保所有日志都被写入
+	lm.mutex.Lock()
+	defer lm.mutex.Unlock()
+
+	// 关闭文件写入器
+	if lm.fileWriter != nil {
+		if err := lm.fileWriter.Close(); err != nil {
+			return fmt.Errorf("关闭文件写入器失败: %w", err)
+		}
+	}
+
+	// 如果有其他输出，确保所有日志都被写入
 	for _, output := range lm.outputs {
 		if closer, ok := output.(io.Closer); ok {
+			// 跳过已经关闭的fileWriter
+			if output == lm.fileWriter {
+				continue
+			}
 			if err := closer.Close(); err != nil {
 				return err
 			}
@@ -125,10 +163,10 @@ func parseLogLevel(level string) logrus.Level {
 }
 
 // createFormatter 创建日志格式化器
-func createFormatter(format string) logrus.Formatter {
+func createFormatter(format string, reportCaller bool) logrus.Formatter {
 	switch format {
 	case "json":
-		return &logrus.JSONFormatter{
+		formatter := &logrus.JSONFormatter{
 			TimestampFormat: time.RFC3339,
 			FieldMap: logrus.FieldMap{
 				logrus.FieldKeyTime:  "timestamp",
@@ -136,12 +174,23 @@ func createFormatter(format string) logrus.Formatter {
 				logrus.FieldKeyMsg:   "message",
 			},
 		}
+		if reportCaller {
+			formatter.FieldMap[logrus.FieldKeyFile] = "caller"
+			formatter.FieldMap[logrus.FieldKeyFunc] = "function"
+		}
+		return formatter
 	case "text":
-		return &logrus.TextFormatter{
+		formatter := &logrus.TextFormatter{
 			FullTimestamp:   true,
 			TimestampFormat: "2006-01-02 15:04:05",
 			ForceColors:     true,
 		}
+		if reportCaller {
+			formatter.CallerPrettyfier = func(f *runtime.Frame) (string, string) {
+				return fmt.Sprintf("%s()", f.Function), fmt.Sprintf("%s:%d", filepath.Base(f.File), f.Line)
+			}
+		}
+		return formatter
 	default:
 		return &logrus.JSONFormatter{
 			TimestampFormat: time.RFC3339,
@@ -150,23 +199,35 @@ func createFormatter(format string) logrus.Formatter {
 }
 
 // createOutputs 创建输出目标
-func createOutputs(config *LogConfig) []io.Writer {
+func (lm *LogManager) createOutputs() []io.Writer {
 	var outputs []io.Writer
 
 	// 控制台输出
-	if config.Console {
+	if lm.config.Console {
 		outputs = append(outputs, os.Stdout)
 	}
 
-	// 文件输出
-	if config.OutputFile != "" {
+	// 文件输出（带轮转）
+	if lm.config.OutputFile != "" {
 		// 确保日志目录存在
-		logDir := filepath.Dir(config.OutputFile)
-		if err := os.MkdirAll(logDir, 0755); err == nil {
-			if file, err := os.OpenFile(config.OutputFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
-				outputs = append(outputs, file)
-			}
+		logDir := filepath.Dir(lm.config.OutputFile)
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			// 如果创建目录失败，记录到stderr
+			fmt.Fprintf(os.Stderr, "创建日志目录失败: %v\n", err)
+			return outputs
 		}
+
+		// 创建带轮转的文件写入器
+		fileWriter := newRotatingFileWriter(&rotatingFileConfig{
+			Filename:   lm.config.OutputFile,
+			MaxSize:    lm.config.MaxSize,
+			MaxBackups: lm.config.MaxBackups,
+			MaxAge:     lm.config.MaxAge,
+			Compress:   lm.config.Compress,
+		})
+
+		lm.fileWriter = fileWriter
+		outputs = append(outputs, fileWriter)
 	}
 
 	return outputs
