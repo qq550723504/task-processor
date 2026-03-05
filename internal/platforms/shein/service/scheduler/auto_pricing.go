@@ -190,8 +190,14 @@ func (s *autoPricingServiceImpl) SubmitPricingResults(ctx context.Context, resul
 		// 使用新接口提交所有核价决策
 		_, err := s.pricingAPI.BatchReQuote(decision.BatchReQuote)
 		if err != nil {
-			s.logger.Errorf("提交核价决策失败 [%s]: %v", decision.Product.BargainSn, err)
-			continue
+			s.logger.Warnf("新接口提交失败 [%s],尝试使用旧接口: %v", decision.Product.BargainSn, err)
+
+			// 降级到旧接口
+			if fallbackErr := s.fallbackToLegacyAPI(&decision); fallbackErr != nil {
+				s.logger.Errorf("旧接口提交也失败 [%s]: %v", decision.Product.BargainSn, fallbackErr)
+				continue
+			}
+			s.logger.Infof("旧接口提交成功 [%s]", decision.Product.BargainSn)
 		}
 
 		// 统计各类操作的数量
@@ -211,4 +217,31 @@ func (s *autoPricingServiceImpl) SubmitPricingResults(ctx context.Context, resul
 	s.logger.Infof("提交核价结果完成: 总数=%d, 接受=%d, 拒绝=%d, 重新议价=%d, 跳过=%d",
 		stats.TotalProcessed, stats.AcceptCount, stats.RejectCount, stats.ReappealCount, stats.SkipCount)
 	return stats, nil
+}
+
+// fallbackToLegacyAPI 降级到旧接口提交核价决策
+func (s *autoPricingServiceImpl) fallbackToLegacyAPI(decision *PricingDecision) error {
+	var legacyRequest *pricing.BatchHandleCostDiscussRequest
+
+	// 根据操作类型构建旧接口请求
+	switch decision.Action {
+	case "accept":
+		legacyRequest = s.requestBuilder.BuildLegacyAcceptRequest(&decision.Product)
+	case "reject":
+		legacyRequest = s.requestBuilder.BuildLegacyRejectRequest(&decision.Product)
+	case "reappeal":
+		// 旧接口不支持重新议价,跳过
+		s.logger.Warnf("旧接口不支持重新议价操作,跳过 [%s]", decision.Product.BargainSn)
+		return fmt.Errorf("旧接口不支持重新议价操作")
+	default:
+		return fmt.Errorf("未知的操作类型: %s", decision.Action)
+	}
+
+	// 调用旧接口
+	_, err := s.pricingAPI.BatchHandleCostDiscuss(legacyRequest)
+	if err != nil {
+		return fmt.Errorf("旧接口调用失败: %w", err)
+	}
+
+	return nil
 }

@@ -56,3 +56,33 @@ func (b *PricingRequestBuilder) BuildReappealRequest(
 		},
 	}
 }
+
+// BuildLegacyAcceptRequest 构造接受报价请求(使用旧接口)
+func (b *PricingRequestBuilder) BuildLegacyAcceptRequest(product *pricing.BargainPageData) *pricing.BatchHandleCostDiscussRequest {
+	confirmInfos := []pricing.ConfirmInfo{
+		{
+			DiscussAuditType: 1, // 1表示接受
+			DiscussSn:        product.BargainSn,
+			DocumentSn:       product.DocumentSn,
+		},
+	}
+	return &pricing.BatchHandleCostDiscussRequest{
+		ConfirmInfos:        &confirmInfos,
+		CreateCostDiscusses: nil,
+	}
+}
+
+// BuildLegacyRejectRequest 构造拒绝报价请求(使用旧接口)
+func (b *PricingRequestBuilder) BuildLegacyRejectRequest(product *pricing.BargainPageData) *pricing.BatchHandleCostDiscussRequest {
+	confirmInfos := []pricing.ConfirmInfo{
+		{
+			DiscussAuditType: 2, // 2表示拒绝
+			DiscussSn:        product.BargainSn,
+			DocumentSn:       product.DocumentSn,
+		},
+	}
+	return &pricing.BatchHandleCostDiscussRequest{
+		ConfirmInfos:        &confirmInfos,
+		CreateCostDiscusses: nil,
+	}
+}
