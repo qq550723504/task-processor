@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -22,7 +23,7 @@ type ImageValidator struct {
 // NewImageValidator 创建新的图片验证器
 func NewImageValidator() *ImageValidator {
 	return &ImageValidator{
-		logger:             logrus.WithField("handler", "ImageValidator"),
+		logger:             logger.GetGlobalLogger("temu.handlers.image_validator"),
 		validationService:  services.NewImageValidationService(),
 		mainImageValidator: NewMainImageValidator(),
 		skuImageValidator:  NewSkuImageValidator(),
@@ -57,9 +58,14 @@ func (h *ImageValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) error 
 	// 创建临时适配器来满足服务接口要求
 	productProvider := &temuProductProvider{temuCtx: temuCtx}
 	requirement := h.validationService.GetImageRequirement(productProvider)
-	h.logger.Infof("图片要求: 宽高比=%.2f, 最小尺寸=%dx%d, 最大文件大小=%.1fMB, 图片数量=%d-%d",
-		requirement.AspectRatio, requirement.MinWidth, requirement.MinHeight,
-		requirement.MaxSizeMB, requirement.MinImageCount, requirement.MaxImageCount)
+	h.logger.WithFields(logrus.Fields{
+		"aspect_ratio":    requirement.AspectRatio,
+		"min_width":       requirement.MinWidth,
+		"min_height":      requirement.MinHeight,
+		"max_size_mb":     requirement.MaxSizeMB,
+		"min_image_count": requirement.MinImageCount,
+		"max_image_count": requirement.MaxImageCount,
+	}).Info("获取图片要求配置")
 
 	// 验证商品主图
 	if err := h.mainImageValidator.ValidateMainImages(temuCtx, requirement); err != nil {

@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -22,7 +23,7 @@ type ImageUploadProcessor struct {
 // NewImageUploadProcessor 创建新的图片上传处理器
 func NewImageUploadProcessor() *ImageUploadProcessor {
 	return &ImageUploadProcessor{
-		logger:        logrus.WithField("handler", "ImageUploadProcessor"),
+		logger:        logger.GetGlobalLogger("temu.handlers.image_upload"),
 		uploadService: services.NewImageUploadService(),
 		configService: services.NewImageConfigService(),
 	}
@@ -114,13 +115,19 @@ func (h *ImageUploadProcessor) BatchUploadImages(temuCtx *temucontext.TemuTaskCo
 	for i, url := range imageURLs {
 		uploadedImg, err := h.UploadSingleImage(temuCtx, url, imageType)
 		if err != nil {
-			h.logger.Errorf("批量上传第 %d 张图片失败: %v", i+1, err)
+			h.logger.WithError(err).WithFields(logrus.Fields{
+				"image_index": i + 1,
+				"image_url":   url,
+			}).Error("批量上传图片失败")
 			continue
 		}
 		results = append(results, uploadedImg)
 	}
 
-	h.logger.Infof("📊 批量上传完成: %d/%d", len(results), len(imageURLs))
+	h.logger.WithFields(logrus.Fields{
+		"success_count": len(results),
+		"total_count":   len(imageURLs),
+	}).Info("批量上传完成")
 	return results, nil
 }
 

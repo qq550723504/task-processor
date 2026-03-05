@@ -261,17 +261,21 @@ func RecoverFromPanic(logger Logger) {
 	}
 }
 
-// Must 如果错误不为nil则panic（仅用于初始化阶段）
+// Must panics if error is not nil (ONLY use in initialization phase: main or init functions)
+// This is a convenience function for initialization code where errors are unrecoverable.
+// DO NOT use in business logic - return errors instead.
 func Must(err error) {
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("initialization failed: %w", err))
 	}
 }
 
-// MustValue 如果错误不为nil则panic，否则返回值（仅用于初始化阶段）
+// MustValue panics if error is not nil, otherwise returns value (ONLY use in initialization phase)
+// This is a convenience function for initialization code where errors are unrecoverable.
+// DO NOT use in business logic - return errors instead.
 func MustValue[T any](value T, err error) T {
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("initialization failed: %w", err))
 	}
 	return value
 }

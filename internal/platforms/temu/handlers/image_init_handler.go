@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api/models"
@@ -20,7 +21,7 @@ type ImageInitHandler struct {
 // NewImageInitHandler 创建新的图片初始化处理器
 func NewImageInitHandler() *ImageInitHandler {
 	return &ImageInitHandler{
-		logger: logrus.WithField("handler", "ImageInitHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.image_init"),
 	}
 }
 
@@ -67,7 +68,9 @@ func (h *ImageInitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 	// 设置到产品数据中
 	temuProduct.GoodsBasic.GoodsGallery.DetailImage = detailImages
 
-	h.logger.Infof("初始化了 %d 张主图URL", len(detailImages))
+	h.logger.WithFields(logrus.Fields{
+		"image_count": len(detailImages),
+	}).Info("初始化主图URL完成")
 
 	// 初始化SKU图片（如果已经有SKU的话）
 	h.initSkuImages(temuCtx, temuProduct)
@@ -120,6 +123,8 @@ func (h *ImageInitHandler) initSkuImages(temuCtx *temucontext.TemuTaskContext, t
 	}
 
 	if totalInitialized > 0 {
-		h.logger.Infof("初始化了 %d 张SKU轮播图URL", totalInitialized)
+		h.logger.WithFields(logrus.Fields{
+			"image_count": totalInitialized,
+		}).Info("初始化SKU轮播图URL完成")
 	}
 }

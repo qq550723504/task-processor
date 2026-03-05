@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"strconv"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
@@ -19,7 +20,7 @@ type PriceQueryHandler struct {
 // NewPriceQueryHandler 创建新的价格查询处理器
 func NewPriceQueryHandler() *PriceQueryHandler {
 	return &PriceQueryHandler{
-		logger: logrus.WithField("handler", "PriceQueryHandler"),
+		logger: logger.GetGlobalLogger("temu.handlers.price_query"),
 	}
 }
 
@@ -52,7 +53,7 @@ func (h *PriceQueryHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) err
 	// 查询价格信息
 	err := h.queryMaxRetailPrices(temuCtx)
 	if err != nil {
-		h.logger.Errorf("查询价格失败: %v", err)
+		h.logger.WithError(err).Error("查询价格失败")
 		return fmt.Errorf("查询价格失败: %w", err)
 	}
 
@@ -83,14 +84,18 @@ func (h *PriceQueryHandler) queryMaxRetailPrices(temuCtx *temucontext.TemuTaskCo
 	// 发送请求到TEMU API
 	response, err := queryAPI.QueryMaxRetailPrice(request)
 	if err != nil {
-		h.logger.Errorf("价格查询API调用失败: %v", err)
+		h.logger.WithError(err).Error("价格查询API调用失败")
 		return fmt.Errorf("价格查询失败: %w", err)
 	}
 
 	// 记录查询结果
-	h.logger.Infof("价格查询成功: error_code=%d", response.ErrorCode)
+	h.logger.WithFields(logrus.Fields{
+		"error_code": response.ErrorCode,
+	}).Info("价格查询成功")
 	if response.Result != nil {
-		h.logger.Infof("获取到 %d 个价格信息", len(response.Result.MmsSkuMaxRetailPriceItems))
+		h.logger.WithFields(logrus.Fields{
+			"price_count": len(response.Result.MmsSkuMaxRetailPriceItems),
+		}).Info("获取价格信息")
 
 		// 更新SKU的最大零售价格
 		h.updateSkuMaxRetailPrices(temuCtx, response.Result.MmsSkuMaxRetailPriceItems)
@@ -145,7 +150,9 @@ func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContex
 		}
 	}
 
-	h.logger.Infof("收集到 %d 个不同的价格进行查询", len(priceItems))
+	h.logger.WithFields(logrus.Fields{
+		"price_item_count": len(priceItems),
+	}).Info("收集价格项完成")
 	return priceItems
 }
 
@@ -192,7 +199,9 @@ func (h *PriceQueryHandler) updateSkuMaxRetailPrices(temuCtx *temucontext.TemuTa
 		}
 	}
 
-	h.logger.Infof("成功更新 %d 个SKU的最大零售价格", updatedCount)
+	h.logger.WithFields(logrus.Fields{
+		"updated_count": updatedCount,
+	}).Info("更新SKU最大零售价格完成")
 }
 
 // Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
