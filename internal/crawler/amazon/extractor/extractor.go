@@ -1,7 +1,6 @@
 package extractor
 
 import (
-	"strings"
 	"task-processor/internal/domain/model"
 
 	"github.com/playwright-community/playwright-go"
@@ -15,7 +14,8 @@ type Extractor interface {
 
 // CompositeExtractor 组合提取器
 type CompositeExtractor struct {
-	extractors []Extractor
+	extractors    []Extractor
+	errorDetector *ErrorDetector
 }
 
 // NewCompositeExtractor 创建组合提取器
@@ -41,6 +41,7 @@ func NewCompositeExtractor(marketplace string) *CompositeExtractor {
 			NewFeatureParserExtractor(), // 特性解析提取器
 			&FeaturesExtractor{},        // 基础特性提取器
 		},
+		errorDetector: NewErrorDetector(),
 	}
 }
 
@@ -50,57 +51,12 @@ func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Produ
 		if err := extractor.Extract(page, product); err != nil {
 			logrus.Infof("提取器执行失败 (%T): %v", extractor, err)
 
-			// 检测是否为风控或严重错误（如超时），如果是则立即返回错误
-			if ce.isCriticalError(err) {
+			// 使用新的错误检测器
+			if ce.errorDetector.IsCriticalError(err) {
 				logrus.Infof("检测到关键错误，停止后续提取器执行: %v", err)
 				return err
 			}
 		}
 	}
 	return nil
-}
-
-// isCriticalError 检测是否为关键错误（风控、超时等）
-func (ce *CompositeExtractor) isCriticalError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// 检查是否为产品不存在错误（不是关键错误）
-	if _, ok := err.(*model.ProductNotFoundError); ok {
-		return false
-	}
-
-	errorStr := err.Error()
-
-	// 如果错误信息包含"产品页面不存在"，不是关键错误
-	if strings.Contains(errorStr, "产品页面不存在") || strings.Contains(errorStr, "产品页面缺少必要元素") {
-		return false
-	}
-
-	// 检测关键错误模式，这些错误表明浏览器实例可能被风控或出现严重问题
-	criticalPatterns := []string{
-		"timeout", "Timeout", "TIMEOUT",
-		"Timeout 30000ms exceeded", // 特定的playwright超时错误
-		"blocked", "Blocked", "BLOCKED",
-		"captcha", "CAPTCHA", "Captcha",
-		"robot", "Robot", "ROBOT",
-		"access denied", "Access Denied", "ACCESS DENIED",
-		"forbidden", "Forbidden", "FORBIDDEN",
-		"503", "502", "504", // 服务器错误
-		"connection refused", "Connection refused",
-		"network error", "Network error",
-		"page crashed", "Page crashed",
-		"browser disconnected", "Browser disconnected",
-		"context closed", "Context closed",
-		"navigation failed", "Navigation failed",
-	}
-
-	for _, pattern := range criticalPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return true
-		}
-	}
-
-	return false
 }

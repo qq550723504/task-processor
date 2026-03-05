@@ -107,17 +107,17 @@ func (p *ProductAPI) QueryCostPrice(spuName string, skcNameList []string) (*prod
 	return p.priceManager.QueryCostPrice(spuName, skcNameList)
 }
 
-// OffShelf 产品下架
-func (p *ProductAPI) OffShelf(request *product.ShelfOperateRequest) error {
+// operateShelf 通用的上下架操作
+func (p *ProductAPI) operateShelf(request *product.ShelfOperateRequest, operateType, errorMsg string) error {
 	url := fmt.Sprintf("%s%s", p.BaseAPIClient.GetBaseURL(), client.GetOperateShelfStatusEndpoint())
 
-	// 构建请求体，设置操作类型为下架
+	// 构建请求体
 	reqBody := struct {
 		*product.ShelfOperateRequest
 		OperateType string `json:"operate_type"`
 	}{
 		ShelfOperateRequest: request,
-		OperateType:         "off_shelf", // 下架操作
+		OperateType:         operateType,
 	}
 
 	var result api.APIResponse
@@ -126,27 +126,15 @@ func (p *ProductAPI) OffShelf(request *product.ShelfOperateRequest) error {
 	}
 
 	// 统一错误处理
-	return p.errorHandler.ProcessAPIResponse(&result, "0", url, "产品下架失败")
+	return p.errorHandler.ProcessAPIResponse(&result, "0", url, errorMsg)
+}
+
+// OffShelf 产品下架
+func (p *ProductAPI) OffShelf(request *product.ShelfOperateRequest) error {
+	return p.operateShelf(request, "off_shelf", "产品下架失败")
 }
 
 // OnShelf 产品上架
 func (p *ProductAPI) OnShelf(request *product.ShelfOperateRequest) error {
-	url := fmt.Sprintf("%s%s", p.BaseAPIClient.GetBaseURL(), client.GetOperateShelfStatusEndpoint())
-
-	// 构建请求体，设置操作类型为上架
-	reqBody := struct {
-		*product.ShelfOperateRequest
-		OperateType string `json:"operate_type"`
-	}{
-		ShelfOperateRequest: request,
-		OperateType:         "on_shelf", // 上架操作
-	}
-
-	var result api.APIResponse
-	if err := p.BaseAPIClient.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
-		return err
-	}
-
-	// 统一错误处理
-	return p.errorHandler.ProcessAPIResponse(&result, "0", url, "产品上架失败")
+	return p.operateShelf(request, "on_shelf", "产品上架失败")
 }
