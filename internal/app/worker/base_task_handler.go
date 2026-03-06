@@ -3,6 +3,7 @@ package worker
 
 import (
 	"context"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"time"
@@ -19,31 +20,38 @@ type BaseTaskHandler struct {
 
 // NewBaseTaskHandler 创建统一的任务处理器
 func NewBaseTaskHandler(processor Processor, platform string) *BaseTaskHandler {
+	log := logger.GetGlobalLogger("worker.task_handler").WithFields(map[string]interface{}{
+		logger.FieldComponent: "TaskHandler",
+		logger.FieldPlatform:  platform,
+	})
 	return &BaseTaskHandler{
 		processor: processor,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "TaskHandler",
-			"platform":  platform,
-		}),
+		logger:    log,
 	}
 }
 
 // ProcessTask 统一的任务处理方法
 func (h *BaseTaskHandler) ProcessTask(ctx context.Context, task model.Task, pipeline pipeline.Pipeline) error {
-	h.logger.Infof("开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
+	h.logger.WithFields(map[string]interface{}{
+		logger.FieldTaskID:    task.ID,
+		logger.FieldProductID: task.ProductID,
+	}).Info("开始处理任务")
 
 	// 记录开始时间
 	startTime := time.Now()
 
 	// 委托给具体的处理器执行
 	if err := h.processor.ProcessTask(ctx, &task); err != nil {
-		h.logger.Errorf("任务处理失败: %v", err)
+		h.logger.WithError(err).Error("任务处理失败")
 		return err
 	}
 
 	// 记录处理时间
 	processTime := time.Since(startTime)
-	h.logger.Infof("任务处理成功: ID=%d, 耗时=%v", task.ID, processTime)
+	h.logger.WithFields(map[string]interface{}{
+		logger.FieldTaskID:     task.ID,
+		logger.FieldDurationMs: processTime.Milliseconds(),
+	}).Info("任务处理成功")
 
 	return nil
 }

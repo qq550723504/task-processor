@@ -161,10 +161,18 @@ func (c *Config) ValidateAndLog(logger *logrus.Logger) bool {
 }
 
 // ValidateOrPanic 验证配置，如果失败则 panic
+// Deprecated: Use ValidateWithError() instead and handle the error properly
 func (c *Config) ValidateOrPanic() {
+	if err := c.ValidateWithError(); err != nil {
+		panic(err)
+	}
+}
+
+// ValidateWithError 验证配置并返回错误
+func (c *Config) ValidateWithError() error {
 	errors := c.Validate()
 	if len(errors) == 0 {
-		return
+		return nil
 	}
 
 	var messages []string
@@ -172,7 +180,7 @@ func (c *Config) ValidateOrPanic() {
 		messages = append(messages, err.Error())
 	}
 
-	panic(fmt.Sprintf("配置验证失败:\n%s", strings.Join(messages, "\n")))
+	return fmt.Errorf("config validation failed:\n%s", strings.Join(messages, "\n"))
 }
 
 // validatePlatformsConfig 验证平台配置

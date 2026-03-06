@@ -8,25 +8,35 @@ import (
 )
 
 // SetupLogger 设置日志系统（配置全局logger）
+// 支持通过环境变量或参数指定日志级别
 func SetupLogger() *logrus.Logger {
+	return SetupLoggerWithLevel("")
+}
+
+// SetupLoggerWithLevel 设置日志系统并指定日志级别
+// levelStr: 日志级别字符串（debug, info, warn, error），为空则从环境变量读取
+func SetupLoggerWithLevel(levelStr string) *logrus.Logger {
 	// 直接使用全局logger，统一日志输出
 	logger := logrus.StandardLogger()
 
-	// 从环境变量读取日志级别，默认为 INFO
-	logLevel := os.Getenv("LOG_LEVEL")
+	// 确定日志级别：优先使用参数，其次环境变量，最后默认INFO
+	if levelStr == "" {
+		levelStr = os.Getenv("LOG_LEVEL")
+	}
+
 	var level logrus.Level
-	switch logLevel {
+	switch levelStr {
 	case "DEBUG", "debug":
 		level = logrus.DebugLevel
 	case "INFO", "info", "":
 		level = logrus.InfoLevel
-	case "WARN", "warn":
+	case "WARN", "warn", "WARNING", "warning":
 		level = logrus.WarnLevel
 	case "ERROR", "error":
 		level = logrus.ErrorLevel
 	default:
 		level = logrus.InfoLevel
-		logrus.Warnf("未知的日志级别: %s，使用默认级别 INFO", logLevel)
+		logrus.Warnf("未知的日志级别: %s，使用默认级别 INFO", levelStr)
 	}
 	logrus.SetLevel(level)
 

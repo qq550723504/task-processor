@@ -2,6 +2,7 @@
 package content
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,6 +26,10 @@ type SensitiveWordService struct {
 	configPath string
 	config     *SensitiveWordConfig
 	mutex      sync.RWMutex
+	ctx        context.Context
+	saveQueue  chan struct{}
+	stopSave   chan struct{}
+	wg         sync.WaitGroup
 }
 
 // loadConfig 加载敏感词配置文件
@@ -134,17 +139,20 @@ func (s *SensitiveWordService) ReloadConfig() error {
 	return s.loadConfig()
 }
 
-// saveConfigAsync 异步保存配置
+// saveConfigAsync 异步保存配置（使用工作队列）
 func (s *SensitiveWordService) saveConfigAsync() {
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logrus.Errorf("异步保存配置时发生panic: %v", r)
-			}
-		}()
+	select {
+	case s.saveQueue <- struct{}{}:
+		// 成功提交保存请求
+	default:
+		// 队列满了，记录警告但不阻塞
+		logrus.Warn("保存队列已满，跳过本次保存请求")
+	}
+}
 
-		if err := s.saveConfig(); err != nil {
-			logrus.Errorf("异步保存敏感词配置失败: %v", err)
-		}
-	}()
+// Close 关闭服务，等待保存任务完成
+func (s *SensitiveWordService) Close() {
+	close(s.stopSave)
+	s.wg.Wait()
+	logrus.Info("敏感词服务已关闭")
 }

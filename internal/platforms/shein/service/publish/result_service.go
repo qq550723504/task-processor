@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/ptrutil"
 	shein_model "task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/service/common/data"
 	"task-processor/internal/platforms/shein/service/validation"
@@ -116,7 +117,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein_model.T
 					Region:            ctx.Task.Region,
 					Sku:               &sku.SupplierSKU,
 					PlatformProductId: &sku.SKUCode,
-					Status:            int16Ptr(1), // 1表示成功
+					Status:            ptrutil.Int16Ptr(1), // 1表示成功
 				}
 
 				// 从AsinSkuMap中查找ASIN（需要反向查找，因为map是ASIN->SKU的映射）
@@ -349,11 +350,6 @@ func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *shein_model.Ta
 	)
 
 	return nil
-}
-
-// int16Ptr 返回int16指针
-func int16Ptr(i int16) *int16 {
-	return &i
 }
 
 // updateTaskStatusToPublished 更新任务状态为已上架

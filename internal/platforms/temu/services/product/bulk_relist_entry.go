@@ -120,13 +120,13 @@ func (e *BulkRelistEntry) GetOfflineProductsPreview(storeID int64, filter *model
 		Products:          make([]models.OfflineProductSummary, 0),
 	}
 
-	// 创建服务用于过滤
-	service := NewBulkRelistService(apiClient)
+	// 创建过滤器用于过滤
+	productFilter := NewProductFilter(apiClient.GetLogger())
 
 	// 按商品ID分组并应用过滤条件
 	goodsMap := make(map[string]*models.OfflineProductItem)
 	for _, product := range offlineProducts {
-		if filter == nil || service.matchesFilter(&product, filter) {
+		if filter == nil || productFilter.MatchesFilter(&product, filter) {
 			if _, exists := goodsMap[product.GoodsID]; !exists {
 				goodsMap[product.GoodsID] = &product
 			}

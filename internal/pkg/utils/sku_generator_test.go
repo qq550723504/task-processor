@@ -23,7 +23,7 @@ func TestGenerateSKU(t *testing.T) {
 		{
 			name:     "Hash Strategy",
 			strategy: StrategyHash,
-			want:     "TEST_B08N5WRWNW",
+			want:     "TEST_", // 哈希策略只返回哈希值，不包含ASIN
 		},
 	}
 
@@ -31,18 +31,29 @@ func TestGenerateSKU(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := GenerateSKU(asin, tt.strategy, prefix, suffix)
 
-			// 检查前缀和后缀
+			// 检查前缀
 			if !strings.HasPrefix(got, prefix) {
 				t.Errorf("GenerateSKU() = %v, want prefix %v", got, prefix)
 			}
 
-			if tt.strategy == StrategyASINOnly && !strings.HasSuffix(got, suffix) {
-				t.Errorf("GenerateSKU() = %v, want suffix %v", got, suffix)
-			}
-
-			// 检查包含ASIN
-			if !strings.Contains(got, asin) {
-				t.Errorf("GenerateSKU() = %v, should contain ASIN %v", got, asin)
+			if tt.strategy == StrategyASINOnly {
+				// ASIN Only策略应该包含ASIN和后缀
+				if !strings.HasSuffix(got, suffix) {
+					t.Errorf("GenerateSKU() = %v, want suffix %v", got, suffix)
+				}
+				if !strings.Contains(got, asin) {
+					t.Errorf("GenerateSKU() = %v, should contain ASIN %v", got, asin)
+				}
+			} else if tt.strategy == StrategyHash {
+				// 哈希策略应该包含后缀，但不包含原始ASIN
+				if !strings.HasSuffix(got, suffix) {
+					t.Errorf("GenerateSKU() = %v, want suffix %v", got, suffix)
+				}
+				// 验证哈希值长度（8位哈希 + 前缀 + 后缀）
+				expectedLen := len(prefix) + 8 + len(suffix)
+				if len(got) != expectedLen {
+					t.Errorf("GenerateSKU() length = %v, want %v", len(got), expectedLen)
+				}
 			}
 		})
 	}
@@ -51,21 +62,52 @@ func TestGenerateSKU(t *testing.T) {
 func TestGenerateSKUByStrategy(t *testing.T) {
 	asin := "B08N5WRWNW"
 
-	// 测试不同策略
-	strategies := []int{StrategyASINOnly, StrategyRandom, StrategyTimestamp, StrategyHash}
+	tests := []struct {
+		name      string
+		strategy  int
+		checkASIN bool // 是否应该包含原始ASIN
+	}{
+		{
+			name:      "Strategy_0_ASIN_Only",
+			strategy:  StrategyASINOnly,
+			checkASIN: true,
+		},
+		{
+			name:      "Strategy_1_Random",
+			strategy:  StrategyRandom,
+			checkASIN: true,
+		},
+		{
+			name:      "Strategy_2_Timestamp",
+			strategy:  StrategyTimestamp,
+			checkASIN: true,
+		},
+		{
+			name:      "Strategy_3_Hash",
+			strategy:  StrategyHash,
+			checkASIN: false, // 哈希策略不包含原始ASIN
+		},
+	}
 
-	for _, strategy := range strategies {
-		t.Run("Strategy_"+string(rune(strategy+'0')), func(t *testing.T) {
-			sku := GenerateSKUByStrategy(asin, strategy, "", "")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sku := GenerateSKUByStrategy(asin, tt.strategy, "", "")
 
-			// 所有策略都应该包含原始ASIN
-			if !strings.Contains(sku, asin) {
-				t.Errorf("GenerateSKUByStrategy() = %v, should contain ASIN %v", sku, asin)
-			}
+			if tt.checkASIN {
+				// 应该包含原始ASIN
+				if !strings.Contains(sku, asin) {
+					t.Errorf("GenerateSKUByStrategy() = %v, should contain ASIN %v", sku, asin)
+				}
 
-			// 检查长度（除了仅ASIN策略外，其他都应该更长）
-			if strategy != StrategyASINOnly && len(sku) <= len(asin) {
-				t.Errorf("GenerateSKUByStrategy() = %v, should be longer than ASIN for strategy %d", sku, strategy)
+				// 检查长度（除了仅ASIN策略外，其他都应该更长）
+				if tt.strategy != StrategyASINOnly && len(sku) <= len(asin) {
+					t.Errorf("GenerateSKUByStrategy() = %v, should be longer than ASIN for strategy %d", sku, tt.strategy)
+				}
+			} else {
+				// 哈希策略：应该是8位哈希值
+				if len(sku) != 8 {
+					t.Errorf("GenerateSKUByStrategy() = %v, hash strategy should return 8 characters", sku)
+				}
 			}
 		})
 	}

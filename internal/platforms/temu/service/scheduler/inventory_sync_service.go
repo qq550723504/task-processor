@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/pkg/management"
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/pricing"
 	"task-processor/internal/platforms/temu/api/client"
 
 	"github.com/sirupsen/logrus"
@@ -23,6 +24,7 @@ type inventorySyncServiceImpl struct {
 	rawJsonDataClient     managementapi.RawJsonDataAPI
 	inventoryRecordClient managementapi.InventoryRecordAPI
 	monitorConfig         *config.MonitorConfig
+	costCalculator        *pricing.CostCalculator // 通用成本计算器
 	logger                *logrus.Entry
 }
 
@@ -36,6 +38,11 @@ func NewInventorySyncService(
 	rawJsonDataClient managementapi.RawJsonDataAPI,
 	inventoryRecordClient managementapi.InventoryRecordAPI,
 ) InventorySyncService {
+	logger := logrus.WithField("component", "TemuInventorySyncService")
+
+	// 创建通用成本计算器（TEMU不需要详细日志）
+	costCalculator := pricing.NewCostCalculator(managementClient, logger, false)
+
 	return &inventorySyncServiceImpl{
 		managementClient:      managementClient,
 		temuAPIClient:         temuAPIClient,
@@ -44,7 +51,8 @@ func NewInventorySyncService(
 		rawJsonDataClient:     rawJsonDataClient,
 		inventoryRecordClient: inventoryRecordClient,
 		monitorConfig:         monitorConfig,
-		logger:                logrus.WithField("component", "TemuInventorySyncService"),
+		costCalculator:        costCalculator,
+		logger:                logger,
 	}
 }
 

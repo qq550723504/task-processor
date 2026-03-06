@@ -8,11 +8,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// LoadConfig 加载配置文件
+// LoadConfig 加载配置文件（使用统一的配置加载，添加验证）
 func LoadConfig(configPath string) (*config.Config, error) {
 	logrus.Infof("加载配置文件: %s", configPath)
 
-	cfg := config.LoadConfigFromFile(configPath)
+	// 使用统一的配置加载函数
+	cfg := config.LoadConfigWithFallback(configPath, logrus.StandardLogger())
 	if cfg == nil {
 		return nil, fmt.Errorf("配置加载失败")
 	}

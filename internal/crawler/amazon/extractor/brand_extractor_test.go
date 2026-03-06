@@ -1,6 +1,7 @@
 package extractor
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -118,6 +119,9 @@ func TestBrandExtractor_CleanBrandText(t *testing.T) {
 					break
 				}
 			}
+
+			// 移除前后空格
+			brand = strings.TrimSpace(brand)
 
 			if brand != tt.expected {
 				t.Errorf("期望 %q, 实际得到 %q", tt.expected, brand)

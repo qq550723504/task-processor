@@ -3,7 +3,9 @@ package config
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,6 +25,36 @@ func LoadFromBytes(data []byte) (*Config, error) {
 	applyDefaults(&cfg)
 
 	return &cfg, nil
+}
+
+// LoadConfigWithFallback 加载配置，失败时使用默认配置（统一入口）
+// 用于替代各个cmd中重复的配置加载逻辑
+func LoadConfigWithFallback(configPath string, logger *logrus.Logger) *Config {
+	// 检查配置文件是否存在
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		if logger != nil {
+			logger.Warnf("⚠️  配置文件不存在: %s，使用默认配置", configPath)
+		}
+		return NewDefaultConfig()
+	}
+
+	// 加载配置
+	if logger != nil {
+		logger.Infof("📄 加载应用配置: %s", configPath)
+	}
+
+	cfg := LoadConfigFromFile(configPath)
+	if cfg == nil {
+		if logger != nil {
+			logger.Warn("⚠️  配置加载失败，使用默认配置")
+		}
+		return NewDefaultConfig()
+	}
+
+	if logger != nil {
+		logger.Info("✅ 配置加载成功")
+	}
+	return cfg
 }
 
 // NewDefaultConfig 创建默认配置
@@ -163,100 +195,8 @@ func NewDefaultConfig() *Config {
 	}
 }
 
-// applyDefaults 应用默认配置值
+// applyDefaults 应用默认配置值（使用反射消除重复代码）
 func applyDefaults(cfg *Config) {
-	// 获取默认配置
-	defaultCfg := NewDefaultConfig()
-
-	// 应用Worker默认值
-	if cfg.Worker.Concurrency == 0 {
-		cfg.Worker.Concurrency = defaultCfg.Worker.Concurrency
-	}
-	if cfg.Worker.BufferSize == 0 {
-		cfg.Worker.BufferSize = defaultCfg.Worker.BufferSize
-	}
-	if cfg.Worker.TaskInterval == 0 {
-		cfg.Worker.TaskInterval = defaultCfg.Worker.TaskInterval
-	}
-	if cfg.Worker.MaxFetchPerCycle == 0 {
-		cfg.Worker.MaxFetchPerCycle = defaultCfg.Worker.MaxFetchPerCycle
-	}
-	if cfg.Worker.QueueThreshold == 0 {
-		cfg.Worker.QueueThreshold = defaultCfg.Worker.QueueThreshold
-	}
-	if cfg.Worker.CleanupInterval == 0 {
-		cfg.Worker.CleanupInterval = defaultCfg.Worker.CleanupInterval
-	}
-	if cfg.Worker.TaskTimeout == 0 {
-		cfg.Worker.TaskTimeout = defaultCfg.Worker.TaskTimeout
-	}
-	if cfg.Worker.StuckTaskThreshold == 0 {
-		cfg.Worker.StuckTaskThreshold = defaultCfg.Worker.StuckTaskThreshold
-	}
-	if cfg.Worker.ForceCleanupAfter == 0 {
-		cfg.Worker.ForceCleanupAfter = defaultCfg.Worker.ForceCleanupAfter
-	}
-
-	// 应用Processor默认值
-	if cfg.Processor.MaxRetries == 0 {
-		cfg.Processor.MaxRetries = defaultCfg.Processor.MaxRetries
-	}
-	if cfg.Processor.Timeout == 0 {
-		cfg.Processor.Timeout = defaultCfg.Processor.Timeout
-	}
-
-	// 应用Management默认值
-	if cfg.Management.BaseURL == "" {
-		cfg.Management.BaseURL = defaultCfg.Management.BaseURL
-	}
-	if cfg.Management.ClientID == "" {
-		cfg.Management.ClientID = defaultCfg.Management.ClientID
-	}
-	if cfg.Management.ClientSecret == "" {
-		cfg.Management.ClientSecret = defaultCfg.Management.ClientSecret
-	}
-	if cfg.Management.TokenURL == "" {
-		cfg.Management.TokenURL = defaultCfg.Management.TokenURL
-	}
-	if len(cfg.Management.Scopes) == 0 {
-		cfg.Management.Scopes = defaultCfg.Management.Scopes
-	}
-	if cfg.Management.TenantID == "" {
-		cfg.Management.TenantID = defaultCfg.Management.TenantID
-	}
-
-	// 应用浏览器默认配置
-	if cfg.Browser.PoolSize == 0 {
-		cfg.Browser.PoolSize = defaultCfg.Browser.PoolSize
-	}
-	if cfg.Browser.ViewportWidth == 0 {
-		cfg.Browser.ViewportWidth = defaultCfg.Browser.ViewportWidth
-	}
-	if cfg.Browser.ViewportHeight == 0 {
-		cfg.Browser.ViewportHeight = defaultCfg.Browser.ViewportHeight
-	}
-
-	// 应用Amazon配置默认值
-	if cfg.Amazon.DataFreshnessDays == 0 {
-		cfg.Amazon.DataFreshnessDays = defaultCfg.Amazon.DataFreshnessDays
-	}
-
-	// 应用更新器默认配置
-	if cfg.Updater.CheckInterval == 0 {
-		cfg.Updater.CheckInterval = defaultCfg.Updater.CheckInterval
-	}
-
-	// 应用OpenAI默认配置
-	if cfg.OpenAI.APIKey == "" {
-		cfg.OpenAI.APIKey = defaultCfg.OpenAI.APIKey
-	}
-	if cfg.OpenAI.Model == "" {
-		cfg.OpenAI.Model = defaultCfg.OpenAI.Model
-	}
-	if cfg.OpenAI.BaseURL == "" {
-		cfg.OpenAI.BaseURL = defaultCfg.OpenAI.BaseURL
-	}
-	if cfg.OpenAI.Timeout == 0 {
-		cfg.OpenAI.Timeout = defaultCfg.OpenAI.Timeout
-	}
+	applier := NewDefaultsApplier()
+	applier.Apply(cfg)
 }

@@ -4,6 +4,7 @@ package worker
 import (
 	"context"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pkg/management"
 
@@ -92,25 +93,27 @@ func (bp *BaseProcessor) GetWorkerPool() WorkerPool {
 
 // StartBase 基础启动逻辑
 func (bp *BaseProcessor) StartBase(ctx context.Context) error {
-	bp.logger.Infof("[%s] 启动基础处理器组件", bp.platform)
+	log := logger.GetGlobalLogger("worker.base_processor")
+	log.WithField(logger.FieldPlatform, bp.platform).Info("启动基础处理器组件")
 
 	// 启动 WorkerPool
 	if bp.workerPool != nil {
 		bp.workerPool.Start(ctx)
 	}
 
-	bp.logger.Infof("[%s] 基础处理器组件启动完成", bp.platform)
+	log.WithField(logger.FieldPlatform, bp.platform).Info("基础处理器组件启动完成")
 	return nil
 }
 
 // CloseBase 基础关闭逻辑
 func (bp *BaseProcessor) CloseBase(ctx context.Context) {
-	bp.logger.Infof("[%s] 关闭基础处理器组件", bp.platform)
+	log := logger.GetGlobalLogger("worker.base_processor")
+	log.WithField(logger.FieldPlatform, bp.platform).Info("关闭基础处理器组件")
 
 	// 关闭 WorkerPool
 	if bp.workerPool != nil {
 		bp.workerPool.Stop(ctx)
 	}
 
-	bp.logger.Infof("[%s] 基础处理器组件已关闭", bp.platform)
+	log.WithField(logger.FieldPlatform, bp.platform).Info("基础处理器组件已关闭")
 }

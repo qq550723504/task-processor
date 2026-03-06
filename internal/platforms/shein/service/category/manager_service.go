@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/shein/api/category"
@@ -42,94 +43,32 @@ func NewOpenAISelector(client *openaiClient.Client) *OpenAISelector {
 
 // SelectLevelOneCategoryByAI 通过AI选择一级分类
 func (s *OpenAISelector) SelectLevelOneCategoryByAI(ctx context.Context, title string, levelOneIDs []int, levelOneMap map[int]string) (int, error) {
-	// 构建分类列表描述
 	categoryInfo := s.buildCategoryInfo(levelOneIDs, levelOneMap, "可用一级分类列表：\n", func(id int, name string) string {
 		return fmt.Sprintf("分类ID: %d, 分类名称: %s\n", id, name)
 	})
 
-	// 构建更详细的系统提示词
-	systemPrompt := `你是一个专业的电商产品分类专家。根据产品标题，从给定的分类列表中选择最合适的分类ID。
-
-分析原则：
-1. 仔细分析产品标题中的关键词
-2. 理解产品的类型、用途、材质等特征
-3. 从分类路径中找到最精确匹配的分类
-4. 优先选择更具体、更精准的分类
-5. 考虑产品的主要功能和用途
-
-返回格式：
-请返回JSON格式，包含选中的分类ID和选择理由：
-{
-  "category_id": 12345,
-  "reason": "选择该分类的详细理由"
-}
-
-注意：category_id必须是给定列表中的有效ID。`
-
-	// 构建用户提示词
-	userPrompt := fmt.Sprintf(`产品标题：%s
-
-%s
-
-请分析产品标题，选择最合适的分类ID（必须从上述列表中选择）：`, title, categoryInfo)
-
-	// 设置seed确保结果一致性
-	seed := 42
-	temperature := float32(0.1)
-
-	// 调用OpenAI API
-	messages := []openaiClient.ChatCompletionMessage{
-		{
-			Role:    "system",
-			Content: systemPrompt,
-		},
-		{
-			Role:    "user",
-			Content: userPrompt,
-		},
-	}
-
-	req := &openaiClient.ChatCompletionRequest{
-		Model:       s.openaiClient.GetDefaultModel(),
-		Messages:    messages,
-		Temperature: &temperature,
-		Seed:        &seed,
-	}
-
-	resp, err := s.openaiClient.CreateChatCompletion(ctx, req)
-	if err != nil {
-		return 0, fmt.Errorf("调用OpenAI API失败: %w", err)
-	}
-
-	if len(resp.Choices) == 0 {
-		return 0, fmt.Errorf("OpenAI API返回空响应")
-	}
-
-	// 解析响应
-	result, err := s.parseOpenAIResponse(resp)
-	if err != nil {
-		return 0, err
-	}
-
-	// 验证选择的ID是否在可选范围内
-	for _, id := range levelOneIDs {
-		if id == result.CategoryID {
-			logrus.Infof("AI成功选择一级分类: ID=%d, 名称=%s, 理由=%s\n", result.CategoryID, levelOneMap[result.CategoryID], result.Reason)
-			return result.CategoryID, nil
-		}
-	}
-
-	return 0, fmt.Errorf("选择的分类ID %d 不在可选范围内", result.CategoryID)
+	return s.selectCategoryByAI(ctx, title, levelOneIDs, levelOneMap, categoryInfo, "一级分类")
 }
 
 // SelectCategoryByAI 通过AI选择最终分类
 func (s *OpenAISelector) SelectCategoryByAI(ctx context.Context, title string, leafIDs []int, leafMap map[int]string) (int, error) {
-	// 构建分类列表描述
 	categoryInfo := s.buildCategoryInfo(leafIDs, leafMap, "可选的最终分类列表：\n", func(id int, path string) string {
 		return fmt.Sprintf("分类ID: %d, 分类路径: %s\n", id, path)
 	})
 
-	// 构建更详细的系统提示词
+	return s.selectCategoryByAI(ctx, title, leafIDs, leafMap, categoryInfo, "最终分类")
+}
+
+// selectCategoryByAI 通用的AI分类选择方法（提取重复逻辑）
+func (s *OpenAISelector) selectCategoryByAI(
+	ctx context.Context,
+	title string,
+	categoryIDs []int,
+	categoryMap map[int]string,
+	categoryInfo string,
+	categoryType string,
+) (int, error) {
+	// 构建系统提示词（所有分类类型通用）
 	systemPrompt := `你是一个专业的电商产品分类专家。根据产品标题，从给定的分类列表中选择最合适的分类ID。
 
 分析原则：
@@ -194,14 +133,13 @@ func (s *OpenAISelector) SelectCategoryByAI(ctx context.Context, title string, l
 	}
 
 	// 验证选择的ID是否在可选范围内
-	for _, id := range leafIDs {
-		if id == result.CategoryID {
-			logrus.Infof("AI成功选择最终分类: ID=%d, 路径=%s, 理由=%s\n", result.CategoryID, leafMap[result.CategoryID], result.Reason)
-			return result.CategoryID, nil
-		}
+	if !slices.Contains(categoryIDs, result.CategoryID) {
+		return 0, fmt.Errorf("选择的分类ID %d 不在可选范围内", result.CategoryID)
 	}
 
-	return 0, fmt.Errorf("选择的分类ID %d 不在可选范围内", result.CategoryID)
+	logrus.Infof("AI成功选择%s: ID=%d, 名称/路径=%s, 理由=%s\n",
+		categoryType, result.CategoryID, categoryMap[result.CategoryID], result.Reason)
+	return result.CategoryID, nil
 }
 
 // buildCategoryInfo 构建分类信息字符串

@@ -3,6 +3,7 @@ package utils
 
 import (
 	"fmt"
+	"task-processor/internal/pkg/mathutil"
 	"task-processor/internal/platforms/temu/api"
 
 	"github.com/sirupsen/logrus"
@@ -91,7 +92,7 @@ func (v *ImageDimensionValidator) validateSingleImage(img api.ImageInfo, context
 		actualRatio := float64(img.Width) / float64(img.Height)
 		tolerance := 0.001 // 允许极小误差
 
-		if abs(actualRatio-expectedRatio) > tolerance {
+		if mathutil.Abs(actualRatio-expectedRatio) > tolerance {
 			return fmt.Errorf("%s 服装类图片比例不正确: %.4f (期望: %.2f)",
 				context, actualRatio, expectedRatio)
 		}
@@ -117,12 +118,4 @@ func (v *ImageDimensionValidator) validateSingleImage(img api.ImageInfo, context
 
 	v.logger.Debugf("✅ %s 尺寸验证通过: %dx%d", context, img.Width, img.Height)
 	return nil
-}
-
-// abs 计算浮点数绝对值
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
 }

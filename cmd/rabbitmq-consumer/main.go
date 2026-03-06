@@ -5,14 +5,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
-	"strings"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/management"
-	amazonPlatform "task-processor/internal/platforms/amazon"
+	"task-processor/internal/pkg/utils"
+	platformAmazon "task-processor/internal/platforms/amazon"
 	"task-processor/internal/platforms/shein/service/pipeline"
 	"task-processor/internal/platforms/temu"
 
@@ -26,18 +25,28 @@ var (
 	platforms  = flag.String("platforms", "amazon,temu,shein", "启用的平台，用逗号分隔")
 )
 
+// 版本信息（通过 -ldflags 在编译时注入）
+var (
+	appVersion = "1.0.0" // 默认版本，编译时会被覆盖
+	buildTime  = "unknown"
+)
+
 func main() {
 	flag.Parse()
 
-	// 设置日志
-	logger := setupLogger(*logLevel)
+	// 设置日志（使用统一的日志设置函数）
+	logger := utils.SetupLoggerWithLevel(*logLevel)
+
+	// 打印版本信息（统一格式）
+	utils.PrintVersionInfo(logger, utils.VersionInfo{
+		Version:   appVersion,
+		BuildTime: buildTime,
+	})
+
 	logger.Info("🚀 启动RabbitMQ消费者...")
 
-	// 加载应用配置
-	appCfg, err := loadAppConfig(*appConfig, logger)
-	if err != nil {
-		logger.Fatalf("❌ 加载应用配置失败: %v", err)
-	}
+	// 加载应用配置（使用统一的配置加载函数）
+	appCfg := config.LoadConfigWithFallback(*appConfig, logger)
 
 	// 创建服务管理器
 	serviceManager, err := rabbitmq.NewServiceManager(*configPath, logger)
@@ -69,87 +78,42 @@ func main() {
 	logger.Info("程序已退出")
 }
 
-// setupLogger 设置日志器
-func setupLogger(level string) *logrus.Logger {
-	logger := logrus.New()
-
-	// 设置日志级别
-	logLevel, err := logrus.ParseLevel(level)
-	if err != nil {
-		logLevel = logrus.InfoLevel
-	}
-	logger.SetLevel(logLevel)
-
-	// 设置日志格式
-	logger.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp: true,
-		ForceColors:   true,
-	})
-
-	return logger
-}
-
-// loadAppConfig 加载应用配置
-func loadAppConfig(configPath string, logger *logrus.Logger) (*config.Config, error) {
-	// 检查配置文件是否存在
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		logger.Warnf("⚠️  配置文件不存在: %s，使用默认配置", configPath)
-		return createDefaultConfig(), nil
-	}
-
-	// 使用实际的配置加载逻辑
-	logger.Infof("📄 加载应用配置: %s", configPath)
-	return config.LoadConfigFromFile(configPath), nil
-}
-
-// createDefaultConfig 创建默认配置
-func createDefaultConfig() *config.Config {
-	return &config.Config{
-		Worker: config.WorkerConfig{
-			TaskInterval: 30,
-		},
-		Management: config.ManagementConfig{
-			BaseURL: "http://localhost:8080",
-		},
-		Amazon: config.AmazonConfig{
-			DataFreshnessDays: 7,
-		},
-	}
-}
-
 // registerProcessors 注册任务处理器
 func registerProcessors(serviceManager *rabbitmq.ServiceManager, appCfg *config.Config, platformsStr string, logger *logrus.Logger) error {
 	ctx := context.Background()
 
-	// 解析平台列表
-	enabledPlatforms := strings.Split(platformsStr, ",")
-	for i, platform := range enabledPlatforms {
-		enabledPlatforms[i] = strings.TrimSpace(platform)
-	}
-
+	// 解析平台列表（使用统一的工具函数）
+	enabledPlatforms := utils.ParsePlatformList(platformsStr)
 	logger.Infof("🔧 启用的平台: %v", enabledPlatforms)
 
 	// 创建管理客户端
 	managementClient := management.NewClientManager(&appCfg.Management)
 
-	// 注册Amazon处理器
-	if containsPlatform(enabledPlatforms, "amazon") {
-		logger.Info("📦 注册Amazon处理器...")
-		amazonProcessor := amazonPlatform.NewProcessor(ctx, appCfg, logger)
+	// 创建共享的Amazon处理器（所有平台共用）
+	var sharedAmazonProcessor *amazon.AmazonProcessor
+
+	sharedAmazonProcessor = createSharedAmazonProcessor(appCfg, logger)
+
+	// 注册Amazon平台处理器
+	if utils.ContainsPlatform(enabledPlatforms, "amazon") {
+		logger.Info("📦 注册Amazon平台处理器...")
+
+		// 使用完整的Amazon平台处理器
+		amazonProcessor := platformAmazon.NewProcessor(ctx, appCfg, logger)
+
 		if err := serviceManager.RegisterProcessor("amazon", amazonProcessor); err != nil {
-			return fmt.Errorf("注册Amazon处理器失败: %w", err)
+			return fmt.Errorf("注册Amazon平台处理器失败: %w", err)
 		}
-		logger.Info("✅ Amazon处理器注册成功")
+		logger.Info("✅ Amazon平台处理器注册成功")
 	}
 
 	// 注册TEMU处理器
-	if containsPlatform(enabledPlatforms, "temu") {
+	if utils.ContainsPlatform(enabledPlatforms, "temu") {
 		logger.Info("📦 注册TEMU处理器...")
-
-		// 创建共享的Amazon处理器（TEMU需要）
-		sharedAmazonProcessor := createSharedAmazonProcessor(appCfg, logger)
-
-		temuProcessor := temu.NewTemuProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
+		temuProcessor, err := temu.NewTemuProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
+		if err != nil {
+			return fmt.Errorf("创建TEMU处理器失败: %w", err)
+		}
 		if err := serviceManager.RegisterProcessor("temu", temuProcessor); err != nil {
 			return fmt.Errorf("注册TEMU处理器失败: %w", err)
 		}
@@ -157,13 +121,12 @@ func registerProcessors(serviceManager *rabbitmq.ServiceManager, appCfg *config.
 	}
 
 	// 注册SHEIN处理器
-	if containsPlatform(enabledPlatforms, "shein") {
+	if utils.ContainsPlatform(enabledPlatforms, "shein") {
 		logger.Info("📦 注册SHEIN处理器...")
-
-		// 创建共享的Amazon处理器（SHEIN需要）
-		sharedAmazonProcessor := createSharedAmazonProcessor(appCfg, logger)
-
-		sheinProcessor := pipeline.NewSheinProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
+		sheinProcessor, err := pipeline.NewSheinProcessor(ctx, appCfg, logger, managementClient, sharedAmazonProcessor)
+		if err != nil {
+			return fmt.Errorf("创建SHEIN处理器失败: %w", err)
+		}
 		if err := serviceManager.RegisterProcessor("shein", sheinProcessor); err != nil {
 			return fmt.Errorf("注册SHEIN处理器失败: %w", err)
 		}
@@ -187,14 +150,4 @@ func createSharedAmazonProcessor(cfg *config.Config, logger *logrus.Logger) *ama
 
 	logger.Info("✅ 共享Amazon爬虫处理器创建成功")
 	return amazonProcessor
-}
-
-// containsPlatform 检查平台列表是否包含指定平台
-func containsPlatform(platforms []string, platform string) bool {
-	for _, p := range platforms {
-		if strings.EqualFold(p, platform) {
-			return true
-		}
-	}
-	return false
 }

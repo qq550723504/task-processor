@@ -9,25 +9,26 @@ import (
 	"net/http"
 	"time"
 
+	"task-processor/internal/core/config"
+
 	"github.com/sirupsen/logrus"
 )
 
-// RetryConfig 重试配置
-type RetryConfig struct {
-	MaxRetries      int           `json:"maxRetries"`
-	BaseDelay       time.Duration `json:"baseDelay"`
-	MaxDelay        time.Duration `json:"maxDelay"`
-	BackoffFactor   float64       `json:"backoffFactor"`
-	RetryableErrors []string      `json:"retryableErrors"`
+// AmazonRetryConfig Amazon特定的重试配置（扩展通用配置）
+type AmazonRetryConfig struct {
+	*config.RetryConfig
+	RetryableErrors []string `json:"retryableErrors"`
 }
 
 // DefaultRetryConfig 默认重试配置
-func DefaultRetryConfig() *RetryConfig {
-	return &RetryConfig{
-		MaxRetries:    3,
-		BaseDelay:     1 * time.Second,
-		MaxDelay:      30 * time.Second,
-		BackoffFactor: 2.0,
+func DefaultRetryConfig() *AmazonRetryConfig {
+	return &AmazonRetryConfig{
+		RetryConfig: &config.RetryConfig{
+			MaxRetries:    3,
+			InitialDelay:  1 * time.Second,
+			MaxDelay:      30 * time.Second,
+			BackoffFactor: 2.0,
+		},
 		RetryableErrors: []string{
 			"TooManyRequests",
 			"InternalFailure",
@@ -42,13 +43,13 @@ type RetryableRequest func(ctx context.Context) (*http.Response, error)
 
 // ExecuteWithRetry 执行带重试的请求
 func (c *Client) ExecuteWithRetry(ctx context.Context, operation string, request RetryableRequest) (*http.Response, error) {
-	config := DefaultRetryConfig()
+	retryConfig := DefaultRetryConfig()
 
 	var lastErr error
-	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
+	for attempt := 0; attempt <= retryConfig.MaxRetries; attempt++ {
 		if attempt > 0 {
 			// 计算退避延迟
-			delay := c.calculateBackoffDelay(config, attempt)
+			delay := c.calculateBackoffDelay(retryConfig.RetryConfig, attempt)
 
 			c.logger.WithFields(logrus.Fields{
 				"operation": operation,
@@ -70,7 +71,7 @@ func (c *Client) ExecuteWithRetry(ctx context.Context, operation string, request
 			lastErr = err
 
 			// 检查是否应该重试
-			if !c.shouldRetry(err, config) {
+			if !c.shouldRetry(err, retryConfig) {
 				return nil, fmt.Errorf("请求失败（不可重试）: %w", err)
 			}
 
@@ -119,34 +120,34 @@ func (c *Client) ExecuteWithRetry(ctx context.Context, operation string, request
 		return resp, nil
 	}
 
-	return nil, fmt.Errorf("请求失败，已达到最大重试次数 (%d): %w", config.MaxRetries, lastErr)
+	return nil, fmt.Errorf("请求失败，已达到最大重试次数 (%d): %w", retryConfig.MaxRetries, lastErr)
 }
 
 // calculateBackoffDelay 计算指数退避延迟
-func (c *Client) calculateBackoffDelay(config *RetryConfig, attempt int) time.Duration {
-	delay := float64(config.BaseDelay) * math.Pow(config.BackoffFactor, float64(attempt-1))
+func (c *Client) calculateBackoffDelay(retryConfig *config.RetryConfig, attempt int) time.Duration {
+	delay := float64(retryConfig.InitialDelay) * math.Pow(retryConfig.BackoffFactor, float64(attempt-1))
 
 	// 添加抖动（±25%）
 	jitter := delay * 0.25 * (2*rand.Float64() - 1)
 	delay += jitter
 
 	// 限制最大延迟
-	if delay > float64(config.MaxDelay) {
-		delay = float64(config.MaxDelay)
+	if delay > float64(retryConfig.MaxDelay) {
+		delay = float64(retryConfig.MaxDelay)
 	}
 
 	return time.Duration(delay)
 }
 
 // shouldRetry 判断是否应该重试
-func (c *Client) shouldRetry(err error, config *RetryConfig) bool {
+func (c *Client) shouldRetry(err error, retryConfig *AmazonRetryConfig) bool {
 	if err == nil {
 		return false
 	}
 
 	// 检查是否是可重试的错误
 	errStr := err.Error()
-	for _, retryableErr := range config.RetryableErrors {
+	for _, retryableErr := range retryConfig.RetryableErrors {
 		if contains(errStr, retryableErr) {
 			return true
 		}

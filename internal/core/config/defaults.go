@@ -70,6 +70,13 @@ func setBrowserDefaults() {
 func setAmazonDefaults() {
 	viper.SetDefault("amazon.enabled", true)
 	viper.SetDefault("amazon.dataFreshnessDays", 7)
+
+	// Amazon SPAPI 默认配置
+	viper.SetDefault("amazon.spapi.enabled", false)
+	viper.SetDefault("amazon.spapi.region", "us-east-1")
+	viper.SetDefault("amazon.spapi.defaultMarketplace", "us")
+	viper.SetDefault("amazon.spapi.defaultFulfillmentType", "FBM")
+	viper.SetDefault("amazon.spapi.defaultCondition", "New")
 }
 
 // setUpdaterDefaults 设置更新器默认配置

@@ -4,7 +4,6 @@ package utils
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -64,48 +63,94 @@ func (pp *ParallelProcessor) ProcessParallel(ctx context.Context, tasks []*Proce
 	tracker.StartStep("初始化并行处理")
 
 	// 创建工作池
-	taskChan := make(chan *ProcessTask, len(tasks))
-	resultChan := make(chan *ProcessResult, len(tasks))
-
-	// 启动工作协程
-	var wg sync.WaitGroup
 	workerCount := pp.maxWorkers
 	if workerCount > len(tasks) {
 		workerCount = len(tasks)
 	}
 
-	for i := 0; i < workerCount; i++ {
-		wg.Add(1)
-		go pp.worker(ctx, i, taskChan, resultChan, processFunc, &wg)
-	}
+	pool := NewWorkerPool(workerCount, len(tasks), pp.logger)
+
+	// 包装处理函数以添加超时和日志
+	wrappedFunc := pp.wrapProcessFunc(processFunc)
+	pool.Start(ctx, wrappedFunc)
 
 	tracker.EndStep()
 	tracker.StartStep("分发任务")
 
 	// 分发任务
 	for _, task := range tasks {
-		taskChan <- task
+		pool.Submit(task)
 	}
-	close(taskChan)
+	pool.Close()
 
 	tracker.EndStep()
 	tracker.StartStep("等待结果")
 
-	// 等待所有工作协程完成
-	go func() {
-		wg.Wait()
-		close(resultChan)
-	}()
+	// 等待所有工作完成
+	go pool.Wait()
 
 	// 收集结果
 	results := make([]*ProcessResult, 0, len(tasks))
-	for result := range resultChan {
+	for result := range pool.Results() {
 		results = append(results, result)
 	}
 
 	tracker.EndStep()
 
 	// 统计结果
+	pp.logStatistics(results, len(tasks), workerCount)
+
+	return results
+}
+
+// wrapProcessFunc 包装处理函数以添加超时和日志
+func (pp *ParallelProcessor) wrapProcessFunc(processFunc ProcessFunc) ProcessFunc {
+	return func(ctx context.Context, task *ProcessTask) (interface{}, error) {
+		// 创建带超时的上下文
+		taskCtx, cancel := context.WithTimeout(ctx, pp.timeout)
+		defer cancel()
+
+		start := time.Now()
+
+		if pp.logger != nil {
+			pp.logger.WithFields(logrus.Fields{
+				"task_id": task.ID,
+				"index":   task.Index,
+			}).Info("📦 开始处理任务")
+		}
+
+		// 执行处理函数
+		data, err := processFunc(taskCtx, task)
+		duration := time.Since(start)
+
+		// 记录结果
+		if pp.logger != nil {
+			fields := logrus.Fields{
+				"task_id":     task.ID,
+				"index":       task.Index,
+				"duration":    duration.String(),
+				"duration_ms": duration.Milliseconds(),
+				"success":     err == nil,
+			}
+
+			if err != nil {
+				fields["error"] = err.Error()
+			}
+
+			level := logrus.InfoLevel
+			if err != nil {
+				level = logrus.WarnLevel
+			}
+
+			pp.logger.WithFields(fields).Log(level, "✅ 任务处理完成")
+		}
+
+		return data, err
+	}
+}
+
+// logStatistics 记录统计信息
+func (pp *ParallelProcessor) logStatistics(results []*ProcessResult, totalTasks, workerCount int) {
 	successCount := 0
 	for _, result := range results {
 		if result.Success {
@@ -115,86 +160,13 @@ func (pp *ParallelProcessor) ProcessParallel(ctx context.Context, tasks []*Proce
 
 	if pp.logger != nil {
 		pp.logger.WithFields(logrus.Fields{
-			"total_tasks":   len(tasks),
+			"total_tasks":   totalTasks,
 			"success_count": successCount,
-			"failed_count":  len(tasks) - successCount,
-			"success_rate":  fmt.Sprintf("%.1f%%", float64(successCount)/float64(len(tasks))*100),
+			"failed_count":  totalTasks - successCount,
+			"success_rate":  fmt.Sprintf("%.1f%%", float64(successCount)/float64(totalTasks)*100),
 			"worker_count":  workerCount,
 		}).Info("🎉 并行处理完成")
 	}
-
-	return results
-}
-
-// worker 工作协程
-func (pp *ParallelProcessor) worker(ctx context.Context, workerID int, taskChan <-chan *ProcessTask, resultChan chan<- *ProcessResult, processFunc ProcessFunc, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	if pp.logger != nil {
-		pp.logger.WithField("worker_id", workerID).Debug("🔧 工作协程启动")
-	}
-
-	for task := range taskChan {
-		result := pp.processTask(ctx, workerID, task, processFunc)
-		resultChan <- result
-	}
-
-	if pp.logger != nil {
-		pp.logger.WithField("worker_id", workerID).Debug("🔧 工作协程结束")
-	}
-}
-
-// processTask 处理单个任务
-func (pp *ParallelProcessor) processTask(ctx context.Context, workerID int, task *ProcessTask, processFunc ProcessFunc) *ProcessResult {
-	// 创建带超时的上下文
-	taskCtx, cancel := context.WithTimeout(ctx, pp.timeout)
-	defer cancel()
-
-	start := time.Now()
-
-	if pp.logger != nil {
-		pp.logger.WithFields(logrus.Fields{
-			"worker_id": workerID,
-			"task_id":   task.ID,
-			"index":     task.Index,
-		}).Info("📦 开始处理任务")
-	}
-
-	// 执行处理函数
-	data, err := processFunc(taskCtx, task)
-	duration := time.Since(start)
-
-	result := &ProcessResult{
-		Index:   task.Index,
-		Data:    data,
-		Error:   err,
-		Success: err == nil,
-	}
-
-	// 记录结果
-	if pp.logger != nil {
-		fields := logrus.Fields{
-			"worker_id":   workerID,
-			"task_id":     task.ID,
-			"index":       task.Index,
-			"duration":    duration.String(),
-			"duration_ms": duration.Milliseconds(),
-			"success":     result.Success,
-		}
-
-		if err != nil {
-			fields["error"] = err.Error()
-		}
-
-		level := logrus.InfoLevel
-		if err != nil {
-			level = logrus.WarnLevel
-		}
-
-		pp.logger.WithFields(fields).Log(level, "✅ 任务处理完成")
-	}
-
-	return result
 }
 
 // BatchProcessor 批量处理器

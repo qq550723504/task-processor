@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
 	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
@@ -22,11 +23,12 @@ type SheinProcessor struct {
 }
 
 // NewSheinProcessor 创建SHEIN处理器（参考Temu实现）
-func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor) *SheinProcessor {
+// 返回 error 而不是 panic，让调用方决定如何处理错误
+func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor) (*SheinProcessor, error) {
 	// ManagementClient必须由调用方提供（共享实例）
 	if managementClient == nil {
 		logger.Error("[SHEIN] ManagementClient不能为空，必须使用共享实例")
-		panic("ManagementClient不能为空")
+		return nil, fmt.Errorf("managementClient不能为空")
 	}
 
 	// 如果提供了Amazon处理器，记录日志
@@ -57,7 +59,7 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	p.taskHandler = NewTaskHandler(p)
 	p.pipeline = p.buildPipeline()
 
-	return p
+	return p, nil
 }
 
 // buildPipeline 构建管道（统一方法，参考TEMU）

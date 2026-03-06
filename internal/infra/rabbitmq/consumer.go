@@ -3,6 +3,7 @@ package rabbitmq
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -252,12 +253,19 @@ func (qc *QueueConsumer) shouldRetry(msg *Message) bool {
 
 // parseDeliveryMessage 解析投递消息
 func parseDeliveryMessage(delivery amqp.Delivery) (*Message, error) {
-	// 这里可以根据实际需要解析消息
-	// 暂时返回一个基础的消息结构
 	msg := &Message{
 		ID:        delivery.MessageId,
 		Type:      delivery.Type,
 		Timestamp: delivery.Timestamp.Unix(),
+	}
+
+	// 解析消息体为 Payload
+	if len(delivery.Body) > 0 {
+		var payload map[string]interface{}
+		if err := json.Unmarshal(delivery.Body, &payload); err != nil {
+			return nil, fmt.Errorf("解析消息体失败: %w", err)
+		}
+		msg.Payload = payload
 	}
 
 	// 从Headers中获取重试信息

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -34,18 +35,18 @@ func NewTaskExecutor(ctx context.Context, task Task, depManager *DependencyManag
 		cancel:            cancel,
 		dependencyManager: depManager,
 		stats:             NewExecutorStats(),
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "TaskExecutor",
-			"task_id":   task.GetID(),
-			"task_type": task.GetType(),
-			"platform":  task.GetPlatform(),
+		logger: logger.GetGlobalLogger("task_executor").WithFields(logrus.Fields{
+			logger.FieldComponent: "task_executor",
+			"task_id":             task.GetID(),
+			"task_type":           task.GetType(),
+			logger.FieldPlatform:  task.GetPlatform(),
 		}),
 	}
 }
 
 // Start 启动任务执行器
 func (e *TaskExecutor) Start() {
-	e.logger.Infof("启动任务执行器，间隔: %v", e.task.GetInterval())
+	e.logger.WithField("interval", e.task.GetInterval()).Info("启动任务执行器")
 
 	e.wg.Add(1)
 	go e.run()
@@ -64,7 +65,7 @@ func (e *TaskExecutor) run() {
 	defer e.wg.Done()
 	defer func() {
 		if r := recover(); r != nil {
-			e.logger.Errorf("任务执行器发生panic: %v", r)
+			e.logger.WithField("panic", r).Error("任务执行器发生panic")
 		}
 	}()
 
@@ -93,9 +94,7 @@ func (e *TaskExecutor) executeTaskWithConcurrencyControl() {
 		skipCount := atomic.AddInt64(&e.skipCount, 1)
 		e.stats.RecordSkip()
 
-		e.logger.WithFields(logrus.Fields{
-			"skip_count": skipCount,
-		}).Warn("上一个任务还在执行中，跳过本次执行")
+		e.logger.WithField("skip_count", skipCount).Warn("上一个任务还在执行中，跳过本次执行")
 		return
 	}
 
@@ -113,7 +112,10 @@ func (e *TaskExecutor) executeTask() {
 			// 获取堆栈信息
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
-			e.logger.Errorf("执行任务时发生panic: %v\n堆栈:\n%s", r, string(buf[:n]))
+			e.logger.WithFields(logrus.Fields{
+				"panic": r,
+				"stack": string(buf[:n]),
+			}).Error("执行任务时发生panic")
 		}
 	}()
 
@@ -158,13 +160,9 @@ func (e *TaskExecutor) executeTask() {
 	}
 
 	if err != nil {
-		e.logger.WithError(err).WithFields(logrus.Fields{
-			"duration": duration,
-		}).Error("任务执行失败")
+		e.logger.WithError(err).WithField(logger.FieldDurationMs, duration.Milliseconds()).Error("任务执行失败")
 	} else {
-		e.logger.WithFields(logrus.Fields{
-			"duration": duration,
-		}).Info("任务执行成功")
+		e.logger.WithField(logger.FieldDurationMs, duration.Milliseconds()).Info("任务执行成功")
 	}
 }
 

@@ -53,7 +53,11 @@ func (s *processorServiceImpl) startTemuProcessor(ctx context.Context, cfg *conf
 	}
 
 	// 创建TEMU处理器，使用注入的资源
-	s.temuProcessor = temu.NewTemuProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor)
+	temuProcessor, err := temu.NewTemuProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor)
+	if err != nil {
+		return fmt.Errorf("创建TEMU处理器失败: %w", err)
+	}
+	s.temuProcessor = temuProcessor
 
 	// 启动处理器
 	if err := s.temuProcessor.Start(ctx); err != nil {
@@ -74,7 +78,11 @@ func (s *processorServiceImpl) startSheinProcessor(ctx context.Context, cfg *con
 	}
 
 	// 创建SHEIN处理器，使用注入的资源
-	s.sheinProcessor = pipeline.NewSheinProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor)
+	sheinProcessor, err := pipeline.NewSheinProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor)
+	if err != nil {
+		return fmt.Errorf("创建SHEIN处理器失败: %w", err)
+	}
+	s.sheinProcessor = sheinProcessor
 
 	// 启动处理器
 	if err := s.sheinProcessor.Start(ctx); err != nil {

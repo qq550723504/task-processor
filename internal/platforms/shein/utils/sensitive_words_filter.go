@@ -9,22 +9,15 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/core/config"
+
 	"github.com/sirupsen/logrus"
 )
-
-// SensitiveWordsConfig 敏感词配置结构
-type SensitiveWordsConfig struct {
-	StaticWords  map[string][]string `json:"static_words"`
-	DynamicWords map[string][]string `json:"dynamic_words"`
-	LastUpdated  string              `json:"last_updated"`
-	Version      string              `json:"version"`
-	Platform     string              `json:"platform"`
-}
 
 // SensitiveWordsFilter SHEIN 敏感词过滤器
 type SensitiveWordsFilter struct {
 	mu              sync.RWMutex
-	config          *SensitiveWordsConfig
+	config          *config.SensitiveWordsConfig
 	configPath      string
 	compiledRegexes map[string][]*regexp.Regexp
 	hardcodedWords  map[string][]string
@@ -71,16 +64,16 @@ func (f *SensitiveWordsFilter) LoadConfig() error {
 		return fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var config SensitiveWordsConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+	var cfg config.SensitiveWordsConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
-	f.config = &config
+	f.config = &cfg
 
 	// 编译动态正则表达式
 	f.compiledRegexes = make(map[string][]*regexp.Regexp)
-	for lang, patterns := range config.DynamicWords {
+	for lang, patterns := range cfg.DynamicWords {
 		var regexes []*regexp.Regexp
 		for _, pattern := range patterns {
 			re, err := regexp.Compile(pattern)
@@ -98,8 +91,8 @@ func (f *SensitiveWordsFilter) LoadConfig() error {
 
 	logrus.WithFields(logrus.Fields{
 		"config_path": f.configPath,
-		"version":     config.Version,
-		"platform":    config.Platform,
+		"version":     cfg.Version,
+		"platform":    cfg.Platform,
 	}).Info("✅ 敏感词配置加载成功")
 
 	return nil
@@ -181,7 +174,7 @@ func (f *SensitiveWordsFilter) CheckProduct(title, description string, languages
 }
 
 // GetConfig 获取当前配置（只读）
-func (f *SensitiveWordsFilter) GetConfig() *SensitiveWordsConfig {
+func (f *SensitiveWordsFilter) GetConfig() *config.SensitiveWordsConfig {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.config

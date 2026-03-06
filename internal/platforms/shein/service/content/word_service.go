@@ -2,6 +2,7 @@
 package content
 
 import (
+	"context"
 	"task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"
@@ -16,7 +17,13 @@ func NewSensitiveWordService() *SensitiveWordService {
 func NewSensitiveWordServiceWithPath(configPath string) *SensitiveWordService {
 	service := &SensitiveWordService{
 		configPath: configPath,
+		ctx:        context.Background(),
+		saveQueue:  make(chan struct{}, 10), // 缓冲队列，最多10个待保存请求
+		stopSave:   make(chan struct{}),
 	}
+
+	// 启动保存工作协程
+	service.startSaveWorker()
 
 	if err := service.loadConfig(); err != nil {
 		logrus.Errorf("加载敏感词配置失败: %v，使用默认配置", err)
@@ -24,6 +31,40 @@ func NewSensitiveWordServiceWithPath(configPath string) *SensitiveWordService {
 	}
 
 	return service
+}
+
+// startSaveWorker 启动保存工作协程
+func (s *SensitiveWordService) startSaveWorker() {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				logrus.Errorf("保存工作协程 panic: %v", r)
+			}
+		}()
+
+		for {
+			select {
+			case <-s.saveQueue:
+				if err := s.saveConfig(); err != nil {
+					logrus.Errorf("保存敏感词配置失败: %v", err)
+				} else {
+					logrus.Debug("敏感词配置已保存")
+				}
+			case <-s.stopSave:
+				// 处理剩余的保存请求
+				for len(s.saveQueue) > 0 {
+					<-s.saveQueue
+					if err := s.saveConfig(); err != nil {
+						logrus.Errorf("保存敏感词配置失败: %v", err)
+					}
+				}
+				logrus.Info("保存工作协程已停止")
+				return
+			}
+		}
+	}()
 }
 
 // initDefaultConfig 初始化默认配置

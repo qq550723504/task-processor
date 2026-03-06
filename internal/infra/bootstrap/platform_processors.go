@@ -45,62 +45,61 @@ func (p *PlatformProcessorRegistry) RegisterPlatformProcessors(container di.Cont
 	return nil
 }
 
+// getDependencies 获取通用依赖
+func (p *PlatformProcessorRegistry) getDependencies(c di.Container) (
+	*config.Config,
+	*logrus.Logger,
+	*management.ClientManager,
+	*amazon.AmazonProcessor,
+	error,
+) {
+	configInstance, err := c.Get("config")
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("获取配置失败: %w", err)
+	}
+
+	loggerInstance, err := c.Get("logger")
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("获取日志器失败: %w", err)
+	}
+
+	managementClientInstance, err := c.Get("managementClient")
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("获取管理客户端失败: %w", err)
+	}
+
+	amazonProcessorInstance, err := c.Get("amazonProcessor")
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("获取Amazon处理器失败: %w", err)
+	}
+
+	return configInstance.(*config.Config),
+		loggerInstance.(*logrus.Logger),
+		managementClientInstance.(*management.ClientManager),
+		amazonProcessorInstance.(*amazon.AmazonProcessor),
+		nil
+}
+
 // registerTemuProcessor 注册TEMU处理器
 func (p *PlatformProcessorRegistry) registerTemuProcessor(container di.Container) error {
 	return container.Register("temuProcessor", func(c di.Container) (any, error) {
-		configInstance, err := c.Get("config")
+		config, logger, managementClient, amazonProcessor, err := p.getDependencies(c)
 		if err != nil {
-			return nil, fmt.Errorf("获取配置失败: %w", err)
-		}
-		loggerInstance, err := c.Get("logger")
-		if err != nil {
-			return nil, fmt.Errorf("获取日志器失败: %w", err)
-		}
-		managementClientInstance, err := c.Get("managementClient")
-		if err != nil {
-			return nil, fmt.Errorf("获取管理客户端失败: %w", err)
-		}
-		amazonProcessorInstance, err := c.Get("amazonProcessor")
-		if err != nil {
-			return nil, fmt.Errorf("获取Amazon处理器失败: %w", err)
+			return nil, err
 		}
 
-		config := configInstance.(*config.Config)
-		logger := loggerInstance.(*logrus.Logger)
-		managementClient := managementClientInstance.(*management.ClientManager)
-		amazonProcessor := amazonProcessorInstance.(*amazon.AmazonProcessor)
-
-		// 使用原有的构造函数，不修改任何业务逻辑
-		return temu.NewTemuProcessor(context.Background(), config, logger, managementClient, amazonProcessor), nil
+		return temu.NewTemuProcessor(context.Background(), config, logger, managementClient, amazonProcessor)
 	})
 }
 
 // registerSheinProcessor 注册SHEIN处理器
 func (p *PlatformProcessorRegistry) registerSheinProcessor(container di.Container) error {
 	return container.Register("sheinProcessor", func(c di.Container) (any, error) {
-		configInstance, err := c.Get("config")
+		config, logger, managementClient, amazonProcessor, err := p.getDependencies(c)
 		if err != nil {
-			return nil, fmt.Errorf("获取配置失败: %w", err)
-		}
-		loggerInstance, err := c.Get("logger")
-		if err != nil {
-			return nil, fmt.Errorf("获取日志器失败: %w", err)
-		}
-		managementClientInstance, err := c.Get("managementClient")
-		if err != nil {
-			return nil, fmt.Errorf("获取管理客户端失败: %w", err)
-		}
-		amazonProcessorInstance, err := c.Get("amazonProcessor")
-		if err != nil {
-			return nil, fmt.Errorf("获取Amazon处理器失败: %w", err)
+			return nil, err
 		}
 
-		config := configInstance.(*config.Config)
-		logger := loggerInstance.(*logrus.Logger)
-		managementClient := managementClientInstance.(*management.ClientManager)
-		amazonProcessor := amazonProcessorInstance.(*amazon.AmazonProcessor)
-
-		// 使用原有的构造函数，不修改任何业务逻辑
-		return pipeline.NewSheinProcessor(context.Background(), config, logger, managementClient, amazonProcessor), nil
+		return pipeline.NewSheinProcessor(context.Background(), config, logger, managementClient, amazonProcessor)
 	})
 }
