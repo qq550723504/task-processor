@@ -91,8 +91,8 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: false            # 是否启用SHEIN处理器（处理上架任务）
-    schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
+    enabled: true            # 是否启用SHEIN处理器（处理上架任务）
+    schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
       enabled: true        # 启用自动核价
@@ -120,7 +120,7 @@ platforms:
 # 浏览器配置（通用）
 browser:
   enabled: true
-  headless: false  # false=可见模式（便于调试），true=无头模式
+  headless: true  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
   poolSize: 3     # 浏览器池大小
   viewportWidth: 1920

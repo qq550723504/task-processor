@@ -2,6 +2,8 @@
 package attribute
 
 import (
+	"strings"
+
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/utils"
@@ -70,16 +72,8 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 		}
 	}
 
-	// 记录验证响应的详细信息
-	logrus.Debugf("验证响应: AttributeID=%d, PreAttributeValueID=%d, NameMultis数量=%d",
-		validateResponse.Data.AttributeID,
-		validateResponse.Data.PreAttributeValueID,
-		len(validateResponse.Data.AttributeValueNameMultis))
-
-	for i, nm := range validateResponse.Data.AttributeValueNameMultis {
-		logrus.Debugf("  验证响应[%d]: 语言=%s, 名称=%s, 警告=%d",
-			i, nm.Language, nm.AttributeValueNameMulti, nm.WarningType)
-	}
+	// 修复 Shein 接口翻译导致的中文逗号问题
+	p.fixTranslatedCommas(&validateResponse.Data.AttributeValueNameMultis)
 
 	// 转换多语言名称
 	nameMultis := p.convertToAttributeValueNameMultis(validateResponse.Data.AttributeValueNameMultis)
@@ -176,4 +170,28 @@ func (p *CustomAttributeProcessor) convertToAttributeValueNameMultis(source []st
 	}
 
 	return result
+}
+
+// fixTranslatedCommas 修复 Shein 接口翻译导致的中文逗号问题
+// Shein 接口会将英文逗号翻译为中文逗号，需要转换回来
+func (p *CustomAttributeProcessor) fixTranslatedCommas(nameMultis *[]struct {
+	Language                string `json:"language"`
+	AttributeValueNameMulti string `json:"attribute_value_name_multi"`
+	WarningType             int    `json:"warning_type"`
+}) {
+	if nameMultis == nil || len(*nameMultis) == 0 {
+		return
+	}
+
+	for i := range *nameMultis {
+		original := (*nameMultis)[i].AttributeValueNameMulti
+		// 将中文逗号替换为英文逗号
+		fixed := strings.ReplaceAll(original, "，", ",")
+
+		if fixed != original {
+			logrus.Infof("修复翻译后的逗号: 语言=%s, 原始='%s' -> 修复后='%s'",
+				(*nameMultis)[i].Language, original, fixed)
+			(*nameMultis)[i].AttributeValueNameMulti = fixed
+		}
+	}
 }
