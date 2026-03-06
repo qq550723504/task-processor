@@ -11,7 +11,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/pkg/utils"
-	amazonPlatform "task-processor/internal/platforms/amazon"
+	platformAmazon "task-processor/internal/platforms/amazon"
 	"task-processor/internal/platforms/shein/service/pipeline"
 	"task-processor/internal/platforms/temu"
 
@@ -89,20 +89,22 @@ func registerProcessors(serviceManager *rabbitmq.ServiceManager, appCfg *config.
 	// 创建管理客户端
 	managementClient := management.NewClientManager(&appCfg.Management)
 
-	// 创建共享的Amazon处理器（TEMU和SHEIN都需要）
+	// 创建共享的Amazon处理器（所有平台共用）
 	var sharedAmazonProcessor *amazon.AmazonProcessor
-	if utils.ContainsPlatform(enabledPlatforms, "temu") || utils.ContainsPlatform(enabledPlatforms, "shein") {
-		sharedAmazonProcessor = createSharedAmazonProcessor(appCfg, logger)
-	}
 
-	// 注册Amazon处理器
+	sharedAmazonProcessor = createSharedAmazonProcessor(appCfg, logger)
+
+	// 注册Amazon平台处理器
 	if utils.ContainsPlatform(enabledPlatforms, "amazon") {
-		logger.Info("📦 注册Amazon处理器...")
-		amazonProcessor := amazonPlatform.NewProcessor(ctx, appCfg, logger)
+		logger.Info("📦 注册Amazon平台处理器...")
+
+		// 使用完整的Amazon平台处理器
+		amazonProcessor := platformAmazon.NewProcessor(ctx, appCfg, logger)
+
 		if err := serviceManager.RegisterProcessor("amazon", amazonProcessor); err != nil {
-			return fmt.Errorf("注册Amazon处理器失败: %w", err)
+			return fmt.Errorf("注册Amazon平台处理器失败: %w", err)
 		}
-		logger.Info("✅ Amazon处理器注册成功")
+		logger.Info("✅ Amazon平台处理器注册成功")
 	}
 
 	// 注册TEMU处理器
