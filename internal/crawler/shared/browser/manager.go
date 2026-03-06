@@ -1,9 +1,13 @@
 package browser
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -50,14 +54,134 @@ func (m *Manager) GenerateStableFingerprint(userID string) *FingerprintConfig {
 	return m.generator.GenerateStableFingerprint(userID)
 }
 
-// Install 初始化Playwright
+// Install 初始化Playwright（自动安装驱动）
 func (m *Manager) Install() error {
+	// 先尝试运行 Playwright
 	pw, err := playwright.Run()
 	if err != nil {
-		return fmt.Errorf("初始化playwright失败: %w", err)
+		// 如果失败，检查是否是驱动未安装的错误
+		if strings.Contains(err.Error(), "please install the driver") {
+			logrus.Warn("检测到 Playwright 驱动未安装，开始自动安装...")
+
+			// 自动安装驱动
+			if installErr := m.installPlaywrightDriver(); installErr != nil {
+				return fmt.Errorf("自动安装 Playwright 驱动失败: %w", installErr)
+			}
+
+			logrus.Info("Playwright 驱动安装成功，重新初始化...")
+
+			// 重新尝试运行
+			pw, err = playwright.Run()
+			if err != nil {
+				return fmt.Errorf("初始化playwright失败: %w", err)
+			}
+		} else {
+			return fmt.Errorf("初始化playwright失败: %w", err)
+		}
 	}
+
 	m.pw = pw
+	logrus.Info("Playwright 初始化成功")
 	return nil
+}
+
+// installPlaywrightDriver 安装 Playwright 驱动
+func (m *Manager) installPlaywrightDriver() error {
+	logrus.Info("开始安装 Playwright 驱动（Chromium）...")
+
+	// 获取 go.mod 中的 playwright 版本
+	version, err := getPlaywrightVersion()
+	if err != nil {
+		logrus.Warnf("无法读取 playwright 版本，使用默认安装方式: %v", err)
+		// 如果读取失败，使用不指定版本的方式安装
+		version = ""
+	} else {
+		logrus.Infof("检测到 playwright-go 版本: %s", version)
+	}
+
+	// 构建安装命令
+	var cmd *exec.Cmd
+	if version != "" {
+		// 使用指定版本安装: go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install chromium
+		cmd = exec.Command("go", "run",
+			fmt.Sprintf("github.com/playwright-community/playwright-go/cmd/playwright@%s", version),
+			"install", "chromium")
+	} else {
+		// 使用当前项目依赖的版本安装
+		cmd = exec.Command("go", "run",
+			"github.com/playwright-community/playwright-go/cmd/playwright",
+			"install", "chromium")
+	}
+
+	// 设置输出
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// 执行命令
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("执行安装命令失败: %w", err)
+	}
+
+	logrus.Info("Playwright 驱动安装完成")
+	return nil
+}
+
+// getPlaywrightVersion 从 go.mod 读取 playwright-go 的版本
+func getPlaywrightVersion() (string, error) {
+	// 查找 go.mod 文件
+	goModPath, err := findGoMod()
+	if err != nil {
+		return "", err
+	}
+
+	// 打开文件
+	file, err := os.Open(goModPath)
+	if err != nil {
+		return "", fmt.Errorf("打开 go.mod 失败: %w", err)
+	}
+	defer file.Close()
+
+	// 正则匹配 playwright-go 版本
+	re := regexp.MustCompile(`github\.com/playwright-community/playwright-go\s+v(\d+\.\d+\.\d+)`)
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+			return "v" + matches[1], nil
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("读取 go.mod 失败: %w", err)
+	}
+
+	return "", fmt.Errorf("未找到 playwright-go 依赖")
+}
+
+// findGoMod 查找 go.mod 文件路径
+func findGoMod() (string, error) {
+	// 从当前工作目录开始向上查找
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		goModPath := filepath.Join(dir, "go.mod")
+		if _, err := os.Stat(goModPath); err == nil {
+			return goModPath, nil
+		}
+
+		// 到达根目录
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	return "", fmt.Errorf("未找到 go.mod 文件")
 }
 
 // Launch 启动浏览器（使用持久化上下文，与Python版本一致）
