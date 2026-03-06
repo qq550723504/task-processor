@@ -188,28 +188,33 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 		return fmt.Errorf("页面在查找Apply按钮前被关闭")
 	}
 
+	// 优先查找 Apply 按钮（保存邮编）
 	applyButtonSelectors := []string{
-		// 最精确的选择器 - 排除购物车按钮
-		"div[role='dialog'] button:has-text('Apply'):not(:has-text('Cart')):not(:has-text('Buy'))",
-		"div[role='dialog'] button:has-text('Done'):not(:has-text('Cart')):not(:has-text('Buy'))",
-		"input[aria-labelledby='GLUXZipUpdate-announce']", // Amazon邮编更新按钮
+		"input[aria-labelledby='GLUXZipUpdate-announce']", // Amazon邮编更新按钮（最常见）
 		"#GLUXZipUpdate",           // Amazon主要的设置按钮
 		"span#GLUXZipUpdate input", // GLUXZipUpdate内的input
-		"button:has-text('Apply'):not(:has-text('Cart')):not(:has-text('Buy'))", // 英文版的Apply按钮(排除购物车)
+		"input[type='submit'][aria-labelledby='GLUXZipUpdate-announce']", // 带特定aria-labelledby的提交按钮
+		"div[role='dialog'] button:has-text('Apply'):not(:has-text('Cart')):not(:has-text('Buy'))",
+		"button:has-text('Apply'):not(:has-text('Cart')):not(:has-text('Buy'))",
 		"button:text('Apply')", // 英文版的Apply按钮（精确匹配）
-		"input[type='submit'][aria-labelledby='GLUXZipUpdate-announce']",       // 带特定aria-labelledby的提交按钮
-		"button:has-text('Done'):not(:has-text('Cart')):not(:has-text('Buy'))", // Done按钮(排除购物车)
-		"button:has-text('Save'):not(:has-text('Cart')):not(:has-text('Buy'))", // Save按钮(排除购物车)
-		"#zip-code-apply",    // 邮编应用按钮
-		"#postal-code-apply", // 邮编应用按钮
-		".apply-button",      // 应用按钮类
-		".save-button",       // 保存按钮类
+		"#zip-code-apply",      // 邮编应用按钮
+		"#postal-code-apply",   // 邮编应用按钮
+		".apply-button",        // 应用按钮类
+	}
+
+	// Done/Save 按钮（次要选择，通常在 Apply 之后出现）
+	doneButtonSelectors := []string{
+		"div[role='dialog'] button:has-text('Done'):not(:has-text('Cart')):not(:has-text('Buy'))",
+		"button:has-text('Done'):not(:has-text('Cart')):not(:has-text('Buy'))",
+		"button:has-text('Save'):not(:has-text('Cart')):not(:has-text('Buy'))",
+		".save-button",
 	}
 
 	var applyButton playwright.Locator
 	var selectedSelector string
 	var buttonText string
 
+	// 第一步：查找并点击 Apply 按钮
 	for _, selector := range applyButtonSelectors {
 		if page.IsClosed() {
 			return fmt.Errorf("页面在查找Apply按钮过程中被关闭")
@@ -223,7 +228,73 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 				// 双重检查:确保不是购物车相关按钮
 				if text, err := locator.TextContent(); err == nil {
 					lowerText := strings.ToLower(strings.TrimSpace(text))
-					logrus.Infof("检查按钮文本: '%s' (选择器: %s)", text, selector)
+					logrus.Infof("检查Apply按钮文本: '%s' (选择器: %s)", text, selector)
+
+					// 严格排除购物车相关按钮
+					if strings.Contains(lowerText, "cart") ||
+						strings.Contains(lowerText, "buy") ||
+						strings.Contains(lowerText, "add to") ||
+						strings.Contains(lowerText, "purchase") {
+						logrus.Infof("跳过购物车相关按钮: %s", text)
+						continue
+					}
+
+					buttonText = text
+				}
+
+				applyButton = locator
+				selectedSelector = selector
+				logrus.Infof("找到Apply按钮: %s (文本: %s)", selector, buttonText)
+				break
+			}
+		}
+	}
+
+	if applyButton == nil {
+		// 如果没有找到Apply按钮，尝试按回车键
+		logrus.Infof("未找到Apply按钮,尝试按回车键")
+		if err := page.Keyboard().Press("Enter"); err != nil {
+			if page.IsClosed() {
+				return fmt.Errorf("页面在按回车键时被关闭: %w", err)
+			}
+			return fmt.Errorf("按回车键失败: %w", err)
+		}
+	} else {
+		// 点击Apply按钮
+		logrus.Infof("准备点击Apply按钮: %s", selectedSelector)
+		if err := applyButton.Click(); err != nil {
+			if page.IsClosed() {
+				return fmt.Errorf("页面在点击Apply按钮时被关闭: %w", err)
+			}
+			return fmt.Errorf("点击Apply按钮失败: %w", err)
+		}
+		logrus.Infof("成功点击Apply按钮")
+	}
+
+	// 等待Apply按钮处理完成
+	time.Sleep(2 * time.Second)
+
+	// 检查页面状态
+	if page.IsClosed() {
+		return fmt.Errorf("页面在Apply按钮处理后被关闭")
+	}
+
+	// 第二步：查找并点击 Done 按钮（如果存在）
+	var doneButton playwright.Locator
+	for _, selector := range doneButtonSelectors {
+		if page.IsClosed() {
+			return fmt.Errorf("页面在查找Done按钮过程中被关闭")
+		}
+
+		locator := page.Locator(selector).First()
+		count, err := locator.Count()
+		if err == nil && count > 0 {
+			// 检查按钮是否可见
+			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
+				// 双重检查:确保不是购物车相关按钮
+				if text, err := locator.TextContent(); err == nil {
+					lowerText := strings.ToLower(strings.TrimSpace(text))
+					logrus.Infof("检查Done按钮文本: '%s' (选择器: %s)", text, selector)
 
 					// 严格排除购物车相关按钮
 					if strings.Contains(lowerText, "cart") ||
@@ -235,7 +306,7 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 					}
 
 					// 只接受明确的确认按钮文本
-					validTexts := []string{"apply", "done", "save", "ok", "confirm", "submit"}
+					validTexts := []string{"done", "save", "ok", "confirm"}
 					isValid := false
 					for _, validText := range validTexts {
 						if strings.Contains(lowerText, validText) {
@@ -245,57 +316,32 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 					}
 
 					if !isValid {
-						logrus.Infof("按钮文本不符合确认按钮要求: %s", text)
+						logrus.Infof("按钮文本不符合Done按钮要求: %s", text)
 						continue
 					}
-
-					buttonText = text
 				}
 
-				applyButton = locator
-				selectedSelector = selector
-				logrus.Infof("找到确认按钮: %s (文本: %s)", selector, buttonText)
+				doneButton = locator
+				logrus.Infof("找到Done按钮: %s", selector)
 				break
 			}
 		}
 	}
 
-	if applyButton == nil {
-		// 如果没有找到应用按钮，尝试按回车键
-		logrus.Infof("未找到Apply按钮,尝试按回车键")
-		if err := page.Keyboard().Press("Enter"); err != nil {
-			if page.IsClosed() {
-				return fmt.Errorf("页面在按回车键时被关闭: %w", err)
-			}
-			return fmt.Errorf("按回车键失败: %w", err)
+	if doneButton != nil {
+		// 点击Done按钮
+		logrus.Infof("准备点击Done按钮")
+		if err := doneButton.Click(); err != nil {
+			logrus.Infof("点击Done按钮失败: %v", err)
+		} else {
+			logrus.Infof("成功点击Done按钮")
+			time.Sleep(1 * time.Second)
 		}
 	} else {
-		// 点击Apply按钮
-		logrus.Infof("准备点击确认按钮: %s", selectedSelector)
-		if err := applyButton.Click(); err != nil {
-			if page.IsClosed() {
-				return fmt.Errorf("页面在点击Apply按钮时被关闭: %w", err)
-			}
-			return fmt.Errorf("点击Apply按钮失败: %w", err)
-		}
-		logrus.Infof("成功点击确认按钮")
+		logrus.Infof("未找到Done按钮，可能已自动关闭")
 	}
 
-	// 等待Apply按钮处理完成
-	time.Sleep(2 * time.Second)
-
-	// 检查页面状态
-	if page.IsClosed() {
-		return fmt.Errorf("页面在Apply按钮处理后被关闭")
-	}
-
-	if err := page.Keyboard().Press("Escape"); err != nil {
-		logrus.Infof("按ESC键失败: %v", err)
-	} else {
-		logrus.Infof("成功按ESC键")
-		// 等待ESC键生效
-		time.Sleep(1 * time.Second)
-	}
+	// 按ESC键关闭可能残留的弹窗
 
 	// 检查是否有 "Continue Shopping" 按钮需要点击
 	HandleContinueShoppingButtonInZipcode(page)

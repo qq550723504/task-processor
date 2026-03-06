@@ -35,8 +35,8 @@ def send_test_message(platform="amazon", priority="normal", task_id=None):
     print(f"  任务ID: {task_id}")
     print()
     
-    # 构造测试消息（匹配 TaskMessage 结构）
-    timestamp = int(get_time() * 1000)  # 毫秒时间戳
+    # 构造测试消息（TaskMessage格式，直接作为消息体）
+    timestamp = int(get_time())
     
     # 优先级映射
     priority_map = {
@@ -47,6 +47,7 @@ def send_test_message(platform="amazon", priority="normal", task_id=None):
     }
     priority_value = priority_map.get(priority, 7)
     
+    # TaskMessage（直接作为消息体）
     message = {
         "taskId": int(task_id.replace("test-", "")) if task_id.startswith("test-") else 123456,
         "tenantId": 1,
@@ -91,6 +92,8 @@ def send_test_message(platform="amazon", priority="normal", task_id=None):
             properties=pika.BasicProperties(
                 content_type='application/json',
                 delivery_mode=2,  # 持久化消息
+                message_id=task_id,  # 设置消息ID
+                type='task',  # 设置消息类型
             )
         )
         

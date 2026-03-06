@@ -38,6 +38,71 @@ type PublishOptions struct {
 	Immediate  bool
 }
 
+// PublishTaskMessage 发布任务消息（与Python脚本格式一致）
+// 消息体只包含TaskMessage，message_id和type通过RabbitMQ properties传递
+func (c *Client) PublishTaskMessage(ctx context.Context, task interface{}) error {
+	// 导入task_adapter来访问TaskMessageAdapter
+	adapter := NewTaskMessageAdapter()
+
+	// 根据task类型处理
+	var taskMsg interface{}
+	var messageID string
+	var priority uint8
+	var queueName string
+
+	// 类型断言，判断是Task还是其他类型
+	switch t := task.(type) {
+	case *TaskMessage:
+		taskMsg = t
+		messageID = fmt.Sprintf("%d", t.TaskID)
+		priority = adapter.calculateRabbitMQPriority(t.Priority)
+		queueName = adapter.GetQueueName(t.Platform)
+	default:
+		// 假设是model.Task类型，需要导入model包
+		// 这里我们通过反射或类型断言来处理
+		return fmt.Errorf("不支持的任务类型")
+	}
+
+	// 序列化TaskMessage为JSON
+	body, err := json.Marshal(taskMsg)
+	if err != nil {
+		return fmt.Errorf("序列化任务消息失败: %w", err)
+	}
+
+	channel, err := c.connManager.GetChannel()
+	if err != nil {
+		return fmt.Errorf("获取通道失败: %w", err)
+	}
+
+	// 构建发布消息（与Python脚本格式一致）
+	publishing := amqp.Publishing{
+		ContentType:  "application/json",
+		Body:         body,
+		Priority:     priority,
+		Timestamp:    time.Now(),
+		MessageId:    messageID, // 通过properties传递
+		Type:         "task",    // 通过properties传递
+		DeliveryMode: 2,         // 持久化
+	}
+
+	// 直接发送到队列（使用默认交换机）
+	err = channel.PublishWithContext(
+		ctx,
+		"",        // 使用默认交换机
+		queueName, // 路由键就是队列名
+		false,     // mandatory
+		false,     // immediate
+		publishing,
+	)
+
+	if err != nil {
+		return fmt.Errorf("发布任务消息失败: %w", err)
+	}
+
+	c.logger.Debugf("任务消息发布成功: ID=%s, Queue=%s", messageID, queueName)
+	return nil
+}
+
 // ConsumeOptions 消费选项
 type ConsumeOptions struct {
 	Queue     string

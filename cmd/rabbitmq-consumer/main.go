@@ -94,11 +94,11 @@ func registerProcessors(serviceManager *rabbitmq.ServiceManager, appCfg *config.
 
 	sharedAmazonProcessor = createSharedAmazonProcessor(appCfg, logger)
 
-	// 注册Amazon平台处理器
+	// 注册Amazon平台处理器（上架）
 	if utils.ContainsPlatform(enabledPlatforms, "amazon") {
 		logger.Info("📦 注册Amazon平台处理器...")
 
-		// 使用完整的Amazon平台处理器
+		// 使用完整的Amazon平台处理器（用于上架）
 		amazonProcessor := platformAmazon.NewProcessor(ctx, appCfg, logger)
 
 		if err := serviceManager.RegisterProcessor("amazon", amazonProcessor); err != nil {
@@ -142,7 +142,7 @@ func createSharedAmazonProcessor(cfg *config.Config, logger *logrus.Logger) *ama
 
 	// 确保浏览器配置合理
 	if cfg.Browser.PoolSize <= 0 {
-		cfg.Browser.PoolSize = 1 // 至少需要1个实例
+		cfg.Browser.PoolSize = 3 // 至少需要1个实例
 	}
 
 	// 创建Amazon爬虫处理器

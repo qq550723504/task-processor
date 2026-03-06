@@ -59,12 +59,24 @@ func (s *StandardZipcodeStrategy) Handle(page playwright.Page, zipcode string) e
 		return fmt.Errorf("未找到邮编输入框")
 	}
 
-	// 填写邮编
-	if err := zipInput.Fill(zipcode); err != nil {
+	// 先清空输入框
+	if err := zipInput.Clear(); err != nil {
+		logrus.Infof("[%s] 清空输入框失败: %v", s.GetName(), err)
+	}
+
+	// 填写邮编 - 使用 Type 而不是 Fill,模拟真实用户输入
+	if err := zipInput.Type(zipcode, playwright.LocatorTypeOptions{
+		Delay: playwright.Float(50), // 每个字符间隔50ms,模拟真实输入
+	}); err != nil {
 		if page.IsClosed() {
 			return fmt.Errorf("页面在填写邮编时被关闭: %w", err)
 		}
 		return fmt.Errorf("填写邮编失败: %w", err)
+	}
+
+	// 触发 input 和 change 事件,确保 Amazon 识别到输入
+	if _, err := zipInput.Evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }", nil); err != nil {
+		logrus.Infof("[%s] 触发事件失败: %v", s.GetName(), err)
 	}
 
 	logrus.Infof("[%s] 成功填写标准邮编: %s", s.GetName(), zipcode)

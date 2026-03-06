@@ -25,8 +25,15 @@ func (s *CityDropdownStrategy) GetName() string {
 	return "CityDropdown"
 }
 
-// CanHandle 判断是否可以处理（检查是否存在城市下拉框）
+// CanHandle 判断是否可以处理（检查是否存在城市下拉框且邮编在支持列表中）
 func (s *CityDropdownStrategy) CanHandle(page playwright.Page, zipcode string) bool {
+	// 首先检查邮编是否在支持的映射表中
+	cityName := s.mapZipcodeToCityName(zipcode)
+	if cityName == "" {
+		// 邮编不在支持列表中，不使用此策略
+		return false
+	}
+
 	selectors := []string{
 		"div[role='dialog'] [role='combobox']",
 		"[role='combobox'][aria-haspopup='menu']",

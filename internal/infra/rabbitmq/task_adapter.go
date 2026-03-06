@@ -22,6 +22,7 @@ type TaskMessage struct {
 	RetryCount    int    `json:"retryCount"`
 	MaxRetryCount int    `json:"maxRetryCount"`
 	CreatedAt     int64  `json:"createdAt"`
+	Remark        string `json:"remark,omitempty"` // 备注，用于标记任务类型（如"variant"）
 }
 
 // TaskMessageAdapter 任务消息适配器
@@ -57,6 +58,7 @@ func (adapter *TaskMessageAdapter) MessageToTask(msg *Message) (*model.Task, err
 		RetryCount:    taskMsg.RetryCount,
 		MaxRetryCount: taskMsg.MaxRetryCount,
 		Priority:      taskMsg.Priority,
+		Remark:        taskMsg.Remark, // 传递备注字段
 		CreateTime:    taskMsg.CreatedAt,
 		UpdateTime:    taskMsg.CreatedAt,
 	}
@@ -83,6 +85,7 @@ func (adapter *TaskMessageAdapter) TaskToMessage(task *model.Task) (*Message, er
 		RetryCount:    task.RetryCount,
 		MaxRetryCount: task.MaxRetryCount,
 		CreatedAt:     task.CreateTime,
+		Remark:        task.Remark, // 传递备注字段
 	}
 
 	// 序列化任务消息

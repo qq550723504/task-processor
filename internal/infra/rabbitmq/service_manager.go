@@ -450,3 +450,11 @@ func (sm *ServiceManager) GetStats() map[string]interface{} {
 func (sm *ServiceManager) Wait() {
 	sm.wg.Wait()
 }
+
+// GetClient 获取RabbitMQ客户端
+func (sm *ServiceManager) GetClient() *Client {
+	if sm.rabbitmqService == nil {
+		return nil
+	}
+	return sm.rabbitmqService.GetClient()
+}
