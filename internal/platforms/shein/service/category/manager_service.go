@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/shein/api/category"
@@ -132,15 +133,13 @@ func (s *OpenAISelector) selectCategoryByAI(
 	}
 
 	// 验证选择的ID是否在可选范围内
-	for _, id := range categoryIDs {
-		if id == result.CategoryID {
-			logrus.Infof("AI成功选择%s: ID=%d, 名称/路径=%s, 理由=%s\n",
-				categoryType, result.CategoryID, categoryMap[result.CategoryID], result.Reason)
-			return result.CategoryID, nil
-		}
+	if !slices.Contains(categoryIDs, result.CategoryID) {
+		return 0, fmt.Errorf("选择的分类ID %d 不在可选范围内", result.CategoryID)
 	}
 
-	return 0, fmt.Errorf("选择的分类ID %d 不在可选范围内", result.CategoryID)
+	logrus.Infof("AI成功选择%s: ID=%d, 名称/路径=%s, 理由=%s\n",
+		categoryType, result.CategoryID, categoryMap[result.CategoryID], result.Reason)
+	return result.CategoryID, nil
 }
 
 // buildCategoryInfo 构建分类信息字符串

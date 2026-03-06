@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"task-processor/internal/core/config"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -19,15 +20,6 @@ type SensitiveWordsFilter struct {
 	staticWords  map[string][]string
 	dynamicWords map[string][]*regexp.Regexp
 	configPath   string
-}
-
-// SensitiveWordsConfig 敏感词配置结构
-type SensitiveWordsConfig struct {
-	StaticWords  map[string][]string `json:"static_words"`
-	DynamicWords map[string][]string `json:"dynamic_words"`
-	LastUpdated  string              `json:"last_updated"`
-	Version      string              `json:"version"`
-	Platform     string              `json:"platform"`
 }
 
 // NewSensitiveWordsFilter 创建TEMU敏感词过滤器
@@ -181,16 +173,16 @@ func (f *SensitiveWordsFilter) loadConfig() error {
 		return fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var config SensitiveWordsConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+	var cfg config.SensitiveWordsConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
 	// 加载静态敏感词
-	f.staticWords = config.StaticWords
+	f.staticWords = cfg.StaticWords
 
 	// 编译动态敏感词正则表达式
-	for lang, patterns := range config.DynamicWords {
+	for lang, patterns := range cfg.DynamicWords {
 		f.dynamicWords[lang] = []*regexp.Regexp{}
 		for _, pattern := range patterns {
 			re, err := regexp.Compile(pattern)

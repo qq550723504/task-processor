@@ -21,43 +21,63 @@ func NewMarketingAPI(baseClient *client.BaseAPIClient) *MarketingAPI {
 	}
 }
 
-// GetAvailableSkcList 获取可报名活动的产品列表
-func (m *MarketingAPI) GetAvailableSkcList(req *marketing.GetAvailableSkcListRequest) (*marketing.GetAvailableSkcListResponse, error) {
-	url := fmt.Sprintf("%s%s", m.GetBaseURL(), client.GetAvailableSkcListEndpoint())
+// paginatedQuery 通用的分页查询方法
+func (m *MarketingAPI) paginatedQuery(
+	endpoint string,
+	pageNum, pageSize int,
+	result interface{},
+	errorMsg string,
+) error {
+	url := fmt.Sprintf("%s%s", m.GetBaseURL(), endpoint)
 
 	reqBody := map[string]any{
-		"page_num":  req.PageNum,
-		"page_size": req.PageSize,
+		"page_num":  pageNum,
+		"page_size": pageSize,
 	}
 
+	if err := m.APIRequest(http.MethodPost, url, reqBody, result); err != nil {
+		return fmt.Errorf("%s请求失败: %w", errorMsg, err)
+	}
+
+	return nil
+}
+
+// validateAPIResponse 验证API响应
+func (m *MarketingAPI) validateAPIResponse(response *api.APIResponse, url, errorMsg string) error {
+	if response.Code != "0" {
+		return &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("%s失败: %s", errorMsg, response.Msg),
+			URL:        url,
+		}
+	}
+	return nil
+}
+
+// GetAvailableSkcList 获取可报名活动的产品列表
+func (m *MarketingAPI) GetAvailableSkcList(req *marketing.GetAvailableSkcListRequest) (*marketing.GetAvailableSkcListResponse, error) {
 	var result struct {
 		api.APIResponse
 		Info *marketing.AvailableSkcListInfo `json:"info"`
 		BBL  any                             `json:"bbl"`
 	}
 
-	if err := m.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
-		return nil, fmt.Errorf("获取可报名活动产品列表请求失败: %w", err)
+	endpoint := client.GetAvailableSkcListEndpoint()
+	if err := m.paginatedQuery(endpoint, req.PageNum, req.PageSize, &result, "获取可报名活动产品列表"); err != nil {
+		return nil, err
 	}
 
-	// 统一错误处理
-	if result.Code != "0" {
-		return nil, &api.APIError{
-			StatusCode: 0, // 业务错误码
-			Message:    fmt.Sprintf("获取可报名活动产品列表失败: %s", result.Msg),
-			URL:        url,
-		}
+	url := fmt.Sprintf("%s%s", m.GetBaseURL(), endpoint)
+	if err := m.validateAPIResponse(&result.APIResponse, url, "获取可报名活动产品列表"); err != nil {
+		return nil, err
 	}
 
-	// 构造返回结果
-	response := &marketing.GetAvailableSkcListResponse{
+	return &marketing.GetAvailableSkcListResponse{
 		Code: result.Code,
 		Msg:  result.Msg,
 		Info: result.Info,
 		BBL:  result.BBL,
-	}
-
-	return response, nil
+	}, nil
 }
 
 // SaveConfig 保存活动配置（报名活动）
@@ -100,41 +120,28 @@ func (m *MarketingAPI) SaveConfig(req *marketing.SaveConfigRequest) (*marketing.
 
 // GetConfigList 获取已报名活动的产品列表
 func (m *MarketingAPI) GetConfigList(req *marketing.GetConfigListRequest) (*marketing.GetConfigListResponse, error) {
-	url := fmt.Sprintf("%s%s", m.GetBaseURL(), client.GetConfigListEndpoint())
-
-	reqBody := map[string]any{
-		"page_num":  req.PageNum,
-		"page_size": req.PageSize,
-	}
-
 	var result struct {
 		api.APIResponse
 		Info *marketing.ConfigListInfo `json:"info"`
 		BBL  any                       `json:"bbl"`
 	}
 
-	if err := m.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
-		return nil, fmt.Errorf("获取已报名活动产品列表请求失败: %w", err)
+	endpoint := client.GetConfigListEndpoint()
+	if err := m.paginatedQuery(endpoint, req.PageNum, req.PageSize, &result, "获取已报名活动产品列表"); err != nil {
+		return nil, err
 	}
 
-	// 统一错误处理
-	if result.Code != "0" {
-		return nil, &api.APIError{
-			StatusCode: 0, // 业务错误码
-			Message:    fmt.Sprintf("获取已报名活动产品列表失败: %s", result.Msg),
-			URL:        url,
-		}
+	url := fmt.Sprintf("%s%s", m.GetBaseURL(), endpoint)
+	if err := m.validateAPIResponse(&result.APIResponse, url, "获取已报名活动产品列表"); err != nil {
+		return nil, err
 	}
 
-	// 构造返回结果
-	response := &marketing.GetConfigListResponse{
+	return &marketing.GetConfigListResponse{
 		Code: result.Code,
 		Msg:  result.Msg,
 		Info: result.Info,
 		BBL:  result.BBL,
-	}
-
-	return response, nil
+	}, nil
 }
 
 // QueryPromotionGoods 查询促销活动商品列表

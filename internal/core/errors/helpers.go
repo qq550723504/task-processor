@@ -4,35 +4,35 @@ package errors
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/core/config"
 	"time"
 )
 
-// RetryConfig 重试配置
-type RetryConfig struct {
-	MaxRetries     int           // 最大重试次数
-	InitialDelay   time.Duration // 初始延迟
-	MaxDelay       time.Duration // 最大延迟
-	BackoffFactor  float64       // 退避因子
+// ErrorsRetryConfig 错误处理的重试配置（扩展通用配置）
+type ErrorsRetryConfig struct {
+	*config.RetryConfig
 	RetryableCheck func(error) bool
 }
 
 // DefaultRetryConfig 默认重试配置
-func DefaultRetryConfig() RetryConfig {
-	return RetryConfig{
-		MaxRetries:     3,
-		InitialDelay:   time.Second,
-		MaxDelay:       30 * time.Second,
-		BackoffFactor:  2.0,
+func DefaultRetryConfig() ErrorsRetryConfig {
+	return ErrorsRetryConfig{
+		RetryConfig: &config.RetryConfig{
+			MaxRetries:    3,
+			InitialDelay:  time.Second,
+			MaxDelay:      30 * time.Second,
+			BackoffFactor: 2.0,
+		},
 		RetryableCheck: IsRetryable,
 	}
 }
 
 // Retry 重试执行函数
-func Retry(ctx context.Context, config RetryConfig, fn func() error) error {
+func Retry(ctx context.Context, cfg ErrorsRetryConfig, fn func() error) error {
 	var lastErr error
-	delay := config.InitialDelay
+	delay := cfg.InitialDelay
 
-	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
+	for attempt := 0; attempt <= cfg.MaxRetries; attempt++ {
 		// 检查context是否已取消
 		select {
 		case <-ctx.Done():
@@ -49,12 +49,12 @@ func Retry(ctx context.Context, config RetryConfig, fn func() error) error {
 		lastErr = err
 
 		// 检查是否可重试
-		if !config.RetryableCheck(err) {
+		if !cfg.RetryableCheck(err) {
 			return err
 		}
 
 		// 最后一次尝试失败
-		if attempt == config.MaxRetries {
+		if attempt == cfg.MaxRetries {
 			break
 		}
 
@@ -66,13 +66,13 @@ func Retry(ctx context.Context, config RetryConfig, fn func() error) error {
 		}
 
 		// 计算下次延迟（指数退避）
-		delay = time.Duration(float64(delay) * config.BackoffFactor)
-		if delay > config.MaxDelay {
-			delay = config.MaxDelay
+		delay = time.Duration(float64(delay) * cfg.BackoffFactor)
+		if delay > cfg.MaxDelay {
+			delay = cfg.MaxDelay
 		}
 	}
 
-	return Wrapf(lastErr, ErrCodeSystem, "重试%d次后仍然失败", config.MaxRetries)
+	return Wrapf(lastErr, ErrCodeSystem, "重试%d次后仍然失败", cfg.MaxRetries)
 }
 
 // SafeExecute 安全执行函数，捕获panic

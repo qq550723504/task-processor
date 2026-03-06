@@ -82,6 +82,11 @@ func (suite *IntegrationTestSuite) TearDownSuite(t *testing.T) {
 
 // TestDistributedCrawlerEndToEnd 端到端测试
 func TestDistributedCrawlerEndToEnd(t *testing.T) {
+	// 检查是否应该运行集成测试
+	if os.Getenv("INTEGRATION_TEST") != "true" {
+		t.Skip("跳过集成测试。设置 INTEGRATION_TEST=true 环境变量来运行")
+	}
+
 	suite := NewIntegrationTestSuite()
 	suite.SetupSuite(t)
 	defer suite.TearDownSuite(t)

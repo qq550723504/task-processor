@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/core/config"
 	"task-processor/internal/domain/model"
 
 	"github.com/sirupsen/logrus"
@@ -34,7 +35,7 @@ type TaskResult struct {
 type ResultReporter struct {
 	httpClient  *http.Client
 	reportURL   string
-	retryConfig RetryConfig
+	retryConfig *config.RetryConfig
 	logger      *logrus.Logger
 	nodeID      string
 
@@ -51,15 +52,6 @@ type ResultReporter struct {
 	statsMutex sync.RWMutex
 }
 
-// RetryConfig 重试配置
-type RetryConfig struct {
-	MaxRetries    int           `yaml:"max_retries"`
-	InitialDelay  time.Duration `yaml:"initial_delay"`
-	MaxDelay      time.Duration `yaml:"max_delay"`
-	BackoffFactor float64       `yaml:"backoff_factor"`
-	Timeout       time.Duration `yaml:"timeout"`
-}
-
 // ReporterStats 上报器统计信息
 type ReporterStats struct {
 	TotalReports   int64 `json:"total_reports"`
@@ -70,44 +62,49 @@ type ReporterStats struct {
 
 // ReporterConfig 上报器配置
 type ReporterConfig struct {
-	ReportURL   string        `yaml:"report_url"`
-	NodeID      string        `yaml:"node_id"`
-	Timeout     time.Duration `yaml:"timeout"`
-	BufferSize  int           `yaml:"buffer_size"`
-	RetryConfig RetryConfig   `yaml:"retry"`
+	ReportURL   string              `yaml:"report_url"`
+	NodeID      string              `yaml:"node_id"`
+	Timeout     time.Duration       `yaml:"timeout"`
+	BufferSize  int                 `yaml:"buffer_size"`
+	RetryConfig *config.RetryConfig `yaml:"retry"`
 }
 
 // NewResultReporter 创建结果上报器
-func NewResultReporter(config ReporterConfig, logger *logrus.Logger) *ResultReporter {
+func NewResultReporter(cfg ReporterConfig, logger *logrus.Logger) *ResultReporter {
 	// 设置默认值
-	if config.Timeout == 0 {
-		config.Timeout = 30 * time.Second
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Second
 	}
-	if config.BufferSize == 0 {
-		config.BufferSize = 1000
+	if cfg.BufferSize == 0 {
+		cfg.BufferSize = 1000
 	}
-	if config.RetryConfig.MaxRetries == 0 {
-		config.RetryConfig.MaxRetries = 3
+
+	// 初始化重试配置
+	if cfg.RetryConfig == nil {
+		cfg.RetryConfig = config.DefaultRetryConfig()
+	} else {
+		// 设置重试配置的默认值
+		if cfg.RetryConfig.MaxRetries == 0 {
+			cfg.RetryConfig.MaxRetries = 3
+		}
+		if cfg.RetryConfig.InitialDelay == 0 {
+			cfg.RetryConfig.InitialDelay = 2 * time.Second
+		}
+		if cfg.RetryConfig.MaxDelay == 0 {
+			cfg.RetryConfig.MaxDelay = 30 * time.Second
+		}
+		if cfg.RetryConfig.BackoffFactor == 0 {
+			cfg.RetryConfig.BackoffFactor = 2.0
+		}
 	}
-	if config.RetryConfig.InitialDelay == 0 {
-		config.RetryConfig.InitialDelay = 2 * time.Second
-	}
-	if config.RetryConfig.MaxDelay == 0 {
-		config.RetryConfig.MaxDelay = 30 * time.Second
-	}
-	if config.RetryConfig.BackoffFactor == 0 {
-		config.RetryConfig.BackoffFactor = 2.0
-	}
-	if config.RetryConfig.Timeout == 0 {
-		config.RetryConfig.Timeout = 10 * time.Second
-	}
-	if config.NodeID == "" {
-		config.NodeID = fmt.Sprintf("node-%d", time.Now().Unix())
+
+	if cfg.NodeID == "" {
+		cfg.NodeID = fmt.Sprintf("node-%d", time.Now().Unix())
 	}
 
 	// 创建HTTP客户端
 	httpClient := &http.Client{
-		Timeout: config.Timeout,
+		Timeout: cfg.Timeout,
 		Transport: &http.Transport{
 			MaxIdleConns:        10,
 			MaxIdleConnsPerHost: 5,
@@ -117,11 +114,11 @@ func NewResultReporter(config ReporterConfig, logger *logrus.Logger) *ResultRepo
 
 	return &ResultReporter{
 		httpClient:  httpClient,
-		reportURL:   config.ReportURL,
-		retryConfig: config.RetryConfig,
+		reportURL:   cfg.ReportURL,
+		retryConfig: cfg.RetryConfig,
 		logger:      logger,
-		nodeID:      config.NodeID,
-		resultChan:  make(chan *TaskResult, config.BufferSize),
+		nodeID:      cfg.NodeID,
+		resultChan:  make(chan *TaskResult, cfg.BufferSize),
 	}
 }
 
@@ -336,8 +333,9 @@ func (rr *ResultReporter) doReport(result *TaskResult) error {
 		return fmt.Errorf("序列化结果失败: %w", err)
 	}
 
-	// 创建请求上下文
-	ctx, cancel := context.WithTimeout(rr.ctx, rr.retryConfig.Timeout)
+	// 创建请求上下文（使用默认10秒超时）
+	timeout := 10 * time.Second
+	ctx, cancel := context.WithTimeout(rr.ctx, timeout)
 	defer cancel()
 
 	// 创建HTTP请求

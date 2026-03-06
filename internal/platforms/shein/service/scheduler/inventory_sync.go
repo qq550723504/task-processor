@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/management"
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/pricing"
 	"task-processor/internal/platforms/shein/repo"
 
 	"github.com/sirupsen/logrus"
@@ -46,7 +47,8 @@ type inventorySyncServiceImpl struct {
 	amazonConfig          *config.AmazonConfig
 	rawJsonDataClient     managementapi.RawJsonDataAPI
 	inventoryRecordClient managementapi.InventoryRecordAPI
-	monitorConfig         *config.MonitorConfig // 平台级监控配置（默认值）
+	monitorConfig         *config.MonitorConfig   // 平台级监控配置（默认值）
+	costCalculator        *pricing.CostCalculator // 通用成本计算器
 	logger                *logrus.Entry
 
 	// 批量库存更新收集器
@@ -66,6 +68,11 @@ func NewInventorySyncService(
 	// 临时设置 Debug 级别以便调试映射问题
 	logrus.SetLevel(logrus.DebugLevel)
 
+	logger := logrus.WithField("component", "InventorySyncService")
+
+	// 创建通用成本计算器（SHEIN需要详细日志）
+	costCalculator := pricing.NewCostCalculator(managementClient, logger, true)
+
 	return &inventorySyncServiceImpl{
 		managementClient:      managementClient,
 		productAPI:            productAPI,
@@ -74,7 +81,8 @@ func NewInventorySyncService(
 		rawJsonDataClient:     rawJsonDataClient,
 		inventoryRecordClient: inventoryRecordClient,
 		monitorConfig:         monitorConfig,
-		logger:                logrus.WithField("component", "InventorySyncService"),
+		costCalculator:        costCalculator,
+		logger:                logger,
 	}
 }
 
