@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/infra/memory"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -140,8 +141,8 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 					Platform:     "TEMU",
 					Region:       task.Region,
 					Sku:          &sku.OutSkuSN,
-					ProductId:    "",          // 将在下面设置
-					Status:       int16Ptr(1), // 1表示导入成功
+					ProductId:    "",                  // 将在下面设置
+					Status:       ptrutil.Int16Ptr(1), // 1表示导入成功
 				}
 
 				// 从AsinSkuMap中查找对应的ASIN
@@ -205,11 +206,6 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 
 	h.logger.Infof("产品导入映射关系创建完成: 成功=%d", createdCount)
 	return nil
-}
-
-// int16Ptr 返回int16指针
-func int16Ptr(i int16) *int16 {
-	return &i
 }
 
 // getStringValue 安全获取字符串指针的值

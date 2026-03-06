@@ -7,17 +7,16 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/pkg/management"
+	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/services/pricing"
-
-	"github.com/sirupsen/logrus"
 )
 
 // PricingTask TEMU核价任务
+// 已废弃：使用通用的AutoPricingTask替代
+// 保留此类型以保持向后兼容
 type PricingTask struct {
-	*BaseTask
-	managementClient *management.ClientManager
-	logger           *logrus.Entry
+	*commonscheduler.AutoPricingTask
+	adapter *TemuAutoPricingAdapter
 }
 
 // NewPricingTask 创建核价任务
@@ -26,67 +25,43 @@ func NewPricingTask(
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
 ) *PricingTask {
-	baseTask := NewBaseTask(config)
+	// 创建API客户端
+	apiClient := api.NewAPIClient(config.StoreID, managementClient)
+	if apiClient == nil {
+		// 如果创建失败，返回nil
+		// 调用方需要检查返回值
+		return nil
+	}
+
+	// 创建适配器
+	adapter := NewTemuAutoPricingAdapter(apiClient, managementClient)
+
+	// 创建通用自动核价任务
+	autoPricingTask := commonscheduler.NewAutoPricingTask(commonscheduler.AutoPricingTaskConfig{
+		TaskConfig:       config,
+		ManagementClient: managementClient,
+		PricingService:   adapter,
+		PlatformName:     "Temu",
+	})
 
 	return &PricingTask{
-		BaseTask:         baseTask,
-		managementClient: managementClient,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "TemuPricingTask",
-			"task_id":   baseTask.GetID(),
-			"tenant_id": config.TenantID,
-			"store_id":  config.StoreID,
-		}),
+		AutoPricingTask: autoPricingTask,
+		adapter:         adapter,
 	}
 }
 
 // Execute 执行核价任务
+// 重写Execute方法以处理Temu特有的逻辑
 func (t *PricingTask) Execute(ctx context.Context) error {
 	t.SetStatus(appscheduler.TaskStatusRunning)
 	defer t.SetStatus(appscheduler.TaskStatusStopped)
 
-	t.logger.Info("开始执行TEMU智能核价任务")
-
-	// 创建API客户端
-	apiClient := api.NewAPIClient(t.GetStoreID(), t.managementClient)
-	if apiClient == nil {
-		return fmt.Errorf("创建TEMU API客户端失败")
+	// 检查任务是否正确初始化
+	if t.AutoPricingTask == nil {
+		return fmt.Errorf("任务未正确初始化")
 	}
 
-	// 创建自动核价服务
-	autoPricingService := pricing.NewAutoPricingService(apiClient)
-
-	// 执行核价任务
-	var stats interface{}
-	var err error
-	stats, err = autoPricingService.AutoProcessPendingPricesWithRules(t.managementClient)
-
-	if err != nil {
-		t.logger.WithError(err).Error("TEMU智能核价任务执行失败")
-		return err
-	}
-
-	// 记录统计信息
-	t.logStatistics(stats)
-
-	return nil
-}
-
-// logStatistics 记录统计信息
-func (t *PricingTask) logStatistics(stats interface{}) {
-	// 尝试类型断言获取统计信息
-	type PricingStats interface {
-		GetTotalProcessed() int
-		GetAcceptCount() int
-		GetRejectCount() int
-		GetReappealCount() int
-		GetSkipCount() int
-	}
-
-	if s, ok := stats.(PricingStats); ok {
-		t.logger.Infof("🎉 TEMU智能核价任务执行成功，统计: 总数=%d, 接受=%d, 拒绝=%d, 重新报价=%d, 跳过=%d",
-			s.GetTotalProcessed(), s.GetAcceptCount(), s.GetRejectCount(), s.GetReappealCount(), s.GetSkipCount())
-	} else {
-		t.logger.Info("TEMU智能核价任务执行成功")
-	}
+	// 调用通用基类的Execute方法
+	// 注意：Temu的实现会在SubmitPricingResults中完成所有工作
+	return t.AutoPricingTask.Execute(ctx)
 }

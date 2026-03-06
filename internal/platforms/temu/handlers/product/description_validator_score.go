@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/mathutil"
 )
 
 // 这个文件包含ProductDescriptionValidator的评分功能
@@ -144,7 +145,7 @@ func (h *ProductDescriptionValidator) calculateKeywordRelevance(description stri
 			}
 		}
 		if matchCount > 0 {
-			score += min(15, matchCount*3)
+			score += mathutil.Min(15, matchCount*3)
 		}
 	}
 
@@ -188,12 +189,4 @@ func (h *ProductDescriptionValidator) generateScoreReport(description string, sc
 	report += fmt.Sprintf("词汇数量: %d\n", len(words))
 
 	return report
-}
-
-// min 辅助函数
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

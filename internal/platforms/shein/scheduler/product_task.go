@@ -3,77 +3,48 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/pkg/management"
+	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/shein/repo/client"
-	schedulerservice "task-processor/internal/platforms/shein/service/scheduler"
-
-	"github.com/sirupsen/logrus"
+	sheinscheduler "task-processor/internal/platforms/shein/service/scheduler"
 )
 
-// ProductSync SHEIN产品同步任务
+// ProductSyncTask SHEIN产品同步任务
+// 使用通用基类实现
 type ProductSyncTask struct {
-	*BaseTask
-	managementClient *management.ClientManager
-	clientManager    *client.ClientManager
-	syncService      schedulerservice.ProductSyncService
-	logger           *logrus.Entry
+	*commonscheduler.ProductSyncTask
+	clientManager *client.ClientManager // 保留SHEIN特定的字段
 }
 
-// NewSyncTask 创建同步任务
+// NewProductSyncTask 创建SHEIN产品同步任务
 func NewProductSyncTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
 	clientManager *client.ClientManager,
-	syncService schedulerservice.ProductSyncService,
+	syncService sheinscheduler.ProductSyncService,
 ) *ProductSyncTask {
-	baseTask := NewBaseTask(config)
+	// 创建适配器，将SHEIN特定服务适配到通用接口
+	adapter := newProductSyncServiceAdapter(syncService)
+
+	// 使用通用基类创建任务
+	baseTask := commonscheduler.NewProductSyncTask(commonscheduler.ProductSyncTaskConfig{
+		TaskConfig:       config,
+		ManagementClient: managementClient,
+		SyncService:      adapter,
+		PlatformName:     "SHEIN",
+	})
 
 	return &ProductSyncTask{
-		BaseTask:         baseTask,
-		managementClient: managementClient,
-		clientManager:    clientManager,
-		syncService:      syncService,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "SheinSyncTask",
-			"task_id":   baseTask.GetID(),
-			"tenant_id": config.TenantID,
-			"store_id":  config.StoreID,
-		}),
+		ProductSyncTask: baseTask,
+		clientManager:   clientManager,
 	}
 }
 
-// Execute 执行同步任务
+// Execute 执行SHEIN产品同步任务
+// 直接使用基类的Execute方法
 func (t *ProductSyncTask) Execute(ctx context.Context) error {
-	t.SetStatus(appscheduler.TaskStatusRunning)
-	defer t.SetStatus(appscheduler.TaskStatusStopped)
-
-	t.logger.Info("开始执行SHEIN产品同步任务")
-
-	// 1. 从SHEIN API获取产品列表
-	products, err := t.syncService.FetchProductList(ctx)
-	if err != nil {
-		return fmt.Errorf("获取产品列表失败: %w", err)
-	}
-
-	t.logger.Infof("获取到 %d 个产品", len(products))
-
-	// 2. 转换为后端格式
-	productDataList, err := t.syncService.ConvertProducts(ctx, products, t.GetTenantID(), t.GetStoreID())
-	if err != nil {
-		return fmt.Errorf("转换产品格式失败: %w", err)
-	}
-
-	// 3. 批量保存到管理系统
-	savedCount, err := t.syncService.SaveProducts(ctx, productDataList)
-	if err != nil {
-		return fmt.Errorf("保存产品失败: %w", err)
-	}
-
-	// 4. 记录同步统计
-	t.logger.Infof("SHEIN产品同步任务执行完成，成功同步 %d 个产品", savedCount)
-	return nil
+	return t.ProductSyncTask.Execute(ctx)
 }

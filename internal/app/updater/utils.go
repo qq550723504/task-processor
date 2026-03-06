@@ -1,9 +1,12 @@
 // Package updater 提供自动更新器的工具函数
 package updater
 
+import "task-processor/internal/pkg/strutil"
+
 // Contains 检查字符串是否包含子串（不区分大小写）
+// 已废弃: 请使用 strutil.Contains
 func Contains(s, substr string) bool {
-	return len(s) >= len(substr) && indexOf(s, substr) >= 0
+	return strutil.Contains(s, substr)
 }
 
 // indexOf 查找子字符串位置
@@ -17,13 +20,9 @@ func indexOf(s, substr string) int {
 }
 
 // findSubstring 查找子字符串
+// 已废弃: 请使用 strutil.FindSubstring
 func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strutil.FindSubstring(s, substr)
 }
 
 // trimPrefix 移除字符串前缀

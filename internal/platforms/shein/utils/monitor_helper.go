@@ -3,22 +3,19 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"task-processor/internal/pkg/mathutil"
 )
 
 // absInt 返回 int 的绝对值
+// 已废弃: 请使用 mathutil.AbsInt
 func absInt(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
+	return mathutil.AbsInt(x)
 }
 
 // abs 返回浮点数的绝对值
+// 已废弃: 请使用 mathutil.Abs
 func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
+	return mathutil.Abs(x)
 }
 
 // parsePrice 解析价格字符串为浮点数

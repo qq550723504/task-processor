@@ -3,6 +3,7 @@ package product
 import (
 	"fmt"
 	"slices"
+	"task-processor/internal/pkg/strutil"
 	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
@@ -178,23 +179,11 @@ func (f *ProductFilter) MatchesFilter(product *models.OfflineProductItem, filter
 
 // contains 检查字符串是否包含子字符串（简单实现）
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		(len(substr) > 0 && findSubstring(s, substr)))
+	return strutil.Contains(s, substr)
 }
 
 // findSubstring 查找子字符串
+// 已废弃: 请使用 strutil.FindSubstring
 func findSubstring(s, substr string) bool {
-	if len(substr) == 0 {
-		return true
-	}
-	if len(s) < len(substr) {
-		return false
-	}
-
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strutil.FindSubstring(s, substr)
 }
