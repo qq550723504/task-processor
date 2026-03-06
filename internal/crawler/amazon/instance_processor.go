@@ -3,6 +3,7 @@ package amazon
 
 import (
 	"fmt"
+	"strings"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/crawler/amazon/extractor"
 	"task-processor/internal/domain/model"
@@ -195,7 +196,7 @@ func (ip *InstanceProcessor) shouldRecreateInstance(err error) bool {
 	}
 
 	for _, recreateError := range recreateErrors {
-		if contains(errorMsg, recreateError) {
+		if strings.Contains(errorMsg, recreateError) {
 			return true
 		}
 	}
@@ -218,26 +219,10 @@ func (ip *InstanceProcessor) isSeriousError(err error) bool {
 	}
 
 	for _, serious := range seriousErrors {
-		if contains(errorMsg, serious) {
+		if strings.Contains(errorMsg, serious) {
 			return true
 		}
 	}
 
-	return false
-}
-
-// contains 检查字符串是否包含子字符串
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > len(substr) && containsHelper(s, substr)))
-}
-
-// containsHelper 辅助函数检查包含关系
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
 	return false
 }
