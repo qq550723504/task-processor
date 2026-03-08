@@ -28,6 +28,10 @@ type DistributedCrawlerClient struct {
 
 	// 配置
 	timeout time.Duration
+
+	// 懒加载标志
+	listenerStarted bool
+	listenerMutex   sync.Mutex
 }
 
 // NewDistributedCrawlerClient 创建分布式爬虫客户端（使用已存在的RabbitMQ客户端）
@@ -37,17 +41,17 @@ func NewDistributedCrawlerClient(rabbitmqClient *rabbitmq.Client, logger *logrus
 	}
 
 	client := &DistributedCrawlerClient{
-		rabbitmqClient: rabbitmqClient,
-		taskAdapter:    task.NewMessageAdapter(),
-		logger:         logger,
-		pendingTasks:   make(map[string]*PendingTask),
-		timeout:        5 * time.Minute, // 默认5分钟超时
+		rabbitmqClient:  rabbitmqClient,
+		taskAdapter:     task.NewMessageAdapter(),
+		logger:          logger,
+		pendingTasks:    make(map[string]*PendingTask),
+		timeout:         5 * time.Minute, // 默认5分钟超时
+		listenerStarted: false,
 	}
 
-	// 启动结果监听
-	if err := client.startResultListener(); err != nil {
-		return nil, fmt.Errorf("启动结果监听失败: %w", err)
-	}
+	// 不在构造函数中启动监听器，改为懒加载
+	// 在第一次提交任务时启动
+	logger.Info("分布式爬虫客户端创建成功（结果监听器将在首次使用时启动）")
 
 	return client, nil
 }
@@ -55,6 +59,11 @@ func NewDistributedCrawlerClient(rabbitmqClient *rabbitmq.Client, logger *logrus
 // SubmitCrawlTask 提交爬虫任务并等待结果
 func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *CrawlRequest) (*CrawlResult, error) {
 	c.logger.Infof("提交爬虫任务: TaskID=%d, ProductID=%s", req.TaskID, req.ProductID)
+
+	// 懒加载：首次使用时启动结果监听器
+	if err := c.ensureListenerStarted(); err != nil {
+		return nil, fmt.Errorf("启动结果监听器失败: %w", err)
+	}
 
 	// 创建任务对象
 	taskModel := &model.Task{
@@ -93,6 +102,26 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 
 	// 等待结果
 	return c.waitForResult(pendingTask, req.TaskID)
+}
+
+// ensureListenerStarted 确保结果监听器已启动（懒加载）
+func (c *DistributedCrawlerClient) ensureListenerStarted() error {
+	c.listenerMutex.Lock()
+	defer c.listenerMutex.Unlock()
+
+	// 如果已经启动，直接返回
+	if c.listenerStarted {
+		return nil
+	}
+
+	// 启动结果监听器
+	c.logger.Info("首次使用，启动结果监听器...")
+	if err := c.startResultListener(); err != nil {
+		return err
+	}
+
+	c.listenerStarted = true
+	return nil
 }
 
 // buildMessageData 构建消息数据
