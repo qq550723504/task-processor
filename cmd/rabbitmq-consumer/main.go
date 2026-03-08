@@ -56,12 +56,22 @@ func main() {
 		logger.Fatalf("❌ 注册平台处理器失败: %v", err)
 	}
 
+	// 注册爬虫处理器（集成分布式爬虫服务）
+	logger.Info("🕷️  集成分布式爬虫服务...")
+	crawlerRegistry := messaging.NewCrawlerRegistry(appCfg, logger, serviceManager.GetClient())
+	if err := crawlerRegistry.RegisterCrawlerProcessor(serviceManager); err != nil {
+		logger.Fatalf("❌ 注册爬虫处理器失败: %v", err)
+	}
+
 	// 启动服务
 	if err := serviceManager.Start(ctx); err != nil {
 		logger.Fatalf("❌ 启动服务失败: %v", err)
 	}
 
-	logger.Info("✅ RabbitMQ消费者启动完成")
+	logger.Info("✅ RabbitMQ消费者启动完成（集成上架服务 + 爬虫服务）")
+	logger.Info("📊 服务信息:")
+	logger.Info("   - 上架服务: Amazon/TEMU/SHEIN 平台上架")
+	logger.Info("   - 爬虫服务: Amazon/1688 分布式爬虫")
 	logger.Info("📊 监控地址:")
 	logger.Info("   - 健康检查: http://localhost:8081/health")
 	logger.Info("   - 就绪检查: http://localhost:8081/ready")
