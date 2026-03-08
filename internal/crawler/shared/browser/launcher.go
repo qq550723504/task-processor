@@ -1,4 +1,4 @@
-package browser
+﻿package browser
 
 import (
 	"fmt"
@@ -13,6 +13,8 @@ import (
 type BrowserConfig struct {
 	Headless                       bool   `json:"headless"`
 	BrowserPath                    string `json:"browserPath,omitempty"`
+	ChromeVersion                  string `json:"chromeVersion,omitempty"`     // fingerprint-chromium 版本（如 "144"）
+	ChromeDownloadDir              string `json:"chromeDownloadDir,omitempty"` // Chrome 下载目录
 	ProxyServer                    string `json:"proxyServer,omitempty"`
 	ViewportWidth                  int    `json:"viewportWidth"`
 	ViewportHeight                 int    `json:"viewportHeight"`

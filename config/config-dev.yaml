@@ -122,6 +122,8 @@ browser:
   enabled: true
   headless: true  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
+  chromeVersion: "144"  # fingerprint-chromium 版本（如 144, 142, 139 等）
+  chromeDownloadDir: "./chrome"  # Chrome 下载目录（自动下载时使用）
   poolSize: 3     # 浏览器池大小
   viewportWidth: 1920
   viewportHeight: 1080
