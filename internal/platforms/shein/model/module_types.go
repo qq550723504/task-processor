@@ -4,7 +4,7 @@ import (
 	"context"
 	"task-processor/internal/domain/model"
 	types "task-processor/internal/domain/model"
-	"task-processor/internal/infra/memory"
+	"task-processor/internal/infra/state"
 	"task-processor/internal/pkg/management"
 	management_api "task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein/api/attribute"
@@ -34,7 +34,7 @@ type VariantFilterInfo struct {
 type TaskContext struct {
 	Context            context.Context
 	Task               *Task
-	MemoryManager      *memory.MemoryManager // 内存管理器
+	MemoryManager      *state.MemoryManager // 状态管理器
 	StoreInfo          *management_api.StoreRespDTO
 	SupplierInfo       *other.SupplierOperateInfo
 	SpuLimitCount      *other.SpuLimitCountInfo

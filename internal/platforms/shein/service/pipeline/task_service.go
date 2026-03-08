@@ -4,7 +4,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/app/worker"
+	"task-processor/internal/app/processor"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	management_api "task-processor/internal/pkg/management/api"
@@ -19,19 +19,19 @@ import (
 
 // TaskHandler SHEIN任务处理器（统一架构版本）
 type TaskHandler struct {
-	*worker.BaseTaskHandler
+	*processor.BaseTaskHandler
 	processor    *SheinProcessor
 	errorHandler *TaskErrorHandler
 }
 
 // NewTaskHandler 创建SHEIN任务处理器
-func NewTaskHandler(processor *SheinProcessor) *TaskHandler {
-	baseHandler := worker.NewBaseTaskHandler(processor, "SHEIN")
-	errorHandler := NewTaskErrorHandler(processor)
+func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
+	baseHandler := processor.NewBaseTaskHandler(proc, "SHEIN")
+	errorHandler := NewTaskErrorHandler(proc)
 
 	return &TaskHandler{
 		BaseTaskHandler: baseHandler,
-		processor:       processor,
+		processor:       proc,
 		errorHandler:    errorHandler,
 	}
 }

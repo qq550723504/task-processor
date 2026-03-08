@@ -5,7 +5,7 @@ import (
 	"context"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/infra/memory"
+	"task-processor/internal/infra/state"
 	"task-processor/internal/pkg/management"
 )
 
@@ -34,8 +34,8 @@ type ManagementContext interface {
 	TaskContext
 	GetManagementClient() *management.ClientManager
 	SetManagementClient(client *management.ClientManager)
-	GetMemoryManager() *memory.MemoryManager
-	SetMemoryManager(manager *memory.MemoryManager)
+	GetMemoryManager() *state.MemoryManager
+	SetMemoryManager(manager *state.MemoryManager)
 }
 
 // APIContext API客户端上下文接口

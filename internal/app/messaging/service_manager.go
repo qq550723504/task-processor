@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )
@@ -40,22 +40,20 @@ type ServiceManager struct {
 }
 
 // NewServiceManager 创建服务管理器
-func NewServiceManager(configPath string, logger *logrus.Logger) (*ServiceManager, error) {
-	// 从主配置加载RabbitMQ配置
-	logger.Infof("从配置文件加载RabbitMQ配置: %s", configPath)
-
-	// 使用core/config加载配置
-	cfg := config.LoadConfigFromFile(configPath)
-	if cfg == nil || cfg.RabbitMQ == nil {
+func NewServiceManager(rabbitmqConfig *config.RabbitMQConfig, logger *logrus.Logger) (*ServiceManager, error) {
+	// 验证RabbitMQ配置
+	if rabbitmqConfig == nil {
 		return nil, fmt.Errorf("RabbitMQ配置为空")
 	}
 
+	logger.Info("初始化服务管理器...")
+
 	// 立即初始化RabbitMQ服务，以便注册处理器
-	rabbitmqService := NewRabbitMQService(cfg.RabbitMQ, logger)
+	rabbitmqService := NewRabbitMQService(rabbitmqConfig, logger)
 
 	return &ServiceManager{
-		config:          cfg.RabbitMQ,
-		configPath:      configPath,
+		config:          rabbitmqConfig,
+		configPath:      "", // 不再需要配置文件路径
 		rabbitmqService: rabbitmqService,
 		logger:          logger,
 	}, nil
@@ -241,10 +239,14 @@ func (sm *ServiceManager) handleReady(w http.ResponseWriter, r *http.Request) {
 func (sm *ServiceManager) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	stats := sm.loadMonitor.GetStats()
 
+	// 从指标收集器获取系统指标
+	metricsCollector := sm.loadMonitor.GetMetricsCollector()
+	systemMetrics := metricsCollector.GetMetrics()
+
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 
-	// 简单的Prometheus格式指标
+	// 任务处理指标
 	fmt.Fprintf(w, "# HELP tasks_processed_total Total number of tasks processed\n")
 	fmt.Fprintf(w, "# TYPE tasks_processed_total counter\n")
 	fmt.Fprintf(w, "tasks_processed_total %d\n", stats.TasksProcessed)
@@ -257,17 +259,37 @@ func (sm *ServiceManager) handleMetrics(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, "# TYPE tasks_failed_total counter\n")
 	fmt.Fprintf(w, "tasks_failed_total %d\n", stats.TasksFailed)
 
-	fmt.Fprintf(w, "# HELP cpu_usage_percent Current CPU usage percentage\n")
-	fmt.Fprintf(w, "# TYPE cpu_usage_percent gauge\n")
-	fmt.Fprintf(w, "cpu_usage_percent %.2f\n", stats.CPUUsage)
+	// 系统指标
+	if goroutineMetric, ok := systemMetrics["system_goroutines_count"]; ok {
+		fmt.Fprintf(w, "# HELP goroutine_count Current number of goroutines\n")
+		fmt.Fprintf(w, "# TYPE goroutine_count gauge\n")
+		fmt.Fprintf(w, "goroutine_count %.0f\n", goroutineMetric.Value)
+	}
 
-	fmt.Fprintf(w, "# HELP memory_usage_percent Current memory usage percentage\n")
-	fmt.Fprintf(w, "# TYPE memory_usage_percent gauge\n")
-	fmt.Fprintf(w, "memory_usage_percent %.2f\n", stats.MemoryUsage)
+	if cpuMetric, ok := systemMetrics["system_cpu_cores"]; ok {
+		fmt.Fprintf(w, "# HELP cpu_cores Number of CPU cores\n")
+		fmt.Fprintf(w, "# TYPE cpu_cores gauge\n")
+		fmt.Fprintf(w, "cpu_cores %.0f\n", cpuMetric.Value)
+	}
 
-	fmt.Fprintf(w, "# HELP goroutine_count Current number of goroutines\n")
-	fmt.Fprintf(w, "# TYPE goroutine_count gauge\n")
-	fmt.Fprintf(w, "goroutine_count %d\n", stats.GoroutineCount)
+	if heapMetric, ok := systemMetrics["system_memory_heap_bytes"]; ok {
+		fmt.Fprintf(w, "# HELP memory_heap_bytes Heap memory usage in bytes\n")
+		fmt.Fprintf(w, "# TYPE memory_heap_bytes gauge\n")
+		fmt.Fprintf(w, "memory_heap_bytes %.0f\n", heapMetric.Value)
+	}
+
+	if sysMetric, ok := systemMetrics["system_memory_sys_bytes"]; ok {
+		fmt.Fprintf(w, "# HELP memory_sys_bytes System memory usage in bytes\n")
+		fmt.Fprintf(w, "# TYPE memory_sys_bytes gauge\n")
+		fmt.Fprintf(w, "memory_sys_bytes %.0f\n", sysMetric.Value)
+	}
+
+	// RabbitMQ特定指标
+	if avgTimeMetric, ok := systemMetrics["rabbitmq_avg_processing_time_seconds"]; ok {
+		fmt.Fprintf(w, "# HELP rabbitmq_avg_processing_time_seconds Average task processing time\n")
+		fmt.Fprintf(w, "# TYPE rabbitmq_avg_processing_time_seconds gauge\n")
+		fmt.Fprintf(w, "rabbitmq_avg_processing_time_seconds %.3f\n", avgTimeMetric.Value)
+	}
 }
 
 // handleStats 处理统计请求
@@ -285,9 +307,8 @@ func (sm *ServiceManager) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	// 节点信息
 	stats["node"] = map[string]interface{}{
-		"node_id":     sm.config.Node.NodeID,
-		"started_at":  time.Now().Format(time.RFC3339),
-		"config_path": sm.configPath,
+		"node_id":    sm.config.Node.NodeID,
+		"started_at": time.Now().Format(time.RFC3339),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

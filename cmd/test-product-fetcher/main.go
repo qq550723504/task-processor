@@ -26,18 +26,4 @@ func main() {
 	}
 	defer systemInit.Shutdown()
 
-	// 加载配置
-	cfg, err := LoadConfig("config/config-dev.yaml")
-	if err != nil {
-		log.Fatalf("❌ 加载配置失败: %v", err)
-	}
-
-	// 创建测试服务
-	testService, err := NewTestService(systemInit.GetContext(), cfg, systemInit.GetLogger("test"))
-	if err != nil {
-		log.Fatalf("❌ 创建测试服务失败: %v", err)
-	}
-	defer testService.Cleanup()
-	testService.RunBasicTest()
-
 }

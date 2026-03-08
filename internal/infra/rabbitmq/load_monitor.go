@@ -4,19 +4,23 @@ package rabbitmq
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sync"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/monitoring"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
 // LoadMonitor 负载监控器
+// 基于通用监控基础设施,专注于RabbitMQ任务处理的监控
 type LoadMonitor struct {
 	logger *logrus.Logger
 
-	// 监控数据
+	// 使用通用指标收集器
+	metricsCollector *monitoring.MetricsCollector
+
+	// 任务统计数据
 	stats      LoadStats
 	statsMutex sync.RWMutex
 
@@ -31,11 +35,6 @@ type LoadMonitor struct {
 
 // LoadStats 负载统计信息
 type LoadStats struct {
-	// 系统资源
-	CPUUsage       float64 `json:"cpu_usage"`
-	MemoryUsage    float64 `json:"memory_usage"`
-	GoroutineCount int     `json:"goroutine_count"`
-
 	// 任务统计
 	TasksProcessed int64 `json:"tasks_processed"`
 	TasksSucceeded int64 `json:"tasks_succeeded"`
@@ -73,9 +72,13 @@ func NewLoadMonitor(cfg config.LoadMonitorConfig, logger *logrus.Logger) *LoadMo
 		cfg.UpdateInterval = 30 * time.Second
 	}
 
+	// 创建通用指标收集器
+	metricsCollector := monitoring.NewMetricsCollector(logger, cfg.UpdateInterval)
+
 	return &LoadMonitor{
-		logger: logger,
-		config: cfg,
+		logger:           logger,
+		metricsCollector: metricsCollector,
+		config:           cfg,
 		stats: LoadStats{
 			QueueStats:        make(map[string]QueueLoadStats),
 			MinProcessingTime: time.Hour, // 初始化为一个大值
@@ -86,6 +89,11 @@ func NewLoadMonitor(cfg config.LoadMonitorConfig, logger *logrus.Logger) *LoadMo
 // Start 启动负载监控
 func (lm *LoadMonitor) Start(ctx context.Context) error {
 	lm.ctx, lm.cancel = context.WithCancel(ctx)
+
+	// 启动通用指标收集器
+	if err := lm.metricsCollector.Start(ctx); err != nil {
+		return fmt.Errorf("启动指标收集器失败: %w", err)
+	}
 
 	// 启动监控goroutine
 	lm.wg.Add(1)
@@ -98,6 +106,11 @@ func (lm *LoadMonitor) Start(ctx context.Context) error {
 // Stop 停止负载监控
 func (lm *LoadMonitor) Stop(ctx context.Context) error {
 	lm.logger.Info("停止负载监控器...")
+
+	// 停止指标收集器
+	if err := lm.metricsCollector.Stop(ctx); err != nil {
+		lm.logger.Warnf("停止指标收集器失败: %v", err)
+	}
 
 	// 取消上下文
 	if lm.cancel != nil {
@@ -153,65 +166,30 @@ func (lm *LoadMonitor) updateStats() {
 	lm.statsMutex.Lock()
 	defer lm.statsMutex.Unlock()
 
-	// 更新系统资源统计
-	if lm.config.EnableCPU {
-		lm.updateCPUStats()
-	}
+	// 更新RabbitMQ特定的指标到通用指标收集器
+	lm.metricsCollector.SetCounter("rabbitmq_tasks_processed_total", float64(lm.stats.TasksProcessed), nil, "处理的任务总数")
+	lm.metricsCollector.SetCounter("rabbitmq_tasks_succeeded_total", float64(lm.stats.TasksSucceeded), nil, "成功的任务总数")
+	lm.metricsCollector.SetCounter("rabbitmq_tasks_failed_total", float64(lm.stats.TasksFailed), nil, "失败的任务总数")
+	lm.metricsCollector.SetCounter("rabbitmq_tasks_retried_total", float64(lm.stats.TasksRetried), nil, "重试的任务总数")
 
-	if lm.config.EnableMemory {
-		lm.updateMemoryStats()
-	}
+	lm.metricsCollector.SetGauge("rabbitmq_avg_processing_time_seconds", lm.stats.AvgProcessingTime.Seconds(), nil, "平均处理时间")
+	lm.metricsCollector.SetGauge("rabbitmq_max_processing_time_seconds", lm.stats.MaxProcessingTime.Seconds(), nil, "最大处理时间")
+	lm.metricsCollector.SetGauge("rabbitmq_min_processing_time_seconds", lm.stats.MinProcessingTime.Seconds(), nil, "最小处理时间")
 
-	// 更新Goroutine数量
-	lm.stats.GoroutineCount = runtime.NumGoroutine()
+	// 更新队列统计
+	for queueName, queueStats := range lm.stats.QueueStats {
+		labels := map[string]string{"queue": queueName}
+		lm.metricsCollector.SetCounter("rabbitmq_queue_messages_processed_total", float64(queueStats.MessagesProcessed), labels, "队列处理消息总数")
+		lm.metricsCollector.SetCounter("rabbitmq_queue_messages_succeeded_total", float64(queueStats.MessagesSucceeded), labels, "队列成功消息总数")
+		lm.metricsCollector.SetCounter("rabbitmq_queue_messages_failed_total", float64(queueStats.MessagesFailed), labels, "队列失败消息总数")
+		lm.metricsCollector.SetGauge("rabbitmq_queue_avg_processing_time_seconds", queueStats.AvgProcessingTime.Seconds(), labels, "队列平均处理时间")
+	}
 
 	// 更新时间戳
 	lm.stats.LastUpdated = time.Now()
 
-	lm.logger.Debugf("负载统计更新: CPU=%.2f%%, Memory=%.2f%%, Goroutines=%d",
-		lm.stats.CPUUsage, lm.stats.MemoryUsage, lm.stats.GoroutineCount)
-}
-
-// updateCPUStats 更新CPU统计
-func (lm *LoadMonitor) updateCPUStats() {
-	// 简单的CPU使用率估算（基于Goroutine数量）
-	// 在实际生产环境中，可以使用更精确的CPU监控库
-	goroutineCount := runtime.NumGoroutine()
-
-	// 基于Goroutine数量估算CPU使用率
-	// 这是一个简化的实现，实际应该使用系统调用获取真实CPU使用率
-	if goroutineCount < 10 {
-		lm.stats.CPUUsage = float64(goroutineCount) * 2.0
-	} else if goroutineCount < 50 {
-		lm.stats.CPUUsage = 20.0 + float64(goroutineCount-10)*1.5
-	} else {
-		lm.stats.CPUUsage = 80.0 + float64(goroutineCount-50)*0.2
-		if lm.stats.CPUUsage > 100.0 {
-			lm.stats.CPUUsage = 100.0
-		}
-	}
-}
-
-// updateMemoryStats 更新内存统计
-func (lm *LoadMonitor) updateMemoryStats() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-
-	// 计算内存使用率（简化版本）
-	// 实际应该获取系统总内存来计算准确的使用率
-	allocMB := float64(m.Alloc) / 1024 / 1024
-	sysMB := float64(m.Sys) / 1024 / 1024
-
-	// 假设系统有4GB内存（实际应该动态获取）
-	totalMemoryMB := 4096.0
-	lm.stats.MemoryUsage = (sysMB / totalMemoryMB) * 100.0
-
-	if lm.stats.MemoryUsage > 100.0 {
-		lm.stats.MemoryUsage = 100.0
-	}
-
-	lm.logger.Debugf("内存统计: Alloc=%.2fMB, Sys=%.2fMB, Usage=%.2f%%",
-		allocMB, sysMB, lm.stats.MemoryUsage)
+	lm.logger.Debugf("负载统计更新: 已处理=%d, 成功=%d, 失败=%d",
+		lm.stats.TasksProcessed, lm.stats.TasksSucceeded, lm.stats.TasksFailed)
 }
 
 // RecordTaskProcessed 记录任务处理
@@ -299,32 +277,30 @@ func (lm *LoadMonitor) GetStats() LoadStats {
 }
 
 // GetHealthStatus 获取健康状态
-func (lm *LoadMonitor) GetHealthStatus() map[string]interface{} {
+func (lm *LoadMonitor) GetHealthStatus() map[string]any {
 	stats := lm.GetStats()
 
-	health := make(map[string]interface{})
+	// 从通用指标收集器获取系统指标
+	metrics := lm.metricsCollector.GetMetrics()
+
+	health := make(map[string]any)
 	health["status"] = "healthy"
-	health["cpu_usage"] = stats.CPUUsage
-	health["memory_usage"] = stats.MemoryUsage
-	health["goroutine_count"] = stats.GoroutineCount
 	health["tasks_processed"] = stats.TasksProcessed
 	health["success_rate"] = lm.calculateSuccessRate(stats)
 	health["last_updated"] = stats.LastUpdated
 
-	// 判断健康状态
-	if stats.CPUUsage > 90.0 {
-		health["status"] = "warning"
-		health["warning"] = "CPU使用率过高"
+	// 添加系统指标
+	if cpuMetric, ok := metrics["system_cpu_cores"]; ok {
+		health["cpu_cores"] = cpuMetric.Value
 	}
+	if goroutineMetric, ok := metrics["system_goroutines_count"]; ok {
+		health["goroutine_count"] = goroutineMetric.Value
 
-	if stats.MemoryUsage > 90.0 {
-		health["status"] = "warning"
-		health["warning"] = "内存使用率过高"
-	}
-
-	if stats.GoroutineCount > 1000 {
-		health["status"] = "warning"
-		health["warning"] = "Goroutine数量过多"
+		// 判断健康状态
+		if goroutineMetric.Value > 1000 {
+			health["status"] = "warning"
+			health["warning"] = "Goroutine数量过多"
+		}
 	}
 
 	return health
@@ -351,4 +327,10 @@ func (lm *LoadMonitor) ResetStats() {
 	}
 
 	lm.logger.Info("负载统计信息已重置")
+}
+
+// GetMetricsCollector 获取指标收集器
+// 允许外部访问底层的指标收集器
+func (lm *LoadMonitor) GetMetricsCollector() *monitoring.MetricsCollector {
+	return lm.metricsCollector
 }

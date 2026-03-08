@@ -4,8 +4,10 @@ package task
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/types"
 )
 
 // Message 消息结构（从基础设施层解耦）
@@ -21,19 +23,19 @@ type Message struct {
 
 // TaskMessage 任务消息结构
 type TaskMessage struct {
-	TaskID        int64  `json:"taskId"`
-	TenantID      int64  `json:"tenantId"`
-	StoreID       int64  `json:"storeId"`
-	Platform      string `json:"platform"`
-	Region        string `json:"region"`
-	CategoryID    int64  `json:"categoryId"`
-	ProductID     string `json:"productId"`
-	Priority      int    `json:"priority"`
-	RetryCount    int    `json:"retryCount"`
-	MaxRetryCount int    `json:"maxRetryCount"`
-	CreatedAt     int64  `json:"createdAt"`
-	Remark        string `json:"remark,omitempty"`
-	Status        string `json:"status,omitempty"`
+	TaskID        int64               `json:"taskId"`
+	TenantID      int64               `json:"tenantId"`
+	StoreID       int64               `json:"storeId"`
+	Platform      string              `json:"platform"`
+	Region        string              `json:"region"`
+	CategoryID    int64               `json:"categoryId"`
+	ProductID     string              `json:"productId"`
+	Priority      int                 `json:"priority"`
+	RetryCount    int                 `json:"retryCount"`
+	MaxRetryCount int                 `json:"maxRetryCount"`
+	CreatedAt     *types.FlexibleTime `json:"createdAt"` // 支持多种时间格式
+	Remark        string              `json:"remark,omitempty"`
+	Status        string              `json:"status,omitempty"`
 }
 
 // MessageAdapter 任务消息适配器（领域逻辑）
@@ -68,6 +70,12 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 	// 转换状态：从字符串转为int16
 	status := a.convertStatusStringToInt16(taskMsg.Status)
 
+	// 处理创建时间
+	var createTime int64
+	if taskMsg.CreatedAt != nil && !taskMsg.CreatedAt.IsZero() {
+		createTime = taskMsg.CreatedAt.Unix()
+	}
+
 	// 转换为任务对象
 	task := &model.Task{
 		ID:            taskMsg.TaskID,
@@ -82,8 +90,8 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 		MaxRetryCount: taskMsg.MaxRetryCount,
 		Priority:      taskMsg.Priority,
 		Remark:        taskMsg.Remark,
-		CreateTime:    taskMsg.CreatedAt,
-		UpdateTime:    taskMsg.CreatedAt,
+		CreateTime:    createTime,
+		UpdateTime:    createTime,
 	}
 
 	return task, nil
@@ -107,9 +115,15 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
 		Priority:      task.Priority,
 		RetryCount:    task.RetryCount,
 		MaxRetryCount: task.MaxRetryCount,
-		CreatedAt:     task.CreateTime,
+		CreatedAt:     types.ToFlexibleTime(&time.Time{}),
 		Remark:        task.Remark,
 		Status:        a.convertStatusInt16ToString(task.Status),
+	}
+
+	// 设置创建时间
+	if task.CreateTime > 0 {
+		t := time.Unix(task.CreateTime, 0)
+		taskMsg.CreatedAt = types.ToFlexibleTime(&t)
 	}
 
 	return taskMsg, nil

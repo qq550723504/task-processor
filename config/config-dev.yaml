@@ -134,6 +134,25 @@ rabbitmq:
   reconnectInterval: 5   # 重连间隔（秒）
   maxReconnectTries: 10  # 最大重连次数
   
+  # 消费者配置
+  consumer:
+    prefetchCount: 5      # 预取消息数量（允许同时处理5条消息）
+    prefetchSize: 0       # 预取大小（0表示不限制）
+    retryDelay: 5         # 重试延迟（秒）
+    maxRetries: 3         # 最大重试次数
+    
+    # 队列配置（可为不同队列设置不同的并发度）
+    queues:
+      - name: "tasks.amazon.queue"
+        priority: 10      # 高优先级
+        prefetch: 5       # Amazon队列允许5个并发
+      - name: "tasks.temu.queue"
+        priority: 8
+        prefetch: 3       # TEMU队列允许3个并发
+      - name: "tasks.shein.queue"
+        priority: 8
+        prefetch: 3       # SHEIN队列允许3个并发
+  
 # Amazon配置
 amazon:
   # Amazon 爬虫配置

@@ -11,7 +11,7 @@ import (
 
 	commontypes "task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
-	"task-processor/internal/infra/memory"
+	"task-processor/internal/infra/state"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/ptrutil"
@@ -24,12 +24,12 @@ import (
 // SavePublishResultHandler 保存发品成功后返回信息处理器（参考SHEIN实现）
 type SavePublishResultHandler struct {
 	mappingClient api.ProductImportMappingAPI
-	memoryManager *memory.MemoryManager
+	memoryManager *state.MemoryManager
 	logger        *logrus.Entry
 }
 
 // NewSavePublishResultHandler 创建新的保存发品成功后返回信息处理器
-func NewSavePublishResultHandler(mappingClient api.ProductImportMappingAPI, memoryManager *memory.MemoryManager) *SavePublishResultHandler {
+func NewSavePublishResultHandler(mappingClient api.ProductImportMappingAPI, memoryManager *state.MemoryManager) *SavePublishResultHandler {
 	return &SavePublishResultHandler{
 		mappingClient: mappingClient,
 		memoryManager: memoryManager,

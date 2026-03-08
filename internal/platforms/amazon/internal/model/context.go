@@ -2,7 +2,7 @@
 package model
 
 import (
-	"task-processor/internal/infra/memory"
+	"task-processor/internal/infra/state"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/amazon/api"
 )
@@ -14,7 +14,7 @@ type Services struct {
 	ProductTypeCache   any // 使用any避免循环导入
 	ProductTypeService any // 产品类型推荐服务
 	ManagementClient   *management.ClientManager
-	MemoryManager      *memory.MemoryManager
+	MemoryManager      *state.MemoryManager
 	LLMAttributeMapper any // LLM属性映射器
 }
 
@@ -44,7 +44,7 @@ func (s *Services) SetManagementClient(client *management.ClientManager) {
 }
 
 // SetMemoryManager 设置内存管理器
-func (s *Services) SetMemoryManager(manager *memory.MemoryManager) {
+func (s *Services) SetMemoryManager(manager *state.MemoryManager) {
 	s.MemoryManager = manager
 }
 

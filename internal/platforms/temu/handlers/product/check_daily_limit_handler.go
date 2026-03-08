@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/memory"
+	"task-processor/internal/infra/state"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
@@ -15,12 +15,12 @@ import (
 
 // CheckDailyLimitHandler 检查每日上架限制处理器（参考SHEIN实现）
 type CheckDailyLimitHandler struct {
-	memoryManager *memory.MemoryManager
+	memoryManager *state.MemoryManager
 	logger        *logrus.Entry
 }
 
 // NewCheckDailyLimitHandler 创建新的检查每日限制处理器
-func NewCheckDailyLimitHandler(memoryManager *memory.MemoryManager) *CheckDailyLimitHandler {
+func NewCheckDailyLimitHandler(memoryManager *state.MemoryManager) *CheckDailyLimitHandler {
 	return &CheckDailyLimitHandler{
 		memoryManager: memoryManager,
 		logger:        logger.GetGlobalLogger("temu.handlers.daily_limit").WithField("handler", "CheckDailyLimitHandler"),

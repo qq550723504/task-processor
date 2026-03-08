@@ -2,7 +2,7 @@ package task
 
 import (
 	"context"
-	"task-processor/internal/app/worker"
+	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/management/api"
 )
 

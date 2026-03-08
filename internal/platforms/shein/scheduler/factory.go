@@ -8,7 +8,7 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/infra/memory"
+	"task-processor/internal/infra/state"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/shein/repo"
 	"task-processor/internal/platforms/shein/repo/client"
@@ -20,7 +20,7 @@ import (
 // SheinTaskFactory SHEIN平台任务工厂
 type SheinTaskFactory struct {
 	managementClient *management.ClientManager
-	cookieManager    *memory.CookieManager
+	cookieManager    *state.CookieManager
 	clientManager    *client.ClientManager
 	amazonProcessor  *amazon.AmazonProcessor
 	amazonConfig     *config.AmazonConfig
@@ -30,7 +30,7 @@ type SheinTaskFactory struct {
 
 // NewSheinTaskFactory 创建SHEIN任务工厂
 func NewSheinTaskFactory(managementClient *management.ClientManager, amazonProcessor *amazon.AmazonProcessor, amazonConfig *config.AmazonConfig, monitorConfig *config.MonitorConfig) *SheinTaskFactory {
-	cookieManager := memory.NewCookieManager()
+	cookieManager := state.NewCookieManager()
 	clientManager := client.NewClientManager(cookieManager, managementClient)
 
 	return &SheinTaskFactory{

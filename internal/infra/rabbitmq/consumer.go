@@ -197,7 +197,7 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 	return nil
 }
 
-// consume 消费消息
+// consume 消费消息（并发处理）
 func (qc *QueueConsumer) consume() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -205,22 +205,36 @@ func (qc *QueueConsumer) consume() {
 		}
 	}()
 
-	qc.logger.Infof("开始消费队列: %s", qc.queueName)
+	qc.logger.Infof("开始消费队列: %s (并发度: %d)", qc.queueName, qc.prefetch)
 
-	for {
-		select {
-		case <-qc.ctx.Done():
-			qc.logger.Infof("队列 %s 消费者停止", qc.queueName)
-			return
-		case delivery, ok := <-qc.deliveries:
-			if !ok {
-				qc.logger.Warnf("队列 %s 消费通道已关闭", qc.queueName)
-				return
+	// 创建工作池，根据 prefetch 数量创建对应数量的 worker
+	for i := 0; i < qc.prefetch; i++ {
+		qc.wg.Add(1)
+		go func(workerID int) {
+			defer qc.wg.Done()
+			qc.logger.Debugf("队列 %s Worker #%d 启动", qc.queueName, workerID)
+
+			for {
+				select {
+				case <-qc.ctx.Done():
+					qc.logger.Debugf("队列 %s Worker #%d 停止", qc.queueName, workerID)
+					return
+				case delivery, ok := <-qc.deliveries:
+					if !ok {
+						qc.logger.Debugf("队列 %s Worker #%d 通道已关闭", qc.queueName, workerID)
+						return
+					}
+
+					qc.logger.Debugf("队列 %s Worker #%d 处理消息: %s", qc.queueName, workerID, delivery.MessageId)
+					qc.processMessage(delivery)
+				}
 			}
-
-			qc.processMessage(delivery)
-		}
+		}(i)
 	}
+
+	// 等待所有 worker 完成
+	qc.wg.Wait()
+	qc.logger.Infof("队列 %s 所有 worker 已停止", qc.queueName)
 }
 
 // processMessage 处理消息

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"task-processor/internal/app/messaging"
+	"task-processor/internal/core/config"
 	"task-processor/internal/infra/crawler"
 	"task-processor/internal/infra/rabbitmq"
 
@@ -56,8 +57,13 @@ func (suite *IntegrationTestSuite) SetupSuite(t *testing.T) {
 	require.NoError(t, err, "创建爬虫客户端失败")
 	suite.crawlerClient = crawlerClient
 
+	// 加载配置文件
+	cfg := config.LoadConfigFromFile("config/config-dev.yaml")
+	require.NotNil(t, cfg, "加载配置文件失败")
+	require.NotNil(t, cfg.RabbitMQ, "RabbitMQ配置为空")
+
 	// 创建服务管理器（模拟爬虫节点）
-	serviceManager, err := messaging.NewServiceManager("config/rabbitmq-config.yaml", suite.logger)
+	serviceManager, err := messaging.NewServiceManager(cfg.RabbitMQ, suite.logger)
 	require.NoError(t, err, "创建服务管理器失败")
 	suite.serviceManager = serviceManager
 
@@ -350,8 +356,15 @@ func TestServiceManagerLifecycle(t *testing.T) {
 
 	logger.Info("🧪 测试服务管理器生命周期")
 
+	// 加载配置文件
+	cfg := config.LoadConfigFromFile("config/config-dev.yaml")
+	if cfg == nil || cfg.RabbitMQ == nil {
+		t.Skip("⏰ 无法加载配置文件或RabbitMQ配置为空")
+		return
+	}
+
 	// 创建服务管理器
-	serviceManager, err := messaging.NewServiceManager("config/rabbitmq-config.yaml", logger)
+	serviceManager, err := messaging.NewServiceManager(cfg.RabbitMQ, logger)
 	if err != nil {
 		t.Skipf("⏰ 无法创建服务管理器: %v", err)
 		return

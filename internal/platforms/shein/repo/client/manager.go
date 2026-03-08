@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/infra/memory"
+	"task-processor/internal/infra/state"
 	"task-processor/internal/pkg/management"
 	management_api "task-processor/internal/pkg/management/api"
 
@@ -16,14 +16,14 @@ import (
 // ClientManager 店铺API客户端管理器
 type ClientManager struct {
 	clients          map[string]*APIClient
-	cookieManager    *memory.CookieManager
+	cookieManager    *state.CookieManager
 	managementClient *management.ClientManager
 	mutex            sync.RWMutex
 	logger           *logrus.Entry
 }
 
 // NewClientManager 创建新的客户端管理器
-func NewClientManager(cookieManager *memory.CookieManager, managementClient *management.ClientManager) *ClientManager {
+func NewClientManager(cookieManager *state.CookieManager, managementClient *management.ClientManager) *ClientManager {
 	return &ClientManager{
 		clients:          make(map[string]*APIClient),
 		cookieManager:    cookieManager,

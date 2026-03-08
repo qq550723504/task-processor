@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"task-processor/internal/app/worker"
+	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )

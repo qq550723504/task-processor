@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/app/worker"
 	"task-processor/internal/core/errors"
+	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )
@@ -305,14 +305,14 @@ func (d *DeduplicationManager) cleanup() {
 // TransactionalTaskSubmitter 事务性任务提交器
 type TransactionalTaskSubmitter struct {
 	deduplicationManager *DeduplicationManager
-	actualSubmitter      worker.TaskSubmitter
+	actualSubmitter      TaskSubmitter
 	logger               *logrus.Logger
 }
 
 // NewTransactionalTaskSubmitter 创建事务性任务提交器
 func NewTransactionalTaskSubmitter(
 	deduplicationManager *DeduplicationManager,
-	actualSubmitter worker.TaskSubmitter,
+	actualSubmitter TaskSubmitter,
 	logger *logrus.Logger,
 ) *TransactionalTaskSubmitter {
 	return &TransactionalTaskSubmitter{

@@ -3,15 +3,18 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
-	"task-processor/internal/app/worker"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/strutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -106,8 +109,8 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 		}
 	}
 
-	// 4. 验证平台匹配
-	if task.Platform != eth.platform {
+	// 4. 验证平台匹配（忽略大小写）
+	if !strings.EqualFold(task.Platform, eth.platform) {
 		err := fmt.Errorf("任务平台 %s 与处理器平台 %s 不匹配", task.Platform, eth.platform)
 		eth.logger.Errorf("[%s] %v", eth.platform, err)
 		return err
@@ -155,8 +158,20 @@ func (eth *TaskHandler) processTaskWithReporting(
 		}
 	}()
 
+	// 将任务转换为 WorkerJob
+	taskData, err := json.Marshal(task)
+	if err != nil {
+		return fmt.Errorf("序列化任务数据失败: %w", err)
+	}
+
+	job := worker.WorkerJob{
+		TenantID: fmt.Sprintf("%d", task.TenantID),
+		ShopID:   fmt.Sprintf("%d", task.StoreID),
+		TaskData: string(taskData),
+	}
+
 	// 处理任务
-	err := eth.processor.ProcessTask(ctx, task)
+	err = eth.processor.ProcessTask(ctx, job)
 	processingTime := time.Since(startTime)
 
 	if err != nil {
@@ -228,7 +243,7 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 	}
 
 	for _, nonRetryable := range nonRetryableErrors {
-		if contains(errorMsg, nonRetryable) {
+		if strutil.ContainsIgnoreCase(errorMsg, nonRetryable) {
 			eth.logger.Infof("[%s] 错误不可重试: ID=%d, Error=%s",
 				eth.platform, task.ID, errorMsg)
 			return false
@@ -236,40 +251,6 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 	}
 
 	return true
-}
-
-// contains 检查字符串是否包含子字符串（忽略大小写）
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) &&
-		(s == substr ||
-			(len(s) > len(substr) &&
-				containsIgnoreCase(s, substr)))
-}
-
-// containsIgnoreCase 忽略大小写检查包含关系
-func containsIgnoreCase(s, substr string) bool {
-	s = toLower(s)
-	substr = toLower(substr)
-
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-// toLower 转换为小写
-func toLower(s string) string {
-	result := make([]byte, len(s))
-	for i, b := range []byte(s) {
-		if b >= 'A' && b <= 'Z' {
-			result[i] = b + 32
-		} else {
-			result[i] = b
-		}
-	}
-	return string(result)
 }
 
 // TaskProcessorRegistry 增强的任务处理器注册表

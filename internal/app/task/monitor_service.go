@@ -3,7 +3,7 @@ package task
 
 import (
 	"context"
-	"task-processor/internal/app/worker"
+	"task-processor/internal/infra/worker"
 	"time"
 
 	"github.com/sirupsen/logrus"

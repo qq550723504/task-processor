@@ -2,12 +2,14 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"task-processor/internal/app/processor"
 	"task-processor/internal/app/task"
-	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	types "task-processor/internal/domain/model"
+	"task-processor/internal/infra/worker"
 	commonPipeline "task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management"
 
@@ -16,10 +18,10 @@ import (
 
 // SheinProcessor SHEIN任务处理器
 type SheinProcessor struct {
-	*worker.BaseProcessor                         // 继承基础处理器
-	amazonProcessor       *amazon.AmazonProcessor // SHEIN特定：共享的Amazon处理器
-	taskHandler           *TaskHandler            // SHEIN特定：任务处理器
-	pipeline              commonPipeline.Pipeline // SHEIN特定：处理管道
+	*processor.BaseProcessor                         // 继承基础处理器
+	amazonProcessor          *amazon.AmazonProcessor // SHEIN特定：共享的Amazon处理器
+	taskHandler              *TaskHandler            // SHEIN特定：任务处理器
+	pipeline                 commonPipeline.Pipeline // SHEIN特定：处理管道
 }
 
 // NewSheinProcessor 创建SHEIN处理器（参考Temu实现）
@@ -39,7 +41,7 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	logger.Info("[SHEIN] 使用共享的管理客户端")
 
 	// 创建基础处理器
-	baseProcessor := worker.NewBaseProcessor(ctx, &worker.BaseProcessorConfig{
+	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
 		Config:           cfg,
 		ManagementClient: managementClient,
 		Logger:           logger,
@@ -92,9 +94,15 @@ func (p *SheinProcessor) Start(ctx context.Context) error {
 	return nil
 }
 
-// ProcessTask 处理任务（供Worker调用）
-func (p *SheinProcessor) ProcessTask(ctx context.Context, task *types.Task) error {
-	return p.taskHandler.ProcessTask(ctx, *task, p.pipeline)
+// ProcessTask 处理任务 - 实现worker.Processor接口
+func (p *SheinProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
+	// 解析任务数据
+	var task types.Task
+	if err := json.Unmarshal([]byte(job.TaskData), &task); err != nil {
+		return fmt.Errorf("解析任务数据失败: %w", err)
+	}
+
+	return p.taskHandler.ProcessTask(ctx, task, p.pipeline)
 }
 
 // GetAmazonProcessor 获取共享的Amazon处理器

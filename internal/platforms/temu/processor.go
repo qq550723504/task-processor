@@ -2,13 +2,15 @@ package temu
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"task-processor/internal/app/processor"
 	"task-processor/internal/app/task"
-	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
@@ -16,10 +18,10 @@ import (
 
 // TemuProcessor TEMU平台处理器
 type TemuProcessor struct {
-	*worker.BaseProcessor                         // 继承基础处理器
-	amazonProcessor       *amazon.AmazonProcessor // TEMU特定：Amazon处理器
-	taskHandler           *TaskHandler            // TEMU特定：任务处理器
-	pipelineExecutor      *TemuPipelineExecutor   // TEMU特定：强类型管道执行器
+	*processor.BaseProcessor                         // 继承基础处理器
+	amazonProcessor          *amazon.AmazonProcessor // TEMU特定：Amazon处理器
+	taskHandler              *TaskHandler            // TEMU特定：任务处理器
+	pipelineExecutor         *TemuPipelineExecutor   // TEMU特定：强类型管道执行器
 }
 
 // NewTemuProcessor 创建TEMU处理器
@@ -42,7 +44,7 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 	log.Info("使用共享的Amazon爬虫实例和管理客户端")
 
 	// 创建基础处理器
-	baseProcessor := worker.NewBaseProcessor(ctx, &worker.BaseProcessorConfig{
+	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
 		Config:           cfg,
 		ManagementClient: managementClient,
 		Logger:           loggerInstance,
@@ -67,8 +69,14 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 	return p, nil
 }
 
-// ProcessTask 处理TEMU任务
-func (p *TemuProcessor) ProcessTask(ctx context.Context, task *model.Task) error {
+// ProcessTask 处理TEMU任务 - 实现worker.Processor接口
+func (p *TemuProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
+	// 解析任务数据
+	var task model.Task
+	if err := json.Unmarshal([]byte(job.TaskData), &task); err != nil {
+		return fmt.Errorf("解析任务数据失败: %w", err)
+	}
+
 	log := p.GetLogger()
 	log.WithFields(logrus.Fields{
 		logger.FieldTaskID:    task.ID,
@@ -77,7 +85,7 @@ func (p *TemuProcessor) ProcessTask(ctx context.Context, task *model.Task) error
 	}).Info("开始处理任务")
 
 	// TEMU特定的任务处理逻辑
-	if err := p.processTemuProduct(ctx, *task); err != nil {
+	if err := p.processTemuProduct(ctx, task); err != nil {
 		log.WithError(err).WithField(logger.FieldTaskID, task.ID).Error("处理产品失败")
 		return err
 	}

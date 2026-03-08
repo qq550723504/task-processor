@@ -6,7 +6,7 @@ import (
 	"sync"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/infra/memory"
+	"task-processor/internal/infra/state"
 	"task-processor/internal/pkg/management"
 )
 
@@ -16,7 +16,7 @@ type DefaultTaskContext struct {
 	task             *model.Task
 	data             map[string]any
 	managementClient *management.ClientManager
-	memoryManager    *memory.MemoryManager
+	memoryManager    *state.MemoryManager
 	apiClient        any
 	amazonProcessor  *amazon.AmazonProcessor
 	amazonProduct    *model.Product
@@ -141,13 +141,13 @@ func (tc *DefaultTaskContext) SetManagementClient(client *management.ClientManag
 	tc.managementClient = client
 }
 
-func (tc *DefaultTaskContext) GetMemoryManager() *memory.MemoryManager {
+func (tc *DefaultTaskContext) GetMemoryManager() *state.MemoryManager {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
 	return tc.memoryManager
 }
 
-func (tc *DefaultTaskContext) SetMemoryManager(manager *memory.MemoryManager) {
+func (tc *DefaultTaskContext) SetMemoryManager(manager *state.MemoryManager) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
 	tc.memoryManager = manager

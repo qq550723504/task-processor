@@ -2,7 +2,7 @@
 package task
 
 import (
-	"task-processor/internal/app/worker"
+	"task-processor/internal/infra/worker"
 	"time"
 )
 

@@ -3,11 +3,13 @@ package amazon
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
-	"task-processor/internal/app/worker"
+	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/infra/worker"
 	"task-processor/internal/platforms/amazon/api"
 	"task-processor/internal/platforms/amazon/internal/handler"
 	amazonModel "task-processor/internal/platforms/amazon/internal/model"
@@ -18,15 +20,15 @@ import (
 
 // Processor Amazon平台处理器
 type Processor struct {
-	*worker.BaseProcessor                       // 继承基础处理器
-	services              *amazonModel.Services // Amazon特定：服务容器
-	apiClient             *api.Client           // Amazon特定：API客户端
+	*processor.BaseProcessor                       // 继承基础处理器
+	services                 *amazonModel.Services // Amazon特定：服务容器
+	apiClient                *api.Client           // Amazon特定：API客户端
 }
 
 // NewProcessor 创建Amazon处理器
 func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger) *Processor {
 	// 创建基础处理器
-	baseProcessor := worker.NewBaseProcessor(ctx, &worker.BaseProcessorConfig{
+	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
 		Config:           cfg,
 		ManagementClient: nil, // Amazon处理器可能不需要管理客户端
 		Logger:           logger,
@@ -70,7 +72,13 @@ func (p *Processor) Start(ctx context.Context) error {
 }
 
 // ProcessTask 处理任务 - 实现worker.Processor接口
-func (p *Processor) ProcessTask(ctx context.Context, task *model.Task) error {
+func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
+	// 解析任务数据
+	var task model.Task
+	if err := json.Unmarshal([]byte(job.TaskData), &task); err != nil {
+		return fmt.Errorf("解析任务数据失败: %w", err)
+	}
+
 	logger := p.GetLogger()
 	logger.Infof("[Amazon] 开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
 

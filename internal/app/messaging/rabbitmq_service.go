@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
