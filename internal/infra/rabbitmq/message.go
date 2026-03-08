@@ -20,6 +20,7 @@ func parseDeliveryMessage(delivery amqp.Delivery) (*Message, error) {
 		ID:        delivery.MessageId,
 		Type:      delivery.Type,
 		Timestamp: delivery.Timestamp.Unix(),
+		Priority:  delivery.Priority,
 	}
 
 	// 解析消息体为 Payload

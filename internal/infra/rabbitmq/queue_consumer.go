@@ -149,10 +149,10 @@ func (qc *QueueConsumer) shouldRetry(msg *Message) bool {
 
 // republishWithRetryCount 重新发布消息并更新重试计数
 func (qc *QueueConsumer) republishWithRetryCount(msg *Message) error {
-	// 序列化消息
-	msgBytes, err := json.Marshal(msg)
+	// 序列化Payload（保持原始消息格式）
+	payloadBytes, err := json.Marshal(msg.Payload)
 	if err != nil {
-		return fmt.Errorf("序列化消息失败: %w", err)
+		return fmt.Errorf("序列化Payload失败: %w", err)
 	}
 
 	// 获取channel
@@ -161,7 +161,13 @@ func (qc *QueueConsumer) republishWithRetryCount(msg *Message) error {
 		return fmt.Errorf("获取channel失败: %w", err)
 	}
 
-	// 重新发布到同一个队列
+	// 构建Headers，包含重试信息
+	headers := amqp.Table{
+		"retry_count": int32(msg.RetryCount),
+		"max_retries": int32(msg.MaxRetries),
+	}
+
+	// 重新发布到同一个队列（使用原始格式：Body是Payload，重试信息在Headers中）
 	err = channel.Publish(
 		"",           // exchange
 		qc.queueName, // routing key
@@ -169,9 +175,12 @@ func (qc *QueueConsumer) republishWithRetryCount(msg *Message) error {
 		false,        // immediate
 		amqp.Publishing{
 			ContentType:  "application/json",
-			Body:         msgBytes,
+			Body:         payloadBytes,
 			DeliveryMode: amqp.Persistent,
 			Priority:     uint8(msg.Priority),
+			MessageId:    msg.ID,
+			Type:         msg.Type,
+			Headers:      headers,
 		},
 	)
 
