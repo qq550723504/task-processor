@@ -234,3 +234,8 @@ func containsPlatform(platforms []string, platform string) bool {
 	}
 	return false
 }
+
+// GetSharedAmazonProcessor 获取共享的Amazon处理器
+func (r *PlatformRegistry) GetSharedAmazonProcessor() *amazon.AmazonProcessor {
+	return r.sharedAmazonProcessor
+}

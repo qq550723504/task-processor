@@ -93,27 +93,32 @@ func (sm *ServiceManager) Start(ctx context.Context) error {
 		return fmt.Errorf("初始化服务失败: %w", err)
 	}
 
-	// 2. 启动结果上报器
+	// 2. 设置队列配置（如果配置文件中有定义）
+	if len(sm.config.Consumer.Queues) > 0 {
+		sm.rabbitmqService.SetQueueConfigs(sm.config.Consumer.Queues)
+	}
+
+	// 3. 启动结果上报器
 	if err := sm.resultReporter.Start(sm.ctx); err != nil {
 		return fmt.Errorf("启动结果上报器失败: %w", err)
 	}
 
-	// 3. 启动负载监控
+	// 4. 启动负载监控
 	if err := sm.loadMonitor.Start(sm.ctx); err != nil {
 		return fmt.Errorf("启动负载监控失败: %w", err)
 	}
 
-	// 4. 启动RabbitMQ服务
+	// 5. 启动RabbitMQ服务
 	if err := sm.rabbitmqService.Start(sm.ctx); err != nil {
 		return fmt.Errorf("启动RabbitMQ服务失败: %w", err)
 	}
 
-	// 5. 启动HTTP服务器
+	// 6. 启动HTTP服务器
 	if err := sm.startHTTPServers(); err != nil {
 		return fmt.Errorf("启动HTTP服务器失败: %w", err)
 	}
 
-	// 6. 启动信号监听
+	// 7. 启动信号监听
 	sm.wg.Add(1)
 	go sm.handleSignals()
 

@@ -37,10 +37,22 @@ func NewCrawlerRegistry(
 
 // RegisterCrawlerProcessor 注册爬虫处理器到服务管理器
 func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManager) error {
+	return r.RegisterCrawlerProcessorWithAmazon(serviceManager, nil)
+}
+
+// RegisterCrawlerProcessorWithAmazon 注册爬虫处理器到服务管理器（可选共享Amazon处理器）
+func (r *CrawlerRegistry) RegisterCrawlerProcessorWithAmazon(serviceManager *ServiceManager, sharedAmazonProcessor *amazon.AmazonProcessor) error {
 	r.logger.Info("📦 注册Amazon爬虫处理器...")
 
-	// 创建共享的Amazon处理器
-	amazonProcessor := amazon.CreateProcessor(r.config, r.logger)
+	// 使用共享的Amazon处理器，如果没有则创建新的
+	var amazonProcessor *amazon.AmazonProcessor
+	if sharedAmazonProcessor != nil {
+		r.logger.Info("✅ 复用共享的Amazon处理器（避免重复初始化浏览器池）")
+		amazonProcessor = sharedAmazonProcessor
+	} else {
+		r.logger.Info("🔧 创建新的Amazon处理器")
+		amazonProcessor = amazon.CreateProcessor(r.config, r.logger)
+	}
 
 	// 创建产品获取器
 	productFetcher := r.createProductFetcher(amazonProcessor)
@@ -59,8 +71,8 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManage
 		taskSubmitter,
 	)
 
-	// 注册到服务管理器
-	if err := serviceManager.RegisterProcessor("amazon", crawlerProcessor); err != nil {
+	// 注册到服务管理器（使用 amazon.crawler 避免与上架服务冲突）
+	if err := serviceManager.RegisterProcessor("amazon.crawler", crawlerProcessor); err != nil {
 		return fmt.Errorf("注册Amazon爬虫处理器失败: %w", err)
 	}
 

@@ -143,15 +143,23 @@ rabbitmq:
     
     # 队列配置（可为不同队列设置不同的并发度）
     queues:
-      - name: "tasks.amazon.queue"
-        priority: 10      # 高优先级
-        prefetch: 5       # Amazon队列允许5个并发
-      - name: "tasks.temu.queue"
+      # 上架任务队列
+      - name: "amazon.tasks.queue"
+        priority: 10
+        prefetch: 5
+      - name: "temu.tasks.queue"
         priority: 8
-        prefetch: 3       # TEMU队列允许3个并发
-      - name: "tasks.shein.queue"
+        prefetch: 3
+      - name: "shein.tasks.queue"
         priority: 8
-        prefetch: 3       # SHEIN队列允许3个并发
+        prefetch: 3
+      # 爬虫任务队列
+      - name: "amazon.crawler.queue"
+        priority: 10
+        prefetch: 3
+      - name: "1688.crawler.queue"
+        priority: 8
+        prefetch: 3
   
 # Amazon配置
 amazon:
