@@ -13,7 +13,6 @@ import (
 var (
 	appConfig = flag.String("app-config", "config/config-dev.yaml", "应用配置文件路径")
 	logLevel  = flag.String("log-level", "info", "日志级别")
-	platforms = flag.String("platforms", "amazon,temu,shein", "启用的平台，用逗号分隔")
 )
 
 // 版本信息（通过 -ldflags 在编译时注入）
@@ -50,8 +49,8 @@ func main() {
 		logger.Fatalf("❌ 创建服务管理器失败: %v", err)
 	}
 
-	// 创建平台注册器并注册所有处理器
-	platformRegistry := messaging.NewPlatformRegistry(appCfg, logger, *platforms)
+	// 创建平台注册器并注册所有处理器（不指定平台，根据任务动态判断）
+	platformRegistry := messaging.NewPlatformRegistry(appCfg, logger, "")
 	ctx := context.Background()
 	if err := platformRegistry.RegisterAllProcessors(ctx, serviceManager); err != nil {
 		logger.Fatalf("❌ 注册平台处理器失败: %v", err)

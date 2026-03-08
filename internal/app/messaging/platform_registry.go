@@ -31,8 +31,14 @@ func NewPlatformRegistry(
 	logger *logrus.Logger,
 	platformsStr string,
 ) *PlatformRegistry {
-	// 解析平台列表
-	enabledPlatforms := parsePlatformList(platformsStr)
+	// 如果指定了平台列表，使用指定的；否则从配置文件读取
+	var enabledPlatforms []string
+	if platformsStr != "" {
+		enabledPlatforms = parsePlatformList(platformsStr)
+	} else {
+		enabledPlatforms = getEnabledPlatformsFromConfig(cfg)
+	}
+
 	logger.Infof("🔧 启用的平台: %v", enabledPlatforms)
 
 	return &PlatformRegistry{
@@ -168,10 +174,6 @@ func (r *PlatformRegistry) registerSheinPlatform(ctx context.Context, serviceMan
 
 // parsePlatformList 解析平台列表
 func parsePlatformList(platformsStr string) []string {
-	if platformsStr == "" {
-		return []string{}
-	}
-
 	platforms := strings.Split(platformsStr, ",")
 	result := make([]string, 0, len(platforms))
 
@@ -183,6 +185,31 @@ func parsePlatformList(platformsStr string) []string {
 	}
 
 	return result
+}
+
+// getEnabledPlatformsFromConfig 从配置文件中获取启用的平台列表
+func getEnabledPlatformsFromConfig(cfg *config.Config) []string {
+	platforms := make([]string, 0)
+
+	// 检查Amazon配置（Amazon配置在单独的字段中）
+	if cfg.Amazon.Enabled {
+		platforms = append(platforms, "amazon")
+	}
+
+	// 检查其他平台配置
+	if cfg.Platforms.Temu.Enabled {
+		platforms = append(platforms, "temu")
+	}
+
+	if cfg.Platforms.Shein.Enabled {
+		platforms = append(platforms, "shein")
+	}
+
+	if cfg.Platforms.Alibaba1688.Enabled {
+		platforms = append(platforms, "alibaba1688")
+	}
+
+	return platforms
 }
 
 // containsPlatform 检查平台列表是否包含指定平台

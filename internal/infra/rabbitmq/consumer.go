@@ -1,23 +1,16 @@
-// Package rabbitmq 提供RabbitMQ消息消费者功能
+// Package rabbitmq 提供RabbitMQ消息消费者管理功能
 package rabbitmq
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 )
 
-// MessageHandler 消息处理器接口
-type MessageHandler interface {
-	HandleMessage(ctx context.Context, msg *Message) error
-}
-
-// MessageConsumer 消息消费者
+// MessageConsumer 消息消费者管理器
 type MessageConsumer struct {
 	client    *Client
 	logger    *logrus.Logger
@@ -43,22 +36,7 @@ type ConsumerConfig struct {
 	MaxRetries    int           `yaml:"max_retries"`
 }
 
-// QueueConsumer 队列消费者
-type QueueConsumer struct {
-	queueName   string
-	consumerTag string
-	handler     MessageHandler
-	deliveries  <-chan amqp.Delivery
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
-	logger      *logrus.Logger
-	config      ConsumerConfig
-	priority    int // 队列优先级
-	prefetch    int // 预取数量
-}
-
-// NewMessageConsumer 创建消息消费者
+// NewMessageConsumer 创建消息消费者管理器
 func NewMessageConsumer(client *Client, config ConsumerConfig, logger *logrus.Logger) *MessageConsumer {
 	if config.PrefetchCount == 0 {
 		config.PrefetchCount = 1
@@ -181,6 +159,7 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 		config:      mc.config,
 		priority:    priority,
 		prefetch:    prefetch,
+		client:      mc.client, // 传入client用于重新发布消息
 	}
 
 	mc.consumers[queueName] = queueConsumer
@@ -195,144 +174,6 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 	mc.logger.Infof("队列 %s 消费者启动成功，消费者标签: %s, priority=%d, prefetch=%d",
 		queueName, consumerTag, priority, prefetch)
 	return nil
-}
-
-// consume 消费消息（并发处理）
-func (qc *QueueConsumer) consume() {
-	defer func() {
-		if r := recover(); r != nil {
-			qc.logger.Errorf("队列 %s 消费者发生panic: %v", qc.queueName, r)
-		}
-	}()
-
-	qc.logger.Infof("开始消费队列: %s (并发度: %d)", qc.queueName, qc.prefetch)
-
-	// 创建工作池，根据 prefetch 数量创建对应数量的 worker
-	for i := 0; i < qc.prefetch; i++ {
-		qc.wg.Add(1)
-		go func(workerID int) {
-			defer qc.wg.Done()
-			qc.logger.Debugf("队列 %s Worker #%d 启动", qc.queueName, workerID)
-
-			for {
-				select {
-				case <-qc.ctx.Done():
-					qc.logger.Debugf("队列 %s Worker #%d 停止", qc.queueName, workerID)
-					return
-				case delivery, ok := <-qc.deliveries:
-					if !ok {
-						qc.logger.Debugf("队列 %s Worker #%d 通道已关闭", qc.queueName, workerID)
-						return
-					}
-
-					qc.logger.Debugf("队列 %s Worker #%d 处理消息: %s", qc.queueName, workerID, delivery.MessageId)
-					qc.processMessage(delivery)
-				}
-			}
-		}(i)
-	}
-
-	// 等待所有 worker 完成
-	qc.wg.Wait()
-	qc.logger.Infof("队列 %s 所有 worker 已停止", qc.queueName)
-}
-
-// processMessage 处理消息
-func (qc *QueueConsumer) processMessage(delivery amqp.Delivery) {
-	defer func() {
-		if r := recover(); r != nil {
-			qc.logger.Errorf("处理消息发生panic: %v", r)
-			// Panic时拒绝消息并重新排队
-			if err := delivery.Nack(false, true); err != nil {
-				qc.logger.Errorf("拒绝消息失败: %v", err)
-			}
-		}
-	}()
-
-	startTime := time.Now()
-
-	// 解析消息
-	msg, err := parseDeliveryMessage(delivery)
-	if err != nil {
-		qc.logger.Errorf("解析消息失败: %v", err)
-		// 解析失败，拒绝消息不重新排队
-		if ackErr := delivery.Nack(false, false); ackErr != nil {
-			qc.logger.Errorf("拒绝消息失败: %v", ackErr)
-		}
-		return
-	}
-
-	qc.logger.Debugf("开始处理消息: ID=%s, Queue=%s", msg.ID, qc.queueName)
-
-	// 处理消息
-	err = qc.handler.HandleMessage(qc.ctx, msg)
-	if err != nil {
-		qc.logger.Errorf("处理消息失败: ID=%s, Error=%v", msg.ID, err)
-
-		// 检查是否需要重试
-		if qc.shouldRetry(msg) {
-			qc.logger.Infof("消息将重新排队重试: ID=%s, RetryCount=%d", msg.ID, msg.RetryCount)
-			if nackErr := delivery.Nack(false, true); nackErr != nil {
-				qc.logger.Errorf("重新排队消息失败: %v", nackErr)
-			}
-		} else {
-			qc.logger.Warnf("消息已达到最大重试次数，发送到死信队列: ID=%s", msg.ID)
-			if nackErr := delivery.Nack(false, false); nackErr != nil {
-				qc.logger.Errorf("发送消息到死信队列失败: %v", nackErr)
-			}
-		}
-		return
-	}
-
-	// 处理成功，确认消息
-	if ackErr := delivery.Ack(false); ackErr != nil {
-		qc.logger.Errorf("确认消息失败: ID=%s, Error=%v", msg.ID, ackErr)
-		return
-	}
-
-	processingTime := time.Since(startTime)
-	qc.logger.Infof("消息处理成功: ID=%s, Queue=%s, Duration=%v",
-		msg.ID, qc.queueName, processingTime)
-}
-
-// shouldRetry 判断是否应该重试
-func (qc *QueueConsumer) shouldRetry(msg *Message) bool {
-	return msg.RetryCount < msg.MaxRetries
-}
-
-// parseDeliveryMessage 解析投递消息
-func parseDeliveryMessage(delivery amqp.Delivery) (*Message, error) {
-	msg := &Message{
-		ID:        delivery.MessageId,
-		Type:      delivery.Type,
-		Timestamp: delivery.Timestamp.Unix(),
-	}
-
-	// 解析消息体为 Payload
-	if len(delivery.Body) > 0 {
-		var payload map[string]interface{}
-		if err := json.Unmarshal(delivery.Body, &payload); err != nil {
-			return nil, fmt.Errorf("解析消息体失败: %w", err)
-		}
-		msg.Payload = payload
-	}
-
-	// 从Headers中获取重试信息
-	if delivery.Headers != nil {
-		if retryCount, ok := delivery.Headers["retry_count"].(int32); ok {
-			msg.RetryCount = int(retryCount)
-		}
-		if maxRetries, ok := delivery.Headers["max_retries"].(int32); ok {
-			msg.MaxRetries = int(maxRetries)
-		}
-	}
-
-	// 设置默认值
-	if msg.MaxRetries == 0 {
-		msg.MaxRetries = 3
-	}
-
-	return msg, nil
 }
 
 // Stop 停止消费者
