@@ -79,8 +79,9 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 	messageData := c.buildMessageData(taskMessage, req)
 
 	// 构建路由键和队列名称
+	// 注意：爬虫任务使用专门的爬虫队列，不是上架队列
 	routingKey := c.taskAdapter.BuildRoutingKey(taskModel)
-	queueName := c.taskAdapter.GetQueueName(req.Platform)
+	queueName := c.taskAdapter.GetQueueName(req.Platform + ".crawler")
 
 	// 创建等待任务
 	pendingTask := c.createPendingTask(ctx, req.TaskID)

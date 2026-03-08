@@ -281,6 +281,32 @@ func (qi *QueueInitializer) initializeQueues() error {
 			NoWait:     false,
 			Args:       nil,
 		},
+		// Amazon 爬虫队列
+		{
+			Name:       "amazon.crawler.queue",
+			Durable:    true,
+			AutoDelete: false,
+			Exclusive:  false,
+			NoWait:     false,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
+		// 1688 爬虫队列
+		{
+			Name:       "1688.crawler.queue",
+			Durable:    true,
+			AutoDelete: false,
+			Exclusive:  false,
+			NoWait:     false,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
 	}
 
 	for _, queue := range queues {

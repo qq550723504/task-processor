@@ -48,9 +48,14 @@ type MessageAdapter struct {
 func NewMessageAdapter() *MessageAdapter {
 	return &MessageAdapter{
 		queueMapping: map[string]string{
+			// 上架任务队列
 			"amazon": "amazon.tasks.queue",
 			"temu":   "temu.tasks.queue",
 			"shein":  "shein.tasks.queue",
+
+			// 爬虫任务队列
+			"amazon.crawler": "amazon.crawler.queue",
+			"1688.crawler":   "1688.crawler.queue",
 		},
 	}
 }
