@@ -4,10 +4,12 @@ package product
 import (
 	"errors"
 	"fmt"
+	appProduct "task-processor/internal/application/product"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/domain/product"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/types"
 
@@ -17,26 +19,27 @@ import (
 // RawJsonDataHandlerV2 原始JSON数据处理器V2（使用工厂模式选择获取器）
 type RawJsonDataHandlerV2 struct {
 	logger  *logrus.Entry
-	fetcher product.ProductFetcherInterface
+	fetcher appProduct.ProductFetcherInterface
 }
 
 // NewRawJsonDataHandlerV2 创建新的原始JSON数据处理器V2（支持分布式获取器）
 func NewRawJsonDataHandlerV2(
-	rawJsonDataClient product.RawJsonDataClient,
+	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
 	amazonProcessor *amazon.AmazonProcessor,
+	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandlerV2 {
 	logger := logrus.WithField("handler", "RawJsonDataHandlerV2")
 
 	// 使用工厂模式创建获取器
-	factory := product.NewFetcherFactory()
+	factory := appProduct.NewFetcherFactory()
 
 	// 根据配置创建获取器
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor)
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
 		// 降级到本地获取器
-		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
 	}
 
 	logger.Infof("✅ 产品获取器创建成功，类型: %s", factory.GetRecommendedFetcher(cfg))
@@ -67,7 +70,7 @@ func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 	}
 
 	// 使用公共ProductFetcher获取产品数据
-	req := &product.FetchRequest{
+	req := &domainProduct.FetchRequest{
 		TenantID:   task.TenantID,
 		Platform:   task.Platform,
 		Region:     task.Region,

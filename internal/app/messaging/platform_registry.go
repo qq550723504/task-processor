@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/management"
 	platformAmazon "task-processor/internal/platforms/amazon"
 	"task-processor/internal/platforms/shein/service/pipeline"
@@ -22,6 +23,7 @@ type PlatformRegistry struct {
 	logger                *logrus.Logger
 	managementClient      *management.ClientManager
 	sharedAmazonProcessor *amazon.AmazonProcessor
+	rabbitmqClient        *rabbitmq.Client
 	enabledPlatforms      []string
 }
 
@@ -51,6 +53,14 @@ func NewPlatformRegistry(
 // RegisterAllProcessors 注册所有启用的平台处理器
 func (r *PlatformRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager) error {
 	r.logger.Info("📦 开始注册平台处理器...")
+
+	// 获取RabbitMQ客户端（用于分布式爬虫）
+	r.rabbitmqClient = serviceManager.GetClient()
+	if r.rabbitmqClient != nil {
+		r.logger.Info("✅ 获取到RabbitMQ客户端，将启用分布式爬虫")
+	} else {
+		r.logger.Warn("⚠️ 未获取到RabbitMQ客户端，将使用本地爬虫")
+	}
 
 	// 初始化共享资源
 	if err := r.initializeSharedResources(); err != nil {
@@ -131,6 +141,7 @@ func (r *PlatformRegistry) registerTemuPlatform(ctx context.Context, serviceMana
 		r.logger,
 		r.managementClient,
 		r.sharedAmazonProcessor,
+		r.rabbitmqClient,
 	)
 	if err != nil {
 		return fmt.Errorf("创建TEMU处理器失败: %w", err)
@@ -159,6 +170,7 @@ func (r *PlatformRegistry) registerSheinPlatform(ctx context.Context, serviceMan
 		r.logger,
 		r.managementClient,
 		r.sharedAmazonProcessor,
+		r.rabbitmqClient,
 	)
 	if err != nil {
 		return fmt.Errorf("创建SHEIN处理器失败: %w", err)

@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	appProduct "task-processor/internal/application/product"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/domain/product"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -21,7 +23,7 @@ import (
 // ParallelVariantHandler 并行变体数据处理器
 type ParallelVariantHandler struct {
 	logger         *logrus.Entry
-	productFetcher product.ProductFetcherInterface
+	productFetcher appProduct.ProductFetcherInterface
 	amazonConfig   *config.AmazonConfig
 	maxWorkers     int
 	timeout        time.Duration
@@ -29,9 +31,10 @@ type ParallelVariantHandler struct {
 
 // NewParallelVariantHandler 创建并行变体数据处理器（支持分布式获取器）
 func NewParallelVariantHandler(
-	rawJsonDataClient product.RawJsonDataClient,
+	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
 	amazonProcessor interface{},
+	rabbitmqClient *rabbitmq.Client,
 ) *ParallelVariantHandler {
 	logger := logrus.WithField("handler", "ParallelVariantHandler")
 
@@ -42,14 +45,14 @@ func NewParallelVariantHandler(
 	}
 
 	// 使用工厂模式创建获取器
-	factory := product.NewFetcherFactory()
+	factory := appProduct.NewFetcherFactory()
 
 	// 根据配置创建获取器
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor.(*amazon.AmazonProcessor))
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor.(*amazon.AmazonProcessor), rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
 		// 降级到本地获取器
-		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor.(*amazon.AmazonProcessor))
+		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor.(*amazon.AmazonProcessor))
 	}
 
 	return &ParallelVariantHandler{
@@ -154,7 +157,7 @@ func (h *ParallelVariantHandler) fetchVariantsParallel(temuCtx *temucontext.Temu
 		tasks[i] = &utils.ProcessTask{
 			Index: i,
 			ID:    asin,
-			Data: &product.FetchRequest{
+			Data: &domainProduct.FetchRequest{
 				TenantID:   task.TenantID,
 				Platform:   task.Platform,
 				Region:     task.Region,
@@ -168,7 +171,7 @@ func (h *ParallelVariantHandler) fetchVariantsParallel(temuCtx *temucontext.Temu
 
 	// 定义处理函数
 	processFunc := func(ctx context.Context, task *utils.ProcessTask) (interface{}, error) {
-		req, ok := task.Data.(*product.FetchRequest)
+		req, ok := task.Data.(*domainProduct.FetchRequest)
 		if !ok {
 			return nil, fmt.Errorf("任务数据类型错误")
 		}

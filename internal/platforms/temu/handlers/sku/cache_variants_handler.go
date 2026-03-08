@@ -2,10 +2,13 @@ package sku
 
 import (
 	"fmt"
+	appProduct "task-processor/internal/application/product"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/domain/product"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
 
 	"github.com/sirupsen/logrus"
@@ -15,22 +18,23 @@ import (
 // 将已获取的变体数据批量缓存到服务器
 type CacheVariantsHandler struct {
 	logger  *logrus.Entry
-	fetcher product.ProductFetcherInterface
+	fetcher appProduct.ProductFetcherInterface
 }
 
 // NewCacheVariantsHandler 创建缓存变体数据处理器（支持分布式获取器）
 func NewCacheVariantsHandler(
-	rawJsonDataClient product.RawJsonDataClient,
+	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
 	amazonProcessor *amazon.AmazonProcessor,
+	rabbitmqClient *rabbitmq.Client,
 ) *CacheVariantsHandler {
 	logger := logrus.WithField("handler", "CacheVariantsHandler")
 
 	// 使用工厂模式创建获取器
-	factory := product.NewFetcherFactory()
+	factory := appProduct.NewFetcherFactory()
 
 	// 根据配置创建获取器
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor)
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
 		// 降级到本地获取器

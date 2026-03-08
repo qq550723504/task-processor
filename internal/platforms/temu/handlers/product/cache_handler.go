@@ -2,10 +2,12 @@ package product
 
 import (
 	"fmt"
+	appProduct "task-processor/internal/application/product"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/domain/product"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
 
 	"github.com/sirupsen/logrus"
@@ -15,26 +17,27 @@ import (
 // 将已获取的产品数据缓存到服务器
 type CacheProductHandler struct {
 	logger  *logrus.Entry
-	fetcher product.ProductFetcherInterface
+	fetcher appProduct.ProductFetcherInterface
 }
 
 // NewCacheProductHandler 创建缓存产品数据处理器（支持分布式获取器）
 func NewCacheProductHandler(
-	rawJsonDataClient product.RawJsonDataClient,
+	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
 	amazonProcessor *amazon.AmazonProcessor,
+	rabbitmqClient *rabbitmq.Client,
 ) *CacheProductHandler {
 	logger := logrus.WithField("handler", "CacheProductHandler")
 
 	// 使用工厂模式创建获取器
-	factory := product.NewFetcherFactory()
+	factory := appProduct.NewFetcherFactory()
 
 	// 根据配置创建获取器
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor)
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
 		// 降级到本地获取器
-		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
 	}
 
 	return &CacheProductHandler{
@@ -72,7 +75,7 @@ func (h *CacheProductHandler) Handle(ctx pipeline.TaskContext) error {
 	}
 
 	// 构建缓存请求
-	req := &product.FetchRequest{
+	req := &domainProduct.FetchRequest{
 		TenantID:   task.TenantID,
 		Platform:   task.Platform,
 		Region:     task.Region,

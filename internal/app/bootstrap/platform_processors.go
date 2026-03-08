@@ -88,7 +88,9 @@ func (p *PlatformProcessorRegistry) registerTemuProcessor(container di.Container
 			return nil, err
 		}
 
-		return temu.NewTemuProcessor(context.Background(), config, logger, managementClient, amazonProcessor)
+		// 注意：这里传递 nil 作为 rabbitmqClient，因为旧的启动方式不使用 RabbitMQ
+		// 如果需要使用分布式爬虫，请使用 cmd/rabbitmq-consumer 启动程序
+		return temu.NewTemuProcessor(context.Background(), config, logger, managementClient, amazonProcessor, nil)
 	})
 }
 
@@ -100,6 +102,8 @@ func (p *PlatformProcessorRegistry) registerSheinProcessor(container di.Containe
 			return nil, err
 		}
 
-		return pipeline.NewSheinProcessor(context.Background(), config, logger, managementClient, amazonProcessor)
+		// 注意：这里传递 nil 作为 rabbitmqClient，因为旧的启动方式不使用 RabbitMQ
+		// 如果需要使用分布式爬虫，请使用 cmd/rabbitmq-consumer 启动程序
+		return pipeline.NewSheinProcessor(context.Background(), config, logger, managementClient, amazonProcessor, nil)
 	})
 }

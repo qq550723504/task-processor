@@ -2,10 +2,12 @@
 
 import (
 	"strings"
+	appProduct "task-processor/internal/application/product"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/domain/product"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/management/api"
 	shein_model "task-processor/internal/platforms/shein/model"
 
@@ -14,7 +16,7 @@ import (
 
 // RawJsonDataHandler 获取原始Json数据处理器
 type RawJsonDataHandler struct {
-	fetcher product.ProductFetcherInterface
+	fetcher appProduct.ProductFetcherInterface
 }
 
 // sheinRawJsonDataClient SHEIN 原始 JSON 数据客户端（简单包装）
@@ -35,6 +37,7 @@ func NewRawJsonDataHandler(
 	rawJsonDataClient api.RawJsonDataAPI,
 	cfg *config.Config,
 	amazonProcessor interface{},
+	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandler {
 	logger := logrus.WithField("handler", "RawJsonDataHandler")
 
@@ -55,14 +58,14 @@ func NewRawJsonDataHandler(
 	client := &sheinRawJsonDataClient{client: rawJsonDataClient}
 
 	// 使用工厂模式创建获取器
-	factory := product.NewFetcherFactory()
+	factory := appProduct.NewFetcherFactory()
 
 	// 根据配置创建获取器
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, client, ap)
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, client, ap, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
 		// 降级到本地获取器
-		fetcher = product.NewProductFetcher(client, &cfg.Amazon, ap)
+		fetcher = domainProduct.NewProductFetcher(client, &cfg.Amazon, ap)
 	}
 
 	logger.Infof("✅ SHEIN产品获取器创建成功，类型: %s", factory.GetRecommendedFetcher(cfg))
@@ -114,7 +117,7 @@ func (h *RawJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
 	logrus.Infof("开始获取原始JSON数据: ProductID=%s, Region=%s", ctx.Task.ProductID, ctx.Task.Region)
 
 	// 使用公共ProductFetcher获取产品数据
-	req := &product.FetchRequest{
+	req := &domainProduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.Platform,
 		Region:     ctx.Task.Region,

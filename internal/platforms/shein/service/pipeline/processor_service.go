@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	types "task-processor/internal/domain/model"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	commonPipeline "task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management"
@@ -20,13 +21,14 @@ import (
 type SheinProcessor struct {
 	*processor.BaseProcessor                         // 继承基础处理器
 	amazonProcessor          *amazon.AmazonProcessor // SHEIN特定：共享的Amazon处理器
+	rabbitmqClient           *rabbitmq.Client        // RabbitMQ客户端（用于分布式爬虫）
 	taskHandler              *TaskHandler            // SHEIN特定：任务处理器
 	pipeline                 commonPipeline.Pipeline // SHEIN特定：处理管道
 }
 
 // NewSheinProcessor 创建SHEIN处理器（参考Temu实现）
 // 返回 error 而不是 panic，让调用方决定如何处理错误
-func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor) (*SheinProcessor, error) {
+func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor, rabbitmqClient *rabbitmq.Client) (*SheinProcessor, error) {
 	// ManagementClient必须由调用方提供（共享实例）
 	if managementClient == nil {
 		logger.Error("[SHEIN] ManagementClient不能为空，必须使用共享实例")
@@ -36,6 +38,13 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	// 如果提供了Amazon处理器，记录日志
 	if sharedAmazonProcessor != nil {
 		logger.Info("[SHEIN] 使用共享的Amazon爬虫实例")
+	}
+
+	// 记录RabbitMQ客户端状态
+	if rabbitmqClient != nil {
+		logger.Info("[SHEIN] ✅ 使用RabbitMQ客户端，将启用分布式爬虫")
+	} else {
+		logger.Warn("[SHEIN] ⚠️ 未提供RabbitMQ客户端，将使用本地爬虫")
 	}
 
 	logger.Info("[SHEIN] 使用共享的管理客户端")
@@ -51,6 +60,7 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	p := &SheinProcessor{
 		BaseProcessor:   baseProcessor,
 		amazonProcessor: sharedAmazonProcessor,
+		rabbitmqClient:  rabbitmqClient,
 	}
 
 	// 创建 WorkerPool（内部管理）

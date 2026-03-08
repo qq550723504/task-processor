@@ -76,12 +76,13 @@ func (pr *PipelineRegistry) registerCommonHandlers() {
 func (pr *PipelineRegistry) registerInitHandlers() {
 	managementClient := pr.processor.GetManagementClient()
 	cfg := pr.processor.GetConfig()
+	rabbitmqClient := pr.processor.rabbitmqClient
 
 	pr.register("init_data", common.NewInitDataHandler())
 	pr.register("store_info", store.NewStoreInfoHandler(managementClient.GetStoreClient()))
-	pr.register("raw_json_data", product.NewRawJsonDataHandlerV2(managementClient.GetRawJsonDataClient(), cfg, pr.processor.amazonProcessor))
+	pr.register("raw_json_data", product.NewRawJsonDataHandlerV2(managementClient.GetRawJsonDataClient(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
 	pr.register("prohibited_items", NewTemuHandlerAdapter("prohibited_items_detector", filter.NewProhibitedItemsDetector()))
-	pr.register("cache_product", product.NewCacheProductHandler(managementClient.GetRawJsonDataClient(), cfg, pr.processor.amazonProcessor))
+	pr.register("cache_product", product.NewCacheProductHandler(managementClient.GetRawJsonDataClient(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
 	pr.register("product_exists", product.NewProductExistsCheckHandler(managementClient.GetProductImportMappingClient()))
 }
 
@@ -89,12 +90,13 @@ func (pr *PipelineRegistry) registerInitHandlers() {
 func (pr *PipelineRegistry) registerFilterHandlers() {
 	managementClient := pr.processor.GetManagementClient()
 	cfg := pr.processor.GetConfig()
+	rabbitmqClient := pr.processor.rabbitmqClient
 
 	pr.register("filter_rule", filter.NewFilterRuleHandler(managementClient.GetFilterRuleClient()))
 	pr.register("store_id", store.NewStoreIDHandler(managementClient.GetStoreClient()))
 	pr.register("text_check", validation.NewTextCheckHandler())
-	pr.register("parallel_variant", sku.NewParallelVariantHandler(managementClient.GetRawJsonDataClient(), cfg, pr.processor.amazonProcessor))
-	pr.register("cache_variants", sku.NewCacheVariantsHandler(managementClient.GetRawJsonDataClient(), cfg, pr.processor.amazonProcessor))
+	pr.register("parallel_variant", sku.NewParallelVariantHandler(managementClient.GetRawJsonDataClient(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
+	pr.register("cache_variants", sku.NewCacheVariantsHandler(managementClient.GetRawJsonDataClient(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
 	pr.register("variant_filter", sku.NewVariantFilterHandler(managementClient.GetFilterRuleClient()))
 	pr.register("daily_limit", product.NewCheckDailyLimitHandler(pr.processor.GetMemoryManager()))
 }

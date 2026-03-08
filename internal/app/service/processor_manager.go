@@ -53,7 +53,9 @@ func (s *processorServiceImpl) startTemuProcessor(ctx context.Context, cfg *conf
 	}
 
 	// 创建TEMU处理器，使用注入的资源
-	temuProcessor, err := temu.NewTemuProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor)
+	// 注意：这里传递 nil 作为 rabbitmqClient，因为旧的启动方式不使用 RabbitMQ
+	// 如果需要使用分布式爬虫，请使用 cmd/rabbitmq-consumer 启动程序
+	temuProcessor, err := temu.NewTemuProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor, nil)
 	if err != nil {
 		return fmt.Errorf("创建TEMU处理器失败: %w", err)
 	}
@@ -78,7 +80,9 @@ func (s *processorServiceImpl) startSheinProcessor(ctx context.Context, cfg *con
 	}
 
 	// 创建SHEIN处理器，使用注入的资源
-	sheinProcessor, err := pipeline.NewSheinProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor)
+	// 注意：这里传递 nil 作为 rabbitmqClient，因为旧的启动方式不使用 RabbitMQ
+	// 如果需要使用分布式爬虫，请使用 cmd/rabbitmq-consumer 启动程序
+	sheinProcessor, err := pipeline.NewSheinProcessor(ctx, cfg, s.logger, s.managementClient, s.amazonProcessor, nil)
 	if err != nil {
 		return fmt.Errorf("创建SHEIN处理器失败: %w", err)
 	}

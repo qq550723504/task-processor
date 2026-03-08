@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/management"
 
@@ -20,13 +21,14 @@ import (
 type TemuProcessor struct {
 	*processor.BaseProcessor                         // 继承基础处理器
 	amazonProcessor          *amazon.AmazonProcessor // TEMU特定：Amazon处理器
+	rabbitmqClient           *rabbitmq.Client        // RabbitMQ客户端（用于分布式爬虫）
 	taskHandler              *TaskHandler            // TEMU特定：任务处理器
 	pipelineExecutor         *TemuPipelineExecutor   // TEMU特定：强类型管道执行器
 }
 
 // NewTemuProcessor 创建TEMU处理器
 // 返回 error 而不是 panic，让调用方决定如何处理错误
-func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor) (*TemuProcessor, error) {
+func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor, rabbitmqClient *rabbitmq.Client) (*TemuProcessor, error) {
 	log := logger.GetGlobalLogger("temu_processor").WithField(logger.FieldPlatform, "temu")
 
 	// ManagementClient必须由调用方提供（共享实例）
@@ -43,6 +45,13 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 
 	log.Info("使用共享的Amazon爬虫实例和管理客户端")
 
+	// 记录RabbitMQ客户端状态
+	if rabbitmqClient != nil {
+		log.Info("✅ 使用RabbitMQ客户端，将启用分布式爬虫")
+	} else {
+		log.Warn("⚠️ 未提供RabbitMQ客户端，将使用本地爬虫")
+	}
+
 	// 创建基础处理器
 	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
 		Config:           cfg,
@@ -54,6 +63,7 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 	p := &TemuProcessor{
 		BaseProcessor:   baseProcessor,
 		amazonProcessor: sharedAmazonProcessor,
+		rabbitmqClient:  rabbitmqClient,
 	}
 
 	// 创建 WorkerPool（内部管理）

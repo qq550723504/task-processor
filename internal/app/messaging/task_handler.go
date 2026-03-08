@@ -110,7 +110,11 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	}
 
 	// 4. 验证平台匹配（忽略大小写）
-	if !strings.EqualFold(task.Platform, eth.platform) {
+	// 如果任务平台为空，使用处理器平台（容错处理旧数据）
+	if task.Platform == "" {
+		eth.logger.Warnf("[%s] 任务平台为空，使用处理器平台: ID=%d", eth.platform, task.ID)
+		task.Platform = eth.platform
+	} else if !strings.EqualFold(task.Platform, eth.platform) {
 		err := fmt.Errorf("任务平台 %s 与处理器平台 %s 不匹配", task.Platform, eth.platform)
 		eth.logger.Errorf("[%s] %v", eth.platform, err)
 		return err

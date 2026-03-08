@@ -4,16 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
-
+	appProduct "task-processor/internal/application/product"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/config/types"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/utils"
 	shein_model "task-processor/internal/platforms/shein/model"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +22,7 @@ import (
 // VariantJsonDataHandler 获取所有变体原始Json数据处理器（并行处理版本）
 type VariantJsonDataHandler struct {
 	logger         *logrus.Entry
-	productFetcher product.ProductFetcherInterface
+	productFetcher appProduct.ProductFetcherInterface
 	amazonConfig   *config.AmazonConfig
 	maxWorkers     int
 	timeout        time.Duration
@@ -32,6 +33,7 @@ func NewVariantJsonDataHandler(
 	rawJsonDataClient api.RawJsonDataAPI,
 	amazonConfig *config.AmazonConfig,
 	amazonProcessor any,
+	rabbitmqClient *rabbitmq.Client,
 ) *VariantJsonDataHandler {
 	logger := logrus.WithField("handler", "VariantJsonDataHandler")
 
@@ -42,7 +44,7 @@ func NewVariantJsonDataHandler(
 	}
 
 	// 使用工厂模式创建获取器
-	factory := product.NewFetcherFactory()
+	factory := appProduct.NewFetcherFactory()
 
 	// 创建配置对象（用于工厂方法）
 	cfg := &config.Config{
@@ -52,11 +54,11 @@ func NewVariantJsonDataHandler(
 	}
 
 	// 根据配置创建获取器
-	var fetcher product.ProductFetcherInterface
+	var fetcher appProduct.ProductFetcherInterface
 	var err error
 
 	if ap, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
-		fetcher, err = factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap)
+		fetcher, err = factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap, rabbitmqClient)
 		if err != nil {
 			logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
 			// 降级到本地获取器
