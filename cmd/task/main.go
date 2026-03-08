@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"task-processor/internal/infra/bootstrap"
+	"task-processor/internal/app/bootstrap"
 	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/pkg/utils"
 

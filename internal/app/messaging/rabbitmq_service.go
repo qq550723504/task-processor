@@ -22,7 +22,7 @@ type RabbitMQService struct {
 	connManager       *rabbitmq.ConnectionManager
 	client            *rabbitmq.Client
 	consumer          *rabbitmq.MessageConsumer
-	initializer       *rabbitmq.QueueInitializer
+	initializer       *QueueInitializer
 	processorRegistry *TaskProcessorRegistry
 	logger            *logrus.Logger
 
@@ -82,7 +82,7 @@ func NewRabbitMQService(cfg *config.RabbitMQConfig, logger *logrus.Logger) *Rabb
 	consumer := rabbitmq.NewMessageConsumer(client, consumerConfig, logger)
 
 	// 创建初始化器
-	initializer := rabbitmq.NewQueueInitializer(client, logger)
+	initializer := NewQueueInitializer(client, logger)
 
 	// 创建增强的处理器注册表（暂时传nil，后续通过SetComponents设置）
 	processorRegistry := NewTaskProcessorRegistry(nil, nil, nil, nil, logger)

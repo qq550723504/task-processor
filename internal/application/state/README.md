@@ -471,7 +471,7 @@ go func() {
 import "task-processor/internal/infra/memory"
 
 // 新的
-import "task-processor/internal/infra/state"
+import "task-processor/internal/application/state"
 ```
 
 2. 更新类型引用:

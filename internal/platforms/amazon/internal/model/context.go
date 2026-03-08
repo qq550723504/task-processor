@@ -2,7 +2,7 @@
 package model
 
 import (
-	"task-processor/internal/infra/state"
+	"task-processor/internal/application/state"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/amazon/api"
 )

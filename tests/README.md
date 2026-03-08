@@ -48,7 +48,7 @@ import (
     "context"
     "testing"
     
-    "task-processor/internal/infra/bootstrap"
+    "task-processor/internal/app/bootstrap"
     "github.com/stretchr/testify/assert"
 )
 

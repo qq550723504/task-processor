@@ -4,21 +4,27 @@
 
 基础设施层，提供技术实现细节，如数据库访问、消息队列、HTTP 客户端、认证、缓存等。实现 domain 层定义的接口。
 
+## 重要说明
+
+**2024年重构：** 以下模块已从 infra 层移出或优化，确保 infra 层只包含纯技术实现：
+- `state/` → 已移至 `internal/application/state/` （业务状态管理）
+- `crawler/` → 已移至 `internal/application/crawler/` （应用服务）
+- `bootstrap/` → 已移至 `internal/app/bootstrap/` （应用启动逻辑）
+- `worker/` → ✅ 已优化（引入 Job 接口，业务字段移到 domain 层）
+
 ## 目录结构
 
 ```
 infra/
 ├── auth/        # 认证授权
-├── bootstrap/   # 应用启动器
 ├── clients/     # 外部客户端
-├── crawler/     # 分布式爬虫客户端
 ├── di/          # 依赖注入容器
 ├── http/        # HTTP 相关
 ├── lock/        # 分布式锁
-├── memory/      # 内存管理
 ├── monitoring/  # 监控指标
 ├── rabbitmq/    # RabbitMQ 消息队列
-└── repo/        # 数据仓储实现
+├── repo/        # 数据仓储实现
+└── worker/      # 工作池（✅ 已优化）
 ```
 
 ## 子目录说明
@@ -36,18 +42,6 @@ infra/
 - `session.go` - 会话管理
 - `interfaces.go` - 认证接口定义
 
-### bootstrap（应用启动器）
-- 应用初始化
-- 组件注册
-- 依赖注入配置
-- 生命周期管理
-
-**应该放置的文件：**
-- `app.go` - 应用启动器
-- `component_adapters.go` - 组件适配器
-- `service_registry.go` - 服务注册表
-- `platform_processors.go` - 平台处理器注册
-
 ### clients（外部客户端）
 - 第三方 API 客户端
 - HTTP 客户端封装
@@ -56,14 +50,6 @@ infra/
 **应该放置的文件：**
 - `openai/` - OpenAI 客户端
 - `http_client.go` - 通用 HTTP 客户端
-
-### crawler（分布式爬虫客户端）
-- 分布式爬虫服务客户端
-- 爬虫任务提交
-- 爬虫结果获取
-
-**应该放置的文件：**
-- `distributed_crawler_client.go` - 分布式爬虫客户端
 
 ### di（依赖注入）
 - 依赖注入容器
@@ -95,18 +81,6 @@ infra/
 - `distributed_lock.go` - 分布式锁
 - `memory_lock.go` - 内存锁
 - `interfaces.go` - 锁接口定义
-
-### memory（内存管理）
-- 内存缓存
-- Cookie 管理
-- 队列管理
-- 计数器管理
-
-**应该放置的文件：**
-- `manager.go` - 内存管理器
-- `cookie_manager.go` - Cookie 管理
-- `queue_manager.go` - 队列管理
-- `counter_manager.go` - 计数器管理
 
 ### monitoring（监控指标）
 - 性能指标收集

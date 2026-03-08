@@ -3,9 +3,9 @@ package processor
 
 import (
 	"context"
+	"task-processor/internal/application/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/state"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/management"
 

@@ -2,9 +2,9 @@ package model
 
 import (
 	"context"
+	"task-processor/internal/application/state"
 	"task-processor/internal/domain/model"
 	types "task-processor/internal/domain/model"
-	"task-processor/internal/infra/state"
 	"task-processor/internal/pkg/management"
 	management_api "task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein/api/attribute"

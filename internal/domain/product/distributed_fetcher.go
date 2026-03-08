@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/application/crawler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/infra/crawler"
 	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"

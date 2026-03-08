@@ -55,7 +55,7 @@ package main
 
 import (
     "context"
-    "task-processor/internal/infra/bootstrap"
+    "task-processor/internal/app/bootstrap"
     "github.com/sirupsen/logrus"
 )
 
@@ -189,7 +189,7 @@ import (
     "syscall"
     
     "task-processor/internal/core/system"
-    "task-processor/internal/infra/bootstrap"
+    "task-processor/internal/app/bootstrap"
     "github.com/sirupsen/logrus"
 )
 

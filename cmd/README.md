@@ -44,7 +44,7 @@ import (
     "flag"
     "log"
     
-    "task-processor/internal/infra/bootstrap"
+    "task-processor/internal/app/bootstrap"
 )
 
 func main() {

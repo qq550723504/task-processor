@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/application/state"
 	commontypes "task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
-	"task-processor/internal/infra/state"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/ptrutil"

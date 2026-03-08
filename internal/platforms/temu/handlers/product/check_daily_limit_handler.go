@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"task-processor/internal/application/state"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/state"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"

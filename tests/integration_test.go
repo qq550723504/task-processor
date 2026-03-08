@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"task-processor/internal/app/messaging"
+	"task-processor/internal/application/crawler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/crawler"
 	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"

@@ -2,7 +2,7 @@
 
 ## 概述
 
-`worker` 包是基础设施层的核心组件，提供任务调度和并发管理功能。作为通用的技术基础设施，它与具体业务逻辑解耦，可以被任何应用层组件复用。
+`worker` 包是基础设施层的核心组件，提供**通用的**任务调度和并发管理功能。作为纯技术基础设施，它与具体业务逻辑完全解耦，可以被任何应用层组件复用。
 
 ## 位置
 
@@ -11,15 +11,19 @@ internal/infra/worker/  # 基础设施层
 ```
 
 **为什么放在 infra 层？**
-- 提供通用的并发处理能力，与业务无关
-- 类似于 `rabbitmq`、`memory` 等基础设施组件
-- 可以被多个应用层组件复用
-- 是技术实现细节，不是业务逻辑
+- ✅ 提供通用的并发处理能力，与业务无关
+- ✅ 类似于 `rabbitmq`、`lock` 等基础设施组件
+- ✅ 可以被多个应用层组件复用
+- ✅ 是技术实现细节，不是业务逻辑
+- ✅ 使用接口抽象，不包含业务字段
+
+## 核心特性
 
 - **任务调度**：管理任务的分发和执行
 - **并发控制**：通过工作池控制并发数量
 - **队列管理**：管理任务队列，防止过载
 - **生命周期管理**：管理 worker 的启动和优雅关闭
+- **接口抽象**：使用 `Job` 接口，支持任意类型的任务
 
 ## 核心组件
 
@@ -99,18 +103,46 @@ fmt.Printf("队列使用率: %.1f%%\n", stats.UsagePercent)
 pool.Stop(ctx)
 ```
 
-### 3. 数据类型 (types.go)
+### 2. 数据类型 (types.go)
 
-#### WorkerJob
-工作任务数据结构：
+#### Job 接口（推荐）
+工作任务接口，业务层应该实现这个接口：
 ```go
-type WorkerJob struct {
-    TaskID   int64   // 任务ID，用于追踪和指标收集
-    TenantID string  // 租户ID
-    ShopID   string  // 店铺ID
-    TaskData string  // 任务数据（JSON格式）
+type Job interface {
+    GetID() int64  // 获取任务ID，用于追踪和指标收集
 }
 ```
+
+**示例：在业务层定义自己的 Job**
+```go
+// internal/domain/task/job.go
+package task
+
+type TaskJob struct {
+    TaskID   int64
+    TenantID string
+    ShopID   string
+    TaskData string
+}
+
+func (j TaskJob) GetID() int64 {
+    return j.TaskID
+}
+```
+
+#### WorkerJob（已废弃）
+为了向后兼容保留的具体实现：
+```go
+// Deprecated: 建议在业务层定义自己的 Job 类型
+type WorkerJob struct {
+    TaskID   int64   // 任务ID
+    TenantID string  // 租户ID（业务字段）
+    ShopID   string  // 店铺ID（业务字段）
+    TaskData string  // 任务数据（业务字段）
+}
+```
+
+**注意：** `WorkerJob` 包含业务字段，不符合 infra 层的职责。建议使用 `Job` 接口，在业务层定义具体的 Job 类型。
 
 #### QueueStats
 队列统计信息：
@@ -165,7 +197,27 @@ type QueueStats struct {
 
 ## 最佳实践
 
-### 1. 合理设置并发数
+### 1. 在业务层定义自己的 Job 类型（推荐）
+```go
+// internal/domain/task/job.go
+package task
+
+import "task-processor/internal/infra/worker"
+
+type TaskJob struct {
+    TaskID   int64
+    TenantID string
+    ShopID   string
+    TaskData string
+}
+
+// 实现 worker.Job 接口
+func (j TaskJob) GetID() int64 {
+    return j.TaskID
+}
+```
+
+### 2. 合理设置并发数
 ```go
 // 根据任务类型设置并发数
 // CPU密集型：并发数 = CPU核心数

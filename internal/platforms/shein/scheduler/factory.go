@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	appscheduler "task-processor/internal/app/scheduler"
+	"task-processor/internal/application/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/infra/state"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/shein/repo"
 	"task-processor/internal/platforms/shein/repo/client"
