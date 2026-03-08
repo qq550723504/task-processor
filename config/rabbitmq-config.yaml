@@ -39,6 +39,51 @@ node:
   metrics_port: 8082
   log_level: "info"
   shutdown_timeout: 30s
+  owned_stores:  # 该节点拥有配置的店铺ID列表
+    - 123
+    - 456
+
+# 队列配置（多队列支持）
+queues:
+  # Amazon 队列
+  - name: "amazon.tasks.high"
+    priority: 10  # 高优先级
+    prefetch: 5
+  - name: "amazon.tasks.normal"
+    priority: 5   # 中优先级
+    prefetch: 3
+  - name: "amazon.tasks.low"
+    priority: 1   # 低优先级
+    prefetch: 1
+  # TEMU 队列
+  - name: "temu.tasks.high"
+    priority: 10
+    prefetch: 5
+  - name: "temu.tasks.normal"
+    priority: 5
+    prefetch: 3
+  - name: "temu.tasks.low"
+    priority: 1
+    prefetch: 1
+  # SHEIN 队列
+  - name: "shein.tasks.high"
+    priority: 10
+    prefetch: 5
+  - name: "shein.tasks.normal"
+    priority: 5
+    prefetch: 3
+  - name: "shein.tasks.low"
+    priority: 1
+    prefetch: 1
+
+# 店铺配置API
+store_config:
+  base_url: "http://localhost:48080"
+  cache_ttl: 300s  # 5分钟缓存
+
+# 任务去重器配置
+deduplicator:
+  ttl: 600s  # 10分钟去重窗口
 
 # 简化的路由配置（不需要租户隔离）
 # 路由键格式: {platform}.{priority}

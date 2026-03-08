@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"task-processor/internal/core/config"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -25,7 +26,7 @@ type LoadMonitor struct {
 	wg     sync.WaitGroup
 
 	// 配置
-	config MonitorConfig
+	config config.LoadMonitorConfig
 }
 
 // LoadStats 负载统计信息
@@ -62,24 +63,19 @@ type QueueLoadStats struct {
 	LastProcessed     time.Time     `json:"last_processed"`
 }
 
-// MonitorConfig 监控配置
-type MonitorConfig struct {
-	UpdateInterval time.Duration `yaml:"update_interval"`
-	EnableCPU      bool          `yaml:"enable_cpu"`
-	EnableMemory   bool          `yaml:"enable_memory"`
-	EnableTasks    bool          `yaml:"enable_tasks"`
-}
+// MonitorConfig 监控配置（内部使用，用于兼容）
+type MonitorConfig = config.LoadMonitorConfig
 
 // NewLoadMonitor 创建负载监控器
-func NewLoadMonitor(config MonitorConfig, logger *logrus.Logger) *LoadMonitor {
+func NewLoadMonitor(cfg config.LoadMonitorConfig, logger *logrus.Logger) *LoadMonitor {
 	// 设置默认值
-	if config.UpdateInterval == 0 {
-		config.UpdateInterval = 30 * time.Second
+	if cfg.UpdateInterval == 0 {
+		cfg.UpdateInterval = 30 * time.Second
 	}
 
 	return &LoadMonitor{
 		logger: logger,
-		config: config,
+		config: cfg,
 		stats: LoadStats{
 			QueueStats:        make(map[string]QueueLoadStats),
 			MinProcessingTime: time.Hour, // 初始化为一个大值

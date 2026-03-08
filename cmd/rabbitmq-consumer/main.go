@@ -6,9 +6,9 @@ import (
 	"flag"
 	"fmt"
 
+	"task-processor/internal/app/messaging"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/pkg/utils"
 	platformAmazon "task-processor/internal/platforms/amazon"
@@ -49,7 +49,7 @@ func main() {
 	appCfg := config.LoadConfigWithFallback(*appConfig, logger)
 
 	// 创建服务管理器
-	serviceManager, err := rabbitmq.NewServiceManager(*configPath, logger)
+	serviceManager, err := messaging.NewServiceManager(*configPath, logger)
 	if err != nil {
 		logger.Fatalf("❌ 创建服务管理器失败: %v", err)
 	}
@@ -79,7 +79,7 @@ func main() {
 }
 
 // registerProcessors 注册任务处理器
-func registerProcessors(serviceManager *rabbitmq.ServiceManager, appCfg *config.Config, platformsStr string, logger *logrus.Logger) error {
+func registerProcessors(serviceManager *messaging.ServiceManager, appCfg *config.Config, platformsStr string, logger *logrus.Logger) error {
 	ctx := context.Background()
 
 	// 解析平台列表（使用统一的工具函数）

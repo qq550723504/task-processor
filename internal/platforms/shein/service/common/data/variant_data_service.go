@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/config/types"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
@@ -45,7 +46,9 @@ func NewVariantJsonDataHandler(
 
 	// 创建配置对象（用于工厂方法）
 	cfg := &config.Config{
-		Amazon: *amazonConfig,
+		Config: &types.Config{
+			Amazon: *amazonConfig,
+		},
 	}
 
 	// 根据配置创建获取器

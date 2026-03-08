@@ -3,11 +3,11 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/app/task"
 	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	types "task-processor/internal/domain/model"
-	"task-processor/internal/domain/task"
 	commonPipeline "task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management"
 

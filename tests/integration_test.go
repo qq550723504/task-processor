@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/app/messaging"
 	"task-processor/internal/infra/crawler"
 	"task-processor/internal/infra/rabbitmq"
 
@@ -27,7 +28,7 @@ type IntegrationTestSuite struct {
 	config         *TestConfig
 	logger         *logrus.Logger
 	crawlerClient  *crawler.DistributedCrawlerClient
-	serviceManager *rabbitmq.ServiceManager
+	serviceManager *messaging.ServiceManager
 }
 
 // NewIntegrationTestSuite 创建集成测试套件
@@ -56,7 +57,7 @@ func (suite *IntegrationTestSuite) SetupSuite(t *testing.T) {
 	suite.crawlerClient = crawlerClient
 
 	// 创建服务管理器（模拟爬虫节点）
-	serviceManager, err := rabbitmq.NewServiceManager("config/rabbitmq-config.yaml", suite.logger)
+	serviceManager, err := messaging.NewServiceManager("config/rabbitmq-config.yaml", suite.logger)
 	require.NoError(t, err, "创建服务管理器失败")
 	suite.serviceManager = serviceManager
 
@@ -350,7 +351,7 @@ func TestServiceManagerLifecycle(t *testing.T) {
 	logger.Info("🧪 测试服务管理器生命周期")
 
 	// 创建服务管理器
-	serviceManager, err := rabbitmq.NewServiceManager("config/rabbitmq-config.yaml", logger)
+	serviceManager, err := messaging.NewServiceManager("config/rabbitmq-config.yaml", logger)
 	if err != nil {
 		t.Skipf("⏰ 无法创建服务管理器: %v", err)
 		return

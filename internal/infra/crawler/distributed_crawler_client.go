@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -19,7 +20,7 @@ import (
 // 用于在现有task-processor中调用分布式爬虫服务
 type DistributedCrawlerClient struct {
 	rabbitmqClient *rabbitmq.Client
-	taskAdapter    *rabbitmq.TaskMessageAdapter
+	taskAdapter    *task.MessageAdapter
 	logger         *logrus.Logger
 
 	// 结果等待管理
@@ -79,7 +80,7 @@ func NewDistributedCrawlerClient(rabbitmqURL string, logger *logrus.Logger) (*Di
 
 	client := &DistributedCrawlerClient{
 		rabbitmqClient: rabbitmqClient,
-		taskAdapter:    rabbitmq.NewTaskMessageAdapter(),
+		taskAdapter:    task.NewMessageAdapter(),
 		logger:         logger,
 		pendingTasks:   make(map[string]*PendingTask),
 		timeout:        5 * time.Minute, // 默认5分钟超时
@@ -98,7 +99,7 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 	c.logger.Infof("提交爬虫任务: TaskID=%d, ProductID=%s", req.TaskID, req.ProductID)
 
 	// 创建任务对象
-	task := &model.Task{
+	taskModel := &model.Task{
 		ID:         req.TaskID,
 		TenantID:   req.TenantID,
 		StoreID:    req.StoreID,
@@ -110,21 +111,26 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 		UpdateTime: time.Now().Unix(),
 	}
 
-	// 转换为RabbitMQ消息
-	message, err := c.taskAdapter.TaskToMessage(task)
+	// 转换为任务消息
+	taskMessage, err := c.taskAdapter.TaskToMessage(taskModel)
 	if err != nil {
 		return nil, fmt.Errorf("转换任务消息失败: %w", err)
 	}
 
-	// 添加爬虫特定信息
-	if message.Payload == nil {
-		message.Payload = make(map[string]interface{})
-	}
-	message.Payload["url"] = req.URL
-	message.Payload["zipcode"] = req.Zipcode
+	// 添加爬虫特定信息到 TaskMessage
+	// 注意：这里需要将 TaskMessage 序列化为 JSON，然后添加额外字段
+	messageData := make(map[string]interface{})
 
-	// 构建路由键
-	routingKey := c.taskAdapter.BuildRoutingKey(task)
+	// 将 TaskMessage 转换为 map
+	taskBytes, _ := json.Marshal(taskMessage)
+	json.Unmarshal(taskBytes, &messageData)
+
+	// 添加爬虫特定字段
+	messageData["url"] = req.URL
+	messageData["zipcode"] = req.Zipcode
+
+	// 构建路由键和队列名称
+	routingKey := c.taskAdapter.BuildRoutingKey(taskModel)
 	queueName := c.taskAdapter.GetQueueName(req.Platform)
 
 	// 创建等待任务
@@ -141,6 +147,17 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 	c.mutex.Lock()
 	c.pendingTasks[pendingTask.TaskID] = pendingTask
 	c.mutex.Unlock()
+
+	// 创建 RabbitMQ 消息
+	message := &rabbitmq.Message{
+		ID:         fmt.Sprintf("%d", req.TaskID),
+		Type:       "task",
+		Payload:    messageData,
+		Priority:   c.taskAdapter.CalculatePriority(req.Priority),
+		Timestamp:  time.Now().Unix(),
+		RetryCount: 0,
+		MaxRetries: 3,
+	}
 
 	// 发送消息到RabbitMQ
 	publishOpts := rabbitmq.PublishOptions{

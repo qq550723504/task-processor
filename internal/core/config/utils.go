@@ -2,6 +2,8 @@
 package config
 
 import (
+	"task-processor/internal/core/config/types"
+
 	"github.com/spf13/viper"
 )
 
@@ -16,8 +18,9 @@ func getInt64Slice(key string) []int64 {
 }
 
 // loadSPAPIConfig 加载 Amazon SP-API 配置
-func loadSPAPIConfig() SPAPIConfig {
-	config := SPAPIConfig{
+// 注意: 此函数在 builder.go 中被间接调用,不要删除
+func loadSPAPIConfig() types.SPAPIConfig {
+	config := types.SPAPIConfig{
 		Enabled:                viper.GetBool("amazon.spapi.enabled"),
 		Region:                 viper.GetString("amazon.spapi.region"),
 		DefaultMarketplace:     viper.GetString("amazon.spapi.defaultMarketplace"),
@@ -31,14 +34,14 @@ func loadSPAPIConfig() SPAPIConfig {
 	}
 
 	// 加载市场配置
-	config.Marketplaces = make(map[string]MarketplaceConfig)
+	config.Marketplaces = make(map[string]types.MarketplaceConfig)
 
 	// 预定义的市场配置
 	markets := []string{"us", "ca", "mx", "br"}
 	for _, market := range markets {
 		marketKey := "amazon.spapi.markets." + market
 		if viper.IsSet(marketKey) {
-			config.Marketplaces[market] = MarketplaceConfig{
+			config.Marketplaces[market] = types.MarketplaceConfig{
 				Name:          viper.GetString(marketKey + ".name"),
 				MarketplaceID: viper.GetString(marketKey + ".marketplaceID"),
 				Currency:      viper.GetString(marketKey + ".currency"),

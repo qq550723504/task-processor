@@ -55,24 +55,6 @@ func (s *ServiceRegistrySimple) RegisterAllServices(container di.Container, cfg 
 func (s *ServiceRegistrySimple) registerBaseServices(container di.Container) error {
 	s.logger.Debug("注册基础服务...")
 
-	// 注册配置服务
-	if err := container.RegisterSingleton("configService", func(c di.Container) (any, error) {
-		return service.NewConfigService(), nil
-	}); err != nil {
-		return err
-	}
-
-	// 注册更新服务
-	if err := container.RegisterSingleton("updaterService", func(c di.Container) (any, error) {
-		loggerInstance, err := c.Get("logger")
-		if err != nil {
-			return nil, fmt.Errorf("获取日志器失败: %w", err)
-		}
-		return service.NewUpdaterService(loggerInstance.(*logrus.Logger)), nil
-	}); err != nil {
-		return err
-	}
-
 	return nil
 }
 

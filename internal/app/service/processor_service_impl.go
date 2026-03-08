@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/pkg/management"
 	"task-processor/internal/platforms/shein/service/pipeline"
@@ -60,12 +60,12 @@ func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
 	}).Info("检查处理器状态")
 
 	if s.temuProcessor != nil {
-		submitters["temu"] = NewTaskSubmitterAdapter(s.temuProcessor, "temu", s.logger)
+		submitters["temu"] = task.NewTaskSubmitterAdapter(s.temuProcessor, "temu", s.logger)
 		log.Info("✅ TEMU任务提交器已注册")
 	}
 
 	if s.sheinProcessor != nil {
-		submitters["shein"] = NewTaskSubmitterAdapter(s.sheinProcessor, "shein", s.logger)
+		submitters["shein"] = task.NewTaskSubmitterAdapter(s.sheinProcessor, "shein", s.logger)
 		log.Info("✅ SHEIN任务提交器已注册")
 	}
 
@@ -270,7 +270,7 @@ func (m *ManagementClientHealthCheck) Check(ctx context.Context) error {
 // ProcessorHealthCheck 处理器健康检查
 type ProcessorHealthCheck struct {
 	name      string
-	processor PlatformProcessor
+	processor task.PlatformProcessor
 }
 
 func (p *ProcessorHealthCheck) Name() string {

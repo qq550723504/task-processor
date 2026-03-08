@@ -129,8 +129,8 @@ browser:
 
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:
-  enabled: false  # 是否启用分布式爬虫（设为true启用）
-  url: "amqp://guest:guest@localhost:5672/"  # RabbitMQ连接URL
+  enabled: true  # 启用RabbitMQ连接
+  url: "amqp://admin:admin123@localhost:5672/"  # 连接到unified的RabbitMQ
   reconnectInterval: 5   # 重连间隔（秒）
   maxReconnectTries: 10  # 最大重连次数
   

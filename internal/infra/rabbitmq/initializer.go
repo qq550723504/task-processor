@@ -137,9 +137,9 @@ func (qi *QueueInitializer) initializeExchanges() error {
 // initializeQueues 初始化队列
 func (qi *QueueInitializer) initializeQueues() error {
 	queues := []QueueConfig{
-		// 优先级任务队列
+		// Amazon 优先级队列
 		{
-			Name:       "amazon.tasks.queue",
+			Name:       "amazon.tasks.high",
 			Durable:    true,
 			AutoDelete: false,
 			Exclusive:  false,
@@ -151,7 +151,7 @@ func (qi *QueueInitializer) initializeQueues() error {
 			},
 		},
 		{
-			Name:       "temu.tasks.queue",
+			Name:       "amazon.tasks.normal",
 			Durable:    true,
 			AutoDelete: false,
 			Exclusive:  false,
@@ -163,7 +163,81 @@ func (qi *QueueInitializer) initializeQueues() error {
 			},
 		},
 		{
-			Name:       "shein.tasks.queue",
+			Name:       "amazon.tasks.low",
+			Durable:    true,
+			AutoDelete: false,
+			Exclusive:  false,
+			NoWait:     false,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
+		// TEMU 优先级队列
+		{
+			Name:       "temu.tasks.high",
+			Durable:    true,
+			AutoDelete: false,
+			Exclusive:  false,
+			NoWait:     false,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
+		{
+			Name:       "temu.tasks.normal",
+			Durable:    true,
+			AutoDelete: false,
+			Exclusive:  false,
+			NoWait:     false,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
+		{
+			Name:       "temu.tasks.low",
+			Durable:    true,
+			AutoDelete: false,
+			Exclusive:  false,
+			NoWait:     false,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
+		// SHEIN 优先级队列
+		{
+			Name:       "shein.tasks.high",
+			Durable:    true,
+			AutoDelete: false,
+			Exclusive:  false,
+			NoWait:     false,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
+		{
+			Name:       "shein.tasks.normal",
+			Durable:    true,
+			AutoDelete: false,
+			Exclusive:  false,
+			NoWait:     false,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
+		{
+			Name:       "shein.tasks.low",
 			Durable:    true,
 			AutoDelete: false,
 			Exclusive:  false,
@@ -268,25 +342,69 @@ func (qi *QueueInitializer) declareQueueWithRetry(queue QueueConfig) error {
 // initializeBindings 初始化绑定
 func (qi *QueueInitializer) initializeBindings() error {
 	bindings := []BindingConfig{
-		// 任务队列绑定
+		// Amazon 任务队列绑定
 		{
-			QueueName:    "amazon.tasks.queue",
+			QueueName:    "amazon.tasks.high",
 			ExchangeName: "tasks.exchange",
-			RoutingKey:   "amazon.*",
+			RoutingKey:   "amazon.high.#",
 			NoWait:       false,
 			Args:         nil,
 		},
 		{
-			QueueName:    "temu.tasks.queue",
+			QueueName:    "amazon.tasks.normal",
 			ExchangeName: "tasks.exchange",
-			RoutingKey:   "temu.*",
+			RoutingKey:   "amazon.normal.#",
 			NoWait:       false,
 			Args:         nil,
 		},
 		{
-			QueueName:    "shein.tasks.queue",
+			QueueName:    "amazon.tasks.low",
 			ExchangeName: "tasks.exchange",
-			RoutingKey:   "shein.*",
+			RoutingKey:   "amazon.low.#",
+			NoWait:       false,
+			Args:         nil,
+		},
+		// TEMU 任务队列绑定
+		{
+			QueueName:    "temu.tasks.high",
+			ExchangeName: "tasks.exchange",
+			RoutingKey:   "temu.high.#",
+			NoWait:       false,
+			Args:         nil,
+		},
+		{
+			QueueName:    "temu.tasks.normal",
+			ExchangeName: "tasks.exchange",
+			RoutingKey:   "temu.normal.#",
+			NoWait:       false,
+			Args:         nil,
+		},
+		{
+			QueueName:    "temu.tasks.low",
+			ExchangeName: "tasks.exchange",
+			RoutingKey:   "temu.low.#",
+			NoWait:       false,
+			Args:         nil,
+		},
+		// SHEIN 任务队列绑定
+		{
+			QueueName:    "shein.tasks.high",
+			ExchangeName: "tasks.exchange",
+			RoutingKey:   "shein.high.#",
+			NoWait:       false,
+			Args:         nil,
+		},
+		{
+			QueueName:    "shein.tasks.normal",
+			ExchangeName: "tasks.exchange",
+			RoutingKey:   "shein.normal.#",
+			NoWait:       false,
+			Args:         nil,
+		},
+		{
+			QueueName:    "shein.tasks.low",
+			ExchangeName: "tasks.exchange",
+			RoutingKey:   "shein.low.#",
 			NoWait:       false,
 			Args:         nil,
 		},

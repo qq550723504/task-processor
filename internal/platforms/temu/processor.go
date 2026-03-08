@@ -3,12 +3,12 @@ package temu
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/app/task"
 	"task-processor/internal/app/worker"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/task"
 	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"

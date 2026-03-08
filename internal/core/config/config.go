@@ -6,21 +6,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"task-processor/internal/core/config/types"
+
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
-// Config 配置结构体
+// Config 配置结构体 (包装types.Config以支持方法)
 type Config struct {
-	Processor  ProcessorConfig
-	Worker     WorkerConfig
-	OpenAI     OpenAIConfig
-	Management ManagementConfig
-	Browser    BrowserConfig // 浏览器通用配置
-	Amazon     AmazonConfig
-	RabbitMQ   *RabbitMQConfig // RabbitMQ配置（可选）
-	Updater    UpdaterConfig
-	Platforms  PlatformsConfig // 平台配置
+	*types.Config
 }
 
 // LoadConfig 加载配置

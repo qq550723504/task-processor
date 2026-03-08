@@ -31,7 +31,8 @@ type MessageConsumer struct {
 	wg     sync.WaitGroup
 
 	// 配置
-	config ConsumerConfig
+	config       ConsumerConfig
+	queueConfigs []ConsumerQueueConfig // 多队列配置
 }
 
 // ConsumerConfig 消费者配置
@@ -53,6 +54,8 @@ type QueueConsumer struct {
 	wg          sync.WaitGroup
 	logger      *logrus.Logger
 	config      ConsumerConfig
+	priority    int // 队列优先级
+	prefetch    int // 预取数量
 }
 
 // NewMessageConsumer 创建消息消费者
@@ -68,12 +71,21 @@ func NewMessageConsumer(client *Client, config ConsumerConfig, logger *logrus.Lo
 	}
 
 	return &MessageConsumer{
-		client:    client,
-		logger:    logger,
-		handlers:  make(map[string]MessageHandler),
-		consumers: make(map[string]*QueueConsumer),
-		config:    config,
+		client:       client,
+		logger:       logger,
+		handlers:     make(map[string]MessageHandler),
+		consumers:    make(map[string]*QueueConsumer),
+		config:       config,
+		queueConfigs: []ConsumerQueueConfig{}, // 初始化为空，后续通过SetQueueConfigs设置
 	}
+}
+
+// SetQueueConfigs 设置队列配置
+func (mc *MessageConsumer) SetQueueConfigs(configs []ConsumerQueueConfig) {
+	mc.mutex.Lock()
+	defer mc.mutex.Unlock()
+	mc.queueConfigs = configs
+	mc.logger.Infof("设置队列配置: %d个队列", len(configs))
 }
 
 // RegisterHandler 注册消息处理器
@@ -106,6 +118,26 @@ func (mc *MessageConsumer) Start(ctx context.Context) error {
 
 // startQueueConsumer 启动队列消费者
 func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageHandler) error {
+	// 查找队列配置
+	var queueConfig *ConsumerQueueConfig
+	for i := range mc.queueConfigs {
+		if mc.queueConfigs[i].Name == queueName {
+			queueConfig = &mc.queueConfigs[i]
+			break
+		}
+	}
+
+	// 如果没有找到配置，使用默认值
+	prefetch := mc.config.PrefetchCount
+	priority := 5 // 默认中等优先级
+	if queueConfig != nil {
+		prefetch = queueConfig.Prefetch
+		priority = queueConfig.Priority
+		mc.logger.Infof("队列 %s 使用配置: priority=%d, prefetch=%d", queueName, priority, prefetch)
+	} else {
+		mc.logger.Warnf("队列 %s 未找到配置，使用默认值: priority=%d, prefetch=%d", queueName, priority, prefetch)
+	}
+
 	// 设置QoS
 	channel, err := mc.client.connManager.GetChannel()
 	if err != nil {
@@ -113,9 +145,9 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 	}
 
 	err = channel.Qos(
-		mc.config.PrefetchCount, // prefetch count
-		mc.config.PrefetchSize,  // prefetch size
-		false,                   // global
+		prefetch,               // prefetch count（使用队列配置的值）
+		mc.config.PrefetchSize, // prefetch size
+		false,                  // global
 	)
 	if err != nil {
 		return fmt.Errorf("设置QoS失败: %w", err)
@@ -147,6 +179,8 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 		cancel:      queueCancel,
 		logger:      mc.logger,
 		config:      mc.config,
+		priority:    priority,
+		prefetch:    prefetch,
 	}
 
 	mc.consumers[queueName] = queueConsumer
@@ -158,7 +192,8 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 		queueConsumer.consume()
 	}()
 
-	mc.logger.Infof("队列 %s 消费者启动成功，消费者标签: %s", queueName, consumerTag)
+	mc.logger.Infof("队列 %s 消费者启动成功，消费者标签: %s, priority=%d, prefetch=%d",
+		queueName, consumerTag, priority, prefetch)
 	return nil
 }
 

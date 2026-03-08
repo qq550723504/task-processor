@@ -1,90 +1,46 @@
-// Package config 提供配置管理功能
+// Package config 提供配置辅助函数
 package config
 
-// GetPlatformConfig 获取指定平台的完整配置
-func (c *Config) GetPlatformConfig(platform string) *PlatformConfig {
-	switch platform {
-	case "temu":
-		return &c.Platforms.Temu
-	case "shein":
-		return &c.Platforms.Shein
-	default:
-		return nil
-	}
+import (
+	"task-processor/internal/core/config/utils"
+)
+
+// LoadJSONConfig 从JSON文件加载配置 (向后兼容)
+func LoadJSONConfig(path string, config any) error {
+	return utils.LoadJSONConfig(path, config)
 }
 
-// GetPlatformSyncConfig 获取指定平台的同步配置
-func (c *Config) GetPlatformSyncConfig(platform string) *SyncProductConfig {
-	platformConfig := c.GetPlatformConfig(platform)
-	if platformConfig == nil {
-		return nil
-	}
-	return &platformConfig.SyncProduct
+// LoadYAMLConfig 从YAML文件加载配置 (向后兼容)
+func LoadYAMLConfig(path string, config any) error {
+	return utils.LoadYAMLConfig(path, config)
 }
 
-// GetPlatformMonitorConfig 获取指定平台的监控配置
-func (c *Config) GetPlatformMonitorConfig(platform string) *MonitorConfig {
-	platformConfig := c.GetPlatformConfig(platform)
-	if platformConfig == nil {
-		return nil
-	}
-	return &platformConfig.Monitor
+// SaveJSONConfig 保存配置到JSON文件 (向后兼容)
+func SaveJSONConfig(path string, config any) error {
+	return utils.SaveJSONConfig(path, config)
 }
 
-// GetPlatformAutoPricingConfig 获取指定平台的自动定价配置
-func (c *Config) GetPlatformAutoPricingConfig(platform string) *AutoPricingConfig {
-	platformConfig := c.GetPlatformConfig(platform)
-	if platformConfig == nil {
-		return nil
-	}
-	return &platformConfig.AutoPricing
+// SaveYAMLConfig 保存配置到YAML文件 (向后兼容)
+func SaveYAMLConfig(path string, config any) error {
+	return utils.SaveYAMLConfig(path, config)
 }
 
-// IsSyncEnabled 检查指定平台是否启用同步
-func (c *Config) IsSyncEnabled(platform string) bool {
-	config := c.GetPlatformSyncConfig(platform)
-	return config != nil && config.Enabled
+// ResolveConfigPath 解析配置文件路径 (向后兼容)
+func ResolveConfigPath(basePath, configPath string) string {
+	return utils.ResolveConfigPath(basePath, configPath)
 }
 
-// IsMonitorEnabled 检查指定平台是否启用监控
-func (c *Config) IsMonitorEnabled(platform string) bool {
-	config := c.GetPlatformMonitorConfig(platform)
-	return config != nil && config.Enabled
+// GetConfigBasePath 获取配置文件基础路径 (向后兼容)
+func GetConfigBasePath() (string, error) {
+	return utils.GetConfigBasePath()
 }
 
-// IsAutoPricingEnabled 检查指定平台是否启用自动定价
-func (c *Config) IsAutoPricingEnabled(platform string) bool {
-	config := c.GetPlatformAutoPricingConfig(platform)
-	return config != nil && config.Enabled
+// FileExists 检查文件是否存在 (向后兼容)
+func FileExists(path string) bool {
+	return utils.FileExists(path)
 }
 
-// GetEnabledPlatforms 获取启用了指定功能的平台列表
-func (c *Config) GetEnabledPlatforms(feature string) []string {
-	var platforms []string
-
-	switch feature {
-	case "sync":
-		if c.IsSyncEnabled("temu") {
-			platforms = append(platforms, "temu")
-		}
-		if c.IsSyncEnabled("shein") {
-			platforms = append(platforms, "shein")
-		}
-	case "monitor":
-		if c.IsMonitorEnabled("temu") {
-			platforms = append(platforms, "temu")
-		}
-		if c.IsMonitorEnabled("shein") {
-			platforms = append(platforms, "shein")
-		}
-	case "autoPricing":
-		if c.IsAutoPricingEnabled("temu") {
-			platforms = append(platforms, "temu")
-		}
-		if c.IsAutoPricingEnabled("shein") {
-			platforms = append(platforms, "shein")
-		}
-	}
-
-	return platforms
+// MergeConfigs 合并两个配置 (向后兼容)
+func MergeConfigs(base, override any) error {
+	return utils.MergeConfigs(base, override)
 }

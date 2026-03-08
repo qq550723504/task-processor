@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"task-processor/internal/app/messaging"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
@@ -49,7 +50,7 @@ func main() {
 	appCfg := config.LoadConfigWithFallback(*appConfig, logger)
 
 	// 创建服务管理器
-	serviceManager, err := rabbitmq.NewServiceManager(*configPath, logger)
+	serviceManager, err := messaging.NewServiceManager(*configPath, logger)
 	if err != nil {
 		logger.Fatalf("❌ 创建服务管理器失败: %v", err)
 	}
@@ -79,7 +80,7 @@ func main() {
 }
 
 // registerCrawlerProcessor 注册爬虫处理器
-func registerCrawlerProcessor(serviceManager *rabbitmq.ServiceManager, appCfg *config.Config, logger *logrus.Logger) error {
+func registerCrawlerProcessor(serviceManager *messaging.ServiceManager, appCfg *config.Config, logger *logrus.Logger) error {
 	logger.Info("📦 注册Amazon爬虫处理器...")
 
 	// 创建共享的Amazon处理器
@@ -120,7 +121,7 @@ func createAmazonProcessor(cfg *config.Config, logger *logrus.Logger) *amazon.Am
 type CrawlerProcessor struct {
 	amazonProcessor *amazon.AmazonProcessor
 	productFetcher  *product.ProductFetcher
-	taskSubmitter   *rabbitmq.TaskSubmitter
+	taskSubmitter   *messaging.TaskSubmitter
 	logger          *logrus.Logger
 	config          *config.Config
 }
@@ -168,8 +169,8 @@ func NewCrawlerProcessor(
 		amazonProcessor,
 	)
 
-	// 创建任务提交器
-	taskSubmitter := rabbitmq.NewTaskSubmitter(rabbitmqClient, logger)
+	// 创建任务提交器（使用新的应用层服务）
+	taskSubmitter := messaging.NewTaskSubmitter(rabbitmqClient, logger)
 
 	return &CrawlerProcessor{
 		amazonProcessor: amazonProcessor,

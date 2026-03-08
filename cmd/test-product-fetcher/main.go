@@ -4,7 +4,7 @@ package main
 import (
 	"fmt"
 	"log"
-	"task-processor/internal/app/bootstrap"
+	"task-processor/internal/core/system"
 )
 
 func main() {
@@ -15,12 +15,12 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	// 初始化系统
-	systemConfig := &bootstrap.SystemConfig{
+	systemConfig := &system.SystemConfig{
 		AppName: "product-fetcher-test",
 		Version: "1.0.0",
 	}
 
-	systemInit := bootstrap.NewSystemInitializer(systemConfig)
+	systemInit := system.NewSystemInitializer(systemConfig)
 	if err := systemInit.Initialize(); err != nil {
 		log.Fatalf("❌ 系统初始化失败: %v", err)
 	}

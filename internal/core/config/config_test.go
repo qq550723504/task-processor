@@ -3,6 +3,9 @@ package config
 import (
 	"testing"
 
+	"task-processor/internal/core/config/types"
+	"task-processor/internal/core/config/validators"
+
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -91,75 +94,77 @@ func TestConfigBuild(t *testing.T) {
 func TestConfigValidation(t *testing.T) {
 	// 测试有效配置
 	validConfig := &Config{
-		Worker: WorkerConfig{
-			Concurrency:      5,
-			BufferSize:       100,
-			TaskInterval:     60,
-			MaxFetchPerCycle: 5,
-		},
-		Management: ManagementConfig{
-			BaseURL:      "http://example.com",
-			ClientID:     "test-client",
-			ClientSecret: "test-secret",
-			TenantID:     "1",
-		},
-		OpenAI: OpenAIConfig{
-			APIKey: "test-key",
-			Model:  "test-model",
-		},
-		Browser: BrowserConfig{
-			Enabled:        true,
-			PoolSize:       3,
-			ViewportWidth:  1920,
-			ViewportHeight: 1080,
-			RandomConfig: BrowserRandomConfig{
-				Enabled:             true,
-				Strategy:            "random",
-				PresetName:          "windows_high_end",
-				FingerprintStrategy: "random",
-				MaxRetries:          3,
+		Config: &types.Config{
+			Worker: types.WorkerConfig{
+				Concurrency:      5,
+				BufferSize:       100,
+				TaskInterval:     60,
+				MaxFetchPerCycle: 5,
 			},
-		},
-		Amazon: AmazonConfig{
-			Enabled: true,
-		},
-		Platforms: PlatformsConfig{
-			Temu: PlatformConfig{
-				Enabled: true,
-				AutoPricing: AutoPricingConfig{
-					Enabled:   false,
-					Interval:  300,
-					BatchSize: 100,
-				},
-				SyncProduct: SyncProductConfig{
-					Enabled:   true,
-					Interval:  60,
-					BatchSize: 50,
-				},
-				Monitor: MonitorConfig{
-					Enabled:              true,
-					CheckInterval:        1440,
-					BatchSize:            100,
-					PriceChangeThreshold: 10.0,
+			Management: types.ManagementConfig{
+				BaseURL:      "http://example.com",
+				ClientID:     "test-client",
+				ClientSecret: "test-secret",
+				TenantID:     "1",
+			},
+			OpenAI: types.OpenAIConfig{
+				APIKey: "test-key",
+				Model:  "test-model",
+			},
+			Browser: types.BrowserConfig{
+				Enabled:        true,
+				PoolSize:       3,
+				ViewportWidth:  1920,
+				ViewportHeight: 1080,
+				RandomConfig: types.BrowserRandomConfig{
+					Enabled:             true,
+					Strategy:            "random",
+					PresetName:          "windows_high_end",
+					FingerprintStrategy: "random",
+					MaxRetries:          3,
 				},
 			},
-			Shein: PlatformConfig{
+			Amazon: types.AmazonConfig{
 				Enabled: true,
-				AutoPricing: AutoPricingConfig{
-					Enabled:   false,
-					Interval:  300,
-					BatchSize: 100,
+			},
+			Platforms: types.PlatformsConfig{
+				Temu: types.PlatformConfig{
+					Enabled: true,
+					AutoPricing: types.AutoPricingConfig{
+						Enabled:   false,
+						Interval:  300,
+						BatchSize: 100,
+					},
+					SyncProduct: types.SyncProductConfig{
+						Enabled:   true,
+						Interval:  60,
+						BatchSize: 50,
+					},
+					Monitor: types.MonitorConfig{
+						Enabled:              true,
+						CheckInterval:        1440,
+						BatchSize:            100,
+						PriceChangeThreshold: 10.0,
+					},
 				},
-				SyncProduct: SyncProductConfig{
-					Enabled:   false,
-					Interval:  60,
-					BatchSize: 50,
-				},
-				Monitor: MonitorConfig{
-					Enabled:              false,
-					CheckInterval:        1440,
-					BatchSize:            100,
-					PriceChangeThreshold: 10.0,
+				Shein: types.PlatformConfig{
+					Enabled: true,
+					AutoPricing: types.AutoPricingConfig{
+						Enabled:   false,
+						Interval:  300,
+						BatchSize: 100,
+					},
+					SyncProduct: types.SyncProductConfig{
+						Enabled:   false,
+						Interval:  60,
+						BatchSize: 50,
+					},
+					Monitor: types.MonitorConfig{
+						Enabled:              false,
+						CheckInterval:        1440,
+						BatchSize:            100,
+						PriceChangeThreshold: 10.0,
+					},
 				},
 			},
 		},
@@ -170,20 +175,22 @@ func TestConfigValidation(t *testing.T) {
 
 	// 测试无效配置
 	invalidConfig := &Config{
-		Browser: BrowserConfig{
-			Enabled:        true,
-			PoolSize:       0, // 无效值
-			ViewportWidth:  0, // 无效值
-			ViewportHeight: 0, // 无效值
-			RandomConfig: BrowserRandomConfig{
-				Enabled:             true,
-				Strategy:            "invalid_strategy",    // 无效策略
-				FingerprintStrategy: "invalid_fingerprint", // 无效指纹策略
-				MaxRetries:          -1,                    // 无效重试次数
+		Config: &types.Config{
+			Browser: types.BrowserConfig{
+				Enabled:        true,
+				PoolSize:       0, // 无效值
+				ViewportWidth:  0, // 无效值
+				ViewportHeight: 0, // 无效值
+				RandomConfig: types.BrowserRandomConfig{
+					Enabled:             true,
+					Strategy:            "invalid_strategy",    // 无效策略
+					FingerprintStrategy: "invalid_fingerprint", // 无效指纹策略
+					MaxRetries:          -1,                    // 无效重试次数
+				},
 			},
-		},
-		Amazon: AmazonConfig{
-			Enabled: true,
+			Amazon: types.AmazonConfig{
+				Enabled: true,
+			},
 		},
 	}
 
@@ -196,41 +203,45 @@ func TestConfigValidation(t *testing.T) {
 func TestBrowserConfigValidation(t *testing.T) {
 	// 测试有效的浏览器配置
 	validConfig := &Config{
-		Browser: BrowserConfig{
-			Enabled:        true,
-			PoolSize:       3,
-			ViewportWidth:  1920,
-			ViewportHeight: 1080,
-			RandomConfig: BrowserRandomConfig{
-				Enabled:             true,
-				Strategy:            "random",
-				PresetName:          "windows_high_end",
-				FingerprintStrategy: "random",
-				MaxRetries:          3,
+		Config: &types.Config{
+			Browser: types.BrowserConfig{
+				Enabled:        true,
+				PoolSize:       3,
+				ViewportWidth:  1920,
+				ViewportHeight: 1080,
+				RandomConfig: types.BrowserRandomConfig{
+					Enabled:             true,
+					Strategy:            "random",
+					PresetName:          "windows_high_end",
+					FingerprintStrategy: "random",
+					MaxRetries:          3,
+				},
 			},
 		},
 	}
 
-	errors := validConfig.validateBrowserConfig()
+	errors := validators.ValidateBrowserConfig(&validConfig.Browser)
 	assert.Empty(t, errors, "有效的浏览器配置不应该有验证错误")
 
 	// 测试无效的浏览器配置
 	invalidConfig := &Config{
-		Browser: BrowserConfig{
-			Enabled:        true,
-			PoolSize:       0, // 无效值
-			ViewportWidth:  0, // 无效值
-			ViewportHeight: 0, // 无效值
-			RandomConfig: BrowserRandomConfig{
-				Enabled:             true,
-				Strategy:            "invalid_strategy",    // 无效策略
-				FingerprintStrategy: "invalid_fingerprint", // 无效指纹策略
-				MaxRetries:          -1,                    // 无效重试次数
+		Config: &types.Config{
+			Browser: types.BrowserConfig{
+				Enabled:        true,
+				PoolSize:       0, // 无效值
+				ViewportWidth:  0, // 无效值
+				ViewportHeight: 0, // 无效值
+				RandomConfig: types.BrowserRandomConfig{
+					Enabled:             true,
+					Strategy:            "invalid_strategy",    // 无效策略
+					FingerprintStrategy: "invalid_fingerprint", // 无效指纹策略
+					MaxRetries:          -1,                    // 无效重试次数
+				},
 			},
 		},
 	}
 
-	errors = invalidConfig.validateBrowserConfig()
+	errors = validators.ValidateBrowserConfig(&invalidConfig.Browser)
 	assert.NotEmpty(t, errors, "无效的浏览器配置应该有验证错误")
 	assert.True(t, len(errors) >= 3, "应该检测到多个验证错误")
 }

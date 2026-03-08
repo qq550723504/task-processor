@@ -4,8 +4,10 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"task-processor/internal/app/service"
+	"task-processor/internal/app/updater"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
@@ -162,16 +164,34 @@ type UpdaterServiceComponent struct {
 func (u *UpdaterServiceComponent) Start(ctx context.Context) error {
 	u.logger.Info("启动更新服务组件...")
 
-	updaterService, err := u.container.Get("updaterService")
-	if err != nil {
-		return fmt.Errorf("获取更新服务失败: %w", err)
-	}
-
 	// 根据配置决定是否启动自动更新器
 	if u.config.Updater.Enabled {
-		// 启动自动更新器，传递正确的版本信息
-		updaterService.(*service.UpdaterService).StartAutoUpdater(u.config, u.appVersion)
-		u.logger.Infof("自动更新器已启动 (当前版本: %s)", u.appVersion)
+		u.logger.Info("启动自动更新器...")
+
+		// 设置更新URL
+		updateURL := u.config.Updater.UpdateURL
+		if updateURL == "" {
+			updateURL = "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json"
+			u.logger.Infof("使用默认更新地址: %s", updateURL)
+		}
+
+		// 设置检查间隔
+		checkInterval := time.Duration(u.config.Updater.CheckInterval) * time.Second
+		if checkInterval <= 0 {
+			checkInterval = 5 * time.Minute
+			u.logger.Info("使用默认检查间隔: 5分钟")
+		}
+
+		// 创建并启动更新器
+		autoUpdater := updater.NewUpdater(
+			u.appVersion,
+			updateURL,
+			checkInterval,
+			u.config.Updater.InsecureSkipVerify,
+		)
+		go autoUpdater.Start()
+
+		u.logger.Infof("自动更新器已启动 (当前版本: %s, 检查间隔: %v)", u.appVersion, checkInterval)
 	} else {
 		u.logger.Info("自动更新功能已禁用")
 	}
