@@ -64,7 +64,7 @@ management:
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [169]# 店铺ID列表 ->775
+  storeIDs: [828]# 店铺ID列表 ->775
 
 platforms:
   # TEMU 平台配置
@@ -154,7 +154,7 @@ rabbitmq:
         prefetch: 3
       - name: "shein.tasks.high"
         priority: 10
-        prefetch: 3
+        prefetch: 1
       # 上架任务队列 - 普通优先级
       - name: "amazon.tasks.normal"
         priority: 8
@@ -164,7 +164,7 @@ rabbitmq:
         prefetch: 2
       - name: "shein.tasks.normal"
         priority: 8
-        prefetch: 2
+        prefetch: 1
       # 上架任务队列 - 低优先级
       - name: "amazon.tasks.low"
         priority: 5
