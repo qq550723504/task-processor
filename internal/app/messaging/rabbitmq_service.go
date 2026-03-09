@@ -214,13 +214,33 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 }
 
 // registerMessageHandlers 注册消息处理器
+// 每个平台的处理器需要注册到该平台的所有优先级队列（high/normal/low）
 func (s *RabbitMQService) registerMessageHandlers() error {
 	handlers := s.processorRegistry.GetAllHandlers()
 
+	// 优先级列表
+	priorities := []string{"high", "normal", "low"}
+
 	for platform, handler := range handlers {
-		queueName := s.processorRegistry.GetQueueName(platform)
-		s.consumer.RegisterHandler(queueName, handler)
-		s.logger.Infof("注册消息处理器: 平台=%s, 队列=%s", platform, queueName)
+		// 判断是否是爬虫平台
+		isCrawler := platform == "amazon.crawler" || platform == "1688.crawler"
+
+		// 为每个优先级队列注册处理器
+		for _, priority := range priorities {
+			var queueName string
+			if isCrawler {
+				// 爬虫队列格式: {platform}.crawler.{priority}
+				queueName = fmt.Sprintf("%s.%s", platform, priority)
+			} else {
+				// 上架任务队列格式: {platform}.tasks.{priority}
+				queueName = fmt.Sprintf("%s.tasks.%s", platform, priority)
+			}
+
+			s.consumer.RegisterHandler(queueName, handler)
+			s.logger.Infof("注册消息处理器: 队列=%s", queueName)
+		}
+
+		s.logger.Infof("注册消息处理器: 平台=%s, 队列=3个优先级队列", platform)
 	}
 
 	if len(handlers) == 0 {

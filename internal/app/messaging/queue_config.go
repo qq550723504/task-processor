@@ -123,22 +123,25 @@ func getTaskQueues() []QueueConfig {
 // getCrawlerQueues 获取爬虫任务队列配置
 func getCrawlerQueues() []QueueConfig {
 	crawlers := []string{"amazon", "1688"}
+	priorities := []string{"high", "normal", "low"}
 
-	queues := make([]QueueConfig, 0, len(crawlers))
+	queues := make([]QueueConfig, 0, len(crawlers)*len(priorities))
 
 	for _, crawler := range crawlers {
-		queues = append(queues, QueueConfig{
-			Name:       crawler + ".crawler.queue",
-			Durable:    true,
-			AutoDelete: false,
-			Exclusive:  false,
-			NoWait:     false,
-			Args: amqp.Table{
-				"x-max-priority":            10,
-				"x-dead-letter-exchange":    "tasks.dlx",
-				"x-dead-letter-routing-key": "failed",
-			},
-		})
+		for _, priority := range priorities {
+			queues = append(queues, QueueConfig{
+				Name:       crawler + ".crawler." + priority,
+				Durable:    true,
+				AutoDelete: false,
+				Exclusive:  false,
+				NoWait:     false,
+				Args: amqp.Table{
+					"x-max-priority":            10,
+					"x-dead-letter-exchange":    "tasks.dlx",
+					"x-dead-letter-routing-key": "failed",
+				},
+			})
+		}
 	}
 
 	return queues
@@ -204,12 +207,27 @@ func getTaskQueueBindings() []BindingConfig {
 
 	bindings := make([]BindingConfig, 0, len(platforms)*len(priorities))
 
+	// 上架任务队列绑定
 	for _, platform := range platforms {
 		for _, priority := range priorities {
 			bindings = append(bindings, BindingConfig{
 				QueueName:    platform + ".tasks." + priority,
 				ExchangeName: "tasks.exchange",
 				RoutingKey:   platform + ".*." + priority + ".#", // 新格式：匹配任意来源平台
+				NoWait:       false,
+				Args:         nil,
+			})
+		}
+	}
+
+	// 爬虫任务队列绑定
+	crawlers := []string{"amazon", "1688"}
+	for _, crawler := range crawlers {
+		for _, priority := range priorities {
+			bindings = append(bindings, BindingConfig{
+				QueueName:    crawler + ".crawler." + priority,
+				ExchangeName: "tasks.exchange",
+				RoutingKey:   crawler + ".crawler." + priority + ".#", // 爬虫路由键格式
 				NoWait:       false,
 				Args:         nil,
 			})
