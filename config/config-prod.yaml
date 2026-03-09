@@ -132,7 +132,7 @@ browser:
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:
   enabled: true  # 启用RabbitMQ连接
-  url: "amqp://admin:RabbitMQ@2026#Prod@101.33.34.102:30567/"  # 通过NodePort连接到k3s中的RabbitMQ
+  url: "amqp://admin:RabbitMQ%402026%23Prod@101.33.34.102:30567/"  # 通过NodePort连接到k3s中的RabbitMQ
   reconnectInterval: 5   # 重连间隔（秒）
   maxReconnectTries: 10  # 最大重连次数
   
@@ -145,23 +145,57 @@ rabbitmq:
     
     # 队列配置（可为不同队列设置不同的并发度）
     queues:
-      # 上架任务队列
-      - name: "amazon.tasks.queue"
+      # 上架任务队列 - 高优先级
+      - name: "amazon.tasks.high"
         priority: 10
         prefetch: 5
-      - name: "temu.tasks.queue"
-        priority: 8
-        prefetch: 3
-      - name: "shein.tasks.queue"
-        priority: 8
-        prefetch: 3
-      # 爬虫任务队列
-      - name: "amazon.crawler.queue"
+      - name: "temu.tasks.high"
         priority: 10
         prefetch: 3
-      - name: "1688.crawler.queue"
+      - name: "shein.tasks.high"
+        priority: 10
+        prefetch: 3
+      # 上架任务队列 - 普通优先级
+      - name: "amazon.tasks.normal"
         priority: 8
         prefetch: 3
+      - name: "temu.tasks.normal"
+        priority: 8
+        prefetch: 2
+      - name: "shein.tasks.normal"
+        priority: 8
+        prefetch: 2
+      # 上架任务队列 - 低优先级
+      - name: "amazon.tasks.low"
+        priority: 5
+        prefetch: 2
+      - name: "temu.tasks.low"
+        priority: 5
+        prefetch: 1
+      - name: "shein.tasks.low"
+        priority: 5
+        prefetch: 1
+      # 爬虫任务队列 - 高优先级
+      - name: "amazon.crawler.high"
+        priority: 10
+        prefetch: 3
+      - name: "1688.crawler.high"
+        priority: 10
+        prefetch: 3
+      # 爬虫任务队列 - 普通优先级
+      - name: "amazon.crawler.normal"
+        priority: 8
+        prefetch: 2
+      - name: "1688.crawler.normal"
+        priority: 8
+        prefetch: 2
+      # 爬虫任务队列 - 低优先级
+      - name: "amazon.crawler.low"
+        priority: 5
+        prefetch: 1
+      - name: "1688.crawler.low"
+        priority: 5
+        prefetch: 1
   
 # Amazon配置
 amazon:
