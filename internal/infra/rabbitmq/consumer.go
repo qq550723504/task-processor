@@ -94,6 +94,39 @@ func (mc *MessageConsumer) Start(ctx context.Context) error {
 	return nil
 }
 
+// Restart 重启所有消费者（用于重连后恢复）
+func (mc *MessageConsumer) Restart() error {
+	mc.mutex.Lock()
+	defer mc.mutex.Unlock()
+
+	mc.logger.Info("开始重启所有消费者...")
+
+	// 停止现有消费者并关闭通道
+	for queueName, consumer := range mc.consumers {
+		mc.logger.Infof("停止队列 %s 消费者", queueName)
+		consumer.cancel()
+		// 关闭独立通道
+		if consumer.channel != nil {
+			consumer.channel.Close()
+		}
+	}
+
+	// 清空消费者列表
+	mc.consumers = make(map[string]*QueueConsumer)
+
+	// 重新启动所有队列的消费者
+	for queueName, handler := range mc.handlers {
+		if err := mc.startQueueConsumer(queueName, handler); err != nil {
+			mc.logger.Errorf("重启队列 %s 消费者失败: %v", queueName, err)
+			// 不返回错误，继续尝试启动其他队列
+			continue
+		}
+	}
+
+	mc.logger.Info("消费者重启完成")
+	return nil
+}
+
 // startQueueConsumer 启动队列消费者
 func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageHandler) error {
 	// 查找队列配置
@@ -116,33 +149,36 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 		mc.logger.Warnf("队列 %s 未找到配置，使用默认值: priority=%d, prefetch=%d", queueName, priority, prefetch)
 	}
 
-	// 设置QoS
-	channel, err := mc.client.connManager.GetChannel()
+	// 为每个消费者创建独立通道（避免QoS冲突）
+	channel, err := mc.client.connManager.CreateChannel()
 	if err != nil {
-		return fmt.Errorf("获取通道失败: %w", err)
+		return fmt.Errorf("创建独立通道失败: %w", err)
 	}
 
+	// 在独立通道上设置QoS
 	err = channel.Qos(
 		prefetch,               // prefetch count（使用队列配置的值）
 		mc.config.PrefetchSize, // prefetch size
 		false,                  // global
 	)
 	if err != nil {
+		channel.Close() // 关闭通道
 		return fmt.Errorf("设置QoS失败: %w", err)
 	}
 
-	// 开始消费
+	// 在独立通道上开始消费
 	consumerTag := fmt.Sprintf("%s-consumer-%d", queueName, time.Now().Unix())
-	deliveries, err := mc.client.Consume(mc.ctx, ConsumeOptions{
-		Queue:     queueName,
-		Consumer:  consumerTag,
-		AutoAck:   false, // 手动确认
-		Exclusive: false,
-		NoLocal:   false,
-		NoWait:    false,
-		Args:      nil,
-	})
+	deliveries, err := channel.Consume(
+		queueName,   // 队列名称
+		consumerTag, // 消费者标签
+		false,       // autoAck - 手动确认
+		false,       // exclusive
+		false,       // noLocal
+		false,       // noWait
+		nil,         // args
+	)
 	if err != nil {
+		channel.Close() // 关闭通道
 		return fmt.Errorf("开始消费队列 %s 失败: %w", queueName, err)
 	}
 
@@ -159,7 +195,8 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 		config:      mc.config,
 		priority:    priority,
 		prefetch:    prefetch,
-		client:      mc.client, // 传入client用于重新发布消息
+		client:      mc.client,
+		channel:     channel, // 保存独立通道
 	}
 
 	mc.consumers[queueName] = queueConsumer
@@ -183,10 +220,14 @@ func (mc *MessageConsumer) Stop(ctx context.Context) error {
 
 	mc.logger.Info("开始停止消息消费者...")
 
-	// 取消所有消费者
+	// 取消所有消费者并关闭通道
 	for queueName, consumer := range mc.consumers {
 		mc.logger.Infof("停止队列 %s 消费者", queueName)
 		consumer.cancel()
+		// 关闭独立通道
+		if consumer.channel != nil {
+			consumer.channel.Close()
+		}
 	}
 
 	// 取消主上下文

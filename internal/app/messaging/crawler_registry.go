@@ -63,12 +63,16 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessorWithAmazon(serviceManager *Ser
 	// 创建任务提交器
 	taskSubmitter := NewTaskSubmitter(r.rabbitmqClient, r.logger)
 
+	// 创建 RabbitMQ 发布器适配器
+	rabbitmqPublisher := NewRabbitMQPublisherAdapter(r.rabbitmqClient, r.logger)
+
 	// 创建爬虫处理器
 	crawlerProcessor := processor.NewCrawlerProcessor(
 		r.logger,
 		amazonProcessor,
 		productFetcher,
 		taskSubmitter,
+		rabbitmqPublisher,
 	)
 
 	// 注册到服务管理器（使用 amazon.crawler 避免与上架服务冲突）

@@ -3,8 +3,8 @@ package crawler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +32,7 @@ type DistributedCrawlerClient struct {
 	// 懒加载标志
 	listenerStarted bool
 	listenerMutex   sync.Mutex
+	resultQueueName string // 结果队列名称
 }
 
 // NewDistributedCrawlerClient 创建分布式爬虫客户端（使用已存在的RabbitMQ客户端）
@@ -88,9 +89,9 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 	messageData := c.buildMessageData(taskMessage, req)
 
 	// 构建路由键和队列名称
-	// 注意：爬虫任务使用专门的爬虫队列，不是上架队列
+	// 注意：爬虫任务使用专门的爬虫队列，根据优先级选择队列
 	routingKey := c.taskAdapter.BuildRoutingKey(taskModel)
-	queueName := c.taskAdapter.GetQueueName(req.Platform + ".crawler")
+	queueName := c.buildCrawlerQueueName(req.Platform, req.Priority)
 
 	// 创建等待任务
 	pendingTask := c.createPendingTask(ctx, req.TaskID)
@@ -102,6 +103,24 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 
 	// 等待结果
 	return c.waitForResult(pendingTask, req.TaskID)
+}
+
+// buildCrawlerQueueName 构建爬虫队列名称（根据优先级）
+func (c *DistributedCrawlerClient) buildCrawlerQueueName(platform string, priority int) string {
+	// 确定优先级级别
+	var priorityLevel string
+	switch {
+	case priority >= 1 && priority <= 3:
+		priorityLevel = "high"
+	case priority >= 4 && priority <= 7:
+		priorityLevel = "normal"
+	default:
+		priorityLevel = "low"
+	}
+
+	// 构建队列名称: {platform}.crawler.{priority}
+	// 注意：平台名称转换为小写，确保与队列配置一致
+	return fmt.Sprintf("%s.crawler.%s", strings.ToLower(platform), priorityLevel)
 }
 
 // ensureListenerStarted 确保结果监听器已启动（懒加载）
@@ -126,15 +145,22 @@ func (c *DistributedCrawlerClient) ensureListenerStarted() error {
 
 // buildMessageData 构建消息数据
 func (c *DistributedCrawlerClient) buildMessageData(taskMessage interface{}, req *CrawlRequest) map[string]interface{} {
-	messageData := make(map[string]interface{})
-
-	// 将 TaskMessage 转换为 map
-	taskBytes, _ := json.Marshal(taskMessage)
-	json.Unmarshal(taskBytes, &messageData)
-
-	// 添加爬虫特定字段
-	messageData["url"] = req.URL
-	messageData["zipcode"] = req.Zipcode
+	// 直接构建符合 model.Task 结构的消息数据
+	// 注意：字段名使用大写开头，与 model.Task 的 JSON 标签一致
+	messageData := map[string]interface{}{
+		"id":            req.TaskID,
+		"tenantId":      req.TenantID,
+		"storeId":       req.StoreID,
+		"platform":      req.Platform,
+		"region":        req.Region,
+		"productId":     req.ProductID,
+		"priority":      req.Priority,
+		"reply_to":      c.resultQueueName, // 添加回复队列
+		"createTime":    time.Now().Unix(),
+		"updateTime":    time.Now().Unix(),
+		"retryCount":    0,
+		"maxRetryCount": 3,
+	}
 
 	return messageData
 }

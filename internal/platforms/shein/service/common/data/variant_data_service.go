@@ -166,7 +166,7 @@ func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein_model.TaskCont
 			ID:    asin,
 			Data: &product.FetchRequest{
 				TenantID:   ctx.Task.TenantID,
-				Platform:   ctx.Task.Platform,
+				Platform:   ctx.Task.SourcePlatform,
 				Region:     ctx.Task.Region,
 				ProductID:  asin,
 				StoreID:    ctx.Task.StoreID,

@@ -74,7 +74,7 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 	}
 
 	// 转换状态：从字符串转为int16
-	status := a.convertStatusStringToInt16(taskMsg.Status)
+	status := a.ConvertStatusStringToInt16(taskMsg.Status)
 
 	// 处理创建时间
 	var createTime int64
@@ -246,8 +246,8 @@ func (a *MessageAdapter) getPriorityLevel(priority int) string {
 	}
 }
 
-// convertStatusStringToInt16 将字符串状态转换为int16
-func (a *MessageAdapter) convertStatusStringToInt16(statusStr string) int16 {
+// ConvertStatusStringToInt16 将字符串状态转换为int16（公共方法）
+func (a *MessageAdapter) ConvertStatusStringToInt16(statusStr string) int16 {
 	if statusStr == "" {
 		return 0 // TaskStatusPending
 	}

@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/management"
 	platformAmazon "task-processor/internal/platforms/amazon"
@@ -90,6 +91,26 @@ func (r *PlatformRegistry) initializeSharedResources() error {
 
 	// 创建管理客户端（所有平台共享）
 	r.managementClient = management.NewClientManager(&r.config.Management)
+
+	// 创建认证客户端并获取访问令牌
+	authClient := auth.NewClientCredentialsAuthClient(
+		r.config.Management.BaseURL,
+		r.config.Management.ClientID,
+		r.config.Management.ClientSecret,
+		r.config.Management.TenantID,
+		r.logger,
+	)
+
+	// 获取访问令牌
+	accessToken, err := authClient.GetAccessToken()
+	if err != nil {
+		return fmt.Errorf("获取访问令牌失败: %w", err)
+	}
+
+	// 设置访问令牌到管理客户端
+	client := r.managementClient.GetClient()
+	client.SetUserToken(accessToken, r.config.Management.TenantID)
+	r.logger.Info("✅ 访问令牌设置成功")
 
 	// 创建共享的Amazon处理器（TEMU和SHEIN需要）
 	if r.needsAmazonProcessor() {

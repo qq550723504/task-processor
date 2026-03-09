@@ -119,7 +119,7 @@ func (h *RawJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
 	// 使用公共ProductFetcher获取产品数据
 	req := &domainProduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.Platform,
+		Platform:   ctx.Task.SourcePlatform,
 		Region:     ctx.Task.Region,
 		ProductID:  ctx.Task.ProductID,
 		StoreID:    ctx.Task.StoreID,

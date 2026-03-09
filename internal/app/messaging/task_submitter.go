@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,8 @@ type TaskSubmitter struct {
 	logger         *logrus.Logger
 	submittedCache sync.Map // key: "tenant:region:asin", value: *submittedRecord
 	cacheDuration  time.Duration
+	publishChannel *amqp.Channel // 独立的发布通道
+	channelMutex   sync.Mutex    // 通道锁
 }
 
 // NewTaskSubmitter 创建任务提交服务
@@ -40,6 +43,9 @@ func NewTaskSubmitter(client *rabbitmq.Client, logger *logrus.Logger) *TaskSubmi
 		logger:        logger,
 		cacheDuration: 5 * time.Minute, // 缓存5分钟
 	}
+
+	// 注意：不在这里创建独立通道，因为连接可能还未建立
+	// 独立通道将在第一次使用时延迟创建
 
 	// 启动定期清理过期缓存的goroutine
 	go ts.cleanExpiredCache()
@@ -111,13 +117,32 @@ func (ts *TaskSubmitter) SubmitTask(ctx context.Context, t *model.Task) error {
 	}
 
 	// 3. 获取队列名称和优先级（使用领域层业务规则）
-	queueName := ts.adapter.GetQueueName(t.Platform)
+	// 特殊处理：如果是爬虫任务（Platform包含.crawler），使用基于优先级的队列名称
+	var queueName string
+	if strings.Contains(t.Platform, ".crawler") {
+		queueName = ts.buildCrawlerQueueName(t.Platform, t.Priority)
+	} else {
+		queueName = ts.adapter.GetQueueName(t.Platform)
+	}
 	priority := ts.adapter.CalculatePriority(t.Priority)
 
-	// 4. 获取RabbitMQ通道
-	channel, err := ts.client.GetConnectionManager().GetChannel()
-	if err != nil {
-		return fmt.Errorf("获取通道失败: %w", err)
+	// 4. 获取RabbitMQ通道（使用独立通道避免死锁）
+	ts.channelMutex.Lock()
+	defer ts.channelMutex.Unlock()
+
+	var channel *amqp.Channel
+	if ts.publishChannel != nil && !ts.publishChannel.IsClosed() {
+		// 使用已有的独立通道
+		channel = ts.publishChannel
+	} else {
+		// 延迟创建独立通道（第一次使用或通道已关闭时）
+		var channelErr error
+		channel, channelErr = ts.client.GetConnectionManager().CreateChannel()
+		if channelErr != nil {
+			return fmt.Errorf("获取通道失败: %w", channelErr)
+		}
+		ts.publishChannel = channel
+		ts.logger.Info("✅ 创建独立发布通道（避免与消费者共享通道）")
 	}
 
 	// 5. 构建发布消息
@@ -181,11 +206,18 @@ func (ts *TaskSubmitter) SubmitVariantTasks(ctx context.Context, parentTask *mod
 		}
 
 		// 为每个变体创建任务
+		// 确保平台名称正确：如果父任务已经包含.crawler后缀，则去掉后再使用基础平台名
+		variantPlatform := parentTask.Platform
+		if strings.Contains(variantPlatform, ".crawler") {
+			// 去掉.crawler后缀，只保留基础平台名（如 Amazon）
+			variantPlatform = strings.TrimSuffix(variantPlatform, ".crawler")
+		}
+
 		variantTask := &model.Task{
 			ID:            time.Now().UnixNano(),
 			TenantID:      parentTask.TenantID,
 			StoreID:       parentTask.StoreID,
-			Platform:      parentTask.Platform,
+			Platform:      variantPlatform, // 使用基础平台名（如 Amazon）
 			Region:        parentTask.Region,
 			ProductID:     v.Asin,
 			CategoryID:    parentTask.CategoryID,
@@ -196,8 +228,8 @@ func (ts *TaskSubmitter) SubmitVariantTasks(ctx context.Context, parentTask *mod
 			MaxRetryCount: 3,
 		}
 
-		ts.logger.Infof("   [%d/%d] 📤 提交变体任务: ASIN=%s, Name=%s, TaskID=%d",
-			i+1, len(variations), v.Asin, v.Name, variantTask.ID)
+		ts.logger.Infof("   [%d/%d] 📤 提交变体任务: ASIN=%s, TaskID=%d",
+			i+1, len(variations), v.Asin, variantTask.ID)
 
 		// 提交任务
 		if err := ts.SubmitTask(ctx, variantTask); err != nil {
@@ -217,4 +249,27 @@ func (ts *TaskSubmitter) SubmitVariantTasks(ctx context.Context, parentTask *mod
 		successCount, failCount, skipCount, len(variations))
 
 	return successCount, failCount
+}
+
+// buildCrawlerQueueName 构建爬虫队列名称（根据优先级）
+// 格式: {platform}.crawler.{priority_level}
+// 示例: amazon.crawler.high, amazon.crawler.normal, amazon.crawler.low
+func (ts *TaskSubmitter) buildCrawlerQueueName(platform string, priority int) string {
+	// 移除 .crawler 后缀（如果存在）
+	basePlatform := strings.TrimSuffix(platform, ".crawler")
+
+	// 确定优先级级别
+	var priorityLevel string
+	switch {
+	case priority >= 1 && priority <= 3:
+		priorityLevel = "high"
+	case priority >= 4 && priority <= 7:
+		priorityLevel = "normal"
+	default:
+		priorityLevel = "low"
+	}
+
+	// 构建队列名称: {platform}.crawler.{priority}
+	// 注意：平台名称转换为小写，确保与队列配置一致
+	return fmt.Sprintf("%s.crawler.%s", strings.ToLower(basePlatform), priorityLevel)
 }

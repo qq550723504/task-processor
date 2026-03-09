@@ -16,7 +16,7 @@ import (
 func (c *DistributedCrawlerClient) startResultListener() error {
 	// 为每个客户端创建唯一的结果队列
 	nodeID := fmt.Sprintf("node-%d", time.Now().UnixNano())
-	resultQueueName := fmt.Sprintf("crawler.results.%s", nodeID)
+	c.resultQueueName = fmt.Sprintf("crawler.results.%s", nodeID)
 
 	// 声明队列（临时队列，客户端断开后自动删除）
 	// 添加重试机制，等待连接建立
@@ -25,7 +25,7 @@ func (c *DistributedCrawlerClient) startResultListener() error {
 	retryInterval := 1 * time.Second
 
 	for i := 0; i < maxRetries; i++ {
-		err = c.rabbitmqClient.DeclareQueue(resultQueueName, false, true, true, false, nil)
+		err = c.rabbitmqClient.DeclareQueue(c.resultQueueName, false, true, true, false, nil)
 		if err == nil {
 			break
 		}
@@ -40,18 +40,28 @@ func (c *DistributedCrawlerClient) startResultListener() error {
 		return fmt.Errorf("声明结果队列失败: %w", err)
 	}
 
-	// 开始消费结果消息
-	go c.consumeResults(resultQueueName)
+	c.logger.Infof("队列 %s 声明成功", c.resultQueueName)
 
-	c.logger.Infof("爬虫结果监听器已启动，队列: %s", resultQueueName)
+	// 开始消费结果消息
+	go c.consumeResults(c.resultQueueName)
+
+	c.logger.Infof("爬虫结果监听器已启动，队列: %s", c.resultQueueName)
 	return nil
 }
 
 // consumeResults 消费结果消息
 func (c *DistributedCrawlerClient) consumeResults(queueName string) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Errorf("消费结果消息goroutine发生panic: %v", r)
+		}
+	}()
+
+	c.logger.Infof("开始消费队列: %s, 消费者: %s", queueName, "crawler-result-consumer")
+
 	consumeOpts := rabbitmq.ConsumeOptions{
 		Queue:     queueName,
-		Consumer:  "",
+		Consumer:  "crawler-result-consumer",
 		AutoAck:   false,
 		Exclusive: false,
 		NoLocal:   false,
@@ -65,9 +75,13 @@ func (c *DistributedCrawlerClient) consumeResults(queueName string) {
 		return
 	}
 
+	c.logger.Infof("✅ 结果队列消费者启动成功: %s", queueName)
+
 	for msg := range msgs {
 		c.handleResultMessage(msg)
 	}
+
+	c.logger.Warnf("结果队列消费者已停止: %s", queueName)
 }
 
 // handleResultMessage 处理结果消息

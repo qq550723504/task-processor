@@ -205,16 +205,6 @@ func (c *Client) Consume(ctx context.Context, opts ConsumeOptions) (<-chan amqp.
 		return nil, fmt.Errorf("获取通道失败: %w", err)
 	}
 
-	// 设置QoS
-	err = channel.Qos(
-		1,     // prefetch count
-		0,     // prefetch size
-		false, // global
-	)
-	if err != nil {
-		return nil, fmt.Errorf("设置QoS失败: %w", err)
-	}
-
 	// 开始消费
 	deliveries, err := channel.Consume(
 		opts.Queue,     // 队列名称

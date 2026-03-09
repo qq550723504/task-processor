@@ -178,12 +178,32 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 		return fmt.Errorf("建立RabbitMQ连接失败: %w", err)
 	}
 
-	// 2. 初始化队列和交换机
+	// 2. 注册重连回调（重连后自动重启消费者）
+	s.connManager.RegisterReconnectCallback(func() error {
+		s.logger.Info("连接恢复，重新初始化队列和重启消费者...")
+
+		// 重新初始化队列
+		if err := s.initializer.InitializeAll(); err != nil {
+			s.logger.Errorf("重连后初始化队列失败: %v", err)
+			return err
+		}
+
+		// 重启消费者
+		if err := s.consumer.Restart(); err != nil {
+			s.logger.Errorf("重连后重启消费者失败: %v", err)
+			return err
+		}
+
+		s.logger.Info("✅ 重连后恢复完成")
+		return nil
+	})
+
+	// 3. 初始化队列和交换机
 	if err := s.initializer.InitializeAll(); err != nil {
 		return fmt.Errorf("初始化RabbitMQ队列失败: %w", err)
 	}
 
-	// 3. 预加载店铺配置（如果启用）
+	// 4. 预加载店铺配置（如果启用）
 	if s.storeAPI != nil && len(s.ownedStores) > 0 {
 		s.logger.Infof("开始预加载 %d 个店铺配置...", len(s.ownedStores))
 		for _, storeID := range s.ownedStores {
@@ -198,12 +218,12 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 		s.logger.Info("店铺配置预加载完成")
 	}
 
-	// 4. 注册消息处理器
+	// 5. 注册消息处理器
 	if err := s.registerMessageHandlers(); err != nil {
 		return fmt.Errorf("注册消息处理器失败: %w", err)
 	}
 
-	// 5. 启动消费者
+	// 6. 启动消费者
 	if err := s.consumer.Start(s.ctx); err != nil {
 		return fmt.Errorf("启动消息消费者失败: %w", err)
 	}

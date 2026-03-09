@@ -27,6 +27,10 @@ type ConnectionManager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	closed bool
+
+	// 重连回调
+	reconnectCallbacks []func() error
+	callbackMutex      sync.RWMutex
 }
 
 // ConnectionConfig 连接配置
@@ -158,12 +162,36 @@ func (cm *ConnectionManager) reconnect() {
 
 		cm.logger.Infof("重连成功，尝试次数: %d", i+1)
 
+		// 执行重连回调（重新启动消费者等）
+		cm.executeReconnectCallbacks()
+
 		// 重新启动监控
 		go cm.monitorConnection()
 		return
 	}
 
 	cm.logger.Errorf("重连失败，已达到最大尝试次数: %d", cm.maxReconnectTries)
+}
+
+// RegisterReconnectCallback 注册重连回调
+func (cm *ConnectionManager) RegisterReconnectCallback(callback func() error) {
+	cm.callbackMutex.Lock()
+	defer cm.callbackMutex.Unlock()
+	cm.reconnectCallbacks = append(cm.reconnectCallbacks, callback)
+}
+
+// executeReconnectCallbacks 执行重连回调
+func (cm *ConnectionManager) executeReconnectCallbacks() {
+	cm.callbackMutex.RLock()
+	callbacks := make([]func() error, len(cm.reconnectCallbacks))
+	copy(callbacks, cm.reconnectCallbacks)
+	cm.callbackMutex.RUnlock()
+
+	for i, callback := range callbacks {
+		if err := callback(); err != nil {
+			cm.logger.Errorf("执行重连回调 %d 失败: %v", i, err)
+		}
+	}
 }
 
 // GetChannel 获取通道
@@ -180,6 +208,28 @@ func (cm *ConnectionManager) GetChannel() (*amqp.Channel, error) {
 	}
 
 	return cm.channel, nil
+}
+
+// CreateChannel 创建新的通道（用于消费者独立通道）
+func (cm *ConnectionManager) CreateChannel() (*amqp.Channel, error) {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+
+	if cm.closed {
+		return nil, fmt.Errorf("连接管理器已关闭")
+	}
+
+	if cm.connection == nil || cm.connection.IsClosed() {
+		return nil, fmt.Errorf("RabbitMQ连接不可用")
+	}
+
+	// 创建新通道
+	channel, err := cm.connection.Channel()
+	if err != nil {
+		return nil, fmt.Errorf("创建新通道失败: %w", err)
+	}
+
+	return channel, nil
 }
 
 // IsConnected 检查连接状态

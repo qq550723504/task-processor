@@ -113,8 +113,6 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(req *domainProdu
 		Platform:  req.Platform,
 		Region:    req.Region,
 		ProductID: req.ProductID,
-		URL:       f.buildProductURL(req),
-		Zipcode:   f.getZipcode(req.Region),
 		Priority:  f.calculatePriority(req),
 	}
 
@@ -184,8 +182,9 @@ func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRe
 
 // shouldUseCrawler 判断是否应该使用爬虫
 func (f *DistributedProductFetcher) shouldUseCrawler(platform string) bool {
-	// 目前只支持Amazon平台的爬虫
-	return platform == "amazon"
+	// Amazon、SHEIN、TEMU都需要从Amazon抓取数据
+	platformLower := strings.ToLower(platform)
+	return platformLower == "amazon" || platformLower == "1688"
 }
 
 // CacheProduct 缓存产品数据到服务器

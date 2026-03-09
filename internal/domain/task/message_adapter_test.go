@@ -239,7 +239,7 @@ func TestMessageAdapter_StatusConversion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// 测试字符串转int16
-			statusInt := adapter.convertStatusStringToInt16(tt.statusStr)
+			statusInt := adapter.ConvertStatusStringToInt16(tt.statusStr)
 			assert.Equal(t, tt.statusInt, statusInt)
 
 			// 测试int16转字符串（如果不是未知状态）

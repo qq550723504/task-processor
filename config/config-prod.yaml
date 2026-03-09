@@ -62,7 +62,7 @@ management:
   clientSecret: "go-listing-secret"
   tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
   scopes: ["user.read"]
-  #tenantID: "1"  # 租户ID
+  tenantID: "286"  # 租户ID
   #userID: 1      # 用户ID
   storeIDs: [828]# 店铺ID列表 ->775
 

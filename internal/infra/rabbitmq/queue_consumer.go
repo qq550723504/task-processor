@@ -23,9 +23,10 @@ type QueueConsumer struct {
 	wg          sync.WaitGroup
 	logger      *logrus.Logger
 	config      ConsumerConfig
-	priority    int     // 队列优先级
-	prefetch    int     // 预取数量
-	client      *Client // client字段用于重新发布消息
+	priority    int           // 队列优先级
+	prefetch    int           // 预取数量
+	client      *Client       // client字段用于重新发布消息
+	channel     *amqp.Channel // 独立通道（用于避免QoS冲突）
 }
 
 // consume 消费消息（并发处理）
