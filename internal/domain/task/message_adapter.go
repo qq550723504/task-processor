@@ -23,19 +23,20 @@ type Message struct {
 
 // TaskMessage 任务消息结构
 type TaskMessage struct {
-	TaskID        int64               `json:"taskId"`
-	TenantID      int64               `json:"tenantId"`
-	StoreID       int64               `json:"storeId"`
-	Platform      string              `json:"platform"`
-	Region        string              `json:"region"`
-	CategoryID    int64               `json:"categoryId"`
-	ProductID     string              `json:"productId"`
-	Priority      int                 `json:"priority"`
-	RetryCount    int                 `json:"retryCount"`
-	MaxRetryCount int                 `json:"maxRetryCount"`
-	CreatedAt     *types.FlexibleTime `json:"createdAt"` // 支持多种时间格式
-	Remark        string              `json:"remark,omitempty"`
-	Status        string              `json:"status,omitempty"`
+	TaskID         int64               `json:"taskId"`
+	TenantID       int64               `json:"tenantId"`
+	StoreID        int64               `json:"storeId"`
+	Platform       string              `json:"platform"`       // 爬虫平台（数据来源，如"amazon"）
+	TargetPlatform string              `json:"targetPlatform"` // 目标上架平台（如"temu"、"shein"、"amazon"）
+	Region         string              `json:"region"`
+	CategoryID     int64               `json:"categoryId"`
+	ProductID      string              `json:"productId"`
+	Priority       int                 `json:"priority"`
+	RetryCount     int                 `json:"retryCount"`
+	MaxRetryCount  int                 `json:"maxRetryCount"`
+	CreatedAt      *types.FlexibleTime `json:"createdAt"` // 支持多种时间格式
+	Remark         string              `json:"remark,omitempty"`
+	Status         string              `json:"status,omitempty"`
 }
 
 // MessageAdapter 任务消息适配器（领域逻辑）
@@ -81,22 +82,35 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 		createTime = taskMsg.CreatedAt.Unix()
 	}
 
+	// 确定目标平台：优先使用TargetPlatform，如果为空则使用Platform（向后兼容）
+	targetPlatform := taskMsg.TargetPlatform
+	if targetPlatform == "" {
+		targetPlatform = taskMsg.Platform
+	}
+
+	// 数据来源平台
+	sourcePlatform := taskMsg.Platform
+	if sourcePlatform == "" {
+		sourcePlatform = targetPlatform // 如果没有指定来源，默认为目标平台
+	}
+
 	// 转换为任务对象
 	task := &model.Task{
-		ID:            taskMsg.TaskID,
-		TenantID:      taskMsg.TenantID,
-		StoreID:       taskMsg.StoreID,
-		Platform:      taskMsg.Platform,
-		Region:        taskMsg.Region,
-		CategoryID:    taskMsg.CategoryID,
-		ProductID:     taskMsg.ProductID,
-		Status:        status,
-		RetryCount:    taskMsg.RetryCount,
-		MaxRetryCount: taskMsg.MaxRetryCount,
-		Priority:      taskMsg.Priority,
-		Remark:        taskMsg.Remark,
-		CreateTime:    createTime,
-		UpdateTime:    createTime,
+		ID:             taskMsg.TaskID,
+		TenantID:       taskMsg.TenantID,
+		StoreID:        taskMsg.StoreID,
+		Platform:       targetPlatform, // 目标上架平台
+		SourcePlatform: sourcePlatform, // 数据来源平台
+		Region:         taskMsg.Region,
+		CategoryID:     taskMsg.CategoryID,
+		ProductID:      taskMsg.ProductID,
+		Status:         status,
+		RetryCount:     taskMsg.RetryCount,
+		MaxRetryCount:  taskMsg.MaxRetryCount,
+		Priority:       taskMsg.Priority,
+		Remark:         taskMsg.Remark,
+		CreateTime:     createTime,
+		UpdateTime:     createTime,
 	}
 
 	return task, nil
@@ -162,13 +176,29 @@ func (a *MessageAdapter) CalculatePriority(businessPriority int) uint8 {
 }
 
 // BuildRoutingKey 构建路由键（业务规则）
+// 格式: {targetPlatform}.{sourcePlatform}.{priority}.{region}
+// 示例: shein.amazon.normal.us (Amazon数据 → SHEIN上架)
 func (a *MessageAdapter) BuildRoutingKey(task *model.Task) string {
-	// 格式: {platform}.{priority}
 	priorityLevel := a.getPriorityLevel(task.Priority)
-	return fmt.Sprintf("%s.%s", task.Platform, priorityLevel)
+
+	// 使用任务对象中的 SourcePlatform 字段
+	// 如果为空，默认使用目标平台（表示同平台数据）
+	sourcePlatform := task.SourcePlatform
+	if sourcePlatform == "" {
+		sourcePlatform = task.Platform
+	}
+
+	return fmt.Sprintf("%s.%s.%s.%s",
+		task.Platform,  // 目标平台
+		sourcePlatform, // 来源平台
+		priorityLevel,  // 优先级
+		task.Region)    // 区域
 }
 
 // parseTaskMessage 解析任务消息
+// 自动检测并支持两种消息格式:
+// 1. 嵌套格式(Go): {id, type, payload: {...}, priority, timestamp}
+// 2. 扁平格式(Java): {taskId, tenantId, storeId, ...}
 func (a *MessageAdapter) parseTaskMessage(msg *Message) (*TaskMessage, error) {
 	if len(msg.Payload) == 0 {
 		return nil, fmt.Errorf("消息载荷为空")
@@ -187,9 +217,17 @@ func (a *MessageAdapter) parseTaskMessage(msg *Message) (*TaskMessage, error) {
 		return nil, fmt.Errorf("反序列化任务消息失败: %w", err)
 	}
 
-	// 设置重试信息
-	taskMsg.RetryCount = msg.RetryCount
-	taskMsg.MaxRetryCount = msg.MaxRetries
+	// 设置重试信息（如果消息中没有，使用顶层的重试信息）
+	if taskMsg.RetryCount == 0 && msg.RetryCount > 0 {
+		taskMsg.RetryCount = msg.RetryCount
+	}
+	if taskMsg.MaxRetryCount == 0 && msg.MaxRetries > 0 {
+		taskMsg.MaxRetryCount = msg.MaxRetries
+	}
+	// 如果都没有，设置默认值
+	if taskMsg.MaxRetryCount == 0 {
+		taskMsg.MaxRetryCount = 3
+	}
 
 	return &taskMsg, nil
 }

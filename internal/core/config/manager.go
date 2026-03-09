@@ -76,7 +76,12 @@ func (m *managerImpl) Load(source ConfigSource) (*Config, error) {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 
-	m.logger.Infof("配置解析成功，浏览器路径: %s", cfg.Browser.BrowserPath)
+	// 安全地记录配置信息
+	browserPath := "未配置"
+	if cfg.Browser.BrowserPath != "" {
+		browserPath = cfg.Browser.BrowserPath
+	}
+	m.logger.Infof("配置解析成功，浏览器路径: %s", browserPath)
 
 	// 验证配置
 	if err := m.Validate(cfg); err != nil {

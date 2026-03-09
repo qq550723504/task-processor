@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"task-processor/internal/core/config/types"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
@@ -31,6 +32,10 @@ func LoadFromBytes(data []byte) (*Config, error) {
 // LoadConfigWithFallback 加载配置，失败时使用默认配置（统一入口）
 // 用于替代各个cmd中重复的配置加载逻辑
 func LoadConfigWithFallback(configPath string, logger *logrus.Logger) *Config {
+	if logger != nil {
+		logger.Infof("🔍 接收到的配置路径参数: '%s' (长度: %d)", configPath, len(configPath))
+	}
+
 	// 检查配置文件是否存在
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		if logger != nil {
@@ -52,8 +57,14 @@ func LoadConfigWithFallback(configPath string, logger *logrus.Logger) *Config {
 		return NewDefaultConfig()
 	}
 
+	// 验证配置是否真的从文件加载（通过检查关键字段）
 	if logger != nil {
-		logger.Info("✅ 配置加载成功")
+		logger.Infof("✅ 配置加载成功")
+		logger.Debugf("   - Management.BaseURL: %s", cfg.Management.BaseURL)
+		logger.Debugf("   - RabbitMQ.Enabled: %v", cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled)
+		if cfg.RabbitMQ != nil {
+			logger.Debugf("   - RabbitMQ.URL: %s", cfg.RabbitMQ.URL)
+		}
 	}
 	return cfg
 }
@@ -195,12 +206,72 @@ func NewDefaultConfig() *Config {
 					},
 				},
 			},
+			// 添加 RabbitMQ 默认配置，避免配置文件加载失败时程序退出
+			RabbitMQ: &types.RabbitMQConfig{
+				Enabled:           true,
+				URL:               "amqp://guest:guest@localhost:5672/",
+				ReconnectInterval: 5 * time.Second,
+				MaxReconnectTries: 10,
+				Consumer: types.RabbitMQConsumerConfig{
+					PrefetchCount: 5,
+					PrefetchSize:  0,
+					RetryDelay:    5 * time.Second,
+					MaxRetries:    3,
+					Queues:        []types.QueueConfig{},
+				},
+				Node: types.NodeConfig{
+					MaxConcurrency:  10,
+					HealthCheckPort: 8081,
+					MetricsPort:     8082,
+					LogLevel:        "info",
+					ShutdownTimeout: 30 * time.Second,
+				},
+			},
 		},
 	}
 }
 
 // applyDefaults 应用默认配置值
 func applyDefaults(cfg *Config) {
-	// Config现在是包装类型,不需要应用默认值
-	// 默认值已经在NewDefaultConfig中设置
+	if cfg.Config == nil {
+		cfg.Config = &types.Config{}
+	}
+
+	// 获取默认配置
+	defaultCfg := NewDefaultConfig()
+
+	// 如果Browser配置为nil，使用默认值
+	if cfg.Browser.BrowserPath == "" {
+		cfg.Browser = defaultCfg.Browser
+	}
+
+	// 如果Worker配置未设置，使用默认值
+	if cfg.Worker.Concurrency == 0 {
+		cfg.Worker = defaultCfg.Worker
+	}
+
+	// 如果Processor配置未设置，使用默认值
+	if cfg.Processor.MaxRetries == 0 {
+		cfg.Processor = defaultCfg.Processor
+	}
+
+	// 如果OpenAI配置未设置，使用默认值
+	if cfg.OpenAI.APIKey == "" {
+		cfg.OpenAI = defaultCfg.OpenAI
+	}
+
+	// 如果Management配置未设置，使用默认值
+	if cfg.Management.BaseURL == "" {
+		cfg.Management = defaultCfg.Management
+	}
+
+	// 如果Amazon配置未设置，使用默认值
+	if !cfg.Amazon.Enabled && cfg.Amazon.DataFreshnessDays == 0 {
+		cfg.Amazon = defaultCfg.Amazon
+	}
+
+	// 如果Updater配置未设置，使用默认值
+	if cfg.Updater.UpdateURL == "" {
+		cfg.Updater = defaultCfg.Updater
+	}
 }

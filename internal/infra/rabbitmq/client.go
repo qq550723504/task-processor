@@ -235,13 +235,74 @@ func (c *Client) Consume(ctx context.Context, opts ConsumeOptions) (<-chan amqp.
 }
 
 // ParseMessage 解析消息
+// 自动检测并支持两种消息格式:
+// 1. 嵌套格式(Go): {id, type, payload: {...}, priority, timestamp}
+// 2. 扁平格式(Java): {taskId, tenantId, storeId, ...}
 func (c *Client) ParseMessage(delivery amqp.Delivery) (*Message, error) {
+	// 先尝试解析为标准的嵌套格式
 	var msg Message
 	err := json.Unmarshal(delivery.Body, &msg)
+
+	// 如果解析成功且包含 payload 字段,说明是嵌套格式
+	if err == nil && msg.Payload != nil && len(msg.Payload) > 0 {
+		return &msg, nil
+	}
+
+	// 否则,尝试解析为 Java 后端发送的扁平格式
+	var flatMsg map[string]interface{}
+	err = json.Unmarshal(delivery.Body, &flatMsg)
 	if err != nil {
 		return nil, fmt.Errorf("解析消息失败: %w", err)
 	}
-	return &msg, nil
+
+	// 检查是否是扁平格式(包含 taskId 字段)
+	if _, hasTaskID := flatMsg["taskId"]; hasTaskID {
+		// 将扁平格式转换为嵌套格式
+		msg = Message{
+			ID:         delivery.MessageId,
+			Type:       getStringValue(flatMsg, "taskType", "task.import"),
+			Payload:    flatMsg, // 整个消息体作为 payload
+			Priority:   uint8(getIntValue(flatMsg, "priority", 5)),
+			Timestamp:  time.Now().Unix(),
+			RetryCount: getIntValue(flatMsg, "retryCount", 0),
+			MaxRetries: getIntValue(flatMsg, "maxRetryCount", 3),
+		}
+
+		// 如果消息ID为空,生成一个
+		if msg.ID == "" {
+			msg.ID = fmt.Sprintf("msg-%d", time.Now().UnixNano())
+		}
+
+		c.logger.Debugf("检测到Java扁平格式消息,已转换: taskId=%v", flatMsg["taskId"])
+		return &msg, nil
+	}
+
+	return nil, fmt.Errorf("无法识别的消息格式")
+}
+
+// getStringValue 从 map 中获取字符串值
+func getStringValue(m map[string]interface{}, key string, defaultValue string) string {
+	if v, ok := m[key]; ok {
+		if str, ok := v.(string); ok {
+			return str
+		}
+	}
+	return defaultValue
+}
+
+// getIntValue 从 map 中获取整数值
+func getIntValue(m map[string]interface{}, key string, defaultValue int) int {
+	if v, ok := m[key]; ok {
+		switch val := v.(type) {
+		case int:
+			return val
+		case int64:
+			return int(val)
+		case float64:
+			return int(val)
+		}
+	}
+	return defaultValue
 }
 
 // AckMessage 确认消息

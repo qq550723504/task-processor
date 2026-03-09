@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"flag"
+	"strings"
 
 	"task-processor/internal/app/messaging"
 	"task-processor/internal/core/config"
@@ -34,9 +35,17 @@ func main() {
 	})
 
 	logger.Info("🚀 启动RabbitMQ消费者...")
+	logger.Infof("📋 配置文件路径: %s", *appConfig)
+
+	// 修复：如果配置文件路径不包含扩展名，自动添加 .yaml
+	configPath := *appConfig
+	if !strings.HasSuffix(configPath, ".yaml") && !strings.HasSuffix(configPath, ".yml") {
+		configPath = configPath + ".yaml"
+		logger.Infof("⚠️  配置路径缺少扩展名，自动补全为: %s", configPath)
+	}
 
 	// 加载应用配置（使用统一的配置加载函数）
-	appCfg := config.LoadConfigWithFallback(*appConfig, logger)
+	appCfg := config.LoadConfigWithFallback(configPath, logger)
 
 	// 验证RabbitMQ配置
 	if appCfg.RabbitMQ == nil {

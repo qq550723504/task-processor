@@ -305,7 +305,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"taskId\": 12345,\n  \"tenantId\": 1,\n  \"storeId\": 169,\n  \"platform\": \"amazon\",\n  \"region\": \"us\",\n  \"categoryId\": 100,\n  \"productId\": \"B08N5WRWNW\",\n  \"priority\": 5,\n  \"retryCount\": 0,\n  \"maxRetryCount\": 3,\n  \"createdAt\": 1678886400000,\n  \"status\": \"pending\",\n  \"remark\": \"\"\n}",
+              "raw": "{\n  \"taskId\": 12345,\n  \"tenantId\": 1,\n  \"storeId\": 169,\n  \"platform\": \"amazon\",\n  \"targetPlatform\": \"temu\",\n  \"region\": \"us\",\n  \"categoryId\": 100,\n  \"productId\": \"B08N5WRWNW\",\n  \"priority\": 5,\n  \"retryCount\": 0,\n  \"maxRetryCount\": 3,\n  \"createdAt\": 1678886400000,\n  \"status\": \"pending\",\n  \"remark\": \"\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -319,7 +319,7 @@
               "port": "15672",
               "path": ["api", "exchanges", "%2F", "task.exchange", "publish"]
             },
-            "description": "模拟发送一个 pending 状态的任务消息到 RabbitMQ\n\n**注意：** 这个请求需要 RabbitMQ Management API 的访问权限\n\n**状态字段说明：**\n- Java 后端使用字符串类型：\"pending\", \"processing\", \"completed\", \"failed\"\n- Go 前端会将其转换为 int16 类型"
+            "description": "模拟发送一个 pending 状态的任务消息到 RabbitMQ\n\n**注意：** 这个请求需要 RabbitMQ Management API 的访问权限\n\n**字段说明：**\n- platform: 爬虫平台（数据来源，如 \"amazon\"）\n- targetPlatform: 目标上架平台（如 \"temu\", \"shein\", \"amazon\"）\n- status: Java 后端使用字符串类型（\"pending\", \"processing\", \"completed\", \"failed\"），Go 前端会将其转换为 int16 类型"
           },
           "response": []
         },
@@ -336,7 +336,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"taskId\": 12346,\n  \"tenantId\": 1,\n  \"storeId\": 169,\n  \"platform\": \"temu\",\n  \"region\": \"us\",\n  \"categoryId\": 200,\n  \"productId\": \"PROD-001\",\n  \"priority\": 7,\n  \"retryCount\": 0,\n  \"maxRetryCount\": 3,\n  \"createdAt\": 1678886400000,\n  \"status\": \"processing\",\n  \"remark\": \"\"\n}",
+              "raw": "{\n  \"taskId\": 12346,\n  \"tenantId\": 1,\n  \"storeId\": 169,\n  \"platform\": \"1688\",\n  \"targetPlatform\": \"temu\",\n  \"region\": \"us\",\n  \"categoryId\": 200,\n  \"productId\": \"PROD-001\",\n  \"priority\": 7,\n  \"retryCount\": 0,\n  \"maxRetryCount\": 3,\n  \"createdAt\": 1678886400000,\n  \"status\": \"processing\",\n  \"remark\": \"\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -350,7 +350,7 @@
               "port": "15672",
               "path": ["api", "exchanges", "%2F", "task.exchange", "publish"]
             },
-            "description": "模拟发送一个 processing 状态的任务消息到 RabbitMQ"
+            "description": "模拟发送一个 processing 状态的任务消息到 RabbitMQ\n\n**字段说明：**\n- platform: 爬虫平台（数据来源，如 \"1688\"）\n- targetPlatform: 目标上架平台（如 \"temu\"）"
           },
           "response": []
         },
@@ -367,7 +367,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"taskId\": 12347,\n  \"tenantId\": 1,\n  \"storeId\": 169,\n  \"platform\": \"shein\",\n  \"region\": \"global\",\n  \"categoryId\": 300,\n  \"productId\": \"PROD-002\",\n  \"priority\": 3,\n  \"retryCount\": 2,\n  \"maxRetryCount\": 3,\n  \"createdAt\": 1678886400000,\n  \"status\": \"failed\",\n  \"remark\": \"Test failure\"\n}",
+              "raw": "{\n  \"taskId\": 12347,\n  \"tenantId\": 1,\n  \"storeId\": 169,\n  \"platform\": \"amazon\",\n  \"targetPlatform\": \"shein\",\n  \"region\": \"global\",\n  \"categoryId\": 300,\n  \"productId\": \"PROD-002\",\n  \"priority\": 3,\n  \"retryCount\": 2,\n  \"maxRetryCount\": 3,\n  \"createdAt\": 1678886400000,\n  \"status\": \"failed\",\n  \"remark\": \"Test failure\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -381,7 +381,7 @@
               "port": "15672",
               "path": ["api", "exchanges", "%2F", "task.exchange", "publish"]
             },
-            "description": "模拟发送一个 failed 状态的任务消息到 RabbitMQ"
+            "description": "模拟发送一个 failed 状态的任务消息到 RabbitMQ\n\n**字段说明：**\n- platform: 爬虫平台（数据来源，如 \"amazon\"）\n- targetPlatform: 目标上架平台（如 \"shein\"）"
           },
           "response": []
         }

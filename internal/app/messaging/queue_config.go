@@ -196,6 +196,8 @@ func GetBindingConfigs() []BindingConfig {
 }
 
 // getTaskQueueBindings 获取任务队列绑定配置
+// 路由键格式: {targetPlatform}.{sourcePlatform}.{priority}.{region}
+// 绑定规则: {targetPlatform}.*.{priority}.# (匹配任意来源平台和区域)
 func getTaskQueueBindings() []BindingConfig {
 	platforms := []string{"amazon", "temu", "shein"}
 	priorities := []string{"high", "normal", "low"}
@@ -207,7 +209,7 @@ func getTaskQueueBindings() []BindingConfig {
 			bindings = append(bindings, BindingConfig{
 				QueueName:    platform + ".tasks." + priority,
 				ExchangeName: "tasks.exchange",
-				RoutingKey:   platform + "." + priority + ".#",
+				RoutingKey:   platform + ".*." + priority + ".#", // 新格式：匹配任意来源平台
 				NoWait:       false,
 				Args:         nil,
 			})
