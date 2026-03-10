@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
@@ -160,15 +161,16 @@ func (h *VariantJsonDataHandler) fetchVariantWithTimeout(ctx context.Context, re
 
 	// 在goroutine中执行获取操作
 	go func() {
+		var err error
+		defer recovery.RecoverWithError("变体获取", h.logger, &err)
 		defer func() {
-			if r := recover(); r != nil {
-				errorChan <- fmt.Errorf("变体获取发生panic: %v", r)
+			if err != nil {
+				errorChan <- err
 			}
 		}()
 
 		variant, err := h.productFetcher.FetchProduct(req)
 		if err != nil {
-			errorChan <- err
 			return
 		}
 		resultChan <- variant

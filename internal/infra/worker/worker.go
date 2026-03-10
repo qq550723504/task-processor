@@ -5,6 +5,7 @@ import (
 	"context"
 	"runtime"
 	"sync"
+	"task-processor/internal/pkg/recovery"
 
 	"github.com/sirupsen/logrus"
 )
@@ -43,12 +44,15 @@ func (w *Worker) Run(ctx context.Context, wg *sync.WaitGroup) {
 
 // processJob 处理单个任务
 func (w *Worker) processJob(ctx context.Context, job WorkerJob) {
-	// 使用 defer 和 recover 确保 panic 不会导致工作协程崩溃
-	defer func() {
-		if r := recover(); r != nil {
+	// 使用统一的panic恢复处理
+	defer recovery.RecoverWithCallback("工作协程处理任务",
+		w.logger.WithFields(map[string]any{
+			"worker_id": w.id,
+			"task_id":   job.TaskID,
+		}),
+		func(r any) {
 			w.handlePanic(r, job)
-		}
-	}()
+		})
 
 	// 获取钩子处理器（线程安全）
 	jobHandler := w.pool.getJobHandler()

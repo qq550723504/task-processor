@@ -4,6 +4,7 @@ package image
 import (
 	"fmt"
 	"sync"
+	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/handlers/common"
 
@@ -43,11 +44,7 @@ func (v *ParallelImageValidator) ValidateImagesInParallel(images []models.ImageI
 	for i, img := range images {
 		wg.Add(1)
 		go func(index int, imageURL string) {
-			defer func() {
-				if r := recover(); r != nil {
-					v.logger.Errorf("并行图片验证goroutine panic recovered: %v", r)
-				}
-			}()
+			defer recovery.Recover("并行图片验证", v.logger)
 			defer wg.Done()
 
 			// 获取信号量

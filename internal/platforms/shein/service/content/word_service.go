@@ -3,6 +3,7 @@ package content
 
 import (
 	"context"
+	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"
@@ -38,11 +39,7 @@ func (s *SensitiveWordService) startSaveWorker() {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				logrus.Errorf("保存工作协程 panic: %v", r)
-			}
-		}()
+		defer recovery.Recover("保存工作协程", logrus.StandardLogger().WithField("component", "SensitiveWordService"))
 
 		for {
 			select {

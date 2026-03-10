@@ -4,6 +4,7 @@ package publish
 import (
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/recovery"
 	product "task-processor/internal/platforms/shein/api/product"
 	shein_model "task-processor/internal/platforms/shein/model"
 
@@ -77,11 +78,7 @@ func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein_model.TaskConte
 
 	// 异步更新状态
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logrus.Errorf("更新任务状态goroutine panic recovered: %v", r)
-			}
-		}()
+		defer recovery.Recover("更新任务状态", logrus.WithField("task_id", ctx.Task.ID))
 
 		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
 			logrus.Errorf("更新任务状态为草稿箱失败 (TaskID: %d): %v", ctx.Task.ID, err)

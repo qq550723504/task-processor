@@ -4,6 +4,7 @@ package pipeline
 import (
 	"fmt"
 	"sync"
+	"task-processor/internal/pkg/recovery"
 
 	"github.com/sirupsen/logrus"
 )
@@ -50,12 +51,11 @@ func (h *ParallelHandler) Handle(ctx TaskContext) error {
 		wg.Add(1)
 		go func(hd Handler) {
 			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					h.logger.Errorf("❌ Handler %s 发生panic: %v", hd.Name(), r)
+			defer recovery.RecoverWithCallback(fmt.Sprintf("Handler: %s", hd.Name()),
+				h.logger,
+				func(r any) {
 					errChan <- fmt.Errorf("handler %s panic: %v", hd.Name(), r)
-				}
-			}()
+				})
 
 			h.logger.Infof("  ▶️ 开始执行: %s", hd.Name())
 			if err := hd.Handle(ctx); err != nil {

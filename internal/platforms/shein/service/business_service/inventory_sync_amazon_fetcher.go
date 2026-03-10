@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
+	"task-processor/internal/pkg/recovery"
 )
 
 // getAmazonProductData 获取Amazon产品数据（使用ProductFetcher，自动处理缓存）
@@ -43,10 +44,11 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 	resultChan := make(chan fetchResult, 1)
 
 	go func() {
+		var err error
+		defer recovery.RecoverWithError("获取Amazon产品", s.logger, &err)
 		defer func() {
-			if r := recover(); r != nil {
-				s.logger.WithField("panic", r).Error("获取Amazon产品时发生panic")
-				resultChan <- fetchResult{nil, fmt.Errorf("获取产品时发生panic: %v", r)}
+			if err != nil {
+				resultChan <- fetchResult{nil, err}
 			}
 		}()
 

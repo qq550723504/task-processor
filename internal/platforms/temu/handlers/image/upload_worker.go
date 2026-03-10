@@ -3,6 +3,7 @@ package image
 
 import (
 	"fmt"
+	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -54,17 +55,13 @@ func (w *ImageUploadWorker) UploadMainImagesParallel(ctx *temucontext.TemuTaskCo
 	// 并行上传所有主图
 	for i, img := range mainImages {
 		go func(index int, imageURL string) {
-			// 增强的panic recovery
-			defer func() {
-				if r := recover(); r != nil {
-					w.logger.Errorf("主图上传goroutine panic recovered: %v", r)
-					select {
-					case resultChan <- uploadResult{index: index, img: nil, err: fmt.Errorf("goroutine panic: %v", r)}:
-					default:
-						w.logger.Errorf("无法发送panic结果到channel")
-					}
+			defer recovery.RecoverWithCallback("主图上传", w.logger, func(r any) {
+				select {
+				case resultChan <- uploadResult{index: index, img: nil, err: fmt.Errorf("goroutine panic: %v", r)}:
+				default:
+					w.logger.Errorf("无法发送panic结果到channel")
 				}
-			}()
+			})
 
 			uploadedImg, err := uploadFunc(ctx, imageURL, "main")
 			select {
@@ -179,23 +176,20 @@ func (w *ImageUploadWorker) uploadSkuImageWorkerWithContext(ctx *temucontext.Tem
 	imageURL, imgType, contextKey string, uploadFunc func(*temucontext.TemuTaskContext, string, string) (*models.ImageInfo, error),
 	resultChan chan uploadSkuResult) {
 
-	defer func() {
-		if r := recover(); r != nil {
-			w.logger.Errorf("SKU图片上传goroutine panic recovered: %v", r)
-			select {
-			case resultChan <- uploadSkuResult{
-				skcIndex: skcIndex,
-				skuIndex: skuIndex,
-				imgIndex: imgIndex,
-				imgType:  imgType,
-				img:      nil,
-				err:      fmt.Errorf("goroutine panic: %v", r),
-			}:
-			default:
-				w.logger.Errorf("无法发送panic结果到channel")
-			}
+	defer recovery.RecoverWithCallback("SKU图片上传", w.logger, func(r any) {
+		select {
+		case resultChan <- uploadSkuResult{
+			skcIndex: skcIndex,
+			skuIndex: skuIndex,
+			imgIndex: imgIndex,
+			imgType:  imgType,
+			img:      nil,
+			err:      fmt.Errorf("goroutine panic: %v", r),
+		}:
+		default:
+			w.logger.Errorf("无法发送panic结果到channel")
 		}
-	}()
+	})
 
 	var result uploadSkuResult
 	result.skcIndex = skcIndex

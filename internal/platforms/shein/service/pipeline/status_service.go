@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/recovery"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -82,11 +83,10 @@ func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, status model
 		return updateFunc()
 	} else {
 		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					logrus.Errorf("异步更新任务状态goroutine panic (TaskID: %s, Status: %s): %v", taskID, status.String(), r)
-				}
-			}()
+			defer recovery.Recover("异步更新任务状态", logrus.WithFields(logrus.Fields{
+				"task_id": taskID,
+				"status":  status.String(),
+			}))
 			if err := updateFunc(); err != nil {
 				logrus.Errorf("异步更新任务状态最终失败 (TaskID: %s, Status: %s): %v", taskID, status.String(), err)
 			}

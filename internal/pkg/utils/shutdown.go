@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"task-processor/internal/pkg/recovery"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -71,11 +72,7 @@ func (sm *ShutdownManager) shutdown() {
 		wg.Add(1)
 		go func(index int, h ShutdownHook) {
 			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					sm.logger.Errorf("关闭钩子 %d panic: %v", index, r)
-				}
-			}()
+			defer recovery.Recover("关闭钩子", sm.logger.WithField("hook_index", index))
 
 			if err := h(ctx); err != nil {
 				sm.logger.Errorf("关闭钩子 %d 执行失败: %v", index, err)

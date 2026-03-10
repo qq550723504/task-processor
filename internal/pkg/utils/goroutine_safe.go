@@ -4,8 +4,8 @@ package utils
 import (
 	"context"
 	"fmt"
-	"runtime/debug"
 	"sync"
+	"task-processor/internal/pkg/recovery"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -14,12 +14,7 @@ import (
 // SafeGo 安全地启动一个 goroutine，带有 panic 恢复和日志记录
 func SafeGo(ctx context.Context, name string, fn func(ctx context.Context)) {
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logrus.Errorf("[SafeGo] Goroutine %s panic: %v\n%s", name, r, debug.Stack())
-			}
-		}()
-
+		defer recovery.RecoverWithStack(fmt.Sprintf("SafeGo: %s", name), logrus.WithField("goroutine", name))
 		fn(ctx)
 	}()
 }
@@ -32,12 +27,11 @@ func SafeGoWithTimeout(ctx context.Context, name string, timeout time.Duration, 
 	errChan := make(chan error, 1)
 
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logrus.Errorf("[SafeGoWithTimeout] Goroutine %s panic: %v\n%s", name, r, debug.Stack())
+		defer recovery.RecoverWithCallback(fmt.Sprintf("SafeGoWithTimeout: %s", name),
+			logrus.WithField("goroutine", name),
+			func(r any) {
 				errChan <- fmt.Errorf("panic: %v", r)
-			}
-		}()
+			})
 
 		errChan <- fn(ctx)
 	}()
@@ -87,11 +81,9 @@ func (p *GoroutinePool) Submit(name string, fn func(ctx context.Context) error) 
 		defer func() {
 			<-p.semaphore // 释放信号量
 			p.wg.Done()
-
-			if r := recover(); r != nil {
-				p.logger.Errorf("[GoroutinePool] Task %s panic: %v\n%s", name, r, debug.Stack())
-			}
 		}()
+		defer recovery.RecoverWithStack(fmt.Sprintf("GoroutinePool: %s", name),
+			p.logger.WithField("task", name))
 
 		if err := fn(p.ctx); err != nil {
 			p.logger.Errorf("[GoroutinePool] Task %s error: %v", name, err)
@@ -155,14 +147,11 @@ func NewAsyncTask(ctx context.Context, name string, fn func(ctx context.Context)
 
 	go func() {
 		defer func() {
-			if r := recover(); r != nil {
-				logrus.Errorf("[AsyncTask] Task %s panic: %v\n%s", name, r, debug.Stack())
-				task.mu.Lock()
-				task.err = fmt.Errorf("panic: %v", r)
-				task.mu.Unlock()
-			}
 			close(task.done)
 		}()
+		defer recovery.RecoverWithError(fmt.Sprintf("AsyncTask: %s", name),
+			logrus.WithField("task", name),
+			&task.err)
 
 		err := fn(taskCtx)
 		task.mu.Lock()
@@ -239,11 +228,8 @@ func (t *PeriodicTask) Start() {
 	t.wg.Add(1)
 	go func() {
 		defer t.wg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				t.logger.Errorf("[PeriodicTask] Task %s panic: %v\n%s", t.name, r, debug.Stack())
-			}
-		}()
+		defer recovery.RecoverWithStack(fmt.Sprintf("PeriodicTask: %s", t.name),
+			t.logger.WithField("task", t.name))
 
 		ticker := time.NewTicker(t.interval)
 		defer ticker.Stop()

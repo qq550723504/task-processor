@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	"strings"
 	"sync"
+	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/model"
 
@@ -120,12 +121,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *model.TaskContext, images []string)
 
 	// 等待结果
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logrus.Errorf("等待结果goroutine panic recovered: %v", r)
-			}
-		}()
-
+		defer recovery.Recover("等待结果", logrus.WithField("component", "ImageProcessor"))
 		wg.Wait()
 		close(resultChan)
 	}()
