@@ -11,9 +11,9 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/platforms/amazon/api"
-	"task-processor/internal/platforms/amazon/internal/handler"
-	amazonModel "task-processor/internal/platforms/amazon/internal/model"
-	"task-processor/internal/platforms/amazon/internal/service"
+	"task-processor/internal/platforms/amazon/core/handler"
+	amazonModel "task-processor/internal/platforms/amazon/core/model"
+	"task-processor/internal/platforms/amazon/core/service"
 
 	"github.com/sirupsen/logrus"
 )
