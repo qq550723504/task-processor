@@ -7,6 +7,7 @@ import (
 	"time"
 
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/recovery"
 
 	"github.com/sirupsen/logrus"
 )
@@ -85,11 +86,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 
 		// 根据价格变化策略处理库存（异步）
 		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					s.logger.WithField("panic", r).Error("处理价格变化策略时发生panic")
-				}
-			}()
+			defer recovery.Recover("处理价格变化策略", s.logger)
 
 			if err := s.handlePriceChangeWithStrategy(ctx, prod, amazonProduct, skuMapping, storeID); err != nil {
 				s.logger.WithError(err).WithFields(logrus.Fields{
@@ -108,11 +105,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 
 		// 根据营销策略处理库存变化（异步）
 		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					s.logger.WithField("panic", r).Error("处理库存变化策略时发生panic")
-				}
-			}()
+			defer recovery.Recover("处理库存变化策略", s.logger)
 
 			if err := s.handleStockChangeWithStrategy(ctx, prod, amazonProduct, skuMapping, storeID); err != nil {
 				s.logger.WithError(err).WithFields(logrus.Fields{

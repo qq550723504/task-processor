@@ -4,6 +4,7 @@ package handlers
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/recovery"
 )
 
 // ValidationHandler 通用验证处理器
@@ -29,11 +30,7 @@ func NewValidationHandler(validators ...Validator) pipeline.Handler {
 // Handle 执行验证处理
 func (h *ValidationHandler) Handle(ctx pipeline.TaskContext) error {
 	h.LogStart()
-	defer func() {
-		if err := recover(); err != nil {
-			h.GetLogger().Errorf("验证处理器发生panic: %v", err)
-		}
-	}()
+	defer recovery.Recover("验证处理器", h.GetLogger())
 
 	// 验证上下文
 	if err := h.ValidateContext(ctx); err != nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/recovery"
 
 	"github.com/sirupsen/logrus"
 )
@@ -68,15 +69,8 @@ func (s *inventorySyncServiceImpl) monitorInventoryChangesConcurrent(
 		wg.Add(1)
 
 		go func(index int, product *managementapi.ProductDataDTO) {
-			defer func() {
-				if r := recover(); r != nil {
-					s.logger.WithFields(logrus.Fields{
-						"product_id": product.ProductID,
-						"panic":      r,
-					}).Error("处理TEMU产品时发生panic")
-				}
-				wg.Done()
-			}()
+			defer recovery.Recover("处理TEMU产品", s.logger)
+			defer wg.Done()
 
 			// 获取信号量，控制并发数
 			semaphore <- struct{}{}
@@ -136,12 +130,8 @@ func (s *inventorySyncServiceImpl) batchInventoryUpdateProcessor(
 	updateChan <-chan *InventoryUpdateBatch,
 	wg *sync.WaitGroup,
 ) {
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.WithField("panic", r).Error("批量库存更新处理器发生panic")
-		}
-		wg.Done()
-	}()
+	defer recovery.Recover("批量库存更新处理器", s.logger)
+	defer wg.Done()
 
 	for {
 		select {
@@ -173,12 +163,8 @@ func (s *inventorySyncServiceImpl) progressMonitor(
 	totalCount int,
 	wg *sync.WaitGroup,
 ) {
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.WithField("panic", r).Error("进度监控器发生panic")
-		}
-		wg.Done()
-	}()
+	defer recovery.Recover("进度监控器", s.logger)
+	defer wg.Done()
 
 	for {
 		select {

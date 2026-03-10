@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/recovery"
 	"time"
 )
 
@@ -23,11 +24,7 @@ func NewLoggingHandler(logLevel string) pipeline.Handler {
 // Handle 执行日志处理
 func (h *LoggingHandler) Handle(ctx pipeline.TaskContext) error {
 	h.LogStart()
-	defer func() {
-		if err := recover(); err != nil {
-			h.GetLogger().Errorf("日志处理器发生panic: %v", err)
-		}
-	}()
+	defer recovery.Recover("日志处理器", h.GetLogger())
 
 	// 验证上下文
 	if err := h.ValidateContext(ctx); err != nil {

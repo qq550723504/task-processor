@@ -3,12 +3,12 @@ package scheduler
 
 import (
 	"encoding/json"
-	"time"
-
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/recovery"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -131,11 +131,7 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 	amazonProduct *model.Product,
 	storeID int64,
 ) {
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.WithField("panic", r).Error("更新Attributes时发生panic")
-		}
-	}()
+	defer recovery.Recover("更新Attributes", s.logger)
 
 	var skcList []EnrichedSkcInfo
 	if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {

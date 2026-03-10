@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/recovery"
 )
 
 // InitHandler 通用初始化处理器
@@ -20,11 +21,7 @@ func NewInitHandler() pipeline.Handler {
 // Handle 执行初始化处理
 func (h *InitHandler) Handle(ctx pipeline.TaskContext) error {
 	h.LogStart()
-	defer func() {
-		if err := recover(); err != nil {
-			h.GetLogger().Errorf("初始化处理器发生panic: %v", err)
-		}
-	}()
+	defer recovery.Recover("初始化处理器", h.GetLogger())
 
 	// 验证上下文
 	if err := h.ValidateContext(ctx); err != nil {
