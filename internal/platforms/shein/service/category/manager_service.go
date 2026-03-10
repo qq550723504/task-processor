@@ -3,11 +3,11 @@ package category
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/api/category"
 	"task-processor/internal/platforms/shein/model"
 	"time"
@@ -165,9 +165,9 @@ func (s *OpenAISelector) parseOpenAIResponse(resp *openaiClient.ChatCompletionRe
 
 	// 解析JSON响应
 	var result CategorySelectionResult
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
+	if err := jsonutil.UnmarshalString(content, &result, "解析AI分类选择结果失败"); err != nil {
 		logrus.Infof("解析AI分类选择结果失败: %v, 内容: %s\n", err, content)
-		return nil, fmt.Errorf("解析AI分类选择结果失败: %w", err)
+		return nil, err
 	}
 
 	return &result, nil

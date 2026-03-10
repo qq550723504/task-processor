@@ -2,10 +2,10 @@
 package client
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/management"
 	"time"
 
@@ -117,7 +117,7 @@ func (cm *CookieManager) parseCookieString(cookieStr string) ([]*http.Cookie, er
 
 	// 尝试解析JSON格式的Cookie数据
 	var cookieDataList []CookieData
-	if err := json.Unmarshal([]byte(cookieStr), &cookieDataList); err == nil {
+	if err := jsonutil.UnmarshalString(cookieStr, &cookieDataList, ""); err == nil {
 		// JSON格式解析成功
 		for _, cookieData := range cookieDataList {
 			cookie := &http.Cookie{

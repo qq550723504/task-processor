@@ -2,11 +2,10 @@
 package utils
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
-
-	types "task-processor/internal/domain/model"
+	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/jsonutil"
 )
 
 // TaskParser 任务解析器
@@ -18,14 +17,14 @@ func NewTaskParser() *TaskParser {
 }
 
 // ParseTask 解析任务数据为Task结构体
-func (p *TaskParser) ParseTask(taskData string) (*types.Task, error) {
+func (p *TaskParser) ParseTask(taskData string) (*model.Task, error) {
 	if taskData == "" {
 		return nil, fmt.Errorf("任务数据不能为空")
 	}
 
-	var task types.Task
-	if err := json.Unmarshal([]byte(taskData), &task); err != nil {
-		return nil, fmt.Errorf("解析任务数据失败: %w", err)
+	var task model.Task
+	if err := jsonutil.UnmarshalString(taskData, &task, "解析任务数据失败"); err != nil {
+		return nil, err
 	}
 
 	return &task, nil
@@ -38,8 +37,8 @@ func (p *TaskParser) ParseTaskMap(taskData string) (map[string]interface{}, erro
 	}
 
 	var taskMap map[string]interface{}
-	if err := json.Unmarshal([]byte(taskData), &taskMap); err != nil {
-		return nil, fmt.Errorf("解析任务数据失败: %w", err)
+	if err := jsonutil.UnmarshalString(taskData, &taskMap, "解析任务数据失败"); err != nil {
+		return nil, err
 	}
 
 	return taskMap, nil
@@ -141,8 +140,8 @@ func (p *TaskParser) ValidateTaskData(taskData string) error {
 
 	// 检查是否为有效的JSON
 	var temp interface{}
-	if err := json.Unmarshal([]byte(taskData), &temp); err != nil {
-		return fmt.Errorf("任务数据不是有效的JSON格式: %w", err)
+	if err := jsonutil.UnmarshalString(taskData, &temp, "任务数据不是有效的JSON格式"); err != nil {
+		return err
 	}
 
 	return nil
@@ -152,7 +151,7 @@ func (p *TaskParser) ValidateTaskData(taskData string) error {
 var globalTaskParser = NewTaskParser()
 
 // ParseTask 解析任务数据 (全局函数，便于使用)
-func ParseTask(taskData string) (*types.Task, error) {
+func ParseTask(taskData string) (*model.Task, error) {
 	return globalTaskParser.ParseTask(taskData)
 }
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"task-processor/internal/pkg/jsonutil"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -64,8 +65,8 @@ func (s *SensitiveWordService) loadConfig() error {
 
 	// 解析JSON
 	var config SensitiveWordConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return fmt.Errorf("解析敏感词配置文件失败: %w", err)
+	if err := jsonutil.UnmarshalBytes(data, &config, "解析敏感词配置文件失败"); err != nil {
+		return err
 	}
 
 	s.config = &config

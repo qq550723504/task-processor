@@ -3,11 +3,11 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"sync"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/amazon/core/model"
 
@@ -65,8 +65,8 @@ func (f *SchemaFetcher) FetchSchema(ctx context.Context, schemaURL string) (*mod
 
 	// 解析JSON
 	var schema model.ProductTypeSchema
-	if err := json.Unmarshal(body, &schema); err != nil {
-		return nil, fmt.Errorf("解析Schema JSON失败: %w", err)
+	if err := jsonutil.UnmarshalBytes(body, &schema, "解析Schema JSON失败"); err != nil {
+		return nil, err
 	}
 
 	// 缓存Schema

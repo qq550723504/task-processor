@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"task-processor/internal/pkg/jsonutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -175,8 +176,8 @@ func (m *LLMAttributeMapper) parseLLMResponse(content string) (*AttributeMapping
 	jsonContent := content[start : end+1]
 
 	var result AttributeMappingResponse
-	if err := json.Unmarshal([]byte(jsonContent), &result); err != nil {
-		return nil, fmt.Errorf("JSON解析失败: %w", err)
+	if err := jsonutil.UnmarshalString(jsonContent, &result, "JSON解析失败"); err != nil {
+		return nil, err
 	}
 
 	// 验证必要字段

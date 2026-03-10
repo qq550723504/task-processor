@@ -3,10 +3,10 @@ package content
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/jsonutil"
 )
 
 // ContentOptimizer 内容优化器
@@ -131,7 +131,7 @@ func (o *ContentOptimizer) parseOptimizedContent(content, defaultTitle, defaultD
 	cleanContent = strings.TrimSpace(cleanContent)
 
 	// 尝试解析JSON
-	if err := json.Unmarshal([]byte(cleanContent), &optimized); err == nil {
+	if err := jsonutil.UnmarshalString(cleanContent, &optimized, ""); err == nil {
 		if strings.TrimSpace(optimized.Title) != "" {
 			title = strings.TrimSpace(optimized.Title)
 		}

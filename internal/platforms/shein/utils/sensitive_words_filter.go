@@ -1,15 +1,14 @@
 package utils
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
-
 	"task-processor/internal/core/config"
+	"task-processor/internal/pkg/jsonutil"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -65,8 +64,8 @@ func (f *SensitiveWordsFilter) LoadConfig() error {
 	}
 
 	var cfg config.SensitiveWordsConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("解析配置文件失败: %w", err)
+	if err := jsonutil.UnmarshalBytes(data, &cfg, "解析配置文件失败"); err != nil {
+		return err
 	}
 
 	f.config = &cfg
