@@ -437,6 +437,276 @@ func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRe
 func (f *DistributedProductFetcher) shouldUseCrawler(platform string) bool
 ```
 
+### infra/rabbitmq 模块
+
+#### client.go
+```go
+func NewClient(connManager *ConnectionManager, logger *logrus.Logger) *Client
+func (c *Client) DeclareQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) error
+func (c *Client) DeclareExchange(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
+func (c *Client) DeleteQueue(name string, ifUnused, ifEmpty, noWait bool) error
+func (c *Client) BindQueue(queueName, routingKey, exchangeName string, noWait bool, args amqp.Table) error
+```
+
+#### connection.go
+```go
+func (cs ConnectionState) String() string
+func NewConnectionManager(config ConnectionConfig, logger *logrus.Logger) *ConnectionManager
+func (cm *ConnectionManager) AddStateListener(listener ConnectionStateListener)
+func (cm *ConnectionManager) notifyStateChange(oldState, newState ConnectionState)
+func (cm *ConnectionManager) GetErrorCollector() *ErrorCollector
+```
+
+#### consumer.go
+```go
+func NewMessageConsumer(client *Client, config ConsumerConfig, logger *logrus.Logger) *MessageConsumer
+func (mc *MessageConsumer) SetQueueConfigs(configs []QueueConfig)
+func (mc *MessageConsumer) RegisterHandler(queueName string, handler MessageHandler)
+func (mc *MessageConsumer) Start(ctx context.Context) error
+func (mc *MessageConsumer) Restart() error
+```
+
+#### consumer_state.go
+```go
+func (s ConsumerState) String() string
+func NewConsumerStateManager() *ConsumerStateManager
+func (csm *ConsumerStateManager) GetState() ConsumerState
+func (csm *ConsumerStateManager) GetStateInfo() ConsumerStateInfo
+func (csm *ConsumerStateManager) SetState(newState ConsumerState, queueName string)
+```
+
+#### error_collector.go
+```go
+func (et ErrorType) String() string
+func NewErrorCollector(maxSize int) *ErrorCollector
+func (ec *ErrorCollector) Collect(errorType ErrorType, queueName, messageID string, err error, context string)
+func (ec *ErrorCollector) GetErrors() []ErrorRecord
+func (ec *ErrorCollector) GetRecentErrors(n int) []ErrorRecord
+```
+
+#### load_monitor.go
+```go
+func NewLoadMonitor(cfg config.LoadMonitorConfig, logger *logrus.Logger) *LoadMonitor
+func (lm *LoadMonitor) Start(ctx context.Context) error
+func (lm *LoadMonitor) Stop(ctx context.Context) error
+func (lm *LoadMonitor) monitorLoop()
+func (lm *LoadMonitor) updateStats()
+```
+
+#### config.go
+```go
+func (c *Config) Validate() error
+func (c *ConnectionConfig) Validate() error
+func (c *ConsumerConfig) Validate() error
+func (c *QueueConfig) Validate() error
+func (c *Config) SetDefaults()
+```
+
+### crawler/amazon 模块
+
+#### batch_processor.go
+```go
+func NewBatchProcessor(browserPool *browser.BrowserPool, urlHelper *URLHelper, productChecker *ProductChecker) *BatchProcessor
+func (bp *BatchProcessor) ProcessWithPool(requests []model.ProductRequest, browserPool *browser.BrowserPool) []model.ProductResult
+func (bp *BatchProcessor) ProcessWithSingleBrowser(requests []model.ProductRequest, processor interface{...}) []model.ProductResult
+```
+
+#### browser/browser_pool.go
+```go
+func DefaultBrowserPoolConfig() *BrowserPoolConfig
+func NewBrowserPool(cfg *config.Config, poolConfig *BrowserPoolConfig) *BrowserPool
+func (bp *BrowserPool) Initialize() error
+func (bp *BrowserPool) Acquire() (*BrowserInstance, error)
+func (bp *BrowserPool) Release(instance *BrowserInstance)
+```
+
+#### browser/config_manager.go
+```go
+func NewConfigManager() *ConfigManager
+func (cm *ConfigManager) GenerateBrowserConfig(cfg *config.Config, strategy string, presetName string, instanceID int) *sharedbrowser.BrowserConfig
+func (cm *ConfigManager) applyBaseConfig(browserConfig *sharedbrowser.BrowserConfig, cfg *config.Config)
+func (cm *ConfigManager) copyBrowserConfig(src *sharedbrowser.BrowserConfig) *sharedbrowser.BrowserConfig
+func (cm *ConfigManager) ShouldUseRandomConfig(cfg *config.AmazonConfig) bool
+```
+
+#### browser/error_detector.go
+```go
+func NewErrorDetector() *ErrorDetector
+func (ed *ErrorDetector) IsBlockedOrSeriousError(err error) bool
+func (ed *ErrorDetector) IsTimeoutError(err error) bool
+func (ed *ErrorDetector) IsNetworkError(err error) bool
+func (ed *ErrorDetector) IsCaptchaError(err error) bool
+```
+
+#### browser/health_checker.go
+```go
+func NewHealthChecker(pool *BrowserPool) *HealthChecker
+func (hc *HealthChecker) HealthCheck(instance *BrowserInstance) bool
+func (hc *HealthChecker) GetPoolStats() map[string]interface{}
+func (hc *HealthChecker) LogPoolStats()
+func (hc *HealthChecker) StartHealthCheckRoutine(ctx context.Context)
+```
+
+#### browser/instance_manager.go
+```go
+func NewInstanceManager(pool *BrowserPool) *InstanceManager
+func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error)
+func (im *InstanceManager) RecreateInstanceSync(oldInstance *BrowserInstance) *BrowserInstance
+func (im *InstanceManager) RecreateInstanceAsync(oldInstance *BrowserInstance)
+func (im *InstanceManager) CloseInstance(instance *BrowserInstance)
+```
+
+#### browser/manager.go
+```go
+func NewBrowserManager(cfg *config.Config) *BrowserManager
+func NewBrowserManagerWithConfig(cfg *config.Config, strategy string, presetName string, instanceID int) *BrowserManager
+func (bm *BrowserManager) GetConfigManager() *ConfigManager
+func (bm *BrowserManager) NavigateTo(page playwright.Page, url string) error
+func (bm *BrowserManager) setLanguageCookies(url string) error
+```
+
+#### browser/pool_manager.go
+```go
+func NewPoolManager(pool *BrowserPool) *PoolManager
+func (pm *PoolManager) ProcessWithTimeout(ctx context.Context, url, zipcode string, timeout time.Duration, processor ProductProcessor) (*model.Product, error)
+func (pm *PoolManager) processProduct(ctx context.Context, url, zipcode string, processor ProductProcessor) *ProcessResult
+func (pm *PoolManager) acquireInstanceWithTimeout(ctx context.Context, timeout time.Duration) (*BrowserInstance, error)
+func (pm *PoolManager) releaseInstanceSafely(instance *BrowserInstance, err error)
+```
+
+#### browser/zipcode_getter.go
+```go
+func NewZipcodeGetter() *ZipcodeGetter
+func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
+func extractCityName(text string) string
+```
+
+### platforms/amazon 模块
+
+#### api/auth.go
+```go
+func NewAuthManager(clientID, clientSecret, refreshToken string) *AuthManager
+func (a *AuthManager) GetAccessToken(ctx context.Context) (string, error)
+func (a *AuthManager) refreshAccessToken(ctx context.Context) (string, error)
+func (a *AuthManager) SetAccessToken(token string, expiresIn int)
+func (a *AuthManager) IsTokenValid() bool
+```
+
+#### api/aws_signer.go
+```go
+func NewAWSSigner(accessKeyID, secretAccessKey, region string) *AWSSigner
+func (s *AWSSigner) SignRequest(req *http.Request, payload []byte) error
+func (s *AWSSigner) calculatePayloadHash(payload []byte) string
+func (s *AWSSigner) createSignature(req *http.Request, payloadHash string, timestamp time.Time) string
+func (s *AWSSigner) createCanonicalRequest(req *http.Request, payloadHash string) string
+```
+
+#### api/catalog.go
+```go
+func (c *Client) SearchCatalog(ctx context.Context, req *SearchCatalogRequest) (*SearchCatalogResponse, error)
+func (c *Client) GetSellerListings(ctx context.Context, req *GetSellerListingsRequest) (*GetSellerListingsResponse, error)
+func (c *Client) GetCatalogItem(ctx context.Context, asin string, marketplaceID string) (*CatalogItem, error)
+```
+
+#### api/client.go
+```go
+func NewClient(cfg *Config) *Client
+func getRegionEndpoint(region string) string
+func (c *Client) GetAccessToken(ctx context.Context) (string, error)
+func (c *Client) SetAccessToken(token string, expiresIn int)
+func (c *Client) GetMarketplaceID() string
+```
+
+#### api/inventory.go
+```go
+func (c *Client) UpdateInventory(ctx context.Context, req *InventoryRequest) (*InventoryResponse, error)
+func (c *Client) buildInventoryFeedXML(req *InventoryRequest) string
+func (c *Client) createInventoryFeed(ctx context.Context, feedContent string) (string, error)
+func (c *Client) createFeedDocument(ctx context.Context, content, contentType string) (string, error)
+func (c *Client) uploadFeedDocument(ctx context.Context, url, content, contentType string) error
+```
+
+#### api/listing_operations.go
+```go
+func (c *Client) CreateListing(ctx context.Context, req *ListingRequest) (*ListingResponse, error)
+func (c *Client) ValidateListing(ctx context.Context, req *ListingRequest) (*ListingResponse, error)
+func (c *Client) createListingWithMode(ctx context.Context, req *ListingRequest, mode string) (*ListingResponse, error)
+func (c *Client) UpdateListing(ctx context.Context, req *ListingRequest) (*ListingResponse, error)
+func (c *Client) DeleteListing(ctx context.Context, sku string) error
+```
+
+#### api/listing_details.go
+```go
+func (c *Client) GetDetailedListing(ctx context.Context, sku, marketplaceID string) (*ListingResponse, error)
+func (c *Client) printProductDetails(data map[string]interface{})
+```
+
+### pipeline 模块
+
+#### pipeline.go
+```go
+func NewPipeline(name string) Pipeline
+func (p *BasePipeline) AddHandler(handler Handler) Pipeline
+func (p *BasePipeline) Process(ctx TaskContext) error
+func (p *BasePipeline) GetHandlerCount() int
+func (p *BasePipeline) GetName() string
+```
+
+#### base_handler.go
+```go
+func NewBaseHandler(name string) *BaseHandler
+func (bh *BaseHandler) Name() string
+func (bh *BaseHandler) GetLogger() *logrus.Entry
+func (bh *BaseHandler) ValidateContext(ctx TaskContext) error
+func (bh *BaseHandler) GetRequiredData(ctx TaskContext, key string) (interface{}, error)
+```
+
+#### parallel_handler.go
+```go
+func NewParallelHandler(name string, handlers ...Handler) *ParallelHandler
+func (h *ParallelHandler) Name() string
+func (h *ParallelHandler) Handle(ctx TaskContext) error
+```
+
+#### context_impl.go
+```go
+func NewTaskContext(ctx context.Context, task *model.Task) TaskContext
+func NewTemuTaskContext(ctx context.Context, task *model.Task) TemuTaskContext
+func NewSheinTaskContext(ctx context.Context, task *model.Task) SheinTaskContext
+func (tc *DefaultTaskContext) GetContext() context.Context
+func (tc *DefaultTaskContext) GetTask() *model.Task
+```
+
+#### errors.go
+```go
+func NewHandlerError(handlerName, message string) *HandlerError
+func NewHandlerErrorWithCause(handlerName, message string, cause error) *HandlerError
+func (e *HandlerError) Error() string
+func (e *HandlerError) Unwrap() error
+func NewPipelineError(pipelineName, message string) *PipelineError
+```
+
+#### handlers/init_handler.go
+```go
+func NewInitHandler() pipeline.Handler
+func (h *InitHandler) Handle(ctx pipeline.TaskContext) error
+```
+
+#### handlers/logging_handler.go
+```go
+func NewLoggingHandler(logLevel string) pipeline.Handler
+func (h *LoggingHandler) Handle(ctx pipeline.TaskContext) error
+```
+
+#### handlers/validation_handler.go
+```go
+func NewValidationHandler(validators ...Validator) pipeline.Handler
+func (h *ValidationHandler) Handle(ctx pipeline.TaskContext) error
+func NewTaskValidator() Validator
+func (v *TaskValidator) Name() string
+func (v *TaskValidator) Validate(ctx pipeline.TaskContext) error
+```
+
 ---
 
 ## 重构建议
