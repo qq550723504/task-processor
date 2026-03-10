@@ -60,27 +60,41 @@
    - 产品映射
    - 订单管理
 
-9. **[09-pipeline.md](09-pipeline.md)** - Pipeline 管道模式
+9. **[13-platforms-temu.md](13-platforms-temu.md)** - Platforms/TEMU 平台
+   - TEMU API 客户端
+   - 认证管理（多层认证处理）
+   - Cookie 管理
+   - 产品、库存、价格管理
+   - 订单管理
+
+10. **[14-platforms-shein.md](14-platforms-shein.md)** - Platforms/SHEIN 平台
+    - SHEIN API 客户端
+    - 时尚属性管理（尺码表、风格）
+    - 多 SKU 管理
+    - 图片管理
+    - 分类和订单管理
+
+11. **[09-pipeline.md](09-pipeline.md)** - Pipeline 管道模式
    - 管道实现
    - 处理器（Handler）
    - 上下文管理
    - 错误处理
 
-10. **[10-core-config.md](10-core-config.md)** - Core/Config 核心配置
+12. **[10-core-config.md](10-core-config.md)** - Core/Config 核心配置
     - 配置加载和验证
     - 默认值应用
     - 日志管理
     - 生命周期管理
     - 错误定义
 
-11. **[11-pkg-utils.md](11-pkg-utils.md)** - Pkg/Utils 工具包
+13. **[11-pkg-utils.md](11-pkg-utils.md)** - Pkg/Utils 工具包
     - 图片下载和处理
     - 数学工具
     - 字符串工具
     - 价格计算
     - 重试和超时
 
-12. **[12-infra-clients.md](12-infra-clients.md)** - Infra/Clients 客户端
+14. **[12-infra-clients.md](12-infra-clients.md)** - Infra/Clients 客户端
     - OpenAI 客户端
     - HTTP 客户端
     - 分布式锁
@@ -91,9 +105,9 @@
 ## 📊 统计信息
 
 ### 模块统计
-- **总模块数**: 12 个主要模块
-- **总文件数**: 500+ Go 文件
-- **总函数数**: 2000+ 函数
+- **总模块数**: 14 个主要模块
+- **总文件数**: 1000+ Go 文件
+- **总函数数**: 2500+ 函数
 
 ### 模块分类
 
@@ -127,9 +141,9 @@
 - `crawler/alibaba1688` - 1688 爬虫
 
 #### 平台层 (Platform Layer)
-- `platforms/amazon` - Amazon 平台
-- `platforms/temu` - TEMU 平台
-- `platforms/shein` - SHEIN 平台
+- `platforms/amazon` - Amazon 平台（Listing 操作、订单管理）
+- `platforms/temu` - TEMU 平台（多层认证、Cookie 管理）
+- `platforms/shein` - SHEIN 平台（时尚属性、多 SKU 管理）
 
 #### 核心层 (Core Layer)
 - `core/config` - 配置管理
