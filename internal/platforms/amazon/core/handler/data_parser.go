@@ -3,8 +3,8 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/amazon/core/model"
 )
 
@@ -38,8 +38,8 @@ func (h *DataParserHandler) Handle(ctx context.Context, taskContext *model.TaskC
 
 	// 解析JSON为map
 	var productData map[string]any
-	if err := json.Unmarshal([]byte(rawJSONStr), &productData); err != nil {
-		return fmt.Errorf("解析JSON失败: %w", err)
+	if err := jsonutil.UnmarshalString(rawJSONStr, &productData, "解析JSON失败"); err != nil {
+		return err
 	}
 
 	h.logger.Infof("成功解析1688产品数据，字段数: %d", len(productData))

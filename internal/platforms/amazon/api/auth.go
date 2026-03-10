@@ -3,12 +3,12 @@ package api
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"sync"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/utils"
 	"time"
 
@@ -115,8 +115,8 @@ func (a *AuthManager) refreshAccessToken(ctx context.Context) (string, error) {
 
 	// 解析响应
 	var tokenResp LWATokenResponse
-	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return "", fmt.Errorf("解析响应失败: %w", err)
+	if err := jsonutil.UnmarshalBytes(body, &tokenResp, "解析响应失败"); err != nil {
+		return "", err
 	}
 
 	// 更新令牌

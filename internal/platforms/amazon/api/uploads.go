@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"task-processor/internal/pkg/jsonutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -101,8 +102,8 @@ func (c *Client) CreateUploadDestination(ctx context.Context, resource, marketpl
 	}
 
 	var result UploadDestinationResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
+	if err := jsonutil.UnmarshalBytes(body, &result, "解析响应失败"); err != nil {
+		return nil, err
 	}
 
 	c.logger.WithField("upload_destination_id", result.Payload.UploadDestinationID).Info("上传目标创建成功")
