@@ -1,0 +1,75 @@
+// Package message 提供消息相关的类型定义
+package message
+
+// CrawlerPayload 爬虫消息载荷
+type CrawlerPayload struct {
+	ID         int64  `json:"id"`
+	TenantID   int64  `json:"tenantId"`
+	StoreID    int64  `json:"storeId"`
+	Platform   string `json:"platform"`
+	Region     string `json:"region"`
+	ProductID  string `json:"productId"`
+	Priority   int    `json:"priority"`
+	ReplyTo    string `json:"reply_to"` // 回复队列
+	CreateTime int64  `json:"createTime"`
+	UpdateTime int64  `json:"updateTime"`
+	RetryCount int    `json:"retryCount"`
+	MaxRetries int    `json:"maxRetryCount"`
+}
+
+// TaskPayload 任务消息载荷
+type TaskPayload struct {
+	TaskID         int64  `json:"taskId"`
+	TenantID       int64  `json:"tenantId"`
+	StoreID        int64  `json:"storeId"`
+	Platform       string `json:"platform"`
+	SourcePlatform string `json:"sourcePlatform"`
+	Region         string `json:"region"`
+	CategoryID     int64  `json:"categoryId"`
+	ProductID      string `json:"productId"`
+	Priority       int    `json:"priority"`
+	Remark         string `json:"remark"`
+	CreateTime     int64  `json:"createTime"`
+	UpdateTime     int64  `json:"updateTime"`
+	RetryCount     int    `json:"retryCount"`
+	MaxRetryCount  int    `json:"maxRetryCount"`
+}
+
+// ResultPayload 结果消息载荷
+type ResultPayload struct {
+	TaskID       int64          `json:"taskId"`
+	Status       string         `json:"status"` // success, failed, retry
+	Message      string         `json:"message"`
+	Data         map[string]any `json:"data,omitempty"`
+	ProcessTime  int64          `json:"processTime"` // 毫秒
+	ErrorCode    string         `json:"errorCode,omitempty"`
+	ErrorMessage string         `json:"errorMessage,omitempty"`
+	RetryCount   int            `json:"retryCount"`
+	NodeID       string         `json:"nodeId"`
+	Timestamp    int64          `json:"timestamp"`
+}
+
+// SuccessData 成功结果数据
+type SuccessData struct {
+	Platform  string `json:"platform"`
+	ProductID string `json:"product_id"`
+	StoreID   int64  `json:"store_id"`
+}
+
+// ToMap 转换为 map（用于兼容现有代码）
+func (s *SuccessData) ToMap() map[string]any {
+	return map[string]any{
+		"platform":   s.Platform,
+		"product_id": s.ProductID,
+		"store_id":   s.StoreID,
+	}
+}
+
+// NewSuccessData 创建成功数据
+func NewSuccessData(platform, productID string, storeID int64) *SuccessData {
+	return &SuccessData{
+		Platform:  platform,
+		ProductID: productID,
+		StoreID:   storeID,
+	}
+}

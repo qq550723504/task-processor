@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"task-processor/internal/domain/errors"
+	"task-processor/internal/domain/message"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
@@ -309,13 +310,9 @@ func (eth *TaskHandler) processTaskWithReporting(
 
 	// 上报成功结果
 	if eth.resultReporter != nil {
-		successData := map[string]any{
-			"platform":   task.Platform,
-			"product_id": task.ProductID,
-			"store_id":   task.StoreID,
-		}
+		successData := message.NewSuccessData(task.Platform, task.ProductID, task.StoreID)
 
-		if reportErr := eth.resultReporter.ReportSuccess(task, successData, processingTime); reportErr != nil {
+		if reportErr := eth.resultReporter.ReportSuccess(task, successData.ToMap(), processingTime); reportErr != nil {
 			eth.logger.Errorf("[%s] 上报成功结果失败: ID=%d, Error=%v",
 				eth.platform, task.ID, reportErr)
 			// 注意：上报失败不影响任务处理结果
