@@ -2,8 +2,7 @@
 package scheduler
 
 import (
-	"encoding/json"
-
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
@@ -42,7 +41,7 @@ func (h *ProductDataHelper) BuildSkcDataMap(storeID int64) (map[string]*Enriched
 
 		// 解析Attributes,提取每个SKC的数据
 		var skcList []EnrichedSkcInfo
-		if err := json.Unmarshal([]byte(prod.Attributes), &skcList); err != nil {
+		if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, ""); err != nil {
 			h.logger.WithError(err).Debugf("解析产品Attributes失败: %s", prod.ProductID)
 			continue
 		}
@@ -78,7 +77,7 @@ func (h *ProductDataHelper) BuildSkcAttributesMap(storeID int64) (map[string]str
 
 		// 解析Attributes,提取每个SKC的数据
 		var skcList []EnrichedSkcInfo
-		if err := json.Unmarshal([]byte(prod.Attributes), &skcList); err != nil {
+		if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, ""); err != nil {
 			h.logger.WithError(err).Debugf("解析产品Attributes失败: %s", prod.ProductID)
 			continue
 		}
@@ -120,7 +119,7 @@ func (h *ProductDataHelper) ExtractAmazonPriceFromAttributes(attributesJSON stri
 	}
 
 	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
+	if err := jsonutil.UnmarshalString(attributesJSON, &skcList, ""); err != nil {
 		h.logger.WithField("skcCode", skcCode).WithError(err).Debug("解析产品Attributes失败")
 		return 0
 	}
@@ -144,7 +143,7 @@ func (h *ProductDataHelper) ExtractSkcInfoFromAttributes(attributesJSON string, 
 	}
 
 	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(attributesJSON), &skcList); err != nil {
+	if err := jsonutil.UnmarshalString(attributesJSON, &skcList, ""); err != nil {
 		h.logger.WithField("skcCode", skcCode).WithError(err).Debug("解析产品Attributes失败")
 		return nil
 	}

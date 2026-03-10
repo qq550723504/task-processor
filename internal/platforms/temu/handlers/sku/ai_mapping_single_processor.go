@@ -3,7 +3,6 @@ package sku
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/jsonutil"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
 	"task-processor/internal/platforms/temu/handlers/template"
@@ -215,7 +215,7 @@ func (vp *SkuVariantProcessor) parseAIResponse(resp *openai.ChatCompletionRespon
 	// 清理JSON内容，移除可能导致解析失败的字符
 	jsonContent = vp.cleanJSONContent(jsonContent)
 
-	if err := json.Unmarshal([]byte(jsonContent), &aiResponse); err != nil {
+	if err := jsonutil.UnmarshalBytes([]byte(jsonContent), &aiResponse, "解析AI响应失败"); err != nil {
 		vp.logParseError(err, content, jsonContent)
 		return nil, fmt.Errorf("解析AI响应失败: %w, 响应内容长度: %d", err, len(jsonContent))
 	}
