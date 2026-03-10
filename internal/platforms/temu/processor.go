@@ -2,7 +2,6 @@ package temu
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/app/task"
@@ -12,6 +11,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
@@ -83,8 +83,8 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 func (p *TemuProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 	// 解析任务数据
 	var task model.Task
-	if err := json.Unmarshal([]byte(job.TaskData), &task); err != nil {
-		return fmt.Errorf("解析任务数据失败: %w", err)
+	if err := jsonutil.UnmarshalString(job.TaskData, &task, "解析任务数据失败"); err != nil {
+		return err
 	}
 
 	log := p.GetLogger()

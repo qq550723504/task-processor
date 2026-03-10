@@ -13,6 +13,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -102,15 +103,15 @@ func NewResultReporter(cfg ReporterConfig, logger *logrus.Logger) *ResultReporte
 		cfg.NodeID = fmt.Sprintf("node-%d", time.Now().Unix())
 	}
 
-	// 创建HTTP客户端
-	httpClient := &http.Client{
-		Timeout: cfg.Timeout,
-		Transport: &http.Transport{
+	// 创建HTTP客户端（使用自定义Transport配置）
+	httpClient := utils.CreateHTTPClientWithTransport(
+		cfg.Timeout,
+		&http.Transport{
 			MaxIdleConns:        10,
 			MaxIdleConnsPerHost: 5,
 			IdleConnTimeout:     30 * time.Second,
 		},
-	}
+	)
 
 	return &ResultReporter{
 		httpClient:  httpClient,

@@ -2,11 +2,11 @@ package temu
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/pkg/jsonutil"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -29,8 +29,8 @@ func NewTemuTaskSubmitter(workerPool worker.WorkerPool) *TemuTaskSubmitter {
 // SubmitTask 提交任务
 func (s *TemuTaskSubmitter) SubmitTask(ctx context.Context, taskData string) error {
 	var task model.Task
-	if err := json.Unmarshal([]byte(taskData), &task); err != nil {
-		return fmt.Errorf("解析任务数据失败: %w", err)
+	if err := jsonutil.UnmarshalString(taskData, &task, "解析任务数据失败"); err != nil {
+		return err
 	}
 
 	fields := logrus.Fields{
