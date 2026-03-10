@@ -156,25 +156,35 @@ func (f *DistributedProductFetcher) getZipcode(region string) string {
 
 // calculatePriority 计算任务优先级
 func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRequest) int {
+	// 优先级常量
+	const (
+		PriorityDefault       = 5
+		PriorityAmazonBonus   = 2
+		PriorityCategoryBonus = 1
+		PriorityMax           = 10
+		PriorityMin           = 1
+		HotCategoryThreshold  = 1000
+	)
+
 	// 基础优先级
-	priority := 5
+	priority := PriorityDefault
 
 	// 根据平台调整
 	if req.Platform == "amazon" {
-		priority += 2
+		priority += PriorityAmazonBonus
 	}
 
 	// 根据分类调整（热门分类优先级更高）
-	if req.CategoryID > 0 && req.CategoryID < 1000 {
-		priority += 1
+	if req.CategoryID > 0 && req.CategoryID < HotCategoryThreshold {
+		priority += PriorityCategoryBonus
 	}
 
-	// 确保在1-10范围内
-	if priority > 10 {
-		priority = 10
+	// 确保在有效范围内
+	if priority > PriorityMax {
+		priority = PriorityMax
 	}
-	if priority < 1 {
-		priority = 1
+	if priority < PriorityMin {
+		priority = PriorityMin
 	}
 
 	return priority

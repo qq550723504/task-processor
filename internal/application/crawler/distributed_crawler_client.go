@@ -4,11 +4,11 @@ package crawler
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/queue"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
 
@@ -20,6 +20,7 @@ import (
 type DistributedCrawlerClient struct {
 	rabbitmqClient *rabbitmq.Client
 	taskAdapter    *task.MessageAdapter
+	queueNaming    *queue.NamingService
 	logger         *logrus.Logger
 
 	// 结果等待管理
@@ -44,6 +45,7 @@ func NewDistributedCrawlerClient(rabbitmqClient *rabbitmq.Client, logger *logrus
 	client := &DistributedCrawlerClient{
 		rabbitmqClient:  rabbitmqClient,
 		taskAdapter:     task.NewMessageAdapter(),
+		queueNaming:     queue.NewNamingService(),
 		logger:          logger,
 		pendingTasks:    make(map[string]*PendingTask),
 		timeout:         5 * time.Minute, // 默认5分钟超时
@@ -91,7 +93,7 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 	// 构建路由键和队列名称
 	// 注意：爬虫任务使用专门的爬虫队列，根据优先级选择队列
 	routingKey := c.taskAdapter.BuildRoutingKey(taskModel)
-	queueName := c.buildCrawlerQueueName(req.Platform, req.Priority)
+	queueName := c.queueNaming.BuildCrawlerQueueName(req.Platform, req.Priority)
 
 	// 创建等待任务
 	pendingTask := c.createPendingTask(ctx, req.TaskID)
@@ -103,24 +105,6 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 
 	// 等待结果
 	return c.waitForResult(pendingTask, req.TaskID)
-}
-
-// buildCrawlerQueueName 构建爬虫队列名称（根据优先级）
-func (c *DistributedCrawlerClient) buildCrawlerQueueName(platform string, priority int) string {
-	// 确定优先级级别
-	var priorityLevel string
-	switch {
-	case priority >= 1 && priority <= 3:
-		priorityLevel = "high"
-	case priority >= 4 && priority <= 7:
-		priorityLevel = "normal"
-	default:
-		priorityLevel = "low"
-	}
-
-	// 构建队列名称: {platform}.crawler.{priority}
-	// 注意：平台名称转换为小写，确保与队列配置一致
-	return fmt.Sprintf("%s.crawler.%s", strings.ToLower(platform), priorityLevel)
 }
 
 // ensureListenerStarted 确保结果监听器已启动（懒加载）

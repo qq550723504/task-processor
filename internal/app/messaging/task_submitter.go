@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/queue"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
 
@@ -28,6 +29,7 @@ type submittedRecord struct {
 type TaskSubmitter struct {
 	client         *rabbitmq.Client
 	adapter        *task.MessageAdapter
+	queueNaming    *queue.NamingService
 	logger         *logrus.Logger
 	submittedCache sync.Map // key: "tenant:region:asin", value: *submittedRecord
 	cacheDuration  time.Duration
@@ -40,6 +42,7 @@ func NewTaskSubmitter(client *rabbitmq.Client, logger *logrus.Logger) *TaskSubmi
 	ts := &TaskSubmitter{
 		client:        client,
 		adapter:       task.NewMessageAdapter(),
+		queueNaming:   queue.NewNamingService(),
 		logger:        logger,
 		cacheDuration: 5 * time.Minute, // 缓存5分钟
 	}
@@ -120,7 +123,7 @@ func (ts *TaskSubmitter) SubmitTask(ctx context.Context, t *model.Task) error {
 	// 特殊处理：如果是爬虫任务（Platform包含.crawler），使用基于优先级的队列名称
 	var queueName string
 	if strings.Contains(t.Platform, ".crawler") {
-		queueName = ts.buildCrawlerQueueName(t.Platform, t.Priority)
+		queueName = ts.queueNaming.BuildCrawlerQueueName(t.Platform, t.Priority)
 	} else {
 		queueName = ts.adapter.GetQueueName(t.Platform)
 	}
@@ -249,27 +252,4 @@ func (ts *TaskSubmitter) SubmitVariantTasks(ctx context.Context, parentTask *mod
 		successCount, failCount, skipCount, len(variations))
 
 	return successCount, failCount
-}
-
-// buildCrawlerQueueName 构建爬虫队列名称（根据优先级）
-// 格式: {platform}.crawler.{priority_level}
-// 示例: amazon.crawler.high, amazon.crawler.normal, amazon.crawler.low
-func (ts *TaskSubmitter) buildCrawlerQueueName(platform string, priority int) string {
-	// 移除 .crawler 后缀（如果存在）
-	basePlatform := strings.TrimSuffix(platform, ".crawler")
-
-	// 确定优先级级别
-	var priorityLevel string
-	switch {
-	case priority >= 1 && priority <= 3:
-		priorityLevel = "high"
-	case priority >= 4 && priority <= 7:
-		priorityLevel = "normal"
-	default:
-		priorityLevel = "low"
-	}
-
-	// 构建队列名称: {platform}.crawler.{priority}
-	// 注意：平台名称转换为小写，确保与队列配置一致
-	return fmt.Sprintf("%s.crawler.%s", strings.ToLower(basePlatform), priorityLevel)
 }
