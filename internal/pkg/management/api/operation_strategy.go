@@ -1,10 +1,10 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/pkg/utils"
 
@@ -117,8 +117,8 @@ func (c *OperationStrategyClient) GetOperationStrategyByStoreId(storeId int64) (
 		Msg  string                `json:"msg"`
 	}
 
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
+	if err := jsonutil.UnmarshalBytes(body, &result, "解析响应失败"); err != nil {
+		return nil, err
 	}
 
 	if result.Code != 0 {
