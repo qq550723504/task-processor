@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -75,7 +77,7 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	// 特殊处理：如果 Payload 中有嵌套的 payload 字段（分布式爬虫消息格式）
 	// 提取内层的 payload 作为真正的任务数据
 	if nestedPayload, ok := msg.Payload["payload"]; ok {
-		if payloadMap, ok := nestedPayload.(map[string]interface{}); ok {
+		if payloadMap, ok := nestedPayload.(map[string]any); ok {
 			eth.logger.Debugf("[%s] 检测到嵌套 payload，提取内层数据", eth.platform)
 
 			// 字段名映射：分布式爬虫使用 "id"，但 TaskMessage 期望 "taskId"
@@ -173,7 +175,7 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 func (eth *TaskHandler) processTaskWithReporting(
 	ctx context.Context,
 	task *model.Task,
-	originalPayload map[string]interface{},
+	originalPayload map[string]any,
 	startTime time.Time,
 ) error {
 	defer func() {
@@ -254,7 +256,7 @@ func (eth *TaskHandler) processTaskWithReporting(
 
 	// 上报成功结果
 	if eth.resultReporter != nil {
-		successData := map[string]interface{}{
+		successData := map[string]any{
 			"platform":   task.Platform,
 			"product_id": task.ProductID,
 			"store_id":   task.StoreID,
@@ -369,9 +371,7 @@ func (etpr *TaskProcessorRegistry) GetAllHandlers() map[string]rabbitmq.MessageH
 	defer etpr.mutex.RUnlock()
 
 	handlers := make(map[string]rabbitmq.MessageHandler)
-	for platform, handler := range etpr.handlers {
-		handlers[platform] = handler
-	}
+	maps.Copy(handlers, etpr.handlers)
 
 	return handlers
 }
@@ -383,16 +383,16 @@ func (etpr *TaskProcessorRegistry) GetQueueName(platform string) string {
 }
 
 // GetStats 获取统计信息
-func (etpr *TaskProcessorRegistry) GetStats() map[string]interface{} {
+func (etpr *TaskProcessorRegistry) GetStats() map[string]any {
 	etpr.mutex.RLock()
 	defer etpr.mutex.RUnlock()
 
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 	stats["total_processors"] = len(etpr.processors)
 
-	platformStats := make(map[string]interface{})
+	platformStats := make(map[string]any)
 	for platform := range etpr.processors {
-		platformStats[platform] = map[string]interface{}{
+		platformStats[platform] = map[string]any{
 			"status": "registered",
 		}
 	}
@@ -408,10 +408,5 @@ func (etpr *TaskProcessorRegistry) GetStats() map[string]interface{} {
 
 // isOwnedStore 判断是否是该节点拥有的店铺
 func (eth *TaskHandler) isOwnedStore(storeID int64) bool {
-	for _, id := range eth.ownedStores {
-		if id == storeID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(eth.ownedStores, storeID)
 }

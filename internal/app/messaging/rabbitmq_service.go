@@ -257,7 +257,6 @@ func (s *RabbitMQService) registerMessageHandlers() error {
 			}
 
 			s.consumer.RegisterHandler(queueName, handler)
-			s.logger.Infof("注册消息处理器: 队列=%s", queueName)
 		}
 
 		s.logger.Infof("注册消息处理器: 平台=%s, 队列=3个优先级队列", platform)

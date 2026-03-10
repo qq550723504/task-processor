@@ -68,7 +68,7 @@ func main() {
 	// 注册爬虫处理器（集成分布式爬虫服务，复用共享的Amazon处理器）
 	logger.Info("🕷️  集成分布式爬虫服务...")
 	crawlerRegistry := messaging.NewCrawlerRegistry(appCfg, logger, serviceManager.GetClient())
-	if err := crawlerRegistry.RegisterCrawlerProcessorWithAmazon(serviceManager, platformRegistry.GetSharedAmazonProcessor()); err != nil {
+	if err := crawlerRegistry.RegisterCrawlerProcessor(serviceManager, platformRegistry.GetSharedAmazonProcessor()); err != nil {
 		logger.Fatalf("❌ 注册爬虫处理器失败: %v", err)
 	}
 

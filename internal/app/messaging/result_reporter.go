@@ -19,16 +19,16 @@ import (
 
 // TaskResult 任务结果
 type TaskResult struct {
-	TaskID       int64                  `json:"taskId"`
-	Status       string                 `json:"status"`       // success, failed, retry
-	Message      string                 `json:"message"`      // 结果消息
-	Data         map[string]interface{} `json:"data"`         // 结果数据
-	ProcessTime  int64                  `json:"processTime"`  // 处理时间（毫秒）
-	ErrorCode    string                 `json:"errorCode"`    // 错误代码
-	ErrorMessage string                 `json:"errorMessage"` // 错误消息
-	RetryCount   int                    `json:"retryCount"`   // 重试次数
-	NodeID       string                 `json:"nodeId"`       // 节点ID
-	Timestamp    int64                  `json:"timestamp"`    // 时间戳
+	TaskID       int64          `json:"taskId"`
+	Status       string         `json:"status"`       // success, failed, retry
+	Message      string         `json:"message"`      // 结果消息
+	Data         map[string]any `json:"data"`         // 结果数据
+	ProcessTime  int64          `json:"processTime"`  // 处理时间（毫秒）
+	ErrorCode    string         `json:"errorCode"`    // 错误代码
+	ErrorMessage string         `json:"errorMessage"` // 错误消息
+	RetryCount   int            `json:"retryCount"`   // 重试次数
+	NodeID       string         `json:"nodeId"`       // 节点ID
+	Timestamp    int64          `json:"timestamp"`    // 时间戳
 }
 
 // ResultReporter 结果上报器
@@ -175,7 +175,7 @@ func (rr *ResultReporter) Stop(ctx context.Context) error {
 }
 
 // ReportSuccess 上报成功结果
-func (rr *ResultReporter) ReportSuccess(task *model.Task, data map[string]interface{}, processTime time.Duration) error {
+func (rr *ResultReporter) ReportSuccess(task *model.Task, data map[string]any, processTime time.Duration) error {
 	result := &TaskResult{
 		TaskID:      task.ID,
 		Status:      "success",

@@ -51,7 +51,7 @@ func main() {
 
 	// 创建爬虫注册器并注册处理器
 	crawlerRegistry := messaging.NewCrawlerRegistry(appCfg, logger, serviceManager.GetClient())
-	if err := crawlerRegistry.RegisterCrawlerProcessor(serviceManager); err != nil {
+	if err := crawlerRegistry.RegisterCrawlerProcessor(serviceManager, nil); err != nil {
 		logger.Fatalf("❌ 注册爬虫处理器失败: %v", err)
 	}
 

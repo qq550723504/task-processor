@@ -35,13 +35,8 @@ func NewCrawlerRegistry(
 	}
 }
 
-// RegisterCrawlerProcessor 注册爬虫处理器到服务管理器
-func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManager) error {
-	return r.RegisterCrawlerProcessorWithAmazon(serviceManager, nil)
-}
-
 // RegisterCrawlerProcessorWithAmazon 注册爬虫处理器到服务管理器（可选共享Amazon处理器）
-func (r *CrawlerRegistry) RegisterCrawlerProcessorWithAmazon(serviceManager *ServiceManager, sharedAmazonProcessor *amazon.AmazonProcessor) error {
+func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManager, sharedAmazonProcessor *amazon.AmazonProcessor) error {
 	r.logger.Info("📦 注册Amazon爬虫处理器...")
 
 	// 使用共享的Amazon处理器，如果没有则创建新的

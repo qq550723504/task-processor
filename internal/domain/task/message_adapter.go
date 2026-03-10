@@ -14,7 +14,7 @@ import (
 type Message struct {
 	ID         string
 	Type       string
-	Payload    map[string]interface{}
+	Payload    map[string]any
 	Priority   uint8
 	Timestamp  int64
 	RetryCount int
