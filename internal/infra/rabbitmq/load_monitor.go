@@ -7,6 +7,7 @@ import (
 	"sync"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/monitoring"
+	"task-processor/internal/pkg/recovery"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -142,11 +143,7 @@ func (lm *LoadMonitor) Stop(ctx context.Context) error {
 // monitorLoop 监控循环
 func (lm *LoadMonitor) monitorLoop() {
 	defer lm.wg.Done()
-	defer func() {
-		if r := recover(); r != nil {
-			lm.logger.Errorf("负载监控器发生panic: %v", r)
-		}
-	}()
+	defer recovery.RecoverWithStack("负载监控器", lm.logger.WithField("component", "LoadMonitor"))
 
 	ticker := time.NewTicker(lm.config.UpdateInterval)
 	defer ticker.Stop()

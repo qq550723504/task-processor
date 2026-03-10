@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"task-processor/internal/pkg/recovery"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -163,11 +164,7 @@ func (cm *ConnectionManager) connect() error {
 
 // monitorConnection 监控连接状态
 func (cm *ConnectionManager) monitorConnection() {
-	defer func() {
-		if r := recover(); r != nil {
-			cm.logger.Errorf("连接监控发生panic: %v", r)
-		}
-	}()
+	defer recovery.RecoverWithStack("连接监控", cm.logger.WithField("component", "ConnectionManager"))
 
 	// 监听连接关闭事件
 	connCloseChan := make(chan *amqp.Error)

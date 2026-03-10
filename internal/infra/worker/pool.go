@@ -7,6 +7,7 @@ import (
 	"sync"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
+	"task-processor/internal/pkg/recovery"
 )
 
 // Pool 工作池实现
@@ -134,12 +135,7 @@ func (p *Pool) Stop(ctx context.Context) {
 
 	done := make(chan struct{})
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.WithField("panic", r).Error("等待工作池完成goroutine panic recovered")
-			}
-		}()
-
+		defer recovery.Recover("等待工作池完成", log)
 		p.wg.Wait()
 		close(done)
 	}()

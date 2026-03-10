@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"task-processor/internal/pkg/recovery"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -40,11 +41,7 @@ type QueueConsumer struct {
 
 // consume 消费消息（并发处理）
 func (qc *QueueConsumer) consume() {
-	defer func() {
-		if r := recover(); r != nil {
-			qc.logger.Errorf("队列 %s 消费者发生panic: %v", qc.queueName, r)
-		}
-	}()
+	defer recovery.Recover(fmt.Sprintf("队列消费者: %s", qc.queueName), qc.logger.WithField("queue", qc.queueName))
 
 	qc.logger.Infof("开始消费队列: %s (并发度: %d)", qc.queueName, qc.prefetch)
 
@@ -118,7 +115,9 @@ func (qc *QueueConsumer) recoverFromPanic(delivery amqp.Delivery) {
 		panicCount := qc.panicCounts[msgID]
 		qc.panicCountsMutex.Unlock()
 
-		qc.logger.Errorf("处理消息发生panic (第%d次): ID=%s, Error=%v", panicCount, msgID, r)
+		// 使用recovery包记录panic
+		recovery.RecoverWithStack(fmt.Sprintf("处理消息: %s", msgID),
+			qc.logger.WithField("message_id", msgID))
 
 		// 收集错误
 		panicErr := fmt.Errorf("panic: %v", r)
