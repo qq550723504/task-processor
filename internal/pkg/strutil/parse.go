@@ -8,7 +8,7 @@ func ParseInt(s string) int {
 		return 0
 	}
 	var result int
-	fmt.Sscanf(s, "%d", &result)
+	_, _ = fmt.Sscanf(s, "%d", &result)
 	return result
 }
 
@@ -18,6 +18,6 @@ func ParseFloat(s string) float64 {
 		return 0.0
 	}
 	var result float64
-	fmt.Sscanf(s, "%f", &result)
+	_, _ = fmt.Sscanf(s, "%f", &result)
 	return result
 }

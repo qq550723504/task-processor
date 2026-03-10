@@ -20,7 +20,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("连接 RabbitMQ 失败: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	fmt.Println("✓ 连接成功！")
 
@@ -29,7 +31,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("创建通道失败: %v", err)
 	}
-	defer ch.Close()
+	defer func() {
+		_ = ch.Close()
+	}()
 
 	fmt.Println("✓ 通道创建成功！")
 	fmt.Println()

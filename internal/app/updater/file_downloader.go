@@ -47,7 +47,9 @@ func (fd *FileDownloader) DownloadFile(url, destPath, expectedHash string) error
 		// 提供更详细的错误信息
 		return fd.diagnoseDownloadError(url, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// 检查HTTP状态码
 	if resp.StatusCode != http.StatusOK {
@@ -65,7 +67,9 @@ func (fd *FileDownloader) DownloadFile(url, destPath, expectedHash string) error
 	if err != nil {
 		return fmt.Errorf("创建临时文件失败: %w", err)
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 
 	// 边下载边计算哈希
 	hash := sha256.New()
@@ -74,7 +78,7 @@ func (fd *FileDownloader) DownloadFile(url, destPath, expectedHash string) error
 	// 使用带进度的复制
 	written, err := fd.copyWithProgress(writer, resp.Body, contentLength)
 	if err != nil {
-		os.Remove(destPath)
+		_ = os.Remove(destPath)
 		return fmt.Errorf("写入文件失败: %w", err)
 	}
 
@@ -83,7 +87,7 @@ func (fd *FileDownloader) DownloadFile(url, destPath, expectedHash string) error
 	// 验证哈希
 	downloadedHash := hex.EncodeToString(hash.Sum(nil))
 	if downloadedHash != expectedHash {
-		os.Remove(destPath)
+		_ = os.Remove(destPath)
 		return fmt.Errorf("文件哈希不匹配: 期望 %s, 实际 %s", expectedHash, downloadedHash)
 	}
 

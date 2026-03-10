@@ -1,7 +1,8 @@
-﻿// Package api 提供SHEIN API的通用类型定义
+// Package api 提供SHEIN API的通用类型定义
 package api
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -52,13 +53,15 @@ func (e *CookieError) Error() string {
 
 // IsAuthenticationExpired 检查错误是否为认证过期错误
 func IsAuthenticationExpired(err error) (*AuthenticationExpiredError, bool) {
-	// 直接检查 AuthenticationExpiredError 类型
-	if authErr, ok := err.(*AuthenticationExpiredError); ok {
+	// 使用 errors.As 检查 AuthenticationExpiredError 类型
+	var authErr *AuthenticationExpiredError
+	if errors.As(err, &authErr) {
 		return authErr, true
 	}
 
-	// 检查 APIError 中是否包含认证过期信息
-	if apiErr, ok := err.(*APIError); ok {
+	// 使用 errors.As 检查 APIError 中是否包含认证过期信息
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
 		// 检查状态码是否为302（重定向）
 		if apiErr.StatusCode == 302 {
 			return &AuthenticationExpiredError{

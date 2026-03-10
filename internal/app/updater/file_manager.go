@@ -61,8 +61,8 @@ func (fm *FileManager) ReplaceExecutable(tmpFile string, newVersion string) erro
 		oldExePath := currentExe + ".old"
 
 		// 删除可能存在的旧文件
-		os.Remove(tempNewPath)
-		os.Remove(oldExePath)
+		_ = os.Remove(tempNewPath)
+		_ = os.Remove(oldExePath)
 
 		// 将新文件复制到临时位置
 		if err := fm.copyFile(tmpFile, tempNewPath); err != nil {
@@ -70,7 +70,7 @@ func (fm *FileManager) ReplaceExecutable(tmpFile string, newVersion string) erro
 		}
 
 		// 删除临时下载文件
-		os.Remove(tmpFile)
+		_ = os.Remove(tmpFile)
 
 		logrus.Infof("已准备延迟更新文件，新版本文件名: %s", newExeName)
 		return nil
@@ -78,7 +78,7 @@ func (fm *FileManager) ReplaceExecutable(tmpFile string, newVersion string) erro
 
 	// Linux/Mac 先备份再替换
 	backupFile := currentExe + ".old"
-	os.Remove(backupFile) // 删除旧备份
+	_ = os.Remove(backupFile) // 删除旧备份
 	if err := fm.copyFile(currentExe, backupFile); err != nil {
 		return fmt.Errorf("备份失败: %w", err)
 	}

@@ -170,8 +170,9 @@ func IsRetryableError(err error) bool {
 		return false
 	}
 
-	// 检查Amazon错误
-	if amazonErr, ok := err.(*AmazonError); ok {
+	// 使用 errors.As 检查Amazon错误
+	var amazonErr *AmazonError
+	if errors.As(err, &amazonErr) {
 		retryableCodes := []string{
 			ErrorCodeRateLimit,
 			ErrorCodeInternalError,
@@ -202,13 +203,15 @@ func IsValidationError(err error) bool {
 		return false
 	}
 
-	// 检查ValidationError类型
-	if _, ok := err.(*ValidationError); ok {
+	// 使用 errors.As 检查ValidationError类型
+	var validationErr *ValidationError
+	if errors.As(err, &validationErr) {
 		return true
 	}
 
-	// 检查Amazon错误中的验证错误
-	if amazonErr, ok := err.(*AmazonError); ok {
+	// 使用 errors.As 检查Amazon错误中的验证错误
+	var amazonErr *AmazonError
+	if errors.As(err, &amazonErr) {
 		return amazonErr.Code == ErrorCodeValidationFailed
 	}
 

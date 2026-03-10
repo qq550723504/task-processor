@@ -208,7 +208,7 @@ func (e *VariantExtractor) extractPrice(skuInfo map[string]interface{}) float64 
 				return v
 			case string:
 				var price float64
-				fmt.Sscanf(v, "%f", &price)
+				_, _ = fmt.Sscanf(v, "%f", &price)
 				return price
 			}
 		}
@@ -228,7 +228,7 @@ func (e *VariantExtractor) extractQuantity(skuInfo map[string]interface{}) int {
 				return int(v)
 			case string:
 				var qty int
-				fmt.Sscanf(v, "%d", &qty)
+				_, _ = fmt.Sscanf(v, "%d", &qty)
 				return qty
 			}
 		}

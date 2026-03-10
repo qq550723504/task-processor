@@ -23,7 +23,9 @@ func (r *FileRepository) SaveProduct(product *model.Product, filename string) er
 	if err != nil {
 		return fmt.Errorf("创建文件失败: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	// 创建产品数组（与示例文件格式匹配）
 	products := []model.Product{*product}
@@ -44,7 +46,9 @@ func (r *FileRepository) SaveProducts(products []model.Product, filename string)
 	if err != nil {
 		return fmt.Errorf("创建文件失败: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")

@@ -94,7 +94,7 @@ func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 
 		// 检查是否需要重试（5xx错误）
 		if resp.StatusCode >= 500 && resp.StatusCode < 600 && attempt < c.config.MaxRetries {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("服务器错误: %d", resp.StatusCode)
 			continue
 		}

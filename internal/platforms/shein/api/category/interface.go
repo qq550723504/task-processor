@@ -1,4 +1,4 @@
-﻿package category
+package category
 
 // CategoryAPI 分类相关API接口
 type CategoryAPI interface {
