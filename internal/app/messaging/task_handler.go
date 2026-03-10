@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/domain/errors"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
@@ -126,14 +127,15 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 	if err != nil {
 		eth.logger.Errorf("[%s] 转换消息为任务失败: ID=%s, Error=%v",
 			eth.platform, msg.ID, err)
-		return nil, nil, fmt.Errorf("转换消息为任务失败: %w", err)
+		return nil, nil, errors.NewConversionError(0, err)
 	}
 
 	// 验证任务的关键字段
 	if !task.IsValid() {
 		eth.logger.Errorf("[%s] 收到无效任务消息: ID=%d, ProductID=%s, Platform=%s, MessageID=%s",
 			eth.platform, task.ID, task.ProductID, task.Platform, msg.ID)
-		return nil, nil, fmt.Errorf("任务数据无效: ID=%d, ProductID=%s", task.ID, task.ProductID)
+		return nil, nil, errors.NewInvalidTaskError(task.ID,
+			fmt.Sprintf("invalid task data: ID=%d, ProductID=%s", task.ID, task.ProductID))
 	}
 
 	return task, originalPayload, nil
@@ -182,7 +184,7 @@ func (eth *TaskHandler) validateStoreAccess(task *model.Task) (bool, error) {
 	storeInfo, err := eth.storeAPI.GetStore(task.StoreID)
 	if err != nil {
 		eth.logger.Errorf("[%s] 获取店铺 %d 配置失败: %v", eth.platform, task.StoreID, err)
-		return false, fmt.Errorf("获取店铺配置失败: %w", err)
+		return false, errors.NewStoreNotFoundError(task.ID, task.StoreID, err)
 	}
 
 	isOwned := eth.isOwnedStore(task.StoreID)
@@ -208,9 +210,7 @@ func (eth *TaskHandler) validatePlatform(task *model.Task) error {
 
 	// 比较任务平台与处理器平台（使用领域对象方法）
 	if !task.PlatformMatches(eth.platform) {
-		err := fmt.Errorf("任务平台 %s 与处理器平台 %s 不匹配", task.Platform, eth.platform)
-		eth.logger.Errorf("[%s] %v", eth.platform, err)
-		return err
+		return errors.NewPlatformMismatchError(task.ID, task.Platform, eth.platform)
 	}
 
 	return nil
@@ -330,6 +330,11 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 	// 检查重试次数（使用领域对象方法）
 	if !task.CanRetry() {
 		return false
+	}
+
+	// 如果是 TaskError，使用其 IsRetryable 方法
+	if taskErr, ok := err.(*errors.TaskError); ok {
+		return taskErr.IsRetryable()
 	}
 
 	// 检查错误类型，某些错误不需要重试
