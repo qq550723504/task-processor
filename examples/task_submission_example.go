@@ -155,8 +155,7 @@ func demonstrateBatchSubmission(submitter *messaging.TaskSubmitter, parentTask *
 
 // 使用说明
 func printUsage() {
-	fmt.Println(`
-任务提交示例程序
+	fmt.Println(`任务提交示例程序
 
 功能：
 1. 演示如何使用新的分层架构提交任务
@@ -180,6 +179,5 @@ func printUsage() {
 更多信息：
 - 快速入门: docs/QUICK_START_NEW_STRUCTURE.md
 - 领域层文档: internal/domain/task/README.md
-- 应用层文档: internal/app/messaging/README.md
-`)
+- 应用层文档: internal/app/messaging/README.md`)
 }
