@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"
@@ -55,7 +56,7 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) model.Res
 	}
 
 	var saleAttributeData model.ResultSaleAttribute
-	if err := json.Unmarshal([]byte(content), &saleAttributeData); err != nil {
+	if err := jsonutil.UnmarshalBytes([]byte(content), &saleAttributeData, "JSON解析失败"); err != nil {
 		logrus.Errorf("❌ JSON解析失败: %v", err)
 		logrus.Debugf("内容前500字符: %s", content[:min(500, len(content))])
 		return model.ResultSaleAttribute{}

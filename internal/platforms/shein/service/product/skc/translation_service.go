@@ -3,10 +3,10 @@ package skc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/service/translate"
@@ -360,8 +360,8 @@ func (h *SKCTranslationHandler) parseBatchOptimizedResponse(content string, expe
 	}
 
 	var response BatchOptimizedResponse
-	if err := json.Unmarshal([]byte(cleanContent), &response); err != nil {
-		return nil, fmt.Errorf("解析JSON响应失败: %w", err)
+	if err := jsonutil.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
+		return nil, err
 	}
 
 	if len(response.OptimizedTitles) == 0 {
@@ -432,8 +432,8 @@ func (h *SKCTranslationHandler) parseOptimizedResponse(content string) (string, 
 	}
 
 	var response OptimizedResponse
-	if err := json.Unmarshal([]byte(cleanContent), &response); err != nil {
-		return "", fmt.Errorf("解析JSON响应失败: %w", err)
+	if err := jsonutil.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
+		return "", err
 	}
 
 	if response.OptimizedTitle == "" {

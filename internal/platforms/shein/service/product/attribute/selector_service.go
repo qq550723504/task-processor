@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/model"
 
@@ -154,7 +155,7 @@ func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.Chat
 	}
 
 	var attributeData model.AttributeData
-	if err := json.Unmarshal([]byte(content), &attributeData); err != nil {
+	if err := jsonutil.UnmarshalBytes([]byte(content), &attributeData, "解析属性数据失败"); err != nil {
 		logrus.Errorf("解析属性数据失败: %v，清理后内容: %s", err, content)
 		// 解析属性数据失败，可重试
 		return model.AttributeData{}, model.NewRetryableError("解析属性数据失败", err)
