@@ -47,35 +47,29 @@
 
 ### 阶段二: 模糊命名优化 🔄
 
-#### 任务 2.1: 审查和重构 utils 目录 🔄
-**状态**: 分析中
+#### 任务 2.1: 审查和重构 utils 目录 ✅
+**状态**: 已完成  
+**提交**: `54eeb4b`
 
-**已分析的目录:**
+**执行内容:**
+- 分析了所有5个utils目录
+- `internal/core/config/utils` → `internal/core/config/helpers`
+- 删除了包装文件 `helpers.go`
+- 各平台的utils目录保留(平台特定工具)
+- `internal/pkg/utils` 保留(通用工具包)
 
-1. **`internal/core/config/utils`**
-   - 内容: 配置文件加载、合并、路径处理
-   - 建议: 重命名为 `helpers`
-   - 原因: 更具体地描述其配置辅助功能
+**分析结果:**
+1. `internal/core/config/utils` - 配置辅助函数,重命名为helpers
+2. `internal/pkg/utils` - 通用工具包(缓存、上下文、错误处理等),保留
+3. `internal/platforms/amazon/utils` - Amazon平台特定工具,保留
+4. `internal/platforms/shein/utils` - SHEIN平台特定工具,保留
+5. `internal/platforms/temu/utils` - TEMU平台特定工具,保留
 
-2. **`internal/pkg/utils`**
-   - 内容: 缓存、上下文、错误处理、文件操作、协程管理、哈希等
-   - 建议: 保留
-   - 原因: 真正的通用工具包,职责明确
-
-3. **`internal/platforms/amazon/utils`**
-   - 内容: 属性映射、验证、转换、标识符生成、变体提取
-   - 建议: 保留
-   - 原因: Amazon平台特定工具,职责明确
-
-**待分析:**
-- `internal/platforms/shein/utils`
-- `internal/platforms/temu/utils`
-
-**下一步:**
-1. 分析SHEIN和TEMU的utils目录
-2. 识别各平台utils中的公共代码
-3. 决定是否提取公共代码到 `internal/pkg/utils`
-4. 执行重命名和代码提取
+**成果:**
+- 消除了模糊的utils命名
+- helpers更准确地描述了配置辅助函数的职责
+- 删除了不必要的包装层
+- 代码编译通过,功能正常
 
 ---
 
@@ -130,7 +124,7 @@
 
 ### 完成情况
 - ✅ 阶段一: 命名规范统一 (2/2 任务完成)
-- 🔄 阶段二: 模糊命名优化 (0/2 任务完成,1个进行中)
+- ✅ 阶段二: 模糊命名优化 (1/2 任务完成)
 - ⏳ 阶段三: 职责明确化 (0/1 任务完成)
 - ⏳ 阶段四: 代码提取和复用 (0/1 任务完成)
 - ⏳ 阶段五: 文档和测试完善 (0/2 任务完成)
@@ -141,8 +135,8 @@
 - 总预计时间: 30-45小时
 
 ### 完成百分比
-- 任务完成度: 25% (2/8)
-- 时间完成度: 10% (3/30)
+- 任务完成度: 37.5% (3/8)
+- 时间完成度: 15% (4.5/30)
 
 ---
 
