@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/pkg/management/api"
 	temuapi "task-processor/internal/platforms/temu/api"
 
@@ -22,8 +23,8 @@ func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
 
 	// 解析 Attributes 获取 SKU 信息
 	var skuList []TemuSkuInfo
-	if err := json.Unmarshal([]byte(prod.Attributes), &skuList); err != nil {
-		return fmt.Errorf("解析产品attributes失败: %w", err)
+	if err := jsonutil.UnmarshalString(prod.Attributes, &skuList, "解析产品attributes失败"); err != nil {
+		return err
 	}
 
 	// 收集需要下架的SKU ID列表
@@ -143,8 +144,8 @@ func (s *inventorySyncServiceImpl) relistProductViaTEMUAPI(
 
 	// 解析 Attributes 获取 SKU 信息
 	var skuList []TemuSkuInfo
-	if err := json.Unmarshal([]byte(prod.Attributes), &skuList); err != nil {
-		return fmt.Errorf("解析产品attributes失败: %w", err)
+	if err := jsonutil.UnmarshalString(prod.Attributes, &skuList, "解析产品attributes失败"); err != nil {
+		return err
 	}
 
 	// 收集需要上架的SKU ID列表

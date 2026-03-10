@@ -2,9 +2,9 @@ package pipeline
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/pkg/jsonutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -32,7 +32,7 @@ func (s *SheinTaskSubmitter) SubmitTask(ctx context.Context, taskData string) er
 		TenantID int64 `json:"tenantId"`
 		StoreID  int64 `json:"storeId"`
 	}
-	if err := json.Unmarshal([]byte(taskData), &task); err != nil {
+	if err := jsonutil.UnmarshalString(taskData, &task, ""); err != nil {
 		return err
 	}
 

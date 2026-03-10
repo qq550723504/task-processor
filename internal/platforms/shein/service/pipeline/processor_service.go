@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/app/task"
@@ -12,6 +11,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	commonPipeline "task-processor/internal/pipeline"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/management"
 
 	"github.com/sirupsen/logrus"
@@ -108,8 +108,8 @@ func (p *SheinProcessor) Start(ctx context.Context) error {
 func (p *SheinProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 	// 解析任务数据
 	var task types.Task
-	if err := json.Unmarshal([]byte(job.TaskData), &task); err != nil {
-		return fmt.Errorf("解析任务数据失败: %w", err)
+	if err := jsonutil.UnmarshalString(job.TaskData, &task, "解析任务数据失败"); err != nil {
+		return err
 	}
 
 	return p.taskHandler.ProcessTask(ctx, task, p.pipeline)

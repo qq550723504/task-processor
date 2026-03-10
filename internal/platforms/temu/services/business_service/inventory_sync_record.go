@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
+	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -58,7 +59,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 	// 解析 Attributes 获取 SKU 的 AmazonMonitorData
 	if prod.Attributes != "" {
 		var mappingList []TemuMappingData
-		if err := json.Unmarshal([]byte(prod.Attributes), &mappingList); err == nil {
+		if err := jsonutil.UnmarshalString(prod.Attributes, &mappingList, ""); err == nil {
 			// 查找对应的 SKU
 			for _, mapping := range mappingList {
 				for _, sku := range mapping.SkuInfo {
@@ -158,8 +159,8 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 	}
 
 	var mappingList []TemuMappingData
-	if err := json.Unmarshal([]byte(prod.Attributes), &mappingList); err != nil {
-		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("解析TEMU产品attributes失败")
+	if err := jsonutil.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
+		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error(err.Error())
 		return
 	}
 

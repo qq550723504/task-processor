@@ -9,6 +9,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
+	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -41,8 +42,8 @@ func (s *inventorySyncServiceImpl) batchUpdateTemuInventoryInAttributes(
 
 	// 解析现有的attributes数据
 	var mappingList []TemuMappingData
-	if err := json.Unmarshal([]byte(prod.Attributes), &mappingList); err != nil {
-		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("解析TEMU产品attributes失败")
+	if err := jsonutil.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
+		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error(err.Error())
 		return fmt.Errorf("解析产品attributes失败: %w", err)
 	}
 
@@ -175,8 +176,8 @@ func (s *inventorySyncServiceImpl) updateTemuInventoryInAttributes(
 
 	// 解析现有的attributes数据
 	var mappingList []TemuMappingData
-	if err := json.Unmarshal([]byte(prod.Attributes), &mappingList); err != nil {
-		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("解析TEMU产品attributes失败")
+	if err := jsonutil.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
+		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error(err.Error())
 		return fmt.Errorf("解析产品attributes失败: %w", err)
 	}
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/pkg/management/api"
 	"task-processor/internal/platforms/shein/api/product"
 
@@ -37,8 +38,8 @@ func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
 
 	// 解析 Attributes 获取 SKC 信息
 	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(prod.Attributes), &skcList); err != nil {
-		return fmt.Errorf("解析产品attributes失败: %w", err)
+	if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
+		return err
 	}
 
 	if len(skcList) == 0 {
@@ -146,8 +147,8 @@ func (s *inventorySyncServiceImpl) updateProductStockViaSHEINAPI(
 
 	// 解析 Attributes 获取 SKC/SKU 信息
 	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(prod.Attributes), &skcList); err != nil {
-		return fmt.Errorf("解析产品attributes失败: %w", err)
+	if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
+		return err
 	}
 
 	// 查找对应的SKC和SKU

@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/management"
 	managementapi "task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/pricing"
@@ -332,7 +333,7 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 
 	// 解析现有的attributes数据
 	var skcList []EnrichedSkcInfo
-	if err := json.Unmarshal([]byte(prod.Attributes), &skcList); err != nil {
+	if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
 		return fmt.Errorf("解析产品attributes失败: %w", err)
 	}
 
