@@ -33,7 +33,7 @@
 
 ## 发现的重复代码模式
 
-### 2. JSON 解析重复 🔴 高优先级
+### 2. JSON 解析重复 ✅ 已完成
 
 **问题描述:**
 在整个项目中发现了大量重复的 JSON 解析代码模式：
@@ -51,14 +51,8 @@ if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 - 其他模块: 约 10+ 处重复
 - 总计: 60+ 处重复
 
-**影响范围:**
-- `internal/platforms/temu/services/business_service/*.go`
-- `internal/platforms/shein/service/business_service/*.go`
-- `internal/platforms/temu/handlers/**/*.go`
-- `internal/platforms/shein/service/**/*.go`
-
-**建议解决方案:**
-创建 `internal/pkg/jsonutil` 包提供泛型辅助函数：
+**解决方案:**
+创建了 `internal/pkg/jsonutil` 包提供泛型辅助函数：
 
 ```go
 // 使用前
@@ -74,13 +68,34 @@ if err := jsonutil.UnmarshalString(taskData, &task, "解析任务数据失败");
 }
 ```
 
-**预期收益:**
-- 减少约 200+ 行重复代码
-- 统一错误处理格式
-- 提高代码可读性
+**迁移成果:**
+- 已迁移 36 个文件,约 50+ 处 JSON 解析代码
+- TEMU 平台: 14 个文件 (inventory_sync, handlers, api/client)
+- SHEIN 平台: 14 个文件 (inventory_sync, service层, utils)
+- Amazon 平台: 6 个文件 (processor, api, core/service, core/handler)
+- 通用工具: 2 个文件 (task_parser, management)
+- 减少重复代码约 150+ 行
+- 统一了错误处理格式
+- 提高了代码可读性
 
-**优先级:** 高
-**预计工作量:** 4-6 小时
+**相关提交:**
+- 09a9726: TEMU和SHEIN inventory_sync相关文件
+- 12054cc: Handler层和product_data_helper
+- 3e604ce: AI和publish相关handler
+- 6fb0357: SHEIN平台product service
+- b8ac193: SHEIN service层、TEMU/SHEIN cookie_manager
+- a18a97f: Amazon平台API层
+- 72e5d6a: management层
+
+**剩余未迁移:**
+- interface{} 类型参数 (无法使用泛型,保持原样)
+- UnmarshalJSON 自定义方法 (必须使用 json.Unmarshal)
+- 配置文件加载工具 (通用基础设施)
+- RabbitMQ 消息处理 (基础设施层)
+- 测试文件
+
+**优先级:** 高 ✅
+**实际工作量:** 约 3 小时
 
 ---
 
@@ -279,21 +294,20 @@ func FormatTimestamp(t time.Time) string { return t.Format(TimestampFormat) }
 - 消除工具函数重复，减少约 80 行代码 ✅
 - 统一 HTTP 客户端创建 ✅
 - 创建 JSON 工具包和迁移指南 ✅
-
-**进行中:**
-- JSON 解析重复（高优先级）：已创建工具包，待迁移 60+ 处
+- JSON 解析重复迁移：已迁移 36 个文件,减少约 150+ 行重复代码 ✅
 
 **待处理:**
 - panic 恢复模式重复（中优先级）：预计减少 100+ 行代码
 - Context 超时创建重复（中优先级）：预计减少 50+ 行代码
 - 时间格式化重复（低优先级）：预计减少 20+ 行代码
 
-**总预期收益:**
-- 已减少重复代码约 90 行
-- 待减少重复代码约 370+ 行
-- 总计可减少约 460+ 行重复代码
+**总收益:**
+- 已减少重复代码约 240 行 (80 + 10 + 150)
+- 待减少重复代码约 170+ 行
+- 总计可减少约 410+ 行重复代码
 - 提高代码一致性和可维护性
 - 降低 bug 风险
+- 统一错误处理格式
 
 ---
 
