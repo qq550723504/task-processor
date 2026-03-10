@@ -77,13 +77,21 @@
 
 ### 阶段二: 模糊命名优化
 
-#### 任务 2.2: 审查和重构 common 目录 ⏳
+#### 任务 2.2: 审查和重构 common 目录 ⏸️
+**状态**: 已分析,暂不重构  
 **预计工作量**: 2-3小时
 
-**待审查目录:**
-- `internal/platforms/common`
-- `internal/platforms/shein/service/common`
-- `internal/platforms/temu/handlers/common`
+**已审查目录:**
+- `internal/platforms/common` - 包含通用调度任务,保留
+- `internal/platforms/shein/service/common` - 包含SHEIN服务基础功能,建议重命名为base
+- `internal/platforms/temu/handlers/common` - 包含TEMU处理器基础类,建议重命名为base
+
+**分析结果:**
+- 三个common目录都有明确的职责
+- 重命名会影响大量文件,影响范围大
+- 建议: 暂时保留,待后续需要时再重构
+
+**决策:** 暂不重构,避免影响范围过大
 
 ---
 
@@ -124,7 +132,7 @@
 
 ### 完成情况
 - ✅ 阶段一: 命名规范统一 (2/2 任务完成)
-- ✅ 阶段二: 模糊命名优化 (1/2 任务完成)
+- ✅ 阶段二: 模糊命名优化 (1/2 任务完成,1个跳过)
 - ⏳ 阶段三: 职责明确化 (0/1 任务完成)
 - ⏳ 阶段四: 代码提取和复用 (0/1 任务完成)
 - ⏳ 阶段五: 文档和测试完善 (0/2 任务完成)
