@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
-
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/recovery"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,11 +20,7 @@ func (s *inventorySyncServiceImpl) batchUpdateTemuInventoryInAttributes(
 	ctx context.Context,
 	batch *InventoryUpdateBatch,
 ) error {
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.WithField("panic", r).Error("批量更新TEMU库存时发生panic")
-		}
-	}()
+	defer recovery.Recover("批量更新TEMU库存", s.logger)
 
 	prod := batch.Product
 	updates := batch.Updates
@@ -154,11 +150,7 @@ func (s *inventorySyncServiceImpl) updateTemuInventoryInAttributes(
 	skuInfo *TemuSkuInfo,
 	storeID int64,
 ) error {
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.WithField("panic", r).Error("更新TEMU库存时发生panic")
-		}
-	}()
+	defer recovery.Recover("更新TEMU库存", s.logger)
 
 	platformSKU := s.getStringValue(skuInfo.MappingInfo.Sku)
 
