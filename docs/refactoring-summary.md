@@ -113,6 +113,55 @@ const (
 - ✅ 代码自解释
 - ✅ 易于调整策略
 
+### 6. 将业务逻辑移到领域对象 ⭐⭐⭐ 🆕
+**问题**: TaskHandler 过度使用 Task 对象的数据（Feature Envy）
+
+**解决方案**: 为 Task 添加业务方法
+```go
+// Task 领域对象方法
+func (t *Task) IsValid() bool
+func (t *Task) IsCrawlerTask() bool
+func (t *Task) GetBasePlatform() string
+func (t *Task) CanRetry() bool
+func (t *Task) IsHighPriority() bool
+func (t *Task) GetPriorityLevel() string
+func (t *Task) PlatformMatches(targetPlatform string) bool
+```
+
+**收益**:
+- ✅ 遵循 Tell, Don't Ask 原则
+- ✅ 业务逻辑集中在领域对象
+- ✅ 减少 Feature Envy 代码异味
+- ✅ 提高代码内聚性
+
+### 7. 统一错误处理 ⭐⭐⭐ 🆕
+**问题**: 错误处理不一致，缺乏结构化
+
+**解决方案**: 定义统一的错误类型
+```go
+type TaskError struct {
+    Code      ErrorCode
+    Message   string
+    TaskID    int64
+    Operation string
+    Err       error
+}
+
+func (e *TaskError) IsRetryable() bool
+func (e *TaskError) Unwrap() error
+```
+
+**错误代码**:
+- `INVALID_TASK`, `PLATFORM_MISMATCH`
+- `STORE_NOT_FOUND`, `PRODUCT_NOT_FOUND`
+- `NETWORK_ERROR`, `TIMEOUT`
+
+**收益**:
+- ✅ 统一错误处理策略
+- ✅ 错误信息更结构化
+- ✅ 便于错误分类和监控
+- ✅ 支持错误链追踪
+
 ## 📊 重构统计
 
 | 指标 | 改进前 | 改进后 | 提升 |
@@ -122,6 +171,8 @@ const (
 | 方法职责数 | 7个 | 1个 | 85.7% |
 | 魔法数字 | 15+ | 0 | 100% |
 | 参数列表长度 | 7个 | 1个 | 85.7% |
+| Task 业务方法 | 0个 | 10个 | +1000% |
+| 错误类型 | 通用 error | 结构化 TaskError | 质的提升 |
 
 ## 🔄 待处理的重构项
 
@@ -135,17 +186,17 @@ const (
    - 建议拆分为专职服务
 
 ### 中优先级
-3. **Feature Envy - 将逻辑移到领域对象**
-   - Task 对象应该包含自己的验证逻辑
-   - 建议添加：`IsValid()`, `IsCrawlerTask()`, `GetBasePlatform()`
+3. ~~**Feature Envy - 将逻辑移到领域对象**~~ ✅ 已完成
+   - ~~Task 对象应该包含自己的验证逻辑~~
+   - ~~建议添加：`IsValid()`, `IsCrawlerTask()`, `GetBasePlatform()`~~
 
 4. **Primitive Obsession - 定义明确的类型**
    - 使用 `map[string]any` 表示结构化数据
    - 建议定义：`CrawlerMessagePayload` 等类型
 
-5. **统一错误处理**
-   - 定义统一的错误类型
-   - 使用错误包装
+5. ~~**统一错误处理**~~ ✅ 已完成
+   - ~~定义统一的错误类型~~
+   - ~~使用错误包装~~
 
 ### 低优先级
 6. **减少不必要的注释**
