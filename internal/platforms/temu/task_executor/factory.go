@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/pkg/management"
+	"task-processor/internal/platforms/common/factory"
 	"task-processor/internal/platforms/temu/api/client"
 	"task-processor/internal/platforms/temu/api/services"
 	schedulerservice "task-processor/internal/platforms/temu/services/business_service"
@@ -18,12 +19,8 @@ import (
 
 // TemuTaskFactory TEMU平台任务工厂
 type TemuTaskFactory struct {
-	managementClient *management.ClientManager
-	clientManager    *client.APIClientManager
-	amazonProcessor  *amazon.AmazonProcessor
-	amazonConfig     *config.AmazonConfig
-	monitorConfig    *config.MonitorConfig
-	logger           *logrus.Entry
+	*factory.BaseFactoryImpl
+	clientManager *client.APIClientManager
 }
 
 // NewTemuTaskFactory 创建TEMU任务工厂
@@ -35,33 +32,39 @@ func NewTemuTaskFactory(
 ) *TemuTaskFactory {
 	clientManager := client.NewAPIClientManager(managementClient)
 
+	baseFactory := factory.NewBaseFactory(factory.BaseFactoryConfig{
+		Platform:         "TEMU",
+		ManagementClient: managementClient,
+		AmazonProcessor:  amazonProcessor,
+		AmazonConfig:     amazonConfig,
+		MonitorConfig:    monitorConfig,
+	})
+
 	return &TemuTaskFactory{
-		managementClient: managementClient,
-		clientManager:    clientManager,
-		amazonProcessor:  amazonProcessor,
-		amazonConfig:     amazonConfig,
-		monitorConfig:    monitorConfig,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "TemuTaskFactory",
-		}),
+		BaseFactoryImpl: baseFactory,
+		clientManager:   clientManager,
 	}
 }
 
 // CreateTask 创建任务
 func (f *TemuTaskFactory) CreateTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error) {
-	if config.Platform != "TEMU" {
-		return nil, fmt.Errorf("不支持的平台: %s", config.Platform)
+	// 使用基类验证平台和任务类型
+	if err := f.ValidatePlatform(config); err != nil {
+		return nil, err
+	}
+	if err := f.ValidateTaskType(config.TaskType); err != nil {
+		return nil, err
 	}
 
 	switch config.TaskType {
 	case appscheduler.TaskTypePricing:
-		return NewPricingTask(ctx, config, f.managementClient), nil
+		return NewPricingTask(ctx, config, f.GetManagementClient()), nil
 	case appscheduler.TaskTypeProductSync:
 		return f.createProductSyncTask(ctx, config)
 	case appscheduler.TaskTypeInventory:
 		return f.createInventoryTask(ctx, config)
 	case appscheduler.TaskTypeActivity:
-		return NewActivityTask(ctx, config, f.managementClient), nil
+		return NewActivityTask(ctx, config, f.GetManagementClient()), nil
 	default:
 		return nil, fmt.Errorf("不支持的任务类型: %s", config.TaskType)
 	}
@@ -82,10 +85,10 @@ func (f *TemuTaskFactory) createProductSyncTask(ctx context.Context, config apps
 	skuQueryAPI := services.NewSkuQueryAPI(apiClient, logrus.WithField("component", "TemuSkuQueryAPI"))
 
 	// 获取映射客户端
-	mappingClient := f.managementClient.GetProductImportMappingClient()
+	mappingClient := f.GetManagementClient().GetProductImportMappingClient()
 
 	// 获取店铺客户端
-	storeAPI := f.managementClient.GetStoreClient()
+	storeAPI := f.GetManagementClient().GetStoreClient()
 
 	// 创建产品同步服务配置
 	syncConfig := &schedulerservice.ProductSyncConfig{
@@ -97,7 +100,7 @@ func (f *TemuTaskFactory) createProductSyncTask(ctx context.Context, config apps
 
 	// 创建产品同步服务
 	syncService := schedulerservice.NewProductSyncService(
-		f.managementClient,
+		f.GetManagementClient(),
 		productAPI,
 		skuQueryAPI,
 		mappingClient,
@@ -105,7 +108,7 @@ func (f *TemuTaskFactory) createProductSyncTask(ctx context.Context, config apps
 		syncConfig,
 	)
 
-	return NewProductSyncTask(ctx, config, f.managementClient, syncService), nil
+	return NewProductSyncTask(ctx, config, f.GetManagementClient(), syncService), nil
 }
 
 // createInventoryTask 创建库存同步任务
@@ -117,40 +120,31 @@ func (f *TemuTaskFactory) createInventoryTask(ctx context.Context, config appsch
 	}
 
 	// 验证必需的依赖
-	if f.amazonProcessor == nil {
+	if f.GetAmazonProcessor() == nil {
 		return nil, fmt.Errorf("Amazon处理器未初始化")
 	}
 
-	if f.amazonConfig == nil {
+	if f.GetAmazonConfig() == nil {
 		return nil, fmt.Errorf("Amazon配置未初始化")
 	}
 
-	if f.monitorConfig == nil {
+	if f.GetMonitorConfig() == nil {
 		return nil, fmt.Errorf("监控配置未初始化")
 	}
 
 	return NewInventoryTask(
 		ctx,
 		config,
-		f.managementClient,
+		f.GetManagementClient(),
 		temuAPIClient,
-		f.amazonProcessor,
-		f.amazonConfig,
-		f.monitorConfig,
+		f.GetAmazonProcessor(),
+		f.GetAmazonConfig(),
+		f.GetMonitorConfig(),
 	), nil
-}
-
-// SupportedPlatform 支持的平台
-func (f *TemuTaskFactory) SupportedPlatform() string {
-	return "TEMU"
 }
 
 // SupportedTaskTypes 支持的任务类型
 func (f *TemuTaskFactory) SupportedTaskTypes() []appscheduler.TaskType {
-	return []appscheduler.TaskType{
-		appscheduler.TaskTypePricing,
-		appscheduler.TaskTypeProductSync,
-		appscheduler.TaskTypeInventory,
-		appscheduler.TaskTypeActivity,
-	}
+	// TEMU平台支持所有基础任务类型
+	return f.BaseFactoryImpl.SupportedTaskTypes()
 }

@@ -1,0 +1,98 @@
+// Package factory 提供平台任务工厂的公共实现
+package factory
+
+import (
+	"fmt"
+	"strings"
+
+	appscheduler "task-processor/internal/app/scheduler"
+)
+
+// TaskTypeToString 任务类型转字符串
+func TaskTypeToString(taskType appscheduler.TaskType) string {
+	switch taskType {
+	case appscheduler.TaskTypePricing:
+		return "Pricing"
+	case appscheduler.TaskTypeProductSync:
+		return "ProductSync"
+	case appscheduler.TaskTypeInventory:
+		return "Inventory"
+	case appscheduler.TaskTypeActivity:
+		return "Activity"
+	default:
+		return string(taskType)
+	}
+}
+
+// StringToTaskType 字符串转任务类型
+func StringToTaskType(taskTypeStr string) (appscheduler.TaskType, error) {
+	switch strings.ToLower(taskTypeStr) {
+	case "pricing":
+		return appscheduler.TaskTypePricing, nil
+	case "productsync":
+		return appscheduler.TaskTypeProductSync, nil
+	case "inventory":
+		return appscheduler.TaskTypeInventory, nil
+	case "activity":
+		return appscheduler.TaskTypeActivity, nil
+	default:
+		return "", fmt.Errorf("未知的任务类型: %s", taskTypeStr)
+	}
+}
+
+// ValidateTaskConfig 验证任务配置
+func ValidateTaskConfig(config appscheduler.TaskConfig) error {
+	if config.Platform == "" {
+		return fmt.Errorf("平台名称不能为空")
+	}
+	if config.TaskType == "" {
+		return fmt.Errorf("任务类型不能为空")
+	}
+	if config.StoreID <= 0 {
+		return fmt.Errorf("店铺ID必须大于0")
+	}
+	if config.TenantID <= 0 {
+		return fmt.Errorf("租户ID必须大于0")
+	}
+	return nil
+}
+
+// GetTaskTypeDisplayName 获取任务类型显示名称
+func GetTaskTypeDisplayName(taskType appscheduler.TaskType) string {
+	switch taskType {
+	case appscheduler.TaskTypePricing:
+		return "核价任务"
+	case appscheduler.TaskTypeProductSync:
+		return "产品同步任务"
+	case appscheduler.TaskTypeInventory:
+		return "库存监控任务"
+	case appscheduler.TaskTypeActivity:
+		return "活动报名任务"
+	default:
+		return string(taskType)
+	}
+}
+
+// GetPlatformDisplayName 获取平台显示名称
+func GetPlatformDisplayName(platform string) string {
+	switch strings.ToUpper(platform) {
+	case "SHEIN":
+		return "SHEIN"
+	case "TEMU":
+		return "TEMU"
+	case "AMAZON":
+		return "Amazon"
+	default:
+		return platform
+	}
+}
+
+// FormatTaskInfo 格式化任务信息
+func FormatTaskInfo(config appscheduler.TaskConfig) string {
+	return fmt.Sprintf("%s - %s (店铺: %d, 租户: %d)",
+		GetPlatformDisplayName(config.Platform),
+		GetTaskTypeDisplayName(config.TaskType),
+		config.StoreID,
+		config.TenantID,
+	)
+}
