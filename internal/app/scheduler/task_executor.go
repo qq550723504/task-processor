@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"task-processor/internal/core/logger"
+	"task-processor/internal/pkg/contextutil"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -123,7 +124,7 @@ func (e *TaskExecutor) executeTask() {
 	e.logger.Info("开始执行任务")
 
 	// 创建任务上下文，设置超时
-	taskCtx, cancel := context.WithTimeout(e.ctx, 60*time.Minute)
+	taskCtx, cancel := contextutil.WithTaskExtraTimeout(e.ctx)
 	defer cancel()
 
 	// 检查依赖任务是否满足

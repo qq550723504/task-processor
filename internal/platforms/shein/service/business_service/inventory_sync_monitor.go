@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/pkg/contextutil"
 	managementapi "task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/recovery"
 
@@ -45,7 +46,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	}
 
 	// 为单个产品设置2分钟超时
-	productCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	productCtx, cancel := contextutil.WithTaskTimeout(ctx)
 	defer cancel()
 
 	// 使用 ProductFetcher 获取Amazon产品数据（自动处理缓存）

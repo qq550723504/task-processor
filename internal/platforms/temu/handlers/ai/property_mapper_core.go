@@ -2,13 +2,12 @@
 package ai
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
@@ -106,7 +105,7 @@ func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskCon
 	}).Info("使用AI智能映射商品属性")
 
 	// 调用AI进行属性映射 - 使用传入的context，添加超时控制
-	aiCtx, cancel := context.WithTimeout(temuCtx.GetContext(), 60*time.Second)
+	aiCtx, cancel := contextutil.WithAITimeout(temuCtx.GetContext())
 	defer cancel()
 
 	mappingData := preparePropertyMappingData(temuCtx, templateInfo.GoodsProperties)

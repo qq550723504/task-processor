@@ -10,11 +10,11 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -122,7 +122,7 @@ func (h *VariantJsonDataHandler) fetchAllVariants(temuCtx *temucontext.TemuTaskC
 		h.logger.Infof("📦 获取变体 [%d/%d]: %s", i+1, len(variantAsins), asin)
 
 		// 为每个变体请求设置2分钟超时
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		ctx, cancel := contextutil.WithTaskTimeout(context.Background())
 
 		// 构建获取请求
 		req := &product.FetchRequest{

@@ -7,10 +7,10 @@ import (
 	"slices"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/api/category"
 	"task-processor/internal/platforms/shein/model"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -227,7 +227,7 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, titl
 	}
 
 	// 2. AI选择一级分类 - 使用传入的context，添加超时控制
-	aiCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	aiCtx, cancel := contextutil.WithAIShortTimeout(ctx)
 	defer cancel()
 
 	selectedLevelOneID, err := m.aiSelector.SelectLevelOneCategoryByAI(aiCtx, title, levelOneIDs, levelOneMap)
@@ -249,7 +249,7 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, titl
 	}
 
 	// 4. AI在这些叶子节点中做最终选择 - 使用传入的context，添加超时控制
-	aiCtx2, cancel2 := context.WithTimeout(ctx, 30*time.Second)
+	aiCtx2, cancel2 := contextutil.WithAIShortTimeout(ctx)
 	defer cancel2()
 
 	selectedCategoryID, err := m.aiSelector.SelectCategoryByAI(aiCtx2, title, leafIDs, leafMap)

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/domain/model"
-	"time"
+	"task-processor/internal/pkg/contextutil"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -18,7 +18,7 @@ type RatingExtractor struct{}
 
 // Extract 提取评分和评论数据
 func (e *RatingExtractor) Extract(page playwright.Page, product *model.Product) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := contextutil.WithAIShortTimeout(context.Background())
 	defer cancel()
 
 	// 等待页面加载完成

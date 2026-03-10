@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/contextutil"
 )
 
 // VisionDetector Vision API检测器
@@ -62,9 +63,9 @@ func (v *VisionDetector) detectWithVisionAPI(ctx context.Context, img image.Imag
 
 	// 使用传入的context，如果没有超时则添加默认超时
 	ctxWithTimeout := ctx
-	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 30*time.Second {
+	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > contextutil.AIShortTimeout {
 		var cancel context.CancelFunc
-		ctxWithTimeout, cancel = context.WithTimeout(ctx, 30*time.Second)
+		ctxWithTimeout, cancel = contextutil.WithAIShortTimeout(ctx)
 		defer cancel()
 	}
 

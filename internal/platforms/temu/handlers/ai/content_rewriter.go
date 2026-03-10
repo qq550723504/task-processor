@@ -5,10 +5,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/jsonutil"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -71,7 +71,7 @@ func (r *AIContentRewriter) HandleTemu(temuCtx *temucontext.TemuTaskContext) err
 	r.logger.Infof("📝 用户提示词长度: %d", len(userPrompt))
 
 	// 调用AI进行重构 - 使用传入的context，添加超时控制
-	aiCtx, cancel := context.WithTimeout(temuCtx.GetContext(), 60*time.Second)
+	aiCtx, cancel := contextutil.WithAITimeout(temuCtx.GetContext())
 	defer cancel()
 
 	result, err := r.callAIForRewrite(aiCtx, systemPrompt, userPrompt)

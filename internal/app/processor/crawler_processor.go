@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/domain/product"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/pkg/contextutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -199,7 +200,7 @@ func (p *CrawlerProcessor) sendCrawlResult(replyTo string, taskID int64, product
 
 	// 发送到回复队列
 	if p.rabbitmqClient != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := contextutil.WithHTTPShortTimeout(context.Background())
 		defer cancel()
 
 		if publishErr := p.rabbitmqClient.Publish(ctx, replyTo, resultBytes); publishErr != nil {

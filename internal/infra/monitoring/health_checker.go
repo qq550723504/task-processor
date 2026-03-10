@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/pkg/contextutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -126,7 +127,7 @@ func (h *HealthChecker) runHealthChecks() {
 
 // runSingleCheck 运行单个健康检查
 func (h *HealthChecker) runSingleCheck(check HealthCheck) *HealthStatus {
-	ctx, cancel := context.WithTimeout(h.ctx, 10*time.Second)
+	ctx, cancel := contextutil.WithHealthTimeout(h.ctx)
 	defer cancel()
 
 	status := &HealthStatus{

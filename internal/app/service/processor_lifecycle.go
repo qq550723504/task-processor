@@ -3,11 +3,11 @@ package service
 
 import (
 	"context"
-	"time"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/infra/auth"
+	"task-processor/internal/pkg/contextutil"
 )
 
 // StartProcessors 启动所有处理器
@@ -84,7 +84,7 @@ func (s *processorServiceImpl) StopProcessors() error {
 	}
 
 	// 使用生命周期管理器停止所有组件
-	stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	stopCtx, cancel := contextutil.WithShutdownTimeout(context.Background())
 	defer cancel()
 
 	var lastError error

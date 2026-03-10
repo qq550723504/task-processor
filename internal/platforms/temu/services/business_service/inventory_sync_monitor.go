@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/pkg/contextutil"
 	managementapi "task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -114,7 +115,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	}
 
 	// 为单个产品设置2分钟超时
-	productCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	productCtx, cancel := contextutil.WithTaskTimeout(ctx)
 	defer cancel()
 
 	s.logger.WithFields(logrus.Fields{

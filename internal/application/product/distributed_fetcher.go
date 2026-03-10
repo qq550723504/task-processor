@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/domain/model"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
@@ -117,7 +118,7 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(req *domainProdu
 	}
 
 	// 提交爬虫任务并等待结果
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := contextutil.WithTaskLongTimeout(context.Background())
 	defer cancel()
 
 	result, err := f.distributedCrawler.SubmitCrawlTask(ctx, crawlReq)

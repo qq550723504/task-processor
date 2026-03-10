@@ -2,15 +2,14 @@
 package translate
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"task-processor/internal/domain/model"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/platforms/shein/api/product"
 	shein_model "task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/service/content"
-	"time"
 )
 
 // TranslateHandler 翻译处理器
@@ -53,7 +52,7 @@ func (h *TranslateHandler) Handle(ctx *shein_model.TaskContext) error {
 	var err error
 	if detectedLang == "en" {
 		// 创建带超时的context用于AI调用 - 使用传入的context
-		aiCtx, cancel := context.WithTimeout(ctx.Context, 30*time.Second)
+		aiCtx, cancel := contextutil.WithAIShortTimeout(ctx.Context)
 		defer cancel()
 
 		optimizedTitle, optimizedDescription, err = h.contentOptimizer.OptimizeTitleAndDescription(aiCtx, cleanedTitle, cleanedDescription, features)

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/service/translate"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -235,7 +235,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *model.TaskCont
 	}
 
 	// 创建带超时的上下文
-	aiCtx, cancel := context.WithTimeout(ctx.Context, 30*time.Second)
+	aiCtx, cancel := contextutil.WithAIShortTimeout(ctx.Context)
 	defer cancel()
 
 	// 一次性批量优化所有英文内容

@@ -5,11 +5,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/jsonutil"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
@@ -160,7 +160,7 @@ func (vp *SkuVariantProcessor) callAIAPI(request types.VariantMappingRequest) (*
 	userPrompt := vp.buildUserPrompt(request)
 
 	// 调用AI API
-	aiCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	aiCtx, cancel := contextutil.WithAITimeout(context.Background())
 	defer cancel()
 
 	resp, err := vp.aiClient.CreateChatCompletion(aiCtx, &openai.ChatCompletionRequest{
