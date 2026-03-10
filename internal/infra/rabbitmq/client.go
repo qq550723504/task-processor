@@ -19,13 +19,13 @@ type Client struct {
 
 // Message 消息结构
 type Message struct {
-	ID         string                 `json:"id"`
-	Type       string                 `json:"type"`
-	Payload    map[string]interface{} `json:"payload"`
-	Priority   uint8                  `json:"priority"`
-	Timestamp  int64                  `json:"timestamp"`
-	RetryCount int                    `json:"retry_count"`
-	MaxRetries int                    `json:"max_retries"`
+	ID         string         `json:"id"`
+	Type       string         `json:"type"`
+	Payload    map[string]any `json:"payload"`
+	Priority   uint8          `json:"priority"`
+	Timestamp  int64          `json:"timestamp"`
+	RetryCount int            `json:"retry_count"`
+	MaxRetries int            `json:"max_retries"`
 }
 
 // PublishOptions 发布选项
@@ -224,75 +224,53 @@ func (c *Client) Consume(ctx context.Context, opts ConsumeOptions) (<-chan amqp.
 	return deliveries, nil
 }
 
-// ParseMessage 解析消息
-// 自动检测并支持两种消息格式:
-// 1. 嵌套格式(Go): {id, type, payload: {...}, priority, timestamp}
-// 2. 扁平格式(Java): {taskId, tenantId, storeId, ...}
+// ParseMessage 解析消息（基础设施层）
+// 只负责从 amqp.Delivery 解析为基础的 Message 结构
+// 业务逻辑的转换由领域层的 MessageAdapter 处理
 func (c *Client) ParseMessage(delivery amqp.Delivery) (*Message, error) {
-	// 先尝试解析为标准的嵌套格式
+	// 尝试解析为标准格式
 	var msg Message
 	err := json.Unmarshal(delivery.Body, &msg)
 
-	// 如果解析成功且包含 payload 字段,说明是嵌套格式
+	// 如果解析成功且包含 payload 字段，说明是标准嵌套格式
 	if err == nil && msg.Payload != nil && len(msg.Payload) > 0 {
 		return &msg, nil
 	}
 
-	// 否则,尝试解析为 Java 后端发送的扁平格式
-	var flatMsg map[string]interface{}
+	// 否则，尝试解析为扁平格式（整个消息体作为 payload）
+	var flatMsg map[string]any
 	err = json.Unmarshal(delivery.Body, &flatMsg)
 	if err != nil {
 		return nil, fmt.Errorf("解析消息失败: %w", err)
 	}
 
-	// 检查是否是扁平格式(包含 taskId 字段)
-	if _, hasTaskID := flatMsg["taskId"]; hasTaskID {
-		// 将扁平格式转换为嵌套格式
-		msg = Message{
-			ID:         delivery.MessageId,
-			Type:       getStringValue(flatMsg, "taskType", "task.import"),
-			Payload:    flatMsg, // 整个消息体作为 payload
-			Priority:   uint8(getIntValue(flatMsg, "priority", 5)),
-			Timestamp:  time.Now().Unix(),
-			RetryCount: getIntValue(flatMsg, "retryCount", 0),
-			MaxRetries: getIntValue(flatMsg, "maxRetryCount", 3),
-		}
-
-		// 如果消息ID为空,生成一个
-		if msg.ID == "" {
-			msg.ID = fmt.Sprintf("msg-%d", time.Now().UnixNano())
-		}
-
-		c.logger.Debugf("检测到Java扁平格式消息,已转换: taskId=%v", flatMsg["taskId"])
-		return &msg, nil
+	// 构建标准格式的消息
+	msg = Message{
+		ID:         delivery.MessageId,
+		Type:       delivery.Type,
+		Payload:    flatMsg,
+		Priority:   delivery.Priority,
+		Timestamp:  delivery.Timestamp.Unix(),
+		RetryCount: 0,
+		MaxRetries: 3,
 	}
 
-	return nil, fmt.Errorf("无法识别的消息格式")
-}
+	// 如果消息ID为空，生成一个
+	if msg.ID == "" {
+		msg.ID = fmt.Sprintf("msg-%d", time.Now().UnixNano())
+	}
 
-// getStringValue 从 map 中获取字符串值
-func getStringValue(m map[string]interface{}, key string, defaultValue string) string {
-	if v, ok := m[key]; ok {
-		if str, ok := v.(string); ok {
-			return str
+	// 从Headers中获取重试信息
+	if delivery.Headers != nil {
+		if retryCount, ok := delivery.Headers["retry_count"].(int32); ok {
+			msg.RetryCount = int(retryCount)
+		}
+		if maxRetries, ok := delivery.Headers["max_retries"].(int32); ok {
+			msg.MaxRetries = int(maxRetries)
 		}
 	}
-	return defaultValue
-}
 
-// getIntValue 从 map 中获取整数值
-func getIntValue(m map[string]interface{}, key string, defaultValue int) int {
-	if v, ok := m[key]; ok {
-		switch val := v.(type) {
-		case int:
-			return val
-		case int64:
-			return int(val)
-		case float64:
-			return int(val)
-		}
-	}
-	return defaultValue
+	return &msg, nil
 }
 
 // AckMessage 确认消息

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,41 +26,32 @@ type MessageConsumer struct {
 
 	// 配置
 	config       ConsumerConfig
-	queueConfigs []ConsumerQueueConfig // 多队列配置
-}
+	queueConfigs []QueueConfig // 多队列配置
 
-// ConsumerConfig 消费者配置
-type ConsumerConfig struct {
-	PrefetchCount int           `yaml:"prefetch_count"`
-	PrefetchSize  int           `yaml:"prefetch_size"`
-	RetryDelay    time.Duration `yaml:"retry_delay"`
-	MaxRetries    int           `yaml:"max_retries"`
+	// 状态管理和错误收集
+	stateManager   map[string]*ConsumerStateManager // queue -> state manager
+	errorCollector *ErrorCollector
 }
 
 // NewMessageConsumer 创建消息消费者管理器
 func NewMessageConsumer(client *Client, config ConsumerConfig, logger *logrus.Logger) *MessageConsumer {
-	if config.PrefetchCount == 0 {
-		config.PrefetchCount = 1
-	}
-	if config.RetryDelay == 0 {
-		config.RetryDelay = 5 * time.Second
-	}
-	if config.MaxRetries == 0 {
-		config.MaxRetries = 3
-	}
+	// 设置默认值
+	config.SetDefaults()
 
 	return &MessageConsumer{
-		client:       client,
-		logger:       logger,
-		handlers:     make(map[string]MessageHandler),
-		consumers:    make(map[string]*QueueConsumer),
-		config:       config,
-		queueConfigs: []ConsumerQueueConfig{}, // 初始化为空，后续通过SetQueueConfigs设置
+		client:         client,
+		logger:         logger,
+		handlers:       make(map[string]MessageHandler),
+		consumers:      make(map[string]*QueueConsumer),
+		config:         config,
+		queueConfigs:   []QueueConfig{},
+		stateManager:   make(map[string]*ConsumerStateManager),
+		errorCollector: NewErrorCollector(1000),
 	}
 }
 
 // SetQueueConfigs 设置队列配置
-func (mc *MessageConsumer) SetQueueConfigs(configs []ConsumerQueueConfig) {
+func (mc *MessageConsumer) SetQueueConfigs(configs []QueueConfig) {
 	mc.mutex.Lock()
 	defer mc.mutex.Unlock()
 	mc.queueConfigs = configs
@@ -72,7 +64,8 @@ func (mc *MessageConsumer) RegisterHandler(queueName string, handler MessageHand
 	defer mc.mutex.Unlock()
 
 	mc.handlers[queueName] = handler
-	mc.logger.Infof("注册消息处理器: 队列=%s", queueName)
+	// 为每个队列创建状态管理器
+	mc.stateManager[queueName] = NewConsumerStateManager()
 }
 
 // Start 启动消费者
@@ -84,9 +77,25 @@ func (mc *MessageConsumer) Start(ctx context.Context) error {
 
 	// 启动所有队列的消费者
 	for queueName, handler := range mc.handlers {
+		// 设置状态为启动中
+		if sm, exists := mc.stateManager[queueName]; exists {
+			sm.SetState(ConsumerStateStarting, queueName)
+		}
+
 		if err := mc.startQueueConsumer(queueName, handler); err != nil {
 			mc.logger.Errorf("启动队列 %s 消费者失败: %v", queueName, err)
+			// 记录错误
+			mc.errorCollector.Collect(ErrorTypeConsumer, queueName, "", err, "启动消费者失败")
+			// 设置错误状态
+			if sm, exists := mc.stateManager[queueName]; exists {
+				sm.SetError(err, queueName)
+			}
 			return fmt.Errorf("启动队列 %s 消费者失败: %w", queueName, err)
+		}
+
+		// 设置状态为运行中
+		if sm, exists := mc.stateManager[queueName]; exists {
+			sm.SetState(ConsumerStateRunning, queueName)
 		}
 	}
 
@@ -96,25 +105,34 @@ func (mc *MessageConsumer) Start(ctx context.Context) error {
 
 // Restart 重启所有消费者（用于重连后恢复）
 func (mc *MessageConsumer) Restart() error {
+	mc.logger.Info("开始重启所有消费者...")
+
+	// 1. 获取旧的消费者列表（在锁内）
+	mc.mutex.Lock()
+	oldConsumers := mc.consumers
+	mc.consumers = make(map[string]*QueueConsumer)
+	mc.mutex.Unlock()
+
+	// 2. 在锁外停止旧消费者（避免长时间持锁）
+	var wg sync.WaitGroup
+	for queueName, consumer := range oldConsumers {
+		wg.Add(1)
+		go func(name string, c *QueueConsumer) {
+			defer wg.Done()
+			mc.logger.Infof("停止队列 %s 消费者", name)
+			c.cancel()
+			// 关闭独立通道
+			if c.channel != nil {
+				c.channel.Close()
+			}
+		}(queueName, consumer)
+	}
+	wg.Wait()
+
+	// 3. 重新启动所有队列的消费者（在锁内）
 	mc.mutex.Lock()
 	defer mc.mutex.Unlock()
 
-	mc.logger.Info("开始重启所有消费者...")
-
-	// 停止现有消费者并关闭通道
-	for queueName, consumer := range mc.consumers {
-		mc.logger.Infof("停止队列 %s 消费者", queueName)
-		consumer.cancel()
-		// 关闭独立通道
-		if consumer.channel != nil {
-			consumer.channel.Close()
-		}
-	}
-
-	// 清空消费者列表
-	mc.consumers = make(map[string]*QueueConsumer)
-
-	// 重新启动所有队列的消费者
 	for queueName, handler := range mc.handlers {
 		if err := mc.startQueueConsumer(queueName, handler); err != nil {
 			mc.logger.Errorf("重启队列 %s 消费者失败: %v", queueName, err)
@@ -130,44 +148,79 @@ func (mc *MessageConsumer) Restart() error {
 // startQueueConsumer 启动队列消费者
 func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageHandler) error {
 	// 查找队列配置
-	var queueConfig *ConsumerQueueConfig
+	queueConfig := mc.findQueueConfig(queueName)
+
+	// 创建独立通道并设置QoS
+	channel, err := mc.createConsumerChannel(queueConfig)
+	if err != nil {
+		return err
+	}
+
+	// 开始消费
+	deliveries, consumerTag, err := mc.startConsuming(channel, queueName)
+	if err != nil {
+		channel.Close()
+		return err
+	}
+
+	// 创建队列消费者
+	consumer := mc.createQueueConsumer(queueName, consumerTag, handler, channel, deliveries, queueConfig)
+	mc.consumers[queueName] = consumer
+
+	// 启动消费goroutine
+	mc.launchConsumerWorkers(consumer)
+
+	mc.logger.Infof("队列 %s 消费者启动成功，消费者标签: %s, priority=%d, prefetch=%d",
+		queueName, consumerTag, queueConfig.Priority, queueConfig.Prefetch)
+	return nil
+}
+
+// findQueueConfig 查找队列配置
+func (mc *MessageConsumer) findQueueConfig(queueName string) *QueueConfig {
 	for i := range mc.queueConfigs {
 		if mc.queueConfigs[i].Name == queueName {
-			queueConfig = &mc.queueConfigs[i]
-			break
+			config := mc.queueConfigs[i]
+			config.SetDefaults()
+			return &config
 		}
 	}
 
-	// 如果没有找到配置，使用默认值
-	prefetch := mc.config.PrefetchCount
-	priority := 5 // 默认中等优先级
-	if queueConfig != nil {
-		prefetch = queueConfig.Prefetch
-		priority = queueConfig.Priority
-		mc.logger.Infof("队列 %s 使用配置: priority=%d, prefetch=%d", queueName, priority, prefetch)
-	} else {
-		mc.logger.Warnf("队列 %s 未找到配置，使用默认值: priority=%d, prefetch=%d", queueName, priority, prefetch)
+	// 如果没有找到配置，返回默认配置
+	mc.logger.Warnf("队列 %s 未找到配置，使用默认值", queueName)
+	defaultConfig := QueueConfig{
+		Name:     queueName,
+		Priority: 5,
+		Prefetch: mc.config.PrefetchCount,
 	}
+	return &defaultConfig
+}
 
+// createConsumerChannel 创建消费者独立通道并设置QoS
+func (mc *MessageConsumer) createConsumerChannel(queueConfig *QueueConfig) (*amqp.Channel, error) {
 	// 为每个消费者创建独立通道（避免QoS冲突）
 	channel, err := mc.client.connManager.CreateChannel()
 	if err != nil {
-		return fmt.Errorf("创建独立通道失败: %w", err)
+		return nil, fmt.Errorf("创建独立通道失败: %w", err)
 	}
 
 	// 在独立通道上设置QoS
 	err = channel.Qos(
-		prefetch,               // prefetch count（使用队列配置的值）
+		queueConfig.Prefetch,   // prefetch count
 		mc.config.PrefetchSize, // prefetch size
 		false,                  // global
 	)
 	if err != nil {
-		channel.Close() // 关闭通道
-		return fmt.Errorf("设置QoS失败: %w", err)
+		channel.Close()
+		return nil, fmt.Errorf("设置QoS失败: %w", err)
 	}
 
-	// 在独立通道上开始消费
+	return channel, nil
+}
+
+// startConsuming 开始消费队列
+func (mc *MessageConsumer) startConsuming(channel *amqp.Channel, queueName string) (<-chan amqp.Delivery, string, error) {
 	consumerTag := fmt.Sprintf("%s-consumer-%d", queueName, time.Now().Unix())
+
 	deliveries, err := channel.Consume(
 		queueName,   // 队列名称
 		consumerTag, // 消费者标签
@@ -178,39 +231,50 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 		nil,         // args
 	)
 	if err != nil {
-		channel.Close() // 关闭通道
-		return fmt.Errorf("开始消费队列 %s 失败: %w", queueName, err)
+		return nil, "", fmt.Errorf("开始消费队列 %s 失败: %w", queueName, err)
 	}
 
-	// 创建队列消费者
+	return deliveries, consumerTag, nil
+}
+
+// createQueueConsumer 创建队列消费者实例
+func (mc *MessageConsumer) createQueueConsumer(
+	queueName string,
+	consumerTag string,
+	handler MessageHandler,
+	channel *amqp.Channel,
+	deliveries <-chan amqp.Delivery,
+	queueConfig *QueueConfig,
+) *QueueConsumer {
 	queueCtx, queueCancel := context.WithCancel(mc.ctx)
-	queueConsumer := &QueueConsumer{
-		queueName:   queueName,
-		consumerTag: consumerTag,
-		handler:     handler,
-		deliveries:  deliveries,
-		ctx:         queueCtx,
-		cancel:      queueCancel,
-		logger:      mc.logger,
-		config:      mc.config,
-		priority:    priority,
-		prefetch:    prefetch,
-		client:      mc.client,
-		channel:     channel, // 保存独立通道
+
+	return &QueueConsumer{
+		queueName:       queueName,
+		consumerTag:     consumerTag,
+		handler:         handler,
+		deliveries:      deliveries,
+		ctx:             queueCtx,
+		cancel:          queueCancel,
+		logger:          mc.logger,
+		config:          mc.config,
+		priority:        queueConfig.Priority,
+		prefetch:        queueConfig.Prefetch,
+		client:          mc.client,
+		channel:         channel,
+		panicCounts:     make(map[string]int),
+		maxPanicRetries: 3,
+		stateManager:    mc.stateManager[queueName],
+		errorCollector:  mc.errorCollector,
 	}
+}
 
-	mc.consumers[queueName] = queueConsumer
-
-	// 启动消费goroutine
+// launchConsumerWorkers 启动消费者工作协程
+func (mc *MessageConsumer) launchConsumerWorkers(consumer *QueueConsumer) {
 	mc.wg.Add(1)
 	go func() {
 		defer mc.wg.Done()
-		queueConsumer.consume()
+		consumer.consume()
 	}()
-
-	mc.logger.Infof("队列 %s 消费者启动成功，消费者标签: %s, priority=%d, prefetch=%d",
-		queueName, consumerTag, priority, prefetch)
-	return nil
 }
 
 // Stop 停止消费者
@@ -219,6 +283,11 @@ func (mc *MessageConsumer) Stop(ctx context.Context) error {
 	defer mc.mutex.Unlock()
 
 	mc.logger.Info("开始停止消息消费者...")
+
+	// 设置所有消费者状态为停止中
+	for queueName, sm := range mc.stateManager {
+		sm.SetState(ConsumerStateStopping, queueName)
+	}
 
 	// 取消所有消费者并关闭通道
 	for queueName, consumer := range mc.consumers {
@@ -245,6 +314,10 @@ func (mc *MessageConsumer) Stop(ctx context.Context) error {
 	select {
 	case <-done:
 		mc.logger.Info("所有消费者goroutine已停止")
+		// 设置所有消费者状态为已停止
+		for queueName, sm := range mc.stateManager {
+			sm.SetState(ConsumerStateStopped, queueName)
+		}
 	case <-ctx.Done():
 		mc.logger.Warn("等待消费者停止超时")
 		return fmt.Errorf("停止消费者超时")
@@ -261,15 +334,42 @@ func (mc *MessageConsumer) GetQueueStats() map[string]interface{} {
 
 	stats := make(map[string]interface{})
 	stats["total_queues"] = len(mc.consumers)
-	stats["active_consumers"] = len(mc.consumers)
 
+	activeCount := 0
 	queueStats := make(map[string]interface{})
 	for queueName := range mc.consumers {
+		sm := mc.stateManager[queueName]
+		stateInfo := sm.GetStateInfo()
+
+		if sm.IsRunning() {
+			activeCount++
+		}
+
 		queueStats[queueName] = map[string]interface{}{
-			"status": "active",
+			"status":        stateInfo.State.String(),
+			"message_count": stateInfo.MessageCount,
+			"success_count": stateInfo.SuccessCount,
+			"failure_count": stateInfo.FailureCount,
+			"error_count":   stateInfo.ErrorCount,
+			"is_healthy":    sm.IsHealthy(),
 		}
 	}
+
+	stats["active_consumers"] = activeCount
 	stats["queues"] = queueStats
 
+	// 添加错误统计
+	errorStats := mc.errorCollector.GetErrorStats()
+	stats["errors"] = map[string]interface{}{
+		"total":    errorStats.Total,
+		"by_type":  errorStats.ByType,
+		"by_queue": errorStats.ByQueue,
+	}
+
 	return stats
+}
+
+// GetErrorCollector 获取错误收集器
+func (mc *MessageConsumer) GetErrorCollector() *ErrorCollector {
+	return mc.errorCollector
 }

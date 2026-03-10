@@ -2,101 +2,87 @@
 
 ## 用途
 
-提供 RabbitMQ 消息队列的完整封装，包括连接管理、消息生产、消息消费、任务提交、结果上报、负载监控等功能。
+提供 RabbitMQ 消息队列的核心封装，包括连接管理、消息生产、消息消费、负载监控等功能。
 
 ## 目录结构
 
 ```
 rabbitmq/
 ├── README.md              # 本文件
-├── client.go              # RabbitMQ 客户端
+├── client.go              # RabbitMQ 客户端封装
 ├── config.go              # 配置结构定义
-├── connection.go          # 连接管理器
-├── consumer.go            # 消息消费者
-├── deduplicator.go        # 消息去重器
-├── initializer.go         # 初始化器
+├── connection.go          # 连接管理器（支持自动重连）
+├── consumer.go            # 消息消费者管理器
 ├── load_monitor.go        # 负载监控器
-├── result_reporter.go     # 结果上报器
-├── service_manager.go     # 服务管理器
-├── service.go             # RabbitMQ 服务
-├── task_adapter.go        # 任务消息适配器
-├── task_handler.go        # 任务处理器
-└── task_submitter.go      # 任务提交器
+├── message.go             # 消息处理器接口
+└── queue_consumer.go      # 队列消费者（Worker Pool模式）
 ```
 
 ## 核心组件
 
-### 1. ServiceManager（服务管理器）
-
-**职责：**
-- 统一管理所有 RabbitMQ 相关服务
-- 协调服务启动和停止
-- 提供健康检查和指标接口
-- 处理优雅关闭
-
-**主要方法：**
-```go
-// 创建服务管理器
-func NewServiceManager(configPath string, logger *logrus.Logger) (*ServiceManager, error)
-
-// 注册任务处理器
-func (sm *ServiceManager) RegisterProcessor(platform string, processor worker.Processor) error
-
-// 启动所有服务
-func (sm *ServiceManager) Start(ctx context.Context) error
-
-// 停止所有服务
-func (sm *ServiceManager) Stop(ctx context.Context) error
-
-// 获取统计信息
-func (sm *ServiceManager) GetStats() map[string]interface{}
-```
-
-**HTTP 端点：**
-- `GET /health` - 健康检查
-- `GET /ready` - 就绪检查
-- `GET /metrics` - Prometheus 格式指标
-- `GET /stats` - 详细统计信息
-
-### 2. Client（RabbitMQ 客户端）
+### 1. Client（RabbitMQ 客户端）
 
 **职责：**
 - 封装 RabbitMQ 连接和通道操作
 - 提供消息发布和消费接口
-- 管理队列和交换机
+- 管理队列和交换机声明
 
 **主要方法：**
 ```go
 // 创建客户端
-func NewClient(config *config.RabbitMQConfig, logger *logrus.Logger) *Client
+func NewClient(connManager *ConnectionManager, logger *logrus.Logger) *Client
 
-// 连接到 RabbitMQ
-func (c *Client) Connect(ctx context.Context) error
+// 声明队列
+func (c *Client) DeclareQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) error
+
+// 声明交换机
+func (c *Client) DeclareExchange(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
 
 // 发布消息
-func (c *Client) Publish(ctx context.Context, opts PublishOptions) error
+func (c *Client) Publish(ctx context.Context, msg *Message, opts PublishOptions) error
 
 // 消费消息
 func (c *Client) Consume(ctx context.Context, opts ConsumeOptions) (<-chan amqp.Delivery, error)
 
-// 声明队列
-func (c *Client) DeclareQueue(ctx context.Context, opts QueueOptions) error
+// 解析消息（支持多种格式）
+func (c *Client) ParseMessage(delivery amqp.Delivery) (*Message, error)
 ```
 
-### 3. ConnectionManager（连接管理器）
+### 2. ConnectionManager（连接管理器）
 
 **职责：**
 - 管理 RabbitMQ 连接和通道
 - 自动重连机制
-- 连接池管理
+- 连接健康监控
 
 **特性：**
-- 自动重连
+- 自动重连（可配置重连间隔和最大次数）
 - 连接健康检查
-- 通道复用
+- 支持重连回调注册
 - 错误恢复
 
-### 4. MessageConsumer（消息消费者）
+**主要方法：**
+```go
+// 创建连接管理器
+func NewConnectionManager(config ConnectionConfig, logger *logrus.Logger) *ConnectionManager
+
+// 建立连接
+func (cm *ConnectionManager) Connect(ctx context.Context) error
+
+// 获取通道
+func (cm *ConnectionManager) GetChannel() (*amqp.Channel, error)
+
+// 创建新通道（用于消费者独立通道）
+func (cm *ConnectionManager) CreateChannel() (*amqp.Channel, error)
+
+// 注册重连回调
+func (cm *ConnectionManager) RegisterReconnectCallback(callback func() error)
+
+// 检查连接状态
+func (cm *ConnectionManager) IsConnected() bool
+```
+
+### 3. MessageConsumer（消息消费者管理器）
 
 **职责：**
 - 从队列消费消息
@@ -121,188 +107,71 @@ queues:
     prefetch: 10
 ```
 
-**使用示例：**
-```go
-// 创建消费者
-consumer := NewMessageConsumer(client, config, logger)
-
-// 设置队列配置
-consumer.SetQueueConfigs([]ConsumerQueueConfig{
-    {Name: "task.temu", Priority: 10, Prefetch: 5},
-    {Name: "task.shein", Priority: 5, Prefetch: 10},
-})
-
-// 注册处理器
-consumer.RegisterHandler("task.temu", temuHandler)
-consumer.RegisterHandler("task.shein", sheinHandler)
-
-// 启动消费
-err := consumer.Start(ctx)
-```
-
-### 5. TaskSubmitter（任务提交器）
-
-**职责：**
-- 提交任务到 RabbitMQ 队列
-- 批量提交变体任务
-- 任务去重（5分钟缓存）
-- 消息格式转换
-
 **主要方法：**
 ```go
-// 提交单个任务
-func (ts *TaskSubmitter) SubmitTask(ctx context.Context, task *model.Task) error
+// 创建消费者管理器
+func NewMessageConsumer(client *Client, config ConsumerConfig, logger *logrus.Logger) *MessageConsumer
 
-// 批量提交变体任务（带去重）
-func (ts *TaskSubmitter) SubmitVariantTasks(
-    ctx context.Context, 
-    parentTask *model.Task, 
-    variations []model.Variation, 
-    parentAsin string,
-) (successCount, failCount int)
+// 设置队列配置
+func (mc *MessageConsumer) SetQueueConfigs(configs []ConsumerQueueConfig)
+
+// 注册消息处理器
+func (mc *MessageConsumer) RegisterHandler(queueName string, handler MessageHandler)
+
+// 启动消费者
+func (mc *MessageConsumer) Start(ctx context.Context) error
+
+// 重启所有消费者（用于重连后恢复）
+func (mc *MessageConsumer) Restart() error
+
+// 停止消费者
+func (mc *MessageConsumer) Stop(ctx context.Context) error
 ```
 
-**去重规则：**
-1. 跳过父 ASIN 本身
-2. 跳过当前任务的 ProductID
-3. 跳过 5 分钟内已提交的任务
-
-**使用示例：**
-```go
-// 创建提交器
-submitter := NewTaskSubmitter(client, logger)
-
-// 提交单个任务
-task := &model.Task{
-    ID:        123,
-    Platform:  "temu",
-    ProductID: "abc123",
-    // ...
-}
-err := submitter.SubmitTask(ctx, task)
-
-// 批量提交变体
-successCount, failCount := submitter.SubmitVariantTasks(
-    ctx, 
-    parentTask, 
-    variations, 
-    parentAsin,
-)
-```
-
-### 6. ResultReporter（结果上报器）
+### 4. QueueConsumer（队列消费者）
 
 **职责：**
-- 异步上报任务处理结果
-- 批量上报优化
-- 失败重试机制
-- 缓冲队列管理
+- 单个队列的消息消费
+- Worker Pool 并发处理
+- 消息重试和死信处理
 
-**配置：**
-```yaml
-result_reporter:
-  report_url: "http://management-api/tasks/results"
-  node_id: "node-001"
-  timeout: 30s
-  buffer_size: 1000
-  retry:
-    max_retries: 3
-    retry_delay: 5s
-```
+**特性：**
+- 根据 prefetch 数量创建对应的 worker
+- 自动消息重试（可配置最大次数）
+- 失败消息发送到死信队列
+- Panic 恢复机制
 
-**使用示例：**
-```go
-// 创建上报器
-reporter := NewResultReporter(config, logger)
-
-// 启动上报器
-err := reporter.Start(ctx)
-
-// 上报结果
-result := &TaskResult{
-    TaskID:   123,
-    Status:   "completed",
-    Data:     productData,
-    Error:    "",
-}
-reporter.ReportResult(result)
-```
-
-### 7. LoadMonitor（负载监控器）
+### 5. LoadMonitor（负载监控器）
 
 **职责：**
 - 监控系统资源使用
 - 收集任务处理统计
 - 提供健康状态检查
-- 导出 Prometheus 指标
+- 集成通用指标收集器
 
 **监控指标：**
 - CPU 使用率
 - 内存使用率
 - Goroutine 数量
 - 任务处理统计（成功/失败/总数）
-- 队列消息数量
+- 队列消息处理统计
 
-**使用示例：**
+**主要方法：**
 ```go
 // 创建监控器
-monitor := NewLoadMonitor(config, logger)
+func NewLoadMonitor(cfg config.LoadMonitorConfig, logger *logrus.Logger) *LoadMonitor
 
 // 启动监控
-err := monitor.Start(ctx)
+func (lm *LoadMonitor) Start(ctx context.Context) error
+
+// 记录任务处理
+func (lm *LoadMonitor) RecordTaskProcessed(queueName string, success bool, processingTime time.Duration)
 
 // 获取统计信息
-stats := monitor.GetStats()
+func (lm *LoadMonitor) GetStats() LoadStats
 
 // 获取健康状态
-health := monitor.GetHealthStatus()
-```
-
-### 8. TaskMessageAdapter（任务消息适配器）
-
-**职责：**
-- 任务模型与消息格式转换
-- 队列路由规则
-- 优先级映射
-
-**队列映射：**
-```go
-platform -> queue
-─────────────────
-temu    -> task.temu
-shein   -> task.shein
-amazon  -> task.amazon
-```
-
-**优先级映射：**
-```go
-任务优先级 -> RabbitMQ 优先级
-────────────────────────────
-1-3      -> 1 (低)
-4-6      -> 5 (中)
-7-10     -> 10 (高)
-```
-
-### 9. Deduplicator（消息去重器）
-
-**职责：**
-- 防止重复消息处理
-- 基于消息 ID 去重
-- 自动清理过期记录
-
-**使用示例：**
-```go
-// 创建去重器
-dedup := NewDeduplicator(cacheDuration)
-
-// 检查是否重复
-if dedup.IsDuplicate(messageID) {
-    // 跳过重复消息
-    return
-}
-
-// 标记为已处理
-dedup.MarkAsProcessed(messageID)
+func (lm *LoadMonitor) GetHealthStatus() map[string]any
 ```
 
 ## 消息格式
@@ -393,32 +262,57 @@ func main() {
     logger := logrus.New()
     ctx := context.Background()
     
-    // 1. 创建服务管理器
-    sm, err := rabbitmq.NewServiceManager("config/config.yaml", logger)
+    // 1. 创建连接管理器
+    connConfig := rabbitmq.ConnectionConfig{
+        URL:               "amqp://guest:guest@localhost:5672/",
+        ReconnectInterval: 5 * time.Second,
+        MaxReconnectTries: 10,
+    }
+    connManager := rabbitmq.NewConnectionManager(connConfig, logger)
+    
+    // 2. 建立连接
+    err := connManager.Connect(ctx)
     if err != nil {
         logger.Fatal(err)
     }
+    defer connManager.Close()
     
-    // 2. 注册处理器
-    err = sm.RegisterProcessor("temu", temuProcessor)
+    // 3. 创建客户端
+    client := rabbitmq.NewClient(connManager, logger)
+    
+    // 4. 创建消费者
+    consumerConfig := rabbitmq.ConsumerConfig{
+        PrefetchCount: 10,
+        PrefetchSize:  0,
+        RetryDelay:    5 * time.Second,
+        MaxRetries:    3,
+    }
+    consumer := rabbitmq.NewMessageConsumer(client, consumerConfig, logger)
+    
+    // 5. 设置队列配置
+    consumer.SetQueueConfigs([]rabbitmq.ConsumerQueueConfig{
+        {Name: "task.temu", Priority: 10, Prefetch: 5},
+        {Name: "task.shein", Priority: 5, Prefetch: 10},
+    })
+    
+    // 6. 注册处理器
+    consumer.RegisterHandler("task.temu", &MyTemuHandler{logger: logger})
+    consumer.RegisterHandler("task.shein", &MySheinHandler{logger: logger})
+    
+    // 7. 注册重连回调
+    connManager.RegisterReconnectCallback(func() error {
+        return consumer.Restart()
+    })
+    
+    // 8. 启动消费者
+    err = consumer.Start(ctx)
     if err != nil {
         logger.Fatal(err)
     }
+    defer consumer.Stop(ctx)
     
-    err = sm.RegisterProcessor("shein", sheinProcessor)
-    if err != nil {
-        logger.Fatal(err)
-    }
-    
-    // 3. 启动服务
-    err = sm.Start(ctx)
-    if err != nil {
-        logger.Fatal(err)
-    }
-    defer sm.Stop(ctx)
-    
-    // 4. 等待服务运行
-    sm.Wait()
+    // 9. 等待信号
+    <-ctx.Done()
 }
 ```
 
@@ -430,11 +324,18 @@ type MyMessageHandler struct {
 }
 
 func (h *MyMessageHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message) error {
-    h.logger.Infof("处理消息: ID=%s", msg.ID)
+    h.logger.Infof("处理消息: ID=%s, Type=%s", msg.ID, msg.Type)
     
     // 解析消息
-    taskID := msg.Payload["task_id"].(float64)
-    platform := msg.Payload["platform"].(string)
+    taskID, ok := msg.Payload["task_id"].(float64)
+    if !ok {
+        return fmt.Errorf("无效的 task_id")
+    }
+    
+    platform, ok := msg.Payload["platform"].(string)
+    if !ok {
+        return fmt.Errorf("无效的 platform")
+    }
     
     // 处理业务逻辑
     err := processTask(int64(taskID), platform)
@@ -442,6 +343,12 @@ func (h *MyMessageHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Mess
         return fmt.Errorf("处理任务失败: %w", err)
     }
     
+    h.logger.Infof("任务处理成功: TaskID=%d", int64(taskID))
+    return nil
+}
+
+func processTask(taskID int64, platform string) error {
+    // 实现具体的业务逻辑
     return nil
 }
 ```
@@ -453,16 +360,10 @@ func (h *MyMessageHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Mess
 ```yaml
 rabbitmq:
   # 连接配置
-  host: localhost
-  port: 5672
-  username: guest
-  password: guest
-  vhost: /
-  
-  # 连接池配置
-  connection_pool:
-    max_connections: 10
-    max_channels: 100
+  connection:
+    url: "amqp://guest:guest@localhost:5672/"
+    reconnect_interval: 5s
+    max_reconnect_tries: 10
     
   # 消费者配置
   consumer:
@@ -474,189 +375,200 @@ rabbitmq:
   # 队列配置
   queues:
     - name: task.temu
-      priority: 10
-      prefetch: 5
+      priority: 10      # 高优先级
+      prefetch: 5       # 低预取，快速处理
     - name: task.shein
-      priority: 5
-      prefetch: 10
-      
-  # 结果上报配置
-  result_reporter:
-    report_url: "http://management-api/tasks/results"
-    node_id: "node-001"
-    timeout: 30s
-    buffer_size: 1000
-    retry:
-      max_retries: 3
-      retry_delay: 5s
-      
-  # 负载监控配置
-  load_monitor:
-    update_interval: 10s
-    enable_cpu: true
-    enable_memory: true
-    enable_tasks: true
-    
-  # 节点配置
-  node:
-    node_id: "node-001"
-    health_check_port: 8080
-    metrics_port: 9090
-    shutdown_timeout: 30s
+      priority: 5       # 中优先级
+      prefetch: 10      # 高预取，提高吞吐量
+    - name: task.amazon
+      priority: 3       # 低优先级
+      prefetch: 15
+```
+
+### 配置项说明
+
+#### connection（连接配置）
+- `url`: RabbitMQ 连接地址
+- `reconnect_interval`: 重连间隔（已弃用，使用指数退避策略）
+- `max_reconnect_tries`: 最大重连次数
+
+#### consumer（消费者配置）
+- `prefetch_count`: 预取消息数量（默认值）
+- `prefetch_size`: 预取消息大小（字节）
+- `retry_delay`: 消息重试延迟
+- `max_retries`: 消息最大重试次数
+
+#### queues（队列配置）
+- `name`: 队列名称
+- `priority`: 队列优先级（1-10，数字越大优先级越高）
+- `prefetch`: 该队列的预取数量（覆盖默认值）
+
+### 配置验证
+
+配置结构提供了自动验证功能：
+
+```go
+config := &rabbitmq.Config{
+    Connection: rabbitmq.ConnectionConfig{
+        URL: "amqp://guest:guest@localhost:5672/",
+    },
+    Consumer: rabbitmq.ConsumerConfig{
+        PrefetchCount: 10,
+    },
+    Queues: []rabbitmq.QueueConfig{
+        {Name: "task.temu", Priority: 10, Prefetch: 5},
+    },
+}
+
+// 设置默认值
+config.SetDefaults()
+
+// 验证配置
+if err := config.Validate(); err != nil {
+    log.Fatalf("配置验证失败: %v", err)
+}
 ```
 
 ## 监控和运维
 
-### 健康检查
+### 负载监控
 
-```bash
-# 检查服务健康状态
-curl http://localhost:8080/health
+LoadMonitor 集成了通用的 MetricsCollector，提供以下功能：
 
-# 响应示例
-{
-  "status": "healthy",
-  "timestamp": "2024-01-01T00:00:00Z"
-}
+```go
+// 创建监控器
+monitor := rabbitmq.NewLoadMonitor(config.LoadMonitorConfig, logger)
+
+// 启动监控
+err := monitor.Start(ctx)
+
+// 记录任务处理
+monitor.RecordTaskProcessed("task.temu", true, 100*time.Millisecond)
+
+// 获取统计信息
+stats := monitor.GetStats()
+fmt.Printf("已处理: %d, 成功: %d, 失败: %d\n", 
+    stats.TasksProcessed, stats.TasksSucceeded, stats.TasksFailed)
+
+// 获取健康状态
+health := monitor.GetHealthStatus()
+fmt.Printf("状态: %v\n", health["status"])
 ```
 
-### 就绪检查
+### 统计信息
 
-```bash
-# 检查服务是否就绪
-curl http://localhost:8080/ready
-
-# 响应示例
-{
-  "ready": true,
-  "timestamp": "2024-01-01T00:00:00Z"
-}
-```
-
-### Prometheus 指标
-
-```bash
-# 获取 Prometheus 格式指标
-curl http://localhost:9090/metrics
-
-# 输出示例
-# HELP tasks_processed_total Total number of tasks processed
-# TYPE tasks_processed_total counter
-tasks_processed_total 1234
-
-# HELP tasks_succeeded_total Total number of tasks succeeded
-# TYPE tasks_succeeded_total counter
-tasks_succeeded_total 1200
-
-# HELP tasks_failed_total Total number of tasks failed
-# TYPE tasks_failed_total counter
-tasks_failed_total 34
-
-# HELP cpu_usage_percent Current CPU usage percentage
-# TYPE cpu_usage_percent gauge
-cpu_usage_percent 45.67
-
-# HELP memory_usage_percent Current memory usage percentage
-# TYPE memory_usage_percent gauge
-memory_usage_percent 62.34
-```
-
-### 详细统计
-
-```bash
-# 获取详细统计信息
-curl http://localhost:9090/stats
-
-# 响应示例
-{
-  "timestamp": "2024-01-01T00:00:00Z",
-  "stats": {
-    "load": {
-      "cpu_usage": 45.67,
-      "memory_usage": 62.34,
-      "goroutine_count": 123,
-      "tasks_processed": 1234,
-      "tasks_succeeded": 1200,
-      "tasks_failed": 34
-    },
-    "rabbitmq": {
-      "connected": true,
-      "queues": {
-        "task.temu": {"messages": 10},
-        "task.shein": {"messages": 5}
-      }
-    },
-    "result_reporter": {
-      "pending": 3,
-      "reported": 1231
-    }
-  }
-}
+```go
+stats := monitor.GetStats()
+// stats 包含:
+// - TasksProcessed: 处理的任务总数
+// - TasksSucceeded: 成功的任务数
+// - TasksFailed: 失败的任务数
+// - TasksRetried: 重试的任务数
+// - AvgProcessingTime: 平均处理时间
+// - MaxProcessingTime: 最大处理时间
+// - MinProcessingTime: 最小处理时间
+// - QueueStats: 各队列的统计信息
 ```
 
 ## 错误处理
 
 ### 连接失败
 
+ConnectionManager 实现了自动重连机制，使用指数退避策略：
+
 ```go
-// 自动重连机制
-// 连接失败时会自动重试，默认重试间隔 5 秒
+// 重连策略配置
+// - 初始延迟: 1秒
+// - 最大延迟: 30秒
+// - 倍数: 2.0
+// - 最大重试次数: 配置的 max_reconnect_tries
+
+// 重连延迟示例:
+// 第1次: 1秒
+// 第2次: 2秒
+// 第3次: 4秒
+// 第4次: 8秒
+// 第5次: 16秒
+// 第6次: 30秒（达到最大延迟）
 ```
 
 ### 消息处理失败
 
+QueueConsumer 实现了消息重试机制：
+
+1. 消息处理失败时，递增 RetryCount
+2. 如果 RetryCount < MaxRetries：重新发布消息到队列
+3. 如果 RetryCount >= MaxRetries：发送到死信队列
+
 ```go
-// 重试机制
-// 1. 消息处理失败时，会根据 retry_count 判断是否重试
-// 2. 未达到最大重试次数：Nack(requeue=true)
-// 3. 达到最大重试次数：Nack(requeue=false) -> 进入死信队列
+// 重试流程:
+// 1. 处理失败 -> RetryCount++
+// 2. 判断是否应该重试
+// 3. 是: 重新发布消息（带更新的 RetryCount）
+// 4. 否: Nack(requeue=false) -> 进入死信队列
 ```
 
-### 死信队列处理
+### Panic 恢复
 
-```bash
-# 查看死信队列
-rabbitmqctl list_queues name messages | grep dlq
+所有消息处理都有 panic 恢复机制：
 
-# 手动处理死信消息
-# 1. 从死信队列消费消息
-# 2. 分析失败原因
-# 3. 修复问题后重新提交
+```go
+defer func() {
+    if r := recover(); r != nil {
+        logger.Errorf("处理消息发生panic: %v", r)
+        // Panic时拒绝消息并重新排队
+        delivery.Nack(false, true)
+    }
+}()
 ```
 
 ## 性能优化
 
-### 1. 连接池
+### 1. 独立通道
 
-- 复用连接和通道
-- 减少连接开销
-- 提高并发性能
+每个队列消费者使用独立的通道，避免 QoS 设置冲突：
 
-### 2. 批量操作
+```go
+// 每个队列创建独立通道
+channel, err := connManager.CreateChannel()
 
-- 批量确认消息
-- 批量发布消息
-- 减少网络往返
+// 在独立通道上设置 QoS
+channel.Qos(prefetch, 0, false)
+```
+
+### 2. Worker Pool
+
+QueueConsumer 根据 prefetch 数量创建对应的 worker：
+
+```go
+// prefetch=5 -> 创建5个worker并发处理
+for i := 0; i < prefetch; i++ {
+    go worker(i)
+}
+```
 
 ### 3. 预取优化
 
+根据队列优先级设置不同的预取数量：
+
 ```yaml
-# 高优先级队列：低预取
 queues:
   - name: task.temu
     priority: 10
-    prefetch: 5      # 确保高优先级任务快速处理
-
-# 低优先级队列：高预取
+    prefetch: 5      # 高优先级：低预取，快速处理
   - name: task.shein
     priority: 5
-    prefetch: 10     # 提高吞吐量
+    prefetch: 10     # 中优先级：中等预取
+  - name: task.amazon
+    priority: 3
+    prefetch: 15     # 低优先级：高预取，提高吞吐量
 ```
 
 ### 4. 消息持久化
 
+只对重要消息持久化：
+
 ```go
-// 只对重要消息持久化
 publishing := amqp.Publishing{
     DeliveryMode: 2,  // 2 = persistent
     // ...
@@ -666,31 +578,48 @@ publishing := amqp.Publishing{
 ## 最佳实践
 
 1. **连接管理**
-   - 使用连接池
+   - 使用 ConnectionManager 统一管理连接
+   - 注册重连回调以恢复消费者
    - 监控连接状态
-   - 实现自动重连
 
 2. **消息确认**
-   - 使用手动确认
+   - 使用手动确认模式
    - 处理成功后再确认
    - 失败时合理重试
 
 3. **错误处理**
    - 区分可重试和不可重试错误
-   - 使用死信队列
+   - 使用死信队列处理失败消息
    - 记录详细日志
 
-4. **监控告警**
-   - 监控队列长度
-   - 监控消费速率
-   - 设置告警阈值
+4. **性能优化**
+   - 根据业务设置合理的 prefetch
+   - 高优先级队列使用低 prefetch
+   - 使用独立通道避免 QoS 冲突
 
-5. **优雅关闭**
+5. **监控告警**
+   - 使用 LoadMonitor 收集统计信息
+   - 监控队列长度和消费速率
+   - 集成到监控系统
+
+6. **优雅关闭**
    - 停止接收新消息
    - 等待当前消息处理完成
    - 关闭连接和通道
 
-## 注意事项
+## 架构特点
+
+### 优点
+
+1. **职责分离清晰**: ConnectionManager、Client、Consumer 各司其职
+2. **并发安全**: 正确使用 RWMutex 保护共享状态
+3. **自动重连**: 使用指数退避策略，智能重连
+4. **独立通道**: 每个队列独立通道，避免 QoS 冲突
+5. **Worker Pool**: 根据 prefetch 创建对应数量的 worker
+6. **配置灵活**: 支持队列级别的优先级和 prefetch 配置
+7. **监控完善**: 集成通用 MetricsCollector
+
+### 注意事项
 
 1. 确保 RabbitMQ 服务可用
 2. 合理设置预取数量
@@ -698,3 +627,21 @@ publishing := amqp.Publishing{
 4. 定期清理死信队列
 5. 监控内存使用
 6. 避免消息堆积
+
+## 分层说明
+
+本 infra 层只负责基础设施相关的功能：
+
+- **连接管理**: ConnectionManager
+- **消息收发**: Client
+- **消费管理**: MessageConsumer, QueueConsumer
+- **负载监控**: LoadMonitor
+- **重试策略**: RetryStrategy
+
+业务逻辑相关的功能在其他层：
+
+- **消息适配**: `internal/domain/task/message_adapter.go`（领域层）
+- **任务处理**: `internal/app/messaging/task_handler.go`（应用层）
+- **结果上报**: `internal/app/messaging/result_reporter.go`（应用层）
+
+这样的分层确保了关注点分离和代码的可维护性。

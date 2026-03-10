@@ -22,6 +22,7 @@ type ConnectionManager struct {
 	// 重连配置
 	reconnectInterval time.Duration
 	maxReconnectTries int
+	retryStrategy     RetryStrategy
 
 	// 生命周期管理
 	ctx    context.Context
@@ -31,30 +32,82 @@ type ConnectionManager struct {
 	// 重连回调
 	reconnectCallbacks []func() error
 	callbackMutex      sync.RWMutex
+
+	// 状态通知
+	stateListeners []ConnectionStateListener
+	listenerMutex  sync.RWMutex
+	errorCollector *ErrorCollector
 }
 
-// ConnectionConfig 连接配置
-type ConnectionConfig struct {
-	URL               string        `yaml:"url"`
-	ReconnectInterval time.Duration `yaml:"reconnect_interval"`
-	MaxReconnectTries int           `yaml:"max_reconnect_tries"`
+// ConnectionState 连接状态
+type ConnectionState int
+
+const (
+	ConnectionStateDisconnected ConnectionState = iota
+	ConnectionStateConnecting
+	ConnectionStateConnected
+	ConnectionStateReconnecting
+	ConnectionStateClosed
+)
+
+func (cs ConnectionState) String() string {
+	switch cs {
+	case ConnectionStateDisconnected:
+		return "disconnected"
+	case ConnectionStateConnecting:
+		return "connecting"
+	case ConnectionStateConnected:
+		return "connected"
+	case ConnectionStateReconnecting:
+		return "reconnecting"
+	case ConnectionStateClosed:
+		return "closed"
+	default:
+		return "unknown"
+	}
 }
+
+// ConnectionStateListener 连接状态监听器
+type ConnectionStateListener func(oldState, newState ConnectionState)
 
 // NewConnectionManager 创建连接管理器
 func NewConnectionManager(config ConnectionConfig, logger *logrus.Logger) *ConnectionManager {
-	if config.ReconnectInterval == 0 {
-		config.ReconnectInterval = 5 * time.Second
-	}
-	if config.MaxReconnectTries == 0 {
-		config.MaxReconnectTries = 10
-	}
+	// 设置默认值
+	config.SetDefaults()
 
 	return &ConnectionManager{
 		url:               config.URL,
 		logger:            logger,
 		reconnectInterval: config.ReconnectInterval,
 		maxReconnectTries: config.MaxReconnectTries,
+		retryStrategy:     NewDefaultRetryStrategy(config.MaxReconnectTries),
+		stateListeners:    make([]ConnectionStateListener, 0),
+		errorCollector:    NewErrorCollector(500),
 	}
+}
+
+// AddStateListener 添加状态监听器
+func (cm *ConnectionManager) AddStateListener(listener ConnectionStateListener) {
+	cm.listenerMutex.Lock()
+	defer cm.listenerMutex.Unlock()
+	cm.stateListeners = append(cm.stateListeners, listener)
+}
+
+// notifyStateChange 通知状态变更
+func (cm *ConnectionManager) notifyStateChange(oldState, newState ConnectionState) {
+	cm.listenerMutex.RLock()
+	listeners := make([]ConnectionStateListener, len(cm.stateListeners))
+	copy(listeners, cm.stateListeners)
+	cm.listenerMutex.RUnlock()
+
+	for _, listener := range listeners {
+		go listener(oldState, newState)
+	}
+}
+
+// GetErrorCollector 获取错误收集器
+func (cm *ConnectionManager) GetErrorCollector() *ErrorCollector {
+	return cm.errorCollector
 }
 
 // Connect 建立连接
@@ -68,10 +121,18 @@ func (cm *ConnectionManager) Connect(ctx context.Context) error {
 
 	cm.ctx, cm.cancel = context.WithCancel(ctx)
 
+	// 通知状态变更：连接中
+	cm.notifyStateChange(ConnectionStateDisconnected, ConnectionStateConnecting)
+
 	// 建立连接
 	if err := cm.connect(); err != nil {
+		cm.errorCollector.Collect(ErrorTypeConnection, "", "", err, "建立连接失败")
+		cm.notifyStateChange(ConnectionStateConnecting, ConnectionStateDisconnected)
 		return fmt.Errorf("建立RabbitMQ连接失败: %w", err)
 	}
+
+	// 通知状态变更：已连接
+	cm.notifyStateChange(ConnectionStateConnecting, ConnectionStateConnected)
 
 	// 启动连接监控
 	go cm.monitorConnection()
@@ -124,11 +185,15 @@ func (cm *ConnectionManager) monitorConnection() {
 		case err := <-connCloseChan:
 			if err != nil {
 				cm.logger.Errorf("RabbitMQ连接意外关闭: %v", err)
+				cm.errorCollector.Collect(ErrorTypeConnection, "", "", err, "连接意外关闭")
+				cm.notifyStateChange(ConnectionStateConnected, ConnectionStateDisconnected)
 				cm.reconnect()
 			}
 		case err := <-chanCloseChan:
 			if err != nil {
 				cm.logger.Errorf("RabbitMQ通道意外关闭: %v", err)
+				cm.errorCollector.Collect(ErrorTypeConnection, "", "", err, "通道意外关闭")
+				cm.notifyStateChange(ConnectionStateConnected, ConnectionStateDisconnected)
 				cm.reconnect()
 			}
 		}
@@ -144,9 +209,12 @@ func (cm *ConnectionManager) reconnect() {
 		return
 	}
 
+	// 通知状态变更：重连中
+	cm.notifyStateChange(ConnectionStateDisconnected, ConnectionStateReconnecting)
+
 	cm.logger.Info("开始重连RabbitMQ...")
 
-	for i := 0; i < cm.maxReconnectTries; i++ {
+	for attempt := 0; attempt < cm.maxReconnectTries; attempt++ {
 		select {
 		case <-cm.ctx.Done():
 			cm.logger.Info("重连被取消")
@@ -155,12 +223,25 @@ func (cm *ConnectionManager) reconnect() {
 		}
 
 		if err := cm.connect(); err != nil {
-			cm.logger.Errorf("重连尝试 %d/%d 失败: %v", i+1, cm.maxReconnectTries, err)
-			time.Sleep(cm.reconnectInterval)
+			// 收集错误
+			cm.errorCollector.Collect(ErrorTypeConnection, "", "", err, fmt.Sprintf("重连尝试%d失败", attempt+1))
+
+			// 计算下一次重试的延迟时间
+			delay := cm.retryStrategy.NextDelay(attempt)
+			cm.logger.Errorf("重连尝试 %d/%d 失败: %v, 等待 %v 后重试",
+				attempt+1, cm.maxReconnectTries, err, delay)
+
+			// 释放锁后等待，避免长时间持锁
+			cm.mutex.Unlock()
+			time.Sleep(delay)
+			cm.mutex.Lock()
 			continue
 		}
 
-		cm.logger.Infof("重连成功，尝试次数: %d", i+1)
+		cm.logger.Infof("重连成功，尝试次数: %d", attempt+1)
+
+		// 通知状态变更：已连接
+		cm.notifyStateChange(ConnectionStateReconnecting, ConnectionStateConnected)
 
 		// 执行重连回调（重新启动消费者等）
 		cm.executeReconnectCallbacks()
@@ -171,6 +252,7 @@ func (cm *ConnectionManager) reconnect() {
 	}
 
 	cm.logger.Errorf("重连失败，已达到最大尝试次数: %d", cm.maxReconnectTries)
+	cm.notifyStateChange(ConnectionStateReconnecting, ConnectionStateDisconnected)
 }
 
 // RegisterReconnectCallback 注册重连回调
@@ -251,6 +333,9 @@ func (cm *ConnectionManager) Close() error {
 	}
 
 	cm.closed = true
+
+	// 通知状态变更：关闭中
+	cm.notifyStateChange(ConnectionStateConnected, ConnectionStateClosed)
 
 	if cm.cancel != nil {
 		cm.cancel()

@@ -24,6 +24,11 @@ type LoadMonitor struct {
 	stats      LoadStats
 	statsMutex sync.RWMutex
 
+	// 滑动窗口统计
+	processingTimeWindow *SlidingWindowStats
+	queueWindows         map[string]*SlidingWindowStats
+	queueWindowsMutex    sync.RWMutex
+
 	// 生命周期管理
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -41,10 +46,8 @@ type LoadStats struct {
 	TasksFailed    int64 `json:"tasks_failed"`
 	TasksRetried   int64 `json:"tasks_retried"`
 
-	// 性能指标
-	AvgProcessingTime time.Duration `json:"avg_processing_time"`
-	MaxProcessingTime time.Duration `json:"max_processing_time"`
-	MinProcessingTime time.Duration `json:"min_processing_time"`
+	// 性能指标（使用滑动窗口统计）
+	ProcessingTimeStats WindowStats `json:"processing_time_stats"`
 
 	// 队列统计
 	QueueStats map[string]QueueLoadStats `json:"queue_stats"`
@@ -55,11 +58,11 @@ type LoadStats struct {
 
 // QueueLoadStats 队列负载统计
 type QueueLoadStats struct {
-	MessagesProcessed int64         `json:"messages_processed"`
-	MessagesSucceeded int64         `json:"messages_succeeded"`
-	MessagesFailed    int64         `json:"messages_failed"`
-	AvgProcessingTime time.Duration `json:"avg_processing_time"`
-	LastProcessed     time.Time     `json:"last_processed"`
+	MessagesProcessed int64       `json:"messages_processed"`
+	MessagesSucceeded int64       `json:"messages_succeeded"`
+	MessagesFailed    int64       `json:"messages_failed"`
+	ProcessingStats   WindowStats `json:"processing_stats"`
+	LastProcessed     time.Time   `json:"last_processed"`
 }
 
 // MonitorConfig 监控配置（内部使用，用于兼容）
@@ -76,12 +79,13 @@ func NewLoadMonitor(cfg config.LoadMonitorConfig, logger *logrus.Logger) *LoadMo
 	metricsCollector := monitoring.NewMetricsCollector(logger, cfg.UpdateInterval)
 
 	return &LoadMonitor{
-		logger:           logger,
-		metricsCollector: metricsCollector,
-		config:           cfg,
+		logger:               logger,
+		metricsCollector:     metricsCollector,
+		config:               cfg,
+		processingTimeWindow: NewSlidingWindowStats(1000), // 记录最近1000个处理时间
+		queueWindows:         make(map[string]*SlidingWindowStats),
 		stats: LoadStats{
-			QueueStats:        make(map[string]QueueLoadStats),
-			MinProcessingTime: time.Hour, // 初始化为一个大值
+			QueueStats: make(map[string]QueueLoadStats),
 		},
 	}
 }
@@ -166,15 +170,20 @@ func (lm *LoadMonitor) updateStats() {
 	lm.statsMutex.Lock()
 	defer lm.statsMutex.Unlock()
 
+	// 获取处理时间统计
+	lm.stats.ProcessingTimeStats = lm.processingTimeWindow.GetStats()
+
 	// 更新RabbitMQ特定的指标到通用指标收集器
 	lm.metricsCollector.SetCounter("rabbitmq_tasks_processed_total", float64(lm.stats.TasksProcessed), nil, "处理的任务总数")
 	lm.metricsCollector.SetCounter("rabbitmq_tasks_succeeded_total", float64(lm.stats.TasksSucceeded), nil, "成功的任务总数")
 	lm.metricsCollector.SetCounter("rabbitmq_tasks_failed_total", float64(lm.stats.TasksFailed), nil, "失败的任务总数")
 	lm.metricsCollector.SetCounter("rabbitmq_tasks_retried_total", float64(lm.stats.TasksRetried), nil, "重试的任务总数")
 
-	lm.metricsCollector.SetGauge("rabbitmq_avg_processing_time_seconds", lm.stats.AvgProcessingTime.Seconds(), nil, "平均处理时间")
-	lm.metricsCollector.SetGauge("rabbitmq_max_processing_time_seconds", lm.stats.MaxProcessingTime.Seconds(), nil, "最大处理时间")
-	lm.metricsCollector.SetGauge("rabbitmq_min_processing_time_seconds", lm.stats.MinProcessingTime.Seconds(), nil, "最小处理时间")
+	lm.metricsCollector.SetGauge("rabbitmq_avg_processing_time_seconds", lm.stats.ProcessingTimeStats.Average.Seconds(), nil, "平均处理时间")
+	lm.metricsCollector.SetGauge("rabbitmq_max_processing_time_seconds", lm.stats.ProcessingTimeStats.Max.Seconds(), nil, "最大处理时间")
+	lm.metricsCollector.SetGauge("rabbitmq_min_processing_time_seconds", lm.stats.ProcessingTimeStats.Min.Seconds(), nil, "最小处理时间")
+	lm.metricsCollector.SetGauge("rabbitmq_p95_processing_time_seconds", lm.stats.ProcessingTimeStats.P95.Seconds(), nil, "P95处理时间")
+	lm.metricsCollector.SetGauge("rabbitmq_p99_processing_time_seconds", lm.stats.ProcessingTimeStats.P99.Seconds(), nil, "P99处理时间")
 
 	// 更新队列统计
 	for queueName, queueStats := range lm.stats.QueueStats {
@@ -182,14 +191,15 @@ func (lm *LoadMonitor) updateStats() {
 		lm.metricsCollector.SetCounter("rabbitmq_queue_messages_processed_total", float64(queueStats.MessagesProcessed), labels, "队列处理消息总数")
 		lm.metricsCollector.SetCounter("rabbitmq_queue_messages_succeeded_total", float64(queueStats.MessagesSucceeded), labels, "队列成功消息总数")
 		lm.metricsCollector.SetCounter("rabbitmq_queue_messages_failed_total", float64(queueStats.MessagesFailed), labels, "队列失败消息总数")
-		lm.metricsCollector.SetGauge("rabbitmq_queue_avg_processing_time_seconds", queueStats.AvgProcessingTime.Seconds(), labels, "队列平均处理时间")
+		lm.metricsCollector.SetGauge("rabbitmq_queue_avg_processing_time_seconds", queueStats.ProcessingStats.Average.Seconds(), labels, "队列平均处理时间")
+		lm.metricsCollector.SetGauge("rabbitmq_queue_p95_processing_time_seconds", queueStats.ProcessingStats.P95.Seconds(), labels, "队列P95处理时间")
 	}
 
 	// 更新时间戳
 	lm.stats.LastUpdated = time.Now()
 
-	lm.logger.Debugf("负载统计更新: 已处理=%d, 成功=%d, 失败=%d",
-		lm.stats.TasksProcessed, lm.stats.TasksSucceeded, lm.stats.TasksFailed)
+	lm.logger.Debugf("负载统计更新: 已处理=%d, 成功=%d, 失败=%d, 平均耗时=%v",
+		lm.stats.TasksProcessed, lm.stats.TasksSucceeded, lm.stats.TasksFailed, lm.stats.ProcessingTimeStats.Average)
 }
 
 // RecordTaskProcessed 记录任务处理
@@ -205,8 +215,8 @@ func (lm *LoadMonitor) RecordTaskProcessed(queueName string, success bool, proce
 		lm.stats.TasksFailed++
 	}
 
-	// 更新处理时间统计
-	lm.updateProcessingTimeStats(processingTime)
+	// 添加到滑动窗口
+	lm.processingTimeWindow.Add(processingTime)
 
 	// 更新队列统计
 	queueStats, exists := lm.stats.QueueStats[queueName]
@@ -220,16 +230,23 @@ func (lm *LoadMonitor) RecordTaskProcessed(queueName string, success bool, proce
 	} else {
 		queueStats.MessagesFailed++
 	}
-
-	// 更新队列平均处理时间
-	if queueStats.MessagesProcessed == 1 {
-		queueStats.AvgProcessingTime = processingTime
-	} else {
-		// 简单的移动平均
-		queueStats.AvgProcessingTime = (queueStats.AvgProcessingTime + processingTime) / 2
-	}
-
 	queueStats.LastProcessed = time.Now()
+
+	// 获取或创建队列的滑动窗口
+	lm.queueWindowsMutex.Lock()
+	queueWindow, exists := lm.queueWindows[queueName]
+	if !exists {
+		queueWindow = NewSlidingWindowStats(1000)
+		lm.queueWindows[queueName] = queueWindow
+	}
+	lm.queueWindowsMutex.Unlock()
+
+	// 添加到队列窗口
+	queueWindow.Add(processingTime)
+
+	// 获取队列统计
+	queueStats.ProcessingStats = queueWindow.GetStats()
+
 	lm.stats.QueueStats[queueName] = queueStats
 }
 
@@ -239,26 +256,6 @@ func (lm *LoadMonitor) RecordTaskRetried(queueName string) {
 	defer lm.statsMutex.Unlock()
 
 	lm.stats.TasksRetried++
-}
-
-// updateProcessingTimeStats 更新处理时间统计
-func (lm *LoadMonitor) updateProcessingTimeStats(processingTime time.Duration) {
-	// 更新最大处理时间
-	if processingTime > lm.stats.MaxProcessingTime {
-		lm.stats.MaxProcessingTime = processingTime
-	}
-
-	// 更新最小处理时间
-	if processingTime < lm.stats.MinProcessingTime {
-		lm.stats.MinProcessingTime = processingTime
-	}
-
-	// 更新平均处理时间（简单移动平均）
-	if lm.stats.TasksProcessed == 1 {
-		lm.stats.AvgProcessingTime = processingTime
-	} else {
-		lm.stats.AvgProcessingTime = (lm.stats.AvgProcessingTime + processingTime) / 2
-	}
 }
 
 // GetStats 获取负载统计信息
@@ -321,10 +318,18 @@ func (lm *LoadMonitor) ResetStats() {
 	defer lm.statsMutex.Unlock()
 
 	lm.stats = LoadStats{
-		QueueStats:        make(map[string]QueueLoadStats),
-		MinProcessingTime: time.Hour,
-		LastUpdated:       time.Now(),
+		QueueStats:  make(map[string]QueueLoadStats),
+		LastUpdated: time.Now(),
 	}
+
+	// 重置滑动窗口
+	lm.processingTimeWindow.Reset()
+
+	lm.queueWindowsMutex.Lock()
+	for _, window := range lm.queueWindows {
+		window.Reset()
+	}
+	lm.queueWindowsMutex.Unlock()
 
 	lm.logger.Info("负载统计信息已重置")
 }
