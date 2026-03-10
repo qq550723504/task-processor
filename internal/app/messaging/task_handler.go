@@ -130,7 +130,7 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 	}
 
 	// 验证任务的关键字段
-	if task.ID == 0 || task.ProductID == "" {
+	if !task.IsValid() {
 		eth.logger.Errorf("[%s] 收到无效任务消息: ID=%d, ProductID=%s, Platform=%s, MessageID=%s",
 			eth.platform, task.ID, task.ProductID, task.Platform, msg.ID)
 		return nil, nil, fmt.Errorf("任务数据无效: ID=%d, ProductID=%s", task.ID, task.ProductID)
@@ -206,11 +206,8 @@ func (eth *TaskHandler) validatePlatform(task *model.Task) error {
 		return nil
 	}
 
-	// 提取处理器的基础平台名
-	processorBasePlatform := eth.getBasePlatform()
-
-	// 比较任务平台与处理器基础平台（忽略大小写）
-	if !strings.EqualFold(task.Platform, processorBasePlatform) {
+	// 比较任务平台与处理器平台（使用领域对象方法）
+	if !task.PlatformMatches(eth.platform) {
 		err := fmt.Errorf("任务平台 %s 与处理器平台 %s 不匹配", task.Platform, eth.platform)
 		eth.logger.Errorf("[%s] %v", eth.platform, err)
 		return err
@@ -257,8 +254,8 @@ func (eth *TaskHandler) processTaskWithReporting(
 	var taskData []byte
 	var err error
 
-	// 检查是否是爬虫任务（通过平台名称判断）
-	if strings.Contains(strings.ToLower(eth.platform), "crawler") {
+	// 检查是否是爬虫任务（使用领域对象方法）
+	if task.IsCrawlerTask() {
 		// 爬虫任务：使用原始 payload（包含 reply_to 字段）
 		taskData, err = json.Marshal(originalPayload)
 	} else {
@@ -330,8 +327,8 @@ func (eth *TaskHandler) processTaskWithReporting(
 
 // shouldRetry 判断是否应该重试
 func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
-	// 检查重试次数
-	if task.RetryCount >= task.MaxRetryCount {
+	// 检查重试次数（使用领域对象方法）
+	if !task.CanRetry() {
 		return false
 	}
 
