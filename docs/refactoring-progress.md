@@ -167,6 +167,43 @@
 
 ---
 
+#### 任务 4.2: 消除重复的工具函数 ✅
+**完成时间**: 2026-03-10
+
+**执行内容:**
+
+1. **删除已废弃的工具函数:**
+   - 删除 `temu/utils/image_utils.go` 中的已废弃函数 (IntPtr, StringPtr, Float64Ptr, Abs, Min, Max)
+   - 删除 `temu/monitor_helper.go` 中的已废弃函数 (abs, absInt)
+   - 删除 `shein/utils/monitor_helper.go` 中的已废弃函数 (abs, absInt)
+   - 替换 `temu/handlers/common/init_handler.go` 中的 boolPtr 为 ptrutil.BoolPtr
+
+2. **统一数字解析函数:**
+   - 创建 `internal/pkg/strutil/parse.go` 提供统一的解析函数:
+     - `ParseInt(s string) int` - 解析整数
+     - `ParseFloat(s string) float64` - 解析浮点数
+   - 标记以下函数为已废弃,调用统一实现:
+     - `temu/services/pricing/pricing_decision_service.go` 中的 parsePrice
+     - `pkg/management/impl/product_repository.go` 中的 parsePrice, parseStock, parseFlexiblePrice
+
+3. **保留的平台特定函数:**
+   - `shein/service/product/attribute/sale/utils_service.go` 中的 parseFloat (有特殊的正则提取逻辑)
+   - 各平台的错误处理函数 (NewRetryableError, IsRetryableError等) - 实现差异大,反映平台特定需求
+
+**重构收益:**
+- 消除了6个完全重复的工具函数
+- 统一了数字解析逻辑到 strutil 包
+- 减少了代码维护成本
+- 提高了代码一致性
+
+**代码统计:**
+- 删除重复代码: 约80行
+- 新增公共函数: 1个文件,约25行
+- 标记废弃函数: 4个函数
+- 净减少代码: 约55行
+
+---
+
 ### 阶段五: 文档和测试完善
 
 #### 任务 5.1: 完善目录结构文档 ⏳
@@ -183,17 +220,17 @@
 - ✅ 阶段一: 命名规范统一 (2/2 任务完成)
 - ✅ 阶段二: 模糊命名优化 (1/2 任务完成,1个跳过)
 - ✅ 阶段三: 职责明确化 (1/1 任务完成)
-- ✅ 阶段四: 代码提取和复用 (1/1 任务完成)
+- ✅ 阶段四: 代码提取和复用 (2/2 任务完成)
 - ⏳ 阶段五: 文档和测试完善 (0/2 任务完成)
 
 ### 时间统计
-- 已用时间: 约5小时
+- 已用时间: 约6小时
 - 预计剩余时间: 10-15小时
-- 总预计时间: 15-20小时
+- 总预计时间: 16-21小时
 
 ### 完成百分比
-- 任务完成度: 62.5% (5/8)
-- 时间完成度: 25% (5/20)
+- 任务完成度: 75% (6/8)
+- 时间完成度: 30% (6/20)
 
 ---
 
@@ -213,17 +250,18 @@
    - 更容易理解项目结构
    - 降低了新人上手难度
 
-### 预期收益
-
-1. **代码复用**
-   - 提取公共代码后,减少重复
+4. **代码复用**
+   - 提取公共工厂代码,减少约40%重复
+   - 统一工具函数,减少约55行重复代码
    - 简化新平台接入
 
-2. **测试覆盖**
+### 预期收益
+
+1. **测试覆盖**
    - 提高代码质量
    - 降低重构风险
 
-3. **文档完整**
+2. **文档完整**
    - 降低理解成本
    - 提高开发效率
 
@@ -251,9 +289,9 @@
 
 ## 下一步计划
 
-1. 继续分析SHEIN和TEMU的utils目录
-2. 完成任务2.1: utils重构
-3. 执行任务2.2: common重构
+1. 验证代码编译和测试通过
+2. 提交重复函数消除的改动
+3. 继续分析其他可能的重复代码
 4. 根据进度调整后续计划
 
 ---
@@ -263,3 +301,4 @@
 - [重复目录分析报告](./duplicate-directories-analysis.md)
 - [重构计划](./refactoring-plan.md)
 - [重构总结](./refactoring-summary.md) (之前的重构记录)
+

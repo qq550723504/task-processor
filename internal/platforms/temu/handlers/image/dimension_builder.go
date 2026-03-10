@@ -4,9 +4,9 @@ package image
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -39,7 +39,7 @@ func (idb *ImageDimensionBuilder) BuildDimensionImages(variant *model.Product) [
 			URL:    variant.Images[3],
 			Width:  1500,
 			Height: 1500,
-			Type:   utils.IntPtr(1), // 设置type为1
+			Type:   ptrutil.IntPtr(1), // 设置type为1
 		})
 	} else if len(variant.Images) > 0 && variant.Images[0] != "" {
 		// 如果没有第4张图片，使用第1张作为备选
@@ -47,7 +47,7 @@ func (idb *ImageDimensionBuilder) BuildDimensionImages(variant *model.Product) [
 			URL:    variant.Images[0],
 			Width:  1500,
 			Height: 1500,
-			Type:   utils.IntPtr(1),
+			Type:   ptrutil.IntPtr(1),
 		})
 	}
 

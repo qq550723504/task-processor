@@ -495,6 +495,7 @@ func (s *PricingDecisionService) makeDecisionByPrice(actualPrice, minAcceptableP
 }
 
 // parsePrice 解析价格字符串为浮点数
+// 已废弃: 请使用 strutil.ParseFloat
 func parsePrice(price string) float64 {
 	if price == "" {
 		return 0.0

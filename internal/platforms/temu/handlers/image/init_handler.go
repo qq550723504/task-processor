@@ -6,9 +6,9 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -60,7 +60,7 @@ func (h *ImageInitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 				URL:    imgURL,
 				Width:  0, // 尺寸将在验证时获取
 				Height: 0,
-				Type:   utils.IntPtr(1),
+				Type:   ptrutil.IntPtr(1),
 			})
 		}
 	}
@@ -111,7 +111,7 @@ func (h *ImageInitHandler) initSkuImages(temuCtx *temucontext.TemuTaskContext, t
 							URL:    imgURL,
 							Width:  0,
 							Height: 0,
-							Type:   utils.IntPtr(1),
+							Type:   ptrutil.IntPtr(1),
 						})
 					}
 				}

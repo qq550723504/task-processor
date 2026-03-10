@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/services"
-	"task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -306,7 +306,7 @@ func (h *ImageUploadProcessor) createImageInfo(url string, width, height int) *m
 		URL:    url,
 		Width:  width,
 		Height: height,
-		Type:   utils.IntPtr(1),
+		Type:   ptrutil.IntPtr(1),
 	}
 }
 

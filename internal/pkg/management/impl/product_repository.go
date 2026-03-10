@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/strutil"
 	"task-processor/internal/pkg/types"
 )
 
@@ -115,34 +116,21 @@ func (c *ProductDataAPIClientImpl) buildBatchSaveRequestFromDTO(req *api.Product
 }
 
 // parseFlexiblePrice 解析FlexibleString价格为浮点数
+// 已废弃: 请使用 strutil.ParseFloat(price.String())
 func parseFlexiblePrice(price types.FlexibleString) float64 {
-	priceStr := price.String()
-	if priceStr == "" {
-		return 0.0
-	}
-	var result float64
-	fmt.Sscanf(priceStr, "%f", &result)
-	return result
+	return strutil.ParseFloat(price.String())
 }
 
 // parseStock 解析库存字符串为整数
+// 已废弃: 请使用 strutil.ParseInt
 func parseStock(stock string) int {
-	if stock == "" {
-		return 0
-	}
-	var result int
-	fmt.Sscanf(stock, "%d", &result)
-	return result
+	return strutil.ParseInt(stock)
 }
 
 // parsePrice 解析价格字符串为浮点数
+// 已废弃: 请使用 strutil.ParseFloat
 func parsePrice(price string) float64 {
-	if price == "" {
-		return 0.0
-	}
-	var result float64
-	fmt.Sscanf(price, "%f", &result)
-	return result
+	return strutil.ParseFloat(price)
 }
 
 // ProductListItem 产品列表项（API 响应结构）

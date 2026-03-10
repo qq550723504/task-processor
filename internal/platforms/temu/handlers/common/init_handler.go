@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"time"
@@ -43,7 +44,7 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 
 	// 初始化TEMU产品结构体
 	temuProduct := &models.Product{
-		CanSave: boolPtr(true),
+		CanSave: ptrutil.BoolPtr(true),
 		Extra: models.ExtraInfo{
 			CreateEmptyGoods: true,
 			Tab:              1,
@@ -84,9 +85,9 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 				},
 			},
 		},
-		PlatformExpressBill:    boolPtr(false),
-		SupportMaxRetailPrice:  boolPtr(true),
-		ReplicateToRelateGoods: boolPtr(false),
+		PlatformExpressBill:    ptrutil.BoolPtr(false),
+		SupportMaxRetailPrice:  ptrutil.BoolPtr(true),
+		ReplicateToRelateGoods: ptrutil.BoolPtr(false),
 		SkcList:                make([]models.Skc, 0),
 	}
 
@@ -111,9 +112,4 @@ func (h *InitDataHandler) Handle(ctx pipeline.TaskContext) error {
 	}
 	// 如果不是TemuTaskContext，返回错误
 	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
-}
-
-// boolPtr 返回bool指针
-func boolPtr(b bool) *bool {
-	return &b
 }
