@@ -169,6 +169,7 @@
 
 #### 任务 4.2: 消除重复的工具函数 ✅
 **完成时间**: 2026-03-10
+**提交**: `e2eb88f`, `8c05229`, `09a9726`, `12054cc`
 
 **执行内容:**
 
@@ -186,21 +187,47 @@
      - `temu/services/pricing/pricing_decision_service.go` 中的 parsePrice
      - `pkg/management/impl/product_repository.go` 中的 parsePrice, parseStock, parseFlexiblePrice
 
-3. **保留的平台特定函数:**
+3. **统一JSON解析代码:**
+   - 创建 `internal/pkg/jsonutil/unmarshal.go` 提供泛型辅助函数:
+     - `UnmarshalString[T any](jsonStr string, target *T, errorPrefix string) error`
+     - `UnmarshalBytes[T any](data []byte, target *T, errorPrefix string) error`
+     - `MustUnmarshalString[T any](jsonStr string) T`
+   - 创建迁移指南 `docs/jsonutil-migration-guide.md`
+   - 创建重复代码分析报告 `docs/duplicate-code-analysis.md`
+   - 迁移TEMU平台文件 (11个文件,约12处):
+     - inventory_sync相关: helper, updater, record, api (10处)
+     - processor_service.go, submitter_service.go (2处)
+   - 迁移SHEIN平台文件 (8个文件,约16处):
+     - inventory_sync相关: sync, helper, api, record (9处)
+     - product_data_helper.go (3处)
+     - processor_service.go, submitter_service.go (2处)
+   - 迁移Handler层文件 (3个文件,约3处):
+     - ai_mapping_single_processor.go (1处)
+     - sensitive_words_filter.go (1处)
+     - prohibited_items_config.go (1处)
+
+4. **保留的平台特定函数:**
    - `shein/service/product/attribute/sale/utils_service.go` 中的 parseFloat (有特殊的正则提取逻辑)
    - 各平台的错误处理函数 (NewRetryableError, IsRetryableError等) - 实现差异大,反映平台特定需求
 
 **重构收益:**
 - 消除了6个完全重复的工具函数
 - 统一了数字解析逻辑到 strutil 包
+- 统一了JSON解析逻辑到 jsonutil 包
+- 减少约31处重复的JSON解析代码 (约200行)
 - 减少了代码维护成本
 - 提高了代码一致性
 
 **代码统计:**
-- 删除重复代码: 约80行
-- 新增公共函数: 1个文件,约25行
+- 删除重复代码: 约280行
+- 新增公共函数: 2个文件,约50行
 - 标记废弃函数: 4个函数
-- 净减少代码: 约55行
+- 迁移JSON解析: 22个文件,31处
+- 净减少代码: 约230行
+
+**待完成工作:**
+- 剩余约30+个文件的JSON解析代码待迁移 (参考 jsonutil-migration-guide.md)
+- 预计可再减少约150行重复代码
 
 ---
 

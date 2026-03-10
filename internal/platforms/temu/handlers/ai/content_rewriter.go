@@ -3,13 +3,13 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/jsonutil"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -292,7 +292,7 @@ func (r *AIContentRewriter) callAIForRewrite(ctx context.Context, systemPrompt, 
 	content = r.cleanJSONContent(content)
 
 	var result RewriteResult
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
+	if err := jsonutil.UnmarshalBytes([]byte(content), &result, "解析AI响应失败"); err != nil {
 		r.logger.WithError(err).Errorf("解析AI响应失败: %s", content)
 		return nil, fmt.Errorf("解析AI响应失败: %w", err)
 	}

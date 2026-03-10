@@ -9,6 +9,7 @@ import (
 
 	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/handlers/property"
 	"task-processor/internal/platforms/temu/types"
@@ -114,7 +115,7 @@ func (s *AIService) processAIResponse(response *openaiClient.ChatCompletionRespo
 		Properties []models.PropertyItem `json:"properties"`
 	}
 
-	if err := json.Unmarshal([]byte(content), &aiResponse); err != nil {
+	if err := jsonutil.UnmarshalBytes([]byte(content), &aiResponse, "解析AI响应失败"); err != nil {
 		s.logger.WithError(err).Errorf("解析AI响应失败: %s", content)
 		return nil, fmt.Errorf("解析AI响应失败: %w", err)
 	}

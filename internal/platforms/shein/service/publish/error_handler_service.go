@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/pkg/jsonutil"
 	product "task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/service/content"
@@ -192,7 +193,7 @@ func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult interfac
 	logrus.Infof("🔍 调试 - PreValidResult JSON 数据: %s", string(jsonData))
 
 	var results []model.PreValidResult
-	if err := json.Unmarshal(jsonData, &results); err != nil {
+	if err := jsonutil.UnmarshalBytes(jsonData, &results, "反序列化 PreValidResult 失败"); err != nil {
 		logrus.Errorf("❌ 调试 - 反序列化 PreValidResult 失败: %v", err)
 		logrus.Errorf("❌ 调试 - 尝试反序列化的JSON: %s", string(jsonData))
 		return nil, err
