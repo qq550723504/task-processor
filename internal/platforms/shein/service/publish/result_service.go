@@ -9,6 +9,7 @@ import (
 	management_api "task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/pkg/recovery"
+	"task-processor/internal/pkg/timeutil"
 	shein_model "task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/service/common/data"
 	"task-processor/internal/platforms/shein/service/validation"
@@ -258,7 +259,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein_model.Task
 	logrus.Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", ctx.StoreInfo.ID, dailyLimit, ctx.StoreInfo.DailyLimitType)
 
 	// 获取当前日期（格式：YYYY-MM-DD）
-	currentDate := time.Now().Format("2006-01-02")
+	currentDate := timeutil.NowDate()
 
 	// 根据店铺配置的限制类型计算增加的数量
 	increment := h.calculateIncrement(ctx)

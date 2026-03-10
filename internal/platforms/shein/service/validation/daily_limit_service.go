@@ -2,8 +2,8 @@
 
 import (
 	"fmt"
+	"task-processor/internal/pkg/timeutil"
 	"task-processor/internal/platforms/shein/model"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -50,7 +50,7 @@ func (h *CheckDailyLimitHandler) Handle(ctx *model.TaskContext) error {
 	logrus.Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", ctx.StoreInfo.ID, dailyLimit, ctx.StoreInfo.DailyLimitType)
 
 	// 获取当前日期（格式：YYYY-MM-DD）
-	currentDate := time.Now().Format("2006-01-02")
+	currentDate := timeutil.NowDate()
 
 	// 获取当前已上架数量
 	currentCount := ctx.MemoryManager.DailyCountManager.GetCount(

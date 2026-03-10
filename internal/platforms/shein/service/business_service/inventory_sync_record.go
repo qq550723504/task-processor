@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/pkg/management/api"
 	"task-processor/internal/pkg/recovery"
+	"task-processor/internal/pkg/timeutil"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -32,9 +33,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 
 	// 如果今天已经记录过，跳过
 	if latestRecord != nil {
-		recordDate := latestRecord.CreateTime.Format("2006-01-02")
-		today := time.Now().Format("2006-01-02")
-		if recordDate == today {
+		if timeutil.IsSameDate(latestRecord.CreateTime.Time, time.Now()) {
 			return
 		}
 	}
