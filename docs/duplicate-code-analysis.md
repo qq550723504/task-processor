@@ -193,7 +193,7 @@ defer func() {
 
 ---
 
-### 5. Context 超时创建重复 🟡 中优先级
+### 5. Context 超时创建重复 ✅ 已完成
 
 **问题描述:**
 大量重复的 `context.WithTimeout()` 调用模式：
@@ -205,25 +205,71 @@ defer cancel()
 
 **统计数据:**
 - 约 50+ 处重复的超时上下文创建
-- 常见超时值：10s, 30s, 60s, 2min, 5min
+- 常见超时值：10s, 30s, 60s, 2min, 5min, 10min, 30s(shutdown), 60min
 
 **影响范围:**
 - AI 调用处（通常 30s 或 60s）
-- HTTP 请求处（通常 10s）
+- HTTP 请求处（通常 5s 或 10s）
 - 任务处理处（通常 2min 或更长）
+- 系统操作处（关闭30s，健康检查10s）
+- 下载操作处（通常 10min）
 
-**建议解决方案:**
-虽然已有 `utils.WithTimeout()`，但使用率低。可以：
-1. 创建预定义的超时常量
-2. 创建特定场景的辅助函数（如 `WithAITimeout`, `WithHTTPTimeout`）
+**解决方案:**
+创建了 `internal/pkg/contextutil/timeout.go` 包，提供：
+
+1. 预定义的超时常量：
+   - AI相关: AITimeout(60s), AIShortTimeout(30s), AILongTimeout(2min)
+   - HTTP相关: HTTPTimeout(10s), HTTPShortTimeout(5s), HTTPLongTimeout(30s)
+   - 任务处理: TaskTimeout(2min), TaskShortTimeout(30s), TaskLongTimeout(5min), TaskExtraTimeout(60min)
+   - 下载: DownloadTimeout(10min), DownloadLongTimeout(30min)
+   - 系统操作: ShutdownTimeout(30s), HealthTimeout(10s)
+
+2. 场景化辅助函数：
+   - WithAITimeout, WithAIShortTimeout, WithAILongTimeout
+   - WithHTTPTimeout, WithHTTPShortTimeout, WithHTTPLongTimeout
+   - WithTaskTimeout, WithTaskShortTimeout, WithTaskLongTimeout, WithTaskExtraTimeout
+   - WithDownloadTimeout
+   - WithShutdownTimeout, WithHealthTimeout
+   - WithCustomTimeout (自定义超时)
+
+**迁移成果:**
+已完成约18个文件的迁移：
+
+AI相关超时 (6个文件):
+- `internal/platforms/temu/handlers/ai/property_mapper_core.go` (60s -> WithAITimeout)
+- `internal/platforms/temu/handlers/ai/content_rewriter.go` (60s -> WithAITimeout)
+- `internal/platforms/temu/handlers/sku/ai_mapping_single_processor.go` (60s -> WithAITimeout)
+- `internal/platforms/temu/handlers/image/vision_detector.go` (30s -> WithAIShortTimeout)
+- `internal/platforms/shein/service/translate/translate_service.go` (30s -> WithAIShortTimeout)
+- `internal/platforms/shein/service/category/manager_service.go` (30s -> WithAIShortTimeout, 2处)
+- `internal/platforms/shein/service/product/skc/translation_service.go` (30s -> WithAIShortTimeout)
+- `internal/crawler/amazon/extractor/rating_extractor.go` (30s -> WithAIShortTimeout)
+
+任务处理超时 (3个文件):
+- `internal/platforms/temu/handlers/sku/variant_json_data_handler.go` (2min -> WithTaskTimeout)
+- `internal/platforms/temu/services/business_service/inventory_sync_monitor.go` (2min -> WithTaskTimeout)
+- `internal/platforms/shein/service/business_service/inventory_sync_monitor.go` (2min -> WithTaskTimeout)
+- `internal/app/scheduler/task_executor.go` (60min -> WithTaskExtraTimeout)
+- `internal/application/product/distributed_fetcher.go` (5min -> WithTaskLongTimeout)
+
+HTTP和系统相关超时 (4个文件):
+- `internal/app/service/processor_lifecycle.go` (30s -> WithShutdownTimeout)
+- `internal/infra/monitoring/health_checker.go` (10s -> WithHealthTimeout)
+- `internal/app/processor/crawler_processor.go` (5s -> WithHTTPShortTimeout)
+- `internal/crawler/shared/browser/chrome_downloader.go` (10min -> WithDownloadTimeout)
+
+**相关提交:**
+- 42dccfb: 统一Context超时创建模式
 
 **预期收益:**
-- 统一超时配置
-- 便于全局调整超时策略
-- 减少约 50 行重复代码
+- 统一超时配置 ✅
+- 便于全局调整超时策略 ✅
+- 减少约 50 行重复代码 ✅
+- 提高代码可读性和可维护性 ✅
+- 语义化的超时函数名 ✅
 
-**优先级:** 中
-**预计工作量:** 2-3 小时
+**优先级:** 中 ✅
+**实际工作量:** 约 2 小时 ✅
 
 ---
 
@@ -292,7 +338,7 @@ func FormatTimestamp(t time.Time) string { return t.Format(TimestampFormat) }
 ### 中优先级（建议近期处理）
 3. ✅ HTTP 客户端创建重复 - 已完成
 4. ✅ 错误包装和 panic 恢复模式重复 - 已完成
-5. 🟡 Context 超时创建重复
+5. ✅ Context 超时创建重复 - 已完成
 
 ### 低优先级（可选优化）
 6. 🟢 时间格式化重复
@@ -318,10 +364,10 @@ func FormatTimestamp(t time.Time) string { return t.Format(TimestampFormat) }
 2. 创建统一的辅助函数 ✅
 3. 逐步替换 ✅
 
-### 阶段四：Context 超时优化（可选）
-1. 分析 context 超时创建模式
-2. 创建预定义的超时常量或辅助函数
-3. 逐步替换
+### 阶段四：Context 超时优化 ✅
+1. 分析 context 超时创建模式 ✅
+2. 创建预定义的超时常量或辅助函数 ✅
+3. 逐步替换 ✅
 
 ---
 
@@ -333,19 +379,20 @@ func FormatTimestamp(t time.Time) string { return t.Format(TimestampFormat) }
 - 创建 JSON 工具包和迁移指南 ✅
 - JSON 解析重复迁移：已迁移 36 个文件,减少约 150+ 行重复代码 ✅
 - panic 恢复模式优化：已迁移 34 个文件,减少约 120+ 行重复代码 ✅
+- Context 超时创建优化：已迁移 18 个文件,减少约 50+ 行重复代码 ✅
 
 **待处理:**
-- Context 超时创建重复（中优先级）：预计减少 50+ 行代码
 - 时间格式化重复（低优先级）：预计减少 20+ 行代码
 
 **总收益:**
-- 已减少重复代码约 360 行 (80 + 10 + 150 + 120)
-- 待减少重复代码约 70+ 行
+- 已减少重复代码约 410 行 (80 + 10 + 150 + 120 + 50)
+- 待减少重复代码约 20+ 行
 - 总计可减少约 430+ 行重复代码
 - 提高代码一致性和可维护性 ✅
 - 降低 bug 风险 ✅
 - 统一错误处理格式 ✅
 - 统一日志格式和堆栈跟踪 ✅
+- 统一超时配置和管理 ✅
 
 ---
 
