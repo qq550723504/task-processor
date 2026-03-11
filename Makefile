@@ -1,189 +1,123 @@
 # Makefile for Task Processor
+.PHONY: all build-all clean test help
 
-# 变量定义
-APP_NAME=task-processor
-VERSION=$(shell git describe --tags --always --dirty)
-BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
-GO_VERSION=$(shell go version | awk '{print $$3}')
+# 版本信息
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "v1.0.0")
+BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
+LDFLAGS := -X main.appVersion=$(VERSION) -X main.buildTime=$(BUILD_TIME)
 
-# 构建目录
-BUILD_DIR=bin
-CMD_DIR=cmd
-
-# Go 相关变量
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) clean
-GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
-GOMOD=$(GOCMD) mod
-GOFMT=$(GOCMD) fmt
-
-# 构建标志
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
-
-.PHONY: all build clean test coverage lint fmt help install-tools
-
-# 默认目标
-all: clean fmt lint test build
+# 输出目录
+BIN_DIR := bin
 
 # 帮助信息
 help:
-	@echo "Task Processor Makefile"
+	@echo "Task Processor 构建工具"
 	@echo ""
-	@echo "Usage:"
-	@echo "  make build          - 编译所有二进制文件"
-	@echo "  make build-task     - 编译主任务处理器"
-	@echo "  make build-consumer - 编译 RabbitMQ 消费者"
-	@echo "  make clean          - 清理构建文件"
-	@echo "  make test           - 运行测试"
-	@echo "  make coverage       - 生成测试覆盖率报告"
-	@echo "  make lint           - 运行代码检查"
-	@echo "  make fmt            - 格式化代码"
-	@echo "  make install-tools  - 安装开发工具"
-	@echo "  make run            - 运行主程序"
-	@echo "  make docker-build   - 构建 Docker 镜像"
-	@echo "  make docker-up      - 启动 Docker Compose"
-	@echo "  make docker-down    - 停止 Docker Compose"
+	@echo "使用方法:"
+	@echo "  make build-all          - 构建所有服务"
+	@echo "  make build-temu         - 构建 TEMU 上架服务"
+	@echo "  make build-shein        - 构建 SHEIN 上架服务"
+	@echo "  make build-amazon-crawler - 构建 Amazon 爬虫服务"
+	@echo "  make build-1688-crawler - 构建 1688 爬虫服务"
+	@echo "  make clean              - 清理构建文件"
+	@echo "  make test               - 运行测试"
+	@echo ""
 
-# 编译所有二进制文件
-build: build-task build-consumer build-crawler-consumer
+# 构建所有服务
+build-all: build-temu build-shein build-amazon-crawler build-1688-crawler build-amazon-crawler-api
+	@echo "✅ 所有服务构建完成"
 
-# 编译主任务处理器
-build-task:
-	@echo "Building task processor..."
-	@mkdir -p $(BUILD_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(APP_NAME) $(CMD_DIR)/task/main.go
+# TEMU 上架服务
+build-temu:
+	@echo "🔨 构建 TEMU 上架服务..."
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/temu-listing cmd/temu-listing/main.go
+	@echo "✅ TEMU 上架服务构建完成: $(BIN_DIR)/temu-listing"
 
-# 编译 RabbitMQ 消费者
-build-consumer:
-	@echo "Building RabbitMQ consumer..."
-	@mkdir -p $(BUILD_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/rabbitmq-consumer $(CMD_DIR)/rabbitmq-consumer/main.go
+# SHEIN 上架服务
+build-shein:
+	@echo "🔨 构建 SHEIN 上架服务..."
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/shein-listing cmd/shein-listing/main.go
+	@echo "✅ SHEIN 上架服务构建完成: $(BIN_DIR)/shein-listing"
 
-# 编译爬虫消费者
-build-crawler-consumer:
-	@echo "Building crawler consumer..."
-	@mkdir -p $(BUILD_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/crawler-consumer $(CMD_DIR)/crawler-consumer/main.go
+# Amazon 爬虫服务
+build-amazon-crawler:
+	@echo "🔨 构建 Amazon 爬虫服务..."
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/amazon-crawler cmd/amazon-crawler/main.go
+	@echo "✅ Amazon 爬虫服务构建完成: $(BIN_DIR)/amazon-crawler"
+
+# 1688 爬虫服务
+build-1688-crawler:
+	@echo "🔨 构建 1688 爬虫服务..."
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/1688-crawler cmd/1688-crawler/main.go
+	@echo "✅ 1688 爬虫服务构建完成: $(BIN_DIR)/1688-crawler"
+
+# Amazon 爬虫 API 服务（不依赖 RabbitMQ）
+build-amazon-crawler-api:
+	@echo "🔨 构建 Amazon 爬虫 API 服务..."
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/amazon-crawler-api cmd/amazon-crawler-api/main.go
+	@echo "✅ Amazon 爬虫 API 服务构建完成: $(BIN_DIR)/amazon-crawler-api"
+
+# 原有的 RabbitMQ Consumer（保留用于兼容）
+build-rabbitmq-consumer:
+	@echo "🔨 构建 RabbitMQ Consumer（兼容模式）..."
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/rabbitmq-consumer cmd/rabbitmq-consumer/main.go
+	@echo "✅ RabbitMQ Consumer 构建完成: $(BIN_DIR)/rabbitmq-consumer"
 
 # 清理构建文件
 clean:
-	@echo "Cleaning..."
-	$(GOCLEAN)
-	rm -rf $(BUILD_DIR)
-	rm -f coverage.out coverage.html
+	@echo "🧹 清理构建文件..."
+	rm -rf $(BIN_DIR)
+	@echo "✅ 清理完成"
 
 # 运行测试
 test:
-	@echo "Running tests..."
-	$(GOTEST) -v -race ./...
+	@echo "🧪 运行测试..."
+	go test -v ./...
 
-# 生成测试覆盖率报告
-coverage:
-	@echo "Generating coverage report..."
-	$(GOTEST) -v -race -coverprofile=coverage.out ./...
-	$(GOCMD) tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated: coverage.html"
+# 运行测试（带覆盖率）
+test-coverage:
+	@echo "🧪 运行测试（带覆盖率）..."
+	go test -v -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "✅ 覆盖率报告已生成: coverage.html"
 
-# 运行代码检查
+# 代码检查
 lint:
-	@echo "Running linter..."
-	@which golangci-lint > /dev/null || (echo "golangci-lint not found, installing..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
-	golangci-lint run ./...
+	@echo "🔍 运行代码检查..."
+	golangci-lint run
 
 # 格式化代码
 fmt:
-	@echo "Formatting code..."
-	$(GOFMT) ./...
+	@echo "✨ 格式化代码..."
+	go fmt ./...
 
-# 安装开发工具
-install-tools:
-	@echo "Installing development tools..."
-	$(GOGET) $(shell go list -f '{{join .Imports " "}}' tools/tools.go)
+# 本地运行 TEMU 服务
+run-temu:
+	@echo "🚀 启动 TEMU 上架服务..."
+	go run cmd/temu-listing/main.go --config=config/config-dev.yaml
 
-# 下载依赖
-deps:
-	@echo "Downloading dependencies..."
-	$(GOMOD) download
-	$(GOMOD) tidy
+# 本地运行 SHEIN 服务
+run-shein:
+	@echo "🚀 启动 SHEIN 上架服务..."
+	go run cmd/shein-listing/main.go --config=config/config-dev.yaml
 
-# 运行主程序
-run: build-task
-	@echo "Running task processor..."
-	./$(BUILD_DIR)/$(APP_NAME)
+# 本地运行 Amazon 爬虫
+run-amazon-crawler:
+	@echo "🚀 启动 Amazon 爬虫服务..."
+	go run cmd/amazon-crawler/main.go --config=config/config-dev.yaml
 
-# 运行 RabbitMQ 消费者
-run-consumer: build-consumer
-	@echo "Running RabbitMQ consumer..."
-	./$(BUILD_DIR)/rabbitmq-consumer
+# 本地运行 1688 爬虫
+run-1688-crawler:
+	@echo "🚀 启动 1688 爬虫服务..."
+	go run cmd/1688-crawler/main.go --config=config/config-dev.yaml
 
-# Docker 相关命令
-docker-build:
-	@echo "Building Docker image..."
-	docker build -f deployments/docker/Dockerfile -t $(APP_NAME):$(VERSION) .
-
-docker-up:
-	@echo "Starting Docker Compose..."
-	docker-compose -f deployments/docker/docker-compose.yml up -d
-
-docker-down:
-	@echo "Stopping Docker Compose..."
-	docker-compose -f deployments/docker/docker-compose.yml down
-
-docker-logs:
-	@echo "Showing Docker logs..."
-	docker-compose -f deployments/docker/docker-compose.yml logs -f
-
-# 数据库迁移
-migrate-up:
-	@echo "Running database migrations..."
-	migrate -path migrations -database "$(DB_URL)" up
-
-migrate-down:
-	@echo "Rolling back database migrations..."
-	migrate -path migrations -database "$(DB_URL)" down 1
-
-migrate-create:
-	@echo "Creating new migration: $(name)"
-	migrate create -ext sql -dir migrations -seq $(name)
-
-# 生成代码
-generate:
-	@echo "Generating code..."
-	$(GOCMD) generate ./...
-
-# 生成 Swagger 文档
-swagger:
-	@echo "Generating Swagger documentation..."
-	@which swag > /dev/null || (echo "swag not found, installing..." && go install github.com/swaggo/swag/cmd/swag@latest)
-	swag init -g cmd/task/main.go -o api/openapi
-
-# 生成 Mock 代码
-mock:
-	@echo "Generating mock code..."
-	@which mockgen > /dev/null || (echo "mockgen not found, installing..." && go install github.com/golang/mock/mockgen@latest)
-	$(GOCMD) generate ./...
-
-# 检查代码安全性
-security:
-	@echo "Running security check..."
-	@which gosec > /dev/null || (echo "gosec not found, installing..." && go install github.com/securego/gosec/v2/cmd/gosec@latest)
-	gosec ./...
-
-# 性能分析
-bench:
-	@echo "Running benchmarks..."
-	$(GOTEST) -bench=. -benchmem ./...
-
-# 查看项目信息
-info:
-	@echo "Project Information:"
-	@echo "  Name:       $(APP_NAME)"
-	@echo "  Version:    $(VERSION)"
-	@echo "  Build Time: $(BUILD_TIME)"
-	@echo "  Go Version: $(GO_VERSION)"
-
-# 完整的 CI 流程
-ci: deps fmt lint test build
-	@echo "CI pipeline completed successfully!"
+# 本地运行 Amazon 爬虫 API
+run-amazon-crawler-api:
+	@echo "🚀 启动 Amazon 爬虫 API 服务..."
+	go run cmd/amazon-crawler-api/main.go --config=config/config-dev.yaml --port=8080

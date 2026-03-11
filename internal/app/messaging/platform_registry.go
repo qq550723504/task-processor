@@ -205,6 +205,84 @@ func (r *PlatformRegistry) registerSheinPlatform(ctx context.Context, serviceMan
 	return nil
 }
 
+// RegisterTemuProcessor 只注册 TEMU 平台处理器
+func (r *PlatformRegistry) RegisterTemuProcessor(ctx context.Context, serviceManager *ServiceManager) error {
+	r.logger.Info("📦 注册 TEMU 平台处理器...")
+
+	// 获取RabbitMQ客户端
+	r.rabbitmqClient = serviceManager.GetClient()
+
+	// 初始化共享资源
+	if err := r.initializeSharedResources(); err != nil {
+		return fmt.Errorf("初始化共享资源失败: %w", err)
+	}
+
+	// 注册 TEMU 平台
+	return r.registerTemuPlatform(ctx, serviceManager)
+}
+
+// RegisterSheinProcessor 只注册 SHEIN 平台处理器
+func (r *PlatformRegistry) RegisterSheinProcessor(ctx context.Context, serviceManager *ServiceManager) error {
+	r.logger.Info("📦 注册 SHEIN 平台处理器...")
+
+	// 获取RabbitMQ客户端
+	r.rabbitmqClient = serviceManager.GetClient()
+
+	// 初始化共享资源
+	if err := r.initializeSharedResources(); err != nil {
+		return fmt.Errorf("初始化共享资源失败: %w", err)
+	}
+
+	// 注册 SHEIN 平台
+	return r.registerSheinPlatform(ctx, serviceManager)
+}
+
+// RegisterAmazonProcessor 只注册 Amazon 平台处理器
+func (r *PlatformRegistry) RegisterAmazonProcessor(ctx context.Context, serviceManager *ServiceManager) error {
+	r.logger.Info("📦 注册 Amazon 平台处理器...")
+
+	// 获取RabbitMQ客户端
+	r.rabbitmqClient = serviceManager.GetClient()
+
+	// 初始化共享资源（Amazon 不需要共享的 Amazon 处理器）
+	if err := r.initializeManagementClient(); err != nil {
+		return fmt.Errorf("初始化管理客户端失败: %w", err)
+	}
+
+	// 注册 Amazon 平台
+	return r.registerAmazonPlatform(ctx, serviceManager)
+}
+
+// initializeManagementClient 只初始化管理客户端（不创建 Amazon 处理器）
+func (r *PlatformRegistry) initializeManagementClient() error {
+	r.logger.Info("🔧 初始化管理客户端...")
+
+	// 创建管理客户端
+	r.managementClient = management.NewClientManager(&r.config.Management)
+
+	// 创建认证客户端并获取访问令牌
+	authClient := auth.NewClientCredentialsAuthClient(
+		r.config.Management.BaseURL,
+		r.config.Management.ClientID,
+		r.config.Management.ClientSecret,
+		r.config.Management.TenantID,
+		r.logger,
+	)
+
+	// 获取访问令牌
+	accessToken, err := authClient.GetAccessToken()
+	if err != nil {
+		return fmt.Errorf("获取访问令牌失败: %w", err)
+	}
+
+	// 设置访问令牌到管理客户端
+	client := r.managementClient.GetClient()
+	client.SetUserToken(accessToken, r.config.Management.TenantID)
+	r.logger.Info("✅ 访问令牌设置成功")
+
+	return nil
+}
+
 // parsePlatformList 解析平台列表
 func parsePlatformList(platformsStr string) []string {
 	platforms := strings.Split(platformsStr, ",")
