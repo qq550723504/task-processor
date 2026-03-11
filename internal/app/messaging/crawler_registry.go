@@ -79,6 +79,54 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManage
 	return nil
 }
 
+// RegisterAmazonCrawler 只注册 Amazon 爬虫处理器
+func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) error {
+	r.logger.Info("📦 注册 Amazon 爬虫处理器...")
+
+	// 创建新的 Amazon 处理器
+	amazonProcessor := amazon.CreateProcessor(r.config, r.logger)
+
+	// 创建产品获取器
+	productFetcher := r.createProductFetcher(amazonProcessor)
+	if productFetcher == nil {
+		return fmt.Errorf("创建产品获取器失败")
+	}
+
+	// 创建任务提交器
+	taskSubmitter := NewTaskSubmitter(r.rabbitmqClient, r.logger)
+
+	// 创建 RabbitMQ 发布器适配器
+	rabbitmqPublisher := NewRabbitMQPublisherAdapter(r.rabbitmqClient, r.logger)
+
+	// 创建爬虫处理器
+	crawlerProcessor := processor.NewCrawlerProcessor(
+		r.logger,
+		amazonProcessor,
+		productFetcher,
+		taskSubmitter,
+		rabbitmqPublisher,
+	)
+
+	// 注册到服务管理器
+	if err := serviceManager.RegisterProcessor("amazon.crawler", crawlerProcessor); err != nil {
+		return fmt.Errorf("注册 Amazon 爬虫处理器失败: %w", err)
+	}
+
+	r.logger.Info("✅ Amazon 爬虫处理器注册成功")
+	return nil
+}
+
+// Register1688Crawler 只注册 1688 爬虫处理器
+func (r *CrawlerRegistry) Register1688Crawler(serviceManager *ServiceManager) error {
+	r.logger.Info("📦 注册 1688 爬虫处理器...")
+
+	// TODO: 实现 1688 爬虫处理器注册
+	// 目前 1688 爬虫还没有独立的处理器实现
+
+	r.logger.Warn("⚠️ 1688 爬虫处理器尚未实现")
+	return fmt.Errorf("1688 爬虫处理器尚未实现")
+}
+
 // createProductFetcher 创建产品获取器
 func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonProcessor) *product.ProductFetcher {
 	// 创建认证客户端

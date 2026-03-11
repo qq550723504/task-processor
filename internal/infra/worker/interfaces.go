@@ -38,4 +38,5 @@ type WorkerPool interface {
 	AvailableSlots() int
 	GetQueueStats() QueueStats
 	SetJobHandler(handler JobHandler)
+	GetMetrics() *Metrics
 }
