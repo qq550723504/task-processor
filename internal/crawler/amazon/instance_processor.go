@@ -93,8 +93,9 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 	marketplace := ip.urlHelper.GetMarketplaceFromURL(url)
 	expectedCurrency := ip.urlHelper.GetCurrencyFromURL(url)
 
-	// 设置并验证货币
-	if expectedCurrency != "" {
+	// 只针对英国站设置货币(其他站点邮编设置后货币会自动正确)
+	if strings.Contains(url, "amazon.co.uk") && expectedCurrency != "" {
+		logrus.Infof("英国站需要手动设置货币: %s", expectedCurrency)
 		currencySetter := browser.NewCurrencySetter(instance.Manager)
 		if err := currencySetter.SetAndVerifyCurrency(page, expectedCurrency); err != nil {
 			logrus.Warnf("设置货币失败: %v (将继续抓取，但货币可能不准确)", err)
