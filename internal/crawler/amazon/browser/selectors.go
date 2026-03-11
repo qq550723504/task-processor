@@ -4,6 +4,11 @@ package browser
 // GetContinueShoppingSelectors 获取"继续购物"按钮的多语言选择器
 func GetContinueShoppingSelectors() []string {
 	return []string{
+		// 通用的Continue按钮（邮编设置后的确认按钮）
+		"button:has-text('Continue'):not(:has-text('Cart')):not(:has-text('Buy'))",
+		"input[type='submit']:has-text('Continue')",
+		"span.a-button-text:has-text('Continue')",
+
 		// 英语 - 只保留明确的Continue Shopping相关选择器
 		"button:has-text('Continue Shopping')",
 		"button:has-text('Continue shopping')",

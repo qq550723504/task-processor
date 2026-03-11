@@ -10,6 +10,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// truncateString 截断字符串到指定长度
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
 // ZipcodeInputHandler 邮编输入处理器
 type ZipcodeInputHandler struct {
 	strategies []ZipcodeStrategy // 邮编输入策略列表
@@ -156,10 +164,6 @@ func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) er
 			return nil
 		}
 
-		// 调试：打印导航栏区域的所有元素
-		if err := DebugNavigationElements(page); err != nil {
-			logrus.Infof("调试导航栏元素失败: %v", err)
-		}
 	}
 
 	return nil
@@ -183,6 +187,7 @@ func (zih *ZipcodeInputHandler) handleZipcodeInput(page playwright.Page, zipcode
 }
 
 // submitZipcodeChange 提交邮编设置
+// submitZipcodeChange 提交邮编设置
 func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error {
 	if page.IsClosed() {
 		return fmt.Errorf("页面在查找Apply按钮前被关闭")
@@ -200,14 +205,6 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 		"#zip-code-apply",      // 邮编应用按钮
 		"#postal-code-apply",   // 邮编应用按钮
 		".apply-button",        // 应用按钮类
-	}
-
-	// Done/Save 按钮（次要选择，通常在 Apply 之后出现）
-	doneButtonSelectors := []string{
-		"div[role='dialog'] button:has-text('Done'):not(:has-text('Cart')):not(:has-text('Buy'))",
-		"button:has-text('Done'):not(:has-text('Cart')):not(:has-text('Buy'))",
-		"button:has-text('Save'):not(:has-text('Cart')):not(:has-text('Buy'))",
-		".save-button",
 	}
 
 	var applyButton playwright.Locator
@@ -271,7 +268,8 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 		logrus.Infof("成功点击Apply按钮")
 	}
 
-	// 等待Apply按钮处理完成
+	// 等待Apply按钮处理完成，等待页面更新
+	logrus.Infof("等待Apply按钮处理完成，等待页面更新...")
 	time.Sleep(2 * time.Second)
 
 	// 检查页面状态
@@ -279,72 +277,17 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 		return fmt.Errorf("页面在Apply按钮处理后被关闭")
 	}
 
-	// 第二步：查找并点击 Done 按钮（如果存在）
-	var doneButton playwright.Locator
-	for _, selector := range doneButtonSelectors {
-		if page.IsClosed() {
-			return fmt.Errorf("页面在查找Done按钮过程中被关闭")
-		}
-
-		locator := page.Locator(selector).First()
-		count, err := locator.Count()
-		if err == nil && count > 0 {
-			// 检查按钮是否可见
-			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				// 双重检查:确保不是购物车相关按钮
-				if text, err := locator.TextContent(); err == nil {
-					lowerText := strings.ToLower(strings.TrimSpace(text))
-					logrus.Infof("检查Done按钮文本: '%s' (选择器: %s)", text, selector)
-
-					// 严格排除购物车相关按钮
-					if strings.Contains(lowerText, "cart") ||
-						strings.Contains(lowerText, "buy") ||
-						strings.Contains(lowerText, "add to") ||
-						strings.Contains(lowerText, "purchase") {
-						logrus.Infof("跳过购物车相关按钮: %s", text)
-						continue
-					}
-
-					// 只接受明确的确认按钮文本
-					validTexts := []string{"done", "save", "ok", "confirm"}
-					isValid := false
-					for _, validText := range validTexts {
-						if strings.Contains(lowerText, validText) {
-							isValid = true
-							break
-						}
-					}
-
-					if !isValid {
-						logrus.Infof("按钮文本不符合Done按钮要求: %s", text)
-						continue
-					}
-				}
-
-				doneButton = locator
-				logrus.Infof("找到Done按钮: %s", selector)
-				break
-			}
+	// 尝试关闭可能存在的任何对话框（Cookie对话框、邮编确认对话框等）
+	logrus.Infof("尝试关闭可能存在的对话框...")
+	for i := 0; i < 3; i++ {
+		if err := page.Keyboard().Press("Escape"); err == nil {
+			logrus.Infof("已按 ESC 键 (第%d次)", i+1)
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
 
-	if doneButton != nil {
-		// 点击Done按钮
-		logrus.Infof("准备点击Done按钮")
-		if err := doneButton.Click(); err != nil {
-			logrus.Infof("点击Done按钮失败: %v", err)
-		} else {
-			logrus.Infof("成功点击Done按钮")
-			time.Sleep(1 * time.Second)
-		}
-	} else {
-		logrus.Infof("未找到Done按钮，可能已自动关闭")
-	}
-
-	// 按ESC键关闭可能残留的弹窗
-
-	// 检查是否有 "Continue Shopping" 按钮需要点击
-	HandleContinueShoppingButtonInZipcode(page)
+	logrus.Infof("邮编设置操作完成，等待页面稳定...")
+	time.Sleep(2 * time.Second)
 
 	return nil
 }

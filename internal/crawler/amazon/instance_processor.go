@@ -45,11 +45,14 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 		}
 	}()
 
-	// 添加语言参数
-	urlWithLang := ip.urlHelper.AddLanguageParam(url)
+	// 获取市场对应的默认货币
+	currency := ip.urlHelper.GetCurrencyFromURL(url)
+
+	// 添加语言和货币参数
+	urlWithParams := ip.urlHelper.AddLanguageAndCurrencyParams(url, currency)
 
 	// 导航到产品页面
-	_, err = page.Goto(urlWithLang)
+	_, err = page.Goto(urlWithParams)
 	if err != nil {
 		return nil, fmt.Errorf("导航到页面失败: %w", err)
 	}
@@ -74,13 +77,28 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 	if zipcode != "" {
 		zipcodeSetter := browser.NewZipcodeSetter(instance.Manager)
 		if err := zipcodeSetter.SetAndVerifyZipcode(page, zipcode); err != nil {
-			logrus.Warnf("设置邮编失败: %v", err)
+			logrus.Errorf("设置邮编失败: %v", err)
 
 			// 检查是否需要重建浏览器实例
 			if ip.shouldRecreateInstance(err) {
 				return nil, fmt.Errorf("需要重建浏览器实例: %w", err)
 			}
-			// 其他错误继续处理
+
+			// 邮编设置失败，不应该继续抓取数据，因为价格和货币信息会不准确
+			return nil, fmt.Errorf("邮编设置失败，终止数据抓取: %w", err)
+		}
+	}
+
+	// 获取站点信息，用于设置货币
+	marketplace := ip.urlHelper.GetMarketplaceFromURL(url)
+	expectedCurrency := ip.urlHelper.GetCurrencyFromURL(url)
+
+	// 设置并验证货币
+	if expectedCurrency != "" {
+		currencySetter := browser.NewCurrencySetter(instance.Manager)
+		if err := currencySetter.SetAndVerifyCurrency(page, expectedCurrency); err != nil {
+			logrus.Warnf("设置货币失败: %v (将继续抓取，但货币可能不准确)", err)
+			// 货币设置失败不应该终止抓取，只记录警告
 		}
 	}
 
@@ -90,12 +108,11 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 		URL:       url,
 		Zipcode:   zipcode,
 		Asin:      ip.urlHelper.ExtractASINFromURL(url),
-		Currency:  ip.urlHelper.GetCurrencyFromURL(url),
+		Currency:  expectedCurrency,
 		Timestamp: model.NullableTime{Time: &now},
 	}
 
 	// 提取产品信息
-	marketplace := ip.urlHelper.GetMarketplaceFromURL(url)
 	ext := extractor.NewCompositeExtractor(marketplace)
 	if err := ext.Extract(page, product); err != nil {
 		return nil, fmt.Errorf("提取产品信息失败: %w", err)

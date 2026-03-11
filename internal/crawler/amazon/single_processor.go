@@ -44,9 +44,13 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, zipcode string, 
 		return nil, fmt.Errorf("创建页面失败: %w", err)
 	}
 
-	urlWithLang := sp.urlHelper.AddLanguageParam(url)
+	// 获取市场对应的默认货币
+	currency := sp.urlHelper.GetCurrencyFromURL(url)
 
-	if err := browserManager.NavigateTo(page, urlWithLang); err != nil {
+	// 添加语言和货币参数
+	urlWithParams := sp.urlHelper.AddLanguageAndCurrencyParams(url, currency)
+
+	if err := browserManager.NavigateTo(page, urlWithParams); err != nil {
 		return nil, fmt.Errorf("导航失败: %w", err)
 	}
 

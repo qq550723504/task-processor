@@ -49,6 +49,8 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 
 		text, err := locator.TextContent()
 		if err == nil && text != "" {
+			logrus.Infof("从选择器 %s 获取到文本: %s", selector, text)
+
 			// 先尝试提取邮编（通常是数字）
 			zipcode := ExtractZipcode(text)
 			if zipcode != "" {
@@ -61,6 +63,13 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 			if cityName != "" {
 				logrus.Infof("成功提取城市名称: %s", cityName)
 				return cityName, nil
+			}
+
+			// 如果既没有提取到邮编也没有提取到城市名，但文本不为空
+			// 直接返回文本内容（用于英国等站点的部分邮编显示）
+			if len(text) > 0 {
+				logrus.Infof("无法提取标准邮编格式，返回原始文本: %s", text)
+				return text, nil
 			}
 		}
 	}

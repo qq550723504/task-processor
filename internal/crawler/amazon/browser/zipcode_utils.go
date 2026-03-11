@@ -63,41 +63,6 @@ func ExtractZipcode(text string) string {
 	return ""
 }
 
-// DebugNavigationElements 调试导航栏元素（帮助找到正确的选择器）
-func DebugNavigationElements(page playwright.Page) error {
-	logrus.Infof("=== 开始调试导航栏元素 ===")
-
-	// 查找所有导航栏相关的元素
-	navSelectors := []string{
-		"#nav-global-location-slot",
-		"#nav-packard-glow-loc-icon",
-		"#glow-ingress-block",
-		"#nav-main",
-		"[id*='nav']",
-		"[id*='location']",
-		"[id*='glow']",
-	}
-
-	for _, selector := range navSelectors {
-		locator := page.Locator(selector)
-		count, err := locator.Count()
-		if err == nil && count > 0 {
-			logrus.Infof("找到元素: %s (数量: %d)", selector, count)
-			// 尝试获取第一个元素的文本
-			if text, err := locator.First().TextContent(); err == nil && text != "" {
-				logrus.Infof("  文本内容: %s", text)
-			}
-			// 尝试获取元素的HTML
-			if html, err := locator.First().InnerHTML(); err == nil && len(html) < 200 {
-				logrus.Infof("  HTML: %s", html)
-			}
-		}
-	}
-
-	logrus.Infof("=== 调试完成 ===")
-	return nil
-}
-
 // CheckIfPriceAvailable 检查页面是否已经显示价格信息
 func CheckIfPriceAvailable(page playwright.Page) bool {
 	priceSelectors := []string{

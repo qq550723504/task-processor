@@ -24,7 +24,7 @@ func (c *CurrencyManager) ExtractCurrency(priceText string) string {
 		"CNY": "CNY", "SGD": "SGD", "INR": "INR",
 		"MXN": "MXN", "BRL": "BRL", "SEK": "SEK",
 		"PLN": "PLN", "TRY": "TRY", "AED": "AED",
-		"SAR": "SAR",
+		"SAR": "SAR", "HKD": "HKD",
 	}
 
 	upperText := strings.ToUpper(priceText)
@@ -39,6 +39,8 @@ func (c *CurrencyManager) ExtractCurrency(priceText string) string {
 		return "EUR"
 	} else if strings.Contains(priceText, "£") {
 		return "GBP"
+	} else if strings.Contains(priceText, "HK$") {
+		return "HKD"
 	} else if strings.Contains(priceText, "¥") {
 		// 根据站点区分日元和人民币
 		switch c.marketplace {

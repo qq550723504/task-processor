@@ -54,13 +54,12 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 		}
 
 		// 先验证当前邮编是否正确
-		currentZipcode, err := zs.getter.GetCurrentZipcode(page)
-		if err == nil && currentZipcode == zipcode {
+		if isValid, err := zs.isZipcodeValid(page, zipcode); err == nil && isValid {
 			logrus.Infof("当前邮编已经是目标邮编: %s，无需设置", zipcode)
 			return nil
 		}
 
-		logrus.Infof("当前邮编不匹配，需要设置邮编。当前: %s, 目标: %s", currentZipcode, zipcode)
+		logrus.Infof("当前邮编不匹配，需要设置邮编")
 
 		// 设置邮编
 		if err := zs.inputHandler.SetZipcode(page, zipcode); err != nil {
@@ -82,7 +81,7 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 		}
 
 		// 验证邮编
-		if verified, err := zs.validator.VerifyZipcode(page, zipcode); err != nil || !verified {
+		if isValid, err := zs.isZipcodeValid(page, zipcode); err != nil || !isValid {
 			// 检查是否是页面关闭导致的错误
 			if page.IsClosed() {
 				return fmt.Errorf("页面已关闭: %w", err)
@@ -104,6 +103,11 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 	}
 
 	return fmt.Errorf("设置并验证邮编失败，已达到最大重试次数")
+}
+
+// isZipcodeValid 验证当前邮编是否匹配目标邮编（统一的验证入口）
+func (zs *ZipcodeSetter) isZipcodeValid(page playwright.Page, expectedZipcode string) (bool, error) {
+	return zs.validator.VerifyZipcode(page, expectedZipcode)
 }
 
 // refreshPageForRetry 为重试刷新页面

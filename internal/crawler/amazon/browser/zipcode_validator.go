@@ -3,8 +3,10 @@ package browser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/sirupsen/logrus"
 )
 
 // ZipcodeValidator 邮编验证器
@@ -27,18 +29,36 @@ func (zv *ZipcodeValidator) VerifyZipcode(page playwright.Page, expectedZipcode 
 		return false, fmt.Errorf("获取当前邮编失败: %w", err)
 	}
 
-	// 直接匹配邮编
-	if currentZipcode == expectedZipcode {
+	// 清理文本：移除所有空白字符（包括换行、制表符等）和特殊字符
+	cleanCurrent := cleanZipcodeText(currentZipcode)
+	cleanExpected := cleanZipcodeText(expectedZipcode)
+
+	logrus.Infof("验证邮编 - 期望: '%s' (清理后: '%s'), 当前: '%s' (清理后: '%s')",
+		expectedZipcode, cleanExpected, currentZipcode, cleanCurrent)
+
+	// 1. 完全匹配（清理后）
+	if cleanCurrent == cleanExpected {
+		logrus.Infof("邮编完全匹配")
 		return true, nil
 	}
 
-	// 对于某些站点(如沙特),页面显示的是城市名称而非邮编
-	// 尝试将邮编映射到城市名称进行验证
+	// 2. 提取邮编的主要部分（outward code）进行匹配
+	// 适用于英国等站点，页面可能只显示部分邮编
+	// 例如: 期望 "SW1A1AA"，页面显示 "LondonSW1A1"
+	expectedCore := extractZipcodeCore(cleanExpected)
+	if expectedCore != "" && strings.Contains(cleanCurrent, expectedCore) {
+		logrus.Infof("邮编核心部分匹配: '%s' 包含在 '%s' 中", expectedCore, cleanCurrent)
+		return true, nil
+	}
+
+	// 3. 对于某些站点(如沙特),页面显示的是城市名称而非邮编
 	expectedCity := mapZipcodeToCity(expectedZipcode)
-	if expectedCity != "" && currentZipcode == expectedCity {
+	if expectedCity != "" && strings.Contains(cleanCurrent, strings.ReplaceAll(expectedCity, " ", "")) {
+		logrus.Infof("邮编映射到城市名称匹配: %s", expectedCity)
 		return true, nil
 	}
 
+	logrus.Warnf("邮编验证失败 - 期望: '%s', 当前: '%s'", cleanExpected, cleanCurrent)
 	return false, nil
 }
 
@@ -77,4 +97,64 @@ func mapZipcodeToCity(zipcode string) string {
 	}
 
 	return ""
+}
+
+// extractZipcodeCore 提取邮编的核心部分用于匹配
+// 对于不同格式的邮编，提取最有代表性的部分
+func extractZipcodeCore(cleanedZipcode string) string {
+	if cleanedZipcode == "" {
+		return ""
+	}
+
+	// 英国邮编格式: SW1A1AA -> 提取 SW1A1 (去掉最后2个字符，通常是inward code)
+	// 美国邮编格式: 10001 -> 保持原样
+	// 加拿大邮编格式: M5H2N2 -> 提取 M5H (前3个字符)
+
+	length := len(cleanedZipcode)
+
+	// 如果邮编长度 >= 6，可能是英国或加拿大格式
+	if length >= 6 {
+		// 英国邮编通常是 5-7 个字符（去掉空格后）
+		// 提取前面的主要部分（去掉最后 1-3 个字符）
+		// 例如: SW1A1AA -> SW1A1, SW1A -> SW1A
+		if length == 7 || length == 6 {
+			return cleanedZipcode[:length-2] // 去掉最后2个字符
+		}
+		if length == 5 {
+			return cleanedZipcode[:length-1] // 去掉最后1个字符
+		}
+	}
+
+	// 对于较短的邮编（如美国5位数字），保持原样
+	if length == 5 {
+		return cleanedZipcode
+	}
+
+	// 默认返回前面大部分内容（至少保留3个字符）
+	if length > 3 {
+		return cleanedZipcode[:length-1]
+	}
+
+	return cleanedZipcode
+}
+
+// cleanZipcodeText 清理邮编文本，移除所有空白字符和特殊字符
+func cleanZipcodeText(text string) string {
+	// 移除所有空白字符（空格、换行、制表符等）
+	text = strings.ReplaceAll(text, " ", "")
+	text = strings.ReplaceAll(text, "\n", "")
+	text = strings.ReplaceAll(text, "\r", "")
+	text = strings.ReplaceAll(text, "\t", "")
+
+	// 移除零宽字符和其他不可见字符
+	text = strings.Map(func(r rune) rune {
+		// 保留字母和数字
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		// 移除其他字符
+		return -1
+	}, text)
+
+	return strings.ToUpper(text)
 }

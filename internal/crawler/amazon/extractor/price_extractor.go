@@ -68,7 +68,24 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 	if price > 0 {
 		product.FinalPrice = price
 		product.InitialPrice = price
-		product.Currency = e.currencyMgr.ExtractCurrency(priceText)
+
+		// 从价格文本中提取货币
+		extractedCurrency := e.currencyMgr.ExtractCurrency(priceText)
+
+		// 获取站点的默认货币
+		expectedCurrency := e.currencyMgr.GetDefaultCurrencyByMarketplace()
+
+		// 验证货币是否匹配
+		if extractedCurrency != expectedCurrency {
+			logrus.Warnf("⚠️ 货币不匹配 - 页面显示: %s, 站点期望: %s",
+				extractedCurrency, expectedCurrency)
+			logrus.Warnf("💡 提示: 货币设置可能失败，请检查货币设置器的日志")
+			// 使用页面显示的货币（因为这是实际显示的价格）
+			product.Currency = extractedCurrency
+		} else {
+			product.Currency = extractedCurrency
+		}
+
 		logrus.Infof("解析到价格: %.2f %s", price, product.Currency)
 	} else {
 		logrus.Warnf("价格解析失败: %s", priceText)
