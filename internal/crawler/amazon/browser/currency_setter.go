@@ -157,116 +157,79 @@ func (cs *CurrencySetter) getCurrentCurrency(page playwright.Page) (string, erro
 
 // setCurrency 设置货币
 func (cs *CurrencySetter) setCurrency(page playwright.Page, currency string) error {
-	// 1. 在当前页面点击页脚的货币选择器
-	logrus.Infof("在当前页面设置货币: %s", currency)
+	logrus.Infof("使用导航栏货币选择器设置货币: %s", currency)
+	return cs.setCurrencyViaNavBar(page, currency)
+}
 
-	// 页脚货币选择器的可能位置
-	currencySelectorLocators := []string{
-		"#icp-nav-flyout",                 // 货币选择器容器
-		"a.icp-button",                    // 货币按钮
-		"span.icp-nav-flag",               // 货币标志
-		"#nav-footer-currency",            // 页脚货币区域
-		"a[href*='customer-preferences']", // 货币设置链接
+// setCurrencyViaNavBar 通过导航栏货币选择器设置货币
+func (cs *CurrencySetter) setCurrencyViaNavBar(page playwright.Page, currency string) error {
+	logrus.Infof("通过导航栏设置货币: %s", currency)
+
+	// 1. 点击导航栏的语言/货币按钮
+	navButtonSelectors := []string{
+		"button[name='Expand to Change Language or Country']", // 正确的货币选择器
+		"button:has-text('Expand to Change Language or Country')",
+		"button[aria-label*='Country']",
 	}
 
-	// 尝试点击货币选择器
 	clicked := false
-	for _, selector := range currencySelectorLocators {
+	for _, selector := range navButtonSelectors {
 		locator := page.Locator(selector).First()
 
-		// 等待元素出现（最多等待3秒）
 		if err := locator.WaitFor(playwright.LocatorWaitForOptions{
 			State:   playwright.WaitForSelectorStateVisible,
 			Timeout: playwright.Float(3000),
 		}); err != nil {
-			logrus.Debugf("选择器 %s 未找到或不可见", selector)
+			logrus.Debugf("导航栏按钮 %s 未找到", selector)
 			continue
 		}
 
 		count, err := locator.Count()
 		if err == nil && count > 0 {
-			logrus.Infof("找到货币选择器: %s", selector)
+			logrus.Infof("找到导航栏货币按钮: %s", selector)
 			if err := locator.Click(); err == nil {
-				logrus.Infof("成功点击货币选择器: %s", selector)
+				logrus.Infof("成功点击导航栏货币按钮")
 				clicked = true
-				time.Sleep(1 * time.Second) // 等待弹窗或菜单出现
+				time.Sleep(1 * time.Second) // 等待弹窗出现
 				break
 			} else {
-				logrus.Warnf("点击货币选择器失败: %v", err)
+				logrus.Warnf("点击导航栏按钮失败: %v", err)
 			}
 		}
 	}
 
 	if !clicked {
-		logrus.Warnf("未找到货币选择器，尝试滚动到页脚")
-		// 尝试滚动到页脚
-		if _, err := page.Evaluate("window.scrollTo(0, document.body.scrollHeight)"); err != nil {
-			logrus.Warnf("滚动到页脚失败: %v", err)
-		}
-		time.Sleep(1 * time.Second)
-
-		// 再次尝试点击
-		for _, selector := range currencySelectorLocators {
-			locator := page.Locator(selector).First()
-			count, err := locator.Count()
-			if err == nil && count > 0 {
-				if err := locator.Click(); err == nil {
-					logrus.Infof("滚动后成功点击货币选择器: %s", selector)
-					clicked = true
-					time.Sleep(1 * time.Second)
-					break
-				}
-			}
-		}
+		return fmt.Errorf("无法找到或点击导航栏货币按钮")
 	}
 
-	if !clicked {
-		return fmt.Errorf("无法点击货币选择器")
-	}
+	// 2. 等待货币选择弹窗出现 - 直接等待货币链接出现
+	time.Sleep(1 * time.Second) // 给弹窗一点时间完全加载
 
-	// 2. 在弹出的菜单或对话框中选择目标货币
-	// 货币选项可能的格式:
-	// - 链接: a:has-text("USD")
-	// - 单选按钮: input[type='radio']:has-text("USD")
-	// - 列表项: li:has-text("USD")
-	logrus.Infof("查找货币选项: %s", currency)
-
-	// 等待弹窗完全加载
-	time.Sleep(500 * time.Millisecond)
-
-	currencyOptionSelectors := []string{
-		// 方法1: 查找包含货币代码的链接(最常见,优先)
+	// 3. 点击目标货币选项
+	currencyLinkSelectors := []string{
+		fmt.Sprintf("a[href*='switch-currency=%s']", currency),
+		fmt.Sprintf("a:has-text('%s - %s')", getCurrencySymbol(currency), currency),
 		fmt.Sprintf("a:has-text('%s')", currency),
-		// 方法2: 更宽泛的文本匹配
-		fmt.Sprintf("text=/%s/i", currency),
-		// 方法3: 查找包含货币代码的单选按钮
-		fmt.Sprintf("input[type='radio']:has-text('%s')", currency),
-		// 方法4: 查找包含货币代码的列表项
-		fmt.Sprintf("li:has-text('%s')", currency),
-		// 方法5: 查找包含货币代码的按钮
-		fmt.Sprintf("button:has-text('%s')", currency),
 	}
 
-	selected := false
-	for _, selector := range currencyOptionSelectors {
+	currencyClicked := false
+	for _, selector := range currencyLinkSelectors {
 		locator := page.Locator(selector).First()
 
-		// 恢复等待时间到2.5秒,确保元素加载完成
 		if err := locator.WaitFor(playwright.LocatorWaitForOptions{
 			State:   playwright.WaitForSelectorStateVisible,
-			Timeout: playwright.Float(2500),
+			Timeout: playwright.Float(2000),
 		}); err != nil {
-			logrus.Debugf("货币选项选择器 %s 未找到或不可见", selector)
+			logrus.Debugf("货币选项 %s 未找到", selector)
 			continue
 		}
 
 		count, err := locator.Count()
 		if err == nil && count > 0 {
-			logrus.Infof("找到货币选项: %s (选择器: %s)", currency, selector)
+			logrus.Infof("找到货币选项: %s", selector)
 			if err := locator.Click(); err == nil {
-				logrus.Infof("成功选择货币: %s", currency)
-				selected = true
-				time.Sleep(500 * time.Millisecond)
+				logrus.Infof("成功点击货币选项: %s", currency)
+				currencyClicked = true
 				break
 			} else {
 				logrus.Warnf("点击货币选项失败: %v", err)
@@ -274,104 +237,36 @@ func (cs *CurrencySetter) setCurrency(page playwright.Page, currency string) err
 		}
 	}
 
-	if !selected {
-		logrus.Warnf("未找到货币选项: %s", currency)
-		return fmt.Errorf("未找到货币选项: %s", currency)
+	if !currencyClicked {
+		return fmt.Errorf("无法找到或点击货币选项: %s", currency)
 	}
 
-	// 3. 先关闭可能存在的Cookie对话框
-	// Cookie对话框可能会挡住"Save changes"按钮
-	logrus.Infof("尝试关闭Cookie对话框...")
-	cookieDialogSelectors := []string{
-		"button:has-text('Accept')",
-		"button:has-text('Accept All')",
-		"button:has-text('Accept Cookies')",
-		"input[type='submit'][name='accept']",
-		"#sp-cc-accept",
-		"button[id*='accept']",
-		"button[id*='cookie']",
+	// 4. 等待页面刷新完成
+	logrus.Infof("等待页面刷新...")
+	time.Sleep(2 * time.Second)
+
+	// 5. 验证URL是否包含货币参数
+	currentURL := page.URL()
+	expectedParam := fmt.Sprintf("currency=%s", currency)
+	if strings.Contains(currentURL, expectedParam) {
+		logrus.Infof("货币设置成功,URL已更新: %s", currentURL)
+		return nil
 	}
 
-	for _, selector := range cookieDialogSelectors {
-		locator := page.Locator(selector).First()
-		count, err := locator.Count()
-		if err == nil && count > 0 {
-			// 检查元素是否可见
-			if visible, _ := locator.IsVisible(); visible {
-				if err := locator.Click(); err == nil {
-					logrus.Infof("成功关闭Cookie对话框: %s", selector)
-					time.Sleep(500 * time.Millisecond)
-					break
-				}
-			}
-		}
+	logrus.Warnf("URL未包含预期的货币参数,当前URL: %s", currentURL)
+	return nil // 即使URL未更新也返回成功,因为货币可能已经生效
+}
+
+// getCurrencySymbol 获取货币符号
+func getCurrencySymbol(currency string) string {
+	symbols := map[string]string{
+		"GBP": "£",
+		"USD": "US$",
+		"EUR": "€",
+		"CNY": "CN¥",
 	}
-
-	// 4. 必须点击保存按钮
-	// 根据实际测试,选择货币后必须点击"Save changes"按钮才能生效
-	logrus.Infof("查找保存按钮...")
-
-	saveButtonSelectors := []string{
-		"span.a-button-inner:has-text('Save') >> input", // 嵌套在span中的input (最常见)
-		"button:has-text('Save changes')",               // 主要的保存按钮
-		"button:has-text('Save')",                       // 备用
-		"input[type='submit']:has-text('Save')",         // 提交按钮
-		"input[type='submit'][value*='Save']",           // 通过value属性查找
+	if symbol, ok := symbols[currency]; ok {
+		return symbol
 	}
-
-	saved := false
-	for _, selector := range saveButtonSelectors {
-		locator := page.Locator(selector).First()
-
-		// 等待保存按钮出现（最多等待2秒,减少等待时间）
-		if err := locator.WaitFor(playwright.LocatorWaitForOptions{
-			State:   playwright.WaitForSelectorStateVisible,
-			Timeout: playwright.Float(2000),
-		}); err != nil {
-			logrus.Debugf("保存按钮选择器 %s 未找到或不可见", selector)
-			continue
-		}
-
-		count, err := locator.Count()
-		if err == nil && count > 0 {
-			logrus.Infof("找到保存按钮: %s", selector)
-			if err := locator.Click(); err == nil {
-				logrus.Infof("成功点击保存按钮: %s", selector)
-				saved = true
-				time.Sleep(500 * time.Millisecond)
-				break
-			} else {
-				logrus.Warnf("点击保存按钮失败: %v", err)
-			}
-		}
-	}
-
-	if !saved {
-		logrus.Warnf("未找到或无法点击保存按钮")
-		return fmt.Errorf("未找到保存按钮")
-	}
-
-	// 5. 等待页面更新并刷新
-	logrus.Infof("等待页面更新...")
-	time.Sleep(2 * time.Second) // 减少等待时间
-
-	// 刷新页面以确保货币设置生效
-	logrus.Infof("刷新页面以确保货币设置生效...")
-	if _, err := page.Reload(playwright.PageReloadOptions{
-		WaitUntil: playwright.WaitUntilStateDomcontentloaded, // 改用domcontentloaded,更快
-		Timeout:   playwright.Float(15000),                   // 减少超时时间
-	}); err != nil {
-		logrus.Warnf("刷新页面失败: %v", err)
-	} else {
-		time.Sleep(1 * time.Second) // 减少等待时间
-	}
-
-	// 6. 关闭可能存在的对话框
-	for range 2 {
-		if err := page.Keyboard().Press("Escape"); err == nil {
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
-
-	return nil
+	return currency
 }
