@@ -3,109 +3,54 @@ package utils
 import (
 	"regexp"
 	"strings"
-	"unicode"
 )
 
-// CleanProductTitle 清理产品标题，移除特殊符号和表情符号
+// CleanProductTitle 清理产品标题，移除特殊字符、表情符号和中文字符
 func CleanProductTitle(title string) string {
 	if title == "" {
-		return title
+		return ""
 	}
 
-	// 移除表情符号和其他Unicode符号（包括中文字符）
-	title = removeEmojisAndSymbols(title)
+	// 1. 移除表情符号
+	title = removeEmojis(title)
 
-	// 移除或替换特殊字符，保留基本标点符号
-	title = cleanSpecialCharacters(title)
+	// 2. 移除中文字符
+	title = removeChineseCharacters(title)
 
-	// 清理多余的空格
+	// 3. 移除特殊字符，保留字母、数字、空格和基本标点
+	title = removeSpecialCharacters(title)
+
+	// 4. 清理多余的空白字符
 	title = cleanWhitespace(title)
 
-	// 修复逗号前后的空格问题
-	title = fixCommaSpacing(title)
-
-	return title
+	return strings.TrimSpace(title)
 }
 
-// removeEmojisAndSymbols 移除表情符号和特殊Unicode符号
-func removeEmojisAndSymbols(text string) string {
-	var result strings.Builder
-
-	for _, r := range text {
-		// 保留基本的拉丁字符、数字、基本标点符号和中文字符
-		if isAllowedCharacter(r) {
-			result.WriteRune(r)
-		}
-	}
-
-	return result.String()
+// removeEmojis 移除表情符号
+func removeEmojis(text string) string {
+	// 移除表情符号的正则表达式
+	emojiPattern := `[\x{1F600}-\x{1F64F}]|[\x{1F300}-\x{1F5FF}]|[\x{1F680}-\x{1F6FF}]|[\x{1F1E0}-\x{1F1FF}]|[\x{2600}-\x{26FF}]|[\x{2700}-\x{27BF}]`
+	re := regexp.MustCompile(emojiPattern)
+	return re.ReplaceAllString(text, "")
 }
 
-// isAllowedCharacter 判断字符是否允许保留（不包括中文）
-func isAllowedCharacter(r rune) bool {
-	// 基本拉丁字符和数字
-	if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-		return true
-	}
-
-	// 基本标点符号和空格
-	basicPunctuation := " .,!?()-_+=/\\:;\"'[]{}|"
-	if strings.ContainsRune(basicPunctuation, r) {
-		return true
-	}
-
-	// 不允许中文字符（TEMU API不支持）
-	if r >= 0x4e00 && r <= 0x9fff {
-		return false
-	}
-
-	// 其他常用Unicode字符范围（如重音字符等），但排除高位字符
-	if unicode.IsLetter(r) && r < 0x1F000 && r < 0x4e00 {
-		return true
-	}
-
-	return false
+// removeChineseCharacters 移除中文字符
+func removeChineseCharacters(text string) string {
+	// 移除中文字符（包括中文标点符号）
+	re := regexp.MustCompile(`[\p{Han}]|[，。！？；：""''（）【】《》、]`)
+	return re.ReplaceAllString(text, "")
 }
 
-// cleanSpecialCharacters 清理特殊字符
-func cleanSpecialCharacters(text string) string {
-	// 移除连续的特殊字符，只保留ASCII字母、数字和基本标点
-	// 注意：不使用 \p{L} 因为它会匹配中文字符
-	re := regexp.MustCompile(`[^a-zA-Z0-9\s.,!?()\-_+=/:;"'\[\]{}|]+`)
-	text = re.ReplaceAllString(text, " ")
-
-	// 替换多个连续的破折号或下划线
-	re = regexp.MustCompile(`[-_]{2,}`)
-	text = re.ReplaceAllString(text, "-")
-
-	return text
+// removeSpecialCharacters 移除特殊字符
+func removeSpecialCharacters(text string) string {
+	// 移除特殊字符，保留字母、数字、空格和基本标点
+	re := regexp.MustCompile(`[^\p{L}\p{N}\s.,!?()-]`)
+	return re.ReplaceAllString(text, "")
 }
 
-// cleanWhitespace 清理空白字符
+// cleanWhitespace 清理多余的空白字符
 func cleanWhitespace(text string) string {
-	// 移除多余的空格
+	// 替换多个连续的空白字符为单个空格
 	re := regexp.MustCompile(`\s+`)
-	text = re.ReplaceAllString(text, " ")
-
-	// 移除首尾空格
-	text = strings.TrimSpace(text)
-
-	return text
-}
-
-// fixCommaSpacing 修复逗号前后的空格问题
-func fixCommaSpacing(text string) string {
-	// 1. 移除逗号前的空格 (TEMU API要求: "Product name should not have a space before the mark ','")
-	re := regexp.MustCompile(`\s+,`)
-	text = re.ReplaceAllString(text, ",")
-
-	// 2. 确保逗号后有空格（如果后面不是空格或字符串结尾）
-	re = regexp.MustCompile(`,(\S)`)
-	text = re.ReplaceAllString(text, ", $1")
-
-	// 3. 清理逗号后的多余空格
-	re = regexp.MustCompile(`,\s{2,}`)
-	text = re.ReplaceAllString(text, ", ")
-
-	return text
+	return re.ReplaceAllString(text, " ")
 }

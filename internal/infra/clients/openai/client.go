@@ -4,6 +4,7 @@ package openai
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/pkg/ptrutil"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -82,4 +83,26 @@ func (c *Client) Close() error {
 		return nil
 	}
 	return c.pool.Close()
+}
+
+// Generate 简单的文本生成（将 prompt 转换为 ChatCompletionRequest）
+func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
+	req := &ChatCompletionRequest{
+		Messages: []ChatCompletionMessage{
+			{Role: "user", Content: prompt},
+		},
+		MaxTokens:   ptrutil.IntPtr(1000),
+		Temperature: ptrutil.Float32Ptr(0.7),
+	}
+
+	resp, err := c.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no response from OpenAI")
+	}
+
+	return resp.Choices[0].Message.Content, nil
 }

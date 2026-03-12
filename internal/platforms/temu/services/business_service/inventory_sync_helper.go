@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonutil"
+	productpkg "task-processor/internal/pkg/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -31,7 +31,7 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 
 // extractStockFromProduct 从Amazon产品中提取库存（使用公共函数）
 func (s *inventorySyncServiceImpl) extractStockFromProduct(amazonProduct *model.Product) int {
-	return product.GetInventory(amazonProduct)
+	return productpkg.GetInventory(amazonProduct)
 }
 
 // parsePrice 解析价格字符串

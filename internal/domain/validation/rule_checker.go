@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/product"
 )
 
 // RuleChecker 通用规则检查器

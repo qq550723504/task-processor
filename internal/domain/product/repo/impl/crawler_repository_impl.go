@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product/repo"
 	"task-processor/internal/domain/product/types"
-	"task-processor/internal/pkg/utils"
+	amazonpkg "task-processor/internal/pkg/amazon"
 
 	"github.com/sirupsen/logrus"
 )
@@ -184,7 +184,7 @@ func (r *CrawlerRepositoryImpl) getZipcodeForRegion(region string) string {
 	}
 
 	// 使用统一的工具方法获取默认邮编
-	return utils.GetDefaultZipcode(strings.ToLower(region))
+	return amazonpkg.GetDefaultZipcode(strings.ToLower(region))
 }
 
 // SetMaxConcurrent 设置最大并发数

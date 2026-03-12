@@ -4,10 +4,10 @@ package validation
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
 	domainvalidation "task-processor/internal/domain/validation"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/common"
 

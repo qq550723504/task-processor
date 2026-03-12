@@ -13,7 +13,6 @@ import (
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/contextutil"
-	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -152,7 +151,7 @@ func (f *DistributedProductFetcher) buildProductURL(req *domainProduct.FetchRequ
 // getZipcode 获取区域对应的邮编
 func (f *DistributedProductFetcher) getZipcode(region string) string {
 	// 使用统一的工具方法获取默认邮编
-	return utils.GetDefaultZipcode(strings.ToLower(region))
+	return f.domainResolver.GetZipcodeByRegion(strings.ToLower(region))
 }
 
 // calculatePriority 计算任务优先级

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
+	domainproduct "task-processor/internal/domain/product"
 	"task-processor/internal/pkg/recovery"
 )
 
@@ -17,7 +17,7 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 	tenantID, storeID int64,
 ) (*model.Product, error) {
 	// 使用 ProductFetcher 获取产品（自动处理缓存和爬取）
-	fetchReq := &product.FetchRequest{
+	fetchReq := &domainproduct.FetchRequest{
 		TenantID:  tenantID,
 		Platform:  "Amazon",
 		Region:    region,
@@ -30,7 +30,7 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 	inventoryRawJsonClient := s.managementClient.GetRawJsonDataClient()
 	inventoryRawJsonClient.SetDataFreshnessDays(1) // 24小时 = 1天
 
-	productFetcher := product.NewProductFetcher(
+	productFetcher := domainproduct.NewProductFetcher(
 		inventoryRawJsonClient,
 		s.amazonConfig,
 		s.amazonProcessor,

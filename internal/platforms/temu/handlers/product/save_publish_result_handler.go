@@ -11,9 +11,9 @@ import (
 
 	"task-processor/internal/application/state"
 	commontypes "task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
+	pkgproduct "task-processor/internal/pkg/product"
 	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -160,7 +160,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 
 					// 根据店铺设置获取成本价（原价或特价）- 使用公共函数
 					if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.PriceType != "" {
-						costPrice := product.GetProductPrice(amazonProduct, temuCtx.StoreInfo.PriceType)
+						costPrice := pkgproduct.GetProductPrice(amazonProduct, temuCtx.StoreInfo.PriceType)
 						if costPrice > 0 {
 							createReq.CostPrice = &costPrice
 						}

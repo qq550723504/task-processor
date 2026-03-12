@@ -30,7 +30,6 @@ func NewHTTPManager(proxyURL string, logger *logrus.Entry) *HTTPManager {
 func (h *HTTPManager) CreateClient() *req.Client {
 	client := req.C().
 		SetTLSFingerprintChrome().
-		EnableAutoDecompress().
 		SetTLSClientConfig(h.getTLSConfig()).
 		SetCommonHeaders(h.getDefaultHeaders()).
 		SetCommonRetryCount(h.config.RetryCount).

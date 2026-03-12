@@ -1,0 +1,116 @@
+// Package productjson 提供产品JSON生成的应用层实现
+package productjson
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	domain "task-processor/internal/domain/productjson"
+
+	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
+)
+
+// CreateGenerateTask 创建产品生成任务
+func (s *productService) CreateGenerateTask(ctx context.Context, req *domain.GenerateRequest) (*domain.Task, error) {
+	if req == nil {
+		return nil, fmt.Errorf("request cannot be nil")
+	}
+	if err := s.validateRequest(req); err != nil {
+		return nil, fmt.Errorf("invalid request: %w", err)
+	}
+
+	// 生成唯一的任务 ID
+	taskID := s.generateTaskID()
+
+	// 创建任务
+	task := &domain.Task{
+		ID:         taskID,
+		Request:    req,
+		Status:     domain.TaskStatusPending,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+		RetryCount: 0,
+	}
+
+	// 保存任务到数据库
+	if err := s.taskRepo.CreateTask(ctx, task); err != nil {
+		logrus.WithFields(logrus.Fields{
+			"task_id": taskID,
+		}).WithError(err).Error("failed to create task in database")
+		return nil, fmt.Errorf("failed to create task: %w", err)
+	}
+
+	// 将任务加入 Redis 队列
+	if err := s.redisClient.Push(ctx, s.queueName, taskID); err != nil {
+		logrus.WithFields(logrus.Fields{
+			"task_id": taskID,
+		}).WithError(err).Error("failed to push task to queue")
+		return nil, fmt.Errorf("failed to enqueue task: %w", err)
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"task_id": taskID,
+		"status":  string(task.Status),
+	}).Info("task created successfully")
+
+	return task, nil
+}
+
+// GetTaskResult 获取任务结果
+func (s *productService) GetTaskResult(ctx context.Context, taskID string) (*domain.TaskResult, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("task ID cannot be empty")
+	}
+
+	// 从数据库获取任务
+	task, err := s.taskRepo.GetTask(ctx, taskID)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"task_id": taskID,
+		}).WithError(err).Error("failed to get task")
+		return nil, fmt.Errorf("failed to get task: %w", err)
+	}
+
+	// 构建任务结果
+	result := &domain.TaskResult{
+		TaskID:      task.ID,
+		Status:      task.Status,
+		ProductJSON: task.Result,
+		Error:       task.Error,
+		CreatedAt:   task.CreatedAt,
+	}
+
+	// 如果任务已完成，设置完成时间
+	if task.Status == domain.TaskStatusCompleted || task.Status == domain.TaskStatusFailed {
+		result.CompletedAt = &task.UpdatedAt
+	}
+
+	return result, nil
+}
+
+// validateRequest 验证请求
+func (s *productService) validateRequest(req *domain.GenerateRequest) error {
+	// 至少需要提供一种输入
+	if len(req.ImageURLs) == 0 && req.Text == "" && req.ProductURL == "" {
+		return fmt.Errorf("at least one input type is required (image_urls, text, or product_url)")
+	}
+
+	// 验证图片 URL
+	if len(req.ImageURLs) > 10 {
+		return fmt.Errorf("too many image URLs (max 10)")
+	}
+
+	// 验证文本长度
+	if len(req.Text) > 10000 {
+		return fmt.Errorf("text too long (max 10000 characters)")
+	}
+
+	return nil
+}
+
+// generateTaskID 生成唯一的任务 ID
+func (s *productService) generateTaskID() string {
+	return uuid.New().String()
+}

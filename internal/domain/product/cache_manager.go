@@ -208,8 +208,5 @@ func (c *CacheManager) needsRefetchForMissingShipsFrom(product *model.Product) b
 		return true
 	}
 
-	// 注意：Variation结构体中没有ShipsFrom字段，所以跳过变体检查
-	// 只检查主产品的ShipsFrom字段即可
-
 	return false
 }

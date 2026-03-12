@@ -6,9 +6,9 @@ import (
 	"math/rand"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
+	pkgproduct "task-processor/internal/pkg/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -129,7 +129,7 @@ func (ph *PriceHandler) getSupplierCost(temuCtx *temucontext.TemuTaskContext, va
 	priceType := ph.getPriceTypeFromContext(temuCtx)
 
 	// 根据价格类型获取价格(包含运费) - 使用公共函数
-	return product.GetProductPrice(variant, priceType)
+	return pkgproduct.GetProductPrice(variant, priceType)
 }
 
 // getPriceTypeFromContext 从上下文获取价格类型

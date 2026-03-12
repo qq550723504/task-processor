@@ -4,9 +4,9 @@ package factory
 import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/domain/product"
 	"task-processor/internal/domain/product/repo/impl"
 	"task-processor/internal/domain/product/service"
+	amazonpkg "task-processor/internal/pkg/amazon"
 	"task-processor/internal/pkg/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -33,7 +33,7 @@ func (f *ProductServiceFactory) CreateProductService(
 	// 创建仓储层
 	cacheRepo := impl.NewCacheRepositoryImpl(rawJsonDataClient, f.logger)
 
-	domainResolver := product.NewDomainResolver()
+	domainResolver := amazonpkg.NewDomainResolver()
 	crawlerRepo := impl.NewCrawlerRepositoryImpl(
 		amazonProcessor,
 		amazonConfig,
@@ -54,19 +54,4 @@ func (f *ProductServiceFactory) CreateProductService(
 
 	f.logger.Info("产品服务创建成功")
 	return productService
-}
-
-// CreateLegacyProductFetcher 创建旧版产品获取器（向后兼容）
-func (f *ProductServiceFactory) CreateLegacyProductFetcher(
-	rawJsonDataClient api.RawJsonDataAPI,
-	amazonConfig *config.AmazonConfig,
-	amazonProcessor *amazon.AmazonProcessor,
-) *product.ProductFetcher {
-	f.logger.Warn("使用旧版ProductFetcher，建议迁移到新版ProductService")
-
-	return product.NewProductFetcher(
-		rawJsonDataClient,
-		amazonConfig,
-		amazonProcessor,
-	)
 }

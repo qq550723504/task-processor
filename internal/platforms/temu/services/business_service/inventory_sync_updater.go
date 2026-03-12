@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/pkg/product"
 	"task-processor/internal/pkg/recovery"
 	"time"
 

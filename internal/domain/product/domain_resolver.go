@@ -26,3 +26,8 @@ func (r *DomainResolver) GetAmazonDomainByRegion(region string) string {
 func (r *DomainResolver) BuildAmazonProductURL(region, asin string) string {
 	return r.resolver.BuildAmazonProductURL(region, asin)
 }
+
+// GetZipcodeByRegion 根据地区获取邮编
+func (r *DomainResolver) GetZipcodeByRegion(region string) string {
+	return r.resolver.GetZipcodeByRegion(region)
+}

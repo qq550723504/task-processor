@@ -1,13 +1,32 @@
-// Package utils 提供并行任务处理工具
 package utils
 
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
+
+// ProcessTask 处理任务
+type ProcessTask struct {
+	Index int         // 任务索引
+	ID    string      // 任务ID
+	Data  interface{} // 任务数据
+}
+
+// ProcessResult 处理结果
+type ProcessResult struct {
+	Index   int         // 任务索引
+	ID      string      // 任务ID
+	Data    interface{} // 结果数据
+	Error   error       // 错误信息
+	Success bool        // 是否成功
+}
+
+// ProcessFunc 处理函数类型
+type ProcessFunc func(ctx context.Context, task *ProcessTask) (interface{}, error)
 
 // ParallelProcessor 并行处理器
 type ParallelProcessor struct {
@@ -19,10 +38,10 @@ type ParallelProcessor struct {
 // NewParallelProcessor 创建并行处理器
 func NewParallelProcessor(maxWorkers int, timeout time.Duration, logger *logrus.Entry) *ParallelProcessor {
 	if maxWorkers <= 0 {
-		maxWorkers = 3 // 默认3个并发
+		maxWorkers = 5 // 默认5个并发
 	}
 	if timeout <= 0 {
-		timeout = 2 * time.Minute // 默认2分钟超时
+		timeout = 5 * time.Minute // 默认5分钟超时
 	}
 
 	return &ParallelProcessor{
@@ -32,217 +51,123 @@ func NewParallelProcessor(maxWorkers int, timeout time.Duration, logger *logrus.
 	}
 }
 
-// ProcessResult 处理结果
-type ProcessResult struct {
-	Index   int
-	Data    interface{}
-	Error   error
-	Success bool
-}
-
-// ProcessTask 处理任务
-type ProcessTask struct {
-	Index int
-	ID    string
-	Data  interface{}
-}
-
-// ProcessFunc 处理函数类型
-type ProcessFunc func(ctx context.Context, task *ProcessTask) (interface{}, error)
-
 // ProcessParallel 并行处理任务
-func (pp *ParallelProcessor) ProcessParallel(ctx context.Context, tasks []*ProcessTask, processFunc ProcessFunc) []*ProcessResult {
+func (p *ParallelProcessor) ProcessParallel(ctx context.Context, tasks []*ProcessTask, processFunc ProcessFunc) []*ProcessResult {
 	if len(tasks) == 0 {
 		return []*ProcessResult{}
 	}
 
-	// 创建性能跟踪器
-	tracker := NewPerformanceTracker(fmt.Sprintf("并行处理-%d个任务", len(tasks)), pp.logger)
-	defer tracker.Finish()
-
-	tracker.StartStep("初始化并行处理")
-
-	// 创建工作池
-	workerCount := pp.maxWorkers
-	if workerCount > len(tasks) {
-		workerCount = len(tasks)
+	// 创建结果切片
+	results := make([]*ProcessResult, len(tasks))
+	for i := range results {
+		results[i] = &ProcessResult{
+			Index:   i,
+			Success: false,
+		}
 	}
 
-	pool := NewWorkerPool(workerCount, len(tasks), pp.logger)
+	// 创建任务通道
+	taskChan := make(chan *ProcessTask, len(tasks))
+	resultChan := make(chan *ProcessResult, len(tasks))
 
-	// 包装处理函数以添加超时和日志
-	wrappedFunc := pp.wrapProcessFunc(processFunc)
-	pool.Start(ctx, wrappedFunc)
-
-	tracker.EndStep()
-	tracker.StartStep("分发任务")
-
-	// 分发任务
-	for _, task := range tasks {
-		pool.Submit(task)
+	// 启动工作协程
+	var wg sync.WaitGroup
+	for i := 0; i < p.maxWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			p.worker(ctx, workerID, taskChan, resultChan, processFunc)
+		}(i)
 	}
-	pool.Close()
 
-	tracker.EndStep()
-	tracker.StartStep("等待结果")
+	// 发送任务
+	go func() {
+		for _, task := range tasks {
+			taskChan <- task
+		}
+		close(taskChan)
+	}()
 
-	// 等待所有工作完成
-	go pool.Wait()
+	// 等待所有工作协程完成
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
 
 	// 收集结果
-	results := make([]*ProcessResult, 0, len(tasks))
-	for result := range pool.Results() {
-		results = append(results, result)
+	for result := range resultChan {
+		if result.Index >= 0 && result.Index < len(results) {
+			results[result.Index] = result
+		}
 	}
-
-	tracker.EndStep()
-
-	// 统计结果
-	pp.logStatistics(results, len(tasks), workerCount)
 
 	return results
 }
 
-// wrapProcessFunc 包装处理函数以添加超时和日志
-func (pp *ParallelProcessor) wrapProcessFunc(processFunc ProcessFunc) ProcessFunc {
-	return func(ctx context.Context, task *ProcessTask) (interface{}, error) {
+// worker 工作协程
+func (p *ParallelProcessor) worker(ctx context.Context, workerID int, taskChan <-chan *ProcessTask, resultChan chan<- *ProcessResult, processFunc ProcessFunc) {
+	for task := range taskChan {
+		result := &ProcessResult{
+			Index:   task.Index,
+			ID:      task.ID,
+			Success: false,
+		}
+
 		// 创建带超时的上下文
-		taskCtx, cancel := context.WithTimeout(ctx, pp.timeout)
-		defer cancel()
+		taskCtx, cancel := context.WithTimeout(ctx, p.timeout)
 
-		start := time.Now()
+		// 执行任务
+		data, err := p.executeTask(taskCtx, task, processFunc)
+		cancel()
 
-		if pp.logger != nil {
-			pp.logger.WithFields(logrus.Fields{
-				"task_id": task.ID,
-				"index":   task.Index,
-			}).Info("📦 开始处理任务")
+		if err != nil {
+			result.Error = err
+			result.Success = false
+			if p.logger != nil {
+				p.logger.WithError(err).Warnf("Worker[%d] 任务[%s]处理失败", workerID, task.ID)
+			}
+		} else {
+			result.Data = data
+			result.Success = true
+			if p.logger != nil {
+				p.logger.Debugf("Worker[%d] 任务[%s]处理成功", workerID, task.ID)
+			}
 		}
 
-		// 执行处理函数
-		data, err := processFunc(taskCtx, task)
-		duration := time.Since(start)
-
-		// 记录结果
-		if pp.logger != nil {
-			fields := logrus.Fields{
-				"task_id":     task.ID,
-				"index":       task.Index,
-				"duration":    duration.String(),
-				"duration_ms": duration.Milliseconds(),
-				"success":     err == nil,
-			}
-
-			if err != nil {
-				fields["error"] = err.Error()
-			}
-
-			level := logrus.InfoLevel
-			if err != nil {
-				level = logrus.WarnLevel
-			}
-
-			pp.logger.WithFields(fields).Log(level, "✅ 任务处理完成")
-		}
-
-		return data, err
+		resultChan <- result
 	}
 }
 
-// logStatistics 记录统计信息
-func (pp *ParallelProcessor) logStatistics(results []*ProcessResult, totalTasks, workerCount int) {
-	successCount := 0
-	for _, result := range results {
-		if result.Success {
-			successCount++
-		}
+// executeTask 执行任务
+func (p *ParallelProcessor) executeTask(ctx context.Context, task *ProcessTask, processFunc ProcessFunc) (interface{}, error) {
+	// 使用通道来接收结果
+	type result struct {
+		data interface{}
+		err  error
 	}
 
-	if pp.logger != nil {
-		pp.logger.WithFields(logrus.Fields{
-			"total_tasks":   totalTasks,
-			"success_count": successCount,
-			"failed_count":  totalTasks - successCount,
-			"success_rate":  fmt.Sprintf("%.1f%%", float64(successCount)/float64(totalTasks)*100),
-			"worker_count":  workerCount,
-		}).Info("🎉 并行处理完成")
-	}
-}
+	resultChan := make(chan result, 1)
 
-// BatchProcessor 批量处理器
-type BatchProcessor struct {
-	batchSize  int
-	maxWorkers int
-	timeout    time.Duration
-	logger     *logrus.Entry
-}
-
-// NewBatchProcessor 创建批量处理器
-func NewBatchProcessor(batchSize, maxWorkers int, timeout time.Duration, logger *logrus.Entry) *BatchProcessor {
-	if batchSize <= 0 {
-		batchSize = 10
-	}
-	if maxWorkers <= 0 {
-		maxWorkers = 3
-	}
-	if timeout <= 0 {
-		timeout = 2 * time.Minute
-	}
-
-	return &BatchProcessor{
-		batchSize:  batchSize,
-		maxWorkers: maxWorkers,
-		timeout:    timeout,
-		logger:     logger,
-	}
-}
-
-// ProcessInBatches 分批并行处理
-func (bp *BatchProcessor) ProcessInBatches(ctx context.Context, items []interface{}, processFunc func(ctx context.Context, item interface{}) (interface{}, error)) []interface{} {
-	if len(items) == 0 {
-		return []interface{}{}
-	}
-
-	tracker := NewPerformanceTracker(fmt.Sprintf("分批处理-%d个项目", len(items)), bp.logger)
-	defer tracker.Finish()
-
-	var allResults []interface{}
-
-	// 分批处理
-	for i := 0; i < len(items); i += bp.batchSize {
-		end := i + bp.batchSize
-		if end > len(items) {
-			end = len(items)
-		}
-
-		batch := items[i:end]
-		tracker.StartStep(fmt.Sprintf("处理批次-%d (项目%d-%d)", i/bp.batchSize+1, i+1, end))
-
-		// 创建任务
-		tasks := make([]*ProcessTask, len(batch))
-		for j, item := range batch {
-			tasks[j] = &ProcessTask{
-				Index: i + j,
-				ID:    fmt.Sprintf("item-%d", i+j),
-				Data:  item,
+	// 在新的goroutine中执行任务
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				resultChan <- result{
+					data: nil,
+					err:  fmt.Errorf("任务执行panic: %v", r),
+				}
 			}
-		}
+		}()
 
-		// 并行处理批次
-		processor := NewParallelProcessor(bp.maxWorkers, bp.timeout, bp.logger)
-		results := processor.ProcessParallel(ctx, tasks, func(ctx context.Context, task *ProcessTask) (interface{}, error) {
-			return processFunc(ctx, task.Data)
-		})
+		data, err := processFunc(ctx, task)
+		resultChan <- result{data: data, err: err}
+	}()
 
-		// 收集成功的结果
-		for _, result := range results {
-			if result.Success {
-				allResults = append(allResults, result.Data)
-			}
-		}
-
-		tracker.EndStep()
+	// 等待结果或超时
+	select {
+	case res := <-resultChan:
+		return res.data, res.err
+	case <-ctx.Done():
+		return nil, fmt.Errorf("任务执行超时: %w", ctx.Err())
 	}
-
-	return allResults
 }
