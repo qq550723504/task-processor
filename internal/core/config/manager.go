@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	"task-processor/internal/core/config/validators"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -103,22 +105,17 @@ func (m *managerImpl) Validate(cfg *Config) error {
 	if cfg == nil {
 		return fmt.Errorf("配置不能为空")
 	}
-
-	// 基本验证逻辑
-	if cfg.Worker.Concurrency <= 0 {
-		return fmt.Errorf("工作池并发数必须大于0")
-	}
-	if cfg.Worker.BufferSize <= 0 {
-		return fmt.Errorf("工作池缓冲区大小必须大于0")
-	}
-
-	// 管理系统URL验证 - 如果为空则使用默认值
-	if cfg.Management.BaseURL == "" {
-		m.logger.Debug("管理系统URL为空，将使用默认值")
-		// 这里不返回错误，让默认值处理逻辑来填充
-	}
-
-	return nil
+	// 使用统一的 validators 包进行完整配置验证，保持与其他入口一致
+	v := validators.NewValidator(
+		&cfg.Processor,
+		&cfg.Worker,
+		&cfg.OpenAI,
+		&cfg.Management,
+		&cfg.Browser,
+		&cfg.Amazon,
+		&cfg.Platforms,
+	)
+	return v.ValidateWithError()
 }
 
 // GetCurrent 获取当前配置

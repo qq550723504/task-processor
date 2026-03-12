@@ -122,6 +122,13 @@ func NewDefaultConfig() *Config {
 			Amazon: types.AmazonConfig{
 				Enabled:           true,
 				DataFreshnessDays: 7,
+				SPAPI: types.SPAPIConfig{
+					Enabled:                false,
+					Region:                 "us-east-1",
+					DefaultMarketplace:     "us",
+					DefaultFulfillmentType: "FBM",
+					DefaultCondition:       "New",
+				},
 			},
 			Updater: types.UpdaterConfig{
 				Enabled:            false,
