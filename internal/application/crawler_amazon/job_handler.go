@@ -1,5 +1,5 @@
-// Package crawler 提供任务钩子处理器
-package crawler
+// Package crawler_amazon 提供任务钩子处理器
+package crawler_amazon
 
 import (
 	"encoding/json"

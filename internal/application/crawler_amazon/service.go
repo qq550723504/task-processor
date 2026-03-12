@@ -1,5 +1,5 @@
-// Package crawler 提供爬虫应用服务
-package crawler
+// Package crawler_amazon 提供爬虫应用服务
+package crawler_amazon
 
 import (
 	"context"
@@ -11,12 +11,16 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
+	domainService "task-processor/internal/domain/service"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/worker"
 	amazonPkg "task-processor/internal/pkg/amazon"
 
 	"github.com/sirupsen/logrus"
 )
+
+// 编译时检查Service是否实现了CrawlerService接口
+var _ domainService.CrawlerService = (*Service)(nil)
 
 // Service 爬虫应用服务
 type Service struct {

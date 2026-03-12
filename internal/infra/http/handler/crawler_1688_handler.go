@@ -4,7 +4,7 @@ package handler
 import (
 	"net/http"
 
-	"task-processor/internal/application/crawler"
+	"task-processor/internal/domain/service"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/http/middleware"
 	"task-processor/internal/infra/http/request"
@@ -14,22 +14,22 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// CrawlerHandler 爬虫 HTTP 处理器
-type CrawlerHandler struct {
-	crawlerService *crawler.Service
+// Crawler1688Handler 1688爬虫 HTTP 处理器
+type Crawler1688Handler struct {
+	crawlerService service.CrawlerService
 	logger         *logrus.Logger
 }
 
-// NewCrawlerHandler 创建处理器
-func NewCrawlerHandler(crawlerService *crawler.Service, logger *logrus.Logger) *CrawlerHandler {
-	return &CrawlerHandler{
+// NewCrawler1688Handler 创建处理器
+func NewCrawler1688Handler(crawlerService service.CrawlerService, logger *logrus.Logger) *Crawler1688Handler {
+	return &Crawler1688Handler{
 		crawlerService: crawlerService,
 		logger:         logger,
 	}
 }
 
 // RegisterRoutes 注册路由
-func (h *CrawlerHandler) RegisterRoutes() http.Handler {
+func (h *Crawler1688Handler) RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	// API 路由
@@ -50,7 +50,7 @@ func (h *CrawlerHandler) RegisterRoutes() http.Handler {
 }
 
 // handleCrawl 处理爬虫请求
-func (h *CrawlerHandler) handleCrawl(w http.ResponseWriter, r *http.Request) {
+func (h *Crawler1688Handler) handleCrawl(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		response.MethodNotAllowed(w, "只支持 POST 方法")
 		return
@@ -58,9 +58,7 @@ func (h *CrawlerHandler) handleCrawl(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		URL      string `json:"url"`
-		ASIN     string `json:"asin,omitempty"`
-		Region   string `json:"region,omitempty"`
-		Zipcode  string `json:"zipcode,omitempty"`
+		OfferID  string `json:"offer_id,omitempty"`
 		Priority int    `json:"priority"`
 	}
 
@@ -72,20 +70,14 @@ func (h *CrawlerHandler) handleCrawl(w http.ResponseWriter, r *http.Request) {
 
 	// 构造任务（领域模型）
 	crawlerTask := task.NewCrawlerTask(req.URL)
-	if req.ASIN != "" {
-		crawlerTask.WithASIN(req.ASIN)
-	}
-	if req.Region != "" {
-		crawlerTask.WithRegion(req.Region)
-	}
-	if req.Zipcode != "" {
-		crawlerTask.WithZipcode(req.Zipcode)
+	if req.OfferID != "" {
+		crawlerTask.WithASIN(req.OfferID) // 复用ASIN字段存储OfferID
 	}
 	if req.Priority > 0 {
 		crawlerTask.WithPriority(req.Priority)
 	}
 
-	// 提交任务（应用层会处理 URL 构造）
+	// 提交任务
 	if err := h.crawlerService.SubmitTask(crawlerTask); err != nil {
 		response.ServiceUnavailable(w, err.Error())
 		return
@@ -98,7 +90,7 @@ func (h *CrawlerHandler) handleCrawl(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTask 处理单个任务查询/删除
-func (h *CrawlerHandler) handleTask(w http.ResponseWriter, r *http.Request) {
+func (h *Crawler1688Handler) handleTask(w http.ResponseWriter, r *http.Request) {
 	// 使用通用的路径参数提取工具
 	taskID := router.ExtractPathParam(r, "/api/v1/tasks/")
 	if taskID == "" {
@@ -127,7 +119,7 @@ func (h *CrawlerHandler) handleTask(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTasks 处理所有任务查询
-func (h *CrawlerHandler) handleTasks(w http.ResponseWriter, r *http.Request) {
+func (h *Crawler1688Handler) handleTasks(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		response.MethodNotAllowed(w, "只支持 GET 方法")
 		return
@@ -141,7 +133,7 @@ func (h *CrawlerHandler) handleTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleStats 处理统计信息查询
-func (h *CrawlerHandler) handleStats(w http.ResponseWriter, r *http.Request) {
+func (h *Crawler1688Handler) handleStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		response.MethodNotAllowed(w, "只支持 GET 方法")
 		return

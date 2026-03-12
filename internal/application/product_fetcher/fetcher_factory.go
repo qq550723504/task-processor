@@ -1,5 +1,5 @@
-// Package product 提供产品获取器工厂
-package product
+// Package product_fetcher 提供产品获取器工厂
+package product_fetcher
 
 import (
 	"fmt"

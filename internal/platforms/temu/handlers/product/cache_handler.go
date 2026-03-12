@@ -2,7 +2,7 @@ package product
 
 import (
 	"fmt"
-	appProduct "task-processor/internal/application/product"
+	appProduct "task-processor/internal/application/product_fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"

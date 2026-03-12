@@ -24,7 +24,7 @@ help:
 	@echo ""
 
 # 构建所有服务
-build-all: build-temu build-shein build-amazon-crawler build-1688-crawler build-amazon-crawler-api
+build-all: build-temu build-shein build-amazon-crawler build-1688-crawler build-amazon-crawler-api build-1688-crawler-api
 	@echo "✅ 所有服务构建完成"
 
 # TEMU 上架服务
@@ -61,6 +61,13 @@ build-amazon-crawler-api:
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/amazon-crawler-api cmd/amazon-crawler-api/main.go
 	@echo "✅ Amazon 爬虫 API 服务构建完成: $(BIN_DIR)/amazon-crawler-api"
+
+# 1688 爬虫 API 服务（不依赖 RabbitMQ）
+build-1688-crawler-api:
+	@echo "🔨 构建 1688 爬虫 API 服务..."
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/1688-crawler-api cmd/1688-crawler-api/main.go
+	@echo "✅ 1688 爬虫 API 服务构建完成: $(BIN_DIR)/1688-crawler-api"
 
 # 原有的 RabbitMQ Consumer（保留用于兼容）
 build-rabbitmq-consumer:
@@ -121,3 +128,8 @@ run-1688-crawler:
 run-amazon-crawler-api:
 	@echo "🚀 启动 Amazon 爬虫 API 服务..."
 	go run cmd/amazon-crawler-api/main.go --config=config/config-dev.yaml --port=8080
+
+# 本地运行 1688 爬虫 API
+run-1688-crawler-api:
+	@echo "🚀 启动 1688 爬虫 API 服务..."
+	go run cmd/1688-crawler-api/main.go --config=config/config-dev.yaml --port=8083
