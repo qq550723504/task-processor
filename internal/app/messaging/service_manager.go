@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
@@ -162,7 +161,6 @@ func (sm *ServiceManager) initializeServices() error {
 	sm.logger.Info("所有服务初始化完成")
 	return nil
 }
-
 
 // Stop 停止服务管理器
 func (sm *ServiceManager) Stop(ctx context.Context) error {
