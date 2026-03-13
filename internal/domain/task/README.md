@@ -70,7 +70,7 @@ if err != nil {
 }
 
 // 获取队列名称
-queueName := adapter.GetQueueName("amazon") // "amazon.tasks.queue"
+queueName := adapter.GetQueueName("amazon") // "amazon.tasks.normal"
 
 // 计算优先级
 priority := adapter.CalculatePriority(1) // 业务优先级1 -> 消息优先级10
@@ -83,10 +83,10 @@ routingKey := adapter.BuildRoutingKey(task) // "amazon.urgent"
 
 ### 1. 平台队列映射
 ```
-amazon -> amazon.tasks.queue
-temu   -> temu.tasks.queue
-shein  -> shein.tasks.queue
-其他   -> amazon.tasks.queue (默认)
+amazon -> amazon.tasks.normal
+temu   -> temu.tasks.normal
+shein  -> shein.tasks.normal
+其他   -> amazon.tasks.normal (默认)
 ```
 
 ### 2. 优先级映射
@@ -152,8 +152,8 @@ func TestMessageAdapter(t *testing.T) {
     adapter := task.NewMessageAdapter()
 
     // 测试队列映射
-    assert.Equal(t, "amazon.tasks.queue", adapter.GetQueueName("amazon"))
-    assert.Equal(t, "temu.tasks.queue", adapter.GetQueueName("temu"))
+    assert.Equal(t, "amazon.tasks.normal", adapter.GetQueueName("amazon"))
+    assert.Equal(t, "temu.tasks.normal", adapter.GetQueueName("temu"))
 
     // 测试优先级计算
     assert.Equal(t, uint8(10), adapter.CalculatePriority(1)) // 最高优先级

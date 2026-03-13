@@ -17,6 +17,10 @@ import (
 )
 
 // RabbitMQService RabbitMQ服务管理器
+// 结构上分为三类职责：
+// 1）纯基础设施职责：连接管理、客户端、消费者、队列初始化、处理器注册。
+// 2）业务辅助依赖（ResultReporter/StoreAPI/Deduplicator）：仅通过 TaskProcessorRegistry 和预加载逻辑为处理器提供上下文。
+// 3）生命周期和状态管理：启动/停止、重连回调、状态统计。
 type RabbitMQService struct {
 	config            *config.RabbitMQConfig
 	connManager       *rabbitmq.ConnectionManager

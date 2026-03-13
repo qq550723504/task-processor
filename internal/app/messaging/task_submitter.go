@@ -125,7 +125,7 @@ func (ts *TaskSubmitter) SubmitTask(ctx context.Context, t *model.Task) error {
 	if strings.Contains(t.Platform, ".crawler") {
 		queueName = ts.queueNaming.BuildCrawlerQueueName(t.Platform, t.Priority)
 	} else {
-		queueName = ts.adapter.GetQueueName(t.Platform)
+		queueName = ts.queueNaming.BuildTaskQueueName(t.Platform, t.Priority)
 	}
 	priority := ts.adapter.CalculatePriority(t.Priority)
 

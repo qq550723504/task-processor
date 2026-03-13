@@ -42,7 +42,7 @@ type TaskMessage struct {
 // MessageAdapter 任务消息适配器（领域逻辑）
 // 负责任务对象与消息格式之间的转换
 type MessageAdapter struct {
-	queueMapping map[string]string // platform -> queue
+	queueMapping map[string]string // platform -> queue（默认使用 normal 队列，仅用于向后兼容）
 }
 
 // NewMessageAdapter 创建任务消息适配器
@@ -50,13 +50,13 @@ func NewMessageAdapter() *MessageAdapter {
 	return &MessageAdapter{
 		queueMapping: map[string]string{
 			// 上架任务队列
-			"amazon": "amazon.tasks.queue",
-			"temu":   "temu.tasks.queue",
-			"shein":  "shein.tasks.queue",
+			"amazon": "amazon.tasks.normal",
+			"temu":   "temu.tasks.normal",
+			"shein":  "shein.tasks.normal",
 
 			// 爬虫任务队列
-			"amazon.crawler": "amazon.crawler.queue",
-			"1688.crawler":   "1688.crawler.queue",
+			"amazon.crawler": "amazon.crawler.normal",
+			"1688.crawler":   "1688.crawler.normal",
 		},
 	}
 }
@@ -153,7 +153,7 @@ func (a *MessageAdapter) GetQueueName(platform string) string {
 	if queue, ok := a.queueMapping[platform]; ok {
 		return queue
 	}
-	return "amazon.tasks.queue" // 默认队列
+	return "amazon.tasks.normal" // 默认队列
 }
 
 // CalculatePriority 计算消息优先级

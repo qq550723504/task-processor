@@ -4,15 +4,11 @@ package main
 import (
 	"context"
 	"flag"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"task-processor/internal/app/messaging"
+	appservice "task-processor/internal/app/service"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/utils"
-
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -53,11 +49,12 @@ func main() {
 		logger.Fatal("❌ TEMU 平台未启用")
 	}
 
-	// 创建服务管理器
-	serviceManager, err := messaging.NewServiceManager(cfg.RabbitMQ, logger)
+	// 创建消息服务（当前由 ServiceManager 实现）
+	msgSvc, err := appservice.NewMessagingService(cfg.RabbitMQ, logger)
 	if err != nil {
-		logger.Fatalf("❌ 创建服务管理器失败: %v", err)
+		logger.Fatalf("❌ 创建消息服务失败: %v", err)
 	}
+	serviceManager := msgSvc.(*messaging.ServiceManager)
 
 	// 只注册 TEMU 平台处理器
 	platformRegistry := messaging.NewPlatformRegistry(cfg, logger, "temu")
@@ -76,20 +73,8 @@ func main() {
 	logger.Info("   - 健康检查: http://localhost:8081/health")
 	logger.Info("   - 就绪检查: http://localhost:8081/ready")
 	logger.Info("   - 指标监控: http://localhost:8082/metrics")
-	logger.Info("🔄 按 Ctrl+C 优雅关闭服务")
+	logger.Info("🔄 按 Ctrl+C 触发优雅关闭")
 
-	// 等待退出信号
-	waitForShutdown(serviceManager, logger)
-}
-
-func waitForShutdown(sm *messaging.ServiceManager, logger *logrus.Logger) {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	sig := <-sigChan
-	logger.Infof("收到信号: %v，开始优雅关闭...", sig)
-
-	ctx := context.Background()
-	sm.Stop(ctx)
-	logger.Info("✅ 服务已优雅关闭")
+	// 阻塞等待服务管理器完成（内部通过 ShutdownCoordinator 监听信号并优雅关闭）
+	serviceManager.Wait()
 }

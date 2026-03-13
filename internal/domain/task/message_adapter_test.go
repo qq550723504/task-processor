@@ -17,17 +17,17 @@ func TestMessageAdapter_GetQueueName(t *testing.T) {
 		expected string
 	}{
 		// 上架任务队列
-		{"Amazon平台", "amazon", "amazon.tasks.queue"},
-		{"Temu平台", "temu", "temu.tasks.queue"},
-		{"Shein平台", "shein", "shein.tasks.queue"},
+		{"Amazon平台", "amazon", "amazon.tasks.normal"},
+		{"Temu平台", "temu", "temu.tasks.normal"},
+		{"Shein平台", "shein", "shein.tasks.normal"},
 
 		// 爬虫任务队列
-		{"Amazon爬虫", "amazon.crawler", "amazon.crawler.queue"},
-		{"1688爬虫", "1688.crawler", "1688.crawler.queue"},
+		{"Amazon爬虫", "amazon.crawler", "amazon.crawler.normal"},
+		{"1688爬虫", "1688.crawler", "1688.crawler.normal"},
 
 		// 默认队列
-		{"未知平台", "unknown", "amazon.tasks.queue"}, // 默认队列
-		{"空平台", "", "amazon.tasks.queue"},         // 默认队列
+		{"未知平台", "unknown", "amazon.tasks.normal"}, // 默认队列
+		{"空平台", "", "amazon.tasks.normal"},         // 默认队列
 	}
 
 	for _, tt := range tests {
