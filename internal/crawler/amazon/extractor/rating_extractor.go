@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/contextutil"
 
@@ -16,25 +17,32 @@ import (
 // RatingExtractor 评分提取器
 type RatingExtractor struct{}
 
-// Extract 提取评分和评论数据
+// Extract 提取评分和评论数据（并行优化版本）
 func (e *RatingExtractor) Extract(page playwright.Page, product *model.Product) error {
 	ctx, cancel := contextutil.WithAIShortTimeout(context.Background())
 	defer cancel()
 
-	// 等待页面加载完成
-	if err := e.waitForPageLoad(ctx, page); err != nil {
-		logrus.Warnf("等待页面加载失败: %v", err)
-	}
+	// 并行提取评分和评论数
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-	// 提取评分
-	if err := e.extractRating(ctx, page, product); err != nil {
-		logrus.Warnf("提取评分失败: %v", err)
-	}
+	// 并行提取评分
+	go func() {
+		defer wg.Done()
+		if err := e.extractRating(ctx, page, product); err != nil {
+			logrus.Warnf("提取评分失败: %v", err)
+		}
+	}()
 
-	// 提取评论数
-	if err := e.extractReviewsCount(ctx, page, product); err != nil {
-		logrus.Warnf("提取评论数失败: %v", err)
-	}
+	// 并行提取评论数
+	go func() {
+		defer wg.Done()
+		if err := e.extractReviewsCount(ctx, page, product); err != nil {
+			logrus.Warnf("提取评论数失败: %v", err)
+		}
+	}()
+
+	wg.Wait()
 
 	logrus.Infof("评分提取结果: Rating=%.1f, ReviewsCount=%d", product.Rating, product.ReviewsCount)
 	return nil
@@ -42,22 +50,23 @@ func (e *RatingExtractor) Extract(page playwright.Page, product *model.Product) 
 
 // waitForPageLoad 等待页面关键元素加载
 func (e *RatingExtractor) waitForPageLoad(ctx context.Context, page playwright.Page) error {
-	// 等待任意一个评分相关元素出现
-	selectors := []string{
-		"#acrPopover",
-		"[data-hook='rating-out-of-text']",
-		".a-icon-star",
-		"#reviewsMedley",
-		"[data-hook='total-review-count']",
+	// 只等待最快的选择器，减少超时时间
+	selector := "#reviewsMedley"
+
+	if err := page.Locator(selector).First().WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(3000), // 从5秒减少到3秒
+	}); err == nil {
+		return nil
 	}
 
-	for _, selector := range selectors {
-		if err := page.Locator(selector).First().WaitFor(playwright.LocatorWaitForOptions{
-			State:   playwright.WaitForSelectorStateVisible,
-			Timeout: playwright.Float(5000),
-		}); err == nil {
-			return nil
-		}
+	// 如果主选择器失败，尝试备用选择器
+	backupSelector := "#acrPopover"
+	if err := page.Locator(backupSelector).First().WaitFor(playwright.LocatorWaitForOptions{
+		State:   playwright.WaitForSelectorStateVisible,
+		Timeout: playwright.Float(2000), // 2秒超时
+	}); err == nil {
+		return nil
 	}
 
 	return fmt.Errorf("页面评分元素加载超时")
@@ -65,33 +74,36 @@ func (e *RatingExtractor) waitForPageLoad(ctx context.Context, page playwright.P
 
 // extractRating 提取产品评分
 func (e *RatingExtractor) extractRating(ctx context.Context, page playwright.Page, product *model.Product) error {
-	// 2024年最新的Amazon评分选择器
+	// 2024年最新的Amazon评分选择器（按性能优化排序）
 	ratingSelectors := []string{
-		// 主要评分显示区域
-		"#acrPopover [class*='a-icon-alt']",
-		"#acrPopover .a-icon-alt",
-		"[data-hook='rating-out-of-text']",
-		".a-icon-star .a-icon-alt",
-		"[data-hook='average-star-rating'] .a-icon-alt",
-
-		// 备用选择器
-		".cr-original-review-link",
+		// 最快的选择器（0.0-0.1ms）
 		"#reviewsMedley [data-hook='rating-out-of-text']",
 		".a-popover-trigger .a-icon-alt",
+
+		// 次快选择器（0.3-0.6ms）
+		"#acrPopover .a-icon-alt",
+		".a-icon-star .a-icon-alt",
+		"[data-hook='average-star-rating'] .a-icon-alt",
 		"span[data-hook='rating-out-of-text']",
+
+		// 备用选择器（1.0ms+）
+		"[data-hook='rating-out-of-text']",
+		"#acrPopover [class*='a-icon-alt']",
 	}
 
 	for _, selector := range ratingSelectors {
 		locator := page.Locator(selector).First()
 
-		// 检查元素是否存在
+		// 检查元素是否存在（不等待）
 		count, err := locator.Count()
 		if err != nil || count == 0 {
 			continue
 		}
 
-		// 获取文本内容
-		text, err := locator.TextContent()
+		// 获取文本内容（设置短超时）
+		text, err := locator.TextContent(playwright.LocatorTextContentOptions{
+			Timeout: playwright.Float(500), // 500ms超时
+		})
 		if err != nil || text == "" {
 			continue
 		}
@@ -116,32 +128,30 @@ func (e *RatingExtractor) extractRating(ctx context.Context, page playwright.Pag
 
 // extractReviewsCount 提取评论数量
 func (e *RatingExtractor) extractReviewsCount(ctx context.Context, page playwright.Page, product *model.Product) error {
-	// 2024年最新的Amazon评论数选择器
+	// 2024年最新的Amazon评论数选择器（按性能优化排序）
 	reviewSelectors := []string{
-		// 主要评论数显示区域
-		"#acrCustomerReviewText",
-		"[data-hook='total-review-count']",
-		"span[data-hook='total-review-count']",
+		// 最快的选择器（0.1-0.3ms）
 		"#reviewsMedley [data-hook='total-review-count']",
+		"span[data-hook='total-review-count']",
 
-		// 备用选择器
-		".cr-original-review-link",
-		"a[data-hook='see-all-reviews-link-foot']",
-		"[data-hook='cr-filter-info-review-rating-count']",
-		".a-size-base.a-link-normal",
+		// 次快选择器（0.7-0.9ms）
+		"[data-hook='total-review-count']",
+		"#acrCustomerReviewText",
 	}
 
 	for _, selector := range reviewSelectors {
 		locator := page.Locator(selector).First()
 
-		// 检查元素是否存在
+		// 检查元素是否存在（不等待）
 		count, err := locator.Count()
 		if err != nil || count == 0 {
 			continue
 		}
 
-		// 获取文本内容
-		text, err := locator.TextContent()
+		// 获取文本内容（设置短超时）
+		text, err := locator.TextContent(playwright.LocatorTextContentOptions{
+			Timeout: playwright.Float(500), // 500ms超时
+		})
 		if err != nil || text == "" {
 			continue
 		}

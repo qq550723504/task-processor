@@ -1,7 +1,11 @@
 package extractor
 
 import (
+	"context"
+	"fmt"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/utils"
+	"time"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -16,6 +20,7 @@ type Extractor interface {
 type CompositeExtractor struct {
 	extractors    []Extractor
 	errorDetector *ErrorDetector
+	logger        *logrus.Entry
 }
 
 // NewCompositeExtractor 创建组合提取器
@@ -42,21 +47,70 @@ func NewCompositeExtractor(marketplace string) *CompositeExtractor {
 			&FeaturesExtractor{},        // 基础特性提取器
 		},
 		errorDetector: NewErrorDetector(),
+		logger:        logrus.WithField("component", "CompositeExtractor"),
 	}
 }
 
-// Extract 提取所有信息
+// Extract 提取所有信息（使用ParallelProcessor优化）
 func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Product) error {
-	for _, extractor := range ce.extractors {
+	// 第一阶段：必须串行执行的提取器（有依赖关系）
+	serialExtractors := []Extractor{
+		&TitleExtractor{},
+		&AvailabilityExtractor{},
+		ce.extractors[2], // PriceExtractor（依赖Availability）
+	}
+
+	for _, extractor := range serialExtractors {
 		if err := extractor.Extract(page, product); err != nil {
 			logrus.Infof("提取器执行失败 (%T): %v", extractor, err)
-
-			// 使用新的错误检测器
 			if ce.errorDetector.IsCriticalError(err) {
 				logrus.Infof("检测到关键错误，停止后续提取器执行: %v", err)
 				return err
 			}
 		}
 	}
-	return nil
+
+	// 第二阶段：使用ParallelProcessor并行执行
+	parallelExtractors := ce.extractors[3:] // 从BrandExtractor开始的所有提取器
+
+	// 创建并行处理器（15个提取器，使用15个worker，每个提取器30秒超时）
+	processor := utils.NewParallelProcessor(len(parallelExtractors), 30*time.Second, ce.logger)
+
+	// 创建任务
+	tasks := make([]*utils.ProcessTask, len(parallelExtractors))
+	for i, ext := range parallelExtractors {
+		tasks[i] = &utils.ProcessTask{
+			Index: i,
+			ID:    getExtractorName(ext),
+			Data:  ext,
+		}
+	}
+
+	// 定义处理函数
+	processFunc := func(ctx context.Context, task *utils.ProcessTask) (interface{}, error) {
+		extractor := task.Data.(Extractor)
+		return nil, extractor.Extract(page, product)
+	}
+
+	// 并行执行
+	results := processor.ProcessParallel(context.Background(), tasks, processFunc)
+
+	// 检查是否有关键错误
+	var criticalErr error
+	for _, result := range results {
+		if result.Error != nil {
+			logrus.Infof("提取器执行失败 (%s): %v", result.ID, result.Error)
+			if ce.errorDetector.IsCriticalError(result.Error) && criticalErr == nil {
+				criticalErr = result.Error
+				logrus.Infof("检测到关键错误: %v", result.Error)
+			}
+		}
+	}
+
+	return criticalErr
+}
+
+// getExtractorName 获取提取器名称
+func getExtractorName(ext Extractor) string {
+	return fmt.Sprintf("%T", ext)
 }
