@@ -4,11 +4,12 @@ package pipeline
 import (
 	"context"
 	"fmt"
+
 	"task-processor/internal/app/processor"
+	"task-processor/internal/core/metrics"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pipeline"
 	management_api "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/taskmetrics"
+	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/shein/api"
 	shein_model "task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/repo"
@@ -212,7 +213,7 @@ func (h *TaskHandler) handleSuccess(task model.Task) {
 	// 更新任务状态
 	statusUpdater := NewTaskStatusUpdater(h.processor)
 	statusUpdater.UpdateTaskStatusAsync(fmt.Sprintf("%d", task.ID), model.TaskStatusPublished, "")
-	taskmetrics.Global().IncrementCompleted()
+	metrics.GlobalTaskMetrics().IncrementCompleted()
 
 	logrus.Infof("任务处理成功: ID=%d, TenantID=%d, StoreID=%d, ProductID=%s",
 		task.ID, task.TenantID, task.StoreID, task.ProductID)

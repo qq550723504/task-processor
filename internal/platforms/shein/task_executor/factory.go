@@ -137,7 +137,7 @@ func (f *SheinTaskFactory) createInventoryTask(ctx context.Context, config appsc
 	productAPI := repo.NewProductAPI(baseClient)
 
 	// 获取 RawJsonData 客户端
-	rawJsonDataClient := f.GetManagementClient().GetRawJsonDataClient()
+	rawJsonDataClient := f.GetManagementClient().GetRawJsonDataAdapter()
 
 	// 获取 InventoryRecord 客户端
 	inventoryRecordClient := f.GetManagementClient().GetInventoryRecordClient()

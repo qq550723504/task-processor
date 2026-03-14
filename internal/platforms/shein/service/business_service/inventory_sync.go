@@ -13,9 +13,9 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
-	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/common/pricing"
 	"task-processor/internal/platforms/shein/repo"
 
@@ -46,10 +46,10 @@ type inventorySyncServiceImpl struct {
 	productAPI            repo.ProductAPIInterface
 	amazonProcessor       *amazon.AmazonProcessor
 	amazonConfig          *config.AmazonConfig
-	rawJsonDataClient     managementapi.RawJsonDataAPI
+	rawJsonDataClient     product.RawJsonDataClient
 	inventoryRecordClient managementapi.InventoryRecordAPI
-	monitorConfig         *config.MonitorConfig   // 平台级监控配置（默认值）
-	costCalculator        *pricing.CostCalculator // 通用成本计算器
+	monitorConfig         *config.MonitorConfig
+	costCalculator        *pricing.CostCalculator
 	logger                *logrus.Entry
 
 	// 批量库存更新收集器
@@ -63,7 +63,7 @@ func NewInventorySyncService(
 	amazonProcessor *amazon.AmazonProcessor,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
-	rawJsonDataClient managementapi.RawJsonDataAPI,
+	rawJsonDataClient product.RawJsonDataClient,
 	inventoryRecordClient managementapi.InventoryRecordAPI,
 ) InventorySyncService {
 	// 临时设置 Debug 级别以便调试映射问题

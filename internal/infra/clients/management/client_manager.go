@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"task-processor/internal/core/config"
+	domainproduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management/impl"
 	"time"
 )
@@ -114,6 +115,11 @@ func (cm *ClientManager) GetRawJsonDataClient() *impl.RawJsonDataAPIClientImpl {
 	client.SetDataFreshnessDays(cm.dataFreshnessDays)
 	cm.mutex.RUnlock()
 	return client
+}
+
+// GetRawJsonDataAdapter 获取适配为 domain 接口的原始JSON数据客户端
+func (cm *ClientManager) GetRawJsonDataAdapter() domainproduct.RawJsonDataClient {
+	return impl.NewRawJsonDataAdapter(cm.GetRawJsonDataClient())
 }
 
 // GetFilterRuleClient 获取筛选规则API客户端

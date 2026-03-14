@@ -1,5 +1,5 @@
-// Package taskmetrics 提供任务指标统计
-package taskmetrics
+// Package metrics 提供任务流转指标统计
+package metrics
 
 import (
 	"sync"
@@ -8,8 +8,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Metrics 任务指标统计
-type Metrics struct {
+// TaskMetrics 任务流转指标统计
+type TaskMetrics struct {
 	mu sync.RWMutex
 
 	PendingCount    int64
@@ -34,8 +34,8 @@ type Metrics struct {
 	LastUpdateTime time.Time
 }
 
-// Snapshot 指标快照（不含锁）
-type Snapshot struct {
+// TaskMetricsSnapshot 指标快照（不含锁）
+type TaskMetricsSnapshot struct {
 	PendingCount          int64
 	ProcessingCount       int64
 	CompletedCount        int64
@@ -54,49 +54,49 @@ type Snapshot struct {
 	LastUpdateTime        time.Time
 }
 
-var globalMetrics = &Metrics{LastUpdateTime: time.Now()}
+var globalTaskMetrics = &TaskMetrics{LastUpdateTime: time.Now()}
 
-// Global 获取全局指标实例
-func Global() *Metrics {
-	return globalMetrics
+// GlobalTaskMetrics 获取全局任务指标实例
+func GlobalTaskMetrics() *TaskMetrics {
+	return globalTaskMetrics
 }
 
-func (m *Metrics) IncrementPending() {
+func (m *TaskMetrics) IncrementPending() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.PendingCount++
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) IncrementProcessing() {
+func (m *TaskMetrics) IncrementProcessing() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ProcessingCount++
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) IncrementCompleted() {
+func (m *TaskMetrics) IncrementCompleted() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.CompletedCount++
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) IncrementFailed() {
+func (m *TaskMetrics) IncrementFailed() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.FailedCount++
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) IncrementRequeued() {
+func (m *TaskMetrics) IncrementRequeued() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.RequeuedCount++
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) RecordPriority(priority int) {
+func (m *TaskMetrics) RecordPriority(priority int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	switch {
@@ -110,7 +110,7 @@ func (m *Metrics) RecordPriority(priority int) {
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) RecordWaitTime(d time.Duration) {
+func (m *TaskMetrics) RecordWaitTime(d time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.TotalWaitTime += d
@@ -118,45 +118,45 @@ func (m *Metrics) RecordWaitTime(d time.Duration) {
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) RecordProcessTime(d time.Duration) {
+func (m *TaskMetrics) RecordProcessTime(d time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.TotalProcessTime += d
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) IncrementHeartbeatTimeout() {
+func (m *TaskMetrics) IncrementHeartbeatTimeout() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.HeartbeatTimeoutCount++
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) IncrementTaskLoss() {
+func (m *TaskMetrics) IncrementTaskLoss() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.TaskLossCount++
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) IncrementRequeueFailure() {
+func (m *TaskMetrics) IncrementRequeueFailure() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.RequeueFailureCount++
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) IncrementMarkFailedError() {
+func (m *TaskMetrics) IncrementMarkFailedError() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.MarkFailedErrorCount++
 	m.LastUpdateTime = time.Now()
 }
 
-func (m *Metrics) GetSnapshot() Snapshot {
+func (m *TaskMetrics) GetSnapshot() TaskMetricsSnapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return Snapshot{
+	return TaskMetricsSnapshot{
 		PendingCount: m.PendingCount, ProcessingCount: m.ProcessingCount,
 		CompletedCount: m.CompletedCount, FailedCount: m.FailedCount,
 		RequeuedCount: m.RequeuedCount, HighPriorityCount: m.HighPriorityCount,
@@ -168,7 +168,7 @@ func (m *Metrics) GetSnapshot() Snapshot {
 	}
 }
 
-func (m *Metrics) GetAverageWaitTime() time.Duration {
+func (m *TaskMetrics) GetAverageWaitTime() time.Duration {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.TaskCount == 0 {
@@ -177,7 +177,7 @@ func (m *Metrics) GetAverageWaitTime() time.Duration {
 	return m.TotalWaitTime / time.Duration(m.TaskCount)
 }
 
-func (m *Metrics) GetAverageProcessTime() time.Duration {
+func (m *TaskMetrics) GetAverageProcessTime() time.Duration {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.CompletedCount == 0 {
@@ -186,7 +186,7 @@ func (m *Metrics) GetAverageProcessTime() time.Duration {
 	return m.TotalProcessTime / time.Duration(m.CompletedCount)
 }
 
-func (m *Metrics) LogSummary() {
+func (m *TaskMetrics) LogSummary() {
 	s := m.GetSnapshot()
 	logrus.Infof("📊 [Metrics] 任务流转 - Pending:%d Processing:%d Completed:%d Failed:%d Requeued:%d",
 		s.PendingCount, s.ProcessingCount, s.CompletedCount, s.FailedCount, s.RequeuedCount)
@@ -198,8 +198,8 @@ func (m *Metrics) LogSummary() {
 	}
 }
 
-func (m *Metrics) Reset() {
+func (m *TaskMetrics) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	*m = Metrics{LastUpdateTime: time.Now()}
+	*m = TaskMetrics{LastUpdateTime: time.Now()}
 }

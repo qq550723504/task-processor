@@ -124,7 +124,7 @@ func newPricingDecisionServiceWithConfig(
 	// 创建ProductFetcher用于获取Amazon产品数据
 	var productFetcher *product.ProductFetcher
 	if amazonConfig != nil && amazonProcessor != nil {
-		rawJsonDataClient := managementClient.GetRawJsonDataClient()
+		rawJsonDataClient := managementClient.GetRawJsonDataAdapter()
 		if rawJsonDataClient != nil {
 			productFetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor)
 		}

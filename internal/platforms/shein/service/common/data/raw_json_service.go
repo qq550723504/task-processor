@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/domain/model"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/infra/clients/management/api"
 	shein_model "task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"
@@ -19,29 +18,15 @@ type RawJsonDataHandler struct {
 	fetcher appProduct.ProductFetcherInterface
 }
 
-// sheinRawJsonDataClient SHEIN 原始 JSON 数据客户端（简单包装）
-type sheinRawJsonDataClient struct {
-	client api.RawJsonDataAPI
-}
-
-func (c *sheinRawJsonDataClient) GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error) {
-	return c.client.GetRawJsonData(req)
-}
-
-func (c *sheinRawJsonDataClient) CreateRawJsonData(req *api.RawJsonDataCreateReqDTO) (int64, error) {
-	return c.client.CreateRawJsonData(req)
-}
-
 // NewRawJsonDataHandler 创建新的获取原始Json数据处理器（支持分布式获取器）
 func NewRawJsonDataHandler(
-	rawJsonDataClient api.RawJsonDataAPI,
+	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
 	amazonProcessor interface{},
 	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandler {
 	logger := logrus.WithField("handler", "RawJsonDataHandler")
 
-	// 提取 Amazon 处理器
 	var ap *amazon.AmazonProcessor
 	if amazonProcessor != nil {
 		if processor, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
@@ -49,30 +34,20 @@ func NewRawJsonDataHandler(
 			logger.Info("[SHEIN] 使用共享的 Amazon 爬虫实例")
 		}
 	} else if cfg != nil {
-		// 如果没有提供共享实例，则创建新的（向后兼容）
 		ap = amazon.NewAmazonProcessor(cfg)
 		logger.Info("[SHEIN] Amazon 爬虫已启用")
 	}
 
-	// 包装客户端
-	client := &sheinRawJsonDataClient{client: rawJsonDataClient}
-
-	// 使用工厂模式创建获取器
 	factory := appProduct.NewFetcherFactory()
-
-	// 根据配置创建获取器
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, client, ap, rabbitmqClient)
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
-		// 降级到本地获取器
-		fetcher = domainProduct.NewProductFetcher(client, &cfg.Amazon, ap)
+		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, ap)
 	}
 
 	logger.Infof("✅ SHEIN产品获取器创建成功，类型: %s", factory.GetRecommendedFetcher(cfg))
 
-	return &RawJsonDataHandler{
-		fetcher: fetcher,
-	}
+	return &RawJsonDataHandler{fetcher: fetcher}
 }
 
 // Name 返回处理器名称

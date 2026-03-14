@@ -30,12 +30,10 @@ func (c *FulfillmentChecker) CheckFulfillmentTypeRule(product *model.Product, ru
 
 // CheckFulfillmentTypeRuleDetailed 详细检查配送方式规则
 func (c *FulfillmentChecker) CheckFulfillmentTypeRuleDetailed(product *model.Product, rule *api.FilterRuleRespDTO) *FilterCheckResult {
-	// 如果规则未设置配送方式或设置为ALL，则不进行筛选
 	if rule.FulfillmentType == "" || rule.FulfillmentType == "ALL" {
 		return &FilterCheckResult{Passed: true}
 	}
 
-	// 判断产品的配送方式（使用公共辅助函数）
 	isFBA := domainvalidation.IsFBAFulfillment(product.ShipsFrom)
 	isAMZ := domainvalidation.IsAMZSeller(product.SellerName)
 
@@ -48,44 +46,34 @@ func (c *FulfillmentChecker) CheckFulfillmentTypeRuleDetailed(product *model.Pro
 		"required_type": rule.FulfillmentType,
 	}).Debug("检查配送方式规则")
 
-	// 根据规则要求进行校验
-	switch rule.FulfillmentType {
-	case "FBA":
-		if !isFBA {
-			return &FilterCheckResult{
-				Passed:        false,
-				FailureReason: fmt.Sprintf("配送方式不符合：规则要求FBA配送，但产品为FBM配送 (ships_from: %s)", product.ShipsFrom),
-				ProductValue:  "FBM",
-				RuleValue:     "FBA",
-			}
-		}
-	case "FBM":
+	// 转换后调用 domain checker
+	checker := domainvalidation.NewRuleChecker()
+	if err := checker.CheckFulfillmentType(rule.ToFilterRule(), product); err != nil {
+		productValue := "FBM"
 		if isFBA {
-			return &FilterCheckResult{
-				Passed:        false,
-				FailureReason: fmt.Sprintf("配送方式不符合：规则要求FBM配送，但产品为FBA配送 (ships_from: %s)", product.ShipsFrom),
-				ProductValue:  "FBA",
-				RuleValue:     "FBM",
-			}
+			productValue = "FBA"
 		}
-	case "AMZ":
-		if !isAMZ {
-			return &FilterCheckResult{
-				Passed:        false,
-				FailureReason: fmt.Sprintf("配送方式不符合：规则要求亚马逊自营，但卖家为 %s", product.SellerName),
-				ProductValue:  product.SellerName,
-				RuleValue:     "Amazon",
-			}
+		if isAMZ {
+			productValue = product.SellerName
 		}
-	default:
-		c.logger.Warnf("未知的配送方式类型: %s", rule.FulfillmentType)
 		return &FilterCheckResult{
 			Passed:        false,
-			FailureReason: fmt.Sprintf("未知的配送方式类型: %s", rule.FulfillmentType),
-			ProductValue:  rule.FulfillmentType,
-			RuleValue:     "FBA/FBM/AMZ",
+			FailureReason: err.Error(),
+			ProductValue:  productValue,
+			RuleValue:     rule.FulfillmentType,
 		}
 	}
 
 	return &FilterCheckResult{Passed: true}
+}
+
+// buildFulfillmentProductValue 构建配送方式产品值描述
+func buildFulfillmentProductValue(isFBA, isAMZ bool, sellerName string) string {
+	if isAMZ {
+		return fmt.Sprintf("AMZ(%s)", sellerName)
+	}
+	if isFBA {
+		return "FBA"
+	}
+	return "FBM"
 }

@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/common/pricing"
@@ -21,10 +22,10 @@ type inventorySyncServiceImpl struct {
 	temuAPIClient         client.APIClientInterface
 	amazonProcessor       *amazon.AmazonProcessor
 	amazonConfig          *config.AmazonConfig
-	rawJsonDataClient     managementapi.RawJsonDataAPI
+	rawJsonDataClient     product.RawJsonDataClient
 	inventoryRecordClient managementapi.InventoryRecordAPI
 	monitorConfig         *config.MonitorConfig
-	costCalculator        *pricing.CostCalculator // 通用成本计算器
+	costCalculator        *pricing.CostCalculator
 	logger                *logrus.Entry
 }
 
@@ -35,7 +36,7 @@ func NewInventorySyncService(
 	amazonProcessor *amazon.AmazonProcessor,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
-	rawJsonDataClient managementapi.RawJsonDataAPI,
+	rawJsonDataClient product.RawJsonDataClient,
 	inventoryRecordClient managementapi.InventoryRecordAPI,
 ) InventorySyncService {
 	logger := logrus.WithField("component", "TemuInventorySyncService")

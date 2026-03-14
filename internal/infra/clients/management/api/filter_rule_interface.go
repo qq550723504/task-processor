@@ -1,5 +1,7 @@
 package api
 
+import domainvalidation "task-processor/internal/domain/validation"
+
 // FilterRuleInterface 筛选规则API接口定义
 type FilterRuleInterface interface {
 	GetFilterRule(req *FilterRuleReqDTO) (*[]FilterRuleRespDTO, error)
@@ -35,3 +37,16 @@ type FilterRuleRespDTO struct {
 
 // FilterRuleAPI 筛选规则API接口（别名，用于兼容性）
 type FilterRuleAPI = FilterRuleInterface
+
+// ToFilterRule 将 DTO 转换为 domain 层的 FilterRule 值对象
+func (r *FilterRuleRespDTO) ToFilterRule() *domainvalidation.FilterRule {
+	return &domainvalidation.FilterRule{
+		PriceMin:        r.PriceMin,
+		PriceMax:        r.PriceMax,
+		StockMin:        r.StockMin,
+		RatingMin:       r.RatingMin,
+		ReviewCountMin:  r.ReviewCountMin,
+		DeliveryTimeMax: r.DeliveryTimeMax,
+		FulfillmentType: r.FulfillmentType,
+	}
+}

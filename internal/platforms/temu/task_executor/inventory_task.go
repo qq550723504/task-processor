@@ -31,7 +31,7 @@ func NewInventoryTask(
 	monitorConfig *config.MonitorConfig,
 ) *InventoryTask {
 	// 创建库存同步服务
-	rawJsonDataClient := managementClient.GetRawJsonDataClient()
+	rawJsonDataClient := managementClient.GetRawJsonDataAdapter()
 	inventoryRecordClient := managementClient.GetInventoryRecordClient()
 
 	inventoryService := temuscheduler.NewInventorySyncService(

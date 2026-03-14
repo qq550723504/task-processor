@@ -1,14 +1,45 @@
 ﻿// Package product 提供产品领域类型定义
 package product
 
-import (
-	"task-processor/internal/infra/clients/management/api"
-)
+// RawJsonReq 获取原始JSON数据请求（domain 层自有类型）
+type RawJsonReq struct {
+	TenantID   int64
+	Platform   string
+	ProductID  string
+	Region     string
+	StoreID    int64
+	CategoryID int64
+	Creator    string
+}
 
-// RawJsonDataClient 原始JSON数据客户端接口
+// RawJsonResp 获取原始JSON数据响应（domain 层自有类型）
+type RawJsonResp struct {
+	ID          int64
+	Platform    string
+	ProductID   string
+	Region      string
+	RawJSONData string
+	CreateTime  int64
+	UpdateTime  int64
+}
+
+// RawJsonCreateReq 创建原始JSON数据请求（domain 层自有类型）
+type RawJsonCreateReq struct {
+	TenantID     int64
+	StoreID      int64
+	ImportTaskID int64
+	Platform     string
+	Region       string
+	ProductID    string
+	CategoryID   int64
+	RawJsonData  string
+	Creator      string
+}
+
+// RawJsonDataClient 原始JSON数据客户端接口（使用 domain 自有类型）
 type RawJsonDataClient interface {
-	GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
-	CreateRawJsonData(req *api.RawJsonDataCreateReqDTO) (int64, error)
+	GetRawJsonData(req *RawJsonReq) (*RawJsonResp, error)
+	CreateRawJsonData(req *RawJsonCreateReq) (int64, error)
 }
 
 // FetchRequest 获取请求

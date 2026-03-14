@@ -35,7 +35,7 @@ func (f *InventorySyncServiceFactory) CreateInventorySyncService(
 	f.logger.Info("创建TEMU库存监控服务")
 
 	// 获取必要的客户端
-	rawJsonDataClient := f.managementClient.GetRawJsonDataClient()
+	rawJsonDataClient := f.managementClient.GetRawJsonDataAdapter()
 	inventoryRecordClient := f.managementClient.GetInventoryRecordClient()
 
 	// 创建服务实例

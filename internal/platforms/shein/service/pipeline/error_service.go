@@ -4,11 +4,12 @@ package pipeline
 import (
 	"fmt"
 	"sync"
+	"time"
+
+	"task-processor/internal/core/metrics"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/taskmetrics"
 	"task-processor/internal/platforms/shein/api"
 	shein_model "task-processor/internal/platforms/shein/model"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -37,7 +38,7 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
 
 	if !isRetryable {
 		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, err.Error())
-		taskmetrics.Global().IncrementFailed()
+		metrics.GlobalTaskMetrics().IncrementFailed()
 
 		// 区分业务过滤和真正的错误
 		if shein_model.IsFilteredError(err) {
@@ -60,12 +61,12 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
 	maxRetries := h.processor.GetConfig().Processor.MaxRetries
 	if task.RetryCount >= maxRetries {
 		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, err.Error())
-		taskmetrics.Global().IncrementFailed()
+		metrics.GlobalTaskMetrics().IncrementFailed()
 		logrus.Errorf("任务处理失败且达到最大重试次数: ID=%d, Priority=%d, 重试次数=%d, 错误=%v", task.ID, task.Priority, task.RetryCount, err)
 	} else {
 		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusPendingRetry, err.Error())
 		logrus.Warnf("任务处理失败，等待重试: ID=%d, Priority=%d->%d, 重试次数=%d", task.ID, originalPriority, task.Priority, task.RetryCount)
-		taskmetrics.Global().IncrementRequeued()
+		metrics.GlobalTaskMetrics().IncrementRequeued()
 	}
 }
 
@@ -105,7 +106,7 @@ func (h *TaskErrorHandler) HandleAuthenticationExpired(authErr *api.Authenticati
 	h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusPendingRetry, fmt.Sprintf("认证过期: %s", authErr.Message))
 
 	logrus.Infof("认证过期任务已标记为待重试: TaskID=%d, TenantID=%d, ShopID=%d", task.ID, tenantID, shopID)
-	taskmetrics.Global().IncrementRequeued()
+	metrics.GlobalTaskMetrics().IncrementRequeued()
 }
 
 // shouldDeleteCookie 检查是否应该删除Cookie

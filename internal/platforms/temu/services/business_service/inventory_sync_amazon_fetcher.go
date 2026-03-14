@@ -34,8 +34,7 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 	}
 
 	// 为TEMU库存监控创建专用的 rawJsonDataClient，设置24小时数据新鲜度
-	inventoryRawJsonClient := s.managementClient.GetRawJsonDataClient()
-	inventoryRawJsonClient.SetDataFreshnessDays(1) // 24小时 = 1天
+	inventoryRawJsonClient := s.managementClient.GetRawJsonDataAdapter()
 
 	productFetcher := product.NewProductFetcher(
 		inventoryRawJsonClient,

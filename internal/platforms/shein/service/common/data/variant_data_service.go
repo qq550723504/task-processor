@@ -12,7 +12,6 @@ import (
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/goroutine"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/perfutil"
 	shein_model "task-processor/internal/platforms/shein/model"
 	"time"
@@ -31,7 +30,7 @@ type VariantJsonDataHandler struct {
 
 // NewVariantJsonDataHandler 创建新的获取变体原始Json数据处理器
 func NewVariantJsonDataHandler(
-	rawJsonDataClient api.RawJsonDataAPI,
+	rawJsonDataClient product.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	amazonProcessor any,
 	rabbitmqClient *rabbitmq.Client,

@@ -9,8 +9,8 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/auth"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )
@@ -160,7 +160,7 @@ func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonPro
 
 	// 创建产品获取器
 	productFetcher := product.NewProductFetcher(
-		managementClient.GetRawJsonDataClient(),
+		managementClient.GetRawJsonDataAdapter(),
 		&r.config.Amazon,
 		amazonProcessor,
 	)
