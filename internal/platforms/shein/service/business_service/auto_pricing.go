@@ -7,10 +7,10 @@ import (
 
 	"task-processor/internal/pkg/management"
 	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/pricing"
 	"task-processor/internal/platforms/shein/repo"
 	pricingservice "task-processor/internal/platforms/shein/service/pricing"
-	"task-processor/internal/platforms/shein/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -50,7 +50,7 @@ type autoPricingServiceImpl struct {
 	pricingAPI       repo.PricingAPIInterface
 	calculator       *pricingservice.AutoPricingCalculator
 	requestBuilder   *PricingRequestBuilder
-	timeHelper       *utils.TimeHelper
+	timeHelper       *shein.TimeHelper
 	logger           *logrus.Entry
 }
 
@@ -64,7 +64,7 @@ func NewAutoPricingService(
 		pricingAPI:       pricingAPI,
 		calculator:       pricingservice.NewAutoPricingCalculator(),
 		requestBuilder:   NewPricingRequestBuilder(),
-		timeHelper:       utils.NewTimeHelper(),
+		timeHelper:       shein.NewTimeHelper(),
 		logger:           logrus.WithField("component", "AutoPricingService"),
 	}
 }

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/service/category"
 	"task-processor/internal/platforms/shein/service/common/data"
@@ -16,7 +17,6 @@ import (
 	"task-processor/internal/platforms/shein/service/publish"
 	"task-processor/internal/platforms/shein/service/translate"
 	"task-processor/internal/platforms/shein/service/validation"
-	"task-processor/internal/platforms/shein/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -149,7 +149,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 构建最终的发品数据
 	pipeline.AddHandler(build.NewBuildSpuHandler())
 	// 清理敏感词（集成硬编码敏感词检查）
-	sensitiveFilter, err := utils.NewSensitiveWordsFilter("data/sensitive_words_shein.json")
+	sensitiveFilter, err := shein.NewSensitiveWordsFilter("data/sensitive_words_shein.json")
 	if err != nil {
 		logrus.WithError(err).Warn("初始化敏感词过滤器失败，跳过敏感词处理")
 	} else {

@@ -4,9 +4,9 @@ package attribute
 import (
 	"strings"
 
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/model"
-	"task-processor/internal/platforms/shein/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -40,13 +40,13 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	logrus.Infof("处理自定义属性值: 属性ID %d, 原始值 %s, 必需: %v", attrID, attrValue, isRequired)
 
 	// 0. 清理属性值中的特殊字符
-	sanitizedValue := utils.SanitizeForSheinAttribute(attrValue)
+	sanitizedValue := shein.SanitizeForSheinAttribute(attrValue)
 	if sanitizedValue != attrValue {
 		logrus.Infof("属性值已清理: 原始值 '%s' -> 清理后 '%s'", attrValue, sanitizedValue)
 	}
 
 	// 检查清理后的值是否有效
-	if !utils.IsValidForSheinAttribute(sanitizedValue) {
+	if !shein.IsValidForSheinAttribute(sanitizedValue) {
 		logrus.Errorf("清理后的属性值仍然无效: %s", sanitizedValue)
 		return model.CustomAttributeResult{
 			Success:        false,

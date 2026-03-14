@@ -8,9 +8,9 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
+	temuformat "task-processor/internal/platforms/temu/format"
 	"task-processor/internal/platforms/temu/handlers/image"
 	"task-processor/internal/platforms/temu/types"
-	temuUtils "task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -164,7 +164,7 @@ func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContex
 func (spb *SkuParallelBuilder) buildProductExpressInfo(variant *model.Product, aiSku types.AIGeneratedSku) (weight, length, width, height string) {
 	// 使用AI提取/估算的重量和尺寸（单位：lb和in）
 	// 格式化重量为两位小数（TEMU API要求）
-	weight = temuUtils.FormatWeight(aiSku.Weight)
+	weight = temuformat.Weight(aiSku.Weight)
 	if aiSku.Weight == "" || aiSku.Weight == "0.22" {
 		spb.logger.Errorf("❌ AI未能估算重量（ASIN: %s），使用兜底默认值: %slb - 这可能不准确！", variant.Asin, weight)
 	} else {
@@ -172,21 +172,21 @@ func (spb *SkuParallelBuilder) buildProductExpressInfo(variant *model.Product, a
 	}
 
 	// 格式化尺寸为一位小数（TEMU API要求）
-	length = temuUtils.FormatDimension(aiSku.Length)
+	length = temuformat.Dimension(aiSku.Length)
 	if aiSku.Length == "" || aiSku.Length == "3.94" {
 		spb.logger.Errorf("❌ AI未能估算长度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, length)
 	} else {
 		spb.logger.Infof("✅ AI提取/估算长度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Length, length, variant.Asin)
 	}
 
-	width = temuUtils.FormatDimension(aiSku.Width)
+	width = temuformat.Dimension(aiSku.Width)
 	if aiSku.Width == "" || aiSku.Width == "5.91" {
 		spb.logger.Errorf("❌ AI未能估算宽度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, width)
 	} else {
 		spb.logger.Infof("✅ AI提取/估算宽度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Width, width, variant.Asin)
 	}
 
-	height = temuUtils.FormatDimension(aiSku.Height)
+	height = temuformat.Dimension(aiSku.Height)
 	if aiSku.Height == "" || aiSku.Height == "7.87" {
 		spb.logger.Errorf("❌ AI未能估算高度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, height)
 	} else {

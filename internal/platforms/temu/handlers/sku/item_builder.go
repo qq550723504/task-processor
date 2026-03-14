@@ -9,10 +9,10 @@ import (
 	"task-processor/internal/pkg/skugen"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
+	temuformat "task-processor/internal/platforms/temu/format"
 	"task-processor/internal/platforms/temu/handlers/image"
 	"task-processor/internal/platforms/temu/handlers/product"
 	"task-processor/internal/platforms/temu/types"
-	temuUtils "task-processor/internal/platforms/temu/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -95,7 +95,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 
 	// 使用AI提取/估算的重量和尺寸（单位：lb和in）
 	// 格式化重量为两位小数（TEMU API要求）
-	weight := temuUtils.FormatWeight(aiSku.Weight)
+	weight := temuformat.Weight(aiSku.Weight)
 	if aiSku.Weight == "" || aiSku.Weight == "0.22" {
 		ib.logger.Errorf("❌ AI未能估算重量（ASIN: %s），使用兜底默认值: %slb - 这可能不准确！", variant.Asin, weight)
 	} else {
@@ -103,21 +103,21 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	}
 
 	// 格式化尺寸为一位小数（TEMU API要求）
-	length := temuUtils.FormatDimension(aiSku.Length)
+	length := temuformat.Dimension(aiSku.Length)
 	if aiSku.Length == "" || aiSku.Length == "3.94" {
 		ib.logger.Errorf("❌ AI未能估算长度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, length)
 	} else {
 		ib.logger.Infof("✅ AI提取/估算长度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Length, length, variant.Asin)
 	}
 
-	width := temuUtils.FormatDimension(aiSku.Width)
+	width := temuformat.Dimension(aiSku.Width)
 	if aiSku.Width == "" || aiSku.Width == "5.91" {
 		ib.logger.Errorf("❌ AI未能估算宽度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, width)
 	} else {
 		ib.logger.Infof("✅ AI提取/估算宽度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Width, width, variant.Asin)
 	}
 
-	height := temuUtils.FormatDimension(aiSku.Height)
+	height := temuformat.Dimension(aiSku.Height)
 	if aiSku.Height == "" || aiSku.Height == "7.87" {
 		ib.logger.Errorf("❌ AI未能估算高度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, height)
 	} else {
@@ -255,10 +255,10 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 	specList = ib.deduplicateSpecs(specList)
 
 	// 使用AI提取/估算的重量和尺寸
-	weight := temuUtils.FormatWeight(aiSku.Weight)
-	length := temuUtils.FormatDimension(aiSku.Length)
-	width := temuUtils.FormatDimension(aiSku.Width)
-	height := temuUtils.FormatDimension(aiSku.Height)
+	weight := temuformat.Weight(aiSku.Weight)
+	length := temuformat.Dimension(aiSku.Length)
+	width := temuformat.Dimension(aiSku.Width)
+	height := temuformat.Dimension(aiSku.Height)
 
 	// 使用AI判断的多件装信息
 	multiplePackage := models.MultiplePackage{

@@ -3,8 +3,8 @@ package attribute
 
 import (
 	"strings"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -45,7 +45,7 @@ func (m *AttributeValueMatcher) FindMatchingPlatformValue(value string, platform
 	}
 
 	// 3. 清理特殊字符后匹配
-	sanitizedValue := utils.SanitizeForSheinAttribute(value)
+	sanitizedValue := shein.SanitizeForSheinAttribute(value)
 	if sanitizedValue != value {
 		logrus.Debugf("尝试使用清理后的值进行匹配: '%s' -> '%s'", value, sanitizedValue)
 
