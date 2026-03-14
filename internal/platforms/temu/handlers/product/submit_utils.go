@@ -1,12 +1,11 @@
 package product
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
@@ -73,21 +72,7 @@ func (u *ProductSubmitUtils) IsNonRetryableError(errorCode int, errorMessage str
 
 // MarshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (u *ProductSubmitUtils) MarshalWithoutHTMLEscape(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false) // 关闭HTML转义，避免&被转义为\u0026
-
-	if err := encoder.Encode(v); err != nil {
-		return nil, err
-	}
-
-	// 移除最后的换行符
-	result := buf.Bytes()
-	if len(result) > 0 && result[len(result)-1] == '\n' {
-		result = result[:len(result)-1]
-	}
-
-	return result, nil
+	return utils.MarshalWithoutHTMLEscape(v)
 }
 
 // SaveJSONToFile 保存JSON数据到文件

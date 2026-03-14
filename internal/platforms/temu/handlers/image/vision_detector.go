@@ -1,13 +1,10 @@
-// Package handlers 提供TEMU平台Vision API检测功能
+// Package image 提供TEMU平台Vision API检测功能
 package image
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"image"
-	"image/png"
 	"strings"
 	"time"
 
@@ -15,6 +12,7 @@ import (
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/utils"
 )
 
 // VisionDetector Vision API检测器
@@ -55,11 +53,10 @@ func (v *VisionDetector) HasDimensionAnnotationWithDetails(ctx context.Context, 
 // detectWithVisionAPI 使用OpenAI Vision API检测图片中的尺寸标注
 func (v *VisionDetector) detectWithVisionAPI(ctx context.Context, img image.Image) (bool, string, error) {
 	// 将图片编码为base64
-	buf := new(bytes.Buffer)
-	if err := png.Encode(buf, img); err != nil {
+	base64Image, err := utils.ImageToBase64PNG(img)
+	if err != nil {
 		return false, "", fmt.Errorf("编码图片失败: %w", err)
 	}
-	base64Image := base64.StdEncoding.EncodeToString(buf.Bytes())
 
 	// 使用传入的context，如果没有超时则添加默认超时
 	ctxWithTimeout := ctx

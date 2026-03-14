@@ -8,7 +8,7 @@ import (
 	"image/draw"
 
 	"task-processor/internal/pkg/downloader"
-	"task-processor/internal/platforms/temu/utils"
+	pkgutils "task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,7 +17,6 @@ import (
 type ImagePaddingProcessor struct {
 	logger     *logrus.Entry
 	downloader *downloader.ImageDownloader
-	encoder    *utils.ImageEncoder
 }
 
 // NewImagePaddingProcessor 创建新的图片填充处理器
@@ -25,7 +24,6 @@ func NewImagePaddingProcessor() *ImagePaddingProcessor {
 	return &ImagePaddingProcessor{
 		logger:     logrus.WithField("processor", "ImagePaddingProcessor"),
 		downloader: downloader.NewImageDownloader(),
-		encoder:    utils.NewImageEncoder(),
 	}
 }
 
@@ -137,7 +135,7 @@ func (p *ImagePaddingProcessor) PadImageToAspectRatio(imageURL string, targetRat
 
 	// 编码图片
 	var buf bytes.Buffer
-	if err := p.encoder.EncodeImage(&buf, paddedImg, format); err != nil {
+	if err := pkgutils.EncodeImage(&buf, paddedImg, format, 95); err != nil {
 		result.Error = fmt.Errorf("编码图片失败: %w", err)
 		return result, result.Error
 	}
@@ -159,7 +157,7 @@ func (p *ImagePaddingProcessor) downloadImage(imageURL string) (image.Image, str
 	}
 
 	// 解码图片
-	img, format, err := image.Decode(bytes.NewReader(imageData))
+	img, format, err := pkgutils.BytesToImageWithFormat(imageData)
 	if err != nil {
 		return nil, "", fmt.Errorf("解码图片失败: %w", err)
 	}

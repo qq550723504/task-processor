@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"task-processor/internal/pkg/downloader"
+	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/amazon/api"
 	"time"
 
@@ -66,7 +67,7 @@ func (s *ImageManagementService) DownloadImage(url string) (*ImageDownloadResult
 	}
 
 	// 检测图片格式
-	format := s.detectImageFormat(data)
+	format := utils.GetImageFormatFromBytes(data)
 	if format == "" {
 		return nil, fmt.Errorf("不支持的图片格式")
 	}
@@ -160,7 +161,7 @@ func (s *ImageManagementService) UploadImage(ctx context.Context, imageData []by
 	}
 
 	// 检测图片格式
-	format := s.detectImageFormat(imageData)
+	format := utils.GetImageFormatFromBytes(imageData)
 
 	result := &ImageUploadResult{
 		ImageID:     apiResult.ImageID,
@@ -299,35 +300,6 @@ func (s *ImageManagementService) ProcessProductImages(ctx context.Context, image
 	}).Info("产品图片处理完成")
 
 	return results, nil
-}
-
-// detectImageFormat 检测图片格式
-func (s *ImageManagementService) detectImageFormat(data []byte) string {
-	if len(data) < 12 {
-		return ""
-	}
-
-	// JPEG
-	if len(data) >= 2 && data[0] == 0xFF && data[1] == 0xD8 {
-		return "jpeg"
-	}
-
-	// PNG
-	if len(data) >= 8 && string(data[:8]) == "\x89PNG\r\n\x1a\n" {
-		return "png"
-	}
-
-	// GIF
-	if len(data) >= 6 && (string(data[:6]) == "GIF87a" || string(data[:6]) == "GIF89a") {
-		return "gif"
-	}
-
-	// WebP
-	if len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
-		return "webp"
-	}
-
-	return ""
 }
 
 // ClearCache 清理缓存

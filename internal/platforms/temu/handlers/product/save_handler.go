@@ -1,8 +1,6 @@
 package product
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/utils"
@@ -188,19 +186,5 @@ func (h *ProductSaveHandler) getTotalSkuCount(skcList []models.Skc) int {
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *ProductSaveHandler) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false) // 关闭HTML转义，避免&被转义为\u0026
-
-	if err := encoder.Encode(v); err != nil {
-		return nil, err
-	}
-
-	// 移除最后的换行符
-	result := buf.Bytes()
-	if len(result) > 0 && result[len(result)-1] == '\n' {
-		result = result[:len(result)-1]
-	}
-
-	return result, nil
+	return utils.MarshalWithoutHTMLEscape(v)
 }

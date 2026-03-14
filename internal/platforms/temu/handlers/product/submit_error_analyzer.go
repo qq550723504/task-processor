@@ -1,14 +1,13 @@
 package product
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"task-processor/internal/pkg/utils"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/template"
 
@@ -284,21 +283,7 @@ func (ea *ProductSubmitErrorAnalyzer) saveTemplateDataForError(temuCtx *temucont
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (ea *ProductSubmitErrorAnalyzer) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false) // 关闭HTML转义，避免&被转义为\u0026
-
-	if err := encoder.Encode(v); err != nil {
-		return nil, err
-	}
-
-	// 移除最后的换行符
-	result := buf.Bytes()
-	if len(result) > 0 && result[len(result)-1] == '\n' {
-		result = result[:len(result)-1]
-	}
-
-	return result, nil
+	return utils.MarshalWithoutHTMLEscape(v)
 }
 
 // parseAttributeValidationError 解析属性验证错误消息

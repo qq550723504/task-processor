@@ -2,11 +2,10 @@
 package sku
 
 import (
-	"bytes"
-	"encoding/json"
 	"strings"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/temu/types"
 )
 
@@ -46,20 +45,7 @@ func (vp *SkuVariantProcessor) getItemWeight(product *model.Product) string {
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (vp *SkuVariantProcessor) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	err := encoder.Encode(v)
-	if err != nil {
-		return nil, err
-	}
-	// 移除最后的换行符
-	result := buf.Bytes()
-	if len(result) > 0 && result[len(result)-1] == '\n' {
-		result = result[:len(result)-1]
-	}
-	return result, nil
+	return utils.MarshalIndentWithoutHTMLEscape(v, "", "  ")
 }
 
 // buildAIVariant 构建AI变体数据

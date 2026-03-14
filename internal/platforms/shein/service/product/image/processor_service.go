@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"task-processor/internal/pkg/recovery"
+	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/model"
 
@@ -326,7 +327,7 @@ func (p *ImageProcessor) extractColorBlockImage(imageURL string) ([]byte, error)
 	}
 
 	// 2. 解码图片
-	img, _, err := image.Decode(bytes.NewReader(imageData))
+	img, err := utils.BytesToImage(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}

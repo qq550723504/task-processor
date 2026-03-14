@@ -9,7 +9,7 @@
 
 ### 核心业务流程
 
-1. **任务获取**: 从 Java 后端管理系统通过 RabbitMQ 获取上架任务
+1. **任务获取**: 通过 Java 后端管理系统经 RabbitMQ 提交上架任务
 2. **商品爬取**: 
    - 从源平台（Amazon、1688、沃尔玛、速卖通等）爬取商品详情
    - 包括标题、描述、价格、图片、规格等完整信息
@@ -65,103 +65,6 @@
 - **图片处理**: 集成图片优化组件（规划中）
 - **监控运维**: 健康检查、指标监控、负载统计
 - **浏览器池**: 复用浏览器实例，提升爬取效率
-
-## 📋 系统要求
-
-- Go 1.24 或更高版本
-- RabbitMQ 3.x（可选，用于分布式爬虫）
-- Chrome/Chromium（用于浏览器自动化）
-
-## 🚀 快速开始
-
-### 安装
-
-```bash
-# 克隆项目
-git clone <repository-url>
-cd task-processor
-
-# 安装依赖
-go mod download
-
-# 编译
-go build -o task-processor cmd/task/main.go
-go build -o rabbitmq-consumer cmd/rabbitmq-consumer/main.go
-```
-
-### 配置
-
-复制并修改配置文件：
-
-```bash
-cp config/config-dev.yaml config/config-prod.yaml
-# 编辑 config-prod.yaml，填入你的配置
-```
-
-关键配置项：
-
-```yaml
-# 管理API配置
-management:
-  baseURL: "http://your-api-server.com"
-  clientID: "your-client-id"
-  clientSecret: "your-client-secret"
-
-# 平台配置
-platforms:
-  temu:
-    enabled: true
-    autoPricing: true      # 启用自动核价
-    autoMarketing: true    # 启用自动营销活动报名
-  shein:
-    enabled: true
-    autoPricing: true      # 启用自动核价
-    autoMarketing: true    # 启用自动营销活动报名
-  alibaba1688:
-    enabled: true
-    inventoryMonitor: true # 启用库存监测
-
-# 定价策略配置
-pricing:
-  strategy: "competitive"  # 定价策略: competitive(竞争), fixed(固定), dynamic(动态)
-  minProfitRate: 0.15     # 最低利润率 15%
-  updateInterval: "1h"     # 核价间隔
-
-# 库存监测配置
-inventory:
-  checkInterval: "30m"     # 检查间隔 30 分钟
-  autoSync: true          # 自动同步库存
-  outOfStockAction: "delist" # 缺货操作: delist(下架), notify(通知)
-
-# 营销活动配置
-marketing:
-  autoJoin: true          # 自动报名活动
-  checkInterval: "2h"     # 检查间隔 2 小时
-  minDiscount: 0.05       # 最小折扣 5%
-  maxDiscount: 0.30       # 最大折扣 30%
-
-# 浏览器配置
-browser:
-  headless: true
-  poolSize: 3
-```
-
-### 运行
-
-**方式 1: 定时调度模式**
-
-```bash
-./task-processor --config=config/config-prod.yaml
-```
-
-**方式 2: RabbitMQ 消费者模式**
-
-```bash
-./rabbitmq-consumer \
-  --config=config/rabbitmq-config.yaml \
-  --app-config=config/config-prod.yaml \
-  --platforms=amazon,temu,shein
-```
 
 ## 📖 架构设计
 
@@ -442,7 +345,7 @@ rabbitmq:
 - 检查外部 API 是否可用
 - 验证配置参数是否正确
 
-## �️ 发展路线
+## 发展路线
 
 ### 已完成
 - ✅ Amazon → SHEIN/TEMU 商品上架
@@ -468,17 +371,3 @@ rabbitmq:
 - 📋 商品质量检测
 - 📋 多语言翻译优化
 - 📋 销量数据分析
-
-## �📝 更新日志
-
-### v1.0.0 (2024-03-04)
-- ✨ 初始版本发布
-- ✅ 支持 TEMU、SHEIN、Amazon 平台
-- ✅ 实现双模式架构（RabbitMQ + 定时调度）
-- ✅ 添加监控和健康检查
-
-### 最近优化 (feature/code-optimization)
-- 🐛 修复 panic 问题，改用错误返回
-- 📝 完善项目文档和业务说明
-- 🔧 改进错误处理机制
-- ✨ 添加 1688 平台支持

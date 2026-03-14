@@ -1,8 +1,6 @@
 package product
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +13,7 @@ import (
 	"task-processor/internal/pkg/management/api"
 	pkgproduct "task-processor/internal/pkg/product"
 	"task-processor/internal/pkg/ptrutil"
+	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -433,21 +432,7 @@ func (h *SavePublishResultHandler) saveResponseToFile(taskID int64, responseData
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *SavePublishResultHandler) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false) // 关闭HTML转义
-
-	if err := encoder.Encode(v); err != nil {
-		return nil, err
-	}
-
-	// 移除最后的换行符
-	result := buf.Bytes()
-	if len(result) > 0 && result[len(result)-1] == '\n' {
-		result = result[:len(result)-1]
-	}
-
-	return result, nil
+	return utils.MarshalWithoutHTMLEscape(v)
 }
 
 // buildFilterRuleRange 构建筛选规则范围字符串

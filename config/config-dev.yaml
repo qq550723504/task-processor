@@ -254,3 +254,59 @@ updater:
   checkInterval: 300  # 检查间隔（秒），默认5分钟
   insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）
 
+# 水印处理配置
+watermark:
+  enabled: true  # 启用水印检测与去除
+  
+  # 检测配置
+  detection:
+    method: "hybrid"  # traditional/ai/hybrid
+    sensitivity: "medium"  # low/medium/high
+    regions: ["corner", "edge"]  # corner/center/edge/full
+    min_size: 20  # 最小水印尺寸（像素）
+    threshold: 0.6  # 检测阈值 0-1
+  
+  # 去除配置
+  removal:
+    method: "inpaint"  # inpaint/blur/crop/ai
+    quality: "high"  # low/medium/high
+    preserve_aspect: true  # 保持宽高比
+    auto_crop: true  # 自动裁剪边缘水印
+    blur_radius: 5  # 模糊半径
+    inpaint_radius: 10  # 修复半径
+  
+  # AI配置
+  ai:
+    # GPT-4 Vision / Claude配置
+    vision_api:
+      enabled: false  # 默认禁用，成本较高
+      provider: "openai"  # openai/anthropic
+      api_key: ""  # 填写你的API Key
+      model: "gpt-4-vision-preview"
+      base_url: "https://api.openai.com/v1/chat/completions"
+      max_cost: 0.05  # 单张图片最大成本（美元）
+    
+    # LaMa模型配置
+    lama_model:
+      enabled: false  # 默认禁用，需要部署LaMa服务
+      model_path: ""  # 本地模型路径
+      server_url: "http://localhost:8080/inpaint"  # LaMa服务URL
+      use_gpu: false
+      batch_size: 1
+    
+    # 商业API配置
+    commercial_api:
+      enabled: false
+      provider: "cloudinary"  # cloudinary/removebg
+      api_key: ""
+      endpoint: ""
+  
+  # 性能配置
+  performance:
+    max_concurrent: 3  # 最大并发数
+    timeout: 30  # 超时时间（秒）
+    cache_enabled: true  # 启用缓存
+    cache_ttl: 3600  # 缓存过期时间（秒）
+    max_image_size: 4096  # 最大图片尺寸（像素）
+    quality_score: 0.8  # 质量评分阈值
+

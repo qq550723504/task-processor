@@ -5,8 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	"image/jpeg"
-	"image/png"
+	"task-processor/internal/pkg/utils"
 
 	"github.com/disintegration/imaging"
 	"github.com/sirupsen/logrus"
@@ -49,7 +48,7 @@ func (p *ImageProcessor) Resize(imageData []byte, width, height int) ([]byte, er
 	}).Info("开始调整图片大小")
 
 	// 解码图片
-	img, format, err := image.Decode(bytes.NewReader(imageData))
+	img, format, err := utils.BytesToImageWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -80,7 +79,7 @@ func (p *ImageProcessor) ResizeWithOptions(imageData []byte, options ProcessingO
 	}).Info("开始处理图片")
 
 	// 解码图片
-	img, format, err := image.Decode(bytes.NewReader(imageData))
+	img, format, err := utils.BytesToImageWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -111,7 +110,7 @@ func (p *ImageProcessor) ResizeWithOptions(imageData []byte, options ProcessingO
 
 // ValidateFormat 验证图片格式
 func (p *ImageProcessor) ValidateFormat(imageData []byte) error {
-	_, format, err := image.Decode(bytes.NewReader(imageData))
+	_, format, err := utils.BytesToImageWithFormat(imageData)
 	if err != nil {
 		return fmt.Errorf("无效的图片格式: %w", err)
 	}
@@ -133,7 +132,7 @@ func (p *ImageProcessor) ValidateFormat(imageData []byte) error {
 
 // GetImageInfo 获取图片信息
 func (p *ImageProcessor) GetImageInfo(imageData []byte) (*ImageInfo, error) {
-	img, format, err := image.Decode(bytes.NewReader(imageData))
+	img, format, err := utils.BytesToImageWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -277,22 +276,8 @@ func (p *ImageProcessor) encodeImage(img image.Image, format string) ([]byte, er
 // encodeImageWithQuality 使用指定质量编码图片
 func (p *ImageProcessor) encodeImageWithQuality(img image.Image, format string, quality int) ([]byte, error) {
 	var buf bytes.Buffer
-
-	switch format {
-	case "jpeg", "jpg":
-		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
-			return nil, fmt.Errorf("编码JPEG失败: %w", err)
-		}
-	case "png":
-		if err := png.Encode(&buf, img); err != nil {
-			return nil, fmt.Errorf("编码PNG失败: %w", err)
-		}
-	default:
-		// 默认使用JPEG
-		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
-			return nil, fmt.Errorf("编码图片失败: %w", err)
-		}
+	if err := utils.EncodeImage(&buf, img, format, quality); err != nil {
+		return nil, fmt.Errorf("编码图片失败: %w", err)
 	}
-
 	return buf.Bytes(), nil
 }

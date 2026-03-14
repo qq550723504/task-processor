@@ -13,7 +13,7 @@ import (
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/downloader"
-	"task-processor/internal/platforms/temu/utils"
+	pkgutils "task-processor/internal/pkg/utils"
 )
 
 // ImageDimensionAnnotator 图片尺寸标注器
@@ -24,7 +24,6 @@ type ImageDimensionAnnotator struct {
 	drawer         *DimensionDrawer
 	textRenderer   *validation.TextRenderer
 	visionDetector *VisionDetector
-	encoder        *utils.ImageEncoder
 }
 
 // NewImageDimensionAnnotator 创建新的图片尺寸标注器
@@ -35,7 +34,6 @@ func NewImageDimensionAnnotator() *ImageDimensionAnnotator {
 		drawer:         NewDimensionDrawer(),
 		textRenderer:   validation.NewTextRenderer(),
 		visionDetector: NewVisionDetector(nil),
-		encoder:        utils.NewImageEncoder(),
 	}
 }
 
@@ -48,7 +46,6 @@ func NewImageDimensionAnnotatorWithOpenAI(client *openaiClient.Client) *ImageDim
 		drawer:         NewDimensionDrawer(),
 		textRenderer:   validation.NewTextRenderer(),
 		visionDetector: NewVisionDetector(client),
-		encoder:        utils.NewImageEncoder(),
 	}
 }
 
@@ -70,7 +67,7 @@ func (a *ImageDimensionAnnotator) AnnotateImageFromBytes(imageData []byte, dimen
 	a.logger.Info("开始为图片添加尺寸标注（使用字节数据）")
 
 	// 1. 解码图片
-	img, format, err := image.Decode(bytes.NewReader(imageData))
+	img, format, err := pkgutils.BytesToImageWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -87,7 +84,7 @@ func (a *ImageDimensionAnnotator) DownloadImage(imageURL string) (image.Image, s
 	}
 
 	// 解码图片
-	img, format, err := image.Decode(bytes.NewReader(imageData))
+	img, format, err := pkgutils.BytesToImageWithFormat(imageData)
 	if err != nil {
 		return nil, "", fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -117,7 +114,7 @@ func (a *ImageDimensionAnnotator) annotateImageInternal(img image.Image, format 
 
 	// 4. 编码为字节
 	buf := new(bytes.Buffer)
-	if err := a.encoder.EncodeImage(buf, rgba, format); err != nil {
+	if err := pkgutils.EncodeImage(buf, rgba, format, 95); err != nil {
 		return nil, fmt.Errorf("编码图片失败: %w", err)
 	}
 
