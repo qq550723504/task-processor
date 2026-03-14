@@ -1,5 +1,5 @@
-// Package utils 提供配置辅助工具
-package utils
+// Package helpers 提供配置辅助工具
+package helpers
 
 import (
 	"fmt"

@@ -1,5 +1,5 @@
-// Package utils 提供熔断器工具
-package utils
+// Package resilience 提供熔断器工具
+package resilience
 
 import (
 	"context"

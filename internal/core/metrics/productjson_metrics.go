@@ -1,5 +1,5 @@
-// Package utils 提供 Prometheus 指标工具
-package utils
+// Package metrics 提供 Prometheus 指标工具
+package metrics
 
 import (
 	"sync"

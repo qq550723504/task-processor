@@ -1,5 +1,5 @@
-// Package utils 提供Amazon平台工具方法
-package utils
+// Package amazonutil 提供Amazon平台工具方法
+package amazonutil
 
 import (
 	"fmt"

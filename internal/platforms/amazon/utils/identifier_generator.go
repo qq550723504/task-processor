@@ -1,5 +1,5 @@
-// Package utils 提供Amazon产品标识符生成工具
-package utils
+// Package amazonutil 提供Amazon产品标识符生成工具
+package amazonutil
 
 import (
 	"crypto/md5"

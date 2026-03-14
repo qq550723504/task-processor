@@ -1,5 +1,5 @@
-// Package utils 提供重试机制工具
-package utils
+// Package resilience 提供重试机制工具
+package resilience
 
 import (
 	"context"
