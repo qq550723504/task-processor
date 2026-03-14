@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	domain "task-processor/internal/domain/productjson"
+	"task-processor/internal/pkg/strutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -186,7 +187,7 @@ Only return the JSON object, no additional text.`, text)
 
 		// 返回默认值
 		attributes = domain.TextAttributes{
-			Title:         text[:min(50, len(text))],
+			Title:         strutil.TruncateString(text, 50),
 			Attributes:    make(map[string]string),
 			SellingPoints: []string{},
 		}
@@ -258,12 +259,4 @@ Only return the JSON object, no additional text.`
 	}
 
 	return &representation, nil
-}
-
-// min 返回两个整数中的较小值
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

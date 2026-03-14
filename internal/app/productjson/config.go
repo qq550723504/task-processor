@@ -1,47 +1,23 @@
 // Package productjson 提供产品JSON生成的应用层实现
 package productjson
 
-import "time"
+import (
+	"time"
+
+	coreconfig "task-processor/internal/core/config"
+	coretypes "task-processor/internal/core/config/types"
+)
 
 // Config 产品JSON生成器配置
 type Config struct {
-	Server     ServerConfig     `mapstructure:"server"`
-	Database   DatabaseConfig   `mapstructure:"database"`
-	Redis      RedisConfig      `mapstructure:"redis"`
-	LLM        LLMConfig        `mapstructure:"llm"`
-	Worker     WorkerConfig     `mapstructure:"worker"`
-	Scraper    ScraperConfig    `mapstructure:"scraper"`
-	Logging    LoggingConfig    `mapstructure:"logging"`
-	Validation ValidationConfig `mapstructure:"validation"`
-}
-
-// ServerConfig 服务器配置
-type ServerConfig struct {
-	Port         int           `mapstructure:"port"`
-	Timeout      time.Duration `mapstructure:"timeout"`
-	ReadTimeout  time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout time.Duration `mapstructure:"write_timeout"`
-}
-
-// DatabaseConfig 数据库配置
-type DatabaseConfig struct {
-	Host                  string        `mapstructure:"host"`
-	Port                  int           `mapstructure:"port"`
-	User                  string        `mapstructure:"user"`
-	Password              string        `mapstructure:"password"`
-	Database              string        `mapstructure:"database"`
-	MaxConnections        int           `mapstructure:"max_connections"`
-	MaxIdleConnections    int           `mapstructure:"max_idle_connections"`
-	ConnectionMaxLifetime time.Duration `mapstructure:"connection_max_lifetime"`
-}
-
-// RedisConfig Redis配置
-type RedisConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
-	PoolSize int    `mapstructure:"pool_size"`
+	Server     coretypes.ServerConfig   `mapstructure:"server"`
+	Database   coretypes.DatabaseConfig `mapstructure:"database"`
+	Redis      coretypes.RedisConfig    `mapstructure:"redis"`
+	LLM        LLMConfig                `mapstructure:"llm"`
+	Worker     WorkerConfig             `mapstructure:"worker"`
+	Scraper    ScraperConfig            `mapstructure:"scraper"`
+	Logging    coreconfig.LogConfig     `mapstructure:"logging"`
+	Validation ValidationConfig         `mapstructure:"validation"`
 }
 
 // LLMConfig LLM配置
@@ -72,15 +48,6 @@ type ScraperConfig struct {
 	MaxRetries  int           `mapstructure:"max_retries"`
 	UserAgent   string        `mapstructure:"user_agent"`
 	WaitTimeout time.Duration `mapstructure:"wait_timeout"`
-}
-
-// LoggingConfig 日志配置
-type LoggingConfig struct {
-	Level            string `mapstructure:"level"`
-	Format           string `mapstructure:"format"`
-	Output           string `mapstructure:"output"`
-	EnableCaller     bool   `mapstructure:"enable_caller"`
-	EnableStacktrace bool   `mapstructure:"enable_stacktrace"`
 }
 
 // ValidationConfig 输入验证配置

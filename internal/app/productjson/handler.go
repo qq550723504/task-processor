@@ -3,9 +3,9 @@ package productjson
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	domain "task-processor/internal/domain/productjson"
 
@@ -93,12 +93,9 @@ func (h *productHandler) GetTaskResult(c *gin.Context) {
 	// 查询任务结果
 	result, err := h.productService.GetTaskResult(c.Request.Context(), taskID)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"task_id": taskID,
-		}).WithError(err).Error("failed to get task result")
+		logrus.WithField("task_id", taskID).WithError(err).Error("failed to get task result")
 
-		// 判断是否是任务不存在
-		if isNotFoundError(err) {
+		if errors.Is(err, domain.ErrTaskNotFound) {
 			c.JSON(http.StatusNotFound, ErrorResponse{
 				Error:   "task_not_found",
 				Message: "Task with the specified ID does not exist",
@@ -115,10 +112,4 @@ func (h *productHandler) GetTaskResult(c *gin.Context) {
 
 	// 返回成功响应
 	c.JSON(http.StatusOK, result)
-}
-
-// isNotFoundError 判断是否是未找到错误
-func isNotFoundError(err error) bool {
-	return err != nil && (err.Error() == "task not found" ||
-		strings.Contains(err.Error(), "not found"))
 }

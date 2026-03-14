@@ -3,11 +3,11 @@ package productjson
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
-	"task-processor/internal/domain/productjson"
 	"time"
+
+	"task-processor/internal/domain/productjson"
+	"task-processor/internal/pkg/hashutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -108,6 +108,5 @@ func (c *validationCache) SetImageValidation(ctx context.Context, imageURL strin
 
 // getImageCacheKey 获取图片缓存键
 func (c *validationCache) getImageCacheKey(imageURL string) string {
-	hash := md5.Sum([]byte(imageURL))
-	return "validation:image:" + hex.EncodeToString(hash[:])
+	return "validation:image:" + hashutil.MD5(imageURL)
 }

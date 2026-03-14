@@ -1,7 +1,17 @@
 // Package hashutil 提供哈希与分片工具方法
 package hashutil
 
-import "fmt"
+import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+)
+
+// MD5 计算字符串的 MD5 哈希值，返回十六进制字符串
+func MD5(s string) string {
+	h := md5.Sum([]byte(s))
+	return hex.EncodeToString(h[:])
+}
 
 // SimpleHash 简单哈希函数，将 key 映射到 [0, totalShards) 区间
 func SimpleHash(key string, totalShards int) int {

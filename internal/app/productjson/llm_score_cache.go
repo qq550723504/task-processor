@@ -3,9 +3,8 @@ package productjson
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
+	"task-processor/internal/pkg/hashutil"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -182,12 +181,10 @@ func (c *llmScoreCache) SetImageScore(ctx context.Context, imageURL string, scor
 
 // getTextScoreCacheKey 获取文本评分缓存键
 func (c *llmScoreCache) getTextScoreCacheKey(text string) string {
-	hash := md5.Sum([]byte(text))
-	return "llm_score:text:" + hex.EncodeToString(hash[:])
+	return "llm_score:text:" + hashutil.MD5(text)
 }
 
 // getImageScoreCacheKey 获取图片评分缓存键
 func (c *llmScoreCache) getImageScoreCacheKey(imageURL string) string {
-	hash := md5.Sum([]byte(imageURL))
-	return "llm_score:image:" + hex.EncodeToString(hash[:])
+	return "llm_score:image:" + hashutil.MD5(imageURL)
 }

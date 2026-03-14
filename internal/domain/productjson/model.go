@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// ErrTaskNotFound 任务不存在错误
+var ErrTaskNotFound = errors.New("task not found")
+
 // TaskStatus 表示任务的状态
 type TaskStatus string
 
