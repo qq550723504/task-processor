@@ -11,8 +11,9 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/management/api"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/perfutil"
 	shein_model "task-processor/internal/platforms/shein/model"
 	"time"
 
@@ -88,7 +89,7 @@ func (h *VariantJsonDataHandler) Name() string {
 // Handle 执行获取所有变体的Json数据处理
 func (h *VariantJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
 	// 创建性能跟踪器
-	tracker := utils.NewPerformanceTracker("并行变体数据处理", h.logger)
+	tracker := perfutil.NewTracker("并行变体数据处理", h.logger)
 	defer tracker.Finish()
 
 	tracker.StartStep("初始化和验证")
@@ -156,12 +157,12 @@ func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein_model.TaskCont
 	}
 
 	// 创建并行处理器
-	processor := utils.NewParallelProcessor(h.maxWorkers, h.timeout, h.logger)
+	processor := goroutine.NewProcessor(h.maxWorkers, h.timeout, h.logger)
 
 	// 创建处理任务
-	tasks := make([]*utils.ProcessTask, len(variantAsins))
+	tasks := make([]*goroutine.Task, len(variantAsins))
 	for i, asin := range variantAsins {
-		tasks[i] = &utils.ProcessTask{
+		tasks[i] = &goroutine.Task{
 			Index: i,
 			ID:    asin,
 			Data: &product.FetchRequest{
@@ -177,7 +178,7 @@ func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein_model.TaskCont
 	}
 
 	// 定义处理函数
-	processFunc := func(taskCtx context.Context, task *utils.ProcessTask) (interface{}, error) {
+	processFunc := func(taskCtx context.Context, task *goroutine.Task) (interface{}, error) {
 		req, ok := task.Data.(*product.FetchRequest)
 		if !ok {
 			return nil, fmt.Errorf("任务数据类型错误")

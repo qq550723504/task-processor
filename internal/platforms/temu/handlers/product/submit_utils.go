@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"
@@ -72,7 +72,7 @@ func (u *ProductSubmitUtils) IsNonRetryableError(errorCode int, errorMessage str
 
 // MarshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (u *ProductSubmitUtils) MarshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return utils.MarshalWithoutHTMLEscape(v)
+	return jsonutil.MarshalWithoutHTMLEscape(v)
 }
 
 // SaveJSONToFile 保存JSON数据到文件

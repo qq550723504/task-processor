@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"task-processor/internal/pkg/httpclient"
 	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/pkg/utils"
 
 	"github.com/sirupsen/logrus"
 )
@@ -80,7 +80,7 @@ type OperationStrategyClient struct {
 func NewOperationStrategyClient(baseURL string) *OperationStrategyClient {
 	return &OperationStrategyClient{
 		baseURL:    baseURL,
-		httpClient: utils.CreateSimpleHTTPClient(),
+		httpClient: httpclient.NewSimple(),
 	}
 }
 

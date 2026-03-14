@@ -7,8 +7,8 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"task-processor/internal/pkg/httpclient"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/amazon/core/model"
 
 	"github.com/sirupsen/logrus"
@@ -24,7 +24,7 @@ type SchemaFetcher struct {
 // NewSchemaFetcher 创建Schema获取器
 func NewSchemaFetcher() *SchemaFetcher {
 	return &SchemaFetcher{
-		httpClient: utils.CreateSimpleHTTPClient(),
+		httpClient: httpclient.NewSimple(),
 		logger:     logrus.WithField("component", "SchemaFetcher"),
 	}
 }

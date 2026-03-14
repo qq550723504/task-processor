@@ -10,7 +10,7 @@ import (
 
 	"task-processor/internal/app/bootstrap"
 	"task-processor/internal/infra/monitoring"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/apputil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,7 +27,7 @@ func main() {
 	monitoring.RecordProcessStartTime()
 
 	// 设置日志
-	logger := utils.SetupLogger()
+	logger := apputil.SetupLogger()
 
 	// 创建应用启动器
 	app := bootstrap.NewApplicationBootstrap(logger)
@@ -41,11 +41,11 @@ func main() {
 // runApplication 运行应用
 func runApplication(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger) error {
 	// 显示版本信息
-	versionInfo := utils.VersionInfo{
+	versionInfo := apputil.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	}
-	utils.PrintVersionInfo(logger, versionInfo)
+	apputil.PrintVersionInfo(logger, versionInfo)
 
 	// 初始化应用（使用默认配置文件路径）
 	configPath := "config/config-dev.yaml"

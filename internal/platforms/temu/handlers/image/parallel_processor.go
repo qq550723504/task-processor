@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/goroutine"
+	"task-processor/internal/pkg/perfutil"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -61,18 +62,18 @@ func (pip *ParallelImageProcessor) ProcessVariantImagesParallel(temuCtx *temucon
 	}
 
 	// 创建性能跟踪器
-	tracker := utils.NewPerformanceTracker(fmt.Sprintf("并行图片处理-%d个变体", len(variants)), pip.logger)
+	tracker := perfutil.NewTracker(fmt.Sprintf("并行图片处理-%d个变体", len(variants)), pip.logger)
 	defer tracker.Finish()
 
 	tracker.StartStep("准备并行图片处理任务")
 
 	// 创建并行处理器
-	processor := utils.NewParallelProcessor(pip.maxWorkers, pip.timeout, pip.logger)
+	processor := goroutine.NewProcessor(pip.maxWorkers, pip.timeout, pip.logger)
 
 	// 创建处理任务
-	tasks := make([]*utils.ProcessTask, len(variants))
+	tasks := make([]*goroutine.Task, len(variants))
 	for i, variant := range variants {
-		tasks[i] = &utils.ProcessTask{
+		tasks[i] = &goroutine.Task{
 			Index: i,
 			ID:    fmt.Sprintf("variant-%s", variant.Asin),
 			Data: &ImageProcessingTask{
@@ -87,7 +88,7 @@ func (pip *ParallelImageProcessor) ProcessVariantImagesParallel(temuCtx *temucon
 	tracker.StartStep("执行并行图片处理")
 
 	// 定义处理函数
-	processFunc := func(ctx context.Context, task *utils.ProcessTask) (interface{}, error) {
+	processFunc := func(ctx context.Context, task *goroutine.Task) (interface{}, error) {
 		imageTask, ok := task.Data.(*ImageProcessingTask)
 		if !ok {
 			return nil, fmt.Errorf("任务数据类型错误")

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"task-processor/internal/pkg/downloader"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/imageutil"
 	"task-processor/internal/platforms/amazon/api"
 	"time"
 
@@ -67,7 +67,7 @@ func (s *ImageManagementService) DownloadImage(url string) (*ImageDownloadResult
 	}
 
 	// 检测图片格式
-	format := utils.GetImageFormatFromBytes(data)
+	format := imageutil.FormatFromBytes(data)
 	if format == "" {
 		return nil, fmt.Errorf("不支持的图片格式")
 	}
@@ -161,7 +161,7 @@ func (s *ImageManagementService) UploadImage(ctx context.Context, imageData []by
 	}
 
 	// 检测图片格式
-	format := utils.GetImageFormatFromBytes(imageData)
+	format := imageutil.FormatFromBytes(imageData)
 
 	result := &ImageUploadResult{
 		ImageID:     apiResult.ImageID,

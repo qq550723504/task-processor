@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/skugen"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -164,7 +164,7 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext
 	// 获取店铺配置（前缀、后缀、策略）
 	prefix := ""
 	suffix := ""
-	strategy := utils.StrategyASINOnly // 默认策略：仅使用ASIN
+	strategy := skugen.StrategyASINOnly // 默认策略：仅使用ASIN
 
 	// 从强类型上下文获取店铺信息
 	if temuCtx.StoreInfo != nil {
@@ -184,7 +184,7 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext
 	// 1. 为主产品生成OutSkuSN
 	amazonProduct := temuCtx.GetAmazonProduct()
 	if amazonProduct != nil && amazonProduct.Asin != "" {
-		outSkuSN := utils.GenerateSKU(amazonProduct.Asin, strategy, prefix, suffix)
+		outSkuSN := skugen.Generate(amazonProduct.Asin, strategy, prefix, suffix)
 		if !outSkuSnMap[outSkuSN] {
 			outSkuSnMap[outSkuSN] = true
 			outSkuSnList = append(outSkuSnList, models.OutSkuSnItem{
@@ -203,7 +203,7 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext
 		h.logger.WithField("variant_count", len(variants)).Debug("为变体生成OutSkuSN")
 		for _, variant := range variants {
 			if variant.Asin != "" {
-				outSkuSN := utils.GenerateSKU(variant.Asin, strategy, prefix, suffix)
+				outSkuSN := skugen.Generate(variant.Asin, strategy, prefix, suffix)
 				if !outSkuSnMap[outSkuSN] {
 					outSkuSnMap[outSkuSN] = true
 					outSkuSnList = append(outSkuSnList, models.OutSkuSnItem{

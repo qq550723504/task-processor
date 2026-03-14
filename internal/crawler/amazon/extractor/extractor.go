@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/goroutine"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -74,12 +74,12 @@ func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Produ
 	parallelExtractors := ce.extractors[3:] // 从BrandExtractor开始的所有提取器
 
 	// 创建并行处理器（15个提取器，使用15个worker，每个提取器30秒超时）
-	processor := utils.NewParallelProcessor(len(parallelExtractors), 30*time.Second, ce.logger)
+	processor := goroutine.NewProcessor(len(parallelExtractors), 30*time.Second, ce.logger)
 
 	// 创建任务
-	tasks := make([]*utils.ProcessTask, len(parallelExtractors))
+	tasks := make([]*goroutine.Task, len(parallelExtractors))
 	for i, ext := range parallelExtractors {
-		tasks[i] = &utils.ProcessTask{
+		tasks[i] = &goroutine.Task{
 			Index: i,
 			ID:    getExtractorName(ext),
 			Data:  ext,
@@ -87,7 +87,7 @@ func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Produ
 	}
 
 	// 定义处理函数
-	processFunc := func(ctx context.Context, task *utils.ProcessTask) (interface{}, error) {
+	processFunc := func(ctx context.Context, task *goroutine.Task) (interface{}, error) {
 		extractor := task.Data.(Extractor)
 		return nil, extractor.Extract(page, product)
 	}

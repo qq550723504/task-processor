@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/strutil"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -259,7 +259,7 @@ func (h *VariantJsonDataHandler) processSingleProduct(temuCtx *temucontext.TemuT
 	// 处理产品信息
 	if temuCtx.TemuProduct != nil {
 		if productName != "" {
-			cleanedTitle := utils.CleanProductTitle(productName)
+			cleanedTitle := strutil.CleanProductTitle(productName)
 			temuCtx.CleanedTitle = cleanedTitle
 			h.logger.Debugf("产品标题已清理: %s -> %s", productName, cleanedTitle)
 		}
@@ -291,7 +291,7 @@ func (h *VariantJsonDataHandler) processVariantData(temuCtx *temucontext.TemuTas
 		// 清理变体标题
 		if variant.Title != "" {
 			originalTitle := variant.Title
-			variant.Title = utils.CleanProductTitle(variant.Title)
+			variant.Title = strutil.CleanProductTitle(variant.Title)
 			if originalTitle != variant.Title {
 				h.logger.Debugf("变体 %d 标题已清理: %s -> %s", i+1, originalTitle, variant.Title)
 			}
@@ -304,7 +304,7 @@ func (h *VariantJsonDataHandler) processVariantData(temuCtx *temucontext.TemuTas
 	if len(variants) > 0 && variants[0] != nil {
 		mainVariant := variants[0]
 		if mainVariant.Title != "" {
-			cleanedTitle := utils.CleanProductTitle(mainVariant.Title)
+			cleanedTitle := strutil.CleanProductTitle(mainVariant.Title)
 			temuCtx.CleanedTitle = cleanedTitle
 			h.logger.Debugf("主变体标题已清理: %s -> %s", mainVariant.Title, cleanedTitle)
 		}

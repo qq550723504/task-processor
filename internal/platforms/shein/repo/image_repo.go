@@ -7,8 +7,8 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"task-processor/internal/pkg/imageutil"
 	"task-processor/internal/pkg/management/impl"
-	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/shein/api"
 	"task-processor/internal/platforms/shein/repo/client"
 	"time"
@@ -59,7 +59,7 @@ func (i *ImageAPI) UploadImage(imageURL string) (string, error) {
 // processImageIfNeeded 检查图片尺寸并在需要时进行白边填充
 func (i *ImageAPI) processImageIfNeeded(imageData []byte) ([]byte, error) {
 	// 解码图片
-	img, format, err := utils.BytesToImageWithFormat(imageData)
+	img, format, err := imageutil.FromBytesWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}

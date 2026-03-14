@@ -13,7 +13,8 @@ import (
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/goroutine"
+	"task-processor/internal/pkg/perfutil"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -81,7 +82,7 @@ func (h *ParallelVariantHandler) Handle(ctx pipeline.TaskContext) error {
 // HandleTemu 处理任务（强类型上下文）
 func (h *ParallelVariantHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	// 创建性能跟踪器
-	tracker := utils.NewPerformanceTracker("并行变体数据处理", h.logger)
+	tracker := perfutil.NewTracker("并行变体数据处理", h.logger)
 	defer tracker.Finish()
 
 	tracker.StartStep("初始化和验证")
@@ -149,12 +150,12 @@ func (h *ParallelVariantHandler) fetchVariantsParallel(temuCtx *temucontext.Temu
 	}
 
 	// 创建并行处理器
-	processor := utils.NewParallelProcessor(h.maxWorkers, h.timeout, h.logger)
+	processor := goroutine.NewProcessor(h.maxWorkers, h.timeout, h.logger)
 
 	// 创建处理任务
-	tasks := make([]*utils.ProcessTask, len(variantAsins))
+	tasks := make([]*goroutine.Task, len(variantAsins))
 	for i, asin := range variantAsins {
-		tasks[i] = &utils.ProcessTask{
+		tasks[i] = &goroutine.Task{
 			Index: i,
 			ID:    asin,
 			Data: &domainProduct.FetchRequest{
@@ -170,7 +171,7 @@ func (h *ParallelVariantHandler) fetchVariantsParallel(temuCtx *temucontext.Temu
 	}
 
 	// 定义处理函数
-	processFunc := func(ctx context.Context, task *utils.ProcessTask) (interface{}, error) {
+	processFunc := func(ctx context.Context, task *goroutine.Task) (interface{}, error) {
 		req, ok := task.Data.(*domainProduct.FetchRequest)
 		if !ok {
 			return nil, fmt.Errorf("任务数据类型错误")

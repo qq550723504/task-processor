@@ -9,8 +9,7 @@ import (
 	"image/color"
 	"io"
 	"net/http"
-
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/imageutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -89,12 +88,12 @@ func (r *AIRemover) createMask(img image.Image, regions []*WatermarkRegion) imag
 // callLamaService 调用LaMa服务
 func (r *AIRemover) callLamaService(ctx context.Context, img, mask image.Image) (image.Image, error) {
 	// 将图片和mask转换为base64
-	imgBase64, err := utils.ImageToBase64PNG(img)
+	imgBase64, err := imageutil.ToBase64PNG(img)
 	if err != nil {
 		return nil, fmt.Errorf("图片编码失败: %w", err)
 	}
 
-	maskBase64, err := utils.ImageToBase64PNG(mask)
+	maskBase64, err := imageutil.ToBase64PNG(mask)
 	if err != nil {
 		return nil, fmt.Errorf("mask编码失败: %w", err)
 	}
@@ -144,7 +143,7 @@ func (r *AIRemover) callLamaService(ctx context.Context, img, mask image.Image) 
 	}
 
 	// 解码结果图片
-	resultImg, err := utils.Base64ToImage(response.Image)
+	resultImg, err := imageutil.FromBase64(response.Image)
 	if err != nil {
 		return nil, fmt.Errorf("结果图片解码失败: %w", err)
 	}

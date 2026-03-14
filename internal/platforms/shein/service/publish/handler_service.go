@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/jsonutil"
 	product "task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/model"
 
@@ -117,7 +117,7 @@ func (h *PublishProductHandler) SaveDraftProduct(ctx *model.TaskContext) (*produ
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *PublishProductHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return utils.MarshalWithoutHTMLEscape(v)
+	return jsonutil.MarshalWithoutHTMLEscape(v)
 }
 
 // saveJSONToFile 保存JSON数据到文件

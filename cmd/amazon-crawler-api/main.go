@@ -11,7 +11,7 @@ import (
 
 	"task-processor/internal/app/service"
 	"task-processor/internal/core/config"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/apputil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -31,10 +31,10 @@ func main() {
 	flag.Parse()
 
 	// 设置日志
-	logger := utils.SetupLoggerWithLevel(*logLevel)
+	logger := apputil.SetupLoggerWithLevel(*logLevel)
 
 	// 打印版本信息
-	utils.PrintVersionInfo(logger, utils.VersionInfo{
+	apputil.PrintVersionInfo(logger, apputil.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	})

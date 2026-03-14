@@ -13,7 +13,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/httpclient"
 
 	"github.com/sirupsen/logrus"
 )
@@ -104,7 +104,7 @@ func NewResultReporter(cfg ReporterConfig, logger *logrus.Logger) *ResultReporte
 	}
 
 	// 创建HTTP客户端（使用自定义Transport配置）
-	httpClient := utils.CreateHTTPClientWithTransport(
+	httpClient := httpclient.NewWithTransport(
 		cfg.Timeout,
 		&http.Transport{
 			MaxIdleConns:        10,

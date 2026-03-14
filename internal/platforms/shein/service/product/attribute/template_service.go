@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"
@@ -65,7 +65,7 @@ func (h *AttributeTemplateHandler) Handle(ctx *model.TaskContext) error {
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *AttributeTemplateHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return utils.MarshalWithoutHTMLEscape(v)
+	return jsonutil.MarshalWithoutHTMLEscape(v)
 }
 
 // saveJSONToFileWithName 使用指定文件名保存JSON数据到文件

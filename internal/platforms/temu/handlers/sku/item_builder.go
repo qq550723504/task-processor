@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/skugen"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/image"
@@ -406,7 +406,7 @@ func (ib *SkuItemBuilder) generateSkuFromStoreConfigTemu(temuCtx *temucontext.Te
 	}
 
 	// 使用工具函数生成SKU
-	sku := utils.GenerateSKU(asin, strategy, prefix, suffix)
+	sku := skugen.Generate(asin, strategy, prefix, suffix)
 
 	ib.logger.Infof("生成的SKU: %s (策略: %d, 前缀: %s, 后缀: %s)", sku, strategy, prefix, suffix)
 

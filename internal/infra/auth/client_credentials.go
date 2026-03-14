@@ -3,7 +3,7 @@ package auth
 
 import (
 	"net/http"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/httpclient"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -24,7 +24,7 @@ type ClientCredentialsAuthClient struct {
 // NewClientCredentialsAuthClient 创建客户端凭证模式授权客户端
 func NewClientCredentialsAuthClient(baseURL, clientID, clientSecret, tenantID string, logger *logrus.Logger) *ClientCredentialsAuthClient {
 	// 使用统一的HTTP客户端工厂
-	httpClient := utils.CreateSimpleHTTPClient()
+	httpClient := httpclient.NewSimple()
 
 	return &ClientCredentialsAuthClient{
 		baseURL:      baseURL,

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/httpclient"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -55,7 +55,7 @@ func GenerateUserAgent(customUserAgent string, userAgents []string) string {
 
 // GetLocationInfoByIP 根据IP获取地理位置信息（与Python版本一致）
 func GetLocationInfoByIP(ip string) (*IPLocationInfo, error) {
-	client := utils.CreateSimpleHTTPClientWithTimeout(10 * time.Second)
+	client := httpclient.NewSimpleWithTimeout(10 * time.Second)
 	resp, err := client.Get(fmt.Sprintf("http://ip-api.com/json/%s", ip))
 	if err != nil {
 		return nil, fmt.Errorf("请求IP地理位置失败: %w", err)

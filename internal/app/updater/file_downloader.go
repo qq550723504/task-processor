@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/httpclient"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -40,7 +40,7 @@ func (fd *FileDownloader) DownloadFile(url, destPath, expectedHash string) error
 		},
 	}
 
-	client := utils.CreateHTTPClientWithTransport(10*time.Minute, transport)
+	client := httpclient.NewWithTransport(10*time.Minute, transport)
 
 	resp, err := client.Get(url)
 	if err != nil {

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/temu/types"
 )
 
@@ -45,7 +45,7 @@ func (vp *SkuVariantProcessor) getItemWeight(product *model.Product) string {
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (vp *SkuVariantProcessor) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
-	return utils.MarshalIndentWithoutHTMLEscape(v, "", "  ")
+	return jsonutil.MarshalIndentWithoutHTMLEscape(v, "", "  ")
 }
 
 // buildAIVariant 构建AI变体数据

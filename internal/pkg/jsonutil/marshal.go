@@ -1,4 +1,4 @@
-package utils
+package jsonutil
 
 import (
 	"bytes"
@@ -11,13 +11,12 @@ import (
 func MarshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false) // 关闭HTML转义
+	encoder.SetEscapeHTML(false)
 
 	if err := encoder.Encode(v); err != nil {
 		return nil, fmt.Errorf("JSON编码失败: %w", err)
 	}
 
-	// 移除末尾的换行符（Encode会自动添加）
 	result := buf.Bytes()
 	if len(result) > 0 && result[len(result)-1] == '\n' {
 		result = result[:len(result)-1]
@@ -37,7 +36,6 @@ func MarshalIndentWithoutHTMLEscape(v interface{}, prefix, indent string) ([]byt
 		return nil, fmt.Errorf("JSON编码失败: %w", err)
 	}
 
-	// 移除末尾的换行符
 	result := buf.Bytes()
 	if len(result) > 0 && result[len(result)-1] == '\n' {
 		result = result[:len(result)-1]
@@ -51,8 +49,7 @@ func MarshalPretty(v interface{}) ([]byte, error) {
 	return MarshalIndentWithoutHTMLEscape(v, "", "  ")
 }
 
-// UnmarshalStrict 严格模式反序列化JSON
-// 如果JSON中包含未知字段会返回错误
+// UnmarshalStrict 严格模式反序列化JSON，包含未知字段时返回错误
 func UnmarshalStrict(data []byte, v interface{}) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()

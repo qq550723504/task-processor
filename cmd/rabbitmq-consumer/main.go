@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/app/messaging"
 	"task-processor/internal/core/config"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/apputil"
 )
 
 var (
@@ -26,10 +26,10 @@ func main() {
 	flag.Parse()
 
 	// 设置日志（使用统一的日志设置函数）
-	logger := utils.SetupLoggerWithLevel(*logLevel)
+	logger := apputil.SetupLoggerWithLevel(*logLevel)
 
 	// 打印版本信息（统一格式）
-	utils.PrintVersionInfo(logger, utils.VersionInfo{
+	apputil.PrintVersionInfo(logger, apputil.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	})

@@ -8,7 +8,7 @@ import (
 	"image/draw"
 
 	"task-processor/internal/pkg/downloader"
-	pkgutils "task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/imageutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -135,7 +135,7 @@ func (p *ImagePaddingProcessor) PadImageToAspectRatio(imageURL string, targetRat
 
 	// 编码图片
 	var buf bytes.Buffer
-	if err := pkgutils.EncodeImage(&buf, paddedImg, format, 95); err != nil {
+	if err := imageutil.Encode(&buf, paddedImg, format, 95); err != nil {
 		result.Error = fmt.Errorf("编码图片失败: %w", err)
 		return result, result.Error
 	}
@@ -157,7 +157,7 @@ func (p *ImagePaddingProcessor) downloadImage(imageURL string) (image.Image, str
 	}
 
 	// 解码图片
-	img, format, err := pkgutils.BytesToImageWithFormat(imageData)
+	img, format, err := imageutil.FromBytesWithFormat(imageData)
 	if err != nil {
 		return nil, "", fmt.Errorf("解码图片失败: %w", err)
 	}

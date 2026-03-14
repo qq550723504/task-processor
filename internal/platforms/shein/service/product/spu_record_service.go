@@ -2,7 +2,7 @@
 
 import (
 	"fmt"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/skugen"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/model"
 
@@ -148,13 +148,13 @@ func (h *HasSpuRecordHandler) generateSkuList(asins []string, ctx *model.TaskCon
 		// 解析SKU生成策略
 		switch ctx.StoreInfo.SkuGenerateStrategy {
 		case "ASIN_ONLY", "0":
-			skuStrategy = 0
+			skuStrategy = skugen.StrategyASINOnly
 		case "RANDOM", "1":
-			skuStrategy = 1
+			skuStrategy = skugen.StrategyRandom
 		case "TIMESTAMP", "2":
-			skuStrategy = 2
+			skuStrategy = skugen.StrategyTimestamp
 		case "HASH", "3":
-			skuStrategy = 3
+			skuStrategy = skugen.StrategyHash
 		default:
 			// 尝试解析为数字
 			var strategyNum int
@@ -169,7 +169,7 @@ func (h *HasSpuRecordHandler) generateSkuList(asins []string, ctx *model.TaskCon
 
 	// 为每个ASIN生成SKU
 	for _, asin := range asins {
-		sku := utils.GenerateSKU(asin, skuStrategy, prefix, suffix)
+		sku := skugen.Generate(asin, skuStrategy, prefix, suffix)
 		skuList = append(skuList, sku)
 	}
 

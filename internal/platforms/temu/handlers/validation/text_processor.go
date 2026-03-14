@@ -3,7 +3,7 @@ package validation
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/strutil"
 )
 
 // TextProcessor 文本处理器
@@ -21,7 +21,7 @@ func (tp *TextProcessor) ProcessProductTitle(title string) string {
 	}
 
 	// 使用通用文本清理器移除中文字符和特殊符号
-	title = utils.CleanProductTitle(title)
+	title = strutil.CleanProductTitle(title)
 
 	// 清理标题，移除多余的空格和特殊字符
 	title = strings.TrimSpace(title)
@@ -45,7 +45,7 @@ func (tp *TextProcessor) ProcessDescription(description string) string {
 	description = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(description, "")
 
 	// 使用通用文本清理器移除中文字符和特殊符号
-	description = utils.CleanProductTitle(description)
+	description = strutil.CleanProductTitle(description)
 
 	// 清理描述内容
 	description = strings.TrimSpace(description)
@@ -66,7 +66,7 @@ func (tp *TextProcessor) ProcessBulletPoints(features []string) []string {
 	for _, feature := range features {
 		if feature = strings.TrimSpace(feature); feature != "" {
 			// 使用通用文本清理器移除中文字符和特殊符号
-			feature = utils.CleanProductTitle(feature)
+			feature = strutil.CleanProductTitle(feature)
 
 			// 清理要点内容
 			feature = regexp.MustCompile(`\s+`).ReplaceAllString(feature, " ")

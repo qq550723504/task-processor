@@ -10,10 +10,10 @@ import (
 	"task-processor/internal/app/state"
 	commontypes "task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/management/api"
 	pkgproduct "task-processor/internal/pkg/product"
 	"task-processor/internal/pkg/ptrutil"
-	"task-processor/internal/pkg/utils"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -432,7 +432,7 @@ func (h *SavePublishResultHandler) saveResponseToFile(taskID int64, responseData
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *SavePublishResultHandler) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
-	return utils.MarshalWithoutHTMLEscape(v)
+	return jsonutil.MarshalWithoutHTMLEscape(v)
 }
 
 // buildFilterRuleRange 构建筛选规则范围字符串

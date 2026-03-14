@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"task-processor/internal/pkg/contextutil"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/httpclient"
 
 	"github.com/sirupsen/logrus"
 )
@@ -22,7 +22,7 @@ import (
 type ChromeDownloader struct {
 	version     string // Chrome 版本，如 "144"
 	downloadDir string // 下载目录
-	httpClient  *utils.HTTPClient
+	httpClient  *httpclient.Client
 }
 
 // NewChromeDownloader 创建 Chrome 下载器
@@ -35,8 +35,8 @@ func NewChromeDownloader(version, downloadDir string) *ChromeDownloader {
 	}
 
 	// 创建 HTTP 客户端配置（下载大文件需要更长的超时时间）
-	httpConfig := utils.HTTPClientConfig{
-		Timeout:       10 * time.Minute, // 下载大文件需要更长超时
+	httpConfig := httpclient.Config{
+		Timeout:       10 * time.Minute,
 		MaxRetries:    3,
 		RetryDelay:    2 * time.Second,
 		EnableLogging: true,
@@ -46,7 +46,7 @@ func NewChromeDownloader(version, downloadDir string) *ChromeDownloader {
 	return &ChromeDownloader{
 		version:     version,
 		downloadDir: downloadDir,
-		httpClient:  utils.NewHTTPClient(httpConfig, logrus.StandardLogger()),
+		httpClient:  httpclient.New(httpConfig, logrus.StandardLogger()),
 	}
 }
 

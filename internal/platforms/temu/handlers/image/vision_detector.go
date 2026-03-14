@@ -12,7 +12,7 @@ import (
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/contextutil"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/imageutil"
 )
 
 // VisionDetector Vision API检测器
@@ -53,7 +53,7 @@ func (v *VisionDetector) HasDimensionAnnotationWithDetails(ctx context.Context, 
 // detectWithVisionAPI 使用OpenAI Vision API检测图片中的尺寸标注
 func (v *VisionDetector) detectWithVisionAPI(ctx context.Context, img image.Image) (bool, string, error) {
 	// 将图片编码为base64
-	base64Image, err := utils.ImageToBase64PNG(img)
+	base64Image, err := imageutil.ToBase64PNG(img)
 	if err != nil {
 		return false, "", fmt.Errorf("编码图片失败: %w", err)
 	}

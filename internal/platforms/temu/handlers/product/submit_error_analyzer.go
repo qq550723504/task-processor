@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/jsonutil"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/template"
 
@@ -283,7 +283,7 @@ func (ea *ProductSubmitErrorAnalyzer) saveTemplateDataForError(temuCtx *temucont
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (ea *ProductSubmitErrorAnalyzer) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return utils.MarshalWithoutHTMLEscape(v)
+	return jsonutil.MarshalWithoutHTMLEscape(v)
 }
 
 // parseAttributeValidationError 解析属性验证错误消息

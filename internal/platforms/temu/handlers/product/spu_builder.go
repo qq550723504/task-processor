@@ -8,7 +8,7 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"
-	"task-processor/internal/pkg/utils"
+	"task-processor/internal/pkg/skugen"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/common"
@@ -209,7 +209,7 @@ func (b *SpuBuilder) setOutGoodsSN(temuCtx *temucontext.TemuTaskContext, amazonP
 		return
 	}
 
-	strategy := utils.StrategyASINOnly
+	strategy := skugen.StrategyASINOnly
 	prefix := ""
 	suffix := ""
 
@@ -218,15 +218,15 @@ func (b *SpuBuilder) setOutGoodsSN(temuCtx *temucontext.TemuTaskContext, amazonP
 		storeInfo := temuCtx.StoreInfo
 		switch storeInfo.SkuGenerateStrategy {
 		case "asin_only":
-			strategy = utils.StrategyASINOnly
+			strategy = skugen.StrategyASINOnly
 		case "random":
-			strategy = utils.StrategyRandom
+			strategy = skugen.StrategyRandom
 		case "timestamp":
-			strategy = utils.StrategyTimestamp
+			strategy = skugen.StrategyTimestamp
 		case "hash":
-			strategy = utils.StrategyHash
+			strategy = skugen.StrategyHash
 		default:
-			strategy = utils.StrategyASINOnly
+			strategy = skugen.StrategyASINOnly
 		}
 
 		prefix = storeInfo.Prefix
@@ -238,7 +238,7 @@ func (b *SpuBuilder) setOutGoodsSN(temuCtx *temucontext.TemuTaskContext, amazonP
 		b.logger.Warn("店铺信息为空，使用默认SKU生成配置")
 	}
 
-	basic.OutGoodsSN = utils.GenerateSKU(amazonProduct.Asin, strategy, prefix, suffix)
+	basic.OutGoodsSN = skugen.Generate(amazonProduct.Asin, strategy, prefix, suffix)
 	b.logger.Infof("设置外部商品编号: %s (基于ASIN: %s)", basic.OutGoodsSN, amazonProduct.Asin)
 }
 
