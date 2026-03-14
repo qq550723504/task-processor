@@ -1,11 +1,11 @@
-// Package scheduler 提供SHEIN平台SKU映射关系构建器
+﻿// Package scheduler 提供SHEIN平台SKU映射关系构建器
 package scheduler
 
 import (
 	"fmt"
 	"time"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

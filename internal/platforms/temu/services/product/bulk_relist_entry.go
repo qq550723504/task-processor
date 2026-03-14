@@ -1,8 +1,8 @@
-package product
+﻿package product
 
 import (
 	"fmt"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 

@@ -1,10 +1,10 @@
-// Package shops 提供SHEIN平台的API客户端
+﻿// Package shops 提供SHEIN平台的API客户端
 package client
 
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	"time"
 
 	"github.com/imroc/req/v3"

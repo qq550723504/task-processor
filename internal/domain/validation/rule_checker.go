@@ -1,12 +1,12 @@
-// Package validation 提供通用的规则验证功能
+﻿// Package validation 提供通用的规则验证功能
 package validation
 
 import (
 	"fmt"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management/api"
-	"task-processor/internal/pkg/product"
+	"task-processor/internal/domain/product"
+	"task-processor/internal/infra/clients/management/api"
 )
 
 // RuleChecker 通用规则检查器

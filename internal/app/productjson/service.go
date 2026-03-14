@@ -20,7 +20,7 @@ type ProductService interface {
 
 // productService 产品服务实现
 type productService struct {
-	taskRepo             TaskRepository
+	taskRepo             domain.TaskRepository
 	redisClient          RedisClient
 	queueName            string
 	inputParser          InputParser
@@ -37,7 +37,7 @@ type productService struct {
 // ProductServiceConfig 产品服务配置
 type ProductServiceConfig struct {
 	QueueName            string
-	TaskRepo             TaskRepository
+	TaskRepo             domain.TaskRepository
 	RedisClient          RedisClient
 	InputParser          InputParser
 	ProductUnderstanding ProductUnderstanding

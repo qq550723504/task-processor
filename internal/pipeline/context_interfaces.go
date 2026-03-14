@@ -1,4 +1,4 @@
-// Package pipeline 提供任务上下文接口定义
+﻿// Package pipeline 提供任务上下文接口定义
 package pipeline
 
 import (
@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/app/state"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 )
 
 // TaskContext 核心任务上下文接口

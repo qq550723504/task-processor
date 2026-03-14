@@ -1,10 +1,10 @@
-// Package scheduler 提供SHEIN平台SKU映射关系修复相关类型定义
+﻿// Package scheduler 提供SHEIN平台SKU映射关系修复相关类型定义
 package scheduler
 
 import (
 	"time"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/api/product"
 )
 

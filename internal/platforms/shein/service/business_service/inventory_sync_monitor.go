@@ -1,4 +1,4 @@
-// Package scheduler 提供SHEIN平台调度器相关服务
+﻿// Package scheduler 提供SHEIN平台调度器相关服务
 package scheduler
 
 import (
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/pkg/contextutil"
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 
 	"github.com/sirupsen/logrus"

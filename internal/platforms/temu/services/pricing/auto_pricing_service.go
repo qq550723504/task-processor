@@ -1,9 +1,9 @@
-// Package pricing 提供TEMU平台自动核价服务
+﻿// Package pricing 提供TEMU平台自动核价服务
 package pricing
 
 import (
 	"fmt"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 

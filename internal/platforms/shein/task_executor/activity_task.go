@@ -1,4 +1,4 @@
-// Package scheduler 提供SHEIN平台活动报名任务实现
+﻿// Package scheduler 提供SHEIN平台活动报名任务实现
 package scheduler
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	appscheduler "task-processor/internal/app/scheduler"
-	"task-processor/internal/pkg/management"
-	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/repo/client"
 	schedulerservice "task-processor/internal/platforms/shein/service/business_service"
 

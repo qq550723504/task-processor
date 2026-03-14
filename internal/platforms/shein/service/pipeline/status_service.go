@@ -1,10 +1,10 @@
-// Package shein 提供SHEIN平台的任务状态更新功能
+﻿// Package shein 提供SHEIN平台的任务状态更新功能
 package pipeline
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	"time"
 

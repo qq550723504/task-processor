@@ -1,10 +1,10 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

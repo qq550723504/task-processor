@@ -1,4 +1,4 @@
-// Package service 提供处理器服务实现
+﻿// Package service 提供处理器服务实现
 package service
 
 import (
@@ -13,7 +13,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/monitoring"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/platforms/shein/service/pipeline"
 	"task-processor/internal/platforms/temu"
 

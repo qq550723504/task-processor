@@ -1,7 +1,7 @@
-// Package scheduler 提供SHEIN平台调度器相关服务的类型定义
+﻿// Package scheduler 提供SHEIN平台调度器相关服务的类型定义
 package scheduler
 
-import managementapi "task-processor/internal/pkg/management/api"
+import managementapi "task-processor/internal/infra/clients/management/api"
 
 // MonitorResult 监控结果
 type MonitorResult struct {

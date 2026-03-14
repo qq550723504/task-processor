@@ -1,4 +1,4 @@
-// Package messaging 提供多平台处理器注册功能
+﻿// Package messaging 提供多平台处理器注册功能
 package messaging
 
 import (
@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	platformAmazon "task-processor/internal/platforms/amazon"
 	"task-processor/internal/platforms/shein/service/pipeline"
 	"task-processor/internal/platforms/temu"

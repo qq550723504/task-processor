@@ -1,10 +1,10 @@
-// Package pricing 提供店铺配置服务
+﻿// Package pricing 提供店铺配置服务
 package pricing
 
 import (
 	"fmt"
-	"task-processor/internal/pkg/management"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

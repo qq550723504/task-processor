@@ -7,9 +7,9 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/pkg/management"
-	managementapi "task-processor/internal/pkg/management/api"
-	"task-processor/internal/pkg/pricing"
+	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/platforms/common/pricing"
 	"task-processor/internal/platforms/temu/api/client"
 
 	"github.com/sirupsen/logrus"

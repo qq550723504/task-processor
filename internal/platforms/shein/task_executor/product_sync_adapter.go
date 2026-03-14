@@ -1,10 +1,10 @@
-// Package scheduler 提供SHEIN产品同步任务的适配器
+﻿// Package scheduler 提供SHEIN产品同步任务的适配器
 package scheduler
 
 import (
 	"context"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/shein/api/product"
 	sheinscheduler "task-processor/internal/platforms/shein/service/business_service"

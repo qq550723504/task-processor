@@ -1,8 +1,8 @@
-// Package pricing 提供TEMU平台核价规则计算功能
+﻿// Package pricing 提供TEMU平台核价规则计算功能
 package pricing
 
 import (
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

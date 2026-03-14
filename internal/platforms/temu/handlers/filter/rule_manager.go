@@ -1,10 +1,10 @@
-// Package handlers 提供TEMU平台的筛选规则管理功能
+﻿// Package handlers 提供TEMU平台的筛选规则管理功能
 package filter
 
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

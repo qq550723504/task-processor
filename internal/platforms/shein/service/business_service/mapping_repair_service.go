@@ -1,4 +1,4 @@
-// Package scheduler 提供SHEIN平台SKU映射关系修复服务
+﻿// Package scheduler 提供SHEIN平台SKU映射关系修复服务
 package scheduler
 
 import (
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/repo"
 
 	"github.com/sirupsen/logrus"

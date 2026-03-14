@@ -1,10 +1,10 @@
-// Package scheduler 提供TEMU平台SKU映射增强功能
+﻿// Package scheduler 提供TEMU平台SKU映射增强功能
 package scheduler
 
 import (
 	"fmt"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"

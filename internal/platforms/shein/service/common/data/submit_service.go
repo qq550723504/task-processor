@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	shein_model "task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"

@@ -1,9 +1,9 @@
-// Package scheduler 提供TEMU调度服务工厂
+﻿// Package scheduler 提供TEMU调度服务工厂
 package scheduler
 
 import (
-	"task-processor/internal/pkg/management"
-	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/api/services"
 )
 

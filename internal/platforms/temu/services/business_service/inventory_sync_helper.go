@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"task-processor/internal/domain/model"
+	productpkg "task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonutil"
-	productpkg "task-processor/internal/pkg/product"
 
 	"github.com/sirupsen/logrus"
 )

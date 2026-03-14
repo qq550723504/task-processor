@@ -1,11 +1,11 @@
-// Package product 提供产品数据缓存管理功能
+﻿// Package product 提供产品数据缓存管理功能
 package product
 
 import (
 	"encoding/json"
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

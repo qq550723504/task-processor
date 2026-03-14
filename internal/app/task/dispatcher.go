@@ -1,4 +1,4 @@
-// Package task 提供任务分发功能
+﻿// Package task 提供任务分发功能
 package task
 
 import (
@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	types "task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

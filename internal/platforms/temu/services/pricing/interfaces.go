@@ -1,10 +1,10 @@
-// Package pricing 提供核价服务接口定义
+﻿// Package pricing 提供核价服务接口定义
 package pricing
 
 import (
 	"context"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/api/models"
 )
 

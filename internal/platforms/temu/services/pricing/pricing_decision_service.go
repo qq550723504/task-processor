@@ -1,4 +1,4 @@
-// Package pricing 提供TEMU平台核价决策服务功能
+﻿// Package pricing 提供TEMU平台核价决策服务功能
 package pricing
 
 import (
@@ -13,8 +13,8 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
-	"task-processor/internal/pkg/management"
-	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/api/models"
 
 	"github.com/sirupsen/logrus"

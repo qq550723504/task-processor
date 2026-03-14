@@ -4,7 +4,7 @@ package info
 import (
 	"fmt"
 	"sync"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/model"
 	"time"
 

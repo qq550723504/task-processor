@@ -1,4 +1,4 @@
-// Package bootstrap 提供简化的服务注册表实现
+﻿// Package bootstrap 提供简化的服务注册表实现
 package bootstrap
 
 import (
@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/di"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

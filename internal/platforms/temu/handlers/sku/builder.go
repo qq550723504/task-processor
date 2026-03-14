@@ -1,11 +1,11 @@
-// Package handlers 提供TEMU平台的SKU构建功能
+﻿// Package handlers 提供TEMU平台的SKU构建功能
 package sku
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	temuapi "task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"

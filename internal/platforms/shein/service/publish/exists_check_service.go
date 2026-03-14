@@ -1,11 +1,11 @@
-// Package modules 提供SHEIN平台产品存在性检查处理器
+﻿// Package modules 提供SHEIN平台产品存在性检查处理器
 package publish
 
 import (
 	"fmt"
 
 	"task-processor/internal/domain/model"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	shein_model "task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"

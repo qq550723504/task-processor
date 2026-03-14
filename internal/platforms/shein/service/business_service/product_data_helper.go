@@ -1,9 +1,9 @@
-// Package scheduler 提供SHEIN平台产品数据处理工具
+﻿// Package scheduler 提供SHEIN平台产品数据处理工具
 package scheduler
 
 import (
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

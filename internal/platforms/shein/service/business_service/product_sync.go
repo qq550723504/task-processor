@@ -1,4 +1,4 @@
-// Package scheduler 提供SHEIN平台调度器相关服务
+﻿// Package scheduler 提供SHEIN平台调度器相关服务
 package scheduler
 
 import (
@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/pkg/management"
-	"task-processor/internal/pkg/management/api"
-	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/clients/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/repo"

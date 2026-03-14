@@ -1,10 +1,10 @@
-// Package modules 提供SHEIN平台的各种处理模块，包括变体发布成功标记等功能
+﻿// Package modules 提供SHEIN平台的各种处理模块，包括变体发布成功标记等功能
 package publish
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	shein_model "task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/service/common/data"

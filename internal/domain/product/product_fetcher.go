@@ -1,11 +1,11 @@
-// Package product 提供产品领域服务
+﻿// Package product 提供产品领域服务
 package product
 
 import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

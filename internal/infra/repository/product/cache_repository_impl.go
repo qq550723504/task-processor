@@ -1,4 +1,4 @@
-// Package repository 提供缓存仓储的具体实现
+﻿// Package repository 提供缓存仓储的具体实现
 package repository
 
 import (
@@ -8,8 +8,8 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product/repo"
 	"task-processor/internal/domain/product/types"
-	"task-processor/internal/pkg/management"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

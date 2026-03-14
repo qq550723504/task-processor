@@ -1,9 +1,9 @@
-// Package handlers 提供TEMU平台的规则验证功能测试
+﻿// Package handlers 提供TEMU平台的规则验证功能测试
 package validation
 
 import (
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	"testing"
 
 	"github.com/sirupsen/logrus"

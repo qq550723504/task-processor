@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -6,9 +6,9 @@ import (
 	"math/rand"
 
 	"task-processor/internal/domain/model"
+	pkgproduct "task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/management/api"
-	pkgproduct "task-processor/internal/pkg/product"
+	"task-processor/internal/infra/clients/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"

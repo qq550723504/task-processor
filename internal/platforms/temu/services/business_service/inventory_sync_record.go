@@ -1,12 +1,12 @@
-// Package scheduler 提供TEMU平台库存和价格记录逻辑
+﻿// Package scheduler 提供TEMU平台库存和价格记录逻辑
 package scheduler
 
 import (
 	"encoding/json"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonutil"
-	managementapi "task-processor/internal/pkg/management/api"
-	"task-processor/internal/pkg/product"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timeutil"
 	"time"

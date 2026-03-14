@@ -1,8 +1,8 @@
-// Package modules 提供SHEIN平台模块的数据模型定义
+﻿// Package modules 提供SHEIN平台模块的数据模型定义
 package model
 
 import (
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/api/product"
 )
 

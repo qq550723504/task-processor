@@ -1,8 +1,8 @@
-// Package modules 提供SHEIN平台的自动核价计算功能
+﻿// Package modules 提供SHEIN平台的自动核价计算功能
 package pricing
 
 import (
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 )
 
 // AutoPricingCalculator 自动核价计算器，负责根据规则计算价格

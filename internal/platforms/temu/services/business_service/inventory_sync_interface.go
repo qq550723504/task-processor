@@ -1,9 +1,9 @@
-// Package scheduler 提供TEMU库存同步相关类型定义
+﻿// Package scheduler 提供TEMU库存同步相关类型定义
 package scheduler
 
 import (
 	"context"
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 )
 
 // InventorySyncService TEMU库存监控服务接口（监控Amazon价格和库存变化）

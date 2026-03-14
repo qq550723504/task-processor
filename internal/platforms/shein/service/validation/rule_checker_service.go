@@ -2,9 +2,9 @@
 
 import (
 	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 	domainvalidation "task-processor/internal/domain/validation"
-	"task-processor/internal/pkg/management/api"
-	"task-processor/internal/pkg/product"
+	"task-processor/internal/infra/clients/management/api"
 	shein_model "task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"

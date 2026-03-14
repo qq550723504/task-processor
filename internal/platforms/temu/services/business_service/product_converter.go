@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU产品转换相关功能
+﻿// Package scheduler 提供TEMU产品转换相关功能
 package scheduler
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/pkg/management/api"
-	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/temu/api/models"
 

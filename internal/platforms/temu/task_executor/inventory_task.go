@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU平台库存同步任务实现
+﻿// Package scheduler 提供TEMU平台库存同步任务实现
 package scheduler
 
 import (
@@ -7,7 +7,7 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/temu/api/client"
 	temuscheduler "task-processor/internal/platforms/temu/services/business_service"

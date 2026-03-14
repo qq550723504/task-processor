@@ -1,4 +1,4 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"time"
 
 	appscheduler "task-processor/internal/app/scheduler"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 )
 
 // MockAutoPricingService 模拟自动核价服务

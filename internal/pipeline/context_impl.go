@@ -1,4 +1,4 @@
-// Package pipeline 提供任务上下文具体实现
+﻿// Package pipeline 提供任务上下文具体实现
 package pipeline
 
 import (
@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/app/state"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 )
 
 // DefaultTaskContext 默认任务上下文实现

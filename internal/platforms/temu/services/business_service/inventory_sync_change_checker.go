@@ -1,9 +1,9 @@
-// Package scheduler 提供TEMU平台库存监控变化检测逻辑
+﻿// Package scheduler 提供TEMU平台库存监控变化检测逻辑
 package scheduler
 
 import (
 	"task-processor/internal/domain/model"
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

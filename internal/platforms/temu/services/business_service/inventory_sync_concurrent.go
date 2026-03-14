@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU平台库存监控并发处理逻辑
+﻿// Package scheduler 提供TEMU平台库存监控并发处理逻辑
 package scheduler
 
 import (
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 
 	"github.com/sirupsen/logrus"

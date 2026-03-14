@@ -1,11 +1,11 @@
-package temu
+﻿package temu
 
 import (
 	"context"
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/domain/model"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"

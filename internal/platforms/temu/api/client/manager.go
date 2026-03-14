@@ -1,10 +1,10 @@
-package client
+﻿package client
 
 import (
 	"fmt"
 	"sync"
 
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

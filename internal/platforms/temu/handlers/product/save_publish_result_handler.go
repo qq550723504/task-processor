@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -9,10 +9,10 @@ import (
 
 	"task-processor/internal/app/state"
 	commontypes "task-processor/internal/domain/model"
+	pkgproduct "task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/pkg/management/api"
-	pkgproduct "task-processor/internal/pkg/product"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/platforms/temu/api/models"
 	temucontext "task-processor/internal/platforms/temu/context"

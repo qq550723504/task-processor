@@ -1,4 +1,4 @@
-// Package scheduler 提供平台通用的自动核价任务基础实现
+﻿// Package scheduler 提供平台通用的自动核价任务基础实现
 // 用于半托管模式电商平台的自动核价功能
 package scheduler
 
@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	appscheduler "task-processor/internal/app/scheduler"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

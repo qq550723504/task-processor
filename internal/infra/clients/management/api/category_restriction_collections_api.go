@@ -1,0 +1,39 @@
+package api
+
+// CategoryRestrictionCollectionsInterface 品类限制集合管理接口
+type CategoryRestrictionCollectionsInterface interface {
+	CreateCategoryRestrictionCollections(req *CategoryRestrictionCollectionsCreateReqDTO) (int64, error)
+	GetListByPlatform(platformName string) ([]CategoryRestrictionInfoRespDTO, error)
+	GetConfirmedListByPlatform(platformName string) ([]CategoryRestrictionInfoRespDTO, error)
+	IsAttributeRestricted(categoryId int, platformName string, attributeId int) (bool, error)
+	UpdateCategoryRestrictionCollectionsStatus(id int64, isConfirmed bool, isAutoApplied bool) (bool, error)
+}
+
+// CategoryRestrictionCollectionsCreateReqDTO 创建品类限制集合请求DTO
+type CategoryRestrictionCollectionsCreateReqDTO struct {
+	CategoryId             int     `json:"categoryId"`
+	PlatformName           string  `json:"platformName"`
+	ForbiddenAttributeId   int     `json:"forbiddenAttributeId"`
+	ForbiddenAttributeName string  `json:"forbiddenAttributeName"`
+	DefaultAttributeId     int     `json:"defaultAttributeId"`
+	DefaultAttributeName   string  `json:"defaultAttributeName"`
+	OccurrenceCount        int     `json:"occurrenceCount"`
+	ConfidenceScore        float64 `json:"confidenceScore"`
+	IsConfirmed            bool    `json:"isConfirmed"`
+	IsAutoApplied          bool    `json:"isAutoApplied"`
+}
+
+// CategoryRestrictionInfoRespDTO 品类限制信息响应DTO
+type CategoryRestrictionInfoRespDTO struct {
+	ID                     int     `json:"id"`
+	CategoryId             int     `json:"categoryId"`
+	PlatformName           string  `json:"platformName"`
+	ForbiddenAttributeId   int     `json:"forbiddenAttributeId"`
+	ForbiddenAttributeName string  `json:"forbiddenAttributeName"`
+	DefaultAttributeId     int     `json:"defaultAttributeId"`
+	DefaultAttributeName   string  `json:"defaultAttributeName"`
+	OccurrenceCount        int     `json:"occurrenceCount"`
+	ConfidenceScore        float64 `json:"confidenceScore"`
+	IsConfirmed            bool    `json:"isConfirmed"`
+	IsAutoApplied          bool    `json:"isAutoApplied"`
+}

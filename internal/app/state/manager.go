@@ -2,7 +2,7 @@
 
 import (
 	"context"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

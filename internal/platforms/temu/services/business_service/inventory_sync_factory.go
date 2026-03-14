@@ -1,11 +1,11 @@
-// Package scheduler 提供TEMU库存监控服务工厂
+﻿// Package scheduler 提供TEMU库存监控服务工厂
 package scheduler
 
 import (
 	"fmt"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/platforms/temu/api/client"
 
 	"github.com/sirupsen/logrus"

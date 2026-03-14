@@ -1,4 +1,4 @@
-// Package task 提供任务处理工具功能
+﻿// Package task 提供任务处理工具功能
 package task
 
 import (
@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

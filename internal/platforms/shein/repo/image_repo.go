@@ -1,4 +1,4 @@
-package repo
+﻿package repo
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"task-processor/internal/pkg/imageutil"
-	"task-processor/internal/pkg/management/impl"
+	"task-processor/internal/infra/clients/management/impl"
 	"task-processor/internal/platforms/shein/api"
 	"task-processor/internal/platforms/shein/repo/client"
 	"time"

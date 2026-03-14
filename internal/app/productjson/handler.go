@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	domain "task-processor/internal/domain/productjson"
 
@@ -119,5 +120,5 @@ func (h *productHandler) GetTaskResult(c *gin.Context) {
 // isNotFoundError 判断是否是未找到错误
 func isNotFoundError(err error) bool {
 	return err != nil && (err.Error() == "task not found" ||
-		contains(err.Error(), "not found"))
+		strings.Contains(err.Error(), "not found"))
 }

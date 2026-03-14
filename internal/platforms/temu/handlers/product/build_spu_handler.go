@@ -1,10 +1,10 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/ai"
 	"task-processor/internal/platforms/temu/handlers/common"

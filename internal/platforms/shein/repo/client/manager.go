@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"task-processor/internal/app/state"
-	"task-processor/internal/pkg/management"
-	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	management_api "task-processor/internal/infra/clients/management/api"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"

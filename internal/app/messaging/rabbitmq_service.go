@@ -1,4 +1,4 @@
-// Package messaging 提供RabbitMQ服务管理器
+﻿// Package messaging 提供RabbitMQ服务管理器
 package messaging
 
 import (
@@ -11,7 +11,7 @@ import (
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

@@ -1,11 +1,11 @@
-// Package scheduler 提供TEMU平台活动报名任务实现
+﻿// Package scheduler 提供TEMU平台活动报名任务实现
 package scheduler
 
 import (
 	"context"
 
 	appscheduler "task-processor/internal/app/scheduler"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

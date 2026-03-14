@@ -1,10 +1,10 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"context"
 	"testing"
 
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/models"

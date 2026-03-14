@@ -1,12 +1,12 @@
-// Package scheduler 提供TEMU产品同步服务实现
+﻿// Package scheduler 提供TEMU产品同步服务实现
 package scheduler
 
 import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/pkg/management"
-	managementapi "task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/api/services"
 

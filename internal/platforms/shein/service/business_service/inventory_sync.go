@@ -1,4 +1,4 @@
-// Package scheduler 提供SHEIN平台调度器相关服务
+﻿// Package scheduler 提供SHEIN平台调度器相关服务
 package scheduler
 
 import (
@@ -12,11 +12,11 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/pkg/management"
-	managementapi "task-processor/internal/pkg/management/api"
-	"task-processor/internal/pkg/pricing"
-	"task-processor/internal/pkg/product"
+	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/platforms/common/pricing"
 	"task-processor/internal/platforms/shein/repo"
 
 	"github.com/sirupsen/logrus"

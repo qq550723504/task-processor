@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台的各种处理模块，包括发布结果保存等功能
+﻿// Package modules 提供SHEIN平台的各种处理模块，包括发布结果保存等功能
 package publish
 
 import (
@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"task-processor/internal/domain/model"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timeutil"

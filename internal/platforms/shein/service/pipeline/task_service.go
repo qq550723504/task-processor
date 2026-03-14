@@ -1,4 +1,4 @@
-// Package shein 提供SHEIN平台的任务处理器
+﻿// Package shein 提供SHEIN平台的任务处理器
 package pipeline
 
 import (
@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/app/processor"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/taskmetrics"
 	"task-processor/internal/platforms/shein/api"
 	shein_model "task-processor/internal/platforms/shein/model"

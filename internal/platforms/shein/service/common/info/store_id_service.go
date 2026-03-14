@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"

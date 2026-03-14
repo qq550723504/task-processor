@@ -3,19 +3,9 @@ package productjson
 
 import (
 	"context"
-	"time"
-
 	"task-processor/internal/domain/productjson"
+	"time"
 )
-
-// TaskRepository 任务仓储接口
-type TaskRepository interface {
-	CreateTask(ctx context.Context, task *productjson.Task) error
-	GetTask(ctx context.Context, taskID string) (*productjson.Task, error)
-	UpdateTaskStatus(ctx context.Context, taskID string, status productjson.TaskStatus) error
-	UpdateTaskError(ctx context.Context, taskID string, errorMsg string) error
-	SaveTaskResult(ctx context.Context, taskID string, result *productjson.ProductJSON) error
-}
 
 // RedisClient Redis客户端接口
 type RedisClient interface {

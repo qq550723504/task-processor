@@ -1,9 +1,9 @@
-// Package modules 提供SHEIN平台产品发布结果保存功能
+﻿// Package modules 提供SHEIN平台产品发布结果保存功能
 package publish
 
 import (
 	"task-processor/internal/domain/model"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	product "task-processor/internal/platforms/shein/api/product"
 	shein_model "task-processor/internal/platforms/shein/model"

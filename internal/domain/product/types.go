@@ -1,8 +1,8 @@
-// Package product 提供产品领域类型定义
+﻿// Package product 提供产品领域类型定义
 package product
 
 import (
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 )
 
 // RawJsonDataClient 原始JSON数据客户端接口

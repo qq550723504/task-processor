@@ -1,4 +1,4 @@
-// Package messaging 提供任务处理器，集成结果上报、去重和店铺亲和性功能
+﻿// Package messaging 提供任务处理器，集成结果上报、去重和店铺亲和性功能
 package messaging
 
 import (
@@ -17,7 +17,7 @@ import (
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/strutil"
 
 	"github.com/sirupsen/logrus"

@@ -1,13 +1,13 @@
-package service
+﻿package service
 
 import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
+	amazonpkg "task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/product/repo/impl"
 	productservice "task-processor/internal/domain/product/service"
 	"task-processor/internal/infra/productcrawler"
-	amazonpkg "task-processor/internal/pkg/amazon"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )
@@ -55,4 +55,3 @@ func (f *ProductServiceFactory) CreateProductService(
 	f.logger.Info("产品服务创建成功")
 	return productService
 }
-

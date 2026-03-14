@@ -1,4 +1,4 @@
-// Package service 提供处理器服务层功能
+﻿// Package service 提供处理器服务层功能
 package service
 
 import (
@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

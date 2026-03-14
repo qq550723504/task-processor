@@ -2,7 +2,7 @@
 
 import (
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	shein_model "task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"

@@ -1,4 +1,4 @@
-// Package task 提供任务获取核心功能
+﻿// Package task 提供任务获取核心功能
 package task
 
 import (
@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

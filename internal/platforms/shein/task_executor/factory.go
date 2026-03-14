@@ -1,4 +1,4 @@
-// Package scheduler 提供SHEIN平台的任务工厂
+﻿// Package scheduler 提供SHEIN平台的任务工厂
 package scheduler
 
 import (
@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/platforms/common/factory"
 	"task-processor/internal/platforms/shein/repo"
 	"task-processor/internal/platforms/shein/repo/client"

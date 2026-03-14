@@ -5,7 +5,7 @@ import (
 	"context"
 
 	"task-processor/internal/domain/model"
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

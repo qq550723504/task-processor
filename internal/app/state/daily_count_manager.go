@@ -1,8 +1,8 @@
 ﻿package state
 
 import (
-	"task-processor/internal/pkg/management"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )

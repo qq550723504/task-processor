@@ -1,11 +1,11 @@
-// Package scheduler 提供SHEIN平台SKU映射关系修复策略实现
+﻿// Package scheduler 提供SHEIN平台SKU映射关系修复策略实现
 package scheduler
 
 import (
 	"fmt"
 	"time"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/repo"
 

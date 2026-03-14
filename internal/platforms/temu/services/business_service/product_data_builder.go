@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU产品数据构建相关功能
+﻿// Package scheduler 提供TEMU产品数据构建相关功能
 package scheduler
 
 import (
@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/temu/api/models"
 )

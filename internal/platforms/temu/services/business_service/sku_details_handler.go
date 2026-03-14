@@ -1,11 +1,11 @@
-// Package scheduler 提供TEMU平台SKU详细信息处理功能
+﻿// Package scheduler 提供TEMU平台SKU详细信息处理功能
 package scheduler
 
 import (
 	"encoding/json"
 	"fmt"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/temu/api/models"
 )

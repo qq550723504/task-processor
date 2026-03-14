@@ -1,4 +1,4 @@
-// Package context 提供TEMU平台的强类型任务上下文
+﻿// Package context 提供TEMU平台的强类型任务上下文
 package context
 
 import (
@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	commonPipeline "task-processor/internal/pipeline"
-	management_api "task-processor/internal/pkg/management/api"
+	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/types"
 )

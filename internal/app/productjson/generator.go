@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"task-processor/internal/domain/productjson"
-	"task-processor/internal/infra/clients/openai"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,11 +19,11 @@ type JSONGenerator interface {
 // jsonGenerator JSON 生成器实现
 type jsonGenerator struct {
 	logger     *logrus.Logger
-	llmManager *openai.Manager
+	llmManager LLMManager
 }
 
 // NewJSONGenerator 创建新的 JSON 生成器
-func NewJSONGenerator(logger *logrus.Logger, llmManager *openai.Manager) (JSONGenerator, error) {
+func NewJSONGenerator(logger *logrus.Logger, llmManager LLMManager) (JSONGenerator, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("logger cannot be nil")
 	}

@@ -1,12 +1,12 @@
-package model
+﻿package model
 
 import (
 	"context"
 	"task-processor/internal/app/state"
 	"task-processor/internal/domain/model"
 	types "task-processor/internal/domain/model"
-	"task-processor/internal/pkg/management"
-	management_api "task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management"
+	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/category"
 	"task-processor/internal/platforms/shein/api/other"

@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU平台库存更新相关服务
+﻿// Package scheduler 提供TEMU平台库存更新相关服务
 package scheduler
 
 import (
@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonutil"
-	managementapi "task-processor/internal/pkg/management/api"
-	"task-processor/internal/pkg/product"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	"time"
 

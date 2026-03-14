@@ -1,11 +1,11 @@
-// Package scheduler 提供SHEIN平台调度器相关服务
+﻿// Package scheduler 提供SHEIN平台调度器相关服务
 package scheduler
 
 import (
 	"strconv"
 	"time"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/api/marketing"
 
 	"github.com/sirupsen/logrus"

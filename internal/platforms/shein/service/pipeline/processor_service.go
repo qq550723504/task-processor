@@ -1,4 +1,4 @@
-package pipeline
+﻿package pipeline
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/infra/worker"
 	commonPipeline "task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

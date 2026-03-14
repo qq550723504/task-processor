@@ -1,4 +1,4 @@
-// Package shops 提供SHEIN平台的Cookie管理功能
+﻿// Package shops 提供SHEIN平台的Cookie管理功能
 package client
 
 import (
@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	"time"
 
 	"github.com/sirupsen/logrus"

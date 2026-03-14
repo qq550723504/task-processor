@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 	"time"
 
 	"github.com/sirupsen/logrus"

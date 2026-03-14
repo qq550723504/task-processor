@@ -1,9 +1,9 @@
-// Package scheduler 提供TEMU产品处理工具函数
+﻿// Package scheduler 提供TEMU产品处理工具函数
 package scheduler
 
 import (
 	"fmt"
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"time"
 
 	"github.com/sirupsen/logrus"

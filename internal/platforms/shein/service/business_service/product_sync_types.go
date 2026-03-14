@@ -1,8 +1,8 @@
-// Package scheduler 提供SHEIN平台调度器相关服务的类型定义
+﻿// Package scheduler 提供SHEIN平台调度器相关服务的类型定义
 package scheduler
 
 import (
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/api/product"
 )
 

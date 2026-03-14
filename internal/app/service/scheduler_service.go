@@ -1,4 +1,4 @@
-// Package service 提供调度服务功能
+﻿// Package service 提供调度服务功能
 package service
 
 import (
@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/pkg/management"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

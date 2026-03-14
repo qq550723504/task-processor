@@ -1,11 +1,11 @@
-// Package product 提供TEMU平台的产品筛选检查功能
+﻿// Package product 提供TEMU平台的产品筛选检查功能
 package product
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/management/api"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/handlers/common"
 	"task-processor/internal/platforms/temu/handlers/validation"
 

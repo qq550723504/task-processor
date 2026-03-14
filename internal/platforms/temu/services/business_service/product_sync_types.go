@@ -1,10 +1,10 @@
-// Package scheduler 提供TEMU平台调度器相关服务的类型定义
+﻿// Package scheduler 提供TEMU平台调度器相关服务的类型定义
 package scheduler
 
 import (
 	"context"
 
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/api/models"
 )
 

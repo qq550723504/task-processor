@@ -9,12 +9,12 @@ import (
 	"sync"
 
 	"task-processor/internal/core/config"
+	amazonPkg "task-processor/internal/crawler/amazon"
 	crawleramazon "task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	domainService "task-processor/internal/domain/service"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/worker"
-	amazonPkg "task-processor/internal/pkg/amazon"
 
 	"github.com/sirupsen/logrus"
 )

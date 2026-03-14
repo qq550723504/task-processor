@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	domain "task-processor/internal/domain/productjson"
 
@@ -122,39 +123,27 @@ func (s *enhancementSuggester) PrioritizeSuggestions(suggestions []string) []str
 // calculatePriority 计算建议的优先级
 func (s *enhancementSuggester) calculatePriority(suggestion string) int {
 	priority := 0
-
-	// 图片相关建议优先级最高
-	if contains(suggestion, "图片") {
+	if strings.Contains(suggestion, "图片") {
 		priority += 100
 	}
-
-	// 错误修复优先级高
-	if contains(suggestion, "修复错误") {
+	if strings.Contains(suggestion, "修复错误") {
 		priority += 90
 	}
-
-	// 必需数据优先级高
-	if contains(suggestion, "至少") || contains(suggestion, "提供") {
+	if strings.Contains(suggestion, "至少") || strings.Contains(suggestion, "提供") {
 		priority += 80
 	}
-
-	// 描述相关建议次之
-	if contains(suggestion, "描述") {
+	if strings.Contains(suggestion, "描述") {
 		priority += 70
 	}
-
-	// 可选改进优先级较低
-	if contains(suggestion, "建议") || contains(suggestion, "更好") {
+	if strings.Contains(suggestion, "建议") || strings.Contains(suggestion, "更好") {
 		priority += 50
 	}
-
 	return priority
 }
 
 // estimateQualityAfterImprovement 估算改进后的质量等级
 func (s *enhancementSuggester) estimateQualityAfterImprovement(validation *domain.ValidationResult) string {
 	estimatedScore := validation.QualityScore + 20.0
-
 	if estimatedScore >= 80 {
 		return "高质量（完整处理）"
 	} else if estimatedScore >= 60 {
@@ -163,21 +152,4 @@ func (s *enhancementSuggester) estimateQualityAfterImprovement(validation *domai
 		return "基础质量（最小处理）"
 	}
 	return "质量不足（可能仍被拒绝）"
-}
-
-// contains 检查字符串是否包含子串
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-			len(s) > len(substr)+1 && findSubstring(s, substr)))
-}
-
-// findSubstring 查找子串
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

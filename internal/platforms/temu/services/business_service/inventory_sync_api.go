@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU平台调度器相关服务
+﻿// Package scheduler 提供TEMU平台调度器相关服务
 package scheduler
 
 import (
@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/pkg/jsonutil"
-	managementapi "task-processor/internal/pkg/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	temuapi "task-processor/internal/platforms/temu/api"
 
 	"github.com/sirupsen/logrus"
