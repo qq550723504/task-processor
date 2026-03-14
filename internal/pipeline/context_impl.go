@@ -4,7 +4,7 @@ package pipeline
 import (
 	"context"
 	"sync"
-	"task-processor/internal/application/state"
+	"task-processor/internal/app/state"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/management"

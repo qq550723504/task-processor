@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"task-processor/internal/application/crawler1688"
+	"task-processor/internal/app/crawler/alibaba1688"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/http/handler"
 
@@ -17,7 +17,7 @@ import (
 type Crawler1688APIService struct {
 	config         *config.Config
 	logger         *logrus.Logger
-	crawlerService *crawler1688.Service
+	crawlerService *alibaba1688.Service
 	httpServer     *http.Server
 	port           int
 }
@@ -27,7 +27,7 @@ func New1688CrawlerAPIService(cfg *config.Config, logger *logrus.Logger, port in
 	return &Crawler1688APIService{
 		config:         cfg,
 		logger:         logger,
-		crawlerService: crawler1688.NewService(cfg, logger),
+		crawlerService: alibaba1688.NewService(cfg, logger),
 		port:           port,
 	}
 }

@@ -1,5 +1,5 @@
-// Package crawler_amazon 提供爬虫处理器实现
-package crawler_amazon
+// Package amazon 提供爬虫处理器实现
+package amazon
 
 import (
 	"context"

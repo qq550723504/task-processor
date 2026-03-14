@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/application/state"
+	"task-processor/internal/app/state"
 	commontypes "task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/management/api"

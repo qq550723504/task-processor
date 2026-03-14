@@ -1,5 +1,5 @@
-// Package distributed_crawler 提供分布式爬虫类型定义
-package distributed_crawler
+// Package distributed 提供分布式爬虫类型定义
+package distributed
 
 import (
 	"context"

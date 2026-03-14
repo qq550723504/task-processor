@@ -1,5 +1,5 @@
-// Package distributed_crawler 提供分布式爬虫客户端
-package distributed_crawler
+// Package distributed 提供分布式爬虫客户端
+package distributed
 
 import (
 	"context"

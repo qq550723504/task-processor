@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	appscheduler "task-processor/internal/app/scheduler"
-	"task-processor/internal/application/state"
+	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/pkg/management"

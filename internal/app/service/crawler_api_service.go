@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"task-processor/internal/application/crawler_amazon"
+	crawlerapp "task-processor/internal/app/crawler/amazon"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/http/handler"
 
@@ -17,7 +17,7 @@ import (
 type CrawlerAPIService struct {
 	config         *config.Config
 	logger         *logrus.Logger
-	crawlerService *crawler_amazon.Service
+	crawlerService *crawlerapp.Service
 	httpServer     *http.Server
 	port           int
 }
@@ -27,7 +27,7 @@ func NewCrawlerAPIService(cfg *config.Config, logger *logrus.Logger, port int) *
 	return &CrawlerAPIService{
 		config:         cfg,
 		logger:         logger,
-		crawlerService: crawler_amazon.NewService(cfg, logger),
+		crawlerService: crawlerapp.NewService(cfg, logger),
 		port:           port,
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/application/state"
+	"task-processor/internal/app/state"
 	"task-processor/internal/pkg/management"
 	management_api "task-processor/internal/pkg/management/api"
 

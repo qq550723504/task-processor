@@ -12,8 +12,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ProductService 产品服务接口
-type ProductService interface {
+// ProductHandlerService HTTP handler 依赖的产品服务接口
+type ProductHandlerService interface {
 	CreateGenerateTask(ctx context.Context, req *domain.GenerateRequest) (*domain.Task, error)
 	GetTaskResult(ctx context.Context, taskID string) (*domain.TaskResult, error)
 }
@@ -28,11 +28,11 @@ type ProductHandler interface {
 
 // productHandler 产品处理器实现
 type productHandler struct {
-	productService ProductService
+	productService ProductHandlerService
 }
 
 // NewProductHandler 创建新的产品处理器
-func NewProductHandler(productService ProductService) (ProductHandler, error) {
+func NewProductHandler(productService ProductHandlerService) (ProductHandler, error) {
 	if productService == nil {
 		return nil, fmt.Errorf("product service cannot be nil")
 	}
@@ -120,20 +120,4 @@ func (h *productHandler) GetTaskResult(c *gin.Context) {
 func isNotFoundError(err error) bool {
 	return err != nil && (err.Error() == "task not found" ||
 		contains(err.Error(), "not found"))
-}
-
-// contains 检查字符串是否包含子串
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && s[len(s)-len(substr):] == substr ||
-		len(s) > len(substr) && findSubstring(s, substr)
-}
-
-// findSubstring 查找子串
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

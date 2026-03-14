@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	appProduct "task-processor/internal/application/product_fetcher"
+	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/config/types"
 	"task-processor/internal/crawler/amazon"

@@ -1,5 +1,5 @@
-// Package crawler_amazon 提供爬虫应用服务
-package crawler_amazon
+// Package amazon 提供爬虫应用服务
+package amazon
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
+	crawleramazon "task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	domainService "task-processor/internal/domain/service"
 	"task-processor/internal/domain/task"
@@ -26,7 +26,7 @@ var _ domainService.CrawlerService = (*Service)(nil)
 type Service struct {
 	config          *config.Config
 	logger          *logrus.Logger
-	amazonProcessor *amazon.AmazonProcessor
+	amazonProcessor *crawleramazon.AmazonProcessor
 	domainResolver  *amazonPkg.DomainResolver
 	workerPool      worker.WorkerPool
 	results         sync.Map   // task_id -> *task.CrawlerResult
@@ -36,7 +36,7 @@ type Service struct {
 // NewService 创建爬虫应用服务
 func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
 	// 创建 Amazon 处理器
-	amazonProcessor := amazon.CreateProcessor(cfg, logger)
+	amazonProcessor := crawleramazon.CreateProcessor(cfg, logger)
 
 	// 创建域名解析器
 	domainResolver := amazonPkg.NewDomainResolver()

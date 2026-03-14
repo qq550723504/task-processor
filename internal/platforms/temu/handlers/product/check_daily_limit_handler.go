@@ -3,7 +3,7 @@ package product
 import (
 	"fmt"
 
-	"task-processor/internal/application/state"
+	"task-processor/internal/app/state"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/timeutil"

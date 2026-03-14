@@ -1,5 +1,5 @@
-// Package crawler1688 提供1688爬虫处理器
-package crawler1688
+// Package alibaba1688 提供1688爬虫处理器
+package alibaba1688
 
 import (
 	"context"

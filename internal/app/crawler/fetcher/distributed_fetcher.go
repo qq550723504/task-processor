@@ -1,5 +1,5 @@
-// Package product_fetcher 提供分布式产品数据获取功能
-package product_fetcher
+// Package fetcher 提供分布式产品数据获取功能
+package fetcher
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/application/distributed_crawler"
+	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/core/config"
 	"task-processor/internal/domain/model"
 	domainProduct "task-processor/internal/domain/product"
@@ -21,7 +21,7 @@ import (
 // 使用分布式爬虫集群替代本地Amazon处理器
 type DistributedProductFetcher struct {
 	rawJsonDataClient  domainProduct.RawJsonDataClient
-	distributedCrawler *distributed_crawler.DistributedCrawlerClient
+	distributedCrawler *distributed.DistributedCrawlerClient
 	amazonConfig       *config.AmazonConfig
 	logger             *logrus.Entry
 
@@ -40,7 +40,7 @@ func NewDistributedProductFetcher(
 	logger := logrus.WithField("component", "DistributedProductFetcher")
 
 	// 创建分布式爬虫客户端（使用共享的RabbitMQ客户端）
-	distributedCrawler, err := distributed_crawler.NewDistributedCrawlerClient(rabbitmqClient, logger.Logger)
+	distributedCrawler, err := distributed.NewDistributedCrawlerClient(rabbitmqClient, logger.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("创建分布式爬虫客户端失败: %w", err)
 	}
@@ -106,7 +106,7 @@ func (f *DistributedProductFetcher) FetchProduct(req *domainProduct.FetchRequest
 // fetchFromDistributedCrawler 从分布式爬虫获取产品数据
 func (f *DistributedProductFetcher) fetchFromDistributedCrawler(req *domainProduct.FetchRequest) (*model.Product, error) {
 	// 构建爬虫请求
-	crawlReq := &distributed_crawler.CrawlRequest{
+	crawlReq := &distributed.CrawlRequest{
 		TaskID:    time.Now().UnixNano(), // 生成唯一任务ID
 		TenantID:  req.TenantID,
 		StoreID:   req.StoreID,
