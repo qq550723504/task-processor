@@ -10,10 +10,17 @@ import (
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/platforms/shein/api"
 	shein "task-processor/internal/platforms/shein"
-	"task-processor/internal/platforms/shein/repo"
-	"task-processor/internal/platforms/shein/repo/client"
+	"task-processor/internal/platforms/shein/api"
+	shein_attribute "task-processor/internal/platforms/shein/api/attribute"
+	shein_category "task-processor/internal/platforms/shein/api/category"
+	shein_image "task-processor/internal/platforms/shein/api/image"
+	shein_other "task-processor/internal/platforms/shein/api/other"
+	shein_pricing "task-processor/internal/platforms/shein/api/pricing"
+	shein_product "task-processor/internal/platforms/shein/api/product"
+	shein_translate "task-processor/internal/platforms/shein/api/translate"
+	shein_warehouse "task-processor/internal/platforms/shein/api/warehouse"
+	"task-processor/internal/platforms/shein/client"
 
 	"github.com/sirupsen/logrus"
 )
@@ -132,14 +139,14 @@ func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
 	)
 
 	// 初始化各个具体的API实例
-	taskCtx.ProductAPI = repo.NewProductAPI(baseAPIClient)
-	taskCtx.CategoryAPI = repo.NewCategoryAPI(baseAPIClient)
-	taskCtx.AttributeAPI = repo.NewAttributeAPI(baseAPIClient)
-	taskCtx.WarehouseAPI = repo.NewWarehouseAPI(baseAPIClient)
-	taskCtx.TranslateAPI = repo.NewTranslateAPI(baseAPIClient)
-	taskCtx.PricingAPI = repo.NewPricingAPI(baseAPIClient)
-	taskCtx.ImageAPI = repo.NewImageAPI(baseAPIClient)
-	taskCtx.OtherAPI = repo.NewOtherAPI(baseAPIClient)
+	taskCtx.ProductAPI = shein_product.NewClient(baseAPIClient)
+	taskCtx.CategoryAPI = shein_category.NewClient(baseAPIClient)
+	taskCtx.AttributeAPI = shein_attribute.NewClient(baseAPIClient)
+	taskCtx.WarehouseAPI = shein_warehouse.NewClient(baseAPIClient)
+	taskCtx.TranslateAPI = shein_translate.NewClient(baseAPIClient)
+	taskCtx.PricingAPI = shein_pricing.NewClient(baseAPIClient)
+	taskCtx.ImageAPI = shein_image.NewClient(baseAPIClient)
+	taskCtx.OtherAPI = shein_other.NewClient(baseAPIClient)
 
 	// 检查Cookie加载状态（参考TEMU的检查方式）
 	if apiClient.HasCookies() {
@@ -218,5 +225,3 @@ func (h *TaskHandler) handleSuccess(task model.Task) {
 	logrus.Infof("任务处理成功: ID=%d, TenantID=%d, StoreID=%d, ProductID=%s",
 		task.ID, task.TenantID, task.StoreID, task.ProductID)
 }
-
-

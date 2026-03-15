@@ -8,7 +8,7 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/shein/repo/client"
+	"task-processor/internal/platforms/shein/client"
 	schedulerservice "task-processor/internal/platforms/shein/operation"
 
 	"github.com/sirupsen/logrus"

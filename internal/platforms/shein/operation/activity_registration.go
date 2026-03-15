@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/api/marketing"
-	"task-processor/internal/platforms/shein/repo"
 
 	"github.com/sirupsen/logrus"
 )
@@ -28,14 +27,14 @@ type ActivityRegistrationService interface {
 // activityRegistrationServiceImpl 活动报名服务实现
 type activityRegistrationServiceImpl struct {
 	managementClient *management.ClientManager
-	marketingAPI     repo.MarketingAPIInterface
+	marketingAPI     marketing.MarketingAPI
 	logger           *logrus.Entry
 }
 
 // NewActivityRegistrationService 创建活动报名服务
 func NewActivityRegistrationService(
 	managementClient *management.ClientManager,
-	marketingAPI repo.MarketingAPIInterface,
+	marketingAPI marketing.MarketingAPI,
 ) ActivityRegistrationService {
 	return &activityRegistrationServiceImpl{
 		managementClient: managementClient,
@@ -153,3 +152,4 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 	s.logger.Infof("成功报名 %d 个产品到促销活动", len(configList))
 	return len(configList), nil
 }
+

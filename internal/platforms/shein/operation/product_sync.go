@@ -11,8 +11,7 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/repo"
+	shein_product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,10 +19,10 @@ import (
 // ProductSyncService 产品同步服务接口
 type ProductSyncService interface {
 	// FetchProductList 获取产品列表
-	FetchProductList(ctx context.Context) ([]product.ProductListItem, error)
+	FetchProductList(ctx context.Context) ([]shein_product.ProductListItem, error)
 
 	// ConvertProducts 转换产品格式
-	ConvertProducts(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
+	ConvertProducts(ctx context.Context, products []shein_product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
 
 	// SaveProducts 保存产品到管理系统
 	SaveProducts(ctx context.Context, productDataList []*managementapi.ProductDataDTO) (int, error)
@@ -32,9 +31,9 @@ type ProductSyncService interface {
 // productSyncServiceImpl 产品同步服务实现
 type productSyncServiceImpl struct {
 	managementClient *management.ClientManager
-	productAPI       repo.ProductAPIInterface
-	inventoryManager *repo.InventoryManager
-	priceManager     *repo.PriceManager
+	productAPI       shein_product.ProductAPI
+	inventoryManager *shein_product.InventoryManager
+	priceManager     *shein_product.PriceManager
 	mappingClient    managementapi.ProductImportMappingAPI
 	storeAPI         managementapi.StoreAPI
 	repairService    MappingRepairService // 新增修复服务
@@ -44,9 +43,9 @@ type productSyncServiceImpl struct {
 // NewProductSyncService 创建产品同步服务
 func NewProductSyncService(
 	managementClient *management.ClientManager,
-	productAPI repo.ProductAPIInterface,
-	inventoryManager *repo.InventoryManager,
-	priceManager *repo.PriceManager,
+	productAPI shein_product.ProductAPI,
+	inventoryManager *shein_product.InventoryManager,
+	priceManager *shein_product.PriceManager,
 	mappingClient managementapi.ProductImportMappingAPI,
 	storeAPI managementapi.StoreAPI,
 ) ProductSyncService {
@@ -72,15 +71,15 @@ func NewProductSyncService(
 }
 
 // FetchProductList 获取产品列表
-func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]product.ProductListItem, error) {
+func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]shein_product.ProductListItem, error) {
 	s.logger.Debug("开始获取产品列表")
 
-	var allProducts []product.ProductListItem
+	var allProducts []shein_product.ProductListItem
 	pageNum := 1
 	const pageSize = 100
 
 	for {
-		req := &product.ProductListRequest{
+		req := &shein_product.ProductListRequest{
 			Language:             "en",
 			OnlyRecommendResell:  false,
 			OnlySpmbCopyProduct:  false,
@@ -111,7 +110,7 @@ func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]produc
 }
 
 // ConvertProducts 转换产品格式
-func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []shein_product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
 	totalCount := len(products)
 	s.logger.WithFields(logrus.Fields{
 		"tenant_id": tenantID,
@@ -158,7 +157,7 @@ func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products [
 }
 
 // convertSingleProduct 转换单个产品
-func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *product.ProductListItem, tenantID, storeID int64) *managementapi.ProductDataDTO {
+func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *shein_product.ProductListItem, tenantID, storeID int64) *managementapi.ProductDataDTO {
 	// 获取店铺信息
 	storeInfo, err := s.storeAPI.GetStore(storeID)
 	if err != nil {
@@ -174,8 +173,8 @@ func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *product.Prod
 		s.fillProductLevelInventory(productData, inventoryInfo)
 	}
 
-	var priceMap map[string]*product.SkuPriceInfo
-	var costMap map[string]*product.SkuCostInfo
+	var priceMap map[string]*shein_product.SkuPriceInfo
+	var costMap map[string]*shein_product.SkuCostInfo
 
 	// 根据店铺类型决定价格处理策略
 	shopType := ""
@@ -227,7 +226,7 @@ func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *product.Prod
 }
 
 // buildBaseProductData 构建基础产品数据
-func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *product.ProductListItem, storeInfo *api.StoreRespDTO) *managementapi.ProductDataDTO {
+func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *shein_product.ProductListItem, storeInfo *api.StoreRespDTO) *managementapi.ProductDataDTO {
 	var publishTime *time.Time
 	if sheinProduct.PublishTime != "" {
 		if t, err := s.parseTime(sheinProduct.PublishTime); err == nil {
@@ -373,3 +372,4 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 
 	return successCount, nil
 }
+

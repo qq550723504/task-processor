@@ -8,7 +8,7 @@ import (
 	"time"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/shein/repo"
+	shein_product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -35,7 +35,7 @@ type MappingRepairService interface {
 type mappingRepairServiceImpl struct {
 	mappingClient managementapi.ProductImportMappingAPI
 	storeAPI      managementapi.StoreAPI
-	productAPI    repo.ProductAPIInterface
+	productAPI    shein_product.ProductAPI
 	config        *MappingRepairConfig
 	strategies    []MappingRepairStrategy
 	stats         *MappingRepairStats
@@ -47,7 +47,7 @@ type mappingRepairServiceImpl struct {
 func NewMappingRepairService(
 	mappingClient managementapi.ProductImportMappingAPI,
 	storeAPI managementapi.StoreAPI,
-	productAPI repo.ProductAPIInterface,
+	productAPI shein_product.ProductAPI,
 	config *MappingRepairConfig,
 ) MappingRepairService {
 	if config == nil {
@@ -297,3 +297,4 @@ func (s *mappingRepairServiceImpl) registerDefaultStrategies() {
 	// 注册基于历史记录的修复策略
 	s.RegisterStrategy(NewHistoryBasedRepairStrategy(s.mappingClient))
 }
+

@@ -8,8 +8,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein"
-	"task-processor/internal/platforms/shein/api/pricing"
-	"task-processor/internal/platforms/shein/repo"
+	shein_pricing "task-processor/internal/platforms/shein/api/pricing"
 	pricingservice "task-processor/internal/platforms/shein/pricing"
 
 	"github.com/sirupsen/logrus"
@@ -18,10 +17,10 @@ import (
 // AutoPricingService 自动核价服务接口
 type AutoPricingService interface {
 	// FetchPendingPriceProducts 获取待核价产品列表
-	FetchPendingPriceProducts(ctx context.Context, startTime, endTime string) ([]pricing.BargainPageData, error)
+	FetchPendingPriceProducts(ctx context.Context, startTime, endTime string) ([]shein_pricing.BargainPageData, error)
 
 	// ApplyPricingRules 应用核价规则
-	ApplyPricingRules(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]PricingDecision, error)
+	ApplyPricingRules(ctx context.Context, products []shein_pricing.BargainPageData, storeID int64, enableRebargain bool) ([]PricingDecision, error)
 
 	// SubmitPricingResults 提交核价结果
 	SubmitPricingResults(ctx context.Context, results []PricingDecision) (*PricingStatistics, error)
@@ -38,16 +37,16 @@ type PricingStatistics struct {
 
 // PricingDecision 核价决策
 type PricingDecision struct {
-	Product      pricing.BargainPageData
+	Product      shein_pricing.BargainPageData
 	Action       string // accept, reject, reappeal, skip
 	Reason       string
-	BatchReQuote *pricing.BatchReQuoteRequest // 新接口(所有操作)
+	BatchReQuote *shein_pricing.BatchReQuoteRequest // 新接口(所有操作)
 }
 
 // autoPricingServiceImpl 自动核价服务实现
 type autoPricingServiceImpl struct {
 	managementClient *management.ClientManager
-	pricingAPI       repo.PricingAPIInterface
+	pricingAPI       shein_pricing.PricingAPI
 	calculator       *pricingservice.AutoPricingCalculator
 	requestBuilder   *PricingRequestBuilder
 	timeHelper       *shein.TimeHelper
@@ -57,7 +56,7 @@ type autoPricingServiceImpl struct {
 // NewAutoPricingService 创建自动核价服务
 func NewAutoPricingService(
 	managementClient *management.ClientManager,
-	pricingAPI repo.PricingAPIInterface,
+	pricingAPI shein_pricing.PricingAPI,
 ) AutoPricingService {
 	return &autoPricingServiceImpl{
 		managementClient: managementClient,
@@ -70,7 +69,7 @@ func NewAutoPricingService(
 }
 
 // FetchPendingPriceProducts 获取待核价产品列表
-func (s *autoPricingServiceImpl) FetchPendingPriceProducts(ctx context.Context, startTime, endTime string) ([]pricing.BargainPageData, error) {
+func (s *autoPricingServiceImpl) FetchPendingPriceProducts(ctx context.Context, startTime, endTime string) ([]shein_pricing.BargainPageData, error) {
 	// 调整时间范围以符合API限制（不超过三个月）
 	adjustedStart, adjustedEnd, err := s.timeHelper.AdjustTimeRangeToLimit(startTime, endTime)
 	if err != nil {
@@ -88,14 +87,14 @@ func (s *autoPricingServiceImpl) FetchPendingPriceProducts(ctx context.Context, 
 		"end_time":   adjustedEnd,
 	}).Debug("开始获取待核价产品列表")
 
-	var allProducts []pricing.BargainPageData
+	var allProducts []shein_pricing.BargainPageData
 
 	// 分页获取所有待处理的议价数据（状态1表示待处理）
 	pageNum := 1
 	const pageSize = 100
 
 	for {
-		req := &pricing.PageRequest{
+		req := &shein_pricing.PageRequest{
 			PageNum:   pageNum,
 			PageSize:  pageSize,
 			StartTime: adjustedStart,
@@ -125,7 +124,7 @@ func (s *autoPricingServiceImpl) FetchPendingPriceProducts(ctx context.Context, 
 }
 
 // ApplyPricingRules 应用核价规则
-func (s *autoPricingServiceImpl) ApplyPricingRules(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]PricingDecision, error) {
+func (s *autoPricingServiceImpl) ApplyPricingRules(ctx context.Context, products []shein_pricing.BargainPageData, storeID int64, enableRebargain bool) ([]PricingDecision, error) {
 	s.logger.WithFields(logrus.Fields{
 		"store_id":         storeID,
 		"count":            len(products),
@@ -221,7 +220,7 @@ func (s *autoPricingServiceImpl) SubmitPricingResults(ctx context.Context, resul
 
 // fallbackToLegacyAPI 降级到旧接口提交核价决策
 func (s *autoPricingServiceImpl) fallbackToLegacyAPI(decision *PricingDecision) error {
-	var legacyRequest *pricing.BatchHandleCostDiscussRequest
+	var legacyRequest *shein_pricing.BatchHandleCostDiscussRequest
 
 	// 根据操作类型构建旧接口请求
 	switch decision.Action {
@@ -245,4 +244,5 @@ func (s *autoPricingServiceImpl) fallbackToLegacyAPI(decision *PricingDecision) 
 
 	return nil
 }
+
 

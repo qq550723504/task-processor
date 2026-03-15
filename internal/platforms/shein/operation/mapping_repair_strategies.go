@@ -7,7 +7,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/repo"
+shein_product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +21,7 @@ type ProductBasedRepairStrategy struct {
 // NewProductBasedRepairStrategy 创建基于产品信息的修复策略
 func NewProductBasedRepairStrategy(
 	mappingClient managementapi.ProductImportMappingAPI,
-	productAPI repo.ProductAPIInterface,
+	productAPI shein_product.ProductAPI,
 ) MappingRepairStrategy {
 	return &ProductBasedRepairStrategy{
 		mappingBuilder: NewMappingBuilder(mappingClient),
@@ -119,18 +119,18 @@ func (s *HistoryBasedRepairStrategy) GetStrategyName() string {
 // SmartRepairStrategy 智能修复策略（结合多种信息源）
 type SmartRepairStrategy struct {
 	mappingBuilder   *MappingBuilder
-	productAPI       repo.ProductAPIInterface
-	inventoryManager *repo.InventoryManager
-	priceManager     *repo.PriceManager
+	productAPI       shein_product.ProductAPI
+	inventoryManager *shein_product.InventoryManager
+	priceManager     *shein_product.PriceManager
 	logger           *logrus.Entry
 }
 
 // NewSmartRepairStrategy 创建智能修复策略
 func NewSmartRepairStrategy(
 	mappingClient managementapi.ProductImportMappingAPI,
-	productAPI repo.ProductAPIInterface,
-	inventoryManager *repo.InventoryManager,
-	priceManager *repo.PriceManager,
+	productAPI shein_product.ProductAPI,
+	inventoryManager *shein_product.InventoryManager,
+	priceManager *shein_product.PriceManager,
 ) MappingRepairStrategy {
 	return &SmartRepairStrategy{
 		mappingBuilder:   NewMappingBuilder(mappingClient),
@@ -237,3 +237,4 @@ func (s *SmartRepairStrategy) determineRegion(storeInfo *managementapi.StoreResp
 	}
 	return "US"
 }
+

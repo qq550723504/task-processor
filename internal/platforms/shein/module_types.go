@@ -7,12 +7,15 @@ import (
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/api/category"
+	shein_attribute "task-processor/internal/platforms/shein/api/attribute"
+	shein_category "task-processor/internal/platforms/shein/api/category"
+	shein_image "task-processor/internal/platforms/shein/api/image"
+	shein_marketing "task-processor/internal/platforms/shein/api/marketing"
 	"task-processor/internal/platforms/shein/api/other"
+	shein_pricing "task-processor/internal/platforms/shein/api/pricing"
 	"task-processor/internal/platforms/shein/api/product"
+	shein_translate "task-processor/internal/platforms/shein/api/translate"
 	"task-processor/internal/platforms/shein/api/warehouse"
-	"task-processor/internal/platforms/shein/repo"
 )
 
 // StepHandler 任务处理步骤接口
@@ -47,24 +50,25 @@ type TaskContext struct {
 	SupplierSkuMap     map[string]string
 	ProductData        *product.Product
 	// API客户端（拆分为具体的API实例，避免巨大接口）
-	ProductAPI          *repo.ProductAPI
-	CategoryAPI         *repo.CategoryAPI
-	AttributeAPI        *repo.AttributeAPI
-	WarehouseAPI        *repo.WarehouseAPI
-	TranslateAPI        *repo.TranslateAPI
-	PricingAPI          *repo.PricingAPI
-	ImageAPI            *repo.ImageAPI
-	OtherAPI            *repo.OtherAPI
-	FilterRule          *management_api.FilterRuleRespDTO // 筛选规则
-	ProfitRule          *management_api.ProfitRuleRespDTO // 利润规则
-	Warehouses          *warehouse.WarehouseResponse      // 仓库信息
-	SiteList            []product.SiteInfo                // 站点信息
-	CategoryTree        *category.CategoryTreeResponse    // 分类树
-	AttributeTemplates  *attribute.AttributeTemplateInfo  // 属性模板信息
-	BuildAttributeData  *BuildAttributeInfo               // 构建属性数据
-	GenerateAttribute   *AttributeData                    // 生成属性数据
-	SaleSpecResult      *ResultSaleAttribute              // 结果销售规格
-	ManagementClientMgr *management.ClientManager         // 管理客户端管理器
+	ProductAPI          *product.Client
+	CategoryAPI         *shein_category.Client
+	AttributeAPI        *shein_attribute.Client
+	WarehouseAPI        *warehouse.Client
+	TranslateAPI        *shein_translate.Client
+	PricingAPI          *shein_pricing.Client
+	ImageAPI            *shein_image.Client
+	OtherAPI            *other.Client
+	MarketingAPI        *shein_marketing.Client
+	FilterRule          *management_api.FilterRuleRespDTO      // 筛选规则
+	ProfitRule          *management_api.ProfitRuleRespDTO      // 利润规则
+	Warehouses          *warehouse.WarehouseResponse           // 仓库信息
+	SiteList            []product.SiteInfo                     // 站点信息
+	CategoryTree        *shein_category.CategoryTreeResponse   // 分类树
+	AttributeTemplates  *shein_attribute.AttributeTemplateInfo // 属性模板信息
+	BuildAttributeData  *BuildAttributeInfo                    // 构建属性数据
+	GenerateAttribute   *AttributeData                         // 生成属性数据
+	SaleSpecResult      *ResultSaleAttribute                   // 结果销售规格
+	ManagementClientMgr *management.ClientManager              // 管理客户端管理器
 	SheinResponse       *product.SheinResponse
 	// 错误信息相关字段
 	ValidationErrors    []PreValidResult // 验证错误信息
@@ -219,4 +223,3 @@ type SkcErrorMessage struct {
 	Messages                []string            `json:"messages"`
 	OtherLanguageMessageMap map[string][]string `json:"otherLanguageMessageMap"`
 }
-

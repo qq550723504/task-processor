@@ -17,7 +17,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/common/pricing"
-	"task-processor/internal/platforms/shein/repo"
+	shein_product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -43,7 +43,7 @@ type InventoryUpdateRequest struct {
 // inventorySyncServiceImpl 库存监控服务实现
 type inventorySyncServiceImpl struct {
 	managementClient      *management.ClientManager
-	productAPI            repo.ProductAPIInterface
+	productAPI            shein_product.ProductAPI
 	amazonProcessor       *amazon.AmazonProcessor
 	amazonConfig          *config.AmazonConfig
 	rawJsonDataClient     product.RawJsonDataClient
@@ -59,7 +59,7 @@ type inventorySyncServiceImpl struct {
 // NewInventorySyncService 创建库存监控服务
 func NewInventorySyncService(
 	managementClient *management.ClientManager,
-	productAPI repo.ProductAPIInterface,
+	productAPI shein_product.ProductAPI,
 	amazonProcessor *amazon.AmazonProcessor,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
@@ -429,3 +429,4 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 
 	return nil
 }
+
