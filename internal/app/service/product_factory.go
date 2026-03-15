@@ -4,10 +4,10 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	amazonpkg "task-processor/internal/crawler/amazon"
-	"task-processor/internal/domain/product/repo/impl"
-	productservice "task-processor/internal/domain/product/service"
-	"task-processor/internal/infra/productcrawler"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/infra/productcrawler"
+	infraproduct "task-processor/internal/infra/repository/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,14 +24,13 @@ func NewProductServiceFactory(logger *logrus.Entry) *ProductServiceFactory {
 	}
 }
 
-// CreateProductService 创建产品服务（推荐使用）
+// CreateProductService 创建产品服务
 func (f *ProductServiceFactory) CreateProductService(
 	rawJsonDataClient api.RawJsonDataAPI,
 	amazonConfig *config.AmazonConfig,
 	amazonProcessor *amazon.AmazonProcessor,
-) *productservice.ProductService {
-	// 创建仓储层
-	cacheRepo := impl.NewCacheRepositoryImpl(rawJsonDataClient, f.logger)
+) *product.ProductService {
+	cacheRepo := infraproduct.NewCacheRepositoryImpl(rawJsonDataClient, f.logger)
 
 	domainResolver := amazonpkg.NewDomainResolver()
 	crawlerRepo := productcrawler.NewCrawlerRepositoryImpl(
@@ -41,11 +40,9 @@ func (f *ProductServiceFactory) CreateProductService(
 		f.logger,
 	)
 
-	// 创建验证器
-	validator := productservice.NewProductValidator(f.logger)
+	validator := product.NewProductValidator(f.logger)
 
-	// 创建服务层
-	productService := productservice.NewProductService(
+	productService := product.NewProductService(
 		cacheRepo,
 		crawlerRepo,
 		validator,
