@@ -8,8 +8,8 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
-	"task-processor/internal/infra/di"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/di"
 
 	"github.com/sirupsen/logrus"
 )
@@ -62,32 +62,39 @@ func (s *ServiceRegistrySimple) registerBaseServices(container di.Container) err
 func (s *ServiceRegistrySimple) registerAuthServices(container di.Container) error {
 	s.logger.Debug("注册认证服务...")
 
-	// 注册认证服务
-	if err := container.RegisterSingleton("authService", func(c di.Container) (any, error) {
+	// 直接注册认证客户端，无需中间层
+	if err := container.RegisterSingleton("authClient", func(c di.Container) (any, error) {
 		loggerInstance, err := c.Get("logger")
 		if err != nil {
 			return nil, fmt.Errorf("获取日志器失败: %w", err)
-		}
-		return service.NewAuthService(loggerInstance.(*logrus.Logger)), nil
-	}); err != nil {
-		return err
-	}
-
-	// 注册认证客户端
-	if err := container.RegisterSingleton("authClient", func(c di.Container) (any, error) {
-		authServiceInstance, err := c.Get("authService")
-		if err != nil {
-			return nil, fmt.Errorf("获取认证服务失败: %w", err)
 		}
 		configInstance, err := c.Get("config")
 		if err != nil {
 			return nil, fmt.Errorf("获取配置失败: %w", err)
 		}
 
-		authService := authServiceInstance.(*service.AuthService)
-		config := configInstance.(*config.Config)
+		logger := loggerInstance.(*logrus.Logger)
+		cfg := configInstance.(*config.Config)
 
-		return authService.InitializeClientCredentials(config)
+		tenantID := cfg.Management.TenantID
+		if tenantID == "" {
+			tenantID = "1"
+		}
+
+		s.logger.Info("初始化客户端凭证授权...")
+		client := auth.NewClientCredentialsAuthClient(
+			cfg.Management.BaseURL,
+			cfg.Management.ClientID,
+			cfg.Management.ClientSecret,
+			tenantID,
+			logger,
+		)
+
+		if _, err := client.GetAccessToken(); err != nil {
+			return nil, fmt.Errorf("获取访问令牌失败: %w", err)
+		}
+
+		return client, nil
 	}); err != nil {
 		return err
 	}
