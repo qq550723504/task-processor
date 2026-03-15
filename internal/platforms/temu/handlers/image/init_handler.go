@@ -1,4 +1,4 @@
-// Package handlers 提供TEMU平台图片初始化处理器
+﻿// Package handlers 提供TEMU平台图片初始化处理器
 package image
 
 import (
@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/ptrutil"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"

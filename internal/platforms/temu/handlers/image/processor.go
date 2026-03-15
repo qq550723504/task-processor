@@ -1,11 +1,11 @@
-// Package handlers 提供TEMU平台图片处理核心功能
+﻿// Package handlers 提供TEMU平台图片处理核心功能
 package image
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"

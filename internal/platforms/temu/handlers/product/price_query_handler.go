@@ -1,12 +1,11 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"strconv"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuapi "task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -72,17 +71,17 @@ func (h *PriceQueryHandler) queryMaxRetailPrices(temuCtx *temucontext.TemuTaskCo
 		return nil
 	}
 
-	// 创建QueryAPI实例
-	queryAPI := api.NewQueryAPI(temuCtx.APIClient, h.logger)
+	// 创建ProductAPI实例（QueryMaxRetailPrice 在 product.API 里）
+	productAPI := temuapi.NewProductAPI(temuCtx.APIClient, h.logger)
 
 	// 构造价格查询请求
-	request := &models.PriceQueryRequest{
+	request := &temuapi.PriceQueryRequest{
 		GoodsID:                      temuCtx.TemuProduct.GoodsBasic.GoodsID,
 		MmsSkuMaxRetailPriceQryItems: priceItems,
 	}
 
 	// 发送请求到TEMU API
-	response, err := queryAPI.QueryMaxRetailPrice(request)
+	response, err := productAPI.QueryMaxRetailPrice(request)
 	if err != nil {
 		h.logger.WithError(err).Error("价格查询API调用失败")
 		return fmt.Errorf("价格查询失败: %w", err)
@@ -111,8 +110,8 @@ func (h *PriceQueryHandler) queryMaxRetailPrices(temuCtx *temucontext.TemuTaskCo
 }
 
 // collectSkuPrices 收集所有SKU的供应商价格
-func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContext) []models.MaxRetailPriceQueryItem {
-	var priceItems []models.MaxRetailPriceQueryItem
+func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContext) []temuapi.MaxRetailPriceQueryItem {
+	var priceItems []temuapi.MaxRetailPriceQueryItem
 	priceMap := make(map[string]bool) // 用于去重
 
 	// 直接使用强类型上下文中的TEMU产品信息
@@ -140,7 +139,7 @@ func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContex
 				continue // 已存在，跳过
 			}
 
-			priceItems = append(priceItems, models.MaxRetailPriceQueryItem{
+			priceItems = append(priceItems, temuapi.MaxRetailPriceQueryItem{
 				BasePriceStr: basePriceStr,
 				Currency:     sku.Currency,
 			})
@@ -157,7 +156,7 @@ func (h *PriceQueryHandler) collectSkuPrices(temuCtx *temucontext.TemuTaskContex
 }
 
 // updateSkuMaxRetailPrices 更新SKU的最大零售价格
-func (h *PriceQueryHandler) updateSkuMaxRetailPrices(temuCtx *temucontext.TemuTaskContext, priceResults []models.MaxRetailPriceResultItem) {
+func (h *PriceQueryHandler) updateSkuMaxRetailPrices(temuCtx *temucontext.TemuTaskContext, priceResults []temuapi.MaxRetailPriceResultItem) {
 	// 直接使用强类型上下文中的TEMU产品信息
 	if temuCtx.TemuProduct == nil {
 		h.logger.Warn("TEMU产品信息为空")

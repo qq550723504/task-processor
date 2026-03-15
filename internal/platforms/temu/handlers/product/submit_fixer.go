@@ -1,7 +1,7 @@
-package product
+﻿package product
 
 import (
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/template"
 

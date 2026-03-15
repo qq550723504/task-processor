@@ -1,10 +1,10 @@
-// Package handlers 提供TEMU平台图片上传辅助方法
+﻿// Package handlers 提供TEMU平台图片上传辅助方法
 package image
 
 import (
 	"fmt"
 	"path/filepath"
-	"task-processor/internal/platforms/temu/api/models"
+	temuimage "task-processor/internal/platforms/temu/api/image"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -55,7 +55,7 @@ func (h *ImageUploadHelpers) GetImageData(temuCtx *temucontext.TemuTaskContext, 
 }
 
 // ProcessUploadResult 处理上传结果
-func (h *ImageUploadHelpers) ProcessUploadResult(uploadResult *models.UploadResult,
+func (h *ImageUploadHelpers) ProcessUploadResult(uploadResult *temuimage.UploadResult,
 	usePaddedImage bool, paddedWidth, paddedHeight int) (string, int, int) {
 
 	resultURL := uploadResult.ImageURL

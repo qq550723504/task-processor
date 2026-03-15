@@ -7,8 +7,8 @@ import (
 
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/temu/api/models"
-	"task-processor/internal/platforms/temu/api/services"
+	temuproduct "task-processor/internal/platforms/temu/api/product"
+	temuquery "task-processor/internal/platforms/temu/api/query"
 
 	"github.com/sirupsen/logrus"
 )
@@ -16,8 +16,8 @@ import (
 // productSyncServiceImpl TEMU产品同步服务实现
 type productSyncServiceImpl struct {
 	managementClient *management.ClientManager
-	productAPI       *services.ProductAPI
-	skuQueryAPI      *services.SkuQueryAPI
+	productAPI       *temuproduct.API
+	skuQueryAPI      *temuquery.API
 	mappingClient    managementapi.ProductImportMappingAPI
 	storeAPI         managementapi.StoreAPI
 	config           *ProductSyncConfig
@@ -27,8 +27,8 @@ type productSyncServiceImpl struct {
 // NewProductSyncService 创建TEMU产品同步服务
 func NewProductSyncService(
 	managementClient *management.ClientManager,
-	productAPI *services.ProductAPI,
-	skuQueryAPI *services.SkuQueryAPI,
+	productAPI *temuproduct.API,
+	skuQueryAPI *temuquery.API,
 	mappingClient managementapi.ProductImportMappingAPI,
 	storeAPI managementapi.StoreAPI,
 	config *ProductSyncConfig,
@@ -54,13 +54,13 @@ func NewProductSyncService(
 }
 
 // FetchProductList 获取TEMU产品列表
-func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]models.GoodsSearchItem, error) {
+func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]temuproduct.GoodsSearchItem, error) {
 	s.logger.WithFields(logrus.Fields{
 		"max_pages": s.config.MaxPages,
 		"page_size": s.config.PageSize,
 	}).Info("开始获取TEMU产品列表（调试模式：只处理一页数据）")
 
-	var allProducts []models.GoodsSearchItem
+	var allProducts []temuproduct.GoodsSearchItem
 	pageNo := 1
 
 	for {
@@ -81,8 +81,8 @@ func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]models
 		}
 
 		// 调用TEMU API获取产品列表
-		options := services.NewGoodsSearchOptions(pageNo, s.config.PageSize)
-		response, apiErr := s.productAPI.SearchGoods(options)
+		options := temuproduct.NewGoodsSearchOptions(pageNo, s.config.PageSize)
+		response, apiErr := s.productAPI.SearchGoodsWithOptions(options)
 		if apiErr != nil {
 			return nil, fmt.Errorf("获取TEMU产品列表失败(页面%d): %w", pageNo, apiErr)
 		}
@@ -116,7 +116,7 @@ func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]models
 }
 
 // ConvertProducts 转换TEMU产品格式为管理系统格式
-func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []temuproduct.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
 	totalCount := len(products)
 
 	productDataList := make([]*managementapi.ProductDataDTO, 0, totalCount)

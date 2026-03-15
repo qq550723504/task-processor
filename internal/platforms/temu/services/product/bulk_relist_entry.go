@@ -3,8 +3,8 @@
 import (
 	"fmt"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/platforms/temu/api/client"
+	"task-processor/internal/platforms/temu/api/inventory"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,125 +17,89 @@ type BulkRelistEntry struct {
 
 // NewBulkRelistEntry 创建批量重新上架入口
 func NewBulkRelistEntry(managementClient *management.ClientManager) *BulkRelistEntry {
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "BulkRelistEntry",
-	})
-
 	return &BulkRelistEntry{
 		managementClient: managementClient,
-		logger:           logger,
+		logger:           logrus.WithField("component", "BulkRelistEntry"),
 	}
 }
 
 // ExecuteSimpleRelist 执行简单的全部重新上架
-func (e *BulkRelistEntry) ExecuteSimpleRelist(storeID int64) (*models.RelistAllResult, error) {
+func (e *BulkRelistEntry) ExecuteSimpleRelist(storeID int64) (*RelistAllResult, error) {
 	e.logger.Infof("开始执行简单的全部重新上架: storeID=%d", storeID)
-
-	// 创建API客户端
-	apiClient := api.NewAPIClient(storeID, e.managementClient)
+	apiClient := client.NewAPIClient(storeID, e.managementClient)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
-
-	// 创建批量上架服务
-	service := NewBulkRelistService(apiClient)
-
-	// 使用默认选项执行上架
-	return service.RelistAllOfflineProducts(nil)
+	return NewBulkRelistService(apiClient).RelistAllOfflineProducts(nil)
 }
 
 // ExecuteCustomRelist 执行自定义配置的重新上架
-func (e *BulkRelistEntry) ExecuteCustomRelist(storeID int64, options *models.BulkRelistOptions) (*models.RelistAllResult, error) {
+func (e *BulkRelistEntry) ExecuteCustomRelist(storeID int64, options *BulkRelistOptions) (*RelistAllResult, error) {
 	e.logger.Infof("开始执行自定义重新上架: storeID=%d", storeID)
-
-	// 创建API客户端
-	apiClient := api.NewAPIClient(storeID, e.managementClient)
+	apiClient := client.NewAPIClient(storeID, e.managementClient)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
-
-	// 创建批量上架服务
-	service := NewBulkRelistService(apiClient)
-
-	// 使用自定义选项执行上架
-	return service.RelistAllOfflineProducts(options)
+	return NewBulkRelistService(apiClient).RelistAllOfflineProducts(options)
 }
 
 // ExecuteFilteredRelist 执行带过滤条件的重新上架
-func (e *BulkRelistEntry) ExecuteFilteredRelist(storeID int64, filter *models.ProductFilter, options *models.BulkRelistOptions) (*models.RelistAllResult, error) {
+func (e *BulkRelistEntry) ExecuteFilteredRelist(storeID int64, filter *ProductFilterOptions, options *BulkRelistOptions) (*RelistAllResult, error) {
 	e.logger.Infof("开始执行过滤重新上架: storeID=%d", storeID)
-
-	// 创建API客户端
-	apiClient := api.NewAPIClient(storeID, e.managementClient)
+	apiClient := client.NewAPIClient(storeID, e.managementClient)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
-
-	// 创建批量上架服务
-	service := NewBulkRelistService(apiClient)
-
-	// 使用过滤条件执行上架
-	return service.RelistOfflineProductsWithFilter(filter, options)
+	return NewBulkRelistService(apiClient).RelistOfflineProductsWithFilter(filter, options)
 }
 
 // GetOfflineProductsPreview 获取已下架产品预览（不执行上架）
-func (e *BulkRelistEntry) GetOfflineProductsPreview(storeID int64, filter *models.ProductFilter) (*models.OfflineProductPreview, error) {
+func (e *BulkRelistEntry) GetOfflineProductsPreview(storeID int64, filter *ProductFilterOptions) (*OfflineProductPreview, error) {
 	e.logger.Infof("获取已下架产品预览: storeID=%d", storeID)
 
-	// 创建API客户端
-	apiClient := api.NewAPIClient(storeID, e.managementClient)
+	apiClient := client.NewAPIClient(storeID, e.managementClient)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
 
-	// 获取所有已下架产品
-	offlineAPI := api.NewOfflineAPI(apiClient, apiClient.GetLogger())
+	invAPI := inventory.NewAPI(apiClient, apiClient.GetLogger())
+	productFilter := NewProductFilter(apiClient.GetLogger())
 
-	// 分页获取所有下架产品
-	var offlineProducts []models.OfflineProductItem
+	var offlineProducts []inventory.Item
 	pageNo := 1
 	pageSize := 200
 
 	for {
-		resp, err := offlineAPI.GetOfflineProducts(pageNo, pageSize)
+		resp, err := invAPI.SearchOffline(pageNo, pageSize)
 		if err != nil {
 			return nil, fmt.Errorf("获取已下架产品失败: %w", err)
 		}
-
 		if resp == nil || len(resp.Result.SkuList) == 0 {
 			break
 		}
-
 		offlineProducts = append(offlineProducts, resp.Result.SkuList...)
-
 		if len(resp.Result.SkuList) < pageSize {
 			break
 		}
-
 		pageNo++
 	}
 
-	preview := &models.OfflineProductPreview{
+	preview := &OfflineProductPreview{
 		TotalOfflineCount: len(offlineProducts),
-		Products:          make([]models.OfflineProductSummary, 0),
+		Products:          make([]OfflineProductSummary, 0),
 	}
 
-	// 创建过滤器用于过滤
-	productFilter := NewProductFilter(apiClient.GetLogger())
-
-	// 按商品ID分组并应用过滤条件
-	goodsMap := make(map[string]*models.OfflineProductItem)
-	for _, product := range offlineProducts {
-		if filter == nil || productFilter.MatchesFilter(&product, filter) {
+	goodsMap := make(map[string]*inventory.Item)
+	for i, product := range offlineProducts {
+		if filter == nil || productFilter.MatchesFilter(&offlineProducts[i], filter) {
 			if _, exists := goodsMap[product.GoodsID]; !exists {
-				goodsMap[product.GoodsID] = &product
+				goodsMap[product.GoodsID] = &offlineProducts[i]
 			}
 		}
 	}
 
-	// 构建预览结果
 	for _, product := range goodsMap {
-		summary := models.OfflineProductSummary{
+		preview.Products = append(preview.Products, OfflineProductSummary{
 			GoodsID:           product.GoodsID,
 			GoodsName:         product.GoodsName,
 			Categories:        product.CatNameList,
@@ -145,8 +109,7 @@ func (e *BulkRelistEntry) GetOfflineProductsPreview(storeID int64, filter *model
 			NeedRectification: product.CategoryRectificationInfo.NeedRectification,
 			PunishTags:        product.PunishTags,
 			IsLocked:          !product.LockInfo.CloseListingMMS.AllowOperate,
-		}
-		preview.Products = append(preview.Products, summary)
+		})
 		preview.FilteredCount++
 	}
 
@@ -155,57 +118,32 @@ func (e *BulkRelistEntry) GetOfflineProductsPreview(storeID int64, filter *model
 }
 
 // QuickRelistByCategories 快速按分类重新上架
-func (e *BulkRelistEntry) QuickRelistByCategories(tenantID, storeID int64, categories []string, delayMs int) (*models.RelistAllResult, error) {
-	filter := &models.ProductFilter{
+func (e *BulkRelistEntry) QuickRelistByCategories(storeID int64, categories []string, delayMs int) (*RelistAllResult, error) {
+	return e.ExecuteFilteredRelist(storeID, &ProductFilterOptions{
 		IncludeCategories: categories,
-	}
-
-	options := &models.BulkRelistOptions{
+	}, &BulkRelistOptions{
 		DelayBetweenRequests: delayMs,
-		SkipConditions: &models.SkipConditions{
-			SkipNeedRectification: true,
-			SkipSeverelyPunished:  true,
-			SkipLocked:            true,
-		},
-	}
-
-	return e.ExecuteFilteredRelist(storeID, filter, options)
+		SkipConditions:       &SkipConditions{SkipNeedRectification: true, SkipSeverelyPunished: true, SkipLocked: true},
+	})
 }
 
 // QuickRelistByStock 快速按库存条件重新上架
-func (e *BulkRelistEntry) QuickRelistByStock(storeID int64, minStock int, delayMs int) (*models.RelistAllResult, error) {
-	filter := &models.ProductFilter{
+func (e *BulkRelistEntry) QuickRelistByStock(storeID int64, minStock int, delayMs int) (*RelistAllResult, error) {
+	return e.ExecuteFilteredRelist(storeID, &ProductFilterOptions{
 		MinStock: minStock,
-	}
-
-	options := &models.BulkRelistOptions{
+	}, &BulkRelistOptions{
 		DelayBetweenRequests: delayMs,
-		SkipConditions: &models.SkipConditions{
-			SkipNeedRectification: true,
-			SkipSeverelyPunished:  true,
-			SkipLocked:            true,
-			SkipNoStock:           true,
-		},
-	}
-
-	return e.ExecuteFilteredRelist(storeID, filter, options)
+		SkipConditions:       &SkipConditions{SkipNeedRectification: true, SkipSeverelyPunished: true, SkipLocked: true, SkipNoStock: true},
+	})
 }
 
 // QuickRelistByPriceRange 快速按价格范围重新上架
-func (e *BulkRelistEntry) QuickRelistByPriceRange(tenantID, storeID int64, minPrice, maxPrice float64, delayMs int) (*models.RelistAllResult, error) {
-	filter := &models.ProductFilter{
+func (e *BulkRelistEntry) QuickRelistByPriceRange(storeID int64, minPrice, maxPrice float64, delayMs int) (*RelistAllResult, error) {
+	return e.ExecuteFilteredRelist(storeID, &ProductFilterOptions{
 		MinPrice: minPrice,
 		MaxPrice: maxPrice,
-	}
-
-	options := &models.BulkRelistOptions{
+	}, &BulkRelistOptions{
 		DelayBetweenRequests: delayMs,
-		SkipConditions: &models.SkipConditions{
-			SkipNeedRectification: true,
-			SkipSeverelyPunished:  true,
-			SkipLocked:            true,
-		},
-	}
-
-	return e.ExecuteFilteredRelist(storeID, filter, options)
+		SkipConditions:       &SkipConditions{SkipNeedRectification: true, SkipSeverelyPunished: true, SkipLocked: true},
+	})
 }

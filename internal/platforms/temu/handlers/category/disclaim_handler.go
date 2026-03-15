@@ -1,10 +1,10 @@
-package category
+﻿package category
 
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -90,7 +90,7 @@ func (h *CategoryDisclaimHandler) getCategoryDisclaimer(temuCtx *temucontext.Tem
 	categoryAPI := api.NewCategoryAPI(temuCtx.APIClient, h.logger)
 
 	// 调用API获取分类免责声明
-	response, err := categoryAPI.GetCategoryDisclaimer(int(catID))
+	response, err := categoryAPI.GetDisclaimer(int(catID))
 	if err != nil {
 		h.logger.Warnf("API获取免责声明失败，使用默认免责声明: %v", err)
 		return err

@@ -1,8 +1,8 @@
-// Package handlers 提供AI属性映射的辅助功能
+﻿// Package handlers 提供AI属性映射的辅助功能
 package ai
 
 import (
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/types"
 )
 

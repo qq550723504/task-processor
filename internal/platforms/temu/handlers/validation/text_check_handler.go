@@ -1,11 +1,11 @@
-package validation
+﻿package validation
 
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuquery "task-processor/internal/platforms/temu/api/query"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -82,7 +82,7 @@ func (h *TextCheckHandler) checkText(temuCtx *temucontext.TemuTaskContext, conte
 	queryAPI := api.NewQueryAPI(temuCtx.APIClient, logrus.WithField("handler", "TextCheckHandler"))
 
 	// 构造请求
-	request := &models.TextCheckRequest{
+	request := &temuquery.TextCheckRequest{
 		Content: content,
 		Type:    1,
 	}

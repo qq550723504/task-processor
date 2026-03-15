@@ -1,4 +1,4 @@
-// Package handlers 提供TEMU平台的AI属性映射核心功能
+﻿// Package handlers 提供TEMU平台的AI属性映射核心功能
 package ai
 
 import (
@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/contextutil"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
 	"task-processor/internal/platforms/temu/handlers/template"

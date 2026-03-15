@@ -1,9 +1,9 @@
-// Package services 提供TEMU平台图片验证统一服务
+﻿// Package services 提供TEMU平台图片验证统一服务
 package services
 
 import (
 	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuimage "task-processor/internal/platforms/temu/api/image"
 
 	"github.com/sirupsen/logrus"
 )
@@ -29,8 +29,8 @@ func NewImageValidationService() *ImageValidationService {
 }
 
 // ValidateImage 验证单张图片
-func (s *ImageValidationService) ValidateImage(imageURL string, requirement ImageRequirement) (*models.ImageValidationResult, error) {
-	result := &models.ImageValidationResult{
+func (s *ImageValidationService) ValidateImage(imageURL string, requirement ImageRequirement) (*temuimage.ValidationResult, error) {
+	result := &temuimage.ValidationResult{
 		URL:         imageURL,
 		IsValid:     false,
 		Violations:  make([]string, 0),

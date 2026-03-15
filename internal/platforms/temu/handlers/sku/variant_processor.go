@@ -1,11 +1,11 @@
-// Package handlers 提供TEMU平台的SKU变体处理功能
+﻿// Package handlers 提供TEMU平台的SKU变体处理功能
 package sku
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/spec"
 	"task-processor/internal/platforms/temu/types"
@@ -75,7 +75,7 @@ func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 		}
 
 		// 验证规格是否有效
-		if err := vp.specHandler.ValidateSpecs(aiSku.Spec); err != nil {
+		if err := vp.specHandler.ValidateSpecs(convertSpecInfos(aiSku.Spec)); err != nil {
 			vp.logger.Errorf("❌ AI映射[%d]规格验证失败: %v", i, err)
 			vp.logger.Error("❌ AI必须从TEMU模板中选择有效的规格，不能使用默认规格")
 			return nil, fmt.Errorf("AI映射[%d]规格无效: %w", i, err)
@@ -192,7 +192,7 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 	aiSku := aiMapping.SkuList[0]
 
 	// 验证规格
-	if err := vp.specHandler.ValidateSpecs(aiSku.Spec); err != nil {
+	if err := vp.specHandler.ValidateSpecs(convertSpecInfos(aiSku.Spec)); err != nil {
 		vp.logger.Errorf("❌ AI生成的规格验证失败: %v", err)
 		return models.Skc{}, fmt.Errorf("AI生成的规格无效: %w", err)
 	}

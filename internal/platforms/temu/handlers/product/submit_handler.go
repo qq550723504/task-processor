@@ -5,10 +5,9 @@ import (
 	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/pipeline"
 	management_api "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/pipeline"
+	temuapi "task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/common"
 
@@ -161,10 +160,10 @@ func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContex
 	}
 
 	// 创建SubmitAPI
-	submitAPI := api.NewSubmitAPI(temuCtx.APIClient, h.logger)
+	submitAPI := temuapi.NewSubmitAPI(temuCtx.APIClient, h.logger)
 
 	// 调用API提交产品
-	response, err := submitAPI.SubmitProduct(request)
+	response, err := submitAPI.Submit(request)
 	if err != nil {
 		// 保存JSON数据到文件用于调试
 		task := temuCtx.GetTask()
@@ -230,19 +229,19 @@ func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContex
 }
 
 // buildSubmitRequest 构建提交请求
-func (h *ProductSubmitHandler) buildSubmitRequest(temuCtx *temucontext.TemuTaskContext) *models.ProductSubmitRequest {
+func (h *ProductSubmitHandler) buildSubmitRequest(temuCtx *temucontext.TemuTaskContext) *temuapi.SubmitRequest {
 	// 获取TEMU产品信息
 	temuProduct := temuCtx.TemuProduct
 
 	// 转换Extra类型
-	extra := models.Extra{
+	extra := temuapi.ExtraInfo{
 		Tab:              temuProduct.Extra.Tab,
 		MinSkuImageSize:  temuProduct.Extra.MinSkuImageSize,
 		MaxSkuImageSize:  temuProduct.Extra.MaxSkuImageSize,
 		CreateEmptyGoods: temuProduct.Extra.CreateEmptyGoods,
 	}
 
-	request := &models.ProductSubmitRequest{
+	request := &temuapi.SubmitRequest{
 		GoodsBasic:            temuProduct.GoodsBasic,
 		GoodsSaleInfo:         temuProduct.GoodsSaleInfo,
 		GoodsServicePromise:   temuProduct.GoodsServicePromise,

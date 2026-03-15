@@ -1,10 +1,10 @@
-// Package handlers 提供TEMU平台图片上传并发工作器
+﻿// Package handlers 提供TEMU平台图片上传并发工作器
 package image
 
 import (
 	"fmt"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"

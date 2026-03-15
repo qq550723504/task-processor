@@ -5,7 +5,7 @@ import (
 	"context"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temupricing "task-processor/internal/platforms/temu/api/pricing"
 )
 
 // StoreConfigProvider 店铺配置提供者接口
@@ -42,12 +42,12 @@ type ProductFetcher interface {
 
 // DecisionMaker 决策制定者接口
 type DecisionMaker interface {
-	MakeDecision(item *models.PricingSku, storeID int64) (*models.PricingDecision, error)
-	MakeDecisionForSalesBoost(goods *models.SalesBoostGoods, sku *models.SalesBoostSku, storeID int64) (*models.PricingDecision, error)
+	MakeDecision(item *temupricing.Sku, storeID int64) (*temupricing.Decision, error)
+	MakeDecisionForSalesBoost(goods *temupricing.SalesBoostGoods, sku *temupricing.SalesBoostSku, storeID int64) (*temupricing.Decision, error)
 }
 
 // PricingProcessor 核价处理器接口
 type PricingProcessor interface {
-	ProcessPendingPrices(ctx context.Context) (*models.PricingStatistics, error)
-	ProcessPendingPricesWithAmazon(ctx context.Context, configProvider any) (*models.PricingStatistics, error)
+	ProcessPendingPrices(ctx context.Context) (*temupricing.Statistics, error)
+	ProcessPendingPricesWithAmazon(ctx context.Context, configProvider any) (*temupricing.Statistics, error)
 }

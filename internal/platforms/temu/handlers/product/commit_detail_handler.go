@@ -1,11 +1,10 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuapi "task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -67,8 +66,8 @@ func (h *CommitDetailHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 }
 
 // validateCommitInfo 验证提交信息
-func (h *CommitDetailHandler) validateCommitInfo(temuProduct *models.Product) error {
-	basic := temuProduct.GoodsBasic
+func (h *CommitDetailHandler) validateCommitInfo(temuProduct *temuapi.Product) error {
+	basic := &temuProduct.GoodsBasic
 
 	if basic.ListingCommitID == "" {
 		return fmt.Errorf("ListingCommitID不能为空")
@@ -97,19 +96,19 @@ func (h *CommitDetailHandler) validateCommitInfo(temuProduct *models.Product) er
 }
 
 // queryCommitDetail 查询提交详情
-func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) error {
+func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskContext, temuProduct *temuapi.Product) error {
 	// 获取API客户端
 	if temuCtx.APIClient == nil {
 		return fmt.Errorf("API客户端未初始化")
 	}
 
-	basic := temuProduct.GoodsBasic
+	basic := &temuProduct.GoodsBasic
 
 	// 创建QueryAPI实例
-	queryAPI := api.NewQueryAPI(temuCtx.APIClient, h.logger)
+	queryAPI := temuapi.NewQueryAPI(temuCtx.APIClient, h.logger)
 
 	// 构造查询请求体
-	request := &models.CommitDetailRequest{
+	request := &temuapi.CommitDetailRequest{
 		ListingCommitID:      basic.ListingCommitID,
 		GoodsCommitID:        basic.GoodsCommitID,
 		GoodsID:              basic.GoodsID,
@@ -154,7 +153,7 @@ func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskCon
 }
 
 // updateProductFromCommitDetail 从提交详情更新产品数据
-func (h *CommitDetailHandler) updateProductFromCommitDetail(temuProduct *models.Product, result *models.CommitDetailResult) error {
+func (h *CommitDetailHandler) updateProductFromCommitDetail(temuProduct *temuapi.Product, result *temuapi.CommitDetailResult) error {
 	if result.GoodsBasic == nil {
 		return fmt.Errorf("商品基础信息为空")
 	}
@@ -232,7 +231,7 @@ func (h *CommitDetailHandler) updateProductFromCommitDetail(temuProduct *models.
 }
 
 // updateCategoryTree 更新分类树信息
-func (h *CommitDetailHandler) updateCategoryTree(temuProduct *models.Product, tree *models.CommitDetailCategoryTree) {
+func (h *CommitDetailHandler) updateCategoryTree(temuProduct *temuapi.Product, tree *temuapi.CommitDetailCategoryTree) {
 	// 更新分类层级信息
 	temuProduct.GoodsBasic.CategoryTree.Level = tree.Level
 	temuProduct.GoodsBasic.CategoryTree.CateType = tree.CateType

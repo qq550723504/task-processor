@@ -1,11 +1,10 @@
-// Package sku 提供TEMU平台的AI SKU映射验证功能
+﻿// Package sku 提供TEMU平台的AI SKU映射验证功能
 package sku
 
 import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/platforms/temu/api/models"
 	"task-processor/internal/platforms/temu/types"
 )
 
@@ -94,7 +93,7 @@ func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *types.AISkuMap
 	fixedCount := 0
 	for i := range response.SkuList {
 		sku := &response.SkuList[i]
-		validSpecs := make([]models.SpecInfo, 0, len(sku.Spec))
+		validSpecs := make([]types.SpecInfo, 0, len(sku.Spec))
 
 		for _, spec := range sku.Spec {
 			// 检查parent_spec_id是否存在于模板中
@@ -104,7 +103,7 @@ func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *types.AISkuMap
 			}
 
 			// 创建新的spec，确保包含parent_spec_name
-			newSpec := models.SpecInfo{
+			newSpec := types.SpecInfo{
 				SpecID:         spec.SpecID,
 				SpecName:       spec.SpecName,
 				ParentSpecID:   spec.ParentSpecID,

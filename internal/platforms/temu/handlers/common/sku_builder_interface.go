@@ -1,9 +1,9 @@
-// Package common 提供TEMU平台处理器的共享接口
+﻿// Package common 提供TEMU平台处理器的共享接口
 package common
 
 import (
 	"task-processor/internal/domain/model"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 )
 

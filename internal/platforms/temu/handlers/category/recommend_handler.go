@@ -1,11 +1,12 @@
-package category
+﻿package category
 
 import (
 	"fmt"
 	"strings"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temucategory "task-processor/internal/platforms/temu/api/category"
+	temuproduct "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -98,12 +99,12 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 	categoryAPI := api.NewCategoryAPI(temuCtx.APIClient, h.logger)
 
 	// 构造请求体
-	request := &models.CategoryRecommendRequest{
+	request := &temucategory.RecommendRequest{
 		GoodsName: goodsName,
 	}
 
 	// 发送API请求
-	response, err := categoryAPI.RecommendCategory(request)
+	response, err := categoryAPI.Recommend(request)
 	if err != nil {
 		h.logger.WithError(err).Error("分类推荐API调用失败")
 		return fmt.Errorf("分类推荐API调用失败: %w", err)
@@ -145,7 +146,7 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 	}
 
 	// 设置分类树信息
-	temuProduct.GoodsBasic.CategoryTree = models.CategoryTree{
+	temuProduct.GoodsBasic.CategoryTree = temuproduct.CategoryTree{
 		Level:        selectedCategory.Level,
 		CateType:     selectedCategory.CateType,
 		CatID:        lastLevelCatID, // 使用最深层级的分类ID
@@ -209,7 +210,7 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 }
 
 // isChildrenRelatedCategory 检查分类是否与儿童相关
-func (h *CategoryRecommendHandler) isChildrenRelatedCategory(category models.Category) bool {
+func (h *CategoryRecommendHandler) isChildrenRelatedCategory(category temucategory.Category) bool {
 	// 检查所有分类名称
 	categoryNames := []string{
 		category.Cate1Name,
@@ -265,7 +266,7 @@ func (h *CategoryRecommendHandler) isChildrenRelatedCategory(category models.Cat
 }
 
 // selectNonChildrenCategory 选择非儿童相关的分类
-func (h *CategoryRecommendHandler) selectNonChildrenCategory(categories []models.Category) (models.Category, error) {
+func (h *CategoryRecommendHandler) selectNonChildrenCategory(categories []temucategory.Category) (temucategory.Category, error) {
 	maxAttempts := 3
 
 	// 检查前三个推荐分类
@@ -288,5 +289,5 @@ func (h *CategoryRecommendHandler) selectNonChildrenCategory(categories []models
 
 	// 如果前三个都是儿童相关，终止任务
 	h.logger.WithField("max_attempts", maxAttempts).Error("推荐分类都包含儿童相关内容，终止任务")
-	return models.Category{}, fmt.Errorf("NONRETRYABLE: 前%d个推荐分类都包含儿童相关内容，无法继续处理", maxAttempts)
+	return temucategory.Category{}, fmt.Errorf("NONRETRYABLE: 前%d个推荐分类都包含儿童相关内容，无法继续处理", maxAttempts)
 }

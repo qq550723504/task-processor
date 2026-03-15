@@ -9,13 +9,13 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/platforms/temu/api/models"
+	temuproduct "task-processor/internal/platforms/temu/api/product"
 
 	"github.com/sirupsen/logrus"
 )
 
 // convertSingleProduct 转换单个TEMU产品
-func (s *productSyncServiceImpl) convertSingleProduct(temuProduct *models.SkuResponse, tenantID, storeID int64) (*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) convertSingleProduct(temuProduct *temuproduct.SkuResponse, tenantID, storeID int64) (*managementapi.ProductDataDTO, error) {
 	// 检查必要字段
 	if temuProduct.GoodsID == "" {
 		return nil, fmt.Errorf("商品ID为空，跳过转换")
@@ -45,7 +45,7 @@ func (s *productSyncServiceImpl) convertSingleProduct(temuProduct *models.SkuRes
 }
 
 // buildBaseProductData 构建基础产品数据
-func (s *productSyncServiceImpl) buildBaseProductData(temuProduct *models.SkuResponse, tenantID, storeID int64) *managementapi.ProductDataDTO {
+func (s *productSyncServiceImpl) buildBaseProductData(temuProduct *temuproduct.SkuResponse, tenantID, storeID int64) *managementapi.ProductDataDTO {
 	var publishTime *time.Time
 	if temuProduct.CrtTime != "" {
 		if t, err := s.parseTime(temuProduct.CrtTime); err == nil {
@@ -88,7 +88,7 @@ func (s *productSyncServiceImpl) buildBaseProductData(temuProduct *models.SkuRes
 }
 
 // convertSingleGoodsProduct 转换单个TEMU商品（来自商品搜索）
-func (s *productSyncServiceImpl) convertSingleGoodsProduct(temuProduct *models.GoodsSearchItem, tenantID, storeID int64) (*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) convertSingleGoodsProduct(temuProduct *temuproduct.GoodsSearchItem, tenantID, storeID int64) (*managementapi.ProductDataDTO, error) {
 	// 获取店铺信息
 	storeInfo, err := s.storeAPI.GetStore(storeID)
 	if err != nil {
@@ -141,7 +141,7 @@ func (s *productSyncServiceImpl) convertSingleGoodsProduct(temuProduct *models.G
 }
 
 // buildBaseGoodsProductData 构建基础商品数据（来自商品搜索）
-func (s *productSyncServiceImpl) buildBaseGoodsProductData(temuProduct *models.GoodsSearchItem, storeInfo *api.StoreRespDTO) *managementapi.ProductDataDTO {
+func (s *productSyncServiceImpl) buildBaseGoodsProductData(temuProduct *temuproduct.GoodsSearchItem, storeInfo *api.StoreRespDTO) *managementapi.ProductDataDTO {
 	var publishTime *time.Time
 	if temuProduct.CrtTime != "" {
 		if t, err := s.parseTime(temuProduct.CrtTime); err == nil {
@@ -185,18 +185,18 @@ func (s *productSyncServiceImpl) buildBaseGoodsProductData(temuProduct *models.G
 }
 
 // fillGoodsPriceInfo 填充商品价格信息
-func (s *productSyncServiceImpl) fillGoodsPriceInfo(productData *managementapi.ProductDataDTO, temuProduct *models.GoodsSearchItem) {
+func (s *productSyncServiceImpl) fillGoodsPriceInfo(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.GoodsSearchItem) {
 	productData.OriginalPrice = types.FlexibleString(fmt.Sprintf("%.2f", temuProduct.Price))
 	productData.SpecialPrice = types.FlexibleString(fmt.Sprintf("%.2f", temuProduct.Price)) // 商品搜索中没有特价信息，使用原价
 }
 
 // fillGoodsStockInfo 填充商品库存信息
-func (s *productSyncServiceImpl) fillGoodsStockInfo(productData *managementapi.ProductDataDTO, temuProduct *models.GoodsSearchItem) {
+func (s *productSyncServiceImpl) fillGoodsStockInfo(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.GoodsSearchItem) {
 	productData.Stock = types.FlexibleString(fmt.Sprintf("%d", temuProduct.Quantity))
 }
 
 // fillGoodsCategoryInfo 填充商品分类信息
-func (s *productSyncServiceImpl) fillGoodsCategoryInfo(productData *managementapi.ProductDataDTO, temuProduct *models.GoodsSearchItem) {
+func (s *productSyncServiceImpl) fillGoodsCategoryInfo(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.GoodsSearchItem) {
 	if len(temuProduct.CatNameList) > 0 {
 		productData.Category = temuProduct.CatNameList[len(temuProduct.CatNameList)-1] // 使用最后一级分类
 	}
@@ -204,7 +204,7 @@ func (s *productSyncServiceImpl) fillGoodsCategoryInfo(productData *managementap
 }
 
 // fillGoodsPlatformData 填充商品平台特有数据
-func (s *productSyncServiceImpl) fillGoodsPlatformData(productData *managementapi.ProductDataDTO, temuProduct *models.GoodsSearchItem) {
+func (s *productSyncServiceImpl) fillGoodsPlatformData(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.GoodsSearchItem) {
 	platformData := map[string]interface{}{
 		"listing_commit_id":       temuProduct.ListingCommitID,
 		"goods_commit_id":         temuProduct.GoodsCommitID,
@@ -239,7 +239,7 @@ func (s *productSyncServiceImpl) fillGoodsPlatformData(productData *managementap
 }
 
 // buildGoodsImageURLs 构建商品图片URL列表
-func (s *productSyncServiceImpl) buildGoodsImageURLs(temuProduct *models.GoodsSearchItem) []string {
+func (s *productSyncServiceImpl) buildGoodsImageURLs(temuProduct *temuproduct.GoodsSearchItem) []string {
 	var imageURLs []string
 
 	// 添加主图

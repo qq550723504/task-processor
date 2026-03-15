@@ -1,11 +1,11 @@
-// Package handlers 提供TEMU平台的各种处理器，包括属性验证等功能
+﻿// Package handlers 提供TEMU平台的各种处理器，包括属性验证等功能
 package property
 
 import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

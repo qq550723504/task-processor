@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temupricing "task-processor/internal/platforms/temu/api/pricing"
 	"task-processor/internal/platforms/temu/services/pricing"
 
 	"github.com/sirupsen/logrus"
@@ -73,7 +73,7 @@ func (a *TemuAutoPricingAdapter) SubmitPricingResults(ctx context.Context, resul
 }
 
 // convertTemuStats 转换Temu的统计信息到通用格式
-func convertTemuStats(stats *models.PricingStatistics) *commonscheduler.PricingStats {
+func convertTemuStats(stats *temupricing.Statistics) *commonscheduler.PricingStats {
 	if stats == nil {
 		return &commonscheduler.PricingStats{}
 	}

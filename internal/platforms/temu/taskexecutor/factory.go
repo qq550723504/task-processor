@@ -10,8 +10,8 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/platforms/common/factory"
+	temuapi "task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/client"
-	"task-processor/internal/platforms/temu/api/services"
 	schedulerservice "task-processor/internal/platforms/temu/services/business_service"
 
 	"github.com/sirupsen/logrus"
@@ -79,10 +79,10 @@ func (f *TemuTaskFactory) createProductSyncTask(ctx context.Context, config apps
 	}
 
 	// 创建 ProductAPI
-	productAPI := services.NewProductAPI(apiClient, logrus.WithField("component", "TemuProductAPI"))
+	productAPI := temuapi.NewProductAPI(apiClient, logrus.WithField("component", "TemuProductAPI"))
 
 	// 创建 SkuQueryAPI
-	skuQueryAPI := services.NewSkuQueryAPI(apiClient, logrus.WithField("component", "TemuSkuQueryAPI"))
+	skuQueryAPI := temuapi.NewQueryAPI(apiClient, logrus.WithField("component", "TemuSkuQueryAPI"))
 
 	// 获取映射客户端
 	mappingClient := f.GetManagementClient().GetProductImportMappingClient()

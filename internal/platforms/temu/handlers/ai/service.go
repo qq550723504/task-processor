@@ -1,4 +1,4 @@
-// Package handlers 提供TEMU平台的各种处理器，包括AI服务调用等功能
+﻿// Package handlers 提供TEMU平台的各种处理器，包括AI服务调用等功能
 package ai
 
 import (
@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/property"
 	"task-processor/internal/platforms/temu/types"
 

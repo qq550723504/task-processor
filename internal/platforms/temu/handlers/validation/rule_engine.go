@@ -1,10 +1,10 @@
-// Package validation 提供验证规则引擎
+﻿// Package validation 提供验证规则引擎
 package validation
 
 import (
 	"fmt"
 
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/common"
 	"task-processor/internal/platforms/temu/types"
 

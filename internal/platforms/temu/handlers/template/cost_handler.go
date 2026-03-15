@@ -1,11 +1,12 @@
-package template
+﻿package template
 
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuproduct "task-processor/internal/platforms/temu/api/product"
+	temuquery "task-processor/internal/platforms/temu/api/query"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -69,8 +70,8 @@ func (h *CostTemplateHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 }
 
 // buildCostTemplateRequest 构造成本模板查询请求
-func (h *CostTemplateHandler) buildCostTemplateRequest(temuProduct *models.Product) *models.CostTemplateRequest {
-	request := &models.CostTemplateRequest{
+func (h *CostTemplateHandler) buildCostTemplateRequest(temuProduct *temuproduct.Product) *temuquery.CostTemplateRequest {
+	request := &temuquery.CostTemplateRequest{
 		ClickType:            "8",  // 根据实际API调用设置
 		ListingCommitVersion: "1",  // 默认版本
 		QueryAll:             true, // 查询所有模板
@@ -96,7 +97,7 @@ func (h *CostTemplateHandler) buildCostTemplateRequest(temuProduct *models.Produ
 }
 
 // queryCostTemplate 发送成本模板查询请求到TEMU API
-func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product, request *models.CostTemplateRequest) error {
+func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskContext, temuProduct *temuproduct.Product, request *temuquery.CostTemplateRequest) error {
 	// 创建QueryAPI实例
 	queryAPI := api.NewQueryAPI(temuCtx.APIClient, h.logger)
 
@@ -136,7 +137,7 @@ func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskCon
 }
 
 // extractCostTemplateID 从响应中提取成本模板ID
-func (h *CostTemplateHandler) extractCostTemplateID(response *models.CostTemplateResponse) string {
+func (h *CostTemplateHandler) extractCostTemplateID(response *temuquery.CostTemplateResponse) string {
 	if response == nil || response.Result == nil {
 		h.logger.Warn("响应数据为空")
 		return ""

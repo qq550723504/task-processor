@@ -4,14 +4,15 @@ package scheduler
 import (
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/temu/api/services"
+	temuproduct "task-processor/internal/platforms/temu/api/product"
+	temuquery "task-processor/internal/platforms/temu/api/query"
 )
 
 // ServiceFactory TEMU调度服务工厂
 type ServiceFactory struct {
 	managementClient *management.ClientManager
-	productAPI       *services.ProductAPI
-	skuQueryAPI      *services.SkuQueryAPI
+	productAPI       *temuproduct.API
+	skuQueryAPI      *temuquery.API
 	mappingClient    managementapi.ProductImportMappingAPI
 	storeAPI         managementapi.StoreAPI
 }
@@ -19,8 +20,8 @@ type ServiceFactory struct {
 // NewServiceFactory 创建TEMU服务工厂
 func NewServiceFactory(
 	managementClient *management.ClientManager,
-	productAPI *services.ProductAPI,
-	skuQueryAPI *services.SkuQueryAPI,
+	productAPI *temuproduct.API,
+	skuQueryAPI *temuquery.API,
 	mappingClient managementapi.ProductImportMappingAPI,
 	storeAPI managementapi.StoreAPI,
 ) *ServiceFactory {

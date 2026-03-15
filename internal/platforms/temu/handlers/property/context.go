@@ -1,4 +1,4 @@
-// Package handlers 提供属性处理上下文，统一管理属性处理过程中的数据和状态
+﻿// Package handlers 提供属性处理上下文，统一管理属性处理过程中的数据和状态
 package property
 
 import (
@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/common"
 	"task-processor/internal/platforms/temu/types"
 

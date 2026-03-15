@@ -1,10 +1,10 @@
-// Package handlers 提供TEMU平台SKU图片验证功能
+﻿// Package handlers 提供TEMU平台SKU图片验证功能
 package image
 
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/services"
 

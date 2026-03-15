@@ -1,7 +1,14 @@
-// Package types 提供TEMU平台AI相关的类型定义
+﻿// Package types 提供TEMU平台AI相关的类型定义
 package types
 
-import "task-processor/internal/platforms/temu/api/models"
+// SpecInfo 规格信息（用于AI生成的SKU映射）
+type SpecInfo struct {
+	SpecID         string `json:"spec_id"`
+	SpecName       string `json:"spec_name"`
+	ParentSpecID   string `json:"parent_spec_id"`
+	ParentSpecName string `json:"parent_spec_name,omitempty"`
+	ParentID       string `json:"parent_id,omitempty"`
+}
 
 // VariantMappingRequest AI变体映射请求
 type VariantMappingRequest struct {
@@ -33,7 +40,7 @@ type AISkuMappingResponse struct {
 type AIGeneratedSku struct {
 	UniqueID          string            `json:"unique_id"`
 	Asin              string            `json:"asin"`
-	Spec              []models.SpecInfo `json:"spec"`
+	Spec              []SpecInfo        `json:"spec"`
 	ColorSpecID       string            `json:"color_spec_id"`
 	SpecID            string            `json:"spec_id"`
 	VariantAttributes map[string]string `json:"variant_attributes"`

@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	temuapi "task-processor/internal/platforms/temu/api"
+	"task-processor/internal/pkg/jsonutil"
+	temuinventory "task-processor/internal/platforms/temu/api/inventory"
 
 	"github.com/sirupsen/logrus"
 )
@@ -40,10 +40,10 @@ func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
 	}
 
 	// 创建库存服务实例
-	inventoryService := temuapi.NewInventoryService(s.temuAPIClient, s.logger)
+	inventoryService := temuinventory.NewAPI(s.temuAPIClient, s.logger)
 
 	// 调用TEMU API下架产品
-	if _, err := inventoryService.OfflineProduct(goodsID, skuIDs); err != nil {
+	if _, err := inventoryService.Offline(goodsID, skuIDs); err != nil {
 		return fmt.Errorf("调用TEMU API下架产品失败: %w", err)
 	}
 
@@ -107,10 +107,10 @@ func (s *inventorySyncServiceImpl) updateProductStockViaTEMUAPI(
 	goodsID := prod.PlatformProductID
 
 	// 创建库存服务实例
-	inventoryService := temuapi.NewInventoryService(s.temuAPIClient, s.logger)
+	inventoryService := temuinventory.NewAPI(s.temuAPIClient, s.logger)
 
 	// 构建库存变更信息
-	skuStockChanges := []temuapi.SkuStockChange{
+	skuStockChanges := []temuinventory.SkuStockChange{
 		{
 			SkuID:                 skuInfo.SkuCode,
 			CurrentShippingMode:   1,
@@ -161,10 +161,10 @@ func (s *inventorySyncServiceImpl) relistProductViaTEMUAPI(
 	}
 
 	// 创建库存服务实例
-	inventoryService := temuapi.NewInventoryService(s.temuAPIClient, s.logger)
+	inventoryService := temuinventory.NewAPI(s.temuAPIClient, s.logger)
 
 	// 调用TEMU API上架产品
-	if _, err := inventoryService.OnlineProduct(goodsID, skuIDs); err != nil {
+	if _, err := inventoryService.Online(goodsID, skuIDs); err != nil {
 		return fmt.Errorf("调用TEMU API上架产品失败: %w", err)
 	}
 

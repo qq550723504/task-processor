@@ -1,4 +1,4 @@
-package sku
+﻿package sku
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/skugen"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	temuformat "task-processor/internal/platforms/temu/format"
 	"task-processor/internal/platforms/temu/handlers/image"
@@ -66,10 +66,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	// 从店铺配置读取库存设置（使用统一的方法）
 	quantity := ib.priceHandler.GetDefaultStock(temuCtx)
 
-	specList := aiSku.Spec
-
-	// 去重：确保每个parent_spec_id只出现一次
-	specList = ib.deduplicateSpecs(specList)
+	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
 
 	// 验证规格是否有效（检查是否还有临时ID）
 	hasTemp := false
@@ -83,14 +80,12 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 
 	if hasTemp {
 		ib.logger.Error("❌ 存在未解析的临时规格ID，这表明resolveTemporarySpecIDs没有正确工作")
-		// 返回空规格的SKU，让后续流程能够检测到问题
 		specList = []models.SpecInfo{}
 	}
 
 	if err := ib.specHandler.ValidateSpecs(specList); err != nil {
 		ib.logger.Errorf("❌ 规格验证失败: %v", err)
 		ib.logger.Error("❌ 无法创建SKU，因为规格无效且不允许使用默认规格")
-		// 返回空规格的SKU，让后续流程能够检测到问题
 	}
 
 	// 使用AI提取/估算的重量和尺寸（单位：lb和in）
@@ -251,8 +246,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 	finalSalePrice := int64(basePrice * 100) // 转换为分
 	quantity := 10                           // 默认库存
 
-	specList := aiSku.Spec
-	specList = ib.deduplicateSpecs(specList)
+	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
 
 	// 使用AI提取/估算的重量和尺寸
 	weight := temuformat.Weight(aiSku.Weight)

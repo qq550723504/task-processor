@@ -1,4 +1,4 @@
-// Package handlers 提供TEMU平台单张图片验证功能
+﻿// Package handlers 提供TEMU平台单张图片验证功能
 package image
 
 import (
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"task-processor/internal/pkg/downloader"
-	"task-processor/internal/platforms/temu/api/models"
+	temuimage "task-processor/internal/platforms/temu/api/image"
 	"task-processor/internal/platforms/temu/handlers/common"
 
 	"github.com/sirupsen/logrus"
@@ -29,8 +29,8 @@ func NewSingleImageValidator() *SingleImageValidator {
 }
 
 // ValidateSingleImage 验证单张图片
-func (v *SingleImageValidator) ValidateSingleImage(imageURL, context string, requirement common.ImageRequirement) *models.ImageValidationResult {
-	result := &models.ImageValidationResult{
+func (v *SingleImageValidator) ValidateSingleImage(imageURL, context string, requirement common.ImageRequirement) *temuimage.ValidationResult {
+	result := &temuimage.ValidationResult{
 		URL:         imageURL,
 		IsValid:     true,
 		Violations:  []string{},

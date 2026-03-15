@@ -1,8 +1,8 @@
-// Package handlers 提供属性映射阶段，负责默认填充
+﻿// Package handlers 提供属性映射阶段，负责默认填充
 package property
 
 import (
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

@@ -1,12 +1,11 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/fileutil"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuapi "task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -85,10 +84,10 @@ func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) e
 	request := h.buildSaveRequest(temuCtx)
 
 	// 创建ProductAPI
-	productAPI := api.NewProductAPI(temuCtx.APIClient, h.logger)
+	productAPI := temuapi.NewProductAPI(temuCtx.APIClient, h.logger)
 
 	// 调用API保存产品
-	response, err := productAPI.SaveProduct(request)
+	response, err := productAPI.Save(request)
 	if err != nil {
 		h.logger.Errorf("保存产品失败: %v", err)
 		return fmt.Errorf("保存产品失败: %w", err)
@@ -109,19 +108,19 @@ func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) e
 }
 
 // buildSaveRequest 构建保存请求
-func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskContext) *models.ProductSaveRequest {
+func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskContext) *temuapi.SaveRequest {
 	// 获取TEMU产品信息
 	temuProduct := temuCtx.TemuProduct
 
 	// 转换Extra类型
-	extra := models.Extra{
+	extra := temuapi.ExtraInfo{
 		Tab:              temuProduct.Extra.Tab,
 		MinSkuImageSize:  temuProduct.Extra.MinSkuImageSize,
 		MaxSkuImageSize:  temuProduct.Extra.MaxSkuImageSize,
 		CreateEmptyGoods: temuProduct.Extra.CreateEmptyGoods,
 	}
 
-	request := &models.ProductSaveRequest{
+	request := &temuapi.SaveRequest{
 		GoodsBasic:            temuProduct.GoodsBasic,
 		GoodsSaleInfo:         temuProduct.GoodsSaleInfo,
 		GoodsServicePromise:   temuProduct.GoodsServicePromise,
@@ -147,7 +146,7 @@ func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskConte
 }
 
 // updateProductWithSaveResult 使用保存结果更新产品信息
-func (h *ProductSaveHandler) updateProductWithSaveResult(temuCtx *temucontext.TemuTaskContext, result *models.ProductSaveResult2) {
+func (h *ProductSaveHandler) updateProductWithSaveResult(temuCtx *temucontext.TemuTaskContext, result *temuapi.SaveResult) {
 	// 获取TEMU产品信息
 	temuProduct := temuCtx.TemuProduct
 	if temuProduct == nil {
@@ -177,7 +176,7 @@ func (h *ProductSaveHandler) updateProductWithSaveResult(temuCtx *temucontext.Te
 }
 
 // getTotalSkuCount 获取总SKU数量
-func (h *ProductSaveHandler) getTotalSkuCount(skcList []models.Skc) int {
+func (h *ProductSaveHandler) getTotalSkuCount(skcList []temuapi.Skc) int {
 	total := 0
 	for _, skc := range skcList {
 		total += len(skc.SkuList)

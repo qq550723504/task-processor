@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/pipeline"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/skugen"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/common"
 	"task-processor/internal/platforms/temu/handlers/property"

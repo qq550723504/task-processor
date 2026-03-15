@@ -1,7 +1,7 @@
-package property
+﻿package property
 
 import (
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/types"
 )
 

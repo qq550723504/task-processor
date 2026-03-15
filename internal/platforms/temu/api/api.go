@@ -1,11 +1,14 @@
 // Package api 提供TEMU平台API的统一入口
 package api
 
-// 重新导出主要的类型和函数，保持向后兼容
 import (
+	"task-processor/internal/platforms/temu/api/category"
 	"task-processor/internal/platforms/temu/api/client"
-	"task-processor/internal/platforms/temu/api/models"
-	"task-processor/internal/platforms/temu/api/services"
+	"task-processor/internal/platforms/temu/api/image"
+	"task-processor/internal/platforms/temu/api/inventory"
+	"task-processor/internal/platforms/temu/api/pricing"
+	"task-processor/internal/platforms/temu/api/product"
+	"task-processor/internal/platforms/temu/api/query"
 )
 
 // 重新导出客户端相关类型
@@ -13,137 +16,139 @@ type (
 	APIClient          = client.APIClient
 	APIClientManager   = client.APIClientManager
 	APIClientInterface = client.APIClientInterface
+	Config             = client.Config
+	CookieManager      = client.CookieManager
+	HTTPManager        = client.HTTPManager
+	AuthManager        = client.AuthManager
 )
 
-// 重新导出基础设施相关类型
+// 重新导出各功能包的 API 类型
 type (
-	Config        = client.Config
-	CookieManager = client.CookieManager
-	HTTPManager   = client.HTTPManager
-	AuthManager   = client.AuthManager
+	ProductAPI   = product.API
+	CategoryAPI  = category.API
+	ImageAPI     = image.API
+	InventoryAPI = inventory.API
+	PricingAPI   = pricing.API
+	QueryAPI     = query.API
 )
 
-// 重新导出服务相关类型
+// 重新导出产品相关类型
 type (
-	ProductAPI       = services.ProductAPI
-	PricingService   = services.PricingService
-	ListingAPI       = services.ListingAPI
-	OfflineAPI       = services.OfflineAPI
-	ImageUploadAPI   = services.ImageUploadAPI
-	CategoryAPI      = services.CategoryAPI
-	QueryAPI         = services.QueryAPI
-	SubmitAPI        = services.SubmitAPI
-	InventoryService = services.InventoryService
+	Product                  = product.Product
+	SaveRequest              = product.SaveRequest
+	SaveResponse             = product.SaveResponse
+	SaveResult               = product.SaveResult
+	SubmitRequest            = product.SubmitRequest
+	SubmitResponse           = product.SubmitResponse
+	SubmitResult             = product.SubmitResult
+	ExtraInfo                = product.ExtraInfo
+	CreateCommitRequest      = product.CreateCommitRequest
+	CreateCommitResponse     = product.CreateCommitResponse
+	GoodsBasicInfo           = product.GoodsBasicInfo
+	GoodsSaleInfo            = product.GoodsSaleInfo
+	ServicePromise           = product.ServicePromise
+	ExtensionInfo            = product.ExtensionInfo
+	Skc                      = product.Skc
+	Sku                      = product.Sku
+	SpecInfo                 = product.SpecInfo
+	ImageInfo                = product.ImageInfo
+	ProductExpressInfo       = product.ProductExpressInfo
+	BatchSkuInfo             = product.BatchSkuInfo
+	GoodsSearchResponse      = product.GoodsSearchResponse
+	GoodsSearchItem          = product.GoodsSearchItem
+	PriceQueryRequest        = product.PriceQueryRequest
+	PriceQueryResponse       = product.PriceQueryResponse
+	MaxRetailPriceQueryItem  = product.MaxRetailPriceQueryItem
+	MaxRetailPriceResultItem = product.MaxRetailPriceResultItem
+	BulkRelistOptions        = product.BulkRelistOptions
+	BulkRelistSummary        = product.BulkRelistSummary
 )
 
-// 重新导出模型相关类型
+// 重新导出定价相关类型
 type (
-	// 产品相关
-	Product            = models.Product
-	ProductSaveResult  = models.ProductSaveResult
-	SourceProduct      = models.SourceProduct
-	ProductListRequest = models.ProductListRequest
+	PendingListRequest  = pricing.PendingListRequest
+	PendingListResponse = pricing.PendingListResponse
+	SalesBoostGoods     = pricing.SalesBoostGoods
+	SalesBoostSku       = pricing.SalesBoostSku
+	PriceVO             = pricing.PriceVO
+	DecisionAction      = pricing.DecisionAction
+	Decision            = pricing.Decision
+)
 
-	// 定价相关
-	PendingPriceListRequest  = models.PendingPriceListRequest
-	PendingPriceListResponse = models.PendingPriceListResponse
-	SalesBoostGoods          = models.SalesBoostGoods
-	PriceVO                  = models.PriceVO
+// 重新导出库存相关类型
+type (
+	StockEditRequest  = inventory.StockEditRequest
+	SkuStockChange    = inventory.SkuStockChange
+	StockEditResponse = inventory.StockEditResponse
+	OnlineRequest     = inventory.OnlineRequest
+	OnlineResponse    = inventory.OnlineResponse
+	OfflineRequest    = inventory.OfflineRequest
+	OfflineResponse   = inventory.OfflineResponse
+	RelistRequest     = inventory.RelistRequest
+	RelistResponse    = inventory.RelistResponse
+	SearchResponse    = inventory.SearchResponse
+)
 
-	// 上架相关
-	RelistProductRequest   = models.RelistProductRequest
-	RelistProductResponse  = models.RelistProductResponse
-	DelistProductRequest   = models.DelistProductRequest
-	DelistProductResponse  = models.DelistProductResponse
-	ProductListingInfo     = models.ProductListingInfo
-	ListingOperationResult = models.ListingOperationResult
-	BatchListingResult     = models.BatchListingResult
+// 重新导出图片相关类型
+type (
+	UploadSignature   = image.UploadSignature
+	SignatureResponse = image.SignatureResponse
+	UploadResult      = image.UploadResult
+	ValidationResult  = image.ValidationResult
+)
 
-	// 下架产品相关
-	OfflineProductSearchRequest  = models.OfflineProductSearchRequest
-	OfflineProductSearchResponse = models.OfflineProductSearchResponse
+// 重新导出分类相关类型
+type (
+	CategoryDisclaimResponse  = category.DisclaimResponse
+	CategoryRecommendRequest  = category.RecommendRequest
+	CategoryRecommendResponse = category.RecommendResponse
+)
 
-	// 图片上传相关
-	UploadSignature         = models.UploadSignature
-	SignatureResponse       = models.SignatureResponse
-	UploadResult            = models.UploadResult
-	TemuImageUploadResponse = models.TemuImageUploadResponse
-	ImageValidationResult   = models.ImageValidationResult
+// 重新导出查询相关类型
+type (
+	TextCheckRequest               = query.TextCheckRequest
+	TextCheckResponse              = query.TextCheckResponse
+	SpecQueryRequest               = query.SpecQueryRequest
+	SpecQueryResponse              = query.SpecQueryResponse
+	SkuSnCheckRequest              = query.SkuSnCheckRequest
+	SkuSnCheckResponse             = query.SkuSnCheckResponse
+	CostTemplateRequest            = query.CostTemplateRequest
+	CostTemplateResponse           = query.CostTemplateResponse
+	CommitDetailRequest            = query.CommitDetailRequest
+	CommitDetailResponse           = query.CommitDetailResponse
+	CommitDetailResult             = query.CommitDetailResult
+	CommitDetailGoodsBasic         = query.CommitDetailGoodsBasic
+	CommitDetailCategoryTree       = query.CommitDetailCategoryTree
+	CommitDetailCategoryDisclaimer = query.CommitDetailCategoryDisclaimer
+	CommitDetailGoodsSaleInfo      = query.CommitDetailGoodsSaleInfo
+	CommitDetailExtra              = query.CommitDetailExtra
+	OutSkuSnItem                   = query.OutSkuSnItem
+	OutGoodsSnCheckResult          = query.OutGoodsSnCheckResult
+	SkuQueryResponse               = query.SkuQueryResponse
+)
 
-	// 库存管理相关
-	StockEditRequest  = models.StockEditRequest
-	SkuStockChange    = models.SkuStockChange
-	StockEditResponse = models.StockEditResponse
-	StockEditResult   = models.StockEditResult
-
-	// 下架产品相关
-	OfflineProductRequest  = models.OfflineProductRequest
-	OfflineProductResponse = models.OfflineProductResponse
-	OfflineProductResult   = models.OfflineProductResult
-
-	// 上架产品相关
-	OnlineProductRequest  = models.OnlineProductRequest
-	OnlineProductResponse = models.OnlineProductResponse
-	OnlineProductResult   = models.OnlineProductResult
-
-	// 通用类型
-	ImageInfo          = models.ImageInfo
-	ProductExpressInfo = models.ProductExpressInfo
-
-	// 商品相关
-	GoodsBasicInfo = models.GoodsBasicInfo
-	GoodsSaleInfo  = models.GoodsSaleInfo
-
-	// SKU相关
-	Skc = models.Skc
-
-	// 查询相关
-	TextCheckRequest         = models.TextCheckRequest
-	TextCheckResponse        = models.TextCheckResponse
-	TemplateQueryRequest     = models.TemplateQueryRequest
-	TemplateQueryResponse    = models.TemplateQueryResponse
-	SpecQueryRequest         = models.SpecQueryRequest
-	SpecQueryResponse        = models.SpecQueryResponse
-	SkuSnCheckRequest        = models.SkuSnCheckRequest
-	SkuSnCheckResponse       = models.SkuSnCheckResponse
-	CostTemplateRequest      = models.CostTemplateRequest
-	CostTemplateResponse     = models.CostTemplateResponse
-	CommitDetailRequest      = models.CommitDetailRequest
-	CommitDetailResponse     = models.CommitDetailResponse
-	PriceQueryRequest        = models.PriceQueryRequest
-	PriceQueryResponse       = models.PriceQueryResponse
-	MaxRetailPriceQueryItem  = models.MaxRetailPriceQueryItem
-	MaxRetailPriceResultItem = models.MaxRetailPriceResultItem
-
-	// 提交相关
-	ProductSubmitRequest  = models.ProductSubmitRequest
-	ProductSubmitResponse = models.ProductSubmitResponse
-	CreateCommitRequest   = models.CreateCommitRequest
-	CreateCommitResponse  = models.CreateCommitResponse
-
-	// 分类相关
-	CategoryDisclaimRequest   = models.CategoryDisclaimRequest
-	CategoryDisclaimResponse  = models.CategoryDisclaimResponse
-	CategoryRecommendRequest  = models.CategoryRecommendRequest
-	CategoryRecommendResponse = models.CategoryRecommendResponse
+// 重新导出查询相关选项类型
+type (
+	GoodsSearchOptions = product.GoodsSearchOptions
+	SkuQueryOptions    = query.SkuQueryOptions
 )
 
 // 重新导出构造函数
 var (
-	NewAPIClient        = client.NewAPIClient
-	NewAPIClientManager = client.NewAPIClientManager
-	NewProductAPI       = services.NewProductAPI
-	NewPricingService   = services.NewPricingService
-	NewListingAPI       = services.NewListingAPI
-	NewOfflineAPI       = services.NewOfflineAPI
-	NewImageUploadAPI   = services.NewImageUploadAPI
-	NewCategoryAPI      = services.NewCategoryAPI
-	NewQueryAPI         = services.NewQueryAPI
-	NewSubmitAPI        = services.NewSubmitAPI
-	NewInventoryService = services.NewInventoryService
-	NewCookieManager    = client.NewCookieManager
-	NewHTTPManager      = client.NewHTTPManager
-	NewAuthManager      = client.NewAuthManager
-	DefaultConfig       = client.DefaultConfig
-	GetDefaultHeaders   = client.GetDefaultHeaders
+	NewAPIClient          = client.NewAPIClient
+	NewAPIClientManager   = client.NewAPIClientManager
+	NewCookieManager      = client.NewCookieManager
+	NewHTTPManager        = client.NewHTTPManager
+	NewAuthManager        = client.NewAuthManager
+	DefaultConfig         = client.DefaultConfig
+	GetDefaultHeaders     = client.GetDefaultHeaders
+	NewProductAPI         = product.NewAPI
+	NewSubmitAPI          = product.NewAPI // Submit/Save/CreateCommit 均在 product.API
+	NewCategoryAPI        = category.NewAPI
+	NewImageAPI           = image.NewAPI
+	NewInventoryAPI       = inventory.NewAPI
+	NewPricingAPI         = pricing.NewAPI
+	NewQueryAPI           = query.NewAPI
+	NewGoodsSearchOptions = product.NewGoodsSearchOptions
+	NewSkuQueryOptions    = query.NewSkuQueryOptions
 )

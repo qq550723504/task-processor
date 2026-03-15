@@ -1,17 +1,16 @@
-package product
+﻿package product
 
 import (
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/platforms/temu/api/client"
+	"task-processor/internal/platforms/temu/api/inventory"
 
 	"github.com/sirupsen/logrus"
 )
 
 // BulkRelistService 批量重新上架服务
 type BulkRelistService struct {
-	apiClient      api.APIClientInterface
-	offlineAPI     *api.OfflineAPI
-	listingAPI     *api.ListingAPI
+	apiClient      client.APIClientInterface
+	inventoryAPI   *inventory.API
 	batchProcessor *BatchProcessor
 	productFilter  *ProductFilter
 	processor      *ProductProcessor
@@ -20,28 +19,26 @@ type BulkRelistService struct {
 }
 
 // NewBulkRelistService 创建批量重新上架服务
-func NewBulkRelistService(apiClient api.APIClientInterface) *BulkRelistService {
+func NewBulkRelistService(apiClient client.APIClientInterface) *BulkRelistService {
 	logger := apiClient.GetLogger()
-	offlineAPI := api.NewOfflineAPI(apiClient, logger)
-	listingAPI := api.NewListingAPI(apiClient, logger)
+	inventoryAPI := inventory.NewAPI(apiClient, logger)
 
 	// 创建过滤器
 	productFilter := NewProductFilter(logger)
 
 	// 创建处理器
-	processor := NewProductProcessor(listingAPI, productFilter, logger)
+	processor := NewProductProcessor(inventoryAPI, productFilter, logger)
 
 	// 创建批量处理器
-	var offlineAPIInterface OfflineAPIInterface = offlineAPI
+	var offlineAPIInterface OfflineAPIInterface = inventoryAPI
 	batchProcessor := NewBatchProcessor(&offlineAPIInterface, logger)
 
 	// 创建页面循环处理器
-	pageLoop := NewPageLoopProcessor(offlineAPI, processor, logger)
+	pageLoop := NewPageLoopProcessor(inventoryAPI, processor, logger)
 
 	return &BulkRelistService{
 		apiClient:      apiClient,
-		offlineAPI:     offlineAPI,
-		listingAPI:     listingAPI,
+		inventoryAPI:   inventoryAPI,
 		batchProcessor: batchProcessor,
 		productFilter:  productFilter,
 		processor:      processor,
@@ -51,14 +48,14 @@ func NewBulkRelistService(apiClient api.APIClientInterface) *BulkRelistService {
 }
 
 // RelistAllOfflineProducts 获取所有已下架产品并逐个全部上架
-func (s *BulkRelistService) RelistAllOfflineProducts(options *models.BulkRelistOptions) (*models.RelistAllResult, error) {
+func (s *BulkRelistService) RelistAllOfflineProducts(options *BulkRelistOptions) (*RelistAllResult, error) {
 	s.logger.Info("开始获取所有已下架产品并逐个上架")
 
 	// 使用默认选项
 	if options == nil {
-		options = &models.BulkRelistOptions{
+		options = &BulkRelistOptions{
 			DelayBetweenRequests: 1000, // 默认1秒延迟
-			SkipConditions: &models.SkipConditions{
+			SkipConditions: &SkipConditions{
 				SkipNeedRectification: true,
 				SkipSeverelyPunished:  true,
 				SkipLocked:            true,
@@ -66,13 +63,13 @@ func (s *BulkRelistService) RelistAllOfflineProducts(options *models.BulkRelistO
 		}
 	}
 
-	result := &models.RelistAllResult{
+	result := &RelistAllResult{
 		TotalOfflineCount: 0, // 初始不知道总数
 		ProcessedCount:    0,
 		SuccessCount:      0,
 		FailCount:         0,
 		SkippedCount:      0,
-		Results:           make([]models.RelistDetailResult, 0),
+		Results:           make([]RelistDetailResult, 0),
 	}
 
 	pageSize := 200 // 使用最大页面大小
@@ -87,7 +84,7 @@ func (s *BulkRelistService) RelistAllOfflineProducts(options *models.BulkRelistO
 }
 
 // processBatchMode 批量获取模式：先获取所有商品ID，再逐个处理
-func (s *BulkRelistService) processBatchMode(options *models.BulkRelistOptions, result *models.RelistAllResult, pageSize int) (*models.RelistAllResult, error) {
+func (s *BulkRelistService) processBatchMode(options *BulkRelistOptions, result *RelistAllResult, pageSize int) (*RelistAllResult, error) {
 	// 第一步：获取所有下架商品的完整信息
 	allProducts, totalExpected, err := s.batchProcessor.FetchAllProducts(pageSize)
 	if err != nil {
@@ -118,14 +115,14 @@ func (s *BulkRelistService) processBatchMode(options *models.BulkRelistOptions, 
 }
 
 // RelistOfflineProductsWithFilter 根据过滤条件重新上架已下架产品（流式处理）
-func (s *BulkRelistService) RelistOfflineProductsWithFilter(filter *models.ProductFilter, options *models.BulkRelistOptions) (*models.RelistAllResult, error) {
+func (s *BulkRelistService) RelistOfflineProductsWithFilter(filter *ProductFilterOptions, options *BulkRelistOptions) (*RelistAllResult, error) {
 	s.logger.Info("根据过滤条件重新上架已下架产品（流式处理）")
 
 	// 使用默认选项
 	if options == nil {
-		options = &models.BulkRelistOptions{
+		options = &BulkRelistOptions{
 			DelayBetweenRequests: 1000,
-			SkipConditions: &models.SkipConditions{
+			SkipConditions: &SkipConditions{
 				SkipNeedRectification: true,
 				SkipSeverelyPunished:  true,
 				SkipLocked:            true,
@@ -133,13 +130,13 @@ func (s *BulkRelistService) RelistOfflineProductsWithFilter(filter *models.Produ
 		}
 	}
 
-	result := &models.RelistAllResult{
+	result := &RelistAllResult{
 		TotalOfflineCount: 0,
 		ProcessedCount:    0,
 		SuccessCount:      0,
 		FailCount:         0,
 		SkippedCount:      0,
-		Results:           make([]models.RelistDetailResult, 0),
+		Results:           make([]RelistDetailResult, 0),
 	}
 
 	pageSize := 200

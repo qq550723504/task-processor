@@ -1,11 +1,11 @@
-// Package validation 提供百分比总和验证规则
+﻿// Package validation 提供百分比总和验证规则
 package validation
 
 import (
 	"fmt"
 	"strconv"
 
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/common"
 	"task-processor/internal/platforms/temu/types"
 

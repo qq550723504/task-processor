@@ -1,10 +1,10 @@
-// Package handlers 提供属性去重功能
+﻿// Package handlers 提供属性去重功能
 package property
 
 import (
 	"fmt"
 
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 
 	"github.com/sirupsen/logrus"
 )

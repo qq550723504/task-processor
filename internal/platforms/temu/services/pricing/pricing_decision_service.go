@@ -15,7 +15,7 @@ import (
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temupricing "task-processor/internal/platforms/temu/api/pricing"
 
 	"github.com/sirupsen/logrus"
 )
@@ -220,16 +220,16 @@ func (s *PricingDecisionService) getAmazonProductWithCache(ctx context.Context, 
 }
 
 // MakeDecision 对单个商品做出核价决策
-func (s *PricingDecisionService) MakeDecision(item *models.PricingSku, storeID int64) (*models.PricingDecision, error) {
+func (s *PricingDecisionService) MakeDecision(item *temupricing.Sku, storeID int64) (*temupricing.Decision, error) {
 	ctx := context.Background()
 
-	decision := &models.PricingDecision{
+	decision := &temupricing.Decision{
 		Sku: item,
 	}
 
 	// 参数校验
 	if item == nil {
-		decision.Action = models.DecisionSkip
+		decision.Action = temupricing.DecisionSkip
 		decision.Reason = "商品信息为空"
 		return decision, nil
 	}
@@ -246,7 +246,7 @@ func (s *PricingDecisionService) MakeDecision(item *models.PricingSku, storeID i
 
 	pricingCtx, err := s.buildPricingContext(ctx, item.SkuSN, item.GoodsName, item.SupplierPrice, tenantID, targetStoreID)
 	if err != nil {
-		decision.Action = models.DecisionSkip
+		decision.Action = temupricing.DecisionSkip
 		decision.Reason = err.Error()
 		s.logger.WithError(err).Warnf("构建定价上下文失败: %s", item.GoodsName)
 		return decision, nil
@@ -329,13 +329,13 @@ func (s *PricingDecisionService) logPricingInfo(pricingCtx *PricingContext) {
 }
 
 // MakeDecisionForSalesBoost 对销量提升场景的商品做出核价决策
-func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *models.SalesBoostGoods, sku *models.SalesBoostSku, storeID int64) (*models.PricingDecision, error) {
+func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *temupricing.SalesBoostGoods, sku *temupricing.SalesBoostSku, storeID int64) (*temupricing.Decision, error) {
 	ctx := context.Background()
-	decision := &models.PricingDecision{}
+	decision := &temupricing.Decision{}
 
 	// 参数校验
 	if goods == nil || sku == nil {
-		decision.Action = models.DecisionSkip
+		decision.Action = temupricing.DecisionSkip
 		decision.Reason = "商品或SKU信息为空"
 		return decision, nil
 	}
@@ -356,7 +356,7 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *models.SalesBo
 	// 构建定价上下文（使用当前供应商价格）
 	pricingCtx, err := s.buildPricingContextForSalesBoost(ctx, sku.OutSkuSN, goods.SalesBoostGoodsBasicInfo.GoodsName, currentSupplierPrice, tenantID, targetStoreID)
 	if err != nil {
-		decision.Action = models.DecisionSkip
+		decision.Action = temupricing.DecisionSkip
 		decision.Reason = err.Error()
 		s.logger.WithError(err).Warnf("构建销量提升定价上下文失败: %s", goods.SalesBoostGoodsBasicInfo.GoodsName)
 		return decision, nil
@@ -374,8 +374,8 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *models.SalesBo
 	finalDecision := s.makeDecisionByPrice(targetSupplierPrice, pricingCtx.MinAcceptablePrice)
 
 	// 销量提升场景的特殊处理
-	if finalDecision.Action == models.DecisionReappeal && !sku.ActionInfo.AllowCreateAppealOrder {
-		finalDecision.Action = models.DecisionSkip
+	if finalDecision.Action == temupricing.DecisionReappeal && !sku.ActionInfo.AllowCreateAppealOrder {
+		finalDecision.Action = temupricing.DecisionSkip
 		finalDecision.Reason = fmt.Sprintf("目标价格%.2f低于最低可接受价格%.2f，但不允许创建申诉订单(allow_create_appeal_order=false)，保留在售",
 			targetSupplierPrice, pricingCtx.MinAcceptablePrice)
 	}
@@ -450,7 +450,7 @@ func (s *PricingDecisionService) buildPricingContextForSalesBoost(ctx context.Co
 }
 
 // logSalesBoostPricingInfo 记录销量提升定价信息
-func (s *PricingDecisionService) logSalesBoostPricingInfo(goods *models.SalesBoostGoods, sku *models.SalesBoostSku, pricingCtx *PricingContext, targetPrice, profitMargin float64) {
+func (s *PricingDecisionService) logSalesBoostPricingInfo(goods *temupricing.SalesBoostGoods, sku *temupricing.SalesBoostSku, pricingCtx *PricingContext, targetPrice, profitMargin float64) {
 	s.logger.WithFields(logrus.Fields{
 		"goods_id":             goods.SalesBoostGoodsBasicInfo.GoodsID,
 		"sku_sn":               sku.OutSkuSN,
@@ -463,28 +463,28 @@ func (s *PricingDecisionService) logSalesBoostPricingInfo(goods *models.SalesBoo
 }
 
 // makeDecisionByPrice 根据价格做出决策
-func (s *PricingDecisionService) makeDecisionByPrice(actualPrice, minAcceptablePrice float64) *models.PricingDecision {
-	decision := &models.PricingDecision{}
+func (s *PricingDecisionService) makeDecisionByPrice(actualPrice, minAcceptablePrice float64) *temupricing.Decision {
+	decision := &temupricing.Decision{}
 
 	if actualPrice >= minAcceptablePrice {
-		decision.Action = models.DecisionAccept
+		decision.Action = temupricing.DecisionAccept
 		decision.Reason = fmt.Sprintf("价格%.2f >= 最低可接受价%.2f，满足要求",
 			actualPrice, minAcceptablePrice)
 	} else {
 		// 根据店铺配置决定拒绝策略
 		strategy := s.storeConfig.GetPriceRejectStrategy()
 		if strategy == "TAKE_OFFLINE" {
-			decision.Action = models.DecisionReject
+			decision.Action = temupricing.DecisionReject
 			decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，根据店铺配置执行下架",
 				actualPrice, minAcceptablePrice)
 		} else {
 			// KEEP_ONLINE - 保留在售
 			if s.storeConfig.IsRebargainEnabled() {
-				decision.Action = models.DecisionReappeal
+				decision.Action = temupricing.DecisionReappeal
 				decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，根据店铺配置保留在售并重新报价",
 					actualPrice, minAcceptablePrice)
 			} else {
-				decision.Action = models.DecisionSkip
+				decision.Action = temupricing.DecisionSkip
 				decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，店铺未启用重新议价，保留在售",
 					actualPrice, minAcceptablePrice)
 			}

@@ -5,15 +5,16 @@ import (
 	"fmt"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuproduct "task-processor/internal/platforms/temu/api/product"
+	temuquery "task-processor/internal/platforms/temu/api/query"
 
 	"github.com/sirupsen/logrus"
 )
 
 // buildEnrichedMappingData 构建增强的映射数据，为每个SKU创建独立的映射对象（SHEIN格式）
 func (s *productSyncServiceImpl) buildEnrichedMappingData(
-	temuProduct *models.GoodsSearchItem,
-	skuDetails *models.SkuQueryResponse,
+	temuProduct *temuproduct.GoodsSearchItem,
+	skuDetails *temuquery.SkuQueryResponse,
 	storeID int64,
 ) ([]*TemuMappingData, error) {
 	if s.mappingClient == nil {

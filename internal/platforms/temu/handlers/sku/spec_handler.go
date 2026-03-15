@@ -1,11 +1,11 @@
-package sku
+﻿package sku
 
 import (
 	"fmt"
 	"strings"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

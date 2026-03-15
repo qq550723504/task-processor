@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temupricing "task-processor/internal/platforms/temu/api/pricing"
 )
 
 // MockTemuAPIClient 模拟Temu API客户端
@@ -22,14 +22,14 @@ func (m *MockTemuAPIClient) GetStoreID() int64 {
 
 // MockTemuAutoPricingService 模拟Temu自动核价服务
 type MockTemuAutoPricingService struct {
-	AutoProcessPendingPricesWithRulesFunc func(managementClient *management.ClientManager) (*models.PricingStatistics, error)
+	AutoProcessPendingPricesWithRulesFunc func(managementClient *management.ClientManager) (*temupricing.Statistics, error)
 }
 
-func (m *MockTemuAutoPricingService) AutoProcessPendingPricesWithRules(managementClient *management.ClientManager) (*models.PricingStatistics, error) {
+func (m *MockTemuAutoPricingService) AutoProcessPendingPricesWithRules(managementClient *management.ClientManager) (*temupricing.Statistics, error) {
 	if m.AutoProcessPendingPricesWithRulesFunc != nil {
 		return m.AutoProcessPendingPricesWithRulesFunc(managementClient)
 	}
-	return &models.PricingStatistics{}, nil
+	return &temupricing.Statistics{}, nil
 }
 
 func TestNewTemuAutoPricingAdapter(t *testing.T) {
@@ -88,7 +88,7 @@ func TestTemuAutoPricingAdapter_ApplyPricingRules(t *testing.T) {
 }
 
 func TestTemuAutoPricingAdapter_SubmitPricingResults_Success(t *testing.T) {
-	mockStats := &models.PricingStatistics{
+	mockStats := &temupricing.Statistics{
 		TotalProcessed: 10,
 		AcceptCount:    5,
 		RejectCount:    3,
@@ -125,12 +125,12 @@ func TestTemuAutoPricingAdapter_SubmitPricingResults_Success(t *testing.T) {
 func TestConvertTemuStats(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    *models.PricingStatistics
+		input    *temupricing.Statistics
 		expected *commonscheduler.PricingStats
 	}{
 		{
 			name: "正常统计",
-			input: &models.PricingStatistics{
+			input: &temupricing.Statistics{
 				TotalProcessed: 10,
 				AcceptCount:    5,
 				RejectCount:    3,
@@ -158,7 +158,7 @@ func TestConvertTemuStats(t *testing.T) {
 		},
 		{
 			name: "全部接受",
-			input: &models.PricingStatistics{
+			input: &temupricing.Statistics{
 				TotalProcessed: 5,
 				AcceptCount:    5,
 				RejectCount:    0,
@@ -175,7 +175,7 @@ func TestConvertTemuStats(t *testing.T) {
 		},
 		{
 			name: "全部拒绝",
-			input: &models.PricingStatistics{
+			input: &temupricing.Statistics{
 				TotalProcessed: 5,
 				AcceptCount:    0,
 				RejectCount:    5,

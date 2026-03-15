@@ -1,10 +1,9 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"sync"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/platforms/temu/api/inventory"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -12,34 +11,34 @@ import (
 
 // ProductProcessor 产品处理器
 type ProductProcessor struct {
-	listingAPI *api.ListingAPI
-	filter     *ProductFilter
-	logger     *logrus.Entry
+	inventoryAPI *inventory.API
+	filter       *ProductFilter
+	logger       *logrus.Entry
 }
 
 // NewProductProcessor 创建产品处理器
-func NewProductProcessor(listingAPI *api.ListingAPI, filter *ProductFilter, logger *logrus.Entry) *ProductProcessor {
+func NewProductProcessor(inventoryAPI *inventory.API, filter *ProductFilter, logger *logrus.Entry) *ProductProcessor {
 	return &ProductProcessor{
-		listingAPI: listingAPI,
-		filter:     filter,
-		logger:     logger,
+		inventoryAPI: inventoryAPI,
+		filter:       filter,
+		logger:       logger,
 	}
 }
 
 // ProcessProducts 处理产品列表
-func (pp *ProductProcessor) ProcessProducts(products []models.OfflineProductItem, options *models.BulkRelistOptions) (*models.RelistAllResult, error) {
-	pageResult := &models.RelistAllResult{
+func (pp *ProductProcessor) ProcessProducts(products []inventory.Item, options *BulkRelistOptions) (*RelistAllResult, error) {
+	pageResult := &RelistAllResult{
 		TotalOfflineCount: len(products),
 		ProcessedCount:    0,
 		SuccessCount:      0,
 		FailCount:         0,
 		SkippedCount:      0,
-		Results:           make([]models.RelistDetailResult, 0),
+		Results:           make([]RelistDetailResult, 0),
 	}
 
 	// 按商品ID分组
 	goodsSkuMap := make(map[string][]string)
-	productInfoMap := make(map[string]*models.OfflineProductItem)
+	productInfoMap := make(map[string]*inventory.Item)
 
 	for _, product := range products {
 		if _, exists := goodsSkuMap[product.GoodsID]; !exists {
@@ -67,15 +66,15 @@ func (pp *ProductProcessor) ProcessProducts(products []models.OfflineProductItem
 // processSequential 串行处理产品
 func (pp *ProductProcessor) processSequential(
 	goodsSkuMap map[string][]string,
-	productInfoMap map[string]*models.OfflineProductItem,
-	options *models.BulkRelistOptions,
-	result *models.RelistAllResult,
-) (*models.RelistAllResult, error) {
+	productInfoMap map[string]*inventory.Item,
+	options *BulkRelistOptions,
+	result *RelistAllResult,
+) (*RelistAllResult, error) {
 	for goodsID, skuIDs := range goodsSkuMap {
 		result.ProcessedCount++
 		productInfo := productInfoMap[goodsID]
 
-		detailResult := models.RelistDetailResult{
+		detailResult := RelistDetailResult{
 			GoodsID:   goodsID,
 			GoodsName: productInfo.GoodsName,
 			SkuIDs:    skuIDs,
@@ -117,16 +116,16 @@ func (pp *ProductProcessor) processSequential(
 // processConcurrent 并发处理产品
 func (pp *ProductProcessor) processConcurrent(
 	goodsSkuMap map[string][]string,
-	productInfoMap map[string]*models.OfflineProductItem,
-	options *models.BulkRelistOptions,
-	result *models.RelistAllResult,
+	productInfoMap map[string]*inventory.Item,
+	options *BulkRelistOptions,
+	result *RelistAllResult,
 	maxConcurrency int,
-) (*models.RelistAllResult, error) {
+) (*RelistAllResult, error) {
 	// 创建工作任务
 	type workItem struct {
 		goodsID     string
 		skuIDs      []string
-		productInfo *models.OfflineProductItem
+		productInfo *inventory.Item
 	}
 
 	// 准备工作队列
@@ -141,7 +140,7 @@ func (pp *ProductProcessor) processConcurrent(
 	close(workQueue)
 
 	// 结果收集
-	resultChan := make(chan models.RelistDetailResult, len(goodsSkuMap))
+	resultChan := make(chan RelistDetailResult, len(goodsSkuMap))
 	var wg sync.WaitGroup
 
 	// 启动工作协程
@@ -151,7 +150,7 @@ func (pp *ProductProcessor) processConcurrent(
 			defer wg.Done()
 
 			for work := range workQueue {
-				detailResult := models.RelistDetailResult{
+				detailResult := RelistDetailResult{
 					GoodsID:   work.goodsID,
 					GoodsName: work.productInfo.GoodsName,
 					SkuIDs:    work.skuIDs,
@@ -214,15 +213,15 @@ func (pp *ProductProcessor) processConcurrent(
 func (pp *ProductProcessor) relistProduct(
 	goodsID string,
 	skuIDs []string,
-	productInfo *models.OfflineProductItem,
-	options *models.BulkRelistOptions,
+	productInfo *inventory.Item,
+	options *BulkRelistOptions,
 ) (bool, string) {
 	success := false
 	var lastError string
 
 	if len(skuIDs) == 1 {
 		// 单SKU商品，直接上架
-		resp, err := pp.listingAPI.RelistProduct(goodsID, skuIDs)
+		resp, err := pp.inventoryAPI.Relist(goodsID, skuIDs)
 		if err != nil {
 			lastError = err.Error()
 		} else if resp != nil && resp.Result.Result {
@@ -234,7 +233,7 @@ func (pp *ProductProcessor) relistProduct(
 	} else {
 		// 多SKU商品，先尝试全部一起上架
 		pp.logger.Infof("尝试批量上架多SKU商品: %s (SKU数量: %d)", productInfo.GoodsName, len(skuIDs))
-		resp, err := pp.listingAPI.RelistProduct(goodsID, skuIDs)
+		resp, err := pp.inventoryAPI.Relist(goodsID, skuIDs)
 		if err != nil {
 			lastError = err.Error()
 		} else if resp != nil && resp.Result.Result {
@@ -247,7 +246,7 @@ func (pp *ProductProcessor) relistProduct(
 
 			successCount := 0
 			for i, skuID := range skuIDs {
-				singleResp, singleErr := pp.listingAPI.RelistProduct(goodsID, []string{skuID})
+				singleResp, singleErr := pp.inventoryAPI.Relist(goodsID, []string{skuID})
 				if singleErr != nil {
 					pp.logger.Warnf("SKU %s 上架失败: %v", skuID, singleErr)
 					lastError = fmt.Sprintf("部分SKU上架失败: %v", singleErr)
@@ -281,3 +280,4 @@ func (pp *ProductProcessor) relistProduct(
 
 	return success, lastError
 }
+

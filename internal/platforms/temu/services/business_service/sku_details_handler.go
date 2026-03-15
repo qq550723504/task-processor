@@ -7,11 +7,12 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/platforms/temu/api/models"
+	temuproduct "task-processor/internal/platforms/temu/api/product"
+	temuquery "task-processor/internal/platforms/temu/api/query"
 )
 
 // fetchSkuDetails 获取SKU详细信息
-func (s *productSyncServiceImpl) fetchSkuDetails(temuProduct *models.GoodsSearchItem) (*models.SkuQueryResponse, error) {
+func (s *productSyncServiceImpl) fetchSkuDetails(temuProduct *temuproduct.GoodsSearchItem) (*temuquery.SkuQueryResponse, error) {
 	// 检查是否有必要的参数
 	if temuProduct.GoodsCommitID == "" || temuProduct.GoodsID == "" {
 		return nil, fmt.Errorf("缺少必要的参数: goods_commit_id=%s, goods_id=%s",
@@ -33,7 +34,7 @@ func (s *productSyncServiceImpl) fetchSkuDetails(temuProduct *models.GoodsSearch
 // fillSkuBasedPriceAndStockInfo 基于SKU查询结果填充价格和库存信息
 func (s *productSyncServiceImpl) fillSkuBasedPriceAndStockInfo(
 	productData *managementapi.ProductDataDTO,
-	skuDetails *models.SkuQueryResponse,
+	skuDetails *temuquery.SkuQueryResponse,
 ) {
 	if skuDetails == nil || len(skuDetails.Result.SkuList) == 0 {
 		s.logger.Warn("SKU详细信息为空，无法填充价格和库存")
@@ -74,7 +75,7 @@ type StockStats struct {
 }
 
 // calculatePriceStats 计算价格统计信息
-func (s *productSyncServiceImpl) calculatePriceStats(skuList []models.SkuQueryResultItem) PriceStats {
+func (s *productSyncServiceImpl) calculatePriceStats(skuList []temuquery.SkuQueryResult) PriceStats {
 	if len(skuList) == 0 {
 		return PriceStats{}
 	}
@@ -100,7 +101,7 @@ func (s *productSyncServiceImpl) calculatePriceStats(skuList []models.SkuQueryRe
 }
 
 // calculateStockStats 计算库存统计信息
-func (s *productSyncServiceImpl) calculateStockStats(skuList []models.SkuQueryResultItem) StockStats {
+func (s *productSyncServiceImpl) calculateStockStats(skuList []temuquery.SkuQueryResult) StockStats {
 	if len(skuList) == 0 {
 		return StockStats{}
 	}
@@ -130,8 +131,8 @@ func (s *productSyncServiceImpl) calculateStockStats(skuList []models.SkuQueryRe
 // fillMappingAttributesWithSkuDetails 使用SKU详细信息填充映射属性数据
 func (s *productSyncServiceImpl) fillMappingAttributesWithSkuDetails(
 	productData *managementapi.ProductDataDTO,
-	temuProduct *models.GoodsSearchItem,
-	skuDetails *models.SkuQueryResponse,
+	temuProduct *temuproduct.GoodsSearchItem,
+	skuDetails *temuquery.SkuQueryResponse,
 	storeID int64,
 ) error {
 	if skuDetails == nil || len(skuDetails.Result.SkuList) == 0 {

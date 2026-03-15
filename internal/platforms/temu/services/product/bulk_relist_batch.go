@@ -1,8 +1,9 @@
-package product
+﻿package product
 
 import (
-	"task-processor/internal/platforms/temu/api/models"
 	"time"
+
+	"task-processor/internal/platforms/temu/api/inventory"
 
 	"github.com/sirupsen/logrus"
 )
@@ -15,7 +16,7 @@ type BatchProcessor struct {
 
 // OfflineAPIInterface 离线API接口
 type OfflineAPIInterface interface {
-	GetOfflineProducts(pageNo, pageSize int) (*models.OfflineProductSearchResponse, error)
+	SearchOffline(pageNo, pageSize int) (*inventory.SearchResponse, error)
 }
 
 // NewBatchProcessor 创建批量获取处理器
@@ -27,16 +28,16 @@ func NewBatchProcessor(offlineAPI *OfflineAPIInterface, logger *logrus.Entry) *B
 }
 
 // FetchAllProducts 批量获取所有下架商品信息
-func (bp *BatchProcessor) FetchAllProducts(pageSize int) ([]models.OfflineProductItem, int, error) {
+func (bp *BatchProcessor) FetchAllProducts(pageSize int) ([]inventory.Item, int, error) {
 	bp.logger.Info("开始批量获取所有下架商品信息")
 
-	var allProducts []models.OfflineProductItem
+	var allProducts []inventory.Item
 	pageNo := 1
 	totalExpected := 0
 
 	for {
 		bp.logger.Infof("获取第 %d 页商品信息", pageNo)
-		resp, err := (*bp.offlineAPI).GetOfflineProducts(pageNo, pageSize)
+		resp, err := (*bp.offlineAPI).SearchOffline(pageNo, pageSize)
 		if err != nil {
 			bp.logger.WithError(err).Errorf("获取第%d页已下架产品失败，跳过此页继续处理", pageNo)
 			pageNo++
@@ -104,9 +105,9 @@ func (bp *BatchProcessor) FetchAllProducts(pageSize int) ([]models.OfflineProduc
 }
 
 // DeduplicateProducts 去重商品（基于SkuID）
-func (bp *BatchProcessor) DeduplicateProducts(products []models.OfflineProductItem) []models.OfflineProductItem {
+func (bp *BatchProcessor) DeduplicateProducts(products []inventory.Item) []inventory.Item {
 	bp.logger.Infof("开始去重处理，原始商品数量: %d", len(products))
-	uniqueProducts := make(map[string]models.OfflineProductItem)
+	uniqueProducts := make(map[string]inventory.Item)
 	duplicateCount := 0
 
 	for _, product := range products {
@@ -118,7 +119,7 @@ func (bp *BatchProcessor) DeduplicateProducts(products []models.OfflineProductIt
 	}
 
 	// 转换为切片
-	var deduplicatedProducts []models.OfflineProductItem
+	var deduplicatedProducts []inventory.Item
 	for _, product := range uniqueProducts {
 		deduplicatedProducts = append(deduplicatedProducts, product)
 	}
@@ -131,18 +132,18 @@ func (bp *BatchProcessor) DeduplicateProducts(products []models.OfflineProductIt
 
 // ProcessInBatches 分批处理商品
 func (bp *BatchProcessor) ProcessInBatches(
-	products []models.OfflineProductItem,
+	products []inventory.Item,
 	batchSize int,
-	options *models.BulkRelistOptions,
-	processor func([]models.OfflineProductItem, *models.BulkRelistOptions) (*models.RelistAllResult, error),
-) (*models.RelistAllResult, error) {
-	result := &models.RelistAllResult{
+	options *BulkRelistOptions,
+	processor func([]inventory.Item, *BulkRelistOptions) (*RelistAllResult, error),
+) (*RelistAllResult, error) {
+	result := &RelistAllResult{
 		TotalOfflineCount: 0,
 		ProcessedCount:    0,
 		SuccessCount:      0,
 		FailCount:         0,
 		SkippedCount:      0,
-		Results:           make([]models.RelistDetailResult, 0),
+		Results:           make([]RelistDetailResult, 0),
 	}
 
 	for i := 0; i < len(products); i += batchSize {

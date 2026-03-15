@@ -14,7 +14,7 @@ import (
 	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/ptrutil"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"

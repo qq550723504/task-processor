@@ -4,21 +4,21 @@ package pricing
 import (
 	"fmt"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuapi "task-processor/internal/platforms/temu/api"
+	temupricing "task-processor/internal/platforms/temu/api/pricing"
 
 	"github.com/sirupsen/logrus"
 )
 
 // AutoPricingService 自动核价服务
 type AutoPricingService struct {
-	apiClient      api.APIClientInterface
-	pricingService *api.PricingService
+	apiClient      temuapi.APIClientInterface
+	pricingService *temupricing.API
 	logger         *logrus.Entry
 }
 
 // NewAutoPricingService 创建自动核价服务
-func NewAutoPricingService(apiClient api.APIClientInterface) *AutoPricingService {
+func NewAutoPricingService(apiClient temuapi.APIClientInterface) *AutoPricingService {
 	logger := logrus.WithFields(logrus.Fields{
 		"component": "AutoPricingService",
 		"storeID":   apiClient.GetStoreID(),
@@ -26,13 +26,13 @@ func NewAutoPricingService(apiClient api.APIClientInterface) *AutoPricingService
 
 	return &AutoPricingService{
 		apiClient:      apiClient,
-		pricingService: api.NewPricingService(apiClient, logger),
+		pricingService: temupricing.NewAPI(apiClient, logger),
 		logger:         logger,
 	}
 }
 
 // AutoProcessPendingPricesWithRules 根据利润率规则智能处理待核价商品
-func (s *AutoPricingService) AutoProcessPendingPricesWithRules(managementClient *management.ClientManager) (*models.PricingStatistics, error) {
+func (s *AutoPricingService) AutoProcessPendingPricesWithRules(managementClient *management.ClientManager) (*temupricing.Statistics, error) {
 	s.logger.Info("开始智能核价处理")
 
 	// 参数校验
@@ -53,7 +53,7 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRules(managementClient 
 // AutoProcessPendingPricesWithRulesAndAmazon 根据利润率规则智能处理待核价商品（支持Amazon数据）
 func (s *AutoPricingService) AutoProcessPendingPricesWithRulesAndAmazon(
 	managementClient *management.ClientManager,
-) (*models.PricingStatistics, error) {
+) (*temupricing.Statistics, error) {
 	s.logger.Info("开始智能核价处理（Amazon增强版）")
 
 	// 参数校验
@@ -66,14 +66,14 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRulesAndAmazon(
 }
 
 // processWithService 使用指定的决策服务处理待核价商品
-func (s *AutoPricingService) processWithService(decisionService DecisionMaker) (*models.PricingStatistics, error) {
-	stats := &models.PricingStatistics{}
+func (s *AutoPricingService) processWithService(decisionService DecisionMaker) (*temupricing.Statistics, error) {
+	stats := &temupricing.Statistics{}
 	pageNo := 1
 	pageSize := 25
 
 	for {
 		// 获取待核价列表
-		resp, err := s.pricingService.GetPendingPriceList(pageNo, pageSize)
+		resp, err := s.pricingService.GetPendingList(pageNo, pageSize)
 		if err != nil {
 			return stats, fmt.Errorf("获取待核价列表失败: %w", err)
 		}
@@ -114,13 +114,13 @@ func (s *AutoPricingService) processWithService(decisionService DecisionMaker) (
 					stats.SuccessCount++
 					// 更新统计
 					switch decision.Action {
-					case models.DecisionAccept:
+					case temupricing.DecisionAccept:
 						stats.AcceptCount++
-					case models.DecisionReject:
+					case temupricing.DecisionReject:
 						stats.RejectCount++
-					case models.DecisionReappeal:
+					case temupricing.DecisionReappeal:
 						stats.ReappealCount++
-					case models.DecisionSkip:
+					case temupricing.DecisionSkip:
 						stats.SkipCount++
 					}
 				}
@@ -147,17 +147,17 @@ func (s *AutoPricingService) processWithService(decisionService DecisionMaker) (
 }
 
 // executeDecisionForSalesBoost 执行核价决策（新版本，适配销量提升场景）
-func (s *AutoPricingService) executeDecisionForSalesBoost(decision *models.PricingDecision, goods *models.SalesBoostGoods, sku *models.SalesBoostSku) error {
+func (s *AutoPricingService) executeDecisionForSalesBoost(decision *temupricing.Decision, goods *temupricing.SalesBoostGoods, sku *temupricing.SalesBoostSku) error {
 	switch decision.Action {
-	case models.DecisionAccept:
+	case temupricing.DecisionAccept:
 		// ✅ 接受平台报价
 		return s.pricingService.AcceptPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, sku)
 
-	case models.DecisionReject:
+	case temupricing.DecisionReject:
 		// ❌ 拒绝报价
 		return s.pricingService.RejectPrice(goods.SalesBoostGoodsBasicInfo.GoodsID, []string{sku.SkuID})
 
-	case models.DecisionSkip:
+	case temupricing.DecisionSkip:
 		// 跳过，不做任何操作
 		s.logger.Info("跳过")
 		return nil

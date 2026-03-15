@@ -1,10 +1,10 @@
-// Package property 提供属性映射编排器，统筹整个属性处理流程
+﻿// Package property 提供属性映射编排器，统筹整个属性处理流程
 package property
 
 import (
 	"fmt"
 
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/template"
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 )
 
 // MockTemuProductSyncService 模拟Temu产品同步服务

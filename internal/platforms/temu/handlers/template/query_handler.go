@@ -3,7 +3,7 @@ package template
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/platforms/temu/api/services"
+	temuquery "task-processor/internal/platforms/temu/api/query"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -96,7 +96,7 @@ func (h *TemplateQueryHandler) queryTemplate(temuCtx *temucontext.TemuTaskContex
 	}
 
 	// 类型断言获取QueryAPI实例
-	queryAPI, ok := temuCtx.QueryAPI.(*services.QueryAPI)
+	queryAPI, ok := temuCtx.QueryAPI.(*temuquery.API)
 	if !ok {
 		return fmt.Errorf("QueryAPI类型断言失败")
 	}

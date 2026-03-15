@@ -6,7 +6,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temuscheduler "task-processor/internal/platforms/temu/services/business_service"
 )
 

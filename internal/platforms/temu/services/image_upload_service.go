@@ -1,10 +1,10 @@
-// Package services 提供TEMU平台图片上传统一服务
+﻿// Package services 提供TEMU平台图片上传统一服务
 package services
 
 import (
 	"fmt"
 	"task-processor/internal/pkg/downloader"
-	"task-processor/internal/platforms/temu/api/models"
+	temuimage "task-processor/internal/platforms/temu/api/image"
 
 	"github.com/sirupsen/logrus"
 )
@@ -41,7 +41,7 @@ func (s *ImageUploadService) DownloadImage(imageURL string) ([]byte, string, err
 }
 
 // GetUploadSignature 获取上传签名（统一实现）
-func (s *ImageUploadService) GetUploadSignature(apiClient TemuAPIClient) (*models.UploadSignature, error) {
+func (s *ImageUploadService) GetUploadSignature(apiClient TemuAPIClient) (*temuimage.UploadSignature, error) {
 	// 构造请求体
 	requestBody := map[string]any{
 		"upload_file_type": 1,
@@ -67,7 +67,7 @@ func (s *ImageUploadService) GetUploadSignature(apiClient TemuAPIClient) (*model
 	}
 
 	// 发送请求获取签名
-	response := &models.SignatureResponse{}
+	response := &temuimage.SignatureResponse{}
 	err := apiClient.SendTEMURequest(apiReq, response)
 	if err != nil {
 		return nil, fmt.Errorf("发送获取签名请求失败: %w", err)
@@ -82,7 +82,7 @@ func (s *ImageUploadService) GetUploadSignature(apiClient TemuAPIClient) (*model
 }
 
 // UploadImageWithSignature 使用签名上传图片数据（统一实现）
-func (s *ImageUploadService) UploadImageWithSignature(apiClient TemuAPIClient, imageData []byte, filename string, signature *models.UploadSignature) (*models.UploadResult, error) {
+func (s *ImageUploadService) UploadImageWithSignature(apiClient TemuAPIClient, imageData []byte, filename string, signature *temuimage.UploadSignature) (*temuimage.UploadResult, error) {
 	// 构造API请求 - 使用fileFields和formFields
 	apiReq := map[string]any{
 		"method": "POST",
@@ -112,7 +112,7 @@ func (s *ImageUploadService) UploadImageWithSignature(apiClient TemuAPIClient, i
 	}
 
 	// 发送上传请求
-	response := &models.TemuImageUploadResponse{}
+	response := &temuimage.TemuUploadResponse{}
 	err := apiClient.SendTEMURequest(apiReq, response)
 	if err != nil {
 		return nil, fmt.Errorf("发送图片上传请求失败: %w", err)
@@ -124,7 +124,7 @@ func (s *ImageUploadService) UploadImageWithSignature(apiClient TemuAPIClient, i
 	}
 
 	// 构造返回结果
-	result := &models.UploadResult{
+	result := &temuimage.UploadResult{
 		ImageURL: response.URL,
 		URL:      response.URL,
 		Width:    response.Width,

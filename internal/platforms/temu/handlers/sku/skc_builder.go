@@ -1,9 +1,9 @@
-package sku
+﻿package sku
 
 import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/types"
 
@@ -100,7 +100,7 @@ func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx pipeline.TaskContext, 
 	existingSkuMap := make(map[string]int)
 	for _, skuIndex := range skuIndices {
 		aiSku := aiMapping.SkuList[skuIndex]
-		key := sb.specHandler.createNonColorSpecKey(aiSku.Spec)
+		key := sb.specHandler.createNonColorSpecKey(convertSpecInfos(aiSku.Spec))
 		existingSkuMap[key] = skuIndex
 		sb.logger.Debugf("存储现有SKU映射: key=%s, index=%d", key, skuIndex)
 	}

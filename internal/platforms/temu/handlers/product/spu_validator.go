@@ -1,11 +1,11 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"strconv"
 
 	"task-processor/internal/pipeline"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 
 	"github.com/sirupsen/logrus"
 )

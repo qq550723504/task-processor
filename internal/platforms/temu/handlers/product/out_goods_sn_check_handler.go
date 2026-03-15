@@ -1,12 +1,11 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/skugen"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuapi "task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -72,7 +71,7 @@ func (h *OutGoodsSnCheckHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 }
 
 // checkOutSkuSn 执行SKU编码检查
-func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskContext, outSkuSnList []models.OutSkuSnItem) error {
+func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskContext, outSkuSnList []temuapi.OutSkuSnItem) error {
 	// 获取API客户端
 	if temuCtx.APIClient == nil {
 		h.logger.Error("API客户端未初始化，无法执行SKU编码检查")
@@ -87,10 +86,10 @@ func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskCont
 	temuProduct := temuCtx.TemuProduct
 
 	// 创建QueryAPI实例
-	queryAPI := api.NewQueryAPI(temuCtx.APIClient, h.logger)
+	queryAPI := temuapi.NewQueryAPI(temuCtx.APIClient, h.logger)
 
 	// 构造请求体
-	request := &models.SkuSnCheckRequest{
+	request := &temuapi.SkuSnCheckRequest{
 		GoodsID:   temuProduct.GoodsBasic.GoodsID,
 		OutSnList: outSkuSnList,
 	}
@@ -125,7 +124,7 @@ func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskCont
 }
 
 // handleCheckResult 处理检查结果
-func (h *OutGoodsSnCheckHandler) handleCheckResult(temuCtx *temucontext.TemuTaskContext, result *models.OutGoodsSnCheckResult) error {
+func (h *OutGoodsSnCheckHandler) handleCheckResult(temuCtx *temucontext.TemuTaskContext, result *temuapi.OutGoodsSnCheckResult) error {
 	// 将检查结果存储到强类型上下文中，供其他处理器使用
 	// 这里可以添加一个字段到TemuTaskContext来存储检查结果
 	// 暂时先不存储，直接处理
@@ -158,8 +157,8 @@ func (h *OutGoodsSnCheckHandler) handleCheckResult(temuCtx *temucontext.TemuTask
 }
 
 // generateOutSkuSnFromAmazon 从Amazon数据生成OutSkuSN列表进行检查
-func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext.TemuTaskContext) []models.OutSkuSnItem {
-	var outSkuSnList []models.OutSkuSnItem
+func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext.TemuTaskContext) []temuapi.OutSkuSnItem {
+	var outSkuSnList []temuapi.OutSkuSnItem
 
 	// 获取店铺配置（前缀、后缀、策略）
 	prefix := ""
@@ -187,7 +186,7 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext
 		outSkuSN := skugen.Generate(amazonProduct.Asin, strategy, prefix, suffix)
 		if !outSkuSnMap[outSkuSN] {
 			outSkuSnMap[outSkuSN] = true
-			outSkuSnList = append(outSkuSnList, models.OutSkuSnItem{
+			outSkuSnList = append(outSkuSnList, temuapi.OutSkuSnItem{
 				OutSkuSn: outSkuSN,
 			})
 			h.logger.WithFields(map[string]interface{}{
@@ -206,7 +205,7 @@ func (h *OutGoodsSnCheckHandler) generateOutSkuSnFromAmazon(temuCtx *temucontext
 				outSkuSN := skugen.Generate(variant.Asin, strategy, prefix, suffix)
 				if !outSkuSnMap[outSkuSN] {
 					outSkuSnMap[outSkuSN] = true
-					outSkuSnList = append(outSkuSnList, models.OutSkuSnItem{
+					outSkuSnList = append(outSkuSnList, temuapi.OutSkuSnItem{
 						OutSkuSn: outSkuSN,
 					})
 					h.logger.WithFields(map[string]interface{}{

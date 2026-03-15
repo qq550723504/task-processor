@@ -1,9 +1,9 @@
-// Package handlers 提供属性修复阶段，负责修复无效或不完整的属性
+﻿// Package handlers 提供属性修复阶段，负责修复无效或不完整的属性
 package property
 
 import (
 	"strconv"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

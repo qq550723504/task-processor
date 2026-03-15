@@ -1,10 +1,10 @@
-// Package handlers 提供属性映射器，直接使用新的管道架构
+﻿// Package handlers 提供属性映射器，直接使用新的管道架构
 package property
 
 import (
 	"fmt"
 
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"

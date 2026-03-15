@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -8,8 +8,7 @@ import (
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/strutil"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	temuapi "task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -92,7 +91,7 @@ func (h *CommitCreateHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 }
 
 // createCommit 创建商品提交
-func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) error {
+func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext, temuProduct *temuapi.Product) error {
 	// 获取API客户端
 	if temuCtx.APIClient == nil {
 		h.logger.Error("API客户端未初始化")
@@ -110,7 +109,7 @@ func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext,
 	}
 
 	// 构造请求体 - 使用简化的结构匹配工作版本
-	request := &models.CreateCommitRequest{
+	request := &temuapi.CreateCommitRequest{
 		CatIDs:      temuProduct.GoodsBasic.CatIDs,
 		CatID:       temuProduct.GoodsBasic.CatID,
 		GoodsName:   cleanedGoodsName,
@@ -118,7 +117,7 @@ func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext,
 	}
 
 	// 创建SubmitAPI实例
-	submitAPI := api.NewSubmitAPI(temuCtx.APIClient, h.logger)
+	submitAPI := temuapi.NewSubmitAPI(temuCtx.APIClient, h.logger)
 
 	// 发送API请求
 	response, err := submitAPI.CreateCommit(request)
@@ -158,7 +157,7 @@ func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext,
 }
 
 // validateProductInfo 验证产品信息
-func (h *CommitCreateHandler) validateProductInfo(task *types.Task, temuProduct *models.Product) error {
+func (h *CommitCreateHandler) validateProductInfo(task *types.Task, temuProduct *temuapi.Product) error {
 	// 检查店铺ID（这是创建提交必需的）
 	if task.StoreID == 0 {
 		return fmt.Errorf("店铺ID不能为空")

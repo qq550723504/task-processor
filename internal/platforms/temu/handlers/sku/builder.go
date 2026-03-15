@@ -4,10 +4,10 @@ package sku
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/infra/clients/openai"
 	temuapi "task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/image"
 	"task-processor/internal/platforms/temu/handlers/product"
@@ -152,7 +152,7 @@ func (sb *SkuBuilder) querySpecID(temuCtx *temucontext.TemuTaskContext, parentSp
 	queryAPI := temuapi.NewQueryAPI(temuCtx.APIClient, sb.logger)
 
 	// 构建请求
-	request := &models.SpecQueryRequest{
+	request := &temuapi.SpecQueryRequest{
 		GoodsID:       goodsID,
 		ChildSpecName: specName,
 		ParentSpecID:  parentSpecID,

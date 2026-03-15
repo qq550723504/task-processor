@@ -1,4 +1,4 @@
-// Package handlers 提供并行SKU构建功能
+﻿// Package handlers 提供并行SKU构建功能
 package sku
 
 import (
@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	temuformat "task-processor/internal/platforms/temu/format"
 	"task-processor/internal/platforms/temu/handlers/image"
@@ -130,10 +130,7 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTa
 
 // buildSpecList 构建规格列表
 func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku) []models.SpecInfo {
-	specList := aiSku.Spec
-
-	// 去重：确保每个parent_spec_id只出现一次
-	specList = spb.itemBuilder.deduplicateSpecs(specList)
+	specList := spb.itemBuilder.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
 
 	// 验证规格是否有效（检查是否还有临时ID）
 	hasTemp := false
@@ -147,14 +144,12 @@ func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContex
 
 	if hasTemp {
 		spb.logger.Error("❌ 存在未解析的临时规格ID，这表明resolveTemporarySpecIDs没有正确工作")
-		// 返回空规格的SKU，让后续流程能够检测到问题
-		specList = []models.SpecInfo{}
+		return []models.SpecInfo{}
 	}
 
 	if err := spb.itemBuilder.specHandler.ValidateSpecs(specList); err != nil {
 		spb.logger.Errorf("❌ 规格验证失败: %v", err)
 		spb.logger.Error("❌ 无法创建SKU，因为规格无效且不允许使用默认规格")
-		// 返回空规格的SKU，让后续流程能够检测到问题
 	}
 
 	return specList

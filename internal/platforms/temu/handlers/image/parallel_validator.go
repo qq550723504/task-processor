@@ -1,11 +1,12 @@
-// Package handlers 提供TEMU平台并行图片验证功能
+﻿// Package handlers 提供TEMU平台并行图片验证功能
 package image
 
 import (
 	"fmt"
 	"sync"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/platforms/temu/api/models"
+	temuimage "task-processor/internal/platforms/temu/api/image"
+	temuproduct "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/common"
 
 	"github.com/sirupsen/logrus"
@@ -26,9 +27,9 @@ func NewParallelImageValidator() *ParallelImageValidator {
 }
 
 // ValidateImagesInParallel 并行验证多张图片
-func (v *ParallelImageValidator) ValidateImagesInParallel(images []models.ImageInfo, imageType string, requirement common.ImageRequirement) []*models.ImageValidationResult {
+func (v *ParallelImageValidator) ValidateImagesInParallel(images []temuproduct.ImageInfo, imageType string, requirement common.ImageRequirement) []*temuimage.ValidationResult {
 	if len(images) == 0 {
-		return []*models.ImageValidationResult{}
+		return []*temuimage.ValidationResult{}
 	}
 
 	// 控制并发数，避免过多goroutine
@@ -38,7 +39,7 @@ func (v *ParallelImageValidator) ValidateImagesInParallel(images []models.ImageI
 	}
 
 	semaphore := make(chan struct{}, maxConcurrency)
-	results := make([]*models.ImageValidationResult, len(images))
+	results := make([]*temuimage.ValidationResult, len(images))
 	var wg sync.WaitGroup
 
 	for i, img := range images {

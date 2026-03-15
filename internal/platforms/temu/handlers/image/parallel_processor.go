@@ -1,4 +1,4 @@
-// Package handlers 提供并行图片处理功能
+﻿// Package handlers 提供并行图片处理功能
 package image
 
 import (
@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/perfutil"
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"

@@ -1,4 +1,4 @@
-// Package handlers 提供属性处理管道，统筹整个属性处理流程
+﻿// Package handlers 提供属性处理管道，统筹整个属性处理流程
 package property
 
 import (
@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"task-processor/internal/platforms/temu/api/models"
+	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"

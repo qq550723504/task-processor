@@ -1,10 +1,10 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"slices"
 	"task-processor/internal/pkg/strutil"
-	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/platforms/temu/api/inventory"
 
 	"github.com/sirupsen/logrus"
 )
@@ -22,7 +22,7 @@ func NewProductFilter(logger *logrus.Entry) *ProductFilter {
 }
 
 // ShouldSkipProduct 判断是否应该跳过某个产品
-func (f *ProductFilter) ShouldSkipProduct(product *models.OfflineProductItem, conditions *models.SkipConditions) bool {
+func (f *ProductFilter) ShouldSkipProduct(product *inventory.Item, conditions *SkipConditions) bool {
 	if conditions == nil {
 		return false
 	}
@@ -71,7 +71,7 @@ func (f *ProductFilter) ShouldSkipProduct(product *models.OfflineProductItem, co
 }
 
 // GetSkipReason 获取跳过原因
-func (f *ProductFilter) GetSkipReason(product *models.OfflineProductItem, conditions *models.SkipConditions) string {
+func (f *ProductFilter) GetSkipReason(product *inventory.Item, conditions *SkipConditions) string {
 	if conditions == nil {
 		return "未知原因"
 	}
@@ -114,7 +114,7 @@ func (f *ProductFilter) GetSkipReason(product *models.OfflineProductItem, condit
 }
 
 // MatchesFilter 检查产品是否匹配过滤条件
-func (f *ProductFilter) MatchesFilter(product *models.OfflineProductItem, filter *models.ProductFilter) bool {
+func (f *ProductFilter) MatchesFilter(product *inventory.Item, filter *ProductFilterOptions) bool {
 	if filter == nil {
 		return true
 	}
@@ -187,3 +187,4 @@ func contains(s, substr string) bool {
 func findSubstring(s, substr string) bool {
 	return strutil.FindSubstring(s, substr)
 }
+

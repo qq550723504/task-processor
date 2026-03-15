@@ -1,9 +1,8 @@
-package product
+﻿package product
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/api/models"
+	"task-processor/internal/platforms/temu/api/inventory"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -11,22 +10,22 @@ import (
 
 // PageLoopProcessor 循环处理第一页处理器
 type PageLoopProcessor struct {
-	offlineAPI *api.OfflineAPI
-	processor  *ProductProcessor
-	logger     *logrus.Entry
+	inventoryAPI *inventory.API
+	processor    *ProductProcessor
+	logger       *logrus.Entry
 }
 
 // NewPageLoopProcessor 创建循环处理第一页处理器
-func NewPageLoopProcessor(offlineAPI *api.OfflineAPI, processor *ProductProcessor, logger *logrus.Entry) *PageLoopProcessor {
+func NewPageLoopProcessor(inventoryAPI *inventory.API, processor *ProductProcessor, logger *logrus.Entry) *PageLoopProcessor {
 	return &PageLoopProcessor{
-		offlineAPI: offlineAPI,
-		processor:  processor,
-		logger:     logger,
+		inventoryAPI: inventoryAPI,
+		processor:    processor,
+		logger:       logger,
 	}
 }
 
 // ProcessFirstPageLoop 循环处理第一页
-func (plp *PageLoopProcessor) ProcessFirstPageLoop(options *models.BulkRelistOptions, result *models.RelistAllResult, pageSize int) (*models.RelistAllResult, error) {
+func (plp *PageLoopProcessor) ProcessFirstPageLoop(options *BulkRelistOptions, result *RelistAllResult, pageSize int) (*RelistAllResult, error) {
 	pageNo := 1
 	roundCount := 0
 	consecutiveNoSuccessRounds := 0 // 连续无成功上架的轮数
@@ -37,7 +36,7 @@ func (plp *PageLoopProcessor) ProcessFirstPageLoop(options *models.BulkRelistOpt
 		plp.logger.Infof("=== 第 %d 轮处理第一页 ===", roundCount)
 
 		// 获取第一页的已下架产品
-		resp, err := plp.offlineAPI.GetOfflineProducts(pageNo, pageSize)
+		resp, err := plp.inventoryAPI.SearchOffline(pageNo, pageSize)
 		if err != nil {
 			plp.logger.WithError(err).Error("获取第一页已下架产品失败")
 			return result, fmt.Errorf("获取第一页已下架产品失败: %w", err)
@@ -108,13 +107,13 @@ func (plp *PageLoopProcessor) ProcessFirstPageLoop(options *models.BulkRelistOpt
 }
 
 // ProcessAllPages 处理所有页面（流式处理）
-func (plp *PageLoopProcessor) ProcessAllPages(options *models.BulkRelistOptions, result *models.RelistAllResult, pageSize int) (*models.RelistAllResult, error) {
+func (plp *PageLoopProcessor) ProcessAllPages(options *BulkRelistOptions, result *RelistAllResult, pageSize int) (*RelistAllResult, error) {
 	pageNo := 1
 
 	for {
 		// 获取当前页的已下架产品
 		plp.logger.Infof("获取第 %d 页已下架产品", pageNo)
-		resp, err := plp.offlineAPI.GetOfflineProducts(pageNo, pageSize)
+		resp, err := plp.inventoryAPI.SearchOffline(pageNo, pageSize)
 		if err != nil {
 			plp.logger.WithError(err).Errorf("获取第%d页已下架产品失败", pageNo)
 			return result, fmt.Errorf("获取第%d页已下架产品失败: %w", pageNo, err)
@@ -173,7 +172,7 @@ func (plp *PageLoopProcessor) ProcessAllPages(options *models.BulkRelistOptions,
 }
 
 // ProcessWithFilter 根据过滤条件处理产品（流式处理）
-func (plp *PageLoopProcessor) ProcessWithFilter(filter *models.ProductFilter, options *models.BulkRelistOptions, result *models.RelistAllResult, pageSize int, productFilter *ProductFilter) (*models.RelistAllResult, error) {
+func (plp *PageLoopProcessor) ProcessWithFilter(filter *ProductFilterOptions, options *BulkRelistOptions, result *RelistAllResult, pageSize int, productFilter *ProductFilter) (*RelistAllResult, error) {
 	pageNo := 1
 
 	plp.logger.Info("开始流式处理：获取一页，筛选并处理一页")
@@ -181,7 +180,7 @@ func (plp *PageLoopProcessor) ProcessWithFilter(filter *models.ProductFilter, op
 	for {
 		// 获取当前页的已下架产品
 		plp.logger.Infof("获取第 %d 页已下架产品", pageNo)
-		resp, err := plp.offlineAPI.GetOfflineProducts(pageNo, pageSize)
+		resp, err := plp.inventoryAPI.SearchOffline(pageNo, pageSize)
 		if err != nil {
 			plp.logger.WithError(err).Errorf("获取第%d页已下架产品失败", pageNo)
 			return result, fmt.Errorf("获取第%d页已下架产品失败: %w", pageNo, err)
@@ -199,7 +198,7 @@ func (plp *PageLoopProcessor) ProcessWithFilter(filter *models.ProductFilter, op
 		}
 
 		// 根据过滤条件筛选当前页产品
-		var filteredProducts []models.OfflineProductItem
+		var filteredProducts []inventory.Item
 		for _, product := range resp.Result.SkuList {
 			if productFilter.MatchesFilter(&product, filter) {
 				filteredProducts = append(filteredProducts, product)
@@ -252,3 +251,4 @@ func (plp *PageLoopProcessor) ProcessWithFilter(filter *models.ProductFilter, op
 
 	return result, nil
 }
+
