@@ -1,11 +1,10 @@
-// Package handlers 提供TEMU平台的规格解析服务
+﻿// Package handlers 提供TEMU平台的规格解析服务
 package spec
 
 import (
 	"fmt"
 	"strings"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -30,7 +29,7 @@ func NewSpecResolverService(apiClient SpecQueryAPI) *SpecResolverService {
 }
 
 // ResolveTemporarySpecIDs 解析AI映射中的临时规格ID
-func (s *SpecResolverService) ResolveTemporarySpecIDs(temuCtx *temucontext.TemuTaskContext, aiMapping *types.AISkuMappingResponse) error {
+func (s *SpecResolverService) ResolveTemporarySpecIDs(temuCtx *temucontext.TemuTaskContext, aiMapping *temucontext.AISkuMappingResponse) error {
 	s.logger.Info("🔍 开始解析临时规格ID")
 
 	tempIDCount := 0
@@ -92,7 +91,7 @@ func (s *SpecResolverService) ResolveTemporarySpecIDs(temuCtx *temucontext.TemuT
 }
 
 // HasTemporaryIDs 检查是否还有未解析的临时规格ID
-func (s *SpecResolverService) HasTemporaryIDs(aiMapping *types.AISkuMappingResponse) bool {
+func (s *SpecResolverService) HasTemporaryIDs(aiMapping *temucontext.AISkuMappingResponse) bool {
 	for _, sku := range aiMapping.SkuList {
 		for _, spec := range sku.Spec {
 			if strings.HasPrefix(spec.SpecID, "TEMP_") || strings.HasPrefix(spec.ParentSpecID, "TEMP_") {

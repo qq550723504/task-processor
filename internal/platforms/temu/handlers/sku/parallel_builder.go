@@ -10,7 +10,6 @@ import (
 	temucontext "task-processor/internal/platforms/temu/context"
 	temuformat "task-processor/internal/platforms/temu/format"
 	"task-processor/internal/platforms/temu/handlers/image"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -32,7 +31,7 @@ func NewSkuParallelBuilder(itemBuilder *SkuItemBuilder, maxWorkers int) *SkuPara
 }
 
 // BuildSkusWithParallelImages 并行构建SKU（图片处理并行化）
-func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiSkus []types.AIGeneratedSku) ([]models.Sku, error) {
+func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiSkus []temucontext.AIGeneratedSku) ([]models.Sku, error) {
 	if len(variants) == 0 {
 		return []models.Sku{}, nil
 	}
@@ -52,7 +51,7 @@ func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.
 
 	for i, variant := range variants {
 		// 获取对应的AI SKU数据
-		var aiSku types.AIGeneratedSku
+		var aiSku temucontext.AIGeneratedSku
 		if i < len(aiSkus) {
 			aiSku = aiSkus[i]
 		}
@@ -73,7 +72,7 @@ func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.
 }
 
 // buildSkuWithoutImages 构建SKU（不包含图片处理）
-func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku, index int) models.Sku {
+func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku, index int) models.Sku {
 	// 使用利润规则计算最终销售价格
 	finalSalePrice := spb.itemBuilder.priceHandler.CalculateVariantPrice(temuCtx, variant)
 
@@ -129,7 +128,7 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTa
 }
 
 // buildSpecList 构建规格列表
-func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku) []models.SpecInfo {
+func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku) []models.SpecInfo {
 	specList := spb.itemBuilder.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
 
 	// 验证规格是否有效（检查是否还有临时ID）
@@ -156,7 +155,7 @@ func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContex
 }
 
 // buildProductExpressInfo 构建产品物流信息（重量和尺寸）
-func (spb *SkuParallelBuilder) buildProductExpressInfo(variant *model.Product, aiSku types.AIGeneratedSku) (weight, length, width, height string) {
+func (spb *SkuParallelBuilder) buildProductExpressInfo(variant *model.Product, aiSku temucontext.AIGeneratedSku) (weight, length, width, height string) {
 	// 使用AI提取/估算的重量和尺寸（单位：lb和in）
 	// 格式化重量为两位小数（TEMU API要求）
 	weight = temuformat.Weight(aiSku.Weight)
@@ -192,7 +191,7 @@ func (spb *SkuParallelBuilder) buildProductExpressInfo(variant *model.Product, a
 }
 
 // buildMultiplePackage 构建多件装信息
-func (spb *SkuParallelBuilder) buildMultiplePackage(variant *model.Product, aiSku types.AIGeneratedSku) models.MultiplePackage {
+func (spb *SkuParallelBuilder) buildMultiplePackage(variant *model.Product, aiSku temucontext.AIGeneratedSku) models.MultiplePackage {
 	// 使用AI判断的多件装信息
 	multiplePackage := models.MultiplePackage{
 		SkuClassification:  aiSku.SkuClassification,
@@ -238,7 +237,7 @@ func (spb *SkuParallelBuilder) buildMultiplePackage(variant *model.Product, aiSk
 }
 
 // extractNetContentInfo 提取净含量信息
-func (spb *SkuParallelBuilder) extractNetContentInfo(variant *model.Product, aiSku types.AIGeneratedSku) (string, int) {
+func (spb *SkuParallelBuilder) extractNetContentInfo(variant *model.Product, aiSku temucontext.AIGeneratedSku) (string, int) {
 	var originNetContentNumber string
 	var netContentUnitCode int
 

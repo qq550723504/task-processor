@@ -8,7 +8,6 @@ import (
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -109,7 +108,7 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 // handleTaskFailure 处理任务失败
 func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 	// 首先检查是否为认证过期错误（Cookie为空）
-	isAuthExpired := types.IsAuthExpiredError(err)
+	isAuthExpired := IsAuthExpiredError(err)
 	if isAuthExpired {
 		// 认证过期错误，暂停任务等待Cookie更新
 		h.updateTaskStatusSync(task.ID, "paused", err.Error())
@@ -171,7 +170,7 @@ func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 
 // isRetryableError 判断错误是否可重试
 func (h *TaskHandler) isRetryableError(err error) bool {
-	return types.IsRetryableError(err)
+	return IsRetryableError(err)
 }
 
 // updateTaskStatusSync 同步更新任务状态

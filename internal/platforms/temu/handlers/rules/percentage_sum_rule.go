@@ -7,7 +7,7 @@ import (
 
 	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/common"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -37,7 +37,7 @@ func (r *PercentageSumRule) Matches(feature common.PropertyFeature) bool {
 }
 
 // Validate 验证属性值
-func (r *PercentageSumRule) Validate(props []*models.PropertyItem, templateProp types.TemplateRespGoodsProperty) RuleValidationResult {
+func (r *PercentageSumRule) Validate(props []*models.PropertyItem, templateProp temutemplate.TemplateRespGoodsProperty) RuleValidationResult {
 	if len(props) == 0 {
 		return RuleValidationResult{
 			IsValid:      false,
@@ -66,7 +66,7 @@ func (r *PercentageSumRule) Validate(props []*models.PropertyItem, templateProp 
 }
 
 // Fix 修复属性值
-func (r *PercentageSumRule) Fix(props []*models.PropertyItem, templateProp types.TemplateRespGoodsProperty) error {
+func (r *PercentageSumRule) Fix(props []*models.PropertyItem, templateProp temutemplate.TemplateRespGoodsProperty) error {
 	if len(props) == 0 {
 		return fmt.Errorf("没有属性数据需要修复")
 	}

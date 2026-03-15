@@ -1,4 +1,4 @@
-// Package handlers 提供TEMU平台的原始JSON数据处理功能
+﻿// Package handlers 提供TEMU平台的原始JSON数据处理功能
 package product
 
 import (
@@ -11,7 +11,6 @@ import (
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -86,10 +85,7 @@ func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 		var productNotFoundErr *model.ProductNotFoundError
 		if errors.As(err, &productNotFoundErr) {
 			h.logger.Errorf("❌ 产品不存在或无法访问，标记为不可重试: %v", err)
-			return types.NewNonRetryableError(
-				fmt.Sprintf("产品不存在或无法访问: %s", productNotFoundErr.Message),
-				err,
-			)
+			return fmt.Errorf("NONRETRYABLE: 产品不存在或无法访问: %s, %v", productNotFoundErr.Message, err)
 		}
 		return fmt.Errorf("获取产品数据失败: %w", err)
 	}

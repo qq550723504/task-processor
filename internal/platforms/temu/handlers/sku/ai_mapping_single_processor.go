@@ -1,4 +1,4 @@
-// Package sku 提供TEMU平台的AI SKU映射单批次处理功能
+﻿// Package sku 提供TEMU平台的AI SKU映射单批次处理功能
 package sku
 
 import (
@@ -14,15 +14,15 @@ import (
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
 	"task-processor/internal/platforms/temu/handlers/template"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 )
 
 // generateAISkuMappingSingleBatch 单批次生成AI SKU映射
-func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucontext.TemuTaskContext, variants []*model.Product) (*types.AISkuMappingResponse, error) {
+func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucontext.TemuTaskContext, variants []*model.Product) (*temucontext.AISkuMappingResponse, error) {
 	// 准备AI请求数据
 	vp.logger.Infof("开始准备AI请求数据，变体数量: %d", len(variants))
 
-	aiVariants := make([]types.AmazonVariantForAI, len(variants))
+	aiVariants := make([]temucontext.AmazonVariantForAI, len(variants))
 	// 创建ASIN到attributes的映射，用于后续填充VariantAttributes
 	asinToAttributes := make(map[string]map[string]any)
 	successCount := 0
@@ -99,7 +99,7 @@ func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucont
 	// 从上下文获取TEMU模板信息，合并使用goods_spec_properties和user_input_parent_spec_list
 	temuSpecProperties := vp.getTemuSpecProperties(temuCtx)
 
-	request := types.VariantMappingRequest{
+	request := temucontext.VariantMappingRequest{
 		ProductTitle:       amazonProduct.Title,
 		Variants:           aiVariants,
 		TemuSpecProperties: temuSpecProperties, // 直接使用，无需转换
@@ -124,9 +124,9 @@ func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucont
 }
 
 // getTemuSpecProperties 获取TEMU规格属性
-func (vp *SkuVariantProcessor) getTemuSpecProperties(temuCtx *temucontext.TemuTaskContext) []types.TemplateRespGoodsSpecProperty {
+func (vp *SkuVariantProcessor) getTemuSpecProperties(temuCtx *temucontext.TemuTaskContext) []temutemplate.TemplateRespGoodsSpecProperty {
 	// 从上下文获取TEMU模板信息，优先使用goods_spec_properties
-	var temuSpecProperties []types.TemplateRespGoodsSpecProperty
+	var temuSpecProperties []temutemplate.TemplateRespGoodsSpecProperty
 	if templateInfo, exists := template.GetTemplateInfoFromContext(temuCtx); exists {
 		temuSpecProperties = templateInfo.GoodsSpecProperties
 		vp.logger.Infof("成功获取TEMU模板信息，goods_spec_properties数量: %d", len(temuSpecProperties))
@@ -154,7 +154,7 @@ func (vp *SkuVariantProcessor) getTemuSpecProperties(temuCtx *temucontext.TemuTa
 }
 
 // callAIAPI 调用AI API
-func (vp *SkuVariantProcessor) callAIAPI(request types.VariantMappingRequest) (*types.AISkuMappingResponse, error) {
+func (vp *SkuVariantProcessor) callAIAPI(request temucontext.VariantMappingRequest) (*temucontext.AISkuMappingResponse, error) {
 	// 构建系统提示词和用户提示词
 	systemPrompt := vp.buildSystemPrompt()
 	userPrompt := vp.buildUserPrompt(request)
@@ -192,8 +192,8 @@ func (vp *SkuVariantProcessor) callAIAPI(request types.VariantMappingRequest) (*
 }
 
 // parseAIResponse 解析AI响应
-func (vp *SkuVariantProcessor) parseAIResponse(resp *openai.ChatCompletionResponse) (*types.AISkuMappingResponse, error) {
-	var aiResponse types.AISkuMappingResponse
+func (vp *SkuVariantProcessor) parseAIResponse(resp *openai.ChatCompletionResponse) (*temucontext.AISkuMappingResponse, error) {
+	var aiResponse temucontext.AISkuMappingResponse
 	content := resp.Choices[0].Message.Content
 
 	// 提取JSON部分（去除可能的解释文本）
@@ -247,7 +247,7 @@ func (vp *SkuVariantProcessor) logParseError(err error, content, jsonContent str
 }
 
 // fillVariantAttributes 填充变体属性
-func (vp *SkuVariantProcessor) fillVariantAttributes(aiResponse *types.AISkuMappingResponse, asinToAttributes map[string]map[string]any) {
+func (vp *SkuVariantProcessor) fillVariantAttributes(aiResponse *temucontext.AISkuMappingResponse, asinToAttributes map[string]map[string]any) {
 	vp.logger.Infof("🔄 开始填充VariantAttributes，SKU数量: %d", len(aiResponse.SkuList))
 
 	for i := range aiResponse.SkuList {

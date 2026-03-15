@@ -1,9 +1,8 @@
-// Package client 提供TEMU平台认证管理功能
+﻿// Package client 提供TEMU平台认证管理功能
 package client
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -75,7 +74,7 @@ func (a *AuthManager) validateCookies(client APIClientInterface) error {
 				a.logger.Errorf("设置暂停键失败: %v", pauseErr)
 			}
 
-			return types.NewAuthExpiredError(
+			return NewAuthExpiredError(
 				fmt.Sprintf("店铺ID=%d没有Cookie数据且重新加载失败，请先在管理系统中设置Cookie", client.GetStoreID()),
 				err,
 			)
@@ -89,7 +88,7 @@ func (a *AuthManager) validateCookies(client APIClientInterface) error {
 				a.logger.Errorf("设置暂停键失败: %v", pauseErr)
 			}
 
-			return types.NewAuthExpiredError(
+			return NewAuthExpiredError(
 				fmt.Sprintf("店铺ID=%d没有Cookie数据，请先在管理系统中设置Cookie", client.GetStoreID()),
 				nil,
 			)

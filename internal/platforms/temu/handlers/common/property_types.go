@@ -1,10 +1,10 @@
-// Package common 提供TEMU平台处理器的共享类型定义
+﻿// Package common 提供TEMU平台处理器的共享类型定义
 package common
 
 import (
 	"strings"
 
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,7 +36,7 @@ func NewPropertyFeatureDetector(logger *logrus.Entry) *PropertyFeatureDetector {
 }
 
 // DetectFeatures 识别属性特征
-func (d *PropertyFeatureDetector) DetectFeatures(templateProp types.TemplateRespGoodsProperty) PropertyFeature {
+func (d *PropertyFeatureDetector) DetectFeatures(templateProp temutemplate.TemplateRespGoodsProperty) PropertyFeature {
 	feature := PropertyFeature{
 		PID:         templateProp.PID,
 		Name:        templateProp.Name,
@@ -77,7 +77,7 @@ func (d *PropertyFeatureDetector) isPercentageUnit(unit string) bool {
 }
 
 // DetectAllFeatures 批量识别属性特征
-func (d *PropertyFeatureDetector) DetectAllFeatures(templateProps []types.TemplateRespGoodsProperty) map[int]PropertyFeature {
+func (d *PropertyFeatureDetector) DetectAllFeatures(templateProps []temutemplate.TemplateRespGoodsProperty) map[int]PropertyFeature {
 	features := make(map[int]PropertyFeature)
 
 	for _, templateProp := range templateProps {

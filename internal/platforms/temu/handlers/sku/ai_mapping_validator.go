@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 )
 
 // validateAsinAttributeMapping 验证ASIN与属性映射的正确性
-func (vp *SkuVariantProcessor) validateAsinAttributeMapping(asinToAttributes map[string]map[string]any, aiVariants []types.AmazonVariantForAI) {
+func (vp *SkuVariantProcessor) validateAsinAttributeMapping(asinToAttributes map[string]map[string]any, aiVariants []temucontext.AmazonVariantForAI) {
 	vp.logger.Info("🔍 开始验证ASIN与属性映射的正确性")
 
 	validCount := 0
@@ -51,11 +52,11 @@ func (vp *SkuVariantProcessor) validateAsinAttributeMapping(asinToAttributes map
 }
 
 // validateAndFixAIResponse 验证和修复AI响应
-func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *types.AISkuMappingResponse, temuSpecProperties []types.TemplateRespGoodsSpecProperty) {
+func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *temucontext.AISkuMappingResponse, temuSpecProperties []temutemplate.TemplateRespGoodsSpecProperty) {
 	vp.logger.Info("🔧 开始验证和修复AI响应")
 
 	// 构建parent_spec_id到可用spec_id的映射
-	parentSpecToValidSpecIDs := make(map[string]map[string]types.PropertyValue)
+	parentSpecToValidSpecIDs := make(map[string]map[string]temutemplate.PropertyValue)
 	parentSpecExists := make(map[string]bool)
 	parentSpecNames := make(map[string]string) // parent_spec_id -> parent_spec_name
 	userInputSpecs := make(map[string]bool)    // 标记哪些是用户输入规格（无预定义值）
@@ -74,7 +75,7 @@ func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *types.AISkuMap
 			}
 
 			if parentSpecToValidSpecIDs[specProp.ParentSpecID] == nil {
-				parentSpecToValidSpecIDs[specProp.ParentSpecID] = make(map[string]types.PropertyValue)
+				parentSpecToValidSpecIDs[specProp.ParentSpecID] = make(map[string]temutemplate.PropertyValue)
 			}
 
 			// 添加所有可用的spec_id
@@ -93,7 +94,7 @@ func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *types.AISkuMap
 	fixedCount := 0
 	for i := range response.SkuList {
 		sku := &response.SkuList[i]
-		validSpecs := make([]types.SpecInfo, 0, len(sku.Spec))
+		validSpecs := make([]temucontext.SpecInfo, 0, len(sku.Spec))
 
 		for _, spec := range sku.Spec {
 			// 检查parent_spec_id是否存在于模板中
@@ -103,7 +104,7 @@ func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *types.AISkuMap
 			}
 
 			// 创建新的spec，确保包含parent_spec_name
-			newSpec := types.SpecInfo{
+			newSpec := temucontext.SpecInfo{
 				SpecID:         spec.SpecID,
 				SpecName:       spec.SpecName,
 				ParentSpecID:   spec.ParentSpecID,

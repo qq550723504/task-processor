@@ -1,11 +1,11 @@
-package template
+﻿package template
 
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	temuquery "task-processor/internal/platforms/temu/api/query"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -51,8 +51,8 @@ func (h *TemplateQueryHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) 
 }
 
 // buildTemplateQueryRequest 构建模板查询请求参数
-func (h *TemplateQueryHandler) buildTemplateQueryRequest(temuCtx *temucontext.TemuTaskContext) types.TemplateQueryRequest {
-	request := types.TemplateQueryRequest{
+func (h *TemplateQueryHandler) buildTemplateQueryRequest(temuCtx *temucontext.TemuTaskContext) temutemplate.TemplateQueryRequest {
+	request := temutemplate.TemplateQueryRequest{
 		ClickType: "8",
 	}
 
@@ -84,7 +84,7 @@ func (h *TemplateQueryHandler) buildTemplateQueryRequest(temuCtx *temucontext.Te
 }
 
 // queryTemplate 发送模板查询请求到TEMU API
-func (h *TemplateQueryHandler) queryTemplate(temuCtx *temucontext.TemuTaskContext, request types.TemplateQueryRequest) error {
+func (h *TemplateQueryHandler) queryTemplate(temuCtx *temucontext.TemuTaskContext, request temutemplate.TemplateQueryRequest) error {
 	// 检查API客户端
 	if temuCtx.APIClient == nil {
 		return fmt.Errorf("API客户端未初始化")
@@ -126,9 +126,9 @@ func (h *TemplateQueryHandler) queryTemplate(temuCtx *temucontext.TemuTaskContex
 }
 
 // GetTemplateInfoFromContext 从强类型上下文中获取模板信息
-func GetTemplateInfoFromContext(temuCtx *temucontext.TemuTaskContext) (*types.TemplateInfo, bool) {
+func GetTemplateInfoFromContext(temuCtx *temucontext.TemuTaskContext) (*temutemplate.TemplateInfo, bool) {
 	if temuCtx.TemplateInfo != nil {
-		if templateInfo, ok := temuCtx.TemplateInfo.(types.TemplateInfo); ok {
+		if templateInfo, ok := temuCtx.TemplateInfo.(temutemplate.TemplateInfo); ok {
 			return &templateInfo, true
 		}
 	}
@@ -146,9 +146,9 @@ func GetSingleSpecValueNumFromContext(temuCtx *temucontext.TemuTaskContext) (int
 }
 
 // GetUserInputParentSpecListFromContext 从强类型上下文中获取用户输入父规格列表
-func GetUserInputParentSpecListFromContext(temuCtx *temucontext.TemuTaskContext) ([]types.UserInputParentSpec, bool) {
+func GetUserInputParentSpecListFromContext(temuCtx *temucontext.TemuTaskContext) ([]temutemplate.UserInputParentSpec, bool) {
 	if temuCtx.UserInputParentSpecList != nil {
-		if userInputSpecs, ok := temuCtx.UserInputParentSpecList.([]types.UserInputParentSpec); ok {
+		if userInputSpecs, ok := temuCtx.UserInputParentSpecList.([]temutemplate.UserInputParentSpec); ok {
 			return userInputSpecs, true
 		}
 	}

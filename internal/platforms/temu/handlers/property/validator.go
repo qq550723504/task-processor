@@ -6,7 +6,8 @@ import (
 	"strings"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,7 +25,7 @@ func NewPropertyValidator(logger *logrus.Entry) *PropertyValidator {
 }
 
 // ValidateProperties 验证属性列表
-func (v *PropertyValidator) ValidateProperties(properties []models.PropertyItem, templateProps []types.GoodsProperty) error {
+func (v *PropertyValidator) ValidateProperties(properties []models.PropertyItem, templateProps []temutemplate.GoodsProperty) error {
 	v.logger.Info("🔍 开始验证属性列表")
 
 	// 验证属性完整性
@@ -57,7 +58,7 @@ func (v *PropertyValidator) validatePropertyCompleteness(properties []models.Pro
 }
 
 // validateRequiredProperties 验证必填属性
-func (v *PropertyValidator) validateRequiredProperties(properties []models.PropertyItem, templateProps []types.GoodsProperty) error {
+func (v *PropertyValidator) validateRequiredProperties(properties []models.PropertyItem, templateProps []temutemplate.GoodsProperty) error {
 	// 创建已填充属性的映射
 	filledMap := make(map[string]bool)
 	for _, prop := range properties {
@@ -84,7 +85,7 @@ func (v *PropertyValidator) validateRequiredProperties(properties []models.Prope
 }
 
 // ValidatePropertyValue 验证单个属性值
-func (v *PropertyValidator) ValidatePropertyValue(prop models.PropertyItem, templateProp types.GoodsProperty) error {
+func (v *PropertyValidator) ValidatePropertyValue(prop models.PropertyItem, templateProp temutemplate.GoodsProperty) error {
 	// 验证属性ID匹配
 	if prop.Pid != templateProp.PID {
 		return fmt.Errorf("属性ID不匹配: 期望 %d，实际 %d", templateProp.PID, prop.Pid)
@@ -135,8 +136,8 @@ func (v *PropertyValidator) GetPropertyByPID(properties []models.PropertyItem, p
 //   - data: 属性映射数据
 //
 // 返回值:
-//   - []types.PropertyItem: 验证和修复后的属性列表
-func (v *PropertyValidator) ValidateAndFixProperties(properties []models.PropertyItem, data types.PropertyMappingData) []models.PropertyItem {
+//   - []common.PropertyItem: 验证和修复后的属性列表
+func (v *PropertyValidator) ValidateAndFixProperties(properties []models.PropertyItem, data temucontext.PropertyMappingData) []models.PropertyItem {
 	v.logger.Info("🔍 开始严格验证和修复AI返回的属性")
 
 	// 创建专门的修复器
@@ -167,7 +168,7 @@ func (v *PropertyValidator) ValidateAndFixProperties(properties []models.Propert
 		}
 
 		// 查找对应的模板属性
-		var templateProp *types.TemplateRespGoodsProperty
+		var templateProp *temutemplate.TemplateRespGoodsProperty
 		for _, tmplProp := range data.TemuProperties {
 			if tmplProp.PID == prop.Pid {
 				templateProp = &tmplProp
@@ -240,7 +241,7 @@ func (v *PropertyValidator) ValidateAndFixProperties(properties []models.Propert
 }
 
 // fixPropertyValue 修复单个属性值
-func (v *PropertyValidator) fixPropertyValue(prop models.PropertyItem, templateProp types.GoodsProperty) *models.PropertyItem {
+func (v *PropertyValidator) fixPropertyValue(prop models.PropertyItem, templateProp temutemplate.GoodsProperty) *models.PropertyItem {
 	fixedProp := prop
 
 	// 设置基本信息
@@ -262,7 +263,7 @@ func (v *PropertyValidator) fixPropertyValue(prop models.PropertyItem, templateP
 }
 
 // fixSelectionProperty 修复选择类型属性
-func (v *PropertyValidator) fixSelectionProperty(prop models.PropertyItem, templateProp types.GoodsProperty) *models.PropertyItem {
+func (v *PropertyValidator) fixSelectionProperty(prop models.PropertyItem, templateProp temutemplate.GoodsProperty) *models.PropertyItem {
 	// 如果已有有效的VID，验证是否在候选列表中
 	if prop.Vid != 0 {
 		for _, value := range templateProp.Values {
@@ -297,7 +298,7 @@ func (v *PropertyValidator) fixSelectionProperty(prop models.PropertyItem, templ
 }
 
 // fixNumericProperty 修复数值类型属性
-func (v *PropertyValidator) fixNumericProperty(prop models.PropertyItem, templateProp types.GoodsProperty) *models.PropertyItem {
+func (v *PropertyValidator) fixNumericProperty(prop models.PropertyItem, templateProp temutemplate.GoodsProperty) *models.PropertyItem {
 	// 如果有候选值列表，按选择类型处理
 	if len(templateProp.Values) > 0 {
 		return v.fixSelectionProperty(prop, templateProp)
@@ -322,7 +323,7 @@ func (v *PropertyValidator) fixNumericProperty(prop models.PropertyItem, templat
 }
 
 // fixTextProperty 修复文本类型属性
-func (v *PropertyValidator) fixTextProperty(prop models.PropertyItem, templateProp types.GoodsProperty) *models.PropertyItem {
+func (v *PropertyValidator) fixTextProperty(prop models.PropertyItem, templateProp temutemplate.GoodsProperty) *models.PropertyItem {
 	// 如果有候选值列表，按选择类型处理
 	if len(templateProp.Values) > 0 {
 		return v.fixSelectionProperty(prop, templateProp)
@@ -338,7 +339,7 @@ func (v *PropertyValidator) fixTextProperty(prop models.PropertyItem, templatePr
 }
 
 // selectBestDefaultValue 选择最佳的默认值（优先选择英文中性选项）
-func (v *PropertyValidator) selectBestDefaultValue(templateProp types.GoodsProperty) types.PropertyValue {
+func (v *PropertyValidator) selectBestDefaultValue(templateProp temutemplate.GoodsProperty) temutemplate.PropertyValue {
 	// 优先选择的英文关键词
 	englishNeutralKeywords := []string{
 		"Other", "N/A", "None", "Not Applicable", "No", "Without",
@@ -373,7 +374,7 @@ func (v *PropertyValidator) selectBestDefaultValue(templateProp types.GoodsPrope
 }
 
 // selectBestDefaultValueFromList 从给定的值列表中选择最佳默认值
-func (v *PropertyValidator) selectBestDefaultValueFromList(values []types.PropertyValue) types.PropertyValue {
+func (v *PropertyValidator) selectBestDefaultValueFromList(values []temutemplate.PropertyValue) temutemplate.PropertyValue {
 	// 优先选择的英文关键词
 	englishNeutralKeywords := []string{
 		"Other", "N/A", "None", "Not Applicable", "No", "Without",

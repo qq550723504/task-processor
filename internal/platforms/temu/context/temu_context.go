@@ -5,10 +5,9 @@ import (
 	"context"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	commonPipeline "task-processor/internal/pipeline"
 	management_api "task-processor/internal/infra/clients/management/api"
+	commonPipeline "task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/api"
-	"task-processor/internal/platforms/temu/types"
 )
 
 // TemuTaskContext TEMU平台特定的任务上下文
@@ -25,7 +24,7 @@ type TemuTaskContext struct {
 	StoreInfo   *management_api.StoreRespDTO
 
 	// AI处理结果
-	AISkuMapping *types.AISkuMappingResponse
+	AISkuMapping *AISkuMappingResponse
 
 	// 模板信息
 	TemplateInfo            interface{} // 模板信息

@@ -1,9 +1,9 @@
-package ai
+﻿package ai
 
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
 )
 
 // PromptBuilder AI提示词构建器
@@ -98,7 +98,7 @@ func (p *PromptBuilder) BuildSystemPrompt() string {
 }
 
 // BuildUserPrompt 构建用户提示词
-func (p *PromptBuilder) BuildUserPrompt(data types.PropertyMappingData) string {
+func (p *PromptBuilder) BuildUserPrompt(data temucontext.PropertyMappingData) string {
 	var builder strings.Builder
 
 	// 添加产品信息

@@ -4,7 +4,7 @@ package rules
 import (
 	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/common"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 )
 
 // ValidationRule 验证规则接口
@@ -16,10 +16,10 @@ type ValidationRule interface {
 	Matches(feature common.PropertyFeature) bool
 
 	// Validate 验证属性值
-	Validate(props []*models.PropertyItem, templateProp types.TemplateRespGoodsProperty) RuleValidationResult
+	Validate(props []*models.PropertyItem, templateProp temutemplate.TemplateRespGoodsProperty) RuleValidationResult
 
 	// Fix 修复属性值
-	Fix(props []*models.PropertyItem, templateProp types.TemplateRespGoodsProperty) error
+	Fix(props []*models.PropertyItem, templateProp temutemplate.TemplateRespGoodsProperty) error
 }
 
 // RuleValidationResult 规则验证结果

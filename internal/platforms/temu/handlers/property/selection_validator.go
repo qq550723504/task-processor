@@ -3,7 +3,7 @@ package property
 
 import (
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,13 +24,13 @@ func NewPropertySelectionValidator(logger *logrus.Entry) *PropertySelectionValid
 // 确保单选属性只有一个值，多选属性不超过最大选择数
 func (v *PropertySelectionValidator) ValidateSelectionConstraints(
 	properties []models.PropertyItem,
-	templateProps []types.TemplateRespGoodsProperty,
+	templateProps []temutemplate.TemplateRespGoodsProperty,
 ) []models.PropertyItem {
 
 	v.logger.Info("🔍 开始验证属性选择约束")
 
 	// 创建模板属性映射，便于快速查找
-	templateMap := make(map[int]types.TemplateRespGoodsProperty)
+	templateMap := make(map[int]temutemplate.TemplateRespGoodsProperty)
 	for _, tmpl := range templateProps {
 		templateMap[tmpl.PID] = tmpl
 	}
@@ -92,7 +92,7 @@ func (v *PropertySelectionValidator) ValidateSelectionConstraints(
 // applySelectionConstraint 应用选择约束修复策略
 func (v *PropertySelectionValidator) applySelectionConstraint(
 	propGroup []models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 ) []models.PropertyItem {
 
 	maxChoose := templateProp.ChooseMaxNum
@@ -109,7 +109,7 @@ func (v *PropertySelectionValidator) applySelectionConstraint(
 // selectBestSingleChoice 为单选属性选择最佳选项
 func (v *PropertySelectionValidator) selectBestSingleChoice(
 	propGroup []models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 ) []models.PropertyItem {
 
 	v.logger.Debugf("🎯 为单选属性 %s (PID=%d) 选择最佳选项", templateProp.Name, templateProp.PID)
@@ -143,7 +143,7 @@ func (v *PropertySelectionValidator) selectBestSingleChoice(
 // selectBestMultipleChoices 为多选属性选择最佳选项组合
 func (v *PropertySelectionValidator) selectBestMultipleChoices(
 	propGroup []models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 	maxChoose int,
 ) []models.PropertyItem {
 
@@ -166,7 +166,7 @@ func (v *PropertySelectionValidator) selectBestMultipleChoices(
 // sortPropertiesByPriority 按优先级排序属性
 func (v *PropertySelectionValidator) sortPropertiesByPriority(
 	propGroup []models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 ) []models.PropertyItem {
 
 	// 创建带优先级的属性列表
@@ -203,7 +203,7 @@ func (v *PropertySelectionValidator) sortPropertiesByPriority(
 // calculatePriority 计算属性的优先级
 func (v *PropertySelectionValidator) calculatePriority(
 	prop models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 ) int {
 	priority := 0
 
@@ -226,7 +226,7 @@ func (v *PropertySelectionValidator) calculatePriority(
 }
 
 // isValidVID 检查VID是否在候选列表中
-func (v *PropertySelectionValidator) isValidVID(vid int, candidates []types.PropertyValue) bool {
+func (v *PropertySelectionValidator) isValidVID(vid int, candidates []temutemplate.PropertyValue) bool {
 	for _, candidate := range candidates {
 		if candidate.VID == vid {
 			return true
@@ -236,7 +236,7 @@ func (v *PropertySelectionValidator) isValidVID(vid int, candidates []types.Prop
 }
 
 // isValueInCandidates 检查值是否在候选列表中
-func (v *PropertySelectionValidator) isValueInCandidates(value string, candidates []types.PropertyValue) bool {
+func (v *PropertySelectionValidator) isValueInCandidates(value string, candidates []temutemplate.PropertyValue) bool {
 	for _, candidate := range candidates {
 		if candidate.Value == value {
 			return true
@@ -247,7 +247,7 @@ func (v *PropertySelectionValidator) isValueInCandidates(value string, candidate
 
 // GetSelectionConstraintSummary 获取选择约束摘要信息
 func (v *PropertySelectionValidator) GetSelectionConstraintSummary(
-	templateProps []types.TemplateRespGoodsProperty,
+	templateProps []temutemplate.TemplateRespGoodsProperty,
 ) map[string]interface{} {
 
 	summary := map[string]interface{}{

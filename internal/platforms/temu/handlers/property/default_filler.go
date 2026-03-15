@@ -7,7 +7,7 @@ import (
 
 	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/rules"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -29,7 +29,7 @@ func NewDefaultPropertyFiller(logger *logrus.Entry) *DefaultPropertyFiller {
 }
 
 // FillRequiredPropertiesWithDefaults 为所有必填属性填充默认值
-func (f *DefaultPropertyFiller) FillRequiredPropertiesWithDefaults(templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) {
+func (f *DefaultPropertyFiller) FillRequiredPropertiesWithDefaults(templateProps []temutemplate.TemplateRespGoodsProperty, ext *models.ExtensionInfo) {
 	f.logger.Info("🔧 开始为必填属性填充默认值")
 
 	filledCount := 0
@@ -55,7 +55,7 @@ func (f *DefaultPropertyFiller) FillRequiredPropertiesWithDefaults(templateProps
 }
 
 // FillSingleRequiredProperty 填充单个必填属性
-func (f *DefaultPropertyFiller) FillSingleRequiredProperty(templateProp types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) {
+func (f *DefaultPropertyFiller) FillSingleRequiredProperty(templateProp temutemplate.TemplateRespGoodsProperty, ext *models.ExtensionInfo) {
 	defaultValue := f.getDefaultValueForProperty(templateProp)
 
 	if defaultValue != nil {
@@ -69,7 +69,7 @@ func (f *DefaultPropertyFiller) FillSingleRequiredProperty(templateProp types.Te
 }
 
 // getDefaultValueForProperty 获取属性的默认值
-func (f *DefaultPropertyFiller) getDefaultValueForProperty(templateProp types.TemplateRespGoodsProperty) *models.PropertyItem {
+func (f *DefaultPropertyFiller) getDefaultValueForProperty(templateProp temutemplate.TemplateRespGoodsProperty) *models.PropertyItem {
 	// 特殊处理control_type为16的属性（需要数值输入的选择类型）
 	if templateProp.ControlType == 16 {
 		return f.getDefaultNumberInputSelectionValue(templateProp)
@@ -99,7 +99,7 @@ func (f *DefaultPropertyFiller) getDefaultValueForProperty(templateProp types.Te
 }
 
 // getDefaultTextValue 获取文本类型的默认值
-func (f *DefaultPropertyFiller) getDefaultTextValue(templateProp types.TemplateRespGoodsProperty) *models.PropertyItem {
+func (f *DefaultPropertyFiller) getDefaultTextValue(templateProp temutemplate.TemplateRespGoodsProperty) *models.PropertyItem {
 	defaultText := f.generateDefaultTextByName(templateProp.Name)
 
 	return &models.PropertyItem{
@@ -111,7 +111,7 @@ func (f *DefaultPropertyFiller) getDefaultTextValue(templateProp types.TemplateR
 }
 
 // getDefaultNumericValue 获取数值类型的默认值
-func (f *DefaultPropertyFiller) getDefaultNumericValue(templateProp types.TemplateRespGoodsProperty) *models.PropertyItem {
+func (f *DefaultPropertyFiller) getDefaultNumericValue(templateProp temutemplate.TemplateRespGoodsProperty) *models.PropertyItem {
 	defaultNumber := f.generateDefaultNumberByName(templateProp.Name)
 
 	return &models.PropertyItem{
@@ -123,7 +123,7 @@ func (f *DefaultPropertyFiller) getDefaultNumericValue(templateProp types.Templa
 }
 
 // getDefaultSelectionValue 获取选择类型的默认值
-func (f *DefaultPropertyFiller) getDefaultSelectionValue(templateProp types.TemplateRespGoodsProperty) *models.PropertyItem {
+func (f *DefaultPropertyFiller) getDefaultSelectionValue(templateProp temutemplate.TemplateRespGoodsProperty) *models.PropertyItem {
 	// 优先使用第一个候选值
 	if len(templateProp.Values) > 0 {
 		// 如果有父条件依赖，需要选择匹配的值
@@ -166,7 +166,7 @@ func (f *DefaultPropertyFiller) getDefaultSelectionValue(templateProp types.Temp
 }
 
 // selectValueBasedOnParentCondition 根据父条件选择合适的值
-func (f *DefaultPropertyFiller) selectValueBasedOnParentCondition(templateProp types.TemplateRespGoodsProperty) *types.PropertyValue {
+func (f *DefaultPropertyFiller) selectValueBasedOnParentCondition(templateProp temutemplate.TemplateRespGoodsProperty) *temutemplate.PropertyValue {
 	// 如果没有父条件依赖，返回nil
 	if len(templateProp.TemplatePropertyValueParentList) == 0 {
 		return nil
@@ -194,11 +194,11 @@ func (f *DefaultPropertyFiller) selectValueBasedOnParentCondition(templateProp t
 }
 
 // getDefaultNumberInputSelectionValue 获取需要数值输入的选择类型默认值（control_type: 16）
-func (f *DefaultPropertyFiller) getDefaultNumberInputSelectionValue(templateProp types.TemplateRespGoodsProperty) *models.PropertyItem {
+func (f *DefaultPropertyFiller) getDefaultNumberInputSelectionValue(templateProp temutemplate.TemplateRespGoodsProperty) *models.PropertyItem {
 	f.logger.Infof("🔢 处理数值输入选择类型属性: %s (control_type: %d)", templateProp.Name, templateProp.ControlType)
 
 	// 选择一个合适的材料类型
-	var selectedValue types.PropertyValue
+	var selectedValue temutemplate.PropertyValue
 	if len(templateProp.Values) > 0 {
 		// 对于面料成分，优先选择常见材料
 		selectedValue = f.selectBestMaterialValue(templateProp)
@@ -236,7 +236,7 @@ func (f *DefaultPropertyFiller) getDefaultNumberInputSelectionValue(templateProp
 }
 
 // selectBestMaterialValue 选择最佳的材料值
-func (f *DefaultPropertyFiller) selectBestMaterialValue(templateProp types.TemplateRespGoodsProperty) types.PropertyValue {
+func (f *DefaultPropertyFiller) selectBestMaterialValue(templateProp temutemplate.TemplateRespGoodsProperty) temutemplate.PropertyValue {
 	// 对于面料成分，优先选择常见材料
 	preferredMaterials := []string{"棉", "涤纶", "尼龙", "氨纶", "聚酯纤维"}
 
@@ -258,11 +258,11 @@ func (f *DefaultPropertyFiller) selectBestMaterialValue(templateProp types.Templ
 	}
 
 	// 兜底情况
-	return types.PropertyValue{VID: 1, Value: "其他"}
+	return temutemplate.PropertyValue{VID: 1, Value: "其他"}
 }
 
 // getDefaultNumberInputValue 获取默认的数值输入值
-func (f *DefaultPropertyFiller) getDefaultNumberInputValue(templateProp types.TemplateRespGoodsProperty) string {
+func (f *DefaultPropertyFiller) getDefaultNumberInputValue(templateProp temutemplate.TemplateRespGoodsProperty) string {
 	// 根据属性名称和约束生成合适的默认值
 	switch templateProp.Name {
 	case "面料成分":
@@ -324,7 +324,7 @@ func (f *DefaultPropertyFiller) generateDefaultNumberByName(name string) int {
 }
 
 // isPropertyAlreadyFilled 检查属性是否已经填充
-func (f *DefaultPropertyFiller) isPropertyAlreadyFilled(templateProp types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) bool {
+func (f *DefaultPropertyFiller) isPropertyAlreadyFilled(templateProp temutemplate.TemplateRespGoodsProperty, ext *models.ExtensionInfo) bool {
 	for _, prop := range ext.GoodsProperty.GoodsProperties {
 		if prop.Pid == templateProp.PID && prop.RefPid == templateProp.RefPID {
 			return true
@@ -334,7 +334,7 @@ func (f *DefaultPropertyFiller) isPropertyAlreadyFilled(templateProp types.Templ
 }
 
 // getValueUnit 获取属性的单位信息
-func (f *DefaultPropertyFiller) getValueUnit(templateProp types.TemplateRespGoodsProperty) string {
+func (f *DefaultPropertyFiller) getValueUnit(templateProp temutemplate.TemplateRespGoodsProperty) string {
 	// 优先使用ValueUnit字段
 	if len(templateProp.ValueUnit) > 0 {
 		return templateProp.ValueUnit[0]

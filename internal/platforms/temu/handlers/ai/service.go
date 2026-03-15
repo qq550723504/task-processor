@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/pkg/jsonutil"
 	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/property"
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -39,9 +39,9 @@ func NewAIService(openaiClient *openaiClient.Client, config *config.OpenAIConfig
 //   - data: 属性映射数据
 //
 // 返回值:
-//   - []types.PropertyItem: 映射后的属性列表
+//   - []common.PropertyItem: 映射后的属性列表
 //   - error: 错误信息
-func (s *AIService) CallAIForPropertyMapping(ctx context.Context, data types.PropertyMappingData) ([]models.PropertyItem, error) {
+func (s *AIService) CallAIForPropertyMapping(ctx context.Context, data temucontext.PropertyMappingData) ([]models.PropertyItem, error) {
 	s.logger.Info("🤖 开始调用AI进行属性映射")
 
 	// 检查AI客户端是否可用
@@ -98,7 +98,7 @@ func (s *AIService) createChatCompletionRequest(systemPrompt, userPrompt string)
 }
 
 // processAIResponse 处理AI响应
-func (s *AIService) processAIResponse(response *openaiClient.ChatCompletionResponse, data types.PropertyMappingData) ([]models.PropertyItem, error) {
+func (s *AIService) processAIResponse(response *openaiClient.ChatCompletionResponse, data temucontext.PropertyMappingData) ([]models.PropertyItem, error) {
 	content := strings.TrimSpace(response.Choices[0].Message.Content)
 
 	// 清理JSON格式

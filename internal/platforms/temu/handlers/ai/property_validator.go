@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 )
 
 // validatePropertyConstraints 验证属性约束
-func (m *AIPropertyMapper) validatePropertyConstraints(templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
+func (m *AIPropertyMapper) validatePropertyConstraints(templateProps []temutemplate.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
 	m.logger.Info("🔍 开始验证属性约束")
 
 	// 统计每个RefPID的使用次数
@@ -34,11 +34,11 @@ func (m *AIPropertyMapper) validatePropertyConstraints(templateProps []types.Tem
 }
 
 // validatePropertyValues 验证属性值的有效性
-func (m *AIPropertyMapper) validatePropertyValues(templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
+func (m *AIPropertyMapper) validatePropertyValues(templateProps []temutemplate.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
 	m.logger.Info("🔍 开始验证属性值有效性")
 
 	// 构建模板属性映射
-	templateMap := make(map[int]types.TemplateRespGoodsProperty)
+	templateMap := make(map[int]temutemplate.TemplateRespGoodsProperty)
 	for _, templateProp := range templateProps {
 		templateMap[templateProp.PID] = templateProp
 	}
@@ -69,7 +69,7 @@ func (m *AIPropertyMapper) validatePropertyValues(templateProps []types.Template
 }
 
 // isValidVID 检查VID是否在模板的有效值列表中
-func (m *AIPropertyMapper) isValidVID(vid int, values []types.PropertyValue) bool {
+func (m *AIPropertyMapper) isValidVID(vid int, values []temutemplate.PropertyValue) bool {
 	for _, value := range values {
 		if value.VID == vid {
 			return true
@@ -80,12 +80,12 @@ func (m *AIPropertyMapper) isValidVID(vid int, values []types.PropertyValue) boo
 
 // isValidVIDForTemplate 检查VID是否在指定模板的有效值列表中
 // 注意：这个函数与isValidVID功能相同，保留是为了兼容性
-func (m *AIPropertyMapper) isValidVIDForTemplate(vid int, values []types.PropertyValue) bool {
+func (m *AIPropertyMapper) isValidVIDForTemplate(vid int, values []temutemplate.PropertyValue) bool {
 	return m.isValidVID(vid, values)
 }
 
 // findCorrectVIDByValue 通过值匹配找到正确的VID
-func (m *AIPropertyMapper) findCorrectVIDByValue(propValue string, values []types.PropertyValue) (int, string) {
+func (m *AIPropertyMapper) findCorrectVIDByValue(propValue string, values []temutemplate.PropertyValue) (int, string) {
 	propValue = strings.ToLower(propValue)
 
 	// 精确匹配

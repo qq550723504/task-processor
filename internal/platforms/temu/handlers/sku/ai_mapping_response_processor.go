@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
 )
 
 // enforceSpecCountLimit 强制执行规格数量限制（最多2个）
-func (vp *SkuVariantProcessor) enforceSpecCountLimit(aiResponse *types.AISkuMappingResponse) {
+func (vp *SkuVariantProcessor) enforceSpecCountLimit(aiResponse *temucontext.AISkuMappingResponse) {
 	// 1. 统计所有SKU使用的parent_spec_id
 	parentSpecUsage := make(map[string]int)
 	parentSpecNames := make(map[string]string)
@@ -80,7 +80,7 @@ func (vp *SkuVariantProcessor) enforceSpecCountLimit(aiResponse *types.AISkuMapp
 	// 5. 过滤每个SKU的规格，只保留选中的维度
 	for i := range aiResponse.SkuList {
 		sku := &aiResponse.SkuList[i]
-		filteredSpecs := make([]types.SpecInfo, 0, 2)
+		filteredSpecs := make([]temucontext.SpecInfo, 0, 2)
 
 		for _, spec := range sku.Spec {
 			if selectedSpecs[spec.ParentSpecID] {

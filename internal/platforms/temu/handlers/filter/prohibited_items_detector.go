@@ -1,4 +1,4 @@
-package filter
+﻿package filter
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -95,10 +94,9 @@ func (d *ProhibitedItemsDetector) HandleTemu(temuCtx *temucontext.TemuTaskContex
 		// 打印详细的产品信息用于分析
 		d.logProductDetails(amazonProduct)
 
-		// 返回不可重试错误
-		return types.NewNonRetryableError(
-			fmt.Sprintf("产品包含违禁品内容: %s (类别: %s)", result.Reason, result.ViolatedCategory),
-			fmt.Errorf("违禁品检测失败: %v", result.ViolatedItems),
+		// 返回不可重试错误（使用 NONRETRYABLE: 前缀，temu.IsRetryableError 会识别）
+		return fmt.Errorf("NONRETRYABLE: 产品包含违禁品内容: %s (类别: %s), 违禁品检测失败: %v",
+			result.Reason, result.ViolatedCategory, result.ViolatedItems,
 		)
 	}
 

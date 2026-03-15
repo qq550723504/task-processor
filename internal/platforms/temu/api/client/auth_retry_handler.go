@@ -1,9 +1,8 @@
-// Package client 提供TEMU平台认证重试处理功能
+﻿// Package client 提供TEMU平台认证重试处理功能
 package client
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/temu/types"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -106,7 +105,7 @@ func (h *TemuRetryHandler) handleFinalAuthFailure(client APIClientInterface, ctx
 		h.logger.Errorf("设置暂停键失败: %v", pauseErr)
 	}
 
-	return types.NewAuthExpiredError(
+	return NewAuthExpiredError(
 		fmt.Sprintf("店铺ID=%d认证过期，已设置暂停键", ctx.StoreID),
 		ctx.LastError,
 	)

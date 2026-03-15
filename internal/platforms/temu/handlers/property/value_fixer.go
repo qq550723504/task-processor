@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,7 +27,7 @@ func NewPropertyValueFixer(logger *logrus.Entry) *PropertyValueFixer {
 // FixInvalidSelectionValue 修复无效的选择类型属性值
 func (f *PropertyValueFixer) FixInvalidSelectionValue(
 	prop models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 ) *models.PropertyItem {
 
 	f.logger.Debugf("🔧 开始修复属性值: PID=%d, Value='%s', VID=%d",
@@ -74,8 +74,8 @@ func (f *PropertyValueFixer) FixInvalidSelectionValue(
 // tryIntelligentMatch 尝试智能匹配属性值
 func (f *PropertyValueFixer) tryIntelligentMatch(
 	prop models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
-) *types.PropertyValue {
+	templateProp temutemplate.TemplateRespGoodsProperty,
+) *temutemplate.PropertyValue {
 
 	if prop.Value == "" {
 		return nil
@@ -106,7 +106,7 @@ func (f *PropertyValueFixer) tryIntelligentMatch(
 }
 
 // matchByValueContent 基于值内容进行通用匹配
-func (f *PropertyValueFixer) matchByValueContent(value string, validValues []types.PropertyValue) *types.PropertyValue {
+func (f *PropertyValueFixer) matchByValueContent(value string, validValues []temutemplate.PropertyValue) *temutemplate.PropertyValue {
 	valueLower := strings.ToLower(value)
 
 	// 通用关键词匹配 - 基于值的实际内容而非属性名称
@@ -157,10 +157,10 @@ func (f *PropertyValueFixer) extractKeywords(text string) []string {
 }
 
 // selectBestDefaultValue 选择最佳的默认值
-func (f *PropertyValueFixer) selectBestDefaultValue(templateProp types.TemplateRespGoodsProperty) types.PropertyValue {
+func (f *PropertyValueFixer) selectBestDefaultValue(templateProp temutemplate.TemplateRespGoodsProperty) temutemplate.PropertyValue {
 	if len(templateProp.Values) == 0 {
 		f.logger.Error("❌ 属性没有可选值列表")
-		return types.PropertyValue{}
+		return temutemplate.PropertyValue{}
 	}
 
 	// 优先选择的中性关键词（按优先级排序）
@@ -196,14 +196,14 @@ func (f *PropertyValueFixer) selectBestDefaultValue(templateProp types.TemplateR
 // FixAllInvalidProperties 批量修复所有无效属性
 func (f *PropertyValueFixer) FixAllInvalidProperties(
 	properties []models.PropertyItem,
-	templateProps []types.TemplateRespGoodsProperty,
+	templateProps []temutemplate.TemplateRespGoodsProperty,
 ) []models.PropertyItem {
 
 	f.logger.Info("🔧 开始批量修复无效属性值")
 	f.logger.Infof("📊 输入属性数量: %d, 模板属性数量: %d", len(properties), len(templateProps))
 
 	// 创建模板属性映射
-	templateMap := make(map[int]types.TemplateRespGoodsProperty)
+	templateMap := make(map[int]temutemplate.TemplateRespGoodsProperty)
 	for _, tmpl := range templateProps {
 		templateMap[tmpl.PID] = tmpl
 	}
@@ -253,7 +253,7 @@ func (f *PropertyValueFixer) FixAllInvalidProperties(
 // forceCreateValidProperty 强制为必填属性创建有效值
 func (f *PropertyValueFixer) forceCreateValidProperty(
 	prop models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 ) *models.PropertyItem {
 	f.logger.Warnf("🚨 强制为必填属性创建有效值: %s (PID=%d)", templateProp.Name, templateProp.PID)
 

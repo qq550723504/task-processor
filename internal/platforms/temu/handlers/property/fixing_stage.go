@@ -4,7 +4,7 @@ package property
 import (
 	"strconv"
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -56,7 +56,7 @@ func (s *PropertyFixingStage) Process(ctx *PropertyContext) error {
 }
 
 // fixPercentageProperty 修复百分比属性
-func (s *PropertyFixingStage) fixPercentageProperty(ctx *PropertyContext, feature PropertyFeature, templateProp types.TemplateRespGoodsProperty) bool {
+func (s *PropertyFixingStage) fixPercentageProperty(ctx *PropertyContext, feature PropertyFeature, templateProp temutemplate.TemplateRespGoodsProperty) bool {
 	// 查找该PID的属性
 	var targetProps []*models.PropertyItem
 	for i := range ctx.CurrentProperties {

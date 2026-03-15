@@ -4,7 +4,7 @@ package spec
 import (
 	"fmt"
 	"task-processor/internal/platforms/temu/handlers/property"
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -26,7 +26,7 @@ func NewSpecDimensionUnifier() *SpecDimensionUnifier {
 }
 
 // UnifySpecDimensions 统一AI映射中的规格维度
-func (u *SpecDimensionUnifier) UnifySpecDimensions(aiMapping *types.AISkuMappingResponse) error {
+func (u *SpecDimensionUnifier) UnifySpecDimensions(aiMapping *temucontext.AISkuMappingResponse) error {
 	if len(aiMapping.SkuList) == 0 {
 		return nil
 	}
@@ -44,7 +44,7 @@ func (u *SpecDimensionUnifier) UnifySpecDimensions(aiMapping *types.AISkuMapping
 }
 
 // analyzeSpecDimensions 分析规格维度使用情况
-func (u *SpecDimensionUnifier) analyzeSpecDimensions(aiMapping *types.AISkuMappingResponse) map[string]int {
+func (u *SpecDimensionUnifier) analyzeSpecDimensions(aiMapping *temucontext.AISkuMappingResponse) map[string]int {
 	dimensionCount := make(map[string]int)
 
 	for _, sku := range aiMapping.SkuList {
@@ -58,7 +58,7 @@ func (u *SpecDimensionUnifier) analyzeSpecDimensions(aiMapping *types.AISkuMappi
 }
 
 // applyUnifiedDimensions 应用统一的规格维度
-func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *types.AISkuMappingResponse, targetDimensions []string) error {
+func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *temucontext.AISkuMappingResponse, targetDimensions []string) error {
 	if len(targetDimensions) == 0 {
 		u.logger.Warn("⚠️ 目标规格维度为空，跳过统一处理")
 		return nil
@@ -137,8 +137,8 @@ func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *types.AISkuMapp
 }
 
 // extractTargetSpecs 提取目标维度的规格
-func (u *SpecDimensionUnifier) extractTargetSpecs(specs []types.SpecInfo, targetDimensions []string) []types.SpecInfo {
-	var result []types.SpecInfo
+func (u *SpecDimensionUnifier) extractTargetSpecs(specs []temucontext.SpecInfo, targetDimensions []string) []temucontext.SpecInfo {
+	var result []temucontext.SpecInfo
 
 	for _, targetDim := range targetDimensions {
 		for _, spec := range specs {
@@ -153,31 +153,31 @@ func (u *SpecDimensionUnifier) extractTargetSpecs(specs []types.SpecInfo, target
 }
 
 // createDefaultSpec 创建默认规格
-func (u *SpecDimensionUnifier) createDefaultSpec(parentSpecID string) types.SpecInfo {
+func (u *SpecDimensionUnifier) createDefaultSpec(parentSpecID string) temucontext.SpecInfo {
 	switch parentSpecID {
 	case "1001": // Color
-		return types.SpecInfo{
+		return temucontext.SpecInfo{
 			SpecID:         "DEFAULT_COLOR",
 			SpecName:       "Default Color",
 			ParentSpecID:   "1001",
 			ParentSpecName: "Color",
 		}
 	case "3001": // Size
-		return types.SpecInfo{
+		return temucontext.SpecInfo{
 			SpecID:         "DEFAULT_SIZE",
 			SpecName:       "Default Size",
 			ParentSpecID:   "3001",
 			ParentSpecName: "Size",
 		}
 	case "18014": // Capacity
-		return types.SpecInfo{
+		return temucontext.SpecInfo{
 			SpecID:         "DEFAULT_CAPACITY",
 			SpecName:       "Default Capacity",
 			ParentSpecID:   "18014",
 			ParentSpecName: "Capacity",
 		}
 	default:
-		return types.SpecInfo{
+		return temucontext.SpecInfo{
 			SpecID:         fmt.Sprintf("DEFAULT_%s", parentSpecID),
 			SpecName:       "Default",
 			ParentSpecID:   parentSpecID,
@@ -187,7 +187,7 @@ func (u *SpecDimensionUnifier) createDefaultSpec(parentSpecID string) types.Spec
 }
 
 // regenerateUniqueID 重新生成unique_id
-func (u *SpecDimensionUnifier) regenerateUniqueID(sku *types.AIGeneratedSku) {
+func (u *SpecDimensionUnifier) regenerateUniqueID(sku *temucontext.AIGeneratedSku) {
 	if len(sku.Spec) >= 2 {
 		sku.UniqueID = fmt.Sprintf("%s_%s", sku.Spec[0].SpecID, sku.Spec[1].SpecID)
 	} else if len(sku.Spec) == 1 {

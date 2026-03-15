@@ -2,7 +2,7 @@
 
 import (
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,11 +20,11 @@ func NewConditionalPropertyValidator(logger *logrus.Entry) *ConditionalPropertyV
 }
 
 // ValidateAndCleanConditionalProperties 验证和清理条件属性依赖关系
-func (v *ConditionalPropertyValidator) ValidateAndCleanConditionalProperties(properties *[]models.PropertyItem, templateProps []types.TemplateRespGoodsProperty) {
+func (v *ConditionalPropertyValidator) ValidateAndCleanConditionalProperties(properties *[]models.PropertyItem, templateProps []temutemplate.TemplateRespGoodsProperty) {
 	v.logger.Info("🔍 开始验证条件属性依赖关系")
 
 	// 创建模板属性映射
-	templateMap := make(map[int]types.TemplateRespGoodsProperty)
+	templateMap := make(map[int]temutemplate.TemplateRespGoodsProperty)
 	for _, templateProp := range templateProps {
 		templateMap[templateProp.TemplatePID] = templateProp
 	}
@@ -89,8 +89,8 @@ func (v *ConditionalPropertyValidator) ValidateAndCleanConditionalProperties(pro
 }
 
 // checkParentCondition 检查父属性条件是否满足
-func (v *ConditionalPropertyValidator) checkParentCondition(parentList types.TemplatePropertyValueParent,
-	currentValues map[int]models.PropertyItem, templateMap map[int]types.TemplateRespGoodsProperty) bool {
+func (v *ConditionalPropertyValidator) checkParentCondition(parentList temutemplate.TemplatePropertyValueParent,
+	currentValues map[int]models.PropertyItem, templateMap map[int]temutemplate.TemplateRespGoodsProperty) bool {
 
 	// 找到父属性的TemplatePID
 	var parentTemplatePID int

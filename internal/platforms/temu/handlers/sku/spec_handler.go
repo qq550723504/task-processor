@@ -6,7 +6,8 @@ import (
 
 	"task-processor/internal/domain/model"
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -38,7 +39,7 @@ func NewSkuSpecHandler(logger *logrus.Entry) *SkuSpecHandler {
 }
 
 // collectNonColorSpecsForColor 收集特定颜色下的非颜色规格
-func (sh *SkuSpecHandler) collectNonColorSpecsForColor(aiMapping *types.AISkuMappingResponse, skuIndices []int, templateSpecs []types.TemplateRespGoodsSpecProperty) map[string]*SpecDimension {
+func (sh *SkuSpecHandler) collectNonColorSpecsForColor(aiMapping *temucontext.AISkuMappingResponse, skuIndices []int, templateSpecs []temutemplate.TemplateRespGoodsSpecProperty) map[string]*SpecDimension {
 	dimensions := make(map[string]*SpecDimension)
 
 	// 从该颜色组的SKU中收集非颜色规格
@@ -216,10 +217,10 @@ func (sh *SkuSpecHandler) IsSizeSpec(specName string) bool {
 }
 
 // convertUserInputSpecsToGoodsSpecProperties 转换用户输入规格为商品规格属性
-func (sh *SkuSpecHandler) convertUserInputSpecsToGoodsSpecProperties(userInputSpecs []types.UserInputParentSpec) []types.TemplateRespGoodsSpecProperty {
-	var specProperties []types.TemplateRespGoodsSpecProperty
+func (sh *SkuSpecHandler) convertUserInputSpecsToGoodsSpecProperties(userInputSpecs []temutemplate.UserInputParentSpec) []temutemplate.TemplateRespGoodsSpecProperty {
+	var specProperties []temutemplate.TemplateRespGoodsSpecProperty
 	for i, userSpec := range userInputSpecs {
-		specProperty := types.TemplateRespGoodsSpecProperty{
+		specProperty := temutemplate.TemplateRespGoodsSpecProperty{
 			PID:               i + 1000, // 使用临时ID
 			TemplateModuleID:  0,
 			TemplatePID:       0,
@@ -227,7 +228,7 @@ func (sh *SkuSpecHandler) convertUserInputSpecsToGoodsSpecProperties(userInputSp
 			Name:              userSpec.ParentSpecName,
 			PropertyValueType: 1, // 假设为选择类型
 			ValueUnit:         []string{},
-			Values:            []types.PropertyValue{}, // 用户输入规格通常没有预定义值
+			Values:            []temutemplate.PropertyValue{}, // 用户输入规格通常没有预定义值
 			MaxValue:          "",
 			MinValue:          "",
 			ValuePrecision:    0,

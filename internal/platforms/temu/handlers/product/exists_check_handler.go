@@ -3,9 +3,8 @@
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pipeline"
 	"task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/temu/types"
+	"task-processor/internal/pipeline"
 
 	"github.com/sirupsen/logrus"
 )
@@ -65,7 +64,7 @@ func (h *ProductExistsCheckHandler) Handle(ctx pipeline.TaskContext) error {
 		// 检查变体数量限制
 		if variantCount > 100 {
 			h.logger.Errorf("❌ 变体数量过多（%d个），超过限制（100个），停止处理", variantCount)
-			return types.NewNonRetryableError(fmt.Sprintf("变体数量过多（%d个），超过限制（100个）", variantCount), nil)
+			return fmt.Errorf("NONRETRYABLE: 变体数量过多（%d个），超过限制（100个）", variantCount)
 		}
 
 		for i, variation := range amazonProduct.Variations {

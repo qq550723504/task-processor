@@ -12,7 +12,7 @@ import (
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
 	"task-processor/internal/platforms/temu/handlers/template"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -137,7 +137,7 @@ func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskCon
 	finalProperties := make([]models.PropertyItem, 0, len(validatedProperties))
 	for _, prop := range validatedProperties {
 		// 查找模板属性
-		var templateProp *types.TemplateRespGoodsProperty
+		var templateProp *temutemplate.TemplateRespGoodsProperty
 		for _, tmpl := range templateInfo.GoodsProperties {
 			if tmpl.PID == prop.Pid {
 				templateProp = &tmpl
@@ -238,9 +238,9 @@ func getPropertyTypeName(propertyValueType int) string {
 	}
 }
 
-func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templateProps []types.TemplateRespGoodsProperty) types.PropertyMappingData {
-	data := types.PropertyMappingData{
-		TemuProperties: make([]types.TemplateRespGoodsProperty, 0, len(templateProps)),
+func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templateProps []temutemplate.TemplateRespGoodsProperty) temucontext.PropertyMappingData {
+	data := temucontext.PropertyMappingData{
+		TemuProperties: make([]temutemplate.TemplateRespGoodsProperty, 0, len(templateProps)),
 	}
 
 	// 检查模板属性是否为空
@@ -265,7 +265,7 @@ func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templatePr
 
 // enrichPropertiesWithTemplateInfo 为AI返回的属性补充模板相关字段
 // 修复template_module_id字段缺失导致TEMU API忽略属性的问题
-func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.PropertyItem, templateProps []types.TemplateRespGoodsProperty) {
+func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.PropertyItem, templateProps []temutemplate.TemplateRespGoodsProperty) {
 	m.logger.Info("🔧 开始为AI属性补充模板信息")
 	m.logger.Infof("🔧 AI返回属性数量: %d, 模板属性数量: %d", len(properties), len(templateProps))
 
@@ -276,8 +276,8 @@ func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.
 	}
 
 	// 创建模板属性映射表，使用PID+TemplatePID组合键来处理相同PID的不同属性
-	templateMap := make(map[string]types.TemplateRespGoodsProperty)
-	pidToTemplateProps := make(map[int][]types.TemplateRespGoodsProperty)
+	templateMap := make(map[string]temutemplate.TemplateRespGoodsProperty)
+	pidToTemplateProps := make(map[int][]temutemplate.TemplateRespGoodsProperty)
 
 	for _, templateProp := range templateProps {
 		// 使用PID+TemplatePID作为唯一键
@@ -294,7 +294,7 @@ func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.
 		m.logger.Infof("🔧 处理属性[%d]: PID=%d, TemplatePID=%d, Value=%s, VID=%d",
 			i, prop.Pid, prop.TemplatePid, prop.Value, prop.Vid)
 
-		var templateProp *types.TemplateRespGoodsProperty
+		var templateProp *temutemplate.TemplateRespGoodsProperty
 
 		// 首先尝试使用PID+TemplatePID精确匹配
 		if prop.TemplatePid != 0 {
@@ -380,7 +380,7 @@ func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.
 
 // selectBestTemplate 从多个相同PID的模板中选择最佳匹配
 // 改进的智能选择策略，避免硬编码，通过通用的匹配算法解决属性选择问题
-func (m *AIPropertyMapper) selectBestTemplate(prop *models.PropertyItem, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
+func (m *AIPropertyMapper) selectBestTemplate(prop *models.PropertyItem, templates []temutemplate.TemplateRespGoodsProperty) *temutemplate.TemplateRespGoodsProperty {
 	m.logger.Debugf("🎯 为PID=%d选择最佳模板，候选数量: %d", prop.Pid, len(templates))
 
 	// 策略1: 通过VID精确匹配（最高优先级）
@@ -419,10 +419,10 @@ func (m *AIPropertyMapper) selectBestTemplate(prop *models.PropertyItem, templat
 }
 
 // findBestValueMatch 找到最佳的值匹配模板（使用评分系统）
-func (m *AIPropertyMapper) findBestValueMatch(propValue string, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
+func (m *AIPropertyMapper) findBestValueMatch(propValue string, templates []temutemplate.TemplateRespGoodsProperty) *temutemplate.TemplateRespGoodsProperty {
 	propValue = strings.ToLower(propValue)
 
-	var bestMatch *types.TemplateRespGoodsProperty
+	var bestMatch *temutemplate.TemplateRespGoodsProperty
 	var bestScore int
 
 	for _, template := range templates {
@@ -441,7 +441,7 @@ func (m *AIPropertyMapper) findBestValueMatch(propValue string, templates []type
 }
 
 // calculateValueMatchScore 计算值匹配分数（通用评分算法）
-func (m *AIPropertyMapper) calculateValueMatchScore(propValue string, template types.TemplateRespGoodsProperty) int {
+func (m *AIPropertyMapper) calculateValueMatchScore(propValue string, template temutemplate.TemplateRespGoodsProperty) int {
 	score := 0
 
 	// 检查模板的候选值
@@ -488,7 +488,7 @@ func (m *AIPropertyMapper) hasKeywordMatch(propValue, templateValue string) bool
 }
 
 // selectByDependency 根据依赖关系选择模板（通用依赖关系处理）
-func (m *AIPropertyMapper) selectByDependency(prop *models.PropertyItem, templates []types.TemplateRespGoodsProperty) *types.TemplateRespGoodsProperty {
+func (m *AIPropertyMapper) selectByDependency(prop *models.PropertyItem, templates []temutemplate.TemplateRespGoodsProperty) *temutemplate.TemplateRespGoodsProperty {
 	// 对于条件属性，检查是否有合适的父依赖
 	for _, template := range templates {
 		if len(template.TemplatePropertyValueParentList) > 0 {
@@ -503,7 +503,7 @@ func (m *AIPropertyMapper) selectByDependency(prop *models.PropertyItem, templat
 }
 
 // isDependencyReasonable 检查依赖关系是否合理（通用依赖关系验证）
-func (m *AIPropertyMapper) isDependencyReasonable(prop *models.PropertyItem, template types.TemplateRespGoodsProperty) bool {
+func (m *AIPropertyMapper) isDependencyReasonable(prop *models.PropertyItem, template temutemplate.TemplateRespGoodsProperty) bool {
 	// 通用的依赖关系检查：如果属性值与模板名称或候选值相关，则认为依赖关系合理
 	propValue := strings.ToLower(prop.Value)
 	templateName := strings.ToLower(template.Name)
@@ -534,22 +534,22 @@ func (m *AIPropertyMapper) isDependencyReasonable(prop *models.PropertyItem, tem
 }
 
 // convertAmazonProductData 将Amazon产品数据转换为AI映射所需的格式
-func convertAmazonProductData(temuCtx *temucontext.TemuTaskContext) types.AmazonProductData {
+func convertAmazonProductData(temuCtx *temucontext.TemuTaskContext) temucontext.AmazonProductData {
 	amazonProduct := temuCtx.GetAmazonProduct()
 	if amazonProduct == nil {
-		return types.AmazonProductData{}
+		return temucontext.AmazonProductData{}
 	}
 
 	// 转换产品详情
-	productDetails := make([]types.ProductDetailData, 0, len(amazonProduct.ProductDetails))
+	productDetails := make([]temucontext.ProductDetailData, 0, len(amazonProduct.ProductDetails))
 	for _, detail := range amazonProduct.ProductDetails {
-		productDetails = append(productDetails, types.ProductDetailData{
+		productDetails = append(productDetails, temucontext.ProductDetailData{
 			Type:  detail.Type,
 			Value: detail.Value,
 		})
 	}
 
-	return types.AmazonProductData{
+	return temucontext.AmazonProductData{
 		Title:             amazonProduct.Title,
 		Brand:             amazonProduct.Brand,
 		Description:       amazonProduct.Description,

@@ -8,7 +8,7 @@ import (
 
 	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/common"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,7 +20,7 @@ type PropertyContext struct {
 	Logger  *logrus.Entry
 
 	// 模板数据
-	TemplateProperties []types.TemplateRespGoodsProperty
+	TemplateProperties []temutemplate.TemplateRespGoodsProperty
 
 	// 当前属性数据
 	CurrentProperties []models.PropertyItem

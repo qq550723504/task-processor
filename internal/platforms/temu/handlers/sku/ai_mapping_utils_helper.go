@@ -1,4 +1,4 @@
-// Package sku 提供TEMU平台的AI SKU映射工具辅助功能
+﻿// Package sku 提供TEMU平台的AI SKU映射工具辅助功能
 package sku
 
 import (
@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
 )
 
 // getProductDimensions 获取产品尺寸（优先使用直接字段，如果为空则从ProductDetails中提取）
@@ -55,8 +55,8 @@ func (vp *SkuVariantProcessor) buildAIVariant(
 	productDimensions string,
 	itemWeight string,
 	productDetailsMap map[string]string,
-) types.AmazonVariantForAI {
-	aiVariant := types.AmazonVariantForAI{
+) temucontext.AmazonVariantForAI {
+	aiVariant := temucontext.AmazonVariantForAI{
 		Name:       product.Title,
 		Asin:       product.Asin,
 		Price:      product.FinalPrice,

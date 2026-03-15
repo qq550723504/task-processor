@@ -8,7 +8,7 @@ import (
 	"time"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -16,7 +16,7 @@ import (
 // PropertyProcessingPipeline 属性处理管道接口
 type PropertyProcessingPipeline interface {
 	// Process 处理属性
-	Process(ctx context.Context, templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error
+	Process(ctx context.Context, templateProps []temutemplate.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error
 
 	// AddStage 添加处理阶段
 	AddStage(stage PropertyStage)
@@ -67,7 +67,7 @@ func (p *DefaultPropertyProcessingPipeline) SetConfig(config *ProcessingConfig) 
 }
 
 // Process 处理属性
-func (p *DefaultPropertyProcessingPipeline) Process(ctx context.Context, templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
+func (p *DefaultPropertyProcessingPipeline) Process(ctx context.Context, templateProps []temutemplate.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
 	startTime := time.Now()
 	p.logger.Infof("🚀 开始属性处理管道，模板属性数量: %d, 当前属性数量: %d",
 		len(templateProps), len(ext.GoodsProperty.GoodsProperties))
@@ -95,7 +95,7 @@ func (p *DefaultPropertyProcessingPipeline) Process(ctx context.Context, templat
 }
 
 // buildPropertyContext 构建属性处理上下文
-func (p *DefaultPropertyProcessingPipeline) buildPropertyContext(ctx context.Context, templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) *PropertyContext {
+func (p *DefaultPropertyProcessingPipeline) buildPropertyContext(ctx context.Context, templateProps []temutemplate.TemplateRespGoodsProperty, ext *models.ExtensionInfo) *PropertyContext {
 	propertyCtx := NewPropertyContext(ctx, p.logger)
 
 	// 设置模板属性
@@ -205,7 +205,7 @@ func (p *DefaultPropertyProcessingPipeline) logProcessingStats(ctx *PropertyCont
 }
 
 // getValueUnit 获取属性的值单位
-func (p *DefaultPropertyProcessingPipeline) getValueUnit(templateProp types.TemplateRespGoodsProperty) string {
+func (p *DefaultPropertyProcessingPipeline) getValueUnit(templateProp temutemplate.TemplateRespGoodsProperty) string {
 	if len(templateProp.ValueUnit) > 0 {
 		return templateProp.ValueUnit[0]
 	}

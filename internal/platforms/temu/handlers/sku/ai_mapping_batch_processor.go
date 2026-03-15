@@ -1,4 +1,4 @@
-// Package sku 提供TEMU平台的AI SKU映射批处理功能
+﻿// Package sku 提供TEMU平台的AI SKU映射批处理功能
 package sku
 
 import (
@@ -7,16 +7,15 @@ import (
 	"task-processor/internal/domain/model"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/spec"
-	"task-processor/internal/platforms/temu/types"
 )
 
 // generateAISkuMappingInBatches 分批生成AI SKU映射
-func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, batchSize int) (*types.AISkuMappingResponse, error) {
+func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, batchSize int) (*temucontext.AISkuMappingResponse, error) {
 
 	totalBatches := (len(variants) + batchSize - 1) / batchSize
 	vp.logger.Infof("🔨 开始分批处理: 总变体数=%d, 批次大小=%d, 总批次=%d", len(variants), batchSize, totalBatches)
 
-	var allSkus []types.AIGeneratedSku
+	var allSkus []temucontext.AIGeneratedSku
 	var selectedSpecDimensions []string // 记录第一批选择的规格维度
 
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
@@ -55,7 +54,7 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(temuCtx *temucontex
 	vp.logger.Infof("✅ 所有批次处理完成，共生成%d个SKU", len(allSkus))
 
 	// 合并后的结果需要再次统一规格维度
-	mergedResponse := &types.AISkuMappingResponse{
+	mergedResponse := &temucontext.AISkuMappingResponse{
 		SkuList: allSkus,
 	}
 

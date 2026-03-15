@@ -1,4 +1,4 @@
-// Package handlers 提供属性处理缓存管理，提升处理性能
+﻿// Package handlers 提供属性处理缓存管理，提升处理性能
 package property
 
 import (
@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 )
 
 // PropertyCache 属性缓存接口
@@ -16,8 +16,8 @@ type PropertyCache interface {
 	SetFeature(key string, feature PropertyFeature)
 
 	// 模板属性缓存
-	GetTemplateProperty(pid int) (types.TemplateRespGoodsProperty, bool)
-	SetTemplateProperty(pid int, templateProp types.TemplateRespGoodsProperty)
+	GetTemplateProperty(pid int) (temutemplate.TemplateRespGoodsProperty, bool)
+	SetTemplateProperty(pid int, templateProp temutemplate.TemplateRespGoodsProperty)
 
 	// 清理缓存
 	Clear()
@@ -27,7 +27,7 @@ type PropertyCache interface {
 // InMemoryPropertyCache 内存属性缓存实现
 type InMemoryPropertyCache struct {
 	featureCache  map[string]*CacheItem[PropertyFeature]
-	templateCache map[int]*CacheItem[types.TemplateRespGoodsProperty]
+	templateCache map[int]*CacheItem[temutemplate.TemplateRespGoodsProperty]
 	mutex         sync.RWMutex
 	ttl           time.Duration
 	cleanupQueue  chan func() // 清理任务队列
@@ -44,7 +44,7 @@ type CacheItem[T any] struct {
 func NewPropertyCache() PropertyCache {
 	cache := &InMemoryPropertyCache{
 		featureCache:  make(map[string]*CacheItem[PropertyFeature]),
-		templateCache: make(map[int]*CacheItem[types.TemplateRespGoodsProperty]),
+		templateCache: make(map[int]*CacheItem[temutemplate.TemplateRespGoodsProperty]),
 		ttl:           30 * time.Minute,
 		cleanupQueue:  make(chan func(), 100),
 		stopCleanup:   make(chan struct{}),
@@ -57,7 +57,7 @@ func NewPropertyCache() PropertyCache {
 func NewPropertyCacheWithTTL(ttl time.Duration) PropertyCache {
 	cache := &InMemoryPropertyCache{
 		featureCache:  make(map[string]*CacheItem[PropertyFeature]),
-		templateCache: make(map[int]*CacheItem[types.TemplateRespGoodsProperty]),
+		templateCache: make(map[int]*CacheItem[temutemplate.TemplateRespGoodsProperty]),
 		ttl:           ttl,
 		cleanupQueue:  make(chan func(), 100),
 		stopCleanup:   make(chan struct{}),
@@ -125,13 +125,13 @@ func (c *InMemoryPropertyCache) SetFeature(key string, feature PropertyFeature) 
 }
 
 // GetTemplateProperty 获取模板属性缓存
-func (c *InMemoryPropertyCache) GetTemplateProperty(pid int) (types.TemplateRespGoodsProperty, bool) {
+func (c *InMemoryPropertyCache) GetTemplateProperty(pid int) (temutemplate.TemplateRespGoodsProperty, bool) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
 	item, exists := c.templateCache[pid]
 	if !exists {
-		return types.TemplateRespGoodsProperty{}, false
+		return temutemplate.TemplateRespGoodsProperty{}, false
 	}
 
 	// 检查是否过期
@@ -151,18 +151,18 @@ func (c *InMemoryPropertyCache) GetTemplateProperty(pid int) (types.TemplateResp
 			c.mutex.Unlock()
 			c.mutex.RLock()
 		}
-		return types.TemplateRespGoodsProperty{}, false
+		return temutemplate.TemplateRespGoodsProperty{}, false
 	}
 
 	return item.Value, true
 }
 
 // SetTemplateProperty 设置模板属性缓存
-func (c *InMemoryPropertyCache) SetTemplateProperty(pid int, templateProp types.TemplateRespGoodsProperty) {
+func (c *InMemoryPropertyCache) SetTemplateProperty(pid int, templateProp temutemplate.TemplateRespGoodsProperty) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.templateCache[pid] = &CacheItem[types.TemplateRespGoodsProperty]{
+	c.templateCache[pid] = &CacheItem[temutemplate.TemplateRespGoodsProperty]{
 		Value:     templateProp,
 		ExpiresAt: time.Now().Add(c.ttl),
 	}
@@ -174,7 +174,7 @@ func (c *InMemoryPropertyCache) Clear() {
 	defer c.mutex.Unlock()
 
 	c.featureCache = make(map[string]*CacheItem[PropertyFeature])
-	c.templateCache = make(map[int]*CacheItem[types.TemplateRespGoodsProperty])
+	c.templateCache = make(map[int]*CacheItem[temutemplate.TemplateRespGoodsProperty])
 }
 
 // ClearExpired 清理过期缓存

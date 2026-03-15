@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -26,7 +26,7 @@ func NewPropertyValueValidator(logger *logrus.Entry) *PropertyValueValidator {
 // 返回: (isValid bool, validVID int, validValue string, error)
 func (v *PropertyValueValidator) ValidateSelectionValue(
 	prop models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 ) (bool, int, string, error) {
 
 	v.logger.Debugf("🔍 验证选择类型属性: PID=%d, Value='%s', VID=%d",
@@ -77,7 +77,7 @@ func (v *PropertyValueValidator) ValidateSelectionValue(
 // 返回: (isValid bool, validVID int, validValue string, error)
 func (v *PropertyValueValidator) ValidateSelectionValueWithDependency(
 	prop models.PropertyItem,
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 	parentProperties []models.PropertyItem,
 ) (bool, int, string, error) {
 
@@ -129,9 +129,9 @@ func (v *PropertyValueValidator) ValidateSelectionValueWithDependency(
 
 // getValidValuesWithDependency 获取考虑条件依赖的有效值列表
 func (v *PropertyValueValidator) getValidValuesWithDependency(
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 	parentProperties []models.PropertyItem,
-) []types.PropertyValue {
+) []temutemplate.PropertyValue {
 
 	// 如果没有条件依赖，返回所有值
 	if len(templateProp.TemplatePropertyValueParentList) == 0 {
@@ -149,7 +149,7 @@ func (v *PropertyValueValidator) getValidValuesWithDependency(
 	v.logger.Debugf("🔍 父属性VID列表: %v", getMapKeys(parentVIDMap))
 
 	// 收集满足条件的有效值
-	var validValues []types.PropertyValue
+	var validValues []temutemplate.PropertyValue
 
 	for _, value := range templateProp.Values {
 		// 如果值没有父VID约束，直接添加
@@ -193,7 +193,7 @@ func getMapKeys(m map[int]bool) []int {
 }
 
 // IsValueInValidList 检查值是否在有效列表中
-func (v *PropertyValueValidator) IsValueInValidList(value string, validValues []types.PropertyValue) bool {
+func (v *PropertyValueValidator) IsValueInValidList(value string, validValues []temutemplate.PropertyValue) bool {
 	for _, validValue := range validValues {
 		if validValue.Value == value {
 			return true
@@ -203,7 +203,7 @@ func (v *PropertyValueValidator) IsValueInValidList(value string, validValues []
 }
 
 // IsVIDInValidList 检查VID是否在有效列表中
-func (v *PropertyValueValidator) IsVIDInValidList(vid int, validValues []types.PropertyValue) bool {
+func (v *PropertyValueValidator) IsVIDInValidList(vid int, validValues []temutemplate.PropertyValue) bool {
 	for _, validValue := range validValues {
 		if validValue.VID == vid {
 			return true
@@ -213,7 +213,7 @@ func (v *PropertyValueValidator) IsVIDInValidList(vid int, validValues []types.P
 }
 
 // GetValidValueByVID 根据VID获取有效值
-func (v *PropertyValueValidator) GetValidValueByVID(vid int, validValues []types.PropertyValue) *types.PropertyValue {
+func (v *PropertyValueValidator) GetValidValueByVID(vid int, validValues []temutemplate.PropertyValue) *temutemplate.PropertyValue {
 	for _, validValue := range validValues {
 		if validValue.VID == vid {
 			return &validValue
@@ -223,7 +223,7 @@ func (v *PropertyValueValidator) GetValidValueByVID(vid int, validValues []types
 }
 
 // GetValidValueByValue 根据Value获取有效值
-func (v *PropertyValueValidator) GetValidValueByValue(value string, validValues []types.PropertyValue) *types.PropertyValue {
+func (v *PropertyValueValidator) GetValidValueByValue(value string, validValues []temutemplate.PropertyValue) *temutemplate.PropertyValue {
 	for _, validValue := range validValues {
 		if validValue.Value == value {
 			return &validValue
@@ -235,13 +235,13 @@ func (v *PropertyValueValidator) GetValidValueByValue(value string, validValues 
 // ValidateAllSelectionProperties 批量验证所有选择类型属性
 func (v *PropertyValueValidator) ValidateAllSelectionProperties(
 	properties []models.PropertyItem,
-	templateProps []types.TemplateRespGoodsProperty,
+	templateProps []temutemplate.TemplateRespGoodsProperty,
 ) []ValidationResult {
 
 	results := make([]ValidationResult, 0, len(properties))
 
 	// 创建模板属性映射
-	templateMap := make(map[int]types.TemplateRespGoodsProperty)
+	templateMap := make(map[int]temutemplate.TemplateRespGoodsProperty)
 	for _, tmpl := range templateProps {
 		templateMap[tmpl.PID] = tmpl
 	}
@@ -278,7 +278,7 @@ func (v *PropertyValueValidator) ValidateAllSelectionProperties(
 // ValidationResult 验证结果
 type ValidationResult struct {
 	Property     models.PropertyItem
-	TemplateProp types.TemplateRespGoodsProperty
+	TemplateProp temutemplate.TemplateRespGoodsProperty
 	IsValid      bool
 	ValidVID     int
 	ValidValue   string
@@ -287,8 +287,8 @@ type ValidationResult struct {
 
 // GetValidValuesWithDependency 获取考虑条件依赖的有效值列表（公开方法）
 func (v *PropertyValueValidator) GetValidValuesWithDependency(
-	templateProp types.TemplateRespGoodsProperty,
+	templateProp temutemplate.TemplateRespGoodsProperty,
 	parentProperties []models.PropertyItem,
-) []types.PropertyValue {
+) []temutemplate.PropertyValue {
 	return v.getValidValuesWithDependency(templateProp, parentProperties)
 }

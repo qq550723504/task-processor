@@ -6,7 +6,7 @@ import (
 
 	models "task-processor/internal/platforms/temu/api/product"
 	"task-processor/internal/platforms/temu/handlers/common"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -45,7 +45,7 @@ func (e *ValidationRuleEngine) RegisterRule(rule ValidationRule) {
 }
 
 // ValidateAndFixAll 验证并修复所有属性
-func (e *ValidationRuleEngine) ValidateAndFixAll(templateProps []types.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
+func (e *ValidationRuleEngine) ValidateAndFixAll(templateProps []temutemplate.TemplateRespGoodsProperty, ext *models.ExtensionInfo) error {
 	e.logger.Info("🔍 开始验证和修复属性...")
 
 	// 识别所有属性特征

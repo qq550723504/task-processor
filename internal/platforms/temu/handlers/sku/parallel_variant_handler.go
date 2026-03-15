@@ -1,4 +1,4 @@
-// Package handlers 提供并行变体数据处理功能
+﻿// Package handlers 提供并行变体数据处理功能
 package sku
 
 import (
@@ -16,7 +16,6 @@ import (
 	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/perfutil"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -110,7 +109,7 @@ func (h *ParallelVariantHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 	// 检查变体数量限制
 	if len(variantAsins) > 100 {
 		h.logger.Warnf("变体ASIN数量过多（%d），可能会导致处理时间过长", len(variantAsins))
-		return types.NewNonRetryableError("变体ASIN数量过多，停止处理", nil)
+		return fmt.Errorf("NONRETRYABLE: 变体ASIN数量过多，停止处理")
 	}
 
 	tracker.EndStep()

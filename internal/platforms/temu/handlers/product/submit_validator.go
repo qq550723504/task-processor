@@ -1,10 +1,10 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"strings"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -201,7 +201,7 @@ func (v *ProductSubmitValidator) FindParentSpecName(temuCtx *temucontext.TemuTas
 }
 
 // FindVidFromTemplate 从模板中查找vid
-func (v *ProductSubmitValidator) FindVidFromTemplate(templateInfo *types.TemplateInfo, parentSpecID, specID string) int {
+func (v *ProductSubmitValidator) FindVidFromTemplate(templateInfo *temutemplate.TemplateInfo, parentSpecID, specID string) int {
 	for _, specProp := range templateInfo.GoodsSpecProperties {
 		if specProp.ParentSpecID == parentSpecID {
 			for _, value := range specProp.Values {
@@ -215,7 +215,7 @@ func (v *ProductSubmitValidator) FindVidFromTemplate(templateInfo *types.Templat
 }
 
 // FindTemplatePidFromTemplate 从模板中查找template_pid
-func (v *ProductSubmitValidator) FindTemplatePidFromTemplate(templateInfo *types.TemplateInfo, parentSpecID string) int {
+func (v *ProductSubmitValidator) FindTemplatePidFromTemplate(templateInfo *temutemplate.TemplateInfo, parentSpecID string) int {
 	for _, specProp := range templateInfo.GoodsSpecProperties {
 		if specProp.ParentSpecID == parentSpecID {
 			return specProp.TemplatePID
@@ -225,7 +225,7 @@ func (v *ProductSubmitValidator) FindTemplatePidFromTemplate(templateInfo *types
 }
 
 // FindTemplateModuleIdFromTemplate 从模板中查找template_module_id
-func (v *ProductSubmitValidator) FindTemplateModuleIdFromTemplate(templateInfo *types.TemplateInfo, parentSpecID string) int {
+func (v *ProductSubmitValidator) FindTemplateModuleIdFromTemplate(templateInfo *temutemplate.TemplateInfo, parentSpecID string) int {
 	for _, specProp := range templateInfo.GoodsSpecProperties {
 		if specProp.ParentSpecID == parentSpecID {
 			return specProp.TemplateModuleID

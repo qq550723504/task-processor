@@ -8,7 +8,7 @@ import (
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/spec"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -54,7 +54,7 @@ func (vp *SkuVariantProcessor) BuildVariantSkcs(temuCtx *temucontext.TemuTaskCon
 }
 
 // buildSkcsFromAIMapping 根据AI映射构建SKC
-func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiMapping *types.AISkuMappingResponse) ([]models.Skc, error) {
+func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiMapping *temucontext.AISkuMappingResponse) ([]models.Skc, error) {
 	// 检查AI映射数量
 	if len(aiMapping.SkuList) != len(variants) {
 		vp.logger.Warnf("⚠️ AI映射数量(%d)与变体数量(%d)不匹配", len(aiMapping.SkuList), len(variants))
@@ -92,19 +92,19 @@ func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 	}
 
 	// 检查规格来源：只有GoodsSpecProperties不为空且有预置规格值时，才创建多SKC
-	var templateInfo *types.TemplateInfo
+	var templateInfo *temutemplate.TemplateInfo
 	var hasTemplateInfo bool
 	if temuCtx.TemplateInfo != nil {
-		if info, ok := temuCtx.TemplateInfo.(*types.TemplateInfo); ok {
+		if info, ok := temuCtx.TemplateInfo.(*temutemplate.TemplateInfo); ok {
 			templateInfo = info
 			hasTemplateInfo = true
 		}
 	}
 
-	var userInputSpecs []types.UserInputParentSpec
+	var userInputSpecs []temutemplate.UserInputParentSpec
 	var hasUserInputSpecs bool
 	if temuCtx.UserInputParentSpecList != nil {
-		if specs, ok := temuCtx.UserInputParentSpecList.([]types.UserInputParentSpec); ok {
+		if specs, ok := temuCtx.UserInputParentSpecList.([]temutemplate.UserInputParentSpec); ok {
 			userInputSpecs = specs
 			hasUserInputSpecs = true
 		}
@@ -133,7 +133,7 @@ func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 		vp.logger.Info("创建单个SKC，多个SKU")
 
 		// 优先使用UserInputParentSpecList，否则使用空的模板规格
-		var templateSpecs []types.TemplateRespGoodsSpecProperty
+		var templateSpecs []temutemplate.TemplateRespGoodsSpecProperty
 		if hasUserInputSpecs && len(userInputSpecs) > 0 {
 			vp.logger.Infof("使用UserInputParentSpecList，用户规格数量: %d", len(userInputSpecs))
 			templateSpecs = vp.specHandler.convertUserInputSpecsToGoodsSpecProperties(userInputSpecs)
@@ -142,7 +142,7 @@ func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 			templateSpecs = templateInfo.GoodsSpecProperties
 		} else {
 			vp.logger.Warn("未找到任何规格信息")
-			templateSpecs = []types.TemplateRespGoodsSpecProperty{}
+			templateSpecs = []temutemplate.TemplateRespGoodsSpecProperty{}
 		}
 
 		skcList = vp.skcBuilder.buildSingleSkcFromUserInput(temuCtx, variants, aiMapping, templateSpecs)
@@ -162,7 +162,7 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 	}
 
 	// 优先使用AISkuMappingHandler已经生成的AI映射
-	var aiMapping *types.AISkuMappingResponse
+	var aiMapping *temucontext.AISkuMappingResponse
 	if temuCtx.AISkuMapping != nil {
 		aiMapping = temuCtx.AISkuMapping
 		vp.logger.Info("✅ 使用AISkuMappingHandler已生成的AI映射，避免重复调用")
@@ -216,7 +216,7 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 }
 
 // generateAISkuMapping 生成AI SKU映射
-func (vp *SkuVariantProcessor) GenerateAISkuMapping(temuCtx *temucontext.TemuTaskContext, variants []*model.Product) (*types.AISkuMappingResponse, error) {
+func (vp *SkuVariantProcessor) GenerateAISkuMapping(temuCtx *temucontext.TemuTaskContext, variants []*model.Product) (*temucontext.AISkuMappingResponse, error) {
 	if vp.aiClient == nil {
 		return nil, fmt.Errorf("AI客户端未初始化")
 	}

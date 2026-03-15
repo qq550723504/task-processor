@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/timeutil"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -132,10 +131,7 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		}
 
 		// 返回不可重试错误，阻止产品发布
-		return types.NewNonRetryableError(
-			fmt.Sprintf("店铺已达到每日上架限额(%d/%d)，已暂停上架到当日结束", currentCount, dailyLimit),
-			nil,
-		)
+		return fmt.Errorf("NONRETRYABLE: 店铺已达到每日上架限额(%d/%d)，已暂停上架到当日结束", currentCount, dailyLimit)
 	}
 
 	h.logger.WithFields(map[string]interface{}{

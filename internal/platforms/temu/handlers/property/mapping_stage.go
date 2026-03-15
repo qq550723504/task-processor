@@ -3,7 +3,7 @@ package property
 
 import (
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -55,7 +55,7 @@ func (s *PropertyMappingStage) Process(ctx *PropertyContext) error {
 }
 
 // countFilledProperties 统计填充的属性数量
-func (s *PropertyMappingStage) countFilledProperties(templateProps []types.TemplateRespGoodsProperty, currentProps []models.PropertyItem) int {
+func (s *PropertyMappingStage) countFilledProperties(templateProps []temutemplate.TemplateRespGoodsProperty, currentProps []models.PropertyItem) int {
 	// 创建已有属性的PID集合
 	existingPIDs := make(map[int]bool)
 	for _, prop := range currentProps {

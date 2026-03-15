@@ -1,11 +1,11 @@
-// Package query 提供TEMU平台查询相关的API和数据结构
+﻿// Package query 提供TEMU平台查询相关的API和数据结构
 package query
 
 import (
 	"fmt"
 	"strings"
 	"task-processor/internal/platforms/temu/api/client"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -338,7 +338,7 @@ func (a *API) QueryTemplate(request *TemplateQueryRequest) (*TemplateQueryRespon
 }
 
 // QueryTemplateAdvanced 查询模板信息（支持完整 types 结构）
-func (a *API) QueryTemplateAdvanced(request *types.TemplateQueryRequest) (*types.TemplateQueryResponse, error) {
+func (a *API) QueryTemplateAdvanced(request *temutemplate.TemplateQueryRequest) (*temutemplate.TemplateQueryResponse, error) {
 	if request == nil {
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
@@ -350,7 +350,7 @@ func (a *API) QueryTemplateAdvanced(request *types.TemplateQueryRequest) (*types
 		"body":    request,
 	}
 
-	var result types.TemplateQueryResponse
+	var result temutemplate.TemplateQueryResponse
 	if err := a.client.SendTEMURequest(req, &result); err != nil {
 		return nil, fmt.Errorf("模板查询请求失败: %w", err)
 	}

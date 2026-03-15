@@ -4,7 +4,7 @@ package sku
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,7 +24,7 @@ func NewSkuMappingProcessor(logger *logrus.Entry, specHandler *SkuSpecHandler) *
 }
 
 // FixMappingCountMismatch 修复映射数量不匹配问题
-func (mp *SkuMappingProcessor) FixMappingCountMismatch(aiMapping *types.AISkuMappingResponse, variants []*model.Product) error {
+func (mp *SkuMappingProcessor) FixMappingCountMismatch(aiMapping *temucontext.AISkuMappingResponse, variants []*model.Product) error {
 	// 如果AI映射数量少于变体数量，尝试补充缺失的映射
 	if len(aiMapping.SkuList) < len(variants) {
 		mp.logger.Infof("尝试为缺失的%d个变体补充默认映射", len(variants)-len(aiMapping.SkuList))
@@ -55,7 +55,7 @@ func (mp *SkuMappingProcessor) FixMappingCountMismatch(aiMapping *types.AISkuMap
 }
 
 // removeDuplicateOrExcessMappings 移除重复或多余的AI映射
-func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *types.AISkuMappingResponse, variants []*model.Product) error {
+func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temucontext.AISkuMappingResponse, variants []*model.Product) error {
 	// 创建变体ASIN集合
 	validAsins := make(map[string]bool)
 	for _, variant := range variants {
@@ -87,7 +87,7 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *types.
 	}
 
 	// 过滤SKU列表：移除重复和无效的映射
-	var filteredSkus []types.AIGeneratedSku
+	var filteredSkus []temucontext.AIGeneratedSku
 	seenAsins := make(map[string]bool)
 
 	for _, sku := range aiMapping.SkuList {
@@ -130,7 +130,7 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *types.
 }
 
 // supplementMissingMappings 为缺失的变体补充默认映射
-func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *types.AISkuMappingResponse, variants []*model.Product) error {
+func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *temucontext.AISkuMappingResponse, variants []*model.Product) error {
 	// 创建已映射的ASIN集合
 	mappedAsins := make(map[string]bool)
 	for _, sku := range aiMapping.SkuList {
@@ -148,7 +148,7 @@ func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *types.AISkuM
 			mp.logger.Infof("为变体 %s 创建补充映射 (第%d个缺失)", variant.Asin, missingCount)
 
 			// 创建默认SKU映射，尝试使用spec模板
-			defaultSku := types.AIGeneratedSku{
+			defaultSku := temucontext.AIGeneratedSku{
 				UniqueID:          variant.Asin,
 				Asin:              variant.Asin,
 				Spec:              specTemplate, // 使用从已有映射推断的spec模板
@@ -173,20 +173,20 @@ func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *types.AISkuM
 }
 
 // analyzeSpecPattern 分析已有映射的spec模式，返回一个spec模板
-func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *types.AISkuMappingResponse) []types.SpecInfo {
+func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *temucontext.AISkuMappingResponse) []temucontext.SpecInfo {
 	if len(aiMapping.SkuList) == 0 {
-		return []types.SpecInfo{}
+		return []temucontext.SpecInfo{}
 	}
 
 	// 统计每个spec_id出现的频率
 	specFrequency := make(map[string]int)
-	specExamples := make(map[string]types.SpecInfo)
+	specExamples := make(map[string]temucontext.SpecInfo)
 
 	for _, sku := range aiMapping.SkuList {
 		for _, spec := range sku.Spec {
 			specFrequency[spec.SpecID]++
 			if _, exists := specExamples[spec.SpecID]; !exists {
-				specExamples[spec.SpecID] = types.SpecInfo{
+				specExamples[spec.SpecID] = temucontext.SpecInfo{
 					SpecID:         spec.SpecID,
 					SpecName:       spec.SpecName,
 					ParentSpecID:   spec.ParentSpecID,
@@ -198,7 +198,7 @@ func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *types.AISkuMappingR
 	}
 
 	// 选择出现频率最高的spec作为模板
-	var template []types.SpecInfo
+	var template []temucontext.SpecInfo
 	for specID, spec := range specExamples {
 		if specFrequency[specID] > len(aiMapping.SkuList)/2 {
 			template = append(template, spec)

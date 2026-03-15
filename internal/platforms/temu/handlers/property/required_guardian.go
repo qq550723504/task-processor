@@ -3,7 +3,7 @@ package property
 
 import (
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/types"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,7 +24,7 @@ func NewRequiredPropertyGuardian(logger *logrus.Entry) *RequiredPropertyGuardian
 
 // GuardAllRequiredProperties 保障所有必填属性（包括条件依赖的）
 func (g *RequiredPropertyGuardian) GuardAllRequiredProperties(
-	templateProps []types.TemplateRespGoodsProperty,
+	templateProps []temutemplate.TemplateRespGoodsProperty,
 	ext *models.ExtensionInfo,
 ) error {
 	g.logger.Info("🛡️ 开始必填属性保障检查")
@@ -54,15 +54,15 @@ func (g *RequiredPropertyGuardian) GuardAllRequiredProperties(
 
 // checkBasicRequiredProperties 检查基础必填属性
 func (g *RequiredPropertyGuardian) checkBasicRequiredProperties(
-	templateProps []types.TemplateRespGoodsProperty,
+	templateProps []temutemplate.TemplateRespGoodsProperty,
 	ext *models.ExtensionInfo,
-) []types.TemplateRespGoodsProperty {
+) []temutemplate.TemplateRespGoodsProperty {
 	filledPIDs := make(map[int]bool)
 	for _, prop := range ext.GoodsProperty.GoodsProperties {
 		filledPIDs[prop.Pid] = true
 	}
 
-	var missing []types.TemplateRespGoodsProperty
+	var missing []temutemplate.TemplateRespGoodsProperty
 	for _, templateProp := range templateProps {
 		if templateProp.Required && !filledPIDs[templateProp.PID] {
 			missing = append(missing, templateProp)
@@ -75,10 +75,10 @@ func (g *RequiredPropertyGuardian) checkBasicRequiredProperties(
 
 // checkConditionalRequiredProperties 检查条件依赖的必填属性（通用逻辑）
 func (g *RequiredPropertyGuardian) checkConditionalRequiredProperties(
-	templateProps []types.TemplateRespGoodsProperty,
+	templateProps []temutemplate.TemplateRespGoodsProperty,
 	ext *models.ExtensionInfo,
-) []types.TemplateRespGoodsProperty {
-	var missing []types.TemplateRespGoodsProperty
+) []temutemplate.TemplateRespGoodsProperty {
+	var missing []temutemplate.TemplateRespGoodsProperty
 
 	// 构建已填充属性的VID集合
 	filledVIDs := make(map[int]bool)
@@ -122,13 +122,13 @@ func (g *RequiredPropertyGuardian) isPropertyFilledByTemplatePID(ext *models.Ext
 }
 
 // hasParentCondition 检查属性是否有父条件依赖
-func (g *RequiredPropertyGuardian) hasParentCondition(prop types.TemplateRespGoodsProperty) bool {
+func (g *RequiredPropertyGuardian) hasParentCondition(prop temutemplate.TemplateRespGoodsProperty) bool {
 	// 检查是否有 parent_template_pid 或其他条件依赖标识
 	return prop.ParentTemplatePID > 0 || len(prop.TemplatePropertyValueParentList) > 0
 }
 
 // isParentConditionMet 检查父条件是否满足
-func (g *RequiredPropertyGuardian) isParentConditionMet(prop types.TemplateRespGoodsProperty, filledVIDs map[int]bool) bool {
+func (g *RequiredPropertyGuardian) isParentConditionMet(prop temutemplate.TemplateRespGoodsProperty, filledVIDs map[int]bool) bool {
 	// 检查 TemplatePropertyValueParentList 中的父条件
 	for _, parentList := range prop.TemplatePropertyValueParentList {
 		for _, parentVID := range parentList.ParentVIDs {
@@ -152,7 +152,7 @@ func (g *RequiredPropertyGuardian) isPropertyFilled(ext *models.ExtensionInfo, p
 
 // fillMissingProperties 填充缺失的属性
 func (g *RequiredPropertyGuardian) fillMissingProperties(
-	missingProps []types.TemplateRespGoodsProperty,
+	missingProps []temutemplate.TemplateRespGoodsProperty,
 	ext *models.ExtensionInfo,
 ) {
 	for _, prop := range missingProps {

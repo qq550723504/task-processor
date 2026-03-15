@@ -1,11 +1,12 @@
-// Package sku 提供TEMU平台的AI SKU映射提示词构建功能
+﻿// Package sku 提供TEMU平台的AI SKU映射提示词构建功能
 package sku
 
 import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/platforms/temu/types"
+	temucontext "task-processor/internal/platforms/temu/context"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 )
 
 // buildSystemPrompt 构建系统提示词
@@ -108,7 +109,7 @@ func (vp *SkuVariantProcessor) buildSystemPrompt() string {
 }
 
 // buildUserPrompt 构建用户提示词
-func (vp *SkuVariantProcessor) buildUserPrompt(request types.VariantMappingRequest) string {
+func (vp *SkuVariantProcessor) buildUserPrompt(request temucontext.VariantMappingRequest) string {
 	var builder strings.Builder
 	builder.WriteString("请将以下Amazon产品变体转换为TEMU平台的SKU结构：\n\n")
 
@@ -144,7 +145,7 @@ func (vp *SkuVariantProcessor) buildUserPrompt(request types.VariantMappingReque
 }
 
 // buildTemuSpecsInfo 构建TEMU规格信息字符串
-func (vp *SkuVariantProcessor) buildTemuSpecsInfo(temuSpecProperties []types.TemplateRespGoodsSpecProperty) string {
+func (vp *SkuVariantProcessor) buildTemuSpecsInfo(temuSpecProperties []temutemplate.TemplateRespGoodsSpecProperty) string {
 	var builder strings.Builder
 
 	for _, spec := range temuSpecProperties {

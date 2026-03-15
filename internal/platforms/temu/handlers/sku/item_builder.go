@@ -12,7 +12,6 @@ import (
 	temuformat "task-processor/internal/platforms/temu/format"
 	"task-processor/internal/platforms/temu/handlers/image"
 	"task-processor/internal/platforms/temu/handlers/product"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,7 +35,7 @@ func NewSkuItemBuilder(logger *logrus.Entry, priceHandler *product.PriceHandler,
 }
 
 // buildSkuFromVariantWithAI 使用AI映射从变体构建SKU（兼容接口）
-func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx pipeline.TaskContext, variant *model.Product, aiSku types.AIGeneratedSku) models.Sku {
+func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx pipeline.TaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku) models.Sku {
 	// 类型断言为强类型上下文
 	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
 		return ib.buildSkuFromVariantWithAITemu(temuCtx, variant, aiSku)
@@ -47,7 +46,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx pipeline.TaskContext, va
 }
 
 // buildSkuFromVariantWithAITemu 使用AI映射从变体构建SKU（强类型上下文）
-func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku types.AIGeneratedSku) models.Sku {
+func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku) models.Sku {
 	// 使用利润规则计算最终销售价格（已经应用了利润倍数）
 	finalSalePrice := ib.priceHandler.CalculateVariantPrice(temuCtx, variant)
 	basePrice := float64(finalSalePrice) / 100 // 转换为元用于显示
@@ -236,7 +235,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 }
 
 // buildSkuFromVariantBasic 基本SKU构建（不依赖上下文）
-func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku types.AIGeneratedSku) models.Sku {
+func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku temucontext.AIGeneratedSku) models.Sku {
 	// 基本实现，使用默认值
 	asin := variant.Asin
 	outSkuSN := asin // 简单使用ASIN作为SKU

@@ -1,4 +1,4 @@
-// Package handlers 提供TEMU平台的变体JSON数据处理功能
+﻿// Package handlers 提供TEMU平台的变体JSON数据处理功能
 package sku
 
 import (
@@ -14,7 +14,6 @@ import (
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/strutil"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
 )
@@ -81,7 +80,7 @@ func (h *VariantJsonDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 	// 检查变体数量限制
 	if len(variantAsins) > 100 {
 		h.logger.Warnf("变体ASIN数量过多（%d），可能会导致处理时间过长或请求失败", len(variantAsins))
-		return types.NewNonRetryableError("变体ASIN数量过多，停止处理", nil)
+		return fmt.Errorf("NONRETRYABLE: 变体ASIN数量过多，停止处理")
 	}
 
 	// 使用公共ProductFetcher批量获取变体数据
