@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/pipeline"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/services"
 
 	"github.com/sirupsen/logrus"
 )
@@ -43,11 +42,11 @@ func (v *SkuImageValidator) Handle(ctx pipeline.TaskContext) error {
 // HandleTemu 处理任务（强类型上下文）
 func (v *SkuImageValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	// 使用默认的图片要求
-	requirement := services.ImageRequirement{
+	requirement := ImageRequirement{
 		MaxSizeMB:     3.0,
 		MinWidth:      1340,
 		MinHeight:     1785,
-		AspectRatio:   0.75, // 3:4 = 0.75 (严格要求)
+		AspectRatio:   0.75,
 		MinImageCount: 1,
 		MaxImageCount: 10,
 	}
@@ -55,7 +54,7 @@ func (v *SkuImageValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) err
 }
 
 // ValidateSkuImages 验证SKU图片
-func (v *SkuImageValidator) ValidateSkuImages(temuCtx *temucontext.TemuTaskContext, requirement services.ImageRequirement) error {
+func (v *SkuImageValidator) ValidateSkuImages(temuCtx *temucontext.TemuTaskContext, requirement ImageRequirement) error {
 	totalSkuImages := 0
 	totalPaddedImages := 0
 
@@ -92,7 +91,7 @@ func (v *SkuImageValidator) ValidateSkuImages(temuCtx *temucontext.TemuTaskConte
 }
 
 // validateCarouselImages 验证轮播图片
-func (v *SkuImageValidator) validateCarouselImages(images []models.ImageInfo, skcIndex, skuIndex int, requirement services.ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []models.ImageInfo {
+func (v *SkuImageValidator) validateCarouselImages(images []models.ImageInfo, skcIndex, skuIndex int, requirement ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []models.ImageInfo {
 	validImages := []models.ImageInfo{}
 
 	for imgIndex, img := range images {
@@ -119,7 +118,7 @@ func (v *SkuImageValidator) validateCarouselImages(images []models.ImageInfo, sk
 }
 
 // validateDimensionImages 验证尺寸图片
-func (v *SkuImageValidator) validateDimensionImages(images []models.ImageInfo, skcIndex, skuIndex int, requirement services.ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []models.ImageInfo {
+func (v *SkuImageValidator) validateDimensionImages(images []models.ImageInfo, skcIndex, skuIndex int, requirement ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []models.ImageInfo {
 	validImages := []models.ImageInfo{}
 
 	for imgIndex, img := range images {

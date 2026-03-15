@@ -6,15 +6,13 @@ import (
 	"task-processor/internal/pipeline"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/services"
 
 	"github.com/sirupsen/logrus"
 )
 
-// MainImageValidator 主图验证器（重构后使用服务层）
+// MainImageValidator 主图验证器
 type MainImageValidator struct {
 	logger            *logrus.Entry
-	configService     *services.ImageConfigService
 	parallelValidator *ParallelImageValidator
 }
 
@@ -22,7 +20,6 @@ type MainImageValidator struct {
 func NewMainImageValidator() *MainImageValidator {
 	return &MainImageValidator{
 		logger:            logrus.WithField("component", "MainImageValidator"),
-		configService:     services.NewImageConfigService(),
 		parallelValidator: NewParallelImageValidator(),
 	}
 }
@@ -45,7 +42,7 @@ func (v *MainImageValidator) Handle(ctx pipeline.TaskContext) error {
 // HandleTemu 处理任务（强类型上下文）
 func (v *MainImageValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	// 使用默认的图片要求
-	requirement := services.ImageRequirement{
+	requirement := ImageRequirement{
 		MinImageCount: 1,
 		MaxImageCount: 10,
 		MinWidth:      800,
@@ -57,7 +54,7 @@ func (v *MainImageValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) er
 }
 
 // ValidateMainImages 验证商品主图（并行处理）
-func (v *MainImageValidator) ValidateMainImages(temuCtx *temucontext.TemuTaskContext, requirement services.ImageRequirement) error {
+func (v *MainImageValidator) ValidateMainImages(temuCtx *temucontext.TemuTaskContext, requirement ImageRequirement) error {
 	// 检查TEMU产品信息
 	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")

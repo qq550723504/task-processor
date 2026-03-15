@@ -4,7 +4,6 @@ package image
 import (
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/services"
 
 	"github.com/sirupsen/logrus"
 )
@@ -28,8 +27,7 @@ func NewImageUploadUtils() *ImageUploadUtils {
 // uploadImageWithFallback 上传图片，失败时返回空图片信息（不使用Amazon原始链接）
 func (iuu *ImageUploadUtils) uploadImageWithFallback(temuCtx *temucontext.TemuTaskContext, imageURL, imageType string, defaultWidth, defaultHeight int) models.ImageInfo {
 	// 检查是否需要上传
-	configService := services.NewImageConfigService()
-	if configService.NeedsUpload(imageURL) {
+	if needsUpload(imageURL) {
 		uploadedImage, err := iuu.uploadProcessor.UploadSingleImage(temuCtx, imageURL, imageType)
 		if err == nil && uploadedImage != nil {
 			return *uploadedImage

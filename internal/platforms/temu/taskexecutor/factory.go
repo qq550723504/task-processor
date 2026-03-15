@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/platforms/common/factory"
 	temuapi "task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/client"
-	schedulerservice "task-processor/internal/platforms/temu/services/business_service"
+	schedulerservice "task-processor/internal/platforms/temu/syncsvc"
 
 	"github.com/sirupsen/logrus"
 )

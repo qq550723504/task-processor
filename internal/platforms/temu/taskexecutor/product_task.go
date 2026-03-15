@@ -7,7 +7,7 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
-	temuscheduler "task-processor/internal/platforms/temu/services/business_service"
+	temuscheduler "task-processor/internal/platforms/temu/syncsvc"
 )
 
 // ProductSyncTask TEMU产品同步任务

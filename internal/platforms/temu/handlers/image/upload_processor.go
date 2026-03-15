@@ -9,24 +9,19 @@ import (
 	temuimage "task-processor/internal/platforms/temu/api/image"
 	temuproduct "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/services"
 
 	"github.com/sirupsen/logrus"
 )
 
 // ImageUploadProcessor 图片上传处理器（简化版）
 type ImageUploadProcessor struct {
-	logger        *logrus.Entry
-	uploadService *services.ImageUploadService
-	configService *services.ImageConfigService
+	logger *logrus.Entry
 }
 
 // NewImageUploadProcessor 创建新的图片上传处理器
 func NewImageUploadProcessor() *ImageUploadProcessor {
 	return &ImageUploadProcessor{
-		logger:        logger.GetGlobalLogger("temu.handlers.image_upload"),
-		uploadService: services.NewImageUploadService(),
-		configService: services.NewImageConfigService(),
+		logger: logger.GetGlobalLogger("temu.handlers.image_upload"),
 	}
 }
 
@@ -71,7 +66,7 @@ func (h *ImageUploadProcessor) HandleTemu(temuCtx *temucontext.TemuTaskContext) 
 // UploadSingleImage 上传单张图片（核心方法）
 func (h *ImageUploadProcessor) UploadSingleImage(temuCtx *temucontext.TemuTaskContext, imageURL, imageType string) (*temuproduct.ImageInfo, error) {
 	// 检查是否需要上传
-	if !h.configService.NeedsUpload(imageURL) {
+	if !needsUpload(imageURL) {
 		// 如果是TEMU的CDN地址，直接使用
 		width, height := h.getDefaultImageDimensions(imageType)
 		return h.createImageInfo(imageURL, width, height), nil
@@ -83,7 +78,7 @@ func (h *ImageUploadProcessor) UploadSingleImage(temuCtx *temucontext.TemuTaskCo
 	}
 
 	// 获取上传签名
-	signature, err := h.uploadService.GetUploadSignature(temuCtx.APIClient)
+	signature, err := getUploadSignature(temuCtx.APIClient)
 	if err != nil {
 		return nil, fmt.Errorf("获取上传签名失败: %w", err)
 	}
@@ -95,7 +90,7 @@ func (h *ImageUploadProcessor) UploadSingleImage(temuCtx *temucontext.TemuTaskCo
 	}
 
 	// 上传图片
-	uploadResult, err := h.uploadService.UploadImageWithSignature(temuCtx.APIClient, imageData, filename, signature)
+	uploadResult, err := uploadImageWithSignature(temuCtx.APIClient, imageData, filename, signature)
 	if err != nil {
 		return nil, fmt.Errorf("上传图片失败: %w", err)
 	}
@@ -259,7 +254,7 @@ func (h *ImageUploadProcessor) getImageData(temuCtx *temucontext.TemuTaskContext
 	}
 
 	// 如果没有填充数据，下载原图
-	return h.uploadService.DownloadImage(imageURL)
+	return downloadImage(imageURL)
 }
 
 // processUploadResult 处理上传结果

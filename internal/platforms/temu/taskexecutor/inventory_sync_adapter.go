@@ -6,7 +6,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
-	temuscheduler "task-processor/internal/platforms/temu/services/business_service"
+	temuscheduler "task-processor/internal/platforms/temu/syncsvc"
 )
 
 // inventorySyncServiceAdapter 适配器，将TEMU特定的InventorySyncService适配到通用接口

@@ -1,21 +1,18 @@
-﻿// Package handlers 提供TEMU平台图片验证功能
+﻿// Package image 提供TEMU平台图片验证功能
 package image
 
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
-	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/services"
 
 	"github.com/sirupsen/logrus"
 )
 
-// ImageValidator 图片验证器（重构后使用服务层）
+// ImageValidator 图片验证器
 type ImageValidator struct {
 	logger             *logrus.Entry
-	validationService  *services.ImageValidationService
 	mainImageValidator *MainImageValidator
 	skuImageValidator  *SkuImageValidator
 }
@@ -24,7 +21,6 @@ type ImageValidator struct {
 func NewImageValidator() *ImageValidator {
 	return &ImageValidator{
 		logger:             logger.GetGlobalLogger("temu.handlers.image_validator"),
-		validationService:  services.NewImageValidationService(),
 		mainImageValidator: NewMainImageValidator(),
 		skuImageValidator:  NewSkuImageValidator(),
 	}
@@ -37,7 +33,6 @@ func (h *ImageValidator) Name() string {
 
 // Handle 处理任务（兼容pipeline.Handler接口）
 func (h *ImageValidator) Handle(ctx pipeline.TaskContext) error {
-	// 类型断言为强类型上下文
 	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
 	if !ok {
 		return fmt.Errorf("上下文类型错误，期望TemuTaskContext")
@@ -49,15 +44,13 @@ func (h *ImageValidator) Handle(ctx pipeline.TaskContext) error {
 func (h *ImageValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始验证产品图片")
 
-	// 获取TEMU产品信息
 	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
-	// 获取图片要求配置（使用服务层）
-	// 创建临时适配器来满足服务接口要求
-	productProvider := &temuProductProvider{temuCtx: temuCtx}
-	requirement := h.validationService.GetImageRequirement(productProvider)
+	// 根据产品类型获取图片要求
+	isClothes := temuCtx.TemuProduct.GoodsBasic.IsClothes
+	requirement := getImageRequirement(isClothes)
 	h.logger.WithFields(logrus.Fields{
 		"aspect_ratio":    requirement.AspectRatio,
 		"min_width":       requirement.MinWidth,
@@ -67,54 +60,54 @@ func (h *ImageValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) error 
 		"max_image_count": requirement.MaxImageCount,
 	}).Info("获取图片要求配置")
 
-	// 验证商品主图
 	if err := h.mainImageValidator.ValidateMainImages(temuCtx, requirement); err != nil {
 		return fmt.Errorf("主图验证失败: %w", err)
 	}
 
-	// 验证SKC/SKU图片
 	if err := h.skuImageValidator.ValidateSkuImages(temuCtx, requirement); err != nil {
 		return fmt.Errorf("SKU图片验证失败: %w", err)
 	}
 
-	// 设置需要上传图片的标志（直接赋值到强类型上下文）
-	// 可以添加一个标志字段到TemuTaskContext中
 	h.logger.Info("图片验证完成")
 	return nil
 }
 
 // ValidateImageUploadRequirement 验证图片上传要求
 func (h *ImageValidator) ValidateImageUploadRequirement(temuCtx *temucontext.TemuTaskContext) error {
-	productProvider := &temuProductProvider{temuCtx: temuCtx}
-	return h.validationService.ValidateImageUploadRequirement(productProvider)
+	h.logger.Info("检查图片上传要求")
+
+	temuProduct := temuCtx.TemuProduct
+	totalImages := len(temuProduct.GoodsBasic.GoodsGallery.DetailImage)
+	for _, skc := range temuProduct.SkcList {
+		for _, sku := range skc.SkuList {
+			totalImages += len(sku.CarouselGallery) + len(sku.DimensionGallery)
+		}
+	}
+
+	if totalImages > 0 {
+		temuCtx.DefaultTaskContext.SetData("requires_image_upload", true)
+		temuCtx.DefaultTaskContext.SetData("total_image_count", totalImages)
+		h.logger.Infof("检测到 %d 张图片需要处理", totalImages)
+	}
+
+	return nil
 }
 
 // GetImageValidationSummary 获取图片验证摘要
 func (h *ImageValidator) GetImageValidationSummary(temuCtx *temucontext.TemuTaskContext) map[string]any {
-	productProvider := &temuProductProvider{temuCtx: temuCtx}
-	return h.validationService.GetValidationSummary(productProvider)
-}
-
-// temuProductProvider 临时适配器，用于满足服务层接口要求
-type temuProductProvider struct {
-	temuCtx *temucontext.TemuTaskContext
-}
-
-// GetTemuProduct 实现 TemuProductProvider 接口
-func (p *temuProductProvider) GetTemuProduct() *models.Product {
-	return p.temuCtx.TemuProduct
-}
-
-// SetData 实现 TemuProductProvider 接口
-func (p *temuProductProvider) SetData(key string, value any) {
-	// 可以根据需要将数据存储到强类型上下文的相应字段中
-	// 这里暂时使用基础上下文的SetData方法
-	p.temuCtx.DefaultTaskContext.SetData(key, value)
-}
-
-// GetData 实现 TemuProductProvider 接口
-func (p *temuProductProvider) GetData(key string) (any, bool) {
-	// 可以根据需要从强类型上下文的相应字段中获取数据
-	// 这里暂时使用基础上下文的GetData方法
-	return p.temuCtx.DefaultTaskContext.GetData(key)
+	temuProduct := temuCtx.TemuProduct
+	skuImageCount := 0
+	for _, skc := range temuProduct.SkcList {
+		for _, sku := range skc.SkuList {
+			skuImageCount += len(sku.CarouselGallery) + len(sku.DimensionGallery)
+		}
+	}
+	mainImages := len(temuProduct.GoodsBasic.GoodsGallery.DetailImage)
+	total := mainImages + skuImageCount
+	return map[string]any{
+		"main_images":     mainImages,
+		"sku_images":      skuImageCount,
+		"total_images":    total,
+		"requires_upload": total > 0,
+	}
 }
