@@ -1,28 +1,28 @@
-// Package attribute 提供SHEIN平台属性重要性计算功能
+﻿// Package attribute 提供SHEIN平台属性重要性计算功能
 package attribute
 
 import (
 	"strings"
 
 	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 )
 
 // ImportanceService 属性重要性计算服务
 type ImportanceService struct {
-	calculator *model.AttributeImportanceCalculator
+	calculator *shein.AttributeImportanceCalculator
 }
 
 // NewImportanceService 创建新的属性重要性计算服务
 func NewImportanceService() *ImportanceService {
 	return &ImportanceService{
-		calculator: model.NewAttributeImportanceCalculator(),
+		calculator: shein.NewAttributeImportanceCalculator(),
 	}
 }
 
 // EnhanceAttributeDataWithTemplateInfo 增强属性数据，添加重要性评分和依赖关系
-func (s *ImportanceService) EnhanceAttributeDataWithTemplateInfo(attributeData []model.GenerateAttribute, attributeTemplates *attribute.AttributeTemplateInfo) []model.EnhancedGenerateAttribute {
-	var enhancedData []model.EnhancedGenerateAttribute
+func (s *ImportanceService) EnhanceAttributeDataWithTemplateInfo(attributeData []shein.GenerateAttribute, attributeTemplates *attribute.AttributeTemplateInfo) []shein.EnhancedGenerateAttribute {
+	var enhancedData []shein.EnhancedGenerateAttribute
 
 	// 创建属性模板映射，便于快速查找
 	templateMap := make(map[int]*attribute.AttributeInfo)
@@ -33,7 +33,7 @@ func (s *ImportanceService) EnhanceAttributeDataWithTemplateInfo(attributeData [
 	}
 
 	for _, attr := range attributeData {
-		enhanced := model.EnhancedGenerateAttribute{
+		enhanced := shein.EnhancedGenerateAttribute{
 			AttrID:        attr.AttrID,
 			AttrValue:     attr.AttrValue,
 			Required:      attr.Required,
@@ -69,8 +69,8 @@ func (s *ImportanceService) EnhanceAttributeDataWithTemplateInfo(attributeData [
 }
 
 // CalculateAttributeImportance 计算属性重要性评分
-func (s *ImportanceService) CalculateAttributeImportance(attribute *attribute.AttributeInfo) model.AttributeImportanceResult {
-	result := model.AttributeImportanceResult{
+func (s *ImportanceService) CalculateAttributeImportance(attribute *attribute.AttributeInfo) shein.AttributeImportanceResult {
+	result := shein.AttributeImportanceResult{
 		Importance: 0,
 	}
 
@@ -166,3 +166,5 @@ func (s *ImportanceService) getAttributeDependencies(attrID int) []int {
 	}
 	return []int{}
 }
+
+

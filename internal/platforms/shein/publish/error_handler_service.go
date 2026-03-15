@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/pkg/jsonutil"
 	product "task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/content"
 	skuutils "task-processor/internal/platforms/shein/product/sku"
 
@@ -25,7 +25,7 @@ func NewPublishProductErrorHandler() *PublishProductErrorHandler {
 }
 
 // HandlePublishResponse 处理发布响应
-func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *model.TaskContext, response *product.SheinResponse) error {
+func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *shein.TaskContext, response *product.SheinResponse) error {
 	// 检查发布结果
 	if response != nil && response.Code == "0" {
 		// 解析验证结果
@@ -59,7 +59,7 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *model.TaskContex
 				if h.isDuplicateSKUError(validResults) {
 					logrus.Errorf("检测到卖家SKU重复错误，标记为不可重试")
 					// SKU重复错误不可重试
-					return model.NewNonRetryableError("产品发布失败: 卖家SKU重复", fmt.Errorf("%+v", response.Info.PreValidResult))
+					return shein.NewNonRetryableError("产品发布失败: 卖家SKU重复", fmt.Errorf("%+v", response.Info.PreValidResult))
 				}
 
 				// 尝试自动替换敏感词并重新提交
@@ -80,7 +80,7 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *model.TaskContex
 					handler.SaveDraftProduct(ctx)
 
 					// 产品已保存到草稿箱，不需要再重试
-					return model.NewNonRetryableError("产品已保存到草稿箱，请手动处理", fmt.Errorf("%+v", response.Info.PreValidResult))
+					return shein.NewNonRetryableError("产品已保存到草稿箱，请手动处理", fmt.Errorf("%+v", response.Info.PreValidResult))
 				}
 			}
 		}
@@ -89,25 +89,25 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *model.TaskContex
 		saver := NewPublishProductSaver()
 		if err := saver.SavePublishResult(ctx, response); err != nil {
 			// 保存结果失败可能是数据问题，不可重试
-			return model.NewNonRetryableError("保存发布结果失败", err)
+			return shein.NewNonRetryableError("保存发布结果失败", err)
 		}
 	} else {
 		// 发布失败，根据错误信息判断是否可重试
 		if response != nil {
 			// 如果是数据验证错误等，不可重试
 			if response.Code == "400" || response.Code == "403" {
-				return model.NewNonRetryableError("产品发布失败: "+response.Msg, nil)
+				return shein.NewNonRetryableError("产品发布失败: "+response.Msg, nil)
 			}
 		}
 		// 其他错误可重试
-		return model.NewRetryableError("产品发布失败", fmt.Errorf("%+v", response))
+		return shein.NewRetryableError("产品发布失败", fmt.Errorf("%+v", response))
 	}
 
 	return nil
 }
 
 // autoReplaceSensitiveWordsAndResubmit 自动替换敏感词并重新提交
-func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *model.TaskContext, results []model.PreValidResult) bool {
+func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *shein.TaskContext, results []shein.PreValidResult) bool {
 	logrus.Info("开始检查敏感词错误并尝试自动替换重试...")
 
 	// 创建敏感词服务实例
@@ -174,9 +174,9 @@ func (h *PublishProductErrorHandler) getSensitiveWordService() *content.Sensitiv
 }
 
 // parsePreValidResult 解析预验证结果
-func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult interface{}) ([]model.PreValidResult, error) {
+func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult interface{}) ([]shein.PreValidResult, error) {
 	if preValidResult == nil {
-		return []model.PreValidResult{}, nil
+		return []shein.PreValidResult{}, nil
 	}
 
 	// 添加调试代码：打印实际的响应数据结构
@@ -192,7 +192,7 @@ func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult interfac
 	// 打印实际的JSON结构
 	logrus.Infof("🔍 调试 - PreValidResult JSON 数据: %s", string(jsonData))
 
-	var results []model.PreValidResult
+	var results []shein.PreValidResult
 	if err := jsonutil.UnmarshalBytes(jsonData, &results, "反序列化 PreValidResult 失败"); err != nil {
 		logrus.Errorf("❌ 调试 - 反序列化 PreValidResult 失败: %v", err)
 		logrus.Errorf("❌ 调试 - 尝试反序列化的JSON: %s", string(jsonData))
@@ -204,7 +204,7 @@ func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult interfac
 }
 
 // hasValidationError 检查是否存在验证错误
-func (h *PublishProductErrorHandler) hasValidationError(results []model.PreValidResult) bool {
+func (h *PublishProductErrorHandler) hasValidationError(results []shein.PreValidResult) bool {
 	for _, result := range results {
 		// 检查普通消息错误
 		if len(result.Messages) > 0 {
@@ -241,7 +241,7 @@ func (h *PublishProductErrorHandler) hasValidationError(results []model.PreValid
 }
 
 // formatValidationErrors 格式化验证错误信息
-func (h *PublishProductErrorHandler) formatValidationErrors(results []model.PreValidResult) string {
+func (h *PublishProductErrorHandler) formatValidationErrors(results []shein.PreValidResult) string {
 	var errorMsgs []string
 
 	for _, result := range results {
@@ -285,7 +285,7 @@ func (h *PublishProductErrorHandler) formatValidationErrors(results []model.PreV
 }
 
 // isSpecificationError 检查是否为规格配置错误
-func (h *PublishProductErrorHandler) isSpecificationError(results []model.PreValidResult) bool {
+func (h *PublishProductErrorHandler) isSpecificationError(results []shein.PreValidResult) bool {
 	specificationErrorPatterns := []string{
 		"不可以作为主规格",
 		"主规格",
@@ -319,7 +319,7 @@ func (h *PublishProductErrorHandler) isSpecificationError(results []model.PreVal
 }
 
 // isDuplicateSKUError 检查是否为SKU重复错误
-func (h *PublishProductErrorHandler) isDuplicateSKUError(results []model.PreValidResult) bool {
+func (h *PublishProductErrorHandler) isDuplicateSKUError(results []shein.PreValidResult) bool {
 	for _, result := range results {
 		// 检查错误消息中是否包含"卖家SKU重复"
 		for _, message := range result.Messages {
@@ -363,7 +363,7 @@ func (h *PublishProductErrorHandler) isDuplicateSKUError(results []model.PreVali
 }
 
 // isQuantityTypeError 检查是否为数量类型错误
-func (h *PublishProductErrorHandler) isQuantityTypeError(results []model.PreValidResult) bool {
+func (h *PublishProductErrorHandler) isQuantityTypeError(results []shein.PreValidResult) bool {
 	quantityErrorPatterns := []string{
 		"SKU件数类型为同款多件时，有效范围2-99999",
 		"数量必须大于等于2",
@@ -399,7 +399,7 @@ func (h *PublishProductErrorHandler) isQuantityTypeError(results []model.PreVali
 }
 
 // autoFixQuantityTypeAndResubmit 自动修复数量类型错误并重新提交
-func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *model.TaskContext, results []model.PreValidResult) bool {
+func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.TaskContext, results []shein.PreValidResult) bool {
 	logrus.Info("开始自动修复数量类型错误...")
 
 	if ctx.ProductData == nil || len(ctx.ProductData.SKCList) == 0 {
@@ -488,4 +488,6 @@ func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *model.T
 	logrus.Info("数量类型修复重试成功 - 产品发布成功")
 	return true
 }
+
+
 

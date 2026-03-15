@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/platforms/shein/api/product"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product/variant"
 
 	"github.com/sirupsen/logrus"
@@ -28,7 +28,7 @@ func NewSKUBuilder(variantMatcher *variant.VariantMatcher) *SKUBuilder {
 }
 
 // BuildSKUListWithStrategy 根据策略构建SKU列表
-func (b *SKUBuilder) BuildSKUListWithStrategy(ctx *shein_model.TaskContext, req shein_model.SKUBuildRequest) ([]product.SKU, error) {
+func (b *SKUBuilder) BuildSKUListWithStrategy(ctx *shein.TaskContext, req shein.SKUBuildRequest) ([]product.SKU, error) {
 	logrus.Infof("🔧 === 开始SKU构建流程 ===")
 	logrus.Infof("📊 SKU构建请求信息:")
 	logrus.Infof("  - 主要属性ID: %d", req.Strategy.PrimaryAttribute.AttrID)
@@ -62,7 +62,7 @@ func (b *SKUBuilder) BuildSKUListWithStrategy(ctx *shein_model.TaskContext, req 
 }
 
 // BuildSKUListForSingleVariant 为单变体构建SKU列表
-func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein_model.TaskContext, variant shein_model.Variant, strategy shein_model.AttributeStrategy) ([]product.SKU, error) {
+func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, variant shein.Variant, strategy shein.AttributeStrategy) ([]product.SKU, error) {
 	logrus.Infof("为单变体构建SKU列表: ASIN %s", variant.ASIN)
 
 	// 根据策略构建销售属性列表
@@ -95,7 +95,7 @@ func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein_model.TaskContext, 
 	}
 
 	// 使用统一的SKU创建函数
-	sku, err := b.creator.CreateSKU(ctx, shein_model.SKUCreationParams{
+	sku, err := b.creator.CreateSKU(ctx, shein.SKUCreationParams{
 		ASIN:              variant.ASIN,
 		ProductInfo:       productInfo,
 		WarehouseCode:     ctx.Warehouses.Data[0].WarehouseCode,
@@ -113,4 +113,6 @@ func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein_model.TaskContext, 
 	logrus.Infof("成功为单变体创建SKU，销售属性数量: %d", len(saleAttributeList))
 	return []product.SKU{*sku}, nil
 }
+
+
 

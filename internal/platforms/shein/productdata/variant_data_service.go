@@ -13,7 +13,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/perfutil"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -86,7 +86,7 @@ func (h *VariantJsonDataHandler) Name() string {
 }
 
 // Handle 执行获取所有变体的Json数据处理
-func (h *VariantJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
+func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	// 创建性能跟踪器
 	tracker := perfutil.NewTracker("并行变体数据处理", h.logger)
 	defer tracker.Finish()
@@ -116,7 +116,7 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
 	// 检查变体数量限制
 	if len(variantAsins) > 100 {
 		h.logger.Warnf("变体ASIN数量过多（%d），可能会导致处理时间过长", len(variantAsins))
-		return shein_model.NewNonRetryableError("变体ASIN数量过多，停止处理", nil)
+		return shein.NewNonRetryableError("变体ASIN数量过多，停止处理", nil)
 	}
 
 	tracker.EndStep()
@@ -150,7 +150,7 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
 }
 
 // fetchVariantsParallel 并行获取变体数据
-func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein_model.TaskContext, variantAsins []string) ([]*model.Product, error) {
+func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein.TaskContext, variantAsins []string) ([]*model.Product, error) {
 	if ctx.Task == nil {
 		return nil, fmt.Errorf("任务信息为空")
 	}
@@ -208,7 +208,7 @@ func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein_model.TaskCont
 }
 
 // getAsinListFromContext 从上下文中获取ASIN列表
-func (h *VariantJsonDataHandler) getAsinListFromContext(ctx *shein_model.TaskContext, mainProductAsin string) []string {
+func (h *VariantJsonDataHandler) getAsinListFromContext(ctx *shein.TaskContext, mainProductAsin string) []string {
 	h.logger.Infof("🔍 [变体ASIN提取] 主产品ASIN: %s", mainProductAsin)
 
 	// 1. 从AsinSkuMap中获取
@@ -277,3 +277,5 @@ func GetVariantByAsinFromVariants(variants *[]model.Product, asin string) *model
 	}
 	return nil
 }
+
+

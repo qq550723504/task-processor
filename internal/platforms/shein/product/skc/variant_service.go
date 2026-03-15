@@ -7,7 +7,7 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	api_attribute "task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product/attribute"
 	"task-processor/internal/platforms/shein/product/image"
 	"task-processor/internal/platforms/shein/product/sku"
@@ -21,12 +21,12 @@ type SKCVariantProcessor struct {
 	imageProcessor  *image.ImageProcessor
 	attributeMapper *attribute.AttributeMapper
 	skuBuilder      *sku.SKUBuilder
-	taskContext     *model.TaskContext
+	taskContext     *shein.TaskContext
 	openaiClient    *openaiClient.Client
 }
 
 // NewSKCVariantProcessor 创建新的SKC变体处理器
-func NewSKCVariantProcessor(imageProcessor *image.ImageProcessor, attributeMapper *attribute.AttributeMapper, skuBuilder *sku.SKUBuilder, taskContext *model.TaskContext, openaiClient *openaiClient.Client) *SKCVariantProcessor {
+func NewSKCVariantProcessor(imageProcessor *image.ImageProcessor, attributeMapper *attribute.AttributeMapper, skuBuilder *sku.SKUBuilder, taskContext *shein.TaskContext, openaiClient *openaiClient.Client) *SKCVariantProcessor {
 	return &SKCVariantProcessor{
 		imageProcessor:  imageProcessor,
 		attributeMapper: attributeMapper,
@@ -37,7 +37,7 @@ func NewSKCVariantProcessor(imageProcessor *image.ImageProcessor, attributeMappe
 }
 
 // BuildSingleVariantSKC 构建单变体SKC
-func (p *SKCVariantProcessor) BuildSingleVariantSKC(ctx *model.TaskContext, strategy model.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
+func (p *SKCVariantProcessor) BuildSingleVariantSKC(ctx *shein.TaskContext, strategy shein.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
 	logrus.Infof("🎯 === 开始单变体SKC构建流程 ===")
 
 	variant := ctx.SaleSpecResult.Variants[0]
@@ -87,7 +87,7 @@ func (p *SKCVariantProcessor) BuildSingleVariantSKC(ctx *model.TaskContext, stra
 }
 
 // BuildMultiVariantSKCList 构建多变体SKC列表
-func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *model.TaskContext, strategy model.AttributeStrategy, variantMatcher *variant.VariantMatcher) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
+func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *shein.TaskContext, strategy shein.AttributeStrategy, variantMatcher *variant.VariantMatcher) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
 	logrus.Infof("🔨 === 开始多变体SKC构建流程 ===")
 
 	// 预分配容量
@@ -177,7 +177,7 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *model.TaskContext, s
 
 		// 构建SKU列表
 		logrus.Debugf("🔧 构建SKU列表...")
-		skuBuildReq := model.SKUBuildRequest{
+		skuBuildReq := shein.SKUBuildRequest{
 			SaleAttributeData: *ctx.SaleSpecResult,
 			Strategy:          strategy,
 			PrimaryAttrValue:  attribute.Value,
@@ -198,7 +198,7 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *model.TaskContext, s
 		// 使用统一的SKC创建函数
 		logrus.Debugf("🏗️ 创建SKC...")
 		translationHandler := NewSKCTranslationHandler(p.taskContext, p.openaiClient)
-		skc := translationHandler.CreateSKC(ctx, model.SKCCreationParams{
+		skc := translationHandler.CreateSKC(ctx, shein.SKCCreationParams{
 			AttributeID:      strategy.PrimaryAttribute.AttrID,
 			AttributeValueID: attribute.ID.Int(),
 			SKUS:             skuList,
@@ -220,7 +220,7 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *model.TaskContext, s
 }
 
 // buildSingleVariantDirect 构建单变体直接SKC
-func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *model.TaskContext, variant model.Variant, strategy model.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
+func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *shein.TaskContext, variant shein.Variant, strategy shein.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
 	var customAttributeRelations []api_attribute.CustomAttributeRelation
 
 	imageInfo, err := p.imageProcessor.BuildImageInfo(ctx, ctx.AmazonProduct.Images)
@@ -260,7 +260,7 @@ func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *model.TaskContext, v
 
 	// 使用统一的SKC创建函数
 	translationHandler := NewSKCTranslationHandler(p.taskContext, p.openaiClient)
-	skc := translationHandler.CreateSKC(ctx, model.SKCCreationParams{
+	skc := translationHandler.CreateSKC(ctx, shein.SKCCreationParams{
 		AttributeID:      strategy.PrimaryAttribute.AttrID,
 		AttributeValueID: primaryAttrValue.ID.Int(),
 		SKUS:             skuList,
@@ -278,7 +278,7 @@ func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *model.TaskContext, v
 }
 
 // ensureVariantsHaveRequiredAttributes 确保所有变体都包含必需的主规格和次规格属性
-func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(ctx *model.TaskContext, strategy *model.AttributeStrategy) {
+func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(ctx *shein.TaskContext, strategy *shein.AttributeStrategy) {
 	logrus.Infof("🔧 === 开始修复变体属性 ===")
 
 	// 获取主规格和次规格的属性名
@@ -360,7 +360,7 @@ func (p *SKCVariantProcessor) getAttributeNameForVariant(attrID int) string {
 }
 
 // variantHasAttribute 检查变体是否包含指定属性
-func (p *SKCVariantProcessor) variantHasAttribute(variant *model.Variant, attrName string) bool {
+func (p *SKCVariantProcessor) variantHasAttribute(variant *shein.Variant, attrName string) bool {
 	if variant.Attributes == nil {
 		return false
 	}
@@ -440,4 +440,6 @@ func (p *SKCVariantProcessor) autoFixMultiPieceSKUImages(skc *product.SKC, skcIm
 		logrus.Infof("✅ SKC自动修复完成: 修复了%d个多件商品SKU图片", fixedCount)
 	}
 }
+
+
 

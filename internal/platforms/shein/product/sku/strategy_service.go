@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product/variant"
 
 	"github.com/sirupsen/logrus"
@@ -30,12 +30,12 @@ func NewSKUStrategyProcessor(variantMatcher *variant.VariantMatcher) *SKUStrateg
 }
 
 // BuildSingleSKU 构建单个SKU（无次要属性情况）
-func (p *SKUStrategyProcessor) BuildSingleSKU(ctx *shein_model.TaskContext, req shein_model.SKUBuildRequest) ([]product.SKU, error) {
+func (p *SKUStrategyProcessor) BuildSingleSKU(ctx *shein.TaskContext, req shein.SKUBuildRequest) ([]product.SKU, error) {
 	logrus.Infof("🔨 === 开始单SKU构建流程 ===")
 
 	// 查找对应主要属性值的变体
 	logrus.Infof("🔍 步骤1: 查找匹配的变体...")
-	var matchedVariant *shein_model.Variant
+	var matchedVariant *shein.Variant
 	var attributeTemplates []attribute.AttributeTemplate
 	if ctx.AttributeTemplates != nil {
 		attributeTemplates = ctx.AttributeTemplates.Data
@@ -144,7 +144,7 @@ func (p *SKUStrategyProcessor) BuildSingleSKU(ctx *shein_model.TaskContext, req 
 		productInfo = ctx.AmazonProduct
 	}
 
-	sku, err := p.creator.CreateSKU(ctx, shein_model.SKUCreationParams{
+	sku, err := p.creator.CreateSKU(ctx, shein.SKUCreationParams{
 		ASIN:              matchedVariant.ASIN,
 		ProductInfo:       productInfo,
 		WarehouseCode:     req.WarehouseCode,
@@ -165,7 +165,7 @@ func (p *SKUStrategyProcessor) BuildSingleSKU(ctx *shein_model.TaskContext, req 
 }
 
 // BuildMultipleSKUs 构建多个SKU（有次要属性情况）
-func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein_model.TaskContext, req shein_model.SKUBuildRequest) ([]product.SKU, error) {
+func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein.TaskContext, req shein.SKUBuildRequest) ([]product.SKU, error) {
 	// 第一步：使用属性匹配器预先过滤出所有匹配主要属性的变体
 	primaryMatchedVariants := p.variantMatcher.FindMatchingVariants(ctx,
 		req.SaleAttributeData.Variants,
@@ -182,7 +182,7 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein_model.TaskContext, r
 
 	// 第二步：处理次要属性并建立复合键到属性值的映射
 	processedSecondaryValues := make(map[string]bool)
-	variantInfoMap := make(map[string]shein_model.VariantInfo) // 使用复合键: "ASIN:valueID"
+	variantInfoMap := make(map[string]shein.VariantInfo) // 使用复合键: "ASIN:valueID"
 	usedValueIDs := make(map[int]bool)                         // 跟踪已使用的属性值ID，防止重复
 
 	for _, attr := range req.Strategy.SecondaryAttribute.AttrValue {
@@ -220,7 +220,7 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein_model.TaskContext, r
 			// 使用复合键 "ASIN:valueID" 确保同一ASIN的不同属性值都能创建SKU
 			compositeKey := fmt.Sprintf("%s:%d", variant.ASIN, currentValueID)
 			if _, exists := variantInfoMap[compositeKey]; !exists {
-				variantInfoMap[compositeKey] = shein_model.VariantInfo{
+				variantInfoMap[compositeKey] = shein.VariantInfo{
 					Variant:   variant,
 					AttrID:    req.Strategy.SecondaryAttribute.AttrID,
 					ValueID:   currentValueID,
@@ -241,7 +241,7 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein_model.TaskContext, r
 }
 
 // buildSKUListForMultipleVariants 为多个变体构建SKU列表
-func (p *SKUStrategyProcessor) buildSKUListForMultipleVariants(ctx *shein_model.TaskContext, variantInfoMap map[string]shein_model.VariantInfo, req shein_model.SKUBuildRequest) ([]product.SKU, error) {
+func (p *SKUStrategyProcessor) buildSKUListForMultipleVariants(ctx *shein.TaskContext, variantInfoMap map[string]shein.VariantInfo, req shein.SKUBuildRequest) ([]product.SKU, error) {
 	// 结果列表
 	var skuList []product.SKU
 	usedAttributeValueIDs := make(map[int]bool) // 跟踪已使用的属性值ID，防止重复
@@ -291,7 +291,7 @@ func (p *SKUStrategyProcessor) buildSKUListForMultipleVariants(ctx *shein_model.
 		}
 
 		// 使用统一的SKU创建函数
-		sku, err := p.creator.CreateSKU(ctx, shein_model.SKUCreationParams{
+		sku, err := p.creator.CreateSKU(ctx, shein.SKUCreationParams{
 			ASIN:              varInfo.Variant.ASIN,
 			ProductInfo:       productInfo,
 			WarehouseCode:     req.WarehouseCode,
@@ -320,4 +320,6 @@ func (p *SKUStrategyProcessor) buildSKUListForMultipleVariants(ctx *shein_model.
 	logrus.Infof("成功为主要属性值 %s 创建了 %d 个 SKU，去重后避免了属性值ID重复", req.PrimaryAttrValue, len(skuList))
 	return skuList, nil
 }
+
+
 

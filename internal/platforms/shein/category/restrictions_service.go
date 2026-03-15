@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	management_api "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -25,7 +25,7 @@ func (h *CollectCategoryRestrictionsHandler) Name() string {
 }
 
 // Handle 执行错误时收集分类限制及敏感词处理
-func (h *CollectCategoryRestrictionsHandler) Handle(ctx *model.TaskContext) error {
+func (h *CollectCategoryRestrictionsHandler) Handle(ctx *shein.TaskContext) error {
 
 	// 收集分类限制信息
 	if err := h.collectCategoryRestrictions(ctx); err != nil {
@@ -37,7 +37,7 @@ func (h *CollectCategoryRestrictionsHandler) Handle(ctx *model.TaskContext) erro
 	hasMainSpecError := h.hasMainSpecificationError(ctx)
 	if hasMainSpecError {
 		logrus.Warnf("检测到主规格配置错误，终止处理流程")
-		return model.NewNonRetryableError("主规格错误", nil)
+		return shein.NewNonRetryableError("主规格错误", nil)
 	}
 
 	// 如果没有主规格错误，处理成功
@@ -46,23 +46,23 @@ func (h *CollectCategoryRestrictionsHandler) Handle(ctx *model.TaskContext) erro
 }
 
 // collectCategoryRestrictions 收集分类限制信息
-func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *model.TaskContext) error {
+func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *shein.TaskContext) error {
 	// 检查必要的上下文信息
 	if ctx.ManagementClientMgr == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return model.NewNonRetryableError("管理客户端管理器未初始化", nil)
+		return shein.NewNonRetryableError("管理客户端管理器未初始化", nil)
 	}
 
 	if ctx.Task == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return model.NewNonRetryableError("任务信息未初始化", nil)
+		return shein.NewNonRetryableError("任务信息未初始化", nil)
 	}
 
 	// 获取品类限制集合API客户端
 	categoryRestrictionClient := ctx.ManagementClientMgr.GetCategoryRestrictionCollectionsClient()
 	if categoryRestrictionClient == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return model.NewNonRetryableError("品类限制集合API客户端不存在", nil)
+		return shein.NewNonRetryableError("品类限制集合API客户端不存在", nil)
 	}
 
 	// 从上下文中获取规格配置错误信息
@@ -100,7 +100,7 @@ func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *mo
 			if err != nil {
 				logrus.Warnf("提交分类限制错误失败: %v", err)
 				// 提交分类限制错误失败可能是网络或系统问题，可重试
-				return model.NewRetryableError("提交分类限制错误失败", err)
+				return shein.NewRetryableError("提交分类限制错误失败", err)
 			} else {
 				logrus.Infof("成功提交分类限制错误到管理系统，ID: %d", id)
 			}
@@ -111,7 +111,7 @@ func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *mo
 }
 
 // parseSpecificationError 解析规格配置错误信息
-func (h *CollectCategoryRestrictionsHandler) parseSpecificationError(ctx *model.TaskContext, messages []string) (int, string, int, string) {
+func (h *CollectCategoryRestrictionsHandler) parseSpecificationError(ctx *shein.TaskContext, messages []string) (int, string, int, string) {
 	forbiddenAttrID := 0
 	forbiddenAttrName := ""
 	defaultAttrID := 27
@@ -167,7 +167,7 @@ func (h *CollectCategoryRestrictionsHandler) parseSpecificationError(ctx *model.
 }
 
 // hasMainSpecificationError 检查是否存在主规格相关的错误
-func (h *CollectCategoryRestrictionsHandler) hasMainSpecificationError(ctx *model.TaskContext) bool {
+func (h *CollectCategoryRestrictionsHandler) hasMainSpecificationError(ctx *shein.TaskContext) bool {
 	// 检查规格配置错误信息
 	errorResults := ctx.SpecificationErrors
 
@@ -189,3 +189,5 @@ func (h *CollectCategoryRestrictionsHandler) hasMainSpecificationError(ctx *mode
 	logrus.Debug("没有发现主规格相关的错误")
 	return false
 }
+
+

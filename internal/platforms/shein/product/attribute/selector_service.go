@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台AI属性选择核心处理器
+﻿// Package modules 提供SHEIN平台AI属性选择核心处理器
 package attribute
 
 import (
@@ -8,7 +8,7 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -39,7 +39,7 @@ func (h *AttributeSelectorHandler) Name() string {
 }
 
 // Handle 执行AI属性选择处理
-func (h *AttributeSelectorHandler) Handle(ctx *model.TaskContext) error {
+func (h *AttributeSelectorHandler) Handle(ctx *shein.TaskContext) error {
 	// 检查前置条件
 	if err := h.validatePreconditions(ctx); err != nil {
 		return err
@@ -48,7 +48,7 @@ func (h *AttributeSelectorHandler) Handle(ctx *model.TaskContext) error {
 	attributeInfo, err := h.convertAttributeFromGpt(ctx, ctx.BuildAttributeData, ctx.AttributeTemplates)
 	if err != nil {
 		// 转换属性数据失败可能是AI服务问题，可重试
-		return model.NewRetryableError("转换属性数据失败", err)
+		return shein.NewRetryableError("转换属性数据失败", err)
 	}
 
 	ctx.GenerateAttribute = &attributeInfo
@@ -56,22 +56,22 @@ func (h *AttributeSelectorHandler) Handle(ctx *model.TaskContext) error {
 }
 
 // validatePreconditions 验证处理前置条件
-func (h *AttributeSelectorHandler) validatePreconditions(ctx *model.TaskContext) error {
+func (h *AttributeSelectorHandler) validatePreconditions(ctx *shein.TaskContext) error {
 	if ctx.ProductData == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return model.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
+		return shein.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
 	}
 
 	if len(ctx.BuildAttributeData.AttributeData) == 0 {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return model.NewNonRetryableError("属性数据未构建，请先执行构建属性信息步骤", nil)
+		return shein.NewNonRetryableError("属性数据未构建，请先执行构建属性信息步骤", nil)
 	}
 
 	return nil
 }
 
 // convertAttributeFromGpt 使用GPT生成产品属性
-func (h *AttributeSelectorHandler) convertAttributeFromGpt(ctx *model.TaskContext, attributeInfo *model.BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) (model.AttributeData, error) {
+func (h *AttributeSelectorHandler) convertAttributeFromGpt(ctx *shein.TaskContext, attributeInfo *shein.BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) (shein.AttributeData, error) {
 	// 生成系统提示词
 	systemPrompt, err := h.promptGenerator.GenerateSystemPrompt(attributeTemplates)
 	if err != nil {
@@ -92,12 +92,12 @@ func (h *AttributeSelectorHandler) convertAttributeFromGpt(ctx *model.TaskContex
 	response, err := h.openaiClient.CreateChatCompletion(ctx.Context, req)
 	if err != nil {
 		// AI服务调用失败，可重试
-		return model.AttributeData{}, model.NewRetryableError("生成产品属性失败", err)
+		return shein.AttributeData{}, shein.NewRetryableError("生成产品属性失败", err)
 	}
 
 	if len(response.Choices) == 0 {
 		// AI响应为空，可重试
-		return model.AttributeData{}, model.NewRetryableError("AI响应为空", nil)
+		return shein.AttributeData{}, shein.NewRetryableError("AI响应为空", nil)
 	}
 
 	// 处理AI响应
@@ -127,7 +127,7 @@ func (h *AttributeSelectorHandler) createChatCompletionRequest(systemPrompt, use
 }
 
 // processAIResponse 处理AI响应
-func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.ChatCompletionResponse, attributeInfo model.BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) (model.AttributeData, error) {
+func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.ChatCompletionResponse, attributeInfo shein.BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) (shein.AttributeData, error) {
 	content := response.Choices[0].Message.Content
 	content = strings.TrimSpace(content)
 
@@ -149,16 +149,16 @@ func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.Chat
 			var temp any
 			jsonErr = json.Unmarshal([]byte(fixedContent), &temp)
 			// JSON格式无效且无法修复，可能是AI模型问题，可重试
-			return model.AttributeData{}, model.NewRetryableError("AI返回的JSON格式无效且无法修复", jsonErr)
+			return shein.AttributeData{}, shein.NewRetryableError("AI返回的JSON格式无效且无法修复", jsonErr)
 		}
 		content = fixedContent
 	}
 
-	var attributeData model.AttributeData
+	var attributeData shein.AttributeData
 	if err := jsonutil.UnmarshalBytes([]byte(content), &attributeData, "解析属性数据失败"); err != nil {
 		logrus.Errorf("解析属性数据失败: %v，清理后内容: %s", err, content)
 		// 解析属性数据失败，可重试
-		return model.AttributeData{}, model.NewRetryableError("解析属性数据失败", err)
+		return shein.AttributeData{}, shein.NewRetryableError("解析属性数据失败", err)
 	}
 
 	// 使用增强版验证并修复AI选择的属性值
@@ -166,3 +166,5 @@ func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.Chat
 
 	return attributeData, nil
 }
+
+

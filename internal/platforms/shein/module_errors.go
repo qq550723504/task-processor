@@ -1,4 +1,4 @@
-﻿package model
+﻿package shein
 
 import (
 	"errors"
@@ -312,3 +312,4 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+

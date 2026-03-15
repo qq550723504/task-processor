@@ -3,7 +3,7 @@
 import (
 	"fmt"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 )
 
 // AICategorySelectorHandler AI分类选择处理器
@@ -24,7 +24,7 @@ func (h *AICategorySelectorHandler) Name() string {
 }
 
 // Handle 执行AI分类选择处理
-func (h *AICategorySelectorHandler) Handle(ctx *model.TaskContext) error {
+func (h *AICategorySelectorHandler) Handle(ctx *shein.TaskContext) error {
 
 	productTitle := ctx.AmazonProduct.Title
 
@@ -51,3 +51,5 @@ func (h *AICategorySelectorHandler) Handle(ctx *model.TaskContext) error {
 
 	return nil
 }
+
+

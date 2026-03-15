@@ -2,7 +2,6 @@
 
 import (
 	"task-processor/internal/platforms/shein"
-	"task-processor/internal/platforms/shein/model"
 )
 
 // SiteInfoHandler 站点信息处理器
@@ -20,7 +19,7 @@ func (h *SiteInfoHandler) Name() string {
 }
 
 // Handle 执行步骤处理
-func (h *SiteInfoHandler) Handle(ctx *model.TaskContext) error {
+func (h *SiteInfoHandler) Handle(ctx *shein.TaskContext) error {
 	// 根据Task中的区域信息设置站点信息
 	siteList := shein.GetSiteListByRegion(ctx.Task.Region)
 

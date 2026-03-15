@@ -1,7 +1,7 @@
 ﻿package product
 
 import (
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -19,7 +19,7 @@ func (h *SpuLimitHandler) Name() string {
 }
 
 // submitRemainingQuota 提交剩余发品额度
-func (h *SpuLimitHandler) submitRemainingQuota(ctx *model.TaskContext, quota int) {
+func (h *SpuLimitHandler) submitRemainingQuota(ctx *shein.TaskContext, quota int) {
 	// 通过DailyCountManager获取客户端
 	client := ctx.MemoryManager.DailyCountManager.GetClient()
 	if client == nil {
@@ -38,7 +38,7 @@ func (h *SpuLimitHandler) submitRemainingQuota(ctx *model.TaskContext, quota int
 	}
 }
 
-func (h *SpuLimitHandler) Handle(ctx *model.TaskContext) error {
+func (h *SpuLimitHandler) Handle(ctx *shein.TaskContext) error {
 	spuLimitCount, err := ctx.OtherAPI.GetSpuLimitCount()
 	if err != nil {
 		logrus.Infof("获取发品额度失败: %v\n", err)
@@ -61,9 +61,11 @@ func (h *SpuLimitHandler) Handle(ctx *model.TaskContext) error {
 	if spuLimitCount.QuotaRemain < 1 {
 		logrus.Warnf("发品额度不足，终止任务: 可用状态=%d, 剩余额度=%d",
 			spuLimitCount.AbleStatus, spuLimitCount.QuotaRemain)
-		return model.NewFilteredError("发品额度不足")
+		return shein.NewFilteredError("发品额度不足")
 	}
 
 	ctx.SpuLimitCount = spuLimitCount
 	return nil
 }
+
+

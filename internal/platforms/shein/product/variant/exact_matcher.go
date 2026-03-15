@@ -1,9 +1,9 @@
-// Package modules 提供SHEIN平台变体精确匹配功能
+﻿// Package modules 提供SHEIN平台变体精确匹配功能
 package variant
 
 import (
 	"strings"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,8 +17,8 @@ func NewVariantExactMatcher() *VariantExactMatcher {
 }
 
 // FindExactMatches 查找精确匹配的变体
-func (m *VariantExactMatcher) FindExactMatches(variants []model.Variant, attrNames []string, targetValueNorm string) []model.Variant {
-	var exactMatches []model.Variant
+func (m *VariantExactMatcher) FindExactMatches(variants []shein.Variant, attrNames []string, targetValueNorm string) []shein.Variant {
+	var exactMatches []shein.Variant
 
 	for variantIndex, variant := range variants {
 		matched_in_variant := false
@@ -44,3 +44,5 @@ func (m *VariantExactMatcher) FindExactMatches(variants []model.Variant, attrNam
 
 	return exactMatches
 }
+
+

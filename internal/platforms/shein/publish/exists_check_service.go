@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/infra/clients/management/api"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -29,7 +29,7 @@ func (h *ProductExistsCheckHandler) Name() string {
 }
 
 // Handle 执行产品存在性检查
-func (h *ProductExistsCheckHandler) Handle(ctx *shein_model.TaskContext) error {
+func (h *ProductExistsCheckHandler) Handle(ctx *shein.TaskContext) error {
 	logrus.Info("🔍 开始检查产品是否已上架...")
 
 	// 检查必要的上下文信息
@@ -39,7 +39,7 @@ func (h *ProductExistsCheckHandler) Handle(ctx *shein_model.TaskContext) error {
 	}
 
 	if ctx.Task == nil {
-		return shein_model.NewNonRetryableError("任务信息未初始化", nil)
+		return shein.NewNonRetryableError("任务信息未初始化", nil)
 	}
 
 	// 获取产品导入映射客户端
@@ -64,7 +64,7 @@ func (h *ProductExistsCheckHandler) Handle(ctx *shein_model.TaskContext) error {
 }
 
 // checkMainProduct 检查主产品是否已上架
-func (h *ProductExistsCheckHandler) checkMainProduct(ctx *shein_model.TaskContext, mappingClient management_api.ProductImportMappingAPI) error {
+func (h *ProductExistsCheckHandler) checkMainProduct(ctx *shein.TaskContext, mappingClient management_api.ProductImportMappingAPI) error {
 	if ctx.Task.ProductID == "" {
 		logrus.Debug("主产品ID为空，跳过主产品检查")
 		return nil
@@ -81,12 +81,12 @@ func (h *ProductExistsCheckHandler) checkMainProduct(ctx *shein_model.TaskContex
 	if err != nil {
 		logrus.Errorf("❌ 检查主产品 %s 是否已上架失败: %v", ctx.Task.ProductID, err)
 		// 检查失败可能是网络问题，可重试
-		return shein_model.NewRetryableError("检查主产品是否已上架失败", err)
+		return shein.NewRetryableError("检查主产品是否已上架失败", err)
 	}
 
 	if exists {
 		logrus.Warnf("⚠️ 主产品 %s 已经上架过，跳过本次上架", ctx.Task.ProductID)
-		return shein_model.NewNonRetryableError(fmt.Sprintf("主产品 %s 已经上架过", ctx.Task.ProductID), nil)
+		return shein.NewNonRetryableError(fmt.Sprintf("主产品 %s 已经上架过", ctx.Task.ProductID), nil)
 	}
 
 	logrus.Infof("✅ 主产品 %s 未上架，可以继续上架流程", ctx.Task.ProductID)
@@ -94,7 +94,7 @@ func (h *ProductExistsCheckHandler) checkMainProduct(ctx *shein_model.TaskContex
 }
 
 // checkVariantProducts 检查变体产品是否已上架
-func (h *ProductExistsCheckHandler) checkVariantProducts(ctx *shein_model.TaskContext, mappingClient management_api.ProductImportMappingAPI) error {
+func (h *ProductExistsCheckHandler) checkVariantProducts(ctx *shein.TaskContext, mappingClient management_api.ProductImportMappingAPI) error {
 	if ctx.Variants == nil || len(*ctx.Variants) == 0 {
 		logrus.Debug("无变体产品，跳过变体检查")
 		return nil
@@ -118,7 +118,7 @@ func (h *ProductExistsCheckHandler) checkVariantProducts(ctx *shein_model.TaskCo
 }
 
 // checkSingleVariant 检查单个变体产品
-func (h *ProductExistsCheckHandler) checkSingleVariant(ctx *shein_model.TaskContext, mappingClient management_api.ProductImportMappingAPI, variant model.Product, index, total int) error {
+func (h *ProductExistsCheckHandler) checkSingleVariant(ctx *shein.TaskContext, mappingClient management_api.ProductImportMappingAPI, variant model.Product, index, total int) error {
 	req := &management_api.ProductImportMappingCheckReqDTO{
 		StoreId:   ctx.Task.StoreID,
 		Platform:  ctx.Task.Platform,
@@ -142,3 +142,5 @@ func (h *ProductExistsCheckHandler) checkSingleVariant(ctx *shein_model.TaskCont
 
 	return nil
 }
+
+

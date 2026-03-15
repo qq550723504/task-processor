@@ -3,7 +3,7 @@
 import (
 	"fmt"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product/attribute"
 	"task-processor/internal/platforms/shein/product/image"
 	"task-processor/internal/platforms/shein/product/skc"
@@ -50,7 +50,7 @@ func (h *BuildSkcListHandler) Name() string {
 }
 
 // Handle 执行构建SKU列表处理
-func (h *BuildSkcListHandler) Handle(ctx *model.TaskContext) error {
+func (h *BuildSkcListHandler) Handle(ctx *shein.TaskContext) error {
 	logrus.Infof("=== 开始构建SKC列表处理 ===")
 
 	// 检查前置条件
@@ -88,7 +88,7 @@ func (h *BuildSkcListHandler) Handle(ctx *model.TaskContext) error {
 	// 如果SKC列表为空，提供详细的调试信息
 	if len(skcList) == 0 {
 		// 修改为不可重试错误
-		return model.NewNonRetryableError("SKC列表构建结果为空", nil)
+		return shein.NewNonRetryableError("SKC列表构建结果为空", nil)
 	} else {
 		// 打印每个SKC的详情
 		for i, skc := range skcList {
@@ -103,4 +103,6 @@ func (h *BuildSkcListHandler) Handle(ctx *model.TaskContext) error {
 	logrus.Infof("=== SKC列表构建处理完成 ===")
 	return nil
 }
+
+
 

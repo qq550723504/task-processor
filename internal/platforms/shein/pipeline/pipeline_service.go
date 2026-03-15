@@ -4,17 +4,16 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/shein"
-	"task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/category"
-	"task-processor/internal/platforms/shein/productdata"
-	"task-processor/internal/platforms/shein/store"
 	"task-processor/internal/platforms/shein/content"
 	"task-processor/internal/platforms/shein/product"
 	"task-processor/internal/platforms/shein/product/attribute"
 	"task-processor/internal/platforms/shein/product/attribute/sale"
 	"task-processor/internal/platforms/shein/product/build"
 	"task-processor/internal/platforms/shein/product/image"
+	"task-processor/internal/platforms/shein/productdata"
 	"task-processor/internal/platforms/shein/publish"
+	"task-processor/internal/platforms/shein/store"
 	"task-processor/internal/platforms/shein/translate"
 	"task-processor/internal/platforms/shein/validation"
 
@@ -23,32 +22,32 @@ import (
 
 // Pipeline 任务处理管道
 type Pipeline struct {
-	handlers []model.StepHandler
+	handlers []shein.StepHandler
 }
 
 // NewPipeline 创建新的处理管道
 func NewPipeline() *Pipeline {
 	return &Pipeline{
-		handlers: make([]model.StepHandler, 0),
+		handlers: make([]shein.StepHandler, 0),
 	}
 }
 
 // AddHandler 添加处理器到管道
-func (p *Pipeline) AddHandler(handler model.StepHandler) *Pipeline {
+func (p *Pipeline) AddHandler(handler shein.StepHandler) *Pipeline {
 	p.handlers = append(p.handlers, handler)
 	return p
 }
 
 // Handlers 返回管道中的所有处理器（只读）
-func (p *Pipeline) Handlers() []model.StepHandler {
+func (p *Pipeline) Handlers() []shein.StepHandler {
 	// 返回一个副本以防止外部修改
-	handlers := make([]model.StepHandler, len(p.handlers))
+	handlers := make([]shein.StepHandler, len(p.handlers))
 	copy(handlers, p.handlers)
 	return handlers
 }
 
 // Process 执行管道处理
-func (p *Pipeline) Process(ctx *model.TaskContext) error {
+func (p *Pipeline) Process(ctx *shein.TaskContext) error {
 	logrus.Infof("开始执行任务处理管道，共 %d 个步骤", len(p.handlers))
 
 	for i, handler := range p.handlers {
@@ -57,7 +56,7 @@ func (p *Pipeline) Process(ctx *model.TaskContext) error {
 
 		if err := handler.Handle(ctx); err != nil {
 			// 区分业务过滤和真正的错误
-			if model.IsFilteredError(err) {
+			if shein.IsFilteredError(err) {
 				logrus.Infof("✓ 步骤过滤 [%d/%d] [%s]: %v", stepNum, len(p.handlers), handler.Name(), err)
 			} else {
 				logrus.Errorf("步骤执行失败 [%d/%d] [%s]: %v", stepNum, len(p.handlers), handler.Name(), err)
@@ -167,7 +166,3 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 
 	return pipeline
 }
-
-
-
-

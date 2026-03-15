@@ -1,16 +1,16 @@
-// Package modules 提供SHEIN平台的敏感词验证功能
+﻿// Package modules 提供SHEIN平台的敏感词验证功能
 package content
 
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
 
 // extractSensitiveWordsFromValidation 从验证结果中提取敏感词
-func (s *SensitiveWordService) extractSensitiveWordsFromValidation(results []model.PreValidResult) []string {
+func (s *SensitiveWordService) extractSensitiveWordsFromValidation(results []shein.PreValidResult) []string {
 	var sensitiveWords []string
 
 	for _, result := range results {
@@ -146,3 +146,5 @@ func (s *SensitiveWordService) addWordsToConfig(configMap map[string][]string, w
 
 	return totalAdded
 }
+
+

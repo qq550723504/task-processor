@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/domain/model"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -20,7 +20,7 @@ func NewSaleAttributeProductDataPreparer() *SaleAttributeProductDataPreparer {
 }
 
 // PrepareProductsData 准备产品数据
-func (p *SaleAttributeProductDataPreparer) PrepareProductsData(ctx *shein_model.TaskContext) []map[string]string {
+func (p *SaleAttributeProductDataPreparer) PrepareProductsData(ctx *shein.TaskContext) []map[string]string {
 	var productsData []map[string]string
 
 	// 检查是否有变体数据
@@ -44,7 +44,7 @@ func (p *SaleAttributeProductDataPreparer) PrepareProductsData(ctx *shein_model.
 }
 
 // prepareSingleProductData 准备单体产品数据
-func (p *SaleAttributeProductDataPreparer) prepareSingleProductData(ctx *shein_model.TaskContext) map[string]string {
+func (p *SaleAttributeProductDataPreparer) prepareSingleProductData(ctx *shein.TaskContext) map[string]string {
 	priceType := ctx.StoreInfo.PriceType
 
 	productDetails := map[string]string{
@@ -61,7 +61,7 @@ func (p *SaleAttributeProductDataPreparer) prepareSingleProductData(ctx *shein_m
 }
 
 // prepareMultiVariantProductsData 准备多变体产品数据
-func (p *SaleAttributeProductDataPreparer) prepareMultiVariantProductsData(ctx *shein_model.TaskContext) []map[string]string {
+func (p *SaleAttributeProductDataPreparer) prepareMultiVariantProductsData(ctx *shein.TaskContext) []map[string]string {
 	var productsData []map[string]string
 	priceType := ctx.StoreInfo.PriceType
 
@@ -217,4 +217,6 @@ func (p *SaleAttributeProductDataPreparer) logAttributeCount(productDetails map[
 
 	logrus.Debugf("✅ 为%s %s 提取了 %d 个属性信息", productType, asin, attributeCount)
 }
+
+
 

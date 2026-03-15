@@ -1,10 +1,10 @@
-package sale
+﻿package sale
 
 import (
 	"fmt"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -29,7 +29,7 @@ func (h *SaleAttributeHandler) Name() string {
 }
 
 // Handle 执行生成销售规格处理
-func (h *SaleAttributeHandler) Handle(ctx *model.TaskContext) error {
+func (h *SaleAttributeHandler) Handle(ctx *shein.TaskContext) error {
 	// 检查是否已获取属性模板
 	if ctx.AttributeTemplates == nil {
 		return fmt.Errorf("属性模板未获取，请先执行获取属性模板步骤")
@@ -49,7 +49,7 @@ func (h *SaleAttributeHandler) Handle(ctx *model.TaskContext) error {
 }
 
 // generateSaleSpec 生成销售规格
-func (h *SaleAttributeHandler) generateSaleSpec(ctx *model.TaskContext) error {
+func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 	logrus.Info("🚀 开始生成销售规格")
 
 	// 1. 初始化配置
@@ -119,9 +119,9 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *model.TaskContext) error {
 }
 
 // defaultAttributeConfig 返回默认属性配置
-func (h *SaleAttributeHandler) defaultAttributeConfig() *model.AttributeConfig {
-	return &model.AttributeConfig{
-		ImportanceRules: model.ImportanceRules{
+func (h *SaleAttributeHandler) defaultAttributeConfig() *shein.AttributeConfig {
+	return &shein.AttributeConfig{
+		ImportanceRules: shein.ImportanceRules{
 			RemarkListScore: 100,
 			RequiredScore:   80,
 			SampleScore:     40,
@@ -132,9 +132,9 @@ func (h *SaleAttributeHandler) defaultAttributeConfig() *model.AttributeConfig {
 }
 
 // newAttributeImportanceCalculator 创建属性重要性计算器
-func (h *SaleAttributeHandler) newAttributeImportanceCalculator(rules *model.ImportanceRules) *model.AttributeImportanceCalculator {
+func (h *SaleAttributeHandler) newAttributeImportanceCalculator(rules *shein.ImportanceRules) *shein.AttributeImportanceCalculator {
 	// 使用 model 包提供的带自定义规则的构造函数
-	return model.NewAttributeImportanceCalculatorWithRules(rules)
+	return shein.NewAttributeImportanceCalculatorWithRules(rules)
 }
 
 // createChatCompletionRequest 创建聊天完成请求
@@ -164,18 +164,18 @@ func (h *SaleAttributeHandler) createChatCompletionRequest(systemPrompt, userPro
 // 以下方法委托给preparationHandler，保持原有业务逻辑
 
 // prepareProductsData 准备产品数据
-func (h *SaleAttributeHandler) prepareProductsData(ctx *model.TaskContext) []map[string]string {
+func (h *SaleAttributeHandler) prepareProductsData(ctx *shein.TaskContext) []map[string]string {
 	return h.preparationHandler.prepareProductsData(ctx)
 }
 
 // buildAttributeMetadata 构建属性元数据
-func (h *SaleAttributeHandler) buildAttributeMetadata(ctx *model.TaskContext, importanceCalc *model.AttributeImportanceCalculator) []model.AttributeMetadata {
+func (h *SaleAttributeHandler) buildAttributeMetadata(ctx *shein.TaskContext, importanceCalc *shein.AttributeImportanceCalculator) []shein.AttributeMetadata {
 	return h.preparationHandler.buildAttributeMetadata(ctx, importanceCalc)
 }
 
 // buildAttributeNameMappings 构建属性名称映射
 func (h *SaleAttributeHandler) buildAttributeNameMappings(
-	attributeData model.BuildAttributeInfo,
+	attributeData shein.BuildAttributeInfo,
 	attributeTemplates *attribute.AttributeTemplateInfo,
 ) map[int]string {
 	return h.preparationHandler.buildAttributeNameMappings(attributeData, attributeTemplates)
@@ -183,19 +183,21 @@ func (h *SaleAttributeHandler) buildAttributeNameMappings(
 
 // buildGenerationRequest 构建生成请求
 func (h *SaleAttributeHandler) buildGenerationRequest(
-	ctx *model.TaskContext,
+	ctx *shein.TaskContext,
 	productsData []map[string]string,
-	attributeMetadata []model.AttributeMetadata,
-	attributeNameMappings map[int]string) *model.GenerationRequest {
+	attributeMetadata []shein.AttributeMetadata,
+	attributeNameMappings map[int]string) *shein.GenerationRequest {
 	return h.preparationHandler.buildGenerationRequest(ctx, productsData, attributeMetadata, attributeNameMappings)
 }
 
 // filterVariantsByRules 在生成销售属性之前过滤变体
-func (h *SaleAttributeHandler) filterVariantsByRules(ctx *model.TaskContext) {
+func (h *SaleAttributeHandler) filterVariantsByRules(ctx *shein.TaskContext) {
 	h.preparationHandler.filterVariantsByRules(ctx)
 }
 
 // buildUserPrompt 构建用户提示词
-func (h *SaleAttributeHandler) buildUserPrompt(ctx *model.TaskContext, request *model.GenerationRequest) string {
+func (h *SaleAttributeHandler) buildUserPrompt(ctx *shein.TaskContext, request *shein.GenerationRequest) string {
 	return h.preparationHandler.buildUserPrompt(ctx, request)
 }
+
+

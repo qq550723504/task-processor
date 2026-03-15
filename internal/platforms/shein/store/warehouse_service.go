@@ -1,6 +1,6 @@
 ﻿package store
 
-import "task-processor/internal/platforms/shein/model"
+import "task-processor/internal/platforms/shein"
 
 // WarehouseInfoHandler 获取仓库信息处理器
 type WarehouseInfoHandler struct {
@@ -17,12 +17,12 @@ func (h *WarehouseInfoHandler) Name() string {
 }
 
 // Handle 执行步骤处理
-func (h *WarehouseInfoHandler) Handle(ctx *model.TaskContext) error {
+func (h *WarehouseInfoHandler) Handle(ctx *shein.TaskContext) error {
 	// 调用API获取仓库信息
 	warehouseInfo, err := ctx.WarehouseAPI.GetWarehouses()
 	if err != nil {
 		// 网络请求失败可重试
-		return model.NewRetryableError("获取仓库信息失败", err)
+		return shein.NewRetryableError("获取仓库信息失败", err)
 	}
 
 	// 将仓库信息存储到上下文的专门字段中
@@ -30,3 +30,5 @@ func (h *WarehouseInfoHandler) Handle(ctx *model.TaskContext) error {
 
 	return nil
 }
+
+

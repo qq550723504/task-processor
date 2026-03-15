@@ -3,7 +3,7 @@
 import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/management/api"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -26,7 +26,7 @@ func (h *ReapplyFilterRuleHandler) Name() string {
 }
 
 // Handle 执行重新应用筛选规则处理
-func (h *ReapplyFilterRuleHandler) Handle(ctx *shein_model.TaskContext) error {
+func (h *ReapplyFilterRuleHandler) Handle(ctx *shein.TaskContext) error {
 	if ctx.Variants == nil {
 		variants := make([]model.Product, 0)
 		ctx.Variants = &variants
@@ -59,7 +59,7 @@ func (h *ReapplyFilterRuleHandler) Handle(ctx *shein_model.TaskContext) error {
 }
 
 // applyFilterRuleToVariant 对单个变体应用筛选规则
-func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRuleDTO *api.FilterRuleRespDTO, variant model.Product, ctx *shein_model.TaskContext) error {
+func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRuleDTO *api.FilterRuleRespDTO, variant model.Product, ctx *shein.TaskContext) error {
 	priceType := "special"
 	if ctx.StoreInfo != nil && ctx.StoreInfo.PriceType != "" {
 		priceType = ctx.StoreInfo.PriceType
@@ -98,3 +98,5 @@ func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRuleDTO *api.F
 
 	return nil
 }
+
+

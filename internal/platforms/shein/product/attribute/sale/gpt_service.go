@@ -1,8 +1,8 @@
-// Package modules 提供SHEIN平台的销售属性GPT处理功能
+﻿// Package modules 提供SHEIN平台的销售属性GPT处理功能
 package sale
 
 import (
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -14,7 +14,7 @@ import (
 //
 // 返回值:
 //   - ResultSaleAttribute: 销售属性结果
-func (h *SaleAttributeHandler) callGPTAPI(ctx *model.TaskContext, request *model.GenerationRequest) model.ResultSaleAttribute {
+func (h *SaleAttributeHandler) callGPTAPI(ctx *shein.TaskContext, request *shein.GenerationRequest) shein.ResultSaleAttribute {
 	// 检查变体数量，决定是否需要分批处理
 	const maxVariantsPerBatch = 20
 	variantCount := len(request.VariationData)
@@ -29,3 +29,5 @@ func (h *SaleAttributeHandler) callGPTAPI(ctx *model.TaskContext, request *model
 	singleProcessor := NewSaleAttributeSingleProcessor(h)
 	return singleProcessor.ProcessSingleBatch(ctx, request)
 }
+
+

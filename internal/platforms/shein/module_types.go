@@ -1,4 +1,4 @@
-﻿package model
+﻿package shein
 
 import (
 	"context"
@@ -219,3 +219,4 @@ type SkcErrorMessage struct {
 	Messages                []string            `json:"messages"`
 	OtherLanguageMessageMap map[string][]string `json:"otherLanguageMessageMap"`
 }
+

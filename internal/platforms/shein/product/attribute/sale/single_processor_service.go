@@ -1,10 +1,10 @@
-// Package modules 提供SHEIN平台的销售属性单批处理功能
+﻿// Package modules 提供SHEIN平台的销售属性单批处理功能
 package sale
 
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -37,7 +37,7 @@ func NewSaleAttributeSingleProcessor(handler *SaleAttributeHandler) *SaleAttribu
 //
 // 返回值:
 //   - ResultSaleAttribute: 销售属性结果
-func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *model.TaskContext, request *model.GenerationRequest) model.ResultSaleAttribute {
+func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext, request *shein.GenerationRequest) shein.ResultSaleAttribute {
 	promptGenerator := NewSaleAttributePromptGenerator()
 	systemPrompt := promptGenerator.GenerateSystemPrompt()
 
@@ -63,7 +63,7 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *model.TaskContext
 			logrus.Errorf("⚠️ 保存调试数据失败: %v", saveErr)
 		}
 
-		return model.ResultSaleAttribute{}
+		return shein.ResultSaleAttribute{}
 	}
 
 	if len(response.Choices) == 0 {
@@ -75,7 +75,7 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *model.TaskContext
 			logrus.Errorf("⚠️ 保存调试数据失败: %v", saveErr)
 		}
 
-		return model.ResultSaleAttribute{}
+		return shein.ResultSaleAttribute{}
 	}
 
 	content := strings.TrimSpace(response.Choices[0].Message.Content)
@@ -110,7 +110,7 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *model.TaskContext
 			logrus.Errorf("⚠️ 保存修复失败调试数据失败: %v", saveErr)
 		}
 
-		return model.ResultSaleAttribute{}
+		return shein.ResultSaleAttribute{}
 	}
 
 	// 清理和验证JSON
@@ -127,3 +127,5 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *model.TaskContext
 
 	return result
 }
+
+

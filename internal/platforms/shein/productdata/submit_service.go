@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -51,7 +51,7 @@ func (h *SubmitRawJsonDataHandler) Name() string {
 }
 
 // Handle 执行提交原始JSON数据处理
-func (h *SubmitRawJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
+func (h *SubmitRawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	if ctx.AmazonProduct == nil {
 		h.logger.Warn("产品数据未获取，跳过提交原始JSON数据步骤")
 		return nil
@@ -123,7 +123,7 @@ func (h *SubmitVariantRawJsonDataHandler) Name() string {
 }
 
 // Handle 执行提交变体原始JSON数据处理
-func (h *SubmitVariantRawJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
+func (h *SubmitVariantRawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	if ctx.Variants == nil || len(*ctx.Variants) == 0 {
 		h.logger.Debug("没有变体数据，跳过提交变体原始JSON数据步骤")
 		return nil
@@ -155,3 +155,5 @@ func (h *SubmitVariantRawJsonDataHandler) Handle(ctx *shein_model.TaskContext) e
 	h.logger.Infof("✅ 变体数据已缓存: 数量=%d", len(*ctx.Variants))
 	return nil
 }
+
+

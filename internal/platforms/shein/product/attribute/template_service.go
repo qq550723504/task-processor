@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -25,7 +25,7 @@ func (h *AttributeTemplateHandler) Name() string {
 }
 
 // Handle 执行获取属性模板处理
-func (h *AttributeTemplateHandler) Handle(ctx *model.TaskContext) error {
+func (h *AttributeTemplateHandler) Handle(ctx *shein.TaskContext) error {
 
 	categoryID := ctx.ProductData.CategoryID
 	if categoryID == 0 {
@@ -84,3 +84,5 @@ func (h *AttributeTemplateHandler) saveJSONToFileWithName(filename string, jsonD
 	logrus.Infof("JSON数据已保存到文件: %s", filePath)
 	return nil
 }
+
+

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"task-processor/internal/pkg/skugen"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,7 +24,7 @@ func (h *HasSpuRecordHandler) Name() string {
 }
 
 // Handle 执行检查SPU发布记录处理
-func (h *HasSpuRecordHandler) Handle(ctx *model.TaskContext) error {
+func (h *HasSpuRecordHandler) Handle(ctx *shein.TaskContext) error {
 
 	// 提取ASIN列表
 	asins := h.extractAsinsFromContext(ctx)
@@ -80,7 +80,7 @@ func (h *HasSpuRecordHandler) Handle(ctx *model.TaskContext) error {
 			// 记录警告信息，并返回不可重试错误以终止任务
 			logrus.Warnf("检测到已存在发布记录 (批次 %d/%d)，任务将被终止: %v", batchNum, totalBatches, response.Info.Data)
 			// 返回不可重试错误，终止任务且不重试
-			return model.NewNonRetryableError("已存在发布记录", nil)
+			return shein.NewNonRetryableError("已存在发布记录", nil)
 		}
 	}
 
@@ -89,7 +89,7 @@ func (h *HasSpuRecordHandler) Handle(ctx *model.TaskContext) error {
 }
 
 // storeAsinSkuMap 存储ASIN与SKU的对应关系
-func (h *HasSpuRecordHandler) storeAsinSkuMap(ctx *model.TaskContext, asins []string, skus []string) {
+func (h *HasSpuRecordHandler) storeAsinSkuMap(ctx *shein.TaskContext, asins []string, skus []string) {
 	// 初始化映射
 	if ctx.AsinSkuMap == nil {
 		ctx.AsinSkuMap = make(map[string]string)
@@ -104,7 +104,7 @@ func (h *HasSpuRecordHandler) storeAsinSkuMap(ctx *model.TaskContext, asins []st
 }
 
 // extractAsinsFromContext 从任务上下文中提取ASIN列表
-func (h *HasSpuRecordHandler) extractAsinsFromContext(ctx *model.TaskContext) []string {
+func (h *HasSpuRecordHandler) extractAsinsFromContext(ctx *shein.TaskContext) []string {
 	asins := []string{}
 
 	// 添加主产品ID
@@ -136,7 +136,7 @@ func (h *HasSpuRecordHandler) extractAsinsFromContext(ctx *model.TaskContext) []
 }
 
 // generateSkuList 根据店铺配置生成SKU列表
-func (h *HasSpuRecordHandler) generateSkuList(asins []string, ctx *model.TaskContext) []string {
+func (h *HasSpuRecordHandler) generateSkuList(asins []string, ctx *shein.TaskContext) []string {
 	skuList := make([]string, 0, len(asins))
 
 	// 获取店铺配置
@@ -177,7 +177,7 @@ func (h *HasSpuRecordHandler) generateSkuList(asins []string, ctx *model.TaskCon
 }
 
 // GetSkuByAsin 根据ASIN获取对应的SKU
-func GetSkuByAsin(ctx *model.TaskContext, asin string) string {
+func GetSkuByAsin(ctx *shein.TaskContext, asin string) string {
 	// 检查上下文和映射是否存在
 	if ctx == nil || ctx.AsinSkuMap == nil {
 		return ""
@@ -192,7 +192,7 @@ func GetSkuByAsin(ctx *model.TaskContext, asin string) string {
 }
 
 // GetAsinBySku 根据SKU获取对应的ASIN
-func GetAsinBySku(ctx *model.TaskContext, sku string) string {
+func GetAsinBySku(ctx *shein.TaskContext, sku string) string {
 	// 检查上下文和映射是否存在
 	if ctx == nil || ctx.AsinSkuMap == nil {
 		return ""
@@ -207,3 +207,5 @@ func GetAsinBySku(ctx *model.TaskContext, sku string) string {
 
 	return ""
 }
+
+

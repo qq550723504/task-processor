@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 	"task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -38,7 +38,7 @@ func (h *StoreIDHandler) Name() string {
 
 }
 
-func (h *StoreIDHandler) Handle(ctx *model.TaskContext) error {
+func (h *StoreIDHandler) Handle(ctx *shein.TaskContext) error {
 	// 直接调用店铺客户端的UpdateStoreId方法
 	storeID := ctx.SupplierInfo.StoreID
 	if ctx.StoreInfo != nil && ctx.StoreInfo.StoreID == "" {
@@ -86,3 +86,5 @@ func (h *StoreIDHandler) Handle(ctx *model.TaskContext) error {
 
 	return nil
 }
+
+

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 )
 
 // 验证筛选规则，应用利润规则
@@ -22,7 +22,7 @@ func (t *TaskValidatorHandler) Name() string {
 	return "验证筛选规则并应用利润规则"
 }
 
-func (t *TaskValidatorHandler) Handle(ctx *model.TaskContext) error {
+func (t *TaskValidatorHandler) Handle(ctx *shein.TaskContext) error {
 	// 获取筛选规则
 	filterRuleClient := t.managementClientMgr.GetFilterRuleClient()
 	filterRuleReq := &api.FilterRuleReqDTO{
@@ -74,3 +74,5 @@ func (t *TaskValidatorHandler) Handle(ctx *model.TaskContext) error {
 
 	return nil
 }
+
+

@@ -1,4 +1,4 @@
-package sale
+﻿package sale
 
 import (
 	"fmt"
@@ -6,8 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/platforms/shein/model"
-	shein_model "task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -34,7 +33,7 @@ func parseFloat(str string) float64 {
 }
 
 // convertMillimetersToCentimeters 将毫米转换为厘米
-func convertMillimetersToCentimeters(variant *shein_model.Variant) {
+func convertMillimetersToCentimeters(variant *shein.Variant) {
 	if length := parseFloat(variant.Length.String()); length > 0 {
 		variant.Length = types.FlexibleString(fmt.Sprintf("%.1f", length/10))
 	}
@@ -48,7 +47,7 @@ func convertMillimetersToCentimeters(variant *shein_model.Variant) {
 }
 
 // convertMetersToCentimeters 将米转换为厘米
-func convertMetersToCentimeters(variant *model.Variant) {
+func convertMetersToCentimeters(variant *shein.Variant) {
 	if length := parseFloat(variant.Length.String()); length > 0 {
 		variant.Length = types.FlexibleString(fmt.Sprintf("%.1f", length*100))
 	}
@@ -62,7 +61,7 @@ func convertMetersToCentimeters(variant *model.Variant) {
 }
 
 // convertInchesToCentimeters 将英寸转换为厘米 (1 inch = 2.54 cm)
-func convertInchesToCentimeters(variant *shein_model.Variant) {
+func convertInchesToCentimeters(variant *shein.Variant) {
 	if length := parseFloat(variant.Length.String()); length > 0 {
 		variant.Length = types.FlexibleString(fmt.Sprintf("%.1f", length*2.54))
 	}
@@ -77,7 +76,7 @@ func convertInchesToCentimeters(variant *shein_model.Variant) {
 }
 
 // convertFeetToCentimeters 将英尺转换为厘米 (1 ft = 30.48 cm)
-func convertFeetToCentimeters(variant *shein_model.Variant) {
+func convertFeetToCentimeters(variant *shein.Variant) {
 	if length := parseFloat(variant.Length.String()); length > 0 {
 		variant.Length = types.FlexibleString(fmt.Sprintf("%.1f", length*30.48))
 	}

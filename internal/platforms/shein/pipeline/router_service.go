@@ -3,7 +3,7 @@
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,7 +23,7 @@ func (h *PlatformRouterHandler) Name() string {
 }
 
 // Handle 处理任务
-func (h *PlatformRouterHandler) Handle(ctx *model.TaskContext) error {
+func (h *PlatformRouterHandler) Handle(ctx *shein.TaskContext) error {
 	task := ctx.Task
 	platform := strings.ToLower(task.Platform)
 
@@ -55,3 +55,5 @@ func (h *PlatformRouterHandler) Handle(ctx *model.TaskContext) error {
 		return fmt.Errorf("不支持的平台: %s", platform)
 	}
 }
+
+

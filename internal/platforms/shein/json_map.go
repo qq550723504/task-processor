@@ -1,4 +1,4 @@
-﻿package model
+﻿package shein
 
 import (
 	"database/sql/driver"
@@ -243,3 +243,4 @@ func (j JSONMap) GetWrappedValue() (any, bool) {
 	}
 	return nil, false
 }
+

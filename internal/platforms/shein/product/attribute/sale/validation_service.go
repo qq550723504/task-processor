@@ -1,16 +1,16 @@
-package sale
+﻿package sale
 
 import (
 	"strings"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/types"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
 
 // validateAndFixSaleAttributeData 验证并修复销售属性数据
-func (h *SaleAttributeHandler) validateAndFixSaleAttributeData(data shein_model.ResultSaleAttribute, productsData []map[string]string) shein_model.ResultSaleAttribute {
+func (h *SaleAttributeHandler) validateAndFixSaleAttributeData(data shein.ResultSaleAttribute, productsData []map[string]string) shein.ResultSaleAttribute {
 	logrus.Info("开始验证和修复AI生成的销售属性数据")
 
 	// 1. 修复属性值ID重复问题
@@ -30,7 +30,7 @@ func (h *SaleAttributeHandler) validateAndFixSaleAttributeData(data shein_model.
 }
 
 // fixAttributeValueIDsWithManager 标记需要映射的属性值ID
-func (h *SaleAttributeHandler) fixAttributeValueIDsWithManager(data shein_model.ResultSaleAttribute) shein_model.ResultSaleAttribute {
+func (h *SaleAttributeHandler) fixAttributeValueIDsWithManager(data shein.ResultSaleAttribute) shein.ResultSaleAttribute {
 	logrus.Info("标记属性值ID为需要映射状态")
 
 	// 注意：ResultSaleAttribute.SaleAttributes 是 []ResultAttribute 类型
@@ -59,7 +59,7 @@ func (h *SaleAttributeHandler) fixAttributeValueIDsWithManager(data shein_model.
 }
 
 // standardizeDimensionUnits 标准化尺寸单位
-func (h *SaleAttributeHandler) standardizeDimensionUnits(data shein_model.ResultSaleAttribute) shein_model.ResultSaleAttribute {
+func (h *SaleAttributeHandler) standardizeDimensionUnits(data shein.ResultSaleAttribute) shein.ResultSaleAttribute {
 	// 定义单位映射表
 	// 注意：SHEIN平台只接受 cm 作为长宽高单位，所有其他单位都需要转换为 cm
 	unitMappings := map[string]string{
@@ -146,7 +146,7 @@ func (h *SaleAttributeHandler) standardizeDimensionUnits(data shein_model.Result
 }
 
 // validateVariantCompleteness 验证每个ASIN都有对应的变体
-func (h *SaleAttributeHandler) validateVariantCompleteness(data shein_model.ResultSaleAttribute, products []map[string]string) shein_model.ResultSaleAttribute {
+func (h *SaleAttributeHandler) validateVariantCompleteness(data shein.ResultSaleAttribute, products []map[string]string) shein.ResultSaleAttribute {
 	productASINs := make(map[string]bool)
 	for _, product := range products {
 		productASINs[product["asin"]] = true
@@ -172,7 +172,7 @@ func (h *SaleAttributeHandler) validateVariantCompleteness(data shein_model.Resu
 }
 
 // validateVariantAttributes 验证变体属性完整性（关键修复）
-func (h *SaleAttributeHandler) validateVariantAttributes(data shein_model.ResultSaleAttribute, products []map[string]string) shein_model.ResultSaleAttribute {
+func (h *SaleAttributeHandler) validateVariantAttributes(data shein.ResultSaleAttribute, products []map[string]string) shein.ResultSaleAttribute {
 	logrus.Info("🔍 开始验证变体属性完整性...")
 
 	// 构建产品数据映射：ASIN -> 产品属性
@@ -228,7 +228,7 @@ func (h *SaleAttributeHandler) validateVariantAttributes(data shein_model.Result
 }
 
 // filterValidASINs 过滤有效的ASIN
-func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product, saleAttributeData shein_model.ResultSaleAttribute) shein_model.ResultSaleAttribute {
+func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product, saleAttributeData shein.ResultSaleAttribute) shein.ResultSaleAttribute {
 	providedASINs := make(map[string]bool)
 
 	// 如果没有变体，说明是单体产品，不需要过滤
@@ -242,7 +242,7 @@ func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product
 		providedASINs[product.Asin] = true
 	}
 
-	var validVariants []shein_model.Variant
+	var validVariants []shein.Variant
 	removedCount := 0
 
 	for _, variant := range saleAttributeData.Variants {
@@ -266,7 +266,7 @@ func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product
 }
 
 // validateAttributeValueConsistency 验证属性值与原始数据的一致性
-func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct model.Product, data shein_model.ResultSaleAttribute) shein_model.ResultSaleAttribute {
+func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct model.Product, data shein.ResultSaleAttribute) shein.ResultSaleAttribute {
 
 	if amazonProduct.VariationsValues == nil {
 		logrus.Info("原始产品无变体属性值，跳过一致性验证")
@@ -427,3 +427,5 @@ func (h *SaleAttributeHandler) findMostSimilarValue(targetValue string, original
 
 	return ""
 }
+
+

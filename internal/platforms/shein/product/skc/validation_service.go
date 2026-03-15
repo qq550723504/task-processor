@@ -1,28 +1,28 @@
-// Package modules 提供SHEIN平台SKC验证和工具功能
+﻿// Package modules 提供SHEIN平台SKC验证和工具功能
 package skc
 
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
 
 // SKCValidationUtils SKC验证工具
 type SKCValidationUtils struct {
-	taskContext *model.TaskContext
+	taskContext *shein.TaskContext
 }
 
 // NewSKCValidationUtils 创建新的SKC验证工具
-func NewSKCValidationUtils(taskContext *model.TaskContext) *SKCValidationUtils {
+func NewSKCValidationUtils(taskContext *shein.TaskContext) *SKCValidationUtils {
 	return &SKCValidationUtils{
 		taskContext: taskContext,
 	}
 }
 
 // ValidateAttributeStrategy 验证属性策略的有效性
-func (v *SKCValidationUtils) ValidateAttributeStrategy(strategy model.AttributeStrategy, saleAttributeData model.ResultSaleAttribute) error {
+func (v *SKCValidationUtils) ValidateAttributeStrategy(strategy shein.AttributeStrategy, saleAttributeData shein.ResultSaleAttribute) error {
 	var warnings []string
 
 	// 验证主要属性
@@ -98,3 +98,5 @@ func (v *SKCValidationUtils) ValidateAttributeStrategy(strategy model.AttributeS
 		strategy.StrategyType, validVariantCount, len(saleAttributeData.Variants))
 	return nil
 }
+
+

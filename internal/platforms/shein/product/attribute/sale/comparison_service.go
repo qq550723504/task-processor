@@ -1,16 +1,16 @@
-package sale
+﻿package sale
 
 import (
 	"fmt"
 	"strings"
 	"task-processor/internal/domain/model"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
 
 // compareAttributeDataDifferences 对比AI生成前后的属性数据差异
-func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct model.Product, generatedData shein_model.ResultSaleAttribute) {
+func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct model.Product, generatedData shein.ResultSaleAttribute) {
 	logrus.Info("⚖️ [AI属性对比] 开始对比原始数据与AI生成数据的差异")
 
 	if amazonProduct.VariationsValues == nil {
@@ -122,3 +122,5 @@ func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct mod
 		logrus.Warnf("⚖️ [AI属性对比] ⚠️ 发现%d个不一致项", len(inconsistencies))
 	}
 }
+
+

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/validation"
 	"time"
 
@@ -24,7 +24,7 @@ func NewPublishProductValidator() *PublishProductValidator {
 }
 
 // PreValidateProductData 发布前预验证产品数据
-func (v *PublishProductValidator) PreValidateProductData(ctx *shein_model.TaskContext) error {
+func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext) error {
 	logrus.Info("🔍 开始产品数据预验证...")
 
 	if ctx.ProductData == nil {
@@ -77,7 +77,7 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein_model.TaskCo
 }
 
 // validateBasicProductInfo 验证基本产品信息
-func (v *PublishProductValidator) validateBasicProductInfo(ctx *shein_model.TaskContext) error {
+func (v *PublishProductValidator) validateBasicProductInfo(ctx *shein.TaskContext) error {
 	product := ctx.ProductData
 
 	// 检查必要字段
@@ -98,7 +98,7 @@ func (v *PublishProductValidator) validateBasicProductInfo(ctx *shein_model.Task
 }
 
 // validateSKCAndSKUData 验证SKC和SKU数据完整性
-func (v *PublishProductValidator) validateSKCAndSKUData(ctx *shein_model.TaskContext) error {
+func (v *PublishProductValidator) validateSKCAndSKUData(ctx *shein.TaskContext) error {
 	product := ctx.ProductData
 
 	if len(product.SKCList) == 0 {
@@ -212,7 +212,7 @@ type ValidationReport struct {
 }
 
 // generateValidationReport 生成验证报告
-func (v *PublishProductValidator) generateValidationReport(ctx *shein_model.TaskContext) *ValidationReport {
+func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContext) *ValidationReport {
 	startTime := time.Now()
 
 	report := &ValidationReport{
@@ -258,7 +258,7 @@ func (v *PublishProductValidator) generateValidationReport(ctx *shein_model.Task
 }
 
 // validateMultiPieceSKUImagesWithReport 带报告的多件商品SKU图片验证
-func (v *PublishProductValidator) validateMultiPieceSKUImagesWithReport(ctx *shein_model.TaskContext, report *ValidationReport) error {
+func (v *PublishProductValidator) validateMultiPieceSKUImagesWithReport(ctx *shein.TaskContext, report *ValidationReport) error {
 	product := ctx.ProductData
 
 	if len(product.SKCList) == 0 {
@@ -456,4 +456,6 @@ func (v *PublishProductValidator) fixSKUImageSorting(sku interface{}, supplierSK
 
 	return fixedCount
 }
+
+
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -80,7 +80,7 @@ func (u *SKUUtils) FormatPriceByCurrency(price float64, currency string) float64
 }
 
 // BuildStockInfoList 构建库存信息列表
-func (u *SKUUtils) BuildStockInfoList(ctx *model.TaskContext, stockCount int, warehouseCode string) []product.StockInfo {
+func (u *SKUUtils) BuildStockInfoList(ctx *shein.TaskContext, stockCount int, warehouseCode string) []product.StockInfo {
 	return []product.StockInfo{
 		{
 			InventoryNum:          stockCount,
@@ -90,7 +90,7 @@ func (u *SKUUtils) BuildStockInfoList(ctx *model.TaskContext, stockCount int, wa
 }
 
 // BuildQuantityInfo 构建数量信息
-func (u *SKUUtils) BuildQuantityInfo(params model.SKUCreationParams) *product.QuantityInfo {
+func (u *SKUUtils) BuildQuantityInfo(params shein.SKUCreationParams) *product.QuantityInfo {
 	// 默认值：数量=1，类型=单品(1)，单位=件(1)
 	quantity := 1
 	quantityType := 1
@@ -144,7 +144,7 @@ func (u *SKUUtils) BuildQuantityInfo(params model.SKUCreationParams) *product.Qu
 }
 
 // BuildSKUImageInfoForMultiPiece 为多件商品构建SKU图片信息
-func (u *SKUUtils) BuildSKUImageInfoForMultiPiece(ctx *model.TaskContext, params model.SKUCreationParams) *product.ImageInfo {
+func (u *SKUUtils) BuildSKUImageInfoForMultiPiece(ctx *shein.TaskContext, params shein.SKUCreationParams) *product.ImageInfo {
 
 	// 为多件商品构建SKU级别的图片信息
 	var skuImages []product.ImageDetail
@@ -251,4 +251,6 @@ func (u *SKUUtils) CorrectQuantityTypeAndValue(quantityType, quantity int, asin 
 	logrus.Warnf("ASIN %s: 无法智能修正，使用默认单品设置(quantityType=1, quantity=1)", asin)
 	return 1, 1
 }
+
+
 

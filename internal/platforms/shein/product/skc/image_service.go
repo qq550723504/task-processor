@@ -3,7 +3,7 @@ package skc
 
 import (
 	"slices"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product/image"
 
 	"github.com/sirupsen/logrus"
@@ -12,11 +12,11 @@ import (
 // SKCImageHandler SKC图片处理器
 type SKCImageHandler struct {
 	imageProcessor *image.ImageProcessor
-	taskContext    *model.TaskContext
+	taskContext    *shein.TaskContext
 }
 
 // NewSKCImageHandler 创建新的SKC图片处理器
-func NewSKCImageHandler(imageProcessor *image.ImageProcessor, taskContext *model.TaskContext) *SKCImageHandler {
+func NewSKCImageHandler(imageProcessor *image.ImageProcessor, taskContext *shein.TaskContext) *SKCImageHandler {
 	return &SKCImageHandler{
 		imageProcessor: imageProcessor,
 		taskContext:    taskContext,
@@ -24,7 +24,7 @@ func NewSKCImageHandler(imageProcessor *image.ImageProcessor, taskContext *model
 }
 
 // GetVariantSpecificImages 从变体数据中获取变体特定的图片
-func (h *SKCImageHandler) GetVariantSpecificImages(ctx *model.TaskContext, variant model.Variant) ([]string, error) {
+func (h *SKCImageHandler) GetVariantSpecificImages(ctx *shein.TaskContext, variant shein.Variant) ([]string, error) {
 	// 如果变体ASIN与主产品相同，使用主产品图片
 	if variant.ASIN == ctx.AmazonProduct.Asin {
 		logrus.Infof("变体ASIN与主产品相同，使用主产品图片，ASIN: %s", variant.ASIN)
@@ -57,4 +57,6 @@ func (h *SKCImageHandler) GetVariantSpecificImages(ctx *model.TaskContext, varia
 	logrus.Infof("未找到变体 %s 的特定图片，使用主产品图片", variant.ASIN)
 	return ctx.AmazonProduct.Images, nil
 }
+
+
 

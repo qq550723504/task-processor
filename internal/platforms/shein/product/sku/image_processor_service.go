@@ -1,17 +1,17 @@
-// Package modules 提供SHEIN平台SKU图片处理相关功能
+﻿// Package modules 提供SHEIN平台SKU图片处理相关功能
 package sku
 
 import (
 	"fmt"
 	"strings"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
 
 // buildSKUImageInfoForMultiPiece 为多件商品构建SKU图片信息
-func (b *SKUBuilder) buildSKUImageInfoForMultiPiece(ctx *model.TaskContext, params model.SKUCreationParams) *product.ImageInfo {
+func (b *SKUBuilder) buildSKUImageInfoForMultiPiece(ctx *shein.TaskContext, params shein.SKUCreationParams) *product.ImageInfo {
 	logrus.Infof("🖼️ 开始为多件商品构建SKU图片，ASIN: %s", params.ASIN)
 
 	// 初始化空的图片信息
@@ -70,7 +70,7 @@ func (b *SKUBuilder) buildSKUImageInfoForMultiPiece(ctx *model.TaskContext, para
 }
 
 // uploadSKUImagesWithRetry 带重试机制的SKU图片上传
-func (b *SKUBuilder) uploadSKUImagesWithRetry(ctx *model.TaskContext, params model.SKUCreationParams, variantImages []string, imageSource string, imageInfo *product.ImageInfo) bool {
+func (b *SKUBuilder) uploadSKUImagesWithRetry(ctx *shein.TaskContext, params shein.SKUCreationParams, variantImages []string, imageSource string, imageInfo *product.ImageInfo) bool {
 	const maxRetries = 3
 	const maxImages = 1 // 只保留一张图片
 
@@ -123,7 +123,7 @@ func (b *SKUBuilder) uploadSKUImagesWithRetry(ctx *model.TaskContext, params mod
 }
 
 // uploadSingleImageWithRetry 单张图片重试上传
-func (b *SKUBuilder) uploadSingleImageWithRetry(ctx *model.TaskContext, params model.SKUCreationParams, imageURL, imageSource string, imageIndex, maxRetries int) string {
+func (b *SKUBuilder) uploadSingleImageWithRetry(ctx *shein.TaskContext, params shein.SKUCreationParams, imageURL, imageSource string, imageIndex, maxRetries int) string {
 	for retry := 1; retry <= maxRetries; retry++ {
 		logrus.Infof("🔄 尝试上传第%d张%s作为SKU图片 (重试%d/%d): %s", imageIndex, imageSource, retry, maxRetries, imageURL)
 
@@ -247,3 +247,5 @@ func (b *SKUBuilder) fixSKUImageSorting(imageInfo *product.ImageInfo) {
 
 	logrus.Infof("🎉 SKU图片排序修复完成")
 }
+
+

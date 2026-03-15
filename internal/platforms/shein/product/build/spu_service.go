@@ -2,7 +2,7 @@
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product"
 
 	"github.com/google/uuid"
@@ -23,7 +23,7 @@ func (h *BuildSpuHandler) Name() string {
 }
 
 // Handle 执行构建最终发品数据处理
-func (h *BuildSpuHandler) Handle(ctx *model.TaskContext) error {
+func (h *BuildSpuHandler) Handle(ctx *shein.TaskContext) error {
 	// 检查是否已获取产品数据
 	if ctx.ProductData == nil {
 		return fmt.Errorf("产品数据未获取，请先执行获取产品数据步骤")
@@ -36,7 +36,7 @@ func (h *BuildSpuHandler) Handle(ctx *model.TaskContext) error {
 	return nil
 }
 
-func buildSpuData(ctx *model.TaskContext) error {
+func buildSpuData(ctx *shein.TaskContext) error {
 	// 构建最终发品数据
 	SupplierCode := product.GetSkuByAsin(ctx, ctx.Task.ProductID)
 	ctx.ProductData.SupplierCode = SupplierCode
@@ -44,4 +44,6 @@ func buildSpuData(ctx *model.TaskContext) error {
 
 	return nil
 }
+
+
 

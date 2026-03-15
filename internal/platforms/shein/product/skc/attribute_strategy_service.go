@@ -3,7 +3,7 @@
 import (
 	"fmt"
 	api_attribute "task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product/attribute"
 
 	"github.com/sirupsen/logrus"
@@ -24,9 +24,9 @@ func NewAttributeStrategyHandler() *AttributeStrategyHandler {
 }
 
 // DetermineAttributeStrategy 根据销售属性动态确定构建策略
-func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData model.ResultSaleAttribute, config model.AttributePriorityConfig, attributeTemplates *api_attribute.AttributeTemplateInfo) model.AttributeStrategy {
-	var primaryAttr model.ResultAttribute
-	var secondaryAttr model.ResultAttribute
+func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData shein.ResultSaleAttribute, config shein.AttributePriorityConfig, attributeTemplates *api_attribute.AttributeTemplateInfo) shein.AttributeStrategy {
+	var primaryAttr shein.ResultAttribute
+	var secondaryAttr shein.ResultAttribute
 	strategyType := "single_variant"
 
 	// 0. 优先检查必填属性作为主规格
@@ -113,7 +113,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 
 			// 检查是否只有尺寸属性
 			hasSizeAttribute := false
-			var sizeAttribute model.ResultAttribute
+			var sizeAttribute shein.ResultAttribute
 			for _, attr := range saleAttributeData.SaleAttributes {
 				if attr.AttrID == 87 && len(attr.AttrValue) > 0 { // 87是尺寸属性ID
 					if h.validateAttributeInVariants(attr.AttrID, attr.AttrValue, saleAttributeData.Variants, attributeTemplates) {
@@ -153,7 +153,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 	logrus.Infof("属性策略确定完成 - 主要属性: %d, 次要属性: %d, 策略类型: %s",
 		primaryAttr.AttrID, secondaryAttr.AttrID, strategyType)
 
-	return model.AttributeStrategy{
+	return shein.AttributeStrategy{
 		PrimaryAttribute:   primaryAttr,
 		SecondaryAttribute: secondaryAttr,
 		StrategyType:       strategyType,
@@ -161,7 +161,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 }
 
 // createDefaultPrimaryAttribute 创建默认的主要属性
-func (h *AttributeStrategyHandler) createDefaultPrimaryAttribute(saleAttributeData model.ResultSaleAttribute, config model.AttributePriorityConfig) model.ResultAttribute {
+func (h *AttributeStrategyHandler) createDefaultPrimaryAttribute(saleAttributeData shein.ResultSaleAttribute, config shein.AttributePriorityConfig) shein.ResultAttribute {
 	// 首先尝试从现有销售属性中找默认属性
 	for _, attr := range saleAttributeData.SaleAttributes {
 		if attr.AttrID == config.DefaultSKCAttributeID {
@@ -171,9 +171,9 @@ func (h *AttributeStrategyHandler) createDefaultPrimaryAttribute(saleAttributeDa
 
 	// 如果仍然没有找到，且只有一个变体，创建一个默认的单变体属性
 	if len(saleAttributeData.Variants) == 1 {
-		primaryAttr := model.ResultAttribute{
+		primaryAttr := shein.ResultAttribute{
 			AttrID: config.DefaultSKCAttributeID, // 默认使用颜色属性(27)
-			AttrValue: []model.AttributeValue{
+			AttrValue: []shein.AttributeValue{
 				{
 					ID:    -1,        // 标记为需要映射的自定义值
 					Value: "Default", // 默认值
@@ -184,12 +184,12 @@ func (h *AttributeStrategyHandler) createDefaultPrimaryAttribute(saleAttributeDa
 		return primaryAttr
 	}
 
-	return model.ResultAttribute{AttrID: -1}
+	return shein.ResultAttribute{AttrID: -1}
 }
 
 // findBestSecondaryAttribute 动态查找最佳次要属性
-func (h *AttributeStrategyHandler) findBestSecondaryAttribute(saleAttributeData model.ResultSaleAttribute, primaryAttrID int, priorityList []int, attributeTemplates *api_attribute.AttributeTemplateInfo) model.ResultAttribute {
-	var bestSecondaryAttr model.ResultAttribute
+func (h *AttributeStrategyHandler) findBestSecondaryAttribute(saleAttributeData shein.ResultSaleAttribute, primaryAttrID int, priorityList []int, attributeTemplates *api_attribute.AttributeTemplateInfo) shein.ResultAttribute {
+	var bestSecondaryAttr shein.ResultAttribute
 
 	// 第一步：按照优先级列表查找，但跳过只有一个值的属性，并验证在变体中的存在性
 	for _, priorityID := range priorityList {
@@ -215,7 +215,7 @@ func (h *AttributeStrategyHandler) findBestSecondaryAttribute(saleAttributeData 
 }
 
 // validateAttributeInVariants 验证属性值在变体中的存在性
-func (h *AttributeStrategyHandler) validateAttributeInVariants(attrID int, attrValues []model.AttributeValue, variants []model.Variant, attributeTemplates *api_attribute.AttributeTemplateInfo) bool {
+func (h *AttributeStrategyHandler) validateAttributeInVariants(attrID int, attrValues []shein.AttributeValue, variants []shein.Variant, attributeTemplates *api_attribute.AttributeTemplateInfo) bool {
 	// 获取属性名称的可能变体
 	attrNames := h.getAttributeNameVariations(attrID)
 
@@ -301,7 +301,7 @@ func (h *AttributeStrategyHandler) normalizeValue(value string) string {
 }
 
 // createMissingRequiredAttribute 为必填但缺失的销售属性创建默认值
-func (h *AttributeStrategyHandler) createMissingRequiredAttribute(primaryAttrID int, priorityList []int, attributeTemplates *api_attribute.AttributeTemplateInfo) model.ResultAttribute {
+func (h *AttributeStrategyHandler) createMissingRequiredAttribute(primaryAttrID int, priorityList []int, attributeTemplates *api_attribute.AttributeTemplateInfo) shein.ResultAttribute {
 	for _, priorityID := range priorityList {
 		if priorityID == primaryAttrID {
 			continue // 跳过已选为主要属性的
@@ -324,9 +324,9 @@ func (h *AttributeStrategyHandler) createMissingRequiredAttribute(primaryAttrID 
 					titleCaser := cases.Title(language.English)
 					defaultValue := fmt.Sprintf("Default %s", titleCaser.String(attrName))
 
-					secondaryAttr := model.ResultAttribute{
+					secondaryAttr := shein.ResultAttribute{
 						AttrID: priorityID,
-						AttrValue: []model.AttributeValue{
+						AttrValue: []shein.AttributeValue{
 							{
 								ID:    -1,           // 标记为需要映射的自定义值
 								Value: defaultValue, // 默认值
@@ -340,11 +340,11 @@ func (h *AttributeStrategyHandler) createMissingRequiredAttribute(primaryAttrID 
 			}
 		}
 	}
-	return model.ResultAttribute{AttrID: -1}
+	return shein.ResultAttribute{AttrID: -1}
 }
 
 // determineStrategyType 确定最终策略类型
-func (h *AttributeStrategyHandler) determineStrategyType(primaryAttr, secondaryAttr model.ResultAttribute, attributeTemplates *api_attribute.AttributeTemplateInfo) string {
+func (h *AttributeStrategyHandler) determineStrategyType(primaryAttr, secondaryAttr shein.ResultAttribute, attributeTemplates *api_attribute.AttributeTemplateInfo) string {
 	if primaryAttr.AttrID != 0 && secondaryAttr.AttrID >= 0 {
 		// 安全地获取属性名称
 		primaryName := h.getAttributeNameSafe(primaryAttr.AttrID, attributeTemplates)
@@ -397,19 +397,19 @@ func (h *AttributeStrategyHandler) getAttributeNameSafe(attrID int, attributeTem
 }
 
 // GetDynamicAttributePriorityConfig 根据属性模板数据动态生成属性优先级配置
-func (h *AttributeStrategyHandler) GetDynamicAttributePriorityConfig(attributeTemplates *api_attribute.AttributeTemplateInfo) model.AttributePriorityConfig {
+func (h *AttributeStrategyHandler) GetDynamicAttributePriorityConfig(attributeTemplates *api_attribute.AttributeTemplateInfo) shein.AttributePriorityConfig {
 	if attributeTemplates == nil || len(attributeTemplates.Data) == 0 {
 		return h.getDefaultAttributePriorityConfig()
 	}
 
 	// 分析销售属性的重要性
-	var saleAttributes []model.AttributeImportance
+	var saleAttributes []shein.AttributeImportance
 
 	for _, attribute := range attributeTemplates.Data[0].AttributeInfos {
 		if attribute.AttributeType == 1 { // 销售属性
 			// 使用统一的重要性计算函数
 			importanceResult := h.importanceService.CalculateAttributeImportance(&attribute)
-			saleAttributes = append(saleAttributes, model.AttributeImportance{
+			saleAttributes = append(saleAttributes, shein.AttributeImportance{
 				AttrID:     attribute.AttributeID,
 				Importance: importanceResult.Importance,
 			})
@@ -453,8 +453,8 @@ func (h *AttributeStrategyHandler) GetDynamicAttributePriorityConfig(attributeTe
 }
 
 // getDefaultAttributePriorityConfig 获取默认的属性优先级配置
-func (h *AttributeStrategyHandler) getDefaultAttributePriorityConfig() model.AttributePriorityConfig {
-	return model.AttributePriorityConfig{
+func (h *AttributeStrategyHandler) getDefaultAttributePriorityConfig() shein.AttributePriorityConfig {
+	return shein.AttributePriorityConfig{
 		// 主要属性(SKC分组)：按通用优先级排序，实际使用时会根据属性重要性动态调整
 		SKCPrimaryAttributePriority: []int{27, 87, 1001365, 1001410},
 		// 次要属性(SKU分组)：按通用优先级排序
@@ -470,7 +470,7 @@ func (h *AttributeStrategyHandler) getDefaultAttributePriorityConfig() model.Att
 }
 
 // hasColorAttribute 检查是否存在颜色属性
-func (h *AttributeStrategyHandler) hasColorAttribute(saleAttributeData model.ResultSaleAttribute) bool {
+func (h *AttributeStrategyHandler) hasColorAttribute(saleAttributeData shein.ResultSaleAttribute) bool {
 	for _, attr := range saleAttributeData.SaleAttributes {
 		if attr.AttrID == 27 { // 27是颜色属性ID
 			return true
@@ -478,4 +478,6 @@ func (h *AttributeStrategyHandler) hasColorAttribute(saleAttributeData model.Res
 	}
 	return false
 }
+
+
 

@@ -3,7 +3,7 @@
 import (
 	"fmt"
 	"task-processor/internal/pkg/timeutil"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,7 +23,7 @@ func (h *CheckDailyLimitHandler) Name() string {
 }
 
 // Handle 执行检查每日上架限制处理
-func (h *CheckDailyLimitHandler) Handle(ctx *model.TaskContext) error {
+func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 	// 检查必要的上下文信息
 	if ctx.MemoryManager == nil {
 		logrus.Debug("内存管理器未初始化，跳过每日限制检查")
@@ -86,7 +86,7 @@ func (h *CheckDailyLimitHandler) Handle(ctx *model.TaskContext) error {
 		}
 
 		// 返回不可重试错误，阻止产品发布
-		return model.NewNonRetryableError(
+		return shein.NewNonRetryableError(
 			fmt.Sprintf("店铺已达到每日上架限额(%d/%d)，已暂停上架到当日结束", currentCount, dailyLimit),
 			nil,
 		)
@@ -97,7 +97,7 @@ func (h *CheckDailyLimitHandler) Handle(ctx *model.TaskContext) error {
 }
 
 // calculateIncrement 根据店铺配置的限制类型计算增量
-func (h *CheckDailyLimitHandler) calculateIncrement(ctx *model.TaskContext) int64 {
+func (h *CheckDailyLimitHandler) calculateIncrement(ctx *shein.TaskContext) int64 {
 	// 在发布前，我们还没有 SheinResponse，所以需要根据原始数据估算
 
 	switch ctx.StoreInfo.DailyLimitType {
@@ -150,7 +150,7 @@ func (h *CheckDailyLimitHandler) calculateIncrement(ctx *model.TaskContext) int6
 }
 
 // pauseShopUntilEndOfDay 暂停店铺到当日结束并清理相关缓存
-func (h *CheckDailyLimitHandler) pauseShopUntilEndOfDay(ctx *model.TaskContext, reason string) error {
+func (h *CheckDailyLimitHandler) pauseShopUntilEndOfDay(ctx *shein.TaskContext, reason string) error {
 	// 1. 清理客户端缓存（通过内存管理器）
 	if ctx.MemoryManager != nil {
 		// 通过内存管理器清理相关缓存
@@ -168,3 +168,5 @@ func (h *CheckDailyLimitHandler) pauseShopUntilEndOfDay(ctx *model.TaskContext, 
 
 	return nil
 }
+
+

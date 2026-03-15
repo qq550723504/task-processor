@@ -2,7 +2,7 @@
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -22,7 +22,7 @@ func (h *GetCategoryTreeHandler) Name() string {
 }
 
 // Handle 执行获取分类树处理
-func (h *GetCategoryTreeHandler) Handle(ctx *model.TaskContext) error {
+func (h *GetCategoryTreeHandler) Handle(ctx *shein.TaskContext) error {
 	// 调用API获取分类树
 	categoryTree, err := ctx.CategoryAPI.GetCategoryTree()
 	if err != nil {
@@ -34,3 +34,5 @@ func (h *GetCategoryTreeHandler) Handle(ctx *model.TaskContext) error {
 	logrus.Infof("成功获取分类树，共 %d 个分类\n", len(categoryTree.Data))
 	return nil
 }
+
+

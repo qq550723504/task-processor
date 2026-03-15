@@ -8,7 +8,7 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/platforms/shein/api/product"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/content"
 )
 
@@ -36,7 +36,7 @@ func (h *TranslateHandler) Name() string {
 }
 
 // Handle 执行翻译处理
-func (h *TranslateHandler) Handle(ctx *shein_model.TaskContext) error {
+func (h *TranslateHandler) Handle(ctx *shein.TaskContext) error {
 
 	features := strings.Join(ctx.AmazonProduct.Features, ", ")
 
@@ -134,7 +134,7 @@ func (h *TranslateHandler) ensureValidDescription(optimizedDescription, cleanedD
 }
 
 // translateProductName 翻译产品名称
-func (h *TranslateHandler) translateProductName(ctx *shein_model.TaskContext, targetLanguages []string, productName string, sourceLang string) error {
+func (h *TranslateHandler) translateProductName(ctx *shein.TaskContext, targetLanguages []string, productName string, sourceLang string) error {
 	// 获取原始产品名称，如果为空则使用默认值
 	originalName := strings.TrimSpace(productName)
 	if originalName == "" {
@@ -175,7 +175,7 @@ func (h *TranslateHandler) translateProductName(ctx *shein_model.TaskContext, ta
 }
 
 // translateProductDescription 翻译产品描述
-func (h *TranslateHandler) translateProductDescription(ctx *shein_model.TaskContext, targetLanguages []string, productDescription string, sourceLang string) error {
+func (h *TranslateHandler) translateProductDescription(ctx *shein.TaskContext, targetLanguages []string, productDescription string, sourceLang string) error {
 	// 检查产品描述是否为空
 	if strings.TrimSpace(productDescription) == "" {
 		// 如果描述为空，使用产品标题作为默认描述
@@ -262,4 +262,6 @@ func (h *TranslateHandler) addLanguageContentIfNotExists(languageList *[]product
 		})
 	}
 }
+
+
 

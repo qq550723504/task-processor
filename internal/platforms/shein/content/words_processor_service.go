@@ -1,9 +1,9 @@
-// Package modules 敏感词处理器
+﻿// Package modules 敏感词处理器
 package content
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -56,7 +56,7 @@ func (h *SensitiveWordsProcessor) Name() string {
 }
 
 // Handle 执行敏感词处理
-func (h *SensitiveWordsProcessor) Handle(ctx *model.TaskContext) error {
+func (h *SensitiveWordsProcessor) Handle(ctx *shein.TaskContext) error {
 	if ctx.AmazonProduct == nil {
 		return fmt.Errorf("产品信息为空")
 	}
@@ -87,18 +87,18 @@ func (h *SensitiveWordsProcessor) Handle(ctx *model.TaskContext) error {
 }
 
 // handleBlock 拦截模式 - 直接返回错误
-func (h *SensitiveWordsProcessor) handleBlock(ctx *model.TaskContext, foundWords map[string][]string) error {
+func (h *SensitiveWordsProcessor) handleBlock(ctx *shein.TaskContext, foundWords map[string][]string) error {
 	logrus.WithFields(logrus.Fields{
 		"asin":            ctx.AmazonProduct.Asin,
 		"title":           ctx.AmazonProduct.Title,
 		"sensitive_words": foundWords,
 	}).Warn("⚠️ 产品包含敏感词,拦截发布")
 
-	return model.NewFilteredError(fmt.Sprintf("产品包含敏感词: %v", foundWords))
+	return shein.NewFilteredError(fmt.Sprintf("产品包含敏感词: %v", foundWords))
 }
 
 // handleClean 清理模式 - 自动替换敏感词
-func (h *SensitiveWordsProcessor) handleClean(ctx *model.TaskContext, foundWords map[string][]string) error {
+func (h *SensitiveWordsProcessor) handleClean(ctx *shein.TaskContext, foundWords map[string][]string) error {
 	logrus.WithFields(logrus.Fields{
 		"asin":            ctx.AmazonProduct.Asin,
 		"sensitive_words": foundWords,
@@ -119,7 +119,7 @@ func (h *SensitiveWordsProcessor) handleClean(ctx *model.TaskContext, foundWords
 }
 
 // handleWarn 警告模式 - 仅记录日志,不拦截
-func (h *SensitiveWordsProcessor) handleWarn(ctx *model.TaskContext, foundWords map[string][]string) error {
+func (h *SensitiveWordsProcessor) handleWarn(ctx *shein.TaskContext, foundWords map[string][]string) error {
 	logrus.WithFields(logrus.Fields{
 		"asin":            ctx.AmazonProduct.Asin,
 		"title":           ctx.AmazonProduct.Title,
@@ -143,3 +143,5 @@ func NewSensitiveWordsCleanHandler(filter SensitiveWordsFilterInterface) *Sensit
 func NewSensitiveWordsWarnHandler(filter SensitiveWordsFilterInterface) *SensitiveWordsProcessor {
 	return NewSensitiveWordsProcessor(ModeWarn, filter)
 }
+
+

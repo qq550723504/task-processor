@@ -1,9 +1,9 @@
-// Package modules 提供SHEIN平台SKU图片自动修复功能
+﻿// Package modules 提供SHEIN平台SKU图片自动修复功能
 package sku
 
 import (
 	product "task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -22,7 +22,7 @@ func NewSKUImageAutoFixer() *SKUImageAutoFixer {
 
 // AutoFixMultiPieceSKUImage 自动修复多件商品SKU图片
 // 在SKU创建后调用，如果是多件商品但没有图片，从对应的SKC复制图片
-func (f *SKUImageAutoFixer) AutoFixMultiPieceSKUImage(ctx *model.TaskContext, sku *product.SKU, skcImageInfo *product.ImageInfo, params model.SKUCreationParams) {
+func (f *SKUImageAutoFixer) AutoFixMultiPieceSKUImage(ctx *shein.TaskContext, sku *product.SKU, skcImageInfo *product.ImageInfo, params shein.SKUCreationParams) {
 	// 检查是否为多件商品
 	if !f.IsMultiPieceSKU(sku) {
 		return
@@ -93,3 +93,5 @@ func (f *SKUImageAutoFixer) AutoFixSKUImageSorting(sku *product.SKU) {
 		}
 	}
 }
+
+

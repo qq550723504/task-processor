@@ -1,4 +1,4 @@
-// Package shein 提供SHEIN平台的任务错误处理功能
+﻿// Package shein 提供SHEIN平台的任务错误处理功能
 package pipeline
 
 import (
@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/core/metrics"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/platforms/shein/api"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -32,7 +32,7 @@ func NewTaskErrorHandler(processor *SheinProcessor) *TaskErrorHandler {
 
 // HandleTaskFailure 处理任务失败
 func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
-	isRetryable := shein_model.IsRetryableError(err)
+	isRetryable := shein.IsRetryableError(err)
 
 	logrus.Infof("错误类型: %T, 错误值: %v, 是否可重试: %t", err, err, isRetryable)
 
@@ -41,7 +41,7 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
 		metrics.GlobalTaskMetrics().IncrementFailed()
 
 		// 区分业务过滤和真正的错误
-		if shein_model.IsFilteredError(err) {
+		if shein.IsFilteredError(err) {
 			logrus.Infof("✓ 任务被筛选规则过滤: ID=%d, Priority=%d, 原因=%v", task.ID, task.Priority, err)
 		} else {
 			logrus.Errorf("任务处理失败且不可重试: ID=%d, Priority=%d, 错误=%v", task.ID, task.Priority, err)
@@ -190,3 +190,5 @@ func (h *TaskErrorHandler) setPauseKeyForAuthExpired(shopID int64, reason string
 
 	return nil
 }
+
+

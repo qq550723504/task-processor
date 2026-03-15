@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -34,7 +34,7 @@ func NewAttributeMapper() *AttributeMapper {
 // 返回值:
 //   - []attribute.CustomAttributeRelation: 自定义属性关系列表
 //   - error: 错误信息
-func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *model.TaskContext, strategy *model.AttributeStrategy) ([]attribute.CustomAttributeRelation, error) {
+func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *shein.TaskContext, strategy *shein.AttributeStrategy) ([]attribute.CustomAttributeRelation, error) {
 	logrus.Infof("🔄 === 开始属性值ID映射流程 ===")
 
 	var allRelations []attribute.CustomAttributeRelation
@@ -114,7 +114,7 @@ func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *model.TaskContext, s
 }
 
 // mapSingleAttributeValues 映射单个属性的所有属性值
-func (m *AttributeMapper) mapSingleAttributeValues(ctx *model.TaskContext, attr *model.ResultAttribute, isRequired bool) ([]attribute.CustomAttributeRelation, error) {
+func (m *AttributeMapper) mapSingleAttributeValues(ctx *shein.TaskContext, attr *shein.ResultAttribute, isRequired bool) ([]attribute.CustomAttributeRelation, error) {
 	if attr.AttrID <= 0 || len(attr.AttrValue) == 0 {
 		return nil, nil
 	}
@@ -192,3 +192,5 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *model.TaskContext, attr 
 
 	return relations, nil
 }
+
+

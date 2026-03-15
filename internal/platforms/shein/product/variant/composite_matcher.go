@@ -1,9 +1,9 @@
-// Package modules 提供SHEIN平台变体组合值匹配功能
+﻿// Package modules 提供SHEIN平台变体组合值匹配功能
 package variant
 
 import (
 	"strings"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,8 +21,8 @@ func NewVariantCompositeMatcher(utils *VariantMatcherUtils) *VariantCompositeMat
 }
 
 // FindCompositeMatches 查找组合值匹配的变体
-func (m *VariantCompositeMatcher) FindCompositeMatches(variants []model.Variant, attrNames []string, targetValueNorm, targetValue string) []model.Variant {
-	var compositeMatches []model.Variant
+func (m *VariantCompositeMatcher) FindCompositeMatches(variants []shein.Variant, attrNames []string, targetValueNorm, targetValue string) []shein.Variant {
+	var compositeMatches []shein.Variant
 
 	for variantIndex, variant := range variants {
 		matched_in_variant := false
@@ -142,3 +142,5 @@ func (m *VariantCompositeMatcher) isColorPart(part, target string) bool {
 
 	return false
 }
+
+

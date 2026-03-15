@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台销售属性的请求构建功能
+﻿// Package modules 提供SHEIN平台销售属性的请求构建功能
 package sale
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"task-processor/internal/domain/model"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,20 +27,20 @@ func NewSaleAttributeRequestBuilder() *SaleAttributeRequestBuilder {
 
 // BuildGenerationRequest 构建生成请求
 func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(
-	ctx *shein_model.TaskContext,
+	ctx *shein.TaskContext,
 	productsData []map[string]string,
-	attributeMetadata []shein_model.AttributeMetadata,
-	attributeNameMappings map[int]string) *shein_model.GenerationRequest {
+	attributeMetadata []shein.AttributeMetadata,
+	attributeNameMappings map[int]string) *shein.GenerationRequest {
 
-	var attributeMappings []shein_model.AttributeNameMapping
+	var attributeMappings []shein.AttributeNameMapping
 	for attrID, attrName := range attributeNameMappings {
-		attributeMappings = append(attributeMappings, shein_model.AttributeNameMapping{
+		attributeMappings = append(attributeMappings, shein.AttributeNameMapping{
 			AttrID:               attrID,
 			VariantAttributeName: attrName,
 		})
 	}
 
-	var productVariantData []shein_model.ProductVariantData
+	var productVariantData []shein.ProductVariantData
 	emptyDimensionsCount := 0
 	emptyWeightCount := 0
 
@@ -69,7 +69,7 @@ func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(
 			emptyWeightCount++
 		}
 
-		productVariantData = append(productVariantData, shein_model.ProductVariantData{
+		productVariantData = append(productVariantData, shein.ProductVariantData{
 			ASIN:       product["asin"],
 			Title:      product["title"],
 			Attributes: attributes,
@@ -93,7 +93,7 @@ func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(
 		variationAttributeValues = &emptyVariations
 	}
 
-	return &shein_model.GenerationRequest{
+	return &shein.GenerationRequest{
 		ProductsData:             productVariantData,
 		VariationData:            ctx.AmazonProduct.Variations,
 		VariationAttributeValues: variationAttributeValues,
@@ -104,7 +104,7 @@ func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(
 }
 
 // BuildUserPrompt 构建用户提示词
-func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *shein_model.TaskContext, request *shein_model.GenerationRequest) string {
+func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *shein.TaskContext, request *shein.GenerationRequest) string {
 	saleAttributeDataBytes, _ := json.Marshal(request.SaleAttributesData)
 	productsDataBytes, _ := json.Marshal(request.ProductsData)
 	attributeMappingBytes, _ := json.Marshal(request.AttributeMappings)
@@ -184,3 +184,5 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *shein_model.TaskConte
 		string(attributeMappingBytes),
 		extraContextSection)
 }
+
+

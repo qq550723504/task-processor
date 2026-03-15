@@ -6,7 +6,7 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	api_attribute "task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/category"
 	"task-processor/internal/platforms/shein/product/attribute"
 	"task-processor/internal/platforms/shein/product/image"
@@ -22,7 +22,7 @@ type SKCBuilder struct {
 	attributeMapper *attribute.AttributeMapper
 	variantMatcher  *variant.VariantMatcher
 	skuBuilder      *sku.SKUBuilder
-	taskContext     *model.TaskContext // 添加TaskContext字段
+	taskContext     *shein.TaskContext // 添加TaskContext字段
 	openaiClient    *openaiClient.Client
 }
 
@@ -38,7 +38,7 @@ func NewSKCBuilder(imageProcessor *image.ImageProcessor, attributeMapper *attrib
 }
 
 // BuildSKCListWithSpecAdaptation 构建SKC列表并进行规格适配
-func (b *SKCBuilder) BuildSKCListWithSpecAdaptation(ctx *model.TaskContext, strategyHandler *AttributeStrategyHandler) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
+func (b *SKCBuilder) BuildSKCListWithSpecAdaptation(ctx *shein.TaskContext, strategyHandler *AttributeStrategyHandler) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
 	logrus.Infof("🏗️ === 开始SKC构建流程 ===")
 
 	// 设置任务上下文
@@ -92,9 +92,9 @@ func (b *SKCBuilder) BuildSKCListWithSpecAdaptation(ctx *model.TaskContext, stra
 
 // adaptStrategy 根据分类限制适配销售属性
 func (b *SKCBuilder) adaptStrategy(
-	strategy model.AttributeStrategy,
+	strategy shein.AttributeStrategy,
 	categoryID int,
-) (model.AttributeStrategy, bool, []string) {
+) (shein.AttributeStrategy, bool, []string) {
 	// 检查是否有限制
 	restriction, hasRestriction := b.getCategoryRestrictions()[categoryID]
 	if !hasRestriction {
@@ -111,9 +111,9 @@ func (b *SKCBuilder) adaptStrategy(
 			strategy.PrimaryAttribute.AttrID, categoryID)
 
 		// 创建默认颜色主规格
-		defaultColorAttr := model.ResultAttribute{
+		defaultColorAttr := shein.ResultAttribute{
 			AttrID: restriction.DefaultPrimarySpec,
-			AttrValue: []model.AttributeValue{
+			AttrValue: []shein.AttributeValue{
 				{
 					ID:    -1,
 					Value: "Multi-Color",
@@ -140,7 +140,7 @@ func (b *SKCBuilder) adaptStrategy(
 		logrus.Warnf("检测到规格冲突：主规格和次规格相同 (%d)", adaptedStrategy.PrimaryAttribute.AttrID)
 
 		// 清空次规格以避免冲突
-		adaptedStrategy.SecondaryAttribute = model.ResultAttribute{AttrID: -1}
+		adaptedStrategy.SecondaryAttribute = shein.ResultAttribute{AttrID: -1}
 
 		adaptationReasons = append(adaptationReasons,
 			"清空次规格以避免与主规格冲突")
@@ -206,4 +206,6 @@ func (b *SKCBuilder) getAttributeNameSafe(attrID int) string {
 		return fmt.Sprintf("Attribute_%d", attrID)
 	}
 }
+
+
 

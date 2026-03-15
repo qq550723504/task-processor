@@ -1,7 +1,7 @@
-package product
+﻿package product
 
 import (
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +21,7 @@ func (h *ShelfQuotaHandler) Name() string {
 }
 
 // submitRemainingShelfQuota 提交剩余SKC上架额度
-func (h *ShelfQuotaHandler) submitRemainingShelfQuota(ctx *model.TaskContext, remainCount int) {
+func (h *ShelfQuotaHandler) submitRemainingShelfQuota(ctx *shein.TaskContext, remainCount int) {
 	// 通过DailyCountManager获取客户端
 	client := ctx.MemoryManager.DailyCountManager.GetClient()
 	if client == nil {
@@ -35,7 +35,7 @@ func (h *ShelfQuotaHandler) submitRemainingShelfQuota(ctx *model.TaskContext, re
 }
 
 // Handle 处理SKC上架额度检查
-func (h *ShelfQuotaHandler) Handle(ctx *model.TaskContext) error {
+func (h *ShelfQuotaHandler) Handle(ctx *shein.TaskContext) error {
 	// 调用SKC上架额度查询接口
 	shelfQuotaResp, err := ctx.OtherAPI.QueryShelfQuota()
 	if err != nil {
@@ -69,7 +69,7 @@ func (h *ShelfQuotaHandler) Handle(ctx *model.TaskContext) error {
 			)
 		}
 
-		return model.NewFilteredError("SKC上架额度不足")
+		return shein.NewFilteredError("SKC上架额度不足")
 	}
 
 	// 将SKC上架额度信息保存到上下文中，供后续步骤使用
@@ -77,3 +77,5 @@ func (h *ShelfQuotaHandler) Handle(ctx *model.TaskContext) error {
 
 	return nil
 }
+
+

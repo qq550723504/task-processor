@@ -6,7 +6,7 @@ import (
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	product "task-processor/internal/platforms/shein/api/product"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +21,7 @@ func NewPublishProductSaver() *PublishProductSaver {
 }
 
 // SavePublishResult 保存发布成功后的所有对应记录
-func (s *PublishProductSaver) SavePublishResult(ctx *shein_model.TaskContext, response *product.SheinResponse) error {
+func (s *PublishProductSaver) SavePublishResult(ctx *shein.TaskContext, response *product.SheinResponse) error {
 	// 保存SPU名称
 	if response.Info.SPUName != "" {
 		ctx.ProductData.SPUName = response.Info.SPUName
@@ -48,7 +48,7 @@ func (s *PublishProductSaver) SavePublishResult(ctx *shein_model.TaskContext, re
 }
 
 // UpdateTaskStatusToDraft 更新任务状态为草稿箱
-func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein_model.TaskContext) {
+func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein.TaskContext) {
 	// 检查必要的上下文信息
 	if ctx.ManagementClientMgr == nil {
 		logrus.Warn("管理客户端管理器未初始化，跳过状态更新")
@@ -87,3 +87,5 @@ func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein_model.TaskConte
 		}
 	}()
 }
+
+

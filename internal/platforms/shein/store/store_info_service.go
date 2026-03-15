@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 	management_api "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -52,7 +52,7 @@ func (h *StoreInfoHandler) Name() string {
 }
 
 // Handle 处理任务（参考TEMU的简洁实现）
-func (h *StoreInfoHandler) Handle(ctx *model.TaskContext) error {
+func (h *StoreInfoHandler) Handle(ctx *shein.TaskContext) error {
 	h.logger.Info("开始获取店铺信息")
 
 	// 检查任务上下文中的必要数据
@@ -106,7 +106,7 @@ func (h *StoreInfoHandler) Handle(ctx *model.TaskContext) error {
 }
 
 // validateStoreStatus 验证店铺状态（SHEIN特有逻辑）
-func (h *StoreInfoHandler) validateStoreStatus(ctx *model.TaskContext, storeInfo *management_api.StoreRespDTO) error {
+func (h *StoreInfoHandler) validateStoreStatus(ctx *shein.TaskContext, storeInfo *management_api.StoreRespDTO) error {
 	if !*storeInfo.EnableAutoListing {
 		h.logger.Warnf("店铺未开启自动上架: StoreID=%d", storeInfo.ID)
 
@@ -116,13 +116,13 @@ func (h *StoreInfoHandler) validateStoreStatus(ctx *model.TaskContext, storeInfo
 		// 暂停店铺
 		h.pauseStore(ctx, "店铺未开启自动上架")
 
-		return model.NewNonRetryableError("店铺未开启自动上架", nil)
+		return shein.NewNonRetryableError("店铺未开启自动上架", nil)
 	}
 	return nil
 }
 
 // cleanupStoreResources 清理店铺相关资源
-func (h *StoreInfoHandler) cleanupStoreResources(ctx *model.TaskContext) {
+func (h *StoreInfoHandler) cleanupStoreResources(ctx *shein.TaskContext) {
 	// 通过内存管理器清理相关缓存
 	if ctx.MemoryManager != nil {
 		logrus.Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
@@ -130,7 +130,7 @@ func (h *StoreInfoHandler) cleanupStoreResources(ctx *model.TaskContext) {
 }
 
 // pauseStore 暂停店铺
-func (h *StoreInfoHandler) pauseStore(ctx *model.TaskContext, reason string) {
+func (h *StoreInfoHandler) pauseStore(ctx *shein.TaskContext, reason string) {
 	if ctx.MemoryManager != nil {
 		ctx.MemoryManager.ShopPauseManager.PauseShop(
 			ctx.Task.TenantID,
@@ -147,11 +147,11 @@ func (h *StoreInfoHandler) handleStoreError(err error) error {
 	// 检查原始错误是否已经是不可重试的
 	if retryableErr, ok := err.(interface{ IsRetryable() bool }); ok {
 		if !retryableErr.IsRetryable() {
-			return model.NewNonRetryableError("获取店铺基础信息失败", err)
+			return shein.NewNonRetryableError("获取店铺基础信息失败", err)
 		}
 	}
 	// 网络错误或临时性错误可重试，数据错误不可重试
-	return model.NewRetryableError("获取店铺基础信息失败", err)
+	return shein.NewRetryableError("获取店铺基础信息失败", err)
 }
 
 // getStoreWithCache 从缓存获取店铺信息（参考TEMU实现）
@@ -193,3 +193,5 @@ func GetStoreCacheStats() (hits, misses int64) {
 	defer storeCacheStats.mu.Unlock()
 	return storeCacheStats.hits, storeCacheStats.misses
 }
+
+

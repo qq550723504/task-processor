@@ -2,7 +2,7 @@
 
 import (
 	product "task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 )
 
 // InitProductDataHandler 初始化产品数据处理器
@@ -20,10 +20,12 @@ func (h *InitProductDataHandler) Name() string {
 }
 
 // Handle 执行初始化产品数据处理
-func (h *InitProductDataHandler) Handle(ctx *model.TaskContext) error {
+func (h *InitProductDataHandler) Handle(ctx *shein.TaskContext) error {
 
 	// 初始化ProductData字段
 	ctx.ProductData = &product.Product{}
 
 	return nil
 }
+
+

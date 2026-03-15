@@ -1,10 +1,10 @@
-// Package modules 提供SHEIN平台销售属性值筛选功能
+﻿// Package modules 提供SHEIN平台销售属性值筛选功能
 package sale
 
 import (
 	"strings"
 	"task-processor/internal/domain/model"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -26,10 +26,10 @@ func NewSaleAttributeValueFilter() *SaleAttributeValueFilter {
 // 返回值:
 //   - []GenerateAttributeValue: 筛选后的属性值列表
 func (f *SaleAttributeValueFilter) FilterAttributeValuesByUsage(
-	candidateValues []shein_model.GenerateAttributeValue,
+	candidateValues []shein.GenerateAttributeValue,
 	actualValues []string,
 	attributeName string,
-) []shein_model.GenerateAttributeValue {
+) []shein.GenerateAttributeValue {
 	if len(actualValues) == 0 {
 		logrus.Debugf("属性 %s 没有实际使用值，保留前5个候选值", attributeName)
 		if len(candidateValues) > 5 {
@@ -38,7 +38,7 @@ func (f *SaleAttributeValueFilter) FilterAttributeValuesByUsage(
 		return candidateValues
 	}
 
-	var filteredValues []shein_model.GenerateAttributeValue
+	var filteredValues []shein.GenerateAttributeValue
 	usedValueMap := make(map[string]bool)
 
 	// 创建实际使用值的映射
@@ -109,7 +109,7 @@ func (f *SaleAttributeValueFilter) ExtractActualValuesFromVariations(
 // 返回值:
 //   - []string: 实际使用的属性值列表
 func (f *SaleAttributeValueFilter) ExtractActualValuesFromProducts(
-	productsData []shein_model.ProductVariantData,
+	productsData []shein.ProductVariantData,
 	attributeName string,
 ) []string {
 	var actualValues []string
@@ -131,3 +131,5 @@ func (f *SaleAttributeValueFilter) ExtractActualValuesFromProducts(
 
 	return actualValues
 }
+
+

@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/translate"
 
 	"github.com/sirupsen/logrus"
@@ -17,12 +17,12 @@ import (
 
 // SKCTranslationHandler SKC翻译处理器
 type SKCTranslationHandler struct {
-	taskContext  *model.TaskContext
+	taskContext  *shein.TaskContext
 	openaiClient *openaiClient.Client
 }
 
 // NewSKCTranslationHandler 创建新的SKC翻译处理器
-func NewSKCTranslationHandler(taskContext *model.TaskContext, openaiClient *openaiClient.Client) *SKCTranslationHandler {
+func NewSKCTranslationHandler(taskContext *shein.TaskContext, openaiClient *openaiClient.Client) *SKCTranslationHandler {
 	return &SKCTranslationHandler{
 		taskContext:  taskContext,
 		openaiClient: openaiClient,
@@ -30,7 +30,7 @@ func NewSKCTranslationHandler(taskContext *model.TaskContext, openaiClient *open
 }
 
 // CreateSKC 创建SKC的工厂函数
-func (h *SKCTranslationHandler) CreateSKC(ctx *model.TaskContext, params model.SKCCreationParams) product.SKC {
+func (h *SKCTranslationHandler) CreateSKC(ctx *shein.TaskContext, params shein.SKCCreationParams) product.SKC {
 	// 1. 获取目标语言列表
 	targetLanguages := translate.GetTargetLanguagesByRegion(ctx.Task.Region)
 
@@ -72,7 +72,7 @@ func (h *SKCTranslationHandler) CreateSKC(ctx *model.TaskContext, params model.S
 }
 
 // findBestSourceTitle 查找最佳的源标题作为翻译源
-func (h *SKCTranslationHandler) findBestSourceTitle(ctx *model.TaskContext, params model.SKCCreationParams) string {
+func (h *SKCTranslationHandler) findBestSourceTitle(ctx *shein.TaskContext, params shein.SKCCreationParams) string {
 	logrus.Debugf("🔍 开始查找源标题...")
 
 	// 优先尝试根据SKU的SupplierSKU反向查找对应的ASIN，然后匹配变体标题
@@ -181,7 +181,7 @@ func (h *SKCTranslationHandler) initializeMultiLanguageContent(targetLanguages [
 }
 
 // translateToAllLanguages 翻译到所有目标语言
-func (h *SKCTranslationHandler) translateToAllLanguages(ctx *model.TaskContext, sourceTitle string, sourceLang string, multiLanguageNameList *[]product.LanguageContent) {
+func (h *SKCTranslationHandler) translateToAllLanguages(ctx *shein.TaskContext, sourceTitle string, sourceLang string, multiLanguageNameList *[]product.LanguageContent) {
 
 	for i := range *multiLanguageNameList {
 		langContent := &(*multiLanguageNameList)[i]
@@ -206,7 +206,7 @@ func (h *SKCTranslationHandler) translateToAllLanguages(ctx *model.TaskContext, 
 }
 
 // optimizeMultiLanguageContent 使用AI优化多语言内容
-func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *model.TaskContext, multiLanguageNameList *[]product.LanguageContent, sourceTitle string) {
+func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskContext, multiLanguageNameList *[]product.LanguageContent, sourceTitle string) {
 	logrus.Debugf("🤖 开始AI优化多语言内容...")
 
 	// 检查前置条件
@@ -494,4 +494,6 @@ func (h *SKCTranslationHandler) selectPrimaryDisplayLanguage(targetLanguages []s
 		Name:     sourceTitle,
 	}
 }
+
+
 

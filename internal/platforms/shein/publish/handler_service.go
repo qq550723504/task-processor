@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台产品发布核心处理器
+﻿// Package modules 提供SHEIN平台产品发布核心处理器
 package publish
 
 import (
@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"task-processor/internal/pkg/jsonutil"
 	product "task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,11 +36,11 @@ func (h *PublishProductHandler) Name() string {
 }
 
 // Handle 执行发布产品处理
-func (h *PublishProductHandler) Handle(ctx *model.TaskContext) error {
+func (h *PublishProductHandler) Handle(ctx *shein.TaskContext) error {
 	// 检查是否已获取产品数据
 	if ctx.ProductData == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return model.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
+		return shein.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
 	}
 
 	// 方案3：发布前预验证
@@ -65,7 +65,7 @@ func (h *PublishProductHandler) Handle(ctx *model.TaskContext) error {
 		}
 
 		// 预验证失败通常是数据问题，可重试（可能通过重新处理解决）
-		return model.NewRetryableError("发布前预验证失败", err)
+		return shein.NewRetryableError("发布前预验证失败", err)
 	}
 
 	logrus.Info("✅ 发布前预验证通过")
@@ -86,14 +86,14 @@ func (h *PublishProductHandler) Handle(ctx *model.TaskContext) error {
 	response, err := h.publishProduct(ctx)
 	if err != nil {
 		// 发布失败可能是网络问题或临时性错误，可重试
-		return model.NewRetryableError("发布产品失败", err)
+		return shein.NewRetryableError("发布产品失败", err)
 	}
 
 	return h.errorHandler.HandlePublishResponse(ctx, response)
 }
 
 // publishProduct 统一的产品发布方法
-func (h *PublishProductHandler) publishProduct(ctx *model.TaskContext) (*product.SheinResponse, error) {
+func (h *PublishProductHandler) publishProduct(ctx *shein.TaskContext) (*product.SheinResponse, error) {
 	response, _, err := ctx.ProductAPI.PublishProduct(ctx.ProductData)
 
 	// 保存产品发布结果
@@ -103,7 +103,7 @@ func (h *PublishProductHandler) publishProduct(ctx *model.TaskContext) (*product
 }
 
 // SaveDraftProduct 保存产品到草稿箱
-func (h *PublishProductHandler) SaveDraftProduct(ctx *model.TaskContext) (*product.SheinResponse, error) {
+func (h *PublishProductHandler) SaveDraftProduct(ctx *shein.TaskContext) (*product.SheinResponse, error) {
 	response, _, err := ctx.ProductAPI.SaveDraftProduct(ctx.ProductData)
 	if err != nil {
 		return nil, err
@@ -143,3 +143,5 @@ func (h *PublishProductHandler) saveJSONToFileWithName(filename string, jsonData
 	logrus.Infof("JSON数据已保存到文件: %s", filePath)
 	return nil
 }
+
+

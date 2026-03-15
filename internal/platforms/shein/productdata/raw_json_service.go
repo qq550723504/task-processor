@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/domain/model"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -88,7 +88,7 @@ func isProductNotFoundError(err error) bool {
 	return false
 }
 
-func (h *RawJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
+func (h *RawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	logrus.Infof("开始获取原始JSON数据: ProductID=%s, Region=%s", ctx.Task.ProductID, ctx.Task.Region)
 
 	// 使用公共ProductFetcher获取产品数据
@@ -107,10 +107,10 @@ func (h *RawJsonDataHandler) Handle(ctx *shein_model.TaskContext) error {
 		// 检查是否为产品不存在错误
 		if isProductNotFoundError(err) {
 			logrus.Warnf("产品不存在，不需要重试: ProductID=%s, Error=%v", ctx.Task.ProductID, err)
-			return shein_model.NewNonRetryableError("Amazon产品不存在", err)
+			return shein.NewNonRetryableError("Amazon产品不存在", err)
 		}
 		// 其他错误（如超时、网络错误）可以重试
-		return shein_model.NewRetryableError("获取产品数据失败", err)
+		return shein.NewRetryableError("获取产品数据失败", err)
 	}
 
 	// 将原始JSON数据存储到上下文中
@@ -124,3 +124,5 @@ func (h *RawJsonDataHandler) Shutdown() {
 	// Amazon处理器由外部管理，不需要在这里关闭
 	logrus.Debug("RawJsonDataHandler 关闭（Amazon处理器由外部管理）")
 }
+
+

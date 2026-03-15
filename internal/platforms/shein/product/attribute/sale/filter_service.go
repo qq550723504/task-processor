@@ -1,9 +1,9 @@
-// Package modules 提供SHEIN平台销售属性的变体过滤功能
+﻿// Package modules 提供SHEIN平台销售属性的变体过滤功能
 package sale
 
 import (
 	"task-processor/internal/domain/model"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,7 +17,7 @@ func NewSaleAttributeVariantFilter() *SaleAttributeVariantFilter {
 }
 
 // FilterVariantsByRules 在生成销售属性之前过滤变体
-func (f *SaleAttributeVariantFilter) FilterVariantsByRules(ctx *shein_model.TaskContext) {
+func (f *SaleAttributeVariantFilter) FilterVariantsByRules(ctx *shein.TaskContext) {
 	if ctx.Variants == nil {
 		return
 	}
@@ -37,11 +37,11 @@ func (f *SaleAttributeVariantFilter) FilterVariantsByRules(ctx *shein_model.Task
 }
 
 // FilterVariantsByRulesAfterGeneration 在生成销售属性之后过滤变体
-func (f *SaleAttributeVariantFilter) FilterVariantsByRulesAfterGeneration(ctx *shein_model.TaskContext, saleAttributeData *shein_model.ResultSaleAttribute) {
+func (f *SaleAttributeVariantFilter) FilterVariantsByRulesAfterGeneration(ctx *shein.TaskContext, saleAttributeData *shein.ResultSaleAttribute) {
 	if saleAttributeData == nil {
 		return
 	}
-	filteredVariants := make([]shein_model.Variant, 0, len(saleAttributeData.Variants))
+	filteredVariants := make([]shein.Variant, 0, len(saleAttributeData.Variants))
 	filteredOutCount := 0
 	for _, variant := range saleAttributeData.Variants {
 		filterInfo := ctx.GetVariantFilterInfo(variant.ASIN)
@@ -55,3 +55,5 @@ func (f *SaleAttributeVariantFilter) FilterVariantsByRulesAfterGeneration(ctx *s
 	saleAttributeData.Variants = filteredVariants
 	logrus.Infof("在生成销售属性之后，已过滤掉 %d 个不符合筛选规则的变体，剩余 %d 个变体\n", filteredOutCount, len(filteredVariants))
 }
+
+

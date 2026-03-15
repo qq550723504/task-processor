@@ -1,9 +1,9 @@
-// Package product 提供SHEIN平台结果合并功能
+﻿// Package product 提供SHEIN平台结果合并功能
 package product
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,9 +17,9 @@ func NewResultMerger() *ResultMerger {
 }
 
 // MergeResults 合并多个批次的处理结果
-func (m *ResultMerger) MergeResults(results []model.ResultSaleAttribute) model.ResultSaleAttribute {
+func (m *ResultMerger) MergeResults(results []shein.ResultSaleAttribute) shein.ResultSaleAttribute {
 	if len(results) == 0 {
-		return model.ResultSaleAttribute{}
+		return shein.ResultSaleAttribute{}
 	}
 
 	if len(results) == 1 {
@@ -34,7 +34,7 @@ func (m *ResultMerger) MergeResults(results []model.ResultSaleAttribute) model.R
 	// 合并变体
 	mergedVariants := m.mergeVariants(results)
 
-	result := model.ResultSaleAttribute{
+	result := shein.ResultSaleAttribute{
 		SaleAttributes: mergedSaleAttributes,
 		Variants:       mergedVariants,
 	}
@@ -46,9 +46,9 @@ func (m *ResultMerger) MergeResults(results []model.ResultSaleAttribute) model.R
 }
 
 // mergeSaleAttributes 合并销售属性
-func (m *ResultMerger) mergeSaleAttributes(results []model.ResultSaleAttribute) []model.SaleAttribute {
+func (m *ResultMerger) mergeSaleAttributes(results []shein.ResultSaleAttribute) []shein.SaleAttribute {
 	// 使用map去重，key为属性ID
-	attrMap := make(map[int]*model.SaleAttribute)
+	attrMap := make(map[int]*shein.SaleAttribute)
 
 	for _, result := range results {
 		for _, attr := range result.SaleAttributes {
@@ -57,9 +57,9 @@ func (m *ResultMerger) mergeSaleAttributes(results []model.ResultSaleAttribute) 
 				existingAttr.AttrValue = m.mergeAttributeValues(existingAttr.AttrValue, attr.AttrValue)
 			} else {
 				// 复制属性
-				newAttr := model.SaleAttribute{
+				newAttr := shein.SaleAttribute{
 					AttrID:    attr.AttrID,
-					AttrValue: make([]model.AttributeValue, len(attr.AttrValue)),
+					AttrValue: make([]shein.AttributeValue, len(attr.AttrValue)),
 				}
 				copy(newAttr.AttrValue, attr.AttrValue)
 				attrMap[attr.AttrID] = &newAttr
@@ -68,7 +68,7 @@ func (m *ResultMerger) mergeSaleAttributes(results []model.ResultSaleAttribute) 
 	}
 
 	// 转换为切片
-	var mergedAttrs []model.SaleAttribute
+	var mergedAttrs []shein.SaleAttribute
 	for _, attr := range attrMap {
 		mergedAttrs = append(mergedAttrs, *attr)
 	}
@@ -77,9 +77,9 @@ func (m *ResultMerger) mergeSaleAttributes(results []model.ResultSaleAttribute) 
 }
 
 // mergeAttributeValues 合并属性值，去重
-func (m *ResultMerger) mergeAttributeValues(existing, new []model.AttributeValue) []model.AttributeValue {
+func (m *ResultMerger) mergeAttributeValues(existing, new []shein.AttributeValue) []shein.AttributeValue {
 	// 使用map去重，key为属性值的value
-	valueMap := make(map[string]model.AttributeValue)
+	valueMap := make(map[string]shein.AttributeValue)
 
 	// 添加现有值
 	for _, val := range existing {
@@ -94,7 +94,7 @@ func (m *ResultMerger) mergeAttributeValues(existing, new []model.AttributeValue
 	}
 
 	// 转换为切片
-	var merged []model.AttributeValue
+	var merged []shein.AttributeValue
 	for _, val := range valueMap {
 		merged = append(merged, val)
 	}
@@ -103,15 +103,15 @@ func (m *ResultMerger) mergeAttributeValues(existing, new []model.AttributeValue
 }
 
 // mergeVariants 合并变体
-func (m *ResultMerger) mergeVariants(results []model.ResultSaleAttribute) []model.Variant {
-	var allVariants []model.Variant
+func (m *ResultMerger) mergeVariants(results []shein.ResultSaleAttribute) []shein.Variant {
+	var allVariants []shein.Variant
 
 	for _, result := range results {
 		allVariants = append(allVariants, result.Variants...)
 	}
 
 	// 去重（基于ASIN）
-	variantMap := make(map[string]model.Variant)
+	variantMap := make(map[string]shein.Variant)
 	for _, variant := range allVariants {
 		if variant.ASIN != "" {
 			variantMap[variant.ASIN] = variant
@@ -119,7 +119,7 @@ func (m *ResultMerger) mergeVariants(results []model.ResultSaleAttribute) []mode
 	}
 
 	// 转换为切片
-	var mergedVariants []model.Variant
+	var mergedVariants []shein.Variant
 	for _, variant := range variantMap {
 		mergedVariants = append(mergedVariants, variant)
 	}
@@ -128,7 +128,7 @@ func (m *ResultMerger) mergeVariants(results []model.ResultSaleAttribute) []mode
 }
 
 // ValidateMergedResult 验证合并后的结果
-func (m *ResultMerger) ValidateMergedResult(result model.ResultSaleAttribute) []string {
+func (m *ResultMerger) ValidateMergedResult(result shein.ResultSaleAttribute) []string {
 	var issues []string
 
 	// 检查销售属性
@@ -165,3 +165,5 @@ func (m *ResultMerger) ValidateMergedResult(result model.ResultSaleAttribute) []
 
 	return issues
 }
+
+

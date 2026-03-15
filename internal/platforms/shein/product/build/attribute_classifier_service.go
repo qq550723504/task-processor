@@ -2,7 +2,7 @@
 
 import (
 	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product/attribute/sale"
 
 	"github.com/sirupsen/logrus"
@@ -23,7 +23,7 @@ func NewAttributeClassifier(builder *AttributeBuilder) *AttributeClassifier {
 }
 
 // ClassifyAndBuildAttribute 分类并构建属性
-func (c *AttributeClassifier) ClassifyAndBuildAttribute(attr attribute.AttributeInfo, attributeInfo *model.BuildAttributeInfo) {
+func (c *AttributeClassifier) ClassifyAndBuildAttribute(attr attribute.AttributeInfo, attributeInfo *shein.BuildAttributeInfo) {
 	// 检查级联依赖关系
 	if attr.CascadeAttributeID != 0 {
 		logrus.Infof("属性ID %d 存在级联依赖关系，依赖于: %d", attr.AttributeID, attr.CascadeAttributeID)
@@ -45,4 +45,6 @@ func (c *AttributeClassifier) ClassifyAndBuildAttribute(attr attribute.Attribute
 		// 尺寸属性作为产品属性处理，目前暂未启用
 	}
 }
+
+
 

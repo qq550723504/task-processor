@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	management_api "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,7 +20,7 @@ func NewPublishProductChecker() *PublishProductChecker {
 }
 
 // CheckProductExists 检查产品是否已上架
-func (c *PublishProductChecker) CheckProductExists(ctx *model.TaskContext) error {
+func (c *PublishProductChecker) CheckProductExists(ctx *shein.TaskContext) error {
 	// 检查必要的上下文信息
 	if ctx.ManagementClientMgr == nil {
 		logrus.Warn("管理客户端管理器未初始化，跳过产品存在性检查")
@@ -56,7 +56,7 @@ func (c *PublishProductChecker) CheckProductExists(ctx *model.TaskContext) error
 
 		if exists {
 			logrus.Warnf("⚠️ 产品 %s 已经上架过，跳过本次上架", ctx.Task.ProductID)
-			return model.NewNonRetryableError(fmt.Sprintf("产品 %s 已经上架过", ctx.Task.ProductID), nil)
+			return shein.NewNonRetryableError(fmt.Sprintf("产品 %s 已经上架过", ctx.Task.ProductID), nil)
 		}
 
 		logrus.Infof("✅ 产品 %s 未上架，可以继续上架流程", ctx.Task.ProductID)
@@ -95,3 +95,5 @@ func (c *PublishProductChecker) CheckProductExists(ctx *model.TaskContext) error
 
 	return nil
 }
+
+

@@ -1,10 +1,10 @@
-// Package modules 提供SHEIN平台的敏感词服务核心功能
+﻿// Package modules 提供SHEIN平台的敏感词服务核心功能
 package content
 
 import (
 	"context"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -71,7 +71,7 @@ func (s *SensitiveWordService) initDefaultConfig() {
 }
 
 // ProcessProductData 处理产品数据中的敏感词
-func (s *SensitiveWordService) ProcessProductData(ctx *model.TaskContext) error {
+func (s *SensitiveWordService) ProcessProductData(ctx *shein.TaskContext) error {
 	logrus.Info("🔍 开始敏感词处理（删除模式）...")
 
 	if ctx == nil || ctx.ProductData == nil {
@@ -102,7 +102,7 @@ func (s *SensitiveWordService) ProcessProductData(ctx *model.TaskContext) error 
 }
 
 // HandleValidationErrors 处理验证错误中的敏感词
-func (s *SensitiveWordService) HandleValidationErrors(ctx *model.TaskContext, validationResults []model.PreValidResult) bool {
+func (s *SensitiveWordService) HandleValidationErrors(ctx *shein.TaskContext, validationResults []shein.PreValidResult) bool {
 	logrus.Info("🔍 开始处理验证错误中的敏感词（按语言分类模式）...")
 
 	extractedWords := s.extractSensitiveWordsFromValidation(validationResults)
@@ -243,3 +243,5 @@ func (s *SensitiveWordService) ClearDynamicSensitiveWords() {
 	// 异步保存配置
 	s.saveConfigAsync()
 }
+
+

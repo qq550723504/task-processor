@@ -9,7 +9,6 @@ import (
 	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
 	"task-processor/internal/platforms/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -28,7 +27,7 @@ func NewSKUCreator() *SKUCreator {
 }
 
 // CreateSKU 统一的SKU创建函数
-func (c *SKUCreator) CreateSKU(ctx *model.TaskContext, params model.SKUCreationParams) (*product.SKU, error) {
+func (c *SKUCreator) CreateSKU(ctx *shein.TaskContext, params shein.SKUCreationParams) (*product.SKU, error) {
 	// 1. 价格计算
 	salePriceMultiplier := ctx.ProfitRule.SalePriceMultiplier
 	discountPriceMultiplier := ctx.ProfitRule.DiscountPriceMultiplier
@@ -124,7 +123,7 @@ func (c *SKUCreator) CreateSKU(ctx *model.TaskContext, params model.SKUCreationP
 }
 
 // BuildSaleAttributeListForSingleVariant 为单变体构建销售属性列表
-func (c *SKUCreator) BuildSaleAttributeListForSingleVariant(ctx *model.TaskContext, variant model.Variant, strategy model.AttributeStrategy) []product.SaleAttribute {
+func (c *SKUCreator) BuildSaleAttributeListForSingleVariant(ctx *shein.TaskContext, variant shein.Variant, strategy shein.AttributeStrategy) []product.SaleAttribute {
 	var saleAttributeList []product.SaleAttribute
 
 	// 尝试从变体属性中获取次要属性值

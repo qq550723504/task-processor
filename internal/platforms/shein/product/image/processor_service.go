@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/pkg/imageutil"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -47,7 +47,7 @@ func NewImageProcessor(imageDownloader interface {
 // 返回值:
 //   - product.ImageInfo: 构建完成的图片信息结构
 //   - error: 处理过程中的错误，如果为nil表示处理成功
-func (p *ImageProcessor) BuildImageInfo(ctx *model.TaskContext, images []string) (product.ImageInfo, error) {
+func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string) (product.ImageInfo, error) {
 	imageInfo := product.ImageInfo{
 		ImageInfoList:         []product.ImageDetail{},
 		OriginalImageInfoList: &[]interface{}{},
@@ -71,7 +71,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *model.TaskContext, images []string)
 	// 设置并发数（默认 5）
 	maxConcurrent := 5
 	semaphore := make(chan struct{}, maxConcurrent)
-	resultChan := make(chan model.ImageUploadResult, len(images)+1)
+	resultChan := make(chan shein.ImageUploadResult, len(images)+1)
 	var wg sync.WaitGroup
 
 	// 并行上传图片
@@ -91,7 +91,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *model.TaskContext, images []string)
 			// 下载、处理并上传图片
 			uploadedURL, err := ctx.ImageAPI.DownloadAndUploadImage(url)
 
-			resultChan <- model.ImageUploadResult{
+			resultChan <- shein.ImageUploadResult{
 				Index:  index,
 				URL:    uploadedURL,
 				Err:    err,
@@ -111,7 +111,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *model.TaskContext, images []string)
 			logrus.Info("并行提取色块图")
 			colorBlockData, err := p.extractColorBlockImage(images[0])
 
-			resultChan <- model.ImageUploadResult{
+			resultChan <- shein.ImageUploadResult{
 				Index:     -1,
 				ColorData: colorBlockData,
 				Err:       err,
@@ -127,8 +127,8 @@ func (p *ImageProcessor) BuildImageInfo(ctx *model.TaskContext, images []string)
 		close(resultChan)
 	}()
 
-	uploadResults := make(map[int]model.ImageUploadResult)
-	var colorBlockResult *model.ImageUploadResult
+	uploadResults := make(map[int]shein.ImageUploadResult)
+	var colorBlockResult *shein.ImageUploadResult
 	var mainImageURL string
 
 	for result := range resultChan {
@@ -402,3 +402,5 @@ func (p *ImageProcessor) extractDominantColor(img image.Image) color.Color {
 	b := uint8(dominantColorKey & 0xFF)
 	return color.RGBA{r, g, b, 255}
 }
+
+

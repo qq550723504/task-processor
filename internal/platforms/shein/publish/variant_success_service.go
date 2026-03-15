@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/productdata"
 	"task-processor/internal/platforms/shein/product"
 	"task-processor/internal/platforms/shein/validation"
@@ -40,7 +40,7 @@ func (h *MarkVariantPublishSuccessHandler) Name() string {
 //
 // 返回值:
 //   - error: 处理过程中的错误，如果为nil表示处理成功
-func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein_model.TaskContext) error {
+func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error {
 	logrus.Infof("=== 开始标记产品发布成功 ===")
 
 	// 检查必要的上下文字段
@@ -117,7 +117,7 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein_model.TaskContext) 
 }
 
 // markVariantPublished 标记变体为已发布
-func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *shein_model.TaskContext, asin, sku string) error {
+func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *shein.TaskContext, asin, sku string) error {
 	mappingClient := ctx.ManagementClientMgr.GetProductImportMappingClient()
 	if mappingClient == nil {
 		return fmt.Errorf("产品导入映射客户端未初始化")
@@ -208,7 +208,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *shein_model
 }
 
 // markVariantFailed 标记变体为失败
-func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *shein_model.TaskContext, asin, reason string) error {
+func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *shein.TaskContext, asin, reason string) error {
 	mappingClient := ctx.ManagementClientMgr.GetProductImportMappingClient()
 	if mappingClient == nil {
 		return fmt.Errorf("产品导入映射客户端未初始化")
@@ -267,7 +267,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *shein_model.Ta
 }
 
 // updateTaskStatusToPublished 更新任务状态为已上架
-func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *shein_model.TaskContext) error {
+func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *shein.TaskContext) error {
 	// 获取导入任务客户端
 	importTaskClient := ctx.ManagementClientMgr.GetImportTaskClient()
 	if importTaskClient == nil {
@@ -297,6 +297,8 @@ func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *shei
 
 	return nil
 }
+
+
 
 
 

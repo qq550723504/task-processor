@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -36,7 +36,7 @@ func (h *BuildAttributeHandler) Name() string {
 }
 
 // Handle 执行构建属性信息处理
-func (h *BuildAttributeHandler) Handle(ctx *model.TaskContext) error {
+func (h *BuildAttributeHandler) Handle(ctx *shein.TaskContext) error {
 	// 检查是否已获取产品数据
 	if ctx.ProductData == nil {
 		return fmt.Errorf("产品数据未获取，请先执行获取产品数据步骤")
@@ -53,14 +53,14 @@ func (h *BuildAttributeHandler) Handle(ctx *model.TaskContext) error {
 }
 
 // BuildAttributeData 构建属性数据（智能筛选版本）
-func (h *BuildAttributeHandler) BuildAttributeData(attributeTemplates *attribute.AttributeTemplateInfo) (model.BuildAttributeInfo, error) {
+func (h *BuildAttributeHandler) BuildAttributeData(attributeTemplates *attribute.AttributeTemplateInfo) (shein.BuildAttributeInfo, error) {
 	if len(attributeTemplates.Data) == 0 {
-		return model.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
+		return shein.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
 	}
 
-	attributeInfo := model.BuildAttributeInfo{
-		AttributeData:     []model.GenerateAttribute{},
-		SaleAttributeData: []model.GenerateAttribute{},
+	attributeInfo := shein.BuildAttributeInfo{
+		AttributeData:     []shein.GenerateAttribute{},
+		SaleAttributeData: []shein.GenerateAttribute{},
 	}
 
 	// 基于attributeTemplates数据动态判断必填属性
@@ -72,14 +72,14 @@ func (h *BuildAttributeHandler) BuildAttributeData(attributeTemplates *attribute
 }
 
 // BuildAttributeDataWithContext 构建属性数据（带上下文的智能筛选版本）
-func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *model.TaskContext) (model.BuildAttributeInfo, error) {
+func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskContext) (shein.BuildAttributeInfo, error) {
 	if ctx.AttributeTemplates == nil || len(ctx.AttributeTemplates.Data) == 0 {
-		return model.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
+		return shein.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
 	}
 
-	attributeInfo := model.BuildAttributeInfo{
-		AttributeData:     []model.GenerateAttribute{},
-		SaleAttributeData: []model.GenerateAttribute{},
+	attributeInfo := shein.BuildAttributeInfo{
+		AttributeData:     []shein.GenerateAttribute{},
+		SaleAttributeData: []shein.GenerateAttribute{},
 	}
 
 	// 使用智能筛选器筛选相关的销售属性
@@ -117,4 +117,6 @@ func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *model.TaskCon
 
 	return attributeInfo, nil
 }
+
+
 

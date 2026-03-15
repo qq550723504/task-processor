@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台的销售属性JSON解析功能
+﻿// Package modules 提供SHEIN平台的销售属性JSON解析功能
 package sale
 
 import (
@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,7 +27,7 @@ func NewSaleAttributeJSONParser() *SaleAttributeJSONParser {
 //
 // 返回值:
 //   - ResultSaleAttribute: 解析后的销售属性结果
-func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) model.ResultSaleAttribute {
+func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) shein.ResultSaleAttribute {
 	logrus.Infof("📝 开始解析AI响应，长度: %d 字符", len(content))
 
 	// 清理JSON格式
@@ -47,7 +47,7 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) model.Res
 		if !json.Valid([]byte(fixedContent)) {
 			logrus.Error("❌ JSON修复失败，无法解析")
 			logrus.Debugf("原始内容前500字符: %s", content[:min(500, len(content))])
-			return model.ResultSaleAttribute{}
+			return shein.ResultSaleAttribute{}
 		}
 		logrus.Info("✅ JSON修复成功")
 		content = fixedContent
@@ -55,11 +55,11 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) model.Res
 		logrus.Debug("✅ JSON格式有效")
 	}
 
-	var saleAttributeData model.ResultSaleAttribute
+	var saleAttributeData shein.ResultSaleAttribute
 	if err := jsonutil.UnmarshalBytes([]byte(content), &saleAttributeData, "JSON解析失败"); err != nil {
 		logrus.Errorf("❌ JSON解析失败: %v", err)
 		logrus.Debugf("内容前500字符: %s", content[:min(500, len(content))])
-		return model.ResultSaleAttribute{}
+		return shein.ResultSaleAttribute{}
 	}
 
 	logrus.Infof("✅ 成功解析AI响应 - 销售属性: %d 个, 变体: %d 个",
@@ -183,3 +183,5 @@ func (p *SaleAttributeJSONParser) looksLikeCompleteJson(content string) bool {
 	content = strings.TrimSpace(content)
 	return strings.HasPrefix(content, "{") && strings.HasSuffix(content, "}")
 }
+
+

@@ -11,7 +11,7 @@ import (
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/shein/api"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/repo"
 	"task-processor/internal/platforms/shein/repo/client"
 
@@ -66,8 +66,8 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, pipeline
 }
 
 // createTaskContext 创建任务上下文
-func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *shein_model.TaskContext {
-	taskCtx := shein_model.NewTaskContext(ctx, task)
+func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *shein.TaskContext {
+	taskCtx := shein.NewTaskContext(ctx, task)
 
 	// 设置基础组件
 	taskCtx.MemoryManager = h.processor.GetMemoryManager()
@@ -85,7 +85,7 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 }
 
 // initShopClient 初始化店铺客户端（参考TEMU的cookie加载机制）
-func (h *TaskHandler) initShopClient(taskCtx *shein_model.TaskContext) error {
+func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
 	if taskCtx.Task == nil || taskCtx.Task.StoreID == 0 {
 		err := fmt.Errorf("任务信息或店铺ID为空")
 		logrus.Warn(err.Error())
@@ -169,7 +169,7 @@ func (h *TaskHandler) initShopClient(taskCtx *shein_model.TaskContext) error {
 			cookieError = "店铺客户端未初始化"
 		}
 
-		return shein_model.NewCookieLoadError(taskCtx.Task.TenantID, taskCtx.Task.StoreID, cookieError)
+		return shein.NewCookieLoadError(taskCtx.Task.TenantID, taskCtx.Task.StoreID, cookieError)
 	}
 
 	return nil
@@ -181,7 +181,7 @@ func (h *TaskHandler) handleError(task model.Task, err error) {
 	logrus.Infof("处理错误: 类型=%T, 内容=%v", err, err)
 
 	// 检查是否是Cookie加载失败错误
-	if cookieErr, isCookieError := shein_model.IsCookieLoadError(err); isCookieError {
+	if cookieErr, isCookieError := shein.IsCookieLoadError(err); isCookieError {
 		logrus.Errorf("检测到Cookie加载失败错误: %v", cookieErr)
 		// Cookie加载失败，直接处理为任务失败，不进行重试
 		h.errorHandler.HandleTaskFailure(task, cookieErr)
@@ -218,3 +218,5 @@ func (h *TaskHandler) handleSuccess(task model.Task) {
 	logrus.Infof("任务处理成功: ID=%d, TenantID=%d, StoreID=%d, ProductID=%s",
 		task.ID, task.TenantID, task.StoreID, task.ProductID)
 }
+
+

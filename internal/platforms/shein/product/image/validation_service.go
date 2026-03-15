@@ -1,8 +1,8 @@
-package image
+﻿package image
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -30,7 +30,7 @@ func (h *ImageValidationHandler) Name() string {
 }
 
 // Handle 执行图片数量验证
-func (h *ImageValidationHandler) Handle(ctx *model.TaskContext) error {
+func (h *ImageValidationHandler) Handle(ctx *shein.TaskContext) error {
 	logrus.Infof("=== 开始图片数量验证 ===")
 
 	// 检查产品数据是否存在
@@ -59,7 +59,7 @@ func (h *ImageValidationHandler) Handle(ctx *model.TaskContext) error {
 		logrus.Errorf("❌ SHEIN平台要求: 至少需要1张主图 + 2张细节图")
 
 		// 返回不可重试错误，避免浪费资源
-		return model.NewNonRetryableError(
+		return shein.NewNonRetryableError(
 			fmt.Sprintf("产品图片数量不足，当前有%d张有效图片，SHEIN要求至少%d张（1张主图+2张细节图）",
 				validImageCount, h.minImageCount),
 			nil,
@@ -70,3 +70,5 @@ func (h *ImageValidationHandler) Handle(ctx *model.TaskContext) error {
 	logrus.Infof("=== 图片数量验证完成 ===")
 	return nil
 }
+
+

@@ -1,10 +1,10 @@
-// Package modules 提供SHEIN平台变体模糊匹配功能
+﻿// Package modules 提供SHEIN平台变体模糊匹配功能
 package variant
 
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -22,8 +22,8 @@ func NewVariantFuzzyMatcher(utils *VariantMatcherUtils) *VariantFuzzyMatcher {
 }
 
 // FindFuzzyMatches 查找模糊匹配的变体
-func (m *VariantFuzzyMatcher) FindFuzzyMatches(variants []model.Variant, attrNames []string, targetValueNorm, targetValue string) []model.Variant {
-	var fuzzyMatches []model.Variant
+func (m *VariantFuzzyMatcher) FindFuzzyMatches(variants []shein.Variant, attrNames []string, targetValueNorm, targetValue string) []shein.Variant {
+	var fuzzyMatches []shein.Variant
 
 	for variantIndex, variant := range variants {
 		matched_in_variant := false
@@ -157,3 +157,5 @@ func (m *VariantFuzzyMatcher) isSimpleContainment(variantValue, targetValue stri
 
 	return false
 }
+
+

@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台属性选择提示词生成功能
+﻿// Package modules 提供SHEIN平台属性选择提示词生成功能
 package attribute
 
 import (
@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 )
 
 // AttributePromptGenerator 属性提示词生成器
@@ -30,7 +30,7 @@ func (g *AttributePromptGenerator) GenerateDefaultSystemPrompt() string {
 }
 
 // GenerateUserPrompt 生成用户提示词
-func (g *AttributePromptGenerator) GenerateUserPrompt(ctx *model.TaskContext, enhancedAttributeData []model.EnhancedGenerateAttribute) string {
+func (g *AttributePromptGenerator) GenerateUserPrompt(ctx *shein.TaskContext, enhancedAttributeData []shein.EnhancedGenerateAttribute) string {
 	return g.generateDynamicUserPrompt(ctx, enhancedAttributeData)
 }
 
@@ -190,11 +190,11 @@ func (g *AttributePromptGenerator) generateDynamicAttributeSystemPrompt(attribut
 }
 
 // generateDynamicUserPrompt 生成包含属性重要性分析的用户提示词
-func (g *AttributePromptGenerator) generateDynamicUserPrompt(ctx *model.TaskContext, enhancedAttributeData []model.EnhancedGenerateAttribute) string {
+func (g *AttributePromptGenerator) generateDynamicUserPrompt(ctx *shein.TaskContext, enhancedAttributeData []shein.EnhancedGenerateAttribute) string {
 	// 按重要性分组属性
-	var criticalAttrs []model.EnhancedGenerateAttribute
-	var importantAttrs []model.EnhancedGenerateAttribute
-	var optionalAttrs []model.EnhancedGenerateAttribute
+	var criticalAttrs []shein.EnhancedGenerateAttribute
+	var importantAttrs []shein.EnhancedGenerateAttribute
+	var optionalAttrs []shein.EnhancedGenerateAttribute
 
 	for _, attr := range enhancedAttributeData {
 		if attr.Required {
@@ -343,7 +343,7 @@ func (g *AttributePromptGenerator) identifyKeyAttributes(attributeTemplates *att
 }
 
 // formatAttributeList 格式化属性列表用于显示
-func (g *AttributePromptGenerator) formatAttributeList(attributes []model.EnhancedGenerateAttribute) string {
+func (g *AttributePromptGenerator) formatAttributeList(attributes []shein.EnhancedGenerateAttribute) string {
 	if len(attributes) == 0 {
 		return "无"
 	}
@@ -365,3 +365,5 @@ func (g *AttributePromptGenerator) formatAttributeList(attributes []model.Enhanc
 
 	return strings.Join(formatted, "\n")
 }
+
+

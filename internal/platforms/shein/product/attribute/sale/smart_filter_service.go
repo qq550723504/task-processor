@@ -1,11 +1,11 @@
-// Package modules 提供SHEIN平台销售属性的智能筛选功能
+﻿// Package modules 提供SHEIN平台销售属性的智能筛选功能
 package sale
 
 import (
 	"strings"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/platforms/shein/api/attribute"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,7 +20,7 @@ func NewSaleAttributeSmartFilter() *SaleAttributeSmartFilter {
 
 // FilterRelevantAttributes 筛选与实际产品数据相关的销售属性
 func (f *SaleAttributeSmartFilter) FilterRelevantAttributes(
-	ctx *shein_model.TaskContext,
+	ctx *shein.TaskContext,
 	attributeTemplates *attribute.AttributeTemplateInfo,
 ) []attribute.AttributeInfo {
 
@@ -112,7 +112,7 @@ type ProductVariationAnalysis struct {
 }
 
 // analyzeProductVariations 分析产品变化
-func (f *SaleAttributeSmartFilter) analyzeProductVariations(ctx *shein_model.TaskContext) ProductVariationAnalysis {
+func (f *SaleAttributeSmartFilter) analyzeProductVariations(ctx *shein.TaskContext) ProductVariationAnalysis {
 	analysis := ProductVariationAnalysis{}
 
 	// 如果是单变体产品，仍需要分析基础属性信息
@@ -362,3 +362,5 @@ func (f *SaleAttributeSmartFilter) selectDefaultSaleAttribute(attributes []attri
 	logrus.Warn("❌ 未找到任何销售属性")
 	return nil
 }
+
+

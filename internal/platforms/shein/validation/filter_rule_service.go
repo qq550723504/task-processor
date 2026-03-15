@@ -1,6 +1,6 @@
 ﻿package validation
 
-import "task-processor/internal/platforms/shein/model"
+import "task-processor/internal/platforms/shein"
 
 // ApplyFilterRuleHandler 应用筛选规则处理器
 type ApplyFilterRuleHandler struct {
@@ -17,7 +17,7 @@ func (h *ApplyFilterRuleHandler) Name() string {
 	return "应用筛选规则"
 }
 
-func (h *ApplyFilterRuleHandler) Handle(ctx *model.TaskContext) error {
+func (h *ApplyFilterRuleHandler) Handle(ctx *shein.TaskContext) error {
 	if ctx.FilterRule == nil {
 		return nil
 	}
@@ -58,3 +58,5 @@ func (h *ApplyFilterRuleHandler) Handle(ctx *model.TaskContext) error {
 
 	return nil
 }
+
+

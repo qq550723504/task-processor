@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/pkg/ptrutil"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timeutil"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/productdata"
 	"task-processor/internal/platforms/shein/validation"
 
@@ -43,11 +43,11 @@ func (h *SavePublishResultHandler) Name() string {
 //
 // 返回值:
 //   - error: 处理过程中的错误，如果为nil表示处理成功
-func (h *SavePublishResultHandler) Handle(ctx *shein_model.TaskContext) error {
+func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 	// 检查是否已获取产品数据
 	if ctx.ProductData == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return shein_model.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
+		return shein.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
 	}
 
 	// 创建产品导入映射关系
@@ -73,23 +73,23 @@ func (h *SavePublishResultHandler) Handle(ctx *shein_model.TaskContext) error {
 }
 
 // createProductImportMapping 创建产品导入映射关系
-func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein_model.TaskContext) error {
+func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskContext) error {
 	// 检查必要的上下文信息
 	if ctx.ManagementClientMgr == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return shein_model.NewNonRetryableError("管理客户端管理器未初始化", nil)
+		return shein.NewNonRetryableError("管理客户端管理器未初始化", nil)
 	}
 
 	if ctx.Task == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return shein_model.NewNonRetryableError("任务信息未初始化", nil)
+		return shein.NewNonRetryableError("任务信息未初始化", nil)
 	}
 
 	// 获取产品导入映射客户端
 	mappingClient := ctx.ManagementClientMgr.GetProductImportMappingClient()
 	if mappingClient == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return shein_model.NewNonRetryableError("产品导入映射客户端未初始化", nil)
+		return shein.NewNonRetryableError("产品导入映射客户端未初始化", nil)
 	}
 
 	// 为每个SKU创建产品导入映射关系
@@ -232,7 +232,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein_model.T
 }
 
 // recordDailyListingCount 记录每日上架成功数量并检查限额
-func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein_model.TaskContext) error {
+func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContext) error {
 	// 检查必要的上下文信息
 	if ctx.MemoryManager == nil {
 		logrus.Warn("内存管理器未初始化，跳过每日上架计数")
@@ -304,7 +304,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein_model.Task
 }
 
 // calculateIncrement 根据店铺配置的限制类型计算增量
-func (h *SavePublishResultHandler) calculateIncrement(ctx *shein_model.TaskContext) int64 {
+func (h *SavePublishResultHandler) calculateIncrement(ctx *shein.TaskContext) int64 {
 	// 检查SheinResponse是否存在
 	if ctx.SheinResponse == nil {
 		logrus.Warn("SheinResponse为空，无法计算增量")
@@ -336,7 +336,7 @@ func (h *SavePublishResultHandler) calculateIncrement(ctx *shein_model.TaskConte
 }
 
 // pauseShopWithCacheCleanup 暂停店铺并清理相关缓存
-func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *shein_model.TaskContext, reason string, duration time.Duration) error {
+func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *shein.TaskContext, reason string, duration time.Duration) error {
 	// 1. 清理客户端缓存（通过内存管理器）
 	if ctx.MemoryManager != nil {
 		// 通过内存管理器清理相关缓存
@@ -355,7 +355,7 @@ func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *shein_model.Ta
 }
 
 // updateTaskStatusToPublished 更新任务状态为已上架
-func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein_model.TaskContext) error {
+func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein.TaskContext) error {
 	// 检查必要的上下文信息
 	if ctx.ManagementClientMgr == nil {
 		logrus.Warn("管理客户端管理器未初始化，跳过状态更新")
@@ -396,6 +396,8 @@ func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein_model.
 
 	return nil
 }
+
+
 
 
 

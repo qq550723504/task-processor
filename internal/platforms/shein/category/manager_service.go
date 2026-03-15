@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
+﻿// Package modules 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
 package category
 
 import (
@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/api/category"
-	"task-processor/internal/platforms/shein/model"
+	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -186,7 +186,7 @@ func NewCategoryManager(aiSelector AISelector) *CategoryManager {
 }
 
 // GetCategoryIDListWithTree 通过SHEIN接口获取分类ID列表
-func (m *CategoryManager) GetCategoryIDListWithTree(ctx *model.TaskContext, categoryID int) ([]int, int, int, error) {
+func (m *CategoryManager) GetCategoryIDListWithTree(ctx *shein.TaskContext, categoryID int) ([]int, int, int, error) {
 	// 调用API获取分类信息
 	categoryInfo, err := ctx.CategoryAPI.GetCategory(categoryID)
 	if err != nil {
@@ -290,3 +290,5 @@ func collectLeafNodes(node category.CategoryTreeNode) []category.CategoryTreeNod
 func buildFullCategoryPath(node category.CategoryTreeNode) string {
 	return node.CategoryName
 }
+
+

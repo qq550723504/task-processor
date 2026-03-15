@@ -1,11 +1,11 @@
-// Package modules 提供SHEIN平台销售属性的上下文构建功能
+﻿// Package modules 提供SHEIN平台销售属性的上下文构建功能
 package sale
 
 import (
 	"fmt"
 	"strings"
 	"task-processor/internal/domain/model"
-	shein_model "task-processor/internal/platforms/shein/model"
+	shein "task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -53,7 +53,7 @@ func (c *SaleAttributeContextBuilder) BuildCompactProductContext(amazonProduct m
 }
 
 // BuildExtraContext 构建额外上下文信息（仅在检测到缺少信息时提供）
-func (c *SaleAttributeContextBuilder) BuildExtraContext(amazonProduct model.Product, variants []model.Product, productsData []shein_model.ProductVariantData) string {
+func (c *SaleAttributeContextBuilder) BuildExtraContext(amazonProduct model.Product, variants []model.Product, productsData []shein.ProductVariantData) string {
 	logrus.Debug("🔍 开始检测是否需要额外上下文...")
 
 	// 检测缺失信息
@@ -98,7 +98,7 @@ type MissingInfoDetection struct {
 }
 
 // detectMissingInfo 检测缺失的信息
-func (c *SaleAttributeContextBuilder) detectMissingInfo(productsData []shein_model.ProductVariantData) MissingInfoDetection {
+func (c *SaleAttributeContextBuilder) detectMissingInfo(productsData []shein.ProductVariantData) MissingInfoDetection {
 	var detection MissingInfoDetection
 
 	for _, product := range productsData {
@@ -271,3 +271,5 @@ func (c *SaleAttributeContextBuilder) getMissingPhysicalASINs(missingInfo Missin
 
 	return allMissingASINs
 }
+
+

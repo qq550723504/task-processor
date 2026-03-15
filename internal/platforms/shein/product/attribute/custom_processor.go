@@ -1,4 +1,4 @@
-// Package attribute 提供SHEIN平台的自定义属性处理功能
+﻿// Package attribute 提供SHEIN平台的自定义属性处理功能
 package attribute
 
 import (
@@ -6,7 +6,6 @@ import (
 
 	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/attribute"
-	"task-processor/internal/platforms/shein/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -31,11 +30,11 @@ func NewCustomAttributeProcessor() *CustomAttributeProcessor {
 // 返回值:
 //   - CustomAttributeResult: 处理结果，包含成功状态、新属性值ID等信息
 func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
-	ctx *model.TaskContext,
+	ctx *shein.TaskContext,
 	attrID int,
 	attrValue string,
 	isRequired bool,
-) model.CustomAttributeResult {
+) shein.CustomAttributeResult {
 
 	logrus.Infof("处理自定义属性值: 属性ID %d, 原始值 %s, 必需: %v", attrID, attrValue, isRequired)
 
@@ -48,7 +47,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	// 检查清理后的值是否有效
 	if !shein.IsValidForSheinAttribute(sanitizedValue) {
 		logrus.Errorf("清理后的属性值仍然无效: %s", sanitizedValue)
-		return model.CustomAttributeResult{
+		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
 		}
@@ -58,7 +57,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	validateResponse, err := ctx.AttributeAPI.ValidateCustomAttributeValue(attrID, sanitizedValue, ctx.ProductData.CategoryID, ctx.AmazonProduct.Title)
 	if err != nil {
 		logrus.Errorf("验证自定义属性值失败: %v", err)
-		return model.CustomAttributeResult{
+		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired, // 非必需属性失败时继续，必需属性失败时不继续
 		}
@@ -66,7 +65,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 
 	if validateResponse.Data.AttributeID == 0 {
 		logrus.Errorf("验证自定义属性值失败，属性ID为0")
-		return model.CustomAttributeResult{
+		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
 		}
@@ -81,7 +80,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	// 验证多语言名称不为空
 	if len(nameMultis) == 0 {
 		logrus.Errorf("验证响应中的多语言名称为空，属性值: %s", sanitizedValue)
-		return model.CustomAttributeResult{
+		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
 		}
@@ -107,7 +106,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 
 	if err != nil {
 		logrus.Errorf("添加自定义属性值失败: %v", err)
-		return model.CustomAttributeResult{
+		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
 		}
@@ -118,7 +117,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 		newValueID := int(addResponse.Info.Data.CustomAttributeRelation[0].AttributeValueID)
 		logrus.Infof("成功添加自定义属性值，新的属性值ID: %d", newValueID)
 
-		return model.CustomAttributeResult{
+		return shein.CustomAttributeResult{
 			Success:        true,
 			NewValueID:     newValueID,
 			Relations:      addResponse.Info.Data.CustomAttributeRelation,
@@ -127,7 +126,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	}
 
 	logrus.Errorf("添加自定义属性值失败，没有返回属性值ID")
-	return model.CustomAttributeResult{
+	return shein.CustomAttributeResult{
 		Success:        false,
 		ShouldContinue: !isRequired,
 	}
