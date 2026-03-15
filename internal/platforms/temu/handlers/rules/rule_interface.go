@@ -1,5 +1,5 @@
 ﻿// Package validation 提供验证规则接口定义
-package validation
+package rules
 
 import (
 	models "task-processor/internal/platforms/temu/api/product"

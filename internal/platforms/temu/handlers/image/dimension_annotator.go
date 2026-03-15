@@ -1,4 +1,4 @@
-// Package handlers 提供TEMU平台图片尺寸标注功能
+﻿// Package handlers 提供TEMU平台图片尺寸标注功能
 package image
 
 import (
@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
-	"task-processor/internal/platforms/temu/handlers/validation"
+	"task-processor/internal/platforms/temu/handlers/rules"
 
 	"github.com/sirupsen/logrus"
 
@@ -22,7 +22,7 @@ type ImageDimensionAnnotator struct {
 	openaiClient   *openaiClient.Client
 	downloader     *downloader.ImageDownloader
 	drawer         *DimensionDrawer
-	textRenderer   *validation.TextRenderer
+	textRenderer   *rules.TextRenderer
 	visionDetector *VisionDetector
 }
 
@@ -32,7 +32,7 @@ func NewImageDimensionAnnotator() *ImageDimensionAnnotator {
 		logger:         logrus.WithField("component", "ImageDimensionAnnotator"),
 		downloader:     downloader.NewImageDownloader(),
 		drawer:         NewDimensionDrawer(),
-		textRenderer:   validation.NewTextRenderer(),
+		textRenderer:   rules.NewTextRenderer(),
 		visionDetector: NewVisionDetector(nil),
 	}
 }
@@ -44,7 +44,7 @@ func NewImageDimensionAnnotatorWithOpenAI(client *openaiClient.Client) *ImageDim
 		openaiClient:   client,
 		downloader:     downloader.NewImageDownloader(),
 		drawer:         NewDimensionDrawer(),
-		textRenderer:   validation.NewTextRenderer(),
+		textRenderer:   rules.NewTextRenderer(),
 		visionDetector: NewVisionDetector(client),
 	}
 }

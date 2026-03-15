@@ -1,4 +1,4 @@
-// Package temu 提供TEMU平台的管道处理器注册表
+﻿// Package temu 提供TEMU平台的管道处理器注册表
 package temu
 
 import (
@@ -14,7 +14,7 @@ import (
 	"task-processor/internal/platforms/temu/handlers/sku"
 	"task-processor/internal/platforms/temu/handlers/store"
 	"task-processor/internal/platforms/temu/handlers/template"
-	"task-processor/internal/platforms/temu/handlers/validation"
+	"task-processor/internal/platforms/temu/handlers/rules"
 )
 
 // HandlerRegistryEntry 处理器注册表条目
@@ -94,7 +94,7 @@ func (pr *PipelineRegistry) registerFilterHandlers() {
 
 	pr.register("filter_rule", filter.NewFilterRuleHandler(managementClient.GetFilterRuleClient()))
 	pr.register("store_id", store.NewStoreIDHandler(managementClient.GetStoreClient()))
-	pr.register("text_check", validation.NewTextCheckHandler())
+	pr.register("text_check", rules.NewTextCheckHandler())
 	pr.register("parallel_variant", sku.NewParallelVariantHandler(managementClient.GetRawJsonDataAdapter(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
 	pr.register("cache_variants", sku.NewCacheVariantsHandler(managementClient.GetRawJsonDataAdapter(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
 	pr.register("variant_filter", sku.NewVariantFilterHandler(managementClient.GetFilterRuleClient()))
@@ -136,7 +136,7 @@ func (pr *PipelineRegistry) registerContentHandlers() {
 	pr.register("content_validation", commonPipeline.NewParallelHandler(
 		"内容验证并行处理",
 		product.NewProductNameValidator(),
-		validation.NewBulletPointsValidator(),
+		rules.NewBulletPointsValidator(),
 		product.NewProductDescriptionValidator(),
 		filter.NewSensitiveWordsFilter(),
 	))

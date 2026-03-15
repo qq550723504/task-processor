@@ -1,5 +1,5 @@
-// Package handlers 提供TEMU平台文本渲染功能
-package validation
+﻿// Package handlers 提供TEMU平台文本渲染功能
+package rules
 
 import (
 	"fmt"

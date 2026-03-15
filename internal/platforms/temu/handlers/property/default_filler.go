@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/validation"
+	"task-processor/internal/platforms/temu/handlers/rules"
 	"task-processor/internal/platforms/temu/types"
 
 	"github.com/sirupsen/logrus"
@@ -16,7 +16,7 @@ import (
 type DefaultPropertyFiller struct {
 	logger           *logrus.Entry
 	deduplicator     *PropertyDeduplicator
-	validationEngine *validation.ValidationRuleEngine
+	validationEngine *rules.ValidationRuleEngine
 }
 
 // NewDefaultPropertyFiller 创建新的默认属性填充器
@@ -24,7 +24,7 @@ func NewDefaultPropertyFiller(logger *logrus.Entry) *DefaultPropertyFiller {
 	return &DefaultPropertyFiller{
 		logger:           logger,
 		deduplicator:     NewPropertyDeduplicator(logger),
-		validationEngine: validation.NewValidationRuleEngine(logger),
+		validationEngine: rules.NewValidationRuleEngine(logger),
 	}
 }
 

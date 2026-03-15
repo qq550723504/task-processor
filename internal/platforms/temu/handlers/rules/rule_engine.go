@@ -1,5 +1,5 @@
 ﻿// Package validation 提供验证规则引擎
-package validation
+package rules
 
 import (
 	"fmt"

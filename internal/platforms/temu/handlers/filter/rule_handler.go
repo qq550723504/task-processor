@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/product"
-	"task-processor/internal/platforms/temu/handlers/validation"
+	"task-processor/internal/platforms/temu/handlers/rules"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +21,7 @@ type FilterRuleHandler struct {
 	// 注入的专职处理器
 	ruleManager    *FilterRuleManager
 	productChecker *product.ProductFilterChecker
-	ruleValidator  *validation.RuleValidator
+	ruleValidator  *rules.RuleValidator
 	statsProvider  *FilterRuleStatsProvider
 }
 
@@ -32,7 +32,7 @@ func NewFilterRuleHandler(filterRuleClient api.FilterRuleAPI) *FilterRuleHandler
 	// 创建专职处理器
 	ruleManager := NewFilterRuleManager(filterRuleClient, logger)
 	productChecker := product.NewProductFilterChecker(logger)
-	ruleValidator := validation.NewRuleValidator(logger)
+	ruleValidator := rules.NewRuleValidator(logger)
 	statsProvider := NewFilterRuleStatsProvider(ruleManager, logger)
 
 	return &FilterRuleHandler{

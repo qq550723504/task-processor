@@ -4,7 +4,7 @@ package property
 import (
 	"fmt"
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/validation"
+	"task-processor/internal/platforms/temu/handlers/rules"
 
 	"github.com/sirupsen/logrus"
 )
@@ -12,7 +12,7 @@ import (
 // PropertyValidationStage 属性验证阶段
 type PropertyValidationStage struct {
 	*BasePropertyStage
-	ruleEngine *validation.ValidationRuleEngine
+	ruleEngine *rules.ValidationRuleEngine
 	logger     *logrus.Entry
 }
 
@@ -20,13 +20,13 @@ type PropertyValidationStage struct {
 func NewPropertyValidationStage(logger *logrus.Entry) *PropertyValidationStage {
 	return &PropertyValidationStage{
 		BasePropertyStage: NewBasePropertyStage("属性验证阶段", 200),
-		ruleEngine:        validation.NewValidationRuleEngine(logger),
+		ruleEngine:        rules.NewValidationRuleEngine(logger),
 		logger:            logger,
 	}
 }
 
 // NewPropertyValidationStageWithEngine 创建带验证引擎的属性验证阶段
-func NewPropertyValidationStageWithEngine(logger *logrus.Entry, ruleEngine *validation.ValidationRuleEngine) *PropertyValidationStage {
+func NewPropertyValidationStageWithEngine(logger *logrus.Entry, ruleEngine *rules.ValidationRuleEngine) *PropertyValidationStage {
 	return &PropertyValidationStage{
 		BasePropertyStage: NewBasePropertyStage("属性验证阶段", 200),
 		ruleEngine:        ruleEngine,
@@ -39,7 +39,7 @@ func (s *PropertyValidationStage) Process(ctx *PropertyContext) error {
 	s.logger.Info("🔍 开始属性验证处理")
 
 	if s.ruleEngine == nil {
-		s.ruleEngine = validation.NewValidationRuleEngine(s.logger)
+		s.ruleEngine = rules.NewValidationRuleEngine(s.logger)
 	}
 
 	// 创建临时的ExtensionInfo来兼容现有接口
@@ -74,6 +74,6 @@ func (s *PropertyValidationStage) IsEnabled(ctx *PropertyContext) bool {
 }
 
 // SetRuleEngine 设置验证规则引擎
-func (s *PropertyValidationStage) SetRuleEngine(ruleEngine *validation.ValidationRuleEngine) {
+func (s *PropertyValidationStage) SetRuleEngine(ruleEngine *rules.ValidationRuleEngine) {
 	s.ruleEngine = ruleEngine
 }

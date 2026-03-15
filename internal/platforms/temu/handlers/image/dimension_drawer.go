@@ -1,11 +1,11 @@
-// Package handlers 提供TEMU平台尺寸标注绘制功能
+﻿// Package handlers 提供TEMU平台尺寸标注绘制功能
 package image
 
 import (
 	"fmt"
 	"image"
 	"image/color"
-	"task-processor/internal/platforms/temu/handlers/validation"
+	"task-processor/internal/platforms/temu/handlers/rules"
 
 	"github.com/sirupsen/logrus"
 )
@@ -13,7 +13,7 @@ import (
 // DimensionDrawer 尺寸绘制器
 type DimensionDrawer struct {
 	logger       *logrus.Entry
-	textRenderer *validation.TextRenderer
+	textRenderer *rules.TextRenderer
 	utils        *DrawingUtils
 }
 
@@ -21,7 +21,7 @@ type DimensionDrawer struct {
 func NewDimensionDrawer() *DimensionDrawer {
 	return &DimensionDrawer{
 		logger:       logrus.WithField("component", "DimensionDrawer"),
-		textRenderer: validation.NewTextRenderer(),
+		textRenderer: rules.NewTextRenderer(),
 		utils:        NewDrawingUtils(),
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/pipeline"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/temu/handlers/common"
-	"task-processor/internal/platforms/temu/handlers/validation"
+	"task-processor/internal/platforms/temu/handlers/rules"
 
 	"github.com/sirupsen/logrus"
 )
@@ -15,14 +15,14 @@ import (
 // ProductFilterChecker 产品筛选检查器
 type ProductFilterChecker struct {
 	logger        *logrus.Entry
-	ruleValidator *validation.RuleValidator
+	ruleValidator *rules.RuleValidator
 }
 
 // NewProductFilterChecker 创建新的产品筛选检查器
 func NewProductFilterChecker(logger *logrus.Entry) *ProductFilterChecker {
 	return &ProductFilterChecker{
 		logger:        logger.WithField("component", "ProductFilterChecker"),
-		ruleValidator: validation.NewRuleValidator(logger),
+		ruleValidator: rules.NewRuleValidator(logger),
 	}
 }
 

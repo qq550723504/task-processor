@@ -1,5 +1,5 @@
 ﻿// Package validation 提供TEMU平台的规则验证功能
-package validation
+package rules
 
 import (
 	"fmt"

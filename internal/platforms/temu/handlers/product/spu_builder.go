@@ -14,7 +14,7 @@ import (
 	"task-processor/internal/platforms/temu/handlers/common"
 	"task-processor/internal/platforms/temu/handlers/property"
 	"task-processor/internal/platforms/temu/handlers/template"
-	"task-processor/internal/platforms/temu/handlers/validation"
+	"task-processor/internal/platforms/temu/handlers/rules"
 
 	"github.com/sirupsen/logrus"
 )
@@ -29,7 +29,7 @@ var GetTemplateInfoFromContext = template.GetTemplateInfoFromContext
 // SpuBuilder SPU构建器
 type SpuBuilder struct {
 	logger         *logrus.Entry
-	textProcessor  *validation.TextProcessor
+	textProcessor  *rules.TextProcessor
 	priceHandler   *PriceHandler
 	skuBuilder     common.SkuBuilderInterface
 	specHandler    common.SpecHandlerInterface
@@ -46,7 +46,7 @@ func NewSpuBuilder(logger *logrus.Entry, openaiConfig *openaiClient.ClientConfig
 
 	return &SpuBuilder{
 		logger:         logger,
-		textProcessor:  validation.NewTextProcessor(),
+		textProcessor:  rules.NewTextProcessor(),
 		priceHandler:   NewPriceHandler(profitRuleClient),
 		skuBuilder:     skuBuilder,
 		specHandler:    specHandler,
