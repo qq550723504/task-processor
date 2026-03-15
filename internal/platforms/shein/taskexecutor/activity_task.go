@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/repo/client"
-	schedulerservice "task-processor/internal/platforms/shein/service/business_service"
+	schedulerservice "task-processor/internal/platforms/shein/operation"
 
 	"github.com/sirupsen/logrus"
 )

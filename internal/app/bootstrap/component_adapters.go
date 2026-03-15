@@ -1,4 +1,4 @@
-// Package bootstrap 提供组件适配器实现
+﻿// Package bootstrap 提供组件适配器实现
 package bootstrap
 
 import (
@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/di"
-	"task-processor/internal/platforms/shein/service/pipeline"
+	"task-processor/internal/platforms/shein/pipeline"
 	"task-processor/internal/platforms/temu"
 
 	"github.com/sirupsen/logrus"
@@ -410,3 +410,4 @@ func (t *TaskFetcherComponent) Stop(ctx context.Context) error {
 	t.logger.Info("✅ 任务获取器组件停止成功")
 	return nil
 }
+

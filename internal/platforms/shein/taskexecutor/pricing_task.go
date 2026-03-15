@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/shein/repo/client"
-	schedulerservice "task-processor/internal/platforms/shein/service/business_service"
+	schedulerservice "task-processor/internal/platforms/shein/operation"
 )
 
 // PricingTask SHEIN核价任务

@@ -1,4 +1,4 @@
-// Package service 提供处理器管理功能
+﻿// Package service 提供处理器管理功能
 package service
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/platforms/shein/service/pipeline"
+	"task-processor/internal/platforms/shein/pipeline"
 	"task-processor/internal/platforms/temu"
 )
 
@@ -115,3 +115,4 @@ func (s *processorServiceImpl) stopAllProcessors(ctx context.Context) {
 	// 不需要手动关闭，容器会在应用关闭时自动处理
 	s.logger.Info("✅ 所有处理器已停止")
 }
+

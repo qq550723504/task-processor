@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/shein/repo/client"
-	sheinscheduler "task-processor/internal/platforms/shein/service/business_service"
+	sheinscheduler "task-processor/internal/platforms/shein/operation"
 )
 
 // InventoryTask SHEIN库存监控任务

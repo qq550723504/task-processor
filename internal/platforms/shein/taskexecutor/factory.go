@@ -13,7 +13,7 @@ import (
 	"task-processor/internal/platforms/common/factory"
 	"task-processor/internal/platforms/shein/repo"
 	"task-processor/internal/platforms/shein/repo/client"
-	schedulerservice "task-processor/internal/platforms/shein/service/business_service"
+	schedulerservice "task-processor/internal/platforms/shein/operation"
 )
 
 // SheinTaskFactory SHEIN平台任务工厂

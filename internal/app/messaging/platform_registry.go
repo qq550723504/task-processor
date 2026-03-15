@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/clients/management"
 	platformAmazon "task-processor/internal/platforms/amazon"
-	"task-processor/internal/platforms/shein/service/pipeline"
+	"task-processor/internal/platforms/shein/pipeline"
 	"task-processor/internal/platforms/temu"
 
 	"github.com/sirupsen/logrus"
@@ -338,3 +338,4 @@ func containsPlatform(platforms []string, platform string) bool {
 func (r *PlatformRegistry) GetSharedAmazonProcessor() *amazon.AmazonProcessor {
 	return r.sharedAmazonProcessor
 }
+

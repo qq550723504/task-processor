@@ -6,7 +6,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
-	sheinscheduler "task-processor/internal/platforms/shein/service/business_service"
+	sheinscheduler "task-processor/internal/platforms/shein/operation"
 )
 
 // inventorySyncServiceAdapter 适配器，将SHEIN特定的InventorySyncService适配到通用接口

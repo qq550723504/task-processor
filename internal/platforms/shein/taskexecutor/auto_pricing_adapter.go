@@ -1,4 +1,4 @@
-// Package scheduler 提供SHEIN平台自动核价任务适配器
+﻿// Package scheduler 提供SHEIN平台自动核价任务适配器
 package scheduler
 
 import (
@@ -6,7 +6,7 @@ import (
 
 	commonscheduler "task-processor/internal/platforms/common/scheduler"
 	"task-processor/internal/platforms/shein/api/pricing"
-	schedulerservice "task-processor/internal/platforms/shein/service/business_service"
+	schedulerservice "task-processor/internal/platforms/shein/operation"
 
 	"github.com/sirupsen/logrus"
 )

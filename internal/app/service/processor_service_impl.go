@@ -14,7 +14,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/platforms/shein/service/pipeline"
+	"task-processor/internal/platforms/shein/pipeline"
 	"task-processor/internal/platforms/temu"
 
 	"github.com/sirupsen/logrus"
@@ -296,3 +296,4 @@ func (p *ProcessorHealthCheck) Check(ctx context.Context) error {
 
 	return nil
 }
+
