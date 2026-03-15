@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	sheinscheduler "task-processor/internal/platforms/shein/taskexecutor"
-	temuscheduler "task-processor/internal/platforms/temu/taskexecutor"
+	temuscheduler "task-processor/internal/platforms/temu/scheduler"
 )
 
 // createTemuFactory 创建TEMU任务工厂
