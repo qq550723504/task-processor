@@ -33,7 +33,7 @@ type EnrichedSkcInfo struct {
 	SkuInfo               []EnrichedSkuInfo `json:"sku_info"`
 	MallSellStatus        int               `json:"mall_sell_status"`
 	Abandoned             bool              `json:"abandoned"`
-	TagInfoList           []interface{}     `json:"tag_info_list"`
+	TagInfoList           []any     `json:"tag_info_list"`
 	ShelfFailReason       *string           `json:"shelf_fail_reason"`
 	HasOriginalImage      bool              `json:"has_original_image"`
 }

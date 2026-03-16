@@ -1,4 +1,4 @@
-// Package model 提供Amazon平台错误定义
+﻿// Package model 提供Amazon平台错误定义
 package model
 
 import (
@@ -56,7 +56,7 @@ var (
 type AmazonError struct {
 	Code    string                 `json:"code"`
 	Message string                 `json:"message"`
-	Details map[string]interface{} `json:"details,omitempty"`
+	Details map[string]any `json:"details,omitempty"`
 }
 
 // Error 实现error接口
@@ -72,14 +72,14 @@ func NewAmazonError(code, message string) *AmazonError {
 	return &AmazonError{
 		Code:    code,
 		Message: message,
-		Details: make(map[string]interface{}),
+		Details: make(map[string]any),
 	}
 }
 
 // WithDetails 添加错误详情
-func (e *AmazonError) WithDetails(key string, value interface{}) *AmazonError {
+func (e *AmazonError) WithDetails(key string, value any) *AmazonError {
 	if e.Details == nil {
-		e.Details = make(map[string]interface{})
+		e.Details = make(map[string]any)
 	}
 	e.Details[key] = value
 	return e

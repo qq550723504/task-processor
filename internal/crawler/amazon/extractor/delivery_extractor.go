@@ -1,4 +1,4 @@
-package extractor
+﻿package extractor
 
 import (
 	"regexp"
@@ -83,7 +83,7 @@ func (e *DeliveryExtractor) Extract(page playwright.Page, product *model.Product
 
 	// 转换结果
 	var deliveryInfo []string
-	if resultSlice, ok := result.([]interface{}); ok {
+	if resultSlice, ok := result.([]any); ok {
 		for _, item := range resultSlice {
 			if text, ok := item.(string); ok {
 				deliveryInfo = append(deliveryInfo, text)

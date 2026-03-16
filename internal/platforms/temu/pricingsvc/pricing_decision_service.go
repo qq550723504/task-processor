@@ -51,7 +51,7 @@ type CacheKey struct {
 
 // CacheItem 缓存项
 type CacheItem struct {
-	Data      interface{}
+	Data      any
 	ExpiresAt time.Time
 }
 

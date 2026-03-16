@@ -51,13 +51,13 @@ func (c *ActivityProductAPIClient) groupActivityProductsByPlatform(products []*a
 	return platformGroups
 }
 
-func (c *ActivityProductAPIClient) buildActivityProductBatchSaveRequest(platform string, products []*api.ActivityProductDTO) map[string]interface{} {
-	activityProductItems := make([]map[string]interface{}, 0, len(products))
+func (c *ActivityProductAPIClient) buildActivityProductBatchSaveRequest(platform string, products []*api.ActivityProductDTO) map[string]any {
+	activityProductItems := make([]map[string]any, 0, len(products))
 
 	for _, product := range products {
-		sitePriceInfoList := make([]map[string]interface{}, 0, len(product.SitePriceInfoList))
+		sitePriceInfoList := make([]map[string]any, 0, len(product.SitePriceInfoList))
 		for _, sitePrice := range product.SitePriceInfoList {
-			sitePriceInfoList = append(sitePriceInfoList, map[string]interface{}{
+			sitePriceInfoList = append(sitePriceInfoList, map[string]any{
 				"siteCode":    sitePrice.SiteCode,
 				"salePrice":   sitePrice.SalePrice,
 				"currency":    sitePrice.Currency,
@@ -65,7 +65,7 @@ func (c *ActivityProductAPIClient) buildActivityProductBatchSaveRequest(platform
 			})
 		}
 
-		item := map[string]interface{}{
+		item := map[string]any{
 			"skc":                 product.SKC,
 			"goodsName":           product.GoodsName,
 			"image":               product.Image,
@@ -106,7 +106,7 @@ func (c *ActivityProductAPIClient) buildActivityProductBatchSaveRequest(platform
 		region = products[0].Region
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"platform":         platform,
 		"tenantId":         tenantID,
 		"storeId":          c.StoreID,

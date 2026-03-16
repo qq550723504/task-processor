@@ -26,10 +26,10 @@ type InventorySyncResult struct {
 // 各平台需要实现此接口
 type InventorySyncService interface {
 	// FetchProductsForInventorySync 获取需要监控库存的产品列表
-	FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]interface{}, error)
+	FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]any, error)
 
 	// MonitorInventoryChanges 监控库存和价格变化
-	MonitorInventoryChanges(ctx context.Context, products []interface{}, tenantID, storeID int64) (*InventorySyncResult, error)
+	MonitorInventoryChanges(ctx context.Context, products []any, tenantID, storeID int64) (*InventorySyncResult, error)
 }
 
 // InventorySyncTask 通用库存同步任务

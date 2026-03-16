@@ -97,6 +97,6 @@ func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Prod
 }
 
 // GetStats 获取统计信息
-func (f *ProductFetcher) GetStats() map[string]interface{} {
-	return map[string]interface{}{"type": "local"}
+func (f *ProductFetcher) GetStats() map[string]any {
+	return map[string]any{"type": "local"}
 }

@@ -1,4 +1,4 @@
-// Package api 提供Amazon SP-API产品类型定义功能
+﻿// Package api 提供Amazon SP-API产品类型定义功能
 package api
 
 import (
@@ -15,19 +15,19 @@ type ProductTypeDefinition struct {
 	MarketplaceID        string                 `json:"marketplaceId"`
 	MarketplaceIDs       []string               `json:"marketplaceIds"`
 	ProductType          string                 `json:"productType"`
-	ProductTypeVersion   map[string]interface{} `json:"productTypeVersion"`
+	ProductTypeVersion   map[string]any `json:"productTypeVersion"`
 	Locale               string                 `json:"locale"`
 	Requirements         string                 `json:"requirements"`
 	RequirementsEnforced string                 `json:"requirementsEnforced"`
 	MetaSchema           *ProductTypeSchema     `json:"metaSchema,omitempty"`
 	Schema               *ProductTypeSchema     `json:"schema,omitempty"`
-	PropertyGroups       map[string]interface{} `json:"propertyGroups,omitempty"`
+	PropertyGroups       map[string]any `json:"propertyGroups,omitempty"`
 }
 
 // ProductTypeSchema 产品类型Schema
 type ProductTypeSchema struct {
-	Link       interface{}            `json:"link,omitempty"` // 可能是string或object
-	Properties map[string]interface{} `json:"properties,omitempty"`
+	Link       any            `json:"link,omitempty"` // 可能是string或object
+	Properties map[string]any `json:"properties,omitempty"`
 	Required   []string               `json:"required,omitempty"`
 	Type       string                 `json:"type,omitempty"`
 	Checksum   string                 `json:"checksum,omitempty"`
@@ -133,13 +133,13 @@ func (c *Client) AnalyzeProductTypeSchema(ctx context.Context, productType strin
 	if len(definition.PropertyGroups) > 0 {
 		c.logger.Info("📂 属性组:")
 		for groupName, groupDef := range definition.PropertyGroups {
-			if groupMap, ok := groupDef.(map[string]interface{}); ok {
+			if groupMap, ok := groupDef.(map[string]any); ok {
 				title := groupMap["title"]
 				description := groupMap["description"]
 				c.logger.Infof("  📁 %s: %s - %s", groupName, title, description)
 
 				// 显示属性组中的属性
-				if propertyNames, ok := groupMap["propertyNames"].([]interface{}); ok {
+				if propertyNames, ok := groupMap["propertyNames"].([]any); ok {
 					c.logger.Infof("    属性数量: %d", len(propertyNames))
 					if groupName == "product_identity" || groupName == "product_details" {
 						c.logger.Infof("    包含属性:")
@@ -156,7 +156,7 @@ func (c *Client) AnalyzeProductTypeSchema(ctx context.Context, productType strin
 
 	// 检查schema链接
 	if definition.Schema != nil {
-		if schemaMap, ok := definition.Schema.Link.(map[string]interface{}); ok {
+		if schemaMap, ok := definition.Schema.Link.(map[string]any); ok {
 			if resource, ok := schemaMap["resource"].(string); ok {
 				c.logger.Infof("📋 Schema资源链接: %s", resource)
 
@@ -176,12 +176,12 @@ func (c *Client) AnalyzeProductTypeSchema(ctx context.Context, productType strin
 }
 
 // DownloadSchema 下载schema内容（公开方法）
-func (c *Client) DownloadSchema(ctx context.Context, url string) (map[string]interface{}, error) {
+func (c *Client) DownloadSchema(ctx context.Context, url string) (map[string]any, error) {
 	return c.downloadSchema(ctx, url)
 }
 
 // downloadSchema 下载schema内容
-func (c *Client) downloadSchema(ctx context.Context, url string) (map[string]interface{}, error) {
+func (c *Client) downloadSchema(ctx context.Context, url string) (map[string]any, error) {
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("下载schema失败: %w", err)
@@ -192,7 +192,7 @@ func (c *Client) downloadSchema(ctx context.Context, url string) (map[string]int
 		return nil, fmt.Errorf("下载schema失败，状态码: %d", resp.StatusCode)
 	}
 
-	var schemaContent map[string]interface{}
+	var schemaContent map[string]any
 	if err := c.parseResponse(resp, &schemaContent); err != nil {
 		return nil, fmt.Errorf("解析schema失败: %w", err)
 	}
@@ -201,12 +201,12 @@ func (c *Client) downloadSchema(ctx context.Context, url string) (map[string]int
 }
 
 // analyzeSchemaContent 分析schema内容
-func (c *Client) analyzeSchemaContent(schema map[string]interface{}) {
+func (c *Client) analyzeSchemaContent(schema map[string]any) {
 	c.logger.Info("📋 Schema内容分析:")
 
 	// 获取必需属性
 	var requiredAttrs []string
-	if required, ok := schema["required"].([]interface{}); ok {
+	if required, ok := schema["required"].([]any); ok {
 		for _, attr := range required {
 			if attrStr, ok := attr.(string); ok {
 				requiredAttrs = append(requiredAttrs, attrStr)
@@ -220,7 +220,7 @@ func (c *Client) analyzeSchemaContent(schema map[string]interface{}) {
 	}
 
 	// 分析所有属性
-	if properties, ok := schema["properties"].(map[string]interface{}); ok {
+	if properties, ok := schema["properties"].(map[string]any); ok {
 		c.logger.Infof("📝 所有属性 (%d个):", len(properties))
 
 		requiredMap := make(map[string]bool)
@@ -241,7 +241,7 @@ func (c *Client) analyzeSchemaContent(schema map[string]interface{}) {
 				}
 
 				c.logger.Infof("  ✅ %s%s", attrName, requiredMark)
-				if attrDefMap, ok := attrDef.(map[string]interface{}); ok {
+				if attrDefMap, ok := attrDef.(map[string]any); ok {
 					if desc, ok := attrDefMap["description"].(string); ok {
 						c.logger.Infof("      描述: %s", desc)
 					}
@@ -260,17 +260,17 @@ func (c *Client) analyzeSchemaContent(schema map[string]interface{}) {
 }
 
 // analyzeUnitCountStructure 详细分析unit_count字段结构
-func (c *Client) analyzeUnitCountStructure(unitCountDef map[string]interface{}, indent string) {
+func (c *Client) analyzeUnitCountStructure(unitCountDef map[string]any, indent string) {
 	// 分析items结构
-	if items, ok := unitCountDef["items"].(map[string]interface{}); ok {
+	if items, ok := unitCountDef["items"].(map[string]any); ok {
 		c.logger.Infof("%sitems结构:", indent)
 
 		// 分析properties
-		if properties, ok := items["properties"].(map[string]interface{}); ok {
+		if properties, ok := items["properties"].(map[string]any); ok {
 			c.logger.Infof("%s  properties:", indent)
 			for propName, propDef := range properties {
 				c.logger.Infof("%s    %s:", indent, propName)
-				if propDefMap, ok := propDef.(map[string]interface{}); ok {
+				if propDefMap, ok := propDef.(map[string]any); ok {
 					// 显示类型
 					if propType, ok := propDefMap["type"].(string); ok {
 						c.logger.Infof("%s      type: %s", indent, propType)
@@ -282,21 +282,21 @@ func (c *Client) analyzeUnitCountStructure(unitCountDef map[string]interface{}, 
 					}
 
 					// 显示枚举值
-					if enum, ok := propDefMap["enum"].([]interface{}); ok {
+					if enum, ok := propDefMap["enum"].([]any); ok {
 						c.logger.Infof("%s      enum: %v", indent, enum)
 					}
 
 					// 如果是type字段，进一步分析其properties
 					if propName == "type" {
-						if typeProps, ok := propDefMap["properties"].(map[string]interface{}); ok {
+						if typeProps, ok := propDefMap["properties"].(map[string]any); ok {
 							c.logger.Infof("%s      type字段的properties:", indent)
 							for typePropName, typePropDef := range typeProps {
 								c.logger.Infof("%s        %s:", indent, typePropName)
-								if typePropDefMap, ok := typePropDef.(map[string]interface{}); ok {
+								if typePropDefMap, ok := typePropDef.(map[string]any); ok {
 									if typeType, ok := typePropDefMap["type"].(string); ok {
 										c.logger.Infof("%s          type: %s", indent, typeType)
 									}
-									if typeEnum, ok := typePropDefMap["enum"].([]interface{}); ok {
+									if typeEnum, ok := typePropDefMap["enum"].([]any); ok {
 										c.logger.Infof("%s          enum: %v", indent, typeEnum)
 									}
 								}
@@ -304,7 +304,7 @@ func (c *Client) analyzeUnitCountStructure(unitCountDef map[string]interface{}, 
 						}
 
 						// 检查type字段的required
-						if typeRequired, ok := propDefMap["required"].([]interface{}); ok {
+						if typeRequired, ok := propDefMap["required"].([]any); ok {
 							c.logger.Infof("%s      type字段required: %v", indent, typeRequired)
 						}
 					}
@@ -321,7 +321,7 @@ func (c *Client) analyzeUnitCountStructure(unitCountDef map[string]interface{}, 
 		}
 
 		// 分析required字段
-		if required, ok := items["required"].([]interface{}); ok {
+		if required, ok := items["required"].([]any); ok {
 			c.logger.Infof("%s  required: %v", indent, required)
 		}
 

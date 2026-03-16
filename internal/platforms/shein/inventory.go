@@ -4,8 +4,8 @@ package shein
 // LocalInventoryInfo 本地库存信息（避免与其他包冲突）
 type LocalInventoryInfo struct {
 	SpuName            string              `json:"spu_name"`
-	ProductNameCh      interface{}         `json:"product_name_ch"`
-	MainImageThumbnail interface{}         `json:"main_image_thumbnail"`
+	ProductNameCh      any         `json:"product_name_ch"`
+	MainImageThumbnail any         `json:"main_image_thumbnail"`
 	SkcInfo            []LocalSkcInventory `json:"skc_info"`
 	IfFbmStore         bool                `json:"if_fbm_store"`
 }

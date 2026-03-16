@@ -1,4 +1,4 @@
-// Package distributed 提供分布式爬虫客户端
+﻿// Package distributed 提供分布式爬虫客户端
 package distributed
 
 import (
@@ -128,10 +128,10 @@ func (c *DistributedCrawlerClient) ensureListenerStarted() error {
 }
 
 // buildMessageData 构建消息数据
-func (c *DistributedCrawlerClient) buildMessageData(taskMessage interface{}, req *CrawlRequest) map[string]interface{} {
+func (c *DistributedCrawlerClient) buildMessageData(taskMessage any, req *CrawlRequest) map[string]any {
 	// 直接构建符合 model.Task 结构的消息数据
 	// 注意：字段名使用大写开头，与 model.Task 的 JSON 标签一致
-	messageData := map[string]interface{}{
+	messageData := map[string]any{
 		"id":            req.TaskID,
 		"tenantId":      req.TenantID,
 		"storeId":       req.StoreID,
@@ -171,7 +171,7 @@ func (c *DistributedCrawlerClient) createPendingTask(ctx context.Context, taskID
 // publishTask 发布任务到RabbitMQ
 func (c *DistributedCrawlerClient) publishTask(
 	taskModel *model.Task,
-	messageData map[string]interface{},
+	messageData map[string]any,
 	queueName, routingKey string,
 	pendingTask *PendingTask,
 ) error {
@@ -233,11 +233,11 @@ func (c *DistributedCrawlerClient) SetTimeout(timeout time.Duration) {
 }
 
 // GetStats 获取统计信息
-func (c *DistributedCrawlerClient) GetStats() map[string]interface{} {
+func (c *DistributedCrawlerClient) GetStats() map[string]any {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"pending_tasks": len(c.pendingTasks),
 		"timeout":       c.timeout.String(),
 	}

@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -79,7 +79,7 @@ func (h *BrandClearHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) err
 	if len(temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties) > 0 {
 		h.logger.Infof("清除GoodsBrandProperties，原有%d个品牌属性",
 			len(temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties))
-		temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties = []interface{}{}
+		temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsBrandProperties = []any{}
 	}
 
 	// 设置NotSelectBrand为true（表示不选择品牌）

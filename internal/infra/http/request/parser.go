@@ -1,4 +1,4 @@
-// Package request 提供 HTTP 请求解析工具
+﻿// Package request 提供 HTTP 请求解析工具
 package request
 
 import (
@@ -37,7 +37,7 @@ func ParseJSON(r *http.Request, v any) error {
 //
 // 返回值:
 //   - error: 解析或验证错误
-func ParseJSONWithValidation(r *http.Request, v interface{}, validateFn func() error) error {
+func ParseJSONWithValidation(r *http.Request, v any, validateFn func() error) error {
 	if err := ParseJSON(r, v); err != nil {
 		return err
 	}

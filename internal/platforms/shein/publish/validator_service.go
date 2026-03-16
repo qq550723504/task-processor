@@ -156,7 +156,7 @@ func (v *PublishProductValidator) validateSKCAndSKUData(ctx *shein.TaskContext) 
 }
 
 // validateQuantityTypeAndValue 验证数量类型和数量值的匹配性
-func (v *PublishProductValidator) validateQuantityTypeAndValue(sku interface{}, skcIndex, skuIndex int) string {
+func (v *PublishProductValidator) validateQuantityTypeAndValue(sku any, skcIndex, skuIndex int) string {
 	// 由于SKU可能是不同的类型，我们需要通过反射或类型断言来获取数量信息
 	// 这里假设sku有QuantityInfo字段
 
@@ -164,9 +164,9 @@ func (v *PublishProductValidator) validateQuantityTypeAndValue(sku interface{}, 
 	var quantityType, quantity *int
 
 	// 如果是map类型（JSON反序列化后）
-	if skuMap, ok := sku.(map[string]interface{}); ok {
+	if skuMap, ok := sku.(map[string]any); ok {
 		if quantityInfo, exists := skuMap["quantity_info"]; exists {
-			if qiMap, ok := quantityInfo.(map[string]interface{}); ok {
+			if qiMap, ok := quantityInfo.(map[string]any); ok {
 				if qt, exists := qiMap["quantity_type"]; exists {
 					if qtInt, ok := qt.(float64); ok {
 						qtIntVal := int(qtInt)
@@ -334,13 +334,13 @@ func (v *PublishProductValidator) saveValidationReportToFile(filename string, re
 }
 
 // copySKCImageToSKU 从SKC复制图片到SKU
-func (v *PublishProductValidator) copySKCImageToSKU(skc interface{}, sku interface{}) error {
+func (v *PublishProductValidator) copySKCImageToSKU(skc any, sku any) error {
 	// 由于我们知道这些是product.SKC和product.SKU类型，我们需要进行类型转换
-	// 但是由于它们在JSON序列化后可能是map[string]interface{}类型，我们需要处理这种情况
+	// 但是由于它们在JSON序列化后可能是map[string]any类型，我们需要处理这种情况
 
 	// 尝试作为map处理（JSON反序列化后的情况）
-	skcMap, skcOk := skc.(map[string]interface{})
-	skuMap, skuOk := sku.(map[string]interface{})
+	skcMap, skcOk := skc.(map[string]any)
+	skuMap, skuOk := sku.(map[string]any)
 
 	if !skcOk || !skuOk {
 		return fmt.Errorf("SKC或SKU类型转换失败")
@@ -352,7 +352,7 @@ func (v *PublishProductValidator) copySKCImageToSKU(skc interface{}, sku interfa
 		return fmt.Errorf("SKC没有图片信息")
 	}
 
-	skcImageMap, ok := skcImageInfo.(map[string]interface{})
+	skcImageMap, ok := skcImageInfo.(map[string]any)
 	if !ok {
 		return fmt.Errorf("SKC图片信息格式错误")
 	}
@@ -362,22 +362,22 @@ func (v *PublishProductValidator) copySKCImageToSKU(skc interface{}, sku interfa
 		return fmt.Errorf("SKC没有图片列表")
 	}
 
-	skcImages, ok := skcImageList.([]interface{})
+	skcImages, ok := skcImageList.([]any)
 	if !ok || len(skcImages) == 0 {
 		return fmt.Errorf("SKC图片列表为空")
 	}
 
 	// 获取第一张图片
-	firstImage, ok := skcImages[0].(map[string]interface{})
+	firstImage, ok := skcImages[0].(map[string]any)
 	if !ok {
 		return fmt.Errorf("SKC第一张图片格式错误")
 	}
 
 	// 创建SKU图片信息
-	skuImageInfo := map[string]interface{}{
+	skuImageInfo := map[string]any{
 		"image_group_code": nil,
-		"image_info_list": []interface{}{
-			map[string]interface{}{
+		"image_info_list": []any{
+			map[string]any{
 				"image_type":              firstImage["image_type"],
 				"image_sort":              1, // SKU图片排序固定为1
 				"image_url":               firstImage["image_url"],
@@ -390,7 +390,7 @@ func (v *PublishProductValidator) copySKCImageToSKU(skc interface{}, sku interfa
 				"commodity_category_flag": firstImage["commodity_category_flag"],
 			},
 		},
-		"original_image_info_list": []interface{}{},
+		"original_image_info_list": []any{},
 	}
 
 	// 设置SKU的图片信息
@@ -400,8 +400,8 @@ func (v *PublishProductValidator) copySKCImageToSKU(skc interface{}, sku interfa
 }
 
 // fixSKUImageSorting 修复SKU图片排序
-func (v *PublishProductValidator) fixSKUImageSorting(sku interface{}, supplierSKU string, report *ValidationReport) int {
-	skuMap, ok := sku.(map[string]interface{})
+func (v *PublishProductValidator) fixSKUImageSorting(sku any, supplierSKU string, report *ValidationReport) int {
+	skuMap, ok := sku.(map[string]any)
 	if !ok {
 		return 0
 	}
@@ -411,7 +411,7 @@ func (v *PublishProductValidator) fixSKUImageSorting(sku interface{}, supplierSK
 		return 0
 	}
 
-	imageInfoMap, ok := imageInfo.(map[string]interface{})
+	imageInfoMap, ok := imageInfo.(map[string]any)
 	if !ok {
 		return 0
 	}
@@ -421,7 +421,7 @@ func (v *PublishProductValidator) fixSKUImageSorting(sku interface{}, supplierSK
 		return 0
 	}
 
-	images, ok := imageList.([]interface{})
+	images, ok := imageList.([]any)
 	if !ok || len(images) == 0 {
 		return 0
 	}
@@ -434,14 +434,14 @@ func (v *PublishProductValidator) fixSKUImageSorting(sku interface{}, supplierSK
 			supplierSKU, len(images))
 		report.FixedIssues = append(report.FixedIssues, fixMsg)
 		// 只保留第一张图片
-		imageInfoMap["image_info_list"] = []interface{}{images[0]}
-		images = []interface{}{images[0]}
+		imageInfoMap["image_info_list"] = []any{images[0]}
+		images = []any{images[0]}
 		fixedCount++
 	}
 
 	// 检查第一张图片的排序
 	if len(images) > 0 {
-		if imageMap, ok := images[0].(map[string]interface{}); ok {
+		if imageMap, ok := images[0].(map[string]any); ok {
 			if imageSort, exists := imageMap["image_sort"]; exists {
 				if sortValue, ok := imageSort.(float64); ok && int(sortValue) != 1 {
 					fixMsg := fmt.Sprintf("修复多件商品SKU主图排序: SKU %s 从%d修复为1",

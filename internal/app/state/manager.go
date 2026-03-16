@@ -34,7 +34,7 @@ func NewMemoryManager(ctx context.Context, managementClientMgr *management.Clien
 }
 
 // GetStats 获取统计信息
-func (m *MemoryManager) GetStats() map[string]interface{} {
+func (m *MemoryManager) GetStats() map[string]any {
 	return map[string]any{
 		"cookies_count":        len(m.CookieManager.GetAllCookies()),
 		"paused_shops_count":   len(m.ShopPauseManager.pauses),

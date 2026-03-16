@@ -1,4 +1,4 @@
-package client
+﻿package client
 
 import (
 	"fmt"
@@ -124,12 +124,12 @@ func (b *BaseAPIClient) GetHTTPClient() *req.Client {
 }
 
 // APIRequest 统一的API请求方法（导出版本）
-func (b *BaseAPIClient) APIRequest(method, url string, requestBody interface{}, result interface{}) error {
+func (b *BaseAPIClient) APIRequest(method, url string, requestBody any, result any) error {
 	return b.apiRequest(method, url, requestBody, result)
 }
 
 // apiRequest 统一的API请求方法
-func (b *BaseAPIClient) apiRequest(method, url string, requestBody interface{}, result interface{}) error {
+func (b *BaseAPIClient) apiRequest(method, url string, requestBody any, result any) error {
 	// 创建请求头
 	headers := b.createHeaders(url)
 

@@ -46,7 +46,7 @@ func (p *PricingAPI) BatchHandleCostDiscuss(reqBody *pricing.BatchHandleCostDisc
 func (p *PricingAPI) BargainPage(req *pricing.PageRequest, status int) (*pricing.BargainPageResponse, error) {
 	url := fmt.Sprintf("%s%s?page_num=%d&page_size=%d", p.GetBaseURL(), client.GetBargainPageNewEndpoint(), req.PageNum, req.PageSize)
 
-	reqBody := map[string]interface{}{
+	reqBody := map[string]any{
 		"bargain_status": status,
 	}
 

@@ -272,7 +272,7 @@ func (h *CommitDetailHandler) updateCategoryTree(temuProduct *temuapi.Product, t
 }
 
 // GetCommitDetailFromContext 从强类型上下文中获取提交详情
-func GetCommitDetailFromContext(temuCtx *temucontext.TemuTaskContext) (interface{}, bool) {
+func GetCommitDetailFromContext(temuCtx *temucontext.TemuTaskContext) (any, bool) {
 	// 优先从强类型上下文字段获取
 	if temuCtx.CommitDetail != nil {
 		return temuCtx.CommitDetail, true

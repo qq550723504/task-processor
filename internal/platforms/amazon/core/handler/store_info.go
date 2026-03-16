@@ -1,4 +1,4 @@
-// Package handler 提供店铺信息处理器实现
+﻿// Package handler 提供店铺信息处理器实现
 package handler
 
 import (
@@ -29,7 +29,7 @@ func (h *StoreInfoHandler) Handle(ctx context.Context, taskContext *model.TaskCo
 	}
 
 	// 简化实现：直接设置店铺信息
-	storeInfo := map[string]interface{}{
+	storeInfo := map[string]any{
 		"store_id": storeID,
 		"name":     "Amazon Store",
 		"status":   "active",

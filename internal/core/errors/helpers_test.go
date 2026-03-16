@@ -1,4 +1,4 @@
-package errors
+﻿package errors
 
 import (
 	"context"
@@ -12,12 +12,12 @@ type mockLogger struct {
 	logs []string
 }
 
-func (m *mockLogger) Error(args ...interface{})                 { m.logs = append(m.logs, "ERROR") }
-func (m *mockLogger) Errorf(format string, args ...interface{}) { m.logs = append(m.logs, "ERROR") }
-func (m *mockLogger) Warn(args ...interface{})                  { m.logs = append(m.logs, "WARN") }
-func (m *mockLogger) Warnf(format string, args ...interface{})  { m.logs = append(m.logs, "WARN") }
-func (m *mockLogger) Info(args ...interface{})                  { m.logs = append(m.logs, "INFO") }
-func (m *mockLogger) Infof(format string, args ...interface{})  { m.logs = append(m.logs, "INFO") }
+func (m *mockLogger) Error(args ...any)                 { m.logs = append(m.logs, "ERROR") }
+func (m *mockLogger) Errorf(format string, args ...any) { m.logs = append(m.logs, "ERROR") }
+func (m *mockLogger) Warn(args ...any)                  { m.logs = append(m.logs, "WARN") }
+func (m *mockLogger) Warnf(format string, args ...any)  { m.logs = append(m.logs, "WARN") }
+func (m *mockLogger) Info(args ...any)                  { m.logs = append(m.logs, "INFO") }
+func (m *mockLogger) Infof(format string, args ...any)  { m.logs = append(m.logs, "INFO") }
 
 func TestRetry_Success(t *testing.T) {
 	ctx := context.Background()

@@ -51,13 +51,13 @@ func (c *ActivityRegistrationAPIClient) groupRegistrationsByPlatform(registratio
 	return platformGroups
 }
 
-func (c *ActivityRegistrationAPIClient) buildRegistrationBatchSaveRequest(platform string, registrations []*api.ActivityRegistrationDTO) map[string]interface{} {
-	registrationItems := make([]map[string]interface{}, 0, len(registrations))
+func (c *ActivityRegistrationAPIClient) buildRegistrationBatchSaveRequest(platform string, registrations []*api.ActivityRegistrationDTO) map[string]any {
+	registrationItems := make([]map[string]any, 0, len(registrations))
 
 	for _, registration := range registrations {
-		sitePriceInfoList := make([]map[string]interface{}, 0, len(registration.SitePriceInfoList))
+		sitePriceInfoList := make([]map[string]any, 0, len(registration.SitePriceInfoList))
 		for _, sitePrice := range registration.SitePriceInfoList {
-			sitePriceInfoList = append(sitePriceInfoList, map[string]interface{}{
+			sitePriceInfoList = append(sitePriceInfoList, map[string]any{
 				"siteCode":    sitePrice.SiteCode,
 				"salePrice":   sitePrice.SalePrice,
 				"currency":    sitePrice.Currency,
@@ -65,7 +65,7 @@ func (c *ActivityRegistrationAPIClient) buildRegistrationBatchSaveRequest(platfo
 			})
 		}
 
-		item := map[string]interface{}{
+		item := map[string]any{
 			"skc":                registration.SKC,
 			"goodsName":          registration.GoodsName,
 			"image":              registration.Image,
@@ -99,7 +99,7 @@ func (c *ActivityRegistrationAPIClient) buildRegistrationBatchSaveRequest(platfo
 		activityName = registrations[0].ActivityName
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"platform":            platform,
 		"tenantId":            tenantID,
 		"storeId":             c.StoreID,

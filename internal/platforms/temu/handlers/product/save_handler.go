@@ -185,6 +185,6 @@ func (h *ProductSaveHandler) getTotalSkuCount(skcList []temuapi.Skc) int {
 }
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
-func (h *ProductSaveHandler) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
+func (h *ProductSaveHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
 	return jsonutil.MarshalWithoutHTMLEscape(v)
 }

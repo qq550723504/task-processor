@@ -248,9 +248,9 @@ func (v *PropertySelectionValidator) isValueInCandidates(value string, candidate
 // GetSelectionConstraintSummary 获取选择约束摘要信息
 func (v *PropertySelectionValidator) GetSelectionConstraintSummary(
 	templateProps []temutemplate.TemplateRespGoodsProperty,
-) map[string]interface{} {
+) map[string]any {
 
-	summary := map[string]interface{}{
+	summary := map[string]any{
 		"total_properties":     len(templateProps),
 		"selection_properties": 0,
 		"single_choice":        0,

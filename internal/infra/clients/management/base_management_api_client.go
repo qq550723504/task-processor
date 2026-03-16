@@ -57,7 +57,7 @@ func (m *ManagementAPIClient) getAccessToken() (string, error) {
 }
 
 // apiRequest 统一的API请求方法
-func (m *ManagementAPIClient) apiRequest(method, url string, requestBody interface{}, result interface{}) error {
+func (m *ManagementAPIClient) apiRequest(method, url string, requestBody any, result any) error {
 	token, err := m.getAccessToken()
 	if err != nil {
 		return fmt.Errorf("获取访问令牌失败: %w", err)
@@ -78,11 +78,11 @@ func (m *ManagementAPIClient) apiRequest(method, url string, requestBody interfa
 		request.SetBearerAuthToken(token)
 	}
 
-	var resp interface{}
+	var resp any
 	switch strings.ToUpper(method) {
 	case http.MethodGet:
 		if requestBody != nil {
-			if params, ok := requestBody.(map[string]interface{}); ok {
+			if params, ok := requestBody.(map[string]any); ok {
 				request.SetQueryParams(convertToStringMap(params))
 			}
 		}
@@ -123,7 +123,7 @@ func (m *ManagementAPIClient) apiRequest(method, url string, requestBody interfa
 	return nil
 }
 
-func convertToStringMap(params map[string]interface{}) map[string]string {
+func convertToStringMap(params map[string]any) map[string]string {
 	result := make(map[string]string)
 	for key, value := range params {
 		if value != nil {
@@ -174,7 +174,7 @@ func NewNonRetryableError(message string, err error) *NonRetryableError {
 type APIResponse struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Data    any `json:"data,omitempty"`
 }
 
 // ProcessAPIResponse 处理API响应

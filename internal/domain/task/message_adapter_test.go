@@ -1,4 +1,4 @@
-package task
+﻿package task
 
 import (
 	"testing"
@@ -167,7 +167,7 @@ func TestMessageAdapter_MessageToTask(t *testing.T) {
 	msg := &Message{
 		ID:   "12345",
 		Type: "task",
-		Payload: map[string]interface{}{
+		Payload: map[string]any{
 			"taskId":        float64(12345), // JSON 数字默认是 float64
 			"tenantId":      float64(1),
 			"storeId":       float64(100),

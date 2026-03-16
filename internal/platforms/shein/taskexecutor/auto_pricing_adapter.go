@@ -28,7 +28,7 @@ func NewSheinAutoPricingAdapter(pricingService schedulerservice.AutoPricingServi
 }
 
 // FetchPendingPriceProducts 获取待核价产品列表
-func (a *SheinAutoPricingAdapter) FetchPendingPriceProducts(ctx context.Context, startDate, endDate string) ([]interface{}, error) {
+func (a *SheinAutoPricingAdapter) FetchPendingPriceProducts(ctx context.Context, startDate, endDate string) ([]any, error) {
 	a.logger.Debug("开始获取Shein待核价产品列表")
 
 	// 调用Shein的服务获取待核价产品
@@ -38,7 +38,7 @@ func (a *SheinAutoPricingAdapter) FetchPendingPriceProducts(ctx context.Context,
 	}
 
 	// 转换为interface{}切片
-	result := make([]interface{}, len(products))
+	result := make([]any, len(products))
 	for i, p := range products {
 		result[i] = p
 	}
@@ -47,7 +47,7 @@ func (a *SheinAutoPricingAdapter) FetchPendingPriceProducts(ctx context.Context,
 }
 
 // ApplyPricingRules 应用核价规则
-func (a *SheinAutoPricingAdapter) ApplyPricingRules(ctx context.Context, products []interface{}, storeID int64, enableRebargain bool) ([]interface{}, error) {
+func (a *SheinAutoPricingAdapter) ApplyPricingRules(ctx context.Context, products []any, storeID int64, enableRebargain bool) ([]any, error) {
 	a.logger.Debug("开始应用Shein核价规则")
 
 	// 转换回Shein的产品类型
@@ -65,7 +65,7 @@ func (a *SheinAutoPricingAdapter) ApplyPricingRules(ctx context.Context, product
 	}
 
 	// 转换为interface{}切片
-	result := make([]interface{}, len(decisions))
+	result := make([]any, len(decisions))
 	for i, d := range decisions {
 		result[i] = d
 	}
@@ -74,7 +74,7 @@ func (a *SheinAutoPricingAdapter) ApplyPricingRules(ctx context.Context, product
 }
 
 // SubmitPricingResults 提交核价结果
-func (a *SheinAutoPricingAdapter) SubmitPricingResults(ctx context.Context, results []interface{}) (*commonscheduler.PricingStats, error) {
+func (a *SheinAutoPricingAdapter) SubmitPricingResults(ctx context.Context, results []any) (*commonscheduler.PricingStats, error) {
 	a.logger.Debug("开始提交Shein核价结果")
 
 	// 转换回Shein的决策类型

@@ -1,4 +1,4 @@
-// Package fetcher 提供分布式产品数据获取功能
+﻿// Package fetcher 提供分布式产品数据获取功能
 package fetcher
 
 import (
@@ -262,8 +262,8 @@ func (f *DistributedProductFetcher) FetchVariants(req *domainProduct.FetchReques
 }
 
 // GetStats 获取统计信息
-func (f *DistributedProductFetcher) GetStats() map[string]interface{} {
-	stats := map[string]interface{}{
+func (f *DistributedProductFetcher) GetStats() map[string]any {
+	stats := map[string]any{
 		"type": "distributed",
 	}
 

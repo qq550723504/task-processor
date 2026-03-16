@@ -42,7 +42,7 @@ func (s *schedulerServiceImpl) startScheduledTasks() error {
 	// 启动所有平台的任务
 	for _, platformConfig := range platformConfigs {
 		if err := s.startPlatformTasks(platformConfig, cfg); err != nil {
-			log.WithFields(map[string]interface{}{
+			log.WithFields(map[string]any{
 				logger.FieldPlatform: platformConfig.PlatformName,
 			}).WithError(err).Error("启动调度任务失败")
 			// 继续启动其他平台，不中断

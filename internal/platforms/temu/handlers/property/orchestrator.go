@@ -119,15 +119,15 @@ func (o *PropertyMappingOrchestrator) ValidateConfiguration() error {
 }
 
 // GetProcessingStats 获取处理统计信息（用于监控）
-func (o *PropertyMappingOrchestrator) GetProcessingStats() map[string]interface{} {
+func (o *PropertyMappingOrchestrator) GetProcessingStats() map[string]any {
 	stages := o.pipeline.GetStages()
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 
 	stats["total_stages"] = len(stages)
 
-	stageInfo := make([]map[string]interface{}, 0, len(stages))
+	stageInfo := make([]map[string]any, 0, len(stages))
 	for _, stage := range stages {
-		info := map[string]interface{}{
+		info := map[string]any{
 			"name":    stage.GetName(),
 			"order":   stage.GetOrder(),
 			"enabled": stage.IsEnabled(nil), // 这里传nil，实际使用时需要传入真实的context

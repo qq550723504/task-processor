@@ -1,4 +1,4 @@
-// Package handler 提供价格处理器实现
+﻿// Package handler 提供价格处理器实现
 package handler
 
 import (
@@ -59,7 +59,7 @@ func (h *PricingHandler) Handle(ctx context.Context, taskContext *model.TaskCont
 }
 
 // calculatePrice 计算价格
-func (h *PricingHandler) calculatePrice(data map[string]interface{}) float64 {
+func (h *PricingHandler) calculatePrice(data map[string]any) float64 {
 	// 从原始数据中提取价格
 	rawPrice := h.extractOriginalPrice(data)
 	if rawPrice <= 0 {
@@ -72,7 +72,7 @@ func (h *PricingHandler) calculatePrice(data map[string]interface{}) float64 {
 }
 
 // extractOriginalPrice 提取原始价格
-func (h *PricingHandler) extractOriginalPrice(data map[string]interface{}) float64 {
+func (h *PricingHandler) extractOriginalPrice(data map[string]any) float64 {
 	// 尝试从不同字段获取价格
 	priceFields := []string{
 		"original_price",
@@ -93,7 +93,7 @@ func (h *PricingHandler) extractOriginalPrice(data map[string]interface{}) float
 }
 
 // parsePrice 解析价格值
-func (h *PricingHandler) parsePrice(val interface{}) float64 {
+func (h *PricingHandler) parsePrice(val any) float64 {
 	switch v := val.(type) {
 	case float64:
 		return v

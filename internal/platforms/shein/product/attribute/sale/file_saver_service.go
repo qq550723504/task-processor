@@ -34,7 +34,7 @@ type ResponseData struct {
 	TaskID       string      `json:"task_id"`
 	ProductID    string      `json:"product_id"`
 	RawResponse  string      `json:"raw_response"`
-	ParsedResult interface{} `json:"parsed_result"`
+	ParsedResult any `json:"parsed_result"`
 	FinishReason string      `json:"finish_reason"`
 	TokensUsed   int         `json:"tokens_used,omitempty"`
 	Success      bool        `json:"success"`
@@ -76,7 +76,7 @@ func (s *SaleAttributeFileSaver) SavePromptData(taskID, productID, systemPrompt,
 //
 // 返回值:
 //   - error: 保存错误信息
-func (s *SaleAttributeFileSaver) SaveResponseData(taskID, productID, rawResponse string, parsedResult interface{}, finishReason string, tokensUsed int, success bool, errorMessage string) error {
+func (s *SaleAttributeFileSaver) SaveResponseData(taskID, productID, rawResponse string, parsedResult any, finishReason string, tokensUsed int, success bool, errorMessage string) error {
 	data := ResponseData{
 		Timestamp:    time.Now().Format("2006-01-02 15:04:05"),
 		TaskID:       taskID,
@@ -94,7 +94,7 @@ func (s *SaleAttributeFileSaver) SaveResponseData(taskID, productID, rawResponse
 }
 
 // saveToFile 保存数据到文件的通用方法
-func (s *SaleAttributeFileSaver) saveToFile(filename string, data interface{}) error {
+func (s *SaleAttributeFileSaver) saveToFile(filename string, data any) error {
 	// 确保目录存在
 	logsDir := "logs"
 	if err := os.MkdirAll(logsDir, 0755); err != nil {

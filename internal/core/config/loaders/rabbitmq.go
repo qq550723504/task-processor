@@ -1,4 +1,4 @@
-// Package loaders 提供配置加载功能
+﻿// Package loaders 提供配置加载功能
 package loaders
 
 import (
@@ -62,14 +62,14 @@ func buildQueueConfigs() []types.QueueConfig {
 		return queues
 	}
 
-	// 类型断言为 []interface{}
-	queueList, ok := queueMaps.([]interface{})
+	// 类型断言为 []any
+	queueList, ok := queueMaps.([]any)
 	if !ok {
 		return queues
 	}
 
 	for _, item := range queueList {
-		queueMap, ok := item.(map[string]interface{})
+		queueMap, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}

@@ -1,4 +1,4 @@
-// Package errors 提供统一的错误处理辅助函数
+﻿// Package errors 提供统一的错误处理辅助函数
 package errors
 
 import (
@@ -193,7 +193,7 @@ func IgnoreError(err error, ignoreCodes ...ErrorCode) error {
 }
 
 // WrapWithContext 包装错误并添加上下文信息
-func WrapWithContext(err error, code ErrorCode, context map[string]interface{}) *AppError {
+func WrapWithContext(err error, code ErrorCode, context map[string]any) *AppError {
 	if err == nil {
 		return nil
 	}

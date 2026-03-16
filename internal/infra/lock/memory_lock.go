@@ -1,4 +1,4 @@
-// Package lock 提供分布式锁功能
+﻿// Package lock 提供分布式锁功能
 package lock
 
 import (
@@ -25,10 +25,10 @@ type lockEntry struct {
 
 // Logger 日志接口
 type Logger interface {
-	Debugf(format string, args ...interface{})
-	Infof(format string, args ...interface{})
-	Warnf(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
+	Debugf(format string, args ...any)
+	Infof(format string, args ...any)
+	Warnf(format string, args ...any)
+	Errorf(format string, args ...any)
 }
 
 // NewMemoryLock 创建内存锁

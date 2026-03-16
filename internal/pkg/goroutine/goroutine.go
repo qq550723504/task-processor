@@ -1,4 +1,4 @@
-// Package goroutine 提供 goroutine 管理与并行处理工具
+﻿// Package goroutine 提供 goroutine 管理与并行处理工具
 package goroutine
 
 import (
@@ -95,19 +95,19 @@ func (gm *Manager) GetRunningCount() int {
 }
 
 // GetStatus 获取任务状态
-func (gm *Manager) GetStatus() map[string]interface{} {
+func (gm *Manager) GetStatus() map[string]any {
 	gm.mutex.RLock()
 	defer gm.mutex.RUnlock()
 
-	tasks := make(map[string]interface{})
+	tasks := make(map[string]any)
 	for name, info := range gm.tasks {
-		tasks[name] = map[string]interface{}{
+		tasks[name] = map[string]any{
 			"name":       info.Name,
 			"started_at": info.StartedAt,
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"running_count": gm.running,
 		"tasks":         tasks,
 	}
@@ -117,20 +117,20 @@ func (gm *Manager) GetStatus() map[string]interface{} {
 type Task struct {
 	Index int
 	ID    string
-	Data  interface{}
+	Data  any
 }
 
 // Result 处理结果
 type Result struct {
 	Index   int
 	ID      string
-	Data    interface{}
+	Data    any
 	Error   error
 	Success bool
 }
 
 // ProcessFunc 处理函数类型
-type ProcessFunc func(ctx context.Context, task *Task) (interface{}, error)
+type ProcessFunc func(ctx context.Context, task *Task) (any, error)
 
 // Processor 并行处理器
 type Processor struct {
@@ -224,9 +224,9 @@ func (p *Processor) worker(ctx context.Context, workerID int, taskChan <-chan *T
 	}
 }
 
-func (p *Processor) executeTask(ctx context.Context, task *Task, processFunc ProcessFunc) (interface{}, error) {
+func (p *Processor) executeTask(ctx context.Context, task *Task, processFunc ProcessFunc) (any, error) {
 	type res struct {
-		data interface{}
+		data any
 		err  error
 	}
 

@@ -1,4 +1,4 @@
-// Package processor 提供统一的任务处理器基类
+﻿// Package processor 提供统一的任务处理器基类
 package processor
 
 import (
@@ -23,7 +23,7 @@ type BaseTaskHandler struct {
 
 // NewBaseTaskHandler 创建统一的任务处理器
 func NewBaseTaskHandler(processor worker.Processor, platform string) *BaseTaskHandler {
-	log := logger.GetGlobalLogger("worker.task_handler").WithFields(map[string]interface{}{
+	log := logger.GetGlobalLogger("worker.task_handler").WithFields(map[string]any{
 		logger.FieldComponent: "TaskHandler",
 		logger.FieldPlatform:  platform,
 	})
@@ -48,7 +48,7 @@ func (h *BaseTaskHandler) ProcessTask(ctx context.Context, task model.Task, pipe
 		TaskData: string(taskData),
 	}
 
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		logger.FieldTaskID:    task.ID,
 		logger.FieldProductID: task.ProductID,
 	}).Info("开始处理任务")
@@ -64,7 +64,7 @@ func (h *BaseTaskHandler) ProcessTask(ctx context.Context, task model.Task, pipe
 
 	// 记录处理时间
 	processTime := time.Since(startTime)
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		logger.FieldTaskID:     task.ID,
 		logger.FieldDurationMs: processTime.Milliseconds(),
 	}).Info("任务处理成功")

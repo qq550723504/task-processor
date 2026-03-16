@@ -30,7 +30,7 @@ func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucont
 
 	// 创建ASIN到完整变体信息的映射
 	asinToFullVariant := make(map[string]*model.Product)
-	if amazonCtx, ok := interface{}(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
+	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
 		if amazonVariants := amazonCtx.GetVariants(); len(amazonVariants) > 0 {
 			for _, fullVariant := range amazonVariants {
 				asinToFullVariant[fullVariant.Asin] = fullVariant
@@ -41,7 +41,7 @@ func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucont
 
 	// 获取Amazon产品信息
 	var amazonProduct *model.Product
-	if amazonCtx, ok := interface{}(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
+	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
 		amazonProduct = amazonCtx.GetAmazonProduct()
 	}
 

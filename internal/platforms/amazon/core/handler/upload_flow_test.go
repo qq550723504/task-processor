@@ -1,4 +1,4 @@
-// Package handler 提供Amazon上架流程测试
+﻿// Package handler 提供Amazon上架流程测试
 package handler
 
 import (
@@ -54,7 +54,7 @@ func createTestTaskContext() *model.TaskContext {
 		MarketplaceID: "ATVPDKIKX0DER",
 		LanguageTag:   "en_US",
 		Currency:      "USD",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"product_id": "test-upload-product-123",
 			"store_id":   int64(1001),
 			"tenant_id":  int64(1),

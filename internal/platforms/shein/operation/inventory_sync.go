@@ -280,7 +280,7 @@ func (s *inventorySyncServiceImpl) processBatchInventoryUpdates(ctx context.Cont
 	}
 
 	updateCount := 0
-	s.inventoryUpdates.Range(func(key, value interface{}) bool {
+	s.inventoryUpdates.Range(func(key, value any) bool {
 		productID := key.(string)
 		updates := value.([]InventoryUpdateRequest)
 

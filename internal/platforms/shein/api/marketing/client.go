@@ -1,4 +1,4 @@
-package marketing
+﻿package marketing
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ func NewClient(baseClient *client.BaseAPIClient) *Client {
 	return &Client{BaseAPIClient: baseClient}
 }
 
-func (m *Client) paginatedQuery(endpoint string, pageNum, pageSize int, result interface{}, errorMsg string) error {
+func (m *Client) paginatedQuery(endpoint string, pageNum, pageSize int, result any, errorMsg string) error {
 	url := fmt.Sprintf("%s%s", m.GetBaseURL(), endpoint)
 	reqBody := map[string]any{"page_num": pageNum, "page_size": pageSize}
 	if err := m.APIRequest(http.MethodPost, url, reqBody, result); err != nil {

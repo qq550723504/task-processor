@@ -1,4 +1,4 @@
-// Package productjson 定义产品JSON生成的领域模型
+﻿// Package productjson 定义产品JSON生成的领域模型
 package productjson
 
 import (
@@ -209,7 +209,7 @@ func (r GenerateRequest) Value() (driver.Value, error) {
 }
 
 // Scan 实现 sql.Scanner 接口
-func (r *GenerateRequest) Scan(value interface{}) error {
+func (r *GenerateRequest) Scan(value any) error {
 	bytes, ok := value.([]byte)
 	if !ok {
 		return errors.New("type assertion to []byte failed")
@@ -223,7 +223,7 @@ func (p ProductJSON) Value() (driver.Value, error) {
 }
 
 // Scan 实现 sql.Scanner 接口
-func (p *ProductJSON) Scan(value interface{}) error {
+func (p *ProductJSON) Scan(value any) error {
 	bytes, ok := value.([]byte)
 	if !ok {
 		return errors.New("type assertion to []byte failed")

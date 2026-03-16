@@ -1,4 +1,4 @@
-package tests
+﻿package tests
 
 import (
 	"testing"
@@ -99,14 +99,14 @@ func crawlPage() {
 	time.Sleep(50 * time.Millisecond)
 }
 
-func prepareTestData() interface{} {
-	return map[string]interface{}{
+func prepareTestData() any {
+	return map[string]any{
 		"title": "Test Product",
 		"price": 99.99,
 	}
 }
 
-func validateData(data interface{}) bool {
+func validateData(data any) bool {
 	// 模拟数据验证
 	return true
 }

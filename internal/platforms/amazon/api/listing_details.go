@@ -1,4 +1,4 @@
-// Package api 提供Amazon listing详细信息处理功能
+﻿// Package api 提供Amazon listing详细信息处理功能
 package api
 
 import (
@@ -46,7 +46,7 @@ func (c *Client) GetDetailedListing(ctx context.Context, sku, marketplaceID stri
 	}
 
 	// 解析响应为通用map以便查看所有数据
-	var detailedResult map[string]interface{}
+	var detailedResult map[string]any
 	if err := c.parseResponse(resp, &detailedResult); err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (c *Client) GetDetailedListing(ctx context.Context, sku, marketplaceID stri
 }
 
 // printProductDetails 打印产品详细信息
-func (c *Client) printProductDetails(data map[string]interface{}) {
+func (c *Client) printProductDetails(data map[string]any) {
 	c.logger.Info("📋 ===== 产品详细信息 =====")
 
 	if sku, ok := data["sku"].(string); ok {
@@ -77,8 +77,8 @@ func (c *Client) printProductDetails(data map[string]interface{}) {
 	}
 
 	// 解析summaries信息
-	if summaries, ok := data["summaries"].([]interface{}); ok && len(summaries) > 0 {
-		if summary, ok := summaries[0].(map[string]interface{}); ok {
+	if summaries, ok := data["summaries"].([]any); ok && len(summaries) > 0 {
+		if summary, ok := summaries[0].(map[string]any); ok {
 			c.logger.Info("📦 基本信息:")
 
 			if asin, ok := summary["asin"].(string); ok {
@@ -97,7 +97,7 @@ func (c *Client) printProductDetails(data map[string]interface{}) {
 				c.logger.Infof("  🏷️  商品状态: %s", conditionType)
 			}
 
-			if status, ok := summary["status"].([]interface{}); ok {
+			if status, ok := summary["status"].([]any); ok {
 				statusList := make([]string, len(status))
 				for i, s := range status {
 					if str, ok := s.(string); ok {
@@ -107,7 +107,7 @@ func (c *Client) printProductDetails(data map[string]interface{}) {
 				c.logger.Infof("  ✅ 状态: %v", statusList)
 			}
 
-			if mainImage, ok := summary["mainImage"].(map[string]interface{}); ok {
+			if mainImage, ok := summary["mainImage"].(map[string]any); ok {
 				if link, ok := mainImage["link"].(string); ok {
 					c.logger.Infof("  🖼️  主图: %s", link)
 				}
@@ -129,7 +129,7 @@ func (c *Client) printProductDetails(data map[string]interface{}) {
 	}
 
 	// 解析attributes信息
-	if attributes, ok := data["attributes"].(map[string]interface{}); ok {
+	if attributes, ok := data["attributes"].(map[string]any); ok {
 		c.logger.Info("🔧 产品属性:")
 		for key, value := range attributes {
 			c.logger.Infof("  %s: %v", key, value)
@@ -137,20 +137,20 @@ func (c *Client) printProductDetails(data map[string]interface{}) {
 	}
 
 	// 解析offers信息
-	if offers, ok := data["offers"].([]interface{}); ok && len(offers) > 0 {
+	if offers, ok := data["offers"].([]any); ok && len(offers) > 0 {
 		c.logger.Info("💰 价格信息:")
 		for i, offer := range offers {
-			if offerMap, ok := offer.(map[string]interface{}); ok {
+			if offerMap, ok := offer.(map[string]any); ok {
 				c.logger.Infof("  报价 %d: %v", i+1, offerMap)
 			}
 		}
 	}
 
 	// 解析issues信息
-	if issues, ok := data["issues"].([]interface{}); ok && len(issues) > 0 {
+	if issues, ok := data["issues"].([]any); ok && len(issues) > 0 {
 		c.logger.Info("⚠️  问题列表:")
 		for i, issue := range issues {
-			if issueMap, ok := issue.(map[string]interface{}); ok {
+			if issueMap, ok := issue.(map[string]any); ok {
 				c.logger.Infof("  问题 %d: %v", i+1, issueMap)
 			}
 		}

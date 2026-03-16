@@ -1,4 +1,4 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
@@ -80,7 +80,7 @@ func (pie *PackInfoExtractor) Extract(page playwright.Page, product *model.Produ
 	}
 
 	if packInfoResult != nil {
-		if packData, ok := packInfoResult.(map[string]interface{}); ok {
+		if packData, ok := packInfoResult.(map[string]any); ok {
 			if unitWeight, ok := packData["unitWeight"].(float64); ok && unitWeight > 0 {
 				packInfo := &model.PackInfo{
 					PackageType:     "标准包装",

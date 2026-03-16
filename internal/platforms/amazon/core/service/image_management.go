@@ -1,4 +1,4 @@
-// Package service 提供Amazon图片管理服务
+﻿// Package service 提供Amazon图片管理服务
 package service
 
 import (
@@ -314,12 +314,12 @@ func (s *ImageManagementService) GetCacheStats() map[string]int {
 	uploadCount := 0
 	downloadCount := 0
 
-	s.uploadCache.Range(func(_, _ interface{}) bool {
+	s.uploadCache.Range(func(_, _ any) bool {
 		uploadCount++
 		return true
 	})
 
-	s.downloadCache.Range(func(_, _ interface{}) bool {
+	s.downloadCache.Range(func(_, _ any) bool {
 		downloadCount++
 		return true
 	})

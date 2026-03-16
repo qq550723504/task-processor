@@ -50,7 +50,7 @@ func NewImageProcessor(imageDownloader interface {
 func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string) (product.ImageInfo, error) {
 	imageInfo := product.ImageInfo{
 		ImageInfoList:         []product.ImageDetail{},
-		OriginalImageInfoList: &[]interface{}{},
+		OriginalImageInfoList: &[]any{},
 	}
 
 	// 统计有效图片

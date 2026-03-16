@@ -127,7 +127,7 @@ func (s *inventorySyncServiceImpl) checkHasAmazonMonitorData(attributesJSON stri
 	for _, sku := range skuList {
 		if s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
 			// 找到对应的SKU，TEMU结构中直接检查映射信息是否存在
-			s.logger.WithFields(map[string]interface{}{
+			s.logger.WithFields(map[string]any{
 				"platform_sku": platformSKU,
 				"asin":         sku.MappingInfo.ProductId,
 			}).Debug("找到SKU映射信息")
@@ -168,7 +168,7 @@ func (s *inventorySyncServiceImpl) validateAttributesStructure(attributesJSON st
 	}
 
 	// 尝试解析为通用 JSON 结构
-	var genericData interface{}
+	var genericData any
 	if err := json.Unmarshal([]byte(attributesJSON), &genericData); err != nil {
 		return fmt.Errorf("JSON 格式无效: %w", err)
 	}

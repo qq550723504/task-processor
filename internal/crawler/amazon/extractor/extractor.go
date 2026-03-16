@@ -1,4 +1,4 @@
-package extractor
+﻿package extractor
 
 import (
 	"context"
@@ -87,7 +87,7 @@ func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Produ
 	}
 
 	// 定义处理函数
-	processFunc := func(ctx context.Context, task *goroutine.Task) (interface{}, error) {
+	processFunc := func(ctx context.Context, task *goroutine.Task) (any, error) {
 		extractor := task.Data.(Extractor)
 		return nil, extractor.Extract(page, product)
 	}

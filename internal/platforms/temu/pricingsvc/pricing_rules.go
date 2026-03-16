@@ -1,4 +1,4 @@
-package pricingsvc
+﻿package pricingsvc
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 )
 
 // getFromCache 从缓存获取数据
-func (s *PricingDecisionService) getFromCache(key CacheKey) (interface{}, bool) {
+func (s *PricingDecisionService) getFromCache(key CacheKey) (any, bool) {
 	if item, ok := s.cache.Load(key); ok {
 		cacheItem := item.(CacheItem)
 		if time.Now().Before(cacheItem.ExpiresAt) {
@@ -27,7 +27,7 @@ func (s *PricingDecisionService) getFromCache(key CacheKey) (interface{}, bool) 
 }
 
 // setCache 设置缓存
-func (s *PricingDecisionService) setCache(key CacheKey, data interface{}) {
+func (s *PricingDecisionService) setCache(key CacheKey, data any) {
 	item := CacheItem{
 		Data:      data,
 		ExpiresAt: time.Now().Add(s.config.CacheTimeout),

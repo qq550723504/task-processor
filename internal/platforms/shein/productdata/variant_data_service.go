@@ -177,7 +177,7 @@ func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein.TaskContext, v
 	}
 
 	// 定义处理函数
-	processFunc := func(taskCtx context.Context, task *goroutine.Task) (interface{}, error) {
+	processFunc := func(taskCtx context.Context, task *goroutine.Task) (any, error) {
 		req, ok := task.Data.(*product.FetchRequest)
 		if !ok {
 			return nil, fmt.Errorf("任务数据类型错误")

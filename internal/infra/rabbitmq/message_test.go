@@ -1,4 +1,4 @@
-package rabbitmq
+﻿package rabbitmq
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 
 func TestParseDeliveryMessage_StandardFormat(t *testing.T) {
 	// 准备测试数据
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"task_id": "test-123",
 		"action":  "process",
 	}
@@ -104,7 +104,7 @@ func TestParseDeliveryMessage_InvalidJSON(t *testing.T) {
 }
 
 func TestParseDeliveryMessage_NoHeaders(t *testing.T) {
-	payload := map[string]interface{}{"test": "data"}
+	payload := map[string]any{"test": "data"}
 	body, _ := json.Marshal(payload)
 
 	delivery := amqp.Delivery{
@@ -131,7 +131,7 @@ func TestParseDeliveryMessage_NoHeaders(t *testing.T) {
 }
 
 func TestParseDeliveryMessage_PartialHeaders(t *testing.T) {
-	payload := map[string]interface{}{"test": "data"}
+	payload := map[string]any{"test": "data"}
 	body, _ := json.Marshal(payload)
 
 	delivery := amqp.Delivery{
@@ -162,16 +162,16 @@ func TestParseDeliveryMessage_PartialHeaders(t *testing.T) {
 
 func TestParseDeliveryMessage_ComplexPayload(t *testing.T) {
 	// 测试复杂的嵌套 payload
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"task_id": "complex-001",
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"user_id":   123,
 			"timestamp": time.Now().Unix(),
 		},
-		"items": []interface{}{
+		"items": []any{
 			"item1",
 			"item2",
-			map[string]interface{}{"id": 1, "name": "test"},
+			map[string]any{"id": 1, "name": "test"},
 		},
 	}
 	body, _ := json.Marshal(payload)
@@ -193,18 +193,18 @@ func TestParseDeliveryMessage_ComplexPayload(t *testing.T) {
 	}
 
 	// 验证嵌套结构
-	metadata, ok := msg.Payload["metadata"].(map[string]interface{})
+	metadata, ok := msg.Payload["metadata"].(map[string]any)
 	if !ok {
-		t.Error("metadata 应该是 map[string]interface{}")
+		t.Error("metadata 应该是 map[string]any")
 	}
 
 	if metadata["user_id"].(float64) != 123 {
 		t.Errorf("metadata.user_id = %v, want %v", metadata["user_id"], 123)
 	}
 
-	items, ok := msg.Payload["items"].([]interface{})
+	items, ok := msg.Payload["items"].([]any)
 	if !ok {
-		t.Error("items 应该是 []interface{}")
+		t.Error("items 应该是 []any")
 	}
 
 	if len(items) != 3 {

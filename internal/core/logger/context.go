@@ -1,4 +1,4 @@
-package logger
+﻿package logger
 
 import (
 	"context"
@@ -73,7 +73,7 @@ func WithFields(ctx context.Context, fields logrus.Fields) context.Context {
 }
 
 // WithField 为context中的logger添加单个字段
-func WithField(ctx context.Context, key string, value interface{}) context.Context {
+func WithField(ctx context.Context, key string, value any) context.Context {
 	logger := FromContext(ctx, "")
 	newLogger := logger.WithField(key, value)
 	return context.WithValue(ctx, loggerContextKey, newLogger)

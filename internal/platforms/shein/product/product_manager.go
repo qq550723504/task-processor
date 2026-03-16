@@ -1,4 +1,4 @@
-// Package product 提供SHEIN通用产品管理功能
+﻿// Package product 提供SHEIN通用产品管理功能
 package product
 
 import (
@@ -141,7 +141,7 @@ func (m *ProductManager) ConfirmPublish(product *product.Product) (bool, string,
 		Info struct {
 			Data struct {
 				NeedConfirm      bool        `json:"need_confirm"`
-				SimPriceInfoList interface{} `json:"sim_price_info_list"`
+				SimPriceInfoList any `json:"sim_price_info_list"`
 			} `json:"data"`
 		} `json:"info"`
 	}

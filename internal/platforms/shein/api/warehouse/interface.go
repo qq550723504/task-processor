@@ -17,6 +17,6 @@ type WarehouseResponse struct {
 	Data []Warehouse `json:"data"`
 	Meta struct {
 		Count     int         `json:"count"`
-		CustomObj interface{} `json:"customObj"`
+		CustomObj any `json:"customObj"`
 	} `json:"meta"`
 }

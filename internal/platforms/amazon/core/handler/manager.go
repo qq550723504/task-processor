@@ -1,4 +1,4 @@
-// Package handler 提供Amazon处理器管理功能
+﻿// Package handler 提供Amazon处理器管理功能
 package handler
 
 import (
@@ -81,17 +81,17 @@ func (m *HandlerManager) ProcessProduct(ctx context.Context, taskContext *model.
 }
 
 // GetStatus 获取管理器状态
-func (m *HandlerManager) GetStatus() map[string]interface{} {
-	handlerStatus := make([]map[string]interface{}, len(m.handlers))
+func (m *HandlerManager) GetStatus() map[string]any {
+	handlerStatus := make([]map[string]any, len(m.handlers))
 
 	for i, handler := range m.handlers {
-		handlerStatus[i] = map[string]interface{}{
+		handlerStatus[i] = map[string]any{
 			"name":   handler.Name(),
 			"status": "ready",
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_handlers": len(m.handlers),
 		"handlers":       handlerStatus,
 	}

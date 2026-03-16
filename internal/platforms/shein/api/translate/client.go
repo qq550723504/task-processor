@@ -1,4 +1,4 @@
-package translate
+﻿package translate
 
 import (
 	"fmt"
@@ -45,7 +45,7 @@ type TranslationData struct {
 // Meta 翻译元数据
 type Meta struct {
 	Count     int         `json:"count"`
-	CustomObj interface{} `json:"customObj"`
+	CustomObj any `json:"customObj"`
 }
 
 // Client 翻译相关API实现

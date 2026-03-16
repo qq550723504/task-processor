@@ -6,6 +6,6 @@ type FilterCheckResult struct {
 	Passed        bool        // 是否通过筛选
 	FailedRule    string      // 失败的规则名称
 	FailureReason string      // 失败原因
-	ProductValue  interface{} // 产品的实际值
-	RuleValue     interface{} // 规则要求的值
+	ProductValue  any // 产品的实际值
+	RuleValue     any // 规则要求的值
 }

@@ -241,7 +241,7 @@ func (s *SensitiveWordService) logConfigLoadStats() {
 	staticTotal := s.countWordsInConfig(s.config.StaticWords)
 	dynamicTotal := s.countWordsInConfig(s.config.DynamicWords)
 
-	logrus.WithFields(map[string]interface{}{
+	logrus.WithFields(map[string]any{
 		"static_total":  staticTotal,
 		"dynamic_total": dynamicTotal,
 		"total":         staticTotal + dynamicTotal,

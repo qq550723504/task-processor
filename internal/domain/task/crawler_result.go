@@ -1,4 +1,4 @@
-// Package task 提供任务结果领域模型
+﻿// Package task 提供任务结果领域模型
 package task
 
 import (
@@ -19,7 +19,7 @@ const (
 type CrawlerResult struct {
 	TaskID      string                 // 任务 ID
 	Status      TaskStatus             // 任务状态
-	ProductData map[string]interface{} // 产品数据
+	ProductData map[string]any // 产品数据
 	Error       string                 // 错误信息
 	StartedAt   *time.Time             // 开始时间
 	CompletedAt *time.Time             // 完成时间
@@ -42,7 +42,7 @@ func (r *CrawlerResult) MarkProcessing() {
 }
 
 // MarkSuccess 标记为成功
-func (r *CrawlerResult) MarkSuccess(productData map[string]interface{}) {
+func (r *CrawlerResult) MarkSuccess(productData map[string]any) {
 	now := time.Now()
 	r.Status = StatusSuccess
 	r.ProductData = productData

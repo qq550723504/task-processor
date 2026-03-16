@@ -67,7 +67,7 @@ func (h *StoreInfoHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 	// 尝试从缓存获取
 	storeInfo, fromCache := getStoreWithCache(task.StoreID)
 	if fromCache {
-		h.logger.WithFields(map[string]interface{}{
+		h.logger.WithFields(map[string]any{
 			"store_id":   storeInfo.ID,
 			"store_name": storeInfo.Name,
 		}).Info("✅ 从缓存获取店铺信息")
@@ -93,7 +93,7 @@ func (h *StoreInfoHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 	// 直接赋值到强类型字段
 	temuCtx.StoreInfo = storeInfo
 
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		"store_id":   storeInfo.ID,
 		"store_name": storeInfo.Name,
 		"price_type": storeInfo.PriceType,

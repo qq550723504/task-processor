@@ -22,14 +22,14 @@ func newInventorySyncServiceAdapter(temuService temuscheduler.InventorySyncServi
 }
 
 // FetchProductsForInventorySync 获取需要监控库存的产品列表（适配到通用接口）
-func (a *inventorySyncServiceAdapter) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]interface{}, error) {
+func (a *inventorySyncServiceAdapter) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]any, error) {
 	products, err := a.temuService.FetchProductsForInventorySync(ctx, tenantID, storeID)
 	if err != nil {
 		return nil, err
 	}
 
 	// 转换为interface{}切片
-	result := make([]interface{}, len(products))
+	result := make([]any, len(products))
 	for i, p := range products {
 		result[i] = p
 	}
@@ -37,7 +37,7 @@ func (a *inventorySyncServiceAdapter) FetchProductsForInventorySync(ctx context.
 }
 
 // MonitorInventoryChanges 监控库存和价格变化（适配到通用接口）
-func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Context, products []interface{}, tenantID, storeID int64) (*commonscheduler.InventorySyncResult, error) {
+func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Context, products []any, tenantID, storeID int64) (*commonscheduler.InventorySyncResult, error) {
 	// 转换回TEMU特定类型
 	temuProducts := make([]*managementapi.ProductDataDTO, len(products))
 	for i, p := range products {

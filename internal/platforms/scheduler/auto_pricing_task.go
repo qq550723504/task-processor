@@ -25,13 +25,13 @@ type PricingStats struct {
 // 各平台需要实现此接口
 type AutoPricingService interface {
 	// FetchPendingPriceProducts 获取待核价产品列表
-	FetchPendingPriceProducts(ctx context.Context, startDate, endDate string) ([]interface{}, error)
+	FetchPendingPriceProducts(ctx context.Context, startDate, endDate string) ([]any, error)
 
 	// ApplyPricingRules 应用核价规则
-	ApplyPricingRules(ctx context.Context, products []interface{}, storeID int64, enableRebargain bool) ([]interface{}, error)
+	ApplyPricingRules(ctx context.Context, products []any, storeID int64, enableRebargain bool) ([]any, error)
 
 	// SubmitPricingResults 提交核价结果到平台
-	SubmitPricingResults(ctx context.Context, results []interface{}) (*PricingStats, error)
+	SubmitPricingResults(ctx context.Context, results []any) (*PricingStats, error)
 }
 
 // AutoPricingTask 通用自动核价任务

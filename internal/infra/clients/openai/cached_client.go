@@ -1,4 +1,4 @@
-// Package openai 提供带缓存的OpenAI客户端
+﻿// Package openai 提供带缓存的OpenAI客户端
 package openai
 
 import (
@@ -104,7 +104,7 @@ func (c *CachedClient) CreateChatCompletion(ctx context.Context, req *ChatComple
 // generateCacheKey 生成缓存键
 func (c *CachedClient) generateCacheKey(req *ChatCompletionRequest) string {
 	// 序列化请求参数
-	data := map[string]interface{}{
+	data := map[string]any{
 		"model":    req.Model,
 		"messages": req.Messages,
 	}

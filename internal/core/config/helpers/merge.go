@@ -1,4 +1,4 @@
-// Package helpers 提供配置辅助工具
+﻿// Package helpers 提供配置辅助工具
 package helpers
 
 import (
@@ -21,7 +21,7 @@ func MergeConfigs(base, override any) error {
 	}
 
 	// 合并JSON
-	var baseMap, overrideMap map[string]interface{}
+	var baseMap, overrideMap map[string]any
 	if err := json.Unmarshal(baseData, &baseMap); err != nil {
 		return fmt.Errorf("解析基础配置失败: %w", err)
 	}
@@ -46,8 +46,8 @@ func MergeConfigs(base, override any) error {
 }
 
 // MergeMaps 递归合并两个map
-func MergeMaps(base, override map[string]interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
+func MergeMaps(base, override map[string]any) map[string]any {
+	result := make(map[string]any)
 
 	// 复制base
 	for k, v := range base {
@@ -58,8 +58,8 @@ func MergeMaps(base, override map[string]interface{}) map[string]interface{} {
 	for k, v := range override {
 		if baseVal, exists := result[k]; exists {
 			// 如果两者都是map,递归合并
-			if baseMap, ok := baseVal.(map[string]interface{}); ok {
-				if overrideMap, ok := v.(map[string]interface{}); ok {
+			if baseMap, ok := baseVal.(map[string]any); ok {
+				if overrideMap, ok := v.(map[string]any); ok {
 					result[k] = MergeMaps(baseMap, overrideMap)
 					continue
 				}

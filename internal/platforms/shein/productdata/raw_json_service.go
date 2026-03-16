@@ -22,7 +22,7 @@ type RawJsonDataHandler struct {
 func NewRawJsonDataHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor interface{},
+	amazonProcessor any,
 	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandler {
 	logger := logrus.WithField("handler", "RawJsonDataHandler")

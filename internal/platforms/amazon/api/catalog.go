@@ -1,4 +1,4 @@
-// Package api 提供Amazon SP-API目录相关接口
+﻿// Package api 提供Amazon SP-API目录相关接口
 package api
 
 import (
@@ -18,7 +18,7 @@ type CatalogItem struct {
 	ProductType string                 `json:"productType"`
 	Categories  []Category             `json:"categories"`
 	Images      []Image                `json:"images"`
-	Attributes  map[string]interface{} `json:"attributes"`
+	Attributes  map[string]any `json:"attributes"`
 }
 
 // Category 商品分类
@@ -70,7 +70,7 @@ type SellerListing struct {
 	Title       string                 `json:"title"`
 	Price       Price                  `json:"price"`
 	Quantity    int                    `json:"quantity"`
-	Attributes  map[string]interface{} `json:"attributes"`
+	Attributes  map[string]any `json:"attributes"`
 	Issues      []Issue                `json:"issues,omitempty"`
 }
 

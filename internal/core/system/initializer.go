@@ -1,4 +1,4 @@
-// Package system 提供系统级初始化功能
+﻿// Package system 提供系统级初始化功能
 package system
 
 import (
@@ -136,10 +136,10 @@ func (si *SystemInitializer) setupSignalHandling() {
 }
 
 // GetSystemStatus 获取系统状态
-func (si *SystemInitializer) GetSystemStatus() map[string]interface{} {
+func (si *SystemInitializer) GetSystemStatus() map[string]any {
 	goroutineStatus := si.goroutineManager.GetStatus()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"log_level":          si.logManager.GetLevel(),
 		"running_goroutines": si.goroutineManager.GetRunningCount(),
 		"goroutine_details":  goroutineStatus,

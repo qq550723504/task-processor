@@ -1,4 +1,4 @@
-// Package handler 提供Listing处理器实现
+﻿// Package handler 提供Listing处理器实现
 package handler
 
 import (
@@ -46,7 +46,7 @@ func (h *ListingHandler) Handle(ctx context.Context, taskContext *model.TaskCont
 }
 
 // buildListingRequest 构建Listing请求
-func (h *ListingHandler) buildListingRequest(data map[string]interface{}) (*api.ListingRequest, error) {
+func (h *ListingHandler) buildListingRequest(data map[string]any) (*api.ListingRequest, error) {
 	// 获取产品ID生成SKU
 	productID, exists := data["product_id"]
 	if !exists {
@@ -66,7 +66,7 @@ func (h *ListingHandler) buildListingRequest(data map[string]interface{}) (*api.
 		SKU:          sku,
 		ProductType:  "PRODUCT", // 默认产品类型
 		Requirements: "LISTING",
-		Attributes:   make(map[string]interface{}),
+		Attributes:   make(map[string]any),
 	}
 
 	// 添加基础属性
@@ -78,7 +78,7 @@ func (h *ListingHandler) buildListingRequest(data map[string]interface{}) (*api.
 }
 
 // getProductTitle 获取产品标题
-func (h *ListingHandler) getProductTitle(data map[string]interface{}) string {
+func (h *ListingHandler) getProductTitle(data map[string]any) string {
 	// 从解析后的数据中获取标题
 	if title, exists := data["product_title"]; exists {
 		if titleStr, ok := title.(string); ok {
@@ -91,7 +91,7 @@ func (h *ListingHandler) getProductTitle(data map[string]interface{}) string {
 }
 
 // getProductBrand 获取产品品牌
-func (h *ListingHandler) getProductBrand(data map[string]interface{}) string {
+func (h *ListingHandler) getProductBrand(data map[string]any) string {
 	// 从解析后的数据中获取品牌
 	if brand, exists := data["product_brand"]; exists {
 		if brandStr, ok := brand.(string); ok {

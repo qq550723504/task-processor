@@ -1,4 +1,4 @@
-// Package task 提供任务相关的数据模型定义
+﻿// Package task 提供任务相关的数据模型定义
 package task
 
 import (
@@ -70,7 +70,7 @@ type QueueSummary struct {
 	OverallUsage    float64                `json:"overall_usage"`
 	ProcessingTasks int                    `json:"processing_tasks"`
 	HealthScore     int                    `json:"health_score"`
-	Platforms       map[string]interface{} `json:"platforms"`
+	Platforms       map[string]any `json:"platforms"`
 	Timestamp       int64                  `json:"timestamp"`
 }
 

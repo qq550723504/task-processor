@@ -22,7 +22,7 @@ type SheinProductResponse struct {
 	PublishTime       string        `json:"publish_time"`
 	FirstShelfTime    string        `json:"first_shelf_time"`
 	ExpectShelfTime   *string       `json:"expect_shelf_time"`
-	TagInfoList       []interface{} `json:"tag_info_list"`
+	TagInfoList       []any `json:"tag_info_list"`
 	DiagFlag          int           `json:"diag_flag"`
 	CustomizeCategory bool          `json:"customize_category"`
 }
@@ -40,7 +40,7 @@ type SkcInfo struct {
 	SkuInfo               []SkuInfo     `json:"sku_info"`
 	MallSellStatus        int           `json:"mall_sell_status"`
 	Abandoned             bool          `json:"abandoned"`
-	TagInfoList           []interface{} `json:"tag_info_list"`
+	TagInfoList           []any `json:"tag_info_list"`
 	ShelfFailReason       *string       `json:"shelf_fail_reason"`
 	HasOriginalImage      bool          `json:"has_original_image"`
 }

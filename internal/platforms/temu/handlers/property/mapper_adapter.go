@@ -60,7 +60,7 @@ func (m *PropertyMapper) ValidateConfiguration() error {
 }
 
 // GetStats 获取统计信息
-func (m *PropertyMapper) GetStats() map[string]interface{} {
+func (m *PropertyMapper) GetStats() map[string]any {
 	return m.orchestrator.GetProcessingStats()
 }
 

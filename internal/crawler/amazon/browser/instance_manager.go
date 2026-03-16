@@ -1,4 +1,4 @@
-// Package browser 提供浏览器实例管理功能
+﻿// Package browser 提供浏览器实例管理功能
 package browser
 
 import (
@@ -189,15 +189,15 @@ func (im *InstanceManager) ValidateInstance(instance *BrowserInstance) bool {
 }
 
 // GetInstanceInfo 获取实例信息
-func (im *InstanceManager) GetInstanceInfo(instance *BrowserInstance) map[string]interface{} {
+func (im *InstanceManager) GetInstanceInfo(instance *BrowserInstance) map[string]any {
 	if instance == nil {
-		return map[string]interface{}{
+		return map[string]any{
 			"valid": false,
 			"error": "instance is nil",
 		}
 	}
 
-	info := map[string]interface{}{
+	info := map[string]any{
 		"id":              instance.ID,
 		"in_use":          instance.InUse,
 		"current_zipcode": instance.CurrentZipcode,

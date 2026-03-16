@@ -1,4 +1,4 @@
-package attribute
+﻿package attribute
 
 import (
 	"fmt"
@@ -20,7 +20,7 @@ func NewAttributeValidator(mapper *AttributeMapper) *AttributeValidator {
 
 // ValidateAttributes 验证属性
 func (v *AttributeValidator) ValidateAttributes(
-	attributes map[string]interface{},
+	attributes map[string]any,
 	productType string,
 ) error {
 	// 获取产品类型配置
@@ -54,7 +54,7 @@ func (v *AttributeValidator) ValidateAttributes(
 }
 
 // validateAttribute 验证单个属性
-func (v *AttributeValidator) validateAttribute(attrName string, value interface{}) error {
+func (v *AttributeValidator) validateAttribute(attrName string, value any) error {
 	// 获取验证规则
 	rule, exists := v.mapper.config.ValidationRules[attrName]
 	if !exists {
@@ -140,7 +140,7 @@ func (v *AttributeValidator) validateNumericAttribute(
 }
 
 // toFloat64 转换为 float64
-func (v *AttributeValidator) toFloat64(value interface{}) (float64, bool) {
+func (v *AttributeValidator) toFloat64(value any) (float64, bool) {
 	switch v := value.(type) {
 	case float64:
 		return v, true
@@ -159,7 +159,7 @@ func (v *AttributeValidator) toFloat64(value interface{}) (float64, bool) {
 
 // ValidateRequiredFields 验证必填字段
 func (v *AttributeValidator) ValidateRequiredFields(
-	attributes map[string]interface{},
+	attributes map[string]any,
 	requiredFields []string,
 ) error {
 	for _, field := range requiredFields {

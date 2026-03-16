@@ -23,7 +23,7 @@ type SubmitRawJsonDataHandler struct {
 func NewSubmitRawJsonDataHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor interface{},
+	amazonProcessor any,
 	rabbitmqClient *rabbitmq.Client,
 ) *SubmitRawJsonDataHandler {
 	logger := logrus.WithField("handler", "SubmitRawJsonDataHandler")
@@ -95,7 +95,7 @@ type SubmitVariantRawJsonDataHandler struct {
 func NewSubmitVariantRawJsonDataHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor interface{},
+	amazonProcessor any,
 	rabbitmqClient *rabbitmq.Client,
 ) *SubmitVariantRawJsonDataHandler {
 	logger := logrus.WithField("handler", "SubmitVariantRawJsonDataHandler")

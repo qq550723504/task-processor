@@ -1,4 +1,4 @@
-package jsonutil
+﻿package jsonutil
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 
 // MarshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 // 避免 & 被转义为 \u0026，< 被转义为 \u003c 等
-func MarshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
+func MarshalWithoutHTMLEscape(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
@@ -26,7 +26,7 @@ func MarshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
 }
 
 // MarshalIndentWithoutHTMLEscape 序列化JSON（带缩进）但不转义HTML字符
-func MarshalIndentWithoutHTMLEscape(v interface{}, prefix, indent string) ([]byte, error) {
+func MarshalIndentWithoutHTMLEscape(v any, prefix, indent string) ([]byte, error) {
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
@@ -45,12 +45,12 @@ func MarshalIndentWithoutHTMLEscape(v interface{}, prefix, indent string) ([]byt
 }
 
 // MarshalPretty 美化输出JSON（带缩进，不转义HTML）
-func MarshalPretty(v interface{}) ([]byte, error) {
+func MarshalPretty(v any) ([]byte, error) {
 	return MarshalIndentWithoutHTMLEscape(v, "", "  ")
 }
 
 // UnmarshalStrict 严格模式反序列化JSON，包含未知字段时返回错误
-func UnmarshalStrict(data []byte, v interface{}) error {
+func UnmarshalStrict(data []byte, v any) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 
@@ -62,7 +62,7 @@ func UnmarshalStrict(data []byte, v interface{}) error {
 }
 
 // ToJSONString 将对象转换为JSON字符串（不转义HTML）
-func ToJSONString(v interface{}) (string, error) {
+func ToJSONString(v any) (string, error) {
 	data, err := MarshalWithoutHTMLEscape(v)
 	if err != nil {
 		return "", err
@@ -71,7 +71,7 @@ func ToJSONString(v interface{}) (string, error) {
 }
 
 // ToJSONStringPretty 将对象转换为美化的JSON字符串
-func ToJSONStringPretty(v interface{}) (string, error) {
+func ToJSONStringPretty(v any) (string, error) {
 	data, err := MarshalPretty(v)
 	if err != nil {
 		return "", err

@@ -1,4 +1,4 @@
-package variations
+﻿package variations
 
 import (
 	"fmt"
@@ -19,8 +19,8 @@ func NewMapper(config *Config) *Mapper {
 }
 
 // MapAttributeNames 将通用属性名映射为语义化名称
-func (m *Mapper) MapAttributeNames(attributes map[string]interface{}) map[string]interface{} {
-	mapped := make(map[string]interface{})
+func (m *Mapper) MapAttributeNames(attributes map[string]any) map[string]any {
+	mapped := make(map[string]any)
 
 	for key, value := range attributes {
 		var finalKey string
@@ -57,7 +57,7 @@ func (m *Mapper) MapAttributeNames(attributes map[string]interface{}) map[string
 }
 
 // InferAttributeType 基于属性值内容推断属性类型
-func (m *Mapper) InferAttributeType(value interface{}) string {
+func (m *Mapper) InferAttributeType(value any) string {
 	if value == nil {
 		return "unknown"
 	}

@@ -1,4 +1,4 @@
-package variations
+﻿package variations
 
 // Combinator 组合生成器
 type Combinator struct {
@@ -11,8 +11,8 @@ func NewCombinator(config *Config) *Combinator {
 }
 
 // Generate 生成所有属性组合
-func (c *Combinator) Generate(dimensions map[string][]string) []map[string]interface{} {
-	var combinations []map[string]interface{}
+func (c *Combinator) Generate(dimensions map[string][]string) []map[string]any {
+	var combinations []map[string]any
 
 	// 获取维度名称和值
 	var dimNames []string
@@ -28,7 +28,7 @@ func (c *Combinator) Generate(dimensions map[string][]string) []map[string]inter
 	}
 
 	// 递归生成组合
-	c.generateRecursive(dimNames, dimValues, 0, make(map[string]interface{}), &combinations)
+	c.generateRecursive(dimNames, dimValues, 0, make(map[string]any), &combinations)
 
 	return combinations
 }
@@ -38,12 +38,12 @@ func (c *Combinator) generateRecursive(
 	dimNames []string,
 	dimValues [][]string,
 	index int,
-	current map[string]interface{},
-	combinations *[]map[string]interface{},
+	current map[string]any,
+	combinations *[]map[string]any,
 ) {
 	if index == len(dimNames) {
 		// 复制当前组合
-		combo := make(map[string]interface{})
+		combo := make(map[string]any)
 		for k, v := range current {
 			combo[k] = v
 		}

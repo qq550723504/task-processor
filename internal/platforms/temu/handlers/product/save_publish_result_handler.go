@@ -344,7 +344,7 @@ func (h *SavePublishResultHandler) pauseShopUntilEndOfDay(temuCtx *temucontext.T
 }
 
 // logSubmitResponse 记录提交响应数据到日志
-func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTaskContext, submitResponse interface{}) error {
+func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTaskContext, submitResponse any) error {
 	task := temuCtx.GetTask()
 	if task == nil {
 		return fmt.Errorf("任务信息未初始化")
@@ -380,9 +380,9 @@ func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTa
 }
 
 // logResponseDetails 记录响应详细信息
-func (h *SavePublishResultHandler) logResponseDetails(submitResponse interface{}, task *commontypes.Task) {
+func (h *SavePublishResultHandler) logResponseDetails(submitResponse any, task *commontypes.Task) {
 	// 尝试解析为ProductSubmitResponse结构
-	if responseMap, ok := submitResponse.(map[string]interface{}); ok {
+	if responseMap, ok := submitResponse.(map[string]any); ok {
 		// 记录基本响应信息
 		success, _ := responseMap["success"].(bool)
 		errorCode, _ := responseMap["error_code"].(float64)
@@ -396,7 +396,7 @@ func (h *SavePublishResultHandler) logResponseDetails(submitResponse interface{}
 		}).Info("TEMU提交响应基本信息")
 
 		// 记录结果详情
-		if result, ok := responseMap["result"].(map[string]interface{}); ok {
+		if result, ok := responseMap["result"].(map[string]any); ok {
 			submitSuccess, _ := result["submit_success"].(bool)
 			editAlert, _ := result["edit_customized_info_alert"].(bool)
 
@@ -431,7 +431,7 @@ func (h *SavePublishResultHandler) saveResponseToFile(taskID int64, responseData
 }
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
-func (h *SavePublishResultHandler) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
+func (h *SavePublishResultHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
 	return jsonutil.MarshalWithoutHTMLEscape(v)
 }
 

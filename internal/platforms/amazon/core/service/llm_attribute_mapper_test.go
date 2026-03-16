@@ -1,4 +1,4 @@
-// Package service 提供LLM属性映射器测试
+﻿// Package service 提供LLM属性映射器测试
 package service
 
 import (
@@ -61,7 +61,7 @@ func TestLLMAttributeMapper_MapAttributes(t *testing.T) {
 		SourcePlatform: "1688",
 		TargetPlatform: "Amazon",
 		ProductType:    "APPAREL",
-		ProductData: map[string]interface{}{
+		ProductData: map[string]any{
 			"title":       "韩版修身显瘦长袖连衣裙",
 			"brand":       "时尚品牌",
 			"description": "优雅的韩版修身连衣裙，显瘦设计",
@@ -91,7 +91,7 @@ func TestLLMAttributeMapper_ValidateMapping(t *testing.T) {
 	mapper := NewLLMAttributeMapper(nil)
 
 	// 测试有效映射
-	validAttributes := map[string]interface{}{
+	validAttributes := map[string]any{
 		"item_name": "Test Product",
 		"brand":     "Test Brand",
 	}
@@ -99,7 +99,7 @@ func TestLLMAttributeMapper_ValidateMapping(t *testing.T) {
 	assert.NoError(t, err)
 
 	// 测试缺少必需字段
-	invalidAttributes := map[string]interface{}{
+	invalidAttributes := map[string]any{
 		"brand": "Test Brand",
 	}
 	err = mapper.ValidateMapping(invalidAttributes)
@@ -107,7 +107,7 @@ func TestLLMAttributeMapper_ValidateMapping(t *testing.T) {
 	assert.Contains(t, err.Error(), "缺少必需属性: item_name")
 
 	// 测试空标题
-	emptyTitleAttributes := map[string]interface{}{
+	emptyTitleAttributes := map[string]any{
 		"item_name": "",
 	}
 	err = mapper.ValidateMapping(emptyTitleAttributes)

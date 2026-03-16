@@ -33,7 +33,7 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 	validMappingCount := 0
 
 	for skcIndex, skc := range skcList {
-		s.logger.WithFields(map[string]interface{}{
+		s.logger.WithFields(map[string]any{
 			"skc_index": skcIndex,
 			"skc_code":  skc.SkcCode,
 			"sku_count": len(skc.SkuInfo),
@@ -42,7 +42,7 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 		for skuIndex, sku := range skc.SkuInfo {
 			totalSkuCount++
 
-			s.logger.WithFields(map[string]interface{}{
+			s.logger.WithFields(map[string]any{
 				"skc_index":        skcIndex,
 				"sku_index":        skuIndex,
 				"has_mapping_info": sku.MappingInfo != nil,
@@ -66,7 +66,7 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 				})
 				validMappingCount++
 
-				s.logger.WithFields(map[string]interface{}{
+				s.logger.WithFields(map[string]any{
 					"skc_code":     skc.SkcCode,
 					"sku_index":    skuIndex,
 					"asin":         sku.MappingInfo.ProductId,
@@ -77,7 +77,7 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 		}
 	}
 
-	s.logger.WithFields(map[string]interface{}{
+	s.logger.WithFields(map[string]any{
 		"total_skc":         len(skcList),
 		"total_sku":         totalSkuCount,
 		"valid_mappings":    validMappingCount,
@@ -187,7 +187,7 @@ func (s *inventorySyncServiceImpl) checkHasAmazonMonitorData(attributesJSON stri
 			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
 				// 找到对应的SKU，检查是否有AmazonMonitorData
 				if sku.AmazonMonitorData != nil && sku.AmazonMonitorData.LastCheckTime > 0 {
-					s.logger.WithFields(map[string]interface{}{
+					s.logger.WithFields(map[string]any{
 						"platform_sku":    platformSKU,
 						"asin":            sku.AmazonMonitorData.ASIN,
 						"last_check_time": sku.AmazonMonitorData.LastCheckTime,
@@ -237,7 +237,7 @@ func (s *inventorySyncServiceImpl) validateAttributesStructure(attributesJSON st
 	}
 
 	// 尝试解析为通用 JSON 结构
-	var genericData interface{}
+	var genericData any
 	if err := json.Unmarshal([]byte(attributesJSON), &genericData); err != nil {
 		return fmt.Errorf("JSON 格式无效: %w", err)
 	}

@@ -1,4 +1,4 @@
-package query
+﻿package query
 
 // TextCheckRequest 文本检查请求
 type TextCheckRequest struct {
@@ -142,8 +142,8 @@ type CommitDetailResponse struct {
 type CommitDetailResult struct {
 	GoodsBasic            *CommitDetailGoodsBasic    `json:"goods_basic,omitempty"`
 	GoodsSaleInfo         *CommitDetailGoodsSaleInfo `json:"goods_sale_info,omitempty"`
-	GoodsServicePromise   map[string]interface{}     `json:"goods_service_promise,omitempty"`
-	GoodsExtensionInfo    map[string]interface{}     `json:"goods_extension_info,omitempty"`
+	GoodsServicePromise   map[string]any     `json:"goods_service_promise,omitempty"`
+	GoodsExtensionInfo    map[string]any     `json:"goods_extension_info,omitempty"`
 	Extra                 *CommitDetailExtra         `json:"extra,omitempty"`
 	CanSave               bool                       `json:"can_save"`
 	SupportMaxRetailPrice bool                       `json:"support_max_retail_price"`
@@ -243,7 +243,7 @@ type SkuQueryResult struct {
 	OutGoodsSN          string                 `json:"out_goods_sn"`
 	ShippingMode        int                    `json:"shipping_mode"`
 	OrdinaryStock       int                    `json:"ordinary_stock"`
-	CheckPriceAuditInfo map[string]interface{} `json:"check_price_audit_info"`
+	CheckPriceAuditInfo map[string]any `json:"check_price_audit_info"`
 }
 
 // SkuSpecInfo SKU规格信息

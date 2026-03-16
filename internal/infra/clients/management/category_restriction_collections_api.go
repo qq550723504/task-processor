@@ -15,7 +15,7 @@ type CategoryRestrictionCollectionsAPIClient struct {
 func (m *CategoryRestrictionCollectionsAPIClient) CreateCategoryRestrictionCollections(req *api.CategoryRestrictionCollectionsCreateReqDTO) (int64, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/create", m.baseURL)
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		"categoryId":             req.CategoryId,
 		"platformName":           req.PlatformName,
 		"forbiddenAttributeId":   req.ForbiddenAttributeId,
@@ -49,7 +49,7 @@ func (m *CategoryRestrictionCollectionsAPIClient) CreateCategoryRestrictionColle
 func (m *CategoryRestrictionCollectionsAPIClient) GetListByPlatform(platformName string) ([]api.CategoryRestrictionInfoRespDTO, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/list-by-platform", m.baseURL)
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		"platformName": platformName,
 	}
 
@@ -76,7 +76,7 @@ func (m *CategoryRestrictionCollectionsAPIClient) GetListByPlatform(platformName
 func (m *CategoryRestrictionCollectionsAPIClient) GetConfirmedListByPlatform(platformName string) ([]api.CategoryRestrictionInfoRespDTO, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/list-confirmed-by-platform", m.baseURL)
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		"platformName": platformName,
 	}
 
@@ -103,7 +103,7 @@ func (m *CategoryRestrictionCollectionsAPIClient) GetConfirmedListByPlatform(pla
 func (m *CategoryRestrictionCollectionsAPIClient) IsAttributeRestricted(categoryId int, platformName string, attributeId int) (bool, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/check-attribute-restricted", m.baseURL)
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		"categoryId":   categoryId,
 		"platformName": platformName,
 		"attributeId":  attributeId,
@@ -130,7 +130,7 @@ func (m *CategoryRestrictionCollectionsAPIClient) IsAttributeRestricted(category
 func (m *CategoryRestrictionCollectionsAPIClient) UpdateCategoryRestrictionCollectionsStatus(id int64, isConfirmed bool, isAutoApplied bool) (bool, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/update-status", m.baseURL)
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		"id":            id,
 		"isConfirmed":   isConfirmed,
 		"isAutoApplied": isAutoApplied,

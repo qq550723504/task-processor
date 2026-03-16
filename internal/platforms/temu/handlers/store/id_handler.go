@@ -86,7 +86,7 @@ func (h *StoreIDHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error 
 
 	// 验证MallID与店铺信息的一致性
 	if storeInfo.StoreID != "" && storeInfo.StoreID != mallID {
-		h.logger.WithFields(map[string]interface{}{
+		h.logger.WithFields(map[string]any{
 			"instance_id":    GetInstanceID(),
 			"store_info_id":  storeInfo.StoreID,
 			"cookie_mall_id": mallID,
@@ -95,7 +95,7 @@ func (h *StoreIDHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error 
 		// 这种情况应该在APIClient初始化时已经处理了，这里只是记录警告
 		h.logger.WithField("instance_id", GetInstanceID()).Warn("MallID不一致问题应该在APIClient初始化时已处理")
 	} else {
-		h.logger.WithFields(map[string]interface{}{
+		h.logger.WithFields(map[string]any{
 			"instance_id": GetInstanceID(),
 			"store_id":    mallID,
 		}).Info("店铺ID验证通过")

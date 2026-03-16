@@ -40,15 +40,15 @@ func NewTemuAutoPricingAdapter(
 // FetchPendingPriceProducts 获取待核价产品列表
 // Temu平台的实现是在processWithService中分页获取，这里返回空切片
 // 实际的获取和处理逻辑在SubmitPricingResults中完成
-func (a *TemuAutoPricingAdapter) FetchPendingPriceProducts(ctx context.Context, startDate, endDate string) ([]interface{}, error) {
+func (a *TemuAutoPricingAdapter) FetchPendingPriceProducts(ctx context.Context, startDate, endDate string) ([]any, error) {
 	a.logger.Debug("Temu平台的待核价产品获取在处理流程中完成")
 	// 返回空切片，表示需要在后续步骤中获取
-	return []interface{}{}, nil
+	return []any{}, nil
 }
 
 // ApplyPricingRules 应用核价规则
 // Temu平台的规则应用是在决策服务中完成的，这里直接返回输入
-func (a *TemuAutoPricingAdapter) ApplyPricingRules(ctx context.Context, products []interface{}, storeID int64, enableRebargain bool) ([]interface{}, error) {
+func (a *TemuAutoPricingAdapter) ApplyPricingRules(ctx context.Context, products []any, storeID int64, enableRebargain bool) ([]any, error) {
 	a.logger.Debug("Temu平台的核价规则应用在决策服务中完成")
 	// 直接返回输入，实际的规则应用在SubmitPricingResults中完成
 	return products, nil
@@ -56,7 +56,7 @@ func (a *TemuAutoPricingAdapter) ApplyPricingRules(ctx context.Context, products
 
 // SubmitPricingResults 提交核价结果
 // Temu平台的实现是一次性完成获取、决策和提交的完整流程
-func (a *TemuAutoPricingAdapter) SubmitPricingResults(ctx context.Context, results []interface{}) (*commonscheduler.PricingStats, error) {
+func (a *TemuAutoPricingAdapter) SubmitPricingResults(ctx context.Context, results []any) (*commonscheduler.PricingStats, error) {
 	a.logger.Info("开始Temu自动核价处理（完整流程）")
 
 	// 调用Temu的自动核价服务，它会完成：

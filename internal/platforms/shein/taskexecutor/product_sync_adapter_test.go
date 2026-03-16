@@ -96,7 +96,7 @@ func TestProductSyncServiceAdapter_FetchProductList_Error(t *testing.T) {
 }
 
 func TestProductSyncServiceAdapter_ConvertProducts_Success(t *testing.T) {
-	mockInput := []interface{}{
+	mockInput := []any{
 		product.ProductListItem{SpuCode: "1", SpuName: "Product 1"},
 		product.ProductListItem{SpuCode: "2", SpuName: "Product 2"},
 	}
@@ -129,7 +129,7 @@ func TestProductSyncServiceAdapter_ConvertProducts_Success(t *testing.T) {
 func TestProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
 	expectedError := errors.New("convert failed")
 
-	mockInput := []interface{}{
+	mockInput := []any{
 		product.ProductListItem{SpuCode: "1"},
 	}
 
@@ -154,7 +154,7 @@ func TestProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
 }
 
 func TestProductSyncServiceAdapter_SaveProducts_Success(t *testing.T) {
-	mockInput := []interface{}{
+	mockInput := []any{
 		&managementapi.ProductDataDTO{ProductID: "1"},
 		&managementapi.ProductDataDTO{ProductID: "2"},
 	}
@@ -182,7 +182,7 @@ func TestProductSyncServiceAdapter_SaveProducts_Success(t *testing.T) {
 func TestProductSyncServiceAdapter_SaveProducts_Error(t *testing.T) {
 	expectedError := errors.New("save failed")
 
-	mockInput := []interface{}{
+	mockInput := []any{
 		&managementapi.ProductDataDTO{ProductID: "1"},
 	}
 

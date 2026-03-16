@@ -12,18 +12,18 @@ import (
 
 // MockInventorySyncService 模拟库存同步服务
 type MockInventorySyncService struct {
-	FetchProductsForInventorySyncFunc func(ctx context.Context, tenantID, storeID int64) ([]interface{}, error)
-	MonitorInventoryChangesFunc       func(ctx context.Context, products []interface{}, tenantID, storeID int64) (*InventorySyncResult, error)
+	FetchProductsForInventorySyncFunc func(ctx context.Context, tenantID, storeID int64) ([]any, error)
+	MonitorInventoryChangesFunc       func(ctx context.Context, products []any, tenantID, storeID int64) (*InventorySyncResult, error)
 }
 
-func (m *MockInventorySyncService) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]interface{}, error) {
+func (m *MockInventorySyncService) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]any, error) {
 	if m.FetchProductsForInventorySyncFunc != nil {
 		return m.FetchProductsForInventorySyncFunc(ctx, tenantID, storeID)
 	}
-	return []interface{}{}, nil
+	return []any{}, nil
 }
 
-func (m *MockInventorySyncService) MonitorInventoryChanges(ctx context.Context, products []interface{}, tenantID, storeID int64) (*InventorySyncResult, error) {
+func (m *MockInventorySyncService) MonitorInventoryChanges(ctx context.Context, products []any, tenantID, storeID int64) (*InventorySyncResult, error) {
 	if m.MonitorInventoryChangesFunc != nil {
 		return m.MonitorInventoryChangesFunc(ctx, products, tenantID, storeID)
 	}
@@ -72,10 +72,10 @@ func TestInventorySyncTask_Execute_Success(t *testing.T) {
 
 	// 模拟成功的服务调用
 	mockService := &MockInventorySyncService{
-		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]interface{}, error) {
-			return []interface{}{"product1", "product2"}, nil
+		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]any, error) {
+			return []any{"product1", "product2"}, nil
 		},
-		MonitorInventoryChangesFunc: func(ctx context.Context, products []interface{}, tenantID, storeID int64) (*InventorySyncResult, error) {
+		MonitorInventoryChangesFunc: func(ctx context.Context, products []any, tenantID, storeID int64) (*InventorySyncResult, error) {
 			return &InventorySyncResult{
 				TotalProducts:     2,
 				ProcessedProducts: 2,
@@ -120,7 +120,7 @@ func TestInventorySyncTask_Execute_FetchError(t *testing.T) {
 
 	// 模拟获取产品失败
 	mockService := &MockInventorySyncService{
-		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]interface{}, error) {
+		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]any, error) {
 			return nil, expectedError
 		},
 	}
@@ -156,10 +156,10 @@ func TestInventorySyncTask_Execute_MonitorError(t *testing.T) {
 
 	// 模拟监控失败
 	mockService := &MockInventorySyncService{
-		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]interface{}, error) {
-			return []interface{}{"product1"}, nil
+		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]any, error) {
+			return []any{"product1"}, nil
 		},
-		MonitorInventoryChangesFunc: func(ctx context.Context, products []interface{}, tenantID, storeID int64) (*InventorySyncResult, error) {
+		MonitorInventoryChangesFunc: func(ctx context.Context, products []any, tenantID, storeID int64) (*InventorySyncResult, error) {
 			return nil, expectedError
 		},
 	}
@@ -193,8 +193,8 @@ func TestInventorySyncTask_Execute_EmptyProductList(t *testing.T) {
 
 	// 模拟空产品列表
 	mockService := &MockInventorySyncService{
-		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]interface{}, error) {
-			return []interface{}{}, nil
+		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]any, error) {
+			return []any{}, nil
 		},
 	}
 
@@ -234,14 +234,14 @@ func TestInventorySyncTask_Execute_ResultStatistics(t *testing.T) {
 
 	// 模拟返回详细统计
 	mockService := &MockInventorySyncService{
-		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]interface{}, error) {
-			products := make([]interface{}, 10)
+		FetchProductsForInventorySyncFunc: func(ctx context.Context, tenantID, storeID int64) ([]any, error) {
+			products := make([]any, 10)
 			for i := 0; i < 10; i++ {
 				products[i] = i
 			}
 			return products, nil
 		},
-		MonitorInventoryChangesFunc: func(ctx context.Context, products []interface{}, tenantID, storeID int64) (*InventorySyncResult, error) {
+		MonitorInventoryChangesFunc: func(ctx context.Context, products []any, tenantID, storeID int64) (*InventorySyncResult, error) {
 			return expectedResult, nil
 		},
 	}

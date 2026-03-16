@@ -1,4 +1,4 @@
-// Package handler 提供产品数据处理器实现
+﻿// Package handler 提供产品数据处理器实现
 package handler
 
 import (
@@ -35,7 +35,7 @@ func (h *ProductDataHandler) Handle(ctx context.Context, taskContext *model.Task
 	}
 
 	// 简化实现：创建模拟的产品数据
-	mockProductData := map[string]interface{}{
+	mockProductData := map[string]any{
 		"product_id":  productID,
 		"title":       "Sample Product",
 		"description": "This is a sample product description",

@@ -58,7 +58,7 @@ func (f *SKUImageAutoFixer) AutoFixMultiPieceSKUImage(ctx *shein.TaskContext, sk
 				CommodityCategoryFlag: firstImage.CommodityCategoryFlag,
 			},
 		},
-		OriginalImageInfoList: &[]interface{}{},
+		OriginalImageInfoList: &[]any{},
 	}
 
 	logrus.Infof("🔧 自动修复多件商品SKU图片: SKU %s 从SKC复制了图片", sku.SupplierSKU)

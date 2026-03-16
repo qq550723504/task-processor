@@ -1,4 +1,4 @@
-// Package marketing 提供SHEIN活动创建相关数据类型定义
+﻿// Package marketing 提供SHEIN活动创建相关数据类型定义
 package marketing
 
 // CreateActivityRequest 创建活动请求参数
@@ -53,13 +53,13 @@ type CreateActivityResponse struct {
 	Code string              `json:"code"` // 响应码
 	Msg  string              `json:"msg"`  // 响应消息
 	Info *ActivityCreateInfo `json:"info"` // 活动创建信息
-	BBL  interface{}         `json:"bbl"`  // BBL字段
+	BBL  any         `json:"bbl"`  // BBL字段
 }
 
 // ActivityCreateInfo 活动创建信息
 type ActivityCreateInfo struct {
 	ActivityID   int64       `json:"activity_id"`    // 活动ID
-	ErrorInfo    interface{} `json:"error_info"`     // 错误信息
-	SkcErrorInfo interface{} `json:"skc_error_info"` // SKC错误信息
-	SkuErrorInfo interface{} `json:"sku_error_info"` // SKU错误信息
+	ErrorInfo    any `json:"error_info"`     // 错误信息
+	SkcErrorInfo any `json:"skc_error_info"` // SKC错误信息
+	SkuErrorInfo any `json:"sku_error_info"` // SKU错误信息
 }

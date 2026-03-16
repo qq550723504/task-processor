@@ -151,7 +151,7 @@ func (h *CostTemplateHandler) extractCostTemplateID(response *temuquery.CostTemp
 	// 优先选择默认模板
 	for _, template := range response.Result.CostTemplateList {
 		if template.DefaultTemplate && !template.Disabled {
-			h.logger.WithFields(map[string]interface{}{
+			h.logger.WithFields(map[string]any{
 				"template_name": template.TemplateName,
 				"template_id":   template.CostTemplateID,
 			}).Info("选择默认成本模板")
@@ -162,7 +162,7 @@ func (h *CostTemplateHandler) extractCostTemplateID(response *temuquery.CostTemp
 	// 如果没有默认模板，选择第一个可用的模板
 	for _, template := range response.Result.CostTemplateList {
 		if !template.Disabled {
-			h.logger.WithFields(map[string]interface{}{
+			h.logger.WithFields(map[string]any{
 				"template_name": template.TemplateName,
 				"template_id":   template.CostTemplateID,
 			}).Info("选择第一个可用成本模板")
@@ -173,7 +173,7 @@ func (h *CostTemplateHandler) extractCostTemplateID(response *temuquery.CostTemp
 	// 如果所有模板都被禁用，选择第一个模板
 	if len(response.Result.CostTemplateList) > 0 {
 		template := response.Result.CostTemplateList[0]
-		h.logger.WithFields(map[string]interface{}{
+		h.logger.WithFields(map[string]any{
 			"template_name": template.TemplateName,
 			"template_id":   template.CostTemplateID,
 		}).Warn("所有模板都被禁用，强制选择第一个")

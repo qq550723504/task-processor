@@ -54,7 +54,7 @@ func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
 	// 收集所有平台的任务提交器
 	submitters := make(map[string]task.TaskSubmitter)
 
-	log.WithFields(map[string]interface{}{
+	log.WithFields(map[string]any{
 		"temu_available":  s.temuProcessor != nil,
 		"shein_available": s.sheinProcessor != nil,
 	}).Info("检查处理器状态")

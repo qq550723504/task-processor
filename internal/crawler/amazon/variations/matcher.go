@@ -1,4 +1,4 @@
-package variations
+﻿package variations
 
 import (
 	"strings"
@@ -15,7 +15,7 @@ func NewMatcher(config *Config) *Matcher {
 }
 
 // FindMatchingASIN 通用的ASIN匹配方法，支持动态属性结构
-func (m *Matcher) FindMatchingASIN(combo map[string]interface{}, asinMapping map[string]map[string]string) string {
+func (m *Matcher) FindMatchingASIN(combo map[string]any, asinMapping map[string]map[string]string) string {
 	// 遍历所有ASIN映射，找到属性匹配的ASIN
 	for asin, attributes := range asinMapping {
 		if m.AttributesMatch(combo, attributes) {
@@ -26,7 +26,7 @@ func (m *Matcher) FindMatchingASIN(combo map[string]interface{}, asinMapping map
 }
 
 // AttributesMatch 通用的属性匹配方法，支持动态属性结构
-func (m *Matcher) AttributesMatch(combo map[string]interface{}, asinAttrs map[string]string) bool {
+func (m *Matcher) AttributesMatch(combo map[string]any, asinAttrs map[string]string) bool {
 	// 计算匹配的属性数量
 	matchCount := 0
 	totalComboAttrs := 0

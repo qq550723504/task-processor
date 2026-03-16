@@ -1,4 +1,4 @@
-// Package service 提供Amazon Schema管理功能
+﻿// Package service 提供Amazon Schema管理功能
 package service
 
 import (
@@ -292,7 +292,7 @@ func (m *SchemaManager) ClearCache() {
 // GetCacheStats 获取缓存统计
 func (m *SchemaManager) GetCacheStats() map[string]any {
 	schemaCount := 0
-	m.schemaCache.Range(func(key, value interface{}) bool {
+	m.schemaCache.Range(func(key, value any) bool {
 		schemaCount++
 		return true
 	})

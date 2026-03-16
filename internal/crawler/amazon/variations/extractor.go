@@ -1,4 +1,4 @@
-package variations
+﻿package variations
 
 import (
 	"strconv"
@@ -49,7 +49,7 @@ func (e *Extractor) ExtractFromPage(page playwright.Page) (*VariationsData, erro
 func (e *Extractor) BuildVariations(
 	variationsValues []VariationValue,
 	asinMapping map[string]map[string]string,
-	priceMapping map[string]interface{},
+	priceMapping map[string]any,
 	defaultPrice float64,
 	defaultCurrency string,
 ) []Variation {
@@ -120,7 +120,7 @@ func (e *Extractor) BuildVariations(
 }
 
 // buildNameFromAttributes 从属性构建变体名称
-func (e *Extractor) buildNameFromAttributes(attributes map[string]interface{}) string {
+func (e *Extractor) buildNameFromAttributes(attributes map[string]any) string {
 	var parts []string
 
 	// 先添加优先级高的属性
@@ -156,13 +156,13 @@ func (e *Extractor) buildNameFromAttributes(attributes map[string]interface{}) s
 }
 
 // getPriceForASIN 从价格映射中获取特定ASIN的价格信息
-func (e *Extractor) getPriceForASIN(asin string, priceMapping map[string]interface{}, defaultPrice float64, defaultCurrency string) (float64, string) {
+func (e *Extractor) getPriceForASIN(asin string, priceMapping map[string]any, defaultPrice float64, defaultCurrency string) (float64, string) {
 	if priceMapping == nil || asin == "" {
 		return defaultPrice, defaultCurrency
 	}
 
 	if priceData, exists := priceMapping[asin]; exists {
-		if priceMap, ok := priceData.(map[string]interface{}); ok {
+		if priceMap, ok := priceData.(map[string]any); ok {
 			var price float64 = defaultPrice
 			var currency string = defaultCurrency
 
@@ -238,8 +238,8 @@ func (e *Extractor) BuildVariationName(productDetails []ProductDetail) string {
 }
 
 // ExtractCurrentAttributes 从产品详情中提取当前属性
-func (e *Extractor) ExtractCurrentAttributes(productDetails []ProductDetail) map[string]interface{} {
-	attributes := make(map[string]interface{})
+func (e *Extractor) ExtractCurrentAttributes(productDetails []ProductDetail) map[string]any {
+	attributes := make(map[string]any)
 
 	for _, detail := range productDetails {
 		detailTypeLower := strings.ToLower(detail.Type)

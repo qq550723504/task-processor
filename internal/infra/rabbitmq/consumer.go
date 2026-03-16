@@ -1,4 +1,4 @@
-// Package rabbitmq 提供RabbitMQ消息消费者管理功能
+﻿// Package rabbitmq 提供RabbitMQ消息消费者管理功能
 package rabbitmq
 
 import (
@@ -328,15 +328,15 @@ func (mc *MessageConsumer) Stop(ctx context.Context) error {
 }
 
 // GetQueueStats 获取队列统计信息
-func (mc *MessageConsumer) GetQueueStats() map[string]interface{} {
+func (mc *MessageConsumer) GetQueueStats() map[string]any {
 	mc.mutex.RLock()
 	defer mc.mutex.RUnlock()
 
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 	stats["total_queues"] = len(mc.consumers)
 
 	activeCount := 0
-	queueStats := make(map[string]interface{})
+	queueStats := make(map[string]any)
 	for queueName := range mc.consumers {
 		sm := mc.stateManager[queueName]
 		stateInfo := sm.GetStateInfo()
@@ -345,7 +345,7 @@ func (mc *MessageConsumer) GetQueueStats() map[string]interface{} {
 			activeCount++
 		}
 
-		queueStats[queueName] = map[string]interface{}{
+		queueStats[queueName] = map[string]any{
 			"status":        stateInfo.State.String(),
 			"message_count": stateInfo.MessageCount,
 			"success_count": stateInfo.SuccessCount,
@@ -360,7 +360,7 @@ func (mc *MessageConsumer) GetQueueStats() map[string]interface{} {
 
 	// 添加错误统计
 	errorStats := mc.errorCollector.GetErrorStats()
-	stats["errors"] = map[string]interface{}{
+	stats["errors"] = map[string]any{
 		"total":    errorStats.Total,
 		"by_type":  errorStats.ByType,
 		"by_queue": errorStats.ByQueue,

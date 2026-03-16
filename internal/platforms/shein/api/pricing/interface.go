@@ -52,7 +52,7 @@ type BatchHandleCostDiscussResponse struct {
 		SuccessCount int `json:"success_count"` // 成功数量
 		FailCount    int `json:"fail_count"`    // 失败数量
 	} `json:"info"`
-	Data interface{} `json:"data"`
+	Data any `json:"data"`
 }
 
 type BargainPageResponse struct {
@@ -150,5 +150,5 @@ type BatchReQuoteResponse struct {
 		SuccessCount int `json:"success_count"` // 成功数量
 		FailCount    int `json:"fail_count"`    // 失败数量
 	} `json:"info"`
-	Data interface{} `json:"data"`
+	Data any `json:"data"`
 }

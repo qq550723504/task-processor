@@ -29,7 +29,7 @@ type AttributeValue struct {
 	FromCateMis                *string               `json:"from_cate_mis"`
 	SupplierID                 int                   `json:"supplier_id"`
 	AttributeValueDoc          *string               `json:"attribute_value_doc"`
-	AttributeValueDocImageList []interface{}         `json:"attribute_value_doc_image_list"`
+	AttributeValueDocImageList []any         `json:"attribute_value_doc_image_list"`
 	AttributeValueGroupList    []AttributeValueGroup `json:"attribute_value_group_list"`
 }
 
@@ -38,7 +38,7 @@ type AttributeInfo struct {
 	AttributeID                 int              `json:"attribute_id"`
 	AttributeName               string           `json:"attribute_name"`
 	AttributeNameEn             string           `json:"attribute_name_en"`
-	AttributeRemarkList         []interface{}    `json:"attribute_remark_list"`
+	AttributeRemarkList         []any    `json:"attribute_remark_list"`
 	AttributeIsShow             int              `json:"attribute_is_show"`
 	AttributeSource             int              `json:"attribute_source"`
 	AttributeLabel              int              `json:"attribute_label"`
@@ -52,8 +52,8 @@ type AttributeInfo struct {
 	IsSample                    int              `json:"is_sample"`
 	SupplierID                  int              `json:"supplier_id"`
 	AttributeDoc                *string          `json:"attribute_doc"`
-	RuleInfoList                interface{}      `json:"rule_info_list"`
-	AttributeDocImageList       []interface{}    `json:"attribute_doc_image_list"`
+	RuleInfoList                any      `json:"rule_info_list"`
+	AttributeDocImageList       []any    `json:"attribute_doc_image_list"`
 	AttributeValueInfoList      []AttributeValue `json:"attribute_value_info_list"`
 	SiteTitle                   *string          `json:"site_title"`
 	SiteURL                     *string          `json:"site_url"`
@@ -75,7 +75,7 @@ type AttributeTemplateInfo struct {
 	Data []AttributeTemplate `json:"data"`
 	Meta struct {
 		Count     int         `json:"count"`
-		CustomObj interface{} `json:"customObj"`
+		CustomObj any `json:"customObj"`
 	} `json:"meta"`
 }
 

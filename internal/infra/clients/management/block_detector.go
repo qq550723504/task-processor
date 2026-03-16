@@ -38,7 +38,7 @@ func (b *BlockDetector) GetBlockRemainTime() time.Duration {
 }
 
 // DetectBlock 检测是否触发风控
-func (b *BlockDetector) DetectBlock(resp interface{}) bool {
+func (b *BlockDetector) DetectBlock(resp any) bool {
 	if resp == nil {
 		return false
 	}
@@ -78,7 +78,7 @@ func (b *BlockDetector) ResetOnSuccess() {
 	}
 }
 
-func (b *BlockDetector) getStatusCode(resp interface{}) int {
+func (b *BlockDetector) getStatusCode(resp any) int {
 	type statusCodeGetter interface{ StatusCode() int }
 	if r, ok := resp.(statusCodeGetter); ok {
 		return r.StatusCode()
@@ -86,7 +86,7 @@ func (b *BlockDetector) getStatusCode(resp interface{}) int {
 	return 0
 }
 
-func (b *BlockDetector) getResponseBody(resp interface{}) string {
+func (b *BlockDetector) getResponseBody(resp any) string {
 	type stringGetter interface{ String() string }
 	if r, ok := resp.(stringGetter); ok {
 		return r.String()

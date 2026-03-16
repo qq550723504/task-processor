@@ -202,7 +202,7 @@ func (h *CategoryRecommendHandler) recommendCategory(temuCtx *temucontext.TemuTa
 	// 设置最深层级的分类ID作为主要CatID
 	temuProduct.GoodsBasic.CatID = lastLevelCatID
 
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		"cat_id": lastLevelCatID,
 		"level":  len(temuProduct.GoodsBasic.CatIDs),
 	}).Info("成功设置分类信息")
@@ -253,7 +253,7 @@ func (h *CategoryRecommendHandler) isChildrenRelatedCategory(category temucatego
 		categoryNameLower := strings.ToLower(categoryName)
 		for _, keyword := range childrenRelatedKeywords {
 			if strings.Contains(categoryNameLower, strings.ToLower(keyword)) {
-				h.logger.WithFields(map[string]interface{}{
+				h.logger.WithFields(map[string]any{
 					"category_name": categoryName,
 					"keyword":       keyword,
 				}).Warn("检测到儿童相关分类")
@@ -274,14 +274,14 @@ func (h *CategoryRecommendHandler) selectNonChildrenCategory(categories []temuca
 		category := categories[i]
 
 		if !h.isChildrenRelatedCategory(category) {
-			h.logger.WithFields(map[string]interface{}{
+			h.logger.WithFields(map[string]any{
 				"index":     i + 1,
 				"cate_name": category.Cate1Name,
 			}).Info("选择推荐分类（非儿童相关）")
 			return category, nil
 		}
 
-		h.logger.WithFields(map[string]interface{}{
+		h.logger.WithFields(map[string]any{
 			"index":     i + 1,
 			"cate_name": category.Cate1Name,
 		}).Warn("推荐分类包含儿童相关内容，跳过")

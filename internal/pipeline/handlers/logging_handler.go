@@ -1,4 +1,4 @@
-// Package handlers 提供公共处理器实现
+﻿// Package handlers 提供公共处理器实现
 package handlers
 
 import (
@@ -35,7 +35,7 @@ func (h *LoggingHandler) Handle(ctx pipeline.TaskContext) error {
 	task := ctx.GetTask()
 
 	// 记录任务详细信息
-	h.GetLogger().WithFields(map[string]interface{}{
+	h.GetLogger().WithFields(map[string]any{
 		"task_id":    task.ID,
 		"product_id": task.ProductID,
 		"store_id":   task.StoreID,

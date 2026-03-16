@@ -1,4 +1,4 @@
-package category
+﻿package category
 
 // CategoryAPI 分类相关API接口
 type CategoryAPI interface {
@@ -29,7 +29,7 @@ type CategoryTreeResponse struct {
 	Data []CategoryTreeNode `json:"data"`
 	Meta struct {
 		Count     int         `json:"count"`
-		CustomObj interface{} `json:"customObj"`
+		CustomObj any `json:"customObj"`
 	} `json:"meta"`
 }
 

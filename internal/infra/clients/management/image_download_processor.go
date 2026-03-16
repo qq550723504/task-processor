@@ -155,7 +155,7 @@ func (p *ImageDownloadProcessor) GetImageInfo(ctx context.Context, url string) (
 	return p.extractImageInfo(resp), nil
 }
 
-func (p *ImageDownloadProcessor) extractImageInfo(resp interface{}) *api.ImageInfo {
+func (p *ImageDownloadProcessor) extractImageInfo(resp any) *api.ImageInfo {
 	contentLength, contentType, width, height := "", "", "", ""
 
 	if r, ok := resp.(interface{ GetHeader(string) string }); ok {

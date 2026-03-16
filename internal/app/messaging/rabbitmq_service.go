@@ -316,11 +316,11 @@ func (s *RabbitMQService) IsConnected() bool {
 }
 
 // GetStats 获取服务统计信息
-func (s *RabbitMQService) GetStats() map[string]interface{} {
+func (s *RabbitMQService) GetStats() map[string]any {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 	stats["started"] = s.started
 	stats["connected"] = s.IsConnected()
 

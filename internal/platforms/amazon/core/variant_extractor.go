@@ -1,4 +1,4 @@
-package core
+﻿package core
 
 import (
 	"fmt"
@@ -20,7 +20,7 @@ func NewVariantExtractor() *VariantExtractor {
 }
 
 // ExtractVariants 从1688数据中提取变体信息
-func (e *VariantExtractor) ExtractVariants(productData map[string]interface{}) (*VariantData, error) {
+func (e *VariantExtractor) ExtractVariants(productData map[string]any) (*VariantData, error) {
 	e.logger.Info("开始提取变体数据")
 
 	// 1. 检查是否有SKU信息
@@ -52,7 +52,7 @@ func (e *VariantExtractor) ExtractVariants(productData map[string]interface{}) (
 }
 
 // extractSKUInfo 提取SKU信息
-func (e *VariantExtractor) extractSKUInfo(data map[string]interface{}) []map[string]interface{} {
+func (e *VariantExtractor) extractSKUInfo(data map[string]any) []map[string]any {
 	// 1688常见的SKU字段
 	skuFields := []string{
 		"skuInfos",
@@ -63,10 +63,10 @@ func (e *VariantExtractor) extractSKUInfo(data map[string]interface{}) []map[str
 
 	for _, field := range skuFields {
 		if val, ok := data[field]; ok {
-			if skuList, ok := val.([]interface{}); ok {
-				result := make([]map[string]interface{}, 0, len(skuList))
+			if skuList, ok := val.([]any); ok {
+				result := make([]map[string]any, 0, len(skuList))
 				for _, sku := range skuList {
-					if skuMap, ok := sku.(map[string]interface{}); ok {
+					if skuMap, ok := sku.(map[string]any); ok {
 						result = append(result, skuMap)
 					}
 				}
@@ -82,7 +82,7 @@ func (e *VariantExtractor) extractSKUInfo(data map[string]interface{}) []map[str
 }
 
 // extractVariantAttributes 提取变体属性
-func (e *VariantExtractor) extractVariantAttributes(skuInfo []map[string]interface{}) []string {
+func (e *VariantExtractor) extractVariantAttributes(skuInfo []map[string]any) []string {
 	attributeSet := make(map[string]bool)
 
 	for _, sku := range skuInfo {
@@ -96,9 +96,9 @@ func (e *VariantExtractor) extractVariantAttributes(skuInfo []map[string]interfa
 
 		for _, field := range attrFields {
 			if attrs, ok := sku[field]; ok {
-				if attrList, ok := attrs.([]interface{}); ok {
+				if attrList, ok := attrs.([]any); ok {
 					for _, attr := range attrList {
-						if attrMap, ok := attr.(map[string]interface{}); ok {
+						if attrMap, ok := attr.(map[string]any); ok {
 							// 提取属性名称
 							if name, ok := attrMap["name"].(string); ok {
 								attributeSet[strings.ToLower(name)] = true
@@ -152,7 +152,7 @@ func (e *VariantExtractor) determineVariationTheme(attributes []string) string {
 type VariantData struct {
 	Theme      string                   `json:"theme"`
 	Attributes []string                 `json:"attributes"`
-	SKUs       []map[string]interface{} `json:"skus"`
+	SKUs       []map[string]any `json:"skus"`
 }
 
 // BuildVariantChildren 构建子变体列表
@@ -179,13 +179,13 @@ func (e *VariantExtractor) BuildVariantChildren(
 }
 
 // extractVariationValues 提取变体值
-func (e *VariantExtractor) extractVariationValues(skuInfo map[string]interface{}) map[string]string {
+func (e *VariantExtractor) extractVariationValues(skuInfo map[string]any) map[string]string {
 	values := make(map[string]string)
 
 	// 尝试从不同字段提取
-	if specAttrs, ok := skuInfo["specAttrs"].([]interface{}); ok {
+	if specAttrs, ok := skuInfo["specAttrs"].([]any); ok {
 		for _, attr := range specAttrs {
-			if attrMap, ok := attr.(map[string]interface{}); ok {
+			if attrMap, ok := attr.(map[string]any); ok {
 				name := e.getString(attrMap, "name", "attributeName")
 				value := e.getString(attrMap, "value", "attributeValue")
 				if name != "" && value != "" {
@@ -199,7 +199,7 @@ func (e *VariantExtractor) extractVariationValues(skuInfo map[string]interface{}
 }
 
 // extractPrice 提取价格
-func (e *VariantExtractor) extractPrice(skuInfo map[string]interface{}) float64 {
+func (e *VariantExtractor) extractPrice(skuInfo map[string]any) float64 {
 	priceFields := []string{"price", "salePrice", "consignPrice"}
 	for _, field := range priceFields {
 		if val, ok := skuInfo[field]; ok {
@@ -217,7 +217,7 @@ func (e *VariantExtractor) extractPrice(skuInfo map[string]interface{}) float64 
 }
 
 // extractQuantity 提取库存
-func (e *VariantExtractor) extractQuantity(skuInfo map[string]interface{}) int {
+func (e *VariantExtractor) extractQuantity(skuInfo map[string]any) int {
 	qtyFields := []string{"quantity", "canBookCount", "amountOnSale"}
 	for _, field := range qtyFields {
 		if val, ok := skuInfo[field]; ok {
@@ -237,7 +237,7 @@ func (e *VariantExtractor) extractQuantity(skuInfo map[string]interface{}) int {
 }
 
 // extractImages 提取图片
-func (e *VariantExtractor) extractImages(skuInfo map[string]interface{}) []string {
+func (e *VariantExtractor) extractImages(skuInfo map[string]any) []string {
 	var images []string
 
 	imageFields := []string{"image", "imageUrl", "skuImage"}
@@ -253,7 +253,7 @@ func (e *VariantExtractor) extractImages(skuInfo map[string]interface{}) []strin
 }
 
 // getString 从map中获取字符串值
-func (e *VariantExtractor) getString(m map[string]interface{}, keys ...string) string {
+func (e *VariantExtractor) getString(m map[string]any, keys ...string) string {
 	for _, key := range keys {
 		if val, ok := m[key]; ok {
 			if str, ok := val.(string); ok {

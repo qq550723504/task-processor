@@ -1,4 +1,4 @@
-// Package pricing 提供TEMU平台定价相关的API和数据结构
+﻿// Package pricing 提供TEMU平台定价相关的API和数据结构
 package pricing
 
 import (
@@ -111,7 +111,7 @@ type SalesBoostSku struct {
 	TargetSupplierPrice   PriceVO                `json:"target_supplier_price"`
 	TargetRetailPrice     PriceVO                `json:"target_retail_price"`
 	CurrentRetailPrice    PriceVO                `json:"current_retail_price"`
-	RecRetailPriceTipInfo map[string]interface{} `json:"rec_retail_price_tip_info"`
+	RecRetailPriceTipInfo map[string]any `json:"rec_retail_price_tip_info"`
 	CreateTime            int64                  `json:"create_time"`
 	PriceSpreadRatio      string                 `json:"price_spread_ratio"`
 	EasyGainsTag          int                    `json:"easy_gains_tag"`
@@ -162,7 +162,7 @@ type Sku struct {
 	CrtTime                     string                 `json:"crt_time"`
 	Status4VO                   int                    `json:"status4_vo"`
 	SubStatus4VO                int                    `json:"sub_status4_vo"`
-	ClosedTypeList              []interface{}          `json:"closed_type_list"`
+	ClosedTypeList              []any          `json:"closed_type_list"`
 	SupplierPrice               float64                `json:"supplier_price"`
 	GoodsIsOnsale               int                    `json:"goods_is_onsale"`
 	Currency                    string                 `json:"currency"`
@@ -172,7 +172,7 @@ type Sku struct {
 	CatType                     int                    `json:"cat_type"`
 	LockInfo                    LockInfo               `json:"lock_info"`
 	MultiSiteGoods              bool                   `json:"multi_site_goods"`
-	CheckPriceAuditInfo         map[string]interface{} `json:"check_price_audit_info"`
+	CheckPriceAuditInfo         map[string]any `json:"check_price_audit_info"`
 	AdjustPriceAuditInfo        AdjustPriceAuditInfo   `json:"adjust_price_audit_info"`
 	ShowSubStatus4VO            int                    `json:"show_sub_status4_vo"`
 	NewVersionApprovedLabelShow bool                   `json:"new_version_approved_label_show"`

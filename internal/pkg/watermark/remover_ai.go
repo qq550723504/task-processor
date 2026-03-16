@@ -1,4 +1,4 @@
-package watermark
+﻿package watermark
 
 import (
 	"bytes"
@@ -55,7 +55,7 @@ func (r *AIRemover) Remove(ctx context.Context, img image.Image, regions []*Wate
 	result.Success = true
 	result.Image = processedImg
 	result.Quality = 0.95 // AI方法质量很高
-	result.Metadata = map[string]interface{}{
+	result.Metadata = map[string]any{
 		"model":   "lama",
 		"regions": len(regions),
 	}
@@ -99,7 +99,7 @@ func (r *AIRemover) callLamaService(ctx context.Context, img, mask image.Image) 
 	}
 
 	// 构建请求
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"image": imgBase64,
 		"mask":  maskBase64,
 	}

@@ -184,7 +184,7 @@ func (h *CommitCreateHandler) isNonRetryableError(errorCode int) bool {
 
 	// 检查错误码
 	if reason, exists := nonRetryableErrorCodes[errorCode]; exists {
-		h.logger.WithFields(map[string]interface{}{
+		h.logger.WithFields(map[string]any{
 			"error_code": errorCode,
 			"reason":     reason,
 		}).Info("识别到不可重试错误")

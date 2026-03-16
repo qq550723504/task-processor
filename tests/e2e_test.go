@@ -1,4 +1,4 @@
-package tests
+﻿package tests
 
 import (
 	"context"
@@ -163,7 +163,7 @@ type TaskRequest struct {
 
 type TaskResult struct {
 	Status string
-	Data   interface{}
+	Data   any
 	Error  string
 }
 
@@ -187,13 +187,13 @@ type MonitorResult struct {
 	Changes         int
 }
 
-func setupTestApplication(t *testing.T) interface{} {
+func setupTestApplication(t *testing.T) any {
 	// 初始化测试应用
 	// 返回应用实例
 	return nil
 }
 
-func teardownTestApplication(t *testing.T, app interface{}) {
+func teardownTestApplication(t *testing.T, app any) {
 	// 清理测试应用
 }
 
@@ -206,7 +206,7 @@ func waitForTaskCompletion(t *testing.T, ctx context.Context, taskID string, tim
 	// 等待任务完成并返回结果
 	return &TaskResult{
 		Status: "completed",
-		Data:   map[string]interface{}{},
+		Data:   map[string]any{},
 	}
 }
 

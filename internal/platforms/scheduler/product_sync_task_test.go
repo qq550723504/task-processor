@@ -12,26 +12,26 @@ import (
 
 // MockProductSyncService 模拟产品同步服务
 type MockProductSyncService struct {
-	FetchProductListFunc func(ctx context.Context) ([]interface{}, error)
-	ConvertProductsFunc  func(ctx context.Context, products []interface{}, tenantID, storeID int64) ([]interface{}, error)
-	SaveProductsFunc     func(ctx context.Context, products []interface{}) (int, error)
+	FetchProductListFunc func(ctx context.Context) ([]any, error)
+	ConvertProductsFunc  func(ctx context.Context, products []any, tenantID, storeID int64) ([]any, error)
+	SaveProductsFunc     func(ctx context.Context, products []any) (int, error)
 }
 
-func (m *MockProductSyncService) FetchProductList(ctx context.Context) ([]interface{}, error) {
+func (m *MockProductSyncService) FetchProductList(ctx context.Context) ([]any, error) {
 	if m.FetchProductListFunc != nil {
 		return m.FetchProductListFunc(ctx)
 	}
-	return []interface{}{}, nil
+	return []any{}, nil
 }
 
-func (m *MockProductSyncService) ConvertProducts(ctx context.Context, products []interface{}, tenantID, storeID int64) ([]interface{}, error) {
+func (m *MockProductSyncService) ConvertProducts(ctx context.Context, products []any, tenantID, storeID int64) ([]any, error) {
 	if m.ConvertProductsFunc != nil {
 		return m.ConvertProductsFunc(ctx, products, tenantID, storeID)
 	}
 	return products, nil
 }
 
-func (m *MockProductSyncService) SaveProducts(ctx context.Context, products []interface{}) (int, error) {
+func (m *MockProductSyncService) SaveProducts(ctx context.Context, products []any) (int, error) {
 	if m.SaveProductsFunc != nil {
 		return m.SaveProductsFunc(ctx, products)
 	}
@@ -80,13 +80,13 @@ func TestProductSyncTask_Execute_Success(t *testing.T) {
 
 	// 模拟成功的服务调用
 	mockService := &MockProductSyncService{
-		FetchProductListFunc: func(ctx context.Context) ([]interface{}, error) {
-			return []interface{}{"product1", "product2", "product3"}, nil
+		FetchProductListFunc: func(ctx context.Context) ([]any, error) {
+			return []any{"product1", "product2", "product3"}, nil
 		},
-		ConvertProductsFunc: func(ctx context.Context, products []interface{}, tenantID, storeID int64) ([]interface{}, error) {
+		ConvertProductsFunc: func(ctx context.Context, products []any, tenantID, storeID int64) ([]any, error) {
 			return products, nil
 		},
-		SaveProductsFunc: func(ctx context.Context, products []interface{}) (int, error) {
+		SaveProductsFunc: func(ctx context.Context, products []any) (int, error) {
 			return len(products), nil
 		},
 	}
@@ -123,7 +123,7 @@ func TestProductSyncTask_Execute_FetchError(t *testing.T) {
 
 	// 模拟获取产品列表失败
 	mockService := &MockProductSyncService{
-		FetchProductListFunc: func(ctx context.Context) ([]interface{}, error) {
+		FetchProductListFunc: func(ctx context.Context) ([]any, error) {
 			return nil, expectedError
 		},
 	}
@@ -159,10 +159,10 @@ func TestProductSyncTask_Execute_ConvertError(t *testing.T) {
 
 	// 模拟转换产品失败
 	mockService := &MockProductSyncService{
-		FetchProductListFunc: func(ctx context.Context) ([]interface{}, error) {
-			return []interface{}{"product1"}, nil
+		FetchProductListFunc: func(ctx context.Context) ([]any, error) {
+			return []any{"product1"}, nil
 		},
-		ConvertProductsFunc: func(ctx context.Context, products []interface{}, tenantID, storeID int64) ([]interface{}, error) {
+		ConvertProductsFunc: func(ctx context.Context, products []any, tenantID, storeID int64) ([]any, error) {
 			return nil, expectedError
 		},
 	}
@@ -198,13 +198,13 @@ func TestProductSyncTask_Execute_SaveError(t *testing.T) {
 
 	// 模拟保存产品失败
 	mockService := &MockProductSyncService{
-		FetchProductListFunc: func(ctx context.Context) ([]interface{}, error) {
-			return []interface{}{"product1"}, nil
+		FetchProductListFunc: func(ctx context.Context) ([]any, error) {
+			return []any{"product1"}, nil
 		},
-		ConvertProductsFunc: func(ctx context.Context, products []interface{}, tenantID, storeID int64) ([]interface{}, error) {
+		ConvertProductsFunc: func(ctx context.Context, products []any, tenantID, storeID int64) ([]any, error) {
 			return products, nil
 		},
-		SaveProductsFunc: func(ctx context.Context, products []interface{}) (int, error) {
+		SaveProductsFunc: func(ctx context.Context, products []any) (int, error) {
 			return 0, expectedError
 		},
 	}
@@ -238,8 +238,8 @@ func TestProductSyncTask_Execute_EmptyProductList(t *testing.T) {
 
 	// 模拟空产品列表
 	mockService := &MockProductSyncService{
-		FetchProductListFunc: func(ctx context.Context) ([]interface{}, error) {
-			return []interface{}{}, nil
+		FetchProductListFunc: func(ctx context.Context) ([]any, error) {
+			return []any{}, nil
 		},
 	}
 
@@ -268,8 +268,8 @@ func TestProductSyncTask_Execute_StatusTransition(t *testing.T) {
 	}
 
 	mockService := &MockProductSyncService{
-		FetchProductListFunc: func(ctx context.Context) ([]interface{}, error) {
-			return []interface{}{"product1"}, nil
+		FetchProductListFunc: func(ctx context.Context) ([]any, error) {
+			return []any{"product1"}, nil
 		},
 	}
 

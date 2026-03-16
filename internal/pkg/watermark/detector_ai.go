@@ -1,4 +1,4 @@
-package watermark
+﻿package watermark
 
 import (
 	"bytes"
@@ -63,12 +63,12 @@ func (d *AIDetector) detectWithOpenAI(ctx context.Context, img image.Image, resu
 
 	// 构建请求
 	prompt := d.buildDetectionPrompt()
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"model": d.config.AI.VisionAPI.Model,
-		"messages": []map[string]interface{}{
+		"messages": []map[string]any{
 			{
 				"role": "user",
-				"content": []map[string]interface{}{
+				"content": []map[string]any{
 					{
 						"type": "text",
 						"text": prompt,
@@ -149,13 +149,13 @@ func (d *AIDetector) detectWithClaude(ctx context.Context, img image.Image, resu
 
 	// 构建请求
 	prompt := d.buildDetectionPrompt()
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"model":      d.config.AI.VisionAPI.Model,
 		"max_tokens": 500,
-		"messages": []map[string]interface{}{
+		"messages": []map[string]any{
 			{
 				"role": "user",
-				"content": []map[string]interface{}{
+				"content": []map[string]any{
 					{
 						"type": "image",
 						"source": map[string]string{

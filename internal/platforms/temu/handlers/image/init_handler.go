@@ -43,7 +43,7 @@ func (h *ImageInitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 
 	// 获取Amazon产品信息
 	var amazonProduct *model.Product
-	if amazonCtx, ok := interface{}(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
+	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
 		amazonProduct = amazonCtx.GetAmazonProduct()
 	}
 
@@ -87,7 +87,7 @@ func (h *ImageInitHandler) initSkuImages(temuCtx *temucontext.TemuTaskContext, t
 
 	// 获取Amazon产品信息
 	var amazonProduct *model.Product
-	if amazonCtx, ok := interface{}(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
+	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
 		amazonProduct = amazonCtx.GetAmazonProduct()
 	}
 

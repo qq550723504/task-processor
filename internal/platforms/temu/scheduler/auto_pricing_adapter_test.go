@@ -73,7 +73,7 @@ func TestTemuAutoPricingAdapter_ApplyPricingRules(t *testing.T) {
 	adapter := NewTemuAutoPricingAdapter(mockAPIClient, mockManagement)
 	ctx := context.Background()
 
-	mockProducts := []interface{}{"product1", "product2"}
+	mockProducts := []any{"product1", "product2"}
 
 	// Temu平台的实现直接返回输入
 	results, err := adapter.ApplyPricingRules(ctx, mockProducts, 100, true)

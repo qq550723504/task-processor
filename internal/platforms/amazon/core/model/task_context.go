@@ -1,4 +1,4 @@
-// Package model 提供Amazon任务上下文模型
+﻿// Package model 提供Amazon任务上下文模型
 package model
 
 // TaskContext Amazon任务上下文
@@ -7,21 +7,21 @@ type TaskContext struct {
 	MarketplaceID string                 `json:"marketplace_id"`
 	LanguageTag   string                 `json:"language_tag"`
 	Currency      string                 `json:"currency"`
-	Data          map[string]interface{} `json:"data"`
+	Data          map[string]any `json:"data"`
 	ProductData   *ProductData           `json:"product_data,omitempty"`
-	Results       map[string]interface{} `json:"results,omitempty"`
+	Results       map[string]any `json:"results,omitempty"`
 }
 
 // SetResult 设置处理结果
-func (tc *TaskContext) SetResult(key string, value interface{}) {
+func (tc *TaskContext) SetResult(key string, value any) {
 	if tc.Results == nil {
-		tc.Results = make(map[string]interface{})
+		tc.Results = make(map[string]any)
 	}
 	tc.Results[key] = value
 }
 
 // GetResult 获取处理结果
-func (tc *TaskContext) GetResult(key string) (interface{}, bool) {
+func (tc *TaskContext) GetResult(key string) (any, bool) {
 	if tc.Results == nil {
 		return nil, false
 	}

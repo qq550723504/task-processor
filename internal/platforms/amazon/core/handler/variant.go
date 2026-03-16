@@ -1,4 +1,4 @@
-// Package handler 提供Amazon变体产品处理器
+﻿// Package handler 提供Amazon变体产品处理器
 package handler
 
 import (
@@ -32,7 +32,7 @@ func (h *VariantHandler) Handle(ctx context.Context, taskContext *model.TaskCont
 		return fmt.Errorf("产品数据不存在")
 	}
 
-	productData, ok := rawData.(map[string]interface{})
+	productData, ok := rawData.(map[string]any)
 	if !ok {
 		return fmt.Errorf("产品数据格式错误")
 	}

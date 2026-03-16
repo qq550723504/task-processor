@@ -36,7 +36,7 @@ func (h *PlatformRouterHandler) Handle(ctx *shein.TaskContext) error {
 		logrus.Infof("[PlatformRouter] 任务将使用Amazon处理流程")
 		// 在上下文中设置标记，后续handler可以根据此标记决定是否执行
 		if ctx.Extra == nil {
-			ctx.Extra = make(map[string]interface{})
+			ctx.Extra = make(map[string]any)
 		}
 		ctx.Extra["platform"] = "amazon"
 		ctx.Extra["skipSheinPipeline"] = true
@@ -46,7 +46,7 @@ func (h *PlatformRouterHandler) Handle(ctx *shein.TaskContext) error {
 		// Shein平台任务（默认）
 		logrus.Infof("[PlatformRouter] 任务将使用Shein处理流程")
 		if ctx.Extra == nil {
-			ctx.Extra = make(map[string]interface{})
+			ctx.Extra = make(map[string]any)
 		}
 		ctx.Extra["platform"] = "shein"
 		return nil

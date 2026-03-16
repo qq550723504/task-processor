@@ -1,4 +1,4 @@
-// Package handler 提供 HTTP 处理器
+﻿// Package handler 提供 HTTP 处理器
 package handler
 
 import (
@@ -90,7 +90,7 @@ func (h *CrawlerHandler) handleCrawl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.Success(w, "任务已提交", map[string]interface{}{
+	response.Success(w, "任务已提交", map[string]any{
 		"task_id": crawlerTask.TaskID,
 		"url":     crawlerTask.URL,
 	})
@@ -133,7 +133,7 @@ func (h *CrawlerHandler) handleTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tasks := h.crawlerService.GetAllTasks()
-	response.Success(w, "查询成功", map[string]interface{}{
+	response.Success(w, "查询成功", map[string]any{
 		"total": len(tasks),
 		"tasks": tasks,
 	})

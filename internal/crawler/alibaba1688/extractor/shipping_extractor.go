@@ -1,4 +1,4 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
@@ -167,7 +167,7 @@ func (se *ShippingExtractor) Extract(page playwright.Page, product *model.Produc
 			}
 
 			// 设置买家保护服务
-			if buyerProtection, ok := shippingData["buyerProtection"].([]interface{}); ok && len(buyerProtection) > 0 {
+			if buyerProtection, ok := shippingData["buyerProtection"].([]any); ok && len(buyerProtection) > 0 {
 				var methods []model.ShippingMethod
 				for _, protection := range buyerProtection {
 					if protectionStr, ok := protection.(string); ok && protectionStr != "" {

@@ -77,7 +77,7 @@ type TaskContext struct {
 	SensitiveWordRetryCount int             // 敏感词重试计数器
 	ProcessedSensitiveWords map[string]bool // 已处理的敏感词记录
 	// 扩展字段，用于存储额外的上下文信息
-	Extra map[string]interface{} // 扩展字段
+	Extra map[string]any // 扩展字段
 }
 
 // SetVariantFiltered 设置变体过滤状态
@@ -114,7 +114,7 @@ func NewTaskContext(ctx context.Context, task *Task) *TaskContext {
 		AsinSkuMap:              make(map[string]string),
 		SupplierSkuMap:          make(map[string]string),
 		ProcessedSensitiveWords: make(map[string]bool),
-		Extra:                   make(map[string]interface{}),
+		Extra:                   make(map[string]any),
 	}
 }
 
@@ -135,7 +135,7 @@ func (ctx *TaskContext) GetTask() *types.Task {
 // SetData 设置数据
 func (ctx *TaskContext) SetData(key string, value any) {
 	if ctx.Extra == nil {
-		ctx.Extra = make(map[string]interface{})
+		ctx.Extra = make(map[string]any)
 	}
 	ctx.Extra[key] = value
 }

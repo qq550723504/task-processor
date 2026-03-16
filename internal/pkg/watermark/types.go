@@ -1,4 +1,4 @@
-// Package watermark 提供图片水印检测与去除功能
+﻿// Package watermark 提供图片水印检测与去除功能
 package watermark
 
 import (
@@ -68,7 +68,7 @@ type WatermarkRegion struct {
 
 	// 额外信息
 	Description string                 `json:"description,omitempty"` // AI检测时的描述
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 // DetectionResult 检测结果
@@ -88,7 +88,7 @@ type RemovalResult struct {
 	ProcessTime float64                `json:"process_time"` // 处理时间（秒）
 	Quality     float64                `json:"quality"`      // 处理质量评分 0-1
 	Error       string                 `json:"error,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
 // ProcessResult 完整处理结果

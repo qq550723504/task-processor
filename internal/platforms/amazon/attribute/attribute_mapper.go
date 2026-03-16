@@ -1,4 +1,4 @@
-package attribute
+﻿package attribute
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ type AttributeConfig struct {
 	AttributeMappings    map[string]AttributeMappingRule `yaml:"attribute_mappings"`
 	ValueTransformations map[string]map[string]string    `yaml:"value_transformations"`
 	ValidationRules      map[string]ValidationRule       `yaml:"validation_rules"`
-	DefaultValues        map[string]interface{}          `yaml:"default_values"`
+	DefaultValues        map[string]any          `yaml:"default_values"`
 }
 
 // ProductTypeConfig 产品类型配置
@@ -34,7 +34,7 @@ type AttributeMappingRule struct {
 	SourceFields []string    `yaml:"source_fields"`
 	MaxLength    int         `yaml:"max_length"`
 	Required     bool        `yaml:"required"`
-	Default      interface{} `yaml:"default"`
+	Default      any `yaml:"default"`
 	Unit         string      `yaml:"unit"`
 }
 
@@ -78,16 +78,16 @@ func loadAttributeConfig(configPath string) (*AttributeConfig, error) {
 
 // MapAttributes 映射属性
 func (m *AttributeMapper) MapAttributes(
-	sourceData map[string]interface{},
+	sourceData map[string]any,
 	productType string,
-) (map[string]interface{}, error) {
+) (map[string]any, error) {
 	// 验证产品类型
 	typeConfig, exists := m.config.ProductTypes[productType]
 	if !exists {
 		return nil, fmt.Errorf("不支持的产品类型: %s", productType)
 	}
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 
 	// 映射必填属性
 	for _, attrName := range typeConfig.RequiredAttributes {
@@ -111,9 +111,9 @@ func (m *AttributeMapper) MapAttributes(
 
 // mapAttribute 映射单个属性
 func (m *AttributeMapper) mapAttribute(
-	sourceData map[string]interface{},
+	sourceData map[string]any,
 	attrName string,
-) (interface{}, error) {
+) (any, error) {
 	// 获取映射规则
 	rule, exists := m.config.AttributeMappings[attrName]
 	if !exists {
@@ -121,7 +121,7 @@ func (m *AttributeMapper) mapAttribute(
 	}
 
 	// 从源数据中查找值
-	var value interface{}
+	var value any
 	for _, sourceField := range rule.SourceFields {
 		if val, ok := sourceData[sourceField]; ok && val != nil {
 			value = val
@@ -158,7 +158,7 @@ func (m *AttributeMapper) mapAttribute(
 }
 
 // transformValue 转换属性值
-func (m *AttributeMapper) transformValue(attrName string, value interface{}) interface{} {
+func (m *AttributeMapper) transformValue(attrName string, value any) any {
 	// 获取转换规则
 	transformMap, exists := m.config.ValueTransformations[attrName]
 	if !exists {

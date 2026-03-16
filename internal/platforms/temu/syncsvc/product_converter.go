@@ -205,7 +205,7 @@ func (s *productSyncServiceImpl) fillGoodsCategoryInfo(productData *managementap
 
 // fillGoodsPlatformData 填充商品平台特有数据
 func (s *productSyncServiceImpl) fillGoodsPlatformData(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.GoodsSearchItem) {
-	platformData := map[string]interface{}{
+	platformData := map[string]any{
 		"listing_commit_id":       temuProduct.ListingCommitID,
 		"goods_commit_id":         temuProduct.GoodsCommitID,
 		"mall_id":                 temuProduct.MallID,

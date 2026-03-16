@@ -1,4 +1,4 @@
-// Package messaging 提供消息处理应用层服务
+﻿// Package messaging 提供消息处理应用层服务
 package messaging
 
 import (
@@ -65,7 +65,7 @@ func (ts *TaskSubmitter) cleanExpiredCache() {
 		now := time.Now()
 		expiredCount := 0
 
-		ts.submittedCache.Range(func(key, value interface{}) bool {
+		ts.submittedCache.Range(func(key, value any) bool {
 			record := value.(*submittedRecord)
 			if now.Sub(record.timestamp) > ts.cacheDuration {
 				ts.submittedCache.Delete(key)

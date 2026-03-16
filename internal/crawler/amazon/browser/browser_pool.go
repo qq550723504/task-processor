@@ -1,4 +1,4 @@
-// Package browser 提供Amazon浏览器池管理功能
+﻿// Package browser 提供Amazon浏览器池管理功能
 package browser
 
 import (
@@ -253,7 +253,7 @@ func (bp *BrowserPool) Shutdown() {
 }
 
 // GetPoolStats 获取浏览器池统计信息
-func (bp *BrowserPool) GetPoolStats() map[string]interface{} {
+func (bp *BrowserPool) GetPoolStats() map[string]any {
 	return bp.healthChecker.GetPoolStats()
 }
 

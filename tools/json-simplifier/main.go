@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"encoding/json"
@@ -39,7 +39,7 @@ func main() {
 	}
 
 	// 解析JSON
-	var data interface{}
+	var data any
 	if err := json.Unmarshal(input, &data); err != nil {
 		fmt.Fprintf(os.Stderr, "JSON解析失败: %v\n", err)
 		os.Exit(1)
@@ -66,21 +66,21 @@ func main() {
 	}
 }
 
-func simplify(data interface{}, maxLen int) interface{} {
+func simplify(data any, maxLen int) any {
 	switch v := data.(type) {
-	case map[string]interface{}:
-		result := make(map[string]interface{})
+	case map[string]any:
+		result := make(map[string]any)
 		for key, val := range v {
 			result[key] = simplify(val, maxLen)
 		}
 		return result
 
-	case []interface{}:
+	case []any:
 		if len(v) == 0 {
-			return []interface{}{}
+			return []any{}
 		}
 		// 只保留第一个元素作为示例
-		return []interface{}{simplify(v[0], maxLen)}
+		return []any{simplify(v[0], maxLen)}
 
 	case string:
 		return simplifyString(v, maxLen)

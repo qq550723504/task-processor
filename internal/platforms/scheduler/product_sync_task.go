@@ -15,13 +15,13 @@ import (
 // 各平台需要实现此接口
 type ProductSyncService interface {
 	// FetchProductList 从平台API获取产品列表
-	FetchProductList(ctx context.Context) ([]interface{}, error)
+	FetchProductList(ctx context.Context) ([]any, error)
 
 	// ConvertProducts 转换产品为后端格式
-	ConvertProducts(ctx context.Context, products []interface{}, tenantID, storeID int64) ([]interface{}, error)
+	ConvertProducts(ctx context.Context, products []any, tenantID, storeID int64) ([]any, error)
 
 	// SaveProducts 批量保存产品到管理系统
-	SaveProducts(ctx context.Context, products []interface{}) (int, error)
+	SaveProducts(ctx context.Context, products []any) (int, error)
 }
 
 // ProductSyncTask 通用产品同步任务

@@ -33,7 +33,7 @@ type ParallelVariantHandler struct {
 func NewParallelVariantHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor interface{},
+	amazonProcessor any,
 	rabbitmqClient *rabbitmq.Client,
 ) *ParallelVariantHandler {
 	logger := logrus.WithField("handler", "ParallelVariantHandler")
@@ -170,7 +170,7 @@ func (h *ParallelVariantHandler) fetchVariantsParallel(temuCtx *temucontext.Temu
 	}
 
 	// 定义处理函数
-	processFunc := func(ctx context.Context, task *goroutine.Task) (interface{}, error) {
+	processFunc := func(ctx context.Context, task *goroutine.Task) (any, error) {
 		req, ok := task.Data.(*domainProduct.FetchRequest)
 		if !ok {
 			return nil, fmt.Errorf("任务数据类型错误")

@@ -96,7 +96,7 @@ func TestTemuProductSyncServiceAdapter_FetchProductList_Error(t *testing.T) {
 }
 
 func TestTemuProductSyncServiceAdapter_ConvertProducts_Success(t *testing.T) {
-	mockInput := []interface{}{
+	mockInput := []any{
 		models.GoodsSearchItem{GoodsID: "1", GoodsName: "Product 1"},
 		models.GoodsSearchItem{GoodsID: "2", GoodsName: "Product 2"},
 	}
@@ -129,7 +129,7 @@ func TestTemuProductSyncServiceAdapter_ConvertProducts_Success(t *testing.T) {
 func TestTemuProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
 	expectedError := errors.New("convert failed")
 
-	mockInput := []interface{}{
+	mockInput := []any{
 		models.GoodsSearchItem{GoodsID: "1"},
 	}
 
@@ -154,7 +154,7 @@ func TestTemuProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
 }
 
 func TestTemuProductSyncServiceAdapter_SaveProducts_Success(t *testing.T) {
-	mockInput := []interface{}{
+	mockInput := []any{
 		&managementapi.ProductDataDTO{ProductID: "1"},
 		&managementapi.ProductDataDTO{ProductID: "2"},
 	}
@@ -182,7 +182,7 @@ func TestTemuProductSyncServiceAdapter_SaveProducts_Success(t *testing.T) {
 func TestTemuProductSyncServiceAdapter_SaveProducts_Error(t *testing.T) {
 	expectedError := errors.New("save failed")
 
-	mockInput := []interface{}{
+	mockInput := []any{
 		&managementapi.ProductDataDTO{ProductID: "1"},
 	}
 

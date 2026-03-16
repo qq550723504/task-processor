@@ -1,4 +1,4 @@
-package pricing
+﻿package pricing
 
 import (
 	"fmt"
@@ -41,7 +41,7 @@ func (p *Client) BatchHandleCostDiscuss(reqBody *BatchHandleCostDiscussRequest) 
 func (p *Client) BargainPage(req *PageRequest, status int) (*BargainPageResponse, error) {
 	url := fmt.Sprintf("%s%s?page_num=%d&page_size=%d", p.GetBaseURL(), client.GetBargainPageNewEndpoint(), req.PageNum, req.PageSize)
 
-	reqBody := map[string]interface{}{"bargain_status": status}
+	reqBody := map[string]any{"bargain_status": status}
 	if req.StartTime != "" {
 		reqBody["start_time"] = req.StartTime
 	}

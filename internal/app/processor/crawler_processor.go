@@ -1,4 +1,4 @@
-// Package processor 提供爬虫任务处理器
+﻿// Package processor 提供爬虫任务处理器
 package processor
 
 import (
@@ -61,15 +61,15 @@ func (p *CrawlerProcessor) Start(ctx context.Context) error {
 func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 
 	// 解析任务数据（爬虫任务使用原始 payload 格式）
-	var messageWrapper map[string]interface{}
+	var messageWrapper map[string]any
 	if err := json.Unmarshal([]byte(job.TaskData), &messageWrapper); err != nil {
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
 	// 提取 payload（真正的任务数据在 payload 字段中）
-	var taskData map[string]interface{}
+	var taskData map[string]any
 	if payloadVal, ok := messageWrapper["payload"]; ok {
-		if payloadMap, ok := payloadVal.(map[string]interface{}); ok {
+		if payloadMap, ok := payloadVal.(map[string]any); ok {
 			taskData = payloadMap
 		} else {
 			return fmt.Errorf("payload 字段类型错误")
@@ -178,7 +178,7 @@ func (p *CrawlerProcessor) GetStatus() map[string]any {
 // sendCrawlResult 发送爬取结果到回复队列
 func (p *CrawlerProcessor) sendCrawlResult(replyTo string, taskID int64, product *model.Product, err error, duration time.Duration) {
 	// 构建结果消息（匹配 CrawlResult 结构）
-	result := map[string]interface{}{
+	result := map[string]any{
 		"taskId":   taskID,
 		"success":  err == nil,
 		"duration": duration.Nanoseconds(), // time.Duration 以纳秒为单位
@@ -216,7 +216,7 @@ func (p *CrawlerProcessor) sendCrawlResult(replyTo string, taskID int64, product
 
 // normalizeTaskData 规范化任务数据类型
 // JSON 反序列化后，数字可能是 float64 或 string，需要转换为正确的类型
-func (p *CrawlerProcessor) normalizeTaskData(data map[string]interface{}) {
+func (p *CrawlerProcessor) normalizeTaskData(data map[string]any) {
 	// 需要转换为 int64 的字段
 	int64Fields := []string{"id", "tenantId", "storeId", "categoryId"}
 	for _, field := range int64Fields {

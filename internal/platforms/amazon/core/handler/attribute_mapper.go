@@ -1,4 +1,4 @@
-// Package handler 提供Amazon属性映射处理器
+﻿// Package handler 提供Amazon属性映射处理器
 package handler
 
 import (
@@ -32,7 +32,7 @@ func (h *AttributeMapperHandler) Handle(ctx context.Context, taskContext *model.
 		return fmt.Errorf("原始产品数据不存在")
 	}
 
-	sourceData, ok := rawData.(map[string]interface{})
+	sourceData, ok := rawData.(map[string]any)
 	if !ok {
 		return fmt.Errorf("产品数据格式错误")
 	}
@@ -70,7 +70,7 @@ func (h *AttributeMapperHandler) getLLMAttributeMapper() *service.LLMAttributeMa
 }
 
 // handleLLMMapping 使用LLM进行智能映射
-func (h *AttributeMapperHandler) handleLLMMapping(ctx context.Context, taskContext *model.TaskContext, sourceData map[string]interface{}, llmMapper *service.LLMAttributeMapper) error {
+func (h *AttributeMapperHandler) handleLLMMapping(ctx context.Context, taskContext *model.TaskContext, sourceData map[string]any, llmMapper *service.LLMAttributeMapper) error {
 	// 获取产品类型
 	productType := h.getProductType(sourceData, taskContext.Data)
 
@@ -95,7 +95,7 @@ func (h *AttributeMapperHandler) handleLLMMapping(ctx context.Context, taskConte
 		return h.handleBasicMapping(ctx, taskContext, sourceData)
 	}
 
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		"mapped_count": len(resp.MappedAttributes),
 		"confidence":   resp.Confidence,
 		"product_type": resp.ProductType,
@@ -111,10 +111,10 @@ func (h *AttributeMapperHandler) handleLLMMapping(ctx context.Context, taskConte
 }
 
 // handleBasicMapping 基础映射（回退方案）
-func (h *AttributeMapperHandler) handleBasicMapping(ctx context.Context, taskContext *model.TaskContext, sourceData map[string]interface{}) error {
+func (h *AttributeMapperHandler) handleBasicMapping(ctx context.Context, taskContext *model.TaskContext, sourceData map[string]any) error {
 	h.logger.Info("使用基础属性映射")
 
-	attributes := make(map[string]interface{})
+	attributes := make(map[string]any)
 
 	// 基础属性映射
 	if title, ok := sourceData["title"].(string); ok {
@@ -141,7 +141,7 @@ func (h *AttributeMapperHandler) handleBasicMapping(ctx context.Context, taskCon
 }
 
 // getProductType 获取产品类型
-func (h *AttributeMapperHandler) getProductType(sourceData map[string]interface{}, data map[string]interface{}) string {
+func (h *AttributeMapperHandler) getProductType(sourceData map[string]any, data map[string]any) string {
 	// 1. 优先使用已推荐的产品类型
 	if productType, exists := data["product_type"]; exists {
 		if pt, ok := productType.(string); ok && pt != "" {

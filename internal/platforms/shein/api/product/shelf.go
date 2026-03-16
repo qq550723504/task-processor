@@ -1,4 +1,4 @@
-// Package product 产品下架相关数据结构
+﻿// Package product 产品下架相关数据结构
 package product
 
 // ShelfOperateRequest 产品上下架请求
@@ -29,10 +29,10 @@ type ShelfOperateResponse struct {
 		Data []ShelfOperateResult `json:"data"`
 		Meta struct {
 			Count     int         `json:"count"`
-			CustomObj interface{} `json:"customObj"`
+			CustomObj any `json:"customObj"`
 		} `json:"meta"`
 	} `json:"info"`
-	BBL interface{} `json:"bbl"`
+	BBL any `json:"bbl"`
 }
 
 // ShelfOperateResult 上下架操作结果

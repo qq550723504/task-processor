@@ -34,7 +34,7 @@ func (f *TaskFetcher) extractAPITask(apiTask api.ProductImportTaskRespDTO) *api.
 }
 
 // getStoreInfo 获取店铺信息
-func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient interface{}) (*api.StoreRespDTO, error) {
+func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient any) (*api.StoreRespDTO, error) {
 	logrus.Infof("📞 正在获取店铺信息: StoreID=%d", storeID)
 
 	// 类型断言为StoreClient接口

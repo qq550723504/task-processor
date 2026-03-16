@@ -88,7 +88,7 @@ func (pip *ParallelImageProcessor) ProcessVariantImagesParallel(temuCtx *temucon
 	tracker.StartStep("执行并行图片处理")
 
 	// 定义处理函数
-	processFunc := func(ctx context.Context, task *goroutine.Task) (interface{}, error) {
+	processFunc := func(ctx context.Context, task *goroutine.Task) (any, error) {
 		imageTask, ok := task.Data.(*ImageProcessingTask)
 		if !ok {
 			return nil, fmt.Errorf("任务数据类型错误")

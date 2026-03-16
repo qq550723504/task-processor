@@ -274,7 +274,7 @@ func (b *SpuBuilder) setBulletPoints(amazonProduct *model.Product, ext *models.E
 // createSkcList 创建SKC列表
 func (b *SpuBuilder) createSkcList(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) error {
 	// 尝试将上下文转换为AmazonContext以获取变体数据
-	if amazonCtx, ok := interface{}(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
+	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
 		variants := amazonCtx.GetVariants()
 		if len(variants) > 0 {
 			// 有变体，创建变体SKC

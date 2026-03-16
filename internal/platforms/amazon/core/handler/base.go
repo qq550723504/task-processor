@@ -1,4 +1,4 @@
-// Package handler 提供基础Handler实现，减少重复代码
+﻿// Package handler 提供基础Handler实现，减少重复代码
 package handler
 
 import (
@@ -52,7 +52,7 @@ func (bh *BaseHandler) GetAPIClient(services *model.Services) (*api.Client, erro
 }
 
 // GetRequiredString 获取必需的字符串字段
-func (bh *BaseHandler) GetRequiredString(data map[string]interface{}, key string) (string, error) {
+func (bh *BaseHandler) GetRequiredString(data map[string]any, key string) (string, error) {
 	value, exists := data[key]
 	if !exists {
 		return "", fmt.Errorf("缺少必需字段: %s", key)
@@ -67,7 +67,7 @@ func (bh *BaseHandler) GetRequiredString(data map[string]interface{}, key string
 }
 
 // GetRequiredInt64 获取必需的int64字段
-func (bh *BaseHandler) GetRequiredInt64(data map[string]interface{}, key string) (int64, error) {
+func (bh *BaseHandler) GetRequiredInt64(data map[string]any, key string) (int64, error) {
 	value, exists := data[key]
 	if !exists {
 		return 0, fmt.Errorf("缺少必需字段: %s", key)
@@ -86,7 +86,7 @@ func (bh *BaseHandler) GetRequiredInt64(data map[string]interface{}, key string)
 }
 
 // GetOptionalString 获取可选的字符串字段
-func (bh *BaseHandler) GetOptionalString(data map[string]interface{}, key, defaultValue string) string {
+func (bh *BaseHandler) GetOptionalString(data map[string]any, key, defaultValue string) string {
 	if value, exists := data[key]; exists {
 		if str, ok := value.(string); ok {
 			return str
@@ -96,7 +96,7 @@ func (bh *BaseHandler) GetOptionalString(data map[string]interface{}, key, defau
 }
 
 // SetResult 设置处理结果
-func (bh *BaseHandler) SetResult(data map[string]interface{}, key string, value interface{}) {
+func (bh *BaseHandler) SetResult(data map[string]any, key string, value any) {
 	data[key] = value
 	bh.logger.Debugf("设置结果: %s = %v", key, value)
 }

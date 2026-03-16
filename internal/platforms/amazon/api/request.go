@@ -1,4 +1,4 @@
-package api
+﻿package api
 
 import (
 	"bytes"
@@ -23,7 +23,7 @@ var (
 type APIError struct {
 	Code    string
 	Message string
-	Details map[string]interface{}
+	Details map[string]any
 }
 
 // Error 实现error接口
@@ -36,12 +36,12 @@ func NewAPIError(code, message string) *APIError {
 	return &APIError{
 		Code:    code,
 		Message: message,
-		Details: make(map[string]interface{}),
+		Details: make(map[string]any),
 	}
 }
 
 // doRequest 执行 HTTP 请求的通用方法（带重试和速率限制）
-func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
+func (c *Client) doRequest(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	// 获取对应的速率限制器
 	limiter := c.rateLimits.GetLimiterForPath(path)
 
@@ -59,7 +59,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 }
 
 // doRequestInternal 执行单次HTTP请求（内部方法）
-func (c *Client) doRequestInternal(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
+func (c *Client) doRequestInternal(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	// 构建完整 URL
 	url := c.buildURL(path)
 
@@ -123,7 +123,7 @@ func (c *Client) doRequestInternal(ctx context.Context, method, path string, bod
 }
 
 // parseResponse 解析响应
-func (c *Client) parseResponse(resp *http.Response, result interface{}) error {
+func (c *Client) parseResponse(resp *http.Response, result any) error {
 	defer resp.Body.Close()
 
 	// 读取响应体

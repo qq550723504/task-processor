@@ -1,4 +1,4 @@
-// Package cacheutil 提供内存缓存工具
+﻿// Package cacheutil 提供内存缓存工具
 package cacheutil
 
 import (
@@ -8,7 +8,7 @@ import (
 
 // Item 缓存项
 type Item struct {
-	Value      interface{}
+	Value      any
 	Expiration time.Time
 }
 
@@ -35,14 +35,14 @@ func NewMemoryCache(cleanupInterval time.Duration) *MemoryCache {
 }
 
 // Set 设置缓存项
-func (c *MemoryCache) Set(key string, value interface{}, duration time.Duration) {
+func (c *MemoryCache) Set(key string, value any, duration time.Duration) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.items[key] = &Item{Value: value, Expiration: time.Now().Add(duration)}
 }
 
 // Get 获取缓存项
-func (c *MemoryCache) Get(key string) (interface{}, bool) {
+func (c *MemoryCache) Get(key string) (any, bool) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	item, ok := c.items[key]

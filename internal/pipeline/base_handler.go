@@ -1,4 +1,4 @@
-// Package pipeline 提供公共处理器基类
+﻿// Package pipeline 提供公共处理器基类
 package pipeline
 
 import (
@@ -44,7 +44,7 @@ func (bh *BaseHandler) ValidateContext(ctx TaskContext) error {
 }
 
 // GetRequiredData 获取必需的数据
-func (bh *BaseHandler) GetRequiredData(ctx TaskContext, key string) (interface{}, error) {
+func (bh *BaseHandler) GetRequiredData(ctx TaskContext, key string) (any, error) {
 	value, exists := ctx.GetData(key)
 	if !exists {
 		return nil, fmt.Errorf("缺少必需数据: %s", key)
@@ -53,7 +53,7 @@ func (bh *BaseHandler) GetRequiredData(ctx TaskContext, key string) (interface{}
 }
 
 // GetOptionalData 获取可选数据
-func (bh *BaseHandler) GetOptionalData(ctx TaskContext, key string, defaultValue interface{}) interface{} {
+func (bh *BaseHandler) GetOptionalData(ctx TaskContext, key string, defaultValue any) any {
 	if value, exists := ctx.GetData(key); exists {
 		return value
 	}
@@ -61,7 +61,7 @@ func (bh *BaseHandler) GetOptionalData(ctx TaskContext, key string, defaultValue
 }
 
 // SetResult 设置处理结果
-func (bh *BaseHandler) SetResult(ctx TaskContext, key string, value interface{}) {
+func (bh *BaseHandler) SetResult(ctx TaskContext, key string, value any) {
 	ctx.SetData(key, value)
 	bh.logger.Debugf("设置结果: %s = %v", key, value)
 }

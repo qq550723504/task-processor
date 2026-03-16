@@ -1,4 +1,4 @@
-// Package messaging 提供服务管理功能
+﻿// Package messaging 提供服务管理功能
 package messaging
 
 import (
@@ -210,8 +210,8 @@ func (sm *ServiceManager) GetConfig() *config.RabbitMQConfig {
 }
 
 // GetStats 获取所有统计信息
-func (sm *ServiceManager) GetStats() map[string]interface{} {
-	stats := make(map[string]interface{})
+func (sm *ServiceManager) GetStats() map[string]any {
+	stats := make(map[string]any)
 
 	if sm.loadMonitor != nil {
 		stats["load"] = sm.loadMonitor.GetStats()

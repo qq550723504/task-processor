@@ -1,4 +1,4 @@
-// Package handler 提供 HTTP 处理器
+﻿// Package handler 提供 HTTP 处理器
 package handler
 
 import "task-processor/internal/domain/task"
@@ -20,5 +20,5 @@ type CrawlerService interface {
 	GetAllTasks() []*task.CrawlerResult
 
 	// GetStats 获取统计信息
-	GetStats() map[string]interface{}
+	GetStats() map[string]any
 }

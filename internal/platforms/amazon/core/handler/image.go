@@ -1,4 +1,4 @@
-// Package handler 提供Amazon图片处理器
+﻿// Package handler 提供Amazon图片处理器
 package handler
 
 import (
@@ -33,7 +33,7 @@ func (h *ImageHandler) Handle(ctx context.Context, taskContext *model.TaskContex
 
 		// 处理附加图片
 		for i, imageURL := range productData.AdditionalImages {
-			h.logger.WithFields(map[string]interface{}{
+			h.logger.WithFields(map[string]any{
 				"index": i + 1,
 				"url":   imageURL,
 			}).Info("处理附加图片")

@@ -23,6 +23,6 @@ func convertSpecInfos(src []temucontext.SpecInfo) []models.SpecInfo {
 }
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
-func (sb *SkuBuilder) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
+func (sb *SkuBuilder) marshalWithoutHTMLEscape(v any) ([]byte, error) {
 	return jsonutil.MarshalIndentWithoutHTMLEscape(v, "", "  ")
 }

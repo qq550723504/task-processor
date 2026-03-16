@@ -1,4 +1,4 @@
-// Package handler 提供通用 HTTP 处理器
+﻿// Package handler 提供通用 HTTP 处理器
 package handler
 
 import (
@@ -18,7 +18,7 @@ type HealthChecker interface {
 // 返回一个简单的健康检查处理器，总是返回 healthy
 func HealthHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		response.Success(w, "healthy", map[string]interface{}{
+		response.Success(w, "healthy", map[string]any{
 			"timestamp": time.Now().Format(time.RFC3339),
 		})
 	}
@@ -33,7 +33,7 @@ func HealthHandler() http.HandlerFunc {
 func ReadyHandler(checker HealthChecker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if checker == nil || checker.IsReady() {
-			response.Success(w, "ready", map[string]interface{}{
+			response.Success(w, "ready", map[string]any{
 				"timestamp": time.Now().Format(time.RFC3339),
 			})
 		} else {

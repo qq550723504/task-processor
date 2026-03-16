@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import "encoding/json"
 
@@ -72,7 +72,7 @@ type ServicePromise struct {
 // ExtraInfo 额外信息
 type ExtraInfo struct {
 	CreateEmptyGoods bool        `json:"create_empty_goods"`
-	VersionType      interface{} `json:"version_type"`
+	VersionType      any `json:"version_type"`
 	Tab              int         `json:"tab"`
 	MinSkuImageSize  int         `json:"min_sku_image_size"`
 	MaxSkuImageSize  int         `json:"max_sku_image_size"`
@@ -105,8 +105,8 @@ type Disclaimer struct {
 // GoodsGallery 商品图库
 type GoodsGallery struct {
 	DetailImage   []ImageInfo   `json:"detail_image"`
-	CarouselVideo []interface{} `json:"carousel_video"`
-	DetailVideo   []interface{} `json:"detail_video"`
+	CarouselVideo []any `json:"carousel_video"`
+	DetailVideo   []any `json:"detail_video"`
 }
 
 func (g GoodsGallery) MarshalJSON() ([]byte, error) {

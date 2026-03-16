@@ -101,7 +101,7 @@ func TestSheinAutoPricingAdapter_FetchPendingPriceProducts_Error(t *testing.T) {
 }
 
 func TestSheinAutoPricingAdapter_ApplyPricingRules_Success(t *testing.T) {
-	mockProducts := []interface{}{
+	mockProducts := []any{
 		pricing.BargainPageData{BargainSn: "1", ProductTitle: "Product 1"},
 		pricing.BargainPageData{BargainSn: "2", ProductTitle: "Product 2"},
 	}
@@ -134,7 +134,7 @@ func TestSheinAutoPricingAdapter_ApplyPricingRules_Success(t *testing.T) {
 func TestSheinAutoPricingAdapter_ApplyPricingRules_Error(t *testing.T) {
 	expectedError := errors.New("apply rules failed")
 
-	mockProducts := []interface{}{
+	mockProducts := []any{
 		pricing.BargainPageData{BargainSn: "1"},
 	}
 
@@ -159,7 +159,7 @@ func TestSheinAutoPricingAdapter_ApplyPricingRules_Error(t *testing.T) {
 }
 
 func TestSheinAutoPricingAdapter_SubmitPricingResults_Success(t *testing.T) {
-	mockResults := []interface{}{
+	mockResults := []any{
 		schedulerservice.PricingDecision{Product: pricing.BargainPageData{BargainSn: "1"}, Action: "accept"},
 		schedulerservice.PricingDecision{Product: pricing.BargainPageData{BargainSn: "2"}, Action: "reject"},
 	}
@@ -203,7 +203,7 @@ func TestSheinAutoPricingAdapter_SubmitPricingResults_Success(t *testing.T) {
 func TestSheinAutoPricingAdapter_SubmitPricingResults_Error(t *testing.T) {
 	expectedError := errors.New("submit failed")
 
-	mockResults := []interface{}{
+	mockResults := []any{
 		schedulerservice.PricingDecision{Product: pricing.BargainPageData{BargainSn: "1"}},
 	}
 

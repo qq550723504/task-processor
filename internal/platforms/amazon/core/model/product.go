@@ -1,4 +1,4 @@
-// Package model 提供Amazon产品数据模型
+﻿// Package model 提供Amazon产品数据模型
 package model
 
 import (
@@ -91,14 +91,14 @@ type ProductListResponse struct {
 type ProductCreateRequest struct {
 	SKU          string                 `json:"sku"`
 	ProductType  string                 `json:"product_type"`
-	Attributes   map[string]interface{} `json:"attributes"`
+	Attributes   map[string]any `json:"attributes"`
 	Requirements string                 `json:"requirements,omitempty"`
 }
 
 // ProductUpdateRequest 产品更新请求
 type ProductUpdateRequest struct {
 	SKU        string                 `json:"sku"`
-	Attributes map[string]interface{} `json:"attributes"`
+	Attributes map[string]any `json:"attributes"`
 	PatchOp    string                 `json:"patch_op,omitempty"` // REPLACE, DELETE
 }
 

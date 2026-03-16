@@ -1,4 +1,4 @@
-// Package api 提供基于Amazon官方Postman集合的测试功能
+﻿// Package api 提供基于Amazon官方Postman集合的测试功能
 package api
 
 import (
@@ -47,7 +47,7 @@ func (c *Client) TestPostmanGetListing(ctx context.Context, sku, marketplaceID s
 	}
 
 	// 解析响应
-	var result map[string]interface{}
+	var result map[string]any
 	if err := c.parseResponse(resp, &result); err != nil {
 		return err
 	}

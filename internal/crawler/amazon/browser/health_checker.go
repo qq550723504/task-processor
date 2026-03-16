@@ -1,4 +1,4 @@
-// Package browser 提供浏览器健康检查功能
+﻿// Package browser 提供浏览器健康检查功能
 package browser
 
 import (
@@ -37,14 +37,14 @@ func (hc *HealthChecker) HealthCheck(instance *BrowserInstance) bool {
 }
 
 // GetPoolStats 获取浏览器池统计信息
-func (hc *HealthChecker) GetPoolStats() map[string]interface{} {
+func (hc *HealthChecker) GetPoolStats() map[string]any {
 	hc.pool.Mu.Lock()
 	defer hc.pool.Mu.Unlock()
 
 	instances := hc.pool.GetInstances()
 	available := hc.pool.GetAvailableChannel()
 
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"total_instances":     len(instances),
 		"available_instances": len(available),
 		"in_use_instances":    0,
@@ -143,15 +143,15 @@ func (hc *HealthChecker) performHealthCheck() {
 }
 
 // CheckInstanceHealth 检查单个实例健康状态
-func (hc *HealthChecker) CheckInstanceHealth(instance *BrowserInstance) map[string]interface{} {
+func (hc *HealthChecker) CheckInstanceHealth(instance *BrowserInstance) map[string]any {
 	if instance == nil {
-		return map[string]interface{}{
+		return map[string]any{
 			"healthy": false,
 			"error":   "instance is nil",
 		}
 	}
 
-	result := map[string]interface{}{
+	result := map[string]any{
 		"instance_id": instance.ID,
 		"healthy":     false,
 		"checks":      make(map[string]bool),
@@ -183,21 +183,21 @@ func (hc *HealthChecker) CheckInstanceHealth(instance *BrowserInstance) map[stri
 }
 
 // GetDetailedStats 获取详细统计信息
-func (hc *HealthChecker) GetDetailedStats() map[string]interface{} {
+func (hc *HealthChecker) GetDetailedStats() map[string]any {
 	hc.pool.Mu.Lock()
 	defer hc.pool.Mu.Unlock()
 
 	instances := hc.pool.GetInstances()
 	available := hc.pool.GetAvailableChannel()
 
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"total_instances":     len(instances),
 		"available_instances": len(available),
-		"instance_details":    make([]map[string]interface{}, 0),
+		"instance_details":    make([]map[string]any, 0),
 	}
 
 	var inUseCount, healthyCount int
-	instanceDetails := stats["instance_details"].([]map[string]interface{})
+	instanceDetails := stats["instance_details"].([]map[string]any)
 
 	for _, instance := range instances {
 		instance.Mu.Lock()

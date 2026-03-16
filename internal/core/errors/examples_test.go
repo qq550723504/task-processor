@@ -1,4 +1,4 @@
-package errors_test
+﻿package errors_test
 
 import (
 	"context"
@@ -103,12 +103,12 @@ func ExampleIgnoreError() {
 // mockLogger 用于示例
 type mockLogger struct{}
 
-func (m *mockLogger) Error(args ...interface{})                 {}
-func (m *mockLogger) Errorf(format string, args ...interface{}) {}
-func (m *mockLogger) Warn(args ...interface{})                  {}
-func (m *mockLogger) Warnf(format string, args ...interface{})  {}
-func (m *mockLogger) Info(args ...interface{})                  {}
-func (m *mockLogger) Infof(format string, args ...interface{})  {}
+func (m *mockLogger) Error(args ...any)                 {}
+func (m *mockLogger) Errorf(format string, args ...any) {}
+func (m *mockLogger) Warn(args ...any)                  {}
+func (m *mockLogger) Warnf(format string, args ...any)  {}
+func (m *mockLogger) Info(args ...any)                  {}
+func (m *mockLogger) Infof(format string, args ...any)  {}
 
 // 示例：使用错误处理器
 func ExampleDefaultErrorHandler() {

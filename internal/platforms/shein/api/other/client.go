@@ -1,4 +1,4 @@
-package other
+﻿package other
 
 import (
 	"fmt"
@@ -48,7 +48,7 @@ func (o *Client) GetUser(uuid int64) (*UserInfo, error) {
 func (o *Client) BatchCheckOnWay(spuNameList []string) (*BatchCheckOnWayResponse, error) {
 	url := fmt.Sprintf("%s%s", o.GetBaseURL(), client.GetBatchCheckOnWayEndpoint())
 
-	reqBody := map[string]interface{}{"spu_name_list": spuNameList}
+	reqBody := map[string]any{"spu_name_list": spuNameList}
 
 	var result struct {
 		api.APIResponse
@@ -156,7 +156,7 @@ func (o *Client) QueryShelfQuota() (*ShelfQuotaResponse, error) {
 		Bbl  *string        `json:"bbl"`
 	}
 
-	if err := o.APIRequest(http.MethodPost, url, map[string]interface{}{}, &result); err != nil {
+	if err := o.APIRequest(http.MethodPost, url, map[string]any{}, &result); err != nil {
 		return nil, err
 	}
 

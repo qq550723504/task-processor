@@ -1,4 +1,4 @@
-// Package database 提供数据访问层实现
+﻿// Package database 提供数据访问层实现
 package database
 
 import (
@@ -102,7 +102,7 @@ func (r *taskRepository) SaveTaskResult(ctx context.Context, taskID string, resu
 	}
 
 	// 更新任务结果和状态
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"result": result,
 		"status": productjson.TaskStatusCompleted,
 	}
@@ -151,7 +151,7 @@ func (r *taskRepository) UpdateTaskError(ctx context.Context, taskID string, err
 		return fmt.Errorf("task ID cannot be empty")
 	}
 
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"error":  errorMsg,
 		"status": productjson.TaskStatusFailed,
 	}

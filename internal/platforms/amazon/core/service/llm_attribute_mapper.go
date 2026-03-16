@@ -1,4 +1,4 @@
-// Package service 提供基于LLM的智能属性映射服务
+﻿// Package service 提供基于LLM的智能属性映射服务
 package service
 
 import (
@@ -42,13 +42,13 @@ type ChatResponse struct {
 type AttributeMappingRequest struct {
 	SourcePlatform string                 `json:"source_platform"`
 	TargetPlatform string                 `json:"target_platform"`
-	ProductData    map[string]interface{} `json:"product_data"`
+	ProductData    map[string]any `json:"product_data"`
 	ProductType    string                 `json:"product_type"`
 }
 
 // AttributeMappingResponse 属性映射响应
 type AttributeMappingResponse struct {
-	MappedAttributes map[string]interface{} `json:"mapped_attributes"`
+	MappedAttributes map[string]any `json:"mapped_attributes"`
 	ProductType      string                 `json:"product_type"`
 	Confidence       float64                `json:"confidence"`
 	Reasoning        string                 `json:"reasoning"`
@@ -197,7 +197,7 @@ func (m *LLMAttributeMapper) parseLLMResponse(content string) (*AttributeMapping
 }
 
 // ValidateMapping 验证映射结果
-func (m *LLMAttributeMapper) ValidateMapping(attributes map[string]interface{}) error {
+func (m *LLMAttributeMapper) ValidateMapping(attributes map[string]any) error {
 	// 检查必需属性
 	requiredFields := []string{"item_name"}
 
@@ -221,8 +221,8 @@ func (m *LLMAttributeMapper) ValidateMapping(attributes map[string]interface{}) 
 }
 
 // GetMappingStats 获取映射统计信息
-func (m *LLMAttributeMapper) GetMappingStats() map[string]interface{} {
-	return map[string]interface{}{
+func (m *LLMAttributeMapper) GetMappingStats() map[string]any {
+	return map[string]any{
 		"service_name":    "LLMAttributeMapper",
 		"version":         "1.0.0",
 		"supported_pairs": []string{"1688->Amazon", "Taobao->Amazon"},

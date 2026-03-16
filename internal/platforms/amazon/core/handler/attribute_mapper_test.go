@@ -1,4 +1,4 @@
-// Package handler 提供属性映射处理器测试
+﻿// Package handler 提供属性映射处理器测试
 package handler
 
 import (
@@ -55,13 +55,13 @@ func TestAttributeMapperHandler_Handle_WithLLM(t *testing.T) {
 	taskContext := &model.TaskContext{
 		TaskID:        "test-llm-mapping",
 		MarketplaceID: "ATVPDKIKX0DER",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"product_id": "test-123",
 		},
 	}
 
 	// 设置原始产品数据
-	productData := map[string]interface{}{
+	productData := map[string]any{
 		"title":       "韩版修身显瘦连衣裙女装",
 		"brand":       "时尚品牌",
 		"description": "优雅的韩版修身连衣裙，显瘦效果好",
@@ -83,7 +83,7 @@ func TestAttributeMapperHandler_Handle_WithLLM(t *testing.T) {
 	assert.True(t, exists)
 	assert.NotNil(t, mappedAttrs)
 
-	attributes := mappedAttrs.(map[string]interface{})
+	attributes := mappedAttrs.(map[string]any)
 	assert.Equal(t, "Elegant Korean Style Dress", attributes["item_name"])
 	assert.Equal(t, "Fashion Brand", attributes["brand"])
 
@@ -112,13 +112,13 @@ func TestAttributeMapperHandler_Handle_FallbackToBasic(t *testing.T) {
 	// 创建任务上下文
 	taskContext := &model.TaskContext{
 		TaskID: "test-basic-mapping",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"product_id": "test-456",
 		},
 	}
 
 	// 设置原始产品数据
-	productData := map[string]interface{}{
+	productData := map[string]any{
 		"title":       "测试产品标题",
 		"brand":       "测试品牌",
 		"description": "测试产品描述",
@@ -137,7 +137,7 @@ func TestAttributeMapperHandler_Handle_FallbackToBasic(t *testing.T) {
 	assert.True(t, exists)
 	assert.NotNil(t, mappedAttrs)
 
-	attributes := mappedAttrs.(map[string]interface{})
+	attributes := mappedAttrs.(map[string]any)
 	assert.Equal(t, "测试产品标题", attributes["item_name"])
 	assert.Equal(t, "测试品牌", attributes["brand"])
 
@@ -154,7 +154,7 @@ func TestAttributeMapperHandler_Handle_MissingData(t *testing.T) {
 
 	taskContext := &model.TaskContext{
 		TaskID: "test-missing-data",
-		Data:   map[string]interface{}{},
+		Data:   map[string]any{},
 	}
 
 	// 不设置raw_product_data

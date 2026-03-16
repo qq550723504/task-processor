@@ -1,4 +1,4 @@
-// Package operation 提供SHEIN营销活动API的具体实现
+﻿// Package operation 提供SHEIN营销活动API的具体实现
 package operation
 
 import (
@@ -25,7 +25,7 @@ func NewMarketingAPI(baseClient *client.BaseAPIClient) *MarketingAPI {
 func (m *MarketingAPI) paginatedQuery(
 	endpoint string,
 	pageNum, pageSize int,
-	result interface{},
+	result any,
 	errorMsg string,
 ) error {
 	url := fmt.Sprintf("%s%s", m.GetBaseURL(), endpoint)

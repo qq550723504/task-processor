@@ -1,4 +1,4 @@
-// Package scheduler 提供统一的任务调度功能
+﻿// Package scheduler 提供统一的任务调度功能
 package scheduler
 
 import (
@@ -82,5 +82,5 @@ type TaskResult struct {
 	Duration     time.Duration // 执行时长
 	Success      bool          // 是否成功
 	ErrorMessage string        // 错误信息
-	Stats        interface{}   // 统计信息
+	Stats        any   // 统计信息
 }

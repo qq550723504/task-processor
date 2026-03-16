@@ -1,4 +1,4 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
@@ -80,9 +80,9 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *model.Product16
 	var mainImage string
 
 	if imagesResult != nil {
-		if resultMap, ok := imagesResult.(map[string]interface{}); ok {
+		if resultMap, ok := imagesResult.(map[string]any); ok {
 			// 处理图片列表
-			if imageArray, ok := resultMap["images"].([]interface{}); ok {
+			if imageArray, ok := resultMap["images"].([]any); ok {
 				for _, img := range imageArray {
 					if imgUrl, ok := img.(string); ok && imgUrl != "" {
 						fullURL := ie.processImageURL(imgUrl)

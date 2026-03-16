@@ -1,4 +1,4 @@
-// Package handler 提供Amazon库存处理器
+﻿// Package handler 提供Amazon库存处理器
 package handler
 
 import (
@@ -45,7 +45,7 @@ func (h *InventoryHandler) Handle(ctx context.Context, taskContext *model.TaskCo
 		Status:   "ACTIVE",
 	}
 
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		"sku":      mockResponse.SKU,
 		"quantity": mockResponse.Quantity,
 	}).Info("库存设置成功")
@@ -58,10 +58,10 @@ func (h *InventoryHandler) Handle(ctx context.Context, taskContext *model.TaskCo
 }
 
 // getInventoryQuantity 获取库存数量
-func (h *InventoryHandler) getInventoryQuantity(data map[string]interface{}) int {
+func (h *InventoryHandler) getInventoryQuantity(data map[string]any) int {
 	// 1. 从产品数据中获取
 	if rawData, exists := data["raw_product_data"]; exists {
-		if productData, ok := rawData.(map[string]interface{}); ok {
+		if productData, ok := rawData.(map[string]any); ok {
 			if qty, ok := productData["quantity"].(int); ok && qty > 0 {
 				return qty
 			}

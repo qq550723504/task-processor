@@ -23,14 +23,14 @@ func newProductSyncServiceAdapter(temuService temuscheduler.ProductSyncService) 
 }
 
 // FetchProductList 获取产品列表（适配到通用接口）
-func (a *productSyncServiceAdapter) FetchProductList(ctx context.Context) ([]interface{}, error) {
+func (a *productSyncServiceAdapter) FetchProductList(ctx context.Context) ([]any, error) {
 	products, err := a.temuService.FetchProductList(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// 转换为interface{}切片
-	result := make([]interface{}, len(products))
+	result := make([]any, len(products))
 	for i, p := range products {
 		result[i] = p
 	}
@@ -38,7 +38,7 @@ func (a *productSyncServiceAdapter) FetchProductList(ctx context.Context) ([]int
 }
 
 // ConvertProducts 转换产品格式（适配到通用接口）
-func (a *productSyncServiceAdapter) ConvertProducts(ctx context.Context, products []interface{}, tenantID, storeID int64) ([]interface{}, error) {
+func (a *productSyncServiceAdapter) ConvertProducts(ctx context.Context, products []any, tenantID, storeID int64) ([]any, error) {
 	// 转换回TEMU特定类型
 	temuProducts := make([]models.GoodsSearchItem, len(products))
 	for i, p := range products {
@@ -54,7 +54,7 @@ func (a *productSyncServiceAdapter) ConvertProducts(ctx context.Context, product
 	}
 
 	// 转换为interface{}切片
-	result := make([]interface{}, len(converted))
+	result := make([]any, len(converted))
 	for i, p := range converted {
 		result[i] = p
 	}
@@ -62,7 +62,7 @@ func (a *productSyncServiceAdapter) ConvertProducts(ctx context.Context, product
 }
 
 // SaveProducts 保存产品（适配到通用接口）
-func (a *productSyncServiceAdapter) SaveProducts(ctx context.Context, products []interface{}) (int, error) {
+func (a *productSyncServiceAdapter) SaveProducts(ctx context.Context, products []any) (int, error) {
 	// 转换回TEMU特定类型
 	productDataList := make([]*managementapi.ProductDataDTO, len(products))
 	for i, p := range products {

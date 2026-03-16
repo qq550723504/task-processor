@@ -235,14 +235,14 @@ func (swc *SensitiveWordCache) GetLastUpdate(language string) time.Time {
 }
 
 // GetCacheInfo 获取缓存信息
-func (swc *SensitiveWordCache) GetCacheInfo() map[string]interface{} {
+func (swc *SensitiveWordCache) GetCacheInfo() map[string]any {
 	swc.mutex.RLock()
 	defer swc.mutex.RUnlock()
 
-	info := make(map[string]interface{})
+	info := make(map[string]any)
 
 	for lang := range swc.words {
-		info[lang] = map[string]interface{}{
+		info[lang] = map[string]any{
 			"wordCount":  len(swc.words[lang]),
 			"lastUpdate": swc.lastUpdate[lang],
 			"nextUpdate": swc.lastUpdate[lang].Add(swc.updateInterval),

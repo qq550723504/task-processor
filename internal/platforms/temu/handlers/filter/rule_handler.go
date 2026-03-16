@@ -66,7 +66,7 @@ func (h *FilterRuleHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) err
 
 	// 获取Amazon产品数据
 	var amazonProduct *model.Product
-	if amazonCtx, ok := interface{}(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
+	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
 		amazonProduct = amazonCtx.GetAmazonProduct()
 	}
 	if amazonProduct == nil {
@@ -134,7 +134,7 @@ func (h *FilterRuleHandler) FilterVariants(temuCtx *temucontext.TemuTaskContext)
 
 	// 获取变体数据
 	var variants []*model.Product
-	if amazonCtx, ok := interface{}(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
+	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
 		variants = amazonCtx.GetVariants()
 	}
 	if len(variants) == 0 {
@@ -188,7 +188,7 @@ func (h *FilterRuleHandler) FilterVariants(temuCtx *temucontext.TemuTaskContext)
 	}
 
 	// 更新变体列表
-	if amazonCtx, ok := interface{}(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
+	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
 		amazonCtx.SetVariants(filteredVariants)
 	}
 	filteredCount := len(filteredVariants)
@@ -205,6 +205,6 @@ func (h *FilterRuleHandler) FilterVariants(temuCtx *temucontext.TemuTaskContext)
 }
 
 // GetFilterRuleStats 获取筛选规则统计信息（用于调试和监控）
-func (h *FilterRuleHandler) GetFilterRuleStats(temuCtx *temucontext.TemuTaskContext) (map[string]interface{}, error) {
+func (h *FilterRuleHandler) GetFilterRuleStats(temuCtx *temucontext.TemuTaskContext) (map[string]any, error) {
 	return h.statsProvider.GetFilterRuleStats(temuCtx.DefaultTaskContext)
 }

@@ -1,4 +1,4 @@
-package lock
+﻿package lock
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 // mockLogger 模拟日志器
 type mockLogger struct{}
 
-func (m *mockLogger) Debugf(format string, args ...interface{}) {}
-func (m *mockLogger) Infof(format string, args ...interface{})  {}
-func (m *mockLogger) Warnf(format string, args ...interface{})  {}
-func (m *mockLogger) Errorf(format string, args ...interface{}) {}
+func (m *mockLogger) Debugf(format string, args ...any) {}
+func (m *mockLogger) Infof(format string, args ...any)  {}
+func (m *mockLogger) Warnf(format string, args ...any)  {}
+func (m *mockLogger) Errorf(format string, args ...any) {}
 
 func TestMemoryLock_TryLock(t *testing.T) {
 	ml := NewMemoryLock(&mockLogger{})

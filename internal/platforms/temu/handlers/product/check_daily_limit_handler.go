@@ -75,7 +75,7 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		dailyLimitType = "SPU"
 	}
 
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		logger.FieldStoreID: task.StoreID,
 		"daily_limit":       dailyLimit,
 		"limit_type":        dailyLimitType,
@@ -101,7 +101,7 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 	// 预测发布后的总数量
 	predictedCount := currentCount + increment
 
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		logger.FieldStoreID: task.StoreID,
 		"date":              currentDate,
 		"current_count":     currentCount,
@@ -113,7 +113,7 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 
 	// 检查是否会超过限额
 	if predictedCount > int64(dailyLimit) {
-		h.logger.WithFields(map[string]interface{}{
+		h.logger.WithFields(map[string]any{
 			logger.FieldStoreID: task.StoreID,
 			"date":              currentDate,
 			"current_count":     currentCount,
@@ -134,7 +134,7 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		return fmt.Errorf("NONRETRYABLE: 店铺已达到每日上架限额(%d/%d)，已暂停上架到当日结束", currentCount, dailyLimit)
 	}
 
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		logger.FieldStoreID: task.StoreID,
 		"date":              currentDate,
 	}).Info("店铺上架数量未超过限额，允许继续发布")

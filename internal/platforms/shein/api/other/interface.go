@@ -129,7 +129,7 @@ type BatchCheckOnWayResponse struct {
 		SkcName    string `json:"skc_name"`
 		DocumentSn string `json:"document_sn"`
 	} `json:"info"`
-	BBL interface{} `json:"bbl"`
+	BBL any `json:"bbl"`
 }
 
 type GetUserResponse struct {

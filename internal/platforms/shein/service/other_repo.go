@@ -54,7 +54,7 @@ func (o *OtherAPI) GetUser(uuid int64) (*other.UserInfo, error) {
 func (o *OtherAPI) BatchCheckOnWay(spuNameList []string) (*other.BatchCheckOnWayResponse, error) {
 	url := fmt.Sprintf("%s%s", o.GetBaseURL(), client.GetBatchCheckOnWayEndpoint())
 
-	reqBody := map[string]interface{}{
+	reqBody := map[string]any{
 		"spu_name_list": spuNameList,
 	}
 
@@ -174,7 +174,7 @@ func (o *OtherAPI) QueryShelfQuota() (*other.ShelfQuotaResponse, error) {
 	url := fmt.Sprintf("%s%s", o.GetBaseURL(), client.GetQueryShelfQuotaEndpoint())
 
 	// 请求体为空对象
-	reqBody := map[string]interface{}{}
+	reqBody := map[string]any{}
 
 	var result struct {
 		api.APIResponse

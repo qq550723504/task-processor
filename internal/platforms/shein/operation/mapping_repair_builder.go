@@ -45,7 +45,7 @@ type MappingCreateOptions struct {
 	DiscountPriceMultiplier *string                `json:"discountPriceMultiplier,omitempty"` // 折扣价倍数
 	FilterRuleID            *int64                 `json:"filterRuleId,omitempty"`            // 筛选规则ID
 	FilterRuleRange         *string                `json:"filterRuleRange,omitempty"`         // 筛选规则范围
-	AdditionalData          map[string]interface{} `json:"additionalData,omitempty"`          // 额外数据
+	AdditionalData          map[string]any `json:"additionalData,omitempty"`          // 额外数据
 }
 
 // CreateMappingRelation 创建映射关系的统一函数

@@ -11,26 +11,26 @@ import (
 
 // MockAutoPricingService 模拟自动核价服务
 type MockAutoPricingService struct {
-	FetchPendingPriceProductsFunc func(ctx context.Context, startDate, endDate string) ([]interface{}, error)
-	ApplyPricingRulesFunc         func(ctx context.Context, products []interface{}, storeID int64, enableRebargain bool) ([]interface{}, error)
-	SubmitPricingResultsFunc      func(ctx context.Context, results []interface{}) (*PricingStats, error)
+	FetchPendingPriceProductsFunc func(ctx context.Context, startDate, endDate string) ([]any, error)
+	ApplyPricingRulesFunc         func(ctx context.Context, products []any, storeID int64, enableRebargain bool) ([]any, error)
+	SubmitPricingResultsFunc      func(ctx context.Context, results []any) (*PricingStats, error)
 }
 
-func (m *MockAutoPricingService) FetchPendingPriceProducts(ctx context.Context, startDate, endDate string) ([]interface{}, error) {
+func (m *MockAutoPricingService) FetchPendingPriceProducts(ctx context.Context, startDate, endDate string) ([]any, error) {
 	if m.FetchPendingPriceProductsFunc != nil {
 		return m.FetchPendingPriceProductsFunc(ctx, startDate, endDate)
 	}
-	return []interface{}{}, nil
+	return []any{}, nil
 }
 
-func (m *MockAutoPricingService) ApplyPricingRules(ctx context.Context, products []interface{}, storeID int64, enableRebargain bool) ([]interface{}, error) {
+func (m *MockAutoPricingService) ApplyPricingRules(ctx context.Context, products []any, storeID int64, enableRebargain bool) ([]any, error) {
 	if m.ApplyPricingRulesFunc != nil {
 		return m.ApplyPricingRulesFunc(ctx, products, storeID, enableRebargain)
 	}
 	return products, nil
 }
 
-func (m *MockAutoPricingService) SubmitPricingResults(ctx context.Context, results []interface{}) (*PricingStats, error) {
+func (m *MockAutoPricingService) SubmitPricingResults(ctx context.Context, results []any) (*PricingStats, error) {
 	if m.SubmitPricingResultsFunc != nil {
 		return m.SubmitPricingResultsFunc(ctx, results)
 	}

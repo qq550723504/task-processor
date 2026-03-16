@@ -1,4 +1,4 @@
-// Package rabbitmq 提供RabbitMQ消息相关功能
+﻿// Package rabbitmq 提供RabbitMQ消息相关功能
 package rabbitmq
 
 import (
@@ -25,7 +25,7 @@ func parseDeliveryMessage(delivery amqp.Delivery) (*Message, error) {
 
 	// 解析消息体为 Payload
 	if len(delivery.Body) > 0 {
-		var payload map[string]interface{}
+		var payload map[string]any
 		if err := json.Unmarshal(delivery.Body, &payload); err != nil {
 			return nil, fmt.Errorf("解析消息体失败: %w", err)
 		}

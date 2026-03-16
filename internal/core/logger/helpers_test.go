@@ -1,4 +1,4 @@
-package logger
+﻿package logger
 
 import (
 	"errors"
@@ -43,7 +43,7 @@ func TestLoggerHelper_LogOperationWithResult(t *testing.T) {
 	helper := NewLoggerHelper(logger)
 
 	// 测试成功的操作
-	result, err := helper.LogOperationWithResult("test_operation", func() (interface{}, error) {
+	result, err := helper.LogOperationWithResult("test_operation", func() (any, error) {
 		return "success", nil
 	})
 	assert.NoError(t, err)
@@ -51,7 +51,7 @@ func TestLoggerHelper_LogOperationWithResult(t *testing.T) {
 
 	// 测试失败的操作
 	expectedErr := errors.New("operation failed")
-	result, err = helper.LogOperationWithResult("test_operation", func() (interface{}, error) {
+	result, err = helper.LogOperationWithResult("test_operation", func() (any, error) {
 		return nil, expectedErr
 	})
 	assert.Error(t, err)

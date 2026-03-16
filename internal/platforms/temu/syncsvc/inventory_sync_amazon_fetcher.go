@@ -16,7 +16,7 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 	asin, region string,
 	tenantID, storeID int64,
 ) (*model.Product, error) {
-	s.logger.WithFields(map[string]interface{}{
+	s.logger.WithFields(map[string]any{
 		"asin":      asin,
 		"region":    region,
 		"tenant_id": tenantID,
@@ -63,7 +63,7 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 		if err != nil {
 			s.logger.WithError(err).WithField("asin", asin).Warn("ProductFetcher获取Amazon产品失败")
 		} else {
-			s.logger.WithFields(map[string]interface{}{
+			s.logger.WithFields(map[string]any{
 				"asin":  asin,
 				"title": amazonProduct.Title,
 				"price": amazonProduct.FinalPrice,
@@ -75,7 +75,7 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 	// 等待结果或超时
 	select {
 	case <-ctx.Done():
-		s.logger.WithFields(map[string]interface{}{
+		s.logger.WithFields(map[string]any{
 			"asin":   asin,
 			"region": region,
 			"error":  ctx.Err(),
@@ -86,7 +86,7 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 			return nil, fmt.Errorf("获取Amazon产品失败: %w", result.err)
 		}
 
-		s.logger.WithFields(map[string]interface{}{
+		s.logger.WithFields(map[string]any{
 			"asin":         asin,
 			"region":       region,
 			"title":        result.product.Title,

@@ -1,4 +1,4 @@
-// Package handler 提供Amazon处理器管理功能测试
+﻿// Package handler 提供Amazon处理器管理功能测试
 package handler
 
 import (
@@ -26,7 +26,7 @@ func TestHandlerManager_ProcessProduct(t *testing.T) {
 		MarketplaceID: "ATVPDKIKX0DER",
 		LanguageTag:   "en_US",
 		Currency:      "USD",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"product_id":    "test-product-123",
 			"store_id":      int64(1),
 			"tenant_id":     int64(1),
@@ -62,7 +62,7 @@ func TestHandlerManager_GetStatus(t *testing.T) {
 	assert.Equal(t, 11, status["total_handlers"])
 	assert.NotNil(t, status["handlers"])
 
-	handlers := status["handlers"].([]map[string]interface{})
+	handlers := status["handlers"].([]map[string]any)
 	assert.Len(t, handlers, 11)
 
 	// 验证第一个处理器

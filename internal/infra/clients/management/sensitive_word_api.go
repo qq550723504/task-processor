@@ -15,7 +15,7 @@ type SensitiveWordAPIClient struct {
 func (m *SensitiveWordAPIClient) CreateSensitiveWord(req *api.CreateSensitiveWordReqDTO) (bool, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/sensitive-word/create", m.baseURL)
 
-	params := map[string]interface{}{"word": req.Word}
+	params := map[string]any{"word": req.Word}
 	if req.Language != "" {
 		params["language"] = req.Language
 	}
@@ -45,7 +45,7 @@ func (m *SensitiveWordAPIClient) CreateSensitiveWord(req *api.CreateSensitiveWor
 func (m *SensitiveWordAPIClient) GetAllEnableSensitiveWordList(language *string) (*[]string, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/sensitive-word/list-all-enable", m.baseURL)
 
-	params := map[string]interface{}{}
+	params := map[string]any{}
 	if language != nil {
 		params["language"] = *language
 	}
@@ -77,7 +77,7 @@ func (m *SensitiveWordAPIClient) GetAllEnableSensitiveWordList(language *string)
 func (m *SensitiveWordAPIClient) GetSensitiveWords(req *api.GetSensitiveWordsReqDTO) (*[]string, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/sensitive-word/get-sensitive-words", m.baseURL)
 
-	params := map[string]interface{}{"text": req.Text}
+	params := map[string]any{"text": req.Text}
 	if req.Language != nil {
 		params["language"] = *req.Language
 	}
@@ -109,7 +109,7 @@ func (m *SensitiveWordAPIClient) GetSensitiveWords(req *api.GetSensitiveWordsReq
 func (m *SensitiveWordAPIClient) ReplaceSensitiveWords(req *api.ReplaceSensitiveWordsReqDTO) (string, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/sensitive-word/replace-sensitive-words", m.baseURL)
 
-	params := map[string]interface{}{"text": req.Text}
+	params := map[string]any{"text": req.Text}
 	if req.Language != nil {
 		params["language"] = *req.Language
 	}

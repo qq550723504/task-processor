@@ -174,7 +174,7 @@ func (h *PublishProductErrorHandler) getSensitiveWordService() *content.Sensitiv
 }
 
 // parsePreValidResult 解析预验证结果
-func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult interface{}) ([]shein.PreValidResult, error) {
+func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult any) ([]shein.PreValidResult, error) {
 	if preValidResult == nil {
 		return []shein.PreValidResult{}, nil
 	}

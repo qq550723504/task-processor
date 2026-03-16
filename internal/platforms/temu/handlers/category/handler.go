@@ -90,7 +90,7 @@ func (h *CategoryHandler) setCategoryBasedProperties(temuProduct *models.Product
 	// 不要覆盖TEMU API返回的IsClothes值！
 	// CommitDetailHandler已经从TEMU API获取了正确的IsClothes值
 	// 这里只记录当前状态，不做修改
-	h.logger.WithFields(map[string]interface{}{
+	h.logger.WithFields(map[string]any{
 		"is_clothes": temuProduct.GoodsBasic.IsClothes,
 		"is_books":   temuProduct.GoodsBasic.IsBooks,
 		"cat_type":   temuProduct.GoodsBasic.CatType,

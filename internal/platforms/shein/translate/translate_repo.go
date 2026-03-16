@@ -50,7 +50,7 @@ type TranslationData struct {
 // TranslateMeta 翻译元数据结构体
 type TranslateMeta struct {
 	Count     int         `json:"count"`
-	CustomObj interface{} `json:"customObj"`
+	CustomObj any `json:"customObj"`
 }
 
 // NewTranslateAPI 创建新的翻译API实现

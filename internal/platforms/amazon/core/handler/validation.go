@@ -1,4 +1,4 @@
-// Package handler 提供验证处理器实现
+﻿// Package handler 提供验证处理器实现
 package handler
 
 import (
@@ -38,7 +38,7 @@ func (h *ValidationHandler) Handle(ctx context.Context, taskContext *model.TaskC
 }
 
 // validateRequiredFields 验证必要字段
-func (h *ValidationHandler) validateRequiredFields(data map[string]interface{}) error {
+func (h *ValidationHandler) validateRequiredFields(data map[string]any) error {
 	requiredFields := []string{
 		"product_id",
 		"store_id",

@@ -1,4 +1,4 @@
-package variations
+﻿package variations
 
 import (
 	"github.com/playwright-community/playwright-go"
@@ -33,7 +33,7 @@ func (p *Parser) ParseVariationsData(page playwright.Page) (*VariationsData, err
 
 	// 处理JavaScript返回的数据
 	if jsResult != nil {
-		if jsMap, ok := jsResult.(map[string]interface{}); ok {
+		if jsMap, ok := jsResult.(map[string]any); ok {
 			p.processJavaScriptResult(jsMap, result)
 		}
 	}
@@ -224,15 +224,15 @@ func (p *Parser) getJavaScriptExtractor() string {
 }
 
 // processJavaScriptResult 处理JavaScript返回的结果
-func (p *Parser) processJavaScriptResult(jsMap map[string]interface{}, result *VariationsData) {
+func (p *Parser) processJavaScriptResult(jsMap map[string]any, result *VariationsData) {
 	if variationsData, exists := jsMap["variationsData"]; exists && variationsData != nil {
-		if variationsMap, ok := variationsData.(map[string]interface{}); ok {
+		if variationsMap, ok := variationsData.(map[string]any); ok {
 			for key, value := range variationsMap {
 				if key == "asin_mapping" {
 					p.processASINMapping(value, result)
 				} else if key == "price_mapping" {
 					p.processPriceMapping(value, result)
-				} else if valueArray, ok := value.([]interface{}); ok {
+				} else if valueArray, ok := value.([]any); ok {
 					p.processVariationValues(key, valueArray, result)
 				}
 			}
@@ -241,10 +241,10 @@ func (p *Parser) processJavaScriptResult(jsMap map[string]interface{}, result *V
 }
 
 // processASINMapping 处理ASIN映射
-func (p *Parser) processASINMapping(value interface{}, result *VariationsData) {
-	if asinMappingData, ok := value.(map[string]interface{}); ok {
+func (p *Parser) processASINMapping(value any, result *VariationsData) {
+	if asinMappingData, ok := value.(map[string]any); ok {
 		for asin, attributes := range asinMappingData {
-			if attrMap, ok := attributes.(map[string]interface{}); ok {
+			if attrMap, ok := attributes.(map[string]any); ok {
 				asinAttrs := make(map[string]string)
 				for attrKey, attrValue := range attrMap {
 					if str, ok := attrValue.(string); ok {
@@ -258,14 +258,14 @@ func (p *Parser) processASINMapping(value interface{}, result *VariationsData) {
 }
 
 // processPriceMapping 处理价格映射
-func (p *Parser) processPriceMapping(value interface{}, result *VariationsData) {
-	if priceMappingData, ok := value.(map[string]interface{}); ok {
+func (p *Parser) processPriceMapping(value any, result *VariationsData) {
+	if priceMappingData, ok := value.(map[string]any); ok {
 		result.PriceMapping = priceMappingData
 	}
 }
 
 // processVariationValues 处理变体值
-func (p *Parser) processVariationValues(key string, valueArray []interface{}, result *VariationsData) {
+func (p *Parser) processVariationValues(key string, valueArray []any, result *VariationsData) {
 	var stringArray []string
 	for _, item := range valueArray {
 		if str, ok := item.(string); ok {

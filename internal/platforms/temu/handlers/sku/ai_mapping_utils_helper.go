@@ -44,7 +44,7 @@ func (vp *SkuVariantProcessor) getItemWeight(product *model.Product) string {
 }
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
-func (vp *SkuVariantProcessor) marshalWithoutHTMLEscape(v interface{}) ([]byte, error) {
+func (vp *SkuVariantProcessor) marshalWithoutHTMLEscape(v any) ([]byte, error) {
 	return jsonutil.MarshalIndentWithoutHTMLEscape(v, "", "  ")
 }
 

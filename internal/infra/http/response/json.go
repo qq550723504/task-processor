@@ -1,4 +1,4 @@
-// Package response 提供 HTTP 响应工具
+﻿// Package response 提供 HTTP 响应工具
 package response
 
 import (
@@ -15,7 +15,7 @@ type JSON struct {
 }
 
 // Success 发送成功响应
-func Success(w http.ResponseWriter, message string, data interface{}) {
+func Success(w http.ResponseWriter, message string, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(JSON{

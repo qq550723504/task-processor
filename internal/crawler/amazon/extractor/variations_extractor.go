@@ -1,4 +1,4 @@
-package extractor
+﻿package extractor
 
 import (
 	"task-processor/internal/crawler/amazon/variations"
@@ -78,13 +78,13 @@ func (ve *VariationsExtractor) Extract(page playwright.Page, product *model.Prod
 }
 
 // GenerateCombinations 公开的组合生成方法，用于调试
-func (ve *VariationsExtractor) GenerateCombinations(dimensions map[string][]string) []map[string]interface{} {
+func (ve *VariationsExtractor) GenerateCombinations(dimensions map[string][]string) []map[string]any {
 	combinator := variations.NewCombinator(ve.config)
 	return combinator.Generate(dimensions)
 }
 
 // AttributesMatchGeneric 公开的属性匹配方法，用于调试
-func (ve *VariationsExtractor) AttributesMatchGeneric(combo map[string]interface{}, asinAttrs map[string]string) bool {
+func (ve *VariationsExtractor) AttributesMatchGeneric(combo map[string]any, asinAttrs map[string]string) bool {
 	matcher := variations.NewMatcher(ve.config)
 	return matcher.AttributesMatch(combo, asinAttrs)
 }
@@ -96,19 +96,19 @@ func (ve *VariationsExtractor) ValuesMatchGeneric(value1, value2 string) bool {
 }
 
 // MapAttributeNames 将通用属性名映射为语义化名称
-func (ve *VariationsExtractor) MapAttributeNames(attributes map[string]interface{}) map[string]interface{} {
+func (ve *VariationsExtractor) MapAttributeNames(attributes map[string]any) map[string]any {
 	mapper := variations.NewMapper(ve.config)
 	return mapper.MapAttributeNames(attributes)
 }
 
 // InferAttributeType 公开的属性类型推断方法，用于测试
-func (ve *VariationsExtractor) InferAttributeType(value interface{}) string {
+func (ve *VariationsExtractor) InferAttributeType(value any) string {
 	mapper := variations.NewMapper(ve.config)
 	return mapper.InferAttributeType(value)
 }
 
 // BuildVariationsFromValues 公开的变体构建方法，用于测试
-func (ve *VariationsExtractor) BuildVariationsFromValues(product *model.Product, asinMapping map[string]map[string]string, priceMapping map[string]interface{}) []model.Variation {
+func (ve *VariationsExtractor) BuildVariationsFromValues(product *model.Product, asinMapping map[string]map[string]string, priceMapping map[string]any) []model.Variation {
 	varList := ve.extractor.BuildVariations(
 		convertToVariationsValues(product.VariationsValues),
 		asinMapping,

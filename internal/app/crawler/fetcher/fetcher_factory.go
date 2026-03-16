@@ -1,4 +1,4 @@
-// Package fetcher 提供产品获取器工厂
+﻿// Package fetcher 提供产品获取器工厂
 package fetcher
 
 import (
@@ -28,7 +28,7 @@ type ProductFetcher interface {
 	FetchProduct(req *domainProduct.FetchRequest) (*model.Product, error)
 	CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error
 	CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error
-	GetStats() map[string]interface{}
+	GetStats() map[string]any
 }
 
 // FetcherFactory 获取器工厂

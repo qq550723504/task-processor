@@ -1,4 +1,4 @@
-// Package task 提供简化的队列管理功能
+﻿// Package task 提供简化的队列管理功能
 package task
 
 import (
@@ -181,7 +181,7 @@ func (m *QueueManager) force30MinCleanup() error {
 // GetQueueSummary 获取队列摘要信息
 func (m *QueueManager) GetQueueSummary() *QueueSummary {
 	summary := &QueueSummary{
-		Platforms: make(map[string]interface{}),
+		Platforms: make(map[string]any),
 		Timestamp: time.Now().Unix(),
 	}
 
@@ -197,7 +197,7 @@ func (m *QueueManager) GetQueueSummary() *QueueSummary {
 		totalQueued += stats.QueueSize
 		totalCapacity += stats.BufferSize
 
-		summary.Platforms[platform] = map[string]interface{}{
+		summary.Platforms[platform] = map[string]any{
 			"queueSize":      stats.QueueSize,
 			"bufferSize":     stats.BufferSize,
 			"usagePercent":   stats.UsagePercent,

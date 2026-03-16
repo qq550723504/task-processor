@@ -254,7 +254,7 @@ func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *shein_produc
 	}
 	imageURLsJSON, _ := json.Marshal(imageURLs)
 
-	platformStatusJSON, _ := json.Marshal(map[string]interface{}{
+	platformStatusJSON, _ := json.Marshal(map[string]any{
 		"shelf_status": sheinProduct.ShelfStatus,
 	})
 

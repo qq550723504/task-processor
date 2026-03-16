@@ -1,4 +1,4 @@
-package logger
+﻿package logger
 
 import (
 	"time"
@@ -59,7 +59,7 @@ func (h *LoggerHelper) LogOperation(operation string, fn func() error) error {
 }
 
 // LogOperationWithResult 记录操作日志并返回结果
-func (h *LoggerHelper) LogOperationWithResult(operation string, fn func() (interface{}, error)) (interface{}, error) {
+func (h *LoggerHelper) LogOperationWithResult(operation string, fn func() (any, error)) (any, error) {
 	start := time.Now()
 	h.logger.WithField(FieldOperation, operation).Info("开始操作")
 
@@ -160,7 +160,7 @@ func (h *LoggerHelper) LogDatabaseQuery(query string, duration time.Duration, ro
 }
 
 // LogStateChange 记录状态变更
-func (h *LoggerHelper) LogStateChange(entity string, entityID interface{}, oldState, newState string) {
+func (h *LoggerHelper) LogStateChange(entity string, entityID any, oldState, newState string) {
 	h.logger.WithFields(logrus.Fields{
 		"entity":    entity,
 		"entity_id": entityID,
@@ -170,7 +170,7 @@ func (h *LoggerHelper) LogStateChange(entity string, entityID interface{}, oldSt
 }
 
 // LogMetric 记录指标
-func (h *LoggerHelper) LogMetric(metricName string, value interface{}, tags map[string]string) {
+func (h *LoggerHelper) LogMetric(metricName string, value any, tags map[string]string) {
 	fields := logrus.Fields{
 		"metric": metricName,
 		"value":  value,

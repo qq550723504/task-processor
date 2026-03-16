@@ -1,4 +1,4 @@
-// Package messaging 提供RabbitMQ发布器适配器
+﻿// Package messaging 提供RabbitMQ发布器适配器
 package messaging
 
 import (
@@ -30,7 +30,7 @@ func NewRabbitMQPublisherAdapter(client *rabbitmq.Client, logger *logrus.Logger)
 // Publish 发布消息到指定队列
 func (a *RabbitMQPublisherAdapter) Publish(ctx context.Context, queueName string, data []byte) error {
 	// 将 data 反序列化为 payload
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return fmt.Errorf("反序列化消息数据失败: %w", err)
 	}

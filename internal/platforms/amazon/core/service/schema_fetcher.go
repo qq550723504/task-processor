@@ -1,4 +1,4 @@
-// Package service 提供Amazon Schema获取功能
+﻿// Package service 提供Amazon Schema获取功能
 package service
 
 import (
@@ -109,7 +109,7 @@ func (f *SchemaFetcher) ClearCache() {
 // GetCacheStats 获取缓存统计
 func (f *SchemaFetcher) GetCacheStats() map[string]any {
 	count := 0
-	f.cache.Range(func(key, value interface{}) bool {
+	f.cache.Range(func(key, value any) bool {
 		count++
 		return true
 	})

@@ -1,4 +1,4 @@
-package scheduler
+﻿package scheduler
 
 import (
 	"testing"
@@ -102,8 +102,8 @@ func TestBaseTask_Getters(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		got      interface{}
-		expected interface{}
+		got      any
+		expected any
 	}{
 		{"Platform", task.GetPlatform(), "shein"},
 		{"Type", task.GetType(), appscheduler.TaskType("product_sync")},

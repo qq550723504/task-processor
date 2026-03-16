@@ -1,4 +1,4 @@
-// Package extractor 提供Amazon产品视频信息提取功能
+﻿// Package extractor 提供Amazon产品视频信息提取功能
 package extractor
 
 import (
@@ -132,7 +132,7 @@ func (e *VideoExtractor) extractVideoURLs(page playwright.Page) ([]model.VideoIn
 }
 
 // parseVideoResult 解析JavaScript返回的视频数据
-func (e *VideoExtractor) parseVideoResult(result interface{}) []model.VideoInfo {
+func (e *VideoExtractor) parseVideoResult(result any) []model.VideoInfo {
 	videos := make([]model.VideoInfo, 0)
 
 	if result == nil {
@@ -140,14 +140,14 @@ func (e *VideoExtractor) parseVideoResult(result interface{}) []model.VideoInfo 
 	}
 
 	// 尝试转换为数组
-	videoArray, ok := result.([]interface{})
+	videoArray, ok := result.([]any)
 	if !ok {
 		logrus.Debug("视频数据格式不正确")
 		return videos
 	}
 
 	for _, item := range videoArray {
-		videoMap, ok := item.(map[string]interface{})
+		videoMap, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}

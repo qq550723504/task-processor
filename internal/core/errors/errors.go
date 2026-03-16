@@ -1,4 +1,4 @@
-// Package errors 提供统一的错误处理机制
+﻿// Package errors 提供统一的错误处理机制
 package errors
 
 import (
@@ -72,7 +72,7 @@ func New(code ErrorCode, message string) *AppError {
 }
 
 // Newf 创建格式化的应用错误
-func Newf(code ErrorCode, format string, args ...interface{}) *AppError {
+func Newf(code ErrorCode, format string, args ...any) *AppError {
 	return newAppError(code, fmt.Sprintf(format, args...), nil, "")
 }
 
@@ -85,7 +85,7 @@ func Wrap(err error, code ErrorCode, message string) *AppError {
 }
 
 // Wrapf 包装现有错误并格式化消息
-func Wrapf(err error, code ErrorCode, format string, args ...interface{}) *AppError {
+func Wrapf(err error, code ErrorCode, format string, args ...any) *AppError {
 	if err == nil {
 		return nil
 	}
@@ -194,12 +194,12 @@ type DefaultErrorHandler struct {
 
 // Logger 日志接口
 type Logger interface {
-	Error(args ...interface{})
-	Errorf(format string, args ...interface{})
-	Warn(args ...interface{})
-	Warnf(format string, args ...interface{})
-	Info(args ...interface{})
-	Infof(format string, args ...interface{})
+	Error(args ...any)
+	Errorf(format string, args ...any)
+	Warn(args ...any)
+	Warnf(format string, args ...any)
+	Info(args ...any)
+	Infof(format string, args ...any)
 }
 
 // NewDefaultErrorHandler 创建默认错误处理器

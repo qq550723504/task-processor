@@ -129,7 +129,7 @@ func IsRetryableError(err error) bool {
 
 // isAuthenticationExpired 内部函数，检查是否为认证过期错误
 // 避免循环导入，这里重新实现认证过期检查逻辑
-func isAuthenticationExpired(err error) (interface{}, bool) {
+func isAuthenticationExpired(err error) (any, bool) {
 	// 检查错误消息中是否包含认证过期的关键字
 	if err != nil {
 		errMsg := err.Error()

@@ -38,7 +38,7 @@ func (m *InventoryRecordAPIClient) CreateInventoryRecord(req *api.InventoryRecor
 func (m *InventoryRecordAPIClient) GetLatestInventoryRecord(platform, productId, region string) (*api.InventoryRecordRespDTO, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/inventory-record/get-latest", m.baseURL)
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		"platform":  platform,
 		"productId": productId,
 		"region":    region,

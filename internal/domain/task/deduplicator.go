@@ -1,4 +1,4 @@
-// Package task 提供任务领域相关的业务规则
+﻿// Package task 提供任务领域相关的业务规则
 package task
 
 import (
@@ -71,7 +71,7 @@ func (td *Deduplicator) cleanup() {
 	now := time.Now()
 	expiredCount := 0
 
-	td.records.Range(func(key, value interface{}) bool {
+	td.records.Range(func(key, value any) bool {
 		processedTime := value.(time.Time)
 		if now.Sub(processedTime) > td.ttl {
 			td.records.Delete(key)
@@ -91,14 +91,14 @@ func (td *Deduplicator) Stop() {
 }
 
 // GetStats 获取统计信息
-func (td *Deduplicator) GetStats() map[string]interface{} {
+func (td *Deduplicator) GetStats() map[string]any {
 	count := 0
-	td.records.Range(func(_, _ interface{}) bool {
+	td.records.Range(func(_, _ any) bool {
 		count++
 		return true
 	})
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_records": count,
 		"ttl_seconds":   int(td.ttl.Seconds()),
 	}

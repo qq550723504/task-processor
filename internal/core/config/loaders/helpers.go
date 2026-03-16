@@ -1,4 +1,4 @@
-// Package loaders 提供配置加载功能
+﻿// Package loaders 提供配置加载功能
 package loaders
 
 import (
@@ -27,7 +27,7 @@ func getInt64Slice(key string) []int64 {
 }
 
 // getStringFromMap 从 map 中获取字符串值
-func getStringFromMap(m map[string]interface{}, key string) string {
+func getStringFromMap(m map[string]any, key string) string {
 	if val, ok := m[key]; ok {
 		if str, ok := val.(string); ok {
 			return str
@@ -37,7 +37,7 @@ func getStringFromMap(m map[string]interface{}, key string) string {
 }
 
 // getIntFromMap 从 map 中获取整数值
-func getIntFromMap(m map[string]interface{}, key string) int {
+func getIntFromMap(m map[string]any, key string) int {
 	if val, ok := m[key]; ok {
 		switch v := val.(type) {
 		case int:

@@ -1,4 +1,4 @@
-package messaging
+﻿package messaging
 
 import (
 	"context"
@@ -207,7 +207,7 @@ func (h *HTTPServerManager) handleMetrics(w http.ResponseWriter, r *http.Request
 
 // handleStats 处理统计请求
 func (h *HTTPServerManager) handleStats(w http.ResponseWriter, r *http.Request) {
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 
 	// 负载统计
 	stats["load"] = h.loadMonitor.GetStats()
@@ -216,7 +216,7 @@ func (h *HTTPServerManager) handleStats(w http.ResponseWriter, r *http.Request) 
 	stats["rabbitmq"] = h.rabbitmqService.GetStats()
 
 	// 节点信息
-	stats["node"] = map[string]interface{}{
+	stats["node"] = map[string]any{
 		"node_id":    h.config.Node.NodeID,
 		"started_at": time.Now().Format(time.RFC3339),
 	}

@@ -1,4 +1,4 @@
-package browser
+﻿package browser
 
 import (
 	"fmt"
@@ -135,13 +135,13 @@ func (cm *ConfigManager) GetAvailablePresets() []string {
 }
 
 // GetPresetInfo 获取预设配置信息
-func (cm *ConfigManager) GetPresetInfo(presetName string) (map[string]interface{}, error) {
+func (cm *ConfigManager) GetPresetInfo(presetName string) (map[string]any, error) {
 	preset, exists := cm.presets[presetName]
 	if !exists {
 		return nil, fmt.Errorf("预设 %s 不存在", presetName)
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"name":                    presetName,
 		"platform":                preset.FingerprintPlatform,
 		"platform_version":        preset.FingerprintPlatformVersion,

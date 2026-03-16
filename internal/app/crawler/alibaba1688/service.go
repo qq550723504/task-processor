@@ -1,4 +1,4 @@
-// Package alibaba1688 提供1688爬虫应用服务
+﻿// Package alibaba1688 提供1688爬虫应用服务
 package alibaba1688
 
 import (
@@ -124,7 +124,7 @@ func (s *Service) DeleteTask(taskID string) {
 // GetAllTasks 获取所有任务
 func (s *Service) GetAllTasks() []*task.CrawlerResult {
 	tasks := make([]*task.CrawlerResult, 0)
-	s.results.Range(func(key, value interface{}) bool {
+	s.results.Range(func(key, value any) bool {
 		result := value.(*task.CrawlerResult)
 		tasks = append(tasks, result)
 		return true
@@ -133,10 +133,10 @@ func (s *Service) GetAllTasks() []*task.CrawlerResult {
 }
 
 // GetStats 获取统计信息
-func (s *Service) GetStats() map[string]interface{} {
+func (s *Service) GetStats() map[string]any {
 	queueStats := s.workerPool.GetQueueStats()
 
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"queue_size":      queueStats.QueueSize,
 		"queue_capacity":  queueStats.BufferSize,
 		"available_slots": queueStats.AvailableSlots,
@@ -145,7 +145,7 @@ func (s *Service) GetStats() map[string]interface{} {
 
 	// 统计各状态任务数
 	statusCount := make(map[string]int)
-	s.results.Range(func(key, value interface{}) bool {
+	s.results.Range(func(key, value any) bool {
 		result := value.(*task.CrawlerResult)
 		statusCount[string(result.Status)]++
 		return true

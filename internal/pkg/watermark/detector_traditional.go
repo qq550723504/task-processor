@@ -1,4 +1,4 @@
-package watermark
+﻿package watermark
 
 import (
 	"context"
@@ -153,7 +153,7 @@ func (d *TraditionalDetector) analyzeRegion(img image.Image, x, y, width, height
 			Type:       d.guessWatermarkType(edgeScore, textureScore),
 			Position:   pos,
 			Confidence: confidence,
-			Metadata: map[string]interface{}{
+			Metadata: map[string]any{
 				"edge_score":     edgeScore,
 				"contrast_score": contrastScore,
 				"color_score":    colorScore,
