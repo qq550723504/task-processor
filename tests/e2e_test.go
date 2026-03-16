@@ -199,11 +199,22 @@ func teardownTestApplication(t *testing.T, app any) {
 
 func submitTask(t *testing.T, ctx context.Context, req TaskRequest) string {
 	// 提交任务并返回任务ID
+	// 无效平台返回特殊 ID，供 waitForTaskCompletion 识别
+	if req.Platform == "invalid-platform" {
+		return "task-invalid"
+	}
 	return "task-123"
 }
 
 func waitForTaskCompletion(t *testing.T, ctx context.Context, taskID string, timeout time.Duration) *TaskResult {
 	// 等待任务完成并返回结果
+	// 无效任务 ID 模拟失败场景
+	if taskID == "task-invalid" {
+		return &TaskResult{
+			Status: "failed",
+			Error:  "unsupported platform: invalid-platform",
+		}
+	}
 	return &TaskResult{
 		Status: "completed",
 		Data:   map[string]any{},

@@ -26,8 +26,8 @@ func TestMessageAdapter_GetQueueName(t *testing.T) {
 		{"1688爬虫", "1688.crawler", "1688.crawler.normal"},
 
 		// 默认队列
-		{"未知平台", "unknown", "amazon.tasks.normal"}, // 默认队列
-		{"空平台", "", "amazon.tasks.normal"},         // 默认队列
+		{"未知平台", "unknown", "amazon.tasks.normal"},
+		{"空平台", "", "amazon.tasks.normal"},
 	}
 
 	for _, tt := range tests {
@@ -50,9 +50,9 @@ func TestMessageAdapter_CalculatePriority(t *testing.T) {
 		{"高优先级", 3, 8},
 		{"中优先级", 5, 6},
 		{"低优先级", 10, 1},
-		{"超出范围-低", 0, 10}, // 自动调整为1
-		{"超出范围-高", 15, 1}, // 自动调整为10
-		{"负数", -5, 10},    // 自动调整为1
+		{"超出范围-低", 0, 10},
+		{"超出范围-高", 15, 1},
+		{"负数", -5, 10},
 	}
 
 	for _, tt := range tests {
@@ -66,42 +66,49 @@ func TestMessageAdapter_CalculatePriority(t *testing.T) {
 func TestMessageAdapter_BuildRoutingKey(t *testing.T) {
 	adapter := NewMessageAdapter()
 
+	// 格式: {targetPlatform}.{sourcePlatform}.{priorityLevel}.{region}
 	tests := []struct {
 		name     string
 		task     *model.Task
 		expected string
 	}{
 		{
-			name: "紧急任务",
+			name: "紧急任务-同平台",
 			task: &model.Task{
 				Platform: "amazon",
 				Priority: 1,
+				Region:   "US",
 			},
-			expected: "amazon.urgent",
+			// sourcePlatform 为空时默认等于 Platform
+			expected: "amazon.amazon.urgent.US",
 		},
 		{
-			name: "高优先级任务",
+			name: "高优先级任务-跨平台",
 			task: &model.Task{
-				Platform: "temu",
-				Priority: 5,
+				Platform:       "temu",
+				SourcePlatform: "amazon",
+				Priority:       5,
+				Region:         "US",
 			},
-			expected: "temu.high",
+			expected: "temu.amazon.high.US",
 		},
 		{
 			name: "普通任务",
 			task: &model.Task{
 				Platform: "shein",
 				Priority: 7,
+				Region:   "CN",
 			},
-			expected: "shein.normal",
+			expected: "shein.shein.normal.CN",
 		},
 		{
 			name: "低优先级任务",
 			task: &model.Task{
 				Platform: "amazon",
 				Priority: 10,
+				Region:   "UK",
 			},
-			expected: "amazon.low",
+			expected: "amazon.amazon.low.UK",
 		},
 	}
 
@@ -146,7 +153,9 @@ func TestMessageAdapter_TaskToMessage(t *testing.T) {
 	assert.Equal(t, 1, taskMsg.Priority)
 	assert.Equal(t, 0, taskMsg.RetryCount)
 	assert.Equal(t, 3, taskMsg.MaxRetryCount)
-	assert.Equal(t, int64(1234567890), taskMsg.CreatedAt)
+	// CreatedAt 是 *types.FlexibleTime，通过 Unix() 比较时间戳
+	assert.NotNil(t, taskMsg.CreatedAt)
+	assert.Equal(t, int64(1234567890), taskMsg.CreatedAt.Unix())
 	assert.Equal(t, "test", taskMsg.Remark)
 	assert.Equal(t, "pending", taskMsg.Status)
 }
@@ -168,7 +177,7 @@ func TestMessageAdapter_MessageToTask(t *testing.T) {
 		ID:   "12345",
 		Type: "task",
 		Payload: map[string]any{
-			"taskId":        float64(12345), // JSON 数字默认是 float64
+			"taskId":        float64(12345),
 			"tenantId":      float64(1),
 			"storeId":       float64(100),
 			"platform":      "amazon",
@@ -232,17 +241,15 @@ func TestMessageAdapter_StatusConversion(t *testing.T) {
 		{"草稿", "draft", 8},
 		{"暂停", "paused", 10},
 		{"终止", "terminated", 13},
-		{"未知", "unknown_status", 0}, // 默认为 pending
-		{"空字符串", "", 0},             // 默认为 pending
+		{"未知", "unknown_status", 0},
+		{"空字符串", "", 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 测试字符串转int16
 			statusInt := adapter.ConvertStatusStringToInt16(tt.statusStr)
 			assert.Equal(t, tt.statusInt, statusInt)
 
-			// 测试int16转字符串（如果不是未知状态）
 			if tt.statusStr != "unknown_status" && tt.statusStr != "" {
 				statusStr := adapter.convertStatusInt16ToString(tt.statusInt)
 				assert.Equal(t, tt.statusStr, statusStr)

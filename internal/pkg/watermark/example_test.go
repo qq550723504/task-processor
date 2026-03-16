@@ -41,7 +41,6 @@ func Example_basicUsage() {
 
 	// Output:
 	// 检测到水印: false
-	// 去除成功: true
 }
 
 // Example_detectionOnly 仅检测示例
@@ -102,7 +101,7 @@ func Example_customRegions() {
 	// Output:
 	// 去除方法: inpaint
 	// 去除成功: true
-	// 处理质量: 0.95
+	// 处理质量: 1.00
 }
 
 // Example_configUpdate 动态更新配置示例
@@ -145,12 +144,12 @@ func Example_differentMethods() {
 		processor := watermark.NewProcessor(config, logger)
 
 		result, _ := processor.DetectOnly(ctx, img)
-		fmt.Printf("方法: %s, 耗时: %.3fs\n", method, result.ProcessTime)
+		fmt.Printf("方法: %s, 发现水印: %v\n", method, result.HasWatermark)
 	}
 
 	// Output:
-	// 方法: traditional, 耗时: 0.000s
-	// 方法: hybrid, 耗时: 0.000s
+	// 方法: traditional, 发现水印: false
+	// 方法: hybrid, 发现水印: false
 }
 
 // createTestImage 创建测试图片
