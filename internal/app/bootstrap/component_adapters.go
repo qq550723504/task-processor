@@ -64,7 +64,6 @@ func (c *ComponentAdapters) registerUpdaterComponent(lifecycleManager lifecycle.
 
 	component := &UpdaterServiceComponent{
 		BaseComponent: lifecycle.NewBaseComponent("updater", []string{}, 10),
-		container:     c.container,
 		logger:        c.logger,
 		config:        cfg,
 		appVersion:    appVersion,
@@ -154,7 +153,6 @@ func (c *ComponentAdapters) registerSchedulerComponent(lifecycleManager lifecycl
 // UpdaterServiceComponent 更新服务组件适配器
 type UpdaterServiceComponent struct {
 	*lifecycle.BaseComponent
-	container  di.Container
 	logger     *logrus.Logger
 	config     *config.Config
 	appVersion string
@@ -212,7 +210,7 @@ func (u *UpdaterServiceComponent) Stop(ctx context.Context) error {
 // TemuProcessorComponent TEMU处理器组件适配器
 type TemuProcessorComponent struct {
 	*lifecycle.BaseComponent
-	container di.Container
+	container di.ContainerReader
 	logger    *logrus.Logger
 }
 
@@ -259,7 +257,7 @@ func (t *TemuProcessorComponent) Stop(ctx context.Context) error {
 // SheinProcessorComponent SHEIN处理器组件适配器
 type SheinProcessorComponent struct {
 	*lifecycle.BaseComponent
-	container di.Container
+	container di.ContainerReader
 	logger    *logrus.Logger
 }
 
@@ -306,7 +304,7 @@ func (s *SheinProcessorComponent) Stop(ctx context.Context) error {
 // SchedulerServiceComponent 调度服务组件适配器
 type SchedulerServiceComponent struct {
 	*lifecycle.BaseComponent
-	container di.Container
+	container di.ContainerReader
 	logger    *logrus.Logger
 	config    *config.Config
 }
@@ -354,7 +352,7 @@ func (s *SchedulerServiceComponent) Stop(ctx context.Context) error {
 // TaskFetcherComponent 任务获取器组件适配器
 type TaskFetcherComponent struct {
 	*lifecycle.BaseComponent
-	container di.Container
+	container di.ContainerReader
 	logger    *logrus.Logger
 	config    *config.Config
 }

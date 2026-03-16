@@ -5,22 +5,27 @@ import (
 	"reflect"
 )
 
-// Container 依赖注入容器接口
+// ContainerReader 只读容器接口，用于只需要获取服务的消费者（如组件适配器）
+type ContainerReader interface {
+	// Get 获取服务实例
+	Get(name string) (any, error)
+
+	// Has 检查服务是否已注册
+	Has(name string) bool
+}
+
+// Container 依赖注入容器完整接口，嵌入 ContainerReader
 type Container interface {
+	ContainerReader
+
 	// Register 注册服务工厂
 	Register(name string, factory Factory) error
 
 	// RegisterSingleton 注册单例服务
 	RegisterSingleton(name string, factory Factory) error
 
-	// Get 获取服务实例
-	Get(name string) (any, error)
-
 	// GetByType 根据类型获取服务实例
 	GetByType(serviceType reflect.Type) (any, error)
-
-	// Has 检查服务是否已注册
-	Has(name string) bool
 
 	// Close 关闭容器，清理资源
 	Close() error
