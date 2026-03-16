@@ -18,15 +18,16 @@ func LoadFromBytes(data []byte) (*Config, error) {
 		return NewDefaultConfig(), nil
 	}
 
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	// 预先初始化嵌入指针，否则 yaml.v3 无法填充嵌入的 *types.Config 字段
+	cfg := &Config{Config: &types.Config{}}
+	if err := yaml.Unmarshal(data, cfg.Config); err != nil {
 		return nil, fmt.Errorf("解析YAML配置失败: %w", err)
 	}
 
 	// 应用默认值
-	applyDefaults(&cfg)
+	applyDefaults(cfg)
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 // LoadConfigWithFallback 加载配置，失败时使用默认配置（统一入口）
@@ -270,6 +271,14 @@ func applyDefaults(cfg *Config) {
 	// 如果Management配置未设置，使用默认值
 	if cfg.Management.BaseURL == "" {
 		cfg.Management = defaultCfg.Management
+	} else {
+		// 补全缺失的子字段
+		if cfg.Management.TenantID == "" {
+			cfg.Management.TenantID = defaultCfg.Management.TenantID
+		}
+		if cfg.Management.TokenURL == "" {
+			cfg.Management.TokenURL = defaultCfg.Management.TokenURL
+		}
 	}
 
 	// 如果Amazon配置未设置，使用默认值
