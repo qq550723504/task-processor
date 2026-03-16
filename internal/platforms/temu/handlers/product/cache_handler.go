@@ -17,7 +17,7 @@ import (
 // 将已获取的产品数据缓存到服务器
 type CacheProductHandler struct {
 	logger  *logrus.Entry
-	fetcher appProduct.ProductFetcherInterface
+	fetcher appProduct.ProductFetcher
 }
 
 // NewCacheProductHandler 创建缓存产品数据处理器（支持分布式获取器）

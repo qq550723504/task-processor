@@ -1,4 +1,4 @@
-﻿// Package handlers 提供AI属性映射的辅助功能
+﻿// Package ai 提供AI属性映射的辅助功能
 package ai
 
 import (

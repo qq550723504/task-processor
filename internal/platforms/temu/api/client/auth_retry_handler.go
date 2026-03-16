@@ -10,7 +10,7 @@ import (
 
 // RetryHandler 重试处理器接口
 type RetryHandler interface {
-	SendRequestWithRetry(client APIClientInterface, request map[string]any, result any) error
+	SendRequestWithRetry(client ClientAPI, request map[string]any, result any) error
 }
 
 // TemuRetryHandler TEMU平台重试处理器
@@ -37,7 +37,7 @@ func NewTemuRetryHandler(
 }
 
 // SendRequestWithRetry 发送请求（带重试逻辑）
-func (h *TemuRetryHandler) SendRequestWithRetry(client APIClientInterface, request map[string]any, result any) error {
+func (h *TemuRetryHandler) SendRequestWithRetry(client ClientAPI, request map[string]any, result any) error {
 	ctx := NewAuthContext(client.GetStoreID())
 
 	for ctx.AttemptCount < h.config.MaxRetries {
@@ -72,7 +72,7 @@ func (h *TemuRetryHandler) SendRequestWithRetry(client APIClientInterface, reque
 }
 
 // handleAuthError 处理认证错误
-func (h *TemuRetryHandler) handleAuthError(client APIClientInterface, ctx *AuthContext, err error) error {
+func (h *TemuRetryHandler) handleAuthError(client ClientAPI, ctx *AuthContext, err error) error {
 	ctx.IncrementAuthError(err)
 	h.logger.Infof("检测到认证错误 (连续第%d次)，尝试重新加载Cookie...", ctx.ConsecutiveAuthErrors)
 
@@ -98,7 +98,7 @@ func (h *TemuRetryHandler) handleAuthError(client APIClientInterface, ctx *AuthC
 }
 
 // handleFinalAuthFailure 处理最终认证失败
-func (h *TemuRetryHandler) handleFinalAuthFailure(client APIClientInterface, ctx *AuthContext, reason string) error {
+func (h *TemuRetryHandler) handleFinalAuthFailure(client ClientAPI, ctx *AuthContext, reason string) error {
 	h.logger.Error("认证失败，设置认证过期暂停键")
 
 	if pauseErr := h.pauseHandler.SetPauseKeyForAuthExpired(client, reason); pauseErr != nil {
@@ -112,7 +112,7 @@ func (h *TemuRetryHandler) handleFinalAuthFailure(client APIClientInterface, ctx
 }
 
 // sendRequestOnce 发送单次请求
-func (h *TemuRetryHandler) sendRequestOnce(client APIClientInterface, request map[string]any, result any) error {
+func (h *TemuRetryHandler) sendRequestOnce(client ClientAPI, request map[string]any, result any) error {
 	requestSender := NewRequestSender(h.logger)
 	return requestSender.SendRequest(client, request, result)
 }

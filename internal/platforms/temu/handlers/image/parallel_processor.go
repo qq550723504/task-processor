@@ -1,4 +1,4 @@
-﻿// Package handlers 提供并行图片处理功能
+﻿// Package image 提供并行图片处理功能
 package image
 
 import (

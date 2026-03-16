@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台的属性值验证功能
+﻿// Package property 提供TEMU平台的属性值验证功能
 package property
 
 import (

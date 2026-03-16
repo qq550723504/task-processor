@@ -1,4 +1,4 @@
-﻿// Package models 提供TEMU平台映射数据结构定义
+﻿// Package syncsvc 提供TEMU平台映射数据结构定义
 package syncsvc
 
 import (

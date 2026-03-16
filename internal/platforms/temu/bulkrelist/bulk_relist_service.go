@@ -9,7 +9,7 @@ import (
 
 // BulkRelistService 批量重新上架服务
 type BulkRelistService struct {
-	apiClient      client.APIClientInterface
+	apiClient      client.ClientAPI
 	inventoryAPI   *inventory.API
 	batchProcessor *BatchProcessor
 	productFilter  *ProductFilter
@@ -19,7 +19,7 @@ type BulkRelistService struct {
 }
 
 // NewBulkRelistService 创建批量重新上架服务
-func NewBulkRelistService(apiClient client.APIClientInterface) *BulkRelistService {
+func NewBulkRelistService(apiClient client.ClientAPI) *BulkRelistService {
 	logger := apiClient.GetLogger()
 	inventoryAPI := inventory.NewAPI(apiClient, logger)
 
@@ -30,8 +30,7 @@ func NewBulkRelistService(apiClient client.APIClientInterface) *BulkRelistServic
 	processor := NewProductProcessor(inventoryAPI, productFilter, logger)
 
 	// 创建批量处理器
-	var offlineAPIInterface OfflineAPIInterface = inventoryAPI
-	batchProcessor := NewBatchProcessor(&offlineAPIInterface, logger)
+	batchProcessor := NewBatchProcessor(inventoryAPI, logger)
 
 	// 创建页面循环处理器
 	pageLoop := NewPageLoopProcessor(inventoryAPI, processor, logger)

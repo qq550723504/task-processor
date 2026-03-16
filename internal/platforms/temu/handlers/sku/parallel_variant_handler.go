@@ -1,4 +1,4 @@
-﻿// Package handlers 提供并行变体数据处理功能
+﻿// Package sku 提供并行变体数据处理功能
 package sku
 
 import (
@@ -23,7 +23,7 @@ import (
 // ParallelVariantHandler 并行变体数据处理器
 type ParallelVariantHandler struct {
 	logger         *logrus.Entry
-	productFetcher appProduct.ProductFetcherInterface
+	productFetcher appProduct.ProductFetcher
 	amazonConfig   *config.AmazonConfig
 	maxWorkers     int
 	timeout        time.Duration

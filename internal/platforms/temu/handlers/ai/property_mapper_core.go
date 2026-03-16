@@ -1,18 +1,17 @@
-﻿// Package handlers 提供TEMU平台的AI属性映射核心功能
+﻿// Package ai 提供TEMU平台的AI属性映射核心功能
 package ai
 
 import (
 	"fmt"
-	"strings"
 
 	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/contextutil"
 	models "task-processor/internal/platforms/temu/api/product"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
 	"task-processor/internal/platforms/temu/handlers/template"
-	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -224,45 +223,6 @@ func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskCon
 	return nil
 }
 
-// getPropertyTypeName 获取属性类型名称
-func getPropertyTypeName(propertyValueType int) string {
-	switch propertyValueType {
-	case 1:
-		return "selection"
-	case 2:
-		return "numeric"
-	case 3:
-		return "text"
-	default:
-		return "unknown"
-	}
-}
-
-func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templateProps []temutemplate.TemplateRespGoodsProperty) temucontext.PropertyMappingData {
-	data := temucontext.PropertyMappingData{
-		TemuProperties: make([]temutemplate.TemplateRespGoodsProperty, 0, len(templateProps)),
-	}
-
-	// 检查模板属性是否为空
-	if len(templateProps) == 0 {
-		logrus.Warn("⚠️ 模板属性列表为空，属性修复可能无法正常工作")
-	} else {
-		logrus.Infof("📋 准备属性映射数据，模板属性数量: %d", len(templateProps))
-	}
-
-	// 组织Amazon产品数据
-	if temuCtx.GetAmazonProduct() != nil {
-		data.AmazonProduct = convertAmazonProductData(temuCtx)
-	}
-
-	// 组织TEMU属性选项
-	for _, templateProp := range templateProps {
-		data.TemuProperties = append(data.TemuProperties, templateProp)
-	}
-
-	return data
-}
-
 // enrichPropertiesWithTemplateInfo 为AI返回的属性补充模板相关字段
 // 修复template_module_id字段缺失导致TEMU API忽略属性的问题
 func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.PropertyItem, templateProps []temutemplate.TemplateRespGoodsProperty) {
@@ -376,190 +336,4 @@ func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.
 	// 🔧 新增：条件属性依赖验证和清理
 	validator := property.NewConditionalPropertyValidator(m.logger)
 	validator.ValidateAndCleanConditionalProperties(&properties, templateProps)
-}
-
-// selectBestTemplate 从多个相同PID的模板中选择最佳匹配
-// 改进的智能选择策略，避免硬编码，通过通用的匹配算法解决属性选择问题
-func (m *AIPropertyMapper) selectBestTemplate(prop *models.PropertyItem, templates []temutemplate.TemplateRespGoodsProperty) *temutemplate.TemplateRespGoodsProperty {
-	m.logger.Debugf("🎯 为PID=%d选择最佳模板，候选数量: %d", prop.Pid, len(templates))
-
-	// 策略1: 通过VID精确匹配（最高优先级）
-	for _, template := range templates {
-		if m.isValidVID(prop.Vid, template.Values) {
-			m.logger.Debugf("✅ VID精确匹配: %s (VID=%d)", template.Name, prop.Vid)
-			return &template
-		}
-	}
-
-	// 策略2: 通过属性值语义匹配（使用评分系统）
-	bestMatch := m.findBestValueMatch(prop.Value, templates)
-	if bestMatch != nil {
-		m.logger.Debugf("✅ 值语义匹配: %s ← %s", bestMatch.Name, prop.Value)
-		return bestMatch
-	}
-
-	// 策略3: 根据依赖关系选择（处理条件属性）
-	dependentMatch := m.selectByDependency(prop, templates)
-	if dependentMatch != nil {
-		m.logger.Debugf("✅ 依赖关系匹配: %s", dependentMatch.Name)
-		return dependentMatch
-	}
-
-	// 策略4: 优先选择必填属性
-	for _, template := range templates {
-		if template.Required {
-			m.logger.Debugf("✅ 选择必填属性: %s", template.Name)
-			return &template
-		}
-	}
-
-	// 策略5: 默认选择第一个
-	m.logger.Debugf("⚠️ 使用默认选择: %s", templates[0].Name)
-	return &templates[0]
-}
-
-// findBestValueMatch 找到最佳的值匹配模板（使用评分系统）
-func (m *AIPropertyMapper) findBestValueMatch(propValue string, templates []temutemplate.TemplateRespGoodsProperty) *temutemplate.TemplateRespGoodsProperty {
-	propValue = strings.ToLower(propValue)
-
-	var bestMatch *temutemplate.TemplateRespGoodsProperty
-	var bestScore int
-
-	for _, template := range templates {
-		score := m.calculateValueMatchScore(propValue, template)
-		if score > bestScore {
-			bestScore = score
-			bestMatch = &template
-		}
-	}
-
-	// 只有当匹配分数足够高时才返回
-	if bestScore > 0 {
-		return bestMatch
-	}
-	return nil
-}
-
-// calculateValueMatchScore 计算值匹配分数（通用评分算法）
-func (m *AIPropertyMapper) calculateValueMatchScore(propValue string, template temutemplate.TemplateRespGoodsProperty) int {
-	score := 0
-
-	// 检查模板的候选值
-	for _, value := range template.Values {
-		templateValue := strings.ToLower(value.Value)
-
-		// 精确匹配得分最高
-		if propValue == templateValue {
-			return 100
-		}
-
-		// 包含匹配
-		if strings.Contains(propValue, templateValue) || strings.Contains(templateValue, propValue) {
-			score = max(score, 50)
-		}
-
-		// 关键词匹配
-		if m.hasKeywordMatch(propValue, templateValue) {
-			score = max(score, 30)
-		}
-	}
-
-	return score
-}
-
-// hasKeywordMatch 检查关键词匹配（通用关键词匹配算法）
-func (m *AIPropertyMapper) hasKeywordMatch(propValue, templateValue string) bool {
-	// 提取关键词进行匹配
-	propWords := strings.Fields(propValue)
-	templateWords := strings.Fields(templateValue)
-
-	// 检查是否有共同的关键词
-	for _, propWord := range propWords {
-		for _, templateWord := range templateWords {
-			if len(propWord) > 2 && len(templateWord) > 2 { // 忽略太短的词
-				if strings.Contains(propWord, templateWord) || strings.Contains(templateWord, propWord) {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
-}
-
-// selectByDependency 根据依赖关系选择模板（通用依赖关系处理）
-func (m *AIPropertyMapper) selectByDependency(prop *models.PropertyItem, templates []temutemplate.TemplateRespGoodsProperty) *temutemplate.TemplateRespGoodsProperty {
-	// 对于条件属性，检查是否有合适的父依赖
-	for _, template := range templates {
-		if len(template.TemplatePropertyValueParentList) > 0 {
-			// 这是一个条件属性，检查依赖关系是否合理
-			if m.isDependencyReasonable(prop, template) {
-				return &template
-			}
-		}
-	}
-
-	return nil
-}
-
-// isDependencyReasonable 检查依赖关系是否合理（通用依赖关系验证）
-func (m *AIPropertyMapper) isDependencyReasonable(prop *models.PropertyItem, template temutemplate.TemplateRespGoodsProperty) bool {
-	// 通用的依赖关系检查：如果属性值与模板名称或候选值相关，则认为依赖关系合理
-	propValue := strings.ToLower(prop.Value)
-	templateName := strings.ToLower(template.Name)
-
-	// 检查属性值是否与模板名称相关
-	propWords := strings.Fields(propValue)
-	templateWords := strings.Fields(templateName)
-
-	for _, propWord := range propWords {
-		for _, templateWord := range templateWords {
-			if len(propWord) > 2 && len(templateWord) > 2 {
-				if strings.Contains(propWord, templateWord) || strings.Contains(templateWord, propWord) {
-					return true
-				}
-			}
-		}
-	}
-
-	// 检查属性值是否在模板的候选值中有相关性
-	for _, value := range template.Values {
-		templateValue := strings.ToLower(value.Value)
-		if strings.Contains(propValue, templateValue) || strings.Contains(templateValue, propValue) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// convertAmazonProductData 将Amazon产品数据转换为AI映射所需的格式
-func convertAmazonProductData(temuCtx *temucontext.TemuTaskContext) temucontext.AmazonProductData {
-	amazonProduct := temuCtx.GetAmazonProduct()
-	if amazonProduct == nil {
-		return temucontext.AmazonProductData{}
-	}
-
-	// 转换产品详情
-	productDetails := make([]temucontext.ProductDetailData, 0, len(amazonProduct.ProductDetails))
-	for _, detail := range amazonProduct.ProductDetails {
-		productDetails = append(productDetails, temucontext.ProductDetailData{
-			Type:  detail.Type,
-			Value: detail.Value,
-		})
-	}
-
-	return temucontext.AmazonProductData{
-		Title:             amazonProduct.Title,
-		Brand:             amazonProduct.Brand,
-		Description:       amazonProduct.Description,
-		Features:          amazonProduct.Features,
-		ProductDetails:    productDetails,
-		ProductDimensions: amazonProduct.ProductDimensions,
-		ItemWeight:        amazonProduct.ItemWeight,
-		ModelNumber:       amazonProduct.ModelNumber,
-		Department:        amazonProduct.Department,
-		Manufacturer:      amazonProduct.Manufacturer,
-		Categories:        amazonProduct.Categories,
-	}
 }

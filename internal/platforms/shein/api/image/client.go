@@ -9,7 +9,7 @@ import (
 	"image/png"
 	"time"
 
-	"task-processor/internal/infra/clients/management/impl"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/pkg/imageutil"
 	"task-processor/internal/platforms/shein/api"
 	"task-processor/internal/platforms/shein/client"
@@ -20,14 +20,14 @@ import (
 // Client 图片相关API实现
 type Client struct {
 	*client.BaseAPIClient
-	imageDownloader *impl.ImageDownloader
+	imageDownloader *management.ImageDownloader
 }
 
 // NewClient 创建新的图片API客户端
 func NewClient(baseClient *client.BaseAPIClient) *Client {
 	return &Client{
 		BaseAPIClient:   baseClient,
-		imageDownloader: impl.NewImageDownloader(60 * time.Second),
+		imageDownloader: management.NewImageDownloader(60 * time.Second),
 	}
 }
 

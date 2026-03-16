@@ -1,4 +1,4 @@
-﻿// Package validation 提供TEMU平台的规则验证功能
+﻿// Package rules 提供TEMU平台的规则验证功能
 package rules
 
 import (
@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 
 	"github.com/sirupsen/logrus"
 )
@@ -18,7 +18,7 @@ import (
 type RuleValidator struct {
 	logger             *logrus.Entry
 	checker            *domainvalidation.RuleChecker
-	fulfillmentChecker *common.FulfillmentChecker
+	fulfillmentChecker *handlerbase.FulfillmentChecker
 }
 
 // NewRuleValidator 创建新的规则验证器
@@ -26,7 +26,7 @@ func NewRuleValidator(logger *logrus.Entry) *RuleValidator {
 	return &RuleValidator{
 		logger:             logger.WithField("component", "RuleValidator"),
 		checker:            domainvalidation.NewRuleChecker(),
-		fulfillmentChecker: common.NewFulfillmentChecker(logger),
+		fulfillmentChecker: handlerbase.NewFulfillmentChecker(logger),
 	}
 }
 
@@ -41,7 +41,7 @@ func (v *RuleValidator) CheckSingleRule(product *model.Product, rule *api.Filter
 }
 
 // CheckSingleRuleDetailed 详细检查单个规则（兼容旧接口）
-func (v *RuleValidator) CheckSingleRuleDetailed(product *model.Product, rule *api.FilterRuleRespDTO, ctx pipeline.TaskContext) *common.FilterCheckResult {
+func (v *RuleValidator) CheckSingleRuleDetailed(product *model.Product, rule *api.FilterRuleRespDTO, ctx pipeline.TaskContext) *handlerbase.FilterCheckResult {
 	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
 		return v.CheckSingleRuleDetailedTemu(product, rule, temuCtx)
 	}
@@ -49,7 +49,7 @@ func (v *RuleValidator) CheckSingleRuleDetailed(product *model.Product, rule *ap
 }
 
 // CheckSingleRuleDetailedTemu 详细检查单个规则（强类型上下文）
-func (v *RuleValidator) CheckSingleRuleDetailedTemu(amazonProduct *model.Product, rule *api.FilterRuleRespDTO, temuCtx *temucontext.TemuTaskContext) *common.FilterCheckResult {
+func (v *RuleValidator) CheckSingleRuleDetailedTemu(amazonProduct *model.Product, rule *api.FilterRuleRespDTO, temuCtx *temucontext.TemuTaskContext) *handlerbase.FilterCheckResult {
 	if result := v.checkImageCountRuleDetailed(amazonProduct); !result.Passed {
 		return result
 	}
@@ -68,11 +68,11 @@ func (v *RuleValidator) CheckSingleRuleDetailedTemu(amazonProduct *model.Product
 	if result := v.fulfillmentChecker.CheckFulfillmentTypeRuleDetailed(amazonProduct, rule); !result.Passed {
 		return result
 	}
-	return &common.FilterCheckResult{Passed: true}
+	return &handlerbase.FilterCheckResult{Passed: true}
 }
 
 // checkBasicRules 基本规则检查（不依赖上下文）
-func (v *RuleValidator) checkBasicRules(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *common.FilterCheckResult {
+func (v *RuleValidator) checkBasicRules(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *handlerbase.FilterCheckResult {
 	if result := v.checkImageCountRuleDetailed(amazonProduct); !result.Passed {
 		return result
 	}
@@ -91,10 +91,10 @@ func (v *RuleValidator) checkBasicRules(amazonProduct *model.Product, rule *api.
 	if result := v.fulfillmentChecker.CheckFulfillmentTypeRuleDetailed(amazonProduct, rule); !result.Passed {
 		return result
 	}
-	return &common.FilterCheckResult{Passed: true}
+	return &handlerbase.FilterCheckResult{Passed: true}
 }
 
-func (v *RuleValidator) checkPriceRuleDetailedTemu(amazonProduct *model.Product, rule *api.FilterRuleRespDTO, temuCtx *temucontext.TemuTaskContext) *common.FilterCheckResult {
+func (v *RuleValidator) checkPriceRuleDetailedTemu(amazonProduct *model.Product, rule *api.FilterRuleRespDTO, temuCtx *temucontext.TemuTaskContext) *handlerbase.FilterCheckResult {
 	priceType := "final"
 	if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.PriceType != "" {
 		priceType = temuCtx.StoreInfo.PriceType
@@ -116,17 +116,17 @@ func (v *RuleValidator) checkPriceRuleDetailedTemu(amazonProduct *model.Product,
 		} else if rule.PriceMax != nil {
 			ruleValue = *rule.PriceMax
 		}
-		return &common.FilterCheckResult{
+		return &handlerbase.FilterCheckResult{
 			Passed:        false,
 			FailureReason: err.Error(),
 			ProductValue:  price,
 			RuleValue:     ruleValue,
 		}
 	}
-	return &common.FilterCheckResult{Passed: true}
+	return &handlerbase.FilterCheckResult{Passed: true}
 }
 
-func (v *RuleValidator) checkPriceRuleBasic(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *common.FilterCheckResult {
+func (v *RuleValidator) checkPriceRuleBasic(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *handlerbase.FilterCheckResult {
 	price := product.GetProductPrice(amazonProduct, "final")
 
 	v.logger.WithFields(logrus.Fields{
@@ -144,19 +144,19 @@ func (v *RuleValidator) checkPriceRuleBasic(amazonProduct *model.Product, rule *
 		} else if rule.PriceMax != nil {
 			ruleValue = *rule.PriceMax
 		}
-		return &common.FilterCheckResult{
+		return &handlerbase.FilterCheckResult{
 			Passed:        false,
 			FailureReason: err.Error(),
 			ProductValue:  price,
 			RuleValue:     ruleValue,
 		}
 	}
-	return &common.FilterCheckResult{Passed: true}
+	return &handlerbase.FilterCheckResult{Passed: true}
 }
 
-func (v *RuleValidator) checkRatingRuleDetailed(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *common.FilterCheckResult {
+func (v *RuleValidator) checkRatingRuleDetailed(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *handlerbase.FilterCheckResult {
 	if rule.RatingMin == nil {
-		return &common.FilterCheckResult{Passed: true}
+		return &handlerbase.FilterCheckResult{Passed: true}
 	}
 	v.logger.WithFields(logrus.Fields{
 		"asin":       amazonProduct.Asin,
@@ -165,19 +165,19 @@ func (v *RuleValidator) checkRatingRuleDetailed(amazonProduct *model.Product, ru
 	}).Debug("检查评分规则")
 
 	if err := v.checker.CheckRating(rule.ToFilterRule(), amazonProduct.Rating); err != nil {
-		return &common.FilterCheckResult{
+		return &handlerbase.FilterCheckResult{
 			Passed:        false,
 			FailureReason: err.Error(),
 			ProductValue:  amazonProduct.Rating,
 			RuleValue:     *rule.RatingMin,
 		}
 	}
-	return &common.FilterCheckResult{Passed: true}
+	return &handlerbase.FilterCheckResult{Passed: true}
 }
 
-func (v *RuleValidator) checkReviewCountRuleDetailed(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *common.FilterCheckResult {
+func (v *RuleValidator) checkReviewCountRuleDetailed(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *handlerbase.FilterCheckResult {
 	if rule.ReviewCountMin == nil {
-		return &common.FilterCheckResult{Passed: true}
+		return &handlerbase.FilterCheckResult{Passed: true}
 	}
 	v.logger.WithFields(logrus.Fields{
 		"asin":             amazonProduct.Asin,
@@ -186,19 +186,19 @@ func (v *RuleValidator) checkReviewCountRuleDetailed(amazonProduct *model.Produc
 	}).Debug("检查评论数量规则")
 
 	if err := v.checker.CheckReviewCount(rule.ToFilterRule(), amazonProduct.ReviewsCount); err != nil {
-		return &common.FilterCheckResult{
+		return &handlerbase.FilterCheckResult{
 			Passed:        false,
 			FailureReason: err.Error(),
 			ProductValue:  amazonProduct.ReviewsCount,
 			RuleValue:     *rule.ReviewCountMin,
 		}
 	}
-	return &common.FilterCheckResult{Passed: true}
+	return &handlerbase.FilterCheckResult{Passed: true}
 }
 
-func (v *RuleValidator) checkStockRuleDetailed(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *common.FilterCheckResult {
+func (v *RuleValidator) checkStockRuleDetailed(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *handlerbase.FilterCheckResult {
 	if rule.StockMin == nil {
-		return &common.FilterCheckResult{Passed: true}
+		return &handlerbase.FilterCheckResult{Passed: true}
 	}
 	stock := product.GetInventory(amazonProduct)
 
@@ -209,17 +209,17 @@ func (v *RuleValidator) checkStockRuleDetailed(amazonProduct *model.Product, rul
 	}).Debug("检查库存规则")
 
 	if err := v.checker.CheckInventory(rule.ToFilterRule(), stock); err != nil {
-		return &common.FilterCheckResult{
+		return &handlerbase.FilterCheckResult{
 			Passed:        false,
 			FailureReason: err.Error(),
 			ProductValue:  stock,
 			RuleValue:     *rule.StockMin,
 		}
 	}
-	return &common.FilterCheckResult{Passed: true}
+	return &handlerbase.FilterCheckResult{Passed: true}
 }
 
-func (v *RuleValidator) checkImageCountRuleDetailed(amazonProduct *model.Product) *common.FilterCheckResult {
+func (v *RuleValidator) checkImageCountRuleDetailed(amazonProduct *model.Product) *handlerbase.FilterCheckResult {
 	const minImageCount = 3
 
 	imageCount := len(amazonProduct.Images)
@@ -230,12 +230,12 @@ func (v *RuleValidator) checkImageCountRuleDetailed(amazonProduct *model.Product
 	}).Debug("检查图片数量规则")
 
 	if imageCount < minImageCount {
-		return &common.FilterCheckResult{
+		return &handlerbase.FilterCheckResult{
 			Passed:        false,
 			FailureReason: fmt.Sprintf("Amazon原始数据图片不足，当前%d张，至少需要%d张", imageCount, minImageCount),
 			ProductValue:  float64(imageCount),
 			RuleValue:     float64(minImageCount),
 		}
 	}
-	return &common.FilterCheckResult{Passed: true}
+	return &handlerbase.FilterCheckResult{Passed: true}
 }

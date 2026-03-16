@@ -107,7 +107,7 @@ func (m *DailyCountManager) ResetCount(tenantID, shopID int64, date string) {
 }
 
 // GetClient 获取每日上架数量客户端
-func (m *DailyCountManager) GetClient() management.DailyListingCountAPIClient {
+func (m *DailyCountManager) GetClient() api.DailyListingCountAPI {
 	if m.managementClientMgr == nil {
 		return nil
 	}

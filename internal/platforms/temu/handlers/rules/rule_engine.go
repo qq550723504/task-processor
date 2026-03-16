@@ -1,26 +1,26 @@
-﻿// Package validation 提供验证规则引擎
+﻿// Package rules 提供验证规则引擎
 package rules
 
 import (
 	"fmt"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )
 
 // PropertyFeatureDetector 属性特征检测器（类型别名）
-type PropertyFeatureDetector = common.PropertyFeatureDetector
+type PropertyFeatureDetector = handlerbase.PropertyFeatureDetector
 
 // NewPropertyFeatureDetector 创建属性特征检测器
-var NewPropertyFeatureDetector = common.NewPropertyFeatureDetector
+var NewPropertyFeatureDetector = handlerbase.NewPropertyFeatureDetector
 
 // ValidationRuleEngine 验证规则引擎
 type ValidationRuleEngine struct {
 	logger          *logrus.Entry
-	featureDetector *common.PropertyFeatureDetector
+	featureDetector *handlerbase.PropertyFeatureDetector
 	rules           []ValidationRule
 }
 
@@ -28,7 +28,7 @@ type ValidationRuleEngine struct {
 func NewValidationRuleEngine(logger *logrus.Entry) *ValidationRuleEngine {
 	engine := &ValidationRuleEngine{
 		logger:          logger,
-		featureDetector: common.NewPropertyFeatureDetector(logger),
+		featureDetector: handlerbase.NewPropertyFeatureDetector(logger),
 		rules:           make([]ValidationRule, 0),
 	}
 

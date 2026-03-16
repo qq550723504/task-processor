@@ -1,9 +1,9 @@
-﻿// Package validation 提供验证规则接口定义
+﻿// Package rules 提供验证规则接口定义
 package rules
 
 import (
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
 )
 
@@ -13,7 +13,7 @@ type ValidationRule interface {
 	GetRuleName() string
 
 	// Matches 判断规则是否匹配该属性特征
-	Matches(feature common.PropertyFeature) bool
+	Matches(feature handlerbase.PropertyFeature) bool
 
 	// Validate 验证属性值
 	Validate(props []*models.PropertyItem, templateProp temutemplate.TemplateRespGoodsProperty) RuleValidationResult

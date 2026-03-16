@@ -1,4 +1,4 @@
-// Package service 提供成本价和利润率计算相关服务
+﻿// Package pricing 提供成本价和利润率计算相关服务
 package pricing
 
 import (

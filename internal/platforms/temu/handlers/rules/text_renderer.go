@@ -1,11 +1,11 @@
-﻿// Package handlers 提供TEMU平台文本渲染功能
+﻿// Package rules 提供TEMU平台文本渲染功能
 package rules
 
 import (
 	"fmt"
 	"image"
 	"image/color"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
@@ -59,7 +59,7 @@ func (r *TextRenderer) DrawTextWithBackground(img *image.RGBA, x, y int, text st
 }
 
 // DrawSummaryInfo 绘制汇总信息
-func (r *TextRenderer) DrawSummaryInfo(img *image.RGBA, dimensions common.DimensionInfo) error {
+func (r *TextRenderer) DrawSummaryInfo(img *image.RGBA, dimensions handlerbase.DimensionInfo) error {
 	bounds := img.Bounds()
 	height := bounds.Dy()
 

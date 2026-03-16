@@ -1,4 +1,4 @@
-﻿// Package modules 敏感词处理器
+﻿// Package content 敏感词处理器
 package content
 
 import (
@@ -8,8 +8,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// SensitiveWordsFilterInterface 敏感词过滤器接口
-type SensitiveWordsFilterInterface interface {
+// SensitiveWordsFilter 敏感词过滤器接口
+type SensitiveWordsFilter interface {
 	CheckProduct(title, description string, languages []string) (bool, map[string][]string)
 }
 
@@ -28,12 +28,12 @@ const (
 // SensitiveWordsProcessor 敏感词处理器
 type SensitiveWordsProcessor struct {
 	mode                 SensitiveWordsMode
-	filter               SensitiveWordsFilterInterface
+	filter               SensitiveWordsFilter
 	sensitiveWordService *SensitiveWordService
 }
 
 // NewSensitiveWordsProcessor 创建敏感词处理器
-func NewSensitiveWordsProcessor(mode SensitiveWordsMode, filter SensitiveWordsFilterInterface) *SensitiveWordsProcessor {
+func NewSensitiveWordsProcessor(mode SensitiveWordsMode, filter SensitiveWordsFilter) *SensitiveWordsProcessor {
 	return &SensitiveWordsProcessor{
 		mode:                 mode,
 		filter:               filter,
@@ -130,18 +130,16 @@ func (h *SensitiveWordsProcessor) handleWarn(ctx *shein.TaskContext, foundWords 
 }
 
 // NewSensitiveWordsBlockHandler 创建拦截模式处理器(兼容旧接口)
-func NewSensitiveWordsBlockHandler(filter SensitiveWordsFilterInterface) *SensitiveWordsProcessor {
+func NewSensitiveWordsBlockHandler(filter SensitiveWordsFilter) *SensitiveWordsProcessor {
 	return NewSensitiveWordsProcessor(ModeBlock, filter)
 }
 
 // NewSensitiveWordsCleanHandler 创建清理模式处理器(兼容旧接口)
-func NewSensitiveWordsCleanHandler(filter SensitiveWordsFilterInterface) *SensitiveWordsProcessor {
+func NewSensitiveWordsCleanHandler(filter SensitiveWordsFilter) *SensitiveWordsProcessor {
 	return NewSensitiveWordsProcessor(ModeClean, filter)
 }
 
 // NewSensitiveWordsWarnHandler 创建警告模式处理器
-func NewSensitiveWordsWarnHandler(filter SensitiveWordsFilterInterface) *SensitiveWordsProcessor {
+func NewSensitiveWordsWarnHandler(filter SensitiveWordsFilter) *SensitiveWordsProcessor {
 	return NewSensitiveWordsProcessor(ModeWarn, filter)
 }
-
-

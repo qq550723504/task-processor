@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU产品处理工具函数
+﻿// Package syncsvc 提供TEMU产品处理工具函数
 package syncsvc
 
 import (

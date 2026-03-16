@@ -1,4 +1,4 @@
-﻿// Package modules 提供SHEIN平台销售属性的变体过滤功能
+﻿// Package sale 提供SHEIN平台销售属性的变体过滤功能
 package sale
 
 import (

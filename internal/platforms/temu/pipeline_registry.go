@@ -7,7 +7,7 @@ import (
 	commonPipeline "task-processor/internal/pipeline"
 	commonHandlers "task-processor/internal/pipeline/handlers"
 	"task-processor/internal/platforms/temu/handlers/category"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	"task-processor/internal/platforms/temu/handlers/filter"
 	"task-processor/internal/platforms/temu/handlers/image"
 	"task-processor/internal/platforms/temu/handlers/product"
@@ -78,7 +78,7 @@ func (pr *PipelineRegistry) registerInitHandlers() {
 	cfg := pr.processor.GetConfig()
 	rabbitmqClient := pr.processor.rabbitmqClient
 
-	pr.register("init_data", common.NewInitDataHandler())
+	pr.register("init_data", handlerbase.NewInitDataHandler())
 	pr.register("store_info", store.NewStoreInfoHandler(managementClient.GetStoreClient()))
 	pr.register("raw_json_data", product.NewRawJsonDataHandlerV2(managementClient.GetRawJsonDataAdapter(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
 	pr.register("prohibited_items", NewTemuHandlerAdapter("prohibited_items_detector", filter.NewProhibitedItemsDetector()))

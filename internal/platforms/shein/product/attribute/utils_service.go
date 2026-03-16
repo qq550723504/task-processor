@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台属性选择工具方法
+﻿// Package attribute 提供SHEIN平台属性选择工具方法
 package attribute
 
 import (

@@ -2,8 +2,8 @@ package api
 
 import domainvalidation "task-processor/internal/domain/validation"
 
-// FilterRuleInterface 筛选规则API接口定义
-type FilterRuleInterface interface {
+// FilterRule 筛选规则API接口定义
+type FilterRule interface {
 	GetFilterRule(req *FilterRuleReqDTO) (*[]FilterRuleRespDTO, error)
 }
 
@@ -36,7 +36,7 @@ type FilterRuleRespDTO struct {
 }
 
 // FilterRuleAPI 筛选规则API接口（别名，用于兼容性）
-type FilterRuleAPI = FilterRuleInterface
+type FilterRuleAPI = FilterRule
 
 // ToFilterRule 将 DTO 转换为 domain 层的 FilterRule 值对象
 func (r *FilterRuleRespDTO) ToFilterRule() *domainvalidation.FilterRule {

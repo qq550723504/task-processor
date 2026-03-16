@@ -1,4 +1,4 @@
-﻿// Package handlers 提供属性映射阶段，负责默认填充
+﻿// Package property 提供属性映射阶段，负责默认填充
 package property
 
 import (

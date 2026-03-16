@@ -1,11 +1,10 @@
-﻿// Package pricing 提供TEMU平台核价决策服务功能
+﻿// Package pricingsvc 提供TEMU平台核价决策服务功能
 package pricingsvc
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -140,85 +139,6 @@ func newPricingDecisionServiceWithConfig(
 	}, nil
 }
 
-// getFromCache 从缓存获取数据
-func (s *PricingDecisionService) getFromCache(key CacheKey) (interface{}, bool) {
-	if item, ok := s.cache.Load(key); ok {
-		cacheItem := item.(CacheItem)
-		if time.Now().Before(cacheItem.ExpiresAt) {
-			return cacheItem.Data, true
-		}
-		s.cache.Delete(key)
-	}
-	return nil, false
-}
-
-// setCache 设置缓存
-func (s *PricingDecisionService) setCache(key CacheKey, data interface{}) {
-	item := CacheItem{
-		Data:      data,
-		ExpiresAt: time.Now().Add(s.config.CacheTimeout),
-	}
-	s.cache.Store(key, item)
-}
-
-// getAmazonProductWithCache 获取Amazon产品数据（带缓存）
-func (s *PricingDecisionService) getAmazonProductWithCache(ctx context.Context, productID, region string, tenantID, storeID int64) (*model.Product, error) {
-	if s.productFetcher == nil {
-		return nil, errors.New("ProductFetcher未初始化，无法获取Amazon产品数据")
-	}
-
-	// 尝试从缓存获取
-	cacheKey := CacheKey{
-		Type:      "amazon_product",
-		ProductID: fmt.Sprintf("%s_%s_%d_%d", productID, region, tenantID, storeID),
-		StoreID:   storeID,
-	}
-
-	if cached, found := s.getFromCache(cacheKey); found {
-		if product, ok := cached.(*model.Product); ok {
-			s.logger.Debugf("从缓存获取Amazon产品数据: %s", productID)
-			return product, nil
-		}
-	}
-
-	req := &product.FetchRequest{
-		TenantID:  tenantID,
-		Platform:  "Amazon",
-		Region:    region,
-		ProductID: productID,
-		StoreID:   storeID,
-	}
-
-	// 带重试机制获取数据
-	var amazonProduct *model.Product
-	var lastErr error
-
-	for attempt := 1; attempt <= s.config.MaxRetries; attempt++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		amazonProduct, lastErr = s.productFetcher.FetchProduct(req)
-		if lastErr == nil {
-			s.logger.Debugf("第%d次尝试成功获取Amazon产品数据: %s", attempt, productID)
-			// 缓存成功结果
-			s.setCache(cacheKey, amazonProduct)
-			return amazonProduct, nil
-		}
-
-		s.logger.Warnf("第%d次获取Amazon产品数据失败: %v", attempt, lastErr)
-		if attempt < s.config.MaxRetries {
-			s.logger.Infof("将进行第%d次重试获取Amazon产品数据: %s", attempt+1, productID)
-			// 简单的退避策略
-			time.Sleep(time.Duration(attempt) * time.Second)
-		}
-	}
-
-	return nil, fmt.Errorf("经过%d次重试后仍无法获取Amazon产品数据: %w", s.config.MaxRetries, lastErr)
-}
-
 // MakeDecision 对单个商品做出核价决策
 func (s *PricingDecisionService) MakeDecision(item *temupricing.Sku, storeID int64) (*temupricing.Decision, error) {
 	ctx := context.Background()
@@ -315,17 +235,6 @@ func (s *PricingDecisionService) buildPricingContext(ctx context.Context, skuSN,
 	pricingCtx.MinAcceptablePrice = s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingCtx.PricingRule)
 
 	return pricingCtx, nil
-}
-
-// logPricingInfo 记录定价信息
-func (s *PricingDecisionService) logPricingInfo(pricingCtx *PricingContext) {
-	s.logger.WithFields(logrus.Fields{
-		"goods_name":           pricingCtx.GoodsName,
-		"sku_sn":               pricingCtx.SkuSN,
-		"origin_cost_price":    pricingCtx.OriginCostPrice,
-		"supplier_price":       pricingCtx.SupplierPrice,
-		"min_acceptable_price": pricingCtx.MinAcceptablePrice,
-	}).Info("定价信息")
 }
 
 // MakeDecisionForSalesBoost 对销量提升场景的商品做出核价决策
@@ -447,64 +356,4 @@ func (s *PricingDecisionService) buildPricingContextForSalesBoost(ctx context.Co
 	pricingCtx.MinAcceptablePrice = s.ruleCalculator.CalculateMinAcceptablePrice(originCostPrice, pricingCtx.PricingRule)
 
 	return pricingCtx, nil
-}
-
-// logSalesBoostPricingInfo 记录销量提升定价信息
-func (s *PricingDecisionService) logSalesBoostPricingInfo(goods *temupricing.SalesBoostGoods, sku *temupricing.SalesBoostSku, pricingCtx *PricingContext, targetPrice, profitMargin float64) {
-	s.logger.WithFields(logrus.Fields{
-		"goods_id":             goods.SalesBoostGoodsBasicInfo.GoodsID,
-		"sku_sn":               sku.OutSkuSN,
-		"origin_cost_price":    pricingCtx.OriginCostPrice,
-		"current_price":        pricingCtx.SupplierPrice,
-		"target_price":         targetPrice,
-		"min_acceptable_price": pricingCtx.MinAcceptablePrice,
-		"profit_margin":        profitMargin,
-	}).Info("销量提升定价信息")
-}
-
-// makeDecisionByPrice 根据价格做出决策
-func (s *PricingDecisionService) makeDecisionByPrice(actualPrice, minAcceptablePrice float64) *temupricing.Decision {
-	decision := &temupricing.Decision{}
-
-	if actualPrice >= minAcceptablePrice {
-		decision.Action = temupricing.DecisionAccept
-		decision.Reason = fmt.Sprintf("价格%.2f >= 最低可接受价%.2f，满足要求",
-			actualPrice, minAcceptablePrice)
-	} else {
-		// 根据店铺配置决定拒绝策略
-		strategy := s.storeConfig.GetPriceRejectStrategy()
-		if strategy == "TAKE_OFFLINE" {
-			decision.Action = temupricing.DecisionReject
-			decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，根据店铺配置执行下架",
-				actualPrice, minAcceptablePrice)
-		} else {
-			// KEEP_ONLINE - 保留在售
-			if s.storeConfig.IsRebargainEnabled() {
-				decision.Action = temupricing.DecisionReappeal
-				decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，根据店铺配置保留在售并重新报价",
-					actualPrice, minAcceptablePrice)
-			} else {
-				decision.Action = temupricing.DecisionSkip
-				decision.Reason = fmt.Sprintf("价格%.2f < 最低可接受价%.2f，店铺未启用重新议价，保留在售",
-					actualPrice, minAcceptablePrice)
-			}
-		}
-	}
-
-	return decision
-}
-
-// parsePrice 解析价格字符串为浮点数
-// 已废弃: 请使用 strutil.ParseFloat
-func parsePrice(price string) float64 {
-	if price == "" {
-		return 0.0
-	}
-
-	result, err := strconv.ParseFloat(price, 64)
-	if err != nil {
-		// 如果解析失败，尝试使用fmt.Sscanf作为备选方案
-		fmt.Sscanf(price, "%f", &result)
-	}
-	return result
 }

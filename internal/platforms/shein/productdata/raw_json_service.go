@@ -15,7 +15,7 @@ import (
 
 // RawJsonDataHandler 获取原始Json数据处理器
 type RawJsonDataHandler struct {
-	fetcher appProduct.ProductFetcherInterface
+	fetcher appProduct.ProductFetcher
 }
 
 // NewRawJsonDataHandler 创建新的获取原始Json数据处理器（支持分布式获取器）
@@ -124,5 +124,3 @@ func (h *RawJsonDataHandler) Shutdown() {
 	// Amazon处理器由外部管理，不需要在这里关闭
 	logrus.Debug("RawJsonDataHandler 关闭（Amazon处理器由外部管理）")
 }
-
-

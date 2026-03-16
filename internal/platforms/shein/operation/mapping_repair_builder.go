@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供SHEIN平台SKU映射关系构建器
+﻿// Package operation 提供SHEIN平台SKU映射关系构建器
 package operation
 
 import (

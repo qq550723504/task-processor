@@ -16,7 +16,7 @@ import (
 // SubmitRawJsonDataHandler 提交原始JSON数据到服务器缓存处理器
 type SubmitRawJsonDataHandler struct {
 	logger  *logrus.Entry
-	fetcher appProduct.ProductFetcherInterface
+	fetcher appProduct.ProductFetcher
 }
 
 // NewSubmitRawJsonDataHandler 创建新的提交原始JSON数据处理器
@@ -88,7 +88,7 @@ func (h *SubmitRawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 // SubmitVariantRawJsonDataHandler 提交变体原始JSON数据到服务器缓存处理器
 type SubmitVariantRawJsonDataHandler struct {
 	logger  *logrus.Entry
-	fetcher appProduct.ProductFetcherInterface
+	fetcher appProduct.ProductFetcher
 }
 
 // NewSubmitVariantRawJsonDataHandler 创建新的提交变体原始JSON数据处理器
@@ -155,5 +155,3 @@ func (h *SubmitVariantRawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	h.logger.Infof("✅ 变体数据已缓存: 数量=%d", len(*ctx.Variants))
 	return nil
 }
-
-

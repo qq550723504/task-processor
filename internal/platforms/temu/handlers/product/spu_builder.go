@@ -5,16 +5,16 @@ import (
 	"strings"
 
 	"task-processor/internal/domain/model"
+	"task-processor/internal/infra/clients/management/api"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/skugen"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	"task-processor/internal/platforms/temu/handlers/property"
-	"task-processor/internal/platforms/temu/handlers/template"
 	"task-processor/internal/platforms/temu/handlers/rules"
+	"task-processor/internal/platforms/temu/handlers/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -31,14 +31,14 @@ type SpuBuilder struct {
 	logger         *logrus.Entry
 	textProcessor  *rules.TextProcessor
 	priceHandler   *PriceHandler
-	skuBuilder     common.SkuBuilderInterface
-	specHandler    common.SpecHandlerInterface
+	skuBuilder     handlerbase.SkuBuilder
+	specHandler    handlerbase.SpecHandler
 	propertyMapper *property.PropertyMapper
 	openaiClient   *openaiClient.Client
 }
 
 // NewSpuBuilder 创建新的SPU构建器
-func NewSpuBuilder(logger *logrus.Entry, openaiConfig *openaiClient.ClientConfig, profitRuleClient api.ProfitRuleAPI, skuBuilder common.SkuBuilderInterface, specHandler common.SpecHandlerInterface) *SpuBuilder {
+func NewSpuBuilder(logger *logrus.Entry, openaiConfig *openaiClient.ClientConfig, profitRuleClient api.ProfitRuleAPI, skuBuilder handlerbase.SkuBuilder, specHandler handlerbase.SpecHandler) *SpuBuilder {
 	var aiClient *openaiClient.Client
 	if openaiConfig != nil {
 		aiClient = openaiClient.NewClient(openaiConfig)

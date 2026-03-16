@@ -1,4 +1,4 @@
-﻿// Package modules 提供SHEIN平台的各种处理模块，包括发布结果保存等功能
+﻿// Package publish 提供SHEIN平台的各种处理模块，包括发布结果保存等功能
 package publish
 
 import (

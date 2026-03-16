@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台的原始JSON数据处理功能
+﻿// Package product 提供TEMU平台的原始JSON数据处理功能
 package product
 
 import (
@@ -18,7 +18,7 @@ import (
 // RawJsonDataHandlerV2 原始JSON数据处理器V2（使用工厂模式选择获取器）
 type RawJsonDataHandlerV2 struct {
 	logger  *logrus.Entry
-	fetcher appProduct.ProductFetcherInterface
+	fetcher appProduct.ProductFetcher
 }
 
 // NewRawJsonDataHandlerV2 创建新的原始JSON数据处理器V2（支持分布式获取器）

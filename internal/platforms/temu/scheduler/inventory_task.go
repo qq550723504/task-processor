@@ -17,7 +17,7 @@ import (
 // 使用通用基类实现
 type InventoryTask struct {
 	*commonscheduler.InventorySyncTask
-	temuAPIClient client.APIClientInterface // 保留TEMU特定的字段
+	temuAPIClient client.ClientAPI // 保留TEMU特定的字段
 }
 
 // NewInventoryTask 创建库存同步任务
@@ -25,7 +25,7 @@ func NewInventoryTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
-	temuAPIClient client.APIClientInterface,
+	temuAPIClient client.ClientAPI,
 	amazonProcessor *amazon.AmazonProcessor,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,

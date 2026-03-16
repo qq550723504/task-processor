@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU库存同步相关类型定义
+﻿// Package syncsvc 提供TEMU库存同步相关类型定义
 package syncsvc
 
 import (

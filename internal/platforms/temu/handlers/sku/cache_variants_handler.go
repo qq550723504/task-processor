@@ -18,7 +18,7 @@ import (
 // 将已获取的变体数据批量缓存到服务器
 type CacheVariantsHandler struct {
 	logger  *logrus.Entry
-	fetcher appProduct.ProductFetcherInterface
+	fetcher appProduct.ProductFetcher
 }
 
 // NewCacheVariantsHandler 创建缓存变体数据处理器（支持分布式获取器）

@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU产品数据构建相关功能
+﻿// Package syncsvc 提供TEMU产品数据构建相关功能
 package syncsvc
 
 import (

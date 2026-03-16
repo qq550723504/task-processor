@@ -8,8 +8,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// APIClientInterface TEMU API客户端接口，用于解决循环依赖
-type APIClientInterface interface {
+// ClientAPI TEMU API客户端接口，用于解决循环依赖
+type ClientAPI interface {
 	// Cookie相关方法
 	SetCookies(cookies []*http.Cookie)
 	ReloadCookies() error

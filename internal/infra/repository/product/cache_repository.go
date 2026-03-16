@@ -11,22 +11,22 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// CacheRepositoryImpl 缓存仓储实现
-type CacheRepositoryImpl struct {
+// CacheRepository 缓存仓储实现
+type CacheRepository struct {
 	rawJsonDataClient api.RawJsonDataAPI
 	logger            *logrus.Entry
 }
 
 // NewCacheRepositoryImpl 创建缓存仓储实现
 func NewCacheRepositoryImpl(rawJsonDataClient api.RawJsonDataAPI, logger *logrus.Entry) domainproduct.CacheRepository {
-	return &CacheRepositoryImpl{
+	return &CacheRepository{
 		rawJsonDataClient: rawJsonDataClient,
 		logger:            logger.WithField("component", "CacheRepositoryImpl"),
 	}
 }
 
 // GetFromCache 从缓存获取产品数据
-func (r *CacheRepositoryImpl) GetFromCache(ctx context.Context, req *domainproduct.FetchRequest) (*model.Product, error) {
+func (r *CacheRepository) GetFromCache(ctx context.Context, req *domainproduct.FetchRequest) (*model.Product, error) {
 	if r.rawJsonDataClient == nil {
 		return nil, fmt.Errorf("缓存客户端未初始化")
 	}
@@ -49,7 +49,7 @@ func (r *CacheRepositoryImpl) GetFromCache(ctx context.Context, req *domainprodu
 }
 
 // SaveToCache 保存产品数据到缓存
-func (r *CacheRepositoryImpl) SaveToCache(ctx context.Context, req *domainproduct.FetchRequest, product *model.Product) error {
+func (r *CacheRepository) SaveToCache(ctx context.Context, req *domainproduct.FetchRequest, product *model.Product) error {
 	if r.rawJsonDataClient == nil {
 		return fmt.Errorf("缓存客户端未初始化")
 	}
@@ -69,7 +69,7 @@ func (r *CacheRepositoryImpl) SaveToCache(ctx context.Context, req *domainproduc
 }
 
 // SaveVariantsBatch 批量保存变体数据到缓存
-func (r *CacheRepositoryImpl) SaveVariantsBatch(ctx context.Context, req *domainproduct.FetchRequest, variants []*model.Product) error {
+func (r *CacheRepository) SaveVariantsBatch(ctx context.Context, req *domainproduct.FetchRequest, variants []*model.Product) error {
 	for _, variant := range variants {
 		variantReq := &domainproduct.FetchRequest{
 			Platform:  req.Platform,
@@ -86,13 +86,13 @@ func (r *CacheRepositoryImpl) SaveVariantsBatch(ctx context.Context, req *domain
 }
 
 // DeleteFromCache 从缓存删除产品数据
-func (r *CacheRepositoryImpl) DeleteFromCache(ctx context.Context, req *domainproduct.FetchRequest) error {
+func (r *CacheRepository) DeleteFromCache(ctx context.Context, req *domainproduct.FetchRequest) error {
 	r.logger.Warnf("删除缓存功能暂未实现: %s", req.ProductID)
 	return nil
 }
 
 // ExistsInCache 检查缓存中是否存在产品数据
-func (r *CacheRepositoryImpl) ExistsInCache(ctx context.Context, req *domainproduct.FetchRequest) (bool, error) {
+func (r *CacheRepository) ExistsInCache(ctx context.Context, req *domainproduct.FetchRequest) (bool, error) {
 	product, err := r.GetFromCache(ctx, req)
 	if err != nil {
 		return false, err

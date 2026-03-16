@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台数量信息验证工具
+﻿// Package validation 提供SHEIN平台数量信息验证工具
 package validation
 
 import (

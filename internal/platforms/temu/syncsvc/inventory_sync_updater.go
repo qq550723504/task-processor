@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台库存更新相关服务
+﻿// Package syncsvc 提供TEMU平台库存更新相关服务
 package syncsvc
 
 import (

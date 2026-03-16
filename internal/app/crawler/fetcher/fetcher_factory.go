@@ -23,8 +23,8 @@ const (
 	DistributedFetcher FetcherType = "distributed"
 )
 
-// ProductFetcherInterface 产品获取器接口
-type ProductFetcherInterface interface {
+// ProductFetcher 产品获取器接口
+type ProductFetcher interface {
 	FetchProduct(req *domainProduct.FetchRequest) (*model.Product, error)
 	CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error
 	CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error
@@ -50,7 +50,7 @@ func (f *FetcherFactory) CreateFetcher(
 	amazonConfig *config.AmazonConfig,
 	amazonProcessor *amazon.AmazonProcessor,
 	rabbitmqClient *rabbitmq.Client,
-) (ProductFetcherInterface, error) {
+) (ProductFetcher, error) {
 
 	switch fetcherType {
 	case LocalFetcher:
@@ -75,7 +75,7 @@ func (f *FetcherFactory) CreateFetcherFromConfig(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	amazonProcessor *amazon.AmazonProcessor,
 	rabbitmqClient *rabbitmq.Client,
-) (ProductFetcherInterface, error) {
+) (ProductFetcher, error) {
 
 	// 检查是否启用分布式爬虫
 	if cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled && rabbitmqClient != nil {

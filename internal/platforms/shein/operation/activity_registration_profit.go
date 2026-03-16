@@ -1,11 +1,11 @@
-﻿// Package scheduler 提供SHEIN平台调度器相关服务
+﻿// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
 	"fmt"
 
+	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	managementimpl "task-processor/internal/infra/clients/management/impl"
 	"task-processor/internal/platforms/shein/api/marketing"
 
 	"github.com/sirupsen/logrus"
@@ -24,8 +24,8 @@ func (s *activityRegistrationServiceImpl) filterProductsByProfitMargin(
 
 	// 获取产品导入映射API客户端
 	baseClient := s.managementClient.GetClient()
-	productMappingAPI := &managementimpl.ProductImportMappingAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	productMappingAPI := &management.ProductImportMappingAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 
 	filteredProducts := make([]marketing.SkcInfo, 0, len(products))

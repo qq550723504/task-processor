@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台图片上传核心处理器
+﻿// Package image 提供TEMU平台图片上传核心处理器
 package image
 
 import (

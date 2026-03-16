@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台的SKU构建功能
+﻿// Package sku 提供TEMU平台的SKU构建功能
 package sku
 
 import (

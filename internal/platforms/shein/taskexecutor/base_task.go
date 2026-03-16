@@ -1,5 +1,5 @@
-﻿// Package scheduler 提供SHEIN平台任务的基础实现
-package scheduler
+﻿// Package taskexecutor 提供SHEIN平台任务的基础实现
+package taskexecutor
 
 import (
 	appscheduler "task-processor/internal/app/scheduler"

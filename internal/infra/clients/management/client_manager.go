@@ -1,24 +1,23 @@
-package management
+﻿package management
 
 import (
 	"fmt"
 	"sync"
 	"task-processor/internal/core/config"
 	domainproduct "task-processor/internal/domain/product"
-	"task-processor/internal/infra/clients/management/impl"
 	"time"
 )
 
 // ClientManager 管理系统客户端管理器
 type ClientManager struct {
-	clients map[string]*impl.ManagementAPIClientImpl
+	clients map[string]*ManagementAPIClient
 
 	mutex sync.RWMutex
 	// 固定的baseURL
 	baseURL string
 
 	// 图片下载客户端
-	imageDownloader *impl.ImageDownloader
+	imageDownloader *ImageDownloader
 	// 图片下载超时时间
 	imageDownloadTimeout time.Duration
 
@@ -37,7 +36,7 @@ func NewClientManager(cfg *config.ManagementConfig) *ClientManager {
 	}
 
 	cm := &ClientManager{
-		clients: make(map[string]*impl.ManagementAPIClientImpl),
+		clients: make(map[string]*ManagementAPIClient),
 		// 设置默认的管理系统的基准URL
 		baseURL: baseURL,
 		// 设置默认的图片下载超时时间 - 增加到2分钟适应Amazon图片服务器
@@ -60,7 +59,7 @@ func (cm *ClientManager) SetDataFreshnessDays(days int) {
 }
 
 // GetClient 获取或创建管理系统的API客户端
-func (cm *ClientManager) GetClient() *impl.ManagementAPIClientImpl {
+func (cm *ClientManager) GetClient() *ManagementAPIClient {
 	cm.mutex.RLock()
 	client, exists := cm.clients[cm.baseURL]
 	cm.mutex.RUnlock()
@@ -78,7 +77,7 @@ func (cm *ClientManager) GetClient() *impl.ManagementAPIClientImpl {
 		return client
 	}
 
-	client = impl.NewManagementAPIClientWithBaseURL(cm.baseURL)
+	client = NewManagementAPIClientWithBaseURL(cm.baseURL)
 	cm.clients[cm.baseURL] = client
 	return client
 }
@@ -95,20 +94,20 @@ func (cm *ClientManager) SetUserToken(accessToken, tenantID string) {
 }
 
 // GetStoreClient 获取店铺API客户端
-func (cm *ClientManager) GetStoreClient() *impl.StoreAPIClientImpl {
+func (cm *ClientManager) GetStoreClient() *StoreAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.StoreAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &StoreAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetRawJsonDataClient 获取原始JSON数据API客户端
-func (cm *ClientManager) GetRawJsonDataClient() *impl.RawJsonDataAPIClientImpl {
+func (cm *ClientManager) GetRawJsonDataClient() *RawJsonDataAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	client := &impl.RawJsonDataAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	client := &RawJsonDataAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 	// 设置数据新鲜度天数
 	cm.mutex.RLock()
@@ -119,95 +118,95 @@ func (cm *ClientManager) GetRawJsonDataClient() *impl.RawJsonDataAPIClientImpl {
 
 // GetRawJsonDataAdapter 获取适配为 domain 接口的原始JSON数据客户端
 func (cm *ClientManager) GetRawJsonDataAdapter() domainproduct.RawJsonDataClient {
-	return impl.NewRawJsonDataAdapter(cm.GetRawJsonDataClient())
+	return NewRawJsonDataAdapter(cm.GetRawJsonDataClient())
 }
 
 // GetFilterRuleClient 获取筛选规则API客户端
-func (cm *ClientManager) GetFilterRuleClient() *impl.FilterRuleAPIClientImpl {
+func (cm *ClientManager) GetFilterRuleClient() *FilterRuleAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.FilterRuleAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &FilterRuleAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetProfitRuleClient 获取利润规则API客户端
-func (cm *ClientManager) GetProfitRuleClient() *impl.ProfitRuleAPIClientImpl {
+func (cm *ClientManager) GetProfitRuleClient() *ProfitRuleAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.ProfitRuleAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &ProfitRuleAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetSensitiveWordClient 获取敏感词API客户端
-func (cm *ClientManager) GetSensitiveWordClient() *impl.SensitiveWordAPIClientImpl {
+func (cm *ClientManager) GetSensitiveWordClient() *SensitiveWordAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.SensitiveWordAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &SensitiveWordAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetCategoryRestrictionCollectionsClient 获取品类限制集合API客户端
-func (cm *ClientManager) GetCategoryRestrictionCollectionsClient() *impl.CategoryRestrictionCollectionsAPIClientImpl {
+func (cm *ClientManager) GetCategoryRestrictionCollectionsClient() *CategoryRestrictionCollectionsAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.CategoryRestrictionCollectionsAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &CategoryRestrictionCollectionsAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetPricingRuleClient 获取自动核价规则API客户端
-func (cm *ClientManager) GetPricingRuleClient() *impl.PricingRuleAPIClientImpl {
+func (cm *ClientManager) GetPricingRuleClient() *PricingRuleAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.PricingRuleAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &PricingRuleAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetImportTaskClient 获取导入任务API客户端
-func (cm *ClientManager) GetImportTaskClient() *impl.ImportTaskAPIClientImpl {
+func (cm *ClientManager) GetImportTaskClient() *ImportTaskAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.ImportTaskAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &ImportTaskAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetDailyListingCountClient 获取每日上架数量API客户端
-func (cm *ClientManager) GetDailyListingCountClient() *impl.DailyListingCountAPIClientImpl {
+func (cm *ClientManager) GetDailyListingCountClient() *DailyListingCountAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.DailyListingCountAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &DailyListingCountAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetProductImportMappingClient 获取产品导入映射API客户端
-func (cm *ClientManager) GetProductImportMappingClient() *impl.ProductImportMappingAPIClientImpl {
+func (cm *ClientManager) GetProductImportMappingClient() *ProductImportMappingAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.ProductImportMappingAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &ProductImportMappingAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetProductDataClient 获取产品数据API客户端
-func (cm *ClientManager) GetProductDataClient(storeID int64) *impl.ProductDataAPIClientImpl {
+func (cm *ClientManager) GetProductDataClient(storeID int64) *ProductDataAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.ProductDataAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
-		StoreID:                 storeID,
+	return &ProductDataAPIClient{
+		ManagementAPIClient: baseClient,
+		StoreID:             storeID,
 	}
 }
 
 // GetProductDataClientWithTenant 获取产品数据API客户端（指定租户ID）
-func (cm *ClientManager) GetProductDataClientWithTenant(storeID, tenantID int64) *impl.ProductDataAPIClientImpl {
+func (cm *ClientManager) GetProductDataClientWithTenant(storeID, tenantID int64) *ProductDataAPIClient {
 	// 为每个店铺创建独立的客户端
-	baseClient := impl.NewManagementAPIClientWithBaseURL(cm.baseURL)
+	baseClient := NewManagementAPIClientWithBaseURL(cm.baseURL)
 
 	// 从共享客户端获取访问令牌
 	sharedClient := cm.GetClient()
@@ -216,9 +215,9 @@ func (cm *ClientManager) GetProductDataClientWithTenant(storeID, tenantID int64)
 	// 设置访问令牌和租户ID
 	baseClient.SetUserToken(accessToken, fmt.Sprintf("%d", tenantID))
 
-	return &impl.ProductDataAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
-		StoreID:                 storeID,
+	return &ProductDataAPIClient{
+		ManagementAPIClient: baseClient,
+		StoreID:             storeID,
 	}
 }
 
@@ -228,25 +227,25 @@ func (cm *ClientManager) GetCategoryRestrictionCache() *CategoryRestrictionCache
 }
 
 // GetInventoryRecordClient 获取库存记录API客户端
-func (cm *ClientManager) GetInventoryRecordClient() *impl.InventoryRecordAPIClientImpl {
+func (cm *ClientManager) GetInventoryRecordClient() *InventoryRecordAPIClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.InventoryRecordAPIClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &InventoryRecordAPIClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetOperationStrategyClient 获取运营策略API客户端
-func (cm *ClientManager) GetOperationStrategyClient() *impl.OperationStrategyClientImpl {
+func (cm *ClientManager) GetOperationStrategyClient() *OperationStrategyClient {
 	// 直接基于基础客户端创建
 	baseClient := cm.GetClient()
-	return &impl.OperationStrategyClientImpl{
-		ManagementAPIClientImpl: baseClient,
+	return &OperationStrategyClient{
+		ManagementAPIClient: baseClient,
 	}
 }
 
 // GetImageDownloader 获取图片下载客户端
-func (cm *ClientManager) GetImageDownloader() *impl.ImageDownloader {
+func (cm *ClientManager) GetImageDownloader() *ImageDownloader {
 	cm.mutex.RLock()
 
 	if cm.imageDownloader != nil {
@@ -264,7 +263,7 @@ func (cm *ClientManager) GetImageDownloader() *impl.ImageDownloader {
 		return cm.imageDownloader
 	}
 
-	cm.imageDownloader = impl.NewImageDownloader(cm.imageDownloadTimeout)
+	cm.imageDownloader = NewImageDownloader(cm.imageDownloadTimeout)
 	return cm.imageDownloader
 }
 
@@ -292,6 +291,6 @@ func (cm *ClientManager) SetImageDownloadTimeout(timeout time.Duration) {
 	cm.imageDownloadTimeout = timeout
 	// 如果已经存在图片下载客户端，需要重新创建
 	if cm.imageDownloader != nil {
-		cm.imageDownloader = impl.NewImageDownloader(timeout)
+		cm.imageDownloader = NewImageDownloader(timeout)
 	}
 }

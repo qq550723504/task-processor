@@ -49,14 +49,14 @@ func (pb *PipelineBuilder) BuildPipeline() *TemuPipelineExecutor {
 // 通用强类型适配器
 // =============================================================================
 
-// TemuHandlerInterface 定义TEMU处理器接口
-type TemuHandlerInterface interface {
+// TemuHandler 定义TEMU处理器接口
+type TemuHandler interface {
 	Name() string
 	HandleTemu(*temucontext.TemuTaskContext) error
 }
 
 // NewTemuHandlerAdapter 创建通用的TEMU处理器适配器
-func NewTemuHandlerAdapter(name string, temuHandler TemuHandlerInterface) pipeline.Handler {
+func NewTemuHandlerAdapter(name string, temuHandler TemuHandler) pipeline.Handler {
 	return &temuHandlerAdapter{
 		name:        name,
 		temuHandler: temuHandler,
@@ -66,7 +66,7 @@ func NewTemuHandlerAdapter(name string, temuHandler TemuHandlerInterface) pipeli
 // temuHandlerAdapter 通用的TEMU处理器适配器
 type temuHandlerAdapter struct {
 	name        string
-	temuHandler TemuHandlerInterface
+	temuHandler TemuHandler
 }
 
 // Name 返回处理器名称

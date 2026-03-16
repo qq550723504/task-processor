@@ -15,7 +15,7 @@ import (
 type (
 	APIClient          = client.APIClient
 	APIClientManager   = client.APIClientManager
-	APIClientInterface = client.APIClientInterface
+	APIClientInterface = client.ClientAPI
 	Config             = client.Config
 	CookieManager      = client.CookieManager
 	HTTPManager        = client.HTTPManager

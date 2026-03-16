@@ -37,15 +37,15 @@ type BaseFactoryConfig struct {
 	MonitorConfig *config.MonitorConfig
 }
 
-// BaseFactoryImpl 基础工厂实现
-type BaseFactoryImpl struct {
+// BaseFactory 基础工厂实现
+type BaseFactory struct {
 	config BaseFactoryConfig
 	logger *logrus.Entry
 }
 
 // NewBaseFactory 创建基础工厂
-func NewBaseFactory(config BaseFactoryConfig) *BaseFactoryImpl {
-	return &BaseFactoryImpl{
+func NewBaseFactory(config BaseFactoryConfig) *BaseFactory {
+	return &BaseFactory{
 		config: config,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "BaseFactory",
@@ -55,7 +55,7 @@ func NewBaseFactory(config BaseFactoryConfig) *BaseFactoryImpl {
 }
 
 // ValidatePlatform 验证平台
-func (f *BaseFactoryImpl) ValidatePlatform(config appscheduler.TaskConfig) error {
+func (f *BaseFactory) ValidatePlatform(config appscheduler.TaskConfig) error {
 	if config.Platform != f.config.Platform {
 		return fmt.Errorf("不支持的平台: %s, 当前工厂仅支持: %s", config.Platform, f.config.Platform)
 	}
@@ -63,7 +63,7 @@ func (f *BaseFactoryImpl) ValidatePlatform(config appscheduler.TaskConfig) error
 }
 
 // ValidateTaskType 验证任务类型
-func (f *BaseFactoryImpl) ValidateTaskType(taskType appscheduler.TaskType) error {
+func (f *BaseFactory) ValidateTaskType(taskType appscheduler.TaskType) error {
 	supportedTypes := f.SupportedTaskTypes()
 	for _, supported := range supportedTypes {
 		if supported == taskType {
@@ -74,37 +74,37 @@ func (f *BaseFactoryImpl) ValidateTaskType(taskType appscheduler.TaskType) error
 }
 
 // GetManagementClient 获取管理客户端
-func (f *BaseFactoryImpl) GetManagementClient() *management.ClientManager {
+func (f *BaseFactory) GetManagementClient() *management.ClientManager {
 	return f.config.ManagementClient
 }
 
 // GetAmazonProcessor 获取Amazon处理器
-func (f *BaseFactoryImpl) GetAmazonProcessor() *amazon.AmazonProcessor {
+func (f *BaseFactory) GetAmazonProcessor() *amazon.AmazonProcessor {
 	return f.config.AmazonProcessor
 }
 
 // GetAmazonConfig 获取Amazon配置
-func (f *BaseFactoryImpl) GetAmazonConfig() *config.AmazonConfig {
+func (f *BaseFactory) GetAmazonConfig() *config.AmazonConfig {
 	return f.config.AmazonConfig
 }
 
 // GetMonitorConfig 获取监控配置
-func (f *BaseFactoryImpl) GetMonitorConfig() *config.MonitorConfig {
+func (f *BaseFactory) GetMonitorConfig() *config.MonitorConfig {
 	return f.config.MonitorConfig
 }
 
 // GetLogger 获取日志记录器
-func (f *BaseFactoryImpl) GetLogger() *logrus.Entry {
+func (f *BaseFactory) GetLogger() *logrus.Entry {
 	return f.logger
 }
 
 // SupportedPlatform 支持的平台
-func (f *BaseFactoryImpl) SupportedPlatform() string {
+func (f *BaseFactory) SupportedPlatform() string {
 	return f.config.Platform
 }
 
 // SupportedTaskTypes 支持的任务类型（子类需要重写）
-func (f *BaseFactoryImpl) SupportedTaskTypes() []appscheduler.TaskType {
+func (f *BaseFactory) SupportedTaskTypes() []appscheduler.TaskType {
 	// 默认支持所有常见任务类型
 	return []appscheduler.TaskType{
 		appscheduler.TaskTypePricing,
@@ -115,7 +115,7 @@ func (f *BaseFactoryImpl) SupportedTaskTypes() []appscheduler.TaskType {
 }
 
 // CreateTask 创建任务（子类需要重写）
-func (f *BaseFactoryImpl) CreateTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error) {
+func (f *BaseFactory) CreateTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error) {
 	// 验证平台
 	if err := f.ValidatePlatform(config); err != nil {
 		return nil, err

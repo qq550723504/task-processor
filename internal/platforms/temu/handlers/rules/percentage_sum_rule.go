@@ -1,4 +1,4 @@
-﻿// Package validation 提供百分比总和验证规则
+﻿// Package rules 提供百分比总和验证规则
 package rules
 
 import (
@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
@@ -32,7 +32,7 @@ func (r *PercentageSumRule) GetRuleName() string {
 }
 
 // Matches 判断规则是否匹配该属性特征
-func (r *PercentageSumRule) Matches(feature common.PropertyFeature) bool {
+func (r *PercentageSumRule) Matches(feature handlerbase.PropertyFeature) bool {
 	return feature.IsPercentageSum
 }
 

@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供SHEIN平台调度器相关配置
+﻿// Package operation 提供SHEIN平台调度器相关配置
 package operation
 
 import "time"

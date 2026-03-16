@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台图片初始化处理器
+﻿// Package image 提供TEMU平台图片初始化处理器
 package image
 
 import (

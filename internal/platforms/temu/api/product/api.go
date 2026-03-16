@@ -20,12 +20,12 @@ const (
 
 // API 产品API管理器（搜索、保存、提交、创建提交）
 type API struct {
-	client client.APIClientInterface
+	client client.ClientAPI
 	logger *logrus.Entry
 }
 
 // NewAPI 创建产品API管理器
-func NewAPI(c client.APIClientInterface, logger *logrus.Entry) *API {
+func NewAPI(c client.ClientAPI, logger *logrus.Entry) *API {
 	return &API{client: c, logger: logger}
 }
 

@@ -50,7 +50,7 @@ func NewAuthManagerWithDependencies(
 }
 
 // SendRequestWithAuth 发送带认证的请求
-func (a *AuthManager) SendRequestWithAuth(client APIClientInterface, request map[string]any, result any) error {
+func (a *AuthManager) SendRequestWithAuth(client ClientAPI, request map[string]any, result any) error {
 	// 检查Cookie
 	if err := a.validateCookies(client); err != nil {
 		return err
@@ -61,7 +61,7 @@ func (a *AuthManager) SendRequestWithAuth(client APIClientInterface, request map
 }
 
 // validateCookies 验证Cookie状态
-func (a *AuthManager) validateCookies(client APIClientInterface) error {
+func (a *AuthManager) validateCookies(client ClientAPI) error {
 	if !client.HasCookies() {
 		a.logger.Warnf("店铺ID=%d没有Cookie数据，尝试重新加载Cookie", client.GetStoreID())
 

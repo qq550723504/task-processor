@@ -1,4 +1,4 @@
-// Package handlers 提供TEMU平台绘图工具功能
+﻿// Package image 提供TEMU平台绘图工具功能
 package image
 
 import (

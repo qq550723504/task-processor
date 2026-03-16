@@ -22,7 +22,7 @@ import (
 // VariantJsonDataHandler 获取所有变体原始Json数据处理器（并行处理版本）
 type VariantJsonDataHandler struct {
 	logger         *logrus.Entry
-	productFetcher appProduct.ProductFetcherInterface
+	productFetcher appProduct.ProductFetcher
 	amazonConfig   *config.AmazonConfig
 	maxWorkers     int
 	timeout        time.Duration
@@ -54,7 +54,7 @@ func NewVariantJsonDataHandler(
 	}
 
 	// 根据配置创建获取器
-	var fetcher appProduct.ProductFetcherInterface
+	var fetcher appProduct.ProductFetcher
 	var err error
 
 	if ap, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
@@ -277,5 +277,3 @@ func GetVariantByAsinFromVariants(variants *[]model.Product, asin string) *model
 	}
 	return nil
 }
-
-

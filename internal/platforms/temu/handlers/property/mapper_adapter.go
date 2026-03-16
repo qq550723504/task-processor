@@ -1,4 +1,4 @@
-﻿// Package handlers 提供属性映射器，直接使用新的管道架构
+﻿// Package property 提供属性映射器，直接使用新的管道架构
 package property
 
 import (

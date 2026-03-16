@@ -80,12 +80,12 @@ type Category struct {
 
 // API 分类API管理器
 type API struct {
-	client client.APIClientInterface
+	client client.ClientAPI
 	logger *logrus.Entry
 }
 
 // NewAPI 创建分类API管理器
-func NewAPI(c client.APIClientInterface, logger *logrus.Entry) *API {
+func NewAPI(c client.ClientAPI, logger *logrus.Entry) *API {
 	return &API{client: c, logger: logger}
 }
 

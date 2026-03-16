@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台轮播图片构建功能
+﻿// Package image 提供TEMU平台轮播图片构建功能
 package image
 
 import (

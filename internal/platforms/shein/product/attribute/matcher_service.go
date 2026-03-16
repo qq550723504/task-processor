@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台的属性值匹配功能
+﻿// Package attribute 提供SHEIN平台的属性值匹配功能
 package attribute
 
 import (

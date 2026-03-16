@@ -1,4 +1,4 @@
-﻿// Package modules 提供SHEIN平台产品发布核心处理器
+﻿// Package publish 提供SHEIN平台产品发布核心处理器
 package publish
 
 import (

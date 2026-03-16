@@ -1,7 +1,7 @@
 package api
 
-// CategoryRestrictionCollectionsInterface 品类限制集合管理接口
-type CategoryRestrictionCollectionsInterface interface {
+// CategoryRestrictionCollections 品类限制集合管理接口
+type CategoryRestrictionCollections interface {
 	CreateCategoryRestrictionCollections(req *CategoryRestrictionCollectionsCreateReqDTO) (int64, error)
 	GetListByPlatform(platformName string) ([]CategoryRestrictionInfoRespDTO, error)
 	GetConfirmedListByPlatform(platformName string) ([]CategoryRestrictionInfoRespDTO, error)

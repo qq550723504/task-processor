@@ -1,4 +1,4 @@
-﻿// Package modules 提供SHEIN平台SKC图片处理功能
+﻿// Package skc 提供SHEIN平台SKC图片处理功能
 package skc
 
 import (

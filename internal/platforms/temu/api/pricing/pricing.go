@@ -288,12 +288,12 @@ type Statistics struct {
 
 // API 定价API管理器
 type API struct {
-	client client.APIClientInterface
+	client client.ClientAPI
 	logger *logrus.Entry
 }
 
 // NewAPI 创建定价API管理器
-func NewAPI(c client.APIClientInterface, logger *logrus.Entry) *API {
+func NewAPI(c client.ClientAPI, logger *logrus.Entry) *API {
 	return &API{client: c, logger: logger}
 }
 

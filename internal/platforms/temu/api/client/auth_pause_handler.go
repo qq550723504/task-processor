@@ -9,7 +9,7 @@ import (
 
 // PauseHandler 暂停处理器接口
 type PauseHandler interface {
-	SetPauseKeyForAuthExpired(client APIClientInterface, reason string) error
+	SetPauseKeyForAuthExpired(client ClientAPI, reason string) error
 }
 
 // TemuPauseHandler TEMU平台暂停处理器
@@ -25,7 +25,7 @@ func NewTemuPauseHandler(logger *logrus.Entry) *TemuPauseHandler {
 }
 
 // SetPauseKeyForAuthExpired 设置认证过期暂停键
-func (h *TemuPauseHandler) SetPauseKeyForAuthExpired(client APIClientInterface, reason string) error {
+func (h *TemuPauseHandler) SetPauseKeyForAuthExpired(client ClientAPI, reason string) error {
 	storeID := client.GetStoreID()
 	h.logger.Infof("设置店铺 %d 的认证过期暂停键，原因: %s", storeID, reason)
 
@@ -68,7 +68,7 @@ func (h *TemuPauseHandler) SetPauseKeyForAuthExpired(client APIClientInterface, 
 }
 
 // validateClient 验证客户端及其依赖组件
-func (h *TemuPauseHandler) validateClient(client APIClientInterface) error {
+func (h *TemuPauseHandler) validateClient(client ClientAPI) error {
 	if client == nil {
 		return fmt.Errorf("客户端为空")
 	}

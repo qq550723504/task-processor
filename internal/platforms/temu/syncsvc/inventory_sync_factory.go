@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU库存监控服务工厂
+﻿// Package syncsvc 提供TEMU库存监控服务工厂
 package syncsvc
 
 import (
@@ -27,7 +27,7 @@ func NewInventorySyncServiceFactory(managementClient *management.ClientManager) 
 
 // CreateInventorySyncService 创建库存监控服务
 func (f *InventorySyncServiceFactory) CreateInventorySyncService(
-	temuAPIClient client.APIClientInterface,
+	temuAPIClient client.ClientAPI,
 	amazonProcessor *amazon.AmazonProcessor,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,

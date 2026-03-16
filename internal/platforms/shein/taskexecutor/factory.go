@@ -1,5 +1,5 @@
-﻿// Package scheduler 提供SHEIN平台的任务工厂
-package scheduler
+﻿// Package taskexecutor 提供SHEIN平台的任务工厂
+package taskexecutor
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 
 // SheinTaskFactory SHEIN平台任务工厂
 type SheinTaskFactory struct {
-	*factory.BaseFactoryImpl
+	*factory.BaseFactory
 	cookieManager *state.CookieManager
 	clientManager *client.ClientManager
 }
@@ -39,9 +39,9 @@ func NewSheinTaskFactory(managementClient *management.ClientManager, amazonProce
 	})
 
 	return &SheinTaskFactory{
-		BaseFactoryImpl: baseFactory,
-		cookieManager:   cookieManager,
-		clientManager:   clientManager,
+		BaseFactory:   baseFactory,
+		cookieManager: cookieManager,
+		clientManager: clientManager,
 	}
 }
 
@@ -158,5 +158,5 @@ func (f *SheinTaskFactory) createActivityTask(ctx context.Context, config appsch
 // SupportedTaskTypes 支持的任务类型
 func (f *SheinTaskFactory) SupportedTaskTypes() []appscheduler.TaskType {
 	// SHEIN平台支持所有基础任务类型
-	return f.BaseFactoryImpl.SupportedTaskTypes()
+	return f.BaseFactory.SupportedTaskTypes()
 }

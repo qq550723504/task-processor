@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台的语言检测功能
+﻿// Package translate 提供SHEIN平台的语言检测功能
 package translate
 
 import (

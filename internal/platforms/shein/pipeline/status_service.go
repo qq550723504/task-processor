@@ -1,4 +1,4 @@
-﻿// Package shein 提供SHEIN平台的任务状态更新功能
+﻿// Package pipeline 提供SHEIN平台的任务状态更新功能
 package pipeline
 
 import (

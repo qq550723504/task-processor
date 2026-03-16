@@ -53,20 +53,6 @@ func ValidateConfigAndLog(c *Config, logger *logrus.Logger) bool {
 	return false
 }
 
-// ValidateOrPanic 验证配置，如果失败则 panic
-// Deprecated: Use ValidateWithError() instead and handle the error properly
-func (c *Config) ValidateOrPanic() {
-	ValidateConfigOrPanic(c)
-}
-
-// ValidateConfigOrPanic 验证配置，如果失败则 panic(函数版本)
-// Deprecated: Use ValidateConfigWithError() instead and handle the error properly
-func ValidateConfigOrPanic(c *Config) {
-	if err := ValidateConfigWithError(c); err != nil {
-		panic(err)
-	}
-}
-
 // ValidateWithError 验证配置并返回错误
 func (c *Config) ValidateWithError() error {
 	return ValidateConfigWithError(c)

@@ -1,4 +1,4 @@
-﻿// Package handlers 提供属性处理上下文，统一管理属性处理过程中的数据和状态
+﻿// Package property 提供属性处理上下文，统一管理属性处理过程中的数据和状态
 package property
 
 import (
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
@@ -40,7 +40,7 @@ type PropertyContext struct {
 }
 
 // PropertyFeature 属性特征信息 (别名，使用common包中的定义)
-type PropertyFeature = common.PropertyFeature
+type PropertyFeature = handlerbase.PropertyFeature
 
 // ProcessingStats 处理统计信息
 type ProcessingStats struct {

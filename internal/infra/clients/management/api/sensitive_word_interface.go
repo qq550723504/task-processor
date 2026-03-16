@@ -1,7 +1,7 @@
 package api
 
-// SensitiveWordInterface 敏感词管理接口
-type SensitiveWordInterface interface {
+// SensitiveWord 敏感词管理接口
+type SensitiveWord interface {
 	CreateSensitiveWord(req *CreateSensitiveWordReqDTO) (bool, error)
 	GetAllEnableSensitiveWordList(language *string) (*[]string, error)
 	ValidateText(req *ValidateTextReqDTO) (bool, error)

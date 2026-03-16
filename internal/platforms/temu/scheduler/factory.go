@@ -19,7 +19,7 @@ import (
 
 // TemuTaskFactory TEMU平台任务工厂
 type TemuTaskFactory struct {
-	*factory.BaseFactoryImpl
+	*factory.BaseFactory
 	clientManager *client.APIClientManager
 }
 
@@ -41,8 +41,8 @@ func NewTemuTaskFactory(
 	})
 
 	return &TemuTaskFactory{
-		BaseFactoryImpl: baseFactory,
-		clientManager:   clientManager,
+		BaseFactory:   baseFactory,
+		clientManager: clientManager,
 	}
 }
 
@@ -146,5 +146,5 @@ func (f *TemuTaskFactory) createInventoryTask(ctx context.Context, config appsch
 // SupportedTaskTypes 支持的任务类型
 func (f *TemuTaskFactory) SupportedTaskTypes() []appscheduler.TaskType {
 	// TEMU平台支持所有基础任务类型
-	return f.BaseFactoryImpl.SupportedTaskTypes()
+	return f.BaseFactory.SupportedTaskTypes()
 }

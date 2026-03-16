@@ -1,4 +1,4 @@
-﻿// Package modules 提供SHEIN平台AI属性选择核心处理器
+﻿// Package attribute 提供SHEIN平台AI属性选择核心处理器
 package attribute
 
 import (

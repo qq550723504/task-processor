@@ -8,19 +8,19 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// BatchProcessor 批量获取处理器
-type BatchProcessor struct {
-	offlineAPI *OfflineAPIInterface
-	logger     *logrus.Entry
-}
-
-// OfflineAPIInterface 离线API接口
-type OfflineAPIInterface interface {
+// OfflineAPI 离线API接口
+type OfflineAPI interface {
 	SearchOffline(pageNo, pageSize int) (*inventory.SearchResponse, error)
 }
 
+// BatchProcessor 批量获取处理器
+type BatchProcessor struct {
+	offlineAPI OfflineAPI
+	logger     *logrus.Entry
+}
+
 // NewBatchProcessor 创建批量获取处理器
-func NewBatchProcessor(offlineAPI *OfflineAPIInterface, logger *logrus.Entry) *BatchProcessor {
+func NewBatchProcessor(offlineAPI OfflineAPI, logger *logrus.Entry) *BatchProcessor {
 	return &BatchProcessor{
 		offlineAPI: offlineAPI,
 		logger:     logger,
@@ -37,7 +37,7 @@ func (bp *BatchProcessor) FetchAllProducts(pageSize int) ([]inventory.Item, int,
 
 	for {
 		bp.logger.Infof("获取第 %d 页商品信息", pageNo)
-		resp, err := (*bp.offlineAPI).SearchOffline(pageNo, pageSize)
+		resp, err := bp.offlineAPI.SearchOffline(pageNo, pageSize)
 		if err != nil {
 			bp.logger.WithError(err).Errorf("获取第%d页已下架产品失败，跳过此页继续处理", pageNo)
 			pageNo++

@@ -1,4 +1,4 @@
-﻿// Package handlers 提供属性修复阶段，负责修复无效或不完整的属性
+﻿// Package property 提供属性修复阶段，负责修复无效或不完整的属性
 package property
 
 import (

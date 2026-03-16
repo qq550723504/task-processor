@@ -22,7 +22,7 @@ func NewRequestSender(logger *logrus.Entry) *RequestSender {
 }
 
 // SendRequest 发送HTTP请求
-func (s *RequestSender) SendRequest(client APIClientInterface, request map[string]any, result any) error {
+func (s *RequestSender) SendRequest(client ClientAPI, request map[string]any, result any) error {
 	// 提取请求参数
 	params, err := s.extractRequestParams(request)
 	if err != nil {
@@ -99,7 +99,7 @@ func (s *RequestSender) extractRequestParams(request map[string]any) (*RequestPa
 }
 
 // buildFullURL 构造完整URL
-func (s *RequestSender) buildFullURL(client APIClientInterface, url string) (string, error) {
+func (s *RequestSender) buildFullURL(client ClientAPI, url string) (string, error) {
 	configInterface := client.GetConfig()
 	config, ok := configInterface.(*Config)
 	if !ok || config == nil {

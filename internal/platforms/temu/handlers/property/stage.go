@@ -1,4 +1,4 @@
-// Package handlers 提供属性处理阶段的统一接口定义
+﻿// Package property 提供属性处理阶段的统一接口定义
 package property
 
 import (

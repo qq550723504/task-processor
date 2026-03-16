@@ -1,4 +1,4 @@
-// Package modules 提供SHEIN平台的敏感词工具函数
+﻿// Package content 提供SHEIN平台的敏感词工具函数
 package content
 
 import (

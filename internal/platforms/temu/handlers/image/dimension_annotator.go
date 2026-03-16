@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台图片尺寸标注功能
+﻿// Package image 提供TEMU平台图片尺寸标注功能
 package image
 
 import (

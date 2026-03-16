@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台的AI属性验证功能
+﻿// Package ai 提供TEMU平台的AI属性验证功能
 package ai
 
 import (

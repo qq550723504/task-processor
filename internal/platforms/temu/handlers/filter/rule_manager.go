@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台的筛选规则管理功能
+﻿// Package filter 提供TEMU平台的筛选规则管理功能
 package filter
 
 import (

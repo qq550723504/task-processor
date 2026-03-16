@@ -1,5 +1,5 @@
-﻿// Package scheduler 提供SHEIN平台库存监控任务实现
-package scheduler
+﻿// Package taskexecutor 提供SHEIN平台库存监控任务实现
+package taskexecutor
 
 import (
 	"context"

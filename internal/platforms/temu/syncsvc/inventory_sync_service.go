@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台库存监控服务实现
+﻿// Package syncsvc 提供TEMU平台库存监控服务实现
 package syncsvc
 
 import (
@@ -19,7 +19,7 @@ import (
 // inventorySyncServiceImpl TEMU库存监控服务实现
 type inventorySyncServiceImpl struct {
 	managementClient      *management.ClientManager
-	temuAPIClient         client.APIClientInterface
+	temuAPIClient         client.ClientAPI
 	amazonProcessor       *amazon.AmazonProcessor
 	amazonConfig          *config.AmazonConfig
 	rawJsonDataClient     product.RawJsonDataClient
@@ -32,7 +32,7 @@ type inventorySyncServiceImpl struct {
 // NewInventorySyncService 创建TEMU库存监控服务
 func NewInventorySyncService(
 	managementClient *management.ClientManager,
-	temuAPIClient client.APIClientInterface,
+	temuAPIClient client.ClientAPI,
 	amazonProcessor *amazon.AmazonProcessor,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,

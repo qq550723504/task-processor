@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供SHEIN平台限时折扣活动服务
+﻿// Package operation 提供SHEIN平台限时折扣活动服务
 package operation
 
 import (

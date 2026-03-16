@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台的变体JSON数据处理功能
+﻿// Package sku 提供TEMU平台的变体JSON数据处理功能
 package sku
 
 import (

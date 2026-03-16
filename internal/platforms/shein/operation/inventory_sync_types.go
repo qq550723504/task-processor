@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供SHEIN平台调度器相关服务的类型定义
+﻿// Package operation 提供SHEIN平台调度器相关服务的类型定义
 package operation
 
 import managementapi "task-processor/internal/infra/clients/management/api"

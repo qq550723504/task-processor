@@ -1,4 +1,4 @@
-﻿// Package shops 提供SHEIN平台的Cookie管理功能
+﻿// Package client 提供SHEIN平台的Cookie管理功能
 package client
 
 import (

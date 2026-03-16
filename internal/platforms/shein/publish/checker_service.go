@@ -1,4 +1,4 @@
-﻿// Package modules 提供SHEIN平台产品发布前检查功能
+﻿// Package publish 提供SHEIN平台产品发布前检查功能
 package publish
 
 import (

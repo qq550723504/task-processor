@@ -1,4 +1,4 @@
-﻿// Package modules 提供SHEIN平台SKC构建核心功能
+﻿// Package skc 提供SHEIN平台SKC构建核心功能
 package skc
 
 import (

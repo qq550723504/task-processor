@@ -1,4 +1,4 @@
-// Package handlers 提供TEMU平台产品描述验证器的增强功能
+﻿// Package product 提供TEMU平台产品描述验证器的增强功能
 package product
 
 import (

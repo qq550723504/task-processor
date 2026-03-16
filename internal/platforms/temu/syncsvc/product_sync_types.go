@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台调度器相关服务的类型定义
+﻿// Package syncsvc 提供TEMU平台调度器相关服务的类型定义
 package syncsvc
 
 import (

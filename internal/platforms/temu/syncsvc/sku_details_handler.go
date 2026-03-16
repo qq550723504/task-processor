@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台SKU详细信息处理功能
+﻿// Package syncsvc 提供TEMU平台SKU详细信息处理功能
 package syncsvc
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台图片上传辅助方法
+﻿// Package image 提供TEMU平台图片上传辅助方法
 package image
 
 import (

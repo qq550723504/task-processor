@@ -9,14 +9,14 @@ import (
 	"task-processor/internal/pipeline"
 	temuapi "task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 
 	"github.com/sirupsen/logrus"
 )
 
 // ProductSubmitHandler 产品提交处理器
 type ProductSubmitHandler struct {
-	*common.BaseTemuHandler
+	*handlerbase.BaseTemuHandler
 	logger        *logrus.Entry
 	saveHandler   *ProductSaveHandler
 	mappingClient management_api.ProductImportMappingAPI
@@ -32,7 +32,7 @@ func NewProductSubmitHandler(mappingClient management_api.ProductImportMappingAP
 
 	validator := NewProductSubmitValidator(log)
 	fixer := NewProductSubmitFixer(log, validator)
-	baseHandler := common.NewBaseTemuHandler("product_submit")
+	baseHandler := handlerbase.NewBaseTemuHandler("product_submit")
 
 	return &ProductSubmitHandler{
 		BaseTemuHandler: baseHandler,

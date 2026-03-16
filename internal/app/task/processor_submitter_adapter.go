@@ -1,4 +1,4 @@
-// Package service 提供任务提交器适配器
+﻿// Package task 提供任务提交器适配器
 package task
 
 import (

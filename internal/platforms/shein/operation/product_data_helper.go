@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供SHEIN平台产品数据处理工具
+﻿// Package operation 提供SHEIN平台产品数据处理工具
 package operation
 
 import (

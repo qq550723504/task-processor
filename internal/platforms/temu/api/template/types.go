@@ -1,4 +1,4 @@
-﻿// Package types 提供TEMU平台模板相关的类型定义
+﻿// Package template 提供TEMU平台模板相关的类型定义
 package template
 
 // ValueUnit 值单位结构体

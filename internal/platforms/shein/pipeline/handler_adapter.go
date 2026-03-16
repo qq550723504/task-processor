@@ -1,4 +1,4 @@
-﻿// Package shein 提供SHEIN平台的处理器适配器
+﻿// Package pipeline 提供SHEIN平台的处理器适配器
 package pipeline
 
 import (

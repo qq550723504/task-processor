@@ -27,12 +27,3 @@ func UnmarshalBytes[T any](data []byte, target *T, errorPrefix string) error {
 	}
 	return nil
 }
-
-// MustUnmarshalString 从JSON字符串解析，失败时panic（用于测试或初始化）
-func MustUnmarshalString[T any](jsonStr string) T {
-	var result T
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-		panic(fmt.Sprintf("JSON解析失败: %v", err))
-	}
-	return result
-}

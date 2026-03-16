@@ -1,4 +1,4 @@
-﻿// Package modules 提供SHEIN平台销售属性准备的核心处理功能
+﻿// Package sale 提供SHEIN平台销售属性准备的核心处理功能
 package sale
 
 import (

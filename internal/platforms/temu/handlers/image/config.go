@@ -1,13 +1,13 @@
-// Package image 提供TEMU平台图片处理相关功能
+﻿// Package image 提供TEMU平台图片处理相关功能
 package image
 
 import (
 	"strings"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 )
 
 // ImageRequirement 图片要求配置（类型别名，来自 handlers/common）
-type ImageRequirement = common.ImageRequirement
+type ImageRequirement = handlerbase.ImageRequirement
 
 // imageConfig TEMU图片配置
 type imageConfig struct {

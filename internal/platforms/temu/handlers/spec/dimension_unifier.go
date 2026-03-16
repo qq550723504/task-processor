@@ -1,4 +1,4 @@
-﻿// Package handlers 提供规格维度统一服务
+﻿// Package spec 提供规格维度统一服务
 package spec
 
 import (

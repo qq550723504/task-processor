@@ -1,12 +1,12 @@
-// Package property 提供属性特征识别功能
+﻿// Package property 提供属性特征识别功能
 package property
 
 import (
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 )
 
 // PropertyFeatureDetector 属性特征识别器（类型别名）
-type PropertyFeatureDetector = common.PropertyFeatureDetector
+type PropertyFeatureDetector = handlerbase.PropertyFeatureDetector
 
 // NewPropertyFeatureDetector 创建属性特征识别器
-var NewPropertyFeatureDetector = common.NewPropertyFeatureDetector
+var NewPropertyFeatureDetector = handlerbase.NewPropertyFeatureDetector

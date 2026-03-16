@@ -1,4 +1,4 @@
-﻿// Package handlers 提供TEMU平台并行图片验证功能
+﻿// Package image 提供TEMU平台并行图片验证功能
 package image
 
 import (
@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/pkg/recovery"
 	temuimage "task-processor/internal/platforms/temu/api/image"
 	temuproduct "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/common"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,7 +27,7 @@ func NewParallelImageValidator() *ParallelImageValidator {
 }
 
 // ValidateImagesInParallel 并行验证多张图片
-func (v *ParallelImageValidator) ValidateImagesInParallel(images []temuproduct.ImageInfo, imageType string, requirement common.ImageRequirement) []*temuimage.ValidationResult {
+func (v *ParallelImageValidator) ValidateImagesInParallel(images []temuproduct.ImageInfo, imageType string, requirement handlerbase.ImageRequirement) []*temuimage.ValidationResult {
 	if len(images) == 0 {
 		return []*temuimage.ValidationResult{}
 	}

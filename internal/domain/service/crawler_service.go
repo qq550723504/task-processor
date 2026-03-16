@@ -5,9 +5,17 @@ import (
 	"task-processor/internal/domain/task"
 )
 
+// HealthChecker 健康检查接口
+type HealthChecker interface {
+	IsReady() bool
+	IsHealthy() bool
+}
+
 // CrawlerService 爬虫服务接口
 // 定义爬虫服务的核心能力,供基础设施层(如HTTP handler)使用
 type CrawlerService interface {
+	HealthChecker
+
 	// SubmitTask 提交爬虫任务
 	SubmitTask(crawlerTask *task.CrawlerTask) error
 
@@ -22,10 +30,4 @@ type CrawlerService interface {
 
 	// GetStats 获取统计信息
 	GetStats() map[string]interface{}
-
-	// IsReady 检查服务是否就绪
-	IsReady() bool
-
-	// IsHealthy 检查服务是否健康
-	IsHealthy() bool
 }

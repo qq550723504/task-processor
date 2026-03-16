@@ -1,4 +1,4 @@
-﻿// Package modules 提供SHEIN平台的敏感词验证功能
+﻿// Package content 提供SHEIN平台的敏感词验证功能
 package content
 
 import (
