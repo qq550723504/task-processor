@@ -1,4 +1,4 @@
-﻿package attribute
+package attribute
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ type AttributeConfig struct {
 	AttributeMappings    map[string]AttributeMappingRule `yaml:"attribute_mappings"`
 	ValueTransformations map[string]map[string]string    `yaml:"value_transformations"`
 	ValidationRules      map[string]ValidationRule       `yaml:"validation_rules"`
-	DefaultValues        map[string]any          `yaml:"default_values"`
+	DefaultValues        map[string]any                  `yaml:"default_values"`
 }
 
 // ProductTypeConfig 产品类型配置
@@ -31,11 +31,11 @@ type ProductTypeConfig struct {
 
 // AttributeMappingRule 属性映射规则
 type AttributeMappingRule struct {
-	SourceFields []string    `yaml:"source_fields"`
-	MaxLength    int         `yaml:"max_length"`
-	Required     bool        `yaml:"required"`
-	Default      any `yaml:"default"`
-	Unit         string      `yaml:"unit"`
+	SourceFields []string `yaml:"source_fields"`
+	MaxLength    int      `yaml:"max_length"`
+	Required     bool     `yaml:"required"`
+	Default      any      `yaml:"default"`
+	Unit         string   `yaml:"unit"`
 }
 
 // ValidationRule 验证规则

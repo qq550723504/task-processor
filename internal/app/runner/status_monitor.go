@@ -1,4 +1,4 @@
-﻿// Package service 提供状态监控功能
+// Package service 提供状态监控功能
 package runner
 
 import (

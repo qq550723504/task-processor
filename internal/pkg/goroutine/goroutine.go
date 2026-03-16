@@ -1,4 +1,4 @@
-﻿// Package goroutine 提供 goroutine 管理与并行处理工具
+// Package goroutine 提供 goroutine 管理与并行处理工具
 package goroutine
 
 import (

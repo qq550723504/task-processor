@@ -1,4 +1,4 @@
-﻿// Package store 提供SHEIN平台的处理模块
+// Package store 提供SHEIN平台的处理模块
 package store
 
 import (
@@ -193,5 +193,3 @@ func GetStoreCacheStats() (hits, misses int64) {
 	defer storeCacheStats.mu.Unlock()
 	return storeCacheStats.hits, storeCacheStats.misses
 }
-
-

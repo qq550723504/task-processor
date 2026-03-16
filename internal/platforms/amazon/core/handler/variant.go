@@ -1,4 +1,4 @@
-﻿// Package handler 提供Amazon变体产品处理器
+// Package handler 提供Amazon变体产品处理器
 package handler
 
 import (

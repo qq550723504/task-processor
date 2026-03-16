@@ -1,4 +1,4 @@
-﻿// Package pricingsvc 提供TEMU平台自动核价服务
+// Package pricingsvc 提供TEMU平台自动核价服务
 package pricingsvc
 
 import (

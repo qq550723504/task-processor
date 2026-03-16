@@ -1,4 +1,4 @@
-﻿package productdata
+package productdata
 
 import (
 	"fmt"

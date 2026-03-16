@@ -1,7 +1,8 @@
-﻿// Package client 提供SHEIN通用API错误处理功能
+// Package client 提供SHEIN通用API错误处理功能
 package client
 
 import (
+	"errors"
 	"fmt"
 	"task-processor/internal/platforms/shein/api"
 )
@@ -68,12 +69,14 @@ func (h *APIErrorHandler) WrapError(err error, operation, url string) error {
 	}
 
 	// 如果已经是API错误，直接返回
-	if apiErr, ok := err.(*api.APIError); ok {
+	var apiErr *api.APIError
+	if errors.As(err, &apiErr) {
 		return apiErr
 	}
 
 	// 如果已经是认证过期错误，直接返回
-	if authErr, ok := err.(*api.AuthenticationExpiredError); ok {
+	var authErr *api.AuthenticationExpiredError
+	if errors.As(err, &authErr) {
 		return authErr
 	}
 

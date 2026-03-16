@@ -1,10 +1,10 @@
-﻿package product
+package product
 
 import (
 	"fmt"
 	"task-processor/internal/pkg/skugen"
-	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -207,5 +207,3 @@ func GetAsinBySku(ctx *shein.TaskContext, sku string) string {
 
 	return ""
 }
-
-

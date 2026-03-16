@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"task-processor/internal/platforms/shein"
@@ -77,5 +77,3 @@ func (h *ShelfQuotaHandler) Handle(ctx *shein.TaskContext) error {
 
 	return nil
 }
-
-

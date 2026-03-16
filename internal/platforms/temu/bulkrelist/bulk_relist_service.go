@@ -1,4 +1,4 @@
-﻿package bulkrelist
+package bulkrelist
 
 import (
 	"task-processor/internal/platforms/temu/api/client"

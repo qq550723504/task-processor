@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关错误定义
+// Package operation 提供SHEIN平台调度器相关错误定义
 package operation
 
 import "errors"

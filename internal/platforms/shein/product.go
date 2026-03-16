@@ -1,4 +1,4 @@
-﻿package shein
+package shein
 
 import (
 	"task-processor/internal/domain/model"
@@ -8,41 +8,41 @@ import (
 
 // SheinProductResponse SHEIN 产品列表响应
 type SheinProductResponse struct {
-	SpuName           string        `json:"spu_name"`
-	SpuCode           string        `json:"spu_code"`
-	CategoryID        int64         `json:"category_id"`
-	BrandCode         string        `json:"brand_code"`
-	BrandName         string        `json:"brand_name"`
-	ProductNameCh     string        `json:"product_name_ch"`
-	ProductNameEn     string        `json:"product_name_en"`
-	ProductNameMulti  string        `json:"product_name_multi"`
-	SkcInfoList       []SkcInfo     `json:"skc_info_list"`
-	ShelfStatus       string        `json:"shelf_status"` // ON_SHELF, OFF_SHELF
-	CreateTime        string        `json:"create_time"`
-	PublishTime       string        `json:"publish_time"`
-	FirstShelfTime    string        `json:"first_shelf_time"`
-	ExpectShelfTime   *string       `json:"expect_shelf_time"`
-	TagInfoList       []any `json:"tag_info_list"`
-	DiagFlag          int           `json:"diag_flag"`
-	CustomizeCategory bool          `json:"customize_category"`
+	SpuName           string    `json:"spu_name"`
+	SpuCode           string    `json:"spu_code"`
+	CategoryID        int64     `json:"category_id"`
+	BrandCode         string    `json:"brand_code"`
+	BrandName         string    `json:"brand_name"`
+	ProductNameCh     string    `json:"product_name_ch"`
+	ProductNameEn     string    `json:"product_name_en"`
+	ProductNameMulti  string    `json:"product_name_multi"`
+	SkcInfoList       []SkcInfo `json:"skc_info_list"`
+	ShelfStatus       string    `json:"shelf_status"` // ON_SHELF, OFF_SHELF
+	CreateTime        string    `json:"create_time"`
+	PublishTime       string    `json:"publish_time"`
+	FirstShelfTime    string    `json:"first_shelf_time"`
+	ExpectShelfTime   *string   `json:"expect_shelf_time"`
+	TagInfoList       []any     `json:"tag_info_list"`
+	DiagFlag          int       `json:"diag_flag"`
+	CustomizeCategory bool      `json:"customize_category"`
 }
 
 // SkcInfo SKC 信息（颜色变体）
 type SkcInfo struct {
-	SkcName               string        `json:"skc_name"`
-	SkcCode               string        `json:"skc_code"`
-	SaleName              string        `json:"sale_name"` // 销售属性名称，如"灰色"、"米色"
-	MainImageThumbnailURL string        `json:"main_image_thumbnail_url"`
-	SupplierCode          string        `json:"supplier_code"`
-	BusinessModel         int           `json:"business_model"`
-	IsSaleAttribute       int           `json:"is_sale_attribute"`
-	SupplierID            int64         `json:"supplier_id"`
-	SkuInfo               []SkuInfo     `json:"sku_info"`
-	MallSellStatus        int           `json:"mall_sell_status"`
-	Abandoned             bool          `json:"abandoned"`
-	TagInfoList           []any `json:"tag_info_list"`
-	ShelfFailReason       *string       `json:"shelf_fail_reason"`
-	HasOriginalImage      bool          `json:"has_original_image"`
+	SkcName               string    `json:"skc_name"`
+	SkcCode               string    `json:"skc_code"`
+	SaleName              string    `json:"sale_name"` // 销售属性名称，如"灰色"、"米色"
+	MainImageThumbnailURL string    `json:"main_image_thumbnail_url"`
+	SupplierCode          string    `json:"supplier_code"`
+	BusinessModel         int       `json:"business_model"`
+	IsSaleAttribute       int       `json:"is_sale_attribute"`
+	SupplierID            int64     `json:"supplier_id"`
+	SkuInfo               []SkuInfo `json:"sku_info"`
+	MallSellStatus        int       `json:"mall_sell_status"`
+	Abandoned             bool      `json:"abandoned"`
+	TagInfoList           []any     `json:"tag_info_list"`
+	ShelfFailReason       *string   `json:"shelf_fail_reason"`
+	HasOriginalImage      bool      `json:"has_original_image"`
 }
 
 // ParseTime 解析 SHEIN 时间格式
@@ -84,4 +84,3 @@ type SKUBuildRequest struct {
 	PrimaryAttrValue  string
 	WarehouseCode     string
 }
-

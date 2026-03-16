@@ -1,4 +1,4 @@
-﻿// Package sku 提供并行变体数据处理功能
+// Package sku 提供并行变体数据处理功能
 package sku
 
 import (

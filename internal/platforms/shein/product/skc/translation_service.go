@@ -1,4 +1,4 @@
-﻿// Package skc 提供SHEIN平台SKC翻译处理功能
+// Package skc 提供SHEIN平台SKC翻译处理功能
 package skc
 
 import (
@@ -8,8 +8,8 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/translate"
 
 	"github.com/sirupsen/logrus"
@@ -494,6 +494,3 @@ func (h *SKCTranslationHandler) selectPrimaryDisplayLanguage(targetLanguages []s
 		Name:     sourceTitle,
 	}
 }
-
-
-

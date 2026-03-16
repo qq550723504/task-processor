@@ -1,4 +1,4 @@
-﻿package build
+package build
 
 import (
 	"fmt"
@@ -29,21 +29,14 @@ func (h *BuildSpuHandler) Handle(ctx *shein.TaskContext) error {
 		return fmt.Errorf("产品数据未获取，请先执行获取产品数据步骤")
 	}
 
-	if err := buildSpuData(ctx); err != nil {
-		return fmt.Errorf("构建最终发品数据失败: %w", err)
-	}
+	buildSpuData(ctx)
 
 	return nil
 }
 
-func buildSpuData(ctx *shein.TaskContext) error {
+func buildSpuData(ctx *shein.TaskContext) {
 	// 构建最终发品数据
 	SupplierCode := product.GetSkuByAsin(ctx, ctx.Task.ProductID)
 	ctx.ProductData.SupplierCode = SupplierCode
 	ctx.ProductData.PointKey = uuid.New().String()
-
-	return nil
 }
-
-
-

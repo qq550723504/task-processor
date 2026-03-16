@@ -1,4 +1,4 @@
-﻿package build
+package build
 
 import (
 	"fmt"
@@ -103,6 +103,3 @@ func (h *BuildSkcListHandler) Handle(ctx *shein.TaskContext) error {
 	logrus.Infof("=== SKC列表构建处理完成 ===")
 	return nil
 }
-
-
-

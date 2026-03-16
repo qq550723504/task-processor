@@ -1,4 +1,4 @@
-﻿// Package property 提供属性处理管道，统筹整个属性处理流程
+// Package property 提供属性处理管道，统筹整个属性处理流程
 package property
 
 import (
@@ -76,9 +76,7 @@ func (p *DefaultPropertyProcessingPipeline) Process(ctx context.Context, templat
 	propertyCtx := p.buildPropertyContext(ctx, templateProps, ext)
 
 	// 预处理：识别所有属性特征
-	if err := p.preprocessFeatures(propertyCtx); err != nil {
-		return fmt.Errorf("属性特征预处理失败: %w", err)
-	}
+	p.preprocessFeatures(propertyCtx)
 
 	// 执行所有处理阶段
 	if err := p.executeStages(propertyCtx); err != nil {
@@ -114,9 +112,9 @@ func (p *DefaultPropertyProcessingPipeline) buildPropertyContext(ctx context.Con
 }
 
 // preprocessFeatures 预处理属性特征
-func (p *DefaultPropertyProcessingPipeline) preprocessFeatures(ctx *PropertyContext) error {
+func (p *DefaultPropertyProcessingPipeline) preprocessFeatures(ctx *PropertyContext) {
 	if !ctx.Config.EnableCache {
-		return nil
+		return
 	}
 
 	p.logger.Debug("🔍 开始预处理属性特征")
@@ -145,7 +143,6 @@ func (p *DefaultPropertyProcessingPipeline) preprocessFeatures(ctx *PropertyCont
 	}
 
 	p.logger.Debugf("✅ 属性特征预处理完成，处理数量: %d", processedCount)
-	return nil
 }
 
 // executeStages 执行所有处理阶段

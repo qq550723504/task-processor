@@ -1,4 +1,4 @@
-﻿// Package content 敏感词处理器
+// Package content 敏感词处理器
 package content
 
 import (

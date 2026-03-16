@@ -1,4 +1,4 @@
-﻿package sku
+package sku
 
 import (
 	"fmt"
@@ -205,7 +205,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	}
 
 	// 计算市场价：最终销售价格 * 2
-	marketPrice := int(finalSalePrice * 2)                               // 市场价（分）
+	marketPrice := finalSalePrice * 2                                    // 市场价（分）
 	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100) // 市场价字符串（元）
 
 	return models.Sku{
@@ -227,7 +227,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 		OriginNetContentNumber: originNetContentNumber,
 		NetContentUnitCode:     netContentUnitCode,
 		MaxRetailPriceStr:      fmt.Sprintf("%.2f", float64(maxRetailPrice)/100),
-		SupplierPrice:          int(finalSalePrice),
+		SupplierPrice:          finalSalePrice,
 		MarketPrice:            marketPrice,      // 市场价（分），供货价*2
 		MarketPriceStr:         marketPriceStr,   // 市场价字符串（元），供货价*2
 		SkuPriceDocuments:      map[string]any{}, // 空对象

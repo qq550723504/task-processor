@@ -1,4 +1,4 @@
-﻿package validation
+package validation
 
 import "task-processor/internal/platforms/shein"
 
@@ -58,5 +58,3 @@ func (h *ApplyFilterRuleHandler) Handle(ctx *shein.TaskContext) error {
 
 	return nil
 }
-
-

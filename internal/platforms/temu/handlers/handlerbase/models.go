@@ -1,4 +1,4 @@
-﻿// Package handlerbase 提供TEMU平台处理器的数据模型定义
+// Package handlerbase 提供TEMU平台处理器的数据模型定义
 package handlerbase
 
 // SpecPriority 规格优先级结构体

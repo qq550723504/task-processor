@@ -1,4 +1,4 @@
-﻿// Package factory 提供平台任务工厂的公共实现
+// Package factory 提供平台任务工厂的公共实现
 package factory
 
 import (

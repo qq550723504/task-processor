@@ -1,4 +1,4 @@
-﻿package temu
+package temu
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

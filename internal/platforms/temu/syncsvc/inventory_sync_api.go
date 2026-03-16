@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU平台调度器相关服务
+// Package syncsvc 提供TEMU平台调度器相关服务
 package syncsvc
 
 import (
@@ -15,9 +15,9 @@ import (
 
 // delistProductViaTEMUAPI 通过TEMU API下架产品
 func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
-	ctx context.Context,
+	_ context.Context,
 	prod *managementapi.ProductDataDTO,
-	skuInfo *TemuSkuInfo,
+	_ *TemuSkuInfo,
 ) error {
 	goodsID := prod.PlatformProductID
 
@@ -99,7 +99,7 @@ func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
 
 // updateProductStockViaTEMUAPI 通过TEMU API更新产品库存
 func (s *inventorySyncServiceImpl) updateProductStockViaTEMUAPI(
-	ctx context.Context,
+	_ context.Context,
 	prod *managementapi.ProductDataDTO,
 	skuInfo *TemuSkuInfo,
 	targetStock int,
@@ -129,7 +129,7 @@ func (s *inventorySyncServiceImpl) updateProductStockViaTEMUAPI(
 
 // relistProductViaTEMUAPI 通过TEMU API重新上架产品
 func (s *inventorySyncServiceImpl) relistProductViaTEMUAPI(
-	ctx context.Context,
+	_ context.Context,
 	prod *managementapi.ProductDataDTO,
 	skuInfo *TemuSkuInfo,
 ) error {

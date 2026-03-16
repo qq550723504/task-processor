@@ -1,4 +1,4 @@
-﻿// Package browser 提供浏览器实例管理功能
+// Package browser 提供浏览器实例管理功能
 package browser
 
 import (

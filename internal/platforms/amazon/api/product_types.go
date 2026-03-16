@@ -1,4 +1,4 @@
-﻿// Package api 提供Amazon SP-API产品类型定义功能
+// Package api 提供Amazon SP-API产品类型定义功能
 package api
 
 import (
@@ -10,27 +10,27 @@ import (
 
 // ProductTypeDefinition 产品类型定义
 type ProductTypeDefinition struct {
-	Name                 string                 `json:"name"`
-	DisplayName          string                 `json:"displayName"`
-	MarketplaceID        string                 `json:"marketplaceId"`
-	MarketplaceIDs       []string               `json:"marketplaceIds"`
-	ProductType          string                 `json:"productType"`
-	ProductTypeVersion   map[string]any `json:"productTypeVersion"`
-	Locale               string                 `json:"locale"`
-	Requirements         string                 `json:"requirements"`
-	RequirementsEnforced string                 `json:"requirementsEnforced"`
-	MetaSchema           *ProductTypeSchema     `json:"metaSchema,omitempty"`
-	Schema               *ProductTypeSchema     `json:"schema,omitempty"`
-	PropertyGroups       map[string]any `json:"propertyGroups,omitempty"`
+	Name                 string             `json:"name"`
+	DisplayName          string             `json:"displayName"`
+	MarketplaceID        string             `json:"marketplaceId"`
+	MarketplaceIDs       []string           `json:"marketplaceIds"`
+	ProductType          string             `json:"productType"`
+	ProductTypeVersion   map[string]any     `json:"productTypeVersion"`
+	Locale               string             `json:"locale"`
+	Requirements         string             `json:"requirements"`
+	RequirementsEnforced string             `json:"requirementsEnforced"`
+	MetaSchema           *ProductTypeSchema `json:"metaSchema,omitempty"`
+	Schema               *ProductTypeSchema `json:"schema,omitempty"`
+	PropertyGroups       map[string]any     `json:"propertyGroups,omitempty"`
 }
 
 // ProductTypeSchema 产品类型Schema
 type ProductTypeSchema struct {
 	Link       any            `json:"link,omitempty"` // 可能是string或object
 	Properties map[string]any `json:"properties,omitempty"`
-	Required   []string               `json:"required,omitempty"`
-	Type       string                 `json:"type,omitempty"`
-	Checksum   string                 `json:"checksum,omitempty"`
+	Required   []string       `json:"required,omitempty"`
+	Type       string         `json:"type,omitempty"`
+	Checksum   string         `json:"checksum,omitempty"`
 }
 
 // ProductTypeSearchResult 产品类型搜索结果
@@ -181,7 +181,7 @@ func (c *Client) DownloadSchema(ctx context.Context, url string) (map[string]any
 }
 
 // downloadSchema 下载schema内容
-func (c *Client) downloadSchema(ctx context.Context, url string) (map[string]any, error) {
+func (c *Client) downloadSchema(_ context.Context, url string) (map[string]any, error) {
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("下载schema失败: %w", err)

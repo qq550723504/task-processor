@@ -1,4 +1,4 @@
-﻿// Package publish 提供SHEIN平台产品发布核心处理器
+// Package publish 提供SHEIN平台产品发布核心处理器
 package publish
 
 import (
@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"task-processor/internal/pkg/jsonutil"
-	product "task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein"
+	product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -143,5 +143,3 @@ func (h *PublishProductHandler) saveJSONToFileWithName(filename string, jsonData
 	logrus.Infof("JSON数据已保存到文件: %s", filePath)
 	return nil
 }
-
-

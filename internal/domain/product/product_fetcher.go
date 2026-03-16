@@ -1,4 +1,4 @@
-﻿// Package product 提供产品领域服务
+// Package product 提供产品领域服务
 package product
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package openai 提供带缓存的OpenAI客户端
+// Package openai 提供带缓存的OpenAI客户端
 package openai
 
 import (
@@ -79,7 +79,7 @@ func (c *CachedClient) CreateChatCompletion(ctx context.Context, req *ChatComple
 		c.logger.Debugf("缓存命中: %s", cacheKey)
 
 		var resp ChatCompletionResponse
-		if err := json.Unmarshal([]byte(cached), &resp); err == nil {
+		if unmarshalErr := json.Unmarshal([]byte(cached), &resp); unmarshalErr == nil {
 			return &resp, nil
 		}
 	}
@@ -92,9 +92,9 @@ func (c *CachedClient) CreateChatCompletion(ctx context.Context, req *ChatComple
 	}
 
 	// 保存到缓存
-	if respData, err := json.Marshal(resp); err == nil {
-		if err := c.cache.Set(ctx, cacheKey, string(respData), c.ttl); err != nil {
-			c.logger.Warnf("保存缓存失败: %v", err)
+	if respData, marshalErr := json.Marshal(resp); marshalErr == nil {
+		if setErr := c.cache.Set(ctx, cacheKey, string(respData), c.ttl); setErr != nil {
+			c.logger.Warnf("保存缓存失败: %v", setErr)
 		}
 	}
 

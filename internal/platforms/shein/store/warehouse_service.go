@@ -1,4 +1,4 @@
-﻿package store
+package store
 
 import "task-processor/internal/platforms/shein"
 
@@ -30,5 +30,3 @@ func (h *WarehouseInfoHandler) Handle(ctx *shein.TaskContext) error {
 
 	return nil
 }
-
-

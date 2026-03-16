@@ -1,4 +1,4 @@
-﻿// Package image 提供并行图片处理功能
+// Package image 提供并行图片处理功能
 package image
 
 import (
@@ -93,8 +93,7 @@ func (pip *ParallelImageProcessor) ProcessVariantImagesParallel(temuCtx *temucon
 		if !ok {
 			return nil, fmt.Errorf("任务数据类型错误")
 		}
-
-		return pip.processVariantImages(ctx, imageTask)
+		return pip.processVariantImages(ctx, imageTask), nil
 	}
 
 	// 并行执行处理
@@ -135,7 +134,7 @@ func (pip *ParallelImageProcessor) ProcessVariantImagesParallel(temuCtx *temucon
 }
 
 // processVariantImages 处理单个变体的图片
-func (pip *ParallelImageProcessor) processVariantImages(ctx context.Context, task *ImageProcessingTask) (*ImageProcessingResult, error) {
+func (pip *ParallelImageProcessor) processVariantImages(_ context.Context, task *ImageProcessingTask) *ImageProcessingResult {
 	result := &ImageProcessingResult{
 		VariantIndex:     task.VariantIndex,
 		DimensionGallery: []models.ImageInfo{},
@@ -145,21 +144,19 @@ func (pip *ParallelImageProcessor) processVariantImages(ctx context.Context, tas
 
 	pip.logger.Infof("📸 开始处理变体[%d]图片: %s", task.VariantIndex, task.Variant.Asin)
 
-	// 处理尺寸图
 	dimensionGallery, err := pip.imageProcessor.BuildDimensionImagesWithUpload(task.TemuCtx, task.Variant)
 	if err != nil {
 		pip.logger.Errorf("❌ 变体[%d]尺寸图处理失败: %v", task.VariantIndex, err)
 		result.Error = fmt.Errorf("尺寸图处理失败: %w", err)
-		return result, nil // 不返回错误，让其他变体继续处理
+		return result
 	}
 	result.DimensionGallery = dimensionGallery
 
-	// 处理轮播图
 	carouselGallery, err := pip.imageProcessor.BuildCarouselImagesWithoutAnnotation(task.TemuCtx, task.Variant)
 	if err != nil {
 		pip.logger.Errorf("❌ 变体[%d]轮播图处理失败: %v", task.VariantIndex, err)
 		result.Error = fmt.Errorf("轮播图处理失败: %w", err)
-		return result, nil // 不返回错误，让其他变体继续处理
+		return result
 	}
 	result.CarouselGallery = carouselGallery
 
@@ -167,7 +164,7 @@ func (pip *ParallelImageProcessor) processVariantImages(ctx context.Context, tas
 	pip.logger.Infof("✅ 变体[%d]图片处理完成: 尺寸图%d张, 轮播图%d张",
 		task.VariantIndex, len(dimensionGallery), len(carouselGallery))
 
-	return result, nil
+	return result
 }
 
 // ApplyImageResults 将图片处理结果应用到SKU中

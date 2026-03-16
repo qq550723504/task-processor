@@ -97,4 +97,3 @@ func (s *ShutdownCoordinator) GracefulShutdown(parentCtx context.Context) {
 
 	s.logger.Info("优雅关闭完成")
 }
-

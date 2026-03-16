@@ -1,10 +1,10 @@
-﻿package product
+package product
 
 import (
 	"fmt"
 	"strings"
-	temucontext "task-processor/internal/platforms/temu/context"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )

@@ -1,4 +1,4 @@
-﻿// Package property 提供TEMU平台的各种处理器，包括默认属性填充等功能
+// Package property 提供TEMU平台的各种处理器，包括默认属性填充等功能
 package property
 
 import (
@@ -6,8 +6,8 @@ import (
 	"strconv"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/rules"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	"task-processor/internal/platforms/temu/handlers/rules"
 
 	"github.com/sirupsen/logrus"
 )

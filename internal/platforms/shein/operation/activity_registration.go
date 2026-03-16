@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -152,4 +152,3 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 	s.logger.Infof("成功报名 %d 个产品到促销活动", len(configList))
 	return len(configList), nil
 }
-

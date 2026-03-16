@@ -1,4 +1,4 @@
-﻿package watermark
+package watermark
 
 import (
 	"bytes"
@@ -257,7 +257,7 @@ func (d *AIDetector) buildDetectionPrompt() string {
 }
 
 // parseAIResponse 解析AI响应
-func (d *AIDetector) parseAIResponse(content string, img image.Image, result *DetectionResult) {
+func (d *AIDetector) parseAIResponse(content string, _ image.Image, result *DetectionResult) {
 	// 尝试提取JSON
 	jsonStart := strings.Index(content, "{")
 	jsonEnd := strings.LastIndex(content, "}")

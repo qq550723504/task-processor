@@ -1,4 +1,4 @@
-﻿// Package temu 提供TEMU平台的管道处理器注册表
+// Package temu 提供TEMU平台的管道处理器注册表
 package temu
 
 import (
@@ -7,14 +7,14 @@ import (
 	commonPipeline "task-processor/internal/pipeline"
 	commonHandlers "task-processor/internal/pipeline/handlers"
 	"task-processor/internal/platforms/temu/handlers/category"
-	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	"task-processor/internal/platforms/temu/handlers/filter"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	"task-processor/internal/platforms/temu/handlers/image"
 	"task-processor/internal/platforms/temu/handlers/product"
+	"task-processor/internal/platforms/temu/handlers/rules"
 	"task-processor/internal/platforms/temu/handlers/sku"
 	"task-processor/internal/platforms/temu/handlers/store"
 	"task-processor/internal/platforms/temu/handlers/template"
-	"task-processor/internal/platforms/temu/handlers/rules"
 )
 
 // HandlerRegistryEntry 处理器注册表条目

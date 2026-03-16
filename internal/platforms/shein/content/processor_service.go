@@ -1,11 +1,11 @@
-﻿// Package content 提供SHEIN平台的敏感词文本处理功能
+// Package content 提供SHEIN平台的敏感词文本处理功能
 package content
 
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -263,5 +263,3 @@ func (s *SensitiveWordService) TestEmojiFiltering(text string) string {
 
 	return aggressive
 }
-
-

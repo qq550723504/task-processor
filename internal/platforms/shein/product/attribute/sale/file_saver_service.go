@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台销售属性文件保存功能
+// Package sale 提供SHEIN平台销售属性文件保存功能
 package sale
 
 import (
@@ -30,15 +30,15 @@ type PromptData struct {
 
 // ResponseData 响应数据结构
 type ResponseData struct {
-	Timestamp    string      `json:"timestamp"`
-	TaskID       string      `json:"task_id"`
-	ProductID    string      `json:"product_id"`
-	RawResponse  string      `json:"raw_response"`
-	ParsedResult any `json:"parsed_result"`
-	FinishReason string      `json:"finish_reason"`
-	TokensUsed   int         `json:"tokens_used,omitempty"`
-	Success      bool        `json:"success"`
-	ErrorMessage string      `json:"error_message,omitempty"`
+	Timestamp    string `json:"timestamp"`
+	TaskID       string `json:"task_id"`
+	ProductID    string `json:"product_id"`
+	RawResponse  string `json:"raw_response"`
+	ParsedResult any    `json:"parsed_result"`
+	FinishReason string `json:"finish_reason"`
+	TokensUsed   int    `json:"tokens_used,omitempty"`
+	Success      bool   `json:"success"`
+	ErrorMessage string `json:"error_message,omitempty"`
 }
 
 // SavePromptData 保存提示词数据到文件

@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台自动核价任务适配器
+// Package scheduler 提供TEMU平台自动核价任务适配器
 package scheduler
 
 import (

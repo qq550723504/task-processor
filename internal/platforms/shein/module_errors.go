@@ -1,4 +1,4 @@
-﻿package shein
+package shein
 
 import (
 	"errors"
@@ -110,7 +110,7 @@ func IsFilteredError(err error) bool {
 // IsRetryableError 检查错误是否可重试
 func IsRetryableError(err error) bool {
 	// 首先检查是否为认证过期错误，认证过期错误应该触发特殊处理而不是重试
-	if _, isAuthExpired := isAuthenticationExpired(err); isAuthExpired {
+	if isAuthenticationExpired(err) {
 		return false
 	}
 
@@ -129,16 +129,16 @@ func IsRetryableError(err error) bool {
 
 // isAuthenticationExpired 内部函数，检查是否为认证过期错误
 // 避免循环导入，这里重新实现认证过期检查逻辑
-func isAuthenticationExpired(err error) (any, bool) {
+func isAuthenticationExpired(err error) bool {
 	// 检查错误消息中是否包含认证过期的关键字
 	if err != nil {
 		errMsg := err.Error()
 		// 检查是否包含认证过期的关键信息
 		if contains(errMsg, "20302") && contains(errMsg, "子系统登录重定向") {
-			return nil, true
+			return true
 		}
 		if contains(errMsg, "认证已过期") || contains(errMsg, "需要重新登录") {
-			return nil, true
+			return true
 		}
 	}
 
@@ -146,10 +146,10 @@ func isAuthenticationExpired(err error) (any, bool) {
 	for err != nil {
 		errMsg := err.Error()
 		if contains(errMsg, "20302") && contains(errMsg, "子系统登录重定向") {
-			return nil, true
+			return true
 		}
 		if contains(errMsg, "认证已过期") || contains(errMsg, "需要重新登录") {
-			return nil, true
+			return true
 		}
 
 		// 检查是否实现了 Unwrap 方法
@@ -160,7 +160,7 @@ func isAuthenticationExpired(err error) (any, bool) {
 		}
 	}
 
-	return nil, false
+	return false
 }
 
 // isAuthenticationExpiredError 检查是否为认证过期错误（用于NewRetryableError）
@@ -312,4 +312,3 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
-

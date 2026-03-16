@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU平台库存监控策略处理逻辑
+// Package syncsvc 提供TEMU平台库存监控策略处理逻辑
 package syncsvc
 
 import (
@@ -195,7 +195,7 @@ func (s *inventorySyncServiceImpl) handleStockChange(
 	prod *managementapi.ProductDataDTO,
 	skuMapping *TemuSkuInfo,
 	strategy *managementapi.OperationStrategyDTO,
-	oldStock, newStock int,
+	_ int, newStock int,
 ) error {
 	action := strategy.StockChangeAction
 	if action == "" {

@@ -3,6 +3,7 @@ package resilience
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -65,7 +66,7 @@ func Retry(ctx context.Context, config *RetryConfig, fn RetryFunc) error {
 		// 等待后重试
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("retry cancelled: %w", ctx.Err())
+			return fmt.Errorf("retry canceled: %w", ctx.Err())
 		case <-time.After(actualDelay):
 			// 增加延迟
 			delay = time.Duration(float64(delay) * config.Multiplier)
@@ -83,7 +84,7 @@ func isRetryable(err error, retryableErrors []error) bool {
 	}
 
 	for _, retryableErr := range retryableErrors {
-		if err == retryableErr {
+		if errors.Is(err, retryableErr) {
 			return true
 		}
 	}

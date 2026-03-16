@@ -1,9 +1,9 @@
-﻿package variant
+package variant
 
 import (
 	"strings"
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )
@@ -127,5 +127,3 @@ func (m *VariantMatcher) isMatchCountReasonable(matches []shein.Variant, targetV
 	logrus.Warnf("匹配数量异常: 属性值 '%s' 匹配到 %d 个变体", targetValue, len(matches))
 	return false
 }
-
-

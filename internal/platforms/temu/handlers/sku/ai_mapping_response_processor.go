@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的AI SKU映射响应处理功能
+// Package sku 提供TEMU平台的AI SKU映射响应处理功能
 package sku
 
 import (

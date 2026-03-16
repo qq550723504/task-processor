@@ -1,4 +1,4 @@
-﻿// Package processor 提供爬虫任务处理器
+// Package processor 提供爬虫任务处理器
 package processor
 
 import (

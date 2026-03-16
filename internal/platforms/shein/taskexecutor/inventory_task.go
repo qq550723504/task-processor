@@ -1,4 +1,4 @@
-﻿// Package taskexecutor 提供SHEIN平台库存监控任务实现
+// Package taskexecutor 提供SHEIN平台库存监控任务实现
 package taskexecutor
 
 import (

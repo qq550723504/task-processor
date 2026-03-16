@@ -1,4 +1,4 @@
-﻿// Package extractor 提供Amazon产品视频信息提取功能
+// Package extractor 提供Amazon产品视频信息提取功能
 package extractor
 
 import (

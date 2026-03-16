@@ -1,4 +1,4 @@
-﻿package validation
+package validation
 
 import (
 	"task-processor/internal/domain/model"
@@ -95,5 +95,3 @@ func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *domainvalidation.Fi
 	}
 	return nil
 }
-
-

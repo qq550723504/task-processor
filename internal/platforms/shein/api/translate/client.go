@@ -1,4 +1,4 @@
-﻿package translate
+package translate
 
 import (
 	"fmt"
@@ -44,7 +44,7 @@ type TranslationData struct {
 
 // Meta 翻译元数据
 type Meta struct {
-	Count     int         `json:"count"`
+	Count     int `json:"count"`
 	CustomObj any `json:"customObj"`
 }
 

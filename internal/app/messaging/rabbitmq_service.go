@@ -1,4 +1,4 @@
-﻿// Package messaging 提供RabbitMQ服务管理器
+// Package messaging 提供RabbitMQ服务管理器
 package messaging
 
 import (
@@ -9,9 +9,9 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/domain/task"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
 )
@@ -223,9 +223,7 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	}
 
 	// 5. 注册消息处理器
-	if err := s.registerMessageHandlers(); err != nil {
-		return fmt.Errorf("注册消息处理器失败: %w", err)
-	}
+	s.registerMessageHandlers()
 
 	// 6. 启动消费者
 	if err := s.consumer.Start(s.ctx); err != nil {
@@ -239,7 +237,7 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 
 // registerMessageHandlers 注册消息处理器
 // 每个平台的处理器需要注册到该平台的所有优先级队列（high/normal/low）
-func (s *RabbitMQService) registerMessageHandlers() error {
+func (s *RabbitMQService) registerMessageHandlers() {
 	handlers := s.processorRegistry.GetAllHandlers()
 
 	// 优先级列表
@@ -269,8 +267,6 @@ func (s *RabbitMQService) registerMessageHandlers() error {
 	if len(handlers) == 0 {
 		s.logger.Warn("没有注册任何消息处理器")
 	}
-
-	return nil
 }
 
 // Stop 停止RabbitMQ服务

@@ -1,4 +1,4 @@
-﻿package category
+package category
 
 type CategoryRestriction struct {
 	CategoryID           int    `json:"category_id"`

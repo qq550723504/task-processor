@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台SKU映射关系修复处理器
+// Package operation 提供SHEIN平台SKU映射关系修复处理器
 package operation
 
 import (

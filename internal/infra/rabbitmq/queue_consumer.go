@@ -296,7 +296,7 @@ func (qc *QueueConsumer) republishWithRetryCount(msg *Message) error {
 			ContentType:  "application/json",
 			Body:         msgBytes, // 完整的 Message 结构
 			DeliveryMode: amqp.Persistent,
-			Priority:     uint8(msg.Priority),
+			Priority:     msg.Priority,
 			MessageId:    msg.ID,
 			Type:         msg.Type,
 			Headers:      headers,

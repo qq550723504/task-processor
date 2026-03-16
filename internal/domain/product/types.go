@@ -1,4 +1,4 @@
-﻿// Package product 提供产品领域类型定义
+// Package product 提供产品领域类型定义
 package product
 
 // RawJsonReq 获取原始JSON数据请求（domain 层自有类型）

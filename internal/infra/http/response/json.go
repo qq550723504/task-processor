@@ -1,4 +1,4 @@
-﻿// Package response 提供 HTTP 响应工具
+// Package response 提供 HTTP 响应工具
 package response
 
 import (

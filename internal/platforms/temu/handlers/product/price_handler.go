@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 
 	"task-processor/internal/domain/model"
 	pkgproduct "task-processor/internal/domain/product"
-	"task-processor/internal/pipeline"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -114,9 +114,9 @@ func (ph *PriceHandler) getTenantAndStoreID(temuCtx *temucontext.TemuTaskContext
 
 	task := temuCtx.GetTask()
 	if task != nil && task.StoreID != 0 {
-		storeID = int64(task.StoreID)
+		storeID = task.StoreID
 		if task.TenantID != 0 {
-			tenantID = int64(task.TenantID)
+			tenantID = task.TenantID
 		}
 	}
 

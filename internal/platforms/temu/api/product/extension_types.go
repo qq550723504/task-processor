@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import "encoding/json"
 
@@ -7,18 +7,18 @@ type ExtensionInfo struct {
 	GoodsProperty             GoodsPropertys      `json:"goods_property"`
 	CertificationInfo         CertificationInfo   `json:"certification_info"`
 	GoodsTrademark            GoodsTrademark      `json:"goods_trademark,omitempty"`
-	GoodsProductTaxCodeDetail any         `json:"goods_product_tax_code_detail,omitempty"`
+	GoodsProductTaxCodeDetail any                 `json:"goods_product_tax_code_detail,omitempty"`
 	GoodsOriginInfo           GoodsOriginInfo     `json:"goods_origin_info"`
 	GoodsDesc                 string              `json:"goods_desc,omitempty"`
 	BulletPoints              []string            `json:"bullet_points,omitempty"`
-	SecondHand                any         `json:"second_hand,omitempty"`
-	GuideFileInfo             any         `json:"guide_file_info,omitempty"`
+	SecondHand                any                 `json:"second_hand,omitempty"`
+	GuideFileInfo             any                 `json:"guide_file_info,omitempty"`
 	SizeChartImageInfo        *SizeChartImageInfo `json:"size_chart_image_info,omitempty"`
 }
 
 // GoodsPropertys 商品属性集合
 type GoodsPropertys struct {
-	GoodsBrandProperties []any      `json:"goods_brand_properties"`
+	GoodsBrandProperties []any              `json:"goods_brand_properties"`
 	GoodsProperties      []PropertyItem     `json:"goods_properties"`
 	GoodsSpecProperties  []GoodSpecProperty `json:"goods_spec_properties"`
 }

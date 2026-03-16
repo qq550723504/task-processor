@@ -1,4 +1,4 @@
-﻿package variations
+package variations
 
 // Combinator 组合生成器
 type Combinator struct {

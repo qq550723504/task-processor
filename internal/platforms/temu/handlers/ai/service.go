@@ -1,4 +1,4 @@
-﻿// Package ai 提供TEMU平台的各种处理器，包括AI服务调用等功能
+// Package ai 提供TEMU平台的各种处理器，包括AI服务调用等功能
 package ai
 
 import (
@@ -11,8 +11,8 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonutil"
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/property"
 	temucontext "task-processor/internal/platforms/temu/context"
+	"task-processor/internal/platforms/temu/handlers/property"
 
 	"github.com/sirupsen/logrus"
 )

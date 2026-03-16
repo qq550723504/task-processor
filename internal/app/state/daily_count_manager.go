@@ -1,4 +1,4 @@
-﻿package state
+package state
 
 import (
 	"task-processor/internal/infra/clients/management"

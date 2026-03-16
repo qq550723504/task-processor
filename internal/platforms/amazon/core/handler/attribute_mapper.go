@@ -1,4 +1,4 @@
-﻿// Package handler 提供Amazon属性映射处理器
+// Package handler 提供Amazon属性映射处理器
 package handler
 
 import (
@@ -111,7 +111,7 @@ func (h *AttributeMapperHandler) handleLLMMapping(ctx context.Context, taskConte
 }
 
 // handleBasicMapping 基础映射（回退方案）
-func (h *AttributeMapperHandler) handleBasicMapping(ctx context.Context, taskContext *model.TaskContext, sourceData map[string]any) error {
+func (h *AttributeMapperHandler) handleBasicMapping(_ context.Context, taskContext *model.TaskContext, sourceData map[string]any) error {
 	h.logger.Info("使用基础属性映射")
 
 	attributes := make(map[string]any)

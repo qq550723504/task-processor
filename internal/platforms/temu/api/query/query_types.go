@@ -1,4 +1,4 @@
-﻿package query
+package query
 
 // TextCheckRequest 文本检查请求
 type TextCheckRequest struct {
@@ -142,8 +142,8 @@ type CommitDetailResponse struct {
 type CommitDetailResult struct {
 	GoodsBasic            *CommitDetailGoodsBasic    `json:"goods_basic,omitempty"`
 	GoodsSaleInfo         *CommitDetailGoodsSaleInfo `json:"goods_sale_info,omitempty"`
-	GoodsServicePromise   map[string]any     `json:"goods_service_promise,omitempty"`
-	GoodsExtensionInfo    map[string]any     `json:"goods_extension_info,omitempty"`
+	GoodsServicePromise   map[string]any             `json:"goods_service_promise,omitempty"`
+	GoodsExtensionInfo    map[string]any             `json:"goods_extension_info,omitempty"`
 	Extra                 *CommitDetailExtra         `json:"extra,omitempty"`
 	CanSave               bool                       `json:"can_save"`
 	SupportMaxRetailPrice bool                       `json:"support_max_retail_price"`
@@ -225,24 +225,24 @@ type SkuQueryResponse struct {
 
 // SkuQueryResult SKU查询结果项
 type SkuQueryResult struct {
-	GoodsName           string                 `json:"goods_name"`
-	SpecName            string                 `json:"spec_name"`
-	SpecList            []SkuSpecInfo          `json:"spec_list"`
-	ThumbURL            string                 `json:"thumb_url"`
-	GoodsID             string                 `json:"goods_id"`
-	GoodsCommitID       string                 `json:"goods_commit_id"`
-	ListingCommitID     string                 `json:"listing_commit_id"`
-	MallID              string                 `json:"mall_id"`
-	SkuID               string                 `json:"sku_id"`
-	SkuSN               string                 `json:"sku_sn"`
-	Stock               int                    `json:"stock"`
-	Price               float64                `json:"price"`
-	SupplierPrice       float64                `json:"supplier_price"`
-	Currency            string                 `json:"currency"`
-	SkcID               string                 `json:"skc_id"`
-	OutGoodsSN          string                 `json:"out_goods_sn"`
-	ShippingMode        int                    `json:"shipping_mode"`
-	OrdinaryStock       int                    `json:"ordinary_stock"`
+	GoodsName           string         `json:"goods_name"`
+	SpecName            string         `json:"spec_name"`
+	SpecList            []SkuSpecInfo  `json:"spec_list"`
+	ThumbURL            string         `json:"thumb_url"`
+	GoodsID             string         `json:"goods_id"`
+	GoodsCommitID       string         `json:"goods_commit_id"`
+	ListingCommitID     string         `json:"listing_commit_id"`
+	MallID              string         `json:"mall_id"`
+	SkuID               string         `json:"sku_id"`
+	SkuSN               string         `json:"sku_sn"`
+	Stock               int            `json:"stock"`
+	Price               float64        `json:"price"`
+	SupplierPrice       float64        `json:"supplier_price"`
+	Currency            string         `json:"currency"`
+	SkcID               string         `json:"skc_id"`
+	OutGoodsSN          string         `json:"out_goods_sn"`
+	ShippingMode        int            `json:"shipping_mode"`
+	OrdinaryStock       int            `json:"ordinary_stock"`
 	CheckPriceAuditInfo map[string]any `json:"check_price_audit_info"`
 }
 

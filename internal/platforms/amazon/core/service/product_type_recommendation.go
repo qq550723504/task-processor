@@ -132,7 +132,7 @@ func (s *ProductTypeRecommendationService) deduplicateAndFilter(terms []string) 
 }
 
 // searchAndScore 搜索并评分产品类型
-func (s *ProductTypeRecommendationService) searchAndScore(ctx context.Context, searchTerm, title, description string, keywords []string) ([]ProductTypeRecommendation, error) {
+func (s *ProductTypeRecommendationService) searchAndScore(ctx context.Context, searchTerm, title, _ string, keywords []string) ([]ProductTypeRecommendation, error) {
 	// 调用Amazon API搜索
 	result, err := s.apiClient.SearchProductTypes(ctx, []string{searchTerm})
 	if err != nil {

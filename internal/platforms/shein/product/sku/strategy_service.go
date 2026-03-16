@@ -1,13 +1,13 @@
-﻿// Package sku 提供SHEIN平台SKU策略处理功能
+// Package sku 提供SHEIN平台SKU策略处理功能
 package sku
 
 import (
 	"fmt"
 	"strings"
 	"task-processor/internal/domain/model"
+	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product/variant"
 
 	"github.com/sirupsen/logrus"
@@ -183,7 +183,7 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein.TaskContext, req she
 	// 第二步：处理次要属性并建立复合键到属性值的映射
 	processedSecondaryValues := make(map[string]bool)
 	variantInfoMap := make(map[string]shein.VariantInfo) // 使用复合键: "ASIN:valueID"
-	usedValueIDs := make(map[int]bool)                         // 跟踪已使用的属性值ID，防止重复
+	usedValueIDs := make(map[int]bool)                   // 跟踪已使用的属性值ID，防止重复
 
 	for _, attr := range req.Strategy.SecondaryAttribute.AttrValue {
 		// 去重检查
@@ -320,6 +320,3 @@ func (p *SKUStrategyProcessor) buildSKUListForMultipleVariants(ctx *shein.TaskCo
 	logrus.Infof("成功为主要属性值 %s 创建了 %d 个 SKU，去重后避免了属性值ID重复", req.PrimaryAttrValue, len(skuList))
 	return skuList, nil
 }
-
-
-

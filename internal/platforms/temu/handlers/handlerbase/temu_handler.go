@@ -1,4 +1,4 @@
-﻿// Package handlerbase 提供TEMU平台专用的Handler接口
+// Package handlerbase 提供TEMU平台专用的Handler接口
 package handlerbase
 
 import (

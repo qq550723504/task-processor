@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台限时折扣活动服务
+// Package operation 提供SHEIN平台限时折扣活动服务
 package operation
 
 import (
@@ -384,8 +384,8 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 	config := s.buildTimeLimitedDiscountConfig(storeInfo, strategy)
 
 	// 3. 验证配置
-	if err := config.Validate(); err != nil {
-		return 0, fmt.Errorf("配置验证失败: %w", err)
+	if validateErr := config.Validate(); validateErr != nil {
+		return 0, fmt.Errorf("配置验证失败: %w", validateErr)
 	}
 
 	// 4. 分页查询所有可参加活动的商品
@@ -409,8 +409,8 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 	}
 
 	// 6. 检查价格风险
-	if err := s.validatePriceRisk(calcResp, config); err != nil {
-		return 0, fmt.Errorf("价格风险检查失败: %w", err)
+	if riskErr := s.validatePriceRisk(calcResp, config); riskErr != nil {
+		return 0, fmt.Errorf("价格风险检查失败: %w", riskErr)
 	}
 
 	// 7. 构建活动创建请求

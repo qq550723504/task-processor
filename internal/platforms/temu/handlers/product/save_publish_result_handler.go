@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -10,9 +10,9 @@ import (
 	"task-processor/internal/app/state"
 	commontypes "task-processor/internal/domain/model"
 	pkgproduct "task-processor/internal/domain/product"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/ptrutil"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -79,10 +79,7 @@ func (h *SavePublishResultHandler) HandleTemu(temuCtx *temucontext.TemuTaskConte
 	}
 
 	// 记录每日上架成功数量并检查限额
-	if err := h.recordDailyListingCount(temuCtx); err != nil {
-		h.logger.Warnf("记录每日上架计数失败: %v", err)
-		// 不阻断流程，继续执行
-	}
+	h.recordDailyListingCount(temuCtx)
 
 	h.logger.Info("发品成功后返回信息保存完成")
 	return nil
@@ -216,29 +213,27 @@ func getStringValue(s *string) string {
 }
 
 // recordDailyListingCount 记录每日上架成功数量并检查限额（参考SHEIN实现）
-func (h *SavePublishResultHandler) recordDailyListingCount(temuCtx *temucontext.TemuTaskContext) error {
+func (h *SavePublishResultHandler) recordDailyListingCount(temuCtx *temucontext.TemuTaskContext) {
 	// 检查必要的上下文信息
 	if h.memoryManager == nil {
 		h.logger.Debug("内存管理器未初始化，跳过每日上架计数")
-		return nil
+		return
 	}
 
 	task := temuCtx.GetTask()
 	if task == nil {
 		h.logger.Debug("任务信息未初始化，跳过每日上架计数")
-		return nil
+		return
 	}
 
-	// 从强类型上下文获取店铺信息
 	if temuCtx.StoreInfo == nil {
 		h.logger.Debug("店铺信息未初始化，跳过每日上架计数")
-		return nil
+		return
 	}
 
-	// 检查店铺是否有每日上架限额
 	if temuCtx.StoreInfo.DailyLimit == nil || *temuCtx.StoreInfo.DailyLimit <= 0 {
 		h.logger.Debugf("店铺 %d 没有设置每日上架限额，跳过限额检查", task.StoreID)
-		return nil
+		return
 	}
 
 	dailyLimit := *temuCtx.StoreInfo.DailyLimit
@@ -256,7 +251,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(temuCtx *temucontext.
 	increment := h.calculateIncrementFromContext(temuCtx, dailyLimitType)
 	if increment <= 0 {
 		h.logger.Warnf("计算增量失败，跳过计数更新")
-		return nil
+		return
 	}
 
 	// 增加每日上架计数
@@ -275,19 +270,15 @@ func (h *SavePublishResultHandler) recordDailyListingCount(temuCtx *temucontext.
 		h.logger.Warnf("店铺 %d 在 %s 的上架数量(%d)已超过限额(%d)，将暂停上架", task.StoreID, currentDate, count, dailyLimit)
 
 		// 暂停店铺上架到当日结束
-		if err := h.pauseShopUntilEndOfDay(
+		h.pauseShopUntilEndOfDay(
 			temuCtx,
 			fmt.Sprintf("超过每日上架限额(%d/%d)", count, dailyLimit),
-		); err != nil {
-			h.logger.Errorf("暂停店铺上架失败: %v", err)
-		}
+		)
 
 		h.logger.Infof("已暂停店铺 %d 上架到当日结束，因为已超过每日限额 %d", task.StoreID, dailyLimit)
 	} else {
 		h.logger.Infof("店铺 %d 在 %s 的上架数量(%d)未超过限额(%d)", task.StoreID, currentDate, count, dailyLimit)
 	}
-
-	return nil
 }
 
 // calculateIncrementFromContext 根据店铺配置的限制类型计算增量
@@ -325,13 +316,12 @@ func (h *SavePublishResultHandler) calculateIncrementFromContext(temuCtx *temuco
 }
 
 // pauseShopUntilEndOfDay 暂停店铺到当日结束
-func (h *SavePublishResultHandler) pauseShopUntilEndOfDay(temuCtx *temucontext.TemuTaskContext, reason string) error {
+func (h *SavePublishResultHandler) pauseShopUntilEndOfDay(temuCtx *temucontext.TemuTaskContext, reason string) {
 	task := temuCtx.GetTask()
 	if task == nil {
-		return fmt.Errorf("任务信息未初始化")
+		return
 	}
 
-	// 暂停店铺到当日结束（23:59:59）
 	h.memoryManager.ShopPauseManager.PauseShopUntilEndOfDay(
 		task.TenantID,
 		task.StoreID,
@@ -339,8 +329,6 @@ func (h *SavePublishResultHandler) pauseShopUntilEndOfDay(temuCtx *temucontext.T
 	)
 
 	h.logger.Infof("已暂停店铺 %d:%d 上架到当日结束，原因: %s", task.TenantID, task.StoreID, reason)
-
-	return nil
 }
 
 // logSubmitResponse 记录提交响应数据到日志

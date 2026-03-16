@@ -68,9 +68,7 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 	}
 
 	// 等待页面加载完成
-	if err := pe.waitForPageLoad(page); err != nil {
-		logrus.Warnf("等待页面加载失败: %v", err)
-	}
+	pe.waitForPageLoad(page)
 
 	// 1. 优先使用优化的提取器（基于结构化数据）
 	optimizedExtractors := []BaseExtractor{
@@ -122,7 +120,7 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 }
 
 // waitForPageLoad 等待页面加载完成
-func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) error {
+func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) {
 	// 等待关键元素加载
 	selectors := []string{
 		"h1, .title, .product-title",
@@ -194,6 +192,4 @@ func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) error {
 	if err == nil {
 		logrus.Debugf("页面包含商品信息: %v", hasProductInfo)
 	}
-
-	return nil
 }

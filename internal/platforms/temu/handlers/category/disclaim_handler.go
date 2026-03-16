@@ -1,4 +1,4 @@
-﻿package category
+package category
 
 import (
 	"fmt"
@@ -90,7 +90,7 @@ func (h *CategoryDisclaimHandler) getCategoryDisclaimer(temuCtx *temucontext.Tem
 	categoryAPI := api.NewCategoryAPI(temuCtx.APIClient, h.logger)
 
 	// 调用API获取分类免责声明
-	response, err := categoryAPI.GetDisclaimer(int(catID))
+	response, err := categoryAPI.GetDisclaimer(catID)
 	if err != nil {
 		h.logger.Warnf("API获取免责声明失败，使用默认免责声明: %v", err)
 		return err

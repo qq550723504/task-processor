@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
@@ -15,7 +15,7 @@ import (
 
 // delistProductViaSHEINAPI 通过SHEIN API下架产品
 func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
-	ctx context.Context,
+	_ context.Context,
 	prod *managementapi.ProductDataDTO,
 	storeID int64,
 ) error {
@@ -129,11 +129,11 @@ func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
 
 // updateProductStockViaSHEINAPI 通过SHEIN API更新产品库存
 func (s *inventorySyncServiceImpl) updateProductStockViaSHEINAPI(
-	ctx context.Context,
+	_ context.Context,
 	prod *managementapi.ProductDataDTO,
 	skuMapping *SKUMappingData,
 	targetStock int,
-	storeID int64,
+	_ int64,
 ) error {
 	spuName := prod.PlatformProductID
 	platformSKU := s.getStringValue(skuMapping.MappingInfo.Sku)

@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU平台调度器相关服务
+// Package syncsvc 提供TEMU平台调度器相关服务
 package syncsvc
 
 // getMinProfitRateThreshold 获取最低利润率阈值（优先从运营策略获取）

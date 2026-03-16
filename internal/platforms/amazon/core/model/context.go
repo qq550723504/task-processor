@@ -1,4 +1,4 @@
-﻿// Package model 提供Amazon平台内部数据模型
+// Package model 提供Amazon平台内部数据模型
 package model
 
 import (

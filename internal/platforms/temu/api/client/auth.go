@@ -1,4 +1,4 @@
-﻿// Package client 提供TEMU平台认证管理功能
+// Package client 提供TEMU平台认证管理功能
 package client
 
 import (

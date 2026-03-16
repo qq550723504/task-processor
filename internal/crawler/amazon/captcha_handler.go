@@ -25,30 +25,18 @@ func (ch *CaptchaHandler) TryBypassCaptcha(page playwright.Page) error {
 	logrus.Info("策略1: 等待验证码自动消失")
 	time.Sleep(5 * time.Second)
 
-	// 检查验证码是否还存在
-	captchaExists, err := ch.checkCaptchaExists(page)
-	if err != nil {
-		return err
-	}
-
-	if !captchaExists {
+	if !ch.checkCaptchaExists(page) {
 		logrus.Info("✅ 验证码已自动消失")
 		return nil
 	}
 
 	// 策略2: 尝试刷新页面
 	logrus.Info("策略2: 刷新页面尝试绕过验证码")
-	_, err = page.Reload()
-	if err != nil {
+	if _, err := page.Reload(); err != nil {
 		logrus.Warnf("页面刷新失败: %v", err)
 	} else {
 		time.Sleep(3 * time.Second)
-		captchaExists, err = ch.checkCaptchaExists(page)
-		if err != nil {
-			return err
-		}
-
-		if !captchaExists {
+		if !ch.checkCaptchaExists(page) {
 			logrus.Info("✅ 刷新页面后验证码消失")
 			return nil
 		}
@@ -56,15 +44,9 @@ func (ch *CaptchaHandler) TryBypassCaptcha(page playwright.Page) error {
 
 	// 策略3: 尝试点击页面其他区域
 	logrus.Info("策略3: 尝试点击页面其他区域")
-	err = page.Click("body")
-	if err == nil {
+	if err := page.Click("body"); err == nil {
 		time.Sleep(2 * time.Second)
-		captchaExists, err = ch.checkCaptchaExists(page)
-		if err != nil {
-			return err
-		}
-
-		if !captchaExists {
+		if !ch.checkCaptchaExists(page) {
 			logrus.Info("✅ 点击页面后验证码消失")
 			return nil
 		}
@@ -76,7 +58,7 @@ func (ch *CaptchaHandler) TryBypassCaptcha(page playwright.Page) error {
 }
 
 // checkCaptchaExists 检查验证码是否存在
-func (ch *CaptchaHandler) checkCaptchaExists(page playwright.Page) (bool, error) {
+func (ch *CaptchaHandler) checkCaptchaExists(page playwright.Page) bool {
 	captchaSelectors := []string{
 		"form[action*='validateCaptcha']",
 		"#captchacharacters",
@@ -92,13 +74,12 @@ func (ch *CaptchaHandler) checkCaptchaExists(page playwright.Page) (bool, error)
 		if err != nil {
 			continue
 		}
-
 		if count > 0 {
-			return true, nil
+			return true
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 // HandleCaptchaWithRetry 带重试的验证码处理

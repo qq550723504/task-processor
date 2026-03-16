@@ -1,11 +1,11 @@
-﻿// Package sale 提供SHEIN平台销售属性的智能筛选功能
+// Package sale 提供SHEIN平台销售属性的智能筛选功能
 package sale
 
 import (
 	"strings"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/platforms/shein/api/attribute"
 	shein "task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )
@@ -362,5 +362,3 @@ func (f *SaleAttributeSmartFilter) selectDefaultSaleAttribute(attributes []attri
 	logrus.Warn("❌ 未找到任何销售属性")
 	return nil
 }
-
-

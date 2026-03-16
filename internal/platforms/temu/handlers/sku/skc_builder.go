@@ -1,11 +1,11 @@
-﻿package sku
+package sku
 
 import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
 	models "task-processor/internal/platforms/temu/api/product"
-	temucontext "task-processor/internal/platforms/temu/context"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )

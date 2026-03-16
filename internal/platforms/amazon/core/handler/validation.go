@@ -1,4 +1,4 @@
-﻿// Package handler 提供验证处理器实现
+// Package handler 提供验证处理器实现
 package handler
 
 import (

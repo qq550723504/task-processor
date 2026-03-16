@@ -1,4 +1,4 @@
-﻿// Package distributed 提供分布式爬虫客户端
+// Package distributed 提供分布式爬虫客户端
 package distributed
 
 import (
@@ -128,7 +128,7 @@ func (c *DistributedCrawlerClient) ensureListenerStarted() error {
 }
 
 // buildMessageData 构建消息数据
-func (c *DistributedCrawlerClient) buildMessageData(taskMessage any, req *CrawlRequest) map[string]any {
+func (c *DistributedCrawlerClient) buildMessageData(_ any, req *CrawlRequest) map[string]any {
 	// 直接构建符合 model.Task 结构的消息数据
 	// 注意：字段名使用大写开头，与 model.Task 的 JSON 标签一致
 	messageData := map[string]any{

@@ -1,4 +1,4 @@
-﻿// Package property 提供属性最终化阶段，负责去重和最终保障
+// Package property 提供属性最终化阶段，负责去重和最终保障
 package property
 
 import (

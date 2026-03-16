@@ -1,4 +1,4 @@
-﻿// Package pricing 提供TEMU平台定价相关的API和数据结构
+// Package pricing 提供TEMU平台定价相关的API和数据结构
 package pricing
 
 import (
@@ -101,24 +101,24 @@ type SalesBoostGoodsBasicInfo struct {
 
 // SalesBoostSku 销量提升SKU信息
 type SalesBoostSku struct {
-	GoodsID               string                 `json:"goods_id"`
-	SkcID                 string                 `json:"skc_id"`
-	SkuID                 string                 `json:"sku_id"`
-	SpecNames             []SpecInfo             `json:"spec_names"`
-	SkuThumbURL           string                 `json:"sku_thumb_url"`
-	OutSkuSN              string                 `json:"out_sku_sn"`
-	CurrentSupplierPrice  PriceVO                `json:"current_supplier_price"`
-	TargetSupplierPrice   PriceVO                `json:"target_supplier_price"`
-	TargetRetailPrice     PriceVO                `json:"target_retail_price"`
-	CurrentRetailPrice    PriceVO                `json:"current_retail_price"`
+	GoodsID               string         `json:"goods_id"`
+	SkcID                 string         `json:"skc_id"`
+	SkuID                 string         `json:"sku_id"`
+	SpecNames             []SpecInfo     `json:"spec_names"`
+	SkuThumbURL           string         `json:"sku_thumb_url"`
+	OutSkuSN              string         `json:"out_sku_sn"`
+	CurrentSupplierPrice  PriceVO        `json:"current_supplier_price"`
+	TargetSupplierPrice   PriceVO        `json:"target_supplier_price"`
+	TargetRetailPrice     PriceVO        `json:"target_retail_price"`
+	CurrentRetailPrice    PriceVO        `json:"current_retail_price"`
 	RecRetailPriceTipInfo map[string]any `json:"rec_retail_price_tip_info"`
-	CreateTime            int64                  `json:"create_time"`
-	PriceSpreadRatio      string                 `json:"price_spread_ratio"`
-	EasyGainsTag          int                    `json:"easy_gains_tag"`
-	Active                int                    `json:"active"`
-	HighPriceSpreadRatio  bool                   `json:"high_price_spread_ratio"`
-	ProposalStatus        int                    `json:"proposal_status"`
-	ActionInfo            ActionInfo             `json:"action_info"`
+	CreateTime            int64          `json:"create_time"`
+	PriceSpreadRatio      string         `json:"price_spread_ratio"`
+	EasyGainsTag          int            `json:"easy_gains_tag"`
+	Active                int            `json:"active"`
+	HighPriceSpreadRatio  bool           `json:"high_price_spread_ratio"`
+	ProposalStatus        int            `json:"proposal_status"`
+	ActionInfo            ActionInfo     `json:"action_info"`
 }
 
 // ActionInfo 操作信息
@@ -146,50 +146,50 @@ type HoverSkuInfo struct {
 
 // Sku 待核价商品项
 type Sku struct {
-	GoodsName                   string                 `json:"goods_name"`
-	SpecName                    string                 `json:"spec_name"`
-	SpecList                    []SpecInfo             `json:"spec_list"`
-	ThumbURL                    string                 `json:"thumb_url"`
-	GoodsID                     string                 `json:"goods_id"`
-	GoodsCommitID               string                 `json:"goods_commit_id"`
-	ListingCommitID             string                 `json:"listing_commit_id"`
-	MallID                      string                 `json:"mall_id"`
-	SkuID                       string                 `json:"sku_id"`
-	SkuSN                       string                 `json:"sku_sn"`
-	Stock                       int                    `json:"stock"`
-	Price                       float64                `json:"price"`
-	PriceVO                     PriceVO                `json:"price_vo"`
-	CrtTime                     string                 `json:"crt_time"`
-	Status4VO                   int                    `json:"status4_vo"`
-	SubStatus4VO                int                    `json:"sub_status4_vo"`
-	ClosedTypeList              []any          `json:"closed_type_list"`
-	SupplierPrice               float64                `json:"supplier_price"`
-	GoodsIsOnsale               int                    `json:"goods_is_onsale"`
-	Currency                    string                 `json:"currency"`
-	ListPrice                   PriceVO                `json:"list_price"`
-	ListPriceVO                 PriceVO                `json:"list_price_vo"`
-	StatusUpdateTime            string                 `json:"status_update_time"`
-	CatType                     int                    `json:"cat_type"`
-	LockInfo                    LockInfo               `json:"lock_info"`
-	MultiSiteGoods              bool                   `json:"multi_site_goods"`
-	CheckPriceAuditInfo         map[string]any `json:"check_price_audit_info"`
-	AdjustPriceAuditInfo        AdjustPriceAuditInfo   `json:"adjust_price_audit_info"`
-	ShowSubStatus4VO            int                    `json:"show_sub_status4_vo"`
-	NewVersionApprovedLabelShow bool                   `json:"new_version_approved_label_show"`
-	CheckedTime                 int64                  `json:"checked_time"`
-	PersonalizationStatus       int                    `json:"personalization_status"`
-	PunishTags                  int                    `json:"punish_tags"`
-	CatNameList                 []string               `json:"cat_name_list"`
-	CatID                       int                    `json:"cat_id"`
-	StockDisplayTag             int                    `json:"stock_display_tag"`
-	LowTrafficTag               int                    `json:"low_traffic_tag"`
-	RestrictedTrafficTag        int                    `json:"restricted_traffic_tag"`
-	PreSaleStockInfo            PreSaleStockInfo       `json:"pre_sale_stock_info"`
-	OrdinaryStock               int                    `json:"ordinary_stock"`
-	ShippingMode                int                    `json:"shipping_mode"`
-	OutGoodsSN                  string                 `json:"out_goods_sn"`
-	EasyGainsTag                int                    `json:"easy_gains_tag"`
-	IsBooks                     bool                   `json:"is_books"`
+	GoodsName                   string               `json:"goods_name"`
+	SpecName                    string               `json:"spec_name"`
+	SpecList                    []SpecInfo           `json:"spec_list"`
+	ThumbURL                    string               `json:"thumb_url"`
+	GoodsID                     string               `json:"goods_id"`
+	GoodsCommitID               string               `json:"goods_commit_id"`
+	ListingCommitID             string               `json:"listing_commit_id"`
+	MallID                      string               `json:"mall_id"`
+	SkuID                       string               `json:"sku_id"`
+	SkuSN                       string               `json:"sku_sn"`
+	Stock                       int                  `json:"stock"`
+	Price                       float64              `json:"price"`
+	PriceVO                     PriceVO              `json:"price_vo"`
+	CrtTime                     string               `json:"crt_time"`
+	Status4VO                   int                  `json:"status4_vo"`
+	SubStatus4VO                int                  `json:"sub_status4_vo"`
+	ClosedTypeList              []any                `json:"closed_type_list"`
+	SupplierPrice               float64              `json:"supplier_price"`
+	GoodsIsOnsale               int                  `json:"goods_is_onsale"`
+	Currency                    string               `json:"currency"`
+	ListPrice                   PriceVO              `json:"list_price"`
+	ListPriceVO                 PriceVO              `json:"list_price_vo"`
+	StatusUpdateTime            string               `json:"status_update_time"`
+	CatType                     int                  `json:"cat_type"`
+	LockInfo                    LockInfo             `json:"lock_info"`
+	MultiSiteGoods              bool                 `json:"multi_site_goods"`
+	CheckPriceAuditInfo         map[string]any       `json:"check_price_audit_info"`
+	AdjustPriceAuditInfo        AdjustPriceAuditInfo `json:"adjust_price_audit_info"`
+	ShowSubStatus4VO            int                  `json:"show_sub_status4_vo"`
+	NewVersionApprovedLabelShow bool                 `json:"new_version_approved_label_show"`
+	CheckedTime                 int64                `json:"checked_time"`
+	PersonalizationStatus       int                  `json:"personalization_status"`
+	PunishTags                  int                  `json:"punish_tags"`
+	CatNameList                 []string             `json:"cat_name_list"`
+	CatID                       int                  `json:"cat_id"`
+	StockDisplayTag             int                  `json:"stock_display_tag"`
+	LowTrafficTag               int                  `json:"low_traffic_tag"`
+	RestrictedTrafficTag        int                  `json:"restricted_traffic_tag"`
+	PreSaleStockInfo            PreSaleStockInfo     `json:"pre_sale_stock_info"`
+	OrdinaryStock               int                  `json:"ordinary_stock"`
+	ShippingMode                int                  `json:"shipping_mode"`
+	OutGoodsSN                  string               `json:"out_goods_sn"`
+	EasyGainsTag                int                  `json:"easy_gains_tag"`
+	IsBooks                     bool                 `json:"is_books"`
 }
 
 // RejectRequest 拒绝平台报价请求

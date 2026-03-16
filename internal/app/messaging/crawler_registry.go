@@ -1,4 +1,4 @@
-﻿// Package messaging 提供爬虫处理器注册功能
+// Package messaging 提供爬虫处理器注册功能
 package messaging
 
 import (

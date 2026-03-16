@@ -105,7 +105,7 @@ func setPlatformDefaults(defaults *Config) {
 func setTemuDefaults(p *PlatformConfig) {
 
 	// 平台启用状态默认配置
-	viper.SetDefault("platforms.temu.enabled", p.Enabled)           // 默认启用处理器（上架任务）
+	viper.SetDefault("platforms.temu.enabled", p.Enabled)                   // 默认启用处理器（上架任务）
 	viper.SetDefault("platforms.temu.schedulerEnabled", p.SchedulerEnabled) // 默认禁用调度任务
 
 	// 自动核价默认配置
@@ -152,7 +152,7 @@ func setTemuDefaults(p *PlatformConfig) {
 // setSheinDefaults 设置SHEIN平台默认配置
 func setSheinDefaults(p *PlatformConfig) {
 	// 平台启用状态默认配置
-	viper.SetDefault("platforms.shein.enabled", p.Enabled)           // 默认启用处理器（上架任务）
+	viper.SetDefault("platforms.shein.enabled", p.Enabled)                   // 默认启用处理器（上架任务）
 	viper.SetDefault("platforms.shein.schedulerEnabled", p.SchedulerEnabled) // 默认禁用调度任务
 
 	// 自动核价默认配置

@@ -1,4 +1,4 @@
-﻿// Package handler 提供店铺信息处理器实现
+// Package handler 提供店铺信息处理器实现
 package handler
 
 import (

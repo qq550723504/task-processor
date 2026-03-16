@@ -1,4 +1,4 @@
-﻿// Package task 提供任务处理工具功能
+// Package task 提供任务处理工具功能
 package task
 
 import (

@@ -1,4 +1,4 @@
-﻿package image
+package image
 
 import (
 	"fmt"
@@ -70,5 +70,3 @@ func (h *ImageValidationHandler) Handle(ctx *shein.TaskContext) error {
 	logrus.Infof("=== 图片数量验证完成 ===")
 	return nil
 }
-
-

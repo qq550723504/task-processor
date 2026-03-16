@@ -1,4 +1,4 @@
-﻿// Package service 提供平台调度配置定义
+// Package service 提供平台调度配置定义
 package runner
 
 import (

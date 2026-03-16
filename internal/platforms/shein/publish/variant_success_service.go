@@ -1,4 +1,4 @@
-﻿// Package publish 提供SHEIN平台的各种处理模块，包括变体发布成功标记等功能
+// Package publish 提供SHEIN平台的各种处理模块，包括变体发布成功标记等功能
 package publish
 
 import (
@@ -7,8 +7,8 @@ import (
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	shein "task-processor/internal/platforms/shein"
-	"task-processor/internal/platforms/shein/productdata"
 	"task-processor/internal/platforms/shein/product"
+	"task-processor/internal/platforms/shein/productdata"
 	"task-processor/internal/platforms/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -109,9 +109,7 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error 
 	}
 
 	// 更新任务状态为已上架
-	if err := h.updateTaskStatusToPublished(ctx); err != nil {
-		logrus.Warnf("更新任务状态为已上架失败: %v", err)
-	}
+	h.updateTaskStatusToPublished(ctx)
 
 	return nil
 }
@@ -267,12 +265,11 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *shein.TaskCont
 }
 
 // updateTaskStatusToPublished 更新任务状态为已上架
-func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *shein.TaskContext) error {
-	// 获取导入任务客户端
+func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *shein.TaskContext) {
 	importTaskClient := ctx.ManagementClientMgr.GetImportTaskClient()
 	if importTaskClient == nil {
 		logrus.Warn("导入任务客户端未初始化，跳过状态更新")
-		return nil
+		return
 	}
 
 	// Task.ID已经是int64类型，直接使用
@@ -294,11 +291,4 @@ func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *shei
 			logrus.Infof("✅ 任务状态已更新为已上架 (TaskID: %d)", ctx.Task.ID)
 		}
 	}()
-
-	return nil
 }
-
-
-
-
-

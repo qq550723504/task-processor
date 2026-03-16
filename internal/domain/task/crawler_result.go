@@ -1,4 +1,4 @@
-﻿// Package task 提供任务结果领域模型
+// Package task 提供任务结果领域模型
 package task
 
 import (
@@ -17,13 +17,13 @@ const (
 
 // CrawlerResult 爬虫任务结果
 type CrawlerResult struct {
-	TaskID      string                 // 任务 ID
-	Status      TaskStatus             // 任务状态
+	TaskID      string         // 任务 ID
+	Status      TaskStatus     // 任务状态
 	ProductData map[string]any // 产品数据
-	Error       string                 // 错误信息
-	StartedAt   *time.Time             // 开始时间
-	CompletedAt *time.Time             // 完成时间
-	Duration    string                 // 执行时长
+	Error       string         // 错误信息
+	StartedAt   *time.Time     // 开始时间
+	CompletedAt *time.Time     // 完成时间
+	Duration    string         // 执行时长
 }
 
 // NewCrawlerResult 创建任务结果

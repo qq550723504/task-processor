@@ -1,4 +1,4 @@
-﻿// Package messaging 提供任务处理器，集成结果上报、去重和店铺亲和性功能
+// Package messaging 提供任务处理器，集成结果上报、去重和店铺亲和性功能
 package messaging
 
 import (
@@ -15,9 +15,9 @@ import (
 	"task-processor/internal/domain/message"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/task"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/strutil"
 
 	"github.com/sirupsen/logrus"
@@ -85,7 +85,8 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	}
 
 	// 4. 验证平台匹配
-	if err := eth.validatePlatform(task); err != nil {
+	err = eth.validatePlatform(task)
+	if err != nil {
 		return err
 	}
 

@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台SKU映射关系构建器
+// Package operation 提供SHEIN平台SKU映射关系构建器
 package operation
 
 import (
@@ -26,25 +26,25 @@ func NewMappingBuilder(mappingClient managementapi.ProductImportMappingAPI) *Map
 
 // MappingCreateOptions 映射关系创建选项
 type MappingCreateOptions struct {
-	TenantID                int64                  `json:"tenantId"`                          // 租户ID
-	StoreID                 int64                  `json:"storeId"`                           // 店铺ID
-	SkuCode                 string                 `json:"skuCode"`                           // SKU编码（平台SKU）
-	SupplierSku             string                 `json:"supplierSku,omitempty"`             // 供应商SKU
-	ProductID               string                 `json:"productId"`                         // 产品ID（ASIN）
-	ParentProductID         *string                `json:"parentProductId,omitempty"`         // 父产品ID（父ASIN）
-	PlatformParentProductID *string                `json:"platformParentProductId,omitempty"` // 平台父产品ID（SPU名称）
-	SpuCode                 string                 `json:"spuCode,omitempty"`                 // SPU编码
-	SpuName                 string                 `json:"spuName,omitempty"`                 // SPU名称
-	Region                  string                 `json:"region"`                            // 区域
-	Reason                  string                 `json:"reason"`                            // 创建原因
-	ImportTaskID            *int64                 `json:"importTaskId,omitempty"`            // 导入任务ID
-	CostPrice               *float64               `json:"costPrice,omitempty"`               // 成本价
-	Status                  *int16                 `json:"status,omitempty"`                  // 状态
-	ProfitRuleID            *int64                 `json:"profitRuleId,omitempty"`            // 利润规则ID
-	SalePriceMultiplier     *string                `json:"salePriceMultiplier,omitempty"`     // 售价倍数
-	DiscountPriceMultiplier *string                `json:"discountPriceMultiplier,omitempty"` // 折扣价倍数
-	FilterRuleID            *int64                 `json:"filterRuleId,omitempty"`            // 筛选规则ID
-	FilterRuleRange         *string                `json:"filterRuleRange,omitempty"`         // 筛选规则范围
+	TenantID                int64          `json:"tenantId"`                          // 租户ID
+	StoreID                 int64          `json:"storeId"`                           // 店铺ID
+	SkuCode                 string         `json:"skuCode"`                           // SKU编码（平台SKU）
+	SupplierSku             string         `json:"supplierSku,omitempty"`             // 供应商SKU
+	ProductID               string         `json:"productId"`                         // 产品ID（ASIN）
+	ParentProductID         *string        `json:"parentProductId,omitempty"`         // 父产品ID（父ASIN）
+	PlatformParentProductID *string        `json:"platformParentProductId,omitempty"` // 平台父产品ID（SPU名称）
+	SpuCode                 string         `json:"spuCode,omitempty"`                 // SPU编码
+	SpuName                 string         `json:"spuName,omitempty"`                 // SPU名称
+	Region                  string         `json:"region"`                            // 区域
+	Reason                  string         `json:"reason"`                            // 创建原因
+	ImportTaskID            *int64         `json:"importTaskId,omitempty"`            // 导入任务ID
+	CostPrice               *float64       `json:"costPrice,omitempty"`               // 成本价
+	Status                  *int16         `json:"status,omitempty"`                  // 状态
+	ProfitRuleID            *int64         `json:"profitRuleId,omitempty"`            // 利润规则ID
+	SalePriceMultiplier     *string        `json:"salePriceMultiplier,omitempty"`     // 售价倍数
+	DiscountPriceMultiplier *string        `json:"discountPriceMultiplier,omitempty"` // 折扣价倍数
+	FilterRuleID            *int64         `json:"filterRuleId,omitempty"`            // 筛选规则ID
+	FilterRuleRange         *string        `json:"filterRuleRange,omitempty"`         // 筛选规则范围
 	AdditionalData          map[string]any `json:"additionalData,omitempty"`          // 额外数据
 }
 
@@ -332,27 +332,15 @@ func (b *MappingBuilder) determineRegion(storeInfo *managementapi.StoreRespDTO) 
 }
 
 // enrichOptionsFromSkuInfo 从SKU信息中丰富选项
-func (b *MappingBuilder) enrichOptionsFromSkuInfo(options *MappingCreateOptions, skuInfo any) {
+func (b *MappingBuilder) enrichOptionsFromSkuInfo(options *MappingCreateOptions, _ any) {
 	// 这里可以根据SKU信息设置更多字段
 	// 例如：成本价、规则ID等
 	b.logger.WithField("sku_code", options.SkuCode).Debug("使用SKU详细信息丰富映射关系")
-
-	// TODO: 根据实际的SKU信息结构体来设置字段
-	// 例如：
-	// if skuInfo.CostPrice > 0 {
-	//     options.CostPrice = &skuInfo.CostPrice
-	// }
 }
 
 // enrichOptionsFromProductInfo 从产品信息中丰富选项
-func (b *MappingBuilder) enrichOptionsFromProductInfo(options *MappingCreateOptions, productInfo any) {
+func (b *MappingBuilder) enrichOptionsFromProductInfo(options *MappingCreateOptions, _ any) {
 	b.logger.WithField("sku_code", options.SkuCode).Debug("使用产品信息丰富映射关系")
-
-	// TODO: 根据实际的产品信息结构体来设置字段
-	// 例如：
-	// if productInfo.ASIN != "" {
-	//     options.ProductID = productInfo.ASIN
-	// }
 	// if productInfo.ParentASIN != "" {
 	//     options.ParentProductID = &productInfo.ParentASIN
 	// }

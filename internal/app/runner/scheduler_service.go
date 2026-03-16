@@ -1,4 +1,4 @@
-﻿// Package service 提供调度服务功能
+// Package service 提供调度服务功能
 package runner
 
 import (

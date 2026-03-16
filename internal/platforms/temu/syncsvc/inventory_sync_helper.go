@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU平台调度器相关服务
+// Package syncsvc 提供TEMU平台调度器相关服务
 package syncsvc
 
 import (
@@ -139,25 +139,8 @@ func (s *inventorySyncServiceImpl) checkHasAmazonMonitorData(attributesJSON stri
 }
 
 // getAmazonMonitorLastCheckTime 获取Amazon监控数据的最后检查时间
-func (s *inventorySyncServiceImpl) getAmazonMonitorLastCheckTime(attributesJSON string, platformSKU string) int64 {
-	if attributesJSON == "" {
-		return 0
-	}
-
-	var skuList []TemuSkuInfo
-	if err := jsonutil.UnmarshalString(attributesJSON, &skuList, "解析产品Attributes失败"); err != nil {
-		s.logger.WithError(err).Debug(err.Error())
-		return 0
-	}
-
-	// 查找对应的SKU
-	for _, sku := range skuList {
-		if s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
-			// TEMU结构中没有LastCheckTime字段，返回0表示需要检查
-			return 0
-		}
-	}
-
+// TEMU结构中没有LastCheckTime字段，始终返回0表示需要检查
+func (s *inventorySyncServiceImpl) getAmazonMonitorLastCheckTime(_ string, _ string) int64 {
 	return 0
 }
 

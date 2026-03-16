@@ -1,4 +1,4 @@
-﻿// Package property 提供属性选择约束验证功能
+// Package property 提供属性选择约束验证功能
 package property
 
 import (

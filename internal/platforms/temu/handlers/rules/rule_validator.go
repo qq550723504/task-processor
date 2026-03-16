@@ -1,4 +1,4 @@
-﻿// Package rules 提供TEMU平台的规则验证功能
+// Package rules 提供TEMU平台的规则验证功能
 package rules
 
 import (

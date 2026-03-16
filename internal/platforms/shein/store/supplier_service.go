@@ -1,4 +1,4 @@
-﻿package store
+package store
 
 import (
 	"fmt"
@@ -38,5 +38,3 @@ func (h *SupplierInfoHandler) Handle(ctx *shein.TaskContext) error {
 	ctx.SupplierInfo = &soi.Info
 	return nil
 }
-
-

@@ -1,4 +1,4 @@
-﻿package api
+package api
 
 import (
 	"bytes"
@@ -97,8 +97,8 @@ func (c *Client) doRequestInternal(ctx context.Context, method, path string, bod
 
 	// 如果有AWS签名器，进行签名
 	if c.awsSigner != nil {
-		if err := c.awsSigner.SignRequest(req, bodyBytes); err != nil {
-			return nil, fmt.Errorf("AWS签名失败: %w", err)
+		if signErr := c.awsSigner.SignRequest(req, bodyBytes); signErr != nil {
+			return nil, fmt.Errorf("AWS签名失败: %w", signErr)
 		}
 		c.logger.Debug("✅ AWS签名已应用")
 	}

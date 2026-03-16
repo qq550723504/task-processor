@@ -1,4 +1,4 @@
-﻿// Package property 提供TEMU平台的属性值修复功能
+// Package property 提供TEMU平台的属性值修复功能
 package property
 
 import (

@@ -1,13 +1,13 @@
-﻿// Package skc 提供SHEIN平台SKC变体处理功能
+// Package skc 提供SHEIN平台SKC变体处理功能
 package skc
 
 import (
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/platforms/shein"
 	api_attribute "task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/product/attribute"
 	"task-processor/internal/platforms/shein/product/image"
 	"task-processor/internal/platforms/shein/product/sku"
@@ -440,6 +440,3 @@ func (p *SKCVariantProcessor) autoFixMultiPieceSKUImages(skc *product.SKC, skcIm
 		logrus.Infof("✅ SKC自动修复完成: 修复了%d个多件商品SKU图片", fixedCount)
 	}
 }
-
-
-

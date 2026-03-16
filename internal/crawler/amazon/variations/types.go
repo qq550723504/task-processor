@@ -1,11 +1,11 @@
-﻿// Package variations 提供 Amazon 产品变体信息提取功能
+// Package variations 提供 Amazon 产品变体信息提取功能
 package variations
 
 // VariationsData 保存变体数据和ASIN映射信息
 type VariationsData struct {
 	VariationsValues map[string][]string          `json:"variations_values"`
 	ASINMapping      map[string]map[string]string `json:"asin_mapping"`
-	PriceMapping     map[string]any       `json:"price_mapping"`
+	PriceMapping     map[string]any               `json:"price_mapping"`
 }
 
 // VariationValue 变体值
@@ -19,7 +19,7 @@ type Variation struct {
 	Name string `json:"name"`
 	Asin string `json:"asin"`
 	//Price      float64                `json:"price"`
-	Currency   string                 `json:"currency"`
+	Currency   string         `json:"currency"`
 	Attributes map[string]any `json:"attributes"`
 }
 

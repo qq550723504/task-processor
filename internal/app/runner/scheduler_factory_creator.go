@@ -1,4 +1,4 @@
-﻿// Package service 提供调度任务工厂创建器
+// Package service 提供调度任务工厂创建器
 package runner
 
 import (

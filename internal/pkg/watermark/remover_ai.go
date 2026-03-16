@@ -1,4 +1,4 @@
-﻿package watermark
+package watermark
 
 import (
 	"bytes"
@@ -134,8 +134,8 @@ func (r *AIRemover) callLamaService(ctx context.Context, img, mask image.Image) 
 		Error string `json:"error,omitempty"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("响应解析失败: %w", err)
+	if decodeErr := json.NewDecoder(resp.Body).Decode(&response); decodeErr != nil {
+		return nil, fmt.Errorf("响应解析失败: %w", decodeErr)
 	}
 
 	if response.Error != "" {

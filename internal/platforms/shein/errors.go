@@ -1,7 +1,10 @@
-﻿// Package shein 提供SHEIN平台的错误定义
+// Package shein 提供SHEIN平台的错误定义
 package shein
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // CookieLoadError Cookie加载失败错误
 type CookieLoadError struct {
@@ -17,7 +20,8 @@ func (e *CookieLoadError) Error() string {
 
 // IsCookieLoadError 检查是否是Cookie加载错误
 func IsCookieLoadError(err error) (*CookieLoadError, bool) {
-	if cookieErr, ok := err.(*CookieLoadError); ok {
+	var cookieErr *CookieLoadError
+	if errors.As(err, &cookieErr) {
 		return cookieErr, true
 	}
 	return nil, false
@@ -31,4 +35,3 @@ func NewCookieLoadError(tenantID, storeID int64, reason string) *CookieLoadError
 		Reason:   reason,
 	}
 }
-

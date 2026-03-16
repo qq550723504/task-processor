@@ -1,4 +1,4 @@
-﻿// Package fetcher 提供产品获取器工厂
+// Package fetcher 提供产品获取器工厂
 package fetcher
 
 import (

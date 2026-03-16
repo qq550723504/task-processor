@@ -1,4 +1,4 @@
-﻿package bulkrelist
+package bulkrelist
 
 import (
 	"fmt"
@@ -146,7 +146,7 @@ func (pp *ProductProcessor) processConcurrent(
 	// 启动工作协程
 	for i := range maxConcurrency {
 		wg.Add(1)
-		go func(workerID int) {
+		go func(_ int) {
 			defer wg.Done()
 
 			for work := range workQueue {
@@ -280,4 +280,3 @@ func (pp *ProductProcessor) relistProduct(
 
 	return success, lastError
 }
-

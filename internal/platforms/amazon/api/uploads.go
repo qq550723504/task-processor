@@ -80,8 +80,8 @@ func (c *Client) CreateUploadDestination(ctx context.Context, resource, marketpl
 
 	// 如果有AWS签名器，进行签名
 	if c.awsSigner != nil {
-		if err := c.awsSigner.SignRequest(httpReq, reqBody); err != nil {
-			return nil, fmt.Errorf("AWS签名失败: %w", err)
+		if signErr := c.awsSigner.SignRequest(httpReq, reqBody); signErr != nil {
+			return nil, fmt.Errorf("AWS签名失败: %w", signErr)
 		}
 		c.logger.Debug("✅ AWS签名已应用")
 	}
@@ -128,12 +128,12 @@ func (c *Client) UploadImageToDestination(ctx context.Context, destination *Uplo
 		return fmt.Errorf("创建表单文件字段失败: %w", err)
 	}
 
-	if _, err := part.Write(imageData); err != nil {
-		return fmt.Errorf("写入文件数据失败: %w", err)
+	if _, writeErr := part.Write(imageData); writeErr != nil {
+		return fmt.Errorf("写入文件数据失败: %w", writeErr)
 	}
 
-	if err := writer.Close(); err != nil {
-		return fmt.Errorf("关闭multipart writer失败: %w", err)
+	if closeErr := writer.Close(); closeErr != nil {
+		return fmt.Errorf("关闭multipart writer失败: %w", closeErr)
 	}
 
 	// 创建上传请求
@@ -185,8 +185,8 @@ func (c *Client) UploadImage(ctx context.Context, imageData []byte, filename, ma
 	}
 
 	// 3. 上传图片
-	if err := c.UploadImageToDestination(ctx, destination, imageData, filename); err != nil {
-		return nil, fmt.Errorf("上传图片失败: %w", err)
+	if uploadErr := c.UploadImageToDestination(ctx, destination, imageData, filename); uploadErr != nil {
+		return nil, fmt.Errorf("上传图片失败: %w", uploadErr)
 	}
 
 	// 4. 返回结果

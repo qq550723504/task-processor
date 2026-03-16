@@ -1,4 +1,4 @@
-﻿// Package handlerbase 提供TEMU平台的配送方式检查功能
+// Package handlerbase 提供TEMU平台的配送方式检查功能
 package handlerbase
 
 import (

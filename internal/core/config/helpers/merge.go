@@ -1,4 +1,4 @@
-﻿// Package helpers 提供配置辅助工具
+// Package helpers 提供配置辅助工具
 package helpers
 
 import (
@@ -22,11 +22,11 @@ func MergeConfigs(base, override any) error {
 
 	// 合并JSON
 	var baseMap, overrideMap map[string]any
-	if err := json.Unmarshal(baseData, &baseMap); err != nil {
-		return fmt.Errorf("解析基础配置失败: %w", err)
+	if err2 := json.Unmarshal(baseData, &baseMap); err2 != nil {
+		return fmt.Errorf("解析基础配置失败: %w", err2)
 	}
-	if err := json.Unmarshal(overrideData, &overrideMap); err != nil {
-		return fmt.Errorf("解析覆盖配置失败: %w", err)
+	if err2 := json.Unmarshal(overrideData, &overrideMap); err2 != nil {
+		return fmt.Errorf("解析覆盖配置失败: %w", err2)
 	}
 
 	// 递归合并
@@ -38,8 +38,8 @@ func MergeConfigs(base, override any) error {
 		return fmt.Errorf("序列化合并配置失败: %w", err)
 	}
 
-	if err := json.Unmarshal(mergedData, base); err != nil {
-		return fmt.Errorf("反序列化合并配置失败: %w", err)
+	if err2 := json.Unmarshal(mergedData, base); err2 != nil {
+		return fmt.Errorf("反序列化合并配置失败: %w", err2)
 	}
 
 	return nil

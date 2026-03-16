@@ -1,4 +1,4 @@
-﻿package model
+package model
 
 import (
 	"encoding/json"
@@ -102,11 +102,11 @@ type Product struct {
 	InactiveBuyBox    *InactiveBuyBox `json:"inactive_buy_box,omitempty"`
 
 	// 额外内容
-	FromTheBrand           any   `json:"from_the_brand,omitempty"`
-	SustainabilityFeatures []any `json:"sustainability_features,omitempty"`
-	OtherSellersPrices     any   `json:"other_sellers_prices,omitempty"`
-	EditorialReviews       *string       `json:"editorial_reviews,omitempty"`
-	AboutTheAuthor         *string       `json:"about_the_author,omitempty"`
+	FromTheBrand           any     `json:"from_the_brand,omitempty"`
+	SustainabilityFeatures []any   `json:"sustainability_features,omitempty"`
+	OtherSellersPrices     any     `json:"other_sellers_prices,omitempty"`
+	EditorialReviews       *string `json:"editorial_reviews,omitempty"`
+	AboutTheAuthor         *string `json:"about_the_author,omitempty"`
 }
 
 // Description 产品描述信息
@@ -159,7 +159,7 @@ type Variation struct {
 	Asin string `json:"asin"`
 	//Price      float64                `json:"price"`
 	//Currency   string                 `json:"currency"`
-	Image      string                 `json:"image,omitempty"`
+	Image      string         `json:"image,omitempty"`
 	Attributes map[string]any `json:"attributes,omitempty"`
 }
 

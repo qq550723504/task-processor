@@ -1,4 +1,4 @@
-﻿package messaging
+package messaging
 
 import (
 	"context"
@@ -228,4 +228,3 @@ func (h *HTTPServerManager) handleStats(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, `{"timestamp":"%s","stats":%v}`,
 		time.Now().Format(time.RFC3339), stats)
 }
-

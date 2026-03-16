@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -124,7 +124,7 @@ func (h *OutGoodsSnCheckHandler) checkOutSkuSn(temuCtx *temucontext.TemuTaskCont
 }
 
 // handleCheckResult 处理检查结果
-func (h *OutGoodsSnCheckHandler) handleCheckResult(temuCtx *temucontext.TemuTaskContext, result *temuapi.OutGoodsSnCheckResult) error {
+func (h *OutGoodsSnCheckHandler) handleCheckResult(_ *temucontext.TemuTaskContext, result *temuapi.OutGoodsSnCheckResult) error {
 	// 将检查结果存储到强类型上下文中，供其他处理器使用
 	// 这里可以添加一个字段到TemuTaskContext来存储检查结果
 	// 暂时先不存储，直接处理

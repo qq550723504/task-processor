@@ -1,4 +1,4 @@
-﻿// Package pricing 提供通用的成本计算服务
+// Package pricing 提供通用的成本计算服务
 package pricing
 
 import (

@@ -1,4 +1,4 @@
-﻿package browser
+package browser
 
 import (
 	"archive/zip"
@@ -89,8 +89,8 @@ func (cd *ChromeDownloader) Download() (string, error) {
 
 	// 下载文件
 	downloadPath := filepath.Join(cd.downloadDir, filepath.Base(downloadURL))
-	if err := cd.downloadFile(downloadURL, downloadPath); err != nil {
-		return "", fmt.Errorf("下载失败: %w", err)
+	if downloadErr := cd.downloadFile(downloadURL, downloadPath); downloadErr != nil {
+		return "", fmt.Errorf("下载失败: %w", downloadErr)
 	}
 
 	logrus.Info("下载完成，开始解压...")

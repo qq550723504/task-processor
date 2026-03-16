@@ -1,4 +1,4 @@
-﻿// Package model 提供Amazon变体产品数据模型
+// Package model 提供Amazon变体产品数据模型
 package model
 
 import (
@@ -7,23 +7,23 @@ import (
 
 // VariantProduct 变体产品
 type VariantProduct struct {
-	ParentSKU      string                 `json:"parent_sku"`
-	VariationTheme string                 `json:"variation_theme"` // 如: "SizeColor", "Size", "Color"
+	ParentSKU      string         `json:"parent_sku"`
+	VariationTheme string         `json:"variation_theme"` // 如: "SizeColor", "Size", "Color"
 	ParentData     map[string]any `json:"parent_data"`     // 父产品数据
-	Children       []VariantChild         `json:"children"`        // 子变体列表
+	Children       []VariantChild `json:"children"`        // 子变体列表
 }
 
 // VariantChild 子变体
 type VariantChild struct {
-	SKU           string                 `json:"sku"`
-	ASIN          string                 `json:"asin,omitempty"`
-	Attributes    map[string]any `json:"attributes"`     // 变体属性
-	VariationData map[string]string      `json:"variation_data"` // 变体值（如：color=Red, size=M）
-	Price         float64                `json:"price"`
-	Quantity      int                    `json:"quantity"`
-	Images        []string               `json:"images"`
-	MainImageURL  string                 `json:"main_image_url"`
-	Status        string                 `json:"status"`
+	SKU           string            `json:"sku"`
+	ASIN          string            `json:"asin,omitempty"`
+	Attributes    map[string]any    `json:"attributes"`     // 变体属性
+	VariationData map[string]string `json:"variation_data"` // 变体值（如：color=Red, size=M）
+	Price         float64           `json:"price"`
+	Quantity      int               `json:"quantity"`
+	Images        []string          `json:"images"`
+	MainImageURL  string            `json:"main_image_url"`
+	Status        string            `json:"status"`
 }
 
 // VariationTheme 变体主题定义
@@ -62,20 +62,20 @@ const (
 
 // VariantCreateRequest 变体创建请求
 type VariantCreateRequest struct {
-	ParentSKU      string                 `json:"parent_sku"`
-	VariationTheme string                 `json:"variation_theme"`
-	ParentData     map[string]any `json:"parent_data"`
-	Children       []VariantChildRequest  `json:"children"`
+	ParentSKU      string                `json:"parent_sku"`
+	VariationTheme string                `json:"variation_theme"`
+	ParentData     map[string]any        `json:"parent_data"`
+	Children       []VariantChildRequest `json:"children"`
 }
 
 // VariantChildRequest 子变体创建请求
 type VariantChildRequest struct {
-	SKU           string                 `json:"sku"`
-	Attributes    map[string]any `json:"attributes"`
-	VariationData map[string]string      `json:"variation_data"`
-	Price         float64                `json:"price"`
-	Quantity      int                    `json:"quantity"`
-	Images        []string               `json:"images"`
+	SKU           string            `json:"sku"`
+	Attributes    map[string]any    `json:"attributes"`
+	VariationData map[string]string `json:"variation_data"`
+	Price         float64           `json:"price"`
+	Quantity      int               `json:"quantity"`
+	Images        []string          `json:"images"`
 }
 
 // VariantUpdateRequest 变体更新请求

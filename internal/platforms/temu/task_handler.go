@@ -1,4 +1,4 @@
-﻿package temu
+package temu
 
 import (
 	"context"

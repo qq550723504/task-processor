@@ -1,4 +1,4 @@
-﻿// Package marketing 提供SHEIN营销活动相关API接口定义
+// Package marketing 提供SHEIN营销活动相关API接口定义
 package marketing
 
 // MarketingAPI 营销活动相关API接口
@@ -28,7 +28,7 @@ type GetAvailableSkcListResponse struct {
 	Code string                `json:"code"` // 响应码
 	Msg  string                `json:"msg"`  // 响应消息
 	Info *AvailableSkcListInfo `json:"info"` // 响应数据
-	BBL  any           `json:"bbl"`  // BBL字段
+	BBL  any                   `json:"bbl"`  // BBL字段
 }
 
 // AvailableSkcListInfo 可报名活动产品列表信息
@@ -82,10 +82,10 @@ type ActivitySitePriceInfo struct {
 
 // SaveConfigResponse 保存活动配置响应
 type SaveConfigResponse struct {
-	Code string      `json:"code"` // 响应码
-	Msg  string      `json:"msg"`  // 响应消息
-	Info any `json:"info"` // 响应数据（通常为null）
-	BBL  any `json:"bbl"`  // BBL字段（通常为null）
+	Code string `json:"code"` // 响应码
+	Msg  string `json:"msg"`  // 响应消息
+	Info any    `json:"info"` // 响应数据（通常为null）
+	BBL  any    `json:"bbl"`  // BBL字段（通常为null）
 }
 
 // GetConfigListRequest 获取已报名活动产品列表请求参数
@@ -99,7 +99,7 @@ type GetConfigListResponse struct {
 	Code string          `json:"code"` // 响应码
 	Msg  string          `json:"msg"`  // 响应消息
 	Info *ConfigListInfo `json:"info"` // 响应数据
-	BBL  any     `json:"bbl"`  // BBL字段
+	BBL  any             `json:"bbl"`  // BBL字段
 }
 
 // ConfigListInfo 已报名活动产品列表信息

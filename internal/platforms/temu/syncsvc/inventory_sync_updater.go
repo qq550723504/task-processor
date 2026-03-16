@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU平台库存更新相关服务
+// Package syncsvc 提供TEMU平台库存更新相关服务
 package syncsvc
 
 import (
@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
-	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/recovery"
 	"time"
 
@@ -17,7 +17,7 @@ import (
 
 // batchUpdateTemuInventoryInAttributes 批量更新TEMU平台attributes中的库存和Amazon监控数据
 func (s *inventorySyncServiceImpl) batchUpdateTemuInventoryInAttributes(
-	ctx context.Context,
+	_ context.Context,
 	batch *InventoryUpdateBatch,
 ) error {
 	defer recovery.Recover("批量更新TEMU库存", s.logger)
@@ -144,7 +144,7 @@ func (s *inventorySyncServiceImpl) batchUpdateTemuInventoryInAttributes(
 
 // updateTemuInventoryInAttributes 更新TEMU平台attributes中的usable_inventory字段（保留原方法用于兼容）
 func (s *inventorySyncServiceImpl) updateTemuInventoryInAttributes(
-	ctx context.Context,
+	_ context.Context,
 	prod *managementapi.ProductDataDTO,
 	amazonProduct *model.Product,
 	skuInfo *TemuSkuInfo,

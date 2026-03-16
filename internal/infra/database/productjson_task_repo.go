@@ -1,8 +1,9 @@
-﻿// Package database 提供数据访问层实现
+// Package database 提供数据访问层实现
 package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"task-processor/internal/domain/productjson"
@@ -61,7 +62,7 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*productjs
 	var task productjson.Task
 	result := r.db.WithContext(ctx).Where("id = ?", taskID).First(&task)
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("task not found: %s", taskID)
 		}
 		return nil, fmt.Errorf("failed to get task: %w", result.Error)

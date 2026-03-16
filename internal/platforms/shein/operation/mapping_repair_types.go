@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台SKU映射关系修复相关类型定义
+// Package operation 提供SHEIN平台SKU映射关系修复相关类型定义
 package operation
 
 import (

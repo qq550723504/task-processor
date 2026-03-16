@@ -1,4 +1,4 @@
-﻿// Package product SKC和SKU数据结构
+// Package product SKC和SKU数据结构
 package product
 
 // SKC 库存单位
@@ -15,17 +15,17 @@ type SKC struct {
 	HopeOnSaleDate          string                `json:"hope_on_sale_date"`
 	ShelfWay                int                   `json:"shelf_way"`
 	ShelfRequire            int                   `json:"shelf_require"`
-	ProofOfStockList        []any         `json:"proof_of_stock_list"`
+	ProofOfStockList        []any                 `json:"proof_of_stock_list"`
 	Sort                    int                   `json:"sort"`
-	PartCodeRelList         *any          `json:"part_code_rel_list"`
+	PartCodeRelList         *any                  `json:"part_code_rel_list"`
 	PriceFillingTips        *string               `json:"price_filling_tips"`
-	SKCMaterial             *any          `json:"skc_material"`
-	SiteSpecImageInfoList   []any         `json:"site_spec_image_info_list"`
-	SKCScopeAttributeList   []any         `json:"skc_scope_attribute_list"`
-	SampleInfo              *any          `json:"sample_info"`
+	SKCMaterial             *any                  `json:"skc_material"`
+	SiteSpecImageInfoList   []any                 `json:"site_spec_image_info_list"`
+	SKCScopeAttributeList   []any                 `json:"skc_scope_attribute_list"`
+	SampleInfo              *any                  `json:"sample_info"`
 	IsFirstPublish          bool                  `json:"is_first_publish"`
 	QualitySN               *string               `json:"quality_sn"`
-	ReQuoteFileList         *[]any        `json:"re_quote_file_list"`
+	ReQuoteFileList         *[]any                `json:"re_quote_file_list"`
 	ReQuoteReason           *string               `json:"re_quote_reason"`
 	SupplierCode            *string               `json:"supplier_code"`
 	Extra                   SkcExtra              `json:"extra"`
@@ -112,9 +112,9 @@ type StockInfo struct {
 
 // ImageInfo 图片信息
 type ImageInfo struct {
-	ImageGroupCode        *string        `json:"image_group_code"`
-	ImageInfoList         []ImageDetail  `json:"image_info_list,omitempty"`
-	OriginalImageInfoList *[]any `json:"original_image_info_list,omitempty"`
+	ImageGroupCode        *string       `json:"image_group_code"`
+	ImageInfoList         []ImageDetail `json:"image_info_list,omitempty"`
+	OriginalImageInfoList *[]any        `json:"original_image_info_list,omitempty"`
 }
 
 // ImageDetail 图片详情

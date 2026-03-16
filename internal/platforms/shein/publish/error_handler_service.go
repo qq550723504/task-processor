@@ -1,4 +1,4 @@
-﻿// Package publish 提供SHEIN平台产品发布错误处理功能
+// Package publish 提供SHEIN平台产品发布错误处理功能
 package publish
 
 import (
@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"task-processor/internal/pkg/jsonutil"
-	product "task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein"
+	product "task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/content"
 	skuutils "task-processor/internal/platforms/shein/product/sku"
 
@@ -399,7 +399,7 @@ func (h *PublishProductErrorHandler) isQuantityTypeError(results []shein.PreVali
 }
 
 // autoFixQuantityTypeAndResubmit 自动修复数量类型错误并重新提交
-func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.TaskContext, results []shein.PreValidResult) bool {
+func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.TaskContext, _ []shein.PreValidResult) bool {
 	logrus.Info("开始自动修复数量类型错误...")
 
 	if ctx.ProductData == nil || len(ctx.ProductData.SKCList) == 0 {
@@ -488,6 +488,3 @@ func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.T
 	logrus.Info("数量类型修复重试成功 - 产品发布成功")
 	return true
 }
-
-
-

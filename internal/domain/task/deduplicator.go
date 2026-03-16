@@ -1,4 +1,4 @@
-﻿// Package task 提供任务领域相关的业务规则
+// Package task 提供任务领域相关的业务规则
 package task
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package property 提供必填属性保障机制
+// Package property 提供必填属性保障机制
 package property
 
 import (

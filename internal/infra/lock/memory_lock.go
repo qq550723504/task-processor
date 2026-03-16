@@ -1,4 +1,4 @@
-﻿// Package lock 提供分布式锁功能
+// Package lock 提供分布式锁功能
 package lock
 
 import (

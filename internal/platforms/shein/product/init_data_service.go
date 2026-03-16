@@ -1,8 +1,8 @@
-﻿package product
+package product
 
 import (
-	product "task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein"
+	product "task-processor/internal/platforms/shein/api/product"
 )
 
 // InitProductDataHandler 初始化产品数据处理器
@@ -27,5 +27,3 @@ func (h *InitProductDataHandler) Handle(ctx *shein.TaskContext) error {
 
 	return nil
 }
-
-

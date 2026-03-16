@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 // StockQueryRequest 库存查询请求
 type StockQueryRequest struct {
@@ -24,7 +24,7 @@ type StockQueryResponse struct {
 	Info struct {
 		Data []StockData `json:"data"`
 		Meta struct {
-			Count     int         `json:"count"`
+			Count     int `json:"count"`
 			CustomObj any `json:"customObj"`
 		} `json:"meta"`
 	} `json:"info"`

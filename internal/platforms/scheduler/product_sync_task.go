@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供平台通用的产品同步任务基础实现
+// Package scheduler 提供平台通用的产品同步任务基础实现
 package scheduler
 
 import (

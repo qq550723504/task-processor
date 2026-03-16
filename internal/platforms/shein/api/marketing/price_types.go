@@ -1,4 +1,4 @@
-﻿// Package marketing 提供SHEIN价格计算相关数据类型定义
+// Package marketing 提供SHEIN价格计算相关数据类型定义
 package marketing
 
 // CalculateSupplyPriceRequest 计算供货价格请求参数
@@ -30,7 +30,7 @@ type CalculateSupplyPriceResponse struct {
 	Code string                 `json:"code"` // 响应码
 	Msg  string                 `json:"msg"`  // 响应消息
 	Info []SkcCalculationResult `json:"info"` // 计算结果列表
-	BBL  any            `json:"bbl"`  // BBL字段
+	BBL  any                    `json:"bbl"`  // BBL字段
 }
 
 // SkcCalculationResult SKC计算结果

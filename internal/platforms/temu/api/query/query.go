@@ -1,4 +1,4 @@
-﻿// Package query 提供TEMU平台查询相关的API
+// Package query 提供TEMU平台查询相关的API
 package query
 
 import (

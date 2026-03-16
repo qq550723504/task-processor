@@ -1,4 +1,4 @@
-﻿// Package handlerbase 提供TEMU平台处理器的共享接口
+// Package handlerbase 提供TEMU平台处理器的共享接口
 package handlerbase
 
 import (

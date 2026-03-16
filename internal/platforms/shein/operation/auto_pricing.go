@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -244,5 +244,3 @@ func (s *autoPricingServiceImpl) fallbackToLegacyAPI(decision *PricingDecision) 
 
 	return nil
 }
-
-

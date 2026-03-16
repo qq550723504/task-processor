@@ -1,4 +1,4 @@
-﻿// Package service 提供处理器服务层功能
+// Package service 提供处理器服务层功能
 package runner
 
 import (

@@ -1,10 +1,10 @@
-﻿// Package spec 提供规格维度统一服务
+// Package spec 提供规格维度统一服务
 package spec
 
 import (
 	"fmt"
-	"task-processor/internal/platforms/temu/handlers/property"
 	temucontext "task-processor/internal/platforms/temu/context"
+	"task-processor/internal/platforms/temu/handlers/property"
 
 	"github.com/sirupsen/logrus"
 )

@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU平台Amazon数据获取逻辑
+// Package syncsvc 提供TEMU平台Amazon数据获取逻辑
 package syncsvc
 
 import (

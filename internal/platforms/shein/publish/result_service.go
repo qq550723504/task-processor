@@ -1,4 +1,4 @@
-﻿// Package publish 提供SHEIN平台的各种处理模块，包括发布结果保存等功能
+// Package publish 提供SHEIN平台的各种处理模块，包括发布结果保存等功能
 package publish
 
 import (
@@ -57,15 +57,10 @@ func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 	}
 
 	// 记录每日上架成功数量并检查限额
-	if err := h.recordDailyListingCount(ctx); err != nil {
-		// 记录计数失败可能是网络或系统问题，可重试
-		logrus.Warnf("记录每日上架计数失败%v", err)
-	}
+	h.recordDailyListingCount(ctx)
 
 	// 更新任务状态为已上架
-	if err := h.updateTaskStatusToPublished(ctx); err != nil {
-		logrus.Warnf("更新任务状态为已上架失败: %v", err)
-	}
+	h.updateTaskStatusToPublished(ctx)
 
 	logrus.Println("发品成功后返回信息保存完成")
 
@@ -204,8 +199,9 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 						existingMapping.ID, sku.SupplierSKU)
 
 					createReq.ID = &existingMapping.ID
-					if err := mappingClient.UpdateProductImportMapping(createReq); err != nil {
-						logrus.Errorf("更新产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, err)
+					updateErr := mappingClient.UpdateProductImportMapping(createReq)
+					if updateErr != nil {
+						logrus.Errorf("更新产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, updateErr)
 						continue
 					}
 					id = existingMapping.ID
@@ -232,27 +228,27 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 }
 
 // recordDailyListingCount 记录每日上架成功数量并检查限额
-func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContext) error {
+func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContext) {
 	// 检查必要的上下文信息
 	if ctx.MemoryManager == nil {
 		logrus.Warn("内存管理器未初始化，跳过每日上架计数")
-		return nil
+		return
 	}
 
 	if ctx.Task == nil {
 		logrus.Warn("任务信息未初始化，跳过每日上架计数")
-		return nil
+		return
 	}
 
 	if ctx.StoreInfo == nil {
 		logrus.Warn("店铺信息未初始化，跳过每日上架计数")
-		return nil
+		return
 	}
 
 	// 检查店铺是否有每日上架限额
 	if ctx.StoreInfo.DailyLimit == nil || *ctx.StoreInfo.DailyLimit <= 0 {
 		logrus.Debugf("店铺 %d 没有设置每日上架限额，跳过限额检查", ctx.StoreInfo.ID)
-		return nil
+		return
 	}
 
 	dailyLimit := *ctx.StoreInfo.DailyLimit
@@ -265,7 +261,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 	increment := h.calculateIncrement(ctx)
 	if increment <= 0 {
 		logrus.Warnf("计算增量失败，跳过计数更新")
-		return nil
+		return
 	}
 
 	// 增加每日上架计数
@@ -284,14 +280,11 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 		logrus.Warnf("店铺 %d 在 %s 的上架数量(%d)已超过限额(%d)，将暂停上架", ctx.StoreInfo.ID, currentDate, count, dailyLimit)
 
 		// 暂停店铺上架并清理相关缓存
-		if err := h.pauseShopWithCacheCleanup(
+		h.pauseShopWithCacheCleanup(
 			ctx,
 			"超过每日上架限额",
-			24*time.Hour, // 暂停24小时
-		); err != nil {
-			logrus.Errorf("暂停店铺上架并清理缓存失败: %v", err)
-			// 暂停上架失败可能是网络或系统问题，可重试
-		}
+			24*time.Hour,
+		)
 
 		// 记录日志
 		logrus.Infof("已暂停店铺 %d 上架24小时并清理缓存，因为已超过每日限额 %d", ctx.StoreInfo.ID, dailyLimit)
@@ -299,8 +292,6 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 	} else {
 		logrus.Infof("店铺 %d 在 %s 的上架数量(%d)未超过限额(%d)", ctx.StoreInfo.ID, currentDate, count, dailyLimit)
 	}
-
-	return nil
 }
 
 // calculateIncrement 根据店铺配置的限制类型计算增量
@@ -336,42 +327,35 @@ func (h *SavePublishResultHandler) calculateIncrement(ctx *shein.TaskContext) in
 }
 
 // pauseShopWithCacheCleanup 暂停店铺并清理相关缓存
-func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *shein.TaskContext, reason string, duration time.Duration) error {
-	// 1. 清理客户端缓存（通过内存管理器）
+func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *shein.TaskContext, reason string, duration time.Duration) {
 	if ctx.MemoryManager != nil {
-		// 通过内存管理器清理相关缓存
 		logrus.Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
 	}
 
-	// 2. 设置暂停键，暂停该店铺
 	ctx.MemoryManager.ShopPauseManager.PauseShop(
 		ctx.Task.TenantID,
 		ctx.Task.StoreID,
 		reason,
 		duration,
 	)
-
-	return nil
 }
 
 // updateTaskStatusToPublished 更新任务状态为已上架
-func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein.TaskContext) error {
-	// 检查必要的上下文信息
+func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein.TaskContext) {
 	if ctx.ManagementClientMgr == nil {
 		logrus.Warn("管理客户端管理器未初始化，跳过状态更新")
-		return nil
+		return
 	}
 
 	if ctx.Task == nil {
 		logrus.Warn("任务信息未初始化，跳过状态更新")
-		return nil
+		return
 	}
 
-	// 获取导入任务客户端
 	importTaskClient := ctx.ManagementClientMgr.GetImportTaskClient()
 	if importTaskClient == nil {
 		logrus.Warn("导入任务客户端未初始化，跳过状态更新")
-		return nil
+		return
 	}
 
 	// Task.ID已经是int64类型，直接使用
@@ -393,11 +377,4 @@ func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein.TaskCo
 			logrus.Infof("✅ 任务状态已更新为已上架 (TaskID: %d)", ctx.Task.ID)
 		}
 	}()
-
-	return nil
 }
-
-
-
-
-

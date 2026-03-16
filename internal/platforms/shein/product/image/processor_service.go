@@ -1,4 +1,4 @@
-﻿// Package image 提供SHEIN平台的各种处理模块，包括图片处理、上传等功能
+// Package image 提供SHEIN平台的各种处理模块，包括图片处理、上传等功能
 package image
 
 import (
@@ -11,8 +11,8 @@ import (
 	"sync"
 	"task-processor/internal/pkg/imageutil"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -402,5 +402,3 @@ func (p *ImageProcessor) extractDominantColor(img image.Image) color.Color {
 	b := uint8(dominantColorKey & 0xFF)
 	return color.RGBA{r, g, b, 255}
 }
-
-

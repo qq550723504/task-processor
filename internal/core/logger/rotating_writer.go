@@ -61,8 +61,8 @@ func (w *rotatingFileWriter) Write(p []byte) (n int, err error) {
 	// 检查是否需要轮转
 	writeLen := int64(len(p))
 	if w.size+writeLen > w.maxSizeBytes() {
-		if err := w.rotate(); err != nil {
-			return 0, fmt.Errorf("日志轮转失败: %w", err)
+		if rotateErr := w.rotate(); rotateErr != nil {
+			return 0, fmt.Errorf("日志轮转失败: %w", rotateErr)
 		}
 	}
 

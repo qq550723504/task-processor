@@ -1,12 +1,12 @@
-﻿// Package syncsvc 提供TEMU平台库存和价格记录逻辑
+// Package syncsvc 提供TEMU平台库存和价格记录逻辑
 package syncsvc
 
 import (
 	"encoding/json"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
-	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timeutil"
 	"time"

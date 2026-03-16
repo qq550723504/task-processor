@@ -1,4 +1,4 @@
-﻿// Package pricing 提供SHEIN平台的自动核价计算功能
+// Package pricing 提供SHEIN平台的自动核价计算功能
 package pricing
 
 import (

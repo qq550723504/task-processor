@@ -1,4 +1,4 @@
-﻿// Package alibaba1688 提供1688爬虫处理器
+// Package alibaba1688 提供1688爬虫处理器
 package alibaba1688
 
 import (
@@ -48,7 +48,7 @@ func (p *Crawler1688Processor) Close(ctx context.Context) {
 }
 
 // product1688ToMap 将 1688 Product 转换为 map
-func product1688ToMap(product any, logger any) map[string]any {
+func product1688ToMap(product any, _ any) map[string]any {
 	if product == nil {
 		return nil
 	}

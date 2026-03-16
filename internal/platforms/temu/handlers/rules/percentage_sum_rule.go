@@ -1,4 +1,4 @@
-﻿// Package rules 提供百分比总和验证规则
+// Package rules 提供百分比总和验证规则
 package rules
 
 import (
@@ -6,8 +6,8 @@ import (
 	"strconv"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 
 	"github.com/sirupsen/logrus"
 )

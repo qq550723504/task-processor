@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU库存同步任务的适配器
+// Package scheduler 提供TEMU库存同步任务的适配器
 package scheduler
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package product 提供TEMU平台的原始JSON数据处理功能
+// Package product 提供TEMU平台的原始JSON数据处理功能
 package product
 
 import (

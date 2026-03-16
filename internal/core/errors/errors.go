@@ -1,7 +1,8 @@
-﻿// Package errors 提供统一的错误处理机制
+// Package errors 提供统一的错误处理机制
 package errors
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"time"
@@ -68,12 +69,12 @@ func (e *AppError) Is(target error) bool {
 
 // New 创建新的应用错误
 func New(code ErrorCode, message string) *AppError {
-	return newAppError(code, message, nil, "")
+	return newAppError(code, message, nil)
 }
 
 // Newf 创建格式化的应用错误
 func Newf(code ErrorCode, format string, args ...any) *AppError {
-	return newAppError(code, fmt.Sprintf(format, args...), nil, "")
+	return newAppError(code, fmt.Sprintf(format, args...), nil)
 }
 
 // Wrap 包装现有错误
@@ -81,7 +82,7 @@ func Wrap(err error, code ErrorCode, message string) *AppError {
 	if err == nil {
 		return nil
 	}
-	return newAppError(code, message, err, "")
+	return newAppError(code, message, err)
 }
 
 // Wrapf 包装现有错误并格式化消息
@@ -89,7 +90,7 @@ func Wrapf(err error, code ErrorCode, format string, args ...any) *AppError {
 	if err == nil {
 		return nil
 	}
-	return newAppError(code, fmt.Sprintf(format, args...), err, "")
+	return newAppError(code, fmt.Sprintf(format, args...), err)
 }
 
 // WithDetails 添加详细信息
@@ -105,7 +106,7 @@ func (e *AppError) WithStack() *AppError {
 }
 
 // newAppError 创建应用错误的内部方法
-func newAppError(code ErrorCode, message string, cause error, details string) *AppError {
+func newAppError(code ErrorCode, message string, cause error) *AppError {
 	// 获取调用者信息
 	_, file, line, ok := runtime.Caller(2)
 	if !ok {
@@ -116,7 +117,6 @@ func newAppError(code ErrorCode, message string, cause error, details string) *A
 	return &AppError{
 		Code:      code,
 		Message:   message,
-		Details:   details,
 		Cause:     cause,
 		Timestamp: time.Now(),
 		File:      file,
@@ -138,7 +138,8 @@ func getStack() string {
 
 // IsCode 检查错误是否为指定错误码
 func IsCode(err error, code ErrorCode) bool {
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
 		return appErr.Code == code
 	}
 	return false
@@ -146,7 +147,8 @@ func IsCode(err error, code ErrorCode) bool {
 
 // GetCode 获取错误码
 func GetCode(err error) ErrorCode {
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
 		return appErr.Code
 	}
 	return ErrCodeSystem
@@ -154,7 +156,8 @@ func GetCode(err error) ErrorCode {
 
 // IsRetryable 判断错误是否可重试
 func IsRetryable(err error) bool {
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
 		switch appErr.Code {
 		case ErrCodeNetwork, ErrCodeTimeout, ErrCodeExternalAPI:
 			return true
@@ -169,7 +172,8 @@ func IsRetryable(err error) bool {
 
 // IsCritical 判断错误是否为关键错误
 func IsCritical(err error) bool {
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
 		switch appErr.Code {
 		case ErrCodeSystem, ErrCodeConfig, ErrCodeAuth:
 			return true
@@ -216,7 +220,8 @@ func (h *DefaultErrorHandler) Handle(err error) error {
 	}
 
 	// 记录错误日志
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
 		if IsCritical(err) {
 			h.logger.Errorf("[CRITICAL] %s", appErr.Error())
 		} else if IsRetryable(err) {

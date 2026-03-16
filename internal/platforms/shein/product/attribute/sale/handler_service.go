@@ -1,10 +1,10 @@
-﻿package sale
+package sale
 
 import (
 	"fmt"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )
@@ -199,5 +199,3 @@ func (h *SaleAttributeHandler) filterVariantsByRules(ctx *shein.TaskContext) {
 func (h *SaleAttributeHandler) buildUserPrompt(ctx *shein.TaskContext, request *shein.GenerationRequest) string {
 	return h.preparationHandler.buildUserPrompt(ctx, request)
 }
-
-

@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供SHEIN平台的处理器适配器
+// Package pipeline 提供SHEIN平台的处理器适配器
 package pipeline
 
 import (
@@ -35,5 +35,3 @@ func (a *SheinHandlerAdapter) Handle(ctx pipeline.TaskContext) error {
 	// 如果类型转换失败，返回错误
 	return fmt.Errorf("无法将TaskContext转换为SHEIN TaskContext，实际类型: %T", ctx)
 }
-
-

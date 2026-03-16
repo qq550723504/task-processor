@@ -1,4 +1,4 @@
-﻿// Package processor 提供基础处理器实现
+// Package processor 提供基础处理器实现
 package processor
 
 import (
@@ -6,8 +6,8 @@ import (
 	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )

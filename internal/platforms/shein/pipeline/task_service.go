@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供SHEIN平台的任务处理器
+// Package pipeline 提供SHEIN平台的任务处理器
 package pipeline
 
 import (
@@ -211,13 +211,6 @@ func (h *TaskHandler) handleError(task model.Task, err error) {
 
 // handleSuccess 处理成功
 func (h *TaskHandler) handleSuccess(task model.Task) {
-	// 记录处理时间
-	if task.CreateTime > 0 {
-		// processTime := time.Since(time.Unix(task.CreateTime/1000, 0))
-		// utils.GetGlobalMetrics().RecordProcessTime(processTime)
-	}
-
-	// 更新任务状态
 	statusUpdater := NewTaskStatusUpdater(h.processor)
 	statusUpdater.UpdateTaskStatusAsync(fmt.Sprintf("%d", task.ID), model.TaskStatusPublished, "")
 	metrics.GlobalTaskMetrics().IncrementCompleted()

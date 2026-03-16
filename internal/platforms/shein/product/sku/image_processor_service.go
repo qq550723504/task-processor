@@ -1,11 +1,11 @@
-﻿// Package sku 提供SHEIN平台SKU图片处理相关功能
+// Package sku 提供SHEIN平台SKU图片处理相关功能
 package sku
 
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -247,5 +247,3 @@ func (b *SKUBuilder) fixSKUImageSorting(imageInfo *product.ImageInfo) {
 
 	logrus.Infof("🎉 SKU图片排序修复完成")
 }
-
-

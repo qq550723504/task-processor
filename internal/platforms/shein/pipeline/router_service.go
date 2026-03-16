@@ -1,4 +1,4 @@
-﻿package pipeline
+package pipeline
 
 import (
 	"fmt"
@@ -55,5 +55,3 @@ func (h *PlatformRouterHandler) Handle(ctx *shein.TaskContext) error {
 		return fmt.Errorf("不支持的平台: %s", platform)
 	}
 }
-
-

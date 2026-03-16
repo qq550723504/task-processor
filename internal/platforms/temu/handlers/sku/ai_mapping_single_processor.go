@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的AI SKU映射单批次处理功能
+// Package sku 提供TEMU平台的AI SKU映射单批次处理功能
 package sku
 
 import (
@@ -11,10 +11,10 @@ import (
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/jsonutil"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
 	"task-processor/internal/platforms/temu/handlers/template"
-	temutemplate "task-processor/internal/platforms/temu/api/template"
 )
 
 // generateAISkuMappingSingleBatch 单批次生成AI SKU映射

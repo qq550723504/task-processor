@@ -1,12 +1,12 @@
-﻿// Package sku 提供TEMU平台的AI SKU映射提示词构建功能
+// Package sku 提供TEMU平台的AI SKU映射提示词构建功能
 package sku
 
 import (
 	"fmt"
 	"strings"
 
-	temucontext "task-processor/internal/platforms/temu/context"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	temucontext "task-processor/internal/platforms/temu/context"
 )
 
 // buildSystemPrompt 构建系统提示词

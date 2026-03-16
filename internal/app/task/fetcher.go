@@ -1,4 +1,4 @@
-﻿// Package task 提供任务获取核心功能
+// Package task 提供任务获取核心功能
 package task
 
 import (

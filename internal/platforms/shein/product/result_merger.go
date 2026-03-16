@@ -1,4 +1,4 @@
-﻿// Package product 提供SHEIN平台结果合并功能
+// Package product 提供SHEIN平台结果合并功能
 package product
 
 import (
@@ -165,5 +165,3 @@ func (m *ResultMerger) ValidateMergedResult(result shein.ResultSaleAttribute) []
 
 	return issues
 }
-
-

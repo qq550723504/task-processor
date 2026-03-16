@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU调度服务工厂
+// Package syncsvc 提供TEMU调度服务工厂
 package syncsvc
 
 import (

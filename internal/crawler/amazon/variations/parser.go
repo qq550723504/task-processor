@@ -1,4 +1,4 @@
-﻿package variations
+package variations
 
 import (
 	"github.com/playwright-community/playwright-go"

@@ -1,15 +1,13 @@
-﻿package client
+package client
 
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
 
-	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -129,36 +127,6 @@ func (cm *ClientManager) createClient(shopID int64, storeInfo *management_api.St
 
 	cm.logger.Infof("🔧 创建客户端: 店铺=%d, baseURL=%s", shopID, baseURL)
 
-	// 创建HTTP客户端
-	httpClient := req.C().
-		SetCommonHeaders(map[string]string{
-			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-		}).
-		SetTimeout(120 * time.Second)
-
-	// 设置代理
-	if storeInfo != nil && storeInfo.Proxy != "" {
-		httpClient = httpClient.SetProxyURL(storeInfo.Proxy)
-		cm.logger.Infof("🌐 设置代理: %s", storeInfo.Proxy)
-	}
-
-	// 解析并设置Cookie - 使用专门的CookieManager
-	if cookieJSON != "" {
-		// 创建临时的CookieManager来解析Cookie
-		tempCookieManager := NewCookieManager(shopID, cm.managementClient)
-		cookies, err := tempCookieManager.ParseCookieString(cookieJSON)
-		if err != nil {
-			cm.logger.Errorf("❌ Cookie解析失败: %v", err)
-			return nil, fmt.Errorf("Cookie解析失败: %w", err)
-		}
-
-		if len(cookies) > 0 {
-			httpClient = httpClient.SetCommonCookies(cookies...)
-			cm.logger.Infof("🍪 成功设置Cookie: 店铺=%d, Cookie数量=%d", shopID, len(cookies))
-		} else {
-			cm.logger.Warnf("⚠️ 解析后Cookie数量为0: 店铺=%d", shopID)
-		}
-	}
 	// 创建本地的APIClient而不是使用shein_api包
 	return NewAPIClient(shopID, cm.managementClient), nil
 }

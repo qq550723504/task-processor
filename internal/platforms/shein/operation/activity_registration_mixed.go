@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -26,7 +26,7 @@ func (s *activityRegistrationServiceImpl) RegisterMixedActivity(
 
 // registerPromotionProducts 报名指定产品到促销活动（私有方法）
 func (s *activityRegistrationServiceImpl) registerPromotionProducts(
-	ctx context.Context,
+	_ context.Context,
 	products []marketing.SkcInfo,
 	strategy *managementapi.OperationStrategyDTO,
 ) (int, error) {

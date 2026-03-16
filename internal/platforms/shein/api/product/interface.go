@@ -1,4 +1,4 @@
-﻿// Package product 产品相关API接口定义
+// Package product 产品相关API接口定义
 package product
 
 // ProductAPI 产品相关API接口

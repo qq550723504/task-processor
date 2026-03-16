@@ -1,4 +1,4 @@
-﻿// Package taskexecutor 提供SHEIN平台任务的基础实现
+// Package taskexecutor 提供SHEIN平台任务的基础实现
 package taskexecutor
 
 import (

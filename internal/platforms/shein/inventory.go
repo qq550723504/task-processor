@@ -1,11 +1,11 @@
-﻿// Package shein 提供SHEIN平台库存相关的类型定义
+// Package shein 提供SHEIN平台库存相关的类型定义
 package shein
 
 // LocalInventoryInfo 本地库存信息（避免与其他包冲突）
 type LocalInventoryInfo struct {
 	SpuName            string              `json:"spu_name"`
-	ProductNameCh      any         `json:"product_name_ch"`
-	MainImageThumbnail any         `json:"main_image_thumbnail"`
+	ProductNameCh      any                 `json:"product_name_ch"`
+	MainImageThumbnail any                 `json:"main_image_thumbnail"`
 	SkcInfo            []LocalSkcInventory `json:"skc_info"`
 	IfFbmStore         bool                `json:"if_fbm_store"`
 }
@@ -32,4 +32,3 @@ type LocalWarehouseInventory struct {
 	UsableInventory   int    `json:"usable_inventory"`
 	InventoryQuantity int    `json:"inventory_quantity"`
 }
-

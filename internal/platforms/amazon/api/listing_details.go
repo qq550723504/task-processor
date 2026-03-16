@@ -1,4 +1,4 @@
-﻿// Package api 提供Amazon listing详细信息处理功能
+// Package api 提供Amazon listing详细信息处理功能
 package api
 
 import (

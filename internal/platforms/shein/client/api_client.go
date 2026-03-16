@@ -1,4 +1,4 @@
-﻿// Package client 提供SHEIN平台的API客户端
+// Package client 提供SHEIN平台的API客户端
 package client
 
 import (
@@ -14,6 +14,7 @@ import (
 // APIClient SHEIN API客户端（参考TEMU设计）
 type APIClient struct {
 	storeID          int64
+	baseURL          string
 	managementClient *management.ClientManager
 	httpClient       *req.Client
 	logger           *logrus.Entry
@@ -36,6 +37,7 @@ func NewAPIClient(storeID int64, managementClient *management.ClientManager) *AP
 
 	apiClient := &APIClient{
 		storeID:          storeID,
+		baseURL:          "https://sellerhub.shein.com",
 		managementClient: managementClient,
 		httpClient:       httpClient,
 		logger:           logger,
@@ -43,8 +45,6 @@ func NewAPIClient(storeID int64, managementClient *management.ClientManager) *AP
 	}
 
 	// 获取店铺配置信息（包括代理设置和端点设置）
-	var baseURL string = "https://sellerhub.shein.com" // 默认使用自营店铺端点
-
 	if managementClient != nil {
 		storeClient := managementClient.GetStoreClient()
 		if storeClient != nil {
@@ -59,11 +59,10 @@ func NewAPIClient(storeID int64, managementClient *management.ClientManager) *AP
 
 				// 根据店铺的loginUrl来设置客户端的端点
 				if storeInfo.LoginUrl == "sso.geiwohuo.com" {
-					baseURL = "https://sso.geiwohuo.com"
-					apiClient.logger.Infof("店铺 %d 使用第三方端点: %s", storeID, baseURL)
+					apiClient.baseURL = "https://sso.geiwohuo.com"
+					apiClient.logger.Infof("店铺 %d 使用第三方端点: %s", storeID, apiClient.baseURL)
 				} else {
-					baseURL = "https://sellerhub.shein.com"
-					apiClient.logger.Infof("店铺 %d 使用自营端点: %s", storeID, baseURL)
+					apiClient.logger.Infof("店铺 %d 使用自营端点: %s", storeID, apiClient.baseURL)
 				}
 			}
 		}

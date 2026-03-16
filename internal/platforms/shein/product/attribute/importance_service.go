@@ -1,11 +1,11 @@
-﻿// Package attribute 提供SHEIN平台属性重要性计算功能
+// Package attribute 提供SHEIN平台属性重要性计算功能
 package attribute
 
 import (
 	"strings"
 
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 )
 
 // ImportanceService 属性重要性计算服务
@@ -166,5 +166,3 @@ func (s *ImportanceService) getAttributeDependencies(attrID int) []int {
 	}
 	return []int{}
 }
-
-

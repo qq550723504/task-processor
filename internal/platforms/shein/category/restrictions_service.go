@@ -1,4 +1,4 @@
-﻿package category
+package category
 
 import (
 	"regexp"
@@ -83,7 +83,7 @@ func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *sh
 
 			// 创建品类限制集合请求DTO
 			req := &management_api.CategoryRestrictionCollectionsCreateReqDTO{
-				CategoryId:             int(ctx.ProductData.CategoryID),
+				CategoryId:             ctx.ProductData.CategoryID,
 				PlatformName:           "Shein",
 				ForbiddenAttributeId:   forbiddenAttrID,
 				ForbiddenAttributeName: forbiddenAttrName,
@@ -189,5 +189,3 @@ func (h *CollectCategoryRestrictionsHandler) hasMainSpecificationError(ctx *shei
 	logrus.Debug("没有发现主规格相关的错误")
 	return false
 }
-
-

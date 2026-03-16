@@ -1,4 +1,4 @@
-﻿// Package property 提供TEMU平台的各种处理器，包括属性验证等功能
+// Package property 提供TEMU平台的各种处理器，包括属性验证等功能
 package property
 
 import (
@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	temucontext "task-processor/internal/platforms/temu/context"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )

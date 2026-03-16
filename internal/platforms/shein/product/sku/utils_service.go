@@ -1,12 +1,12 @@
-﻿// Package sku 提供SHEIN平台SKU构建工具方法
+// Package sku 提供SHEIN平台SKU构建工具方法
 package sku
 
 import (
 	"strconv"
 	"strings"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -251,6 +251,3 @@ func (u *SKUUtils) CorrectQuantityTypeAndValue(quantityType, quantity int, asin 
 	logrus.Warnf("ASIN %s: 无法智能修正，使用默认单品设置(quantityType=1, quantity=1)", asin)
 	return 1, 1
 }
-
-
-

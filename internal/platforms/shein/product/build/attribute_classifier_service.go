@@ -1,8 +1,8 @@
-﻿package build
+package build
 
 import (
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/product/attribute/sale"
 
 	"github.com/sirupsen/logrus"
@@ -45,6 +45,3 @@ func (c *AttributeClassifier) ClassifyAndBuildAttribute(attr attribute.Attribute
 		// 尺寸属性作为产品属性处理，目前暂未启用
 	}
 }
-
-
-

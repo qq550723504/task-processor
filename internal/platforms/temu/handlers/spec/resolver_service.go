@@ -1,4 +1,4 @@
-﻿// Package spec 提供TEMU平台的规格解析服务
+// Package spec 提供TEMU平台的规格解析服务
 package spec
 
 import (
@@ -62,7 +62,6 @@ func (s *SpecResolverService) ResolveTemporarySpecIDs(temuCtx *temucontext.TemuT
 				realSpecID, err := s.apiClient.QuerySpecID(temuCtx, spec.ParentSpecID, spec.SpecName)
 				if err != nil {
 					s.logger.Errorf("❌ 规格查询失败 [%s/%s]: %v", spec.ParentSpecName, spec.SpecName, err)
-					failedCount++
 					return fmt.Errorf("规格查询失败 [%s/%s]: %w", spec.ParentSpecName, spec.SpecName, err)
 				}
 

@@ -1,4 +1,4 @@
-﻿// Package model 提供Amazon平台错误定义
+// Package model 提供Amazon平台错误定义
 package model
 
 import (
@@ -54,8 +54,8 @@ var (
 
 // AmazonError Amazon平台错误
 type AmazonError struct {
-	Code    string                 `json:"code"`
-	Message string                 `json:"message"`
+	Code    string         `json:"code"`
+	Message string         `json:"message"`
 	Details map[string]any `json:"details,omitempty"`
 }
 

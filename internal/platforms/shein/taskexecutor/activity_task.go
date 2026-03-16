@@ -1,4 +1,4 @@
-﻿// Package taskexecutor 提供SHEIN平台活动报名任务实现
+// Package taskexecutor 提供SHEIN平台活动报名任务实现
 package taskexecutor
 
 import (

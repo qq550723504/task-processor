@@ -1,4 +1,4 @@
-﻿package pricing
+package pricing
 
 type PricingAPI interface {
 	BatchHandleCostDiscuss(reqBody *BatchHandleCostDiscussRequest) (*BatchHandleCostDiscussResponse, error)

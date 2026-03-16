@@ -1,4 +1,4 @@
-﻿// Package rules 提供TEMU平台文本渲染功能
+// Package rules 提供TEMU平台文本渲染功能
 package rules
 
 import (

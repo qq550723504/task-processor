@@ -50,7 +50,8 @@ func (cs *CurrencySetter) SetAndVerifyCurrency(page playwright.Page, expectedCur
 		logrus.Infof("当前货币: %s, 目标货币: %s，需要设置", currentCurrency, expectedCurrency)
 
 		// 设置货币
-		if err := cs.setCurrency(page, expectedCurrency); err != nil {
+		err = cs.setCurrency(page, expectedCurrency)
+		if err != nil {
 			logrus.Infof("设置货币失败: %v", err)
 			if page.IsClosed() {
 				return fmt.Errorf("页面已关闭: %w", err)

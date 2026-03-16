@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN营销活动API的具体实现
+// Package operation 提供SHEIN营销活动API的具体实现
 package operation
 
 import (

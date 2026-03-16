@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台的销售属性GPT处理功能
+// Package sale 提供SHEIN平台的销售属性GPT处理功能
 package sale
 
 import (
@@ -29,5 +29,3 @@ func (h *SaleAttributeHandler) callGPTAPI(ctx *shein.TaskContext, request *shein
 	singleProcessor := NewSaleAttributeSingleProcessor(h)
 	return singleProcessor.ProcessSingleBatch(ctx, request)
 }
-
-

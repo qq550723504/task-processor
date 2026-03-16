@@ -1,4 +1,4 @@
-﻿package validation
+package validation
 
 import (
 	"task-processor/internal/domain/model"
@@ -98,5 +98,3 @@ func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRuleDTO *api.F
 
 	return nil
 }
-
-

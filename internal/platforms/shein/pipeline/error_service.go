@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供SHEIN平台的任务错误处理功能
+// Package pipeline 提供SHEIN平台的任务错误处理功能
 package pipeline
 
 import (
@@ -8,8 +8,8 @@ import (
 
 	"task-processor/internal/core/metrics"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/platforms/shein/api"
 	shein "task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api"
 
 	"github.com/sirupsen/logrus"
 )
@@ -96,12 +96,8 @@ func (h *TaskErrorHandler) HandleAuthenticationExpired(authErr *api.Authenticati
 		logrus.WithError(err).Warnf("设置店铺 %d 的认证过期暂停键失败", shopID)
 	}
 
-	if err := h.pauseShopWithCacheCleanup(tenantID, shopID, "认证过期(20302)", 10*time.Minute); err != nil {
-		logrus.WithError(err).Warnf("暂停店铺并清理缓存失败: tenantID=%d, shopID=%d", tenantID, shopID)
-	} else {
-		logrus.Infof("已暂停店铺 %d:%d 执行任务10分钟并清理缓存，原因: 认证过期", tenantID, shopID)
-	}
-
+	h.pauseShopWithCacheCleanup(tenantID, shopID, "认证过期(20302)", 10*time.Minute)
+	logrus.Infof("已暂停店铺 %d:%d 执行任务10分钟并清理缓存，原因: 认证过期", tenantID, shopID)
 	// 标记任务为待重试状态
 	h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusPendingRetry, fmt.Sprintf("认证过期: %s", authErr.Message))
 
@@ -150,13 +146,9 @@ func (h *TaskErrorHandler) updateCookieDeletionTime(shopID int64) {
 }
 
 // pauseShopWithCacheCleanup 暂停店铺并清理相关缓存
-func (h *TaskErrorHandler) pauseShopWithCacheCleanup(tenantID, shopID int64, reason string, duration time.Duration) error {
+func (h *TaskErrorHandler) pauseShopWithCacheCleanup(tenantID, shopID int64, reason string, duration time.Duration) {
 	logrus.Infof("已删除店铺 %d:%d 的客户端缓存", tenantID, shopID)
-
-	// 暂停店铺
 	h.processor.GetMemoryManager().ShopPauseManager.PauseShopForDuration(tenantID, shopID, reason, duration)
-
-	return nil
 }
 
 // updateTaskStatusToAPI 更新任务状态到API
@@ -190,5 +182,3 @@ func (h *TaskErrorHandler) setPauseKeyForAuthExpired(shopID int64, reason string
 
 	return nil
 }
-
-

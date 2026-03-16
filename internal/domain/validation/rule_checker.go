@@ -1,4 +1,4 @@
-﻿// Package validation 提供通用的规则验证功能
+// Package validation 提供通用的规则验证功能
 package validation
 
 import (

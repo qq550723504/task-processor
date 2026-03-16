@@ -1,4 +1,4 @@
-﻿// Package handler 提供基础Handler实现，减少重复代码
+// Package handler 提供基础Handler实现，减少重复代码
 package handler
 
 import (

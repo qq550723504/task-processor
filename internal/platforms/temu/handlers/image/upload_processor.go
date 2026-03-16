@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台图片上传核心处理器
+// Package image 提供TEMU平台图片上传核心处理器
 package image
 
 import (
@@ -96,10 +96,7 @@ func (h *ImageUploadProcessor) UploadSingleImage(temuCtx *temucontext.TemuTaskCo
 	}
 
 	// 处理上传结果
-	imageInfo, err := h.processUploadResult(temuCtx, imageURL, uploadResult)
-	if err != nil {
-		return nil, err
-	}
+	imageInfo := h.processUploadResult(temuCtx, imageURL, uploadResult)
 
 	return imageInfo, nil
 }
@@ -258,7 +255,7 @@ func (h *ImageUploadProcessor) getImageData(temuCtx *temucontext.TemuTaskContext
 }
 
 // processUploadResult 处理上传结果
-func (h *ImageUploadProcessor) processUploadResult(temuCtx *temucontext.TemuTaskContext, imageURL string, uploadResult *temuimage.UploadResult) (*temuproduct.ImageInfo, error) {
+func (h *ImageUploadProcessor) processUploadResult(temuCtx *temucontext.TemuTaskContext, imageURL string, uploadResult *temuimage.UploadResult) *temuproduct.ImageInfo {
 	// 获取填充信息
 	var width, height int
 	if temuCtx.PaddedImageSizes != nil {
@@ -281,7 +278,7 @@ func (h *ImageUploadProcessor) processUploadResult(temuCtx *temucontext.TemuTask
 	// 根据产品类型调整尺寸
 	width, height = h.adjustImageDimensions(width, height, isClothes)
 
-	return h.createImageInfo(uploadResult.URL, width, height), nil
+	return h.createImageInfo(uploadResult.URL, width, height)
 }
 
 // getDefaultImageDimensions 获取默认图片尺寸

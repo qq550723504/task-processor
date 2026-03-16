@@ -1,4 +1,4 @@
-﻿// Package messaging 提供RabbitMQ发布器适配器
+// Package messaging 提供RabbitMQ发布器适配器
 package messaging
 
 import (

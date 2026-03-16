@@ -1,4 +1,4 @@
-﻿// Package service 提供处理器生命周期管理
+// Package service 提供处理器生命周期管理
 package runner
 
 import (
@@ -38,9 +38,7 @@ func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.
 	}
 
 	// 启动任务获取器
-	if err := s.startTaskFetcher(cfg); err != nil {
-		return errors.Wrap(err, errors.ErrCodeSystem, "启动任务获取器失败")
-	}
+	s.startTaskFetcher(cfg)
 
 	// 启动调度服务
 	if err := s.startSchedulerService(ctx, cfg); err != nil {
@@ -48,9 +46,7 @@ func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.
 	}
 
 	// 初始化监控组件
-	if err := s.initializeMonitoring(cfg); err != nil {
-		return errors.Wrap(err, errors.ErrCodeSystem, "初始化监控组件失败")
-	}
+	s.initializeMonitoring(cfg)
 
 	// 启动所有组件
 	if err := s.lifecycleManager.StartAll(s.ctx); err != nil {

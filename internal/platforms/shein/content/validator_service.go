@@ -1,4 +1,4 @@
-﻿// Package content 提供SHEIN平台的敏感词验证功能
+// Package content 提供SHEIN平台的敏感词验证功能
 package content
 
 import (
@@ -146,5 +146,3 @@ func (s *SensitiveWordService) addWordsToConfig(configMap map[string][]string, w
 
 	return totalAdded
 }
-
-

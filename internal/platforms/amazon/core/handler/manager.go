@@ -1,4 +1,4 @@
-﻿// Package handler 提供Amazon处理器管理功能
+// Package handler 提供Amazon处理器管理功能
 package handler
 
 import (

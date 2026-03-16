@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"task-processor/internal/platforms/shein"
@@ -67,5 +67,3 @@ func (h *SpuLimitHandler) Handle(ctx *shein.TaskContext) error {
 	ctx.SpuLimitCount = spuLimitCount
 	return nil
 }
-
-

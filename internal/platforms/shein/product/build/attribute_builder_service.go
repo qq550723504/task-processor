@@ -1,8 +1,8 @@
-﻿package build
+package build
 
 import (
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/validation"
 )
 
@@ -53,6 +53,3 @@ func (b *AttributeBuilder) BuildSaleGenerateAttribute(attr attribute.AttributeIn
 		Type:      attr.AttributeMode,
 	}
 }
-
-
-

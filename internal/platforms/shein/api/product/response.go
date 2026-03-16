@@ -1,4 +1,4 @@
-﻿// Package product 产品响应数据结构
+// Package product 产品响应数据结构
 package product
 
 // SheinResponse 通用响应
@@ -6,7 +6,7 @@ type SheinResponse struct {
 	Code string       `json:"code"`
 	Msg  string       `json:"msg"`
 	Info ResponseInfo `json:"info"`
-	BBL  any  `json:"bbl"`
+	BBL  any          `json:"bbl"`
 }
 
 // ResponseInfo 响应信息
@@ -16,7 +16,7 @@ type ResponseInfo struct {
 	SKCList        []ResponseSKC    `json:"skc_list"`
 	Version        string           `json:"version"`
 	PreValidResult []PreValidResult `json:"pre_valid_result"`
-	MCCValidResult any      `json:"mcc_valid_result"`
+	MCCValidResult any              `json:"mcc_valid_result"`
 	Extra          struct{}         `json:"extra"`
 }
 
@@ -84,7 +84,7 @@ type RecordItem struct {
 type PartInfoResponse struct {
 	Data []PartInfo `json:"data"`
 	Meta struct {
-		Count     int         `json:"count"`
+		Count     int `json:"count"`
 		CustomObj any `json:"customObj"`
 	} `json:"meta"`
 }
@@ -108,7 +108,7 @@ type ProductResponse struct {
 	Code string             `json:"code"`
 	Msg  string             `json:"msg"`
 	Info ProductInfoWrapper `json:"info"`
-	BBL  any        `json:"bbl"`
+	BBL  any                `json:"bbl"`
 }
 
 // ProductInfoWrapper 产品信息包装器
@@ -121,7 +121,7 @@ type ConfirmPublishResponse struct {
 	Code string      `json:"code"`
 	Msg  string      `json:"msg"`
 	Info ConfirmInfo `json:"info"`
-	BBL  any `json:"bbl"`
+	BBL  any         `json:"bbl"`
 }
 
 // ConfirmInfo 确认信息
@@ -131,8 +131,8 @@ type ConfirmInfo struct {
 
 // ConfirmData 确认数据
 type ConfirmData struct {
-	NeedConfirm      bool        `json:"need_confirm"`
-	SimPriceInfoList any `json:"sim_price_info_list"`
+	NeedConfirm      bool `json:"need_confirm"`
+	SimPriceInfoList any  `json:"sim_price_info_list"`
 }
 
 // ProductListResponse 产品列表响应
@@ -164,25 +164,25 @@ type ProductListItem struct {
 	PublishTime      string        `json:"publish_time"`
 	FirstShelfTime   string        `json:"first_shelf_time"`
 	ExpectShelfTime  *string       `json:"expect_shelf_time"`
-	TagInfoList      []any `json:"tag_info_list"`
+	TagInfoList      []any         `json:"tag_info_list"`
 }
 
 // SkcInfoItem SKC 信息项
 type SkcInfoItem struct {
-	SkcName               string        `json:"skc_name"`
-	SkcCode               string        `json:"skc_code"`
-	SaleName              string        `json:"sale_name"`
-	MainImageThumbnailURL string        `json:"main_image_thumbnail_url"`
-	SupplierCode          string        `json:"supplier_code"`
-	BusinessModel         int           `json:"business_model"`
-	IsSaleAttribute       int           `json:"is_sale_attribute"`
-	SupplierID            int64         `json:"supplier_id"`
-	SkuInfo               []SkuInfo     `json:"sku_info"`
-	MallSellStatus        int           `json:"mall_sell_status"`
-	Abandoned             bool          `json:"abandoned"`
-	TagInfoList           []any `json:"tag_info_list"`
-	ShelfFailReason       *string       `json:"shelf_fail_reason"`
-	HasOriginalImage      bool          `json:"has_original_image"`
+	SkcName               string    `json:"skc_name"`
+	SkcCode               string    `json:"skc_code"`
+	SaleName              string    `json:"sale_name"`
+	MainImageThumbnailURL string    `json:"main_image_thumbnail_url"`
+	SupplierCode          string    `json:"supplier_code"`
+	BusinessModel         int       `json:"business_model"`
+	IsSaleAttribute       int       `json:"is_sale_attribute"`
+	SupplierID            int64     `json:"supplier_id"`
+	SkuInfo               []SkuInfo `json:"sku_info"`
+	MallSellStatus        int       `json:"mall_sell_status"`
+	Abandoned             bool      `json:"abandoned"`
+	TagInfoList           []any     `json:"tag_info_list"`
+	ShelfFailReason       *string   `json:"shelf_fail_reason"`
+	HasOriginalImage      bool      `json:"has_original_image"`
 }
 
 // SkuInfo SKU 信息项

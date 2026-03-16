@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台的销售属性提示词生成功能
+// Package sale 提供SHEIN平台的销售属性提示词生成功能
 package sale
 
 // SaleAttributePromptGenerator 销售属性提示词生成器，负责生成GPT API调用的系统提示词

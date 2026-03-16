@@ -1,4 +1,4 @@
-﻿// Package messaging 提供服务管理功能
+// Package messaging 提供服务管理功能
 package messaging
 
 import (
@@ -84,9 +84,7 @@ func (sm *ServiceManager) Start(ctx context.Context) error {
 	sm.ctx, sm.cancel = context.WithCancel(ctx)
 
 	// 1. 初始化所有服务
-	if err := sm.initializeServices(); err != nil {
-		return fmt.Errorf("初始化服务失败: %w", err)
-	}
+	sm.initializeServices()
 
 	// 2. 设置队列配置（如果配置文件中有定义）
 	if len(sm.config.Consumer.Queues) > 0 {
@@ -123,7 +121,7 @@ func (sm *ServiceManager) Start(ctx context.Context) error {
 }
 
 // initializeServices 初始化所有服务
-func (sm *ServiceManager) initializeServices() error {
+func (sm *ServiceManager) initializeServices() {
 	// 创建结果上报器配置
 	reporterConfig := ReporterConfig{
 		ReportURL:   sm.config.ResultReporter.ReportURL,
@@ -159,7 +157,6 @@ func (sm *ServiceManager) initializeServices() error {
 	)
 
 	sm.logger.Info("所有服务初始化完成")
-	return nil
 }
 
 // Stop 停止服务管理器

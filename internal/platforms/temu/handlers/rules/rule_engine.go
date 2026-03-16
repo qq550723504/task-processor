@@ -1,12 +1,12 @@
-﻿// Package rules 提供验证规则引擎
+// Package rules 提供验证规则引擎
 package rules
 
 import (
 	"fmt"
 
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 
 	"github.com/sirupsen/logrus"
 )

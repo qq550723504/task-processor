@@ -1,4 +1,4 @@
-﻿// Package api 提供Amazon SP-API目录相关接口
+// Package api 提供Amazon SP-API目录相关接口
 package api
 
 import (
@@ -12,12 +12,12 @@ import (
 
 // CatalogItem 目录商品信息
 type CatalogItem struct {
-	ASIN        string                 `json:"asin"`
-	Title       string                 `json:"title"`
-	Brand       string                 `json:"brand"`
-	ProductType string                 `json:"productType"`
-	Categories  []Category             `json:"categories"`
-	Images      []Image                `json:"images"`
+	ASIN        string         `json:"asin"`
+	Title       string         `json:"title"`
+	Brand       string         `json:"brand"`
+	ProductType string         `json:"productType"`
+	Categories  []Category     `json:"categories"`
+	Images      []Image        `json:"images"`
 	Attributes  map[string]any `json:"attributes"`
 }
 
@@ -63,15 +63,15 @@ type GetSellerListingsRequest struct {
 
 // SellerListing 卖家产品信息
 type SellerListing struct {
-	SKU         string                 `json:"sku"`
-	ASIN        string                 `json:"asin"`
-	ProductType string                 `json:"productType"`
-	Status      string                 `json:"status"`
-	Title       string                 `json:"title"`
-	Price       Price                  `json:"price"`
-	Quantity    int                    `json:"quantity"`
+	SKU         string         `json:"sku"`
+	ASIN        string         `json:"asin"`
+	ProductType string         `json:"productType"`
+	Status      string         `json:"status"`
+	Title       string         `json:"title"`
+	Price       Price          `json:"price"`
+	Quantity    int            `json:"quantity"`
 	Attributes  map[string]any `json:"attributes"`
-	Issues      []Issue                `json:"issues,omitempty"`
+	Issues      []Issue        `json:"issues,omitempty"`
 }
 
 // Price 价格信息

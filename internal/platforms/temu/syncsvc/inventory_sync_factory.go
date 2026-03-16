@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU库存监控服务工厂
+// Package syncsvc 提供TEMU库存监控服务工厂
 package syncsvc
 
 import (

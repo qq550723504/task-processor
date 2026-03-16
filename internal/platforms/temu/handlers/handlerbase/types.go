@@ -1,4 +1,4 @@
-﻿// Package handlerbase 提供TEMU平台处理器的共享类型定义
+// Package handlerbase 提供TEMU平台处理器的共享类型定义
 package handlerbase
 
 // ImageRequirement 图片要求配置

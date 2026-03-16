@@ -1,4 +1,4 @@
-﻿package store
+package store
 
 import (
 	"fmt"
@@ -86,5 +86,3 @@ func (h *StoreIDHandler) Handle(ctx *shein.TaskContext) error {
 
 	return nil
 }
-
-

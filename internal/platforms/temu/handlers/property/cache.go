@@ -1,4 +1,4 @@
-﻿// Package property 提供属性处理缓存管理，提升处理性能
+// Package property 提供属性处理缓存管理，提升处理性能
 package property
 
 import (

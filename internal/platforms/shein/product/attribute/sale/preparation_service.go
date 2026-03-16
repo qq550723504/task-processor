@@ -1,9 +1,9 @@
-﻿// Package sale 提供SHEIN平台销售属性准备的核心处理功能
+// Package sale 提供SHEIN平台销售属性准备的核心处理功能
 package sale
 
 import (
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 )
 
 // SaleAttributePreparationHandler 销售属性准备处理器（专门用于属性准备功能）
@@ -160,5 +160,3 @@ func buildGenerationRequest(
 func buildUserPrompt(ctx *shein.TaskContext, request *shein.GenerationRequest) string {
 	return defaultPreparationHandler.buildUserPrompt(ctx, request)
 }
-
-

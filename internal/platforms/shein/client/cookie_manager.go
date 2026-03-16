@@ -1,12 +1,12 @@
-﻿// Package client 提供SHEIN平台的Cookie管理功能
+// Package client 提供SHEIN平台的Cookie管理功能
 package client
 
 import (
 	"fmt"
 	"net/http"
 	"strings"
-	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/pkg/jsonutil"
 	"time"
 
 	"github.com/sirupsen/logrus"

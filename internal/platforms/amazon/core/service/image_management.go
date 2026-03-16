@@ -1,4 +1,4 @@
-﻿// Package service 提供Amazon图片管理服务
+// Package service 提供Amazon图片管理服务
 package service
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package property 提供属性提取策略实现
+// Package property 提供属性提取策略实现
 package property
 
 import (

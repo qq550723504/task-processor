@@ -1,4 +1,4 @@
-﻿// Package skc 提供SHEIN平台SKC图片处理功能
+// Package skc 提供SHEIN平台SKC图片处理功能
 package skc
 
 import (
@@ -57,6 +57,3 @@ func (h *SKCImageHandler) GetVariantSpecificImages(ctx *shein.TaskContext, varia
 	logrus.Infof("未找到变体 %s 的特定图片，使用主产品图片", variant.ASIN)
 	return ctx.AmazonProduct.Images, nil
 }
-
-
-

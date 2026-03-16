@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台SKU映射关系修复服务
+// Package operation 提供SHEIN平台SKU映射关系修复服务
 package operation
 
 import (
@@ -213,7 +213,7 @@ func (s *mappingRepairServiceImpl) RegisterStrategy(strategy MappingRepairStrate
 }
 
 // buildRepairContext 构建修复上下文
-func (s *mappingRepairServiceImpl) buildRepairContext(ctx context.Context, request *MappingRepairRequest) (*MappingRepairContext, error) {
+func (s *mappingRepairServiceImpl) buildRepairContext(_ context.Context, request *MappingRepairRequest) (*MappingRepairContext, error) {
 	repairCtx := &MappingRepairContext{
 		Request:   request,
 		StartTime: time.Now(),
@@ -297,4 +297,3 @@ func (s *mappingRepairServiceImpl) registerDefaultStrategies() {
 	// 注册基于历史记录的修复策略
 	s.RegisterStrategy(NewHistoryBasedRepairStrategy(s.mappingClient))
 }
-

@@ -1,9 +1,9 @@
-﻿// Package operation 提供SHEIN平台产品数据处理工具
+// Package operation 提供SHEIN平台产品数据处理工具
 package operation
 
 import (
-	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/pkg/jsonutil"
 
 	"github.com/sirupsen/logrus"
 )

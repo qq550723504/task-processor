@@ -1,4 +1,4 @@
-﻿package validation
+package validation
 
 import (
 	"fmt"
@@ -78,12 +78,10 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 			ctx.StoreInfo.ID, currentDate, currentCount, increment, predictedCount, dailyLimit)
 
 		// 暂停店铺上架并清理相关缓存（暂停到当日结束）
-		if err := h.pauseShopUntilEndOfDay(
+		h.pauseShopUntilEndOfDay(
 			ctx,
 			fmt.Sprintf("达到每日上架限额(%d/%d)", currentCount, dailyLimit),
-		); err != nil {
-			logrus.Errorf("暂停店铺上架并清理缓存失败: %v", err)
-		}
+		)
 
 		// 返回不可重试错误，阻止产品发布
 		return shein.NewNonRetryableError(
@@ -150,14 +148,11 @@ func (h *CheckDailyLimitHandler) calculateIncrement(ctx *shein.TaskContext) int6
 }
 
 // pauseShopUntilEndOfDay 暂停店铺到当日结束并清理相关缓存
-func (h *CheckDailyLimitHandler) pauseShopUntilEndOfDay(ctx *shein.TaskContext, reason string) error {
-	// 1. 清理客户端缓存（通过内存管理器）
+func (h *CheckDailyLimitHandler) pauseShopUntilEndOfDay(ctx *shein.TaskContext, reason string) {
 	if ctx.MemoryManager != nil {
-		// 通过内存管理器清理相关缓存
 		logrus.Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
 	}
 
-	// 2. 暂停店铺到当日结束（23:59:59）
 	ctx.MemoryManager.ShopPauseManager.PauseShopUntilEndOfDay(
 		ctx.Task.TenantID,
 		ctx.Task.StoreID,
@@ -165,8 +160,4 @@ func (h *CheckDailyLimitHandler) pauseShopUntilEndOfDay(ctx *shein.TaskContext, 
 	)
 
 	logrus.Infof("已暂停店铺 %d:%d 上架到当日结束，原因: %s", ctx.Task.TenantID, ctx.Task.StoreID, reason)
-
-	return nil
 }
-
-

@@ -1,4 +1,4 @@
-﻿// Package bootstrap 提供简化的服务注册表实现
+// Package bootstrap 提供简化的服务注册表实现
 package bootstrap
 
 import (
@@ -29,9 +29,7 @@ func NewServiceRegistrySimple(logger *logrus.Logger) *ServiceRegistrySimple {
 // RegisterAllServices 注册所有业务服务到容器
 func (s *ServiceRegistrySimple) RegisterAllServices(container di.Container, cfg *config.Config) error {
 	// 注册基础服务
-	if err := s.registerBaseServices(container); err != nil {
-		return fmt.Errorf("注册基础服务失败: %w", err)
-	}
+	s.registerBaseServices(container)
 
 	// 注册认证服务
 	if err := s.registerAuthServices(container); err != nil {
@@ -52,10 +50,8 @@ func (s *ServiceRegistrySimple) RegisterAllServices(container di.Container, cfg 
 }
 
 // registerBaseServices 注册基础服务
-func (s *ServiceRegistrySimple) registerBaseServices(container di.Container) error {
+func (s *ServiceRegistrySimple) registerBaseServices(_ di.Container) {
 	s.logger.Debug("注册基础服务...")
-
-	return nil
 }
 
 // registerAuthServices 注册认证服务

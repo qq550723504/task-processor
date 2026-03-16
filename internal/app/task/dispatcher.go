@@ -1,4 +1,4 @@
-﻿// Package task 提供任务分发功能
+// Package task 提供任务分发功能
 package task
 
 import (

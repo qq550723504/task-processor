@@ -1,8 +1,9 @@
-﻿// Package errors 提供统一的错误处理辅助函数
+// Package errors 提供统一的错误处理辅助函数
 package errors
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"task-processor/internal/core/config"
 	"time"
@@ -178,8 +179,8 @@ func IgnoreError(err error, ignoreCodes ...ErrorCode) error {
 		return nil
 	}
 
-	appErr, ok := err.(*AppError)
-	if !ok {
+	var appErr *AppError
+	if !errors.As(err, &appErr) {
 		return err
 	}
 

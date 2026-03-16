@@ -73,7 +73,7 @@ func (e *RatingExtractor) waitForPageLoad(ctx context.Context, page playwright.P
 }
 
 // extractRating 提取产品评分
-func (e *RatingExtractor) extractRating(ctx context.Context, page playwright.Page, product *model.Product) error {
+func (e *RatingExtractor) extractRating(_ context.Context, page playwright.Page, product *model.Product) error {
 	// 2024年最新的Amazon评分选择器（按性能优化排序）
 	ratingSelectors := []string{
 		// 最快的选择器（0.0-0.1ms）
@@ -127,7 +127,7 @@ func (e *RatingExtractor) extractRating(ctx context.Context, page playwright.Pag
 }
 
 // extractReviewsCount 提取评论数量
-func (e *RatingExtractor) extractReviewsCount(ctx context.Context, page playwright.Page, product *model.Product) error {
+func (e *RatingExtractor) extractReviewsCount(_ context.Context, page playwright.Page, product *model.Product) error {
 	// 2024年最新的Amazon评论数选择器（按性能优化排序）
 	reviewSelectors := []string{
 		// 最快的选择器（0.1-0.3ms）

@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的SKU映射处理功能
+// Package sku 提供TEMU平台的SKU映射处理功能
 package sku
 
 import (
@@ -28,9 +28,7 @@ func (mp *SkuMappingProcessor) FixMappingCountMismatch(aiMapping *temucontext.AI
 	// 如果AI映射数量少于变体数量，尝试补充缺失的映射
 	if len(aiMapping.SkuList) < len(variants) {
 		mp.logger.Infof("尝试为缺失的%d个变体补充默认映射", len(variants)-len(aiMapping.SkuList))
-		if err := mp.supplementMissingMappings(aiMapping, variants); err != nil {
-			return fmt.Errorf("补充缺失映射失败: %w", err)
-		}
+		mp.supplementMissingMappings(aiMapping, variants)
 		mp.logger.Infof("✅ 成功补充缺失映射，当前映射数量: %d", len(aiMapping.SkuList))
 	} else {
 		// AI映射数量多于变体数量，尝试去重或移除多余的映射
@@ -130,7 +128,7 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temuco
 }
 
 // supplementMissingMappings 为缺失的变体补充默认映射
-func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *temucontext.AISkuMappingResponse, variants []*model.Product) error {
+func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *temucontext.AISkuMappingResponse, variants []*model.Product) {
 	// 创建已映射的ASIN集合
 	mappedAsins := make(map[string]bool)
 	for _, sku := range aiMapping.SkuList {
@@ -168,8 +166,6 @@ func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *temucontext.
 		mp.logger.Warnf("⚠️ 补充了%d个缺失的映射，这些映射使用了推断的spec模板", missingCount)
 		mp.logger.Warn("⚠️ 建议检查AI映射生成逻辑，确保为所有变体生成正确的映射")
 	}
-
-	return nil
 }
 
 // analyzeSpecPattern 分析已有映射的spec模式，返回一个spec模板

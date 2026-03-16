@@ -1,4 +1,4 @@
-﻿// Package handler 提供Amazon图片处理器
+// Package handler 提供Amazon图片处理器
 package handler
 
 import (

@@ -1,11 +1,11 @@
-﻿// Package filter 提供TEMU平台的各种处理器，包括筛选规则处理等功能
+// Package filter 提供TEMU平台的各种处理器，包括筛选规则处理等功能
 package filter
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pipeline"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/product"
 	"task-processor/internal/platforms/temu/handlers/rules"

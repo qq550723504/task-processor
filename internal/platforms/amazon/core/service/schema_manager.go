@@ -1,4 +1,4 @@
-﻿// Package service 提供Amazon Schema管理功能
+// Package service 提供Amazon Schema管理功能
 package service
 
 import (
@@ -200,7 +200,7 @@ func (m *SchemaManager) extractSchemaURL(link any) string {
 }
 
 // buildDefaultSchema 构建默认Schema
-func (m *SchemaManager) buildDefaultSchema(definition *api.ProductTypeDefinition) *model.ProductTypeSchema {
+func (m *SchemaManager) buildDefaultSchema(_ *api.ProductTypeDefinition) *model.ProductTypeSchema {
 	// 基于产品类型定义构建一个基本的Schema
 	schema := &model.ProductTypeSchema{
 		Properties: make(map[string]model.PropertyDef),

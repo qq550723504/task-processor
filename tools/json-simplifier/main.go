@@ -40,8 +40,8 @@ func main() {
 
 	// 解析JSON
 	var data any
-	if err := json.Unmarshal(input, &data); err != nil {
-		fmt.Fprintf(os.Stderr, "JSON解析失败: %v\n", err)
+	if unmarshalErr := json.Unmarshal(input, &data); unmarshalErr != nil {
+		fmt.Fprintf(os.Stderr, "JSON解析失败: %v\n", unmarshalErr)
 		os.Exit(1)
 	}
 

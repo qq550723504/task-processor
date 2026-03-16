@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台的销售属性JSON解析功能
+// Package sale 提供SHEIN平台的销售属性JSON解析功能
 package sale
 
 import (
@@ -183,5 +183,3 @@ func (p *SaleAttributeJSONParser) looksLikeCompleteJson(content string) bool {
 	content = strings.TrimSpace(content)
 	return strings.HasPrefix(content, "{") && strings.HasSuffix(content, "}")
 }
-
-

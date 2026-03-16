@@ -1,4 +1,4 @@
-﻿// Package rabbitmq 提供RabbitMQ消息相关功能
+// Package rabbitmq 提供RabbitMQ消息相关功能
 package rabbitmq
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台活动报名任务实现
+// Package scheduler 提供TEMU平台活动报名任务实现
 package scheduler
 
 import (

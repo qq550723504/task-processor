@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU平台调度器相关服务
+// Package syncsvc 提供TEMU平台调度器相关服务
 package syncsvc
 
 import (

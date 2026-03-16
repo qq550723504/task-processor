@@ -1,4 +1,4 @@
-﻿package category
+package category
 
 import (
 	"fmt"
@@ -34,5 +34,3 @@ func (h *GetCategoryTreeHandler) Handle(ctx *shein.TaskContext) error {
 	logrus.Infof("成功获取分类树，共 %d 个分类\n", len(categoryTree.Data))
 	return nil
 }
-
-

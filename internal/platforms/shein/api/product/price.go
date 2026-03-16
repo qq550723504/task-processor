@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 // PriceQueryRequest 价格查询请求
 type PriceQueryRequest struct {
@@ -12,7 +12,7 @@ type PriceQueryResponse struct {
 	Info struct {
 		Data []SkcPriceData `json:"data"`
 		Meta struct {
-			Count     int         `json:"count"`
+			Count     int `json:"count"`
 			CustomObj any `json:"customObj"`
 		} `json:"meta"`
 	} `json:"info"`
@@ -57,7 +57,7 @@ type SkuPriceDetail struct {
 
 // PreCheckInfo 预检查信息
 type PreCheckInfo struct {
-	CanChangePrice bool        `json:"can_change_price"`
-	Prompt         any `json:"prompt"`
-	LinkURL        any `json:"link_url"`
+	CanChangePrice bool `json:"can_change_price"`
+	Prompt         any  `json:"prompt"`
+	LinkURL        any  `json:"link_url"`
 }

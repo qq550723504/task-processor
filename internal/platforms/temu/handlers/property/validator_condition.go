@@ -1,9 +1,9 @@
-﻿package property
+package property
 
 import (
 	models "task-processor/internal/platforms/temu/api/product"
-	temucontext "task-processor/internal/platforms/temu/context"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	temucontext "task-processor/internal/platforms/temu/context"
 )
 
 // filterByPropertyRelations 根据属性关联关系过滤属性（基于ShowCondition）

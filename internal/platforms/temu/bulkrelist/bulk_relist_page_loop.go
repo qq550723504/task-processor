@@ -1,4 +1,4 @@
-﻿package bulkrelist
+package bulkrelist
 
 import (
 	"fmt"
@@ -251,4 +251,3 @@ func (plp *PageLoopProcessor) ProcessWithFilter(filter *ProductFilterOptions, op
 
 	return result, nil
 }
-

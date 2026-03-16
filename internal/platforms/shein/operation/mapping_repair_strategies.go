@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台SKU映射关系修复策略实现
+// Package operation 提供SHEIN平台SKU映射关系修复策略实现
 package operation
 
 import (
@@ -7,7 +7,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/platforms/shein/api/product"
-shein_product "task-processor/internal/platforms/shein/api/product"
+	shein_product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -237,4 +237,3 @@ func (s *SmartRepairStrategy) determineRegion(storeInfo *managementapi.StoreResp
 	}
 	return "US"
 }
-

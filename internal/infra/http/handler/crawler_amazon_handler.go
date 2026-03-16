@@ -1,4 +1,4 @@
-﻿// Package handler 提供 HTTP 处理器
+// Package handler 提供 HTTP 处理器
 package handler
 
 import (

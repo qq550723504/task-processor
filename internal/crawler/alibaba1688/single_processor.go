@@ -51,8 +51,8 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.T
 	defer cleanup()
 
 	// 导航到产品页面
-	if err := sp.pageOperator.NavigateToProduct(page, normalizedURL); err != nil {
-		return nil, fmt.Errorf("导航到产品页面失败: %w", err)
+	if navErr := sp.pageOperator.NavigateToProduct(page, normalizedURL); navErr != nil {
+		return nil, fmt.Errorf("导航到产品页面失败: %w", navErr)
 	}
 
 	// 提取产品信息
@@ -62,8 +62,8 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.T
 	}
 
 	// 验证产品信息
-	if err := sp.productChecker.ValidateProduct(product); err != nil {
-		return nil, fmt.Errorf("产品信息验证失败: %w", err)
+	if validateErr := sp.productChecker.ValidateProduct(product); validateErr != nil {
+		return nil, fmt.Errorf("产品信息验证失败: %w", validateErr)
 	}
 
 	duration := time.Since(startTime)

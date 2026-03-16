@@ -1,4 +1,4 @@
-﻿// Package property 提供TEMU平台的属性验证配置功能
+// Package property 提供TEMU平台的属性验证配置功能
 package property
 
 // PropertyValidationConfig 属性验证配置

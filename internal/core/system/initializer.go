@@ -1,4 +1,4 @@
-﻿// Package system 提供系统级初始化功能
+// Package system 提供系统级初始化功能
 package system
 
 import (
@@ -143,7 +143,7 @@ func (si *SystemInitializer) GetSystemStatus() map[string]any {
 		"log_level":          si.logManager.GetLevel(),
 		"running_goroutines": si.goroutineManager.GetRunningCount(),
 		"goroutine_details":  goroutineStatus,
-		"context_cancelled":  si.ctx.Err() != nil,
+		"context_canceled":   si.ctx.Err() != nil,
 	}
 }
 

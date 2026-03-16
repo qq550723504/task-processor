@@ -1,4 +1,4 @@
-﻿// Package pricingsvc 提供TEMU平台核价决策服务功能
+// Package pricingsvc 提供TEMU平台核价决策服务功能
 package pricingsvc
 
 import (
@@ -180,7 +180,7 @@ func (s *PricingDecisionService) MakeDecision(item *temupricing.Sku, storeID int
 }
 
 // buildPricingContext 构建定价上下文
-func (s *PricingDecisionService) buildPricingContext(ctx context.Context, skuSN, goodsName string, supplierPrice float64, tenantID, storeID int64) (*PricingContext, error) {
+func (s *PricingDecisionService) buildPricingContext(ctx context.Context, skuSN, goodsName string, supplierPrice float64, _ int64, storeID int64) (*PricingContext, error) {
 	pricingCtx := &PricingContext{
 		SkuSN:         skuSN,
 		GoodsName:     goodsName,
@@ -197,9 +197,9 @@ func (s *PricingDecisionService) buildPricingContext(ctx context.Context, skuSN,
 
 	// 获取Amazon产品数据
 	if mapping != nil && mapping.ProductId != "" {
-		amazonProduct, err := s.getAmazonProductWithCache(ctx, mapping.ProductId, mapping.Region, mapping.TenantId, storeID)
-		if err != nil {
-			return nil, fmt.Errorf("获取Amazon产品数据失败: %w", err)
+		amazonProduct, amazonErr := s.getAmazonProductWithCache(ctx, mapping.ProductId, mapping.Region, mapping.TenantId, storeID)
+		if amazonErr != nil {
+			return nil, fmt.Errorf("获取Amazon产品数据失败: %w", amazonErr)
 		}
 		pricingCtx.AmazonProduct = amazonProduct
 		pricingCtx.ProductID = mapping.ProductId
@@ -300,7 +300,7 @@ func (s *PricingDecisionService) MakeDecisionForSalesBoost(goods *temupricing.Sa
 }
 
 // buildPricingContextForSalesBoost 为销量提升场景构建定价上下文
-func (s *PricingDecisionService) buildPricingContextForSalesBoost(ctx context.Context, skuSN, goodsName string, supplierPrice float64, tenantID, storeID int64) (*PricingContext, error) {
+func (s *PricingDecisionService) buildPricingContextForSalesBoost(ctx context.Context, skuSN, goodsName string, supplierPrice float64, _ int64, storeID int64) (*PricingContext, error) {
 	pricingCtx := &PricingContext{
 		SkuSN:         skuSN,
 		GoodsName:     goodsName,
@@ -317,9 +317,9 @@ func (s *PricingDecisionService) buildPricingContextForSalesBoost(ctx context.Co
 
 	// 获取Amazon产品数据
 	if mapping != nil && mapping.ProductId != "" {
-		amazonProduct, err := s.getAmazonProductWithCache(ctx, mapping.ProductId, mapping.Region, mapping.TenantId, storeID)
-		if err != nil {
-			return nil, fmt.Errorf("获取Amazon产品数据失败: %w", err)
+		amazonProduct, amazonErr := s.getAmazonProductWithCache(ctx, mapping.ProductId, mapping.Region, mapping.TenantId, storeID)
+		if amazonErr != nil {
+			return nil, fmt.Errorf("获取Amazon产品数据失败: %w", amazonErr)
 		}
 		pricingCtx.AmazonProduct = amazonProduct
 		pricingCtx.ProductID = mapping.ProductId

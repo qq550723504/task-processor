@@ -1,4 +1,4 @@
-﻿// Package context 提供TEMU平台的强类型任务上下文
+// Package context 提供TEMU平台的强类型任务上下文
 package context
 
 import (
@@ -17,7 +17,7 @@ type TemuTaskContext struct {
 	// TEMU特定字段（直接访问，无需getter/setter）
 	AmazonProcessor *amazon.AmazonProcessor
 	APIClient       api.APIClientInterface // 使用接口避免循环依赖
-	QueryAPI        any            // 查询API服务
+	QueryAPI        any                    // 查询API服务
 
 	// TEMU特定产品数据
 	TemuProduct *api.Product
@@ -29,8 +29,8 @@ type TemuTaskContext struct {
 	// 模板信息
 	TemplateInfo            any // 模板信息
 	UserInputParentSpecList any // 用户输入父规格列表
-	InputMaxSpecNum         int         // 最大规格数量
-	SingleSpecValueNum      int         // 单规格值数量
+	InputMaxSpecNum         int // 最大规格数量
+	SingleSpecValueNum      int // 单规格值数量
 
 	// 处理结果
 	SubmitResult  any

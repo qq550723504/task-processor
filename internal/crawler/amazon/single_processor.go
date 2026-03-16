@@ -8,6 +8,8 @@ import (
 	"task-processor/internal/crawler/amazon/extractor"
 	"task-processor/internal/domain/model"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // SingleProcessor 单浏览器处理器
@@ -56,7 +58,7 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, zipcode string, 
 
 	// 处理可能出现的"Continue shopping"按钮
 	if err := sp.productChecker.HandleContinueShoppingButton(page); err != nil {
-		// 这里只记录警告，不返回错误
+		logrus.Warnf("处理Continue shopping按钮失败（忽略）: %v", err)
 	}
 
 	// 设置邮编

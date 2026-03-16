@@ -1,4 +1,4 @@
-﻿package attribute
+package attribute
 
 import (
 	"fmt"
@@ -84,5 +84,3 @@ func (h *AttributeTemplateHandler) saveJSONToFileWithName(filename string, jsonD
 	logrus.Infof("JSON数据已保存到文件: %s", filePath)
 	return nil
 }
-
-

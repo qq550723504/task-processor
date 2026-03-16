@@ -1,11 +1,11 @@
-﻿// Package sale 提供SHEIN平台销售属性的元数据构建功能
+// Package sale 提供SHEIN平台销售属性的元数据构建功能
 package sale
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/platforms/shein/api/attribute"
 	shein "task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )
@@ -151,5 +151,3 @@ func CalculateImportanceForSaleAttribute(calc *shein.AttributeImportanceCalculat
 	}
 	return importance
 }
-
-

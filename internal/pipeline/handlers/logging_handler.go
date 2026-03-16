@@ -1,4 +1,4 @@
-﻿// Package handlers 提供公共处理器实现
+// Package handlers 提供公共处理器实现
 package handlers
 
 import (

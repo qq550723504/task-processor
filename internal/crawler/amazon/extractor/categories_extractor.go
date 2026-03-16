@@ -5,7 +5,6 @@ import (
 	"task-processor/internal/domain/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // CategoriesExtractor 分类信息提取器
@@ -13,17 +12,13 @@ type CategoriesExtractor struct{}
 
 // Extract 提取分类信息
 func (ce *CategoriesExtractor) Extract(page playwright.Page, product *model.Product) error {
-	categories, err := ce.getCategories(page)
-	if err != nil {
-		logrus.Infof("提取分类信息失败: %v", err)
-		return err
-	}
+	categories := ce.getCategories(page)
 	product.Categories = categories
 	return nil
 }
 
 // getCategories 获取产品分类
-func (ce *CategoriesExtractor) getCategories(page playwright.Page) ([]string, error) {
+func (ce *CategoriesExtractor) getCategories(page playwright.Page) []string {
 	var categories []string
 
 	// Amazon 分类信息的常见选择器
@@ -61,7 +56,7 @@ func (ce *CategoriesExtractor) getCategories(page playwright.Page) ([]string, er
 	// 去重和清理
 	categories = ce.cleanCategories(categories)
 
-	return categories, nil
+	return categories
 }
 
 // isValidCategory 检查文本是否是有效的分类

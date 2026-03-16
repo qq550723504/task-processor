@@ -1,4 +1,4 @@
-﻿// Package marketing 提供SHEIN促销活动相关数据类型定义
+// Package marketing 提供SHEIN促销活动相关数据类型定义
 package marketing
 
 // QueryPromotionGoodsRequest 查询促销活动商品请求参数
@@ -25,7 +25,7 @@ type QueryPromotionGoodsResponse struct {
 	Code string              `json:"code"` // 响应码
 	Msg  string              `json:"msg"`  // 响应消息
 	Info *PromotionGoodsInfo `json:"info"` // 响应数据
-	BBL  any         `json:"bbl"`  // BBL字段
+	BBL  any                 `json:"bbl"`  // BBL字段
 }
 
 // PromotionGoodsInfo 促销商品信息
@@ -36,7 +36,7 @@ type PromotionGoodsInfo struct {
 
 // MetaInfo 元数据信息
 type MetaInfo struct {
-	Count     int         `json:"count"`     // 总数量
+	Count     int `json:"count"`     // 总数量
 	CustomObj any `json:"customObj"` // 自定义对象
 }
 

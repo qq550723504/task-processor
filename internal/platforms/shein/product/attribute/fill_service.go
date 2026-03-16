@@ -1,10 +1,10 @@
-﻿package attribute
+package attribute
 
 import (
 	"fmt"
+	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,9 +36,7 @@ func (h *FillAttributeHandler) Handle(ctx *shein.TaskContext) error {
 	}
 
 	// 执行属性填充逻辑
-	if err := h.fillProductAttributes(ctx); err != nil {
-		return fmt.Errorf("填充属性失败: %w", err)
-	}
+	h.fillProductAttributes(ctx)
 
 	logrus.Println("属性填充完成")
 
@@ -46,7 +44,7 @@ func (h *FillAttributeHandler) Handle(ctx *shein.TaskContext) error {
 }
 
 // fillProductAttributes 填充产品属性
-func (h *FillAttributeHandler) fillProductAttributes(ctx *shein.TaskContext) error {
+func (h *FillAttributeHandler) fillProductAttributes(ctx *shein.TaskContext) {
 	productAttributeList := []product.ProductAttribute{}
 
 	// 定义需要跳过非必填的特殊属性ID列表
@@ -136,8 +134,6 @@ func (h *FillAttributeHandler) fillProductAttributes(ctx *shein.TaskContext) err
 
 	// 将填充好的属性列表保存到上下文中
 	ctx.ProductData.ProductAttributeList = productAttributeList
-
-	return nil
 }
 
 // isAttributeRequired 基于模板数据判断属性是否必填
@@ -161,5 +157,3 @@ func (h *FillAttributeHandler) isAttributeRequired(attribute attribute.Attribute
 		return false
 	}
 }
-
-

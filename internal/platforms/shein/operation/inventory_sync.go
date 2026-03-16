@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -146,7 +146,7 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 		wg.Add(1)
 		semaphore <- struct{}{} // 获取信号量
 
-		go func(index int, product *managementapi.ProductDataDTO) {
+		go func(_ int, product *managementapi.ProductDataDTO) {
 			defer func() {
 				<-semaphore // 释放信号量
 				wg.Done()
@@ -313,7 +313,7 @@ func (s *inventorySyncServiceImpl) processBatchInventoryUpdates(ctx context.Cont
 
 // processSingleProductInventoryUpdates 处理单个产品的所有SKU库存更新和Amazon监控数据
 func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
-	ctx context.Context,
+	_ context.Context,
 	prod *managementapi.ProductDataDTO,
 	updates []InventoryUpdateRequest,
 	storeID int64,
@@ -429,4 +429,3 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 
 	return nil
 }
-

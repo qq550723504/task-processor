@@ -1,4 +1,4 @@
-﻿// Package cacheutil 提供内存缓存工具
+// Package cacheutil 提供内存缓存工具
 package cacheutil
 
 import (

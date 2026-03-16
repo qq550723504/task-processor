@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供公共处理器基类
+// Package pipeline 提供公共处理器基类
 package pipeline
 
 import (

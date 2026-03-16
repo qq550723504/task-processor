@@ -1,12 +1,12 @@
-﻿// Package skc 提供SHEIN平台SKC构建核心功能
+// Package skc 提供SHEIN平台SKC构建核心功能
 package skc
 
 import (
 	"fmt"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/platforms/shein"
 	api_attribute "task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/api/product"
-	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/category"
 	"task-processor/internal/platforms/shein/product/attribute"
 	"task-processor/internal/platforms/shein/product/image"
@@ -206,6 +206,3 @@ func (b *SKCBuilder) getAttributeNameSafe(attrID int) string {
 		return fmt.Sprintf("Attribute_%d", attrID)
 	}
 }
-
-
-

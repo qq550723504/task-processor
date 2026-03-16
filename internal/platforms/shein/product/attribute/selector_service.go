@@ -1,4 +1,4 @@
-﻿// Package attribute 提供SHEIN平台AI属性选择核心处理器
+// Package attribute 提供SHEIN平台AI属性选择核心处理器
 package attribute
 
 import (
@@ -7,8 +7,8 @@ import (
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )
@@ -166,5 +166,3 @@ func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.Chat
 
 	return attributeData, nil
 }
-
-

@@ -148,7 +148,7 @@ func (iab *ImageAttributeBuilder) getSupportedImageAttributes(productSchema *mod
 }
 
 // distributeImagesToNumberedAttrs 将图片分配到带数字后缀的属性中
-func (iab *ImageAttributeBuilder) distributeImagesToNumberedAttrs(attrs map[string]any, imageData []map[string]any, supportedAttrs []string, marketplaceID string) {
+func (iab *ImageAttributeBuilder) distributeImagesToNumberedAttrs(attrs map[string]any, imageData []map[string]any, supportedAttrs []string, _ string) {
 	// 按数字后缀排序属性
 	slices.Sort(supportedAttrs)
 

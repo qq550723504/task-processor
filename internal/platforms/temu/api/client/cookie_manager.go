@@ -1,11 +1,11 @@
-﻿package client
+package client
 
 import (
 	"fmt"
 	"net/http"
 	"strings"
-	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/pkg/jsonutil"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -59,11 +59,7 @@ func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	}
 
 	// 解析Cookie字符串
-	cookies, err := cm.parseCookieString(cookieStr)
-	if err != nil {
-		cm.logger.WithError(err).Error("解析Cookie字符串失败")
-		return nil, fmt.Errorf("解析Cookie字符串失败: %w", err)
-	}
+	cookies := cm.parseCookieString(cookieStr)
 
 	return cookies, nil
 }
@@ -81,9 +77,9 @@ type CookieData struct {
 }
 
 // parseCookieString 解析Cookie字符串为http.Cookie对象
-func (cm *CookieManager) parseCookieString(cookieStr string) ([]*http.Cookie, error) {
+func (cm *CookieManager) parseCookieString(cookieStr string) []*http.Cookie {
 	if cookieStr == "" {
-		return nil, nil
+		return nil
 	}
 
 	var cookies []*http.Cookie
@@ -121,7 +117,7 @@ func (cm *CookieManager) parseCookieString(cookieStr string) ([]*http.Cookie, er
 
 			cookies = append(cookies, cookie)
 		}
-		return cookies, nil
+		return cookies
 	}
 
 	// 如果JSON解析失败，尝试传统的Cookie字符串格式
@@ -157,7 +153,7 @@ func (cm *CookieManager) parseCookieString(cookieStr string) ([]*http.Cookie, er
 		cookies = append(cookies, cookie)
 	}
 
-	return cookies, nil
+	return cookies
 }
 
 // RefreshCookies 刷新Cookie（重新从管理系统获取）

@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的SKU变体处理功能
+// Package sku 提供TEMU平台的SKU变体处理功能
 package sku
 
 import (
@@ -6,9 +6,9 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
 	models "task-processor/internal/platforms/temu/api/product"
+	temutemplate "task-processor/internal/platforms/temu/api/template"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/spec"
-	temutemplate "task-processor/internal/platforms/temu/api/template"
 
 	"github.com/sirupsen/logrus"
 )

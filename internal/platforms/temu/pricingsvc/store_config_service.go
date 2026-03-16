@@ -1,4 +1,4 @@
-﻿// Package pricingsvc 提供店铺配置服务
+// Package pricingsvc 提供店铺配置服务
 package pricingsvc
 
 import (

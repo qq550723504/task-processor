@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU产品转换相关功能
+// Package syncsvc 提供TEMU产品转换相关功能
 package syncsvc
 
 import (
@@ -88,7 +88,7 @@ func (s *productSyncServiceImpl) buildBaseProductData(temuProduct *temuproduct.S
 }
 
 // convertSingleGoodsProduct 转换单个TEMU商品（来自商品搜索）
-func (s *productSyncServiceImpl) convertSingleGoodsProduct(temuProduct *temuproduct.GoodsSearchItem, tenantID, storeID int64) (*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) convertSingleGoodsProduct(temuProduct *temuproduct.GoodsSearchItem, _ int64, storeID int64) (*managementapi.ProductDataDTO, error) {
 	// 获取店铺信息
 	storeInfo, err := s.storeAPI.GetStore(storeID)
 	if err != nil {

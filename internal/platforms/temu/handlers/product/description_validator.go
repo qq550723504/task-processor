@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -143,7 +143,7 @@ func (h *ProductDescriptionValidator) ValidateDescriptionAPI(temuCtx *temucontex
 }
 
 // generateDefaultDescription 生成默认产品描述
-func (h *ProductDescriptionValidator) generateDefaultDescription(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) string {
+func (h *ProductDescriptionValidator) generateDefaultDescription(_ *temucontext.TemuTaskContext, temuProduct *models.Product) string {
 	productName := temuProduct.GoodsBasic.GoodsName
 
 	// 基于产品名称生成默认描述
@@ -153,7 +153,7 @@ func (h *ProductDescriptionValidator) generateDefaultDescription(temuCtx *temuco
 }
 
 // cleanAndFormatDescription 清理和格式化描述
-func (h *ProductDescriptionValidator) cleanAndFormatDescription(description string, result *DescriptionValidationResult) string {
+func (h *ProductDescriptionValidator) cleanAndFormatDescription(description string, _ *DescriptionValidationResult) string {
 	// 基本清理逻辑
 	cleaned := strings.TrimSpace(description)
 
@@ -164,7 +164,7 @@ func (h *ProductDescriptionValidator) cleanAndFormatDescription(description stri
 }
 
 // validateCharacterSupport 验证字符支持
-func (h *ProductDescriptionValidator) validateCharacterSupport(description string, result *DescriptionValidationResult) string {
+func (h *ProductDescriptionValidator) validateCharacterSupport(description string, _ *DescriptionValidationResult) string {
 	// 移除不支持的字符（保留英文字母、数字和基本符号）
 	var cleaned strings.Builder
 
@@ -206,7 +206,7 @@ func (h *ProductDescriptionValidator) enhanceDescription(description string, tem
 }
 
 // calculateQualityScore 计算质量评分
-func (h *ProductDescriptionValidator) calculateQualityScore(description string, temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) int {
+func (h *ProductDescriptionValidator) calculateQualityScore(description string, _ *temucontext.TemuTaskContext, _ *models.Product) int {
 	score := 50 // 基础分数
 
 	// 根据长度评分

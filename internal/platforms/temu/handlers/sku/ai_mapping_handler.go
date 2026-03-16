@@ -50,11 +50,7 @@ func (h *AISkuMappingHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 		return nil
 	}
 
-	// 获取变体列表
-	variants, err := h.getVariants(temuCtx)
-	if err != nil {
-		return fmt.Errorf("获取变体列表失败: %w", err)
-	}
+	variants := h.getVariants(temuCtx)
 
 	// 如果没有变体，尝试使用主产品
 	if len(variants) == 0 {
@@ -87,10 +83,8 @@ func (h *AISkuMappingHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 }
 
 // getVariants 从context获取变体列表
-func (h *AISkuMappingHandler) getVariants(temuCtx *temucontext.TemuTaskContext) ([]*model.Product, error) {
-	// 直接从强类型上下文获取变体
-	variants := temuCtx.GetVariants()
-	return variants, nil
+func (h *AISkuMappingHandler) getVariants(temuCtx *temucontext.TemuTaskContext) []*model.Product {
+	return temuCtx.GetVariants()
 }
 
 // Handle 兼容原有的Handler接口（用于pipeline.AddHandler）

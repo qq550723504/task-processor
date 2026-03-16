@@ -1,4 +1,4 @@
-﻿package handlerbase
+package handlerbase
 
 import (
 	"fmt"

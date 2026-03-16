@@ -2,6 +2,7 @@
 package browser
 
 import (
+	"errors"
 	"strings"
 	"task-processor/internal/domain/model"
 )
@@ -21,7 +22,8 @@ func (ed *ErrorDetector) IsBlockedOrSeriousError(err error) bool {
 	}
 
 	// 检查是否为产品不存在错误（不应触发浏览器重建）
-	if _, ok := err.(*model.ProductNotFoundError); ok {
+	var notFoundErr *model.ProductNotFoundError
+	if errors.As(err, &notFoundErr) {
 		return false
 	}
 
@@ -220,7 +222,8 @@ func (ed *ErrorDetector) IsProductNotFoundError(err error) bool {
 	}
 
 	// 检查是否为ProductNotFoundError类型
-	if _, ok := err.(*model.ProductNotFoundError); ok {
+	var notFoundErr *model.ProductNotFoundError
+	if errors.As(err, &notFoundErr) {
 		return true
 	}
 

@@ -1,4 +1,4 @@
-﻿// Package content 提供SHEIN平台的内容优化功能
+// Package content 提供SHEIN平台的内容优化功能
 package content
 
 import (

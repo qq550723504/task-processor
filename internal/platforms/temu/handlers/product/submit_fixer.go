@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	models "task-processor/internal/platforms/temu/api/product"

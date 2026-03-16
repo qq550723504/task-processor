@@ -1,4 +1,4 @@
-﻿// Package productjson 定义产品JSON生成的领域模型
+// Package productjson 定义产品JSON生成的领域模型
 package productjson
 
 import (

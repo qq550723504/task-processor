@@ -1,4 +1,4 @@
-﻿// Package property 提供属性修复阶段，负责修复无效或不完整的属性
+// Package property 提供属性修复阶段，负责修复无效或不完整的属性
 package property
 
 import (
@@ -56,7 +56,7 @@ func (s *PropertyFixingStage) Process(ctx *PropertyContext) error {
 }
 
 // fixPercentageProperty 修复百分比属性
-func (s *PropertyFixingStage) fixPercentageProperty(ctx *PropertyContext, feature PropertyFeature, templateProp temutemplate.TemplateRespGoodsProperty) bool {
+func (s *PropertyFixingStage) fixPercentageProperty(ctx *PropertyContext, feature PropertyFeature, _ temutemplate.TemplateRespGoodsProperty) bool {
 	// 查找该PID的属性
 	var targetProps []*models.PropertyItem
 	for i := range ctx.CurrentProperties {

@@ -1,4 +1,4 @@
-﻿package category
+package category
 
 import (
 	"fmt"
@@ -51,5 +51,3 @@ func (h *AICategorySelectorHandler) Handle(ctx *shein.TaskContext) error {
 
 	return nil
 }
-
-

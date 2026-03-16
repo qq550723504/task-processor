@@ -149,7 +149,7 @@ func (r *InpaintRemover) evaluateQuality(original, processed image.Image, region
 }
 
 // evaluateRegionQuality 评估单个区域的质量
-func (r *InpaintRemover) evaluateRegionQuality(original, processed image.Image, region *WatermarkRegion) float64 {
+func (r *InpaintRemover) evaluateRegionQuality(_ image.Image, processed image.Image, region *WatermarkRegion) float64 {
 	// 计算处理区域的平滑度
 	smoothness := r.calculateSmoothness(processed, region)
 

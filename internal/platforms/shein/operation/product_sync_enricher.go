@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -67,7 +67,7 @@ func (s *productSyncServiceImpl) fillProductLevelPrice(
 func (s *productSyncServiceImpl) enrichProductWithMappingBySku(
 	productData *managementapi.ProductDataDTO,
 	sheinProduct *product.ProductListItem,
-	tenantID, storeID int64,
+	_ int64, storeID int64,
 	inventoryInfo *product.InventoryInfo,
 	priceMap map[string]*product.SkuPriceInfo,
 	costMap map[string]*product.SkuCostInfo,

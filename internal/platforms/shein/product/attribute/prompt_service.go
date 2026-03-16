@@ -1,4 +1,4 @@
-﻿// Package attribute 提供SHEIN平台属性选择提示词生成功能
+// Package attribute 提供SHEIN平台属性选择提示词生成功能
 package attribute
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 )
 
 // AttributePromptGenerator 属性提示词生成器
@@ -365,5 +365,3 @@ func (g *AttributePromptGenerator) formatAttributeList(attributes []shein.Enhanc
 
 	return strings.Join(formatted, "\n")
 }
-
-

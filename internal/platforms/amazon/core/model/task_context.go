@@ -1,14 +1,14 @@
-﻿// Package model 提供Amazon任务上下文模型
+// Package model 提供Amazon任务上下文模型
 package model
 
 // TaskContext Amazon任务上下文
 type TaskContext struct {
-	TaskID        string                 `json:"task_id"`
-	MarketplaceID string                 `json:"marketplace_id"`
-	LanguageTag   string                 `json:"language_tag"`
-	Currency      string                 `json:"currency"`
+	TaskID        string         `json:"task_id"`
+	MarketplaceID string         `json:"marketplace_id"`
+	LanguageTag   string         `json:"language_tag"`
+	Currency      string         `json:"currency"`
 	Data          map[string]any `json:"data"`
-	ProductData   *ProductData           `json:"product_data,omitempty"`
+	ProductData   *ProductData   `json:"product_data,omitempty"`
 	Results       map[string]any `json:"results,omitempty"`
 }
 

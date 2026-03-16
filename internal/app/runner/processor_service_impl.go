@@ -1,4 +1,4 @@
-﻿// Package service 提供处理器服务实现
+// Package service 提供处理器服务实现
 package runner
 
 import (
@@ -12,8 +12,8 @@ import (
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/platforms/shein/pipeline"
 	"task-processor/internal/platforms/temu"
 
@@ -47,7 +47,7 @@ type processorServiceImpl struct {
 }
 
 // startTaskFetcher 启动任务获取器
-func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
+func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) {
 	log := logger.GetGlobalLogger("service.processor")
 	log.Info("启动任务获取器...")
 
@@ -71,7 +71,7 @@ func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
 
 	if len(submitters) == 0 {
 		log.Warn("没有可用的平台处理器，跳过任务获取器启动")
-		return nil
+		return
 	}
 
 	log.WithField("platforms", getMapKeys(submitters)).Info("创建任务获取器")
@@ -88,7 +88,6 @@ func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) error {
 	s.lifecycleManager.Register(s.taskFetcher)
 
 	log.Info("✅ 任务获取器创建完成")
-	return nil
 }
 
 // getMapKeys 获取map的所有键
@@ -118,7 +117,7 @@ func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *c
 }
 
 // initializeMonitoring 初始化监控组件
-func (s *processorServiceImpl) initializeMonitoring(cfg *config.Config) error {
+func (s *processorServiceImpl) initializeMonitoring(cfg *config.Config) {
 	log := logger.GetGlobalLogger("service.processor")
 	log.Info("初始化监控组件...")
 
@@ -139,7 +138,6 @@ func (s *processorServiceImpl) initializeMonitoring(cfg *config.Config) error {
 	go s.collectBusinessMetrics()
 
 	log.Info("✅ 监控组件初始化完成")
-	return nil
 }
 
 // registerHealthChecks 注册健康检查
@@ -296,4 +294,3 @@ func (p *ProcessorHealthCheck) Check(ctx context.Context) error {
 
 	return nil
 }
-

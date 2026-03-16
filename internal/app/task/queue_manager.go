@@ -1,4 +1,4 @@
-﻿// Package task 提供简化的队列管理功能
+// Package task 提供简化的队列管理功能
 package task
 
 import (

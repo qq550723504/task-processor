@@ -1,4 +1,4 @@
-﻿package validation
+package validation
 
 import (
 	"fmt"
@@ -74,5 +74,3 @@ func (t *TaskValidatorHandler) Handle(ctx *shein.TaskContext) error {
 
 	return nil
 }
-
-

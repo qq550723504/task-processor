@@ -1,4 +1,4 @@
-﻿package pipeline
+package pipeline
 
 import (
 	"context"
@@ -8,11 +8,11 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	types "task-processor/internal/domain/model"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	commonPipeline "task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )

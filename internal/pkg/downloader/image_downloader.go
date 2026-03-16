@@ -252,14 +252,14 @@ func (d *ImageDownloader) DownloadImage(imageURL string) ([]byte, string, error)
 			d.logger.Printf("🔄 尝试原始URL: %s", originalURL)
 			retryStart := time.Now()
 			retryReq := d.createDynamicRequest(originalURL)
-			resp, retryErr := retryReq.Get(originalURL)
+			retryResp, retryErr := retryReq.Get(originalURL)
 			retryElapsed := time.Since(retryStart)
 
-			if retryErr == nil && resp.IsSuccessState() {
+			if retryErr == nil && retryResp.IsSuccessState() {
 				d.logger.Printf("✅ 原始URL成功 [耗时: %v]", retryElapsed)
 				d.handleRequestSuccess()
 				// 由于resp.IsSuccessState()为true，所以resp肯定不为nil
-				return resp.Bytes(), d.getFilenameFromURL(originalURL), nil
+				return retryResp.Bytes(), d.getFilenameFromURL(originalURL), nil
 			}
 			d.logger.Printf("❌ 原始URL也失败 [耗时: %v]: %v", retryElapsed, retryErr)
 		}
@@ -348,13 +348,13 @@ func (d *ImageDownloader) GetImageInfo(imageURL string) (width, height int, size
 			retryStart := time.Now()
 			retryReq := d.createDynamicRequest(originalURL).
 				SetHeader("Range", "bytes=0-8191")
-			resp, retryErr := retryReq.Get(originalURL)
+			retryResp, retryErr := retryReq.Get(originalURL)
 			retryElapsed := time.Since(retryStart)
 
-			if retryErr == nil && (resp.IsSuccessState() || resp.StatusCode == 206) {
+			if retryErr == nil && (retryResp.IsSuccessState() || retryResp.StatusCode == 206) {
 				d.logger.Printf("✅ 原始URL成功 [耗时: %v]", retryElapsed)
 				d.handleRequestSuccess()
-				return d.parseImageConfig(resp, originalURL)
+				return d.parseImageConfig(retryResp, originalURL)
 			}
 			d.logger.Printf("❌ 原始URL也失败 [耗时: %v]: %v", retryElapsed, retryErr)
 		}

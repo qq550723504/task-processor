@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台的销售属性单批处理功能
+// Package sale 提供SHEIN平台的销售属性单批处理功能
 package sale
 
 import (
@@ -127,5 +127,3 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext
 
 	return result
 }
-
-

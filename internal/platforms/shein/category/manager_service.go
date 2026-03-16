@@ -1,4 +1,4 @@
-﻿// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
+// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
 package category
 
 import (
@@ -9,8 +9,8 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/contextutil"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/platforms/shein/api/category"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/category"
 
 	"github.com/sirupsen/logrus"
 )
@@ -290,5 +290,3 @@ func collectLeafNodes(node category.CategoryTreeNode) []category.CategoryTreeNod
 func buildFullCategoryPath(node category.CategoryTreeNode) string {
 	return node.CategoryName
 }
-
-

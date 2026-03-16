@@ -1,9 +1,9 @@
-﻿// Package sku 提供SHEIN平台SKU图片自动修复功能
+// Package sku 提供SHEIN平台SKU图片自动修复功能
 package sku
 
 import (
-	product "task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein"
+	product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -93,5 +93,3 @@ func (f *SKUImageAutoFixer) AutoFixSKUImageSorting(sku *product.SKU) {
 		}
 	}
 }
-
-

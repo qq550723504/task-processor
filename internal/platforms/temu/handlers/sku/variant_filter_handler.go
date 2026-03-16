@@ -1,9 +1,9 @@
-﻿package sku
+package sku
 
 import (
 	"fmt"
-	"task-processor/internal/pipeline"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/filter"
 

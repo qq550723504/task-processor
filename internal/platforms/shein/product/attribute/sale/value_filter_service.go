@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台销售属性值筛选功能
+// Package sale 提供SHEIN平台销售属性值筛选功能
 package sale
 
 import (
@@ -131,5 +131,3 @@ func (f *SaleAttributeValueFilter) ExtractActualValuesFromProducts(
 
 	return actualValues
 }
-
-

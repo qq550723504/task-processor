@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU平台库存监控核心逻辑
+// Package syncsvc 提供TEMU平台库存监控核心逻辑
 package syncsvc
 
 import (
@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/pkg/contextutil"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pkg/contextutil"
 
 	"github.com/sirupsen/logrus"
 )
@@ -18,9 +18,9 @@ func (s *inventorySyncServiceImpl) monitorSingleProduct(
 	prod *managementapi.ProductDataDTO,
 	tenantID, storeID int64,
 	result *MonitorResult,
-	resultMutex *sync.Mutex, // 并发模式下不为nil，顺序模式下为nil
-	operationStrategy *managementapi.OperationStrategyDTO, // 预获取的运营策略
-) error {
+	resultMutex *sync.Mutex,
+	operationStrategy *managementapi.OperationStrategyDTO,
+) {
 	s.logger.WithField("product_id", prod.ProductID).Debug("开始监控单个TEMU产品")
 
 	// 从 Attributes 中解析所有 SKU 映射数据
@@ -28,7 +28,6 @@ func (s *inventorySyncServiceImpl) monitorSingleProduct(
 
 	if len(skuMappingList) == 0 {
 		s.logger.WithField("product_id", prod.ProductID).Debug("TEMU产品没有映射信息，跳过")
-		// 更新跳过计数
 		if resultMutex != nil {
 			resultMutex.Lock()
 			result.SkippedProducts++
@@ -36,7 +35,7 @@ func (s *inventorySyncServiceImpl) monitorSingleProduct(
 		} else {
 			result.SkippedProducts++
 		}
-		return nil
+		return
 	}
 
 	// 收集所有需要更新库存的SKU信息
@@ -71,8 +70,6 @@ func (s *inventorySyncServiceImpl) monitorSingleProduct(
 			s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("批量更新TEMU产品库存失败")
 		}
 	}
-
-	return nil
 }
 
 // monitorSingleSKU 监控单个SKU（支持并发处理）

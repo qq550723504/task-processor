@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 // CostPriceQueryRequest 成本价格查询请求（半托店铺）
 type CostPriceQueryRequest struct {
@@ -11,14 +11,14 @@ type CostPriceQueryResponse struct {
 	Code string        `json:"code"`
 	Msg  string        `json:"msg"`
 	Info CostPriceInfo `json:"info"`
-	BBL  any   `json:"bbl"`
+	BBL  any           `json:"bbl"`
 }
 
 // CostPriceInfo 成本价格信息
 type CostPriceInfo struct {
 	Data []SkcCostData `json:"data"`
 	Meta struct {
-		Count     int         `json:"count"`
+		Count     int `json:"count"`
 		CustomObj any `json:"customObj"`
 	} `json:"meta"`
 }
@@ -26,21 +26,21 @@ type CostPriceInfo struct {
 // SkcCostData SKC 成本数据
 type SkcCostData struct {
 	SkcName              string             `json:"skc_name"`
-	ActLockInfo          any        `json:"act_lock_info"`
+	ActLockInfo          any                `json:"act_lock_info"`
 	SortOrder            int                `json:"sort_order"`
 	SaleAttribute        CostSaleAttribute  `json:"sale_attribute"`
 	SkuCostInfoList      []SkuCostInfo      `json:"sku_cost_info_list"`
 	ChangeCostReasonList []ChangeCostReason `json:"change_cost_reason_list"`
 	CanRaisePrice        int                `json:"can_raise_price"`
-	Deadline             any        `json:"deadline"`
+	Deadline             any                `json:"deadline"`
 }
 
 // CostSaleAttribute 成本销售属性
 type CostSaleAttribute struct {
-	AttributeID         any `json:"attribute_id"`
-	AttributeValueID    any `json:"attribute_value_id"`
-	AttributeMulti      string      `json:"attribute_multi"`
-	AttributeValueMulti string      `json:"attribute_value_multi"`
+	AttributeID         any    `json:"attribute_id"`
+	AttributeValueID    any    `json:"attribute_value_id"`
+	AttributeMulti      string `json:"attribute_multi"`
+	AttributeValueMulti string `json:"attribute_value_multi"`
 }
 
 // SkuCostInfo SKU 成本信息
@@ -49,8 +49,8 @@ type SkuCostInfo struct {
 	SaleAttributeList []SaleAttributeItem `json:"sale_attribute_list"`
 	CostPriceInfo     CostPrice           `json:"cost_price_info"`
 	CanChangeCost     bool                `json:"can_change_cost"`
-	FailReasonFlag    any         `json:"fail_reason_flag"`
-	FailReasonContent any         `json:"fail_reason_content"`
+	FailReasonFlag    any                 `json:"fail_reason_flag"`
+	FailReasonContent any                 `json:"fail_reason_content"`
 }
 
 // SaleAttributeItem 销售属性项

@@ -1,10 +1,10 @@
-﻿package build
+package build
 
 import (
 	"errors"
 	"fmt"
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -117,6 +117,3 @@ func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskCon
 
 	return attributeInfo, nil
 }
-
-
-

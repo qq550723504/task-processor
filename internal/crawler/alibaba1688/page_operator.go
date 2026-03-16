@@ -129,10 +129,8 @@ func (po *PageOperator) ScrollPage(page playwright.Page) error {
 
 	for i := 1; i <= scrollSteps; i++ {
 		scrollY := stepHeight * i
-		_, err := page.Evaluate(fmt.Sprintf("window.scrollTo(0, %d)", scrollY))
-		if err != nil {
-			logrus.Warnf("滚动到位置 %d 失败: %v", scrollY, err)
-			continue
+		if _, scrollErr := page.Evaluate(fmt.Sprintf("window.scrollTo(0, %d)", scrollY)); scrollErr != nil {
+			logrus.Warnf("滚动到位置 %d 失败: %v", scrollY, scrollErr)
 		}
 
 		time.Sleep(500 * time.Millisecond)

@@ -1,4 +1,4 @@
-﻿// Package processor 提供统一的任务处理器基类
+// Package processor 提供统一的任务处理器基类
 package processor
 
 import (

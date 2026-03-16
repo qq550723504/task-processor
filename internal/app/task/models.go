@@ -1,4 +1,4 @@
-﻿// Package task 提供任务相关的数据模型定义
+// Package task 提供任务相关的数据模型定义
 package task
 
 import (
@@ -65,13 +65,13 @@ type PlatformReport struct {
 
 // QueueSummary 队列摘要
 type QueueSummary struct {
-	TotalQueued     int                    `json:"total_queued"`
-	TotalCapacity   int                    `json:"total_capacity"`
-	OverallUsage    float64                `json:"overall_usage"`
-	ProcessingTasks int                    `json:"processing_tasks"`
-	HealthScore     int                    `json:"health_score"`
+	TotalQueued     int            `json:"total_queued"`
+	TotalCapacity   int            `json:"total_capacity"`
+	OverallUsage    float64        `json:"overall_usage"`
+	ProcessingTasks int            `json:"processing_tasks"`
+	HealthScore     int            `json:"health_score"`
 	Platforms       map[string]any `json:"platforms"`
-	Timestamp       int64                  `json:"timestamp"`
+	Timestamp       int64          `json:"timestamp"`
 }
 
 // CleanupStrategy 清理策略接口

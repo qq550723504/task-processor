@@ -1,4 +1,4 @@
-﻿// Package rabbitmq 提供RabbitMQ消息消费者管理功能
+// Package rabbitmq 提供RabbitMQ消息消费者管理功能
 package rabbitmq
 
 import (

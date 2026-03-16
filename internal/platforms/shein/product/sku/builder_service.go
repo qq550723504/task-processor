@@ -1,11 +1,11 @@
-﻿// Package sku 提供SHEIN平台SKU构建核心功能
+// Package sku 提供SHEIN平台SKU构建核心功能
 package sku
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/platforms/shein/api/product"
 	shein "task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/product/variant"
 
 	"github.com/sirupsen/logrus"
@@ -113,6 +113,3 @@ func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, varian
 	logrus.Infof("成功为单变体创建SKU，销售属性数量: %d", len(saleAttributeList))
 	return []product.SKU{*sku}, nil
 }
-
-
-

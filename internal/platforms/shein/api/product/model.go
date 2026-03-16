@@ -1,4 +1,4 @@
-﻿// Package product 产品模型数据结构
+// Package product 产品模型数据结构
 package product
 
 import (
@@ -43,7 +43,7 @@ type Product struct {
 
 	// 产品属性
 	ProductAttributeList     []ProductAttribute `json:"product_attribute_list"`
-	ProductNameAttributeList []any      `json:"product_name_attribute_list"`
+	ProductNameAttributeList []any              `json:"product_name_attribute_list"`
 
 	// 视频信息
 	ProductVideoList []ProductVideo `json:"product_video_list"`
@@ -60,7 +60,7 @@ type Product struct {
 	SampleSkuBackSize *string         `json:"sample_sku_back_size,omitempty"`
 
 	// 其他属性
-	BackSizeAttributeList   []any                       `json:"back_size_attribute_list"`
+	BackSizeAttributeList   []any                               `json:"back_size_attribute_list"`
 	CustomAttributeRelation []attribute.CustomAttributeRelation `json:"custom_attribute_relation"`
 	Extra                   Extra                               `json:"extra"`
 }

@@ -1,4 +1,4 @@
-﻿// Package product 提供TEMU平台产品描述验证器的规则功能
+// Package product 提供TEMU平台产品描述验证器的规则功能
 package product
 
 import (

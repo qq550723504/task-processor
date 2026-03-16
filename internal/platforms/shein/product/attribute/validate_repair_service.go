@@ -1,11 +1,11 @@
-﻿package attribute
+package attribute
 
 import (
 	"fmt"
 	"strings"
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )
@@ -175,5 +175,3 @@ func (h *ValidateRepairSaleAttributeHandler) findFuzzyMatch(value string, platfo
 
 	return 0, false
 }
-
-

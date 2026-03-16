@@ -1,4 +1,4 @@
-﻿// Package content 提供SHEIN平台的敏感词服务核心功能
+// Package content 提供SHEIN平台的敏感词服务核心功能
 package content
 
 import (
@@ -243,5 +243,3 @@ func (s *SensitiveWordService) ClearDynamicSensitiveWords() {
 	// 异步保存配置
 	s.saveConfigAsync()
 }
-
-

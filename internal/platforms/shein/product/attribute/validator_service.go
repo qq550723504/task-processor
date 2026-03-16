@@ -1,12 +1,12 @@
-﻿// Package attribute 提供SHEIN平台属性验证和修复功能
+// Package attribute 提供SHEIN平台属性验证和修复功能
 package attribute
 
 import (
 	"strings"
 
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	"task-processor/internal/platforms/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
 )
@@ -311,5 +311,3 @@ func (v *AttributeSelectionValidator) findGenericDefaultValue(availableValues ma
 		Value: "/",
 	}
 }
-
-

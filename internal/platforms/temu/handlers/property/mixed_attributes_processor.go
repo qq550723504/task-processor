@@ -1,4 +1,4 @@
-﻿// Package property 提供混合属性处理功能
+// Package property 提供混合属性处理功能
 package property
 
 import (

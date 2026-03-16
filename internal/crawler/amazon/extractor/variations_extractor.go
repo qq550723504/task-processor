@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"task-processor/internal/crawler/amazon/variations"

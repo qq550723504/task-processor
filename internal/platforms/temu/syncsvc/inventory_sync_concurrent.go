@@ -1,4 +1,4 @@
-﻿// Package syncsvc 提供TEMU平台库存监控并发处理逻辑
+// Package syncsvc 提供TEMU平台库存监控并发处理逻辑
 package syncsvc
 
 import (
@@ -83,13 +83,10 @@ func (s *inventorySyncServiceImpl) monitorInventoryChangesConcurrent(
 			}).Debug("开始并发处理TEMU产品")
 
 			// 处理单个产品的库存监控
-			if err := s.monitorSingleProduct(ctx, product, tenantID, storeID, result, &resultMutex, operationStrategy); err != nil {
-				s.logger.WithError(err).WithField("product_id", product.ProductID).Error("监控TEMU产品失败")
-			} else {
-				resultMutex.Lock()
-				result.ProcessedProducts++
-				resultMutex.Unlock()
-			}
+			s.monitorSingleProduct(ctx, product, tenantID, storeID, result, &resultMutex, operationStrategy)
+			resultMutex.Lock()
+			result.ProcessedProducts++
+			resultMutex.Unlock()
 		}(i, prod)
 	}
 

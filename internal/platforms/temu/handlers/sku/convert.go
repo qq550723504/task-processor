@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的SKU工具方法
+// Package sku 提供TEMU平台的SKU工具方法
 package sku
 
 import (

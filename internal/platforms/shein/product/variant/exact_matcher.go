@@ -1,4 +1,4 @@
-﻿// Package variant 提供SHEIN平台变体精确匹配功能
+// Package variant 提供SHEIN平台变体精确匹配功能
 package variant
 
 import (
@@ -44,5 +44,3 @@ func (m *VariantExactMatcher) FindExactMatches(variants []shein.Variant, attrNam
 
 	return exactMatches
 }
-
-

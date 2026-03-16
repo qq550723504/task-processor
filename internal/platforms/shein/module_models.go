@@ -1,4 +1,4 @@
-﻿// Package shein 提供SHEIN平台模块的数据模型定义
+// Package shein 提供SHEIN平台模块的数据模型定义
 package shein
 
 import (
@@ -52,7 +52,7 @@ type EnrichedSkcInfo struct {
 	SkuInfo               []EnrichedSkuInfo `json:"sku_info"`
 	MallSellStatus        int               `json:"mall_sell_status"`
 	Abandoned             bool              `json:"abandoned"`
-	TagInfoList           []any     `json:"tag_info_list"`
+	TagInfoList           []any             `json:"tag_info_list"`
 	ShelfFailReason       *string           `json:"shelf_fail_reason"`
 	HasOriginalImage      bool              `json:"has_original_image"`
 }
@@ -94,4 +94,3 @@ type CostPriceInfo struct {
 	CostPrice string `json:"cost_price"`
 	Currency  string `json:"currency"`
 }
-

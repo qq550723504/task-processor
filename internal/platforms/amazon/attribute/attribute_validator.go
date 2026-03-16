@@ -1,4 +1,4 @@
-﻿package attribute
+package attribute
 
 import (
 	"fmt"
@@ -76,7 +76,7 @@ func (v *AttributeValidator) validateAttribute(attrName string, value any) error
 
 // validateStringAttribute 验证字符串属性
 func (v *AttributeValidator) validateStringAttribute(
-	attrName string,
+	_ string,
 	value string,
 	rule ValidationRule,
 ) error {
@@ -122,7 +122,7 @@ func (v *AttributeValidator) validateStringAttribute(
 
 // validateNumericAttribute 验证数值属性
 func (v *AttributeValidator) validateNumericAttribute(
-	attrName string,
+	_ string,
 	value float64,
 	rule ValidationRule,
 ) error {

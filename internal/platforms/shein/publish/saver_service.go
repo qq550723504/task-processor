@@ -1,12 +1,12 @@
-﻿// Package publish 提供SHEIN平台产品发布结果保存功能
+// Package publish 提供SHEIN平台产品发布结果保存功能
 package publish
 
 import (
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
-	product "task-processor/internal/platforms/shein/api/product"
 	shein "task-processor/internal/platforms/shein"
+	product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -87,5 +87,3 @@ func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein.TaskContext) {
 		}
 	}()
 }
-
-

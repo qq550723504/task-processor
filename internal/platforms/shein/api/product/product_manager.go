@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -115,8 +115,8 @@ func (m *productManager) confirmPublish(product *Product) (bool, string, error) 
 		api.APIResponse
 		Info struct {
 			Data struct {
-				NeedConfirm      bool        `json:"need_confirm"`
-				SimPriceInfoList any `json:"sim_price_info_list"`
+				NeedConfirm      bool `json:"need_confirm"`
+				SimPriceInfoList any  `json:"sim_price_info_list"`
 			} `json:"data"`
 		} `json:"info"`
 	}

@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -9,7 +9,7 @@ import (
 )
 
 // evaluateProduct 评估单个产品
-func (s *autoPricingServiceImpl) evaluateProduct(product *pricing.BargainPageData, rules []managementapi.PricingRuleRespDTO, storeID int64, enableRebargain bool) PricingDecision {
+func (s *autoPricingServiceImpl) evaluateProduct(product *pricing.BargainPageData, rules []managementapi.PricingRuleRespDTO, _ int64, enableRebargain bool) PricingDecision {
 	// 检查是否有SKU成本价数据
 	if len(product.SkuCostPrices) == 0 {
 		return PricingDecision{
@@ -21,18 +21,7 @@ func (s *autoPricingServiceImpl) evaluateProduct(product *pricing.BargainPageDat
 	}
 
 	// 检查所有SKU是否都符合通过条件
-	allSKUsPass, shouldSkip, err := s.checkAllSKUsPassCondition(product.SkuCostPrices, rules)
-	if err != nil {
-		s.logger.Errorf("检查SKU通过条件时出错: %v", err)
-		return PricingDecision{
-			Product:      *product,
-			Action:       "reject",
-			Reason:       fmt.Sprintf("检查SKU通过条件时出错: %v", err),
-			BatchReQuote: s.requestBuilder.BuildRejectRequest(product),
-		}
-	}
-
-	// 如果应该跳过处理
+	allSKUsPass, shouldSkip := s.checkAllSKUsPassCondition(product.SkuCostPrices, rules)
 	if shouldSkip {
 		return PricingDecision{
 			Product:      *product,
@@ -78,7 +67,7 @@ func (s *autoPricingServiceImpl) evaluateProduct(product *pricing.BargainPageDat
 }
 
 // checkAllSKUsPassCondition 检查所有SKU是否都符合通过条件
-func (s *autoPricingServiceImpl) checkAllSKUsPassCondition(skus []pricing.SkuCostPrice, rules []managementapi.PricingRuleRespDTO) (bool, bool, error) {
+func (s *autoPricingServiceImpl) checkAllSKUsPassCondition(skus []pricing.SkuCostPrice, rules []managementapi.PricingRuleRespDTO) (allPass bool, shouldSkip bool) {
 	mappingClient := s.managementClient.GetProductImportMappingClient()
 	passedSKUCount := 0
 	totalSKUCount := 0
@@ -95,7 +84,7 @@ func (s *autoPricingServiceImpl) checkAllSKUsPassCondition(skus []pricing.SkuCos
 		respDto, err := mappingClient.GetProductImportMappingByPlatformProductId(reqDto)
 		if err != nil {
 			s.logger.Errorf("获取产品导入映射关系失败: %v", err)
-			return false, true, nil
+			return false, true
 		}
 
 		var originPrice float64
@@ -125,15 +114,15 @@ func (s *autoPricingServiceImpl) checkAllSKUsPassCondition(skus []pricing.SkuCos
 		if suggestPrice < passPrice {
 			s.logger.Debugf("SKU: %s, 建议价格: %.2f, 低于通过价格: %.2f, 不符合条件",
 				sku.SkuCode, suggestPrice, passPrice)
-			return false, false, nil
+			return false, false
 		}
 
 		passedSKUCount++
 	}
 
 	if totalSKUCount == 0 {
-		return false, true, nil
+		return false, true
 	}
 
-	return passedSKUCount == totalSKUCount, false, nil
+	return passedSKUCount == totalSKUCount, false
 }

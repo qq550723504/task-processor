@@ -1,4 +1,4 @@
-﻿// Package property 提供属性去重功能
+// Package property 提供属性去重功能
 package property
 
 import (

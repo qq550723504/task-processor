@@ -1,1 +1,1 @@
-﻿package management
+package management

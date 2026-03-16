@@ -1,4 +1,4 @@
-﻿// Package property 提供TEMU平台的属性验证统计功能
+// Package property 提供TEMU平台的属性验证统计功能
 package property
 
 import (

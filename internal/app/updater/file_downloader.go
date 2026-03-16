@@ -160,7 +160,7 @@ func (fd *FileDownloader) copyWithProgress(dst io.Writer, src io.Reader, total i
 }
 
 // diagnoseDownloadError 诊断下载错误
-func (fd *FileDownloader) diagnoseDownloadError(url string, err error) error {
+func (fd *FileDownloader) diagnoseDownloadError(_ string, err error) error {
 	errMsg := err.Error()
 
 	// 常见错误诊断

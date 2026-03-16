@@ -1,4 +1,4 @@
-﻿// Package messaging 提供多平台处理器注册功能
+// Package messaging 提供多平台处理器注册功能
 package messaging
 
 import (
@@ -9,8 +9,8 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
 	platformAmazon "task-processor/internal/platforms/amazon"
 	"task-processor/internal/platforms/shein/pipeline"
 	"task-processor/internal/platforms/temu"
@@ -338,4 +338,3 @@ func containsPlatform(platforms []string, platform string) bool {
 func (r *PlatformRegistry) GetSharedAmazonProcessor() *amazon.AmazonProcessor {
 	return r.sharedAmazonProcessor
 }
-

@@ -1,4 +1,4 @@
-﻿package warehouse
+package warehouse
 
 type WarehouseAPI interface {
 	GetWarehouses() (*WarehouseResponse, error)
@@ -16,7 +16,7 @@ type Warehouse struct {
 type WarehouseResponse struct {
 	Data []Warehouse `json:"data"`
 	Meta struct {
-		Count     int         `json:"count"`
+		Count     int `json:"count"`
 		CustomObj any `json:"customObj"`
 	} `json:"meta"`
 }

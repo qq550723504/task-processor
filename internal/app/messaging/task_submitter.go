@@ -1,4 +1,4 @@
-﻿// Package messaging 提供消息处理应用层服务
+// Package messaging 提供消息处理应用层服务
 package messaging
 
 import (

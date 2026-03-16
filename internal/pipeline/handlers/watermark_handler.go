@@ -45,12 +45,7 @@ func (h *WatermarkHandler) Handle(ctx pipeline.TaskContext) error {
 	// 处理图片列表
 	switch imgs := images.(type) {
 	case []image.Image:
-		processedImages, err := h.processImages(ctx.GetContext(), imgs)
-		if err != nil {
-			h.LogError(err)
-			return fmt.Errorf("批量处理图片失败: %w", err)
-		}
-		ctx.SetData("images", processedImages)
+		ctx.SetData("images", h.processImages(ctx.GetContext(), imgs))
 
 	case image.Image:
 		processedImage, err := h.processSingleImage(ctx.GetContext(), imgs)
@@ -74,7 +69,7 @@ func (h *WatermarkHandler) Handle(ctx pipeline.TaskContext) error {
 }
 
 // processImages 批量处理图片
-func (h *WatermarkHandler) processImages(ctx context.Context, images []image.Image) ([]image.Image, error) {
+func (h *WatermarkHandler) processImages(ctx context.Context, images []image.Image) []image.Image {
 	processedImages := make([]image.Image, 0, len(images))
 	var stats struct {
 		total    int
@@ -112,7 +107,7 @@ func (h *WatermarkHandler) processImages(ctx context.Context, images []image.Ima
 	h.GetLogger().Infof("水印处理完成: 总数=%d, 检测到=%d, 已去除=%d, 失败=%d",
 		stats.total, stats.detected, stats.removed, stats.failed)
 
-	return processedImages, nil
+	return processedImages
 }
 
 // processSingleImage 处理单张图片

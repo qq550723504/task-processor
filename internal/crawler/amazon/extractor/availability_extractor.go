@@ -12,11 +12,7 @@ import (
 type AvailabilityExtractor struct{}
 
 func (e *AvailabilityExtractor) Extract(page playwright.Page, product *model.Product) error {
-	availability, err := e.getAvailability(page)
-	if err != nil {
-		logrus.Errorf("提取库存信息失败: %v", err)
-		return err
-	}
+	availability := e.getAvailability(page)
 	product.Availability = availability
 
 	// 设置IsAvailable字段
@@ -26,7 +22,7 @@ func (e *AvailabilityExtractor) Extract(page playwright.Page, product *model.Pro
 }
 
 // getAvailability 获取库存状态
-func (e *AvailabilityExtractor) getAvailability(page playwright.Page) (string, error) {
+func (e *AvailabilityExtractor) getAvailability(page playwright.Page) string {
 	// Amazon 库存信息的常见选择器
 	selectors := []string{
 		"#availability span",
@@ -61,7 +57,7 @@ func (e *AvailabilityExtractor) getAvailability(page playwright.Page) (string, e
 
 		text = strings.TrimSpace(text)
 		if text != "" && e.isValidAvailabilityText(text) {
-			return e.normalizeAvailabilityText(text), nil
+			return e.normalizeAvailabilityText(text)
 		}
 	}
 
@@ -72,12 +68,12 @@ func (e *AvailabilityExtractor) getAvailability(page playwright.Page) (string, e
 			logrus.WithFields(logrus.Fields{
 				"text": availability,
 			}).Info("✅ 从页面文本中提取到库存信息")
-			return availability, nil
+			return availability
 		}
 	}
 
 	logrus.Warn("⚠️ 未找到库存信息，返回 Unknown")
-	return "Unknown", nil
+	return "Unknown"
 }
 
 // isValidAvailabilityText 检查文本是否是有效的库存信息（多语言支持）

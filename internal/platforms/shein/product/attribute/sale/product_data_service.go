@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台销售属性的产品数据准备功能
+// Package sale 提供SHEIN平台销售属性的产品数据准备功能
 package sale
 
 import (
@@ -217,6 +217,3 @@ func (p *SaleAttributeProductDataPreparer) logAttributeCount(productDetails map[
 
 	logrus.Debugf("✅ 为%s %s 提取了 %d 个属性信息", productType, asin, attributeCount)
 }
-
-
-

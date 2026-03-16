@@ -1,9 +1,9 @@
-﻿package skc
+package skc
 
 import (
 	"fmt"
-	api_attribute "task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein"
+	api_attribute "task-processor/internal/platforms/shein/api/attribute"
 	"task-processor/internal/platforms/shein/product/attribute"
 
 	"github.com/sirupsen/logrus"
@@ -27,7 +27,7 @@ func NewAttributeStrategyHandler() *AttributeStrategyHandler {
 func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData shein.ResultSaleAttribute, config shein.AttributePriorityConfig, attributeTemplates *api_attribute.AttributeTemplateInfo) shein.AttributeStrategy {
 	var primaryAttr shein.ResultAttribute
 	var secondaryAttr shein.ResultAttribute
-	strategyType := "single_variant"
+	var strategyType string
 
 	// 0. 优先检查必填属性作为主规格
 	foundPrimaryAttr := false
@@ -41,13 +41,8 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 				// 检查该属性是否为必填属性（通过检查是否在模板中标记为必填）
 				if h.isRequiredAttribute(attr.AttrID, attributeTemplates) {
 					primaryAttr = attr
-					if len(attr.AttrValue) > 1 {
-						strategyType = "multi_variant"
-					} else {
-						strategyType = "single_primary_variant"
-					}
-					logrus.Infof("🎯 使用必填属性作为主规格: ID=%d, 变体数量=%d, 策略类型=%s",
-						attr.AttrID, len(attr.AttrValue), strategyType)
+					logrus.Infof("🎯 使用必填属性作为主规格: ID=%d, 变体数量=%d",
+						attr.AttrID, len(attr.AttrValue))
 					foundPrimaryAttr = true
 					break
 				}
@@ -64,13 +59,8 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 					// 验证该属性值在变体中实际存在
 					if h.validateAttributeInVariants(attr.AttrID, attr.AttrValue, saleAttributeData.Variants, attributeTemplates) {
 						primaryAttr = attr
-						if len(attr.AttrValue) > 1 {
-							strategyType = "multi_variant"
-						} else {
-							strategyType = "single_primary_variant"
-						}
-						logrus.Infof("选择主要属性: ID=%d, 变体数量=%d, 策略类型=%s",
-							attr.AttrID, len(attr.AttrValue), strategyType)
+						logrus.Infof("选择主要属性: ID=%d, 变体数量=%d",
+							attr.AttrID, len(attr.AttrValue))
 						foundPrimaryAttr = true
 						break
 					} else {
@@ -94,13 +84,8 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 			if len(attr.AttrValue) > 0 {
 				if h.validateAttributeInVariants(attr.AttrID, attr.AttrValue, saleAttributeData.Variants, attributeTemplates) {
 					primaryAttr = attr
-					if len(attr.AttrValue) > 1 {
-						strategyType = "multi_variant"
-					} else {
-						strategyType = "single_primary_variant"
-					}
-					logrus.Infof("使用必填属性作为主要属性: ID=%d, 变体数量=%d, 策略类型=%s",
-						attr.AttrID, len(attr.AttrValue), strategyType)
+					logrus.Infof("使用必填属性作为主要属性: ID=%d, 变体数量=%d",
+						attr.AttrID, len(attr.AttrValue))
 					foundPrimaryAttr = true
 					break
 				}
@@ -131,9 +116,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 
 				// 不再自动创建颜色属性，而是使用尺寸属性作为主属性
 				primaryAttr = sizeAttribute
-				strategyType = "single_primary_variant"
 				logrus.Infof("使用尺寸属性作为主要属性: ID=%d, 变体数量=%d", primaryAttr.AttrID, len(primaryAttr.AttrValue))
-				foundPrimaryAttr = true
 			}
 		}
 	}
@@ -141,7 +124,6 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 	// 2. 如果没有找到合适的主要属性，使用默认属性或创建默认单变体属性
 	if primaryAttr.AttrID <= 0 {
 		primaryAttr = h.createDefaultPrimaryAttribute(saleAttributeData, config)
-		strategyType = "single_variant"
 	}
 
 	// 3. 寻找次要属性（用于SKU分组）
@@ -478,6 +460,3 @@ func (h *AttributeStrategyHandler) hasColorAttribute(saleAttributeData shein.Res
 	}
 	return false
 }
-
-
-

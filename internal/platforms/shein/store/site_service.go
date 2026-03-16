@@ -1,4 +1,4 @@
-﻿package store
+package store
 
 import (
 	"task-processor/internal/platforms/shein"

@@ -18,38 +18,34 @@ func NewParentAsinExtractor() *ParentAsinExtractor {
 
 // Extract 提取父级ASIN
 func (pae *ParentAsinExtractor) Extract(page playwright.Page, product *model.Product) error {
-	parentAsin, err := pae.getParentAsin(page)
-	if err != nil {
-		logrus.Infof("提取父级ASIN失败: %v", err)
-		return err
-	}
+	parentAsin := pae.getParentAsin(page)
 	product.ParentAsin = parentAsin
 	return nil
 }
 
 // getParentAsin 获取父级ASIN
-func (pae *ParentAsinExtractor) getParentAsin(page playwright.Page) (string, error) {
+func (pae *ParentAsinExtractor) getParentAsin(page playwright.Page) string {
 	// 尝试从各种位置提取父级ASIN
 	parentAsin := pae.extractFromVariations(page)
 	if parentAsin != "" {
 		logrus.Infof("从变体信息中找到父级ASIN: %s", parentAsin)
-		return parentAsin, nil
+		return parentAsin
 	}
 
 	parentAsin = pae.extractFromPageSource(page)
 	if parentAsin != "" {
 		logrus.Infof("从页面源码中找到父级ASIN: %s", parentAsin)
-		return parentAsin, nil
+		return parentAsin
 	}
 
 	parentAsin = pae.extractFromMetadata(page)
 	if parentAsin != "" {
 		logrus.Infof("从元数据中找到父级ASIN: %s", parentAsin)
-		return parentAsin, nil
+		return parentAsin
 	}
 
 	logrus.Infof("未找到父级ASIN")
-	return "", nil
+	return ""
 }
 
 // extractFromVariations 从变体信息中提取父级ASIN

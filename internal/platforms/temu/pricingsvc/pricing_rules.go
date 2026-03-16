@@ -1,4 +1,4 @@
-﻿package pricingsvc
+package pricingsvc
 
 import (
 	"context"

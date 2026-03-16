@@ -1,4 +1,4 @@
-﻿// Package ai 提供TEMU平台的AI属性映射核心功能
+// Package ai 提供TEMU平台的AI属性映射核心功能
 package ai
 
 import (
@@ -270,13 +270,13 @@ func (m *AIPropertyMapper) enrichPropertiesWithTemplateInfo(properties []models.
 
 		// 如果精确匹配失败，尝试使用PID匹配
 		if templateProp == nil {
-			if templateProps, exists := pidToTemplateProps[prop.Pid]; exists {
-				if len(templateProps) == 1 {
+			if matchedProps, exists := pidToTemplateProps[prop.Pid]; exists {
+				if len(matchedProps) == 1 {
 					// 只有一个匹配的模板属性，直接使用
-					templateProp = &templateProps[0]
+					templateProp = &matchedProps[0]
 				} else {
 					// 多个匹配的模板属性，使用智能选择策略
-					templateProp = m.selectBestTemplate(prop, templateProps)
+					templateProp = m.selectBestTemplate(prop, matchedProps)
 				}
 			}
 		}

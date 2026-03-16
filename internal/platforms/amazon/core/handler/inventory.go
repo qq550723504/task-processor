@@ -1,4 +1,4 @@
-﻿// Package handler 提供Amazon库存处理器
+// Package handler 提供Amazon库存处理器
 package handler
 
 import (

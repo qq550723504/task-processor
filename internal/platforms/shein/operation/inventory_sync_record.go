@@ -1,12 +1,12 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
 	"encoding/json"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
-	"task-processor/internal/pkg/jsonutil"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pkg/jsonutil"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timeutil"
 	"time"

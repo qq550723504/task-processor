@@ -1,4 +1,4 @@
-﻿// Package sku 提供并行SKU构建功能
+// Package sku 提供并行SKU构建功能
 package sku
 
 import (
@@ -72,7 +72,7 @@ func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.
 }
 
 // buildSkuWithoutImages 构建SKU（不包含图片处理）
-func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku, index int) models.Sku {
+func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku, _ int) models.Sku {
 	// 使用利润规则计算最终销售价格
 	finalSalePrice := spb.itemBuilder.priceHandler.CalculateVariantPrice(temuCtx, variant)
 
@@ -98,7 +98,7 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTa
 	multiplePackage := spb.buildMultiplePackage(variant, aiSku)
 
 	// 计算市场价
-	marketPrice := int(finalSalePrice * 2)
+	marketPrice := finalSalePrice * 2
 	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
 
 	// 构建SKU（不包含图片，图片将在后续步骤中添加）
@@ -120,7 +120,7 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTa
 		OriginNetContentNumber: originNetContentNumber,
 		NetContentUnitCode:     netContentUnitCode,
 		MaxRetailPriceStr:      marketPriceStr,
-		SupplierPrice:          int(finalSalePrice),
+		SupplierPrice:          finalSalePrice,
 		SkuPriceDocuments:      make(map[string]any),
 		MarketPrice:            marketPrice,
 		MarketPriceStr:         marketPriceStr,
@@ -128,7 +128,7 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTa
 }
 
 // buildSpecList 构建规格列表
-func (spb *SkuParallelBuilder) buildSpecList(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku) []models.SpecInfo {
+func (spb *SkuParallelBuilder) buildSpecList(_ *temucontext.TemuTaskContext, _ *model.Product, aiSku temucontext.AIGeneratedSku) []models.SpecInfo {
 	specList := spb.itemBuilder.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
 
 	// 验证规格是否有效（检查是否还有临时ID）
@@ -191,7 +191,7 @@ func (spb *SkuParallelBuilder) buildProductExpressInfo(variant *model.Product, a
 }
 
 // buildMultiplePackage 构建多件装信息
-func (spb *SkuParallelBuilder) buildMultiplePackage(variant *model.Product, aiSku temucontext.AIGeneratedSku) models.MultiplePackage {
+func (spb *SkuParallelBuilder) buildMultiplePackage(_ *model.Product, aiSku temucontext.AIGeneratedSku) models.MultiplePackage {
 	// 使用AI判断的多件装信息
 	multiplePackage := models.MultiplePackage{
 		SkuClassification:  aiSku.SkuClassification,

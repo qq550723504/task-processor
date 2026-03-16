@@ -1,4 +1,4 @@
-﻿// Package pricingsvc 提供TEMU平台核价规则计算功能
+// Package pricingsvc 提供TEMU平台核价规则计算功能
 package pricingsvc
 
 import (

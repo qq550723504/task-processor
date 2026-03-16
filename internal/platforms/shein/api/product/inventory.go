@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 // InventoryQueryRequest 库存详情查询请求
 type InventoryQueryRequest struct {
@@ -10,14 +10,14 @@ type InventoryQueryResponse struct {
 	Code string        `json:"code"`
 	Msg  string        `json:"msg"`
 	Info InventoryInfo `json:"info"`
-	BBL  any   `json:"bbl"`
+	BBL  any           `json:"bbl"`
 }
 
 // InventoryInfo 库存信息
 type InventoryInfo struct {
 	SpuName            string         `json:"spu_name"`
-	ProductNameCh      any    `json:"product_name_ch"`
-	MainImageThumbnail any    `json:"main_image_thumbnail"`
+	ProductNameCh      any            `json:"product_name_ch"`
+	MainImageThumbnail any            `json:"main_image_thumbnail"`
 	SkcInfo            []SkcInventory `json:"skc_info"`
 	IfFbmStore         bool           `json:"if_fbm_store"`
 }
@@ -94,8 +94,8 @@ type WarehouseInventoryUpdate struct {
 
 // InventoryUpdateResponse 库存更新响应
 type InventoryUpdateResponse struct {
-	Code string      `json:"code"`
-	Msg  string      `json:"msg"`
-	Info any `json:"info"`
-	BBL  any `json:"bbl"`
+	Code string `json:"code"`
+	Msg  string `json:"msg"`
+	Info any    `json:"info"`
+	BBL  any    `json:"bbl"`
 }

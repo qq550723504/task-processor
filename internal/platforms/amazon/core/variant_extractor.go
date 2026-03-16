@@ -1,4 +1,4 @@
-﻿package core
+package core
 
 import (
 	"fmt"
@@ -150,8 +150,8 @@ func (e *VariantExtractor) determineVariationTheme(attributes []string) string {
 
 // VariantData 变体数据
 type VariantData struct {
-	Theme      string                   `json:"theme"`
-	Attributes []string                 `json:"attributes"`
+	Theme      string           `json:"theme"`
+	Attributes []string         `json:"attributes"`
 	SKUs       []map[string]any `json:"skus"`
 }
 

@@ -1,4 +1,4 @@
-﻿// Package pricingsvc 提供核价服务接口定义
+// Package pricingsvc 提供核价服务接口定义
 package pricingsvc
 
 import (

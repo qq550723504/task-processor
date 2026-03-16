@@ -1,11 +1,11 @@
-﻿// Package product 提供TEMU平台的产品筛选检查功能
+// Package product 提供TEMU平台的产品筛选检查功能
 package product
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pipeline"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/pipeline"
 	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	"task-processor/internal/platforms/temu/handlers/rules"
 
@@ -63,7 +63,7 @@ func (c *ProductFilterChecker) CheckProductAgainstRulesDetailed(product *model.P
 }
 
 // checkSingleRuleWithAdapter 适配器方法，处理接口不匹配问题
-func (c *ProductFilterChecker) checkSingleRuleWithAdapter(product *model.Product, rule *api.FilterRuleRespDTO, ctx pipeline.TaskContext) *handlerbase.FilterCheckResult {
+func (c *ProductFilterChecker) checkSingleRuleWithAdapter(product *model.Product, rule *api.FilterRuleRespDTO, _ pipeline.TaskContext) *handlerbase.FilterCheckResult {
 	// 由于RuleValidator期望*pipeline.TaskContext，但我们有pipeline.TaskContext接口
 	// 这里我们创建一个简化的检查逻辑，避免接口不匹配
 	// TODO: 重构RuleValidator以使用接口而不是具体类型

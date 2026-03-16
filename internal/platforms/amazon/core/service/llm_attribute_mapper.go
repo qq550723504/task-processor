@@ -1,4 +1,4 @@
-﻿// Package service 提供基于LLM的智能属性映射服务
+// Package service 提供基于LLM的智能属性映射服务
 package service
 
 import (
@@ -40,18 +40,18 @@ type ChatResponse struct {
 
 // AttributeMappingRequest 属性映射请求
 type AttributeMappingRequest struct {
-	SourcePlatform string                 `json:"source_platform"`
-	TargetPlatform string                 `json:"target_platform"`
+	SourcePlatform string         `json:"source_platform"`
+	TargetPlatform string         `json:"target_platform"`
 	ProductData    map[string]any `json:"product_data"`
-	ProductType    string                 `json:"product_type"`
+	ProductType    string         `json:"product_type"`
 }
 
 // AttributeMappingResponse 属性映射响应
 type AttributeMappingResponse struct {
 	MappedAttributes map[string]any `json:"mapped_attributes"`
-	ProductType      string                 `json:"product_type"`
-	Confidence       float64                `json:"confidence"`
-	Reasoning        string                 `json:"reasoning"`
+	ProductType      string         `json:"product_type"`
+	Confidence       float64        `json:"confidence"`
+	Reasoning        string         `json:"reasoning"`
 }
 
 // NewLLMAttributeMapper 创建LLM属性映射器

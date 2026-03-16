@@ -1,4 +1,4 @@
-﻿package management
+package management
 
 import (
 	"fmt"
@@ -172,9 +172,9 @@ func NewNonRetryableError(message string, err error) *NonRetryableError {
 
 // APIResponse 通用API响应结构
 type APIResponse struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    any `json:"data,omitempty"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // ProcessAPIResponse 处理API响应

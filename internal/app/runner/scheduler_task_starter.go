@@ -1,4 +1,4 @@
-﻿// Package service 提供调度任务启动器
+// Package service 提供调度任务启动器
 package runner
 
 import (
@@ -25,68 +25,48 @@ func (s *schedulerServiceImpl) startPlatformTasks(
 	// 启动各类任务
 	totalTaskCount := 0
 
-	// 1. 启动核价任务
 	if platformConfig.AutoPricing.Enabled {
-		count, err := s.startTasksByType(
+		count := s.startTasksByType(
 			platformConfig.PlatformName,
 			scheduler.TaskTypePricing,
 			getDefaultInterval(platformConfig.AutoPricing.Interval),
 			cfg,
 		)
-		if err != nil {
-			s.logger.Errorf("启动%s核价任务失败: %v", platformConfig.PlatformName, err)
-		} else {
-			totalTaskCount += count
-			s.logger.Infof("✅ 成功启动 %d 个%s核价任务", count, platformConfig.PlatformName)
-		}
+		totalTaskCount += count
+		s.logger.Infof("✅ 成功启动 %d 个%s核价任务", count, platformConfig.PlatformName)
 	}
 
-	// 2. 启动产品同步任务
 	if platformConfig.ProductSync.Enabled {
-		count, err := s.startTasksByType(
+		count := s.startTasksByType(
 			platformConfig.PlatformName,
 			scheduler.TaskTypeProductSync,
 			getDefaultInterval(platformConfig.ProductSync.Interval),
 			cfg,
 		)
-		if err != nil {
-			s.logger.Errorf("启动%s产品同步任务失败: %v", platformConfig.PlatformName, err)
-		} else {
-			totalTaskCount += count
-			s.logger.Infof("✅ 成功启动 %d 个%s产品同步任务", count, platformConfig.PlatformName)
-		}
+		totalTaskCount += count
+		s.logger.Infof("✅ 成功启动 %d 个%s产品同步任务", count, platformConfig.PlatformName)
 	}
 
-	// 3. 启动库存同步任务
 	if platformConfig.InventorySync.Enabled {
-		count, err := s.startTasksByType(
+		count := s.startTasksByType(
 			platformConfig.PlatformName,
 			scheduler.TaskTypeInventory,
 			getDefaultInterval(platformConfig.InventorySync.Interval),
 			cfg,
 		)
-		if err != nil {
-			s.logger.Errorf("启动%s库存同步任务失败: %v", platformConfig.PlatformName, err)
-		} else {
-			totalTaskCount += count
-			s.logger.Infof("✅ 成功启动 %d 个%s库存同步任务", count, platformConfig.PlatformName)
-		}
+		totalTaskCount += count
+		s.logger.Infof("✅ 成功启动 %d 个%s库存同步任务", count, platformConfig.PlatformName)
 	}
 
-	// 4. 启动活动报名任务
 	if platformConfig.ActivityRegistration.Enabled {
-		count, err := s.startTasksByType(
+		count := s.startTasksByType(
 			platformConfig.PlatformName,
 			scheduler.TaskTypeActivity,
 			getDefaultInterval(platformConfig.ActivityRegistration.Interval),
 			cfg,
 		)
-		if err != nil {
-			s.logger.Errorf("启动%s活动报名任务失败: %v", platformConfig.PlatformName, err)
-		} else {
-			totalTaskCount += count
-			s.logger.Infof("✅ 成功启动 %d 个%s活动报名任务", count, platformConfig.PlatformName)
-		}
+		totalTaskCount += count
+		s.logger.Infof("✅ 成功启动 %d 个%s活动报名任务", count, platformConfig.PlatformName)
 	}
 
 	if totalTaskCount > 0 {
@@ -104,10 +84,9 @@ func (s *schedulerServiceImpl) startTasksByType(
 	taskType scheduler.TaskType,
 	interval time.Duration,
 	cfg *config.Config,
-) (int, error) {
+) int {
 	taskCount := 0
 
-	// 为每个店铺创建任务
 	for _, storeID := range cfg.Management.StoreIDs {
 		if err := s.createStoreTask(platformName, storeID, taskType, interval); err != nil {
 			s.logger.Debugf("创建%s任务失败 (店铺:%d, 类型:%s): %v",
@@ -117,7 +96,7 @@ func (s *schedulerServiceImpl) startTasksByType(
 		taskCount++
 	}
 
-	return taskCount, nil
+	return taskCount
 }
 
 // createStoreTask 为店铺创建任务

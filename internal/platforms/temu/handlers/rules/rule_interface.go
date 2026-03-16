@@ -1,10 +1,10 @@
-﻿// Package rules 提供验证规则接口定义
+// Package rules 提供验证规则接口定义
 package rules
 
 import (
 	models "task-processor/internal/platforms/temu/api/product"
-	"task-processor/internal/platforms/temu/handlers/handlerbase"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	"task-processor/internal/platforms/temu/handlers/handlerbase"
 )
 
 // ValidationRule 验证规则接口
@@ -24,9 +24,9 @@ type ValidationRule interface {
 
 // RuleValidationResult 规则验证结果
 type RuleValidationResult struct {
-	IsValid       bool        // 是否有效
-	ErrorMessage  string      // 错误消息
-	CurrentValue  any // 当前值
-	ExpectedValue any // 期望值
-	CanAutoFix    bool        // 是否可以自动修复
+	IsValid       bool   // 是否有效
+	ErrorMessage  string // 错误消息
+	CurrentValue  any    // 当前值
+	ExpectedValue any    // 期望值
+	CanAutoFix    bool   // 是否可以自动修复
 }
