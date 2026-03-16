@@ -5,19 +5,18 @@ import (
 	"time"
 
 	coreconfig "task-processor/internal/core/config"
-	coretypes "task-processor/internal/core/config/types"
 )
 
 // Config 产品JSON生成器配置
 type Config struct {
-	Server     coretypes.ServerConfig   `mapstructure:"server"`
-	Database   coretypes.DatabaseConfig `mapstructure:"database"`
-	Redis      coretypes.RedisConfig    `mapstructure:"redis"`
-	LLM        LLMConfig                `mapstructure:"llm"`
-	Worker     WorkerConfig             `mapstructure:"worker"`
-	Scraper    ScraperConfig            `mapstructure:"scraper"`
-	Logging    coreconfig.LogConfig     `mapstructure:"logging"`
-	Validation ValidationConfig         `mapstructure:"validation"`
+	Server     coreconfig.ServerConfig   `mapstructure:"server"`
+	Database   coreconfig.DatabaseConfig `mapstructure:"database"`
+	Redis      coreconfig.RedisConfig    `mapstructure:"redis"`
+	LLM        LLMConfig                 `mapstructure:"llm"`
+	Worker     WorkerConfig              `mapstructure:"worker"`
+	Scraper    ScraperConfig             `mapstructure:"scraper"`
+	Logging    coreconfig.LogConfig      `mapstructure:"logging"`
+	Validation ValidationConfig          `mapstructure:"validation"`
 }
 
 // LLMConfig LLM配置

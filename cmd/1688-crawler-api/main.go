@@ -1,4 +1,4 @@
-// Package main 1688 爬虫 API 服务入口（不依赖 RabbitMQ）
+﻿// Package main 1688 爬虫 API 服务入口（不依赖 RabbitMQ）
 package main
 
 import (
@@ -11,7 +11,7 @@ import (
 
 	crawler1688 "task-processor/internal/app/crawler/alibaba1688"
 	"task-processor/internal/core/config"
-	"task-processor/internal/pkg/apputil"
+	"task-processor/internal/pkg/appenv"
 
 	"github.com/sirupsen/logrus"
 )
@@ -31,10 +31,10 @@ func main() {
 	flag.Parse()
 
 	// 设置日志
-	logger := apputil.SetupLoggerWithLevel(*logLevel)
+	logger := appenv.SetupLoggerWithLevel(*logLevel)
 
 	// 打印版本信息
-	apputil.PrintVersionInfo(logger, apputil.VersionInfo{
+	appenv.PrintVersionInfo(logger, appenv.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	})

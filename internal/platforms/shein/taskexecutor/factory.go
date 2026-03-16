@@ -1,4 +1,4 @@
-// Package taskexecutor 提供SHEIN平台的任务工厂
+﻿// Package taskexecutor 提供SHEIN平台的任务工厂
 package taskexecutor
 
 import (
@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/platforms/factory"
+	"task-processor/internal/platforms/platformbase"
 	"task-processor/internal/platforms/shein/api/marketing"
 	shein_pricing "task-processor/internal/platforms/shein/api/pricing"
 	shein_product "task-processor/internal/platforms/shein/api/product"
@@ -20,7 +20,7 @@ import (
 
 // SheinTaskFactory SHEIN平台任务工厂
 type SheinTaskFactory struct {
-	*factory.BaseFactory
+	*platformbase.BaseFactory
 	cookieManager *state.CookieManager
 	clientManager *client.ClientManager
 }
@@ -30,7 +30,7 @@ func NewSheinTaskFactory(managementClient *management.ClientManager, amazonProce
 	cookieManager := state.NewCookieManager()
 	clientManager := client.NewClientManager(cookieManager, managementClient)
 
-	baseFactory := factory.NewBaseFactory(factory.BaseFactoryConfig{
+	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
 		Platform:         "SHEIN",
 		ManagementClient: managementClient,
 		AmazonProcessor:  amazonProcessor,

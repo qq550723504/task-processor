@@ -1,4 +1,4 @@
-// Package syncsvc 提供TEMU平台调度器相关服务
+﻿// Package syncsvc 提供TEMU平台调度器相关服务
 package syncsvc
 
 import (
@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	productpkg "task-processor/internal/domain/product"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +21,7 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 	}
 
 	var mappingList []*TemuMappingData
-	if err := jsonutil.UnmarshalString(attributesJSON, &mappingList, "解析产品Attributes JSON失败"); err != nil {
+	if err := jsonx.UnmarshalString(attributesJSON, &mappingList, "解析产品Attributes JSON失败"); err != nil {
 		s.logger.WithError(err).WithField("attributes_length", len(attributesJSON)).Error(err.Error())
 		return nil
 	}
@@ -118,7 +118,7 @@ func (s *inventorySyncServiceImpl) checkHasAmazonMonitorData(attributesJSON stri
 	}
 
 	var skuList []TemuSkuInfo
-	if err := jsonutil.UnmarshalString(attributesJSON, &skuList, "解析产品Attributes失败"); err != nil {
+	if err := jsonx.UnmarshalString(attributesJSON, &skuList, "解析产品Attributes失败"); err != nil {
 		s.logger.WithError(err).Debug(err.Error())
 		return false
 	}
@@ -158,7 +158,7 @@ func (s *inventorySyncServiceImpl) validateAttributesStructure(attributesJSON st
 
 	// 尝试解析为 SKUMappingData 数组
 	var skuList []TemuSkuInfo
-	if err := jsonutil.UnmarshalString(attributesJSON, &skuList, "无法解析为 SKUMappingData 数组"); err != nil {
+	if err := jsonx.UnmarshalString(attributesJSON, &skuList, "无法解析为 SKUMappingData 数组"); err != nil {
 		return err
 	}
 

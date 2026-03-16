@@ -1,10 +1,10 @@
-// Package taskexecutor 提供SHEIN平台自动核价任务适配器
+﻿// Package taskexecutor 提供SHEIN平台自动核价任务适配器
 package taskexecutor
 
 import (
 	"context"
 
-	commonscheduler "task-processor/internal/platforms/scheduler"
+	commonscheduler "task-processor/internal/platforms/taskbase"
 	"task-processor/internal/platforms/shein/api/pricing"
 	schedulerservice "task-processor/internal/platforms/shein/operation"
 

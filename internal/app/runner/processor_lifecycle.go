@@ -1,4 +1,4 @@
-// Package service 提供处理器生命周期管理
+﻿// Package service 提供处理器生命周期管理
 package runner
 
 import (
@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/infra/auth"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 )
 
 // StartProcessors 启动所有处理器
@@ -80,7 +80,7 @@ func (s *processorServiceImpl) StopProcessors() error {
 	}
 
 	// 使用生命周期管理器停止所有组件
-	stopCtx, cancel := contextutil.WithShutdownTimeout(context.Background())
+	stopCtx, cancel := timeout.WithShutdownTimeout(context.Background())
 	defer cancel()
 
 	var lastError error

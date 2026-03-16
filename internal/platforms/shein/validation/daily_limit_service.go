@@ -1,8 +1,8 @@
-package validation
+﻿package validation
 
 import (
 	"fmt"
-	"task-processor/internal/pkg/timeutil"
+	"task-processor/internal/pkg/timex"
 	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
@@ -50,7 +50,7 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 	logrus.Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", ctx.StoreInfo.ID, dailyLimit, ctx.StoreInfo.DailyLimitType)
 
 	// 获取当前日期（格式：YYYY-MM-DD）
-	currentDate := timeutil.NowDate()
+	currentDate := timex.NowDate()
 
 	// 获取当前已上架数量
 	currentCount := ctx.MemoryManager.DailyCountManager.GetCount(

@@ -1,4 +1,4 @@
-// Package main 提供应用程序入口点
+﻿// Package main 提供应用程序入口点
 package main
 
 import (
@@ -10,7 +10,7 @@ import (
 
 	"task-processor/internal/app/bootstrap"
 	"task-processor/internal/infra/monitoring"
-	"task-processor/internal/pkg/apputil"
+	"task-processor/internal/pkg/appenv"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,7 +27,7 @@ func main() {
 	monitoring.RecordProcessStartTime()
 
 	// 设置日志
-	logger := apputil.SetupLogger()
+	logger := appenv.SetupLogger()
 
 	// 创建应用启动器
 	app := bootstrap.NewApplicationBootstrap(logger)
@@ -41,11 +41,11 @@ func main() {
 // runApplication 运行应用
 func runApplication(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger) error {
 	// 显示版本信息
-	versionInfo := apputil.VersionInfo{
+	versionInfo := appenv.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	}
-	apputil.PrintVersionInfo(logger, versionInfo)
+	appenv.PrintVersionInfo(logger, versionInfo)
 
 	// 初始化应用（使用默认配置文件路径）
 	configPath := "config/config-dev.yaml"

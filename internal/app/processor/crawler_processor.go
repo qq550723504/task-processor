@@ -1,4 +1,4 @@
-// Package processor 提供爬虫任务处理器
+﻿// Package processor 提供爬虫任务处理器
 package processor
 
 import (
@@ -13,7 +13,7 @@ import (
 	"task-processor/internal/domain/product"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/worker"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 
 	"github.com/sirupsen/logrus"
 )
@@ -200,7 +200,7 @@ func (p *CrawlerProcessor) sendCrawlResult(replyTo string, taskID int64, product
 
 	// 发送到回复队列
 	if p.rabbitmqClient != nil {
-		ctx, cancel := contextutil.WithHTTPShortTimeout(context.Background())
+		ctx, cancel := timeout.WithHTTPShortTimeout(context.Background())
 		defer cancel()
 
 		if publishErr := p.rabbitmqClient.Publish(ctx, replyTo, resultBytes); publishErr != nil {

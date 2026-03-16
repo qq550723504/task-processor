@@ -1,4 +1,4 @@
-// Package messaging 提供任务处理器，集成结果上报、去重和店铺亲和性功能
+﻿// Package messaging 提供任务处理器，集成结果上报、去重和店铺亲和性功能
 package messaging
 
 import (
@@ -11,14 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/domain/errors"
 	"task-processor/internal/domain/message"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/task"
+	domaintask "task-processor/internal/domain/task"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	"task-processor/internal/pkg/strutil"
+	"task-processor/internal/pkg/strx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,14 +26,14 @@ import (
 type TaskHandler struct {
 	processor      worker.Processor
 	resultReporter *ResultReporter
-	adapter        *task.MessageAdapter
+	adapter        *domaintask.MessageAdapter
 	platform       string
 	logger         *logrus.Logger
 
 	// 店铺亲和性支持
 	storeAPI     api.StoreAPI
 	ownedStores  []int64
-	deduplicator *task.Deduplicator
+	deduplicator *domaintask.Deduplicator
 }
 
 // TaskHandlerConfig 任务处理器配置
@@ -44,7 +43,7 @@ type TaskHandlerConfig struct {
 	ResultReporter *ResultReporter
 	StoreAPI       api.StoreAPI
 	OwnedStores    []int64
-	Deduplicator   *task.Deduplicator
+	Deduplicator   *domaintask.Deduplicator
 	Logger         *logrus.Logger
 }
 
@@ -53,7 +52,7 @@ func NewTaskHandler(cfg TaskHandlerConfig) *TaskHandler {
 	return &TaskHandler{
 		processor:      cfg.Processor,
 		resultReporter: cfg.ResultReporter,
-		adapter:        task.NewMessageAdapter(),
+		adapter:        domaintask.NewMessageAdapter(),
 		platform:       cfg.Platform,
 		logger:         cfg.Logger,
 		storeAPI:       cfg.StoreAPI,
@@ -111,7 +110,7 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 // convertAndValidateMessage 转换并验证消息
 func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model.Task, map[string]any, error) {
 	// 将消息转换为领域消息
-	domainMsg := &task.Message{
+	domainMsg := &domaintask.Message{
 		ID:         msg.ID,
 		Type:       msg.Type,
 		Payload:    msg.Payload,
@@ -129,14 +128,14 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 	if err != nil {
 		eth.logger.Errorf("[%s] 转换消息为任务失败: ID=%s, Error=%v",
 			eth.platform, msg.ID, err)
-		return nil, nil, errors.NewConversionError(0, err)
+		return nil, nil, domaintask.NewConversionError(0, err)
 	}
 
 	// 验证任务的关键字段
 	if !task.IsValid() {
 		eth.logger.Errorf("[%s] 收到无效任务消息: ID=%d, ProductID=%s, Platform=%s, MessageID=%s",
 			eth.platform, task.ID, task.ProductID, task.Platform, msg.ID)
-		return nil, nil, errors.NewInvalidTaskError(task.ID,
+		return nil, nil, domaintask.NewInvalidTaskError(task.ID,
 			fmt.Sprintf("invalid task data: ID=%d, ProductID=%s", task.ID, task.ProductID))
 	}
 
@@ -144,7 +143,7 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 }
 
 // extractNestedPayload 提取嵌套的 payload（分布式爬虫消息格式）
-func (eth *TaskHandler) extractNestedPayload(domainMsg *task.Message) map[string]any {
+func (eth *TaskHandler) extractNestedPayload(domainMsg *domaintask.Message) map[string]any {
 	if nestedPayload, ok := domainMsg.Payload["payload"]; ok {
 		if payloadMap, ok := nestedPayload.(map[string]any); ok {
 			eth.logger.Debugf("[%s] 检测到嵌套 payload，提取内层数据", eth.platform)
@@ -186,7 +185,7 @@ func (eth *TaskHandler) validateStoreAccess(task *model.Task) (bool, error) {
 	storeInfo, err := eth.storeAPI.GetStore(task.StoreID)
 	if err != nil {
 		eth.logger.Errorf("[%s] 获取店铺 %d 配置失败: %v", eth.platform, task.StoreID, err)
-		return false, errors.NewStoreNotFoundError(task.ID, task.StoreID, err)
+		return false, domaintask.NewStoreNotFoundError(task.ID, task.StoreID, err)
 	}
 
 	isOwned := eth.isOwnedStore(task.StoreID)
@@ -212,7 +211,7 @@ func (eth *TaskHandler) validatePlatform(task *model.Task) error {
 
 	// 比较任务平台与处理器平台（使用领域对象方法）
 	if !task.PlatformMatches(eth.platform) {
-		return errors.NewPlatformMismatchError(task.ID, task.Platform, eth.platform)
+		return domaintask.NewPlatformMismatchError(task.ID, task.Platform, eth.platform)
 	}
 
 	return nil
@@ -331,7 +330,7 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 	}
 
 	// 如果是 TaskError，使用其 IsRetryable 方法
-	if taskErr, ok := err.(*errors.TaskError); ok {
+	if taskErr, ok := err.(*domaintask.TaskError); ok {
 		return taskErr.IsRetryable()
 	}
 
@@ -349,7 +348,7 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 	}
 
 	for _, nonRetryable := range nonRetryableErrors {
-		if strutil.ContainsIgnoreCase(errorMsg, nonRetryable) {
+		if strx.ContainsIgnoreCase(errorMsg, nonRetryable) {
 			eth.logger.Infof("[%s] 错误不可重试: ID=%d, Error=%s",
 				eth.platform, task.ID, errorMsg)
 			return false
@@ -366,7 +365,7 @@ type TaskProcessorRegistry struct {
 	resultReporter *ResultReporter
 	storeAPI       api.StoreAPI
 	ownedStores    []int64
-	deduplicator   *task.Deduplicator
+	deduplicator   *domaintask.Deduplicator
 	logger         *logrus.Logger
 	mutex          sync.RWMutex
 }
@@ -376,7 +375,7 @@ func NewTaskProcessorRegistry(
 	resultReporter *ResultReporter,
 	storeAPI api.StoreAPI,
 	ownedStores []int64,
-	deduplicator *task.Deduplicator,
+	deduplicator *domaintask.Deduplicator,
 	logger *logrus.Logger,
 ) *TaskProcessorRegistry {
 	return &TaskProcessorRegistry{
@@ -434,7 +433,7 @@ func (etpr *TaskProcessorRegistry) GetAllHandlers() map[string]rabbitmq.MessageH
 
 // GetQueueName 根据平台获取队列名称
 func (etpr *TaskProcessorRegistry) GetQueueName(platform string) string {
-	adapter := task.NewMessageAdapter()
+	adapter := domaintask.NewMessageAdapter()
 	return adapter.GetQueueName(platform)
 }
 

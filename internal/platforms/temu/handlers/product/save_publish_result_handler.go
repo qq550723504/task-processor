@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -12,8 +12,8 @@ import (
 	pkgproduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/pkg/ptrutil"
+	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/pkg/ptr"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -138,7 +138,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 					Region:       task.Region,
 					Sku:          &sku.OutSkuSN,
 					ProductId:    "",                  // 将在下面设置
-					Status:       ptrutil.Int16Ptr(1), // 1表示导入成功
+					Status:       ptr.Int16Ptr(1), // 1表示导入成功
 				}
 
 				// 从AsinSkuMap中查找对应的ASIN
@@ -420,7 +420,7 @@ func (h *SavePublishResultHandler) saveResponseToFile(taskID int64, responseData
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *SavePublishResultHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return jsonutil.MarshalWithoutHTMLEscape(v)
+	return jsonx.MarshalWithoutHTMLEscape(v)
 }
 
 // buildFilterRuleRange 构建筛选规则范围字符串

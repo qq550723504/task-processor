@@ -1,11 +1,11 @@
-// Package publish 提供SHEIN平台产品发布核心处理器
+﻿// Package publish 提供SHEIN平台产品发布核心处理器
 package publish
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/shein"
 	product "task-processor/internal/platforms/shein/api/product"
 
@@ -117,7 +117,7 @@ func (h *PublishProductHandler) SaveDraftProduct(ctx *shein.TaskContext) (*produ
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *PublishProductHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return jsonutil.MarshalWithoutHTMLEscape(v)
+	return jsonx.MarshalWithoutHTMLEscape(v)
 }
 
 // saveJSONToFile 保存JSON数据到文件

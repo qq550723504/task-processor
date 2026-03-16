@@ -1,4 +1,4 @@
-// Package service 提供基于LLM的智能属性映射服务
+﻿// Package service 提供基于LLM的智能属性映射服务
 package service
 
 import (
@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -176,7 +176,7 @@ func (m *LLMAttributeMapper) parseLLMResponse(content string) (*AttributeMapping
 	jsonContent := content[start : end+1]
 
 	var result AttributeMappingResponse
-	if err := jsonutil.UnmarshalString(jsonContent, &result, "JSON解析失败"); err != nil {
+	if err := jsonx.UnmarshalString(jsonContent, &result, "JSON解析失败"); err != nil {
 		return nil, err
 	}
 

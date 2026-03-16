@@ -1,10 +1,10 @@
-// Package image 提供TEMU平台尺寸图片构建功能
+﻿// Package image 提供TEMU平台尺寸图片构建功能
 package image
 
 import (
 	"fmt"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/ptrutil"
+	"task-processor/internal/pkg/ptr"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -39,7 +39,7 @@ func (idb *ImageDimensionBuilder) BuildDimensionImages(variant *model.Product) [
 			URL:    variant.Images[3],
 			Width:  1500,
 			Height: 1500,
-			Type:   ptrutil.IntPtr(1), // 设置type为1
+			Type:   ptr.IntPtr(1), // 设置type为1
 		})
 	} else if len(variant.Images) > 0 && variant.Images[0] != "" {
 		// 如果没有第4张图片，使用第1张作为备选
@@ -47,7 +47,7 @@ func (idb *ImageDimensionBuilder) BuildDimensionImages(variant *model.Product) [
 			URL:    variant.Images[0],
 			Width:  1500,
 			Height: 1500,
-			Type:   ptrutil.IntPtr(1),
+			Type:   ptr.IntPtr(1),
 		})
 	}
 

@@ -1,4 +1,4 @@
-package api
+﻿package api
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"sync"
 	"task-processor/internal/pkg/httpclient"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -115,7 +115,7 @@ func (a *AuthManager) refreshAccessToken(ctx context.Context) (string, error) {
 
 	// 解析响应
 	var tokenResp LWATokenResponse
-	if err := jsonutil.UnmarshalBytes(body, &tokenResp, "解析响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes(body, &tokenResp, "解析响应失败"); err != nil {
 		return "", err
 	}
 

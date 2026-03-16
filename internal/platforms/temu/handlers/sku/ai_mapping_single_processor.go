@@ -1,4 +1,4 @@
-// Package sku 提供TEMU平台的AI SKU映射单批次处理功能
+﻿// Package sku 提供TEMU平台的AI SKU映射单批次处理功能
 package sku
 
 import (
@@ -9,8 +9,8 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/contextutil"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/pkg/jsonx"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
@@ -160,7 +160,7 @@ func (vp *SkuVariantProcessor) callAIAPI(request temucontext.VariantMappingReque
 	userPrompt := vp.buildUserPrompt(request)
 
 	// 调用AI API
-	aiCtx, cancel := contextutil.WithAITimeout(context.Background())
+	aiCtx, cancel := timeout.WithAITimeout(context.Background())
 	defer cancel()
 
 	resp, err := vp.aiClient.CreateChatCompletion(aiCtx, &openai.ChatCompletionRequest{
@@ -215,7 +215,7 @@ func (vp *SkuVariantProcessor) parseAIResponse(resp *openai.ChatCompletionRespon
 	// 清理JSON内容，移除可能导致解析失败的字符
 	jsonContent = vp.cleanJSONContent(jsonContent)
 
-	if err := jsonutil.UnmarshalBytes([]byte(jsonContent), &aiResponse, "解析AI响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes([]byte(jsonContent), &aiResponse, "解析AI响应失败"); err != nil {
 		vp.logParseError(err, content, jsonContent)
 		return nil, fmt.Errorf("解析AI响应失败: %w, 响应内容长度: %d", err, len(jsonContent))
 	}

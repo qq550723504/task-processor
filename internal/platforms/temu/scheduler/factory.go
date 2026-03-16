@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU平台的任务工厂
+﻿// Package scheduler 提供TEMU平台的任务工厂
 package scheduler
 
 import (
@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/platforms/factory"
+	"task-processor/internal/platforms/platformbase"
 	temuapi "task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/client"
 	schedulerservice "task-processor/internal/platforms/temu/syncsvc"
@@ -19,7 +19,7 @@ import (
 
 // TemuTaskFactory TEMU平台任务工厂
 type TemuTaskFactory struct {
-	*factory.BaseFactory
+	*platformbase.BaseFactory
 	clientManager *client.APIClientManager
 }
 
@@ -32,7 +32,7 @@ func NewTemuTaskFactory(
 ) *TemuTaskFactory {
 	clientManager := client.NewAPIClientManager(managementClient)
 
-	baseFactory := factory.NewBaseFactory(factory.BaseFactoryConfig{
+	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
 		Platform:         "TEMU",
 		ManagementClient: managementClient,
 		AmazonProcessor:  amazonProcessor,

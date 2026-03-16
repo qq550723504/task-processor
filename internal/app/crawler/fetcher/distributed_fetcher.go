@@ -1,4 +1,4 @@
-// Package fetcher 提供分布式产品数据获取功能
+﻿// Package fetcher 提供分布式产品数据获取功能
 package fetcher
 
 import (
@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/domain/model"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 
 	"github.com/sirupsen/logrus"
 )
@@ -117,7 +117,7 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(req *domainProdu
 	}
 
 	// 提交爬虫任务并等待结果
-	ctx, cancel := contextutil.WithTaskLongTimeout(context.Background())
+	ctx, cancel := timeout.WithTaskLongTimeout(context.Background())
 	defer cancel()
 
 	result, err := f.distributedCrawler.SubmitCrawlTask(ctx, crawlReq)

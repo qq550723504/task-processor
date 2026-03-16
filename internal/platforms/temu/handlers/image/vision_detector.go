@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台Vision API检测功能
+﻿// Package image 提供TEMU平台Vision API检测功能
 package image
 
 import (
@@ -11,8 +11,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/contextutil"
-	"task-processor/internal/pkg/imageutil"
+	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/pkg/imagex"
 )
 
 // VisionDetector Vision API检测器
@@ -53,16 +53,16 @@ func (v *VisionDetector) HasDimensionAnnotationWithDetails(ctx context.Context, 
 // detectWithVisionAPI 使用OpenAI Vision API检测图片中的尺寸标注
 func (v *VisionDetector) detectWithVisionAPI(ctx context.Context, img image.Image) (bool, string, error) {
 	// 将图片编码为base64
-	base64Image, err := imageutil.ToBase64PNG(img)
+	base64Image, err := imagex.ToBase64PNG(img)
 	if err != nil {
 		return false, "", fmt.Errorf("编码图片失败: %w", err)
 	}
 
 	// 使用传入的context，如果没有超时则添加默认超时
 	ctxWithTimeout := ctx
-	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > contextutil.AIShortTimeout {
+	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > timeout.AIShortTimeout {
 		var cancel context.CancelFunc
-		ctxWithTimeout, cancel = contextutil.WithAIShortTimeout(ctx)
+		ctxWithTimeout, cancel = timeout.WithAIShortTimeout(ctx)
 		defer cancel()
 	}
 

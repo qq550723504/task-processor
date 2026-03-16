@@ -1,4 +1,4 @@
-// Package main 提供RabbitMQ消费者主程序
+﻿// Package main 提供RabbitMQ消费者主程序
 package main
 
 import (
@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/app/messaging"
 	"task-processor/internal/core/config"
-	"task-processor/internal/pkg/apputil"
+	"task-processor/internal/pkg/appenv"
 )
 
 var (
@@ -26,10 +26,10 @@ func main() {
 	flag.Parse()
 
 	// 设置日志（使用统一的日志设置函数）
-	logger := apputil.SetupLoggerWithLevel(*logLevel)
+	logger := appenv.SetupLoggerWithLevel(*logLevel)
 
 	// 打印版本信息（统一格式）
-	apputil.PrintVersionInfo(logger, apputil.VersionInfo{
+	appenv.PrintVersionInfo(logger, appenv.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	})

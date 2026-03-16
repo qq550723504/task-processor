@@ -1,4 +1,4 @@
-// Package sku 提供并行变体数据处理功能
+﻿// Package sku 提供并行变体数据处理功能
 package sku
 
 import (
@@ -14,7 +14,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/goroutine"
-	"task-processor/internal/pkg/perfutil"
+	"task-processor/internal/pkg/perf"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -81,7 +81,7 @@ func (h *ParallelVariantHandler) Handle(ctx pipeline.TaskContext) error {
 // HandleTemu 处理任务（强类型上下文）
 func (h *ParallelVariantHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	// 创建性能跟踪器
-	tracker := perfutil.NewTracker("并行变体数据处理", h.logger)
+	tracker := perf.NewTracker("并行变体数据处理", h.logger)
 	defer tracker.Finish()
 
 	tracker.StartStep("初始化和验证")

@@ -5,16 +5,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"task-processor/internal/core/config/types"
+	"task-processor/internal/pkg/watermark"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
-// Config 配置结构体 (包装types.Config以支持方法)
+// Config 主配置结构体
 type Config struct {
-	*types.Config
+	Processor  ProcessorConfig   `yaml:"processor"`
+	Worker     WorkerConfig      `yaml:"worker"`
+	OpenAI     OpenAIConfig      `yaml:"openai"`
+	Management ManagementConfig  `yaml:"management"`
+	Browser    BrowserConfig     `yaml:"browser"`
+	Amazon     AmazonConfig      `yaml:"amazon"`
+	RabbitMQ   *RabbitMQConfig   `yaml:"rabbitmq"`
+	Updater    UpdaterConfig     `yaml:"updater"`
+	Platforms  PlatformsConfig   `yaml:"platforms"`
+	Watermark  *watermark.Config `yaml:"watermark"`
 }
 
 // LoadConfig 加载配置

@@ -1,9 +1,9 @@
-// Package sku 提供TEMU平台的变体数据处理功能
+﻿// Package sku 提供TEMU平台的变体数据处理功能
 package sku
 
 import (
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/strutil"
+	"task-processor/internal/pkg/strx"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -48,7 +48,7 @@ func (p *VariantProcessor) ProcessSingleProduct(temuCtx *temucontext.TemuTaskCon
 	// 检查TEMU产品数据
 	if temuCtx.TemuProduct != nil && productName != "" {
 		// 清理产品标题，移除特殊符号和表情符号
-		cleanedTitle := strutil.CleanProductTitle(productName)
+		cleanedTitle := strx.CleanProductTitle(productName)
 		temuCtx.TemuProduct.GoodsBasic.GoodsName = cleanedTitle
 
 		p.logger.Debugf("产品标题已清理: %s -> %s", productName, cleanedTitle)
@@ -82,7 +82,7 @@ func (p *VariantProcessor) ProcessVariantData(temuCtx *temucontext.TemuTaskConte
 		// 清理变体标题
 		if variant.Title != "" {
 			originalTitle := variant.Title
-			variant.Title = strutil.CleanProductTitle(variant.Title)
+			variant.Title = strx.CleanProductTitle(variant.Title)
 			if originalTitle != variant.Title {
 				p.logger.Debugf("变体 %d 标题已清理: %s -> %s", i+1, originalTitle, variant.Title)
 			}
@@ -99,7 +99,7 @@ func (p *VariantProcessor) ProcessVariantData(temuCtx *temucontext.TemuTaskConte
 		if temuCtx.TemuProduct != nil {
 			if mainVariant.Title != "" {
 				// 清理产品标题，移除特殊符号和表情符号
-				cleanedTitle := strutil.CleanProductTitle(mainVariant.Title)
+				cleanedTitle := strx.CleanProductTitle(mainVariant.Title)
 				temuCtx.TemuProduct.GoodsBasic.GoodsName = cleanedTitle
 				p.logger.Debugf("主变体标题已清理: %s -> %s", mainVariant.Title, cleanedTitle)
 			}

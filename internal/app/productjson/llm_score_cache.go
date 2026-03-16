@@ -1,10 +1,10 @@
-// Package productjson 提供产品JSON生成的应用层实现
+﻿// Package productjson 提供产品JSON生成的应用层实现
 package productjson
 
 import (
 	"context"
 	"encoding/json"
-	"task-processor/internal/pkg/hashutil"
+	"task-processor/internal/pkg/hashx"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -181,10 +181,10 @@ func (c *llmScoreCache) SetImageScore(ctx context.Context, imageURL string, scor
 
 // getTextScoreCacheKey 获取文本评分缓存键
 func (c *llmScoreCache) getTextScoreCacheKey(text string) string {
-	return "llm_score:text:" + hashutil.MD5(text)
+	return "llm_score:text:" + hashx.MD5(text)
 }
 
 // getImageScoreCacheKey 获取图片评分缓存键
 func (c *llmScoreCache) getImageScoreCacheKey(imageURL string) string {
-	return "llm_score:image:" + hashutil.MD5(imageURL)
+	return "llm_score:image:" + hashx.MD5(imageURL)
 }

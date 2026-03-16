@@ -1,4 +1,4 @@
-// Package productjson 提供产品JSON生成的应用层实现
+﻿// Package productjson 提供产品JSON生成的应用层实现
 package productjson
 
 import (
@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	domain "task-processor/internal/domain/productjson"
-	"task-processor/internal/pkg/strutil"
+	"task-processor/internal/pkg/strx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -187,7 +187,7 @@ Only return the JSON object, no additional text.`, text)
 
 		// 返回默认值
 		attributes = domain.TextAttributes{
-			Title:         strutil.TruncateString(text, 50),
+			Title:         strx.TruncateString(text, 50),
 			Attributes:    make(map[string]string),
 			SellingPoints: []string{},
 		}

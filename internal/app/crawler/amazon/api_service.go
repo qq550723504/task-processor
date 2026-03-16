@@ -1,4 +1,4 @@
-// Package amazon 提供 Amazon 爬虫 API 服务
+﻿// Package amazon 提供 Amazon 爬虫 API 服务
 package amazon
 
 import (
@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/http/handler"
+	"task-processor/internal/infra/httpx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -37,7 +37,7 @@ func (s *APIService) Start(ctx context.Context) error {
 		return fmt.Errorf("启动爬虫服务失败: %w", err)
 	}
 
-	httpHandler := handler.NewCrawlerHandler(s.crawlerService, s.logger)
+	httpHandler := httpx.NewCrawlerHandler(s.crawlerService, s.logger)
 	mux := httpHandler.RegisterRoutes()
 
 	s.httpServer = &http.Server{

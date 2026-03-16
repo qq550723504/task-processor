@@ -1,4 +1,4 @@
-package temu
+﻿package temu
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/worker"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -29,7 +29,7 @@ func NewTemuTaskSubmitter(workerPool worker.WorkerPool) *TemuTaskSubmitter {
 // SubmitTask 提交任务
 func (s *TemuTaskSubmitter) SubmitTask(ctx context.Context, taskData string) error {
 	var task model.Task
-	if err := jsonutil.UnmarshalString(taskData, &task, "解析任务数据失败"); err != nil {
+	if err := jsonx.UnmarshalString(taskData, &task, "解析任务数据失败"); err != nil {
 		return err
 	}
 

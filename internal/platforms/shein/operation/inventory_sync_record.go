@@ -1,4 +1,4 @@
-// Package operation 提供SHEIN平台调度器相关服务
+﻿// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -6,9 +6,9 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/pkg/timeutil"
+	"task-processor/internal/pkg/timex"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -33,7 +33,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 
 	// 如果今天已经记录过，跳过
 	if latestRecord != nil {
-		if timeutil.IsSameDate(latestRecord.CreateTime.Time, time.Now()) {
+		if timex.IsSameDate(latestRecord.CreateTime.Time, time.Now()) {
 			return
 		}
 	}
@@ -48,7 +48,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 	// 解析 Attributes 获取 SKU 的 AmazonMonitorData
 	if prod.Attributes != "" {
 		var skcList []EnrichedSkcInfo
-		if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, ""); err == nil {
+		if err := jsonx.UnmarshalString(prod.Attributes, &skcList, ""); err == nil {
 			// 查找对应的 SKU
 			for _, skc := range skcList {
 				for _, sku := range skc.SkuInfo {
@@ -133,7 +133,7 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 	defer recovery.Recover("更新Attributes", s.logger)
 
 	var skcList []EnrichedSkcInfo
-	if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
+	if err := jsonx.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
 		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error(err.Error())
 		return
 	}

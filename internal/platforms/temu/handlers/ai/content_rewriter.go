@@ -1,4 +1,4 @@
-// Package ai 提供TEMU平台的各种处理器，包括AI内容重构等功能
+﻿// Package ai 提供TEMU平台的各种处理器，包括AI内容重构等功能
 package ai
 
 import (
@@ -8,8 +8,8 @@ import (
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/contextutil"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/pkg/jsonx"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -71,7 +71,7 @@ func (r *AIContentRewriter) HandleTemu(temuCtx *temucontext.TemuTaskContext) err
 	r.logger.Infof("📝 用户提示词长度: %d", len(userPrompt))
 
 	// 调用AI进行重构 - 使用传入的context，添加超时控制
-	aiCtx, cancel := contextutil.WithAITimeout(temuCtx.GetContext())
+	aiCtx, cancel := timeout.WithAITimeout(temuCtx.GetContext())
 	defer cancel()
 
 	result, err := r.callAIForRewrite(aiCtx, systemPrompt, userPrompt)
@@ -292,7 +292,7 @@ func (r *AIContentRewriter) callAIForRewrite(ctx context.Context, systemPrompt, 
 	content = r.cleanJSONContent(content)
 
 	var result RewriteResult
-	if err := jsonutil.UnmarshalBytes([]byte(content), &result, "解析AI响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes([]byte(content), &result, "解析AI响应失败"); err != nil {
 		r.logger.WithError(err).Errorf("解析AI响应失败: %s", content)
 		return nil, fmt.Errorf("解析AI响应失败: %w", err)
 	}

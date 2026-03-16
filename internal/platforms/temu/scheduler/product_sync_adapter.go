@@ -1,11 +1,11 @@
-// Package scheduler 提供TEMU产品同步任务的适配器
+﻿// Package scheduler 提供TEMU产品同步任务的适配器
 package scheduler
 
 import (
 	"context"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	commonscheduler "task-processor/internal/platforms/scheduler"
+	commonscheduler "task-processor/internal/platforms/taskbase"
 	models "task-processor/internal/platforms/temu/api/product"
 	temuscheduler "task-processor/internal/platforms/temu/syncsvc"
 )

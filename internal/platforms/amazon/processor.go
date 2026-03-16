@@ -1,4 +1,4 @@
-// Package amazon 提供Amazon平台主处理器
+﻿// Package amazon 提供Amazon平台主处理器
 package amazon
 
 import (
@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/worker"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/amazon/api"
 	"task-processor/internal/platforms/amazon/core/handler"
 	amazonModel "task-processor/internal/platforms/amazon/core/model"
@@ -75,7 +75,7 @@ func (p *Processor) Start(ctx context.Context) error {
 func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 	// 解析任务数据
 	var task model.Task
-	if err := jsonutil.UnmarshalString(job.TaskData, &task, "解析任务数据失败"); err != nil {
+	if err := jsonx.UnmarshalString(job.TaskData, &task, "解析任务数据失败"); err != nil {
 		return err
 	}
 

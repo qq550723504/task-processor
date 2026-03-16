@@ -1,4 +1,4 @@
-// Package attribute 提供SHEIN平台AI属性选择核心处理器
+﻿// Package attribute 提供SHEIN平台AI属性选择核心处理器
 package attribute
 
 import (
@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/attribute"
 
@@ -155,7 +155,7 @@ func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.Chat
 	}
 
 	var attributeData shein.AttributeData
-	if err := jsonutil.UnmarshalBytes([]byte(content), &attributeData, "解析属性数据失败"); err != nil {
+	if err := jsonx.UnmarshalBytes([]byte(content), &attributeData, "解析属性数据失败"); err != nil {
 		logrus.Errorf("解析属性数据失败: %v，清理后内容: %s", err, content)
 		// 解析属性数据失败，可重试
 		return shein.AttributeData{}, shein.NewRetryableError("解析属性数据失败", err)

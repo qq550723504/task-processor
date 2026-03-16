@@ -1,4 +1,4 @@
-package productdata
+﻿package productdata
 
 import (
 	"context"
@@ -6,13 +6,12 @@ import (
 	"strings"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/core/config/types"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/goroutine"
-	"task-processor/internal/pkg/perfutil"
+	"task-processor/internal/pkg/perf"
 	shein "task-processor/internal/platforms/shein"
 	"time"
 
@@ -48,9 +47,7 @@ func NewVariantJsonDataHandler(
 
 	// 创建配置对象（用于工厂方法）
 	cfg := &config.Config{
-		Config: &types.Config{
-			Amazon: *amazonConfig,
-		},
+		Amazon: *amazonConfig,
 	}
 
 	// 根据配置创建获取器
@@ -88,7 +85,7 @@ func (h *VariantJsonDataHandler) Name() string {
 // Handle 执行获取所有变体的Json数据处理
 func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	// 创建性能跟踪器
-	tracker := perfutil.NewTracker("并行变体数据处理", h.logger)
+	tracker := perf.NewTracker("并行变体数据处理", h.logger)
 	defer tracker.Finish()
 
 	tracker.StartStep("初始化和验证")

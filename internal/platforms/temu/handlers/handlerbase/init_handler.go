@@ -1,10 +1,10 @@
-package handlerbase
+﻿package handlerbase
 
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/ptrutil"
+	"task-processor/internal/pkg/ptr"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"time"
@@ -44,7 +44,7 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 
 	// 初始化TEMU产品结构体
 	temuProduct := &models.Product{
-		CanSave: ptrutil.BoolPtr(true),
+		CanSave: ptr.BoolPtr(true),
 		Extra: models.ExtraInfo{
 			CreateEmptyGoods: true,
 			Tab:              1,
@@ -85,9 +85,9 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 				},
 			},
 		},
-		PlatformExpressBill:    ptrutil.BoolPtr(false),
-		SupportMaxRetailPrice:  ptrutil.BoolPtr(true),
-		ReplicateToRelateGoods: ptrutil.BoolPtr(false),
+		PlatformExpressBill:    ptr.BoolPtr(false),
+		SupportMaxRetailPrice:  ptr.BoolPtr(true),
+		ReplicateToRelateGoods: ptr.BoolPtr(false),
 		SkcList:                make([]models.Skc, 0),
 	}
 

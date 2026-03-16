@@ -1,4 +1,4 @@
-package shein
+﻿package shein
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 	"task-processor/internal/core/config"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -58,7 +58,7 @@ func (f *SensitiveWordsFilter) LoadConfig() error {
 	}
 
 	var cfg config.SensitiveWordsConfig
-	if err := jsonutil.UnmarshalBytes(data, &cfg, "解析配置文件失败"); err != nil {
+	if err := jsonx.UnmarshalBytes(data, &cfg, "解析配置文件失败"); err != nil {
 		return err
 	}
 

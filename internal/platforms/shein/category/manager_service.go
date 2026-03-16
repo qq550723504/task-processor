@@ -1,4 +1,4 @@
-// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
+﻿// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
 package category
 
 import (
@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/contextutil"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/category"
 
@@ -165,7 +165,7 @@ func (s *OpenAISelector) parseOpenAIResponse(resp *openaiClient.ChatCompletionRe
 
 	// 解析JSON响应
 	var result CategorySelectionResult
-	if err := jsonutil.UnmarshalString(content, &result, "解析AI分类选择结果失败"); err != nil {
+	if err := jsonx.UnmarshalString(content, &result, "解析AI分类选择结果失败"); err != nil {
 		logrus.Infof("解析AI分类选择结果失败: %v, 内容: %s\n", err, content)
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, titl
 	}
 
 	// 2. AI选择一级分类 - 使用传入的context，添加超时控制
-	aiCtx, cancel := contextutil.WithAIShortTimeout(ctx)
+	aiCtx, cancel := timeout.WithAIShortTimeout(ctx)
 	defer cancel()
 
 	selectedLevelOneID, err := m.aiSelector.SelectLevelOneCategoryByAI(aiCtx, title, levelOneIDs, levelOneMap)
@@ -249,7 +249,7 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, titl
 	}
 
 	// 4. AI在这些叶子节点中做最终选择 - 使用传入的context，添加超时控制
-	aiCtx2, cancel2 := contextutil.WithAIShortTimeout(ctx)
+	aiCtx2, cancel2 := timeout.WithAIShortTimeout(ctx)
 	defer cancel2()
 
 	selectedCategoryID, err := m.aiSelector.SelectCategoryByAI(aiCtx2, title, leafIDs, leafMap)

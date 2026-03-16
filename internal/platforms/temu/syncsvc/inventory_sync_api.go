@@ -1,4 +1,4 @@
-// Package syncsvc 提供TEMU平台调度器相关服务
+﻿// Package syncsvc 提供TEMU平台调度器相关服务
 package syncsvc
 
 import (
@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	temuinventory "task-processor/internal/platforms/temu/api/inventory"
 
 	"github.com/sirupsen/logrus"
@@ -23,7 +23,7 @@ func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
 
 	// 解析 Attributes 获取 SKU 信息
 	var skuList []TemuSkuInfo
-	if err := jsonutil.UnmarshalString(prod.Attributes, &skuList, "解析产品attributes失败"); err != nil {
+	if err := jsonx.UnmarshalString(prod.Attributes, &skuList, "解析产品attributes失败"); err != nil {
 		return err
 	}
 
@@ -144,7 +144,7 @@ func (s *inventorySyncServiceImpl) relistProductViaTEMUAPI(
 
 	// 解析 Attributes 获取 SKU 信息
 	var skuList []TemuSkuInfo
-	if err := jsonutil.UnmarshalString(prod.Attributes, &skuList, "解析产品attributes失败"); err != nil {
+	if err := jsonx.UnmarshalString(prod.Attributes, &skuList, "解析产品attributes失败"); err != nil {
 		return err
 	}
 

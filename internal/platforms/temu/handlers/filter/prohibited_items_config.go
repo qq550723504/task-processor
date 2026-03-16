@@ -1,10 +1,10 @@
-package filter
+﻿package filter
 
 import (
 	"fmt"
 	"os"
 	"regexp"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -31,7 +31,7 @@ func (cl *ConfigLoader) LoadConfig() (*DetectorConfig, error) {
 	}
 
 	var config ProhibitedItemsConfig
-	if err := jsonutil.UnmarshalBytes(data, &config, "解析配置文件失败"); err != nil {
+	if err := jsonx.UnmarshalBytes(data, &config, "解析配置文件失败"); err != nil {
 		return nil, err
 	}
 

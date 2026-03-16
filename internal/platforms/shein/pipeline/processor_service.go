@@ -1,4 +1,4 @@
-package pipeline
+﻿package pipeline
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	commonPipeline "task-processor/internal/pipeline"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -108,7 +108,7 @@ func (p *SheinProcessor) Start(ctx context.Context) error {
 func (p *SheinProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 	// 解析任务数据
 	var task types.Task
-	if err := jsonutil.UnmarshalString(job.TaskData, &task, "解析任务数据失败"); err != nil {
+	if err := jsonx.UnmarshalString(job.TaskData, &task, "解析任务数据失败"); err != nil {
 		return err
 	}
 

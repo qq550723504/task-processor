@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU平台自动核价任务适配器
+﻿// Package scheduler 提供TEMU平台自动核价任务适配器
 package scheduler
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/platforms/scheduler"
+	commonscheduler "task-processor/internal/platforms/taskbase"
 	"task-processor/internal/platforms/temu/api"
 	temupricing "task-processor/internal/platforms/temu/api/pricing"
 	"task-processor/internal/platforms/temu/pricingsvc"

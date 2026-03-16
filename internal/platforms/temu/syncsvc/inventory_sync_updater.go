@@ -1,4 +1,4 @@
-// Package syncsvc 提供TEMU平台库存更新相关服务
+﻿// Package syncsvc 提供TEMU平台库存更新相关服务
 package syncsvc
 
 import (
@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
 	"time"
 
@@ -38,7 +38,7 @@ func (s *inventorySyncServiceImpl) batchUpdateTemuInventoryInAttributes(
 
 	// 解析现有的attributes数据
 	var mappingList []TemuMappingData
-	if err := jsonutil.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
+	if err := jsonx.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
 		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error(err.Error())
 		return fmt.Errorf("解析产品attributes失败: %w", err)
 	}
@@ -168,7 +168,7 @@ func (s *inventorySyncServiceImpl) updateTemuInventoryInAttributes(
 
 	// 解析现有的attributes数据
 	var mappingList []TemuMappingData
-	if err := jsonutil.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
+	if err := jsonx.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
 		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error(err.Error())
 		return fmt.Errorf("解析产品attributes失败: %w", err)
 	}

@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台图片尺寸标注功能
+﻿// Package image 提供TEMU平台图片尺寸标注功能
 package image
 
 import (
@@ -13,7 +13,7 @@ import (
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/downloader"
-	"task-processor/internal/pkg/imageutil"
+	"task-processor/internal/pkg/imagex"
 )
 
 // ImageDimensionAnnotator 图片尺寸标注器
@@ -67,7 +67,7 @@ func (a *ImageDimensionAnnotator) AnnotateImageFromBytes(imageData []byte, dimen
 	a.logger.Info("开始为图片添加尺寸标注（使用字节数据）")
 
 	// 1. 解码图片
-	img, format, err := imageutil.FromBytesWithFormat(imageData)
+	img, format, err := imagex.FromBytesWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -84,7 +84,7 @@ func (a *ImageDimensionAnnotator) DownloadImage(imageURL string) (image.Image, s
 	}
 
 	// 解码图片
-	img, format, err := imageutil.FromBytesWithFormat(imageData)
+	img, format, err := imagex.FromBytesWithFormat(imageData)
 	if err != nil {
 		return nil, "", fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -114,7 +114,7 @@ func (a *ImageDimensionAnnotator) annotateImageInternal(img image.Image, format 
 
 	// 4. 编码为字节
 	buf := new(bytes.Buffer)
-	if err := imageutil.Encode(buf, rgba, format, 95); err != nil {
+	if err := imagex.Encode(buf, rgba, format, 95); err != nil {
 		return nil, fmt.Errorf("编码图片失败: %w", err)
 	}
 

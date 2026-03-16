@@ -1,4 +1,4 @@
-// Package alibaba1688 提供 1688 爬虫 API 服务
+﻿// Package alibaba1688 提供 1688 爬虫 API 服务
 package alibaba1688
 
 import (
@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/http/handler"
+	"task-processor/internal/infra/httpx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -37,7 +37,7 @@ func (s *APIService) Start(ctx context.Context) error {
 		return fmt.Errorf("启动1688爬虫服务失败: %w", err)
 	}
 
-	httpHandler := handler.NewCrawler1688Handler(s.crawlerService, s.logger)
+	httpHandler := httpx.NewCrawler1688Handler(s.crawlerService, s.logger)
 	mux := httpHandler.RegisterRoutes()
 
 	s.httpServer = &http.Server{

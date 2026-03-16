@@ -1,10 +1,9 @@
-// Package config 提供配置加载功能
+﻿// Package config 提供配置加载功能
 package config
 
 import (
 	"fmt"
 	"os"
-	"task-processor/internal/core/config/types"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -14,13 +13,11 @@ import (
 // LoadFromBytes 从字节数据加载配置
 func LoadFromBytes(data []byte) (*Config, error) {
 	if len(data) == 0 {
-		// 如果没有配置数据，返回默认配置
 		return NewDefaultConfig(), nil
 	}
 
-	// 预先初始化嵌入指针，否则 yaml.v3 无法填充嵌入的 *types.Config 字段
-	cfg := &Config{Config: &types.Config{}}
-	if err := yaml.Unmarshal(data, cfg.Config); err != nil {
+	cfg := &Config{}
+	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("解析YAML配置失败: %w", err)
 	}
 
@@ -74,205 +71,188 @@ func LoadConfigWithFallback(configPath string, logger *logrus.Logger) *Config {
 // NewDefaultConfig 创建默认配置
 func NewDefaultConfig() *Config {
 	return &Config{
-		Config: &types.Config{
-			Processor: types.ProcessorConfig{
-				MaxRetries: 3,
-				Timeout:    300,
+		Processor: ProcessorConfig{
+			MaxRetries: 3,
+			Timeout:    300,
+		},
+		Worker: WorkerConfig{
+			Concurrency:        10,
+			BufferSize:         100,
+			TaskInterval:       60,
+			MaxFetchPerCycle:   5,
+			QueueThreshold:     75,
+			CleanupInterval:    120,
+			TaskTimeout:        900,
+			StuckTaskThreshold: 300,
+			ForceCleanupAfter:  1800,
+		},
+		OpenAI: OpenAIConfig{
+			APIKey:  "sk-yJ3RQprPLyBcoqEkeBNimE6Dhj86CAjY2uHAc5yqLZd1KHa3",
+			Model:   "gemini-2.0-flash",
+			BaseURL: "https://ai.linkcloudai.com/v1",
+			Timeout: 120,
+		},
+		Management: ManagementConfig{
+			BaseURL:      "http://getway.linkcloudai.com",
+			ClientID:     "go-listing",
+			ClientSecret: "go-listing-secret",
+			TokenURL:     "http://getway.linkcloudai.com/admin-api/system/oauth2/token",
+			Scopes:       []string{"user.read"},
+			TenantID:     "1",
+		},
+		Browser: BrowserConfig{
+			Enabled:        true,
+			Headless:       true,
+			BrowserPath:    "./chrome/chrome.exe",
+			PoolSize:       3,
+			ViewportWidth:  1920,
+			ViewportHeight: 1080,
+			RandomConfig: BrowserRandomConfig{
+				Enabled:             true,
+				Strategy:            "random",
+				PresetName:          "windows_high_end",
+				FingerprintStrategy: "random",
+				HealthCheckEnabled:  true,
+				MaxRetries:          3,
 			},
-			Worker: types.WorkerConfig{
-				Concurrency:        10,
-				BufferSize:         100,
-				TaskInterval:       60,
-				MaxFetchPerCycle:   5,
-				QueueThreshold:     75,
-				CleanupInterval:    120,
-				TaskTimeout:        900,
-				StuckTaskThreshold: 300,
-				ForceCleanupAfter:  1800,
+		},
+		Amazon: AmazonConfig{
+			Enabled:           true,
+			DataFreshnessDays: 7,
+			SPAPI: SPAPIConfig{
+				Enabled:                false,
+				Region:                 "us-east-1",
+				DefaultMarketplace:     "us",
+				DefaultFulfillmentType: "FBM",
+				DefaultCondition:       "New",
 			},
-			OpenAI: types.OpenAIConfig{
-				APIKey:  "sk-yJ3RQprPLyBcoqEkeBNimE6Dhj86CAjY2uHAc5yqLZd1KHa3",
-				Model:   "gemini-2.0-flash",
-				BaseURL: "https://ai.linkcloudai.com/v1",
-				Timeout: 120,
-			},
-			Management: types.ManagementConfig{
-				BaseURL:      "http://getway.linkcloudai.com",
-				ClientID:     "go-listing",
-				ClientSecret: "go-listing-secret",
-				TokenURL:     "http://getway.linkcloudai.com/admin-api/system/oauth2/token",
-				Scopes:       []string{"user.read"},
-				TenantID:     "1",
-			},
-			Browser: types.BrowserConfig{
-				Enabled:        true,
-				Headless:       true,
-				BrowserPath:    "./chrome/chrome.exe",
-				PoolSize:       3,
-				ViewportWidth:  1920,
-				ViewportHeight: 1080,
-				RandomConfig: types.BrowserRandomConfig{
-					Enabled:             true,
-					Strategy:            "random",
-					PresetName:          "windows_high_end",
-					FingerprintStrategy: "random",
-					HealthCheckEnabled:  true,
-					MaxRetries:          3,
+		},
+		Updater: UpdaterConfig{
+			Enabled:            false,
+			UpdateURL:          "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json",
+			CheckInterval:      300,
+			InsecureSkipVerify: false,
+		},
+		Platforms: PlatformsConfig{
+			Temu: PlatformConfig{
+				Enabled:          false,
+				SchedulerEnabled: false,
+				AutoPricing: AutoPricingConfig{
+					Enabled:        false,
+					Interval:       300,
+					BatchSize:      100,
+					UseAmazonPrice: false,
+				},
+				ProductSync: ScheduledTaskConfig{
+					Enabled:  false,
+					Interval: 3600,
+				},
+				InventorySync: ScheduledTaskConfig{
+					Enabled:  false,
+					Interval: 1800,
+				},
+				ActivityRegistration: ScheduledTaskConfig{
+					Enabled:  false,
+					Interval: 7200,
+				},
+				SyncProduct: SyncProductConfig{
+					Enabled:   true,
+					StoreIDs:  []int64{},
+					Interval:  60,
+					BatchSize: 50,
+				},
+				Monitor: MonitorConfig{
+					Enabled:              true,
+					StoreIDs:             []int64{},
+					CheckInterval:        1440,
+					BatchSize:            100,
+					EnablePriceAlert:     true,
+					EnableStockAlert:     true,
+					PriceChangeThreshold: 10.0,
+					StockChangeThreshold: 5,
 				},
 			},
-			Amazon: types.AmazonConfig{
-				Enabled:           true,
-				DataFreshnessDays: 7,
-				SPAPI: types.SPAPIConfig{
-					Enabled:                false,
-					Region:                 "us-east-1",
-					DefaultMarketplace:     "us",
-					DefaultFulfillmentType: "FBM",
-					DefaultCondition:       "New",
+			Shein: PlatformConfig{
+				Enabled:          false,
+				SchedulerEnabled: false,
+				AutoPricing: AutoPricingConfig{
+					Enabled:   false,
+					Interval:  300,
+					BatchSize: 100,
+				},
+				ProductSync: ScheduledTaskConfig{
+					Enabled:  false,
+					Interval: 3600,
+				},
+				InventorySync: ScheduledTaskConfig{
+					Enabled:  false,
+					Interval: 1800,
+				},
+				ActivityRegistration: ScheduledTaskConfig{
+					Enabled:  false,
+					Interval: 7200,
+				},
+				SyncProduct: SyncProductConfig{
+					Enabled:   true,
+					StoreIDs:  []int64{},
+					Interval:  60,
+					BatchSize: 50,
+				},
+				Monitor: MonitorConfig{
+					Enabled:              true,
+					StoreIDs:             []int64{},
+					CheckInterval:        1440,
+					BatchSize:            100,
+					EnablePriceAlert:     true,
+					EnableStockAlert:     true,
+					PriceChangeThreshold: 10.0,
+					StockChangeThreshold: 5,
 				},
 			},
-			Updater: types.UpdaterConfig{
-				Enabled:            false,
-				UpdateURL:          "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json",
-				CheckInterval:      300,
-				InsecureSkipVerify: false,
+		},
+		RabbitMQ: &RabbitMQConfig{
+			Enabled:           true,
+			URL:               "amqp://guest:guest@localhost:5672/",
+			ReconnectInterval: 5 * time.Second,
+			MaxReconnectTries: 10,
+			Consumer: RabbitMQConsumerConfig{
+				PrefetchCount: 5,
+				PrefetchSize:  0,
+				RetryDelay:    5 * time.Second,
+				MaxRetries:    3,
+				Queues:        []QueueConfig{},
 			},
-			Platforms: types.PlatformsConfig{
-				Temu: types.PlatformConfig{
-					Enabled:          false,
-					SchedulerEnabled: false,
-					AutoPricing: types.AutoPricingConfig{
-						Enabled:        false,
-						Interval:       300,
-						BatchSize:      100,
-						UseAmazonPrice: false,
-					},
-					ProductSync: types.ScheduledTaskConfig{
-						Enabled:  false,
-						Interval: 3600,
-					},
-					InventorySync: types.ScheduledTaskConfig{
-						Enabled:  false,
-						Interval: 1800,
-					},
-					ActivityRegistration: types.ScheduledTaskConfig{
-						Enabled:  false,
-						Interval: 7200,
-					},
-					SyncProduct: types.SyncProductConfig{
-						Enabled:   true,
-						StoreIDs:  []int64{},
-						Interval:  60,
-						BatchSize: 50,
-					},
-					Monitor: types.MonitorConfig{
-						Enabled:              true,
-						StoreIDs:             []int64{},
-						CheckInterval:        1440,
-						BatchSize:            100,
-						EnablePriceAlert:     true,
-						EnableStockAlert:     true,
-						PriceChangeThreshold: 10.0,
-						StockChangeThreshold: 5,
-					},
-				},
-				Shein: types.PlatformConfig{
-					Enabled:          false,
-					SchedulerEnabled: false,
-					AutoPricing: types.AutoPricingConfig{
-						Enabled:   false,
-						Interval:  300,
-						BatchSize: 100,
-					},
-					ProductSync: types.ScheduledTaskConfig{
-						Enabled:  false,
-						Interval: 3600,
-					},
-					InventorySync: types.ScheduledTaskConfig{
-						Enabled:  false,
-						Interval: 1800,
-					},
-					ActivityRegistration: types.ScheduledTaskConfig{
-						Enabled:  false,
-						Interval: 7200,
-					},
-					SyncProduct: types.SyncProductConfig{
-						Enabled:   true,
-						StoreIDs:  []int64{},
-						Interval:  60,
-						BatchSize: 50,
-					},
-					Monitor: types.MonitorConfig{
-						Enabled:              true,
-						StoreIDs:             []int64{},
-						CheckInterval:        1440,
-						BatchSize:            100,
-						EnablePriceAlert:     true,
-						EnableStockAlert:     true,
-						PriceChangeThreshold: 10.0,
-						StockChangeThreshold: 5,
-					},
-				},
-			},
-			// 添加 RabbitMQ 默认配置，避免配置文件加载失败时程序退出
-			RabbitMQ: &types.RabbitMQConfig{
-				Enabled:           true,
-				URL:               "amqp://guest:guest@localhost:5672/",
-				ReconnectInterval: 5 * time.Second,
-				MaxReconnectTries: 10,
-				Consumer: types.RabbitMQConsumerConfig{
-					PrefetchCount: 5,
-					PrefetchSize:  0,
-					RetryDelay:    5 * time.Second,
-					MaxRetries:    3,
-					Queues:        []types.QueueConfig{},
-				},
-				Node: types.NodeConfig{
-					MaxConcurrency:  10,
-					HealthCheckPort: 8081,
-					MetricsPort:     8082,
-					LogLevel:        "info",
-					ShutdownTimeout: 30 * time.Second,
-				},
+			Node: NodeConfig{
+				MaxConcurrency:  10,
+				HealthCheckPort: 8081,
+				MetricsPort:     8082,
+				LogLevel:        "info",
+				ShutdownTimeout: 30 * time.Second,
 			},
 		},
 	}
 }
 
 // applyDefaults 应用默认配置值
+// applyDefaults 应用默认配置值
 func applyDefaults(cfg *Config) {
-	if cfg.Config == nil {
-		cfg.Config = &types.Config{}
-	}
-
-	// 获取默认配置
 	defaultCfg := NewDefaultConfig()
 
-	// 如果Browser配置为nil，使用默认值
 	if cfg.Browser.BrowserPath == "" {
 		cfg.Browser = defaultCfg.Browser
 	}
-
-	// 如果Worker配置未设置，使用默认值
 	if cfg.Worker.Concurrency == 0 {
 		cfg.Worker = defaultCfg.Worker
 	}
-
-	// 如果Processor配置未设置，使用默认值
 	if cfg.Processor.MaxRetries == 0 {
 		cfg.Processor = defaultCfg.Processor
 	}
-
-	// 如果OpenAI配置未设置，使用默认值
 	if cfg.OpenAI.APIKey == "" {
 		cfg.OpenAI = defaultCfg.OpenAI
 	}
-
-	// 如果Management配置未设置，使用默认值
 	if cfg.Management.BaseURL == "" {
 		cfg.Management = defaultCfg.Management
 	} else {
-		// 补全缺失的子字段
 		if cfg.Management.TenantID == "" {
 			cfg.Management.TenantID = defaultCfg.Management.TenantID
 		}
@@ -280,13 +260,9 @@ func applyDefaults(cfg *Config) {
 			cfg.Management.TokenURL = defaultCfg.Management.TokenURL
 		}
 	}
-
-	// 如果Amazon配置未设置，使用默认值
 	if !cfg.Amazon.Enabled && cfg.Amazon.DataFreshnessDays == 0 {
 		cfg.Amazon = defaultCfg.Amazon
 	}
-
-	// 如果Updater配置未设置，使用默认值
 	if cfg.Updater.UpdateURL == "" {
 		cfg.Updater = defaultCfg.Updater
 	}

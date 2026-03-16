@@ -1,4 +1,4 @@
-// Package monitoring 提供健康检查功能
+﻿// Package monitoring 提供健康检查功能
 package monitoring
 
 import (
@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 
 	"github.com/sirupsen/logrus"
 )
@@ -127,7 +127,7 @@ func (h *HealthChecker) runHealthChecks() {
 
 // runSingleCheck 运行单个健康检查
 func (h *HealthChecker) runSingleCheck(check HealthCheck) *HealthStatus {
-	ctx, cancel := contextutil.WithHealthTimeout(h.ctx)
+	ctx, cancel := timeout.WithHealthTimeout(h.ctx)
 	defer cancel()
 
 	status := &HealthStatus{

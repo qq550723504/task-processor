@@ -1,10 +1,10 @@
-// Package openai 提供OpenAI API客户端功能
+﻿// Package openai 提供OpenAI API客户端功能
 package openai
 
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/pkg/ptrutil"
+	"task-processor/internal/pkg/ptr"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -91,8 +91,8 @@ func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
 		Messages: []ChatCompletionMessage{
 			{Role: "user", Content: prompt},
 		},
-		MaxTokens:   ptrutil.IntPtr(1000),
-		Temperature: ptrutil.Float32Ptr(0.7),
+		MaxTokens:   ptr.IntPtr(1000),
+		Temperature: ptr.Float32Ptr(0.7),
 	}
 
 	resp, err := c.CreateChatCompletion(ctx, req)

@@ -1,4 +1,4 @@
-// Package alibaba1688 提供1688爬虫应用服务
+﻿// Package alibaba1688 提供1688爬虫应用服务
 package alibaba1688
 
 import (
@@ -10,14 +10,14 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/alibaba1688"
 	"task-processor/internal/domain/task"
-	"task-processor/internal/infra/http/handler"
+	"task-processor/internal/infra/httpx"
 	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )
 
 // 编译时检查Service是否实现了CrawlerService接口
-var _ handler.CrawlerService = (*Service)(nil)
+var _ httpx.CrawlerService = (*Service)(nil)
 
 // Service 1688爬虫应用服务
 type Service struct {

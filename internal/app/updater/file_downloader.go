@@ -1,4 +1,4 @@
-// Package updater 提供自动更新器的文件下载功能
+﻿// Package updater 提供自动更新器的文件下载功能
 package updater
 
 import (
@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"task-processor/internal/pkg/httpclient"
-	"task-processor/internal/pkg/strutil"
+	"task-processor/internal/pkg/strx"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -164,23 +164,23 @@ func (fd *FileDownloader) diagnoseDownloadError(_ string, err error) error {
 	errMsg := err.Error()
 
 	// 常见错误诊断
-	if strutil.Contains(errMsg, "no such host") || strutil.Contains(errMsg, "cannot resolve") {
+	if strx.Contains(errMsg, "no such host") || strx.Contains(errMsg, "cannot resolve") {
 		return fmt.Errorf("DNS解析失败，请检查网络连接或DNS设置: %w", err)
 	}
 
-	if strutil.Contains(errMsg, "connection refused") {
+	if strx.Contains(errMsg, "connection refused") {
 		return fmt.Errorf("连接被拒绝，服务器可能不可用: %w", err)
 	}
 
-	if strutil.Contains(errMsg, "timeout") || strutil.Contains(errMsg, "deadline exceeded") {
+	if strx.Contains(errMsg, "timeout") || strx.Contains(errMsg, "deadline exceeded") {
 		return fmt.Errorf("连接超时，请检查网络连接或稍后重试: %w", err)
 	}
 
-	if strutil.Contains(errMsg, "certificate") || strutil.Contains(errMsg, "tls") {
+	if strx.Contains(errMsg, "certificate") || strx.Contains(errMsg, "tls") {
 		return fmt.Errorf("TLS证书验证失败: %w (提示: 可以在配置中设置 insecure_skip_verify: true 跳过证书验证)", err)
 	}
 
-	if strutil.Contains(errMsg, "proxy") {
+	if strx.Contains(errMsg, "proxy") {
 		return fmt.Errorf("代理连接失败，请检查代理设置: %w", err)
 	}
 

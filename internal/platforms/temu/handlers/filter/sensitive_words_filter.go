@@ -1,4 +1,4 @@
-package filter
+﻿package filter
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -174,7 +174,7 @@ func (f *SensitiveWordsFilter) loadConfig() error {
 	}
 
 	var cfg config.SensitiveWordsConfig
-	if err := jsonutil.UnmarshalBytes(data, &cfg, "解析配置文件失败"); err != nil {
+	if err := jsonx.UnmarshalBytes(data, &cfg, "解析配置文件失败"); err != nil {
 		return err
 	}
 

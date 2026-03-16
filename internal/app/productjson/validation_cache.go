@@ -1,4 +1,4 @@
-// Package productjson 提供产品JSON生成的应用层实现
+﻿// Package productjson 提供产品JSON生成的应用层实现
 package productjson
 
 import (
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/domain/productjson"
-	"task-processor/internal/pkg/hashutil"
+	"task-processor/internal/pkg/hashx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -108,5 +108,5 @@ func (c *validationCache) SetImageValidation(ctx context.Context, imageURL strin
 
 // getImageCacheKey 获取图片缓存键
 func (c *validationCache) getImageCacheKey(imageURL string) string {
-	return "validation:image:" + hashutil.MD5(imageURL)
+	return "validation:image:" + hashx.MD5(imageURL)
 }

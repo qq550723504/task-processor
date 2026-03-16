@@ -1,4 +1,4 @@
-// Package scheduler 提供任务执行器功能
+﻿// Package scheduler 提供任务执行器功能
 package scheduler
 
 import (
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -124,7 +124,7 @@ func (e *TaskExecutor) executeTask() {
 	e.logger.Info("开始执行任务")
 
 	// 创建任务上下文，设置超时
-	taskCtx, cancel := contextutil.WithTaskExtraTimeout(e.ctx)
+	taskCtx, cancel := timeout.WithTaskExtraTimeout(e.ctx)
 	defer cancel()
 
 	// 检查依赖任务是否满足

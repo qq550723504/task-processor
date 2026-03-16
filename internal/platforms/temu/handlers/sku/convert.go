@@ -1,8 +1,8 @@
-// Package sku 提供TEMU平台的SKU工具方法
+﻿// Package sku 提供TEMU平台的SKU工具方法
 package sku
 
 import (
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 )
@@ -24,5 +24,5 @@ func convertSpecInfos(src []temucontext.SpecInfo) []models.SpecInfo {
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (sb *SkuBuilder) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return jsonutil.MarshalIndentWithoutHTMLEscape(v, "", "  ")
+	return jsonx.MarshalIndentWithoutHTMLEscape(v, "", "  ")
 }

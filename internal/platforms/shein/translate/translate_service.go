@@ -1,4 +1,4 @@
-// Package translate 提供SHEIN平台的翻译处理功能，包括产品标题和描述的多语言翻译
+﻿// Package translate 提供SHEIN平台的翻译处理功能，包括产品标题和描述的多语言翻译
 package translate
 
 import (
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"task-processor/internal/domain/model"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/content"
@@ -52,7 +52,7 @@ func (h *TranslateHandler) Handle(ctx *shein.TaskContext) error {
 	var err error
 	if detectedLang == "en" {
 		// 创建带超时的context用于AI调用 - 使用传入的context
-		aiCtx, cancel := contextutil.WithAIShortTimeout(ctx.Context)
+		aiCtx, cancel := timeout.WithAIShortTimeout(ctx.Context)
 		defer cancel()
 
 		optimizedTitle, optimizedDescription, err = h.contentOptimizer.OptimizeTitleAndDescription(aiCtx, cleanedTitle, cleanedDescription, features)

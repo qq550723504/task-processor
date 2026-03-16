@@ -1,4 +1,4 @@
-package watermark
+﻿package watermark
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"task-processor/internal/pkg/imageutil"
+	"task-processor/internal/pkg/imagex"
 
 	"github.com/sirupsen/logrus"
 )
@@ -56,7 +56,7 @@ func (d *AIDetector) GetMethod() DetectionMethod {
 // detectWithOpenAI 使用OpenAI GPT-4 Vision检测
 func (d *AIDetector) detectWithOpenAI(ctx context.Context, img image.Image, result *DetectionResult) (*DetectionResult, error) {
 	// 将图片转换为base64
-	base64Img, err := imageutil.ToBase64JPEG(img, 85)
+	base64Img, err := imagex.ToBase64JPEG(img, 85)
 	if err != nil {
 		return nil, fmt.Errorf("图片编码失败: %w", err)
 	}
@@ -142,7 +142,7 @@ func (d *AIDetector) detectWithOpenAI(ctx context.Context, img image.Image, resu
 // detectWithClaude 使用Claude Vision检测
 func (d *AIDetector) detectWithClaude(ctx context.Context, img image.Image, result *DetectionResult) (*DetectionResult, error) {
 	// 将图片转换为base64
-	base64Img, err := imageutil.ToBase64JPEG(img, 85)
+	base64Img, err := imagex.ToBase64JPEG(img, 85)
 	if err != nil {
 		return nil, fmt.Errorf("图片编码失败: %w", err)
 	}

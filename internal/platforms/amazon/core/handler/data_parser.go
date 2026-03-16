@@ -1,10 +1,10 @@
-// Package handler 提供Amazon数据解析处理器
+﻿// Package handler 提供Amazon数据解析处理器
 package handler
 
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/amazon/core/model"
 )
 
@@ -38,7 +38,7 @@ func (h *DataParserHandler) Handle(ctx context.Context, taskContext *model.TaskC
 
 	// 解析JSON为map
 	var productData map[string]any
-	if err := jsonutil.UnmarshalString(rawJSONStr, &productData, "解析JSON失败"); err != nil {
+	if err := jsonx.UnmarshalString(rawJSONStr, &productData, "解析JSON失败"); err != nil {
 		return err
 	}
 

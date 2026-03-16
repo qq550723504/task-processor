@@ -1,4 +1,4 @@
-// Package bootstrap 提供平台处理器注册功能
+﻿// Package bootstrap 提供平台处理器注册功能
 package bootstrap
 
 import (
@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/infra/di"
+	"task-processor/internal/app/di"
 	"task-processor/internal/platforms/shein/pipeline"
 	"task-processor/internal/platforms/temu"
 

@@ -1,9 +1,9 @@
-package bulkrelist
+﻿package bulkrelist
 
 import (
 	"fmt"
 	"slices"
-	"task-processor/internal/pkg/strutil"
+	"task-processor/internal/pkg/strx"
 	"task-processor/internal/platforms/temu/api/inventory"
 
 	"github.com/sirupsen/logrus"
@@ -179,5 +179,5 @@ func (f *ProductFilter) MatchesFilter(product *inventory.Item, filter *ProductFi
 
 // contains 检查字符串是否包含子字符串（简单实现）
 func contains(s, substr string) bool {
-	return strutil.Contains(s, substr)
+	return strx.Contains(s, substr)
 }

@@ -1,4 +1,4 @@
-package image
+﻿package image
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/pkg/imageutil"
+	"task-processor/internal/pkg/imagex"
 	"task-processor/internal/platforms/shein/api"
 	"task-processor/internal/platforms/shein/client"
 
@@ -53,7 +53,7 @@ func (i *Client) UploadImage(imageURL string) (string, error) {
 
 // processImageIfNeeded 检查图片尺寸，不足900x900时填充白边
 func (i *Client) processImageIfNeeded(imageData []byte) ([]byte, error) {
-	img, format, err := imageutil.FromBytesWithFormat(imageData)
+	img, format, err := imagex.FromBytesWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}

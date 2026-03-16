@@ -1,10 +1,10 @@
-package attribute
+﻿package attribute
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
@@ -65,7 +65,7 @@ func (h *AttributeTemplateHandler) Handle(ctx *shein.TaskContext) error {
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *AttributeTemplateHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return jsonutil.MarshalWithoutHTMLEscape(v)
+	return jsonx.MarshalWithoutHTMLEscape(v)
 }
 
 // saveJSONToFileWithName 使用指定文件名保存JSON数据到文件

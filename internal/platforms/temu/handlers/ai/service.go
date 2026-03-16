@@ -1,4 +1,4 @@
-// Package ai 提供TEMU平台的各种处理器，包括AI服务调用等功能
+﻿// Package ai 提供TEMU平台的各种处理器，包括AI服务调用等功能
 package ai
 
 import (
@@ -9,7 +9,7 @@ import (
 
 	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
@@ -115,7 +115,7 @@ func (s *AIService) processAIResponse(response *openaiClient.ChatCompletionRespo
 		Properties []models.PropertyItem `json:"properties"`
 	}
 
-	if err := jsonutil.UnmarshalBytes([]byte(content), &aiResponse, "解析AI响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes([]byte(content), &aiResponse, "解析AI响应失败"); err != nil {
 		s.logger.WithError(err).Errorf("解析AI响应失败: %s", content)
 		return nil, fmt.Errorf("解析AI响应失败: %w", err)
 	}

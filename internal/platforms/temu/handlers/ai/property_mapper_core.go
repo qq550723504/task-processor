@@ -1,4 +1,4 @@
-// Package ai 提供TEMU平台的AI属性映射核心功能
+﻿// Package ai 提供TEMU平台的AI属性映射核心功能
 package ai
 
 import (
@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 	models "task-processor/internal/platforms/temu/api/product"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -104,7 +104,7 @@ func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskCon
 	}).Info("使用AI智能映射商品属性")
 
 	// 调用AI进行属性映射 - 使用传入的context，添加超时控制
-	aiCtx, cancel := contextutil.WithAITimeout(temuCtx.GetContext())
+	aiCtx, cancel := timeout.WithAITimeout(temuCtx.GetContext())
 	defer cancel()
 
 	mappingData := preparePropertyMappingData(temuCtx, templateInfo.GoodsProperties)

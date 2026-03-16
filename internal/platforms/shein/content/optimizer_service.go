@@ -1,4 +1,4 @@
-// Package content 提供SHEIN平台的内容优化功能
+﻿// Package content 提供SHEIN平台的内容优化功能
 package content
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 )
 
 // ContentOptimizer 内容优化器
@@ -131,7 +131,7 @@ func (o *ContentOptimizer) parseOptimizedContent(content, defaultTitle, defaultD
 	cleanContent = strings.TrimSpace(cleanContent)
 
 	// 尝试解析JSON
-	if err := jsonutil.UnmarshalString(cleanContent, &optimized, ""); err == nil {
+	if err := jsonx.UnmarshalString(cleanContent, &optimized, ""); err == nil {
 		if strings.TrimSpace(optimized.Title) != "" {
 			title = strings.TrimSpace(optimized.Title)
 		}

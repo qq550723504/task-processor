@@ -1,4 +1,4 @@
-// Package service 提供Amazon Schema获取功能
+﻿// Package service 提供Amazon Schema获取功能
 package service
 
 import (
@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sync"
 	"task-processor/internal/pkg/httpclient"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/amazon/core/model"
 
 	"github.com/sirupsen/logrus"
@@ -65,7 +65,7 @@ func (f *SchemaFetcher) FetchSchema(ctx context.Context, schemaURL string) (*mod
 
 	// 解析JSON
 	var schema model.ProductTypeSchema
-	if err := jsonutil.UnmarshalBytes(body, &schema, "解析Schema JSON失败"); err != nil {
+	if err := jsonx.UnmarshalBytes(body, &schema, "解析Schema JSON失败"); err != nil {
 		return nil, err
 	}
 

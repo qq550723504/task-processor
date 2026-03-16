@@ -1,11 +1,11 @@
-// Package service 提供图片处理功能
+﻿// Package service 提供图片处理功能
 package service
 
 import (
 	"bytes"
 	"fmt"
 	"image"
-	"task-processor/internal/pkg/imageutil"
+	"task-processor/internal/pkg/imagex"
 
 	"github.com/disintegration/imaging"
 	"github.com/sirupsen/logrus"
@@ -48,7 +48,7 @@ func (p *ImageProcessor) Resize(imageData []byte, width, height int) ([]byte, er
 	}).Info("开始调整图片大小")
 
 	// 解码图片
-	img, format, err := imageutil.FromBytesWithFormat(imageData)
+	img, format, err := imagex.FromBytesWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -79,7 +79,7 @@ func (p *ImageProcessor) ResizeWithOptions(imageData []byte, options ProcessingO
 	}).Info("开始处理图片")
 
 	// 解码图片
-	img, format, err := imageutil.FromBytesWithFormat(imageData)
+	img, format, err := imagex.FromBytesWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -110,7 +110,7 @@ func (p *ImageProcessor) ResizeWithOptions(imageData []byte, options ProcessingO
 
 // ValidateFormat 验证图片格式
 func (p *ImageProcessor) ValidateFormat(imageData []byte) error {
-	_, format, err := imageutil.FromBytesWithFormat(imageData)
+	_, format, err := imagex.FromBytesWithFormat(imageData)
 	if err != nil {
 		return fmt.Errorf("无效的图片格式: %w", err)
 	}
@@ -132,7 +132,7 @@ func (p *ImageProcessor) ValidateFormat(imageData []byte) error {
 
 // GetImageInfo 获取图片信息
 func (p *ImageProcessor) GetImageInfo(imageData []byte) (*ImageInfo, error) {
-	img, format, err := imageutil.FromBytesWithFormat(imageData)
+	img, format, err := imagex.FromBytesWithFormat(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
@@ -276,7 +276,7 @@ func (p *ImageProcessor) encodeImage(img image.Image, format string) ([]byte, er
 // encodeImageWithQuality 使用指定质量编码图片
 func (p *ImageProcessor) encodeImageWithQuality(img image.Image, format string, quality int) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := imageutil.Encode(&buf, img, format, quality); err != nil {
+	if err := imagex.Encode(&buf, img, format, quality); err != nil {
 		return nil, fmt.Errorf("编码图片失败: %w", err)
 	}
 	return buf.Bytes(), nil

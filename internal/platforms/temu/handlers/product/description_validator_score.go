@@ -1,4 +1,4 @@
-// Package product 提供TEMU平台产品描述验证器的评分功能
+﻿// Package product 提供TEMU平台产品描述验证器的评分功能
 package product
 
 import (
@@ -7,7 +7,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/mathutil"
+	"task-processor/internal/pkg/mathx"
 )
 
 // 这个文件包含ProductDescriptionValidator的评分功能
@@ -145,7 +145,7 @@ func (h *ProductDescriptionValidator) calculateKeywordRelevance(description stri
 			}
 		}
 		if matchCount > 0 {
-			score += mathutil.Min(15, matchCount*3)
+			score += mathx.Min(15, matchCount*3)
 		}
 	}
 

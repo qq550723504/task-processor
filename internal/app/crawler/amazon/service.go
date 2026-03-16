@@ -1,4 +1,4 @@
-// Package amazon 提供爬虫应用服务
+﻿// Package amazon 提供爬虫应用服务
 package amazon
 
 import (
@@ -13,14 +13,14 @@ import (
 	crawleramazon "task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/task"
-	"task-processor/internal/infra/http/handler"
+	"task-processor/internal/infra/httpx"
 	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )
 
 // 编译时检查Service是否实现了CrawlerService接口
-var _ handler.CrawlerService = (*Service)(nil)
+var _ httpx.CrawlerService = (*Service)(nil)
 
 // Service 爬虫应用服务
 type Service struct {

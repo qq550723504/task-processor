@@ -1,10 +1,10 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/fileutil"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/fileio"
+	"task-processor/internal/pkg/jsonx"
 	temuapi "task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -14,14 +14,14 @@ import (
 // ProductSaveHandler 产品保存处理器
 type ProductSaveHandler struct {
 	logger    *logrus.Entry
-	fileUtils *fileutil.FileUtil
+	fileUtils *fileio.FileUtil
 }
 
 // NewProductSaveHandler 创建新的产品保存处理器
 func NewProductSaveHandler() *ProductSaveHandler {
 	return &ProductSaveHandler{
 		logger:    logrus.WithField("handler", "ProductSaveHandler"),
-		fileUtils: fileutil.New(),
+		fileUtils: fileio.New(),
 	}
 }
 
@@ -186,5 +186,5 @@ func (h *ProductSaveHandler) getTotalSkuCount(skcList []temuapi.Skc) int {
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *ProductSaveHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return jsonutil.MarshalWithoutHTMLEscape(v)
+	return jsonx.MarshalWithoutHTMLEscape(v)
 }

@@ -1,4 +1,4 @@
-// Package content 提供SHEIN平台的敏感词配置管理功能
+﻿// Package content 提供SHEIN平台的敏感词配置管理功能
 package content
 
 import (
@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -65,7 +65,7 @@ func (s *SensitiveWordService) loadConfig() error {
 
 	// 解析JSON
 	var config SensitiveWordConfig
-	if err := jsonutil.UnmarshalBytes(data, &config, "解析敏感词配置文件失败"); err != nil {
+	if err := jsonx.UnmarshalBytes(data, &config, "解析敏感词配置文件失败"); err != nil {
 		return err
 	}
 

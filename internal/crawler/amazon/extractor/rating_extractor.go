@@ -1,4 +1,4 @@
-package extractor
+﻿package extractor
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -19,7 +19,7 @@ type RatingExtractor struct{}
 
 // Extract 提取评分和评论数据（并行优化版本）
 func (e *RatingExtractor) Extract(page playwright.Page, product *model.Product) error {
-	ctx, cancel := contextutil.WithAIShortTimeout(context.Background())
+	ctx, cancel := timeout.WithAIShortTimeout(context.Background())
 	defer cancel()
 
 	// 并行提取评分和评论数

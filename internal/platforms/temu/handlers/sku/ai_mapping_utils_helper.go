@@ -1,11 +1,11 @@
-// Package sku 提供TEMU平台的AI SKU映射工具辅助功能
+﻿// Package sku 提供TEMU平台的AI SKU映射工具辅助功能
 package sku
 
 import (
 	"strings"
 
 	"task-processor/internal/domain/model"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	temucontext "task-processor/internal/platforms/temu/context"
 )
 
@@ -45,7 +45,7 @@ func (vp *SkuVariantProcessor) getItemWeight(product *model.Product) string {
 
 // marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (vp *SkuVariantProcessor) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return jsonutil.MarshalIndentWithoutHTMLEscape(v, "", "  ")
+	return jsonx.MarshalIndentWithoutHTMLEscape(v, "", "  ")
 }
 
 // buildAIVariant 构建AI变体数据

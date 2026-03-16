@@ -1,4 +1,4 @@
-// Package bootstrap 提供组件适配器实现
+﻿// Package bootstrap 提供组件适配器实现
 package bootstrap
 
 import (
@@ -11,7 +11,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
-	"task-processor/internal/infra/di"
+	"task-processor/internal/app/di"
 	"task-processor/internal/platforms/shein/pipeline"
 	"task-processor/internal/platforms/temu"
 

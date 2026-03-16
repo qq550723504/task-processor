@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU平台核价任务实现
+﻿// Package scheduler 提供TEMU平台核价任务实现
 package scheduler
 
 import (
@@ -7,7 +7,7 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/platforms/scheduler"
+	commonscheduler "task-processor/internal/platforms/taskbase"
 	"task-processor/internal/platforms/temu/api"
 )
 

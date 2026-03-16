@@ -1,11 +1,11 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	models "task-processor/internal/platforms/temu/api/product"
 
 	"github.com/sirupsen/logrus"
@@ -72,7 +72,7 @@ func (u *ProductSubmitUtils) IsNonRetryableError(errorCode int, errorMessage str
 
 // MarshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (u *ProductSubmitUtils) MarshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return jsonutil.MarshalWithoutHTMLEscape(v)
+	return jsonx.MarshalWithoutHTMLEscape(v)
 }
 
 // SaveJSONToFile 保存JSON数据到文件

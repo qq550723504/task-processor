@@ -1,4 +1,4 @@
-package browser
+﻿package browser
 
 import (
 	"archive/zip"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/httpclient"
 
 	"github.com/sirupsen/logrus"
@@ -122,7 +122,7 @@ func (cd *ChromeDownloader) downloadFile(url, filepath string) error {
 	}
 
 	// 使用项目的 HTTP 客户端发送请求（带重试机制）
-	ctx, cancel := contextutil.WithDownloadTimeout(context.Background())
+	ctx, cancel := timeout.WithDownloadTimeout(context.Background())
 	defer cancel()
 
 	resp, err := cd.httpClient.Do(ctx, req)

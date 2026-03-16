@@ -1,4 +1,4 @@
-// Package image 提供并行图片处理功能
+﻿// Package image 提供并行图片处理功能
 package image
 
 import (
@@ -9,7 +9,7 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pkg/goroutine"
-	"task-processor/internal/pkg/perfutil"
+	"task-processor/internal/pkg/perf"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -62,7 +62,7 @@ func (pip *ParallelImageProcessor) ProcessVariantImagesParallel(temuCtx *temucon
 	}
 
 	// 创建性能跟踪器
-	tracker := perfutil.NewTracker(fmt.Sprintf("并行图片处理-%d个变体", len(variants)), pip.logger)
+	tracker := perf.NewTracker(fmt.Sprintf("并行图片处理-%d个变体", len(variants)), pip.logger)
 	defer tracker.Finish()
 
 	tracker.StartStep("准备并行图片处理任务")

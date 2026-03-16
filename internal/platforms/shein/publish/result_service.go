@@ -1,4 +1,4 @@
-// Package publish 提供SHEIN平台的各种处理模块，包括发布结果保存等功能
+﻿// Package publish 提供SHEIN平台的各种处理模块，包括发布结果保存等功能
 package publish
 
 import (
@@ -7,9 +7,9 @@ import (
 
 	"task-processor/internal/domain/model"
 	management_api "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/ptrutil"
+	"task-processor/internal/pkg/ptr"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/pkg/timeutil"
+	"task-processor/internal/pkg/timex"
 	shein "task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/productdata"
 	"task-processor/internal/platforms/shein/validation"
@@ -114,7 +114,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 					Region:            ctx.Task.Region,
 					Sku:               &sku.SupplierSKU,
 					PlatformProductId: &sku.SKUCode,
-					Status:            ptrutil.Int16Ptr(1), // 1表示成功
+					Status:            ptr.Int16Ptr(1), // 1表示成功
 				}
 
 				// 从AsinSkuMap中查找ASIN（需要反向查找，因为map是ASIN->SKU的映射）
@@ -255,7 +255,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 	logrus.Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", ctx.StoreInfo.ID, dailyLimit, ctx.StoreInfo.DailyLimitType)
 
 	// 获取当前日期（格式：YYYY-MM-DD）
-	currentDate := timeutil.NowDate()
+	currentDate := timex.NowDate()
 
 	// 根据店铺配置的限制类型计算增加的数量
 	increment := h.calculateIncrement(ctx)

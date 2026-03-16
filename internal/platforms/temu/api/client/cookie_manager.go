@@ -1,11 +1,11 @@
-package client
+﻿package client
 
 import (
 	"fmt"
 	"net/http"
 	"strings"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -86,7 +86,7 @@ func (cm *CookieManager) parseCookieString(cookieStr string) []*http.Cookie {
 
 	// 尝试解析JSON格式的Cookie数据
 	var cookieDataList []CookieData
-	if err := jsonutil.UnmarshalString(cookieStr, &cookieDataList, ""); err == nil {
+	if err := jsonx.UnmarshalString(cookieStr, &cookieDataList, ""); err == nil {
 		// JSON格式解析成功
 		for _, cookieData := range cookieDataList {
 			cookie := &http.Cookie{

@@ -1,4 +1,4 @@
-package api
+﻿package api
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -159,7 +159,7 @@ func (c *Client) parseError(statusCode int, body []byte) error {
 		} `json:"errors"`
 	}
 
-	if err := jsonutil.UnmarshalBytes(body, &errorResp, ""); err != nil {
+	if err := jsonx.UnmarshalBytes(body, &errorResp, ""); err != nil {
 		return fmt.Errorf("API 错误 (status=%d): %s", statusCode, string(body))
 	}
 

@@ -2,17 +2,8 @@
 package config
 
 import (
-	"task-processor/internal/core/config/types"
 	"time"
 )
-
-// RetryConfig 通用重试配置 (类型别名,使用types包中的定义)
-type RetryConfig = types.RetryConfig
-
-// DefaultRetryConfig 返回默认重试配置
-func DefaultRetryConfig() *RetryConfig {
-	return types.DefaultRetryConfig()
-}
 
 // TimeoutConfig 通用超时配置
 type TimeoutConfig struct {

@@ -1,4 +1,4 @@
-// Package api 提供Amazon SP-API图片上传功能
+﻿// Package api 提供Amazon SP-API图片上传功能
 package api
 
 import (
@@ -10,7 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -102,7 +102,7 @@ func (c *Client) CreateUploadDestination(ctx context.Context, resource, marketpl
 	}
 
 	var result UploadDestinationResponse
-	if err := jsonutil.UnmarshalBytes(body, &result, "解析响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes(body, &result, "解析响应失败"); err != nil {
 		return nil, err
 	}
 

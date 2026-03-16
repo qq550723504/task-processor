@@ -1,4 +1,4 @@
-// Package skc 提供SHEIN平台SKC翻译处理功能
+﻿// Package skc 提供SHEIN平台SKC翻译处理功能
 package skc
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/contextutil"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/translate"
@@ -235,7 +235,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 	}
 
 	// 创建带超时的上下文
-	aiCtx, cancel := contextutil.WithAIShortTimeout(ctx.Context)
+	aiCtx, cancel := timeout.WithAIShortTimeout(ctx.Context)
 	defer cancel()
 
 	// 一次性批量优化所有英文内容
@@ -360,7 +360,7 @@ func (h *SKCTranslationHandler) parseBatchOptimizedResponse(content string, expe
 	}
 
 	var response BatchOptimizedResponse
-	if err := jsonutil.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
 		return nil, err
 	}
 
@@ -432,7 +432,7 @@ func (h *SKCTranslationHandler) parseOptimizedResponse(content string) (string, 
 	}
 
 	var response OptimizedResponse
-	if err := jsonutil.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
 		return "", err
 	}
 

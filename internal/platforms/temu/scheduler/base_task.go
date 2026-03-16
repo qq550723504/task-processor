@@ -1,9 +1,9 @@
-// Package scheduler 提供TEMU平台任务的基础实现
+﻿// Package scheduler 提供TEMU平台任务的基础实现
 package scheduler
 
 import (
 	appscheduler "task-processor/internal/app/scheduler"
-	commonscheduler "task-processor/internal/platforms/scheduler"
+	commonscheduler "task-processor/internal/platforms/taskbase"
 )
 
 // BaseTask TEMU平台基础任务

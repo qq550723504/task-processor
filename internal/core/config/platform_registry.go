@@ -1,10 +1,9 @@
-// Package config 提供平台配置注册功能
+﻿// Package config 提供平台配置注册功能
 package config
 
 import (
 	"fmt"
 	"sync"
-	"task-processor/internal/core/config/types"
 )
 
 // PlatformConfigProvider 平台配置提供者接口
@@ -14,13 +13,13 @@ type PlatformConfigProvider interface {
 	Name() string
 
 	// GetConfig 获取平台配置
-	GetConfig() *types.PlatformConfig
+	GetConfig() *PlatformConfig
 
 	// Validate 验证平台配置
 	Validate() error
 
 	// GetDefaultConfig 获取默认配置
-	GetDefaultConfig() *types.PlatformConfig
+	GetDefaultConfig() *PlatformConfig
 }
 
 // PlatformRegistry 平台注册表
@@ -134,12 +133,12 @@ func (r *PlatformRegistry) Clear() {
 // 提供默认实现,具体平台可以嵌入此结构体
 type BasePlatformProvider struct {
 	name          string
-	config        *types.PlatformConfig
-	defaultConfig *types.PlatformConfig
+	config        *PlatformConfig
+	defaultConfig *PlatformConfig
 }
 
 // NewBasePlatformProvider 创建基础平台配置提供者
-func NewBasePlatformProvider(name string, config *types.PlatformConfig) *BasePlatformProvider {
+func NewBasePlatformProvider(name string, config *PlatformConfig) *BasePlatformProvider {
 	return &BasePlatformProvider{
 		name:          name,
 		config:        config,
@@ -153,7 +152,7 @@ func (p *BasePlatformProvider) Name() string {
 }
 
 // GetConfig 获取平台配置
-func (p *BasePlatformProvider) GetConfig() *types.PlatformConfig {
+func (p *BasePlatformProvider) GetConfig() *PlatformConfig {
 	return p.config
 }
 
@@ -176,29 +175,29 @@ func (p *BasePlatformProvider) Validate() error {
 }
 
 // GetDefaultConfig 获取默认配置
-func (p *BasePlatformProvider) GetDefaultConfig() *types.PlatformConfig {
+func (p *BasePlatformProvider) GetDefaultConfig() *PlatformConfig {
 	return p.defaultConfig
 }
 
 // getDefaultPlatformConfig 获取默认平台配置
-func getDefaultPlatformConfig() *types.PlatformConfig {
-	return &types.PlatformConfig{
+func getDefaultPlatformConfig() *PlatformConfig {
+	return &PlatformConfig{
 		Enabled:          false,
 		SchedulerEnabled: false,
-		AutoPricing: types.AutoPricingConfig{
+		AutoPricing: AutoPricingConfig{
 			Enabled:   false,
 			Interval:  300,
 			BatchSize: 100,
 		},
-		ProductSync: types.ScheduledTaskConfig{
+		ProductSync: ScheduledTaskConfig{
 			Enabled:  false,
 			Interval: 3600,
 		},
-		InventorySync: types.ScheduledTaskConfig{
+		InventorySync: ScheduledTaskConfig{
 			Enabled:  false,
 			Interval: 1800,
 		},
-		ActivityRegistration: types.ScheduledTaskConfig{
+		ActivityRegistration: ScheduledTaskConfig{
 			Enabled:  false,
 			Interval: 7200,
 		},

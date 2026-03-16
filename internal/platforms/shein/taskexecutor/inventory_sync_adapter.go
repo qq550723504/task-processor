@@ -1,11 +1,11 @@
-// Package taskexecutor 提供SHEIN库存同步任务的适配器
+﻿// Package taskexecutor 提供SHEIN库存同步任务的适配器
 package taskexecutor
 
 import (
 	"context"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	commonscheduler "task-processor/internal/platforms/scheduler"
+	commonscheduler "task-processor/internal/platforms/taskbase"
 	sheinscheduler "task-processor/internal/platforms/shein/operation"
 )
 

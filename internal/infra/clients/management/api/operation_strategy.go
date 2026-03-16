@@ -1,11 +1,11 @@
-package api
+﻿package api
 
 import (
 	"fmt"
 	"io"
 	"net/http"
 	"task-processor/internal/pkg/httpclient"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/types"
 
 	"github.com/sirupsen/logrus"
@@ -106,7 +106,7 @@ func (c *OperationStrategyClient) GetOperationStrategyByStoreId(storeId int64) (
 		Msg  string                `json:"msg"`
 	}
 
-	if err := jsonutil.UnmarshalBytes(body, &result, "解析响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes(body, &result, "解析响应失败"); err != nil {
 		return nil, err
 	}
 

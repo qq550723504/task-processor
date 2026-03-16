@@ -1,4 +1,4 @@
-// Package publish 提供SHEIN平台产品发布错误处理功能
+﻿// Package publish 提供SHEIN平台产品发布错误处理功能
 package publish
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/shein"
 	product "task-processor/internal/platforms/shein/api/product"
 	"task-processor/internal/platforms/shein/content"
@@ -193,7 +193,7 @@ func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult any) ([]
 	logrus.Infof("🔍 调试 - PreValidResult JSON 数据: %s", string(jsonData))
 
 	var results []shein.PreValidResult
-	if err := jsonutil.UnmarshalBytes(jsonData, &results, "反序列化 PreValidResult 失败"); err != nil {
+	if err := jsonx.UnmarshalBytes(jsonData, &results, "反序列化 PreValidResult 失败"); err != nil {
 		logrus.Errorf("❌ 调试 - 反序列化 PreValidResult 失败: %v", err)
 		logrus.Errorf("❌ 调试 - 尝试反序列化的JSON: %s", string(jsonData))
 		return nil, err

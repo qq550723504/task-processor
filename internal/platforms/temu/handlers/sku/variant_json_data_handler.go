@@ -1,4 +1,4 @@
-// Package sku 提供TEMU平台的变体JSON数据处理功能
+﻿// Package sku 提供TEMU平台的变体JSON数据处理功能
 package sku
 
 import (
@@ -10,9 +10,9 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/pkg/strutil"
+	"task-processor/internal/pkg/strx"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -121,7 +121,7 @@ func (h *VariantJsonDataHandler) fetchAllVariants(temuCtx *temucontext.TemuTaskC
 		h.logger.Infof("📦 获取变体 [%d/%d]: %s", i+1, len(variantAsins), asin)
 
 		// 为每个变体请求设置2分钟超时
-		ctx, cancel := contextutil.WithTaskTimeout(context.Background())
+		ctx, cancel := timeout.WithTaskTimeout(context.Background())
 
 		// 构建获取请求
 		req := &product.FetchRequest{
@@ -258,7 +258,7 @@ func (h *VariantJsonDataHandler) processSingleProduct(temuCtx *temucontext.TemuT
 	// 处理产品信息
 	if temuCtx.TemuProduct != nil {
 		if productName != "" {
-			cleanedTitle := strutil.CleanProductTitle(productName)
+			cleanedTitle := strx.CleanProductTitle(productName)
 			temuCtx.CleanedTitle = cleanedTitle
 			h.logger.Debugf("产品标题已清理: %s -> %s", productName, cleanedTitle)
 		}
@@ -290,7 +290,7 @@ func (h *VariantJsonDataHandler) processVariantData(temuCtx *temucontext.TemuTas
 		// 清理变体标题
 		if variant.Title != "" {
 			originalTitle := variant.Title
-			variant.Title = strutil.CleanProductTitle(variant.Title)
+			variant.Title = strx.CleanProductTitle(variant.Title)
 			if originalTitle != variant.Title {
 				h.logger.Debugf("变体 %d 标题已清理: %s -> %s", i+1, originalTitle, variant.Title)
 			}
@@ -303,7 +303,7 @@ func (h *VariantJsonDataHandler) processVariantData(temuCtx *temucontext.TemuTas
 	if len(variants) > 0 && variants[0] != nil {
 		mainVariant := variants[0]
 		if mainVariant.Title != "" {
-			cleanedTitle := strutil.CleanProductTitle(mainVariant.Title)
+			cleanedTitle := strx.CleanProductTitle(mainVariant.Title)
 			temuCtx.CleanedTitle = cleanedTitle
 			h.logger.Debugf("主变体标题已清理: %s -> %s", mainVariant.Title, cleanedTitle)
 		}

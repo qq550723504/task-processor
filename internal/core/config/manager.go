@@ -1,4 +1,4 @@
-// Package config 提供配置管理器实现
+﻿// Package config 提供配置管理器实现
 package config
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"task-processor/internal/core/config/validators"
+	
 
 	"github.com/sirupsen/logrus"
 )
@@ -106,7 +106,7 @@ func (m *managerImpl) Validate(cfg *Config) error {
 		return fmt.Errorf("配置不能为空")
 	}
 	// 使用统一的 validators 包进行完整配置验证，保持与其他入口一致
-	v := validators.NewValidator(
+	v := NewValidator(
 		&cfg.Processor,
 		&cfg.Worker,
 		&cfg.OpenAI,

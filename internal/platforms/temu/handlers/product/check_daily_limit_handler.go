@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/app/state"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/timeutil"
+	"task-processor/internal/pkg/timex"
 	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -82,7 +82,7 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 	}).Debug("店铺每日上架限额")
 
 	// 获取当前日期（格式：YYYY-MM-DD）
-	currentDate := timeutil.NowDate()
+	currentDate := timex.NowDate()
 
 	// 获取当前已上架数量
 	currentCount := h.memoryManager.DailyCountManager.GetCount(

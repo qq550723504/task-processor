@@ -1,4 +1,4 @@
-// Package client 提供SHEIN平台的Cookie管理功能
+﻿// Package client 提供SHEIN平台的Cookie管理功能
 package client
 
 import (
@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -117,7 +117,7 @@ func (cm *CookieManager) parseCookieString(cookieStr string) ([]*http.Cookie, er
 
 	// 尝试解析JSON格式的Cookie数据
 	var cookieDataList []CookieData
-	if err := jsonutil.UnmarshalString(cookieStr, &cookieDataList, ""); err == nil {
+	if err := jsonx.UnmarshalString(cookieStr, &cookieDataList, ""); err == nil {
 		// JSON格式解析成功
 		for _, cookieData := range cookieDataList {
 			cookie := &http.Cookie{

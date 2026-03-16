@@ -1,11 +1,11 @@
-// Package image 提供TEMU平台图片上传核心处理器
+﻿// Package image 提供TEMU平台图片上传核心处理器
 package image
 
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/ptrutil"
+	"task-processor/internal/pkg/ptr"
 	temuimage "task-processor/internal/platforms/temu/api/image"
 	temuproduct "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -299,7 +299,7 @@ func (h *ImageUploadProcessor) createImageInfo(url string, width, height int) *t
 		URL:    url,
 		Width:  width,
 		Height: height,
-		Type:   ptrutil.IntPtr(1),
+		Type:   ptr.IntPtr(1),
 	}
 }
 

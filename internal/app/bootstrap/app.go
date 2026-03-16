@@ -1,4 +1,4 @@
-// Package bootstrap 提供应用启动器实现
+﻿// Package bootstrap 提供应用启动器实现
 package bootstrap
 
 import (
@@ -7,7 +7,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/infra/di"
+	"task-processor/internal/app/di"
 
 	"github.com/sirupsen/logrus"
 )

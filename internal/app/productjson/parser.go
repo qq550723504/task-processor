@@ -1,4 +1,4 @@
-// Package productjson 提供产品JSON生成的应用层实现
+﻿// Package productjson 提供产品JSON生成的应用层实现
 package productjson
 
 import (
@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"task-processor/internal/domain/productjson"
-	"task-processor/internal/pkg/strutil"
+	"task-processor/internal/pkg/strx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -180,7 +180,7 @@ func (p *inputParser) ParseInput(ctx context.Context, req *productjson.GenerateR
 
 // CleanText 清洗文本，委托给 pkg/strutil
 func (p *inputParser) CleanText(text string) string {
-	return strutil.CleanProductText(text)
+	return strx.CleanProductText(text)
 }
 
 // DownloadImages 并发下载多张图片

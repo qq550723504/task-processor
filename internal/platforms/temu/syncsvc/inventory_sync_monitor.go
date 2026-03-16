@@ -1,4 +1,4 @@
-// Package syncsvc 提供TEMU平台库存监控核心逻辑
+﻿// Package syncsvc 提供TEMU平台库存监控核心逻辑
 package syncsvc
 
 import (
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 
 	"github.com/sirupsen/logrus"
 )
@@ -112,7 +112,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	}
 
 	// 为单个产品设置2分钟超时
-	productCtx, cancel := contextutil.WithTaskTimeout(ctx)
+	productCtx, cancel := timeout.WithTaskTimeout(ctx)
 	defer cancel()
 
 	s.logger.WithFields(logrus.Fields{

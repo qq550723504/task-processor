@@ -1,4 +1,4 @@
-// Package syncsvc 提供TEMU平台库存和价格记录逻辑
+﻿// Package syncsvc 提供TEMU平台库存和价格记录逻辑
 package syncsvc
 
 import (
@@ -6,9 +6,9 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
-	"task-processor/internal/pkg/timeutil"
+	"task-processor/internal/pkg/timex"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -35,7 +35,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 
 	// 如果今天已经记录过，跳过
 	if latestRecord != nil {
-		if timeutil.IsSameDate(latestRecord.CreateTime.Time, time.Now()) {
+		if timex.IsSameDate(latestRecord.CreateTime.Time, time.Now()) {
 			s.logger.WithFields(logrus.Fields{
 				"productId": productId,
 				"region":    region,
@@ -54,7 +54,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 	// 解析 Attributes 获取 SKU 的 AmazonMonitorData
 	if prod.Attributes != "" {
 		var mappingList []TemuMappingData
-		if err := jsonutil.UnmarshalString(prod.Attributes, &mappingList, ""); err == nil {
+		if err := jsonx.UnmarshalString(prod.Attributes, &mappingList, ""); err == nil {
 			// 查找对应的 SKU
 			for _, mapping := range mappingList {
 				for _, sku := range mapping.SkuInfo {
@@ -150,7 +150,7 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 	}
 
 	var mappingList []TemuMappingData
-	if err := jsonutil.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
+	if err := jsonx.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
 		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error(err.Error())
 		return
 	}

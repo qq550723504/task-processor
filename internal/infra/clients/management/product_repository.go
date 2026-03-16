@@ -1,10 +1,10 @@
-package management
+﻿package management
 
 import (
 	"fmt"
 	"net/http"
 	"task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/strutil"
+	"task-processor/internal/pkg/strx"
 	"task-processor/internal/pkg/types"
 )
 
@@ -44,7 +44,7 @@ func (c *ProductDataAPIClient) buildBatchSaveRequestFromDTO(req *api.ProductData
 			"platformProductId":  product.PlatformProductID,
 			"productName":        product.ProductName,
 			"productSku":         product.ProductSku,
-			"productPrice":       strutil.ParseFloat(product.ProductPrice.String()),
+			"productPrice":       strx.ParseFloat(product.ProductPrice.String()),
 			"productStock":       product.ProductStock,
 			"productCategory":    product.ProductCategory,
 			"productImage":       product.ProductImage,
@@ -61,7 +61,7 @@ func (c *ProductDataAPIClient) buildBatchSaveRequestFromDTO(req *api.ProductData
 			item["categoryId"] = *product.CategoryID
 		}
 		if product.SpecialPrice.String() != "" {
-			item["specialPrice"] = strutil.ParseFloat(product.SpecialPrice.String())
+			item["specialPrice"] = strx.ParseFloat(product.SpecialPrice.String())
 		}
 		if product.PriceCurrency != "" {
 			item["priceCurrency"] = product.PriceCurrency

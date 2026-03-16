@@ -1,4 +1,4 @@
-// Package operation 提供SHEIN平台调度器相关服务
+﻿// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/contextutil"
+	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/recovery"
 
 	"github.com/sirupsen/logrus"
@@ -46,7 +46,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	}
 
 	// 为单个产品设置2分钟超时
-	productCtx, cancel := contextutil.WithTaskTimeout(ctx)
+	productCtx, cancel := timeout.WithTaskTimeout(ctx)
 	defer cancel()
 
 	// 使用 ProductFetcher 获取Amazon产品数据（自动处理缓存）

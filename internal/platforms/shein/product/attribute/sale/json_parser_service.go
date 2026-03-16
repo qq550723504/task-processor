@@ -1,11 +1,11 @@
-// Package sale 提供SHEIN平台的销售属性JSON解析功能
+﻿// Package sale 提供SHEIN平台的销售属性JSON解析功能
 package sale
 
 import (
 	"encoding/json"
 	"regexp"
 	"strings"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/shein"
 
 	"github.com/sirupsen/logrus"
@@ -56,7 +56,7 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) shein.Res
 	}
 
 	var saleAttributeData shein.ResultSaleAttribute
-	if err := jsonutil.UnmarshalBytes([]byte(content), &saleAttributeData, "JSON解析失败"); err != nil {
+	if err := jsonx.UnmarshalBytes([]byte(content), &saleAttributeData, "JSON解析失败"); err != nil {
 		logrus.Errorf("❌ JSON解析失败: %v", err)
 		logrus.Debugf("内容前500字符: %s", content[:min(500, len(content))])
 		return shein.ResultSaleAttribute{}

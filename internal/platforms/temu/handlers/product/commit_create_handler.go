@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	types "task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/strutil"
+	"task-processor/internal/pkg/strx"
 	temuapi "task-processor/internal/platforms/temu/api"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -99,7 +99,7 @@ func (h *CommitCreateHandler) createCommit(temuCtx *temucontext.TemuTaskContext,
 	}
 
 	// 清理商品名称，确保符合TEMU要求
-	cleanedGoodsName := strutil.CleanProductTitle(temuProduct.GoodsBasic.GoodsName)
+	cleanedGoodsName := strx.CleanProductTitle(temuProduct.GoodsBasic.GoodsName)
 
 	// 【关键修复】确保左括号前有空格（TEMU API强制要求）
 	cleanedGoodsName = h.ensureParenthesesSpacing(cleanedGoodsName)

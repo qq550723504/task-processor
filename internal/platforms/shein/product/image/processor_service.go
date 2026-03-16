@@ -1,4 +1,4 @@
-// Package image 提供SHEIN平台的各种处理模块，包括图片处理、上传等功能
+﻿// Package image 提供SHEIN平台的各种处理模块，包括图片处理、上传等功能
 package image
 
 import (
@@ -9,7 +9,7 @@ import (
 	"image/jpeg"
 	"strings"
 	"sync"
-	"task-processor/internal/pkg/imageutil"
+	"task-processor/internal/pkg/imagex"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/platforms/shein"
 	"task-processor/internal/platforms/shein/api/product"
@@ -327,7 +327,7 @@ func (p *ImageProcessor) extractColorBlockImage(imageURL string) ([]byte, error)
 	}
 
 	// 2. 解码图片
-	img, err := imageutil.FromBytes(imageData)
+	img, err := imagex.FromBytes(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}

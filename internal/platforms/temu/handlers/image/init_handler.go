@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台图片初始化处理器
+﻿// Package image 提供TEMU平台图片初始化处理器
 package image
 
 import (
@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/ptrutil"
+	"task-processor/internal/pkg/ptr"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
 
@@ -60,7 +60,7 @@ func (h *ImageInitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 				URL:    imgURL,
 				Width:  0, // 尺寸将在验证时获取
 				Height: 0,
-				Type:   ptrutil.IntPtr(1),
+				Type:   ptr.IntPtr(1),
 			})
 		}
 	}
@@ -111,7 +111,7 @@ func (h *ImageInitHandler) initSkuImages(temuCtx *temucontext.TemuTaskContext, t
 							URL:    imgURL,
 							Width:  0,
 							Height: 0,
-							Type:   ptrutil.IntPtr(1),
+							Type:   ptr.IntPtr(1),
 						})
 					}
 				}

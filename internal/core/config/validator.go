@@ -1,17 +1,12 @@
-// Package config 提供配置管理功能
+﻿// Package config 提供配置管理功能
 package config
 
 import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/core/config/validators"
-
 	"github.com/sirupsen/logrus"
 )
-
-// ValidationError 配置验证错误 (向后兼容)
-type ValidationError = validators.ValidationError
 
 // Validate 验证配置
 func (c *Config) Validate() []error {
@@ -20,7 +15,7 @@ func (c *Config) Validate() []error {
 
 // ValidateConfig 验证配置(函数版本)
 func ValidateConfig(c *Config) []error {
-	validator := validators.NewValidator(
+	validator := NewValidator(
 		&c.Processor,
 		&c.Worker,
 		&c.OpenAI,

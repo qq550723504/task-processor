@@ -1,11 +1,11 @@
-package management
+﻿package management
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -46,14 +46,14 @@ func (m *PricingRuleAPIClient) GetPricingRule(req *api.PricingRuleReqDTO) ([]api
 
 	// 先尝试解析为数组
 	var rulesArray []api.PricingRuleRespDTO
-	if err := jsonutil.UnmarshalBytes(rawData, &rulesArray, ""); err == nil {
+	if err := jsonx.UnmarshalBytes(rawData, &rulesArray, ""); err == nil {
 		m.logger.Infof("成功解析为数组，共%d条规则", len(rulesArray))
 		return rulesArray, nil
 	}
 
 	// 再尝试解析为单个对象
 	var singleRule api.PricingRuleRespDTO
-	if err := jsonutil.UnmarshalBytes(rawData, &singleRule, ""); err == nil {
+	if err := jsonx.UnmarshalBytes(rawData, &singleRule, ""); err == nil {
 		m.logger.Info("成功解析为单个对象")
 		return []api.PricingRuleRespDTO{singleRule}, nil
 	}

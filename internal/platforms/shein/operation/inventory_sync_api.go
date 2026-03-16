@@ -1,4 +1,4 @@
-// Package operation 提供SHEIN平台调度器相关服务
+﻿// Package operation 提供SHEIN平台调度器相关服务
 package operation
 
 import (
@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/jsonutil"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
@@ -38,7 +38,7 @@ func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
 
 	// 解析 Attributes 获取 SKC 信息
 	var skcList []EnrichedSkcInfo
-	if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
+	if err := jsonx.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
 		return err
 	}
 
@@ -147,7 +147,7 @@ func (s *inventorySyncServiceImpl) updateProductStockViaSHEINAPI(
 
 	// 解析 Attributes 获取 SKC/SKU 信息
 	var skcList []EnrichedSkcInfo
-	if err := jsonutil.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
+	if err := jsonx.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
 		return err
 	}
 

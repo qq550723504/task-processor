@@ -1,4 +1,4 @@
-// Package taskexecutor 提供SHEIN平台同步任务实现
+﻿// Package taskexecutor 提供SHEIN平台同步任务实现
 package taskexecutor
 
 import (
@@ -6,7 +6,7 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/platforms/scheduler"
+	commonscheduler "task-processor/internal/platforms/taskbase"
 	"task-processor/internal/platforms/shein/client"
 	sheinscheduler "task-processor/internal/platforms/shein/operation"
 )
