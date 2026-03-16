@@ -85,7 +85,7 @@ func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 		var productNotFoundErr *model.ProductNotFoundError
 		if errors.As(err, &productNotFoundErr) {
 			h.logger.Errorf("❌ 产品不存在或无法访问，标记为不可重试: %v", err)
-			return fmt.Errorf("NONRETRYABLE: 产品不存在或无法访问: %s, %v", productNotFoundErr.Message, err)
+			return fmt.Errorf("NONRETRYABLE: 产品不存在或无法访问: %s: %w", productNotFoundErr.Message, err)
 		}
 		return fmt.Errorf("获取产品数据失败: %w", err)
 	}

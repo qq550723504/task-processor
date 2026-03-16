@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	temuquery "task-processor/internal/platforms/temu/api/query"
-	temucontext "task-processor/internal/platforms/temu/context"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
+	temucontext "task-processor/internal/platforms/temu/context"
 
 	"github.com/sirupsen/logrus"
 )
@@ -104,7 +104,7 @@ func (h *TemplateQueryHandler) queryTemplate(temuCtx *temucontext.TemuTaskContex
 	// 使用QueryAPI服务发送请求
 	response, err := queryAPI.QueryTemplateAdvanced(&request)
 	if err != nil {
-		return fmt.Errorf("发送请求失败: %v", err)
+		return fmt.Errorf("发送请求失败: %w", err)
 	}
 
 	// 将模板信息存储到强类型字段中

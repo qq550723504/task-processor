@@ -93,7 +93,7 @@ func (h *TextCheckHandler) checkText(temuCtx *temucontext.TemuTaskContext, conte
 		log.WithFields(map[string]interface{}{
 			"content": content,
 		}).WithError(err).Error("文本检查API调用失败")
-		return fmt.Errorf("文本检查失败: %v", err)
+		return fmt.Errorf("文本检查失败: %w", err)
 	}
 
 	if response == nil {

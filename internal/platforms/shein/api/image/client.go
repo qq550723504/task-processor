@@ -76,7 +76,7 @@ func (i *Client) processImageIfNeeded(imageData []byte) ([]byte, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("重新编码图片失败: %v", err)
+		return nil, fmt.Errorf("重新编码图片失败: %w", err)
 	}
 
 	return buf.Bytes(), nil

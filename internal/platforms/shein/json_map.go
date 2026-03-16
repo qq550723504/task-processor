@@ -65,7 +65,7 @@ func (j *JSONMap) UnmarshalJSON(data []byte) error {
 	// 如果解析为 map 失败，尝试解析为其他类型并包装
 	var rawData any
 	if err := json.Unmarshal(data, &rawData); err != nil {
-		return fmt.Errorf("无法解析JSON数据: %v", err)
+		return fmt.Errorf("无法解析JSON数据: %w", err)
 	}
 
 	// 根据数据类型进行包装
@@ -243,4 +243,3 @@ func (j JSONMap) GetWrappedValue() (any, bool) {
 	}
 	return nil, false
 }
-

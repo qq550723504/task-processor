@@ -111,7 +111,7 @@ func (h *SensitiveWordsProcessor) handleClean(ctx *shein.TaskContext, foundWords
 
 	// 使用敏感词服务清理产品数据
 	if err := h.sensitiveWordService.ProcessProductData(ctx); err != nil {
-		return fmt.Errorf("敏感词清理失败: %v", err)
+		return fmt.Errorf("敏感词清理失败: %w", err)
 	}
 
 	logrus.Info("✅ 敏感词清理完成")

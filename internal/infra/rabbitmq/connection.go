@@ -3,6 +3,7 @@ package rabbitmq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"task-processor/internal/pkg/recovery"
@@ -348,7 +349,7 @@ func (cm *ConnectionManager) Close() error {
 	if cm.connection != nil {
 		if connErr := cm.connection.Close(); connErr != nil {
 			if err != nil {
-				err = fmt.Errorf("%v; 关闭连接失败: %w", err, connErr)
+				err = errors.Join(err, fmt.Errorf("关闭连接失败: %w", connErr))
 			} else {
 				err = fmt.Errorf("关闭连接失败: %w", connErr)
 			}

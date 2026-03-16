@@ -104,7 +104,7 @@ func (h *CostTemplateHandler) queryCostTemplate(temuCtx *temucontext.TemuTaskCon
 	// 发送请求
 	response, err := queryAPI.QueryCostTemplate(request)
 	if err != nil {
-		return fmt.Errorf("成本模板查询失败: %v", err)
+		return fmt.Errorf("成本模板查询失败: %w", err)
 	}
 
 	templateCount := 0
