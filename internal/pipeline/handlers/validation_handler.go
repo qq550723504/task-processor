@@ -29,33 +29,21 @@ func NewValidationHandler(validators ...Validator) pipeline.Handler {
 
 // Handle 执行验证处理
 func (h *ValidationHandler) Handle(ctx pipeline.TaskContext) error {
-	h.LogStart()
-	defer recovery.Recover("验证处理器", h.GetLogger())
+	h.Logger().Infof("开始执行处理器: %s", h.Name())
+	defer recovery.Recover(h.Name(), h.Logger())
 
-	// 验证上下文
-	if err := h.ValidateContext(ctx); err != nil {
-		h.LogError(err)
-		return err
-	}
-
-	// 执行所有验证器
-	for _, validator := range h.validators {
-		h.GetLogger().Infof("执行验证器: %s", validator.Name())
-
-		if err := validator.Validate(ctx); err != nil {
-			validationErr := fmt.Errorf("验证失败 [%s]: %w", validator.Name(), err)
-			h.LogError(validationErr)
-			return validationErr
+	for _, v := range h.validators {
+		h.Logger().Infof("执行验证器: %s", v.Name())
+		if err := v.Validate(ctx); err != nil {
+			return fmt.Errorf("验证失败 [%s]: %w", v.Name(), err)
 		}
-
-		h.GetLogger().Infof("验证器通过: %s", validator.Name())
+		h.Logger().Infof("验证器通过: %s", v.Name())
 	}
 
-	// 设置验证结果
-	h.SetResult(ctx, "validation_passed", true)
-	h.SetResult(ctx, "validation_count", len(h.validators))
+	ctx.SetData("validation_passed", true)
+	ctx.SetData("validation_count", len(h.validators))
 
-	h.LogSuccess()
+	h.Logger().Infof("处理器执行成功: %s", h.Name())
 	return nil
 }
 
@@ -75,18 +63,14 @@ func (v *TaskValidator) Name() string {
 // Validate 执行任务验证
 func (v *TaskValidator) Validate(ctx pipeline.TaskContext) error {
 	task := ctx.GetTask()
-
 	if task.ProductID == "" {
 		return fmt.Errorf("产品ID不能为空")
 	}
-
 	if task.StoreID <= 0 {
 		return fmt.Errorf("店铺ID无效: %d", task.StoreID)
 	}
-
 	if task.Platform == "" {
 		return fmt.Errorf("平台信息不能为空")
 	}
-
 	return nil
 }

@@ -65,10 +65,7 @@ func (h *FilterRuleHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) err
 	h.logger.Info("开始应用筛选规则 - 主产品筛选")
 
 	// 获取Amazon产品数据
-	var amazonProduct *model.Product
-	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
-		amazonProduct = amazonCtx.GetAmazonProduct()
-	}
+	amazonProduct := temuCtx.AmazonProduct
 	if amazonProduct == nil {
 		return fmt.Errorf("Amazon产品数据为空")
 	}
@@ -133,10 +130,7 @@ func (h *FilterRuleHandler) FilterVariants(temuCtx *temucontext.TemuTaskContext)
 	h.logger.Info("开始应用筛选规则 - 变体筛选")
 
 	// 获取变体数据
-	var variants []*model.Product
-	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
-		variants = amazonCtx.GetVariants()
-	}
+	variants := temuCtx.Variants
 	if len(variants) == 0 {
 		h.logger.Info("没有变体需要筛选")
 		return nil
@@ -188,9 +182,7 @@ func (h *FilterRuleHandler) FilterVariants(temuCtx *temucontext.TemuTaskContext)
 	}
 
 	// 更新变体列表
-	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
-		amazonCtx.SetVariants(filteredVariants)
-	}
+	temuCtx.Variants = filteredVariants
 	filteredCount := len(filteredVariants)
 
 	h.logger.Infof("变体筛选完成: 原始数量=%d, 筛选后数量=%d, 过滤数量=%d",

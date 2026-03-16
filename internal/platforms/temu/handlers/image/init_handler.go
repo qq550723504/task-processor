@@ -4,8 +4,6 @@ package image
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/domain/model"
-	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/ptr"
 	models "task-processor/internal/platforms/temu/api/product"
 	temucontext "task-processor/internal/platforms/temu/context"
@@ -42,10 +40,7 @@ func (h *ImageInitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 	temuProduct := temuCtx.TemuProduct
 
 	// 获取Amazon产品信息
-	var amazonProduct *model.Product
-	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
-		amazonProduct = amazonCtx.GetAmazonProduct()
-	}
+	amazonProduct := temuCtx.AmazonProduct
 
 	if amazonProduct == nil || len(amazonProduct.Images) == 0 {
 		h.logger.Warn("Amazon产品没有图片")
@@ -86,10 +81,7 @@ func (h *ImageInitHandler) initSkuImages(temuCtx *temucontext.TemuTaskContext, t
 	}
 
 	// 获取Amazon产品信息
-	var amazonProduct *model.Product
-	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
-		amazonProduct = amazonCtx.GetAmazonProduct()
-	}
+	amazonProduct := temuCtx.AmazonProduct
 
 	totalInitialized := 0
 

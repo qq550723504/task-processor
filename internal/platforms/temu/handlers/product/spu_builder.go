@@ -273,18 +273,15 @@ func (b *SpuBuilder) setBulletPoints(amazonProduct *model.Product, ext *models.E
 
 // createSkcList 创建SKC列表
 func (b *SpuBuilder) createSkcList(temuCtx *temucontext.TemuTaskContext, temuProduct *models.Product) error {
-	// 尝试将上下文转换为AmazonContext以获取变体数据
-	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
-		variants := amazonCtx.GetVariants()
-		if len(variants) > 0 {
-			// 有变体，创建变体SKC
-			b.logger.Infof("发现 %d 个变体数据，尝试创建变体SKC", len(variants))
-			if err := b.skuBuilder.BuildVariantSkcs(temuCtx, variants); err != nil {
-				b.logger.Errorf("❌ 创建变体SKC失败: %v", err)
-				return fmt.Errorf("创建变体SKC失败: %w", err)
-			}
-			return nil
+	variants := temuCtx.Variants
+	if len(variants) > 0 {
+		// 有变体，创建变体SKC
+		b.logger.Infof("发现 %d 个变体数据，尝试创建变体SKC", len(variants))
+		if err := b.skuBuilder.BuildVariantSkcs(temuCtx, variants); err != nil {
+			b.logger.Errorf("❌ 创建变体SKC失败: %v", err)
+			return fmt.Errorf("创建变体SKC失败: %w", err)
 		}
+		return nil
 	}
 
 	// 没有变体，创建默认SKC（从模板中选择规格）

@@ -3,76 +3,27 @@ package pipeline
 
 import "fmt"
 
-// HandlerError 处理器错误
-type HandlerError struct {
-	HandlerName string
-	Message     string
-	Cause       error
+// ProcessError 管道处理错误，统一用于 handler 和 pipeline 层。
+type ProcessError struct {
+	Source  string // handler 名称或 pipeline 名称
+	Message string
+	Cause   error
 }
 
-// NewHandlerError 创建处理器错误
-func NewHandlerError(handlerName, message string) *HandlerError {
-	return &HandlerError{
-		HandlerName: handlerName,
-		Message:     message,
-	}
+// NewProcessError 创建处理错误
+func NewProcessError(source, message string, cause error) *ProcessError {
+	return &ProcessError{Source: source, Message: message, Cause: cause}
 }
 
-// NewHandlerErrorWithCause 创建带原因的处理器错误
-func NewHandlerErrorWithCause(handlerName, message string, cause error) *HandlerError {
-	return &HandlerError{
-		HandlerName: handlerName,
-		Message:     message,
-		Cause:       cause,
-	}
-}
-
-// Error 实现error接口
-func (e *HandlerError) Error() string {
+// Error 实现 error 接口
+func (e *ProcessError) Error() string {
 	if e.Cause != nil {
-		return fmt.Sprintf("[%s] %s: %v", e.HandlerName, e.Message, e.Cause)
+		return fmt.Sprintf("[%s] %s: %v", e.Source, e.Message, e.Cause)
 	}
-	return fmt.Sprintf("[%s] %s", e.HandlerName, e.Message)
+	return fmt.Sprintf("[%s] %s", e.Source, e.Message)
 }
 
 // Unwrap 支持错误链
-func (e *HandlerError) Unwrap() error {
-	return e.Cause
-}
-
-// PipelineError 管道错误
-type PipelineError struct {
-	PipelineName string
-	Message      string
-	Cause        error
-}
-
-// NewPipelineError 创建管道错误
-func NewPipelineError(pipelineName, message string) *PipelineError {
-	return &PipelineError{
-		PipelineName: pipelineName,
-		Message:      message,
-	}
-}
-
-// NewPipelineErrorWithCause 创建带原因的管道错误
-func NewPipelineErrorWithCause(pipelineName, message string, cause error) *PipelineError {
-	return &PipelineError{
-		PipelineName: pipelineName,
-		Message:      message,
-		Cause:        cause,
-	}
-}
-
-// Error 实现error接口
-func (e *PipelineError) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf("[管道:%s] %s: %v", e.PipelineName, e.Message, e.Cause)
-	}
-	return fmt.Sprintf("[管道:%s] %s", e.PipelineName, e.Message)
-}
-
-// Unwrap 支持错误链
-func (e *PipelineError) Unwrap() error {
+func (e *ProcessError) Unwrap() error {
 	return e.Cause
 }

@@ -91,8 +91,8 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 	taskCtx := temucontext.NewTemuTaskContext(ctx, task)
 
 	// 设置管理客户端和内存管理器
-	taskCtx.SetManagementClient(h.processor.GetManagementClient())
-	taskCtx.SetMemoryManager(h.processor.GetMemoryManager())
+	taskCtx.ManagementClientMgr = h.processor.GetManagementClient()
+	taskCtx.MemoryManager = h.processor.GetMemoryManager()
 
 	// 设置Amazon处理器
 	if h.processor.amazonProcessor != nil {

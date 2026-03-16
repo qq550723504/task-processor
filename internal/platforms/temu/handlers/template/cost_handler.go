@@ -32,7 +32,7 @@ func (h *CostTemplateHandler) Handle(ctx pipeline.TaskContext) error {
 	// 类型断言转换为强类型上下文
 	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
 	if !ok {
-		return pipeline.NewHandlerError(h.Name(), "上下文类型错误：期望 *TemuTaskContext")
+		return pipeline.NewProcessError(h.Name(), "上下文类型错误：期望 *TemuTaskContext", nil)
 	}
 
 	return h.HandleTemu(temuCtx)

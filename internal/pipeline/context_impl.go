@@ -4,30 +4,22 @@ package pipeline
 import (
 	"context"
 	"sync"
-	"task-processor/internal/app/state"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/infra/clients/management"
 )
 
-// DefaultTaskContext 默认任务上下文实现
+// DefaultTaskContext 通用任务上下文，只持有与平台无关的基础字段。
+// 各平台通过嵌入此结构体并添加自身字段来扩展。
 type DefaultTaskContext struct {
-	ctx              context.Context
-	task             *model.Task
-	data             map[string]any
-	managementClient *management.ClientManager
-	memoryManager    *state.MemoryManager
-	apiClient        any
-	amazonProcessor  *amazon.AmazonProcessor
-	amazonProduct    *model.Product
-	variants         []*model.Product
-	completed        bool
-	err              error
-	mu               sync.RWMutex
+	ctx       context.Context
+	task      *model.Task
+	data      map[string]any
+	completed bool
+	err       error
+	mu        sync.RWMutex
 }
 
-// NewTaskContext 创建新的任务上下文
-func NewTaskContext(ctx context.Context, task *model.Task) TaskContext {
+// NewTaskContext 创建通用任务上下文
+func NewTaskContext(ctx context.Context, task *model.Task) *DefaultTaskContext {
 	return &DefaultTaskContext{
 		ctx:  ctx,
 		task: task,
@@ -35,25 +27,6 @@ func NewTaskContext(ctx context.Context, task *model.Task) TaskContext {
 	}
 }
 
-// NewTemuTaskContext 创建TEMU任务上下文
-func NewTemuTaskContext(ctx context.Context, task *model.Task) TemuTaskContext {
-	return &DefaultTaskContext{
-		ctx:  ctx,
-		task: task,
-		data: make(map[string]any),
-	}
-}
-
-// NewSheinTaskContext 创建SHEIN任务上下文
-func NewSheinTaskContext(ctx context.Context, task *model.Task) SheinTaskContext {
-	return &DefaultTaskContext{
-		ctx:  ctx,
-		task: task,
-		data: make(map[string]any),
-	}
-}
-
-// 基础方法实现
 func (tc *DefaultTaskContext) GetContext() context.Context {
 	return tc.ctx
 }
@@ -62,7 +35,6 @@ func (tc *DefaultTaskContext) GetTask() *model.Task {
 	return tc.task
 }
 
-// 数据存储方法实现
 func (tc *DefaultTaskContext) SetData(key string, value any) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
@@ -103,7 +75,6 @@ func (tc *DefaultTaskContext) GetBoolData(key string) (bool, bool) {
 	return b, ok
 }
 
-// 状态管理方法实现
 func (tc *DefaultTaskContext) IsCompleted() bool {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
@@ -128,83 +99,4 @@ func (tc *DefaultTaskContext) SetError(err error) {
 	tc.err = err
 }
 
-// 管理系统上下文方法实现
-func (tc *DefaultTaskContext) GetManagementClient() *management.ClientManager {
-	tc.mu.RLock()
-	defer tc.mu.RUnlock()
-	return tc.managementClient
-}
-
-func (tc *DefaultTaskContext) SetManagementClient(client *management.ClientManager) {
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-	tc.managementClient = client
-}
-
-func (tc *DefaultTaskContext) GetMemoryManager() *state.MemoryManager {
-	tc.mu.RLock()
-	defer tc.mu.RUnlock()
-	return tc.memoryManager
-}
-
-func (tc *DefaultTaskContext) SetMemoryManager(manager *state.MemoryManager) {
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-	tc.memoryManager = manager
-}
-
-// API上下文方法实现
-func (tc *DefaultTaskContext) GetAPIClient() any {
-	tc.mu.RLock()
-	defer tc.mu.RUnlock()
-	return tc.apiClient
-}
-
-func (tc *DefaultTaskContext) SetAPIClient(client any) {
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-	tc.apiClient = client
-}
-
-// Amazon上下文方法实现
-func (tc *DefaultTaskContext) GetAmazonProcessor() *amazon.AmazonProcessor {
-	tc.mu.RLock()
-	defer tc.mu.RUnlock()
-	return tc.amazonProcessor
-}
-
-func (tc *DefaultTaskContext) SetAmazonProcessor(processor *amazon.AmazonProcessor) {
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-	tc.amazonProcessor = processor
-}
-
-func (tc *DefaultTaskContext) GetAmazonProduct() *model.Product {
-	tc.mu.RLock()
-	defer tc.mu.RUnlock()
-	return tc.amazonProduct
-}
-
-func (tc *DefaultTaskContext) SetAmazonProduct(product *model.Product) {
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-	tc.amazonProduct = product
-}
-
-func (tc *DefaultTaskContext) GetVariants() []*model.Product {
-	tc.mu.RLock()
-	defer tc.mu.RUnlock()
-	return tc.variants
-}
-
-func (tc *DefaultTaskContext) SetVariants(variants []*model.Product) {
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-	tc.variants = variants
-}
-
-func (tc *DefaultTaskContext) AddVariant(variant *model.Product) {
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-	tc.variants = append(tc.variants, variant)
-}
+var _ TaskContext = (*DefaultTaskContext)(nil)

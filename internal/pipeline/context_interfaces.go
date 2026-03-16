@@ -3,15 +3,11 @@ package pipeline
 
 import (
 	"context"
-	"task-processor/internal/app/state"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/infra/clients/management"
 )
 
 // TaskContext 核心任务上下文接口
 type TaskContext interface {
-	// 基础方法
 	GetContext() context.Context
 	GetTask() *model.Task
 
@@ -29,44 +25,13 @@ type TaskContext interface {
 	SetError(err error)
 }
 
-// ManagementContext 管理系统上下文接口
-type ManagementContext interface {
-	TaskContext
-	GetManagementClient() *management.ClientManager
-	SetManagementClient(client *management.ClientManager)
-	GetMemoryManager() *state.MemoryManager
-	SetMemoryManager(manager *state.MemoryManager)
-}
-
-// APIContext API客户端上下文接口
-type APIContext interface {
-	TaskContext
-	GetAPIClient() any
-	SetAPIClient(client any)
-}
-
-// AmazonContext Amazon处理器上下文接口
+// AmazonContext 携带 Amazon 抓取结果的上下文接口。
+// 由各平台 context 按需实现，pipeline 包内的通用 handler 通过类型断言使用。
 type AmazonContext interface {
 	TaskContext
-	GetAmazonProcessor() *amazon.AmazonProcessor
-	SetAmazonProcessor(processor *amazon.AmazonProcessor)
 	GetAmazonProduct() *model.Product
 	SetAmazonProduct(product *model.Product)
 	GetVariants() []*model.Product
 	SetVariants(variants []*model.Product)
 	AddVariant(variant *model.Product)
-}
-
-// TemuTaskContext TEMU平台特定任务上下文接口
-type TemuTaskContext interface {
-	ManagementContext
-	APIContext
-	AmazonContext
-}
-
-// SheinTaskContext SHEIN平台特定任务上下文接口
-type SheinTaskContext interface {
-	ManagementContext
-	APIContext
-	AmazonContext
 }

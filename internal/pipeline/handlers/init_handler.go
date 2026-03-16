@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"fmt"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/recovery"
 )
@@ -20,23 +21,20 @@ func NewInitHandler() pipeline.Handler {
 
 // Handle 执行初始化处理
 func (h *InitHandler) Handle(ctx pipeline.TaskContext) error {
-	h.LogStart()
-	defer recovery.Recover("初始化处理器", h.GetLogger())
-
-	// 验证上下文
-	if err := h.ValidateContext(ctx); err != nil {
-		h.LogError(err)
-		return err
-	}
+	h.Logger().Infof("开始执行处理器: %s", h.Name())
+	defer recovery.Recover(h.Name(), h.Logger())
 
 	task := ctx.GetTask()
-	h.GetLogger().Infof("初始化任务: ID=%d, ProductID=%s, Platform=%s",
+	if task == nil {
+		return fmt.Errorf("任务信息为空")
+	}
+
+	h.Logger().Infof("初始化任务: ID=%d, ProductID=%s, Platform=%s",
 		task.ID, task.ProductID, task.Platform)
 
-	// 设置初始化标记
-	h.SetResult(ctx, "initialized", true)
-	h.SetResult(ctx, "init_time", task.CreateTime)
+	ctx.SetData("initialized", true)
+	ctx.SetData("init_time", task.CreateTime)
 
-	h.LogSuccess()
+	h.Logger().Infof("处理器执行成功: %s", h.Name())
 	return nil
 }

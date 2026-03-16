@@ -2,11 +2,20 @@
 package pipeline
 
 import (
+	"errors"
 	"fmt"
-	"task-processor/internal/platforms/shein/api"
 
 	"github.com/sirupsen/logrus"
 )
+
+// AbortError 由 handler 返回，通知 pipeline 直接透传原始错误而不做包装。
+// 用法：return &pipeline.AbortError{Cause: originalErr}
+type AbortError struct {
+	Cause error
+}
+
+func (e *AbortError) Error() string { return e.Cause.Error() }
+func (e *AbortError) Unwrap() error { return e.Cause }
 
 // BasePipeline 统一任务处理管道实现
 type BasePipeline struct {
@@ -38,7 +47,6 @@ func (p *BasePipeline) Process(ctx TaskContext) error {
 	p.logger.Infof("开始执行管道处理，共 %d 个处理器", len(p.handlers))
 
 	for i, handler := range p.handlers {
-		// 检查上下文是否已取消
 		select {
 		case <-ctx.GetContext().Done():
 			return fmt.Errorf("管道处理被取消: %w", ctx.GetContext().Err())
@@ -51,13 +59,12 @@ func (p *BasePipeline) Process(ctx TaskContext) error {
 			p.logger.Errorf("处理器 %s 执行失败: %v", handler.Name(), err)
 			ctx.SetError(err)
 
-			// 检查是否为认证过期错误，如果是则直接透传，不包装
-			if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
-				p.logger.Warnf("检测到认证过期错误，直接透传: %v", err)
-				return err
+			// handler 通过 AbortError 标记错误不需要被包装，直接透传
+			var abortErr *AbortError
+			if errors.As(err, &abortErr) {
+				return abortErr.Cause
 			}
 
-			// 其他错误正常包装
 			return fmt.Errorf("处理器 %s 执行失败: %w", handler.Name(), err)
 		}
 
@@ -79,13 +86,11 @@ func (p *BasePipeline) GetName() string {
 	return p.name
 }
 
-// GetHandlers 获取所有处理器（只读）
+// GetHandlers 获取所有处理器（只读副本）
 func (p *BasePipeline) GetHandlers() []Handler {
-	// 返回副本以防止外部修改
 	handlers := make([]Handler, len(p.handlers))
 	copy(handlers, p.handlers)
 	return handlers
 }
 
-// 确保BasePipeline实现Pipeline接口
 var _ Pipeline = (*BasePipeline)(nil)

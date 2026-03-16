@@ -8,9 +8,8 @@ import (
 
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/pkg/timeout"
 	temutemplate "task-processor/internal/platforms/temu/api/template"
 	temucontext "task-processor/internal/platforms/temu/context"
 	"task-processor/internal/platforms/temu/handlers/property"
@@ -30,20 +29,15 @@ func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucont
 
 	// 创建ASIN到完整变体信息的映射
 	asinToFullVariant := make(map[string]*model.Product)
-	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
-		if amazonVariants := amazonCtx.GetVariants(); len(amazonVariants) > 0 {
-			for _, fullVariant := range amazonVariants {
-				asinToFullVariant[fullVariant.Asin] = fullVariant
-			}
-			vp.logger.Infof("从上下文获取到%d个完整变体信息", len(asinToFullVariant))
+	if amazonVariants := temuCtx.Variants; len(amazonVariants) > 0 {
+		for _, fullVariant := range amazonVariants {
+			asinToFullVariant[fullVariant.Asin] = fullVariant
 		}
+		vp.logger.Infof("从上下文获取到%d个完整变体信息", len(asinToFullVariant))
 	}
 
 	// 获取Amazon产品信息
-	var amazonProduct *model.Product
-	if amazonCtx, ok := any(temuCtx.DefaultTaskContext).(pipeline.AmazonContext); ok {
-		amazonProduct = amazonCtx.GetAmazonProduct()
-	}
+	amazonProduct := temuCtx.AmazonProduct
 
 	// 创建属性提取管理器
 	attributeManager := property.NewAttributeExtractionManager(vp.logger)
