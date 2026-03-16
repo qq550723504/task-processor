@@ -7,7 +7,7 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/platforms/common/scheduler"
+	commonscheduler "task-processor/internal/platforms/scheduler"
 	"task-processor/internal/platforms/temu/api"
 )
 

@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/platforms/common/factory"
+	"task-processor/internal/platforms/factory"
 	"task-processor/internal/platforms/shein/api/marketing"
 	shein_pricing "task-processor/internal/platforms/shein/api/pricing"
 	shein_product "task-processor/internal/platforms/shein/api/product"

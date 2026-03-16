@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	commonscheduler "task-processor/internal/platforms/common/scheduler"
+	commonscheduler "task-processor/internal/platforms/scheduler"
 	"task-processor/internal/platforms/shein/api/pricing"
 	schedulerservice "task-processor/internal/platforms/shein/operation"
 )

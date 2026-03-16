@@ -5,7 +5,7 @@ import (
 	"context"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	commonscheduler "task-processor/internal/platforms/common/scheduler"
+	commonscheduler "task-processor/internal/platforms/scheduler"
 	temuscheduler "task-processor/internal/platforms/temu/syncsvc"
 )
 

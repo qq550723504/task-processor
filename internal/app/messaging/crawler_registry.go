@@ -50,9 +50,9 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManage
 	}
 
 	// 创建产品获取器
-	productFetcher := r.createProductFetcher(amazonProcessor)
-	if productFetcher == nil {
-		return fmt.Errorf("创建产品获取器失败")
+	productFetcher, err := r.createProductFetcher(amazonProcessor)
+	if err != nil {
+		return fmt.Errorf("创建产品获取器失败: %w", err)
 	}
 
 	// 创建任务提交器
@@ -87,9 +87,9 @@ func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) 
 	amazonProcessor := amazon.CreateProcessor(r.config, r.logger)
 
 	// 创建产品获取器
-	productFetcher := r.createProductFetcher(amazonProcessor)
-	if productFetcher == nil {
-		return fmt.Errorf("创建产品获取器失败")
+	productFetcher, err := r.createProductFetcher(amazonProcessor)
+	if err != nil {
+		return fmt.Errorf("创建产品获取器失败: %w", err)
 	}
 
 	// 创建任务提交器
@@ -128,7 +128,7 @@ func (r *CrawlerRegistry) Register1688Crawler(serviceManager *ServiceManager) er
 }
 
 // createProductFetcher 创建产品获取器
-func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonProcessor) *product.ProductFetcher {
+func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonProcessor) (*product.ProductFetcher, error) {
 	// 创建认证客户端
 	authClient := auth.NewClientCredentialsAuthClient(
 		r.config.Management.BaseURL,
@@ -147,8 +147,7 @@ func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonPro
 	// 获取访问令牌并设置
 	token, err := authClient.GetAccessToken()
 	if err != nil {
-		r.logger.Warnf("⚠️ 获取访问令牌失败: %v (将以无认证模式运行)", err)
-		return nil
+		return nil, fmt.Errorf("获取访问令牌失败: %w", err)
 	}
 
 	// 设置访问令牌
@@ -165,5 +164,5 @@ func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonPro
 		amazonProcessor,
 	)
 
-	return productFetcher
+	return productFetcher, nil
 }

@@ -15,7 +15,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/imroc/req/v3 v3.42.3
 	github.com/playwright-community/playwright-go v0.5700.1
-	github.com/prometheus/client_golang v1.19.1
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/sashabaranov/go-openai v1.41.1
 	github.com/sirupsen/logrus v1.9.3
@@ -24,7 +23,6 @@ require (
 	github.com/swaggo/swag v1.16.6
 	golang.org/x/image v0.0.0-20220302094943-723b81ca9867
 	golang.org/x/text v0.35.0
-	golang.org/x/time v0.12.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
@@ -280,6 +278,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/polyfloyd/go-errorlint v1.7.1 // indirect
+	github.com/prometheus/client_golang v1.19.1 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.48.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
@@ -376,6 +375,7 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260209163413-e7419c687ee4 // indirect
 	golang.org/x/term v0.41.0 // indirect
+	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
 	golang.org/x/tools/go/expect v0.1.1-deprecated // indirect
 	golang.org/x/tools/go/packages/packagestest v0.1.1-deprecated // indirect

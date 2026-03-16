@@ -4,7 +4,7 @@ package bootstrap
 import (
 	"fmt"
 
-	"task-processor/internal/app/service"
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
@@ -176,7 +176,7 @@ func (s *ServiceRegistrySimple) registerApplicationServices(container di.Contain
 		managementClient := managementClientInstance.(*management.ClientManager)
 		amazonProcessor := amazonProcessorInstance.(*amazon.AmazonProcessor)
 
-		return service.NewProcessorServiceWithDependencies(logger, managementClient, amazonProcessor), nil
+		return runner.NewProcessorServiceWithDependencies(logger, managementClient, amazonProcessor), nil
 	}); err != nil {
 		return err
 	}
@@ -211,7 +211,7 @@ func (s *ServiceRegistrySimple) registerApplicationServices(container di.Contain
 		config := configInstance.(*config.Config)
 		amazonProcessor := amazonProcessorInstance.(*amazon.AmazonProcessor)
 
-		return service.NewSchedulerServiceWithAmazon(logger, managementClient, config, amazonProcessor), nil
+		return runner.NewSchedulerServiceWithAmazon(logger, managementClient, config, amazonProcessor), nil
 	}); err != nil {
 		return err
 	}

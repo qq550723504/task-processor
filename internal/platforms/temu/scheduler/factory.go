@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/platforms/common/factory"
+	"task-processor/internal/platforms/factory"
 	temuapi "task-processor/internal/platforms/temu/api"
 	"task-processor/internal/platforms/temu/api/client"
 	schedulerservice "task-processor/internal/platforms/temu/syncsvc"

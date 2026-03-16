@@ -5,7 +5,7 @@ import (
 	"context"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	commonscheduler "task-processor/internal/platforms/common/scheduler"
+	commonscheduler "task-processor/internal/platforms/scheduler"
 	"task-processor/internal/platforms/shein/api/product"
 	sheinscheduler "task-processor/internal/platforms/shein/operation"
 )

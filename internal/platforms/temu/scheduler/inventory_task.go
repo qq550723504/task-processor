@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/platforms/common/scheduler"
+	commonscheduler "task-processor/internal/platforms/scheduler"
 	"task-processor/internal/platforms/temu/api/client"
 	temuscheduler "task-processor/internal/platforms/temu/syncsvc"
 )

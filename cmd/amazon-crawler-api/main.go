@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"task-processor/internal/app/service"
+	crawleramazon "task-processor/internal/app/crawler/amazon"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/apputil"
 
@@ -47,7 +47,7 @@ func main() {
 	cfg := config.LoadConfigWithFallback(*configPath, logger)
 
 	// 创建 API 服务
-	apiService := service.NewCrawlerAPIService(cfg, logger, *port)
+	apiService := crawleramazon.NewAPIService(cfg, logger, *port)
 
 	// 启动服务
 	ctx := context.Background()
@@ -72,7 +72,7 @@ func main() {
 	waitForShutdown(apiService, logger)
 }
 
-func waitForShutdown(apiService *service.CrawlerAPIService, logger *logrus.Logger) {
+func waitForShutdown(apiService *crawleramazon.APIService, logger *logrus.Logger) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 

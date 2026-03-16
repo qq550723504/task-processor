@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/platforms/common/pricing"
+	"task-processor/internal/platforms/pricing"
 	"task-processor/internal/platforms/temu/api/client"
 
 	"github.com/sirupsen/logrus"

@@ -3,7 +3,7 @@ package taskexecutor
 
 import (
 	appscheduler "task-processor/internal/app/scheduler"
-	commonscheduler "task-processor/internal/platforms/common/scheduler"
+	commonscheduler "task-processor/internal/platforms/scheduler"
 )
 
 // BaseTask SHEIN平台基础任务

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/app/service"
+	"task-processor/internal/app/runner"
 	"task-processor/internal/app/updater"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
@@ -321,7 +321,7 @@ func (s *SchedulerServiceComponent) Start(ctx context.Context) error {
 	}
 
 	// 启动调度服务（保持原有逻辑）
-	if err := schedulerService.(service.SchedulerService).Start(ctx); err != nil {
+	if err := schedulerService.(runner.SchedulerService).Start(ctx); err != nil {
 		return fmt.Errorf("启动调度服务失败: %w", err)
 	}
 
@@ -342,7 +342,7 @@ func (s *SchedulerServiceComponent) Stop(ctx context.Context) error {
 	}
 
 	// 停止调度服务（保持原有逻辑）
-	if err := schedulerService.(service.SchedulerService).Stop(ctx); err != nil {
+	if err := schedulerService.(runner.SchedulerService).Stop(ctx); err != nil {
 		s.logger.Errorf("停止调度服务失败: %v", err)
 	}
 
@@ -370,7 +370,7 @@ func (t *TaskFetcherComponent) Start(ctx context.Context) error {
 	}
 
 	// 通过处理器服务启动任务获取器
-	processorSvc := processorService.(service.ProcessorService)
+	processorSvc := processorService.(runner.ProcessorService)
 
 	// 获取认证客户端
 	authClient, err := t.container.Get("authClient")
@@ -401,7 +401,7 @@ func (t *TaskFetcherComponent) Stop(ctx context.Context) error {
 	}
 
 	// 停止处理器服务
-	processorSvc := processorService.(service.ProcessorService)
+	processorSvc := processorService.(runner.ProcessorService)
 	if err := processorSvc.StopProcessors(); err != nil {
 		t.logger.Errorf("停止任务获取器失败: %v", err)
 	}
@@ -410,4 +410,3 @@ func (t *TaskFetcherComponent) Stop(ctx context.Context) error {
 	t.logger.Info("✅ 任务获取器组件停止成功")
 	return nil
 }
-

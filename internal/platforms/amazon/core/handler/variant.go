@@ -4,21 +4,21 @@ package handler
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/platforms/amazon/core"
 	"task-processor/internal/platforms/amazon/core/model"
-	amazonutil "task-processor/internal/platforms/amazon/utils"
 )
 
 // VariantHandler 变体产品处理器
 type VariantHandler struct {
 	*BaseHandler
-	extractor *amazonutil.VariantExtractor
+	extractor *core.VariantExtractor
 }
 
 // NewVariantHandler 创建变体处理器
 func NewVariantHandler(services *model.Services) *VariantHandler {
 	return &VariantHandler{
 		BaseHandler: NewBaseHandler("变体处理器"),
-		extractor:   amazonutil.NewVariantExtractor(),
+		extractor:   core.NewVariantExtractor(),
 	}
 }
 

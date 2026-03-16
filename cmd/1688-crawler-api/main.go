@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"task-processor/internal/app/service"
+	crawler1688 "task-processor/internal/app/crawler/alibaba1688"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/apputil"
 
@@ -47,7 +47,7 @@ func main() {
 	cfg := config.LoadConfigWithFallback(*configPath, logger)
 
 	// 创建 API 服务
-	apiService := service.New1688CrawlerAPIService(cfg, logger, *port)
+	apiService := crawler1688.NewAPIService(cfg, logger, *port)
 
 	// 启动服务
 	ctx := context.Background()
@@ -72,7 +72,7 @@ func main() {
 	waitForShutdown(apiService, logger)
 }
 
-func waitForShutdown(apiService *service.Crawler1688APIService, logger *logrus.Logger) {
+func waitForShutdown(apiService *crawler1688.APIService, logger *logrus.Logger) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 

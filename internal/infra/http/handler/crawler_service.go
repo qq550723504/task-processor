@@ -1,18 +1,9 @@
-// Package service 定义领域服务接口
-package service
+// Package handler 提供 HTTP 处理器
+package handler
 
-import (
-	"task-processor/internal/domain/task"
-)
+import "task-processor/internal/domain/task"
 
-// HealthChecker 健康检查接口
-type HealthChecker interface {
-	IsReady() bool
-	IsHealthy() bool
-}
-
-// CrawlerService 爬虫服务接口
-// 定义爬虫服务的核心能力,供基础设施层(如HTTP handler)使用
+// CrawlerService 爬虫服务接口，由 HTTP handler 消费
 type CrawlerService interface {
 	HealthChecker
 

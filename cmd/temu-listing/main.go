@@ -6,7 +6,6 @@ import (
 	"flag"
 
 	"task-processor/internal/app/messaging"
-	appservice "task-processor/internal/app/service"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/apputil"
 )
@@ -49,12 +48,11 @@ func main() {
 		logger.Fatal("❌ TEMU 平台未启用")
 	}
 
-	// 创建消息服务（当前由 ServiceManager 实现）
-	msgSvc, err := appservice.NewMessagingService(cfg.RabbitMQ, logger)
+	// 创建消息服务
+	serviceManager, err := messaging.NewServiceManager(cfg.RabbitMQ, logger)
 	if err != nil {
 		logger.Fatalf("❌ 创建消息服务失败: %v", err)
 	}
-	serviceManager := msgSvc.(*messaging.ServiceManager)
 
 	// 只注册 TEMU 平台处理器
 	platformRegistry := messaging.NewPlatformRegistry(cfg, logger, "temu")

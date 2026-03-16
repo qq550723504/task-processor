@@ -4,7 +4,6 @@ package handler
 import (
 	"net/http"
 
-	"task-processor/internal/domain/service"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/http/middleware"
 	"task-processor/internal/infra/http/request"
@@ -16,12 +15,12 @@ import (
 
 // CrawlerHandler Amazon爬虫 HTTP 处理器
 type CrawlerHandler struct {
-	crawlerService service.CrawlerService
+	crawlerService CrawlerService
 	logger         *logrus.Logger
 }
 
 // NewCrawlerHandler 创建Amazon爬虫处理器
-func NewCrawlerHandler(crawlerService service.CrawlerService, logger *logrus.Logger) *CrawlerHandler {
+func NewCrawlerHandler(crawlerService CrawlerService, logger *logrus.Logger) *CrawlerHandler {
 	return &CrawlerHandler{
 		crawlerService: crawlerService,
 		logger:         logger,

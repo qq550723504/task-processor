@@ -9,15 +9,15 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/alibaba1688"
-	domainService "task-processor/internal/domain/service"
 	"task-processor/internal/domain/task"
+	"task-processor/internal/infra/http/handler"
 	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )
 
 // 编译时检查Service是否实现了CrawlerService接口
-var _ domainService.CrawlerService = (*Service)(nil)
+var _ handler.CrawlerService = (*Service)(nil)
 
 // Service 1688爬虫应用服务
 type Service struct {

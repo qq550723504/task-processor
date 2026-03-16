@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"task-processor/internal/pkg/httpclient"
+	"task-processor/internal/pkg/strutil"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -163,23 +164,23 @@ func (fd *FileDownloader) diagnoseDownloadError(url string, err error) error {
 	errMsg := err.Error()
 
 	// 常见错误诊断
-	if Contains(errMsg, "no such host") || Contains(errMsg, "cannot resolve") {
+	if strutil.Contains(errMsg, "no such host") || strutil.Contains(errMsg, "cannot resolve") {
 		return fmt.Errorf("DNS解析失败，请检查网络连接或DNS设置: %w", err)
 	}
 
-	if Contains(errMsg, "connection refused") {
+	if strutil.Contains(errMsg, "connection refused") {
 		return fmt.Errorf("连接被拒绝，服务器可能不可用: %w", err)
 	}
 
-	if Contains(errMsg, "timeout") || Contains(errMsg, "deadline exceeded") {
+	if strutil.Contains(errMsg, "timeout") || strutil.Contains(errMsg, "deadline exceeded") {
 		return fmt.Errorf("连接超时，请检查网络连接或稍后重试: %w", err)
 	}
 
-	if Contains(errMsg, "certificate") || Contains(errMsg, "tls") {
+	if strutil.Contains(errMsg, "certificate") || strutil.Contains(errMsg, "tls") {
 		return fmt.Errorf("TLS证书验证失败: %w (提示: 可以在配置中设置 insecure_skip_verify: true 跳过证书验证)", err)
 	}
 
-	if Contains(errMsg, "proxy") {
+	if strutil.Contains(errMsg, "proxy") {
 		return fmt.Errorf("代理连接失败，请检查代理设置: %w", err)
 	}
 

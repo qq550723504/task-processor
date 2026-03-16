@@ -181,10 +181,3 @@ func (f *ProductFilter) MatchesFilter(product *inventory.Item, filter *ProductFi
 func contains(s, substr string) bool {
 	return strutil.Contains(s, substr)
 }
-
-// findSubstring 查找子字符串
-// 已废弃: 请使用 strutil.FindSubstring
-func findSubstring(s, substr string) bool {
-	return strutil.FindSubstring(s, substr)
-}
-

@@ -16,7 +16,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonutil"
-	"task-processor/internal/platforms/common/pricing"
+	"task-processor/internal/platforms/pricing"
 	shein_product "task-processor/internal/platforms/shein/api/product"
 
 	"github.com/sirupsen/logrus"
