@@ -1,12 +1,12 @@
-// Package service 提供调度任务工厂创建器
+﻿// Package service 提供调度任务工厂创建器
 package runner
 
 import (
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	sheinscheduler "task-processor/internal/platforms/shein/taskexecutor"
-	temuscheduler "task-processor/internal/platforms/temu/scheduler"
+	sheinscheduler "task-processor/internal/shein/taskexecutor"
+	temuscheduler "task-processor/internal/temu/scheduler"
 )
 
 // createTemuFactory 创建TEMU任务工厂

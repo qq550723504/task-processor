@@ -3,17 +3,22 @@ package product
 
 import (
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 
 	"github.com/sirupsen/logrus"
 )
 
+// AmazonScraper 定义 Amazon 商品抓取能力（消费者定义接口原则）。
+// 与 crawler/amazon.Scraper 保持相同签名，domain 层不直接依赖 crawler 包。
+type AmazonScraper interface {
+	Process(url string, zipcode string) (*model.Product, error)
+}
+
 // ProductFetcher 产品获取器
 type ProductFetcher struct {
 	rawJsonDataClient RawJsonDataClient
 	amazonConfig      *config.AmazonConfig
-	amazonProcessor   *amazon.AmazonProcessor
+	amazonProcessor   AmazonScraper
 	logger            *logrus.Entry
 }
 
@@ -21,7 +26,7 @@ type ProductFetcher struct {
 func NewProductFetcher(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor AmazonScraper,
 ) *ProductFetcher {
 	return &ProductFetcher{
 		rawJsonDataClient: rawJsonDataClient,

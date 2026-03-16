@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	crawler1688 "task-processor/internal/app/crawler/alibaba1688"
 	"task-processor/internal/core/config"
+	crawler1688 "task-processor/internal/crawler/alibaba1688"
 	"task-processor/internal/pkg/appenv"
 
 	"github.com/sirupsen/logrus"

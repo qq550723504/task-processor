@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
@@ -48,7 +47,7 @@ func (f *FetcherFactory) CreateFetcher(
 	fetcherType FetcherType,
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor domainProduct.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) (ProductFetcher, error) {
 
@@ -73,7 +72,7 @@ func (f *FetcherFactory) CreateFetcher(
 func (f *FetcherFactory) CreateFetcherFromConfig(
 	cfg *config.Config,
 	rawJsonDataClient domainProduct.RawJsonDataClient,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor domainProduct.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) (ProductFetcher, error) {
 

@@ -1,4 +1,4 @@
-// Package messaging 提供多平台处理器注册功能
+﻿// Package messaging 提供多平台处理器注册功能
 package messaging
 
 import (
@@ -11,9 +11,9 @@ import (
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
-	platformAmazon "task-processor/internal/platforms/amazon"
-	"task-processor/internal/platforms/shein/pipeline"
-	"task-processor/internal/platforms/temu"
+	platformAmazon "task-processor/internal/amazon"
+	"task-processor/internal/shein/pipeline"
+	"task-processor/internal/temu"
 
 	"github.com/sirupsen/logrus"
 )

@@ -1,4 +1,4 @@
-// Package service 提供处理器服务实现
+﻿// Package service 提供处理器服务实现
 package runner
 
 import (
@@ -14,8 +14,8 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/monitoring"
-	"task-processor/internal/platforms/shein/pipeline"
-	"task-processor/internal/platforms/temu"
+	"task-processor/internal/shein/pipeline"
+	"task-processor/internal/temu"
 
 	"github.com/sirupsen/logrus"
 )

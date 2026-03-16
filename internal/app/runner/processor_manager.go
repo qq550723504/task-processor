@@ -1,4 +1,4 @@
-// Package service 提供处理器管理功能
+﻿// Package service 提供处理器管理功能
 package runner
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/platforms/shein/pipeline"
-	"task-processor/internal/platforms/temu"
+	"task-processor/internal/shein/pipeline"
+	"task-processor/internal/temu"
 )
 
 // startProcessors 启动所有平台处理器

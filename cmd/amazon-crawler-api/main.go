@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	crawleramazon "task-processor/internal/app/crawler/amazon"
 	"task-processor/internal/core/config"
+	crawleramazon "task-processor/internal/crawler/amazon"
 	"task-processor/internal/pkg/appenv"
 
 	"github.com/sirupsen/logrus"

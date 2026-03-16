@@ -12,8 +12,8 @@ import (
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/app/di"
-	"task-processor/internal/platforms/shein/pipeline"
-	"task-processor/internal/platforms/temu"
+	"task-processor/internal/shein/pipeline"
+	"task-processor/internal/temu"
 
 	"github.com/sirupsen/logrus"
 )
