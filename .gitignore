@@ -52,7 +52,7 @@ chrome/
 # Config files with sensitive data (uncomment if needed)
 # config/*.yaml
 
-cache
+/cache
 test_data
 logs
 .venv
