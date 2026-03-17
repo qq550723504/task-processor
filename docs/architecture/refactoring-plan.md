@@ -109,7 +109,7 @@ internal/
 
 ---
 
-## Phase 1：命名统一与文件规范
+## Phase 1：命名统一与文件规范 ✅ 已完成
 
 **风险：低 | 预计耗时：1-2 天**
 
@@ -184,7 +184,7 @@ task_service.go      → task.go
 
 ---
 
-## Phase 2：包拆分重组
+## Phase 2：包拆分重组 ✅ 已完成（2.1/2.3），2.2 待执行
 
 **风险：中 | 预计耗时：3-5 天**
 
@@ -352,7 +352,7 @@ core/variant_extractor.go → amazon/variant_extractor.go
 
 ---
 
-## Phase 3：核心架构重构
+## Phase 3：核心架构重构 ✅ 已完成（3.1/3.2/3.3）
 
 **风险：高 | 预计耗时：1-2 周**
 
@@ -434,25 +434,24 @@ func NewTemuProcessor(
 3. 当所有服务都不再通过容器获取时，删除 `di/` 包
 4. `bootstrap/app.go` 里的 `container di.Container` 字段改为直接持有各服务实例
 
-### 3.3 整理 `internal/app/messaging/`
+### 3.3 整理 `internal/app/messaging/` ✅ 已完成（部分）
 
-`messaging/` 这个名字无法描述其 14 个文件的实际内容，按职责重新归位：
+**已执行（commit ecf0f06, 6e8494f）：**
 
+- `queue_config.go` → `infra/rabbitmq/queue_config.go`（类型重命名为 `QueueDeclareConfig` 避免与消费者 `QueueConfig` 冲突）
+- `queue_initializer.go` → `infra/rabbitmq/queue_initializer.go`
+- `app/messaging/` 整包重命名为 `app/consumer/`（包名语义更准确，反映其消费者服务编排职责）
+
+**评估后放弃的细粒度拆分：**
+
+`consumer/` 包内 12 个文件形成紧密依赖网络（`ServiceManager` ↔ `TaskProcessorRegistry` ↔ `TaskHandler` ↔ `ResultReporter`），逐个迁移会产生大量跨包引用，得不偿失。当前 `app/consumer/` 包名已能准确描述职责，不再进一步拆分。
+
+**原计划中未执行的迁移（已取消）：**
 ```
-app/messaging/rabbitmq_service.go      → 评估是否移到 infra/rabbitmq/（基础设施）
-app/messaging/http_servers.go          → app/bootstrap/ 或 infra/httpx/
-app/messaging/platform_registry.go    }
-app/messaging/processor_registry.go   } → app/registry/（新包，专门管注册表）
-app/messaging/crawler_registry.go     }
-app/messaging/shutdown_coordinator.go → app/bootstrap/
-app/messaging/task_handler.go         → app/task/
-app/messaging/task_submitter.go       → app/task/
-app/messaging/queue_config.go         → infra/rabbitmq/
-app/messaging/queue_initializer.go    → infra/rabbitmq/
-app/messaging/result_reporter.go      → app/task/
-app/messaging/service_manager.go      → app/bootstrap/
-app/messaging/components.go           → app/bootstrap/
-app/messaging/rabbitmq_publisher_adapter.go → infra/rabbitmq/
+consumer/rabbitmq_publisher_adapter.go → infra/rabbitmq/  ← 会造成循环依赖
+consumer/shutdown_coordinator.go       → app/bootstrap/   ← 依赖 consumer 内部类型
+consumer/task_handler.go               → app/task/        ← 依赖 ResultReporter
+consumer/result_reporter.go            → app/task/        ← 与 task_handler 互依赖
 ```
 
 ---
@@ -500,14 +499,17 @@ type SheinTaskFactory = scheduler.SheinTaskFactory
 
 ## 优先级总览
 
-| 阶段 | 改动项 | 收益 | 风险 | 建议时机 |
-|------|--------|------|------|----------|
-| P1 | `taskexecutor` → `scheduler` | 中 | 极低 | 立即 |
-| P1 | 去掉 `_service` 文件名后缀 | 低 | 极低 | 立即 |
-| P1 | 合并 `pkg/apperr` → `core/errors` | 中 | 低 | 立即 |
-| P2 | 拆分 `shein/operation/` | 高 | 中 | ✅ 已完成 |
-| P2 | 新建 `shein/context/`，修复 `GetTask()` | 高 | 中 | 下个迭代 |
-| P2 | 拆分 `amazon/core/service/` | 中 | 中 | ✅ 已完成 |
-| P3 | `domain/model/` → `model/` | 高 | 高 | 专项 Sprint |
-| P3 | 消灭 `app/di/` | 中 | 高 | 专项 Sprint |
-| P3 | 整理 `app/messaging/` | 中 | 高 | 专项 Sprint |
+| 阶段 | 改动项 | 收益 | 风险 | 状态 |
+|------|--------|------|------|------|
+| P1 | `taskexecutor` → `scheduler` | 中 | 极低 | ✅ commit e45fe09 |
+| P1 | 去掉 `_service` 文件名后缀 | 低 | 极低 | ✅ commit 8fbec6a |
+| P1 | 合并 `pkg/apperr` → `core/errors` | 中 | 低 | ✅ commit cb19778 |
+| P2 | 拆分 `shein/operation/` | 高 | 中 | ✅ commits 1537584~778587e |
+| P2 | 清理 `shein/` 根目录 | 高 | 中 | ✅ commit ddcf7c8 |
+| P2 | 拆分 `amazon/core/service/` | 中 | 中 | ✅ commit c7aa14d |
+| P3.1 | `domain/model/` → `model/` | 高 | 高 | ✅ commit 956fe3f |
+| P3.1 | 消灭 `internal/domain/` 全部子包 | 高 | 高 | ✅ commit 7dcd2d9 |
+| P3.2 | 简化 `app/di/`（删除反射/接口） | 中 | 中 | ✅ commit ecf0f06 |
+| P3.3 | `queue_config/initializer` → `infra/rabbitmq/` | 中 | 低 | ✅ commit ecf0f06 |
+| P3.3 | `app/messaging/` → `app/consumer/` | 中 | 低 | ✅ commit 6e8494f |
+| P2 | 新建 `shein/context/`，修复 `GetTask()` | 高 | 中 | 待执行 |
