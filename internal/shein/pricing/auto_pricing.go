@@ -1,5 +1,5 @@
 ﻿// Package operation 提供SHEIN平台调度器相关服务
-package operation
+package pricing
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein"
 	shein_pricing "task-processor/internal/shein/api/pricing"
-	pricingservice "task-processor/internal/shein/pricing"
 
 	"github.com/sirupsen/logrus"
 )
@@ -47,7 +46,7 @@ type PricingDecision struct {
 type autoPricingServiceImpl struct {
 	managementClient *management.ClientManager
 	pricingAPI       shein_pricing.PricingAPI
-	calculator       *pricingservice.AutoPricingCalculator
+	calculator       *AutoPricingCalculator
 	requestBuilder   *PricingRequestBuilder
 	timeHelper       *shein.TimeHelper
 	logger           *logrus.Entry
@@ -61,7 +60,7 @@ func NewAutoPricingService(
 	return &autoPricingServiceImpl{
 		managementClient: managementClient,
 		pricingAPI:       pricingAPI,
-		calculator:       pricingservice.NewAutoPricingCalculator(),
+		calculator:       NewAutoPricingCalculator(),
 		requestBuilder:   NewPricingRequestBuilder(),
 		timeHelper:       shein.NewTimeHelper(),
 		logger:           logrus.WithField("component", "AutoPricingService"),

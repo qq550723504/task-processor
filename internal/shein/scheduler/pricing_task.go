@@ -6,9 +6,9 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/taskbase"
 	"task-processor/internal/shein/client"
-	schedulerservice "task-processor/internal/shein/operation"
+	sheinpricing "task-processor/internal/shein/pricing"
+	commonscheduler "task-processor/internal/taskbase"
 )
 
 // PricingTask SHEIN核价任务
@@ -25,7 +25,7 @@ func NewPricingTask(
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
 	clientManager *client.ClientManager,
-	pricingService schedulerservice.AutoPricingService,
+	pricingService sheinpricing.AutoPricingService,
 ) *PricingTask {
 	// 创建适配器
 	adapter := NewSheinAutoPricingAdapter(pricingService)

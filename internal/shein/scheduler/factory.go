@@ -16,6 +16,7 @@ import (
 	shein_product "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/client"
 	schedulerservice "task-processor/internal/shein/operation"
+	sheinpricing "task-processor/internal/shein/pricing"
 )
 
 // SheinTaskFactory SHEIN平台任务工厂
@@ -103,7 +104,7 @@ func (f *SheinTaskFactory) createBaseClient(storeID int64) (*client.BaseAPIClien
 // createPricingTask 创建核价任务
 func (f *SheinTaskFactory) createPricingTask(ctx context.Context, config appscheduler.TaskConfig, baseClient *client.BaseAPIClient) (appscheduler.Task, error) {
 	pricingAPI := shein_pricing.NewClient(baseClient)
-	pricingService := schedulerservice.NewAutoPricingService(f.GetManagementClient(), pricingAPI)
+	pricingService := sheinpricing.NewAutoPricingService(f.GetManagementClient(), pricingAPI)
 	return NewPricingTask(ctx, config, f.GetManagementClient(), f.clientManager, pricingService), nil
 }
 

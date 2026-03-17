@@ -5,16 +5,16 @@ import (
 	"errors"
 	"testing"
 
-	commonscheduler "task-processor/internal/taskbase"
 	"task-processor/internal/shein/api/pricing"
-	schedulerservice "task-processor/internal/shein/operation"
+	sheinpricing "task-processor/internal/shein/pricing"
+	commonscheduler "task-processor/internal/taskbase"
 )
 
 // MockSheinAutoPricingService 模拟Shein自动核价服务
 type MockSheinAutoPricingService struct {
 	FetchPendingPriceProductsFunc func(ctx context.Context, startDate, endDate string) ([]pricing.BargainPageData, error)
-	ApplyPricingRulesFunc         func(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]schedulerservice.PricingDecision, error)
-	SubmitPricingResultsFunc      func(ctx context.Context, decisions []schedulerservice.PricingDecision) (*schedulerservice.PricingStatistics, error)
+	ApplyPricingRulesFunc         func(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]sheinpricing.PricingDecision, error)
+	SubmitPricingResultsFunc      func(ctx context.Context, decisions []sheinpricing.PricingDecision) (*sheinpricing.PricingStatistics, error)
 }
 
 func (m *MockSheinAutoPricingService) FetchPendingPriceProducts(ctx context.Context, startDate, endDate string) ([]pricing.BargainPageData, error) {
@@ -24,18 +24,18 @@ func (m *MockSheinAutoPricingService) FetchPendingPriceProducts(ctx context.Cont
 	return []pricing.BargainPageData{}, nil
 }
 
-func (m *MockSheinAutoPricingService) ApplyPricingRules(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]schedulerservice.PricingDecision, error) {
+func (m *MockSheinAutoPricingService) ApplyPricingRules(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]sheinpricing.PricingDecision, error) {
 	if m.ApplyPricingRulesFunc != nil {
 		return m.ApplyPricingRulesFunc(ctx, products, storeID, enableRebargain)
 	}
-	return []schedulerservice.PricingDecision{}, nil
+	return []sheinpricing.PricingDecision{}, nil
 }
 
-func (m *MockSheinAutoPricingService) SubmitPricingResults(ctx context.Context, decisions []schedulerservice.PricingDecision) (*schedulerservice.PricingStatistics, error) {
+func (m *MockSheinAutoPricingService) SubmitPricingResults(ctx context.Context, decisions []sheinpricing.PricingDecision) (*sheinpricing.PricingStatistics, error) {
 	if m.SubmitPricingResultsFunc != nil {
 		return m.SubmitPricingResultsFunc(ctx, decisions)
 	}
-	return &schedulerservice.PricingStatistics{}, nil
+	return &sheinpricing.PricingStatistics{}, nil
 }
 
 func TestNewSheinAutoPricingAdapter(t *testing.T) {
@@ -106,13 +106,13 @@ func TestSheinAutoPricingAdapter_ApplyPricingRules_Success(t *testing.T) {
 		pricing.BargainPageData{BargainSn: "2", ProductTitle: "Product 2"},
 	}
 
-	mockDecisions := []schedulerservice.PricingDecision{
+	mockDecisions := []sheinpricing.PricingDecision{
 		{Product: pricing.BargainPageData{BargainSn: "1"}, Action: "accept"},
 		{Product: pricing.BargainPageData{BargainSn: "2"}, Action: "reject"},
 	}
 
 	mockService := &MockSheinAutoPricingService{
-		ApplyPricingRulesFunc: func(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]schedulerservice.PricingDecision, error) {
+		ApplyPricingRulesFunc: func(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]sheinpricing.PricingDecision, error) {
 			return mockDecisions, nil
 		},
 	}
@@ -139,7 +139,7 @@ func TestSheinAutoPricingAdapter_ApplyPricingRules_Error(t *testing.T) {
 	}
 
 	mockService := &MockSheinAutoPricingService{
-		ApplyPricingRulesFunc: func(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]schedulerservice.PricingDecision, error) {
+		ApplyPricingRulesFunc: func(ctx context.Context, products []pricing.BargainPageData, storeID int64, enableRebargain bool) ([]sheinpricing.PricingDecision, error) {
 			return nil, expectedError
 		},
 	}
@@ -160,11 +160,11 @@ func TestSheinAutoPricingAdapter_ApplyPricingRules_Error(t *testing.T) {
 
 func TestSheinAutoPricingAdapter_SubmitPricingResults_Success(t *testing.T) {
 	mockResults := []any{
-		schedulerservice.PricingDecision{Product: pricing.BargainPageData{BargainSn: "1"}, Action: "accept"},
-		schedulerservice.PricingDecision{Product: pricing.BargainPageData{BargainSn: "2"}, Action: "reject"},
+		sheinpricing.PricingDecision{Product: pricing.BargainPageData{BargainSn: "1"}, Action: "accept"},
+		sheinpricing.PricingDecision{Product: pricing.BargainPageData{BargainSn: "2"}, Action: "reject"},
 	}
 
-	mockStats := &schedulerservice.PricingStatistics{
+	mockStats := &sheinpricing.PricingStatistics{
 		TotalProcessed: 2,
 		AcceptCount:    1,
 		RejectCount:    1,
@@ -173,7 +173,7 @@ func TestSheinAutoPricingAdapter_SubmitPricingResults_Success(t *testing.T) {
 	}
 
 	mockService := &MockSheinAutoPricingService{
-		SubmitPricingResultsFunc: func(ctx context.Context, decisions []schedulerservice.PricingDecision) (*schedulerservice.PricingStatistics, error) {
+		SubmitPricingResultsFunc: func(ctx context.Context, decisions []sheinpricing.PricingDecision) (*sheinpricing.PricingStatistics, error) {
 			return mockStats, nil
 		},
 	}
@@ -204,11 +204,11 @@ func TestSheinAutoPricingAdapter_SubmitPricingResults_Error(t *testing.T) {
 	expectedError := errors.New("submit failed")
 
 	mockResults := []any{
-		schedulerservice.PricingDecision{Product: pricing.BargainPageData{BargainSn: "1"}},
+		sheinpricing.PricingDecision{Product: pricing.BargainPageData{BargainSn: "1"}},
 	}
 
 	mockService := &MockSheinAutoPricingService{
-		SubmitPricingResultsFunc: func(ctx context.Context, decisions []schedulerservice.PricingDecision) (*schedulerservice.PricingStatistics, error) {
+		SubmitPricingResultsFunc: func(ctx context.Context, decisions []sheinpricing.PricingDecision) (*sheinpricing.PricingStatistics, error) {
 			return nil, expectedError
 		},
 	}
@@ -230,12 +230,12 @@ func TestSheinAutoPricingAdapter_SubmitPricingResults_Error(t *testing.T) {
 func TestConvertSheinStats(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    *schedulerservice.PricingStatistics
+		input    *sheinpricing.PricingStatistics
 		expected *commonscheduler.PricingStats
 	}{
 		{
 			name: "正常统计",
-			input: &schedulerservice.PricingStatistics{
+			input: &sheinpricing.PricingStatistics{
 				TotalProcessed: 10,
 				AcceptCount:    5,
 				RejectCount:    3,

@@ -4,21 +4,21 @@ package scheduler
 import (
 	"context"
 
-	commonscheduler "task-processor/internal/taskbase"
 	"task-processor/internal/shein/api/pricing"
-	schedulerservice "task-processor/internal/shein/operation"
+	sheinpricing "task-processor/internal/shein/pricing"
+	commonscheduler "task-processor/internal/taskbase"
 
 	"github.com/sirupsen/logrus"
 )
 
 // SheinAutoPricingAdapter 适配Shein的自动核价服务到通用接口
 type SheinAutoPricingAdapter struct {
-	pricingService schedulerservice.AutoPricingService
+	pricingService sheinpricing.AutoPricingService
 	logger         *logrus.Entry
 }
 
 // NewSheinAutoPricingAdapter 创建Shein自动核价适配器
-func NewSheinAutoPricingAdapter(pricingService schedulerservice.AutoPricingService) *SheinAutoPricingAdapter {
+func NewSheinAutoPricingAdapter(pricingService sheinpricing.AutoPricingService) *SheinAutoPricingAdapter {
 	return &SheinAutoPricingAdapter{
 		pricingService: pricingService,
 		logger: logrus.WithFields(logrus.Fields{
@@ -78,9 +78,9 @@ func (a *SheinAutoPricingAdapter) SubmitPricingResults(ctx context.Context, resu
 	a.logger.Debug("开始提交Shein核价结果")
 
 	// 转换回Shein的决策类型
-	sheinDecisions := make([]schedulerservice.PricingDecision, len(results))
+	sheinDecisions := make([]sheinpricing.PricingDecision, len(results))
 	for i, r := range results {
-		if decision, ok := r.(schedulerservice.PricingDecision); ok {
+		if decision, ok := r.(sheinpricing.PricingDecision); ok {
 			sheinDecisions[i] = decision
 		}
 	}
@@ -96,7 +96,7 @@ func (a *SheinAutoPricingAdapter) SubmitPricingResults(ctx context.Context, resu
 }
 
 // convertSheinStats 转换Shein的统计信息到通用格式
-func convertSheinStats(stats *schedulerservice.PricingStatistics) *commonscheduler.PricingStats {
+func convertSheinStats(stats *sheinpricing.PricingStatistics) *commonscheduler.PricingStats {
 	if stats == nil {
 		return &commonscheduler.PricingStats{}
 	}
