@@ -14,24 +14,11 @@ type InventoryRecordAPIClient struct {
 // CreateInventoryRecord 创建库存记录
 func (m *InventoryRecordAPIClient) CreateInventoryRecord(req *api.InventoryRecordCreateReqDTO) (int64, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/inventory-record/create", m.baseURL)
-
-	var result APIResponse
-	var recordID int64
-	result.Data = &recordID
-
-	if err := m.apiRequest(http.MethodPost, url, req, &result); err != nil {
+	id, err := getTypedResult[int64](m.ManagementAPIClient, http.MethodPost, url, req)
+	if err != nil {
 		return 0, fmt.Errorf("创建库存记录失败: %w", err)
 	}
-
-	if err := m.ProcessAPIResponse(&result, 0); err != nil {
-		return 0, fmt.Errorf("处理API响应失败: %w", err)
-	}
-
-	if idPtr, ok := result.Data.(*int64); ok {
-		return *idPtr, nil
-	}
-
-	return 0, fmt.Errorf("无法解析返回的记录ID")
+	return id, nil
 }
 
 // GetLatestInventoryRecord 获取最新的库存记录

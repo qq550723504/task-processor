@@ -70,22 +70,9 @@ func isDataFresh(createTime, updateTime int64, freshnessDays int) bool {
 // CreateRawJsonData 创建原始JSON数据
 func (m *RawJsonDataAPIClient) CreateRawJsonData(req *api.RawJsonDataCreateReqDTO) (int64, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/raw-json-data/create", m.baseURL)
-
-	var result APIResponse
-	var recordID int64
-	result.Data = &recordID
-
-	if err := m.apiRequest(http.MethodPost, url, req, &result); err != nil {
+	id, err := getTypedResult[int64](m.ManagementAPIClient, http.MethodPost, url, req)
+	if err != nil {
 		return 0, fmt.Errorf("创建原始JSON数据失败: %w", err)
 	}
-
-	if err := m.ProcessAPIResponse(&result, 0); err != nil {
-		return 0, fmt.Errorf("处理API响应失败: %w", err)
-	}
-
-	if idPtr, ok := result.Data.(*int64); ok {
-		return *idPtr, nil
-	}
-
-	return 0, fmt.Errorf("无法解析返回的记录ID")
+	return id, nil
 }

@@ -63,24 +63,27 @@ func (a *API) SearchGoods(pageNo, pageSize int) (*GoodsSearchResponse, error) {
 	return &result, nil
 }
 
-// Save 保存产品到草稿箱
-func (a *API) Save(request *SaveRequest) (*SaveResponse, error) {
-	if request == nil {
-		return nil, fmt.Errorf("保存请求不能为空")
-	}
-
+// postWithDefaultHeaders 使用默认 headers 发送 POST 请求的通用方法
+func (a *API) postWithDefaultHeaders(url string, body any, result any) error {
 	headers := client.GetDefaultHeaders()
 	headers["content-type"] = "application/json;charset=UTF-8"
 
 	req := map[string]any{
 		"method":  "POST",
-		"url":     "/mms/marigold/edit/commit/save",
+		"url":     url,
 		"headers": headers,
-		"body":    request,
+		"body":    body,
 	}
+	return a.client.SendTEMURequest(req, result)
+}
 
+// Save 保存产品到草稿箱
+func (a *API) Save(request *SaveRequest) (*SaveResponse, error) {
+	if request == nil {
+		return nil, fmt.Errorf("保存请求不能为空")
+	}
 	var result SaveResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postWithDefaultHeaders("/mms/marigold/edit/commit/save", request, &result); err != nil {
 		return nil, fmt.Errorf("发送产品保存请求失败: %w", err)
 	}
 	if !result.Success {
@@ -94,19 +97,8 @@ func (a *API) Submit(request *SubmitRequest) (*SubmitResponse, error) {
 	if request == nil {
 		return nil, fmt.Errorf("提交请求不能为空")
 	}
-
-	headers := client.GetDefaultHeaders()
-	headers["content-type"] = "application/json;charset=UTF-8"
-
-	req := map[string]any{
-		"method":  "POST",
-		"url":     "/mms/marigold/edit/commit/submit",
-		"headers": headers,
-		"body":    request,
-	}
-
 	var result SubmitResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postWithDefaultHeaders("/mms/marigold/edit/commit/submit", request, &result); err != nil {
 		return nil, fmt.Errorf("产品提交请求失败: %w", err)
 	}
 	if !result.Success {
@@ -120,19 +112,8 @@ func (a *API) CreateCommit(request *CreateCommitRequest) (*CreateCommitResponse,
 	if request == nil {
 		return nil, fmt.Errorf("创建提交请求不能为空")
 	}
-
-	headers := client.GetDefaultHeaders()
-	headers["content-type"] = "application/json;charset=UTF-8"
-
-	req := map[string]any{
-		"method":  "POST",
-		"url":     "/mms/marigold/edit/commit/create_new",
-		"headers": headers,
-		"body":    request,
-	}
-
 	var result CreateCommitResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postWithDefaultHeaders("/mms/marigold/edit/commit/create_new", request, &result); err != nil {
 		return nil, fmt.Errorf("创建提交请求失败: %w", err)
 	}
 	if !result.Success {

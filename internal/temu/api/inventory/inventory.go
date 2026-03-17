@@ -294,6 +294,17 @@ func (a *API) SetStock(goodsID, skuID string, stock, stockDiff int) error {
 	return nil
 }
 
+// postWithHeaders 使用 defaultHeaders 发送 POST 请求的通用方法
+func (a *API) postWithHeaders(url string, body any, result any) error {
+	req := map[string]any{
+		"method":  "POST",
+		"url":     url,
+		"headers": a.defaultHeaders(),
+		"body":    body,
+	}
+	return a.client.SendTEMURequest(req, result)
+}
+
 // Offline 下架产品
 func (a *API) Offline(goodsID string, skuIDs []string) (*OfflineResponse, error) {
 	if goodsID == "" {
@@ -302,16 +313,8 @@ func (a *API) Offline(goodsID string, skuIDs []string) (*OfflineResponse, error)
 	if len(skuIDs) == 0 {
 		return nil, fmt.Errorf("SKU ID列表不能为空")
 	}
-
-	req := map[string]any{
-		"method":  "POST",
-		"url":     "/mms/marigold/sku/offline",
-		"headers": a.defaultHeaders(),
-		"body":    &OfflineRequest{GoodsID: goodsID, SkuIDs: skuIDs},
-	}
-
 	var result OfflineResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postWithHeaders("/mms/marigold/sku/offline", &OfflineRequest{GoodsID: goodsID, SkuIDs: skuIDs}, &result); err != nil {
 		return nil, fmt.Errorf("下架产品失败: %w", err)
 	}
 	if !result.Success {
@@ -328,16 +331,8 @@ func (a *API) Online(goodsID string, skuIDs []string) (*OnlineResponse, error) {
 	if len(skuIDs) == 0 {
 		return nil, fmt.Errorf("SKU ID列表不能为空")
 	}
-
-	req := map[string]any{
-		"method":  "POST",
-		"url":     "/mms/marigold/sku/online",
-		"headers": a.defaultHeaders(),
-		"body":    &OnlineRequest{GoodsID: goodsID, SkuIDs: skuIDs},
-	}
-
 	var result OnlineResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postWithHeaders("/mms/marigold/sku/online", &OnlineRequest{GoodsID: goodsID, SkuIDs: skuIDs}, &result); err != nil {
 		return nil, fmt.Errorf("上架产品失败: %w", err)
 	}
 	if !result.Success {
@@ -354,16 +349,8 @@ func (a *API) Relist(goodsID string, skuIDs []string) (*RelistResponse, error) {
 	if len(skuIDs) == 0 {
 		return nil, fmt.Errorf("SKU ID列表不能为空")
 	}
-
-	req := map[string]any{
-		"method":  "POST",
-		"url":     "/mms/marigold/sku/online",
-		"headers": a.defaultHeaders(),
-		"body":    &RelistRequest{GoodsID: goodsID, SkuIDs: skuIDs},
-	}
-
 	var result RelistResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postWithHeaders("/mms/marigold/sku/online", &RelistRequest{GoodsID: goodsID, SkuIDs: skuIDs}, &result); err != nil {
 		return nil, fmt.Errorf("重新上架产品失败: %w", err)
 	}
 	if !result.Success {

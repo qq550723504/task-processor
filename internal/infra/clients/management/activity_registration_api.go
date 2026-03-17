@@ -21,7 +21,7 @@ func (c *ActivityRegistrationAPIClient) BatchSaveActivityRegistrations(registrat
 
 	url := fmt.Sprintf("%s/rpc-api/listing/activity-registration/batch-save", c.baseURL)
 
-	platformGroups := c.groupRegistrationsByPlatform(registrations)
+	platformGroups := groupByPlatform(registrations, func(r *api.ActivityRegistrationDTO) string { return r.Platform })
 
 	for platform, groupRegistrations := range platformGroups {
 		reqBody := c.buildRegistrationBatchSaveRequest(platform, groupRegistrations)
@@ -37,18 +37,6 @@ func (c *ActivityRegistrationAPIClient) BatchSaveActivityRegistrations(registrat
 	}
 
 	return nil
-}
-
-func (c *ActivityRegistrationAPIClient) groupRegistrationsByPlatform(registrations []*api.ActivityRegistrationDTO) map[string][]*api.ActivityRegistrationDTO {
-	platformGroups := make(map[string][]*api.ActivityRegistrationDTO)
-	for _, registration := range registrations {
-		platform := registration.Platform
-		if platform == "" {
-			platform = "UNKNOWN"
-		}
-		platformGroups[platform] = append(platformGroups[platform], registration)
-	}
-	return platformGroups
 }
 
 func (c *ActivityRegistrationAPIClient) buildRegistrationBatchSaveRequest(platform string, registrations []*api.ActivityRegistrationDTO) map[string]any {

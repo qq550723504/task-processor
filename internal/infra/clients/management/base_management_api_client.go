@@ -230,6 +230,20 @@ func getSliceResult[T any](m *ManagementAPIClient, url string, params map[string
 	return *v, nil
 }
 
+// groupByPlatform 按平台字段将切片分组，platform 字段为空时归入 "UNKNOWN"。
+// getPlatform 是从元素中提取平台名的函数，适用于所有需要按平台分批提交的 API 客户端。
+func groupByPlatform[T any](items []T, getPlatform func(T) string) map[string][]T {
+	groups := make(map[string][]T)
+	for _, item := range items {
+		p := getPlatform(item)
+		if p == "" {
+			p = "UNKNOWN"
+		}
+		groups[p] = append(groups[p], item)
+	}
+	return groups
+}
+
 // TokenResponse 令牌响应结构
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`

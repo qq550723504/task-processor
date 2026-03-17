@@ -21,7 +21,7 @@ func (c *ActivityProductAPIClient) BatchSaveActivityProducts(products []*api.Act
 
 	url := fmt.Sprintf("%s/rpc-api/listing/activity-product/batch-save", c.baseURL)
 
-	platformGroups := c.groupActivityProductsByPlatform(products)
+	platformGroups := groupByPlatform(products, func(p *api.ActivityProductDTO) string { return p.Platform })
 
 	for platform, groupProducts := range platformGroups {
 		reqBody := c.buildActivityProductBatchSaveRequest(platform, groupProducts)
@@ -37,18 +37,6 @@ func (c *ActivityProductAPIClient) BatchSaveActivityProducts(products []*api.Act
 	}
 
 	return nil
-}
-
-func (c *ActivityProductAPIClient) groupActivityProductsByPlatform(products []*api.ActivityProductDTO) map[string][]*api.ActivityProductDTO {
-	platformGroups := make(map[string][]*api.ActivityProductDTO)
-	for _, product := range products {
-		platform := product.Platform
-		if platform == "" {
-			platform = "UNKNOWN"
-		}
-		platformGroups[platform] = append(platformGroups[platform], product)
-	}
-	return platformGroups
 }
 
 func (c *ActivityProductAPIClient) buildActivityProductBatchSaveRequest(platform string, products []*api.ActivityProductDTO) map[string]any {
