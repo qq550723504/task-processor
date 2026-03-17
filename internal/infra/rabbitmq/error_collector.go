@@ -112,21 +112,20 @@ func (ec *ErrorCollector) GetRecentErrors(n int) []ErrorRecord {
 func (ec *ErrorCollector) GetErrorsByType(errorType ErrorType) []ErrorRecord {
 	ec.mutex.RLock()
 	defer ec.mutex.RUnlock()
-	filtered := make([]ErrorRecord, 0)
-	for _, record := range ec.errors {
-		if record.Type == errorType {
-			filtered = append(filtered, record)
-		}
-	}
-	return filtered
+	return ec.filterErrors(func(r ErrorRecord) bool { return r.Type == errorType })
 }
 
 func (ec *ErrorCollector) GetErrorsByQueue(queueName string) []ErrorRecord {
 	ec.mutex.RLock()
 	defer ec.mutex.RUnlock()
+	return ec.filterErrors(func(r ErrorRecord) bool { return r.QueueName == queueName })
+}
+
+// filterErrors 通用过滤（调用方需持有读锁）
+func (ec *ErrorCollector) filterErrors(predicate func(ErrorRecord) bool) []ErrorRecord {
 	filtered := make([]ErrorRecord, 0)
 	for _, record := range ec.errors {
-		if record.QueueName == queueName {
+		if predicate(record) {
 			filtered = append(filtered, record)
 		}
 	}

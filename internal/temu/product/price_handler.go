@@ -5,10 +5,10 @@ import (
 	"math"
 	"math/rand"
 
-	"task-processor/internal/model"
-	pkgproduct "task-processor/internal/product"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
+	pkgproduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -188,27 +188,6 @@ func (ph *PriceHandler) getStockFromStoreRespDTO(storeInfo *api.StoreRespDTO) in
 	return randomStock
 }
 
-// getStockFromStoreInfo 从自定义 StoreInfo 获取库存
-func (ph *PriceHandler) getStockFromStoreInfo(storeInfo *api.StoreRespDTO) int {
-	if storeInfo.FixedStockCount != nil {
-		stockCount := *storeInfo.FixedStockCount
-
-		if stockCount == -1 {
-			ph.logger.Debugf("店铺配置固定库存为-1，设置库存为0")
-			return 0
-		}
-
-		if stockCount > 0 {
-			ph.logger.Debugf("使用店铺配置的固定库存: %d", stockCount)
-			return stockCount
-		}
-	}
-
-	randomStock := rand.Intn(1000) + 10
-	ph.logger.Debugf("使用随机库存: %d", randomStock)
-	return randomStock
-}
-
 // GetPriceMultiplier 获取价格倍数（用于计算最大零售价格）
 func (ph *PriceHandler) GetPriceMultiplier(temuCtx *temucontext.TemuTaskContext) float64 {
 	// 获取租户ID和店铺ID
@@ -239,5 +218,3 @@ func (ph *PriceHandler) GetPriceMultiplier(temuCtx *temucontext.TemuTaskContext)
 	ph.logger.Infof("使用利润规则 '%s' 的倍数: %.2fx", profitRule.Name, profitRule.SalePriceMultiplier)
 	return profitRule.SalePriceMultiplier
 }
-
-

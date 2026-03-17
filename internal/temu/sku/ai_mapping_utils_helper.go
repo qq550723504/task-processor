@@ -11,35 +11,24 @@ import (
 
 // getProductDimensions 获取产品尺寸（优先使用直接字段，如果为空则从ProductDetails中提取）
 func (vp *SkuVariantProcessor) getProductDimensions(product *model.Product) string {
-	// 优先使用直接字段
-	if product.ProductDimensions != "" {
-		return product.ProductDimensions
-	}
-
-	// 从ProductDetails中提取
-	for _, detail := range product.ProductDetails {
-		if strings.Contains(strings.ToLower(detail.Type), "dimensions") && detail.Value != "" {
-			return detail.Value
-		}
-	}
-
-	return ""
+	return vp.getProductDetailField(product, product.ProductDimensions, "dimensions")
 }
 
 // getItemWeight 获取产品重量（优先使用直接字段，如果为空则从ProductDetails中提取）
 func (vp *SkuVariantProcessor) getItemWeight(product *model.Product) string {
-	// 优先使用直接字段
-	if product.ItemWeight != "" {
-		return product.ItemWeight
-	}
+	return vp.getProductDetailField(product, product.ItemWeight, "weight")
+}
 
-	// 从ProductDetails中提取
+// getProductDetailField 通用字段提取：优先直接字段，否则从ProductDetails中按关键词查找
+func (vp *SkuVariantProcessor) getProductDetailField(product *model.Product, directValue, keyword string) string {
+	if directValue != "" {
+		return directValue
+	}
 	for _, detail := range product.ProductDetails {
-		if strings.Contains(strings.ToLower(detail.Type), "weight") && detail.Value != "" {
+		if strings.Contains(strings.ToLower(detail.Type), keyword) && detail.Value != "" {
 			return detail.Value
 		}
 	}
-
 	return ""
 }
 
@@ -86,4 +75,3 @@ func (vp *SkuVariantProcessor) buildAIVariant(
 
 	return aiVariant
 }
-

@@ -158,36 +158,21 @@ func (s *llmScorer) scoreTextWithLLM(ctx context.Context, text string, baseScore
 	if s.llmManager == nil {
 		return baseScore, fmt.Errorf("LLM manager not configured")
 	}
-
 	client, err := s.llmManager.GetClient(s.textClient)
 	if err != nil {
 		return baseScore, fmt.Errorf("failed to get LLM client: %w", err)
 	}
-
 	prompt := s.buildTextScoringPrompt(text, baseScore)
-
-	// 重试机制
-	var response string
-	var lastErr error
-	for i := 0; i < s.maxRetries; i++ {
-		response, lastErr = client.Generate(ctx, prompt)
-		if lastErr == nil {
-			break
-		}
-		logrus.WithError(lastErr).WithField("attempt", i+1).Warn("LLM scoring attempt failed")
-		time.Sleep(time.Duration(i+1) * time.Second) // 指数退避
+	response, err := s.retryLLMCall(ctx, s.maxRetries, func() (string, error) {
+		return client.Generate(ctx, prompt)
+	})
+	if err != nil {
+		return baseScore, fmt.Errorf("LLM scoring failed after %d attempts: %w", s.maxRetries, err)
 	}
-
-	if lastErr != nil {
-		return baseScore, fmt.Errorf("LLM scoring failed after %d attempts: %w", s.maxRetries, lastErr)
-	}
-
-	// 解析评分
 	score, err := s.parseLLMScore(response)
 	if err != nil {
 		return baseScore, fmt.Errorf("failed to parse LLM score: %w", err)
 	}
-
 	return score, nil
 }
 
@@ -196,37 +181,37 @@ func (s *llmScorer) scoreImageWithLLM(ctx context.Context, imageURL string, base
 	if s.llmManager == nil {
 		return baseScore, fmt.Errorf("LLM manager not configured")
 	}
-
 	client, err := s.llmManager.GetClient(s.visionClient)
 	if err != nil {
 		return baseScore, fmt.Errorf("failed to get vision client: %w", err)
 	}
-
 	prompt := s.buildImageScoringPrompt(baseScore)
-
-	// 重试机制
-	var response string
-	var lastErr error
-	for i := 0; i < s.maxRetries; i++ {
-		response, lastErr = client.AnalyzeImage(ctx, imageURL, prompt)
-		if lastErr == nil {
-			break
-		}
-		logrus.WithError(lastErr).WithField("attempt", i+1).Warn("LLM image scoring attempt failed")
-		time.Sleep(time.Duration(i+1) * time.Second)
+	response, err := s.retryLLMCall(ctx, s.maxRetries, func() (string, error) {
+		return client.AnalyzeImage(ctx, imageURL, prompt)
+	})
+	if err != nil {
+		return baseScore, fmt.Errorf("LLM image scoring failed after %d attempts: %w", s.maxRetries, err)
 	}
-
-	if lastErr != nil {
-		return baseScore, fmt.Errorf("LLM image scoring failed after %d attempts: %w", s.maxRetries, lastErr)
-	}
-
-	// 解析评分
 	score, err := s.parseLLMScore(response)
 	if err != nil {
 		return baseScore, fmt.Errorf("failed to parse LLM score: %w", err)
 	}
-
 	return score, nil
+}
+
+// retryLLMCall 通用重试机制
+func (s *llmScorer) retryLLMCall(_ context.Context, maxRetries int, call func() (string, error)) (string, error) {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		response, err := call()
+		if err == nil {
+			return response, nil
+		}
+		lastErr = err
+		logrus.WithError(err).WithField("attempt", i+1).Warn("LLM scoring attempt failed")
+		time.Sleep(time.Duration(i+1) * time.Second)
+	}
+	return "", lastErr
 }
 
 // buildTextScoringPrompt 构建文本评分提示词（优化版）

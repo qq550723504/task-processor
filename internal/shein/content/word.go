@@ -145,27 +145,23 @@ func (s *SensitiveWordService) getAllSensitiveWords() []string {
 
 // GetStaticSensitiveWords 获取当前静态敏感词列表（所有语言）
 func (s *SensitiveWordService) GetStaticSensitiveWords() []string {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	var words []string
-	for _, langWords := range s.config.StaticWords {
-		words = append(words, langWords...)
-	}
-
-	return s.deduplicateWords(words)
+	return s.getWordsFromConfig(func() map[string][]string { return s.config.StaticWords })
 }
 
 // GetDynamicSensitiveWords 获取当前动态敏感词列表（所有语言）
 func (s *SensitiveWordService) GetDynamicSensitiveWords() []string {
+	return s.getWordsFromConfig(func() map[string][]string { return s.config.DynamicWords })
+}
+
+// getWordsFromConfig 通用：从配置中收集所有语言的词并去重
+func (s *SensitiveWordService) getWordsFromConfig(getMap func() map[string][]string) []string {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
 	var words []string
-	for _, langWords := range s.config.DynamicWords {
+	for _, langWords := range getMap() {
 		words = append(words, langWords...)
 	}
-
 	return s.deduplicateWords(words)
 }
 
