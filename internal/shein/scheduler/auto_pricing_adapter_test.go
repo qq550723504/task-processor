@@ -7,7 +7,7 @@ import (
 
 	"task-processor/internal/shein/api/pricing"
 	sheinpricing "task-processor/internal/shein/pricing"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 )
 
 // MockSheinAutoPricingService 模拟Shein自动核价服务
@@ -231,7 +231,7 @@ func TestConvertSheinStats(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *sheinpricing.PricingStatistics
-		expected *commonscheduler.PricingStats
+		expected *platformtask.PricingStats
 	}{
 		{
 			name: "正常统计",
@@ -242,7 +242,7 @@ func TestConvertSheinStats(t *testing.T) {
 				ReappealCount:  1,
 				SkipCount:      1,
 			},
-			expected: &commonscheduler.PricingStats{
+			expected: &platformtask.PricingStats{
 				TotalProcessed: 10,
 				AcceptCount:    5,
 				RejectCount:    3,
@@ -253,7 +253,7 @@ func TestConvertSheinStats(t *testing.T) {
 		{
 			name:  "空统计",
 			input: nil,
-			expected: &commonscheduler.PricingStats{
+			expected: &platformtask.PricingStats{
 				TotalProcessed: 0,
 				AcceptCount:    0,
 				RejectCount:    0,
@@ -285,3 +285,5 @@ func TestConvertSheinStats(t *testing.T) {
 		})
 	}
 }
+
+

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/model"
 	"task-processor/internal/product"
-	domainvalidation "task-processor/internal/validation"
+
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
@@ -17,7 +17,7 @@ import (
 // RuleValidator 规则验证器（TEMU平台包装器）
 type RuleValidator struct {
 	logger             *logrus.Entry
-	checker            *domainvalidation.RuleChecker
+	checker            *product.RuleChecker
 	fulfillmentChecker *handlerbase.FulfillmentChecker
 }
 
@@ -25,27 +25,25 @@ type RuleValidator struct {
 func NewRuleValidator(logger *logrus.Entry) *RuleValidator {
 	return &RuleValidator{
 		logger:             logger.WithField("component", "RuleValidator"),
-		checker:            domainvalidation.NewRuleChecker(),
+		checker:            product.NewRuleChecker(),
 		fulfillmentChecker: handlerbase.NewFulfillmentChecker(logger),
 	}
 }
 
 // CheckSingleRule 检查单个规则（兼容旧接口）
-func (v *RuleValidator) CheckSingleRule(product *model.Product, rule *api.FilterRuleRespDTO, ctx pipeline.TaskContext) bool {
+func (v *RuleValidator) CheckSingleRule(p *model.Product, rule *api.FilterRuleRespDTO, ctx pipeline.TaskContext) bool {
 	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
-		result := v.CheckSingleRuleDetailedTemu(product, rule, temuCtx)
-		return result.Passed
+		return v.CheckSingleRuleDetailedTemu(p, rule, temuCtx).Passed
 	}
-	result := v.CheckSingleRuleDetailed(product, rule, ctx)
-	return result.Passed
+	return v.CheckSingleRuleDetailed(p, rule, ctx).Passed
 }
 
 // CheckSingleRuleDetailed 详细检查单个规则（兼容旧接口）
-func (v *RuleValidator) CheckSingleRuleDetailed(product *model.Product, rule *api.FilterRuleRespDTO, ctx pipeline.TaskContext) *handlerbase.FilterCheckResult {
+func (v *RuleValidator) CheckSingleRuleDetailed(p *model.Product, rule *api.FilterRuleRespDTO, ctx pipeline.TaskContext) *handlerbase.FilterCheckResult {
 	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
-		return v.CheckSingleRuleDetailedTemu(product, rule, temuCtx)
+		return v.CheckSingleRuleDetailedTemu(p, rule, temuCtx)
 	}
-	return v.checkBasicRules(product, rule)
+	return v.checkBasicRules(p, rule)
 }
 
 // CheckSingleRuleDetailedTemu 详细检查单个规则（强类型上下文）
@@ -239,6 +237,3 @@ func (v *RuleValidator) checkImageCountRuleDetailed(amazonProduct *model.Product
 	}
 	return &handlerbase.FilterCheckResult{Passed: true}
 }
-
-
-

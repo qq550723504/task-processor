@@ -3,14 +3,16 @@ package scheduler
 
 import (
 	appscheduler "task-processor/internal/app/scheduler"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 )
 
 // BaseTask SHEIN平台基础任务
 // 使用通用基类实现
-type BaseTask = commonscheduler.BaseTask
+type BaseTask = platformtask.BaseTask
 
 // NewBaseTask 创建基础任务
 func NewBaseTask(config appscheduler.TaskConfig) *BaseTask {
-	return commonscheduler.NewBaseTask(config)
+	return platformtask.NewBaseTask(config)
 }
+
+

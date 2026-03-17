@@ -1,4 +1,4 @@
-package validation
+package product
 
 // FilterRule 筛选规则值对象（domain 层自有定义，不依赖 infra）
 type FilterRule struct {

@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/platformbase"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/temu/api/client"
 	temuscheduler "task-processor/internal/temu/sync"
 )
@@ -16,7 +16,7 @@ import (
 // InventoryTask TEMU库存同步任务
 // 使用通用基类实现
 type InventoryTask struct {
-	*commonscheduler.InventorySyncTask
+	*platformtask.InventorySyncTask
 	temuAPIClient client.ClientAPI // 保留TEMU特定的字段
 }
 
@@ -48,7 +48,7 @@ func NewInventoryTask(
 	adapter := newInventorySyncServiceAdapter(inventoryService)
 
 	// 使用通用基类创建任务
-	baseTask := commonscheduler.NewInventorySyncTask(commonscheduler.InventorySyncTaskConfig{
+	baseTask := platformtask.NewInventorySyncTask(platformtask.InventorySyncTaskConfig{
 		TaskConfig:       config,
 		ManagementClient: managementClient,
 		InventoryService: adapter,
@@ -66,3 +66,5 @@ func NewInventoryTask(
 func (t *InventoryTask) Execute(ctx context.Context) error {
 	return t.InventorySyncTask.Execute(ctx)
 }
+
+

@@ -1,4 +1,4 @@
-﻿package taskbase
+﻿package platformtask
 
 import (
 	"testing"
@@ -198,3 +198,4 @@ func TestBaseTask_IDFormat(t *testing.T) {
 		})
 	}
 }
+

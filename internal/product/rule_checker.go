@@ -1,14 +1,12 @@
-﻿// Package validation 提供通用的规则验证功能
-package validation
+package product
 
 import (
 	"fmt"
 
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 )
 
-// RuleChecker 通用规则检查器
+// RuleChecker 产品筛选规则检查器
 type RuleChecker struct{}
 
 // NewRuleChecker 创建新的规则检查器
@@ -108,14 +106,13 @@ func (c *RuleChecker) CheckFulfillmentType(rule *FilterRule, amazonProduct *mode
 	return nil
 }
 
-// CheckAllRules 检查所有规则（便捷方法）
+// CheckAllRules 检查所有规则
 func (c *RuleChecker) CheckAllRules(rule *FilterRule, amazonProduct *model.Product, priceType string) error {
-	price := product.GetProductPrice(amazonProduct, priceType)
+	price := GetProductPrice(amazonProduct, priceType)
 	if err := c.CheckPriceRange(rule, price); err != nil {
 		return err
 	}
-	inventory := product.GetInventory(amazonProduct)
-	if err := c.CheckInventory(rule, inventory); err != nil {
+	if err := c.CheckInventory(rule, GetInventory(amazonProduct)); err != nil {
 		return err
 	}
 	if err := c.CheckRating(rule, amazonProduct.Rating); err != nil {
@@ -129,5 +126,3 @@ func (c *RuleChecker) CheckAllRules(rule *FilterRule, amazonProduct *model.Produ
 	}
 	return c.CheckFulfillmentType(rule, amazonProduct)
 }
-
-

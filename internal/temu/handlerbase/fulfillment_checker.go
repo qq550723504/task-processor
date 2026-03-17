@@ -3,9 +3,10 @@ package handlerbase
 
 import (
 	"fmt"
-	"task-processor/internal/model"
-	domainvalidation "task-processor/internal/validation"
+
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
+	productpkg "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,43 +24,34 @@ func NewFulfillmentChecker(logger *logrus.Entry) *FulfillmentChecker {
 }
 
 // CheckFulfillmentTypeRule 检查配送方式规则
-func (c *FulfillmentChecker) CheckFulfillmentTypeRule(product *model.Product, rule *api.FilterRuleRespDTO) bool {
-	result := c.CheckFulfillmentTypeRuleDetailed(product, rule)
-	return result.Passed
+func (c *FulfillmentChecker) CheckFulfillmentTypeRule(p *model.Product, rule *api.FilterRuleRespDTO) bool {
+	return c.CheckFulfillmentTypeRuleDetailed(p, rule).Passed
 }
 
 // CheckFulfillmentTypeRuleDetailed 详细检查配送方式规则
-func (c *FulfillmentChecker) CheckFulfillmentTypeRuleDetailed(product *model.Product, rule *api.FilterRuleRespDTO) *FilterCheckResult {
+func (c *FulfillmentChecker) CheckFulfillmentTypeRuleDetailed(p *model.Product, rule *api.FilterRuleRespDTO) *FilterCheckResult {
 	if rule.FulfillmentType == "" || rule.FulfillmentType == "ALL" {
 		return &FilterCheckResult{Passed: true}
 	}
 
-	isFBA := domainvalidation.IsFBAFulfillment(product.ShipsFrom)
-	isAMZ := domainvalidation.IsAMZSeller(product.SellerName)
+	isFBA := productpkg.IsFBAFulfillment(p.ShipsFrom)
+	isAMZ := productpkg.IsAMZSeller(p.SellerName)
 
 	c.logger.WithFields(logrus.Fields{
-		"asin":          product.Asin,
-		"ships_from":    product.ShipsFrom,
-		"seller_name":   product.SellerName,
+		"asin":          p.Asin,
+		"ships_from":    p.ShipsFrom,
+		"seller_name":   p.SellerName,
 		"is_fba":        isFBA,
 		"is_amz":        isAMZ,
 		"required_type": rule.FulfillmentType,
 	}).Debug("检查配送方式规则")
 
-	// 转换后调用 domain checker
-	checker := domainvalidation.NewRuleChecker()
-	if err := checker.CheckFulfillmentType(rule.ToFilterRule(), product); err != nil {
-		productValue := "FBM"
-		if isFBA {
-			productValue = "FBA"
-		}
-		if isAMZ {
-			productValue = product.SellerName
-		}
+	checker := productpkg.NewRuleChecker()
+	if err := checker.CheckFulfillmentType(rule.ToFilterRule(), p); err != nil {
 		return &FilterCheckResult{
 			Passed:        false,
 			FailureReason: err.Error(),
-			ProductValue:  productValue,
+			ProductValue:  buildFulfillmentProductValue(isFBA, isAMZ, p.SellerName),
 			RuleValue:     rule.FulfillmentType,
 		}
 	}
@@ -77,5 +69,3 @@ func buildFulfillmentProductValue(isFBA, isAMZ bool, sellerName string) string {
 	}
 	return "FBM"
 }
-
-

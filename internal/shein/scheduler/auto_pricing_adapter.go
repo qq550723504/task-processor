@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/shein/api/pricing"
 	sheinpricing "task-processor/internal/shein/pricing"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 
 	"github.com/sirupsen/logrus"
 )
@@ -74,7 +74,7 @@ func (a *SheinAutoPricingAdapter) ApplyPricingRules(ctx context.Context, product
 }
 
 // SubmitPricingResults 提交核价结果
-func (a *SheinAutoPricingAdapter) SubmitPricingResults(ctx context.Context, results []any) (*commonscheduler.PricingStats, error) {
+func (a *SheinAutoPricingAdapter) SubmitPricingResults(ctx context.Context, results []any) (*platformtask.PricingStats, error) {
 	a.logger.Debug("开始提交Shein核价结果")
 
 	// 转换回Shein的决策类型
@@ -96,12 +96,12 @@ func (a *SheinAutoPricingAdapter) SubmitPricingResults(ctx context.Context, resu
 }
 
 // convertSheinStats 转换Shein的统计信息到通用格式
-func convertSheinStats(stats *sheinpricing.PricingStatistics) *commonscheduler.PricingStats {
+func convertSheinStats(stats *sheinpricing.PricingStatistics) *platformtask.PricingStats {
 	if stats == nil {
-		return &commonscheduler.PricingStats{}
+		return &platformtask.PricingStats{}
 	}
 
-	return &commonscheduler.PricingStats{
+	return &platformtask.PricingStats{
 		TotalProcessed: stats.TotalProcessed,
 		AcceptCount:    stats.AcceptCount,
 		RejectCount:    stats.RejectCount,
@@ -109,3 +109,5 @@ func convertSheinStats(stats *sheinpricing.PricingStatistics) *commonscheduler.P
 		SkipCount:      stats.SkipCount,
 	}
 }
+
+

@@ -1,5 +1,5 @@
 ﻿// Package scheduler 提供平台通用的库存同步任务基础实现
-package taskbase
+package platformtask
 
 import (
 	"context"
@@ -116,3 +116,5 @@ func (t *InventorySyncTask) GetManagementClient() *management.ClientManager {
 func (t *InventorySyncTask) GetInventoryService() InventorySyncService {
 	return t.inventoryService
 }
+
+

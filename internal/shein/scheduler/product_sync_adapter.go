@@ -7,7 +7,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/productsync"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 )
 
 // productSyncServiceAdapter 适配器，将SHEIN特定的ProductSyncService适配到通用接口
@@ -16,7 +16,7 @@ type productSyncServiceAdapter struct {
 }
 
 // newProductSyncServiceAdapter 创建产品同步服务适配器
-func newProductSyncServiceAdapter(sheinService productsync.ProductSyncService) commonscheduler.ProductSyncService {
+func newProductSyncServiceAdapter(sheinService productsync.ProductSyncService) platformtask.ProductSyncService {
 	return &productSyncServiceAdapter{
 		sheinService: sheinService,
 	}
@@ -74,3 +74,5 @@ func (a *productSyncServiceAdapter) SaveProducts(ctx context.Context, products [
 	// 调用SHEIN服务
 	return a.sheinService.SaveProducts(ctx, productDataList)
 }
+
+

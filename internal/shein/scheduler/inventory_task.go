@@ -8,13 +8,13 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/shein/client"
 	"task-processor/internal/shein/inventory"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 )
 
 // InventoryTask SHEIN库存监控任务
 // 使用通用基类实现
 type InventoryTask struct {
-	*commonscheduler.InventorySyncTask
+	*platformtask.InventorySyncTask
 	clientManager *client.ClientManager // 保留SHEIN特定的字段
 }
 
@@ -30,7 +30,7 @@ func NewInventoryTask(
 	adapter := newInventorySyncServiceAdapter(inventoryService)
 
 	// 使用通用基类创建任务
-	baseTask := commonscheduler.NewInventorySyncTask(commonscheduler.InventorySyncTaskConfig{
+	baseTask := platformtask.NewInventorySyncTask(platformtask.InventorySyncTaskConfig{
 		TaskConfig:       config,
 		ManagementClient: managementClient,
 		InventoryService: adapter,
@@ -48,3 +48,5 @@ func NewInventoryTask(
 func (t *InventoryTask) Execute(ctx context.Context) error {
 	return t.InventorySyncTask.Execute(ctx)
 }
+
+

@@ -5,7 +5,7 @@ import (
 	"context"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 	models "task-processor/internal/temu/api/product"
 	temuscheduler "task-processor/internal/temu/sync"
 )
@@ -16,7 +16,7 @@ type productSyncServiceAdapter struct {
 }
 
 // newProductSyncServiceAdapter 创建产品同步服务适配器
-func newProductSyncServiceAdapter(temuService temuscheduler.ProductSyncService) commonscheduler.ProductSyncService {
+func newProductSyncServiceAdapter(temuService temuscheduler.ProductSyncService) platformtask.ProductSyncService {
 	return &productSyncServiceAdapter{
 		temuService: temuService,
 	}
@@ -74,3 +74,5 @@ func (a *productSyncServiceAdapter) SaveProducts(ctx context.Context, products [
 	// 调用TEMU服务
 	return a.temuService.SaveProducts(ctx, productDataList)
 }
+
+

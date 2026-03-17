@@ -3,7 +3,7 @@
 import (
 	"task-processor/internal/model"
 	"task-processor/internal/product"
-	domainvalidation "task-processor/internal/validation"
+
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -11,13 +11,13 @@ import (
 
 // FilterRuleChecker 筛选规则检查器（SHEIN平台包装器）
 type FilterRuleChecker struct {
-	checker *domainvalidation.RuleChecker
+	checker *product.RuleChecker
 }
 
 // NewFilterRuleChecker 创建新的筛选规则检查器
 func NewFilterRuleChecker() *FilterRuleChecker {
 	return &FilterRuleChecker{
-		checker: domainvalidation.NewRuleChecker(),
+		checker: product.NewRuleChecker(),
 	}
 }
 
@@ -31,13 +31,13 @@ func (h *FilterRuleChecker) getInventory(amazonProduct *model.Product) int {
 	return product.GetInventory(amazonProduct)
 }
 
-// getDeliveryTime 获取发货时效
-func (h *FilterRuleChecker) getDeliveryTime(amazonProduct *model.Product) int {
+// getDeliveryTime 获取发货时效（固定返回24小时）
+func (h *FilterRuleChecker) getDeliveryTime(_ *model.Product) int {
 	return 24
 }
 
 // CheckPriceRange 校验价格范围
-func (c *FilterRuleChecker) CheckPriceRange(filterRule *domainvalidation.FilterRule, priceValue float64) error {
+func (c *FilterRuleChecker) CheckPriceRange(filterRule *product.FilterRule, priceValue float64) error {
 	if err := c.checker.CheckPriceRange(filterRule, priceValue); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -45,7 +45,7 @@ func (c *FilterRuleChecker) CheckPriceRange(filterRule *domainvalidation.FilterR
 }
 
 // CheckInventory 校验库存
-func (c *FilterRuleChecker) CheckInventory(filterRule *domainvalidation.FilterRule, inventory int) error {
+func (c *FilterRuleChecker) CheckInventory(filterRule *product.FilterRule, inventory int) error {
 	if err := c.checker.CheckInventory(filterRule, inventory); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -53,7 +53,7 @@ func (c *FilterRuleChecker) CheckInventory(filterRule *domainvalidation.FilterRu
 }
 
 // CheckDeliveryTime 校验发货时效
-func (c *FilterRuleChecker) CheckDeliveryTime(filterRule *domainvalidation.FilterRule, deliveryTime int) error {
+func (c *FilterRuleChecker) CheckDeliveryTime(filterRule *product.FilterRule, deliveryTime int) error {
 	if err := c.checker.CheckDeliveryTime(filterRule, deliveryTime); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -61,7 +61,7 @@ func (c *FilterRuleChecker) CheckDeliveryTime(filterRule *domainvalidation.Filte
 }
 
 // CheckRating 校验评论星级
-func (c *FilterRuleChecker) CheckRating(filterRule *domainvalidation.FilterRule, rating float64) error {
+func (c *FilterRuleChecker) CheckRating(filterRule *product.FilterRule, rating float64) error {
 	if err := c.checker.CheckRating(filterRule, rating); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -69,7 +69,7 @@ func (c *FilterRuleChecker) CheckRating(filterRule *domainvalidation.FilterRule,
 }
 
 // CheckReviewCount 校验评论数量
-func (c *FilterRuleChecker) CheckReviewCount(filterRule *domainvalidation.FilterRule, reviewCount int) error {
+func (c *FilterRuleChecker) CheckReviewCount(filterRule *product.FilterRule, reviewCount int) error {
 	if err := c.checker.CheckReviewCount(filterRule, reviewCount); err != nil {
 		return shein.NewFilteredError(err.Error())
 	}
@@ -77,9 +77,9 @@ func (c *FilterRuleChecker) CheckReviewCount(filterRule *domainvalidation.Filter
 }
 
 // CheckFulfillmentType 校验配送方式
-func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *domainvalidation.FilterRule, amazonProduct *model.Product) error {
-	isFBA := domainvalidation.IsFBAFulfillment(amazonProduct.ShipsFrom)
-	isAMZ := domainvalidation.IsAMZSeller(amazonProduct.SellerName)
+func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *product.FilterRule, amazonProduct *model.Product) error {
+	isFBA := product.IsFBAFulfillment(amazonProduct.ShipsFrom)
+	isAMZ := product.IsAMZSeller(amazonProduct.SellerName)
 
 	logrus.WithFields(logrus.Fields{
 		"asin":          amazonProduct.Asin,
@@ -95,6 +95,3 @@ func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *domainvalidation.Fi
 	}
 	return nil
 }
-
-
-

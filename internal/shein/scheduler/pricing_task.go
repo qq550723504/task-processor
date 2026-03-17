@@ -8,14 +8,14 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/shein/client"
 	sheinpricing "task-processor/internal/shein/pricing"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 )
 
 // PricingTask SHEIN核价任务
 // 已废弃：使用通用的AutoPricingTask替代
 // 保留此类型以保持向后兼容
 type PricingTask struct {
-	*commonscheduler.AutoPricingTask
+	*platformtask.AutoPricingTask
 	adapter *SheinAutoPricingAdapter
 }
 
@@ -31,7 +31,7 @@ func NewPricingTask(
 	adapter := NewSheinAutoPricingAdapter(pricingService)
 
 	// 创建通用自动核价任务
-	autoPricingTask := commonscheduler.NewAutoPricingTask(commonscheduler.AutoPricingTaskConfig{
+	autoPricingTask := platformtask.NewAutoPricingTask(platformtask.AutoPricingTaskConfig{
 		TaskConfig:       config,
 		ManagementClient: managementClient,
 		PricingService:   adapter,
@@ -49,3 +49,5 @@ func NewPricingTask(
 func (t *PricingTask) Execute(ctx context.Context) error {
 	return t.AutoPricingTask.Execute(ctx)
 }
+
+

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
 	"task-processor/internal/temu/pricing"
@@ -58,7 +58,7 @@ func (a *TemuAutoPricingAdapter) ApplyPricingRules(ctx context.Context, products
 
 // SubmitPricingResults 提交核价结果
 // Temu平台的实现是一次性完成获取、决策和提交的完整流程
-func (a *TemuAutoPricingAdapter) SubmitPricingResults(ctx context.Context, results []any) (*commonscheduler.PricingStats, error) {
+func (a *TemuAutoPricingAdapter) SubmitPricingResults(ctx context.Context, results []any) (*platformtask.PricingStats, error) {
 	a.logger.Info("开始Temu自动核价处理（完整流程）")
 
 	// 调用Temu的自动核价服务，它会完成：
@@ -75,12 +75,12 @@ func (a *TemuAutoPricingAdapter) SubmitPricingResults(ctx context.Context, resul
 }
 
 // convertTemuStats 转换Temu的统计信息到通用格式
-func convertTemuStats(stats *temupricing.Statistics) *commonscheduler.PricingStats {
+func convertTemuStats(stats *temupricing.Statistics) *platformtask.PricingStats {
 	if stats == nil {
-		return &commonscheduler.PricingStats{}
+		return &platformtask.PricingStats{}
 	}
 
-	return &commonscheduler.PricingStats{
+	return &platformtask.PricingStats{
 		TotalProcessed: stats.TotalProcessed,
 		AcceptCount:    stats.AcceptCount,
 		RejectCount:    stats.RejectCount,
@@ -88,3 +88,5 @@ func convertTemuStats(stats *temupricing.Statistics) *commonscheduler.PricingSta
 		SkipCount:      stats.SkipCount,
 	}
 }
+
+

@@ -1,6 +1,6 @@
 ﻿// Package scheduler 提供平台通用的自动核价任务基础实现
 // 用于半托管模式电商平台的自动核价功能
-package taskbase
+package platformtask
 
 import (
 	"context"
@@ -140,3 +140,5 @@ func (t *AutoPricingTask) GetManagementClient() *management.ClientManager {
 func (t *AutoPricingTask) GetPricingService() AutoPricingService {
 	return t.pricingService
 }
+
+

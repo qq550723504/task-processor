@@ -6,7 +6,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/inventory"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 )
 
 // inventorySyncServiceAdapter 适配器，将SHEIN特定的InventorySyncService适配到通用接口
@@ -15,7 +15,7 @@ type inventorySyncServiceAdapter struct {
 }
 
 // newInventorySyncServiceAdapter 创建库存同步服务适配器
-func newInventorySyncServiceAdapter(sheinService inventory.InventorySyncService) commonscheduler.InventorySyncService {
+func newInventorySyncServiceAdapter(sheinService inventory.InventorySyncService) platformtask.InventorySyncService {
 	return &inventorySyncServiceAdapter{
 		sheinService: sheinService,
 	}
@@ -37,7 +37,7 @@ func (a *inventorySyncServiceAdapter) FetchProductsForInventorySync(ctx context.
 }
 
 // MonitorInventoryChanges 监控库存和价格变化（适配到通用接口）
-func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Context, products []any, tenantID, storeID int64) (*commonscheduler.InventorySyncResult, error) {
+func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Context, products []any, tenantID, storeID int64) (*platformtask.InventorySyncResult, error) {
 	// 转换回SHEIN特定类型
 	sheinProducts := make([]*managementapi.ProductDataDTO, len(products))
 	for i, p := range products {
@@ -53,7 +53,7 @@ func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Contex
 	}
 
 	// 转换为通用结果类型
-	return &commonscheduler.InventorySyncResult{
+	return &platformtask.InventorySyncResult{
 		TotalProducts:     result.TotalProducts,
 		ProcessedProducts: result.ProcessedProducts,
 		SkippedProducts:   result.SkippedProducts,
@@ -63,3 +63,5 @@ func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Contex
 		AmazonFailed:      result.AmazonFailed,
 	}, nil
 }
+
+

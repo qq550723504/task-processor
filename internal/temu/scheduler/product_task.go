@@ -6,14 +6,14 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 	temuscheduler "task-processor/internal/temu/sync"
 )
 
 // ProductSyncTask TEMU产品同步任务
 // 使用通用基类实现
 type ProductSyncTask struct {
-	*commonscheduler.ProductSyncTask
+	*platformtask.ProductSyncTask
 }
 
 // NewProductSyncTask 创建TEMU产品同步任务
@@ -27,7 +27,7 @@ func NewProductSyncTask(
 	adapter := newProductSyncServiceAdapter(syncService)
 
 	// 使用通用基类创建任务
-	baseTask := commonscheduler.NewProductSyncTask(commonscheduler.ProductSyncTaskConfig{
+	baseTask := platformtask.NewProductSyncTask(platformtask.ProductSyncTaskConfig{
 		TaskConfig:       config,
 		ManagementClient: managementClient,
 		SyncService:      adapter,
@@ -44,3 +44,5 @@ func NewProductSyncTask(
 func (t *ProductSyncTask) Execute(ctx context.Context) error {
 	return t.ProductSyncTask.Execute(ctx)
 }
+
+

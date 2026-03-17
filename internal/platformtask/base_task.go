@@ -1,5 +1,5 @@
 ﻿// Package scheduler 提供平台通用的任务基础实现
-package taskbase
+package platformtask
 
 import (
 	"fmt"
@@ -79,3 +79,5 @@ func (t *BaseTask) SetStatus(status appscheduler.TaskStatus) {
 func (t *BaseTask) GetTenantID() int64 {
 	return t.tenantID
 }
+
+

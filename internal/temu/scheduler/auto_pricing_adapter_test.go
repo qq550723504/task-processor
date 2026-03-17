@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
 )
@@ -126,7 +126,7 @@ func TestConvertTemuStats(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *temupricing.Statistics
-		expected *commonscheduler.PricingStats
+		expected *platformtask.PricingStats
 	}{
 		{
 			name: "正常统计",
@@ -137,7 +137,7 @@ func TestConvertTemuStats(t *testing.T) {
 				ReappealCount:  1,
 				SkipCount:      1,
 			},
-			expected: &commonscheduler.PricingStats{
+			expected: &platformtask.PricingStats{
 				TotalProcessed: 10,
 				AcceptCount:    5,
 				RejectCount:    3,
@@ -148,7 +148,7 @@ func TestConvertTemuStats(t *testing.T) {
 		{
 			name:  "空统计",
 			input: nil,
-			expected: &commonscheduler.PricingStats{
+			expected: &platformtask.PricingStats{
 				TotalProcessed: 0,
 				AcceptCount:    0,
 				RejectCount:    0,
@@ -165,7 +165,7 @@ func TestConvertTemuStats(t *testing.T) {
 				ReappealCount:  0,
 				SkipCount:      0,
 			},
-			expected: &commonscheduler.PricingStats{
+			expected: &platformtask.PricingStats{
 				TotalProcessed: 5,
 				AcceptCount:    5,
 				RejectCount:    0,
@@ -182,7 +182,7 @@ func TestConvertTemuStats(t *testing.T) {
 				ReappealCount:  0,
 				SkipCount:      0,
 			},
-			expected: &commonscheduler.PricingStats{
+			expected: &platformtask.PricingStats{
 				TotalProcessed: 5,
 				AcceptCount:    0,
 				RejectCount:    5,
@@ -214,3 +214,5 @@ func TestConvertTemuStats(t *testing.T) {
 		})
 	}
 }
+
+

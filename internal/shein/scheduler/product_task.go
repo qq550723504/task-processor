@@ -8,13 +8,13 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/shein/client"
 	"task-processor/internal/shein/productsync"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 )
 
 // ProductSyncTask SHEIN产品同步任务
 // 使用通用基类实现
 type ProductSyncTask struct {
-	*commonscheduler.ProductSyncTask
+	*platformtask.ProductSyncTask
 	clientManager *client.ClientManager // 保留SHEIN特定的字段
 }
 
@@ -30,7 +30,7 @@ func NewProductSyncTask(
 	adapter := newProductSyncServiceAdapter(syncService)
 
 	// 使用通用基类创建任务
-	baseTask := commonscheduler.NewProductSyncTask(commonscheduler.ProductSyncTaskConfig{
+	baseTask := platformtask.NewProductSyncTask(platformtask.ProductSyncTaskConfig{
 		TaskConfig:       config,
 		ManagementClient: managementClient,
 		SyncService:      adapter,
@@ -48,3 +48,5 @@ func NewProductSyncTask(
 func (t *ProductSyncTask) Execute(ctx context.Context) error {
 	return t.ProductSyncTask.Execute(ctx)
 }
+
+

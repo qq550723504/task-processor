@@ -7,7 +7,7 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/taskbase"
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/temu/api"
 )
 
@@ -15,7 +15,7 @@ import (
 // 已废弃：使用通用的AutoPricingTask替代
 // 保留此类型以保持向后兼容
 type PricingTask struct {
-	*commonscheduler.AutoPricingTask
+	*platformtask.AutoPricingTask
 	adapter *TemuAutoPricingAdapter
 }
 
@@ -37,7 +37,7 @@ func NewPricingTask(
 	adapter := NewTemuAutoPricingAdapter(apiClient, managementClient)
 
 	// 创建通用自动核价任务
-	autoPricingTask := commonscheduler.NewAutoPricingTask(commonscheduler.AutoPricingTaskConfig{
+	autoPricingTask := platformtask.NewAutoPricingTask(platformtask.AutoPricingTaskConfig{
 		TaskConfig:       config,
 		ManagementClient: managementClient,
 		PricingService:   adapter,
@@ -65,3 +65,5 @@ func (t *PricingTask) Execute(ctx context.Context) error {
 	// 注意：Temu的实现会在SubmitPricingResults中完成所有工作
 	return t.AutoPricingTask.Execute(ctx)
 }
+
+
