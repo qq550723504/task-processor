@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 )
 
 // MarshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
@@ -92,4 +94,16 @@ func CompactJSON(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("压缩JSON失败: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// SaveToFile 将 JSON 数据写入 logs/ 目录下的指定文件名
+func SaveToFile(filename string, data []byte) error {
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		return fmt.Errorf("创建日志目录失败: %w", err)
+	}
+	filePath := filepath.Join("logs", filename)
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("写入文件失败: %w", err)
+	}
+	return nil
 }

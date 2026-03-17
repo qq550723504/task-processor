@@ -8,12 +8,12 @@ import (
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
-	domainProduct "task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/perf"
+	domainProduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -239,15 +239,7 @@ func (h *ParallelVariantHandler) getAsinListFromContext(temuCtx *temucontext.Tem
 
 // getAsinListFromMap 从AsinSkuMap中提取所有ASIN
 func (h *ParallelVariantHandler) getAsinListFromMap(asinSkuMap map[string]string) []string {
-	if len(asinSkuMap) == 0 {
-		return []string{}
-	}
-
-	asinList := make([]string, 0, len(asinSkuMap))
-	for asin := range asinSkuMap {
-		asinList = append(asinList, asin)
-	}
-	return asinList
+	return extractAsinListFromMap(asinSkuMap)
 }
 
 // processSingleProduct 处理单一产品（无变体）
@@ -297,5 +289,3 @@ func (h *ParallelVariantHandler) processVariantData(temuCtx *temucontext.TemuTas
 func (h *ParallelVariantHandler) Shutdown() {
 	h.logger.Debug("ParallelVariantHandler 关闭")
 }
-
-

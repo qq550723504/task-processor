@@ -323,41 +323,11 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 	// 转换为批量请求格式
 	products := make([]managementapi.ProductDataItemDTO, 0, totalCount)
 	for _, productData := range productDataList {
-		item := managementapi.ProductDataItemDTO{
-			PlatformProductID:  productData.PlatformProductID,
-			ProductName:        productData.Title,
-			ProductSku:         productData.ProductID,
-			ProductPrice:       productData.OriginalPrice,
-			ProductStock:       productData.Stock, // 默认库存，需要根据实际情况设置
-			ProductCategory:    productData.Category,
-			ProductImage:       productData.MainImageURL,
-			ProductDescription: productData.Description,
-			ShelfStatus:        &productData.ShelfStatus,
-			PublishTime:        productData.PublishTime,
-			ShelfTime:          productData.ShelfTime,
-			Brand:              productData.Brand,
-			CategoryID:         &productData.CategoryID,
-			SpecialPrice:       productData.SpecialPrice,
-			PriceCurrency:      productData.PriceCurrency,
-			ImageUrls:          productData.ImageURLs,
-			Attributes:         productData.Attributes,
-			PlatformStatus:     productData.PlatformStatus,
-			PlatformData:       productData.PlatformData,
-			ParentProductID:    productData.ParentProductID,
-			CreateTime:         productData.CreateTime,
-			UpdateTime:         productData.UpdateTime,
-		}
-		products = append(products, item)
+		products = append(products, managementapi.NewProductDataItemDTO(productData))
 	}
 
 	// 构建批量请求
-	batchReq := &managementapi.ProductDataBatchSaveReqDTO{
-		Platform: firstProduct.Platform,
-		TenantID: firstProduct.TenantID,
-		Region:   firstProduct.Region,
-		StoreID:  firstProduct.StoreID,
-		Products: products,
-	}
+	batchReq := managementapi.NewProductDataBatchSaveReqDTO(firstProduct, products)
 
 	// 执行批量保存
 	successCount, err := productDataAPI.BatchCreateOrUpdate(batchReq)
@@ -373,4 +343,3 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 
 	return successCount, nil
 }
-

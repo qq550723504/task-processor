@@ -181,21 +181,24 @@ func (s *SensitiveWordService) GetSensitiveWordsByLanguage(language string) (sta
 
 // AddDynamicSensitiveWords 添加动态敏感词（自动检测语言）
 func (s *SensitiveWordService) AddDynamicSensitiveWords(words []string) {
+	s.addSensitiveWords(words, s.config.DynamicWords, "动态")
+}
+
+// AddStaticSensitiveWords 添加静态敏感词（自动检测语言）
+func (s *SensitiveWordService) AddStaticSensitiveWords(words []string) {
+	s.addSensitiveWords(words, s.config.StaticWords, "静态")
+}
+
+// addSensitiveWords 通用：按语言分类后添加到指定词表
+func (s *SensitiveWordService) addSensitiveWords(words []string, target map[string][]string, kind string) {
 	if len(words) == 0 {
 		return
 	}
-
-	// 按语言分类
 	wordsByLang := s.classifyWordsByLanguage(words)
-
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-
-	// 添加到配置中
-	totalAdded := s.addWordsToConfig(s.config.DynamicWords, wordsByLang, "动态")
-
-	if totalAdded > 0 {
-		logrus.Infof("✅ 成功添加 %d 个动态敏感词", totalAdded)
+	if totalAdded := s.addWordsToConfig(target, wordsByLang, kind); totalAdded > 0 {
+		logrus.Infof("✅ 成功添加 %d 个%s敏感词", totalAdded, kind)
 		s.saveConfigAsync()
 	}
 }
@@ -203,27 +206,6 @@ func (s *SensitiveWordService) AddDynamicSensitiveWords(words []string) {
 // AddDynamicSensitiveWordsByLanguage 按指定语言添加动态敏感词
 func (s *SensitiveWordService) AddDynamicSensitiveWordsByLanguage(language string, words []string) {
 	s.addWordsByLanguage(s.config.DynamicWords, language, words, "动态")
-}
-
-// AddStaticSensitiveWords 添加静态敏感词（自动检测语言）
-func (s *SensitiveWordService) AddStaticSensitiveWords(words []string) {
-	if len(words) == 0 {
-		return
-	}
-
-	// 按语言分类
-	wordsByLang := s.classifyWordsByLanguage(words)
-
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	// 添加到配置中
-	totalAdded := s.addWordsToConfig(s.config.StaticWords, wordsByLang, "静态")
-
-	if totalAdded > 0 {
-		logrus.Infof("✅ 成功添加 %d 个静态敏感词", totalAdded)
-		s.saveConfigAsync()
-	}
 }
 
 // ClearDynamicSensitiveWords 清空动态敏感词列表

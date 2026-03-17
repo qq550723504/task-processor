@@ -7,11 +7,11 @@ import (
 	"strings"
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/strx"
 	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -231,15 +231,7 @@ func (h *VariantJsonDataHandler) getAsinListFromContext(temuCtx *temucontext.Tem
 
 // getAsinListFromMap 从AsinSkuMap中提取所有ASIN
 func (h *VariantJsonDataHandler) getAsinListFromMap(asinSkuMap map[string]string) []string {
-	if len(asinSkuMap) == 0 {
-		return []string{}
-	}
-
-	asinList := make([]string, 0, len(asinSkuMap))
-	for asin := range asinSkuMap {
-		asinList = append(asinList, asin)
-	}
-	return asinList
+	return extractAsinListFromMap(asinSkuMap)
 }
 
 // processSingleProduct 处理单一产品（无变体）
@@ -332,5 +324,3 @@ func (h *VariantJsonDataHandler) GetVariantByAsinFromVariants(variants []*model.
 func (h *VariantJsonDataHandler) Shutdown() {
 	h.logger.Debug("VariantJsonDataHandler 关闭")
 }
-
-

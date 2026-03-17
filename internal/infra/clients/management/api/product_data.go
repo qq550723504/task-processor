@@ -146,3 +146,42 @@ type CommonResult[T any] struct {
 	Msg  string `json:"msg"`
 	Data T      `json:"data"`
 }
+
+// NewProductDataItemDTO 将 ProductDataDTO 转换为 ProductDataItemDTO
+func NewProductDataItemDTO(prod *ProductDataDTO) ProductDataItemDTO {
+	return ProductDataItemDTO{
+		PlatformProductID:  prod.PlatformProductID,
+		ProductName:        prod.Title,
+		ProductSku:         prod.ProductID,
+		ProductPrice:       prod.OriginalPrice,
+		ProductStock:       prod.Stock,
+		ProductCategory:    prod.Category,
+		ProductImage:       prod.MainImageURL,
+		ProductDescription: prod.Description,
+		ShelfStatus:        &prod.ShelfStatus,
+		PublishTime:        prod.PublishTime,
+		ShelfTime:          prod.ShelfTime,
+		Brand:              prod.Brand,
+		CategoryID:         &prod.CategoryID,
+		SpecialPrice:       prod.SpecialPrice,
+		PriceCurrency:      prod.PriceCurrency,
+		ImageUrls:          prod.ImageURLs,
+		Attributes:         prod.Attributes,
+		PlatformStatus:     prod.PlatformStatus,
+		PlatformData:       prod.PlatformData,
+		ParentProductID:    prod.ParentProductID,
+		CreateTime:         prod.CreateTime,
+		UpdateTime:         prod.UpdateTime,
+	}
+}
+
+// NewProductDataBatchSaveReqDTO 构建批量保存请求
+func NewProductDataBatchSaveReqDTO(prod *ProductDataDTO, items []ProductDataItemDTO) *ProductDataBatchSaveReqDTO {
+	return &ProductDataBatchSaveReqDTO{
+		Platform: prod.Platform,
+		TenantID: prod.TenantID,
+		Region:   prod.Region,
+		StoreID:  prod.StoreID,
+		Products: items,
+	}
+}

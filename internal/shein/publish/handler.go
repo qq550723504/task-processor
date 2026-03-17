@@ -3,8 +3,6 @@ package publish
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
@@ -129,17 +127,9 @@ func (h *PublishProductHandler) saveJSONToFile(taskID string, jsonData []byte, p
 
 // saveJSONToFileWithName 使用指定文件名保存JSON数据到文件
 func (h *PublishProductHandler) saveJSONToFileWithName(filename string, jsonData []byte) error {
-	// 确保目录存在
-	if err := os.MkdirAll("logs", 0755); err != nil {
-		return fmt.Errorf("创建日志目录失败: %w", err)
+	if err := jsonx.SaveToFile(filename, jsonData); err != nil {
+		return err
 	}
-
-	// 写入文件
-	filePath := filepath.Join("logs", filename)
-	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
-		return fmt.Errorf("写入文件失败: %w", err)
-	}
-
-	logrus.Infof("JSON数据已保存到文件: %s", filePath)
+	logrus.Infof("JSON数据已保存到文件: logs/%s", filename)
 	return nil
 }

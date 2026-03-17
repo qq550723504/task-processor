@@ -75,3 +75,15 @@ func (vp *SkuVariantProcessor) buildAIVariant(
 
 	return aiVariant
 }
+
+// extractAsinListFromMap 从 AsinSkuMap 中提取所有 ASIN 键
+func extractAsinListFromMap(asinSkuMap map[string]string) []string {
+	if len(asinSkuMap) == 0 {
+		return []string{}
+	}
+	asinList := make([]string, 0, len(asinSkuMap))
+	for asin := range asinSkuMap {
+		asinList = append(asinList, asin)
+	}
+	return asinList
+}

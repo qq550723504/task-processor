@@ -81,40 +81,26 @@ func (s *StoreConfigService) IsRebargainEnabled() bool {
 
 // GetPriceType 获取店铺配置的价格类型
 func (s *StoreConfigService) GetPriceType() string {
-	const defaultPriceType = "special"
-
-	if s.storeConfig == nil {
-		s.logger.Debugf("店铺配置为空，使用默认价格类型: %s", defaultPriceType)
-		return defaultPriceType
-	}
-
-	if s.storeConfig.PriceType == "" {
-		s.logger.Debugf("价格类型配置为空，使用默认值: %s", defaultPriceType)
-		return defaultPriceType
-	}
-
-	priceType := s.storeConfig.PriceType
-	s.logger.Debugf("使用配置的价格类型: %s", priceType)
-	return priceType
+	return s.getConfigString(s.storeConfig.PriceType, "special", "价格类型")
 }
 
 // GetPriceRejectStrategy 获取核价拒绝策略
 func (s *StoreConfigService) GetPriceRejectStrategy() string {
-	const defaultStrategy = "KEEP_ONLINE"
+	return s.getConfigString(s.storeConfig.TemuPriceRejectStrategy, "KEEP_ONLINE", "拒绝策略")
+}
 
+// getConfigString 通用：从店铺配置中读取字符串字段，配置为空时返回默认值
+func (s *StoreConfigService) getConfigString(value, defaultVal, fieldName string) string {
 	if s.storeConfig == nil {
-		s.logger.Debugf("店铺配置为空，使用默认拒绝策略: %s", defaultStrategy)
-		return defaultStrategy
+		s.logger.Debugf("店铺配置为空，使用默认%s: %s", fieldName, defaultVal)
+		return defaultVal
 	}
-
-	if s.storeConfig.TemuPriceRejectStrategy == "" {
-		s.logger.Debugf("拒绝策略配置为空，使用默认值: %s", defaultStrategy)
-		return defaultStrategy
+	if value == "" {
+		s.logger.Debugf("%s配置为空，使用默认值: %s", fieldName, defaultVal)
+		return defaultVal
 	}
-
-	strategy := s.storeConfig.TemuPriceRejectStrategy
-	s.logger.Debugf("使用配置的拒绝策略: %s", strategy)
-	return strategy
+	s.logger.Debugf("使用配置的%s: %s", fieldName, value)
+	return value
 }
 
 // GetStoreConfig 获取完整的店铺配置（用于调试和扩展）

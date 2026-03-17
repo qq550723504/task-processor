@@ -38,16 +38,8 @@ func (a *API) CheckText(request *TextCheckRequest) (*TextCheckResponse, error) {
 	if request == nil || request.Content == "" {
 		return nil, fmt.Errorf("检查文本不能为空")
 	}
-
-	req := map[string]any{
-		"method":  "POST",
-		"url":     "/mms/marigold/query/commit/check_text",
-		"headers": a.defaultHeaders(),
-		"body":    request,
-	}
-
 	var result TextCheckResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postQuery("/mms/marigold/query/commit/check_text", request, a.defaultHeaders(), &result); err != nil {
 		return nil, fmt.Errorf("文本检查请求失败: %w", err)
 	}
 	if !result.Success {
@@ -64,15 +56,8 @@ func (a *API) QueryTemplate(request *TemplateQueryRequest) (*TemplateQueryRespon
 	if request == nil {
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
-
-	req := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/query/commit/query_template",
-		"body":   request,
-	}
-
 	var result TemplateQueryResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postQuery("/mms/marigold/query/commit/query_template", request, nil, &result); err != nil {
 		return nil, fmt.Errorf("模板查询请求失败: %w", err)
 	}
 	if !result.Success {
@@ -86,16 +71,8 @@ func (a *API) QueryTemplateAdvanced(request *temutemplate.TemplateQueryRequest) 
 	if request == nil {
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
-
-	req := map[string]any{
-		"method":  "POST",
-		"url":     "/mms/marigold/query/commit/query_template",
-		"headers": a.defaultHeaders(),
-		"body":    request,
-	}
-
 	var result temutemplate.TemplateQueryResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postQuery("/mms/marigold/query/commit/query_template", request, a.defaultHeaders(), &result); err != nil {
 		return nil, fmt.Errorf("模板查询请求失败: %w", err)
 	}
 	if !result.Success {
@@ -109,15 +86,8 @@ func (a *API) QuerySpec(request *SpecQueryRequest) (*SpecQueryResponse, error) {
 	if request == nil {
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
-
-	req := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/edit/commit/spec_query",
-		"body":   request,
-	}
-
 	var result SpecQueryResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postQuery("/mms/marigold/edit/commit/spec_query", request, nil, &result); err != nil {
 		return nil, fmt.Errorf("规格查询请求失败: %w", err)
 	}
 	if !result.Success {
@@ -131,15 +101,8 @@ func (a *API) CheckSkuSn(request *SkuSnCheckRequest) (*SkuSnCheckResponse, error
 	if request == nil {
 		return nil, fmt.Errorf("检查请求不能为空")
 	}
-
-	req := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/query/commit/out_sku_sn_batch_check",
-		"body":   request,
-	}
-
 	var result SkuSnCheckResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postQuery("/mms/marigold/query/commit/out_sku_sn_batch_check", request, nil, &result); err != nil {
 		return nil, fmt.Errorf("SKU编码检查请求失败: %w", err)
 	}
 	if !result.Success {
@@ -153,15 +116,8 @@ func (a *API) QueryCostTemplate(request *CostTemplateRequest) (*CostTemplateResp
 	if request == nil {
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
-
-	req := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/query/commit/query_cost_template",
-		"body":   request,
-	}
-
 	var result CostTemplateResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postQuery("/mms/marigold/query/commit/query_cost_template", request, nil, &result); err != nil {
 		return nil, fmt.Errorf("成本模板查询请求失败: %w", err)
 	}
 	if !result.Success {
@@ -175,15 +131,8 @@ func (a *API) QueryCommitDetail(request *CommitDetailRequest) (*CommitDetailResp
 	if request == nil {
 		return nil, fmt.Errorf("查询请求不能为空")
 	}
-
-	req := map[string]any{
-		"method": "POST",
-		"url":    "/mms/marigold/query/commit/query_commit_detail",
-		"body":   request,
-	}
-
 	var result CommitDetailResponse
-	if err := a.client.SendTEMURequest(req, &result); err != nil {
+	if err := a.postQuery("/mms/marigold/query/commit/query_commit_detail", request, nil, &result); err != nil {
 		return nil, fmt.Errorf("提交详情查询请求失败: %w", err)
 	}
 	if !result.Success {
@@ -226,6 +175,19 @@ func (a *API) QuerySkuPriceAndStock(commitID, goodsID string) (*SkuQueryResponse
 // QuerySkuPriceAndStockWithOptions 使用选项查询SKU价格与库存
 func (a *API) QuerySkuPriceAndStockWithOptions(options SkuQueryOptions) (*SkuQueryResponse, error) {
 	return a.QuerySkuPriceAndStock(options.CommitID, options.GoodsID)
+}
+
+// postQuery 通用 POST 请求辅助：构建请求并发送，result 需为指针
+func (a *API) postQuery(url string, body any, headers map[string]string, result any) error {
+	req := map[string]any{
+		"method": "POST",
+		"url":    url,
+		"body":   body,
+	}
+	if len(headers) > 0 {
+		req["headers"] = headers
+	}
+	return a.client.SendTEMURequest(req, result)
 }
 
 func isTimeoutError(err error) bool {
