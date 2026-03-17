@@ -16,7 +16,11 @@
 3. **数据处理**:
    - 图片优化处理（压缩、裁剪、水印等）
    - 商品信息格式转换和适配
-4. **商品上架**:
+4. **商品信息增强**:
+   - 通过 LLM 对商品标题、描述、属性进行智能优化
+   - 质量评分与增强建议，提升商品上架通过率
+   - 变体信息补全与结果校验
+5. **商品上架**:
    - 自动上架到目标平台（SHEIN、TEMU、Amazon 等）
    - 支持批量上架和多店铺管理
 
@@ -205,44 +209,138 @@
 
 ```
 task-processor/
-├── cmd/                    # 应用入口
-│   ├── task/              # 定时调度模式
-│   └── rabbitmq-consumer/ # RabbitMQ消费者模式
-├── internal/              # 内部代码
-│   ├── app/              # 应用层
-│   │   ├── scheduler/    # 调度器
-│   │   ├── service/      # 服务层
-│   │   └── worker/       # Worker池
-│   ├── core/             # 核心组件
-│   │   ├── config/       # 配置管理
-│   │   ├── lifecycle/    # 生命周期管理
-│   │   └── logger/       # 日志管理
-│   ├── platforms/        # 平台实现
-│   │   ├── temu/        # TEMU平台
-│   │   ├── shein/       # SHEIN平台
-│   │   └── amazon/      # Amazon平台
-│   ├── crawler/          # 爬虫实现
-│   └── infra/           # 基础设施
-├── config/               # 配置文件
-├── docs/                 # 文档
-└── tests/               # 测试
+├── cmd/                          # 应用入口（每个子目录一个 main.go）
+│   ├── task/                    # 定时调度模式（核价、库存同步等）
+│   ├── rabbitmq-consumer/       # RabbitMQ 消费者模式（上架任务）
+│   ├── crawler-consumer/        # 爬虫专用消费者
+│   ├── 1688-crawler/            # 1688 爬虫独立入口
+│   ├── 1688-crawler-api/        # 1688 爬虫 HTTP API 服务
+│   ├── amazon-crawler/          # Amazon 爬虫独立入口
+│   ├── amazon-crawler-api/      # Amazon 爬虫 HTTP API 服务
+│   ├── shein-listing/           # SHEIN 上架独立入口
+│   ├── temu-listing/            # TEMU 上架独立入口
+│   └── productjson-api/         # 商品 JSON 数据 API 服务
+├── internal/                    # 私有业务逻辑（Go 编译器强制不对外暴露）
+│   ├── app/                     # 应用层：启动、调度、消息、任务编排
+│   │   ├── bootstrap/           # 应用启动与依赖组装
+│   │   ├── di/                  # 依赖注入容器
+│   │   ├── messaging/           # RabbitMQ 服务、队列配置、消息路由
+│   │   ├── processor/           # 通用处理器基类与接口
+│   │   ├── runner/              # 处理器/调度器生命周期管理
+│   │   ├── scheduler/           # 定时任务调度器（含分布式锁）
+│   │   ├── state/               # 运行时状态管理（Cookie、计数、暂停）
+│   │   ├── task/                # 任务分发、去重、队列管理
+│   │   ├── updater/             # 自动更新管理
+│   │   ├── crawler/             # 爬虫分布式调度
+│   │   └── worker/              # Worker 任务处理
+│   ├── core/                    # 核心基础设施（无业务依赖）
+│   │   ├── config/              # 配置加载、校验、类型定义
+│   │   ├── errors/              # 统一错误类型与辅助函数
+│   │   ├── lifecycle/           # 组件生命周期接口与管理器
+│   │   ├── logger/              # 日志管理（含滚动写入）
+│   │   ├── metrics/             # 任务指标采集
+│   │   └── system/              # 系统初始化
+│   ├── domain/                  # 领域模型与核心业务规则
+│   │   ├── model/               # 通用领域模型（Task、AmazonProduct 等）
+│   │   ├── task/                # 任务领域（Job、去重、消息适配）
+│   │   ├── product/             # 商品领域（获取、缓存、校验）
+│   │   ├── message/             # 消息类型定义
+│   │   ├── queue/               # 队列命名规范
+│   │   └── validation/          # 通用过滤规则
+│   ├── pipeline/                # 通用 Pipeline 框架（Handler 链式处理）
+│   │   └── handlers/            # 内置 Handler（初始化、日志、校验）
+│   ├── taskbase/                # 跨平台任务基类（核价、库存同步、商品同步）
+│   ├── platformbase/            # 平台处理器公共基类与任务类型定义
+│   ├── pricing/                 # 通用成本与利润计算
+│   ├── productenrich/           # 商品信息 AI 增强（标题优化、属性补全）
+│   ├── crawler/                 # 源平台爬虫实现
+│   │   ├── amazon/              # Amazon 爬虫（浏览器+API 双模式）
+│   │   ├── alibaba1688/         # 1688 爬虫（含验证码处理）
+│   │   └── shared/              # 爬虫共享组件（浏览器池）
+│   ├── amazon/                  # Amazon 目标平台（SP-API 上架）
+│   │   ├── api/                 # SP-API 客户端（Listings、Catalog、Pricing 等）
+│   │   ├── attribute/           # 属性映射与校验
+│   │   └── core/                # 转换器、变体提取、标识符生成
+│   ├── shein/                   # SHEIN 平台（上架、核价、活动、库存同步）
+│   │   ├── api/                 # SHEIN API 客户端（分模块）
+│   │   ├── client/              # HTTP 客户端与 Cookie 管理
+│   │   ├── category/            # 类目管理（AI 选类、限制检查）
+│   │   ├── content/             # 内容处理（文本清洗、敏感词、翻译）
+│   │   ├── operation/           # 运营功能（核价、库存同步、活动报名）
+│   │   ├── pipeline/            # SHEIN 上架 Pipeline
+│   │   ├── pricing/             # 定价计算
+│   │   ├── product/             # 商品构建（属性、图片、SKU、变体）
+│   │   ├── productdata/         # 商品数据提交
+│   │   ├── publish/             # 发布流程（校验、保存、结果处理）
+│   │   ├── store/               # 店铺与仓库管理
+│   │   ├── taskexecutor/        # 调度任务执行器（核价、库存、活动）
+│   │   ├── translate/           # 翻译服务
+│   │   └── validation/          # 上架校验（数量、每日限额、过滤规则）
+│   ├── temu/                    # TEMU 平台（上架、核价、活动、库存同步）
+│   │   ├── api/                 # TEMU API 客户端（分模块）
+│   │   ├── handlers/            # Pipeline Handler（AI、类目、图片、SKU 等）
+│   │   ├── pricingsvc/          # 自动核价服务
+│   │   ├── scheduler/           # 调度任务执行器
+│   │   ├── syncsvc/             # 库存与商品同步服务
+│   │   ├── bulkrelist/          # 批量重新上架
+│   │   ├── context/             # TEMU 上架上下文
+│   │   └── format/              # 数据格式化工具
+│   ├── infra/                   # 基础设施适配层
+│   │   ├── auth/                # 认证（Token 获取、Session 管理）
+│   │   ├── clients/             # 外部服务客户端（管理后台、OpenAI）
+│   │   ├── database/            # 数据库访问
+│   │   ├── httpx/               # HTTP 服务（健康检查、爬虫 API Handler）
+│   │   ├── lock/                # 分布式锁与内存锁
+│   │   ├── monitoring/          # 监控采集（健康检查、指标、进程信息）
+│   │   ├── productcrawler/      # 爬虫仓储实现
+│   │   ├── rabbitmq/            # RabbitMQ 客户端（连接、消费、重试）
+│   │   ├── repository/          # 数据仓储实现
+│   │   └── worker/              # Worker Pool 实现
+│   └── pkg/                     # 内部通用工具库（按职责命名，无业务逻辑）
+│       ├── strx/                # 字符串处理
+│       ├── timex/               # 时间格式化
+│       ├── mathx/               # 数学计算
+│       ├── jsonx/               # JSON 序列化/反序列化
+│       ├── httpclient/          # HTTP 客户端封装
+│       ├── imagex/              # 图片处理工具
+│       ├── watermark/           # 水印检测与去除
+│       ├── downloader/          # 图片下载与处理
+│       ├── resilience/          # 熔断器与重试
+│       ├── cache/               # 缓存工具
+│       ├── skugen/              # SKU 生成器
+│       ├── hashx/               # 哈希工具
+│       ├── fileio/              # 文件 I/O
+│       ├── ptr/                 # 指针辅助函数
+│       ├── goroutine/           # Goroutine 安全工具
+│       ├── recovery/            # Panic 恢复
+│       ├── timeout/             # 超时控制
+│       ├── perf/                # 性能工具
+│       ├── appenv/              # 应用环境工具
+│       ├── apperr/              # 应用错误定义
+│       └── types/               # 通用类型（FlexibleValue 等）
+├── api/                         # API 定义（Protobuf、OpenAPI）
+├── config/                      # 配置文件（dev/prod/test）
+├── data/                        # 静态数据（敏感词、禁售品列表）
+├── deployments/                 # 部署配置（Docker、Kubernetes）
+├── docs/                        # 文档
+└── examples/                    # 示例代码
 ```
 
 ### 添加新平台
 
-1. 在 `internal/platforms/` 下创建新平台目录
-2. 实现 `Processor` 接口
-3. 在配置文件中添加平台配置
-4. 注册处理器到系统
+1. 在 `internal/` 下创建新平台目录（如 `internal/walmart/`）
+2. 实现 `internal/platformbase` 中定义的 `Processor` 接口
+3. 在 `internal/app/bootstrap/platform_processors.go` 中注册处理器
+4. 在配置文件中添加平台配置
 
 示例：
 
 ```go
-type MyPlatformProcessor struct {
-    *worker.BaseProcessor
+type Processor struct {
+    *platformbase.BaseFactory
 }
 
-func (p *MyPlatformProcessor) ProcessTask(ctx context.Context, task *model.Task) error {
+func (p *Processor) ProcessTask(ctx context.Context, task *model.Task) error {
     // 实现任务处理逻辑
     return nil
 }
