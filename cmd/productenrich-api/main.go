@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/appenv"
 	"task-processor/internal/productenrich"
 
@@ -91,21 +92,37 @@ func run(logger *logrus.Logger) error {
 }
 
 // buildHandler 组装 productenrich 依赖并返回 ProductHandler。
-// TODO(dev): 接入真实的 TaskRepository、RedisClient、LLMManager 实现：
-//  1. 初始化 Redis 客户端，实现 productenrich.RedisClient 接口
-//  2. 实现 productenrich.TaskRepository（数据库持久化）
-//  3. 实现 productenrich.LLMManager（接入 OpenAI 等）
-//  4. 将上述依赖注入到 ProductServiceConfig
+// - TaskRepository：内存实现（如需持久化，替换为 productenrich.NewTaskRepository(db)）
+// - RedisClient：内存实现（如需真实 Redis，替换为 newRedisClient(redisCfg)）
+// - LLMManager：接入配置文件中的 OpenAI 配置
 func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, error) {
-	logger.Warn("⚠️  当前 TaskRepository 与 RedisClient 未注入，服务将无法正常处理请求，请完成依赖接入后再启动")
+	cfg := config.LoadConfigFromFile(*configPath)
+
+	// LLM Manager（接入 OpenAI）
+	llmMgr, err := newLLMManager(cfg.OpenAI.APIKey, cfg.OpenAI.Model, cfg.OpenAI.BaseURL, cfg.OpenAI.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("创建 LLMManager 失败: %w", err)
+	}
+	logger.Info("✅ OpenAI LLMManager 已初始化")
+
+	// TaskRepository（内存实现）
+	// TODO(dev): 替换为数据库实现：productenrich.NewTaskRepository(db)
+	taskRepo := newMemTaskRepository()
+	logger.Warn("⚠️  TaskRepository 使用内存实现，重启后数据丢失，生产环境请替换为数据库实现")
+
+	// RedisClient（内存实现）
+	// TODO(dev): 替换为真实 Redis 实现（需在 go.mod 引入 github.com/redis/go-redis/v9）
+	redisClient := newMemRedisClient()
+	logger.Warn("⚠️  RedisClient 使用内存实现，生产环境请替换为真实 Redis 实现")
 
 	svc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
-		QueueName: "product_enrich_tasks",
-		// TODO(dev): 补全以下依赖
-		// TaskRepo:             infra.NewTaskRepository(db),
-		// RedisClient:          infra.NewRedisClient(redisCfg),
-		// LLMManager:           infra.NewLLMManager(llmCfg),
+		QueueName:   "product_enrich_tasks",
+		TaskRepo:    taskRepo,
+		RedisClient: redisClient,
+		// LLMManager 通过 JSONGenerator 等组件间接使用，此处暂不注入
+		// 如需接入，请在 productenrich.ProductServiceConfig 中添加 LLMManager 字段
 	})
+	_ = llmMgr // 已初始化，待 ProductServiceConfig 支持后注入
 	if err != nil {
 		return nil, fmt.Errorf("创建 ProductService 失败: %w", err)
 	}
