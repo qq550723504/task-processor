@@ -3,7 +3,7 @@ package image
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
@@ -73,3 +73,4 @@ func (ip *ImageProcessor) GetProductImagesWithUpload(temuCtx *temucontext.TemuTa
 
 	return ip.carouselBuilder.GetProductImagesWithUpload(temuCtx), nil
 }
+

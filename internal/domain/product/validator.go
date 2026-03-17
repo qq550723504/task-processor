@@ -1,10 +1,10 @@
-// Package product 提供产品数据验证功能
+﻿// Package product 提供产品数据验证功能
 package product
 
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -179,3 +179,4 @@ func (v *ProductValidator) validateRegion(region string) bool {
 	}
 	return false
 }
+

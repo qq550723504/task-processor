@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -167,3 +167,4 @@ func (p *TemuProcessor) Close(ctx context.Context) {
 
 	log.Info("任务处理器已关闭")
 }
+

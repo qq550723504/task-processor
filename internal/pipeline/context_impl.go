@@ -1,10 +1,10 @@
-// Package pipeline 提供任务上下文具体实现
+﻿// Package pipeline 提供任务上下文具体实现
 package pipeline
 
 import (
 	"context"
 	"sync"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 )
 
 // DefaultTaskContext 通用任务上下文，只持有与平台无关的基础字段。
@@ -100,3 +100,4 @@ func (tc *DefaultTaskContext) SetError(err error) {
 }
 
 var _ TaskContext = (*DefaultTaskContext)(nil)
+

@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/app/di"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
@@ -114,3 +114,4 @@ func (p *PlatformProcessorRegistry) registerSheinProcessor(container di.Containe
 		return pipeline.NewSheinProcessor(context.Background(), config, logger, managementClient, amazonProcessor, nil)
 	})
 }
+

@@ -1,11 +1,11 @@
-// Package syncsvc 提供TEMU平台Amazon数据获取逻辑
+﻿// Package syncsvc 提供TEMU平台Amazon数据获取逻辑
 package syncsvc
 
 import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/recovery"
 )
@@ -98,3 +98,4 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 		return result.product, nil
 	}
 }
+

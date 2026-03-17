@@ -1,8 +1,8 @@
-package extractor
+﻿package extractor
 
 import (
 	"regexp"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -152,3 +152,4 @@ func (pae *ParentAsinExtractor) isValidAsin(asin string) bool {
 	matched, _ := regexp.MatchString(`^[A-Z0-9]{10}$`, asin)
 	return matched
 }
+

@@ -3,7 +3,7 @@ package pricingsvc
 
 import (
 	"context"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	temupricing "task-processor/internal/temu/api/pricing"
 )
@@ -51,3 +51,4 @@ type PricingProcessor interface {
 	ProcessPendingPrices(ctx context.Context) (*temupricing.Statistics, error)
 	ProcessPendingPricesWithAmazon(ctx context.Context, configProvider any) (*temupricing.Statistics, error)
 }
+

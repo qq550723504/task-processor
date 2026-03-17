@@ -2,7 +2,7 @@
 package image
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
@@ -120,3 +120,4 @@ func (icb *ImageCarouselBuilder) GetProductImagesWithUpload(temuCtx *temucontext
 	// 批量上传图片到TEMU，失败时使用降级处理
 	return icb.uploadUtils.batchUploadImagesWithFallback(temuCtx, imageURLs, "main", 800, 800)
 }
+

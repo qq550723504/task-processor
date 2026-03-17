@@ -1,10 +1,10 @@
-// Package product 提供产品相关的公共工具函数
+﻿// Package product 提供产品相关的公共工具函数
 package product
 
 import (
 	"regexp"
 	"strconv"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -129,3 +129,4 @@ func extractStockFromAvailability(availability string) int {
 
 	return 0
 }
+

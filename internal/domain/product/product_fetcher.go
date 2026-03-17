@@ -1,9 +1,9 @@
-// Package product 提供产品领域服务
+﻿// Package product 提供产品领域服务
 package product
 
 import (
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -105,3 +105,4 @@ func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Prod
 func (f *ProductFetcher) GetStats() map[string]any {
 	return map[string]any{"type": "local"}
 }
+

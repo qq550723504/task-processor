@@ -4,7 +4,7 @@ package sku
 import (
 	"strings"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	temucontext "task-processor/internal/temu/context"
 )
@@ -86,3 +86,4 @@ func (vp *SkuVariantProcessor) buildAIVariant(
 
 	return aiVariant
 }
+

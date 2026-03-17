@@ -2,7 +2,7 @@
 package rules
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	"testing"
 
@@ -111,3 +111,4 @@ func TestCheckSingleRuleDetailedTemu_WithImageValidation(t *testing.T) {
 	assert.False(t, result.Passed, "应该因为图片数量不足而失败")
 	assert.Contains(t, result.FailureReason, "Amazon原始数据图片不足", "失败原因应该包含图片不足的信息")
 }
+

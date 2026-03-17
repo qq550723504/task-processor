@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
@@ -356,3 +356,4 @@ func (s *PricingDecisionService) buildPricingContextForSalesBoost(ctx context.Co
 
 	return pricingCtx, nil
 }
+

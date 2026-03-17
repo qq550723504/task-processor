@@ -3,7 +3,7 @@ package image
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/ptr"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
@@ -169,3 +169,4 @@ func (idb *ImageDimensionBuilder) addDimensionAnnotationToContext(temuCtx *temuc
 	// 直接返回图片数据，不使用缓存
 	return annotatedImageBytes, nil
 }
+

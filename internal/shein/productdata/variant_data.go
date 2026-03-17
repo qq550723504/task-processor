@@ -6,7 +6,7 @@ import (
 	"strings"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/goroutine"
@@ -273,3 +273,4 @@ func GetVariantByAsinFromVariants(variants *[]model.Product, asin string) *model
 	}
 	return nil
 }
+

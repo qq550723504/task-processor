@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 	temuformat "task-processor/internal/temu/format"
@@ -251,3 +251,4 @@ func (spb *SkuParallelBuilder) extractNetContentInfo(variant *model.Product, aiS
 
 	return originNetContentNumber, netContentUnitCode
 }
+

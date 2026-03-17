@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"task-processor/internal/domain/message"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	domaintask "task-processor/internal/domain/task"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
@@ -360,3 +360,4 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 func (eth *TaskHandler) isOwnedStore(storeID int64) bool {
 	return slices.Contains(eth.ownedStores, storeID)
 }
+

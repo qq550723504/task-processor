@@ -1,10 +1,10 @@
-// Package worker 提供应用层的任务处理钩子实现
+﻿// Package worker 提供应用层的任务处理钩子实现
 package worker
 
 import (
 	"encoding/json"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
@@ -142,3 +142,4 @@ func (h *TaskJobHandler) parseTask(job worker.WorkerJob) *model.Task {
 	}
 	return &task
 }
+

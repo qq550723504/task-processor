@@ -1,10 +1,10 @@
-// Package property 提供属性提取策略实现
+﻿// Package property 提供属性提取策略实现
 package property
 
 import (
 	"fmt"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -179,3 +179,4 @@ func (e *IndexBasedExtractor) Extract(variant *model.Product, amazonProduct *mod
 func (e *IndexBasedExtractor) GetName() string {
 	return "索引位置提取"
 }
+

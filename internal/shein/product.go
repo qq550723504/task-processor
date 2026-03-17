@@ -1,7 +1,7 @@
 ﻿package shein
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/shein/api/product"
 	"time"
 )
@@ -84,3 +84,4 @@ type SKUBuildRequest struct {
 	PrimaryAttrValue  string
 	WarehouseCode     string
 }
+

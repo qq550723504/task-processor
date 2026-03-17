@@ -4,7 +4,7 @@ package publish
 import (
 	"fmt"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
 	shein "task-processor/internal/shein"
 
@@ -142,3 +142,4 @@ func (h *ProductExistsCheckHandler) checkSingleVariant(ctx *shein.TaskContext, m
 
 	return nil
 }
+

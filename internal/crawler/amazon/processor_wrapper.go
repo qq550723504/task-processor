@@ -1,10 +1,10 @@
-// Package amazon 提供Amazon处理器包装功能
+﻿// Package amazon 提供Amazon处理器包装功能
 package amazon
 
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -77,3 +77,4 @@ type ProcessResult struct {
 	Product *model.Product
 	Error   error
 }
+

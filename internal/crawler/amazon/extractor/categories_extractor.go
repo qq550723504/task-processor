@@ -1,8 +1,8 @@
-package extractor
+﻿package extractor
 
 import (
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -103,3 +103,4 @@ func (ce *CategoriesExtractor) cleanCategories(categories []string) []string {
 
 	return result
 }
+

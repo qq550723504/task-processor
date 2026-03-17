@@ -7,7 +7,7 @@ import (
 
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/metrics"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	shein "task-processor/internal/shein"
@@ -218,3 +218,4 @@ func (h *TaskHandler) handleSuccess(task model.Task) {
 	logrus.Infof("任务处理成功: ID=%d, TenantID=%d, StoreID=%d, ProductID=%s",
 		task.ID, task.TenantID, task.StoreID, task.ProductID)
 }
+

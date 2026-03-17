@@ -3,7 +3,7 @@ package product
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/temu/handlers/handlerbase"
@@ -104,3 +104,4 @@ func (c *ProductFilterChecker) checkSingleRuleWithAdapter(product *model.Product
 
 	return &handlerbase.FilterCheckResult{Passed: true}
 }
+

@@ -3,7 +3,7 @@ package sale
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 
@@ -151,3 +151,4 @@ func CalculateImportanceForSaleAttribute(calc *shein.AttributeImportanceCalculat
 	}
 	return importance
 }
+

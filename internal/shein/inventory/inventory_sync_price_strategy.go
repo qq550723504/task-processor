@@ -4,7 +4,7 @@ package inventory
 import (
 	"context"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -177,3 +177,4 @@ func (s *inventorySyncServiceImpl) getRestoreStockAmount(strategy *managementapi
 	}
 	return 10 // 默认恢复10个库存
 }
+

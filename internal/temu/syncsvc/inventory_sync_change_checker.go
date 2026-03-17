@@ -1,8 +1,8 @@
-// Package syncsvc 提供TEMU平台库存监控变化检测逻辑
+﻿// Package syncsvc 提供TEMU平台库存监控变化检测逻辑
 package syncsvc
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -153,3 +153,4 @@ func (s *inventorySyncServiceImpl) getPreviousPrice(attributesJSON string, platf
 
 	return 0
 }
+

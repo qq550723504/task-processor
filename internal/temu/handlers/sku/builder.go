@@ -3,7 +3,7 @@ package sku
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/clients/openai"
 	temuapi "task-processor/internal/temu/api"
@@ -172,3 +172,4 @@ func (sb *SkuBuilder) querySpecID(temuCtx *temucontext.TemuTaskContext, parentSp
 	sb.logger.Infof("✅ 规格查询成功: %s -> %s", specName, response.Result.SpecID)
 	return response.Result.SpecID, nil
 }
+

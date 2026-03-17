@@ -1,10 +1,10 @@
-// Package product 提供产品数据获取业务逻辑
+﻿// Package product 提供产品数据获取业务逻辑
 package product
 
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -133,3 +133,4 @@ func (s *ProductService) saveToCacheAsync(ctx context.Context, req *FetchRequest
 		s.logger.Debugf("产品 %s 已保存到缓存", req.ProductID)
 	}
 }
+

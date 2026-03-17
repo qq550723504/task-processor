@@ -1,4 +1,4 @@
-// Package messaging 提供消息处理应用层服务
+﻿// Package messaging 提供消息处理应用层服务
 package messaging
 
 import (
@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/queue"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
@@ -253,3 +253,4 @@ func (ts *TaskSubmitter) SubmitVariantTasks(ctx context.Context, parentTask *mod
 
 	return successCount, failCount
 }
+

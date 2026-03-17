@@ -1,8 +1,8 @@
-package extractor
+﻿package extractor
 
 import (
 	"task-processor/internal/crawler/amazon/variations"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -144,3 +144,4 @@ func convertToAmazonVariations(varList []variations.Variation) []model.Variation
 	}
 	return result
 }
+

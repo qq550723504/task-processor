@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -184,3 +184,4 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *shein.TaskContext, re
 		string(attributeMappingBytes),
 		extraContextSection)
 }
+

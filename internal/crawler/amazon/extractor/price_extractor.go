@@ -1,9 +1,9 @@
-// Package extractor 提供Amazon价格提取器的核心功能
+﻿// Package extractor 提供Amazon价格提取器的核心功能
 package extractor
 
 import (
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -138,3 +138,4 @@ func (e *PriceExtractor) extractPriceText(page playwright.Page) string {
 
 	return priceText
 }
+

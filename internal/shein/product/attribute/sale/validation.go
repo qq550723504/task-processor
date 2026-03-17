@@ -2,7 +2,7 @@
 
 import (
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 	shein "task-processor/internal/shein"
 
@@ -427,3 +427,4 @@ func (h *SaleAttributeHandler) findMostSimilarValue(targetValue string, original
 
 	return ""
 }
+

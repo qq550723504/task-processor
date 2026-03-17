@@ -1,9 +1,9 @@
-package filter
+﻿package filter
 
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -217,3 +217,4 @@ func (u *DetectorUtils) IsLegitimateProductCategory(categories []string, product
 
 	return false
 }
+

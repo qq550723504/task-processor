@@ -6,8 +6,8 @@ import (
 	"task-processor/internal/app/processor"
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
-	types "task-processor/internal/domain/model"
+	"task-processor/internal/model"
+	types "task-processor/internal/model"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -139,3 +139,4 @@ func (p *SheinProcessor) Close(ctx context.Context) {
 
 	p.GetLogger().Info("[SHEIN] 任务处理器已关闭")
 }
+

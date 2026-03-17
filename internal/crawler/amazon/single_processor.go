@@ -1,4 +1,4 @@
-// Package amazon 提供Amazon单浏览器处理功能
+﻿// Package amazon 提供Amazon单浏览器处理功能
 package amazon
 
 import (
@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/crawler/amazon/extractor"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -84,3 +84,4 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, zipcode string, 
 
 	return product, nil
 }
+

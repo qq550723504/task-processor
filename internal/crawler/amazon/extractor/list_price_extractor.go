@@ -1,10 +1,10 @@
-// Package extractor 提供Amazon原价提取功能
+﻿// Package extractor 提供Amazon原价提取功能
 package extractor
 
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -334,3 +334,4 @@ func (l *ListPriceExtractor) containsOtherProductURL(url, currentASIN string) bo
 
 	return false
 }
+

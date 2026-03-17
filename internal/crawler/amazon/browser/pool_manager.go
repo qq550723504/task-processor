@@ -1,4 +1,4 @@
-// Package browser 提供增强的浏览器池管理功能
+﻿// Package browser 提供增强的浏览器池管理功能
 package browser
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -221,3 +221,4 @@ type ProcessResult struct {
 	Product *model.Product
 	Error   error
 }
+

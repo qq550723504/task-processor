@@ -1,8 +1,8 @@
-package extractor
+﻿package extractor
 
 import (
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -67,3 +67,4 @@ func (e *SellerExtractor) Extract(page playwright.Page, product *model.Product) 
 
 	return nil
 }
+

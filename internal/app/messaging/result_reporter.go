@@ -1,4 +1,4 @@
-// Package messaging 提供任务结果上报功能
+﻿// Package messaging 提供任务结果上报功能
 package messaging
 
 import (
@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/httpclient"
 
 	"github.com/sirupsen/logrus"
@@ -394,3 +394,4 @@ func (rr *ResultReporter) GetStats() ReporterStats {
 func (rr *ResultReporter) GetNodeID() string {
 	return rr.nodeID
 }
+

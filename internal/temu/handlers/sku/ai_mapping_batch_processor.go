@@ -4,7 +4,7 @@ package sku
 import (
 	"fmt"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/handlers/spec"
 )
@@ -72,3 +72,4 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(temuCtx *temucontex
 
 	return mergedResponse, nil
 }
+

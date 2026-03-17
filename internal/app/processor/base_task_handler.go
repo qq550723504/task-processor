@@ -1,4 +1,4 @@
-// Package processor 提供统一的任务处理器基类
+﻿// Package processor 提供统一的任务处理器基类
 package processor
 
 import (
@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/pipeline"
 	"time"
@@ -76,3 +76,4 @@ func (h *BaseTaskHandler) ProcessTask(ctx context.Context, task model.Task, pipe
 func (h *BaseTaskHandler) GetProcessor() worker.Processor {
 	return h.processor
 }
+

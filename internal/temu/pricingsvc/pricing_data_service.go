@@ -1,9 +1,9 @@
-// Package pricingsvc 提供TEMU平台核价数据服务功能
+﻿// Package pricingsvc 提供TEMU平台核价数据服务功能
 package pricingsvc
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/clients/management/api"
 
@@ -215,3 +215,4 @@ func (s *PricingDataService) getAmazonOriginalPrice(amazonProduct *model.Product
 	s.logger.Warn("Amazon产品没有有效的原价信息")
 	return 0
 }
+

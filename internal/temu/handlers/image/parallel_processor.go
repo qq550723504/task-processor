@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/perf"
 	models "task-processor/internal/temu/api/product"
@@ -211,3 +211,4 @@ func (pip *ParallelImageProcessor) ApplyImageResults(skuList []models.Sku, image
 
 	pip.logger.Info("📋 图片处理结果应用完成")
 }
+

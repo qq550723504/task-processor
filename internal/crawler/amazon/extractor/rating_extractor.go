@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/timeout"
 
 	"github.com/playwright-community/playwright-go"
@@ -281,3 +281,4 @@ func (e *RatingExtractor) extractReviewsCountFromPageSource(page playwright.Page
 
 	return 0
 }
+

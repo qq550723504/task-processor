@@ -1,10 +1,10 @@
-// Package extractor 提供错误检测功能
+﻿// Package extractor 提供错误检测功能
 package extractor
 
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 )
 
 // ErrorType 错误类型
@@ -213,3 +213,4 @@ func isCriticalErrorLegacy(err error) bool {
 
 	return false
 }
+

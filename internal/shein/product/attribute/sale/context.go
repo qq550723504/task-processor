@@ -4,7 +4,7 @@ package sale
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -271,3 +271,4 @@ func (c *SaleAttributeContextBuilder) getMissingPhysicalASINs(missingInfo Missin
 
 	return allMissingASINs
 }
+

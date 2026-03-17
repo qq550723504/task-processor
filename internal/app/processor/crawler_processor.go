@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/worker"
@@ -263,3 +263,4 @@ func (p *CrawlerProcessor) normalizeTaskData(data map[string]any) {
 		}
 	}
 }
+

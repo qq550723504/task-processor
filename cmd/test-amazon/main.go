@@ -1,4 +1,4 @@
-// Package main 提供Amazon爬虫调试测试程序
+﻿// Package main 提供Amazon爬虫调试测试程序
 package main
 
 import (
@@ -8,7 +8,7 @@ import (
 	"os"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -120,3 +120,4 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen] + "..."
 }
+

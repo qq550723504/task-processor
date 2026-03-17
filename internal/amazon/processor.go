@@ -7,7 +7,7 @@ import (
 
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/amazon/api"
@@ -171,6 +171,7 @@ func (p *Processor) createTaskContext(taskData map[string]any) *amazonModel.Task
 		Data:          taskData,
 	}
 }
+
 
 
 

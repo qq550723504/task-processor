@@ -1,9 +1,9 @@
-// Package pipeline 提供SHEIN平台的任务状态更新功能
+﻿// Package pipeline 提供SHEIN平台的任务状态更新功能
 package pipeline
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	"time"
@@ -94,3 +94,4 @@ func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, status model
 		return nil
 	}
 }
+

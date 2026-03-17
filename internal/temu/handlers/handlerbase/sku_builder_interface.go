@@ -2,7 +2,7 @@
 package handlerbase
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 )
@@ -24,3 +24,4 @@ type SpecHandler interface {
 	// IsSizeSpec 判断是否为尺码规格
 	IsSizeSpec(specName string) bool
 }
+

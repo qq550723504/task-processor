@@ -1,8 +1,8 @@
-// Package extractor 提供Amazon描述提取核心功能
+﻿// Package extractor 提供Amazon描述提取核心功能
 package extractor
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -128,3 +128,4 @@ func (e *DescriptionExtractor) extractTextFromSelectors(page playwright.Page, se
 
 	return ""
 }
+

@@ -3,7 +3,7 @@ package sku
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -209,3 +209,4 @@ func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *temucontext.AISkuMa
 
 	return template
 }
+

@@ -3,7 +3,7 @@
 import (
 	"fmt"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
@@ -96,3 +96,4 @@ func (h *AISkuMappingHandler) Handle(ctx pipeline.TaskContext) error {
 	// 如果不是TemuTaskContext，返回错误
 	return fmt.Errorf("上下文类型错误，期望*temucontext.TemuTaskContext，实际类型: %T", ctx)
 }
+

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	productpkg "task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonx"
 
@@ -170,3 +170,4 @@ func (s *inventorySyncServiceImpl) enableDebugLogging() {
 	logrus.SetLevel(logrus.DebugLevel)
 	s.logger.Debug("已启用 Debug 级别日志")
 }
+

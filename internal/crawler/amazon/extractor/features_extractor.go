@@ -1,10 +1,10 @@
-package extractor
+﻿package extractor
 
 import (
 	"fmt"
 	"regexp"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -145,3 +145,4 @@ func (e *FeaturesExtractor) deduplicateFeatures(features []string) []string {
 
 	return result
 }
+

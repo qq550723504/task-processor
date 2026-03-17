@@ -1,4 +1,4 @@
-// Package task 提供任务消息适配器
+﻿// Package task 提供任务消息适配器
 package task
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 )
 
@@ -313,3 +313,4 @@ func (a *MessageAdapter) convertStatusInt16ToString(status int16) string {
 		return "unknown"
 	}
 }
+

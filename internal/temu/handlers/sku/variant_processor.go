@@ -3,7 +3,7 @@ package sku
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/openai"
 	models "task-processor/internal/temu/api/product"
 	temutemplate "task-processor/internal/temu/api/template"
@@ -254,3 +254,4 @@ func (vp *SkuVariantProcessor) GenerateAISkuMapping(temuCtx *temucontext.TemuTas
 
 	return response, nil
 }
+

@@ -3,7 +3,7 @@
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -122,3 +122,4 @@ func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct mod
 		logrus.Warnf("⚖️ [AI属性对比] ⚠️ 发现%d个不一致项", len(inconsistencies))
 	}
 }
+

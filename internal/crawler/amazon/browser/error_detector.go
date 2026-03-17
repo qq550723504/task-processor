@@ -1,10 +1,10 @@
-// Package browser 提供浏览器错误检测功能
+﻿// Package browser 提供浏览器错误检测功能
 package browser
 
 import (
 	"errors"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 )
 
 // ErrorDetector 错误检测器
@@ -313,3 +313,4 @@ func (ed *ErrorDetector) ShouldRetry(err error) bool {
 
 	return false
 }
+

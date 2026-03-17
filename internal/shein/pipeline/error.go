@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/metrics"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api"
 
@@ -182,3 +182,4 @@ func (h *TaskErrorHandler) setPauseKeyForAuthExpired(shopID int64, reason string
 
 	return nil
 }
+

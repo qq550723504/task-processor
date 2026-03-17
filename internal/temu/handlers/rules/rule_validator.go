@@ -3,7 +3,7 @@ package rules
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	domainvalidation "task-processor/internal/domain/validation"
 	"task-processor/internal/infra/clients/management/api"
@@ -239,3 +239,4 @@ func (v *RuleValidator) checkImageCountRuleDetailed(amazonProduct *model.Product
 	}
 	return &handlerbase.FilterCheckResult{Passed: true}
 }
+

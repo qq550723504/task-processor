@@ -1,9 +1,9 @@
-package extractor
+﻿package extractor
 
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/goroutine"
 	"time"
 
@@ -114,3 +114,4 @@ func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Produ
 func getExtractorName(ext Extractor) string {
 	return fmt.Sprintf("%T", ext)
 }
+

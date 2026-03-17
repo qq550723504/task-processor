@@ -4,7 +4,7 @@ package sale
 import (
 	"strconv"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/validation"
 
@@ -217,3 +217,4 @@ func (p *SaleAttributeProductDataPreparer) logAttributeCount(productDetails map[
 
 	logrus.Debugf("✅ 为%s %s 提取了 %d 个属性信息", productType, asin, attributeCount)
 }
+

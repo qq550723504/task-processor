@@ -4,7 +4,7 @@ package context
 import (
 	"context"
 	"task-processor/internal/app/state"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
@@ -107,3 +107,4 @@ func (tc *TemuTaskContext) AddVariant(variant *model.Product) {
 }
 
 var _ pipeline.AmazonContext = (*TemuTaskContext)(nil)
+

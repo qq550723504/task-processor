@@ -3,7 +3,7 @@ package sale
 
 import (
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 
@@ -362,3 +362,4 @@ func (f *SaleAttributeSmartFilter) selectDefaultSaleAttribute(attributes []attri
 	logrus.Warn("❌ 未找到任何销售属性")
 	return nil
 }
+

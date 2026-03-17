@@ -3,7 +3,7 @@ package sku
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/product/variant"
@@ -113,3 +113,4 @@ func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, varian
 	logrus.Infof("成功为单变体创建SKU，销售属性数量: %d", len(saleAttributeList))
 	return []product.SKU{*sku}, nil
 }
+

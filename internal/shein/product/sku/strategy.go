@@ -4,7 +4,7 @@ package sku
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
@@ -320,3 +320,4 @@ func (p *SKUStrategyProcessor) buildSKUListForMultipleVariants(ctx *shein.TaskCo
 	logrus.Infof("成功为主要属性值 %s 创建了 %d 个 SKU，去重后避免了属性值ID重复", req.PrimaryAttrValue, len(skuList))
 	return skuList, nil
 }
+

@@ -2,7 +2,7 @@
 package inventory
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -51,3 +51,4 @@ func (s *inventorySyncServiceImpl) getAmazonProductCostPrice(
 	// 使用通用成本计算器（会自动记录详细日志）
 	return s.costCalculator.CalculateAmazonProductCost(amazonProduct, priceType, storeID)
 }
+

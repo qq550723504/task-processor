@@ -1,10 +1,10 @@
-// Package amazon 提供Amazon批量处理功能
+﻿// Package amazon 提供Amazon批量处理功能
 package amazon
 
 import (
 	"fmt"
 	"task-processor/internal/crawler/amazon/browser"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -108,3 +108,4 @@ func (bp *BatchProcessor) ProcessWithSingleBrowser(requests []model.ProductReque
 
 	return results
 }
+

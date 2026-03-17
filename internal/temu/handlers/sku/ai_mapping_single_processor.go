@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
@@ -260,3 +260,4 @@ func (vp *SkuVariantProcessor) fillVariantAttributes(aiResponse *temucontext.AIS
 		}
 	}
 }
+

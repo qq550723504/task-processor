@@ -1,4 +1,4 @@
-// Package service 提供处理器服务层功能
+﻿// Package service 提供处理器服务层功能
 package runner
 
 import (
@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
 
@@ -51,3 +51,4 @@ func NewProcessorServiceWithDependencies(
 		amazonProcessor:  amazonProcessor,
 	}
 }
+

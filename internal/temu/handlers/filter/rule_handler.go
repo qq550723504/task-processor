@@ -3,7 +3,7 @@ package filter
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
@@ -200,3 +200,4 @@ func (h *FilterRuleHandler) FilterVariants(temuCtx *temucontext.TemuTaskContext)
 func (h *FilterRuleHandler) GetFilterRuleStats(temuCtx *temucontext.TemuTaskContext) (map[string]any, error) {
 	return h.statsProvider.GetFilterRuleStats(temuCtx.DefaultTaskContext)
 }
+

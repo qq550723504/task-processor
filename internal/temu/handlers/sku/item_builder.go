@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/skugen"
 	models "task-processor/internal/temu/api/product"
@@ -455,3 +455,4 @@ func (ib *SkuItemBuilder) saveAsinSkuMappingTemu(temuCtx *temucontext.TemuTaskCo
 
 	ib.logger.Debugf("保存ASIN到SKU映射: %s -> %s", outSkuSN, asin)
 }
+

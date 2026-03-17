@@ -1,8 +1,8 @@
-package extractor
+﻿package extractor
 
 import (
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -255,3 +255,4 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 	}).Warn("⚠️ 未匹配到任何关键词，默认判断为不可用")
 	return false
 }
+

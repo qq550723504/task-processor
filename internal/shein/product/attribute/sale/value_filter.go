@@ -3,7 +3,7 @@ package sale
 
 import (
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -131,3 +131,4 @@ func (f *SaleAttributeValueFilter) ExtractActualValuesFromProducts(
 
 	return actualValues
 }
+

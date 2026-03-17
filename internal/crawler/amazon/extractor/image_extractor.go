@@ -1,8 +1,8 @@
-// Package extractor 提供Amazon产品图片提取功能
+﻿// Package extractor 提供Amazon产品图片提取功能
 package extractor
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -115,3 +115,4 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *model.Product) 
 
 	return nil
 }
+

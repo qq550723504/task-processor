@@ -3,7 +3,7 @@
 import (
 	"context"
 	"task-processor/internal/app/state"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
 	shein_attribute "task-processor/internal/shein/api/attribute"
@@ -220,3 +220,4 @@ type SkcErrorMessage struct {
 	Messages                []string            `json:"messages"`
 	OtherLanguageMessageMap map[string][]string `json:"otherLanguageMessageMap"`
 }
+

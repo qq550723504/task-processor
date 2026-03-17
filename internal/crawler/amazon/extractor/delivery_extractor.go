@@ -1,9 +1,9 @@
-package extractor
+﻿package extractor
 
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -162,3 +162,4 @@ func cleanAndDeduplicateDelivery(items []string) []string {
 
 	return result
 }
+

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/mathx"
 )
@@ -190,3 +190,4 @@ func (h *ProductDescriptionValidator) generateScoreReport(description string, sc
 
 	return report
 }
+

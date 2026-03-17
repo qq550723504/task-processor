@@ -3,7 +3,7 @@
 import (
 	"testing"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -322,3 +322,4 @@ func BenchmarkMessageAdapter_CalculatePriority(b *testing.B) {
 		adapter.CalculatePriority(5)
 	}
 }
+

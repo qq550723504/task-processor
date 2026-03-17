@@ -1,8 +1,8 @@
-// Package extractor 提供Amazon原价提取功能测试
+﻿// Package extractor 提供Amazon原价提取功能测试
 package extractor
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -188,3 +188,4 @@ func TestListPriceExtractor_containsOtherProductURL(t *testing.T) {
 		})
 	}
 }
+

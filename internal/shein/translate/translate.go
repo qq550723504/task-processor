@@ -4,7 +4,7 @@ package translate
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/timeout"
 	shein "task-processor/internal/shein"
@@ -262,3 +262,4 @@ func (h *TranslateHandler) addLanguageContentIfNotExists(languageList *[]product
 		})
 	}
 }
+

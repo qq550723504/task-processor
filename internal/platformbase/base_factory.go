@@ -7,7 +7,7 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
@@ -127,3 +127,4 @@ func (f *BaseFactory) CreateTask(ctx context.Context, config appscheduler.TaskCo
 	// 子类需要实现具体的任务创建逻辑
 	return nil, fmt.Errorf("CreateTask方法需要由子类实现")
 }
+

@@ -1,8 +1,8 @@
-package extractor
+﻿package extractor
 
 import (
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -130,3 +130,4 @@ func cleanProductDetailValue(value string) string {
 
 	return result
 }
+

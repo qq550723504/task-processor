@@ -1,9 +1,9 @@
-// Package handlerbase 提供TEMU平台的配送方式检查功能
+﻿// Package handlerbase 提供TEMU平台的配送方式检查功能
 package handlerbase
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	domainvalidation "task-processor/internal/domain/validation"
 	"task-processor/internal/infra/clients/management/api"
 
@@ -77,3 +77,4 @@ func buildFulfillmentProductValue(isFBA, isAMZ bool, sellerName string) string {
 	}
 	return "FBM"
 }
+

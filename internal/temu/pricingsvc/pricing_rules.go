@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	temupricing "task-processor/internal/temu/api/pricing"
 
@@ -153,3 +153,4 @@ func parsePrice(price string) float64 {
 	}
 	return result
 }
+

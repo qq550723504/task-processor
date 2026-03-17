@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
@@ -438,3 +438,4 @@ func (b *SpuBuilder) buildTemplateSpecMap(temuCtx *temucontext.TemuTaskContext) 
 
 	return templateSpecMap
 }
+

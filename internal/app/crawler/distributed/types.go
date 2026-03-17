@@ -1,11 +1,11 @@
-// Package distributed 提供分布式爬虫类型定义
+﻿// Package distributed 提供分布式爬虫类型定义
 package distributed
 
 import (
 	"context"
 	"time"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 )
 
 // CrawlRequest 爬虫请求
@@ -37,3 +37,4 @@ type PendingTask struct {
 	Context    context.Context
 	Cancel     context.CancelFunc
 }
+

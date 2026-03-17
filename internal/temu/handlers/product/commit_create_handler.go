@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
-	types "task-processor/internal/domain/model"
+	types "task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/strx"
 	temuapi "task-processor/internal/temu/api"
@@ -193,3 +193,4 @@ func (h *CommitCreateHandler) isNonRetryableError(errorCode int) bool {
 
 	return false
 }
+

@@ -1,7 +1,7 @@
 ﻿package validation
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	shein "task-processor/internal/shein"
 
@@ -98,3 +98,4 @@ func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRuleDTO *api.F
 
 	return nil
 }
+

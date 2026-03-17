@@ -1,4 +1,4 @@
-// Package main 提供任务提交的示例程序
+﻿// Package main 提供任务提交的示例程序
 package main
 
 import (
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/app/messaging"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
 
@@ -181,3 +181,4 @@ func printUsage() {
 - 领域层文档: internal/domain/task/README.md
 - 应用层文档: internal/app/messaging/README.md`)
 }
+

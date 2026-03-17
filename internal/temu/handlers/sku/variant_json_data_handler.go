@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/recovery"
@@ -332,3 +332,4 @@ func (h *VariantJsonDataHandler) GetVariantByAsinFromVariants(variants []*model.
 func (h *VariantJsonDataHandler) Shutdown() {
 	h.logger.Debug("VariantJsonDataHandler 关闭")
 }
+

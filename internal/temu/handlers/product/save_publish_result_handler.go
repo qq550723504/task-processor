@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/app/state"
-	commontypes "task-processor/internal/domain/model"
+	commontypes "task-processor/internal/model"
 	pkgproduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
@@ -477,3 +477,4 @@ func (h *SavePublishResultHandler) buildFilterRuleRange(filterRule *api.FilterRu
 
 	return fmt.Sprintf("[%s]", strings.Join(rangeParts, ","))
 }
+

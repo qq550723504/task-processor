@@ -1,10 +1,10 @@
-package extractor
+﻿package extractor
 
 import (
 	"regexp"
 	"strconv"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -124,3 +124,4 @@ func (e *BestsellerExtractor) parseBestsellerText(text string) (int, string, int
 
 	return bsRank, bsCategory, rootBsRank, rootBsCategory
 }
+

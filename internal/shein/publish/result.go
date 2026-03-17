@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/ptr"
 	"task-processor/internal/pkg/recovery"
@@ -378,3 +378,4 @@ func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein.TaskCo
 		}
 	}()
 }
+

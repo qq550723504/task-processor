@@ -1,11 +1,11 @@
-// Package extractor 提供Amazon产品视频信息提取功能
+﻿// Package extractor 提供Amazon产品视频信息提取功能
 package extractor
 
 import (
 	"fmt"
 	"regexp"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -248,3 +248,4 @@ func (e *VideoExtractor) isValidVideoURL(url string) bool {
 
 	return false
 }
+

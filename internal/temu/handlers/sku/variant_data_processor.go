@@ -2,7 +2,7 @@
 package sku
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/strx"
 	temucontext "task-processor/internal/temu/context"
 
@@ -112,3 +112,4 @@ func (p *VariantProcessor) ProcessVariantData(temuCtx *temucontext.TemuTaskConte
 	p.logger.Info("变体数据处理完成")
 	return nil
 }
+

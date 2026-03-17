@@ -3,7 +3,7 @@ package pricing
 
 import (
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
@@ -169,3 +169,4 @@ func (c *CostCalculator) getPlatformCommission(strategy *managementapi.Operation
 	// 如果策略中有相关字段，可以使用 strategy.PlatformCommission
 	return 0 // 默认平台佣金0%
 }
+

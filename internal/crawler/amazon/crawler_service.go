@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/httpx"
 	"task-processor/internal/infra/worker"
@@ -258,3 +258,4 @@ func productToMap(product *model.Product, logger *logrus.Logger) map[string]any 
 
 	return result
 }
+

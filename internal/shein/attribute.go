@@ -1,7 +1,7 @@
 ﻿package shein
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/shein/api/attribute"
 )
@@ -216,3 +216,4 @@ type EnhancedGenerateAttribute struct {
 	IsActiveStatus              bool                     `json:"is_active_status"`    // 是否为活跃状态
 	HasDependency               bool                     `json:"has_dependency"`      // 是否有依赖关系
 }
+

@@ -1,7 +1,7 @@
 ﻿package validation
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	domainvalidation "task-processor/internal/domain/validation"
 	shein "task-processor/internal/shein"
@@ -95,3 +95,4 @@ func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *domainvalidation.Fi
 	}
 	return nil
 }
+

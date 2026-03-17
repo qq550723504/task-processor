@@ -2,7 +2,7 @@
 package inventory
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -121,3 +121,4 @@ func (s *inventorySyncServiceImpl) checkStockChange(
 	}
 	return false
 }
+

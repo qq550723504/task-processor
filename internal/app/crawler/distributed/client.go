@@ -1,4 +1,4 @@
-// Package distributed 提供分布式爬虫客户端
+﻿// Package distributed 提供分布式爬虫客户端
 package distributed
 
 import (
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/queue"
 	"task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
@@ -262,3 +262,4 @@ func (c *DistributedCrawlerClient) Close() error {
 
 	return nil
 }
+

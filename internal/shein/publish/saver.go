@@ -2,7 +2,7 @@
 package publish
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	shein "task-processor/internal/shein"
@@ -87,3 +87,4 @@ func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein.TaskContext) {
 		}
 	}()
 }
+

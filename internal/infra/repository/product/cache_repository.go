@@ -1,10 +1,10 @@
-// Package product 提供产品缓存仓储的具体实现
+﻿// Package product 提供产品缓存仓储的具体实现
 package product
 
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	domainproduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management/api"
 
@@ -99,3 +99,4 @@ func (r *CacheRepository) ExistsInCache(ctx context.Context, req *domainproduct.
 	}
 	return product != nil, nil
 }
+

@@ -1,8 +1,8 @@
-// Package syncsvc 提供TEMU平台映射数据结构定义
+﻿// Package syncsvc 提供TEMU平台映射数据结构定义
 package syncsvc
 
 import (
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
 )
 
@@ -89,3 +89,4 @@ type SkuInventoryUpdate struct {
 	SkuInfo       *TemuSkuInfo   // TEMU SKU信息
 	StoreID       int64          // 店铺ID（用于获取价格类型）
 }
+

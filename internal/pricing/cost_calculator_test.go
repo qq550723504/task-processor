@@ -3,7 +3,7 @@
 import (
 	"testing"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -258,3 +258,4 @@ func BenchmarkCalculateAmazonProductCost(b *testing.B) {
 		calc.CalculateAmazonProductCost(product, "special", 1)
 	}
 }
+

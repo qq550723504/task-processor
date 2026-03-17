@@ -1,9 +1,9 @@
-package extractor
+﻿package extractor
 
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -35,3 +35,4 @@ func (e *TitleExtractor) Extract(page playwright.Page, product *model.Product) e
 
 	return fmt.Errorf("未找到产品标题")
 }
+

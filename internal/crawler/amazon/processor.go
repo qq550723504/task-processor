@@ -1,4 +1,4 @@
-// Package amazon 提供Amazon处理器核心功能
+﻿// Package amazon 提供Amazon处理器核心功能
 package amazon
 
 import (
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon/browser"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -257,3 +257,4 @@ func (ap *AmazonProcessor) Shutdown() {
 		logrus.Info("Amazon处理器已关闭")
 	})
 }
+

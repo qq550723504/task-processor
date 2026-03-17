@@ -1,8 +1,8 @@
-package product
+﻿package product
 
 import (
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 
@@ -105,3 +105,4 @@ func (h *ProductExistsCheckHandler) checkProductExists(storeID int64, platform, 
 	h.logger.Debugf("✅ %s %s 未上架", productType, productID)
 	return nil
 }
+

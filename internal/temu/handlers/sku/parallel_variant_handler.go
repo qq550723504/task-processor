@@ -8,7 +8,7 @@ import (
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
@@ -297,3 +297,4 @@ func (h *ParallelVariantHandler) processVariantData(temuCtx *temucontext.TemuTas
 func (h *ParallelVariantHandler) Shutdown() {
 	h.logger.Debug("ParallelVariantHandler 关闭")
 }
+

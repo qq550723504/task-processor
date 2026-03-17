@@ -1,10 +1,10 @@
-// Package validation 提供通用的规则验证功能
+﻿// Package validation 提供通用的规则验证功能
 package validation
 
 import (
 	"fmt"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 )
 
@@ -129,3 +129,4 @@ func (c *RuleChecker) CheckAllRules(rule *FilterRule, amazonProduct *model.Produ
 	}
 	return c.CheckFulfillmentType(rule, amazonProduct)
 }
+

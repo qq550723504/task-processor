@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	models "task-processor/internal/temu/api/product"
 	temutemplate "task-processor/internal/temu/api/template"
 	temucontext "task-processor/internal/temu/context"
@@ -277,3 +277,4 @@ func (sh *SkuSpecHandler) CreateDefaultSpec(variant *model.Product) []models.Spe
 	// 返回空切片，让调用方知道出错了
 	return []models.SpecInfo{}
 }
+

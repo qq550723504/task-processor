@@ -1,11 +1,11 @@
-// Package product 提供产品数据解析功能
+﻿// Package product 提供产品数据解析功能
 package product
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -101,3 +101,4 @@ func (p *DataParser) recalculateIsAvailable(product *model.Product) bool {
 	}).Debug("⚠️ 无法明确判断可用性，保持原有值")
 	return product.IsAvailable
 }
+

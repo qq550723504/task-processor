@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/domain/product"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
@@ -252,3 +252,4 @@ func (s *inventorySyncServiceImpl) updateTemuInventoryInAttributes(
 
 	return nil
 }
+

@@ -1,11 +1,11 @@
-// Package task 提供任务处理工具功能
+﻿// Package task 提供任务处理工具功能
 package task
 
 import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/domain/model"
+	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -146,3 +146,4 @@ func (f *TaskFetcher) getSubmitterKeys() []string {
 	}
 	return keys
 }
+
