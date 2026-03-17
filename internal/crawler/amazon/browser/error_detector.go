@@ -7,6 +7,16 @@ import (
 	"task-processor/internal/model"
 )
 
+// containsAny 检查字符串是否包含任意一个模式
+func containsAny(s string, patterns []string) bool {
+	for _, p := range patterns {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // ErrorDetector 错误检测器
 type ErrorDetector struct{}
 
@@ -21,7 +31,6 @@ func (ed *ErrorDetector) IsBlockedOrSeriousError(err error) bool {
 		return false
 	}
 
-	// 检查是否为产品不存在错误（不应触发浏览器重建）
 	var notFoundErr *model.ProductNotFoundError
 	if errors.As(err, &notFoundErr) {
 		return false
@@ -29,51 +38,32 @@ func (ed *ErrorDetector) IsBlockedOrSeriousError(err error) bool {
 
 	errorStr := err.Error()
 
-	// 404相关错误不应触发浏览器重建
 	notFoundPatterns := []string{
-		"产品页面不存在",
-		"产品页面缺少必要元素",
-		"页面不存在(404)",
-		"页面不存在",
-		"404",
-		"page not found",
-		"Page not found",
-		"页面未准备就绪: 页面不存在",
-		"不是有效的产品页面",
+		"产品页面不存在", "产品页面缺少必要元素", "页面不存在(404)", "页面不存在",
+		"404", "page not found", "Page not found", "页面未准备就绪: 页面不存在", "不是有效的产品页面",
+	}
+	if containsAny(errorStr, notFoundPatterns) {
+		return false
 	}
 
-	for _, pattern := range notFoundPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return false
-		}
-	}
-
-	// 检测常见的风控和严重错误模式
 	blockPatterns := []string{
-		"SIGN_IN_REQUIRED", // 需要登录才能更新位置
+		"SIGN_IN_REQUIRED",
 		"timeout", "Timeout", "TIMEOUT",
 		"blocked", "Blocked", "BLOCKED",
 		"captcha", "CAPTCHA", "Captcha",
 		"robot", "Robot", "ROBOT",
 		"access denied", "Access Denied", "ACCESS DENIED",
 		"forbidden", "Forbidden", "FORBIDDEN",
-		"503", "502", "504", // 服务器错误
+		"503", "502", "504",
 		"connection refused", "Connection refused",
 		"network error", "Network error",
 		"page crashed", "Page crashed",
 		"browser disconnected", "Browser disconnected",
 		"context closed", "Context closed",
 		"navigation failed", "Navigation failed",
-		"Timeout 30000ms exceeded", // 特定的超时错误
+		"Timeout 30000ms exceeded",
 	}
-
-	for _, pattern := range blockPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return true
-		}
-	}
-
-	return false
+	return containsAny(errorStr, blockPatterns)
 }
 
 // IsTimeoutError 检测是否为超时错误
@@ -81,21 +71,9 @@ func (ed *ErrorDetector) IsTimeoutError(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	errorStr := err.Error()
-	timeoutPatterns := []string{
-		"timeout", "Timeout", "TIMEOUT",
-		"Timeout 30000ms exceeded",
-		"deadline exceeded",
-	}
-
-	for _, pattern := range timeoutPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return true
-		}
-	}
-
-	return false
+	return containsAny(err.Error(), []string{
+		"timeout", "Timeout", "TIMEOUT", "Timeout 30000ms exceeded", "deadline exceeded",
+	})
 }
 
 // IsNetworkError 检测是否为网络错误
@@ -103,23 +81,13 @@ func (ed *ErrorDetector) IsNetworkError(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	errorStr := err.Error()
-	networkPatterns := []string{
+	return containsAny(err.Error(), []string{
 		"network error", "Network error",
 		"connection refused", "Connection refused",
 		"connection reset", "Connection reset",
 		"connection timeout", "Connection timeout",
 		"no route to host", "No route to host",
-	}
-
-	for _, pattern := range networkPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return true
-		}
-	}
-
-	return false
+	})
 }
 
 // IsCaptchaError 检测是否为验证码错误
@@ -127,21 +95,11 @@ func (ed *ErrorDetector) IsCaptchaError(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	errorStr := err.Error()
-	captchaPatterns := []string{
+	return containsAny(err.Error(), []string{
 		"captcha", "CAPTCHA", "Captcha",
 		"robot", "Robot", "ROBOT",
 		"verification", "Verification",
-	}
-
-	for _, pattern := range captchaPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return true
-		}
-	}
-
-	return false
+	})
 }
 
 // IsAuthenticationError 检测是否为认证错误
@@ -149,23 +107,13 @@ func (ed *ErrorDetector) IsAuthenticationError(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	errorStr := err.Error()
-	authPatterns := []string{
+	return containsAny(err.Error(), []string{
 		"SIGN_IN_REQUIRED",
 		"authentication required", "Authentication required",
 		"login required", "Login required",
 		"unauthorized", "Unauthorized",
 		"401",
-	}
-
-	for _, pattern := range authPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return true
-		}
-	}
-
-	return false
+	})
 }
 
 // IsServerError 检测是否为服务器错误
@@ -173,23 +121,13 @@ func (ed *ErrorDetector) IsServerError(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	errorStr := err.Error()
-	serverErrorPatterns := []string{
+	return containsAny(err.Error(), []string{
 		"500", "502", "503", "504",
 		"internal server error", "Internal Server Error",
 		"bad gateway", "Bad Gateway",
 		"service unavailable", "Service Unavailable",
 		"gateway timeout", "Gateway Timeout",
-	}
-
-	for _, pattern := range serverErrorPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return true
-		}
-	}
-
-	return false
+	})
 }
 
 // IsBrowserCrashError 检测是否为浏览器崩溃错误
@@ -197,22 +135,12 @@ func (ed *ErrorDetector) IsBrowserCrashError(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	errorStr := err.Error()
-	crashPatterns := []string{
+	return containsAny(err.Error(), []string{
 		"page crashed", "Page crashed",
 		"browser disconnected", "Browser disconnected",
 		"context closed", "Context closed",
 		"browser closed", "Browser closed",
-	}
-
-	for _, pattern := range crashPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return true
-		}
-	}
-
-	return false
+	})
 }
 
 // IsProductNotFoundError 检测是否为产品不存在错误
@@ -221,31 +149,16 @@ func (ed *ErrorDetector) IsProductNotFoundError(err error) bool {
 		return false
 	}
 
-	// 检查是否为ProductNotFoundError类型
 	var notFoundErr *model.ProductNotFoundError
 	if errors.As(err, &notFoundErr) {
 		return true
 	}
 
-	errorStr := err.Error()
-	notFoundPatterns := []string{
-		"产品页面不存在",
-		"产品页面缺少必要元素",
-		"页面不存在(404)",
-		"页面不存在",
-		"页面未准备就绪: 页面不存在",
-		"不是有效的产品页面",
-		"product not found", "Product not found",
-		"404",
-	}
-
-	for _, pattern := range notFoundPatterns {
-		if strings.Contains(errorStr, pattern) {
-			return true
-		}
-	}
-
-	return false
+	return containsAny(err.Error(), []string{
+		"产品页面不存在", "产品页面缺少必要元素", "页面不存在(404)", "页面不存在",
+		"页面未准备就绪: 页面不存在", "不是有效的产品页面",
+		"product not found", "Product not found", "404",
+	})
 }
 
 // GetErrorType 获取错误类型
@@ -253,36 +166,24 @@ func (ed *ErrorDetector) GetErrorType(err error) string {
 	if err == nil {
 		return "none"
 	}
-
-	if ed.IsProductNotFoundError(err) {
+	switch {
+	case ed.IsProductNotFoundError(err):
 		return "product_not_found"
-	}
-
-	if ed.IsAuthenticationError(err) {
+	case ed.IsAuthenticationError(err):
 		return "authentication"
-	}
-
-	if ed.IsCaptchaError(err) {
+	case ed.IsCaptchaError(err):
 		return "captcha"
-	}
-
-	if ed.IsBrowserCrashError(err) {
+	case ed.IsBrowserCrashError(err):
 		return "browser_crash"
-	}
-
-	if ed.IsServerError(err) {
+	case ed.IsServerError(err):
 		return "server_error"
-	}
-
-	if ed.IsNetworkError(err) {
+	case ed.IsNetworkError(err):
 		return "network"
-	}
-
-	if ed.IsTimeoutError(err) {
+	case ed.IsTimeoutError(err):
 		return "timeout"
+	default:
+		return "unknown"
 	}
-
-	return "unknown"
 }
 
 // ShouldRetry 判断错误是否应该重试
@@ -290,27 +191,10 @@ func (ed *ErrorDetector) ShouldRetry(err error) bool {
 	if err == nil {
 		return false
 	}
-
-	errorType := ed.GetErrorType(err)
-
-	// 产品不存在错误不应该重试
-	if errorType == "product_not_found" {
+	switch ed.GetErrorType(err) {
+	case "timeout", "network", "server_error":
+		return true
+	default:
 		return false
 	}
-
-	// 其他错误类型可以重试
-	retryableTypes := []string{
-		"timeout",
-		"network",
-		"server_error",
-	}
-
-	for _, retryableType := range retryableTypes {
-		if errorType == retryableType {
-			return true
-		}
-	}
-
-	return false
 }
-

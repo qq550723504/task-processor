@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/model"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
-	temuformat "task-processor/internal/temu/format"
 	"task-processor/internal/temu/image"
 
 	"github.com/sirupsen/logrus"
@@ -154,101 +153,17 @@ func (spb *SkuParallelBuilder) buildSpecList(_ *temucontext.TemuTaskContext, _ *
 	return specList
 }
 
-// buildProductExpressInfo 构建产品物流信息（重量和尺寸）
+// buildProductExpressInfo 委托给 SkuItemBuilder
 func (spb *SkuParallelBuilder) buildProductExpressInfo(variant *model.Product, aiSku temucontext.AIGeneratedSku) (weight, length, width, height string) {
-	// 使用AI提取/估算的重量和尺寸（单位：lb和in）
-	// 格式化重量为两位小数（TEMU API要求）
-	weight = temuformat.Weight(aiSku.Weight)
-	if aiSku.Weight == "" || aiSku.Weight == "0.22" {
-		spb.logger.Errorf("❌ AI未能估算重量（ASIN: %s），使用兜底默认值: %slb - 这可能不准确！", variant.Asin, weight)
-	} else {
-		spb.logger.Infof("✅ AI提取/估算重量: %slb -> 格式化为: %slb (ASIN: %s)", aiSku.Weight, weight, variant.Asin)
-	}
-
-	// 格式化尺寸为一位小数（TEMU API要求）
-	length = temuformat.Dimension(aiSku.Length)
-	if aiSku.Length == "" || aiSku.Length == "3.94" {
-		spb.logger.Errorf("❌ AI未能估算长度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, length)
-	} else {
-		spb.logger.Infof("✅ AI提取/估算长度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Length, length, variant.Asin)
-	}
-
-	width = temuformat.Dimension(aiSku.Width)
-	if aiSku.Width == "" || aiSku.Width == "5.91" {
-		spb.logger.Errorf("❌ AI未能估算宽度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, width)
-	} else {
-		spb.logger.Infof("✅ AI提取/估算宽度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Width, width, variant.Asin)
-	}
-
-	height = temuformat.Dimension(aiSku.Height)
-	if aiSku.Height == "" || aiSku.Height == "7.87" {
-		spb.logger.Errorf("❌ AI未能估算高度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, height)
-	} else {
-		spb.logger.Infof("✅ AI提取/估算高度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Height, height, variant.Asin)
-	}
-
-	return weight, length, width, height
+	return spb.itemBuilder.buildProductExpressInfo(variant, aiSku)
 }
 
-// buildMultiplePackage 构建多件装信息
+// buildMultiplePackage 委托给 SkuItemBuilder
 func (spb *SkuParallelBuilder) buildMultiplePackage(_ *model.Product, aiSku temucontext.AIGeneratedSku) models.MultiplePackage {
-	// 使用AI判断的多件装信息
-	multiplePackage := models.MultiplePackage{
-		SkuClassification:  aiSku.SkuClassification,
-		NumberOfPieces:     aiSku.NumberOfPieces,
-		IndividuallyPacked: aiSku.IndividuallyPacked,
-		NumberOfPiecesNew:  fmt.Sprintf("%d", aiSku.NumberOfPieces),
-		PieceUnitCode:      aiSku.PieceUnitCode,
-		PieceNewUnitCode:   aiSku.PieceUnitCode,
-	}
-
-	// 如果AI没有提供值，使用默认值
-	if multiplePackage.SkuClassification == 0 {
-		multiplePackage.SkuClassification = 1
-		spb.logger.Warnf("⚠️ AI未提供sku_classification，使用默认值: 1 (单品)")
-	}
-	if multiplePackage.NumberOfPieces == 0 {
-		multiplePackage.NumberOfPieces = 1
-		multiplePackage.NumberOfPiecesNew = "1"
-		spb.logger.Warnf("⚠️ AI未提供number_of_pieces，使用默认值: 1")
-	}
-	if multiplePackage.PieceUnitCode == 0 {
-		multiplePackage.PieceUnitCode = 1
-		multiplePackage.PieceNewUnitCode = 1
-		spb.logger.Warnf("⚠️ AI未提供piece_unit_code，使用默认值: 1 (件)")
-	}
-
-	// TEMU API规则：对于单品(SkuClassification=1)，必须满足以下条件
-	// - NumberOfPieces 必须为 1
-	// - IndividuallyPacked 必须为 1 (yes)
-	if multiplePackage.SkuClassification == 1 {
-		if multiplePackage.NumberOfPieces != 1 {
-			spb.logger.Warnf("⚠️ 单品的包装数量必须为1，已自动修正: %d -> 1", multiplePackage.NumberOfPieces)
-			multiplePackage.NumberOfPieces = 1
-			multiplePackage.NumberOfPiecesNew = "1"
-		}
-		if multiplePackage.IndividuallyPacked != 1 {
-			spb.logger.Warnf("⚠️ 单品必须独立包装，已自动修正: %d -> 1", multiplePackage.IndividuallyPacked)
-			multiplePackage.IndividuallyPacked = 1
-		}
-	}
-
-	return multiplePackage
+	return spb.itemBuilder.buildMultiplePackage(aiSku)
 }
 
-// extractNetContentInfo 提取净含量信息
+// extractNetContentInfo 委托给 SkuItemBuilder
 func (spb *SkuParallelBuilder) extractNetContentInfo(variant *model.Product, aiSku temucontext.AIGeneratedSku) (string, int) {
-	var originNetContentNumber string
-	var netContentUnitCode int
-
-	// 从AI映射中提取净含量信息
-	if aiSku.NetContentNumber != "" {
-		originNetContentNumber = aiSku.NetContentNumber
-		netContentUnitCode = aiSku.NetContentUnitCode
-		spb.logger.Infof("✅ AI提取的净含量信息 (ASIN: %s): %s (unit_code: %d)",
-			variant.Asin, originNetContentNumber, netContentUnitCode)
-	}
-
-	return originNetContentNumber, netContentUnitCode
+	return spb.itemBuilder.extractNetContentInfo(variant, aiSku)
 }
-

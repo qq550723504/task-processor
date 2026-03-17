@@ -87,87 +87,9 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 		ib.logger.Error("❌ 无法创建SKU，因为规格无效且不允许使用默认规格")
 	}
 
-	// 使用AI提取/估算的重量和尺寸（单位：lb和in）
-	// 格式化重量为两位小数（TEMU API要求）
-	weight := temuformat.Weight(aiSku.Weight)
-	if aiSku.Weight == "" || aiSku.Weight == "0.22" {
-		ib.logger.Errorf("❌ AI未能估算重量（ASIN: %s），使用兜底默认值: %slb - 这可能不准确！", variant.Asin, weight)
-	} else {
-		ib.logger.Infof("✅ AI提取/估算重量: %slb -> 格式化为: %slb (ASIN: %s)", aiSku.Weight, weight, variant.Asin)
-	}
-
-	// 格式化尺寸为一位小数（TEMU API要求）
-	length := temuformat.Dimension(aiSku.Length)
-	if aiSku.Length == "" || aiSku.Length == "3.94" {
-		ib.logger.Errorf("❌ AI未能估算长度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, length)
-	} else {
-		ib.logger.Infof("✅ AI提取/估算长度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Length, length, variant.Asin)
-	}
-
-	width := temuformat.Dimension(aiSku.Width)
-	if aiSku.Width == "" || aiSku.Width == "5.91" {
-		ib.logger.Errorf("❌ AI未能估算宽度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, width)
-	} else {
-		ib.logger.Infof("✅ AI提取/估算宽度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Width, width, variant.Asin)
-	}
-
-	height := temuformat.Dimension(aiSku.Height)
-	if aiSku.Height == "" || aiSku.Height == "7.87" {
-		ib.logger.Errorf("❌ AI未能估算高度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, height)
-	} else {
-		ib.logger.Infof("✅ AI提取/估算高度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Height, height, variant.Asin)
-	}
-
-	// 使用AI判断的多件装信息
-	multiplePackage := models.MultiplePackage{
-		SkuClassification:  aiSku.SkuClassification,
-		NumberOfPieces:     aiSku.NumberOfPieces,
-		IndividuallyPacked: aiSku.IndividuallyPacked,
-		NumberOfPiecesNew:  fmt.Sprintf("%d", aiSku.NumberOfPieces),
-		PieceUnitCode:      aiSku.PieceUnitCode,
-		PieceNewUnitCode:   aiSku.PieceUnitCode,
-	}
-
-	// 如果AI没有提供值，使用默认值
-	if multiplePackage.SkuClassification == 0 {
-		multiplePackage.SkuClassification = 1
-		ib.logger.Warnf("⚠️ AI未提供sku_classification，使用默认值: 1 (单品)")
-	}
-	if multiplePackage.NumberOfPieces == 0 {
-		multiplePackage.NumberOfPieces = 1
-		multiplePackage.NumberOfPiecesNew = "1"
-		ib.logger.Warnf("⚠️ AI未提供number_of_pieces，使用默认值: 1")
-	}
-	if multiplePackage.PieceUnitCode == 0 {
-		multiplePackage.PieceUnitCode = 1
-		multiplePackage.PieceNewUnitCode = 1
-		ib.logger.Warnf("⚠️ AI未提供piece_unit_code，使用默认值: 1 (件)")
-	}
-
-	// TEMU API规则：对于单品(SkuClassification=1)，必须满足以下条件
-	// - NumberOfPieces 必须为 1
-	// - IndividuallyPacked 必须为 1 (yes)
-	if multiplePackage.SkuClassification == 1 {
-		if multiplePackage.NumberOfPieces != 1 {
-			ib.logger.Warnf("⚠️ 单品的包装数量必须为1，已自动修正: %d -> 1", multiplePackage.NumberOfPieces)
-			multiplePackage.NumberOfPieces = 1
-			multiplePackage.NumberOfPiecesNew = "1"
-		}
-		if multiplePackage.IndividuallyPacked != 1 {
-			ib.logger.Warnf("⚠️ 单品必须独立包装，已自动修正: %d -> 1", multiplePackage.IndividuallyPacked)
-			multiplePackage.IndividuallyPacked = 1
-		}
-	}
-
-	// 处理净含量信息
-	var originNetContentNumber string
-	var netContentUnitCode int
-	if aiSku.NetContentNumber != "" {
-		originNetContentNumber = aiSku.NetContentNumber
-		netContentUnitCode = aiSku.NetContentUnitCode
-		ib.logger.Infof("✅ AI提取的净含量信息 (ASIN: %s): %s (unit_code: %d)",
-			variant.Asin, originNetContentNumber, netContentUnitCode)
-	}
+	weight, length, width, height := ib.buildProductExpressInfo(variant, aiSku)
+	multiplePackage := ib.buildMultiplePackage(aiSku)
+	originNetContentNumber, netContentUnitCode := ib.extractNetContentInfo(variant, aiSku)
 
 	// 构建图片，确保总数不超过10张
 	// DimensionGallery: 使用标注过的尺寸图
@@ -236,59 +158,18 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 
 // buildSkuFromVariantBasic 基本SKU构建（不依赖上下文）
 func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku temucontext.AIGeneratedSku) models.Sku {
-	// 基本实现，使用默认值
 	asin := variant.Asin
-	outSkuSN := asin // 简单使用ASIN作为SKU
+	outSkuSN := asin
 
-	// 默认价格和库存
 	basePrice := variant.FinalPrice
-	finalSalePrice := int64(basePrice * 100) // 转换为分
-	quantity := 10                           // 默认库存
+	finalSalePrice := int64(basePrice * 100)
+	quantity := 10
 
 	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
+	weight, length, width, height := ib.buildProductExpressInfo(variant, aiSku)
+	multiplePackage := ib.buildMultiplePackage(aiSku)
+	originNetContentNumber, netContentUnitCode := ib.extractNetContentInfo(variant, aiSku)
 
-	// 使用AI提取/估算的重量和尺寸
-	weight := temuformat.Weight(aiSku.Weight)
-	length := temuformat.Dimension(aiSku.Length)
-	width := temuformat.Dimension(aiSku.Width)
-	height := temuformat.Dimension(aiSku.Height)
-
-	// 使用AI判断的多件装信息
-	multiplePackage := models.MultiplePackage{
-		SkuClassification:  aiSku.SkuClassification,
-		NumberOfPieces:     aiSku.NumberOfPieces,
-		IndividuallyPacked: aiSku.IndividuallyPacked,
-		NumberOfPiecesNew:  fmt.Sprintf("%d", aiSku.NumberOfPieces),
-		PieceUnitCode:      aiSku.PieceUnitCode,
-		PieceNewUnitCode:   aiSku.PieceUnitCode,
-	}
-
-	// 默认值处理
-	if multiplePackage.SkuClassification == 0 {
-		multiplePackage.SkuClassification = 1
-	}
-	if multiplePackage.NumberOfPieces == 0 {
-		multiplePackage.NumberOfPieces = 1
-		multiplePackage.NumberOfPiecesNew = "1"
-	}
-	if multiplePackage.PieceUnitCode == 0 {
-		multiplePackage.PieceUnitCode = 1
-		multiplePackage.PieceNewUnitCode = 1
-	}
-
-	// 处理净含量信息
-	var originNetContentNumber string
-	var netContentUnitCode int
-	if aiSku.NetContentNumber != "" {
-		originNetContentNumber = aiSku.NetContentNumber
-		netContentUnitCode = aiSku.NetContentUnitCode
-	}
-
-	// 基本图片处理（空数组）
-	dimensionGallery := []models.ImageInfo{}
-	carouselGallery := []models.ImageInfo{}
-
-	// 计算市场价：最终销售价格 * 2
 	marketPrice := int(finalSalePrice * 2)
 	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
 
@@ -296,8 +177,8 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 		Spec:                     specList,
 		Currency:                 "USD",
 		UseEstimateSupplierPrice: true,
-		DimensionGallery:         dimensionGallery,
-		CarouselGallery:          carouselGallery,
+		DimensionGallery:         []models.ImageInfo{},
+		CarouselGallery:          []models.ImageInfo{},
 		FoodIngredientGallery:    []models.ImageInfo{},
 		Quantity:                 fmt.Sprintf("%d", quantity),
 		ProductExpressInfo: models.ProductExpressInfo{
@@ -315,6 +196,91 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 		MarketPriceStr:         marketPriceStr,
 		SkuPriceDocuments:      map[string]any{},
 	}
+}
+
+// buildProductExpressInfo 构建产品物流信息（重量和尺寸）
+func (ib *SkuItemBuilder) buildProductExpressInfo(variant *model.Product, aiSku temucontext.AIGeneratedSku) (weight, length, width, height string) {
+	weight = temuformat.Weight(aiSku.Weight)
+	if aiSku.Weight == "" || aiSku.Weight == "0.22" {
+		ib.logger.Errorf("❌ AI未能估算重量（ASIN: %s），使用兜底默认值: %slb - 这可能不准确！", variant.Asin, weight)
+	} else {
+		ib.logger.Infof("✅ AI提取/估算重量: %slb -> 格式化为: %slb (ASIN: %s)", aiSku.Weight, weight, variant.Asin)
+	}
+
+	length = temuformat.Dimension(aiSku.Length)
+	if aiSku.Length == "" || aiSku.Length == "3.94" {
+		ib.logger.Errorf("❌ AI未能估算长度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, length)
+	} else {
+		ib.logger.Infof("✅ AI提取/估算长度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Length, length, variant.Asin)
+	}
+
+	width = temuformat.Dimension(aiSku.Width)
+	if aiSku.Width == "" || aiSku.Width == "5.91" {
+		ib.logger.Errorf("❌ AI未能估算宽度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, width)
+	} else {
+		ib.logger.Infof("✅ AI提取/估算宽度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Width, width, variant.Asin)
+	}
+
+	height = temuformat.Dimension(aiSku.Height)
+	if aiSku.Height == "" || aiSku.Height == "7.87" {
+		ib.logger.Errorf("❌ AI未能估算高度（ASIN: %s），使用兜底默认值: %sin - 这可能不准确！", variant.Asin, height)
+	} else {
+		ib.logger.Infof("✅ AI提取/估算高度: %sin -> 格式化为: %sin (ASIN: %s)", aiSku.Height, height, variant.Asin)
+	}
+
+	return weight, length, width, height
+}
+
+// buildMultiplePackage 构建多件装信息
+func (ib *SkuItemBuilder) buildMultiplePackage(aiSku temucontext.AIGeneratedSku) models.MultiplePackage {
+	mp := models.MultiplePackage{
+		SkuClassification:  aiSku.SkuClassification,
+		NumberOfPieces:     aiSku.NumberOfPieces,
+		IndividuallyPacked: aiSku.IndividuallyPacked,
+		NumberOfPiecesNew:  fmt.Sprintf("%d", aiSku.NumberOfPieces),
+		PieceUnitCode:      aiSku.PieceUnitCode,
+		PieceNewUnitCode:   aiSku.PieceUnitCode,
+	}
+
+	if mp.SkuClassification == 0 {
+		mp.SkuClassification = 1
+		ib.logger.Warnf("⚠️ AI未提供sku_classification，使用默认值: 1 (单品)")
+	}
+	if mp.NumberOfPieces == 0 {
+		mp.NumberOfPieces = 1
+		mp.NumberOfPiecesNew = "1"
+		ib.logger.Warnf("⚠️ AI未提供number_of_pieces，使用默认值: 1")
+	}
+	if mp.PieceUnitCode == 0 {
+		mp.PieceUnitCode = 1
+		mp.PieceNewUnitCode = 1
+		ib.logger.Warnf("⚠️ AI未提供piece_unit_code，使用默认值: 1 (件)")
+	}
+
+	// TEMU API规则：单品必须满足 NumberOfPieces=1 且 IndividuallyPacked=1
+	if mp.SkuClassification == 1 {
+		if mp.NumberOfPieces != 1 {
+			ib.logger.Warnf("⚠️ 单品的包装数量必须为1，已自动修正: %d -> 1", mp.NumberOfPieces)
+			mp.NumberOfPieces = 1
+			mp.NumberOfPiecesNew = "1"
+		}
+		if mp.IndividuallyPacked != 1 {
+			ib.logger.Warnf("⚠️ 单品必须独立包装，已自动修正: %d -> 1", mp.IndividuallyPacked)
+			mp.IndividuallyPacked = 1
+		}
+	}
+
+	return mp
+}
+
+// extractNetContentInfo 提取净含量信息
+func (ib *SkuItemBuilder) extractNetContentInfo(variant *model.Product, aiSku temucontext.AIGeneratedSku) (string, int) {
+	if aiSku.NetContentNumber == "" {
+		return "", 0
+	}
+	ib.logger.Infof("✅ AI提取的净含量信息 (ASIN: %s): %s (unit_code: %d)",
+		variant.Asin, aiSku.NetContentNumber, aiSku.NetContentUnitCode)
+	return aiSku.NetContentNumber, aiSku.NetContentUnitCode
 }
 
 // processSkuItem 处理SKU项目（兼容接口）
@@ -455,4 +421,3 @@ func (ib *SkuItemBuilder) saveAsinSkuMappingTemu(temuCtx *temucontext.TemuTaskCo
 
 	ib.logger.Debugf("保存ASIN到SKU映射: %s -> %s", outSkuSN, asin)
 }
-
