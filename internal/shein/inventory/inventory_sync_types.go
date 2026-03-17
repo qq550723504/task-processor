@@ -1,7 +1,10 @@
-// Package operation 提供SHEIN平台调度器相关服务的类型定义
-package operation
+﻿// Package operation 提供SHEIN平台调度器相关服务的类型定义
+package inventory
 
-import managementapi "task-processor/internal/infra/clients/management/api"
+import (
+	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/shein"
+)
 
 // MonitorResult 监控结果
 type MonitorResult struct {
@@ -20,10 +23,6 @@ type SKUMappingData struct {
 	Stock       int
 }
 
-// AmazonMonitorData Amazon监控数据
-type AmazonMonitorData struct {
-	ASIN          string  `json:"asin"`
-	Price         float64 `json:"price"`
-	Stock         int     `json:"stock"`
-	LastCheckTime int64   `json:"last_check_time"` // Unix时间戳（秒）
-}
+// AmazonMonitorData 类型已统一到 shein.AmazonMonitorData，此处保留别名以兼容现有代码
+// Deprecated: 请直接使用 shein.AmazonMonitorData
+type AmazonMonitorData = shein.AmazonMonitorData

@@ -1,5 +1,5 @@
 ﻿// Package operation 提供SHEIN平台调度器相关服务
-package operation
+package inventory
 
 import (
 	"context"
@@ -18,6 +18,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pricing"
 	shein_product "task-processor/internal/shein/api/product"
+	"task-processor/internal/shein/productsync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -332,7 +333,7 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 	}
 
 	// 解析现有的attributes数据
-	var skcList []EnrichedSkcInfo
+	var skcList []productsync.EnrichedSkcInfo
 	if err := jsonx.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
 		return fmt.Errorf("解析产品attributes失败: %w", err)
 	}

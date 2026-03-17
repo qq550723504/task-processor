@@ -1,5 +1,5 @@
 ﻿// Package operation 提供SHEIN平台调度器相关服务
-package operation
+package inventory
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/shein/productsync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,7 +21,7 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 		return nil
 	}
 
-	var skcList []EnrichedSkcInfo
+	var skcList []productsync.EnrichedSkcInfo
 	if err := jsonx.UnmarshalString(attributesJSON, &skcList, "解析产品Attributes JSON失败"); err != nil {
 		s.logger.WithError(err).WithField("attributes_length", len(attributesJSON)).Error(err.Error())
 		return nil
@@ -175,7 +176,7 @@ func (s *inventorySyncServiceImpl) checkHasAmazonMonitorData(attributesJSON stri
 		return false
 	}
 
-	var skcList []EnrichedSkcInfo
+	var skcList []productsync.EnrichedSkcInfo
 	if err := jsonx.UnmarshalString(attributesJSON, &skcList, "解析产品Attributes失败"); err != nil {
 		s.logger.WithError(err).Debug(err.Error())
 		return false
@@ -208,7 +209,7 @@ func (s *inventorySyncServiceImpl) getAmazonMonitorLastCheckTime(attributesJSON 
 		return 0
 	}
 
-	var skcList []EnrichedSkcInfo
+	var skcList []productsync.EnrichedSkcInfo
 	if err := jsonx.UnmarshalString(attributesJSON, &skcList, "解析产品Attributes失败"); err != nil {
 		s.logger.WithError(err).Debug(err.Error())
 		return 0
@@ -243,7 +244,7 @@ func (s *inventorySyncServiceImpl) validateAttributesStructure(attributesJSON st
 	}
 
 	// 尝试解析为 EnrichedSkcInfo 数组
-	var skcList []EnrichedSkcInfo
+	var skcList []productsync.EnrichedSkcInfo
 	if err := jsonx.UnmarshalString(attributesJSON, &skcList, "无法解析为 EnrichedSkcInfo 数组"); err != nil {
 		return err
 	}

@@ -4,7 +4,7 @@ package activity
 import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/shein/operation"
+	"task-processor/internal/shein/productsync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,7 +24,7 @@ func NewProductDataHelper(managementClient *management.ClientManager, logger *lo
 }
 
 // BuildSkcDataMap 构建SKC到EnrichedSkcInfo的映射
-func (h *ProductDataHelper) BuildSkcDataMap(storeID int64) (map[string]*operation.EnrichedSkcInfo, error) {
+func (h *ProductDataHelper) BuildSkcDataMap(storeID int64) (map[string]*productsync.EnrichedSkcInfo, error) {
 	productClient := h.managementClient.GetProductDataClient(storeID)
 	shelfStatus := 2 // 2表示在售状态
 	allProducts, err := productClient.ListByStore("SHEIN", 0, storeID, &shelfStatus)
@@ -33,13 +33,13 @@ func (h *ProductDataHelper) BuildSkcDataMap(storeID int64) (map[string]*operatio
 		return nil, err
 	}
 
-	skcDataMap := make(map[string]*operation.EnrichedSkcInfo)
+	skcDataMap := make(map[string]*productsync.EnrichedSkcInfo)
 	for _, prod := range allProducts {
 		if prod.Attributes == "" {
 			continue
 		}
 
-		var skcList []operation.EnrichedSkcInfo
+		var skcList []productsync.EnrichedSkcInfo
 		if err := jsonx.UnmarshalString(prod.Attributes, &skcList, ""); err != nil {
 			h.logger.WithError(err).Debugf("解析产品Attributes失败: %s", prod.ProductID)
 			continue
@@ -72,7 +72,7 @@ func (h *ProductDataHelper) BuildSkcAttributesMap(storeID int64) (map[string]str
 			continue
 		}
 
-		var skcList []operation.EnrichedSkcInfo
+		var skcList []productsync.EnrichedSkcInfo
 		if err := jsonx.UnmarshalString(prod.Attributes, &skcList, ""); err != nil {
 			h.logger.WithError(err).Debugf("解析产品Attributes失败: %s", prod.ProductID)
 			continue
@@ -90,7 +90,7 @@ func (h *ProductDataHelper) BuildSkcAttributesMap(storeID int64) (map[string]str
 }
 
 // ExtractAmazonPriceFromSkcData 从EnrichedSkcInfo中提取Amazon价格
-func (h *ProductDataHelper) ExtractAmazonPriceFromSkcData(skcData *operation.EnrichedSkcInfo) float64 {
+func (h *ProductDataHelper) ExtractAmazonPriceFromSkcData(skcData *productsync.EnrichedSkcInfo) float64 {
 	if skcData == nil {
 		return 0
 	}
@@ -112,7 +112,7 @@ func (h *ProductDataHelper) ExtractAmazonPriceFromAttributes(attributesJSON stri
 		return 0
 	}
 
-	var skcList []operation.EnrichedSkcInfo
+	var skcList []productsync.EnrichedSkcInfo
 	if err := jsonx.UnmarshalString(attributesJSON, &skcList, ""); err != nil {
 		h.logger.WithField("skcCode", skcCode).WithError(err).Debug("解析产品Attributes失败")
 		return 0
@@ -129,12 +129,12 @@ func (h *ProductDataHelper) ExtractAmazonPriceFromAttributes(attributesJSON stri
 }
 
 // ExtractSkcInfoFromAttributes 从Attributes JSON字符串中提取指定SKC的完整信息
-func (h *ProductDataHelper) ExtractSkcInfoFromAttributes(attributesJSON string, skcCode string) *operation.EnrichedSkcInfo {
+func (h *ProductDataHelper) ExtractSkcInfoFromAttributes(attributesJSON string, skcCode string) *productsync.EnrichedSkcInfo {
 	if attributesJSON == "" {
 		return nil
 	}
 
-	var skcList []operation.EnrichedSkcInfo
+	var skcList []productsync.EnrichedSkcInfo
 	if err := jsonx.UnmarshalString(attributesJSON, &skcList, ""); err != nil {
 		h.logger.WithField("skcCode", skcCode).WithError(err).Debug("解析产品Attributes失败")
 		return nil

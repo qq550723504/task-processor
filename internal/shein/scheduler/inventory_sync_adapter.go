@@ -5,17 +5,17 @@ import (
 	"context"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/shein/inventory"
 	commonscheduler "task-processor/internal/taskbase"
-	sheinscheduler "task-processor/internal/shein/operation"
 )
 
 // inventorySyncServiceAdapter 适配器，将SHEIN特定的InventorySyncService适配到通用接口
 type inventorySyncServiceAdapter struct {
-	sheinService sheinscheduler.InventorySyncService
+	sheinService inventory.InventorySyncService
 }
 
 // newInventorySyncServiceAdapter 创建库存同步服务适配器
-func newInventorySyncServiceAdapter(sheinService sheinscheduler.InventorySyncService) commonscheduler.InventorySyncService {
+func newInventorySyncServiceAdapter(sheinService inventory.InventorySyncService) commonscheduler.InventorySyncService {
 	return &inventorySyncServiceAdapter{
 		sheinService: sheinService,
 	}

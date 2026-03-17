@@ -15,8 +15,9 @@ import (
 	shein_pricing "task-processor/internal/shein/api/pricing"
 	shein_product "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/client"
-	schedulerservice "task-processor/internal/shein/operation"
+	"task-processor/internal/shein/inventory"
 	sheinpricing "task-processor/internal/shein/pricing"
+	"task-processor/internal/shein/productsync"
 )
 
 // SheinTaskFactory SHEIN平台任务工厂
@@ -118,7 +119,7 @@ func (f *SheinTaskFactory) createProductSyncTask(ctx context.Context, config app
 	storeInfoClient := f.GetManagementClient().GetStoreClient()
 	mappingClient := f.GetManagementClient().GetProductImportMappingClient()
 
-	syncService := schedulerservice.NewProductSyncService(
+	syncService := productsync.NewProductSyncService(
 		f.GetManagementClient(),
 		productAPI,
 		inventoryManager,
@@ -136,7 +137,7 @@ func (f *SheinTaskFactory) createInventoryTask(ctx context.Context, config appsc
 	rawJsonDataClient := f.GetManagementClient().GetRawJsonDataAdapter()
 	inventoryRecordClient := f.GetManagementClient().GetInventoryRecordClient()
 
-	inventoryService := schedulerservice.NewInventorySyncService(
+	inventoryService := inventory.NewInventorySyncService(
 		f.GetManagementClient(),
 		productAPI,
 		f.GetAmazonProcessor(),

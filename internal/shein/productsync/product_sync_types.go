@@ -1,8 +1,9 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务的类型定义
-package operation
+﻿// Package productsync 提供SHEIN平台产品同步相关服务的类型定义
+package productsync
 
 import (
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
 )
 
@@ -17,7 +18,7 @@ type EnrichedSkuInfo struct {
 	InventoryInfo     []product.WarehouseInventory     `json:"inventory_info,omitempty"`      // SKU 库存信息
 	UsableInventory   *int                             `json:"usable_inventory,omitempty"`    // 可用库存汇总
 	InventoryQuantity *int                             `json:"inventory_quantity,omitempty"`  // 总库存汇总
-	AmazonMonitorData *AmazonMonitorData               `json:"amazon_monitor_data,omitempty"` // Amazon监控数据
+	AmazonMonitorData *shein.AmazonMonitorData         `json:"amazon_monitor_data,omitempty"` // Amazon监控数据
 }
 
 // EnrichedSkcInfo 增强的SKC数据结构（用于序列化到Attributes）

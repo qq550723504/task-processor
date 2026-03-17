@@ -1,5 +1,5 @@
-// Package operation 提供SHEIN平台调度器相关服务
-package operation
+﻿// Package operation 提供SHEIN平台调度器相关服务
+package inventory
 
 // getMinProfitRateThreshold 获取最低利润率阈值（优先从运营策略获取）
 func (s *inventorySyncServiceImpl) getMinProfitRateThreshold(storeID int64) float64 {

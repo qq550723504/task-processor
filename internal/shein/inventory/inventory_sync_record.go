@@ -1,5 +1,5 @@
 ﻿// Package operation 提供SHEIN平台调度器相关服务
-package operation
+package inventory
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timex"
+	"task-processor/internal/shein/productsync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -47,7 +48,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 
 	// 解析 Attributes 获取 SKU 的 AmazonMonitorData
 	if prod.Attributes != "" {
-		var skcList []EnrichedSkcInfo
+		var skcList []productsync.EnrichedSkcInfo
 		if err := jsonx.UnmarshalString(prod.Attributes, &skcList, ""); err == nil {
 			// 查找对应的 SKU
 			for _, skc := range skcList {
@@ -132,7 +133,7 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 ) {
 	defer recovery.Recover("更新Attributes", s.logger)
 
-	var skcList []EnrichedSkcInfo
+	var skcList []productsync.EnrichedSkcInfo
 	if err := jsonx.UnmarshalString(prod.Attributes, &skcList, "解析产品attributes失败"); err != nil {
 		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error(err.Error())
 		return

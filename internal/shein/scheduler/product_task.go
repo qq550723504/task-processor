@@ -6,9 +6,9 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/taskbase"
 	"task-processor/internal/shein/client"
-	sheinscheduler "task-processor/internal/shein/operation"
+	"task-processor/internal/shein/productsync"
+	commonscheduler "task-processor/internal/taskbase"
 )
 
 // ProductSyncTask SHEIN产品同步任务
@@ -24,7 +24,7 @@ func NewProductSyncTask(
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
 	clientManager *client.ClientManager,
-	syncService sheinscheduler.ProductSyncService,
+	syncService productsync.ProductSyncService,
 ) *ProductSyncTask {
 	// 创建适配器，将SHEIN特定服务适配到通用接口
 	adapter := newProductSyncServiceAdapter(syncService)

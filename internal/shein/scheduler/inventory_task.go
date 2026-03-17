@@ -6,9 +6,9 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
-	commonscheduler "task-processor/internal/taskbase"
 	"task-processor/internal/shein/client"
-	sheinscheduler "task-processor/internal/shein/operation"
+	"task-processor/internal/shein/inventory"
+	commonscheduler "task-processor/internal/taskbase"
 )
 
 // InventoryTask SHEIN库存监控任务
@@ -24,7 +24,7 @@ func NewInventoryTask(
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
 	clientManager *client.ClientManager,
-	inventoryService sheinscheduler.InventorySyncService,
+	inventoryService inventory.InventorySyncService,
 ) *InventoryTask {
 	// 创建适配器
 	adapter := newInventorySyncServiceAdapter(inventoryService)

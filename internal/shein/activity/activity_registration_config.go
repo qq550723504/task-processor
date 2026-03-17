@@ -7,7 +7,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/api/marketing"
-	"task-processor/internal/shein/operation"
+	"task-processor/internal/shein/productsync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -196,7 +196,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 		}
 
 		// 检查该SKC下的所有SKU是否都满足利润率要求
-		validSkus := make([]operation.EnrichedSkuInfo, 0, len(skcInfo.SkuInfo))
+		validSkus := make([]productsync.EnrichedSkuInfo, 0, len(skcInfo.SkuInfo))
 		totalOriginalPrice := 0.0
 		totalActivityPrice := 0.0
 		skuCount := 0

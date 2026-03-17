@@ -1,5 +1,5 @@
 ﻿// Package operation 提供SHEIN平台调度器相关服务
-package operation
+package productsync
 
 import (
 	"context"
