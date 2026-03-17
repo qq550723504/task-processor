@@ -1,65 +1,19 @@
-// Package di 提供依赖注入容器接口定义
+// Package di 提供轻量级依赖注入容器
 package di
 
-import (
-	"reflect"
-)
-
-// ContainerReader 只读容器接口，用于只需要获取服务的消费者（如组件适配器）
+// ContainerReader 只读容器接口，用于只需要获取服务的消费者
 type ContainerReader interface {
-	// Get 获取服务实例
 	Get(name string) (any, error)
-
-	// Has 检查服务是否已注册
 	Has(name string) bool
 }
 
-// Container 依赖注入容器完整接口，嵌入 ContainerReader
+// Container 依赖注入容器完整接口
 type Container interface {
 	ContainerReader
-
-	// Register 注册服务工厂
 	Register(name string, factory Factory) error
-
-	// RegisterSingleton 注册单例服务
 	RegisterSingleton(name string, factory Factory) error
-
-	// GetByType 根据类型获取服务实例
-	GetByType(serviceType reflect.Type) (any, error)
-
-	// Close 关闭容器，清理资源
 	Close() error
 }
 
 // Factory 服务工厂函数
 type Factory func(c Container) (any, error)
-
-// ServiceRegistry 服务注册表接口
-type ServiceRegistry interface {
-	// Register 注册服务
-	Register(name string, factory Factory, singleton bool) error
-
-	// Get 获取服务
-	Get(name string) (Factory, bool, error)
-
-	// List 列出所有已注册的服务
-	List() []string
-
-	// Clear 清空注册表
-	Clear()
-}
-
-// InstanceCache 实例缓存接口
-type InstanceCache interface {
-	// Get 获取缓存的实例
-	Get(name string) (any, bool)
-
-	// Set 设置缓存实例
-	Set(name string, instance any)
-
-	// Delete 删除缓存实例
-	Delete(name string)
-
-	// Clear 清空缓存
-	Clear()
-}

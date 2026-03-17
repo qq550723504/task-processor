@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/core/config"
 	apptask "task-processor/internal/app/task"
+	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -26,7 +26,7 @@ type RabbitMQService struct {
 	connManager       *rabbitmq.ConnectionManager
 	client            *rabbitmq.Client
 	consumer          *rabbitmq.MessageConsumer
-	initializer       *QueueInitializer
+	initializer       *rabbitmq.QueueInitializer
 	processorRegistry *TaskProcessorRegistry
 	logger            *logrus.Logger
 
@@ -86,7 +86,7 @@ func NewRabbitMQService(cfg *config.RabbitMQConfig, logger *logrus.Logger) *Rabb
 	consumer := rabbitmq.NewMessageConsumer(client, consumerConfig, logger)
 
 	// 创建初始化器
-	initializer := NewQueueInitializer(client, logger)
+	initializer := rabbitmq.NewQueueInitializer(client, logger)
 
 	// 创建增强的处理器注册表（暂时传nil，后续通过SetComponents设置）
 	processorRegistry := NewTaskProcessorRegistry(nil, nil, nil, nil, logger)
@@ -340,4 +340,3 @@ func (s *RabbitMQService) GetClient() *rabbitmq.Client {
 func (s *RabbitMQService) GetConsumer() *rabbitmq.MessageConsumer {
 	return s.consumer
 }
-
