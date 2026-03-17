@@ -4,7 +4,7 @@ package runner
 import (
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	sheinscheduler "task-processor/internal/shein/taskexecutor"
+	sheinscheduler "task-processor/internal/shein/scheduler"
 	temuscheduler "task-processor/internal/temu/scheduler"
 )
 

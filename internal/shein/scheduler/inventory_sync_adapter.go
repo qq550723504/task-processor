@@ -1,5 +1,5 @@
-﻿// Package taskexecutor 提供SHEIN库存同步任务的适配器
-package taskexecutor
+﻿// package scheduler 提供SHEIN库存同步任务的适配器
+package scheduler
 
 import (
 	"context"
