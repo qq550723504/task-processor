@@ -7,10 +7,12 @@ import (
 
 	"task-processor/internal/amazon/api"
 	"task-processor/internal/amazon/listing"
+	"task-processor/internal/amazon/llm"
 	amazonModel "task-processor/internal/amazon/model"
 	"task-processor/internal/amazon/pipeline"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
@@ -46,9 +48,11 @@ func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger
 	productTypeService := listing.NewProductTypeRecommendationService(apiClient)
 	services.SetProductTypeService(productTypeService)
 
-	// 创建服务工厂并初始化LLM服务
-	serviceFactory := listing.NewServiceFactory(cfg)
-	serviceFactory.UpdateServices(services)
+	// 初始化 LLM 属性映射器
+	openaiClient := openai.NewClient(openai.NewClientConfig(
+		cfg.OpenAI.APIKey, cfg.OpenAI.Model, cfg.OpenAI.BaseURL, cfg.OpenAI.Timeout,
+	))
+	services.SetLLMAttributeMapper(llm.NewLLMAttributeMapper(llm.NewOpenAILLMClient(openaiClient)))
 
 	p := &Processor{
 		BaseProcessor: baseProcessor,

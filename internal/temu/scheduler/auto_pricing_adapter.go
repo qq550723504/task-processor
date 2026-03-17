@@ -9,7 +9,9 @@ import (
 	commonscheduler "task-processor/internal/taskbase"
 	"task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
-	"task-processor/internal/temu/pricingsvc"
+	"task-processor/internal/temu/pricing"
+
+	// pricingsvc 别名已废弃，包已重命名为 pricing
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,7 +19,7 @@ import (
 // TemuAutoPricingAdapter 适配Temu的自动核价服务到通用接口
 // Temu平台的特点是一次性完成获取、决策和提交的完整流程
 type TemuAutoPricingAdapter struct {
-	autoPricingService *pricingsvc.AutoPricingService
+	autoPricingService *pricing.AutoPricingService
 	managementClient   *management.ClientManager
 	logger             *logrus.Entry
 }
@@ -28,7 +30,7 @@ func NewTemuAutoPricingAdapter(
 	managementClient *management.ClientManager,
 ) *TemuAutoPricingAdapter {
 	return &TemuAutoPricingAdapter{
-		autoPricingService: pricingsvc.NewAutoPricingService(apiClient),
+		autoPricingService: pricing.NewAutoPricingService(apiClient),
 		managementClient:   managementClient,
 		logger: logrus.WithFields(logrus.Fields{
 			"component": "TemuAutoPricingAdapter",

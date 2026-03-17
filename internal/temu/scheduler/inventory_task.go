@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/platformbase"
 	commonscheduler "task-processor/internal/taskbase"
 	"task-processor/internal/temu/api/client"
-	temuscheduler "task-processor/internal/temu/syncsvc"
+	temuscheduler "task-processor/internal/temu/sync"
 )
 
 // InventoryTask TEMU库存同步任务

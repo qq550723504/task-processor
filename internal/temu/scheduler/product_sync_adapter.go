@@ -7,7 +7,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	commonscheduler "task-processor/internal/taskbase"
 	models "task-processor/internal/temu/api/product"
-	temuscheduler "task-processor/internal/temu/syncsvc"
+	temuscheduler "task-processor/internal/temu/sync"
 )
 
 // productSyncServiceAdapter 适配器，将TEMU特定的ProductSyncService适配到通用接口
