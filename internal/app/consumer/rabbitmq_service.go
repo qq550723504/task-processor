@@ -39,7 +39,6 @@ type RabbitMQService struct {
 	// 生命周期管理
 	ctx    context.Context
 	cancel context.CancelFunc
-	wg     sync.WaitGroup
 
 	// 状态管理
 	started bool

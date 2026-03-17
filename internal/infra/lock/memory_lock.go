@@ -20,7 +20,6 @@ type MemoryLock struct {
 type lockEntry struct {
 	owner     string
 	expiresAt time.Time
-	mu        sync.Mutex
 }
 
 // Logger 日志接口

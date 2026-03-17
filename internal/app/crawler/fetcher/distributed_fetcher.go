@@ -9,10 +9,10 @@ import (
 
 	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
-	domainProduct "task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/timeout"
+	domainProduct "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -137,21 +137,6 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(req *domainProdu
 		result.TaskID, result.Duration, result.NodeID)
 
 	return result.Product, nil
-}
-
-// buildProductURL 构建产品URL
-func (f *DistributedProductFetcher) buildProductURL(req *domainProduct.FetchRequest) string {
-	if req.Platform == "amazon" {
-		domain := f.domainResolver.GetAmazonDomainByRegion(req.Region)
-		return fmt.Sprintf("https://%s/dp/%s", domain, req.ProductID)
-	}
-	return ""
-}
-
-// getZipcode 获取区域对应的邮编
-func (f *DistributedProductFetcher) getZipcode(region string) string {
-	// 使用统一的工具方法获取默认邮编
-	return f.domainResolver.GetZipcodeByRegion(strings.ToLower(region))
 }
 
 // calculatePriority 计算任务优先级
@@ -285,5 +270,3 @@ func (f *DistributedProductFetcher) Close() error {
 
 	return nil
 }
-
-

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	apptask "task-processor/internal/app/task"
@@ -214,14 +213,6 @@ func (eth *TaskHandler) validatePlatform(task *model.Task) error {
 	}
 
 	return nil
-}
-
-// getBasePlatform 获取基础平台名称（移除 .crawler 后缀）
-func (eth *TaskHandler) getBasePlatform() string {
-	if strings.Contains(eth.platform, ".crawler") {
-		return strings.TrimSuffix(eth.platform, ".crawler")
-	}
-	return eth.platform
 }
 
 // processTaskWithReporting 处理任务并上报结果

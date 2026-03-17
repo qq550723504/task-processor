@@ -49,6 +49,9 @@ linters:
     - errname       # 检查错误命名规范
     - errorlint     # 检查错误处理最佳实践
 
+    # 重复代码
+    - dupl          # 检测重复代码块
+
 # Linters 设置
 linters-settings:
   errcheck:
@@ -76,6 +79,9 @@ linters-settings:
   unparam:
     # 检查导出的函数
     check-exported: false
+
+  dupl:
+    threshold: 100
 
 # Issues 配置
 issues:

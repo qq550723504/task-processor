@@ -24,7 +24,6 @@ type Metrics struct {
 
 	// 时间统计
 	startTime time.Time
-	mu        sync.RWMutex
 }
 
 // NewMetrics 创建指标收集器

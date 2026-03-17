@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -72,17 +72,6 @@ func (f *TaskFetcher) isTaskProcessing(taskID string) bool {
 	return false
 }
 
-// markTaskAsProcessing 标记任务为处理中（提交成功后调用）
-func (f *TaskFetcher) markTaskAsProcessing(taskID string, apiTaskID int64) {
-	// 提交成功后，立即更新任务状态为"处理中"
-	f.tasksMutex.Lock()
-	f.processingTasks[taskID] = time.Now()
-	f.tasksMutex.Unlock()
-
-	// 立即更新API端任务状态，防止重复获取
-	f.updateTaskStatusToProcessing(apiTaskID)
-}
-
 // markTaskAsProcessingImmediately 立即标记任务为处理中（获取到任务后立即调用）
 func (f *TaskFetcher) markTaskAsProcessingImmediately(taskID string, apiTaskID int64) {
 	// 立即标记为处理中，防止重复获取
@@ -146,4 +135,3 @@ func (f *TaskFetcher) getSubmitterKeys() []string {
 	}
 	return keys
 }
-
