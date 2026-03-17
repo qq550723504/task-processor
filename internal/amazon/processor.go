@@ -11,9 +11,9 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/amazon/api"
-	"task-processor/internal/amazon/core/handler"
-	amazonModel "task-processor/internal/amazon/core/model"
-	"task-processor/internal/amazon/core/service"
+	"task-processor/internal/amazon/handler"
+	amazonModel "task-processor/internal/amazon/model"
+	"task-processor/internal/amazon/service"
 
 	"github.com/sirupsen/logrus"
 )
@@ -171,3 +171,6 @@ func (p *Processor) createTaskContext(taskData map[string]any) *amazonModel.Task
 		Data:          taskData,
 	}
 }
+
+
+
