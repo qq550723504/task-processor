@@ -21,7 +21,7 @@ func (h *SiteInfoHandler) Name() string {
 // Handle 执行步骤处理
 func (h *SiteInfoHandler) Handle(ctx *shein.TaskContext) error {
 	// 根据Task中的区域信息设置站点信息
-	siteList := shein.GetSiteListByRegion(ctx.Task.Region)
+	siteList := GetSiteListByRegion(ctx.Task.Region)
 
 	// 将站点信息存储到上下文中
 	ctx.SiteList = siteList

@@ -1,4 +1,4 @@
-﻿package shein
+﻿package store
 
 import "task-processor/internal/shein/api/product"
 

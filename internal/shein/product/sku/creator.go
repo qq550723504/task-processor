@@ -9,7 +9,8 @@ import (
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
-	"task-processor/internal/shein/validation"
+	"task-processor/internal/shein/store"
+"task-processor/internal/shein/validation"
 
 	"github.com/sirupsen/logrus"
 )
@@ -62,7 +63,7 @@ func (c *SKUCreator) CreateSKU(ctx *shein.TaskContext, params shein.SKUCreationP
 		stockCount = rand.Intn(1000) + 10
 	}
 
-	currency := shein.GetCurrencyByRegion(ctx.Task.Region)
+	currency := store.GetCurrencyByRegion(ctx.Task.Region)
 
 	// 5. 构建数量信息
 	quantityInfo := c.utils.BuildQuantityInfo(params)
