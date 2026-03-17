@@ -4,7 +4,6 @@ import (
 	"context"
 	"task-processor/internal/app/state"
 	"task-processor/internal/domain/model"
-	types "task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
 	shein_attribute "task-processor/internal/shein/api/attribute"
@@ -25,7 +24,7 @@ type StepHandler interface {
 }
 
 // Task 使用公共的Task类型
-type Task = types.Task
+type Task = model.Task
 
 // VariantFilterInfo 变体过滤信息
 type VariantFilterInfo struct {
@@ -126,10 +125,8 @@ func (ctx *TaskContext) GetContext() context.Context {
 }
 
 // GetTask 获取任务信息
-func (ctx *TaskContext) GetTask() *types.Task {
-	// 需要将SHEIN的Task转换为通用的Task类型
-	// 这里暂时返回nil，需要根据实际情况实现转换逻辑
-	return nil
+func (ctx *TaskContext) GetTask() *model.Task {
+	return ctx.Task
 }
 
 // SetData 设置数据
