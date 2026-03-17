@@ -6,7 +6,6 @@ import (
 	"strings"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
@@ -31,7 +30,7 @@ type VariantJsonDataHandler struct {
 func NewVariantJsonDataHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor any,
+	amazonProcessor product.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *VariantJsonDataHandler {
 	logger := logrus.WithField("handler", "VariantJsonDataHandler")
@@ -54,12 +53,12 @@ func NewVariantJsonDataHandler(
 	var fetcher appProduct.ProductFetcher
 	var err error
 
-	if ap, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
-		fetcher, err = factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap, rabbitmqClient)
+	if amazonProcessor != nil {
+		fetcher, err = factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 		if err != nil {
 			logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
 			// 降级到本地获取器
-			fetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, ap)
+			fetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor)
 		}
 		logger.Info("[SHEIN] 变体数据使用共享的Amazon爬虫实例")
 	} else {

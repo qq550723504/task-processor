@@ -4,8 +4,8 @@ package context
 import (
 	"context"
 	"task-processor/internal/app/state"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
@@ -21,7 +21,7 @@ type TemuTaskContext struct {
 	MemoryManager       *state.MemoryManager
 
 	// Amazon 抓取结果
-	AmazonProcessor *amazon.AmazonProcessor
+	AmazonProcessor product.AmazonScraper
 	AmazonProduct   *model.Product
 	Variants        []*model.Product
 

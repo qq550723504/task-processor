@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
@@ -74,7 +73,7 @@ func NewPricingDecisionService(
 	managementClient *management.ClientManager,
 	storeID int64,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor product.AmazonScraper,
 	platformConfig *config.PlatformConfig,
 ) (DecisionMaker, error) {
 	config := &ServiceConfig{
@@ -97,7 +96,7 @@ func newPricingDecisionServiceWithConfig(
 	managementClient *management.ClientManager,
 	config *ServiceConfig,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor product.AmazonScraper,
 ) (DecisionMaker, error) {
 	if managementClient == nil {
 		return nil, errors.New("managementClient不能为空")

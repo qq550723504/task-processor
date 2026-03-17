@@ -7,34 +7,32 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )
 
+// AmazonCrawler 定义平台工厂对 Amazon 爬虫的依赖（消费者定义接口原则）。
+// 平台工厂只需要抓取能力，不需要关心具体实现。
+type AmazonCrawler interface {
+	Process(url string, zipcode string) (*model.Product, error)
+}
+
 // BaseTaskFactory 基础任务工厂接口
 type BaseTaskFactory interface {
-	// CreateTask 创建任务
 	CreateTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error)
-	// SupportedPlatform 支持的平台
 	SupportedPlatform() string
-	// SupportedTaskTypes 支持的任务类型
 	SupportedTaskTypes() []appscheduler.TaskType
 }
 
 // BaseFactoryConfig 基础工厂配置
 type BaseFactoryConfig struct {
-	// Platform 平台名称
-	Platform string
-	// ManagementClient 管理客户端
+	Platform         string
 	ManagementClient *management.ClientManager
-	// AmazonProcessor Amazon处理器
-	AmazonProcessor *amazon.AmazonProcessor
-	// AmazonConfig Amazon配置
-	AmazonConfig *config.AmazonConfig
-	// MonitorConfig 监控配置
-	MonitorConfig *config.MonitorConfig
+	AmazonProcessor  AmazonCrawler
+	AmazonConfig     *config.AmazonConfig
+	MonitorConfig    *config.MonitorConfig
 }
 
 // BaseFactory 基础工厂实现
@@ -79,7 +77,7 @@ func (f *BaseFactory) GetManagementClient() *management.ClientManager {
 }
 
 // GetAmazonProcessor 获取Amazon处理器
-func (f *BaseFactory) GetAmazonProcessor() *amazon.AmazonProcessor {
+func (f *BaseFactory) GetAmazonProcessor() AmazonCrawler {
 	return f.config.AmazonProcessor
 }
 

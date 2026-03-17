@@ -7,7 +7,6 @@ import (
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
@@ -17,18 +16,25 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// amazonCrawler 定义 TEMU 处理器对 Amazon 爬虫的依赖（消费者定义接口原则）。
+// 包含抓取和关闭两个能力，粒度刚好满足 TEMU 的需求。
+type amazonCrawler interface {
+	Process(url string, zipcode string) (*model.Product, error)
+	Shutdown()
+}
+
 // TemuProcessor TEMU平台处理器
 type TemuProcessor struct {
-	*processor.BaseProcessor                         // 继承基础处理器
-	amazonProcessor          *amazon.AmazonProcessor // TEMU特定：Amazon处理器
-	rabbitmqClient           *rabbitmq.Client        // RabbitMQ客户端（用于分布式爬虫）
-	taskHandler              *TaskHandler            // TEMU特定：任务处理器
-	pipelineExecutor         *TemuPipelineExecutor   // TEMU特定：强类型管道执行器
+	*processor.BaseProcessor                       // 继承基础处理器
+	amazonProcessor          amazonCrawler         // TEMU特定：Amazon爬虫（接口）
+	rabbitmqClient           *rabbitmq.Client      // RabbitMQ客户端（用于分布式爬虫）
+	taskHandler              *TaskHandler          // TEMU特定：任务处理器
+	pipelineExecutor         *TemuPipelineExecutor // TEMU特定：强类型管道执行器
 }
 
 // NewTemuProcessor 创建TEMU处理器
 // 返回 error 而不是 panic，让调用方决定如何处理错误
-func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor *amazon.AmazonProcessor, rabbitmqClient *rabbitmq.Client) (*TemuProcessor, error) {
+func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor amazonCrawler, rabbitmqClient *rabbitmq.Client) (*TemuProcessor, error) {
 	log := logger.GetGlobalLogger("temu_processor").WithField(logger.FieldPlatform, "temu")
 
 	// ManagementClient必须由调用方提供（共享实例）
@@ -137,7 +143,7 @@ func (p *TemuProcessor) Start(ctx context.Context) error {
 }
 
 // GetAmazonProcessor 获取共享的Amazon处理器
-func (p *TemuProcessor) GetAmazonProcessor() any {
+func (p *TemuProcessor) GetAmazonProcessor() amazonCrawler {
 	return p.amazonProcessor
 }
 

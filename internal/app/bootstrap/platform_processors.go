@@ -5,15 +5,22 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/di"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/app/di"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
 	"github.com/sirupsen/logrus"
 )
+
+// amazonCrawler 定义 bootstrap 包对 Amazon 爬虫的依赖（消费者定义接口原则）。
+type amazonCrawler interface {
+	Process(url string, zipcode string) (*model.Product, error)
+	Shutdown()
+}
 
 // PlatformProcessorRegistry 平台处理器注册器
 type PlatformProcessorRegistry struct {
@@ -50,7 +57,7 @@ func (p *PlatformProcessorRegistry) getDependencies(c di.Container) (
 	*config.Config,
 	*logrus.Logger,
 	*management.ClientManager,
-	*amazon.AmazonProcessor,
+	amazonCrawler,
 	error,
 ) {
 	configInstance, err := c.Get("config")
@@ -68,9 +75,9 @@ func (p *PlatformProcessorRegistry) getDependencies(c di.Container) (
 		return nil, nil, nil, nil, fmt.Errorf("获取管理客户端失败: %w", err)
 	}
 
-	amazonProcessorInstance, err := c.Get("amazonProcessor")
+	amazonProcessorInstance, err := c.Get("amazonCrawler")
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("获取Amazon处理器失败: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("获取Amazon爬虫处理器失败: %w", err)
 	}
 
 	return configInstance.(*config.Config),

@@ -6,12 +6,19 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain/model"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )
+
+// amazonCrawler 定义 runner 包对 Amazon 爬虫的依赖（消费者定义接口原则）。
+// 包含抓取和关闭两个能力，满足 TEMU/SHEIN 处理器的需求。
+type amazonCrawler interface {
+	Process(url string, zipcode string) (*model.Product, error)
+	Shutdown()
+}
 
 // ProcessorService 处理器服务接口
 type ProcessorService interface {
@@ -35,7 +42,7 @@ func NewProcessorService(logger *logrus.Logger) ProcessorService {
 func NewProcessorServiceWithDependencies(
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor amazonCrawler,
 ) ProcessorService {
 	return &processorServiceImpl{
 		logger:           logger,

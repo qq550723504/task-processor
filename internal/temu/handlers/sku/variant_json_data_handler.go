@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/strx"
+	"task-processor/internal/pkg/timeout"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -29,7 +28,7 @@ type VariantJsonDataHandler struct {
 func NewVariantJsonDataHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor product.AmazonScraper,
 ) *VariantJsonDataHandler {
 	return &VariantJsonDataHandler{
 		logger:         logrus.WithField("handler", "VariantJsonDataHandler"),

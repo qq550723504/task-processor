@@ -11,7 +11,6 @@ import (
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/monitoring"
 	"task-processor/internal/shein/pipeline"
@@ -37,7 +36,7 @@ type processorServiceImpl struct {
 
 	// 共享资源（通过依赖注入获取）
 	managementClient *management.ClientManager
-	amazonProcessor  *amazon.AmazonProcessor
+	amazonProcessor  amazonCrawler
 
 	// 生命周期管理
 	ctx     context.Context

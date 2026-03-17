@@ -6,7 +6,6 @@ import (
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
@@ -25,7 +24,7 @@ type RawJsonDataHandlerV2 struct {
 func NewRawJsonDataHandlerV2(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor domainProduct.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandlerV2 {
 	logger := logrus.WithField("handler", "RawJsonDataHandlerV2")

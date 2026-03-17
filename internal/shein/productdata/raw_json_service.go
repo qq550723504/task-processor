@@ -4,7 +4,6 @@ import (
 	"strings"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
@@ -22,27 +21,22 @@ type RawJsonDataHandler struct {
 func NewRawJsonDataHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor any,
+	amazonProcessor domainProduct.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandler {
 	logger := logrus.WithField("handler", "RawJsonDataHandler")
 
-	var ap *amazon.AmazonProcessor
-	if amazonProcessor != nil {
-		if processor, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
-			ap = processor
-			logger.Info("[SHEIN] 使用共享的 Amazon 爬虫实例")
-		}
-	} else if cfg != nil {
-		ap = amazon.NewAmazonProcessor(cfg)
-		logger.Info("[SHEIN] Amazon 爬虫已启用")
-	}
-
 	factory := appProduct.NewFetcherFactory()
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap, rabbitmqClient)
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
-		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, ap)
+		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+	}
+
+	if amazonProcessor != nil {
+		logger.Info("[SHEIN] 使用共享的 Amazon 爬虫实例")
+	} else {
+		logger.Info("[SHEIN] Amazon 爬虫未提供，仅使用缓存模式")
 	}
 
 	logger.Infof("✅ SHEIN产品获取器创建成功，类型: %s", factory.GetRecommendedFetcher(cfg))

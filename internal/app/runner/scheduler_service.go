@@ -6,14 +6,12 @@ import (
 
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )
 
 // SchedulerService 调度服务接口
-// 负责管理所有周期性调度任务（核价、产品同步、库存同步、活动报名等）
 type SchedulerService interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
@@ -25,7 +23,7 @@ type schedulerServiceImpl struct {
 	logger           *logrus.Logger
 	managementClient *management.ClientManager
 	config           *config.Config
-	amazonProcessor  *amazon.AmazonProcessor
+	amazonProcessor  amazonCrawler
 	schedulerManager *scheduler.Manager
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -46,7 +44,7 @@ func NewSchedulerServiceWithAmazon(
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
 	cfg *config.Config,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor amazonCrawler,
 ) SchedulerService {
 	return &schedulerServiceImpl{
 		logger:           logger,

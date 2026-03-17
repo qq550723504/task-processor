@@ -4,7 +4,6 @@ import (
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
@@ -24,7 +23,7 @@ type CacheProductHandler struct {
 func NewCacheProductHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor domainProduct.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *CacheProductHandler {
 	logger := logrus.WithField("handler", "CacheProductHandler")

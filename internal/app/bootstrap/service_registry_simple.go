@@ -4,12 +4,12 @@ package bootstrap
 import (
 	"fmt"
 
+	"task-processor/internal/app/di"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/app/di"
 
 	"github.com/sirupsen/logrus"
 )
@@ -102,8 +102,8 @@ func (s *ServiceRegistrySimple) registerAuthServices(container di.Container) err
 func (s *ServiceRegistrySimple) registerSharedResources(container di.Container) error {
 	s.logger.Debug("注册共享资源...")
 
-	// 注册Amazon处理器
-	if err := container.RegisterSingleton("amazonProcessor", func(c di.Container) (any, error) {
+	// 注册Amazon爬虫处理器（用于抓取Amazon商品页面，供TEMU/SHEIN获取价格参考）
+	if err := container.RegisterSingleton("amazonCrawler", func(c di.Container) (any, error) {
 		configInstance, err := c.Get("config")
 		if err != nil {
 			return nil, fmt.Errorf("获取配置失败: %w", err)
@@ -163,9 +163,9 @@ func (s *ServiceRegistrySimple) registerApplicationServices(container di.Contain
 		if err != nil {
 			return nil, fmt.Errorf("获取管理客户端失败: %w", err)
 		}
-		amazonProcessorInstance, err := c.Get("amazonProcessor")
+		amazonProcessorInstance, err := c.Get("amazonCrawler")
 		if err != nil {
-			return nil, fmt.Errorf("获取Amazon处理器失败: %w", err)
+			return nil, fmt.Errorf("获取Amazon爬虫处理器失败: %w", err)
 		}
 
 		logger := loggerInstance.(*logrus.Logger)
@@ -197,9 +197,9 @@ func (s *ServiceRegistrySimple) registerApplicationServices(container di.Contain
 		if err != nil {
 			return nil, fmt.Errorf("获取配置失败: %w", err)
 		}
-		amazonProcessorInstance, err := c.Get("amazonProcessor")
+		amazonProcessorInstance, err := c.Get("amazonCrawler")
 		if err != nil {
-			return nil, fmt.Errorf("获取Amazon处理器失败: %w", err)
+			return nil, fmt.Errorf("获取Amazon爬虫处理器失败: %w", err)
 		}
 
 		logger := loggerInstance.(*logrus.Logger)

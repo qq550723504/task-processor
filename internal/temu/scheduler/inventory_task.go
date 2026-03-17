@@ -6,8 +6,8 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/platformbase"
 	commonscheduler "task-processor/internal/taskbase"
 	"task-processor/internal/temu/api/client"
 	temuscheduler "task-processor/internal/temu/syncsvc"
@@ -26,7 +26,7 @@ func NewInventoryTask(
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
 	temuAPIClient client.ClientAPI,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor platformbase.AmazonCrawler,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 ) *InventoryTask {

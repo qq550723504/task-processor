@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
@@ -20,7 +19,7 @@ import (
 type inventorySyncServiceImpl struct {
 	managementClient      *management.ClientManager
 	temuAPIClient         client.ClientAPI
-	amazonProcessor       *amazon.AmazonProcessor
+	amazonProcessor       product.AmazonScraper
 	amazonConfig          *config.AmazonConfig
 	rawJsonDataClient     product.RawJsonDataClient
 	inventoryRecordClient managementapi.InventoryRecordAPI
@@ -33,7 +32,7 @@ type inventorySyncServiceImpl struct {
 func NewInventorySyncService(
 	managementClient *management.ClientManager,
 	temuAPIClient client.ClientAPI,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor product.AmazonScraper,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rawJsonDataClient product.RawJsonDataClient,

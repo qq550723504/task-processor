@@ -4,7 +4,7 @@ package syncsvc
 import (
 	"fmt"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/temu/api/client"
 
@@ -28,7 +28,7 @@ func NewInventorySyncServiceFactory(managementClient *management.ClientManager) 
 // CreateInventorySyncService 创建库存监控服务
 func (f *InventorySyncServiceFactory) CreateInventorySyncService(
 	temuAPIClient client.ClientAPI,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor product.AmazonScraper,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 ) InventorySyncService {

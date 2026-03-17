@@ -4,9 +4,7 @@ import (
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
-	"task-processor/internal/domain/product"
 	domainProduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
@@ -25,7 +23,7 @@ type CacheVariantsHandler struct {
 func NewCacheVariantsHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor domainProduct.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *CacheVariantsHandler {
 	logger := logrus.WithField("handler", "CacheVariantsHandler")
@@ -38,7 +36,7 @@ func NewCacheVariantsHandler(
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
 		// 降级到本地获取器
-		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
 	}
 
 	return &CacheVariantsHandler{
@@ -72,7 +70,7 @@ func (h *CacheVariantsHandler) Handle(ctx pipeline.TaskContext) error {
 	}
 
 	// 构建缓存请求
-	req := &product.FetchRequest{
+	req := &domainProduct.FetchRequest{
 		TenantID:   task.TenantID,
 		Platform:   task.Platform,
 		Region:     task.Region,

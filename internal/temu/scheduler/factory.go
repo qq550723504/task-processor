@@ -7,7 +7,6 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/platformbase"
 	temuapi "task-processor/internal/temu/api"
@@ -26,7 +25,7 @@ type TemuTaskFactory struct {
 // NewTemuTaskFactory 创建TEMU任务工厂
 func NewTemuTaskFactory(
 	managementClient *management.ClientManager,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor platformbase.AmazonCrawler,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 ) *TemuTaskFactory {

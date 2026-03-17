@@ -4,7 +4,6 @@ import (
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
 	"task-processor/internal/infra/rabbitmq"
@@ -23,23 +22,16 @@ type SubmitRawJsonDataHandler struct {
 func NewSubmitRawJsonDataHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor any,
+	amazonProcessor product.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *SubmitRawJsonDataHandler {
 	logger := logrus.WithField("handler", "SubmitRawJsonDataHandler")
 
-	var ap *amazon.AmazonProcessor
-	if amazonProcessor != nil {
-		if processor, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
-			ap = processor
-		}
-	}
-
 	factory := appProduct.NewFetcherFactory()
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap, rabbitmqClient)
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
-		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, ap)
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
 	}
 
 	return &SubmitRawJsonDataHandler{logger: logger, fetcher: fetcher}
@@ -95,23 +87,16 @@ type SubmitVariantRawJsonDataHandler struct {
 func NewSubmitVariantRawJsonDataHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor any,
+	amazonProcessor product.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *SubmitVariantRawJsonDataHandler {
 	logger := logrus.WithField("handler", "SubmitVariantRawJsonDataHandler")
 
-	var ap *amazon.AmazonProcessor
-	if amazonProcessor != nil {
-		if processor, ok := amazonProcessor.(*amazon.AmazonProcessor); ok {
-			ap = processor
-		}
-	}
-
 	factory := appProduct.NewFetcherFactory()
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, ap, rabbitmqClient)
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
-		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, ap)
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
 	}
 
 	return &SubmitVariantRawJsonDataHandler{logger: logger, fetcher: fetcher}

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/domain/model"
 	"task-processor/internal/domain/product"
+	domainproduct "task-processor/internal/domain/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
@@ -44,7 +44,7 @@ type InventoryUpdateRequest struct {
 type inventorySyncServiceImpl struct {
 	managementClient      *management.ClientManager
 	productAPI            shein_product.ProductAPI
-	amazonProcessor       *amazon.AmazonProcessor
+	amazonProcessor       domainproduct.AmazonScraper
 	amazonConfig          *config.AmazonConfig
 	rawJsonDataClient     product.RawJsonDataClient
 	inventoryRecordClient managementapi.InventoryRecordAPI
@@ -60,7 +60,7 @@ type inventorySyncServiceImpl struct {
 func NewInventorySyncService(
 	managementClient *management.ClientManager,
 	productAPI shein_product.ProductAPI,
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor domainproduct.AmazonScraper,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rawJsonDataClient product.RawJsonDataClient,
