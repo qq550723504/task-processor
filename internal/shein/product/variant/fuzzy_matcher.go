@@ -23,31 +23,7 @@ func NewVariantFuzzyMatcher(utils *VariantMatcherUtils) *VariantFuzzyMatcher {
 
 // FindFuzzyMatches 查找模糊匹配的变体
 func (m *VariantFuzzyMatcher) FindFuzzyMatches(variants []shein.Variant, attrNames []string, targetValueNorm, targetValue string) []shein.Variant {
-	var fuzzyMatches []shein.Variant
-
-	for variantIndex, variant := range variants {
-		matched_in_variant := false
-		for _, name := range attrNames {
-			if matched_in_variant {
-				break
-			}
-			for attrKey, value := range variant.Attributes {
-				if strings.EqualFold(attrKey, name) {
-					valueNorm := strings.ToLower(strings.TrimSpace(value))
-
-					// 模糊匹配 - 使用更严格的匹配条件
-					if m.isValidFuzzyMatch(valueNorm, targetValueNorm) {
-						fuzzyMatches = append(fuzzyMatches, variant)
-						logrus.Infof("找到模糊匹配变体: 变体序号 %d, ASIN %s, 属性名 %s, 属性值 %s, 目标值 %s", variantIndex, variant.ASIN, attrKey, value, targetValue)
-						matched_in_variant = true
-						break
-					}
-				}
-			}
-		}
-	}
-
-	return fuzzyMatches
+	return findMatchesWithFunc(variants, attrNames, targetValueNorm, targetValue, "模糊", m.isValidFuzzyMatch)
 }
 
 // isValidFuzzyMatch 实现更严格的模糊匹配逻辑，避免错误的包含匹配

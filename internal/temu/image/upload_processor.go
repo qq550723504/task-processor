@@ -187,58 +187,48 @@ func (h *ImageUploadProcessor) uploadSkuImages(temuCtx *temucontext.TemuTaskCont
 
 // uploadCarouselImages 上传轮播图
 func (h *ImageUploadProcessor) uploadCarouselImages(temuCtx *temucontext.TemuTaskContext, sku *temuproduct.Sku) error {
-	if len(sku.CarouselGallery) == 0 {
-		return nil
-	}
-
-	var imageURLs []string
-	for _, img := range sku.CarouselGallery {
-		if img.URL != "" {
-			imageURLs = append(imageURLs, img.URL)
-		}
-	}
-
-	uploadedImages, err := h.BatchUploadImages(temuCtx, imageURLs, "carousel")
+	uploaded, err := h.uploadSkuGallery(temuCtx, sku.CarouselGallery, "carousel")
 	if err != nil {
 		return err
 	}
-
-	// 更新轮播图信息
-	for i, uploadedImg := range uploadedImages {
-		if i < len(sku.CarouselGallery) {
-			sku.CarouselGallery[i] = *uploadedImg
-		}
-	}
-
+	sku.CarouselGallery = uploaded
 	return nil
 }
 
 // uploadDimensionImages 上传尺寸图
 func (h *ImageUploadProcessor) uploadDimensionImages(temuCtx *temucontext.TemuTaskContext, sku *temuproduct.Sku) error {
-	if len(sku.DimensionGallery) == 0 {
-		return nil
+	uploaded, err := h.uploadSkuGallery(temuCtx, sku.DimensionGallery, "dimension")
+	if err != nil {
+		return err
+	}
+	sku.DimensionGallery = uploaded
+	return nil
+}
+
+// uploadSkuGallery 上传SKU图片集合（通用实现）
+func (h *ImageUploadProcessor) uploadSkuGallery(temuCtx *temucontext.TemuTaskContext, gallery []temuproduct.ImageInfo, imageType string) ([]temuproduct.ImageInfo, error) {
+	if len(gallery) == 0 {
+		return gallery, nil
 	}
 
 	var imageURLs []string
-	for _, img := range sku.DimensionGallery {
+	for _, img := range gallery {
 		if img.URL != "" {
 			imageURLs = append(imageURLs, img.URL)
 		}
 	}
 
-	uploadedImages, err := h.BatchUploadImages(temuCtx, imageURLs, "dimension")
+	uploadedImages, err := h.BatchUploadImages(temuCtx, imageURLs, imageType)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// 更新尺寸图信息
 	for i, uploadedImg := range uploadedImages {
-		if i < len(sku.DimensionGallery) {
-			sku.DimensionGallery[i] = *uploadedImg
+		if i < len(gallery) {
+			gallery[i] = *uploadedImg
 		}
 	}
-
-	return nil
+	return gallery, nil
 }
 
 // getImageData 获取图片数据

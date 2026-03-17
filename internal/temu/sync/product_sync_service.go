@@ -171,42 +171,11 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 			return 0, ctx.Err()
 		default:
 		}
-
-		item := managementapi.ProductDataItemDTO{
-			PlatformProductID:  productData.PlatformProductID,
-			ProductName:        productData.Title,
-			ProductSku:         productData.ProductID,
-			ProductPrice:       productData.OriginalPrice,
-			ProductStock:       productData.Stock, // 默认库存，需要根据实际情况设置
-			ProductCategory:    productData.Category,
-			ProductImage:       productData.MainImageURL,
-			ProductDescription: productData.Description,
-			ShelfStatus:        &productData.ShelfStatus,
-			PublishTime:        productData.PublishTime,
-			ShelfTime:          productData.ShelfTime,
-			Brand:              productData.Brand,
-			CategoryID:         &productData.CategoryID,
-			SpecialPrice:       productData.SpecialPrice,
-			PriceCurrency:      productData.PriceCurrency,
-			ImageUrls:          productData.ImageURLs,
-			Attributes:         productData.Attributes,
-			PlatformStatus:     productData.PlatformStatus,
-			PlatformData:       productData.PlatformData,
-			ParentProductID:    productData.ParentProductID,
-			CreateTime:         productData.CreateTime,
-			UpdateTime:         productData.UpdateTime,
-		}
-		products = append(products, item)
+		products = append(products, buildProductDataItem(productData))
 	}
 
-	// 构建批量请求
-	batchReq := &managementapi.ProductDataBatchSaveReqDTO{
-		Platform: firstProduct.Platform,
-		TenantID: firstProduct.TenantID,
-		Region:   firstProduct.Region,
-		StoreID:  firstProduct.StoreID,
-		Products: products,
-	}
+	// 构建批量请求并执行保存
+	batchReq := buildBatchSaveReq(firstProduct, products)
 
 	// 执行批量保存
 	successCount, err := productDataAPI.BatchCreateOrUpdate(batchReq)

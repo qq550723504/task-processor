@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-
 	"github.com/sirupsen/logrus"
 )
 
@@ -221,30 +220,10 @@ Return in JSON format:
 If dimensions are not found, return null.
 Only return the JSON object, no additional text.`, text)
 
-	// 使用快速客户端
-	fastClient, err := v.llmManager.GetClient("fast")
-	if err != nil {
-		fastClient = v.llmManager.GetDefaultClient()
-	}
-
-	response, err := fastClient.Generate(ctx, prompt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract dimensions: %w", err)
-	}
-
-	// 检查是否返回 null
-	response = strings.TrimSpace(response)
-	if response == "null" || response == "" {
-		return nil, nil
-	}
-
-	// 解析响应
 	var dimensions Dimensions
-	if err := json.Unmarshal([]byte(response), &dimensions); err != nil {
-		logrus.WithError(err).Warn("failed to parse dimensions JSON")
-		return nil, nil
+	if err := v.extractWithLLM(ctx, prompt, &dimensions); err != nil {
+		return nil, err
 	}
-
 	return &dimensions, nil
 }
 
@@ -269,7 +248,15 @@ Return in JSON format:
 If weight is not found, return null.
 Only return the JSON object, no additional text.`, text)
 
-	// 使用快速客户端
+	var weight Weight
+	if err := v.extractWithLLM(ctx, prompt, &weight); err != nil {
+		return nil, err
+	}
+	return &weight, nil
+}
+
+// extractWithLLM 通用的LLM提取流程：构建prompt→获取client→Generate→解析JSON
+func (v *variantGenerator) extractWithLLM(ctx context.Context, prompt string, dest interface{}) error {
 	fastClient, err := v.llmManager.GetClient("fast")
 	if err != nil {
 		fastClient = v.llmManager.GetDefaultClient()
@@ -277,21 +264,17 @@ Only return the JSON object, no additional text.`, text)
 
 	response, err := fastClient.Generate(ctx, prompt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract weight: %w", err)
+		return fmt.Errorf("failed to generate: %w", err)
 	}
 
-	// 检查是否返回 null
 	response = strings.TrimSpace(response)
 	if response == "null" || response == "" {
-		return nil, nil
+		return nil
 	}
 
-	// 解析响应
-	var weight Weight
-	if err := json.Unmarshal([]byte(response), &weight); err != nil {
-		logrus.WithError(err).Warn("failed to parse weight JSON")
-		return nil, nil
+	if err := json.Unmarshal([]byte(response), dest); err != nil {
+		logrus.WithError(err).Warn("failed to parse JSON response")
+		return nil
 	}
-
-	return &weight, nil
+	return nil
 }

@@ -38,144 +38,79 @@ func NewLLMScoreCache(redisClient RedisClient, metrics MetricsCollector) LLMScor
 
 // GetTextScore 获取文本评分缓存
 func (c *llmScoreCache) GetTextScore(ctx context.Context, text string) (float64, bool) {
-	if c.redisClient == nil {
-		return 0, false
-	}
-
-	// 记录缓存操作
-	c.metrics.RecordCacheOperation("get", "llm_text_score")
-
-	cacheKey := c.getTextScoreCacheKey(text)
-	cached, err := c.redisClient.Get(ctx, cacheKey)
-	if err != nil {
-		c.metrics.RecordCacheMiss("llm_text_score")
-		logrus.WithError(err).Debug("cache miss for text score")
-		return 0, false
-	}
-
-	if cached == "" {
-		c.metrics.RecordCacheMiss("llm_text_score")
-		return 0, false
-	}
-
-	var scoreData struct {
-		Score float64 `json:"score"`
-	}
-
-	if err := json.Unmarshal([]byte(cached), &scoreData); err != nil {
-		c.metrics.RecordCacheMiss("llm_text_score")
-		logrus.WithError(err).Error("failed to unmarshal cached text score")
-		return 0, false
-	}
-
-	c.metrics.RecordCacheHit("llm_text_score")
-	logrus.WithField("score", scoreData.Score).Debug("cache hit for text score")
-
-	return scoreData.Score, true
+	return c.getScore(ctx, c.getTextScoreCacheKey(text), "llm_text_score")
 }
 
 // SetTextScore 设置文本评分缓存
 func (c *llmScoreCache) SetTextScore(ctx context.Context, text string, score float64, ttl time.Duration) error {
-	if c.redisClient == nil {
-		return nil
-	}
-
-	c.metrics.RecordCacheOperation("set", "llm_text_score")
-
-	scoreData := struct {
-		Score float64 `json:"score"`
-	}{
-		Score: score,
-	}
-
-	data, err := json.Marshal(scoreData)
-	if err != nil {
-		logrus.WithError(err).Error("failed to marshal text score")
-		return err
-	}
-
-	cacheKey := c.getTextScoreCacheKey(text)
-	if err := c.redisClient.Set(ctx, cacheKey, string(data), ttl); err != nil {
-		logrus.WithError(err).Error("failed to set cache for text score")
-		return err
-	}
-
-	logrus.WithFields(logrus.Fields{
-		"score": score,
-		"ttl":   ttl,
-	}).Debug("cached text score")
-
-	return nil
+	return c.setScore(ctx, c.getTextScoreCacheKey(text), "llm_text_score", score, ttl)
 }
 
 // GetImageScore 获取图片评分缓存
 func (c *llmScoreCache) GetImageScore(ctx context.Context, imageURL string) (float64, bool) {
+	return c.getScore(ctx, c.getImageScoreCacheKey(imageURL), "llm_image_score")
+}
+
+// SetImageScore 设置图片评分缓存
+func (c *llmScoreCache) SetImageScore(ctx context.Context, imageURL string, score float64, ttl time.Duration) error {
+	return c.setScore(ctx, c.getImageScoreCacheKey(imageURL), "llm_image_score", score, ttl)
+}
+
+// getScore 通用缓存读取
+func (c *llmScoreCache) getScore(ctx context.Context, cacheKey, metricLabel string) (float64, bool) {
 	if c.redisClient == nil {
 		return 0, false
 	}
 
-	c.metrics.RecordCacheOperation("get", "llm_image_score")
+	c.metrics.RecordCacheOperation("get", metricLabel)
 
-	cacheKey := c.getImageScoreCacheKey(imageURL)
 	cached, err := c.redisClient.Get(ctx, cacheKey)
-	if err != nil {
-		c.metrics.RecordCacheMiss("llm_image_score")
-		logrus.WithError(err).Debug("cache miss for image score")
-		return 0, false
-	}
-
-	if cached == "" {
-		c.metrics.RecordCacheMiss("llm_image_score")
+	if err != nil || cached == "" {
+		c.metrics.RecordCacheMiss(metricLabel)
+		if err != nil {
+			logrus.WithError(err).Debug("cache miss for score")
+		}
 		return 0, false
 	}
 
 	var scoreData struct {
 		Score float64 `json:"score"`
 	}
-
 	if err := json.Unmarshal([]byte(cached), &scoreData); err != nil {
-		c.metrics.RecordCacheMiss("llm_image_score")
-		logrus.WithError(err).Error("failed to unmarshal cached image score")
+		c.metrics.RecordCacheMiss(metricLabel)
+		logrus.WithError(err).Error("failed to unmarshal cached score")
 		return 0, false
 	}
 
-	c.metrics.RecordCacheHit("llm_image_score")
-	logrus.WithField("score", scoreData.Score).Debug("cache hit for image score")
-
+	c.metrics.RecordCacheHit(metricLabel)
+	logrus.WithField("score", scoreData.Score).Debug("cache hit for score")
 	return scoreData.Score, true
 }
 
-// SetImageScore 设置图片评分缓存
-func (c *llmScoreCache) SetImageScore(ctx context.Context, imageURL string, score float64, ttl time.Duration) error {
+// setScore 通用缓存写入
+func (c *llmScoreCache) setScore(ctx context.Context, cacheKey, metricLabel string, score float64, ttl time.Duration) error {
 	if c.redisClient == nil {
 		return nil
 	}
 
-	c.metrics.RecordCacheOperation("set", "llm_image_score")
+	c.metrics.RecordCacheOperation("set", metricLabel)
 
 	scoreData := struct {
 		Score float64 `json:"score"`
-	}{
-		Score: score,
-	}
+	}{Score: score}
 
 	data, err := json.Marshal(scoreData)
 	if err != nil {
-		logrus.WithError(err).Error("failed to marshal image score")
+		logrus.WithError(err).Error("failed to marshal score")
 		return err
 	}
 
-	cacheKey := c.getImageScoreCacheKey(imageURL)
 	if err := c.redisClient.Set(ctx, cacheKey, string(data), ttl); err != nil {
-		logrus.WithError(err).Error("failed to set cache for image score")
+		logrus.WithError(err).Error("failed to set cache for score")
 		return err
 	}
 
-	logrus.WithFields(logrus.Fields{
-		"score": score,
-		"ttl":   ttl,
-	}).Debug("cached image score")
-
+	logrus.WithFields(logrus.Fields{"score": score, "ttl": ttl}).Debug("cached score")
 	return nil
 }
 

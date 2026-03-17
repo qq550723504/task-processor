@@ -55,41 +55,8 @@ func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
 	platformStatusJSON, _ := json.Marshal(platformStatus)
 	prod.PlatformStatus = string(platformStatusJSON)
 
-	// 构建批量更新请求
-	productItem := managementapi.ProductDataItemDTO{
-		PlatformProductID:  prod.PlatformProductID,
-		ProductName:        prod.Title,
-		ProductSku:         prod.ProductID,
-		ProductPrice:       prod.OriginalPrice,
-		ProductStock:       prod.Stock,
-		ProductCategory:    prod.Category,
-		ProductImage:       prod.MainImageURL,
-		ProductDescription: prod.Description,
-		ShelfStatus:        &prod.ShelfStatus,
-		PublishTime:        prod.PublishTime,
-		ShelfTime:          prod.ShelfTime,
-		Brand:              prod.Brand,
-		CategoryID:         &prod.CategoryID,
-		SpecialPrice:       prod.SpecialPrice,
-		PriceCurrency:      prod.PriceCurrency,
-		ImageUrls:          prod.ImageURLs,
-		Attributes:         prod.Attributes,
-		PlatformStatus:     prod.PlatformStatus,
-		PlatformData:       prod.PlatformData,
-		ParentProductID:    prod.ParentProductID,
-		CreateTime:         prod.CreateTime,
-		UpdateTime:         prod.UpdateTime,
-	}
-
-	batchReq := &managementapi.ProductDataBatchSaveReqDTO{
-		Platform: prod.Platform,
-		TenantID: prod.TenantID,
-		Region:   prod.Region,
-		StoreID:  prod.StoreID,
-		Products: []managementapi.ProductDataItemDTO{productItem},
-	}
-
 	productDataAPI := s.managementClient.GetProductDataClient(prod.StoreID)
+	batchReq := buildBatchSaveReq(prod, []managementapi.ProductDataItemDTO{buildProductDataItem(prod)})
 	if _, err := productDataAPI.BatchCreateOrUpdate(batchReq); err != nil {
 		s.logger.WithError(err).Warn("更新管理系统中的产品状态失败")
 	}
@@ -176,41 +143,8 @@ func (s *inventorySyncServiceImpl) relistProductViaTEMUAPI(
 	platformStatusJSON, _ := json.Marshal(platformStatus)
 	prod.PlatformStatus = string(platformStatusJSON)
 
-	// 构建批量更新请求
-	productItem := managementapi.ProductDataItemDTO{
-		PlatformProductID:  prod.PlatformProductID,
-		ProductName:        prod.Title,
-		ProductSku:         prod.ProductID,
-		ProductPrice:       prod.OriginalPrice,
-		ProductStock:       prod.Stock,
-		ProductCategory:    prod.Category,
-		ProductImage:       prod.MainImageURL,
-		ProductDescription: prod.Description,
-		ShelfStatus:        &prod.ShelfStatus,
-		PublishTime:        prod.PublishTime,
-		ShelfTime:          prod.ShelfTime,
-		Brand:              prod.Brand,
-		CategoryID:         &prod.CategoryID,
-		SpecialPrice:       prod.SpecialPrice,
-		PriceCurrency:      prod.PriceCurrency,
-		ImageUrls:          prod.ImageURLs,
-		Attributes:         prod.Attributes,
-		PlatformStatus:     prod.PlatformStatus,
-		PlatformData:       prod.PlatformData,
-		ParentProductID:    prod.ParentProductID,
-		CreateTime:         prod.CreateTime,
-		UpdateTime:         prod.UpdateTime,
-	}
-
-	batchReq := &managementapi.ProductDataBatchSaveReqDTO{
-		Platform: prod.Platform,
-		TenantID: prod.TenantID,
-		Region:   prod.Region,
-		StoreID:  prod.StoreID,
-		Products: []managementapi.ProductDataItemDTO{productItem},
-	}
-
 	productDataAPI := s.managementClient.GetProductDataClient(prod.StoreID)
+	batchReq := buildBatchSaveReq(prod, []managementapi.ProductDataItemDTO{buildProductDataItem(prod)})
 	if _, err := productDataAPI.BatchCreateOrUpdate(batchReq); err != nil {
 		s.logger.WithError(err).Warn("更新管理系统中的产品状态失败")
 	}

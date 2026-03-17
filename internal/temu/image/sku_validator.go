@@ -92,37 +92,20 @@ func (v *SkuImageValidator) ValidateSkuImages(temuCtx *temucontext.TemuTaskConte
 
 // validateCarouselImages 验证轮播图片
 func (v *SkuImageValidator) validateCarouselImages(images []models.ImageInfo, skcIndex, skuIndex int, requirement ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []models.ImageInfo {
-	validImages := []models.ImageInfo{}
-
-	for imgIndex, img := range images {
-		result := v.singleValidator.ValidateSingleImage(img.URL, fmt.Sprintf("SKU[%d-%d]轮播图[%d]", skcIndex, skuIndex, imgIndex), requirement)
-
-		if result.IsValid {
-			if result.NeedsPadding {
-				img.Width = result.PaddedWidth
-				img.Height = result.PaddedHeight
-				paddedImagesMap[img.URL] = result.PaddedImage
-				paddedSizesMap[img.URL] = [2]int{result.PaddedWidth, result.PaddedHeight}
-				*totalPaddedImages++
-			} else {
-				img.Width = result.Width
-				img.Height = result.Height
-			}
-			validImages = append(validImages, img)
-		} else {
-			v.logger.Warnf("SKU[%d-%d]轮播图[%d] 验证失败: %v", skcIndex, skuIndex, imgIndex, result.Violations)
-		}
-	}
-
-	return validImages
+	return v.validateSkuGallery(images, "轮播图", skcIndex, skuIndex, requirement, paddedImagesMap, paddedSizesMap, totalPaddedImages)
 }
 
 // validateDimensionImages 验证尺寸图片
 func (v *SkuImageValidator) validateDimensionImages(images []models.ImageInfo, skcIndex, skuIndex int, requirement ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []models.ImageInfo {
+	return v.validateSkuGallery(images, "尺寸图", skcIndex, skuIndex, requirement, paddedImagesMap, paddedSizesMap, totalPaddedImages)
+}
+
+// validateSkuGallery 验证SKU图片集合（通用实现）
+func (v *SkuImageValidator) validateSkuGallery(images []models.ImageInfo, label string, skcIndex, skuIndex int, requirement ImageRequirement, paddedImagesMap map[string][]byte, paddedSizesMap map[string][2]int, totalPaddedImages *int) []models.ImageInfo {
 	validImages := []models.ImageInfo{}
 
 	for imgIndex, img := range images {
-		result := v.singleValidator.ValidateSingleImage(img.URL, fmt.Sprintf("SKU[%d-%d]尺寸图[%d]", skcIndex, skuIndex, imgIndex), requirement)
+		result := v.singleValidator.ValidateSingleImage(img.URL, fmt.Sprintf("SKU[%d-%d]%s[%d]", skcIndex, skuIndex, label, imgIndex), requirement)
 
 		if result.IsValid {
 			if result.NeedsPadding {
@@ -137,7 +120,7 @@ func (v *SkuImageValidator) validateDimensionImages(images []models.ImageInfo, s
 			}
 			validImages = append(validImages, img)
 		} else {
-			v.logger.Warnf("SKU[%d-%d]尺寸图[%d] 验证失败: %v", skcIndex, skuIndex, imgIndex, result.Violations)
+			v.logger.Warnf("SKU[%d-%d]%s[%d] 验证失败: %v", skcIndex, skuIndex, label, imgIndex, result.Violations)
 		}
 	}
 

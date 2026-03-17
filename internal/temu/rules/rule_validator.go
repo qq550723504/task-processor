@@ -48,33 +48,24 @@ func (v *RuleValidator) CheckSingleRuleDetailed(p *model.Product, rule *api.Filt
 
 // CheckSingleRuleDetailedTemu 详细检查单个规则（强类型上下文）
 func (v *RuleValidator) CheckSingleRuleDetailedTemu(amazonProduct *model.Product, rule *api.FilterRuleRespDTO, temuCtx *temucontext.TemuTaskContext) *handlerbase.FilterCheckResult {
-	if result := v.checkImageCountRuleDetailed(amazonProduct); !result.Passed {
-		return result
-	}
-	if result := v.checkPriceRuleDetailedTemu(amazonProduct, rule, temuCtx); !result.Passed {
-		return result
-	}
-	if result := v.checkRatingRuleDetailed(amazonProduct, rule); !result.Passed {
-		return result
-	}
-	if result := v.checkReviewCountRuleDetailed(amazonProduct, rule); !result.Passed {
-		return result
-	}
-	if result := v.checkStockRuleDetailed(amazonProduct, rule); !result.Passed {
-		return result
-	}
-	if result := v.fulfillmentChecker.CheckFulfillmentTypeRuleDetailed(amazonProduct, rule); !result.Passed {
-		return result
-	}
-	return &handlerbase.FilterCheckResult{Passed: true}
+	return v.runRuleChain(amazonProduct, rule, func() *handlerbase.FilterCheckResult {
+		return v.checkPriceRuleDetailedTemu(amazonProduct, rule, temuCtx)
+	})
 }
 
 // checkBasicRules 基本规则检查（不依赖上下文）
 func (v *RuleValidator) checkBasicRules(amazonProduct *model.Product, rule *api.FilterRuleRespDTO) *handlerbase.FilterCheckResult {
+	return v.runRuleChain(amazonProduct, rule, func() *handlerbase.FilterCheckResult {
+		return v.checkPriceRuleBasic(amazonProduct, rule)
+	})
+}
+
+// runRuleChain 执行规则检查链，checkPrice 为价格检查函数（唯一差异点）
+func (v *RuleValidator) runRuleChain(amazonProduct *model.Product, rule *api.FilterRuleRespDTO, checkPrice func() *handlerbase.FilterCheckResult) *handlerbase.FilterCheckResult {
 	if result := v.checkImageCountRuleDetailed(amazonProduct); !result.Passed {
 		return result
 	}
-	if result := v.checkPriceRuleBasic(amazonProduct, rule); !result.Passed {
+	if result := checkPrice(); !result.Passed {
 		return result
 	}
 	if result := v.checkRatingRuleDetailed(amazonProduct, rule); !result.Passed {

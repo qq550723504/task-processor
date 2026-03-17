@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/ptr"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timex"
@@ -60,7 +60,7 @@ func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 	h.recordDailyListingCount(ctx)
 
 	// 更新任务状态为已上架
-	h.updateTaskStatusToPublished(ctx)
+	updateTaskStatusToPublished(ctx)
 
 	logrus.Println("发品成功后返回信息保存完成")
 
@@ -340,8 +340,8 @@ func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *shein.TaskCont
 	)
 }
 
-// updateTaskStatusToPublished 更新任务状态为已上架
-func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein.TaskContext) {
+// updateTaskStatusToPublished 更新任务状态为已上架（包级辅助函数）
+func updateTaskStatusToPublished(ctx *shein.TaskContext) {
 	if ctx.ManagementClientMgr == nil {
 		logrus.Warn("管理客户端管理器未初始化，跳过状态更新")
 		return
@@ -358,16 +358,11 @@ func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein.TaskCo
 		return
 	}
 
-	// Task.ID已经是int64类型，直接使用
-	taskID := ctx.Task.ID
-
-	// 构建更新请求
 	req := &management_api.ProductImportTaskUpdateReqDTO{
-		ID:     taskID,
+		ID:     ctx.Task.ID,
 		Status: model.TaskStatusPublished.Int16(),
 	}
 
-	// 异步更新状态
 	go func() {
 		defer recovery.Recover("更新任务状态", logrus.WithField("task_id", ctx.Task.ID))
 
@@ -378,4 +373,3 @@ func (h *SavePublishResultHandler) updateTaskStatusToPublished(ctx *shein.TaskCo
 		}
 	}()
 }
-

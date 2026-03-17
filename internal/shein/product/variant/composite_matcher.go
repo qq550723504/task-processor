@@ -22,31 +22,7 @@ func NewVariantCompositeMatcher(utils *VariantMatcherUtils) *VariantCompositeMat
 
 // FindCompositeMatches 查找组合值匹配的变体
 func (m *VariantCompositeMatcher) FindCompositeMatches(variants []shein.Variant, attrNames []string, targetValueNorm, targetValue string) []shein.Variant {
-	var compositeMatches []shein.Variant
-
-	for variantIndex, variant := range variants {
-		matched_in_variant := false
-		for _, name := range attrNames {
-			if matched_in_variant {
-				break
-			}
-			for attrKey, value := range variant.Attributes {
-				if strings.EqualFold(attrKey, name) {
-					valueNorm := strings.ToLower(strings.TrimSpace(value))
-
-					// 组合值匹配
-					if m.matchesCompositeValue(valueNorm, targetValueNorm) {
-						compositeMatches = append(compositeMatches, variant)
-						logrus.Infof("找到组合值匹配变体: 变体序号 %d, ASIN %s, 属性名 %s, 属性值 %s, 目标值 %s", variantIndex, variant.ASIN, attrKey, value, targetValue)
-						matched_in_variant = true
-						break
-					}
-				}
-			}
-		}
-	}
-
-	return compositeMatches
+	return findMatchesWithFunc(variants, attrNames, targetValueNorm, targetValue, "组合值", m.matchesCompositeValue)
 }
 
 // matchesCompositeValue 检查组合属性值是否匹配（通用函数）

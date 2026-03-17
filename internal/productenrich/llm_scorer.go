@@ -86,44 +86,12 @@ func (s *llmScorer) ScoreText(ctx context.Context, text string, baseScore float6
 	if text == "" {
 		return baseScore, nil
 	}
-
-	// 检查缓存
-	if s.scoreCache != nil {
-		if cachedScore, found := s.scoreCache.GetTextScore(ctx, text); found {
-			finalScore := s.combineScores(baseScore, cachedScore)
-			logrus.WithFields(logrus.Fields{
-				"base_score":   baseScore,
-				"cached_score": cachedScore,
-				"final_score":  finalScore,
-			}).Debug("using cached text score")
-			return finalScore, nil
-		}
-	}
-
-	// 调用 LLM 评分
-	llmScore, err := s.scoreTextWithLLM(ctx, text, baseScore)
-	if err != nil {
-		logrus.WithError(err).Warn("LLM text scoring failed, using base score")
-		return baseScore, err
-	}
-
-	// 缓存评分结果
-	if s.scoreCache != nil {
-		if err := s.scoreCache.SetTextScore(ctx, text, llmScore, s.cacheTTL); err != nil {
-			logrus.WithError(err).Warn("failed to cache text score")
-		}
-	}
-
-	// 综合评分
-	finalScore := s.combineScores(baseScore, llmScore)
-
-	logrus.WithFields(logrus.Fields{
-		"base_score":  baseScore,
-		"llm_score":   llmScore,
-		"final_score": finalScore,
-	}).Info("LLM text scoring completed")
-
-	return finalScore, nil
+	return s.scoreWithCache(ctx, baseScore,
+		func() (float64, bool) { return s.scoreCache.GetTextScore(ctx, text) },
+		func(score float64) error { return s.scoreCache.SetTextScore(ctx, text, score, s.cacheTTL) },
+		func() (float64, error) { return s.scoreTextWithLLM(ctx, text, baseScore) },
+		"text",
+	)
 }
 
 // ScoreImage 对图片进行智能评分
@@ -131,42 +99,56 @@ func (s *llmScorer) ScoreImage(ctx context.Context, imageURL string, baseScore f
 	if imageURL == "" {
 		return baseScore, nil
 	}
+	return s.scoreWithCache(ctx, baseScore,
+		func() (float64, bool) { return s.scoreCache.GetImageScore(ctx, imageURL) },
+		func(score float64) error { return s.scoreCache.SetImageScore(ctx, imageURL, score, s.cacheTTL) },
+		func() (float64, error) { return s.scoreImageWithLLM(ctx, imageURL, baseScore) },
+		"image",
+	)
+}
 
+// scoreWithCache 通用的缓存+LLM评分流程
+func (s *llmScorer) scoreWithCache(
+	_ context.Context,
+	baseScore float64,
+	getCached func() (float64, bool),
+	setCached func(float64) error,
+	callLLM func() (float64, error),
+	label string,
+) (float64, error) {
 	// 检查缓存
 	if s.scoreCache != nil {
-		if cachedScore, found := s.scoreCache.GetImageScore(ctx, imageURL); found {
+		if cachedScore, found := getCached(); found {
 			finalScore := s.combineScores(baseScore, cachedScore)
 			logrus.WithFields(logrus.Fields{
 				"base_score":   baseScore,
 				"cached_score": cachedScore,
 				"final_score":  finalScore,
-			}).Debug("using cached image score")
+			}).Debugf("using cached %s score", label)
 			return finalScore, nil
 		}
 	}
 
 	// 调用 LLM 评分
-	llmScore, err := s.scoreImageWithLLM(ctx, imageURL, baseScore)
+	llmScore, err := callLLM()
 	if err != nil {
-		logrus.WithError(err).Warn("LLM image scoring failed, using base score")
+		logrus.WithError(err).Warnf("LLM %s scoring failed, using base score", label)
 		return baseScore, err
 	}
 
 	// 缓存评分结果
 	if s.scoreCache != nil {
-		if err := s.scoreCache.SetImageScore(ctx, imageURL, llmScore, s.cacheTTL); err != nil {
-			logrus.WithError(err).Warn("failed to cache image score")
+		if err := setCached(llmScore); err != nil {
+			logrus.WithError(err).Warnf("failed to cache %s score", label)
 		}
 	}
 
-	// 综合评分
 	finalScore := s.combineScores(baseScore, llmScore)
-
 	logrus.WithFields(logrus.Fields{
 		"base_score":  baseScore,
 		"llm_score":   llmScore,
 		"final_score": finalScore,
-	}).Info("LLM image scoring completed")
+	}).Infof("LLM %s scoring completed", label)
 
 	return finalScore, nil
 }

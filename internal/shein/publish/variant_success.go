@@ -3,9 +3,8 @@ package publish
 
 import (
 	"fmt"
-	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/recovery"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/product"
 	"task-processor/internal/shein/productdata"
@@ -109,7 +108,7 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error 
 	}
 
 	// 更新任务状态为已上架
-	h.updateTaskStatusToPublished(ctx)
+	updateTaskStatusToPublished(ctx)
 
 	return nil
 }
@@ -263,33 +262,3 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *shein.TaskCont
 	logrus.Infof("❌ 成功标记变体为失败 (ID: %d, ASIN: %s, Reason: %s)", id, asin, reason)
 	return nil
 }
-
-// updateTaskStatusToPublished 更新任务状态为已上架
-func (h *MarkVariantPublishSuccessHandler) updateTaskStatusToPublished(ctx *shein.TaskContext) {
-	importTaskClient := ctx.ManagementClientMgr.GetImportTaskClient()
-	if importTaskClient == nil {
-		logrus.Warn("导入任务客户端未初始化，跳过状态更新")
-		return
-	}
-
-	// Task.ID已经是int64类型，直接使用
-	taskID := ctx.Task.ID
-
-	// 构建更新请求
-	req := &management_api.ProductImportTaskUpdateReqDTO{
-		ID:     taskID,
-		Status: model.TaskStatusPublished.Int16(),
-	}
-
-	// 异步更新状态
-	go func() {
-		defer recovery.Recover("更新任务状态", logrus.WithField("task_id", ctx.Task.ID))
-
-		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-			logrus.Errorf("更新任务状态为已上架失败 (TaskID: %d): %v", ctx.Task.ID, err)
-		} else {
-			logrus.Infof("✅ 任务状态已更新为已上架 (TaskID: %d)", ctx.Task.ID)
-		}
-	}()
-}
-
