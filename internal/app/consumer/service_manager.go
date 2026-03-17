@@ -1,5 +1,5 @@
-// Package messaging 提供服务管理功能
-package messaging
+﻿// Package consumer 提供服务管理功能
+package consumer
 
 import (
 	"context"

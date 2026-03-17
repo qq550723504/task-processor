@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/app/messaging"
+	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/task"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
@@ -38,7 +38,7 @@ func main() {
 	mqClient := rabbitmq.NewClient(connManager, logger)
 
 	// 5. 创建任务提交服务（应用层）
-	submitter := messaging.NewTaskSubmitter(mqClient, logger)
+	submitter := consumer.NewTaskSubmitter(mqClient, logger)
 
 	// 6. 创建示例任务
 	exampleTask := &model.Task{
@@ -132,7 +132,7 @@ func demonstrateDomainLayer(logger *logrus.Logger) {
 }
 
 // demonstrateBatchSubmission 演示批量提交
-func demonstrateBatchSubmission(submitter *messaging.TaskSubmitter, parentTask *model.Task, logger *logrus.Logger) {
+func demonstrateBatchSubmission(submitter *consumer.TaskSubmitter, parentTask *model.Task, logger *logrus.Logger) {
 	logger.Info("\n📦 演示批量变体任务提交")
 
 	// 创建变体列表

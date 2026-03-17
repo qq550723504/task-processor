@@ -1,5 +1,5 @@
-﻿// Package messaging 提供多平台处理器注册功能
-package messaging
+﻿// Package consumer 提供多平台处理器注册功能
+package consumer
 
 import (
 	"context"

@@ -6,7 +6,7 @@ import (
 	"flag"
 	"strings"
 
-	"task-processor/internal/app/messaging"
+	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/appenv"
 )
@@ -53,13 +53,13 @@ func main() {
 	}
 
 	// 创建服务管理器
-	serviceManager, err := messaging.NewServiceManager(appCfg.RabbitMQ, logger)
+	serviceManager, err := consumer.NewServiceManager(appCfg.RabbitMQ, logger)
 	if err != nil {
 		logger.Fatalf("❌ 创建服务管理器失败: %v", err)
 	}
 
 	// 创建平台注册器并注册所有处理器（不指定平台，根据任务动态判断）
-	platformRegistry := messaging.NewPlatformRegistry(appCfg, logger, "")
+	platformRegistry := consumer.NewPlatformRegistry(appCfg, logger, "")
 	ctx := context.Background()
 	if err := platformRegistry.RegisterAllProcessors(ctx, serviceManager); err != nil {
 		logger.Fatalf("❌ 注册平台处理器失败: %v", err)
@@ -67,7 +67,7 @@ func main() {
 
 	// 注册爬虫处理器（集成分布式爬虫服务，复用共享的Amazon处理器）
 	logger.Info("🕷️  集成分布式爬虫服务...")
-	crawlerRegistry := messaging.NewCrawlerRegistry(appCfg, logger, serviceManager.GetClient())
+	crawlerRegistry := consumer.NewCrawlerRegistry(appCfg, logger, serviceManager.GetClient())
 	if err := crawlerRegistry.RegisterCrawlerProcessor(serviceManager, platformRegistry.GetSharedAmazonProcessor()); err != nil {
 		logger.Fatalf("❌ 注册爬虫处理器失败: %v", err)
 	}

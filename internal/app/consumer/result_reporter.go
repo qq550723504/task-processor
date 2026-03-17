@@ -1,5 +1,5 @@
-﻿// Package messaging 提供任务结果上报功能
-package messaging
+﻿// Package consumer 提供任务结果上报功能
+package consumer
 
 import (
 	"bytes"

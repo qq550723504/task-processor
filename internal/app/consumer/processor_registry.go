@@ -1,5 +1,5 @@
-﻿// Package messaging 提供任务处理器注册表
-package messaging
+﻿// Package consumer 提供任务处理器注册表
+package consumer
 
 import (
 	"maps"

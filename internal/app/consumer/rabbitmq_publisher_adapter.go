@@ -1,5 +1,5 @@
-// Package messaging 提供RabbitMQ发布器适配器
-package messaging
+﻿// Package consumer 提供RabbitMQ发布器适配器
+package consumer
 
 import (
 	"context"

@@ -5,7 +5,7 @@ import (
 	"context"
 	"flag"
 
-	"task-processor/internal/app/messaging"
+	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/appenv"
 )
@@ -49,13 +49,13 @@ func main() {
 	}
 
 	// 创建消息服务
-	serviceManager, err := messaging.NewServiceManager(cfg.RabbitMQ, logger)
+	serviceManager, err := consumer.NewServiceManager(cfg.RabbitMQ, logger)
 	if err != nil {
 		logger.Fatalf("❌ 创建消息服务失败: %v", err)
 	}
 
 	// 只注册 SHEIN 平台处理器
-	platformRegistry := messaging.NewPlatformRegistry(cfg, logger, "shein")
+	platformRegistry := consumer.NewPlatformRegistry(cfg, logger, "shein")
 	ctx := context.Background()
 	if err := platformRegistry.RegisterSheinProcessor(ctx, serviceManager); err != nil {
 		logger.Fatalf("❌ 注册 SHEIN 处理器失败: %v", err)

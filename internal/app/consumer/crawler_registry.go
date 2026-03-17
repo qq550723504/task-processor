@@ -1,5 +1,5 @@
-﻿// Package messaging 提供爬虫处理器注册功能
-package messaging
+﻿// Package consumer 提供爬虫处理器注册功能
+package consumer
 
 import (
 	"fmt"

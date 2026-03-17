@@ -5,7 +5,7 @@ import (
 	"context"
 	"flag"
 
-	"task-processor/internal/app/messaging"
+	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/appenv"
 )
@@ -44,13 +44,13 @@ func main() {
 	}
 
 	// 创建消息服务
-	serviceManager, err := messaging.NewServiceManager(cfg.RabbitMQ, logger)
+	serviceManager, err := consumer.NewServiceManager(cfg.RabbitMQ, logger)
 	if err != nil {
 		logger.Fatalf("❌ 创建消息服务失败: %v", err)
 	}
 
 	// 只注册 1688 爬虫处理器
-	crawlerRegistry := messaging.NewCrawlerRegistry(cfg, logger, serviceManager.GetClient())
+	crawlerRegistry := consumer.NewCrawlerRegistry(cfg, logger, serviceManager.GetClient())
 	if err := crawlerRegistry.Register1688Crawler(serviceManager); err != nil {
 		logger.Fatalf("❌ 注册 1688 爬虫失败: %v", err)
 	}

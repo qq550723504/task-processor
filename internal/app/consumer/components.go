@@ -1,5 +1,5 @@
-// Package messaging 提供各子服务的 lifecycle.Component 适配器
-package messaging
+﻿// Package consumer 提供各子服务的 lifecycle.Component 适配器
+package consumer
 
 import (
 	"context"

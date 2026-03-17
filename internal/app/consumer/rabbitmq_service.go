@@ -1,5 +1,5 @@
-﻿// Package messaging 提供RabbitMQ服务管理器
-package messaging
+﻿// Package consumer 提供RabbitMQ服务管理器
+package consumer
 
 import (
 	"context"

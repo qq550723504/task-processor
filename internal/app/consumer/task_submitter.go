@@ -1,5 +1,5 @@
-﻿// Package messaging 提供消息处理应用层服务
-package messaging
+﻿// Package consumer 提供消息处理应用层服务
+package consumer
 
 import (
 	"context"

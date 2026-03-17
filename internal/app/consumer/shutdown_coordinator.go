@@ -1,5 +1,5 @@
-// Package messaging 提供优雅关闭协调器
-package messaging
+﻿// Package consumer 提供优雅关闭协调器
+package consumer
 
 import (
 	"context"
