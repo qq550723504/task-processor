@@ -1,5 +1,5 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
-package operation
+﻿// package activity 提供SHEIN平台调度器相关服务
+package activity
 
 import (
 	"strconv"
@@ -7,6 +7,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/api/marketing"
+	"task-processor/internal/shein/operation"
 
 	"github.com/sirupsen/logrus"
 )
@@ -195,7 +196,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 		}
 
 		// 检查该SKC下的所有SKU是否都满足利润率要求
-		validSkus := make([]EnrichedSkuInfo, 0, len(skcInfo.SkuInfo))
+		validSkus := make([]operation.EnrichedSkuInfo, 0, len(skcInfo.SkuInfo))
 		totalOriginalPrice := 0.0
 		totalActivityPrice := 0.0
 		skuCount := 0

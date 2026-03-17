@@ -1,5 +1,5 @@
-// Package operation 提供SHEIN平台调度器相关服务
-package operation
+// Package activity 提供SHEIN平台活动报名相关服务
+package activity
 
 import (
 	"github.com/sirupsen/logrus"

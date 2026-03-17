@@ -1,8 +1,9 @@
-﻿// Package operation 提供SHEIN平台价格计算相关服务
-package operation
+﻿// Package activity 提供SHEIN平台活动价格计算相关服务
+package activity
 
 import (
 	"task-processor/internal/shein/api/marketing"
+	"task-processor/internal/shein/operation"
 
 	"github.com/sirupsen/logrus"
 )
@@ -77,7 +78,7 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 	s.logger.Infof("开始构建价格计算请求，输入商品数量: %d，定价模式: %s", totalInputGoods, config.PriceMode)
 
 	// 如果使用利润率模式,需要获取产品的Attributes来提取Amazon价格
-	var skcDataMap map[string]*EnrichedSkcInfo
+	var skcDataMap map[string]*operation.EnrichedSkcInfo
 	var helper *ProductDataHelper
 	if config.PriceMode == "PROFIT" {
 		helper = NewProductDataHelper(s.managementClient, s.logger.Logger)

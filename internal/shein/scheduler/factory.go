@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/platformbase"
+	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
 	shein_pricing "task-processor/internal/shein/api/pricing"
 	shein_product "task-processor/internal/shein/api/product"
@@ -150,7 +151,7 @@ func (f *SheinTaskFactory) createInventoryTask(ctx context.Context, config appsc
 // createActivityTask 创建活动报名任务
 func (f *SheinTaskFactory) createActivityTask(ctx context.Context, config appscheduler.TaskConfig, baseClient *client.BaseAPIClient) (appscheduler.Task, error) {
 	marketingAPI := marketing.NewClient(baseClient)
-	activityService := schedulerservice.NewActivityRegistrationService(f.GetManagementClient(), marketingAPI)
+	activityService := activity.NewActivityRegistrationService(f.GetManagementClient(), marketingAPI)
 	return NewActivityTask(ctx, config, f.GetManagementClient(), f.clientManager, activityService), nil
 }
 

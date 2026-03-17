@@ -8,8 +8,8 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/client"
-	schedulerservice "task-processor/internal/shein/operation"
 
 	"github.com/sirupsen/logrus"
 )
@@ -19,7 +19,7 @@ type ActivityTask struct {
 	*BaseTask
 	managementClient *management.ClientManager
 	clientManager    *client.ClientManager
-	activityService  schedulerservice.ActivityRegistrationService
+	activityService  activity.ActivityRegistrationService
 	logger           *logrus.Entry
 }
 
@@ -29,7 +29,7 @@ func NewActivityTask(
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
 	clientManager *client.ClientManager,
-	activityService schedulerservice.ActivityRegistrationService,
+	activityService activity.ActivityRegistrationService,
 ) *ActivityTask {
 	baseTask := NewBaseTask(config)
 

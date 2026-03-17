@@ -1,5 +1,5 @@
-// Package operation 提供SHEIN平台调度器相关错误定义
-package operation
+﻿// package activity 提供SHEIN平台调度器相关错误定义
+package activity
 
 import "errors"
 
