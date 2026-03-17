@@ -184,7 +184,7 @@ task_service.go      → task.go
 
 ---
 
-## Phase 2：包拆分重组 ✅ 已完成（2.1/2.3），2.2 待执行
+## Phase 2：包拆分重组 ✅ 全部完成
 
 **风险：中 | 预计耗时：3-5 天**
 
@@ -512,4 +512,4 @@ type SheinTaskFactory = scheduler.SheinTaskFactory
 | P3.2 | 简化 `app/di/`（删除反射/接口） | 中 | 中 | ✅ commit ecf0f06 |
 | P3.3 | `queue_config/initializer` → `infra/rabbitmq/` | 中 | 低 | ✅ commit ecf0f06 |
 | P3.3 | `app/messaging/` → `app/consumer/` | 中 | 低 | ✅ commit 6e8494f |
-| P2 | 新建 `shein/context/`，修复 `GetTask()` | 高 | 中 | 待执行 |
+| P2 | 新建 `shein/context/`，提取 TaskContext/属性类型 | 高 | 中 | ✅ commit 3a0f20b |
