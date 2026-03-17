@@ -1,17 +1,18 @@
-﻿// Package service 提供Amazon动态产品模板
-package service
+﻿// Package listing 提供Amazon动态产品模板
+package listing
 
 import (
 	"context"
 	"task-processor/internal/amazon/api"
 	"task-processor/internal/amazon/model"
+	"task-processor/internal/amazon/schema"
 
 	"github.com/sirupsen/logrus"
 )
 
 // DynamicTemplate 动态产品模板（支持任意品类）
 type DynamicTemplate struct {
-	schemaManager    *SchemaManager
+	schemaManager    *schema.SchemaManager
 	attributeBuilder *AttributeBuilder
 	logger           *logrus.Entry
 }
@@ -19,7 +20,7 @@ type DynamicTemplate struct {
 // NewDynamicTemplate 创建动态模板
 func NewDynamicTemplate(apiClient *api.Client, marketplaceID, languageTag string) *DynamicTemplate {
 	return &DynamicTemplate{
-		schemaManager:    NewSchemaManager(apiClient, marketplaceID, languageTag),
+		schemaManager:    schema.NewSchemaManager(apiClient, marketplaceID, languageTag),
 		attributeBuilder: NewAttributeBuilder(),
 		logger:           logrus.WithField("component", "DynamicTemplate"),
 	}
@@ -49,7 +50,7 @@ func (t *DynamicTemplate) BuildListingRequest(
 	t.logger.WithField("required_count", len(requiredAttrs)).Info("解析必需属性")
 
 	// 构建属性
-	builder := NewSchemaBuilder(marketplaceID, "en_US")
+	builder := schema.NewSchemaBuilder(marketplaceID, "en_US")
 	attributes := t.attributeBuilder.BuildAttributes(ctx, builder, requiredAttrs, data, productSchema)
 
 	return &api.ListingRequest{
@@ -67,7 +68,7 @@ func (t *DynamicTemplate) buildGenericRequest(
 	marketplaceID string,
 	data *model.ProductData,
 ) *api.ListingRequest {
-	builder := NewSchemaBuilder(marketplaceID, "en_US")
+	builder := schema.NewSchemaBuilder(marketplaceID, "en_US")
 
 	// 使用属性构建器构建基础属性
 	attrs := t.attributeBuilder.BuildAttributes(ctx, builder, []model.AttributeInfo{}, data, nil)
@@ -105,4 +106,3 @@ func (t *DynamicTemplate) GetRequiredAttributes(ctx context.Context, productType
 func (t *DynamicTemplate) AnalyzeComplexity(ctx context.Context, productType string) (map[string]any, error) {
 	return t.schemaManager.AnalyzeProductTypeComplexity(ctx, productType)
 }
-

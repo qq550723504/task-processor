@@ -1,5 +1,4 @@
-﻿// Package service 提供Amazon产品标识符业务逻辑
-package service
+﻿package listing
 
 import (
 	"task-processor/internal/amazon/model"

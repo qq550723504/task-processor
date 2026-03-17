@@ -1,8 +1,9 @@
-﻿// Package service 提供Amazon必需属性构建功能
-package service
+﻿// Package listing 提供Amazon必需属性构建功能
+package listing
 
 import (
 	"task-processor/internal/amazon/model"
+	"task-processor/internal/amazon/schema"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,7 +21,7 @@ func NewRequiredAttributeBuilder() *RequiredAttributeBuilder {
 }
 
 // AddRequiredAttributes 处理必需属性
-func (rab *RequiredAttributeBuilder) AddRequiredAttributes(attrs map[string]any, builder *SchemaBuilder, requiredAttrs []model.AttributeInfo, data *model.ProductData, marketplaceID string) {
+func (rab *RequiredAttributeBuilder) AddRequiredAttributes(attrs map[string]any, builder *schema.SchemaBuilder, requiredAttrs []model.AttributeInfo, data *model.ProductData, marketplaceID string) {
 	for _, attr := range requiredAttrs {
 		if _, exists := attrs[attr.Name]; exists {
 			continue // 已处理
@@ -113,4 +114,3 @@ func (rab *RequiredAttributeBuilder) getDefaultValue(attr model.AttributeInfo, m
 	// 其他情况返回nil，让Amazon API告诉我们缺少什么
 	return nil
 }
-

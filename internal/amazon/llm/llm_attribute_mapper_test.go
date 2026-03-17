@@ -1,5 +1,5 @@
 ﻿// Package service 提供LLM属性映射器测试
-package service
+package llm
 
 import (
 	"context"

@@ -1,5 +1,4 @@
-﻿// Package service 提供图片处理功能
-package service
+﻿package image
 
 import (
 	"bytes"

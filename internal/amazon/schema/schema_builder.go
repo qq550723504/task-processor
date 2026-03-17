@@ -1,5 +1,4 @@
-﻿// Package service 提供Amazon产品属性动态构建功能
-package service
+﻿package schema
 
 import (
 	"task-processor/internal/amazon/model"

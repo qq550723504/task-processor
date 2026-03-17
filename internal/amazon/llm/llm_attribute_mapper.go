@@ -1,5 +1,4 @@
-﻿// Package service 提供基于LLM的智能属性映射服务
-package service
+﻿package llm
 
 import (
 	"context"

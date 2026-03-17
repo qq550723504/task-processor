@@ -1,5 +1,4 @@
-// Package service 提供OpenAI LLM客户端适配器
-package service
+﻿package llm
 
 import (
 	"context"

@@ -4,8 +4,8 @@ package handler
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/amazon/llm"
 	"task-processor/internal/amazon/model"
-	"task-processor/internal/amazon/service"
 )
 
 // AttributeMapperHandler 属性映射处理器
@@ -50,7 +50,7 @@ func (h *AttributeMapperHandler) Handle(ctx context.Context, taskContext *model.
 }
 
 // getLLMAttributeMapper 获取LLM属性映射器
-func (h *AttributeMapperHandler) getLLMAttributeMapper() *service.LLMAttributeMapper {
+func (h *AttributeMapperHandler) getLLMAttributeMapper() *llm.LLMAttributeMapper {
 	if h.services == nil {
 		return nil
 	}
@@ -60,7 +60,7 @@ func (h *AttributeMapperHandler) getLLMAttributeMapper() *service.LLMAttributeMa
 		return nil
 	}
 
-	llmMapper, ok := mapper.(*service.LLMAttributeMapper)
+	llmMapper, ok := mapper.(*llm.LLMAttributeMapper)
 	if !ok {
 		h.logger.Warn("LLM属性映射器类型转换失败")
 		return nil
@@ -70,12 +70,12 @@ func (h *AttributeMapperHandler) getLLMAttributeMapper() *service.LLMAttributeMa
 }
 
 // handleLLMMapping 使用LLM进行智能映射
-func (h *AttributeMapperHandler) handleLLMMapping(ctx context.Context, taskContext *model.TaskContext, sourceData map[string]any, llmMapper *service.LLMAttributeMapper) error {
+func (h *AttributeMapperHandler) handleLLMMapping(ctx context.Context, taskContext *model.TaskContext, sourceData map[string]any, llmMapper *llm.LLMAttributeMapper) error {
 	// 获取产品类型
 	productType := h.getProductType(sourceData, taskContext.Data)
 
 	// 构建LLM映射请求
-	req := &service.AttributeMappingRequest{
+	req := &llm.AttributeMappingRequest{
 		SourcePlatform: "1688",
 		TargetPlatform: "Amazon",
 		ProductData:    sourceData,
@@ -157,5 +157,3 @@ func (h *AttributeMapperHandler) getProductType(sourceData map[string]any, data 
 	// 3. 默认使用标准产品类型
 	return "PRODUCT"
 }
-
-

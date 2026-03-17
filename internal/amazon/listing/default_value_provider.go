@@ -1,5 +1,4 @@
-﻿// Package service 提供Amazon属性默认值功能
-package service
+﻿package listing
 
 import (
 	"task-processor/internal/amazon/model"

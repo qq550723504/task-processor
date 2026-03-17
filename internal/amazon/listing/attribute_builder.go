@@ -1,9 +1,10 @@
-﻿// Package service 提供Amazon属性构建功能
-package service
+﻿// Package listing 提供Amazon属性构建功能
+package listing
 
 import (
 	"context"
 	"task-processor/internal/amazon/model"
+	"task-processor/internal/amazon/schema"
 
 	"github.com/sirupsen/logrus"
 )
@@ -35,7 +36,7 @@ func NewAttributeBuilder() *AttributeBuilder {
 // BuildAttributes 构建属性
 func (ab *AttributeBuilder) BuildAttributes(
 	ctx context.Context,
-	builder *SchemaBuilder,
+	builder *schema.SchemaBuilder,
 	requiredAttrs []model.AttributeInfo,
 	data *model.ProductData,
 	productSchema *model.ProductTypeSchema,
@@ -96,4 +97,3 @@ func isAutomotiveCategory(productType string) bool {
 	}
 	return automotiveTypes[productType]
 }
-

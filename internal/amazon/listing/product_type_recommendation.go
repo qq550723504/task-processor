@@ -1,5 +1,4 @@
-﻿// Package service 提供Amazon产品类型推荐服务
-package service
+﻿package listing
 
 import (
 	"context"

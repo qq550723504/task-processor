@@ -1,5 +1,4 @@
-// Package service 提供S3上传功能
-package service
+﻿package storage
 
 import (
 	"bytes"

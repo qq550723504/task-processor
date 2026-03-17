@@ -5,15 +5,15 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/app/processor"
-	"task-processor/internal/core/config"
-	"task-processor/internal/model"
-	"task-processor/internal/infra/worker"
-	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/amazon/api"
 	"task-processor/internal/amazon/handler"
+	"task-processor/internal/amazon/listing"
 	amazonModel "task-processor/internal/amazon/model"
-	"task-processor/internal/amazon/service"
+	"task-processor/internal/app/processor"
+	"task-processor/internal/core/config"
+	"task-processor/internal/infra/worker"
+	"task-processor/internal/model"
+	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -43,11 +43,11 @@ func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger
 	services.SetAPIClient(apiClient)
 
 	// 创建产品类型推荐服务
-	productTypeService := service.NewProductTypeRecommendationService(apiClient)
+	productTypeService := listing.NewProductTypeRecommendationService(apiClient)
 	services.SetProductTypeService(productTypeService)
 
 	// 创建服务工厂并初始化LLM服务
-	serviceFactory := service.NewServiceFactory(cfg)
+	serviceFactory := listing.NewServiceFactory(cfg)
 	serviceFactory.UpdateServices(services)
 
 	p := &Processor{
@@ -171,7 +171,3 @@ func (p *Processor) createTaskContext(taskData map[string]any) *amazonModel.Task
 		Data:          taskData,
 	}
 }
-
-
-
-

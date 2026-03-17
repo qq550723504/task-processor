@@ -1,5 +1,4 @@
-﻿// Package service 提供Amazon变体处理功能
-package service
+﻿package listing
 
 import (
 	"strings"

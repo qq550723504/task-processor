@@ -1,5 +1,4 @@
-﻿// Package service 提供Amazon产品类型Schema解析功能
-package service
+﻿package schema
 
 import (
 	"fmt"

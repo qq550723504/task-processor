@@ -3,8 +3,8 @@ package handler
 
 import (
 	"context"
+	"task-processor/internal/amazon/llm"
 	"task-processor/internal/amazon/model"
-	"task-processor/internal/amazon/service"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +17,7 @@ func TestAttributeMapperHandler_Handle_WithLLM(t *testing.T) {
 	mockLLMClient := &MockLLMClient{}
 
 	// 模拟LLM响应
-	mockResponse := &service.ChatResponse{
+	mockResponse := &llm.ChatResponse{
 		Content: `{
 			"mapped_attributes": {
 				"item_name": "Elegant Korean Style Dress",
@@ -45,7 +45,7 @@ func TestAttributeMapperHandler_Handle_WithLLM(t *testing.T) {
 
 	// 创建服务容器
 	services := model.NewServices()
-	llmMapper := service.NewLLMAttributeMapper(mockLLMClient)
+	llmMapper := llm.NewLLMAttributeMapper(mockLLMClient)
 	services.SetLLMAttributeMapper(llmMapper)
 
 	// 创建处理器
@@ -167,14 +167,12 @@ func TestAttributeMapperHandler_Handle_MissingData(t *testing.T) {
 	assert.Contains(t, err.Error(), "原始产品数据不存在")
 }
 
-// MockLLMClient 模拟LLM客户端（重用service包中的定义）
+// MockLLMClient 模拟LLM客户端
 type MockLLMClient struct {
 	mock.Mock
 }
 
-func (m *MockLLMClient) Chat(ctx context.Context, messages []service.ChatMessage) (*service.ChatResponse, error) {
+func (m *MockLLMClient) Chat(ctx context.Context, messages []llm.ChatMessage) (*llm.ChatResponse, error) {
 	args := m.Called(ctx, messages)
-	return args.Get(0).(*service.ChatResponse), args.Error(1)
+	return args.Get(0).(*llm.ChatResponse), args.Error(1)
 }
-
-

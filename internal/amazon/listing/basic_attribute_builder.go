@@ -1,9 +1,10 @@
-﻿// Package service 提供Amazon基础属性构建功能
-package service
+﻿// Package listing 提供Amazon基础属性构建功能
+package listing
 
 import (
 	"strings"
 	"task-processor/internal/amazon/model"
+	"task-processor/internal/amazon/schema"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +22,7 @@ func NewBasicAttributeBuilder() *BasicAttributeBuilder {
 }
 
 // AddBasicAttributes 添加基础属性
-func (bab *BasicAttributeBuilder) AddBasicAttributes(attrs map[string]any, builder *SchemaBuilder, data *model.ProductData, marketplaceID string) {
+func (bab *BasicAttributeBuilder) AddBasicAttributes(attrs map[string]any, builder *schema.SchemaBuilder, data *model.ProductData, marketplaceID string) {
 	attrs["item_name"] = builder.BuildAttribute(
 		model.AttributeInfo{Format: model.FormatWithLang},
 		data.Title,
@@ -126,7 +127,7 @@ func (bab *BasicAttributeBuilder) AddDetailAttributes(attrs map[string]any, data
 
 // buildPurchasableOfferWithTax 构建包含税务信息的价格报价
 // 根据Amazon官方文档，purchasable_offer需要包含marketplace_id
-func (bab *BasicAttributeBuilder) buildPurchasableOfferWithTax(builder *SchemaBuilder, data *model.ProductData) any {
+func (bab *BasicAttributeBuilder) buildPurchasableOfferWithTax(builder *schema.SchemaBuilder, data *model.ProductData) any {
 	marketplaceID := builder.MarketplaceID()
 
 	offer := map[string]any{
@@ -158,4 +159,3 @@ func (bab *BasicAttributeBuilder) buildPurchasableOfferWithTax(builder *SchemaBu
 
 	return []map[string]any{offer}
 }
-

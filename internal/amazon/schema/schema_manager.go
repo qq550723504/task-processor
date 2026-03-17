@@ -1,5 +1,4 @@
-﻿// Package service 提供Amazon Schema管理功能
-package service
+﻿package schema
 
 import (
 	"context"

@@ -1,5 +1,4 @@
-﻿// Package service 提供Amazon自定义属性构建功能
-package service
+﻿package listing
 
 import (
 	"strings"
