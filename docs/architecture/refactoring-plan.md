@@ -507,7 +507,7 @@ type SheinTaskFactory = scheduler.SheinTaskFactory
 | P1 | 合并 `pkg/apperr` → `core/errors` | 中 | 低 | 立即 |
 | P2 | 拆分 `shein/operation/` | 高 | 中 | ✅ 已完成 |
 | P2 | 新建 `shein/context/`，修复 `GetTask()` | 高 | 中 | 下个迭代 |
-| P2 | 拆分 `amazon/core/service/` | 中 | 中 | 下个迭代 |
+| P2 | 拆分 `amazon/core/service/` | 中 | 中 | ✅ 已完成 |
 | P3 | `domain/model/` → `model/` | 高 | 高 | 专项 Sprint |
 | P3 | 消灭 `app/di/` | 中 | 高 | 专项 Sprint |
 | P3 | 整理 `app/messaging/` | 中 | 高 | 专项 Sprint |
