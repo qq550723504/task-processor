@@ -29,65 +29,45 @@ type platformTaskConfig struct {
 func (s *schedulerServiceImpl) getPlatformConfigs(cfg *config.Config) []platformTaskConfig {
 	configs := make([]platformTaskConfig, 0, 2)
 
-	// TEMU 平台配置
 	// 注意：使用 SchedulerEnabled 控制调度任务，Enabled 控制处理器（上架任务）
 	if cfg.Platforms.Temu.SchedulerEnabled {
-		temuConfig := platformTaskConfig{
-			PlatformName: "TEMU",
-			Enabled:      true,
-			AutoPricing: taskTypeConfig{
-				Enabled:  cfg.Platforms.Temu.AutoPricing.Enabled,
-				Interval: cfg.Platforms.Temu.AutoPricing.Interval,
-			},
-			ProductSync: taskTypeConfig{
-				Enabled:  cfg.Platforms.Temu.ProductSync.Enabled,
-				Interval: cfg.Platforms.Temu.ProductSync.Interval,
-			},
-			InventorySync: taskTypeConfig{
-				Enabled:  cfg.Platforms.Temu.InventorySync.Enabled,
-				Interval: cfg.Platforms.Temu.InventorySync.Interval,
-			},
-			ActivityRegistration: taskTypeConfig{
-				Enabled:  cfg.Platforms.Temu.ActivityRegistration.Enabled,
-				Interval: cfg.Platforms.Temu.ActivityRegistration.Interval,
-			},
-			FactoryCreator: func() scheduler.TaskFactory {
-				return s.createTemuFactory(cfg)
-			},
-		}
-		configs = append(configs, temuConfig)
+		configs = append(configs, buildPlatformTaskConfig("TEMU", cfg.Platforms.Temu, func() scheduler.TaskFactory {
+			return s.createTemuFactory(cfg)
+		}))
 	}
 
-	// SHEIN 平台配置
-	// 注意：使用 SchedulerEnabled 控制调度任务，Enabled 控制处理器（上架任务）
 	if cfg.Platforms.Shein.SchedulerEnabled {
-		sheinConfig := platformTaskConfig{
-			PlatformName: "SHEIN",
-			Enabled:      true,
-			AutoPricing: taskTypeConfig{
-				Enabled:  cfg.Platforms.Shein.AutoPricing.Enabled,
-				Interval: cfg.Platforms.Shein.AutoPricing.Interval,
-			},
-			ProductSync: taskTypeConfig{
-				Enabled:  cfg.Platforms.Shein.ProductSync.Enabled,
-				Interval: cfg.Platforms.Shein.ProductSync.Interval,
-			},
-			InventorySync: taskTypeConfig{
-				Enabled:  cfg.Platforms.Shein.InventorySync.Enabled,
-				Interval: cfg.Platforms.Shein.InventorySync.Interval,
-			},
-			ActivityRegistration: taskTypeConfig{
-				Enabled:  cfg.Platforms.Shein.ActivityRegistration.Enabled,
-				Interval: cfg.Platforms.Shein.ActivityRegistration.Interval,
-			},
-			FactoryCreator: func() scheduler.TaskFactory {
-				return s.createSheinFactory(cfg)
-			},
-		}
-		configs = append(configs, sheinConfig)
+		configs = append(configs, buildPlatformTaskConfig("SHEIN", cfg.Platforms.Shein, func() scheduler.TaskFactory {
+			return s.createSheinFactory(cfg)
+		}))
 	}
 
 	return configs
+}
+
+// buildPlatformTaskConfig 从通用的 PlatformConfig 构建 platformTaskConfig
+func buildPlatformTaskConfig(name string, pc config.PlatformConfig, factory func() scheduler.TaskFactory) platformTaskConfig {
+	return platformTaskConfig{
+		PlatformName: name,
+		Enabled:      true,
+		AutoPricing: taskTypeConfig{
+			Enabled:  pc.AutoPricing.Enabled,
+			Interval: pc.AutoPricing.Interval,
+		},
+		ProductSync: taskTypeConfig{
+			Enabled:  pc.ProductSync.Enabled,
+			Interval: pc.ProductSync.Interval,
+		},
+		InventorySync: taskTypeConfig{
+			Enabled:  pc.InventorySync.Enabled,
+			Interval: pc.InventorySync.Interval,
+		},
+		ActivityRegistration: taskTypeConfig{
+			Enabled:  pc.ActivityRegistration.Enabled,
+			Interval: pc.ActivityRegistration.Interval,
+		},
+		FactoryCreator: factory,
+	}
 }
 
 // getDefaultInterval 获取默认间隔
@@ -97,4 +77,3 @@ func getDefaultInterval(interval int) time.Duration {
 	}
 	return time.Duration(interval) * time.Second
 }
-

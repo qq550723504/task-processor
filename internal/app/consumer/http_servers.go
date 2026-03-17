@@ -87,12 +87,7 @@ func (h *HTTPServerManager) startHealthServer() {
 		Addr:    fmt.Sprintf(":%d", h.config.Node.HealthCheckPort),
 		Handler: mux,
 	}
-
-	h.logger.Infof("健康检查服务器启动在端口: %d", h.config.Node.HealthCheckPort)
-
-	if err := h.healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		h.logger.Errorf("健康检查服务器错误: %v", err)
-	}
+	runServer(h.healthServer, "健康检查服务器", h.config.Node.HealthCheckPort, h.logger)
 }
 
 // startMetricsServer 启动指标服务器
@@ -107,11 +102,14 @@ func (h *HTTPServerManager) startMetricsServer() {
 		Addr:    fmt.Sprintf(":%d", h.config.Node.MetricsPort),
 		Handler: mux,
 	}
+	runServer(h.metricsServer, "指标服务器", h.config.Node.MetricsPort, h.logger)
+}
 
-	h.logger.Infof("指标服务器启动在端口: %d", h.config.Node.MetricsPort)
-
-	if err := h.metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		h.logger.Errorf("指标服务器错误: %v", err)
+// runServer 启动 HTTP 服务器并阻塞，统一处理日志和错误
+func runServer(srv *http.Server, name string, port int, logger *logrus.Logger) {
+	logger.Infof("%s启动在端口: %d", name, port)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		logger.Errorf("%s错误: %v", name, err)
 	}
 }
 

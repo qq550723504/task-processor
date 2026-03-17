@@ -20,12 +20,12 @@ import (
 
 // PlatformRegistry 多平台处理器注册器
 type PlatformRegistry struct {
-	config *config.Config
-	logger *logrus.Logger
-	managementClient *management.ClientManager
+	config                *config.Config
+	logger                *logrus.Logger
+	managementClient      *management.ClientManager
 	sharedAmazonProcessor *amazon.AmazonProcessor
-	rabbitmqClient *rabbitmq.Client
-	enabledPlatforms []string
+	rabbitmqClient        *rabbitmq.Client
+	enabledPlatforms      []string
 }
 
 // NewPlatformRegistry 创建平台注册器
@@ -45,8 +45,8 @@ func NewPlatformRegistry(
 	logger.Infof(" 启用的平台: %v", enabledPlatforms)
 
 	return &PlatformRegistry{
-		config: cfg,
-		logger: logger,
+		config:           cfg,
+		logger:           logger,
 		enabledPlatforms: enabledPlatforms,
 	}
 }
@@ -201,30 +201,36 @@ func (r *PlatformRegistry) registerSheinPlatform(ctx context.Context, serviceMan
 
 // RegisterTemuProcessor 只注册 TEMU 平台处理器。
 func (r *PlatformRegistry) RegisterTemuProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	r.rabbitmqClient = serviceManager.GetClient()
-	if err := r.initializeSharedResources(); err != nil {
-		return fmt.Errorf("初始化共享资源失败: %w", err)
+	if err := r.initForSinglePlatform(serviceManager, true); err != nil {
+		return err
 	}
 	return r.registerTemuPlatform(ctx, serviceManager)
 }
 
 // RegisterSheinProcessor 只注册 SHEIN 平台处理器。
 func (r *PlatformRegistry) RegisterSheinProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	r.rabbitmqClient = serviceManager.GetClient()
-	if err := r.initializeSharedResources(); err != nil {
-		return fmt.Errorf("初始化共享资源失败: %w", err)
+	if err := r.initForSinglePlatform(serviceManager, true); err != nil {
+		return err
 	}
 	return r.registerSheinPlatform(ctx, serviceManager)
 }
 
 // RegisterAmazonProcessor 只注册 Amazon 平台处理器。
 func (r *PlatformRegistry) RegisterAmazonProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	r.rabbitmqClient = serviceManager.GetClient()
-	// Amazon 不需要共享的 Amazon 处理器，只初始化管理客户端
-	if err := r.initializeManagementClient(); err != nil {
-		return fmt.Errorf("初始化管理客户端失败: %w", err)
+	if err := r.initForSinglePlatform(serviceManager, false); err != nil {
+		return err
 	}
 	return r.registerAmazonPlatform(ctx, serviceManager)
+}
+
+// initForSinglePlatform 单平台注册前的公共初始化。
+// needsAmazon 为 true 时同时初始化共享 Amazon 处理器（TEMU/SHEIN 需要）。
+func (r *PlatformRegistry) initForSinglePlatform(serviceManager *ServiceManager, needsAmazon bool) error {
+	r.rabbitmqClient = serviceManager.GetClient()
+	if needsAmazon {
+		return r.initializeSharedResources()
+	}
+	return r.initializeManagementClient()
 }
 
 // initializeManagementClient 初始化管理客户端并设置访问令牌。
