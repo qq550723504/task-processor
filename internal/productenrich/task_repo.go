@@ -1,4 +1,4 @@
-﻿// Package productenrich provides product enrichment functionality.
+// Package productenrich provides product enrichment functionality.
 package productenrich
 
 import (

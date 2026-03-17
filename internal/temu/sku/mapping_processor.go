@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的SKU映射处理功能
+// Package sku 提供TEMU平台的SKU映射处理功能
 package sku
 
 import (
@@ -209,4 +209,3 @@ func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *temucontext.AISkuMa
 
 	return template
 }
-

@@ -32,21 +32,21 @@ type ProductTypeConfig struct {
 // AttributeMappingRule 属性映射规则
 type AttributeMappingRule struct {
 	SourceFields []string `yaml:"source_fields"`
-	MaxLength    int      `yaml:"max_length"`
-	Required     bool     `yaml:"required"`
 	Default      any      `yaml:"default"`
 	Unit         string   `yaml:"unit"`
+	MaxLength    int      `yaml:"max_length"`
+	Required     bool     `yaml:"required"`
 }
 
 // ValidationRule 验证规则
 type ValidationRule struct {
-	MinLength     int      `yaml:"min_length"`
-	MaxLength     int      `yaml:"max_length"`
 	Pattern       string   `yaml:"pattern"`
 	AllowedValues []string `yaml:"allowed_values"`
+	Unit          string   `yaml:"unit"`
 	MinValue      float64  `yaml:"min_value"`
 	MaxValue      float64  `yaml:"max_value"`
-	Unit          string   `yaml:"unit"`
+	MinLength     int      `yaml:"min_length"`
+	MaxLength     int      `yaml:"max_length"`
 }
 
 // NewAttributeMapper 创建属性映射器

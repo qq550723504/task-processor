@@ -1,4 +1,4 @@
-﻿// Package product 提供TEMU平台产品描述验证器的评分功能
+// Package product 提供TEMU平台产品描述验证器的评分功能
 package product
 
 import (
@@ -190,4 +190,3 @@ func (h *ProductDescriptionValidator) generateScoreReport(description string, sc
 
 	return report
 }
-

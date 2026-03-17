@@ -1,4 +1,4 @@
-﻿package browser
+package browser
 
 import (
 	"archive/zip"
@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/httpclient"
+	"task-processor/internal/pkg/timeout"
 
 	"github.com/sirupsen/logrus"
 )

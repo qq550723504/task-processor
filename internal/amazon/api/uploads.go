@@ -1,4 +1,4 @@
-﻿// Package api 提供Amazon SP-API图片上传功能
+// Package api 提供Amazon SP-API图片上传功能
 package api
 
 import (

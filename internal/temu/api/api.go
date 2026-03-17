@@ -1,4 +1,4 @@
-﻿// Package api 提供TEMU平台API的统一入口
+// Package api 提供TEMU平台API的统一入口
 package api
 
 import (

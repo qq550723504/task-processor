@@ -1,4 +1,4 @@
-﻿// package pipeline 提供Amazon处理器管理功能测试
+// package pipeline 提供Amazon处理器管理功能测试
 package pipeline
 
 import (
@@ -94,4 +94,3 @@ func TestHandlerManager_GetHandlerNames(t *testing.T) {
 
 	assert.Equal(t, expectedNames, names)
 }
-

@@ -1,11 +1,11 @@
-﻿// package sync 提供TEMU库存监控服务工厂
+// package sync 提供TEMU库存监控服务工厂
 package sync
 
 import (
 	"fmt"
 	"task-processor/internal/core/config"
-	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
 
 	"github.com/sirupsen/logrus"
@@ -82,4 +82,3 @@ func (f *InventorySyncServiceFactory) ValidateConfig(
 	f.logger.Info("TEMU库存监控配置验证完成")
 	return nil
 }
-

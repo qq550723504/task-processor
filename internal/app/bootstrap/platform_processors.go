@@ -1,4 +1,4 @@
-﻿// Package bootstrap 提供平台处理器构造函数
+// Package bootstrap 提供平台处理器构造函数
 package bootstrap
 
 import (

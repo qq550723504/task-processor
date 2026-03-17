@@ -1,4 +1,4 @@
-﻿// Package main 提供应用程序入口点
+// Package main 提供应用程序入口点
 package main
 
 import (

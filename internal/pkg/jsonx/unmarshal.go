@@ -1,4 +1,4 @@
-﻿package jsonx
+package jsonx
 
 import (
 	"encoding/json"

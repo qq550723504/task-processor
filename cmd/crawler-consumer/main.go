@@ -1,4 +1,4 @@
-﻿// Package main 提供爬虫RabbitMQ消费者主程序
+// Package main 提供爬虫RabbitMQ消费者主程序
 package main
 
 import (

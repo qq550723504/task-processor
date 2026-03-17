@@ -1,4 +1,4 @@
-﻿package bulkrelist
+package bulkrelist
 
 import (
 	"time"
@@ -119,7 +119,7 @@ func (bp *BatchProcessor) DeduplicateProducts(products []inventory.Item) []inven
 	}
 
 	// 转换为切片
-	var deduplicatedProducts []inventory.Item
+	deduplicatedProducts := make([]inventory.Item, 0, len(uniqueProducts))
 	for _, product := range uniqueProducts {
 		deduplicatedProducts = append(deduplicatedProducts, product)
 	}

@@ -1,4 +1,4 @@
-﻿// Package consumer 提供各子服务的 lifecycle.Component 适配器
+// Package consumer 提供各子服务的 lifecycle.Component 适配器
 package consumer
 
 import (

@@ -1,4 +1,4 @@
-﻿package bulkrelist
+package bulkrelist
 
 import (
 	"fmt"
@@ -123,9 +123,9 @@ func (pp *ProductProcessor) processConcurrent(
 ) (*RelistAllResult, error) {
 	// 创建工作任务
 	type workItem struct {
+		productInfo *inventory.Item
 		goodsID     string
 		skuIDs      []string
-		productInfo *inventory.Item
 	}
 
 	// 准备工作队列

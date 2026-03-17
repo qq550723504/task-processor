@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供任务上下文具体实现
+// Package pipeline 提供任务上下文具体实现
 package pipeline
 
 import (
@@ -100,4 +100,3 @@ func (tc *DefaultTaskContext) SetError(err error) {
 }
 
 var _ TaskContext = (*DefaultTaskContext)(nil)
-

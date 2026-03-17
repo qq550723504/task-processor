@@ -1,4 +1,4 @@
-﻿package watermark
+package watermark
 
 import (
 	"bytes"

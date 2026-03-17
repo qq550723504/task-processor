@@ -1,14 +1,14 @@
-﻿// Package inventory 提供 SHEIN 平台库存同步功能
+// Package inventory 提供 SHEIN 平台库存同步功能
 package inventory
 
 import (
 	"encoding/json"
-	"task-processor/internal/model"
-	"task-processor/internal/product"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timex"
+	"task-processor/internal/product"
 	"task-processor/internal/shein/productsync"
 	"time"
 
@@ -215,6 +215,3 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 		}
 	}
 }
-
-
-

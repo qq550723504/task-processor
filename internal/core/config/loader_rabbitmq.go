@@ -1,8 +1,7 @@
-﻿// Package loaders 提供配置加载功能
+// Package loaders 提供配置加载功能
 package config
 
 import (
-
 	"github.com/spf13/viper"
 )
 

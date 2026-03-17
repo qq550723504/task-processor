@@ -1,4 +1,4 @@
-﻿package pricing
+package pricing
 
 import (
 	"testing"
@@ -258,4 +258,3 @@ func BenchmarkCalculateAmazonProductCost(b *testing.B) {
 		calc.CalculateAmazonProductCost(product, "special", 1)
 	}
 }
-

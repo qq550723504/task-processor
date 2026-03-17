@@ -1,4 +1,4 @@
-﻿// Package property 提供属性处理管道，统筹整个属性处理流程
+// Package property 提供属性处理管道，统筹整个属性处理流程
 package property
 
 import (

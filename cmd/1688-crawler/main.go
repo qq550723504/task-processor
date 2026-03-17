@@ -1,4 +1,4 @@
-﻿// Package main 1688 爬虫服务入口
+// Package main 1688 爬虫服务入口
 package main
 
 import (

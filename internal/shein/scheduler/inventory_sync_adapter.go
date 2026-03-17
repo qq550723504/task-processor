@@ -1,12 +1,12 @@
-﻿// package scheduler 提供SHEIN库存同步任务的适配器
+// package scheduler 提供SHEIN库存同步任务的适配器
 package scheduler
 
 import (
 	"context"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/shein/inventory"
 	platformtask "task-processor/internal/platformtask"
+	"task-processor/internal/shein/inventory"
 )
 
 // inventorySyncServiceAdapter 适配器，将SHEIN特定的InventorySyncService适配到通用接口
@@ -63,5 +63,3 @@ func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Contex
 		AmazonFailed:      result.AmazonFailed,
 	}, nil
 }
-
-

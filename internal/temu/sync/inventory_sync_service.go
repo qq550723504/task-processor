@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU平台库存监控服务实现
+// package sync 提供TEMU平台库存监控服务实现
 package sync
 
 import (
@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pricing"
+	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
 
 	"github.com/sirupsen/logrus"
@@ -151,4 +151,3 @@ func (s *inventorySyncServiceImpl) getOperationStrategy(storeID int64) (*managem
 
 	return nil, nil
 }
-

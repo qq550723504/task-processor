@@ -1,4 +1,4 @@
-﻿// package pipeline 提供Amazon图片处理器
+// package pipeline 提供Amazon图片处理器
 package pipeline
 
 import (
@@ -43,4 +43,3 @@ func (h *ImageHandler) Handle(ctx context.Context, taskContext *model.TaskContex
 	h.logger.Info("图片处理完成")
 	return nil
 }
-

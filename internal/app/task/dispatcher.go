@@ -1,4 +1,4 @@
-﻿// Package task 提供任务分发功能
+// Package task 提供任务分发功能
 package task
 
 import (
@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	types "task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
+	types "task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -227,4 +227,3 @@ func (f *TaskFetcher) submitTask(ctx context.Context, apiTask *api.ProductImport
 	logrus.Debugf("[%s] 任务已提交: ID=%d, ProductID=%s", platform, internalTask.ID, internalTask.ProductID)
 	return true, false
 }
-

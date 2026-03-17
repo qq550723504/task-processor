@@ -1,4 +1,4 @@
-﻿// Package shein 提供 SHEIN 属性类型（通过 shein/context 包定义）
+// Package shein 提供 SHEIN 属性类型（通过 shein/context 包定义）
 package shein
 
 import sheinctx "task-processor/internal/shein/context"

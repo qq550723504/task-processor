@@ -1,4 +1,4 @@
-﻿package listing
+package listing
 
 import (
 	"task-processor/internal/amazon/model"
@@ -110,4 +110,3 @@ func (s *ProductIdentifierService) GetIdentifierPriority() map[string]int {
 		"SKU":    9, // 最低优先级
 	}
 }
-

@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"context"
@@ -114,4 +114,3 @@ func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Produ
 func getExtractorName(ext Extractor) string {
 	return fmt.Sprintf("%T", ext)
 }
-

@@ -1,4 +1,4 @@
-﻿// package pipeline 提供产品数据处理器实现
+// package pipeline 提供产品数据处理器实现
 package pipeline
 
 import (
@@ -51,4 +51,3 @@ func (h *ProductDataHandler) Handle(ctx context.Context, taskContext *model.Task
 	h.logger.Infof("产品数据获取成功: ProductID=%s", productID)
 	return nil
 }
-

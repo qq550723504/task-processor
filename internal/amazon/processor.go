@@ -1,4 +1,4 @@
-﻿// Package amazon 提供Amazon平台主处理器
+// Package amazon 提供Amazon平台主处理器
 package amazon
 
 import (

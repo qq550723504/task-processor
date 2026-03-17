@@ -1,4 +1,4 @@
-﻿// Package pricing 提供 SHEIN 平台定价功能
+// Package pricing 提供 SHEIN 平台定价功能
 package pricing
 
 import (
@@ -126,4 +126,3 @@ func (s *autoPricingServiceImpl) checkAllSKUsPassCondition(skus []pricing.SkuCos
 
 	return passedSKUCount == totalSKUCount, false
 }
-

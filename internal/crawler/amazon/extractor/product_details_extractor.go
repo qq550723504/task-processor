@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"strings"
@@ -130,4 +130,3 @@ func cleanProductDetailValue(value string) string {
 
 	return result
 }
-

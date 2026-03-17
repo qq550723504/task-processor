@@ -1,4 +1,4 @@
-﻿// Package amazon 提供Amazon处理器包装功能
+// Package amazon 提供Amazon处理器包装功能
 package amazon
 
 import (
@@ -77,4 +77,3 @@ type ProcessResult struct {
 	Product *model.Product
 	Error   error
 }
-

@@ -1,11 +1,11 @@
-﻿// Package publish 提供SHEIN平台产品存在性检查处理器
+// Package publish 提供SHEIN平台产品存在性检查处理器
 package publish
 
 import (
 	"fmt"
 
-	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -142,4 +142,3 @@ func (h *ProductExistsCheckHandler) checkSingleVariant(ctx *shein.TaskContext, m
 
 	return nil
 }
-

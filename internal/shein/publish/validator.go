@@ -1,4 +1,4 @@
-﻿// Package publish 提供SHEIN平台产品发布验证功能
+// Package publish 提供SHEIN平台产品发布验证功能
 package publish
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package property 提供属性提取策略实现
+// Package property 提供属性提取策略实现
 package property
 
 import (
@@ -179,4 +179,3 @@ func (e *IndexBasedExtractor) Extract(variant *model.Product, amazonProduct *mod
 func (e *IndexBasedExtractor) GetName() string {
 	return "索引位置提取"
 }
-

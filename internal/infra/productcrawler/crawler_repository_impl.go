@@ -1,4 +1,4 @@
-﻿// Package productcrawler 提供基于爬虫的产品仓储实现（属于 infra 层）
+// Package productcrawler 提供基于爬虫的产品仓储实现（属于 infra 层）
 package productcrawler
 
 import (
@@ -165,5 +165,3 @@ func (r *CrawlerRepository) SetMaxConcurrent(max int) {
 		r.maxConcurrent = max
 	}
 }
-
-

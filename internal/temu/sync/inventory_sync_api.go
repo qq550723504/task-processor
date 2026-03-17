@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU平台调度器相关服务
+// package sync 提供TEMU平台调度器相关服务
 package sync
 
 import (

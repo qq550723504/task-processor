@@ -1,4 +1,4 @@
-﻿// Package config 提供平台配置注册功能
+// Package config 提供平台配置注册功能
 package config
 
 import (

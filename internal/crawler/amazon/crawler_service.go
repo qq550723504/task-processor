@@ -1,4 +1,4 @@
-﻿// Package amazon 提供爬虫应用服务
+// Package amazon 提供爬虫应用服务
 package amazon
 
 import (
@@ -9,10 +9,10 @@ import (
 	"sync"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
 	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/httpx"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -258,5 +258,3 @@ func productToMap(product *model.Product, logger *logrus.Logger) map[string]any 
 
 	return result
 }
-
-

@@ -1,4 +1,4 @@
-﻿// Package validators 提供配置验证功能
+// Package validators 提供配置验证功能
 package config
 
 // ValidateAmazonConfig 验证Amazon配置

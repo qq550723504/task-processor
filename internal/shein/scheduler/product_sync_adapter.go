@@ -1,13 +1,13 @@
-﻿// package scheduler 提供SHEIN产品同步任务的适配器
+// package scheduler 提供SHEIN产品同步任务的适配器
 package scheduler
 
 import (
 	"context"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/productsync"
-	platformtask "task-processor/internal/platformtask"
 )
 
 // productSyncServiceAdapter 适配器，将SHEIN特定的ProductSyncService适配到通用接口
@@ -74,5 +74,3 @@ func (a *productSyncServiceAdapter) SaveProducts(ctx context.Context, products [
 	// 调用SHEIN服务
 	return a.sheinService.SaveProducts(ctx, productDataList)
 }
-
-

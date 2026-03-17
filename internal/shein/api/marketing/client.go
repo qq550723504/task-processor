@@ -1,4 +1,4 @@
-﻿package marketing
+package marketing
 
 import (
 	"fmt"

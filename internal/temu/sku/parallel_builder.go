@@ -1,4 +1,4 @@
-﻿// Package sku 提供并行SKU构建功能
+// Package sku 提供并行SKU构建功能
 package sku
 
 import (

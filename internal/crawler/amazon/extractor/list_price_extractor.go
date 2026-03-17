@@ -1,4 +1,4 @@
-﻿// Package extractor 提供Amazon原价提取功能
+// Package extractor 提供Amazon原价提取功能
 package extractor
 
 import (
@@ -334,4 +334,3 @@ func (l *ListPriceExtractor) containsOtherProductURL(url, currentASIN string) bo
 
 	return false
 }
-

@@ -1,4 +1,4 @@
-﻿// Package main 1688 爬虫 API 服务入口（不依赖 RabbitMQ）
+// Package main 1688 爬虫 API 服务入口（不依赖 RabbitMQ）
 package main
 
 import (

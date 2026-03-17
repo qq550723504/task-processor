@@ -1,4 +1,4 @@
-﻿// package pricing 提供TEMU平台核价规则计算功能
+// package pricing 提供TEMU平台核价规则计算功能
 package pricing
 
 import (

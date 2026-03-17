@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU产品同步服务实现
+// package sync 提供TEMU产品同步服务实现
 package sync
 
 import (

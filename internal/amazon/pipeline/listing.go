@@ -1,4 +1,4 @@
-﻿// package pipeline 提供Listing处理器实现
+// package pipeline 提供Listing处理器实现
 package pipeline
 
 import (
@@ -102,4 +102,3 @@ func (h *ListingHandler) getProductBrand(data map[string]any) string {
 	// 默认品牌
 	return "Generic"
 }
-

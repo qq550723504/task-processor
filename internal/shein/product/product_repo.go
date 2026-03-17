@@ -1,4 +1,4 @@
-﻿// Package product 提供SHEIN通用客户端API实现
+// Package product 提供SHEIN通用客户端API实现
 package product
 
 import (

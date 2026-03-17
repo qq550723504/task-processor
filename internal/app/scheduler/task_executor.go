@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供任务执行器功能
+// Package scheduler 提供任务执行器功能
 package scheduler
 
 import (

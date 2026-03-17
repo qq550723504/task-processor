@@ -1,4 +1,4 @@
-﻿// Package extractor 提供Amazon产品图片提取功能
+// Package extractor 提供Amazon产品图片提取功能
 package extractor
 
 import (
@@ -115,4 +115,3 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *model.Product) 
 
 	return nil
 }
-

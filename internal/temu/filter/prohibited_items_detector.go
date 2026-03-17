@@ -1,4 +1,4 @@
-﻿package filter
+package filter
 
 import (
 	"fmt"
@@ -196,4 +196,3 @@ func (d *ProhibitedItemsDetector) logProductDetails(amazonProduct *model.Product
 		}
 	}
 }
-

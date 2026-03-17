@@ -1,4 +1,4 @@
-﻿package shein
+package shein
 
 import (
 	"task-processor/internal/model"
@@ -84,4 +84,3 @@ type SKUBuildRequest struct {
 	PrimaryAttrValue  string
 	WarehouseCode     string
 }
-

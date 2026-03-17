@@ -16,9 +16,9 @@ type RequestPool struct {
 	clients    []*BaseClient
 	semaphore  chan struct{}
 	rateLimit  *RateLimiter
-	roundRobin int
-	mutex      sync.Mutex
 	logger     *logrus.Entry
+	mutex      sync.Mutex
+	roundRobin int
 }
 
 // BaseClient 基础OpenAI客户端封装
@@ -29,10 +29,10 @@ type BaseClient struct {
 
 // RateLimiter 速率限制器
 type RateLimiter struct {
+	lastRefill time.Time
 	tokens     float64
 	maxTokens  float64
 	refillRate float64 // tokens per second
-	lastRefill time.Time
 	mutex      sync.Mutex
 }
 

@@ -1,4 +1,4 @@
-﻿// Package product 提供TEMU平台产品相关的API和数据结构
+// Package product 提供TEMU平台产品相关的API和数据结构
 package product
 
 import (

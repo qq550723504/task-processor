@@ -1,4 +1,4 @@
-﻿// Package client 提供SHEIN通用API错误处理功能
+// Package client 提供SHEIN通用API错误处理功能
 package client
 
 import (

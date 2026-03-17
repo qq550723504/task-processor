@@ -1,4 +1,4 @@
-﻿// Package translate 提供SHEIN平台的翻译处理功能，包括产品标题和描述的多语言翻译
+// Package translate 提供SHEIN平台的翻译处理功能，包括产品标题和描述的多语言翻译
 package translate
 
 import (

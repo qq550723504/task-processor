@@ -1,15 +1,15 @@
-﻿// package sync 提供TEMU平台库存更新相关服务
+// package sync 提供TEMU平台库存更新相关服务
 package sync
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"task-processor/internal/model"
-	"task-processor/internal/product"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
+	"task-processor/internal/product"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -252,5 +252,3 @@ func (s *inventorySyncServiceImpl) updateTemuInventoryInAttributes(
 
 	return nil
 }
-
-

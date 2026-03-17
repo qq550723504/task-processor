@@ -1,4 +1,4 @@
-﻿// Package inventory 提供 SHEIN 平台库存同步功能
+// Package inventory 提供 SHEIN 平台库存同步功能
 package inventory
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"task-processor/internal/model"
-	domainproduct "task-processor/internal/product"
 	"task-processor/internal/pkg/recovery"
+	domainproduct "task-processor/internal/product"
 )
 
 // getAmazonProductData 获取Amazon产品数据（使用ProductFetcher，自动处理缓存）
@@ -66,6 +66,3 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 		return result.product, nil
 	}
 }
-
-
-

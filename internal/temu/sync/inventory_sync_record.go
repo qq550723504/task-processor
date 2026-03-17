@@ -1,14 +1,14 @@
-﻿// package sync 提供TEMU平台库存和价格记录逻辑
+// package sync 提供TEMU平台库存和价格记录逻辑
 package sync
 
 import (
 	"encoding/json"
-	"task-processor/internal/model"
-	"task-processor/internal/product"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timex"
+	"task-processor/internal/product"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -235,5 +235,3 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 		}
 	}
 }
-
-

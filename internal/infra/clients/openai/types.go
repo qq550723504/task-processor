@@ -11,18 +11,18 @@ type ChatCompletionMessage struct {
 
 // ChatCompletionRequest 聊天完成请求
 type ChatCompletionRequest struct {
-	Model       string                  `json:"model"`
-	Messages    []ChatCompletionMessage `json:"messages"`
 	Temperature *float32                `json:"temperature,omitempty"`
 	Seed        *int                    `json:"seed,omitempty"`
 	MaxTokens   *int                    `json:"max_tokens,omitempty"`
+	Model       string                  `json:"model"`
+	Messages    []ChatCompletionMessage `json:"messages"`
 }
 
 // ChatCompletionChoice 聊天完成选择
 type ChatCompletionChoice struct {
-	Index        int                   `json:"index"`
 	Message      ChatCompletionMessage `json:"message"`
 	FinishReason string                `json:"finish_reason"`
+	Index        int                   `json:"index"`
 }
 
 // Usage 使用情况统计
@@ -36,9 +36,9 @@ type Usage struct {
 type ChatCompletionResponse struct {
 	ID      string                 `json:"id"`
 	Object  string                 `json:"object"`
-	Created int64                  `json:"created"`
 	Model   string                 `json:"model"`
 	Choices []ChatCompletionChoice `json:"choices"`
+	Created int64                  `json:"created"`
 	Usage   Usage                  `json:"usage"`
 }
 
@@ -66,8 +66,8 @@ func NewClientConfig(apiKey, model, baseURL string, timeout int) *ClientConfig {
 
 // PoolConfig 请求池配置
 type PoolConfig struct {
-	MaxConcurrent int             `json:"max_concurrent"`
 	RateLimit     float64         `json:"rate_limit"`
 	BurstLimit    float64         `json:"burst_limit"`
 	ClientConfigs []*ClientConfig `json:"client_configs"`
+	MaxConcurrent int             `json:"max_concurrent"`
 }

@@ -1,4 +1,4 @@
-﻿// Package main 提供Amazon爬虫调试测试程序
+// Package main 提供Amazon爬虫调试测试程序
 package main
 
 import (
@@ -120,4 +120,3 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen] + "..."
 }
-

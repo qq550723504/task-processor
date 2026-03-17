@@ -1,4 +1,4 @@
-﻿// Package consumer 提供优雅关闭协调器
+// Package consumer 提供优雅关闭协调器
 package consumer
 
 import (

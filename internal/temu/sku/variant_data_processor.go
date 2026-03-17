@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的变体数据处理功能
+// Package sku 提供TEMU平台的变体数据处理功能
 package sku
 
 import (
@@ -112,4 +112,3 @@ func (p *VariantProcessor) ProcessVariantData(temuCtx *temucontext.TemuTaskConte
 	p.logger.Info("变体数据处理完成")
 	return nil
 }
-

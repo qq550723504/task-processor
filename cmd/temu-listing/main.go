@@ -1,4 +1,4 @@
-﻿// Package main TEMU 上架服务入口
+// Package main TEMU 上架服务入口
 package main
 
 import (

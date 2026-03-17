@@ -1,4 +1,4 @@
-﻿// Package perf 提供性能跟踪与计时工具
+// Package perf 提供性能跟踪与计时工具
 package perf
 
 import (

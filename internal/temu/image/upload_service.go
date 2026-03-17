@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台图片上传服务函数
+// Package image 提供TEMU平台图片上传服务函数
 package image
 
 import (

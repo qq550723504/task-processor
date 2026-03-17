@@ -1,4 +1,4 @@
-﻿package mathx
+package mathx
 
 // Abs 返回浮点数的绝对值
 func Abs(x float64) float64 {

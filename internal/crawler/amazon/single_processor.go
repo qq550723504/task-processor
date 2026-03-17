@@ -1,4 +1,4 @@
-﻿// Package amazon 提供Amazon单浏览器处理功能
+// Package amazon 提供Amazon单浏览器处理功能
 package amazon
 
 import (
@@ -84,4 +84,3 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, zipcode string, 
 
 	return product, nil
 }
-

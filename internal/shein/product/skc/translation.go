@@ -1,4 +1,4 @@
-﻿// Package skc 提供SHEIN平台SKC翻译处理功能
+// Package skc 提供SHEIN平台SKC翻译处理功能
 package skc
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/translate"

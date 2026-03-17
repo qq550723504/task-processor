@@ -1,4 +1,4 @@
-﻿// Package amazon 提供爬虫处理器实现
+// Package amazon 提供爬虫处理器实现
 package amazon
 
 import (
@@ -49,4 +49,3 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 func (p *CrawlerProcessor) Close(ctx context.Context) {
 	// 清理资源（如果需要）
 }
-

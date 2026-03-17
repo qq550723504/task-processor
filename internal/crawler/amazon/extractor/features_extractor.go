@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"fmt"
@@ -145,4 +145,3 @@ func (e *FeaturesExtractor) deduplicateFeatures(features []string) []string {
 
 	return result
 }
-

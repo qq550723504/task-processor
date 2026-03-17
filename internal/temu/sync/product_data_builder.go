@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU产品数据构建相关功能
+// package sync 提供TEMU产品数据构建相关功能
 package sync
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package sku 提供SHEIN平台SKU策略处理功能
+// Package sku 提供SHEIN平台SKU策略处理功能
 package sku
 
 import (
@@ -320,4 +320,3 @@ func (p *SKUStrategyProcessor) buildSKUListForMultipleVariants(ctx *shein.TaskCo
 	logrus.Infof("成功为主要属性值 %s 创建了 %d 个 SKU，去重后避免了属性值ID重复", req.PrimaryAttrValue, len(skuList))
 	return skuList, nil
 }
-

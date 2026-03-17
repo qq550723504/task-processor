@@ -1,4 +1,4 @@
-﻿// Package amazon 提供任务钩子处理器
+// Package amazon 提供任务钩子处理器
 package amazon
 
 import (
@@ -92,4 +92,3 @@ func (h *CrawlerJobHandler) OnJobPanic(job worker.WorkerJob, panicValue any, sta
 func (h *CrawlerJobHandler) OnJobCompleted(job worker.WorkerJob) {
 	// 可以在这里做一些清理工作
 }
-

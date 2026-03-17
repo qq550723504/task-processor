@@ -1,4 +1,4 @@
-﻿// Package api 提供基于Amazon官方Postman集合的测试功能
+// Package api 提供基于Amazon官方Postman集合的测试功能
 package api
 
 import (

@@ -1,4 +1,4 @@
-﻿package scheduler
+package scheduler
 
 import (
 	"context"
@@ -214,5 +214,3 @@ func TestConvertTemuStats(t *testing.T) {
 		})
 	}
 }
-
-

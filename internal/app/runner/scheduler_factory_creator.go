@@ -1,4 +1,4 @@
-﻿// Package runner 提供处理器和调度器的运行管理功能
+// Package runner 提供处理器和调度器的运行管理功能
 package runner
 
 import (
@@ -30,4 +30,3 @@ func (s *schedulerServiceImpl) createSheinFactory(cfg *config.Config) scheduler.
 
 	return sheinscheduler.NewSheinTaskFactory(s.managementClient, s.amazonProcessor, &cfg.Amazon, &cfg.Platforms.Shein.Monitor)
 }
-

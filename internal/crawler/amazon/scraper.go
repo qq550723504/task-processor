@@ -1,4 +1,4 @@
-﻿// Package amazon 提供 Amazon 商品爬虫核心实现。
+// Package amazon 提供 Amazon 商品爬虫核心实现。
 package amazon
 
 import "task-processor/internal/model"
@@ -12,4 +12,3 @@ type Scraper interface {
 
 // 编译期验证 AmazonProcessor 实现了 Scraper 接口。
 var _ Scraper = (*AmazonProcessor)(nil)
-

@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台Vision API检测功能
+// Package image 提供TEMU平台Vision API检测功能
 package image
 
 import (
@@ -11,8 +11,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/imagex"
+	"task-processor/internal/pkg/timeout"
 )
 
 // VisionDetector Vision API检测器

@@ -1,4 +1,4 @@
-﻿// Package ai 提供TEMU平台的AI属性映射核心功能
+// Package ai 提供TEMU平台的AI属性映射核心功能
 package ai
 
 import (

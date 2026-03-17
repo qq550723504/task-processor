@@ -1,4 +1,4 @@
-﻿// package scheduler 提供SHEIN平台同步任务实现
+// package scheduler 提供SHEIN平台同步任务实现
 package scheduler
 
 import (
@@ -6,9 +6,9 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/shein/client"
 	"task-processor/internal/shein/productsync"
-	platformtask "task-processor/internal/platformtask"
 )
 
 // ProductSyncTask SHEIN产品同步任务
@@ -48,5 +48,3 @@ func NewProductSyncTask(
 func (t *ProductSyncTask) Execute(ctx context.Context) error {
 	return t.ProductSyncTask.Execute(ctx)
 }
-
-

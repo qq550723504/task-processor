@@ -1,12 +1,10 @@
-﻿// Package config 提供配置管理器实现
+// Package config 提供配置管理器实现
 package config
 
 import (
 	"context"
 	"fmt"
 	"sync"
-
-	
 
 	"github.com/sirupsen/logrus"
 )

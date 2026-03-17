@@ -1,12 +1,12 @@
-﻿// package scheduler 提供SHEIN平台自动核价任务适配器
+// package scheduler 提供SHEIN平台自动核价任务适配器
 package scheduler
 
 import (
 	"context"
 
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/shein/api/pricing"
 	sheinpricing "task-processor/internal/shein/pricing"
-	platformtask "task-processor/internal/platformtask"
 
 	"github.com/sirupsen/logrus"
 )
@@ -109,5 +109,3 @@ func convertSheinStats(stats *sheinpricing.PricingStatistics) *platformtask.Pric
 		SkipCount:      stats.SkipCount,
 	}
 }
-
-

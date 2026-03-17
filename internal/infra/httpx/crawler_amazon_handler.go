@@ -1,4 +1,4 @@
-﻿// Package httpx 提供 HTTP 处理器
+// Package httpx 提供 HTTP 处理器
 package httpx
 
 import (

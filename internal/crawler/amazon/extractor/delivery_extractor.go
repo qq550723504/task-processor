@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"regexp"
@@ -162,4 +162,3 @@ func cleanAndDeduplicateDelivery(items []string) []string {
 
 	return result
 }
-

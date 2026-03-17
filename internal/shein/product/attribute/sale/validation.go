@@ -1,4 +1,4 @@
-﻿package sale
+package sale
 
 import (
 	"strings"
@@ -427,4 +427,3 @@ func (h *SaleAttributeHandler) findMostSimilarValue(targetValue string, original
 
 	return ""
 }
-

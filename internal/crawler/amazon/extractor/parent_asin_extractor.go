@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"regexp"
@@ -152,4 +152,3 @@ func (pae *ParentAsinExtractor) isValidAsin(asin string) bool {
 	matched, _ := regexp.MatchString(`^[A-Z0-9]{10}$`, asin)
 	return matched
 }
-

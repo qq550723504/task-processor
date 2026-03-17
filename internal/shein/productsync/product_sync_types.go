@@ -1,4 +1,4 @@
-﻿// Package productsync 提供SHEIN平台产品同步相关服务的类型定义
+// Package productsync 提供SHEIN平台产品同步相关服务的类型定义
 package productsync
 
 import (

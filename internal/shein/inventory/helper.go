@@ -1,4 +1,4 @@
-﻿// Package inventory 提供 SHEIN 平台库存同步功能
+// Package inventory 提供 SHEIN 平台库存同步功能
 package inventory
 
 import (
@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/product"
 	"task-processor/internal/shein/productsync"
 
 	"github.com/sirupsen/logrus"
@@ -266,6 +266,3 @@ func (s *inventorySyncServiceImpl) debugProductAttributes(productID string, attr
 		s.logger.WithError(err).WithField("product_id", productID).Error("产品属性结构验证失败")
 	}
 }
-
-
-

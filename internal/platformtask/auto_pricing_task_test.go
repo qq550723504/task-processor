@@ -1,4 +1,4 @@
-﻿package platformtask
+package platformtask
 
 import (
 	"context"
@@ -153,4 +153,3 @@ func TestAutoPricingTask_StatusTransition(t *testing.T) {
 
 // 注意：Execute方法的测试需要完整的ClientManager mock，
 // 这超出了单元测试的范围，应该在集成测试中进行
-

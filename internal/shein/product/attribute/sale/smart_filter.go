@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台销售属性的智能筛选功能
+// Package sale 提供SHEIN平台销售属性的智能筛选功能
 package sale
 
 import (
@@ -362,4 +362,3 @@ func (f *SaleAttributeSmartFilter) selectDefaultSaleAttribute(attributes []attri
 	logrus.Warn("❌ 未找到任何销售属性")
 	return nil
 }
-

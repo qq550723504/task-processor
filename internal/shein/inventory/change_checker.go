@@ -1,9 +1,9 @@
-﻿// Package inventory 提供 SHEIN 平台库存同步功能
+// Package inventory 提供 SHEIN 平台库存同步功能
 package inventory
 
 import (
-	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -121,5 +121,3 @@ func (s *inventorySyncServiceImpl) checkStockChange(
 	}
 	return false
 }
-
-

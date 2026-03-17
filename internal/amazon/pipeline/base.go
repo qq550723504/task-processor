@@ -1,4 +1,4 @@
-﻿// package pipeline 提供基础Handler实现，减少重复代码
+// package pipeline 提供基础Handler实现，减少重复代码
 package pipeline
 
 import (
@@ -100,4 +100,3 @@ func (bh *BaseHandler) SetResult(data map[string]any, key string, value any) {
 	data[key] = value
 	bh.logger.Debugf("设置结果: %s = %v", key, value)
 }
-

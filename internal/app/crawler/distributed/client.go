@@ -1,4 +1,4 @@
-﻿// Package distributed 提供分布式爬虫客户端
+// Package distributed 提供分布式爬虫客户端
 package distributed
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package consumer 提供任务结果上报功能
+// Package consumer 提供任务结果上报功能
 package consumer
 
 import (
@@ -394,4 +394,3 @@ func (rr *ResultReporter) GetStats() ReporterStats {
 func (rr *ResultReporter) GetNodeID() string {
 	return rr.nodeID
 }
-

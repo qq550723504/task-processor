@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台任务的基础实现
+// Package scheduler 提供TEMU平台任务的基础实现
 package scheduler
 
 import (
@@ -14,5 +14,3 @@ type BaseTask = platformtask.BaseTask
 func NewBaseTask(config appscheduler.TaskConfig) *BaseTask {
 	return platformtask.NewBaseTask(config)
 }
-
-

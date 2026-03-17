@@ -1,4 +1,4 @@
-﻿// Package browser 提供浏览器错误检测功能
+// Package browser 提供浏览器错误检测功能
 package browser
 
 import (

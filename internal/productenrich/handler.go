@@ -1,4 +1,4 @@
-﻿// package productenrich 提供 HTTP API 处理器
+// package productenrich 提供 HTTP API 处理器
 package productenrich
 
 import (
@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"

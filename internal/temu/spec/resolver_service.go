@@ -1,4 +1,4 @@
-﻿// Package spec 提供TEMU平台的规格解析服务
+// Package spec 提供TEMU平台的规格解析服务
 package spec
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package sku 提供SHEIN平台SKU创建功能
+// Package sku 提供SHEIN平台SKU创建功能
 package sku
 
 import (
@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/store"
-"task-processor/internal/shein/validation"
+	"task-processor/internal/shein/validation"
 
 	"github.com/sirupsen/logrus"
 )

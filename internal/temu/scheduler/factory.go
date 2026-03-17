@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台的任务工厂
+// Package scheduler 提供TEMU平台的任务工厂
 package scheduler
 
 import (

@@ -1,4 +1,4 @@
-﻿package temu
+package temu
 
 import (
 	"context"
@@ -7,10 +7,10 @@ import (
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
@@ -167,4 +167,3 @@ func (p *TemuProcessor) Close(ctx context.Context) {
 
 	log.Info("任务处理器已关闭")
 }
-

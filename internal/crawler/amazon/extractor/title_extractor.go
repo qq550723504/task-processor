@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"fmt"
@@ -35,4 +35,3 @@ func (e *TitleExtractor) Extract(page playwright.Page, product *model.Product) e
 
 	return fmt.Errorf("未找到产品标题")
 }
-

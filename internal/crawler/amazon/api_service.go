@@ -1,4 +1,4 @@
-﻿// Package amazon 提供 Amazon 爬虫 API 服务
+// Package amazon 提供 Amazon 爬虫 API 服务
 package amazon
 
 import (

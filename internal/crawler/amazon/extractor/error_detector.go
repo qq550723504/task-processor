@@ -1,4 +1,4 @@
-﻿// Package extractor 提供错误检测功能
+// Package extractor 提供错误检测功能
 package extractor
 
 import (
@@ -213,4 +213,3 @@ func isCriticalErrorLegacy(err error) bool {
 
 	return false
 }
-

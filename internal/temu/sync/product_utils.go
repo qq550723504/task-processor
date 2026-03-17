@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU产品处理工具函数
+// package sync 提供TEMU产品处理工具函数
 package sync
 
 import (

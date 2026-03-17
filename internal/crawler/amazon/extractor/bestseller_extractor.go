@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"regexp"
@@ -124,4 +124,3 @@ func (e *BestsellerExtractor) parseBestsellerText(text string) (int, string, int
 
 	return bsRank, bsCategory, rootBsRank, rootBsCategory
 }
-

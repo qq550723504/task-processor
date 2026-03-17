@@ -1,4 +1,4 @@
-﻿// Package activity 提供SHEIN平台活动价格计算相关服务
+// Package activity 提供SHEIN平台活动价格计算相关服务
 package activity
 
 import (

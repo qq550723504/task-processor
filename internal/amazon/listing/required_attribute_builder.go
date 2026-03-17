@@ -1,4 +1,4 @@
-﻿// Package listing 提供Amazon必需属性构建功能
+// Package listing 提供Amazon必需属性构建功能
 package listing
 
 import (

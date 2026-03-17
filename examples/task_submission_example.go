@@ -1,4 +1,4 @@
-﻿// Package main 提供任务提交的示例程序
+// Package main 提供任务提交的示例程序
 package main
 
 import (

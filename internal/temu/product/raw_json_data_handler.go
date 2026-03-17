@@ -1,4 +1,4 @@
-﻿// Package product 提供TEMU平台的原始JSON数据处理功能
+// Package product 提供TEMU平台的原始JSON数据处理功能
 package product
 
 import (
@@ -6,10 +6,10 @@ import (
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
-	domainProduct "task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
+	domainProduct "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -100,5 +100,3 @@ func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 func (h *RawJsonDataHandlerV2) Shutdown() {
 	h.logger.Debug("RawJsonDataHandlerV2 关闭")
 }
-
-

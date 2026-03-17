@@ -1,11 +1,11 @@
-﻿// package sync 提供TEMU平台库存监控策略处理逻辑
+// package sync 提供TEMU平台库存监控策略处理逻辑
 package sync
 
 import (
 	"context"
 
-	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -230,4 +230,3 @@ func (s *inventorySyncServiceImpl) calculateTargetStock(amazonStock int, ratio f
 
 	return targetStock
 }
-

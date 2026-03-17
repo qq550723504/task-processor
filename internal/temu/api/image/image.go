@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台图片上传和验证相关的API和数据结构
+// Package image 提供TEMU平台图片上传和验证相关的API和数据结构
 package image
 
 import (

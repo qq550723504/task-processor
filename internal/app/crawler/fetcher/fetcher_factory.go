@@ -1,13 +1,13 @@
-﻿// Package fetcher 提供产品获取器工厂
+// Package fetcher 提供产品获取器工厂
 package fetcher
 
 import (
 	"fmt"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	domainProduct "task-processor/internal/product"
-	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )
@@ -109,5 +109,3 @@ func (f *FetcherFactory) GetRecommendedFetcher(cfg *config.Config) FetcherType {
 	// 默认推荐本地获取器
 	return LocalFetcher
 }
-
-

@@ -1,4 +1,4 @@
-﻿package filter
+package filter
 
 import (
 	"regexp"
@@ -217,4 +217,3 @@ func (u *DetectorUtils) IsLegitimateProductCategory(categories []string, product
 
 	return false
 }
-

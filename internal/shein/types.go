@@ -1,9 +1,9 @@
-﻿// Package shein 提供 SHEIN 平台类型（通过 shein/context 包定义）
+// Package shein 提供 SHEIN 平台类型（通过 shein/context 包定义）
 package shein
 
 import (
-"task-processor/internal/model"
-sheinctx "task-processor/internal/shein/context"
+	"task-processor/internal/model"
+	sheinctx "task-processor/internal/shein/context"
 )
 
 // Task 使用公共的Task类型

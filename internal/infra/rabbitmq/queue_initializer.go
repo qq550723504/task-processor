@@ -1,4 +1,4 @@
-﻿// Package rabbitmq 提供 RabbitMQ 队列初始化功能
+// Package rabbitmq 提供 RabbitMQ 队列初始化功能
 package rabbitmq
 
 import (

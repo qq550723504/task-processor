@@ -1,4 +1,4 @@
-﻿// package activity 提供SHEIN平台调度器相关配置
+// package activity 提供SHEIN平台调度器相关配置
 package activity
 
 import "time"

@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU产品同步任务的适配器
+// Package scheduler 提供TEMU产品同步任务的适配器
 package scheduler
 
 import (
@@ -74,5 +74,3 @@ func (a *productSyncServiceAdapter) SaveProducts(ctx context.Context, products [
 	// 调用TEMU服务
 	return a.temuService.SaveProducts(ctx, productDataList)
 }
-
-

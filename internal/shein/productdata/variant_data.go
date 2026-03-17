@@ -1,4 +1,4 @@
-﻿package productdata
+package productdata
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"strings"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
-	"task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/perf"
+	"task-processor/internal/product"
 	shein "task-processor/internal/shein"
 	"time"
 
@@ -273,5 +273,3 @@ func GetVariantByAsinFromVariants(variants *[]model.Product, asin string) *model
 	}
 	return nil
 }
-
-

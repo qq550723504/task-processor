@@ -1,4 +1,4 @@
-﻿// Package alibaba1688 提供1688爬虫应用服务
+// Package alibaba1688 提供1688爬虫应用服务
 package alibaba1688
 
 import (
@@ -163,4 +163,3 @@ func (s *Service) updateResult(taskID string, updateFn func(*shared.CrawlerResul
 		s.results.Store(taskID, result)
 	}
 }
-

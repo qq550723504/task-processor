@@ -1,4 +1,4 @@
-﻿// Package consumer 提供RabbitMQ服务管理器
+// Package consumer 提供RabbitMQ服务管理器
 package consumer
 
 import (

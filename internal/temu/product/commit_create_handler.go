@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -193,4 +193,3 @@ func (h *CommitCreateHandler) isNonRetryableError(errorCode int) bool {
 
 	return false
 }
-

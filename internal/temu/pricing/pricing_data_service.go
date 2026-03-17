@@ -1,11 +1,11 @@
-﻿// package pricing 提供TEMU平台核价数据服务功能
+// package pricing 提供TEMU平台核价数据服务功能
 package pricing
 
 import (
 	"fmt"
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -215,4 +215,3 @@ func (s *PricingDataService) getAmazonOriginalPrice(amazonProduct *model.Product
 	s.logger.Warn("Amazon产品没有有效的原价信息")
 	return 0
 }
-

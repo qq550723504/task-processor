@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台销售属性的上下文构建功能
+// Package sale 提供SHEIN平台销售属性的上下文构建功能
 package sale
 
 import (
@@ -271,4 +271,3 @@ func (c *SaleAttributeContextBuilder) getMissingPhysicalASINs(missingInfo Missin
 
 	return allMissingASINs
 }
-

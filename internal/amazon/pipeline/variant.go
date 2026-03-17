@@ -1,4 +1,4 @@
-﻿// package pipeline 提供Amazon变体产品处理器
+// package pipeline 提供Amazon变体产品处理器
 package pipeline
 
 import (

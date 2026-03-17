@@ -1,4 +1,4 @@
-﻿// Package runner 提供处理器和调度器的运行管理功能
+// Package runner 提供处理器和调度器的运行管理功能
 package runner
 
 import (
@@ -6,9 +6,9 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/model"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -51,5 +51,3 @@ func NewProcessorServiceWithDependencies(
 		amazonProcessor:  amazonProcessor,
 	}
 }
-
-

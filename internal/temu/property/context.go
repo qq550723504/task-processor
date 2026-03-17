@@ -1,4 +1,4 @@
-﻿// Package property 提供属性处理上下文，统一管理属性处理过程中的数据和状态
+// Package property 提供属性处理上下文，统一管理属性处理过程中的数据和状态
 package property
 
 import (

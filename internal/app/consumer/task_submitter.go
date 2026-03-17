@@ -1,4 +1,4 @@
-﻿// Package consumer 提供消息处理应用层服务
+// Package consumer 提供消息处理应用层服务
 package consumer
 
 import (

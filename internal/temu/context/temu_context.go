@@ -1,14 +1,14 @@
-﻿// Package context 提供TEMU平台的强类型任务上下文
+// Package context 提供TEMU平台的强类型任务上下文
 package context
 
 import (
 	"context"
 	"task-processor/internal/app/state"
-	"task-processor/internal/model"
-	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
+	"task-processor/internal/product"
 	"task-processor/internal/temu/api"
 )
 
@@ -107,5 +107,3 @@ func (tc *TemuTaskContext) AddVariant(variant *model.Product) {
 }
 
 var _ pipeline.AmazonContext = (*TemuTaskContext)(nil)
-
-

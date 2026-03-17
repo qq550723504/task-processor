@@ -1,4 +1,4 @@
-﻿// Package product 提供产品数据缓存管理功能
+// Package product 提供产品数据缓存管理功能
 package product
 
 import (
@@ -156,4 +156,3 @@ func (c *CacheManager) needsRefetchForOldFormat(product *model.Product) bool {
 func (c *CacheManager) needsRefetchForMissingShipsFrom(product *model.Product) bool {
 	return product != nil && product.ShipsFrom == ""
 }
-

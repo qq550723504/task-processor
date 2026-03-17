@@ -1,4 +1,4 @@
-﻿// Package alibaba1688 提供 1688 爬虫 API 服务
+// Package alibaba1688 提供 1688 爬虫 API 服务
 package alibaba1688
 
 import (

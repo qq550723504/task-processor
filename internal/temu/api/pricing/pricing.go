@@ -1,4 +1,4 @@
-﻿// Package pricing 提供TEMU平台定价相关的API和数据结构
+// Package pricing 提供TEMU平台定价相关的API和数据结构
 package pricing
 
 import (

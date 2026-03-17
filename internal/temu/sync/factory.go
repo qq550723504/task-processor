@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU调度服务工厂
+// package sync 提供TEMU调度服务工厂
 package sync
 
 import (

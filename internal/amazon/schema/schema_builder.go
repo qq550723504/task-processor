@@ -1,4 +1,4 @@
-﻿package schema
+package schema
 
 import (
 	"task-processor/internal/amazon/model"
@@ -200,4 +200,3 @@ func (b *SchemaBuilder) needsLanguageTag(propDef model.PropertyDef) bool {
 	}
 	return false
 }
-

@@ -1,4 +1,4 @@
-﻿// Package temu 提供TEMU平台的管道处理器注册表
+// Package temu 提供TEMU平台的管道处理器注册表
 package temu
 
 import (

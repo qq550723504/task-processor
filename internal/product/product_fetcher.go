@@ -1,4 +1,4 @@
-﻿// Package product 提供产品领域服务
+// Package product 提供产品领域服务
 package product
 
 import (
@@ -105,4 +105,3 @@ func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Prod
 func (f *ProductFetcher) GetStats() map[string]any {
 	return map[string]any{"type": "local"}
 }
-

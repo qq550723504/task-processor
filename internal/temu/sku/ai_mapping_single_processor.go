@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的AI SKU映射单批次处理功能
+// Package sku 提供TEMU平台的AI SKU映射单批次处理功能
 package sku
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
 	temutemplate "task-processor/internal/temu/api/template"
@@ -260,4 +260,3 @@ func (vp *SkuVariantProcessor) fillVariantAttributes(aiResponse *temucontext.AIS
 		}
 	}
 }
-

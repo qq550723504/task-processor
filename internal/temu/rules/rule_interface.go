@@ -1,4 +1,4 @@
-﻿// Package rules 提供验证规则接口定义
+// Package rules 提供验证规则接口定义
 package rules
 
 import (

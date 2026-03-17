@@ -1,4 +1,4 @@
-﻿// Package helpers 提供配置辅助工具
+// Package helpers 提供配置辅助工具
 package config
 
 import (

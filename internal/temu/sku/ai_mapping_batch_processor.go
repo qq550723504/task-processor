@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的AI SKU映射批处理功能
+// Package sku 提供TEMU平台的AI SKU映射批处理功能
 package sku
 
 import (
@@ -72,4 +72,3 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(temuCtx *temucontex
 
 	return mergedResponse, nil
 }
-

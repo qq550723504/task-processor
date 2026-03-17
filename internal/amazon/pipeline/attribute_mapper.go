@@ -1,4 +1,4 @@
-﻿// package pipeline 提供Amazon属性映射处理器
+// package pipeline 提供Amazon属性映射处理器
 package pipeline
 
 import (

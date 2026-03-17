@@ -1,4 +1,4 @@
-﻿// package pricing 提供TEMU平台核价决策服务功能
+// package pricing 提供TEMU平台核价决策服务功能
 package pricing
 
 import (
@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
-	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
+	"task-processor/internal/product"
 	temupricing "task-processor/internal/temu/api/pricing"
 
 	"github.com/sirupsen/logrus"
@@ -356,5 +356,3 @@ func (s *PricingDecisionService) buildPricingContextForSalesBoost(ctx context.Co
 
 	return pricingCtx, nil
 }
-
-

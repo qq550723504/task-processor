@@ -1,4 +1,4 @@
-﻿// Package processor 提供爬虫任务处理器
+// Package processor 提供爬虫任务处理器
 package processor
 
 import (
@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/model"
-	"task-processor/internal/product"
 	"task-processor/internal/app/task"
+	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -263,6 +263,3 @@ func (p *CrawlerProcessor) normalizeTaskData(data map[string]any) {
 		}
 	}
 }
-
-
-

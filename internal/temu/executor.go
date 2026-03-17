@@ -1,4 +1,4 @@
-﻿// Package temu 提供TEMU平台专用的管道执行器
+// Package temu 提供TEMU平台专用的管道执行器
 package temu
 
 import (

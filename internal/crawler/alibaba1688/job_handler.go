@@ -1,4 +1,4 @@
-﻿// Package alibaba1688 提供任务钩子处理器
+// Package alibaba1688 提供任务钩子处理器
 package alibaba1688
 
 import (
@@ -92,4 +92,3 @@ func (h *Crawler1688JobHandler) OnJobPanic(job worker.WorkerJob, panicValue any,
 func (h *Crawler1688JobHandler) OnJobCompleted(job worker.WorkerJob) {
 	// 可以在这里做一些清理工作
 }
-

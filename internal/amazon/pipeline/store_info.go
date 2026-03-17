@@ -1,4 +1,4 @@
-﻿// package pipeline 提供店铺信息处理器实现
+// package pipeline 提供店铺信息处理器实现
 package pipeline
 
 import (
@@ -41,4 +41,3 @@ func (h *StoreInfoHandler) Handle(ctx context.Context, taskContext *model.TaskCo
 	h.GetLogger().Infof("店铺信息获取成功: store_id=%d", storeID)
 	return nil
 }
-

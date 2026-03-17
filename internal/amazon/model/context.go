@@ -1,10 +1,10 @@
-﻿// Package model 提供Amazon平台内部数据模型
+// Package model 提供Amazon平台内部数据模型
 package model
 
 import (
+	"task-processor/internal/amazon/api"
 	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/amazon/api"
 )
 
 // Services Amazon平台服务集合

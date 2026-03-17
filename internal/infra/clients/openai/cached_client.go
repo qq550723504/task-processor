@@ -33,8 +33,8 @@ type CachedClientConfig struct {
 	Client    *Client
 	Cache     Cache
 	TTL       time.Duration // 缓存过期时间,默认24小时
-	Enabled   bool          // 是否启用缓存
 	KeyPrefix string        // 缓存键前缀,默认"openai"
+	Enabled   bool          // 是否启用缓存
 }
 
 // NewCachedClient 创建带缓存的OpenAI客户端

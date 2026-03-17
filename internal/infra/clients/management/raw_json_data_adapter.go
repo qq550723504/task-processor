@@ -1,8 +1,8 @@
-﻿package management
+package management
 
 import (
-	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/product"
 )
 
 // RawJsonDataAdapter 将 api.RawJsonDataAPI 适配为 domain/product.RawJsonDataClient
@@ -54,4 +54,3 @@ func (a *RawJsonDataAdapter) CreateRawJsonData(req *product.RawJsonCreateReq) (i
 		Creator:     req.Creator,
 	})
 }
-

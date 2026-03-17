@@ -1,4 +1,4 @@
-﻿// Package rabbitmq 提供 RabbitMQ 队列声明配置
+// Package rabbitmq 提供 RabbitMQ 队列声明配置
 package rabbitmq
 
 import (

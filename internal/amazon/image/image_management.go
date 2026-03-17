@@ -1,12 +1,12 @@
-﻿package image
+package image
 
 import (
 	"context"
 	"fmt"
 	"sync"
+	"task-processor/internal/amazon/api"
 	"task-processor/internal/pkg/downloader"
 	"task-processor/internal/pkg/imagex"
-	"task-processor/internal/amazon/api"
 	"time"
 
 	"github.com/sirupsen/logrus"

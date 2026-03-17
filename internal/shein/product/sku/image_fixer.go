@@ -1,4 +1,4 @@
-﻿// Package sku 提供SHEIN平台SKU图片自动修复功能
+// Package sku 提供SHEIN平台SKU图片自动修复功能
 package sku
 
 import (

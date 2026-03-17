@@ -1,4 +1,4 @@
-﻿// Package timeutil 提供统一的时间格式化工具
+// Package timeutil 提供统一的时间格式化工具
 package timex
 
 import "time"

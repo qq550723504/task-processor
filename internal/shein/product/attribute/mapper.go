@@ -1,4 +1,4 @@
-﻿// Package attribute 提供SHEIN平台的属性映射功能，包括属性值映射、平台值匹配等功能
+// Package attribute 提供SHEIN平台的属性映射功能，包括属性值映射、平台值匹配等功能
 package attribute
 
 import (

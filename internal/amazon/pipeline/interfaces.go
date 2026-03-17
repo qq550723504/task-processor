@@ -1,4 +1,4 @@
-﻿// package pipeline 提供Amazon平台处理器接口定义
+// package pipeline 提供Amazon平台处理器接口定义
 package pipeline
 
 import (
@@ -25,4 +25,3 @@ func (hf HandlerFunc) Name() string {
 func (hf HandlerFunc) Handle(ctx context.Context, taskContext *model.TaskContext) error {
 	return hf(ctx, taskContext)
 }
-

@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU平台Amazon数据获取逻辑
+// package sync 提供TEMU平台Amazon数据获取逻辑
 package sync
 
 import (
@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 	"task-processor/internal/pkg/recovery"
+	"task-processor/internal/product"
 )
 
 // getAmazonProductData 获取Amazon产品数据（使用ProductFetcher，自动处理缓存）- 参考SHEIN实现
@@ -98,5 +98,3 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 		return result.product, nil
 	}
 }
-
-

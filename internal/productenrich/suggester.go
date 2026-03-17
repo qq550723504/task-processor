@@ -1,4 +1,4 @@
-﻿// package productenrich 提供产品JSON生成的应用层实现
+// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
 
 	"github.com/sirupsen/logrus"
 )

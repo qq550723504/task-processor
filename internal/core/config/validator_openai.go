@@ -1,4 +1,4 @@
-﻿// Package validators 提供配置验证功能
+// Package validators 提供配置验证功能
 package config
 
 // ValidateOpenAIConfig 验证OpenAI配置

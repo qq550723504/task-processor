@@ -1,4 +1,4 @@
-﻿package warehouse
+package warehouse
 
 import (
 	"fmt"

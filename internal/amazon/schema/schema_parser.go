@@ -1,4 +1,4 @@
-﻿package schema
+package schema
 
 import (
 	"fmt"
@@ -222,4 +222,3 @@ func (p *SchemaParser) ValidateAttributeValue(attr model.AttributeInfo, value an
 
 	return nil
 }
-

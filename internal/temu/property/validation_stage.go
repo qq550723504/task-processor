@@ -1,4 +1,4 @@
-﻿// Package property 提供属性验证阶段，负责验证属性的有效性和完整性
+// Package property 提供属性验证阶段，负责验证属性的有效性和完整性
 package property
 
 import (

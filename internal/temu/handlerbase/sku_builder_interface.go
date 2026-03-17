@@ -1,4 +1,4 @@
-﻿// Package handlerbase 提供TEMU平台处理器的共享接口
+// Package handlerbase 提供TEMU平台处理器的共享接口
 package handlerbase
 
 import (
@@ -24,4 +24,3 @@ type SpecHandler interface {
 	// IsSizeSpec 判断是否为尺码规格
 	IsSizeSpec(specName string) bool
 }
-

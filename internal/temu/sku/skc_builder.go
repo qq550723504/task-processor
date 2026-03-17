@@ -1,4 +1,4 @@
-﻿package sku
+package sku
 
 import (
 	"task-processor/internal/model"
@@ -241,4 +241,3 @@ func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants
 
 	return []models.Skc{skc}
 }
-

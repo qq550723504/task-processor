@@ -1,4 +1,4 @@
-﻿// Package ai 提供TEMU平台的各种处理器，包括AI内容重构等功能
+// Package ai 提供TEMU平台的各种处理器，包括AI内容重构等功能
 package ai
 
 import (
@@ -8,8 +8,8 @@ import (
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/pkg/timeout"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"

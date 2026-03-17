@@ -1,4 +1,4 @@
-﻿// Package rules 提供验证规则引擎
+// Package rules 提供验证规则引擎
 package rules
 
 import (

@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"task-processor/internal/model"
@@ -229,4 +229,3 @@ func (e *ShipsFromExtractor) Extract(page playwright.Page, product *model.Produc
 
 	return nil
 }
-

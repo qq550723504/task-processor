@@ -1,4 +1,4 @@
-﻿package platformtask
+package platformtask
 
 import (
 	"context"
@@ -307,4 +307,3 @@ func TestInventorySyncTask_GetInventoryService(t *testing.T) {
 		t.Error("GetInventoryService should return the same service")
 	}
 }
-

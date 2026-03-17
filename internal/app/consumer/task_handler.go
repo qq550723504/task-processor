@@ -1,4 +1,4 @@
-﻿// Package consumer 提供任务处理器，集成结果上报、去重和店铺亲和性功能
+// Package consumer 提供任务处理器，集成结果上报、去重和店铺亲和性功能
 package consumer
 
 import (

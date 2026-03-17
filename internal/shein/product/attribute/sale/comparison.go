@@ -1,4 +1,4 @@
-﻿package sale
+package sale
 
 import (
 	"fmt"
@@ -122,4 +122,3 @@ func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct mod
 		logrus.Warnf("⚖️ [AI属性对比] ⚠️ 发现%d个不一致项", len(inconsistencies))
 	}
 }
-

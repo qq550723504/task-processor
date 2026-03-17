@@ -1,8 +1,8 @@
-﻿package validation
+package validation
 
 import (
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -98,4 +98,3 @@ func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRuleDTO *api.F
 
 	return nil
 }
-

@@ -1,4 +1,4 @@
-﻿// Package bootstrap 提供应用启动器实现
+// Package bootstrap 提供应用启动器实现
 package bootstrap
 
 import (

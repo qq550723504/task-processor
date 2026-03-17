@@ -1,9 +1,9 @@
-﻿// Package rules 提供TEMU平台的规则验证功能测试
+// Package rules 提供TEMU平台的规则验证功能测试
 package rules
 
 import (
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -111,4 +111,3 @@ func TestCheckSingleRuleDetailedTemu_WithImageValidation(t *testing.T) {
 	assert.False(t, result.Passed, "应该因为图片数量不足而失败")
 	assert.Contains(t, result.FailureReason, "Amazon原始数据图片不足", "失败原因应该包含图片不足的信息")
 }
-

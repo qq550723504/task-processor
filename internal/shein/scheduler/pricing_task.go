@@ -1,4 +1,4 @@
-﻿// package scheduler 提供SHEIN平台核价任务实现
+// package scheduler 提供SHEIN平台核价任务实现
 package scheduler
 
 import (
@@ -6,9 +6,9 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/shein/client"
 	sheinpricing "task-processor/internal/shein/pricing"
-	platformtask "task-processor/internal/platformtask"
 )
 
 // PricingTask SHEIN核价任务
@@ -49,5 +49,3 @@ func NewPricingTask(
 func (t *PricingTask) Execute(ctx context.Context) error {
 	return t.AutoPricingTask.Execute(ctx)
 }
-
-

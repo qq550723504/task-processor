@@ -1,13 +1,13 @@
-﻿package scheduler
+package scheduler
 
 import (
 	"context"
 	"errors"
 	"testing"
 
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/shein/api/pricing"
 	sheinpricing "task-processor/internal/shein/pricing"
-	platformtask "task-processor/internal/platformtask"
 )
 
 // MockSheinAutoPricingService 模拟Shein自动核价服务
@@ -285,5 +285,3 @@ func TestConvertSheinStats(t *testing.T) {
 		})
 	}
 }
-
-

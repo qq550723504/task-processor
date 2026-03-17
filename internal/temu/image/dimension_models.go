@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台图片尺寸标注相关的数据结构定义
+// Package image 提供TEMU平台图片尺寸标注相关的数据结构定义
 package image
 
 import "task-processor/internal/temu/handlerbase"

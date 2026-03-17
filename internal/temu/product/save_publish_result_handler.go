@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"task-processor/internal/app/state"
-	commontypes "task-processor/internal/model"
-	pkgproduct "task-processor/internal/product"
 	"task-processor/internal/infra/clients/management/api"
+	commontypes "task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/ptr"
+	pkgproduct "task-processor/internal/product"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
@@ -137,7 +137,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 					Platform:     "TEMU",
 					Region:       task.Region,
 					Sku:          &sku.OutSkuSN,
-					ProductId:    "",                  // 将在下面设置
+					ProductId:    "",              // 将在下面设置
 					Status:       ptr.Int16Ptr(1), // 1表示导入成功
 				}
 
@@ -477,5 +477,3 @@ func (h *SavePublishResultHandler) buildFilterRuleRange(filterRule *api.FilterRu
 
 	return fmt.Sprintf("[%s]", strings.Join(rangeParts, ","))
 }
-
-

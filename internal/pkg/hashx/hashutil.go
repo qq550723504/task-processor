@@ -1,4 +1,4 @@
-﻿// package hashx 提供哈希与分片工具方法
+// package hashx 提供哈希与分片工具方法
 package hashx
 
 import (

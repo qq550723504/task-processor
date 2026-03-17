@@ -1,11 +1,11 @@
-﻿// package pipeline 提供Amazon数据解析处理器
+// package pipeline 提供Amazon数据解析处理器
 package pipeline
 
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/amazon/model"
+	"task-processor/internal/pkg/jsonx"
 )
 
 // DataParserHandler 数据解析处理器
@@ -71,4 +71,3 @@ func (h *DataParserHandler) logKeyFields(data map[string]any) {
 		}
 	}
 }
-

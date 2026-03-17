@@ -1,4 +1,4 @@
-﻿package schema
+package schema
 
 import (
 	"context"
@@ -303,4 +303,3 @@ func (m *SchemaManager) GetCacheStats() map[string]any {
 		"fetcher_cache": fetcherStats,
 	}
 }
-

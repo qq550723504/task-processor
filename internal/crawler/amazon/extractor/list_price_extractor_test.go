@@ -1,4 +1,4 @@
-﻿// Package extractor 提供Amazon原价提取功能测试
+// Package extractor 提供Amazon原价提取功能测试
 package extractor
 
 import (
@@ -188,4 +188,3 @@ func TestListPriceExtractor_containsOtherProductURL(t *testing.T) {
 		})
 	}
 }
-

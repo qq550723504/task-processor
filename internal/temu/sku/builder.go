@@ -1,11 +1,11 @@
-﻿// Package sku 提供TEMU平台的SKU构建功能
+// Package sku 提供TEMU平台的SKU构建功能
 package sku
 
 import (
 	"fmt"
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/model"
 	temuapi "task-processor/internal/temu/api"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
@@ -172,4 +172,3 @@ func (sb *SkuBuilder) querySpecID(temuCtx *temucontext.TemuTaskContext, parentSp
 	sb.logger.Infof("✅ 规格查询成功: %s -> %s", specName, response.Result.SpecID)
 	return response.Result.SpecID, nil
 }
-

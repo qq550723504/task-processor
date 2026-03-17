@@ -1,4 +1,4 @@
-﻿package pipeline
+package pipeline
 
 import (
 	"context"
@@ -125,4 +125,3 @@ func (h *ProductTypeHandler) matchKeywordToProductType(keyword string) string {
 
 	return ""
 }
-

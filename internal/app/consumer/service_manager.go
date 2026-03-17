@@ -1,4 +1,4 @@
-﻿// Package consumer 提供服务管理功能
+// Package consumer 提供服务管理功能
 package consumer
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
+// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
 package category
 
 import (
@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/category"
 

@@ -1,4 +1,4 @@
-﻿// Package productsync 提供 SHEIN 平台商品同步功能
+// Package productsync 提供 SHEIN 平台商品同步功能
 package productsync
 
 import (
@@ -263,4 +263,3 @@ func (s *productSyncServiceImpl) updateAttributesWithMappings(productData *manag
 		s.logger.WithError(err).Warn("序列化增强的Attributes失败")
 	}
 }
-

@@ -1,12 +1,12 @@
-﻿package productdata
+package productdata
 
 import (
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/product"
-	"task-processor/internal/infra/rabbitmq"
 	shein "task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -140,5 +140,3 @@ func (h *SubmitVariantRawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	h.logger.Infof("✅ 变体数据已缓存: 数量=%d", len(*ctx.Variants))
 	return nil
 }
-
-

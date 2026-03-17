@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台尺寸图片构建功能
+// Package image 提供TEMU平台尺寸图片构建功能
 package image
 
 import (
@@ -169,4 +169,3 @@ func (idb *ImageDimensionBuilder) addDimensionAnnotationToContext(temuCtx *temuc
 	// 直接返回图片数据，不使用缓存
 	return annotatedImageBytes, nil
 }
-

@@ -1,4 +1,4 @@
-﻿// Package middleware 提供HTTP中间件
+// Package middleware 提供HTTP中间件
 package httpx
 
 import "net/http"

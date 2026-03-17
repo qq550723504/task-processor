@@ -1,9 +1,9 @@
-﻿// package sync 提供TEMU平台库存监控变化检测逻辑
+// package sync 提供TEMU平台库存监控变化检测逻辑
 package sync
 
 import (
-	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -153,4 +153,3 @@ func (s *inventorySyncServiceImpl) getPreviousPrice(attributesJSON string, platf
 
 	return 0
 }
-

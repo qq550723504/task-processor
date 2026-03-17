@@ -1,11 +1,11 @@
-﻿package temu
+package temu
 
 import (
 	"context"
 	"fmt"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/model"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"time"
 
@@ -81,4 +81,3 @@ func (s *TemuTaskSubmitter) GetQueueStats() worker.QueueStats {
 	}
 	return s.workerPool.GetQueueStats()
 }
-

@@ -1,4 +1,4 @@
-﻿// Package request 提供 HTTP 请求解析工具
+// Package request 提供 HTTP 请求解析工具
 package httpx
 
 import (

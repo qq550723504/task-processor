@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"context"
@@ -281,4 +281,3 @@ func (e *RatingExtractor) extractReviewsCountFromPageSource(page playwright.Page
 
 	return 0
 }
-

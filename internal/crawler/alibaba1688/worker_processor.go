@@ -1,4 +1,4 @@
-﻿// Package alibaba1688 提供1688爬虫处理器
+// Package alibaba1688 提供1688爬虫处理器
 package alibaba1688
 
 import (
@@ -65,4 +65,3 @@ func product1688ToMap(product any, _ any) map[string]any {
 
 	return result
 }
-

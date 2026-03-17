@@ -1,4 +1,4 @@
-﻿// Package bootstrap 提供组件适配器实现
+// Package bootstrap 提供组件适配器实现
 package bootstrap
 
 import (

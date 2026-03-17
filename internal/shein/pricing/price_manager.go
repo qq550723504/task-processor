@@ -1,4 +1,4 @@
-﻿// Package pricing 提供SHEIN通用价格管理功能
+// Package pricing 提供SHEIN通用价格管理功能
 package pricing
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package distributed 提供分布式爬虫类型定义
+// Package distributed 提供分布式爬虫类型定义
 package distributed
 
 import (
@@ -37,4 +37,3 @@ type PendingTask struct {
 	Context    context.Context
 	Cancel     context.CancelFunc
 }
-

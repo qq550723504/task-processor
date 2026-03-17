@@ -1,4 +1,4 @@
-﻿// package activity 提供SHEIN平台限时折扣活动服务
+// package activity 提供SHEIN平台限时折扣活动服务
 package activity
 
 import (

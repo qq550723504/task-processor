@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU产品转换相关功能
+// package sync 提供TEMU产品转换相关功能
 package sync
 
 import (

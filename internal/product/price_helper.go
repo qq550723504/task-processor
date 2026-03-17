@@ -1,4 +1,4 @@
-﻿// Package product 提供产品相关的公共工具函数
+// Package product 提供产品相关的公共工具函数
 package product
 
 import (
@@ -129,4 +129,3 @@ func extractStockFromAvailability(availability string) int {
 
 	return 0
 }
-

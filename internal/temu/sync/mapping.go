@@ -1,9 +1,9 @@
-﻿// package sync 提供TEMU平台映射数据结构定义
+// package sync 提供TEMU平台映射数据结构定义
 package sync
 
 import (
-	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 )
 
 // TemuMappingData TEMU映射到管理系统的数据结构（产品级别对象，包含多个SKU）
@@ -89,4 +89,3 @@ type SkuInventoryUpdate struct {
 	SkuInfo       *TemuSkuInfo   // TEMU SKU信息
 	StoreID       int64          // 店铺ID（用于获取价格类型）
 }
-

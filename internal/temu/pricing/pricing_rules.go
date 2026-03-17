@@ -1,4 +1,4 @@
-﻿package pricing
+package pricing
 
 import (
 	"context"
@@ -153,5 +153,3 @@ func parsePrice(price string) float64 {
 	}
 	return result
 }
-
-

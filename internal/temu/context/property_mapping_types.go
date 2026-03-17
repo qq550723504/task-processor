@@ -1,4 +1,4 @@
-﻿// Package context 提供TEMU平台属性映射相关的类型定义
+// Package context 提供TEMU平台属性映射相关的类型定义
 package context
 
 import (

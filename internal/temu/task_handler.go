@@ -1,11 +1,11 @@
-﻿package temu
+package temu
 
 import (
 	"context"
 	"fmt"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
 	"time"
@@ -289,4 +289,3 @@ func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *
 	// 创建并设置QueryAPI服务
 	taskCtx.QueryAPI = api.NewQueryAPI(apiClient, h.logger.WithField("service", "QueryAPI"))
 }
-

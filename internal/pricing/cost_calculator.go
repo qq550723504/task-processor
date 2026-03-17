@@ -1,12 +1,12 @@
-﻿// Package pricing 提供通用的成本计算服务
+// Package pricing 提供通用的成本计算服务
 package pricing
 
 import (
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
-	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
+	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -169,5 +169,3 @@ func (c *CostCalculator) getPlatformCommission(strategy *managementapi.Operation
 	// 如果策略中有相关字段，可以使用 strategy.PlatformCommission
 	return 0 // 默认平台佣金0%
 }
-
-

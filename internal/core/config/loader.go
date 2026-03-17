@@ -1,4 +1,4 @@
-﻿// Package config 提供配置加载功能
+// Package config 提供配置加载功能
 package config
 
 import (

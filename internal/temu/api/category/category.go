@@ -1,4 +1,4 @@
-﻿// Package category 提供TEMU平台分类相关的API和数据结构
+// Package category 提供TEMU平台分类相关的API和数据结构
 package category
 
 import (

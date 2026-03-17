@@ -1,4 +1,4 @@
-﻿package listing
+package listing
 
 import (
 	"strings"
@@ -54,4 +54,3 @@ func (cab *CustomAttributeBuilder) sanitizeAttributeValue(value any) any {
 	}
 	return value
 }
-

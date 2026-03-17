@@ -1,4 +1,4 @@
-﻿// Package monitoring 提供健康检查功能
+// Package monitoring 提供健康检查功能
 package monitoring
 
 import (

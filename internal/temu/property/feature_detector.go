@@ -1,4 +1,4 @@
-﻿// Package property 提供属性特征识别功能
+// Package property 提供属性特征识别功能
 package property
 
 import (

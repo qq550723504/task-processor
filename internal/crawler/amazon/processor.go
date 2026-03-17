@@ -1,4 +1,4 @@
-﻿// Package amazon 提供Amazon处理器核心功能
+// Package amazon 提供Amazon处理器核心功能
 package amazon
 
 import (
@@ -257,4 +257,3 @@ func (ap *AmazonProcessor) Shutdown() {
 		logrus.Info("Amazon处理器已关闭")
 	})
 }
-

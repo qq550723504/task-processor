@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台同步任务实现
+// Package scheduler 提供TEMU平台同步任务实现
 package scheduler
 
 import (
@@ -44,5 +44,3 @@ func NewProductSyncTask(
 func (t *ProductSyncTask) Execute(ctx context.Context) error {
 	return t.ProductSyncTask.Execute(ctx)
 }
-
-

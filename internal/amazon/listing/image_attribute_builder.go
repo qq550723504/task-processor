@@ -1,4 +1,4 @@
-﻿package listing
+package listing
 
 import (
 	"context"
@@ -172,4 +172,3 @@ func (iab *ImageAttributeBuilder) distributeImagesToNumberedAttrs(attrs map[stri
 		"attributes":     supportedAttrs[:assignedCount],
 	}).Info("设置附加图片到带数字后缀的属性")
 }
-

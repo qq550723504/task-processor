@@ -12,8 +12,8 @@ type Updater struct {
 	currentVersion     string
 	updateURL          string        // 版本检查地址
 	checkInterval      time.Duration // 检查间隔
-	insecureSkipVerify bool          // 跳过TLS证书验证
 	updateManager      *UpdateManager
+	insecureSkipVerify bool // 跳过TLS证书验证
 }
 
 // NewUpdater 创建更新器

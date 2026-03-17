@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台库存同步任务实现
+// Package scheduler 提供TEMU平台库存同步任务实现
 package scheduler
 
 import (
@@ -66,5 +66,3 @@ func NewInventoryTask(
 func (t *InventoryTask) Execute(ctx context.Context) error {
 	return t.InventorySyncTask.Execute(ctx)
 }
-
-

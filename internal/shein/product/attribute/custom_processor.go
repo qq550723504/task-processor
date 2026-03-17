@@ -1,12 +1,12 @@
-﻿// Package attribute 提供SHEIN平台的自定义属性处理功能
+// Package attribute 提供SHEIN平台的自定义属性处理功能
 package attribute
 
 import (
 	"strings"
 
 	"task-processor/internal/shein"
-"task-processor/internal/shein/content"
 	"task-processor/internal/shein/api/attribute"
+	"task-processor/internal/shein/content"
 
 	"github.com/sirupsen/logrus"
 )

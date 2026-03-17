@@ -1,4 +1,4 @@
-﻿// Package service 提供LLM属性映射器测试
+// Package service 提供LLM属性映射器测试
 package llm
 
 import (

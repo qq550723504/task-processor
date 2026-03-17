@@ -1,4 +1,4 @@
-﻿// package pipeline 提供Amazon库存处理器
+// package pipeline 提供Amazon库存处理器
 package pipeline
 
 import (
@@ -74,4 +74,3 @@ func (h *InventoryHandler) getInventoryQuantity(data map[string]any) int {
 	// 2. 使用默认值
 	return 100
 }
-

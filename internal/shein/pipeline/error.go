@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供SHEIN平台的任务错误处理功能
+// Package pipeline 提供SHEIN平台的任务错误处理功能
 package pipeline
 
 import (
@@ -182,4 +182,3 @@ func (h *TaskErrorHandler) setPauseKeyForAuthExpired(shopID int64, reason string
 
 	return nil
 }
-

@@ -1,4 +1,4 @@
-﻿package ptr
+package ptr
 
 // IntPtr 返回int指针
 func IntPtr(i int) *int {

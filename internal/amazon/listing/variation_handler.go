@@ -1,4 +1,4 @@
-﻿package listing
+package listing
 
 import (
 	"strings"
@@ -164,4 +164,3 @@ func (vh *VariationHandler) addChildVariationAttributes(attrs map[string]any, va
 		"variation_theme":  variation.VariationTheme,
 	}).Info("设置子产品变体信息")
 }
-

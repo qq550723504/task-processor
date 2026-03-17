@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"task-processor/internal/crawler/amazon/variations"
@@ -144,4 +144,3 @@ func convertToAmazonVariations(varList []variations.Variation) []model.Variation
 	}
 	return result
 }
-

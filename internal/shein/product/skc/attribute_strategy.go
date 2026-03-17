@@ -1,4 +1,4 @@
-﻿package skc
+package skc
 
 import (
 	"fmt"

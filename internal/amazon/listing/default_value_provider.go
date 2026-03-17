@@ -1,4 +1,4 @@
-﻿package listing
+package listing
 
 import (
 	"task-processor/internal/amazon/model"
@@ -110,4 +110,3 @@ func (p *DefaultValueProvider) BuildAttributeWithDefault(attr model.AttributeInf
 	// 如果没有值，尝试获取默认值
 	return p.GetDefaultValue(attr.Name)
 }
-

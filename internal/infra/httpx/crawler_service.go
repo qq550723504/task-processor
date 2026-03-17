@@ -1,4 +1,4 @@
-﻿// Package handler 提供 HTTP 处理器
+// Package handler 提供 HTTP 处理器
 package httpx
 
 import "task-processor/internal/crawler/shared"
@@ -22,4 +22,3 @@ type CrawlerService interface {
 	// GetStats 获取统计信息
 	GetStats() map[string]any
 }
-

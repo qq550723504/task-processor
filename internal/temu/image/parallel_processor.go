@@ -1,4 +1,4 @@
-﻿// Package image 提供并行图片处理功能
+// Package image 提供并行图片处理功能
 package image
 
 import (
@@ -211,4 +211,3 @@ func (pip *ParallelImageProcessor) ApplyImageResults(skuList []models.Sku, image
 
 	pip.logger.Info("📋 图片处理结果应用完成")
 }
-

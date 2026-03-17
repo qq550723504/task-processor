@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供SHEIN平台的任务处理器
+// Package pipeline 提供SHEIN平台的任务处理器
 package pipeline
 
 import (
@@ -7,8 +7,8 @@ import (
 
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/metrics"
-	"task-processor/internal/model"
 	management_api "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api"
@@ -218,4 +218,3 @@ func (h *TaskHandler) handleSuccess(task model.Task) {
 	logrus.Infof("任务处理成功: ID=%d, TenantID=%d, StoreID=%d, ProductID=%s",
 		task.ID, task.TenantID, task.StoreID, task.ProductID)
 }
-

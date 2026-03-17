@@ -1,4 +1,4 @@
-﻿// Package platformbase 提供多平台通用的基础功能
+// Package platformbase 提供多平台通用的基础功能
 package platformbase
 
 import (
@@ -47,4 +47,3 @@ func FormatTaskInfo(config appscheduler.TaskConfig) string {
 		config.TenantID,
 	)
 }
-

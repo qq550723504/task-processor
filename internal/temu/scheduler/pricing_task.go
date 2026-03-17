@@ -1,4 +1,4 @@
-﻿// Package scheduler 提供TEMU平台核价任务实现
+// Package scheduler 提供TEMU平台核价任务实现
 package scheduler
 
 import (
@@ -65,5 +65,3 @@ func (t *PricingTask) Execute(ctx context.Context) error {
 	// 注意：Temu的实现会在SubmitPricingResults中完成所有工作
 	return t.AutoPricingTask.Execute(ctx)
 }
-
-

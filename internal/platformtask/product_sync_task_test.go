@@ -1,4 +1,4 @@
-﻿package platformtask
+package platformtask
 
 import (
 	"context"
@@ -340,4 +340,3 @@ func TestProductSyncTask_GetSyncService(t *testing.T) {
 		t.Error("GetSyncService should return the same service")
 	}
 }
-

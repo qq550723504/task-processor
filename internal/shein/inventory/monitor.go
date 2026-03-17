@@ -1,4 +1,4 @@
-﻿// Package inventory 提供 SHEIN 平台库存同步功能
+// Package inventory 提供 SHEIN 平台库存同步功能
 package inventory
 
 import (
@@ -7,8 +7,8 @@ import (
 	"time"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/pkg/recovery"
+	"task-processor/internal/pkg/timeout"
 
 	"github.com/sirupsen/logrus"
 )
@@ -123,4 +123,3 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 
 	return nil
 }
-

@@ -1,4 +1,4 @@
-﻿package sku
+package sku
 
 import (
 	"fmt"
@@ -277,4 +277,3 @@ func (sh *SkuSpecHandler) CreateDefaultSpec(variant *model.Product) []models.Spe
 	// 返回空切片，让调用方知道出错了
 	return []models.SpecInfo{}
 }
-

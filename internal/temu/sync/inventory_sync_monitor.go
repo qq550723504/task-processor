@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU平台库存监控核心逻辑
+// package sync 提供TEMU平台库存监控核心逻辑
 package sync
 
 import (

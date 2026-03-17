@@ -1,4 +1,4 @@
-﻿// Package shein 提供SHEIN平台模块的数据模型定义
+// Package shein 提供SHEIN平台模块的数据模型定义
 package shein
 
 import (

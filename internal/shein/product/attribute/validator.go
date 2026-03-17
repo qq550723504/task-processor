@@ -1,4 +1,4 @@
-﻿// Package attribute 提供SHEIN平台属性验证和修复功能
+// Package attribute 提供SHEIN平台属性验证和修复功能
 package attribute
 
 import (

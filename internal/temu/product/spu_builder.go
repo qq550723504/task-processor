@@ -1,12 +1,12 @@
-﻿package product
+package product
 
 import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/skugen"
 	models "task-processor/internal/temu/api/product"
@@ -438,4 +438,3 @@ func (b *SpuBuilder) buildTemplateSpecMap(temuCtx *temucontext.TemuTaskContext) 
 
 	return templateSpecMap
 }
-

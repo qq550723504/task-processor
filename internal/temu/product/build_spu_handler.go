@@ -1,12 +1,12 @@
-﻿package product
+package product
 
 import (
 	"fmt"
 
 	"task-processor/internal/infra/clients/management/api"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/ai"
+	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/handlerbase"
 
 	"github.com/sirupsen/logrus"

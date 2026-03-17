@@ -1,4 +1,4 @@
-﻿// Package sku 提供SHEIN平台SKU构建核心功能
+// Package sku 提供SHEIN平台SKU构建核心功能
 package sku
 
 import (
@@ -113,4 +113,3 @@ func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, varian
 	logrus.Infof("成功为单变体创建SKU，销售属性数量: %d", len(saleAttributeList))
 	return []product.SKU{*sku}, nil
 }
-

@@ -1,4 +1,4 @@
-﻿// Package product 提供产品领域仓储接口定义
+// Package product 提供产品领域仓储接口定义
 package product
 
 import (
@@ -38,4 +38,3 @@ type CrawlerRepository interface {
 	// GetSupportedPlatforms 获取支持的平台列表
 	GetSupportedPlatforms() []string
 }
-

@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台销售属性的请求构建功能
+// Package sale 提供SHEIN平台销售属性的请求构建功能
 package sale
 
 import (
@@ -184,4 +184,3 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *shein.TaskContext, re
 		string(attributeMappingBytes),
 		extraContextSection)
 }
-

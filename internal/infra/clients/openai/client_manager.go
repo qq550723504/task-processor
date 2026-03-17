@@ -12,8 +12,8 @@ import (
 type Manager struct {
 	clients       map[string]*Client
 	defaultClient *Client
-	mu            sync.RWMutex
 	logger        *logrus.Entry
+	mu            sync.RWMutex
 }
 
 // ManagerConfig 管理器配置

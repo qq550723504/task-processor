@@ -1,10 +1,10 @@
-﻿// Package sku 提供TEMU平台的SKU变体处理功能
+// Package sku 提供TEMU平台的SKU变体处理功能
 package sku
 
 import (
 	"fmt"
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/openai"
+	"task-processor/internal/model"
 	models "task-processor/internal/temu/api/product"
 	temutemplate "task-processor/internal/temu/api/template"
 	temucontext "task-processor/internal/temu/context"
@@ -254,4 +254,3 @@ func (vp *SkuVariantProcessor) GenerateAISkuMapping(temuCtx *temucontext.TemuTas
 
 	return response, nil
 }
-

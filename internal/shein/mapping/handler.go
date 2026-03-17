@@ -1,4 +1,4 @@
-﻿// Package mapping 提供 SHEIN 平台商品映射功能
+// Package mapping 提供 SHEIN 平台商品映射功能
 package mapping
 
 import (
@@ -297,4 +297,3 @@ func CreateDelayedRepairRequest(
 		RetryTime: &retryTime,
 	}
 }
-

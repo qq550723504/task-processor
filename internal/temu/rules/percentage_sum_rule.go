@@ -1,4 +1,4 @@
-﻿// Package rules 提供百分比总和验证规则
+// Package rules 提供百分比总和验证规则
 package rules
 
 import (

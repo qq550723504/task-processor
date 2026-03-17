@@ -1,4 +1,4 @@
-﻿// package pipeline 提供属性映射处理器测试
+// package pipeline 提供属性映射处理器测试
 package pipeline
 
 import (

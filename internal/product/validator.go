@@ -1,4 +1,4 @@
-﻿// Package product 提供产品数据验证功能
+// Package product 提供产品数据验证功能
 package product
 
 import (
@@ -179,4 +179,3 @@ func (v *ProductValidator) validateRegion(region string) bool {
 	}
 	return false
 }
-

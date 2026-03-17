@@ -1,4 +1,4 @@
-﻿// Package temu 提供TEMU平台的管道构建器
+// Package temu 提供TEMU平台的管道构建器
 package temu
 
 import (

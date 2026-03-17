@@ -1,4 +1,4 @@
-﻿// Package fetcher 提供分布式产品数据获取功能
+// Package fetcher 提供分布式产品数据获取功能
 package fetcher
 
 import (

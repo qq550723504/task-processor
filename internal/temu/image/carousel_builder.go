@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台轮播图片构建功能
+// Package image 提供TEMU平台轮播图片构建功能
 package image
 
 import (
@@ -120,4 +120,3 @@ func (icb *ImageCarouselBuilder) GetProductImagesWithUpload(temuCtx *temucontext
 	// 批量上传图片到TEMU，失败时使用降级处理
 	return icb.uploadUtils.batchUploadImagesWithFallback(temuCtx, imageURLs, "main", 800, 800)
 }
-

@@ -1,4 +1,4 @@
-﻿// package pipeline 提供价格处理器实现
+// package pipeline 提供价格处理器实现
 package pipeline
 
 import (
@@ -120,4 +120,3 @@ func (h *PricingHandler) applyPricingStrategy(originalPrice float64) float64 {
 	// 3. 四舍五入到2位小数
 	return float64(int(priceWithProfit*100)) / 100
 }
-

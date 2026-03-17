@@ -1,4 +1,4 @@
-﻿// Package publish 提供SHEIN平台的各种处理模块，包括变体发布成功标记等功能
+// Package publish 提供SHEIN平台的各种处理模块，包括变体发布成功标记等功能
 package publish
 
 import (

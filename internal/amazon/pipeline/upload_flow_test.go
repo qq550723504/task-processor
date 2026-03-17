@@ -1,4 +1,4 @@
-﻿// package pipeline 提供Amazon上架流程测试
+// package pipeline 提供Amazon上架流程测试
 package pipeline
 
 import (
@@ -195,4 +195,3 @@ func TestAmazonUploadFlow_Performance(t *testing.T) {
 	assert.Less(t, avgDuration, 5*time.Second, "平均处理时间应该少于5秒")
 	t.Log("✅ 性能测试通过")
 }
-

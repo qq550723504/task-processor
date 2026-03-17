@@ -1,4 +1,4 @@
-﻿package ptr
+package ptr
 
 import "testing"
 

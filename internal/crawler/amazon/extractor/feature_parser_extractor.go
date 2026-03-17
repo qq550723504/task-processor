@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"strings"
@@ -37,4 +37,3 @@ func (e *FeatureParserExtractor) normalizeFeatures(features []string) []string {
 
 	return normalized
 }
-

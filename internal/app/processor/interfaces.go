@@ -1,4 +1,4 @@
-﻿// Package processor 提供处理器相关接口定义
+// Package processor 提供处理器相关接口定义
 package processor
 
 import (
@@ -11,4 +11,3 @@ import (
 type VariantTaskSubmitter interface {
 	SubmitVariantTasks(ctx context.Context, parentTask *model.Task, variations []model.Variation, parentAsin string) (successCount, failCount int)
 }
-

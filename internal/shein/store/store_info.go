@@ -1,4 +1,4 @@
-﻿// Package store 提供SHEIN平台的处理模块
+// Package store 提供SHEIN平台的处理模块
 package store
 
 import (

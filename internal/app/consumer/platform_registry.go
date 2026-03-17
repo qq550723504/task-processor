@@ -1,4 +1,4 @@
-﻿// Package consumer 提供多平台处理器注册功能
+// Package consumer 提供多平台处理器注册功能
 package consumer
 
 import (

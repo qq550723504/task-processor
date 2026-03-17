@@ -1,4 +1,4 @@
-﻿// Package apputil 提供应用级通用工具（日志、版本、实例、平台）
+// Package apputil 提供应用级通用工具（日志、版本、实例、平台）
 package appenv
 
 import (

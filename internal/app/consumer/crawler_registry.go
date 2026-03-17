@@ -1,4 +1,4 @@
-﻿// Package consumer 提供爬虫处理器注册功能
+// Package consumer 提供爬虫处理器注册功能
 package consumer
 
 import (
@@ -7,18 +7,18 @@ import (
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/product"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
 
 // CrawlerRegistry 爬虫处理器注册器
 type CrawlerRegistry struct {
-	config *config.Config
-	logger *logrus.Logger
+	config         *config.Config
+	logger         *logrus.Logger
 	rabbitmqClient *rabbitmq.Client
 }
 
@@ -29,8 +29,8 @@ func NewCrawlerRegistry(
 	rabbitmqClient *rabbitmq.Client,
 ) *CrawlerRegistry {
 	return &CrawlerRegistry{
-		config: cfg,
-		logger: logger,
+		config:         cfg,
+		logger:         logger,
 		rabbitmqClient: rabbitmqClient,
 	}
 }
@@ -166,4 +166,3 @@ func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonPro
 
 	return productFetcher, nil
 }
-

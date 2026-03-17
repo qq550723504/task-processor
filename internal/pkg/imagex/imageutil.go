@@ -1,4 +1,4 @@
-﻿// Package imageutil 提供图片编解码工具方法
+// Package imageutil 提供图片编解码工具方法
 package imagex
 
 import (

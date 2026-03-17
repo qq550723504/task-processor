@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台图片处理核心功能
+// Package image 提供TEMU平台图片处理核心功能
 package image
 
 import (
@@ -73,4 +73,3 @@ func (ip *ImageProcessor) GetProductImagesWithUpload(temuCtx *temucontext.TemuTa
 
 	return ip.carouselBuilder.GetProductImagesWithUpload(temuCtx), nil
 }
-

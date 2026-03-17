@@ -1,4 +1,4 @@
-﻿// Package property 提供TEMU平台的各种处理器，包括默认属性填充等功能
+// Package property 提供TEMU平台的各种处理器，包括默认属性填充等功能
 package property
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package listing 提供Amazon动态产品模板
+// Package listing 提供Amazon动态产品模板
 package listing
 
 import (

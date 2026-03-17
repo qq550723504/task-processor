@@ -1,9 +1,9 @@
-﻿// package sync 提供TEMU平台调度器相关服务
+// package sync 提供TEMU平台调度器相关服务
 package sync
 
 import (
-	"task-processor/internal/model"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -51,4 +51,3 @@ func (s *inventorySyncServiceImpl) getAmazonProductCostPrice(
 	// 使用通用成本计算器
 	return s.costCalculator.CalculateAmazonProductCost(amazonProduct, priceType, storeID)
 }
-

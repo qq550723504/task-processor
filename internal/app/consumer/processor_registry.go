@@ -1,4 +1,4 @@
-﻿// Package consumer 提供任务处理器注册表
+// Package consumer 提供任务处理器注册表
 package consumer
 
 import (

@@ -28,9 +28,9 @@ type ResilientClientConfig struct {
 
 // CircuitBreakerConfig 熔断器配置
 type CircuitBreakerConfig struct {
-	MaxRequests      uint32
 	Interval         time.Duration
 	Timeout          time.Duration
+	MaxRequests      uint32
 	FailureThreshold uint32
 }
 

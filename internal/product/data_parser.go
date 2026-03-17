@@ -1,4 +1,4 @@
-﻿// Package product 提供产品数据解析功能
+// Package product 提供产品数据解析功能
 package product
 
 import (
@@ -101,4 +101,3 @@ func (p *DataParser) recalculateIsAvailable(product *model.Product) bool {
 	}).Debug("⚠️ 无法明确判断可用性，保持原有值")
 	return product.IsAvailable
 }
-

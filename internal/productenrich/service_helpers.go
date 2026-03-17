@@ -1,10 +1,9 @@
-﻿// package productenrich 提供产品JSON生成的应用层实现
+// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
 	"context"
 	"fmt"
-
 
 	"github.com/sirupsen/logrus"
 )

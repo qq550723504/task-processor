@@ -1,4 +1,4 @@
-﻿package schema
+package schema
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"task-processor/internal/amazon/model"
 	"task-processor/internal/pkg/httpclient"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/amazon/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -117,4 +117,3 @@ func (f *SchemaFetcher) GetCacheStats() map[string]any {
 		"cached_schemas": count,
 	}
 }
-

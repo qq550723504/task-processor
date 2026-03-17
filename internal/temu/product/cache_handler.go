@@ -1,13 +1,13 @@
-﻿package product
+package product
 
 import (
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
-	domainProduct "task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
+	domainProduct "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -94,5 +94,3 @@ func (h *CacheProductHandler) Handle(ctx pipeline.TaskContext) error {
 	h.logger.Infof("✅ 产品数据已缓存: ProductID=%s", task.ProductID)
 	return nil
 }
-
-

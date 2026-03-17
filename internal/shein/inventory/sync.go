@@ -1,4 +1,4 @@
-﻿// Package inventory 提供SHEIN平台库存同步服务
+// Package inventory 提供SHEIN平台库存同步服务
 package inventory
 
 import (

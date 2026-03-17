@@ -1,4 +1,4 @@
-﻿// Package product 产品模型数据结构
+// Package product 产品模型数据结构
 package product
 
 import (

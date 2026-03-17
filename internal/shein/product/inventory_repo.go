@@ -1,4 +1,4 @@
-﻿// Package product 提供SHEIN通用库存管理功能
+// Package product 提供SHEIN通用库存管理功能
 package product
 
 import (

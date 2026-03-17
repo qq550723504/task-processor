@@ -1,4 +1,4 @@
-﻿// package scheduler 提供SHEIN平台的任务工厂
+// package scheduler 提供SHEIN平台的任务工厂
 package scheduler
 
 import (

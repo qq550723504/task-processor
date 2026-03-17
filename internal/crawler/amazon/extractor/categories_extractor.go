@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"strings"
@@ -103,4 +103,3 @@ func (ce *CategoriesExtractor) cleanCategories(categories []string) []string {
 
 	return result
 }
-

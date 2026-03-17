@@ -1,4 +1,4 @@
-﻿// package pipeline 提供验证处理器实现
+// package pipeline 提供验证处理器实现
 package pipeline
 
 import (
@@ -53,4 +53,3 @@ func (h *ValidationHandler) validateRequiredFields(data map[string]any) error {
 
 	return nil
 }
-

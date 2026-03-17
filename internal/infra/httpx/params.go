@@ -1,4 +1,4 @@
-﻿// Package router 提供路由辅助工具
+// Package router 提供路由辅助工具
 package httpx
 
 import (

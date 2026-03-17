@@ -1,4 +1,4 @@
-﻿// Package variant 提供SHEIN平台变体组合值匹配功能
+// Package variant 提供SHEIN平台变体组合值匹配功能
 package variant
 
 import (

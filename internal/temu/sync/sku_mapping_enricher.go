@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU平台SKU映射增强功能
+// package sync 提供TEMU平台SKU映射增强功能
 package sync
 
 import (

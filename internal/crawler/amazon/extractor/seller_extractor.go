@@ -1,4 +1,4 @@
-﻿package extractor
+package extractor
 
 import (
 	"strings"
@@ -67,4 +67,3 @@ func (e *SellerExtractor) Extract(page playwright.Page, product *model.Product) 
 
 	return nil
 }
-

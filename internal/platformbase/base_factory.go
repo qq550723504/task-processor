@@ -1,4 +1,4 @@
-﻿// Package platformbase 提供多平台通用的基础功能
+// Package platformbase 提供多平台通用的基础功能
 package platformbase
 
 import (
@@ -7,8 +7,8 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -127,5 +127,3 @@ func (f *BaseFactory) CreateTask(ctx context.Context, config appscheduler.TaskCo
 	// 子类需要实现具体的任务创建逻辑
 	return nil, fmt.Errorf("CreateTask方法需要由子类实现")
 }
-
-

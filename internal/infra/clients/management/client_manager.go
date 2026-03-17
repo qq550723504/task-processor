@@ -1,4 +1,4 @@
-﻿package management
+package management
 
 import (
 	"fmt"
@@ -294,4 +294,3 @@ func (cm *ClientManager) SetImageDownloadTimeout(timeout time.Duration) {
 		cm.imageDownloader = NewImageDownloader(timeout)
 	}
 }
-

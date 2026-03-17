@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供任务上下文接口定义
+// Package pipeline 提供任务上下文接口定义
 package pipeline
 
 import (
@@ -35,4 +35,3 @@ type AmazonContext interface {
 	SetVariants(variants []*model.Product)
 	AddVariant(variant *model.Product)
 }
-

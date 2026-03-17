@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU库存同步相关类型定义
+// package sync 提供TEMU库存同步相关类型定义
 package sync
 
 import (

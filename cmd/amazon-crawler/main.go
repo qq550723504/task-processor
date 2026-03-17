@@ -1,4 +1,4 @@
-﻿// Package main Amazon 爬虫服务入口
+// Package main Amazon 爬虫服务入口
 package main
 
 import (

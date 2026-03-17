@@ -1,10 +1,10 @@
-﻿// Package product 提供TEMU平台的产品筛选检查功能
+// Package product 提供TEMU平台的产品筛选检查功能
 package product
 
 import (
 	"fmt"
-	"task-processor/internal/model"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/temu/handlerbase"
 	"task-processor/internal/temu/rules"
@@ -104,4 +104,3 @@ func (c *ProductFilterChecker) checkSingleRuleWithAdapter(product *model.Product
 
 	return &handlerbase.FilterCheckResult{Passed: true}
 }
-

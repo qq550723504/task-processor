@@ -1,11 +1,9 @@
-﻿// Package handler 提供通用 HTTP 处理器
+// Package handler 提供通用 HTTP 处理器
 package httpx
 
 import (
 	"net/http"
 	"time"
-
-	
 )
 
 // HealthChecker 健康检查接口
