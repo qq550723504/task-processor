@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+﻿// Package pricing 提供 SHEIN 平台定价功能
 package pricing
 
 import (
@@ -51,3 +51,4 @@ func (s *autoPricingServiceImpl) calculateReappealPrices(product *pricing.Bargai
 
 	return newPrices
 }
+

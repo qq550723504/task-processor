@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台SKU映射关系修复策略实现
+﻿// Package mapping 提供 SHEIN 平台商品映射功能
 package mapping
 
 import (
@@ -237,3 +237,4 @@ func (s *SmartRepairStrategy) determineRegion(storeInfo *managementapi.StoreResp
 	}
 	return "US"
 }
+

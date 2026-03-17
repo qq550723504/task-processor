@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN营销活动API的具体实现
+﻿// Package productsync 提供 SHEIN 平台商品同步功能
 package productsync
 
 import (
@@ -333,3 +333,4 @@ func (m *MarketingAPI) CreateActivity(req *marketing.CreateActivityRequest) (*ma
 
 	return response, nil
 }
+

@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台SKU映射关系构建器
+﻿// Package mapping 提供 SHEIN 平台商品映射功能
 package mapping
 
 import (
@@ -423,3 +423,4 @@ func (b *MappingBuilder) BatchCreateMappings(optionsList []*MappingCreateOptions
 
 	return results, errors
 }
+

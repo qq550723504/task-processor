@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+﻿// Package productsync 提供 SHEIN 平台商品同步功能
 package productsync
 
 import (
@@ -87,3 +87,4 @@ func (s *productSyncServiceImpl) fetchCostPriceInfo(sheinProduct *product.Produc
 
 	return costMap, nil
 }
+

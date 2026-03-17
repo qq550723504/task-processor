@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+﻿// Package inventory 提供 SHEIN 平台库存同步功能
 package inventory
 
 // getMinProfitRateThreshold 获取最低利润率阈值（优先从运营策略获取）
@@ -40,3 +40,4 @@ func (s *inventorySyncServiceImpl) getStockChangeThreshold(storeID int64) int {
 	}
 	return 5 // 默认5个
 }
+

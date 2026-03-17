@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台SKU映射关系修复相关类型定义
+﻿// Package mapping 提供 SHEIN 平台商品映射功能
 package mapping
 
 import (
@@ -80,3 +80,4 @@ type MappingRepairStats struct {
 	LastRepairTime time.Time `json:"lastRepairTime"` // 最后修复时间
 	AverageTime    float64   `json:"averageTime"`    // 平均修复时间(秒)
 }
+

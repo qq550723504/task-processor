@@ -1,4 +1,4 @@
-// Package service 提供状态监控功能
+﻿// Package runner 提供处理器和调度器的运行管理功能
 package runner
 
 import (
@@ -30,3 +30,4 @@ func (s *processorServiceImpl) logProcessorStatus() {
 		"status": status,
 	}).Info("处理器状态监控")
 }
+

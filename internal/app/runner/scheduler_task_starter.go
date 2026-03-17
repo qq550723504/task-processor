@@ -1,4 +1,4 @@
-// Package service 提供调度任务启动器
+﻿// Package runner 提供处理器和调度器的运行管理功能
 package runner
 
 import (
@@ -136,3 +136,4 @@ func (s *schedulerServiceImpl) createStoreTask(
 	s.logger.Debugf("✅ 添加%s任务 (店铺:%d, 类型:%s)", platformName, storeID, taskType)
 	return nil
 }
+

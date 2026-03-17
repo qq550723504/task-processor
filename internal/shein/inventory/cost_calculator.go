@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+﻿// Package inventory 提供 SHEIN 平台库存同步功能
 package inventory
 
 import (
@@ -51,4 +51,5 @@ func (s *inventorySyncServiceImpl) getAmazonProductCostPrice(
 	// 使用通用成本计算器（会自动记录详细日志）
 	return s.costCalculator.CalculateAmazonProductCost(amazonProduct, priceType, storeID)
 }
+
 

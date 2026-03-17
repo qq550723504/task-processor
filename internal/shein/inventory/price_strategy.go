@@ -1,4 +1,4 @@
-﻿// Package operation 提供SHEIN平台调度器相关服务
+﻿// Package inventory 提供 SHEIN 平台库存同步功能
 package inventory
 
 import (
@@ -177,4 +177,5 @@ func (s *inventorySyncServiceImpl) getRestoreStockAmount(strategy *managementapi
 	}
 	return 10 // 默认恢复10个库存
 }
+
 

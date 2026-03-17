@@ -1,4 +1,4 @@
-﻿// Package factory 提供平台任务工厂的公共实现
+﻿// Package platformbase 提供多平台通用的基础功能
 package platformbase
 
 import (
@@ -47,3 +47,4 @@ func FormatTaskInfo(config appscheduler.TaskConfig) string {
 		config.TenantID,
 	)
 }
+

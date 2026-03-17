@@ -1,4 +1,4 @@
-// Package service 提供平台调度配置定义
+﻿// Package runner 提供处理器和调度器的运行管理功能
 package runner
 
 import (
@@ -97,3 +97,4 @@ func getDefaultInterval(interval int) time.Duration {
 	}
 	return time.Duration(interval) * time.Second
 }
+

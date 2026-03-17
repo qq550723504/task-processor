@@ -1,4 +1,4 @@
-﻿// Package factory 提供平台任务工厂的公共实现
+﻿// Package platformbase 提供多平台通用的基础功能
 package platformbase
 
 import (
@@ -127,4 +127,5 @@ func (f *BaseFactory) CreateTask(ctx context.Context, config appscheduler.TaskCo
 	// 子类需要实现具体的任务创建逻辑
 	return nil, fmt.Errorf("CreateTask方法需要由子类实现")
 }
+
 
