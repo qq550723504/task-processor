@@ -505,7 +505,7 @@ type SheinTaskFactory = scheduler.SheinTaskFactory
 | P1 | `taskexecutor` → `scheduler` | 中 | 极低 | 立即 |
 | P1 | 去掉 `_service` 文件名后缀 | 低 | 极低 | 立即 |
 | P1 | 合并 `pkg/apperr` → `core/errors` | 中 | 低 | 立即 |
-| P2 | 拆分 `shein/operation/` | 高 | 中 | 下个迭代 |
+| P2 | 拆分 `shein/operation/` | 高 | 中 | ✅ 已完成 |
 | P2 | 新建 `shein/context/`，修复 `GetTask()` | 高 | 中 | 下个迭代 |
 | P2 | 拆分 `amazon/core/service/` | 中 | 中 | 下个迭代 |
 | P3 | `domain/model/` → `model/` | 高 | 高 | 专项 Sprint |
