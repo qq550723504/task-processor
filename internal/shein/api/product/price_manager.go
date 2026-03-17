@@ -3,7 +3,6 @@
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/shein/api"
 	"task-processor/internal/shein/client"
 )
 
@@ -38,50 +37,24 @@ func (m *PriceManager) QueryCostPrice(spuName string, skcNameList []string) (*Co
 
 func (m *priceManager) queryPrice(spuName string) (*PriceQueryResponse, error) {
 	url := fmt.Sprintf("%s%s", m.baseClient.GetBaseURL(), client.GetQueryPriceEndpoint())
-
-	request := &PriceQueryRequest{SpuName: spuName}
-
 	var result PriceQueryResponse
-	if err := m.baseClient.APIRequest(http.MethodPost, url, request, &result); err != nil {
+	if err := m.baseClient.APIRequest(http.MethodPost, url, &PriceQueryRequest{SpuName: spuName}, &result); err != nil {
 		return nil, err
 	}
-
-	if result.Code != "0" {
-		if result.Code == "20302" {
-			return nil, &api.AuthenticationExpiredError{
-				TenantID: m.baseClient.GetTenantID(),
-				ShopID:   m.baseClient.GetShopID(),
-				Code:     result.Code,
-				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
-			}
-		}
-		return nil, &api.APIError{StatusCode: 0, Message: fmt.Sprintf("查询价格失败: %s", result.Msg), URL: url}
+	if err := m.baseClient.CheckCode(result.Code, result.Msg, url, "查询价格失败"); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 
 func (m *priceManager) queryCostPrice(spuName string, skcNameList []string) (*CostPriceQueryResponse, error) {
 	url := fmt.Sprintf("%s%s", m.baseClient.GetBaseURL(), client.GetQueryCostPriceEndpoint())
-
-	request := &CostPriceQueryRequest{SpuName: spuName, SkcNameList: skcNameList}
-
 	var result CostPriceQueryResponse
-	if err := m.baseClient.APIRequest(http.MethodPost, url, request, &result); err != nil {
+	if err := m.baseClient.APIRequest(http.MethodPost, url, &CostPriceQueryRequest{SpuName: spuName, SkcNameList: skcNameList}, &result); err != nil {
 		return nil, err
 	}
-
-	if result.Code != "0" {
-		if result.Code == "20302" {
-			return nil, &api.AuthenticationExpiredError{
-				TenantID: m.baseClient.GetTenantID(),
-				ShopID:   m.baseClient.GetShopID(),
-				Code:     result.Code,
-				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
-			}
-		}
-		return nil, &api.APIError{StatusCode: 0, Message: fmt.Sprintf("查询成本价格失败: %s", result.Msg), URL: url}
+	if err := m.baseClient.CheckCode(result.Code, result.Msg, url, "查询成本价格失败"); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }

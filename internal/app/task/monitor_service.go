@@ -138,23 +138,7 @@ func (s *MonitorService) checkProcessingTasks() {
 
 // getLongRunningTasks 获取长时间运行的任务
 func (s *MonitorService) getLongRunningTasks(threshold time.Duration) []QueueTaskInfo {
-	s.fetcher.tasksMutex.RLock()
-	defer s.fetcher.tasksMutex.RUnlock()
-
-	now := time.Now()
-	longRunningTasks := make([]QueueTaskInfo, 0)
-
-	for taskID, submitTime := range s.fetcher.processingTasks {
-		duration := now.Sub(submitTime)
-		if duration > threshold {
-			longRunningTasks = append(longRunningTasks, QueueTaskInfo{
-				ID:       taskID,
-				Duration: duration,
-			})
-		}
-	}
-
-	return longRunningTasks
+	return s.fetcher.GetLongRunningTasks(threshold)
 }
 
 // GenerateReport 生成监控报告

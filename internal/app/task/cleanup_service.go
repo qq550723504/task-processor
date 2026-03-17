@@ -201,24 +201,7 @@ func (s *CleanupService) ForceCleanupAll(threshold time.Duration) int {
 
 // GetLongRunningTasks 获取长时间运行的任务
 func (s *CleanupService) GetLongRunningTasks(threshold time.Duration) []QueueTaskInfo {
-	s.fetcher.tasksMutex.RLock()
-	defer s.fetcher.tasksMutex.RUnlock()
-
-	now := time.Now()
-	longRunningTasks := make([]QueueTaskInfo, 0)
-
-	for taskID, submitTime := range s.fetcher.processingTasks {
-		duration := now.Sub(submitTime)
-
-		if duration > threshold {
-			longRunningTasks = append(longRunningTasks, QueueTaskInfo{
-				ID:       taskID,
-				Duration: duration,
-			})
-		}
-	}
-
-	return longRunningTasks
+	return s.fetcher.GetLongRunningTasks(threshold)
 }
 
 // 清理策略实现

@@ -237,6 +237,23 @@ func (b *BaseAPIClient) ProcessError(err error) error {
 	return err
 }
 
+// CheckCode 检查 API 响应码，统一处理认证过期和业务错误
+// 当 code == "0" 时返回 nil，code == "20302" 时返回 AuthenticationExpiredError，其他返回 APIError
+func (b *BaseAPIClient) CheckCode(code, msg, url, failMsg string) error {
+	if code == "0" {
+		return nil
+	}
+	if code == "20302" {
+		return &api.AuthenticationExpiredError{
+			TenantID: b.tenantID,
+			ShopID:   b.shopID,
+			Code:     code,
+			Message:  fmt.Sprintf("认证已过期: %s", msg),
+		}
+	}
+	return &api.APIError{StatusCode: 0, Message: fmt.Sprintf("%s: %s", failMsg, msg), URL: url}
+}
+
 // GetTenantID 获取租户ID
 func (b *BaseAPIClient) GetTenantID() int64 {
 	return b.tenantID

@@ -170,3 +170,18 @@ func (f *TaskFetcher) RemoveProcessingTask(taskID string) {
 func (f *TaskFetcher) OnTaskCompleted(taskID int64) {
 	f.RemoveProcessingTask(fmt.Sprintf("%d", taskID))
 }
+
+// GetLongRunningTasks 获取超过指定阈值的长时间运行任务
+func (f *TaskFetcher) GetLongRunningTasks(threshold time.Duration) []QueueTaskInfo {
+	f.tasksMutex.RLock()
+	defer f.tasksMutex.RUnlock()
+
+	now := time.Now()
+	result := make([]QueueTaskInfo, 0)
+	for taskID, submitTime := range f.processingTasks {
+		if now.Sub(submitTime) > threshold {
+			result = append(result, QueueTaskInfo{ID: taskID, Duration: now.Sub(submitTime)})
+		}
+	}
+	return result
+}

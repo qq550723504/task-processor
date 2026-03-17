@@ -4,7 +4,6 @@ package product
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/shein/api"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/client"
 )
@@ -26,95 +25,37 @@ func NewInventoryManager(baseClient *client.BaseAPIClient, errorHandler *client.
 // QueryStock 查询产品库存
 func (m *InventoryManager) QueryStock(request *product.StockQueryRequest) (*product.StockQueryResponse, error) {
 	url := fmt.Sprintf("%s%s", m.baseClient.GetBaseURL(), client.GetQueryStockEndpoint())
-
 	var result product.StockQueryResponse
 	if err := m.baseClient.APIRequest(http.MethodPost, url, request, &result); err != nil {
 		return nil, err
 	}
-
-	// 统一错误处理
-	if result.Code != "0" {
-		// 检查认证过期
-		if result.Code == "20302" {
-			return nil, &api.AuthenticationExpiredError{
-				TenantID: m.baseClient.GetTenantID(),
-				ShopID:   m.baseClient.GetShopID(),
-				Code:     result.Code,
-				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
-			}
-		}
-		return nil, &api.APIError{
-			StatusCode: 0,
-			Message:    fmt.Sprintf("查询库存失败: %s", result.Msg),
-			URL:        url,
-		}
+	if err := m.baseClient.CheckCode(result.Code, result.Msg, url, "查询库存失败"); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 
 // QueryInventory 查询产品库存详情
 func (m *InventoryManager) QueryInventory(spuName string) (*product.InventoryQueryResponse, error) {
 	url := fmt.Sprintf("%s%s", m.baseClient.GetBaseURL(), client.GetQueryInventoryEndpoint())
-
-	request := &product.InventoryQueryRequest{
-		SpuName: spuName,
-	}
-
 	var result product.InventoryQueryResponse
-	if err := m.baseClient.APIRequest(http.MethodPost, url, request, &result); err != nil {
+	if err := m.baseClient.APIRequest(http.MethodPost, url, &product.InventoryQueryRequest{SpuName: spuName}, &result); err != nil {
 		return nil, err
 	}
-
-	// 统一错误处理
-	if result.Code != "0" {
-		// 检查认证过期
-		if result.Code == "20302" {
-			return nil, &api.AuthenticationExpiredError{
-				TenantID: m.baseClient.GetTenantID(),
-				ShopID:   m.baseClient.GetShopID(),
-				Code:     result.Code,
-				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
-			}
-		}
-		return nil, &api.APIError{
-			StatusCode: 0,
-			Message:    fmt.Sprintf("查询库存详情失败: %s", result.Msg),
-			URL:        url,
-		}
+	if err := m.baseClient.CheckCode(result.Code, result.Msg, url, "查询库存详情失败"); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 
 // UpdateInventory 更新产品库存
 func (m *InventoryManager) UpdateInventory(request *product.InventoryUpdateRequest) error {
 	url := fmt.Sprintf("%s%s", m.baseClient.GetBaseURL(), client.GetUpdateInventoryEndpoint())
-
 	var result product.InventoryUpdateResponse
 	if err := m.baseClient.APIRequest(http.MethodPost, url, request, &result); err != nil {
 		return err
 	}
-
-	// 统一错误处理
-	if result.Code != "0" {
-		// 检查认证过期
-		if result.Code == "20302" {
-			return &api.AuthenticationExpiredError{
-				TenantID: m.baseClient.GetTenantID(),
-				ShopID:   m.baseClient.GetShopID(),
-				Code:     result.Code,
-				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
-			}
-		}
-		return &api.APIError{
-			StatusCode: 0,
-			Message:    fmt.Sprintf("更新库存失败: %s", result.Msg),
-			URL:        url,
-		}
-	}
-
-	return nil
+	return m.baseClient.CheckCode(result.Code, result.Msg, url, "更新库存失败")
 }
 
 // BatchQueryStock 批量查询库存

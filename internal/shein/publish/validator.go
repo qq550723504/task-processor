@@ -36,17 +36,7 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext)
 
 	// 检查是否有严重问题
 	if len(report.CriticalIssues) > 0 {
-		// 验证失败时保存验证报告到JSON文件
-		if ctx.Task != nil {
-			taskID := fmt.Sprintf("%d", ctx.Task.ID)
-			filename := fmt.Sprintf("%s_%s_validation_failed_report.json", ctx.Task.ProductID, taskID)
-			if err := v.saveValidationReportToFile(filename, report); err != nil {
-				logrus.Errorf("保存验证失败报告失败: %v", err)
-			} else {
-				logrus.Infof("📊 验证失败报告已保存: %s", filename)
-			}
-		}
-
+		v.trySaveReport(ctx, report, "validation_failed_report", "保存验证失败报告失败")
 		return fmt.Errorf("发现%d个严重问题，无法继续发布", len(report.CriticalIssues))
 	}
 
@@ -58,17 +48,7 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext)
 	// 计算验证成功率
 	successRate := float64(report.PassedChecks) / float64(report.TotalChecks) * 100
 	if successRate < 75 {
-		// 验证成功率过低时也保存验证报告
-		if ctx.Task != nil {
-			taskID := fmt.Sprintf("%d", ctx.Task.ID)
-			filename := fmt.Sprintf("%s_%s_validation_low_success_report.json", ctx.Task.ProductID, taskID)
-			if err := v.saveValidationReportToFile(filename, report); err != nil {
-				logrus.Errorf("保存低成功率验证报告失败: %v", err)
-			} else {
-				logrus.Infof("📊 低成功率验证报告已保存: %s", filename)
-			}
-		}
-
+		v.trySaveReport(ctx, report, "validation_low_success_report", "保存低成功率验证报告失败")
 		return fmt.Errorf("验证成功率过低(%.1f%%)，建议检查产品数据", successRate)
 	}
 
@@ -309,6 +289,20 @@ func (v *PublishProductValidator) validateMultiPieceSKUImagesWithReport(ctx *she
 	}
 
 	return nil
+}
+
+// trySaveReport 尝试保存验证报告，失败时只记录日志
+func (v *PublishProductValidator) trySaveReport(ctx *shein.TaskContext, report *ValidationReport, suffix, errMsg string) {
+	if ctx.Task == nil {
+		return
+	}
+	taskID := fmt.Sprintf("%d", ctx.Task.ID)
+	filename := fmt.Sprintf("%s_%s_%s.json", ctx.Task.ProductID, taskID, suffix)
+	if err := v.saveValidationReportToFile(filename, report); err != nil {
+		logrus.Errorf("%s: %v", errMsg, err)
+	} else {
+		logrus.Infof("📊 验证报告已保存: %s", filename)
+	}
 }
 
 // saveValidationReportToFile 保存验证报告到JSON文件

@@ -134,7 +134,6 @@ func (m *productManager) confirmPublish(product *Product) (bool, string, error) 
 
 func (m *productManager) record(request *ProductRecordRequest) (*RecordResponse, error) {
 	url := fmt.Sprintf("%s%s?page_num=%d&page_size=%d", m.baseClient.GetBaseURL(), client.GetProductRecordEndpoint(), 1, 100)
-
 	reqBody := ProductRecordRequest{
 		Language:                  "en",
 		OnlyCurrentMonthRecommend: false,
@@ -144,38 +143,24 @@ func (m *productManager) record(request *ProductRecordRequest) (*RecordResponse,
 		SupplierCodeList:          request.SupplierCodeList,
 		SupplierCodeSearchType:    request.SupplierCodeSearchType,
 	}
-
 	var result RecordResponse
 	if err := m.baseClient.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
 		return nil, err
 	}
-
-	if result.Code != "0" {
-		return nil, &api.APIError{StatusCode: 0, Message: fmt.Sprintf("获取产品发布记录失败: %s", result.Msg), URL: url}
+	if err := m.baseClient.CheckCode(result.Code, result.Msg, url, "获取产品发布记录失败"); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 
 func (m *productManager) listProducts(pageNum, pageSize int, request *ProductListRequest) (*ProductListResponse, error) {
 	url := fmt.Sprintf("%s%s?page_num=%d&page_size=%d", m.baseClient.GetBaseURL(), client.GetProductListEndpoint(), pageNum, pageSize)
-
 	var result ProductListResponse
 	if err := m.baseClient.APIRequest(http.MethodPost, url, request, &result); err != nil {
 		return nil, err
 	}
-
-	if result.Code != "0" {
-		if result.Code == "20302" {
-			return nil, &api.AuthenticationExpiredError{
-				TenantID: m.baseClient.GetTenantID(),
-				ShopID:   m.baseClient.GetShopID(),
-				Code:     result.Code,
-				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
-			}
-		}
-		return nil, &api.APIError{StatusCode: 0, Message: fmt.Sprintf("获取产品列表失败: %s", result.Msg), URL: url}
+	if err := m.baseClient.CheckCode(result.Code, result.Msg, url, "获取产品列表失败"); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }

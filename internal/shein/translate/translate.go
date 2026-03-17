@@ -4,8 +4,8 @@ package translate
 import (
 	"fmt"
 	"strings"
-	"task-processor/internal/model"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/timeout"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
@@ -107,30 +107,26 @@ func (h *TranslateHandler) Handle(ctx *shein.TaskContext) error {
 
 // ensureValidTitle 确保标题有效
 func (h *TranslateHandler) ensureValidTitle(optimizedTitle, cleanedTitle string, amazonProduct *model.Product) string {
-	if strings.TrimSpace(optimizedTitle) == "" {
-		if strings.TrimSpace(cleanedTitle) != "" {
-			return cleanedTitle
-		} else if amazonProduct != nil && strings.TrimSpace(amazonProduct.Title) != "" {
-			return amazonProduct.Title
-		} else {
-			return "Quality Product"
-		}
-	}
-	return optimizedTitle
+	return h.ensureValidText(optimizedTitle, cleanedTitle, amazonProduct, func(p *model.Product) string { return p.Title }, "Quality Product")
 }
 
 // ensureValidDescription 确保描述有效
 func (h *TranslateHandler) ensureValidDescription(optimizedDescription, cleanedDescription string, amazonProduct *model.Product) string {
-	if strings.TrimSpace(optimizedDescription) == "" {
-		if strings.TrimSpace(cleanedDescription) != "" {
-			return cleanedDescription
-		} else if amazonProduct != nil && strings.TrimSpace(amazonProduct.Description) != "" {
-			return amazonProduct.Description
-		} else {
-			return "High quality product with excellent features and design."
-		}
+	return h.ensureValidText(optimizedDescription, cleanedDescription, amazonProduct, func(p *model.Product) string { return p.Description }, "High quality product with excellent features and design.")
+}
+
+// ensureValidText 通用：优先用 optimized，否则 cleaned，否则从 product 取，否则用 fallback
+func (h *TranslateHandler) ensureValidText(optimized, cleaned string, amazonProduct *model.Product, getter func(*model.Product) string, fallback string) string {
+	if strings.TrimSpace(optimized) != "" {
+		return optimized
 	}
-	return optimizedDescription
+	if strings.TrimSpace(cleaned) != "" {
+		return cleaned
+	}
+	if amazonProduct != nil && strings.TrimSpace(getter(amazonProduct)) != "" {
+		return getter(amazonProduct)
+	}
+	return fallback
 }
 
 // translateProductName 翻译产品名称
@@ -262,4 +258,3 @@ func (h *TranslateHandler) addLanguageContentIfNotExists(languageList *[]product
 		})
 	}
 }
-

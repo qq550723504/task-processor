@@ -4,7 +4,6 @@ package pricing
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/shein/api"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/client"
 )
@@ -26,69 +25,26 @@ func NewPriceManager(baseClient *client.BaseAPIClient, errorHandler *client.APIE
 // QueryPrice 查询产品价格
 func (m *PriceManager) QueryPrice(spuName string) (*product.PriceQueryResponse, error) {
 	url := fmt.Sprintf("%s%s", m.baseClient.GetBaseURL(), client.GetQueryPriceEndpoint())
-
-	request := &product.PriceQueryRequest{
-		SpuName: spuName,
-	}
-
 	var result product.PriceQueryResponse
-	if err := m.baseClient.APIRequest(http.MethodPost, url, request, &result); err != nil {
+	if err := m.baseClient.APIRequest(http.MethodPost, url, &product.PriceQueryRequest{SpuName: spuName}, &result); err != nil {
 		return nil, err
 	}
-
-	// 统一错误处理
-	if result.Code != "0" {
-		// 检查认证过期
-		if result.Code == "20302" {
-			return nil, &api.AuthenticationExpiredError{
-				TenantID: m.baseClient.GetTenantID(),
-				ShopID:   m.baseClient.GetShopID(),
-				Code:     result.Code,
-				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
-			}
-		}
-		return nil, &api.APIError{
-			StatusCode: 0,
-			Message:    fmt.Sprintf("查询价格失败: %s", result.Msg),
-			URL:        url,
-		}
+	if err := m.baseClient.CheckCode(result.Code, result.Msg, url, "查询价格失败"); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 
 // QueryCostPrice 查询成本价格（半托店铺）
 func (m *PriceManager) QueryCostPrice(spuName string, skcNameList []string) (*product.CostPriceQueryResponse, error) {
 	url := fmt.Sprintf("%s%s", m.baseClient.GetBaseURL(), client.GetQueryCostPriceEndpoint())
-
-	request := &product.CostPriceQueryRequest{
-		SpuName:     spuName,
-		SkcNameList: skcNameList,
-	}
-
 	var result product.CostPriceQueryResponse
-	if err := m.baseClient.APIRequest(http.MethodPost, url, request, &result); err != nil {
+	if err := m.baseClient.APIRequest(http.MethodPost, url, &product.CostPriceQueryRequest{SpuName: spuName, SkcNameList: skcNameList}, &result); err != nil {
 		return nil, err
 	}
-
-	// 统一错误处理
-	if result.Code != "0" {
-		// 检查认证过期
-		if result.Code == "20302" {
-			return nil, &api.AuthenticationExpiredError{
-				TenantID: m.baseClient.GetTenantID(),
-				ShopID:   m.baseClient.GetShopID(),
-				Code:     result.Code,
-				Message:  fmt.Sprintf("认证已过期: %s", result.Msg),
-			}
-		}
-		return nil, &api.APIError{
-			StatusCode: 0,
-			Message:    fmt.Sprintf("查询成本价格失败: %s", result.Msg),
-			URL:        url,
-		}
+	if err := m.baseClient.CheckCode(result.Code, result.Msg, url, "查询成本价格失败"); err != nil {
+		return nil, err
 	}
-
 	return &result, nil
 }
 
