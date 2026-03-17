@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	"task-processor/internal/amazon/api"
-	"task-processor/internal/amazon/handler"
 	"task-processor/internal/amazon/listing"
 	amazonModel "task-processor/internal/amazon/model"
+	"task-processor/internal/amazon/pipeline"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
@@ -143,8 +143,8 @@ func (p *Processor) ProcessTaskWithPipeline(ctx context.Context, taskData map[st
 	logger := p.GetLogger()
 	logger.Info("🔧 开始管道流程详细处理")
 
-	// 创建Handler管理器
-	manager := handler.NewHandlerManager(p.services)
+	// 创建流水线管理器
+	manager := pipeline.NewHandlerManager(p.services)
 
 	// 创建任务上下文
 	taskContext := p.createTaskContext(taskData)

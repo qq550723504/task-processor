@@ -1,5 +1,5 @@
-﻿// Package handler 提供Amazon平台处理器接口定义
-package handler
+﻿// package pipeline 提供Amazon平台处理器接口定义
+package pipeline
 
 import (
 	"context"

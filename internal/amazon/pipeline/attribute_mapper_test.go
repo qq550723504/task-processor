@@ -1,5 +1,5 @@
-﻿// Package handler 提供属性映射处理器测试
-package handler
+﻿// package pipeline 提供属性映射处理器测试
+package pipeline
 
 import (
 	"context"

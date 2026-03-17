@@ -1,5 +1,5 @@
-﻿// Package handler 提供Amazon数据解析处理器
-package handler
+﻿// package pipeline 提供Amazon数据解析处理器
+package pipeline
 
 import (
 	"context"

@@ -1,5 +1,5 @@
-﻿// Package handler 提供Amazon属性映射处理器
-package handler
+﻿// package pipeline 提供Amazon属性映射处理器
+package pipeline
 
 import (
 	"context"

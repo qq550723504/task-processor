@@ -1,5 +1,5 @@
-﻿// Package handler 提供Amazon变体产品处理器
-package handler
+﻿// package pipeline 提供Amazon变体产品处理器
+package pipeline
 
 import (
 	"context"

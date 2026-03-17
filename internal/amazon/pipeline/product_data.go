@@ -1,5 +1,5 @@
-﻿// Package handler 提供产品数据处理器实现
-package handler
+﻿// package pipeline 提供产品数据处理器实现
+package pipeline
 
 import (
 	"context"

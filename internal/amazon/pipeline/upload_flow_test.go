@@ -1,5 +1,5 @@
-﻿// Package handler 提供Amazon上架流程测试
-package handler
+﻿// package pipeline 提供Amazon上架流程测试
+package pipeline
 
 import (
 	"context"

@@ -1,5 +1,5 @@
-﻿// Package handler 提供Amazon处理器管理功能测试
-package handler
+﻿// package pipeline 提供Amazon处理器管理功能测试
+package pipeline
 
 import (
 	"context"

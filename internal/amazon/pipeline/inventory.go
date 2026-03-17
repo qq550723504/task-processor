@@ -1,5 +1,5 @@
-﻿// Package handler 提供Amazon库存处理器
-package handler
+﻿// package pipeline 提供Amazon库存处理器
+package pipeline
 
 import (
 	"context"
