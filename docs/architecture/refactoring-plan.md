@@ -517,4 +517,4 @@ type SheinTaskFactory = scheduler.SheinTaskFactory
 | P1 | `amazon/handler/` → `amazon/pipeline/` | 中 | 低 | ✅ commit d88c575 |
 | P2 | `shein/` 根目录进一步清理（region/time_helper/string_sanitizer/json_map） | 中 | 低 | ✅ commit 17344e6 |
 | P3 | `temu/` 根目录散落文件 | 低 | 低 | ✅ 评估后无需处理，文件职责清晰 |
-| P4 | `app/di/` 字符串 key → 直接依赖注入 | 中 | 高 | ⏳ 待执行（改动面大，单独 Sprint） |
+| P4 | `app/di/` 字符串 key → 直接依赖注入 | 中 | 高 | ✅ commit 4323776 |
