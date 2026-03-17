@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
+	platformAmazon "task-processor/internal/amazon"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
-	platformAmazon "task-processor/internal/amazon"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -20,12 +20,12 @@ import (
 
 // PlatformRegistry 多平台处理器注册器
 type PlatformRegistry struct {
-	config                *config.Config
-	logger                *logrus.Logger
-	managementClient      *management.ClientManager
+	config *config.Config
+	logger *logrus.Logger
+	managementClient *management.ClientManager
 	sharedAmazonProcessor *amazon.AmazonProcessor
-	rabbitmqClient        *rabbitmq.Client
-	enabledPlatforms      []string
+	rabbitmqClient *rabbitmq.Client
+	enabledPlatforms []string
 }
 
 // NewPlatformRegistry 创建平台注册器
@@ -42,25 +42,25 @@ func NewPlatformRegistry(
 		enabledPlatforms = getEnabledPlatformsFromConfig(cfg)
 	}
 
-	logger.Infof("🔧 启用的平台: %v", enabledPlatforms)
+	logger.Infof(" 启用的平台: %v", enabledPlatforms)
 
 	return &PlatformRegistry{
-		config:           cfg,
-		logger:           logger,
+		config: cfg,
+		logger: logger,
 		enabledPlatforms: enabledPlatforms,
 	}
 }
 
 // RegisterAllProcessors 注册所有启用的平台处理器
 func (r *PlatformRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager) error {
-	r.logger.Info("📦 开始注册平台处理器...")
+	r.logger.Info(" 开始注册平台处理器...")
 
 	// 获取RabbitMQ客户端（用于分布式爬虫）
 	r.rabbitmqClient = serviceManager.GetClient()
 	if r.rabbitmqClient != nil {
-		r.logger.Info("✅ 获取到RabbitMQ客户端，将启用分布式爬虫")
+		r.logger.Info(" 获取到RabbitMQ客户端，将启用分布式爬虫")
 	} else {
-		r.logger.Warn("⚠️ 未获取到RabbitMQ客户端，将使用本地爬虫")
+		r.logger.Warn(" 未获取到RabbitMQ客户端，将使用本地爬虫")
 	}
 
 	// 初始化共享资源
@@ -81,18 +81,25 @@ func (r *PlatformRegistry) RegisterAllProcessors(ctx context.Context, serviceMan
 		return err
 	}
 
-	r.logger.Info("✅ 所有平台处理器注册完成")
+	r.logger.Info(" 所有平台处理器注册完成")
 	return nil
 }
 
-// initializeSharedResources 初始化共享资源
+// initializeSharedResources 初始化管理客户端和共享的 Amazon 处理器。
 func (r *PlatformRegistry) initializeSharedResources() error {
-	r.logger.Info("🔧 初始化共享资源...")
-
-	// 创建管理客户端（所有平台共享）
 	r.managementClient = management.NewClientManager(&r.config.Management)
+	if err := r.applyAccessToken(); err != nil {
+		return err
+	}
+	if r.needsAmazonProcessor() {
+		r.sharedAmazonProcessor = amazon.CreateProcessor(r.config, r.logger)
+	}
+	r.logger.Info("共享资源初始化完成")
+	return nil
+}
 
-	// 创建认证客户端并获取访问令牌
+// applyAccessToken 获取访问令牌并注入到管理客户端。
+func (r *PlatformRegistry) applyAccessToken() error {
 	authClient := auth.NewClientCredentialsAuthClient(
 		r.config.Management.BaseURL,
 		r.config.Management.ClientID,
@@ -100,24 +107,11 @@ func (r *PlatformRegistry) initializeSharedResources() error {
 		r.config.Management.TenantID,
 		r.logger,
 	)
-
-	// 获取访问令牌
-	accessToken, err := authClient.GetAccessToken()
+	token, err := authClient.GetAccessToken()
 	if err != nil {
 		return fmt.Errorf("获取访问令牌失败: %w", err)
 	}
-
-	// 设置访问令牌到管理客户端
-	client := r.managementClient.GetClient()
-	client.SetUserToken(accessToken, r.config.Management.TenantID)
-	r.logger.Info("✅ 访问令牌设置成功")
-
-	// 创建共享的Amazon处理器（TEMU和SHEIN需要）
-	if r.needsAmazonProcessor() {
-		r.sharedAmazonProcessor = amazon.CreateProcessor(r.config, r.logger)
-	}
-
-	r.logger.Info("✅ 共享资源初始化完成")
+	r.managementClient.GetClient().SetUserToken(token, r.config.Management.TenantID)
 	return nil
 }
 
@@ -134,7 +128,7 @@ func (r *PlatformRegistry) registerAmazonPlatform(ctx context.Context, serviceMa
 		return nil
 	}
 
-	r.logger.Info("📦 注册Amazon平台处理器...")
+	r.logger.Info(" 注册Amazon平台处理器...")
 
 	// 使用完整的Amazon平台处理器（用于上架）
 	amazonProcessor := platformAmazon.NewProcessor(ctx, r.config, r.logger)
@@ -143,7 +137,7 @@ func (r *PlatformRegistry) registerAmazonPlatform(ctx context.Context, serviceMa
 		return fmt.Errorf("注册Amazon平台处理器失败: %w", err)
 	}
 
-	r.logger.Info("✅ Amazon平台处理器注册成功")
+	r.logger.Info(" Amazon平台处理器注册成功")
 	return nil
 }
 
@@ -154,7 +148,7 @@ func (r *PlatformRegistry) registerTemuPlatform(ctx context.Context, serviceMana
 		return nil
 	}
 
-	r.logger.Info("📦 注册TEMU处理器...")
+	r.logger.Info(" 注册TEMU处理器...")
 
 	temuProcessor, err := temu.NewTemuProcessor(
 		ctx,
@@ -172,7 +166,7 @@ func (r *PlatformRegistry) registerTemuPlatform(ctx context.Context, serviceMana
 		return fmt.Errorf("注册TEMU处理器失败: %w", err)
 	}
 
-	r.logger.Info("✅ TEMU处理器注册成功")
+	r.logger.Info(" TEMU处理器注册成功")
 	return nil
 }
 
@@ -183,7 +177,7 @@ func (r *PlatformRegistry) registerSheinPlatform(ctx context.Context, serviceMan
 		return nil
 	}
 
-	r.logger.Info("📦 注册SHEIN处理器...")
+	r.logger.Info(" 注册SHEIN处理器...")
 
 	sheinProcessor, err := pipeline.NewSheinProcessor(
 		ctx,
@@ -201,86 +195,43 @@ func (r *PlatformRegistry) registerSheinPlatform(ctx context.Context, serviceMan
 		return fmt.Errorf("注册SHEIN处理器失败: %w", err)
 	}
 
-	r.logger.Info("✅ SHEIN处理器注册成功")
+	r.logger.Info(" SHEIN处理器注册成功")
 	return nil
 }
 
-// RegisterTemuProcessor 只注册 TEMU 平台处理器
+// RegisterTemuProcessor 只注册 TEMU 平台处理器。
 func (r *PlatformRegistry) RegisterTemuProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	r.logger.Info("📦 注册 TEMU 平台处理器...")
-
-	// 获取RabbitMQ客户端
 	r.rabbitmqClient = serviceManager.GetClient()
-
-	// 初始化共享资源
 	if err := r.initializeSharedResources(); err != nil {
 		return fmt.Errorf("初始化共享资源失败: %w", err)
 	}
-
-	// 注册 TEMU 平台
 	return r.registerTemuPlatform(ctx, serviceManager)
 }
 
-// RegisterSheinProcessor 只注册 SHEIN 平台处理器
+// RegisterSheinProcessor 只注册 SHEIN 平台处理器。
 func (r *PlatformRegistry) RegisterSheinProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	r.logger.Info("📦 注册 SHEIN 平台处理器...")
-
-	// 获取RabbitMQ客户端
 	r.rabbitmqClient = serviceManager.GetClient()
-
-	// 初始化共享资源
 	if err := r.initializeSharedResources(); err != nil {
 		return fmt.Errorf("初始化共享资源失败: %w", err)
 	}
-
-	// 注册 SHEIN 平台
 	return r.registerSheinPlatform(ctx, serviceManager)
 }
 
-// RegisterAmazonProcessor 只注册 Amazon 平台处理器
+// RegisterAmazonProcessor 只注册 Amazon 平台处理器。
 func (r *PlatformRegistry) RegisterAmazonProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	r.logger.Info("📦 注册 Amazon 平台处理器...")
-
-	// 获取RabbitMQ客户端
 	r.rabbitmqClient = serviceManager.GetClient()
-
-	// 初始化共享资源（Amazon 不需要共享的 Amazon 处理器）
+	// Amazon 不需要共享的 Amazon 处理器，只初始化管理客户端
 	if err := r.initializeManagementClient(); err != nil {
 		return fmt.Errorf("初始化管理客户端失败: %w", err)
 	}
-
-	// 注册 Amazon 平台
 	return r.registerAmazonPlatform(ctx, serviceManager)
 }
 
-// initializeManagementClient 只初始化管理客户端（不创建 Amazon 处理器）
+// initializeManagementClient 初始化管理客户端并设置访问令牌。
+// 与 initializeSharedResources 的区别：不创建共享的 Amazon 处理器。
 func (r *PlatformRegistry) initializeManagementClient() error {
-	r.logger.Info("🔧 初始化管理客户端...")
-
-	// 创建管理客户端
 	r.managementClient = management.NewClientManager(&r.config.Management)
-
-	// 创建认证客户端并获取访问令牌
-	authClient := auth.NewClientCredentialsAuthClient(
-		r.config.Management.BaseURL,
-		r.config.Management.ClientID,
-		r.config.Management.ClientSecret,
-		r.config.Management.TenantID,
-		r.logger,
-	)
-
-	// 获取访问令牌
-	accessToken, err := authClient.GetAccessToken()
-	if err != nil {
-		return fmt.Errorf("获取访问令牌失败: %w", err)
-	}
-
-	// 设置访问令牌到管理客户端
-	client := r.managementClient.GetClient()
-	client.SetUserToken(accessToken, r.config.Management.TenantID)
-	r.logger.Info("✅ 访问令牌设置成功")
-
-	return nil
+	return r.applyAccessToken()
 }
 
 // parsePlatformList 解析平台列表

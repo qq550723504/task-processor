@@ -1,4 +1,4 @@
-// Package messaging 提供爬虫处理器注册功能
+﻿// Package messaging 提供爬虫处理器注册功能
 package messaging
 
 import (
@@ -17,8 +17,8 @@ import (
 
 // CrawlerRegistry 爬虫处理器注册器
 type CrawlerRegistry struct {
-	config         *config.Config
-	logger         *logrus.Logger
+	config *config.Config
+	logger *logrus.Logger
 	rabbitmqClient *rabbitmq.Client
 }
 
@@ -29,23 +29,23 @@ func NewCrawlerRegistry(
 	rabbitmqClient *rabbitmq.Client,
 ) *CrawlerRegistry {
 	return &CrawlerRegistry{
-		config:         cfg,
-		logger:         logger,
+		config: cfg,
+		logger: logger,
 		rabbitmqClient: rabbitmqClient,
 	}
 }
 
 // RegisterCrawlerProcessorWithAmazon 注册爬虫处理器到服务管理器（可选共享Amazon处理器）
 func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManager, sharedAmazonProcessor *amazon.AmazonProcessor) error {
-	r.logger.Info("📦 注册Amazon爬虫处理器...")
+	r.logger.Info(" 注册Amazon爬虫处理器...")
 
 	// 使用共享的Amazon处理器，如果没有则创建新的
 	var amazonProcessor *amazon.AmazonProcessor
 	if sharedAmazonProcessor != nil {
-		r.logger.Info("✅ 复用共享的Amazon处理器（避免重复初始化浏览器池）")
+		r.logger.Info(" 复用共享的Amazon处理器（避免重复初始化浏览器池）")
 		amazonProcessor = sharedAmazonProcessor
 	} else {
-		r.logger.Info("🔧 创建新的Amazon处理器")
+		r.logger.Info(" 创建新的Amazon处理器")
 		amazonProcessor = amazon.CreateProcessor(r.config, r.logger)
 	}
 
@@ -75,13 +75,13 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManage
 		return fmt.Errorf("注册Amazon爬虫处理器失败: %w", err)
 	}
 
-	r.logger.Info("✅ Amazon爬虫处理器注册成功")
+	r.logger.Info(" Amazon爬虫处理器注册成功")
 	return nil
 }
 
 // RegisterAmazonCrawler 只注册 Amazon 爬虫处理器
 func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) error {
-	r.logger.Info("📦 注册 Amazon 爬虫处理器...")
+	r.logger.Info(" 注册 Amazon 爬虫处理器...")
 
 	// 创建新的 Amazon 处理器
 	amazonProcessor := amazon.CreateProcessor(r.config, r.logger)
@@ -112,18 +112,18 @@ func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) 
 		return fmt.Errorf("注册 Amazon 爬虫处理器失败: %w", err)
 	}
 
-	r.logger.Info("✅ Amazon 爬虫处理器注册成功")
+	r.logger.Info(" Amazon 爬虫处理器注册成功")
 	return nil
 }
 
 // Register1688Crawler 只注册 1688 爬虫处理器
 func (r *CrawlerRegistry) Register1688Crawler(serviceManager *ServiceManager) error {
-	r.logger.Info("📦 注册 1688 爬虫处理器...")
+	r.logger.Info(" 注册 1688 爬虫处理器...")
 
 	// TODO: 实现 1688 爬虫处理器注册
 	// 目前 1688 爬虫还没有独立的处理器实现
 
-	r.logger.Warn("⚠️ 1688 爬虫处理器尚未实现")
+	r.logger.Warn(" 1688 爬虫处理器尚未实现")
 	return fmt.Errorf("1688 爬虫处理器尚未实现")
 }
 
@@ -152,7 +152,7 @@ func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonPro
 
 	// 设置访问令牌
 	managementClient.SetUserToken(token, r.config.Management.TenantID)
-	r.logger.Info("✅ 访问令牌设置成功")
+	r.logger.Info(" 访问令牌设置成功")
 
 	// 设置数据新鲜度
 	managementClient.SetDataFreshnessDays(r.config.Amazon.DataFreshnessDays)

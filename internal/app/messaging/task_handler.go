@@ -5,10 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"task-processor/internal/domain/message"
@@ -356,109 +354,6 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 	}
 
 	return true
-}
-
-// TaskProcessorRegistry 增强的任务处理器注册表
-type TaskProcessorRegistry struct {
-	processors     map[string]worker.Processor
-	handlers       map[string]rabbitmq.MessageHandler
-	resultReporter *ResultReporter
-	storeAPI       api.StoreAPI
-	ownedStores    []int64
-	deduplicator   *domaintask.Deduplicator
-	logger         *logrus.Logger
-	mutex          sync.RWMutex
-}
-
-// NewTaskProcessorRegistry 创建增强的任务处理器注册表
-func NewTaskProcessorRegistry(
-	resultReporter *ResultReporter,
-	storeAPI api.StoreAPI,
-	ownedStores []int64,
-	deduplicator *domaintask.Deduplicator,
-	logger *logrus.Logger,
-) *TaskProcessorRegistry {
-	return &TaskProcessorRegistry{
-		processors:     make(map[string]worker.Processor),
-		handlers:       make(map[string]rabbitmq.MessageHandler),
-		resultReporter: resultReporter,
-		storeAPI:       storeAPI,
-		ownedStores:    ownedStores,
-		deduplicator:   deduplicator,
-		logger:         logger,
-	}
-}
-
-// RegisterProcessor 注册处理器
-func (etpr *TaskProcessorRegistry) RegisterProcessor(platform string, processor worker.Processor) {
-	etpr.mutex.Lock()
-	defer etpr.mutex.Unlock()
-
-	etpr.processors[platform] = processor
-
-	// 创建增强的消息处理器（支持结果上报、去重和店铺亲和性）
-	handler := NewTaskHandler(TaskHandlerConfig{
-		Platform:       platform,
-		Processor:      processor,
-		ResultReporter: etpr.resultReporter,
-		StoreAPI:       etpr.storeAPI,
-		OwnedStores:    etpr.ownedStores,
-		Deduplicator:   etpr.deduplicator,
-		Logger:         etpr.logger,
-	})
-	etpr.handlers[platform] = handler
-
-	etpr.logger.Infof("注册增强处理器: 平台=%s", platform)
-}
-
-// GetHandler 获取消息处理器
-func (etpr *TaskProcessorRegistry) GetHandler(platform string) (rabbitmq.MessageHandler, bool) {
-	etpr.mutex.RLock()
-	defer etpr.mutex.RUnlock()
-
-	handler, exists := etpr.handlers[platform]
-	return handler, exists
-}
-
-// GetAllHandlers 获取所有消息处理器
-func (etpr *TaskProcessorRegistry) GetAllHandlers() map[string]rabbitmq.MessageHandler {
-	etpr.mutex.RLock()
-	defer etpr.mutex.RUnlock()
-
-	handlers := make(map[string]rabbitmq.MessageHandler)
-	maps.Copy(handlers, etpr.handlers)
-
-	return handlers
-}
-
-// GetQueueName 根据平台获取队列名称
-func (etpr *TaskProcessorRegistry) GetQueueName(platform string) string {
-	adapter := domaintask.NewMessageAdapter()
-	return adapter.GetQueueName(platform)
-}
-
-// GetStats 获取统计信息
-func (etpr *TaskProcessorRegistry) GetStats() map[string]any {
-	etpr.mutex.RLock()
-	defer etpr.mutex.RUnlock()
-
-	stats := make(map[string]any)
-	stats["total_processors"] = len(etpr.processors)
-
-	platformStats := make(map[string]any)
-	for platform := range etpr.processors {
-		platformStats[platform] = map[string]any{
-			"status": "registered",
-		}
-	}
-	stats["platforms"] = platformStats
-
-	// 添加结果上报器统计
-	if etpr.resultReporter != nil {
-		stats["result_reporter"] = etpr.resultReporter.GetStats()
-	}
-
-	return stats
 }
 
 // isOwnedStore 判断是否是该节点拥有的店铺

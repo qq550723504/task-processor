@@ -7,111 +7,83 @@ import (
 	"sync"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )
 
-// ServiceManager 服务管理器
+// ServiceManager 编排 messaging 包内所有子服务的生命周期。
+// 它不持有子服务的具体类型，而是通过 lifecycle.LifecycleManager 统一管理。
 type ServiceManager struct {
-	config           *config.RabbitMQConfig
-	configPath       string // 配置文件路径（用于统计信息）
-	rabbitmqService  *RabbitMQService
-	resultReporter   *ResultReporter
-	loadMonitor      *rabbitmq.LoadMonitor
-	httpServerManger *HTTPServerManager
-	shutdownCoord    *ShutdownCoordinator
-	logger           *logrus.Logger
+	config          *config.RabbitMQConfig
+	logger          *logrus.Logger
+	lifecycleMgr    lifecycle.LifecycleManager
+	shutdownCoord   *ShutdownCoordinator
+	rabbitmqService *RabbitMQService // 保留引用，用于 RegisterProcessor / GetClient
 
-	// 生命周期管理
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// 状态管理
 	started bool
-	mutex   sync.RWMutex
+	mu      sync.RWMutex
 }
 
-// NewServiceManager 创建服务管理器
+// NewServiceManager 创建服务管理器。
 func NewServiceManager(rabbitmqConfig *config.RabbitMQConfig, logger *logrus.Logger) (*ServiceManager, error) {
-	// 验证RabbitMQ配置
 	if rabbitmqConfig == nil {
 		return nil, fmt.Errorf("RabbitMQ配置为空")
 	}
 
 	logger.Info("初始化服务管理器...")
 
-	// 立即初始化RabbitMQ服务，以便注册处理器
 	rabbitmqService := NewRabbitMQService(rabbitmqConfig, logger)
 
 	return &ServiceManager{
 		config:          rabbitmqConfig,
-		configPath:      "", // 不再需要配置文件路径
-		rabbitmqService: rabbitmqService,
 		logger:          logger,
+		lifecycleMgr:    lifecycle.NewLifecycleManager(logger),
+		rabbitmqService: rabbitmqService,
 	}, nil
 }
 
-// RegisterProcessor 注册任务处理器
+// RegisterProcessor 注册任务处理器，必须在 Start 之前调用。
 func (sm *ServiceManager) RegisterProcessor(platform string, processor worker.Processor) error {
-	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 
 	if sm.started {
 		return fmt.Errorf("服务已启动，无法注册新的处理器")
 	}
-
-	if sm.rabbitmqService == nil {
-		return fmt.Errorf("RabbitMQ服务未初始化")
-	}
-
 	return sm.rabbitmqService.RegisterProcessor(platform, processor)
 }
 
-// Start 启动所有服务
+// Start 初始化并启动所有子服务。
 func (sm *ServiceManager) Start(ctx context.Context) error {
-	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 
 	if sm.started {
 		return fmt.Errorf("服务管理器已启动")
 	}
 
 	sm.logger.Info("启动服务管理器...")
-
 	sm.ctx, sm.cancel = context.WithCancel(ctx)
 
-	// 1. 初始化所有服务
-	sm.initializeServices()
+	if err := sm.registerComponents(); err != nil {
+		return fmt.Errorf("注册组件失败: %w", err)
+	}
 
-	// 2. 设置队列配置（如果配置文件中有定义）
 	if len(sm.config.Consumer.Queues) > 0 {
 		sm.rabbitmqService.SetQueueConfigs(sm.config.Consumer.Queues)
 	}
 
-	// 3. 启动结果上报器
-	if err := sm.resultReporter.Start(sm.ctx); err != nil {
-		return fmt.Errorf("启动结果上报器失败: %w", err)
+	if err := sm.lifecycleMgr.StartAll(sm.ctx); err != nil {
+		return fmt.Errorf("启动组件失败: %w", err)
 	}
 
-	// 4. 启动负载监控
-	if err := sm.loadMonitor.Start(sm.ctx); err != nil {
-		return fmt.Errorf("启动负载监控失败: %w", err)
-	}
-
-	// 5. 启动RabbitMQ服务
-	if err := sm.rabbitmqService.Start(sm.ctx); err != nil {
-		return fmt.Errorf("启动RabbitMQ服务失败: %w", err)
-	}
-
-	// 6. 启动HTTP服务器
-	if err := sm.httpServerManger.Start(sm.ctx); err != nil {
-		return fmt.Errorf("启动HTTP服务器失败: %w", err)
-	}
-
-	// 7. 启动信号监听
 	sm.wg.Add(1)
 	go sm.shutdownCoord.HandleSignals(sm.ctx, &sm.wg, sm.cancel)
 
@@ -120,49 +92,54 @@ func (sm *ServiceManager) Start(ctx context.Context) error {
 	return nil
 }
 
-// initializeServices 初始化所有服务
-func (sm *ServiceManager) initializeServices() {
-	// 创建结果上报器配置
-	reporterConfig := ReporterConfig{
-		ReportURL:   sm.config.ResultReporter.ReportURL,
-		NodeID:      sm.config.ResultReporter.NodeID,
-		Timeout:     sm.config.ResultReporter.Timeout,
-		BufferSize:  sm.config.ResultReporter.BufferSize,
-		RetryConfig: sm.config.ResultReporter.Retry,
+// registerComponents 构造各子服务并注册到 lifecycleMgr 和 shutdownCoord。
+func (sm *ServiceManager) registerComponents() error {
+	cfg := sm.config
+
+	// 结果上报器
+	reporterCfg := ReporterConfig{
+		ReportURL:   cfg.ResultReporter.ReportURL,
+		NodeID:      cfg.ResultReporter.NodeID,
+		Timeout:     cfg.ResultReporter.Timeout,
+		BufferSize:  cfg.ResultReporter.BufferSize,
+		RetryConfig: cfg.ResultReporter.Retry,
 	}
-	sm.resultReporter = NewResultReporter(reporterConfig, sm.logger)
+	reporter := NewResultReporter(reporterCfg, sm.logger)
 
-	// 创建负载监控器配置
-	monitorConfig := rabbitmq.MonitorConfig{
-		UpdateInterval: sm.config.LoadMonitor.UpdateInterval,
-		EnableCPU:      sm.config.LoadMonitor.EnableCPU,
-		EnableMemory:   sm.config.LoadMonitor.EnableMemory,
-		EnableTasks:    sm.config.LoadMonitor.EnableTasks,
+	// 负载监控
+	monitorCfg := rabbitmq.MonitorConfig{
+		UpdateInterval: cfg.LoadMonitor.UpdateInterval,
+		EnableCPU:      cfg.LoadMonitor.EnableCPU,
+		EnableMemory:   cfg.LoadMonitor.EnableMemory,
+		EnableTasks:    cfg.LoadMonitor.EnableTasks,
 	}
-	sm.loadMonitor = rabbitmq.NewLoadMonitor(monitorConfig, sm.logger)
+	loadMonitor := rabbitmq.NewLoadMonitor(monitorCfg, sm.logger)
 
-	// RabbitMQ服务已在构造函数中创建，这里不需要重复创建
+	// HTTP 服务器
+	httpServer := NewHTTPServerManager(cfg, loadMonitor, sm.rabbitmqService, sm.logger)
 
-	// 创建 HTTP 服务管理器
-	sm.httpServerManger = NewHTTPServerManager(sm.config, sm.loadMonitor, sm.rabbitmqService, sm.logger)
+	// 按启动顺序构建组件列表
+	components := []lifecycle.Component{
+		newReporterComponent(reporter),
+		newLoadMonitorComponent(loadMonitor, sm.logger),
+		newRabbitMQComponent(sm.rabbitmqService),
+		newHTTPServerComponent(httpServer),
+	}
 
-	// 创建关闭协调器
-	sm.shutdownCoord = NewShutdownCoordinator(
-		sm.config,
-		sm.rabbitmqService,
-		sm.httpServerManger,
-		sm.resultReporter,
-		sm.loadMonitor,
-		sm.logger,
-	)
+	for _, c := range components {
+		if err := sm.lifecycleMgr.Register(c); err != nil {
+			return fmt.Errorf("注册组件 %s 失败: %w", c.Name(), err)
+		}
+	}
 
-	sm.logger.Info("所有服务初始化完成")
+	sm.shutdownCoord = NewShutdownCoordinator(components, cfg.Node.ShutdownTimeout, sm.logger)
+	return nil
 }
 
-// Stop 停止服务管理器
+// Stop 优雅停止所有服务。
 func (sm *ServiceManager) Stop(ctx context.Context) error {
-	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 
 	if !sm.started {
 		sm.logger.Info("服务管理器未启动，无需停止")
@@ -173,7 +150,6 @@ func (sm *ServiceManager) Stop(ctx context.Context) error {
 		sm.shutdownCoord.GracefulShutdown(context.Background())
 	}
 
-	// 等待所有goroutine完成
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -192,45 +168,40 @@ func (sm *ServiceManager) Stop(ctx context.Context) error {
 	return nil
 }
 
-// IsStarted 检查是否已启动
-func (sm *ServiceManager) IsStarted() bool {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
-	return sm.started
-}
-
-// GetConfig 获取当前配置
-func (sm *ServiceManager) GetConfig() *config.RabbitMQConfig {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
-	return sm.config
-}
-
-// GetStats 获取所有统计信息
-func (sm *ServiceManager) GetStats() map[string]any {
-	stats := make(map[string]any)
-
-	if sm.loadMonitor != nil {
-		stats["load"] = sm.loadMonitor.GetStats()
-	}
-
-	if sm.rabbitmqService != nil {
-		stats["rabbitmq"] = sm.rabbitmqService.GetStats()
-	}
-
-	if sm.resultReporter != nil {
-		stats["result_reporter"] = sm.resultReporter.GetStats()
-	}
-
-	return stats
-}
-
-// Wait 等待服务管理器完成（阻塞直到收到信号并完成关闭）
+// Wait 阻塞直到收到信号并完成关闭。
 func (sm *ServiceManager) Wait() {
 	sm.wg.Wait()
 }
 
-// GetClient 获取RabbitMQ客户端
+// IsStarted 返回服务管理器是否已启动。
+func (sm *ServiceManager) IsStarted() bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.started
+}
+
+// GetConfig 返回当前 RabbitMQ 配置。
+func (sm *ServiceManager) GetConfig() *config.RabbitMQConfig {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.config
+}
+
+// GetStats 返回所有子服务的统计信息。
+func (sm *ServiceManager) GetStats() map[string]any {
+	status := sm.lifecycleMgr.GetStatus()
+	stats := make(map[string]any, len(status))
+	for name, s := range status {
+		stats[name] = s
+	}
+	// 补充 rabbitmq 详细统计
+	if sm.rabbitmqService != nil {
+		stats["rabbitmq_detail"] = sm.rabbitmqService.GetStats()
+	}
+	return stats
+}
+
+// GetClient 返回 RabbitMQ 客户端，供外部注册器使用。
 func (sm *ServiceManager) GetClient() *rabbitmq.Client {
 	if sm.rabbitmqService == nil {
 		return nil

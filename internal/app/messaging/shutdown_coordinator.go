@@ -1,3 +1,4 @@
+// Package messaging 提供优雅关闭协调器
 package messaging
 
 import (
@@ -6,43 +7,36 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/core/lifecycle"
 
 	"github.com/sirupsen/logrus"
 )
 
-// ShutdownCoordinator 负责信号监听和优雅关闭逻辑
+// ShutdownCoordinator 监听系统信号并按顺序停止所有已注册组件。
+// 组件按注册顺序的逆序停止（后注册的先停止）。
 type ShutdownCoordinator struct {
-	config           *config.RabbitMQConfig
-	rabbitmqService  *RabbitMQService
-	httpServerManger *HTTPServerManager
-	resultReporter   *ResultReporter
-	loadMonitor      *rabbitmq.LoadMonitor
-	logger           *logrus.Logger
+	components      []lifecycle.Component
+	shutdownTimeout time.Duration
+	logger          *logrus.Logger
 }
 
-// NewShutdownCoordinator 创建 ShutdownCoordinator
+// NewShutdownCoordinator 创建 ShutdownCoordinator。
+// components 按启动顺序传入，关闭时将逆序执行。
 func NewShutdownCoordinator(
-	cfg *config.RabbitMQConfig,
-	rabbitmqService *RabbitMQService,
-	httpServerManger *HTTPServerManager,
-	resultReporter *ResultReporter,
-	loadMonitor *rabbitmq.LoadMonitor,
+	components []lifecycle.Component,
+	shutdownTimeout time.Duration,
 	logger *logrus.Logger,
 ) *ShutdownCoordinator {
 	return &ShutdownCoordinator{
-		config:           cfg,
-		rabbitmqService:  rabbitmqService,
-		httpServerManger: httpServerManger,
-		resultReporter:   resultReporter,
-		loadMonitor:      loadMonitor,
-		logger:           logger,
+		components:      components,
+		shutdownTimeout: shutdownTimeout,
+		logger:          logger,
 	}
 }
 
-// HandleSignals 监听系统信号并在收到信号时触发优雅关闭
+// HandleSignals 阻塞等待 SIGINT/SIGTERM，收到信号后执行优雅关闭。
 func (s *ShutdownCoordinator) HandleSignals(ctx context.Context, wg *sync.WaitGroup, cancel context.CancelFunc) {
 	defer wg.Done()
 
@@ -61,37 +55,21 @@ func (s *ShutdownCoordinator) HandleSignals(ctx context.Context, wg *sync.WaitGr
 	}
 }
 
-// GracefulShutdown 执行优雅关闭逻辑
+// GracefulShutdown 按逆序停止所有组件。
 func (s *ShutdownCoordinator) GracefulShutdown(parentCtx context.Context) {
-	shutdownCtx, shutdownCancel := context.WithTimeout(parentCtx, s.config.Node.ShutdownTimeout)
-	defer shutdownCancel()
+	shutdownCtx, cancel := context.WithTimeout(parentCtx, s.shutdownTimeout)
+	defer cancel()
 
 	s.logger.Info("开始优雅关闭所有服务...")
 
-	// 停止接收新任务
-	if s.rabbitmqService != nil {
-		if err := s.rabbitmqService.Stop(shutdownCtx); err != nil {
-			s.logger.Errorf("停止RabbitMQ服务失败: %v", err)
+	for i := len(s.components) - 1; i >= 0; i-- {
+		c := s.components[i]
+		if !c.IsRunning() {
+			continue
 		}
-	}
-
-	// 停止HTTP服务器
-	if s.httpServerManger != nil {
-		if err := s.httpServerManger.Stop(shutdownCtx); err != nil {
-			s.logger.Errorf("停止HTTP服务器失败: %v", err)
-		}
-	}
-
-	// 停止其他服务
-	if s.resultReporter != nil {
-		if err := s.resultReporter.Stop(shutdownCtx); err != nil {
-			s.logger.Errorf("停止结果上报器失败: %v", err)
-		}
-	}
-
-	if s.loadMonitor != nil {
-		if err := s.loadMonitor.Stop(shutdownCtx); err != nil {
-			s.logger.Errorf("停止负载监控失败: %v", err)
+		s.logger.Infof("停止组件: %s", c.Name())
+		if err := c.Stop(shutdownCtx); err != nil {
+			s.logger.Errorf("停止组件 %s 失败: %v", c.Name(), err)
 		}
 	}
 
