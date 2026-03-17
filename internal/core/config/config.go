@@ -23,6 +23,8 @@ type Config struct {
 	Updater    UpdaterConfig     `yaml:"updater"`
 	Platforms  PlatformsConfig   `yaml:"platforms"`
 	Watermark  *watermark.Config `yaml:"watermark"`
+	Database   *DatabaseConfig   `yaml:"database"`
+	Redis      *RedisConfig      `yaml:"redis"`
 }
 
 // LoadConfig 加载配置

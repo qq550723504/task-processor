@@ -50,10 +50,17 @@ func main() {
 }
 
 func run(logger *logrus.Logger) error {
-	handler, err := buildHandler(logger)
+	handler, closers, err := buildHandler(logger)
 	if err != nil {
 		return fmt.Errorf("构建 handler 失败: %w", err)
 	}
+	defer func() {
+		for _, close := range closers {
+			if err := close(); err != nil {
+				logger.Warnf("关闭资源失败: %v", err)
+			}
+		}
+	}()
 
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -91,47 +98,61 @@ func run(logger *logrus.Logger) error {
 	return nil
 }
 
-// buildHandler 组装 productenrich 依赖并返回 ProductHandler。
-// - TaskRepository：内存实现（如需持久化，替换为 productenrich.NewTaskRepository(db)）
-// - RedisClient：内存实现（如需真实 Redis，替换为 newRedisClient(redisCfg)）
-// - LLMManager：接入配置文件中的 OpenAI 配置
-func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, error) {
+// buildHandler 组装 productenrich 依赖并返回 ProductHandler 和资源关闭函数列表。
+// 优先使用配置文件中的 database/redis 配置；若未配置则回退到内存实现。
+func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, []func() error, error) {
 	cfg := config.LoadConfigFromFile(*configPath)
+	var closers []func() error
 
 	// LLM Manager（接入 OpenAI）
-	llmMgr, err := newLLMManager(cfg.OpenAI.APIKey, cfg.OpenAI.Model, cfg.OpenAI.BaseURL, cfg.OpenAI.Timeout)
+	llmMgr, err := newLLMManager(cfg.OpenAI)
 	if err != nil {
-		return nil, fmt.Errorf("创建 LLMManager 失败: %w", err)
+		return nil, nil, fmt.Errorf("创建 LLMManager 失败: %w", err)
 	}
 	logger.Info("✅ OpenAI LLMManager 已初始化")
+	_ = llmMgr // 待 ProductServiceConfig 支持 LLMManager 字段后注入
 
-	// TaskRepository（内存实现）
-	// TODO(dev): 替换为数据库实现：productenrich.NewTaskRepository(db)
-	taskRepo := newMemTaskRepository()
-	logger.Warn("⚠️  TaskRepository 使用内存实现，重启后数据丢失，生产环境请替换为数据库实现")
+	// TaskRepository
+	var taskRepo productenrich.TaskRepository
+	if cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBTaskRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("创建 TaskRepository 失败: %w", err)
+		}
+		taskRepo = repo
+		closers = append(closers, closer)
+	} else {
+		logger.Warn("⚠️  未配置 database，TaskRepository 使用内存实现（重启后数据丢失）")
+		taskRepo = newMemTaskRepository()
+	}
 
-	// RedisClient（内存实现）
-	// TODO(dev): 替换为真实 Redis 实现（需在 go.mod 引入 github.com/redis/go-redis/v9）
-	redisClient := newMemRedisClient()
-	logger.Warn("⚠️  RedisClient 使用内存实现，生产环境请替换为真实 Redis 实现")
+	// RedisClient
+	var redisC productenrich.RedisClient
+	if cfg.Redis != nil && cfg.Redis.Host != "" {
+		rc, err := newRedisClient(cfg.Redis, logger)
+		if err != nil {
+			return nil, closers, fmt.Errorf("创建 RedisClient 失败: %w", err)
+		}
+		redisC = rc
+	} else {
+		logger.Warn("⚠️  未配置 redis，RedisClient 使用内存实现")
+		redisC = newMemRedisClient()
+	}
 
 	svc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
 		QueueName:   "product_enrich_tasks",
 		TaskRepo:    taskRepo,
-		RedisClient: redisClient,
-		// LLMManager 通过 JSONGenerator 等组件间接使用，此处暂不注入
-		// 如需接入，请在 productenrich.ProductServiceConfig 中添加 LLMManager 字段
+		RedisClient: redisC,
 	})
-	_ = llmMgr // 已初始化，待 ProductServiceConfig 支持后注入
 	if err != nil {
-		return nil, fmt.Errorf("创建 ProductService 失败: %w", err)
+		return nil, closers, fmt.Errorf("创建 ProductService 失败: %w", err)
 	}
 
 	handler, err := productenrich.NewProductHandler(svc)
 	if err != nil {
-		return nil, fmt.Errorf("创建 ProductHandler 失败: %w", err)
+		return nil, closers, fmt.Errorf("创建 ProductHandler 失败: %w", err)
 	}
-	return handler, nil
+	return handler, closers, nil
 }
 
 // registerRoutes 注册所有 API 路由
