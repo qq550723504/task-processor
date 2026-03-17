@@ -12,6 +12,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
 	shein_product "task-processor/internal/shein/api/product"
+	"task-processor/internal/shein/mapping"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,7 +37,7 @@ type productSyncServiceImpl struct {
 	priceManager     *shein_product.PriceManager
 	mappingClient    managementapi.ProductImportMappingAPI
 	storeAPI         managementapi.StoreAPI
-	repairService    MappingRepairService // 新增修复服务
+	repairService    mapping.MappingRepairService // 新增修复服务
 	logger           *logrus.Entry
 }
 
@@ -60,11 +61,11 @@ func NewProductSyncService(
 	}
 
 	// 创建修复服务
-	service.repairService = NewMappingRepairService(
+	service.repairService = mapping.NewMappingRepairService(
 		mappingClient,
 		storeAPI,
 		productAPI,
-		DefaultMappingRepairConfig(),
+		mapping.DefaultMappingRepairConfig(),
 	)
 
 	return service

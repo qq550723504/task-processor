@@ -1,5 +1,5 @@
-// Package operation 提供SHEIN平台SKU映射关系修复处理器
-package operation
+﻿// Package operation 提供SHEIN平台SKU映射关系修复处理器
+package mapping
 
 import (
 	"context"
