@@ -32,123 +32,50 @@ func (m *CategoryRestrictionCollectionsAPIClient) CreateCategoryRestrictionColle
 	if err := m.apiRequest(http.MethodPost, url, params, &result); err != nil {
 		return 0, err
 	}
-
 	if err := m.ProcessAPIResponse(&result, 0); err != nil {
 		return 0, err
 	}
-
 	data, ok := result.Data.(float64)
 	if !ok {
 		return 0, fmt.Errorf("返回数据格式错误")
 	}
-
 	return int64(data), nil
 }
 
 // GetListByPlatform 获取指定平台的限制集合
 func (m *CategoryRestrictionCollectionsAPIClient) GetListByPlatform(platformName string) ([]api.CategoryRestrictionInfoRespDTO, error) {
-	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/list-by-platform", m.baseURL)
-
-	params := map[string]any{
-		"platformName": platformName,
-	}
-
-	var result APIResponse
-	result.Data = &[]api.CategoryRestrictionInfoRespDTO{}
-
-	if err := m.apiRequest(http.MethodGet, url, params, &result); err != nil {
-		return nil, err
-	}
-
-	if err := m.ProcessAPIResponse(&result, 0); err != nil {
-		return nil, err
-	}
-
-	data, ok := result.Data.(*[]api.CategoryRestrictionInfoRespDTO)
-	if !ok {
-		return nil, fmt.Errorf("返回数据格式错误")
-	}
-
-	return *data, nil
+	return m.fetchListByPlatform(platformName, "list-by-platform")
 }
 
 // GetConfirmedListByPlatform 获取已确认的限制集合
 func (m *CategoryRestrictionCollectionsAPIClient) GetConfirmedListByPlatform(platformName string) ([]api.CategoryRestrictionInfoRespDTO, error) {
-	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/list-confirmed-by-platform", m.baseURL)
+	return m.fetchListByPlatform(platformName, "list-confirmed-by-platform")
+}
 
-	params := map[string]any{
+// fetchListByPlatform 按平台获取限制集合列表的通用实现
+func (m *CategoryRestrictionCollectionsAPIClient) fetchListByPlatform(platformName, endpoint string) ([]api.CategoryRestrictionInfoRespDTO, error) {
+	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/%s", m.baseURL, endpoint)
+	return getSliceResult[api.CategoryRestrictionInfoRespDTO](m.ManagementAPIClient, url, map[string]any{
 		"platformName": platformName,
-	}
-
-	var result APIResponse
-	result.Data = &[]api.CategoryRestrictionInfoRespDTO{}
-
-	if err := m.apiRequest(http.MethodGet, url, params, &result); err != nil {
-		return nil, err
-	}
-
-	if err := m.ProcessAPIResponse(&result, 0); err != nil {
-		return nil, err
-	}
-
-	data, ok := result.Data.(*[]api.CategoryRestrictionInfoRespDTO)
-	if !ok {
-		return nil, fmt.Errorf("返回数据格式错误")
-	}
-
-	return *data, nil
+	})
 }
 
 // IsAttributeRestricted 检查属性是否被限制
 func (m *CategoryRestrictionCollectionsAPIClient) IsAttributeRestricted(categoryId int, platformName string, attributeId int) (bool, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/check-attribute-restricted", m.baseURL)
-
-	params := map[string]any{
+	return getTypedResult[bool](m.ManagementAPIClient, http.MethodGet, url, map[string]any{
 		"categoryId":   categoryId,
 		"platformName": platformName,
 		"attributeId":  attributeId,
-	}
-
-	var result APIResponse
-	if err := m.apiRequest(http.MethodGet, url, params, &result); err != nil {
-		return false, err
-	}
-
-	if err := m.ProcessAPIResponse(&result, 0); err != nil {
-		return false, err
-	}
-
-	data, ok := result.Data.(bool)
-	if !ok {
-		return false, fmt.Errorf("返回数据格式错误")
-	}
-
-	return data, nil
+	})
 }
 
 // UpdateCategoryRestrictionCollectionsStatus 更新品类限制集合状态
 func (m *CategoryRestrictionCollectionsAPIClient) UpdateCategoryRestrictionCollectionsStatus(id int64, isConfirmed bool, isAutoApplied bool) (bool, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/category-restriction-collections/update-status", m.baseURL)
-
-	params := map[string]any{
+	return getTypedResult[bool](m.ManagementAPIClient, http.MethodPost, url, map[string]any{
 		"id":            id,
 		"isConfirmed":   isConfirmed,
 		"isAutoApplied": isAutoApplied,
-	}
-
-	var result APIResponse
-	if err := m.apiRequest(http.MethodPost, url, params, &result); err != nil {
-		return false, err
-	}
-
-	if err := m.ProcessAPIResponse(&result, 0); err != nil {
-		return false, err
-	}
-
-	data, ok := result.Data.(bool)
-	if !ok {
-		return false, fmt.Errorf("返回数据格式错误")
-	}
-
-	return data, nil
+	})
 }

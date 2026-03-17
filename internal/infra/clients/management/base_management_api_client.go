@@ -188,6 +188,48 @@ func (m *ManagementAPIClient) ProcessAPIResponse(resp *APIResponse, expectedCode
 	return nil
 }
 
+// getTypedResult 发起请求并将响应 Data 断言为 *T，返回解引用后的值。
+// 适用于返回单个对象或标量（bool、int64 等）的接口。
+func getTypedResult[T any](m *ManagementAPIClient, method, url string, body any) (T, error) {
+	var zero T
+	var result APIResponse
+	result.Data = new(T)
+
+	if err := m.apiRequest(method, url, body, &result); err != nil {
+		return zero, err
+	}
+	if err := m.ProcessAPIResponse(&result, 0); err != nil {
+		return zero, err
+	}
+	if result.Data == nil {
+		return zero, fmt.Errorf("响应数据为空")
+	}
+	v, ok := result.Data.(*T)
+	if !ok {
+		return zero, fmt.Errorf("响应数据类型转换失败")
+	}
+	return *v, nil
+}
+
+// getSliceResult 发起 GET 请求并将响应 Data 断言为 *[]T，返回切片。
+// 适用于返回列表的接口。
+func getSliceResult[T any](m *ManagementAPIClient, url string, params map[string]any) ([]T, error) {
+	var result APIResponse
+	result.Data = &[]T{}
+
+	if err := m.apiRequest(http.MethodGet, url, params, &result); err != nil {
+		return nil, err
+	}
+	if err := m.ProcessAPIResponse(&result, 0); err != nil {
+		return nil, err
+	}
+	v, ok := result.Data.(*[]T)
+	if !ok {
+		return nil, fmt.Errorf("响应数据类型转换失败")
+	}
+	return *v, nil
+}
+
 // TokenResponse 令牌响应结构
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
