@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"task-processor/internal/model"
-	productpkg "task-processor/internal/domain/product"
+	productpkg "task-processor/internal/product"
 	"task-processor/internal/pkg/jsonx"
 
 	"github.com/sirupsen/logrus"
@@ -170,4 +170,5 @@ func (s *inventorySyncServiceImpl) enableDebugLogging() {
 	logrus.SetLevel(logrus.DebugLevel)
 	s.logger.Debug("已启用 Debug 级别日志")
 }
+
 

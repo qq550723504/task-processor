@@ -10,7 +10,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
-	"task-processor/internal/domain/task"
+	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/httpx"
 	"task-processor/internal/infra/worker"
 
@@ -78,7 +78,7 @@ func (s *Service) Stop(ctx context.Context) error {
 }
 
 // SubmitTask 提交任务
-func (s *Service) SubmitTask(crawlerTask *task.CrawlerTask) error {
+func (s *Service) SubmitTask(crawlerTask *shared.CrawlerTask) error {
 	// 如果只提供了 ASIN，构造 URL
 	if crawlerTask.URL == "" && crawlerTask.ASIN != "" {
 		crawlerTask.BuildURLFromASIN(s.domainResolver)
@@ -90,7 +90,7 @@ func (s *Service) SubmitTask(crawlerTask *task.CrawlerTask) error {
 	}
 
 	// 初始化结果
-	result := task.NewCrawlerResult(crawlerTask.TaskID)
+	result := shared.NewCrawlerResult(crawlerTask.TaskID)
 	s.results.Store(crawlerTask.TaskID, result)
 
 	// 序列化任务
@@ -115,12 +115,12 @@ func (s *Service) SubmitTask(crawlerTask *task.CrawlerTask) error {
 }
 
 // GetTask 获取任务结果
-func (s *Service) GetTask(taskID string) (*task.CrawlerResult, error) {
+func (s *Service) GetTask(taskID string) (*shared.CrawlerResult, error) {
 	value, ok := s.results.Load(taskID)
 	if !ok {
-		return nil, task.ErrTaskNotFound
+		return nil, shared.ErrTaskNotFound
 	}
-	return value.(*task.CrawlerResult), nil
+	return value.(*shared.CrawlerResult), nil
 }
 
 // DeleteTask 删除任务
@@ -129,10 +129,10 @@ func (s *Service) DeleteTask(taskID string) {
 }
 
 // GetAllTasks 获取所有任务
-func (s *Service) GetAllTasks() []*task.CrawlerResult {
-	tasks := make([]*task.CrawlerResult, 0)
+func (s *Service) GetAllTasks() []*shared.CrawlerResult {
+	tasks := make([]*shared.CrawlerResult, 0)
 	s.results.Range(func(key, value any) bool {
-		result := value.(*task.CrawlerResult)
+		result := value.(*shared.CrawlerResult)
 		tasks = append(tasks, result)
 		return true
 	})
@@ -153,7 +153,7 @@ func (s *Service) GetStats() map[string]any {
 	// 统计各状态任务数
 	statusCount := make(map[string]int)
 	s.results.Range(func(key, value any) bool {
-		result := value.(*task.CrawlerResult)
+		result := value.(*shared.CrawlerResult)
 		statusCount[string(result.Status)]++
 		return true
 	})
@@ -188,19 +188,19 @@ func (s *Service) IsHealthy() bool {
 }
 
 // updateResult 线程安全地更新任务结果
-func (s *Service) updateResult(taskID string, updateFn func(*task.CrawlerResult)) {
+func (s *Service) updateResult(taskID string, updateFn func(*shared.CrawlerResult)) {
 	s.resultMu.Lock()
 	defer s.resultMu.Unlock()
 
 	if value, ok := s.results.Load(taskID); ok {
-		result := value.(*task.CrawlerResult)
+		result := value.(*shared.CrawlerResult)
 		updateFn(result)
 		s.results.Store(taskID, result)
 	}
 }
 
 // getZipcodeForTask 获取任务的邮编
-func (s *Service) getZipcodeForTask(crawlerTask *task.CrawlerTask) string {
+func (s *Service) getZipcodeForTask(crawlerTask *shared.CrawlerTask) string {
 	// 1. 如果任务指定了邮编，直接使用
 	if crawlerTask.Zipcode != "" {
 		return crawlerTask.Zipcode
@@ -258,4 +258,5 @@ func productToMap(product *model.Product, logger *logrus.Logger) map[string]any 
 
 	return result
 }
+
 

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/model"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 	"task-processor/internal/pkg/recovery"
 )
 
@@ -98,4 +98,5 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 		return result.product, nil
 	}
 }
+
 

@@ -5,7 +5,7 @@ import (
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
-	domainProduct "task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
 	shein "task-processor/internal/shein"
 
@@ -118,4 +118,5 @@ func (h *RawJsonDataHandler) Shutdown() {
 	// Amazon处理器由外部管理，不需要在这里关闭
 	logrus.Debug("RawJsonDataHandler 关闭（Amazon处理器由外部管理）")
 }
+
 

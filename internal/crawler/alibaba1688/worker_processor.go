@@ -1,4 +1,4 @@
-// Package alibaba1688 提供1688爬虫处理器
+﻿// Package alibaba1688 提供1688爬虫处理器
 package alibaba1688
 
 import (
@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"task-processor/internal/domain/task"
+	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/worker"
 )
 
@@ -23,7 +23,7 @@ func (p *Crawler1688Processor) Start(ctx context.Context) error {
 // ProcessTask 处理任务
 func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 	// 从 WorkerJob 中解析出 CrawlerTask
-	var crawlerTask task.CrawlerTask
+	var crawlerTask shared.CrawlerTask
 	if err := json.Unmarshal([]byte(job.TaskData), &crawlerTask); err != nil {
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
@@ -35,7 +35,7 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 	}
 
 	// 保存结果（原子操作）
-	p.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	p.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.ProductData = product1688ToMap(product, p.service.logger)
 	})
 
@@ -65,3 +65,4 @@ func product1688ToMap(product any, _ any) map[string]any {
 
 	return result
 }
+

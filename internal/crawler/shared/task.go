@@ -1,11 +1,11 @@
-// Package task 提供任务领域模型
-package task
+// Package shared 提供爬虫共享类型定义
+package shared
 
 import (
 	"time"
 )
 
-// CrawlerTask 爬虫任务领域模型
+// CrawlerTask 爬虫任务
 type CrawlerTask struct {
 	TaskID    string    // 任务唯一标识
 	URL       string    // 目标 URL
@@ -49,23 +49,26 @@ func (t *CrawlerTask) WithPriority(priority int) *CrawlerTask {
 	return t
 }
 
-// BuildURLFromASIN 根据 ASIN 构造 URL
-func (t *CrawlerTask) BuildURLFromASIN(domainResolver interface {
+// URLBuilder 用于构造产品 URL 的接口
+type URLBuilder interface {
 	BuildAmazonProductURL(region, asin string) string
-}) {
+}
+
+// BuildURLFromASIN 根据 ASIN 构造 URL
+func (t *CrawlerTask) BuildURLFromASIN(builder URLBuilder) {
 	if t.URL == "" && t.ASIN != "" {
 		region := t.Region
 		if region == "" {
-			region = "us" // 默认美国站
+			region = "us"
 		}
-		t.URL = domainResolver.BuildAmazonProductURL(region, t.ASIN)
+		t.URL = builder.BuildAmazonProductURL(region, t.ASIN)
 	}
 }
 
 // Validate 验证任务
 func (t *CrawlerTask) Validate() error {
 	if t.URL == "" && t.ASIN == "" {
-		return ErrInvalidTask
+		return ErrInvalidCrawlerTask
 	}
 	return nil
 }
@@ -75,7 +78,6 @@ func generateTaskID() string {
 	return time.Now().Format("20060102150405") + "-" + randomString(8)
 }
 
-// randomString 生成随机字符串
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, n)

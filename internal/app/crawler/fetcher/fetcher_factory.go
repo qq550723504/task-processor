@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
-	domainProduct "task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
@@ -109,4 +109,5 @@ func (f *FetcherFactory) GetRecommendedFetcher(cfg *config.Config) FetcherType {
 	// 默认推荐本地获取器
 	return LocalFetcher
 }
+
 

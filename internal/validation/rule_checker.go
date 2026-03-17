@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/model"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 )
 
 // RuleChecker 通用规则检查器
@@ -129,4 +129,5 @@ func (c *RuleChecker) CheckAllRules(rule *FilterRule, amazonProduct *model.Produ
 	}
 	return c.CheckFulfillmentType(rule, amazonProduct)
 }
+
 

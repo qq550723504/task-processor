@@ -1,7 +1,7 @@
-package management
+﻿package management
 
 import (
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management/api"
 )
 
@@ -54,3 +54,4 @@ func (a *RawJsonDataAdapter) CreateRawJsonData(req *product.RawJsonCreateReq) (i
 		Creator:     req.Creator,
 	})
 }
+

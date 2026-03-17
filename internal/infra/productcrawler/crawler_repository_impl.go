@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	amazonpkg "task-processor/internal/crawler/amazon"
 	"task-processor/internal/model"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -165,4 +165,5 @@ func (r *CrawlerRepository) SetMaxConcurrent(max int) {
 		r.maxConcurrent = max
 	}
 }
+
 

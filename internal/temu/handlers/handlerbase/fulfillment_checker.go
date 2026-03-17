@@ -4,7 +4,7 @@ package handlerbase
 import (
 	"fmt"
 	"task-processor/internal/model"
-	domainvalidation "task-processor/internal/domain/validation"
+	domainvalidation "task-processor/internal/validation"
 	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -77,4 +77,5 @@ func buildFulfillmentProductValue(isFBA, isAMZ bool, sellerName string) string {
 	}
 	return "FBM"
 }
+
 

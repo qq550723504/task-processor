@@ -4,7 +4,7 @@ package syncsvc
 import (
 	"encoding/json"
 	"task-processor/internal/model"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
@@ -235,4 +235,5 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 		}
 	}
 }
+
 

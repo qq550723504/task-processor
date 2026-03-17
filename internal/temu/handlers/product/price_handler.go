@@ -6,7 +6,7 @@ import (
 	"math/rand"
 
 	"task-processor/internal/model"
-	pkgproduct "task-processor/internal/domain/product"
+	pkgproduct "task-processor/internal/product"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
@@ -239,4 +239,5 @@ func (ph *PriceHandler) GetPriceMultiplier(temuCtx *temucontext.TemuTaskContext)
 	ph.logger.Infof("使用利润规则 '%s' 的倍数: %.2fx", profitRule.Name, profitRule.SalePriceMultiplier)
 	return profitRule.SalePriceMultiplier
 }
+
 

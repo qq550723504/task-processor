@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"task-processor/internal/model"
-	domainproduct "task-processor/internal/domain/product"
+	domainproduct "task-processor/internal/product"
 	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/sirupsen/logrus"
@@ -99,4 +99,5 @@ func (r *CacheRepository) ExistsInCache(ctx context.Context, req *domainproduct.
 	}
 	return product != nil, nil
 }
+
 

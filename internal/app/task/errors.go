@@ -1,4 +1,4 @@
-// Package task 提供任务处理相关的错误类型
+// Package task 提供任务处理相关的错误定义
 package task
 
 import "fmt"
@@ -72,11 +72,9 @@ func (e *TaskError) IsRetryable() bool {
 	case ErrCodeInvalidTask, ErrCodeProductNotFound, ErrCodeAccessDenied:
 		return false
 	default:
-		return true // 默认可重试
+		return true
 	}
 }
-
-// 便捷构造函数
 
 // NewInvalidTaskError 创建无效任务错误
 func NewInvalidTaskError(taskID int64, message string) *TaskError {

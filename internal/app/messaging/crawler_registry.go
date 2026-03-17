@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
@@ -166,3 +166,4 @@ func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonPro
 
 	return productFetcher, nil
 }
+

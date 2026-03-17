@@ -5,7 +5,7 @@ import (
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
-	domainProduct "task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
 
@@ -90,4 +90,5 @@ func (h *CacheVariantsHandler) Handle(ctx pipeline.TaskContext) error {
 	h.logger.Infof("✅ 变体数据已缓存: 数量=%d", len(variants))
 	return nil
 }
+
 

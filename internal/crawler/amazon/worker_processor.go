@@ -1,4 +1,4 @@
-// Package amazon 提供爬虫处理器实现
+﻿// Package amazon 提供爬虫处理器实现
 package amazon
 
 import (
@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"task-processor/internal/domain/task"
+	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/worker"
 )
 
@@ -23,7 +23,7 @@ func (p *CrawlerProcessor) Start(ctx context.Context) error {
 // ProcessTask 处理任务
 func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 	// 从 WorkerJob 中解析出 CrawlerTask
-	var crawlerTask task.CrawlerTask
+	var crawlerTask shared.CrawlerTask
 	if err := json.Unmarshal([]byte(job.TaskData), &crawlerTask); err != nil {
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
@@ -38,7 +38,7 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 	}
 
 	// 保存结果（原子操作）
-	p.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	p.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.ProductData = productToMap(product, p.service.logger)
 	})
 
@@ -49,3 +49,4 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 func (p *CrawlerProcessor) Close(ctx context.Context) {
 	// 清理资源（如果需要）
 }
+

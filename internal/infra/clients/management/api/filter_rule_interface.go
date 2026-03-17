@@ -1,6 +1,6 @@
-package api
+﻿package api
 
-import domainvalidation "task-processor/internal/domain/validation"
+import domainvalidation "task-processor/internal/validation"
 
 // FilterRule 筛选规则API接口定义
 type FilterRule interface {
@@ -50,3 +50,4 @@ func (r *FilterRuleRespDTO) ToFilterRule() *domainvalidation.FilterRule {
 		FulfillmentType: r.FulfillmentType,
 	}
 }
+

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/model"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 	temupricing "task-processor/internal/temu/api/pricing"
 
 	"github.com/sirupsen/logrus"
@@ -153,4 +153,5 @@ func parsePrice(price string) float64 {
 	}
 	return result
 }
+
 

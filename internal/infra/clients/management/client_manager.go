@@ -1,10 +1,10 @@
-package management
+﻿package management
 
 import (
 	"fmt"
 	"sync"
 	"task-processor/internal/core/config"
-	domainproduct "task-processor/internal/domain/product"
+	domainproduct "task-processor/internal/product"
 	"time"
 )
 
@@ -294,3 +294,4 @@ func (cm *ClientManager) SetImageDownloadTimeout(timeout time.Duration) {
 		cm.imageDownloader = NewImageDownloader(timeout)
 	}
 }
+

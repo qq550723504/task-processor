@@ -11,8 +11,8 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
-	"task-processor/internal/domain/product"
-	domainproduct "task-processor/internal/domain/product"
+	"task-processor/internal/product"
+	domainproduct "task-processor/internal/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
@@ -430,4 +430,5 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 
 	return nil
 }
+
 

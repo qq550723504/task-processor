@@ -1,11 +1,11 @@
-// Package amazon 提供任务钩子处理器
+﻿// Package amazon 提供任务钩子处理器
 package amazon
 
 import (
 	"encoding/json"
 	"fmt"
 
-	"task-processor/internal/domain/task"
+	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/worker"
 )
 
@@ -15,8 +15,8 @@ type CrawlerJobHandler struct {
 }
 
 // parseCrawlTask 从 WorkerJob 中解析 CrawlerTask
-func (h *CrawlerJobHandler) parseCrawlTask(job worker.WorkerJob) (*task.CrawlerTask, error) {
-	var crawlerTask task.CrawlerTask
+func (h *CrawlerJobHandler) parseCrawlTask(job worker.WorkerJob) (*shared.CrawlerTask, error) {
+	var crawlerTask shared.CrawlerTask
 	if err := json.Unmarshal([]byte(job.TaskData), &crawlerTask); err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (h *CrawlerJobHandler) OnJobStart(job worker.WorkerJob) {
 	h.service.logger.Infof("🕷️ 开始处理任务: %s (URL: %s)", crawlerTask.TaskID, crawlerTask.URL)
 
 	// 更新任务状态为处理中
-	h.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	h.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.MarkProcessing()
 	})
 }
@@ -49,7 +49,7 @@ func (h *CrawlerJobHandler) OnJobSuccess(job worker.WorkerJob) {
 	h.service.logger.Infof("✅ 任务成功: %s", crawlerTask.TaskID)
 
 	// 更新结果
-	h.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	h.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		// ProductData 已经在 ProcessTask 中设置
 		// 这里只需要标记状态
 		if result.ProductData != nil {
@@ -68,7 +68,7 @@ func (h *CrawlerJobHandler) OnJobFailure(job worker.WorkerJob, err error) {
 	h.service.logger.Errorf("❌ 任务失败: %s, 错误: %v", crawlerTask.TaskID, err)
 
 	// 更新结果
-	h.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	h.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.MarkFailed(err)
 	})
 }
@@ -83,7 +83,7 @@ func (h *CrawlerJobHandler) OnJobPanic(job worker.WorkerJob, panicValue any, sta
 	h.service.logger.Errorf("💥 任务Panic: %s, 错误: %v", crawlerTask.TaskID, panicValue)
 
 	// 更新结果
-	h.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	h.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.MarkFailed(fmt.Errorf("panic: %v", panicValue))
 	})
 }
@@ -92,3 +92,4 @@ func (h *CrawlerJobHandler) OnJobPanic(job worker.WorkerJob, panicValue any, sta
 func (h *CrawlerJobHandler) OnJobCompleted(job worker.WorkerJob) {
 	// 可以在这里做一些清理工作
 }
+

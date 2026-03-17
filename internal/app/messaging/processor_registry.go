@@ -1,11 +1,11 @@
-// Package messaging 提供任务处理器注册表
+﻿// Package messaging 提供任务处理器注册表
 package messaging
 
 import (
 	"maps"
 	"sync"
 
-	domaintask "task-processor/internal/domain/task"
+	apptask "task-processor/internal/app/task"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -20,7 +20,7 @@ type TaskProcessorRegistry struct {
 	resultReporter *ResultReporter
 	storeAPI       api.StoreAPI
 	ownedStores    []int64
-	deduplicator   *domaintask.Deduplicator
+	deduplicator   *apptask.DeduplicationManager
 	logger         *logrus.Logger
 	mu             sync.RWMutex
 }
@@ -30,7 +30,7 @@ func NewTaskProcessorRegistry(
 	resultReporter *ResultReporter,
 	storeAPI api.StoreAPI,
 	ownedStores []int64,
-	deduplicator *domaintask.Deduplicator,
+	deduplicator *apptask.DeduplicationManager,
 	logger *logrus.Logger,
 ) *TaskProcessorRegistry {
 	return &TaskProcessorRegistry{
@@ -84,7 +84,7 @@ func (r *TaskProcessorRegistry) GetAllHandlers() map[string]rabbitmq.MessageHand
 
 // GetQueueName 根据平台获取队列名称。
 func (r *TaskProcessorRegistry) GetQueueName(platform string) string {
-	return domaintask.NewMessageAdapter().GetQueueName(platform)
+	return apptask.NewMessageAdapter().GetQueueName(platform)
 }
 
 // GetStats 返回注册表统计信息。

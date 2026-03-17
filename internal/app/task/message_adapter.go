@@ -1,4 +1,4 @@
-﻿// Package task 提供任务消息适配器
+// Package task 提供任务消息适配器
 package task
 
 import (
@@ -26,35 +26,31 @@ type TaskMessage struct {
 	TaskID         int64               `json:"taskId"`
 	TenantID       int64               `json:"tenantId"`
 	StoreID        int64               `json:"storeId"`
-	Platform       string              `json:"platform"`       // 爬虫平台（数据来源，如"amazon"）
-	TargetPlatform string              `json:"targetPlatform"` // 目标上架平台（如"temu"、"shein"、"amazon"）
+	Platform       string              `json:"platform"`
+	TargetPlatform string              `json:"targetPlatform"`
 	Region         string              `json:"region"`
 	CategoryID     int64               `json:"categoryId"`
 	ProductID      string              `json:"productId"`
 	Priority       int                 `json:"priority"`
 	RetryCount     int                 `json:"retryCount"`
 	MaxRetryCount  int                 `json:"maxRetryCount"`
-	CreatedAt      *types.FlexibleTime `json:"createdAt"` // 支持多种时间格式
+	CreatedAt      *types.FlexibleTime `json:"createdAt"`
 	Remark         string              `json:"remark,omitempty"`
 	Status         string              `json:"status,omitempty"`
 }
 
-// MessageAdapter 任务消息适配器（领域逻辑）
-// 负责任务对象与消息格式之间的转换
+// MessageAdapter 任务消息适配器，负责任务对象与消息格式之间的转换
 type MessageAdapter struct {
-	queueMapping map[string]string // platform -> queue（默认使用 normal 队列，仅用于向后兼容）
+	queueMapping map[string]string
 }
 
 // NewMessageAdapter 创建任务消息适配器
 func NewMessageAdapter() *MessageAdapter {
 	return &MessageAdapter{
 		queueMapping: map[string]string{
-			// 上架任务队列
-			"amazon": "amazon.tasks.normal",
-			"temu":   "temu.tasks.normal",
-			"shein":  "shein.tasks.normal",
-
-			// 爬虫任务队列
+			"amazon":         "amazon.tasks.normal",
+			"temu":           "temu.tasks.normal",
+			"shein":          "shein.tasks.normal",
 			"amazon.crawler": "amazon.crawler.normal",
 			"1688.crawler":   "1688.crawler.normal",
 		},
@@ -67,40 +63,34 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 		return nil, fmt.Errorf("消息不能为空")
 	}
 
-	// 解析消息载荷
 	taskMsg, err := a.parseTaskMessage(msg)
 	if err != nil {
 		return nil, fmt.Errorf("解析任务消息失败: %w", err)
 	}
 
-	// 转换状态：从字符串转为int16
 	status := a.ConvertStatusStringToInt16(taskMsg.Status)
 
-	// 处理创建时间
 	var createTime int64
 	if taskMsg.CreatedAt != nil && !taskMsg.CreatedAt.IsZero() {
 		createTime = taskMsg.CreatedAt.Unix()
 	}
 
-	// 确定目标平台：优先使用TargetPlatform，如果为空则使用Platform（向后兼容）
 	targetPlatform := taskMsg.TargetPlatform
 	if targetPlatform == "" {
 		targetPlatform = taskMsg.Platform
 	}
 
-	// 数据来源平台
 	sourcePlatform := taskMsg.Platform
 	if sourcePlatform == "" {
-		sourcePlatform = targetPlatform // 如果没有指定来源，默认为目标平台
+		sourcePlatform = targetPlatform
 	}
 
-	// 转换为任务对象
 	task := &model.Task{
 		ID:             taskMsg.TaskID,
 		TenantID:       taskMsg.TenantID,
 		StoreID:        taskMsg.StoreID,
-		Platform:       targetPlatform, // 目标上架平台
-		SourcePlatform: sourcePlatform, // 数据来源平台
+		Platform:       targetPlatform,
+		SourcePlatform: sourcePlatform,
 		Region:         taskMsg.Region,
 		CategoryID:     taskMsg.CategoryID,
 		ProductID:      taskMsg.ProductID,
@@ -122,7 +112,6 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
 		return nil, fmt.Errorf("任务不能为空")
 	}
 
-	// 创建任务消息
 	taskMsg := &TaskMessage{
 		TaskID:        task.ID,
 		TenantID:      task.TenantID,
@@ -139,7 +128,6 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
 		Status:        a.convertStatusInt16ToString(task.Status),
 	}
 
-	// 设置创建时间
 	if task.CreateTime > 0 {
 		t := time.Unix(task.CreateTime, 0)
 		taskMsg.CreatedAt = types.ToFlexibleTime(&t)
@@ -148,137 +136,69 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
 	return taskMsg, nil
 }
 
-// GetQueueName 根据平台获取队列名称（业务规则）
+// GetQueueName 根据平台获取队列名称
 func (a *MessageAdapter) GetQueueName(platform string) string {
 	if queue, ok := a.queueMapping[platform]; ok {
 		return queue
 	}
-	return "amazon.tasks.normal" // 默认队列
+	return "amazon.tasks.normal"
 }
 
-// CalculatePriority 计算消息优先级
-// 业务优先级(1-10) -> 消息优先级(0-10)，数字越大优先级越高
+// CalculatePriority 将业务优先级(1-10)转换为消息优先级(0-10)
 func (a *MessageAdapter) CalculatePriority(businessPriority int) uint8 {
-	// 业务优先级范围检查
 	if businessPriority < 1 {
 		businessPriority = 1
 	}
 	if businessPriority > 10 {
 		businessPriority = 10
 	}
-
-	// 转换为消息优先级（1-10 -> 10-1，然后映射到0-10）
-	// 业务优先级1（最高）-> 消息优先级10
-	// 业务优先级10（最低）-> 消息优先级1
-	messagePriority := 11 - businessPriority
-
-	return uint8(messagePriority)
+	return uint8(11 - businessPriority)
 }
 
-// BuildRoutingKey 构建路由键（业务规则）
-// 格式: {targetPlatform}.{sourcePlatform}.{priority}.{region}
-// 示例: shein.amazon.normal.us (Amazon数据 → SHEIN上架)
+// BuildRoutingKey 构建路由键，格式: {targetPlatform}.{sourcePlatform}.{priority}.{region}
 func (a *MessageAdapter) BuildRoutingKey(task *model.Task) string {
 	priorityLevel := a.getPriorityLevel(task.Priority)
 
-	// 使用任务对象中的 SourcePlatform 字段
-	// 如果为空，默认使用目标平台（表示同平台数据）
 	sourcePlatform := task.SourcePlatform
 	if sourcePlatform == "" {
 		sourcePlatform = task.Platform
 	}
 
 	return fmt.Sprintf("%s.%s.%s.%s",
-		task.Platform,  // 目标平台
-		sourcePlatform, // 来源平台
-		priorityLevel,  // 优先级
-		task.Region)    // 区域
+		task.Platform,
+		sourcePlatform,
+		priorityLevel,
+		task.Region)
 }
 
-// parseTaskMessage 解析任务消息
-// 自动检测并支持两种消息格式:
-// 1. 嵌套格式(Go): {id, type, payload: {...}, priority, timestamp}
-// 2. 扁平格式(Java): {taskId, tenantId, storeId, ...}
-func (a *MessageAdapter) parseTaskMessage(msg *Message) (*TaskMessage, error) {
-	if len(msg.Payload) == 0 {
-		return nil, fmt.Errorf("消息载荷为空")
-	}
-
-	// 序列化载荷为JSON字符串
-	payloadBytes, err := json.Marshal(msg.Payload)
-	if err != nil {
-		return nil, fmt.Errorf("序列化载荷失败: %w", err)
-	}
-
-	// 反序列化为任务消息
-	var taskMsg TaskMessage
-	err = json.Unmarshal(payloadBytes, &taskMsg)
-	if err != nil {
-		return nil, fmt.Errorf("反序列化任务消息失败: %w", err)
-	}
-
-	// 设置重试信息（如果消息中没有，使用顶层的重试信息）
-	if taskMsg.RetryCount == 0 && msg.RetryCount > 0 {
-		taskMsg.RetryCount = msg.RetryCount
-	}
-	if taskMsg.MaxRetryCount == 0 && msg.MaxRetries > 0 {
-		taskMsg.MaxRetryCount = msg.MaxRetries
-	}
-	// 如果都没有，设置默认值
-	if taskMsg.MaxRetryCount == 0 {
-		taskMsg.MaxRetryCount = 3
-	}
-
-	return &taskMsg, nil
-}
-
-// getPriorityLevel 获取优先级级别
-func (a *MessageAdapter) getPriorityLevel(priority int) string {
-	switch {
-	case priority >= 1 && priority <= 3:
-		return "urgent"
-	case priority >= 4 && priority <= 6:
-		return "high"
-	case priority >= 7 && priority <= 8:
-		return "normal"
-	default:
-		return "low"
-	}
-}
-
-// ConvertStatusStringToInt16 将字符串状态转换为int16（公共方法）
+// ConvertStatusStringToInt16 将字符串状态转换为 int16
 func (a *MessageAdapter) ConvertStatusStringToInt16(statusStr string) int16 {
-	if statusStr == "" {
-		return 0 // TaskStatusPending
-	}
-
 	switch statusStr {
 	case "pending":
 		return 0
 	case "processing":
 		return 1
-	case "completed":
-		return 6
+	case "crawled":
+		return 2
 	case "failed":
 		return 3
 	case "pending_retry":
 		return 4
+	case "queued":
+		return 5
+	case "completed":
+		return 6
 	case "draft":
 		return 8
 	case "paused":
 		return 10
 	case "terminated":
 		return 13
-	case "crawled":
-		return 2
-	case "queued":
-		return 5
 	default:
 		return 0
 	}
 }
 
-// convertStatusInt16ToString 将int16状态转换为字符串
 func (a *MessageAdapter) convertStatusInt16ToString(status int16) string {
 	switch status {
 	case 0:
@@ -314,3 +234,43 @@ func (a *MessageAdapter) convertStatusInt16ToString(status int16) string {
 	}
 }
 
+func (a *MessageAdapter) parseTaskMessage(msg *Message) (*TaskMessage, error) {
+	if len(msg.Payload) == 0 {
+		return nil, fmt.Errorf("消息载荷为空")
+	}
+
+	payloadBytes, err := json.Marshal(msg.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("序列化载荷失败: %w", err)
+	}
+
+	var taskMsg TaskMessage
+	if err = json.Unmarshal(payloadBytes, &taskMsg); err != nil {
+		return nil, fmt.Errorf("反序列化任务消息失败: %w", err)
+	}
+
+	if taskMsg.RetryCount == 0 && msg.RetryCount > 0 {
+		taskMsg.RetryCount = msg.RetryCount
+	}
+	if taskMsg.MaxRetryCount == 0 && msg.MaxRetries > 0 {
+		taskMsg.MaxRetryCount = msg.MaxRetries
+	}
+	if taskMsg.MaxRetryCount == 0 {
+		taskMsg.MaxRetryCount = 3
+	}
+
+	return &taskMsg, nil
+}
+
+func (a *MessageAdapter) getPriorityLevel(priority int) string {
+	switch {
+	case priority >= 1 && priority <= 3:
+		return "urgent"
+	case priority >= 4 && priority <= 6:
+		return "high"
+	case priority >= 7 && priority <= 8:
+		return "normal"
+	default:
+		return "low"
+	}
+}

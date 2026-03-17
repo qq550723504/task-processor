@@ -1,11 +1,9 @@
-// Package task 提供任务结果领域模型
-package task
+// Package shared 提供爬虫共享类型定义
+package shared
 
-import (
-	"time"
-)
+import "time"
 
-// TaskStatus 任务状态
+// TaskStatus 爬虫任务状态
 type TaskStatus string
 
 const (

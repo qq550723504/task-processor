@@ -7,7 +7,7 @@ import (
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
-	domainProduct "task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pipeline"
 
@@ -100,4 +100,5 @@ func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 func (h *RawJsonDataHandlerV2) Shutdown() {
 	h.logger.Debug("RawJsonDataHandlerV2 关闭")
 }
+
 

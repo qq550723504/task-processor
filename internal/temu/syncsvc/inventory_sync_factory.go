@@ -4,7 +4,7 @@ package syncsvc
 import (
 	"fmt"
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/temu/api/client"
 
@@ -82,3 +82,4 @@ func (f *InventorySyncServiceFactory) ValidateConfig(
 	f.logger.Info("TEMU库存监控配置验证完成")
 	return nil
 }
+

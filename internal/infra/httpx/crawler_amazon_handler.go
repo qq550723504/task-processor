@@ -4,7 +4,7 @@ package httpx
 import (
 	"net/http"
 
-	"task-processor/internal/domain/task"
+	"task-processor/internal/crawler/shared"
 
 	"github.com/sirupsen/logrus"
 )
@@ -66,7 +66,7 @@ func (h *CrawlerHandler) handleCrawl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 构造任务（领域模型）
-	crawlerTask := task.NewCrawlerTask(req.URL)
+	crawlerTask := shared.NewCrawlerTask(req.URL)
 	if req.ASIN != "" {
 		crawlerTask.WithASIN(req.ASIN)
 	}
@@ -145,3 +145,4 @@ func (h *CrawlerHandler) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := h.crawlerService.GetStats()
 	Success(w, "查询成功", stats)
 }
+

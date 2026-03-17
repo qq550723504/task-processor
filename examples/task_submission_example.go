@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"task-processor/internal/app/messaging"
-	"task-processor/internal/model"
-	"task-processor/internal/domain/task"
+	"task-processor/internal/app/task"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -106,25 +106,28 @@ func demonstrateDomainLayer(logger *logrus.Logger) {
 	logger.Infof("   路由键: %s", routingKey)
 
 	// 2. 去重器
-	dedup := task.NewDeduplicator(5*time.Minute, logger)
+	dedup := task.NewDeduplicationManager(logger, 5*time.Minute)
+	ctx := context.Background()
+	dedup.Start(ctx)
 	defer dedup.Stop()
 
 	taskID := int64(12345)
+	taskIDStr := fmt.Sprintf("%d", taskID)
 
-	// 检查是否重复
-	isDup := dedup.IsDuplicate(taskID)
-	logger.Infof("   任务 %d 是否重复: %v", taskID, isDup)
+	// 检查是否可以提交
+	canSubmit, _ := dedup.CanSubmitTask(taskIDStr)
+	logger.Infof("   任务 %d 是否可提交: %v", taskID, canSubmit)
 
-	// 标记为已处理
-	dedup.MarkProcessed(taskID)
-	logger.Infof("   任务 %d 已标记为已处理", taskID)
+	// 标记为处理中
+	_ = dedup.MarkTaskAsProcessing(taskIDStr, "amazon", 3)
+	logger.Infof("   任务 %d 已标记为处理中", taskID)
 
 	// 再次检查
-	isDup = dedup.IsDuplicate(taskID)
-	logger.Infof("   任务 %d 是否重复: %v", taskID, isDup)
+	canSubmit, _ = dedup.CanSubmitTask(taskIDStr)
+	logger.Infof("   任务 %d 是否可提交: %v", taskID, canSubmit)
 
 	// 获取统计信息
-	stats := dedup.GetStats()
+	stats := dedup.GetTaskStats()
 	logger.Infof("   去重器统计: %+v", stats)
 }
 
@@ -181,4 +184,3 @@ func printUsage() {
 - 领域层文档: internal/domain/task/README.md
 - 应用层文档: internal/app/messaging/README.md`)
 }
-

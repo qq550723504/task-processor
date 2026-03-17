@@ -1,8 +1,7 @@
-// Package task 提供任务相关的领域模型
+// Package task 提供任务工作单元定义
 package task
 
 // TaskJob 任务工作单元
-// 这是业务层的 Job 定义，包含任务处理所需的业务字段
 type TaskJob struct {
 	TaskID   int64  // 任务ID
 	TenantID string // 租户ID

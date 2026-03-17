@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pricing"
@@ -151,3 +151,4 @@ func (s *inventorySyncServiceImpl) getOperationStrategy(storeID int64) (*managem
 
 	return nil, nil
 }
+

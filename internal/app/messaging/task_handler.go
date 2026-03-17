@@ -9,12 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/domain/message"
-	"task-processor/internal/model"
-	domaintask "task-processor/internal/domain/task"
+	apptask "task-processor/internal/app/task"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/strx"
 
 	"github.com/sirupsen/logrus"
@@ -24,14 +23,14 @@ import (
 type TaskHandler struct {
 	processor      worker.Processor
 	resultReporter *ResultReporter
-	adapter        *domaintask.MessageAdapter
+	adapter        *apptask.MessageAdapter
 	platform       string
 	logger         *logrus.Logger
 
 	// 店铺亲和性支持
 	storeAPI     api.StoreAPI
 	ownedStores  []int64
-	deduplicator *domaintask.Deduplicator
+	deduplicator *apptask.DeduplicationManager
 }
 
 // TaskHandlerConfig 任务处理器配置
@@ -41,7 +40,7 @@ type TaskHandlerConfig struct {
 	ResultReporter *ResultReporter
 	StoreAPI       api.StoreAPI
 	OwnedStores    []int64
-	Deduplicator   *domaintask.Deduplicator
+	Deduplicator   *apptask.DeduplicationManager
 	Logger         *logrus.Logger
 }
 
@@ -50,7 +49,7 @@ func NewTaskHandler(cfg TaskHandlerConfig) *TaskHandler {
 	return &TaskHandler{
 		processor:      cfg.Processor,
 		resultReporter: cfg.ResultReporter,
-		adapter:        domaintask.NewMessageAdapter(),
+		adapter:        apptask.NewMessageAdapter(),
 		platform:       cfg.Platform,
 		logger:         cfg.Logger,
 		storeAPI:       cfg.StoreAPI,
@@ -108,7 +107,7 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 // convertAndValidateMessage 转换并验证消息
 func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model.Task, map[string]any, error) {
 	// 将消息转换为领域消息
-	domainMsg := &domaintask.Message{
+	domainMsg := &apptask.Message{
 		ID:         msg.ID,
 		Type:       msg.Type,
 		Payload:    msg.Payload,
@@ -126,14 +125,14 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 	if err != nil {
 		eth.logger.Errorf("[%s] 转换消息为任务失败: ID=%s, Error=%v",
 			eth.platform, msg.ID, err)
-		return nil, nil, domaintask.NewConversionError(0, err)
+		return nil, nil, apptask.NewConversionError(0, err)
 	}
 
 	// 验证任务的关键字段
 	if !task.IsValid() {
 		eth.logger.Errorf("[%s] 收到无效任务消息: ID=%d, ProductID=%s, Platform=%s, MessageID=%s",
 			eth.platform, task.ID, task.ProductID, task.Platform, msg.ID)
-		return nil, nil, domaintask.NewInvalidTaskError(task.ID,
+		return nil, nil, apptask.NewInvalidTaskError(task.ID,
 			fmt.Sprintf("invalid task data: ID=%d, ProductID=%s", task.ID, task.ProductID))
 	}
 
@@ -141,7 +140,7 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 }
 
 // extractNestedPayload 提取嵌套的 payload（分布式爬虫消息格式）
-func (eth *TaskHandler) extractNestedPayload(domainMsg *domaintask.Message) map[string]any {
+func (eth *TaskHandler) extractNestedPayload(domainMsg *apptask.Message) map[string]any {
 	if nestedPayload, ok := domainMsg.Payload["payload"]; ok {
 		if payloadMap, ok := nestedPayload.(map[string]any); ok {
 			eth.logger.Debugf("[%s] 检测到嵌套 payload，提取内层数据", eth.platform)
@@ -164,13 +163,15 @@ func (eth *TaskHandler) shouldSkipDuplicate(task *model.Task) bool {
 		return false
 	}
 
-	if eth.deduplicator.IsDuplicate(task.ID) {
+	taskID := fmt.Sprintf("%d", task.ID)
+	canSubmit, err := eth.deduplicator.CanSubmitTask(taskID)
+	if err != nil || !canSubmit {
 		eth.logger.Warnf("[%s] 检测到重复任务，跳过处理: ID=%d", eth.platform, task.ID)
 		return true
 	}
 
-	// 标记任务已处理（防止重复）
-	eth.deduplicator.MarkProcessed(task.ID)
+	// 标记任务处理中（防止重复）
+	_ = eth.deduplicator.MarkTaskAsProcessing(taskID, eth.platform, task.MaxRetryCount)
 	return false
 }
 
@@ -183,7 +184,7 @@ func (eth *TaskHandler) validateStoreAccess(task *model.Task) (bool, error) {
 	storeInfo, err := eth.storeAPI.GetStore(task.StoreID)
 	if err != nil {
 		eth.logger.Errorf("[%s] 获取店铺 %d 配置失败: %v", eth.platform, task.StoreID, err)
-		return false, domaintask.NewStoreNotFoundError(task.ID, task.StoreID, err)
+		return false, apptask.NewStoreNotFoundError(task.ID, task.StoreID, err)
 	}
 
 	isOwned := eth.isOwnedStore(task.StoreID)
@@ -209,7 +210,7 @@ func (eth *TaskHandler) validatePlatform(task *model.Task) error {
 
 	// 比较任务平台与处理器平台（使用领域对象方法）
 	if !task.PlatformMatches(eth.platform) {
-		return domaintask.NewPlatformMismatchError(task.ID, task.Platform, eth.platform)
+		return apptask.NewPlatformMismatchError(task.ID, task.Platform, eth.platform)
 	}
 
 	return nil
@@ -308,7 +309,7 @@ func (eth *TaskHandler) processTaskWithReporting(
 
 	// 上报成功结果
 	if eth.resultReporter != nil {
-		successData := message.NewSuccessData(task.Platform, task.ProductID, task.StoreID)
+		successData := apptask.NewSuccessData(task.Platform, task.ProductID, task.StoreID)
 
 		if reportErr := eth.resultReporter.ReportSuccess(task, successData.ToMap(), processingTime); reportErr != nil {
 			eth.logger.Errorf("[%s] 上报成功结果失败: ID=%d, Error=%v",
@@ -328,7 +329,7 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 	}
 
 	// 如果是 TaskError，使用其 IsRetryable 方法
-	if taskErr, ok := err.(*domaintask.TaskError); ok {
+	if taskErr, ok := err.(*apptask.TaskError); ok {
 		return taskErr.IsRetryable()
 	}
 
@@ -360,4 +361,3 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 func (eth *TaskHandler) isOwnedStore(storeID int64) bool {
 	return slices.Contains(eth.ownedStores, storeID)
 }
-

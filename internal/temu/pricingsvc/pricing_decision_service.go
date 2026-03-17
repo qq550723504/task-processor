@@ -10,7 +10,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	temupricing "task-processor/internal/temu/api/pricing"
@@ -356,4 +356,5 @@ func (s *PricingDecisionService) buildPricingContextForSalesBoost(ctx context.Co
 
 	return pricingCtx, nil
 }
+
 

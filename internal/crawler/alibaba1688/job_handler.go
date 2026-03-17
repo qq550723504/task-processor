@@ -1,11 +1,11 @@
-// Package alibaba1688 提供任务钩子处理器
+﻿// Package alibaba1688 提供任务钩子处理器
 package alibaba1688
 
 import (
 	"encoding/json"
 	"fmt"
 
-	"task-processor/internal/domain/task"
+	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/worker"
 )
 
@@ -15,8 +15,8 @@ type Crawler1688JobHandler struct {
 }
 
 // parseCrawlTask 从 WorkerJob 中解析 CrawlerTask
-func (h *Crawler1688JobHandler) parseCrawlTask(job worker.WorkerJob) (*task.CrawlerTask, error) {
-	var crawlerTask task.CrawlerTask
+func (h *Crawler1688JobHandler) parseCrawlTask(job worker.WorkerJob) (*shared.CrawlerTask, error) {
+	var crawlerTask shared.CrawlerTask
 	if err := json.Unmarshal([]byte(job.TaskData), &crawlerTask); err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (h *Crawler1688JobHandler) OnJobStart(job worker.WorkerJob) {
 	h.service.logger.Infof("🕷️ 开始处理1688任务: %s (URL: %s)", crawlerTask.TaskID, crawlerTask.URL)
 
 	// 更新任务状态为处理中
-	h.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	h.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.MarkProcessing()
 	})
 }
@@ -49,7 +49,7 @@ func (h *Crawler1688JobHandler) OnJobSuccess(job worker.WorkerJob) {
 	h.service.logger.Infof("✅ 1688任务成功: %s", crawlerTask.TaskID)
 
 	// 更新结果
-	h.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	h.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		// ProductData 已经在 ProcessTask 中设置
 		// 这里只需要标记状态
 		if result.ProductData != nil {
@@ -68,7 +68,7 @@ func (h *Crawler1688JobHandler) OnJobFailure(job worker.WorkerJob, err error) {
 	h.service.logger.Errorf("❌ 1688任务失败: %s, 错误: %v", crawlerTask.TaskID, err)
 
 	// 更新结果
-	h.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	h.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.MarkFailed(err)
 	})
 }
@@ -83,7 +83,7 @@ func (h *Crawler1688JobHandler) OnJobPanic(job worker.WorkerJob, panicValue any,
 	h.service.logger.Errorf("💥 1688任务Panic: %s, 错误: %v", crawlerTask.TaskID, panicValue)
 
 	// 更新结果
-	h.service.updateResult(crawlerTask.TaskID, func(result *task.CrawlerResult) {
+	h.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.MarkFailed(fmt.Errorf("panic: %v", panicValue))
 	})
 }
@@ -92,3 +92,4 @@ func (h *Crawler1688JobHandler) OnJobPanic(job worker.WorkerJob, panicValue any,
 func (h *Crawler1688JobHandler) OnJobCompleted(job worker.WorkerJob) {
 	// 可以在这里做一些清理工作
 }
+

@@ -1,4 +1,4 @@
-// Package messaging 提供RabbitMQ服务管理器
+﻿// Package messaging 提供RabbitMQ服务管理器
 package messaging
 
 import (
@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/task"
+	apptask "task-processor/internal/app/task"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -34,7 +34,7 @@ type RabbitMQService struct {
 	resultReporter *ResultReporter
 	storeAPI       api.StoreAPI
 	ownedStores    []int64
-	deduplicator   *task.Deduplicator
+	deduplicator   *apptask.DeduplicationManager
 
 	// 生命周期管理
 	ctx    context.Context
@@ -123,7 +123,7 @@ func (s *RabbitMQService) SetComponents(
 	resultReporter *ResultReporter,
 	storeAPI api.StoreAPI,
 	ownedStores []int64,
-	deduplicator *task.Deduplicator,
+	deduplicator *apptask.DeduplicationManager,
 ) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -340,3 +340,4 @@ func (s *RabbitMQService) GetClient() *rabbitmq.Client {
 func (s *RabbitMQService) GetConsumer() *rabbitmq.MessageConsumer {
 	return s.consumer
 }
+

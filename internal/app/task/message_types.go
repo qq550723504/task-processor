@@ -1,5 +1,5 @@
-// Package message 提供消息相关的类型定义
-package message
+// Package task 提供任务消息载荷类型定义
+package task
 
 // CrawlerPayload 爬虫消息载荷
 type CrawlerPayload struct {
@@ -10,7 +10,7 @@ type CrawlerPayload struct {
 	Region     string `json:"region"`
 	ProductID  string `json:"productId"`
 	Priority   int    `json:"priority"`
-	ReplyTo    string `json:"reply_to"` // 回复队列
+	ReplyTo    string `json:"reply_to"`
 	CreateTime int64  `json:"createTime"`
 	UpdateTime int64  `json:"updateTime"`
 	RetryCount int    `json:"retryCount"`
@@ -38,10 +38,10 @@ type TaskPayload struct {
 // ResultPayload 结果消息载荷
 type ResultPayload struct {
 	TaskID       int64          `json:"taskId"`
-	Status       string         `json:"status"` // success, failed, retry
+	Status       string         `json:"status"`
 	Message      string         `json:"message"`
 	Data         map[string]any `json:"data,omitempty"`
-	ProcessTime  int64          `json:"processTime"` // 毫秒
+	ProcessTime  int64          `json:"processTime"`
 	ErrorCode    string         `json:"errorCode,omitempty"`
 	ErrorMessage string         `json:"errorMessage,omitempty"`
 	RetryCount   int            `json:"retryCount"`
@@ -56,7 +56,7 @@ type SuccessData struct {
 	StoreID   int64  `json:"store_id"`
 }
 
-// ToMap 转换为 map（用于兼容现有代码）
+// ToMap 转换为 map
 func (s *SuccessData) ToMap() map[string]any {
 	return map[string]any{
 		"platform":   s.Platform,

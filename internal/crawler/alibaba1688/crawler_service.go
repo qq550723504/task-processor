@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/domain/task"
+	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/httpx"
 	"task-processor/internal/infra/worker"
 
@@ -65,12 +65,12 @@ func (s *Service) Stop(ctx context.Context) error {
 }
 
 // SubmitTask 提交任务
-func (s *Service) SubmitTask(crawlerTask *task.CrawlerTask) error {
+func (s *Service) SubmitTask(crawlerTask *shared.CrawlerTask) error {
 	if err := crawlerTask.Validate(); err != nil {
 		return err
 	}
 
-	s.results.Store(crawlerTask.TaskID, task.NewCrawlerResult(crawlerTask.TaskID))
+	s.results.Store(crawlerTask.TaskID, shared.NewCrawlerResult(crawlerTask.TaskID))
 
 	taskData, err := json.Marshal(crawlerTask)
 	if err != nil {
@@ -89,12 +89,12 @@ func (s *Service) SubmitTask(crawlerTask *task.CrawlerTask) error {
 }
 
 // GetTask 获取任务结果
-func (s *Service) GetTask(taskID string) (*task.CrawlerResult, error) {
+func (s *Service) GetTask(taskID string) (*shared.CrawlerResult, error) {
 	value, ok := s.results.Load(taskID)
 	if !ok {
-		return nil, task.ErrTaskNotFound
+		return nil, shared.ErrTaskNotFound
 	}
-	return value.(*task.CrawlerResult), nil
+	return value.(*shared.CrawlerResult), nil
 }
 
 // DeleteTask 删除任务
@@ -103,10 +103,10 @@ func (s *Service) DeleteTask(taskID string) {
 }
 
 // GetAllTasks 获取所有任务
-func (s *Service) GetAllTasks() []*task.CrawlerResult {
-	tasks := make([]*task.CrawlerResult, 0)
+func (s *Service) GetAllTasks() []*shared.CrawlerResult {
+	tasks := make([]*shared.CrawlerResult, 0)
 	s.results.Range(func(key, value any) bool {
-		tasks = append(tasks, value.(*task.CrawlerResult))
+		tasks = append(tasks, value.(*shared.CrawlerResult))
 		return true
 	})
 	return tasks
@@ -124,7 +124,7 @@ func (s *Service) GetStats() map[string]any {
 
 	statusCount := make(map[string]int)
 	s.results.Range(func(key, value any) bool {
-		statusCount[string(value.(*task.CrawlerResult).Status)]++
+		statusCount[string(value.(*shared.CrawlerResult).Status)]++
 		return true
 	})
 	stats["status_count"] = statusCount
@@ -153,13 +153,14 @@ func (s *Service) IsHealthy() bool {
 }
 
 // updateResult 线程安全地更新任务结果
-func (s *Service) updateResult(taskID string, updateFn func(*task.CrawlerResult)) {
+func (s *Service) updateResult(taskID string, updateFn func(*shared.CrawlerResult)) {
 	s.resultMu.Lock()
 	defer s.resultMu.Unlock()
 
 	if value, ok := s.results.Load(taskID); ok {
-		result := value.(*task.CrawlerResult)
+		result := value.(*shared.CrawlerResult)
 		updateFn(result)
 		s.results.Store(taskID, result)
 	}
 }
+

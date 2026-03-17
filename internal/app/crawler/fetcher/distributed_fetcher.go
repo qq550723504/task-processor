@@ -10,7 +10,7 @@ import (
 	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
-	domainProduct "task-processor/internal/domain/product"
+	domainProduct "task-processor/internal/product"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/pkg/timeout"
 
@@ -285,4 +285,5 @@ func (f *DistributedProductFetcher) Close() error {
 
 	return nil
 }
+
 

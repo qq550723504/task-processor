@@ -4,8 +4,8 @@ package rules
 import (
 	"fmt"
 	"task-processor/internal/model"
-	"task-processor/internal/domain/product"
-	domainvalidation "task-processor/internal/domain/validation"
+	"task-processor/internal/product"
+	domainvalidation "task-processor/internal/validation"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
@@ -239,4 +239,6 @@ func (v *RuleValidator) checkImageCountRuleDetailed(amazonProduct *model.Product
 	}
 	return &handlerbase.FilterCheckResult{Passed: true}
 }
+
+
 

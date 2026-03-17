@@ -9,7 +9,7 @@ import (
 
 	"task-processor/internal/app/state"
 	commontypes "task-processor/internal/model"
-	pkgproduct "task-processor/internal/domain/product"
+	pkgproduct "task-processor/internal/product"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonx"
@@ -477,4 +477,5 @@ func (h *SavePublishResultHandler) buildFilterRuleRange(filterRule *api.FilterRu
 
 	return fmt.Sprintf("[%s]", strings.Join(rangeParts, ","))
 }
+
 

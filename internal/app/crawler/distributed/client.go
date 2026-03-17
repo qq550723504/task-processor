@@ -7,10 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/model"
-	"task-processor/internal/domain/queue"
-	"task-processor/internal/domain/task"
+	"task-processor/internal/app/task"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,7 +19,7 @@ import (
 type DistributedCrawlerClient struct {
 	rabbitmqClient *rabbitmq.Client
 	taskAdapter    *task.MessageAdapter
-	queueNaming    *queue.NamingService
+	queueNaming    *rabbitmq.NamingService
 	logger         *logrus.Logger
 
 	// 结果等待管理
@@ -45,7 +44,7 @@ func NewDistributedCrawlerClient(rabbitmqClient *rabbitmq.Client, logger *logrus
 	client := &DistributedCrawlerClient{
 		rabbitmqClient:  rabbitmqClient,
 		taskAdapter:     task.NewMessageAdapter(),
-		queueNaming:     queue.NewNamingService(),
+		queueNaming:     rabbitmq.NewNamingService(),
 		logger:          logger,
 		pendingTasks:    make(map[string]*PendingTask),
 		timeout:         5 * time.Minute, // 默认5分钟超时
@@ -262,4 +261,3 @@ func (c *DistributedCrawlerClient) Close() error {
 
 	return nil
 }
-

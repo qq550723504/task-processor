@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"task-processor/internal/model"
-	"task-processor/internal/domain/product"
+	"task-processor/internal/product"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein/productsync"
 
@@ -266,4 +266,5 @@ func (s *inventorySyncServiceImpl) debugProductAttributes(productID string, attr
 		s.logger.WithError(err).WithField("product_id", productID).Error("产品属性结构验证失败")
 	}
 }
+
 
