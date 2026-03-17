@@ -513,3 +513,8 @@ type SheinTaskFactory = scheduler.SheinTaskFactory
 | P3.3 | `queue_config/initializer` → `infra/rabbitmq/` | 中 | 低 | ✅ commit ecf0f06 |
 | P3.3 | `app/messaging/` → `app/consumer/` | 中 | 低 | ✅ commit 6e8494f |
 | P2 | 新建 `shein/context/`，提取 TaskContext/属性类型 | 高 | 中 | ✅ commit 3a0f20b |
+| P0 | `amazon/service/` → 拆分为 5 个包 | 高 | 中 | ✅ commit 00ffd37 |
+| P1 | `amazon/handler/` → `amazon/pipeline/` | 中 | 低 | ✅ commit d88c575 |
+| P2 | `shein/` 根目录进一步清理（region/time_helper/string_sanitizer/json_map） | 中 | 低 | ✅ commit 17344e6 |
+| P3 | `temu/` 根目录散落文件 | 低 | 低 | ✅ 评估后无需处理，文件职责清晰 |
+| P4 | `app/di/` 字符串 key → 直接依赖注入 | 中 | 高 | ⏳ 待执行（改动面大，单独 Sprint） |
