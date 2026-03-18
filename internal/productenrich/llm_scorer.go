@@ -109,13 +109,18 @@ func (s *llmScorer) ScoreImage(ctx context.Context, imageURL string, baseScore f
 
 // scoreWithCache 通用的缓存+LLM评分流程
 func (s *llmScorer) scoreWithCache(
-	_ context.Context,
+	ctx context.Context,
 	baseScore float64,
 	getCached func() (float64, bool),
 	setCached func(float64) error,
 	callLLM func() (float64, error),
 	label string,
 ) (float64, error) {
+	// 检查 context 是否已取消
+	if err := ctx.Err(); err != nil {
+		return baseScore, err
+	}
+
 	// 检查缓存
 	if s.scoreCache != nil {
 		if cachedScore, found := getCached(); found {
@@ -199,8 +204,8 @@ func (s *llmScorer) scoreImageWithLLM(ctx context.Context, imageURL string, base
 	return score, nil
 }
 
-// retryLLMCall 通用重试机制
-func (s *llmScorer) retryLLMCall(_ context.Context, maxRetries int, call func() (string, error)) (string, error) {
+// retryLLMCall 通用重试机制，支持 context 取消。
+func (s *llmScorer) retryLLMCall(ctx context.Context, maxRetries int, call func() (string, error)) (string, error) {
 	var lastErr error
 	for i := 0; i < maxRetries; i++ {
 		response, err := call()
@@ -209,7 +214,13 @@ func (s *llmScorer) retryLLMCall(_ context.Context, maxRetries int, call func() 
 		}
 		lastErr = err
 		logrus.WithError(err).WithField("attempt", i+1).Warn("LLM scoring attempt failed")
-		time.Sleep(time.Duration(i+1) * time.Second)
+
+		wait := time.Duration(i+1) * time.Second
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(wait):
+		}
 	}
 	return "", lastErr
 }

@@ -4,13 +4,7 @@ package productenrich
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
-	"sync"
-	"time"
 
 	"task-processor/internal/pkg/strx"
 
@@ -20,33 +14,19 @@ import (
 // InputParser 输入解析器接口
 type InputParser interface {
 	ParseInput(ctx context.Context, req *GenerateRequest) (*ParsedInput, error)
-	DownloadImages(ctx context.Context, urls []string) ([]string, error)
+	CollectImages(ctx context.Context, urls []string) ([]string, error)
 	CleanText(text string) string
 	Scrape1688(ctx context.Context, url string) (*ScrapedData, error)
 }
 
 // inputParser 输入解析器实现
 type inputParser struct {
-	logger        *logrus.Logger
-	httpClient    *http.Client
-	webScraper    WebScraper
-	downloadDir   string
-	maxRetries    int
-	retryDelay    time.Duration
-	maxConcurrent int
+	logger     *logrus.Logger
+	webScraper WebScraper
 }
 
-// InputParserConfig 输入解析器配置
-type InputParserConfig struct {
-	DownloadDir      string
-	MaxRetries       int
-	RetryDelay       time.Duration
-	Timeout          time.Duration
-	MaxConcurrent    int
-	ScraperTimeout   time.Duration
-	ScraperRetries   int
-	ScraperUserAgent string
-}
+// InputParserConfig 输入解析器配置（当前保留为空结构体，供后续扩展）
+type InputParserConfig struct{}
 
 // NewInputParser 创建新的输入解析器
 func NewInputParser(logger *logrus.Logger, config *InputParserConfig, webScraper WebScraper) (InputParser, error) {
@@ -60,43 +40,9 @@ func NewInputParser(logger *logrus.Logger, config *InputParserConfig, webScraper
 		return nil, fmt.Errorf("webScraper cannot be nil")
 	}
 
-	if config.DownloadDir == "" {
-		config.DownloadDir = "./downloads"
-	}
-	if err := os.MkdirAll(config.DownloadDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create download directory: %w", err)
-	}
-
-	if config.MaxRetries == 0 {
-		config.MaxRetries = 3
-	}
-	if config.RetryDelay == 0 {
-		config.RetryDelay = 1 * time.Second
-	}
-	if config.Timeout == 0 {
-		config.Timeout = 30 * time.Second
-	}
-	if config.MaxConcurrent == 0 {
-		config.MaxConcurrent = 5
-	}
-
-	httpClient := &http.Client{
-		Timeout: config.Timeout,
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
-		},
-	}
-
 	return &inputParser{
-		logger:        logger,
-		httpClient:    httpClient,
-		webScraper:    webScraper,
-		downloadDir:   config.DownloadDir,
-		maxRetries:    config.MaxRetries,
-		retryDelay:    config.RetryDelay,
-		maxConcurrent: config.MaxConcurrent,
+		logger:     logger,
+		webScraper: webScraper,
 	}, nil
 }
 
@@ -129,12 +75,8 @@ func (p *inputParser) ParseInput(ctx context.Context, req *GenerateRequest) (*Pa
 	}
 
 	if len(req.ImageURLs) > 0 {
-		p.logger.WithField("count", len(req.ImageURLs)).Info("downloading images")
-		downloadedPaths, err := p.DownloadImages(ctx, req.ImageURLs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to download images: %w", err)
-		}
-		result.Images = downloadedPaths
+		p.logger.WithField("count", len(req.ImageURLs)).Info("collecting image URLs")
+		result.Images = req.ImageURLs
 	}
 
 	if req.Text != "" {
@@ -153,7 +95,16 @@ func (p *inputParser) ParseInput(ctx context.Context, req *GenerateRequest) (*Pa
 		result.ScrapedData = scrapedData
 
 		if len(scrapedData.Images) > 0 {
-			result.Images = append(result.Images, scrapedData.Images...)
+			// 去重：跳过已存在的图片 URL
+			existing := make(map[string]struct{}, len(result.Images))
+			for _, u := range result.Images {
+				existing[u] = struct{}{}
+			}
+			for _, u := range scrapedData.Images {
+				if _, ok := existing[u]; !ok {
+					result.Images = append(result.Images, u)
+				}
+			}
 		}
 		if scrapedData.Description != "" {
 			if result.Text != "" {
@@ -182,107 +133,9 @@ func (p *inputParser) CleanText(text string) string {
 	return strx.CleanProductText(text)
 }
 
-// DownloadImages 并发下载多张图片
-func (p *inputParser) DownloadImages(ctx context.Context, urls []string) ([]string, error) {
-	if len(urls) == 0 {
-		return []string{}, nil
-	}
-
-	semaphore := make(chan struct{}, p.maxConcurrent)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	downloadedPaths := make([]string, 0, len(urls))
-	var errs []error
-
-	for i, url := range urls {
-		wg.Add(1)
-		go func(index int, imageURL string) {
-			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-
-			path, err := p.downloadSingleImage(ctx, imageURL, index)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				p.logger.WithError(err).WithField("url", imageURL).Error("failed to download image")
-				errs = append(errs, err)
-			} else {
-				downloadedPaths = append(downloadedPaths, path)
-			}
-		}(i, url)
-	}
-
-	wg.Wait()
-
-	if len(errs) > 0 && len(downloadedPaths) == 0 {
-		return nil, fmt.Errorf("all images failed to download: %d errors", len(errs))
-	}
-
-	p.logger.WithFields(logrus.Fields{
-		"total":   len(urls),
-		"success": len(downloadedPaths),
-		"failed":  len(errs),
-	}).Info("images downloaded")
-
-	return downloadedPaths, nil
-}
-
-// downloadSingleImage 下载单张图片（带重试）
-func (p *inputParser) downloadSingleImage(ctx context.Context, url string, index int) (string, error) {
-	var lastErr error
-	for attempt := 0; attempt < p.maxRetries; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return "", ctx.Err()
-			case <-time.After(p.retryDelay * time.Duration(attempt)):
-			}
-			p.logger.WithFields(logrus.Fields{"url": url, "attempt": attempt + 1}).Warn("retrying image download")
-		}
-		path, err := p.downloadImageAttempt(ctx, url, index)
-		if err == nil {
-			return path, nil
-		}
-		lastErr = err
-	}
-	return "", fmt.Errorf("failed after %d attempts: %w", p.maxRetries, lastErr)
-}
-
-// downloadImageAttempt 单次下载尝试
-func (p *inputParser) downloadImageAttempt(ctx context.Context, url string, index int) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to download: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	filename := fmt.Sprintf("image_%d_%d.jpg", time.Now().Unix(), index)
-	fpath := filepath.Join(p.downloadDir, filename)
-
-	file, err := os.Create(fpath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create file: %w", err)
-	}
-	defer file.Close()
-
-	if _, err = io.Copy(file, resp.Body); err != nil {
-		os.Remove(fpath)
-		return "", fmt.Errorf("failed to save file: %w", err)
-	}
-
-	return fpath, nil
+// CollectImages 返回原始图片 URL 列表（内存处理，不做本地下载）
+func (p *inputParser) CollectImages(_ context.Context, urls []string) ([]string, error) {
+	return urls, nil
 }
 
 // Scrape1688 抓取 1688 网页

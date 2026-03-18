@@ -100,10 +100,21 @@ func (v *resultValidator) ValidateResult(ctx context.Context, input *ParsedInput
 	return validation, nil
 }
 
-// CheckImageConsistency 检查图片一致性
+// CheckImageConsistency 检查图片一致性：结果图片应包含所有输入图片
 func (v *resultValidator) CheckImageConsistency(inputImages []string, resultImages []string) bool {
-	// 结果图片数量不应超过输入图片数量
-	return len(resultImages) <= len(inputImages)
+	if len(inputImages) == 0 {
+		return true
+	}
+	resultSet := make(map[string]struct{}, len(resultImages))
+	for _, u := range resultImages {
+		resultSet[u] = struct{}{}
+	}
+	for _, u := range inputImages {
+		if _, ok := resultSet[u]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // CheckKeywordMatch 检查关键词匹配度
@@ -171,13 +182,13 @@ func (v *resultValidator) CheckCompleteness(result *ProductJSON) (*CompletenessR
 		MissingOptional: make([]string, 0),
 	}
 
-	// 检查必需字段
+	// 检查必需字段（images 为可选，取决于输入是否包含图片）
 	report.RequiredFields["title"] = result.Title != ""
 	report.RequiredFields["category"] = len(result.Category) > 0
 	report.RequiredFields["description"] = result.Description != ""
-	report.RequiredFields["images"] = len(result.Images) > 0
 
 	// 检查可选字段
+	report.OptionalFields["images"] = len(result.Images) > 0
 	report.OptionalFields["attributes"] = len(result.Attributes) > 0
 	report.OptionalFields["selling_points"] = len(result.SellingPoints) > 0
 	report.OptionalFields["seo_keywords"] = len(result.SEOKeywords) > 0

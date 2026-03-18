@@ -30,14 +30,14 @@ type GenerateRequest struct {
 
 // Task 表示一个产品生成任务
 type Task struct {
-	ID         string           `json:"id"`
-	Request    *GenerateRequest `json:"request"`
-	Status     TaskStatus       `json:"status"`
-	Result     *ProductJSON     `json:"result,omitempty"`
-	Error      string           `json:"error,omitempty"`
-	CreatedAt  time.Time        `json:"created_at"`
-	UpdatedAt  time.Time        `json:"updated_at"`
-	RetryCount int              `json:"retry_count"`
+	ID         string           `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	Request    *GenerateRequest `json:"request" gorm:"type:text"`
+	Status     TaskStatus       `json:"status" gorm:"type:varchar(20);index"`
+	Result     *ProductJSON     `json:"result,omitempty" gorm:"type:text"`
+	Error      string           `json:"error,omitempty" gorm:"type:text"`
+	CreatedAt  time.Time        `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt  time.Time        `json:"updated_at" gorm:"autoUpdateTime"`
+	RetryCount int              `json:"retry_count" gorm:"default:0"`
 }
 
 // ProductJSON 表示最终生成的产品 JSON 数据
@@ -182,6 +182,9 @@ type ValidationResult struct {
 	ImageScore   float64
 	TextScore    float64
 	ScrapedScore float64
+	// 原始验证对象，供 QualityScorer 的 LLM 评分使用
+	ImageValidation *ImageValidation
+	TextValidation  *TextValidation
 }
 
 // ValidationIssue 验证问题
@@ -210,11 +213,16 @@ func (r GenerateRequest) Value() (driver.Value, error) {
 
 // Scan 实现 sql.Scanner 接口
 func (r *GenerateRequest) Scan(value any) error {
-	bytes, ok := value.([]byte)
-	if !ok {
+	var b []byte
+	switch v := value.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
 		return errors.New("type assertion to []byte failed")
 	}
-	return json.Unmarshal(bytes, r)
+	return json.Unmarshal(b, r)
 }
 
 // Value 实现 driver.Valuer 接口
@@ -224,11 +232,16 @@ func (p ProductJSON) Value() (driver.Value, error) {
 
 // Scan 实现 sql.Scanner 接口
 func (p *ProductJSON) Scan(value any) error {
-	bytes, ok := value.([]byte)
-	if !ok {
+	var b []byte
+	switch v := value.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
 		return errors.New("type assertion to []byte failed")
 	}
-	return json.Unmarshal(bytes, p)
+	return json.Unmarshal(b, p)
 }
 
 // ResultValidation 结果验证
@@ -267,6 +280,7 @@ type TextValidation struct {
 	Length      int
 	HasKeywords bool
 	Keywords    []string
+	RawText     string // 原始文本，供 LLM 评分使用
 }
 
 // ScrapedDataValidation 抓取数据验证结果

@@ -10,8 +10,10 @@ import (
 
 // JSONGenerator JSON 生成器接口
 type JSONGenerator interface {
-	// GenerateJSON 生成产品 JSON
-	GenerateJSON(ctx context.Context, analysis *ProductAnalysis, variantGen VariantGenerator) (*ProductJSON, error)
+	// GenerateJSON 生成产品 JSON。
+	// variantGen 为 nil 时跳过变体和规格生成（basic/minimal 策略）。
+	// skipVariants 为 true 时只生成规格，跳过变体（basic 策略）。
+	GenerateJSON(ctx context.Context, analysis *ProductAnalysis, variantGen VariantGenerator, skipVariants bool) (*ProductJSON, error)
 }
 
 // jsonGenerator JSON 生成器实现

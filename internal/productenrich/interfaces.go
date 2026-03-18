@@ -19,14 +19,6 @@ type WebScraper interface {
 	Scrape(ctx context.Context, url string) (*ScrapedData, error)
 }
 
-// WebScraperConfig 网页抓取器配置
-type WebScraperConfig struct {
-	Timeout    int64
-	MaxRetries int
-	RetryDelay int64
-	UserAgent  string
-}
-
 // MetricsCollector 指标收集器接口
 type MetricsCollector interface {
 	RecordCacheHit(cacheType string)

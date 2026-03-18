@@ -30,6 +30,22 @@ openai:
   model: "gemini-2.0-flash"
   baseURL: "https://ai.linkcloudai.com/v1"
   timeout: 300  # API调用超时5分钟
+
+  # 各阶段命名客户端（key 与代码中 GetClient(name) 对应）
+  # 未配置的 key 自动降级到 default
+  clients:
+    # 图片分析阶段（understanding.go: AnalyzeImage）
+    vision:
+      model: "gemini-2.0-flash"
+      timeout: 120
+    # 文本属性提取 / 规格生成（understanding.go, variant.go）
+    fast:
+      model: "gemini-2.0-flash"
+      timeout: 60
+    # 质量评分阶段（llm_scorer.go）
+    scorer:
+      model: "gemini-2.0-flash"
+      timeout: 60
   
   # 请求池配置 - 更保守的设置
   pool:

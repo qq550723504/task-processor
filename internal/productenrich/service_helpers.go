@@ -4,6 +4,7 @@ package productenrich
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -81,27 +82,28 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 
 	// 如果策略是拒绝，生成改进建议并返回错误
 	if strategy == StrategyReject {
-		return s.handleRejection(ctx, task, validationResult, qualityScore)
+		return s.handleRejection(ctx, task, validationResult)
 	}
 
 	return strategy, nil
 }
 
-// handleRejection 处理拒绝策略
-func (s *productService) handleRejection(ctx context.Context, task *Task, validationResult *ValidationResult, qualityScore float64) (ProcessingStrategy, error) {
+// handleRejection 处理拒绝策略，返回 errNoRetry 标记不可重试
+func (s *productService) handleRejection(ctx context.Context, task *Task, validationResult *ValidationResult) (ProcessingStrategy, error) {
+	var errorMsg string
 	if s.enhancementSuggester != nil {
 		suggestion, err := s.enhancementSuggester.GenerateSuggestions(ctx, validationResult)
 		if err != nil {
 			logrus.WithField("task_id", task.ID).WithError(err).Error("failed to generate suggestions")
 		} else {
-			errorMsg := s.buildRejectionMessage(validationResult, suggestion)
-			s.taskRepo.UpdateTaskError(ctx, task.ID, errorMsg)
-			return "", fmt.Errorf("data quality insufficient: %s", errorMsg)
+			errorMsg = s.buildRejectionMessage(validationResult, suggestion)
 		}
 	}
-	errorMsg := fmt.Sprintf("数据质量不足（评分: %.2f），无法生成产品信息", qualityScore)
+	if errorMsg == "" {
+		errorMsg = fmt.Sprintf("数据质量不足（评分: %.2f），无法生成产品信息", validationResult.QualityScore)
+	}
 	s.taskRepo.UpdateTaskError(ctx, task.ID, errorMsg)
-	return "", fmt.Errorf("%s", errorMsg)
+	return "", &errNoRetry{cause: fmt.Errorf("%s", errorMsg)}
 }
 
 // analyzeProduct 分析产品
@@ -130,11 +132,24 @@ func (s *productService) analyzeProduct(ctx context.Context, task *Task, parsedI
 }
 
 // generateProductJSON 生成产品 JSON
-func (s *productService) generateProductJSON(ctx context.Context, task *Task, analysis *ProductAnalysis) (*ProductJSON, error) {
+func (s *productService) generateProductJSON(ctx context.Context, task *Task, analysis *ProductAnalysis, strategy ProcessingStrategy) (*ProductJSON, error) {
 	logrus.WithField("task_id", task.ID).Info("step 4: generating product JSON")
 
+	// 根据策略控制生成范围：
+	//   full    → 规格 + 变体
+	//   basic   → 规格，跳过变体
+	//   minimal → 跳过规格和变体
+	variantGen := s.variantGenerator
+	skipVariants := false
+	switch strategy {
+	case StrategyBasic:
+		skipVariants = true // 保留规格生成，跳过变体
+	case StrategyMinimal:
+		variantGen = nil // 规格和变体都跳过
+	}
+
 	if s.jsonGenerator != nil {
-		productJSON, err := s.jsonGenerator.GenerateJSON(ctx, analysis, s.variantGenerator)
+		productJSON, err := s.jsonGenerator.GenerateJSON(ctx, analysis, variantGen, skipVariants)
 		if err != nil {
 			logrus.WithField("task_id", task.ID).WithError(err).Error("failed to generate JSON")
 			return nil, fmt.Errorf("failed to generate JSON: %w", err)
@@ -188,27 +203,28 @@ func (s *productService) validateResult(ctx context.Context, task *Task, parsedI
 
 // buildRejectionMessage 构建拒绝处理的错误消息
 func (s *productService) buildRejectionMessage(validation *ValidationResult, suggestion *EnhancementSuggestion) string {
-	msg := fmt.Sprintf("数据质量不足（评分: %.2f/100），无法生成产品信息。\n\n", validation.QualityScore)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "数据质量不足（评分: %.2f/100），无法生成产品信息。\n\n", validation.QualityScore)
 
 	if len(suggestion.RequiredActions) > 0 {
-		msg += "必需改进操作：\n"
+		sb.WriteString("必需改进操作：\n")
 		for i, action := range suggestion.RequiredActions {
-			msg += fmt.Sprintf("%d. %s\n", i+1, action)
+			fmt.Fprintf(&sb, "%d. %s\n", i+1, action)
 		}
-		msg += "\n"
+		sb.WriteString("\n")
 	}
 
 	if len(suggestion.OptionalActions) > 0 {
-		msg += "可选改进操作：\n"
+		sb.WriteString("可选改进操作：\n")
 		for i, action := range suggestion.OptionalActions {
-			msg += fmt.Sprintf("%d. %s\n", i+1, action)
+			fmt.Fprintf(&sb, "%d. %s\n", i+1, action)
 		}
-		msg += "\n"
+		sb.WriteString("\n")
 	}
 
 	if suggestion.EstimatedQuality != "" {
-		msg += fmt.Sprintf("改进后预期质量：%s\n", suggestion.EstimatedQuality)
+		fmt.Fprintf(&sb, "改进后预期质量：%s\n", suggestion.EstimatedQuality)
 	}
 
-	return msg
+	return sb.String()
 }

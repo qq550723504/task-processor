@@ -39,34 +39,39 @@ func (c *validationCache) GetImageValidation(ctx context.Context, imageURL strin
 		return nil, false
 	}
 
-	// 记录缓存操作
-	c.metrics.RecordCacheOperation("get", "image_validation")
+	if c.metrics != nil {
+		c.metrics.RecordCacheOperation("get", "image_validation")
+	}
 
 	cacheKey := c.getImageCacheKey(imageURL)
 	cached, err := c.redisClient.Get(ctx, cacheKey)
 	if err != nil {
-		// 记录缓存未命中
-		c.metrics.RecordCacheMiss("image_validation")
+		if c.metrics != nil {
+			c.metrics.RecordCacheMiss("image_validation")
+		}
 		logrus.WithError(err).WithField("url", imageURL).Debug("cache miss for image validation")
 		return nil, false
 	}
 
 	if cached == "" {
-		// 记录缓存未命中
-		c.metrics.RecordCacheMiss("image_validation")
+		if c.metrics != nil {
+			c.metrics.RecordCacheMiss("image_validation")
+		}
 		return nil, false
 	}
 
 	var info ImageInfo
 	if err := json.Unmarshal([]byte(cached), &info); err != nil {
-		// 记录缓存未命中（解析失败）
-		c.metrics.RecordCacheMiss("image_validation")
+		if c.metrics != nil {
+			c.metrics.RecordCacheMiss("image_validation")
+		}
 		logrus.WithError(err).WithField("url", imageURL).Error("failed to unmarshal cached image info")
 		return nil, false
 	}
 
-	// 记录缓存命中
-	c.metrics.RecordCacheHit("image_validation")
+	if c.metrics != nil {
+		c.metrics.RecordCacheHit("image_validation")
+	}
 	logrus.WithFields(logrus.Fields{
 		"url":      imageURL,
 		"is_valid": info.IsValid,
@@ -81,8 +86,9 @@ func (c *validationCache) SetImageValidation(ctx context.Context, imageURL strin
 		return nil
 	}
 
-	// 记录缓存操作
-	c.metrics.RecordCacheOperation("set", "image_validation")
+	if c.metrics != nil {
+		c.metrics.RecordCacheOperation("set", "image_validation")
+	}
 
 	data, err := json.Marshal(info)
 	if err != nil {

@@ -30,7 +30,7 @@ func (s *productService) ProcessProduct(ctx context.Context, task *Task) (*Produ
 	}
 
 	// 步骤 2: 验证输入并选择策略
-	_, err = s.validateAndSelectStrategy(ctx, task, parsedInput)
+	strategy, err := s.validateAndSelectStrategy(ctx, task, parsedInput)
 	if err != nil {
 		return nil, err
 	}
@@ -42,17 +42,16 @@ func (s *productService) ProcessProduct(ctx context.Context, task *Task) (*Produ
 		return nil, err
 	}
 
-	// 步骤 4: 生成 JSON
-	productJSON, err := s.generateProductJSON(ctx, task, analysis)
+	// 步骤 4: 生成 JSON（minimal 策略跳过变体生成）
+	productJSON, err := s.generateProductJSON(ctx, task, analysis, strategy)
 	if err != nil {
 		s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("JSON generation failed: %v", err))
 		return nil, err
 	}
 
-	// 添加原始图片 URL
-	if len(task.Request.ImageURLs) > 0 {
-		productJSON.Images = task.Request.ImageURLs
-	}
+	// 用 parsedInput.Images 作为最终图片列表（已包含原始图片和 scraped 图片，且已去重）
+	// LLM 不生成图片 URL，直接覆盖
+	productJSON.Images = parsedInput.Images
 
 	// 步骤 5: 验证生成结果
 	s.validateResult(ctx, task, parsedInput, productJSON)

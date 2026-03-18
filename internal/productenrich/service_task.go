@@ -4,6 +4,7 @@ package productenrich
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/infra/worker"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,12 +41,21 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
-	// 将任务加入 Redis 队列
-	if err := s.redisClient.Push(ctx, s.queueName, taskID); err != nil {
-		logrus.WithFields(logrus.Fields{
-			"task_id": taskID,
-		}).WithError(err).Error("failed to push task to queue")
-		return nil, fmt.Errorf("failed to enqueue task: %w", err)
+	// 将任务提交到 Worker Pool
+	if s.workerPool != nil {
+		job := worker.WorkerJob{TaskData: taskID}
+		if err := s.workerPool.Submit(job); err != nil {
+			logrus.WithField("task_id", taskID).WithError(err).Error("failed to submit task to worker pool")
+			return nil, fmt.Errorf("failed to submit task: %w", err)
+		}
+	} else if s.redisClient != nil {
+		// 降级：无 Pool 时写入 Redis 队列（兼容旧模式）
+		if err := s.redisClient.Push(ctx, s.queueName, taskID); err != nil {
+			logrus.WithField("task_id", taskID).WithError(err).Error("failed to push task to queue")
+			return nil, fmt.Errorf("failed to enqueue task: %w", err)
+		}
+	} else {
+		logrus.WithField("task_id", taskID).Warn("no worker pool or redis configured, task will not be processed automatically")
 	}
 
 	logrus.WithFields(logrus.Fields{
@@ -68,7 +78,7 @@ func (s *productService) GetTaskResult(ctx context.Context, taskID string) (*Tas
 		logrus.WithFields(logrus.Fields{
 			"task_id": taskID,
 		}).WithError(err).Error("failed to get task")
-		return nil, fmt.Errorf("failed to get task: %w", err)
+		return nil, err
 	}
 
 	// 构建任务结果

@@ -140,7 +140,7 @@ func (v *variantGenerator) GenerateVariants(ctx context.Context, analysis *Produ
       "size": "M"
     },
     "price": {
-      "currency": "USD",
+      "currency": "CNY",
       "amount": 29.99,
       "compare_at": 39.99
     },
@@ -155,7 +155,7 @@ Rules:
 2. If no variants exist, return a single default variant
 3. SKU format: PRODUCT-VARIANT-ATTRIBUTES
 4. Set one variant as default (is_default: true)
-5. Estimate reasonable prices in USD
+5. Estimate reasonable prices in CNY (Chinese Yuan)
 
 Only return the JSON array, no additional text.`
 

@@ -62,7 +62,10 @@ func (r *taskRepository) UpdateTaskStatus(ctx context.Context, taskID string, st
 	result := r.db.WithContext(ctx).
 		Model(&Task{}).
 		Where("id = ?", taskID).
-		Update("status", status)
+		Updates(map[string]any{
+			"status":     status,
+			"updated_at": gorm.Expr("NOW()"),
+		})
 
 	if result.Error != nil {
 		return fmt.Errorf("failed to update task status: %w", result.Error)
@@ -85,8 +88,9 @@ func (r *taskRepository) SaveTaskResult(ctx context.Context, taskID string, resu
 	}
 
 	updates := map[string]any{
-		"result": result,
-		"status": TaskStatusCompleted,
+		"result":     result,
+		"status":     TaskStatusCompleted,
+		"updated_at": gorm.Expr("NOW()"),
 	}
 
 	dbResult := r.db.WithContext(ctx).
@@ -127,6 +131,29 @@ func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string)
 	return nil
 }
 
+// ResetForRetry 将任务状态重置为 pending 以便重试，保留 error 字段供查询
+func (r *taskRepository) ResetForRetry(ctx context.Context, taskID string) error {
+	if taskID == "" {
+		return fmt.Errorf("task ID cannot be empty")
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&Task{}).
+		Where("id = ?", taskID).
+		Updates(map[string]any{
+			"status":     TaskStatusPending,
+			"updated_at": gorm.Expr("NOW()"),
+		})
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to reset task for retry: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("task not found: %s", taskID)
+	}
+	return nil
+}
+
 // UpdateTaskError 更新任务错误信息
 func (r *taskRepository) UpdateTaskError(ctx context.Context, taskID string, errorMsg string) error {
 	if taskID == "" {
@@ -134,8 +161,9 @@ func (r *taskRepository) UpdateTaskError(ctx context.Context, taskID string, err
 	}
 
 	updates := map[string]any{
-		"error":  errorMsg,
-		"status": TaskStatusFailed,
+		"error":      errorMsg,
+		"status":     TaskStatusFailed,
+		"updated_at": gorm.Expr("NOW()"),
 	}
 
 	result := r.db.WithContext(ctx).

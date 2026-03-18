@@ -110,7 +110,16 @@ func (v *inputValidator) Validate(ctx context.Context, input *ParsedInput) (*Val
 			v.metrics.RecordCacheOperation("validation_issue", SeverityError)
 		}
 	} else {
-		result.ImageScore = float64(imageValidation.ValidCount) * 20
+		// 图片评分：每张有效图片贡献分数，但采用递减收益模型
+		// 1张=40分，2张=60分，3张=75分，4张=85分，5张+=100分
+		// 避免对少量图片惩罚过重
+		imageScoreTable := []float64{0, 40, 60, 75, 85, 100}
+		count := imageValidation.ValidCount
+		if count >= len(imageScoreTable) {
+			count = len(imageScoreTable) - 1
+		}
+		result.ImageScore = imageScoreTable[count]
+		result.ImageValidation = imageValidation
 	}
 
 	// 验证文本
@@ -128,6 +137,7 @@ func (v *inputValidator) Validate(ctx context.Context, input *ParsedInput) (*Val
 		if result.TextScore > 100 {
 			result.TextScore = 100
 		}
+		result.TextValidation = textValidation
 	}
 
 	// 验证抓取数据
@@ -149,9 +159,6 @@ func (v *inputValidator) Validate(ctx context.Context, input *ParsedInput) (*Val
 			result.ScrapedScore = score
 		}
 	}
-
-	// 计算总体质量评分
-	result.QualityScore = (result.ImageScore + result.TextScore + result.ScrapedScore) / 3
 
 	// 检查是否有严重错误
 	for _, issue := range result.Issues {
@@ -239,6 +246,13 @@ func (v *inputValidator) validateSingleImage(ctx context.Context, imageURL strin
 		return info
 	}
 
+	// 对需要特定 Referer 的 CDN（如 1688、淘宝）跳过格式检查和 HTTP 验证，直接信任 URL
+	if isTrustedCDN(parsedURL.Host) {
+		info.IsValid = true
+		v.cacheImageInfo(ctx, imageURL, &info)
+		return info
+	}
+
 	// 检查图片格式
 	format := v.getImageFormat(imageURL)
 	info.Format = format
@@ -303,9 +317,10 @@ func (v *inputValidator) getImageFormat(imageURL string) string {
 }
 
 // ValidateText 验证文本数据
-func (v *inputValidator) ValidateText(ctx context.Context, text string) (*TextValidation, error) {
+func (v *inputValidator) ValidateText(_ context.Context, text string) (*TextValidation, error) {
 	validation := &TextValidation{
-		Length: len(text),
+		Length:  len(text),
+		RawText: text,
 	}
 
 	// 提取关键词（简单实现：按空格分割）
@@ -326,7 +341,7 @@ func (v *inputValidator) ValidateText(ctx context.Context, text string) (*TextVa
 }
 
 // ValidateScrapedData 验证抓取数据
-func (v *inputValidator) ValidateScrapedData(ctx context.Context, data *ScrapedData) (*ScrapedDataValidation, error) {
+func (v *inputValidator) ValidateScrapedData(_ context.Context, data *ScrapedData) (*ScrapedDataValidation, error) {
 	if data == nil {
 		return nil, fmt.Errorf("scraped data cannot be nil")
 	}
@@ -340,4 +355,23 @@ func (v *inputValidator) ValidateScrapedData(ctx context.Context, data *ScrapedD
 	}
 
 	return validation, nil
+}
+
+// isTrustedCDN 判断是否为需要特定 Referer 才能访问的可信 CDN 域名。
+// 这类域名的图片 URL 格式本身即可信，无需 HTTP HEAD 验证。
+func isTrustedCDN(host string) bool {
+	trusted := []string{
+		"cbu01.alicdn.com",
+		"img.alicdn.com",
+		"gw.alicdn.com",
+		"ae01.alicdn.com",
+		"img.1688.com",
+		"sc02.alicdn.com",
+	}
+	for _, t := range trusted {
+		if strings.HasSuffix(host, t) {
+			return true
+		}
+	}
+	return false
 }

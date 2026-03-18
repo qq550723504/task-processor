@@ -47,14 +47,39 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *Parsed
 
 	analysis := &ProductAnalysis{}
 
-	// 分析图片（如果有）
+	// 分析图片（如果有）：并发分析所有图片，合并属性
 	if len(input.Images) > 0 {
-		// 分析第一张图片
 		imageAttr, err := p.AnalyzeImage(ctx, input.Images[0])
 		if err != nil {
 			logrus.WithError(err).WithField("image", input.Images[0]).Warn("failed to analyze image")
 		} else {
 			analysis.ImageAttributes = imageAttr
+		}
+
+		// 分析剩余图片，补充缺失属性
+		for _, imgURL := range input.Images[1:] {
+			attr, err := p.AnalyzeImage(ctx, imgURL)
+			if err != nil {
+				logrus.WithError(err).WithField("image", imgURL).Warn("failed to analyze image")
+				continue
+			}
+			if analysis.ImageAttributes == nil {
+				analysis.ImageAttributes = attr
+				continue
+			}
+			// 用后续图片补充空白字段
+			if analysis.ImageAttributes.Color == "" || analysis.ImageAttributes.Color == "unknown" {
+				analysis.ImageAttributes.Color = attr.Color
+			}
+			if analysis.ImageAttributes.Material == "" || analysis.ImageAttributes.Material == "unknown" {
+				analysis.ImageAttributes.Material = attr.Material
+			}
+			if analysis.ImageAttributes.Scene == "" || analysis.ImageAttributes.Scene == "unknown" {
+				analysis.ImageAttributes.Scene = attr.Scene
+			}
+			if analysis.ImageAttributes.Usage == "" || analysis.ImageAttributes.Usage == "unknown" {
+				analysis.ImageAttributes.Usage = attr.Usage
+			}
 		}
 	}
 
@@ -68,15 +93,29 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *Parsed
 		}
 	}
 
-	// 如果有抓取的数据，也提取文本属性
+	// 如果有抓取的数据，也提取文本属性并合并
 	if input.ScrapedData != nil && input.ScrapedData.Description != "" {
-		textAttr, err := p.ExtractTextAttributes(ctx, input.ScrapedData.Description)
+		scrapedAttr, err := p.ExtractTextAttributes(ctx, input.ScrapedData.Description)
 		if err != nil {
 			logrus.WithError(err).Warn("failed to extract scraped text attributes")
+		} else if analysis.TextAttributes == nil {
+			analysis.TextAttributes = scrapedAttr
 		} else {
-			// 合并文本属性
-			if analysis.TextAttributes == nil {
-				analysis.TextAttributes = textAttr
+			// 合并：scraped 的属性补充到已有属性中（不覆盖）
+			for k, v := range scrapedAttr.Attributes {
+				if _, exists := analysis.TextAttributes.Attributes[k]; !exists {
+					analysis.TextAttributes.Attributes[k] = v
+				}
+			}
+			// 合并卖点（去重）
+			existing := make(map[string]struct{}, len(analysis.TextAttributes.SellingPoints))
+			for _, sp := range analysis.TextAttributes.SellingPoints {
+				existing[sp] = struct{}{}
+			}
+			for _, sp := range scrapedAttr.SellingPoints {
+				if _, dup := existing[sp]; !dup {
+					analysis.TextAttributes.SellingPoints = append(analysis.TextAttributes.SellingPoints, sp)
+				}
 			}
 		}
 	}
@@ -116,8 +155,11 @@ Only return the JSON object, no additional text.`
 	// 使用视觉客户端分析图片
 	visionClient, err := p.llmManager.GetClient("vision")
 	if err != nil {
-		// 降级到默认客户端
-		visionClient, _ = p.llmManager.GetClient("default")
+		var fallbackErr error
+		visionClient, fallbackErr = p.llmManager.GetClient("default")
+		if fallbackErr != nil || visionClient == nil {
+			return nil, fmt.Errorf("failed to get vision or default client: %w", err)
+		}
 	}
 
 	response, err := visionClient.AnalyzeImage(ctx, imagePath, prompt)
@@ -170,8 +212,11 @@ Only return the JSON object, no additional text.`, text)
 	// 使用快速客户端提取属性
 	fastClient, err := p.llmManager.GetClient("fast")
 	if err != nil {
-		// 降级到默认客户端
-		fastClient, _ = p.llmManager.GetClient("default")
+		var fallbackErr error
+		fastClient, fallbackErr = p.llmManager.GetClient("default")
+		if fallbackErr != nil || fastClient == nil {
+			return nil, fmt.Errorf("failed to get fast or default client: %w", err)
+		}
 	}
 
 	response, err := fastClient.Generate(ctx, prompt)
@@ -225,7 +270,10 @@ func (p *productUnderstanding) FuseMultimodal(ctx context.Context, imageAttr *Im
 Only return the JSON object, no additional text.`
 
 	// 使用默认客户端融合信息
-	defaultClient, _ := p.llmManager.GetClient("default")
+	defaultClient, err := p.llmManager.GetClient("default")
+	if err != nil || defaultClient == nil {
+		return nil, fmt.Errorf("failed to get default client: %w", err)
+	}
 	response, err := defaultClient.Generate(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fuse multimodal information: %w", err)

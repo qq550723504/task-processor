@@ -139,9 +139,27 @@ func (s *enhancementSuggester) calculatePriority(suggestion string) int {
 	return priority
 }
 
-// estimateQualityAfterImprovement 估算改进后的质量等级
+// estimateQualityAfterImprovement 根据各分项评分动态估算改进后的质量等级。
+// 假设用户按建议补全所有必需项后，各分项可达到的最大分值。
 func (s *enhancementSuggester) estimateQualityAfterImprovement(validation *ValidationResult) string {
-	estimatedScore := validation.QualityScore + 20.0
+	// 图片：若当前不足，假设改进后可达 75 分（3 张）；否则保留现有分数
+	imageScore := validation.ImageScore
+	if imageScore < 75 {
+		imageScore = 75
+	}
+
+	// 文本：若当前不足，假设改进后可达 60 分（约 120 字符）；否则保留现有分数
+	textScore := validation.TextScore
+	if textScore < 60 {
+		textScore = 60
+	}
+
+	// 抓取数据：若有则保留，否则不计入估算
+	scrapedScore := validation.ScrapedScore
+
+	// 与 scorer.go 保持一致的加权公式（图片 40% + 文本 40% + 抓取 20%）
+	estimatedScore := imageScore*0.4 + textScore*0.4 + scrapedScore*0.2
+
 	if estimatedScore >= 80 {
 		return "高质量（完整处理）"
 	} else if estimatedScore >= 60 {

@@ -10,4 +10,7 @@ type TaskRepository interface {
 	UpdateTaskStatus(ctx context.Context, taskID string, status TaskStatus) error
 	UpdateTaskError(ctx context.Context, taskID string, errorMsg string) error
 	SaveTaskResult(ctx context.Context, taskID string, result *ProductJSON) error
+	IncrementRetryCount(ctx context.Context, taskID string) error
+	// ResetForRetry 将任务状态重置为 pending，用于重试
+	ResetForRetry(ctx context.Context, taskID string) error
 }

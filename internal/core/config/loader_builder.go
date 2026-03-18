@@ -28,6 +28,7 @@ func BuildConfig() *Config {
 			Model:   viper.GetString("openai.model"),
 			BaseURL: viper.GetString("openai.baseURL"),
 			Timeout: viper.GetInt("openai.timeout"),
+			Clients: buildOpenAIClients(),
 		},
 		Management: ManagementConfig{
 			BaseURL:      viper.GetString("management.baseURL"),
@@ -101,4 +102,43 @@ func BuildConfig() *Config {
 	}
 
 	return cfg
+}
+
+// buildOpenAIClients 从 viper 读取 openai.clients.* 配置，构建命名客户端 map。
+// 未配置的字段（apiKey/baseURL/timeout）继承顶层默认值。
+func buildOpenAIClients() map[string]OpenAIClientConfig {
+	raw := viper.GetStringMap("openai.clients")
+	if len(raw) == 0 {
+		return nil
+	}
+
+	defaultKey := viper.GetString("openai.apiKey")
+	defaultBase := viper.GetString("openai.baseURL")
+	defaultTimeout := viper.GetInt("openai.timeout")
+
+	clients := make(map[string]OpenAIClientConfig, len(raw))
+	for name := range raw {
+		prefix := "openai.clients." + name
+
+		apiKey := viper.GetString(prefix + ".apiKey")
+		if apiKey == "" {
+			apiKey = defaultKey
+		}
+		baseURL := viper.GetString(prefix + ".baseURL")
+		if baseURL == "" {
+			baseURL = defaultBase
+		}
+		timeout := viper.GetInt(prefix + ".timeout")
+		if timeout == 0 {
+			timeout = defaultTimeout
+		}
+
+		clients[name] = OpenAIClientConfig{
+			APIKey:  apiKey,
+			Model:   viper.GetString(prefix + ".model"),
+			BaseURL: baseURL,
+			Timeout: timeout,
+		}
+	}
+	return clients
 }

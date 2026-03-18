@@ -45,30 +45,25 @@ func NewProductHandler(productService ProductHandlerService) (ProductHandler, er
 func (h *productHandler) GenerateProduct(c *gin.Context) {
 	var req GenerateRequest
 
-	// 绑定请求参数
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logrus.WithError(err).Warn("invalid request body")
-
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Error:   "invalid_request",
-			Message: err.Error(),
+			Message: err.Error(), // 绑定错误可以直接返回，属于客户端问题
 		})
 		return
 	}
 
-	// 创建任务
 	task, err := h.productService.CreateGenerateTask(c.Request.Context(), &req)
 	if err != nil {
 		logrus.WithError(err).Error("failed to create task")
-
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error:   "task_creation_failed",
-			Message: err.Error(),
+			Message: "任务创建失败，请稍后重试",
 		})
 		return
 	}
 
-	// 返回成功响应
 	c.JSON(http.StatusOK, TaskResponse{
 		TaskID:    task.ID,
 		Status:    string(task.Status),
@@ -88,7 +83,6 @@ func (h *productHandler) GetTaskResult(c *gin.Context) {
 		return
 	}
 
-	// 查询任务结果
 	result, err := h.productService.GetTaskResult(c.Request.Context(), taskID)
 	if err != nil {
 		logrus.WithField("task_id", taskID).WithError(err).Error("failed to get task result")
@@ -103,11 +97,10 @@ func (h *productHandler) GetTaskResult(c *gin.Context) {
 
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error:   "query_failed",
-			Message: err.Error(),
+			Message: "查询失败，请稍后重试",
 		})
 		return
 	}
 
-	// 返回成功响应
 	c.JSON(http.StatusOK, result)
 }

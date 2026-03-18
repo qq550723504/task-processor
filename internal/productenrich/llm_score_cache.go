@@ -62,11 +62,15 @@ func (c *llmScoreCache) getScore(ctx context.Context, cacheKey, metricLabel stri
 		return 0, false
 	}
 
-	c.metrics.RecordCacheOperation("get", metricLabel)
+	if c.metrics != nil {
+		c.metrics.RecordCacheOperation("get", metricLabel)
+	}
 
 	cached, err := c.redisClient.Get(ctx, cacheKey)
 	if err != nil || cached == "" {
-		c.metrics.RecordCacheMiss(metricLabel)
+		if c.metrics != nil {
+			c.metrics.RecordCacheMiss(metricLabel)
+		}
 		if err != nil {
 			logrus.WithError(err).Debug("cache miss for score")
 		}
@@ -77,12 +81,16 @@ func (c *llmScoreCache) getScore(ctx context.Context, cacheKey, metricLabel stri
 		Score float64 `json:"score"`
 	}
 	if err := json.Unmarshal([]byte(cached), &scoreData); err != nil {
-		c.metrics.RecordCacheMiss(metricLabel)
+		if c.metrics != nil {
+			c.metrics.RecordCacheMiss(metricLabel)
+		}
 		logrus.WithError(err).Error("failed to unmarshal cached score")
 		return 0, false
 	}
 
-	c.metrics.RecordCacheHit(metricLabel)
+	if c.metrics != nil {
+		c.metrics.RecordCacheHit(metricLabel)
+	}
 	logrus.WithField("score", scoreData.Score).Debug("cache hit for score")
 	return scoreData.Score, true
 }
@@ -93,7 +101,9 @@ func (c *llmScoreCache) setScore(ctx context.Context, cacheKey, metricLabel stri
 		return nil
 	}
 
-	c.metrics.RecordCacheOperation("set", metricLabel)
+	if c.metrics != nil {
+		c.metrics.RecordCacheOperation("set", metricLabel)
+	}
 
 	scoreData := struct {
 		Score float64 `json:"score"`
