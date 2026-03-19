@@ -212,14 +212,21 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 			continue
 		}
 
+		// 构建SKU级别的活动价映射（来自第5步计算结果）
+		skuActPriceMap := make(map[string]float64, len(skcCalcResult.SkuInfoList))
+		for _, skuCalc := range skcCalcResult.SkuInfoList {
+			skuActPriceMap[skuCalc.SkuCode] = skuCalc.PriceInfo.ProductAmount - skuCalc.PriceInfo.PromotionAmount
+		}
+
 		// 构建SKU列表
 		addSkuList := make([]marketing.SkuCostInfo, 0, len(g.SkuInfoList))
 		for _, sku := range g.SkuInfoList {
+			skuActPrice := skuActPriceMap[sku.Sku]
 			addSkuList = append(addSkuList, marketing.SkuCostInfo{
 				Sku:                sku.Sku,
 				CostPrice:          0,
 				MaxProductActPrice: 0,
-				ProductActPrice:    0,
+				ProductActPrice:    skuActPrice,
 			})
 		}
 
@@ -251,16 +258,17 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		}
 
 		// 使用第5步已经计算并验证过的活动价格
-		// 从SKU列表中获取第一个SKU的促销金额作为活动价格
-		var activityPrice float64
-		if len(skcCalcResult.SkuInfoList) > 0 {
-			// 活动价格 = 商品金额 - 促销金额
-			priceInfo := skcCalcResult.SkuInfoList[0].PriceInfo
-			activityPrice = priceInfo.ProductAmount - priceInfo.PromotionAmount
-		} else {
+		// 取所有SKU中的最小活动价作为SKC级别的代表价格
+		if len(skcCalcResult.SkuInfoList) == 0 {
 			s.logger.Warnf("商品 %s 没有SKU价格信息,跳过", g.Skc)
 			skippedByPriceInfo++
 			continue
+		}
+		activityPrice := skcCalcResult.SkuInfoList[0].PriceInfo.ProductAmount - skcCalcResult.SkuInfoList[0].PriceInfo.PromotionAmount
+		for _, skuCalc := range skcCalcResult.SkuInfoList[1:] {
+			if p := skuCalc.PriceInfo.ProductAmount - skuCalc.PriceInfo.PromotionAmount; p < activityPrice {
+				activityPrice = p
+			}
 		}
 
 		// 检查折扣率是否满足要求(活动价必须小于销售价的95%)
