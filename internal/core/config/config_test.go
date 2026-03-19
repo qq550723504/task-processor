@@ -61,9 +61,6 @@ func TestConfigBuild(t *testing.T) {
 	assert.Equal(t, "mac_high_end", cfg.Browser.RandomConfig.PresetName)
 	assert.True(t, cfg.Amazon.Enabled)
 	assert.Equal(t, 10, cfg.Amazon.DataFreshnessDays)
-	assert.Equal(t, 5, cfg.Amazon.PoolSize)
-	assert.True(t, cfg.Amazon.RandomConfig.Enabled)
-	assert.Equal(t, "stable", cfg.Amazon.RandomConfig.Strategy)
 }
 
 // TestConfigValidation 测试配置验证

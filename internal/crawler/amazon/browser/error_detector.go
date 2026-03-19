@@ -62,6 +62,11 @@ func (ed *ErrorDetector) IsBlockedOrSeriousError(err error) bool {
 		"context closed", "Context closed",
 		"navigation failed", "Navigation failed",
 		"Timeout 30000ms exceeded",
+		// playwright WebSocket 断连错误
+		"Failed to next", "next while nexting",
+		"Socket connection to remote was closed",
+		"websocket", "WebSocket",
+		"Target closed", "target closed",
 	}
 	return containsAny(errorStr, blockPatterns)
 }
@@ -140,6 +145,11 @@ func (ed *ErrorDetector) IsBrowserCrashError(err error) bool {
 		"browser disconnected", "Browser disconnected",
 		"context closed", "Context closed",
 		"browser closed", "Browser closed",
+		// playwright WebSocket 断连错误
+		"Failed to next", "next while nexting",
+		"Socket connection to remote was closed",
+		"websocket", "WebSocket",
+		"Target closed", "target closed",
 	})
 }
 

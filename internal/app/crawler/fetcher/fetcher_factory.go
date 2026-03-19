@@ -2,6 +2,7 @@
 package fetcher
 
 import (
+	"context"
 	"fmt"
 
 	"task-processor/internal/core/config"
@@ -24,7 +25,7 @@ const (
 
 // ProductFetcher 产品获取器接口
 type ProductFetcher interface {
-	FetchProduct(req *domainProduct.FetchRequest) (*model.Product, error)
+	FetchProduct(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error)
 	CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error
 	CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error
 	GetStats() map[string]any

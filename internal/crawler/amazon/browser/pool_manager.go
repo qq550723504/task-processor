@@ -39,26 +39,22 @@ func (pm *PoolManager) ProcessWithTimeout(ctx context.Context, url, zipcode stri
 		return nil, fmt.Errorf("浏览器池管理器已关闭")
 	}
 
-	// 创建超时上下文
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// 使用channel来处理结果
+	// buffered(1) 确保 goroutine 写入后不阻塞，即使调用方已因超时返回
 	resultChan := make(chan *ProcessResult, 1)
 
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				pm.logger.Errorf("处理产品时发生panic: %v", r)
-				resultChan <- &ProcessResult{
-					Product: nil,
-					Error:   fmt.Errorf("处理产品时发生panic: %v", r),
-				}
+				resultChan <- &ProcessResult{Error: fmt.Errorf("处理产品时发生panic: %v", r)}
 			}
 		}()
-
-		result := pm.processProduct(timeoutCtx, url, zipcode, processor)
-		resultChan <- result
+		// 传入 timeoutCtx：ctx 取消时浏览器操作会尽快退出，
+		// processProduct 内部负责释放实例，goroutine 结束后实例回到池中
+		resultChan <- pm.processProduct(timeoutCtx, url, zipcode, processor)
 	}()
 
 	select {
@@ -70,7 +66,7 @@ func (pm *PoolManager) ProcessWithTimeout(ctx context.Context, url, zipcode stri
 	}
 }
 
-// processProduct 处理产品的内部方法
+// processProduct 处理产品的内部方法，遇到浏览器严重错误时同步重建实例并重试一次
 func (pm *PoolManager) processProduct(ctx context.Context, url, zipcode string, processor ProductProcessor) *ProcessResult {
 	// 获取浏览器实例
 	instance, err := pm.acquireInstanceWithTimeout(ctx, 30*time.Second)
@@ -81,21 +77,34 @@ func (pm *PoolManager) processProduct(ctx context.Context, url, zipcode string, 
 		}
 	}
 
-	// 确保释放实例
-	defer func() {
-		pm.releaseInstanceSafely(instance, err)
-	}()
-
 	// 处理产品
-	product, err := processor.ProcessWithInstance(instance, url, zipcode)
-	return &ProcessResult{
-		Product: product,
-		Error:   err,
+	product, processErr := processor.ProcessWithInstance(instance, url, zipcode)
+
+	// 检测到 WebSocket 断连等严重错误时，同步重建实例并重试一次
+	if processErr != nil && pm.pool.IsBlockedOrSeriousError(processErr) {
+		pm.logger.Warnf("浏览器实例 %d 出现严重错误，同步重建后重试: %v", instance.ID, processErr)
+
+		newInstance := pm.pool.RecreateInstanceSync(instance)
+		if newInstance == nil {
+			pm.logger.Errorf("同步重建浏览器实例失败，任务失败: %s", url)
+			return &ProcessResult{Error: fmt.Errorf("重建浏览器实例失败: %w", processErr)}
+		}
+
+		// 用新实例重试
+		product, processErr = processor.ProcessWithInstance(newInstance, url, zipcode)
+		// 重试后释放新实例
+		pm.releaseInstanceSafely(newInstance, processErr)
+		return &ProcessResult{Product: product, Error: processErr}
 	}
+
+	// 正常路径：释放实例
+	pm.releaseInstanceSafely(instance, processErr)
+	return &ProcessResult{Product: product, Error: processErr}
 }
 
 // acquireInstanceWithTimeout 带超时获取浏览器实例
-func (pm *PoolManager) acquireInstanceWithTimeout(ctx context.Context, timeout time.Duration) (*BrowserInstance, error) {
+// 注意：使用独立的超时 context，不继承父 ctx 的取消，确保即使父 ctx 已取消也能拿到实例并正确释放
+func (pm *PoolManager) acquireInstanceWithTimeout(ctx context.Context, acquireTimeout time.Duration) (*BrowserInstance, error) {
 	pm.mu.RLock()
 	if pm.isShutdown {
 		pm.mu.RUnlock()
@@ -103,11 +112,13 @@ func (pm *PoolManager) acquireInstanceWithTimeout(ctx context.Context, timeout t
 	}
 	pm.mu.RUnlock()
 
-	// 创建超时上下文
-	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	// 先检查父 ctx 是否已取消，避免无意义的获取
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("context 已取消，跳过获取浏览器实例: %w", ctx.Err())
+	default:
+	}
 
-	// 使用channel来处理获取结果
 	resultChan := make(chan *BrowserInstance, 1)
 	errorChan := make(chan error, 1)
 
@@ -126,9 +137,9 @@ func (pm *PoolManager) acquireInstanceWithTimeout(ctx context.Context, timeout t
 		return instance, nil
 	case err := <-errorChan:
 		return nil, fmt.Errorf("获取浏览器实例失败: %w", err)
-	case <-timeoutCtx.Done():
+	case <-time.After(acquireTimeout):
 		pm.logger.Error("获取浏览器实例超时")
-		return nil, fmt.Errorf("获取浏览器实例超时: %v", timeout)
+		return nil, fmt.Errorf("获取浏览器实例超时: %v", acquireTimeout)
 	}
 }
 

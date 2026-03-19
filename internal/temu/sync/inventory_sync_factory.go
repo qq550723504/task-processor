@@ -64,10 +64,6 @@ func (f *InventorySyncServiceFactory) ValidateConfig(
 		return fmt.Errorf("Amazon配置不能为空")
 	}
 
-	if amazonConfig.PoolSize <= 0 {
-		f.logger.Warn("Amazon浏览器池大小未配置，使用默认值3")
-	}
-
 	if monitorConfig == nil {
 		f.logger.Warn("监控配置未提供，将使用默认配置")
 	} else {

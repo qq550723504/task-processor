@@ -18,6 +18,11 @@ func (s *inventorySyncServiceImpl) handlePriceChangeWithStrategy(
 	skuMapping *TemuSkuInfo,
 	operationStrategy *managementapi.OperationStrategyDTO, // 预获取的运营策略
 ) error {
+	if operationStrategy == nil {
+		s.logger.WithField("product_id", prod.ProductID).Debug("未配置运营策略，跳过价格变化处理")
+		return nil
+	}
+
 	s.logger.WithFields(logrus.Fields{
 		"product_id": prod.ProductID,
 		"asin":       amazonProduct.Asin,
@@ -82,6 +87,11 @@ func (s *inventorySyncServiceImpl) handleStockChangeWithStrategy(
 	skuMapping *TemuSkuInfo,
 	operationStrategy *managementapi.OperationStrategyDTO, // 预获取的运营策略
 ) error {
+	if operationStrategy == nil {
+		s.logger.WithField("product_id", prod.ProductID).Debug("未配置运营策略，跳过库存变化处理")
+		return nil
+	}
+
 	currentStock := s.extractStockFromProduct(amazonProduct)
 
 	s.logger.WithFields(logrus.Fields{

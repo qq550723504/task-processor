@@ -20,6 +20,7 @@ import (
 // amazonCrawler 定义 SHEIN 处理器对 Amazon 爬虫的依赖（消费者定义接口原则）。
 type amazonCrawler interface {
 	Process(url string, zipcode string) (*model.Product, error)
+	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
 }
 
 // SheinProcessor SHEIN任务处理器

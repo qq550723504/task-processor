@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/strx"
 	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/product"
@@ -153,36 +152,7 @@ func (h *VariantJsonDataHandler) fetchAllVariants(temuCtx *temucontext.TemuTaskC
 
 // fetchVariantWithTimeout 带超时控制的变体获取
 func (h *VariantJsonDataHandler) fetchVariantWithTimeout(ctx context.Context, req *product.FetchRequest) (*model.Product, error) {
-	// 创建结果通道
-	resultChan := make(chan *model.Product, 1)
-	errorChan := make(chan error, 1)
-
-	// 在goroutine中执行获取操作
-	go func() {
-		var err error
-		defer recovery.RecoverWithError("变体获取", h.logger, &err)
-		defer func() {
-			if err != nil {
-				errorChan <- err
-			}
-		}()
-
-		variant, err := h.productFetcher.FetchProduct(req)
-		if err != nil {
-			return
-		}
-		resultChan <- variant
-	}()
-
-	// 等待结果或超时
-	select {
-	case variant := <-resultChan:
-		return variant, nil
-	case err := <-errorChan:
-		return nil, err
-	case <-ctx.Done():
-		return nil, fmt.Errorf("变体获取超时: %s", req.ProductID)
-	}
+	return h.productFetcher.FetchProduct(ctx, req)
 }
 
 // getAsinListFromContext 从上下文中获取ASIN列表

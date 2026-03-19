@@ -96,7 +96,7 @@ func (h *RawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 		Creator:    ctx.Task.Creator,
 	}
 
-	amazonProduct, err := h.fetcher.FetchProduct(req)
+	amazonProduct, err := h.fetcher.FetchProduct(ctx.Context, req)
 	if err != nil {
 		// 检查是否为产品不存在错误
 		if isProductNotFoundError(err) {

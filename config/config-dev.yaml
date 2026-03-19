@@ -116,7 +116,7 @@ platforms:
       batchSize: 100
     # 产品同步配置
     productSync:
-      enabled: true         # 启用产品同步
+      enabled: false         # 启用产品同步
       interval: 86400        # 执行间隔（秒），默认24小时
     # 库存同步配置
     inventorySync:
@@ -140,7 +140,7 @@ browser:
   browserPath: "./chrome/chrome.exe"
   chromeVersion: "144"  # fingerprint-chromium 版本（如 144, 142, 139 等）
   chromeDownloadDir: "./chrome"  # Chrome 下载目录（自动下载时使用）
-  poolSize: 3     # 浏览器池大小
+  poolSize: 1     # 浏览器池大小
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""

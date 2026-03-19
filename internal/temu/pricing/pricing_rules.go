@@ -72,7 +72,7 @@ func (s *PricingDecisionService) getAmazonProductWithCache(ctx context.Context, 
 		default:
 		}
 
-		amazonProduct, lastErr = s.productFetcher.FetchProduct(req)
+		amazonProduct, lastErr = s.productFetcher.FetchProduct(ctx, req)
 		if lastErr == nil {
 			s.logger.Debugf("第%d次尝试成功获取Amazon产品数据: %s", attempt, productID)
 			s.setCache(cacheKey, amazonProduct)

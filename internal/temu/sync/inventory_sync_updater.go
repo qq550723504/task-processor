@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/product"
@@ -138,117 +137,6 @@ func (s *inventorySyncServiceImpl) batchUpdateTemuInventoryInAttributes(
 		"sku_count":     updatedCount,
 		"total_updates": len(updates),
 	}).Info("成功批量更新TEMU产品attributes中的库存和Amazon监控数据")
-
-	return nil
-}
-
-// updateTemuInventoryInAttributes 更新TEMU平台attributes中的usable_inventory字段（保留原方法用于兼容）
-func (s *inventorySyncServiceImpl) updateTemuInventoryInAttributes(
-	_ context.Context,
-	prod *managementapi.ProductDataDTO,
-	amazonProduct *model.Product,
-	skuInfo *TemuSkuInfo,
-	storeID int64,
-) error {
-	defer recovery.Recover("更新TEMU库存", s.logger)
-
-	platformSKU := s.getStringValue(skuInfo.MappingInfo.Sku)
-
-	s.logger.WithFields(logrus.Fields{
-		"product_id":   prod.ProductID,
-		"platform_sku": platformSKU,
-		"amazon_stock": s.extractStockFromProduct(amazonProduct),
-		"temu_stock":   skuInfo.UsableInventory,
-	}).Debug("开始更新TEMU产品Attributes中的库存数据")
-
-	if prod.Attributes == "" {
-		s.logger.WithField("product_id", prod.ProductID).Warn("TEMU产品Attributes为空，无法更新库存数据")
-		return fmt.Errorf("产品Attributes为空")
-	}
-
-	// 解析现有的attributes数据
-	var mappingList []TemuMappingData
-	if err := jsonx.UnmarshalString(prod.Attributes, &mappingList, "解析TEMU产品attributes失败"); err != nil {
-		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error(err.Error())
-		return fmt.Errorf("解析产品attributes失败: %w", err)
-	}
-
-	// 查找对应的SKU并更新usable_inventory
-	updated := false
-	for i := range mappingList {
-		for j := range mappingList[i].SkuInfo {
-			sku := &mappingList[i].SkuInfo[j]
-			if s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
-				// 更新库存数量（使用Amazon的库存数据）
-				newInventory := s.extractStockFromProduct(amazonProduct)
-				oldInventory := sku.UsableInventory
-
-				sku.UsableInventory = newInventory
-
-				s.logger.WithFields(logrus.Fields{
-					"platform_sku":  platformSKU,
-					"old_inventory": oldInventory,
-					"new_inventory": newInventory,
-					"amazon_stock":  s.extractStockFromProduct(amazonProduct),
-				}).Debug("已更新TEMU SKU的库存数据")
-				updated = true
-				break
-			}
-		}
-		if updated {
-			break
-		}
-	}
-
-	if !updated {
-		s.logger.WithFields(logrus.Fields{
-			"product_id":   prod.ProductID,
-			"platform_sku": platformSKU,
-		}).Warn("未找到对应的TEMU SKU，跳过库存更新")
-		return fmt.Errorf("未找到对应的SKU: %s", platformSKU)
-	}
-
-	// 序列化更新后的数据
-	updatedAttributes, err := json.Marshal(mappingList)
-	if err != nil {
-		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("序列化更新后的TEMU attributes失败")
-		return fmt.Errorf("序列化attributes失败: %w", err)
-	}
-
-	// 使用批量更新attributes接口
-	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-
-	updateReq := &managementapi.ProductDataBatchUpdateAttributesReqDTO{
-		Platform: "TEMU",
-		TenantID: prod.TenantID,
-		StoreID:  storeID,
-		Region:   prod.Region,
-		Products: []managementapi.ProductAttributesItemDTO{
-			{
-				PlatformProductID: prod.PlatformProductID,
-				Attributes:        string(updatedAttributes),
-				UpdateTime:        &[]int64{time.Now().Unix()}[0],
-			},
-		},
-	}
-
-	count, err := productDataAPI.BatchUpdateAttributes(updateReq)
-	if err != nil {
-		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("更新TEMU产品attributes失败")
-		return fmt.Errorf("更新产品attributes失败: %w", err)
-	}
-
-	if count <= 0 {
-		s.logger.WithField("product_id", prod.ProductID).Warn("未更新任何TEMU产品attributes")
-		return fmt.Errorf("未更新任何产品attributes")
-	}
-
-	s.logger.WithFields(logrus.Fields{
-		"product_id":    prod.ProductID,
-		"platform_sku":  platformSKU,
-		"updated_count": count,
-		"new_inventory": s.extractStockFromProduct(amazonProduct),
-	}).Info("成功更新TEMU产品attributes中的库存数据")
 
 	return nil
 }

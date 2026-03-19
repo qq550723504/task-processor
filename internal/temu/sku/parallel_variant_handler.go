@@ -38,10 +38,7 @@ func NewParallelVariantHandler(
 	logger := logrus.WithField("handler", "ParallelVariantHandler")
 
 	// 直接使用浏览器池大小作为并发数，确保资源利用最优
-	maxWorkers := cfg.Amazon.PoolSize
-	if maxWorkers <= 0 {
-		maxWorkers = 3 // 默认3个并发
-	}
+	maxWorkers := 1
 
 	// 使用工厂模式创建获取器
 	factory := appProduct.NewFetcherFactory()
@@ -175,7 +172,7 @@ func (h *ParallelVariantHandler) fetchVariantsParallel(temuCtx *temucontext.Temu
 			return nil, fmt.Errorf("任务数据类型错误")
 		}
 
-		return h.productFetcher.FetchProduct(req)
+		return h.productFetcher.FetchProduct(ctx, req)
 	}
 
 	// 并行执行处理

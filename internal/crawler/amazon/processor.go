@@ -93,6 +93,11 @@ func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 
 // Process 处理Amazon产品页面
 func (ap *AmazonProcessor) Process(url string, zipcode string) (*model.Product, error) {
+	return ap.ProcessWithContext(context.Background(), url, zipcode)
+}
+
+// ProcessWithContext 处理Amazon产品页面（支持 context 传递）
+func (ap *AmazonProcessor) ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error) {
 	// 检查处理器是否已关闭
 	ap.mu.RLock()
 	if ap.closed {
@@ -105,14 +110,13 @@ func (ap *AmazonProcessor) Process(url string, zipcode string) (*model.Product, 
 	logrus.Infof("开始处理Amazon产品: %s", url)
 
 	if ap.usePool && ap.poolManager != nil {
-		return ap.processWithPoolManager(url, zipcode)
+		return ap.processWithPoolManager(ctx, url, zipcode)
 	}
 	return ap.singleProcessor.ProcessWithSingleBrowser(url, zipcode, startTime)
 }
 
 // processWithPoolManager 使用池管理器处理
-func (ap *AmazonProcessor) processWithPoolManager(url string, zipcode string) (*model.Product, error) {
-	ctx := context.Background()
+func (ap *AmazonProcessor) processWithPoolManager(ctx context.Context, url string, zipcode string) (*model.Product, error) {
 	timeout := 3 * time.Minute // 单个产品处理超时3分钟
 
 	// 创建实例处理器

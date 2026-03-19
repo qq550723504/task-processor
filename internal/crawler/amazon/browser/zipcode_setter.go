@@ -113,14 +113,17 @@ func (zs *ZipcodeSetter) isZipcodeValid(page playwright.Page, expectedZipcode st
 // refreshPageForRetry 为重试刷新页面
 func (zs *ZipcodeSetter) refreshPageForRetry(page playwright.Page) error {
 	logrus.Infof("第二次尝试前刷新页面")
-	if _, err := page.Reload(); err != nil {
+	if _, err := page.Reload(playwright.PageReloadOptions{
+		Timeout: playwright.Float(15000), // 15秒超时，防止 WebSocket 断连时永久 hang
+	}); err != nil {
 		logrus.Infof("刷新页面失败: %v", err)
 		return fmt.Errorf("刷新页面失败: %w", err)
 	}
 
-	// 等待页面加载完成
+	// 等待页面加载完成，使用 DOMContentLoaded 避免 NetworkIdle 在断连时永久等待
 	if err := page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State: playwright.LoadStateNetworkidle,
+		State:   playwright.LoadStateDomcontentloaded,
+		Timeout: playwright.Float(15000),
 	}); err != nil {
 		logrus.Infof("等待页面加载失败: %v", err)
 	}

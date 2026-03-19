@@ -121,7 +121,7 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 	}
 
 	// 获取产品数据（会自动使用浏览器池，浏览器实例会被放回池中复用）
-	productData, err := p.productFetcher.FetchProduct(fetchReq)
+	productData, err := p.productFetcher.FetchProduct(ctx, fetchReq)
 
 	// 如果有 reply_to 队列，发送结果
 	if replyTo != "" {

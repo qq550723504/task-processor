@@ -2,7 +2,6 @@ package browser
 
 import (
 	"fmt"
-	"strings"
 	"task-processor/internal/core/config"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 
@@ -108,21 +107,7 @@ func (cm *ConfigManager) copyBrowserConfig(src *sharedbrowser.BrowserConfig) *sh
 
 // ShouldUseRandomConfig 判断是否应该使用随机配置
 func (cm *ConfigManager) ShouldUseRandomConfig(cfg *config.AmazonConfig) bool {
-	// 首先检查主配置中的随机配置开关
-	if cfg.RandomConfig.Enabled {
-		return true
-	}
-
-	// 如果浏览器路径包含fingerprint-chromium相关关键词
-	browserPath := strings.ToLower(cfg.BrowserPath)
-	if strings.Contains(browserPath, "fingerprint") ||
-		strings.Contains(browserPath, "ungoogled") ||
-		strings.Contains(browserPath, "chromium") {
-		return true
-	}
-
-	// 可以根据其他条件判断
-	return false
+	return true
 }
 
 // GetAvailablePresets 获取可用的预设配置列表

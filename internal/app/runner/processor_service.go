@@ -17,6 +17,7 @@ import (
 // 包含抓取和关闭两个能力，满足 TEMU/SHEIN 处理器的需求。
 type amazonCrawler interface {
 	Process(url string, zipcode string) (*model.Product, error)
+	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
 	Shutdown()
 }
 

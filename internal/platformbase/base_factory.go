@@ -17,6 +17,7 @@ import (
 // 平台工厂只需要抓取能力，不需要关心具体实现。
 type AmazonCrawler interface {
 	Process(url string, zipcode string) (*model.Product, error)
+	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
 }
 
 // BaseTaskFactory 基础任务工厂接口

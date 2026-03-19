@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/model"
 	"time"
 
+	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -34,11 +35,27 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 
 	logrus.Infof("使用浏览器实例 %d 处理产品: %s", instance.ID, url)
 
-	// 创建新页面
-	page, err := instance.Manager.NewPage()
-	if err != nil {
-		return nil, fmt.Errorf("创建页面失败: %w", err)
+	// 创建新页面（用 goroutine + channel 包装，防止 WebSocket 断连时 context.NewPage() 永久 hang）
+	type newPageResult struct {
+		page playwright.Page
+		err  error
 	}
+	newPageChan := make(chan newPageResult, 1)
+	go func() {
+		p, err := instance.Manager.NewPage()
+		newPageChan <- newPageResult{p, err}
+	}()
+	var page playwright.Page
+	select {
+	case r := <-newPageChan:
+		if r.err != nil {
+			return nil, fmt.Errorf("创建页面失败: %w", r.err)
+		}
+		page = r.page
+	case <-time.After(15 * time.Second):
+		return nil, fmt.Errorf("创建页面超时，WebSocket 可能已断连")
+	}
+
 	defer func() {
 		if closeErr := page.Close(); closeErr != nil {
 			logrus.Warnf("关闭页面失败: %v", closeErr)
@@ -51,8 +68,11 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 	// 添加语言和货币参数
 	urlWithParams := ip.urlHelper.AddLanguageAndCurrencyParams(url, currency)
 
-	// 导航到产品页面
-	_, err = page.Goto(urlWithParams)
+	// 导航到产品页面（显式设置超时，防止 WebSocket 断连时长时间等待）
+	_, err := page.Goto(urlWithParams, playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(30000),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("导航到页面失败: %w", err)
 	}
@@ -211,6 +231,12 @@ func (ip *InstanceProcessor) shouldRecreateInstance(err error) bool {
 		"SIGN_IN_REQUIRED",
 		"需要登录才能更新位置",
 		"需要重建浏览器实例",
+		// playwright WebSocket 断连
+		"Failed to next",
+		"next while nexting",
+		"Socket connection to remote was closed",
+		"Target closed",
+		"target closed",
 	}
 
 	for _, recreateError := range recreateErrors {
@@ -234,6 +260,12 @@ func (ip *InstanceProcessor) isSeriousError(err error) bool {
 		"遇到验证码",
 		"浏览器实例为空",
 		"创建页面失败",
+		// playwright WebSocket 断连
+		"Failed to next",
+		"next while nexting",
+		"Socket connection to remote was closed",
+		"Target closed",
+		"target closed",
 	}
 
 	for _, serious := range seriousErrors {

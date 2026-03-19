@@ -14,6 +14,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pricing"
 	"task-processor/internal/product"
 	domainproduct "task-processor/internal/product"
@@ -128,15 +129,9 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 	var wg sync.WaitGroup
 
 	// 控制并发数量（使用浏览器池大小）
-	concurrency := s.amazonConfig.PoolSize
-	if concurrency <= 0 {
-		concurrency = 3 // 默认值
-	}
-	if totalCount < concurrency {
-		concurrency = totalCount
-	}
+	concurrency := min(totalCount, 1)
 
-	s.logger.Infof("使用并发模式监控库存，并发数: %d (浏览器池大小: %d)", concurrency, s.amazonConfig.PoolSize)
+	s.logger.Infof("使用并发模式监控库存，并发数: %d (浏览器池大小: %d)", concurrency, 1)
 
 	semaphore := make(chan struct{}, concurrency)
 
@@ -162,6 +157,7 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 					resultMutex.Unlock()
 				}
 			}()
+			defer recovery.Recover("监控产品库存变化", s.logger)
 
 			// 从 Attributes 中解析所有 SKU 映射数据
 			skuMappingList := s.extractMappingInfoFromAttributes(product.Attributes)
@@ -270,48 +266,6 @@ func (s *inventorySyncServiceImpl) addInventoryUpdate(productID, platformSKU str
 	}).Debug("已添加库存更新请求到批量收集器")
 }
 
-// processBatchInventoryUpdates 批量处理所有收集到的库存更新
-func (s *inventorySyncServiceImpl) processBatchInventoryUpdates(ctx context.Context, products []*managementapi.ProductDataDTO, storeID int64) {
-	s.logger.Info("开始批量处理库存更新")
-
-	// 创建产品ID到产品对象的映射
-	productMap := make(map[string]*managementapi.ProductDataDTO)
-	for _, prod := range products {
-		productMap[prod.ProductID] = prod
-	}
-
-	updateCount := 0
-	s.inventoryUpdates.Range(func(key, value any) bool {
-		productID := key.(string)
-		updates := value.([]InventoryUpdateRequest)
-
-		if len(updates) == 0 {
-			return true
-		}
-
-		// 从映射中获取产品数据
-		prod, exists := productMap[productID]
-		if !exists {
-			s.logger.WithField("product_id", productID).Warn("未找到产品数据，跳过库存更新")
-			return true
-		}
-
-		// 处理单个产品的所有SKU库存更新
-		if err := s.processSingleProductInventoryUpdates(ctx, prod, updates, storeID); err != nil {
-			s.logger.WithError(err).WithField("product_id", productID).Error("批量更新产品库存失败")
-		} else {
-			updateCount += len(updates)
-		}
-
-		return true
-	})
-
-	// 清空收集器
-	s.inventoryUpdates = sync.Map{}
-
-	s.logger.WithField("update_count", updateCount).Info("批量库存更新处理完成")
-}
-
 // processSingleProductInventoryUpdates 处理单个产品的所有SKU库存更新和Amazon监控数据
 func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 	_ context.Context,
@@ -357,15 +311,19 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 					sku.UsableInventory = &update.NewInventory
 
 					// 更新Amazon监控数据
-					amazonProduct := update.AmazonProduct
-					currentPrice := product.GetProductPrice(amazonProduct, priceType)
-					newStock := s.extractStockFromProduct(amazonProduct)
-
-					sku.AmazonMonitorData = &AmazonMonitorData{
-						ASIN:          amazonProduct.Asin,
-						Price:         currentPrice,
-						Stock:         newStock,
-						LastCheckTime: time.Now().Unix(),
+					var currentPrice float64
+					var newStock int
+					var asin string
+					if amazonProduct := update.AmazonProduct; amazonProduct != nil {
+						currentPrice = product.GetProductPrice(amazonProduct, priceType)
+						newStock = s.extractStockFromProduct(amazonProduct)
+						asin = amazonProduct.Asin
+						sku.AmazonMonitorData = &AmazonMonitorData{
+							ASIN:          asin,
+							Price:         currentPrice,
+							Stock:         newStock,
+							LastCheckTime: time.Now().Unix(),
+						}
 					}
 
 					updatedCount++
@@ -377,7 +335,7 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 						"amazon_stock":  newStock,
 						"amazon_price":  currentPrice,
 						"price_type":    priceType,
-						"asin":          amazonProduct.Asin,
+						"asin":          asin,
 					}).Debug("已更新SKU库存和Amazon监控数据")
 					break
 				}

@@ -9,14 +9,6 @@ type AmazonConfig struct {
 	SPAPI             SPAPIConfig       `yaml:"spapi"`
 	ConfigPaths       AmazonConfigPaths `yaml:"configPaths"` // 业务配置文件路径（统一管理）
 
-	// 临时兼容性字段（从 Browser 配置继承）
-	Headless       bool                `yaml:"-"` // 不序列化，从 Browser 配置获取
-	BrowserPath    string              `yaml:"-"` // 不序列化，从 Browser 配置获取
-	PoolSize       int                 `yaml:"-"` // 不序列化，从 Browser 配置获取
-	ViewportWidth  int                 `yaml:"-"` // 不序列化，从 Browser 配置获取
-	ViewportHeight int                 `yaml:"-"` // 不序列化，从 Browser 配置获取
-	ProxyServer    string              `yaml:"-"` // 不序列化，从 Browser 配置获取
-	RandomConfig   BrowserRandomConfig `yaml:"-"` // 不序列化，从 Browser 配置获取
 }
 
 // AmazonConfigPaths Amazon业务配置文件路径

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/product"
 )
 
@@ -23,78 +22,35 @@ func (s *inventorySyncServiceImpl) getAmazonProductData(
 		"store_id":  storeID,
 	}).Debug("开始获取Amazon产品数据")
 
-	// 使用 ProductFetcher 获取产品（自动处理缓存和爬取）
 	fetchReq := &product.FetchRequest{
 		TenantID:  tenantID,
 		Platform:  "Amazon",
 		Region:    region,
 		ProductID: asin,
 		StoreID:   storeID,
-		Creator:   "temu_monitor", // TEMU库存监控标识
+		Creator:   "temu_monitor",
 	}
 
-	// 为TEMU库存监控创建专用的 rawJsonDataClient，设置24小时数据新鲜度
 	inventoryRawJsonClient := s.managementClient.GetRawJsonDataAdapter()
-
 	productFetcher := product.NewProductFetcher(
 		inventoryRawJsonClient,
 		s.amazonConfig,
 		s.amazonProcessor,
 	)
 
-	// 使用 channel 实现超时控制
-	type fetchResult struct {
-		product *model.Product
-		err     error
+	amazonProduct, err := productFetcher.FetchProduct(ctx, fetchReq)
+	if err != nil {
+		return nil, fmt.Errorf("获取Amazon产品失败: %w", err)
 	}
-	resultChan := make(chan fetchResult, 1)
 
-	go func() {
-		var err error
-		defer recovery.RecoverWithError("获取Amazon产品", s.logger, &err)
-		defer func() {
-			if err != nil {
-				resultChan <- fetchResult{nil, err}
-			}
-		}()
+	s.logger.WithFields(map[string]any{
+		"asin":         asin,
+		"region":       region,
+		"title":        amazonProduct.Title,
+		"final_price":  amazonProduct.FinalPrice,
+		"availability": amazonProduct.Availability,
+		"is_available": amazonProduct.IsAvailable,
+	}).Debug("成功获取Amazon产品数据")
 
-		s.logger.WithField("asin", asin).Debug("开始调用ProductFetcher获取Amazon产品")
-		amazonProduct, err := productFetcher.FetchProduct(fetchReq)
-		if err != nil {
-			s.logger.WithError(err).WithField("asin", asin).Warn("ProductFetcher获取Amazon产品失败")
-		} else {
-			s.logger.WithFields(map[string]any{
-				"asin":  asin,
-				"title": amazonProduct.Title,
-				"price": amazonProduct.FinalPrice,
-			}).Debug("ProductFetcher成功获取Amazon产品")
-		}
-		resultChan <- fetchResult{amazonProduct, err}
-	}()
-
-	// 等待结果或超时
-	select {
-	case <-ctx.Done():
-		s.logger.WithFields(map[string]any{
-			"asin":   asin,
-			"region": region,
-			"error":  ctx.Err(),
-		}).Warn("获取Amazon产品超时")
-		return nil, fmt.Errorf("获取Amazon产品超时: %w", ctx.Err())
-	case result := <-resultChan:
-		if result.err != nil {
-			return nil, fmt.Errorf("获取Amazon产品失败: %w", result.err)
-		}
-
-		s.logger.WithFields(map[string]any{
-			"asin":         asin,
-			"region":       region,
-			"title":        result.product.Title,
-			"final_price":  result.product.FinalPrice,
-			"availability": result.product.Availability,
-			"is_available": result.product.IsAvailable,
-		}).Debug("成功获取Amazon产品数据")
-
-		return result.product, nil
-	}
+	return amazonProduct, nil
 }

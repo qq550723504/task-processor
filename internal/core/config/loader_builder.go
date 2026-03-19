@@ -71,22 +71,6 @@ func BuildConfig() *Config {
 			Zipcodes:          viper.GetStringMapString("amazon.zipcodes"),
 			DataFreshnessDays: viper.GetInt("amazon.dataFreshnessDays"),
 			CrawlTimeout:      viper.GetInt("amazon.crawlTimeout"),
-
-			// 从浏览器配置复制兼容性字段
-			Headless:       viper.GetBool("browser.headless"),
-			BrowserPath:    viper.GetString("browser.browserPath"),
-			PoolSize:       viper.GetInt("browser.poolSize"),
-			ViewportWidth:  viper.GetInt("browser.viewportWidth"),
-			ViewportHeight: viper.GetInt("browser.viewportHeight"),
-			ProxyServer:    viper.GetString("browser.proxyServer"),
-			RandomConfig: BrowserRandomConfig{
-				Enabled:             viper.GetBool("browser.randomConfig.enabled"),
-				Strategy:            viper.GetString("browser.randomConfig.strategy"),
-				PresetName:          viper.GetString("browser.randomConfig.presetName"),
-				FingerprintStrategy: viper.GetString("browser.randomConfig.fingerprintStrategy"),
-				HealthCheckEnabled:  viper.GetBool("browser.randomConfig.healthCheckEnabled"),
-				MaxRetries:          viper.GetInt("browser.randomConfig.maxRetries"),
-			},
 		},
 		Updater: UpdaterConfig{
 			Enabled:            viper.GetBool("updater.enabled"),

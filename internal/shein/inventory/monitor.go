@@ -85,11 +85,11 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 		result.PriceChanges++
 		resultMutex.Unlock()
 
-		// 根据价格变化策略处理库存（异步）
+		// 根据价格变化策略处理库存（异步，使用独立 context 避免外层取消影响策略执行）
 		go func() {
 			defer recovery.Recover("处理价格变化策略", s.logger)
 
-			if err := s.handlePriceChangeWithStrategy(ctx, prod, amazonProduct, skuMapping, storeID); err != nil {
+			if err := s.handlePriceChangeWithStrategy(context.Background(), prod, amazonProduct, skuMapping, storeID); err != nil {
 				s.logger.WithError(err).WithFields(logrus.Fields{
 					"product_id": prod.ProductID,
 					"sku":        s.getStringValue(skuMapping.MappingInfo.Sku),
@@ -104,11 +104,11 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 		result.StockChanges++
 		resultMutex.Unlock()
 
-		// 根据营销策略处理库存变化（异步）
+		// 根据营销策略处理库存变化（异步，使用独立 context 避免外层取消影响策略执行）
 		go func() {
 			defer recovery.Recover("处理库存变化策略", s.logger)
 
-			if err := s.handleStockChangeWithStrategy(ctx, prod, amazonProduct, skuMapping, storeID); err != nil {
+			if err := s.handleStockChangeWithStrategy(context.Background(), prod, amazonProduct, skuMapping, storeID); err != nil {
 				s.logger.WithError(err).WithFields(logrus.Fields{
 					"product_id": prod.ProductID,
 					"sku":        s.getStringValue(mappingInfo.Sku),

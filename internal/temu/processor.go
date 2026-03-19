@@ -20,6 +20,7 @@ import (
 // 包含抓取和关闭两个能力，粒度刚好满足 TEMU 的需求。
 type amazonCrawler interface {
 	Process(url string, zipcode string) (*model.Product, error)
+	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
 	Shutdown()
 }
 

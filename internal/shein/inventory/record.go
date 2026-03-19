@@ -23,6 +23,17 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 	skuMapping *SKUMappingData,
 	storeID int64,
 ) {
+	defer recovery.Recover("记录库存和价格", s.logger)
+
+	if amazonProduct == nil || skuMapping == nil || skuMapping.MappingInfo == nil {
+		s.logger.WithFields(logrus.Fields{
+			"productId":          productId,
+			"amazonProductIsNil": amazonProduct == nil,
+			"skuMappingIsNil":    skuMapping == nil,
+		}).Warn("recordInventoryAndPrice: 参数为nil，跳过")
+		return
+	}
+
 	// 检查今天是否已经记录过
 	latestRecord, err := s.inventoryRecordClient.GetLatestInventoryRecord("Amazon", productId, region)
 	if err != nil {

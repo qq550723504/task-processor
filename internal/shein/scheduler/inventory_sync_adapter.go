@@ -3,6 +3,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	platformtask "task-processor/internal/platformtask"
@@ -41,9 +42,11 @@ func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Contex
 	// 转换回SHEIN特定类型
 	sheinProducts := make([]*managementapi.ProductDataDTO, len(products))
 	for i, p := range products {
-		if sp, ok := p.(*managementapi.ProductDataDTO); ok {
-			sheinProducts[i] = sp
+		sp, ok := p.(*managementapi.ProductDataDTO)
+		if !ok {
+			return nil, fmt.Errorf("products[%d] 类型断言失败: 期望 *ProductDataDTO, 实际 %T", i, p)
 		}
+		sheinProducts[i] = sp
 	}
 
 	// 调用SHEIN服务

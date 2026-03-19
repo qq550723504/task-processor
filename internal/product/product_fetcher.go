@@ -2,6 +2,7 @@
 package product
 
 import (
+	"context"
 	"task-processor/internal/core/config"
 	"task-processor/internal/model"
 
@@ -12,14 +13,15 @@ import (
 // 与 crawler/amazon.Scraper 保持相同签名，domain 层不直接依赖 crawler 包。
 type AmazonScraper interface {
 	Process(url string, zipcode string) (*model.Product, error)
+	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
 }
 
 // ProductFetcher 产品获取器
 type ProductFetcher struct {
-	rawJsonDataClient RawJsonDataClient
-	amazonConfig      *config.AmazonConfig
-	amazonProcessor   AmazonScraper
-	logger            *logrus.Entry
+	cacheManager    *CacheManager
+	amazonConfig    *config.AmazonConfig
+	amazonProcessor AmazonScraper
+	logger          *logrus.Entry
 }
 
 // NewProductFetcher 创建产品获取器
@@ -28,36 +30,30 @@ func NewProductFetcher(
 	amazonConfig *config.AmazonConfig,
 	amazonProcessor AmazonScraper,
 ) *ProductFetcher {
+	logger := logrus.New().WithField("component", "ProductFetcher")
 	return &ProductFetcher{
-		rawJsonDataClient: rawJsonDataClient,
-		amazonConfig:      amazonConfig,
-		amazonProcessor:   amazonProcessor,
-		logger:            logrus.New().WithField("component", "ProductFetcher"),
+		cacheManager:    NewCacheManager(rawJsonDataClient, logger),
+		amazonConfig:    amazonConfig,
+		amazonProcessor: amazonProcessor,
+		logger:          logger,
 	}
 }
 
 // FetchProduct 获取产品
-func (f *ProductFetcher) FetchProduct(req *FetchRequest) (*model.Product, error) {
-	if f.rawJsonDataClient != nil {
-		resp, err := f.rawJsonDataClient.GetRawJsonData(&RawJsonReq{
-			TenantID:   req.TenantID,
-			Platform:   req.Platform,
-			ProductID:  req.ProductID,
-			Region:     req.Region,
-			StoreID:    req.StoreID,
-			CategoryID: req.CategoryID,
-			Creator:    req.Creator,
-		})
-		if err == nil && resp != nil && resp.RawJSONData != "" {
+func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*model.Product, error) {
+	if f.cacheManager != nil {
+		if product, err := f.cacheManager.GetFromCache(req); err == nil {
 			f.logger.Debugf("从缓存获取产品成功: %s", req.ProductID)
-			// TODO: 解析缓存数据
-			return nil, nil
+			return product, nil
 		}
 	}
 
 	if f.amazonProcessor != nil && f.amazonConfig != nil && f.amazonConfig.Enabled {
 		f.logger.Debugf("使用爬虫获取产品: %s", req.ProductID)
-		return f.amazonProcessor.Process("", "")
+		resolver := NewDomainResolver()
+		productURL := resolver.BuildAmazonProductURL(req.Region, req.ProductID)
+		zipcode := resolver.GetZipcodeByRegion(req.Region)
+		return f.amazonProcessor.ProcessWithContext(ctx, productURL, zipcode)
 	}
 
 	return nil, nil
@@ -68,7 +64,7 @@ func (f *ProductFetcher) FetchProductWithRetry(productID, region string, storeID
 	req := &FetchRequest{ProductID: productID, Region: region, StoreID: storeID}
 	var lastErr error
 	for i := 0; i < maxRetries; i++ {
-		product, err := f.FetchProduct(req)
+		product, err := f.FetchProduct(context.Background(), req)
 		if err == nil {
 			return product, nil
 		}
@@ -84,12 +80,11 @@ func (f *ProductFetcher) CacheProduct(req *FetchRequest, product *model.Product)
 		f.logger.Warn("产品数据为空，跳过缓存")
 		return nil
 	}
-	if f.rawJsonDataClient == nil {
-		f.logger.Warn("rawJsonDataClient未初始化，无法缓存")
+	if f.cacheManager == nil {
+		f.logger.Warn("cacheManager未初始化，无法缓存")
 		return nil
 	}
-	// TODO: 实现缓存逻辑
-	return nil
+	return f.cacheManager.CacheProduct(req, product)
 }
 
 // CacheVariants 批量缓存变体数据到服务器
@@ -97,8 +92,11 @@ func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Prod
 	if len(variants) == 0 {
 		return nil
 	}
-	// TODO: 实现批量缓存逻辑
-	return nil
+	if f.cacheManager == nil {
+		f.logger.Warn("cacheManager未初始化，无法缓存变体")
+		return nil
+	}
+	return f.cacheManager.CacheVariants(req, variants)
 }
 
 // GetStats 获取统计信息

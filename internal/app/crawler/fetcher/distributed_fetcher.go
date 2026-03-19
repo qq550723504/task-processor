@@ -11,7 +11,6 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/timeout"
 	domainProduct "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
@@ -67,7 +66,7 @@ func NewDistributedProductFetcher(
 }
 
 // FetchProduct 获取产品数据（使用分布式爬虫）
-func (f *DistributedProductFetcher) FetchProduct(req *domainProduct.FetchRequest) (*model.Product, error) {
+func (f *DistributedProductFetcher) FetchProduct(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
 	f.logger.Infof("🔍 开始获取产品数据: ProductID=%s, Platform=%s, Region=%s",
 		req.ProductID, req.Platform, req.Region)
 
@@ -86,7 +85,7 @@ func (f *DistributedProductFetcher) FetchProduct(req *domainProduct.FetchRequest
 	if f.shouldUseCrawler(req.Platform) {
 		f.logger.Infof("🌐 使用分布式爬虫抓取: ProductID=%s", req.ProductID)
 
-		product, err := f.fetchFromDistributedCrawler(req)
+		product, err := f.fetchFromDistributedCrawler(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("分布式爬虫抓取失败: %w", err)
 		}
@@ -104,7 +103,7 @@ func (f *DistributedProductFetcher) FetchProduct(req *domainProduct.FetchRequest
 }
 
 // fetchFromDistributedCrawler 从分布式爬虫获取产品数据
-func (f *DistributedProductFetcher) fetchFromDistributedCrawler(req *domainProduct.FetchRequest) (*model.Product, error) {
+func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
 	// 构建爬虫请求
 	crawlReq := &distributed.CrawlRequest{
 		TaskID:    time.Now().UnixNano(), // 生成唯一任务ID
@@ -115,10 +114,6 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(req *domainProdu
 		ProductID: req.ProductID,
 		Priority:  f.calculatePriority(req),
 	}
-
-	// 提交爬虫任务并等待结果
-	ctx, cancel := timeout.WithTaskLongTimeout(context.Background())
-	defer cancel()
 
 	result, err := f.distributedCrawler.SubmitCrawlTask(ctx, crawlReq)
 	if err != nil {
@@ -205,7 +200,7 @@ func (f *DistributedProductFetcher) CacheVariants(req *domainProduct.FetchReques
 }
 
 // FetchVariants 获取变体数据（批量处理）
-func (f *DistributedProductFetcher) FetchVariants(req *domainProduct.FetchRequest, variantASINs []string) ([]*model.Product, error) {
+func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *domainProduct.FetchRequest, variantASINs []string) ([]*model.Product, error) {
 	if len(variantASINs) == 0 {
 		return []*model.Product{}, nil
 	}
@@ -227,7 +222,7 @@ func (f *DistributedProductFetcher) FetchVariants(req *domainProduct.FetchReques
 			Creator:    req.Creator,
 		}
 
-		variant, err := f.FetchProduct(variantReq)
+		variant, err := f.FetchProduct(ctx, variantReq)
 		if err != nil {
 			f.logger.Warnf("获取变体失败: ASIN=%s, Error=%v", asin, err)
 			errors = append(errors, err)

@@ -32,7 +32,9 @@ func (ch *CaptchaHandler) TryBypassCaptcha(page playwright.Page) error {
 
 	// 策略2: 尝试刷新页面
 	logrus.Info("策略2: 刷新页面尝试绕过验证码")
-	if _, err := page.Reload(); err != nil {
+	if _, err := page.Reload(playwright.PageReloadOptions{
+		Timeout: playwright.Float(15000),
+	}); err != nil {
 		logrus.Warnf("页面刷新失败: %v", err)
 	} else {
 		time.Sleep(3 * time.Second)

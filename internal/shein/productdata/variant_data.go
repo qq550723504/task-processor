@@ -36,10 +36,7 @@ func NewVariantJsonDataHandler(
 	logger := logrus.WithField("handler", "VariantJsonDataHandler")
 
 	// 直接使用浏览器池大小作为并发数，确保资源利用最优
-	maxWorkers := amazonConfig.PoolSize
-	if maxWorkers <= 0 {
-		maxWorkers = 3 // 默认3个并发
-	}
+	maxWorkers := 1
 
 	// 使用工厂模式创建获取器
 	factory := appProduct.NewFetcherFactory()
@@ -179,7 +176,7 @@ func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein.TaskContext, v
 			return nil, fmt.Errorf("任务数据类型错误")
 		}
 
-		return h.productFetcher.FetchProduct(req)
+		return h.productFetcher.FetchProduct(taskCtx, req)
 	}
 
 	// 并行执行处理

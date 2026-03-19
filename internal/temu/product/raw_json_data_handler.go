@@ -78,7 +78,7 @@ func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 		Creator:    task.Creator,
 	}
 
-	amazonProduct, err := h.fetcher.FetchProduct(req)
+	amazonProduct, err := h.fetcher.FetchProduct(ctx.GetContext(), req)
 	if err != nil {
 		// 检查是否为产品不存在错误（不可重试）
 		var productNotFoundErr *model.ProductNotFoundError

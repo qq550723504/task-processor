@@ -36,17 +36,6 @@ func (s *inventorySyncServiceImpl) monitorInventoryChangesConcurrent(
 	// 等待所有goroutine完成
 	var wg sync.WaitGroup
 
-	// 收集所有需要批量更新的库存信息
-	inventoryUpdateChan := make(chan *InventoryUpdateBatch, totalCount)
-
-	// 启动批量更新处理器
-	batchUpdateCtx, batchUpdateCancel := context.WithCancel(ctx)
-	defer batchUpdateCancel()
-
-	batchUpdateWg := sync.WaitGroup{}
-	batchUpdateWg.Add(1)
-	go s.batchInventoryUpdateProcessor(batchUpdateCtx, inventoryUpdateChan, &batchUpdateWg)
-
 	// 进度监控
 	progressTicker := time.NewTicker(10 * time.Second)
 	defer progressTicker.Stop()
@@ -93,11 +82,6 @@ func (s *inventorySyncServiceImpl) monitorInventoryChangesConcurrent(
 	// 等待所有产品处理完成
 	wg.Wait()
 
-	// 关闭批量更新通道并等待处理完成
-	close(inventoryUpdateChan)
-	batchUpdateCancel()
-	batchUpdateWg.Wait()
-
 	// 停止进度监控
 	progressCancel()
 	progressWg.Wait()
@@ -119,36 +103,6 @@ func (s *inventorySyncServiceImpl) monitorInventoryChangesConcurrent(
 func (s *inventorySyncServiceImpl) getMaxConcurrency() int {
 	// 默认并发数为20
 	return 3
-}
-
-// batchInventoryUpdateProcessor 批量库存更新处理器
-func (s *inventorySyncServiceImpl) batchInventoryUpdateProcessor(
-	ctx context.Context,
-	updateChan <-chan *InventoryUpdateBatch,
-	wg *sync.WaitGroup,
-) {
-	defer recovery.Recover("批量库存更新处理器", s.logger)
-	defer wg.Done()
-
-	for {
-		select {
-		case batch, ok := <-updateChan:
-			if !ok {
-				s.logger.Debug("批量库存更新通道已关闭")
-				return
-			}
-
-			if batch != nil && len(batch.Updates) > 0 {
-				if err := s.batchUpdateTemuInventoryInAttributes(ctx, batch); err != nil {
-					s.logger.WithError(err).WithField("product_id", batch.Product.ProductID).Error("批量更新TEMU产品库存失败")
-				}
-			}
-
-		case <-ctx.Done():
-			s.logger.Debug("批量库存更新处理器收到取消信号")
-			return
-		}
-	}
 }
 
 // progressMonitor 进度监控器
