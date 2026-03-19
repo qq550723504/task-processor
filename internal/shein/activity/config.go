@@ -43,6 +43,9 @@ type TimeLimitedDiscountConfig struct {
 
 	// 价格调整
 	FixedPriceAdjustment float64 // 固定价格调整值（在最低售价基础上增加的固定金额）
+
+	// 测试/调试
+	FilterSkcList []string // 指定SKC白名单，非空时只处理列表内的SKC（用于测试）
 }
 
 // DefaultTimeLimitedDiscountConfig 返回默认配置

@@ -182,6 +182,20 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 	s.logger.Infof("开始筛选商品，总共 %d 个商品", totalGoods)
 
 	for _, g := range goods {
+		// 如果指定了SKC白名单，只处理白名单内的商品
+		if len(config.FilterSkcList) > 0 {
+			found := false
+			for _, skc := range config.FilterSkcList {
+				if skc == g.Skc {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
 		// 检查是否已参加其他活动
 		if g.ErrorCode != "" {
 			s.logger.Warnf("商品 %s 已参加其他活动(活动: %v),跳过该商品", g.Skc, g.ErrorCode)
@@ -390,6 +404,7 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 
 	// 2. 构建限时折扣配置
 	config := s.buildTimeLimitedDiscountConfig(storeInfo, strategy)
+	//config.FilterSkcList = []string{"sq25082665236416663"} // TODO: 测试完删除
 
 	// 3. 验证配置
 	if validateErr := config.Validate(); validateErr != nil {
