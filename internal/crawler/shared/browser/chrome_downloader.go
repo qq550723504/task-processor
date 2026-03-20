@@ -3,10 +3,12 @@ package browser
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -51,24 +53,71 @@ func NewChromeDownloader(version, downloadDir string) *ChromeDownloader {
 }
 
 // GetDownloadURL 获取下载链接
+// 实际文件名格式参考 https://github.com/adryfish/fingerprint-chromium/releases
 func (cd *ChromeDownloader) GetDownloadURL() (string, error) {
-	// 根据操作系统选择下载链接
-	// 注意：这里使用的是 GitHub Release 的直接下载链接格式
 	baseURL := "https://github.com/adryfish/fingerprint-chromium/releases/download"
+
+	// 解析完整版本号（配置可能只有主版本号如 "144"，需要查找完整 tag）
+	fullVersion, err := cd.resolveFullVersion()
+	if err != nil {
+		return "", fmt.Errorf("解析版本号失败: %w", err)
+	}
 
 	switch runtime.GOOS {
 	case "windows":
-		// Windows 使用 ZIP 包
-		return fmt.Sprintf("%s/v%s/fingerprint-chromium-%s_windows.zip", baseURL, cd.version, cd.version), nil
+		return fmt.Sprintf("%s/%s/ungoogled-chromium_%s-1.1_windows_x64.zip", baseURL, fullVersion, fullVersion), nil
 	case "linux":
-		// Linux 使用 tar.xz 包
-		return fmt.Sprintf("%s/v%s/fingerprint-chromium-%s_linux.tar.xz", baseURL, cd.version, cd.version), nil
+		return fmt.Sprintf("%s/%s/ungoogled-chromium-%s-1-x86_64_linux.tar.xz", baseURL, fullVersion, fullVersion), nil
 	case "darwin":
-		// macOS 使用 dmg
-		return fmt.Sprintf("%s/v%s/fingerprint-chromium-%s_macos.dmg", baseURL, cd.version, cd.version), nil
+		return fmt.Sprintf("%s/%s/ungoogled-chromium_%s-1.1_macos.dmg", baseURL, fullVersion, fullVersion), nil
 	default:
 		return "", fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
 	}
+}
+
+// resolveFullVersion 将短版本号（如 "144"）解析为完整版本号（如 "144.0.7559.132"）
+// 如果已经是完整版本号则直接返回
+func (cd *ChromeDownloader) resolveFullVersion() (string, error) {
+	// 已经是完整版本号（包含多个点）
+	if strings.Count(cd.version, ".") >= 2 {
+		return cd.version, nil
+	}
+
+	// 通过 GitHub API 查找匹配主版本号的最新 release
+	logrus.Infof("查找 fingerprint-chromium 主版本 %s 对应的完整版本号...", cd.version)
+
+	apiURL := "https://api.github.com/repos/adryfish/fingerprint-chromium/releases"
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	resp, err := cd.httpClient.Do(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("查询 GitHub API 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var releases []struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return "", fmt.Errorf("解析 GitHub API 响应失败: %w", err)
+	}
+
+	prefix := cd.version + "."
+	for _, r := range releases {
+		if strings.HasPrefix(r.TagName, prefix) {
+			logrus.Infof("找到完整版本号: %s", r.TagName)
+			return r.TagName, nil
+		}
+	}
+
+	return "", fmt.Errorf("未找到主版本 %s 对应的 release", cd.version)
 }
 
 // Download 下载并解压 Chrome
@@ -161,12 +210,29 @@ func (cd *ChromeDownloader) extractFile(archivePath string) (string, error) {
 	if strings.HasSuffix(archivePath, ".zip") {
 		return extractPath, cd.extractZip(archivePath, extractPath)
 	} else if strings.HasSuffix(archivePath, ".tar.xz") {
-		return "", fmt.Errorf("tar.xz 格式需要外部工具解压，请手动解压或使用系统命令")
+		return extractPath, cd.extractTarXZ(archivePath, extractPath)
 	} else if strings.HasSuffix(archivePath, ".dmg") {
 		return "", fmt.Errorf("dmg 格式需要在 macOS 上手动挂载")
 	}
 
 	return "", fmt.Errorf("不支持的压缩格式: %s", archivePath)
+}
+
+// extractTarXZ 使用系统 tar 命令解压 .tar.xz 文件
+func (cd *ChromeDownloader) extractTarXZ(archivePath, destPath string) error {
+	if err := os.MkdirAll(destPath, 0755); err != nil {
+		return fmt.Errorf("创建解压目录失败: %w", err)
+	}
+
+	cmd := exec.Command("tar", "-xJf", archivePath, "-C", destPath, "--strip-components=1")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("tar 解压失败: %w", err)
+	}
+
+	logrus.Infof("tar.xz 解压完成: %s", destPath)
+	return nil
 }
 
 // extractZip 解压 ZIP 文件
@@ -220,8 +286,14 @@ func (cd *ChromeDownloader) extractZipFile(f *zip.File, destPath string) error {
 	}
 	defer rc.Close()
 
+	// 保留原始权限（Linux 下 chrome 需要可执行权限）
+	mode := f.Mode()
+	if mode == 0 {
+		mode = 0644
+	}
+
 	// 创建目标文件
-	outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+	outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
@@ -273,13 +345,17 @@ func (cd *ChromeDownloader) findChromeExecutable(extractPath string) (string, er
 
 // CheckAndDownload 检查 Chrome 是否存在，不存在则下载
 func (cd *ChromeDownloader) CheckAndDownload(configPath string) (string, error) {
-	// 如果配置路径存在且有效，直接返回
+	// 如果配置路径存在且有效，检查是否适用于当前平台
 	if configPath != "" {
-		if _, err := os.Stat(configPath); err == nil {
+		// Windows exe 在非 Windows 系统上跳过，走自动下载
+		if runtime.GOOS != "windows" && strings.HasSuffix(strings.ToLower(configPath), ".exe") {
+			logrus.Infof("当前系统为 %s，跳过 Windows 浏览器路径: %s，将自动下载 Linux 版本", runtime.GOOS, configPath)
+		} else if _, err := os.Stat(configPath); err == nil {
 			logrus.Infof("使用配置的 Chrome 路径: %s", configPath)
 			return configPath, nil
+		} else {
+			logrus.Warnf("配置的 Chrome 路径不存在: %s", configPath)
 		}
-		logrus.Warnf("配置的 Chrome 路径不存在: %s", configPath)
 	}
 
 	// 检查默认下载位置是否已存在

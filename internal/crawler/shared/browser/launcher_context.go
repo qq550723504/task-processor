@@ -3,6 +3,8 @@ package browser
 import (
 	"fmt"
 	"os"
+	"runtime"
+	"strings"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -128,12 +130,16 @@ func (cl *ContextLauncher) launchNormalContext(userAgent string) (playwright.Bro
 
 // ensureBrowserPath 确保浏览器路径存在（支持自动下载）
 func (cl *ContextLauncher) ensureBrowserPath() (string, error) {
-	// 如果配置了浏览器路径且存在，直接返回
+	// 如果配置了浏览器路径，检查是否适用于当前平台
 	if cl.config.BrowserPath != "" {
-		if _, err := os.Stat(cl.config.BrowserPath); err == nil {
+		// Windows exe 在非 Windows 系统上直接跳过，走自动下载
+		if runtime.GOOS != "windows" && strings.HasSuffix(strings.ToLower(cl.config.BrowserPath), ".exe") {
+			logrus.Infof("当前系统为 %s，跳过 Windows 浏览器路径: %s", runtime.GOOS, cl.config.BrowserPath)
+		} else if _, err := os.Stat(cl.config.BrowserPath); err == nil {
 			return cl.config.BrowserPath, nil
+		} else {
+			logrus.Warnf("配置的浏览器路径不存在: %s，尝试自动下载", cl.config.BrowserPath)
 		}
-		logrus.Warnf("配置的浏览器路径不存在: %s，尝试自动下载", cl.config.BrowserPath)
 	}
 
 	// 从配置中获取 Chrome 版本和下载目录

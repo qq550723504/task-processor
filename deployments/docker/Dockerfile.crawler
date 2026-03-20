@@ -1,0 +1,14 @@
+# ============================================================
+# 应用层（基于已发布的环境层，无需本地重新安装依赖）
+# 环境层源码: deployments/docker/Dockerfile.crawler-env
+# ============================================================
+FROM xuwei190/crawler-env:latest
+
+WORKDIR /app
+
+COPY bin/test-amazon-linux ./test-amazon
+COPY config/ ./config/
+
+RUN chmod +x ./test-amazon
+
+CMD ["./test-amazon"]
