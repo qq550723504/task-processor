@@ -2,97 +2,229 @@ package productenrich
 
 import (
 	"context"
+	"errors"
 	"testing"
+
+	"task-processor/internal/infra/worker"
 )
 
-// validateRequest 是 productService 的私有方法，通过白盒测试直接调用
-func TestProductService_ValidateRequest(t *testing.T) {
-	s := &productService{}
+// mockWorkerPool 用于捕获 Submit 调用
+type mockWorkerPool struct {
+	submitted []worker.WorkerJob
+	submitErr error
+}
 
-	cases := []struct {
-		name    string
-		req     *GenerateRequest
-		wantErr bool
-	}{
-		{"empty request", &GenerateRequest{}, true},
-		{"too many images", &GenerateRequest{ImageURLs: make([]string, 11)}, true},
-		{"text too long", &GenerateRequest{Text: string(make([]byte, 10001))}, true},
-		{"valid text", &GenerateRequest{Text: "hello"}, false},
-		{"valid image", &GenerateRequest{ImageURLs: []string{"https://example.com/img.jpg"}}, false},
-		{"valid product url", &GenerateRequest{ProductURL: "https://1688.com/product/123"}, false},
-		{"exactly 10 images", &GenerateRequest{ImageURLs: make([]string, 10)}, false},
-		{"exactly 10000 chars", &GenerateRequest{Text: string(make([]byte, 10000))}, false},
+func (m *mockWorkerPool) Submit(job worker.WorkerJob) error {
+	if m.submitErr != nil {
+		return m.submitErr
 	}
+	m.submitted = append(m.submitted, job)
+	return nil
+}
+func (m *mockWorkerPool) Start(_ context.Context)           {}
+func (m *mockWorkerPool) Stop(_ context.Context)            {}
+func (m *mockWorkerPool) AvailableSlots() int               { return 10 }
+func (m *mockWorkerPool) GetQueueStats() worker.QueueStats  { return worker.QueueStats{} }
+func (m *mockWorkerPool) SetJobHandler(_ worker.JobHandler) {}
+func (m *mockWorkerPool) GetMetrics() *worker.Metrics       { return &worker.Metrics{} }
 
+func newSvcWithPool(t *testing.T, pool worker.WorkerPool) (*productService, *mockTaskRepo) {
+	t.Helper()
+	repo := newMockTaskRepo()
+	svc, err := NewProductService(&ProductServiceConfig{
+		QueueName:   "q",
+		TaskRepo:    repo,
+		RedisClient: &mockRedisClient{},
+		WorkerPool:  pool,
+	})
+	if err != nil {
+		t.Fatalf("NewProductService: %v", err)
+	}
+	return svc.(*productService), repo
+}
+
+// --- validateRequest ---
+
+func TestValidateRequest_NoInput_ReturnsError(t *testing.T) {
+	svc, _ := newSvcWithPool(t, nil)
+	err := svc.validateRequest(&GenerateRequest{})
+	if err == nil {
+		t.Fatal("expected error when no input provided")
+	}
+}
+
+func TestValidateRequest_TooManyImages_ReturnsError(t *testing.T) {
+	svc, _ := newSvcWithPool(t, nil)
+	urls := make([]string, 11)
+	for i := range urls {
+		urls[i] = "http://example.com/img.jpg"
+	}
+	err := svc.validateRequest(&GenerateRequest{ImageURLs: urls})
+	if err == nil {
+		t.Fatal("expected error for >10 image URLs")
+	}
+}
+
+func TestValidateRequest_TextTooLong_ReturnsError(t *testing.T) {
+	svc, _ := newSvcWithPool(t, nil)
+	longText := make([]byte, 10001)
+	err := svc.validateRequest(&GenerateRequest{Text: string(longText)})
+	if err == nil {
+		t.Fatal("expected error for text > 10000 chars")
+	}
+}
+
+func TestValidateRequest_ValidInputs_NoError(t *testing.T) {
+	svc, _ := newSvcWithPool(t, nil)
+	cases := []struct {
+		name string
+		req  *GenerateRequest
+	}{
+		{"image url", &GenerateRequest{ImageURLs: []string{"http://example.com/img.jpg"}}},
+		{"text", &GenerateRequest{Text: "a product"}},
+		{"product url", &GenerateRequest{ProductURL: "http://1688.com/product/123"}},
+	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := s.validateRequest(tc.req)
-			if tc.wantErr && err == nil {
-				t.Error("expected error, got nil")
-			}
-			if !tc.wantErr && err != nil {
+			if err := svc.validateRequest(tc.req); err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
 	}
 }
 
-func TestProductService_GenerateTaskID(t *testing.T) {
-	s := &productService{}
-	id1 := s.generateTaskID()
-	id2 := s.generateTaskID()
-	if id1 == "" {
-		t.Error("task ID should not be empty")
-	}
-	if id1 == id2 {
-		t.Error("task IDs should be unique")
-	}
-	// UUID 格式：8-4-4-4-12
-	if len(id1) != 36 {
-		t.Errorf("task ID length = %d, want 36 (UUID format)", len(id1))
+// --- CreateGenerateTask ---
+
+func TestCreateGenerateTask_NilRequest_ReturnsError(t *testing.T) {
+	svc, _ := newSvcWithPool(t, nil)
+	_, err := svc.CreateGenerateTask(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected error for nil request")
 	}
 }
 
-func TestProductService_GetTaskResult(t *testing.T) {
-	ctx := context.Background()
+func TestCreateGenerateTask_InvalidRequest_ReturnsError(t *testing.T) {
+	svc, _ := newSvcWithPool(t, nil)
+	_, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{})
+	if err == nil {
+		t.Fatal("expected error for invalid request")
+	}
+}
 
-	t.Run("empty task ID returns error", func(t *testing.T) {
-		s := &productService{taskRepo: newMockTaskRepo()}
-		_, err := s.GetTaskResult(ctx, "")
-		if err == nil {
-			t.Error("expected error for empty task ID")
-		}
-	})
+func TestCreateGenerateTask_WithWorkerPool_SubmitsJob(t *testing.T) {
+	pool := &mockWorkerPool{}
+	svc, repo := newSvcWithPool(t, pool)
 
-	t.Run("task not found returns error", func(t *testing.T) {
-		s := &productService{taskRepo: newMockTaskRepo()}
-		_, err := s.GetTaskResult(ctx, "nonexistent")
-		if err == nil {
-			t.Error("expected error for nonexistent task")
-		}
-	})
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{Text: "a product"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if task.ID == "" {
+		t.Error("expected non-empty task ID")
+	}
+	if task.Status != TaskStatusPending {
+		t.Errorf("Status = %q, want pending", task.Status)
+	}
+	if _, ok := repo.tasks[task.ID]; !ok {
+		t.Error("task not saved to repo")
+	}
+	if len(pool.submitted) != 1 {
+		t.Errorf("pool.submitted len = %d, want 1", len(pool.submitted))
+	}
+	if pool.submitted[0].TaskData != task.ID {
+		t.Errorf("submitted TaskData = %q, want %q", pool.submitted[0].TaskData, task.ID)
+	}
+}
 
-	t.Run("completed task has CompletedAt set", func(t *testing.T) {
-		task := &Task{ID: "t1", Status: TaskStatusCompleted, Request: &GenerateRequest{}}
-		s := &productService{taskRepo: newMockTaskRepo(task)}
-		result, err := s.GetTaskResult(ctx, "t1")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.CompletedAt == nil {
-			t.Error("CompletedAt should be set for completed task")
-		}
-	})
+func TestCreateGenerateTask_PoolSubmitFail_ReturnsError(t *testing.T) {
+	pool := &mockWorkerPool{submitErr: errors.New("pool full")}
+	svc, _ := newSvcWithPool(t, pool)
 
-	t.Run("pending task has no CompletedAt", func(t *testing.T) {
-		task := &Task{ID: "t2", Status: TaskStatusPending, Request: &GenerateRequest{}}
-		s := &productService{taskRepo: newMockTaskRepo(task)}
-		result, err := s.GetTaskResult(ctx, "t2")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result.CompletedAt != nil {
-			t.Error("CompletedAt should be nil for pending task")
-		}
+	_, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{Text: "a product"})
+	if err == nil {
+		t.Fatal("expected error when pool.Submit fails")
+	}
+}
+
+func TestCreateGenerateTask_NoPool_FallsBackToRedis(t *testing.T) {
+	// 无 WorkerPool 时应走 Redis Push 降级路径
+	repo := newMockTaskRepo()
+	rc := newMockRedisForCache()
+	svc, err := NewProductService(&ProductServiceConfig{
+		QueueName:   "myqueue",
+		TaskRepo:    repo,
+		RedisClient: rc,
 	})
+	if err != nil {
+		t.Fatalf("NewProductService: %v", err)
+	}
+
+	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{Text: "a product"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rc.store["myqueue"] != task.ID {
+		t.Errorf("redis store[myqueue] = %q, want %q", rc.store["myqueue"], task.ID)
+	}
+}
+
+// --- GetTaskResult ---
+
+func TestGetTaskResult_EmptyID_ReturnsError(t *testing.T) {
+	svc, _ := newSvcWithPool(t, nil)
+	_, err := svc.GetTaskResult(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected error for empty task ID")
+	}
+}
+
+func TestGetTaskResult_NotFound_ReturnsErrTaskNotFound(t *testing.T) {
+	svc, _ := newSvcWithPool(t, nil)
+	_, err := svc.GetTaskResult(context.Background(), "nonexistent")
+	if !errors.Is(err, ErrTaskNotFound) {
+		t.Errorf("expected ErrTaskNotFound, got %v", err)
+	}
+}
+
+func TestGetTaskResult_CompletedTask_SetsCompletedAt(t *testing.T) {
+	svc, repo := newSvcWithPool(t, nil)
+	task := &Task{
+		ID:      "t1",
+		Request: &GenerateRequest{},
+		Status:  TaskStatusCompleted,
+		Result:  &ProductJSON{Title: "done"},
+	}
+	repo.tasks[task.ID] = task
+
+	result, err := svc.GetTaskResult(context.Background(), "t1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != TaskStatusCompleted {
+		t.Errorf("Status = %q, want completed", result.Status)
+	}
+	if result.CompletedAt == nil {
+		t.Error("expected CompletedAt to be set for completed task")
+	}
+	if result.ProductJSON == nil || result.ProductJSON.Title != "done" {
+		t.Error("expected ProductJSON to be populated")
+	}
+}
+
+func TestGetTaskResult_PendingTask_NoCompletedAt(t *testing.T) {
+	svc, repo := newSvcWithPool(t, nil)
+	task := &Task{
+		ID:      "t2",
+		Request: &GenerateRequest{},
+		Status:  TaskStatusPending,
+	}
+	repo.tasks[task.ID] = task
+
+	result, err := svc.GetTaskResult(context.Background(), "t2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.CompletedAt != nil {
+		t.Error("expected CompletedAt to be nil for pending task")
+	}
 }

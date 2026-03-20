@@ -157,8 +157,8 @@ func (s *enhancementSuggester) estimateQualityAfterImprovement(validation *Valid
 	// 抓取数据：若有则保留，否则不计入估算
 	scrapedScore := validation.ScrapedScore
 
-	// 与 scorer.go 保持一致的加权公式（图片 40% + 文本 40% + 抓取 20%）
-	estimatedScore := imageScore*0.4 + textScore*0.4 + scrapedScore*0.2
+	// 与 scorer.go 保持一致的加权公式（图片 40% + 文本 30% + 抓取 30%）
+	estimatedScore := imageScore*0.4 + textScore*0.3 + scrapedScore*0.3
 
 	if estimatedScore >= 80 {
 		return "高质量（完整处理）"

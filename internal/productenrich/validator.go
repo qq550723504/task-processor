@@ -133,10 +133,25 @@ func (v *inputValidator) Validate(ctx context.Context, input *ParsedInput) (*Val
 			Code:     "TEXT_VALIDATION_ERROR",
 		})
 	} else {
-		result.TextScore = float64(textValidation.Length) / 2
-		if result.TextScore > 100 {
-			result.TextScore = 100
+		// 文本评分：分段递增，避免极短文本拿高分，也避免超长文本无意义堆分
+		// 0字符=0, 50字符=30, 200字符=60, 500字符=80, 1000字符+=100
+		length := textValidation.Length
+		var textScore float64
+		switch {
+		case length == 0:
+			textScore = 0
+		case length < 50:
+			textScore = float64(length) * 30.0 / 50.0
+		case length < 200:
+			textScore = 30 + float64(length-50)*30.0/150.0
+		case length < 500:
+			textScore = 60 + float64(length-200)*20.0/300.0
+		case length < 1000:
+			textScore = 80 + float64(length-500)*20.0/500.0
+		default:
+			textScore = 100
 		}
+		result.TextScore = textScore
 		result.TextValidation = textValidation
 	}
 
@@ -148,13 +163,16 @@ func (v *inputValidator) Validate(ctx context.Context, input *ParsedInput) (*Val
 		} else {
 			score := 0.0
 			if scrapedValidation.HasTitle {
-				score += 20
+				score += 25
 			}
 			if scrapedValidation.HasDescription {
-				score += 20
+				score += 25
 			}
 			if scrapedValidation.HasImages {
-				score += 20
+				score += 25
+			}
+			if scrapedValidation.HasSpecs {
+				score += 25
 			}
 			result.ScrapedScore = score
 		}

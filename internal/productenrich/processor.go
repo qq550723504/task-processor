@@ -15,6 +15,7 @@ import (
 type Processor struct {
 	service    ProductService
 	taskRepo   TaskRepository
+	pool       worker.WorkerPool
 	logger     *logrus.Logger
 	maxRetries int
 }
@@ -39,6 +40,12 @@ func NewProcessor(service ProductService, taskRepo TaskRepository, logger *logru
 		logger:     logger,
 		maxRetries: maxRetries,
 	}, nil
+}
+
+// SetWorkerPool 注入 WorkerPool，用于重试时重新入队。
+// 必须在 pool.Start 之前调用。
+func (p *Processor) SetWorkerPool(pool worker.WorkerPool) {
+	p.pool = pool
 }
 
 // errNoRetry 标记不应重试的错误（如数据质量拒绝）
@@ -103,11 +110,17 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		}
 
 		if updated.RetryCount < p.maxRetries {
-			// 只重置 status 为 pending，保留 error 字段供查询
+			// 重置状态为 pending，然后重新提交到 WorkerPool
 			if resetErr := p.taskRepo.ResetForRetry(ctx, taskID); resetErr != nil {
 				log.WithError(resetErr).Warn("failed to reset task for retry")
+			} else if p.pool != nil {
+				if submitErr := p.pool.Submit(worker.WorkerJob{TaskData: taskID}); submitErr != nil {
+					log.WithError(submitErr).Warn("failed to resubmit task to worker pool")
+				} else {
+					log.WithField("retry_count", updated.RetryCount).Info("task resubmitted for retry")
+				}
 			} else {
-				log.WithField("retry_count", updated.RetryCount).Info("task queued for retry")
+				log.Warn("worker pool not set, task reset to pending but not resubmitted")
 			}
 		} else {
 			log.WithField("retry_count", updated.RetryCount).Warn("task exceeded max retries, keeping failed")

@@ -5,8 +5,22 @@ import "time"
 
 // ChatCompletionMessage 聊天完成消息
 type ChatCompletionMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role         string                      `json:"role"`
+	Content      string                      `json:"content"`
+	MultiContent []ChatCompletionContentPart `json:"multi_content,omitempty"`
+}
+
+// ChatCompletionContentPart 多模态消息内容块
+type ChatCompletionContentPart struct {
+	Type     string                          `json:"type"` // "text" 或 "image_url"
+	Text     string                          `json:"text,omitempty"`
+	ImageURL *ChatCompletionContentPartImage `json:"image_url,omitempty"`
+}
+
+// ChatCompletionContentPartImage 图片内容
+type ChatCompletionContentPartImage struct {
+	URL    string `json:"url"`
+	Detail string `json:"detail,omitempty"` // "auto", "low", "high"
 }
 
 // ChatCompletionRequest 聊天完成请求

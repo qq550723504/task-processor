@@ -106,3 +106,41 @@ func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
 
 	return resp.Choices[0].Message.Content, nil
 }
+
+// AnalyzeImage 使用 vision 模型分析图片。
+// imageURL 必须是可公开访问的 HTTPS URL。
+func (c *Client) AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error) {
+	req := &ChatCompletionRequest{
+		Messages: []ChatCompletionMessage{
+			{
+				Role: "user",
+				MultiContent: []ChatCompletionContentPart{
+					{
+						Type: "image_url",
+						ImageURL: &ChatCompletionContentPartImage{
+							URL:    imageURL,
+							Detail: "auto",
+						},
+					},
+					{
+						Type: "text",
+						Text: prompt,
+					},
+				},
+			},
+		},
+		MaxTokens:   ptr.IntPtr(1000),
+		Temperature: ptr.Float32Ptr(0.2),
+	}
+
+	resp, err := c.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("vision request failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no response from OpenAI vision")
+	}
+
+	return resp.Choices[0].Message.Content, nil
+}

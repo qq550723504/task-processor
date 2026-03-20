@@ -5,11 +5,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
 
 	"task-processor/internal/pkg/strx"
 
 	"github.com/sirupsen/logrus"
 )
+
+// cleanLLMJSON 清理 LLM 响应中可能包含的 markdown 代码块包裹。
+func cleanLLMJSON(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "```json")
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimSuffix(s, "```")
+	return strings.TrimSpace(s)
+}
 
 // ProductUnderstanding 产品理解接口
 type ProductUnderstanding interface {
@@ -47,38 +58,45 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *Parsed
 
 	analysis := &ProductAnalysis{}
 
-	// 分析图片（如果有）：并发分析所有图片，合并属性
+	// 并发分析所有图片，合并属性
 	if len(input.Images) > 0 {
-		imageAttr, err := p.AnalyzeImage(ctx, input.Images[0])
-		if err != nil {
-			logrus.WithError(err).WithField("image", input.Images[0]).Warn("failed to analyze image")
-		} else {
-			analysis.ImageAttributes = imageAttr
+		type result struct {
+			attr *ImageAttributes
+			err  error
 		}
+		results := make([]result, len(input.Images))
+		var wg sync.WaitGroup
+		for i, imgURL := range input.Images {
+			wg.Add(1)
+			go func(idx int, url string) {
+				defer wg.Done()
+				attr, err := p.AnalyzeImage(ctx, url)
+				results[idx] = result{attr: attr, err: err}
+			}(i, imgURL)
+		}
+		wg.Wait()
 
-		// 分析剩余图片，补充缺失属性
-		for _, imgURL := range input.Images[1:] {
-			attr, err := p.AnalyzeImage(ctx, imgURL)
-			if err != nil {
-				logrus.WithError(err).WithField("image", imgURL).Warn("failed to analyze image")
+		for i, r := range results {
+			if r.err != nil {
+				logrus.WithError(r.err).WithField("image", input.Images[i]).Warn("failed to analyze image")
 				continue
 			}
 			if analysis.ImageAttributes == nil {
-				analysis.ImageAttributes = attr
+				analysis.ImageAttributes = r.attr
 				continue
 			}
 			// 用后续图片补充空白字段
 			if analysis.ImageAttributes.Color == "" || analysis.ImageAttributes.Color == "unknown" {
-				analysis.ImageAttributes.Color = attr.Color
+				analysis.ImageAttributes.Color = r.attr.Color
 			}
 			if analysis.ImageAttributes.Material == "" || analysis.ImageAttributes.Material == "unknown" {
-				analysis.ImageAttributes.Material = attr.Material
+				analysis.ImageAttributes.Material = r.attr.Material
 			}
 			if analysis.ImageAttributes.Scene == "" || analysis.ImageAttributes.Scene == "unknown" {
-				analysis.ImageAttributes.Scene = attr.Scene
+				analysis.ImageAttributes.Scene = r.attr.Scene
 			}
 			if analysis.ImageAttributes.Usage == "" || analysis.ImageAttributes.Usage == "unknown" {
-				analysis.ImageAttributes.Usage = attr.Usage
+				analysis.ImageAttributes.Usage = r.attr.Usage
 			}
 		}
 	}
@@ -169,7 +187,7 @@ Only return the JSON object, no additional text.`
 
 	// 解析响应
 	var attributes ImageAttributes
-	if err := json.Unmarshal([]byte(response), &attributes); err != nil {
+	if err := json.Unmarshal([]byte(cleanLLMJSON(response)), &attributes); err != nil {
 		// 如果解析失败，尝试从文本中提取
 		logrus.WithError(err).Warn("failed to parse JSON response, using text extraction")
 
@@ -226,7 +244,7 @@ Only return the JSON object, no additional text.`, text)
 
 	// 解析响应
 	var attributes TextAttributes
-	if err := json.Unmarshal([]byte(response), &attributes); err != nil {
+	if err := json.Unmarshal([]byte(cleanLLMJSON(response)), &attributes); err != nil {
 		logrus.WithError(err).Warn("failed to parse JSON response")
 
 		// 返回默认值
@@ -281,7 +299,7 @@ Only return the JSON object, no additional text.`
 
 	// 解析响应
 	var representation ProductRepresentation
-	if err := json.Unmarshal([]byte(response), &representation); err != nil {
+	if err := json.Unmarshal([]byte(cleanLLMJSON(response)), &representation); err != nil {
 		logrus.WithError(err).Warn("failed to parse JSON response")
 
 		// 创建默认表示

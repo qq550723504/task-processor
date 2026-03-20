@@ -46,12 +46,19 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 		job := worker.WorkerJob{TaskData: taskID}
 		if err := s.workerPool.Submit(job); err != nil {
 			logrus.WithField("task_id", taskID).WithError(err).Error("failed to submit task to worker pool")
+			// Submit 失败时将任务标记为 failed，避免留下永久 pending 的孤儿任务
+			if dbErr := s.taskRepo.UpdateTaskError(ctx, taskID, fmt.Sprintf("failed to submit task: %v", err)); dbErr != nil {
+				logrus.WithField("task_id", taskID).WithError(dbErr).Error("failed to mark orphan task as failed")
+			}
 			return nil, fmt.Errorf("failed to submit task: %w", err)
 		}
 	} else if s.redisClient != nil {
 		// 降级：无 Pool 时写入 Redis 队列（兼容旧模式）
 		if err := s.redisClient.Push(ctx, s.queueName, taskID); err != nil {
 			logrus.WithField("task_id", taskID).WithError(err).Error("failed to push task to queue")
+			if dbErr := s.taskRepo.UpdateTaskError(ctx, taskID, fmt.Sprintf("failed to enqueue task: %v", err)); dbErr != nil {
+				logrus.WithField("task_id", taskID).WithError(dbErr).Error("failed to mark orphan task as failed")
+			}
 			return nil, fmt.Errorf("failed to enqueue task: %w", err)
 		}
 	} else {

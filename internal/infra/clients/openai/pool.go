@@ -256,13 +256,47 @@ func (p *RequestPool) Close() error {
 	return nil
 }
 
-// convertMessages 转换消息格式
+// convertMessages 转换消息格式，支持纯文本和多模态（vision）消息
 func convertMessages(messages []ChatCompletionMessage) []openai.ChatCompletionMessage {
 	result := make([]openai.ChatCompletionMessage, len(messages))
 	for i, msg := range messages {
-		result[i] = openai.ChatCompletionMessage{
-			Role:    msg.Role,
-			Content: msg.Content,
+		if len(msg.MultiContent) > 0 {
+			parts := make([]openai.ChatMessagePart, len(msg.MultiContent))
+			for j, part := range msg.MultiContent {
+				switch part.Type {
+				case "image_url":
+					detail := openai.ImageURLDetailAuto
+					if part.ImageURL != nil {
+						switch part.ImageURL.Detail {
+						case "low":
+							detail = openai.ImageURLDetailLow
+						case "high":
+							detail = openai.ImageURLDetailHigh
+						}
+						parts[j] = openai.ChatMessagePart{
+							Type: openai.ChatMessagePartTypeImageURL,
+							ImageURL: &openai.ChatMessageImageURL{
+								URL:    part.ImageURL.URL,
+								Detail: detail,
+							},
+						}
+					}
+				default: // "text"
+					parts[j] = openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeText,
+						Text: part.Text,
+					}
+				}
+			}
+			result[i] = openai.ChatCompletionMessage{
+				Role:         msg.Role,
+				MultiContent: parts,
+			}
+		} else {
+			result[i] = openai.ChatCompletionMessage{
+				Role:    msg.Role,
+				Content: msg.Content,
+			}
 		}
 	}
 	return result

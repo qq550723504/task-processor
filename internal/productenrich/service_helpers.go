@@ -48,7 +48,9 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 	validationResult, err := s.inputValidator.Validate(ctx, parsedInput)
 	if err != nil {
 		logrus.WithField("task_id", task.ID).WithError(err).Error("failed to validate input")
-		s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("input validation failed: %v", err))
+		if dbErr := s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("input validation failed: %v", err)); dbErr != nil {
+			logrus.WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist task error")
+		}
 		return "", fmt.Errorf("failed to validate input: %w", err)
 	}
 
@@ -56,7 +58,9 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 	qualityScore, err := s.qualityScorer.CalculateScore(ctx, validationResult)
 	if err != nil {
 		logrus.WithField("task_id", task.ID).WithError(err).Error("failed to calculate quality score")
-		s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("quality scoring failed: %v", err))
+		if dbErr := s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("quality scoring failed: %v", err)); dbErr != nil {
+			logrus.WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist task error")
+		}
 		return "", fmt.Errorf("failed to calculate quality score: %w", err)
 	}
 
@@ -71,7 +75,9 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 	strategy, err := s.strategySelector.SelectStrategy(ctx, qualityScore)
 	if err != nil {
 		logrus.WithField("task_id", task.ID).WithError(err).Error("failed to select strategy")
-		s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("strategy selection failed: %v", err))
+		if dbErr := s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("strategy selection failed: %v", err)); dbErr != nil {
+			logrus.WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist task error")
+		}
 		return "", fmt.Errorf("failed to select strategy: %w", err)
 	}
 
@@ -102,7 +108,9 @@ func (s *productService) handleRejection(ctx context.Context, task *Task, valida
 	if errorMsg == "" {
 		errorMsg = fmt.Sprintf("数据质量不足（评分: %.2f），无法生成产品信息", validationResult.QualityScore)
 	}
-	s.taskRepo.UpdateTaskError(ctx, task.ID, errorMsg)
+	if dbErr := s.taskRepo.UpdateTaskError(ctx, task.ID, errorMsg); dbErr != nil {
+		logrus.WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist rejection error")
+	}
 	return "", &errNoRetry{cause: fmt.Errorf("%s", errorMsg)}
 }
 
@@ -171,17 +179,17 @@ func (s *productService) generateProductJSON(ctx context.Context, task *Task, an
 	}, nil
 }
 
-// validateResult 验证生成结果
-func (s *productService) validateResult(ctx context.Context, task *Task, parsedInput *ParsedInput, productJSON *ProductJSON) {
+// validateResult 验证生成结果，若结果无效则返回错误阻止保存。
+func (s *productService) validateResult(ctx context.Context, task *Task, parsedInput *ParsedInput, productJSON *ProductJSON) error {
 	if s.resultValidator == nil {
-		return
+		return nil
 	}
 
 	logrus.WithField("task_id", task.ID).Info("step 5: validating result")
 	resultValidation, err := s.resultValidator.ValidateResult(ctx, parsedInput, productJSON)
 	if err != nil {
 		logrus.WithField("task_id", task.ID).WithError(err).Error("failed to validate result")
-		return
+		return fmt.Errorf("result validation error: %w", err)
 	}
 
 	logrus.WithFields(logrus.Fields{
@@ -190,7 +198,7 @@ func (s *productService) validateResult(ctx context.Context, task *Task, parsedI
 		"issues_count": len(resultValidation.Issues),
 	}).Info("result validation completed")
 
-	// 记录验证问题（作为警告）
+	// 记录所有验证问题
 	for _, issue := range resultValidation.Issues {
 		logrus.WithFields(logrus.Fields{
 			"task_id":  task.ID,
@@ -199,6 +207,11 @@ func (s *productService) validateResult(ctx context.Context, task *Task, parsedI
 			"message":  issue.Message,
 		}).Warn("result validation issue")
 	}
+
+	if !resultValidation.IsValid {
+		return &errNoRetry{cause: fmt.Errorf("生成结果验证失败，产品数据不完整，请补充输入后重试")}
+	}
+	return nil
 }
 
 // buildRejectionMessage 构建拒绝处理的错误消息

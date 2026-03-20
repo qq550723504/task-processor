@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -102,7 +101,7 @@ Only return the JSON object, no additional text.`
 
 	// 解析响应
 	var specs ProductSpecs
-	if err := json.Unmarshal([]byte(response), &specs); err != nil {
+	if err := json.Unmarshal([]byte(cleanLLMJSON(response)), &specs); err != nil {
 		logrus.WithError(err).Warn("failed to parse specs JSON")
 		return nil, nil // 返回 nil 表示没有规格信息
 	}
@@ -169,7 +168,7 @@ Only return the JSON array, no additional text.`
 
 	// 解析响应
 	var variants []ProductVariant
-	if err := json.Unmarshal([]byte(response), &variants); err != nil {
+	if err := json.Unmarshal([]byte(cleanLLMJSON(response)), &variants); err != nil {
 		logrus.WithError(err).Warn("failed to parse variants JSON")
 		// 返回默认变体
 		return []ProductVariant{
@@ -267,7 +266,7 @@ func (v *variantGenerator) extractWithLLM(ctx context.Context, prompt string, de
 		return fmt.Errorf("failed to generate: %w", err)
 	}
 
-	response = strings.TrimSpace(response)
+	response = cleanLLMJSON(response)
 	if response == "null" || response == "" {
 		return nil
 	}

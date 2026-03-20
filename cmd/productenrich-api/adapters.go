@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -31,10 +31,7 @@ func (a *llmClientAdapter) Generate(ctx context.Context, prompt string) (string,
 }
 
 func (a *llmClientAdapter) AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error) {
-	// 将图片 URL 嵌入 prompt，让文本模型基于 URL 描述进行分析
-	// 若后续接入 vision 模型，替换此处实现即可
-	fullPrompt := fmt.Sprintf("%s\n\nImage URL: %s", prompt, imageURL)
-	return a.client.Generate(ctx, fullPrompt)
+	return a.client.AnalyzeImage(ctx, imageURL, prompt)
 }
 
 type llmManagerAdapter struct {
@@ -255,7 +252,9 @@ func (r *memTaskRepository) GetTask(_ context.Context, taskID string) (*producte
 	if !ok {
 		return nil, productenrich.ErrTaskNotFound
 	}
-	return task, nil
+	// 返回副本，避免调用方绕过锁直接修改内部状态
+	copy := *task
+	return &copy, nil
 }
 
 func (r *memTaskRepository) UpdateTaskStatus(_ context.Context, taskID string, status productenrich.TaskStatus) error {
