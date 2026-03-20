@@ -69,7 +69,8 @@ func (e *TaskError) IsRetryable() bool {
 	switch e.Code {
 	case ErrCodeNetworkError, ErrCodeTimeout, ErrCodeConnectionFailed:
 		return true
-	case ErrCodeInvalidTask, ErrCodeProductNotFound, ErrCodeAccessDenied:
+	case ErrCodeInvalidTask, ErrCodeProductNotFound, ErrCodeAccessDenied,
+		ErrCodePlatformMismatch, ErrCodeConversionFailed, ErrCodeValidationFailed:
 		return false
 	default:
 		return true

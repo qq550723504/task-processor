@@ -17,29 +17,38 @@ except ImportError as e:
     sys.exit(1)
 
 
-# RabbitMQ 配置
-RABBITMQ_HOST = 'localhost'
-RABBITMQ_PORT = 5672
+# RabbitMQ 配置（来自 config/config-prod.yaml）
+RABBITMQ_URL = 'amqp://admin:RabbitMQ%402026%23Prod@101.33.34.102:30567/'
+RABBITMQ_HOST = '101.33.34.102'
+RABBITMQ_PORT = 30567
 RABBITMQ_MGMT_PORT = 15672
 RABBITMQ_USER = 'admin'
-RABBITMQ_PASS = 'admin123'
+RABBITMQ_PASS = 'RabbitMQ@2026#Prod'
 RABBITMQ_VHOST = '/'
 
-# 所有队列列表（根据配置文件）
+# 所有队列列表（来自 config/config-prod.yaml rabbitmq.consumer.queues）
 ALL_QUEUES = [
-    # 上架任务队列
+    # 上架任务队列 - 高优先级
     "amazon.tasks.high",
-    "amazon.tasks.normal",
-    "amazon.tasks.low",
     "temu.tasks.high",
-    "temu.tasks.normal",
-    "temu.tasks.low",
     "shein.tasks.high",
+    # 上架任务队列 - 普通优先级
+    "amazon.tasks.normal",
+    "temu.tasks.normal",
     "shein.tasks.normal",
+    # 上架任务队列 - 低优先级
+    "amazon.tasks.low",
+    "temu.tasks.low",
     "shein.tasks.low",
-    # 爬虫任务队列
-    "amazon.crawler.queue",
-    "1688.crawler.queue",
+    # 爬虫任务队列 - 高优先级
+    "amazon.crawler.high",
+    "1688.crawler.high",
+    # 爬虫任务队列 - 普通优先级
+    "amazon.crawler.normal",
+    "1688.crawler.normal",
+    # 爬虫任务队列 - 低优先级
+    "amazon.crawler.low",
+    "1688.crawler.low",
     # 系统队列
     "tasks.dlq",
     "tasks.delay.queue",
@@ -49,20 +58,16 @@ ALL_QUEUES = [
 
 def get_connection():
     """获取 RabbitMQ 连接"""
-    credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
-    parameters = pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        port=RABBITMQ_PORT,
-        virtual_host=RABBITMQ_VHOST,
-        credentials=credentials
-    )
+    parameters = pika.URLParameters(RABBITMQ_URL)
     return pika.BlockingConnection(parameters)
 
 
 def get_queue_info(queue_name):
     """通过管理API获取队列信息"""
     try:
-        url = f"http://{RABBITMQ_HOST}:{RABBITMQ_MGMT_PORT}/api/queues/{RABBITMQ_VHOST}/{queue_name}"
+        import urllib.parse
+        vhost_encoded = urllib.parse.quote(RABBITMQ_VHOST, safe='')
+        url = f"http://{RABBITMQ_HOST}:{RABBITMQ_MGMT_PORT}/api/queues/{vhost_encoded}/{queue_name}"
         response = requests.get(
             url,
             auth=HTTPBasicAuth(RABBITMQ_USER, RABBITMQ_PASS),

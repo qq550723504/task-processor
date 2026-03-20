@@ -85,6 +85,13 @@ func BuildConfig() *Config {
 		cfg.RabbitMQ = BuildRabbitMQConfig()
 	}
 
+	// 构建日志配置
+	cfg.Logging = LoggingConfig{
+		Level:  viper.GetString("logging.level"),
+		Format: viper.GetString("logging.format"),
+		File:   viper.GetString("logging.file"),
+	}
+
 	return cfg
 }
 

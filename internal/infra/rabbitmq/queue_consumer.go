@@ -268,17 +268,19 @@ func (qc *QueueConsumer) shouldRetry(msg *Message) bool {
 
 // republishWithRetryCount 重新发布消息并更新重试计数
 func (qc *QueueConsumer) republishWithRetryCount(msg *Message) error {
-	// 序列化完整的 Message 结构，保持消息格式一致
-	msgBytes, err := json.Marshal(msg)
+	// 只序列化 Payload，重试信息通过 Headers 传递
+	// 避免将整个 Message 结构体序列化后被 parseDeliveryMessage 当作嵌套 payload 解析错误
+	msgBytes, err := json.Marshal(msg.Payload)
 	if err != nil {
 		return fmt.Errorf("序列化消息失败: %w", err)
 	}
 
-	// 获取channel
-	channel, err := qc.client.GetConnectionManager().GetChannel()
+	// 为重新发布创建独立通道，避免与其他 worker 并发写共享 channel
+	channel, err := qc.client.GetConnectionManager().CreateChannel()
 	if err != nil {
-		return fmt.Errorf("获取channel失败: %w", err)
+		return fmt.Errorf("创建独立通道失败: %w", err)
 	}
+	defer channel.Close()
 
 	// 构建Headers，包含重试信息
 	headers := amqp.Table{
@@ -294,7 +296,7 @@ func (qc *QueueConsumer) republishWithRetryCount(msg *Message) error {
 		false,        // immediate
 		amqp.Publishing{
 			ContentType:  "application/json",
-			Body:         msgBytes, // 完整的 Message 结构
+			Body:         msgBytes,
 			DeliveryMode: amqp.Persistent,
 			Priority:     msg.Priority,
 			MessageId:    msg.ID,

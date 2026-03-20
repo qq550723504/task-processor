@@ -40,6 +40,12 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
 		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, err.Error())
 		metrics.GlobalTaskMetrics().IncrementFailed()
 
+		// Cookie 加载失败，暂停店铺 24 小时，避免后续任务继续无效消耗
+		if cookieErr, ok := shein.IsCookieLoadError(err); ok {
+			logrus.Warnf("Cookie加载失败，暂停店铺 %d:%d 24小时，等待重新登录", cookieErr.TenantID, cookieErr.StoreID)
+			h.pauseShopWithCacheCleanup(cookieErr.TenantID, cookieErr.StoreID, "Cookie加载失败，等待重新登录", 24*time.Hour)
+		}
+
 		// 区分业务过滤和真正的错误
 		if shein.IsFilteredError(err) {
 			logrus.Infof("✓ 任务被筛选规则过滤: ID=%d, Priority=%d, 原因=%v", task.ID, task.Priority, err)

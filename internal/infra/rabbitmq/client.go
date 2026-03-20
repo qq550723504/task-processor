@@ -153,10 +153,12 @@ func (c *Client) BindQueue(queueName, routingKey, exchangeName string, noWait bo
 
 // Publish 发布消息
 func (c *Client) Publish(ctx context.Context, msg *Message, opts PublishOptions) error {
-	channel, err := c.connManager.GetChannel()
+	// 每次发布使用独立 channel，避免并发写共享 channel 导致 UNEXPECTED_FRAME
+	channel, err := c.connManager.CreateChannel()
 	if err != nil {
-		return fmt.Errorf("获取通道失败: %w", err)
+		return fmt.Errorf("创建发布通道失败: %w", err)
 	}
+	defer channel.Close()
 
 	// 序列化消息
 	body, err := json.Marshal(msg)
@@ -200,9 +202,10 @@ func (c *Client) Publish(ctx context.Context, msg *Message, opts PublishOptions)
 
 // Consume 消费消息
 func (c *Client) Consume(ctx context.Context, opts ConsumeOptions) (<-chan amqp.Delivery, error) {
-	channel, err := c.connManager.GetChannel()
+	// 消费者使用独立 channel，避免与发布操作共享 channel
+	channel, err := c.connManager.CreateChannel()
 	if err != nil {
-		return nil, fmt.Errorf("获取通道失败: %w", err)
+		return nil, fmt.Errorf("创建消费通道失败: %w", err)
 	}
 
 	// 开始消费
@@ -217,6 +220,7 @@ func (c *Client) Consume(ctx context.Context, opts ConsumeOptions) (<-chan amqp.
 	)
 
 	if err != nil {
+		channel.Close()
 		return nil, fmt.Errorf("开始消费队列 %s 失败: %w", opts.Queue, err)
 	}
 

@@ -3,6 +3,7 @@ package distributed
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -106,23 +108,28 @@ func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *Cra
 	return c.waitForResult(pendingTask, req.TaskID)
 }
 
-// ensureListenerStarted 确保结果监听器已启动（懒加载）
+// ensureListenerStarted 确保结果监听器已启动（懒加载），并注册重连回调
 func (c *DistributedCrawlerClient) ensureListenerStarted() error {
 	c.listenerMutex.Lock()
 	defer c.listenerMutex.Unlock()
 
-	// 如果已经启动，直接返回
 	if c.listenerStarted {
 		return nil
 	}
 
-	// 启动结果监听器
 	c.logger.Info("首次使用，启动结果监听器...")
 	if err := c.startResultListener(); err != nil {
 		return err
 	}
 
 	c.listenerStarted = true
+
+	// 注册重连回调：连接恢复后重新启动监听器
+	c.rabbitmqClient.GetConnectionManager().RegisterReconnectCallback(func() error {
+		c.logger.Info("RabbitMQ重连成功，重新启动爬虫结果监听器...")
+		return c.startResultListener()
+	})
+
 	return nil
 }
 
@@ -174,8 +181,7 @@ func (c *DistributedCrawlerClient) publishTask(
 	queueName, routingKey string,
 	pendingTask *PendingTask,
 ) error {
-	// 创建 RabbitMQ 消息
-	message := &rabbitmq.Message{
+	body, err := json.Marshal(&rabbitmq.Message{
 		ID:         fmt.Sprintf("%d", taskModel.ID),
 		Type:       "task",
 		Payload:    messageData,
@@ -183,21 +189,43 @@ func (c *DistributedCrawlerClient) publishTask(
 		Timestamp:  time.Now().Unix(),
 		RetryCount: 0,
 		MaxRetries: 3,
-	}
-
-	// 发送消息到RabbitMQ
-	publishOpts := rabbitmq.PublishOptions{
-		Exchange:   "", // 使用默认交换机
-		RoutingKey: queueName,
-		Priority:   message.Priority,
-		Persistent: true,
-		Mandatory:  false,
-		Immediate:  false,
-	}
-
-	err := c.rabbitmqClient.Publish(context.Background(), message, publishOpts)
+	})
 	if err != nil {
-		// 清理等待任务
+		c.mutex.Lock()
+		delete(c.pendingTasks, pendingTask.TaskID)
+		c.mutex.Unlock()
+		pendingTask.Cancel()
+		return fmt.Errorf("序列化任务消息失败: %w", err)
+	}
+
+	// 用独立 channel 发布，避免与消费者共享 channel 产生并发写
+	ch, err := c.rabbitmqClient.GetConnectionManager().CreateChannel()
+	if err != nil {
+		c.mutex.Lock()
+		delete(c.pendingTasks, pendingTask.TaskID)
+		c.mutex.Unlock()
+		pendingTask.Cancel()
+		return fmt.Errorf("创建发布通道失败: %w", err)
+	}
+	defer ch.Close()
+
+	err = ch.PublishWithContext(
+		context.Background(),
+		"",        // 默认交换机
+		queueName, // routing key
+		false,
+		false,
+		amqp.Publishing{
+			ContentType:  "application/json",
+			Body:         body,
+			Priority:     c.taskAdapter.CalculatePriority(taskModel.Priority),
+			Timestamp:    time.Now(),
+			MessageId:    fmt.Sprintf("%d", taskModel.ID),
+			Type:         "task",
+			DeliveryMode: 2, // 持久化
+		},
+	)
+	if err != nil {
 		c.mutex.Lock()
 		delete(c.pendingTasks, pendingTask.TaskID)
 		c.mutex.Unlock()

@@ -2,56 +2,52 @@
 package distributed
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
-	"task-processor/internal/infra/rabbitmq"
-
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// amqpChannel 定义消费所需的最小 channel 接口
+type amqpChannel interface {
+	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error)
+	Close() error
+}
+
 // startResultListener 启动结果监听器
 func (c *DistributedCrawlerClient) startResultListener() error {
-	// 为每个客户端创建唯一的结果队列
-	nodeID := fmt.Sprintf("node-%d", time.Now().UnixNano())
-	c.resultQueueName = fmt.Sprintf("crawler.results.%s", nodeID)
-
-	// 声明队列（临时队列，客户端断开后自动删除）
-	// 添加重试机制，等待连接建立
-	var err error
-	maxRetries := 5
-	retryInterval := 1 * time.Second
-
-	for i := 0; i < maxRetries; i++ {
-		err = c.rabbitmqClient.DeclareQueue(c.resultQueueName, false, true, true, false, nil)
-		if err == nil {
-			break
-		}
-
-		c.logger.Warnf("声明结果队列失败 (尝试 %d/%d): %v", i+1, maxRetries, err)
-		if i < maxRetries-1 {
-			time.Sleep(retryInterval)
-		}
+	// 为每个客户端创建唯一的结果队列（仅在首次启动时生成队列名）
+	if c.resultQueueName == "" {
+		nodeID := fmt.Sprintf("node-%d", time.Now().UnixNano())
+		c.resultQueueName = fmt.Sprintf("crawler.results.%s", nodeID)
 	}
 
+	// 用独立 channel 声明队列，避免与共享 channel 竞争
+	ch, err := c.rabbitmqClient.GetConnectionManager().CreateChannel()
 	if err != nil {
+		return fmt.Errorf("创建独立通道失败: %w", err)
+	}
+
+	_, err = ch.QueueDeclare(c.resultQueueName, false, true, true, false, nil)
+	if err != nil {
+		ch.Close()
 		return fmt.Errorf("声明结果队列失败: %w", err)
 	}
 
 	c.logger.Infof("队列 %s 声明成功", c.resultQueueName)
 
-	// 开始消费结果消息
-	go c.consumeResults(c.resultQueueName)
+	// 开始消费结果消息（传入独立 channel）
+	go c.consumeResults(ch, c.resultQueueName)
 
 	c.logger.Infof("爬虫结果监听器已启动，队列: %s", c.resultQueueName)
 	return nil
 }
 
 // consumeResults 消费结果消息
-func (c *DistributedCrawlerClient) consumeResults(queueName string) {
+func (c *DistributedCrawlerClient) consumeResults(ch amqpChannel, queueName string) {
 	defer func() {
+		ch.Close()
 		if r := recover(); r != nil {
 			c.logger.Errorf("消费结果消息goroutine发生panic: %v", r)
 		}
@@ -59,17 +55,7 @@ func (c *DistributedCrawlerClient) consumeResults(queueName string) {
 
 	c.logger.Infof("开始消费队列: %s, 消费者: %s", queueName, "crawler-result-consumer")
 
-	consumeOpts := rabbitmq.ConsumeOptions{
-		Queue:     queueName,
-		Consumer:  "crawler-result-consumer",
-		AutoAck:   false,
-		Exclusive: false,
-		NoLocal:   false,
-		NoWait:    false,
-		Args:      nil,
-	}
-
-	msgs, err := c.rabbitmqClient.Consume(context.Background(), consumeOpts)
+	msgs, err := ch.Consume(queueName, "crawler-result-consumer", false, false, false, false, nil)
 	if err != nil {
 		c.logger.Errorf("开始消费结果消息失败: %v", err)
 		return

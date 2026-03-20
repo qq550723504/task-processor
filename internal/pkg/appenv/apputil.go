@@ -2,7 +2,10 @@
 package appenv
 
 import (
+	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -32,6 +35,60 @@ func SetupLoggerWithLevel(level string) *logrus.Logger {
 	}
 	logger.SetLevel(logLevel)
 	return logger
+}
+
+// LoggingConfig 日志文件配置（与 config.LoggingConfig 保持一致，避免循环依赖）
+type LoggingConfig struct {
+	Level  string
+	Format string
+	File   string
+}
+
+// ApplyLoggingConfig 根据配置应用日志级别、格式和文件输出
+// 同时保留 stdout 输出，日志会同时写到终端和文件
+func ApplyLoggingConfig(logger *logrus.Logger, cfg LoggingConfig) error {
+	// 应用日志级别（配置优先于启动参数）
+	if cfg.Level != "" {
+		level, err := logrus.ParseLevel(strings.ToLower(cfg.Level))
+		if err != nil {
+			logger.Warnf("配置中的日志级别无效 '%s'，保持当前级别", cfg.Level)
+		} else {
+			logger.SetLevel(level)
+		}
+	}
+
+	// 应用日志格式
+	if strings.ToLower(cfg.Format) == "json" {
+		logger.SetFormatter(&logrus.JSONFormatter{
+			TimestampFormat: "2006-01-02 15:04:05",
+		})
+	} else {
+		logger.SetFormatter(&logrus.TextFormatter{
+			FullTimestamp:   true,
+			TimestampFormat: "2006-01-02 15:04:05",
+		})
+	}
+
+	// 应用日志文件输出
+	if cfg.File == "" {
+		return nil
+	}
+
+	// 确保目录存在
+	dir := filepath.Dir(cfg.File)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("创建日志目录失败 %s: %w", dir, err)
+	}
+
+	f, err := os.OpenFile(cfg.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("打开日志文件失败 %s: %w", cfg.File, err)
+	}
+
+	// 同时写 stdout 和文件
+	logger.SetOutput(io.MultiWriter(os.Stdout, f))
+	logger.Infof("日志已同时输出到文件: %s", cfg.File)
+	return nil
 }
 
 // =============================================================================

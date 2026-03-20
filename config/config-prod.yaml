@@ -27,7 +27,7 @@ worker:
 # OpenAI配置
 openai:
   apiKey: "sk-yJ3RQprPLyBcoqEkeBNimE6Dhj86CAjY2uHAc5yqLZd1KHa3"
-  model: "gemini-2.0-flash"
+  model: "gemini-2.5-flash"
   baseURL: "https://ai.linkcloudai.com/v1"
   timeout: 300  # API调用超时5分钟
   
@@ -120,7 +120,7 @@ platforms:
 # 浏览器配置（通用）
 browser:
   enabled: true
-  headless: false  # false=可见模式（便于调试），true=无头模式
+  headless: true  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
   chromeVersion: "144"  # fingerprint-chromium 版本（如 144, 142, 139 等）
   chromeDownloadDir: "./chrome"  # Chrome 下载目录（自动下载时使用）
@@ -138,7 +138,7 @@ rabbitmq:
   
   # 消费者配置
   consumer:
-    prefetchCount: 5      # 预取消息数量（允许同时处理5条消息）
+    prefetchCount: 1      # 预取消息数量（允许同时处理5条消息）
     prefetchSize: 0       # 预取大小（0表示不限制）
     retryDelay: 5         # 重试延迟（秒）
     maxRetries: 3         # 最大重试次数

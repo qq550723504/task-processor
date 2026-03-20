@@ -80,7 +80,7 @@ management:
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [169]# 店铺ID列表 ->775
+  storeIDs: [836]# 店铺ID列表 ->775
 
 platforms:
   # TEMU 平台配置
@@ -107,7 +107,7 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: false            # 是否启用SHEIN处理器（处理上架任务）
+    enabled: true            # 是否启用SHEIN处理器（处理上架任务）
     schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
@@ -136,7 +136,7 @@ platforms:
 # 浏览器配置（通用）
 browser:
   enabled: true
-  headless: true  # false=可见模式（便于调试），true=无头模式
+  headless: false  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
   chromeVersion: "144"  # fingerprint-chromium 版本（如 144, 142, 139 等）
   chromeDownloadDir: "./chrome"  # Chrome 下载目录（自动下载时使用）
@@ -265,11 +265,11 @@ amazon:
 
 # 数据库配置（productenrich-api 使用）
 database:
-  host: "localhost"
-  port: 5432
-  user: "postgres"
-  password: "postgres"
-  database: "task_processor"
+  host: "101.33.34.102"
+  port: 30432 
+  user: "root"
+  password: "postgresql2026Zone$"
+  database: "ruoyi-vue-pro"
   max_connections: 10
   max_idle_connections: 5
   connection_max_lifetime: 3600000000000  # 1小时，单位纳秒

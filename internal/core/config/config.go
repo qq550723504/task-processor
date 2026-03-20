@@ -13,6 +13,7 @@ import (
 
 // Config 主配置结构体
 type Config struct {
+	Logging    LoggingConfig     `yaml:"logging"`
 	Processor  ProcessorConfig   `yaml:"processor"`
 	Worker     WorkerConfig      `yaml:"worker"`
 	OpenAI     OpenAIConfig      `yaml:"openai"`
@@ -25,6 +26,13 @@ type Config struct {
 	Watermark  *watermark.Config `yaml:"watermark"`
 	Database   *DatabaseConfig   `yaml:"database"`
 	Redis      *RedisConfig      `yaml:"redis"`
+}
+
+// LoggingConfig 日志配置
+type LoggingConfig struct {
+	Level  string `yaml:"level"`
+	Format string `yaml:"format"`
+	File   string `yaml:"file"`
 }
 
 // LoadConfig 加载配置

@@ -27,7 +27,7 @@ func NewListPriceExtractor(marketplace string) *ListPriceExtractor {
 func (l *ListPriceExtractor) ExtractListPrice(page playwright.Page, product *model.Product) {
 	// 优先检查包含明确原价标识的选择器，限制在主产品区域
 	prioritySelectors := []string{
-		"#apex_desktop span.a-size-small.aok-offscreen", // 限制在主产品区域
+		"#apex_desktop span.a-size-small.aok-offscreen", // 限制在主产品区域（含 "Was:" / "Typical price:" 等标识）
 		"#centerCol span.a-size-small.aok-offscreen",    // 中心列区域
 		"#dp-container span.a-size-small.aok-offscreen", // 产品详情容器
 	}
@@ -41,6 +41,7 @@ func (l *ListPriceExtractor) ExtractListPrice(page playwright.Page, product *mod
 
 	// 如果优先选择器没有找到，尝试其他选择器，但需要更严格的验证
 	fallbackSelectors := []string{
+		// 美国站常见原价选择器（优先）
 		"#apex_desktop .a-price.a-text-price .a-offscreen",
 		"#centerCol .a-price.a-text-price .a-offscreen",
 		"#dp-container .a-price.a-text-price .a-offscreen",
@@ -48,6 +49,9 @@ func (l *ListPriceExtractor) ExtractListPrice(page playwright.Page, product *mod
 		"#centerCol #priceblock_listprice",
 		"#apex_desktop .a-text-strike .a-offscreen",
 		"#centerCol .a-text-strike .a-offscreen",
+		// 加拿大站 "Was:" 原价容器（兜底）
+		"#apex_desktop .basisPrice .a-offscreen",
+		"#centerCol .basisPrice .a-offscreen",
 		"#apex_desktop .basisPrice",
 		"#centerCol .basisPrice",
 	}
@@ -115,28 +119,20 @@ func (l *ListPriceExtractor) extractFromSelector(page playwright.Page, selector 
 
 // validatePriorityPrice 验证优先选择器中的价格
 func (l *ListPriceExtractor) validatePriorityPrice(text string) (bool, string) {
-	// 检查是否包含明确的原价标识
-	if strings.Contains(text, "Typical price") {
-		// 提取 "Typical price: $XX.XX" 中的价格部分
-		parts := strings.Split(text, "Typical price")
-		if len(parts) > 1 {
-			priceText := strings.TrimSpace(parts[1])
-			// 移除可能的冒号
-			priceText = strings.TrimPrefix(priceText, ":")
-			priceText = strings.TrimSpace(priceText)
-			return true, priceText
-		}
-	}
+	// 支持的原价标识列表（含加拿大站 "Was:"）
+	markers := []string{"Typical price", "List Price", "Was:"}
 
-	if strings.Contains(text, "List Price") {
-		// 提取 "List Price: $XX.XX" 中的价格部分
-		parts := strings.Split(text, "List Price")
-		if len(parts) > 1 {
-			priceText := strings.TrimSpace(parts[1])
-			// 移除可能的冒号
-			priceText = strings.TrimPrefix(priceText, ":")
-			priceText = strings.TrimSpace(priceText)
-			return true, priceText
+	for _, marker := range markers {
+		if strings.Contains(text, marker) {
+			parts := strings.SplitN(text, marker, 2)
+			if len(parts) > 1 {
+				priceText := strings.TrimSpace(parts[1])
+				priceText = strings.TrimPrefix(priceText, ":")
+				priceText = strings.TrimSpace(priceText)
+				if priceText != "" {
+					return true, priceText
+				}
+			}
 		}
 	}
 
@@ -145,27 +141,28 @@ func (l *ListPriceExtractor) validatePriorityPrice(text string) (bool, string) {
 
 // validateFallbackPrice 验证备用选择器中的价格
 func (l *ListPriceExtractor) validateFallbackPrice(element playwright.Locator, text string) (bool, string) {
-	if !strings.Contains(text, "$") {
-		return false, ""
-	}
-
-	// 如果文本本身包含原价标识，直接返回
-	if strings.Contains(text, "Typical price") || strings.Contains(text, "List Price") {
+	// 文本本身包含原价标识，直接走优先逻辑
+	if strings.Contains(text, "Typical price") || strings.Contains(text, "List Price") || strings.Contains(text, "Was:") {
 		return l.validatePriorityPrice(text)
 	}
 
-	// 检查是否是删除线价格（通常表示原价）
+	// 必须包含货币符号才继续
+	if !strings.Contains(text, "$") && !strings.Contains(text, "£") &&
+		!strings.Contains(text, "€") && !strings.Contains(text, "¥") {
+		return false, ""
+	}
+
+	// 删除线价格通常就是原价
 	className, err := element.GetAttribute("class")
 	if err == nil && strings.Contains(className, "a-text-strike") {
 		return true, text
 	}
 
-	// 检查父元素是否包含原价相关的上下文
+	// 检查父元素是否包含原价相关上下文（含 "Was:"）
 	if l.hasListPriceContext(element) {
 		return true, text
 	}
 
-	// 如果没有找到明确的原价上下文，返回false
 	return false, ""
 }
 

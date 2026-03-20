@@ -3,6 +3,7 @@ package browser
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -48,6 +49,11 @@ func (zih *ZipcodeInputHandler) SetZipcode(page playwright.Page, zipcode string)
 
 	// 触发邮编设置界面
 	if err := zih.triggerZipcodeInterface(page); err != nil {
+		return err
+	}
+
+	// 如果弹出了国家选择框，先选国家（Amazon 国家 select 是隐藏元素，用 JS 设置）
+	if err := zih.handleCountrySelection(page, zipcode); err != nil {
 		return err
 	}
 
@@ -167,6 +173,78 @@ func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) er
 	}
 
 	return nil
+}
+
+// handleCountrySelection 处理国家选择框（当 IP 被识别为非目标国家时出现）
+// Amazon 的国家 select 是隐藏的原生元素（外层有自定义 UI），IsVisible() 会返回 false，
+// 因此只检查元素是否存在，不检查可见性，并通过 JS 直接设置值以绕过 Playwright 的可见性限制。
+func (zih *ZipcodeInputHandler) handleCountrySelection(page playwright.Page, zipcode string) error {
+	countryList := page.Locator("select#GLUXCountryList")
+	count, err := countryList.Count()
+	if err != nil || count == 0 {
+		return nil
+	}
+
+	// 根据邮编格式推断目标国家
+	targetCountry := inferCountryFromZipcode(zipcode)
+	if targetCountry == "" {
+		logrus.Infof("检测到国家选择框，但当前邮编 %s 不需要切换国家（可能是 IP 被误识别），跳过国家选择直接尝试填写邮编", zipcode)
+		return nil
+	}
+
+	logrus.Infof("检测到国家选择框，尝试选择国家: %s (邮编: %s)", targetCountry, zipcode)
+
+	// 先通过 JS 获取匹配的 option value（避免对隐藏元素调用 Playwright 的 SelectOption 超时）
+	result, err := page.Evaluate(`(targetCountry) => {
+		const sel = document.querySelector('select#GLUXCountryList');
+		if (!sel) return null;
+		const target = targetCountry.toLowerCase();
+		for (const opt of sel.options) {
+			if (opt.text.toLowerCase().includes(target)) {
+				return opt.value;
+			}
+		}
+		return null;
+	}`, targetCountry)
+	if err != nil {
+		return fmt.Errorf("查找国家选项失败: %w", err)
+	}
+	if result == nil {
+		return fmt.Errorf("未找到匹配的国家选项: %s", targetCountry)
+	}
+
+	countryValue, ok := result.(string)
+	if !ok || countryValue == "" {
+		return fmt.Errorf("国家选项值无效: %v", result)
+	}
+
+	// 通过 JS 设置 select 值并触发 change 事件（绕过隐藏元素限制）
+	_, err = page.Evaluate(`(value) => {
+		const sel = document.querySelector('select#GLUXCountryList');
+		if (!sel) return false;
+		sel.value = value;
+		sel.dispatchEvent(new Event('change', { bubbles: true }));
+		return true;
+	}`, countryValue)
+	if err != nil {
+		return fmt.Errorf("设置国家值失败: %w", err)
+	}
+
+	logrus.Infof("成功选择国家: %s (value: %s)", targetCountry, countryValue)
+	time.Sleep(1 * time.Second)
+	return nil
+}
+
+// inferCountryFromZipcode 根据邮编格式推断目标国家名称（用于 GLUXCountryList 选项匹配）
+// 注意：只有在 IP 被识别为非目标国家时才会出现国家选择框，加拿大站本身不需要选国家
+func inferCountryFromZipcode(zipcode string) string {
+	// 英国邮编: SW1A 1AA 等（字母开头，含空格或纯字母数字混合 5-7 位）
+	ukRegex := regexp.MustCompile(`(?i)^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$`)
+	if ukRegex.MatchString(strings.TrimSpace(zipcode)) {
+		// 英国站弹窗里的国家下拉是"配送到英国以外"的选项，不需要选国家，直接输入邮编即可
+		return ""
+	}
+	return ""
 }
 
 // handleZipcodeInput 处理邮编输入（使用策略模式）

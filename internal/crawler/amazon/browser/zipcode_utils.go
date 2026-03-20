@@ -53,6 +53,14 @@ func ExtractZipcode(text string) string {
 		return caMatches[0]
 	}
 
+	// 匹配加拿大不完整邮编（仅 FSA，如 "Delivering to Balzac T4B 2T" 中的 T4B）
+	// Amazon 有时只显示前向码 + 部分后向码
+	caFSARegex := regexp.MustCompile(`\b[A-Z]\d[A-Z]\b`)
+	caFSAMatches := caFSARegex.FindAllString(text, -1)
+	if len(caFSAMatches) > 0 {
+		return caFSAMatches[0]
+	}
+
 	// 如果没有找到任何格式，尝试查找纯数字邮编（德国、法国、意大利等）
 	simpleZipRegex := regexp.MustCompile(`\b\d{4,6}\b`)
 	simpleMatches := simpleZipRegex.FindAllString(text, -1)

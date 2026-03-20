@@ -47,6 +47,15 @@ func main() {
 	// 加载应用配置（使用统一的配置加载函数）
 	appCfg := config.LoadConfigWithFallback(configPath, logger)
 
+	// 应用配置文件中的日志设置（级别、格式、文件输出）
+	if err := appenv.ApplyLoggingConfig(logger, appenv.LoggingConfig{
+		Level:  appCfg.Logging.Level,
+		Format: appCfg.Logging.Format,
+		File:   appCfg.Logging.File,
+	}); err != nil {
+		logger.Warnf("⚠️  应用日志配置失败: %v", err)
+	}
+
 	// 验证RabbitMQ配置
 	if appCfg.RabbitMQ == nil {
 		logger.Fatal("❌ RabbitMQ配置未启用，请在配置文件中设置 rabbitmq.enabled: true")

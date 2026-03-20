@@ -4,6 +4,7 @@ package browser
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -67,7 +68,8 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 
 			// 如果既没有提取到邮编也没有提取到城市名，但文本不为空
 			// 直接返回文本内容（用于英国等站点的部分邮编显示）
-			if len(text) > 0 {
+			// 但需要过滤掉已知的占位文字（如 "Update location"、"Deliver to" 等）
+			if len(text) > 0 && !isLocationPlaceholder(text) {
 				logrus.Infof("无法提取标准邮编格式，返回原始文本: %s", text)
 				return text, nil
 			}
@@ -91,6 +93,34 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 	}
 
 	return "", fmt.Errorf("未找到当前邮编或城市信息")
+}
+
+// isLocationPlaceholder 判断文本是否为纯位置占位符（未设置邮编时的提示文字）
+// 注意：只有当文本清理后完全等于占位符时才返回 true，
+// 避免误杀包含真实地址的容器元素（如 "Delivering to Balzac T4B 2T\nUpdate location"）
+func isLocationPlaceholder(text string) bool {
+	// 清理文本：压缩所有空白为单个空格
+	cleaned := strings.ToUpper(strings.TrimSpace(text))
+	spaceRe := regexp.MustCompile(`\s+`)
+	cleaned = spaceRe.ReplaceAllString(cleaned, " ")
+
+	// 纯占位符：清理后的文本完全匹配
+	purePlaceholders := []string{
+		"UPDATE LOCATION",
+		"DELIVER TO",
+		"SELECT YOUR ADDRESS",
+		"CHOOSE YOUR LOCATION",
+		"SET YOUR ADDRESS",
+		"HELLO, SIGN IN",
+		"HELLO SELECT YOUR ADDRESS",
+	}
+	for _, p := range purePlaceholders {
+		if cleaned == p {
+			logrus.Infof("检测到位置占位符文字，跳过: %s", text)
+			return true
+		}
+	}
+	return false
 }
 
 // extractCityName 从文本中提取城市名称
