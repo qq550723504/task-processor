@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/shein"
+	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/category"
 
 	"github.com/sirupsen/logrus"
@@ -215,8 +216,18 @@ func (m *CategoryManager) GetCategoryIDListWithTree(ctx *shein.TaskContext, cate
 	return idList, categoryInfo.LevelOneCategoryID, categoryInfo.ProductTypeID, nil
 }
 
-// GetCategoryIDByTitleWithTree 用产品标题获取分类ID
-func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, title string, categoryTree *category.CategoryTreeResponse) (int, error) {
+// GetCategoryIDByTitleWithTree 用产品标题获取分类ID，优先读 AI 缓存。
+func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, title string, categoryTree *category.CategoryTreeResponse, cache *aicache.Cache) (int, error) {
+	// 查缓存
+	if cache != nil {
+		cacheKey := aicache.HashKey(title)
+		var cached int
+		if cache.Get(aicache.TypeCategory, cacheKey, &cached) {
+			logrus.Infof("AI分类选择命中缓存: title=%s, categoryID=%d", title, cached)
+			return cached, nil
+		}
+	}
+
 	// 1. 获取所有一级分类节点
 	levelOneNodes := getLevelOneCategories(categoryTree.Data)
 	levelOneIDs := make([]int, 0, len(levelOneNodes))
@@ -256,6 +267,13 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, titl
 	if err != nil {
 		return 0, fmt.Errorf("AI选择最终分类失败: %w", err)
 	}
+
+	// 写缓存
+	if cache != nil {
+		cacheKey := aicache.HashKey(title)
+		cache.Set(aicache.TypeCategory, cacheKey, selectedCategoryID)
+	}
+
 	return selectedCategoryID, nil
 }
 

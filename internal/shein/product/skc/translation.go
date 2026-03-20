@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/shein"
+	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/translate"
 
@@ -238,6 +239,31 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 	aiCtx, cancel := timeout.WithAIShortTimeout(ctx.Context)
 	defer cancel()
 
+	// 构造缓存 key（基于英文内容列表哈希）
+	cacheKey := aicache.HashKey(englishContents...)
+
+	// 查缓存
+	if ctx.AICache != nil {
+		var cached []string
+		if ctx.AICache.Get(aicache.TypeSKCTranslate, cacheKey, &cached) && len(cached) == len(englishContents) {
+			logrus.Infof("SKC翻译优化命中缓存，共 %d 条", len(cached))
+			for i, optimizedContent := range cached {
+				if i >= len(englishIndexes) {
+					break
+				}
+				langContent := &(*multiLanguageNameList)[englishIndexes[i]]
+				cleanedName := strings.TrimSpace(optimizedContent)
+				if len(cleanedName) >= 10 {
+					if len(cleanedName) > 800 {
+						cleanedName = h.truncateContent(cleanedName, 800)
+					}
+					langContent.Name = cleanedName
+				}
+			}
+			return
+		}
+	}
+
 	// 一次性批量优化所有英文内容
 	optimizedContents, err := h.batchOptimizeEnglishContent(aiCtx, englishContents, sourceTitle)
 	if err != nil {
@@ -268,6 +294,11 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 		// 更新内容
 		langContent.Name = cleanedName
 		logrus.Infof("✅ 英文内容优化完成: %s", cleanedName)
+	}
+
+	// 写缓存
+	if ctx.AICache != nil && len(optimizedContents) > 0 {
+		ctx.AICache.Set(aicache.TypeSKCTranslate, cacheKey, optimizedContents)
 	}
 
 	logrus.Infof("🎉 AI批量优化多语言内容完成")

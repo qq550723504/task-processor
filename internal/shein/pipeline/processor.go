@@ -7,12 +7,14 @@ import (
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	types "task-processor/internal/model"
 	commonPipeline "task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/shein/aicache"
 
 	"github.com/sirupsen/logrus"
 )
@@ -30,6 +32,7 @@ type SheinProcessor struct {
 	rabbitmqClient           *rabbitmq.Client        // RabbitMQ客户端（用于分布式爬虫）
 	taskHandler              *TaskHandler            // SHEIN特定：任务处理器
 	pipeline                 commonPipeline.Pipeline // SHEIN特定：处理管道
+	aiCache                  *aicache.Cache          // AI 结果持久化缓存（跨任务共享）
 }
 
 // NewSheinProcessor 创建SHEIN处理器（参考Temu实现）
@@ -68,6 +71,13 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 		amazonProcessor: sharedAmazonProcessor,
 		rabbitmqClient:  rabbitmqClient,
 	}
+
+	// 初始化 AI 结果持久化缓存
+	db, err := database.NewDatabaseFromConfig(cfg.Database)
+	if err != nil {
+		logger.Warnf("[SHEIN] 数据库连接失败，AI 缓存将退化为纯内存模式: %v", err)
+	}
+	p.aiCache = aicache.New(db)
 
 	// 创建 WorkerPool（内部管理）
 	workerPool := worker.NewPool(p, cfg.Worker)
@@ -119,6 +129,11 @@ func (p *SheinProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) 
 	}
 
 	return p.taskHandler.ProcessTask(ctx, task, p.pipeline)
+}
+
+// GetAICache 获取共享的 AI 结果缓存
+func (p *SheinProcessor) GetAICache() *aicache.Cache {
+	return p.aiCache
 }
 
 // GetAmazonProcessor 获取共享的Amazon处理器

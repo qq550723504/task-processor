@@ -4,6 +4,7 @@ import (
 	"fmt"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
+	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
@@ -51,6 +52,19 @@ func (h *SaleAttributeHandler) Handle(ctx *shein.TaskContext) error {
 // generateSaleSpec 生成销售规格
 func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 	logrus.Info("🚀 开始生成销售规格")
+
+	// 构造缓存 key：同一父 ASIN + 分类的销售规格可复用
+	cacheKey := fmt.Sprintf("%s:%d", ctx.AmazonProduct.ParentAsin, ctx.ProductData.CategoryID)
+
+	// 查缓存
+	if ctx.AICache != nil {
+		var cached shein.ResultSaleAttribute
+		if ctx.AICache.Get(aicache.TypeSaleAttr, cacheKey, &cached) {
+			logrus.Infof("AI销售规格命中缓存: parentAsin=%s, categoryID=%d", ctx.AmazonProduct.ParentAsin, ctx.ProductData.CategoryID)
+			ctx.SaleSpecResult = &cached
+			return nil
+		}
+	}
 
 	// 1. 初始化配置
 	config := h.defaultAttributeConfig()
@@ -114,6 +128,11 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 	ctx.SaleSpecResult = &saleAttributeData
 	logrus.Infof("✅ 销售规格生成完成，共 %d 个变体，%d 个销售属性",
 		len(saleAttributeData.Variants), len(saleAttributeData.SaleAttributes))
+
+	// 写缓存
+	if ctx.AICache != nil {
+		ctx.AICache.Set(aicache.TypeSaleAttr, cacheKey, saleAttributeData)
+	}
 
 	return nil
 }

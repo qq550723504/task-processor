@@ -55,7 +55,7 @@ func (h *TranslateHandler) Handle(ctx *shein.TaskContext) error {
 		aiCtx, cancel := timeout.WithAIShortTimeout(ctx.Context)
 		defer cancel()
 
-		optimizedTitle, optimizedDescription, err = h.contentOptimizer.OptimizeTitleAndDescription(aiCtx, cleanedTitle, cleanedDescription, features)
+		optimizedTitle, optimizedDescription, err = h.contentOptimizer.OptimizeTitleAndDescriptionWithCache(aiCtx, cleanedTitle, cleanedDescription, features, ctx.AICache)
 		if err != nil {
 			optimizedTitle = cleanedTitle
 			optimizedDescription = cleanedDescription

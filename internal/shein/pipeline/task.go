@@ -79,6 +79,7 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 	// 设置基础组件
 	taskCtx.MemoryManager = h.processor.GetMemoryManager()
 	taskCtx.ManagementClientMgr = h.processor.GetManagementClient()
+	taskCtx.AICache = h.processor.GetAICache()
 
 	// 初始化店铺客户端
 	if err := h.initShopClient(taskCtx); err != nil {

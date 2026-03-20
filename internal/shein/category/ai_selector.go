@@ -34,8 +34,8 @@ func (h *AICategorySelectorHandler) Handle(ctx *shein.TaskContext) error {
 	// 创建分类管理器
 	categoryManager := NewCategoryManager(aiSelector)
 
-	// 使用AI选择分类
-	selectedCategoryID, err := categoryManager.GetCategoryIDByTitleWithTree(ctx.Context, productTitle, ctx.CategoryTree)
+	// 使用AI选择分类（优先读缓存）
+	selectedCategoryID, err := categoryManager.GetCategoryIDByTitleWithTree(ctx.Context, productTitle, ctx.CategoryTree, ctx.AICache)
 	if err != nil {
 		return fmt.Errorf("AI选择分类失败: %w", err)
 	}

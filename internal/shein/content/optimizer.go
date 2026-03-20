@@ -7,6 +7,7 @@ import (
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/shein/aicache"
 )
 
 // ContentOptimizer 内容优化器
@@ -32,6 +33,28 @@ func (o *ContentOptimizer) CreateChatCompletion(ctx context.Context, req *openai
 		return nil, fmt.Errorf("OpenAI客户端未初始化")
 	}
 	return o.openaiClient.CreateChatCompletion(ctx, req)
+}
+
+// OptimizeTitleAndDescriptionWithCache 使用AI优化标题和描述，优先读持久缓存。
+func (o *ContentOptimizer) OptimizeTitleAndDescriptionWithCache(ctx context.Context, title, description, features string, cache *aicache.Cache) (optimizedTitle, optimizedDescription string, err error) {
+	if cache != nil {
+		cacheKey := aicache.HashKey(title, description, features)
+		var cached struct{ Title, Description string }
+		if cache.Get(aicache.TypeContent, cacheKey, &cached) {
+			return cached.Title, cached.Description, nil
+		}
+	}
+
+	optimizedTitle, optimizedDescription, err = o.OptimizeTitleAndDescription(ctx, title, description, features)
+	if err != nil {
+		return
+	}
+
+	if cache != nil {
+		cacheKey := aicache.HashKey(title, description, features)
+		cache.Set(aicache.TypeContent, cacheKey, struct{ Title, Description string }{optimizedTitle, optimizedDescription})
+	}
+	return
 }
 
 // OptimizeTitleAndDescription 使用AI优化标题和描述

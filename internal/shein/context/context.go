@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
+	"task-processor/internal/shein/aicache"
 	shein_attribute "task-processor/internal/shein/api/attribute"
 	shein_category "task-processor/internal/shein/api/category"
 	shein_image "task-processor/internal/shein/api/image"
@@ -92,6 +93,8 @@ type TaskContext struct {
 	ProcessedSensitiveWords map[string]bool
 	// 扩展字段
 	Extra map[string]any
+	// AI 结果缓存（跨租户/店铺共享，避免重复调用 AI 接口）
+	AICache *aicache.Cache
 }
 
 // NewTaskContext 创建新的任务上下文

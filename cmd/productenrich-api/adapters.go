@@ -88,16 +88,7 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
-	db, err := database.NewDatabase(&database.DatabaseConfig{
-		Host:               cfg.Host,
-		Port:               cfg.Port,
-		User:               cfg.User,
-		Password:           cfg.Password,
-		Database:           cfg.Database,
-		MaxConnections:     cfg.MaxConnections,
-		MaxIdleConnections: cfg.MaxIdleConnections,
-		ConnMaxLifetime:    cfg.ConnectionMaxLifetime,
-	})
+	db, err := database.NewDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("数据库连接失败 (%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}

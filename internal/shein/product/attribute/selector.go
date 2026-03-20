@@ -3,11 +3,13 @@ package attribute
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
+	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/attribute"
 
 	"github.com/sirupsen/logrus"
@@ -45,10 +47,27 @@ func (h *AttributeSelectorHandler) Handle(ctx *shein.TaskContext) error {
 		return err
 	}
 
+	// 构造缓存 key：同一产品+分类的属性选择结果可复用
+	cacheKey := fmt.Sprintf("%s:%d", ctx.AmazonProduct.Asin, ctx.ProductData.CategoryID)
+
+	// 查缓存
+	if ctx.AICache != nil {
+		var cached shein.AttributeData
+		if ctx.AICache.Get(aicache.TypeAttribute, cacheKey, &cached) {
+			logrus.Infof("AI属性选择命中缓存: asin=%s, categoryID=%d", ctx.AmazonProduct.Asin, ctx.ProductData.CategoryID)
+			ctx.GenerateAttribute = &cached
+			return nil
+		}
+	}
+
 	attributeInfo, err := h.convertAttributeFromGpt(ctx, ctx.BuildAttributeData, ctx.AttributeTemplates)
 	if err != nil {
-		// 转换属性数据失败可能是AI服务问题，可重试
 		return shein.NewRetryableError("转换属性数据失败", err)
+	}
+
+	// 写缓存
+	if ctx.AICache != nil {
+		ctx.AICache.Set(aicache.TypeAttribute, cacheKey, attributeInfo)
 	}
 
 	ctx.GenerateAttribute = &attributeInfo
