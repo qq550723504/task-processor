@@ -26,17 +26,18 @@ type LogManager struct {
 
 // LogConfig 日志配置
 type LogConfig struct {
-	Level        string `yaml:"level" json:"level"`                 // 日志级别: debug, info, warn, error
-	Format       string `yaml:"format" json:"format"`               // 日志格式: json, text
-	OutputFile   string `yaml:"output_file" json:"output_file"`     // 输出文件路径
-	MaxSize      int    `yaml:"max_size" json:"max_size"`           // 最大文件大小(MB)
-	MaxBackups   int    `yaml:"max_backups" json:"max_backups"`     // 保留的旧日志文件数量
-	MaxAge       int    `yaml:"max_age" json:"max_age"`             // 保留的旧日志文件天数
-	Compress     bool   `yaml:"compress" json:"compress"`           // 是否压缩旧日志文件
-	Console      bool   `yaml:"console" json:"console"`             // 是否输出到控制台
-	EnableCaller bool   `yaml:"enable_caller" json:"enable_caller"` // 是否记录调用者信息
-	CallerSkip   int    `yaml:"caller_skip" json:"caller_skip"`     // 调用栈跳过层数
-	ReportCaller bool   `yaml:"report_caller" json:"report_caller"` // 是否在日志中包含文件名和行号
+	Level        string            `yaml:"level" json:"level"`                   // 日志级别: debug, info, warn, error
+	Format       string            `yaml:"format" json:"format"`                 // 日志格式: json, text
+	OutputFile   string            `yaml:"output_file" json:"output_file"`       // 输出文件路径
+	MaxSize      int               `yaml:"max_size" json:"max_size"`             // 最大文件大小(MB)
+	MaxBackups   int               `yaml:"max_backups" json:"max_backups"`       // 保留的旧日志文件数量
+	MaxAge       int               `yaml:"max_age" json:"max_age"`               // 保留的旧日志文件天数
+	Compress     bool              `yaml:"compress" json:"compress"`             // 是否压缩旧日志文件
+	Console      bool              `yaml:"console" json:"console"`               // 是否输出到控制台
+	EnableCaller bool              `yaml:"enable_caller" json:"enable_caller"`   // 是否记录调用者信息
+	CallerSkip   int               `yaml:"caller_skip" json:"caller_skip"`       // 调用栈跳过层数
+	ReportCaller bool              `yaml:"report_caller" json:"report_caller"`   // 是否在日志中包含文件名和行号
+	SplitByLevel []LevelFileConfig `yaml:"split_by_level" json:"split_by_level"` // 按级别分文件输出
 }
 
 // DefaultLogConfig 默认日志配置
@@ -89,6 +90,16 @@ func NewLogManager(config *LogConfig) *LogManager {
 		logger.SetOutput(io.MultiWriter(outputs...))
 	}
 
+	// 按级别分文件输出
+	if len(config.SplitByLevel) > 0 {
+		hook, err := NewLevelSplitHook(config.SplitByLevel, formatter)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "创建级别分文件 Hook 失败: %v\n", err)
+		} else {
+			logger.AddHook(hook)
+		}
+	}
+
 	return lm
 }
 
@@ -108,6 +119,11 @@ func (lm *LogManager) SetLevel(level string) error {
 	lm.logger.SetLevel(logLevel)
 	lm.level = logLevel
 	return nil
+}
+
+// GetRawLogger 获取底层 *logrus.Logger 实例，供需要直接操作 logger 的场景使用
+func (lm *LogManager) GetRawLogger() *logrus.Logger {
+	return lm.logger
 }
 
 // GetLevel 获取当前日志级别
@@ -239,6 +255,14 @@ var globalLogManager *LogManager
 // InitGlobalLogger 初始化全局日志管理器
 func InitGlobalLogger(config *LogConfig) {
 	globalLogManager = NewLogManager(config)
+}
+
+// GetGlobalLogManager 获取全局日志管理器实例
+func GetGlobalLogManager() *LogManager {
+	if globalLogManager == nil {
+		InitGlobalLogger(nil)
+	}
+	return globalLogManager
 }
 
 // GetGlobalLogger 获取全局日志记录器

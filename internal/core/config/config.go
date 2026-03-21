@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/watermark"
 
 	"github.com/sirupsen/logrus"
@@ -33,6 +34,18 @@ type LoggingConfig struct {
 	Level  string `yaml:"level"`
 	Format string `yaml:"format"`
 	File   string `yaml:"file"`
+	// SplitByLevel 按级别分文件输出，配置后不同级别的日志写入不同文件
+	// 示例：
+	//   split_by_level:
+	//     - levels: [error, fatal, panic]
+	//       file: logs/error.log
+	//     - levels: [warn]
+	//       file: logs/warn.log
+	//     - levels: [info]
+	//       file: logs/info.log
+	//     - levels: [debug, trace]
+	//       file: logs/debug.log
+	SplitByLevel []logger.LevelFileConfig `yaml:"split_by_level"`
 }
 
 // LoadConfig 加载配置

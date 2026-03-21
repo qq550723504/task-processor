@@ -31,6 +31,7 @@ type SensitiveWordService struct {
 	saveQueue  chan struct{}
 	stopSave   chan struct{}
 	wg         sync.WaitGroup
+	logger     *logrus.Entry
 }
 
 // loadConfig 加载敏感词配置文件
@@ -40,7 +41,7 @@ func (s *SensitiveWordService) loadConfig() error {
 
 	// 检查文件是否存在
 	if _, err := os.Stat(s.configPath); os.IsNotExist(err) {
-		logrus.Warnf("⚠️ 敏感词配置文件不存在: %s，将创建默认配置", s.configPath)
+		s.logger.Warnf("⚠️ 敏感词配置文件不存在: %s，将创建默认配置", s.configPath)
 		s.config = s.createDefaultConfig()
 
 		// 确保目录存在
@@ -53,7 +54,7 @@ func (s *SensitiveWordService) loadConfig() error {
 			return fmt.Errorf("保存默认配置失败: %w", err)
 		}
 
-		logrus.Info("✅ 已创建并保存默认敏感词配置")
+		s.logger.Info("✅ 已创建并保存默认敏感词配置")
 		return nil
 	}
 
@@ -136,7 +137,7 @@ func (s *SensitiveWordService) createDefaultConfig() *SensitiveWordConfig {
 
 // ReloadConfig 重新加载配置文件
 func (s *SensitiveWordService) ReloadConfig() error {
-	logrus.Info("🔄 重新加载敏感词配置...")
+	s.logger.Info("🔄 重新加载敏感词配置...")
 	return s.loadConfig()
 }
 
@@ -144,10 +145,8 @@ func (s *SensitiveWordService) ReloadConfig() error {
 func (s *SensitiveWordService) saveConfigAsync() {
 	select {
 	case s.saveQueue <- struct{}{}:
-		// 成功提交保存请求
 	default:
-		// 队列满了，记录警告但不阻塞
-		logrus.Warn("保存队列已满，跳过本次保存请求")
+		s.logger.Warn("保存队列已满，跳过本次保存请求")
 	}
 }
 
@@ -155,5 +154,5 @@ func (s *SensitiveWordService) saveConfigAsync() {
 func (s *SensitiveWordService) Close() {
 	close(s.stopSave)
 	s.wg.Wait()
-	logrus.Info("敏感词服务已关闭")
+	s.logger.Info("敏感词服务已关闭")
 }

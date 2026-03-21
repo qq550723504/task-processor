@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	corelogger "task-processor/internal/core/logger"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/productenrich"
@@ -12,7 +12,7 @@ import (
 
 // buildService 组装 productenrich.ProductService（全内存，无 Worker Pool）。
 func buildService(cfg *config.Config) (productenrich.ProductService, error) {
-	logger := logrus.StandardLogger()
+	logger := corelogger.GetGlobalLogManager().GetRawLogger()
 
 	llmMgr, err := productenrich.NewLLMManagerAdapter(cfg.OpenAI)
 	if err != nil {

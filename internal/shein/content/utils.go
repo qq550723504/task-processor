@@ -5,8 +5,6 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
-
-	"github.com/sirupsen/logrus"
 )
 
 // classifyWordsByLanguage 按语言分类敏感词
@@ -241,7 +239,7 @@ func (s *SensitiveWordService) logConfigLoadStats() {
 	staticTotal := s.countWordsInConfig(s.config.StaticWords)
 	dynamicTotal := s.countWordsInConfig(s.config.DynamicWords)
 
-	logrus.WithFields(map[string]any{
+	s.logger.WithFields(map[string]any{
 		"static_total":  staticTotal,
 		"dynamic_total": dynamicTotal,
 		"total":         staticTotal + dynamicTotal,
@@ -249,16 +247,14 @@ func (s *SensitiveWordService) logConfigLoadStats() {
 		"last_updated":  s.config.LastUpdated.Format("2006-01-02 15:04:05"),
 	}).Info("✅ 敏感词配置加载完成")
 
-	// 按语言统计
 	for lang, words := range s.config.StaticWords {
 		if len(words) > 0 {
-			logrus.Infof("  📝 静态敏感词 [%s]: %d个", lang, len(words))
+			s.logger.Infof("  📝 静态敏感词 [%s]: %d个", lang, len(words))
 		}
 	}
-
 	for lang, words := range s.config.DynamicWords {
 		if len(words) > 0 {
-			logrus.Infof("  🔄 动态敏感词 [%s]: %d个", lang, len(words))
+			s.logger.Infof("  🔄 动态敏感词 [%s]: %d个", lang, len(words))
 		}
 	}
 }
@@ -269,7 +265,7 @@ func (s *SensitiveWordService) logSensitiveWordStats() {
 	defer s.mutex.RUnlock()
 
 	if s.config == nil {
-		logrus.Warn("敏感词配置未初始化")
+		s.logger.Warn("敏感词配置未初始化")
 		return
 	}
 
@@ -277,24 +273,20 @@ func (s *SensitiveWordService) logSensitiveWordStats() {
 	dynamicTotal := s.countWordsInConfig(s.config.DynamicWords)
 	amazonBrandWordsCount := len(s.getAmazonBrandWords())
 
-	logrus.Infof("📊 敏感词统计:")
-
-	// 显示各语言的敏感词数量
+	s.logger.Infof("📊 敏感词统计:")
 	for lang, words := range s.config.StaticWords {
 		if count := len(words); count > 0 {
-			logrus.Infof("   静态敏感词 [%s]: %d 个", lang, count)
+			s.logger.Infof("   静态敏感词 [%s]: %d 个", lang, count)
 		}
 	}
-
 	for lang, words := range s.config.DynamicWords {
 		if count := len(words); count > 0 {
-			logrus.Infof("   动态敏感词 [%s]: %d 个", lang, count)
+			s.logger.Infof("   动态敏感词 [%s]: %d 个", lang, count)
 		}
 	}
-
-	logrus.Infof("   Amazon品牌词: %d 个", amazonBrandWordsCount)
-	logrus.Infof("   总计: 静态(%d) + 动态(%d) + 品牌词(%d) = %d 个",
+	s.logger.Infof("   Amazon品牌词: %d 个", amazonBrandWordsCount)
+	s.logger.Infof("   总计: 静态(%d) + 动态(%d) + 品牌词(%d) = %d 个",
 		staticTotal, dynamicTotal, amazonBrandWordsCount, staticTotal+dynamicTotal+amazonBrandWordsCount)
-	logrus.Infof("   配置文件: %s", s.configPath)
-	logrus.Infof("   最后更新: %s", s.config.LastUpdated.Format("2006-01-02 15:04:05"))
+	s.logger.Infof("   配置文件: %s", s.configPath)
+	s.logger.Infof("   最后更新: %s", s.config.LastUpdated.Format("2006-01-02 15:04:05"))
 }

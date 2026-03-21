@@ -3,6 +3,7 @@ package content
 
 import (
 	"fmt"
+	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -17,11 +18,8 @@ type SensitiveWordsFilter interface {
 type SensitiveWordsMode int
 
 const (
-	// ModeBlock 拦截模式 - 发现敏感词直接拦截
 	ModeBlock SensitiveWordsMode = iota
-	// ModeClean 清理模式 - 发现敏感词自动替换
 	ModeClean
-	// ModeWarn 警告模式 - 发现敏感词仅记录日志
 	ModeWarn
 )
 
@@ -30,6 +28,7 @@ type SensitiveWordsProcessor struct {
 	mode                 SensitiveWordsMode
 	filter               SensitiveWordsFilter
 	sensitiveWordService *SensitiveWordService
+	logger               *logrus.Entry
 }
 
 // NewSensitiveWordsProcessor 创建敏感词处理器
@@ -38,6 +37,7 @@ func NewSensitiveWordsProcessor(mode SensitiveWordsMode, filter SensitiveWordsFi
 		mode:                 mode,
 		filter:               filter,
 		sensitiveWordService: NewSensitiveWordService(),
+		logger:               corelogger.GetGlobalLogger("shein.sensitive_words_processor"),
 	}
 }
 
@@ -69,7 +69,7 @@ func (h *SensitiveWordsProcessor) Handle(ctx *shein.TaskContext) error {
 	hasSensitive, foundWords := h.filter.CheckProduct(title, description, languages)
 
 	if !hasSensitive {
-		logrus.WithField("asin", ctx.AmazonProduct.Asin).Debug("✅ 产品未包含敏感词")
+		h.logger.WithField("asin", ctx.AmazonProduct.Asin).Debug("✅ 产品未包含敏感词")
 		return nil
 	}
 
@@ -86,46 +86,37 @@ func (h *SensitiveWordsProcessor) Handle(ctx *shein.TaskContext) error {
 	}
 }
 
-// handleBlock 拦截模式 - 直接返回错误
 func (h *SensitiveWordsProcessor) handleBlock(ctx *shein.TaskContext, foundWords map[string][]string) error {
-	logrus.WithFields(logrus.Fields{
+	h.logger.WithFields(logrus.Fields{
 		"asin":            ctx.AmazonProduct.Asin,
 		"title":           ctx.AmazonProduct.Title,
 		"sensitive_words": foundWords,
 	}).Warn("⚠️ 产品包含敏感词,拦截发布")
-
 	return shein.NewFilteredError(fmt.Sprintf("产品包含敏感词: %v", foundWords))
 }
 
-// handleClean 清理模式 - 自动替换敏感词
 func (h *SensitiveWordsProcessor) handleClean(ctx *shein.TaskContext, foundWords map[string][]string) error {
-	logrus.WithFields(logrus.Fields{
+	h.logger.WithFields(logrus.Fields{
 		"asin":            ctx.AmazonProduct.Asin,
 		"sensitive_words": foundWords,
 	}).Info("🔧 检测到敏感词,开始自动清理...")
 
-	// 检查产品数据是否已准备
 	if ctx.ProductData == nil {
 		return fmt.Errorf("产品数据未获取,无法执行清理")
 	}
-
-	// 使用敏感词服务清理产品数据
 	if err := h.sensitiveWordService.ProcessProductData(ctx); err != nil {
 		return fmt.Errorf("敏感词清理失败: %w", err)
 	}
-
-	logrus.Info("✅ 敏感词清理完成")
+	h.logger.Info("✅ 敏感词清理完成")
 	return nil
 }
 
-// handleWarn 警告模式 - 仅记录日志,不拦截
 func (h *SensitiveWordsProcessor) handleWarn(ctx *shein.TaskContext, foundWords map[string][]string) error {
-	logrus.WithFields(logrus.Fields{
+	h.logger.WithFields(logrus.Fields{
 		"asin":            ctx.AmazonProduct.Asin,
 		"title":           ctx.AmazonProduct.Title,
 		"sensitive_words": foundWords,
 	}).Warn("⚠️ 产品包含敏感词(仅警告)")
-
 	return nil
 }
 

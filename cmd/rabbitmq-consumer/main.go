@@ -49,9 +49,10 @@ func main() {
 
 	// 应用配置文件中的日志设置（级别、格式、文件输出）
 	if err := appenv.ApplyLoggingConfig(logger, appenv.LoggingConfig{
-		Level:  appCfg.Logging.Level,
-		Format: appCfg.Logging.Format,
-		File:   appCfg.Logging.File,
+		Level:        appCfg.Logging.Level,
+		Format:       appCfg.Logging.Format,
+		File:         appCfg.Logging.File,
+		SplitByLevel: appCfg.Logging.SplitByLevel,
 	}); err != nil {
 		logger.Warnf("⚠️  应用日志配置失败: %v", err)
 	}

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
-
-	"github.com/sirupsen/logrus"
 )
 
 // removeSensitiveWords 移除文本中的敏感词
@@ -180,8 +178,8 @@ func (s *SensitiveWordService) removeAmazonBrandWords(text string) string {
 
 	// 记录品牌词移除统计
 	if len(removedWords) > 0 {
-		logrus.Debugf("🏷️ 移除Amazon品牌词: %v", removedWords)
-		logrus.Debugf("🏷️ 品牌词清理: %s -> %s", originalText, cleanedText)
+		s.logger.Debugf("🏷️ 移除Amazon品牌词: %v", removedWords)
+		s.logger.Debugf("🏷️ 品牌词清理: %s -> %s", originalText, cleanedText)
 	}
 
 	return cleanedText
@@ -203,8 +201,8 @@ func (s *SensitiveWordService) removeContextBrandWords(ctx *shein.TaskContext, t
 
 	// 记录品牌词移除统计
 	if originalText != cleanedText {
-		logrus.Debugf("🏷️ 移除上下文品牌词: %s", brandWord)
-		logrus.Debugf("🏷️ 上下文品牌词清理: %s -> %s", originalText, cleanedText)
+		s.logger.Debugf("🏷️ 移除上下文品牌词: %s", brandWord)
+		s.logger.Debugf("🏷️ 上下文品牌词清理: %s -> %s", originalText, cleanedText)
 	}
 
 	return cleanedText
@@ -250,16 +248,12 @@ func (s *SensitiveWordService) getAmazonBrandWords() []string {
 	}
 }
 
-// TestEmojiFiltering 测试表情符号过滤功能（用于调试）
 func (s *SensitiveWordService) TestEmojiFiltering(text string) string {
-	logrus.Infof("🧪 测试表情符号过滤:")
-	logrus.Infof("  原文: %s", text)
-
+	s.logger.Infof("🧪 测试表情符号过滤:")
+	s.logger.Infof("  原文: %s", text)
 	filtered := s.filterEmojis(text)
-	logrus.Infof("  过滤后: %s", filtered)
-
+	s.logger.Infof("  过滤后: %s", filtered)
 	aggressive := s.removeAllEmojisAggressively(text)
-	logrus.Infof("  激进过滤: %s", aggressive)
-
+	s.logger.Infof("  激进过滤: %s", aggressive)
 	return aggressive
 }

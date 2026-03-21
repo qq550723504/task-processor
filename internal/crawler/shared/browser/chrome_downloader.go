@@ -17,6 +17,8 @@ import (
 	"task-processor/internal/pkg/httpclient"
 	"task-processor/internal/pkg/timeout"
 
+	corelogger "task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -48,7 +50,7 @@ func NewChromeDownloader(version, downloadDir string) *ChromeDownloader {
 	return &ChromeDownloader{
 		version:     version,
 		downloadDir: downloadDir,
-		httpClient:  httpclient.New(httpConfig, logrus.StandardLogger()),
+		httpClient:  httpclient.New(httpConfig, corelogger.GetGlobalLogManager().GetRawLogger()),
 	}
 }
 

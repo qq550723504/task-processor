@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -34,7 +35,7 @@ type DependencyManager struct {
 	dependencies map[TaskType]*TaskDependency
 	statuses     map[string]*TaskExecutionStatus // key: platform:taskType:storeID
 	mutex        sync.RWMutex
-	logger       *logrus.Logger
+	logger       *logrus.Entry
 }
 
 // NewDependencyManager 创建依赖管理器
@@ -42,7 +43,7 @@ func NewDependencyManager() *DependencyManager {
 	return &DependencyManager{
 		dependencies: make(map[TaskType]*TaskDependency),
 		statuses:     make(map[string]*TaskExecutionStatus),
-		logger:       logrus.StandardLogger(),
+		logger:       logger.GetGlobalLogger("scheduler.dependency"),
 	}
 }
 

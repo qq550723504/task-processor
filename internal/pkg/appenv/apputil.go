@@ -2,11 +2,10 @@
 package appenv
 
 import (
-	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 	"strings"
+
+	loggerPkg "task-processor/internal/core/logger"
 
 	"github.com/sirupsen/logrus"
 )
@@ -15,79 +14,59 @@ import (
 // 日志
 // =============================================================================
 
-// SetupLogger 设置默认日志记录器（info 级别）
+// SetupLogger 初始化全局日志管理器（info 级别），返回底层 *logrus.Logger。
+// 业务代码通过 logger.GetGlobalLogger(component) 获取带组件标识的 Entry。
 func SetupLogger() *logrus.Logger {
 	return SetupLoggerWithLevel("info")
 }
 
-// SetupLoggerWithLevel 设置指定级别的日志记录器
+// SetupLoggerWithLevel 以指定级别初始化全局日志管理器，返回底层 *logrus.Logger。
 func SetupLoggerWithLevel(level string) *logrus.Logger {
-	logger := logrus.New()
-	logger.SetOutput(os.Stdout)
-	logger.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp:   true,
-		TimestampFormat: "2006-01-02 15:04:05",
+	loggerPkg.InitGlobalLogger(&loggerPkg.LogConfig{
+		Level:   level,
+		Format:  "text",
+		Console: true,
 	})
-	logLevel, err := logrus.ParseLevel(level)
-	if err != nil {
-		logger.Warnf("invalid log level '%s', using info level", level)
-		logLevel = logrus.InfoLevel
-	}
-	logger.SetLevel(logLevel)
-	return logger
+	return loggerPkg.GetGlobalLogManager().GetRawLogger()
 }
 
-// LoggingConfig 日志文件配置（与 config.LoggingConfig 保持一致，避免循环依赖）
+// LoggingConfig 日志配置（从 config.LoggingConfig 映射而来，避免循环依赖）
 type LoggingConfig struct {
-	Level  string
-	Format string
-	File   string
+	Level        string
+	Format       string
+	File         string
+	SplitByLevel []loggerPkg.LevelFileConfig
 }
 
-// ApplyLoggingConfig 根据配置应用日志级别、格式和文件输出
-// 同时保留 stdout 输出，日志会同时写到终端和文件
-func ApplyLoggingConfig(logger *logrus.Logger, cfg LoggingConfig) error {
-	// 应用日志级别（配置优先于启动参数）
-	if cfg.Level != "" {
-		level, err := logrus.ParseLevel(strings.ToLower(cfg.Level))
-		if err != nil {
-			logger.Warnf("配置中的日志级别无效 '%s'，保持当前级别", cfg.Level)
-		} else {
-			logger.SetLevel(level)
+// ApplyLoggingConfig 用配置文件中的设置重新配置全局日志管理器。
+// 必须在 SetupLogger/SetupLoggerWithLevel 之后调用。
+func ApplyLoggingConfig(log *logrus.Logger, cfg LoggingConfig) error {
+	lc := &loggerPkg.LogConfig{
+		Level:        cfg.Level,
+		Format:       cfg.Format,
+		OutputFile:   cfg.File,
+		Console:      true,
+		MaxSize:      100,
+		MaxBackups:   10,
+		MaxAge:       30,
+		Compress:     true,
+		SplitByLevel: cfg.SplitByLevel,
+	}
+	loggerPkg.InitGlobalLogger(lc)
+
+	// 让调用方持有的 *logrus.Logger 指针指向同一个实例
+	raw := loggerPkg.GetGlobalLogManager().GetRawLogger()
+	if log != raw {
+		// 同步调用方 logger 的级别与格式，使其行为一致
+		log.SetLevel(raw.Level)
+		log.SetFormatter(raw.Formatter)
+		log.SetOutput(raw.Out)
+		for _, h := range raw.Hooks {
+			for _, hook := range h {
+				log.AddHook(hook)
+			}
 		}
 	}
-
-	// 应用日志格式
-	if strings.ToLower(cfg.Format) == "json" {
-		logger.SetFormatter(&logrus.JSONFormatter{
-			TimestampFormat: "2006-01-02 15:04:05",
-		})
-	} else {
-		logger.SetFormatter(&logrus.TextFormatter{
-			FullTimestamp:   true,
-			TimestampFormat: "2006-01-02 15:04:05",
-		})
-	}
-
-	// 应用日志文件输出
-	if cfg.File == "" {
-		return nil
-	}
-
-	// 确保目录存在
-	dir := filepath.Dir(cfg.File)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("创建日志目录失败 %s: %w", dir, err)
-	}
-
-	f, err := os.OpenFile(cfg.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return fmt.Errorf("打开日志文件失败 %s: %w", cfg.File, err)
-	}
-
-	// 同时写 stdout 和文件
-	logger.SetOutput(io.MultiWriter(os.Stdout, f))
-	logger.Infof("日志已同时输出到文件: %s", cfg.File)
 	return nil
 }
 

@@ -4,6 +4,7 @@ package product
 import (
 	"context"
 	"task-processor/internal/core/config"
+	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -30,12 +31,25 @@ func NewProductFetcher(
 	amazonConfig *config.AmazonConfig,
 	amazonProcessor AmazonScraper,
 ) *ProductFetcher {
-	logger := logrus.New().WithField("component", "ProductFetcher")
+	return NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, amazonProcessor, nil)
+}
+
+// NewProductFetcherWithLogger 创建产品获取器，支持传入自定义 logger。
+// logger 为 nil 时使用全局日志管理器。
+func NewProductFetcherWithLogger(
+	rawJsonDataClient RawJsonDataClient,
+	amazonConfig *config.AmazonConfig,
+	amazonProcessor AmazonScraper,
+	log *logrus.Entry,
+) *ProductFetcher {
+	if log == nil {
+		log = corelogger.GetGlobalLogger("product.fetcher")
+	}
 	return &ProductFetcher{
-		cacheManager:    NewCacheManager(rawJsonDataClient, logger),
+		cacheManager:    NewCacheManager(rawJsonDataClient, log),
 		amazonConfig:    amazonConfig,
 		amazonProcessor: amazonProcessor,
-		logger:          logger,
+		logger:          log,
 	}
 }
 

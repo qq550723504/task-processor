@@ -5,8 +5,6 @@ import (
 	"regexp"
 	"strings"
 	"task-processor/internal/shein"
-
-	"github.com/sirupsen/logrus"
 )
 
 // extractSensitiveWordsFromValidation 从验证结果中提取敏感词
@@ -101,24 +99,18 @@ func (s *SensitiveWordService) addWordsByLanguage(configMap map[string][]string,
 	defer s.mutex.Unlock()
 
 	if configMap == nil {
-		logrus.Errorf("配置映射为空，无法添加%s敏感词", wordType)
+		s.logger.Errorf("配置映射为空，无法添加%s敏感词", wordType)
 		return
 	}
 
-	// 去重
 	words = s.deduplicateWords(words)
-
-	// 获取现有词汇
 	existing := configMap[language]
-
-	// 合并并去重
 	combined := append(existing, words...)
 	configMap[language] = s.deduplicateWords(combined)
 
-	logrus.Infof("✅ 已添加 %d 个%s敏感词到语言 [%s]，当前总数: %d",
+	s.logger.Infof("✅ 已添加 %d 个%s敏感词到语言 [%s]，当前总数: %d",
 		len(words), wordType, language, len(configMap[language]))
 
-	// 异步保存配置
 	s.saveConfigAsync()
 }
 
@@ -129,8 +121,6 @@ func (s *SensitiveWordService) addWordsToConfig(configMap map[string][]string, w
 	for lang, words := range wordsByLang {
 		if len(words) > 0 {
 			beforeCount := len(configMap[lang])
-
-			// 合并并去重
 			existing := configMap[lang]
 			combined := append(existing, words...)
 			configMap[lang] = s.deduplicateWords(combined)
@@ -139,7 +129,7 @@ func (s *SensitiveWordService) addWordsToConfig(configMap map[string][]string, w
 			totalAdded += addedCount
 
 			if addedCount > 0 {
-				logrus.Infof("✅ [%s] 添加了 %d 个%s敏感词", lang, addedCount, wordType)
+				s.logger.Infof("✅ [%s] 添加了 %d 个%s敏感词", lang, addedCount, wordType)
 			}
 		}
 	}
