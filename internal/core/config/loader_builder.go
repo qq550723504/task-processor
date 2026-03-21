@@ -2,6 +2,8 @@
 package config
 
 import (
+	"time"
+
 	"github.com/spf13/viper"
 )
 
@@ -83,6 +85,20 @@ func BuildConfig() *Config {
 	// 构建RabbitMQ配置（可选）
 	if viper.GetBool("rabbitmq.enabled") {
 		cfg.RabbitMQ = BuildRabbitMQConfig()
+	}
+
+	// 构建数据库配置（可选，host 不为空时才构建）
+	if viper.GetString("database.host") != "" {
+		cfg.Database = &DatabaseConfig{
+			Host:                  viper.GetString("database.host"),
+			Port:                  viper.GetInt("database.port"),
+			User:                  viper.GetString("database.user"),
+			Password:              viper.GetString("database.password"),
+			Database:              viper.GetString("database.database"),
+			MaxConnections:        viper.GetInt("database.max_connections"),
+			MaxIdleConnections:    viper.GetInt("database.max_idle_connections"),
+			ConnectionMaxLifetime: time.Duration(viper.GetInt64("database.connection_max_lifetime")),
+		}
 	}
 
 	// 构建日志配置
