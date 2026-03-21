@@ -107,6 +107,12 @@ func (s *SensitiveWordService) HandleValidationErrors(ctx *shein.TaskContext, va
 	s.logger.Infof("从验证错误中提取到敏感词: %v", extractedWords)
 	s.AddDynamicSensitiveWords(extractedWords)
 
+	// 同步保存，确保新词持久化后再继续，避免异步保存未完成时实例被丢弃导致词表丢失
+	if err := s.saveConfig(); err != nil {
+		s.logger.Errorf("同步保存敏感词配置失败: %v", err)
+		// 保存失败不阻断流程，词表已在内存中生效
+	}
+
 	if err := s.ProcessProductData(ctx); err != nil {
 		s.logger.Errorf("重新处理产品数据失败: %v", err)
 		return false

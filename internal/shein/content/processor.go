@@ -14,7 +14,8 @@ func (s *SensitiveWordService) removeSensitiveWords(text string) string {
 		return text
 	}
 
-	text = s.preprocessText(text)
+	// 不对原始文本做 preprocess，直接在原文上做大小写不敏感替换，
+	// 避免 normalizeSpecialCharacters 把连字符（如 Non-toxic）转成空格后导致匹配失败
 	allWords := s.getAllSensitiveWords()
 
 	for _, word := range allWords {
@@ -208,43 +209,29 @@ func (s *SensitiveWordService) removeContextBrandWords(ctx *shein.TaskContext, t
 	return cleanedText
 }
 
-// getAmazonBrandWords 获取Amazon品牌词列表
+// getAmazonBrandWords 获取 Amazon 自有品牌词列表（仅保留真正的品牌名，避免误删正常产品描述）
 func (s *SensitiveWordService) getAmazonBrandWords() []string {
 	return []string{
-		// Amazon自有品牌
-		"Amazon", "amazon", "AMAZON",
-		"Amazon Basics", "AmazonBasics", "Amazon basics",
-		"Amazon Essentials", "AmazonEssentials", "Amazon essentials",
-		"Amazon Choice", "Amazon's Choice", "Amazon choice",
-		"Solimo", "SOLIMO", "solimo",
-		"Goodthreads", "GOODTHREADS", "goodthreads",
-		"Daily Ritual", "DAILY RITUAL", "daily ritual",
-		"Core 10", "CORE 10", "core 10",
-		"Lark & Ro", "LARK & RO", "lark & ro",
-		"28 Palms", "28 PALMS", "28 palms",
-		"Buttoned Down", "BUTTONED DOWN", "buttoned down",
-		"Brand - ", "Brand: ", "brand - ", "brand: ",
-
-		// 常见的Amazon产品标识词
-		"Prime", "PRIME", "prime",
-		"Prime Eligible", "Prime eligible", "prime eligible",
-		"Free Shipping", "FREE SHIPPING", "free shipping",
-		"Best Seller", "BEST SELLER", "best seller",
-		"#1 Best Seller", "#1 BEST SELLER", "#1 best seller",
-		"Amazon's", "amazon's", "AMAZON'S",
-
-		// 其他Amazon相关词汇
-		"Fulfillment by Amazon", "FBA", "fba",
-		"Ships from Amazon", "ships from amazon",
-		"Sold by Amazon", "sold by amazon",
-		"Amazon Warehouse", "amazon warehouse",
-
-		// 品牌标识符
-		"Brand New", "BRAND NEW", "brand new",
-		"Official", "OFFICIAL", "official",
-		"Authentic", "AUTHENTIC", "authentic",
-		"Original", "ORIGINAL", "original",
-		"Genuine", "GENUINE", "genuine",
+		// Amazon 自有品牌
+		"Amazon Basics",
+		"Amazon Essentials",
+		"Amazon",
+		"AmazonBasics",
+		"AmazonEssentials",
+		"Solimo",
+		"Goodthreads",
+		"Daily Ritual",
+		"Core 10",
+		"Lark & Ro",
+		"28 Palms",
+		"Buttoned Down",
+		// Amazon 平台专属标识（不会出现在正常产品描述中）
+		"Fulfillment by Amazon",
+		"Ships from Amazon",
+		"Sold by Amazon",
+		"Amazon Warehouse",
+		"Amazon's Choice",
+		"#1 Best Seller",
 	}
 }
 

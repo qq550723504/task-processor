@@ -17,11 +17,14 @@ import (
 
 // PublishProductErrorHandler 产品发布错误处理器
 type PublishProductErrorHandler struct {
+	sensitiveWordService *content.SensitiveWordService
 }
 
 // NewPublishProductErrorHandler 创建新的产品发布错误处理器
 func NewPublishProductErrorHandler() *PublishProductErrorHandler {
-	return &PublishProductErrorHandler{}
+	return &PublishProductErrorHandler{
+		sensitiveWordService: content.NewSensitiveWordService(),
+	}
 }
 
 // HandlePublishResponse 处理发布响应
@@ -165,12 +168,7 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *s
 
 // getSensitiveWordService 获取敏感词服务实例
 func (h *PublishProductErrorHandler) getSensitiveWordService() *content.SensitiveWordService {
-	// 创建简化的敏感词服务实例
-	service := content.NewSensitiveWordService()
-
-	logrus.Info("创建简化敏感词服务实例")
-
-	return service
+	return h.sensitiveWordService
 }
 
 // parsePreValidResult 解析预验证结果
@@ -179,27 +177,16 @@ func (h *PublishProductErrorHandler) parsePreValidResult(preValidResult any) ([]
 		return []shein.PreValidResult{}, nil
 	}
 
-	// 添加调试代码：打印实际的响应数据结构
-	logrus.Infof("🔍 调试 - PreValidResult 原始数据类型: %T", preValidResult)
-
-	// 将interface{}转换为JSON字符串，再解析为结构体
 	jsonData, err := json.Marshal(preValidResult)
 	if err != nil {
-		logrus.Errorf("❌ 调试 - 序列化 PreValidResult 失败: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("序列化 PreValidResult 失败: %w", err)
 	}
-
-	// 打印实际的JSON结构
-	logrus.Infof("🔍 调试 - PreValidResult JSON 数据: %s", string(jsonData))
 
 	var results []shein.PreValidResult
 	if err := jsonx.UnmarshalBytes(jsonData, &results, "反序列化 PreValidResult 失败"); err != nil {
-		logrus.Errorf("❌ 调试 - 反序列化 PreValidResult 失败: %v", err)
-		logrus.Errorf("❌ 调试 - 尝试反序列化的JSON: %s", string(jsonData))
 		return nil, err
 	}
 
-	logrus.Infof("✅ 调试 - 成功解析 PreValidResult，共 %d 项", len(results))
 	return results, nil
 }
 
