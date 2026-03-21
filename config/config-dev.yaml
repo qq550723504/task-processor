@@ -27,7 +27,7 @@ worker:
 # OpenAI配置
 openai:
   apiKey: "sk-yJ3RQprPLyBcoqEkeBNimE6Dhj86CAjY2uHAc5yqLZd1KHa3"
-  model: "gemini-2.0-flash"
+  model: "gemini-2.5-flash"
   baseURL: "https://ai.linkcloudai.com/v1"
   timeout: 300  # API调用超时5分钟
 
@@ -272,7 +272,7 @@ database:
   database: "ruoyi-vue-pro"
   max_connections: 10
   max_idle_connections: 5
-  connection_max_lifetime: 3600000000000  # 1小时，单位纳秒
+  connection_max_lifetime: "1h"  # 1小时
 
 # Redis配置（productenrich-api 使用）
 redis:

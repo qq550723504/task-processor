@@ -9,6 +9,7 @@ func GetEndpoint(name string) string {
 		"addAttributeValue":      addAttributeValueEndpoint,
 		"getCategory":            getCategoryEndpoint,
 		"getCategoryTree":        getCategoryTreeEndpoint,
+		"cvTextSuggestCategory":  cvTextSuggestCategoryEndpoint,
 		"getProduct":             getProductEndpoint,
 		"updateProduct":          updateProductEndpoint,
 		"deleteProduct":          deleteProductEndpoint,
@@ -51,6 +52,7 @@ func GetValidateAttributeEndpoint() string      { return validateAttributeEndpoi
 func GetAddAttributeValueEndpoint() string      { return addAttributeValueEndpoint }
 func GetCategoryEndpoint() string               { return getCategoryEndpoint }
 func GetCategoryTreeEndpoint() string           { return getCategoryTreeEndpoint }
+func GetCvTextSuggestCategoryEndpoint() string  { return cvTextSuggestCategoryEndpoint }
 func GetProductEndpoint() string                { return getProductEndpoint }
 func GetUpdateProductEndpoint() string          { return updateProductEndpoint }
 func GetDeleteProductEndpoint() string          { return deleteProductEndpoint }

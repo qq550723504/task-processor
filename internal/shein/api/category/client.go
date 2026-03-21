@@ -74,3 +74,34 @@ func (a *Client) GetCategoryTree() (*CategoryTreeResponse, error) {
 
 	return &result.Info, nil
 }
+
+// SuggestCategoryByText 根据商品描述文本推荐分类
+func (a *Client) SuggestCategoryByText(productInfo string) (*SuggestCategoryResponse, error) {
+	url := fmt.Sprintf("%s%s", a.GetBaseURL(), client.GetCvTextSuggestCategoryEndpoint())
+
+	reqBody := struct {
+		ProductInfo string `json:"productInfo"`
+	}{ProductInfo: productInfo}
+
+	var result struct {
+		api.APIResponse
+		Info SuggestCategoryResponse `json:"info"`
+	}
+
+	if err := a.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return nil, err
+	}
+
+	if err := a.ProcessAPIResponse(&result.APIResponse, "0"); err != nil {
+		if _, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
+			return nil, err
+		}
+		return nil, &api.APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("文本推荐分类失败: %s", result.Msg),
+			URL:        url,
+		}
+	}
+
+	return &result.Info, nil
+}

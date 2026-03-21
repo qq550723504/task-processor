@@ -100,6 +100,7 @@ func (c *Cache) Get(cacheType, key string, dest any) bool {
 
 	// 2. 查数据库
 	if c.db == nil {
+		c.logger.Warnf("db is nill")
 		return false
 	}
 	raw, ok := c.getFromDB(fullKey)

@@ -73,9 +73,16 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	}
 
 	// 初始化 AI 结果持久化缓存
+	if cfg.Database == nil {
+		logger.Warn("[SHEIN] cfg.Database 为 nil，AI 缓存将退化为纯内存模式")
+	} else {
+		logger.Infof("[SHEIN] 数据库配置: host=%s port=%d db=%s", cfg.Database.Host, cfg.Database.Port, cfg.Database.Database)
+	}
 	db, err := database.NewDatabaseFromConfig(cfg.Database)
 	if err != nil {
 		logger.Warnf("[SHEIN] 数据库连接失败，AI 缓存将退化为纯内存模式: %v", err)
+	} else if db != nil {
+		logger.Info("[SHEIN] 数据库连接成功，AI 缓存将使用 PostgreSQL 持久化")
 	}
 	p.aiCache = aicache.New(db)
 

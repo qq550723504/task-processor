@@ -26,8 +26,8 @@ type TaskMessage struct {
 	TaskID         int64               `json:"taskId"`
 	TenantID       int64               `json:"tenantId"`
 	StoreID        int64               `json:"storeId"`
-	Platform       string              `json:"platform"`
-	TargetPlatform string              `json:"targetPlatform"`
+	SourcePlatform string              `json:"sourcePlatform"` // 数据来源平台（爬虫平台，如 amazon、1688）
+	TargetPlatform string              `json:"targetPlatform"` // 目标上架平台（如 shein、temu）
 	Region         string              `json:"region"`
 	CategoryID     int64               `json:"categoryId"`
 	ProductID      string              `json:"productId"`
@@ -77,10 +77,10 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 
 	targetPlatform := taskMsg.TargetPlatform
 	if targetPlatform == "" {
-		targetPlatform = taskMsg.Platform
+		targetPlatform = taskMsg.SourcePlatform
 	}
 
-	sourcePlatform := taskMsg.Platform
+	sourcePlatform := taskMsg.SourcePlatform
 	if sourcePlatform == "" {
 		sourcePlatform = targetPlatform
 	}
@@ -113,19 +113,20 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
 	}
 
 	taskMsg := &TaskMessage{
-		TaskID:        task.ID,
-		TenantID:      task.TenantID,
-		StoreID:       task.StoreID,
-		Platform:      task.Platform,
-		Region:        task.Region,
-		CategoryID:    task.CategoryID,
-		ProductID:     task.ProductID,
-		Priority:      task.Priority,
-		RetryCount:    task.RetryCount,
-		MaxRetryCount: task.MaxRetryCount,
-		CreatedAt:     types.ToFlexibleTime(&time.Time{}),
-		Remark:        task.Remark,
-		Status:        a.convertStatusInt16ToString(task.Status),
+		TaskID:         task.ID,
+		TenantID:       task.TenantID,
+		StoreID:        task.StoreID,
+		SourcePlatform: task.SourcePlatform,
+		TargetPlatform: task.Platform,
+		Region:         task.Region,
+		CategoryID:     task.CategoryID,
+		ProductID:      task.ProductID,
+		Priority:       task.Priority,
+		RetryCount:     task.RetryCount,
+		MaxRetryCount:  task.MaxRetryCount,
+		CreatedAt:      types.ToFlexibleTime(&time.Time{}),
+		Remark:         task.Remark,
+		Status:         a.convertStatusInt16ToString(task.Status),
 	}
 
 	if task.CreateTime > 0 {

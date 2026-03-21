@@ -13,6 +13,7 @@ const (
 	addAttributeValueEndpoint      = apiPrefix + "/attribute/add_pre_custom_attribute_value"
 	getCategoryEndpoint            = apiPrefix + "/product/get_all_category"
 	getCategoryTreeEndpoint        = apiPrefix + "/supplier/query_category_tree"
+	cvTextSuggestCategoryEndpoint  = apiPrefix + "/abc/cv_text_suggest_category"
 	getProductEndpoint             = apiPrefix + "/product/get_product"
 	updateProductEndpoint          = apiPrefix + "/product/update_product"
 	deleteProductEndpoint          = apiPrefix + "/product/delete_product"

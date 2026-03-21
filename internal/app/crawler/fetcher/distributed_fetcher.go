@@ -172,9 +172,14 @@ func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRe
 
 // shouldUseCrawler 判断是否应该使用爬虫
 func (f *DistributedProductFetcher) shouldUseCrawler(platform string) bool {
-	// Amazon、SHEIN、TEMU都需要从Amazon抓取数据
+	// Amazon、SHEIN、TEMU 的数据都需要从 Amazon 抓取；1688 使用自己的爬虫
 	platformLower := strings.ToLower(platform)
-	return platformLower == "amazon" || platformLower == "1688"
+	switch platformLower {
+	case "amazon", "shein", "temu", "1688":
+		return true
+	default:
+		return false
+	}
 }
 
 // CacheProduct 缓存产品数据到服务器

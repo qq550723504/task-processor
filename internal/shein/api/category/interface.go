@@ -7,6 +7,9 @@ type CategoryAPI interface {
 
 	// GetCategoryTree 列出所有分类
 	GetCategoryTree() (*CategoryTreeResponse, error)
+
+	// SuggestCategoryByText 根据商品描述文本推荐分类
+	SuggestCategoryByText(productInfo string) (*SuggestCategoryResponse, error)
 }
 
 // CategoryInfo 产品类别信息
@@ -41,4 +44,21 @@ type CategoryTreeNode struct {
 	CategoryName     string             `json:"category_name"`
 	LastCategory     bool               `json:"last_category"`
 	Children         []CategoryTreeNode `json:"children"`
+}
+
+// SuggestCategoryResponse 文本推荐分类响应
+type SuggestCategoryResponse struct {
+	Data []SuggestCategoryItem `json:"data"`
+	Meta struct {
+		Count     int `json:"count"`
+		CustomObj any `json:"customObj"`
+	} `json:"meta"`
+}
+
+// SuggestCategoryItem 推荐分类条目
+type SuggestCategoryItem struct {
+	CategoryID string `json:"categoryId"`
+	Order      *int   `json:"order"`
+	Vote       *int   `json:"vote"`
+	Type       int    `json:"type"`
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
@@ -28,6 +29,8 @@ type AISelector interface {
 	SelectLevelOneCategoryByAI(ctx context.Context, title string, levelOneIDs []int, levelOneMap map[int]string) (int, error)
 	// SelectCategoryByAI 通过AI选择最终分类
 	SelectCategoryByAI(ctx context.Context, title string, leafIDs []int, leafMap map[int]string) (int, error)
+	// ExtractCoreItemByAI 通过AI从Amazon标题中提取核心物品描述（用于SuggestCategoryByText）
+	ExtractCoreItemByAI(ctx context.Context, title string) (string, error)
 }
 
 // OpenAISelector OpenAI选择器实现
@@ -174,6 +177,38 @@ func (s *OpenAISelector) parseOpenAIResponse(resp *openaiClient.ChatCompletionRe
 	return &result, nil
 }
 
+// ExtractCoreItemByAI 通过AI从Amazon标题中提取核心物品的简短描述，用于SuggestCategoryByText。
+func (s *OpenAISelector) ExtractCoreItemByAI(ctx context.Context, title string) (string, error) {
+	systemPrompt := `你是一个电商产品分析专家。请从Amazon产品标题中提取出该商品的核心物品描述。
+要求：
+1. 用简洁的中文描述核心物品，例如"环保塑料杯套装"、"不锈钢保温水壶"、"儿童棉质连衣裙"
+2. 保留关键材质、用途、人群等修饰词，但去掉品牌名、数量、尺寸、颜色等无关信息
+3. 长度控制在5-20个汉字
+4. 只返回描述文本，不要任何解释`
+
+	temperature := float32(0.1)
+	seed := 42
+	req := &openaiClient.ChatCompletionRequest{
+		Model: s.openaiClient.GetDefaultModel(),
+		Messages: []openaiClient.ChatCompletionMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: title},
+		},
+		Temperature: &temperature,
+		Seed:        &seed,
+	}
+
+	resp, err := s.openaiClient.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("调用OpenAI API失败: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("OpenAI API返回空响应")
+	}
+
+	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+}
+
 // CategoryManager 分类管理器
 type CategoryManager struct {
 	aiSelector AISelector
@@ -307,4 +342,53 @@ func collectLeafNodes(node category.CategoryTreeNode) []category.CategoryTreeNod
 // buildFullCategoryPath 构建分类路径（递归向上）
 func buildFullCategoryPath(node category.CategoryTreeNode) string {
 	return node.CategoryName
+}
+
+// GetCategoryIDBySuggest 通过SuggestCategoryByText接口推荐分类，返回第一个有效的分类ID。
+// categoryAPI 为 nil 或接口返回空结果时返回 0, nil（调用方应 fallback）。
+func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, title string, categoryAPI interface {
+	SuggestCategoryByText(productInfo string) (*category.SuggestCategoryResponse, error)
+}, cache *aicache.Cache) (int, error) {
+	// 1. 用AI提取核心物品描述
+	aiCtx, cancel := timeout.WithAIShortTimeout(ctx)
+	defer cancel()
+
+	coreItem, err := m.aiSelector.ExtractCoreItemByAI(aiCtx, title)
+	if err != nil {
+		return 0, fmt.Errorf("AI提取核心物品失败: %w", err)
+	}
+	logrus.Infof("AI提取核心物品: title=%q -> coreItem=%q", title, coreItem)
+
+	// 2. 查缓存（以 coreItem 为 key）
+	cacheKey := aicache.HashKey("suggest:" + coreItem)
+	if cache != nil {
+		var cached int
+		if cache.Get(aicache.TypeCategory, cacheKey, &cached) {
+			logrus.Infof("SuggestCategory命中缓存: coreItem=%q, categoryID=%d", coreItem, cached)
+			return cached, nil
+		}
+	}
+
+	// 3. 调用 SuggestCategoryByText
+	resp, err := categoryAPI.SuggestCategoryByText(coreItem)
+	if err != nil {
+		return 0, fmt.Errorf("SuggestCategoryByText调用失败: %w", err)
+	}
+	if resp == nil || len(resp.Data) == 0 {
+		logrus.Infof("SuggestCategoryByText返回空结果: coreItem=%q", coreItem)
+		return 0, nil
+	}
+
+	categoryID, err := strconv.Atoi(resp.Data[0].CategoryID)
+	if err != nil {
+		return 0, fmt.Errorf("SuggestCategoryByText返回的categoryId无法解析为整数: %q", resp.Data[0].CategoryID)
+	}
+	logrus.Infof("SuggestCategoryByText推荐分类: coreItem=%q, categoryID=%d", coreItem, categoryID)
+
+	// 4. 写缓存
+	if cache != nil {
+		cache.Set(aicache.TypeCategory, cacheKey, categoryID)
+	}
+
+	return categoryID, nil
 }

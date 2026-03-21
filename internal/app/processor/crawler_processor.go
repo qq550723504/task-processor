@@ -102,9 +102,13 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 
 	startTime := time.Now()
 
-	// 提取真实的平台名称（去掉 .crawler 后缀）
-	// 例如: "Amazon.crawler" -> "Amazon"
-	platform := task.Platform
+	// 使用 SourcePlatform 作为爬虫平台，去掉 .crawler 后缀
+	// 例如: "amazon.crawler" -> "amazon"
+	platform := task.SourcePlatform
+	if platform == "" {
+		// 兼容旧消息格式：从 Platform 字段提取
+		platform = task.Platform
+	}
 	if idx := strings.Index(platform, ".crawler"); idx != -1 {
 		platform = platform[:idx]
 	}

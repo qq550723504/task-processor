@@ -135,21 +135,19 @@ func (c *DistributedCrawlerClient) ensureListenerStarted() error {
 
 // buildMessageData 构建消息数据
 func (c *DistributedCrawlerClient) buildMessageData(_ any, req *CrawlRequest) map[string]any {
-	// 直接构建符合 model.Task 结构的消息数据
-	// 注意：字段名使用大写开头，与 model.Task 的 JSON 标签一致
 	messageData := map[string]any{
-		"id":            req.TaskID,
-		"tenantId":      req.TenantID,
-		"storeId":       req.StoreID,
-		"platform":      req.Platform,
-		"region":        req.Region,
-		"productId":     req.ProductID,
-		"priority":      req.Priority,
-		"reply_to":      c.resultQueueName, // 添加回复队列
-		"createTime":    time.Now().Unix(),
-		"updateTime":    time.Now().Unix(),
-		"retryCount":    0,
-		"maxRetryCount": 3,
+		"id":             req.TaskID,
+		"tenantId":       req.TenantID,
+		"storeId":        req.StoreID,
+		"sourcePlatform": req.Platform, // 爬虫平台（如 amazon、1688）
+		"region":         req.Region,
+		"productId":      req.ProductID,
+		"priority":       req.Priority,
+		"reply_to":       c.resultQueueName,
+		"createTime":     time.Now().Unix(),
+		"updateTime":     time.Now().Unix(),
+		"retryCount":     0,
+		"maxRetryCount":  3,
 	}
 
 	return messageData

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"task-processor/internal/pkg/recovery"
 	"time"
@@ -214,6 +215,10 @@ func (qc *QueueConsumer) retryMessage(delivery amqp.Delivery, msg *Message) {
 
 	// 确认原消息（因为已经重新发布了新消息）
 	if ackErr := delivery.Ack(false); ackErr != nil {
+		if isChannelClosedError(ackErr) {
+			qc.logger.Warnf("确认消息失败（连接已关闭）: %v", ackErr)
+			return
+		}
 		qc.logger.Errorf("确认消息失败: %v", ackErr)
 	}
 }
@@ -249,6 +254,11 @@ func (qc *QueueConsumer) sendToDeadLetter(delivery amqp.Delivery, msg *Message) 
 func (qc *QueueConsumer) acknowledgeMessage(delivery amqp.Delivery, msg *Message, processingTime time.Duration) {
 	// 处理成功，确认消息
 	if ackErr := delivery.Ack(false); ackErr != nil {
+		// 连接关闭时 ack 失败是正常现象，消息会自动重新入队，降级为 warn
+		if isChannelClosedError(ackErr) {
+			qc.logger.Warnf("确认消息失败（连接已关闭，消息将自动重新入队）: ID=%s", msg.ID)
+			return
+		}
 		qc.logger.Errorf("确认消息失败: ID=%s, Error=%v", msg.ID, ackErr)
 		qc.errorCollector.Collect(ErrorTypeMessage, qc.queueName, msg.ID, ackErr, "确认消息失败")
 		return
@@ -259,6 +269,17 @@ func (qc *QueueConsumer) acknowledgeMessage(delivery amqp.Delivery, msg *Message
 
 	qc.logger.Infof("消息处理成功: ID=%s, Queue=%s, Duration=%v",
 		msg.ID, qc.queueName, processingTime)
+}
+
+// isChannelClosedError 判断是否为 channel/connection 已关闭的错误
+func isChannelClosedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "channel/connection is not open") ||
+		strings.Contains(msg, "Exception (504)") ||
+		strings.Contains(msg, "connection is not open")
 }
 
 // shouldRetry 判断是否应该重试
