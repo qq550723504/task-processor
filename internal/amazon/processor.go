@@ -49,9 +49,7 @@ func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger
 	services.SetProductTypeService(productTypeService)
 
 	// 初始化 LLM 属性映射器
-	openaiClient := openai.NewClient(openai.NewClientConfig(
-		cfg.OpenAI.APIKey, cfg.OpenAI.Model, cfg.OpenAI.BaseURL, cfg.OpenAI.Timeout,
-	))
+	openaiClient := openai.NewClient(cfg.OpenAI.ToClientConfig())
 	services.SetLLMAttributeMapper(llm.NewLLMAttributeMapper(llm.NewOpenAILLMClient(openaiClient)))
 
 	p := &Processor{

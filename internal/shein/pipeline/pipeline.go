@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/category"
 	"task-processor/internal/shein/content"
@@ -74,12 +73,7 @@ func (p *Pipeline) Process(ctx *shein.TaskContext) error {
 // CreateTaskProcessingPipeline 创建任务处理管道
 func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config) *Pipeline {
 	pipeline := NewPipeline()
-	openaiConfig := openai.NewClientConfig(
-		cfg.OpenAI.APIKey,
-		cfg.OpenAI.Model,
-		cfg.OpenAI.BaseURL,
-		cfg.OpenAI.Timeout,
-	)
+	openaiConfig := cfg.OpenAI.ToClientConfig()
 	// 添加处理步骤
 	storeClient := processor.GetManagementClient().GetStoreClient()
 	imageDownloder := processor.GetManagementClient().GetImageDownloader()

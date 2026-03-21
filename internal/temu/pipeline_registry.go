@@ -154,11 +154,5 @@ func (pr *PipelineRegistry) registerSubmitHandlers() {
 
 // createOpenAIConfig 创建OpenAI配置
 func (pr *PipelineRegistry) createOpenAIConfig() *openai.ClientConfig {
-	cfg := pr.processor.GetConfig()
-	return openai.NewClientConfig(
-		cfg.OpenAI.APIKey,
-		cfg.OpenAI.Model,
-		cfg.OpenAI.BaseURL,
-		cfg.OpenAI.Timeout,
-	)
+	return pr.processor.GetConfig().OpenAI.ToClientConfig()
 }

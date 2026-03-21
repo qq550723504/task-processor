@@ -22,10 +22,11 @@ type TranslateHandler struct {
 
 // NewTranslateHandler 创建新的翻译处理器
 func NewTranslateHandler(config *openaiClient.ClientConfig) *TranslateHandler {
+	client := openaiClient.NewClient(config)
 	return &TranslateHandler{
-		openaiClient:     openaiClient.NewClient(config),
+		openaiClient:     client,
 		languageDetector: NewLanguageDetector(),
-		contentOptimizer: content.NewContentOptimizer(openaiClient.NewClient(config)),
+		contentOptimizer: content.NewContentOptimizer(client),
 		textCleaner:      content.NewTextCleaner(),
 	}
 }

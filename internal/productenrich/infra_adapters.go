@@ -55,26 +55,8 @@ func (a *LLMManagerAdapter) GetDefaultClient() LLMClient {
 
 // NewLLMManagerAdapter 根据 OpenAIConfig 创建 LLMManager。
 func NewLLMManagerAdapter(cfg config.OpenAIConfig) (LLMManager, error) {
-	clientCfgs := map[string]*openai.ClientConfig{
-		"default": openai.NewClientConfig(cfg.APIKey, cfg.Model, cfg.BaseURL, cfg.Timeout),
-	}
-	for name, c := range cfg.Clients {
-		apiKey := c.APIKey
-		if apiKey == "" {
-			apiKey = cfg.APIKey
-		}
-		baseURL := c.BaseURL
-		if baseURL == "" {
-			baseURL = cfg.BaseURL
-		}
-		timeout := c.Timeout
-		if timeout == 0 {
-			timeout = cfg.Timeout
-		}
-		clientCfgs[name] = openai.NewClientConfig(apiKey, c.Model, baseURL, timeout)
-	}
 	mgr, err := openai.NewManager(&openai.ManagerConfig{
-		Clients:       clientCfgs,
+		Clients:       cfg.ToClientConfigs(),
 		DefaultClient: "default",
 	})
 	if err != nil {
