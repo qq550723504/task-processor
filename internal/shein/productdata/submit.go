@@ -2,8 +2,10 @@ package productdata
 
 import (
 	"fmt"
+
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
+	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/product"
@@ -25,7 +27,7 @@ func NewSubmitRawJsonDataHandler(
 	amazonProcessor product.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *SubmitRawJsonDataHandler {
-	logger := logrus.WithField("handler", "SubmitRawJsonDataHandler")
+	logger := coreLogger.GetGlobalLogger("SubmitRawJsonDataHandler")
 
 	factory := appProduct.NewFetcherFactory()
 	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
@@ -90,7 +92,7 @@ func NewSubmitVariantRawJsonDataHandler(
 	amazonProcessor product.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *SubmitVariantRawJsonDataHandler {
-	logger := logrus.WithField("handler", "SubmitVariantRawJsonDataHandler")
+	logger := coreLogger.GetGlobalLogger("SubmitVariantRawJsonDataHandler")
 
 	factory := appProduct.NewFetcherFactory()
 	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)

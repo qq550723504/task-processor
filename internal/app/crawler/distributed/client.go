@@ -10,280 +10,169 @@ import (
 
 	"task-processor/internal/app/task"
 	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/model"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 )
 
 // DistributedCrawlerClient 分布式爬虫客户端
-// 用于在现有task-processor中调用分布式爬虫服务
 type DistributedCrawlerClient struct {
-	rabbitmqClient *rabbitmq.Client
-	taskAdapter    *task.MessageAdapter
-	queueNaming    *rabbitmq.NamingService
-	logger         *logrus.Logger
+	publisher   Publisher
+	listener    *ResultListener
+	registry    *PendingRegistry
+	taskAdapter priorityCalculator
+	queueNaming queueNamer
+	logger      *logrus.Logger
 
-	// 结果等待管理
-	pendingTasks map[string]*PendingTask
-	mutex        sync.RWMutex
-
-	// 配置
-	timeout time.Duration
-
-	// 懒加载标志
-	listenerStarted bool
-	listenerMutex   sync.Mutex
-	resultQueueName string // 结果队列名称
+	// 懒加载保护：用 Mutex 而非 sync.Once，支持失败后重试
+	startMu sync.Mutex
 }
 
-// NewDistributedCrawlerClient 创建分布式爬虫客户端（使用已存在的RabbitMQ客户端）
+// NewDistributedCrawlerClient 创建分布式爬虫客户端
 func NewDistributedCrawlerClient(rabbitmqClient *rabbitmq.Client, logger *logrus.Logger) (*DistributedCrawlerClient, error) {
 	if rabbitmqClient == nil {
 		return nil, fmt.Errorf("RabbitMQ客户端不能为空")
 	}
 
-	client := &DistributedCrawlerClient{
-		rabbitmqClient:  rabbitmqClient,
-		taskAdapter:     task.NewMessageAdapter(),
-		queueNaming:     rabbitmq.NewNamingService(),
-		logger:          logger,
-		pendingTasks:    make(map[string]*PendingTask),
-		timeout:         5 * time.Minute, // 默认5分钟超时
-		listenerStarted: false,
+	adapter := NewRabbitMQAdapter(rabbitmqClient)
+	registry := NewPendingRegistry(5 * time.Minute)
+	listener := NewResultListener(adapter, registry, logger)
+
+	c := &DistributedCrawlerClient{
+		publisher:   adapter,
+		listener:    listener,
+		registry:    registry,
+		taskAdapter: task.NewMessageAdapter(),
+		queueNaming: rabbitmq.NewNamingService(),
+		logger:      logger,
 	}
 
-	// 不在构造函数中启动监听器，改为懒加载
-	// 在第一次提交任务时启动
-	logger.Info("分布式爬虫客户端创建成功（结果监听器将在首次使用时启动）")
+	// 注册重连回调：连接恢复后重新启动结果监听器
+	rabbitmqClient.GetConnectionManager().RegisterReconnectCallback(func() error {
+		logger.Info("RabbitMQ重连成功，重新启动爬虫结果监听器...")
+		return listener.Restart()
+	})
 
-	return client, nil
+	logger.Info("分布式爬虫客户端创建成功（结果监听器将在首次使用时启动）")
+	return c, nil
 }
 
-// SubmitCrawlTask 提交爬虫任务并等待结果
-func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *CrawlRequest) (*CrawlResult, error) {
-	c.logger.Infof("提交爬虫任务: TaskID=%d, ProductID=%s", req.TaskID, req.ProductID)
+// SetTimeout 设置等待超时
+func (c *DistributedCrawlerClient) SetTimeout(timeout time.Duration) {
+	c.registry.timeout = timeout
+}
 
-	// 懒加载：首次使用时启动结果监听器
-	if err := c.ensureListenerStarted(); err != nil {
+// SubmitCrawlTask 提交爬虫任务并同步等待结果
+func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *CrawlRequest) (*CrawlResult, error) {
+	c.logger.Infof("提交爬虫任务: TaskID=%s, ProductID=%s", req.TaskID, req.ProductID)
+
+	// 步骤1：确保结果监听器已启动（懒加载，只执行一次）
+	replyTo, err := c.ensureListenerStarted()
+	if err != nil {
 		return nil, fmt.Errorf("启动结果监听器失败: %w", err)
 	}
 
-	// 创建任务对象
-	taskModel := &model.Task{
-		ID:         req.TaskID,
-		TenantID:   req.TenantID,
-		StoreID:    req.StoreID,
-		Platform:   req.Platform,
-		Region:     req.Region,
-		ProductID:  req.ProductID,
-		Priority:   req.Priority,
-		CreateTime: time.Now().Unix(),
-		UpdateTime: time.Now().Unix(),
-	}
+	// 步骤2：注册等待任务
+	pt := c.registry.Register(ctx, req.TaskID)
 
-	// 转换为任务消息
-	taskMessage, err := c.taskAdapter.TaskToMessage(taskModel)
-	if err != nil {
-		return nil, fmt.Errorf("转换任务消息失败: %w", err)
-	}
-
-	// 添加爬虫特定信息到 TaskMessage
-	messageData := c.buildMessageData(taskMessage, req)
-
-	// 构建路由键和队列名称
-	// 注意：爬虫任务使用专门的爬虫队列，根据优先级选择队列
-	routingKey := c.taskAdapter.BuildRoutingKey(taskModel)
+	// 步骤3：构建并发布爬虫任务消息
 	queueName := c.queueNaming.BuildCrawlerQueueName(req.Platform, req.Priority)
-
-	// 创建等待任务
-	pendingTask := c.createPendingTask(ctx, req.TaskID)
-
-	// 创建并发送 RabbitMQ 消息
-	if err := c.publishTask(taskModel, messageData, queueName, routingKey, pendingTask); err != nil {
+	if err := c.publishCrawlTask(ctx, req, queueName, replyTo, pt.TaskID); err != nil {
+		c.registry.Remove(pt.TaskID)
 		return nil, err
 	}
 
-	// 等待结果
-	return c.waitForResult(pendingTask, req.TaskID)
+	c.logger.Infof("爬虫任务已发送: TaskID=%s, Queue=%s, ReplyTo=%s", pt.TaskID, queueName, replyTo)
+
+	// 步骤4：等待结果
+	return c.registry.Wait(pt)
 }
 
-// ensureListenerStarted 确保结果监听器已启动（懒加载），并注册重连回调
-func (c *DistributedCrawlerClient) ensureListenerStarted() error {
-	c.listenerMutex.Lock()
-	defer c.listenerMutex.Unlock()
+// ensureListenerStarted 确保结果监听器已启动，返回结果队列名。
+// 支持失败后重试（不使用 sync.Once，避免失败后无法重试的问题）。
+func (c *DistributedCrawlerClient) ensureListenerStarted() (string, error) {
+	// 快路径：已启动则直接返回
+	if name := c.listener.QueueName(); name != "" {
+		return name, nil
+	}
 
-	if c.listenerStarted {
-		return nil
+	c.startMu.Lock()
+	defer c.startMu.Unlock()
+
+	// 双重检查
+	if name := c.listener.QueueName(); name != "" {
+		return name, nil
 	}
 
 	c.logger.Info("首次使用，启动结果监听器...")
-	if err := c.startResultListener(); err != nil {
-		return err
+	name, err := c.listener.Start()
+	if err != nil {
+		return "", err
 	}
-
-	c.listenerStarted = true
-
-	// 注册重连回调：连接恢复后重新启动监听器
-	c.rabbitmqClient.GetConnectionManager().RegisterReconnectCallback(func() error {
-		c.logger.Info("RabbitMQ重连成功，重新启动爬虫结果监听器...")
-		return c.startResultListener()
-	})
-
-	return nil
+	return name, nil
 }
 
-// buildMessageData 构建消息数据
-func (c *DistributedCrawlerClient) buildMessageData(_ any, req *CrawlRequest) map[string]any {
-	messageData := map[string]any{
-		"id":             req.TaskID,
+// publishCrawlTask 构建消息体并发布到爬虫队列
+func (c *DistributedCrawlerClient) publishCrawlTask(
+	ctx context.Context,
+	req *CrawlRequest,
+	queueName, replyTo, taskIDStr string,
+) error {
+	now := time.Now().Unix()
+	priority := c.taskAdapter.CalculatePriority(req.Priority)
+
+	payload := map[string]any{
+		"id":             req.TaskID, // string，避免 JSON float64 精度丢失
 		"tenantId":       req.TenantID,
 		"storeId":        req.StoreID,
-		"sourcePlatform": req.Platform, // 爬虫平台（如 amazon、1688）
+		"sourcePlatform": req.Platform,
 		"region":         req.Region,
 		"productId":      req.ProductID,
 		"priority":       req.Priority,
-		"reply_to":       c.resultQueueName,
-		"createTime":     time.Now().Unix(),
-		"updateTime":     time.Now().Unix(),
+		"reply_to":       replyTo,
+		"createTime":     now,
+		"updateTime":     now,
 		"retryCount":     0,
 		"maxRetryCount":  3,
 	}
 
-	return messageData
-}
-
-// createPendingTask 创建等待任务
-func (c *DistributedCrawlerClient) createPendingTask(ctx context.Context, taskID int64) *PendingTask {
-	taskCtx, cancel := context.WithTimeout(ctx, c.timeout)
-	pendingTask := &PendingTask{
-		TaskID:     fmt.Sprintf("%d", taskID),
-		ResultChan: make(chan *CrawlResult, 1),
-		CreatedAt:  time.Now(),
-		Context:    taskCtx,
-		Cancel:     cancel,
-	}
-
-	// 注册等待任务
-	c.mutex.Lock()
-	c.pendingTasks[pendingTask.TaskID] = pendingTask
-	c.mutex.Unlock()
-
-	return pendingTask
-}
-
-// publishTask 发布任务到RabbitMQ
-func (c *DistributedCrawlerClient) publishTask(
-	taskModel *model.Task,
-	messageData map[string]any,
-	queueName, routingKey string,
-	pendingTask *PendingTask,
-) error {
 	body, err := json.Marshal(&rabbitmq.Message{
-		ID:         fmt.Sprintf("%d", taskModel.ID),
+		ID:         taskIDStr,
 		Type:       "task",
-		Payload:    messageData,
-		Priority:   c.taskAdapter.CalculatePriority(taskModel.Priority),
-		Timestamp:  time.Now().Unix(),
+		Payload:    payload,
+		Priority:   priority,
+		Timestamp:  now,
 		RetryCount: 0,
 		MaxRetries: 3,
 	})
 	if err != nil {
-		c.mutex.Lock()
-		delete(c.pendingTasks, pendingTask.TaskID)
-		c.mutex.Unlock()
-		pendingTask.Cancel()
-		return fmt.Errorf("序列化任务消息失败: %w", err)
+		return fmt.Errorf("序列化爬虫任务消息失败: %w", err)
 	}
 
-	// 用独立 channel 发布，避免与消费者共享 channel 产生并发写
-	ch, err := c.rabbitmqClient.GetConnectionManager().CreateChannel()
-	if err != nil {
-		c.mutex.Lock()
-		delete(c.pendingTasks, pendingTask.TaskID)
-		c.mutex.Unlock()
-		pendingTask.Cancel()
-		return fmt.Errorf("创建发布通道失败: %w", err)
+	if err := c.publisher.Publish(ctx, queueName, body, priority); err != nil {
+		return fmt.Errorf("发布爬虫任务失败: %w", err)
 	}
-	defer ch.Close()
-
-	err = ch.PublishWithContext(
-		context.Background(),
-		"",        // 默认交换机
-		queueName, // routing key
-		false,
-		false,
-		amqp.Publishing{
-			ContentType:  "application/json",
-			Body:         body,
-			Priority:     c.taskAdapter.CalculatePriority(taskModel.Priority),
-			Timestamp:    time.Now(),
-			MessageId:    fmt.Sprintf("%d", taskModel.ID),
-			Type:         "task",
-			DeliveryMode: 2, // 持久化
-		},
-	)
-	if err != nil {
-		c.mutex.Lock()
-		delete(c.pendingTasks, pendingTask.TaskID)
-		c.mutex.Unlock()
-		pendingTask.Cancel()
-		return fmt.Errorf("发送爬虫任务失败: %w", err)
-	}
-
-	c.logger.Infof("爬虫任务已发送: TaskID=%s, Queue=%s, RoutingKey=%s",
-		pendingTask.TaskID, queueName, routingKey)
-
 	return nil
-}
-
-// waitForResult 等待任务结果
-func (c *DistributedCrawlerClient) waitForResult(pendingTask *PendingTask, taskID int64) (*CrawlResult, error) {
-	select {
-	case result := <-pendingTask.ResultChan:
-		c.logger.Infof("收到爬虫结果: TaskID=%d, Success=%v", taskID, result.Success)
-		return result, nil
-	case <-pendingTask.Context.Done():
-		// 清理等待任务
-		c.mutex.Lock()
-		delete(c.pendingTasks, pendingTask.TaskID)
-		c.mutex.Unlock()
-		return nil, fmt.Errorf("爬虫任务超时: TaskID=%d", taskID)
-	}
-}
-
-// SetTimeout 设置超时时间
-func (c *DistributedCrawlerClient) SetTimeout(timeout time.Duration) {
-	c.timeout = timeout
 }
 
 // GetStats 获取统计信息
 func (c *DistributedCrawlerClient) GetStats() map[string]any {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
 	return map[string]any{
-		"pending_tasks": len(c.pendingTasks),
-		"timeout":       c.timeout.String(),
+		"pending_tasks":  c.registry.Len(),
+		"timeout":        c.registry.timeout.String(),
+		"listener_queue": c.listener.QueueName(),
 	}
 }
 
-// Close 关闭客户端
+// Close 关闭客户端，取消所有等待任务
 func (c *DistributedCrawlerClient) Close() error {
 	c.logger.Info("关闭分布式爬虫客户端")
-
-	// 取消所有等待的任务
-	c.mutex.Lock()
-	for _, pendingTask := range c.pendingTasks {
-		pendingTask.Cancel()
+	// registry 里的所有 pending task 会在 context 超时时自动清理
+	// 这里主动触发清理
+	c.registry.mu.Lock()
+	for _, pt := range c.registry.tasks {
+		pt.Cancel()
 	}
-	c.pendingTasks = make(map[string]*PendingTask)
-	c.mutex.Unlock()
-
-	// 关闭RabbitMQ客户端
-	if c.rabbitmqClient != nil {
-		return c.rabbitmqClient.Close()
-	}
-
+	c.registry.tasks = make(map[string]*PendingTask)
+	c.registry.mu.Unlock()
 	return nil
 }

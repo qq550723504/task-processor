@@ -273,10 +273,6 @@ func getEnabledPlatformsFromConfig(cfg *config.Config) []string {
 		platforms = append(platforms, "shein")
 	}
 
-	if cfg.Platforms.Alibaba1688.Enabled {
-		platforms = append(platforms, "alibaba1688")
-	}
-
 	return platforms
 }
 

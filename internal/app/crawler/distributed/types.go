@@ -10,7 +10,7 @@ import (
 
 // CrawlRequest 爬虫请求
 type CrawlRequest struct {
-	TaskID    int64  `json:"taskId"`
+	TaskID    string `json:"taskId"` // 字符串类型，避免 JSON float64 精度丢失
 	TenantID  int64  `json:"tenantId"`
 	StoreID   int64  `json:"storeId"`
 	Platform  string `json:"platform"`
@@ -21,7 +21,7 @@ type CrawlRequest struct {
 
 // CrawlResult 爬虫结果
 type CrawlResult struct {
-	TaskID   int64          `json:"taskId"`
+	TaskID   string         `json:"taskId"` // 字符串类型，避免 JSON float64 精度丢失
 	Success  bool           `json:"success"`
 	Product  *model.Product `json:"product,omitempty"`
 	Error    string         `json:"error,omitempty"`

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
+	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	domainProduct "task-processor/internal/product"
@@ -39,7 +40,7 @@ type FetcherFactory struct {
 // NewFetcherFactory 创建获取器工厂
 func NewFetcherFactory() *FetcherFactory {
 	return &FetcherFactory{
-		logger: logrus.WithField("component", "FetcherFactory"),
+		logger: coreLogger.GetGlobalLogger("FetcherFactory"),
 	}
 }
 

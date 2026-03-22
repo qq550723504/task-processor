@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	apptask "task-processor/internal/app/task"
@@ -245,8 +246,10 @@ func (eth *TaskHandler) processTaskWithReporting(
 	var taskData []byte
 	var err error
 
-	// 检查是否是爬虫任务（使用领域对象方法）
-	if task.IsCrawlerTask() {
+	// 检查是否是爬虫任务：优先用注册的队列平台名判断（含 "crawler"），
+	// 兼容 task.Platform 字段（分布式爬虫消息里 sourcePlatform 是 "amazon" 不含 "crawler"）
+	isCrawler := strings.Contains(strings.ToLower(eth.platform), "crawler") || task.IsCrawlerTask()
+	if isCrawler {
 		// 爬虫任务：使用原始 payload（包含 reply_to 字段）
 		taskData, err = json.Marshal(originalPayload)
 	} else {

@@ -28,9 +28,9 @@ type CrawlerProcessor struct {
 	logger          *logrus.Logger
 }
 
-// RabbitMQPublisher RabbitMQ 发布接口
+// RabbitMQPublisher RabbitMQ 发布接口（直接发原始 body，不包装）
 type RabbitMQPublisher interface {
-	Publish(ctx context.Context, queueName string, data []byte) error
+	Publish(ctx context.Context, queueName string, body []byte, priority uint8) error
 }
 
 // NewCrawlerProcessor 创建爬虫处理器
@@ -87,6 +87,18 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 		}
 	}
 
+	// 提取 taskId 字符串（在 normalizeTaskData 之前，避免 float64 精度丢失）
+	// 发送方将 taskId 序列化为 string，直接读取；兼容旧格式（数字）
+	var taskIDStr string
+	if v, ok := taskData["id"]; ok {
+		switch val := v.(type) {
+		case string:
+			taskIDStr = val
+		case float64:
+			taskIDStr = fmt.Sprintf("%d", int64(val))
+		}
+	}
+
 	// 修复：JSON 反序列化后，数字类型可能是 float64，需要转换
 	// 规范化数据类型
 	p.normalizeTaskData(taskData)
@@ -129,7 +141,7 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 
 	// 如果有 reply_to 队列，发送结果
 	if replyTo != "" {
-		p.sendCrawlResult(replyTo, task.ID, productData, err, time.Since(startTime))
+		p.sendCrawlResult(replyTo, taskIDStr, productData, err, time.Since(startTime))
 	}
 
 	if err != nil {
@@ -180,13 +192,13 @@ func (p *CrawlerProcessor) GetStatus() map[string]any {
 }
 
 // sendCrawlResult 发送爬取结果到回复队列
-func (p *CrawlerProcessor) sendCrawlResult(replyTo string, taskID int64, product *model.Product, err error, duration time.Duration) {
-	// 构建结果消息（匹配 CrawlResult 结构）
+func (p *CrawlerProcessor) sendCrawlResult(replyTo string, taskID string, product *model.Product, err error, duration time.Duration) {
+	// taskId 用 string，避免 JSON float64 精度丢失
 	result := map[string]any{
 		"taskId":   taskID,
 		"success":  err == nil,
-		"duration": duration.Nanoseconds(), // time.Duration 以纳秒为单位
-		"nodeId":   "crawler-node-1",       // 可以从配置中获取
+		"duration": duration.Nanoseconds(),
+		"nodeId":   "crawler-node-1",
 	}
 
 	if err != nil {
@@ -195,24 +207,22 @@ func (p *CrawlerProcessor) sendCrawlResult(replyTo string, taskID int64, product
 		result["product"] = product
 	}
 
-	// 序列化结果
 	resultBytes, marshalErr := json.Marshal(result)
 	if marshalErr != nil {
 		p.logger.Errorf("序列化爬取结果失败: %v", marshalErr)
 		return
 	}
 
-	// 发送到回复队列
 	if p.rabbitmqClient != nil {
 		ctx, cancel := timeout.WithHTTPShortTimeout(context.Background())
 		defer cancel()
 
-		if publishErr := p.rabbitmqClient.Publish(ctx, replyTo, resultBytes); publishErr != nil {
+		if publishErr := p.rabbitmqClient.Publish(ctx, replyTo, resultBytes, 5); publishErr != nil {
 			p.logger.Errorf("发送爬取结果失败: %v", publishErr)
 			return
 		}
 
-		p.logger.Infof("✅ 爬取结果已发送到队列: %s, TaskID=%d, Success=%v", replyTo, taskID, err == nil)
+		p.logger.Infof("✅ 爬取结果已发送到队列: %s, TaskID=%s, Success=%v", replyTo, taskID, err == nil)
 	} else {
 		p.logger.Warnf("⚠️ RabbitMQ客户端未设置，无法发送结果")
 	}

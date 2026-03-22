@@ -4,17 +4,27 @@ package fetcher
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 
 	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/core/config"
+	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	domainProduct "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
+
+// crawlTaskID 根据 productID+region 生成稳定的正数任务ID（FNV-1a 哈希，重启后不变）
+// 用 math.MaxInt64 掩码去掉符号位，保证结果始终为正数
+func crawlTaskID(productID, region string) string {
+	h := fnv.New64a()
+	h.Write([]byte(productID + ":" + region))
+	return fmt.Sprintf("%d", int64(h.Sum64()&0x7fffffffffffffff))
+}
 
 // DistributedProductFetcher 分布式产品数据获取器
 // 使用分布式爬虫集群替代本地Amazon处理器
@@ -36,10 +46,10 @@ func NewDistributedProductFetcher(
 	amazonConfig *config.AmazonConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) (*DistributedProductFetcher, error) {
-	logger := logrus.WithField("component", "DistributedProductFetcher")
+	logger := coreLogger.GetGlobalLogger("DistributedProductFetcher")
 
 	// 创建分布式爬虫客户端（使用共享的RabbitMQ客户端）
-	distributedCrawler, err := distributed.NewDistributedCrawlerClient(rabbitmqClient, logger.Logger)
+	distributedCrawler, err := distributed.NewDistributedCrawlerClient(rabbitmqClient, coreLogger.GetGlobalLogManager().GetRawLogger())
 	if err != nil {
 		return nil, fmt.Errorf("创建分布式爬虫客户端失败: %w", err)
 	}
@@ -104,12 +114,19 @@ func (f *DistributedProductFetcher) FetchProduct(ctx context.Context, req *domai
 
 // fetchFromDistributedCrawler 从分布式爬虫获取产品数据
 func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
+	// SHEIN/TEMU 的商品实际上是 Amazon ASIN，需要用 amazon 爬虫队列
+	crawlerPlatform := req.Platform
+	switch strings.ToLower(req.Platform) {
+	case "shein", "temu":
+		crawlerPlatform = "amazon"
+	}
+
 	// 构建爬虫请求
 	crawlReq := &distributed.CrawlRequest{
-		TaskID:    time.Now().UnixNano(), // 生成唯一任务ID
+		TaskID:    crawlTaskID(req.ProductID, req.Region), // 基于 productID+region 的稳定哈希，重启后不变
 		TenantID:  req.TenantID,
 		StoreID:   req.StoreID,
-		Platform:  req.Platform,
+		Platform:  crawlerPlatform,
 		Region:    req.Region,
 		ProductID: req.ProductID,
 		Priority:  f.calculatePriority(req),
@@ -128,7 +145,7 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Cont
 		return nil, fmt.Errorf("分布式爬虫返回空产品数据")
 	}
 
-	f.logger.Infof("🎉 分布式爬虫任务完成: TaskID=%d, Duration=%v, NodeID=%s",
+	f.logger.Infof("🎉 分布式爬虫任务完成: TaskID=%s, Duration=%v, NodeID=%s",
 		result.TaskID, result.Duration, result.NodeID)
 
 	return result.Product, nil
@@ -136,7 +153,6 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Cont
 
 // calculatePriority 计算任务优先级
 func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRequest) int {
-	// 优先级常量
 	const (
 		PriorityDefault       = 5
 		PriorityAmazonBonus   = 2
@@ -146,20 +162,16 @@ func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRe
 		HotCategoryThreshold  = 1000
 	)
 
-	// 基础优先级
 	priority := PriorityDefault
 
-	// 根据平台调整
 	if req.Platform == "amazon" {
 		priority += PriorityAmazonBonus
 	}
 
-	// 根据分类调整（热门分类优先级更高）
 	if req.CategoryID > 0 && req.CategoryID < HotCategoryThreshold {
 		priority += PriorityCategoryBonus
 	}
 
-	// 确保在有效范围内
 	if priority > PriorityMax {
 		priority = PriorityMax
 	}
@@ -172,7 +184,6 @@ func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRe
 
 // shouldUseCrawler 判断是否应该使用爬虫
 func (f *DistributedProductFetcher) shouldUseCrawler(platform string) bool {
-	// Amazon、SHEIN、TEMU 的数据都需要从 Amazon 抓取；1688 使用自己的爬虫
 	platformLower := strings.ToLower(platform)
 	switch platformLower {
 	case "amazon", "shein", "temu", "1688":
@@ -215,7 +226,6 @@ func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *doma
 	var variants []*model.Product
 	var errors []error
 
-	// 并发获取变体数据
 	for _, asin := range variantASINs {
 		variantReq := &domainProduct.FetchRequest{
 			TenantID:   req.TenantID,

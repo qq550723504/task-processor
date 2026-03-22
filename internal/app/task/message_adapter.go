@@ -23,11 +23,11 @@ type Message struct {
 
 // TaskMessage 任务消息结构
 type TaskMessage struct {
-	TaskID         int64               `json:"taskId"`
+	TaskID         flexTaskID          `json:"taskId"` // 兼容 JSON string 和 number 两种格式
 	TenantID       int64               `json:"tenantId"`
 	StoreID        int64               `json:"storeId"`
-	SourcePlatform string              `json:"sourcePlatform"` // 数据来源平台（爬虫平台，如 amazon、1688）
-	TargetPlatform string              `json:"targetPlatform"` // 目标上架平台（如 shein、temu）
+	SourcePlatform string              `json:"sourcePlatform"`
+	TargetPlatform string              `json:"targetPlatform"`
 	Region         string              `json:"region"`
 	CategoryID     int64               `json:"categoryId"`
 	ProductID      string              `json:"productId"`
@@ -37,6 +37,32 @@ type TaskMessage struct {
 	CreatedAt      *types.FlexibleTime `json:"createdAt"`
 	Remark         string              `json:"remark,omitempty"`
 	Status         string              `json:"status,omitempty"`
+}
+
+// flexTaskID 兼容 JSON 中 string 和 number 两种格式的任务ID
+// 分布式爬虫用 string（哈希值可能超出 int64），普通任务用 number
+type flexTaskID string
+
+func (f *flexTaskID) UnmarshalJSON(b []byte) error {
+	s := string(b)
+	// string 格式：去掉引号直接用
+	if len(s) >= 2 && s[0] == '"' {
+		*f = flexTaskID(s[1 : len(s)-1])
+		return nil
+	}
+	// number 格式：直接保留原始字符串表示
+	*f = flexTaskID(s)
+	return nil
+}
+
+func (f flexTaskID) Int64() int64 {
+	var n int64
+	fmt.Sscanf(string(f), "%d", &n)
+	return n
+}
+
+func (f flexTaskID) String() string {
+	return string(f)
 }
 
 // MessageAdapter 任务消息适配器，负责任务对象与消息格式之间的转换
@@ -86,7 +112,7 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 	}
 
 	task := &model.Task{
-		ID:             taskMsg.TaskID,
+		ID:             taskMsg.TaskID.Int64(),
 		TenantID:       taskMsg.TenantID,
 		StoreID:        taskMsg.StoreID,
 		Platform:       targetPlatform,
@@ -113,7 +139,7 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
 	}
 
 	taskMsg := &TaskMessage{
-		TaskID:         task.ID,
+		TaskID:         flexTaskID(fmt.Sprintf("%d", task.ID)),
 		TenantID:       task.TenantID,
 		StoreID:        task.StoreID,
 		SourcePlatform: task.SourcePlatform,

@@ -4,15 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
+
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
+	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/perf"
 	"task-processor/internal/product"
 	shein "task-processor/internal/shein"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -33,20 +35,15 @@ func NewVariantJsonDataHandler(
 	amazonProcessor product.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *VariantJsonDataHandler {
-	logger := logrus.WithField("handler", "VariantJsonDataHandler")
+	logger := coreLogger.GetGlobalLogger("VariantJsonDataHandler")
 
-	// 直接使用浏览器池大小作为并发数，确保资源利用最优
 	maxWorkers := 1
 
-	// 使用工厂模式创建获取器
 	factory := appProduct.NewFetcherFactory()
-
-	// 创建配置对象（用于工厂方法）
 	cfg := &config.Config{
 		Amazon: *amazonConfig,
 	}
 
-	// 根据配置创建获取器
 	var fetcher appProduct.ProductFetcher
 	var err error
 
@@ -54,13 +51,11 @@ func NewVariantJsonDataHandler(
 		fetcher, err = factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 		if err != nil {
 			logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
-			// 降级到本地获取器
 			fetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor)
 		}
 		logger.Info("[SHEIN] 变体数据使用共享的Amazon爬虫实例")
 	} else {
 		logger.Warn("变体数据处理器：没有提供Amazon处理器实例，Amazon功能将被禁用")
-		// 创建一个基础的获取器（仅支持缓存）
 		fetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, nil)
 	}
 
@@ -69,7 +64,7 @@ func NewVariantJsonDataHandler(
 		productFetcher: fetcher,
 		amazonConfig:   amazonConfig,
 		maxWorkers:     maxWorkers,
-		timeout:        2 * time.Minute, // 每个变体2分钟超时
+		timeout:        2 * time.Minute,
 	}
 }
 
@@ -80,22 +75,18 @@ func (h *VariantJsonDataHandler) Name() string {
 
 // Handle 执行获取所有变体的Json数据处理
 func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
-	// 创建性能跟踪器
 	tracker := perf.NewTracker("并行变体数据处理", h.logger)
 	defer tracker.Finish()
 
 	tracker.StartStep("初始化和验证")
 
-	// 检查任务上下文
 	if ctx.Task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	// 从上下文中获取所有变体ASIN列表
 	mainProductAsin := ctx.Task.ProductID
 	variantAsins := h.getAsinListFromContext(ctx, mainProductAsin)
 
-	// 如果没有变体（单品情况），初始化空列表并继续
 	if len(variantAsins) == 0 {
 		h.logger.Infof("✅ 产品 %s 没有变体（单品），跳过变体数据获取", mainProductAsin)
 		emptyVariants := make([]model.Product, 0)
@@ -106,7 +97,6 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 
 	h.logger.Infof("找到 %d 个变体ASIN（包含所有可售卖的SKU）", len(variantAsins))
 
-	// 检查变体数量限制
 	if len(variantAsins) > 100 {
 		h.logger.Warnf("变体ASIN数量过多（%d），可能会导致处理时间过长", len(variantAsins))
 		return shein.NewNonRetryableError("变体ASIN数量过多，停止处理", nil)
@@ -115,7 +105,6 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	tracker.EndStep()
 	tracker.StartStep("并行获取变体数据")
 
-	// 并行获取变体数据
 	variants, err := h.fetchVariantsParallel(ctx, variantAsins)
 	if err != nil {
 		h.logger.Errorf("并行获取变体数据失败: %v", err)
@@ -125,7 +114,6 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	tracker.EndStep()
 	tracker.StartStep("处理变体数据")
 
-	// 转换为 []model.Product 类型（去指针）
 	variantList := make([]model.Product, 0, len(variants))
 	for _, v := range variants {
 		if v != nil {
@@ -133,7 +121,6 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 		}
 	}
 
-	// 将变体数据存储到上下文中
 	ctx.Variants = &variantList
 
 	tracker.EndStep()
@@ -148,10 +135,8 @@ func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein.TaskContext, v
 		return nil, fmt.Errorf("任务信息为空")
 	}
 
-	// 创建并行处理器
 	processor := goroutine.NewProcessor(h.maxWorkers, h.timeout, h.logger)
 
-	// 创建处理任务
 	tasks := make([]*goroutine.Task, len(variantAsins))
 	for i, asin := range variantAsins {
 		tasks[i] = &goroutine.Task{
@@ -169,20 +154,16 @@ func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein.TaskContext, v
 		}
 	}
 
-	// 定义处理函数
 	processFunc := func(taskCtx context.Context, task *goroutine.Task) (any, error) {
 		req, ok := task.Data.(*product.FetchRequest)
 		if !ok {
 			return nil, fmt.Errorf("任务数据类型错误")
 		}
-
 		return h.productFetcher.FetchProduct(taskCtx, req)
 	}
 
-	// 并行执行处理
 	results := processor.ProcessParallel(context.Background(), tasks, processFunc)
 
-	// 处理结果
 	variants := make([]*model.Product, 0, len(results))
 	successCount := 0
 
@@ -204,13 +185,11 @@ func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein.TaskContext, v
 func (h *VariantJsonDataHandler) getAsinListFromContext(ctx *shein.TaskContext, mainProductAsin string) []string {
 	h.logger.Infof("🔍 [变体ASIN提取] 主产品ASIN: %s", mainProductAsin)
 
-	// 1. 从AsinSkuMap中获取
 	if len(ctx.AsinSkuMap) > 0 {
 		h.logger.Infof("🔍 [变体ASIN提取] 从AsinSkuMap获取，总数: %d", len(ctx.AsinSkuMap))
 		return h.getAsinListFromMap(ctx.AsinSkuMap, mainProductAsin)
 	}
 
-	// 2. 从Amazon产品的变体中获取
 	if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Variations) > 0 {
 		h.logger.Infof("🔍 [变体ASIN提取] 从Variations获取，总数: %d", len(ctx.AmazonProduct.Variations))
 		asins := make([]string, 0, len(ctx.AmazonProduct.Variations))
@@ -232,14 +211,12 @@ func (h *VariantJsonDataHandler) getAsinListFromMap(asinSkuMap map[string]string
 		return []string{}
 	}
 
-	// 创建ASIN列表，包含所有ASIN（包括主产品）
 	asinList := make([]string, 0, len(asinSkuMap))
 	mainProductCount := 0
 
 	for asin := range asinSkuMap {
 		asinList = append(asinList, asin)
 
-		// 统计主产品（仅用于日志）
 		normalizedAsin := strings.TrimSpace(strings.ToUpper(asin))
 		normalizedMainAsin := strings.TrimSpace(strings.ToUpper(mainProductAsin))
 		if normalizedAsin == normalizedMainAsin {
@@ -258,7 +235,7 @@ func (h *VariantJsonDataHandler) Shutdown() {
 	h.logger.Debug("[SHEIN] VariantJsonDataHandler 关闭")
 }
 
-// getVariantByAsinFromVariants 通过ASIN从Variants中获取变体
+// GetVariantByAsinFromVariants 通过ASIN从Variants中获取变体
 func GetVariantByAsinFromVariants(variants *[]model.Product, asin string) *model.Product {
 	if variants == nil {
 		return nil

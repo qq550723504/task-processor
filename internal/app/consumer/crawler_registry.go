@@ -4,6 +4,7 @@ package consumer
 import (
 	"fmt"
 
+	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
@@ -58,8 +59,8 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManage
 	// 创建任务提交器
 	taskSubmitter := NewTaskSubmitter(r.rabbitmqClient, r.logger)
 
-	// 创建 RabbitMQ 发布器适配器
-	rabbitmqPublisher := NewRabbitMQPublisherAdapter(r.rabbitmqClient, r.logger)
+	// 直接使用 RabbitMQAdapter，发原始 JSON 不包装
+	rabbitmqPublisher := distributed.NewRabbitMQAdapter(r.rabbitmqClient)
 
 	// 创建爬虫处理器
 	crawlerProcessor := processor.NewCrawlerProcessor(
@@ -95,8 +96,8 @@ func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) 
 	// 创建任务提交器
 	taskSubmitter := NewTaskSubmitter(r.rabbitmqClient, r.logger)
 
-	// 创建 RabbitMQ 发布器适配器
-	rabbitmqPublisher := NewRabbitMQPublisherAdapter(r.rabbitmqClient, r.logger)
+	// 直接使用 RabbitMQAdapter，发原始 JSON 不包装
+	rabbitmqPublisher := distributed.NewRabbitMQAdapter(r.rabbitmqClient)
 
 	// 创建爬虫处理器
 	crawlerProcessor := processor.NewCrawlerProcessor(
