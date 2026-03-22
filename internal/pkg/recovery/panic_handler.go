@@ -39,6 +39,10 @@ func (h *LoggerPanicHandler) HandlePanic(r any, context string) {
 // 用法: defer recovery.Recover("操作描述", logger)
 func Recover(context string, logger *logrus.Entry) {
 	if r := recover(); r != nil {
+		if logger == nil {
+			fmt.Printf("[PANIC] context=%s panic=%v\n", context, r)
+			return
+		}
 		logger.WithFields(logrus.Fields{
 			"panic":   r,
 			"context": context,
@@ -50,6 +54,10 @@ func Recover(context string, logger *logrus.Entry) {
 // 用法: defer recovery.RecoverWithStack("操作描述", logger)
 func RecoverWithStack(context string, logger *logrus.Entry) {
 	if r := recover(); r != nil {
+		if logger == nil {
+			fmt.Printf("[PANIC] context=%s panic=%v\nstack=%s\n", context, r, string(debug.Stack()))
+			return
+		}
 		logger.WithFields(logrus.Fields{
 			"panic":   r,
 			"context": context,

@@ -80,14 +80,17 @@ func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein.TaskContext) {
 		Status: model.TaskStatusDraft.Int16(),
 	}
 
+	// 提前捕获，避免 goroutine 内访问可能已变更的外部状态
+	taskLogger := s.logger.WithField("task_id", taskID)
+
 	// 异步更新状态
 	go func() {
-		defer recovery.Recover("更新任务状态", s.logger.WithField("task_id", ctx.Task.ID))
+		defer recovery.Recover("更新任务状态", taskLogger)
 
 		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-			s.logger.Errorf("更新任务状态为草稿箱失败 (TaskID: %d): %v", ctx.Task.ID, err)
+			taskLogger.Errorf("更新任务状态为草稿箱失败 (TaskID: %d): %v", taskID, err)
 		} else {
-			s.logger.Infof("✅ 任务状态已更新为草稿箱 (TaskID: %d)", ctx.Task.ID)
+			taskLogger.Infof("✅ 任务状态已更新为草稿箱 (TaskID: %d)", taskID)
 		}
 	}()
 }
