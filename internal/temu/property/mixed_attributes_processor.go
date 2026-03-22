@@ -1,4 +1,4 @@
-// Package property 提供混合属性处理功能
+﻿// Package property 提供混合属性处理功能
 package property
 
 import (
@@ -6,6 +6,7 @@ import (
 	"strings"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -17,7 +18,7 @@ type MixedAttributesProcessor struct {
 // NewMixedAttributesProcessor 创建混合属性处理器
 func NewMixedAttributesProcessor() *MixedAttributesProcessor {
 	return &MixedAttributesProcessor{
-		logger: logrus.WithField("service", "MixedAttributesProcessor"),
+		logger: logger.GetGlobalLogger("MixedAttributesProcessor"),
 	}
 }
 

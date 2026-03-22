@@ -1,11 +1,11 @@
-package management
+﻿package management
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"net/http"
 	"task-processor/internal/infra/clients/management/api"
 
-	"github.com/sirupsen/logrus"
 )
 
 // ImportTaskAPIClient 导入任务API客户端实现
@@ -47,7 +47,7 @@ func (m *ImportTaskAPIClient) GetPendingAndRetryTasks(limit int, userId int64, s
 	if tasksPtr, ok := result.Data.(*[]api.ProductImportTaskRespDTO); ok {
 		taskCount := len(*tasksPtr)
 		if taskCount == 0 {
-			logrus.Warnf("[GetPendingAndRetryTasks] 未获取到任何任务！请求参数: limit=%d, userId=%d, storeIds=%v",
+			logger.GetGlobalLogger("infra/clients").Warnf("[GetPendingAndRetryTasks] 未获取到任何任务！请求参数: limit=%d, userId=%d, storeIds=%v",
 				limit, userId, storeIds)
 		}
 		return *tasksPtr, nil

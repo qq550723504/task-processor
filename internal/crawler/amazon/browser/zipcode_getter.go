@@ -1,14 +1,14 @@
-// Package browser 提供Amazon浏览器自动化的邮编获取功能
+﻿// Package browser 提供Amazon浏览器自动化的邮编获取功能
 package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // ZipcodeGetter 邮编获取器
@@ -32,7 +32,7 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 		"#nav-global-location-slot",   // 导航栏位置槽
 	}
 
-	logrus.Infof("开始查找当前邮编或城市信息")
+	logger.GetGlobalLogger("crawler/amazon").Infof("开始查找当前邮编或城市信息")
 
 	// 优先从主要位置获取邮编
 	for _, selector := range zipDisplaySelectors {
@@ -50,19 +50,19 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 
 		text, err := locator.TextContent()
 		if err == nil && text != "" {
-			logrus.Infof("从选择器 %s 获取到文本: %s", selector, text)
+			logger.GetGlobalLogger("crawler/amazon").Infof("从选择器 %s 获取到文本: %s", selector, text)
 
 			// 先尝试提取邮编（通常是数字）
 			zipcode := ExtractZipcode(text)
 			if zipcode != "" {
-				logrus.Infof("成功提取邮编: %s", zipcode)
+				logger.GetGlobalLogger("crawler/amazon").Infof("成功提取邮编: %s", zipcode)
 				return zipcode, nil
 			}
 
 			// 如果没有提取到邮编,尝试提取城市名称(沙特等站点)
 			cityName := extractCityName(text)
 			if cityName != "" {
-				logrus.Infof("成功提取城市名称: %s", cityName)
+				logger.GetGlobalLogger("crawler/amazon").Infof("成功提取城市名称: %s", cityName)
 				return cityName, nil
 			}
 
@@ -70,7 +70,7 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 			// 直接返回文本内容（用于英国等站点的部分邮编显示）
 			// 但需要过滤掉已知的占位文字（如 "Update location"、"Deliver to" 等）
 			if len(text) > 0 && !isLocationPlaceholder(text) {
-				logrus.Infof("无法提取标准邮编格式，返回原始文本: %s", text)
+				logger.GetGlobalLogger("crawler/amazon").Infof("无法提取标准邮编格式，返回原始文本: %s", text)
 				return text, nil
 			}
 		}
@@ -116,7 +116,7 @@ func isLocationPlaceholder(text string) bool {
 	}
 	for _, p := range purePlaceholders {
 		if cleaned == p {
-			logrus.Infof("检测到位置占位符文字，跳过: %s", text)
+			logger.GetGlobalLogger("crawler/amazon").Infof("检测到位置占位符文字，跳过: %s", text)
 			return true
 		}
 	}

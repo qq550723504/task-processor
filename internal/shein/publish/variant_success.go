@@ -3,6 +3,8 @@ package publish
 
 import (
 	"fmt"
+
+	"task-processor/internal/core/logger"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
@@ -15,12 +17,15 @@ import (
 
 // MarkVariantPublishSuccessHandler 标记变体发布成功处理器
 type MarkVariantPublishSuccessHandler struct {
+	logger *logrus.Entry
 }
 
 // NewMarkVariantPublishSuccessHandler 创建新的标记变体发布成功处理器
 // 返回一个用于标记产品变体发布成功状态的处理器实例
 func NewMarkVariantPublishSuccessHandler() *MarkVariantPublishSuccessHandler {
-	return &MarkVariantPublishSuccessHandler{}
+	return &MarkVariantPublishSuccessHandler{
+		logger: logger.GetGlobalLogger("mark_variant_success"),
+	}
 }
 
 // Name 返回处理器名称
@@ -40,26 +45,26 @@ func (h *MarkVariantPublishSuccessHandler) Name() string {
 // 返回值:
 //   - error: 处理过程中的错误，如果为nil表示处理成功
 func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error {
-	logrus.Infof("=== 开始标记产品发布成功 ===")
+	h.logger.Info("=== 开始标记产品发布成功 ===")
 
 	// 检查必要的上下文字段
 	if ctx == nil {
-		logrus.Errorf("❌ TaskContext 为 nil")
+		h.logger.Error("❌ TaskContext 为 nil")
 		return fmt.Errorf("TaskContext 为 nil")
 	}
 
 	// 检查管理客户端是否可用
 	if ctx.ManagementClientMgr == nil {
-		logrus.Warn("管理客户端管理器未初始化，跳过状态更新")
+		h.logger.Warn("管理客户端管理器未初始化，跳过状态更新")
 		return nil
 	}
 
 	// 标记成功发布的变体
 	if ctx.Task != nil && ctx.SheinResponse != nil {
 		if len(ctx.SheinResponse.Info.PreValidResult) > 0 {
-			logrus.Warnf("发现 %d 个错误项", len(ctx.SheinResponse.Info.PreValidResult))
+			h.logger.Warnf("发现 %d 个错误项", len(ctx.SheinResponse.Info.PreValidResult))
 			for _, preValidResult := range ctx.SheinResponse.Info.PreValidResult {
-				logrus.Warnf("错误项: %+v", preValidResult)
+				h.logger.Warnf("错误项: %+v", preValidResult)
 			}
 			return nil
 		}
@@ -71,7 +76,7 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error 
 			}
 		}
 
-		logrus.Infof("📊 开始标记 %d 个 SKU 为已发布", len(skus))
+		h.logger.Infof("📊 开始标记 %d 个 SKU 为已发布", len(skus))
 		successCount := 0
 		failCount := 0
 
@@ -79,20 +84,20 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error 
 			// 使用GetAsinBySku函数从AsinSkuMap中反向查找原始ASIN
 			if asin := product.GetAsinBySku(ctx, sku); asin != "" {
 				if err := h.markVariantPublished(ctx, asin, sku); err != nil {
-					logrus.Errorf("标记变体发布成功失败 (ASIN: %s, SKU: %s): %v", asin, sku, err)
+					h.logger.Errorf("标记变体发布成功失败 (ASIN: %s, SKU: %s): %v", asin, sku, err)
 					failCount++
 				} else {
 					successCount++
 				}
 			} else {
-				logrus.Warnf("⚠️ 未找到SKU %s 对应的ASIN", sku)
+				h.logger.Warnf("⚠️ 未找到SKU %s 对应的ASIN", sku)
 				failCount++
 			}
 		}
 
-		logrus.Infof("📊 标记完成: 成功 %d 个, 失败 %d 个, 总计 %d 个", successCount, failCount, len(skus))
+		h.logger.Infof("📊 标记完成: 成功 %d 个, 失败 %d 个, 总计 %d 个", successCount, failCount, len(skus))
 	} else {
-		logrus.Warnf("⚠️ 任务信息或Shein响应不可用，无法标记任务完成")
+		h.logger.Warn("⚠️ 任务信息或Shein响应不可用，无法标记任务完成")
 	}
 
 	// 处理被筛选掉的变体
@@ -101,7 +106,7 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error 
 			filterInfo := ctx.GetVariantFilterInfo(variant.Asin)
 			if filterInfo != nil && filterInfo.FilteredOut {
 				if err := h.markVariantFailed(ctx, variant.Asin, filterInfo.FilterReason); err != nil {
-					logrus.Errorf("标记变体失败失败 (ASIN: %s): %v", variant.Asin, err)
+					h.logger.Errorf("标记变体失败失败 (ASIN: %s): %v", variant.Asin, err)
 				}
 			}
 		}
@@ -186,21 +191,21 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *shein.TaskC
 	// 调用API创建产品导入映射关系
 	id, err := mappingClient.CreateProductImportMapping(createReq)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
+		h.logger.WithFields(logrus.Fields{
 			"asin":                       asin,
 			"sku":                        sku,
 			"platform_parent_product_id": createReq.PlatformParentProductId,
 			"error":                      err.Error(),
-		}).Errorf("❌ 创建产品导入映射关系失败")
+		}).Error("❌ 创建产品导入映射关系失败")
 		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
 	}
 
-	logrus.WithFields(logrus.Fields{
+	h.logger.WithFields(logrus.Fields{
 		"id":                         id,
 		"asin":                       asin,
 		"sku":                        sku,
 		"platform_parent_product_id": createReq.PlatformParentProductId,
-	}).Infof("✅ 成功标记变体为已发布")
+	}).Info("✅ 成功标记变体为已发布")
 	return nil
 }
 
@@ -259,6 +264,6 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *shein.TaskCont
 		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
 	}
 
-	logrus.Infof("❌ 成功标记变体为失败 (ID: %d, ASIN: %s, Reason: %s)", id, asin, reason)
+	h.logger.Infof("❌ 成功标记变体为失败 (ID: %d, ASIN: %s, Reason: %s)", id, asin, reason)
 	return nil
 }

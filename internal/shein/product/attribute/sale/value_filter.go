@@ -1,12 +1,12 @@
-// Package sale 提供SHEIN平台销售属性值筛选功能
+﻿// Package sale 提供SHEIN平台销售属性值筛选功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeValueFilter 销售属性值筛选器，负责根据实际变体使用情况筛选属性值
@@ -31,7 +31,7 @@ func (f *SaleAttributeValueFilter) FilterAttributeValuesByUsage(
 	attributeName string,
 ) []shein.GenerateAttributeValue {
 	if len(actualValues) == 0 {
-		logrus.Debugf("属性 %s 没有实际使用值，保留前5个候选值", attributeName)
+		logger.GetGlobalLogger("shein/product").Debugf("属性 %s 没有实际使用值，保留前5个候选值", attributeName)
 		if len(candidateValues) > 5 {
 			return candidateValues[:5]
 		}
@@ -56,14 +56,14 @@ func (f *SaleAttributeValueFilter) FilterAttributeValuesByUsage(
 
 	// 如果没有找到匹配的值，保留前3个候选值作为备选
 	if len(filteredValues) == 0 {
-		logrus.Warnf("属性 %s 没有找到匹配的候选值，保留前3个作为备选", attributeName)
+		logger.GetGlobalLogger("shein/product").Warnf("属性 %s 没有找到匹配的候选值，保留前3个作为备选", attributeName)
 		if len(candidateValues) > 3 {
 			return candidateValues[:3]
 		}
 		return candidateValues
 	}
 
-	logrus.Infof("属性 %s 筛选结果：从 %d 个候选值筛选出 %d 个实际使用值",
+	logger.GetGlobalLogger("shein/product").Infof("属性 %s 筛选结果：从 %d 个候选值筛选出 %d 个实际使用值",
 		attributeName, len(candidateValues), len(filteredValues))
 
 	return filteredValues

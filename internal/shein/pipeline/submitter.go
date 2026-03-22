@@ -1,12 +1,12 @@
-package pipeline
+﻿package pipeline
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/jsonx"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SheinTaskSubmitter SHEIN任务提交器（适配器）
@@ -46,7 +46,7 @@ func (s *SheinTaskSubmitter) SubmitTask(ctx context.Context, taskData string) er
 		return err
 	}
 
-	logrus.Infof("[SHEIN] ✅ 任务已提交到工作池")
+	logger.GetGlobalLogger("shein/pipeline").Infof("[SHEIN] ✅ 任务已提交到工作池")
 	return nil
 }
 

@@ -1,11 +1,11 @@
-package attribute
+﻿package attribute
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // AttributeTemplateHandler 属性模板处理器
@@ -30,7 +30,7 @@ func (h *AttributeTemplateHandler) Handle(ctx *shein.TaskContext) error {
 		return fmt.Errorf("分类ID未设置，请先执行AI分类选择步骤")
 	}
 
-	logrus.Debugf("开始获取属性模板，分类ID: %d", categoryID)
+	logger.GetGlobalLogger("shein/product").Debugf("开始获取属性模板，分类ID: %d", categoryID)
 
 	// 调用API获取属性模板
 	attributeTemplates, err := ctx.AttributeAPI.GetAttributeTemplates(categoryID)
@@ -38,7 +38,7 @@ func (h *AttributeTemplateHandler) Handle(ctx *shein.TaskContext) error {
 		return fmt.Errorf("获取属性模板失败: %w", err)
 	}
 
-	logrus.Infof("成功获取属性模板，模板数量: %d\n", len(attributeTemplates.Data))
+	logger.GetGlobalLogger("shein/product").Infof("成功获取属性模板，模板数量: %d\n", len(attributeTemplates.Data))
 
 	// 将属性模板信息存储到上下文中
 	ctx.AttributeTemplates = attributeTemplates
@@ -49,12 +49,12 @@ func (h *AttributeTemplateHandler) Handle(ctx *shein.TaskContext) error {
 	// 	if jsonData, jsonErr := h.marshalWithoutHTMLEscape(attributeTemplates); jsonErr == nil {
 	// 		filename := fmt.Sprintf("%s_%s_attribute_templates.json", ctx.Task.ProductID, taskID)
 	// 		if saveErr := h.saveJSONToFileWithName(filename, jsonData); saveErr != nil {
-	// 			logrus.Errorf("保存属性模板JSON文件失败: %v", saveErr)
+	// 			logger.GetGlobalLogger("shein/product").Errorf("保存属性模板JSON文件失败: %v", saveErr)
 	// 		} else {
-	// 			logrus.Infof("📄 属性模板数据已保存: %s", filename)
+	// 			logger.GetGlobalLogger("shein/product").Infof("📄 属性模板数据已保存: %s", filename)
 	// 		}
 	// 	} else {
-	// 		logrus.Errorf("序列化属性模板数据失败: %v", jsonErr)
+	// 		logger.GetGlobalLogger("shein/product").Errorf("序列化属性模板数据失败: %v", jsonErr)
 	// 	}
 	// }
 
@@ -71,6 +71,6 @@ func (h *AttributeTemplateHandler) saveJSONToFileWithName(filename string, jsonD
 	if err := jsonx.SaveToFile(filename, jsonData); err != nil {
 		return err
 	}
-	logrus.Infof("JSON数据已保存到文件: logs/%s", filename)
+	logger.GetGlobalLogger("shein/product").Infof("JSON数据已保存到文件: logs/%s", filename)
 	return nil
 }

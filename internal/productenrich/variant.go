@@ -1,7 +1,8 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -43,7 +44,7 @@ func (v *variantGenerator) GenerateSpecs(ctx context.Context, analysis *ProductA
 		return nil, fmt.Errorf("analysis cannot be nil")
 	}
 
-	logrus.Info("generating product specifications")
+	logger.GetGlobalLogger("productenrich/variant.go").Info("generating product specifications")
 
 	// 构建提示词
 	prompt := "Extract product specifications from the following information:\n\n"
@@ -115,7 +116,7 @@ func (v *variantGenerator) GenerateVariants(ctx context.Context, analysis *Produ
 		return nil, fmt.Errorf("analysis cannot be nil")
 	}
 
-	logrus.Info("generating product variants")
+	logger.GetGlobalLogger("productenrich/variant.go").Info("generating product variants")
 
 	// 构建提示词
 	prompt := "Identify product variants (SKUs) based on the following information:\n\n"
@@ -202,7 +203,7 @@ func (v *variantGenerator) ExtractDimensions(ctx context.Context, text string) (
 		return nil, fmt.Errorf("text cannot be empty")
 	}
 
-	logrus.Info("extracting dimensions")
+	logger.GetGlobalLogger("productenrich/variant.go").Info("extracting dimensions")
 
 	prompt := fmt.Sprintf(`Extract product dimensions from the following text:
 
@@ -232,7 +233,7 @@ func (v *variantGenerator) ExtractWeight(ctx context.Context, text string) (*Wei
 		return nil, fmt.Errorf("text cannot be empty")
 	}
 
-	logrus.Info("extracting weight")
+	logger.GetGlobalLogger("productenrich/variant.go").Info("extracting weight")
 
 	prompt := fmt.Sprintf(`Extract product weight from the following text:
 

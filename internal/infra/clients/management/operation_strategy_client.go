@@ -1,6 +1,7 @@
-package management
+﻿package management
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"net/http"
 
@@ -32,13 +33,13 @@ func (c *OperationStrategyClient) GetOperationStrategyByStoreId(storeId int64) (
 	}
 
 	if result.Data == nil {
-		logrus.Debug("店铺未配置运营策略")
+		logger.GetGlobalLogger("infra/clients").Debug("店铺未配置运营策略")
 		return nil, nil
 	}
 
 	strategy, ok := result.Data.(*api.OperationStrategyDTO)
 	if !ok {
-		logrus.Error("运营策略数据类型转换失败")
+		logger.GetGlobalLogger("infra/clients").Error("运营策略数据类型转换失败")
 		return nil, nil
 	}
 

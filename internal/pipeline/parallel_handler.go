@@ -1,4 +1,4 @@
-// Package pipeline 管道并行处理器
+﻿// Package pipeline 管道并行处理器
 package pipeline
 
 import (
@@ -6,6 +6,7 @@ import (
 	"sync"
 	"task-processor/internal/pkg/recovery"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,7 +22,7 @@ func NewParallelHandler(name string, handlers ...Handler) *ParallelHandler {
 	return &ParallelHandler{
 		name:     name,
 		handlers: handlers,
-		logger:   logrus.WithField("handler", "ParallelHandler"),
+		logger:   logger.GetGlobalLogger("ParallelHandler"),
 	}
 }
 

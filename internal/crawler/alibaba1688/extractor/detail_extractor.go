@@ -1,12 +1,12 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // DetailExtractor 商品详情提取器
@@ -19,7 +19,7 @@ func NewDetailExtractor() *DetailExtractor {
 
 // Extract 提取商品详情信息 - 支持两种数据结构
 func (de *DetailExtractor) Extract(page playwright.Page, product *model.Product1688) error {
-	logrus.Debug("开始提取商品详情信息")
+	logger.GetGlobalLogger("crawler/alibaba1688").Debug("开始提取商品详情信息")
 
 	// 从结构化数据中获取详情信息，支持两种数据结构
 	detailResult, err := page.Evaluate(`() => {
@@ -117,7 +117,7 @@ func (de *DetailExtractor) Extract(page playwright.Page, product *model.Product1
 	}`, nil)
 
 	if err != nil {
-		logrus.Debugf("提取商品详情失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取商品详情失败: %v", err)
 		return err
 	}
 
@@ -156,7 +156,7 @@ func (de *DetailExtractor) Extract(page playwright.Page, product *model.Product1
 
 				if len(videoList) > 0 {
 					product.Videos = videoList
-					logrus.Debugf("提取到 %d 个商品视频", len(videoList))
+					logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取到 %d 个商品视频", len(videoList))
 				}
 			}
 
@@ -193,12 +193,12 @@ func (de *DetailExtractor) Extract(page playwright.Page, product *model.Product1
 						Content: fmt.Sprintf("包含 %d 张详情图片", len(imageUrls)),
 						Images:  imageUrls,
 					})
-					logrus.Debugf("提取到 %d 张详情图片", len(imageUrls))
+					logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取到 %d 张详情图片", len(imageUrls))
 				}
 			}
 
 			product.ProductDetails = productDetails
-			logrus.Debugf("商品详情提取完成，共 %d 个部分", len(productDetails))
+			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("商品详情提取完成，共 %d 个部分", len(productDetails))
 		}
 	}
 

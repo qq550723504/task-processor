@@ -1,7 +1,8 @@
-// Package extractor 提供Amazon价格验证功能
+﻿// Package extractor 提供Amazon价格验证功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
@@ -42,7 +43,7 @@ func (v *PriceValidator) HasValidPrice(page playwright.Page) bool {
 			if err == nil && text != "" {
 				// 检查各种货币符号和代码
 				if v.containsCurrencySymbol(text) {
-					logrus.Infof("找到有效价格: %s", strings.TrimSpace(text))
+					logger.GetGlobalLogger("crawler/amazon").Infof("找到有效价格: %s", strings.TrimSpace(text))
 					return true
 				}
 			}
@@ -64,14 +65,14 @@ func (v *PriceValidator) HasValidPrice(page playwright.Page) bool {
 				if strings.Contains(lowerText, "unavailable") ||
 					strings.Contains(lowerText, "out of stock") ||
 					strings.Contains(lowerText, "currently unavailable") {
-					logrus.Infof("产品不可用: %s", text)
+					logger.GetGlobalLogger("crawler/amazon").Infof("产品不可用: %s", text)
 					return false
 				}
 			}
 		}
 	}
 
-	logrus.Info("未找到有效价格")
+	logger.GetGlobalLogger("crawler/amazon").Info("未找到有效价格")
 	return false
 }
 
@@ -101,7 +102,7 @@ func (v *PriceValidator) IsUnavailableText(availabilityText string) bool {
 
 	for _, keyword := range unavailableKeywords {
 		if strings.Contains(lowerText, keyword) {
-			logrus.WithFields(logrus.Fields{
+			logger.GetGlobalLogger("crawler/amazon").WithFields(logrus.Fields{
 				"availability": availabilityText,
 				"keyword":      keyword,
 			}).Info("❌ isUnavailableText 匹配到不可用关键词")
@@ -109,7 +110,7 @@ func (v *PriceValidator) IsUnavailableText(availabilityText string) bool {
 		}
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("crawler/amazon").WithFields(logrus.Fields{
 		"availability": availabilityText,
 	}).Debug("✅ isUnavailableText 未匹配到不可用关键词")
 	return false

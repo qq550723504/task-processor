@@ -1,13 +1,13 @@
-package category
+﻿package category
 
 import (
+	"task-processor/internal/core/logger"
 	"regexp"
 	"strconv"
 
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // CollectCategoryRestrictionsHandler 错误时收集分类限制及敏感词处理器
@@ -29,19 +29,19 @@ func (h *CollectCategoryRestrictionsHandler) Handle(ctx *shein.TaskContext) erro
 
 	// 收集分类限制信息
 	if err := h.collectCategoryRestrictions(ctx); err != nil {
-		logrus.Warnf("收集分类限制信息时出错: %v", err)
+		logger.GetGlobalLogger("shein/category").Warnf("收集分类限制信息时出错: %v", err)
 		// 收集分类限制信息失败，但不影响主流程，记录警告日志即可
 	}
 
 	// 检查是否真的存在主规格相关的错误
 	hasMainSpecError := h.hasMainSpecificationError(ctx)
 	if hasMainSpecError {
-		logrus.Warnf("检测到主规格配置错误，终止处理流程")
+		logger.GetGlobalLogger("shein/category").Warnf("检测到主规格配置错误，终止处理流程")
 		return shein.NewNonRetryableError("主规格错误", nil)
 	}
 
 	// 如果没有主规格错误，处理成功
-	logrus.Info("分类限制信息收集完成，无主规格错误")
+	logger.GetGlobalLogger("shein/category").Info("分类限制信息收集完成，无主规格错误")
 	return nil
 }
 
@@ -71,7 +71,7 @@ func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *sh
 
 	// 如果没有规格配置错误信息，则直接返回
 	if len(errorResults) == 0 {
-		logrus.Info("没有检测到规格配置错误信息")
+		logger.GetGlobalLogger("shein/category").Info("没有检测到规格配置错误信息")
 		return nil
 	}
 
@@ -98,11 +98,11 @@ func (h *CollectCategoryRestrictionsHandler) collectCategoryRestrictions(ctx *sh
 			// 调用API提交品类限制集合
 			id, err := categoryRestrictionClient.CreateCategoryRestrictionCollections(req)
 			if err != nil {
-				logrus.Warnf("提交分类限制错误失败: %v", err)
+				logger.GetGlobalLogger("shein/category").Warnf("提交分类限制错误失败: %v", err)
 				// 提交分类限制错误失败可能是网络或系统问题，可重试
 				return shein.NewRetryableError("提交分类限制错误失败", err)
 			} else {
-				logrus.Infof("成功提交分类限制错误到管理系统，ID: %d", id)
+				logger.GetGlobalLogger("shein/category").Infof("成功提交分类限制错误到管理系统，ID: %d", id)
 			}
 		}
 	}
@@ -157,7 +157,7 @@ func (h *CollectCategoryRestrictionsHandler) parseSpecificationError(ctx *shein.
 
 	if forbiddenAttrID == 0 {
 		if len(ctx.ProductData.SKCList) == 0 {
-			logrus.Warnf("没有找到主规格信息")
+			logger.GetGlobalLogger("shein/category").Warnf("没有找到主规格信息")
 			return 0, "", 0, ""
 		}
 		forbiddenAttrID = ctx.ProductData.SKCList[0].SaleAttribute.AttributeID
@@ -173,19 +173,19 @@ func (h *CollectCategoryRestrictionsHandler) hasMainSpecificationError(ctx *shei
 
 	// 如果没有规格配置错误信息，则没有主规格错误
 	if len(errorResults) == 0 {
-		logrus.Debug("没有检测到规格配置错误信息")
+		logger.GetGlobalLogger("shein/category").Debug("没有检测到规格配置错误信息")
 		return false
 	}
 
 	// 检查是否存在主规格相关的错误
 	for _, result := range errorResults {
 		if result.Module == "specification_info" && result.Form == "main_specification" {
-			logrus.Warnf("发现主规格配置错误: Module=%s, Form=%s, Messages=%v",
+			logger.GetGlobalLogger("shein/category").Warnf("发现主规格配置错误: Module=%s, Form=%s, Messages=%v",
 				result.Module, result.Form, result.Messages)
 			return true
 		}
 	}
 
-	logrus.Debug("没有发现主规格相关的错误")
+	logger.GetGlobalLogger("shein/category").Debug("没有发现主规格相关的错误")
 	return false
 }

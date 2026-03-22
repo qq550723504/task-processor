@@ -1,11 +1,11 @@
-package variations
+﻿package variations
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 	"strings"
 
-	"github.com/sirupsen/logrus"
 )
 
 // Mapper 属性映射器
@@ -29,7 +29,7 @@ func (m *Mapper) MapAttributeNames(attributes map[string]any) map[string]any {
 		if mappedName, exists := m.config.AttributeMapping[key]; exists {
 			finalKey = mappedName
 			if m.config.EnableDebugLogging {
-				logrus.Infof("Mapped attribute: %s -> %s", key, finalKey)
+				logger.GetGlobalLogger("crawler/amazon").Infof("Mapped attribute: %s -> %s", key, finalKey)
 			}
 		} else if m.config.EnableSmartInference {
 			// 如果启用了智能推断，尝试基于值推断属性类型
@@ -39,7 +39,7 @@ func (m *Mapper) MapAttributeNames(attributes map[string]any) map[string]any {
 			if strings.HasPrefix(key, "attribute_") || strings.HasPrefix(key, "variant_") {
 				finalKey = inferredType
 				if m.config.EnableDebugLogging {
-					logrus.Infof("Inferred attribute type: %s -> %s (value: %v)", key, finalKey, value)
+					logger.GetGlobalLogger("crawler/amazon").Infof("Inferred attribute type: %s -> %s (value: %v)", key, finalKey, value)
 				}
 			} else {
 				// 对于其他键名，保持原样

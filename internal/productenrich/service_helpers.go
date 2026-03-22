@@ -1,4 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -6,20 +6,21 @@ import (
 	"fmt"
 	"strings"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
 // parseInput 解析输入
 func (s *productService) parseInput(ctx context.Context, task *Task) (*ParsedInput, error) {
-	logrus.WithField("task_id", task.ID).Info("step 1: parsing input")
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Info("step 1: parsing input")
 
 	if s.inputParser != nil {
 		parsedInput, err := s.inputParser.ParseInput(ctx, task.Request)
 		if err != nil {
-			logrus.WithField("task_id", task.ID).WithError(err).Error("failed to parse input")
+			logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(err).Error("failed to parse input")
 			return nil, fmt.Errorf("failed to parse input: %w", err)
 		}
-		logrus.WithFields(logrus.Fields{
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithFields(logrus.Fields{
 			"task_id":     task.ID,
 			"images":      len(parsedInput.Images),
 			"text_length": len(parsedInput.Text),
@@ -28,7 +29,7 @@ func (s *productService) parseInput(ctx context.Context, task *Task) (*ParsedInp
 	}
 
 	// 如果没有 InputParser，创建一个简单的 ParsedInput
-	logrus.WithField("task_id", task.ID).Warn("input parser not configured, using simple parsing")
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Warn("input parser not configured, using simple parsing")
 	return &ParsedInput{
 		Images: task.Request.ImageURLs,
 		Text:   task.Request.Text,
@@ -38,18 +39,18 @@ func (s *productService) parseInput(ctx context.Context, task *Task) (*ParsedInp
 // validateAndSelectStrategy 验证输入并选择策略
 func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Task, parsedInput *ParsedInput) (ProcessingStrategy, error) {
 	if s.inputValidator == nil || s.qualityScorer == nil || s.strategySelector == nil {
-		logrus.WithField("task_id", task.ID).Warn("validation components not configured, using full strategy")
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Warn("validation components not configured, using full strategy")
 		return StrategyFull, nil
 	}
 
-	logrus.WithField("task_id", task.ID).Info("step 2: validating input data")
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Info("step 2: validating input data")
 
 	// 验证输入
 	validationResult, err := s.inputValidator.Validate(ctx, parsedInput)
 	if err != nil {
-		logrus.WithField("task_id", task.ID).WithError(err).Error("failed to validate input")
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(err).Error("failed to validate input")
 		if dbErr := s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("input validation failed: %v", err)); dbErr != nil {
-			logrus.WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist task error")
+			logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist task error")
 		}
 		return "", fmt.Errorf("failed to validate input: %w", err)
 	}
@@ -57,14 +58,14 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 	// 计算质量评分
 	qualityScore, err := s.qualityScorer.CalculateScore(ctx, validationResult)
 	if err != nil {
-		logrus.WithField("task_id", task.ID).WithError(err).Error("failed to calculate quality score")
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(err).Error("failed to calculate quality score")
 		if dbErr := s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("quality scoring failed: %v", err)); dbErr != nil {
-			logrus.WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist task error")
+			logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist task error")
 		}
 		return "", fmt.Errorf("failed to calculate quality score: %w", err)
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithFields(logrus.Fields{
 		"task_id":     task.ID,
 		"score":       qualityScore,
 		"image_score": validationResult.ImageScore,
@@ -74,14 +75,14 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 	// 选择处理策略
 	strategy, err := s.strategySelector.SelectStrategy(ctx, qualityScore)
 	if err != nil {
-		logrus.WithField("task_id", task.ID).WithError(err).Error("failed to select strategy")
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(err).Error("failed to select strategy")
 		if dbErr := s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("strategy selection failed: %v", err)); dbErr != nil {
-			logrus.WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist task error")
+			logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist task error")
 		}
 		return "", fmt.Errorf("failed to select strategy: %w", err)
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithFields(logrus.Fields{
 		"task_id":  task.ID,
 		"strategy": string(strategy),
 	}).Info("processing strategy selected")
@@ -100,7 +101,7 @@ func (s *productService) handleRejection(ctx context.Context, task *Task, valida
 	if s.enhancementSuggester != nil {
 		suggestion, err := s.enhancementSuggester.GenerateSuggestions(ctx, validationResult)
 		if err != nil {
-			logrus.WithField("task_id", task.ID).WithError(err).Error("failed to generate suggestions")
+			logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(err).Error("failed to generate suggestions")
 		} else {
 			errorMsg = s.buildRejectionMessage(validationResult, suggestion)
 		}
@@ -109,27 +110,27 @@ func (s *productService) handleRejection(ctx context.Context, task *Task, valida
 		errorMsg = fmt.Sprintf("数据质量不足（评分: %.2f），无法生成产品信息", validationResult.QualityScore)
 	}
 	if dbErr := s.taskRepo.UpdateTaskError(ctx, task.ID, errorMsg); dbErr != nil {
-		logrus.WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist rejection error")
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(dbErr).Error("failed to persist rejection error")
 	}
 	return "", &errNoRetry{cause: fmt.Errorf("%s", errorMsg)}
 }
 
 // analyzeProduct 分析产品
 func (s *productService) analyzeProduct(ctx context.Context, task *Task, parsedInput *ParsedInput) (*ProductAnalysis, error) {
-	logrus.WithField("task_id", task.ID).Info("step 3: analyzing product")
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Info("step 3: analyzing product")
 
 	if s.productUnderstanding != nil {
 		analysis, err := s.productUnderstanding.AnalyzeProduct(ctx, parsedInput)
 		if err != nil {
-			logrus.WithField("task_id", task.ID).WithError(err).Error("failed to analyze product")
+			logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(err).Error("failed to analyze product")
 			return nil, fmt.Errorf("failed to analyze product: %w", err)
 		}
-		logrus.WithField("task_id", task.ID).Info("product analyzed successfully")
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Info("product analyzed successfully")
 		return analysis, nil
 	}
 
 	// 如果没有 ProductUnderstanding，创建一个简单的分析结果
-	logrus.WithField("task_id", task.ID).Warn("product understanding not configured, using simple analysis")
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Warn("product understanding not configured, using simple analysis")
 	return &ProductAnalysis{
 		Representation: &ProductRepresentation{
 			ProductType: "Unknown Product",
@@ -141,7 +142,7 @@ func (s *productService) analyzeProduct(ctx context.Context, task *Task, parsedI
 
 // generateProductJSON 生成产品 JSON
 func (s *productService) generateProductJSON(ctx context.Context, task *Task, analysis *ProductAnalysis, strategy ProcessingStrategy) (*ProductJSON, error) {
-	logrus.WithField("task_id", task.ID).Info("step 4: generating product JSON")
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Info("step 4: generating product JSON")
 
 	// 根据策略控制生成范围：
 	//   full    → 规格 + 变体
@@ -159,15 +160,15 @@ func (s *productService) generateProductJSON(ctx context.Context, task *Task, an
 	if s.jsonGenerator != nil {
 		productJSON, err := s.jsonGenerator.GenerateJSON(ctx, analysis, variantGen, skipVariants)
 		if err != nil {
-			logrus.WithField("task_id", task.ID).WithError(err).Error("failed to generate JSON")
+			logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(err).Error("failed to generate JSON")
 			return nil, fmt.Errorf("failed to generate JSON: %w", err)
 		}
-		logrus.WithField("task_id", task.ID).Info("product JSON generated successfully")
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Info("product JSON generated successfully")
 		return productJSON, nil
 	}
 
 	// 如果没有 JSONGenerator，创建一个简单的结果
-	logrus.WithField("task_id", task.ID).Warn("JSON generator not configured, using simple generation")
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Warn("JSON generator not configured, using simple generation")
 	return &ProductJSON{
 		Title:         "Sample Product",
 		Category:      []string{"General", "Product"},
@@ -185,14 +186,14 @@ func (s *productService) validateResult(ctx context.Context, task *Task, parsedI
 		return nil
 	}
 
-	logrus.WithField("task_id", task.ID).Info("step 5: validating result")
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).Info("step 5: validating result")
 	resultValidation, err := s.resultValidator.ValidateResult(ctx, parsedInput, productJSON)
 	if err != nil {
-		logrus.WithField("task_id", task.ID).WithError(err).Error("failed to validate result")
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID).WithError(err).Error("failed to validate result")
 		return fmt.Errorf("result validation error: %w", err)
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/service_helpers.go").WithFields(logrus.Fields{
 		"task_id":      task.ID,
 		"is_valid":     resultValidation.IsValid,
 		"issues_count": len(resultValidation.Issues),
@@ -200,7 +201,7 @@ func (s *productService) validateResult(ctx context.Context, task *Task, parsedI
 
 	// 记录所有验证问题
 	for _, issue := range resultValidation.Issues {
-		logrus.WithFields(logrus.Fields{
+		logger.GetGlobalLogger("productenrich/service_helpers.go").WithFields(logrus.Fields{
 			"task_id":  task.ID,
 			"field":    issue.Field,
 			"severity": issue.Severity,

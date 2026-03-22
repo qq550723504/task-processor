@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"task-processor/internal/core/logger"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/ptr"
@@ -19,12 +20,15 @@ import (
 
 // SavePublishResultHandler 保存发品成功后返回信息处理器
 type SavePublishResultHandler struct {
+	logger *logrus.Entry
 }
 
 // NewSavePublishResultHandler 创建新的保存发品成功后返回信息处理器
 // 返回一个用于保存发布结果信息的处理器实例
 func NewSavePublishResultHandler() *SavePublishResultHandler {
-	return &SavePublishResultHandler{}
+	return &SavePublishResultHandler{
+		logger: logger.GetGlobalLogger("save_publish_result"),
+	}
 }
 
 // Name 返回处理器名称
@@ -53,7 +57,7 @@ func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 	// 创建产品导入映射关系
 	if err := h.createProductImportMapping(ctx); err != nil {
 		// 创建映射关系失败可能是网络或系统问题，可重试
-		logrus.Warnf("创建产品导入映射关系失败%v", err)
+		h.logger.Warnf("创建产品导入映射关系失败%v", err)
 	}
 
 	// 记录每日上架成功数量并检查限额
@@ -62,7 +66,7 @@ func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 	// 更新任务状态为已上架
 	updateTaskStatusToPublished(ctx)
 
-	logrus.Println("发品成功后返回信息保存完成")
+	h.logger.Info("发品成功后返回信息保存完成")
 
 	return nil
 }
@@ -99,7 +103,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 			for _, sku := range skc.SKUList {
 				// 检查是否已处理过该SupplierSKU
 				if processedSkus[sku.SupplierSKU] {
-					logrus.Debugf("SKU %s 已处理，跳过重复创建", sku.SupplierSKU)
+					h.logger.Debugf("SKU %s 已处理，跳过重复创建", sku.SupplierSKU)
 					continue
 				}
 				processedSkus[sku.SupplierSKU] = true
@@ -133,10 +137,10 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 				if !foundAsin || createReq.ProductId == "" {
 					if ctx.Task != nil && ctx.Task.ProductID != "" {
 						createReq.ProductId = ctx.Task.ProductID
-						logrus.Warnf("SKU %s 在AsinSkuMap中未找到对应ASIN，使用任务ProductID: %s",
+						h.logger.Warnf("SKU %s 在AsinSkuMap中未找到对应ASIN，使用任务ProductID: %s",
 							sku.SupplierSKU, ctx.Task.ProductID)
 					} else {
-						logrus.Errorf("SKU %s 未找到对应的ASIN且任务ProductID为空，跳过创建映射关系", sku.SupplierSKU)
+						h.logger.Errorf("SKU %s 未找到对应的ASIN且任务ProductID为空，跳过创建映射关系", sku.SupplierSKU)
 						continue
 					}
 				}
@@ -189,32 +193,32 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 				)
 
 				if err != nil {
-					logrus.Warnf("查询已存在的映射关系失败 (SKU: %s): %v，尝试创建新记录", sku.SupplierSKU, err)
+					h.logger.Warnf("查询已存在的映射关系失败 (SKU: %s): %v，尝试创建新记录", sku.SupplierSKU, err)
 				}
 
 				var id int64
 				if existingMapping != nil && existingMapping.ID > 0 {
 					// 已存在记录，更新而不是插入
-					logrus.Infof("检测到已存在的映射关系 (ID: %d, SKU: %s)，执行更新操作",
+					h.logger.Infof("检测到已存在的映射关系 (ID: %d, SKU: %s)，执行更新操作",
 						existingMapping.ID, sku.SupplierSKU)
 
 					createReq.ID = &existingMapping.ID
 					updateErr := mappingClient.UpdateProductImportMapping(createReq)
 					if updateErr != nil {
-						logrus.Errorf("更新产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, updateErr)
+						h.logger.Errorf("更新产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, updateErr)
 						continue
 					}
 					id = existingMapping.ID
-					logrus.Infof("✅ 成功更新产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s",
+					h.logger.Infof("✅ 成功更新产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s",
 						id, sku.SupplierSKU, sku.SKUCode)
 				} else {
 					// 不存在记录，创建新记录
 					id, err = mappingClient.CreateProductImportMapping(createReq)
 					if err != nil {
-						logrus.Errorf("创建产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, err)
+						h.logger.Errorf("创建产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, err)
 						continue
 					}
-					logrus.Infof("✅ 成功创建产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s",
+					h.logger.Infof("✅ 成功创建产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s",
 						id, sku.SupplierSKU, sku.SKUCode)
 				}
 
@@ -223,7 +227,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 		}
 	}
 
-	logrus.Printf("成功创建 %d 个产品导入映射关系", createdCount)
+	h.logger.Infof("成功创建 %d 个产品导入映射关系", createdCount)
 	return nil
 }
 
@@ -231,28 +235,28 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContext) {
 	// 检查必要的上下文信息
 	if ctx.MemoryManager == nil {
-		logrus.Warn("内存管理器未初始化，跳过每日上架计数")
+		h.logger.Warn("内存管理器未初始化，跳过每日上架计数")
 		return
 	}
 
 	if ctx.Task == nil {
-		logrus.Warn("任务信息未初始化，跳过每日上架计数")
+		h.logger.Warn("任务信息未初始化，跳过每日上架计数")
 		return
 	}
 
 	if ctx.StoreInfo == nil {
-		logrus.Warn("店铺信息未初始化，跳过每日上架计数")
+		h.logger.Warn("店铺信息未初始化，跳过每日上架计数")
 		return
 	}
 
 	// 检查店铺是否有每日上架限额
 	if ctx.StoreInfo.DailyLimit == nil || *ctx.StoreInfo.DailyLimit <= 0 {
-		logrus.Debugf("店铺 %d 没有设置每日上架限额，跳过限额检查", ctx.StoreInfo.ID)
+		h.logger.Debugf("店铺 %d 没有设置每日上架限额，跳过限额检查", ctx.StoreInfo.ID)
 		return
 	}
 
 	dailyLimit := *ctx.StoreInfo.DailyLimit
-	logrus.Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", ctx.StoreInfo.ID, dailyLimit, ctx.StoreInfo.DailyLimitType)
+	h.logger.Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", ctx.StoreInfo.ID, dailyLimit, ctx.StoreInfo.DailyLimitType)
 
 	// 获取当前日期（格式：YYYY-MM-DD）
 	currentDate := timex.NowDate()
@@ -260,7 +264,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 	// 根据店铺配置的限制类型计算增加的数量
 	increment := h.calculateIncrement(ctx)
 	if increment <= 0 {
-		logrus.Warnf("计算增量失败，跳过计数更新")
+		h.logger.Warn("计算增量失败，跳过计数更新")
 		return
 	}
 
@@ -272,12 +276,12 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 		increment,
 	)
 
-	logrus.Infof("店铺 %d 在 %s 的上架计数: %d (本次增加: %d, 类型: %s)",
+	h.logger.Infof("店铺 %d 在 %s 的上架计数: %d (本次增加: %d, 类型: %s)",
 		ctx.StoreInfo.ID, currentDate, count, increment, ctx.StoreInfo.DailyLimitType)
 
 	// 检查是否超过限额
 	if count > int64(dailyLimit) {
-		logrus.Warnf("店铺 %d 在 %s 的上架数量(%d)已超过限额(%d)，将暂停上架", ctx.StoreInfo.ID, currentDate, count, dailyLimit)
+		h.logger.Warnf("店铺 %d 在 %s 的上架数量(%d)已超过限额(%d)，将暂停上架", ctx.StoreInfo.ID, currentDate, count, dailyLimit)
 
 		// 暂停店铺上架并清理相关缓存
 		h.pauseShopWithCacheCleanup(
@@ -287,10 +291,10 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 		)
 
 		// 记录日志
-		logrus.Infof("已暂停店铺 %d 上架24小时并清理缓存，因为已超过每日限额 %d", ctx.StoreInfo.ID, dailyLimit)
+		h.logger.Infof("已暂停店铺 %d 上架24小时并清理缓存，因为已超过每日限额 %d", ctx.StoreInfo.ID, dailyLimit)
 
 	} else {
-		logrus.Infof("店铺 %d 在 %s 的上架数量(%d)未超过限额(%d)", ctx.StoreInfo.ID, currentDate, count, dailyLimit)
+		h.logger.Infof("店铺 %d 在 %s 的上架数量(%d)未超过限额(%d)", ctx.StoreInfo.ID, currentDate, count, dailyLimit)
 	}
 }
 
@@ -298,7 +302,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 func (h *SavePublishResultHandler) calculateIncrement(ctx *shein.TaskContext) int64 {
 	// 检查SheinResponse是否存在
 	if ctx.SheinResponse == nil {
-		logrus.Warn("SheinResponse为空，无法计算增量")
+		h.logger.Warn("SheinResponse为空，无法计算增量")
 		return 0
 	}
 
@@ -309,7 +313,7 @@ func (h *SavePublishResultHandler) calculateIncrement(ctx *shein.TaskContext) in
 	case "SKC":
 		// SKC级别：按SKC数量计算
 		skcCount := int64(len(ctx.SheinResponse.Info.SKCList))
-		logrus.Debugf("SKC计数: %d", skcCount)
+		h.logger.Debugf("SKC计数: %d", skcCount)
 		return skcCount
 	case "SKU":
 		// SKU级别：按所有SKU数量计算
@@ -317,11 +321,11 @@ func (h *SavePublishResultHandler) calculateIncrement(ctx *shein.TaskContext) in
 		for _, skc := range ctx.SheinResponse.Info.SKCList {
 			skuCount += int64(len(skc.SKUList))
 		}
-		logrus.Debugf("SKU计数: %d", skuCount)
+		h.logger.Debugf("SKU计数: %d", skuCount)
 		return skuCount
 	default:
 		// 默认按SPU计算
-		logrus.Warnf("未知的限制类型: %s，默认按SPU计算", ctx.StoreInfo.DailyLimitType)
+		h.logger.Warnf("未知的限制类型: %s，默认按SPU计算", ctx.StoreInfo.DailyLimitType)
 		return 1
 	}
 }
@@ -329,7 +333,7 @@ func (h *SavePublishResultHandler) calculateIncrement(ctx *shein.TaskContext) in
 // pauseShopWithCacheCleanup 暂停店铺并清理相关缓存
 func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *shein.TaskContext, reason string, duration time.Duration) {
 	if ctx.MemoryManager != nil {
-		logrus.Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
+		h.logger.Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
 	}
 
 	ctx.MemoryManager.ShopPauseManager.PauseShop(
@@ -342,19 +346,21 @@ func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(ctx *shein.TaskCont
 
 // updateTaskStatusToPublished 更新任务状态为已上架（包级辅助函数）
 func updateTaskStatusToPublished(ctx *shein.TaskContext) {
+	log := logger.GetGlobalLogger("publish_result")
+
 	if ctx.ManagementClientMgr == nil {
-		logrus.Warn("管理客户端管理器未初始化，跳过状态更新")
+		log.Warn("管理客户端管理器未初始化，跳过状态更新")
 		return
 	}
 
 	if ctx.Task == nil {
-		logrus.Warn("任务信息未初始化，跳过状态更新")
+		log.Warn("任务信息未初始化，跳过状态更新")
 		return
 	}
 
 	importTaskClient := ctx.ManagementClientMgr.GetImportTaskClient()
 	if importTaskClient == nil {
-		logrus.Warn("导入任务客户端未初始化，跳过状态更新")
+		log.Warn("导入任务客户端未初始化，跳过状态更新")
 		return
 	}
 
@@ -364,12 +370,12 @@ func updateTaskStatusToPublished(ctx *shein.TaskContext) {
 	}
 
 	go func() {
-		defer recovery.Recover("更新任务状态", logrus.WithField("task_id", ctx.Task.ID))
+		defer recovery.Recover("更新任务状态", log.WithField("task_id", ctx.Task.ID))
 
 		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-			logrus.Errorf("更新任务状态为已上架失败 (TaskID: %d): %v", ctx.Task.ID, err)
+			log.Errorf("更新任务状态为已上架失败 (TaskID: %d): %v", ctx.Task.ID, err)
 		} else {
-			logrus.Infof("✅ 任务状态已更新为已上架 (TaskID: %d)", ctx.Task.ID)
+			log.Infof("✅ 任务状态已更新为已上架 (TaskID: %d)", ctx.Task.ID)
 		}
 	}()
 }

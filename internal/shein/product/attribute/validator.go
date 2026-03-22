@@ -1,14 +1,14 @@
-// Package attribute 提供SHEIN平台属性验证和修复功能
+﻿// Package attribute 提供SHEIN平台属性验证和修复功能
 package attribute
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 
-	"github.com/sirupsen/logrus"
 )
 
 // AttributeSelectionValidator 属性选择验证器
@@ -57,7 +57,7 @@ func (v *AttributeSelectionValidator) ValidateAndFixAttributeSelection(attribute
 		// 检查属性ID是否存在
 		availableValues, exists := attrValueMap[attrID]
 		if !exists {
-			logrus.Warnf("属性ID %d 不在可用列表中，跳过", attrID)
+			logger.GetGlobalLogger("shein/product").Warnf("属性ID %d 不在可用列表中，跳过", attrID)
 			continue
 		}
 
@@ -70,37 +70,37 @@ func (v *AttributeSelectionValidator) ValidateAndFixAttributeSelection(attribute
 		// ID为0的自定义值总是有效的（仅当type=0时）
 		if selectedValueID == 0 {
 			if attrType, typeExists := attrTypeMap[attrID]; typeExists && attrType != 0 {
-				logrus.Warnf("属性ID %d 类型为%d，不支持自定义值，尝试找到替代值", attrID, attrType)
+				logger.GetGlobalLogger("shein/product").Warnf("属性ID %d 类型为%d，不支持自定义值，尝试找到替代值", attrID, attrType)
 				// 为非自定义类型找到合适的默认值
 				if defaultValue := v.findBestDefaultValue(attrID, selectedValue.Value, availableValues, attributeTemplates); defaultValue != nil {
 					fixedAttrValue = *defaultValue
 					selectedAttrValues[attrID] = fixedAttrValue.ID.Int()
-					logrus.Infof("为属性ID %d 找到替代值: ID=%d, Value=%s", attrID, fixedAttrValue.ID.Int(), fixedAttrValue.Value)
+					logger.GetGlobalLogger("shein/product").Infof("为属性ID %d 找到替代值: ID=%d, Value=%s", attrID, fixedAttrValue.ID.Int(), fixedAttrValue.Value)
 				}
 			}
 		} else if selectedValueID != 0 {
 			// 检查选择的值是否在可用列表中
 			expectedValue, valueExists := availableValues[selectedValueID]
 			if !valueExists {
-				logrus.Warnf("属性ID %d 的值ID %d 不在可用列表中，尝试修复", attrID, selectedValueID)
+				logger.GetGlobalLogger("shein/product").Warnf("属性ID %d 的值ID %d 不在可用列表中，尝试修复", attrID, selectedValueID)
 
 				// 尝试找到匹配的值
 				if foundValue := v.findMatchingValue(selectedValue.Value, availableValues); foundValue != nil {
 					fixedAttrValue = *foundValue
 					selectedAttrValues[attrID] = fixedAttrValue.ID.Int()
-					logrus.Infof("为属性ID %d 找到匹配值: ID=%d, Value=%s", attrID, fixedAttrValue.ID.Int(), fixedAttrValue.Value)
+					logger.GetGlobalLogger("shein/product").Infof("为属性ID %d 找到匹配值: ID=%d, Value=%s", attrID, fixedAttrValue.ID.Int(), fixedAttrValue.Value)
 				} else {
 					// 找不到匹配值，使用增强版默认策略
 					if defaultValue := v.findBestDefaultValue(attrID, selectedValue.Value, availableValues, attributeTemplates); defaultValue != nil {
 						fixedAttrValue = *defaultValue
 						selectedAttrValues[attrID] = fixedAttrValue.ID.Int()
-						logrus.Infof("为属性ID %d 使用增强默认值: ID=%d, Value=%s", attrID, fixedAttrValue.ID.Int(), fixedAttrValue.Value)
+						logger.GetGlobalLogger("shein/product").Infof("为属性ID %d 使用增强默认值: ID=%d, Value=%s", attrID, fixedAttrValue.ID.Int(), fixedAttrValue.Value)
 					}
 				}
 			} else {
 				// 检查Value是否匹配
 				if expectedValue != selectedValue.Value {
-					logrus.Warnf("属性ID %d 的值ID %d 对应的Value不匹配，修复为: %s", attrID, selectedValueID, expectedValue)
+					logger.GetGlobalLogger("shein/product").Warnf("属性ID %d 的值ID %d 对应的Value不匹配，修复为: %s", attrID, selectedValueID, expectedValue)
 					fixedAttrValue = struct {
 						ID    types.FlexibleID `json:"id"`
 						Value string           `json:"value"`
@@ -128,7 +128,7 @@ func (v *AttributeSelectionValidator) ValidateAndFixAttributeSelection(attribute
 
 			// 为必填属性寻找最佳默认值
 			if defaultValue := v.findBestDefaultValue(attrID, "", availableValues, attributeTemplates); defaultValue != nil {
-				logrus.Infof("为必填属性ID %d 添加增强默认值: ID=%d, Value=%s", attrID, defaultValue.ID.Int(), defaultValue.Value)
+				logger.GetGlobalLogger("shein/product").Infof("为必填属性ID %d 添加增强默认值: ID=%d, Value=%s", attrID, defaultValue.ID.Int(), defaultValue.Value)
 				fixedAttributeData = append(fixedAttributeData, shein.ResultAttribute{
 					AttrID:    attrID,
 					AttrValue: []shein.AttributeValue{*defaultValue},
@@ -152,7 +152,7 @@ func (v *AttributeSelectionValidator) handleAttributeDependencies(fixedAttribute
 	for sourceAttrID, dependentAttrIDs := range dependencies {
 		// 检查是否选择了源属性
 		if selectedValueID, hasSelected := selectedAttrValues[sourceAttrID]; hasSelected && selectedValueID != 0 {
-			logrus.Infof("检测到属性ID %d 已选择值 %d，检查依赖属性", sourceAttrID, selectedValueID)
+			logger.GetGlobalLogger("shein/product").Infof("检测到属性ID %d 已选择值 %d，检查依赖属性", sourceAttrID, selectedValueID)
 
 			// 为每个依赖属性添加默认值（如果尚未处理）
 			for _, dependentAttrID := range dependentAttrIDs {
@@ -163,7 +163,7 @@ func (v *AttributeSelectionValidator) handleAttributeDependencies(fixedAttribute
 						defaultValue := v.findBestDefaultValue(dependentAttrID, "", availableValues, attributeTemplates)
 
 						if defaultValue != nil {
-							logrus.Infof("为依赖属性ID %d 自动添加增强默认值: ID=%d, Value=%s", dependentAttrID, defaultValue.ID.Int(), defaultValue.Value)
+							logger.GetGlobalLogger("shein/product").Infof("为依赖属性ID %d 自动添加增强默认值: ID=%d, Value=%s", dependentAttrID, defaultValue.ID.Int(), defaultValue.Value)
 							*fixedAttributeData = append(*fixedAttributeData, shein.ResultAttribute{
 								AttrID:    dependentAttrID,
 								AttrValue: []shein.AttributeValue{*defaultValue},
@@ -195,7 +195,7 @@ func (v *AttributeSelectionValidator) findBestDefaultValue(attrID int, originalV
 					for _, remarkInterface := range attribute.AttributeRemarkList {
 						if remark, ok := remarkInterface.(string); ok {
 							if matchedValue := v.findMatchingValue(remark, availableValues); matchedValue != nil {
-								logrus.Infof("使用属性备注推荐值: %s", remark)
+								logger.GetGlobalLogger("shein/product").Infof("使用属性备注推荐值: %s", remark)
 								return matchedValue
 							}
 						}

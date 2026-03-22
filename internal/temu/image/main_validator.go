@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台主图验证功能
+﻿// Package image 提供TEMU平台主图验证功能
 package image
 
 import (
@@ -7,6 +7,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +20,7 @@ type MainImageValidator struct {
 // NewMainImageValidator 创建新的主图验证器
 func NewMainImageValidator() *MainImageValidator {
 	return &MainImageValidator{
-		logger:            logrus.WithField("component", "MainImageValidator"),
+		logger:            logger.GetGlobalLogger("MainImageValidator"),
 		parallelValidator: NewParallelImageValidator(),
 	}
 }

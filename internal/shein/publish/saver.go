@@ -2,6 +2,7 @@
 package publish
 
 import (
+	"task-processor/internal/core/logger"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/recovery"
@@ -13,11 +14,14 @@ import (
 
 // PublishProductSaver 产品发布结果保存器
 type PublishProductSaver struct {
+	logger *logrus.Entry
 }
 
 // NewPublishProductSaver 创建新的产品发布结果保存器
 func NewPublishProductSaver() *PublishProductSaver {
-	return &PublishProductSaver{}
+	return &PublishProductSaver{
+		logger: logger.GetGlobalLogger("publish_saver"),
+	}
 }
 
 // SavePublishResult 保存发布成功后的所有对应记录
@@ -51,19 +55,19 @@ func (s *PublishProductSaver) SavePublishResult(ctx *shein.TaskContext, response
 func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein.TaskContext) {
 	// 检查必要的上下文信息
 	if ctx.ManagementClientMgr == nil {
-		logrus.Warn("管理客户端管理器未初始化，跳过状态更新")
+		s.logger.Warn("管理客户端管理器未初始化，跳过状态更新")
 		return
 	}
 
 	if ctx.Task == nil {
-		logrus.Warn("任务信息未初始化，跳过状态更新")
+		s.logger.Warn("任务信息未初始化，跳过状态更新")
 		return
 	}
 
 	// 获取导入任务客户端
 	importTaskClient := ctx.ManagementClientMgr.GetImportTaskClient()
 	if importTaskClient == nil {
-		logrus.Warn("导入任务客户端未初始化，跳过状态更新")
+		s.logger.Warn("导入任务客户端未初始化，跳过状态更新")
 		return
 	}
 
@@ -78,12 +82,12 @@ func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein.TaskContext) {
 
 	// 异步更新状态
 	go func() {
-		defer recovery.Recover("更新任务状态", logrus.WithField("task_id", ctx.Task.ID))
+		defer recovery.Recover("更新任务状态", s.logger.WithField("task_id", ctx.Task.ID))
 
 		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-			logrus.Errorf("更新任务状态为草稿箱失败 (TaskID: %d): %v", ctx.Task.ID, err)
+			s.logger.Errorf("更新任务状态为草稿箱失败 (TaskID: %d): %v", ctx.Task.ID, err)
 		} else {
-			logrus.Infof("✅ 任务状态已更新为草稿箱 (TaskID: %d)", ctx.Task.ID)
+			s.logger.Infof("✅ 任务状态已更新为草稿箱 (TaskID: %d)", ctx.Task.ID)
 		}
 	}()
 }

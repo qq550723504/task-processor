@@ -1,10 +1,11 @@
-// Package image 提供TEMU平台绘图工具功能
+﻿// Package image 提供TEMU平台绘图工具功能
 package image
 
 import (
 	"image"
 	"image/color"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -16,7 +17,7 @@ type DrawingUtils struct {
 // NewDrawingUtils 创建绘图工具
 func NewDrawingUtils() *DrawingUtils {
 	return &DrawingUtils{
-		logger: logrus.WithField("component", "DrawingUtils"),
+		logger: logger.GetGlobalLogger("DrawingUtils"),
 	}
 }
 

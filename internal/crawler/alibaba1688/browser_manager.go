@@ -1,13 +1,13 @@
-// Package alibaba1688 提供1688浏览器管理功能
+﻿// Package alibaba1688 提供1688浏览器管理功能
 package alibaba1688
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/core/config"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // BrowserManager 1688专用的浏览器管理器，继承shared的功能
@@ -27,7 +27,7 @@ func NewBrowserManager(cfg *config.Config) *BrowserManager {
 		UserAgent:      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 	}
 
-	logrus.Info("创建1688浏览器管理器，使用共享浏览器组件")
+	logger.GetGlobalLogger("crawler/alibaba1688").Info("创建1688浏览器管理器，使用共享浏览器组件")
 
 	return &BrowserManager{
 		Manager: sharedbrowser.NewManager(browserConfig),
@@ -63,7 +63,7 @@ func (bm *BrowserManager) CreateBrowser() (playwright.Browser, playwright.Browse
 	// 设置1688特定的超时
 	timeout := float64(bm.config.Platforms.Alibaba1688.Timeout * 1000)
 	page.SetDefaultTimeout(timeout)
-	logrus.Infof("设置1688页面超时: %.0fms", timeout)
+	logger.GetGlobalLogger("crawler/alibaba1688").Infof("设置1688页面超时: %.0fms", timeout)
 
 	// 返回清理函数
 	cleanup := func() {

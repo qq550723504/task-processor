@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	productpkg "task-processor/internal/product"
-
-	"github.com/sirupsen/logrus"
 )
 
 // extractMappingInfoFromAttributes 从Attributes JSON中提取所有映射信息和库存
@@ -167,6 +166,7 @@ func (s *inventorySyncServiceImpl) validateAttributesStructure(attributesJSON st
 
 // enableDebugLogging 启用调试日志（用于问题排查）
 func (s *inventorySyncServiceImpl) enableDebugLogging() {
-	logrus.SetLevel(logrus.DebugLevel)
-	s.logger.Debug("已启用 Debug 级别日志")
+	if err := logger.SetGlobalLogLevel("debug"); err == nil {
+		s.logger.Debug("已启用 Debug 级别日志")
+	}
 }

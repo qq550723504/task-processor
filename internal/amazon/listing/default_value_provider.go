@@ -1,8 +1,9 @@
-package listing
+﻿package listing
 
 import (
 	"task-processor/internal/amazon/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ func NewDefaultValueProvider(marketplaceID, languageTag, brand string) *DefaultV
 		marketplaceID: marketplaceID,
 		languageTag:   languageTag,
 		brand:         brand,
-		logger:        logrus.WithField("component", "DefaultValueProvider"),
+		logger:        logger.GetGlobalLogger("DefaultValueProvider"),
 	}
 }
 

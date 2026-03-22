@@ -1,9 +1,10 @@
-package listing
+﻿package listing
 
 import (
 	"strings"
 	"task-processor/internal/amazon/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,7 +16,7 @@ type CustomAttributeBuilder struct {
 // NewCustomAttributeBuilder 创建自定义属性构建器
 func NewCustomAttributeBuilder() *CustomAttributeBuilder {
 	return &CustomAttributeBuilder{
-		logger: logrus.WithField("component", "CustomAttributeBuilder"),
+		logger: logger.GetGlobalLogger("CustomAttributeBuilder"),
 	}
 }
 

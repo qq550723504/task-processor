@@ -1,4 +1,4 @@
-// Package productsync 提供 SHEIN 平台商品同步功能
+﻿// Package productsync 提供 SHEIN 平台商品同步功能
 package productsync
 
 import (
@@ -14,6 +14,7 @@ import (
 	shein_product "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/mapping"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -57,7 +58,7 @@ func NewProductSyncService(
 		priceManager:     priceManager,
 		mappingClient:    mappingClient,
 		storeAPI:         storeAPI,
-		logger:           logrus.WithField("component", "ProductSyncService"),
+		logger:           logger.GetGlobalLogger("ProductSyncService"),
 	}
 
 	// 创建修复服务

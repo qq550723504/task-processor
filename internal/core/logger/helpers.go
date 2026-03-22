@@ -1,4 +1,4 @@
-package logger
+﻿package logger
 
 import (
 	"time"
@@ -188,12 +188,12 @@ func WithComponent(component string) *logrus.Entry {
 
 // WithPlatform 创建带平台名的logger
 func WithPlatform(platform string) *logrus.Entry {
-	return GetGlobalLogger("").WithField(FieldPlatform, platform)
+	return GetGlobalLogger("core/logger").WithField(FieldPlatform, platform)
 }
 
 // WithTaskContext 创建带任务上下文的logger
 func WithTaskContext(taskID int64, productID string) *logrus.Entry {
-	return GetGlobalLogger("").WithFields(logrus.Fields{
+	return GetGlobalLogger("core/logger").WithFields(logrus.Fields{
 		FieldTaskID:    taskID,
 		FieldProductID: productID,
 	})
@@ -201,7 +201,7 @@ func WithTaskContext(taskID int64, productID string) *logrus.Entry {
 
 // WithStoreContext 创建带店铺上下文的logger
 func WithStoreContext(tenantID, storeID int64) *logrus.Entry {
-	return GetGlobalLogger("").WithFields(logrus.Fields{
+	return GetGlobalLogger("core/logger").WithFields(logrus.Fields{
 		FieldTenantID: tenantID,
 		FieldStoreID:  storeID,
 	})

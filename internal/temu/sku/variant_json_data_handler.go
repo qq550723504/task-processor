@@ -1,4 +1,4 @@
-// Package sku 提供TEMU平台的变体JSON数据处理功能
+﻿// Package sku 提供TEMU平台的变体JSON数据处理功能
 package sku
 
 import (
@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -30,7 +31,7 @@ func NewVariantJsonDataHandler(
 	amazonProcessor product.AmazonScraper,
 ) *VariantJsonDataHandler {
 	return &VariantJsonDataHandler{
-		logger:         logrus.WithField("handler", "VariantJsonDataHandler"),
+		logger:         logger.GetGlobalLogger("VariantJsonDataHandler"),
 		productFetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor),
 		amazonConfig:   amazonConfig,
 	}

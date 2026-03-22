@@ -1,10 +1,10 @@
-package category
+﻿package category
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // GetCategoryTreeHandler 获取分类树处理器
@@ -31,6 +31,6 @@ func (h *GetCategoryTreeHandler) Handle(ctx *shein.TaskContext) error {
 
 	ctx.CategoryTree = categoryTree
 
-	logrus.Infof("成功获取分类树，共 %d 个分类\n", len(categoryTree.Data))
+	logger.GetGlobalLogger("shein/category").Infof("成功获取分类树，共 %d 个分类\n", len(categoryTree.Data))
 	return nil
 }

@@ -1,12 +1,12 @@
-// Package browser 提供Amazon浏览器自动化的邮编处理工具方法
+﻿// Package browser 提供Amazon浏览器自动化的邮编处理工具方法
 package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"regexp"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // ExtractZipcode 从文本中提取邮编
@@ -85,7 +85,7 @@ func CheckIfPriceAvailable(page playwright.Page) bool {
 		locator := page.Locator(selector)
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.First().IsVisible(); err == nil && isVisible {
-				logrus.Infof("检测到价格元素: %s", selector)
+				logger.GetGlobalLogger("crawler/amazon").Infof("检测到价格元素: %s", selector)
 				return true
 			}
 		}
@@ -110,13 +110,13 @@ func HandleContinueShoppingButtonInZipcode(page playwright.Page) {
 		locator := page.Locator(selector)
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				logrus.Infof("发现 Continue Shopping 按钮，尝试点击")
+				logger.GetGlobalLogger("crawler/amazon").Infof("发现 Continue Shopping 按钮，尝试点击")
 				if err := locator.Click(playwright.LocatorClickOptions{
 					Timeout: playwright.Float(5000), // 5秒超时
 				}); err != nil {
-					logrus.Infof("点击 Continue Shopping 按钮失败: %v", err)
+					logger.GetGlobalLogger("crawler/amazon").Infof("点击 Continue Shopping 按钮失败: %v", err)
 				} else {
-					logrus.Infof("成功点击 Continue Shopping 按钮")
+					logger.GetGlobalLogger("crawler/amazon").Infof("成功点击 Continue Shopping 按钮")
 					time.Sleep(1 * time.Second)
 					break
 				}

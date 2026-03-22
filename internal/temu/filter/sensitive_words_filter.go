@@ -1,4 +1,4 @@
-package filter
+﻿package filter
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,7 +26,7 @@ type SensitiveWordsFilter struct {
 // NewSensitiveWordsFilter 创建TEMU敏感词过滤器
 func NewSensitiveWordsFilter() *SensitiveWordsFilter {
 	filter := &SensitiveWordsFilter{
-		logger:       logrus.WithField("handler", "SensitiveWordsFilter"),
+		logger:       logger.GetGlobalLogger("SensitiveWordsFilter"),
 		staticWords:  make(map[string][]string),
 		dynamicWords: make(map[string][]*regexp.Regexp),
 		configPath:   "data/sensitive_words_temu.json",

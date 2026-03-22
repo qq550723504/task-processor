@@ -1,4 +1,4 @@
-package category
+﻿package category
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,7 +19,7 @@ type CategoryDisclaimHandler struct {
 // NewCategoryDisclaimHandler 创建新的分类免责声明处理器
 func NewCategoryDisclaimHandler() *CategoryDisclaimHandler {
 	return &CategoryDisclaimHandler{
-		logger: logrus.WithField("handler", "CategoryDisclaimHandler"),
+		logger: logger.GetGlobalLogger("CategoryDisclaimHandler"),
 	}
 }
 

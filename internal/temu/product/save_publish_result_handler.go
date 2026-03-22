@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -17,6 +17,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -32,7 +33,7 @@ func NewSavePublishResultHandler(mappingClient api.ProductImportMappingAPI, memo
 	return &SavePublishResultHandler{
 		mappingClient: mappingClient,
 		memoryManager: memoryManager,
-		logger:        logrus.WithField("handler", "SavePublishResultHandler"),
+		logger:        logger.GetGlobalLogger("SavePublishResultHandler"),
 	}
 }
 

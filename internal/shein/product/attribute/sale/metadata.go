@@ -1,13 +1,13 @@
-// Package sale 提供SHEIN平台销售属性的元数据构建功能
+﻿// Package sale 提供SHEIN平台销售属性的元数据构建功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeMetadataBuilder 销售属性元数据构建器
@@ -54,7 +54,7 @@ func (b *SaleAttributeMetadataBuilder) BuildAttributeMetadata(ctx *shein.TaskCon
 
 		// 单变体产品优化
 		if isSingleVariant && len(metadata.AttrValue) > 3 {
-			logrus.Debugf("单变体产品：属性 %s (ID:%d) 的候选值从 %d 个简化为 3 个",
+			logger.GetGlobalLogger("shein/product").Debugf("单变体产品：属性 %s (ID:%d) 的候选值从 %d 个简化为 3 个",
 				metadata.AttributeNameEn, metadata.AttrID, len(metadata.AttrValue))
 			metadata.AttrValue = metadata.AttrValue[:3]
 		}

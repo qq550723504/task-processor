@@ -1,11 +1,11 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // PackInfoExtractor 产品包装信息提取器
@@ -18,7 +18,7 @@ func NewPackInfoExtractor() *PackInfoExtractor {
 
 // Extract 提取产品包装信息 - 支持两种数据结构
 func (pie *PackInfoExtractor) Extract(page playwright.Page, product *model.Product1688) error {
-	logrus.Debug("开始提取产品包装信息")
+	logger.GetGlobalLogger("crawler/alibaba1688").Debug("开始提取产品包装信息")
 
 	// 从结构化数据中获取包装信息，支持两种数据结构
 	packInfoResult, err := page.Evaluate(`() => {
@@ -75,7 +75,7 @@ func (pie *PackInfoExtractor) Extract(page playwright.Page, product *model.Produ
 	}`, nil)
 
 	if err != nil {
-		logrus.Debugf("提取包装信息失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取包装信息失败: %v", err)
 		return err
 	}
 
@@ -89,7 +89,7 @@ func (pie *PackInfoExtractor) Extract(page playwright.Page, product *model.Produ
 				}
 
 				product.PackInfo = packInfo
-				logrus.Debugf("成功提取包装信息，重量: %.0fg", unitWeight)
+				logger.GetGlobalLogger("crawler/alibaba1688").Debugf("成功提取包装信息，重量: %.0fg", unitWeight)
 			}
 		}
 	}

@@ -1,14 +1,14 @@
-// Package sale 提供SHEIN平台的销售属性JSON解析功能
+﻿// Package sale 提供SHEIN平台的销售属性JSON解析功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"encoding/json"
 	"regexp"
 	"strings"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeJSONParser 销售属性JSON解析器，负责解析和修复GPT API返回的JSON数据
@@ -28,41 +28,41 @@ func NewSaleAttributeJSONParser() *SaleAttributeJSONParser {
 // 返回值:
 //   - ResultSaleAttribute: 解析后的销售属性结果
 func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) shein.ResultSaleAttribute {
-	logrus.Infof("📝 开始解析AI响应，长度: %d 字符", len(content))
+	logger.GetGlobalLogger("shein/product").Infof("📝 开始解析AI响应，长度: %d 字符", len(content))
 
 	// 清理JSON格式
 	if strings.HasPrefix(content, "```json") {
 		content = strings.TrimPrefix(content, "```json")
 		content = strings.TrimSuffix(content, "```")
-		logrus.Debug("清理了markdown代码块标记")
+		logger.GetGlobalLogger("shein/product").Debug("清理了markdown代码块标记")
 	}
 	content = strings.TrimSpace(content)
 
 	// 验证JSON格式
 	if !json.Valid([]byte(content)) {
-		logrus.Warn("⚠️ JSON格式无效，尝试修复...")
+		logger.GetGlobalLogger("shein/product").Warn("⚠️ JSON格式无效，尝试修复...")
 
 		// 尝试修复常见的JSON问题
 		fixedContent := p.fixCommonJsonIssues(content)
 		if !json.Valid([]byte(fixedContent)) {
-			logrus.Error("❌ JSON修复失败，无法解析")
-			logrus.Debugf("原始内容前500字符: %s", content[:min(500, len(content))])
+			logger.GetGlobalLogger("shein/product").Error("❌ JSON修复失败，无法解析")
+			logger.GetGlobalLogger("shein/product").Debugf("原始内容前500字符: %s", content[:min(500, len(content))])
 			return shein.ResultSaleAttribute{}
 		}
-		logrus.Info("✅ JSON修复成功")
+		logger.GetGlobalLogger("shein/product").Info("✅ JSON修复成功")
 		content = fixedContent
 	} else {
-		logrus.Debug("✅ JSON格式有效")
+		logger.GetGlobalLogger("shein/product").Debug("✅ JSON格式有效")
 	}
 
 	var saleAttributeData shein.ResultSaleAttribute
 	if err := jsonx.UnmarshalBytes([]byte(content), &saleAttributeData, "JSON解析失败"); err != nil {
-		logrus.Errorf("❌ JSON解析失败: %v", err)
-		logrus.Debugf("内容前500字符: %s", content[:min(500, len(content))])
+		logger.GetGlobalLogger("shein/product").Errorf("❌ JSON解析失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Debugf("内容前500字符: %s", content[:min(500, len(content))])
 		return shein.ResultSaleAttribute{}
 	}
 
-	logrus.Infof("✅ 成功解析AI响应 - 销售属性: %d 个, 变体: %d 个",
+	logger.GetGlobalLogger("shein/product").Infof("✅ 成功解析AI响应 - 销售属性: %d 个, 变体: %d 个",
 		len(saleAttributeData.SaleAttributes), len(saleAttributeData.Variants))
 
 	return saleAttributeData
@@ -71,7 +71,7 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) shein.Res
 // fixCommonJsonIssues 修复常见的JSON问题
 func (p *SaleAttributeJSONParser) fixCommonJsonIssues(content string) string {
 	original := content
-	logrus.Infof("🔧 开始修复JSON，原始长度: %d", len(content))
+	logger.GetGlobalLogger("shein/product").Infof("🔧 开始修复JSON，原始长度: %d", len(content))
 
 	// 1. 移除尾部的无效内容（在最后一个有效结构后的说明文字）
 	content = p.removeTrailingExplanation(content)
@@ -84,7 +84,7 @@ func (p *SaleAttributeJSONParser) fixCommonJsonIssues(content string) string {
 	closeBrackets := strings.Count(content, "]")
 	if openBrackets > closeBrackets {
 		missing := openBrackets - closeBrackets
-		logrus.Infof("🔧 修复缺失的%d个中括号", missing)
+		logger.GetGlobalLogger("shein/product").Infof("🔧 修复缺失的%d个中括号", missing)
 		// 在最后一个 } 之前添加缺失的 ]
 		lastBraceIndex := strings.LastIndex(content, "}")
 		if lastBraceIndex > 0 {
@@ -99,7 +99,7 @@ func (p *SaleAttributeJSONParser) fixCommonJsonIssues(content string) string {
 	closeBraces := strings.Count(content, "}")
 	if openBraces > closeBraces {
 		missing := openBraces - closeBraces
-		logrus.Infof("🔧 修复缺失的%d个大括号", missing)
+		logger.GetGlobalLogger("shein/product").Infof("🔧 修复缺失的%d个大括号", missing)
 		content = content + strings.Repeat("}", missing)
 	}
 
@@ -109,18 +109,18 @@ func (p *SaleAttributeJSONParser) fixCommonJsonIssues(content string) string {
 	// 6. 确保JSON以大括号开始和结束
 	content = strings.TrimSpace(content)
 	if !strings.HasPrefix(content, "{") {
-		logrus.Warnf("JSON不以{开头，添加开头大括号")
+		logger.GetGlobalLogger("shein/product").Warnf("JSON不以{开头，添加开头大括号")
 		content = "{" + content
 	}
 	if !strings.HasSuffix(content, "}") {
-		logrus.Warnf("JSON不以}结尾，添加结尾大括号")
+		logger.GetGlobalLogger("shein/product").Warnf("JSON不以}结尾，添加结尾大括号")
 		content = content + "}"
 	}
 
 	if content != original {
-		logrus.Infof("✅ JSON修复完成，原始长度: %d, 修复后长度: %d", len(original), len(content))
+		logger.GetGlobalLogger("shein/product").Infof("✅ JSON修复完成，原始长度: %d, 修复后长度: %d", len(original), len(content))
 	} else {
-		logrus.Debug("JSON无需修复")
+		logger.GetGlobalLogger("shein/product").Debug("JSON无需修复")
 	}
 
 	return content
@@ -145,7 +145,7 @@ func (p *SaleAttributeJSONParser) removeIncompleteLastObject(content string) str
 	if match := lastCompleteObjectPattern.FindStringIndex(afterVariants); match != nil {
 		// 找到了不完整的最后一个对象，截断到最后一个完整对象
 		cutPosition := variantsIndex + match[0] + 1 // +1保留}
-		logrus.Infof("🔧 检测到不完整的最后一个对象，截断位置: %d", cutPosition)
+		logger.GetGlobalLogger("shein/product").Infof("🔧 检测到不完整的最后一个对象，截断位置: %d", cutPosition)
 		content = content[:cutPosition] + "\n]}"
 	}
 
@@ -169,7 +169,7 @@ func (p *SaleAttributeJSONParser) removeTrailingExplanation(content string) stri
 			// 检查这个位置之前是否有完整的JSON结构
 			beforePattern := content[:idx]
 			if p.looksLikeCompleteJson(beforePattern) {
-				logrus.Infof("检测到说明文字开始于位置%d，移除后续内容", idx)
+				logger.GetGlobalLogger("shein/product").Infof("检测到说明文字开始于位置%d，移除后续内容", idx)
 				return beforePattern
 			}
 		}

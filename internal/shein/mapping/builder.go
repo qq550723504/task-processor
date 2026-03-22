@@ -1,4 +1,4 @@
-// Package mapping 提供 SHEIN 平台商品映射功能
+﻿// Package mapping 提供 SHEIN 平台商品映射功能
 package mapping
 
 import (
@@ -7,6 +7,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ type MappingBuilder struct {
 func NewMappingBuilder(mappingClient managementapi.ProductImportMappingAPI) *MappingBuilder {
 	return &MappingBuilder{
 		mappingClient: mappingClient,
-		logger:        logrus.WithField("component", "MappingBuilder"),
+		logger:        logger.GetGlobalLogger("MappingBuilder"),
 	}
 }
 

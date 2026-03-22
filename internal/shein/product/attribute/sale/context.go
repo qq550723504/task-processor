@@ -1,13 +1,13 @@
-// Package sale 提供SHEIN平台销售属性的上下文构建功能
+﻿// Package sale 提供SHEIN平台销售属性的上下文构建功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeContextBuilder 销售属性上下文构建器
@@ -54,16 +54,16 @@ func (c *SaleAttributeContextBuilder) BuildCompactProductContext(amazonProduct m
 
 // BuildExtraContext 构建额外上下文信息（仅在检测到缺少信息时提供）
 func (c *SaleAttributeContextBuilder) BuildExtraContext(amazonProduct model.Product, variants []model.Product, productsData []shein.ProductVariantData) string {
-	logrus.Debug("🔍 开始检测是否需要额外上下文...")
+	logger.GetGlobalLogger("shein/product").Debug("🔍 开始检测是否需要额外上下文...")
 
 	// 检测缺失信息
 	missingInfo := c.detectMissingInfo(productsData)
 	if !missingInfo.needsExtraContext {
-		logrus.Info("✅ 产品信息完整，无需额外上下文")
+		logger.GetGlobalLogger("shein/product").Info("✅ 产品信息完整，无需额外上下文")
 		return ""
 	}
 
-	logrus.Infof("⚠️ 检测到缺失信息：缺少尺寸(%d个) 缺少重量(%d个) 缺少属性(%d个)，开始构建针对性额外上下文...",
+	logger.GetGlobalLogger("shein/product").Infof("⚠️ 检测到缺失信息：缺少尺寸(%d个) 缺少重量(%d个) 缺少属性(%d个)，开始构建针对性额外上下文...",
 		missingInfo.missingDimensions, missingInfo.missingWeight, missingInfo.missingAttributes)
 
 	var extraParts []string
@@ -78,11 +78,11 @@ func (c *SaleAttributeContextBuilder) BuildExtraContext(amazonProduct model.Prod
 	}
 
 	if len(extraParts) == 0 {
-		logrus.Warn("⚠️ 额外上下文为空：所有可用信息源都为空")
+		logger.GetGlobalLogger("shein/product").Warn("⚠️ 额外上下文为空：所有可用信息源都为空")
 		return ""
 	}
 
-	logrus.Infof("✅ 构建了针对性额外上下文，包含 %d 个信息块", len(extraParts))
+	logger.GetGlobalLogger("shein/product").Infof("✅ 构建了针对性额外上下文，包含 %d 个信息块", len(extraParts))
 	return strings.Join(extraParts, "\n")
 }
 
@@ -126,13 +126,13 @@ func (c *SaleAttributeContextBuilder) detectMissingInfo(productsData []shein.Pro
 
 	// 详细记录缺失信息
 	if detection.missingDimensions > 0 {
-		logrus.Warnf("⚠️ 缺少尺寸信息的ASIN: %v", detection.missingDimensionsASINs)
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 缺少尺寸信息的ASIN: %v", detection.missingDimensionsASINs)
 	}
 	if detection.missingWeight > 0 {
-		logrus.Warnf("⚠️ 缺少重量信息的ASIN: %v", detection.missingWeightASINs)
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 缺少重量信息的ASIN: %v", detection.missingWeightASINs)
 	}
 	if detection.missingAttributes > 0 {
-		logrus.Warnf("⚠️ 缺少属性信息的ASIN: %v", detection.missingAttributesASINs)
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 缺少属性信息的ASIN: %v", detection.missingAttributesASINs)
 	}
 
 	return detection
@@ -144,14 +144,14 @@ func (c *SaleAttributeContextBuilder) addPhysicalInfoToContext(amazonProduct mod
 	if amazonProduct.Description != "" {
 		*extraParts = append(*extraParts, fmt.Sprintf("\n【产品完整描述】（用于估算缺失尺寸重量，涉及ASIN: %v）\n%s",
 			c.getMissingPhysicalASINs(missingInfo), amazonProduct.Description))
-		logrus.Debug("✅ 添加了产品描述用于尺寸重量推断")
+		logger.GetGlobalLogger("shein/product").Debug("✅ 添加了产品描述用于尺寸重量推断")
 	}
 
 	// 添加产品特征（可能包含物理规格）
 	if len(amazonProduct.Features) > 0 {
 		*extraParts = append(*extraParts, fmt.Sprintf("\n【完整产品特征】（可能包含尺寸、重量、材质等信息）\n%s",
 			strings.Join(amazonProduct.Features, "\n")))
-		logrus.Debugf("✅ 添加了 %d 个产品特征用于物理信息推断", len(amazonProduct.Features))
+		logger.GetGlobalLogger("shein/product").Debugf("✅ 添加了 %d 个产品特征用于物理信息推断", len(amazonProduct.Features))
 	}
 
 	// 添加主产品的物理信息
@@ -178,14 +178,14 @@ func (c *SaleAttributeContextBuilder) addAttributeInfoToContext(amazonProduct mo
 	if amazonProduct.Description != "" {
 		*extraParts = append(*extraParts, fmt.Sprintf("\n【产品完整描述】（用于推断缺失属性，涉及ASIN: %v）\n%s",
 			missingInfo.missingAttributesASINs, amazonProduct.Description))
-		logrus.Debug("✅ 添加了产品描述用于属性推断")
+		logger.GetGlobalLogger("shein/product").Debug("✅ 添加了产品描述用于属性推断")
 	}
 
 	// 添加产品特征（用于推断属性）
 	if len(amazonProduct.Features) > 0 {
 		*extraParts = append(*extraParts, fmt.Sprintf("\n【完整产品特征】（用于推断产品属性）\n%s",
 			strings.Join(amazonProduct.Features, "\n")))
-		logrus.Debugf("✅ 添加了 %d 个产品特征用于属性推断", len(amazonProduct.Features))
+		logger.GetGlobalLogger("shein/product").Debugf("✅ 添加了 %d 个产品特征用于属性推断", len(amazonProduct.Features))
 	}
 }
 

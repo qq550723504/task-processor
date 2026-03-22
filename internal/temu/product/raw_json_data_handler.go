@@ -1,4 +1,4 @@
-// Package product 提供TEMU平台的原始JSON数据处理功能
+﻿// Package product 提供TEMU平台的原始JSON数据处理功能
 package product
 
 import (
@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/pipeline"
 	domainProduct "task-processor/internal/product"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,7 +28,7 @@ func NewRawJsonDataHandlerV2(
 	amazonProcessor domainProduct.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandlerV2 {
-	logger := logrus.WithField("handler", "RawJsonDataHandlerV2")
+	logger := logger.GetGlobalLogger("RawJsonDataHandlerV2")
 
 	// 使用工厂模式创建获取器
 	factory := appProduct.NewFetcherFactory()

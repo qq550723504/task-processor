@@ -1,7 +1,8 @@
-// Package amazon 提供Amazon处理器核心功能
+﻿// Package amazon 提供Amazon处理器核心功能
 package amazon
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"sync"
@@ -10,7 +11,6 @@ import (
 	"task-processor/internal/model"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // AmazonProcessor Amazon爬虫处理器
@@ -47,14 +47,14 @@ func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 		poolConfig.HealthCheckEnabled = cfg.Browser.RandomConfig.HealthCheckEnabled
 		poolConfig.MaxRetries = cfg.Browser.RandomConfig.MaxRetries
 
-		logrus.Infof("启用随机配置 - 策略: %s, 预设: %s, 指纹策略: %s",
+		logger.GetGlobalLogger("crawler/amazon").Infof("启用随机配置 - 策略: %s, 预设: %s, 指纹策略: %s",
 			cfg.Browser.RandomConfig.Strategy, cfg.Browser.RandomConfig.PresetName, cfg.Browser.RandomConfig.FingerprintStrategy)
 	} else {
 		poolConfig.UseRandomFingerprint = false
-		logrus.Info("使用传统浏览器配置")
+		logger.GetGlobalLogger("crawler/amazon").Info("使用传统浏览器配置")
 	}
 
-	logrus.Infof("创建Amazon处理器，浏览器池大小: %d (配置值: %d)", poolConfig.Size, cfg.Browser.PoolSize)
+	logger.GetGlobalLogger("crawler/amazon").Infof("创建Amazon处理器，浏览器池大小: %d (配置值: %d)", poolConfig.Size, cfg.Browser.PoolSize)
 	browserPool := browser.NewBrowserPool(cfg, poolConfig)
 
 	// 创建辅助组件（需要在浏览器池初始化前创建，因为池管理器需要它们）
@@ -65,11 +65,11 @@ func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 	usePool := true
 	var poolManager *browser.PoolManager
 	if err := browserPool.Initialize(); err != nil {
-		logrus.Infof("初始化浏览器池失败: %v，将使用单浏览器模式", err)
+		logger.GetGlobalLogger("crawler/amazon").Infof("初始化浏览器池失败: %v，将使用单浏览器模式", err)
 		usePool = false
 		browserPool = nil
 	} else {
-		logrus.Info("浏览器池初始化成功")
+		logger.GetGlobalLogger("crawler/amazon").Info("浏览器池初始化成功")
 		poolManager = browser.NewPoolManager(browserPool)
 	}
 
@@ -107,7 +107,7 @@ func (ap *AmazonProcessor) ProcessWithContext(ctx context.Context, url string, z
 	ap.mu.RUnlock()
 
 	startTime := time.Now()
-	logrus.Infof("开始处理Amazon产品: %s", url)
+	logger.GetGlobalLogger("crawler/amazon").Infof("开始处理Amazon产品: %s", url)
 
 	if ap.usePool && ap.poolManager != nil {
 		return ap.processWithPoolManager(ctx, url, zipcode)
@@ -147,7 +147,7 @@ func (ap *AmazonProcessor) ProcessBatch(requests []model.ProductRequest) []model
 		return []model.ProductResult{}
 	}
 
-	logrus.Infof("开始批量处理 %d 个Amazon产品", len(requests))
+	logger.GetGlobalLogger("crawler/amazon").Infof("开始批量处理 %d 个Amazon产品", len(requests))
 	startTime := time.Now()
 
 	var results []model.ProductResult
@@ -165,7 +165,7 @@ func (ap *AmazonProcessor) ProcessBatch(requests []model.ProductRequest) []model
 		}
 	}
 
-	logrus.Infof("批量处理完成: 成功 %d/%d, 耗时: %v", successCount, len(requests), duration)
+	logger.GetGlobalLogger("crawler/amazon").Infof("批量处理完成: 成功 %d/%d, 耗时: %v", successCount, len(requests), duration)
 	return results
 }
 
@@ -175,7 +175,7 @@ func (ap *AmazonProcessor) processWithPool(url string, zipcode string) (*model.P
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
-			logrus.Infof("开始第 %d 次重试处理产品: %s", attempt, url)
+			logger.GetGlobalLogger("crawler/amazon").Infof("开始第 %d 次重试处理产品: %s", attempt, url)
 		}
 
 		// 从池中获取浏览器实例
@@ -189,27 +189,27 @@ func (ap *AmazonProcessor) processWithPool(url string, zipcode string) (*model.P
 
 		// 检查是否为严重错误
 		if processErr != nil && ap.browserPool.IsBlockedOrSeriousError(processErr) {
-			logrus.Warnf("检测到浏览器实例 %d 出现严重错误: %v", instance.ID, processErr)
+			logger.GetGlobalLogger("crawler/amazon").Warnf("检测到浏览器实例 %d 出现严重错误: %v", instance.ID, processErr)
 
 			// 同步重建浏览器实例
 			newInstance := ap.browserPool.RecreateInstanceSync(instance)
 
 			// 如果重建失败
 			if newInstance == nil {
-				logrus.Errorf("重建浏览器实例失败，任务失败: %s", url)
+				logger.GetGlobalLogger("crawler/amazon").Errorf("重建浏览器实例失败，任务失败: %s", url)
 				return nil, fmt.Errorf("重建浏览器实例失败: %w", processErr)
 			}
 
 			// 如果是最后一次尝试，返回错误
 			if attempt >= maxRetries {
-				logrus.Errorf("已达到最大重试次数，任务失败: %s", url)
+				logger.GetGlobalLogger("crawler/amazon").Errorf("已达到最大重试次数，任务失败: %s", url)
 				// 将重建的实例放回池中
 				ap.browserPool.Release(newInstance)
 				return nil, processErr
 			}
 
 			// 否则继续下一次重试
-			logrus.Infof("浏览器实例已重建为 %d，准备重试", newInstance.ID)
+			logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例已重建为 %d，准备重试", newInstance.ID)
 			continue
 		}
 
@@ -236,7 +236,7 @@ func (ap *AmazonProcessor) processWithInstance(instance *browser.BrowserInstance
 // Shutdown 关闭处理器
 func (ap *AmazonProcessor) Shutdown() {
 	ap.shutdownOnce.Do(func() {
-		logrus.Info("开始关闭Amazon处理器")
+		logger.GetGlobalLogger("crawler/amazon").Info("开始关闭Amazon处理器")
 
 		ap.mu.Lock()
 		ap.closed = true
@@ -254,10 +254,10 @@ func (ap *AmazonProcessor) Shutdown() {
 
 		// 关闭浏览器池
 		if ap.usePool && ap.browserPool != nil {
-			logrus.Info("关闭浏览器池...")
+			logger.GetGlobalLogger("crawler/amazon").Info("关闭浏览器池...")
 			ap.browserPool.Shutdown()
 		}
 
-		logrus.Info("Amazon处理器已关闭")
+		logger.GetGlobalLogger("crawler/amazon").Info("Amazon处理器已关闭")
 	})
 }

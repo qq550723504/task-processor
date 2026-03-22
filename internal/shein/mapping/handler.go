@@ -1,4 +1,4 @@
-// Package mapping 提供 SHEIN 平台商品映射功能
+﻿// Package mapping 提供 SHEIN 平台商品映射功能
 package mapping
 
 import (
@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -43,7 +44,7 @@ func NewMappingRepairHandler(
 		resultQueue:   make(chan *MappingRepairResult, config.BatchSize*2),
 		workers:       workers,
 		stopCh:        make(chan struct{}),
-		logger:        logrus.WithField("component", "MappingRepairHandler"),
+		logger:        logger.GetGlobalLogger("MappingRepairHandler"),
 	}
 }
 

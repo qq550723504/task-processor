@@ -1,4 +1,4 @@
-// package sync 提供TEMU库存监控服务工厂
+﻿// package sync 提供TEMU库存监控服务工厂
 package sync
 
 import (
@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,7 +22,7 @@ type InventorySyncServiceFactory struct {
 func NewInventorySyncServiceFactory(managementClient *management.ClientManager) *InventorySyncServiceFactory {
 	return &InventorySyncServiceFactory{
 		managementClient: managementClient,
-		logger:           logrus.WithField("component", "TemuInventorySyncServiceFactory"),
+		logger:           logger.GetGlobalLogger("TemuInventorySyncServiceFactory"),
 	}
 }
 

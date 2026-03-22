@@ -1,4 +1,4 @@
-// Package config 提供配置管理功能
+﻿// Package config 提供配置管理功能
 package config
 
 import (
@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/watermark"
 
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -57,7 +56,7 @@ func LoadConfig() *Config {
 
 	// 加载统一配置文件 config-dev.yaml
 	configName := fmt.Sprintf("config-%s", env)
-	logrus.Infof("加载配置文件: %s.yaml", configName)
+	logger.GetGlobalLogger("core/config").Infof("加载配置文件: %s.yaml", configName)
 
 	viper.SetConfigName(configName)
 	viper.SetConfigType("yaml")
@@ -82,10 +81,10 @@ func LoadConfig() *Config {
 
 	// 读取配置文件
 	if err := viper.ReadInConfig(); err != nil {
-		logrus.Warnf("无法读取配置文件: %v", err)
-		logrus.Info("使用默认配置和环境变量")
+		logger.GetGlobalLogger("core/config").Warnf("无法读取配置文件: %v", err)
+		logger.GetGlobalLogger("core/config").Info("使用默认配置和环境变量")
 	} else {
-		logrus.Infof("成功加载配置文件: %s", viper.ConfigFileUsed())
+		logger.GetGlobalLogger("core/config").Infof("成功加载配置文件: %s", viper.ConfigFileUsed())
 	}
 
 	return buildConfig()
@@ -93,7 +92,7 @@ func LoadConfig() *Config {
 
 // LoadConfigFromFile 从指定文件加载配置
 func LoadConfigFromFile(configFile string) *Config {
-	logrus.Infof("加载指定配置文件: %s", configFile)
+	logger.GetGlobalLogger("core/config").Infof("加载指定配置文件: %s", configFile)
 
 	viper.SetConfigFile(configFile)
 	viper.SetConfigType("yaml")
@@ -106,10 +105,10 @@ func LoadConfigFromFile(configFile string) *Config {
 
 	// 读取配置文件
 	if err := viper.ReadInConfig(); err != nil {
-		logrus.Warnf("无法读取配置文件 %s: %v", configFile, err)
-		logrus.Info("使用默认配置和环境变量")
+		logger.GetGlobalLogger("core/config").Warnf("无法读取配置文件 %s: %v", configFile, err)
+		logger.GetGlobalLogger("core/config").Info("使用默认配置和环境变量")
 	} else {
-		logrus.Infof("成功加载配置文件: %s", viper.ConfigFileUsed())
+		logger.GetGlobalLogger("core/config").Infof("成功加载配置文件: %s", viper.ConfigFileUsed())
 	}
 
 	return buildConfig()

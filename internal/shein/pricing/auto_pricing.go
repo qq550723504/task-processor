@@ -1,4 +1,4 @@
-// Package pricing 提供 SHEIN 平台定价功能
+﻿// Package pricing 提供 SHEIN 平台定价功能
 package pricing
 
 import (
@@ -9,6 +9,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	shein_pricing "task-processor/internal/shein/api/pricing"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -62,7 +63,7 @@ func NewAutoPricingService(
 		calculator:       NewAutoPricingCalculator(),
 		requestBuilder:   NewPricingRequestBuilder(),
 		timeHelper:       NewTimeHelper(),
-		logger:           logrus.WithField("component", "AutoPricingService"),
+		logger:           logger.GetGlobalLogger("AutoPricingService"),
 	}
 }
 

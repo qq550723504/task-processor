@@ -1,12 +1,12 @@
-// Package task 提供统一的任务清理服务
+﻿// Package task 提供统一的任务清理服务
 package task
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"task-processor/internal/core/config"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // CleanupService 统一清理服务
@@ -58,19 +58,19 @@ func (s *CleanupService) registerStrategies() {
 func (s *CleanupService) Start(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
-			logrus.Errorf("清理服务goroutine panic: %v", r)
+			logger.GetGlobalLogger("app/task").Errorf("清理服务goroutine panic: %v", r)
 		}
 	}()
 
 	ticker := time.NewTicker(s.config.CleanupInterval)
 	defer ticker.Stop()
 
-	logrus.Infof("🧹 统一清理服务启动，间隔: %v", s.config.CleanupInterval)
+	logger.GetGlobalLogger("app/task").Infof("🧹 统一清理服务启动，间隔: %v", s.config.CleanupInterval)
 
 	for {
 		select {
 		case <-ctx.Done():
-			logrus.Info("统一清理服务停止")
+			logger.GetGlobalLogger("app/task").Info("统一清理服务停止")
 			return
 		case <-ticker.C:
 			s.performCleanup()
@@ -130,9 +130,9 @@ func (s *CleanupService) getTaskStatusByReason(reason string) TaskStatus {
 // logCleanup 记录清理日志
 func (s *CleanupService) logCleanup(taskID string, duration time.Duration, reason string) {
 	if reason == "30分钟强制清理" {
-		logrus.Errorf("🚨 %s: TaskID=%s, 运行时长=%.1fm", reason, taskID, duration.Minutes())
+		logger.GetGlobalLogger("app/task").Errorf("🚨 %s: TaskID=%s, 运行时长=%.1fm", reason, taskID, duration.Minutes())
 	} else {
-		logrus.Warnf("🗑️ 清理任务: TaskID=%s, 运行时长=%.1fm, 原因=%s",
+		logger.GetGlobalLogger("app/task").Warnf("🗑️ 清理任务: TaskID=%s, 运行时长=%.1fm, 原因=%s",
 			taskID, duration.Minutes(), reason)
 	}
 }
@@ -140,7 +140,7 @@ func (s *CleanupService) logCleanup(taskID string, duration time.Duration, reaso
 // reportCleanupStats 报告清理统计
 func (s *CleanupService) reportCleanupStats(stats *CleanupStats) {
 	if stats.TotalCleaned > 0 {
-		logrus.Infof("🧹 清理完成: 强制=%d, 超时=%d, 卡住=%d, 总计=%d, 剩余=%d",
+		logger.GetGlobalLogger("app/task").Infof("🧹 清理完成: 强制=%d, 超时=%d, 卡住=%d, 总计=%d, 剩余=%d",
 			stats.ForcedTasks, stats.ExpiredTasks, stats.StuckTasks,
 			stats.TotalCleaned, stats.RemainingTasks)
 	}
@@ -148,7 +148,7 @@ func (s *CleanupService) reportCleanupStats(stats *CleanupStats) {
 
 // handleEmergencyCleanup 处理紧急清理
 func (s *CleanupService) handleEmergencyCleanup() {
-	logrus.Warnf("⚠️ 处理中任务过多(%d)，执行紧急清理", len(s.fetcher.processingTasks))
+	logger.GetGlobalLogger("app/task").Warnf("⚠️ 处理中任务过多(%d)，执行紧急清理", len(s.fetcher.processingTasks))
 
 	emergencyThreshold := 2 * time.Minute
 	now := time.Now()
@@ -159,12 +159,12 @@ func (s *CleanupService) handleEmergencyCleanup() {
 			delete(s.fetcher.processingTasks, taskID)
 			emergencyCleaned++
 
-			logrus.Warnf("🚨 紧急清理: TaskID=%s", taskID)
+			logger.GetGlobalLogger("app/task").Warnf("🚨 紧急清理: TaskID=%s", taskID)
 		}
 	}
 
 	if emergencyCleaned > 0 {
-		logrus.Warnf("🚨 紧急清理完成: 清理=%d, 剩余=%d",
+		logger.GetGlobalLogger("app/task").Warnf("🚨 紧急清理完成: 清理=%d, 剩余=%d",
 			emergencyCleaned, len(s.fetcher.processingTasks))
 	}
 }
@@ -177,7 +177,7 @@ func (s *CleanupService) ForceCleanupAll(threshold time.Duration) int {
 	now := time.Now()
 	forceCleaned := 0
 
-	logrus.Warnf("🚨 执行强制清理，阈值: %.1fm", threshold.Minutes())
+	logger.GetGlobalLogger("app/task").Warnf("🚨 执行强制清理，阈值: %.1fm", threshold.Minutes())
 
 	for taskID, submitTime := range s.fetcher.processingTasks {
 		duration := now.Sub(submitTime)
@@ -186,13 +186,13 @@ func (s *CleanupService) ForceCleanupAll(threshold time.Duration) int {
 			delete(s.fetcher.processingTasks, taskID)
 			forceCleaned++
 
-			logrus.Errorf("🚨 强制清理: TaskID=%s, 运行时长=%.1fm",
+			logger.GetGlobalLogger("app/task").Errorf("🚨 强制清理: TaskID=%s, 运行时长=%.1fm",
 				taskID, duration.Minutes())
 		}
 	}
 
 	if forceCleaned > 0 {
-		logrus.Errorf("🚨 强制清理完成: 清理=%d, 剩余=%d",
+		logger.GetGlobalLogger("app/task").Errorf("🚨 强制清理完成: 清理=%d, 剩余=%d",
 			forceCleaned, len(s.fetcher.processingTasks))
 	}
 

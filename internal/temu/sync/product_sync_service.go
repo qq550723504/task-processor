@@ -1,4 +1,4 @@
-// package sync 提供TEMU产品同步服务实现
+﻿// package sync 提供TEMU产品同步服务实现
 package sync
 
 import (
@@ -10,6 +10,7 @@ import (
 	temuproduct "task-processor/internal/temu/api/product"
 	temuquery "task-processor/internal/temu/api/query"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -49,7 +50,7 @@ func NewProductSyncService(
 		mappingClient:    mappingClient,
 		storeAPI:         storeAPI,
 		config:           config,
-		logger:           logrus.WithField("component", "TemuProductSyncService"),
+		logger:           logger.GetGlobalLogger("TemuProductSyncService"),
 	}
 }
 

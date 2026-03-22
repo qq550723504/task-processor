@@ -1,4 +1,4 @@
-package bulkrelist
+﻿package bulkrelist
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/temu/api/client"
 	"task-processor/internal/temu/api/inventory"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +20,7 @@ type BulkRelistEntry struct {
 func NewBulkRelistEntry(managementClient *management.ClientManager) *BulkRelistEntry {
 	return &BulkRelistEntry{
 		managementClient: managementClient,
-		logger:           logrus.WithField("component", "BulkRelistEntry"),
+		logger:           logger.GetGlobalLogger("BulkRelistEntry"),
 	}
 }
 

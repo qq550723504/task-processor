@@ -1,4 +1,4 @@
-package sku
+﻿package sku
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/pipeline"
 	domainProduct "task-processor/internal/product"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -26,7 +27,7 @@ func NewCacheVariantsHandler(
 	amazonProcessor domainProduct.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *CacheVariantsHandler {
-	logger := logrus.WithField("handler", "CacheVariantsHandler")
+	logger := logger.GetGlobalLogger("CacheVariantsHandler")
 
 	// 使用工厂模式创建获取器
 	factory := appProduct.NewFetcherFactory()

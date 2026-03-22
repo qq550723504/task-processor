@@ -1,12 +1,12 @@
-// Package browser 提供Amazon浏览器自动化的邮编验证功能
+﻿// Package browser 提供Amazon浏览器自动化的邮编验证功能
 package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // ZipcodeValidator 邮编验证器
@@ -33,12 +33,12 @@ func (zv *ZipcodeValidator) VerifyZipcode(page playwright.Page, expectedZipcode 
 	cleanCurrent := cleanZipcodeText(currentZipcode)
 	cleanExpected := cleanZipcodeText(expectedZipcode)
 
-	logrus.Infof("验证邮编 - 期望: '%s' (清理后: '%s'), 当前: '%s' (清理后: '%s')",
+	logger.GetGlobalLogger("crawler/amazon").Infof("验证邮编 - 期望: '%s' (清理后: '%s'), 当前: '%s' (清理后: '%s')",
 		expectedZipcode, cleanExpected, currentZipcode, cleanCurrent)
 
 	// 1. 完全匹配（清理后）
 	if cleanCurrent == cleanExpected {
-		logrus.Infof("邮编完全匹配")
+		logger.GetGlobalLogger("crawler/amazon").Infof("邮编完全匹配")
 		return true, nil
 	}
 
@@ -47,25 +47,25 @@ func (zv *ZipcodeValidator) VerifyZipcode(page playwright.Page, expectedZipcode 
 	// 例如: 期望 "SW1A1AA"，页面显示 "LondonSW1A1"
 	expectedCore := extractZipcodeCore(cleanExpected)
 	if expectedCore != "" && strings.Contains(cleanCurrent, expectedCore) {
-		logrus.Infof("邮编核心部分匹配: '%s' 包含在 '%s' 中", expectedCore, cleanCurrent)
+		logger.GetGlobalLogger("crawler/amazon").Infof("邮编核心部分匹配: '%s' 包含在 '%s' 中", expectedCore, cleanCurrent)
 		return true, nil
 	}
 
 	// 3. 加拿大邮编：页面可能显示实际配送地址的 FSA（前3位），与设置的邮编不同
 	// 只要当前显示的是合法的加拿大 FSA 格式，就认为邮编设置成功
 	if isCanadianZipcode(cleanExpected) && isValidCanadianFSA(cleanCurrent) {
-		logrus.Infof("加拿大邮编 FSA 验证通过: 期望 '%s'，页面显示 '%s'（配送地址 FSA）", cleanExpected, cleanCurrent)
+		logger.GetGlobalLogger("crawler/amazon").Infof("加拿大邮编 FSA 验证通过: 期望 '%s'，页面显示 '%s'（配送地址 FSA）", cleanExpected, cleanCurrent)
 		return true, nil
 	}
 
 	// 4. 对于某些站点(如沙特),页面显示的是城市名称而非邮编
 	expectedCity := mapZipcodeToCity(expectedZipcode)
 	if expectedCity != "" && strings.Contains(cleanCurrent, strings.ReplaceAll(expectedCity, " ", "")) {
-		logrus.Infof("邮编映射到城市名称匹配: %s", expectedCity)
+		logger.GetGlobalLogger("crawler/amazon").Infof("邮编映射到城市名称匹配: %s", expectedCity)
 		return true, nil
 	}
 
-	logrus.Warnf("邮编验证失败 - 期望: '%s', 当前: '%s'", cleanExpected, cleanCurrent)
+	logger.GetGlobalLogger("crawler/amazon").Warnf("邮编验证失败 - 期望: '%s', 当前: '%s'", cleanExpected, cleanCurrent)
 	return false, nil
 }
 

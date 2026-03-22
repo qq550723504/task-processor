@@ -1,12 +1,12 @@
-// Package task 提供统一的队列监控服务
+﻿// Package task 提供统一的队列监控服务
 package task
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"task-processor/internal/infra/worker"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // MonitorService 统一监控服务
@@ -40,19 +40,19 @@ func (s *MonitorService) registerStrategies() {
 func (s *MonitorService) StartMonitoring(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
-			logrus.Errorf("监控服务goroutine panic: %v", r)
+			logger.GetGlobalLogger("app/task").Errorf("监控服务goroutine panic: %v", r)
 		}
 	}()
 
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	logrus.Info("🔍 统一监控服务启动")
+	logger.GetGlobalLogger("app/task").Info("🔍 统一监控服务启动")
 
 	for {
 		select {
 		case <-ctx.Done():
-			logrus.Info("统一监控服务停止")
+			logger.GetGlobalLogger("app/task").Info("统一监控服务停止")
 			return
 		case <-ticker.C:
 			s.performHealthCheck()
@@ -70,7 +70,7 @@ func (s *MonitorService) performHealthCheck() {
 	totalCapacity := 0
 	problemPlatforms := make([]string, 0)
 
-	logrus.Debug("📊 执行队列健康检查")
+	logger.GetGlobalLogger("app/task").Debug("📊 执行队列健康检查")
 
 	for platform, submitter := range s.fetcher.submitters {
 		stats := submitter.GetQueueStats()
@@ -80,14 +80,14 @@ func (s *MonitorService) performHealthCheck() {
 		// 使用策略模式评估健康状态
 		status, issues := s.evaluateQueueHealth(stats)
 
-		logrus.Debugf("[%s] 队列状态: %d/%d (%.1f%%) - %s",
+		logger.GetGlobalLogger("app/task").Debugf("[%s] 队列状态: %d/%d (%.1f%%) - %s",
 			platform, stats.QueueSize, stats.BufferSize,
 			stats.UsagePercent, status)
 
 		if len(issues) > 0 {
 			problemPlatforms = append(problemPlatforms, platform)
 			for _, issue := range issues {
-				logrus.Warnf("[%s] ⚠️ %s", platform, issue)
+				logger.GetGlobalLogger("app/task").Warnf("[%s] ⚠️ %s", platform, issue)
 			}
 		}
 	}
@@ -97,11 +97,11 @@ func (s *MonitorService) performHealthCheck() {
 
 	// 总体健康评估
 	overallUsage := float64(totalQueued) / float64(totalCapacity) * 100
-	logrus.Debugf("🎯 总体队列使用率: %.1f%% (%d/%d)",
+	logger.GetGlobalLogger("app/task").Debugf("🎯 总体队列使用率: %.1f%% (%d/%d)",
 		overallUsage, totalQueued, totalCapacity)
 
 	if len(problemPlatforms) > 0 {
-		logrus.Warnf("⚠️ 发现队列压力过大的平台: %v", problemPlatforms)
+		logger.GetGlobalLogger("app/task").Warnf("⚠️ 发现队列压力过大的平台: %v", problemPlatforms)
 	}
 }
 
@@ -122,7 +122,7 @@ func (s *MonitorService) checkProcessingTasks() {
 	s.fetcher.tasksMutex.RUnlock()
 
 	if processingCount > 0 {
-		logrus.Debugf("⏳ 当前处理中任务数量: %d", processingCount)
+		logger.GetGlobalLogger("app/task").Debugf("⏳ 当前处理中任务数量: %d", processingCount)
 
 		// 检查长时间运行的任务
 		longRunningTasks := s.getLongRunningTasks(10 * time.Minute)
@@ -131,7 +131,7 @@ func (s *MonitorService) checkProcessingTasks() {
 			for i, task := range longRunningTasks {
 				taskIDs[i] = task.ID
 			}
-			logrus.Warnf("⏰ 发现长时间运行任务(%d): %v", len(longRunningTasks), taskIDs)
+			logger.GetGlobalLogger("app/task").Warnf("⏰ 发现长时间运行任务(%d): %v", len(longRunningTasks), taskIDs)
 		}
 	}
 }

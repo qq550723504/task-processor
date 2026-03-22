@@ -1,11 +1,11 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // SupplierExtractor 供应商提取器
@@ -341,7 +341,7 @@ func (se *SupplierExtractor) Extract(page playwright.Page, product *model.Produc
 	}`, nil)
 
 	if err != nil {
-		logrus.Debugf("提取供应商信息失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取供应商信息失败: %v", err)
 		return err
 	}
 
@@ -386,7 +386,7 @@ func (se *SupplierExtractor) Extract(page playwright.Page, product *model.Produc
 			// 临时修复：如果经营年限为0，设置为已知的3年
 			if supplier.YearsInBusiness == 0 {
 				supplier.YearsInBusiness = 3
-				logrus.Debugf("临时修复：设置经营年限为3年")
+				logger.GetGlobalLogger("crawler/alibaba1688").Debugf("临时修复：设置经营年限为3年")
 			}
 
 			if isGoldSupplier, ok := supplierData["isGoldSupplier"].(bool); ok {
@@ -397,7 +397,7 @@ func (se *SupplierExtractor) Extract(page playwright.Page, product *model.Produc
 				supplier.IsVerified = isVerified
 			}
 
-			logrus.Debugf("提取到供应商信息: %s (%s), ID=%s, 类型=%s, 评分=%.1f, 回购率=%.1f%%, 地区=%s, 店铺=%s, 经营年限=%d年, 认证=%t",
+			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取到供应商信息: %s (%s), ID=%s, 类型=%s, 评分=%.1f, 回购率=%.1f%%, 地区=%s, 店铺=%s, 经营年限=%d年, 认证=%t",
 				supplier.Name, supplier.CompanyName, supplier.ID, supplier.CardType, supplier.Rating, supplier.ResponseRate, supplier.Location, supplier.ShopURL, supplier.YearsInBusiness, supplier.IsVerified)
 		}
 	}

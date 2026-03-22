@@ -1,12 +1,12 @@
-// Package skc 提供SHEIN平台SKC图片处理功能
+﻿// Package skc 提供SHEIN平台SKC图片处理功能
 package skc
 
 import (
+	"task-processor/internal/core/logger"
 	"slices"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/product/image"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SKCImageHandler SKC图片处理器
@@ -27,7 +27,7 @@ func NewSKCImageHandler(imageProcessor *image.ImageProcessor, taskContext *shein
 func (h *SKCImageHandler) GetVariantSpecificImages(ctx *shein.TaskContext, variant shein.Variant) ([]string, error) {
 	// 如果变体ASIN与主产品相同，使用主产品图片
 	if variant.ASIN == ctx.AmazonProduct.Asin {
-		logrus.Infof("变体ASIN与主产品相同，使用主产品图片，ASIN: %s", variant.ASIN)
+		logger.GetGlobalLogger("shein/product").Infof("变体ASIN与主产品相同，使用主产品图片，ASIN: %s", variant.ASIN)
 		return ctx.AmazonProduct.Images, nil
 	}
 
@@ -54,6 +54,6 @@ func (h *SKCImageHandler) GetVariantSpecificImages(ctx *shein.TaskContext, varia
 	}
 
 	// 如果没有找到特定变体的图片，返回主产品图片
-	logrus.Infof("未找到变体 %s 的特定图片，使用主产品图片", variant.ASIN)
+	logger.GetGlobalLogger("shein/product").Infof("未找到变体 %s 的特定图片，使用主产品图片", variant.ASIN)
 	return ctx.AmazonProduct.Images, nil
 }

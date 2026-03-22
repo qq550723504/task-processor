@@ -1,7 +1,8 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -157,7 +158,7 @@ func (p *productUnderstanding) AnalyzeImage(ctx context.Context, imagePath strin
 		return nil, fmt.Errorf("image path cannot be empty")
 	}
 
-	logrus.WithField("path", imagePath).Info("analyzing image")
+	logger.GetGlobalLogger("productenrich/understanding.go").WithField("path", imagePath).Info("analyzing image")
 
 	// 构建提示词
 	prompt := `Analyze this product image and extract the following attributes in JSON format:
@@ -209,7 +210,7 @@ func (p *productUnderstanding) ExtractTextAttributes(ctx context.Context, text s
 		return nil, fmt.Errorf("text cannot be empty")
 	}
 
-	logrus.Info("extracting text attributes")
+	logger.GetGlobalLogger("productenrich/understanding.go").Info("extracting text attributes")
 
 	// 构建提示词
 	prompt := fmt.Sprintf(`Analyze this product description and extract the following information in JSON format:
@@ -260,7 +261,7 @@ Only return the JSON object, no additional text.`, text)
 
 // FuseMultimodal 融合多模态信息
 func (p *productUnderstanding) FuseMultimodal(ctx context.Context, imageAttr *ImageAttributes, textAttr *TextAttributes) (*ProductRepresentation, error) {
-	logrus.Info("fusing multimodal information")
+	logger.GetGlobalLogger("productenrich/understanding.go").Info("fusing multimodal information")
 
 	// 构建融合提示词
 	prompt := "Combine the following image and text attributes to create a unified product representation:\n\n"

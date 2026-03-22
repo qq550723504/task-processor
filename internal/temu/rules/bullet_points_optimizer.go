@@ -1,10 +1,11 @@
-package rules
+﻿package rules
 
 import (
 	"fmt"
 	"regexp"
 	"strings"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,7 +26,7 @@ type OptimizationStrategy struct {
 // NewBulletPointsOptimizer 创建新的要点优化器
 func NewBulletPointsOptimizer() *BulletPointsOptimizer {
 	return &BulletPointsOptimizer{
-		logger: logrus.WithField("optimizer", "BulletPointsOptimizer"),
+		logger: logger.GetGlobalLogger("BulletPointsOptimizer"),
 	}
 }
 

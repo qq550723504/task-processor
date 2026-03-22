@@ -1,4 +1,4 @@
-package sku
+﻿package sku
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ type AISkuMappingHandler struct {
 
 // NewAISkuMappingHandler 创建新的AI SKU映射处理器
 func NewAISkuMappingHandler(openaiConfig *openai.ClientConfig) *AISkuMappingHandler {
-	logger := logrus.WithField("handler", "AISkuMappingHandler")
+	logger := logger.GetGlobalLogger("AISkuMappingHandler")
 
 	var aiClient *openai.Client
 	if openaiConfig != nil {

@@ -1,12 +1,12 @@
-// Package attribute 提供SHEIN平台的属性值匹配功能
+﻿// Package attribute 提供SHEIN平台的属性值匹配功能
 package attribute
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/content"
 
-	"github.com/sirupsen/logrus"
 )
 
 // AttributeValueMatcher 属性值匹配器，负责在平台已有属性值中查找匹配
@@ -33,32 +33,32 @@ func (m *AttributeValueMatcher) FindMatchingPlatformValue(value string, platform
 
 	// 1. 精确匹配（优先级最高）
 	if id, exists := platformValues[value]; exists {
-		logrus.Debugf("✓ 属性值 '%s' 找到精确匹配，平台ID: %d", value, id)
+		logger.GetGlobalLogger("shein/product").Debugf("✓ 属性值 '%s' 找到精确匹配，平台ID: %d", value, id)
 		return id
 	}
 
 	// 2. 忽略大小写匹配
 	lowerValue := strings.ToLower(strings.TrimSpace(value))
 	if id, exists := platformValues[lowerValue]; exists {
-		logrus.Debugf("✓ 属性值 '%s' 找到大小写匹配，平台ID: %d", value, id)
+		logger.GetGlobalLogger("shein/product").Debugf("✓ 属性值 '%s' 找到大小写匹配，平台ID: %d", value, id)
 		return id
 	}
 
 	// 3. 清理特殊字符后匹配
 	sanitizedValue := content.SanitizeForSheinAttribute(value)
 	if sanitizedValue != value {
-		logrus.Debugf("尝试使用清理后的值进行匹配: '%s' -> '%s'", value, sanitizedValue)
+		logger.GetGlobalLogger("shein/product").Debugf("尝试使用清理后的值进行匹配: '%s' -> '%s'", value, sanitizedValue)
 
 		// 使用清理后的值进行精确匹配
 		if id, exists := platformValues[sanitizedValue]; exists {
-			logrus.Debugf("✓ 属性值 '%s' 清理后找到精确匹配，平台ID: %d", value, id)
+			logger.GetGlobalLogger("shein/product").Debugf("✓ 属性值 '%s' 清理后找到精确匹配，平台ID: %d", value, id)
 			return id
 		}
 
 		// 使用清理后的值进行大小写匹配
 		lowerSanitized := strings.ToLower(strings.TrimSpace(sanitizedValue))
 		if id, exists := platformValues[lowerSanitized]; exists {
-			logrus.Debugf("✓ 属性值 '%s' 清理后找到大小写匹配，平台ID: %d", value, id)
+			logger.GetGlobalLogger("shein/product").Debugf("✓ 属性值 '%s' 清理后找到大小写匹配，平台ID: %d", value, id)
 			return id
 		}
 	}
@@ -67,13 +67,13 @@ func (m *AttributeValueMatcher) FindMatchingPlatformValue(value string, platform
 	normalizedValue := m.normalizeValueForMatching(value)
 	for platformValue, id := range platformValues {
 		if m.normalizeValueForMatching(platformValue) == normalizedValue {
-			logrus.Debugf("✓ 属性值 '%s' 找到模糊匹配，平台ID: %d", value, id)
+			logger.GetGlobalLogger("shein/product").Debugf("✓ 属性值 '%s' 找到模糊匹配，平台ID: %d", value, id)
 			return id
 		}
 	}
 
 	// 移除颜色特殊处理，保持Amazon原始属性值的完整性
-	logrus.Debugf("✗ 属性值 '%s' 在平台中未找到任何匹配", value)
+	logger.GetGlobalLogger("shein/product").Debugf("✗ 属性值 '%s' 在平台中未找到任何匹配", value)
 	return 0
 }
 
@@ -88,7 +88,7 @@ func (m *AttributeValueMatcher) GetPlatformAttributeValues(attrID int, attribute
 	platformValues := make(map[string]int)
 
 	if attributeTemplates == nil || len(attributeTemplates.Data) == 0 {
-		logrus.Warnf("属性模板为空，无法获取平台属性值")
+		logger.GetGlobalLogger("shein/product").Warnf("属性模板为空，无法获取平台属性值")
 		return platformValues
 	}
 
@@ -110,13 +110,13 @@ func (m *AttributeValueMatcher) GetPlatformAttributeValues(attrID int, attribute
 						}
 					}
 				}
-				logrus.Debugf("属性ID %d 找到 %d 个平台属性值", attrID, len(platformValues)/2) // 除以2因为每个值存储了两次
+				logger.GetGlobalLogger("shein/product").Debugf("属性ID %d 找到 %d 个平台属性值", attrID, len(platformValues)/2) // 除以2因为每个值存储了两次
 				return platformValues
 			}
 		}
 	}
 
-	logrus.Warnf("在属性模板中未找到属性ID %d", attrID)
+	logger.GetGlobalLogger("shein/product").Warnf("在属性模板中未找到属性ID %d", attrID)
 	return platformValues
 }
 

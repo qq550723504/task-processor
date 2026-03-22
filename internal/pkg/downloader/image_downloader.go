@@ -1,6 +1,7 @@
-package downloader
+﻿package downloader
 
 import (
+	"task-processor/internal/core/logger"
 	"bytes"
 	"crypto/tls"
 	"fmt"
@@ -123,7 +124,7 @@ func NewImageDownloader() *ImageDownloader {
 				getStatusCodeSafely := func() (int, bool) {
 					defer func() {
 						if r := recover(); r != nil {
-							logrus.Warnf("   ⚠️  访问响应状态码时发生恐慌: %v", r)
+							logger.GetGlobalLogger("pkg/downloader").Warnf("   ⚠️  访问响应状态码时发生恐慌: %v", r)
 						}
 					}()
 					return resp.StatusCode, true
@@ -140,7 +141,7 @@ func NewImageDownloader() *ImageDownloader {
 						return true
 					}
 				} else {
-					logrus.Warnf("   ⚠️  无法安全获取响应状态码")
+					logger.GetGlobalLogger("pkg/downloader").Warnf("   ⚠️  无法安全获取响应状态码")
 				}
 			}
 			return false
@@ -153,7 +154,7 @@ func NewImageDownloader() *ImageDownloader {
 				getStatusCodeSafely := func() (int, bool) {
 					defer func() {
 						if r := recover(); r != nil {
-							logrus.Warnf("   ⚠️  访问响应状态码时发生恐慌: %v", r)
+							logger.GetGlobalLogger("pkg/downloader").Warnf("   ⚠️  访问响应状态码时发生恐慌: %v", r)
 						}
 					}()
 					return resp.StatusCode, true
@@ -162,21 +163,21 @@ func NewImageDownloader() *ImageDownloader {
 				if sc, ok := getStatusCodeSafely(); ok {
 					statusCode = sc
 					if statusCode == 429 {
-						logrus.Infof("   🚨 触发速率限制: 状态码=429")
+						logger.GetGlobalLogger("pkg/downloader").Infof("   🚨 触发速率限制: 状态码=429")
 					} else if statusCode == 403 {
-						logrus.Infof("   🚨 访问被拒绝: 状态码=403")
+						logger.GetGlobalLogger("pkg/downloader").Infof("   🚨 访问被拒绝: 状态码=403")
 					} else if statusCode >= 500 && statusCode <= 999 { // 确保是有效的HTTP状态码范围
-						logrus.Infof("   🚨 服务器错误: 状态码=%d", statusCode)
+						logger.GetGlobalLogger("pkg/downloader").Infof("   🚨 服务器错误: 状态码=%d", statusCode)
 					}
 				} else {
-					logrus.Warnf("   ⚠️  无法安全获取响应状态码")
+					logger.GetGlobalLogger("pkg/downloader").Warnf("   ⚠️  无法安全获取响应状态码")
 				}
 			} else if err != nil {
-				logrus.Infof("   🚨 请求错误: %v", err)
+				logger.GetGlobalLogger("pkg/downloader").Infof("   🚨 请求错误: %v", err)
 			}
 			// 如果resp和err都为nil，记录警告信息
 			if resp == nil && err == nil {
-				logrus.Warnf("   ⚠️  重试钩子被调用，但resp和err都为nil")
+				logger.GetGlobalLogger("pkg/downloader").Warnf("   ⚠️  重试钩子被调用，但resp和err都为nil")
 			}
 		})
 
@@ -191,7 +192,7 @@ func NewImageDownloader() *ImageDownloader {
 		blockDetector: &BlockDetector{
 			blockCount: 0,
 		},
-		logger:    logrus.WithField("component", "ImageDownloader"),
+		logger:    logger.GetGlobalLogger("ImageDownloader"),
 		processor: NewImageProcessor(), // 初始化图片处理器V2
 	}
 

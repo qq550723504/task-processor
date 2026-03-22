@@ -1,11 +1,11 @@
-// Package variant 提供SHEIN平台变体精确匹配功能
+﻿// Package variant 提供SHEIN平台变体精确匹配功能
 package variant
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // VariantExactMatcher 变体精确匹配器
@@ -33,7 +33,7 @@ func (m *VariantExactMatcher) FindExactMatches(variants []shein.Variant, attrNam
 					// 精确匹配
 					if valueNorm == targetValueNorm {
 						exactMatches = append(exactMatches, variant)
-						logrus.Infof("找到精确匹配变体: 变体序号 %d, ASIN %s, 属性名 %s, 属性值 %s", variantIndex, variant.ASIN, attrKey, value)
+						logger.GetGlobalLogger("shein/product").Infof("找到精确匹配变体: 变体序号 %d, ASIN %s, 属性名 %s, 属性值 %s", variantIndex, variant.ASIN, attrKey, value)
 						matched_in_variant = true
 						break
 					}

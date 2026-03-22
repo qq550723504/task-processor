@@ -1,7 +1,8 @@
-// Package store 提供SHEIN平台的处理模块
+﻿// Package store 提供SHEIN平台的处理模块
 package store
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"sync"
 	management_api "task-processor/internal/infra/clients/management/api"
@@ -41,7 +42,7 @@ func NewStoreInfoHandler(storeClient interface {
 	GetStore(id int64) (*management_api.StoreRespDTO, error)
 }) *StoreInfoHandler {
 	return &StoreInfoHandler{
-		logger:      logrus.WithField("handler", "StoreInfoHandler"),
+		logger:      logger.GetGlobalLogger("StoreInfoHandler"),
 		storeClient: storeClient,
 	}
 }
@@ -125,7 +126,7 @@ func (h *StoreInfoHandler) validateStoreStatus(ctx *shein.TaskContext, storeInfo
 func (h *StoreInfoHandler) cleanupStoreResources(ctx *shein.TaskContext) {
 	// 通过内存管理器清理相关缓存
 	if ctx.MemoryManager != nil {
-		logrus.Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
+		logger.GetGlobalLogger("shein/store").Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
 	}
 }
 

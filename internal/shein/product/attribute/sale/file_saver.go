@@ -1,14 +1,14 @@
-// Package sale 提供SHEIN平台销售属性文件保存功能
+﻿// Package sale 提供SHEIN平台销售属性文件保存功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeFileSaver 销售属性文件保存器，负责保存提示词和响应数据到文件
@@ -113,6 +113,6 @@ func (s *SaleAttributeFileSaver) saveToFile(filename string, data any) error {
 		return fmt.Errorf("写入文件失败: %w", err)
 	}
 
-	logrus.Infof("📁 数据已保存到文件: %s", filePath)
+	logger.GetGlobalLogger("shein/product").Infof("📁 数据已保存到文件: %s", filePath)
 	return nil
 }

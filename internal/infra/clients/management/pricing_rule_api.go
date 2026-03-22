@@ -1,4 +1,4 @@
-package management
+﻿package management
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +20,7 @@ type PricingRuleAPIClient struct {
 // GetPricingRule 获取自动核价规则（返回数组）
 func (m *PricingRuleAPIClient) GetPricingRule(req *api.PricingRuleReqDTO) ([]api.PricingRuleRespDTO, error) {
 	if m.logger == nil {
-		m.logger = logrus.WithField("component", "PricingRuleAPIClient")
+		m.logger = logger.GetGlobalLogger("PricingRuleAPIClient")
 	}
 
 	url := fmt.Sprintf("%s/rpc-api/listing/pricing-rule/get?storeId=%d", m.baseURL, *req.StoreID)

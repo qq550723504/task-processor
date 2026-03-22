@@ -1,10 +1,10 @@
-package management
+﻿package management
 
 import (
+	"task-processor/internal/core/logger"
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // RateLimit 速率限制器
@@ -32,7 +32,7 @@ func (r *RateLimit) Apply() {
 		elapsed := time.Since(r.lastRequest)
 		if elapsed < r.minInterval {
 			sleepTime := r.minInterval - elapsed
-			logrus.Infof("🕐 应用速率限制，等待 %v", sleepTime)
+			logger.GetGlobalLogger("infra/clients").Infof("🕐 应用速率限制，等待 %v", sleepTime)
 			time.Sleep(sleepTime)
 		}
 	}
@@ -57,7 +57,7 @@ func (r *RateLimit) RelaxOnSuccess() {
 			r.minInterval = r.minInterval * 95 / 100
 		} else {
 			r.isActive = false
-			logrus.Infof("✅ 风控解除，关闭速率限制")
+			logger.GetGlobalLogger("infra/clients").Infof("✅ 风控解除，关闭速率限制")
 		}
 	}
 }

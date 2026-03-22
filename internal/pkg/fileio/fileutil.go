@@ -1,4 +1,4 @@
-// package fileio 提供文件操作工具
+﻿// package fileio 提供文件操作工具
 package fileio
 
 import (
@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -17,7 +18,7 @@ type FileUtil struct {
 
 // New 创建文件操作工具实例
 func New() *FileUtil {
-	return &FileUtil{logger: logrus.WithField("pkg", "fileutil")}
+	return &FileUtil{logger: logger.GetGlobalLogger("fileutil")}
 }
 
 // SaveJSONToFile 保存JSON数据到文件

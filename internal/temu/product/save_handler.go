@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	temuapi "task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ type ProductSaveHandler struct {
 // NewProductSaveHandler 创建新的产品保存处理器
 func NewProductSaveHandler() *ProductSaveHandler {
 	return &ProductSaveHandler{
-		logger:    logrus.WithField("handler", "ProductSaveHandler"),
+		logger:    logger.GetGlobalLogger("ProductSaveHandler"),
 		fileUtils: fileio.New(),
 	}
 }

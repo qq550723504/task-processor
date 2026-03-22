@@ -1,8 +1,9 @@
-package listing
+﻿package listing
 
 import (
 	"task-processor/internal/amazon/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -14,7 +15,7 @@ type ProductIdentifierService struct {
 // NewProductIdentifierService 创建产品标识符服务
 func NewProductIdentifierService() *ProductIdentifierService {
 	return &ProductIdentifierService{
-		logger: logrus.WithField("service", "ProductIdentifier"),
+		logger: logger.GetGlobalLogger("ProductIdentifier"),
 	}
 }
 

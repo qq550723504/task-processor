@@ -1,4 +1,4 @@
-// package pricing 提供TEMU平台核价决策服务功能
+﻿// package pricing 提供TEMU平台核价决策服务功能
 package pricing
 
 import (
@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/product"
 	temupricing "task-processor/internal/temu/api/pricing"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -105,10 +106,7 @@ func newPricingDecisionServiceWithConfig(
 		return nil, errors.New("config不能为空")
 	}
 
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "PricingDecisionService",
-		"storeID":   config.StoreID,
-	})
+	logger := logger.GetGlobalLogger("PricingDecisionService").WithField("storeID", config.StoreID)
 
 	// 创建依赖服务
 	storeConfig, err := NewStoreConfigService(config.StoreID, managementClient)

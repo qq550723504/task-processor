@@ -1,4 +1,4 @@
-// Package handlerbase 提供TEMU处理器基类
+﻿// Package handlerbase 提供TEMU处理器基类
 package handlerbase
 
 import (
@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,7 +19,7 @@ type BaseTemuHandler struct {
 // NewBaseTemuHandler 创建TEMU处理器基类
 func NewBaseTemuHandler(name string) *BaseTemuHandler {
 	return &BaseTemuHandler{
-		logger: logrus.WithField("handler", name),
+		logger: logger.GetGlobalLogger("temu/handlerbase").WithField("handler", name),
 		name:   name,
 	}
 }

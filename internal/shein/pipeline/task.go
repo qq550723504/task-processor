@@ -1,7 +1,8 @@
-// Package pipeline 提供SHEIN平台的任务处理器
+﻿// Package pipeline 提供SHEIN平台的任务处理器
 package pipeline
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 
@@ -46,7 +47,7 @@ func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
 
 // ProcessTask 处理任务（统一接口）
 func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, pipeline pipeline.Pipeline) error {
-	logrus.Infof("开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
+	logger.GetGlobalLogger("shein/pipeline").Infof("开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
 
 	// 创建任务上下文
 	taskCtx := h.createTaskContext(ctx, &task)
@@ -54,7 +55,7 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, pipeline
 	// 检查初始化是否成功
 	if initError, exists := taskCtx.GetData("init_error"); exists {
 		if err, ok := initError.(error); ok {
-			logrus.Errorf("任务初始化失败，停止处理: %v", err)
+			logger.GetGlobalLogger("shein/pipeline").Errorf("任务初始化失败，停止处理: %v", err)
 			h.handleError(task, err)
 			return err
 		}
@@ -62,7 +63,7 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, pipeline
 
 	// 执行管道处理
 	if err := pipeline.Process(taskCtx); err != nil {
-		logrus.Errorf("任务处理失败: %v", err)
+		logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败: %v", err)
 		h.handleError(task, err)
 		return err
 	}
@@ -96,7 +97,7 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
 	if taskCtx.Task == nil || taskCtx.Task.StoreID == 0 {
 		err := fmt.Errorf("任务信息或店铺ID为空")
-		logrus.Warn(err.Error())
+		logger.GetGlobalLogger("shein/pipeline").Warn(err.Error())
 		return err
 	}
 
@@ -104,11 +105,11 @@ func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
 	managementClient := h.processor.GetManagementClient()
 	if managementClient == nil {
 		err := fmt.Errorf("管理系统客户端未初始化")
-		logrus.Error(err.Error())
+		logger.GetGlobalLogger("shein/pipeline").Error(err.Error())
 		return err
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
 		"tenantID": taskCtx.Task.TenantID,
 		"storeID":  taskCtx.Task.StoreID,
 	}).Debug("开始初始化SHEIN店铺客户端")
@@ -151,14 +152,14 @@ func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
 
 	// 检查Cookie加载状态（参考TEMU的检查方式）
 	if apiClient.HasCookies() {
-		logrus.WithFields(logrus.Fields{
+		logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
 			"tenantID":    taskCtx.Task.TenantID,
 			"storeID":     taskCtx.Task.StoreID,
 			"cookieCount": apiClient.GetCookieCount(),
 		}).Info("SHEIN API客户端初始化成功，已加载Cookie")
 	} else {
 		// Cookie加载失败，记录详细错误信息并返回错误
-		logrus.WithFields(logrus.Fields{
+		logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
 			"tenantID": taskCtx.Task.TenantID,
 			"storeID":  taskCtx.Task.StoreID,
 		}).Error("SHEIN API客户端初始化失败，未加载到Cookie")
@@ -186,11 +187,11 @@ func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
 // handleError 处理错误
 func (h *TaskHandler) handleError(task model.Task, err error) {
 	// 添加调试日志，查看错误的具体类型和内容
-	logrus.Infof("处理错误: 类型=%T, 内容=%v", err, err)
+	logger.GetGlobalLogger("shein/pipeline").Infof("处理错误: 类型=%T, 内容=%v", err, err)
 
 	// 检查是否是Cookie加载失败错误
 	if cookieErr, isCookieError := shein.IsCookieLoadError(err); isCookieError {
-		logrus.Errorf("检测到Cookie加载失败错误: %v", cookieErr)
+		logger.GetGlobalLogger("shein/pipeline").Errorf("检测到Cookie加载失败错误: %v", cookieErr)
 		// Cookie加载失败，直接处理为任务失败，不进行重试
 		h.errorHandler.HandleTaskFailure(task, cookieErr)
 		return
@@ -198,13 +199,13 @@ func (h *TaskHandler) handleError(task model.Task, err error) {
 
 	// 检查是否是认证过期错误
 	if authErr, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
-		logrus.Warnf("检测到认证过期错误: %v", authErr)
+		logger.GetGlobalLogger("shein/pipeline").Warnf("检测到认证过期错误: %v", authErr)
 		h.errorHandler.HandleAuthenticationExpired(authErr, task)
 		return
 	}
 
 	// 添加调试日志，显示未匹配到认证过期错误
-	logrus.Debugf("未检测到认证过期错误，按一般错误处理: %v", err)
+	logger.GetGlobalLogger("shein/pipeline").Debugf("未检测到认证过期错误，按一般错误处理: %v", err)
 
 	// 处理一般错误
 	h.errorHandler.HandleTaskFailure(task, err)
@@ -216,6 +217,6 @@ func (h *TaskHandler) handleSuccess(task model.Task) {
 	statusUpdater.UpdateTaskStatusAsync(fmt.Sprintf("%d", task.ID), model.TaskStatusPublished, "")
 	metrics.GlobalTaskMetrics().IncrementCompleted()
 
-	logrus.Infof("任务处理成功: ID=%d, TenantID=%d, StoreID=%d, ProductID=%s",
+	logger.GetGlobalLogger("shein/pipeline").Infof("任务处理成功: ID=%d, TenantID=%d, StoreID=%d, ProductID=%s",
 		task.ID, task.TenantID, task.StoreID, task.ProductID)
 }

@@ -1,4 +1,4 @@
-package llm
+﻿package llm
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"task-processor/internal/pkg/jsonx"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -57,7 +58,7 @@ type AttributeMappingResponse struct {
 func NewLLMAttributeMapper(llmClient LLMClient) *LLMAttributeMapper {
 	return &LLMAttributeMapper{
 		llmClient: llmClient,
-		logger:    logrus.WithField("service", "LLMAttributeMapper"),
+		logger:    logger.GetGlobalLogger("LLMAttributeMapper"),
 	}
 }
 

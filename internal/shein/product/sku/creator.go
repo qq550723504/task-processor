@@ -1,7 +1,8 @@
-// Package sku 提供SHEIN平台SKU创建功能
+﻿// Package sku 提供SHEIN平台SKU创建功能
 package sku
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"math"
 	"math/rand"
@@ -12,7 +13,6 @@ import (
 	"task-processor/internal/shein/store"
 	"task-processor/internal/shein/validation"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SKUCreator SKU创建器
@@ -42,7 +42,7 @@ func (c *SKUCreator) CreateSKU(ctx *shein.TaskContext, params shein.SKUCreationP
 
 	// 2. 价格验证
 	if originalPrice <= 0 {
-		logrus.Infof("ASIN %s 价格为0，跳过创建SKU", params.ASIN)
+		logger.GetGlobalLogger("shein/product").Infof("ASIN %s 价格为0，跳过创建SKU", params.ASIN)
 		return nil, nil // 返回nil表示跳过，不是错误
 	}
 
@@ -71,7 +71,7 @@ func (c *SKUCreator) CreateSKU(ctx *shein.TaskContext, params shein.SKUCreationP
 	// 6. 构建SKU图片信息
 	skuImageInfo := c.utils.BuildSKUImageInfoForMultiPiece(ctx, params)
 	if skuImageInfo != nil {
-		logrus.Infof("检测到多件商品 ASIN %s，已处理SKU图片", params.ASIN)
+		logger.GetGlobalLogger("shein/product").Infof("检测到多件商品 ASIN %s，已处理SKU图片", params.ASIN)
 	}
 
 	// 7. 创建SKU结构体
@@ -117,7 +117,7 @@ func (c *SKUCreator) CreateSKU(ctx *shein.TaskContext, params shein.SKUCreationP
 		},
 	}
 
-	logrus.Debugf("成功创建SKU: ASIN %s, 价格 %.2f, SKU代码 %s, 销售属性数量 %d",
+	logger.GetGlobalLogger("shein/product").Debugf("成功创建SKU: ASIN %s, 价格 %.2f, SKU代码 %s, 销售属性数量 %d",
 		params.ASIN, salePrice, supplierSKU, len(params.SaleAttributeList))
 
 	return sku, nil
@@ -142,7 +142,7 @@ func (c *SKUCreator) BuildSaleAttributeListForSingleVariant(ctx *shein.TaskConte
 			if strings.EqualFold(attrKey, attrName) {
 				secondaryAttrValue = value
 				found = true
-				logrus.Debugf("找到次要属性值: %s = %s", attrName, value)
+				logger.GetGlobalLogger("shein/product").Debugf("找到次要属性值: %s = %s", attrName, value)
 				break
 			}
 		}
@@ -160,18 +160,18 @@ func (c *SKUCreator) BuildSaleAttributeListForSingleVariant(ctx *shein.TaskConte
 
 				// 检查次要属性值ID是否有效
 				if valueID <= 0 {
-					logrus.Warnf("次要属性值ID无效，跳过: %s (ID: %d)，应该在预处理阶段已经映射", attrValue.Value, valueID)
+					logger.GetGlobalLogger("shein/product").Warnf("次要属性值ID无效，跳过: %s (ID: %d)，应该在预处理阶段已经映射", attrValue.Value, valueID)
 					valueID = 0 // 标记为无效
 				}
 
-				logrus.Debugf("匹配到次要属性值ID: %d", valueID)
+				logger.GetGlobalLogger("shein/product").Debugf("匹配到次要属性值ID: %d", valueID)
 				break
 			}
 		}
 
 		// 如果找到匹配且有效的值，添加到销售属性列表
 		if valueID > 0 {
-			logrus.Debugf("为单变体添加次要销售属性: 属性ID=%d, 属性值ID=%d, 属性值=%s",
+			logger.GetGlobalLogger("shein/product").Debugf("为单变体添加次要销售属性: 属性ID=%d, 属性值ID=%d, 属性值=%s",
 				strategy.SecondaryAttribute.AttrID, valueID, secondaryAttrValue)
 
 			saleAttributeList = append(saleAttributeList, product.SaleAttribute{
@@ -181,10 +181,10 @@ func (c *SKUCreator) BuildSaleAttributeListForSingleVariant(ctx *shein.TaskConte
 				PreFillSpec:        false,
 			})
 		} else {
-			logrus.Warnf("次要属性值 '%s' 未找到有效的ID", secondaryAttrValue)
+			logger.GetGlobalLogger("shein/product").Warnf("次要属性值 '%s' 未找到有效的ID", secondaryAttrValue)
 		}
 	} else {
-		logrus.Warnf("变体中未找到次要属性 '%s'", secondaryAttrName)
+		logger.GetGlobalLogger("shein/product").Warnf("变体中未找到次要属性 '%s'", secondaryAttrName)
 	}
 
 	return saleAttributeList

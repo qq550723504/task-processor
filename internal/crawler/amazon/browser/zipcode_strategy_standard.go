@@ -1,11 +1,11 @@
-// Package browser 提供标准邮编输入策略
+﻿// Package browser 提供标准邮编输入策略
 package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // StandardZipcodeStrategy 标准单一输入框策略（美国、欧洲等大部分站点）
@@ -55,13 +55,13 @@ func (s *StandardZipcodeStrategy) Handle(page playwright.Page, zipcode string) e
 
 	zipInput := s.findVisibleElement(page, zipInputSelectors)
 	if zipInput == nil {
-		logrus.Infof("[%s] 所有邮编输入框选择器都未找到元素", s.GetName())
+		logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 所有邮编输入框选择器都未找到元素", s.GetName())
 		return fmt.Errorf("未找到邮编输入框")
 	}
 
 	// 先清空输入框
 	if err := zipInput.Clear(); err != nil {
-		logrus.Infof("[%s] 清空输入框失败: %v", s.GetName(), err)
+		logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 清空输入框失败: %v", s.GetName(), err)
 	}
 
 	// 填写邮编 - 使用 Type 而不是 Fill,模拟真实用户输入
@@ -76,9 +76,9 @@ func (s *StandardZipcodeStrategy) Handle(page playwright.Page, zipcode string) e
 
 	// 触发 input 和 change 事件,确保 Amazon 识别到输入
 	if _, err := zipInput.Evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }", nil); err != nil {
-		logrus.Infof("[%s] 触发事件失败: %v", s.GetName(), err)
+		logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 触发事件失败: %v", s.GetName(), err)
 	}
 
-	logrus.Infof("[%s] 成功填写标准邮编: %s", s.GetName(), zipcode)
+	logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 成功填写标准邮编: %s", s.GetName(), zipcode)
 	return nil
 }

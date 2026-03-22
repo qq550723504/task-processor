@@ -1,4 +1,4 @@
-// Package filter 提供TEMU平台的各种处理器，包括筛选规则处理等功能
+﻿// Package filter 提供TEMU平台的各种处理器，包括筛选规则处理等功能
 package filter
 
 import (
@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/temu/product"
 	"task-processor/internal/temu/rules"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,7 +28,7 @@ type FilterRuleHandler struct {
 
 // NewFilterRuleHandler 创建新的筛选规则处理器
 func NewFilterRuleHandler(filterRuleClient api.FilterRuleAPI) *FilterRuleHandler {
-	logger := logrus.WithField("handler", "FilterRuleHandler")
+	logger := logger.GetGlobalLogger("FilterRuleHandler")
 
 	// 创建专职处理器
 	ruleManager := NewFilterRuleManager(filterRuleClient, logger)

@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -11,6 +11,7 @@ import (
 	pkgproduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,7 +25,7 @@ type PriceHandler struct {
 func NewPriceHandler(profitRuleClient api.ProfitRuleAPI) *PriceHandler {
 	return &PriceHandler{
 		profitRuleClient: profitRuleClient,
-		logger:           logrus.WithField("handler", "PriceHandler"),
+		logger:           logger.GetGlobalLogger("PriceHandler"),
 	}
 }
 

@@ -1,7 +1,8 @@
-// Package updater 提供自动更新器的文件操作管理功能
+﻿// Package updater 提供自动更新器的文件操作管理功能
 package updater
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"io"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // FileManager 文件操作管理器
@@ -72,7 +72,7 @@ func (fm *FileManager) ReplaceExecutable(tmpFile string, newVersion string) erro
 		// 删除临时下载文件
 		_ = os.Remove(tmpFile)
 
-		logrus.Infof("已准备延迟更新文件，新版本文件名: %s", newExeName)
+		logger.GetGlobalLogger("app/updater").Infof("已准备延迟更新文件，新版本文件名: %s", newExeName)
 		return nil
 	}
 
@@ -82,7 +82,7 @@ func (fm *FileManager) ReplaceExecutable(tmpFile string, newVersion string) erro
 	if err := fm.copyFile(currentExe, backupFile); err != nil {
 		return fmt.Errorf("备份失败: %w", err)
 	}
-	logrus.Info("已备份当前版本")
+	logger.GetGlobalLogger("app/updater").Info("已备份当前版本")
 
 	if err := os.Rename(tmpFile, currentExe); err != nil {
 		return fmt.Errorf("替换程序失败: %w", err)
@@ -95,18 +95,18 @@ func (fm *FileManager) ReplaceExecutable(tmpFile string, newVersion string) erro
 func (fm *FileManager) RestartProgram() {
 	currentExe, err := os.Executable()
 	if err != nil {
-		logrus.Errorf("获取程序路径失败: %v", err)
+		logger.GetGlobalLogger("app/updater").Errorf("获取程序路径失败: %v", err)
 		return
 	}
 
 	// 获取当前工作目录
 	workDir, err := os.Getwd()
 	if err != nil {
-		logrus.Warnf("获取工作目录失败: %v", err)
+		logger.GetGlobalLogger("app/updater").Warnf("获取工作目录失败: %v", err)
 		workDir = filepath.Dir(currentExe)
 	}
 
-	logrus.Info("准备启动新版本程序...")
+	logger.GetGlobalLogger("app/updater").Info("准备启动新版本程序...")
 
 	if runtime.GOOS == "windows" {
 		// Windows: 检查是否有 .new 文件需要更新
@@ -117,7 +117,7 @@ func (fm *FileManager) RestartProgram() {
 		if err == nil && len(files) > 0 {
 			// 找到更新文件，使用第一个
 			newFilePath := files[0]
-			logrus.Infof("检测到更新文件: %s", filepath.Base(newFilePath))
+			logger.GetGlobalLogger("app/updater").Infof("检测到更新文件: %s", filepath.Base(newFilePath))
 			fm.performDelayedUpdate(currentExe, newFilePath, workDir)
 			return
 		} else {
@@ -127,25 +127,25 @@ func (fm *FileManager) RestartProgram() {
 
 			cmd := exec.Command("cmd", args...)
 			if err := cmd.Start(); err != nil {
-				logrus.Errorf("启动新程序失败: %v", err)
+				logger.GetGlobalLogger("app/updater").Errorf("启动新程序失败: %v", err)
 				return
 			}
 
-			logrus.Info("新程序启动命令已执行，当前程序即将退出...")
-			logrus.Info("提示: 旧版本已备份为 .old 文件，确认新版本正常后可手动删除")
+			logger.GetGlobalLogger("app/updater").Info("新程序启动命令已执行，当前程序即将退出...")
+			logger.GetGlobalLogger("app/updater").Info("提示: 旧版本已备份为 .old 文件，确认新版本正常后可手动删除")
 
 			// 刷新日志缓冲区
 			time.Sleep(500 * time.Millisecond)
 
 			// 在 Windows 上使用 taskkill 强制终止当前进程
 			pid := os.Getpid()
-			logrus.Infof("强制终止当前进程 (PID: %d)...", pid)
+			logger.GetGlobalLogger("app/updater").Infof("强制终止当前进程 (PID: %d)...", pid)
 
 			// 使用 taskkill 强制终止 - 添加panic recovery
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
-						logrus.Errorf("强制终止进程goroutine panic recovered: %v", r)
+						logger.GetGlobalLogger("app/updater").Errorf("强制终止进程goroutine panic recovered: %v", r)
 					}
 				}()
 				time.Sleep(1 * time.Second)
@@ -162,12 +162,12 @@ func (fm *FileManager) RestartProgram() {
 		cmd.Dir = workDir
 
 		if err := cmd.Start(); err != nil {
-			logrus.Errorf("启动新程序失败: %v", err)
+			logger.GetGlobalLogger("app/updater").Errorf("启动新程序失败: %v", err)
 			return
 		}
 
-		logrus.Info("新程序启动命令已执行，当前程序即将退出...")
-		logrus.Info("提示: 旧版本已备份为 .old 文件，确认新版本正常后可手动删除")
+		logger.GetGlobalLogger("app/updater").Info("新程序启动命令已执行，当前程序即将退出...")
+		logger.GetGlobalLogger("app/updater").Info("提示: 旧版本已备份为 .old 文件，确认新版本正常后可手动删除")
 
 		// 刷新日志缓冲区
 		time.Sleep(500 * time.Millisecond)
@@ -240,20 +240,20 @@ Remove-Item $PSCommandPath -Force
 	// 创建临时 PowerShell 脚本
 	scriptPath := "temp_update.ps1"
 	if err := os.WriteFile(scriptPath, []byte(psScript), 0644); err != nil {
-		logrus.Errorf("创建更新脚本失败: %v", err)
+		logger.GetGlobalLogger("app/updater").Errorf("创建更新脚本失败: %v", err)
 		return
 	}
 
 	// 启动 PowerShell 脚本
 	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
 	if err := cmd.Start(); err != nil {
-		logrus.Errorf("启动更新脚本失败: %v", err)
+		logger.GetGlobalLogger("app/updater").Errorf("启动更新脚本失败: %v", err)
 		os.Remove(scriptPath)
 		return
 	}
 
 	// 立即退出当前程序
-	logrus.Infof("PowerShell更新脚本已启动，将更新为: %s", filepath.Base(targetExePath))
+	logger.GetGlobalLogger("app/updater").Infof("PowerShell更新脚本已启动，将更新为: %s", filepath.Base(targetExePath))
 	time.Sleep(100 * time.Millisecond) // 短暂等待确保日志输出
 	os.Exit(0)
 }
@@ -272,9 +272,9 @@ Error: %v
 
 	// 保存到当前目录
 	if err := os.WriteFile("update-error.log", []byte(errorLog), 0644); err != nil {
-		logrus.Warnf("无法保存更新错误日志: %v", err)
+		logger.GetGlobalLogger("app/updater").Warnf("无法保存更新错误日志: %v", err)
 	} else {
-		logrus.Info("更新错误日志已保存到: update-error.log")
+		logger.GetGlobalLogger("app/updater").Info("更新错误日志已保存到: update-error.log")
 	}
 }
 
@@ -299,7 +299,7 @@ func (fm *FileManager) IsRecentlyUpdated() bool {
 	// 如果标记文件是1小时内创建的，认为是最近更新过
 	timeSinceUpdate := time.Since(info.ModTime())
 	if timeSinceUpdate < 1*time.Hour {
-		logrus.Infof("检测到 %v 前更新过", timeSinceUpdate.Round(time.Second))
+		logger.GetGlobalLogger("app/updater").Infof("检测到 %v 前更新过", timeSinceUpdate.Round(time.Second))
 		return true
 	}
 
@@ -311,8 +311,8 @@ func (fm *FileManager) MarkAsUpdated(version string) {
 	markerFile := ".update-marker"
 	content := fmt.Sprintf("%s\n%s", version, time.Now().Format(time.RFC3339))
 	if err := os.WriteFile(markerFile, []byte(content), 0644); err != nil {
-		logrus.Warnf("无法创建更新标记文件: %v", err)
+		logger.GetGlobalLogger("app/updater").Warnf("无法创建更新标记文件: %v", err)
 	} else {
-		logrus.Infof("已标记更新到版本: %s", version)
+		logger.GetGlobalLogger("app/updater").Infof("已标记更新到版本: %s", version)
 	}
 }

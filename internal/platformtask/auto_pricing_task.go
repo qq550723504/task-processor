@@ -1,4 +1,4 @@
-// Package platformtask 提供平台通用的调度任务基础实现
+﻿// Package platformtask 提供平台通用的调度任务基础实现
 // 用于半托管模式电商平台的自动核价功能
 package platformtask
 
@@ -9,6 +9,7 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -61,7 +62,7 @@ func NewAutoPricingTask(config AutoPricingTaskConfig) *AutoPricingTask {
 		managementClient: config.ManagementClient,
 		pricingService:   config.PricingService,
 		platformName:     config.PlatformName,
-		logger: logrus.WithFields(logrus.Fields{
+		logger: logger.GetGlobalLogger("platformtask/auto_pricing_task.go").WithFields(logrus.Fields{
 			"component": fmt.Sprintf("%sAutoPricingTask", config.PlatformName),
 			"task_id":   baseTask.GetID(),
 			"tenant_id": config.TaskConfig.TenantID,

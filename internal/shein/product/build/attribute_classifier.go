@@ -1,11 +1,11 @@
-package build
+﻿package build
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/product/attribute/sale"
 
-	"github.com/sirupsen/logrus"
 )
 
 // AttributeClassifier 属性分类器
@@ -26,7 +26,7 @@ func NewAttributeClassifier(builder *AttributeBuilder) *AttributeClassifier {
 func (c *AttributeClassifier) ClassifyAndBuildAttribute(attr attribute.AttributeInfo, attributeInfo *shein.BuildAttributeInfo) {
 	// 检查级联依赖关系
 	if attr.CascadeAttributeID != 0 {
-		logrus.Infof("属性ID %d 存在级联依赖关系，依赖于: %d", attr.AttributeID, attr.CascadeAttributeID)
+		logger.GetGlobalLogger("shein/product").Infof("属性ID %d 存在级联依赖关系，依赖于: %d", attr.AttributeID, attr.CascadeAttributeID)
 	}
 
 	// 根据属性类型分类

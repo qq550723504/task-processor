@@ -1,13 +1,13 @@
-// Package browser 提供城市下拉框邮编输入策略（沙特、阿联酋等站点）
+﻿// Package browser 提供城市下拉框邮编输入策略（沙特、阿联酋等站点）
 package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // CityDropdownStrategy 城市下拉框策略（沙特、阿联酋等站点使用城市选择而非邮编输入）
@@ -97,7 +97,7 @@ func (s *CityDropdownStrategy) Handle(page playwright.Page, zipcode string) erro
 		return fmt.Errorf("无法将邮编 %s 映射到城市名称", zipcode)
 	}
 
-	logrus.Infof("[%s] 尝试选择城市: %s (邮编: %s)", s.GetName(), cityName, zipcode)
+	logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 尝试选择城市: %s (邮编: %s)", s.GetName(), cityName, zipcode)
 
 	// 如果是combobox,使用点击方式选择
 	if isCombobox {
@@ -129,7 +129,7 @@ func (s *CityDropdownStrategy) handleCombobox(page playwright.Page, cityDropdown
 		optionLocator := page.Locator(optSelector).First()
 		if count, err := optionLocator.Count(); err == nil && count > 0 {
 			if err := optionLocator.Click(); err == nil {
-				logrus.Infof("[%s] 成功点击城市选项: %s", s.GetName(), cityName)
+				logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 成功点击城市选项: %s", s.GetName(), cityName)
 				time.Sleep(1 * time.Second)
 				return nil
 			}
@@ -145,13 +145,13 @@ func (s *CityDropdownStrategy) handleSelectElement(page playwright.Page, cityDro
 	if _, err := cityDropdown.SelectOption(playwright.SelectOptionValues{
 		Labels: &[]string{cityName},
 	}); err == nil {
-		logrus.Infof("[%s] 成功通过标签选择城市: %s", s.GetName(), cityName)
+		logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 成功通过标签选择城市: %s", s.GetName(), cityName)
 		time.Sleep(1 * time.Second)
 		return nil
 	}
 
 	// 如果通过标签选择失败,尝试通过值选择
-	logrus.Infof("[%s] 通过标签选择失败,尝试其他方式", s.GetName())
+	logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 通过标签选择失败,尝试其他方式", s.GetName())
 
 	// 获取所有选项并查找匹配项
 	options := page.Locator("select option")
@@ -166,7 +166,7 @@ func (s *CityDropdownStrategy) handleSelectElement(page playwright.Page, cityDro
 				if _, err := cityDropdown.SelectOption(playwright.SelectOptionValues{
 					Values: &[]string{value},
 				}); err == nil {
-					logrus.Infof("[%s] 成功通过值选择城市: %s", s.GetName(), cityName)
+					logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 成功通过值选择城市: %s", s.GetName(), cityName)
 					time.Sleep(1 * time.Second)
 					return nil
 				}

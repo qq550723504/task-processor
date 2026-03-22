@@ -6,6 +6,15 @@ logging:
   level: "DEBUG"  # 设置为 DEBUG 级别以显示详细调试信息
   format: "text"  # text 或 json
   file: "logs/app.log"
+  split_by_level:
+    - levels: [error, fatal, panic]
+      file: logs/error.log
+    - levels: [warn]
+      file: logs/warn.log
+    - levels: [info]
+      file: logs/info.log
+    - levels: [debug, trace]
+      file: logs/debug.log
 
 # 处理器配置
 processor:
@@ -62,9 +71,9 @@ management:
   clientSecret: "go-listing-secret"
   tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
   scopes: ["user.read"]
-  tenantID: "286"  # 租户ID
+  #tenantID: "286"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [828]# 店铺ID列表 ->775
+  storeIDs: [505]# 店铺ID列表 ->775
 
 platforms:
   # TEMU 平台配置

@@ -1,12 +1,12 @@
-// Package alibaba1688 提供1688产品检查功能
+﻿// Package alibaba1688 提供1688产品检查功能
 package alibaba1688
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/crawler/alibaba1688/model"
 
-	"github.com/sirupsen/logrus"
 )
 
 // ProductChecker 1688产品检查器
@@ -58,7 +58,7 @@ func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 		return fmt.Errorf("图片验证失败: %w", err)
 	}
 
-	logrus.Debugf("产品验证通过: %s", product.Title)
+	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("产品验证通过: %s", product.Title)
 	return nil
 }
 

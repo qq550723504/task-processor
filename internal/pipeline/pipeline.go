@@ -1,10 +1,11 @@
-// Package pipeline 提供统一的管道实现
+﻿// Package pipeline 提供统一的管道实现
 package pipeline
 
 import (
 	"errors"
 	"fmt"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,10 +30,7 @@ func NewPipeline(name string) Pipeline {
 	return &BasePipeline{
 		name:     name,
 		handlers: make([]Handler, 0),
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "Pipeline",
-			"pipeline":  name,
-		}),
+		logger: logger.GetGlobalLogger("Pipeline").WithField("pipeline", name),
 	}
 }
 

@@ -1,7 +1,8 @@
-// Package inventory 提供SHEIN平台库存同步服务
+﻿// Package inventory 提供SHEIN平台库存同步服务
 package inventory
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -69,9 +70,9 @@ func NewInventorySyncService(
 	inventoryRecordClient managementapi.InventoryRecordAPI,
 ) InventorySyncService {
 	// 临时设置 Debug 级别以便调试映射问题
-	logrus.SetLevel(logrus.DebugLevel)
+	logger.SetGlobalLogLevel("debug")
 
-	logger := logrus.WithField("component", "InventorySyncService")
+	logger := logger.GetGlobalLogger("InventorySyncService")
 
 	// 创建通用成本计算器（SHEIN需要详细日志）
 	costCalculator := pricing.NewCostCalculator(managementClient, logger, true)

@@ -1,11 +1,11 @@
-// Package variant 提供SHEIN平台变体组合值匹配功能
+﻿// Package variant 提供SHEIN平台变体组合值匹配功能
 package variant
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // VariantCompositeMatcher 变体组合值匹配器
@@ -38,7 +38,7 @@ func (m *VariantCompositeMatcher) matchesCompositeValue(variantValue, targetValu
 
 	// 对于尺寸属性，不进行组合值匹配，避免错误匹配
 	if m.utils.IsSizeAttribute(variantValue, targetValue) {
-		logrus.Debugf("尺寸属性跳过组合值匹配: '%s' vs '%s'", variantValue, targetValue)
+		logger.GetGlobalLogger("shein/product").Debugf("尺寸属性跳过组合值匹配: '%s' vs '%s'", variantValue, targetValue)
 		return false
 	}
 
@@ -53,12 +53,12 @@ func (m *VariantCompositeMatcher) matchesCompositeValue(variantValue, targetValu
 				part = strings.TrimSpace(part)
 				// 精确匹配整个部分
 				if part == targetNorm {
-					logrus.Infof("组合值匹配成功: '%s' 包含 '%s'", variantValue, targetValue)
+					logger.GetGlobalLogger("shein/product").Infof("组合值匹配成功: '%s' 包含 '%s'", variantValue, targetValue)
 					return true
 				}
 				// 对于颜色属性，支持部分匹配（如 "Medium Grey" 匹配 "Grey"）
 				if m.isColorPart(part, targetNorm) {
-					logrus.Infof("颜色部分匹配成功: '%s' 中的 '%s' 匹配 '%s'", variantValue, part, targetValue)
+					logger.GetGlobalLogger("shein/product").Infof("颜色部分匹配成功: '%s' 中的 '%s' 匹配 '%s'", variantValue, part, targetValue)
 					return true
 				}
 			}
@@ -73,7 +73,7 @@ func (m *VariantCompositeMatcher) matchesCompositeValue(variantValue, targetValu
 				for _, part := range parts {
 					part = strings.TrimSpace(part)
 					if part == variantNorm {
-						logrus.Infof("反向组合值匹配成功: '%s' 包含 '%s'", targetValue, variantValue)
+						logger.GetGlobalLogger("shein/product").Infof("反向组合值匹配成功: '%s' 包含 '%s'", targetValue, variantValue)
 						return true
 					}
 				}

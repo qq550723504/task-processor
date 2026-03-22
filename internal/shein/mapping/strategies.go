@@ -1,4 +1,4 @@
-// Package mapping 提供 SHEIN 平台商品映射功能
+﻿// Package mapping 提供 SHEIN 平台商品映射功能
 package mapping
 
 import (
@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/shein/api/product"
 	shein_product "task-processor/internal/shein/api/product"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,7 +26,7 @@ func NewProductBasedRepairStrategy(
 ) MappingRepairStrategy {
 	return &ProductBasedRepairStrategy{
 		mappingBuilder: NewMappingBuilder(mappingClient),
-		logger:         logrus.WithField("strategy", "ProductBasedRepair"),
+		logger:         logger.GetGlobalLogger("ProductBasedRepair"),
 	}
 }
 
@@ -85,7 +86,7 @@ func NewHistoryBasedRepairStrategy(
 ) MappingRepairStrategy {
 	return &HistoryBasedRepairStrategy{
 		mappingBuilder: NewMappingBuilder(mappingClient),
-		logger:         logrus.WithField("strategy", "HistoryBasedRepair"),
+		logger:         logger.GetGlobalLogger("HistoryBasedRepair"),
 	}
 }
 
@@ -137,7 +138,7 @@ func NewSmartRepairStrategy(
 		productAPI:       productAPI,
 		inventoryManager: inventoryManager,
 		priceManager:     priceManager,
-		logger:           logrus.WithField("strategy", "SmartRepair"),
+		logger:           logger.GetGlobalLogger("SmartRepair"),
 	}
 }
 

@@ -1,12 +1,12 @@
-// Package variant 提供SHEIN平台变体模糊匹配功能
+﻿// Package variant 提供SHEIN平台变体模糊匹配功能
 package variant
 
 import (
+	"task-processor/internal/core/logger"
 	"regexp"
 	"strings"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // VariantFuzzyMatcher 变体模糊匹配器
@@ -30,7 +30,7 @@ func (m *VariantFuzzyMatcher) FindFuzzyMatches(variants []shein.Variant, attrNam
 func (m *VariantFuzzyMatcher) isValidFuzzyMatch(variantValue, targetValue string) bool {
 	// 如果长度差异过大，不进行模糊匹配
 	if len(variantValue) > len(targetValue)*2 || len(targetValue) > len(variantValue)*2 {
-		logrus.Debugf("长度差异过大，跳过模糊匹配: '%s' vs '%s'", variantValue, targetValue)
+		logger.GetGlobalLogger("shein/product").Debugf("长度差异过大，跳过模糊匹配: '%s' vs '%s'", variantValue, targetValue)
 		return false
 	}
 
@@ -67,7 +67,7 @@ func (m *VariantFuzzyMatcher) isValidSizeFuzzyMatch(variantValue, targetValue st
 	// 如果主要尺寸数字匹配，则认为是有效匹配
 	if len(variantNumbers) >= 2 && len(targetNumbers) >= 2 {
 		if variantNumbers[0] == targetNumbers[0] && variantNumbers[1] == targetNumbers[1] {
-			logrus.Debugf("主要尺寸数字匹配成功: %v vs %v", variantNumbers[:2], targetNumbers[:2])
+			logger.GetGlobalLogger("shein/product").Debugf("主要尺寸数字匹配成功: %v vs %v", variantNumbers[:2], targetNumbers[:2])
 			return true
 		}
 	} else if len(variantNumbers) == len(targetNumbers) && len(variantNumbers) > 0 {
@@ -80,7 +80,7 @@ func (m *VariantFuzzyMatcher) isValidSizeFuzzyMatch(variantValue, targetValue st
 			}
 		}
 		if allMatch {
-			logrus.Debugf("所有数字匹配成功: %v vs %v", variantNumbers, targetNumbers)
+			logger.GetGlobalLogger("shein/product").Debugf("所有数字匹配成功: %v vs %v", variantNumbers, targetNumbers)
 			return true
 		}
 	}
@@ -88,17 +88,17 @@ func (m *VariantFuzzyMatcher) isValidSizeFuzzyMatch(variantValue, targetValue st
 	// 严格的包含匹配：只有当一个是另一个的完整前缀或后缀时才匹配
 	if strings.HasPrefix(variantValue, targetValue) || strings.HasSuffix(variantValue, targetValue) ||
 		strings.HasPrefix(targetValue, variantValue) || strings.HasSuffix(targetValue, variantValue) {
-		logrus.Debugf("尺寸前缀/后缀匹配成功: '%s' vs '%s'", variantValue, targetValue)
+		logger.GetGlobalLogger("shein/product").Debugf("尺寸前缀/后缀匹配成功: '%s' vs '%s'", variantValue, targetValue)
 		return true
 	}
 
 	// 检查是否为简单的包含关系，但排除复杂的组合尺寸
 	if m.isSimpleContainment(variantValue, targetValue) {
-		logrus.Debugf("简单包含匹配成功: '%s' vs '%s'", variantValue, targetValue)
+		logger.GetGlobalLogger("shein/product").Debugf("简单包含匹配成功: '%s' vs '%s'", variantValue, targetValue)
 		return true
 	}
 
-	logrus.Debugf("尺寸模糊匹配失败: '%s' vs '%s'", variantValue, targetValue)
+	logger.GetGlobalLogger("shein/product").Debugf("尺寸模糊匹配失败: '%s' vs '%s'", variantValue, targetValue)
 	return false
 }
 

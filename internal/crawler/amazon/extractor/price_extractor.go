@@ -1,7 +1,8 @@
-// Package extractor 提供Amazon价格提取器的核心功能
+﻿// Package extractor 提供Amazon价格提取器的核心功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/model"
 
@@ -42,7 +43,7 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 
 	// 检查产品可用性（仅在明确不可用时才跳过价格提取）
 	if product.Availability != "" && e.validator.IsUnavailableText(product.Availability) {
-		logrus.WithFields(logrus.Fields{
+		logger.GetGlobalLogger("crawler/amazon").WithFields(logrus.Fields{
 			"asin":         product.Asin,
 			"availability": product.Availability,
 		}).Warn("❌ 产品不可用（根据Availability字段），跳过价格提取并设置 IsAvailable=false")
@@ -56,7 +57,7 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 	// 提取价格文本
 	priceText := e.extractPriceText(page)
 	if priceText == "" {
-		logrus.Warn("未找到价格信息，使用默认值")
+		logger.GetGlobalLogger("crawler/amazon").Warn("未找到价格信息，使用默认值")
 		product.FinalPrice = 0
 		product.InitialPrice = 0
 		product.Currency = "USD"
@@ -77,18 +78,18 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 
 		// 验证货币是否匹配
 		if extractedCurrency != expectedCurrency {
-			logrus.Warnf("⚠️ 货币不匹配 - 页面显示: %s, 站点期望: %s",
+			logger.GetGlobalLogger("crawler/amazon").Warnf("⚠️ 货币不匹配 - 页面显示: %s, 站点期望: %s",
 				extractedCurrency, expectedCurrency)
-			logrus.Warnf("💡 提示: 货币设置可能失败，请检查货币设置器的日志")
+			logger.GetGlobalLogger("crawler/amazon").Warnf("💡 提示: 货币设置可能失败，请检查货币设置器的日志")
 			// 使用页面显示的货币（因为这是实际显示的价格）
 			product.Currency = extractedCurrency
 		} else {
 			product.Currency = extractedCurrency
 		}
 
-		logrus.Infof("解析到价格: %.2f %s", price, product.Currency)
+		logger.GetGlobalLogger("crawler/amazon").Infof("解析到价格: %.2f %s", price, product.Currency)
 	} else {
-		logrus.Warnf("价格解析失败: %s", priceText)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("价格解析失败: %s", priceText)
 		product.FinalPrice = 0
 		product.InitialPrice = 0
 		product.Currency = "USD"
@@ -132,7 +133,7 @@ func (e *PriceExtractor) extractPriceText(page playwright.Page) string {
 	if priceText == "" {
 		priceText = e.parser.ExtractCombinedPrice(page)
 		if priceText != "" {
-			logrus.Infof("组合价格提取成功: %s", priceText)
+			logger.GetGlobalLogger("crawler/amazon").Infof("组合价格提取成功: %s", priceText)
 		}
 	}
 

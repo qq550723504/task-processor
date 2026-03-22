@@ -1,14 +1,14 @@
-// Package attribute 提供SHEIN平台的自定义属性处理功能
+﻿// Package attribute 提供SHEIN平台的自定义属性处理功能
 package attribute
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/content"
 
-	"github.com/sirupsen/logrus"
 )
 
 // CustomAttributeProcessor 自定义属性处理器，负责创建和验证自定义属性值
@@ -37,17 +37,17 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	isRequired bool,
 ) shein.CustomAttributeResult {
 
-	logrus.Infof("处理自定义属性值: 属性ID %d, 原始值 %s, 必需: %v", attrID, attrValue, isRequired)
+	logger.GetGlobalLogger("shein/product").Infof("处理自定义属性值: 属性ID %d, 原始值 %s, 必需: %v", attrID, attrValue, isRequired)
 
 	// 0. 清理属性值中的特殊字符
 	sanitizedValue := content.SanitizeForSheinAttribute(attrValue)
 	if sanitizedValue != attrValue {
-		logrus.Infof("属性值已清理: 原始值 '%s' -> 清理后 '%s'", attrValue, sanitizedValue)
+		logger.GetGlobalLogger("shein/product").Infof("属性值已清理: 原始值 '%s' -> 清理后 '%s'", attrValue, sanitizedValue)
 	}
 
 	// 检查清理后的值是否有效
 	if !content.IsValidForSheinAttribute(sanitizedValue) {
-		logrus.Errorf("清理后的属性值仍然无效: %s", sanitizedValue)
+		logger.GetGlobalLogger("shein/product").Errorf("清理后的属性值仍然无效: %s", sanitizedValue)
 		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
@@ -57,7 +57,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	// 1. 验证自定义属性值（使用清理后的值）
 	validateResponse, err := ctx.AttributeAPI.ValidateCustomAttributeValue(attrID, sanitizedValue, ctx.ProductData.CategoryID, ctx.AmazonProduct.Title)
 	if err != nil {
-		logrus.Errorf("验证自定义属性值失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Errorf("验证自定义属性值失败: %v", err)
 		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired, // 非必需属性失败时继续，必需属性失败时不继续
@@ -65,7 +65,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	}
 
 	if validateResponse.Data.AttributeID == 0 {
-		logrus.Errorf("验证自定义属性值失败，属性ID为0")
+		logger.GetGlobalLogger("shein/product").Errorf("验证自定义属性值失败，属性ID为0")
 		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
@@ -80,16 +80,16 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 
 	// 验证多语言名称不为空
 	if len(nameMultis) == 0 {
-		logrus.Errorf("验证响应中的多语言名称为空，属性值: %s", sanitizedValue)
+		logger.GetGlobalLogger("shein/product").Errorf("验证响应中的多语言名称为空，属性值: %s", sanitizedValue)
 		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
 		}
 	}
 
-	logrus.Debugf("多语言名称数量: %d", len(nameMultis))
+	logger.GetGlobalLogger("shein/product").Debugf("多语言名称数量: %d", len(nameMultis))
 	for i, nm := range nameMultis {
-		logrus.Debugf("  [%d] 语言: %s, 名称: %s, 警告类型: %d", i, nm.Language, nm.AttributeValueName, nm.WarningType)
+		logger.GetGlobalLogger("shein/product").Debugf("  [%d] 语言: %s, 名称: %s, 警告类型: %d", i, nm.Language, nm.AttributeValueName, nm.WarningType)
 	}
 
 	// 2. 添加自定义属性值（使用清理后的值）
@@ -106,7 +106,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	})
 
 	if err != nil {
-		logrus.Errorf("添加自定义属性值失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Errorf("添加自定义属性值失败: %v", err)
 		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
@@ -116,7 +116,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	// 3. 处理响应结果
 	if len(addResponse.Info.Data.CustomAttributeRelation) > 0 {
 		newValueID := int(addResponse.Info.Data.CustomAttributeRelation[0].AttributeValueID)
-		logrus.Infof("成功添加自定义属性值，新的属性值ID: %d", newValueID)
+		logger.GetGlobalLogger("shein/product").Infof("成功添加自定义属性值，新的属性值ID: %d", newValueID)
 
 		return shein.CustomAttributeResult{
 			Success:        true,
@@ -126,7 +126,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 		}
 	}
 
-	logrus.Errorf("添加自定义属性值失败，没有返回属性值ID")
+	logger.GetGlobalLogger("shein/product").Errorf("添加自定义属性值失败，没有返回属性值ID")
 	return shein.CustomAttributeResult{
 		Success:        false,
 		ShouldContinue: !isRequired,
@@ -140,7 +140,7 @@ func (p *CustomAttributeProcessor) convertToAttributeValueNameMultis(source []st
 	WarningType             int    `json:"warning_type"`
 }) []attribute.AttributeValueNameMulti {
 	if len(source) == 0 {
-		logrus.Warn("源多语言名称列表为空")
+		logger.GetGlobalLogger("shein/product").Warn("源多语言名称列表为空")
 		return []attribute.AttributeValueNameMulti{}
 	}
 
@@ -148,11 +148,11 @@ func (p *CustomAttributeProcessor) convertToAttributeValueNameMultis(source []st
 	for i, item := range source {
 		// 验证必填字段
 		if item.Language == "" {
-			logrus.Warnf("跳过第 %d 个多语言名称：语言代码为空", i)
+			logger.GetGlobalLogger("shein/product").Warnf("跳过第 %d 个多语言名称：语言代码为空", i)
 			continue
 		}
 		if item.AttributeValueNameMulti == "" {
-			logrus.Warnf("跳过第 %d 个多语言名称：属性值名称为空 (语言: %s)", i, item.Language)
+			logger.GetGlobalLogger("shein/product").Warnf("跳过第 %d 个多语言名称：属性值名称为空 (语言: %s)", i, item.Language)
 			continue
 		}
 
@@ -162,11 +162,11 @@ func (p *CustomAttributeProcessor) convertToAttributeValueNameMultis(source []st
 			WarningType:        item.WarningType,
 		})
 
-		logrus.Debugf("转换多语言名称 [%d]: 语言=%s, 名称=%s", i, item.Language, item.AttributeValueNameMulti)
+		logger.GetGlobalLogger("shein/product").Debugf("转换多语言名称 [%d]: 语言=%s, 名称=%s", i, item.Language, item.AttributeValueNameMulti)
 	}
 
 	if len(result) == 0 {
-		logrus.Warn("转换后的多语言名称列表为空，所有条目都被过滤")
+		logger.GetGlobalLogger("shein/product").Warn("转换后的多语言名称列表为空，所有条目都被过滤")
 	}
 
 	return result
@@ -189,7 +189,7 @@ func (p *CustomAttributeProcessor) fixTranslatedCommas(nameMultis *[]struct {
 		fixed := strings.ReplaceAll(original, "，", ",")
 
 		if fixed != original {
-			logrus.Infof("修复翻译后的逗号: 语言=%s, 原始='%s' -> 修复后='%s'",
+			logger.GetGlobalLogger("shein/product").Infof("修复翻译后的逗号: 语言=%s, 原始='%s' -> 修复后='%s'",
 				(*nameMultis)[i].Language, original, fixed)
 			(*nameMultis)[i].AttributeValueNameMulti = fixed
 		}

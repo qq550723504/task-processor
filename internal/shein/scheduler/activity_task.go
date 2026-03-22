@@ -1,4 +1,4 @@
-// package scheduler 提供SHEIN平台活动报名任务实现
+﻿// package scheduler 提供SHEIN平台活动报名任务实现
 package scheduler
 
 import (
@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/client"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -38,7 +39,7 @@ func NewActivityTask(
 		managementClient: managementClient,
 		clientManager:    clientManager,
 		activityService:  activityService,
-		logger: logrus.WithFields(logrus.Fields{
+		logger: logger.GetGlobalLogger("shein/scheduler").WithFields(logrus.Fields{
 			"component": "SheinActivityTask",
 			"task_id":   baseTask.GetID(),
 			"tenant_id": config.TenantID,

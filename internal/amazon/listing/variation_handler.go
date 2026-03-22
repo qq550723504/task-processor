@@ -1,9 +1,10 @@
-package listing
+﻿package listing
 
 import (
 	"strings"
 	"task-processor/internal/amazon/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,7 +16,7 @@ type VariationHandler struct {
 // NewVariationHandler 创建变体处理器
 func NewVariationHandler() *VariationHandler {
 	return &VariationHandler{
-		logger: logrus.WithField("component", "VariationHandler"),
+		logger: logger.GetGlobalLogger("VariationHandler"),
 	}
 }
 

@@ -1,4 +1,4 @@
-package image
+﻿package image
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/pkg/imagex"
 
 	"github.com/disintegration/imaging"
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,7 +19,7 @@ type ImageProcessor struct {
 // NewImageProcessor 创建图片处理器
 func NewImageProcessor() *ImageProcessor {
 	return &ImageProcessor{
-		logger: logrus.WithField("service", "ImageProcessor"),
+		logger: logger.GetGlobalLogger("ImageProcessor"),
 	}
 }
 

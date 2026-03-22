@@ -1,12 +1,12 @@
-package attribute
+﻿package attribute
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
 
-	"github.com/sirupsen/logrus"
 )
 
 // FillAttributeHandler 填充属性处理器
@@ -38,7 +38,7 @@ func (h *FillAttributeHandler) Handle(ctx *shein.TaskContext) error {
 	// 执行属性填充逻辑
 	h.fillProductAttributes(ctx)
 
-	logrus.Println("属性填充完成")
+	logger.GetGlobalLogger("shein/product").Info("属性填充完成")
 
 	return nil
 }

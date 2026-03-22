@@ -1,4 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -35,7 +36,7 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 
 	// 保存任务到数据库
 	if err := s.taskRepo.CreateTask(ctx, task); err != nil {
-		logrus.WithFields(logrus.Fields{
+		logger.GetGlobalLogger("productenrich/service_task.go").WithFields(logrus.Fields{
 			"task_id": taskID,
 		}).WithError(err).Error("failed to create task in database")
 		return nil, fmt.Errorf("failed to create task: %w", err)
@@ -45,27 +46,27 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 	if s.workerPool != nil {
 		job := worker.WorkerJob{TaskData: taskID}
 		if err := s.workerPool.Submit(job); err != nil {
-			logrus.WithField("task_id", taskID).WithError(err).Error("failed to submit task to worker pool")
+			logger.GetGlobalLogger("productenrich/service_task.go").WithField("task_id", taskID).WithError(err).Error("failed to submit task to worker pool")
 			// Submit 失败时将任务标记为 failed，避免留下永久 pending 的孤儿任务
 			if dbErr := s.taskRepo.UpdateTaskError(ctx, taskID, fmt.Sprintf("failed to submit task: %v", err)); dbErr != nil {
-				logrus.WithField("task_id", taskID).WithError(dbErr).Error("failed to mark orphan task as failed")
+				logger.GetGlobalLogger("productenrich/service_task.go").WithField("task_id", taskID).WithError(dbErr).Error("failed to mark orphan task as failed")
 			}
 			return nil, fmt.Errorf("failed to submit task: %w", err)
 		}
 	} else if s.redisClient != nil {
 		// 降级：无 Pool 时写入 Redis 队列（兼容旧模式）
 		if err := s.redisClient.Push(ctx, s.queueName, taskID); err != nil {
-			logrus.WithField("task_id", taskID).WithError(err).Error("failed to push task to queue")
+			logger.GetGlobalLogger("productenrich/service_task.go").WithField("task_id", taskID).WithError(err).Error("failed to push task to queue")
 			if dbErr := s.taskRepo.UpdateTaskError(ctx, taskID, fmt.Sprintf("failed to enqueue task: %v", err)); dbErr != nil {
-				logrus.WithField("task_id", taskID).WithError(dbErr).Error("failed to mark orphan task as failed")
+				logger.GetGlobalLogger("productenrich/service_task.go").WithField("task_id", taskID).WithError(dbErr).Error("failed to mark orphan task as failed")
 			}
 			return nil, fmt.Errorf("failed to enqueue task: %w", err)
 		}
 	} else {
-		logrus.WithField("task_id", taskID).Warn("no worker pool or redis configured, task will not be processed automatically")
+		logger.GetGlobalLogger("productenrich/service_task.go").WithField("task_id", taskID).Warn("no worker pool or redis configured, task will not be processed automatically")
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/service_task.go").WithFields(logrus.Fields{
 		"task_id": taskID,
 		"status":  string(task.Status),
 	}).Info("task created successfully")
@@ -82,7 +83,7 @@ func (s *productService) GetTaskResult(ctx context.Context, taskID string) (*Tas
 	// 从数据库获取任务
 	task, err := s.taskRepo.GetTask(ctx, taskID)
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
+		logger.GetGlobalLogger("productenrich/service_task.go").WithFields(logrus.Fields{
 			"task_id": taskID,
 		}).WithError(err).Error("failed to get task")
 		return nil, err

@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台SKU图片验证功能
+﻿// Package image 提供TEMU平台SKU图片验证功能
 package image
 
 import (
@@ -7,6 +7,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +20,7 @@ type SkuImageValidator struct {
 // NewSkuImageValidator 创建新的SKU图片验证器
 func NewSkuImageValidator() *SkuImageValidator {
 	return &SkuImageValidator{
-		logger:          logrus.WithField("component", "SkuImageValidator"),
+		logger:          logger.GetGlobalLogger("SkuImageValidator"),
 		singleValidator: NewSingleImageValidator(),
 	}
 }

@@ -1,4 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -90,7 +91,7 @@ func (v *resultValidator) ValidateResult(ctx context.Context, input *ParsedInput
 		}
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/result_validator.go").WithFields(logrus.Fields{
 		"is_valid":            validation.IsValid,
 		"keyword_match_score": validation.KeywordMatchScore,
 		"completeness_score":  validation.CompletenessScore,

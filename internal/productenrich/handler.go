@@ -1,4 +1,4 @@
-// package productenrich 提供 HTTP API 处理器
+﻿// package productenrich 提供 HTTP API 处理器
 package productenrich
 
 import (
@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -85,7 +86,7 @@ func (h *productHandler) GetTaskResult(c *gin.Context) {
 
 	result, err := h.productService.GetTaskResult(c.Request.Context(), taskID)
 	if err != nil {
-		logrus.WithField("task_id", taskID).WithError(err).Error("failed to get task result")
+		logger.GetGlobalLogger("productenrich/handler.go").WithField("task_id", taskID).WithError(err).Error("failed to get task result")
 
 		if errors.Is(err, ErrTaskNotFound) {
 			c.JSON(http.StatusNotFound, ErrorResponse{

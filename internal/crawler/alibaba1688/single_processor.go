@@ -1,14 +1,14 @@
-// Package alibaba1688 提供1688单个产品处理器
+﻿// Package alibaba1688 提供1688单个产品处理器
 package alibaba1688
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/alibaba1688/extractor"
 	"task-processor/internal/crawler/alibaba1688/model"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SingleProcessor 单个产品处理器
@@ -35,7 +35,7 @@ func NewSingleProcessor(cfg *config.Config, urlHelper *URLHelper, productChecker
 
 // ProcessWithSingleBrowser 使用单个浏览器处理产品
 func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.Time) (*model.Product1688, error) {
-	logrus.Infof("使用单浏览器模式处理1688产品: %s", url)
+	logger.GetGlobalLogger("crawler/alibaba1688").Infof("使用单浏览器模式处理1688产品: %s", url)
 
 	// 验证和标准化URL
 	normalizedURL, err := sp.urlHelper.ValidateAndNormalizeURL(url)
@@ -67,7 +67,7 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.T
 	}
 
 	duration := time.Since(startTime)
-	logrus.Infof("单浏览器模式处理完成: %s, 耗时: %v", product.Title, duration)
+	logger.GetGlobalLogger("crawler/alibaba1688").Infof("单浏览器模式处理完成: %s, 耗时: %v", product.Title, duration)
 
 	return product, nil
 }

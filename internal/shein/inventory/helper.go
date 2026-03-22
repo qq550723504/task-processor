@@ -1,7 +1,8 @@
-// Package inventory 提供 SHEIN 平台库存同步功能
+﻿// Package inventory 提供 SHEIN 平台库存同步功能
 package inventory
 
 import (
+	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"task-processor/internal/product"
 	"task-processor/internal/shein/productsync"
 
-	"github.com/sirupsen/logrus"
 )
 
 // extractMappingInfoFromAttributes 从Attributes JSON中提取所有映射信息和库存
@@ -254,7 +254,7 @@ func (s *inventorySyncServiceImpl) validateAttributesStructure(attributesJSON st
 
 // enableDebugLogging 启用调试日志（用于问题排查）
 func (s *inventorySyncServiceImpl) enableDebugLogging() {
-	logrus.SetLevel(logrus.DebugLevel)
+	logger.SetGlobalLogLevel("debug")
 	s.logger.Debug("已启用 Debug 级别日志")
 }
 

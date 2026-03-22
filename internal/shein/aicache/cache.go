@@ -1,4 +1,4 @@
-// Package aicache 提供 SHEIN 上架流程中 AI 调用结果的持久化缓存。
+﻿// Package aicache 提供 SHEIN 上架流程中 AI 调用结果的持久化缓存。
 //
 // 架构：PostgreSQL 持久层（永久存储）+ 进程内内存二级缓存（30分钟）。
 // 同一产品（相同 cacheKey）的 AI 结果跨租户、跨店铺共享，
@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -66,7 +67,7 @@ type Cache struct {
 func New(db *gorm.DB) *Cache {
 	c := &Cache{
 		db:     db,
-		logger: logrus.WithField("component", "aicache"),
+		logger: logger.GetGlobalLogger("aicache"),
 	}
 	if db != nil {
 		if err := db.AutoMigrate(&AIResultCache{}); err != nil {

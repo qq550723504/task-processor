@@ -1,13 +1,13 @@
-// Package alibaba1688 提供1688 URL处理工具
+﻿// Package alibaba1688 提供1688 URL处理工具
 package alibaba1688
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
 
-	"github.com/sirupsen/logrus"
 )
 
 // URLHelper 1688 URL处理辅助工具
@@ -78,7 +78,7 @@ func (h *URLHelper) CleanURL(rawURL string) string {
 	// 解析URL以进行进一步清理
 	parsedURL, err := url.Parse(cleanURL)
 	if err != nil {
-		logrus.Warnf("解析URL失败: %v, 返回原始URL", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("解析URL失败: %v, 返回原始URL", err)
 		return cleanURL
 	}
 

@@ -1,4 +1,4 @@
-package client
+﻿package client
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,10 +21,7 @@ type CookieManager struct {
 
 // NewCookieManager 创建Cookie管理器
 func NewCookieManager(storeID int64, managementClient *management.ClientManager) *CookieManager {
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "CookieManager",
-		"storeID":   storeID,
-	})
+	logger := logger.GetGlobalLogger("CookieManager").WithField("storeID", storeID)
 
 	return &CookieManager{
 		storeID:          storeID,

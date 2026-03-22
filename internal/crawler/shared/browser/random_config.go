@@ -1,8 +1,8 @@
 package browser
 
 import (
-	"fmt"
 	"math/rand"
+	"task-processor/internal/core/logger"
 	"time"
 )
 
@@ -268,16 +268,17 @@ func (rcg *RandomConfigGenerator) GenerateWindowsConfig() *BrowserConfig {
 
 // PrintConfigSummary 打印配置摘要
 func PrintConfigSummary(config *BrowserConfig) {
-	fmt.Printf("=== 浏览器配置摘要 ===\n")
-	fmt.Printf("平台: %s %s\n", config.FingerprintPlatform, config.FingerprintPlatformVersion)
-	fmt.Printf("浏览器: %s %s\n", config.FingerprintBrand, config.FingerprintBrandVersion)
-	fmt.Printf("GPU: %s - %s\n", config.FingerprintGPUVendor, config.FingerprintGPURenderer)
-	fmt.Printf("CPU核心数: %d\n", config.FingerprintHardwareConcurrency)
-	fmt.Printf("语言: %s (%s)\n", config.Language, config.AcceptLanguage)
-	fmt.Printf("时区: %s\n", config.Timezone)
-	fmt.Printf("指纹种子: %d\n", config.FingerprintSeed)
-	fmt.Printf("禁用GPU指纹: %t\n", config.DisableGPUFingerprint)
-	fmt.Printf("==================\n")
+	log := logger.GetGlobalLogger("browser_config")
+	log.Infof("=== 浏览器配置摘要 === 平台: %s %s | 浏览器: %s %s | GPU: %s - %s | CPU核心数: %d | 语言: %s (%s) | 时区: %s | 指纹种子: %d | 禁用GPU指纹: %t",
+		config.FingerprintPlatform, config.FingerprintPlatformVersion,
+		config.FingerprintBrand, config.FingerprintBrandVersion,
+		config.FingerprintGPUVendor, config.FingerprintGPURenderer,
+		config.FingerprintHardwareConcurrency,
+		config.Language, config.AcceptLanguage,
+		config.Timezone,
+		config.FingerprintSeed,
+		config.DisableGPUFingerprint,
+	)
 }
 
 // GenerateConfigPresets 生成配置预设
@@ -377,6 +378,7 @@ func ValidateConfig(config *BrowserConfig) []string {
 
 // TestRandomConfigPerformance 性能测试
 func TestRandomConfigPerformance() {
+	log := logger.GetGlobalLogger("browser_config")
 	generator := NewRandomConfigGenerator()
 
 	start := time.Now()
@@ -385,6 +387,5 @@ func TestRandomConfigPerformance() {
 	}
 	duration := time.Since(start)
 
-	fmt.Printf("生成1000个随机配置耗时: %v\n", duration)
-	fmt.Printf("平均每个配置: %v\n", duration/1000)
+	log.Infof("生成1000个随机配置耗时: %v，平均每个配置: %v", duration, duration/1000)
 }

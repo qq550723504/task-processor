@@ -1,4 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -133,7 +134,7 @@ func (s *qualityScorer) CalculateScore(ctx context.Context, validation *Validati
 		s.metrics.RecordCacheOperation("quality_score", "calculated")
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/scorer.go").WithFields(logrus.Fields{
 		"total_score":    totalScore,
 		"image_score":    imageScore,
 		"text_score":     textScore,

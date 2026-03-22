@@ -1,12 +1,12 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // AttributeExtractor 优化的商品属性提取器
@@ -19,7 +19,7 @@ func NewAttributeExtractor() *AttributeExtractor {
 
 // Extract 提取商品属性信息 - 支持两种数据结构
 func (aeo *AttributeExtractor) Extract(page playwright.Page, product *model.Product1688) error {
-	logrus.Debug("开始提取商品属性信息")
+	logger.GetGlobalLogger("crawler/alibaba1688").Debug("开始提取商品属性信息")
 
 	// 直接从结构化数据中获取属性信息，支持两种数据结构
 	attrResult, err := page.Evaluate(`() => {
@@ -138,7 +138,7 @@ func (aeo *AttributeExtractor) Extract(page playwright.Page, product *model.Prod
 	}`, nil)
 
 	if err != nil {
-		logrus.Debugf("提取属性失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取属性失败: %v", err)
 		return err
 	}
 
@@ -161,7 +161,7 @@ func (aeo *AttributeExtractor) Extract(page playwright.Page, product *model.Prod
 				}
 			}
 
-			logrus.Debugf("提取到 %d 个商品属性", len(attributes))
+			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取到 %d 个商品属性", len(attributes))
 		}
 	}
 

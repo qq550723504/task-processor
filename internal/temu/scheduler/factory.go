@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU平台的任务工厂
+﻿// Package scheduler 提供TEMU平台的任务工厂
 package scheduler
 
 import (
@@ -13,7 +13,7 @@ import (
 	"task-processor/internal/temu/api/client"
 	schedulerservice "task-processor/internal/temu/sync"
 
-	"github.com/sirupsen/logrus"
+		"task-processor/internal/core/logger"
 )
 
 // TemuTaskFactory TEMU平台任务工厂
@@ -78,10 +78,10 @@ func (f *TemuTaskFactory) createProductSyncTask(ctx context.Context, config apps
 	}
 
 	// 创建 ProductAPI
-	productAPI := temuapi.NewProductAPI(apiClient, logrus.WithField("component", "TemuProductAPI"))
+	productAPI := temuapi.NewProductAPI(apiClient, logger.GetGlobalLogger("TemuProductAPI"))
 
 	// 创建 SkuQueryAPI
-	skuQueryAPI := temuapi.NewQueryAPI(apiClient, logrus.WithField("component", "TemuSkuQueryAPI"))
+	skuQueryAPI := temuapi.NewQueryAPI(apiClient, logger.GetGlobalLogger("TemuSkuQueryAPI"))
 
 	// 获取映射客户端
 	mappingClient := f.GetManagementClient().GetProductImportMappingClient()

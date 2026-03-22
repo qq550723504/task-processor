@@ -1,4 +1,4 @@
-package sku
+﻿package sku
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/filter"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ type VariantFilterHandler struct {
 // NewVariantFilterHandler 创建新的变体筛选处理器
 func NewVariantFilterHandler(filterRuleClient api.FilterRuleAPI) *VariantFilterHandler {
 	return &VariantFilterHandler{
-		logger:           logrus.WithField("handler", "VariantFilterHandler"),
+		logger:           logger.GetGlobalLogger("VariantFilterHandler"),
 		filterRuleClient: filterRuleClient,
 		filterHandler:    filter.NewFilterRuleHandler(filterRuleClient),
 	}

@@ -1,12 +1,12 @@
-package extractor
+﻿package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // TitleExtractor 标题提取器
@@ -28,7 +28,7 @@ func (e *TitleExtractor) Extract(page playwright.Page, product *model.Product) e
 		title, err := page.TextContent(selector)
 		if err == nil && strings.TrimSpace(title) != "" {
 			product.Title = strings.TrimSpace(title)
-			logrus.Debugf("成功提取标题: selector=%s, title=%s", selector, product.Title)
+			logger.GetGlobalLogger("crawler/amazon").Debugf("成功提取标题: selector=%s, title=%s", selector, product.Title)
 			return nil
 		}
 	}

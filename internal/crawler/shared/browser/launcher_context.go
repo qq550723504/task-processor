@@ -1,13 +1,13 @@
-package browser
+﻿package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"os"
 	"runtime"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // ContextLauncher 浏览器上下文启动器
@@ -72,10 +72,10 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 	// 设置浏览器路径（支持自动下载）
 	browserPath, err := cl.ensureBrowserPath()
 	if err != nil {
-		logrus.Warnf("获取浏览器路径失败: %v，使用默认浏览器", err)
+		logger.GetGlobalLogger("crawler/shared").Warnf("获取浏览器路径失败: %v，使用默认浏览器", err)
 	} else if browserPath != "" {
 		options.ExecutablePath = &browserPath
-		logrus.Infof("使用浏览器路径: %s", browserPath)
+		logger.GetGlobalLogger("crawler/shared").Infof("使用浏览器路径: %s", browserPath)
 	}
 
 	// 配置代理
@@ -83,10 +83,10 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 		options.Proxy = &playwright.Proxy{
 			Server: cl.config.ProxyServer,
 		}
-		logrus.Infof("使用代理服务器: %s", cl.config.ProxyServer)
+		logger.GetGlobalLogger("crawler/shared").Infof("使用代理服务器: %s", cl.config.ProxyServer)
 	}
 
-	logrus.Infof("使用持久化上下文启动浏览器，用户数据目录: %s", cl.userDataDir)
+	logger.GetGlobalLogger("crawler/shared").Infof("使用持久化上下文启动浏览器，用户数据目录: %s", cl.userDataDir)
 
 	// 启动持久化上下文
 	context, err := (*cl.pw).Chromium.LaunchPersistentContext(cl.userDataDir, options)
@@ -105,10 +105,10 @@ func (cl *ContextLauncher) launchNormalContext(userAgent string) (playwright.Bro
 	// 设置浏览器路径（支持自动下载）
 	browserPath, err := cl.ensureBrowserPath()
 	if err != nil {
-		logrus.Warnf("获取浏览器路径失败: %v，使用默认浏览器", err)
+		logger.GetGlobalLogger("crawler/shared").Warnf("获取浏览器路径失败: %v，使用默认浏览器", err)
 	} else if browserPath != "" {
 		launchOptions.ExecutablePath = &browserPath
-		logrus.Infof("使用浏览器路径: %s", browserPath)
+		logger.GetGlobalLogger("crawler/shared").Infof("使用浏览器路径: %s", browserPath)
 	}
 
 	browser, err := (*cl.pw).Chromium.Launch(launchOptions)
@@ -134,11 +134,11 @@ func (cl *ContextLauncher) ensureBrowserPath() (string, error) {
 	if cl.config.BrowserPath != "" {
 		// Windows exe 在非 Windows 系统上直接跳过，走自动下载
 		if runtime.GOOS != "windows" && strings.HasSuffix(strings.ToLower(cl.config.BrowserPath), ".exe") {
-			logrus.Infof("当前系统为 %s，跳过 Windows 浏览器路径: %s", runtime.GOOS, cl.config.BrowserPath)
+			logger.GetGlobalLogger("crawler/shared").Infof("当前系统为 %s，跳过 Windows 浏览器路径: %s", runtime.GOOS, cl.config.BrowserPath)
 		} else if _, err := os.Stat(cl.config.BrowserPath); err == nil {
 			return cl.config.BrowserPath, nil
 		} else {
-			logrus.Warnf("配置的浏览器路径不存在: %s，尝试自动下载", cl.config.BrowserPath)
+			logger.GetGlobalLogger("crawler/shared").Warnf("配置的浏览器路径不存在: %s，尝试自动下载", cl.config.BrowserPath)
 		}
 	}
 

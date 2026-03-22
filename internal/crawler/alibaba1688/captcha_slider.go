@@ -1,14 +1,14 @@
-// Package alibaba1688 提供1688滑动验证码处理功能
+﻿// Package alibaba1688 提供1688滑动验证码处理功能
 package alibaba1688
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"math"
 	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // handleSliderCaptcha 处理滑动验证码
@@ -38,22 +38,22 @@ func (ch *CaptchaHandler) handleSliderCaptcha(page playwright.Page) error {
 			continue
 		}
 
-		logrus.Info("检测到滑动验证码，使用人类行为策略滑动")
+		logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到滑动验证码，使用人类行为策略滑动")
 
 		// 只使用人类行为策略，最多重试3次
 		maxRetries := 3
 		for attempt := 1; attempt <= maxRetries; attempt++ {
-			logrus.Infof("第 %d 次尝试人类行为滑动", attempt)
+			logger.GetGlobalLogger("crawler/alibaba1688").Infof("第 %d 次尝试人类行为滑动", attempt)
 
 			if err := ch.performSliderAction(page, sliderBtn, "human"); err != nil {
-				logrus.Warnf("人类行为滑动失败: %v", err)
+				logger.GetGlobalLogger("crawler/alibaba1688").Warnf("人类行为滑动失败: %v", err)
 			} else {
 				// 检查是否成功
 				if ch.checkSliderSuccess(page) {
-					logrus.Info("人类行为策略滑动验证码成功")
+					logger.GetGlobalLogger("crawler/alibaba1688").Info("人类行为策略滑动验证码成功")
 					// 等待页面跳转到商品页面
 					if err := ch.waitForPageRedirect(page); err != nil {
-						logrus.Warnf("等待页面跳转失败: %v", err)
+						logger.GetGlobalLogger("crawler/alibaba1688").Warnf("等待页面跳转失败: %v", err)
 					}
 					return nil
 				}
@@ -61,10 +61,10 @@ func (ch *CaptchaHandler) handleSliderCaptcha(page playwright.Page) error {
 
 			// 如果不是最后一次尝试，刷新页面重试
 			if attempt < maxRetries {
-				logrus.Infof("第 %d 次滑动失败，刷新页面重试", attempt)
+				logger.GetGlobalLogger("crawler/alibaba1688").Infof("第 %d 次滑动失败，刷新页面重试", attempt)
 				_, err := page.Reload()
 				if err != nil {
-					logrus.Warnf("刷新页面失败: %v", err)
+					logger.GetGlobalLogger("crawler/alibaba1688").Warnf("刷新页面失败: %v", err)
 				} else {
 					// 等待页面加载
 					time.Sleep(3 * time.Second)
@@ -72,19 +72,19 @@ func (ch *CaptchaHandler) handleSliderCaptcha(page playwright.Page) error {
 					// 重新查找滑动按钮
 					newSliderBtn, err := page.QuerySelector(selector)
 					if err != nil || newSliderBtn == nil {
-						logrus.Warn("刷新后未找到滑动按钮")
+						logger.GetGlobalLogger("crawler/alibaba1688").Warn("刷新后未找到滑动按钮")
 						continue
 					}
 
 					// 检查新按钮是否可见
 					isVisible, err := newSliderBtn.IsVisible()
 					if err != nil || !isVisible {
-						logrus.Warn("刷新后滑动按钮不可见")
+						logger.GetGlobalLogger("crawler/alibaba1688").Warn("刷新后滑动按钮不可见")
 						continue
 					}
 
 					sliderBtn = newSliderBtn
-					logrus.Info("页面刷新完成，准备重新尝试滑动")
+					logger.GetGlobalLogger("crawler/alibaba1688").Info("页面刷新完成，准备重新尝试滑动")
 				}
 			}
 
@@ -93,7 +93,7 @@ func (ch *CaptchaHandler) handleSliderCaptcha(page playwright.Page) error {
 		}
 
 		// 所有重试都失败
-		logrus.Warn("人类行为滑动重试失败，等待用户手动操作")
+		logger.GetGlobalLogger("crawler/alibaba1688").Warn("人类行为滑动重试失败，等待用户手动操作")
 		return ch.waitForManualSlider(page)
 	}
 
@@ -114,11 +114,11 @@ func (ch *CaptchaHandler) performSliderAction(page playwright.Page, sliderBtn pl
 	// 获取滑动轨道的宽度
 	slideDistance, err := ch.calculateSlideDistance(page, box)
 	if err != nil {
-		logrus.Warnf("计算滑动距离失败，使用默认距离: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("计算滑动距离失败，使用默认距离: %v", err)
 		slideDistance = 260.0 // 使用经过验证的默认距离
 	}
 
-	logrus.Infof("开始滑动验证码，策略: %s, 滑动距离: %.2f", strategy, slideDistance)
+	logger.GetGlobalLogger("crawler/alibaba1688").Infof("开始滑动验证码，策略: %s, 滑动距离: %.2f", strategy, slideDistance)
 
 	// 只支持人类行为策略
 	return ch.optimizedSlideWithHumanBehavior(page, box, slideDistance)
@@ -166,7 +166,7 @@ func (ch *CaptchaHandler) calculateSlideDistance(page playwright.Page, buttonBox
 			distance = trackBox.Width - buttonBox.Width - 15
 		}
 
-		logrus.Debugf("找到轨道: %s, 轨道宽度: %.2f, 按钮宽度: %.2f, 计算距离: %.2f",
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("找到轨道: %s, 轨道宽度: %.2f, 按钮宽度: %.2f, 计算距离: %.2f",
 			selector, trackBox.Width, buttonBox.Width, distance)
 
 		if distance > 50 && distance < 400 { // 合理的滑动距离范围
@@ -193,7 +193,7 @@ func (ch *CaptchaHandler) checkSliderSuccess(page playwright.Page) bool {
 		if err == nil && element != nil {
 			isVisible, _ := element.IsVisible()
 			if isVisible {
-				logrus.Info("检测到滑动验证成功标识")
+				logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到滑动验证成功标识")
 				return true
 			}
 		}
@@ -216,14 +216,14 @@ func (ch *CaptchaHandler) checkSliderSuccess(page playwright.Page) bool {
 		}
 	}
 
-	logrus.Info("滑动验证码已消失，可能验证成功")
+	logger.GetGlobalLogger("crawler/alibaba1688").Info("滑动验证码已消失，可能验证成功")
 	return true
 }
 
 // waitForManualSlider 等待用户手动完成滑动验证
 func (ch *CaptchaHandler) waitForManualSlider(page playwright.Page) error {
-	logrus.Warn("自动滑动失败，请手动完成滑动验证码")
-	logrus.Info("程序将等待您手动操作，请在浏览器中完成滑动验证...")
+	logger.GetGlobalLogger("crawler/alibaba1688").Warn("自动滑动失败，请手动完成滑动验证码")
+	logger.GetGlobalLogger("crawler/alibaba1688").Info("程序将等待您手动操作，请在浏览器中完成滑动验证...")
 
 	timeout := 90 * time.Second // 增加到90秒
 	startTime := time.Now()
@@ -231,7 +231,7 @@ func (ch *CaptchaHandler) waitForManualSlider(page playwright.Page) error {
 	for time.Since(startTime) < timeout {
 		// 检查验证码是否还存在
 		if ch.checkSliderSuccess(page) {
-			logrus.Info("检测到验证码已完成，继续处理")
+			logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到验证码已完成，继续处理")
 			return nil
 		}
 
@@ -243,7 +243,7 @@ func (ch *CaptchaHandler) waitForManualSlider(page playwright.Page) error {
 
 // waitForPageRedirect 等待页面跳转到商品页面
 func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
-	logrus.Info("等待页面跳转到商品页面...")
+	logger.GetGlobalLogger("crawler/alibaba1688").Info("等待页面跳转到商品页面...")
 
 	timeout := 30 * time.Second
 	startTime := time.Now()
@@ -252,7 +252,7 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 		// 检查页面标题是否已经改变
 		title, err := page.Title()
 		if err == nil && title != "Captcha Interception" && title != "" {
-			logrus.Infof("页面已跳转，新标题: %s", title)
+			logger.GetGlobalLogger("crawler/alibaba1688").Infof("页面已跳转，新标题: %s", title)
 
 			// 等待页面完全加载
 			time.Sleep(3 * time.Second)
@@ -271,7 +271,7 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 				if err == nil && element != nil {
 					isVisible, _ := element.IsVisible()
 					if isVisible {
-						logrus.Info("商品页面加载完成")
+						logger.GetGlobalLogger("crawler/alibaba1688").Info("商品页面加载完成")
 						return nil
 					}
 				}
@@ -281,7 +281,7 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 		// 检查URL是否包含商品ID
 		currentURL := page.URL()
 		if strings.Contains(currentURL, "offer/") && strings.Contains(currentURL, ".html") {
-			logrus.Infof("URL已跳转到商品页面: %s", currentURL)
+			logger.GetGlobalLogger("crawler/alibaba1688").Infof("URL已跳转到商品页面: %s", currentURL)
 
 			// 等待页面完全加载，并检查数据是否存在
 			for i := 0; i < 10; i++ { // 最多等待10秒
@@ -290,7 +290,7 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 				// 检查页面标题是否更新
 				title, _ := page.Title()
 				if title != "Captcha Interception" && title != "" {
-					logrus.Infof("页面标题已更新: %s", title)
+					logger.GetGlobalLogger("crawler/alibaba1688").Infof("页面标题已更新: %s", title)
 					break
 				}
 
@@ -300,18 +300,18 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 						   (typeof window.context !== 'undefined' && window.context !== null);
 				}`)
 				if err == nil && hasData == true {
-					logrus.Info("检测到页面数据已加载")
+					logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到页面数据已加载")
 					break
 				}
 
 				// 如果等待了5秒还没有数据，尝试刷新页面
 				if i == 4 {
-					logrus.Info("页面数据未加载，尝试刷新页面")
+					logger.GetGlobalLogger("crawler/alibaba1688").Info("页面数据未加载，尝试刷新页面")
 					page.Reload()
 					time.Sleep(3 * time.Second)
 				}
 
-				logrus.Debugf("等待页面数据加载... (%d/10)", i+1)
+				logger.GetGlobalLogger("crawler/alibaba1688").Debugf("等待页面数据加载... (%d/10)", i+1)
 			}
 
 			time.Sleep(2 * time.Second) // 额外等待时间
@@ -329,7 +329,7 @@ func (ch *CaptchaHandler) optimizedSlideWithHumanBehavior(page playwright.Page, 
 	startX := box.X + box.Width/2
 	startY := box.Y + box.Height/2
 
-	logrus.Debugf("开始优化人类行为滑动: 起始位置(%.2f, %.2f), 滑动距离: %.2f", startX, startY, slideDistance)
+	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("开始优化人类行为滑动: 起始位置(%.2f, %.2f), 滑动距离: %.2f", startX, startY, slideDistance)
 
 	// 1. 先在按钮上悬停，模拟用户观察
 	if err := page.Mouse().Move(startX, startY); err != nil {

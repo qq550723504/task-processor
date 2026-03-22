@@ -1,7 +1,8 @@
-// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
+﻿// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
 package category
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"slices"
@@ -14,7 +15,6 @@ import (
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/category"
 
-	"github.com/sirupsen/logrus"
 )
 
 // CategorySelectionResult 分类选择结果
@@ -141,7 +141,7 @@ func (s *OpenAISelector) selectCategoryByAI(
 		return 0, fmt.Errorf("选择的分类ID %d 不在可选范围内", result.CategoryID)
 	}
 
-	logrus.Infof("AI成功选择%s: ID=%d, 名称/路径=%s, 理由=%s\n",
+	logger.GetGlobalLogger("shein/category").Infof("AI成功选择%s: ID=%d, 名称/路径=%s, 理由=%s\n",
 		categoryType, result.CategoryID, categoryMap[result.CategoryID], result.Reason)
 	return result.CategoryID, nil
 }
@@ -170,7 +170,7 @@ func (s *OpenAISelector) parseOpenAIResponse(resp *openaiClient.ChatCompletionRe
 	// 解析JSON响应
 	var result CategorySelectionResult
 	if err := jsonx.UnmarshalString(content, &result, "解析AI分类选择结果失败"); err != nil {
-		logrus.Infof("解析AI分类选择结果失败: %v, 内容: %s\n", err, content)
+		logger.GetGlobalLogger("shein/category").Infof("解析AI分类选择结果失败: %v, 内容: %s\n", err, content)
 		return nil, err
 	}
 
@@ -258,7 +258,7 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, titl
 		cacheKey := aicache.HashKey(title)
 		var cached int
 		if cache.Get(aicache.TypeCategory, cacheKey, &cached) {
-			logrus.Infof("AI分类选择命中缓存: title=%s, categoryID=%d", title, cached)
+			logger.GetGlobalLogger("shein/category").Infof("AI分类选择命中缓存: title=%s, categoryID=%d", title, cached)
 			return cached, nil
 		}
 	}
@@ -278,7 +278,7 @@ func (m *CategoryManager) GetCategoryIDByTitleWithTree(ctx context.Context, titl
 
 	selectedLevelOneID, err := m.aiSelector.SelectLevelOneCategoryByAI(aiCtx, title, levelOneIDs, levelOneMap)
 	if err != nil {
-		logrus.Infof("AI选择一级分类失败: %v\n", err)
+		logger.GetGlobalLogger("shein/category").Infof("AI选择一级分类失败: %v\n", err)
 		return 0, fmt.Errorf("AI选择一级分类失败且无可用分类: %w", err)
 	}
 
@@ -357,14 +357,14 @@ func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, title stri
 	if err != nil {
 		return 0, fmt.Errorf("AI提取核心物品失败: %w", err)
 	}
-	logrus.Infof("AI提取核心物品: title=%q -> coreItem=%q", title, coreItem)
+	logger.GetGlobalLogger("shein/category").Infof("AI提取核心物品: title=%q -> coreItem=%q", title, coreItem)
 
 	// 2. 查缓存（以 coreItem 为 key）
 	cacheKey := aicache.HashKey("suggest:" + coreItem)
 	if cache != nil {
 		var cached int
 		if cache.Get(aicache.TypeCategory, cacheKey, &cached) {
-			logrus.Infof("SuggestCategory命中缓存: coreItem=%q, categoryID=%d", coreItem, cached)
+			logger.GetGlobalLogger("shein/category").Infof("SuggestCategory命中缓存: coreItem=%q, categoryID=%d", coreItem, cached)
 			return cached, nil
 		}
 	}
@@ -375,7 +375,7 @@ func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, title stri
 		return 0, fmt.Errorf("SuggestCategoryByText调用失败: %w", err)
 	}
 	if resp == nil || len(resp.Data) == 0 {
-		logrus.Infof("SuggestCategoryByText返回空结果: coreItem=%q", coreItem)
+		logger.GetGlobalLogger("shein/category").Infof("SuggestCategoryByText返回空结果: coreItem=%q", coreItem)
 		return 0, nil
 	}
 
@@ -383,7 +383,7 @@ func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, title stri
 	if err != nil {
 		return 0, fmt.Errorf("SuggestCategoryByText返回的categoryId无法解析为整数: %q", resp.Data[0].CategoryID)
 	}
-	logrus.Infof("SuggestCategoryByText推荐分类: coreItem=%q, categoryID=%d", coreItem, categoryID)
+	logger.GetGlobalLogger("shein/category").Infof("SuggestCategoryByText推荐分类: coreItem=%q, categoryID=%d", coreItem, categoryID)
 
 	// 4. 写缓存
 	if cache != nil {

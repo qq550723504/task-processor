@@ -1,13 +1,13 @@
-package browser
+﻿package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"task-processor/internal/pkg/httpclient"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // IPLocationInfo IP地理位置信息
@@ -53,12 +53,12 @@ func GetTimezoneForRegion(proxyServer string) *string {
 
 	info, err := GetLocationInfoByIP(ip)
 	if err != nil {
-		logrus.Warnf("获取IP地理位置失败: %v，使用默认时区", err)
+		logger.GetGlobalLogger("crawler/shared").Warnf("获取IP地理位置失败: %v，使用默认时区", err)
 		timezone := "America/Los_Angeles"
 		return &timezone
 	}
 
-	logrus.Infof("IP %s 对应时区: %s, 国家: %s", ip, info.Timezone, info.Country)
+	logger.GetGlobalLogger("crawler/shared").Infof("IP %s 对应时区: %s, 国家: %s", ip, info.Timezone, info.Country)
 	return &info.Timezone
 }
 

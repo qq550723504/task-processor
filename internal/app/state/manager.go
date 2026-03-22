@@ -1,10 +1,10 @@
-package state
+﻿package state
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"task-processor/internal/infra/clients/management"
 
-	"github.com/sirupsen/logrus"
 )
 
 // MemoryManager 内存管理器（统一管理所有内存存储）
@@ -17,7 +17,7 @@ type MemoryManager struct {
 
 // NewMemoryManager 创建内存管理器
 func NewMemoryManager(ctx context.Context, managementClientMgr *management.ClientManager) *MemoryManager {
-	logrus.Info("初始化内存管理器...")
+	logger.GetGlobalLogger("app/state").Info("初始化内存管理器...")
 
 	manager := &MemoryManager{
 		CookieManager:     NewCookieManager(),
@@ -29,7 +29,7 @@ func NewMemoryManager(ctx context.Context, managementClientMgr *management.Clien
 	// 启动清理任务 - 传递context
 	manager.ShopPauseManager.StartCleanupTask(ctx)
 
-	logrus.Info("内存管理器初始化完成")
+	logger.GetGlobalLogger("app/state").Info("内存管理器初始化完成")
 	return manager
 }
 

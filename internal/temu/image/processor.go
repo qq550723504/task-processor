@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台图片处理核心功能
+﻿// Package image 提供TEMU平台图片处理核心功能
 package image
 
 import (
@@ -8,6 +8,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,7 +26,7 @@ func NewImageProcessor() *ImageProcessor {
 		carouselBuilder:  NewImageCarouselBuilder(),
 		dimensionBuilder: NewImageDimensionBuilder(),
 		uploadUtils:      NewImageUploadUtils(),
-		logger:           logrus.WithField("component", "ImageProcessor"),
+		logger:           logger.GetGlobalLogger("ImageProcessor"),
 	}
 }
 

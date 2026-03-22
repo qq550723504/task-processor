@@ -1,7 +1,8 @@
-// Package attribute 提供SHEIN平台AI属性选择核心处理器
+﻿// Package attribute 提供SHEIN平台AI属性选择核心处理器
 package attribute
 
 import (
+	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/attribute"
 
-	"github.com/sirupsen/logrus"
 )
 
 // AttributeSelectorHandler AI属性选择处理器
@@ -54,7 +54,7 @@ func (h *AttributeSelectorHandler) Handle(ctx *shein.TaskContext) error {
 	if ctx.AICache != nil {
 		var cached shein.AttributeData
 		if ctx.AICache.Get(aicache.TypeAttribute, cacheKey, &cached) {
-			logrus.Infof("AI属性选择命中缓存: asin=%s, categoryID=%d", ctx.AmazonProduct.Asin, ctx.ProductData.CategoryID)
+			logger.GetGlobalLogger("shein/product").Infof("AI属性选择命中缓存: asin=%s, categoryID=%d", ctx.AmazonProduct.Asin, ctx.ProductData.CategoryID)
 			ctx.GenerateAttribute = &cached
 			return nil
 		}
@@ -94,7 +94,7 @@ func (h *AttributeSelectorHandler) convertAttributeFromGpt(ctx *shein.TaskContex
 	// 生成系统提示词
 	systemPrompt, err := h.promptGenerator.GenerateSystemPrompt(attributeTemplates)
 	if err != nil {
-		logrus.Warnf("生成动态系统提示词失败，使用默认提示词: %v", err)
+		logger.GetGlobalLogger("shein/product").Warnf("生成动态系统提示词失败，使用默认提示词: %v", err)
 		systemPrompt = h.promptGenerator.GenerateDefaultSystemPrompt()
 	}
 
@@ -155,15 +155,15 @@ func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.Chat
 
 	// 验证JSON格式
 	if !json.Valid([]byte(content)) {
-		logrus.Errorf("AI返回的JSON格式无效，清理后内容: %s", content)
-		logrus.Errorf("清理后内容长度: %d", len(content))
+		logger.GetGlobalLogger("shein/product").Errorf("AI返回的JSON格式无效，清理后内容: %s", content)
+		logger.GetGlobalLogger("shein/product").Errorf("清理后内容长度: %d", len(content))
 
 		// 尝试修复常见的JSON问题
 		fixedContent := h.utils.FixCommonJSONIssues(content)
-		logrus.Infof("修复后内容: %s", fixedContent)
+		logger.GetGlobalLogger("shein/product").Infof("修复后内容: %s", fixedContent)
 
 		if !json.Valid([]byte(fixedContent)) {
-			logrus.Errorf("修复后JSON仍然无效")
+			logger.GetGlobalLogger("shein/product").Errorf("修复后JSON仍然无效")
 			var jsonErr error
 			var temp any
 			jsonErr = json.Unmarshal([]byte(fixedContent), &temp)
@@ -175,7 +175,7 @@ func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.Chat
 
 	var attributeData shein.AttributeData
 	if err := jsonx.UnmarshalBytes([]byte(content), &attributeData, "解析属性数据失败"); err != nil {
-		logrus.Errorf("解析属性数据失败: %v，清理后内容: %s", err, content)
+		logger.GetGlobalLogger("shein/product").Errorf("解析属性数据失败: %v，清理后内容: %s", err, content)
 		// 解析属性数据失败，可重试
 		return shein.AttributeData{}, shein.NewRetryableError("解析属性数据失败", err)
 	}

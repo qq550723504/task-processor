@@ -1,7 +1,8 @@
-// Package amazon 提供Amazon单浏览器处理功能
+﻿// Package amazon 提供Amazon单浏览器处理功能
 package amazon
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon/browser"
@@ -9,7 +10,6 @@ import (
 	"task-processor/internal/model"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SingleProcessor 单浏览器处理器
@@ -58,7 +58,7 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, zipcode string, 
 
 	// 处理可能出现的"Continue shopping"按钮
 	if err := sp.productChecker.HandleContinueShoppingButton(page); err != nil {
-		logrus.Warnf("处理Continue shopping按钮失败（忽略）: %v", err)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("处理Continue shopping按钮失败（忽略）: %v", err)
 	}
 
 	// 设置邮编

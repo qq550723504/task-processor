@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -31,7 +32,7 @@ type DescriptionValidationResult struct {
 // NewProductDescriptionValidator 创建新的产品描述验证器
 func NewProductDescriptionValidator() *ProductDescriptionValidator {
 	return &ProductDescriptionValidator{
-		logger: logrus.WithField("handler", "ProductDescriptionValidator"),
+		logger: logger.GetGlobalLogger("ProductDescriptionValidator"),
 	}
 }
 

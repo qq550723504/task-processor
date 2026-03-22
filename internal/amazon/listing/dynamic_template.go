@@ -1,4 +1,4 @@
-// Package listing 提供Amazon动态产品模板
+﻿// Package listing 提供Amazon动态产品模板
 package listing
 
 import (
@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/amazon/model"
 	"task-processor/internal/amazon/schema"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,7 +23,7 @@ func NewDynamicTemplate(apiClient *api.Client, marketplaceID, languageTag string
 	return &DynamicTemplate{
 		schemaManager:    schema.NewSchemaManager(apiClient, marketplaceID, languageTag),
 		attributeBuilder: NewAttributeBuilder(),
-		logger:           logrus.WithField("component", "DynamicTemplate"),
+		logger:           logger.GetGlobalLogger("DynamicTemplate"),
 	}
 }
 

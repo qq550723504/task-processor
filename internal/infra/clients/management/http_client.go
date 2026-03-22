@@ -1,13 +1,13 @@
-package management
+﻿package management
 
 import (
+	"task-processor/internal/core/logger"
 	"crypto/tls"
 	"math/rand"
 	"strings"
 	"time"
 
 	"github.com/imroc/req/v3"
-	"github.com/sirupsen/logrus"
 )
 
 // HTTPClient HTTP客户端封装
@@ -85,13 +85,13 @@ func logRetryAttempt(resp *req.Response, err error) {
 	if resp != nil {
 		sc := resp.StatusCode
 		if sc == 429 {
-			logrus.Infof("   🚨 触发速率限制: 状态码=429")
+			logger.GetGlobalLogger("infra/clients").Infof("   🚨 触发速率限制: 状态码=429")
 		} else if sc == 403 {
-			logrus.Infof("   🚨 访问被拒绝: 状态码=403")
+			logger.GetGlobalLogger("infra/clients").Infof("   🚨 访问被拒绝: 状态码=403")
 		} else if sc >= 500 {
-			logrus.Infof("   🚨 服务器错误: 状态码=%d", sc)
+			logger.GetGlobalLogger("infra/clients").Infof("   🚨 服务器错误: 状态码=%d", sc)
 		}
 	} else if err != nil {
-		logrus.Infof("   🚨 请求错误: %v", err)
+		logger.GetGlobalLogger("infra/clients").Infof("   🚨 请求错误: %v", err)
 	}
 }

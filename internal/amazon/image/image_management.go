@@ -1,4 +1,4 @@
-package image
+﻿package image
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/pkg/imagex"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -26,7 +27,7 @@ func NewImageManagementService(apiClient *api.Client) *ImageManagementService {
 	return &ImageManagementService{
 		apiClient:  apiClient,
 		downloader: downloader.NewImageDownloader(),
-		logger:     logrus.WithField("service", "ImageManagementService"),
+		logger:     logger.GetGlobalLogger("ImageManagementService"),
 	}
 }
 

@@ -1,4 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/pkg/hashx"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -72,7 +73,7 @@ func (c *validationCache) GetImageValidation(ctx context.Context, imageURL strin
 	if c.metrics != nil {
 		c.metrics.RecordCacheHit("image_validation")
 	}
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/validation_cache.go").WithFields(logrus.Fields{
 		"url":      imageURL,
 		"is_valid": info.IsValid,
 	}).Debug("cache hit for image validation")
@@ -102,7 +103,7 @@ func (c *validationCache) SetImageValidation(ctx context.Context, imageURL strin
 		return err
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/validation_cache.go").WithFields(logrus.Fields{
 		"url":      imageURL,
 		"is_valid": info.IsValid,
 		"ttl":      ttl,

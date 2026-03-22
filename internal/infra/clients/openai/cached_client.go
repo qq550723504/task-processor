@@ -1,4 +1,4 @@
-// Package openai 提供带缓存的OpenAI客户端
+﻿// Package openai 提供带缓存的OpenAI客户端
 package openai
 
 import (
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -57,7 +58,7 @@ func NewCachedClient(config *CachedClientConfig) (*CachedClient, error) {
 	return &CachedClient{
 		client:  config.Client,
 		cache:   config.Cache,
-		logger:  logrus.WithField("component", "CachedOpenAIClient"),
+		logger:  logger.GetGlobalLogger("CachedOpenAIClient"),
 		ttl:     config.TTL,
 		enabled: config.Enabled && config.Cache != nil,
 	}, nil

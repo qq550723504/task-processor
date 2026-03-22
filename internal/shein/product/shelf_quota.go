@@ -1,9 +1,9 @@
-package product
+﻿package product
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // ShelfQuotaHandler SKC上架额度检查处理器
@@ -25,13 +25,13 @@ func (h *ShelfQuotaHandler) submitRemainingShelfQuota(ctx *shein.TaskContext, re
 	// 通过DailyCountManager获取客户端
 	client := ctx.MemoryManager.DailyCountManager.GetClient()
 	if client == nil {
-		logrus.Warn("每日上架数量客户端未初始化，无法提交剩余SKC上架额度")
+		logger.GetGlobalLogger("shein/product").Warn("每日上架数量客户端未初始化，无法提交剩余SKC上架额度")
 		return
 	}
 
 	// 这里可以根据需要扩展客户端接口来支持SKC上架额度
 	// 目前先记录日志
-	logrus.Infof("SKC上架额度信息已获取，剩余额度: %d", remainCount)
+	logger.GetGlobalLogger("shein/product").Infof("SKC上架额度信息已获取，剩余额度: %d", remainCount)
 }
 
 // Handle 处理SKC上架额度检查
@@ -39,12 +39,12 @@ func (h *ShelfQuotaHandler) Handle(ctx *shein.TaskContext) error {
 	// 调用SKC上架额度查询接口
 	shelfQuotaResp, err := ctx.OtherAPI.QueryShelfQuota()
 	if err != nil {
-		logrus.Infof("获取SKC上架额度失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Infof("获取SKC上架额度失败: %v", err)
 		return err
 	}
 
 	// 输出日志信息
-	logrus.Infof("SKC上架额度信息: 需要检查=%t, 剩余数量=%d, 总配额=%d, 已上架数量=%d",
+	logger.GetGlobalLogger("shein/product").Infof("SKC上架额度信息: 需要检查=%t, 剩余数量=%d, 总配额=%d, 已上架数量=%d",
 		shelfQuotaResp.Info.Need,
 		shelfQuotaResp.Info.RemainCount,
 		shelfQuotaResp.Info.TotalQuotaCount,
@@ -57,7 +57,7 @@ func (h *ShelfQuotaHandler) Handle(ctx *shein.TaskContext) error {
 
 	// 如果需要检查配额且剩余配额不足
 	if shelfQuotaResp.Info.Need && shelfQuotaResp.Info.RemainCount < 1 {
-		logrus.Warnf("SKC上架额度不足，暂停店铺并终止任务: 需要检查=%t, 剩余配额=%d",
+		logger.GetGlobalLogger("shein/product").Warnf("SKC上架额度不足，暂停店铺并终止任务: 需要检查=%t, 剩余配额=%d",
 			shelfQuotaResp.Info.Need, shelfQuotaResp.Info.RemainCount)
 
 		// 设置店铺暂停状态到当日结束

@@ -1,4 +1,4 @@
-// package pricing 提供店铺配置服务
+﻿// package pricing 提供店铺配置服务
 package pricing
 
 import (
@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/clients/management/api"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,10 +19,7 @@ type StoreConfigService struct {
 
 // NewStoreConfigService 创建店铺配置服务
 func NewStoreConfigService(storeID int64, managementClient *management.ClientManager) (StoreConfigProvider, error) {
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "StoreConfigService",
-		"storeID":   storeID,
-	})
+	logger := logger.GetGlobalLogger("StoreConfigService").WithField("storeID", storeID)
 
 	service := &StoreConfigService{
 		storeID: storeID,

@@ -1,14 +1,14 @@
-// Package sale 提供SHEIN平台销售属性的请求构建功能
+﻿// Package sale 提供SHEIN平台销售属性的请求构建功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeRequestBuilder 销售属性请求构建器
@@ -81,10 +81,10 @@ func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(
 
 	// 数据质量报告
 	if emptyDimensionsCount > 0 {
-		logrus.Warnf("⚠️ 检测到 %d/%d 个变体缺少尺寸信息", emptyDimensionsCount, len(productsData))
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 检测到 %d/%d 个变体缺少尺寸信息", emptyDimensionsCount, len(productsData))
 	}
 	if emptyWeightCount > 0 {
-		logrus.Warnf("⚠️ 检测到 %d/%d 个变体缺少重量信息", emptyWeightCount, len(productsData))
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 检测到 %d/%d 个变体缺少重量信息", emptyWeightCount, len(productsData))
 	}
 
 	variationAttributeValues := &ctx.AmazonProduct.VariationsValues
@@ -117,16 +117,16 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *shein.TaskContext, re
 		originalAttributeValuesBytes, _ := json.Marshal(ctx.AmazonProduct.VariationsValues)
 		originalAttributeValues = string(originalAttributeValuesBytes)
 		attributeValueHint = "注意：以上属性值必须完全按原样使用，包括大小写、空格、标点符号等，不得进行任何修改！\n⚠️ 重要：saleAttributes中只包含变体实际使用的属性值，不要生成所有可选项！"
-		logrus.Infof("📋 原始属性值列表（variations_values）:")
+		logger.GetGlobalLogger("shein/product").Infof("📋 原始属性值列表（variations_values）:")
 		for i, vv := range ctx.AmazonProduct.VariationsValues {
-			logrus.Infof("  [%d] %s: %v", i+1, vv.VariantName, vv.Values)
+			logger.GetGlobalLogger("shein/product").Infof("  [%d] %s: %v", i+1, vv.VariantName, vv.Values)
 		}
 	} else {
 		originalAttributeValues = "[]"
 		if isSingleVariant {
 			attributeValueHint = "注意：这是单变体产品，请从【产品物理信息】和【产品核心信息】中推断合理的属性值。"
 		} else {
-			logrus.Warnf("⚠️ 警告：AmazonProduct.VariationsValues 为空")
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 警告：AmazonProduct.VariationsValues 为空")
 			attributeValueHint = "注意：原始属性值列表为空，请从产品信息中推断。"
 		}
 	}
@@ -142,7 +142,7 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *shein.TaskContext, re
 	var extraContextSection string
 	extraContextSection = r.contextBuilder.BuildExtraContext(*ctx.AmazonProduct, *ctx.Variants, request.ProductsData)
 	if extraContextSection != "" {
-		logrus.Info("📋 检测到关键信息缺失，已提供额外上下文帮助AI提取或估算")
+		logger.GetGlobalLogger("shein/product").Info("📋 检测到关键信息缺失，已提供额外上下文帮助AI提取或估算")
 	}
 
 	return fmt.Sprintf(`【任务】为%d个Amazon产品生成SHEIN销售属性%s

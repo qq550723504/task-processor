@@ -1,4 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -79,7 +80,7 @@ func NewInputValidator(config *InputValidatorConfig) InputValidator {
 	// 如果启用缓存且提供了 Redis 客户端，则创建缓存
 	if config.EnableCache && config.RedisClient != nil {
 		validator.cache = NewValidationCache(config.RedisClient, config.Metrics)
-		logrus.WithField("ttl", config.CacheTTL).Info("validation cache enabled")
+		logger.GetGlobalLogger("productenrich/validator.go").WithField("ttl", config.CacheTTL).Info("validation cache enabled")
 	}
 
 	return validator
@@ -312,7 +313,7 @@ func (v *inputValidator) validateSingleImage(ctx context.Context, imageURL strin
 func (v *inputValidator) cacheImageInfo(ctx context.Context, imageURL string, info *ImageInfo) {
 	if v.cache != nil {
 		if err := v.cache.SetImageValidation(ctx, imageURL, info, v.cacheTTL); err != nil {
-			logrus.WithFields(logrus.Fields{
+			logger.GetGlobalLogger("productenrich/validator.go").WithFields(logrus.Fields{
 				"url": imageURL,
 			}).WithError(err).Warn("failed to cache image validation result")
 		}

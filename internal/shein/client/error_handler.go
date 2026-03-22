@@ -4,6 +4,7 @@ package client
 import (
 	"errors"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein/api"
 )
 
@@ -94,7 +95,8 @@ func (h *APIErrorHandler) LogError(err error, operation string) {
 		return
 	}
 
-	// 这里可以添加日志记录逻辑
-	// 例如使用 logrus 或其他日志库
-	fmt.Printf("API错误 [%s]: %v\n", operation, err)
+	logger.GetGlobalLogger("shein_api_client").
+		WithField("operation", operation).
+		WithError(err).
+		Error("API错误")
 }

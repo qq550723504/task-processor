@@ -1,11 +1,11 @@
-package management
+﻿package management
 
 import (
+	"task-processor/internal/core/logger"
 	"sync"
 	"task-processor/internal/infra/clients/management/api"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // CategoryRestrictionCache 品类限制缓存
@@ -36,7 +36,7 @@ func (c *CategoryRestrictionCache) GetConfirmedListByPlatform(platformName strin
 	if cached, exists := c.cache[cacheKey]; exists {
 		if time.Since(c.cacheTime[cacheKey]) < c.cacheTimeout {
 			c.mutex.RUnlock()
-			logrus.Debugf("从缓存获取品类限制数据: platformName=%s", platformName)
+			logger.GetGlobalLogger("infra/clients").Debugf("从缓存获取品类限制数据: platformName=%s", platformName)
 			return cached, nil
 		}
 	}
@@ -55,7 +55,7 @@ func (c *CategoryRestrictionCache) GetConfirmedListByPlatform(platformName strin
 	c.cacheTime[cacheKey] = time.Now()
 	c.mutex.Unlock()
 
-	logrus.Debugf("从API获取品类限制数据并更新缓存: platformName=%s, count=%d", platformName, len(restrictions))
+	logger.GetGlobalLogger("infra/clients").Debugf("从API获取品类限制数据并更新缓存: platformName=%s, count=%d", platformName, len(restrictions))
 	return restrictions, nil
 }
 

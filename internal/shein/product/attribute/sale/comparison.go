@@ -1,20 +1,20 @@
-package sale
+﻿package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // compareAttributeDataDifferences 对比AI生成前后的属性数据差异
 func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct model.Product, generatedData shein.ResultSaleAttribute) {
-	logrus.Info("⚖️ [AI属性对比] 开始对比原始数据与AI生成数据的差异")
+	logger.GetGlobalLogger("shein/product").Info("⚖️ [AI属性对比] 开始对比原始数据与AI生成数据的差异")
 
 	if amazonProduct.VariationsValues == nil {
-		logrus.Warn("⚠️ [AI属性对比] 原始数据中没有变体数据，无法进行对比")
+		logger.GetGlobalLogger("shein/product").Warn("⚠️ [AI属性对比] 原始数据中没有变体数据，无法进行对比")
 		return
 	}
 
@@ -102,23 +102,23 @@ func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct mod
 
 	// 详细记录匹配的属性
 	for _, match := range matchedAttributes {
-		logrus.Info(fmt.Sprintf("⚖️ [AI属性对比] %s", match))
+		logger.GetGlobalLogger("shein/product").Info(fmt.Sprintf("⚖️ [AI属性对比] %s", match))
 	}
 
 	// 详细记录不一致的属性
 	for _, inconsistency := range inconsistencies {
-		logrus.Warn(fmt.Sprintf("⚖️ [AI属性对比] %s", inconsistency))
+		logger.GetGlobalLogger("shein/product").Warn(fmt.Sprintf("⚖️ [AI属性对比] %s", inconsistency))
 	}
 
 	// 详细记录新增的属性
 	for _, newAttr := range newAttributes {
-		logrus.Info(fmt.Sprintf("⚖️ [AI属性对比] %s", newAttr))
+		logger.GetGlobalLogger("shein/product").Info(fmt.Sprintf("⚖️ [AI属性对比] %s", newAttr))
 	}
 
 	// 总体评估
 	if len(inconsistencies) == 0 {
-		logrus.Info("⚖️ [AI属性对比] ✅ AI生成的属性与原始数据完全一致")
+		logger.GetGlobalLogger("shein/product").Info("⚖️ [AI属性对比] ✅ AI生成的属性与原始数据完全一致")
 	} else {
-		logrus.Warnf("⚖️ [AI属性对比] ⚠️ 发现%d个不一致项", len(inconsistencies))
+		logger.GetGlobalLogger("shein/product").Warnf("⚖️ [AI属性对比] ⚠️ 发现%d个不一致项", len(inconsistencies))
 	}
 }

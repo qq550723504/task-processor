@@ -1,4 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -74,7 +75,7 @@ func (s *enhancementSuggester) GenerateSuggestions(ctx context.Context, validati
 	// 估算改进后的质量等级
 	suggestion.EstimatedQuality = s.estimateQualityAfterImprovement(validation)
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/suggester.go").WithFields(logrus.Fields{
 		"required_actions":  len(suggestion.RequiredActions),
 		"optional_actions":  len(suggestion.OptionalActions),
 		"estimated_quality": suggestion.EstimatedQuality,

@@ -1,7 +1,8 @@
-// Package task 提供任务分发功能
+﻿// Package task 提供任务分发功能
 package task
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,26 +11,25 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	types "task-processor/internal/model"
 
-	"github.com/sirupsen/logrus"
 )
 
 // fetchAndDispatchTasks 获取并分发任务
 func (f *TaskFetcher) fetchAndDispatchTasks(ctx context.Context) {
 	// 检查管理客户端
 	if f.managementClient == nil {
-		logrus.Debug("管理客户端为空，跳过任务获取")
+		logger.GetGlobalLogger("app/task").Debug("管理客户端为空，跳过任务获取")
 		return
 	}
 
 	// 第1步：检查队列压力
 	totalAvailableSlots, shouldSkipFetch := f.checkQueuePressure()
 	if shouldSkipFetch {
-		logrus.Info("🛑 队列压力过大，本次跳过任务获取，等待队列消化")
+		logger.GetGlobalLogger("app/task").Info("🛑 队列压力过大，本次跳过任务获取，等待队列消化")
 		return
 	}
 
 	if totalAvailableSlots <= 0 {
-		logrus.Debug("所有平台队列已满，跳过任务获取")
+		logger.GetGlobalLogger("app/task").Debug("所有平台队列已满，跳过任务获取")
 		return
 	}
 
@@ -39,16 +39,16 @@ func (f *TaskFetcher) fetchAndDispatchTasks(ctx context.Context) {
 	// 第3步：获取任务
 	apiTasks, err := f.fetchTasksFromAPI(maxTasks)
 	if err != nil {
-		logrus.Errorf("获取任务失败: %v", err)
+		logger.GetGlobalLogger("app/task").Errorf("获取任务失败: %v", err)
 		return
 	}
 
 	if len(apiTasks) == 0 {
-		logrus.Debugf("没有待处理任务")
+		logger.GetGlobalLogger("app/task").Debugf("没有待处理任务")
 		return
 	}
 
-	logrus.Infof("📥 获取到 %d 个待处理任务", len(apiTasks))
+	logger.GetGlobalLogger("app/task").Infof("📥 获取到 %d 个待处理任务", len(apiTasks))
 
 	// 第4步：分发任务
 	f.dispatchTasks(ctx, apiTasks)
@@ -60,7 +60,7 @@ func (f *TaskFetcher) checkQueuePressure() (totalAvailableSlots int, shouldSkipF
 		stats := submitter.GetQueueStats()
 		totalAvailableSlots += stats.AvailableSlots
 
-		logrus.Debugf("[%s] 队列状态: %d/%d (%.1f%%), 可用: %d",
+		logger.GetGlobalLogger("app/task").Debugf("[%s] 队列状态: %d/%d (%.1f%%), 可用: %d",
 			platform, stats.QueueSize, stats.BufferSize,
 			stats.UsagePercent, stats.AvailableSlots)
 
@@ -71,7 +71,7 @@ func (f *TaskFetcher) checkQueuePressure() (totalAvailableSlots int, shouldSkipF
 		}
 
 		if stats.UsagePercent > threshold {
-			logrus.Warnf("[%s] ⚠️ 队列使用率过高 (%.1f%% > %.1f%%)，暂停获取",
+			logger.GetGlobalLogger("app/task").Warnf("[%s] ⚠️ 队列使用率过高 (%.1f%% > %.1f%%)，暂停获取",
 				platform, stats.UsagePercent, threshold)
 			shouldSkipFetch = true
 		}
@@ -98,7 +98,7 @@ func (f *TaskFetcher) calculateFetchCount(totalAvailableSlots int) int {
 		maxTasks = 1
 	}
 
-	logrus.Debugf("📊 可用槽位: %d, 本次获取: %d (策略: 50%%, 上限: %d)",
+	logger.GetGlobalLogger("app/task").Debugf("📊 可用槽位: %d, 本次获取: %d (策略: 50%%, 上限: %d)",
 		totalAvailableSlots, maxTasks, maxFetchPerCycle)
 
 	return maxTasks
@@ -118,7 +118,7 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 		apiTaskPtr := f.extractAPITask(apiTask)
 
 		taskID := fmt.Sprintf("%d", apiTaskPtr.ID)
-		logrus.Debugf("🔍 处理任务: TaskID=%s, StoreID=%d, ProductID=%s",
+		logger.GetGlobalLogger("app/task").Debugf("🔍 处理任务: TaskID=%s, StoreID=%d, ProductID=%s",
 			taskID, apiTaskPtr.StoreID, apiTaskPtr.ProductID)
 
 		// 去重检查：跳过已在处理中的任务
@@ -141,14 +141,14 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 		// 检查店铺是否被暂停
 		isPaused, err := storeClient.GetStorePauseStatus(apiTaskPtr.StoreID)
 		if err != nil {
-			logrus.Warnf("获取店铺 %d 暂停状态失败: %v，跳过任务", apiTaskPtr.StoreID, err)
+			logger.GetGlobalLogger("app/task").Warnf("获取店铺 %d 暂停状态失败: %v，跳过任务", apiTaskPtr.StoreID, err)
 			f.rollbackProcessingStatus(taskID)
 			errorCount++
 			continue
 		}
 
 		if isPaused {
-			logrus.Infof("🛑 店铺 %d 已被暂停，跳过任务: TaskID=%s, ProductID=%s",
+			logger.GetGlobalLogger("app/task").Infof("🛑 店铺 %d 已被暂停，跳过任务: TaskID=%s, ProductID=%s",
 				apiTaskPtr.StoreID, taskID, apiTaskPtr.ProductID)
 			f.rollbackProcessingStatus(taskID)
 			continue
@@ -159,7 +159,7 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 		if success {
 			platform := strings.ToLower(storeInfo.Platform)
 			platformCounts[platform]++
-			logrus.Debugf("✅ 任务已成功提交并标记为处理中: TaskID=%s", taskID)
+			logger.GetGlobalLogger("app/task").Debugf("✅ 任务已成功提交并标记为处理中: TaskID=%s", taskID)
 		} else if isQueueFull {
 			// 队列满时，回滚处理中状态，让任务可以在下次获取时重试
 			f.rollbackProcessingStatus(taskID)
@@ -172,11 +172,11 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 	}
 
 	// 输出统计
-	logrus.Infof("✅ 任务分发完成: 成功=%v, 队列满=%d, 错误=%d",
+	logger.GetGlobalLogger("app/task").Infof("✅ 任务分发完成: 成功=%v, 队列满=%d, 错误=%d",
 		platformCounts, queueFullCount, errorCount)
 
 	if queueFullCount > 0 {
-		logrus.Warnf("⚠️ 有 %d 个任务因队列满未提交，将在下次获取时重试", queueFullCount)
+		logger.GetGlobalLogger("app/task").Warnf("⚠️ 有 %d 个任务因队列满未提交，将在下次获取时重试", queueFullCount)
 	}
 }
 
@@ -199,7 +199,7 @@ func (f *TaskFetcher) submitTask(ctx context.Context, apiTask *api.ProductImport
 
 	taskData, err := json.Marshal(internalTask)
 	if err != nil {
-		logrus.Errorf("序列化任务失败: %v", err)
+		logger.GetGlobalLogger("app/task").Errorf("序列化任务失败: %v", err)
 		return false, false
 	}
 
@@ -207,7 +207,7 @@ func (f *TaskFetcher) submitTask(ctx context.Context, apiTask *api.ProductImport
 	platform := strings.ToLower(storeInfo.Platform)
 	submitter, exists := f.submitters[platform]
 	if !exists {
-		logrus.Errorf("❌ 未找到平台处理器: TaskID=%d, StoreID=%d, Platform=%s, 可用平台=%v",
+		logger.GetGlobalLogger("app/task").Errorf("❌ 未找到平台处理器: TaskID=%d, StoreID=%d, Platform=%s, 可用平台=%v",
 			internalTask.ID, apiTask.StoreID, platform, f.getSubmitterKeys())
 		return false, false
 	}
@@ -216,14 +216,14 @@ func (f *TaskFetcher) submitTask(ctx context.Context, apiTask *api.ProductImport
 	if err := submitter.SubmitTask(ctx, string(taskData)); err != nil {
 		// 检查是否是队列满的错误
 		if err.Error() == "工作队列已满" || err.Error() == "工作池已满" {
-			logrus.Debugf("[%s] 队列已满，任务将重试: TaskID=%d", platform, internalTask.ID)
+			logger.GetGlobalLogger("app/task").Debugf("[%s] 队列已满，任务将重试: TaskID=%d", platform, internalTask.ID)
 			return false, true
 		} else {
-			logrus.Errorf("[%s] 提交失败: TaskID=%d, Error=%v", platform, internalTask.ID, err)
+			logger.GetGlobalLogger("app/task").Errorf("[%s] 提交失败: TaskID=%d, Error=%v", platform, internalTask.ID, err)
 			return false, false
 		}
 	}
 
-	logrus.Debugf("[%s] 任务已提交: ID=%d, ProductID=%s", platform, internalTask.ID, internalTask.ProductID)
+	logger.GetGlobalLogger("app/task").Debugf("[%s] 任务已提交: ID=%d, ProductID=%s", platform, internalTask.ID, internalTask.ProductID)
 	return true, false
 }

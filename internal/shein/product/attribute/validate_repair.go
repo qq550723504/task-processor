@@ -1,13 +1,13 @@
-package attribute
+﻿package attribute
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 
-	"github.com/sirupsen/logrus"
 )
 
 // ValidateRepairSaleAttributeHandler 验证修复销售属性处理器
@@ -39,14 +39,14 @@ func (h *ValidateRepairSaleAttributeHandler) Handle(ctx *shein.TaskContext) erro
 	// 修复属性值ID
 	h.fixAttributeValueIDs(ctx.SaleSpecResult, ctx.AttributeTemplates)
 
-	logrus.Println("销售属性验证修复完成")
+	logger.GetGlobalLogger("shein/product").Info("销售属性验证修复完成")
 
 	return nil
 }
 
 // 如果对应不上则修改为负数递增
 func (h *ValidateRepairSaleAttributeHandler) fixAttributeValueIDs(saleAttributeData *shein.ResultSaleAttribute, attributeTemplates *attribute.AttributeTemplateInfo) *shein.ResultSaleAttribute {
-	logrus.Info("🔧 开始修复属性值ID，确保与SHEIN平台一致")
+	logger.GetGlobalLogger("shein/product").Info("🔧 开始修复属性值ID，确保与SHEIN平台一致")
 
 	// 构建SHEIN平台属性值映射表
 	platformValueMap := h.buildPlatformAttributeValueMap(attributeTemplates)
@@ -59,16 +59,16 @@ func (h *ValidateRepairSaleAttributeHandler) fixAttributeValueIDs(saleAttributeD
 		attr := &saleAttributeData.SaleAttributes[attrIndex]
 		attrID := attr.AttrID
 
-		logrus.Infof("处理属性ID %d 的属性值，数量: %d", attrID, len(attr.AttrValue))
+		logger.GetGlobalLogger("shein/product").Infof("处理属性ID %d 的属性值，数量: %d", attrID, len(attr.AttrValue))
 
 		// 获取该属性在平台中的可用值
 		platformValues, exists := platformValueMap[attrID]
 		if !exists {
-			logrus.Warnf("属性ID %d 在平台模板中不存在，将所有属性值设为负数ID", attrID)
+			logger.GetGlobalLogger("shein/product").Warnf("属性ID %d 在平台模板中不存在，将所有属性值设为负数ID", attrID)
 			// 如果属性不存在，将所有值设为负数ID
 			for valueIndex := range attr.AttrValue {
 				attr.AttrValue[valueIndex].ID = types.FlexibleID(negativeIDCounter)
-				logrus.Debugf("属性值 '%s' 设置为负数ID: %d", attr.AttrValue[valueIndex].Value, negativeIDCounter)
+				logger.GetGlobalLogger("shein/product").Debugf("属性值 '%s' 设置为负数ID: %d", attr.AttrValue[valueIndex].Value, negativeIDCounter)
 				negativeIDCounter--
 			}
 			continue
@@ -82,20 +82,20 @@ func (h *ValidateRepairSaleAttributeHandler) fixAttributeValueIDs(saleAttributeD
 			// 尝试在平台值中找到精确匹配
 			if platformID, found := h.findExactMatch(originalValue, platformValues); found {
 				attrValue.ID = types.FlexibleID(platformID)
-				logrus.Debugf("✓ 属性值 '%s' 找到精确匹配，平台ID: %d", originalValue, platformID)
+				logger.GetGlobalLogger("shein/product").Debugf("✓ 属性值 '%s' 找到精确匹配，平台ID: %d", originalValue, platformID)
 				continue
 			}
 
 			// 尝试模糊匹配
 			if platformID, found := h.findFuzzyMatch(originalValue, platformValues); found {
 				attrValue.ID = types.FlexibleID(platformID)
-				logrus.Debugf("✓ 属性值 '%s' 找到模糊匹配，平台ID: %d", originalValue, platformID)
+				logger.GetGlobalLogger("shein/product").Debugf("✓ 属性值 '%s' 找到模糊匹配，平台ID: %d", originalValue, platformID)
 				continue
 			}
 
 			// 如果都没有匹配，设置为负数ID
 			attrValue.ID = types.FlexibleID(negativeIDCounter)
-			logrus.Debugf("✗ 属性值 '%s' 未找到匹配，设置为负数ID: %d", originalValue, negativeIDCounter)
+			logger.GetGlobalLogger("shein/product").Debugf("✗ 属性值 '%s' 未找到匹配，设置为负数ID: %d", originalValue, negativeIDCounter)
 			negativeIDCounter--
 		}
 	}
@@ -108,7 +108,7 @@ func (h *ValidateRepairSaleAttributeHandler) buildPlatformAttributeValueMap(attr
 	platformValueMap := make(map[int]map[string]int)
 
 	if attributeTemplates == nil || len(attributeTemplates.Data) == 0 {
-		logrus.Warn("属性模板为空，无法构建平台属性值映射")
+		logger.GetGlobalLogger("shein/product").Warn("属性模板为空，无法构建平台属性值映射")
 		return platformValueMap
 	}
 
@@ -130,12 +130,12 @@ func (h *ValidateRepairSaleAttributeHandler) buildPlatformAttributeValueMap(attr
 
 			if len(valueMap) > 0 {
 				platformValueMap[attrID] = valueMap
-				logrus.Debugf("构建属性ID %d 的平台值映射，包含 %d 个值", attrID, len(valueMap))
+				logger.GetGlobalLogger("shein/product").Debugf("构建属性ID %d 的平台值映射，包含 %d 个值", attrID, len(valueMap))
 			}
 		}
 	}
 
-	logrus.Infof("构建平台属性值映射完成，包含 %d 个属性", len(platformValueMap))
+	logger.GetGlobalLogger("shein/product").Infof("构建平台属性值映射完成，包含 %d 个属性", len(platformValueMap))
 	return platformValueMap
 }
 

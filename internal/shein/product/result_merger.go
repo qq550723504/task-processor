@@ -1,11 +1,11 @@
-// Package product 提供SHEIN平台结果合并功能
+﻿// Package product 提供SHEIN平台结果合并功能
 package product
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // ResultMerger 结果合并器，负责合并多个批次的处理结果
@@ -26,7 +26,7 @@ func (m *ResultMerger) MergeResults(results []shein.ResultSaleAttribute) shein.R
 		return results[0]
 	}
 
-	logrus.Infof("🔄 开始合并%d个批次结果", len(results))
+	logger.GetGlobalLogger("shein/product").Infof("🔄 开始合并%d个批次结果", len(results))
 
 	// 合并销售属性
 	mergedSaleAttributes := m.mergeSaleAttributes(results)
@@ -39,7 +39,7 @@ func (m *ResultMerger) MergeResults(results []shein.ResultSaleAttribute) shein.R
 		Variants:       mergedVariants,
 	}
 
-	logrus.Infof("✅ 结果合并完成: 销售属性=%d个, 变体=%d个",
+	logger.GetGlobalLogger("shein/product").Infof("✅ 结果合并完成: 销售属性=%d个, 变体=%d个",
 		len(result.SaleAttributes), len(result.Variants))
 
 	return result
@@ -160,7 +160,7 @@ func (m *ResultMerger) ValidateMergedResult(result shein.ResultSaleAttribute) []
 	}
 
 	if len(issues) > 0 {
-		logrus.Warnf("⚠️ 合并结果验证发现问题: %v", issues)
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 合并结果验证发现问题: %v", issues)
 	}
 
 	return issues

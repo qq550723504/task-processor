@@ -1,7 +1,8 @@
-// Package updater 提供自动更新器的版本管理功能
+﻿// Package updater 提供自动更新器的版本管理功能
 package updater
 
 import (
+	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"task-processor/internal/pkg/httpclient"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // VersionManager 版本管理器
@@ -59,12 +59,12 @@ func (vm *VersionManager) CompareVersions(remoteVersion, localVersion string) in
 func (vm *VersionManager) IsUpdateAvailable(remoteVersion *VersionInfo) bool {
 	cmp := CompareVersion(remoteVersion.Version, vm.currentVersion)
 	if cmp <= 0 {
-		logrus.Infof("当前已是最新版本 (本地: %s, 远程: %s)", vm.currentVersion, remoteVersion.Version)
+		logger.GetGlobalLogger("app/updater").Infof("当前已是最新版本 (本地: %s, 远程: %s)", vm.currentVersion, remoteVersion.Version)
 		return false
 	}
 
-	logrus.Infof("发现新版本: %s -> %s", vm.currentVersion, remoteVersion.Version)
-	logrus.Infof("更新日志: %s", remoteVersion.Changelog)
+	logger.GetGlobalLogger("app/updater").Infof("发现新版本: %s -> %s", vm.currentVersion, remoteVersion.Version)
+	logger.GetGlobalLogger("app/updater").Infof("更新日志: %s", remoteVersion.Changelog)
 	return true
 }
 

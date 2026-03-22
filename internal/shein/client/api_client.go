@@ -1,4 +1,4 @@
-// Package client 提供SHEIN平台的API客户端
+﻿// Package client 提供SHEIN平台的API客户端
 package client
 
 import (
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/imroc/req/v3"
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,10 +25,7 @@ type APIClient struct {
 
 // NewAPIClient 创建SHEIN API客户端
 func NewAPIClient(storeID int64, managementClient *management.ClientManager) *APIClient {
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "SheinAPIClient",
-		"storeID":   storeID,
-	})
+	logger := logger.GetGlobalLogger("SheinAPIClient").WithField("storeID", storeID)
 
 	// 创建HTTP客户端
 	httpClient := req.C().

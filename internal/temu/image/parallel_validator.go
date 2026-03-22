@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台并行图片验证功能
+﻿// Package image 提供TEMU平台并行图片验证功能
 package image
 
 import (
@@ -9,6 +9,7 @@ import (
 	temuproduct "task-processor/internal/temu/api/product"
 	"task-processor/internal/temu/handlerbase"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,7 +22,7 @@ type ParallelImageValidator struct {
 // NewParallelImageValidator 创建新的并行图片验证器
 func NewParallelImageValidator() *ParallelImageValidator {
 	return &ParallelImageValidator{
-		logger:          logrus.WithField("component", "ParallelImageValidator"),
+		logger:          logger.GetGlobalLogger("ParallelImageValidator"),
 		singleValidator: NewSingleImageValidator(),
 	}
 }

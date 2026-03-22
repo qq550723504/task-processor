@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台单张图片验证功能
+﻿// Package image 提供TEMU平台单张图片验证功能
 package image
 
 import (
@@ -9,6 +9,7 @@ import (
 	temuimage "task-processor/internal/temu/api/image"
 	"task-processor/internal/temu/handlerbase"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,7 +23,7 @@ type SingleImageValidator struct {
 // NewSingleImageValidator 创建新的单张图片验证器
 func NewSingleImageValidator() *SingleImageValidator {
 	return &SingleImageValidator{
-		logger:           logrus.WithField("component", "SingleImageValidator"),
+		logger:           logger.GetGlobalLogger("SingleImageValidator"),
 		paddingProcessor: NewImagePaddingProcessor(),
 		imageDownloader:  downloader.NewImageDownloader(),
 	}

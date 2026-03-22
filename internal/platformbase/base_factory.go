@@ -1,4 +1,4 @@
-// Package platformbase 提供多平台通用的基础功能
+﻿// Package platformbase 提供多平台通用的基础功能
 package platformbase
 
 import (
@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -46,10 +47,7 @@ type BaseFactory struct {
 func NewBaseFactory(config BaseFactoryConfig) *BaseFactory {
 	return &BaseFactory{
 		config: config,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "BaseFactory",
-			"platform":  config.Platform,
-		}),
+		logger: logger.GetGlobalLogger("BaseFactory").WithField("platform", config.Platform),
 	}
 }
 

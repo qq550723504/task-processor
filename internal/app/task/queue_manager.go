@@ -1,11 +1,11 @@
-// Package task 提供简化的队列管理功能
+﻿// Package task 提供简化的队列管理功能
 package task
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // QueueManager 简化的队列管理器
@@ -58,10 +58,10 @@ func (m *QueueManager) ExecuteCommand(cmd QueueCommand) error {
 
 // showStatus 显示队列状态
 func (m *QueueManager) showStatus() error {
-	logrus.Info("📊 当前队列状态:")
+	logger.GetGlobalLogger("app/task").Info("📊 当前队列状态:")
 
 	if m.fetcher == nil || m.fetcher.submitters == nil {
-		logrus.Error("TaskFetcher未初始化")
+		logger.GetGlobalLogger("app/task").Error("TaskFetcher未初始化")
 		return fmt.Errorf("TaskFetcher未初始化")
 	}
 
@@ -73,7 +73,7 @@ func (m *QueueManager) showStatus() error {
 		totalQueued += stats.QueueSize
 		totalCapacity += stats.BufferSize
 
-		logrus.Infof("[%s] 队列: %d/%d (%.1f%%), 可用: %d",
+		logger.GetGlobalLogger("app/task").Infof("[%s] 队列: %d/%d (%.1f%%), 可用: %d",
 			platform, stats.QueueSize, stats.BufferSize,
 			stats.UsagePercent, stats.AvailableSlots)
 	}
@@ -82,7 +82,7 @@ func (m *QueueManager) showStatus() error {
 	processingCount := len(m.fetcher.processingTasks)
 	m.fetcher.tasksMutex.RUnlock()
 
-	logrus.Infof("总计: %d/%d (%.1f%%), 处理中: %d",
+	logger.GetGlobalLogger("app/task").Infof("总计: %d/%d (%.1f%%), 处理中: %d",
 		totalQueued, totalCapacity,
 		float64(totalQueued)/float64(totalCapacity)*100, processingCount)
 
@@ -91,29 +91,29 @@ func (m *QueueManager) showStatus() error {
 
 // diagnoseIssues 诊断队列问题
 func (m *QueueManager) diagnoseIssues() error {
-	logrus.Info("🔍 开始队列诊断...")
+	logger.GetGlobalLogger("app/task").Info("🔍 开始队列诊断...")
 
 	report := m.monitorService.GenerateReport()
 
-	logrus.Infof("📋 队列诊断报告 - %s", report.Timestamp.Format("2006-01-02 15:04:05"))
-	logrus.Infof("整体健康状态: %s", report.OverallHealth)
-	logrus.Infof("处理中任务数: %d", report.ProcessingTasks)
-	logrus.Infof("🎯 队列健康评分: %d/100", report.HealthScore)
+	logger.GetGlobalLogger("app/task").Infof("📋 队列诊断报告 - %s", report.Timestamp.Format("2006-01-02 15:04:05"))
+	logger.GetGlobalLogger("app/task").Infof("整体健康状态: %s", report.OverallHealth)
+	logger.GetGlobalLogger("app/task").Infof("处理中任务数: %d", report.ProcessingTasks)
+	logger.GetGlobalLogger("app/task").Infof("🎯 队列健康评分: %d/100", report.HealthScore)
 
 	for _, platform := range report.PlatformReports {
-		logrus.Infof("[%s] %s - %d/%d (%.1f%%)",
+		logger.GetGlobalLogger("app/task").Infof("[%s] %s - %d/%d (%.1f%%)",
 			platform.Platform, platform.Status,
 			platform.QueueSize, platform.BufferSize, platform.UsagePercent)
 
 		for _, issue := range platform.Issues {
-			logrus.Warnf("  ⚠️ %s", issue)
+			logger.GetGlobalLogger("app/task").Warnf("  ⚠️ %s", issue)
 		}
 	}
 
 	if len(report.Recommendations) > 0 {
-		logrus.Info("💡 优化建议:")
+		logger.GetGlobalLogger("app/task").Info("💡 优化建议:")
 		for i, rec := range report.Recommendations {
-			logrus.Infof("  %d. %s", i+1, rec)
+			logger.GetGlobalLogger("app/task").Infof("  %d. %s", i+1, rec)
 		}
 	}
 
@@ -122,18 +122,18 @@ func (m *QueueManager) diagnoseIssues() error {
 
 // forceCleanup 强制清理队列
 func (m *QueueManager) forceCleanup() error {
-	logrus.Warn("🧹 执行强制队列清理...")
+	logger.GetGlobalLogger("app/task").Warn("🧹 执行强制队列清理...")
 
 	cleanedCount := m.cleanupService.ForceCleanupAll(2 * time.Minute)
 
-	logrus.Warnf("🧹 强制清理完成: 清理=%d", cleanedCount)
+	logger.GetGlobalLogger("app/task").Warnf("🧹 强制清理完成: 清理=%d", cleanedCount)
 
 	return nil
 }
 
 // resetQueues 重置队列状态
 func (m *QueueManager) resetQueues() error {
-	logrus.Warn("🔄 重置队列状态...")
+	logger.GetGlobalLogger("app/task").Warn("🔄 重置队列状态...")
 
 	if err := m.forceCleanup(); err != nil {
 		return fmt.Errorf("重置失败: %w", err)
@@ -145,19 +145,19 @@ func (m *QueueManager) resetQueues() error {
 
 // performHealthCheck 执行健康检查
 func (m *QueueManager) performHealthCheck() error {
-	logrus.Info("🏥 执行队列健康检查...")
+	logger.GetGlobalLogger("app/task").Info("🏥 执行队列健康检查...")
 
 	report := m.monitorService.GenerateReport()
 
-	logrus.Infof("健康评分: %d/100", report.HealthScore)
-	logrus.Infof("整体状态: %s", report.OverallHealth)
+	logger.GetGlobalLogger("app/task").Infof("健康评分: %d/100", report.HealthScore)
+	logger.GetGlobalLogger("app/task").Infof("整体状态: %s", report.OverallHealth)
 
 	if report.HealthScore < 50 {
-		logrus.Warn("⚠️ 检测到队列健康问题，建议执行以下操作:")
+		logger.GetGlobalLogger("app/task").Warn("⚠️ 检测到队列健康问题，建议执行以下操作:")
 		for _, rec := range report.Recommendations {
-			logrus.Warnf("  💡 %s", rec)
+			logger.GetGlobalLogger("app/task").Warnf("  💡 %s", rec)
 		}
-		logrus.Warn("🔧 可以执行 'cleanup' 命令进行自动修复")
+		logger.GetGlobalLogger("app/task").Warn("🔧 可以执行 'cleanup' 命令进行自动修复")
 	}
 
 	return nil
@@ -165,14 +165,14 @@ func (m *QueueManager) performHealthCheck() error {
 
 // force30MinCleanup 执行30分钟强制清理
 func (m *QueueManager) force30MinCleanup() error {
-	logrus.Warn("🚨 执行30分钟强制清理...")
+	logger.GetGlobalLogger("app/task").Warn("🚨 执行30分钟强制清理...")
 
 	cleanedCount := m.cleanupService.ForceCleanupAll(30 * time.Minute)
 
 	if cleanedCount > 0 {
-		logrus.Warnf("🚨 30分钟强制清理完成: 清理了 %d 个长时间运行的任务", cleanedCount)
+		logger.GetGlobalLogger("app/task").Warnf("🚨 30分钟强制清理完成: 清理了 %d 个长时间运行的任务", cleanedCount)
 	} else {
-		logrus.Info("✅ 没有发现需要30分钟强制清理的任务")
+		logger.GetGlobalLogger("app/task").Info("✅ 没有发现需要30分钟强制清理的任务")
 	}
 
 	return m.showStatus()

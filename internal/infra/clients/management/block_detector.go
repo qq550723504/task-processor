@@ -1,11 +1,11 @@
-package management
+﻿package management
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // BlockDetector 风控检测器
@@ -62,7 +62,7 @@ func (b *BlockDetector) HandleBlockDetection(statusCode int, rateLimit *RateLimi
 	b.blockedUntil = time.Now().Add(blockDuration)
 	rateLimit.Activate(b.blockCount)
 
-	logrus.Infof("🚨 触发风控检测 (状态码: %d)，阻止时间: %v", statusCode, blockDuration)
+	logger.GetGlobalLogger("infra/clients").Infof("🚨 触发风控检测 (状态码: %d)，阻止时间: %v", statusCode, blockDuration)
 }
 
 // ResetOnSuccess 成功时重置计数器

@@ -1,4 +1,4 @@
-// Package mapping 提供SHEIN平台SKU映射关系修复服务
+﻿// Package mapping 提供SHEIN平台SKU映射关系修复服务
 package mapping
 
 import (
@@ -10,6 +10,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	shein_product "task-processor/internal/shein/api/product"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -63,7 +64,7 @@ func NewMappingRepairService(
 		stats: &MappingRepairStats{
 			LastRepairTime: time.Now(),
 		},
-		logger: logrus.WithField("component", "MappingRepairService"),
+		logger: logger.GetGlobalLogger("MappingRepairService"),
 	}
 
 	// 注册默认修复策略

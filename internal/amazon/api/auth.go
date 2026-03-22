@@ -1,4 +1,4 @@
-package api
+﻿package api
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -42,9 +43,7 @@ func NewAuthManager(clientID, clientSecret, refreshToken string) *AuthManager {
 		clientSecret: clientSecret,
 		refreshToken: refreshToken,
 		httpClient:   httpclient.NewSimple(),
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "AuthManager",
-		}),
+		logger: logger.GetGlobalLogger("AuthManager"),
 	}
 }
 

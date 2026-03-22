@@ -1,4 +1,4 @@
-// package pricing 提供TEMU平台自动核价服务
+﻿// package pricing 提供TEMU平台自动核价服务
 package pricing
 
 import (
@@ -7,6 +7,7 @@ import (
 	temuapi "task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,10 +20,7 @@ type AutoPricingService struct {
 
 // NewAutoPricingService 创建自动核价服务
 func NewAutoPricingService(apiClient temuapi.APIClientInterface) *AutoPricingService {
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "AutoPricingService",
-		"storeID":   apiClient.GetStoreID(),
-	})
+	logger := logger.GetGlobalLogger("AutoPricingService").WithField("storeID", apiClient.GetStoreID())
 
 	return &AutoPricingService{
 		apiClient:      apiClient,

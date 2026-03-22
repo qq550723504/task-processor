@@ -1,14 +1,14 @@
-// Package task 提供任务处理工具功能
+﻿// Package task 提供任务处理工具功能
 package task
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"time"
 
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 
-	"github.com/sirupsen/logrus"
 )
 
 // fetchTasksFromAPI 从API获取任务
@@ -18,7 +18,7 @@ func (f *TaskFetcher) fetchTasksFromAPI(maxTasks int) ([]api.ProductImportTaskRe
 	importTaskClient := managementClientProvider.GetImportTaskClient()
 
 	// 添加调试日志
-	logrus.Infof("🔍 任务获取参数: maxTasks=%d, userID=%d, storeIDs=%v",
+	logger.GetGlobalLogger("app/task").Infof("🔍 任务获取参数: maxTasks=%d, userID=%d, storeIDs=%v",
 		maxTasks, f.config.Management.UserID, f.config.Management.StoreIDs)
 
 	return importTaskClient.GetPendingAndRetryTasks(
@@ -35,7 +35,7 @@ func (f *TaskFetcher) extractAPITask(apiTask api.ProductImportTaskRespDTO) *api.
 
 // getStoreInfo 获取店铺信息
 func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient any) (*api.StoreRespDTO, error) {
-	logrus.Infof("📞 正在获取店铺信息: StoreID=%d", storeID)
+	logger.GetGlobalLogger("app/task").Infof("📞 正在获取店铺信息: StoreID=%d", storeID)
 
 	// 类型断言为StoreClient接口
 	if client, ok := storeClient.(StoreClient); ok {
@@ -51,7 +51,7 @@ func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient any) (*api.StoreRe
 			Name:     storeDTO.Name,
 		}
 
-		logrus.Infof("✅ 成功获取店铺信息: StoreID=%d, Platform=%s, Name=%s",
+		logger.GetGlobalLogger("app/task").Infof("✅ 成功获取店铺信息: StoreID=%d, Platform=%s, Name=%s",
 			storeID, storeInfo.Platform, storeInfo.Name)
 		return storeInfo, nil
 	}
@@ -66,7 +66,7 @@ func (f *TaskFetcher) isTaskProcessing(taskID string) bool {
 	f.tasksMutex.RUnlock()
 
 	if isProcessing {
-		logrus.Debugf("⏭️ 跳过重复任务: TaskID=%s (已在队列中，提交时间: %v)", taskID, submitTime)
+		logger.GetGlobalLogger("app/task").Debugf("⏭️ 跳过重复任务: TaskID=%s (已在队列中，提交时间: %v)", taskID, submitTime)
 		return true
 	}
 	return false
@@ -79,7 +79,7 @@ func (f *TaskFetcher) markTaskAsProcessingImmediately(taskID string, apiTaskID i
 	f.processingTasks[taskID] = time.Now()
 	f.tasksMutex.Unlock()
 
-	logrus.Debugf("🔒 任务已立即标记为处理中: TaskID=%s", taskID)
+	logger.GetGlobalLogger("app/task").Debugf("🔒 任务已立即标记为处理中: TaskID=%s", taskID)
 
 	// 立即更新API端任务状态为处理中
 	f.updateTaskStatusToProcessing(apiTaskID)
@@ -91,7 +91,7 @@ func (f *TaskFetcher) rollbackProcessingStatus(taskID string) {
 	delete(f.processingTasks, taskID)
 	f.tasksMutex.Unlock()
 
-	logrus.Debugf("🔄 任务处理中状态已回滚: TaskID=%s", taskID)
+	logger.GetGlobalLogger("app/task").Debugf("🔄 任务处理中状态已回滚: TaskID=%s", taskID)
 }
 
 // updateTaskStatusToProcessing 更新任务状态为"处理中"
@@ -100,7 +100,7 @@ func (f *TaskFetcher) updateTaskStatusToProcessing(taskID int64) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.Errorf("异步更新任务状态goroutine panic (TaskID=%d): %v", taskID, r)
+				logger.GetGlobalLogger("app/task").Errorf("异步更新任务状态goroutine panic (TaskID=%d): %v", taskID, r)
 			}
 		}()
 
@@ -108,7 +108,7 @@ func (f *TaskFetcher) updateTaskStatusToProcessing(taskID int64) {
 		managementClientProvider := f.managementClient
 		importTaskClient := managementClientProvider.GetImportTaskClient()
 		if importTaskClient == nil {
-			logrus.Error("导入任务客户端未初始化，无法更新任务状态")
+			logger.GetGlobalLogger("app/task").Error("导入任务客户端未初始化，无法更新任务状态")
 			return
 		}
 
@@ -120,9 +120,9 @@ func (f *TaskFetcher) updateTaskStatusToProcessing(taskID int64) {
 		}
 
 		if err := importTaskClient.UpdateTaskStatus(updateReq); err != nil {
-			logrus.Warnf("更新任务状态为处理中失败: TaskID=%d, Error=%v", taskID, err)
+			logger.GetGlobalLogger("app/task").Warnf("更新任务状态为处理中失败: TaskID=%d, Error=%v", taskID, err)
 		} else {
-			logrus.Debugf("✅ 任务状态已更新为处理中: TaskID=%d", taskID)
+			logger.GetGlobalLogger("app/task").Debugf("✅ 任务状态已更新为处理中: TaskID=%d", taskID)
 		}
 	}()
 }

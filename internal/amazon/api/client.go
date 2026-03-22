@@ -1,4 +1,4 @@
-// Package api 提供Amazon SP-API客户端
+﻿// Package api 提供Amazon SP-API客户端
 package api
 
 import (
@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/pkg/httpclient"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -47,10 +48,7 @@ func NewClient(cfg *Config) *Client {
 	// 创建认证管理器
 	authManager := NewAuthManager(cfg.ClientID, cfg.ClientSecret, cfg.RefreshToken)
 
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "AmazonAPIClient",
-		"region":    cfg.Region,
-	})
+	logger := logger.GetGlobalLogger("AmazonAPIClient").WithField("region", cfg.Region)
 
 	logger.Info("✅ 使用生产环境 - 所有操作将影响真实数据")
 

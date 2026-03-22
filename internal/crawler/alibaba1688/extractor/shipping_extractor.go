@@ -1,12 +1,12 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // ShippingExtractor 物流信息提取器
@@ -181,7 +181,7 @@ func (se *ShippingExtractor) Extract(page playwright.Page, product *model.Produc
 				shippingInfo.ShippingMethods = methods
 			}
 
-			logrus.Debugf("通过%s提取到物流信息: 发货地=%s, 重量=%.0fg", source, shippingInfo.ShippingFrom, func() float64 {
+			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("通过%s提取到物流信息: 发货地=%s, 重量=%.0fg", source, shippingInfo.ShippingFrom, func() float64 {
 				if product.PackInfo != nil {
 					return product.PackInfo.Weight
 				}
@@ -225,7 +225,7 @@ func (se *ShippingExtractor) extractShippingFromDOM(page playwright.Page, shippi
 			cleanText := strings.TrimSpace(shippingText)
 			if se.isValidShippingLocation(cleanText) {
 				shippingInfo.ShippingFrom = cleanText
-				logrus.Debugf("通过选择器 %s 提取到发货地: %s", selector, cleanText)
+				logger.GetGlobalLogger("crawler/alibaba1688").Debugf("通过选择器 %s 提取到发货地: %s", selector, cleanText)
 				return
 			}
 		}
@@ -254,7 +254,7 @@ func (se *ShippingExtractor) extractShippingFromDOM(page playwright.Page, shippi
 			// 清理发货地信息
 			cleanedLocation := se.cleanLocationText(location)
 			shippingInfo.ShippingFrom = cleanedLocation
-			logrus.Debugf("通过JavaScript方法提取到发货地: %s", cleanedLocation)
+			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("通过JavaScript方法提取到发货地: %s", cleanedLocation)
 		}
 	}
 }

@@ -1,4 +1,4 @@
-// Package platformtask 提供平台通用的调度任务基础实现
+﻿// Package platformtask 提供平台通用的调度任务基础实现
 package platformtask
 
 import (
@@ -8,6 +8,7 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -58,7 +59,7 @@ func NewInventorySyncTask(config InventorySyncTaskConfig) *InventorySyncTask {
 		managementClient: config.ManagementClient,
 		inventoryService: config.InventoryService,
 		platformName:     config.PlatformName,
-		logger: logrus.WithFields(logrus.Fields{
+		logger: logger.GetGlobalLogger("platformtask/inventory_sync_task.go").WithFields(logrus.Fields{
 			"component": fmt.Sprintf("%sInventoryTask", config.PlatformName),
 			"task_id":   baseTask.GetID(),
 			"tenant_id": config.TaskConfig.TenantID,

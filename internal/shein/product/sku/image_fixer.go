@@ -1,11 +1,11 @@
-// Package sku 提供SHEIN平台SKU图片自动修复功能
+﻿// Package sku 提供SHEIN平台SKU图片自动修复功能
 package sku
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SKUImageAutoFixer SKU图片自动修复器
@@ -30,13 +30,13 @@ func (f *SKUImageAutoFixer) AutoFixMultiPieceSKUImage(ctx *shein.TaskContext, sk
 
 	// 检查SKU是否已有图片
 	if sku.ImageInfo != nil && len(sku.ImageInfo.ImageInfoList) > 0 {
-		logrus.Debugf("多件商品SKU %s 已有图片，无需修复", sku.SupplierSKU)
+		logger.GetGlobalLogger("shein/product").Debugf("多件商品SKU %s 已有图片，无需修复", sku.SupplierSKU)
 		return
 	}
 
 	// 检查SKC是否有图片可以复制
 	if skcImageInfo == nil || len(skcImageInfo.ImageInfoList) == 0 {
-		logrus.Warnf("多件商品SKU %s 缺少图片，但SKC也没有图片可复制", sku.SupplierSKU)
+		logger.GetGlobalLogger("shein/product").Warnf("多件商品SKU %s 缺少图片，但SKC也没有图片可复制", sku.SupplierSKU)
 		return
 	}
 
@@ -61,7 +61,7 @@ func (f *SKUImageAutoFixer) AutoFixMultiPieceSKUImage(ctx *shein.TaskContext, sk
 		OriginalImageInfoList: &[]any{},
 	}
 
-	logrus.Infof("🔧 自动修复多件商品SKU图片: SKU %s 从SKC复制了图片", sku.SupplierSKU)
+	logger.GetGlobalLogger("shein/product").Infof("🔧 自动修复多件商品SKU图片: SKU %s 从SKC复制了图片", sku.SupplierSKU)
 }
 
 // isMultiPieceSKU 判断SKU是否为多件商品
@@ -79,7 +79,7 @@ func (f *SKUImageAutoFixer) AutoFixSKUImageSorting(sku *product.SKU) {
 
 	// 多件商品SKU只能有一张图片
 	if len(sku.ImageInfo.ImageInfoList) > 1 {
-		logrus.Infof("🔧 修复多件商品SKU图片数量: SKU %s 从%d张减少到1张",
+		logger.GetGlobalLogger("shein/product").Infof("🔧 修复多件商品SKU图片数量: SKU %s 从%d张减少到1张",
 			sku.SupplierSKU, len(sku.ImageInfo.ImageInfoList))
 		sku.ImageInfo.ImageInfoList = sku.ImageInfo.ImageInfoList[:1]
 	}
@@ -87,7 +87,7 @@ func (f *SKUImageAutoFixer) AutoFixSKUImageSorting(sku *product.SKU) {
 	// 确保图片排序为1
 	if len(sku.ImageInfo.ImageInfoList) > 0 {
 		if sku.ImageInfo.ImageInfoList[0].ImageSort != 1 {
-			logrus.Infof("🔧 修复多件商品SKU主图排序: SKU %s 从%d修复为1",
+			logger.GetGlobalLogger("shein/product").Infof("🔧 修复多件商品SKU主图排序: SKU %s 从%d修复为1",
 				sku.SupplierSKU, sku.ImageInfo.ImageInfoList[0].ImageSort)
 			sku.ImageInfo.ImageInfoList[0].ImageSort = 1
 		}

@@ -1,4 +1,4 @@
-package schema
+﻿package schema
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/amazon/api"
 	"task-processor/internal/amazon/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,7 +28,7 @@ func NewSchemaManager(apiClient *api.Client, marketplaceID, languageTag string) 
 		schemaFetcher: NewSchemaFetcher(),
 		schemaParser:  NewSchemaParser(),
 		schemaBuilder: NewSchemaBuilder(marketplaceID, languageTag),
-		logger:        logrus.WithField("service", "SchemaManager"),
+		logger:        logger.GetGlobalLogger("SchemaManager"),
 	}
 }
 

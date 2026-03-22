@@ -1,4 +1,4 @@
-// Package image 提供并行图片处理功能
+﻿// Package image 提供并行图片处理功能
 package image
 
 import (
@@ -13,6 +13,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -35,7 +36,7 @@ func NewParallelImageProcessor(maxWorkers int) *ParallelImageProcessor {
 		imageProcessor: NewImageProcessor(),
 		maxWorkers:     maxWorkers,
 		timeout:        5 * time.Minute, // 每个变体图片处理5分钟超时
-		logger:         logrus.WithField("component", "ParallelImageProcessor"),
+		logger:         logger.GetGlobalLogger("ParallelImageProcessor"),
 	}
 }
 

@@ -1,7 +1,8 @@
-// Package amazon 提供Amazon实例处理功能
+﻿// Package amazon 提供Amazon实例处理功能
 package amazon
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/crawler/amazon/browser"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // InstanceProcessor 实例处理器
@@ -33,7 +33,7 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 		return nil, fmt.Errorf("浏览器实例为空")
 	}
 
-	logrus.Infof("使用浏览器实例 %d 处理产品: %s", instance.ID, url)
+	logger.GetGlobalLogger("crawler/amazon").Infof("使用浏览器实例 %d 处理产品: %s", instance.ID, url)
 
 	// 创建新页面（用 goroutine + channel 包装，防止 WebSocket 断连时 context.NewPage() 永久 hang）
 	type newPageResult struct {
@@ -58,7 +58,7 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 
 	defer func() {
 		if closeErr := page.Close(); closeErr != nil {
-			logrus.Warnf("关闭页面失败: %v", closeErr)
+			logger.GetGlobalLogger("crawler/amazon").Warnf("关闭页面失败: %v", closeErr)
 		}
 	}()
 
@@ -79,7 +79,7 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 
 	// 优先处理可能出现的"Continue shopping"按钮
 	if err := ip.productChecker.HandleContinueShoppingButton(page); err != nil {
-		logrus.Warnf("处理Continue shopping按钮时出错: %v", err)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("处理Continue shopping按钮时出错: %v", err)
 		// 不返回错误，继续处理
 	}
 
@@ -97,7 +97,7 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 	if zipcode != "" {
 		zipcodeSetter := browser.NewZipcodeSetter(instance.Manager)
 		if err := zipcodeSetter.SetAndVerifyZipcode(page, zipcode); err != nil {
-			logrus.Errorf("设置邮编失败: %v", err)
+			logger.GetGlobalLogger("crawler/amazon").Errorf("设置邮编失败: %v", err)
 
 			// 检查是否需要重建浏览器实例
 			if ip.shouldRecreateInstance(err) {
@@ -131,12 +131,12 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 
 	// 检查货币是否匹配，不匹配时切换货币并重新提取
 	if expectedCurrency != "" && product.Currency != expectedCurrency {
-		logrus.Warnf("货币不匹配 (页面: %s, 期望: %s)，尝试切换货币", product.Currency, expectedCurrency)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("货币不匹配 (页面: %s, 期望: %s)，尝试切换货币", product.Currency, expectedCurrency)
 		currencySetter := browser.NewCurrencySetter(instance.Manager)
 		if err := currencySetter.SetAndVerifyCurrency(page, expectedCurrency); err != nil {
 			return nil, fmt.Errorf("货币切换失败，终止数据抓取: %w", err)
 		}
-		logrus.Infof("货币切换成功，重新提取产品信息")
+		logger.GetGlobalLogger("crawler/amazon").Infof("货币切换成功，重新提取产品信息")
 		product.Currency = expectedCurrency
 		if err := ext.Extract(page, product); err != nil {
 			return nil, fmt.Errorf("重新提取产品信息失败: %w", err)
@@ -148,7 +148,7 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 		return nil, fmt.Errorf("产品数据验证失败: %w", err)
 	}
 
-	logrus.Infof("成功处理产品: (ASIN: %s)", product.Asin)
+	logger.GetGlobalLogger("crawler/amazon").Infof("成功处理产品: (ASIN: %s)", product.Asin)
 	return product, nil
 }
 
@@ -168,7 +168,7 @@ func (ip *InstanceProcessor) validateProductData(product *model.Product) error {
 
 	// 检查价格信息
 	if product.FinalPrice <= 0 {
-		logrus.Warnf("产品价格信息缺失或无效: ASIN=%s", product.Asin)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("产品价格信息缺失或无效: ASIN=%s", product.Asin)
 		// 不返回错误，某些产品可能暂时没有价格
 	}
 
@@ -187,9 +187,9 @@ func (ip *InstanceProcessor) ProcessBatchWithInstance(instance *browser.BrowserI
 		}
 
 		if err != nil {
-			logrus.Errorf("批量处理 [%d/%d] 失败: %s - %v", i+1, len(requests), req.URL, err)
+			logger.GetGlobalLogger("crawler/amazon").Errorf("批量处理 [%d/%d] 失败: %s - %v", i+1, len(requests), req.URL, err)
 		} else {
-			logrus.Infof("批量处理 [%d/%d] 成功: %s", i+1, len(requests), product.Asin)
+			logger.GetGlobalLogger("crawler/amazon").Infof("批量处理 [%d/%d] 成功: %s", i+1, len(requests), product.Asin)
 		}
 	}
 
@@ -202,7 +202,7 @@ func (ip *InstanceProcessor) ProcessWithRetry(instance *browser.BrowserInstance,
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
-			logrus.Infof("重试处理产品 (第%d次): %s", attempt, url)
+			logger.GetGlobalLogger("crawler/amazon").Infof("重试处理产品 (第%d次): %s", attempt, url)
 			// 重试前等待一段时间
 			time.Sleep(time.Duration(attempt) * 2 * time.Second)
 		}
@@ -213,7 +213,7 @@ func (ip *InstanceProcessor) ProcessWithRetry(instance *browser.BrowserInstance,
 		}
 
 		lastErr = err
-		logrus.Warnf("处理产品失败 (第%d次尝试): %v", attempt+1, err)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("处理产品失败 (第%d次尝试): %v", attempt+1, err)
 
 		// 如果是严重错误（如被阻止），不再重试
 		if ip.isSeriousError(err) {

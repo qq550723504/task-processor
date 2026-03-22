@@ -1,12 +1,12 @@
-// Package skc 提供SHEIN平台SKC验证和工具功能
+﻿// Package skc 提供SHEIN平台SKC验证和工具功能
 package skc
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SKCValidationUtils SKC验证工具
@@ -70,7 +70,7 @@ func (v *SKCValidationUtils) ValidateAttributeStrategy(strategy shein.AttributeS
 				validationRate*100, matchedCount, totalValues))
 		}
 
-		logrus.Infof("次要属性验证结果: 属性ID=%d, 匹配率=%.1f%% (%d/%d)",
+		logger.GetGlobalLogger("shein/product").Infof("次要属性验证结果: 属性ID=%d, 匹配率=%.1f%% (%d/%d)",
 			strategy.SecondaryAttribute.AttrID, validationRate*100, matchedCount, totalValues)
 	}
 
@@ -94,7 +94,7 @@ func (v *SKCValidationUtils) ValidateAttributeStrategy(strategy shein.AttributeS
 		return fmt.Errorf("策略验证发现问题: %s", strings.Join(warnings, "; "))
 	}
 
-	logrus.Infof("属性策略验证通过: 策略=%s, 有效变体=%d/%d",
+	logger.GetGlobalLogger("shein/product").Infof("属性策略验证通过: 策略=%s, 有效变体=%d/%d",
 		strategy.StrategyType, validVariantCount, len(saleAttributeData.Variants))
 	return nil
 }

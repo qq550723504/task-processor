@@ -1,11 +1,11 @@
-package validation
+﻿package validation
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // ReapplyFilterRuleHandler 重新应用筛选规则处理器
@@ -37,7 +37,7 @@ func (h *ReapplyFilterRuleHandler) Handle(ctx *shein.TaskContext) error {
 
 	for _, variant := range *ctx.Variants {
 		if err := h.applyFilterRuleToVariant(ctx.FilterRule, variant, ctx); err != nil {
-			logrus.Infof("变体ASIN %s 不符合筛选规则: %v\n", variant.Asin, err)
+			logger.GetGlobalLogger("shein/validation").Infof("变体ASIN %s 不符合筛选规则: %v\n", variant.Asin, err)
 			ctx.SetVariantFiltered(variant.Asin, true, err.Error())
 			unFilteredVariants = append(unFilteredVariants, variant)
 		} else {
@@ -54,7 +54,7 @@ func (h *ReapplyFilterRuleHandler) Handle(ctx *shein.TaskContext) error {
 	}
 	*ctx.UnFilteredVariants = unFilteredVariants
 
-	logrus.Infof("完成对 %d 个变体的筛选规则重新应用\n", len(filteredVariants))
+	logger.GetGlobalLogger("shein/validation").Infof("完成对 %d 个变体的筛选规则重新应用\n", len(filteredVariants))
 	return nil
 }
 

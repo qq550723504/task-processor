@@ -1,11 +1,11 @@
-package variations
+﻿package variations
 
 import (
+	"task-processor/internal/core/logger"
 	"strconv"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // Extractor 变体信息提取器
@@ -56,7 +56,7 @@ func (e *Extractor) BuildVariations(
 	var variations []Variation
 
 	if e.config.EnableDebugLogging {
-		logrus.Infof("[DEBUG] Building variations from %d variation values", len(variationsValues))
+		logger.GetGlobalLogger("crawler/amazon").Infof("[DEBUG] Building variations from %d variation values", len(variationsValues))
 	}
 
 	// 获取所有变体维度
@@ -81,7 +81,7 @@ func (e *Extractor) BuildVariations(
 	}
 
 	if e.config.EnableDebugLogging {
-		logrus.Infof("[DEBUG] Generated %d combinations", len(combinations))
+		logger.GetGlobalLogger("crawler/amazon").Infof("[DEBUG] Generated %d combinations", len(combinations))
 	}
 
 	successCount := 0
@@ -113,7 +113,7 @@ func (e *Extractor) BuildVariations(
 	}
 
 	if e.config.EnableDebugLogging {
-		logrus.Infof("[DEBUG] Successfully created %d variations out of %d combinations", successCount, len(combinations))
+		logger.GetGlobalLogger("crawler/amazon").Infof("[DEBUG] Successfully created %d variations out of %d combinations", successCount, len(combinations))
 	}
 
 	return variations

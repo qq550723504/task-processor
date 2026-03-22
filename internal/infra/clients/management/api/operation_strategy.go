@@ -1,6 +1,7 @@
-package api
+﻿package api
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,7 +9,6 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/types"
 
-	"github.com/sirupsen/logrus"
 )
 
 // OperationStrategyAPI 自动化运营策略 API 接口
@@ -96,7 +96,7 @@ func (c *OperationStrategyClient) GetOperationStrategyByStoreId(storeId int64) (
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		logrus.Warnf("获取运营策略失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+		logger.GetGlobalLogger("infra/clients").Warnf("获取运营策略失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
 		return nil, fmt.Errorf("获取运营策略失败，状态码: %d", resp.StatusCode)
 	}
 

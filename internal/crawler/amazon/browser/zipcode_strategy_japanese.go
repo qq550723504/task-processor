@@ -1,13 +1,13 @@
-// Package browser 提供日本站邮编输入策略
+﻿// Package browser 提供日本站邮编输入策略
 package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // JapaneseZipcodeStrategy 日本站分离式邮编输入策略
@@ -102,7 +102,7 @@ func (s *JapaneseZipcodeStrategy) Handle(page playwright.Page, zipcode string) e
 
 	// 清空并填写第一个输入框（前3位）
 	if err := jpZipInput1.Clear(); err != nil {
-		logrus.Infof("[%s] 清空第一个输入框失败: %v", s.GetName(), err)
+		logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 清空第一个输入框失败: %v", s.GetName(), err)
 	}
 	if err := jpZipInput1.Fill(part1); err != nil {
 		if page.IsClosed() {
@@ -116,7 +116,7 @@ func (s *JapaneseZipcodeStrategy) Handle(page playwright.Page, zipcode string) e
 
 	// 清空并填写第二个输入框（后4位）
 	if err := jpZipInput2.Clear(); err != nil {
-		logrus.Infof("[%s] 清空第二个输入框失败: %v", s.GetName(), err)
+		logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 清空第二个输入框失败: %v", s.GetName(), err)
 	}
 	if err := jpZipInput2.Fill(part2); err != nil {
 		if page.IsClosed() {
@@ -125,6 +125,6 @@ func (s *JapaneseZipcodeStrategy) Handle(page playwright.Page, zipcode string) e
 		return fmt.Errorf("填写日本邮编第二部分失败: %w", err)
 	}
 
-	logrus.Infof("[%s] 成功填写日本站分离式邮编: %s-%s", s.GetName(), part1, part2)
+	logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 成功填写日本站分离式邮编: %s-%s", s.GetName(), part1, part2)
 	return nil
 }

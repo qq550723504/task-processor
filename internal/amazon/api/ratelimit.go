@@ -1,4 +1,4 @@
-// Package api 提供速率限制器实现
+﻿// Package api 提供速率限制器实现
 package api
 
 import (
@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,7 +34,7 @@ func NewTokenBucketLimiter(rate, capacity float64) *TokenBucketLimiter {
 		capacity: capacity,
 		rate:     rate,
 		lastTime: time.Now(),
-		logger:   logrus.WithField("component", "RateLimiter"),
+		logger:   logger.GetGlobalLogger("RateLimiter"),
 	}
 }
 
@@ -163,7 +164,7 @@ func NewCircuitBreaker(failureThreshold, successThreshold int, timeout time.Dura
 		failureThreshold: failureThreshold,
 		successThreshold: successThreshold,
 		timeout:          timeout,
-		logger:           logrus.WithField("component", "CircuitBreaker"),
+		logger:           logger.GetGlobalLogger("CircuitBreaker"),
 	}
 }
 

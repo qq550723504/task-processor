@@ -1,4 +1,4 @@
-// Package ai 提供TEMU平台的各种处理器，包括AI内容重构等功能
+﻿// Package ai 提供TEMU平台的各种处理器，包括AI内容重构等功能
 package ai
 
 import (
@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/pkg/timeout"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -38,7 +39,7 @@ func NewAIContentRewriter(logger *logrus.Entry, openaiClient *openaiClient.Clien
 
 // NewAIContentRewriterHandler 创建新的AI内容重构处理器（用于pipeline）
 func NewAIContentRewriterHandler(openaiConfig *openaiClient.ClientConfig) *AIContentRewriter {
-	logger := logrus.WithField("handler", "ai_content_rewriter")
+	logger := logger.GetGlobalLogger("ai_content_rewriter")
 
 	var aiClient *openaiClient.Client
 	if openaiConfig != nil {

@@ -1,4 +1,4 @@
-package validation
+﻿package validation
 
 import (
 	"task-processor/internal/model"
@@ -6,6 +6,7 @@ import (
 
 	shein "task-processor/internal/shein"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -81,7 +82,7 @@ func (c *FilterRuleChecker) CheckFulfillmentType(filterRule *product.FilterRule,
 	isFBA := product.IsFBAFulfillment(amazonProduct.ShipsFrom)
 	isAMZ := product.IsAMZSeller(amazonProduct.SellerName)
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("shein/validation").WithFields(logrus.Fields{
 		"asin":          amazonProduct.Asin,
 		"ships_from":    amazonProduct.ShipsFrom,
 		"seller_name":   amazonProduct.SellerName,

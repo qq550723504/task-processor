@@ -1,12 +1,12 @@
-// Package amazon 提供Amazon批量处理功能
+﻿// Package amazon 提供Amazon批量处理功能
 package amazon
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/model"
 
-	"github.com/sirupsen/logrus"
 )
 
 // BatchProcessor 批量处理器
@@ -40,7 +40,7 @@ func (bp *BatchProcessor) ProcessWithPool(requests []model.ProductRequest, brows
 		return results
 	}
 
-	logrus.Infof("使用浏览器实例 %d 批量处理", instance.ID)
+	logger.GetGlobalLogger("crawler/amazon").Infof("使用浏览器实例 %d 批量处理", instance.ID)
 
 	// 跟踪是否有严重错误需要重建实例
 	var lastError error
@@ -56,20 +56,20 @@ func (bp *BatchProcessor) ProcessWithPool(requests []model.ProductRequest, brows
 
 		if err != nil {
 			lastError = err
-			logrus.Infof("批量处理 [%d/%d] 失败: %s - %v", i+1, len(requests), req.URL, err)
+			logger.GetGlobalLogger("crawler/amazon").Infof("批量处理 [%d/%d] 失败: %s - %v", i+1, len(requests), req.URL, err)
 
 			// 如果检测到风控或严重错误，尝试重建实例并继续
 			if browserPool.IsBlockedOrSeriousError(err) {
-				logrus.Warnf("检测到浏览器实例 %d 出现严重错误: %v", instance.ID, err)
+				logger.GetGlobalLogger("crawler/amazon").Warnf("检测到浏览器实例 %d 出现严重错误: %v", instance.ID, err)
 
 				// 尝试同步重建实例
 				newInstance := browserPool.RecreateInstanceSync(instance)
 				if newInstance != nil {
-					logrus.Infof("成功重建浏览器实例，继续处理剩余任务")
+					logger.GetGlobalLogger("crawler/amazon").Infof("成功重建浏览器实例，继续处理剩余任务")
 					instance = newInstance
 					// 继续处理，不跳出循环
 				} else {
-					logrus.Errorf("重建浏览器实例失败，停止批量处理")
+					logger.GetGlobalLogger("crawler/amazon").Errorf("重建浏览器实例失败，停止批量处理")
 					// 将剩余任务标记为失败
 					for j := i + 1; j < len(requests); j++ {
 						results[j] = model.ProductResult{
@@ -81,7 +81,7 @@ func (bp *BatchProcessor) ProcessWithPool(requests []model.ProductRequest, brows
 				}
 			}
 		} else {
-			logrus.Infof("批量处理 [%d/%d] 成功: %s", i+1, len(requests), product.Asin)
+			logger.GetGlobalLogger("crawler/amazon").Infof("批量处理 [%d/%d] 成功: %s", i+1, len(requests), product.Asin)
 		}
 	}
 

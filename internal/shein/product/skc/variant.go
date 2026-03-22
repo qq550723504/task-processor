@@ -1,7 +1,8 @@
-// Package skc 提供SHEIN平台SKC变体处理功能
+﻿// Package skc 提供SHEIN平台SKC变体处理功能
 package skc
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	openaiClient "task-processor/internal/infra/clients/openai"
@@ -13,7 +14,6 @@ import (
 	"task-processor/internal/shein/product/sku"
 	"task-processor/internal/shein/product/variant"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SKCVariantProcessor SKC变体处理器
@@ -38,57 +38,57 @@ func NewSKCVariantProcessor(imageProcessor *image.ImageProcessor, attributeMappe
 
 // BuildSingleVariantSKC 构建单变体SKC
 func (p *SKCVariantProcessor) BuildSingleVariantSKC(ctx *shein.TaskContext, strategy shein.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
-	logrus.Infof("🎯 === 开始单变体SKC构建流程 ===")
+	logger.GetGlobalLogger("shein/product").Infof("🎯 === 开始单变体SKC构建流程 ===")
 
 	variant := ctx.SaleSpecResult.Variants[0]
-	logrus.Infof("📊 单变体信息: ASIN=%s, 策略类型=%s, 价格=%.2f", variant.ASIN, strategy.StrategyType, variant.Price)
+	logger.GetGlobalLogger("shein/product").Infof("📊 单变体信息: ASIN=%s, 策略类型=%s, 价格=%.2f", variant.ASIN, strategy.StrategyType, variant.Price)
 
 	var customAttributeRelations []api_attribute.CustomAttributeRelation
 
 	// 1. 预处理属性值ID映射
-	logrus.Infof("🔄 步骤1: 开始属性值ID映射...")
+	logger.GetGlobalLogger("shein/product").Infof("🔄 步骤1: 开始属性值ID映射...")
 	mappingRelations, err := p.attributeMapper.MapAttributeValuesToSheinIDs(ctx, &strategy)
 	if err != nil {
-		logrus.Errorf("❌ 单变体模式 - 属性值ID映射失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 单变体模式 - 属性值ID映射失败: %v", err)
 		return nil, nil, fmt.Errorf("属性值ID映射失败: %w", err)
 	}
 	customAttributeRelations = append(customAttributeRelations, mappingRelations...)
-	logrus.Infof("✅ 属性值ID映射完成，创建了 %d 个关系", len(mappingRelations))
+	logger.GetGlobalLogger("shein/product").Infof("✅ 属性值ID映射完成，创建了 %d 个关系", len(mappingRelations))
 
 	// 检查主要属性值是否有效
-	logrus.Infof("🔍 步骤2: 检查主要属性值有效性...")
+	logger.GetGlobalLogger("shein/product").Infof("🔍 步骤2: 检查主要属性值有效性...")
 	if len(strategy.PrimaryAttribute.AttrValue) > 0 {
 		primaryAttrValue := strategy.PrimaryAttribute.AttrValue[0]
-		logrus.Infof("📋 主要属性值: %s (ID: %d)", primaryAttrValue.Value, primaryAttrValue.ID.Int())
+		logger.GetGlobalLogger("shein/product").Infof("📋 主要属性值: %s (ID: %d)", primaryAttrValue.Value, primaryAttrValue.ID.Int())
 		if primaryAttrValue.ID.Int() <= 0 {
-			logrus.Errorf("❌ 单变体模式 - 主要属性值ID无效: %s (ID: %d)", primaryAttrValue.Value, primaryAttrValue.ID.Int())
+			logger.GetGlobalLogger("shein/product").Errorf("❌ 单变体模式 - 主要属性值ID无效: %s (ID: %d)", primaryAttrValue.Value, primaryAttrValue.ID.Int())
 			return nil, nil, fmt.Errorf("主要属性值ID无效: %s", primaryAttrValue.Value)
 		}
-		logrus.Infof("✅ 主要属性值ID有效")
+		logger.GetGlobalLogger("shein/product").Infof("✅ 主要属性值ID有效")
 	} else {
-		logrus.Errorf("❌ 没有主要属性值")
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 没有主要属性值")
 		return nil, nil, fmt.Errorf("没有主要属性值")
 	}
 
 	// 3. 构建单变体SKC
-	logrus.Infof("🏗️ 步骤3: 开始构建单变体SKC...")
+	logger.GetGlobalLogger("shein/product").Infof("🏗️ 步骤3: 开始构建单变体SKC...")
 	skcList, builderRelations, err := p.buildSingleVariantDirect(ctx, variant, strategy)
 	if err != nil {
-		logrus.Errorf("❌ 单变体直接SKC构建失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 单变体直接SKC构建失败: %v", err)
 		return nil, nil, err
 	}
-	logrus.Infof("✅ 单变体直接SKC构建成功 - 数量: %d", len(skcList))
+	logger.GetGlobalLogger("shein/product").Infof("✅ 单变体直接SKC构建成功 - 数量: %d", len(skcList))
 
 	// 合并自定义属性关系
 	allRelations := append(customAttributeRelations, builderRelations...)
-	logrus.Infof("🎉 单变体SKC构建完成 - SKC数量: %d, 关系数量: %d", len(skcList), len(allRelations))
+	logger.GetGlobalLogger("shein/product").Infof("🎉 单变体SKC构建完成 - SKC数量: %d, 关系数量: %d", len(skcList), len(allRelations))
 
 	return skcList, allRelations, nil
 }
 
 // BuildMultiVariantSKCList 构建多变体SKC列表
 func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *shein.TaskContext, strategy shein.AttributeStrategy, variantMatcher *variant.VariantMatcher) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
-	logrus.Infof("🔨 === 开始多变体SKC构建流程 ===")
+	logger.GetGlobalLogger("shein/product").Infof("🔨 === 开始多变体SKC构建流程 ===")
 
 	// 预分配容量
 	skcList := make([]product.SKC, 0, len(strategy.PrimaryAttribute.AttrValue))
@@ -100,37 +100,37 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *shein.TaskContext, s
 	usedAttributeValueIDs := make(map[int]bool)
 
 	// 1. 预处理属性值ID映射 - 将Amazon属性值映射到SHEIN平台属性值ID
-	logrus.Infof("🔄 步骤1: 开始预处理属性值ID映射...")
+	logger.GetGlobalLogger("shein/product").Infof("🔄 步骤1: 开始预处理属性值ID映射...")
 	mappingRelations, err := p.attributeMapper.MapAttributeValuesToSheinIDs(ctx, &strategy)
 	if err != nil {
-		logrus.Errorf("❌ 属性值ID映射失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 属性值ID映射失败: %v", err)
 		return nil, nil, fmt.Errorf("属性值ID映射失败: %w", err)
 	}
 	customAttributeRelations = append(customAttributeRelations, mappingRelations...)
-	logrus.Infof("✅ 属性值ID映射完成，创建了 %d 个自定义属性关系", len(mappingRelations))
+	logger.GetGlobalLogger("shein/product").Infof("✅ 属性值ID映射完成，创建了 %d 个自定义属性关系", len(mappingRelations))
 
 	// 1.5 修复变体属性：确保所有变体都包含主规格和次规格属性
 	p.ensureVariantsHaveRequiredAttributes(ctx, &strategy)
 
 	// 构建SKC列表，遍历主要属性来区分构建多个SKC
 	skcsCreated := 0
-	logrus.Infof("🔄 步骤2: 开始构建SKC列表，主要属性值数量: %d", len(strategy.PrimaryAttribute.AttrValue))
+	logger.GetGlobalLogger("shein/product").Infof("🔄 步骤2: 开始构建SKC列表，主要属性值数量: %d", len(strategy.PrimaryAttribute.AttrValue))
 
 	for i := 0; i < len(strategy.PrimaryAttribute.AttrValue); i++ {
 		attribute := &strategy.PrimaryAttribute.AttrValue[i] // 获取引用而不是副本
 
-		logrus.Infof("🔍 处理主要属性值[%d/%d]: %s (ID: %d)", i+1, len(strategy.PrimaryAttribute.AttrValue), attribute.Value, attribute.ID.Int())
+		logger.GetGlobalLogger("shein/product").Infof("🔍 处理主要属性值[%d/%d]: %s (ID: %d)", i+1, len(strategy.PrimaryAttribute.AttrValue), attribute.Value, attribute.ID.Int())
 
 		// 第一层去重检查：按属性值名称去重
 		if processedValues[attribute.Value] {
-			logrus.Debugf("⏭️ 跳过重复属性值名称: %s", attribute.Value)
+			logger.GetGlobalLogger("shein/product").Debugf("⏭️ 跳过重复属性值名称: %s", attribute.Value)
 			continue
 		}
 
 		// 第二层去重检查：按属性值ID去重（关键修复：避免SHEIN主销售属性重复错误）
 		attributeValueID := attribute.ID.Int()
 		if usedAttributeValueIDs[attributeValueID] {
-			logrus.Warnf("⏭️ 跳过重复的主要属性值ID: %d (属性值: %s)，避免SHEIN主销售属性重复错误", attributeValueID, attribute.Value)
+			logger.GetGlobalLogger("shein/product").Warnf("⏭️ 跳过重复的主要属性值ID: %d (属性值: %s)，避免SHEIN主销售属性重复错误", attributeValueID, attribute.Value)
 			continue
 		}
 
@@ -139,44 +139,44 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *shein.TaskContext, s
 
 		// 检查属性值ID是否有效
 		if attribute.ID.Int() <= 0 {
-			logrus.Warnf("⚠️ 跳过无效的属性值: %s (ID: %d)", attribute.Value, attribute.ID.Int())
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 跳过无效的属性值: %s (ID: %d)", attribute.Value, attribute.ID.Int())
 			continue
 		}
 
 		// 查找匹配的变体
-		logrus.Debugf("🔍 查找匹配的变体，属性ID: %d, 属性值: %s", strategy.PrimaryAttribute.AttrID, attribute.Value)
+		logger.GetGlobalLogger("shein/product").Debugf("🔍 查找匹配的变体，属性ID: %d, 属性值: %s", strategy.PrimaryAttribute.AttrID, attribute.Value)
 		matchedVariants := variantMatcher.FindMatchingVariants(ctx,
 			ctx.SaleSpecResult.Variants,
 			strategy.PrimaryAttribute.AttrID,
 			attribute.Value,
 		)
-		logrus.Infof("📊 属性值 %s 匹配到的变体数量: %d", attribute.Value, len(matchedVariants))
+		logger.GetGlobalLogger("shein/product").Infof("📊 属性值 %s 匹配到的变体数量: %d", attribute.Value, len(matchedVariants))
 
 		if len(matchedVariants) == 0 {
-			logrus.Warnf("❌ 找不到主要属性值 %s 对应的变体", attribute.Value)
+			logger.GetGlobalLogger("shein/product").Warnf("❌ 找不到主要属性值 %s 对应的变体", attribute.Value)
 			continue
 		}
 
 		// 构建图片信息
-		logrus.Debugf("🖼️ 构建图片信息...")
+		logger.GetGlobalLogger("shein/product").Debugf("🖼️ 构建图片信息...")
 		imageHandler := NewSKCImageHandler(p.imageProcessor, p.taskContext)
 		imagesToUse, err := imageHandler.GetVariantSpecificImages(ctx, matchedVariants[0])
 		if err != nil {
-			logrus.Warnf("⚠️ 获取变体特定图片失败，使用产品图片: %v", err)
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 获取变体特定图片失败，使用产品图片: %v", err)
 			imagesToUse = ctx.AmazonProduct.Images
 		}
 
 		imageInfo, err := p.imageProcessor.BuildImageInfo(ctx, imagesToUse)
 		if err != nil {
-			logrus.Errorf("❌ 构建图片信息失败: %v, ASIN: %s", err, ctx.AmazonProduct.Asin)
+			logger.GetGlobalLogger("shein/product").Errorf("❌ 构建图片信息失败: %v, ASIN: %s", err, ctx.AmazonProduct.Asin)
 			// 图片构建失败时使用空的图片信息，不影响SKC创建流程
 			imageInfo = product.ImageInfo{}
 		} else {
-			logrus.Debugf("✅ 成功构建图片信息，图片数量: %d", len(imageInfo.ImageInfoList))
+			logger.GetGlobalLogger("shein/product").Debugf("✅ 成功构建图片信息，图片数量: %d", len(imageInfo.ImageInfoList))
 		}
 
 		// 构建SKU列表
-		logrus.Debugf("🔧 构建SKU列表...")
+		logger.GetGlobalLogger("shein/product").Debugf("🔧 构建SKU列表...")
 		skuBuildReq := shein.SKUBuildRequest{
 			SaleAttributeData: *ctx.SaleSpecResult,
 			Strategy:          strategy,
@@ -185,18 +185,18 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *shein.TaskContext, s
 		}
 		skuList, err := p.skuBuilder.BuildSKUListWithStrategy(ctx, skuBuildReq)
 		if err != nil {
-			logrus.Errorf("❌ 构建SKU列表失败: %v", err)
+			logger.GetGlobalLogger("shein/product").Errorf("❌ 构建SKU列表失败: %v", err)
 			return nil, nil, fmt.Errorf("failed to build SKU list: %w", err)
 		}
 
 		// 如果SKU列表为空，跳过该主要属性值的SKC创建
 		if len(skuList) == 0 {
-			logrus.Warnf("⚠️ 主要属性值 %s 没有有效的SKU，跳过该SKC - 变体数量: %d", attribute.Value, len(matchedVariants))
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 主要属性值 %s 没有有效的SKU，跳过该SKC - 变体数量: %d", attribute.Value, len(matchedVariants))
 			continue
 		}
 
 		// 使用统一的SKC创建函数
-		logrus.Debugf("🏗️ 创建SKC...")
+		logger.GetGlobalLogger("shein/product").Debugf("🏗️ 创建SKC...")
 		translationHandler := NewSKCTranslationHandler(p.taskContext, p.openaiClient)
 		skc := translationHandler.CreateSKC(ctx, shein.SKCCreationParams{
 			AttributeID:      strategy.PrimaryAttribute.AttrID,
@@ -211,11 +211,11 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *shein.TaskContext, s
 		p.autoFixMultiPieceSKUImages(&skc, &imageInfo)
 
 		skcList = append(skcList, skc)
-		logrus.Infof("✅ 成功创建SKC[%d]: 属性值=%s, SKU数量=%d", skcsCreated+1, attribute.Value, len(skuList))
+		logger.GetGlobalLogger("shein/product").Infof("✅ 成功创建SKC[%d]: 属性值=%s, SKU数量=%d", skcsCreated+1, attribute.Value, len(skuList))
 		skcsCreated++
 	}
 
-	logrus.Infof("🎉 多变体SKC构建完成 - 成功创建: %d 个SKC", len(skcList))
+	logger.GetGlobalLogger("shein/product").Infof("🎉 多变体SKC构建完成 - 成功创建: %d 个SKC", len(skcList))
 	return skcList, customAttributeRelations, nil
 }
 
@@ -254,7 +254,7 @@ func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *shein.TaskContext, v
 	// SHEIN规则验证：只有主规格没有次规格时，一个SKC下只能有一个SKU
 	hasSecondaryAttribute := strategy.SecondaryAttribute.AttrID > 0 && len(strategy.SecondaryAttribute.AttrValue) > 0
 	if !hasSecondaryAttribute && len(skuList) > 1 {
-		logrus.Warnf("单变体直接构建违反SHEIN规则：只有主规格没有次规格，但创建了%d个SKU，只保留第一个", len(skuList))
+		logger.GetGlobalLogger("shein/product").Warnf("单变体直接构建违反SHEIN规则：只有主规格没有次规格，但创建了%d个SKU，只保留第一个", len(skuList))
 		skuList = skuList[:1] // 只保留第一个SKU
 	}
 
@@ -272,14 +272,14 @@ func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *shein.TaskContext, v
 	// 自动修复多件商品SKU图片
 	p.autoFixMultiPieceSKUImages(&skc, &imageInfo)
 
-	logrus.Infof("成功直接构建单变体SKC，包含%d个SKU (主规格: %d, 次规格: %v)",
+	logger.GetGlobalLogger("shein/product").Infof("成功直接构建单变体SKC，包含%d个SKU (主规格: %d, 次规格: %v)",
 		len(skuList), strategy.PrimaryAttribute.AttrID, hasSecondaryAttribute)
 	return []product.SKC{skc}, customAttributeRelations, nil
 }
 
 // ensureVariantsHaveRequiredAttributes 确保所有变体都包含必需的主规格和次规格属性
 func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(ctx *shein.TaskContext, strategy *shein.AttributeStrategy) {
-	logrus.Infof("🔧 === 开始修复变体属性 ===")
+	logger.GetGlobalLogger("shein/product").Infof("🔧 === 开始修复变体属性 ===")
 
 	// 获取主规格和次规格的属性名
 	primaryAttrName := p.getAttributeNameForVariant(strategy.PrimaryAttribute.AttrID)
@@ -288,9 +288,9 @@ func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(ctx *shein.Ta
 		secondaryAttrName = p.getAttributeNameForVariant(strategy.SecondaryAttribute.AttrID)
 	}
 
-	logrus.Infof("📋 主规格属性: ID=%d, Name=%s", strategy.PrimaryAttribute.AttrID, primaryAttrName)
+	logger.GetGlobalLogger("shein/product").Infof("📋 主规格属性: ID=%d, Name=%s", strategy.PrimaryAttribute.AttrID, primaryAttrName)
 	if secondaryAttrName != "" {
-		logrus.Infof("📋 次规格属性: ID=%d, Name=%s", strategy.SecondaryAttribute.AttrID, secondaryAttrName)
+		logger.GetGlobalLogger("shein/product").Infof("📋 次规格属性: ID=%d, Name=%s", strategy.SecondaryAttribute.AttrID, secondaryAttrName)
 	}
 
 	// 检查并修复每个变体
@@ -305,7 +305,7 @@ func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(ctx *shein.Ta
 			if len(strategy.PrimaryAttribute.AttrValue) > 0 {
 				defaultValue := strategy.PrimaryAttribute.AttrValue[0].Value
 				variant.Attributes[primaryAttrName] = defaultValue
-				logrus.Infof("✅ 为变体 ASIN=%s 添加主规格属性: %s = %s", variant.ASIN, primaryAttrName, defaultValue)
+				logger.GetGlobalLogger("shein/product").Infof("✅ 为变体 ASIN=%s 添加主规格属性: %s = %s", variant.ASIN, primaryAttrName, defaultValue)
 				modified = true
 			}
 		}
@@ -314,7 +314,7 @@ func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(ctx *shein.Ta
 		if secondaryAttrName != "" && !p.variantHasAttribute(variant, secondaryAttrName) {
 			// 变体缺少次规格属性，尝试从原始数据中查找
 			// 这种情况通常不应该发生，因为次规格应该是变体的区分属性
-			logrus.Warnf("⚠️ 变体 ASIN=%s 缺少次规格属性: %s", variant.ASIN, secondaryAttrName)
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 变体 ASIN=%s 缺少次规格属性: %s", variant.ASIN, secondaryAttrName)
 		}
 
 		if modified {
@@ -323,9 +323,9 @@ func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(ctx *shein.Ta
 	}
 
 	if fixedCount > 0 {
-		logrus.Infof("🎉 变体属性修复完成，共修复 %d 个变体", fixedCount)
+		logger.GetGlobalLogger("shein/product").Infof("🎉 变体属性修复完成，共修复 %d 个变体", fixedCount)
 	} else {
-		logrus.Infof("✅ 所有变体属性完整，无需修复")
+		logger.GetGlobalLogger("shein/product").Infof("✅ 所有变体属性完整，无需修复")
 	}
 }
 
@@ -407,7 +407,7 @@ func (p *SKCVariantProcessor) autoFixMultiPieceSKUImages(skc *product.SKC, skcIm
 
 		// 检查SKC是否有图片可以复制
 		if skcImageInfo == nil || len(skcImageInfo.ImageInfoList) == 0 {
-			logrus.Warnf("多件商品SKU %s 缺少图片，但SKC也没有图片可复制", sku.SupplierSKU)
+			logger.GetGlobalLogger("shein/product").Warnf("多件商品SKU %s 缺少图片，但SKC也没有图片可复制", sku.SupplierSKU)
 			continue
 		}
 
@@ -432,11 +432,11 @@ func (p *SKCVariantProcessor) autoFixMultiPieceSKUImages(skc *product.SKC, skcIm
 			OriginalImageInfoList: &[]any{},
 		}
 
-		logrus.Infof("🔧 自动修复多件商品SKU图片: SKU %s 从SKC复制了图片", sku.SupplierSKU)
+		logger.GetGlobalLogger("shein/product").Infof("🔧 自动修复多件商品SKU图片: SKU %s 从SKC复制了图片", sku.SupplierSKU)
 		fixedCount++
 	}
 
 	if fixedCount > 0 {
-		logrus.Infof("✅ SKC自动修复完成: 修复了%d个多件商品SKU图片", fixedCount)
+		logger.GetGlobalLogger("shein/product").Infof("✅ SKC自动修复完成: 修复了%d个多件商品SKU图片", fixedCount)
 	}
 }

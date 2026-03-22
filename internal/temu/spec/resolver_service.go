@@ -1,4 +1,4 @@
-// Package spec 提供TEMU平台的规格解析服务
+﻿// Package spec 提供TEMU平台的规格解析服务
 package spec
 
 import (
@@ -6,6 +6,7 @@ import (
 	"strings"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,7 +24,7 @@ type SpecQueryAPI interface {
 // NewSpecResolverService 创建规格解析服务
 func NewSpecResolverService(apiClient SpecQueryAPI) *SpecResolverService {
 	return &SpecResolverService{
-		logger:    logrus.WithField("service", "SpecResolver"),
+		logger:    logger.GetGlobalLogger("SpecResolver"),
 		apiClient: apiClient,
 	}
 }

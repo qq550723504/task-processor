@@ -1,4 +1,4 @@
-// Package rules 提供TEMU平台文本渲染功能
+﻿// Package rules 提供TEMU平台文本渲染功能
 package rules
 
 import (
@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/image/font/gofont/goregular"
 )
@@ -21,7 +22,7 @@ type TextRenderer struct {
 // NewTextRenderer 创建文本渲染器
 func NewTextRenderer() *TextRenderer {
 	return &TextRenderer{
-		logger: logrus.WithField("component", "TextRenderer"),
+		logger: logger.GetGlobalLogger("TextRenderer"),
 	}
 }
 

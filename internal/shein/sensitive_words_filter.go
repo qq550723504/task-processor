@@ -1,4 +1,4 @@
-package shein
+﻿package shein
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -80,7 +81,7 @@ func (f *SensitiveWordsFilter) LoadConfig() error {
 		f.compiledRegexes[lang] = regexes
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("shein/sensitive_words_filter.go").WithFields(logrus.Fields{
 		"config_path": f.configPath,
 		"version":     cfg.Version,
 		"platform":    cfg.Platform,

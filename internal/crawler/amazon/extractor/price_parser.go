@@ -1,14 +1,14 @@
-// Package extractor 提供Amazon价格解析功能
+﻿// Package extractor 提供Amazon价格解析功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // PriceParser 价格解析器
@@ -71,7 +71,7 @@ func (p *PriceParser) ParsePrice(priceText string) float64 {
 
 	price, err := strconv.ParseFloat(priceStr, 64)
 	if err != nil {
-		logrus.Warnf("价格解析错误: %s -> %s (欧洲格式: %v)", priceText, priceStr, isEuropeanFormat)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("价格解析错误: %s -> %s (欧洲格式: %v)", priceText, priceStr, isEuropeanFormat)
 		return 0
 	}
 

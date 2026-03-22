@@ -1,13 +1,13 @@
-// Package alibaba1688 提供其他类型验证码处理功能
+﻿// Package alibaba1688 提供其他类型验证码处理功能
 package alibaba1688
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // handleLoginPrompt 处理登录提示
@@ -23,7 +23,7 @@ func (ch *CaptchaHandler) handleLoginPrompt(page playwright.Page) error {
 	for _, selector := range loginSelectors {
 		elements, err := page.QuerySelectorAll(selector)
 		if err == nil && len(elements) > 0 {
-			logrus.Info("检测到登录提示，尝试关闭")
+			logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到登录提示，尝试关闭")
 
 			// 尝试关闭登录弹窗
 			closeSelectors := []string{
@@ -39,7 +39,7 @@ func (ch *CaptchaHandler) handleLoginPrompt(page playwright.Page) error {
 				closeBtn, err := page.QuerySelector(closeSelector)
 				if err == nil && closeBtn != nil {
 					if err := closeBtn.Click(); err == nil {
-						logrus.Info("成功关闭登录弹窗")
+						logger.GetGlobalLogger("crawler/alibaba1688").Info("成功关闭登录弹窗")
 						time.Sleep(1 * time.Second)
 						return nil
 					}
@@ -48,7 +48,7 @@ func (ch *CaptchaHandler) handleLoginPrompt(page playwright.Page) error {
 
 			// 如果找不到关闭按钮，尝试按ESC键
 			if err := page.Keyboard().Press("Escape"); err == nil {
-				logrus.Info("通过ESC键关闭登录弹窗")
+				logger.GetGlobalLogger("crawler/alibaba1688").Info("通过ESC键关闭登录弹窗")
 				time.Sleep(1 * time.Second)
 				return nil
 			}
@@ -72,7 +72,7 @@ func (ch *CaptchaHandler) handleOtherCaptcha(page playwright.Page) error {
 		if err == nil && element != nil {
 			isVisible, _ := element.IsVisible()
 			if isVisible {
-				logrus.Warn("检测到点击验证码，需要手动处理")
+				logger.GetGlobalLogger("crawler/alibaba1688").Warn("检测到点击验证码，需要手动处理")
 				return ch.waitForManualCaptcha(page, "点击验证码")
 			}
 		}
@@ -83,8 +83,8 @@ func (ch *CaptchaHandler) handleOtherCaptcha(page playwright.Page) error {
 
 // waitForManualCaptcha 等待用户手动处理验证码
 func (ch *CaptchaHandler) waitForManualCaptcha(page playwright.Page, captchaType string) error {
-	logrus.Warnf("检测到%s，请手动完成验证", captchaType)
-	logrus.Info("等待用户手动操作...")
+	logger.GetGlobalLogger("crawler/alibaba1688").Warnf("检测到%s，请手动完成验证", captchaType)
+	logger.GetGlobalLogger("crawler/alibaba1688").Info("等待用户手动操作...")
 
 	timeout := 120 * time.Second
 	startTime := time.Now()
@@ -95,7 +95,7 @@ func (ch *CaptchaHandler) waitForManualCaptcha(page playwright.Page, captchaType
 		if !strings.Contains(strings.ToLower(title), "验证") &&
 			!strings.Contains(strings.ToLower(title), "captcha") &&
 			!strings.Contains(strings.ToLower(title), "verify") {
-			logrus.Info("页面标题已变化，验证可能已完成")
+			logger.GetGlobalLogger("crawler/alibaba1688").Info("页面标题已变化，验证可能已完成")
 			return nil
 		}
 

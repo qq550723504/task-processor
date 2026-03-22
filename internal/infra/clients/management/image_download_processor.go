@@ -1,6 +1,7 @@
-package management
+﻿package management
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"io"
@@ -9,7 +10,6 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // ImageDownloadProcessor 图片下载处理器
@@ -56,7 +56,7 @@ func (p *ImageDownloadProcessor) DownloadImage(url string) ([]byte, error) {
 	elapsed := time.Since(startTime)
 
 	if err != nil {
-		logrus.Infof("❌ 下载失败 [耗时: %v]: %v", elapsed, err)
+		logger.GetGlobalLogger("infra/clients").Infof("❌ 下载失败 [耗时: %v]: %v", elapsed, err)
 		p.handleRequestError(err)
 
 		if originalURL != url {

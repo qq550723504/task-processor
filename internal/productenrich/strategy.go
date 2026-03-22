@@ -1,10 +1,11 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
 	"context"
 	"fmt"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -70,7 +71,7 @@ func (s *strategySelector) SelectStrategy(ctx context.Context, qualityScore floa
 		s.metrics.RecordCacheOperation("strategy", string(strategy))
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/strategy.go").WithFields(logrus.Fields{
 		"quality_score":     qualityScore,
 		"strategy":          string(strategy),
 		"full_threshold":    s.fullThreshold,
@@ -152,7 +153,7 @@ func (s *strategySelector) GetStrategyDetails(strategy ProcessingStrategy) (*Str
 		}, nil
 
 	default:
-		logrus.WithField("strategy", strategy).Error("unknown strategy")
+		logger.GetGlobalLogger("productenrich/strategy.go").WithField("strategy", strategy).Error("unknown strategy")
 		return nil, fmt.Errorf("unknown strategy: %s", strategy)
 	}
 }

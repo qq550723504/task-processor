@@ -1,13 +1,13 @@
-package sale
+﻿package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/attribute"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeHandler 销售属性处理器
@@ -51,7 +51,7 @@ func (h *SaleAttributeHandler) Handle(ctx *shein.TaskContext) error {
 
 // generateSaleSpec 生成销售规格
 func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
-	logrus.Info("🚀 开始生成销售规格")
+	logger.GetGlobalLogger("shein/product").Info("🚀 开始生成销售规格")
 
 	// 构造缓存 key：同一父 ASIN + 分类的销售规格可复用
 	cacheKey := fmt.Sprintf("%s:%d", ctx.AmazonProduct.ParentAsin, ctx.ProductData.CategoryID)
@@ -60,7 +60,7 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 	if ctx.AICache != nil {
 		var cached shein.ResultSaleAttribute
 		if ctx.AICache.Get(aicache.TypeSaleAttr, cacheKey, &cached) {
-			logrus.Infof("AI销售规格命中缓存: parentAsin=%s, categoryID=%d", ctx.AmazonProduct.ParentAsin, ctx.ProductData.CategoryID)
+			logger.GetGlobalLogger("shein/product").Infof("AI销售规格命中缓存: parentAsin=%s, categoryID=%d", ctx.AmazonProduct.ParentAsin, ctx.ProductData.CategoryID)
 			ctx.SaleSpecResult = &cached
 			return nil
 		}
@@ -78,14 +78,14 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 	if len(productsData) == 0 {
 		return fmt.Errorf("产品数据为空，无法生成销售属性")
 	}
-	logrus.Infof("✅ 准备了 %d 个产品数据", len(productsData))
+	logger.GetGlobalLogger("shein/product").Infof("✅ 准备了 %d 个产品数据", len(productsData))
 
 	// 4. 构建属性元数据
 	attributeMetadata := h.buildAttributeMetadata(ctx, importanceCalc)
 	if len(attributeMetadata) == 0 {
 		return fmt.Errorf("属性元数据为空，无法生成销售属性")
 	}
-	logrus.Infof("✅ 构建了 %d 个属性元数据", len(attributeMetadata))
+	logger.GetGlobalLogger("shein/product").Infof("✅ 构建了 %d 个属性元数据", len(attributeMetadata))
 
 	// 5. 构建属性名称映射
 	attributeNameMappings := h.buildAttributeNameMappings(*ctx.BuildAttributeData, ctx.AttributeTemplates)
@@ -94,7 +94,7 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 	request := h.buildGenerationRequest(ctx, productsData, attributeMetadata, attributeNameMappings)
 
 	// 8. 调用GPT API
-	logrus.Info("📡 调用GPT API生成销售属性...")
+	logger.GetGlobalLogger("shein/product").Info("📡 调用GPT API生成销售属性...")
 	saleAttributeData := h.callGPTAPI(ctx, request)
 
 	if saleAttributeData.SaleAttributes == nil {
@@ -105,7 +105,7 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 	if len(saleAttributeData.Variants) == 0 {
 		return fmt.Errorf("AI未生成任何变体数据")
 	}
-	logrus.Infof("✅ AI生成了 %d 个变体", len(saleAttributeData.Variants))
+	logger.GetGlobalLogger("shein/product").Infof("✅ AI生成了 %d 个变体", len(saleAttributeData.Variants))
 
 	// 10. 过滤有效ASIN（移除AI生成的多余ASIN）
 	saleAttributeData = h.filterValidASINs(ctx.Variants, saleAttributeData)
@@ -126,7 +126,7 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 
 	// 15. 保存结果
 	ctx.SaleSpecResult = &saleAttributeData
-	logrus.Infof("✅ 销售规格生成完成，共 %d 个变体，%d 个销售属性",
+	logger.GetGlobalLogger("shein/product").Infof("✅ 销售规格生成完成，共 %d 个变体，%d 个销售属性",
 		len(saleAttributeData.Variants), len(saleAttributeData.SaleAttributes))
 
 	// 写缓存
@@ -161,7 +161,7 @@ func (h *SaleAttributeHandler) createChatCompletionRequest(systemPrompt, userPro
 	seed := 42
 	temperature := float32(0.1)
 
-	logrus.Infof("📊 创建请求 (变体数=%d, 不限制MaxTokens)", variantCount)
+	logger.GetGlobalLogger("shein/product").Infof("📊 创建请求 (变体数=%d, 不限制MaxTokens)", variantCount)
 
 	return &openaiClient.ChatCompletionRequest{
 		Model: h.openaiClient.GetDefaultModel(),

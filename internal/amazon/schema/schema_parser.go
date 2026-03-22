@@ -1,10 +1,11 @@
-package schema
+﻿package schema
 
 import (
 	"fmt"
 	"strings"
 	"task-processor/internal/amazon/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -16,7 +17,7 @@ type SchemaParser struct {
 // NewSchemaParser 创建解析器
 func NewSchemaParser() *SchemaParser {
 	return &SchemaParser{
-		logger: logrus.WithField("service", "SchemaParser"),
+		logger: logger.GetGlobalLogger("SchemaParser"),
 	}
 }
 

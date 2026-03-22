@@ -1,4 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -125,7 +126,7 @@ func (s *llmScorer) scoreWithCache(
 	if s.scoreCache != nil {
 		if cachedScore, found := getCached(); found {
 			finalScore := s.combineScores(baseScore, cachedScore)
-			logrus.WithFields(logrus.Fields{
+			logger.GetGlobalLogger("productenrich/llm_scorer.go").WithFields(logrus.Fields{
 				"base_score":   baseScore,
 				"cached_score": cachedScore,
 				"final_score":  finalScore,
@@ -149,7 +150,7 @@ func (s *llmScorer) scoreWithCache(
 	}
 
 	finalScore := s.combineScores(baseScore, llmScore)
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/llm_scorer.go").WithFields(logrus.Fields{
 		"base_score":  baseScore,
 		"llm_score":   llmScore,
 		"final_score": finalScore,
@@ -314,7 +315,7 @@ func (s *llmScorer) parseLLMScore(response string) (float64, error) {
 		return 0, fmt.Errorf("score out of range: %.2f", result.Score)
 	}
 
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("productenrich/llm_scorer.go").WithFields(logrus.Fields{
 		"score":  result.Score,
 		"reason": result.Reason,
 	}).Debug("parsed LLM score")

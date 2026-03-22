@@ -1,6 +1,7 @@
-package extractor
+﻿package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/model"
 
@@ -65,14 +66,14 @@ func (e *AvailabilityExtractor) getAvailability(page playwright.Page) string {
 	pageText, err := page.TextContent("body")
 	if err == nil {
 		if availability := e.extractAvailabilityFromText(pageText); availability != "" {
-			logrus.WithFields(logrus.Fields{
+			logger.GetGlobalLogger("crawler/amazon").WithFields(logrus.Fields{
 				"text": availability,
 			}).Info("✅ 从页面文本中提取到库存信息")
 			return availability
 		}
 	}
 
-	logrus.Warn("⚠️ 未找到库存信息，返回 Unknown")
+	logger.GetGlobalLogger("crawler/amazon").Warn("⚠️ 未找到库存信息，返回 Unknown")
 	return "Unknown"
 }
 
@@ -191,7 +192,7 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 
 	for _, keyword := range unavailableKeywords {
 		if strings.Contains(lowerText, keyword) {
-			logrus.WithFields(logrus.Fields{
+			logger.GetGlobalLogger("crawler/amazon").WithFields(logrus.Fields{
 				"keyword": keyword,
 				"result":  "不可用",
 			}).Info("❌ 匹配到不可用关键词")
@@ -250,7 +251,7 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 	}
 
 	// 如果没有明确的关键词，默认为不可用
-	logrus.WithFields(logrus.Fields{
+	logger.GetGlobalLogger("crawler/amazon").WithFields(logrus.Fields{
 		"text": availabilityText,
 	}).Warn("⚠️ 未匹配到任何关键词，默认判断为不可用")
 	return false

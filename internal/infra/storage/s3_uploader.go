@@ -1,4 +1,4 @@
-package storage
+﻿package storage
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -30,7 +31,7 @@ func NewS3Uploader(s3Client *s3.Client, bucket string) *S3Uploader {
 	return &S3Uploader{
 		s3Client: s3Client,
 		bucket:   bucket,
-		logger:   logrus.WithField("service", "S3Uploader"),
+		logger:   logger.GetGlobalLogger("S3Uploader"),
 	}
 }
 

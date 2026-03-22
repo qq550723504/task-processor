@@ -1,11 +1,11 @@
-package management
+﻿package management
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SensitiveWordCache 敏感词缓存管理器
@@ -40,7 +40,7 @@ func (swc *SensitiveWordCache) Initialize() {
 	// 启动定期更新goroutine
 	go swc.startPeriodicUpdate()
 
-	logrus.Info("敏感词缓存已初始化")
+	logger.GetGlobalLogger("infra/clients").Info("敏感词缓存已初始化")
 }
 
 // startPeriodicUpdate 启动定期更新
@@ -68,7 +68,7 @@ func (swc *SensitiveWordCache) startPeriodicUpdate() {
 func (swc *SensitiveWordCache) updateWordsForLanguage(language string) {
 	defer func() {
 		if r := recover(); r != nil {
-			logrus.Infof("更新语言[%s]敏感词时发生错误: %v", language, r)
+			logger.GetGlobalLogger("infra/clients").Infof("更新语言[%s]敏感词时发生错误: %v", language, r)
 		}
 	}()
 
@@ -82,16 +82,16 @@ func (swc *SensitiveWordCache) updateWordsForLanguage(language string) {
 	if err != nil {
 		// 如果是未登录错误，使用 debug 级别，否则使用 info 级别
 		if strings.Contains(err.Error(), "未设置用户访问令牌") {
-			logrus.Debugf("获取语言[%s]敏感词列表失败（未登录）: %v", language, err)
+			logger.GetGlobalLogger("infra/clients").Debugf("获取语言[%s]敏感词列表失败（未登录）: %v", language, err)
 		} else {
-			logrus.Infof("获取语言[%s]敏感词列表失败: %v", language, err)
+			logger.GetGlobalLogger("infra/clients").Infof("获取语言[%s]敏感词列表失败: %v", language, err)
 		}
 		return
 	}
 
 	// 检查响应数据
 	if words == nil {
-		logrus.Infof("语言[%s]敏感词列表数据为空", language)
+		logger.GetGlobalLogger("infra/clients").Infof("语言[%s]敏感词列表数据为空", language)
 		return
 	}
 
@@ -101,7 +101,7 @@ func (swc *SensitiveWordCache) updateWordsForLanguage(language string) {
 	swc.lastUpdate[language] = time.Now()
 	swc.mutex.Unlock()
 
-	logrus.Infof("成功更新语言[%s]敏感词列表，共%d个敏感词", language, len(*words))
+	logger.GetGlobalLogger("infra/clients").Infof("成功更新语言[%s]敏感词列表，共%d个敏感词", language, len(*words))
 }
 
 // GetWords 获取指定语言的敏感词列表

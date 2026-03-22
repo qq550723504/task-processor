@@ -1,10 +1,10 @@
-package state
+﻿package state
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"sync"
 
-	"github.com/sirupsen/logrus"
 )
 
 // ReListingQueueManager 重新上架队列管理器（内存版）
@@ -30,7 +30,7 @@ func (m *ReListingQueueManager) PushTask(tenantID, shopID int64, taskData string
 	// 添加到队列头部
 	m.queues[key] = append([]string{taskData}, m.queues[key]...)
 
-	logrus.Infof("任务已添加到重新上架队列: 租户=%d, 店铺=%d, 队列长度=%d", tenantID, shopID, len(m.queues[key]))
+	logger.GetGlobalLogger("app/state").Infof("任务已添加到重新上架队列: 租户=%d, 店铺=%d, 队列长度=%d", tenantID, shopID, len(m.queues[key]))
 }
 
 // PopTask 从队列尾部取出任务
@@ -91,5 +91,5 @@ func (m *ReListingQueueManager) ClearQueue(tenantID, shopID int64) {
 	key := fmt.Sprintf("%d:%d", tenantID, shopID)
 	delete(m.queues, key)
 
-	logrus.Infof("重新上架队列已清空: 租户=%d, 店铺=%d", tenantID, shopID)
+	logger.GetGlobalLogger("app/state").Infof("重新上架队列已清空: 租户=%d, 店铺=%d", tenantID, shopID)
 }

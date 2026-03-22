@@ -1,11 +1,11 @@
-// Package extractor 提供Amazon描述提取核心功能
+﻿// Package extractor 提供Amazon描述提取核心功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // DescriptionExtractor 描述提取器
@@ -62,7 +62,7 @@ func (e *DescriptionExtractor) extractDescription(page playwright.Page) string {
 
 // extractProductDescription 提取产品详细描述
 func (e *DescriptionExtractor) extractProductDescription(page playwright.Page) string {
-	logrus.Info("开始提取产品详细描述")
+	logger.GetGlobalLogger("crawler/amazon").Info("开始提取产品详细描述")
 
 	// 第一组：精确的产品描述选择器
 	primarySelectors := []string{
@@ -93,7 +93,7 @@ func (e *DescriptionExtractor) extractProductDescription(page playwright.Page) s
 		return description
 	}
 
-	logrus.Info("未能提取到产品详细描述")
+	logger.GetGlobalLogger("crawler/amazon").Info("未能提取到产品详细描述")
 	return ""
 }
 

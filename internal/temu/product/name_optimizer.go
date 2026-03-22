@@ -1,10 +1,11 @@
-package product
+﻿package product
 
 import (
 	"fmt"
 	"regexp"
 	"strings"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -16,7 +17,7 @@ type ProductNameOptimizer struct {
 // NewProductNameOptimizer 创建新的产品名称优化器
 func NewProductNameOptimizer() *ProductNameOptimizer {
 	return &ProductNameOptimizer{
-		logger: logrus.WithField("handler", "ProductNameOptimizer"),
+		logger: logger.GetGlobalLogger("ProductNameOptimizer"),
 	}
 }
 

@@ -1,10 +1,10 @@
-// Package sale 提供SHEIN平台的销售属性GPT处理功能
+﻿// Package sale 提供SHEIN平台的销售属性GPT处理功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // callGPTAPI 调用GPT API
@@ -20,7 +20,7 @@ func (h *SaleAttributeHandler) callGPTAPI(ctx *shein.TaskContext, request *shein
 	variantCount := len(request.VariationData)
 
 	if variantCount > maxVariantsPerBatch {
-		logrus.Infof("🔄 变体数量(%d)超过单批限制(%d)，将分批处理", variantCount, maxVariantsPerBatch)
+		logger.GetGlobalLogger("shein/product").Infof("🔄 变体数量(%d)超过单批限制(%d)，将分批处理", variantCount, maxVariantsPerBatch)
 		batchProcessor := NewSaleAttributeBatchProcessor(h)
 		return batchProcessor.ProcessInBatches(ctx, request, maxVariantsPerBatch)
 	}

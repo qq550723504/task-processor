@@ -1,4 +1,4 @@
-// Package spec 提供规格维度统一服务
+﻿// Package spec 提供规格维度统一服务
 package spec
 
 import (
@@ -6,6 +6,7 @@ import (
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/property"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +20,7 @@ type SpecDimensionUnifier struct {
 // NewSpecDimensionUnifier 创建规格维度统一器
 func NewSpecDimensionUnifier() *SpecDimensionUnifier {
 	return &SpecDimensionUnifier{
-		logger:                   logrus.WithField("service", "SpecDimensionUnifier"),
+		logger:                   logger.GetGlobalLogger("SpecDimensionUnifier"),
 		selector:                 NewSpecDimensionSelector(),
 		mixedAttributesProcessor: property.NewMixedAttributesProcessor(),
 	}

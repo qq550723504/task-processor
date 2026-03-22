@@ -1,7 +1,8 @@
-// Package openai 提供OpenAI API客户端功能
+﻿// Package openai 提供OpenAI API客户端功能
 package openai
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"sync"
@@ -60,7 +61,7 @@ func NewRequestPool(config *PoolConfig) (*RequestPool, error) {
 		clients:   clients,
 		semaphore: make(chan struct{}, config.MaxConcurrent),
 		rateLimit: rateLimiter,
-		logger:    logrus.WithField("component", "OpenAIRequestPool"),
+		logger:    logger.GetGlobalLogger("OpenAIRequestPool"),
 	}, nil
 }
 
@@ -118,7 +119,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		if attempt > 0 {
 			// 计算指数退避延迟时间
 			delay := bc.config.RetryDelay * time.Duration(1<<uint(attempt-1))
-			logrus.Warnf("OpenAI API调用失败，第%d次重试，等待%v后重试: %v", attempt, delay, lastErr)
+			logger.GetGlobalLogger("infra/clients").Warnf("OpenAI API调用失败，第%d次重试，等待%v后重试: %v", attempt, delay, lastErr)
 
 			select {
 			case <-time.After(delay):
@@ -154,7 +155,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		if err == nil {
 			// 成功，返回响应
 			if attempt > 0 {
-				logrus.Infof("OpenAI API调用在第%d次重试后成功", attempt)
+				logger.GetGlobalLogger("infra/clients").Infof("OpenAI API调用在第%d次重试后成功", attempt)
 			}
 			return convertResponse(&resp), nil
 		}
@@ -163,7 +164,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 
 		// 检查是否应该重试
 		if !shouldRetry(err) {
-			logrus.Warnf("OpenAI API调用失败，错误不可重试: %v", err)
+			logger.GetGlobalLogger("infra/clients").Warnf("OpenAI API调用失败，错误不可重试: %v", err)
 			break
 		}
 	}

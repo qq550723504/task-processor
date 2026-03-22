@@ -1,4 +1,4 @@
-// Package scheduler 提供TEMU平台自动核价任务适配器
+﻿// Package scheduler 提供TEMU平台自动核价任务适配器
 package scheduler
 
 import (
@@ -13,6 +13,7 @@ import (
 
 	// pricingsvc 别名已废弃，包已重命名为 pricing
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -32,10 +33,7 @@ func NewTemuAutoPricingAdapter(
 	return &TemuAutoPricingAdapter{
 		autoPricingService: pricing.NewAutoPricingService(apiClient),
 		managementClient:   managementClient,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "TemuAutoPricingAdapter",
-			"store_id":  apiClient.GetStoreID(),
-		}),
+		logger: logger.GetGlobalLogger("TemuAutoPricingAdapter").WithField("store_id", apiClient.GetStoreID()),
 	}
 }
 

@@ -1,4 +1,4 @@
-// Package amazon 提供超时管理功能
+﻿// Package amazon 提供超时管理功能
 package amazon
 
 import (
@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,7 +23,7 @@ type TimeoutManager struct {
 func NewTimeoutManager(defaultTimeout time.Duration) *TimeoutManager {
 	return &TimeoutManager{
 		defaultTimeout: defaultTimeout,
-		logger:         logrus.WithField("component", "TimeoutManager"),
+		logger:         logger.GetGlobalLogger("TimeoutManager"),
 		activeContexts: make(map[string]context.CancelFunc),
 	}
 }

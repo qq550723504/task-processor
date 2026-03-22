@@ -1,4 +1,4 @@
-// Package client 提供TEMU平台API客户端核心功能
+﻿// Package client 提供TEMU平台API客户端核心功能
 package client
 
 import (
@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 
 	"github.com/imroc/req/v3"
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -28,10 +29,7 @@ type APIClient struct {
 func NewAPIClient(storeID int64, managementClient *management.ClientManager) *APIClient {
 	config := DefaultConfig()
 
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "TEMUAPIClient",
-		"storeID":   storeID,
-	})
+	logger := logger.GetGlobalLogger("TEMUAPIClient").WithField("storeID", storeID)
 
 	apiClient := &APIClient{
 		config:        config,

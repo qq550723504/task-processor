@@ -1,11 +1,11 @@
-package state
+﻿package state
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // CookieInfo Cookie信息
@@ -38,7 +38,7 @@ func (m *CookieManager) SetCookie(shopID int64, cookie string) {
 		UpdateTime: time.Now(),
 	}
 
-	logrus.Infof("Cookie已保存到内存: 店铺=%d", shopID)
+	logger.GetGlobalLogger("app/state").Infof("Cookie已保存到内存: 店铺=%d", shopID)
 }
 
 // GetCookie 获取Cookie
@@ -63,7 +63,7 @@ func (m *CookieManager) DeleteCookie(shopID int64) {
 	key := fmt.Sprintf("%d", shopID)
 	delete(m.cookies, key)
 
-	logrus.Infof("Cookie已从内存删除: 店铺=%d", shopID)
+	logger.GetGlobalLogger("app/state").Infof("Cookie已从内存删除: 店铺=%d", shopID)
 }
 
 // GetAllCookies 获取所有Cookie（用于调试）

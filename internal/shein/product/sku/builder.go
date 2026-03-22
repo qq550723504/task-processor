@@ -1,14 +1,14 @@
-// Package sku 提供SHEIN平台SKU构建核心功能
+﻿// Package sku 提供SHEIN平台SKU构建核心功能
 package sku
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/product/variant"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SKUBuilder SKU构建器
@@ -29,33 +29,33 @@ func NewSKUBuilder(variantMatcher *variant.VariantMatcher) *SKUBuilder {
 
 // BuildSKUListWithStrategy 根据策略构建SKU列表
 func (b *SKUBuilder) BuildSKUListWithStrategy(ctx *shein.TaskContext, req shein.SKUBuildRequest) ([]product.SKU, error) {
-	logrus.Infof("🔧 === 开始SKU构建流程 ===")
-	logrus.Infof("📊 SKU构建请求信息:")
-	logrus.Infof("  - 主要属性ID: %d", req.Strategy.PrimaryAttribute.AttrID)
-	logrus.Infof("  - 次要属性ID: %d", req.Strategy.SecondaryAttribute.AttrID)
-	logrus.Infof("  - 主要属性值: %s", req.PrimaryAttrValue)
-	logrus.Infof("  - 仓库代码: %s", req.WarehouseCode)
-	logrus.Infof("  - 变体数量: %d", len(req.SaleAttributeData.Variants))
+	logger.GetGlobalLogger("shein/product").Infof("🔧 === 开始SKU构建流程 ===")
+	logger.GetGlobalLogger("shein/product").Infof("📊 SKU构建请求信息:")
+	logger.GetGlobalLogger("shein/product").Infof("  - 主要属性ID: %d", req.Strategy.PrimaryAttribute.AttrID)
+	logger.GetGlobalLogger("shein/product").Infof("  - 次要属性ID: %d", req.Strategy.SecondaryAttribute.AttrID)
+	logger.GetGlobalLogger("shein/product").Infof("  - 主要属性值: %s", req.PrimaryAttrValue)
+	logger.GetGlobalLogger("shein/product").Infof("  - 仓库代码: %s", req.WarehouseCode)
+	logger.GetGlobalLogger("shein/product").Infof("  - 变体数量: %d", len(req.SaleAttributeData.Variants))
 
 	// SHEIN规则验证：检查次要属性是否与主要属性相同
 	if req.Strategy.SecondaryAttribute.AttrID > 0 && req.Strategy.SecondaryAttribute.AttrID == req.Strategy.PrimaryAttribute.AttrID {
-		logrus.Warnf("⚠️ SHEIN规则冲突：次要属性ID(%d)与主要属性ID(%d)相同，降级为单SKU模式",
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ SHEIN规则冲突：次要属性ID(%d)与主要属性ID(%d)相同，降级为单SKU模式",
 			req.Strategy.SecondaryAttribute.AttrID, req.Strategy.PrimaryAttribute.AttrID)
 		return b.strategyProcessor.BuildSingleSKU(ctx, req)
 	}
 
 	// 如果没有次要属性，只创建一个 SKU
 	if req.Strategy.SecondaryAttribute.AttrID <= 0 {
-		logrus.Infof("🎯 检测到无次要属性，使用单SKU构建模式")
+		logger.GetGlobalLogger("shein/product").Infof("🎯 检测到无次要属性，使用单SKU构建模式")
 		return b.strategyProcessor.BuildSingleSKU(ctx, req)
 	}
 
-	logrus.Infof("🎯 检测到有次要属性，使用多SKU构建模式")
-	logrus.Infof("  - 次要属性值数量: %d", len(req.Strategy.SecondaryAttribute.AttrValue))
+	logger.GetGlobalLogger("shein/product").Infof("🎯 检测到有次要属性，使用多SKU构建模式")
+	logger.GetGlobalLogger("shein/product").Infof("  - 次要属性值数量: %d", len(req.Strategy.SecondaryAttribute.AttrValue))
 
 	// 打印次要属性值详情
 	for i, attrValue := range req.Strategy.SecondaryAttribute.AttrValue {
-		logrus.Infof("  - 次要属性值[%d]: %s (ID: %d)", i+1, attrValue.Value, attrValue.ID.Int())
+		logger.GetGlobalLogger("shein/product").Infof("  - 次要属性值[%d]: %s (ID: %d)", i+1, attrValue.Value, attrValue.ID.Int())
 	}
 
 	return b.strategyProcessor.BuildMultipleSKUs(ctx, req)
@@ -63,7 +63,7 @@ func (b *SKUBuilder) BuildSKUListWithStrategy(ctx *shein.TaskContext, req shein.
 
 // BuildSKUListForSingleVariant 为单变体构建SKU列表
 func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, variant shein.Variant, strategy shein.AttributeStrategy) ([]product.SKU, error) {
-	logrus.Infof("为单变体构建SKU列表: ASIN %s", variant.ASIN)
+	logger.GetGlobalLogger("shein/product").Infof("为单变体构建SKU列表: ASIN %s", variant.ASIN)
 
 	// 根据策略构建销售属性列表
 	var saleAttributeList []product.SaleAttribute
@@ -86,7 +86,7 @@ func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, varian
 
 	// 如果在变体中找不到，使用主产品信息作为备选
 	if productInfo == nil {
-		logrus.Warnf("在变体中未找到ASIN %s 的产品信息，使用主产品信息", variant.ASIN)
+		logger.GetGlobalLogger("shein/product").Warnf("在变体中未找到ASIN %s 的产品信息，使用主产品信息", variant.ASIN)
 		if ctx.AmazonProduct != nil {
 			productInfo = ctx.AmazonProduct
 		} else {
@@ -110,6 +110,6 @@ func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, varian
 		return []product.SKU{}, nil
 	}
 
-	logrus.Infof("成功为单变体创建SKU，销售属性数量: %d", len(saleAttributeList))
+	logger.GetGlobalLogger("shein/product").Infof("成功为单变体创建SKU，销售属性数量: %d", len(saleAttributeList))
 	return []product.SKU{*sku}, nil
 }

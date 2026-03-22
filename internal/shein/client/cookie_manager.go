@@ -1,4 +1,4 @@
-// Package client 提供SHEIN平台的Cookie管理功能
+﻿// Package client 提供SHEIN平台的Cookie管理功能
 package client
 
 import (
@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,10 +22,7 @@ type CookieManager struct {
 
 // NewCookieManager 创建Cookie管理器
 func NewCookieManager(storeID int64, managementClient *management.ClientManager) *CookieManager {
-	logger := logrus.WithFields(logrus.Fields{
-		"component": "SheinCookieManager",
-		"storeID":   storeID,
-	})
+	logger := logger.GetGlobalLogger("SheinCookieManager").WithField("storeID", storeID)
 
 	return &CookieManager{
 		storeID:          storeID,

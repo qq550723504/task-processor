@@ -1,10 +1,11 @@
-// Package image 提供TEMU平台图片上传工具功能
+﻿// Package image 提供TEMU平台图片上传工具功能
 package image
 
 import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ func NewImageUploadUtils() *ImageUploadUtils {
 	return &ImageUploadUtils{
 		uploadProcessor:  NewImageUploadProcessor(),
 		paddingProcessor: NewImagePaddingProcessor(),
-		logger:           logrus.WithField("component", "ImageUploadUtils"),
+		logger:           logger.GetGlobalLogger("ImageUploadUtils"),
 	}
 }
 

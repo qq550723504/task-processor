@@ -1,11 +1,11 @@
-package variant
+﻿package variant
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 
-	"github.com/sirupsen/logrus"
 )
 
 // VariantMatcher 变体匹配器
@@ -29,7 +29,7 @@ func NewVariantMatcher() *VariantMatcher {
 
 // FindMatchingVariants 查找匹配的变体
 func (m *VariantMatcher) FindMatchingVariants(ctx *shein.TaskContext, variants []shein.Variant, attrID int, targetValue string) []shein.Variant {
-	logrus.Infof("开始变体匹配流程")
+	logger.GetGlobalLogger("shein/product").Infof("开始变体匹配流程")
 
 	targetValueTrimmed := strings.TrimSpace(targetValue)
 	attrName := m.getAttributeName(attrID, ctx.AttributeTemplates)
@@ -42,7 +42,7 @@ func (m *VariantMatcher) FindMatchingVariants(ctx *shein.TaskContext, variants [
 	// 执行多阶段匹配
 	matched := m.performMultiStageMatching(variants, attrNames, targetValueNorm, targetValue)
 
-	logrus.Infof("变体匹配完成，匹配到 %d 个变体", len(matched))
+	logger.GetGlobalLogger("shein/product").Infof("变体匹配完成，匹配到 %d 个变体", len(matched))
 	return matched
 }
 
@@ -124,6 +124,6 @@ func (m *VariantMatcher) isMatchCountReasonable(matches []shein.Variant, targetV
 		return true
 	}
 
-	logrus.Warnf("匹配数量异常: 属性值 '%s' 匹配到 %d 个变体", targetValue, len(matches))
+	logger.GetGlobalLogger("shein/product").Warnf("匹配数量异常: 属性值 '%s' 匹配到 %d 个变体", targetValue, len(matches))
 	return false
 }

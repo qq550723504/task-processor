@@ -1,13 +1,13 @@
-package build
+﻿package build
 
 import (
+	"task-processor/internal/core/logger"
 	"errors"
 	"fmt"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/validation"
 
-	"github.com/sirupsen/logrus"
 )
 
 // BuildAttributeHandler 构建属性信息处理器
@@ -85,7 +85,7 @@ func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskCon
 	// 使用智能筛选器筛选相关的销售属性
 	relevantSaleAttributes := h.classifier.filter.FilterRelevantAttributes(ctx, ctx.AttributeTemplates)
 
-	logrus.Infof("🎯 智能筛选结果: 筛选出 %d 个相关销售属性", len(relevantSaleAttributes))
+	logger.GetGlobalLogger("shein/product").Infof("🎯 智能筛选结果: 筛选出 %d 个相关销售属性", len(relevantSaleAttributes))
 
 	// 处理所有属性，但只有相关的销售属性会被标记为必填
 	relevantSaleAttrMap := make(map[int]bool)
@@ -103,10 +103,10 @@ func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskCon
 			// 只有相关的销售属性才标记为必填
 			if relevantSaleAttrMap[attr.AttributeID] {
 				generateAttr.Required = true
-				logrus.Infof("✅ 销售属性 %s (ID:%d) 标记为必填", attr.AttributeNameEn, attr.AttributeID)
+				logger.GetGlobalLogger("shein/product").Infof("✅ 销售属性 %s (ID:%d) 标记为必填", attr.AttributeNameEn, attr.AttributeID)
 			} else {
 				generateAttr.Required = false
-				logrus.Infof("❌ 销售属性 %s (ID:%d) 标记为非必填", attr.AttributeNameEn, attr.AttributeID)
+				logger.GetGlobalLogger("shein/product").Infof("❌ 销售属性 %s (ID:%d) 标记为非必填", attr.AttributeNameEn, attr.AttributeID)
 			}
 			attributeInfo.SaleAttributeData = append(attributeInfo.SaleAttributeData, generateAttr)
 		case 3: // 成分属性

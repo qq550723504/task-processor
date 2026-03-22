@@ -1,11 +1,11 @@
-package validation
+﻿package validation
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/pkg/timex"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // CheckDailyLimitHandler 检查每日上架限制处理器（在发布前检查）
@@ -26,28 +26,28 @@ func (h *CheckDailyLimitHandler) Name() string {
 func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 	// 检查必要的上下文信息
 	if ctx.MemoryManager == nil {
-		logrus.Debug("内存管理器未初始化，跳过每日限制检查")
+		logger.GetGlobalLogger("shein/validation").Debug("内存管理器未初始化，跳过每日限制检查")
 		return nil
 	}
 
 	if ctx.Task == nil {
-		logrus.Debug("任务信息未初始化，跳过每日限制检查")
+		logger.GetGlobalLogger("shein/validation").Debug("任务信息未初始化，跳过每日限制检查")
 		return nil
 	}
 
 	if ctx.StoreInfo == nil {
-		logrus.Debug("店铺信息未初始化，跳过每日限制检查")
+		logger.GetGlobalLogger("shein/validation").Debug("店铺信息未初始化，跳过每日限制检查")
 		return nil
 	}
 
 	// 检查店铺是否有每日上架限额
 	if ctx.StoreInfo.DailyLimit == nil || *ctx.StoreInfo.DailyLimit <= 0 {
-		logrus.Debugf("店铺 %d 没有设置每日上架限额，跳过限额检查", ctx.StoreInfo.ID)
+		logger.GetGlobalLogger("shein/validation").Debugf("店铺 %d 没有设置每日上架限额，跳过限额检查", ctx.StoreInfo.ID)
 		return nil
 	}
 
 	dailyLimit := *ctx.StoreInfo.DailyLimit
-	logrus.Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", ctx.StoreInfo.ID, dailyLimit, ctx.StoreInfo.DailyLimitType)
+	logger.GetGlobalLogger("shein/validation").Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", ctx.StoreInfo.ID, dailyLimit, ctx.StoreInfo.DailyLimitType)
 
 	// 获取当前日期（格式：YYYY-MM-DD）
 	currentDate := timex.NowDate()
@@ -62,19 +62,19 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 	// 计算本次发布会增加的数量
 	increment := h.calculateIncrement(ctx)
 	if increment <= 0 {
-		logrus.Warnf("计算增量失败，跳过限制检查")
+		logger.GetGlobalLogger("shein/validation").Warnf("计算增量失败，跳过限制检查")
 		return nil
 	}
 
 	// 预测发布后的总数量
 	predictedCount := currentCount + increment
 
-	logrus.Infof("店铺 %d 在 %s 的上架情况: 当前=%d, 本次增加=%d, 预计=%d, 限额=%d (类型: %s)",
+	logger.GetGlobalLogger("shein/validation").Infof("店铺 %d 在 %s 的上架情况: 当前=%d, 本次增加=%d, 预计=%d, 限额=%d (类型: %s)",
 		ctx.StoreInfo.ID, currentDate, currentCount, increment, predictedCount, dailyLimit, ctx.StoreInfo.DailyLimitType)
 
 	// 检查是否会超过限额
 	if predictedCount > int64(dailyLimit) {
-		logrus.Warnf("店铺 %d 在 %s 的上架数量即将超过限额: 当前=%d, 本次增加=%d, 预计=%d, 限额=%d",
+		logger.GetGlobalLogger("shein/validation").Warnf("店铺 %d 在 %s 的上架数量即将超过限额: 当前=%d, 本次增加=%d, 预计=%d, 限额=%d",
 			ctx.StoreInfo.ID, currentDate, currentCount, increment, predictedCount, dailyLimit)
 
 		// 暂停店铺上架并清理相关缓存（暂停到当日结束）
@@ -90,7 +90,7 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 		)
 	}
 
-	logrus.Infof("店铺 %d 在 %s 的上架数量未超过限额，允许继续发布", ctx.StoreInfo.ID, currentDate)
+	logger.GetGlobalLogger("shein/validation").Infof("店铺 %d 在 %s 的上架数量未超过限额，允许继续发布", ctx.StoreInfo.ID, currentDate)
 	return nil
 }
 
@@ -112,7 +112,7 @@ func (h *CheckDailyLimitHandler) calculateIncrement(ctx *shein.TaskContext) int6
 				if variantName == "Color" || variantName == "Colour" ||
 					variantName == "Style" || variantName == "Color Name" {
 					skcCount := int64(len(variation.Values))
-					logrus.Debugf("SKC计数: 找到颜色规格 %s，数量=%d", variantName, skcCount)
+					logger.GetGlobalLogger("shein/validation").Debugf("SKC计数: 找到颜色规格 %s，数量=%d", variantName, skcCount)
 					return skcCount
 				}
 			}
@@ -129,20 +129,20 @@ func (h *CheckDailyLimitHandler) calculateIncrement(ctx *shein.TaskContext) int6
 		// Variations 包含了所有实际的变体（每个变体对应一个SKU）
 		if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Variations) > 0 {
 			skuCount := int64(len(ctx.AmazonProduct.Variations))
-			logrus.Debugf("SKU计数: 根据Variations数组计算，数量=%d", skuCount)
+			logger.GetGlobalLogger("shein/validation").Debugf("SKU计数: 根据Variations数组计算，数量=%d", skuCount)
 			return skuCount
 		}
 		// 如果没有 Variations，使用 Variants 列表
 		if ctx.Variants != nil && len(*ctx.Variants) > 0 {
 			skuCount := int64(len(*ctx.Variants))
-			logrus.Debugf("SKU计数: 根据Variants列表计算，数量=%d", skuCount)
+			logger.GetGlobalLogger("shein/validation").Debugf("SKU计数: 根据Variants列表计算，数量=%d", skuCount)
 			return skuCount
 		}
 		// 如果都没有，至少算1个
 		return 1
 	default:
 		// 默认按SPU计算
-		logrus.Warnf("未知的限制类型: %s，默认按SPU计算", ctx.StoreInfo.DailyLimitType)
+		logger.GetGlobalLogger("shein/validation").Warnf("未知的限制类型: %s，默认按SPU计算", ctx.StoreInfo.DailyLimitType)
 		return 1
 	}
 }
@@ -150,7 +150,7 @@ func (h *CheckDailyLimitHandler) calculateIncrement(ctx *shein.TaskContext) int6
 // pauseShopUntilEndOfDay 暂停店铺到当日结束并清理相关缓存
 func (h *CheckDailyLimitHandler) pauseShopUntilEndOfDay(ctx *shein.TaskContext, reason string) {
 	if ctx.MemoryManager != nil {
-		logrus.Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
+		logger.GetGlobalLogger("shein/validation").Infof("正在清理店铺 %d:%d 的相关缓存", ctx.Task.TenantID, ctx.Task.StoreID)
 	}
 
 	ctx.MemoryManager.ShopPauseManager.PauseShopUntilEndOfDay(
@@ -159,5 +159,5 @@ func (h *CheckDailyLimitHandler) pauseShopUntilEndOfDay(ctx *shein.TaskContext, 
 		reason,
 	)
 
-	logrus.Infof("已暂停店铺 %d:%d 上架到当日结束，原因: %s", ctx.Task.TenantID, ctx.Task.StoreID, reason)
+	logger.GetGlobalLogger("shein/validation").Infof("已暂停店铺 %d:%d 上架到当日结束，原因: %s", ctx.Task.TenantID, ctx.Task.StoreID, reason)
 }

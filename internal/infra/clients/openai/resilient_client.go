@@ -1,4 +1,4 @@
-// Package openai 提供带弹性机制的OpenAI客户端
+﻿// Package openai 提供带弹性机制的OpenAI客户端
 package openai
 
 import (
@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -198,7 +199,7 @@ func NewResilientClient(config *ResilientClientConfig) (*ResilientClient, error)
 	cb := NewCircuitBreaker(config.CircuitBreakerConfig)
 	client := &ResilientClient{
 		client:         config.Client,
-		logger:         logrus.WithField("component", "ResilientOpenAIClient"),
+		logger:         logger.GetGlobalLogger("ResilientOpenAIClient"),
 		circuitBreaker: cb,
 		clientName:     config.ClientName,
 	}

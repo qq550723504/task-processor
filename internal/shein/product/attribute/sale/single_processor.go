@@ -1,12 +1,12 @@
-// Package sale 提供SHEIN平台的销售属性单批处理功能
+﻿// Package sale 提供SHEIN平台的销售属性单批处理功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeSingleProcessor 销售属性单批处理器，负责处理单个批次的GPT API调用
@@ -56,23 +56,23 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext
 
 	response, err := p.handler.openaiClient.CreateChatCompletion(ctx.Context, req)
 	if err != nil {
-		logrus.Errorf("❌ 调用GPT API失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 调用GPT API失败: %v", err)
 
 		// 保存失败的调试数据
 		if saveErr := p.debugSaver.SaveFailureData(taskID, productID, systemPrompt, userPrompt, err); saveErr != nil {
-			logrus.Errorf("⚠️ 保存调试数据失败: %v", saveErr)
+			logger.GetGlobalLogger("shein/product").Errorf("⚠️ 保存调试数据失败: %v", saveErr)
 		}
 
 		return shein.ResultSaleAttribute{}
 	}
 
 	if len(response.Choices) == 0 {
-		logrus.Error("❌ GPT API响应为空")
+		logger.GetGlobalLogger("shein/product").Error("❌ GPT API响应为空")
 
 		// 保存空响应的调试数据
 		emptyErr := fmt.Errorf("GPT API响应为空")
 		if saveErr := p.debugSaver.SaveFailureData(taskID, productID, systemPrompt, userPrompt, emptyErr); saveErr != nil {
-			logrus.Errorf("⚠️ 保存调试数据失败: %v", saveErr)
+			logger.GetGlobalLogger("shein/product").Errorf("⚠️ 保存调试数据失败: %v", saveErr)
 		}
 
 		return shein.ResultSaleAttribute{}
@@ -84,13 +84,13 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext
 
 	// 检查响应是否被截断
 	if isTruncated {
-		logrus.Warnf("⚠️ GPT响应被截断（达到token限制），响应长度: %d字符", len(content))
-		logrus.Warn("⚠️ 尝试修复并解析部分JSON...")
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ GPT响应被截断（达到token限制），响应长度: %d字符", len(content))
+		logger.GetGlobalLogger("shein/product").Warn("⚠️ 尝试修复并解析部分JSON...")
 
 		// 保存截断响应的调试数据
 		if saveErr := p.debugSaver.SaveTruncatedData(taskID, productID, systemPrompt, userPrompt,
 			content, response.Model, tokensUsed); saveErr != nil {
-			logrus.Errorf("⚠️ 保存截断响应调试数据失败: %v", saveErr)
+			logger.GetGlobalLogger("shein/product").Errorf("⚠️ 保存截断响应调试数据失败: %v", saveErr)
 		}
 
 		// 尝试修复被截断的JSON
@@ -98,16 +98,16 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext
 		result := jsonParser.ParseAndValidateJSON(content)
 
 		if len(result.Variants) > 0 {
-			logrus.Infof("✅ 成功从截断的响应中解析出%d个变体", len(result.Variants))
+			logger.GetGlobalLogger("shein/product").Infof("✅ 成功从截断的响应中解析出%d个变体", len(result.Variants))
 			return result
 		}
 
-		logrus.Error("❌ 无法从截断的响应中解析有效数据，建议增加MaxTokens")
+		logger.GetGlobalLogger("shein/product").Error("❌ 无法从截断的响应中解析有效数据，建议增加MaxTokens")
 
 		// 保存修复失败的调试数据
 		fixErr := fmt.Errorf("无法从截断的响应中解析有效数据，建议增加MaxTokens")
 		if saveErr := p.debugSaver.SaveFailureData(taskID, productID+"_fix_failed", systemPrompt, userPrompt, fixErr); saveErr != nil {
-			logrus.Errorf("⚠️ 保存修复失败调试数据失败: %v", saveErr)
+			logger.GetGlobalLogger("shein/product").Errorf("⚠️ 保存修复失败调试数据失败: %v", saveErr)
 		}
 
 		return shein.ResultSaleAttribute{}
@@ -121,7 +121,7 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext
 	if len(result.Variants) == 0 {
 		parseErr := fmt.Errorf("JSON解析失败或无有效变体数据")
 		if saveErr := p.debugSaver.SaveFailureData(taskID, productID, systemPrompt, userPrompt, parseErr); saveErr != nil {
-			logrus.Errorf("⚠️ 保存解析失败调试数据失败: %v", saveErr)
+			logger.GetGlobalLogger("shein/product").Errorf("⚠️ 保存解析失败调试数据失败: %v", saveErr)
 		}
 	}
 

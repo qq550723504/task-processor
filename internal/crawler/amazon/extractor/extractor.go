@@ -1,6 +1,7 @@
-package extractor
+﻿package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"task-processor/internal/model"
@@ -47,7 +48,7 @@ func NewCompositeExtractor(marketplace string) *CompositeExtractor {
 			&FeaturesExtractor{},        // 基础特性提取器
 		},
 		errorDetector: NewErrorDetector(),
-		logger:        logrus.WithField("component", "CompositeExtractor"),
+		logger:        logger.GetGlobalLogger("CompositeExtractor"),
 	}
 }
 
@@ -62,9 +63,9 @@ func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Produ
 
 	for _, extractor := range serialExtractors {
 		if err := extractor.Extract(page, product); err != nil {
-			logrus.Infof("提取器执行失败 (%T): %v", extractor, err)
+			logger.GetGlobalLogger("crawler/amazon").Infof("提取器执行失败 (%T): %v", extractor, err)
 			if ce.errorDetector.IsCriticalError(err) {
-				logrus.Infof("检测到关键错误，停止后续提取器执行: %v", err)
+				logger.GetGlobalLogger("crawler/amazon").Infof("检测到关键错误，停止后续提取器执行: %v", err)
 				return err
 			}
 		}
@@ -99,10 +100,10 @@ func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Produ
 	var criticalErr error
 	for _, result := range results {
 		if result.Error != nil {
-			logrus.Infof("提取器执行失败 (%s): %v", result.ID, result.Error)
+			logger.GetGlobalLogger("crawler/amazon").Infof("提取器执行失败 (%s): %v", result.ID, result.Error)
 			if ce.errorDetector.IsCriticalError(result.Error) && criticalErr == nil {
 				criticalErr = result.Error
-				logrus.Infof("检测到关键错误: %v", result.Error)
+				logger.GetGlobalLogger("crawler/amazon").Infof("检测到关键错误: %v", result.Error)
 			}
 		}
 	}

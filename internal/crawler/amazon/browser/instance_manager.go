@@ -1,12 +1,12 @@
-// Package browser 提供浏览器实例管理功能
+﻿// Package browser 提供浏览器实例管理功能
 package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // InstanceManager 实例管理器
@@ -38,15 +38,15 @@ func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error) {
 		switch strategy {
 		case "random":
 			fingerprint = im.pool.GetFingerprintGenerator().GenerateRandomFingerprint("")
-			logrus.Infof("实例 %d 使用随机指纹", id)
+			logger.GetGlobalLogger("crawler/amazon").Infof("实例 %d 使用随机指纹", id)
 		case "stable":
 			userID := fmt.Sprintf("instance_%d", id)
 			fingerprint = im.pool.GetFingerprintGenerator().GenerateStableFingerprint(userID)
-			logrus.Infof("实例 %d 使用稳定指纹 (用户ID: %s)", id, userID)
+			logger.GetGlobalLogger("crawler/amazon").Infof("实例 %d 使用稳定指纹 (用户ID: %s)", id, userID)
 		default:
 			// 默认使用随机指纹
 			fingerprint = im.pool.GetFingerprintGenerator().GenerateRandomFingerprint("")
-			logrus.Infof("实例 %d 使用默认随机指纹", id)
+			logger.GetGlobalLogger("crawler/amazon").Infof("实例 %d 使用默认随机指纹", id)
 		}
 
 		manager.SetFingerprint(fingerprint)
@@ -77,12 +77,12 @@ func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error) {
 
 // RecreateInstanceSync 同步重新创建浏览器实例（用于任务内重试）
 func (im *InstanceManager) RecreateInstanceSync(oldInstance *BrowserInstance) *BrowserInstance {
-	logrus.Infof("开始同步重新创建浏览器实例 %d", oldInstance.ID)
+	logger.GetGlobalLogger("crawler/amazon").Infof("开始同步重新创建浏览器实例 %d", oldInstance.ID)
 
 	// 先关闭旧实例
 	if oldInstance.Manager != nil {
 		oldInstance.Manager.Close()
-		logrus.Infof("已关闭出现问题的浏览器实例 %d", oldInstance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Infof("已关闭出现问题的浏览器实例 %d", oldInstance.ID)
 	}
 
 	// 等待短暂时间，让资源释放
@@ -91,15 +91,15 @@ func (im *InstanceManager) RecreateInstanceSync(oldInstance *BrowserInstance) *B
 	// 创建新实例
 	newInstance, err := im.CreateInstance(oldInstance.ID)
 	if err != nil {
-		logrus.Errorf("同步重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
+		logger.GetGlobalLogger("crawler/amazon").Errorf("同步重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
 
 		// 如果创建失败，等待更长时间后再次尝试
-		logrus.Infof("等待5秒后进行第二次创建尝试...")
+		logger.GetGlobalLogger("crawler/amazon").Infof("等待5秒后进行第二次创建尝试...")
 		time.Sleep(5 * time.Second)
 
 		newInstance, err = im.CreateInstance(oldInstance.ID)
 		if err != nil {
-			logrus.Errorf("第二次同步重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
+			logger.GetGlobalLogger("crawler/amazon").Errorf("第二次同步重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
 			// 返回nil，让调用方处理
 			return nil
 		}
@@ -108,26 +108,26 @@ func (im *InstanceManager) RecreateInstanceSync(oldInstance *BrowserInstance) *B
 	// 更新实例列表
 	im.pool.UpdateInstance(oldInstance, newInstance)
 
-	logrus.Infof("✅ 成功同步重新创建浏览器实例 %d", oldInstance.ID)
+	logger.GetGlobalLogger("crawler/amazon").Infof("✅ 成功同步重新创建浏览器实例 %d", oldInstance.ID)
 	return newInstance
 }
 
 // RecreateInstanceAsync 异步重新创建浏览器实例（用于后台健康检查）
 func (im *InstanceManager) RecreateInstanceAsync(oldInstance *BrowserInstance) {
-	logrus.Infof("开始异步重新创建浏览器实例 %d", oldInstance.ID)
+	logger.GetGlobalLogger("crawler/amazon").Infof("开始异步重新创建浏览器实例 %d", oldInstance.ID)
 
 	// 异步重新创建实例，避免阻塞 - 添加panic recovery
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.Errorf("重新创建浏览器实例goroutine panic (实例ID: %d): %v", oldInstance.ID, r)
+				logger.GetGlobalLogger("crawler/amazon").Errorf("重新创建浏览器实例goroutine panic (实例ID: %d): %v", oldInstance.ID, r)
 			}
 		}()
 
 		// 先关闭旧实例
 		if oldInstance.Manager != nil {
 			oldInstance.Manager.Close()
-			logrus.Infof("已关闭被风控的浏览器实例 %d", oldInstance.ID)
+			logger.GetGlobalLogger("crawler/amazon").Infof("已关闭被风控的浏览器实例 %d", oldInstance.ID)
 		}
 
 		// 等待一段时间再重新创建，避免立即重试
@@ -136,13 +136,13 @@ func (im *InstanceManager) RecreateInstanceAsync(oldInstance *BrowserInstance) {
 		// 创建新实例
 		newInstance, err := im.CreateInstance(oldInstance.ID)
 		if err != nil {
-			logrus.Infof("重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
+			logger.GetGlobalLogger("crawler/amazon").Infof("重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
 
 			// 如果创建失败，等待更长时间后再次尝试
 			time.Sleep(30 * time.Second)
 			newInstance, err = im.CreateInstance(oldInstance.ID)
 			if err != nil {
-				logrus.Infof("第二次重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
+				logger.GetGlobalLogger("crawler/amazon").Infof("第二次重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
 				// 如果还是失败，可以考虑通知管理员或采取其他措施
 				return
 			}
@@ -153,7 +153,7 @@ func (im *InstanceManager) RecreateInstanceAsync(oldInstance *BrowserInstance) {
 
 		// 将新实例放回可用池
 		im.pool.GetAvailableChannel() <- newInstance
-		logrus.Infof("✅ 成功异步重新创建浏览器实例 %d", oldInstance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Infof("✅ 成功异步重新创建浏览器实例 %d", oldInstance.ID)
 	}()
 }
 
@@ -165,7 +165,7 @@ func (im *InstanceManager) CloseInstance(instance *BrowserInstance) {
 
 	if instance.Manager != nil {
 		instance.Manager.Close()
-		logrus.Infof("已关闭浏览器实例 %d", instance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Infof("已关闭浏览器实例 %d", instance.ID)
 	}
 }
 
@@ -176,12 +176,12 @@ func (im *InstanceManager) ValidateInstance(instance *BrowserInstance) bool {
 	}
 
 	if instance.Manager == nil {
-		logrus.Infof("浏览器实例 %d 管理器为空", instance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例 %d 管理器为空", instance.ID)
 		return false
 	}
 
 	if instance.Page == nil {
-		logrus.Infof("浏览器实例 %d 页面为空", instance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例 %d 页面为空", instance.ID)
 		return false
 	}
 
@@ -225,7 +225,7 @@ func (im *InstanceManager) RestartInstance(instance *BrowserInstance) (*BrowserI
 		return nil, fmt.Errorf("实例为空")
 	}
 
-	logrus.Infof("重启浏览器实例 %d", instance.ID)
+	logger.GetGlobalLogger("crawler/amazon").Infof("重启浏览器实例 %d", instance.ID)
 
 	// 关闭旧实例
 	im.CloseInstance(instance)
@@ -239,6 +239,6 @@ func (im *InstanceManager) RestartInstance(instance *BrowserInstance) (*BrowserI
 		return nil, fmt.Errorf("重启实例失败: %w", err)
 	}
 
-	logrus.Infof("✅ 成功重启浏览器实例 %d", instance.ID)
+	logger.GetGlobalLogger("crawler/amazon").Infof("✅ 成功重启浏览器实例 %d", instance.ID)
 	return newInstance, nil
 }

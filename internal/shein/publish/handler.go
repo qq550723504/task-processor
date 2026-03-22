@@ -1,13 +1,13 @@
-// Package publish 提供SHEIN平台产品发布核心处理器
+﻿// Package publish 提供SHEIN平台产品发布核心处理器
 package publish
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
 
-	"github.com/sirupsen/logrus"
 )
 
 // PublishProductHandler 发布产品处理器
@@ -42,10 +42,10 @@ func (h *PublishProductHandler) Handle(ctx *shein.TaskContext) error {
 	}
 
 	// 方案3：发布前预验证
-	logrus.Info("🔍 开始发布前预验证...")
+	logger.GetGlobalLogger("shein/publish").Info("🔍 开始发布前预验证...")
 
 	if err := h.validator.PreValidateProductData(ctx); err != nil {
-		logrus.Errorf("❌ 发布前预验证失败: %v", err)
+		logger.GetGlobalLogger("shein/publish").Errorf("❌ 发布前预验证失败: %v", err)
 
 		// 验证失败时保存产品数据到JSON文件用于调试
 		if ctx.Task != nil && ctx.ProductData != nil {
@@ -53,12 +53,12 @@ func (h *PublishProductHandler) Handle(ctx *shein.TaskContext) error {
 			if jsonData, jsonErr := h.marshalWithoutHTMLEscape(ctx.ProductData); jsonErr == nil {
 				filename := fmt.Sprintf("%s_%s_validation_failed.json", ctx.Task.ProductID, taskID)
 				if saveErr := h.saveJSONToFileWithName(filename, jsonData); saveErr != nil {
-					logrus.Errorf("保存验证失败JSON文件失败: %v", saveErr)
+					logger.GetGlobalLogger("shein/publish").Errorf("保存验证失败JSON文件失败: %v", saveErr)
 				} else {
-					logrus.Infof("📄 验证失败时产品数据已保存: %s", filename)
+					logger.GetGlobalLogger("shein/publish").Infof("📄 验证失败时产品数据已保存: %s", filename)
 				}
 			} else {
-				logrus.Errorf("序列化验证失败产品数据失败: %v", jsonErr)
+				logger.GetGlobalLogger("shein/publish").Errorf("序列化验证失败产品数据失败: %v", jsonErr)
 			}
 		}
 
@@ -66,17 +66,17 @@ func (h *PublishProductHandler) Handle(ctx *shein.TaskContext) error {
 		return shein.NewRetryableError("发布前预验证失败", err)
 	}
 
-	logrus.Info("✅ 发布前预验证通过")
+	logger.GetGlobalLogger("shein/publish").Info("✅ 发布前预验证通过")
 
 	// 保存产品数据到JSON文件用于调试
 	if ctx.Task != nil && ctx.ProductData != nil {
 		taskID := fmt.Sprintf("%d", ctx.Task.ID)
 		if jsonData, jsonErr := h.marshalWithoutHTMLEscape(ctx.ProductData); jsonErr == nil {
 			if saveErr := h.saveJSONToFile(taskID, jsonData, ctx.Task.ProductID); saveErr != nil {
-				logrus.Errorf("保存JSON文件失败: %v", saveErr)
+				logger.GetGlobalLogger("shein/publish").Errorf("保存JSON文件失败: %v", saveErr)
 			}
 		} else {
-			logrus.Errorf("序列化产品数据失败: %v", jsonErr)
+			logger.GetGlobalLogger("shein/publish").Errorf("序列化产品数据失败: %v", jsonErr)
 		}
 	}
 
@@ -130,6 +130,6 @@ func (h *PublishProductHandler) saveJSONToFileWithName(filename string, jsonData
 	if err := jsonx.SaveToFile(filename, jsonData); err != nil {
 		return err
 	}
-	logrus.Infof("JSON数据已保存到文件: logs/%s", filename)
+	logger.GetGlobalLogger("shein/publish").Infof("JSON数据已保存到文件: logs/%s", filename)
 	return nil
 }

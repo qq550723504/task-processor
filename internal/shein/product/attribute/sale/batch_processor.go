@@ -1,10 +1,10 @@
-// Package sale 提供SHEIN平台的销售属性批处理功能
+﻿// Package sale 提供SHEIN平台的销售属性批处理功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeBatchProcessor 销售属性批处理器，负责处理大量变体的分批处理
@@ -37,7 +37,7 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(ctx *shein.TaskContext, r
 	productsData := request.ProductsData
 	totalBatches := (len(variationData) + batchSize - 1) / batchSize
 
-	logrus.Infof("📦 开始分批处理: 总变体数=%d, 产品数据数=%d, 批次大小=%d, 总批次=%d",
+	logger.GetGlobalLogger("shein/product").Infof("📦 开始分批处理: 总变体数=%d, 产品数据数=%d, 批次大小=%d, 总批次=%d",
 		len(variationData), len(productsData), batchSize, totalBatches)
 
 	var allVariants []shein.Variant
@@ -73,7 +73,7 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(ctx *shein.TaskContext, r
 			RequiredVariantCount:     end - start,
 		}
 
-		logrus.Infof("📦 处理批次 %d/%d: 变体[%d-%d], 产品数据[%d-%d]",
+		logger.GetGlobalLogger("shein/product").Infof("📦 处理批次 %d/%d: 变体[%d-%d], 产品数据[%d-%d]",
 			batchIndex+1, totalBatches, start, end-1, start, len(batchProductsData)-1+start)
 
 		// 处理当前批次
@@ -98,11 +98,11 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(ctx *shein.TaskContext, r
 			}
 		}
 
-		logrus.Infof("✅ 批次 %d/%d 完成，生成%d个变体，%d个销售属性",
+		logger.GetGlobalLogger("shein/product").Infof("✅ 批次 %d/%d 完成，生成%d个变体，%d个销售属性",
 			batchIndex+1, totalBatches, len(batchResult.Variants), len(batchResult.SaleAttributes))
 	}
 
-	logrus.Infof("✅ 所有批次处理完成，共生成%d个变体，%d个销售属性", len(allVariants), len(allSaleAttributes))
+	logger.GetGlobalLogger("shein/product").Infof("✅ 所有批次处理完成，共生成%d个变体，%d个销售属性", len(allVariants), len(allSaleAttributes))
 
 	return shein.ResultSaleAttribute{
 		SaleAttributes: allSaleAttributes,

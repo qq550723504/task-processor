@@ -1,11 +1,11 @@
-package category
+﻿package category
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
 
-	"github.com/sirupsen/logrus"
 )
 
 // AICategorySelectorHandler AI分类选择处理器
@@ -36,7 +36,7 @@ func (h *AICategorySelectorHandler) Handle(ctx *shein.TaskContext) error {
 	// 优先尝试：AI提取核心物品 -> SuggestCategoryByText
 	suggestedID, err := categoryManager.GetCategoryIDBySuggest(ctx.Context, productTitle, ctx.CategoryAPI, ctx.AICache)
 	if err != nil {
-		logrus.Warnf("SuggestCategory流程失败，降级到AI分类树选择: %v", err)
+		logger.GetGlobalLogger("shein/category").Warnf("SuggestCategory流程失败，降级到AI分类树选择: %v", err)
 	}
 
 	var selectedCategoryID int
@@ -44,7 +44,7 @@ func (h *AICategorySelectorHandler) Handle(ctx *shein.TaskContext) error {
 		selectedCategoryID = suggestedID
 	} else {
 		// Fallback：原有两级AI分类树选择
-		logrus.Infof("SuggestCategory无结果，使用AI分类树选择: title=%q", productTitle)
+		logger.GetGlobalLogger("shein/category").Infof("SuggestCategory无结果，使用AI分类树选择: title=%q", productTitle)
 		selectedCategoryID, err = categoryManager.GetCategoryIDByTitleWithTree(ctx.Context, productTitle, ctx.CategoryTree, ctx.AICache)
 		if err != nil {
 			return fmt.Errorf("AI选择分类失败: %w", err)

@@ -1,11 +1,11 @@
-package browser
+﻿package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // PlaywrightInstaller Playwright 驱动安装器
@@ -26,7 +26,7 @@ func (pi *PlaywrightInstaller) InstallIfNeeded() (*playwright.Playwright, error)
 			return nil, fmt.Errorf("初始化playwright失败: %w", err)
 		}
 
-		logrus.Warn("检测到 Playwright 驱动未安装，开始自动安装...")
+		logger.GetGlobalLogger("crawler/shared").Warn("检测到 Playwright 驱动未安装，开始自动安装...")
 
 		// 使用 playwright-go 原生 API 安装驱动，无需 go 环境
 		if installErr := playwright.Install(&playwright.RunOptions{
@@ -35,7 +35,7 @@ func (pi *PlaywrightInstaller) InstallIfNeeded() (*playwright.Playwright, error)
 			return nil, fmt.Errorf("自动安装 Playwright 驱动失败: %w", installErr)
 		}
 
-		logrus.Info("Playwright 驱动安装成功，重新初始化...")
+		logger.GetGlobalLogger("crawler/shared").Info("Playwright 驱动安装成功，重新初始化...")
 
 		// 重新尝试运行
 		pw, err = playwright.Run()
@@ -44,7 +44,7 @@ func (pi *PlaywrightInstaller) InstallIfNeeded() (*playwright.Playwright, error)
 		}
 	}
 
-	logrus.Info("Playwright 初始化成功")
+	logger.GetGlobalLogger("crawler/shared").Info("Playwright 初始化成功")
 	return pw, nil
 }
 

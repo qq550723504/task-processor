@@ -1,14 +1,14 @@
-// Package sale 提供SHEIN平台销售属性的产品数据准备功能
+﻿// Package sale 提供SHEIN平台销售属性的产品数据准备功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"strconv"
 	"strings"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/validation"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeProductDataPreparer 销售属性产品数据准备器
@@ -28,18 +28,18 @@ func (p *SaleAttributeProductDataPreparer) PrepareProductsData(ctx *shein.TaskCo
 
 	if !hasVariants {
 		// 单体产品：使用主产品信息
-		logrus.Infof("📦 检测到单体产品，使用主产品信息")
+		logger.GetGlobalLogger("shein/product").Infof("📦 检测到单体产品，使用主产品信息")
 		if ctx.AmazonProduct != nil {
 			productDetails := p.prepareSingleProductData(ctx)
 			productsData = append(productsData, productDetails)
 		}
 	} else {
 		// 多变体产品：使用变体信息
-		logrus.Infof("📊 检测到多变体产品，变体数量: %d", len(*ctx.Variants))
+		logger.GetGlobalLogger("shein/product").Infof("📊 检测到多变体产品，变体数量: %d", len(*ctx.Variants))
 		productsData = p.prepareMultiVariantProductsData(ctx)
 	}
 
-	logrus.Infof("✅ 准备了 %d 个产品数据（包含属性信息）", len(productsData))
+	logger.GetGlobalLogger("shein/product").Infof("✅ 准备了 %d 个产品数据（包含属性信息）", len(productsData))
 	return productsData
 }
 
@@ -102,7 +102,7 @@ func (p *SaleAttributeProductDataPreparer) extractAllAttributes(product *model.P
 
 	// 如果从 Variations 中找到了属性，就不再从其他地方提取
 	if foundInVariations {
-		logrus.Infof("✅ 从 Variations 中找到属性，跳过其他来源")
+		logger.GetGlobalLogger("shein/product").Infof("✅ 从 Variations 中找到属性，跳过其他来源")
 	} else {
 		// 从 ProductDetails 中提取其他属性
 		p.extractFromProductDetails(product, productDetails)
@@ -175,7 +175,7 @@ func (p *SaleAttributeProductDataPreparer) getProductDimensions(product *model.P
 	// 从ProductDetails中查找
 	for _, detail := range product.ProductDetails {
 		if detail.Type == "Product Dimensions" {
-			logrus.Debugf("✅ 从ProductDetails中获取产品尺寸: %s", detail.Value)
+			logger.GetGlobalLogger("shein/product").Debugf("✅ 从ProductDetails中获取产品尺寸: %s", detail.Value)
 			return detail.Value
 		}
 	}
@@ -192,7 +192,7 @@ func (p *SaleAttributeProductDataPreparer) getItemWeight(product *model.Product)
 	// 从ProductDetails中查找
 	for _, detail := range product.ProductDetails {
 		if detail.Type == "Item Weight" {
-			logrus.Debugf("✅ 从ProductDetails中获取产品重量: %s", detail.Value)
+			logger.GetGlobalLogger("shein/product").Debugf("✅ 从ProductDetails中获取产品重量: %s", detail.Value)
 			return detail.Value
 		}
 	}
@@ -215,5 +215,5 @@ func (p *SaleAttributeProductDataPreparer) logAttributeCount(productDetails map[
 		}
 	}
 
-	logrus.Debugf("✅ 为%s %s 提取了 %d 个属性信息", productType, asin, attributeCount)
+	logger.GetGlobalLogger("shein/product").Debugf("✅ 为%s %s 提取了 %d 个属性信息", productType, asin, attributeCount)
 }

@@ -1,13 +1,13 @@
-// Package amazon 提供Amazon产品检查功能
+﻿// Package amazon 提供Amazon产品检查功能
 package amazon
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // ProductChecker 产品检查器
@@ -48,20 +48,20 @@ func (pc *ProductChecker) HandleContinueShoppingButton(page playwright.Page) err
 				continue
 			}
 
-			logrus.Infof("发现Continue shopping按钮 (选择器: %s)，尝试点击", selector)
+			logger.GetGlobalLogger("crawler/amazon").Infof("发现Continue shopping按钮 (选择器: %s)，尝试点击", selector)
 
 			// 尝试点击按钮，设置短超时避免长时间等待
 			err = continueButton.Click(playwright.LocatorClickOptions{
 				Timeout: playwright.Float(5000), // 5秒超时
 			})
 			if err != nil {
-				logrus.Warnf("点击Continue shopping按钮失败: %v", err)
+				logger.GetGlobalLogger("crawler/amazon").Warnf("点击Continue shopping按钮失败: %v", err)
 				continue // 尝试下一个选择器
 			}
 
 			// 等待页面跳转
 			time.Sleep(2 * time.Second)
-			logrus.Info("已成功点击Continue shopping按钮")
+			logger.GetGlobalLogger("crawler/amazon").Info("已成功点击Continue shopping按钮")
 			return nil
 		}
 	}
@@ -253,12 +253,12 @@ func (pc *ProductChecker) CheckPageLoadStatus(page playwright.Page) error {
 	}
 	if hasCaptcha {
 		// 尝试处理验证码
-		logrus.Info("检测到验证码，尝试处理")
+		logger.GetGlobalLogger("crawler/amazon").Info("检测到验证码，尝试处理")
 		captchaErr := pc.captchaHandler.HandleCaptchaWithRetry(page, 2)
 		if captchaErr != nil {
 			return fmt.Errorf("遇到验证码: %w", captchaErr)
 		}
-		logrus.Info("验证码处理成功")
+		logger.GetGlobalLogger("crawler/amazon").Info("验证码处理成功")
 	}
 
 	// 检查是否被阻止

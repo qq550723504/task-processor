@@ -1,18 +1,18 @@
-// Package sku 提供SHEIN平台SKU图片处理相关功能
+﻿// Package sku 提供SHEIN平台SKU图片处理相关功能
 package sku
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
 
-	"github.com/sirupsen/logrus"
 )
 
 // buildSKUImageInfoForMultiPiece 为多件商品构建SKU图片信息
 func (b *SKUBuilder) buildSKUImageInfoForMultiPiece(ctx *shein.TaskContext, params shein.SKUCreationParams) *product.ImageInfo {
-	logrus.Infof("🖼️ 开始为多件商品构建SKU图片，ASIN: %s", params.ASIN)
+	logger.GetGlobalLogger("shein/product").Infof("🖼️ 开始为多件商品构建SKU图片，ASIN: %s", params.ASIN)
 
 	// 初始化空的图片信息
 	imageInfo := &product.ImageInfo{
@@ -30,7 +30,7 @@ func (b *SKUBuilder) buildSKUImageInfoForMultiPiece(ctx *shein.TaskContext, para
 			if variant.Asin == params.ASIN && len(variant.Images) > 0 {
 				variantImages = variant.Images
 				imageSource = "变体图片"
-				logrus.Infof("✅ 找到变体图片，ASIN: %s, 图片数量: %d", params.ASIN, len(variantImages))
+				logger.GetGlobalLogger("shein/product").Infof("✅ 找到变体图片，ASIN: %s, 图片数量: %d", params.ASIN, len(variantImages))
 				break
 			}
 		}
@@ -40,19 +40,19 @@ func (b *SKUBuilder) buildSKUImageInfoForMultiPiece(ctx *shein.TaskContext, para
 	if len(variantImages) == 0 && ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Images) > 0 {
 		variantImages = ctx.AmazonProduct.Images
 		imageSource = "主产品图片"
-		logrus.Infof("⚠️ 未找到变体图片，使用主产品图片，ASIN: %s, 图片数量: %d", params.ASIN, len(variantImages))
+		logger.GetGlobalLogger("shein/product").Infof("⚠️ 未找到变体图片，使用主产品图片，ASIN: %s, 图片数量: %d", params.ASIN, len(variantImages))
 	}
 
 	// 如果仍然没有图片，这是一个严重问题
 	if len(variantImages) == 0 {
-		logrus.Errorf("❌ 严重错误：多件商品必须有SKU图片，但未找到任何图片，ASIN: %s", params.ASIN)
-		logrus.Errorf("   - 变体数据: %v", ctx.Variants != nil)
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 严重错误：多件商品必须有SKU图片，但未找到任何图片，ASIN: %s", params.ASIN)
+		logger.GetGlobalLogger("shein/product").Errorf("   - 变体数据: %v", ctx.Variants != nil)
 		if ctx.Variants != nil {
-			logrus.Errorf("   - 变体数量: %d", len(*ctx.Variants))
+			logger.GetGlobalLogger("shein/product").Errorf("   - 变体数量: %d", len(*ctx.Variants))
 		}
-		logrus.Errorf("   - 主产品数据: %v", ctx.AmazonProduct != nil)
+		logger.GetGlobalLogger("shein/product").Errorf("   - 主产品数据: %v", ctx.AmazonProduct != nil)
 		if ctx.AmazonProduct != nil {
-			logrus.Errorf("   - 主产品图片数量: %d", len(ctx.AmazonProduct.Images))
+			logger.GetGlobalLogger("shein/product").Errorf("   - 主产品图片数量: %d", len(ctx.AmazonProduct.Images))
 		}
 		return imageInfo
 	}
@@ -61,9 +61,9 @@ func (b *SKUBuilder) buildSKUImageInfoForMultiPiece(ctx *shein.TaskContext, para
 	uploadSuccess := b.uploadSKUImagesWithRetry(ctx, params, variantImages, imageSource, imageInfo)
 
 	if !uploadSuccess {
-		logrus.Errorf("❌ 所有图片上传都失败了，多件商品SKU将缺少必需的图片，ASIN: %s", params.ASIN)
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 所有图片上传都失败了，多件商品SKU将缺少必需的图片，ASIN: %s", params.ASIN)
 	} else {
-		logrus.Infof("🎉 多件商品SKU图片构建完成，ASIN: %s, 图片数量: %d", params.ASIN, len(imageInfo.ImageInfoList))
+		logger.GetGlobalLogger("shein/product").Infof("🎉 多件商品SKU图片构建完成，ASIN: %s, 图片数量: %d", params.ASIN, len(imageInfo.ImageInfoList))
 	}
 
 	return imageInfo
@@ -100,11 +100,11 @@ func (b *SKUBuilder) uploadSKUImagesWithRetry(ctx *shein.TaskContext, params she
 			}
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, imageDetail)
 			uploadedCount++
-			logrus.Infof("✅ 成功上传第%d张SKU图片，ASIN: %s, ImageSort: %d, URL: %s", uploadedCount, params.ASIN, skuImageSort, uploaded)
+			logger.GetGlobalLogger("shein/product").Infof("✅ 成功上传第%d张SKU图片，ASIN: %s, ImageSort: %d, URL: %s", uploadedCount, params.ASIN, skuImageSort, uploaded)
 
 			// 对于多件商品，至少需要1张图片
 			if uploadedCount >= 1 {
-				logrus.Infof("✅ 已成功上传%d张SKU图片，满足多件商品要求，ASIN: %s", uploadedCount, params.ASIN)
+				logger.GetGlobalLogger("shein/product").Infof("✅ 已成功上传%d张SKU图片，满足多件商品要求，ASIN: %s", uploadedCount, params.ASIN)
 				break // 只上传一张图片
 			}
 		}
@@ -113,7 +113,7 @@ func (b *SKUBuilder) uploadSKUImagesWithRetry(ctx *shein.TaskContext, params she
 	// 验证SKU图片排序
 	if uploadedCount > 0 {
 		if err := b.validateSKUImageSorting(imageInfo); err != nil {
-			logrus.Errorf("❌ SKU图片排序验证失败: %v", err)
+			logger.GetGlobalLogger("shein/product").Errorf("❌ SKU图片排序验证失败: %v", err)
 			// 不返回错误，而是尝试修复
 			b.fixSKUImageSorting(imageInfo)
 		}
@@ -125,21 +125,21 @@ func (b *SKUBuilder) uploadSKUImagesWithRetry(ctx *shein.TaskContext, params she
 // uploadSingleImageWithRetry 单张图片重试上传
 func (b *SKUBuilder) uploadSingleImageWithRetry(ctx *shein.TaskContext, params shein.SKUCreationParams, imageURL, imageSource string, imageIndex, maxRetries int) string {
 	for retry := 1; retry <= maxRetries; retry++ {
-		logrus.Infof("🔄 尝试上传第%d张%s作为SKU图片 (重试%d/%d): %s", imageIndex, imageSource, retry, maxRetries, imageURL)
+		logger.GetGlobalLogger("shein/product").Infof("🔄 尝试上传第%d张%s作为SKU图片 (重试%d/%d): %s", imageIndex, imageSource, retry, maxRetries, imageURL)
 
 		// 验证图片URL格式
 		if !b.isValidImageURL(imageURL) {
-			logrus.Warnf("⚠️ 无效的图片URL格式，跳过: %s", imageURL)
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 无效的图片URL格式，跳过: %s", imageURL)
 			break
 		}
 
 		uploadedURL, err := ctx.ImageAPI.DownloadAndUploadImage(imageURL)
 		if err != nil {
-			logrus.Warnf("⚠️ 上传第%d张SKU图片失败 (重试%d/%d)，ASIN: %s, 错误: %v", imageIndex, retry, maxRetries, params.ASIN, err)
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 上传第%d张SKU图片失败 (重试%d/%d)，ASIN: %s, 错误: %v", imageIndex, retry, maxRetries, params.ASIN, err)
 
 			// 如果是最后一次重试，记录详细错误
 			if retry == maxRetries {
-				logrus.Errorf("❌ 第%d张SKU图片上传彻底失败，已重试%d次，ASIN: %s, URL: %s, 最终错误: %v",
+				logger.GetGlobalLogger("shein/product").Errorf("❌ 第%d张SKU图片上传彻底失败，已重试%d次，ASIN: %s, URL: %s, 最终错误: %v",
 					imageIndex, maxRetries, params.ASIN, imageURL, err)
 			}
 			continue
@@ -150,7 +150,7 @@ func (b *SKUBuilder) uploadSingleImageWithRetry(ctx *shein.TaskContext, params s
 			if b.isValidImageURL(uploadedURL) {
 				return uploadedURL
 			} else {
-				logrus.Warnf("⚠️ 上传返回的URL格式无效，重试: %s", uploadedURL)
+				logger.GetGlobalLogger("shein/product").Warnf("⚠️ 上传返回的URL格式无效，重试: %s", uploadedURL)
 			}
 		}
 	}
@@ -205,7 +205,7 @@ func (b *SKUBuilder) validateSKUImageSorting(imageInfo *product.ImageInfo) error
 
 	// 如果只有一张图片，不需要检查排序连续性
 	if len(imageInfo.ImageInfoList) == 1 {
-		logrus.Infof("✅ SKU图片排序验证通过，共%d张图片", len(imageInfo.ImageInfoList))
+		logger.GetGlobalLogger("shein/product").Infof("✅ SKU图片排序验证通过，共%d张图片", len(imageInfo.ImageInfoList))
 		return nil
 	}
 
@@ -217,20 +217,20 @@ func (b *SKUBuilder) validateSKUImageSorting(imageInfo *product.ImageInfo) error
 		}
 	}
 
-	logrus.Infof("✅ SKU图片排序验证通过，共%d张图片", len(imageInfo.ImageInfoList))
+	logger.GetGlobalLogger("shein/product").Infof("✅ SKU图片排序验证通过，共%d张图片", len(imageInfo.ImageInfoList))
 	return nil
 }
 
 // fixSKUImageSorting 修复SKU图片排序
 func (b *SKUBuilder) fixSKUImageSorting(imageInfo *product.ImageInfo) {
-	logrus.Infof("🔧 开始修复SKU图片排序...")
+	logger.GetGlobalLogger("shein/product").Infof("🔧 开始修复SKU图片排序...")
 
 	// 如果只有一张图片，确保其排序为1
 	if len(imageInfo.ImageInfoList) == 1 {
 		if imageInfo.ImageInfoList[0].ImageSort != 1 {
 			oldSort := imageInfo.ImageInfoList[0].ImageSort
 			imageInfo.ImageInfoList[0].ImageSort = 1
-			logrus.Infof("✅ 修复SKU图片排序：唯一图片 %d -> %d", oldSort, 1)
+			logger.GetGlobalLogger("shein/product").Infof("✅ 修复SKU图片排序：唯一图片 %d -> %d", oldSort, 1)
 		}
 		return
 	}
@@ -241,9 +241,9 @@ func (b *SKUBuilder) fixSKUImageSorting(imageInfo *product.ImageInfo) {
 		if imageInfo.ImageInfoList[i].ImageSort != correctSort {
 			oldSort := imageInfo.ImageInfoList[i].ImageSort
 			imageInfo.ImageInfoList[i].ImageSort = correctSort
-			logrus.Infof("✅ 修复SKU图片排序：第%d张图片 %d -> %d", i+1, oldSort, correctSort)
+			logger.GetGlobalLogger("shein/product").Infof("✅ 修复SKU图片排序：第%d张图片 %d -> %d", i+1, oldSort, correctSort)
 		}
 	}
 
-	logrus.Infof("🎉 SKU图片排序修复完成")
+	logger.GetGlobalLogger("shein/product").Infof("🎉 SKU图片排序修复完成")
 }

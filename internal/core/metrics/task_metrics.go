@@ -1,11 +1,11 @@
-// Package metrics 提供任务流转指标统计
+﻿// Package metrics 提供任务流转指标统计
 package metrics
 
 import (
+	"task-processor/internal/core/logger"
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // TaskMetrics 任务流转指标统计
@@ -188,12 +188,12 @@ func (m *TaskMetrics) GetAverageProcessTime() time.Duration {
 
 func (m *TaskMetrics) LogSummary() {
 	s := m.GetSnapshot()
-	logrus.Infof("📊 [Metrics] 任务流转 - Pending:%d Processing:%d Completed:%d Failed:%d Requeued:%d",
+	logger.GetGlobalLogger("core/metrics").Infof("📊 [Metrics] 任务流转 - Pending:%d Processing:%d Completed:%d Failed:%d Requeued:%d",
 		s.PendingCount, s.ProcessingCount, s.CompletedCount, s.FailedCount, s.RequeuedCount)
-	logrus.Infof("📊 [Metrics] 优先级 - High:%d Medium:%d Low:%d",
+	logger.GetGlobalLogger("core/metrics").Infof("📊 [Metrics] 优先级 - High:%d Medium:%d Low:%d",
 		s.HighPriorityCount, s.MediumPriorityCount, s.LowPriorityCount)
 	if s.HeartbeatTimeoutCount > 0 || s.TaskLossCount > 0 || s.RequeueFailureCount > 0 || s.MarkFailedErrorCount > 0 {
-		logrus.Warnf("⚠️ [Metrics] 异常 - 心跳超时:%d 任务丢失:%d 重入队失败:%d 标记失败:%d",
+		logger.GetGlobalLogger("core/metrics").Warnf("⚠️ [Metrics] 异常 - 心跳超时:%d 任务丢失:%d 重入队失败:%d 标记失败:%d",
 			s.HeartbeatTimeoutCount, s.TaskLossCount, s.RequeueFailureCount, s.MarkFailedErrorCount)
 	}
 }

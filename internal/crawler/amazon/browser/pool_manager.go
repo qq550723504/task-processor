@@ -1,4 +1,4 @@
-// Package browser 提供增强的浏览器池管理功能
+﻿// Package browser 提供增强的浏览器池管理功能
 package browser
 
 import (
@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/model"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,7 +30,7 @@ type PoolManager struct {
 func NewPoolManager(pool *BrowserPool) *PoolManager {
 	return &PoolManager{
 		pool:   pool,
-		logger: logrus.WithField("component", "EnhancedPoolManager"),
+		logger: logger.GetGlobalLogger("EnhancedPoolManager"),
 	}
 }
 

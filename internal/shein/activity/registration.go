@@ -1,4 +1,4 @@
-// package activity 提供SHEIN平台调度器相关服务
+﻿// package activity 提供SHEIN平台调度器相关服务
 package activity
 
 import (
@@ -9,6 +9,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/api/marketing"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -39,7 +40,7 @@ func NewActivityRegistrationService(
 	return &activityRegistrationServiceImpl{
 		managementClient: managementClient,
 		marketingAPI:     marketingAPI,
-		logger:           logrus.WithField("component", "ActivityRegistrationService"),
+		logger:           logger.GetGlobalLogger("ActivityRegistrationService"),
 	}
 }
 

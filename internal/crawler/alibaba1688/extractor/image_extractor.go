@@ -1,12 +1,12 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // ImageExtractor 图片提取器
@@ -72,7 +72,7 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *model.Product16
 	}`, nil)
 
 	if err != nil {
-		logrus.Debugf("提取图片失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取图片失败: %v", err)
 		return err
 	}
 
@@ -98,7 +98,7 @@ func (ie *ImageExtractor) Extract(page playwright.Page, product *model.Product16
 				mainImage = ie.processImageURL(mainImg)
 			}
 
-			logrus.Debugf("提取到 %d 张轮播图", len(images))
+			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取到 %d 张轮播图", len(images))
 		}
 	}
 

@@ -1,4 +1,4 @@
-package image
+﻿package image
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/pkg/downloader"
 	"task-processor/internal/pkg/imagex"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,7 +23,7 @@ type ImagePaddingProcessor struct {
 // NewImagePaddingProcessor 创建新的图片填充处理器
 func NewImagePaddingProcessor() *ImagePaddingProcessor {
 	return &ImagePaddingProcessor{
-		logger:     logrus.WithField("processor", "ImagePaddingProcessor"),
+		logger:     logger.GetGlobalLogger("ImagePaddingProcessor"),
 		downloader: downloader.NewImageDownloader(),
 	}
 }

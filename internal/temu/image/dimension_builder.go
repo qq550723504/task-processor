@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台尺寸图片构建功能
+﻿// Package image 提供TEMU平台尺寸图片构建功能
 package image
 
 import (
@@ -8,6 +8,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,7 +26,7 @@ func NewImageDimensionBuilder() *ImageDimensionBuilder {
 		uploadProcessor:  NewImageUploadProcessor(),
 		paddingProcessor: NewImagePaddingProcessor(),
 		uploadUtils:      NewImageUploadUtils(),
-		logger:           logrus.WithField("component", "ImageDimensionBuilder"),
+		logger:           logger.GetGlobalLogger("ImageDimensionBuilder"),
 	}
 }
 

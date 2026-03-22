@@ -1,4 +1,4 @@
-// package sync 提供TEMU平台库存监控服务实现
+﻿// package sync 提供TEMU平台库存监控服务实现
 package sync
 
 import (
@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -38,7 +39,7 @@ func NewInventorySyncService(
 	rawJsonDataClient product.RawJsonDataClient,
 	inventoryRecordClient managementapi.InventoryRecordAPI,
 ) InventorySyncService {
-	logger := logrus.WithField("component", "TemuInventorySyncService")
+	logger := logger.GetGlobalLogger("TemuInventorySyncService")
 
 	// 创建通用成本计算器（TEMU不需要详细日志）
 	costCalculator := pricing.NewCostCalculator(managementClient, logger, false)

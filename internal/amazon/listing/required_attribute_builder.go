@@ -1,10 +1,11 @@
-// Package listing 提供Amazon必需属性构建功能
+﻿// Package listing 提供Amazon必需属性构建功能
 package listing
 
 import (
 	"task-processor/internal/amazon/model"
 	"task-processor/internal/amazon/schema"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -16,7 +17,7 @@ type RequiredAttributeBuilder struct {
 // NewRequiredAttributeBuilder 创建必需属性构建器
 func NewRequiredAttributeBuilder() *RequiredAttributeBuilder {
 	return &RequiredAttributeBuilder{
-		logger: logrus.WithField("component", "RequiredAttributeBuilder"),
+		logger: logger.GetGlobalLogger("RequiredAttributeBuilder"),
 	}
 }
 

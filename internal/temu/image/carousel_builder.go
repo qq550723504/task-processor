@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台轮播图片构建功能
+﻿// Package image 提供TEMU平台轮播图片构建功能
 package image
 
 import (
@@ -6,6 +6,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,7 +24,7 @@ func NewImageCarouselBuilder() *ImageCarouselBuilder {
 		uploadProcessor:  NewImageUploadProcessor(),
 		paddingProcessor: NewImagePaddingProcessor(),
 		uploadUtils:      NewImageUploadUtils(),
-		logger:           logrus.WithField("component", "ImageCarouselBuilder"),
+		logger:           logger.GetGlobalLogger("ImageCarouselBuilder"),
 	}
 }
 

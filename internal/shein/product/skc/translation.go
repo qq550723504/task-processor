@@ -1,7 +1,8 @@
-// Package skc 提供SHEIN平台SKC翻译处理功能
+﻿// Package skc 提供SHEIN平台SKC翻译处理功能
 package skc
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/translate"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SKCTranslationHandler SKC翻译处理器
@@ -74,14 +74,14 @@ func (h *SKCTranslationHandler) CreateSKC(ctx *shein.TaskContext, params shein.S
 
 // findBestSourceTitle 查找最佳的源标题作为翻译源
 func (h *SKCTranslationHandler) findBestSourceTitle(ctx *shein.TaskContext, params shein.SKCCreationParams) string {
-	logrus.Debugf("🔍 开始查找源标题...")
+	logger.GetGlobalLogger("shein/product").Debugf("🔍 开始查找源标题...")
 
 	// 优先尝试根据SKU的SupplierSKU反向查找对应的ASIN，然后匹配变体标题
 	if ctx.Variants != nil && len(*ctx.Variants) > 0 && len(params.SKUS) > 0 {
 		// 获取当前SKC对应的SupplierSKU（从第一个SKU获取）
 		if len(params.SKUS) > 0 && params.SKUS[0].SupplierSKU != "" {
 			supplierSKU := params.SKUS[0].SupplierSKU
-			logrus.Debugf("🎯 通过SupplierSKU %s 反向查找对应的ASIN", supplierSKU)
+			logger.GetGlobalLogger("shein/product").Debugf("🎯 通过SupplierSKU %s 反向查找对应的ASIN", supplierSKU)
 
 			// 通过AsinSkuMap反向查找ASIN
 			var targetASIN string
@@ -89,7 +89,7 @@ func (h *SKCTranslationHandler) findBestSourceTitle(ctx *shein.TaskContext, para
 				for asin, sku := range ctx.AsinSkuMap {
 					if sku == supplierSKU {
 						targetASIN = asin
-						logrus.Debugf("✅ 找到对应的ASIN: %s -> %s", supplierSKU, targetASIN)
+						logger.GetGlobalLogger("shein/product").Debugf("✅ 找到对应的ASIN: %s -> %s", supplierSKU, targetASIN)
 						break
 					}
 				}
@@ -99,20 +99,20 @@ func (h *SKCTranslationHandler) findBestSourceTitle(ctx *shein.TaskContext, para
 			if targetASIN != "" {
 				for _, variant := range *ctx.Variants {
 					if variant.Asin == targetASIN && variant.Title != "" {
-						logrus.Infof("✅ 找到匹配变体标题: ASIN=%s, Title=%s", variant.Asin, variant.Title)
+						logger.GetGlobalLogger("shein/product").Infof("✅ 找到匹配变体标题: ASIN=%s, Title=%s", variant.Asin, variant.Title)
 						return variant.Title
 					}
 				}
-				logrus.Debugf("⚠️ ASIN %s 对应的变体标题为空", targetASIN)
+				logger.GetGlobalLogger("shein/product").Debugf("⚠️ ASIN %s 对应的变体标题为空", targetASIN)
 			} else {
-				logrus.Debugf("⚠️ 未找到SupplierSKU %s 对应的ASIN", supplierSKU)
+				logger.GetGlobalLogger("shein/product").Debugf("⚠️ 未找到SupplierSKU %s 对应的ASIN", supplierSKU)
 			}
 		}
 
 		// 如果没有找到匹配的变体标题，尝试使用任何有效的变体标题
 		for _, variant := range *ctx.Variants {
 			if variant.Title != "" {
-				logrus.Infof("✅ 使用其他变体标题: ASIN=%s, Title=%s", variant.Asin, variant.Title)
+				logger.GetGlobalLogger("shein/product").Infof("✅ 使用其他变体标题: ASIN=%s, Title=%s", variant.Asin, variant.Title)
 				return variant.Title
 			}
 		}
@@ -120,11 +120,11 @@ func (h *SKCTranslationHandler) findBestSourceTitle(ctx *shein.TaskContext, para
 
 	// 如果没有找到变体标题，尝试使用产品标题
 	if ctx.AmazonProduct.Title != "" {
-		logrus.Infof("✅ 使用产品标题: %s", ctx.AmazonProduct.Title)
+		logger.GetGlobalLogger("shein/product").Infof("✅ 使用产品标题: %s", ctx.AmazonProduct.Title)
 		return ctx.AmazonProduct.Title
 	}
 
-	logrus.Warnf("⚠️ 未找到有效的标题")
+	logger.GetGlobalLogger("shein/product").Warnf("⚠️ 未找到有效的标题")
 	return ""
 }
 
@@ -152,21 +152,21 @@ func (h *SKCTranslationHandler) detectTitleLanguage(title string) string {
 
 	// 判断主要语言
 	if japaneseCount > chineseCount && japaneseCount > englishCount {
-		logrus.Infof("🔍 检测到标题语言: 日语")
+		logger.GetGlobalLogger("shein/product").Infof("🔍 检测到标题语言: 日语")
 		return "ja"
 	}
 	if chineseCount > englishCount && chineseCount > japaneseCount {
-		logrus.Infof("🔍 检测到标题语言: 中文")
+		logger.GetGlobalLogger("shein/product").Infof("🔍 检测到标题语言: 中文")
 		return "zh"
 	}
 
-	logrus.Infof("🔍 检测到标题语言: 英文")
+	logger.GetGlobalLogger("shein/product").Infof("🔍 检测到标题语言: 英文")
 	return "en"
 }
 
 // initializeMultiLanguageContent 初始化多语言内容结构
 func (h *SKCTranslationHandler) initializeMultiLanguageContent(targetLanguages []string) []product.LanguageContent {
-	logrus.Debugf("🌐 初始化多语言内容结构，目标语言数量: %d", len(targetLanguages))
+	logger.GetGlobalLogger("shein/product").Debugf("🌐 初始化多语言内容结构，目标语言数量: %d", len(targetLanguages))
 
 	multiLanguageNameList := make([]product.LanguageContent, 0, len(targetLanguages))
 
@@ -175,7 +175,7 @@ func (h *SKCTranslationHandler) initializeMultiLanguageContent(targetLanguages [
 			Language: lang,
 			Name:     "", // 初始化为空，后续通过翻译填充
 		})
-		logrus.Debugf("📝 初始化语言: %s", lang)
+		logger.GetGlobalLogger("shein/product").Debugf("📝 初始化语言: %s", lang)
 	}
 
 	return multiLanguageNameList
@@ -190,14 +190,14 @@ func (h *SKCTranslationHandler) translateToAllLanguages(ctx *shein.TaskContext, 
 		// 如果目标语言与源语言相同，直接设置原标题
 		if langContent.Language == sourceLang {
 			langContent.Name = sourceTitle
-			logrus.Debugf("✅ 设置源语言(%s)标题: %s", sourceLang, sourceTitle)
+			logger.GetGlobalLogger("shein/product").Debugf("✅ 设置源语言(%s)标题: %s", sourceLang, sourceTitle)
 			continue
 		}
 
 		// 翻译到目标语言
 		translatedTitle, err := ctx.TranslateAPI.Translate(sourceTitle, sourceLang, langContent.Language)
 		if err != nil {
-			logrus.Warnf("❌ 翻译到语言 %s 失败: %v，使用源标题作为后备", langContent.Language, err)
+			logger.GetGlobalLogger("shein/product").Warnf("❌ 翻译到语言 %s 失败: %v，使用源标题作为后备", langContent.Language, err)
 			langContent.Name = sourceTitle // 翻译失败时使用源标题作为后备
 			continue
 		}
@@ -208,11 +208,11 @@ func (h *SKCTranslationHandler) translateToAllLanguages(ctx *shein.TaskContext, 
 
 // optimizeMultiLanguageContent 使用AI优化多语言内容
 func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskContext, multiLanguageNameList *[]product.LanguageContent, sourceTitle string) {
-	logrus.Debugf("🤖 开始AI优化多语言内容...")
+	logger.GetGlobalLogger("shein/product").Debugf("🤖 开始AI优化多语言内容...")
 
 	// 检查前置条件
 	if multiLanguageNameList == nil || len(*multiLanguageNameList) == 0 {
-		logrus.Warnf("⚠️ 跳过AI优化：多语言内容为空")
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 跳过AI优化：多语言内容为空")
 		return
 	}
 
@@ -231,7 +231,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 	}
 
 	if len(englishContents) == 0 {
-		logrus.Debugf("⚠️ 没有找到需要优化的英文内容")
+		logger.GetGlobalLogger("shein/product").Debugf("⚠️ 没有找到需要优化的英文内容")
 		return
 	}
 
@@ -246,7 +246,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 	if ctx.AICache != nil {
 		var cached []string
 		if ctx.AICache.Get(aicache.TypeSKCTranslate, cacheKey, &cached) && len(cached) == len(englishContents) {
-			logrus.Infof("SKC翻译优化命中缓存，共 %d 条", len(cached))
+			logger.GetGlobalLogger("shein/product").Infof("SKC翻译优化命中缓存，共 %d 条", len(cached))
 			for i, optimizedContent := range cached {
 				if i >= len(englishIndexes) {
 					break
@@ -267,7 +267,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 	// 一次性批量优化所有英文内容
 	optimizedContents, err := h.batchOptimizeEnglishContent(aiCtx, englishContents, sourceTitle)
 	if err != nil {
-		logrus.Warnf("❌ 批量优化英文内容失败: %v，保持原内容", err)
+		logger.GetGlobalLogger("shein/product").Warnf("❌ 批量优化英文内容失败: %v，保持原内容", err)
 		return
 	}
 
@@ -282,18 +282,18 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 		// 验证和清理优化后的内容
 		cleanedName := strings.TrimSpace(optimizedContent)
 		if len(cleanedName) < 10 {
-			logrus.Warnf("⚠️ 优化后的英文内容太短，保持原内容")
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 优化后的英文内容太短，保持原内容")
 			continue
 		}
 
 		if len(cleanedName) > 800 {
 			cleanedName = h.truncateContent(cleanedName, 800)
-			logrus.Debugf("✂️ 截断英文内容到800字符")
+			logger.GetGlobalLogger("shein/product").Debugf("✂️ 截断英文内容到800字符")
 		}
 
 		// 更新内容
 		langContent.Name = cleanedName
-		logrus.Infof("✅ 英文内容优化完成: %s", cleanedName)
+		logger.GetGlobalLogger("shein/product").Infof("✅ 英文内容优化完成: %s", cleanedName)
 	}
 
 	// 写缓存
@@ -301,7 +301,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 		ctx.AICache.Set(aicache.TypeSKCTranslate, cacheKey, optimizedContents)
 	}
 
-	logrus.Infof("🎉 AI批量优化多语言内容完成")
+	logger.GetGlobalLogger("shein/product").Infof("🎉 AI批量优化多语言内容完成")
 }
 
 // batchOptimizeEnglishContent 批量优化英文内容
@@ -401,7 +401,7 @@ func (h *SKCTranslationHandler) parseBatchOptimizedResponse(content string, expe
 
 	// 如果返回的数量不匹配，记录警告但继续处理
 	if len(response.OptimizedTitles) != expectedCount {
-		logrus.Warnf("⚠️ 返回的优化标题数量(%d)与期望数量(%d)不匹配", len(response.OptimizedTitles), expectedCount)
+		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 返回的优化标题数量(%d)与期望数量(%d)不匹配", len(response.OptimizedTitles), expectedCount)
 	}
 
 	return response.OptimizedTitles, nil
@@ -495,11 +495,11 @@ func (h *SKCTranslationHandler) selectPrimaryDisplayLanguage(targetLanguages []s
 	if len(targetLanguages) == 0 {
 		// 如果没有目标语言，尝试从多语言列表中选择第一个有效的
 		if len(multiLanguageNameList) > 0 && multiLanguageNameList[0].Name != "" {
-			logrus.Infof("📋 无目标语言，使用多语言列表第一项作为主要显示语言: %s", multiLanguageNameList[0].Language)
+			logger.GetGlobalLogger("shein/product").Infof("📋 无目标语言，使用多语言列表第一项作为主要显示语言: %s", multiLanguageNameList[0].Language)
 			return multiLanguageNameList[0]
 		}
 		// 最后的后备方案
-		logrus.Infof("📋 无目标语言，使用源标题作为主要显示语言")
+		logger.GetGlobalLogger("shein/product").Infof("📋 无目标语言，使用源标题作为主要显示语言")
 		return product.LanguageContent{
 			Language: "en",
 			Name:     sourceTitle,
@@ -508,18 +508,18 @@ func (h *SKCTranslationHandler) selectPrimaryDisplayLanguage(targetLanguages []s
 
 	// 使用第一个目标语言作为主要显示语言
 	primaryTargetLang := targetLanguages[0]
-	logrus.Infof("🎯 选择主要显示语言: %s", primaryTargetLang)
+	logger.GetGlobalLogger("shein/product").Infof("🎯 选择主要显示语言: %s", primaryTargetLang)
 
 	// 在多语言列表中查找对应的翻译内容
 	for _, langContent := range multiLanguageNameList {
 		if langContent.Language == primaryTargetLang && langContent.Name != "" {
-			logrus.Infof("✅ 使用目标语言 %s 作为主要显示标题: %s", primaryTargetLang, langContent.Name)
+			logger.GetGlobalLogger("shein/product").Infof("✅ 使用目标语言 %s 作为主要显示标题: %s", primaryTargetLang, langContent.Name)
 			return langContent
 		}
 	}
 
 	// 如果没有找到目标语言的翻译，使用源标题作为后备
-	logrus.Warnf("⚠️ 未找到语言 %s 的翻译内容，使用源标题作为后备", primaryTargetLang)
+	logger.GetGlobalLogger("shein/product").Warnf("⚠️ 未找到语言 %s 的翻译内容，使用源标题作为后备", primaryTargetLang)
 	return product.LanguageContent{
 		Language: primaryTargetLang,
 		Name:     sourceTitle,

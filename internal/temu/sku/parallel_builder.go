@@ -1,4 +1,4 @@
-// Package sku 提供并行SKU构建功能
+﻿// Package sku 提供并行SKU构建功能
 package sku
 
 import (
@@ -10,6 +10,7 @@ import (
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/image"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,7 +26,7 @@ func NewSkuParallelBuilder(itemBuilder *SkuItemBuilder, maxWorkers int) *SkuPara
 	return &SkuParallelBuilder{
 		itemBuilder:            itemBuilder,
 		parallelImageProcessor: image.NewParallelImageProcessor(maxWorkers),
-		logger:                 logrus.WithField("component", "SkuParallelBuilder"),
+		logger:                 logger.GetGlobalLogger("SkuParallelBuilder"),
 	}
 }
 

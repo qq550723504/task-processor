@@ -7,25 +7,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"task-processor/internal/core/logger"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/validation"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
 // PublishProductValidator 产品发布验证器
 type PublishProductValidator struct {
+	logger *logrus.Entry
 }
 
 // NewPublishProductValidator 创建新的产品发布验证器
 func NewPublishProductValidator() *PublishProductValidator {
-	return &PublishProductValidator{}
+	return &PublishProductValidator{
+		logger: logger.GetGlobalLogger("publish_validator"),
+	}
 }
 
 // PreValidateProductData 发布前预验证产品数据
 func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext) error {
-	logrus.Info("🔍 开始产品数据预验证...")
+	v.logger.Info("🔍 开始产品数据预验证...")
 
 	if ctx.ProductData == nil {
 		return fmt.Errorf("产品数据为空")
@@ -42,7 +47,7 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext)
 
 	// 如果有自动修复，记录修复信息
 	if report.AutoFixedIssues > 0 {
-		logrus.Infof("🔧 自动修复了%d个问题，产品数据已优化", report.AutoFixedIssues)
+		v.logger.Infof("🔧 自动修复了%d个问题，产品数据已优化", report.AutoFixedIssues)
 	}
 
 	// 计算验证成功率
@@ -52,7 +57,7 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext)
 		return fmt.Errorf("验证成功率过低(%.1f%%)，建议检查产品数据", successRate)
 	}
 
-	logrus.Info("✅ 产品数据预验证全部通过")
+	v.logger.Info("✅ 产品数据预验证全部通过")
 	return nil
 }
 
@@ -73,7 +78,7 @@ func (v *PublishProductValidator) validateBasicProductInfo(ctx *shein.TaskContex
 		return fmt.Errorf("缺少分类ID")
 	}
 
-	logrus.Debug("✅ 基本产品信息验证通过")
+	v.logger.Debug("✅ 基本产品信息验证通过")
 	return nil
 }
 
@@ -131,7 +136,7 @@ func (v *PublishProductValidator) validateSKCAndSKUData(ctx *shein.TaskContext) 
 			len(issues), strings.Join(issues, "; "))
 	}
 
-	logrus.Debugf("✅ SKC和SKU数据验证通过，共%d个SKC，%d个SKU", len(product.SKCList), totalSKUs)
+	v.logger.Debugf("✅ SKC和SKU数据验证通过，共%d个SKC，%d个SKU", len(product.SKCList), totalSKUs)
 	return nil
 }
 
@@ -299,9 +304,9 @@ func (v *PublishProductValidator) trySaveReport(ctx *shein.TaskContext, report *
 	taskID := fmt.Sprintf("%d", ctx.Task.ID)
 	filename := fmt.Sprintf("%s_%s_%s.json", ctx.Task.ProductID, taskID, suffix)
 	if err := v.saveValidationReportToFile(filename, report); err != nil {
-		logrus.Errorf("%s: %v", errMsg, err)
+		v.logger.Errorf("%s: %v", errMsg, err)
 	} else {
-		logrus.Infof("📊 验证报告已保存: %s", filename)
+		v.logger.Infof("📊 验证报告已保存: %s", filename)
 	}
 }
 

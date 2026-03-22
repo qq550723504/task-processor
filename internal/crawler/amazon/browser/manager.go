@@ -1,13 +1,13 @@
-package browser
+﻿package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/core/config"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // BrowserManager Amazon专用的浏览器管理器，继承shared的功能
@@ -48,7 +48,7 @@ func NewBrowserManagerWithConfig(cfg *config.Config, strategy string, presetName
 			ViewportHeight: cfg.Browser.ViewportHeight,
 			UserAgent:      "", // 使用默认用户代理
 		}
-		logrus.Infof("实例 %d 使用传统浏览器配置", instanceID)
+		logger.GetGlobalLogger("crawler/amazon").Infof("实例 %d 使用传统浏览器配置", instanceID)
 	}
 
 	return &BrowserManager{
@@ -67,7 +67,7 @@ func (bm *BrowserManager) GetConfigManager() *ConfigManager {
 func (bm *BrowserManager) NavigateTo(page playwright.Page, url string) error {
 	// Set language preference cookies before navigation
 	if err := bm.setLanguageCookies(url); err != nil {
-		logrus.Infof("设置语言Cookie失败: %v", err)
+		logger.GetGlobalLogger("crawler/amazon").Infof("设置语言Cookie失败: %v", err)
 	}
 
 	// 使用父类的导航方法

@@ -3,11 +3,10 @@ package ai
 import (
 	"strings"
 
+	"task-processor/internal/core/logger"
 	models "task-processor/internal/temu/api/product"
 	temutemplate "task-processor/internal/temu/api/template"
 	temucontext "task-processor/internal/temu/context"
-
-	"github.com/sirupsen/logrus"
 )
 
 // getPropertyTypeName 获取属性类型名称
@@ -26,14 +25,15 @@ func getPropertyTypeName(propertyValueType int) string {
 
 // preparePropertyMappingData 准备属性映射数据
 func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templateProps []temutemplate.TemplateRespGoodsProperty) temucontext.PropertyMappingData {
+	log := logger.GetGlobalLogger("ai_property_mapper")
 	data := temucontext.PropertyMappingData{
 		TemuProperties: make([]temutemplate.TemplateRespGoodsProperty, 0, len(templateProps)),
 	}
 
 	if len(templateProps) == 0 {
-		logrus.Warn("⚠️ 模板属性列表为空，属性修复可能无法正常工作")
+		log.Warn("⚠️ 模板属性列表为空，属性修复可能无法正常工作")
 	} else {
-		logrus.Infof("📋 准备属性映射数据，模板属性数量: %d", len(templateProps))
+		log.Infof("📋 准备属性映射数据，模板属性数量: %d", len(templateProps))
 	}
 
 	if temuCtx.GetAmazonProduct() != nil {

@@ -1,13 +1,13 @@
-// Package alibaba1688 提供1688页面操作功能
+﻿// Package alibaba1688 提供1688页面操作功能
 package alibaba1688
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // PageOperator 页面操作器
@@ -24,7 +24,7 @@ func NewPageOperator() *PageOperator {
 
 // NavigateToProduct 导航到产品页面
 func (po *PageOperator) NavigateToProduct(page playwright.Page, url string) error {
-	logrus.Debugf("导航到1688产品页面: %s", url)
+	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("导航到1688产品页面: %s", url)
 
 	// 导航到页面
 	if err := po.navigate(page, url); err != nil {
@@ -33,7 +33,7 @@ func (po *PageOperator) NavigateToProduct(page playwright.Page, url string) erro
 
 	// 处理验证码
 	if err := po.handleCaptcha(page); err != nil {
-		logrus.Warnf("验证码处理失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("验证码处理失败: %v", err)
 	}
 
 	// 等待页面就绪
@@ -43,12 +43,12 @@ func (po *PageOperator) NavigateToProduct(page playwright.Page, url string) erro
 
 	// 再次处理可能出现的验证码
 	if err := po.handleCaptcha(page); err != nil {
-		logrus.Warnf("二次验证码处理失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("二次验证码处理失败: %v", err)
 	}
 
 	// 滚动页面以触发懒加载
 	if err := po.ScrollPage(page); err != nil {
-		logrus.Warnf("滚动页面失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("滚动页面失败: %v", err)
 	}
 
 	return nil
@@ -87,7 +87,7 @@ func (po *PageOperator) waitForPageReady(page playwright.Page) error {
 			Timeout: playwright.Float(10000),
 		})
 		if err != nil {
-			logrus.Debugf("等待元素 %s 失败: %v", selector, err)
+			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("等待元素 %s 失败: %v", selector, err)
 			continue
 		}
 		break
@@ -106,7 +106,7 @@ func (po *PageOperator) waitForPageReady(page playwright.Page) error {
 		return fmt.Errorf("页面加载异常，标题: %s", title)
 	}
 
-	logrus.Debugf("页面加载完成，标题: %s", title)
+	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("页面加载完成，标题: %s", title)
 	return nil
 }
 
@@ -130,7 +130,7 @@ func (po *PageOperator) ScrollPage(page playwright.Page) error {
 	for i := 1; i <= scrollSteps; i++ {
 		scrollY := stepHeight * i
 		if _, scrollErr := page.Evaluate(fmt.Sprintf("window.scrollTo(0, %d)", scrollY)); scrollErr != nil {
-			logrus.Warnf("滚动到位置 %d 失败: %v", scrollY, scrollErr)
+			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("滚动到位置 %d 失败: %v", scrollY, scrollErr)
 		}
 
 		time.Sleep(500 * time.Millisecond)
@@ -139,7 +139,7 @@ func (po *PageOperator) ScrollPage(page playwright.Page) error {
 	// 滚动回顶部
 	_, err = page.Evaluate("window.scrollTo(0, 0)")
 	if err != nil {
-		logrus.Warnf("滚动回顶部失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("滚动回顶部失败: %v", err)
 	}
 
 	return nil

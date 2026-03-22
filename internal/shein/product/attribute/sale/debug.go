@@ -1,14 +1,14 @@
-// Package sale 提供SHEIN平台的销售属性调试数据保存功能
+﻿// Package sale 提供SHEIN平台的销售属性调试数据保存功能
 package sale
 
 import (
+	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // SaleAttributeDebugSaver 销售属性调试数据保存器
@@ -91,6 +91,6 @@ func (s *SaleAttributeDebugSaver) saveDebugData(taskID, productID, systemPrompt,
 		return fmt.Errorf("写入调试文件失败: %w", err)
 	}
 
-	logrus.Infof("💾 调试数据已保存: %s", filepath)
+	logger.GetGlobalLogger("shein/product").Infof("💾 调试数据已保存: %s", filepath)
 	return nil
 }

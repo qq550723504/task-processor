@@ -1,11 +1,11 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // TitleExtractor 标题提取器
@@ -53,7 +53,7 @@ func (te *TitleExtractor) Extract(page playwright.Page, product *model.Product16
 	}`, nil)
 
 	if err != nil {
-		logrus.Debugf("提取标题信息失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取标题信息失败: %v", err)
 		return err
 	}
 
@@ -62,13 +62,13 @@ func (te *TitleExtractor) Extract(page playwright.Page, product *model.Product16
 			// 设置标题
 			if title, ok := titleData["title"].(string); ok && title != "" {
 				product.Title = title
-				logrus.Debugf("提取到产品标题: %s", title)
+				logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取到产品标题: %s", title)
 			}
 
 			// 设置ID
 			if id, ok := titleData["id"].(string); ok && id != "" {
 				product.ID = id
-				logrus.Debugf("提取到产品ID: %s", id)
+				logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取到产品ID: %s", id)
 			}
 
 			// 设置URL

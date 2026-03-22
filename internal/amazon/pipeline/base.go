@@ -1,4 +1,4 @@
-// package pipeline 提供基础Handler实现，减少重复代码
+﻿// package pipeline 提供基础Handler实现，减少重复代码
 package pipeline
 
 import (
@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/amazon/api"
 	"task-processor/internal/amazon/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ type BaseHandler struct {
 func NewBaseHandler(name string) *BaseHandler {
 	return &BaseHandler{
 		name:   name,
-		logger: logrus.WithField("handler", name),
+		logger: logger.GetGlobalLogger("amazon/pipeline").WithField("handler", name),
 	}
 }
 

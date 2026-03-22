@@ -1,7 +1,8 @@
-// Package task 提供任务获取核心功能
+﻿// Package task 提供任务获取核心功能
 package task
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"sync"
@@ -163,7 +164,7 @@ func (f *TaskFetcher) RemoveProcessingTask(taskID string) {
 	f.tasksMutex.Lock()
 	delete(f.processingTasks, taskID)
 	f.tasksMutex.Unlock()
-	logrus.Infof("✅ 任务已从处理队列移除: TaskID=%s", taskID)
+	logger.GetGlobalLogger("app/task").Infof("✅ 任务已从处理队列移除: TaskID=%s", taskID)
 }
 
 // OnTaskCompleted 实现 TaskCompletionNotifier 接口

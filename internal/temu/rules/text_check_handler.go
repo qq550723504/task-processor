@@ -1,4 +1,4 @@
-package rules
+﻿package rules
 
 import (
 	"fmt"
@@ -8,7 +8,6 @@ import (
 	temuquery "task-processor/internal/temu/api/query"
 	temucontext "task-processor/internal/temu/context"
 
-	"github.com/sirupsen/logrus"
 )
 
 // TextCheckHandler 文本检查处理器
@@ -79,7 +78,7 @@ func (h *TextCheckHandler) checkText(temuCtx *temucontext.TemuTaskContext, conte
 	}
 
 	// 创建QueryAPI
-	queryAPI := api.NewQueryAPI(temuCtx.APIClient, logrus.WithField("handler", "TextCheckHandler"))
+	queryAPI := api.NewQueryAPI(temuCtx.APIClient, logger.GetGlobalLogger("TextCheckHandler"))
 
 	// 构造请求
 	request := &temuquery.TextCheckRequest{

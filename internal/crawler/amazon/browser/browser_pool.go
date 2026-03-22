@@ -1,7 +1,8 @@
-// Package browser 提供Amazon浏览器池管理功能
+﻿// Package browser 提供Amazon浏览器池管理功能
 package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"sync"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // BrowserInstance 浏览器实例
@@ -77,7 +77,7 @@ func NewBrowserPool(cfg *config.Config, poolConfig *BrowserPoolConfig) *BrowserP
 	// 如果启用随机指纹，初始化指纹生成器
 	if bp.useRandomFingerprint {
 		bp.fingerprintGen = sharedbrowser.NewFingerprintGenerator()
-		logrus.Info("浏览器池启用随机指纹生成")
+		logger.GetGlobalLogger("crawler/amazon").Info("浏览器池启用随机指纹生成")
 	}
 
 	// 初始化各个管理器
@@ -96,12 +96,12 @@ func (bp *BrowserPool) Initialize() error {
 		poolSize = 1 // 默认值
 	}
 
-	logrus.Infof("初始化浏览器池，大小: %d", poolSize)
+	logger.GetGlobalLogger("crawler/amazon").Infof("初始化浏览器池，大小: %d", poolSize)
 
 	for i := 0; i < poolSize; i++ {
 		instance, err := bp.instanceManager.CreateInstance(i)
 		if err != nil {
-			logrus.Infof("创建浏览器实例 %d 失败: %v", i, err)
+			logger.GetGlobalLogger("crawler/amazon").Infof("创建浏览器实例 %d 失败: %v", i, err)
 			// 清理已创建的实例
 			bp.Shutdown()
 			return fmt.Errorf("初始化浏览器池失败: %w", err)
@@ -110,10 +110,10 @@ func (bp *BrowserPool) Initialize() error {
 		bp.instances = append(bp.instances, instance)
 		bp.available <- instance
 
-		logrus.Infof("浏览器实例 %d 创建成功", i)
+		logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例 %d 创建成功", i)
 	}
 
-	logrus.Infof("浏览器池初始化完成，共 %d 个实例", len(bp.instances))
+	logger.GetGlobalLogger("crawler/amazon").Infof("浏览器池初始化完成，共 %d 个实例", len(bp.instances))
 
 	// 启动健康检查例程 - 使用长期运行的context
 	if bp.poolConfig.HealthCheckEnabled {
@@ -141,7 +141,7 @@ func (bp *BrowserPool) Acquire() (*BrowserInstance, error) {
 		instance.Mu.Lock()
 		instance.InUse = true
 		instance.Mu.Unlock()
-		logrus.Infof("获取浏览器实例 %d", instance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Infof("获取浏览器实例 %d", instance.ID)
 		return instance, nil
 	case <-time.After(30 * time.Second):
 		return nil, fmt.Errorf("获取浏览器实例超时")
@@ -161,12 +161,12 @@ func (bp *BrowserPool) Release(instance *BrowserInstance) {
 	bp.Mu.Lock()
 	if bp.closed || bp.available == nil {
 		bp.Mu.Unlock()
-		logrus.Infof("浏览器池已关闭，无法释放实例 %d", instance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Infof("浏览器池已关闭，无法释放实例 %d", instance.ID)
 		return
 	}
 	bp.Mu.Unlock()
 
-	logrus.Infof("释放浏览器实例 %d", instance.ID)
+	logger.GetGlobalLogger("crawler/amazon").Infof("释放浏览器实例 %d", instance.ID)
 
 	// 使用 select 防止在关闭过程中阻塞
 	select {
@@ -174,7 +174,7 @@ func (bp *BrowserPool) Release(instance *BrowserInstance) {
 		// 成功释放
 	default:
 		// 通道已满或已关闭，忽略
-		logrus.Warnf("无法释放浏览器实例 %d，通道可能已满或已关闭", instance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("无法释放浏览器实例 %d，通道可能已满或已关闭", instance.ID)
 	}
 }
 
@@ -192,19 +192,19 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 	bp.Mu.Lock()
 	if bp.closed {
 		bp.Mu.Unlock()
-		logrus.Infof("浏览器池已关闭，无法释放实例 %d", instance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Infof("浏览器池已关闭，无法释放实例 %d", instance.ID)
 		return
 	}
 	bp.Mu.Unlock()
 
 	// 检测是否为风控或严重错误
 	if bp.errorDetector.IsBlockedOrSeriousError(err) {
-		logrus.Infof("检测到浏览器实例 %d 被风控或出现严重错误: %v", instance.ID, err)
+		logger.GetGlobalLogger("crawler/amazon").Infof("检测到浏览器实例 %d 被风控或出现严重错误: %v", instance.ID, err)
 		bp.instanceManager.RecreateInstanceAsync(instance)
 		return
 	}
 
-	logrus.Infof("释放浏览器实例 %d", instance.ID)
+	logger.GetGlobalLogger("crawler/amazon").Infof("释放浏览器实例 %d", instance.ID)
 
 	// 使用 select 防止在关闭过程中阻塞
 	select {
@@ -212,7 +212,7 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 		// 成功释放
 	default:
 		// 通道已满或已关闭，忽略
-		logrus.Warnf("无法释放浏览器实例 %d，通道可能已满或已关闭", instance.ID)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("无法释放浏览器实例 %d，通道可能已满或已关闭", instance.ID)
 	}
 }
 
@@ -224,7 +224,7 @@ func (bp *BrowserPool) RecreateInstanceSync(oldInstance *BrowserInstance) *Brows
 // Shutdown 关闭浏览器池
 func (bp *BrowserPool) Shutdown() {
 	bp.shutdownOnce.Do(func() {
-		logrus.Info("关闭浏览器池...")
+		logger.GetGlobalLogger("crawler/amazon").Info("关闭浏览器池...")
 
 		bp.Mu.Lock()
 		defer bp.Mu.Unlock()
@@ -248,7 +248,7 @@ func (bp *BrowserPool) Shutdown() {
 			bp.available = nil
 		}
 
-		logrus.Info("浏览器池已关闭")
+		logger.GetGlobalLogger("crawler/amazon").Info("浏览器池已关闭")
 	})
 }
 

@@ -1,7 +1,8 @@
-// Package openai 提供OpenAI API客户端功能
+﻿// Package openai 提供OpenAI API客户端功能
 package openai
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"task-processor/internal/pkg/ptr"
@@ -30,14 +31,14 @@ func NewClient(config *ClientConfig) *Client {
 	// 创建请求池
 	pool, err := NewRequestPool(poolConfig)
 	if err != nil {
-		logrus.Errorf("创建OpenAI请求池失败: %v", err)
+		logger.GetGlobalLogger("infra/clients").Errorf("创建OpenAI请求池失败: %v", err)
 		return nil
 	}
 
 	return &Client{
 		pool:   pool,
 		config: config,
-		logger: logrus.WithField("component", "OpenAIClient"),
+		logger: logger.GetGlobalLogger("OpenAIClient"),
 	}
 }
 

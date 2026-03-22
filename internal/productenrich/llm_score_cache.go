@@ -1,4 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
+﻿// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/pkg/hashx"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -91,7 +92,7 @@ func (c *llmScoreCache) getScore(ctx context.Context, cacheKey, metricLabel stri
 	if c.metrics != nil {
 		c.metrics.RecordCacheHit(metricLabel)
 	}
-	logrus.WithField("score", scoreData.Score).Debug("cache hit for score")
+	logger.GetGlobalLogger("productenrich/llm_score_cache.go").WithField("score", scoreData.Score).Debug("cache hit for score")
 	return scoreData.Score, true
 }
 
@@ -120,7 +121,7 @@ func (c *llmScoreCache) setScore(ctx context.Context, cacheKey, metricLabel stri
 		return err
 	}
 
-	logrus.WithFields(logrus.Fields{"score": score, "ttl": ttl}).Debug("cached score")
+	logger.GetGlobalLogger("productenrich/llm_score_cache.go").WithFields(logrus.Fields{"score": score, "ttl": ttl}).Debug("cached score")
 	return nil
 }
 

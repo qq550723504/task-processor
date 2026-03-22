@@ -1,14 +1,14 @@
-// Package browser 提供Amazon浏览器自动化的邮编输入处理功能
+﻿// Package browser 提供Amazon浏览器自动化的邮编输入处理功能
 package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // truncateString 截断字符串到指定长度
@@ -67,7 +67,7 @@ func (zih *ZipcodeInputHandler) SetZipcode(page playwright.Page, zipcode string)
 		return err
 	}
 
-	logrus.Infof("邮编设置操作完成")
+	logger.GetGlobalLogger("crawler/amazon").Infof("邮编设置操作完成")
 	return nil
 }
 
@@ -89,7 +89,7 @@ func (zih *ZipcodeInputHandler) checkSignInDialog(page playwright.Page) error {
 		locator := page.Locator(selector)
 		if count, err := locator.Count(); err == nil && count > 0 {
 			if isVisible, err := locator.IsVisible(); err == nil && isVisible {
-				logrus.Infof("检测到登录弹窗: %s", selector)
+				logger.GetGlobalLogger("crawler/amazon").Infof("检测到登录弹窗: %s", selector)
 				return fmt.Errorf("SIGN_IN_REQUIRED: 检测到需要登录才能更新位置，需要重建浏览器实例")
 			}
 		}
@@ -129,7 +129,7 @@ func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) er
 					return fmt.Errorf("页面在点击触发元素时被关闭: %w", err)
 				}
 			} else {
-				logrus.Infof("成功点击触发元素: %s", selector)
+				logger.GetGlobalLogger("crawler/amazon").Infof("成功点击触发元素: %s", selector)
 				triggered = true
 
 				// 等待弹窗出现(等待对话框或下拉框)
@@ -146,14 +146,14 @@ func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) er
 						State:   playwright.WaitForSelectorStateVisible,
 						Timeout: playwright.Float(3000),
 					}); err == nil {
-						logrus.Infof("弹窗已出现: %s", dialogSelector)
+						logger.GetGlobalLogger("crawler/amazon").Infof("弹窗已出现: %s", dialogSelector)
 						waitSuccess = true
 						break
 					}
 				}
 
 				if !waitSuccess {
-					logrus.Infof("等待弹窗超时,继续尝试")
+					logger.GetGlobalLogger("crawler/amazon").Infof("等待弹窗超时,继续尝试")
 				}
 
 				time.Sleep(1 * time.Second) // 额外等待确保弹窗完全加载
@@ -163,10 +163,10 @@ func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) er
 	}
 
 	if !triggered {
-		logrus.Infof("警告: 未找到任何可点击的触发元素")
+		logger.GetGlobalLogger("crawler/amazon").Infof("警告: 未找到任何可点击的触发元素")
 		// 在英语页面上，某些地区可能不需要设置邮编
 		if CheckIfPriceAvailable(page) {
-			logrus.Infof("页面已显示价格信息，可能不需要设置邮编，跳过")
+			logger.GetGlobalLogger("crawler/amazon").Infof("页面已显示价格信息，可能不需要设置邮编，跳过")
 			return nil
 		}
 
@@ -188,11 +188,11 @@ func (zih *ZipcodeInputHandler) handleCountrySelection(page playwright.Page, zip
 	// 根据邮编格式推断目标国家
 	targetCountry := inferCountryFromZipcode(zipcode)
 	if targetCountry == "" {
-		logrus.Infof("检测到国家选择框，但当前邮编 %s 不需要切换国家（可能是 IP 被误识别），跳过国家选择直接尝试填写邮编", zipcode)
+		logger.GetGlobalLogger("crawler/amazon").Infof("检测到国家选择框，但当前邮编 %s 不需要切换国家（可能是 IP 被误识别），跳过国家选择直接尝试填写邮编", zipcode)
 		return nil
 	}
 
-	logrus.Infof("检测到国家选择框，尝试选择国家: %s (邮编: %s)", targetCountry, zipcode)
+	logger.GetGlobalLogger("crawler/amazon").Infof("检测到国家选择框，尝试选择国家: %s (邮编: %s)", targetCountry, zipcode)
 
 	// 先通过 JS 获取匹配的 option value（避免对隐藏元素调用 Playwright 的 SelectOption 超时）
 	result, err := page.Evaluate(`(targetCountry) => {
@@ -230,7 +230,7 @@ func (zih *ZipcodeInputHandler) handleCountrySelection(page playwright.Page, zip
 		return fmt.Errorf("设置国家值失败: %w", err)
 	}
 
-	logrus.Infof("成功选择国家: %s (value: %s)", targetCountry, countryValue)
+	logger.GetGlobalLogger("crawler/amazon").Infof("成功选择国家: %s (value: %s)", targetCountry, countryValue)
 	time.Sleep(1 * time.Second)
 	return nil
 }
@@ -256,7 +256,7 @@ func (zih *ZipcodeInputHandler) handleZipcodeInput(page playwright.Page, zipcode
 	// 遍历所有策略，找到第一个可以处理的策略
 	for _, strategy := range zih.strategies {
 		if strategy.CanHandle(page, zipcode) {
-			logrus.Infof("使用策略: %s", strategy.GetName())
+			logger.GetGlobalLogger("crawler/amazon").Infof("使用策略: %s", strategy.GetName())
 			return strategy.Handle(page, zipcode)
 		}
 	}
@@ -303,14 +303,14 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 				// 双重检查:确保不是购物车相关按钮
 				if text, err := locator.TextContent(); err == nil {
 					lowerText := strings.ToLower(strings.TrimSpace(text))
-					logrus.Infof("检查Apply按钮文本: '%s' (选择器: %s)", text, selector)
+					logger.GetGlobalLogger("crawler/amazon").Infof("检查Apply按钮文本: '%s' (选择器: %s)", text, selector)
 
 					// 严格排除购物车相关按钮
 					if strings.Contains(lowerText, "cart") ||
 						strings.Contains(lowerText, "buy") ||
 						strings.Contains(lowerText, "add to") ||
 						strings.Contains(lowerText, "purchase") {
-						logrus.Infof("跳过购物车相关按钮: %s", text)
+						logger.GetGlobalLogger("crawler/amazon").Infof("跳过购物车相关按钮: %s", text)
 						continue
 					}
 
@@ -319,7 +319,7 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 
 				applyButton = locator
 				selectedSelector = selector
-				logrus.Infof("找到Apply按钮: %s (文本: %s)", selector, buttonText)
+				logger.GetGlobalLogger("crawler/amazon").Infof("找到Apply按钮: %s (文本: %s)", selector, buttonText)
 				break
 			}
 		}
@@ -327,7 +327,7 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 
 	if applyButton == nil {
 		// 如果没有找到Apply按钮，尝试按回车键
-		logrus.Infof("未找到Apply按钮,尝试按回车键")
+		logger.GetGlobalLogger("crawler/amazon").Infof("未找到Apply按钮,尝试按回车键")
 		if err := page.Keyboard().Press("Enter"); err != nil {
 			if page.IsClosed() {
 				return fmt.Errorf("页面在按回车键时被关闭: %w", err)
@@ -336,18 +336,18 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 		}
 	} else {
 		// 点击Apply按钮
-		logrus.Infof("准备点击Apply按钮: %s", selectedSelector)
+		logger.GetGlobalLogger("crawler/amazon").Infof("准备点击Apply按钮: %s", selectedSelector)
 		if err := applyButton.Click(); err != nil {
 			if page.IsClosed() {
 				return fmt.Errorf("页面在点击Apply按钮时被关闭: %w", err)
 			}
 			return fmt.Errorf("点击Apply按钮失败: %w", err)
 		}
-		logrus.Infof("成功点击Apply按钮")
+		logger.GetGlobalLogger("crawler/amazon").Infof("成功点击Apply按钮")
 	}
 
 	// 等待Apply按钮处理完成，等待页面更新
-	logrus.Infof("等待Apply按钮处理完成，等待页面更新...")
+	logger.GetGlobalLogger("crawler/amazon").Infof("等待Apply按钮处理完成，等待页面更新...")
 	time.Sleep(2 * time.Second)
 
 	// 检查页面状态
@@ -356,15 +356,15 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 	}
 
 	// 尝试关闭可能存在的任何对话框（Cookie对话框、邮编确认对话框等）
-	logrus.Infof("尝试关闭可能存在的对话框...")
+	logger.GetGlobalLogger("crawler/amazon").Infof("尝试关闭可能存在的对话框...")
 	for i := 0; i < 3; i++ {
 		if err := page.Keyboard().Press("Escape"); err == nil {
-			logrus.Infof("已按 ESC 键 (第%d次)", i+1)
+			logger.GetGlobalLogger("crawler/amazon").Infof("已按 ESC 键 (第%d次)", i+1)
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
 
-	logrus.Infof("邮编设置操作完成，等待页面稳定...")
+	logger.GetGlobalLogger("crawler/amazon").Infof("邮编设置操作完成，等待页面稳定...")
 	time.Sleep(2 * time.Second)
 
 	return nil

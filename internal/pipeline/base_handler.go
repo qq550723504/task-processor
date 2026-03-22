@@ -1,7 +1,11 @@
-// Package pipeline 提供公共处理器基础实现
+﻿// Package pipeline 提供公共处理器基础实现
 package pipeline
 
-import "github.com/sirupsen/logrus"
+import (
+	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
+)
 
 // BaseHandler 提供处理器名称和日志的最小公共实现，通过嵌入复用。
 type BaseHandler struct {
@@ -13,7 +17,7 @@ type BaseHandler struct {
 func NewBaseHandler(name string) *BaseHandler {
 	return &BaseHandler{
 		name:   name,
-		logger: logrus.WithField("handler", name),
+		logger: logger.GetGlobalLogger("pipeline/base_handler.go").WithField("handler", name),
 	}
 }
 

@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ type ProductNameValidator struct {
 // NewProductNameValidator 创建新的产品名称验证器
 func NewProductNameValidator() *ProductNameValidator {
 	return &ProductNameValidator{
-		logger:    logrus.WithField("handler", "ProductNameValidator"),
+		logger:    logger.GetGlobalLogger("ProductNameValidator"),
 		optimizer: NewProductNameOptimizer(),
 	}
 }

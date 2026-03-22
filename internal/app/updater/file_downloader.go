@@ -1,7 +1,8 @@
-// Package updater 提供自动更新器的文件下载功能
+﻿// Package updater 提供自动更新器的文件下载功能
 package updater
 
 import (
+	"task-processor/internal/core/logger"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
@@ -14,7 +15,6 @@ import (
 	"task-processor/internal/pkg/strx"
 	"time"
 
-	"github.com/sirupsen/logrus"
 )
 
 // FileDownloader 文件下载器
@@ -31,7 +31,7 @@ func NewFileDownloader(insecureSkipVerify bool) *FileDownloader {
 
 // DownloadFile 下载文件并验证哈希
 func (fd *FileDownloader) DownloadFile(url, destPath, expectedHash string) error {
-	logrus.Infof("开始下载: %s", url)
+	logger.GetGlobalLogger("app/updater").Infof("开始下载: %s", url)
 
 	// 创建带超时的HTTP客户端（使用系统代理设置）
 	transport := &http.Transport{
@@ -60,7 +60,7 @@ func (fd *FileDownloader) DownloadFile(url, destPath, expectedHash string) error
 	// 获取文件大小
 	contentLength := resp.ContentLength
 	if contentLength > 0 {
-		logrus.Infof("文件大小: %.2f MB", float64(contentLength)/(1024*1024))
+		logger.GetGlobalLogger("app/updater").Infof("文件大小: %.2f MB", float64(contentLength)/(1024*1024))
 	}
 
 	// 创建临时文件
@@ -83,7 +83,7 @@ func (fd *FileDownloader) DownloadFile(url, destPath, expectedHash string) error
 		return fmt.Errorf("写入文件失败: %w", err)
 	}
 
-	logrus.Infof("下载完成: %.2f MB", float64(written)/(1024*1024))
+	logger.GetGlobalLogger("app/updater").Infof("下载完成: %.2f MB", float64(written)/(1024*1024))
 
 	// 验证哈希
 	downloadedHash := hex.EncodeToString(hash.Sum(nil))
@@ -92,7 +92,7 @@ func (fd *FileDownloader) DownloadFile(url, destPath, expectedHash string) error
 		return fmt.Errorf("文件哈希不匹配: 期望 %s, 实际 %s", expectedHash, downloadedHash)
 	}
 
-	logrus.Info("文件校验通过")
+	logger.GetGlobalLogger("app/updater").Info("文件校验通过")
 	return nil
 }
 
@@ -102,18 +102,18 @@ func (fd *FileDownloader) DownloadWithRetry(url, destPath, expectedHash string, 
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		if attempt > 1 {
-			logrus.Infof("重试下载 (第 %d/%d 次)...", attempt, maxRetries)
+			logger.GetGlobalLogger("app/updater").Infof("重试下载 (第 %d/%d 次)...", attempt, maxRetries)
 			time.Sleep(time.Duration(attempt) * 2 * time.Second) // 递增延迟
 		}
 
 		err := fd.DownloadFile(url, destPath, expectedHash)
 		if err == nil {
-			logrus.Info("文件下载并校验成功")
+			logger.GetGlobalLogger("app/updater").Info("文件下载并校验成功")
 			return nil
 		}
 
 		lastErr = err
-		logrus.Errorf("下载失败 (第 %d/%d 次): %v", attempt, maxRetries, err)
+		logger.GetGlobalLogger("app/updater").Errorf("下载失败 (第 %d/%d 次): %v", attempt, maxRetries, err)
 	}
 
 	return fmt.Errorf("下载失败，已重试 %d 次: %w", maxRetries, lastErr)
@@ -142,7 +142,7 @@ func (fd *FileDownloader) copyWithProgress(dst io.Writer, src io.Reader, total i
 			// 每5秒输出一次进度
 			if total > 0 && time.Since(lastLog) > 5*time.Second {
 				progress := float64(written) / float64(total) * 100
-				logrus.Infof("下载进度: %.2f%% (%.2f/%.2f MB)",
+				logger.GetGlobalLogger("app/updater").Infof("下载进度: %.2f%% (%.2f/%.2f MB)",
 					progress,
 					float64(written)/(1024*1024),
 					float64(total)/(1024*1024))

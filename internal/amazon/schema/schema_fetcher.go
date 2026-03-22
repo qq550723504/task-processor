@@ -1,4 +1,4 @@
-package schema
+﻿package schema
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/pkg/httpclient"
 	"task-processor/internal/pkg/jsonx"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,7 +25,7 @@ type SchemaFetcher struct {
 func NewSchemaFetcher() *SchemaFetcher {
 	return &SchemaFetcher{
 		httpClient: httpclient.NewSimple(),
-		logger:     logrus.WithField("component", "SchemaFetcher"),
+		logger:     logger.GetGlobalLogger("SchemaFetcher"),
 	}
 }
 

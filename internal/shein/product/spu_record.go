@@ -1,12 +1,12 @@
-package product
+﻿package product
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/pkg/skugen"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
 
-	"github.com/sirupsen/logrus"
 )
 
 // HasSpuRecordHandler 检查SPU发布记录处理器
@@ -39,7 +39,7 @@ func (h *HasSpuRecordHandler) Handle(ctx *shein.TaskContext) error {
 	const batchSize = 1000
 	totalBatches := (len(skuList) + batchSize - 1) / batchSize
 
-	logrus.Infof("开始检查SPU发布记录，共 %d 个SKU，分 %d 批处理", len(skuList), totalBatches)
+	logger.GetGlobalLogger("shein/product").Infof("开始检查SPU发布记录，共 %d 个SKU，分 %d 批处理", len(skuList), totalBatches)
 
 	// 分批查询
 	for i := 0; i < len(skuList); i += batchSize {
@@ -51,7 +51,7 @@ func (h *HasSpuRecordHandler) Handle(ctx *shein.TaskContext) error {
 		batchSkuList := skuList[i:end]
 		batchNum := i/batchSize + 1
 
-		logrus.Infof("处理第 %d/%d 批，SKU数量: %d", batchNum, totalBatches, len(batchSkuList))
+		logger.GetGlobalLogger("shein/product").Infof("处理第 %d/%d 批，SKU数量: %d", batchNum, totalBatches, len(batchSkuList))
 
 		// 构建请求参数
 		request := &product.ProductRecordRequest{
@@ -78,13 +78,13 @@ func (h *HasSpuRecordHandler) Handle(ctx *shein.TaskContext) error {
 		// 检查是否已存在发布记录
 		if len(response.Info.Data) > 0 {
 			// 记录警告信息，并返回不可重试错误以终止任务
-			logrus.Warnf("检测到已存在发布记录 (批次 %d/%d)，任务将被终止: %v", batchNum, totalBatches, response.Info.Data)
+			logger.GetGlobalLogger("shein/product").Warnf("检测到已存在发布记录 (批次 %d/%d)，任务将被终止: %v", batchNum, totalBatches, response.Info.Data)
 			// 返回不可重试错误，终止任务且不重试
 			return shein.NewNonRetryableError("已存在发布记录", nil)
 		}
 	}
 
-	logrus.Infof("SPU发布记录检查完成，未发现重复记录")
+	logger.GetGlobalLogger("shein/product").Infof("SPU发布记录检查完成，未发现重复记录")
 	return nil
 }
 

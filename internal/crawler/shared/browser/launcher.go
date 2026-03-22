@@ -1,12 +1,12 @@
-package browser
+﻿package browser
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // BrowserConfig 浏览器配置
@@ -150,16 +150,16 @@ func CreateLaunchOptions(cfg *BrowserConfig, fingerprint *FingerprintConfig) pla
 	if cfg.BrowserPath != "" {
 		if _, err := os.Stat(cfg.BrowserPath); err == nil {
 			launchOptions.ExecutablePath = &cfg.BrowserPath
-			logrus.Infof("使用指定浏览器: %s", cfg.BrowserPath)
+			logger.GetGlobalLogger("crawler/shared").Infof("使用指定浏览器: %s", cfg.BrowserPath)
 		} else {
-			logrus.Warnf("浏览器路径不存在: %s，使用默认浏览器", cfg.BrowserPath)
+			logger.GetGlobalLogger("crawler/shared").Warnf("浏览器路径不存在: %s，使用默认浏览器", cfg.BrowserPath)
 		}
 	}
 
 	// 设置代理
 	if cfg.ProxyServer != "" {
 		launchOptions.Proxy = &playwright.Proxy{Server: cfg.ProxyServer}
-		logrus.Infof("使用代理: %s", cfg.ProxyServer)
+		logger.GetGlobalLogger("crawler/shared").Infof("使用代理: %s", cfg.ProxyServer)
 	}
 
 	return launchOptions

@@ -1,4 +1,4 @@
-// Package listing 提供Amazon基础属性构建功能
+﻿// Package listing 提供Amazon基础属性构建功能
 package listing
 
 import (
@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/amazon/model"
 	"task-processor/internal/amazon/schema"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -17,7 +18,7 @@ type BasicAttributeBuilder struct {
 // NewBasicAttributeBuilder 创建基础属性构建器
 func NewBasicAttributeBuilder() *BasicAttributeBuilder {
 	return &BasicAttributeBuilder{
-		logger: logrus.WithField("component", "BasicAttributeBuilder"),
+		logger: logger.GetGlobalLogger("BasicAttributeBuilder"),
 	}
 }
 

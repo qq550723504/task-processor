@@ -1,4 +1,4 @@
-package rules
+﻿package rules
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -31,7 +32,7 @@ type BulletPointValidationResult struct {
 // NewBulletPointsValidator 创建新的产品要点验证器
 func NewBulletPointsValidator() *BulletPointsValidator {
 	return &BulletPointsValidator{
-		logger:    logrus.WithField("handler", "BulletPointsValidator"),
+		logger:    logger.GetGlobalLogger("BulletPointsValidator"),
 		optimizer: NewBulletPointsOptimizer(),
 	}
 }

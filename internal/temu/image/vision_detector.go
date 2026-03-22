@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台Vision API检测功能
+﻿// Package image 提供TEMU平台Vision API检测功能
 package image
 
 import (
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
@@ -24,7 +25,7 @@ type VisionDetector struct {
 // NewVisionDetector 创建Vision检测器
 func NewVisionDetector(client *openaiClient.Client) *VisionDetector {
 	return &VisionDetector{
-		logger:       logrus.WithField("component", "VisionDetector"),
+		logger:       logger.GetGlobalLogger("VisionDetector"),
 		openaiClient: client,
 	}
 }

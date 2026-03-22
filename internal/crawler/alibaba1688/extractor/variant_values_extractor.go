@@ -1,12 +1,12 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // VariantValuesExtractor 变体值提取器
@@ -132,7 +132,7 @@ func (vve *VariantValuesExtractor) Extract(page playwright.Page, product *model.
 	}`, nil)
 
 	if err != nil {
-		logrus.Debugf("提取变体值失败: %v", err)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取变体值失败: %v", err)
 		return err
 	}
 
@@ -175,7 +175,7 @@ func (vve *VariantValuesExtractor) Extract(page playwright.Page, product *model.
 	}
 
 	product.VariationsValues = variationValues
-	logrus.Debugf("提取到 %d 个变体值", len(variationValues))
+	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取到 %d 个变体值", len(variationValues))
 
 	return nil
 }

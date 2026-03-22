@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,7 +19,7 @@ type BrandClearHandler struct {
 // NewBrandClearHandler 创建品牌清除处理器
 func NewBrandClearHandler() *BrandClearHandler {
 	return &BrandClearHandler{
-		logger: logrus.WithField("handler", "brand_clear"),
+		logger: logger.GetGlobalLogger("brand_clear"),
 	}
 }
 

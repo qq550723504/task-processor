@@ -1,4 +1,4 @@
-package listing
+﻿package listing
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"task-processor/internal/amazon/api"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ type ProductTypeRecommendationService struct {
 func NewProductTypeRecommendationService(apiClient *api.Client) *ProductTypeRecommendationService {
 	return &ProductTypeRecommendationService{
 		apiClient: apiClient,
-		logger:    logrus.WithField("service", "ProductTypeRecommendationService"),
+		logger:    logger.GetGlobalLogger("ProductTypeRecommendationService"),
 	}
 }
 

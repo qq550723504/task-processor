@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台图片上传辅助方法
+﻿// Package image 提供TEMU平台图片上传辅助方法
 package image
 
 import (
@@ -7,6 +7,7 @@ import (
 	temuimage "task-processor/internal/temu/api/image"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,7 +19,7 @@ type ImageUploadHelpers struct {
 // NewImageUploadHelpers 创建新的图片上传辅助工具
 func NewImageUploadHelpers() *ImageUploadHelpers {
 	return &ImageUploadHelpers{
-		logger: logrus.WithField("component", "ImageUploadHelpers"),
+		logger: logger.GetGlobalLogger("ImageUploadHelpers"),
 	}
 }
 

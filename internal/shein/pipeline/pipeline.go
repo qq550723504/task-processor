@@ -1,6 +1,7 @@
-package pipeline
+﻿package pipeline
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/core/config"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/category"
@@ -47,26 +48,26 @@ func (p *Pipeline) Handlers() []shein.StepHandler {
 
 // Process 执行管道处理
 func (p *Pipeline) Process(ctx *shein.TaskContext) error {
-	logrus.Infof("开始执行任务处理管道，共 %d 个步骤", len(p.handlers))
+	logger.GetGlobalLogger("shein/pipeline").Infof("开始执行任务处理管道，共 %d 个步骤", len(p.handlers))
 
 	for i, handler := range p.handlers {
 		stepNum := i + 1
-		logrus.Infof("开始执行步骤 [%d/%d]: %s", stepNum, len(p.handlers), handler.Name())
+		logger.GetGlobalLogger("shein/pipeline").Infof("开始执行步骤 [%d/%d]: %s", stepNum, len(p.handlers), handler.Name())
 
 		if err := handler.Handle(ctx); err != nil {
 			// 区分业务过滤和真正的错误
 			if shein.IsFilteredError(err) {
-				logrus.Infof("✓ 步骤过滤 [%d/%d] [%s]: %v", stepNum, len(p.handlers), handler.Name(), err)
+				logger.GetGlobalLogger("shein/pipeline").Infof("✓ 步骤过滤 [%d/%d] [%s]: %v", stepNum, len(p.handlers), handler.Name(), err)
 			} else {
-				logrus.Errorf("步骤执行失败 [%d/%d] [%s]: %v", stepNum, len(p.handlers), handler.Name(), err)
+				logger.GetGlobalLogger("shein/pipeline").Errorf("步骤执行失败 [%d/%d] [%s]: %v", stepNum, len(p.handlers), handler.Name(), err)
 			}
 			return err
 		}
 
-		logrus.Infof("步骤执行完成 [%d/%d]: %s", stepNum, len(p.handlers), handler.Name())
+		logger.GetGlobalLogger("shein/pipeline").Infof("步骤执行完成 [%d/%d]: %s", stepNum, len(p.handlers), handler.Name())
 	}
 
-	logrus.Info("任务处理管道执行完成")
+	logger.GetGlobalLogger("shein/pipeline").Info("任务处理管道执行完成")
 	return nil
 }
 

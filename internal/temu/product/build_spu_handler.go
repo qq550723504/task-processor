@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/handlerbase"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,7 +23,7 @@ type BuildSpuHandler struct {
 
 // NewBuildSpuHandler 创建新的SPU构建处理器
 func NewBuildSpuHandler(openaiConfig *openaiClient.ClientConfig, profitRuleClient api.ProfitRuleAPI, skuBuilder handlerbase.SkuBuilder, specHandler handlerbase.SpecHandler) *BuildSpuHandler {
-	logger := logrus.WithField("handler", "build_spu")
+	logger := logger.GetGlobalLogger("build_spu")
 	return &BuildSpuHandler{
 		logger:       logger,
 		builder:      NewSpuBuilder(logger, openaiConfig, profitRuleClient, skuBuilder, specHandler),

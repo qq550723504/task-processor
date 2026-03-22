@@ -1,12 +1,12 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // ProductExtractor 1688产品数据提取器
@@ -58,7 +58,7 @@ func NewProductExtractor() *ProductExtractor {
 
 // ExtractProductFromPage 从Playwright页面提取产品信息
 func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url string) (*model.Product1688, error) {
-	logrus.Infof("开始提取1688产品信息: %s", url)
+	logger.GetGlobalLogger("crawler/alibaba1688").Infof("开始提取1688产品信息: %s", url)
 
 	product := &model.Product1688{
 		URL:       url,
@@ -86,7 +86,7 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 
 	for _, extractor := range optimizedExtractors {
 		if err := extractor.Extract(page, product); err != nil {
-			logrus.Warnf("优化提取器执行失败: %v", err)
+			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("优化提取器执行失败: %v", err)
 		}
 	}
 
@@ -95,27 +95,27 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 
 	// 3. 如果仍然缺失信息，使用传统提取器作为最后备选
 	if product.Title == "" {
-		logrus.Debug("标题仍然缺失，使用传统标题提取器")
+		logger.GetGlobalLogger("crawler/alibaba1688").Debug("标题仍然缺失，使用传统标题提取器")
 		if err := pe.titleExtractor.Extract(page, product); err != nil {
-			logrus.Warnf("传统标题提取器失败: %v", err)
+			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("传统标题提取器失败: %v", err)
 		}
 	}
 
 	if len(product.Variants) == 0 && product.MinPrice == 0 {
-		logrus.Debug("价格信息缺失，使用传统价格提取器")
+		logger.GetGlobalLogger("crawler/alibaba1688").Debug("价格信息缺失，使用传统价格提取器")
 		if err := pe.priceExtractor.Extract(page, product); err != nil {
-			logrus.Warnf("传统价格提取器失败: %v", err)
+			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("传统价格提取器失败: %v", err)
 		}
 	}
 
 	if len(product.Specifications) == 0 {
-		logrus.Debug("属性信息缺失，使用传统规格提取器")
+		logger.GetGlobalLogger("crawler/alibaba1688").Debug("属性信息缺失，使用传统规格提取器")
 		if err := pe.specificationExtractor.Extract(page, product); err != nil {
-			logrus.Warnf("传统规格提取器失败: %v", err)
+			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("传统规格提取器失败: %v", err)
 		}
 	}
 
-	logrus.Infof("成功提取产品信息: %s", product.Title)
+	logger.GetGlobalLogger("crawler/alibaba1688").Infof("成功提取产品信息: %s", product.Title)
 	return product, nil
 }
 
@@ -133,7 +133,7 @@ func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) {
 			Timeout: playwright.Float(5000), // 5秒超时
 		})
 		if err != nil {
-			logrus.Debugf("等待元素 %s 超时，继续尝试其他元素", selector)
+			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("等待元素 %s 超时，继续尝试其他元素", selector)
 			continue
 		}
 		break
@@ -147,21 +147,21 @@ func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) {
 		return typeof window.__INIT_DATA !== 'undefined' && window.__INIT_DATA !== null;
 	}`)
 	if err == nil {
-		logrus.Debugf("页面__INIT_DATA存在: %v", hasInitData)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("页面__INIT_DATA存在: %v", hasInitData)
 	}
 
 	hasContext, err := page.Evaluate(`() => {
 		return typeof window.context !== 'undefined' && window.context !== null;
 	}`)
 	if err == nil {
-		logrus.Debugf("页面context存在: %v", hasContext)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("页面context存在: %v", hasContext)
 	}
 
 	// 检查页面标题和URL
 	title, _ := page.Title()
 	url := page.URL()
-	logrus.Debugf("当前页面标题: %s", title)
-	logrus.Debugf("当前页面URL: %s", url)
+	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("当前页面标题: %s", title)
+	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("当前页面URL: %s", url)
 
 	// 检查页面是否包含商品信息
 	hasProductInfo, err := page.Evaluate(`() => {
@@ -190,6 +190,6 @@ func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) {
 		return false;
 	}`)
 	if err == nil {
-		logrus.Debugf("页面包含商品信息: %v", hasProductInfo)
+		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("页面包含商品信息: %v", hasProductInfo)
 	}
 }

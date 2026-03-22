@@ -1,4 +1,4 @@
-// Package amazon 提供Amazon处理器包装功能
+﻿// Package amazon 提供Amazon处理器包装功能
 package amazon
 
 import (
@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/model"
 	"time"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ type ProcessorWrapper struct {
 func NewProcessorWrapper(processor *AmazonProcessor) *ProcessorWrapper {
 	return &ProcessorWrapper{
 		processor: processor,
-		logger:    logrus.WithField("component", "ProcessorWrapper"),
+		logger:    logger.GetGlobalLogger("ProcessorWrapper"),
 	}
 }
 

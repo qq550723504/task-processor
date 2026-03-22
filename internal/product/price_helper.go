@@ -1,12 +1,12 @@
-// Package product 提供产品相关的公共工具函数
+﻿// Package product 提供产品相关的公共工具函数
 package product
 
 import (
+	"task-processor/internal/core/logger"
 	"regexp"
 	"strconv"
 	"task-processor/internal/model"
 
-	"github.com/sirupsen/logrus"
 )
 
 // GetProductPrice 根据价格类型获取Amazon产品价格（包含运费）
@@ -14,7 +14,7 @@ import (
 func GetProductPrice(amazonProduct *model.Product, priceType string) float64 {
 	// 空指针检查
 	if amazonProduct == nil {
-		logrus.Warn("⚠️ GetProductPrice 接收到 nil 产品指针，返回价格 0")
+		logger.GetGlobalLogger("product/price_helper.go").Warn("⚠️ GetProductPrice 接收到 nil 产品指针，返回价格 0")
 		return 0
 	}
 
@@ -54,7 +54,7 @@ func GetFreight(amazonProduct *model.Product) float64 {
 func GetInventory(amazonProduct *model.Product) int {
 	// 空指针检查
 	if amazonProduct == nil {
-		logrus.Warn("⚠️ GetInventory 接收到 nil 产品指针，返回库存 0")
+		logger.GetGlobalLogger("product/price_helper.go").Warn("⚠️ GetInventory 接收到 nil 产品指针，返回库存 0")
 		return 0
 	}
 

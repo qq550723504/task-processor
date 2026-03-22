@@ -1,4 +1,4 @@
-// package scheduler 提供SHEIN平台自动核价任务适配器
+﻿// package scheduler 提供SHEIN平台自动核价任务适配器
 package scheduler
 
 import (
@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/shein/api/pricing"
 	sheinpricing "task-processor/internal/shein/pricing"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,9 +22,7 @@ type SheinAutoPricingAdapter struct {
 func NewSheinAutoPricingAdapter(pricingService sheinpricing.AutoPricingService) *SheinAutoPricingAdapter {
 	return &SheinAutoPricingAdapter{
 		pricingService: pricingService,
-		logger: logrus.WithFields(logrus.Fields{
-			"component": "SheinAutoPricingAdapter",
-		}),
+		logger: logger.GetGlobalLogger("SheinAutoPricingAdapter"),
 	}
 }
 

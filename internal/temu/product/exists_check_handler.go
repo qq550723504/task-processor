@@ -1,4 +1,4 @@
-package product
+﻿package product
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,7 +19,7 @@ type ProductExistsCheckHandler struct {
 // NewProductExistsCheckHandler 创建新的产品存在性检查处理器
 func NewProductExistsCheckHandler(mappingClient api.ProductImportMappingAPI) *ProductExistsCheckHandler {
 	return &ProductExistsCheckHandler{
-		logger:        logrus.WithField("handler", "ProductExistsCheckHandler"),
+		logger:        logger.GetGlobalLogger("ProductExistsCheckHandler"),
 		mappingClient: mappingClient,
 	}
 }

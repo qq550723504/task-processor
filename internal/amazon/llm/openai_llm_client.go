@@ -1,10 +1,11 @@
-package llm
+﻿package llm
 
 import (
 	"context"
 	"fmt"
 	"task-processor/internal/infra/clients/openai"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ func NewOpenAILLMClient(client *openai.Client) *OpenAILLMClient {
 	return &OpenAILLMClient{
 		client: client,
 		model:  client.GetDefaultModel(),
-		logger: logrus.WithField("service", "OpenAILLMClient"),
+		logger: logger.GetGlobalLogger("OpenAILLMClient"),
 	}
 }
 

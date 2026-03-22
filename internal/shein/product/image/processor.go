@@ -1,7 +1,8 @@
-// Package image 提供SHEIN平台的各种处理模块，包括图片处理、上传等功能
+﻿// Package image 提供SHEIN平台的各种处理模块，包括图片处理、上传等功能
 package image
 
 import (
+	"task-processor/internal/core/logger"
 	"bytes"
 	"fmt"
 	"image"
@@ -14,7 +15,6 @@ import (
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
 
-	"github.com/sirupsen/logrus"
 )
 
 // ImageProcessor 图片处理器
@@ -86,7 +86,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			logrus.Debugf("处理图片URL[%d]: %s", index, url)
+			logger.GetGlobalLogger("shein/product").Debugf("处理图片URL[%d]: %s", index, url)
 
 			// 下载、处理并上传图片
 			uploadedURL, err := ctx.ImageAPI.DownloadAndUploadImage(url)
@@ -108,7 +108,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			logrus.Info("并行提取色块图")
+			logger.GetGlobalLogger("shein/product").Info("并行提取色块图")
 			colorBlockData, err := p.extractColorBlockImage(images[0])
 
 			resultChan <- shein.ImageUploadResult{
@@ -122,7 +122,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 
 	// 等待结果
 	go func() {
-		defer recovery.Recover("等待结果", logrus.WithField("component", "ImageProcessor"))
+		defer recovery.Recover("等待结果", logger.GetGlobalLogger("ImageProcessor"))
 		wg.Wait()
 		close(resultChan)
 	}()
@@ -151,7 +151,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 		}
 	}
 	if len(uploadErrors) > 0 {
-		logrus.Warnf("部分图片上传失败: %s", strings.Join(uploadErrors, "; "))
+		logger.GetGlobalLogger("shein/product").Warnf("部分图片上传失败: %s", strings.Join(uploadErrors, "; "))
 		if uploadResults[0].Err != nil {
 			return product.ImageInfo{}, fmt.Errorf("主图上传失败: %w", uploadResults[0].Err)
 		}
@@ -186,7 +186,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 				ImageSort: totalImageSort,
 			})
 			mainImageProcessed = true
-			logrus.Infof("✅ 主图处理完成，ImageSort=1, ImageType=1, URL: %s", r.URL)
+			logger.GetGlobalLogger("shein/product").Infof("✅ 主图处理完成，ImageSort=1, ImageType=1, URL: %s", r.URL)
 		} else if !mainImageProcessed {
 			// 如果第一张图片失败，将第一张成功的图片作为主图
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, product.ImageDetail{
@@ -206,7 +206,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 				ImageSort: totalImageSort,
 			})
 			mainImageProcessed = true
-			logrus.Warnf("⚠️ 原主图失败，使用第%d张图片作为主图，ImageSort=1, ImageType=1, URL: %s", i+1, r.URL)
+			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 原主图失败，使用第%d张图片作为主图，ImageSort=1, ImageType=1, URL: %s", i+1, r.URL)
 		} else {
 			// 其他图片（类型2）
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, product.ImageDetail{
@@ -219,14 +219,14 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 				SizeImgFlag:          false,
 				TransformCVSizeImage: false,
 			})
-			logrus.Debugf("✅ 副图处理完成，ImageSort=%d, ImageType=2, URL: %s", currentImageSort, r.URL)
+			logger.GetGlobalLogger("shein/product").Debugf("✅ 副图处理完成，ImageSort=%d, ImageType=2, URL: %s", currentImageSort, r.URL)
 			currentImageSort++
 		}
 	}
 
 	// 验证主图是否已处理
 	if !mainImageProcessed {
-		logrus.Errorf("❌ 严重错误：没有成功处理任何主图，这将导致发布失败")
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 严重错误：没有成功处理任何主图，这将导致发布失败")
 		return product.ImageInfo{}, fmt.Errorf("没有成功上传任何图片作为主图")
 	}
 
@@ -235,7 +235,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 
 		colorBlockURL, err := ctx.ImageAPI.UploadOriginalImage(colorBlockResult.ColorData)
 		if err != nil {
-			logrus.Warnf("上传色块图失败: %v，回退为主图", err)
+			logger.GetGlobalLogger("shein/product").Warnf("上传色块图失败: %v，回退为主图", err)
 			colorBlockURL = mainImageURL
 		}
 		if colorBlockURL != "" {
@@ -246,7 +246,7 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 			})
 		}
 	} else if colorBlockResult != nil && colorBlockResult.Err != nil {
-		logrus.Warnf("提取色块图失败: %v，回退为主图", colorBlockResult.Err)
+		logger.GetGlobalLogger("shein/product").Warnf("提取色块图失败: %v，回退为主图", colorBlockResult.Err)
 		if mainImageURL != "" {
 			imageInfo.ImageInfoList = append(imageInfo.ImageInfoList, product.ImageDetail{
 				ImageURL:  mainImageURL,
@@ -258,11 +258,11 @@ func (p *ImageProcessor) BuildImageInfo(ctx *shein.TaskContext, images []string)
 
 	// 最终验证图片排序
 	if err := p.validateImageSorting(&imageInfo); err != nil {
-		logrus.Errorf("❌ 图片排序验证失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 图片排序验证失败: %v", err)
 		return product.ImageInfo{}, fmt.Errorf("图片排序验证失败: %w", err)
 	}
 
-	logrus.Infof("🎉 图片信息构建完成，共%d张图片", len(imageInfo.ImageInfoList))
+	logger.GetGlobalLogger("shein/product").Infof("🎉 图片信息构建完成，共%d张图片", len(imageInfo.ImageInfoList))
 	return imageInfo, nil
 }
 
@@ -287,10 +287,10 @@ func (p *ImageProcessor) validateImageSorting(imageInfo *product.ImageInfo) erro
 
 			// 主图排序必须为1
 			if img.ImageSort != 1 {
-				logrus.Errorf("❌ 主图排序错误：期望=1，实际=%d，正在修复...", img.ImageSort)
+				logger.GetGlobalLogger("shein/product").Errorf("❌ 主图排序错误：期望=1，实际=%d，正在修复...", img.ImageSort)
 				imageInfo.ImageInfoList[i].ImageSort = 1
 				mainImageSort = 1
-				logrus.Infof("✅ 主图排序已修复为1")
+				logger.GetGlobalLogger("shein/product").Infof("✅ 主图排序已修复为1")
 			}
 		}
 
@@ -313,13 +313,13 @@ func (p *ImageProcessor) validateImageSorting(imageInfo *product.ImageInfo) erro
 		return fmt.Errorf("主图排序必须为1，当前为: %d", mainImageSort)
 	}
 
-	logrus.Infof("✅ 图片排序验证通过，主图排序=%d", mainImageSort)
+	logger.GetGlobalLogger("shein/product").Infof("✅ 图片排序验证通过，主图排序=%d", mainImageSort)
 	return nil
 }
 
 // extractColorBlockImage 从图片中提取色块图
 func (p *ImageProcessor) extractColorBlockImage(imageURL string) ([]byte, error) {
-	logrus.Debugf("提取色块图，图片URL: %s", imageURL)
+	logger.GetGlobalLogger("shein/product").Debugf("提取色块图，图片URL: %s", imageURL)
 	// 下载图片数据
 	imageData, err := p.imageDownloader.DownloadImage(imageURL)
 	if err != nil {

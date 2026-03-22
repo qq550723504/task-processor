@@ -1,4 +1,4 @@
-package filter
+﻿package filter
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,7 +28,7 @@ type ProhibitedItemsDetector struct {
 
 // NewProhibitedItemsDetector 创建违禁品检测器
 func NewProhibitedItemsDetector() *ProhibitedItemsDetector {
-	logger := logrus.WithField("handler", "ProhibitedItemsDetector")
+	logger := logger.GetGlobalLogger("ProhibitedItemsDetector")
 
 	// 创建配置加载器
 	configLoader := NewConfigLoader(logger, "data/prohibited_items_temu.json")

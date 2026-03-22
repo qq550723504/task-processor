@@ -1,13 +1,13 @@
-// Package extractor 提供1688产品数据提取功能
+﻿// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"strconv"
 	"strings"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // BasicInfoExtractor 基础信息提取器
@@ -144,7 +144,7 @@ func (bie *BasicInfoExtractor) Extract(page playwright.Page, product *model.Prod
 				product.IsCustomized = isCustomized
 			}
 
-			logrus.Debugf("提取到基础信息: 标题=%s, ID=%s", product.Title, product.ID)
+			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("提取到基础信息: 标题=%s, ID=%s", product.Title, product.ID)
 		}
 	}
 

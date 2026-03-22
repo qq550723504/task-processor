@@ -1,7 +1,8 @@
-// Package spec 提供规格维度选择功能
+﻿// Package spec 提供规格维度选择功能
 package spec
 
 import (
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -13,7 +14,7 @@ type SpecDimensionSelector struct {
 // NewSpecDimensionSelector 创建规格维度选择器
 func NewSpecDimensionSelector() *SpecDimensionSelector {
 	return &SpecDimensionSelector{
-		logger: logrus.WithField("service", "SpecDimensionSelector"),
+		logger: logger.GetGlobalLogger("SpecDimensionSelector"),
 	}
 }
 

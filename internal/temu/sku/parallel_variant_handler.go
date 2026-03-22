@@ -1,4 +1,4 @@
-// Package sku 提供并行变体数据处理功能
+﻿// Package sku 提供并行变体数据处理功能
 package sku
 
 import (
@@ -16,6 +16,7 @@ import (
 	domainProduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -35,7 +36,7 @@ func NewParallelVariantHandler(
 	amazonProcessor domainProduct.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *ParallelVariantHandler {
-	logger := logrus.WithField("handler", "ParallelVariantHandler")
+	logger := logger.GetGlobalLogger("ParallelVariantHandler")
 
 	// 直接使用浏览器池大小作为并发数，确保资源利用最优
 	maxWorkers := 1

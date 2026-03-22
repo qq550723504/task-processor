@@ -1,6 +1,7 @@
-package extractor
+﻿package extractor
 
 import (
+	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"regexp"
@@ -11,7 +12,6 @@ import (
 	"task-processor/internal/pkg/timeout"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
 )
 
 // RatingExtractor 评分提取器
@@ -30,7 +30,7 @@ func (e *RatingExtractor) Extract(page playwright.Page, product *model.Product) 
 	go func() {
 		defer wg.Done()
 		if err := e.extractRating(ctx, page, product); err != nil {
-			logrus.Warnf("提取评分失败: %v", err)
+			logger.GetGlobalLogger("crawler/amazon").Warnf("提取评分失败: %v", err)
 		}
 	}()
 
@@ -38,13 +38,13 @@ func (e *RatingExtractor) Extract(page playwright.Page, product *model.Product) 
 	go func() {
 		defer wg.Done()
 		if err := e.extractReviewsCount(ctx, page, product); err != nil {
-			logrus.Warnf("提取评论数失败: %v", err)
+			logger.GetGlobalLogger("crawler/amazon").Warnf("提取评论数失败: %v", err)
 		}
 	}()
 
 	wg.Wait()
 
-	logrus.Infof("评分提取结果: Rating=%.1f, ReviewsCount=%d", product.Rating, product.ReviewsCount)
+	logger.GetGlobalLogger("crawler/amazon").Infof("评分提取结果: Rating=%.1f, ReviewsCount=%d", product.Rating, product.ReviewsCount)
 	return nil
 }
 
@@ -111,7 +111,7 @@ func (e *RatingExtractor) extractRating(_ context.Context, page playwright.Page,
 		// 解析评分
 		if rating := e.parseRating(text); rating > 0 {
 			product.Rating = rating
-			logrus.Infof("成功提取评分: %.1f", rating)
+			logger.GetGlobalLogger("crawler/amazon").Infof("成功提取评分: %.1f", rating)
 			return nil
 		}
 	}
@@ -119,7 +119,7 @@ func (e *RatingExtractor) extractRating(_ context.Context, page playwright.Page,
 	// 尝试从页面源码中提取评分
 	if rating := e.extractRatingFromPageSource(page); rating > 0 {
 		product.Rating = rating
-		logrus.Infof("从页面源码提取评分: %.1f", rating)
+		logger.GetGlobalLogger("crawler/amazon").Infof("从页面源码提取评分: %.1f", rating)
 		return nil
 	}
 
@@ -159,7 +159,7 @@ func (e *RatingExtractor) extractReviewsCount(_ context.Context, page playwright
 		// 解析评论数
 		if reviewCount := e.parseReviewsCount(text); reviewCount > 0 {
 			product.ReviewsCount = reviewCount
-			logrus.Infof("成功提取评论数: %d", reviewCount)
+			logger.GetGlobalLogger("crawler/amazon").Infof("成功提取评论数: %d", reviewCount)
 			return nil
 		}
 	}
@@ -167,7 +167,7 @@ func (e *RatingExtractor) extractReviewsCount(_ context.Context, page playwright
 	// 尝试从页面源码中提取评论数
 	if reviewCount := e.extractReviewsCountFromPageSource(page); reviewCount > 0 {
 		product.ReviewsCount = reviewCount
-		logrus.Infof("从页面源码提取评论数: %d", reviewCount)
+		logger.GetGlobalLogger("crawler/amazon").Infof("从页面源码提取评论数: %d", reviewCount)
 		return nil
 	}
 

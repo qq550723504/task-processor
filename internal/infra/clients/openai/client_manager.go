@@ -1,10 +1,11 @@
-// Package openai 提供OpenAI客户端管理器
+﻿// Package openai 提供OpenAI客户端管理器
 package openai
 
 import (
 	"fmt"
 	"sync"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,7 +34,7 @@ func NewManager(config *ManagerConfig) (*Manager, error) {
 
 	manager := &Manager{
 		clients: make(map[string]*Client),
-		logger:  logrus.WithField("component", "OpenAIManager"),
+		logger:  logger.GetGlobalLogger("OpenAIManager"),
 	}
 
 	// 创建所有配置的客户端

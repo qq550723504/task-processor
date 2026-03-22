@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein"
 
@@ -12,6 +14,7 @@ import (
 
 // StoreIDHandler 处理店铺StoreID
 type StoreIDHandler struct {
+	logger      *logrus.Entry
 	storeClient interface {
 		UpdateStoreId(req *api.StoreIdUpdateReqDTO) (bool, error)
 		UpdateStoreStatus(req *api.StoreStatusUpdateReqDTO) (bool, error)
@@ -23,6 +26,7 @@ func NewStoreIDHandler(storeClient interface {
 	UpdateStoreStatus(req *api.StoreStatusUpdateReqDTO) (bool, error)
 }) *StoreIDHandler {
 	return &StoreIDHandler{
+		logger:      logger.GetGlobalLogger("store_id_handler"),
 		storeClient: storeClient,
 	}
 }
@@ -48,7 +52,7 @@ func (h *StoreIDHandler) Handle(ctx *shein.TaskContext) error {
 		}
 		_, err := h.storeClient.UpdateStoreId(req)
 		if err != nil {
-			logrus.Infof("[实例%s] 处理店铺StoreID失败: %v\n", GetInstanceID(), err)
+			h.logger.Infof("[实例%s] 处理店铺StoreID失败: %v", GetInstanceID(), err)
 			return err
 		}
 	}
@@ -57,12 +61,12 @@ func (h *StoreIDHandler) Handle(ctx *shein.TaskContext) error {
 	if ctx.StoreInfo != nil {
 		// 检查StoreID是否为空
 		if ctx.StoreInfo.StoreID == "" {
-			logrus.Infof("[实例%s] StoreInfo.StoreID为空，跳过店铺状态检查\n", GetInstanceID())
+			h.logger.Infof("[实例%s] StoreInfo.StoreID为空，跳过店铺状态检查", GetInstanceID())
 		} else {
 			// 将ctx.StoreInfo.StoreID转换为int64进行比较
 			storeInfoStoreID, err := strconv.ParseInt(ctx.StoreInfo.StoreID, 10, 64)
 			if err != nil {
-				logrus.Infof("[实例%s] 解析StoreInfo.StoreID失败: %v\n", GetInstanceID(), err)
+				h.logger.Infof("[实例%s] 解析StoreInfo.StoreID失败: %v", GetInstanceID(), err)
 				return err
 			}
 
@@ -75,10 +79,10 @@ func (h *StoreIDHandler) Handle(ctx *shein.TaskContext) error {
 				}
 				_, err := h.storeClient.UpdateStoreStatus(statusReq)
 				if err != nil {
-					logrus.Infof("[实例%s] 更新店铺状态失败: %v\n", GetInstanceID(), err)
+					h.logger.Infof("[实例%s] 更新店铺状态失败: %v", GetInstanceID(), err)
 					return err
 				}
-				logrus.Infof("[实例%s] 店铺ID不一致，已禁用店铺: StoreInfo.StoreID=%d, SupplierInfo.StoreID=%d\n",
+				h.logger.Infof("[实例%s] 店铺ID不一致，已禁用店铺: StoreInfo.StoreID=%d, SupplierInfo.StoreID=%d",
 					GetInstanceID(), storeInfoStoreID, ctx.SupplierInfo.StoreID)
 			}
 		}

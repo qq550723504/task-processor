@@ -1,6 +1,7 @@
-package build
+﻿package build
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
@@ -10,7 +11,6 @@ import (
 	"task-processor/internal/shein/product/sku"
 	"task-processor/internal/shein/product/variant"
 
-	"github.com/sirupsen/logrus"
 )
 
 // BuildSkcListHandler 构建SKU列表处理器
@@ -51,39 +51,39 @@ func (h *BuildSkcListHandler) Name() string {
 
 // Handle 执行构建SKU列表处理
 func (h *BuildSkcListHandler) Handle(ctx *shein.TaskContext) error {
-	logrus.Infof("=== 开始构建SKC列表处理 ===")
+	logger.GetGlobalLogger("shein/product").Infof("=== 开始构建SKC列表处理 ===")
 
 	// 检查前置条件
 	if ctx.ProductData == nil {
-		logrus.Errorf("❌ 产品数据未获取")
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 产品数据未获取")
 		return fmt.Errorf("产品数据未获取，请先执行获取产品数据步骤")
 	}
-	logrus.Infof("✅ 产品数据检查通过")
+	logger.GetGlobalLogger("shein/product").Infof("✅ 产品数据检查通过")
 
 	// 检查销售规格结果
 	if ctx.SaleSpecResult == nil {
-		logrus.Errorf("❌ 销售规格结果未获取")
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 销售规格结果未获取")
 		return fmt.Errorf("销售规格结果未获取，请先执行销售属性处理步骤")
 	}
-	logrus.Infof("✅ 销售规格结果检查通过 - 变体数量: %d", len(ctx.SaleSpecResult.Variants))
+	logger.GetGlobalLogger("shein/product").Infof("✅ 销售规格结果检查通过 - 变体数量: %d", len(ctx.SaleSpecResult.Variants))
 
 	// 检查属性模板
 	if ctx.AttributeTemplates == nil {
-		logrus.Errorf("❌ 属性模板未获取")
+		logger.GetGlobalLogger("shein/product").Errorf("❌ 属性模板未获取")
 		return fmt.Errorf("属性模板未获取，请先执行属性模板处理步骤")
 	}
-	logrus.Infof("✅ 属性模板检查通过")
+	logger.GetGlobalLogger("shein/product").Infof("✅ 属性模板检查通过")
 
-	logrus.Infof("🚀 开始调用SKC构建器...")
+	logger.GetGlobalLogger("shein/product").Infof("🚀 开始调用SKC构建器...")
 	skcList, customAttributeRelations, err := h.skcBuilder.BuildSKCListWithSpecAdaptation(ctx, h.strategyHandler)
 	if err != nil {
-		logrus.Errorf("❌ SKC列表构建失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Errorf("❌ SKC列表构建失败: %v", err)
 		return err
 	}
 
-	logrus.Infof("📋 SKC构建结果:")
-	logrus.Infof("  - SKC数量: %d", len(skcList))
-	logrus.Infof("  - 自定义属性关系数量: %d", len(customAttributeRelations))
+	logger.GetGlobalLogger("shein/product").Infof("📋 SKC构建结果:")
+	logger.GetGlobalLogger("shein/product").Infof("  - SKC数量: %d", len(skcList))
+	logger.GetGlobalLogger("shein/product").Infof("  - 自定义属性关系数量: %d", len(customAttributeRelations))
 
 	// 如果SKC列表为空，提供详细的调试信息
 	if len(skcList) == 0 {
@@ -92,7 +92,7 @@ func (h *BuildSkcListHandler) Handle(ctx *shein.TaskContext) error {
 	} else {
 		// 打印每个SKC的详情
 		for i, skc := range skcList {
-			logrus.Infof("  SKC[%d]: 属性ID=%d, 属性值ID=%d, SKU数量=%d",
+			logger.GetGlobalLogger("shein/product").Infof("  SKC[%d]: 属性ID=%d, 属性值ID=%d, SKU数量=%d",
 				i+1, skc.SaleAttribute.AttributeID, skc.SaleAttribute.AttributeValueID, len(skc.SKUS))
 		}
 	}
@@ -100,6 +100,6 @@ func (h *BuildSkcListHandler) Handle(ctx *shein.TaskContext) error {
 	ctx.ProductData.SKCList = skcList
 	ctx.ProductData.CustomAttributeRelation = customAttributeRelations
 
-	logrus.Infof("=== SKC列表构建处理完成 ===")
+	logger.GetGlobalLogger("shein/product").Infof("=== SKC列表构建处理完成 ===")
 	return nil
 }

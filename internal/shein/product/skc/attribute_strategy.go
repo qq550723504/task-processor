@@ -1,12 +1,12 @@
-package skc
+﻿package skc
 
 import (
+	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/shein"
 	api_attribute "task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/product/attribute"
 
-	"github.com/sirupsen/logrus"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -31,7 +31,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 
 	// 0. 优先检查必填属性作为主规格
 	foundPrimaryAttr := false
-	logrus.Infof("🎯 开始确定属性策略，优先检查必填属性")
+	logger.GetGlobalLogger("shein/product").Infof("🎯 开始确定属性策略，优先检查必填属性")
 
 	// 首先尝试使用必填属性作为主要属性
 	for _, attr := range saleAttributeData.SaleAttributes {
@@ -41,7 +41,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 				// 检查该属性是否为必填属性（通过检查是否在模板中标记为必填）
 				if h.isRequiredAttribute(attr.AttrID, attributeTemplates) {
 					primaryAttr = attr
-					logrus.Infof("🎯 使用必填属性作为主规格: ID=%d, 变体数量=%d",
+					logger.GetGlobalLogger("shein/product").Infof("🎯 使用必填属性作为主规格: ID=%d, 变体数量=%d",
 						attr.AttrID, len(attr.AttrValue))
 					foundPrimaryAttr = true
 					break
@@ -52,19 +52,19 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 
 	// 1. 如果没有找到必填属性，按优先级寻找主要属性
 	if !foundPrimaryAttr {
-		logrus.Infof("未找到必填属性，按优先级寻找主要属性")
+		logger.GetGlobalLogger("shein/product").Infof("未找到必填属性，按优先级寻找主要属性")
 		for _, priorityID := range config.SKCPrimaryAttributePriority {
 			for _, attr := range saleAttributeData.SaleAttributes {
 				if attr.AttrID == priorityID && len(attr.AttrValue) > 0 {
 					// 验证该属性值在变体中实际存在
 					if h.validateAttributeInVariants(attr.AttrID, attr.AttrValue, saleAttributeData.Variants, attributeTemplates) {
 						primaryAttr = attr
-						logrus.Infof("选择主要属性: ID=%d, 变体数量=%d",
+						logger.GetGlobalLogger("shein/product").Infof("选择主要属性: ID=%d, 变体数量=%d",
 							attr.AttrID, len(attr.AttrValue))
 						foundPrimaryAttr = true
 						break
 					} else {
-						logrus.Warnf("属性 ID=%d 在变体中验证失败，跳过", attr.AttrID)
+						logger.GetGlobalLogger("shein/product").Warnf("属性 ID=%d 在变体中验证失败，跳过", attr.AttrID)
 					}
 				}
 			}
@@ -76,7 +76,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 
 	// 如果没有找到合适的主要属性，检查是否有必填属性可以使用
 	if !foundPrimaryAttr {
-		logrus.Infof("未找到合适的主要属性，检查必填属性")
+		logger.GetGlobalLogger("shein/product").Infof("未找到合适的主要属性，检查必填属性")
 
 		// 优先使用必填属性作为主要属性
 		for _, attr := range saleAttributeData.SaleAttributes {
@@ -84,7 +84,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 			if len(attr.AttrValue) > 0 {
 				if h.validateAttributeInVariants(attr.AttrID, attr.AttrValue, saleAttributeData.Variants, attributeTemplates) {
 					primaryAttr = attr
-					logrus.Infof("使用必填属性作为主要属性: ID=%d, 变体数量=%d",
+					logger.GetGlobalLogger("shein/product").Infof("使用必填属性作为主要属性: ID=%d, 变体数量=%d",
 						attr.AttrID, len(attr.AttrValue))
 					foundPrimaryAttr = true
 					break
@@ -94,7 +94,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 
 		// 如果仍未找到，检查是否只有尺寸属性而没有颜色属性
 		if !foundPrimaryAttr {
-			logrus.Infof("未找到必填属性，检查是否只有尺寸属性")
+			logger.GetGlobalLogger("shein/product").Infof("未找到必填属性，检查是否只有尺寸属性")
 
 			// 检查是否只有尺寸属性
 			hasSizeAttribute := false
@@ -111,12 +111,12 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 
 			// 如果只有尺寸属性，创建一个默认的颜色属性作为主要属性
 			if hasSizeAttribute && !h.hasColorAttribute(saleAttributeData) {
-				logrus.Warnf("检测到只有尺寸属性而没有颜色属性，但这可能导致主规格错误")
-				logrus.Infof("建议：优先使用其他可用属性而不是创建默认颜色属性")
+				logger.GetGlobalLogger("shein/product").Warnf("检测到只有尺寸属性而没有颜色属性，但这可能导致主规格错误")
+				logger.GetGlobalLogger("shein/product").Infof("建议：优先使用其他可用属性而不是创建默认颜色属性")
 
 				// 不再自动创建颜色属性，而是使用尺寸属性作为主属性
 				primaryAttr = sizeAttribute
-				logrus.Infof("使用尺寸属性作为主要属性: ID=%d, 变体数量=%d", primaryAttr.AttrID, len(primaryAttr.AttrValue))
+				logger.GetGlobalLogger("shein/product").Infof("使用尺寸属性作为主要属性: ID=%d, 变体数量=%d", primaryAttr.AttrID, len(primaryAttr.AttrValue))
 			}
 		}
 	}
@@ -132,7 +132,7 @@ func (h *AttributeStrategyHandler) DetermineAttributeStrategy(saleAttributeData 
 	// 4. 确定最终策略类型
 	strategyType = h.determineStrategyType(primaryAttr, secondaryAttr, attributeTemplates)
 
-	logrus.Infof("属性策略确定完成 - 主要属性: %d, 次要属性: %d, 策略类型: %s",
+	logger.GetGlobalLogger("shein/product").Infof("属性策略确定完成 - 主要属性: %d, 次要属性: %d, 策略类型: %s",
 		primaryAttr.AttrID, secondaryAttr.AttrID, strategyType)
 
 	return shein.AttributeStrategy{
@@ -162,7 +162,7 @@ func (h *AttributeStrategyHandler) createDefaultPrimaryAttribute(saleAttributeDa
 				},
 			},
 		}
-		logrus.Infof("单变体情况：创建默认主要属性 ID=%d, Value=Default", config.DefaultSKCAttributeID)
+		logger.GetGlobalLogger("shein/product").Infof("单变体情况：创建默认主要属性 ID=%d, Value=Default", config.DefaultSKCAttributeID)
 		return primaryAttr
 	}
 
@@ -179,10 +179,10 @@ func (h *AttributeStrategyHandler) findBestSecondaryAttribute(saleAttributeData 
 			if attr.AttrID == priorityID && attr.AttrID != primaryAttrID && len(attr.AttrValue) > 1 {
 				if h.validateAttributeInVariants(attr.AttrID, attr.AttrValue, saleAttributeData.Variants, attributeTemplates) {
 					bestSecondaryAttr = attr
-					logrus.Infof("按优先级找到次要属性: ID=%d, 值数量=%d (已验证在变体中存在)", attr.AttrID, len(attr.AttrValue))
+					logger.GetGlobalLogger("shein/product").Infof("按优先级找到次要属性: ID=%d, 值数量=%d (已验证在变体中存在)", attr.AttrID, len(attr.AttrValue))
 					return bestSecondaryAttr
 				} else {
-					logrus.Warnf("优先级属性 ID=%d 在变体中验证失败，跳过", attr.AttrID)
+					logger.GetGlobalLogger("shein/product").Warnf("优先级属性 ID=%d 在变体中验证失败，跳过", attr.AttrID)
 				}
 			}
 		}
@@ -218,12 +218,12 @@ func (h *AttributeStrategyHandler) validateAttributeInVariants(attrID int, attrV
 	}
 
 	validationRate := float64(matchedCount) / float64(len(attrValues))
-	logrus.Debugf("属性ID %d 在变体中的验证率: %.2f%% (%d/%d)",
+	logger.GetGlobalLogger("shein/product").Debugf("属性ID %d 在变体中的验证率: %.2f%% (%d/%d)",
 		attrID, validationRate*100, matchedCount, len(attrValues))
 
 	// 检查是否为必填属性，如果是则采用宽松验证策略
 	if h.isRequiredAttribute(attrID, attributeTemplates) {
-		logrus.Infof("属性ID %d 是SHEIN必填属性，采用宽松验证策略", attrID)
+		logger.GetGlobalLogger("shein/product").Infof("属性ID %d 是SHEIN必填属性，采用宽松验证策略", attrID)
 		// 对于必填属性，如果有任何匹配或者属性值不为空，就认为通过验证
 		return matchedCount > 0 || len(attrValues) > 0
 	}
@@ -242,7 +242,7 @@ func (h *AttributeStrategyHandler) isRequiredAttribute(attrID int, attributeTemp
 		if attr.AttributeID == attrID && attr.AttributeType == 1 { // 销售属性
 			// 检查是否为必填属性
 			if attr.AttributeLabel == 1 {
-				logrus.Debugf("属性ID %d (%s) 是必填销售属性 (AttributeLabel=1)",
+				logger.GetGlobalLogger("shein/product").Debugf("属性ID %d (%s) 是必填销售属性 (AttributeLabel=1)",
 					attrID, attr.AttributeNameEn)
 				return true
 			}
@@ -315,7 +315,7 @@ func (h *AttributeStrategyHandler) createMissingRequiredAttribute(primaryAttrID 
 							},
 						},
 					}
-					logrus.Infof("为必填但缺失的销售属性创建默认值: ID=%d (%s), Value=%s",
+					logger.GetGlobalLogger("shein/product").Infof("为必填但缺失的销售属性创建默认值: ID=%d (%s), Value=%s",
 						priorityID, templateAttr.AttributeNameEn, defaultValue)
 					return secondaryAttr
 				}
@@ -338,7 +338,7 @@ func (h *AttributeStrategyHandler) determineStrategyType(primaryAttr, secondaryA
 
 		// SHEIN规则检查：只有主规格没有次规格时，确保每个SKC只有一个SKU
 		if len(primaryAttr.AttrValue) > 1 {
-			logrus.Warnf("SHEIN规则警告：只有主规格(%s)没有次规格，每个SKC只能有一个SKU", primaryName)
+			logger.GetGlobalLogger("shein/product").Warnf("SHEIN规则警告：只有主规格(%s)没有次规格，每个SKC只能有一个SKU", primaryName)
 		}
 		return strategyType
 	}
@@ -425,10 +425,10 @@ func (h *AttributeStrategyHandler) GetDynamicAttributePriorityConfig(attributeTe
 	// 设置默认主规格属性为重要性最高的属性
 	if len(saleAttributes) > 0 {
 		config.DefaultSKCAttributeID = saleAttributes[0].AttrID
-		logrus.Infof("动态生成的属性策略 - 主规格优先级: %v, 默认主规格: %d",
+		logger.GetGlobalLogger("shein/product").Infof("动态生成的属性策略 - 主规格优先级: %v, 默认主规格: %d",
 			config.SKCPrimaryAttributePriority, config.DefaultSKCAttributeID)
 	} else {
-		logrus.Infof("未找到有效的销售属性，使用默认配置")
+		logger.GetGlobalLogger("shein/product").Infof("未找到有效的销售属性，使用默认配置")
 	}
 
 	return config

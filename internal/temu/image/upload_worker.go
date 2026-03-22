@@ -1,4 +1,4 @@
-// Package image 提供TEMU平台图片上传并发工作器
+﻿// Package image 提供TEMU平台图片上传并发工作器
 package image
 
 import (
@@ -7,6 +7,7 @@ import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -35,7 +36,7 @@ type ImageUploadWorker struct {
 // NewImageUploadWorker 创建新的图片上传工作器
 func NewImageUploadWorker() *ImageUploadWorker {
 	return &ImageUploadWorker{
-		logger: logrus.WithField("component", "ImageUploadWorker"),
+		logger: logger.GetGlobalLogger("ImageUploadWorker"),
 	}
 }
 

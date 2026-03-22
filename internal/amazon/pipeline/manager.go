@@ -1,10 +1,11 @@
-// package pipeline 提供Amazon处理器管理功能
+﻿// package pipeline 提供Amazon处理器管理功能
 package pipeline
 
 import (
 	"context"
 	"task-processor/internal/amazon/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +20,7 @@ type HandlerManager struct {
 func NewHandlerManager(services *model.Services) *HandlerManager {
 	manager := &HandlerManager{
 		services: services,
-		logger:   logrus.WithField("component", "HandlerManager"),
+		logger:   logger.GetGlobalLogger("HandlerManager"),
 	}
 
 	// 初始化所有处理器

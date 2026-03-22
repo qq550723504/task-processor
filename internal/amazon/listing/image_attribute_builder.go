@@ -1,4 +1,4 @@
-package listing
+﻿package listing
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"task-processor/internal/amazon/model"
 
+		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -17,7 +18,7 @@ type ImageAttributeBuilder struct {
 // NewImageAttributeBuilder 创建图片属性构建器
 func NewImageAttributeBuilder() *ImageAttributeBuilder {
 	return &ImageAttributeBuilder{
-		logger: logrus.WithField("component", "ImageAttributeBuilder"),
+		logger: logger.GetGlobalLogger("ImageAttributeBuilder"),
 	}
 }
 
