@@ -122,6 +122,7 @@ func (h *FillAttributeHandler) fillProductAttributes(ctx *shein.TaskContext) {
 			if valueIDInt != 0 {
 				extraValue = "100"
 			}
+
 		}
 
 		productAttributeList = append(productAttributeList, product.ProductAttribute{

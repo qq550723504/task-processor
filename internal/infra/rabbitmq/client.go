@@ -58,21 +58,15 @@ func NewClient(connManager *ConnectionManager, logger *logrus.Logger) *Client {
 }
 
 // DeclareQueue 声明队列
+// 每次使用独立 channel，避免 AMQP 协议下 channel 出错后影响后续操作
 func (c *Client) DeclareQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) error {
-	channel, err := c.connManager.GetChannel()
+	channel, err := c.connManager.CreateChannel()
 	if err != nil {
-		return fmt.Errorf("获取通道失败: %w", err)
+		return fmt.Errorf("创建通道失败: %w", err)
 	}
+	defer channel.Close()
 
-	_, err = channel.QueueDeclare(
-		name,       // 队列名称
-		durable,    // 持久化
-		autoDelete, // 自动删除
-		exclusive,  // 排他性
-		noWait,     // 不等待
-		args,       // 参数
-	)
-
+	_, err = channel.QueueDeclare(name, durable, autoDelete, exclusive, noWait, args)
 	if err != nil {
 		return fmt.Errorf("声明队列 %s 失败: %w", name, err)
 	}
@@ -83,21 +77,13 @@ func (c *Client) DeclareQueue(name string, durable, autoDelete, exclusive, noWai
 
 // DeclareExchange 声明交换机
 func (c *Client) DeclareExchange(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error {
-	channel, err := c.connManager.GetChannel()
+	channel, err := c.connManager.CreateChannel()
 	if err != nil {
-		return fmt.Errorf("获取通道失败: %w", err)
+		return fmt.Errorf("创建通道失败: %w", err)
 	}
+	defer channel.Close()
 
-	err = channel.ExchangeDeclare(
-		name,       // 交换机名称
-		kind,       // 交换机类型
-		durable,    // 持久化
-		autoDelete, // 自动删除
-		internal,   // 内部使用
-		noWait,     // 不等待
-		args,       // 参数
-	)
-
+	err = channel.ExchangeDeclare(name, kind, durable, autoDelete, internal, noWait, args)
 	if err != nil {
 		return fmt.Errorf("声明交换机 %s 失败: %w", name, err)
 	}
@@ -108,18 +94,13 @@ func (c *Client) DeclareExchange(name, kind string, durable, autoDelete, interna
 
 // DeleteQueue 删除队列
 func (c *Client) DeleteQueue(name string, ifUnused, ifEmpty, noWait bool) error {
-	channel, err := c.connManager.GetChannel()
+	channel, err := c.connManager.CreateChannel()
 	if err != nil {
-		return fmt.Errorf("获取通道失败: %w", err)
+		return fmt.Errorf("创建通道失败: %w", err)
 	}
+	defer channel.Close()
 
-	_, err = channel.QueueDelete(
-		name,     // 队列名称
-		ifUnused, // 仅当未使用时删除
-		ifEmpty,  // 仅当为空时删除
-		noWait,   // 不等待
-	)
-
+	_, err = channel.QueueDelete(name, ifUnused, ifEmpty, noWait)
 	if err != nil {
 		return fmt.Errorf("删除队列 %s 失败: %w", name, err)
 	}
@@ -130,19 +111,13 @@ func (c *Client) DeleteQueue(name string, ifUnused, ifEmpty, noWait bool) error 
 
 // BindQueue 绑定队列到交换机
 func (c *Client) BindQueue(queueName, routingKey, exchangeName string, noWait bool, args amqp.Table) error {
-	channel, err := c.connManager.GetChannel()
+	channel, err := c.connManager.CreateChannel()
 	if err != nil {
-		return fmt.Errorf("获取通道失败: %w", err)
+		return fmt.Errorf("创建通道失败: %w", err)
 	}
+	defer channel.Close()
 
-	err = channel.QueueBind(
-		queueName,    // 队列名称
-		routingKey,   // 路由键
-		exchangeName, // 交换机名称
-		noWait,       // 不等待
-		args,         // 参数
-	)
-
+	err = channel.QueueBind(queueName, routingKey, exchangeName, noWait, args)
 	if err != nil {
 		return fmt.Errorf("绑定队列 %s 到交换机 %s 失败: %w", queueName, exchangeName, err)
 	}

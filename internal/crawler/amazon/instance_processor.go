@@ -113,16 +113,6 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 	marketplace := ip.urlHelper.GetMarketplaceFromURL(url)
 	expectedCurrency := ip.urlHelper.GetCurrencyFromURL(url)
 
-	// 只针对英国站设置货币(其他站点邮编设置后货币会自动正确)
-	if strings.Contains(url, "amazon.co.uk") && expectedCurrency != "" {
-		logrus.Infof("英国站需要手动设置货币: %s", expectedCurrency)
-		currencySetter := browser.NewCurrencySetter(instance.Manager)
-		if err := currencySetter.SetAndVerifyCurrency(page, expectedCurrency); err != nil {
-			logrus.Warnf("设置货币失败: %v (将继续抓取，但货币可能不准确)", err)
-			// 货币设置失败不应该终止抓取，只记录警告
-		}
-	}
-
 	// 创建产品对象
 	now := time.Now()
 	product := &model.Product{
@@ -137,6 +127,20 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 	ext := extractor.NewCompositeExtractor(marketplace)
 	if err := ext.Extract(page, product); err != nil {
 		return nil, fmt.Errorf("提取产品信息失败: %w", err)
+	}
+
+	// 检查货币是否匹配，不匹配时切换货币并重新提取
+	if expectedCurrency != "" && product.Currency != expectedCurrency {
+		logrus.Warnf("货币不匹配 (页面: %s, 期望: %s)，尝试切换货币", product.Currency, expectedCurrency)
+		currencySetter := browser.NewCurrencySetter(instance.Manager)
+		if err := currencySetter.SetAndVerifyCurrency(page, expectedCurrency); err != nil {
+			return nil, fmt.Errorf("货币切换失败，终止数据抓取: %w", err)
+		}
+		logrus.Infof("货币切换成功，重新提取产品信息")
+		product.Currency = expectedCurrency
+		if err := ext.Extract(page, product); err != nil {
+			return nil, fmt.Errorf("重新提取产品信息失败: %w", err)
+		}
 	}
 
 	// 验证提取的数据

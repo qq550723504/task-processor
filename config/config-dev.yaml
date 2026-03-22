@@ -6,6 +6,15 @@ logging:
   level: "DEBUG"  # 设置为 DEBUG 级别以显示详细调试信息
   format: "text"  # text 或 json
   file: "logs/app.log"
+  split_by_level:
+    - levels: [error, fatal, panic]
+      file: logs/error.log
+    - levels: [warn]
+      file: logs/warn.log
+    - levels: [info]
+      file: logs/info.log
+    - levels: [debug, trace]
+      file: logs/debug.log
 
 # 处理器配置
 processor:
@@ -80,7 +89,7 @@ management:
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [836]# 店铺ID列表 ->775
+  storeIDs: [181]# 店铺ID列表 ->CA:836
 
 platforms:
   # TEMU 平台配置
@@ -107,8 +116,8 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: true            # 是否启用SHEIN处理器（处理上架任务）
-    schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
+    enabled: true            # 是否启用SHEIN处理器（处理上架任务·）
+    schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
       enabled: false        # 启用自动核价

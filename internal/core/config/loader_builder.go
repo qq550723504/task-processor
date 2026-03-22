@@ -2,6 +2,7 @@
 package config
 
 import (
+	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/spf13/viper"
@@ -103,9 +104,10 @@ func BuildConfig() *Config {
 
 	// 构建日志配置
 	cfg.Logging = LoggingConfig{
-		Level:  viper.GetString("logging.level"),
-		Format: viper.GetString("logging.format"),
-		File:   viper.GetString("logging.file"),
+		Level:        viper.GetString("logging.level"),
+		Format:       viper.GetString("logging.format"),
+		File:         viper.GetString("logging.file"),
+		SplitByLevel: buildSplitByLevelConfig(),
 	}
 
 	return cfg
@@ -148,4 +150,48 @@ func buildOpenAIClients() map[string]OpenAIClientConfig {
 		}
 	}
 	return clients
+}
+
+// buildSplitByLevelConfig 从 viper 读取 logging.split_by_level 配置
+func buildSplitByLevelConfig() []logger.LevelFileConfig {
+	raw := viper.Get("logging.split_by_level")
+	if raw == nil {
+		return nil
+	}
+
+	list, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+
+	configs := make([]logger.LevelFileConfig, 0, len(list))
+	for _, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		cfg := logger.LevelFileConfig{
+			File: getStringFromMap(m, "file"),
+		}
+
+		if levelsRaw, ok := m["levels"]; ok {
+			switch v := levelsRaw.(type) {
+			case []any:
+				for _, l := range v {
+					if s, ok := l.(string); ok {
+						cfg.Levels = append(cfg.Levels, s)
+					}
+				}
+			case []string:
+				cfg.Levels = v
+			}
+		}
+
+		if cfg.File != "" && len(cfg.Levels) > 0 {
+			configs = append(configs, cfg)
+		}
+	}
+
+	return configs
 }

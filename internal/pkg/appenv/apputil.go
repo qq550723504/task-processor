@@ -54,19 +54,26 @@ func ApplyLoggingConfig(log *logrus.Logger, cfg LoggingConfig) error {
 	}
 	loggerPkg.InitGlobalLogger(lc)
 
-	// 让调用方持有的 *logrus.Logger 指针指向同一个实例
 	raw := loggerPkg.GetGlobalLogManager().GetRawLogger()
-	if log != raw {
-		// 同步调用方 logger 的级别与格式，使其行为一致
-		log.SetLevel(raw.Level)
-		log.SetFormatter(raw.Formatter)
-		log.SetOutput(raw.Out)
-		for _, h := range raw.Hooks {
-			for _, hook := range h {
+
+	// 同步级别、格式、输出到调用方持有的 logger 实例
+	log.SetLevel(raw.Level)
+	log.SetFormatter(raw.Formatter)
+	log.SetOutput(raw.Out)
+
+	// 先清空旧 hooks，再重新添加，避免重复
+	log.ReplaceHooks(make(logrus.LevelHooks))
+	// 收集唯一的 hook 实例，避免同一个 hook 因多个 level 被重复 AddHook
+	seen := make(map[logrus.Hook]struct{})
+	for _, hooks := range raw.Hooks {
+		for _, hook := range hooks {
+			if _, ok := seen[hook]; !ok {
+				seen[hook] = struct{}{}
 				log.AddHook(hook)
 			}
 		}
 	}
+
 	return nil
 }
 

@@ -75,7 +75,9 @@ func (mc *MessageConsumer) Start(ctx context.Context) error {
 
 	mc.ctx, mc.cancel = context.WithCancel(ctx)
 
-	// 启动所有队列的消费者
+	var failedQueues []string
+
+	// 启动所有队列的消费者，单个队列失败不中断其他队列
 	for queueName, handler := range mc.handlers {
 		// 设置状态为启动中
 		if sm, exists := mc.stateManager[queueName]; exists {
@@ -84,13 +86,12 @@ func (mc *MessageConsumer) Start(ctx context.Context) error {
 
 		if err := mc.startQueueConsumer(queueName, handler); err != nil {
 			mc.logger.Errorf("启动队列 %s 消费者失败: %v", queueName, err)
-			// 记录错误
 			mc.errorCollector.Collect(ErrorTypeConsumer, queueName, "", err, "启动消费者失败")
-			// 设置错误状态
 			if sm, exists := mc.stateManager[queueName]; exists {
 				sm.SetError(err, queueName)
 			}
-			return fmt.Errorf("启动队列 %s 消费者失败: %w", queueName, err)
+			failedQueues = append(failedQueues, queueName)
+			continue
 		}
 
 		// 设置状态为运行中
@@ -99,7 +100,18 @@ func (mc *MessageConsumer) Start(ctx context.Context) error {
 		}
 	}
 
-	mc.logger.Info("消息消费者启动完成")
+	successCount := len(mc.handlers) - len(failedQueues)
+	mc.logger.Infof("消息消费者启动完成: 成功=%d, 失败=%d", successCount, len(failedQueues))
+
+	if len(failedQueues) > 0 {
+		mc.logger.Warnf("以下队列启动失败（其他队列正常运行）: %v", failedQueues)
+	}
+
+	// 只有全部队列都失败才返回错误
+	if successCount == 0 && len(mc.handlers) > 0 {
+		return fmt.Errorf("所有队列消费者启动失败，失败队列: %v", failedQueues)
+	}
+
 	return nil
 }
 
