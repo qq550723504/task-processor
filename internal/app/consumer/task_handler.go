@@ -75,8 +75,12 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	}
 
 	// 3. 验证店铺访问权限
-	isOwned, err := eth.validateStoreAccess(task)
+	_, err = eth.validateStoreAccess(task)
 	if err != nil {
+		// 非本节点店铺，静默跳过（不算错误，消息正常 ack）
+		if apptask.IsStoreNotOwnedError(err) {
+			return nil
+		}
 		return err
 	}
 
@@ -98,8 +102,8 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	}
 
 	processingTime := time.Since(startTime)
-	eth.logger.Infof("[%s] 任务处理成功: ID=%d, Duration=%v, IsOwned=%v",
-		eth.platform, task.ID, processingTime, isOwned)
+	eth.logger.Infof("[%s] 任务处理成功: ID=%d, Duration=%v",
+		eth.platform, task.ID, processingTime)
 
 	return nil
 }
@@ -175,10 +179,21 @@ func (eth *TaskHandler) shouldSkipDuplicate(task *model.Task) bool {
 	return false
 }
 
-// validateStoreAccess 验证店铺访问权限
+// validateStoreAccess 验证店铺访问权限，若配置了 ownedStores 则只处理自己的店铺
 func (eth *TaskHandler) validateStoreAccess(task *model.Task) (bool, error) {
 	if eth.storeAPI == nil {
-		return false, nil
+		return true, nil
+	}
+
+	// 未配置 ownedStores 时处理所有店铺
+	if len(eth.ownedStores) == 0 {
+		return true, nil
+	}
+
+	isOwned := eth.isOwnedStore(task.StoreID)
+	if !isOwned {
+		eth.logger.Debugf("[%s] 跳过非本节点店铺的任务: ID=%d, StoreID=%d", eth.platform, task.ID, task.StoreID)
+		return false, apptask.NewStoreNotOwnedError(task.ID, task.StoreID)
 	}
 
 	storeInfo, err := eth.storeAPI.GetStore(task.StoreID)
@@ -187,16 +202,9 @@ func (eth *TaskHandler) validateStoreAccess(task *model.Task) (bool, error) {
 		return false, apptask.NewStoreNotFoundError(task.ID, task.StoreID, err)
 	}
 
-	isOwned := eth.isOwnedStore(task.StoreID)
-	if isOwned {
-		eth.logger.Infof("[%s] 🎯 处理自己店铺的任务: ID=%d, StoreID=%d, StoreName=%s",
-			eth.platform, task.ID, task.StoreID, storeInfo.Name)
-	} else {
-		eth.logger.Infof("[%s] 🔄 处理其他店铺的任务: ID=%d, StoreID=%d, StoreName=%s",
-			eth.platform, task.ID, task.StoreID, storeInfo.Name)
-	}
-
-	return isOwned, nil
+	eth.logger.Infof("[%s] 🎯 处理自己店铺的任务: ID=%d, StoreID=%d, StoreName=%s",
+		eth.platform, task.ID, task.StoreID, storeInfo.Name)
+	return true, nil
 }
 
 // validatePlatform 验证平台匹配

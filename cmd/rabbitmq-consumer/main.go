@@ -82,6 +82,15 @@ func main() {
 		logger.Fatalf("❌ 注册爬虫处理器失败: %v", err)
 	}
 
+	// 注入店铺亲和性组件（storeAPI + 本节点负责的店铺列表）
+	ownedStores := appCfg.RabbitMQ.Node.OwnedStores
+	if len(ownedStores) > 0 {
+		logger.Infof("🏪 本节点负责的店铺: %v", ownedStores)
+		serviceManager.SetStoreComponents(nil, ownedStores, nil)
+	} else {
+		logger.Warn("⚠️  未配置 rabbitmq.node.ownedStores，本节点将订阅平台级队列（处理所有店铺任务）")
+	}
+
 	// 启动服务
 	if err := serviceManager.Start(ctx); err != nil {
 		logger.Fatalf("❌ 启动服务失败: %v", err)

@@ -53,7 +53,23 @@ func (qi *QueueInitializer) initializeQueues() error {
 	return nil
 }
 
-// declareQueueWithRetry 声明队列，参数不匹配时删除后重建
+// InitializeStoreQueues 为指定平台和店铺列表初始化专属队列和绑定
+func (qi *QueueInitializer) InitializeStoreQueues(platform string, storeIDs []int64) error {
+	for _, storeID := range storeIDs {
+		for _, q := range GetStoreQueueDeclareConfigs(platform, storeID) {
+			if err := qi.declareQueueWithRetry(q); err != nil {
+				return fmt.Errorf("声明店铺队列 %s 失败: %w", q.Name, err)
+			}
+		}
+		for _, b := range GetStoreQueueBindingConfigs(platform, storeID) {
+			if err := qi.client.BindQueue(b.QueueName, b.RoutingKey, b.ExchangeName, b.NoWait, b.Args); err != nil {
+				return fmt.Errorf("绑定店铺队列 %s 失败: %w", b.QueueName, err)
+			}
+			qi.logger.Infof("店铺队列绑定成功: queue=%s, routingKey=%s", b.QueueName, b.RoutingKey)
+		}
+	}
+	return nil
+}
 func (qi *QueueInitializer) declareQueueWithRetry(q QueueDeclareConfig) error {
 	err := qi.client.DeclareQueue(q.Name, q.Durable, q.AutoDelete, q.Exclusive, q.NoWait, q.Args)
 	if err == nil {

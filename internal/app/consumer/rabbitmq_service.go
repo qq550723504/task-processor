@@ -127,19 +127,32 @@ func (s *RabbitMQService) SetComponents(
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	s.resultReporter = resultReporter
-	s.storeAPI = storeAPI
-	s.ownedStores = ownedStores
-	s.deduplicator = deduplicator
+	// 只更新非 nil 的字段，避免覆盖已有组件
+	if resultReporter != nil {
+		s.resultReporter = resultReporter
+	}
+	if storeAPI != nil {
+		s.storeAPI = storeAPI
+	}
+	if ownedStores != nil {
+		s.ownedStores = ownedStores
+	}
+	if deduplicator != nil {
+		s.deduplicator = deduplicator
+	}
 
-	// 重新创建处理器注册表，使用新的组件
-	s.processorRegistry = NewTaskProcessorRegistry(
-		resultReporter,
-		storeAPI,
-		ownedStores,
-		deduplicator,
+	// 重新创建处理器注册表，使用最新的组件，并迁移已注册的处理器
+	newRegistry := NewTaskProcessorRegistry(
+		s.resultReporter,
+		s.storeAPI,
+		s.ownedStores,
+		s.deduplicator,
 		s.logger,
 	)
+	for platform, processor := range s.processorRegistry.processors {
+		newRegistry.RegisterProcessor(platform, processor)
+	}
+	s.processorRegistry = newRegistry
 
 	s.logger.Info("设置服务组件完成")
 }
@@ -206,6 +219,17 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 		return fmt.Errorf("初始化RabbitMQ队列失败: %w", err)
 	}
 
+	// 4. 初始化店铺专属队列（如果配置了 ownedStores）
+	if len(s.ownedStores) > 0 {
+		platforms := s.getRegisteredPlatforms()
+		for _, platform := range platforms {
+			if err := s.initializer.InitializeStoreQueues(platform, s.ownedStores); err != nil {
+				return fmt.Errorf("初始化平台 %s 店铺队列失败: %w", platform, err)
+			}
+		}
+		s.logger.Infof("店铺专属队列初始化完成: platforms=%v, stores=%v", platforms, s.ownedStores)
+	}
+
 	// 4. 预加载店铺配置（如果启用）
 	if s.storeAPI != nil && len(s.ownedStores) > 0 {
 		s.logger.Infof("开始预加载 %d 个店铺配置...", len(s.ownedStores))
@@ -235,37 +259,57 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 }
 
 // registerMessageHandlers 注册消息处理器
-// 每个平台的处理器需要注册到该平台的所有优先级队列（high/normal/low）
 func (s *RabbitMQService) registerMessageHandlers() {
 	handlers := s.processorRegistry.GetAllHandlers()
-
-	// 优先级列表
 	priorities := []string{"high", "normal", "low"}
 
 	for platform, handler := range handlers {
-		// 判断是否是爬虫平台
 		isCrawler := platform == "amazon.crawler" || platform == "1688.crawler"
 
-		// 为每个优先级队列注册处理器
-		for _, priority := range priorities {
-			var queueName string
-			if isCrawler {
-				// 爬虫队列格式: {platform}.crawler.{priority}
-				queueName = fmt.Sprintf("%s.%s", platform, priority)
-			} else {
-				// 上架任务队列格式: {platform}.tasks.{priority}
-				queueName = fmt.Sprintf("%s.tasks.%s", platform, priority)
+		if isCrawler {
+			// 爬虫队列保持原有格式
+			for _, priority := range priorities {
+				queueName := fmt.Sprintf("%s.%s", platform, priority)
+				s.consumer.RegisterHandler(queueName, handler)
 			}
-
-			s.consumer.RegisterHandler(queueName, handler)
+			s.logger.Infof("注册爬虫处理器: 平台=%s", platform)
+			continue
 		}
 
-		s.logger.Infof("注册消息处理器: 平台=%s, 队列=3个优先级队列", platform)
+		if len(s.ownedStores) > 0 {
+			// 按店铺专属队列注册
+			for _, storeID := range s.ownedStores {
+				for _, priority := range priorities {
+					queueName := fmt.Sprintf("%s.tasks.%s.store.%d", platform, priority, storeID)
+					s.consumer.RegisterHandler(queueName, handler)
+				}
+			}
+			s.logger.Infof("注册处理器: 平台=%s, 店铺=%v", platform, s.ownedStores)
+		} else {
+			// 未配置 ownedStores，回退到平台级队列（兼容旧模式）
+			for _, priority := range priorities {
+				queueName := fmt.Sprintf("%s.tasks.%s", platform, priority)
+				s.consumer.RegisterHandler(queueName, handler)
+			}
+			s.logger.Warnf("注册处理器（平台级队列，未配置店铺隔离）: 平台=%s", platform)
+		}
 	}
 
 	if len(handlers) == 0 {
 		s.logger.Warn("没有注册任何消息处理器")
 	}
+}
+
+// getRegisteredPlatforms 获取已注册的非爬虫平台列表
+func (s *RabbitMQService) getRegisteredPlatforms() []string {
+	handlers := s.processorRegistry.GetAllHandlers()
+	platforms := make([]string, 0, len(handlers))
+	for platform := range handlers {
+		if platform != "amazon.crawler" && platform != "1688.crawler" {
+			platforms = append(platforms, platform)
+		}
+	}
+	return platforms
 }
 
 // Stop 停止RabbitMQ服务

@@ -20,6 +20,7 @@ const (
 
 	// 资源相关错误
 	ErrCodeStoreNotFound   ErrorCode = "STORE_NOT_FOUND"
+	ErrCodeStoreNotOwned   ErrorCode = "STORE_NOT_OWNED"
 	ErrCodeProductNotFound ErrorCode = "PRODUCT_NOT_FOUND"
 	ErrCodeAccessDenied    ErrorCode = "ACCESS_DENIED"
 
@@ -70,7 +71,8 @@ func (e *TaskError) IsRetryable() bool {
 	case ErrCodeNetworkError, ErrCodeTimeout, ErrCodeConnectionFailed:
 		return true
 	case ErrCodeInvalidTask, ErrCodeProductNotFound, ErrCodeAccessDenied,
-		ErrCodePlatformMismatch, ErrCodeConversionFailed, ErrCodeValidationFailed:
+		ErrCodePlatformMismatch, ErrCodeConversionFailed, ErrCodeValidationFailed,
+		ErrCodeStoreNotOwned:
 		return false
 	default:
 		return true
@@ -103,4 +105,18 @@ func NewStoreNotFoundError(taskID, storeID int64, err error) *TaskError {
 // NewConversionError 创建转换失败错误
 func NewConversionError(taskID int64, err error) *TaskError {
 	return NewTaskError(ErrCodeConversionFailed, taskID, "conversion", "message conversion failed", err)
+}
+
+// NewStoreNotOwnedError 创建店铺不属于本节点错误
+func NewStoreNotOwnedError(taskID, storeID int64) *TaskError {
+	message := fmt.Sprintf("store %d is not owned by this node", storeID)
+	return NewTaskError(ErrCodeStoreNotOwned, taskID, "store_affinity", message, nil)
+}
+
+// IsStoreNotOwnedError 判断是否为店铺不属于本节点错误
+func IsStoreNotOwnedError(err error) bool {
+	if taskErr, ok := err.(*TaskError); ok {
+		return taskErr.Code == ErrCodeStoreNotOwned
+	}
+	return false
 }

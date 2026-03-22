@@ -58,6 +58,7 @@ type NodeConfig struct {
 	MetricsPort     int           `yaml:"metricsPort"`     // 指标端口
 	LogLevel        string        `yaml:"logLevel"`        // 日志级别
 	ShutdownTimeout time.Duration `yaml:"shutdownTimeout"` // 关闭超时
+	OwnedStores     []int64       `yaml:"ownedStores"`     // 本节点负责的店铺ID列表，为空则处理所有店铺
 }
 
 // DeduplicatorConfig 去重器配置

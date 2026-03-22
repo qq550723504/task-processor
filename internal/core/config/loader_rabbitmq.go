@@ -39,6 +39,7 @@ func BuildRabbitMQConfig() *RabbitMQConfig {
 			MetricsPort:     viper.GetInt("rabbitmq.node.metricsPort"),
 			LogLevel:        viper.GetString("rabbitmq.node.logLevel"),
 			ShutdownTimeout: getDuration("rabbitmq.node.shutdownTimeout", 30),
+			OwnedStores:     getInt64Slice("rabbitmq.node.ownedStores"),
 		},
 		Deduplicator: DeduplicatorConfig{
 			TTL: getDuration("rabbitmq.deduplicator.ttl", 600),

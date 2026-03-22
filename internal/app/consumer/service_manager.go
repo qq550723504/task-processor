@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"sync"
 
+	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 
@@ -207,4 +209,13 @@ func (sm *ServiceManager) GetClient() *rabbitmq.Client {
 		return nil
 	}
 	return sm.rabbitmqService.GetClient()
+}
+
+// SetStoreComponents 注入店铺亲和性所需的组件，必须在 Start 之前调用。
+func (sm *ServiceManager) SetStoreComponents(
+	storeAPI api.StoreAPI,
+	ownedStores []int64,
+	deduplicator *apptask.DeduplicationManager,
+) {
+	sm.rabbitmqService.SetComponents(nil, storeAPI, ownedStores, deduplicator)
 }
