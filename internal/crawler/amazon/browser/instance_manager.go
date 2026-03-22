@@ -2,11 +2,10 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 	"time"
-
 )
 
 // InstanceManager 实例管理器
@@ -151,9 +150,14 @@ func (im *InstanceManager) RecreateInstanceAsync(oldInstance *BrowserInstance) {
 		// 更新实例列表
 		im.pool.UpdateInstance(oldInstance, newInstance)
 
-		// 将新实例放回可用池
-		im.pool.GetAvailableChannel() <- newInstance
-		logger.GetGlobalLogger("crawler/amazon").Infof("✅ 成功异步重新创建浏览器实例 %d", oldInstance.ID)
+		// 将新实例放回可用池，使用 select 防止池关闭时 panic 或通道满时阻塞
+		select {
+		case im.pool.GetAvailableChannel() <- newInstance:
+			logger.GetGlobalLogger("crawler/amazon").Infof("✅ 成功异步重新创建浏览器实例 %d", oldInstance.ID)
+		default:
+			logger.GetGlobalLogger("crawler/amazon").Warnf("浏览器池通道已满或已关闭，无法放回重建的实例 %d，关闭该实例", oldInstance.ID)
+			newInstance.Manager.Close()
+		}
 	}()
 }
 

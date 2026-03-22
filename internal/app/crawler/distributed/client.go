@@ -63,28 +63,65 @@ func (c *DistributedCrawlerClient) SetTimeout(timeout time.Duration) {
 
 // SubmitCrawlTask 提交爬虫任务并同步等待结果
 func (c *DistributedCrawlerClient) SubmitCrawlTask(ctx context.Context, req *CrawlRequest) (*CrawlResult, error) {
-	c.logger.Infof("提交爬虫任务: TaskID=%s, ProductID=%s", req.TaskID, req.ProductID)
+	results, err := c.SubmitCrawlTasks(ctx, []*CrawlRequest{req})
+	if err != nil {
+		return nil, err
+	}
+	return results[0], nil
+}
 
-	// 步骤1：确保结果监听器已启动（懒加载，只执行一次）
+// SubmitCrawlTasks 批量提交爬虫任务：先全部发布，再并发等待结果。
+// 这样队列里同时存在多个任务，其他节点可以并行消费，实现真正的分布式。
+func (c *DistributedCrawlerClient) SubmitCrawlTasks(ctx context.Context, reqs []*CrawlRequest) ([]*CrawlResult, error) {
+	if len(reqs) == 0 {
+		return nil, nil
+	}
+
 	replyTo, err := c.ensureListenerStarted()
 	if err != nil {
 		return nil, fmt.Errorf("启动结果监听器失败: %w", err)
 	}
 
-	// 步骤2：注册等待任务
-	pt := c.registry.Register(ctx, req.TaskID)
-
-	// 步骤3：构建并发布爬虫任务消息
-	queueName := c.queueNaming.BuildCrawlerQueueName(req.Platform, req.Priority)
-	if err := c.publishCrawlTask(ctx, req, queueName, replyTo, pt.TaskID); err != nil {
-		c.registry.Remove(pt.TaskID)
-		return nil, err
+	// 第一步：全部注册 + 全部发布（不等待），让任务同时进入队列
+	pts := make([]*PendingTask, len(reqs))
+	for i, req := range reqs {
+		pts[i] = c.registry.Register(ctx, req.TaskID)
+		queueName := c.queueNaming.BuildCrawlerQueueName(req.Platform, req.Priority)
+		if err := c.publishCrawlTask(ctx, req, queueName, replyTo, pts[i].TaskID); err != nil {
+			// 发布失败，清理已注册的任务
+			for j := 0; j <= i; j++ {
+				c.registry.Remove(pts[j].TaskID)
+			}
+			return nil, fmt.Errorf("发布爬虫任务失败 [%d/%d]: %w", i+1, len(reqs), err)
+		}
+		c.logger.Infof("🚀 [分布式爬虫] 任务已发布到公共队列: TaskID=%s, Queue=%s, ProductID=%s",
+			pts[i].TaskID, queueName, req.ProductID)
 	}
 
-	c.logger.Infof("爬虫任务已发送: TaskID=%s, Queue=%s, ReplyTo=%s", pt.TaskID, queueName, replyTo)
+	// 第二步：并发等待所有结果
+	results := make([]*CrawlResult, len(reqs))
+	errs := make([]error, len(reqs))
+	var wg sync.WaitGroup
+	for i, pt := range pts {
+		wg.Add(1)
+		go func(idx int, pendingTask *PendingTask) {
+			defer wg.Done()
+			result, waitErr := c.registry.Wait(pendingTask)
+			results[idx] = result
+			errs[idx] = waitErr
+		}(i, pt)
+	}
+	wg.Wait()
 
-	// 步骤4：等待结果
-	return c.registry.Wait(pt)
+	// 收集错误（只返回第一个，结果里保留各自的 nil/非nil）
+	for _, e := range errs {
+		if e != nil {
+			err = e
+			break
+		}
+	}
+
+	return results, err
 }
 
 // ensureListenerStarted 确保结果监听器已启动，返回结果队列名。

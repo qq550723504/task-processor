@@ -2,9 +2,10 @@
 package amazon
 
 import (
-	"task-processor/internal/core/logger"
+	"context"
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/crawler/amazon/extractor"
 	"task-processor/internal/model"
@@ -27,13 +28,26 @@ func NewInstanceProcessor(urlHelper *URLHelper, productChecker *ProductChecker) 
 	}
 }
 
-// ProcessWithInstance 使用指定浏览器实例处理产品
-func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstance, url string, zipcode string) (*model.Product, error) {
+// ProcessWithInstance 使用指定浏览器实例处理产品，ctx 用于超时控制
+func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *browser.BrowserInstance, url string, zipcode string) (*model.Product, error) {
 	if instance == nil {
 		return nil, fmt.Errorf("浏览器实例为空")
 	}
 
 	logger.GetGlobalLogger("crawler/amazon").Infof("使用浏览器实例 %d 处理产品: %s", instance.ID, url)
+
+	// 计算 ctx 剩余超时，用于 Playwright 各操作的 Timeout 参数
+	playwrightTimeout := func() float64 {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			return 30000 // 无 deadline 时默认 30s
+		}
+		remaining := time.Until(deadline).Milliseconds()
+		if remaining <= 0 {
+			return 1 // 已超时，给一个极小值让 Playwright 立即失败
+		}
+		return float64(remaining)
+	}
 
 	// 创建新页面（用 goroutine + channel 包装，防止 WebSocket 断连时 context.NewPage() 永久 hang）
 	type newPageResult struct {
@@ -52,6 +66,8 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 			return nil, fmt.Errorf("创建页面失败: %w", r.err)
 		}
 		page = r.page
+	case <-ctx.Done():
+		return nil, fmt.Errorf("创建页面超时: %w", ctx.Err())
 	case <-time.After(15 * time.Second):
 		return nil, fmt.Errorf("创建页面超时，WebSocket 可能已断连")
 	}
@@ -62,16 +78,21 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 		}
 	}()
 
+	// 检查 ctx 是否已取消
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context 已取消: %w", err)
+	}
+
 	// 获取市场对应的默认货币
 	currency := ip.urlHelper.GetCurrencyFromURL(url)
 
 	// 添加语言和货币参数
 	urlWithParams := ip.urlHelper.AddLanguageAndCurrencyParams(url, currency)
 
-	// 导航到产品页面（显式设置超时，防止 WebSocket 断连时长时间等待）
+	// 导航到产品页面，使用 ctx 剩余时间作为超时
 	_, err := page.Goto(urlWithParams, playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-		Timeout:   playwright.Float(30000),
+		Timeout:   playwright.Float(playwrightTimeout()),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("导航到页面失败: %w", err)
@@ -80,11 +101,16 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 	// 优先处理可能出现的"Continue shopping"按钮
 	if err := ip.productChecker.HandleContinueShoppingButton(page); err != nil {
 		logger.GetGlobalLogger("crawler/amazon").Warnf("处理Continue shopping按钮时出错: %v", err)
-		// 不返回错误，继续处理
 	}
 
-	// 再等待页面准备就绪，使用更短的超时时间避免长时间卡死
-	if err := ip.productChecker.WaitForPageReady(page, 15*time.Second); err != nil {
+	// 等待页面准备就绪，超时取 ctx 剩余时间与 15s 的较小值
+	waitTimeout := 15 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining < waitTimeout {
+			waitTimeout = remaining
+		}
+	}
+	if err := ip.productChecker.WaitForPageReady(page, waitTimeout); err != nil {
 		return nil, fmt.Errorf("页面未准备就绪: %w", err)
 	}
 
@@ -99,14 +125,17 @@ func (ip *InstanceProcessor) ProcessWithInstance(instance *browser.BrowserInstan
 		if err := zipcodeSetter.SetAndVerifyZipcode(page, zipcode); err != nil {
 			logger.GetGlobalLogger("crawler/amazon").Errorf("设置邮编失败: %v", err)
 
-			// 检查是否需要重建浏览器实例
 			if ip.shouldRecreateInstance(err) {
 				return nil, fmt.Errorf("需要重建浏览器实例: %w", err)
 			}
 
-			// 邮编设置失败，不应该继续抓取数据，因为价格和货币信息会不准确
 			return nil, fmt.Errorf("邮编设置失败，终止数据抓取: %w", err)
 		}
+	}
+
+	// 检查 ctx 是否已取消（邮编设置可能耗时较长）
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context 已取消: %w", err)
 	}
 
 	// 获取站点信息，用于设置货币
@@ -176,11 +205,11 @@ func (ip *InstanceProcessor) validateProductData(product *model.Product) error {
 }
 
 // ProcessBatchWithInstance 使用指定实例批量处理产品
-func (ip *InstanceProcessor) ProcessBatchWithInstance(instance *browser.BrowserInstance, requests []model.ProductRequest) []model.ProductResult {
+func (ip *InstanceProcessor) ProcessBatchWithInstance(ctx context.Context, instance *browser.BrowserInstance, requests []model.ProductRequest) []model.ProductResult {
 	results := make([]model.ProductResult, len(requests))
 
 	for i, req := range requests {
-		product, err := ip.ProcessWithInstance(instance, req.URL, req.Zipcode)
+		product, err := ip.ProcessWithInstance(ctx, instance, req.URL, req.Zipcode)
 		results[i] = model.ProductResult{
 			Product: product,
 			Error:   err,
@@ -197,17 +226,16 @@ func (ip *InstanceProcessor) ProcessBatchWithInstance(instance *browser.BrowserI
 }
 
 // ProcessWithRetry 带重试的产品处理
-func (ip *InstanceProcessor) ProcessWithRetry(instance *browser.BrowserInstance, url string, zipcode string, maxRetries int) (*model.Product, error) {
+func (ip *InstanceProcessor) ProcessWithRetry(ctx context.Context, instance *browser.BrowserInstance, url string, zipcode string, maxRetries int) (*model.Product, error) {
 	var lastErr error
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			logger.GetGlobalLogger("crawler/amazon").Infof("重试处理产品 (第%d次): %s", attempt, url)
-			// 重试前等待一段时间
 			time.Sleep(time.Duration(attempt) * 2 * time.Second)
 		}
 
-		product, err := ip.ProcessWithInstance(instance, url, zipcode)
+		product, err := ip.ProcessWithInstance(ctx, instance, url, zipcode)
 		if err == nil {
 			return product, nil
 		}
@@ -215,7 +243,6 @@ func (ip *InstanceProcessor) ProcessWithRetry(instance *browser.BrowserInstance,
 		lastErr = err
 		logger.GetGlobalLogger("crawler/amazon").Warnf("处理产品失败 (第%d次尝试): %v", attempt+1, err)
 
-		// 如果是严重错误（如被阻止），不再重试
 		if ip.isSeriousError(err) {
 			break
 		}

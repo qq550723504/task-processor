@@ -215,16 +215,17 @@ func (f *DistributedProductFetcher) CacheVariants(req *domainProduct.FetchReques
 	return f.cacheManager.CacheVariants(req, variants)
 }
 
-// FetchVariants 获取变体数据（批量处理）
+// FetchVariants 批量获取变体数据（一次性提交所有任务，并发等待结果）
 func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *domainProduct.FetchRequest, variantASINs []string) ([]*model.Product, error) {
 	if len(variantASINs) == 0 {
 		return []*model.Product{}, nil
 	}
 
-	f.logger.Infof("🔍 开始批量获取变体数据: 数量=%d", len(variantASINs))
+	f.logger.Infof("🔍 批量提交 %d 个变体爬虫任务", len(variantASINs))
 
-	var variants []*model.Product
-	var errors []error
+	// 先检查缓存，过滤掉已有缓存的变体
+	crawlReqs := make([]*distributed.CrawlRequest, 0, len(variantASINs))
+	cachedProducts := make(map[string]*model.Product)
 
 	for _, asin := range variantASINs {
 		variantReq := &domainProduct.FetchRequest{
@@ -236,21 +237,51 @@ func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *doma
 			CategoryID: req.CategoryID,
 			Creator:    req.Creator,
 		}
-
-		variant, err := f.FetchProduct(ctx, variantReq)
-		if err != nil {
-			f.logger.Warnf("获取变体失败: ASIN=%s, Error=%v", asin, err)
-			errors = append(errors, err)
+		if product, err := f.cacheManager.GetFromCache(variantReq); err == nil && product != nil {
+			f.logger.Debugf("✅ 变体从缓存获取: ASIN=%s", asin)
+			cachedProducts[asin] = product
 			continue
 		}
 
-		variants = append(variants, variant)
+		crawlerPlatform := req.Platform
+		switch strings.ToLower(req.Platform) {
+		case "shein", "temu":
+			crawlerPlatform = "amazon"
+		}
+		crawlReqs = append(crawlReqs, &distributed.CrawlRequest{
+			TaskID:    crawlTaskID(asin, req.Region),
+			TenantID:  req.TenantID,
+			StoreID:   req.StoreID,
+			Platform:  crawlerPlatform,
+			Region:    req.Region,
+			ProductID: asin,
+			Priority:  f.calculatePriority(variantReq),
+		})
 	}
 
-	f.logger.Infof("✅ 变体数据获取完成: 成功=%d, 失败=%d", len(variants), len(errors))
+	// 批量提交（所有任务同时进入队列，其他节点可以并行消费）
+	variants := make([]*model.Product, 0, len(variantASINs))
+	for _, p := range cachedProducts {
+		variants = append(variants, p)
+	}
 
-	if len(variants) == 0 && len(errors) > 0 {
-		return nil, fmt.Errorf("所有变体获取失败: %d个错误", len(errors))
+	if len(crawlReqs) > 0 {
+		results, _ := f.distributedCrawler.SubmitCrawlTasks(ctx, crawlReqs)
+		successCount := 0
+		for i, result := range results {
+			if result != nil && result.Success && result.Product != nil {
+				variants = append(variants, result.Product)
+				successCount++
+			} else if result != nil && !result.Success {
+				f.logger.Warnf("变体爬取失败: ASIN=%s, Error=%s", crawlReqs[i].ProductID, result.Error)
+			}
+		}
+		f.logger.Infof("✅ 变体数据获取完成: 缓存=%d, 爬取成功=%d, 爬取失败=%d",
+			len(cachedProducts), successCount, len(crawlReqs)-successCount)
+	}
+
+	if len(variants) == 0 {
+		return nil, fmt.Errorf("所有变体获取失败，共 %d 个", len(variantASINs))
 	}
 
 	return variants, nil

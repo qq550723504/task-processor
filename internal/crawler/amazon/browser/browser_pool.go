@@ -2,13 +2,12 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"sync"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
-	"time"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -124,7 +123,7 @@ func (bp *BrowserPool) Initialize() error {
 	return nil
 }
 
-// Acquire 获取浏览器实例
+// Acquire 获取浏览器实例（阻塞直到有可用实例，超时由调用方通过 context 控制）
 func (bp *BrowserPool) Acquire() (*BrowserInstance, error) {
 	bp.Mu.Lock()
 	if bp.closed {
@@ -133,19 +132,15 @@ func (bp *BrowserPool) Acquire() (*BrowserInstance, error) {
 	}
 	bp.Mu.Unlock()
 
-	select {
-	case instance := <-bp.available:
-		if instance == nil {
-			return nil, fmt.Errorf("浏览器池已关闭")
-		}
-		instance.Mu.Lock()
-		instance.InUse = true
-		instance.Mu.Unlock()
-		logger.GetGlobalLogger("crawler/amazon").Infof("获取浏览器实例 %d", instance.ID)
-		return instance, nil
-	case <-time.After(30 * time.Second):
-		return nil, fmt.Errorf("获取浏览器实例超时")
+	instance, ok := <-bp.available
+	if !ok || instance == nil {
+		return nil, fmt.Errorf("浏览器池已关闭")
 	}
+	instance.Mu.Lock()
+	instance.InUse = true
+	instance.Mu.Unlock()
+	logger.GetGlobalLogger("crawler/amazon").Infof("获取浏览器实例 %d", instance.ID)
+	return instance, nil
 }
 
 // Release 释放浏览器实例
@@ -219,6 +214,11 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 // RecreateInstanceSync 同步重新创建浏览器实例（用于任务内重试）
 func (bp *BrowserPool) RecreateInstanceSync(oldInstance *BrowserInstance) *BrowserInstance {
 	return bp.instanceManager.RecreateInstanceSync(oldInstance)
+}
+
+// RecreateInstanceAsync 异步重新创建浏览器实例（用于失败恢复，避免池永久缩容）
+func (bp *BrowserPool) RecreateInstanceAsync(oldInstance *BrowserInstance) {
+	bp.instanceManager.RecreateInstanceAsync(oldInstance)
 }
 
 // Shutdown 关闭浏览器池

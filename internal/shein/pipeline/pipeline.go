@@ -1,8 +1,8 @@
 ﻿package pipeline
 
 import (
-	"task-processor/internal/core/logger"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/category"
 	"task-processor/internal/shein/content"
@@ -109,7 +109,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 查询是否有发品记录
 	pipeline.AddHandler(product.NewHasSpuRecordHandler())
 	// 获取所有变体的Json数据（支持从Amazon爬虫抓取，使用共享的Amazon处理器）
-	pipeline.AddHandler(productdata.NewVariantJsonDataHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), &cfg.Amazon, processor.amazonProcessor, processor.rabbitmqClient))
+	pipeline.AddHandler(productdata.NewVariantJsonDataHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
 	// 提交变体原始JSON数据到服务器缓存（使用公共缓存逻辑）
 	pipeline.AddHandler(productdata.NewSubmitVariantRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
 	// 重新应用筛选规则到变体

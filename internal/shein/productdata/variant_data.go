@@ -4,14 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/perf"
 	"task-processor/internal/product"
 	shein "task-processor/internal/shein"
@@ -19,30 +17,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// VariantJsonDataHandler 获取所有变体原始Json数据处理器（并行处理版本）
+// VariantJsonDataHandler 获取所有变体原始Json数据处理器
 type VariantJsonDataHandler struct {
 	logger         *logrus.Entry
 	productFetcher appProduct.ProductFetcher
 	amazonConfig   *config.AmazonConfig
-	maxWorkers     int
-	timeout        time.Duration
 }
 
 // NewVariantJsonDataHandler 创建新的获取变体原始Json数据处理器
 func NewVariantJsonDataHandler(
 	rawJsonDataClient product.RawJsonDataClient,
-	amazonConfig *config.AmazonConfig,
+	cfg *config.Config,
 	amazonProcessor product.AmazonScraper,
 	rabbitmqClient *rabbitmq.Client,
 ) *VariantJsonDataHandler {
 	logger := coreLogger.GetGlobalLogger("VariantJsonDataHandler")
 
-	maxWorkers := 1
-
 	factory := appProduct.NewFetcherFactory()
-	cfg := &config.Config{
-		Amazon: *amazonConfig,
-	}
 
 	var fetcher appProduct.ProductFetcher
 	var err error
@@ -50,21 +41,19 @@ func NewVariantJsonDataHandler(
 	if amazonProcessor != nil {
 		fetcher, err = factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 		if err != nil {
-			logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
-			fetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor)
+			logger.Errorf("创建产品获取器失败，降级到本地获取器: %v", err)
+			fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
 		}
-		logger.Info("[SHEIN] 变体数据使用共享的Amazon爬虫实例")
+		logger.Info("[SHEIN] 变体数据使用分布式爬虫获取器")
 	} else {
 		logger.Warn("变体数据处理器：没有提供Amazon处理器实例，Amazon功能将被禁用")
-		fetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, nil)
+		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, nil)
 	}
 
 	return &VariantJsonDataHandler{
 		logger:         logger,
 		productFetcher: fetcher,
-		amazonConfig:   amazonConfig,
-		maxWorkers:     maxWorkers,
-		timeout:        2 * time.Minute,
+		amazonConfig:   &cfg.Amazon,
 	}
 }
 
@@ -129,55 +118,27 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	return nil
 }
 
-// fetchVariantsParallel 并行获取变体数据
+// fetchVariantsParallel 批量获取变体数据（调用 FetchVariants 一次性提交所有任务）
 func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein.TaskContext, variantAsins []string) ([]*model.Product, error) {
 	if ctx.Task == nil {
 		return nil, fmt.Errorf("任务信息为空")
 	}
 
-	processor := goroutine.NewProcessor(h.maxWorkers, h.timeout, h.logger)
-
-	tasks := make([]*goroutine.Task, len(variantAsins))
-	for i, asin := range variantAsins {
-		tasks[i] = &goroutine.Task{
-			Index: i,
-			ID:    asin,
-			Data: &product.FetchRequest{
-				TenantID:   ctx.Task.TenantID,
-				Platform:   ctx.Task.SourcePlatform,
-				Region:     ctx.Task.Region,
-				ProductID:  asin,
-				StoreID:    ctx.Task.StoreID,
-				CategoryID: ctx.Task.CategoryID,
-				Creator:    ctx.Task.Creator,
-			},
-		}
+	req := &product.FetchRequest{
+		TenantID:   ctx.Task.TenantID,
+		Platform:   ctx.Task.SourcePlatform,
+		Region:     ctx.Task.Region,
+		StoreID:    ctx.Task.StoreID,
+		CategoryID: ctx.Task.CategoryID,
+		Creator:    ctx.Task.Creator,
 	}
 
-	processFunc := func(taskCtx context.Context, task *goroutine.Task) (any, error) {
-		req, ok := task.Data.(*product.FetchRequest)
-		if !ok {
-			return nil, fmt.Errorf("任务数据类型错误")
-		}
-		return h.productFetcher.FetchProduct(taskCtx, req)
+	variants, err := h.productFetcher.FetchVariants(context.Background(), req, variantAsins)
+	if err != nil {
+		return nil, err
 	}
 
-	results := processor.ProcessParallel(context.Background(), tasks, processFunc)
-
-	variants := make([]*model.Product, 0, len(results))
-	successCount := 0
-
-	for _, result := range results {
-		if result.Success && result.Data != nil {
-			if variant, ok := result.Data.(*model.Product); ok {
-				variants = append(variants, variant)
-				successCount++
-			}
-		}
-	}
-
-	h.logger.Infof("🎉 并行获取完成: 成功 %d/%d 个变体数据", successCount, len(variantAsins))
-
+	h.logger.Infof("🎉 批量获取完成: 成功 %d/%d 个变体数据", len(variants), len(variantAsins))
 	return variants, nil
 }
 

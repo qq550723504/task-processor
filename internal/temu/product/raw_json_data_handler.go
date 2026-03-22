@@ -11,7 +11,8 @@ import (
 	"task-processor/internal/pipeline"
 	domainProduct "task-processor/internal/product"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,15 +34,26 @@ func NewRawJsonDataHandlerV2(
 	// 使用工厂模式创建获取器
 	factory := appProduct.NewFetcherFactory()
 
+	// 诊断日志：打印关键条件
+	logger.Infof("🔍 [诊断] RabbitMQ配置: cfg.RabbitMQ=%v, Enabled=%v, rabbitmqClient=%v",
+		cfg.RabbitMQ != nil,
+		cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled,
+		rabbitmqClient != nil,
+	)
+
 	// 根据配置创建获取器
 	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
 		// 降级到本地获取器
 		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+		logger.Warn("⚠️ [诊断] 已降级到本地获取器")
 	}
 
-	logger.Infof("✅ 产品获取器创建成功，类型: %s", factory.GetRecommendedFetcher(cfg))
+	// 打印实际使用的获取器类型（通过 GetStats 判断）
+	if stats := fetcher.GetStats(); stats != nil {
+		logger.Infof("✅ 产品获取器创建成功，实际类型: %v", stats["type"])
+	}
 
 	return &RawJsonDataHandlerV2{
 		logger:  logger,

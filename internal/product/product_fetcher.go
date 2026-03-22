@@ -113,6 +113,35 @@ func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Prod
 	return f.cacheManager.CacheVariants(req, variants)
 }
 
+// FetchVariants 批量获取变体数据（本地模式：串行调用本地爬虫，受浏览器池并发限制）
+func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, variantASINs []string) ([]*model.Product, error) {
+	if len(variantASINs) == 0 {
+		return []*model.Product{}, nil
+	}
+
+	variants := make([]*model.Product, 0, len(variantASINs))
+	for _, asin := range variantASINs {
+		variantReq := &FetchRequest{
+			TenantID:   req.TenantID,
+			Platform:   req.Platform,
+			Region:     req.Region,
+			ProductID:  asin,
+			StoreID:    req.StoreID,
+			CategoryID: req.CategoryID,
+			Creator:    req.Creator,
+		}
+		product, err := f.FetchProduct(ctx, variantReq)
+		if err != nil {
+			f.logger.Warnf("获取变体失败: ASIN=%s, err=%v", asin, err)
+			continue
+		}
+		if product != nil {
+			variants = append(variants, product)
+		}
+	}
+	return variants, nil
+}
+
 // GetStats 获取统计信息
 func (f *ProductFetcher) GetStats() map[string]any {
 	return map[string]any{"type": "local"}

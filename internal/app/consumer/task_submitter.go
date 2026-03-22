@@ -208,18 +208,17 @@ func (ts *TaskSubmitter) SubmitVariantTasks(ctx context.Context, parentTask *mod
 		}
 
 		// 为每个变体创建任务
-		// 确保平台名称正确：如果父任务已经包含.crawler后缀，则去掉后再使用基础平台名
+		// 变体任务需要投到爬虫队列，确保 platform 包含 .crawler 后缀
 		variantPlatform := parentTask.Platform
-		if strings.Contains(variantPlatform, ".crawler") {
-			// 去掉.crawler后缀，只保留基础平台名（如 Amazon）
-			variantPlatform = strings.TrimSuffix(variantPlatform, ".crawler")
+		if !strings.Contains(variantPlatform, ".crawler") {
+			variantPlatform = strings.ToLower(variantPlatform) + ".crawler"
 		}
 
 		variantTask := &model.Task{
 			ID:            time.Now().UnixNano(),
 			TenantID:      parentTask.TenantID,
 			StoreID:       parentTask.StoreID,
-			Platform:      variantPlatform, // 使用基础平台名（如 Amazon）
+			Platform:      variantPlatform, // 使用爬虫队列（如 amazon.crawler）
 			Region:        parentTask.Region,
 			ProductID:     v.Asin,
 			CategoryID:    parentTask.CategoryID,

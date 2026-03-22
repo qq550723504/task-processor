@@ -159,16 +159,7 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 		// 不返回错误，因为数据已经获取成功
 	}
 
-	// 只有主产品任务才提交变体任务（避免无限递归）
-	// 通过Remark字段判断：如果Remark为"variant"，说明这是变体任务，不再提交变体
-	if task.Remark != "variant" && len(productData.Variations) > 0 {
-		p.logger.Infof("🔄 发现 %d 个变体，准备提交爬虫任务", len(productData.Variations))
-		successCount, failCount := p.taskSubmitter.SubmitVariantTasks(ctx, &task, productData.Variations, productData.ParentAsin)
-		p.logger.Infof("📤 变体任务提交完成: 成功=%d, 失败=%d, 总数=%d",
-			successCount, failCount, len(productData.Variations))
-	} else if task.Remark == "variant" {
-		p.logger.Debugf("这是变体任务，跳过变体提交（避免递归）")
-	}
+	// 变体自动提交已禁用
 
 	duration := time.Since(startTime)
 	p.logger.Infof("✅ 爬取完成: ID=%d, ProductID=%s, 耗时=%v", task.ID, task.ProductID, duration)

@@ -144,7 +144,8 @@ rabbitmq:
   url: "amqp://admin:RabbitMQ%402026%23Prod@101.33.34.102:30567/"  # 通过NodePort连接到k3s中的RabbitMQ
   reconnectInterval: 5   # 重连间隔（秒）
   maxReconnectTries: 10  # 最大重连次数
-  
+  node:
+    ownedStores: [836]
   # 消费者配置
   consumer:
     prefetchCount: 1      # 预取消息数量（允许同时处理5条消息）
@@ -155,36 +156,39 @@ rabbitmq:
     # 队列配置（可为不同队列设置不同的并发度）
     queues:
       # 上架任务队列 - 高优先级
+      # 注意：上架 worker 会同步阻塞等待爬虫结果，总上架并发数必须 < 爬虫 worker 总数
+      # browser.poolSize=3，爬虫 worker 总数=3，上架并发控制在 1，避免浏览器池耗尽
       - name: "amazon.tasks.high"
         priority: 10
-        prefetch: 5
+        prefetch: 1
       - name: "temu.tasks.high"
         priority: 10
-        prefetch: 3
+        prefetch: 1
       - name: "shein.tasks.high"
         priority: 10
         prefetch: 1
-      # 上架任务队列 - 普通优先级
+      # 上架任务队列 - 普通优先级（同一节点同时只处理1个上架任务，其余排队）
       - name: "amazon.tasks.normal"
         priority: 8
-        prefetch: 3
+        prefetch: 0
       - name: "temu.tasks.normal"
         priority: 8
-        prefetch: 2
+        prefetch: 0
       - name: "shein.tasks.normal"
         priority: 8
-        prefetch: 1
+        prefetch: 0
       # 上架任务队列 - 低优先级
       - name: "amazon.tasks.low"
         priority: 5
-        prefetch: 2
+        prefetch: 0
       - name: "temu.tasks.low"
         priority: 5
-        prefetch: 1
+        prefetch: 0
       - name: "shein.tasks.low"
         priority: 5
-        prefetch: 1
+        prefetch: 0
       # 爬虫任务队列 - 高优先级
+      # 爬虫 worker 总数需要 > 所有节点上架 worker 总数之和，避免死锁
       - name: "amazon.crawler.high"
         priority: 10
         prefetch: 3

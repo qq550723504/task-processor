@@ -1,22 +1,21 @@
-﻿// Package sku 提供并行变体数据处理功能
+// Package sku 提供并行变体数据处理功能
 package sku
 
 import (
 	"context"
 	"fmt"
-	"time"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/goroutine"
 	"task-processor/internal/pkg/perf"
 	domainProduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,8 +24,6 @@ type ParallelVariantHandler struct {
 	logger         *logrus.Entry
 	productFetcher appProduct.ProductFetcher
 	amazonConfig   *config.AmazonConfig
-	maxWorkers     int
-	timeout        time.Duration
 }
 
 // NewParallelVariantHandler 创建并行变体数据处理器（支持分布式获取器）
@@ -38,17 +35,10 @@ func NewParallelVariantHandler(
 ) *ParallelVariantHandler {
 	logger := logger.GetGlobalLogger("ParallelVariantHandler")
 
-	// 直接使用浏览器池大小作为并发数，确保资源利用最优
-	maxWorkers := 1
-
-	// 使用工厂模式创建获取器
 	factory := appProduct.NewFetcherFactory()
-
-	// 根据配置创建获取器
 	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
-		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
-		// 降级到本地获取器
+		logger.Errorf("创建产品获取器失败，降级到本地获取器: %v", err)
 		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
 	}
 
@@ -56,8 +46,6 @@ func NewParallelVariantHandler(
 		logger:         logger,
 		productFetcher: fetcher,
 		amazonConfig:   &cfg.Amazon,
-		maxWorkers:     maxWorkers,
-		timeout:        2 * time.Minute, // 每个变体2分钟超时
 	}
 }
 
@@ -138,62 +126,28 @@ func (h *ParallelVariantHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 	return nil
 }
 
-// fetchVariantsParallel 并行获取变体数据
+// fetchVariantsParallel 批量获取变体数据（调用 FetchVariants 一次性提交所有任务）
 func (h *ParallelVariantHandler) fetchVariantsParallel(temuCtx *temucontext.TemuTaskContext, variantAsins []string) ([]*model.Product, error) {
 	task := temuCtx.GetTask()
 	if task == nil {
 		return nil, fmt.Errorf("任务信息为空")
 	}
 
-	// 创建并行处理器
-	processor := goroutine.NewProcessor(h.maxWorkers, h.timeout, h.logger)
-
-	// 创建处理任务
-	tasks := make([]*goroutine.Task, len(variantAsins))
-	for i, asin := range variantAsins {
-		tasks[i] = &goroutine.Task{
-			Index: i,
-			ID:    asin,
-			Data: &domainProduct.FetchRequest{
-				TenantID:   task.TenantID,
-				Platform:   task.Platform,
-				Region:     task.Region,
-				ProductID:  asin,
-				StoreID:    task.StoreID,
-				CategoryID: task.CategoryID,
-				Creator:    task.Creator,
-			},
-		}
+	req := &domainProduct.FetchRequest{
+		TenantID:   task.TenantID,
+		Platform:   task.Platform,
+		Region:     task.Region,
+		StoreID:    task.StoreID,
+		CategoryID: task.CategoryID,
+		Creator:    task.Creator,
 	}
 
-	// 定义处理函数
-	processFunc := func(ctx context.Context, task *goroutine.Task) (any, error) {
-		req, ok := task.Data.(*domainProduct.FetchRequest)
-		if !ok {
-			return nil, fmt.Errorf("任务数据类型错误")
-		}
-
-		return h.productFetcher.FetchProduct(ctx, req)
+	variants, err := h.productFetcher.FetchVariants(context.Background(), req, variantAsins)
+	if err != nil {
+		return nil, err
 	}
 
-	// 并行执行处理
-	results := processor.ProcessParallel(context.Background(), tasks, processFunc)
-
-	// 处理结果
-	variants := make([]*model.Product, 0, len(results))
-	successCount := 0
-
-	for _, result := range results {
-		if result.Success && result.Data != nil {
-			if variant, ok := result.Data.(*model.Product); ok {
-				variants = append(variants, variant)
-				successCount++
-			}
-		}
-	}
-
-	h.logger.Infof("🎉 并行获取完成: 成功 %d/%d 个变体数据", successCount, len(variantAsins))
-
+	h.logger.Infof("🎉 批量获取完成: 成功 %d/%d 个变体数据", len(variants), len(variantAsins))
 	return variants, nil
 }
 

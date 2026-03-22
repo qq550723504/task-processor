@@ -2,15 +2,14 @@
 package amazon
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"sync"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/model"
 	"time"
-
 )
 
 // AmazonProcessor Amazon爬虫处理器
@@ -171,66 +170,60 @@ func (ap *AmazonProcessor) ProcessBatch(requests []model.ProductRequest) []model
 
 // processWithPool 使用浏览器池处理
 func (ap *AmazonProcessor) processWithPool(url string, zipcode string) (*model.Product, error) {
-	maxRetries := 2 // 最多重试2次（即总共尝试3次）
+	const maxRetries = 2 // 最多重试2次（即总共尝试3次）
+
+	// 获取一次实例，贯穿整个重试流程，避免多次 Acquire/泄漏
+	instance, err := ap.browserPool.Acquire()
+	if err != nil {
+		return nil, fmt.Errorf("获取浏览器实例失败: %w", err)
+	}
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			logger.GetGlobalLogger("crawler/amazon").Infof("开始第 %d 次重试处理产品: %s", attempt, url)
 		}
 
-		// 从池中获取浏览器实例
-		instance, err := ap.browserPool.Acquire()
-		if err != nil {
-			return nil, fmt.Errorf("获取浏览器实例失败: %w", err)
-		}
-
 		// 使用实例处理产品
 		product, processErr := ap.processWithInstance(instance, url, zipcode)
 
-		// 检查是否为严重错误
-		if processErr != nil && ap.browserPool.IsBlockedOrSeriousError(processErr) {
-			logger.GetGlobalLogger("crawler/amazon").Warnf("检测到浏览器实例 %d 出现严重错误: %v", instance.ID, processErr)
-
-			// 同步重建浏览器实例
-			newInstance := ap.browserPool.RecreateInstanceSync(instance)
-
-			// 如果重建失败
-			if newInstance == nil {
-				logger.GetGlobalLogger("crawler/amazon").Errorf("重建浏览器实例失败，任务失败: %s", url)
-				return nil, fmt.Errorf("重建浏览器实例失败: %w", processErr)
-			}
-
-			// 如果是最后一次尝试，返回错误
-			if attempt >= maxRetries {
-				logger.GetGlobalLogger("crawler/amazon").Errorf("已达到最大重试次数，任务失败: %s", url)
-				// 将重建的实例放回池中
-				ap.browserPool.Release(newInstance)
-				return nil, processErr
-			}
-
-			// 否则继续下一次重试
-			logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例已重建为 %d，准备重试", newInstance.ID)
-			continue
+		// 没有错误或非严重错误，正常释放实例并返回
+		if processErr == nil || !ap.browserPool.IsBlockedOrSeriousError(processErr) {
+			ap.browserPool.ReleaseWithError(instance, processErr)
+			return product, processErr
 		}
 
-		// 如果没有错误或不是严重错误，正常释放实例
-		ap.browserPool.ReleaseWithError(instance, processErr)
+		// 检测到严重错误，尝试重建实例
+		logger.GetGlobalLogger("crawler/amazon").Warnf("检测到浏览器实例 %d 出现严重错误: %v", instance.ID, processErr)
 
-		if processErr != nil {
+		newInstance := ap.browserPool.RecreateInstanceSync(instance)
+		if newInstance == nil {
+			// 重建失败：旧实例已被关闭，异步补充一个新实例避免池永久缩容
+			logger.GetGlobalLogger("crawler/amazon").Errorf("重建浏览器实例失败，任务失败: %s", url)
+			go ap.browserPool.RecreateInstanceAsync(instance)
+			return nil, fmt.Errorf("重建浏览器实例失败: %w", processErr)
+		}
+
+		// 重建成功，用新实例继续重试
+		instance = newInstance
+
+		if attempt >= maxRetries {
+			logger.GetGlobalLogger("crawler/amazon").Errorf("已达到最大重试次数，任务失败: %s", url)
+			ap.browserPool.Release(instance)
 			return nil, processErr
 		}
 
-		return product, nil
+		logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例已重建为 %d，准备重试", instance.ID)
 	}
 
 	// 理论上不会到这里
+	ap.browserPool.Release(instance)
 	return nil, fmt.Errorf("处理产品失败，已达到最大重试次数")
 }
 
 // processWithInstance 使用指定实例处理产品
 func (ap *AmazonProcessor) processWithInstance(instance *browser.BrowserInstance, url string, zipcode string) (*model.Product, error) {
 	processor := NewInstanceProcessor(ap.urlHelper, ap.productChecker)
-	return processor.ProcessWithInstance(instance, url, zipcode)
+	return processor.ProcessWithInstance(context.Background(), instance, url, zipcode)
 }
 
 // Shutdown 关闭处理器

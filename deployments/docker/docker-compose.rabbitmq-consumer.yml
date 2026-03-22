@@ -1,0 +1,11 @@
+services:
+  rabbitmq-consumer:
+    image: xuwei190/rabbitmq-consumer:latest
+    container_name: rabbitmq-consumer
+    restart: unless-stopped
+    volumes:
+      - /app/rabbitmq-consumer/config:/app/config
+      - /app/rabbitmq-consumer/logs:/app/logs
+    ports:
+      - "8081:8081"
+      - "8082:8082"

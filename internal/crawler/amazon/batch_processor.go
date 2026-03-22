@@ -2,11 +2,11 @@
 package amazon
 
 import (
-	"task-processor/internal/core/logger"
+	"context"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/model"
-
 )
 
 // BatchProcessor 批量处理器
@@ -48,7 +48,7 @@ func (bp *BatchProcessor) ProcessWithPool(requests []model.ProductRequest, brows
 	// 使用同一个实例处理所有请求
 	instanceProcessor := NewInstanceProcessor(bp.urlHelper, bp.productChecker)
 	for i, req := range requests {
-		product, err := instanceProcessor.ProcessWithInstance(instance, req.URL, req.Zipcode)
+		product, err := instanceProcessor.ProcessWithInstance(context.Background(), instance, req.URL, req.Zipcode)
 		results[i] = model.ProductResult{
 			Product: product,
 			Error:   err,

@@ -27,6 +27,8 @@ const (
 // ProductFetcher 产品获取器接口
 type ProductFetcher interface {
 	FetchProduct(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error)
+	// FetchVariants 批量获取变体数据。所有任务一次性提交，并发等待结果，实现真正的分布式消费。
+	FetchVariants(ctx context.Context, req *domainProduct.FetchRequest, variantASINs []string) ([]*model.Product, error)
 	CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error
 	CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error
 	GetStats() map[string]any

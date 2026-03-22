@@ -1,0 +1,41 @@
+# ============================================================
+# 多阶段构建：rabbitmq-consumer
+# 环境层源码: deployments/docker/Dockerfile.crawler-env
+# ============================================================
+
+# 阶段 1: 构建
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache git make
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o rabbitmq-consumer \
+    ./cmd/rabbitmq-consumer/main.go
+
+# 阶段 2: 运行（基于已封装好依赖的环境层）
+FROM xuwei190/crawler-env:latest
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata && \
+    ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /app/rabbitmq-consumer .
+COPY --from=builder /app/config ./config
+
+RUN chmod +x ./rabbitmq-consumer
+
+EXPOSE 8081 8082
+
+CMD ["./rabbitmq-consumer", "-app-config", "config/config-prod.yaml"]

@@ -5,35 +5,48 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	appProduct "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/strx"
-	"task-processor/internal/pkg/timeout"
-	"task-processor/internal/product"
+	domainProduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
-// VariantJsonDataHandler 变体JSON数据处理器（使用公共组件）
+// VariantJsonDataHandler 变体JSON数据处理器
 type VariantJsonDataHandler struct {
 	logger         *logrus.Entry
-	productFetcher *product.ProductFetcher
+	productFetcher appProduct.ProductFetcher
 	amazonConfig   *config.AmazonConfig
 }
 
 // NewVariantJsonDataHandler 创建新的变体JSON数据处理器
 func NewVariantJsonDataHandler(
-	rawJsonDataClient product.RawJsonDataClient,
-	amazonConfig *config.AmazonConfig,
-	amazonProcessor product.AmazonScraper,
+	rawJsonDataClient domainProduct.RawJsonDataClient,
+	cfg *config.Config,
+	amazonProcessor domainProduct.AmazonScraper,
+	rabbitmqClient *rabbitmq.Client,
 ) *VariantJsonDataHandler {
+	log := logger.GetGlobalLogger("VariantJsonDataHandler")
+
+	factory := appProduct.NewFetcherFactory()
+	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
+	if err != nil {
+		log.Errorf("创建产品获取器失败，降级到本地获取器: %v", err)
+		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
+	}
+
 	return &VariantJsonDataHandler{
-		logger:         logger.GetGlobalLogger("VariantJsonDataHandler"),
-		productFetcher: product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor),
-		amazonConfig:   amazonConfig,
+		logger:         log,
+		productFetcher: fetcher,
+		amazonConfig:   &cfg.Amazon,
 	}
 }
 
@@ -44,7 +57,6 @@ func (h *VariantJsonDataHandler) Name() string {
 
 // Handle 处理任务（兼容pipeline.Handler接口）
 func (h *VariantJsonDataHandler) Handle(ctx pipeline.TaskContext) error {
-	// 类型断言为强类型上下文
 	temuCtx, ok := ctx.(*temucontext.TemuTaskContext)
 	if !ok {
 		return fmt.Errorf("上下文类型错误，期望TemuTaskContext")
@@ -56,18 +68,15 @@ func (h *VariantJsonDataHandler) Handle(ctx pipeline.TaskContext) error {
 func (h *VariantJsonDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始处理变体JSON数据")
 
-	// 检查任务上下文中的必要数据
 	task := temuCtx.GetTask()
 	if task == nil {
 		return fmt.Errorf("任务信息为空")
 	}
 
-	// 检查TEMU产品信息
 	if temuCtx.TemuProduct == nil {
 		return fmt.Errorf("TEMU产品信息为空")
 	}
 
-	// 获取变体ASIN列表
 	variantAsins := h.getAsinListFromContext(temuCtx)
 	if len(variantAsins) == 0 {
 		h.logger.Info("未发现变体ASIN列表，使用单一产品模式")
@@ -76,84 +85,29 @@ func (h *VariantJsonDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 
 	h.logger.Infof("找到 %d 个变体ASIN", len(variantAsins))
 
-	// 检查变体数量限制
 	if len(variantAsins) > 100 {
-		h.logger.Warnf("变体ASIN数量过多（%d），可能会导致处理时间过长或请求失败", len(variantAsins))
+		h.logger.Warnf("变体ASIN数量过多（%d），停止处理", len(variantAsins))
 		return fmt.Errorf("NONRETRYABLE: 变体ASIN数量过多，停止处理")
 	}
 
-	// 使用公共ProductFetcher批量获取变体数据
-	variants, err := h.fetchAllVariants(temuCtx, variantAsins)
-	if err != nil {
-		h.logger.Errorf("获取变体数据失败: %v", err)
-		return fmt.Errorf("获取变体数据失败: %w", err)
+	req := &domainProduct.FetchRequest{
+		TenantID:   task.TenantID,
+		Platform:   task.Platform,
+		Region:     task.Region,
+		StoreID:    task.StoreID,
+		CategoryID: task.CategoryID,
+		Creator:    task.Creator,
 	}
 
-	// 将变体数据存储到上下文中
+	variants, err := h.productFetcher.FetchVariants(context.Background(), req, variantAsins)
+	if err != nil {
+		h.logger.Errorf("批量获取变体数据失败: %v", err)
+		return fmt.Errorf("批量获取变体数据失败: %w", err)
+	}
+
 	temuCtx.SetVariants(variants)
 
-	// 处理变体数据
-	err = h.processVariantData(temuCtx, variants)
-	if err != nil {
-		h.logger.Errorf("处理变体数据失败: %v", err)
-		return fmt.Errorf("处理变体数据失败: %w", err)
-	}
-
-	h.logger.Info("变体JSON数据处理完成")
-	return nil
-}
-
-// fetchAllVariants 批量获取所有变体数据（使用公共ProductFetcher）
-func (h *VariantJsonDataHandler) fetchAllVariants(temuCtx *temucontext.TemuTaskContext, variantAsins []string) ([]*model.Product, error) {
-	variants := make([]*model.Product, 0, len(variantAsins))
-
-	task := temuCtx.GetTask()
-	if task == nil {
-		return nil, fmt.Errorf("任务信息为空")
-	}
-
-	h.logger.Infof("🚀 开始批量获取 %d 个变体数据", len(variantAsins))
-
-	successCount := 0
-	for i, asin := range variantAsins {
-		// 显示进度
-		h.logger.Infof("📦 获取变体 [%d/%d]: %s", i+1, len(variantAsins), asin)
-
-		// 为每个变体请求设置2分钟超时
-		ctx, cancel := timeout.WithTaskTimeout(context.Background())
-
-		// 构建获取请求
-		req := &product.FetchRequest{
-			TenantID:   task.TenantID,
-			Platform:   task.Platform,
-			Region:     task.Region,
-			ProductID:  asin,
-			StoreID:    task.StoreID,
-			CategoryID: task.CategoryID,
-			Creator:    task.Creator,
-		}
-
-		// 使用公共ProductFetcher获取变体数据（带超时控制）
-		variant, err := h.fetchVariantWithTimeout(ctx, req)
-		cancel() // 及时释放资源
-
-		if err != nil {
-			h.logger.Warnf("❌ 变体 [%d/%d] %s 获取失败: %v", i+1, len(variantAsins), asin, err)
-			continue
-		}
-
-		variants = append(variants, variant)
-		successCount++
-		h.logger.Infof("✅ 变体 [%d/%d] %s 获取成功", i+1, len(variantAsins), asin)
-	}
-
-	h.logger.Infof("🎉 批量获取完成: 成功 %d/%d 个变体数据", successCount, len(variantAsins))
-	return variants, nil
-}
-
-// fetchVariantWithTimeout 带超时控制的变体获取
-func (h *VariantJsonDataHandler) fetchVariantWithTimeout(ctx context.Context, req *product.FetchRequest) (*model.Product, error) {
-	return h.productFetcher.FetchProduct(ctx, req)
+	return h.processVariantData(temuCtx, variants)
 }
 
 // getAsinListFromContext 从上下文中获取ASIN列表
@@ -172,13 +126,11 @@ func (h *VariantJsonDataHandler) getAsinListFromContext(temuCtx *temucontext.Tem
 
 	h.logger.Infof("🔍 [变体ASIN提取] 主产品ASIN: %s", mainProductAsin)
 
-	// 1. 从AsinSkuMap中获取
 	if len(temuCtx.AsinSkuMap) > 0 {
 		h.logger.Infof("🔍 [变体ASIN提取] 从AsinSkuMap获取，总数: %d", len(temuCtx.AsinSkuMap))
 		return h.getAsinListFromMap(temuCtx.AsinSkuMap)
 	}
 
-	// 2. 从Amazon产品的变体中获取
 	if amazonProduct != nil && len(amazonProduct.Variations) > 0 {
 		h.logger.Infof("🔍 [变体ASIN提取] 从Variations获取，总数: %d", len(amazonProduct.Variations))
 		asins := make([]string, 0, len(amazonProduct.Variations))
@@ -190,7 +142,6 @@ func (h *VariantJsonDataHandler) getAsinListFromContext(temuCtx *temucontext.Tem
 		return asins
 	}
 
-	// 3. 从其他数据源获取
 	if len(temuCtx.VariantAsins) > 0 {
 		h.logger.Infof("🔍 [变体ASIN提取] 从VariantAsins获取，总数: %d", len(temuCtx.VariantAsins))
 		return temuCtx.VariantAsins
@@ -209,23 +160,13 @@ func (h *VariantJsonDataHandler) getAsinListFromMap(asinSkuMap map[string]string
 func (h *VariantJsonDataHandler) processSingleProduct(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("处理单一产品模式")
 
-	var productName, description string
-
 	amazonProduct := temuCtx.GetAmazonProduct()
-	if amazonProduct != nil {
-		productName = amazonProduct.Title
-		description = amazonProduct.Description
-	}
-
-	// 处理产品信息
-	if temuCtx.TemuProduct != nil {
-		if productName != "" {
-			cleanedTitle := strx.CleanProductTitle(productName)
-			temuCtx.CleanedTitle = cleanedTitle
-			h.logger.Debugf("产品标题已清理: %s -> %s", productName, cleanedTitle)
+	if amazonProduct != nil && temuCtx.TemuProduct != nil {
+		if amazonProduct.Title != "" {
+			temuCtx.CleanedTitle = strx.CleanProductTitle(amazonProduct.Title)
 		}
-		if description != "" {
-			temuCtx.ProductDescription = description
+		if amazonProduct.Description != "" {
+			temuCtx.ProductDescription = amazonProduct.Description
 		}
 	}
 
@@ -243,34 +184,26 @@ func (h *VariantJsonDataHandler) processVariantData(temuCtx *temucontext.TemuTas
 
 	h.logger.Infof("发现 %d 个变体", len(variants))
 
-	// 处理每个变体
 	for i, variant := range variants {
 		if variant == nil {
 			continue
 		}
-
-		// 清理变体标题
 		if variant.Title != "" {
-			originalTitle := variant.Title
+			original := variant.Title
 			variant.Title = strx.CleanProductTitle(variant.Title)
-			if originalTitle != variant.Title {
-				h.logger.Debugf("变体 %d 标题已清理: %s -> %s", i+1, originalTitle, variant.Title)
+			if original != variant.Title {
+				h.logger.Debugf("变体 %d 标题已清理: %s -> %s", i+1, original, variant.Title)
 			}
 		}
-
 		h.logger.Infof("处理变体 %d: %s (ASIN: %s)", i+1, variant.Title, variant.Asin)
 	}
 
-	// 设置主产品信息（使用第一个变体的信息）
-	if len(variants) > 0 && variants[0] != nil {
-		mainVariant := variants[0]
-		if mainVariant.Title != "" {
-			cleanedTitle := strx.CleanProductTitle(mainVariant.Title)
-			temuCtx.CleanedTitle = cleanedTitle
-			h.logger.Debugf("主变体标题已清理: %s -> %s", mainVariant.Title, cleanedTitle)
+	if variants[0] != nil {
+		if variants[0].Title != "" {
+			temuCtx.CleanedTitle = strx.CleanProductTitle(variants[0].Title)
 		}
-		if mainVariant.Description != "" {
-			temuCtx.ProductDescription = mainVariant.Description
+		if variants[0].Description != "" {
+			temuCtx.ProductDescription = variants[0].Description
 		}
 	}
 
@@ -280,9 +213,6 @@ func (h *VariantJsonDataHandler) processVariantData(temuCtx *temucontext.TemuTas
 
 // GetVariantByAsinFromVariants 通过ASIN从变体列表中获取变体
 func (h *VariantJsonDataHandler) GetVariantByAsinFromVariants(variants []*model.Product, asin string) *model.Product {
-	if variants == nil {
-		return nil
-	}
 	for _, variant := range variants {
 		if variant != nil && variant.Asin == asin {
 			return variant

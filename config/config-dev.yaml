@@ -221,7 +221,8 @@ rabbitmq:
       - name: "1688.crawler.low"
         priority: 5
         prefetch: 1
-  
+  node:
+    ownedStores: [836]
 # Amazon配置
 amazon:
   # Amazon 爬虫配置
