@@ -1,10 +1,10 @@
 ﻿package management
 
 import (
-	"task-processor/internal/core/logger"
 	"crypto/tls"
 	"math/rand"
 	"strings"
+	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/imroc/req/v3"
@@ -72,7 +72,7 @@ func isRetryableError(resp *req.Response, err error) bool {
 			}
 		}
 	}
-	if resp != nil {
+	if resp != nil && resp.Response != nil {
 		sc := resp.StatusCode
 		if sc >= 500 || sc == 429 || sc == 403 {
 			return true
@@ -82,7 +82,7 @@ func isRetryableError(resp *req.Response, err error) bool {
 }
 
 func logRetryAttempt(resp *req.Response, err error) {
-	if resp != nil {
+	if resp != nil && resp.Response != nil {
 		sc := resp.StatusCode
 		if sc == 429 {
 			logger.GetGlobalLogger("infra/clients").Infof("   🚨 触发速率限制: 状态码=429")
