@@ -157,13 +157,13 @@ rabbitmq:
     # 队列配置（可为不同队列设置不同的并发度）
     queues:
       # 上架任务队列（同一节点同时只处理1个上架任务，其余排队）
-      - name: "amazon.tasks.store.836"
+      - name: "amazon.tasks.store.*"
         priority: 8
         prefetch: 1
-      - name: "temu.tasks.store.836"
+      - name: "temu.tasks.store.*"
         priority: 8
         prefetch: 1
-      - name: "shein.tasks.store.836"
+      - name: "shein.tasks.store.*"
         priority: 8
         prefetch: 1
       # 爬虫任务队列

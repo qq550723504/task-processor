@@ -4,6 +4,7 @@ package rabbitmq
 import (
 	"context"
 	"fmt"
+	"path"
 	"sync"
 	"time"
 
@@ -187,11 +188,23 @@ func (mc *MessageConsumer) startQueueConsumer(queueName string, handler MessageH
 	return nil
 }
 
-// findQueueConfig 查找队列配置
+// findQueueConfig 查找队列配置，先精确匹配，再通配符匹配（支持 * 和 ?）
 func (mc *MessageConsumer) findQueueConfig(queueName string) *QueueConfig {
+	// 1. 精确匹配
 	for i := range mc.queueConfigs {
 		if mc.queueConfigs[i].Name == queueName {
 			config := mc.queueConfigs[i]
+			config.SetDefaults()
+			return &config
+		}
+	}
+
+	// 2. 通配符匹配（例如 "amazon.tasks.store.*"）
+	for i := range mc.queueConfigs {
+		matched, err := path.Match(mc.queueConfigs[i].Name, queueName)
+		if err == nil && matched {
+			config := mc.queueConfigs[i]
+			config.Name = queueName // 用实际队列名替换通配符名
 			config.SetDefaults()
 			return &config
 		}
