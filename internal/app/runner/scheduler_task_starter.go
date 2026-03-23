@@ -3,6 +3,7 @@ package runner
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"task-processor/internal/app/scheduler"
@@ -112,8 +113,9 @@ func (s *schedulerServiceImpl) createStoreTask(
 		return fmt.Errorf("获取店铺信息失败: %w", err)
 	}
 
-	// 只处理匹配平台的店铺
-	if storeInfo.Platform != platformName {
+	// 只处理匹配平台的店铺（大小写不敏感比较，兼容后端返回 "shein"/"SHEIN"/"Shein" 等格式）
+	if !strings.EqualFold(storeInfo.Platform, platformName) {
+		s.logger.Debugf("店铺 %d 平台不匹配: 期望=%s, 实际=%s，跳过", storeID, platformName, storeInfo.Platform)
 		return nil
 	}
 

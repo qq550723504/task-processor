@@ -291,3 +291,8 @@ func containsPlatform(platforms []string, platform string) bool {
 func (r *PlatformRegistry) GetSharedAmazonProcessor() *amazon.AmazonProcessor {
 	return r.sharedAmazonProcessor
 }
+
+// GetManagementClient 获取管理客户端，供调度服务使用
+func (r *PlatformRegistry) GetManagementClient() *management.ClientManager {
+	return r.managementClient
+}

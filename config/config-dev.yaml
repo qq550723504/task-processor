@@ -116,11 +116,11 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: true            # 是否启用SHEIN处理器（处理上架任务·）
-    schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
+    enabled: false            # 是否启用SHEIN处理器（处理上架任务·）
+    schedulerEnabled: true   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
-      enabled: false        # 启用自动核价
+      enabled: true        # 启用自动核价
       interval: 300         # 执行间隔（秒），默认30分钟
       batchSize: 100
     # 产品同步配置
@@ -133,7 +133,7 @@ platforms:
       interval: 43200        # 执行间隔（秒），默认12小时
     # 活动报名配置
     activityRegistration:
-      enabled: true        # 启用活动报名
+      enabled: false        # 启用活动报名
       interval: 86400        # 执行间隔（秒），默认24小时
 
   # 1688 平台配置
@@ -145,11 +145,11 @@ platforms:
 # 浏览器配置（通用）
 browser:
   enabled: true
-  headless: false  # false=可见模式（便于调试），true=无头模式
+  headless: true  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
   chromeVersion: "144"  # fingerprint-chromium 版本（如 144, 142, 139 等）
   chromeDownloadDir: "./chrome"  # Chrome 下载目录（自动下载时使用）
-  poolSize: 1     # 浏览器池大小
+  poolSize: 3     # 浏览器池大小
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
@@ -223,7 +223,7 @@ rabbitmq:
         prefetch: 1
   node:
     ownedStores: [836]
-    regions: [US]  # 该节点只处理这三个 region 的爬虫任务
+    regions: [CA]  # 该节点只处理这三个 region 的爬虫任务
 # Amazon配置
 amazon:
   # Amazon 爬虫配置

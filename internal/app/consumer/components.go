@@ -4,6 +4,7 @@ package consumer
 import (
 	"context"
 
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/rabbitmq"
 
@@ -116,6 +117,33 @@ func (c *loadMonitorComponent) Start(ctx context.Context) error {
 }
 
 func (c *loadMonitorComponent) Stop(ctx context.Context) error {
+	defer c.SetRunning(false)
+	return c.svc.Stop(ctx)
+}
+
+// schedulerComponent 将 runner.SchedulerService 适配为 lifecycle.Component。
+type schedulerComponent struct {
+	*lifecycle.BaseComponent
+	svc runner.SchedulerService
+}
+
+// newSchedulerComponent 创建调度器组件适配器（优先级 25，依赖 rabbitmq）。
+func newSchedulerComponent(svc runner.SchedulerService) lifecycle.Component {
+	return &schedulerComponent{
+		BaseComponent: lifecycle.NewBaseComponent("scheduler", []string{"rabbitmq"}, 25),
+		svc:           svc,
+	}
+}
+
+func (c *schedulerComponent) Start(ctx context.Context) error {
+	if err := c.svc.Start(ctx); err != nil {
+		return err
+	}
+	c.SetRunning(true)
+	return nil
+}
+
+func (c *schedulerComponent) Stop(ctx context.Context) error {
 	defer c.SetRunning(false)
 	return c.svc.Stop(ctx)
 }

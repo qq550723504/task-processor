@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"task-processor/internal/app/consumer"
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/appenv"
 )
@@ -89,6 +90,18 @@ func main() {
 		serviceManager.SetStoreComponents(nil, ownedStores, nil)
 	} else {
 		logger.Warn("⚠️  未配置 rabbitmq.node.ownedStores，本节点将订阅平台级队列（处理所有店铺任务）")
+	}
+
+	// 注入调度服务（核价、同步等定时任务），根据配置决定是否启用
+	if appCfg.Platforms.Temu.SchedulerEnabled || appCfg.Platforms.Shein.SchedulerEnabled {
+		schedulerSvc := runner.NewSchedulerServiceWithAmazon(
+			logger,
+			platformRegistry.GetManagementClient(),
+			appCfg,
+			platformRegistry.GetSharedAmazonProcessor(),
+		)
+		serviceManager.SetSchedulerService(schedulerSvc)
+		logger.Info("✅ 调度服务已注入（自动核价/同步等任务）")
 	}
 
 	// 启动服务

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"task-processor/internal/app/runner"
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
@@ -19,11 +20,12 @@ import (
 // ServiceManager 编排 messaging 包内所有子服务的生命周期。
 // 它不持有子服务的具体类型，而是通过 lifecycle.LifecycleManager 统一管理。
 type ServiceManager struct {
-	config          *config.RabbitMQConfig
-	logger          *logrus.Logger
-	lifecycleMgr    lifecycle.LifecycleManager
-	shutdownCoord   *ShutdownCoordinator
-	rabbitmqService *RabbitMQService // 保留引用，用于 RegisterProcessor / GetClient
+	config           *config.RabbitMQConfig
+	logger           *logrus.Logger
+	lifecycleMgr     lifecycle.LifecycleManager
+	shutdownCoord    *ShutdownCoordinator
+	rabbitmqService  *RabbitMQService        // 保留引用，用于 RegisterProcessor / GetClient
+	schedulerService runner.SchedulerService // 可选，由外部通过 SetSchedulerService 注入
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -49,6 +51,13 @@ func NewServiceManager(rabbitmqConfig *config.RabbitMQConfig, logger *logrus.Log
 		lifecycleMgr:    lifecycle.NewLifecycleManager(logger),
 		rabbitmqService: rabbitmqService,
 	}, nil
+}
+
+// SetSchedulerService 注入调度服务，必须在 Start 之前调用。
+func (sm *ServiceManager) SetSchedulerService(svc runner.SchedulerService) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.schedulerService = svc
 }
 
 // RegisterProcessor 注册任务处理器，必须在 Start 之前调用。
@@ -120,12 +129,17 @@ func (sm *ServiceManager) registerComponents() error {
 	// HTTP 服务器
 	httpServer := NewHTTPServerManager(cfg, loadMonitor, sm.rabbitmqService, sm.logger)
 
-	// 按启动顺序构建组件列表
 	components := []lifecycle.Component{
 		newReporterComponent(reporter),
 		newLoadMonitorComponent(loadMonitor, sm.logger),
 		newRabbitMQComponent(sm.rabbitmqService),
 		newHTTPServerComponent(httpServer),
+	}
+
+	// 如果注入了调度服务，加入生命周期
+	if sm.schedulerService != nil {
+		components = append(components, newSchedulerComponent(sm.schedulerService))
+		sm.logger.Info("调度服务已注入，将随服务管理器启动")
 	}
 
 	for _, c := range components {
@@ -196,7 +210,6 @@ func (sm *ServiceManager) GetStats() map[string]any {
 	for name, s := range status {
 		stats[name] = s
 	}
-	// 补充 rabbitmq 详细统计
 	if sm.rabbitmqService != nil {
 		stats["rabbitmq_detail"] = sm.rabbitmqService.GetStats()
 	}
