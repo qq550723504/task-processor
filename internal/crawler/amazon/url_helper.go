@@ -58,48 +58,6 @@ func (uh *URLHelper) AddLanguageParam(originalURL string) string {
 	return parsedURL.String()
 }
 
-// AddCurrencyParam 为URL添加货币参数
-func (uh *URLHelper) AddCurrencyParam(originalURL string, currency string) string {
-	if currency == "" {
-		return originalURL
-	}
-
-	// 如果URL已经包含currency参数，先移除它
-	parsedURL, err := url.Parse(originalURL)
-	if err != nil {
-		return originalURL
-	}
-
-	query := parsedURL.Query()
-	query.Set("currency", currency)
-	parsedURL.RawQuery = query.Encode()
-
-	return parsedURL.String()
-}
-
-// AddLanguageAndCurrencyParams 同时添加语言和货币参数
-func (uh *URLHelper) AddLanguageAndCurrencyParams(originalURL string, currency string) string {
-	parsedURL, err := url.Parse(originalURL)
-	if err != nil {
-		return originalURL
-	}
-
-	query := parsedURL.Query()
-
-	// 添加语言参数（如果不存在）
-	if !strings.Contains(originalURL, "language=") {
-		query.Set("language", "en_US")
-	}
-
-	// 添加货币参数（如果指定）
-	if currency != "" {
-		query.Set("currency", currency)
-	}
-
-	parsedURL.RawQuery = query.Encode()
-	return parsedURL.String()
-}
-
 // ExtractASINFromURL 从URL中提取ASIN
 func (uh *URLHelper) ExtractASINFromURL(productURL string) string {
 	// 匹配Amazon ASIN的正则表达式

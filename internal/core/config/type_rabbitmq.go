@@ -59,6 +59,7 @@ type NodeConfig struct {
 	LogLevel        string        `yaml:"logLevel"`        // 日志级别
 	ShutdownTimeout time.Duration `yaml:"shutdownTimeout"` // 关闭超时
 	OwnedStores     []int64       `yaml:"ownedStores"`     // 本节点负责的店铺ID列表，为空则处理所有店铺
+	Regions         []string      `yaml:"regions"`         // 本节点负责的 region 列表（如 US、UK、JP），为空则处理所有 region
 }
 
 // DeduplicatorConfig 去重器配置

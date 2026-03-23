@@ -16,36 +16,28 @@ type CrawlerProcessor struct {
 }
 
 // Start 启动处理器
-func (p *CrawlerProcessor) Start(ctx context.Context) error {
-	return nil
-}
+func (p *CrawlerProcessor) Start(_ context.Context) error { return nil }
+
+// Close 关闭处理器
+func (p *CrawlerProcessor) Close(_ context.Context) {}
 
 // ProcessTask 处理任务
 func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
-	// 从 WorkerJob 中解析出 CrawlerTask
 	var crawlerTask shared.CrawlerTask
 	if err := json.Unmarshal([]byte(job.TaskData), &crawlerTask); err != nil {
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
-	// 获取邮编
 	zipcode := p.service.getZipcodeForTask(&crawlerTask)
 
-	// 执行爬取
 	product, err := p.service.amazonProcessor.Process(crawlerTask.URL, zipcode)
 	if err != nil {
 		return err
 	}
 
-	// 保存结果（原子操作）
-	p.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
-		result.ProductData = productToMap(product, p.service.logger)
+	p.service.UpdateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
+		result.ProductData = shared.ProductToMap(product)
 	})
 
 	return nil
-}
-
-// Close 关闭处理器
-func (p *CrawlerProcessor) Close(ctx context.Context) {
-	// 清理资源（如果需要）
 }

@@ -20,27 +20,13 @@ RABBITMQ_URL = 'amqp://admin:RabbitMQ%402026%23Prod@101.33.34.102:30567/'
 
 # 所有队列列表（来自 config/config-prod.yaml rabbitmq.consumer.queues）
 ALL_QUEUES = [
-    # 上架任务队列 - 高优先级
-    "amazon.tasks.high",
-    "temu.tasks.high",
-    "shein.tasks.high",
-    # 上架任务队列 - 普通优先级
-    "amazon.tasks.normal",
-    "temu.tasks.normal",
-    "shein.tasks.normal",
-    # 上架任务队列 - 低优先级
-    "amazon.tasks.low",
-    "temu.tasks.low",
-    "shein.tasks.low",
-    # 爬虫任务队列 - 高优先级
-    "amazon.crawler.high",
-    "1688.crawler.high",
-    # 爬虫任务队列 - 普通优先级
-    "amazon.crawler.normal",
-    "1688.crawler.normal",
-    # 爬虫任务队列 - 低优先级
-    "amazon.crawler.low",
-    "1688.crawler.low",
+    # 上架任务队列（按店铺）
+    "amazon.tasks.store.836",
+    "temu.tasks.store.836",
+    "shein.tasks.store.836",
+    # 爬虫任务队列
+    "amazon.crawler",
+    "1688.crawler",
     # 系统队列
     "tasks.dlq",
     "tasks.delay.queue",
@@ -50,8 +36,12 @@ ALL_QUEUES = [
 
 def get_connection():
     """获取 RabbitMQ 连接"""
-    parameters = pika.URLParameters(RABBITMQ_URL)
-    return pika.BlockingConnection(parameters)
+    try:
+        parameters = pika.URLParameters(RABBITMQ_URL)
+        return pika.BlockingConnection(parameters)
+    except Exception as e:
+        print(f"❌ 建立连接失败: {type(e).__name__}: {e}")
+        raise
 
 
 def get_queue_info(queue_name, channel=None):
@@ -71,7 +61,8 @@ def get_queue_info(queue_name, channel=None):
             'messages_unacknowledged': 0,
             'consumers': result.method.consumer_count,
         }
-    except Exception:
+    except Exception as e:
+        print(f"  ⚠️  {queue_name}: {type(e).__name__}: {e}")
         return None
     finally:
         if should_close and connection and not connection.is_closed:
@@ -89,15 +80,21 @@ def list_queues():
     try:
         connection = get_connection()
         channel = connection.channel()
-    except pika.exceptions.AMQPConnectionError as e:
-        print(f"❌ 连接失败: {e}")
+    except Exception as e:
+        print(f"❌ 连接失败: {type(e).__name__}: {e}")
         return
 
     total_messages = 0
     queue_stats = []
 
     for queue_name in ALL_QUEUES:
-        info = get_queue_info(queue_name, channel=channel)
+        # 每次用新 channel，避免 passive declare 失败后 channel 被关闭
+        try:
+            ch = connection.channel()
+            info = get_queue_info(queue_name, channel=ch)
+            ch.close()
+        except Exception:
+            info = None
         if info is not None:
             total_messages += info['messages']
             queue_stats.append((queue_name, info))
@@ -106,7 +103,9 @@ def list_queues():
         connection.close()
 
     if not queue_stats:
-        print("❌ 无法获取队列信息，请检查 RabbitMQ 连接配置")
+        print("❌ 所有队列均不存在或无法访问，请确认队列已创建")
+        if connection and not connection.is_closed:
+            connection.close()
         return
 
     # 打印表头

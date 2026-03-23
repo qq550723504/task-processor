@@ -81,11 +81,15 @@ func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein.TaskContext) {
 	}
 
 	// 提前捕获，避免 goroutine 内访问可能已变更的外部状态
-	taskLogger := s.logger.WithField("task_id", taskID)
+	baseLogger := s.logger
+	if baseLogger == nil {
+		baseLogger = logger.GetGlobalLogger("publish_saver")
+	}
+	taskLogger := baseLogger.WithField("task_id", taskID)
 
 	// 异步更新状态
 	go func() {
-		defer recovery.Recover("更新任务状态", taskLogger)
+		defer recovery.RecoverWithStack("更新任务状态", taskLogger)
 
 		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
 			taskLogger.Errorf("更新任务状态为草稿箱失败 (TaskID: %d): %v", taskID, err)

@@ -223,6 +223,7 @@ rabbitmq:
         prefetch: 1
   node:
     ownedStores: [836]
+    regions: [US]  # 该节点只处理这三个 region 的爬虫任务
 # Amazon配置
 amazon:
   # Amazon 爬虫配置

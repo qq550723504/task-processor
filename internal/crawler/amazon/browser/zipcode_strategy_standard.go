@@ -2,8 +2,8 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -60,13 +60,16 @@ func (s *StandardZipcodeStrategy) Handle(page playwright.Page, zipcode string) e
 	}
 
 	// 先清空输入框
-	if err := zipInput.Clear(); err != nil {
+	if err := zipInput.Clear(playwright.LocatorClearOptions{
+		Timeout: playwright.Float(5000), // 5s 超时
+	}); err != nil {
 		logger.GetGlobalLogger("crawler/amazon").Infof("[%s] 清空输入框失败: %v", s.GetName(), err)
 	}
 
 	// 填写邮编 - 使用 Type 而不是 Fill,模拟真实用户输入
 	if err := zipInput.Type(zipcode, playwright.LocatorTypeOptions{
-		Delay: playwright.Float(50), // 每个字符间隔50ms,模拟真实输入
+		Delay:   playwright.Float(50),    // 每个字符间隔50ms,模拟真实输入
+		Timeout: playwright.Float(10000), // 10s 超时（邮编最长约10个字符）
 	}); err != nil {
 		if page.IsClosed() {
 			return fmt.Errorf("页面在填写邮编时被关闭: %w", err)

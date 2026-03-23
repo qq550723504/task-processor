@@ -86,7 +86,12 @@ func (c *DistributedCrawlerClient) SubmitCrawlTasks(ctx context.Context, reqs []
 	pts := make([]*PendingTask, len(reqs))
 	for i, req := range reqs {
 		pts[i] = c.registry.Register(ctx, req.TaskID)
-		queueName := c.queueNaming.BuildCrawlerQueueName(req.Platform, req.Priority)
+		var queueName string
+		if req.Region != "" {
+			queueName = c.queueNaming.BuildCrawlerQueueNameByRegion(req.Platform, req.Region, req.Priority)
+		} else {
+			queueName = c.queueNaming.BuildCrawlerQueueName(req.Platform, req.Priority)
+		}
 		if err := c.publishCrawlTask(ctx, req, queueName, replyTo, pts[i].TaskID); err != nil {
 			// 发布失败，清理已注册的任务
 			for j := 0; j <= i; j++ {

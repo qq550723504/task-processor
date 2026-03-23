@@ -4,7 +4,6 @@ package amazon
 import (
 	"context"
 	"fmt"
-	"strings"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/crawler/amazon/extractor"
@@ -73,8 +72,16 @@ func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *
 	}
 
 	defer func() {
-		if closeErr := page.Close(); closeErr != nil {
-			logger.GetGlobalLogger("crawler/amazon").Warnf("关闭页面失败: %v", closeErr)
+		// page.Close() 在 WebSocket 断连时可能永久 hang，加超时保护
+		done := make(chan error, 1)
+		go func() { done <- page.Close() }()
+		select {
+		case closeErr := <-done:
+			if closeErr != nil {
+				logger.GetGlobalLogger("crawler/amazon").Warnf("关闭页面失败: %v", closeErr)
+			}
+		case <-time.After(5 * time.Second):
+			logger.GetGlobalLogger("crawler/amazon").Warnf("关闭页面超时（5s），WebSocket 可能已断连")
 		}
 	}()
 
@@ -83,19 +90,30 @@ func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *
 		return nil, fmt.Errorf("context 已取消: %w", err)
 	}
 
-	// 获取市场对应的默认货币
-	currency := ip.urlHelper.GetCurrencyFromURL(url)
+	// 填加语言参数
+	urlWithParams := ip.urlHelper.AddLanguageParam(url)
 
-	// 添加语言和货币参数
-	urlWithParams := ip.urlHelper.AddLanguageAndCurrencyParams(url, currency)
-
-	// 导航到产品页面，使用 ctx 剩余时间作为超时
-	_, err := page.Goto(urlWithParams, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-		Timeout:   playwright.Float(playwrightTimeout()),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("导航到页面失败: %w", err)
+	// 导航到产品页面，用 goroutine+channel+select 包装，防止 WebSocket 断连时永久 hang
+	type gotoResult struct {
+		err error
+	}
+	gotoChan := make(chan gotoResult, 1)
+	go func() {
+		_, err := page.Goto(urlWithParams, playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			Timeout:   playwright.Float(playwrightTimeout()),
+		})
+		gotoChan <- gotoResult{err}
+	}()
+	select {
+	case r := <-gotoChan:
+		if r.err != nil {
+			return nil, fmt.Errorf("导航到页面失败: %w", r.err)
+		}
+	case <-ctx.Done():
+		return nil, fmt.Errorf("导航超时: %w", ctx.Err())
+	case <-time.After(90 * time.Second):
+		return nil, fmt.Errorf("导航超时，WebSocket 可能已断连")
 	}
 
 	// 优先处理可能出现的"Continue shopping"按钮
@@ -124,11 +142,7 @@ func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *
 		zipcodeSetter := browser.NewZipcodeSetter(instance.Manager)
 		if err := zipcodeSetter.SetAndVerifyZipcode(page, zipcode); err != nil {
 			logger.GetGlobalLogger("crawler/amazon").Errorf("设置邮编失败: %v", err)
-
-			if ip.shouldRecreateInstance(err) {
-				return nil, fmt.Errorf("需要重建浏览器实例: %w", err)
-			}
-
+			// 严重错误（WebSocket 断连、需要登录等）交由上层重建实例
 			return nil, fmt.Errorf("邮编设置失败，终止数据抓取: %w", err)
 		}
 	}
@@ -138,7 +152,7 @@ func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *
 		return nil, fmt.Errorf("context 已取消: %w", err)
 	}
 
-	// 获取站点信息，用于设置货币
+	// 获取站点信息
 	marketplace := ip.urlHelper.GetMarketplaceFromURL(url)
 	expectedCurrency := ip.urlHelper.GetCurrencyFromURL(url)
 
@@ -152,24 +166,10 @@ func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *
 		Timestamp: model.NullableTime{Time: &now},
 	}
 
-	// 提取产品信息
+	// 提取产品信息（传入 ctx，确保超时时并行提取器能及时退出）
 	ext := extractor.NewCompositeExtractor(marketplace)
-	if err := ext.Extract(page, product); err != nil {
+	if err := ext.ExtractWithContext(ctx, page, product); err != nil {
 		return nil, fmt.Errorf("提取产品信息失败: %w", err)
-	}
-
-	// 检查货币是否匹配，不匹配时切换货币并重新提取
-	if expectedCurrency != "" && product.Currency != expectedCurrency {
-		logger.GetGlobalLogger("crawler/amazon").Warnf("货币不匹配 (页面: %s, 期望: %s)，尝试切换货币", product.Currency, expectedCurrency)
-		currencySetter := browser.NewCurrencySetter(instance.Manager)
-		if err := currencySetter.SetAndVerifyCurrency(page, expectedCurrency); err != nil {
-			return nil, fmt.Errorf("货币切换失败，终止数据抓取: %w", err)
-		}
-		logger.GetGlobalLogger("crawler/amazon").Infof("货币切换成功，重新提取产品信息")
-		product.Currency = expectedCurrency
-		if err := ext.Extract(page, product); err != nil {
-			return nil, fmt.Errorf("重新提取产品信息失败: %w", err)
-		}
 	}
 
 	// 验证提取的数据
@@ -204,106 +204,5 @@ func (ip *InstanceProcessor) validateProductData(product *model.Product) error {
 	return nil
 }
 
-// ProcessBatchWithInstance 使用指定实例批量处理产品
-func (ip *InstanceProcessor) ProcessBatchWithInstance(ctx context.Context, instance *browser.BrowserInstance, requests []model.ProductRequest) []model.ProductResult {
-	results := make([]model.ProductResult, len(requests))
-
-	for i, req := range requests {
-		product, err := ip.ProcessWithInstance(ctx, instance, req.URL, req.Zipcode)
-		results[i] = model.ProductResult{
-			Product: product,
-			Error:   err,
-		}
-
-		if err != nil {
-			logger.GetGlobalLogger("crawler/amazon").Errorf("批量处理 [%d/%d] 失败: %s - %v", i+1, len(requests), req.URL, err)
-		} else {
-			logger.GetGlobalLogger("crawler/amazon").Infof("批量处理 [%d/%d] 成功: %s", i+1, len(requests), product.Asin)
-		}
-	}
-
-	return results
-}
-
-// ProcessWithRetry 带重试的产品处理
-func (ip *InstanceProcessor) ProcessWithRetry(ctx context.Context, instance *browser.BrowserInstance, url string, zipcode string, maxRetries int) (*model.Product, error) {
-	var lastErr error
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		if attempt > 0 {
-			logger.GetGlobalLogger("crawler/amazon").Infof("重试处理产品 (第%d次): %s", attempt, url)
-			time.Sleep(time.Duration(attempt) * 2 * time.Second)
-		}
-
-		product, err := ip.ProcessWithInstance(ctx, instance, url, zipcode)
-		if err == nil {
-			return product, nil
-		}
-
-		lastErr = err
-		logger.GetGlobalLogger("crawler/amazon").Warnf("处理产品失败 (第%d次尝试): %v", attempt+1, err)
-
-		if ip.isSeriousError(err) {
-			break
-		}
-	}
-
-	return nil, fmt.Errorf("重试%d次后仍然失败: %w", maxRetries, lastErr)
-}
-
-// shouldRecreateInstance 判断是否需要重建浏览器实例
-func (ip *InstanceProcessor) shouldRecreateInstance(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errorMsg := err.Error()
-	recreateErrors := []string{
-		"SIGN_IN_REQUIRED",
-		"需要登录才能更新位置",
-		"需要重建浏览器实例",
-		// playwright WebSocket 断连
-		"Failed to next",
-		"next while nexting",
-		"Socket connection to remote was closed",
-		"Target closed",
-		"target closed",
-	}
-
-	for _, recreateError := range recreateErrors {
-		if strings.Contains(errorMsg, recreateError) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isSeriousError 判断是否为严重错误
-func (ip *InstanceProcessor) isSeriousError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errorMsg := err.Error()
-	seriousErrors := []string{
-		"访问被阻止",
-		"遇到验证码",
-		"浏览器实例为空",
-		"创建页面失败",
-		// playwright WebSocket 断连
-		"Failed to next",
-		"next while nexting",
-		"Socket connection to remote was closed",
-		"Target closed",
-		"target closed",
-	}
-
-	for _, serious := range seriousErrors {
-		if strings.Contains(errorMsg, serious) {
-			return true
-		}
-	}
-
-	return false
-}
+// ProcessBatchWithInstance、ProcessWithRetry、shouldRecreateInstance、isSeriousError
+// 已删除：无调用方，错误判断逻辑由 browser.ErrorDetector 统一负责

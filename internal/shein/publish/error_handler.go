@@ -2,17 +2,16 @@
 package publish
 
 import (
-	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/content"
 	skuutils "task-processor/internal/shein/product/sku"
-
 )
 
 // PublishProductErrorHandler 产品发布错误处理器
@@ -137,7 +136,11 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *s
 	logger.GetGlobalLogger("shein/publish").Info("敏感词重试 - 产品重新提交完成，正在检查结果...")
 
 	// 直接检查重新提交的结果，避免递归调用handlePublishResponse
-	if response == nil || response.Code != "0" {
+	if response == nil {
+		logger.GetGlobalLogger("shein/publish").Warn("敏感词重试失败 - 产品发布返回空响应")
+		return false
+	}
+	if response.Code != "0" {
 		logger.GetGlobalLogger("shein/publish").Warnf("敏感词重试失败 - 产品发布失败，响应码: %s", response.Code)
 		return false
 	}
@@ -447,7 +450,11 @@ func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.T
 	logger.GetGlobalLogger("shein/publish").Info("数量类型修复重试 - 产品重新提交完成，正在检查结果...")
 
 	// 检查重新提交的结果
-	if response == nil || response.Code != "0" {
+	if response == nil {
+		logger.GetGlobalLogger("shein/publish").Warn("数量类型修复重试失败 - 产品发布返回空响应")
+		return false
+	}
+	if response.Code != "0" {
 		logger.GetGlobalLogger("shein/publish").Warnf("数量类型修复重试失败 - 产品发布失败，响应码: %s", response.Code)
 		return false
 	}

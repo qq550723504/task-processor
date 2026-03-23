@@ -29,4 +29,5 @@ type priorityCalculator interface {
 // queueNamer 队列命名接口（可 mock）
 type queueNamer interface {
 	BuildCrawlerQueueName(platform string, priority int) string
+	BuildCrawlerQueueNameByRegion(platform, region string, priority int) string
 }

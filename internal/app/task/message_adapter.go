@@ -74,11 +74,8 @@ type MessageAdapter struct {
 func NewMessageAdapter() *MessageAdapter {
 	return &MessageAdapter{
 		queueMapping: map[string]string{
-			"amazon":         "amazon.tasks.normal",
-			"temu":           "temu.tasks.normal",
-			"shein":          "shein.tasks.normal",
-			"amazon.crawler": "amazon.crawler.normal",
-			"1688.crawler":   "1688.crawler.normal",
+			"amazon.crawler": "amazon.crawler",
+			"1688.crawler":   "1688.crawler",
 		},
 	}
 }
@@ -163,12 +160,12 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
 	return taskMsg, nil
 }
 
-// GetQueueName 根据平台获取队列名称
+// GetQueueName 根据平台获取爬虫队列名称（仅用于爬虫任务）
 func (a *MessageAdapter) GetQueueName(platform string) string {
 	if queue, ok := a.queueMapping[platform]; ok {
 		return queue
 	}
-	return "amazon.tasks.normal"
+	return "amazon.crawler"
 }
 
 // CalculatePriority 将业务优先级(1-10)转换为消息优先级(0-10)

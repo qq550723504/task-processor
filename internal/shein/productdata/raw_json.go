@@ -31,13 +31,6 @@ func NewRawJsonDataHandler(
 
 	factory := appProduct.NewFetcherFactory()
 
-	// 诊断日志：打印关键条件
-	logger.Infof("🔍 [诊断] SHEIN RabbitMQ配置: cfg.RabbitMQ=%v, Enabled=%v, rabbitmqClient=%v",
-		cfg.RabbitMQ != nil,
-		cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled,
-		rabbitmqClient != nil,
-	)
-
 	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
 		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)

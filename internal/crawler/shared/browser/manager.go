@@ -116,16 +116,20 @@ func (m *Manager) NavigateTo(page playwright.Page, url string) error {
 	return err
 }
 
-// Close 关闭浏览器
+// Close 关闭浏览器，并将所有字段置 nil，
+// 使后续 NewPage() 等调用能立即检测到已关闭状态而不是 hang 住。
 func (m *Manager) Close() {
 	if m.context != nil {
 		m.context.Close()
+		m.context = nil
 	}
 	if m.browser != nil {
 		m.browser.Close()
+		m.browser = nil
 	}
 	if m.pw != nil {
 		(*m.pw).Stop()
+		m.pw = nil
 	}
 }
 

@@ -2,8 +2,8 @@
 package extractor
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"
@@ -41,6 +41,9 @@ func (e *PriceExtractor) HasValidPrice(page playwright.Page) bool {
 // Extract 提取价格信息
 func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) error {
 
+	// 站点默认货币，用于无价格/不可用时的兜底
+	defaultCurrency := e.currencyMgr.GetDefaultCurrencyByMarketplace()
+
 	// 检查产品可用性（仅在明确不可用时才跳过价格提取）
 	if product.Availability != "" && e.validator.IsUnavailableText(product.Availability) {
 		logger.GetGlobalLogger("crawler/amazon").WithFields(logrus.Fields{
@@ -49,7 +52,7 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 		}).Warn("❌ 产品不可用（根据Availability字段），跳过价格提取并设置 IsAvailable=false")
 		product.FinalPrice = 0
 		product.InitialPrice = 0
-		product.Currency = "USD"
+		product.Currency = defaultCurrency
 		product.IsAvailable = false
 		return nil
 	}
@@ -60,7 +63,7 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 		logger.GetGlobalLogger("crawler/amazon").Warn("未找到价格信息，使用默认值")
 		product.FinalPrice = 0
 		product.InitialPrice = 0
-		product.Currency = "USD"
+		product.Currency = defaultCurrency
 		return nil
 	}
 
@@ -92,7 +95,7 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 		logger.GetGlobalLogger("crawler/amazon").Warnf("价格解析失败: %s", priceText)
 		product.FinalPrice = 0
 		product.InitialPrice = 0
-		product.Currency = "USD"
+		product.Currency = defaultCurrency
 	}
 
 	// 提取原价（list price）

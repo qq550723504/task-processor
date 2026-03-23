@@ -1,9 +1,9 @@
 ﻿package extractor
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/goroutine"
 	"time"
@@ -54,6 +54,11 @@ func NewCompositeExtractor(marketplace string) *CompositeExtractor {
 
 // Extract 提取所有信息（使用ParallelProcessor优化）
 func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Product) error {
+	return ce.ExtractWithContext(context.Background(), page, product)
+}
+
+// ExtractWithContext 提取所有信息，支持 ctx 超时控制
+func (ce *CompositeExtractor) ExtractWithContext(ctx context.Context, page playwright.Page, product *model.Product) error {
 	// 第一阶段：必须串行执行的提取器（有依赖关系）
 	serialExtractors := []Extractor{
 		&TitleExtractor{},
@@ -93,8 +98,8 @@ func (ce *CompositeExtractor) Extract(page playwright.Page, product *model.Produ
 		return nil, extractor.Extract(page, product)
 	}
 
-	// 并行执行
-	results := processor.ProcessParallel(context.Background(), tasks, processFunc)
+	// 并行执行，传入外层 ctx 确保超时时能及时取消
+	results := processor.ProcessParallel(ctx, tasks, processFunc)
 
 	// 检查是否有关键错误
 	var criticalErr error

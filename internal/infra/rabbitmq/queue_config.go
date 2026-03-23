@@ -3,6 +3,7 @@ package rabbitmq
 
 import (
 	"fmt"
+	"strings"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -57,11 +58,43 @@ func GetQueueDeclareConfigs() []QueueDeclareConfig {
 
 // GetStoreQueueDeclareConfigs 获取指定店铺的任务队列声明配置
 func GetStoreQueueDeclareConfigs(platform string, storeID int64) []QueueDeclareConfig {
-	priorities := []string{"high", "normal", "low"}
-	queues := make([]QueueDeclareConfig, 0, len(priorities))
-	for _, priority := range priorities {
+	return []QueueDeclareConfig{
+		{
+			Name:    buildStoreQueueName(platform, storeID),
+			Durable: true,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
+	}
+}
+
+// GetStoreQueueBindingConfigs 获取指定店铺的队列绑定配置
+func GetStoreQueueBindingConfigs(platform string, storeID int64) []BindingConfig {
+	queueName := buildStoreQueueName(platform, storeID)
+	return []BindingConfig{
+		{
+			QueueName:    queueName,
+			ExchangeName: "tasks.exchange",
+			RoutingKey:   queueName, // 精确匹配: {platform}.tasks.store.{storeID}
+		},
+	}
+}
+
+// buildStoreQueueName 构建店铺专属队列名称
+// 格式: {platform}.tasks.store.{storeID}
+func buildStoreQueueName(platform string, storeID int64) string {
+	return fmt.Sprintf("%s.tasks.store.%d", platform, storeID)
+}
+
+func getCrawlerQueues() []QueueDeclareConfig {
+	crawlers := []string{"amazon", "1688"}
+	queues := make([]QueueDeclareConfig, 0, len(crawlers))
+	for _, crawler := range crawlers {
 		queues = append(queues, QueueDeclareConfig{
-			Name:    buildStoreQueueName(platform, storeID, priority),
+			Name:    crawler + ".crawler",
 			Durable: true,
 			Args: amqp.Table{
 				"x-max-priority":            10,
@@ -73,35 +106,15 @@ func GetStoreQueueDeclareConfigs(platform string, storeID int64) []QueueDeclareC
 	return queues
 }
 
-// GetStoreQueueBindingConfigs 获取指定店铺的队列绑定配置
-// routing key pattern: {platform}.*.{priority}.*.{storeID}
-func GetStoreQueueBindingConfigs(platform string, storeID int64) []BindingConfig {
-	priorities := []string{"high", "normal", "low"}
-	bindings := make([]BindingConfig, 0, len(priorities))
-	for _, priority := range priorities {
-		bindings = append(bindings, BindingConfig{
-			QueueName:    buildStoreQueueName(platform, storeID, priority),
-			ExchangeName: "tasks.exchange",
-			RoutingKey:   fmt.Sprintf("%s.*.%s.*.%d", platform, priority, storeID),
-		})
-	}
-	return bindings
-}
-
-// buildStoreQueueName 构建店铺专属队列名称
-// 格式: {platform}.tasks.{priority}.store.{storeID}
-func buildStoreQueueName(platform string, storeID int64, priority string) string {
-	return fmt.Sprintf("%s.tasks.%s.store.%d", platform, priority, storeID)
-}
-
-func getCrawlerQueues() []QueueDeclareConfig {
+// GetRegionCrawlerQueueDeclareConfigs 获取指定 region 列表的爬虫队列声明配置
+// 格式: {platform}.crawler.{region}
+func GetRegionCrawlerQueueDeclareConfigs(regions []string) []QueueDeclareConfig {
 	crawlers := []string{"amazon", "1688"}
-	priorities := []string{"high", "normal", "low"}
-	queues := make([]QueueDeclareConfig, 0, len(crawlers)*len(priorities))
+	queues := make([]QueueDeclareConfig, 0, len(crawlers)*len(regions))
 	for _, crawler := range crawlers {
-		for _, priority := range priorities {
+		for _, region := range regions {
 			queues = append(queues, QueueDeclareConfig{
-				Name:    crawler + ".crawler." + priority,
+				Name:    fmt.Sprintf("%s.crawler.%s", crawler, strings.ToLower(region)),
 				Durable: true,
 				Args: amqp.Table{
 					"x-max-priority":            10,

@@ -1,18 +1,16 @@
-﻿// Package amazon 提供Amazon单浏览器处理功能
+﻿// Package amazon 提供Amazon单浏览器处理功能（降级模式）
 package amazon
 
 import (
-	"task-processor/internal/core/logger"
+	"context"
 	"fmt"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon/browser"
-	"task-processor/internal/crawler/amazon/extractor"
 	"task-processor/internal/model"
-	"time"
-
 )
 
-// SingleProcessor 单浏览器处理器
+// SingleProcessor 单浏览器处理器，用于浏览器池初始化失败时的降级模式。
+// 每次调用都会启动一个独立的浏览器实例，处理完毕后关闭。
 type SingleProcessor struct {
 	config         *config.Config
 	urlHelper      *URLHelper
@@ -20,67 +18,33 @@ type SingleProcessor struct {
 }
 
 // NewSingleProcessor 创建单浏览器处理器
-func NewSingleProcessor(config *config.Config, urlHelper *URLHelper, productChecker *ProductChecker) *SingleProcessor {
+func NewSingleProcessor(cfg *config.Config, urlHelper *URLHelper, productChecker *ProductChecker) *SingleProcessor {
 	return &SingleProcessor{
-		config:         config,
+		config:         cfg,
 		urlHelper:      urlHelper,
 		productChecker: productChecker,
 	}
 }
 
-// ProcessWithSingleBrowser 使用单浏览器处理
-func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, zipcode string, startTime time.Time) (*model.Product, error) {
-	browserManager := browser.NewBrowserManager(sp.config)
+// ProcessWithSingleBrowser 使用独立浏览器实例处理单个产品（降级路径）。
+// 复用 InstanceProcessor 的完整处理逻辑，包括货币检查和数据验证。
+func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, zipcode string) (*model.Product, error) {
+	mgr := browser.NewBrowserManager(sp.config)
 
-	if err := browserManager.Install(); err != nil {
+	if err := mgr.Install(); err != nil {
 		return nil, fmt.Errorf("初始化Playwright失败: %w", err)
 	}
-
-	if err := browserManager.Launch(); err != nil {
+	if err := mgr.Launch(); err != nil {
 		return nil, fmt.Errorf("启动浏览器失败: %w", err)
 	}
-	defer browserManager.Close()
+	defer mgr.Close()
 
-	page, err := browserManager.NewPage()
-	if err != nil {
-		return nil, fmt.Errorf("创建页面失败: %w", err)
+	// 构造临时实例，复用 InstanceProcessor 的完整处理逻辑
+	instance := &browser.BrowserInstance{
+		ID:      -1, // 降级模式标识
+		Manager: mgr,
 	}
 
-	// 获取市场对应的默认货币
-	currency := sp.urlHelper.GetCurrencyFromURL(url)
-
-	// 添加语言和货币参数
-	urlWithParams := sp.urlHelper.AddLanguageAndCurrencyParams(url, currency)
-
-	if err := browserManager.NavigateTo(page, urlWithParams); err != nil {
-		return nil, fmt.Errorf("导航失败: %w", err)
-	}
-
-	// 处理可能出现的"Continue shopping"按钮
-	if err := sp.productChecker.HandleContinueShoppingButton(page); err != nil {
-		logger.GetGlobalLogger("crawler/amazon").Warnf("处理Continue shopping按钮失败（忽略）: %v", err)
-	}
-
-	// 设置邮编
-	zipcodeSetter := browser.NewZipcodeSetter(browserManager)
-	if err := zipcodeSetter.SetAndVerifyZipcode(page, zipcode); err != nil {
-		return nil, fmt.Errorf("设置邮编失败: %w", err)
-	}
-
-	now := time.Now()
-	product := &model.Product{
-		URL:       url,
-		Zipcode:   zipcode,
-		Asin:      sp.urlHelper.ExtractASINFromURL(url),
-		Currency:  sp.urlHelper.GetCurrencyFromURL(url),
-		Timestamp: model.NullableTime{Time: &now},
-	}
-
-	marketplace := sp.urlHelper.GetMarketplaceFromURL(url)
-	ext := extractor.NewCompositeExtractor(marketplace)
-	if err := ext.Extract(page, product); err != nil {
-		return nil, fmt.Errorf("提取产品信息失败: %w", err)
-	}
-
-	return product, nil
+	ip := NewInstanceProcessor(sp.urlHelper, sp.productChecker)
+	return ip.ProcessWithInstance(context.Background(), instance, url, zipcode)
 }

@@ -3,6 +3,7 @@ package browser
 
 import (
 	"fmt"
+	"sync"
 	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 	"time"
@@ -10,13 +11,16 @@ import (
 
 // InstanceManager 实例管理器
 type InstanceManager struct {
-	pool *BrowserPool
+	pool          *BrowserPool
+	rebuildingMu  sync.Mutex
+	rebuildingIDs map[int]bool // 正在重建中的实例ID，防止重复重建
 }
 
 // NewInstanceManager 创建实例管理器
 func NewInstanceManager(pool *BrowserPool) *InstanceManager {
 	return &InstanceManager{
-		pool: pool,
+		pool:          pool,
+		rebuildingIDs: make(map[int]bool),
 	}
 }
 
@@ -74,14 +78,30 @@ func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error) {
 	}, nil
 }
 
+// closeManagerWithTimeout 关闭 BrowserManager，最多等待 timeout，超时后强制继续。
+// 防止 WebSocket 断连时 Close() 永久 hang 导致重建 goroutine 卡死。
+func closeManagerWithTimeout(manager interface{ Close() }, instanceID int, timeout time.Duration) {
+	log := logger.GetGlobalLogger("crawler/amazon")
+	done := make(chan struct{}, 1)
+	go func() {
+		manager.Close()
+		close(done)
+	}()
+	select {
+	case <-done:
+		log.Infof("已关闭浏览器实例 %d", instanceID)
+	case <-time.After(timeout):
+		log.Warnf("关闭浏览器实例 %d 超时（%v），强制继续", instanceID, timeout)
+	}
+}
+
 // RecreateInstanceSync 同步重新创建浏览器实例（用于任务内重试）
 func (im *InstanceManager) RecreateInstanceSync(oldInstance *BrowserInstance) *BrowserInstance {
 	logger.GetGlobalLogger("crawler/amazon").Infof("开始同步重新创建浏览器实例 %d", oldInstance.ID)
 
-	// 先关闭旧实例
+	// 先关闭旧实例（加超时保护，防止 WebSocket 断连时 hang）
 	if oldInstance.Manager != nil {
-		oldInstance.Manager.Close()
-		logger.GetGlobalLogger("crawler/amazon").Infof("已关闭出现问题的浏览器实例 %d", oldInstance.ID)
+		closeManagerWithTimeout(oldInstance.Manager, oldInstance.ID, 10*time.Second)
 	}
 
 	// 等待短暂时间，让资源释放
@@ -113,63 +133,87 @@ func (im *InstanceManager) RecreateInstanceSync(oldInstance *BrowserInstance) *B
 
 // RecreateInstanceAsync 异步重新创建浏览器实例（用于后台健康检查）
 func (im *InstanceManager) RecreateInstanceAsync(oldInstance *BrowserInstance) {
-	logger.GetGlobalLogger("crawler/amazon").Infof("开始异步重新创建浏览器实例 %d", oldInstance.ID)
+	log := logger.GetGlobalLogger("crawler/amazon")
 
-	// 异步重新创建实例，避免阻塞 - 添加panic recovery
+	// 防止对同一实例重复触发重建
+	im.rebuildingMu.Lock()
+	if im.rebuildingIDs[oldInstance.ID] {
+		im.rebuildingMu.Unlock()
+		log.Warnf("浏览器实例 %d 已在重建中，跳过重复触发", oldInstance.ID)
+		return
+	}
+	im.rebuildingIDs[oldInstance.ID] = true
+	im.rebuildingMu.Unlock()
+
+	log.Infof("开始异步重新创建浏览器实例 %d", oldInstance.ID)
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logger.GetGlobalLogger("crawler/amazon").Errorf("重新创建浏览器实例goroutine panic (实例ID: %d): %v", oldInstance.ID, r)
+				log.Errorf("重新创建浏览器实例goroutine panic (实例ID: %d): %v", oldInstance.ID, r)
 			}
+			im.rebuildingMu.Lock()
+			delete(im.rebuildingIDs, oldInstance.ID)
+			im.rebuildingMu.Unlock()
 		}()
 
-		// 先关闭旧实例
+		// 先关闭旧实例（加超时保护，防止 WebSocket 断连时 hang）
 		if oldInstance.Manager != nil {
-			oldInstance.Manager.Close()
-			logger.GetGlobalLogger("crawler/amazon").Infof("已关闭被风控的浏览器实例 %d", oldInstance.ID)
+			closeManagerWithTimeout(oldInstance.Manager, oldInstance.ID, 10*time.Second)
 		}
 
-		// 等待一段时间再重新创建，避免立即重试
-		time.Sleep(5 * time.Second)
-
-		// 创建新实例
-		newInstance, err := im.CreateInstance(oldInstance.ID)
-		if err != nil {
-			logger.GetGlobalLogger("crawler/amazon").Infof("重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
-
-			// 如果创建失败，等待更长时间后再次尝试
-			time.Sleep(30 * time.Second)
+		// 带退避的重建循环，最多尝试5次，确保实例不会永久丢失
+		delays := []time.Duration{2, 10, 30, 60, 120}
+		var newInstance *BrowserInstance
+		var err error
+		for attempt, delay := range delays {
+			log.Infof("[重建] 实例 %d 第 %d 次尝试，等待 %ds...", oldInstance.ID, attempt+1, delay)
+			time.Sleep(delay * time.Second)
 			newInstance, err = im.CreateInstance(oldInstance.ID)
-			if err != nil {
-				logger.GetGlobalLogger("crawler/amazon").Infof("第二次重新创建浏览器实例 %d 失败: %v", oldInstance.ID, err)
-				// 如果还是失败，可以考虑通知管理员或采取其他措施
-				return
+			if err == nil {
+				log.Infof("[重建] 实例 %d 第 %d 次创建成功", oldInstance.ID, attempt+1)
+				break
 			}
+			log.Warnf("第 %d 次重建浏览器实例 %d 失败: %v", attempt+1, oldInstance.ID, err)
+		}
+
+		if newInstance == nil {
+			log.Errorf("浏览器实例 %d 所有重建尝试均失败，池将永久缩容，请检查浏览器环境", oldInstance.ID)
+			return
 		}
 
 		// 更新实例列表
 		im.pool.UpdateInstance(oldInstance, newInstance)
 
-		// 将新实例放回可用池，使用 select 防止池关闭时 panic 或通道满时阻塞
+		// 将新实例放回可用池
+		ch := im.pool.GetAvailableChannel()
+		if ch == nil {
+			log.Warnf("浏览器池已关闭，关闭重建的实例 %d", newInstance.ID)
+			newInstance.Manager.Close()
+			return
+		}
+		chLen := len(ch)
+		chCap := cap(ch)
+		log.Infof("[重建] 准备放回实例 %d，当前通道: len=%d, cap=%d", newInstance.ID, chLen, chCap)
 		select {
-		case im.pool.GetAvailableChannel() <- newInstance:
-			logger.GetGlobalLogger("crawler/amazon").Infof("✅ 成功异步重新创建浏览器实例 %d", oldInstance.ID)
+		case ch <- newInstance:
+			log.Infof("✅ 成功异步重新创建浏览器实例 %d，通道: len=%d→%d", newInstance.ID, chLen, len(ch))
 		default:
-			logger.GetGlobalLogger("crawler/amazon").Warnf("浏览器池通道已满或已关闭，无法放回重建的实例 %d，关闭该实例", oldInstance.ID)
+			// 通道满说明池已经有足够实例，不需要这个多余的实例
+			log.Warnf("[重建] 浏览器池通道已满(len=%d/cap=%d)，关闭多余的重建实例 %d", chLen, chCap, newInstance.ID)
 			newInstance.Manager.Close()
 		}
 	}()
 }
 
-// CloseInstance 关闭浏览器实例
+// CloseInstance 关闭浏览器实例（加超时保护，防止 WebSocket 断连时 hang）
 func (im *InstanceManager) CloseInstance(instance *BrowserInstance) {
 	if instance == nil {
 		return
 	}
 
 	if instance.Manager != nil {
-		instance.Manager.Close()
-		logger.GetGlobalLogger("crawler/amazon").Infof("已关闭浏览器实例 %d", instance.ID)
+		closeManagerWithTimeout(instance.Manager, instance.ID, 10*time.Second)
 	}
 }
 

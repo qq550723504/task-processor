@@ -2,10 +2,10 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 	"strings"
+	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -123,7 +123,9 @@ func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) er
 		locator := page.Locator(selector).First()
 		count, err := locator.Count()
 		if err == nil && count > 0 {
-			if err := locator.Click(); err != nil {
+			if err := locator.Click(playwright.LocatorClickOptions{
+				Timeout: playwright.Float(5000), // 5s 超时，防止 WebSocket 断连时 hang
+			}); err != nil {
 				// 检查是否是页面关闭导致的错误
 				if page.IsClosed() {
 					return fmt.Errorf("页面在点击触发元素时被关闭: %w", err)
@@ -337,7 +339,9 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 	} else {
 		// 点击Apply按钮
 		logger.GetGlobalLogger("crawler/amazon").Infof("准备点击Apply按钮: %s", selectedSelector)
-		if err := applyButton.Click(); err != nil {
+		if err := applyButton.Click(playwright.LocatorClickOptions{
+			Timeout: playwright.Float(5000), // 5s 超时，防止 WebSocket 断连时 hang
+		}); err != nil {
 			if page.IsClosed() {
 				return fmt.Errorf("页面在点击Apply按钮时被关闭: %w", err)
 			}

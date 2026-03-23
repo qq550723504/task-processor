@@ -18,8 +18,16 @@ type BrowserInstance struct {
 	Manager        *BrowserManager
 	Page           playwright.Page
 	InUse          bool
+	Closed         bool   // 已被超时路径关闭，不可再归还池
 	CurrentZipcode string // 当前设置的邮编，用于避免重复设置
 	Mu             sync.Mutex
+}
+
+// instanceRebuilder 定义实例重建行为，便于测试注入 mock
+type instanceRebuilder interface {
+	CreateInstance(id int) (*BrowserInstance, error)
+	RecreateInstanceSync(old *BrowserInstance) *BrowserInstance
+	RecreateInstanceAsync(old *BrowserInstance)
 }
 
 // BrowserPool 浏览器池
@@ -31,7 +39,7 @@ type BrowserPool struct {
 	Mu                   sync.Mutex
 	fingerprintGen       *sharedbrowser.FingerprintGenerator
 	useRandomFingerprint bool
-	instanceManager      *InstanceManager
+	instanceManager      instanceRebuilder
 	healthChecker        *HealthChecker
 	errorDetector        *ErrorDetector
 	shutdownOnce         sync.Once // 确保只关闭一次
@@ -199,14 +207,11 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 		return
 	}
 
-	logger.GetGlobalLogger("crawler/amazon").Infof("释放浏览器实例 %d", instance.ID)
-
 	// 使用 select 防止在关闭过程中阻塞
 	select {
 	case bp.available <- instance:
 		// 成功释放
 	default:
-		// 通道已满或已关闭，忽略
 		logger.GetGlobalLogger("crawler/amazon").Warnf("无法释放浏览器实例 %d，通道可能已满或已关闭", instance.ID)
 	}
 }
@@ -252,26 +257,19 @@ func (bp *BrowserPool) Shutdown() {
 	})
 }
 
-// GetPoolStats 获取浏览器池统计信息
-func (bp *BrowserPool) GetPoolStats() map[string]any {
-	return bp.healthChecker.GetPoolStats()
-}
-
-// LogPoolStats 记录浏览器池统计信息
-func (bp *BrowserPool) LogPoolStats() {
-	bp.healthChecker.LogPoolStats()
-}
-
 // IsBlockedOrSeriousError 检测是否为风控或严重错误（公开方法）
 func (bp *BrowserPool) IsBlockedOrSeriousError(err error) bool {
 	return bp.errorDetector.IsBlockedOrSeriousError(err)
 }
 
-// GetInstances 获取所有实例（用于内部管理器访问）
-func (bp *BrowserPool) GetInstances() []*BrowserInstance {
+// GetInstancesSnapshot 加锁取快照后立即释放锁，返回实例列表副本。
+// 调用方无需持有 bp.Mu，适合在锁外安全遍历实例。
+func (bp *BrowserPool) GetInstancesSnapshot() []*BrowserInstance {
 	bp.Mu.Lock()
-	defer bp.Mu.Unlock()
-	return bp.instances
+	snapshot := make([]*BrowserInstance, len(bp.instances))
+	copy(snapshot, bp.instances)
+	bp.Mu.Unlock()
+	return snapshot
 }
 
 // GetAvailableChannel 获取可用实例通道（用于内部管理器访问）

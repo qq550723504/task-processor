@@ -53,6 +53,17 @@ func (qi *QueueInitializer) initializeQueues() error {
 	return nil
 }
 
+// InitializeRegionCrawlerQueues 为指定 region 列表初始化爬虫队列
+func (qi *QueueInitializer) InitializeRegionCrawlerQueues(regions []string) error {
+	for _, q := range GetRegionCrawlerQueueDeclareConfigs(regions) {
+		if err := qi.declareQueueWithRetry(q); err != nil {
+			return fmt.Errorf("声明 region 爬虫队列 %s 失败: %w", q.Name, err)
+		}
+	}
+	qi.logger.Infof("region 爬虫队列初始化完成: regions=%v", regions)
+	return nil
+}
+
 // InitializeStoreQueues 为指定平台和店铺列表初始化专属队列和绑定
 func (qi *QueueInitializer) InitializeStoreQueues(platform string, storeIDs []int64) error {
 	for _, storeID := range storeIDs {

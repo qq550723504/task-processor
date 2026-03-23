@@ -2,10 +2,9 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // HealthChecker 健康检查器
@@ -20,28 +19,37 @@ func NewHealthChecker(pool *BrowserPool) *HealthChecker {
 	}
 }
 
-// HealthCheck 检查浏览器实例健康状态
+// HealthCheck 检查浏览器实例健康状态。
+// Page.Evaluate 在 WebSocket 断连时可能永久 hang，使用 5s 超时保护。
 func (hc *HealthChecker) HealthCheck(instance *BrowserInstance) bool {
 	if instance == nil || instance.Manager == nil || instance.Page == nil {
 		return false
 	}
 
-	// 尝试执行简单的JavaScript来检查页面是否响应
-	_, err := instance.Page.Evaluate("() => document.readyState")
-	if err != nil {
-		logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例 %d 健康检查失败: %v", instance.ID, err)
+	type evalResult struct{ err error }
+	ch := make(chan evalResult, 1)
+	go func() {
+		_, err := instance.Page.Evaluate("() => document.readyState")
+		ch <- evalResult{err}
+	}()
+
+	select {
+	case res := <-ch:
+		if res.err != nil {
+			logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例 %d 健康检查失败: %v", instance.ID, res.err)
+			return false
+		}
+		return true
+	case <-time.After(5 * time.Second):
+		logger.GetGlobalLogger("crawler/amazon").Warnf("浏览器实例 %d 健康检查超时(5s)", instance.ID)
 		return false
 	}
-
-	return true
 }
 
-// GetPoolStats 获取浏览器池统计信息
+// GetPoolStats 获取浏览器池统计信息。
+// 先取快照（锁内），再在锁外做 HealthCheck，避免持锁期间调用 Playwright 操作导致死锁。
 func (hc *HealthChecker) GetPoolStats() map[string]any {
-	hc.pool.Mu.Lock()
-	defer hc.pool.Mu.Unlock()
-
-	instances := hc.pool.GetInstances()
+	instances := hc.pool.GetInstancesSnapshot()
 	available := hc.pool.GetAvailableChannel()
 
 	stats := map[string]any{
@@ -106,7 +114,8 @@ func (hc *HealthChecker) StartHealthCheckRoutine(ctx context.Context) {
 	logger.GetGlobalLogger("crawler/amazon").Info("🏥 浏览器池健康检查例程已启动")
 }
 
-// performHealthCheck 执行健康检查
+// performHealthCheck 执行健康检查。
+// 先取快照（锁内），再在锁外做 HealthCheck，避免持锁期间调用 Playwright 操作导致死锁。
 func (hc *HealthChecker) performHealthCheck() {
 	logger.GetGlobalLogger("crawler/amazon").Info("🔍 开始浏览器池健康检查...")
 
@@ -114,9 +123,8 @@ func (hc *HealthChecker) performHealthCheck() {
 
 	unhealthyInstances := make([]*BrowserInstance, 0)
 
-	// 检查所有实例的健康状态
-	hc.pool.Mu.Lock()
-	instances := hc.pool.GetInstances()
+	// 取快照后立即释放锁，再在锁外做 HealthCheck
+	instances := hc.pool.GetInstancesSnapshot()
 	for _, instance := range instances {
 		instance.Mu.Lock()
 		isInUse := instance.InUse
@@ -127,12 +135,50 @@ func (hc *HealthChecker) performHealthCheck() {
 			unhealthyInstances = append(unhealthyInstances, instance)
 		}
 	}
-	hc.pool.Mu.Unlock()
 
 	// 重建不健康的实例
 	for _, instance := range unhealthyInstances {
 		logger.GetGlobalLogger("crawler/amazon").Infof("⚠️ 发现不健康的浏览器实例 %d，准备重建", instance.ID)
-		hc.pool.instanceManager.RecreateInstanceAsync(instance)
+
+		// 必须先从 available channel 中取出该实例，否则池里会有僵尸实例占位，
+		// 同时异步重建的新实例也无法放回（channel 已满），导致池永久缩容。
+		// 使用非阻塞 select 尝试取出，取不到说明实例已被其他 goroutine 取走，跳过。
+		drained := false
+		availCh := hc.pool.GetAvailableChannel()
+		for {
+			select {
+			case candidate, ok := <-availCh:
+				if !ok {
+					// channel 已关闭，池正在关闭，直接返回
+					return
+				}
+				if candidate.ID == instance.ID {
+					// 成功取出目标实例，标记后重建
+					candidate.Mu.Lock()
+					candidate.InUse = true
+					candidate.Mu.Unlock()
+					drained = true
+				} else {
+					// 取出的是其他实例，放回去
+					select {
+					case availCh <- candidate:
+					default:
+					}
+				}
+			default:
+				// channel 暂时为空，停止尝试
+				goto drainDone
+			}
+			if drained {
+				break
+			}
+		}
+	drainDone:
+		if drained {
+			hc.pool.instanceManager.RecreateInstanceAsync(instance)
+		} else {
+			logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例 %d 已被取走，跳过重建", instance.ID)
+		}
 	}
 
 	if len(unhealthyInstances) == 0 {
@@ -140,134 +186,4 @@ func (hc *HealthChecker) performHealthCheck() {
 	} else {
 		logger.GetGlobalLogger("crawler/amazon").Infof("🔧 发现 %d 个不健康实例，已启动重建", len(unhealthyInstances))
 	}
-}
-
-// CheckInstanceHealth 检查单个实例健康状态
-func (hc *HealthChecker) CheckInstanceHealth(instance *BrowserInstance) map[string]any {
-	if instance == nil {
-		return map[string]any{
-			"healthy": false,
-			"error":   "instance is nil",
-		}
-	}
-
-	result := map[string]any{
-		"instance_id": instance.ID,
-		"healthy":     false,
-		"checks":      make(map[string]bool),
-	}
-
-	checks := result["checks"].(map[string]bool)
-
-	// 检查管理器
-	checks["manager_exists"] = instance.Manager != nil
-
-	// 检查页面
-	checks["page_exists"] = instance.Page != nil
-
-	// 检查页面响应
-	if instance.Page != nil {
-		_, err := instance.Page.Evaluate("() => document.readyState")
-		checks["page_responsive"] = err == nil
-		if err != nil {
-			result["page_error"] = err.Error()
-		}
-	} else {
-		checks["page_responsive"] = false
-	}
-
-	// 综合判断健康状态
-	result["healthy"] = checks["manager_exists"] && checks["page_exists"] && checks["page_responsive"]
-
-	return result
-}
-
-// GetDetailedStats 获取详细统计信息
-func (hc *HealthChecker) GetDetailedStats() map[string]any {
-	hc.pool.Mu.Lock()
-	defer hc.pool.Mu.Unlock()
-
-	instances := hc.pool.GetInstances()
-	available := hc.pool.GetAvailableChannel()
-
-	stats := map[string]any{
-		"total_instances":     len(instances),
-		"available_instances": len(available),
-		"instance_details":    make([]map[string]any, 0),
-	}
-
-	var inUseCount, healthyCount int
-	instanceDetails := stats["instance_details"].([]map[string]any)
-
-	for _, instance := range instances {
-		instance.Mu.Lock()
-		isInUse := instance.InUse
-		instance.Mu.Unlock()
-
-		if isInUse {
-			inUseCount++
-		}
-
-		healthCheck := hc.CheckInstanceHealth(instance)
-		if healthCheck["healthy"].(bool) {
-			healthyCount++
-		}
-
-		instanceDetails = append(instanceDetails, healthCheck)
-	}
-
-	stats["in_use_instances"] = inUseCount
-	stats["healthy_instances"] = healthyCount
-	stats["instance_details"] = instanceDetails
-
-	return stats
-}
-
-// MonitorPool 监控浏览器池状态
-func (hc *HealthChecker) MonitorPool(ctx context.Context, interval time.Duration) {
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.GetGlobalLogger("crawler/amazon").Errorf("浏览器池监控goroutine panic: %v", r)
-			}
-		}()
-
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				logger.GetGlobalLogger("crawler/amazon").Info("浏览器池监控停止")
-				return
-			case <-ticker.C:
-				stats := hc.GetDetailedStats()
-				logger.GetGlobalLogger("crawler/amazon").Infof("🔍 浏览器池监控: %+v", stats)
-			}
-		}
-	}()
-
-	logger.GetGlobalLogger("crawler/amazon").Infof("📊 浏览器池监控已启动，间隔: %v", interval)
-}
-
-// WaitForHealthyPool 等待浏览器池达到健康状态
-func (hc *HealthChecker) WaitForHealthyPool(timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-
-	for time.Now().Before(deadline) {
-		stats := hc.GetPoolStats()
-		totalInstances := stats["total_instances"].(int)
-		healthyInstances := stats["healthy_instances"].(int)
-
-		if totalInstances > 0 && healthyInstances == totalInstances {
-			logger.GetGlobalLogger("crawler/amazon").Info("✅ 浏览器池已达到健康状态")
-			return true
-		}
-
-		logger.GetGlobalLogger("crawler/amazon").Infof("⏳ 等待浏览器池健康状态: %d/%d", healthyInstances, totalInstances)
-		time.Sleep(2 * time.Second)
-	}
-
-	logger.GetGlobalLogger("crawler/amazon").Warn("⚠️ 等待浏览器池健康状态超时")
-	return false
 }

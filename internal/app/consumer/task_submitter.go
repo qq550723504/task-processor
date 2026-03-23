@@ -119,10 +119,14 @@ func (ts *TaskSubmitter) SubmitTask(ctx context.Context, t *model.Task) error {
 	}
 
 	// 3. 获取队列名称和优先级（使用领域层业务规则）
-	// 特殊处理：如果是爬虫任务（Platform包含.crawler），使用基于优先级的队列名称
+	// 爬虫任务：有 region 时路由到 region 专属队列，否则用全局队列
 	var queueName string
 	if strings.Contains(t.Platform, ".crawler") {
-		queueName = ts.queueNaming.BuildCrawlerQueueName(t.Platform, t.Priority)
+		if t.Region != "" {
+			queueName = ts.queueNaming.BuildCrawlerQueueNameByRegion(t.Platform, t.Region, t.Priority)
+		} else {
+			queueName = ts.queueNaming.BuildCrawlerQueueName(t.Platform, t.Priority)
+		}
 	} else {
 		queueName = ts.queueNaming.BuildTaskQueueName(t.Platform, t.Priority)
 	}

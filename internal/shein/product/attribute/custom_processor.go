@@ -2,13 +2,12 @@
 package attribute
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
+	"task-processor/internal/core/logger"
 
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/content"
-
 )
 
 // CustomAttributeProcessor 自定义属性处理器，负责创建和验证自定义属性值
@@ -55,9 +54,12 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	}
 
 	// 1. 验证自定义属性值（使用清理后的值）
+	logger.GetGlobalLogger("shein/product").Infof("验证自定义属性值请求参数: attribute_id=%d, attribute_value=%q, category_id=%d, spu_name=%q",
+		attrID, sanitizedValue, ctx.ProductData.CategoryID, ctx.AmazonProduct.Title)
 	validateResponse, err := ctx.AttributeAPI.ValidateCustomAttributeValue(attrID, sanitizedValue, ctx.ProductData.CategoryID, ctx.AmazonProduct.Title)
 	if err != nil {
-		logger.GetGlobalLogger("shein/product").Errorf("验证自定义属性值失败: %v", err)
+		logger.GetGlobalLogger("shein/product").Errorf("验证自定义属性值失败: attribute_id=%d, attribute_value=%q, category_id=%d, spu_name=%q, error=%v",
+			attrID, sanitizedValue, ctx.ProductData.CategoryID, ctx.AmazonProduct.Title, err)
 		return shein.CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired, // 非必需属性失败时继续，必需属性失败时不继续

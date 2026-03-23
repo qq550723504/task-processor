@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,19 +64,18 @@ func (a *testAdapter) CalculatePriority(priority int) uint8 {
 }
 
 // newTestNamingService 创建测试用命名服务
-func newTestNamingService() interface {
-	BuildCrawlerQueueName(platform string, priority int) string
-} {
+func newTestNamingService() queueNamer {
 	return &testNaming{}
 }
 
 type testNaming struct{}
 
 func (n *testNaming) BuildCrawlerQueueName(platform string, priority int) string {
-	if priority >= 8 {
-		return fmt.Sprintf("%s.crawler.high", platform)
-	}
-	return fmt.Sprintf("%s.crawler.normal", platform)
+	return fmt.Sprintf("%s.crawler", platform)
+}
+
+func (n *testNaming) BuildCrawlerQueueNameByRegion(platform, region string, priority int) string {
+	return fmt.Sprintf("%s.crawler.%s", platform, strings.ToLower(region))
 }
 
 func TestDistributedCrawlerClient_SubmitCrawlTask_Success(t *testing.T) {

@@ -36,6 +36,10 @@ func (r *PendingRegistry) Register(ctx context.Context, taskID string) *PendingT
 	r.mu.Lock()
 	r.tasks[pt.TaskID] = pt
 	r.mu.Unlock()
+
+	dl, _ := taskCtx.Deadline()
+	fmt.Printf("[PendingRegistry] 注册任务: TaskID=%s, 超时时间=%v, deadline=%s, 当前pending数=%d\n",
+		taskID, r.timeout, dl.Format("15:04:05"), len(r.tasks))
 	return pt
 }
 
@@ -81,13 +85,21 @@ func (r *PendingRegistry) Wait(pt *PendingTask) (*CrawlResult, error) {
 	// 优先检查 channel，避免 context cancel 和 channel 同时就绪时随机选中 Done()
 	select {
 	case result := <-pt.ResultChan:
+		elapsed := time.Since(pt.CreatedAt)
+		fmt.Printf("[PendingRegistry] 任务立即完成(已在channel): TaskID=%s, 耗时=%.1fs\n", pt.TaskID, elapsed.Seconds())
 		return result, nil
 	default:
 	}
 	select {
 	case result := <-pt.ResultChan:
+		elapsed := time.Since(pt.CreatedAt)
+		fmt.Printf("[PendingRegistry] 任务完成: TaskID=%s, 耗时=%.1fs\n", pt.TaskID, elapsed.Seconds())
 		return result, nil
 	case <-pt.Context.Done():
+		elapsed := time.Since(pt.CreatedAt)
+		dl, _ := pt.Context.Deadline()
+		fmt.Printf("[PendingRegistry] 任务超时: TaskID=%s, 等待耗时=%.1fs, deadline=%s, ctxErr=%v\n",
+			pt.TaskID, elapsed.Seconds(), dl.Format("15:04:05"), pt.Context.Err())
 		r.Remove(pt.TaskID)
 		return nil, fmt.Errorf("爬虫任务超时: TaskID=%s", pt.TaskID)
 	}

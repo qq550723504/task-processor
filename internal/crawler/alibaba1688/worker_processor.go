@@ -16,52 +16,26 @@ type Crawler1688Processor struct {
 }
 
 // Start 启动处理器
-func (p *Crawler1688Processor) Start(ctx context.Context) error {
-	return nil
-}
+func (p *Crawler1688Processor) Start(_ context.Context) error { return nil }
+
+// Close 关闭处理器
+func (p *Crawler1688Processor) Close(_ context.Context) {}
 
 // ProcessTask 处理任务
 func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
-	// 从 WorkerJob 中解析出 CrawlerTask
 	var crawlerTask shared.CrawlerTask
 	if err := json.Unmarshal([]byte(job.TaskData), &crawlerTask); err != nil {
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
-	// 执行爬取
 	product, err := p.service.processor1688.Process(crawlerTask.URL)
 	if err != nil {
 		return err
 	}
 
-	// 保存结果（原子操作）
-	p.service.updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
-		result.ProductData = product1688ToMap(product, p.service.logger)
+	p.service.UpdateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
+		result.ProductData = shared.ProductToMap(product)
 	})
 
 	return nil
-}
-
-// Close 关闭处理器
-func (p *Crawler1688Processor) Close(ctx context.Context) {
-	// 清理资源（如果需要）
-}
-
-// product1688ToMap 将 1688 Product 转换为 map
-func product1688ToMap(product any, _ any) map[string]any {
-	if product == nil {
-		return nil
-	}
-
-	data, err := json.Marshal(product)
-	if err != nil {
-		return nil
-	}
-
-	var result map[string]any
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil
-	}
-
-	return result
 }

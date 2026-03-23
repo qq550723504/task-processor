@@ -18,12 +18,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// crawlTaskID 根据 productID+region 生成稳定的正数任务ID（FNV-1a 哈希，重启后不变）
-// 用 math.MaxInt64 掩码去掉符号位，保证结果始终为正数
+// crawlTaskID 生成唯一任务ID：FNV-1a(productID+region) XOR 当前纳秒时间戳，保证每次调用唯一。
+// 用 0x7fffffffffffffff 掩码去掉符号位，保证结果始终为正数。
 func crawlTaskID(productID, region string) string {
 	h := fnv.New64a()
 	h.Write([]byte(productID + ":" + region))
-	return fmt.Sprintf("%d", int64(h.Sum64()&0x7fffffffffffffff))
+	id := (h.Sum64() ^ uint64(time.Now().UnixNano())) & 0x7fffffffffffffff
+	return fmt.Sprintf("%d", int64(id))
 }
 
 // DistributedProductFetcher 分布式产品数据获取器

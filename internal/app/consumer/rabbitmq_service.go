@@ -4,6 +4,7 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -230,6 +231,13 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 		s.logger.Infof("店铺专属队列初始化完成: platforms=%v, stores=%v", platforms, s.ownedStores)
 	}
 
+	// 4.1 初始化 region 爬虫队列（如果配置了 regions）
+	if len(s.config.Node.Regions) > 0 {
+		if err := s.initializer.InitializeRegionCrawlerQueues(s.config.Node.Regions); err != nil {
+			return fmt.Errorf("初始化 region 爬虫队列失败: %w", err)
+		}
+	}
+
 	// 4. 预加载店铺配置（如果启用）
 	if s.storeAPI != nil && len(s.ownedStores) > 0 {
 		s.logger.Infof("开始预加载 %d 个店铺配置...", len(s.ownedStores))
@@ -261,36 +269,36 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 // registerMessageHandlers 注册消息处理器
 func (s *RabbitMQService) registerMessageHandlers() {
 	handlers := s.processorRegistry.GetAllHandlers()
-	priorities := []string{"high", "normal", "low"}
 
 	for platform, handler := range handlers {
 		isCrawler := platform == "amazon.crawler" || platform == "1688.crawler"
 
 		if isCrawler {
-			// 爬虫队列保持原有格式
-			for _, priority := range priorities {
-				queueName := fmt.Sprintf("%s.%s", platform, priority)
+			regions := s.config.Node.Regions
+			if len(regions) > 0 {
+				for _, region := range regions {
+					basePlatform := strings.TrimSuffix(platform, ".crawler")
+					queueName := fmt.Sprintf("%s.crawler.%s", basePlatform, strings.ToLower(region))
+					s.consumer.RegisterHandler(queueName, handler)
+				}
+				s.logger.Infof("注册爬虫处理器（按 region）: 平台=%s, regions=%v", platform, regions)
+			} else {
+				queueName := platform // e.g. "amazon.crawler"
 				s.consumer.RegisterHandler(queueName, handler)
+				s.logger.Infof("注册爬虫处理器（全局队列）: 平台=%s", platform)
 			}
-			s.logger.Infof("注册爬虫处理器: 平台=%s", platform)
 			continue
 		}
 
 		if len(s.ownedStores) > 0 {
-			// 按店铺专属队列注册
 			for _, storeID := range s.ownedStores {
-				for _, priority := range priorities {
-					queueName := fmt.Sprintf("%s.tasks.%s.store.%d", platform, priority, storeID)
-					s.consumer.RegisterHandler(queueName, handler)
-				}
+				queueName := fmt.Sprintf("%s.tasks.store.%d", platform, storeID)
+				s.consumer.RegisterHandler(queueName, handler)
 			}
 			s.logger.Infof("注册处理器: 平台=%s, 店铺=%v", platform, s.ownedStores)
 		} else {
-			// 未配置 ownedStores，回退到平台级队列（兼容旧模式）
-			for _, priority := range priorities {
-				queueName := fmt.Sprintf("%s.tasks.%s", platform, priority)
-				s.consumer.RegisterHandler(queueName, handler)
-			}
+			queueName := fmt.Sprintf("%s.tasks", platform)
+			s.consumer.RegisterHandler(queueName, handler)
 			s.logger.Warnf("注册处理器（平台级队列，未配置店铺隔离）: 平台=%s", platform)
 		}
 	}

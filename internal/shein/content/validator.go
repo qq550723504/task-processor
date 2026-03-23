@@ -34,11 +34,16 @@ func (s *SensitiveWordService) extractSensitiveWordsFromValidation(results []she
 func (s *SensitiveWordService) extractWordsFromMessages(messages []string) []string {
 	var words []string
 
+	// 正则按精确度从高到低排列：
+	// 1. 带方括号的精确格式（如 敏感词：[Food Grade、Bpa Free]）
+	// 2. 顿号/逗号分隔的无括号格式（如 敏感词：Food Grade、Bpa Free、Snap-on）
+	// 3. 英文格式
+	// 4. 其他违禁词格式
+	// 注意：不使用 [^\]\s]+ 这类遇空格截断的正则，避免含空格的词被截断
 	patterns := []string{
-		`敏感词[：:]\s*\[?([^\]\s]+)\]?`,
 		`包含敏感词[：:]\s*\[([^\]]+)\]`,
 		`敏感词[：:]\s*\[([^\]]+)\]`,
-		`敏感词[：:]\s*([^，,\[\]]+(?:[，,][^，,\[\]]+)*)`,
+		`敏感词[：:]\s*([^，,\[\]\n]+(?:[，,、][^，,、\[\]\n]+)*)`,
 		`contains?\s+sensitive\s+words?\s*[：:]\s*\[?([^\]]+)\]?`,
 		`sensitive\s+words?\s*[：:]\s*\[?([^\]]+)\]?`,
 		`违禁词[：:]\s*\[?([^\]]+)\]?`,
@@ -47,16 +52,24 @@ func (s *SensitiveWordService) extractWordsFromMessages(messages []string) []str
 	}
 
 	for _, message := range messages {
+		matched := false
 		for _, pattern := range patterns {
 			re := regexp.MustCompile(pattern)
 			matches := re.FindAllStringSubmatch(message, -1)
-
+			if len(matches) == 0 {
+				continue
+			}
 			for _, match := range matches {
 				if len(match) > 1 {
 					wordsStr := strings.TrimSpace(match[1])
 					extractedWords := s.splitWords(wordsStr)
 					words = append(words, extractedWords...)
+					matched = true
 				}
+			}
+			// 匹配到后不再尝试后续正则，避免重复提取
+			if matched {
+				break
 			}
 		}
 	}
