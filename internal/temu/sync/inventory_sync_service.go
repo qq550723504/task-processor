@@ -2,59 +2,57 @@
 package sync
 
 import (
-	"context"
-	"fmt"
+"context"
+"fmt"
 
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/pricing"
-	"task-processor/internal/product"
-	"task-processor/internal/temu/api/client"
+"task-processor/internal/app/crawler/fetcher"
+"task-processor/internal/core/config"
+"task-processor/internal/core/logger"
+"task-processor/internal/infra/clients/management"
+managementapi "task-processor/internal/infra/clients/management/api"
+"task-processor/internal/pricing"
+"task-processor/internal/product"
+"task-processor/internal/temu/api/client"
 
-		"task-processor/internal/core/logger"
-	"github.com/sirupsen/logrus"
+"github.com/sirupsen/logrus"
 )
 
 // inventorySyncServiceImpl TEMU库存监控服务实现
 type inventorySyncServiceImpl struct {
-	managementClient      *management.ClientManager
-	temuAPIClient         client.ClientAPI
-	amazonProcessor       product.AmazonScraper
-	amazonConfig          *config.AmazonConfig
-	rawJsonDataClient     product.RawJsonDataClient
-	inventoryRecordClient managementapi.InventoryRecordAPI
-	monitorConfig         *config.MonitorConfig
-	costCalculator        *pricing.CostCalculator
-	logger                *logrus.Entry
+managementClient      *management.ClientManager
+temuAPIClient         client.ClientAPI
+productFetcher        fetcher.ProductFetcher
+rawJsonDataClient     product.RawJsonDataClient
+inventoryRecordClient managementapi.InventoryRecordAPI
+monitorConfig         *config.MonitorConfig
+costCalculator        *pricing.CostCalculator
+logger                *logrus.Entry
 }
 
 // NewInventorySyncService 创建TEMU库存监控服务
 func NewInventorySyncService(
-	managementClient *management.ClientManager,
-	temuAPIClient client.ClientAPI,
-	amazonProcessor product.AmazonScraper,
-	amazonConfig *config.AmazonConfig,
-	monitorConfig *config.MonitorConfig,
-	rawJsonDataClient product.RawJsonDataClient,
-	inventoryRecordClient managementapi.InventoryRecordAPI,
+managementClient *management.ClientManager,
+temuAPIClient client.ClientAPI,
+productFetcher fetcher.ProductFetcher,
+monitorConfig *config.MonitorConfig,
+rawJsonDataClient product.RawJsonDataClient,
+inventoryRecordClient managementapi.InventoryRecordAPI,
 ) InventorySyncService {
-	logger := logger.GetGlobalLogger("TemuInventorySyncService")
+log := logger.GetGlobalLogger("TemuInventorySyncService")
 
-	// 创建通用成本计算器（TEMU不需要详细日志）
-	costCalculator := pricing.NewCostCalculator(managementClient, logger, false)
+// 创建通用成本计算器（TEMU不需要详细日志）
+costCalculator := pricing.NewCostCalculator(managementClient, log, false)
 
-	return &inventorySyncServiceImpl{
-		managementClient:      managementClient,
-		temuAPIClient:         temuAPIClient,
-		amazonProcessor:       amazonProcessor,
-		amazonConfig:          amazonConfig,
-		rawJsonDataClient:     rawJsonDataClient,
-		inventoryRecordClient: inventoryRecordClient,
-		monitorConfig:         monitorConfig,
-		costCalculator:        costCalculator,
-		logger:                logger,
-	}
+return &inventorySyncServiceImpl{
+managementClient:      managementClient,
+temuAPIClient:         temuAPIClient,
+productFetcher:        productFetcher,
+rawJsonDataClient:     rawJsonDataClient,
+inventoryRecordClient: inventoryRecordClient,
+monitorConfig:         monitorConfig,
+costCalculator:        costCalculator,
+logger:                log,
+}
 }
 
 // FetchProductsForInventorySync 获取需要监控库存的产品列表

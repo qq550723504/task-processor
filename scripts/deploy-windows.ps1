@@ -5,6 +5,9 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$Version,
     
+    [ValidateSet("task-processor", "rabbitmq-consumer")]
+    [string]$App = "task-processor",
+
     [string]$Changelog = "Bug fixes and improvements",
     [string]$CosBucket = "auto-update-1303159911",
     [string]$CosRegion = "ap-shanghai",
@@ -17,11 +20,16 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Task Processor Windows Deploy Script" -ForegroundColor Cyan
+Write-Host "App: $App" -ForegroundColor Cyan
 Write-Host "Version: $Version" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
+# 根据 App 参数确定构建入口和输出文件名
+$cmdPath = "./cmd/$App"
+$exeName = "$App.exe"
+
 # 1. Build Windows version
-Write-Host "`n[1/5] Building..." -ForegroundColor Yellow
+Write-Host "`n[1/5] Building $App ..." -ForegroundColor Yellow
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
 $env:CGO_ENABLED = "0"
@@ -39,7 +47,7 @@ Write-Host "Debug: Version = $Version" -ForegroundColor Magenta
 Write-Host "Debug: BuildTime = $buildTime" -ForegroundColor Magenta
 Write-Host "Debug: ldflags = $ldflags" -ForegroundColor Magenta
 
-go build -ldflags $ldflags -o "dist/task-processor.exe" ./cmd/task
+go build -ldflags $ldflags -o "dist/$exeName" $cmdPath
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build failed!" -ForegroundColor Red
@@ -50,7 +58,7 @@ Write-Host "Build completed" -ForegroundColor Green
 
 # 2. Calculate file hash
 Write-Host "`n[2/5] Calculating hash..." -ForegroundColor Yellow
-$hash = Get-FileHash -Path "dist/task-processor.exe" -Algorithm SHA256
+$hash = Get-FileHash -Path "dist/$exeName" -Algorithm SHA256
 $sha256 = $hash.Hash.ToLower()
 Write-Host "SHA256: $sha256" -ForegroundColor Cyan
 
@@ -59,12 +67,14 @@ Write-Host "`n[3/5] Generating version info..." -ForegroundColor Yellow
 
 # 处理版本号格式，避免重复前缀
 $cleanVersion = $Version
-if ($Version.StartsWith("task-processor-")) {
-    $cleanVersion = $Version.Substring("task-processor-".Length)
+if ($Version.StartsWith("$App-")) {
+    $cleanVersion = $Version.Substring("$App-".Length)
 }
 
+$exeVersioned = "$App-$cleanVersion.exe"
+
 $cosUrl = "https://$CosBucket.cos.$CosRegion.myqcloud.com"
-$downloadUrl = "$cosUrl/$CosPath/task-processor-$cleanVersion.exe"
+$downloadUrl = "$cosUrl/$CosPath/$exeVersioned"
 
 $versionInfo = @{
     version = $Version
@@ -83,7 +93,7 @@ Write-Host "Download URL: $downloadUrl" -ForegroundColor Cyan
 
 # 4. Copy file
 Write-Host "`n[4/5] Preparing files..." -ForegroundColor Yellow
-Copy-Item "dist/task-processor.exe" "dist/task-processor-$cleanVersion.exe"
+Copy-Item "dist/$exeName" "dist/$exeVersioned"
 
 # 5. Upload to COS
 Write-Host "`n[5/5] Uploading to Tencent Cloud COS..." -ForegroundColor Yellow
@@ -94,7 +104,7 @@ if ($AutoUpload) {
         
         try {
             Write-Host "Uploading program file..." -ForegroundColor Yellow
-            coscmd upload "dist/task-processor-$cleanVersion.exe" "$CosPath/task-processor-$cleanVersion.exe"
+            coscmd upload "dist/$exeVersioned" "$CosPath/$exeVersioned"
             
             Write-Host "Updating version info..." -ForegroundColor Yellow
             coscmd upload "dist/version.json" "$CosPath/version.json" -f
@@ -125,16 +135,20 @@ Write-Host "1. Files uploaded to COS" -ForegroundColor White
 Write-Host "2. Clients will auto-update within 1 hour" -ForegroundColor White
 Write-Host "3. Use Redis to trigger immediate update (optional)" -ForegroundColor White
 
-# # 基本用法
+# # 基本用法（默认发布 task-processor）
 # .\scripts\deploy-windows.ps1 -Version "2.8.8"
+
+# # 发布 rabbitmq-consumer
+# .\scripts\deploy-windows.ps1 -Version "2.8.8" -App "rabbitmq-consumer"
 
 # # 完整参数
 # .\scripts\deploy-windows.ps1 `
 #     -Version "v1.0.1" `
+#     -App "rabbitmq-consumer" `
 #     -Changelog "修复了登录问题" `
 #     -ForceUpdate `
 #     -CosBucket "your-bucket" `
 #     -CosRegion "ap-shanghai"
 
 # # 只构建不上传
-# .\scripts\deploy-windows.ps1 -Version "v1.0.0" -AutoUpload:$false
+# .\scripts\deploy-windows.ps1 -Version "v1.0.0" -App "rabbitmq-consumer" -AutoUpload:$false

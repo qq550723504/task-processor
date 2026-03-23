@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/crawler/fetcher"
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/platformbase"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
@@ -23,12 +25,19 @@ import (
 // SheinTaskFactory SHEIN平台任务工厂
 type SheinTaskFactory struct {
 	*platformbase.BaseFactory
-	cookieManager *state.CookieManager
-	clientManager *client.ClientManager
+	cookieManager  *state.CookieManager
+	clientManager  *client.ClientManager
+	rabbitmqClient *rabbitmq.Client
 }
 
 // NewSheinTaskFactory 创建SHEIN任务工厂
-func NewSheinTaskFactory(managementClient *management.ClientManager, amazonProcessor platformbase.AmazonCrawler, amazonConfig *config.AmazonConfig, monitorConfig *config.MonitorConfig) *SheinTaskFactory {
+func NewSheinTaskFactory(
+	managementClient *management.ClientManager,
+	amazonProcessor platformbase.AmazonCrawler,
+	amazonConfig *config.AmazonConfig,
+	monitorConfig *config.MonitorConfig,
+	rabbitmqClient *rabbitmq.Client,
+) *SheinTaskFactory {
 	cookieManager := state.NewCookieManager()
 	clientManager := client.NewClientManager(cookieManager, managementClient)
 
@@ -41,9 +50,10 @@ func NewSheinTaskFactory(managementClient *management.ClientManager, amazonProce
 	})
 
 	return &SheinTaskFactory{
-		BaseFactory:   baseFactory,
-		cookieManager: cookieManager,
-		clientManager: clientManager,
+		BaseFactory:    baseFactory,
+		cookieManager:  cookieManager,
+		clientManager:  clientManager,
+		rabbitmqClient: rabbitmqClient,
 	}
 }
 
@@ -137,11 +147,25 @@ func (f *SheinTaskFactory) createInventoryTask(ctx context.Context, config appsc
 	rawJsonDataClient := f.GetManagementClient().GetRawJsonDataAdapter()
 	inventoryRecordClient := f.GetManagementClient().GetInventoryRecordClient()
 
+	fetcherType := fetcher.LocalFetcher
+	if f.rabbitmqClient != nil {
+		fetcherType = fetcher.DistributedFetcher
+	}
+	productFetcher, err := fetcher.NewFetcherFactory().CreateFetcher(
+		fetcherType,
+		rawJsonDataClient,
+		f.GetAmazonConfig(),
+		f.GetAmazonProcessor(),
+		f.rabbitmqClient,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("创建产品获取器失败: %w", err)
+	}
+
 	inventoryService := inventory.NewInventorySyncService(
 		f.GetManagementClient(),
 		productAPI,
-		f.GetAmazonProcessor(),
-		f.GetAmazonConfig(),
+		productFetcher,
 		f.GetMonitorConfig(),
 		rawJsonDataClient,
 		inventoryRecordClient,

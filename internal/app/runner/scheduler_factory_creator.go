@@ -19,6 +19,7 @@ func (s *schedulerServiceImpl) createTemuFactory(cfg *config.Config) scheduler.T
 		s.amazonProcessor,
 		&cfg.Amazon,
 		&cfg.Platforms.Temu.Monitor,
+		s.rabbitmqClient,
 	)
 }
 
@@ -28,5 +29,11 @@ func (s *schedulerServiceImpl) createSheinFactory(cfg *config.Config) scheduler.
 		s.logger.Info("✅ SHEIN启用Amazon库存监控")
 	}
 
-	return sheinscheduler.NewSheinTaskFactory(s.managementClient, s.amazonProcessor, &cfg.Amazon, &cfg.Platforms.Shein.Monitor)
+	return sheinscheduler.NewSheinTaskFactory(
+		s.managementClient,
+		s.amazonProcessor,
+		&cfg.Amazon,
+		&cfg.Platforms.Shein.Monitor,
+		s.rabbitmqClient,
+	)
 }

@@ -104,7 +104,8 @@ func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *c
 	log.Info("启动调度服务...")
 
 	// 创建调度服务（通过依赖注入，不再使用全局状态）
-	s.schedulerService = NewSchedulerServiceWithAmazon(s.logger, s.managementClient, cfg, s.amazonProcessor)
+	// processor_service_impl 没有 rabbitmqClient，传 nil 退化为本地爬虫
+	s.schedulerService = NewSchedulerServiceWithAmazon(s.logger, s.managementClient, cfg, s.amazonProcessor, nil)
 
 	// 启动调度服务
 	if err := s.schedulerService.Start(ctx); err != nil {

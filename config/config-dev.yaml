@@ -170,57 +170,24 @@ rabbitmq:
     
     # 队列配置（可为不同队列设置不同的并发度）
     queues:
-      # 上架任务队列 - 高优先级
-      - name: "amazon.tasks.high"
-        priority: 10
-        prefetch: 5
-      - name: "temu.tasks.high"
-        priority: 10
-        prefetch: 3
-      - name: "shein.tasks.high"
-        priority: 10
-        prefetch: 3
-      # 上架任务队列 - 普通优先级
-      - name: "amazon.tasks.normal"
+      # 上架任务队列（同一节点同时只处理1个上架任务，其余排队）
+      - name: "amazon.tasks.store.836"
         priority: 8
-        prefetch: 3
-      - name: "temu.tasks.normal"
-        priority: 8
-        prefetch: 2
-      - name: "shein.tasks.normal"
-        priority: 8
-        prefetch: 2
-      # 上架任务队列 - 低优先级
-      - name: "amazon.tasks.low"
-        priority: 5
-        prefetch: 2
-      - name: "temu.tasks.low"
-        priority: 5
         prefetch: 1
-      - name: "shein.tasks.low"
-        priority: 5
-        prefetch: 1
-      # 爬虫任务队列 - 高优先级
-      - name: "amazon.crawler.high"
-        priority: 10
-        prefetch: 3
-      - name: "1688.crawler.high"
-        priority: 10
-        prefetch: 3
-      # 爬虫任务队列 - 普通优先级
-      - name: "amazon.crawler.normal"
+      - name: "temu.tasks.store.836"
         priority: 8
-        prefetch: 2
-      - name: "1688.crawler.normal"
+        prefetch: 1
+      - name: "shein.tasks.store.836"
         priority: 8
-        prefetch: 2
-      # 爬虫任务队列 - 低优先级
-      - name: "amazon.crawler.low"
-        priority: 5
         prefetch: 1
-      - name: "1688.crawler.low"
-        priority: 5
-        prefetch: 1
+      # 爬虫任务队列
+      # prefetch = poolSize-1，保留1个实例作为缓冲，避免池耗尽导致饥饿
+      - name: "amazon.crawler"
+        priority: 8
+        prefetch: 4
+      - name: "1688.crawler"
+        priority: 8
+        prefetch: 0
   node:
     ownedStores: [836]
     regions: [CA]  # 该节点只处理这三个 region 的爬虫任务

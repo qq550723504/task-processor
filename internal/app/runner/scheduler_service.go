@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,6 +25,7 @@ type schedulerServiceImpl struct {
 	managementClient *management.ClientManager
 	config           *config.Config
 	amazonProcessor  amazonCrawler
+	rabbitmqClient   *rabbitmq.Client
 	schedulerManager *scheduler.Manager
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -45,12 +47,14 @@ func NewSchedulerServiceWithAmazon(
 	managementClient *management.ClientManager,
 	cfg *config.Config,
 	amazonProcessor amazonCrawler,
+	rabbitmqClient *rabbitmq.Client,
 ) SchedulerService {
 	return &schedulerServiceImpl{
 		logger:           logger,
 		managementClient: managementClient,
 		config:           cfg,
 		amazonProcessor:  amazonProcessor,
+		rabbitmqClient:   rabbitmqClient,
 	}
 }
 

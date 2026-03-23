@@ -2,80 +2,100 @@
 package sync
 
 import (
-	"fmt"
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/product"
-	"task-processor/internal/temu/api/client"
+"fmt"
 
-		"task-processor/internal/core/logger"
-	"github.com/sirupsen/logrus"
+"task-processor/internal/app/crawler/fetcher"
+"task-processor/internal/core/config"
+"task-processor/internal/core/logger"
+"task-processor/internal/infra/clients/management"
+"task-processor/internal/infra/rabbitmq"
+"task-processor/internal/product"
+"task-processor/internal/temu/api/client"
+
+"github.com/sirupsen/logrus"
 )
 
 // InventorySyncServiceFactory TEMU库存监控服务工厂
 type InventorySyncServiceFactory struct {
-	managementClient *management.ClientManager
-	logger           *logrus.Entry
+managementClient *management.ClientManager
+logger           *logrus.Entry
 }
 
 // NewInventorySyncServiceFactory 创建库存监控服务工厂
 func NewInventorySyncServiceFactory(managementClient *management.ClientManager) *InventorySyncServiceFactory {
-	return &InventorySyncServiceFactory{
-		managementClient: managementClient,
-		logger:           logger.GetGlobalLogger("TemuInventorySyncServiceFactory"),
-	}
+return &InventorySyncServiceFactory{
+managementClient: managementClient,
+logger:           logger.GetGlobalLogger("TemuInventorySyncServiceFactory"),
+}
 }
 
 // CreateInventorySyncService 创建库存监控服务
 func (f *InventorySyncServiceFactory) CreateInventorySyncService(
-	temuAPIClient client.ClientAPI,
-	amazonProcessor product.AmazonScraper,
-	amazonConfig *config.AmazonConfig,
-	monitorConfig *config.MonitorConfig,
+temuAPIClient client.ClientAPI,
+amazonProcessor product.AmazonScraper,
+amazonConfig *config.AmazonConfig,
+monitorConfig *config.MonitorConfig,
+rabbitmqClient *rabbitmq.Client,
 ) InventorySyncService {
-	f.logger.Info("创建TEMU库存监控服务")
+f.logger.Info("创建TEMU库存监控服务")
 
-	// 获取必要的客户端
-	rawJsonDataClient := f.managementClient.GetRawJsonDataAdapter()
-	inventoryRecordClient := f.managementClient.GetInventoryRecordClient()
+rawJsonDataClient := f.managementClient.GetRawJsonDataAdapter()
+inventoryRecordClient := f.managementClient.GetInventoryRecordClient()
 
-	// 创建服务实例
-	service := NewInventorySyncService(
-		f.managementClient,
-		temuAPIClient,
-		amazonProcessor,
-		amazonConfig,
-		monitorConfig,
-		rawJsonDataClient,
-		inventoryRecordClient,
-	)
+fetcherType := fetcher.LocalFetcher
+if rabbitmqClient != nil {
+fetcherType = fetcher.DistributedFetcher
+}
+productFetcher, err := fetcher.NewFetcherFactory().CreateFetcher(
+fetcherType,
+rawJsonDataClient,
+amazonConfig,
+amazonProcessor,
+rabbitmqClient,
+)
+if err != nil {
+f.logger.WithError(err).Warn("创建分布式获取器失败，降级为本地获取器")
+productFetcher, _ = fetcher.NewFetcherFactory().CreateFetcher(
+fetcher.LocalFetcher,
+rawJsonDataClient,
+amazonConfig,
+amazonProcessor,
+nil,
+)
+}
 
-	f.logger.Info("TEMU库存监控服务创建完成")
-	return service
+service := NewInventorySyncService(
+f.managementClient,
+temuAPIClient,
+productFetcher,
+monitorConfig,
+rawJsonDataClient,
+inventoryRecordClient,
+)
+
+f.logger.Info("TEMU库存监控服务创建完成")
+return service
 }
 
 // ValidateConfig 验证配置
 func (f *InventorySyncServiceFactory) ValidateConfig(
-	amazonConfig *config.AmazonConfig,
-	monitorConfig *config.MonitorConfig,
+amazonConfig *config.AmazonConfig,
+monitorConfig *config.MonitorConfig,
 ) error {
-	f.logger.Info("验证TEMU库存监控配置")
+if amazonConfig == nil {
+return fmt.Errorf("Amazon配置不能为空")
+}
 
-	if amazonConfig == nil {
-		return fmt.Errorf("Amazon配置不能为空")
-	}
+if monitorConfig == nil {
+f.logger.Warn("监控配置未提供，将使用默认配置")
+} else {
+if monitorConfig.PriceChangeThreshold <= 0 {
+f.logger.Warn("价格变化阈值未配置，使用默认值5%%")
+}
+if monitorConfig.StockChangeThreshold <= 0 {
+f.logger.Warn("库存变化阈值未配置，使用默认值10")
+}
+}
 
-	if monitorConfig == nil {
-		f.logger.Warn("监控配置未提供，将使用默认配置")
-	} else {
-		if monitorConfig.PriceChangeThreshold <= 0 {
-			f.logger.Warn("价格变化阈值未配置，使用默认值5%")
-		}
-		if monitorConfig.StockChangeThreshold <= 0 {
-			f.logger.Warn("库存变化阈值未配置，使用默认值10")
-		}
-	}
-
-	f.logger.Info("TEMU库存监控配置验证完成")
-	return nil
+return nil
 }

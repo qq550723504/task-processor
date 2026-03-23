@@ -99,6 +99,7 @@ func main() {
 			platformRegistry.GetManagementClient(),
 			appCfg,
 			platformRegistry.GetSharedAmazonProcessor(),
+			serviceManager.GetClient(),
 		)
 		serviceManager.SetSchedulerService(schedulerSvc)
 		logger.Info("✅ 调度服务已注入（自动核价/同步等任务）")

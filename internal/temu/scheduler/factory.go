@@ -2,47 +2,51 @@
 package scheduler
 
 import (
-	"context"
-	"fmt"
+"context"
+"fmt"
 
-	appscheduler "task-processor/internal/app/scheduler"
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/platformbase"
-	temuapi "task-processor/internal/temu/api"
-	"task-processor/internal/temu/api/client"
-	schedulerservice "task-processor/internal/temu/sync"
-
-		"task-processor/internal/core/logger"
+appscheduler "task-processor/internal/app/scheduler"
+"task-processor/internal/app/crawler/fetcher"
+"task-processor/internal/core/config"
+"task-processor/internal/core/logger"
+"task-processor/internal/infra/clients/management"
+"task-processor/internal/infra/rabbitmq"
+"task-processor/internal/platformbase"
+temuapi "task-processor/internal/temu/api"
+"task-processor/internal/temu/api/client"
+schedulerservice "task-processor/internal/temu/sync"
 )
 
 // TemuTaskFactory TEMU平台任务工厂
 type TemuTaskFactory struct {
-	*platformbase.BaseFactory
-	clientManager *client.APIClientManager
+*platformbase.BaseFactory
+clientManager  *client.APIClientManager
+rabbitmqClient *rabbitmq.Client
 }
 
 // NewTemuTaskFactory 创建TEMU任务工厂
 func NewTemuTaskFactory(
-	managementClient *management.ClientManager,
-	amazonProcessor platformbase.AmazonCrawler,
-	amazonConfig *config.AmazonConfig,
-	monitorConfig *config.MonitorConfig,
+managementClient *management.ClientManager,
+amazonProcessor platformbase.AmazonCrawler,
+amazonConfig *config.AmazonConfig,
+monitorConfig *config.MonitorConfig,
+rabbitmqClient *rabbitmq.Client,
 ) *TemuTaskFactory {
-	clientManager := client.NewAPIClientManager(managementClient)
+clientManager := client.NewAPIClientManager(managementClient)
 
-	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
-		Platform:         "TEMU",
-		ManagementClient: managementClient,
-		AmazonProcessor:  amazonProcessor,
-		AmazonConfig:     amazonConfig,
-		MonitorConfig:    monitorConfig,
-	})
+baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
+Platform:         "TEMU",
+ManagementClient: managementClient,
+AmazonProcessor:  amazonProcessor,
+AmazonConfig:     amazonConfig,
+MonitorConfig:    monitorConfig,
+})
 
-	return &TemuTaskFactory{
-		BaseFactory:   baseFactory,
-		clientManager: clientManager,
-	}
+return &TemuTaskFactory{
+BaseFactory:    baseFactory,
+clientManager:  clientManager,
+rabbitmqClient: rabbitmqClient,
+}
 }
 
 // CreateTask 创建任务
@@ -112,34 +116,39 @@ func (f *TemuTaskFactory) createProductSyncTask(ctx context.Context, config apps
 
 // createInventoryTask 创建库存同步任务
 func (f *TemuTaskFactory) createInventoryTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error) {
-	// 获取 TEMU API 客户端
-	temuAPIClient, err := f.clientManager.GetClient(config.TenantID, config.StoreID)
-	if err != nil {
-		return nil, fmt.Errorf("获取TEMU API客户端失败: %w", err)
-	}
+temuAPIClient, err := f.clientManager.GetClient(config.TenantID, config.StoreID)
+if err != nil {
+return nil, fmt.Errorf("获取TEMU API客户端失败: %w", err)
+}
 
-	// 验证必需的依赖
-	if f.GetAmazonProcessor() == nil {
-		return nil, fmt.Errorf("Amazon处理器未初始化")
-	}
+rawJsonDataClient := f.GetManagementClient().GetRawJsonDataAdapter()
+inventoryRecordClient := f.GetManagementClient().GetInventoryRecordClient()
 
-	if f.GetAmazonConfig() == nil {
-		return nil, fmt.Errorf("Amazon配置未初始化")
-	}
+fetcherType := fetcher.LocalFetcher
+if f.rabbitmqClient != nil {
+fetcherType = fetcher.DistributedFetcher
+}
+productFetcher, err := fetcher.NewFetcherFactory().CreateFetcher(
+fetcherType,
+rawJsonDataClient,
+f.GetAmazonConfig(),
+f.GetAmazonProcessor(),
+f.rabbitmqClient,
+)
+if err != nil {
+return nil, fmt.Errorf("创建产品获取器失败: %w", err)
+}
 
-	if f.GetMonitorConfig() == nil {
-		return nil, fmt.Errorf("监控配置未初始化")
-	}
+inventoryService := schedulerservice.NewInventorySyncService(
+f.GetManagementClient(),
+temuAPIClient,
+productFetcher,
+f.GetMonitorConfig(),
+rawJsonDataClient,
+inventoryRecordClient,
+)
 
-	return NewInventoryTask(
-		ctx,
-		config,
-		f.GetManagementClient(),
-		temuAPIClient,
-		f.GetAmazonProcessor(),
-		f.GetAmazonConfig(),
-		f.GetMonitorConfig(),
-	), nil
+return NewInventoryTask(ctx, config, f.GetManagementClient(), inventoryService), nil
 }
 
 // SupportedTaskTypes 支持的任务类型
