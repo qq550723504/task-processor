@@ -4,6 +4,7 @@ import (
 	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/api/attribute"
 
 )
@@ -28,7 +29,7 @@ func NewVariantMatcher() *VariantMatcher {
 }
 
 // FindMatchingVariants 查找匹配的变体
-func (m *VariantMatcher) FindMatchingVariants(ctx *shein.TaskContext, variants []shein.Variant, attrID int, targetValue string) []shein.Variant {
+func (m *VariantMatcher) FindMatchingVariants(ctx *shein.TaskContext, variants []sheinattr.Variant, attrID int, targetValue string) []sheinattr.Variant {
 	logger.GetGlobalLogger("shein/product").Infof("开始变体匹配流程")
 
 	targetValueTrimmed := strings.TrimSpace(targetValue)
@@ -47,7 +48,7 @@ func (m *VariantMatcher) FindMatchingVariants(ctx *shein.TaskContext, variants [
 }
 
 // performMultiStageMatching 执行多阶段匹配
-func (m *VariantMatcher) performMultiStageMatching(variants []shein.Variant, attrNames []string, targetValueNorm, targetValue string) []shein.Variant {
+func (m *VariantMatcher) performMultiStageMatching(variants []sheinattr.Variant, attrNames []string, targetValueNorm, targetValue string) []sheinattr.Variant {
 	// 阶段1：精确匹配
 	exactMatches := m.exactMatcher.FindExactMatches(variants, attrNames, targetValueNorm)
 	if len(exactMatches) > 0 && m.isMatchCountReasonable(exactMatches, targetValue) {
@@ -66,7 +67,7 @@ func (m *VariantMatcher) performMultiStageMatching(variants []shein.Variant, att
 		return fuzzyMatches
 	}
 
-	return []shein.Variant{}
+	return []sheinattr.Variant{}
 }
 
 // getAttributeName 获取属性名称
@@ -115,7 +116,7 @@ func (m *VariantMatcher) findAttributeInfoByID(attrID int, attributeTemplates *a
 }
 
 // isMatchCountReasonable 验证匹配结果的数量是否合理
-func (m *VariantMatcher) isMatchCountReasonable(matches []shein.Variant, targetValue string) bool {
+func (m *VariantMatcher) isMatchCountReasonable(matches []sheinattr.Variant, targetValue string) bool {
 	if len(matches) == 0 {
 		return false
 	}

@@ -1,4 +1,4 @@
-// Package content 提供SHEIN平台的敏感词配置管理功能
+﻿// Package content 提供SHEIN平台的敏感词配置管理功能
 package content
 
 import (
@@ -156,3 +156,4 @@ func (s *SensitiveWordService) Close() {
 	s.wg.Wait()
 	s.logger.Info("敏感词服务已关闭")
 }
+

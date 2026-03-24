@@ -3,7 +3,8 @@ package sale
 
 import (
 	"task-processor/internal/core/logger"
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
+	sheinattr "task-processor/internal/shein/product/attribute"
 
 )
 
@@ -14,7 +15,7 @@ import (
 //
 // 返回值:
 //   - ResultSaleAttribute: 销售属性结果
-func (h *SaleAttributeHandler) callGPTAPI(ctx *shein.TaskContext, request *shein.GenerationRequest) shein.ResultSaleAttribute {
+func (h *SaleAttributeHandler) callGPTAPI(ctx *sheinctx.TaskContext, request *sheinattr.GenerationRequest) sheinattr.ResultSaleAttribute {
 	// 检查变体数量，决定是否需要分批处理
 	const maxVariantsPerBatch = 20
 	variantCount := len(request.VariationData)
@@ -29,3 +30,5 @@ func (h *SaleAttributeHandler) callGPTAPI(ctx *shein.TaskContext, request *shein
 	singleProcessor := NewSaleAttributeSingleProcessor(h)
 	return singleProcessor.ProcessSingleBatch(ctx, request)
 }
+
+

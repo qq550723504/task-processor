@@ -5,6 +5,7 @@ import (
 	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 
 )
 
@@ -17,9 +18,9 @@ func NewResultMerger() *ResultMerger {
 }
 
 // MergeResults 合并多个批次的处理结果
-func (m *ResultMerger) MergeResults(results []shein.ResultSaleAttribute) shein.ResultSaleAttribute {
+func (m *ResultMerger) MergeResults(results []sheinattr.ResultSaleAttribute) sheinattr.ResultSaleAttribute {
 	if len(results) == 0 {
-		return shein.ResultSaleAttribute{}
+		return sheinattr.ResultSaleAttribute{}
 	}
 
 	if len(results) == 1 {
@@ -34,7 +35,7 @@ func (m *ResultMerger) MergeResults(results []shein.ResultSaleAttribute) shein.R
 	// 合并变体
 	mergedVariants := m.mergeVariants(results)
 
-	result := shein.ResultSaleAttribute{
+	result := sheinattr.ResultSaleAttribute{
 		SaleAttributes: mergedSaleAttributes,
 		Variants:       mergedVariants,
 	}
@@ -46,9 +47,9 @@ func (m *ResultMerger) MergeResults(results []shein.ResultSaleAttribute) shein.R
 }
 
 // mergeSaleAttributes 合并销售属性
-func (m *ResultMerger) mergeSaleAttributes(results []shein.ResultSaleAttribute) []shein.SaleAttribute {
+func (m *ResultMerger) mergeSaleAttributes(results []sheinattr.ResultSaleAttribute) []sheinattr.SaleAttribute {
 	// 使用map去重，key为属性ID
-	attrMap := make(map[int]*shein.SaleAttribute)
+	attrMap := make(map[int]*sheinattr.SaleAttribute)
 
 	for _, result := range results {
 		for _, attr := range result.SaleAttributes {
@@ -57,9 +58,9 @@ func (m *ResultMerger) mergeSaleAttributes(results []shein.ResultSaleAttribute) 
 				existingAttr.AttrValue = m.mergeAttributeValues(existingAttr.AttrValue, attr.AttrValue)
 			} else {
 				// 复制属性
-				newAttr := shein.SaleAttribute{
+				newAttr := sheinattr.SaleAttribute{
 					AttrID:    attr.AttrID,
-					AttrValue: make([]shein.AttributeValue, len(attr.AttrValue)),
+					AttrValue: make([]sheinattr.AttributeValue, len(attr.AttrValue)),
 				}
 				copy(newAttr.AttrValue, attr.AttrValue)
 				attrMap[attr.AttrID] = &newAttr
@@ -68,7 +69,7 @@ func (m *ResultMerger) mergeSaleAttributes(results []shein.ResultSaleAttribute) 
 	}
 
 	// 转换为切片
-	var mergedAttrs []shein.SaleAttribute
+	var mergedAttrs []sheinattr.SaleAttribute
 	for _, attr := range attrMap {
 		mergedAttrs = append(mergedAttrs, *attr)
 	}
@@ -77,9 +78,9 @@ func (m *ResultMerger) mergeSaleAttributes(results []shein.ResultSaleAttribute) 
 }
 
 // mergeAttributeValues 合并属性值，去重
-func (m *ResultMerger) mergeAttributeValues(existing, new []shein.AttributeValue) []shein.AttributeValue {
+func (m *ResultMerger) mergeAttributeValues(existing, new []sheinattr.AttributeValue) []sheinattr.AttributeValue {
 	// 使用map去重，key为属性值的value
-	valueMap := make(map[string]shein.AttributeValue)
+	valueMap := make(map[string]sheinattr.AttributeValue)
 
 	// 添加现有值
 	for _, val := range existing {
@@ -94,7 +95,7 @@ func (m *ResultMerger) mergeAttributeValues(existing, new []shein.AttributeValue
 	}
 
 	// 转换为切片
-	var merged []shein.AttributeValue
+	var merged []sheinattr.AttributeValue
 	for _, val := range valueMap {
 		merged = append(merged, val)
 	}
@@ -103,7 +104,7 @@ func (m *ResultMerger) mergeAttributeValues(existing, new []shein.AttributeValue
 }
 
 // mergeVariants 合并变体
-func (m *ResultMerger) mergeVariants(results []shein.ResultSaleAttribute) []shein.Variant {
+func (m *ResultMerger) mergeVariants(results []sheinattr.ResultSaleAttribute) []shein.Variant {
 	var allVariants []shein.Variant
 
 	for _, result := range results {
@@ -128,7 +129,7 @@ func (m *ResultMerger) mergeVariants(results []shein.ResultSaleAttribute) []shei
 }
 
 // ValidateMergedResult 验证合并后的结果
-func (m *ResultMerger) ValidateMergedResult(result shein.ResultSaleAttribute) []string {
+func (m *ResultMerger) ValidateMergedResult(result sheinattr.ResultSaleAttribute) []string {
 	var issues []string
 
 	// 检查销售属性

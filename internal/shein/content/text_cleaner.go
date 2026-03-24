@@ -1,4 +1,4 @@
-// Package content 提供SHEIN平台的文本清理功能
+﻿// Package content 提供SHEIN平台的文本清理功能
 package content
 
 import (
@@ -167,3 +167,4 @@ func (c *TextCleaner) TruncateAtSentenceBoundary(text string, maxLength int) str
 
 	return strings.TrimSpace(truncated)
 }
+

@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // SaleAttributeJSONParser 销售属性JSON解析器，负责解析和修复GPT API返回的JSON数据
@@ -26,7 +27,7 @@ func NewSaleAttributeJSONParser() *SaleAttributeJSONParser {
 //
 // 返回值:
 //   - ResultSaleAttribute: 解析后的销售属性结果
-func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) shein.ResultSaleAttribute {
+func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) sheinattr.ResultSaleAttribute {
 	logger.GetGlobalLogger("shein/product").Infof("📝 开始解析AI响应，长度: %d 字符", len(content))
 
 	// 清理JSON格式
@@ -42,7 +43,7 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) shein.Res
 		if !json.Valid([]byte(fixedContent)) {
 			logger.GetGlobalLogger("shein/product").Error("❌ JSON修复失败，无法解析")
 			logger.GetGlobalLogger("shein/product").Debugf("原始内容前500字符: %s", content[:min(500, len(content))])
-			return shein.ResultSaleAttribute{}
+			return sheinattr.ResultSaleAttribute{}
 		}
 		logger.GetGlobalLogger("shein/product").Info("✅ JSON修复成功")
 		content = fixedContent
@@ -50,11 +51,11 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) shein.Res
 		logger.GetGlobalLogger("shein/product").Debug("✅ JSON格式有效")
 	}
 
-	var saleAttributeData shein.ResultSaleAttribute
+	var saleAttributeData sheinattr.ResultSaleAttribute
 	if err := jsonx.UnmarshalBytes([]byte(content), &saleAttributeData, "JSON解析失败"); err != nil {
 		logger.GetGlobalLogger("shein/product").Errorf("❌ JSON解析失败: %v", err)
 		logger.GetGlobalLogger("shein/product").Debugf("内容前500字符: %s", content[:min(500, len(content))])
-		return shein.ResultSaleAttribute{}
+		return sheinattr.ResultSaleAttribute{}
 	}
 
 	logger.GetGlobalLogger("shein/product").Infof("✅ 成功解析AI响应 - 销售属性: %d 个, 变体: %d 个",

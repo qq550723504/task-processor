@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 
 )
 
@@ -22,7 +23,7 @@ func NewSKCValidationUtils(taskContext *shein.TaskContext) *SKCValidationUtils {
 }
 
 // ValidateAttributeStrategy 验证属性策略的有效性
-func (v *SKCValidationUtils) ValidateAttributeStrategy(strategy shein.AttributeStrategy, saleAttributeData shein.ResultSaleAttribute) error {
+func (v *SKCValidationUtils) ValidateAttributeStrategy(strategy sheinattr.AttributeStrategy, saleAttributeData sheinattr.ResultSaleAttribute) error {
 	var warnings []string
 
 	// 验证主要属性

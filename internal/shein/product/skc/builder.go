@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	api_attribute "task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/category"
@@ -91,9 +92,9 @@ func (b *SKCBuilder) BuildSKCListWithSpecAdaptation(ctx *shein.TaskContext, stra
 
 // adaptStrategy 根据分类限制适配销售属性
 func (b *SKCBuilder) adaptStrategy(
-	strategy shein.AttributeStrategy,
+	strategy sheinattr.AttributeStrategy,
 	categoryID int,
-) (shein.AttributeStrategy, bool, []string) {
+) (sheinattr.AttributeStrategy, bool, []string) {
 	// 检查是否有限制
 	restriction, hasRestriction := b.getCategoryRestrictions()[categoryID]
 	if !hasRestriction {
@@ -110,9 +111,9 @@ func (b *SKCBuilder) adaptStrategy(
 			strategy.PrimaryAttribute.AttrID, categoryID)
 
 		// 创建默认颜色主规格
-		defaultColorAttr := shein.ResultAttribute{
+		defaultColorAttr := sheinattr.ResultAttribute{
 			AttrID: restriction.DefaultPrimarySpec,
-			AttrValue: []shein.AttributeValue{
+			AttrValue: []sheinattr.AttributeValue{
 				{
 					ID:    -1,
 					Value: "Multi-Color",
@@ -139,7 +140,7 @@ func (b *SKCBuilder) adaptStrategy(
 		logger.GetGlobalLogger("shein/product").Warnf("检测到规格冲突：主规格和次规格相同 (%d)", adaptedStrategy.PrimaryAttribute.AttrID)
 
 		// 清空次规格以避免冲突
-		adaptedStrategy.SecondaryAttribute = shein.ResultAttribute{AttrID: -1}
+		adaptedStrategy.SecondaryAttribute = sheinattr.ResultAttribute{AttrID: -1}
 
 		adaptationReasons = append(adaptationReasons,
 			"清空次规格以避免与主规格冲突")

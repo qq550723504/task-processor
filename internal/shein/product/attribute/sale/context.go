@@ -2,12 +2,12 @@
 package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
-	"task-processor/internal/model"
-	shein "task-processor/internal/shein"
 
+	"task-processor/internal/core/logger"
+	"task-processor/internal/model"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // SaleAttributeContextBuilder 销售属性上下文构建器
@@ -53,7 +53,7 @@ func (c *SaleAttributeContextBuilder) BuildCompactProductContext(amazonProduct m
 }
 
 // BuildExtraContext 构建额外上下文信息（仅在检测到缺少信息时提供）
-func (c *SaleAttributeContextBuilder) BuildExtraContext(amazonProduct model.Product, variants []model.Product, productsData []shein.ProductVariantData) string {
+func (c *SaleAttributeContextBuilder) BuildExtraContext(amazonProduct model.Product, variants []model.Product, productsData []sheinattr.ProductVariantData) string {
 	logger.GetGlobalLogger("shein/product").Debug("🔍 开始检测是否需要额外上下文...")
 
 	// 检测缺失信息
@@ -98,7 +98,7 @@ type MissingInfoDetection struct {
 }
 
 // detectMissingInfo 检测缺失的信息
-func (c *SaleAttributeContextBuilder) detectMissingInfo(productsData []shein.ProductVariantData) MissingInfoDetection {
+func (c *SaleAttributeContextBuilder) detectMissingInfo(productsData []sheinattr.ProductVariantData) MissingInfoDetection {
 	var detection MissingInfoDetection
 
 	for _, product := range productsData {

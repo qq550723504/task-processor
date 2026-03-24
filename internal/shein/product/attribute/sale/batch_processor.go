@@ -3,7 +3,8 @@ package sale
 
 import (
 	"task-processor/internal/core/logger"
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
+	sheinattr "task-processor/internal/shein/product/attribute"
 
 )
 
@@ -32,7 +33,7 @@ func NewSaleAttributeBatchProcessor(handler *SaleAttributeHandler) *SaleAttribut
 //
 // 返回值:
 //   - ResultSaleAttribute: 销售属性结果
-func (p *SaleAttributeBatchProcessor) ProcessInBatches(ctx *shein.TaskContext, request *shein.GenerationRequest, batchSize int) shein.ResultSaleAttribute {
+func (p *SaleAttributeBatchProcessor) ProcessInBatches(ctx *sheinctx.TaskContext, request *sheinattr.GenerationRequest, batchSize int) sheinattr.ResultSaleAttribute {
 	variationData := request.VariationData
 	productsData := request.ProductsData
 	totalBatches := (len(variationData) + batchSize - 1) / batchSize
@@ -40,8 +41,8 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(ctx *shein.TaskContext, r
 	logger.GetGlobalLogger("shein/product").Infof("📦 开始分批处理: 总变体数=%d, 产品数据数=%d, 批次大小=%d, 总批次=%d",
 		len(variationData), len(productsData), batchSize, totalBatches)
 
-	var allVariants []shein.Variant
-	var allSaleAttributes []shein.ResultAttribute
+	var allVariants []sheinattr.Variant
+	var allSaleAttributes []sheinattr.ResultAttribute
 
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
 		start := batchIndex * batchSize
@@ -51,7 +52,7 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(ctx *shein.TaskContext, r
 		}
 
 		// 安全地切片ProductsData，确保不越界
-		var batchProductsData []shein.ProductVariantData
+		var batchProductsData []sheinattr.ProductVariantData
 		if start < len(productsData) {
 			productsEnd := end
 			if productsEnd > len(productsData) {
@@ -60,11 +61,11 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(ctx *shein.TaskContext, r
 			batchProductsData = productsData[start:productsEnd]
 		} else {
 			// 如果start已经超出ProductsData范围，使用空切片
-			batchProductsData = []shein.ProductVariantData{}
+			batchProductsData = []sheinattr.ProductVariantData{}
 		}
 
 		// 创建当前批次的请求
-		batchRequest := &shein.GenerationRequest{
+		batchRequest := &sheinattr.GenerationRequest{
 			ProductsData:             batchProductsData,
 			VariationData:            variationData[start:end],
 			VariationAttributeValues: request.VariationAttributeValues,
@@ -104,8 +105,10 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(ctx *shein.TaskContext, r
 
 	logger.GetGlobalLogger("shein/product").Infof("✅ 所有批次处理完成，共生成%d个变体，%d个销售属性", len(allVariants), len(allSaleAttributes))
 
-	return shein.ResultSaleAttribute{
+	return sheinattr.ResultSaleAttribute{
 		SaleAttributes: allSaleAttributes,
 		Variants:       allVariants,
 	}
 }
+
+

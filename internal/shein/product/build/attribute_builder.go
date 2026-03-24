@@ -1,8 +1,8 @@
-package build
+﻿package build
 
 import (
-	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/validation"
 )
 
@@ -19,10 +19,10 @@ func NewAttributeBuilder(validator *validation.AttributeValidator) *AttributeBui
 }
 
 // BuildAttributeValues 构建属性值列表
-func (b *AttributeBuilder) BuildAttributeValues(valueInfoList []attribute.AttributeValue) []shein.GenerateAttributeValue {
-	values := make([]shein.GenerateAttributeValue, 0, len(valueInfoList))
+func (b *AttributeBuilder) BuildAttributeValues(valueInfoList []attribute.AttributeValue) []sheinattr.GenerateAttributeValue {
+	values := make([]sheinattr.GenerateAttributeValue, 0, len(valueInfoList))
 	for _, v := range valueInfoList {
-		values = append(values, shein.GenerateAttributeValue{
+		values = append(values, sheinattr.GenerateAttributeValue{
 			ID:    v.AttributeValueID,
 			Value: v.AttributeValueEn,
 		})
@@ -31,10 +31,10 @@ func (b *AttributeBuilder) BuildAttributeValues(valueInfoList []attribute.Attrib
 }
 
 // BuildGenerateAttribute 构建生成属性
-func (b *AttributeBuilder) BuildGenerateAttribute(attr attribute.AttributeInfo) shein.GenerateAttribute {
+func (b *AttributeBuilder) BuildGenerateAttribute(attr attribute.AttributeInfo) sheinattr.GenerateAttribute {
 	required := b.validator.IsAttributeRequired(attr)
 
-	return shein.GenerateAttribute{
+	return sheinattr.GenerateAttribute{
 		AttrID:    attr.AttributeID,
 		AttrValue: b.BuildAttributeValues(attr.AttributeValueInfoList),
 		Required:  required,
@@ -43,10 +43,10 @@ func (b *AttributeBuilder) BuildGenerateAttribute(attr attribute.AttributeInfo) 
 }
 
 // BuildSaleGenerateAttribute 构建销售属性
-func (b *AttributeBuilder) BuildSaleGenerateAttribute(attr attribute.AttributeInfo) shein.GenerateAttribute {
+func (b *AttributeBuilder) BuildSaleGenerateAttribute(attr attribute.AttributeInfo) sheinattr.GenerateAttribute {
 	saleRequired := b.validator.IsSaleSpecRequired(attr)
 
-	return shein.GenerateAttribute{
+	return sheinattr.GenerateAttribute{
 		AttrID:    attr.AttributeID,
 		AttrValue: b.BuildAttributeValues(attr.AttributeValueInfoList),
 		Required:  saleRequired,

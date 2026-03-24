@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/model"
-	shein "task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/validation"
 
 )
@@ -20,7 +20,7 @@ func NewSaleAttributeProductDataPreparer() *SaleAttributeProductDataPreparer {
 }
 
 // PrepareProductsData 准备产品数据
-func (p *SaleAttributeProductDataPreparer) PrepareProductsData(ctx *shein.TaskContext) []map[string]string {
+func (p *SaleAttributeProductDataPreparer) PrepareProductsData(ctx *sheinctx.TaskContext) []map[string]string {
 	var productsData []map[string]string
 
 	// 检查是否有变体数据
@@ -44,7 +44,7 @@ func (p *SaleAttributeProductDataPreparer) PrepareProductsData(ctx *shein.TaskCo
 }
 
 // prepareSingleProductData 准备单体产品数据
-func (p *SaleAttributeProductDataPreparer) prepareSingleProductData(ctx *shein.TaskContext) map[string]string {
+func (p *SaleAttributeProductDataPreparer) prepareSingleProductData(ctx *sheinctx.TaskContext) map[string]string {
 	priceType := ctx.StoreInfo.PriceType
 
 	productDetails := map[string]string{
@@ -61,7 +61,7 @@ func (p *SaleAttributeProductDataPreparer) prepareSingleProductData(ctx *shein.T
 }
 
 // prepareMultiVariantProductsData 准备多变体产品数据
-func (p *SaleAttributeProductDataPreparer) prepareMultiVariantProductsData(ctx *shein.TaskContext) []map[string]string {
+func (p *SaleAttributeProductDataPreparer) prepareMultiVariantProductsData(ctx *sheinctx.TaskContext) []map[string]string {
 	var productsData []map[string]string
 	priceType := ctx.StoreInfo.PriceType
 
@@ -217,3 +217,5 @@ func (p *SaleAttributeProductDataPreparer) logAttributeCount(productDetails map[
 
 	logger.GetGlobalLogger("shein/product").Debugf("✅ 为%s %s 提取了 %d 个属性信息", productType, asin, attributeCount)
 }
+
+

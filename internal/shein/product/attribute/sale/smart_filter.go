@@ -5,7 +5,7 @@ import (
 	"task-processor/internal/core/logger"
 	"strings"
 	"task-processor/internal/model"
-	shein "task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/api/attribute"
 
 )
@@ -20,7 +20,7 @@ func NewSaleAttributeSmartFilter() *SaleAttributeSmartFilter {
 
 // FilterRelevantAttributes 筛选与实际产品数据相关的销售属性
 func (f *SaleAttributeSmartFilter) FilterRelevantAttributes(
-	ctx *shein.TaskContext,
+	ctx *sheinctx.TaskContext,
 	attributeTemplates *attribute.AttributeTemplateInfo,
 ) []attribute.AttributeInfo {
 
@@ -112,7 +112,7 @@ type ProductVariationAnalysis struct {
 }
 
 // analyzeProductVariations 分析产品变化
-func (f *SaleAttributeSmartFilter) analyzeProductVariations(ctx *shein.TaskContext) ProductVariationAnalysis {
+func (f *SaleAttributeSmartFilter) analyzeProductVariations(ctx *sheinctx.TaskContext) ProductVariationAnalysis {
 	analysis := ProductVariationAnalysis{}
 
 	// 如果是单变体产品，仍需要分析基础属性信息
@@ -362,3 +362,5 @@ func (f *SaleAttributeSmartFilter) selectDefaultSaleAttribute(attributes []attri
 	logger.GetGlobalLogger("shein/product").Warn("❌ 未找到任何销售属性")
 	return nil
 }
+
+

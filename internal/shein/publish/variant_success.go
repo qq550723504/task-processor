@@ -5,12 +5,9 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/logger"
-	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/product"
-	"task-processor/internal/shein/productdata"
-	"task-processor/internal/shein/validation"
 
 	"github.com/sirupsen/logrus"
 )
@@ -125,70 +122,8 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *shein.TaskC
 		return fmt.Errorf("产品导入映射客户端未初始化")
 	}
 
-	// Task.ID已经是int64类型，直接使用
-	taskID := ctx.Task.ID
+	createReq := buildMappingReq(ctx, asin, sku, model.TaskStatusPublished)
 
-	// 获取变体信息
-	variant := productdata.GetVariantByAsinFromVariants(ctx.Variants, asin)
-	if variant == nil {
-		return fmt.Errorf("未找到ASIN %s 对应的变体", asin)
-	}
-
-	// 计算成本价
-	costPrice := validation.GetProductPrice(variant, ctx.StoreInfo.PriceType)
-
-	// 构建创建请求
-	status := model.TaskStatusPublished.Int16()
-	createReq := &management_api.ProductImportMappingCreateReqDTO{
-		TenantID:     ctx.Task.TenantID,
-		ImportTaskId: taskID,
-		StoreId:      ctx.Task.StoreID,
-		Platform:     ctx.Task.Platform,
-		Region:       ctx.Task.Region,
-		ProductId:    asin,
-		Sku:          &sku,
-		CostPrice:    &costPrice,
-		Status:       &status,
-	}
-
-	// 设置父产品ID
-	if ctx.AmazonProduct != nil && ctx.AmazonProduct.ParentAsin != "" {
-		createReq.ParentProductId = &ctx.AmazonProduct.ParentAsin
-	}
-
-	// 设置平台产品ID
-	if ctx.ProductData != nil && ctx.ProductData.SPUName != "" {
-		createReq.PlatformParentProductId = &ctx.ProductData.SPUName
-	}
-
-	// 设置筛选规则
-	if ctx.FilterRule != nil {
-		createReq.FilterRuleId = &ctx.FilterRule.ID
-		if ctx.FilterRule.PriceMin != nil && ctx.FilterRule.PriceMax != nil {
-			filterRuleRange := fmt.Sprintf("%.2f-%.2f", *ctx.FilterRule.PriceMin, *ctx.FilterRule.PriceMax)
-			createReq.FilterRuleRange = &filterRuleRange
-		} else if ctx.FilterRule.PriceMin != nil {
-			filterRuleRange := fmt.Sprintf("%.2f-", *ctx.FilterRule.PriceMin)
-			createReq.FilterRuleRange = &filterRuleRange
-		} else if ctx.FilterRule.PriceMax != nil {
-			filterRuleRange := fmt.Sprintf("-%.2f", *ctx.FilterRule.PriceMax)
-			createReq.FilterRuleRange = &filterRuleRange
-		}
-	}
-
-	// 设置利润规则
-	if ctx.ProfitRule != nil {
-		createReq.ProfitRuleId = &ctx.ProfitRule.ID
-		salePriceMultiplier := fmt.Sprintf("%.2f", ctx.ProfitRule.SalePriceMultiplier)
-		createReq.SalePriceMultiplier = &salePriceMultiplier
-
-		if ctx.ProfitRule.DiscountPriceMultiplier > 0 {
-			discountPriceMultiplier := fmt.Sprintf("%.2f", ctx.ProfitRule.DiscountPriceMultiplier)
-			createReq.DiscountPriceMultiplier = &discountPriceMultiplier
-		}
-	}
-
-	// 调用API创建产品导入映射关系
 	id, err := mappingClient.CreateProductImportMapping(createReq)
 	if err != nil {
 		h.logger.WithFields(logrus.Fields{
@@ -216,49 +151,9 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *shein.TaskCont
 		return fmt.Errorf("产品导入映射客户端未初始化")
 	}
 
-	// Task.ID已经是int64类型，直接使用
-	taskID := ctx.Task.ID
+	createReq := buildMappingReq(ctx, asin, "", model.TaskStatusCrawlFailed)
+	createReq.Remark = &reason
 
-	// 获取变体信息
-	variant := productdata.GetVariantByAsinFromVariants(ctx.UnFilteredVariants, asin)
-	if variant == nil {
-		return fmt.Errorf("未找到ASIN %s 对应的变体", asin)
-	}
-
-	// 计算成本价
-	costPrice := validation.GetProductPrice(variant, ctx.StoreInfo.PriceType)
-
-	// 构建创建请求
-	status := model.TaskStatusCrawlFailed.Int16()
-	remark := reason
-	createReq := &management_api.ProductImportMappingCreateReqDTO{
-		TenantID:     ctx.Task.TenantID,
-		ImportTaskId: taskID,
-		StoreId:      ctx.Task.StoreID,
-		Platform:     ctx.Task.Platform,
-		Region:       ctx.Task.Region,
-		ProductId:    asin,
-		CostPrice:    &costPrice,
-		Status:       &status,
-		Remark:       &remark,
-	}
-
-	// 设置父产品ID
-	if ctx.AmazonProduct != nil && ctx.AmazonProduct.ParentAsin != "" {
-		createReq.ParentProductId = &ctx.AmazonProduct.ParentAsin
-	}
-
-	// 设置筛选规则
-	if ctx.FilterRule != nil {
-		createReq.FilterRuleId = &ctx.FilterRule.ID
-	}
-
-	// 设置利润规则
-	if ctx.ProfitRule != nil {
-		createReq.ProfitRuleId = &ctx.ProfitRule.ID
-	}
-
-	// 调用API创建产品导入映射关系
 	id, err := mappingClient.CreateProductImportMapping(createReq)
 	if err != nil {
 		return fmt.Errorf("创建产品导入映射关系失败: %w", err)

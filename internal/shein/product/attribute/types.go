@@ -1,7 +1,15 @@
-// Package shein 提供 SHEIN 属性类型（转发自 shein/context 包）
-package shein
+// Package attribute 提供 SHEIN 平台属性处理相关的业务类型定义
+// 类型定义在 shein/context 包中，此处通过类型别名重新导出，
+// 使调用方可以直接 import 本包而无需依赖 context 包
+package attribute
 
 import sheinctx "task-processor/internal/shein/context"
+
+// CustomAttributeResult 自定义属性处理结果
+type CustomAttributeResult = sheinctx.CustomAttributeResult
+
+// AttributeStrategy 属性策略结构体
+type AttributeStrategy = sheinctx.AttributeStrategy
 
 // AttributeValue 属性值信息
 type AttributeValue = sheinctx.AttributeValue
@@ -11,6 +19,9 @@ type AttributePriorityConfig = sheinctx.AttributePriorityConfig
 
 // AttributeValueIDManager 属性值ID管理器
 type AttributeValueIDManager = sheinctx.AttributeValueIDManager
+
+// NewAttributeValueIDManager 创建属性值ID管理器
+var NewAttributeValueIDManager = sheinctx.NewAttributeValueIDManager
 
 // ResultSaleAttribute 结果销售规格
 type ResultSaleAttribute = sheinctx.ResultSaleAttribute
@@ -24,6 +35,12 @@ type Variant = sheinctx.Variant
 // AttributeImportanceCalculator 属性重要性计算器
 type AttributeImportanceCalculator = sheinctx.AttributeImportanceCalculator
 
+// NewAttributeImportanceCalculator 创建新的属性重要性计算器
+var NewAttributeImportanceCalculator = sheinctx.NewAttributeImportanceCalculator
+
+// NewAttributeImportanceCalculatorWithRules 创建带自定义规则的属性重要性计算器
+var NewAttributeImportanceCalculatorWithRules = sheinctx.NewAttributeImportanceCalculatorWithRules
+
 // AttributeMetadata 属性元数据
 type AttributeMetadata = sheinctx.AttributeMetadata
 
@@ -36,7 +53,7 @@ type ImportanceRules = sheinctx.ImportanceRules
 // ResultAttribute 结果属性
 type ResultAttribute = sheinctx.ResultAttribute
 
-// SaleAttribute 销售属性
+// SaleAttribute 销售属性（ResultAttribute 的别名）
 type SaleAttribute = sheinctx.SaleAttribute
 
 // AttributeData 属性数据
@@ -65,18 +82,3 @@ type BuildAttributeInfo = sheinctx.BuildAttributeInfo
 
 // EnhancedGenerateAttribute 增强的属性生成结构
 type EnhancedGenerateAttribute = sheinctx.EnhancedGenerateAttribute
-
-// AttributeStrategy 属性策略结构体
-type AttributeStrategy = sheinctx.AttributeStrategy
-
-// CustomAttributeResult 自定义属性处理结果
-type CustomAttributeResult = sheinctx.CustomAttributeResult
-
-// NewAttributeValueIDManager 创建属性值ID管理器
-var NewAttributeValueIDManager = sheinctx.NewAttributeValueIDManager
-
-// NewAttributeImportanceCalculator 创建属性重要性计算器
-var NewAttributeImportanceCalculator = sheinctx.NewAttributeImportanceCalculator
-
-// NewAttributeImportanceCalculatorWithRules 创建带自定义规则的属性重要性计算器
-var NewAttributeImportanceCalculatorWithRules = sheinctx.NewAttributeImportanceCalculatorWithRules

@@ -1,16 +1,16 @@
 ﻿package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
-	"task-processor/internal/model"
-	shein "task-processor/internal/shein"
 
+	"task-processor/internal/core/logger"
+	"task-processor/internal/model"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // compareAttributeDataDifferences 对比AI生成前后的属性数据差异
-func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct model.Product, generatedData shein.ResultSaleAttribute) {
+func (h *SaleAttributeHandler) compareAttributeDataDifferences(amazonProduct model.Product, generatedData sheinattr.ResultSaleAttribute) {
 	logger.GetGlobalLogger("shein/product").Info("⚖️ [AI属性对比] 开始对比原始数据与AI生成数据的差异")
 
 	if amazonProduct.VariationsValues == nil {

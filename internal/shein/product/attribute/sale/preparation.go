@@ -1,8 +1,9 @@
-// Package sale 提供SHEIN平台销售属性准备的核心处理功能
+﻿// Package sale 提供SHEIN平台销售属性准备的核心处理功能
 package sale
 
 import (
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/api/attribute"
 )
 
@@ -27,12 +28,12 @@ func NewSaleAttributePreparationHandler() *SaleAttributePreparationHandler {
 }
 
 // prepareProductsData 准备产品数据（保持原有接口）
-func (h *SaleAttributePreparationHandler) prepareProductsData(ctx *shein.TaskContext) []map[string]string {
+func (h *SaleAttributePreparationHandler) prepareProductsData(ctx *sheinctx.TaskContext) []map[string]string {
 	return h.productDataPreparer.PrepareProductsData(ctx)
 }
 
 // buildAttributeMetadata 构建属性元数据（保持原有接口）
-func (h *SaleAttributePreparationHandler) buildAttributeMetadata(ctx *shein.TaskContext, importanceCalc *shein.AttributeImportanceCalculator) []shein.AttributeMetadata {
+func (h *SaleAttributePreparationHandler) buildAttributeMetadata(ctx *sheinctx.TaskContext, importanceCalc *sheinattr.AttributeImportanceCalculator) []sheinattr.AttributeMetadata {
 	return h.metadataBuilder.BuildAttributeMetadata(ctx, importanceCalc)
 }
 
@@ -43,7 +44,7 @@ func (h *SaleAttributePreparationHandler) findMappedName(attrID int, attributeTe
 
 // buildAttributeNameMappings 构建属性名称映射（保持原有接口）
 func (h *SaleAttributePreparationHandler) buildAttributeNameMappings(
-	attributeData shein.BuildAttributeInfo,
+	attributeData sheinattr.BuildAttributeInfo,
 	attributeTemplates *attribute.AttributeTemplateInfo,
 ) map[int]string {
 	return h.metadataBuilder.BuildAttributeNameMappings(attributeData, attributeTemplates)
@@ -51,44 +52,44 @@ func (h *SaleAttributePreparationHandler) buildAttributeNameMappings(
 
 // filterAttributeValuesByActualUsage 根据实际变体值过滤属性候选列表（保持原有接口）
 func (h *SaleAttributePreparationHandler) filterAttributeValuesByActualUsage(
-	candidateValues []shein.GenerateAttributeValue,
-) []shein.GenerateAttributeValue {
+	candidateValues []sheinattr.GenerateAttributeValue,
+) []sheinattr.GenerateAttributeValue {
 	// 由于新的方法需要更多参数，这里返回原始值以保持向后兼容
 	// 实际的筛选逻辑已经在 BuildAttributeMetadata 中处理
 	return candidateValues
 }
 
 // filterVariantsByRules 在生成销售属性之前过滤变体（保持原有接口）
-func (h *SaleAttributePreparationHandler) filterVariantsByRules(ctx *shein.TaskContext) {
+func (h *SaleAttributePreparationHandler) filterVariantsByRules(ctx *sheinctx.TaskContext) {
 	h.variantFilter.FilterVariantsByRules(ctx)
 }
 
 // filterVariantsByRulesAfterGeneration 在生成销售属性之后过滤变体（保持原有接口）
-func (h *SaleAttributePreparationHandler) filterVariantsByRulesAfterGeneration(ctx *shein.TaskContext, saleAttributeData *shein.ResultSaleAttribute) {
+func (h *SaleAttributePreparationHandler) filterVariantsByRulesAfterGeneration(ctx *sheinctx.TaskContext, saleAttributeData *sheinattr.ResultSaleAttribute) {
 	h.variantFilter.FilterVariantsByRulesAfterGeneration(ctx, saleAttributeData)
 }
 
 // buildCompactProductContext 构建精简的产品上下文信息（保持原有接口）
-func (h *SaleAttributePreparationHandler) buildCompactProductContext(ctx *shein.TaskContext) string {
+func (h *SaleAttributePreparationHandler) buildCompactProductContext(ctx *sheinctx.TaskContext) string {
 	return h.contextBuilder.BuildCompactProductContext(*ctx.AmazonProduct, *ctx.Variants)
 }
 
 // buildExtraContext 构建额外上下文信息（保持原有接口）
-func (h *SaleAttributePreparationHandler) buildExtraContext(ctx *shein.TaskContext, productsData []shein.ProductVariantData) string {
+func (h *SaleAttributePreparationHandler) buildExtraContext(ctx *sheinctx.TaskContext, productsData []sheinattr.ProductVariantData) string {
 	return h.contextBuilder.BuildExtraContext(*ctx.AmazonProduct, *ctx.Variants, productsData)
 }
 
 // buildGenerationRequest 构建生成请求（保持原有接口）
 func (h *SaleAttributePreparationHandler) buildGenerationRequest(
-	ctx *shein.TaskContext,
+	ctx *sheinctx.TaskContext,
 	productsData []map[string]string,
-	attributeMetadata []shein.AttributeMetadata,
-	attributeNameMappings map[int]string) *shein.GenerationRequest {
+	attributeMetadata []sheinattr.AttributeMetadata,
+	attributeNameMappings map[int]string) *sheinattr.GenerationRequest {
 	return h.requestBuilder.BuildGenerationRequest(ctx, productsData, attributeMetadata, attributeNameMappings)
 }
 
 // buildUserPrompt 构建用户提示词（保持原有接口）
-func (h *SaleAttributePreparationHandler) buildUserPrompt(ctx *shein.TaskContext, request *shein.GenerationRequest) string {
+func (h *SaleAttributePreparationHandler) buildUserPrompt(ctx *sheinctx.TaskContext, request *sheinattr.GenerationRequest) string {
 	return h.requestBuilder.BuildUserPrompt(ctx, request)
 }
 
@@ -98,12 +99,12 @@ func (h *SaleAttributePreparationHandler) buildUserPrompt(ctx *shein.TaskContext
 var defaultPreparationHandler = NewSaleAttributePreparationHandler()
 
 // prepareProductsData 全局函数，保持向后兼容
-func prepareProductsData(ctx *shein.TaskContext) []map[string]string {
+func prepareProductsData(ctx *sheinctx.TaskContext) []map[string]string {
 	return defaultPreparationHandler.prepareProductsData(ctx)
 }
 
 // buildAttributeMetadata 全局函数，保持向后兼容
-func buildAttributeMetadata(ctx *shein.TaskContext, importanceCalc *shein.AttributeImportanceCalculator) []shein.AttributeMetadata {
+func buildAttributeMetadata(ctx *sheinctx.TaskContext, importanceCalc *sheinattr.AttributeImportanceCalculator) []sheinattr.AttributeMetadata {
 	return defaultPreparationHandler.buildAttributeMetadata(ctx, importanceCalc)
 }
 
@@ -114,7 +115,7 @@ func findMappedName(attrID int, attributeTemplates *attribute.AttributeTemplateI
 
 // buildAttributeNameMappings 全局函数，保持向后兼容
 func buildAttributeNameMappings(
-	attributeData shein.BuildAttributeInfo,
+	attributeData sheinattr.BuildAttributeInfo,
 	attributeTemplates *attribute.AttributeTemplateInfo,
 ) map[int]string {
 	return defaultPreparationHandler.buildAttributeNameMappings(attributeData, attributeTemplates)
@@ -122,41 +123,43 @@ func buildAttributeNameMappings(
 
 // filterAttributeValuesByActualUsage 全局函数，保持向后兼容
 func filterAttributeValuesByActualUsage(
-	candidateValues []shein.GenerateAttributeValue,
-) []shein.GenerateAttributeValue {
+	candidateValues []sheinattr.GenerateAttributeValue,
+) []sheinattr.GenerateAttributeValue {
 	return defaultPreparationHandler.filterAttributeValuesByActualUsage(candidateValues)
 }
 
 // filterVariantsByRules 全局函数，保持向后兼容
-func filterVariantsByRules(ctx *shein.TaskContext) {
+func filterVariantsByRules(ctx *sheinctx.TaskContext) {
 	defaultPreparationHandler.filterVariantsByRules(ctx)
 }
 
 // filterVariantsByRulesAfterGeneration 全局函数，保持向后兼容
-func filterVariantsByRulesAfterGeneration(ctx *shein.TaskContext, saleAttributeData *shein.ResultSaleAttribute) {
+func filterVariantsByRulesAfterGeneration(ctx *sheinctx.TaskContext, saleAttributeData *sheinattr.ResultSaleAttribute) {
 	defaultPreparationHandler.filterVariantsByRulesAfterGeneration(ctx, saleAttributeData)
 }
 
 // buildCompactProductContext 全局函数，保持向后兼容
-func buildCompactProductContext(ctx *shein.TaskContext) string {
+func buildCompactProductContext(ctx *sheinctx.TaskContext) string {
 	return defaultPreparationHandler.buildCompactProductContext(ctx)
 }
 
 // buildExtraContext 全局函数，保持向后兼容
-func buildExtraContext(ctx *shein.TaskContext, productsData []shein.ProductVariantData) string {
+func buildExtraContext(ctx *sheinctx.TaskContext, productsData []sheinattr.ProductVariantData) string {
 	return defaultPreparationHandler.buildExtraContext(ctx, productsData)
 }
 
 // buildGenerationRequest 全局函数，保持向后兼容
 func buildGenerationRequest(
-	ctx *shein.TaskContext,
+	ctx *sheinctx.TaskContext,
 	productsData []map[string]string,
-	attributeMetadata []shein.AttributeMetadata,
-	attributeNameMappings map[int]string) *shein.GenerationRequest {
+	attributeMetadata []sheinattr.AttributeMetadata,
+	attributeNameMappings map[int]string) *sheinattr.GenerationRequest {
 	return defaultPreparationHandler.buildGenerationRequest(ctx, productsData, attributeMetadata, attributeNameMappings)
 }
 
 // buildUserPrompt 全局函数，保持向后兼容
-func buildUserPrompt(ctx *shein.TaskContext, request *shein.GenerationRequest) string {
+func buildUserPrompt(ctx *sheinctx.TaskContext, request *sheinattr.GenerationRequest) string {
 	return defaultPreparationHandler.buildUserPrompt(ctx, request)
 }
+
+

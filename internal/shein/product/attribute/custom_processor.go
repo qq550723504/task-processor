@@ -5,9 +5,9 @@ import (
 	"strings"
 	"task-processor/internal/core/logger"
 
-	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/content"
+	sheinctx "task-processor/internal/shein/context"
 )
 
 // CustomAttributeProcessor 自定义属性处理器，负责创建和验证自定义属性值
@@ -30,11 +30,11 @@ func NewCustomAttributeProcessor() *CustomAttributeProcessor {
 // 返回值:
 //   - CustomAttributeResult: 处理结果，包含成功状态、新属性值ID等信息
 func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
-	ctx *shein.TaskContext,
+	ctx *sheinctx.TaskContext,
 	attrID int,
 	attrValue string,
 	isRequired bool,
-) shein.CustomAttributeResult {
+) CustomAttributeResult {
 
 	logger.GetGlobalLogger("shein/product").Infof("处理自定义属性值: 属性ID %d, 原始值 %s, 必需: %v", attrID, attrValue, isRequired)
 
@@ -47,7 +47,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	// 检查清理后的值是否有效
 	if !content.IsValidForSheinAttribute(sanitizedValue) {
 		logger.GetGlobalLogger("shein/product").Errorf("清理后的属性值仍然无效: %s", sanitizedValue)
-		return shein.CustomAttributeResult{
+		return CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
 		}
@@ -60,7 +60,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	if err != nil {
 		logger.GetGlobalLogger("shein/product").Errorf("验证自定义属性值失败: attribute_id=%d, attribute_value=%q, category_id=%d, spu_name=%q, error=%v",
 			attrID, sanitizedValue, ctx.ProductData.CategoryID, ctx.AmazonProduct.Title, err)
-		return shein.CustomAttributeResult{
+		return CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired, // 非必需属性失败时继续，必需属性失败时不继续
 		}
@@ -68,7 +68,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 
 	if validateResponse.Data.AttributeID == 0 {
 		logger.GetGlobalLogger("shein/product").Errorf("验证自定义属性值失败，属性ID为0")
-		return shein.CustomAttributeResult{
+		return CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
 		}
@@ -83,7 +83,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	// 验证多语言名称不为空
 	if len(nameMultis) == 0 {
 		logger.GetGlobalLogger("shein/product").Errorf("验证响应中的多语言名称为空，属性值: %s", sanitizedValue)
-		return shein.CustomAttributeResult{
+		return CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
 		}
@@ -109,7 +109,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 
 	if err != nil {
 		logger.GetGlobalLogger("shein/product").Errorf("添加自定义属性值失败: %v", err)
-		return shein.CustomAttributeResult{
+		return CustomAttributeResult{
 			Success:        false,
 			ShouldContinue: !isRequired,
 		}
@@ -120,7 +120,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 		newValueID := int(addResponse.Info.Data.CustomAttributeRelation[0].AttributeValueID)
 		logger.GetGlobalLogger("shein/product").Infof("成功添加自定义属性值，新的属性值ID: %d", newValueID)
 
-		return shein.CustomAttributeResult{
+		return CustomAttributeResult{
 			Success:        true,
 			NewValueID:     newValueID,
 			Relations:      addResponse.Info.Data.CustomAttributeRelation,
@@ -129,7 +129,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(
 	}
 
 	logger.GetGlobalLogger("shein/product").Errorf("添加自定义属性值失败，没有返回属性值ID")
-	return shein.CustomAttributeResult{
+	return CustomAttributeResult{
 		Success:        false,
 		ShouldContinue: !isRequired,
 	}

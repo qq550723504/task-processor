@@ -74,7 +74,7 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	}
 
 	mainProductAsin := ctx.Task.ProductID
-	variantAsins := h.getAsinListFromContext(ctx, mainProductAsin)
+	variantAsins := getAsinListFromContext(ctx, mainProductAsin, h.logger)
 
 	if len(variantAsins) == 0 {
 		h.logger.Infof("✅ 产品 %s 没有变体（单品），跳过变体数据获取", mainProductAsin)
@@ -94,7 +94,15 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	tracker.EndStep()
 	tracker.StartStep("并行获取变体数据")
 
-	variants, err := h.fetchVariantsParallel(ctx, variantAsins)
+	req := &product.FetchRequest{
+		TenantID:   ctx.Task.TenantID,
+		Platform:   ctx.Task.SourcePlatform,
+		Region:     ctx.Task.Region,
+		StoreID:    ctx.Task.StoreID,
+		CategoryID: ctx.Task.CategoryID,
+		Creator:    ctx.Task.Creator,
+	}
+	variants, err := h.productFetcher.FetchVariants(context.Background(), req, variantAsins)
 	if err != nil {
 		h.logger.Errorf("并行获取变体数据失败: %v", err)
 		return fmt.Errorf("并行获取变体数据失败: %w", err)
@@ -118,41 +126,17 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	return nil
 }
 
-// fetchVariantsParallel 批量获取变体数据（调用 FetchVariants 一次性提交所有任务）
-func (h *VariantJsonDataHandler) fetchVariantsParallel(ctx *shein.TaskContext, variantAsins []string) ([]*model.Product, error) {
-	if ctx.Task == nil {
-		return nil, fmt.Errorf("任务信息为空")
-	}
-
-	req := &product.FetchRequest{
-		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.SourcePlatform,
-		Region:     ctx.Task.Region,
-		StoreID:    ctx.Task.StoreID,
-		CategoryID: ctx.Task.CategoryID,
-		Creator:    ctx.Task.Creator,
-	}
-
-	variants, err := h.productFetcher.FetchVariants(context.Background(), req, variantAsins)
-	if err != nil {
-		return nil, err
-	}
-
-	h.logger.Infof("🎉 批量获取完成: 成功 %d/%d 个变体数据", len(variants), len(variantAsins))
-	return variants, nil
-}
-
-// getAsinListFromContext 从上下文中获取ASIN列表
-func (h *VariantJsonDataHandler) getAsinListFromContext(ctx *shein.TaskContext, mainProductAsin string) []string {
-	h.logger.Infof("🔍 [变体ASIN提取] 主产品ASIN: %s", mainProductAsin)
+// getAsinListFromContext 从上下文中获取ASIN列表（包级函数，供多个 handler 共用）
+func getAsinListFromContext(ctx *shein.TaskContext, mainProductAsin string, logger *logrus.Entry) []string {
+	logger.Infof("🔍 [变体ASIN提取] 主产品ASIN: %s", mainProductAsin)
 
 	if len(ctx.AsinSkuMap) > 0 {
-		h.logger.Infof("🔍 [变体ASIN提取] 从AsinSkuMap获取，总数: %d", len(ctx.AsinSkuMap))
-		return h.getAsinListFromMap(ctx.AsinSkuMap, mainProductAsin)
+		logger.Infof("🔍 [变体ASIN提取] 从AsinSkuMap获取，总数: %d", len(ctx.AsinSkuMap))
+		return getAsinListFromMap(ctx.AsinSkuMap, mainProductAsin, logger)
 	}
 
 	if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Variations) > 0 {
-		h.logger.Infof("🔍 [变体ASIN提取] 从Variations获取，总数: %d", len(ctx.AmazonProduct.Variations))
+		logger.Infof("🔍 [变体ASIN提取] 从Variations获取，总数: %d", len(ctx.AmazonProduct.Variations))
 		asins := make([]string, 0, len(ctx.AmazonProduct.Variations))
 		for _, variation := range ctx.AmazonProduct.Variations {
 			if variation.Asin != "" {
@@ -162,12 +146,12 @@ func (h *VariantJsonDataHandler) getAsinListFromContext(ctx *shein.TaskContext, 
 		return asins
 	}
 
-	h.logger.Info("🔍 [变体ASIN提取] 未找到任何变体ASIN数据源")
+	logger.Info("🔍 [变体ASIN提取] 未找到任何变体ASIN数据源")
 	return []string{}
 }
 
-// getAsinListFromMap 从AsinSkuMap中提取所有ASIN（包括主产品ASIN）
-func (h *VariantJsonDataHandler) getAsinListFromMap(asinSkuMap map[string]string, mainProductAsin string) []string {
+// getAsinListFromMap 从AsinSkuMap中提取所有ASIN
+func getAsinListFromMap(asinSkuMap map[string]string, mainProductAsin string, logger *logrus.Entry) []string {
 	if len(asinSkuMap) == 0 {
 		return []string{}
 	}
@@ -185,7 +169,7 @@ func (h *VariantJsonDataHandler) getAsinListFromMap(asinSkuMap map[string]string
 		}
 	}
 
-	h.logger.Infof("🔍 [SHEIN变体] 从AsinSkuMap获取完成: 总变体数=%d (包含主产品=%d)",
+	logger.Infof("🔍 [SHEIN变体] 从AsinSkuMap获取完成: 总变体数=%d (包含主产品=%d)",
 		len(asinList), mainProductCount)
 
 	return asinList

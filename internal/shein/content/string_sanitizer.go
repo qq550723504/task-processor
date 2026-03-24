@@ -1,4 +1,4 @@
-package content
+﻿package content
 
 import (
 	"regexp"
@@ -254,3 +254,4 @@ func IsValidForSheinAttribute(value string) bool {
 func TruncateErrorMessage(errorMsg string) string {
 	return DefaultStringSanitizer.TruncateErrorMessage(errorMsg, 400)
 }
+

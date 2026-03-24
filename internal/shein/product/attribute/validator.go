@@ -2,29 +2,27 @@
 package attribute
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
+	"task-processor/internal/core/logger"
 
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
-
 )
 
 // AttributeSelectionValidator 属性选择验证器
 type AttributeSelectionValidator struct {
-	importanceCalc *shein.AttributeImportanceCalculator
+	importanceCalc *AttributeImportanceCalculator
 }
 
 // NewAttributeSelectionValidator 创建新的属性选择验证器
 func NewAttributeSelectionValidator() *AttributeSelectionValidator {
 	return &AttributeSelectionValidator{
-		importanceCalc: shein.NewAttributeImportanceCalculator(),
+		importanceCalc: NewAttributeImportanceCalculator(),
 	}
 }
 
 // ValidateAndFixAttributeSelection 增强版属性验证和修复
-func (v *AttributeSelectionValidator) ValidateAndFixAttributeSelection(attributeData shein.AttributeData, attributeInfo shein.BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) shein.AttributeData {
+func (v *AttributeSelectionValidator) ValidateAndFixAttributeSelection(attributeData AttributeData, attributeInfo BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) AttributeData {
 	// 创建属性ID到可用值的映射
 	attrValueMap := make(map[int]map[int]string) // AttrID -> ValueID -> Value
 	attrRequiredMap := make(map[int]bool)        // AttrID -> Required
@@ -41,7 +39,7 @@ func (v *AttributeSelectionValidator) ValidateAndFixAttributeSelection(attribute
 	}
 
 	// 验证和修复每个AI选择的属性值
-	var fixedAttributeData []shein.ResultAttribute
+	var fixedAttributeData []ResultAttribute
 	processedAttrIDs := make(map[int]bool)  // 跟踪已处理的属性ID
 	selectedAttrValues := make(map[int]int) // 跟踪已选择的属性值，用于依赖检查
 
@@ -112,9 +110,9 @@ func (v *AttributeSelectionValidator) ValidateAndFixAttributeSelection(attribute
 			}
 		}
 
-		fixedAttributeData = append(fixedAttributeData, shein.ResultAttribute{
+		fixedAttributeData = append(fixedAttributeData, ResultAttribute{
 			AttrID:    attrID,
-			AttrValue: []shein.AttributeValue{fixedAttrValue},
+			AttrValue: []AttributeValue{fixedAttrValue},
 		})
 	}
 
@@ -129,21 +127,21 @@ func (v *AttributeSelectionValidator) ValidateAndFixAttributeSelection(attribute
 			// 为必填属性寻找最佳默认值
 			if defaultValue := v.findBestDefaultValue(attrID, "", availableValues, attributeTemplates); defaultValue != nil {
 				logger.GetGlobalLogger("shein/product").Infof("为必填属性ID %d 添加增强默认值: ID=%d, Value=%s", attrID, defaultValue.ID.Int(), defaultValue.Value)
-				fixedAttributeData = append(fixedAttributeData, shein.ResultAttribute{
+				fixedAttributeData = append(fixedAttributeData, ResultAttribute{
 					AttrID:    attrID,
-					AttrValue: []shein.AttributeValue{*defaultValue},
+					AttrValue: []AttributeValue{*defaultValue},
 				})
 			}
 		}
 	}
 
-	return shein.AttributeData{
+	return AttributeData{
 		AttributeData: fixedAttributeData,
 	}
 }
 
 // handleAttributeDependencies 增强版属性依赖关系处理
-func (v *AttributeSelectionValidator) handleAttributeDependencies(fixedAttributeData *[]shein.ResultAttribute, selectedAttrValues map[int]int, attrValueMap map[int]map[int]string, processedAttrIDs map[int]bool, attributeTemplates *attribute.AttributeTemplateInfo) {
+func (v *AttributeSelectionValidator) handleAttributeDependencies(fixedAttributeData *[]ResultAttribute, selectedAttrValues map[int]int, attrValueMap map[int]map[int]string, processedAttrIDs map[int]bool, attributeTemplates *attribute.AttributeTemplateInfo) {
 	// 定义属性依赖关系
 	dependencies := map[int][]int{
 		1002187: {1002188, 1002189}, // 主料类型2依赖：当选择主料类型2时，主料克重2和主料克重1变为必填
@@ -164,9 +162,9 @@ func (v *AttributeSelectionValidator) handleAttributeDependencies(fixedAttribute
 
 						if defaultValue != nil {
 							logger.GetGlobalLogger("shein/product").Infof("为依赖属性ID %d 自动添加增强默认值: ID=%d, Value=%s", dependentAttrID, defaultValue.ID.Int(), defaultValue.Value)
-							*fixedAttributeData = append(*fixedAttributeData, shein.ResultAttribute{
+							*fixedAttributeData = append(*fixedAttributeData, ResultAttribute{
 								AttrID:    dependentAttrID,
-								AttrValue: []shein.AttributeValue{*defaultValue},
+								AttrValue: []AttributeValue{*defaultValue},
 							})
 							processedAttrIDs[dependentAttrID] = true
 						}
@@ -178,7 +176,7 @@ func (v *AttributeSelectionValidator) handleAttributeDependencies(fixedAttribute
 }
 
 // findBestDefaultValue 增强版默认值查找
-func (v *AttributeSelectionValidator) findBestDefaultValue(attrID int, originalValue string, availableValues map[int]string, attributeTemplates *attribute.AttributeTemplateInfo) *shein.AttributeValue {
+func (v *AttributeSelectionValidator) findBestDefaultValue(attrID int, originalValue string, availableValues map[int]string, attributeTemplates *attribute.AttributeTemplateInfo) *AttributeValue {
 	// 如果原始值不为空，优先尝试匹配原始值
 	if originalValue != "" {
 		if matchedValue := v.findMatchingValue(originalValue, availableValues); matchedValue != nil {
@@ -214,7 +212,7 @@ func (v *AttributeSelectionValidator) findBestDefaultValue(attrID int, originalV
 		return v.findStyleDefaultValue(availableValues)
 	case 1002188, 1002189: // 主料克重
 		// 为克重属性提供合理的默认值
-		return &shein.AttributeValue{
+		return &AttributeValue{
 			ID:    types.FlexibleID(0),
 			Value: "150", // 常见的面料克重
 		}
@@ -224,13 +222,13 @@ func (v *AttributeSelectionValidator) findBestDefaultValue(attrID int, originalV
 }
 
 // findMatchingValue 查找匹配的属性值
-func (v *AttributeSelectionValidator) findMatchingValue(targetValue string, availableValues map[int]string) *shein.AttributeValue {
+func (v *AttributeSelectionValidator) findMatchingValue(targetValue string, availableValues map[int]string) *AttributeValue {
 	targetLower := strings.ToLower(targetValue)
 
 	for valueID, value := range availableValues {
 		valueLower := strings.ToLower(value)
 		if valueLower == targetLower || strings.Contains(valueLower, targetLower) || strings.Contains(targetLower, valueLower) {
-			return &shein.AttributeValue{
+			return &AttributeValue{
 				ID:    types.FlexibleID(valueID),
 				Value: value,
 			}
@@ -240,14 +238,14 @@ func (v *AttributeSelectionValidator) findMatchingValue(targetValue string, avai
 }
 
 // findElasticityDefaultValue 为面料弹性属性找默认值
-func (v *AttributeSelectionValidator) findElasticityDefaultValue(availableValues map[int]string) *shein.AttributeValue {
+func (v *AttributeSelectionValidator) findElasticityDefaultValue(availableValues map[int]string) *AttributeValue {
 	// 优先选择面料弹性相关的值
 	elasticityKeywords := []string{"无弹", "微弹", "弹力", "弹性", "不弹", "other", "其他"}
 
 	for _, keyword := range elasticityKeywords {
 		for valueID, value := range availableValues {
 			if strings.Contains(strings.ToLower(value), keyword) {
-				return &shein.AttributeValue{
+				return &AttributeValue{
 					ID:    types.FlexibleID(valueID),
 					Value: value,
 				}
@@ -260,14 +258,14 @@ func (v *AttributeSelectionValidator) findElasticityDefaultValue(availableValues
 }
 
 // findStyleDefaultValue 为风格属性找默认值
-func (v *AttributeSelectionValidator) findStyleDefaultValue(availableValues map[int]string) *shein.AttributeValue {
+func (v *AttributeSelectionValidator) findStyleDefaultValue(availableValues map[int]string) *AttributeValue {
 	// 优先选择通用风格
 	styleKeywords := []string{"休闲", "简约", "基础", "classic", "casual", "simple", "other", "其他"}
 
 	for _, keyword := range styleKeywords {
 		for valueID, value := range availableValues {
 			if strings.Contains(strings.ToLower(value), keyword) {
-				return &shein.AttributeValue{
+				return &AttributeValue{
 					ID:    types.FlexibleID(valueID),
 					Value: value,
 				}
@@ -279,7 +277,7 @@ func (v *AttributeSelectionValidator) findStyleDefaultValue(availableValues map[
 }
 
 // findGenericDefaultValue 查找通用默认值
-func (v *AttributeSelectionValidator) findGenericDefaultValue(availableValues map[int]string) *shein.AttributeValue {
+func (v *AttributeSelectionValidator) findGenericDefaultValue(availableValues map[int]string) *AttributeValue {
 	// 优先查找通用默认值
 	genericKeywords := []string{"other", "none", "其他", "不适用", "无", "默认"}
 
@@ -287,7 +285,7 @@ func (v *AttributeSelectionValidator) findGenericDefaultValue(availableValues ma
 		for valueID, value := range availableValues {
 			lowerValue := strings.ToLower(value)
 			if strings.Contains(lowerValue, keyword) {
-				return &shein.AttributeValue{
+				return &AttributeValue{
 					ID:    types.FlexibleID(valueID),
 					Value: value,
 				}
@@ -298,7 +296,7 @@ func (v *AttributeSelectionValidator) findGenericDefaultValue(availableValues ma
 	// 如果没找到通用值，使用第一个可用值
 	if len(availableValues) > 0 {
 		for valueID, value := range availableValues {
-			return &shein.AttributeValue{
+			return &AttributeValue{
 				ID:    types.FlexibleID(valueID),
 				Value: value,
 			}
@@ -306,7 +304,7 @@ func (v *AttributeSelectionValidator) findGenericDefaultValue(availableValues ma
 	}
 
 	// 最后选择自定义值
-	return &shein.AttributeValue{
+	return &AttributeValue{
 		ID:    types.FlexibleID(0),
 		Value: "/",
 	}

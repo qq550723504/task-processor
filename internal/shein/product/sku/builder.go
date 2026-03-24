@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/product/variant"
 
@@ -62,7 +63,7 @@ func (b *SKUBuilder) BuildSKUListWithStrategy(ctx *shein.TaskContext, req shein.
 }
 
 // BuildSKUListForSingleVariant 为单变体构建SKU列表
-func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, variant shein.Variant, strategy shein.AttributeStrategy) ([]product.SKU, error) {
+func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, variant shein.Variant, strategy sheinattr.AttributeStrategy) ([]product.SKU, error) {
 	logger.GetGlobalLogger("shein/product").Infof("为单变体构建SKU列表: ASIN %s", variant.ASIN)
 
 	// 根据策略构建销售属性列表

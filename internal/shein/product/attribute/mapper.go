@@ -5,7 +5,7 @@ import (
 	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/api/attribute"
 
 )
@@ -34,7 +34,7 @@ func NewAttributeMapper() *AttributeMapper {
 // 返回值:
 //   - []attribute.CustomAttributeRelation: 自定义属性关系列表
 //   - error: 错误信息
-func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *shein.TaskContext, strategy *shein.AttributeStrategy) ([]attribute.CustomAttributeRelation, error) {
+func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *sheinctx.TaskContext, strategy *AttributeStrategy) ([]attribute.CustomAttributeRelation, error) {
 	logger.GetGlobalLogger("shein/product").Infof("🔄 === 开始属性值ID映射流程 ===")
 
 	var allRelations []attribute.CustomAttributeRelation
@@ -114,7 +114,7 @@ func (m *AttributeMapper) MapAttributeValuesToSheinIDs(ctx *shein.TaskContext, s
 }
 
 // mapSingleAttributeValues 映射单个属性的所有属性值
-func (m *AttributeMapper) mapSingleAttributeValues(ctx *shein.TaskContext, attr *shein.ResultAttribute, isRequired bool) ([]attribute.CustomAttributeRelation, error) {
+func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, attr *ResultAttribute, isRequired bool) ([]attribute.CustomAttributeRelation, error) {
 	if attr.AttrID <= 0 || len(attr.AttrValue) == 0 {
 		return nil, nil
 	}

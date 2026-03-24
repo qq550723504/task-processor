@@ -48,12 +48,43 @@ type SkcErrorMessage struct {
 	OtherLanguageMessageMap map[string][]string `json:"otherLanguageMessageMap"`
 }
 
+// APIClients 封装所有 SHEIN API 客户端
+type APIClients struct {
+	ProductAPI   *product.Client
+	CategoryAPI  *shein_category.Client
+	AttributeAPI *shein_attribute.Client
+	WarehouseAPI *warehouse.Client
+	TranslateAPI *shein_translate.Client
+	PricingAPI   *shein_pricing.Client
+	ImageAPI     *shein_image.Client
+	OtherAPI     *other.Client
+	MarketingAPI *shein_marketing.Client
+}
+
+// TaskState 封装任务运行时中间状态
+type TaskState struct {
+	SheinResponse       *product.SheinResponse
+	ValidationErrors    []PreValidResult
+	SpecificationErrors []PreValidResult
+	// 敏感词处理
+	SensitiveWordRetryCount int
+	ProcessedSensitiveWords map[string]bool
+	// 平台路由标记
+	Platform          string
+	SkipSheinPipeline bool
+	// 初始化错误（替代 Extra["init_error"]）
+	InitError error
+}
+
 // TaskContext 任务处理上下文
 type TaskContext struct {
-	Context            context.Context
-	Task               *model.Task
-	MemoryManager      *state.MemoryManager
-	StoreInfo          *management_api.StoreRespDTO
+	Context             context.Context
+	Task                *model.Task
+	MemoryManager       *state.MemoryManager
+	ManagementClientMgr *management.ClientManager
+	AICache             *aicache.Cache
+	StoreInfo           *management_api.StoreRespDTO
+	// 产品数据
 	SupplierInfo       *other.SupplierOperateInfo
 	SpuLimitCount      *other.SpuLimitCountInfo
 	ShelfQuotaInfo     *other.ShelfQuotaInfo
@@ -64,49 +95,31 @@ type TaskContext struct {
 	AsinSkuMap         map[string]string
 	SupplierSkuMap     map[string]string
 	ProductData        *product.Product
-	// API 客户端
-	ProductAPI          *product.Client
-	CategoryAPI         *shein_category.Client
-	AttributeAPI        *shein_attribute.Client
-	WarehouseAPI        *warehouse.Client
-	TranslateAPI        *shein_translate.Client
-	PricingAPI          *shein_pricing.Client
-	ImageAPI            *shein_image.Client
-	OtherAPI            *other.Client
-	MarketingAPI        *shein_marketing.Client
-	FilterRule          *management_api.FilterRuleRespDTO
-	ProfitRule          *management_api.ProfitRuleRespDTO
-	Warehouses          *warehouse.WarehouseResponse
-	SiteList            []product.SiteInfo
-	CategoryTree        *shein_category.CategoryTreeResponse
-	AttributeTemplates  *shein_attribute.AttributeTemplateInfo
-	BuildAttributeData  *BuildAttributeInfo
-	GenerateAttribute   *AttributeData
-	SaleSpecResult      *ResultSaleAttribute
-	ManagementClientMgr *management.ClientManager
-	SheinResponse       *product.SheinResponse
-	// 错误信息
-	ValidationErrors    []PreValidResult
-	SpecificationErrors []PreValidResult
-	// 敏感词处理
-	SensitiveWordRetryCount int
-	ProcessedSensitiveWords map[string]bool
-	// 扩展字段
-	Extra map[string]any
-	// AI 结果缓存（跨租户/店铺共享，避免重复调用 AI 接口）
-	AICache *aicache.Cache
+	FilterRule         *management_api.FilterRuleRespDTO
+	ProfitRule         *management_api.ProfitRuleRespDTO
+	Warehouses         *warehouse.WarehouseResponse
+	SiteList           []product.SiteInfo
+	CategoryTree       *shein_category.CategoryTreeResponse
+	AttributeTemplates *shein_attribute.AttributeTemplateInfo
+	BuildAttributeData *BuildAttributeInfo
+	GenerateAttribute  *AttributeData
+	SaleSpecResult     *ResultSaleAttribute
+	// 嵌入 API 客户端和运行时状态
+	APIClients
+	TaskState
 }
 
 // NewTaskContext 创建新的任务上下文
 func NewTaskContext(ctx context.Context, task *model.Task) *TaskContext {
 	return &TaskContext{
-		Context:                 ctx,
-		Task:                    task,
-		VariantFilterMap:        make(map[string]*VariantFilterInfo),
-		AsinSkuMap:              make(map[string]string),
-		SupplierSkuMap:          make(map[string]string),
-		ProcessedSensitiveWords: make(map[string]bool),
-		Extra:                   make(map[string]any),
+		Context:          ctx,
+		Task:             task,
+		VariantFilterMap: make(map[string]*VariantFilterInfo),
+		AsinSkuMap:       make(map[string]string),
+		SupplierSkuMap:   make(map[string]string),
+		TaskState: TaskState{
+			ProcessedSensitiveWords: make(map[string]bool),
+		},
 	}
 }
 
@@ -145,21 +158,41 @@ func (ctx *TaskContext) IsVariantFiltered(asin string) bool {
 	return info != nil && info.FilteredOut
 }
 
-// SetData 设置扩展数据
+// SetData 设置扩展数据（保留以满足 pipeline.TaskContext 接口）
 func (ctx *TaskContext) SetData(key string, value any) {
-	if ctx.Extra == nil {
-		ctx.Extra = make(map[string]any)
+	switch key {
+	case "init_error":
+		if err, ok := value.(error); ok {
+			ctx.InitError = err
+		}
+	case "completed":
+		if b, ok := value.(bool); ok {
+			ctx.SkipSheinPipeline = b
+		}
+	case "error":
+		if err, ok := value.(error); ok {
+			ctx.InitError = err
+		}
 	}
-	ctx.Extra[key] = value
 }
 
-// GetData 获取扩展数据
+// GetData 获取扩展数据（保留以满足 pipeline.TaskContext 接口）
 func (ctx *TaskContext) GetData(key string) (any, bool) {
-	if ctx.Extra == nil {
+	switch key {
+	case "init_error":
+		if ctx.InitError != nil {
+			return ctx.InitError, true
+		}
 		return nil, false
+	case "error":
+		if ctx.InitError != nil {
+			return ctx.InitError, true
+		}
+		return nil, false
+	case "completed":
+		return ctx.SkipSheinPipeline, ctx.SkipSheinPipeline
 	}
-	val, ok := ctx.Extra[key]
-	return val, ok
+	return nil, false
 }
 
 // GetStringData 获取字符串数据
@@ -199,23 +232,15 @@ func (ctx *TaskContext) IsCompleted() bool {
 
 // SetCompleted 设置完成状态
 func (ctx *TaskContext) SetCompleted(completed bool) {
-	ctx.SetData("completed", completed)
+	ctx.SkipSheinPipeline = completed
 }
 
 // GetError 获取错误
 func (ctx *TaskContext) GetError() error {
-	val, ok := ctx.GetData("error")
-	if !ok {
-		return nil
-	}
-	err, ok := val.(error)
-	if !ok {
-		return nil
-	}
-	return err
+	return ctx.InitError
 }
 
 // SetError 设置错误
 func (ctx *TaskContext) SetError(err error) {
-	ctx.SetData("error", err)
+	ctx.InitError = err
 }

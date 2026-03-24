@@ -11,6 +11,7 @@ import (
 
 	"task-processor/internal/core/logger"
 	shein "task-processor/internal/shein"
+	apiproduct "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -36,21 +37,17 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext)
 		return fmt.Errorf("产品数据为空")
 	}
 
-	// 生成详细的验证报告
 	report := v.generateValidationReport(ctx)
 
-	// 检查是否有严重问题
 	if len(report.CriticalIssues) > 0 {
 		v.trySaveReport(ctx, report, "validation_failed_report", "保存验证失败报告失败")
 		return fmt.Errorf("发现%d个严重问题，无法继续发布", len(report.CriticalIssues))
 	}
 
-	// 如果有自动修复，记录修复信息
 	if report.AutoFixedIssues > 0 {
 		v.logger.Infof("🔧 自动修复了%d个问题，产品数据已优化", report.AutoFixedIssues)
 	}
 
-	// 计算验证成功率
 	successRate := float64(report.PassedChecks) / float64(report.TotalChecks) * 100
 	if successRate < 75 {
 		v.trySaveReport(ctx, report, "validation_low_success_report", "保存低成功率验证报告失败")
@@ -65,15 +62,12 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext)
 func (v *PublishProductValidator) validateBasicProductInfo(ctx *shein.TaskContext) error {
 	product := ctx.ProductData
 
-	// 检查必要字段
 	if len(product.MultiLanguageNameList) == 0 {
 		return fmt.Errorf("缺少产品名称")
 	}
-
 	if len(product.MultiLanguageDescList) == 0 {
 		return fmt.Errorf("缺少产品描述")
 	}
-
 	if product.CategoryID == 0 {
 		return fmt.Errorf("缺少分类ID")
 	}
@@ -95,45 +89,33 @@ func (v *PublishProductValidator) validateSKCAndSKUData(ctx *shein.TaskContext) 
 
 	for skcIndex, skc := range product.SKCList {
 		if len(skc.SKUS) == 0 {
-			issue := fmt.Sprintf("SKC[%d]缺少SKU数据", skcIndex)
-			issues = append(issues, issue)
+			issues = append(issues, fmt.Sprintf("SKC[%d]缺少SKU数据", skcIndex))
 			continue
 		}
 
 		for skuIndex, sku := range skc.SKUS {
 			totalSKUs++
 
-			// 检查必要字段
 			if sku.SupplierSKU == "" {
-				issue := fmt.Sprintf("SKC[%d] SKU[%d]缺少SupplierSKU", skcIndex, skuIndex)
-				issues = append(issues, issue)
+				issues = append(issues, fmt.Sprintf("SKC[%d] SKU[%d]缺少SupplierSKU", skcIndex, skuIndex))
 			}
-
 			if sku.CostInfo == nil || sku.CostInfo.CostPrice == "" {
-				issue := fmt.Sprintf("SKC[%d] SKU[%d]缺少成本价格信息", skcIndex, skuIndex)
-				issues = append(issues, issue)
+				issues = append(issues, fmt.Sprintf("SKC[%d] SKU[%d]缺少成本价格信息", skcIndex, skuIndex))
 			}
-
 			if len(sku.PriceInfoList) == 0 {
-				issue := fmt.Sprintf("SKC[%d] SKU[%d]缺少价格信息", skcIndex, skuIndex)
-				issues = append(issues, issue)
+				issues = append(issues, fmt.Sprintf("SKC[%d] SKU[%d]缺少价格信息", skcIndex, skuIndex))
 			}
-
 			if len(sku.StockInfoList) == 0 {
-				issue := fmt.Sprintf("SKC[%d] SKU[%d]缺少库存信息", skcIndex, skuIndex)
-				issues = append(issues, issue)
+				issues = append(issues, fmt.Sprintf("SKC[%d] SKU[%d]缺少库存信息", skcIndex, skuIndex))
 			}
-
-			// 验证数量类型和数量值的匹配性
-			if quantityIssue := v.validateQuantityTypeAndValue(sku, skcIndex, skuIndex); quantityIssue != "" {
-				issues = append(issues, quantityIssue)
+			if issue := v.validateQuantityTypeAndValue(sku, skcIndex, skuIndex); issue != "" {
+				issues = append(issues, issue)
 			}
 		}
 	}
 
 	if len(issues) > 0 {
-		return fmt.Errorf("发现%d个SKC/SKU数据问题: %s",
-			len(issues), strings.Join(issues, "; "))
+		return fmt.Errorf("发现%d个SKC/SKU数据问题: %s", len(issues), strings.Join(issues, "; "))
 	}
 
 	v.logger.Debugf("✅ SKC和SKU数据验证通过，共%d个SKC，%d个SKU", len(product.SKCList), totalSKUs)
@@ -141,45 +123,18 @@ func (v *PublishProductValidator) validateSKCAndSKUData(ctx *shein.TaskContext) 
 }
 
 // validateQuantityTypeAndValue 验证数量类型和数量值的匹配性
-func (v *PublishProductValidator) validateQuantityTypeAndValue(sku any, skcIndex, skuIndex int) string {
-	// 由于SKU可能是不同的类型，我们需要通过反射或类型断言来获取数量信息
-	// 这里假设sku有QuantityInfo字段
-
-	// 尝试获取数量信息（这里需要根据实际的SKU结构来调整）
-	var quantityType, quantity *int
-
-	// 如果是map类型（JSON反序列化后）
-	if skuMap, ok := sku.(map[string]any); ok {
-		if quantityInfo, exists := skuMap["quantity_info"]; exists {
-			if qiMap, ok := quantityInfo.(map[string]any); ok {
-				if qt, exists := qiMap["quantity_type"]; exists {
-					if qtInt, ok := qt.(float64); ok {
-						qtIntVal := int(qtInt)
-						quantityType = &qtIntVal
-					}
-				}
-				if q, exists := qiMap["quantity"]; exists {
-					if qInt, ok := q.(float64); ok {
-						qIntVal := int(qInt)
-						quantity = &qIntVal
-					}
-				}
-			}
-		}
-	}
-
-	// 如果无法获取数量信息，跳过验证
-	if quantityType == nil || quantity == nil {
+func (v *PublishProductValidator) validateQuantityTypeAndValue(sku apiproduct.SKU, skcIndex, skuIndex int) string {
+	if sku.QuantityInfo == nil || sku.QuantityInfo.QuantityType == nil || sku.QuantityInfo.Quantity == nil {
 		return ""
 	}
+	quantityType := *sku.QuantityInfo.QuantityType
+	quantity := *sku.QuantityInfo.Quantity
 
-	// 使用数量验证器进行验证
 	validator := validation.NewQuantityValidator()
-	if err := validator.ValidateQuantity(*quantity, *quantityType); err != nil {
+	if err := validator.ValidateQuantity(quantity, quantityType); err != nil {
 		return fmt.Sprintf("SKC[%d] SKU[%d]数量配置错误: %v (quantityType=%d, quantity=%d)",
-			skcIndex, skuIndex, err, *quantityType, *quantity)
+			skcIndex, skuIndex, err, quantityType, quantity)
 	}
-
 	return ""
 }
 
@@ -192,7 +147,7 @@ type ValidationReport struct {
 	CriticalIssues  []string            `json:"critical_issues"`
 	WarningIssues   []string            `json:"warning_issues"`
 	FixedIssues     []string            `json:"fixed_issues"`
-	DetailedIssues  map[string][]string `json:"detailed_issues"` // 按类别分组的详细问题
+	DetailedIssues  map[string][]string `json:"detailed_issues"`
 	ValidationTime  int64               `json:"validation_time_ms"`
 }
 
@@ -201,14 +156,11 @@ func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContex
 	startTime := time.Now()
 
 	report := &ValidationReport{
-		TotalChecks:     4, // 基本信息、主图、多件商品SKU、SKC/SKU数据
-		PassedChecks:    0,
-		FailedChecks:    0,
-		AutoFixedIssues: 0,
-		CriticalIssues:  []string{},
-		WarningIssues:   []string{},
-		FixedIssues:     []string{},
-		DetailedIssues:  make(map[string][]string),
+		TotalChecks:    4,
+		CriticalIssues: []string{},
+		WarningIssues:  []string{},
+		FixedIssues:    []string{},
+		DetailedIssues: make(map[string][]string),
 	}
 
 	// 1. 验证基本产品信息
@@ -219,7 +171,7 @@ func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContex
 		report.PassedChecks++
 	}
 
-	// 3. 验证多件商品SKU图片（带自动修复）
+	// 2. 验证多件商品SKU图片（带自动修复）
 	beforeSKUValidation := len(report.FixedIssues)
 	if err := v.validateMultiPieceSKUImagesWithReport(ctx, report); err != nil {
 		report.FailedChecks++
@@ -229,7 +181,7 @@ func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContex
 	}
 	report.AutoFixedIssues += len(report.FixedIssues) - beforeSKUValidation
 
-	// 4. 验证SKC和SKU数据完整性
+	// 3. 验证SKC和SKU数据完整性
 	if err := v.validateSKCAndSKUData(ctx); err != nil {
 		report.FailedChecks++
 		report.CriticalIssues = append(report.CriticalIssues, fmt.Sprintf("SKC/SKU数据: %v", err))
@@ -238,7 +190,6 @@ func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContex
 	}
 
 	report.ValidationTime = time.Since(startTime).Milliseconds()
-
 	return report
 }
 
@@ -255,36 +206,27 @@ func (v *PublishProductValidator) validateMultiPieceSKUImagesWithReport(ctx *she
 	fixedCount := 0
 
 	for skcIndex, skc := range product.SKCList {
-		if len(skc.SKUS) == 0 {
-			continue
-		}
-
 		for skuIndex, sku := range skc.SKUS {
-			// 检查是否为多件商品
 			isMultiPiece := sku.QuantityInfo != nil &&
 				sku.QuantityInfo.QuantityType != nil &&
 				*sku.QuantityInfo.QuantityType == 2
 
-			if isMultiPiece {
-				// 多件商品必须有SKU图片
-				if sku.ImageInfo == nil || len(sku.ImageInfo.ImageInfoList) == 0 {
-					// 这种情况应该在SKC构建阶段已经修复了，如果还出现说明有问题
-					issue := fmt.Sprintf("多件商品SKU缺少图片 (SKC[%d] SKU[%d] SupplierSKU: %s) - 应该在构建阶段已修复",
-						skcIndex, skuIndex, sku.SupplierSKU)
-					multiPieceIssues = append(multiPieceIssues, issue)
-				} else {
-					// 多件商品SKU已有图片，检查并修复图片排序
-					fixedInThisSKU := v.fixSKUImageSorting(sku, sku.SupplierSKU, report)
-					fixedCount += fixedInThisSKU
-				}
+			if !isMultiPiece {
+				continue
+			}
+
+			if sku.ImageInfo == nil || len(sku.ImageInfo.ImageInfoList) == 0 {
+				multiPieceIssues = append(multiPieceIssues, fmt.Sprintf(
+					"多件商品SKU缺少图片 (SKC[%d] SKU[%d] SupplierSKU: %s) - 应该在构建阶段已修复",
+					skcIndex, skuIndex, sku.SupplierSKU))
+			} else {
+				fixedCount += v.fixSKUImageSorting(&skc.SKUS[skuIndex], sku.SupplierSKU, report)
 			}
 		}
 	}
 
 	if len(multiPieceIssues) > 0 {
-		// 将详细问题添加到报告中
 		report.DetailedIssues["多件商品SKU图片问题"] = multiPieceIssues
-		// 返回包含具体问题详情的错误信息
 		return fmt.Errorf("发现%d个多件商品SKU图片问题: %s",
 			len(multiPieceIssues), strings.Join(multiPieceIssues, "; "))
 	}
@@ -294,6 +236,35 @@ func (v *PublishProductValidator) validateMultiPieceSKUImagesWithReport(ctx *she
 	}
 
 	return nil
+}
+
+// fixSKUImageSorting 修复多件商品 SKU 图片数量和排序，返回修复次数。
+func (v *PublishProductValidator) fixSKUImageSorting(sku *apiproduct.SKU, supplierSKU string, report *ValidationReport) int {
+	if sku.ImageInfo == nil || len(sku.ImageInfo.ImageInfoList) == 0 {
+		return 0
+	}
+
+	fixedCount := 0
+	images := sku.ImageInfo.ImageInfoList
+
+	// 多件商品 SKU 只能有一张图片
+	if len(images) > 1 {
+		report.FixedIssues = append(report.FixedIssues,
+			fmt.Sprintf("修复多件商品SKU图片数量: SKU %s 从%d张减少到1张", supplierSKU, len(images)))
+		sku.ImageInfo.ImageInfoList = images[:1]
+		images = sku.ImageInfo.ImageInfoList
+		fixedCount++
+	}
+
+	// 修复第一张图片的排序
+	if len(images) > 0 && images[0].ImageSort != 1 {
+		report.FixedIssues = append(report.FixedIssues,
+			fmt.Sprintf("修复多件商品SKU主图排序: SKU %s 从%d修复为1", supplierSKU, images[0].ImageSort))
+		sku.ImageInfo.ImageInfoList[0].ImageSort = 1
+		fixedCount++
+	}
+
+	return fixedCount
 }
 
 // trySaveReport 尝试保存验证报告，失败时只记录日志
@@ -312,146 +283,19 @@ func (v *PublishProductValidator) trySaveReport(ctx *shein.TaskContext, report *
 
 // saveValidationReportToFile 保存验证报告到JSON文件
 func (v *PublishProductValidator) saveValidationReportToFile(filename string, report *ValidationReport) error {
-	// 确保目录存在
 	if err := os.MkdirAll("logs", 0755); err != nil {
 		return fmt.Errorf("创建日志目录失败: %w", err)
 	}
 
-	// 序列化验证报告
 	jsonData, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return fmt.Errorf("序列化验证报告失败: %w", err)
 	}
 
-	// 写入文件
 	filePath := filepath.Join("logs", filename)
 	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
 		return fmt.Errorf("写入验证报告文件失败: %w", err)
 	}
 
 	return nil
-}
-
-// copySKCImageToSKU 从SKC复制图片到SKU
-func (v *PublishProductValidator) copySKCImageToSKU(skc any, sku any) error {
-	// 由于我们知道这些是product.SKC和product.SKU类型，我们需要进行类型转换
-	// 但是由于它们在JSON序列化后可能是map[string]any类型，我们需要处理这种情况
-
-	// 尝试作为map处理（JSON反序列化后的情况）
-	skcMap, skcOk := skc.(map[string]any)
-	skuMap, skuOk := sku.(map[string]any)
-
-	if !skcOk || !skuOk {
-		return fmt.Errorf("SKC或SKU类型转换失败")
-	}
-
-	// 获取SKC的图片信息
-	skcImageInfo, exists := skcMap["image_info"]
-	if !exists {
-		return fmt.Errorf("SKC没有图片信息")
-	}
-
-	skcImageMap, ok := skcImageInfo.(map[string]any)
-	if !ok {
-		return fmt.Errorf("SKC图片信息格式错误")
-	}
-
-	skcImageList, exists := skcImageMap["image_info_list"]
-	if !exists {
-		return fmt.Errorf("SKC没有图片列表")
-	}
-
-	skcImages, ok := skcImageList.([]any)
-	if !ok || len(skcImages) == 0 {
-		return fmt.Errorf("SKC图片列表为空")
-	}
-
-	// 获取第一张图片
-	firstImage, ok := skcImages[0].(map[string]any)
-	if !ok {
-		return fmt.Errorf("SKC第一张图片格式错误")
-	}
-
-	// 创建SKU图片信息
-	skuImageInfo := map[string]any{
-		"image_group_code": nil,
-		"image_info_list": []any{
-			map[string]any{
-				"image_type":              firstImage["image_type"],
-				"image_sort":              1, // SKU图片排序固定为1
-				"image_url":               firstImage["image_url"],
-				"image_item_id":           firstImage["image_item_id"],
-				"size_img_flag":           firstImage["size_img_flag"],
-				"transformCvSizeImage":    firstImage["transformCvSizeImage"],
-				"ai_status":               firstImage["ai_status"],
-				"ps_types":                firstImage["ps_types"],
-				"marketing_main_image":    false, // SKU图片不是营销主图
-				"commodity_category_flag": firstImage["commodity_category_flag"],
-			},
-		},
-		"original_image_info_list": []any{},
-	}
-
-	// 设置SKU的图片信息
-	skuMap["image_info"] = skuImageInfo
-
-	return nil
-}
-
-// fixSKUImageSorting 修复SKU图片排序
-func (v *PublishProductValidator) fixSKUImageSorting(sku any, supplierSKU string, report *ValidationReport) int {
-	skuMap, ok := sku.(map[string]any)
-	if !ok {
-		return 0
-	}
-
-	imageInfo, exists := skuMap["image_info"]
-	if !exists {
-		return 0
-	}
-
-	imageInfoMap, ok := imageInfo.(map[string]any)
-	if !ok {
-		return 0
-	}
-
-	imageList, exists := imageInfoMap["image_info_list"]
-	if !exists {
-		return 0
-	}
-
-	images, ok := imageList.([]any)
-	if !ok || len(images) == 0 {
-		return 0
-	}
-
-	fixedCount := 0
-
-	// 多件商品SKU只能有一张图片
-	if len(images) > 1 {
-		fixMsg := fmt.Sprintf("修复多件商品SKU图片数量: SKU %s 从%d张减少到1张",
-			supplierSKU, len(images))
-		report.FixedIssues = append(report.FixedIssues, fixMsg)
-		// 只保留第一张图片
-		imageInfoMap["image_info_list"] = []any{images[0]}
-		images = []any{images[0]}
-		fixedCount++
-	}
-
-	// 检查第一张图片的排序
-	if len(images) > 0 {
-		if imageMap, ok := images[0].(map[string]any); ok {
-			if imageSort, exists := imageMap["image_sort"]; exists {
-				if sortValue, ok := imageSort.(float64); ok && int(sortValue) != 1 {
-					fixMsg := fmt.Sprintf("修复多件商品SKU主图排序: SKU %s 从%d修复为1",
-						supplierSKU, int(sortValue))
-					report.FixedIssues = append(report.FixedIssues, fixMsg)
-					imageMap["image_sort"] = 1
-					fixedCount++
-				}
-			}
-		}
-	}
-
-	return fixedCount
 }

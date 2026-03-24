@@ -2,17 +2,14 @@
 package publish
 
 import (
-	"fmt"
 	"time"
 
 	"task-processor/internal/core/logger"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/ptr"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timex"
 	shein "task-processor/internal/shein"
-	"task-processor/internal/shein/productdata"
 	"task-processor/internal/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -73,157 +70,79 @@ func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 
 // createProductImportMapping 创建产品导入映射关系
 func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskContext) error {
-	// 检查必要的上下文信息
 	if ctx.ManagementClientMgr == nil {
-		// 这是一个程序逻辑错误，不应该发生，不可重试
 		return shein.NewNonRetryableError("管理客户端管理器未初始化", nil)
 	}
-
 	if ctx.Task == nil {
-		// 这是一个程序逻辑错误，不应该发生，不可重试
 		return shein.NewNonRetryableError("任务信息未初始化", nil)
 	}
 
-	// 获取产品导入映射客户端
 	mappingClient := ctx.ManagementClientMgr.GetProductImportMappingClient()
 	if mappingClient == nil {
-		// 这是一个程序逻辑错误，不应该发生，不可重试
 		return shein.NewNonRetryableError("产品导入映射客户端未初始化", nil)
 	}
 
-	// 为每个SKU创建产品导入映射关系
+	if ctx.SheinResponse == nil || len(ctx.SheinResponse.Info.SKCList) == 0 {
+		return nil
+	}
+
+	// 使用 map 去重，避免同一个 SupplierSKU 创建多次映射
+	processed := make(map[string]bool)
 	createdCount := 0
 
-	// 遍历SheinResponse中的SKC和SKU信息来创建映射关系
-	// 使用map去重，避免同一个SupplierSKU创建多次映射
-	processedSkus := make(map[string]bool)
+	for _, skc := range ctx.SheinResponse.Info.SKCList {
+		for _, sku := range skc.SKUList {
+			if processed[sku.SupplierSKU] {
+				h.logger.Debugf("SKU %s 已处理，跳过重复创建", sku.SupplierSKU)
+				continue
+			}
+			processed[sku.SupplierSKU] = true
 
-	if ctx.SheinResponse != nil && len(ctx.SheinResponse.Info.SKCList) > 0 {
-		for _, skc := range ctx.SheinResponse.Info.SKCList {
-			for _, sku := range skc.SKUList {
-				// 检查是否已处理过该SupplierSKU
-				if processedSkus[sku.SupplierSKU] {
-					h.logger.Debugf("SKU %s 已处理，跳过重复创建", sku.SupplierSKU)
+			// 反向查找 ASIN
+			asin := ""
+			for a, s := range ctx.AsinSkuMap {
+				if s == sku.SupplierSKU {
+					asin = a
+					break
+				}
+			}
+			if asin == "" {
+				if ctx.Task.ProductID != "" {
+					asin = ctx.Task.ProductID
+					h.logger.Warnf("SKU %s 在AsinSkuMap中未找到对应ASIN，使用任务ProductID: %s", sku.SupplierSKU, asin)
+				} else {
+					h.logger.Errorf("SKU %s 未找到对应ASIN且任务ProductID为空，跳过", sku.SupplierSKU)
 					continue
 				}
-				processedSkus[sku.SupplierSKU] = true
-
-				// 构建ProductImportMappingCreateReqDTO结构体
-				taskID := ctx.Task.ID
-				createReq := &management_api.ProductImportMappingCreateReqDTO{
-					TenantID:          ctx.Task.TenantID,
-					ImportTaskId:      taskID,
-					StoreId:           ctx.Task.StoreID,
-					Platform:          "SHEIN",
-					Region:            ctx.Task.Region,
-					Sku:               &sku.SupplierSKU,
-					PlatformProductId: &sku.SKUCode,
-					Status:            ptr.Int16Ptr(1), // 1表示成功
-				}
-
-				// 从AsinSkuMap中查找ASIN（需要反向查找，因为map是ASIN->SKU的映射）
-				foundAsin := false
-				if ctx.AsinSkuMap != nil {
-					for asin, supplierSku := range ctx.AsinSkuMap {
-						if supplierSku == sku.SupplierSKU {
-							createReq.ProductId = asin
-							foundAsin = true
-							break
-						}
-					}
-				}
-
-				// 如果在AsinSkuMap中没找到，使用任务的ProductID作为备选
-				if !foundAsin || createReq.ProductId == "" {
-					if ctx.Task != nil && ctx.Task.ProductID != "" {
-						createReq.ProductId = ctx.Task.ProductID
-						h.logger.Warnf("SKU %s 在AsinSkuMap中未找到对应ASIN，使用任务ProductID: %s",
-							sku.SupplierSKU, ctx.Task.ProductID)
-					} else {
-						h.logger.Errorf("SKU %s 未找到对应的ASIN且任务ProductID为空，跳过创建映射关系", sku.SupplierSKU)
-						continue
-					}
-				}
-
-				variant := productdata.GetVariantByAsinFromVariants(ctx.Variants, createReq.ProductId)
-				costPrice := validation.GetProductPrice(variant, ctx.StoreInfo.PriceType)
-				createReq.CostPrice = &costPrice
-
-				if ctx.AmazonProduct.ParentAsin != "" {
-					createReq.ParentProductId = &ctx.AmazonProduct.ParentAsin
-				}
-
-				if ctx.ProductData != nil && ctx.ProductData.SPUName != "" {
-					createReq.PlatformParentProductId = &ctx.ProductData.SPUName
-				}
-
-				// 如果有筛选规则，设置筛选规则相关字段
-				if ctx.FilterRule != nil {
-					createReq.FilterRuleId = &ctx.FilterRule.ID
-					// 修复：正确处理指针类型并生成价格范围字符串
-					if ctx.FilterRule.PriceMin != nil && ctx.FilterRule.PriceMax != nil {
-						filterRuleRange := fmt.Sprintf("%.2f-%.2f", *ctx.FilterRule.PriceMin, *ctx.FilterRule.PriceMax)
-						createReq.FilterRuleRange = &filterRuleRange
-					} else if ctx.FilterRule.PriceMin != nil {
-						filterRuleRange := fmt.Sprintf("%.2f-", *ctx.FilterRule.PriceMin)
-						createReq.FilterRuleRange = &filterRuleRange
-					} else if ctx.FilterRule.PriceMax != nil {
-						filterRuleRange := fmt.Sprintf("-%.2f", *ctx.FilterRule.PriceMax)
-						createReq.FilterRuleRange = &filterRuleRange
-					}
-				}
-
-				// 如果有利润规则，设置利润规则相关字段
-				if ctx.ProfitRule != nil {
-					createReq.ProfitRuleId = &ctx.ProfitRule.ID
-					// 设置售价倍数和折扣价倍数
-					salePriceMultiplier := fmt.Sprintf("%.2f", ctx.ProfitRule.SalePriceMultiplier)
-					createReq.SalePriceMultiplier = &salePriceMultiplier
-
-					if ctx.ProfitRule.DiscountPriceMultiplier > 0 {
-						discountPriceMultiplier := fmt.Sprintf("%.2f", ctx.ProfitRule.DiscountPriceMultiplier)
-						createReq.DiscountPriceMultiplier = &discountPriceMultiplier
-					}
-				}
-
-				// 检查是否已存在映射关系（避免重试时重复插入）
-				existingMapping, err := mappingClient.GetProductImportMappingByTaskAndSku(
-					taskID,
-					sku.SupplierSKU,
-				)
-
-				if err != nil {
-					h.logger.Warnf("查询已存在的映射关系失败 (SKU: %s): %v，尝试创建新记录", sku.SupplierSKU, err)
-				}
-
-				var id int64
-				if existingMapping != nil && existingMapping.ID > 0 {
-					// 已存在记录，更新而不是插入
-					h.logger.Infof("检测到已存在的映射关系 (ID: %d, SKU: %s)，执行更新操作",
-						existingMapping.ID, sku.SupplierSKU)
-
-					createReq.ID = &existingMapping.ID
-					updateErr := mappingClient.UpdateProductImportMapping(createReq)
-					if updateErr != nil {
-						h.logger.Errorf("更新产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, updateErr)
-						continue
-					}
-					id = existingMapping.ID
-					h.logger.Infof("✅ 成功更新产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s",
-						id, sku.SupplierSKU, sku.SKUCode)
-				} else {
-					// 不存在记录，创建新记录
-					id, err = mappingClient.CreateProductImportMapping(createReq)
-					if err != nil {
-						h.logger.Errorf("创建产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, err)
-						continue
-					}
-					h.logger.Infof("✅ 成功创建产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s",
-						id, sku.SupplierSKU, sku.SKUCode)
-				}
-
-				createdCount++
 			}
+
+			createReq := buildMappingReq(ctx, asin, sku.SupplierSKU, model.TaskStatusPublished)
+			createReq.PlatformProductId = &sku.SKUCode
+
+			// 幂等：已存在则更新，否则创建
+			existing, err := mappingClient.GetProductImportMappingByTaskAndSku(ctx.Task.ID, sku.SupplierSKU)
+			if err != nil {
+				h.logger.Warnf("查询已存在的映射关系失败 (SKU: %s): %v，尝试创建新记录", sku.SupplierSKU, err)
+			}
+
+			var id int64
+			if existing != nil && existing.ID > 0 {
+				createReq.ID = &existing.ID
+				if err := mappingClient.UpdateProductImportMapping(createReq); err != nil {
+					h.logger.Errorf("更新产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, err)
+					continue
+				}
+				id = existing.ID
+				h.logger.Infof("✅ 成功更新产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s", id, sku.SupplierSKU, sku.SKUCode)
+			} else {
+				id, err = mappingClient.CreateProductImportMapping(createReq)
+				if err != nil {
+					h.logger.Errorf("创建产品导入映射关系失败 (SKU: %s): %v", sku.SupplierSKU, err)
+					continue
+				}
+				h.logger.Infof("✅ 成功创建产品映射关系 - ID: %d, SKU: %s, PlatformSKU: %s", id, sku.SupplierSKU, sku.SKUCode)
+			}
+			createdCount++
 		}
 	}
 
@@ -298,36 +217,13 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 	}
 }
 
-// calculateIncrement 根据店铺配置的限制类型计算增量
+// calculateIncrement 委托给 validation.EstimateListingIncrement，发布后 SheinResponse 已填充，可得精确值。
 func (h *SavePublishResultHandler) calculateIncrement(ctx *shein.TaskContext) int64 {
-	// 检查SheinResponse是否存在
 	if ctx.SheinResponse == nil {
 		h.logger.Warn("SheinResponse为空，无法计算增量")
 		return 0
 	}
-
-	switch ctx.StoreInfo.DailyLimitType {
-	case "SPU":
-		// SPU级别：每个产品算1个
-		return 1
-	case "SKC":
-		// SKC级别：按SKC数量计算
-		skcCount := int64(len(ctx.SheinResponse.Info.SKCList))
-		h.logger.Debugf("SKC计数: %d", skcCount)
-		return skcCount
-	case "SKU":
-		// SKU级别：按所有SKU数量计算
-		var skuCount int64
-		for _, skc := range ctx.SheinResponse.Info.SKCList {
-			skuCount += int64(len(skc.SKUList))
-		}
-		h.logger.Debugf("SKU计数: %d", skuCount)
-		return skuCount
-	default:
-		// 默认按SPU计算
-		h.logger.Warnf("未知的限制类型: %s，默认按SPU计算", ctx.StoreInfo.DailyLimitType)
-		return 1
-	}
+	return validation.EstimateListingIncrement(ctx)
 }
 
 // pauseShopWithCacheCleanup 暂停店铺并清理相关缓存

@@ -2,10 +2,9 @@
 
 import (
 	"task-processor/internal/core/logger"
-	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/product/attribute/sale"
-
 )
 
 // AttributeClassifier 属性分类器
@@ -23,7 +22,7 @@ func NewAttributeClassifier(builder *AttributeBuilder) *AttributeClassifier {
 }
 
 // ClassifyAndBuildAttribute 分类并构建属性
-func (c *AttributeClassifier) ClassifyAndBuildAttribute(attr attribute.AttributeInfo, attributeInfo *shein.BuildAttributeInfo) {
+func (c *AttributeClassifier) ClassifyAndBuildAttribute(attr attribute.AttributeInfo, attributeInfo *sheinattr.BuildAttributeInfo) {
 	// 检查级联依赖关系
 	if attr.CascadeAttributeID != 0 {
 		logger.GetGlobalLogger("shein/product").Infof("属性ID %d 存在级联依赖关系，依赖于: %d", attr.AttributeID, attr.CascadeAttributeID)

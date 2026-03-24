@@ -1,14 +1,14 @@
 ﻿package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
-	"task-processor/internal/pkg/types"
-	"task-processor/internal/shein"
 
+	"task-processor/internal/core/logger"
+	"task-processor/internal/pkg/types"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // parseFloat 安全地解析浮点数
@@ -33,7 +33,7 @@ func parseFloat(str string) float64 {
 }
 
 // convertMillimetersToCentimeters 将毫米转换为厘米
-func convertMillimetersToCentimeters(variant *shein.Variant) {
+func convertMillimetersToCentimeters(variant *sheinattr.Variant) {
 	if length := parseFloat(variant.Length.String()); length > 0 {
 		variant.Length = types.FlexibleString(fmt.Sprintf("%.1f", length/10))
 	}
@@ -47,7 +47,7 @@ func convertMillimetersToCentimeters(variant *shein.Variant) {
 }
 
 // convertMetersToCentimeters 将米转换为厘米
-func convertMetersToCentimeters(variant *shein.Variant) {
+func convertMetersToCentimeters(variant *sheinattr.Variant) {
 	if length := parseFloat(variant.Length.String()); length > 0 {
 		variant.Length = types.FlexibleString(fmt.Sprintf("%.1f", length*100))
 	}
@@ -61,7 +61,7 @@ func convertMetersToCentimeters(variant *shein.Variant) {
 }
 
 // convertInchesToCentimeters 将英寸转换为厘米 (1 inch = 2.54 cm)
-func convertInchesToCentimeters(variant *shein.Variant) {
+func convertInchesToCentimeters(variant *sheinattr.Variant) {
 	if length := parseFloat(variant.Length.String()); length > 0 {
 		variant.Length = types.FlexibleString(fmt.Sprintf("%.1f", length*2.54))
 	}
@@ -76,7 +76,7 @@ func convertInchesToCentimeters(variant *shein.Variant) {
 }
 
 // convertFeetToCentimeters 将英尺转换为厘米 (1 ft = 30.48 cm)
-func convertFeetToCentimeters(variant *shein.Variant) {
+func convertFeetToCentimeters(variant *sheinattr.Variant) {
 	if length := parseFloat(variant.Length.String()); length > 0 {
 		variant.Length = types.FlexibleString(fmt.Sprintf("%.1f", length*30.48))
 	}

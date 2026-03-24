@@ -1,14 +1,15 @@
-// Package content 提供SHEIN平台的敏感词验证功能
+﻿// Package content 提供SHEIN平台的敏感词验证功能
 package content
 
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/shein"
+
+	sheinctx "task-processor/internal/shein/context"
 )
 
 // extractSensitiveWordsFromValidation 从验证结果中提取敏感词
-func (s *SensitiveWordService) extractSensitiveWordsFromValidation(results []shein.PreValidResult) []string {
+func (s *SensitiveWordService) extractSensitiveWordsFromValidation(results []sheinctx.PreValidResult) []string {
 	var sensitiveWords []string
 
 	for _, result := range results {

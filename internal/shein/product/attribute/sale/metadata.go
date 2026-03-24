@@ -5,7 +5,8 @@ import (
 	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/model"
-	shein "task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/api/attribute"
 
 )
@@ -23,14 +24,14 @@ func NewSaleAttributeMetadataBuilder() *SaleAttributeMetadataBuilder {
 }
 
 // BuildAttributeMetadata 构建属性元数据
-func (b *SaleAttributeMetadataBuilder) BuildAttributeMetadata(ctx *shein.TaskContext, importanceCalc *shein.AttributeImportanceCalculator) []shein.AttributeMetadata {
-	var attributeMetadata []shein.AttributeMetadata
+func (b *SaleAttributeMetadataBuilder) BuildAttributeMetadata(ctx *sheinctx.TaskContext, importanceCalc *sheinattr.AttributeImportanceCalculator) []sheinattr.AttributeMetadata {
+	var attributeMetadata []sheinattr.AttributeMetadata
 	isSingleVariant := ctx.Variants == nil || len(*ctx.Variants) == 0
 
 	for _, saleAttr := range ctx.BuildAttributeData.SaleAttributeData {
-		metadata := shein.AttributeMetadata{
+		metadata := sheinattr.AttributeMetadata{
 			AttrID:    saleAttr.AttrID,
-			AttrValue: append([]shein.GenerateAttributeValue{}, saleAttr.AttrValue...),
+			AttrValue: append([]sheinattr.GenerateAttributeValue{}, saleAttr.AttrValue...),
 			Required:  saleAttr.Required,
 			Type:      saleAttr.Type,
 		}
@@ -95,7 +96,7 @@ func (b *SaleAttributeMetadataBuilder) findMappedName(attrID int, attributeTempl
 
 // BuildAttributeNameMappings 构建属性名称映射
 func (b *SaleAttributeMetadataBuilder) BuildAttributeNameMappings(
-	attributeData shein.BuildAttributeInfo,
+	attributeData sheinattr.BuildAttributeInfo,
 	attributeTemplates *attribute.AttributeTemplateInfo,
 ) map[int]string {
 	mappings := make(map[int]string)
@@ -111,10 +112,10 @@ func (b *SaleAttributeMetadataBuilder) BuildAttributeNameMappings(
 
 // filterAttributeValuesByActualUsage 根据实际变体值过滤属性候选列表
 func (b *SaleAttributeMetadataBuilder) filterAttributeValuesByActualUsage(
-	candidateValues []shein.GenerateAttributeValue,
+	candidateValues []sheinattr.GenerateAttributeValue,
 	variationsValues []model.VariationValue,
 	attributeName string,
-) []shein.GenerateAttributeValue {
+) []sheinattr.GenerateAttributeValue {
 	// 从变体数据中提取实际使用的属性值
 	actualValues := b.valueFilter.ExtractActualValuesFromVariations(
 		variationsValues,
@@ -132,7 +133,7 @@ func (b *SaleAttributeMetadataBuilder) filterAttributeValuesByActualUsage(
 }
 
 // CalculateImportanceForSaleAttribute 为销售属性计算重要性（保持原有业务逻辑）
-func CalculateImportanceForSaleAttribute(calc *shein.AttributeImportanceCalculator, attribute *attribute.AttributeInfo) int {
+func CalculateImportanceForSaleAttribute(calc *sheinattr.AttributeImportanceCalculator, attribute *attribute.AttributeInfo) int {
 	importance := 0
 	if len(attribute.AttributeRemarkList) > 0 {
 		importance += calc.Rules.RemarkListScore
@@ -151,3 +152,5 @@ func CalculateImportanceForSaleAttribute(calc *shein.AttributeImportanceCalculat
 	}
 	return importance
 }
+
+

@@ -2,10 +2,10 @@
 package variant
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
-	"task-processor/internal/shein"
 
+	"task-processor/internal/core/logger"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // VariantCompositeMatcher 变体组合值匹配器
@@ -21,7 +21,7 @@ func NewVariantCompositeMatcher(utils *VariantMatcherUtils) *VariantCompositeMat
 }
 
 // FindCompositeMatches 查找组合值匹配的变体
-func (m *VariantCompositeMatcher) FindCompositeMatches(variants []shein.Variant, attrNames []string, targetValueNorm, targetValue string) []shein.Variant {
+func (m *VariantCompositeMatcher) FindCompositeMatches(variants []sheinattr.Variant, attrNames []string, targetValueNorm, targetValue string) []sheinattr.Variant {
 	return findMatchesWithFunc(variants, attrNames, targetValueNorm, targetValue, "组合值", m.matchesCompositeValue)
 }
 

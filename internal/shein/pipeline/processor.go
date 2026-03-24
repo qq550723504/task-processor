@@ -12,7 +12,6 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	types "task-processor/internal/model"
-	commonPipeline "task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein/aicache"
 
@@ -27,12 +26,12 @@ type amazonCrawler interface {
 
 // SheinProcessor SHEIN任务处理器
 type SheinProcessor struct {
-	*processor.BaseProcessor                         // 继承基础处理器
-	amazonProcessor          amazonCrawler           // SHEIN特定：共享的Amazon爬虫（接口）
-	rabbitmqClient           *rabbitmq.Client        // RabbitMQ客户端（用于分布式爬虫）
-	taskHandler              *TaskHandler            // SHEIN特定：任务处理器
-	pipeline                 commonPipeline.Pipeline // SHEIN特定：处理管道
-	aiCache                  *aicache.Cache          // AI 结果持久化缓存（跨任务共享）
+	*processor.BaseProcessor                  // 继承基础处理器
+	amazonProcessor          amazonCrawler    // SHEIN特定：共享的Amazon爬虫（接口）
+	rabbitmqClient           *rabbitmq.Client // RabbitMQ客户端（用于分布式爬虫）
+	taskHandler              *TaskHandler     // SHEIN特定：任务处理器
+	pipeline                 *Pipeline        // SHEIN特定：处理管道
+	aiCache                  *aicache.Cache   // AI 结果持久化缓存（跨任务共享）
 }
 
 // NewSheinProcessor 创建SHEIN处理器（参考Temu实现）
@@ -97,23 +96,9 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	return p, nil
 }
 
-// buildPipeline 构建管道（统一方法，参考TEMU）
-func (p *SheinProcessor) buildPipeline() commonPipeline.Pipeline {
-	// 使用现有的管道创建函数
-	sheinPipeline := CreateTaskProcessingPipeline(p, p.GetConfig())
-
-	// 将 SHEIN 特定的管道转换为通用管道
-	// 这里需要适配器模式，但为了快速修复，我们直接返回一个新的通用管道
-	pipeline := commonPipeline.NewPipeline("SHEIN产品处理管道")
-
-	// 将 SHEIN 的处理器适配到通用管道
-	for _, handler := range sheinPipeline.Handlers() {
-		// 创建适配器包装 SHEIN 处理器
-		adapter := NewSheinHandlerAdapter(handler)
-		pipeline.AddHandler(adapter)
-	}
-
-	return pipeline
+// buildPipeline 构建 SHEIN 处理管道，直接返回 shein 专用管道
+func (p *SheinProcessor) buildPipeline() *Pipeline {
+	return CreateTaskProcessingPipeline(p, p.GetConfig())
 }
 
 // Start 启动任务处理器

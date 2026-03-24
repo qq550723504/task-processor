@@ -1,11 +1,10 @@
 ﻿package validation
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/timex"
 	"task-processor/internal/shein"
-
 )
 
 // CheckDailyLimitHandler 检查每日上架限制处理器（在发布前检查）
@@ -96,53 +95,68 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 
 // calculateIncrement 根据店铺配置的限制类型计算增量
 func (h *CheckDailyLimitHandler) calculateIncrement(ctx *shein.TaskContext) int64 {
-	// 在发布前，我们还没有 SheinResponse，所以需要根据原始数据估算
+	return EstimateListingIncrement(ctx)
+}
+
+// EstimateListingIncrement 估算本次上架会增加的计数。
+// 发布前调用时依赖 AmazonProduct/Variants 估算；发布后若 SheinResponse 已填充则使用精确值。
+func EstimateListingIncrement(ctx *shein.TaskContext) int64 {
+	if ctx.StoreInfo == nil {
+		return 1
+	}
+	log := logger.GetGlobalLogger("shein/validation")
 
 	switch ctx.StoreInfo.DailyLimitType {
 	case "SPU":
-		// SPU级别：每个产品算1个
 		return 1
+
 	case "SKC":
-		// SKC级别：根据主产品的颜色规格数量计算
-		if ctx.AmazonProduct != nil && ctx.AmazonProduct.VariationsValues != nil {
-			// 计算颜色规格的数量（通常是第一个变体维度）
+		// 发布后：优先使用 SheinResponse 精确值
+		if ctx.SheinResponse != nil && len(ctx.SheinResponse.Info.SKCList) > 0 {
+			return int64(len(ctx.SheinResponse.Info.SKCList))
+		}
+		// 发布前：从 VariationsValues 中找颜色维度估算
+		if ctx.AmazonProduct != nil {
 			for _, variation := range ctx.AmazonProduct.VariationsValues {
-				// 查找颜色相关的变体（Color, Colour, Style等）
-				variantName := variation.VariantName
-				if variantName == "Color" || variantName == "Colour" ||
-					variantName == "Style" || variantName == "Color Name" {
-					skcCount := int64(len(variation.Values))
-					logger.GetGlobalLogger("shein/validation").Debugf("SKC计数: 找到颜色规格 %s，数量=%d", variantName, skcCount)
-					return skcCount
+				name := variation.VariantName
+				if name == "Color" || name == "Colour" || name == "Style" || name == "Color Name" {
+					count := int64(len(variation.Values))
+					log.Debugf("SKC计数: 找到颜色规格 %s，数量=%d", name, count)
+					return count
 				}
 			}
 		}
-		// 如果没有变体信息，检查是否有变体列表
 		if ctx.Variants != nil && len(*ctx.Variants) > 0 {
 			return int64(len(*ctx.Variants))
 		}
-		// 如果都没有，至少算1个
 		return 1
+
 	case "SKU":
-		// SKU级别：需要根据所有SKU数量估算
-		// SKU级别：根据 Variations 数组的长度计算
-		// Variations 包含了所有实际的变体（每个变体对应一个SKU）
+		// 发布后：优先使用 SheinResponse 精确值
+		if ctx.SheinResponse != nil {
+			var total int64
+			for _, skc := range ctx.SheinResponse.Info.SKCList {
+				total += int64(len(skc.SKUList))
+			}
+			if total > 0 {
+				return total
+			}
+		}
+		// 发布前：从 Variations 或 Variants 估算
 		if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Variations) > 0 {
-			skuCount := int64(len(ctx.AmazonProduct.Variations))
-			logger.GetGlobalLogger("shein/validation").Debugf("SKU计数: 根据Variations数组计算，数量=%d", skuCount)
-			return skuCount
+			count := int64(len(ctx.AmazonProduct.Variations))
+			log.Debugf("SKU计数: 根据Variations数组计算，数量=%d", count)
+			return count
 		}
-		// 如果没有 Variations，使用 Variants 列表
 		if ctx.Variants != nil && len(*ctx.Variants) > 0 {
-			skuCount := int64(len(*ctx.Variants))
-			logger.GetGlobalLogger("shein/validation").Debugf("SKU计数: 根据Variants列表计算，数量=%d", skuCount)
-			return skuCount
+			count := int64(len(*ctx.Variants))
+			log.Debugf("SKU计数: 根据Variants列表计算，数量=%d", count)
+			return count
 		}
-		// 如果都没有，至少算1个
 		return 1
+
 	default:
-		// 默认按SPU计算
-		logger.GetGlobalLogger("shein/validation").Warnf("未知的限制类型: %s，默认按SPU计算", ctx.StoreInfo.DailyLimitType)
+		log.Warnf("未知的限制类型: %s，默认按SPU计算", ctx.StoreInfo.DailyLimitType)
 		return 1
 	}
 }

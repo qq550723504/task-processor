@@ -7,6 +7,7 @@ import (
 	"strings"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/product/variant"
@@ -182,7 +183,7 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein.TaskContext, req she
 
 	// 第二步：处理次要属性并建立复合键到属性值的映射
 	processedSecondaryValues := make(map[string]bool)
-	variantInfoMap := make(map[string]shein.VariantInfo) // 使用复合键: "ASIN:valueID"
+	variantInfoMap := make(map[string]sheinattr.VariantInfo) // 使用复合键: "ASIN:valueID"
 	usedValueIDs := make(map[int]bool)                   // 跟踪已使用的属性值ID，防止重复
 
 	for _, attr := range req.Strategy.SecondaryAttribute.AttrValue {
@@ -220,7 +221,7 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein.TaskContext, req she
 			// 使用复合键 "ASIN:valueID" 确保同一ASIN的不同属性值都能创建SKU
 			compositeKey := fmt.Sprintf("%s:%d", variant.ASIN, currentValueID)
 			if _, exists := variantInfoMap[compositeKey]; !exists {
-				variantInfoMap[compositeKey] = shein.VariantInfo{
+				variantInfoMap[compositeKey] = sheinattr.VariantInfo{
 					Variant:   variant,
 					AttrID:    req.Strategy.SecondaryAttribute.AttrID,
 					ValueID:   currentValueID,
@@ -241,7 +242,7 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein.TaskContext, req she
 }
 
 // buildSKUListForMultipleVariants 为多个变体构建SKU列表
-func (p *SKUStrategyProcessor) buildSKUListForMultipleVariants(ctx *shein.TaskContext, variantInfoMap map[string]shein.VariantInfo, req shein.SKUBuildRequest) ([]product.SKU, error) {
+func (p *SKUStrategyProcessor) buildSKUListForMultipleVariants(ctx *shein.TaskContext, variantInfoMap map[string]sheinattr.VariantInfo, req shein.SKUBuildRequest) ([]product.SKU, error) {
 	// 结果列表
 	var skuList []product.SKU
 	usedAttributeValueIDs := make(map[int]bool) // 跟踪已使用的属性值ID，防止重复

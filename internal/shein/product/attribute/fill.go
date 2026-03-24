@@ -3,7 +3,7 @@
 import (
 	"task-processor/internal/core/logger"
 	"fmt"
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
 
@@ -24,7 +24,7 @@ func (h *FillAttributeHandler) Name() string {
 }
 
 // Handle 执行填充属性处理
-func (h *FillAttributeHandler) Handle(ctx *shein.TaskContext) error {
+func (h *FillAttributeHandler) Handle(ctx *sheinctx.TaskContext) error {
 	// 检查是否已获取生成的属性数据
 	if ctx.GenerateAttribute == nil {
 		return fmt.Errorf("生成的属性数据未获取，请先执行AI属性选择步骤")
@@ -44,7 +44,7 @@ func (h *FillAttributeHandler) Handle(ctx *shein.TaskContext) error {
 }
 
 // fillProductAttributes 填充产品属性
-func (h *FillAttributeHandler) fillProductAttributes(ctx *shein.TaskContext) {
+func (h *FillAttributeHandler) fillProductAttributes(ctx *sheinctx.TaskContext) {
 	productAttributeList := []product.ProductAttribute{}
 
 	// 定义需要跳过非必填的特殊属性ID列表

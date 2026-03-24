@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"strings"
 	"task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/store"
@@ -124,7 +125,7 @@ func (c *SKUCreator) CreateSKU(ctx *shein.TaskContext, params shein.SKUCreationP
 }
 
 // BuildSaleAttributeListForSingleVariant 为单变体构建销售属性列表
-func (c *SKUCreator) BuildSaleAttributeListForSingleVariant(ctx *shein.TaskContext, variant shein.Variant, strategy shein.AttributeStrategy) []product.SaleAttribute {
+func (c *SKUCreator) BuildSaleAttributeListForSingleVariant(ctx *shein.TaskContext, variant shein.Variant, strategy sheinattr.AttributeStrategy) []product.SaleAttribute {
 	var saleAttributeList []product.SaleAttribute
 
 	// 尝试从变体属性中获取次要属性值

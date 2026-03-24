@@ -2,29 +2,31 @@
 package publish
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
-
 )
 
 // PublishProductHandler 发布产品处理器
 type PublishProductHandler struct {
-	validator    *PublishProductValidator
-	errorHandler *PublishProductErrorHandler
-	saver        *PublishProductSaver
-	checker      *PublishProductChecker
+	validator     *PublishProductValidator
+	errorHandler  *PublishProductErrorHandler
+	saver         *PublishProductSaver
+	checker       *PublishProductChecker
+	debugSaveJSON bool
 }
 
-// NewPublishProductHandler 创建新的发布产品处理器
-func NewPublishProductHandler() *PublishProductHandler {
+// NewPublishProductHandler 创建新的发布产品处理器。
+// debugSaveJSON 为 true 时，发布前将产品数据保存为 JSON 文件（仅用于调试）。
+func NewPublishProductHandler(debugSaveJSON bool) *PublishProductHandler {
 	return &PublishProductHandler{
-		validator:    NewPublishProductValidator(),
-		errorHandler: NewPublishProductErrorHandler(),
-		saver:        NewPublishProductSaver(),
-		checker:      NewPublishProductChecker(),
+		validator:     NewPublishProductValidator(),
+		errorHandler:  NewPublishProductErrorHandler(),
+		saver:         NewPublishProductSaver(),
+		checker:       NewPublishProductChecker(),
+		debugSaveJSON: debugSaveJSON,
 	}
 }
 
@@ -46,39 +48,13 @@ func (h *PublishProductHandler) Handle(ctx *shein.TaskContext) error {
 
 	if err := h.validator.PreValidateProductData(ctx); err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("❌ 发布前预验证失败: %v", err)
-
-		// 验证失败时保存产品数据到JSON文件用于调试
-		if ctx.Task != nil && ctx.ProductData != nil {
-			taskID := fmt.Sprintf("%d", ctx.Task.ID)
-			if jsonData, jsonErr := h.marshalWithoutHTMLEscape(ctx.ProductData); jsonErr == nil {
-				filename := fmt.Sprintf("%s_%s_validation_failed.json", ctx.Task.ProductID, taskID)
-				if saveErr := h.saveJSONToFileWithName(filename, jsonData); saveErr != nil {
-					logger.GetGlobalLogger("shein/publish").Errorf("保存验证失败JSON文件失败: %v", saveErr)
-				} else {
-					logger.GetGlobalLogger("shein/publish").Infof("📄 验证失败时产品数据已保存: %s", filename)
-				}
-			} else {
-				logger.GetGlobalLogger("shein/publish").Errorf("序列化验证失败产品数据失败: %v", jsonErr)
-			}
-		}
-
+		h.maybeDebugSave(ctx, "validation_failed")
 		// 预验证失败通常是数据问题，可重试（可能通过重新处理解决）
 		return shein.NewRetryableError("发布前预验证失败", err)
 	}
 
 	logger.GetGlobalLogger("shein/publish").Info("✅ 发布前预验证通过")
-
-	// 保存产品数据到JSON文件用于调试
-	if ctx.Task != nil && ctx.ProductData != nil {
-		taskID := fmt.Sprintf("%d", ctx.Task.ID)
-		if jsonData, jsonErr := h.marshalWithoutHTMLEscape(ctx.ProductData); jsonErr == nil {
-			if saveErr := h.saveJSONToFile(taskID, jsonData, ctx.Task.ProductID); saveErr != nil {
-				logger.GetGlobalLogger("shein/publish").Errorf("保存JSON文件失败: %v", saveErr)
-			}
-		} else {
-			logger.GetGlobalLogger("shein/publish").Errorf("序列化产品数据失败: %v", jsonErr)
-		}
-	}
+	h.maybeDebugSave(ctx, "")
 
 	// 发布产品
 	response, err := h.publishProduct(ctx)
@@ -92,11 +68,13 @@ func (h *PublishProductHandler) Handle(ctx *shein.TaskContext) error {
 
 // publishProduct 统一的产品发布方法
 func (h *PublishProductHandler) publishProduct(ctx *shein.TaskContext) (*product.SheinResponse, error) {
+	return doPublishProduct(ctx)
+}
+
+// doPublishProduct 包级发布函数，供 error_handler 等复用，避免零值实例化 PublishProductHandler。
+func doPublishProduct(ctx *shein.TaskContext) (*product.SheinResponse, error) {
 	response, _, err := ctx.ProductAPI.PublishProduct(ctx.ProductData)
-
-	// 保存产品发布结果
 	ctx.SheinResponse = response
-
 	return response, err
 }
 
@@ -118,18 +96,27 @@ func (h *PublishProductHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) 
 	return jsonx.MarshalWithoutHTMLEscape(v)
 }
 
-// saveJSONToFile 保存JSON数据到文件
-func (h *PublishProductHandler) saveJSONToFile(taskID string, jsonData []byte, prefix string) error {
-	// 创建文件名
-	filename := fmt.Sprintf("%s_%s.json", prefix, taskID)
-	return h.saveJSONToFileWithName(filename, jsonData)
-}
-
-// saveJSONToFileWithName 使用指定文件名保存JSON数据到文件
-func (h *PublishProductHandler) saveJSONToFileWithName(filename string, jsonData []byte) error {
-	if err := jsonx.SaveToFile(filename, jsonData); err != nil {
-		return err
+// maybeDebugSave 仅在 debugSaveJSON 开启时将产品数据保存为 JSON 文件。
+// suffix 非空时追加到文件名中（如 "validation_failed"）。
+func (h *PublishProductHandler) maybeDebugSave(ctx *shein.TaskContext, suffix string) {
+	if !h.debugSaveJSON || ctx.Task == nil || ctx.ProductData == nil {
+		return
 	}
-	logger.GetGlobalLogger("shein/publish").Infof("JSON数据已保存到文件: logs/%s", filename)
-	return nil
+	taskID := fmt.Sprintf("%d", ctx.Task.ID)
+	var filename string
+	if suffix != "" {
+		filename = fmt.Sprintf("%s_%s_%s.json", ctx.Task.ProductID, taskID, suffix)
+	} else {
+		filename = fmt.Sprintf("%s_%s.json", ctx.Task.ProductID, taskID)
+	}
+	jsonData, err := jsonx.MarshalWithoutHTMLEscape(ctx.ProductData)
+	if err != nil {
+		logger.GetGlobalLogger("shein/publish").Errorf("序列化产品数据失败: %v", err)
+		return
+	}
+	if err := jsonx.SaveToFile(filename, jsonData); err != nil {
+		logger.GetGlobalLogger("shein/publish").Errorf("保存调试JSON文件失败: %v", err)
+		return
+	}
+	logger.GetGlobalLogger("shein/publish").Infof("📄 调试JSON已保存: logs/%s", filename)
 }

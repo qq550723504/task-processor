@@ -4,7 +4,7 @@ import (
 	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
 
 )
 
@@ -23,7 +23,7 @@ func (h *AttributeTemplateHandler) Name() string {
 }
 
 // Handle 执行获取属性模板处理
-func (h *AttributeTemplateHandler) Handle(ctx *shein.TaskContext) error {
+func (h *AttributeTemplateHandler) Handle(ctx *sheinctx.TaskContext) error {
 
 	categoryID := ctx.ProductData.CategoryID
 	if categoryID == 0 {

@@ -2,10 +2,10 @@
 package variant
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
-	"task-processor/internal/shein"
 
+	"task-processor/internal/core/logger"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // VariantExactMatcher 变体精确匹配器
@@ -17,8 +17,8 @@ func NewVariantExactMatcher() *VariantExactMatcher {
 }
 
 // FindExactMatches 查找精确匹配的变体
-func (m *VariantExactMatcher) FindExactMatches(variants []shein.Variant, attrNames []string, targetValueNorm string) []shein.Variant {
-	var exactMatches []shein.Variant
+func (m *VariantExactMatcher) FindExactMatches(variants []sheinattr.Variant, attrNames []string, targetValueNorm string) []sheinattr.Variant {
+	var exactMatches []sheinattr.Variant
 
 	for variantIndex, variant := range variants {
 		matched_in_variant := false

@@ -1,4 +1,4 @@
-// Package attribute 提供SHEIN平台属性选择提示词生成功能
+﻿// Package attribute 提供SHEIN平台属性选择提示词生成功能
 package attribute
 
 import (
@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"task-processor/internal/prompt"
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/api/attribute"
 )
 
@@ -31,7 +31,7 @@ func (g *AttributePromptGenerator) GenerateDefaultSystemPrompt() string {
 }
 
 // GenerateUserPrompt 生成用户提示词
-func (g *AttributePromptGenerator) GenerateUserPrompt(ctx *shein.TaskContext, enhancedAttributeData []shein.EnhancedGenerateAttribute) string {
+func (g *AttributePromptGenerator) GenerateUserPrompt(ctx *sheinctx.TaskContext, enhancedAttributeData []EnhancedGenerateAttribute) string {
 	return g.generateDynamicUserPrompt(ctx, enhancedAttributeData)
 }
 
@@ -191,11 +191,11 @@ func (g *AttributePromptGenerator) generateDynamicAttributeSystemPrompt(attribut
 }
 
 // generateDynamicUserPrompt 生成包含属性重要性分析的用户提示词
-func (g *AttributePromptGenerator) generateDynamicUserPrompt(ctx *shein.TaskContext, enhancedAttributeData []shein.EnhancedGenerateAttribute) string {
+func (g *AttributePromptGenerator) generateDynamicUserPrompt(ctx *sheinctx.TaskContext, enhancedAttributeData []EnhancedGenerateAttribute) string {
 	// 按重要性分组属性
-	var criticalAttrs []shein.EnhancedGenerateAttribute
-	var importantAttrs []shein.EnhancedGenerateAttribute
-	var optionalAttrs []shein.EnhancedGenerateAttribute
+	var criticalAttrs []EnhancedGenerateAttribute
+	var importantAttrs []EnhancedGenerateAttribute
+	var optionalAttrs []EnhancedGenerateAttribute
 
 	for _, attr := range enhancedAttributeData {
 		if attr.Required {
@@ -344,7 +344,7 @@ func (g *AttributePromptGenerator) identifyKeyAttributes(attributeTemplates *att
 }
 
 // formatAttributeList 格式化属性列表用于显示
-func (g *AttributePromptGenerator) formatAttributeList(attributes []shein.EnhancedGenerateAttribute) string {
+func (g *AttributePromptGenerator) formatAttributeList(attributes []EnhancedGenerateAttribute) string {
 	if len(attributes) == 0 {
 		return "无"
 	}

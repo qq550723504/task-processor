@@ -4,7 +4,8 @@ package sale
 import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
-	shein "task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
+	sheinattr "task-processor/internal/shein/product/attribute"
 
 )
 
@@ -17,7 +18,7 @@ func NewSaleAttributeVariantFilter() *SaleAttributeVariantFilter {
 }
 
 // FilterVariantsByRules 在生成销售属性之前过滤变体
-func (f *SaleAttributeVariantFilter) FilterVariantsByRules(ctx *shein.TaskContext) {
+func (f *SaleAttributeVariantFilter) FilterVariantsByRules(ctx *sheinctx.TaskContext) {
 	if ctx.Variants == nil {
 		return
 	}
@@ -37,11 +38,11 @@ func (f *SaleAttributeVariantFilter) FilterVariantsByRules(ctx *shein.TaskContex
 }
 
 // FilterVariantsByRulesAfterGeneration 在生成销售属性之后过滤变体
-func (f *SaleAttributeVariantFilter) FilterVariantsByRulesAfterGeneration(ctx *shein.TaskContext, saleAttributeData *shein.ResultSaleAttribute) {
+func (f *SaleAttributeVariantFilter) FilterVariantsByRulesAfterGeneration(ctx *sheinctx.TaskContext, saleAttributeData *sheinattr.ResultSaleAttribute) {
 	if saleAttributeData == nil {
 		return
 	}
-	filteredVariants := make([]shein.Variant, 0, len(saleAttributeData.Variants))
+	filteredVariants := make([]sheinattr.Variant, 0, len(saleAttributeData.Variants))
 	filteredOutCount := 0
 	for _, variant := range saleAttributeData.Variants {
 		filterInfo := ctx.GetVariantFilterInfo(variant.ASIN)
@@ -55,3 +56,5 @@ func (f *SaleAttributeVariantFilter) FilterVariantsByRulesAfterGeneration(ctx *s
 	saleAttributeData.Variants = filteredVariants
 	logger.GetGlobalLogger("shein/product").Infof("在生成销售属性之后，已过滤掉 %d 个不符合筛选规则的变体，剩余 %d 个变体\n", filteredOutCount, len(filteredVariants))
 }
+
+

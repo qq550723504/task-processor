@@ -1,11 +1,12 @@
-// Package content 提供SHEIN平台的敏感词文本处理功能
+﻿// Package content 提供SHEIN平台的敏感词文本处理功能
 package content
 
 import (
 	"regexp"
 	"strings"
-	"task-processor/internal/shein"
+
 	"task-processor/internal/shein/api/product"
+	sheinctx "task-processor/internal/shein/context"
 )
 
 // removeSensitiveWords 移除文本中的敏感词
@@ -29,7 +30,7 @@ func (s *SensitiveWordService) removeSensitiveWords(text string) string {
 }
 
 // removeSensitiveWordsAndBrandsWithContext 移除文本中的敏感词、Amazon品牌词和上下文中的品牌词
-func (s *SensitiveWordService) removeSensitiveWordsAndBrandsWithContext(ctx *shein.TaskContext, text string) string {
+func (s *SensitiveWordService) removeSensitiveWordsAndBrandsWithContext(ctx *sheinctx.TaskContext, text string) string {
 	if text == "" {
 		return text
 	}
@@ -66,7 +67,7 @@ func (s *SensitiveWordService) processMultiLanguageNames(nameList []product.Lang
 }
 
 // processMultiLanguageNamesWithBrandsAndContext 处理多语言名称（包含Amazon品牌词和上下文品牌词移除）
-func (s *SensitiveWordService) processMultiLanguageNamesWithBrandsAndContext(ctx *shein.TaskContext, nameList []product.LanguageContent) int {
+func (s *SensitiveWordService) processMultiLanguageNamesWithBrandsAndContext(ctx *sheinctx.TaskContext, nameList []product.LanguageContent) int {
 	if nameList == nil {
 		return 0
 	}
@@ -98,7 +99,7 @@ func (s *SensitiveWordService) processMultiLanguageDescs(descList []product.Lang
 }
 
 // processSKCData 处理SKC数据
-func (s *SensitiveWordService) processSKCData(ctx *shein.TaskContext, skcList []product.SKC) int {
+func (s *SensitiveWordService) processSKCData(ctx *sheinctx.TaskContext, skcList []product.SKC) int {
 	if skcList == nil {
 		return 0
 	}
@@ -187,7 +188,7 @@ func (s *SensitiveWordService) removeAmazonBrandWords(text string) string {
 }
 
 // removeContextBrandWords 移除上下文中的品牌词（从AmazonProduct.Brand字段）
-func (s *SensitiveWordService) removeContextBrandWords(ctx *shein.TaskContext, text string) string {
+func (s *SensitiveWordService) removeContextBrandWords(ctx *sheinctx.TaskContext, text string) string {
 	if text == "" || ctx == nil || ctx.AmazonProduct == nil {
 		return text
 	}

@@ -1,4 +1,4 @@
-// Package content 提供SHEIN平台的内容优化功能
+﻿// Package content 提供SHEIN平台的内容优化功能
 package content
 
 import (
@@ -250,3 +250,4 @@ func (o *ContentOptimizer) TruncateDescription(description string, maxLength int
 
 	return strings.TrimSpace(truncated)
 }
+

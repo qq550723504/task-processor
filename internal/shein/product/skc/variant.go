@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	api_attribute "task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/product/attribute"
@@ -36,7 +37,7 @@ func NewSKCVariantProcessor(imageProcessor *image.ImageProcessor, attributeMappe
 }
 
 // BuildSingleVariantSKC 构建单变体SKC
-func (p *SKCVariantProcessor) BuildSingleVariantSKC(ctx *shein.TaskContext, strategy shein.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
+func (p *SKCVariantProcessor) BuildSingleVariantSKC(ctx *shein.TaskContext, strategy sheinattr.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
 	logger.GetGlobalLogger("shein/product").Infof("🎯 === 开始单变体SKC构建流程 ===")
 
 	variant := ctx.SaleSpecResult.Variants[0]
@@ -86,7 +87,7 @@ func (p *SKCVariantProcessor) BuildSingleVariantSKC(ctx *shein.TaskContext, stra
 }
 
 // BuildMultiVariantSKCList 构建多变体SKC列表
-func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *shein.TaskContext, strategy shein.AttributeStrategy, variantMatcher *variant.VariantMatcher) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
+func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *shein.TaskContext, strategy sheinattr.AttributeStrategy, variantMatcher *variant.VariantMatcher) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
 	logger.GetGlobalLogger("shein/product").Infof("🔨 === 开始多变体SKC构建流程 ===")
 
 	// 预分配容量
@@ -219,7 +220,7 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(ctx *shein.TaskContext, s
 }
 
 // buildSingleVariantDirect 构建单变体直接SKC
-func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *shein.TaskContext, variant shein.Variant, strategy shein.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
+func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *shein.TaskContext, variant shein.Variant, strategy sheinattr.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {
 	var customAttributeRelations []api_attribute.CustomAttributeRelation
 
 	imageInfo, err := p.imageProcessor.BuildImageInfo(ctx, ctx.AmazonProduct.Images)
@@ -277,7 +278,7 @@ func (p *SKCVariantProcessor) buildSingleVariantDirect(ctx *shein.TaskContext, v
 }
 
 // ensureVariantsHaveRequiredAttributes 确保所有变体都包含必需的主规格和次规格属性
-func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(ctx *shein.TaskContext, strategy *shein.AttributeStrategy) {
+func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(ctx *shein.TaskContext, strategy *sheinattr.AttributeStrategy) {
 	logger.GetGlobalLogger("shein/product").Infof("🔧 === 开始修复变体属性 ===")
 
 	// 获取主规格和次规格的属性名

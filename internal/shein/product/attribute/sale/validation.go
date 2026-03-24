@@ -1,16 +1,16 @@
 ﻿package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
+
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
-	shein "task-processor/internal/shein"
-
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // validateAndFixSaleAttributeData 验证并修复销售属性数据
-func (h *SaleAttributeHandler) validateAndFixSaleAttributeData(data shein.ResultSaleAttribute, productsData []map[string]string) shein.ResultSaleAttribute {
+func (h *SaleAttributeHandler) validateAndFixSaleAttributeData(data sheinattr.ResultSaleAttribute, productsData []map[string]string) sheinattr.ResultSaleAttribute {
 	logger.GetGlobalLogger("shein/product").Info("开始验证和修复AI生成的销售属性数据")
 
 	// 1. 修复属性值ID重复问题
@@ -30,7 +30,7 @@ func (h *SaleAttributeHandler) validateAndFixSaleAttributeData(data shein.Result
 }
 
 // fixAttributeValueIDsWithManager 标记需要映射的属性值ID
-func (h *SaleAttributeHandler) fixAttributeValueIDsWithManager(data shein.ResultSaleAttribute) shein.ResultSaleAttribute {
+func (h *SaleAttributeHandler) fixAttributeValueIDsWithManager(data sheinattr.ResultSaleAttribute) sheinattr.ResultSaleAttribute {
 	logger.GetGlobalLogger("shein/product").Info("标记属性值ID为需要映射状态")
 
 	// 注意：ResultSaleAttribute.SaleAttributes 是 []ResultAttribute 类型
@@ -59,7 +59,7 @@ func (h *SaleAttributeHandler) fixAttributeValueIDsWithManager(data shein.Result
 }
 
 // standardizeDimensionUnits 标准化尺寸单位
-func (h *SaleAttributeHandler) standardizeDimensionUnits(data shein.ResultSaleAttribute) shein.ResultSaleAttribute {
+func (h *SaleAttributeHandler) standardizeDimensionUnits(data sheinattr.ResultSaleAttribute) sheinattr.ResultSaleAttribute {
 	// 定义单位映射表
 	// 注意：SHEIN平台只接受 cm 作为长宽高单位，所有其他单位都需要转换为 cm
 	unitMappings := map[string]string{
@@ -146,7 +146,7 @@ func (h *SaleAttributeHandler) standardizeDimensionUnits(data shein.ResultSaleAt
 }
 
 // validateVariantCompleteness 验证每个ASIN都有对应的变体
-func (h *SaleAttributeHandler) validateVariantCompleteness(data shein.ResultSaleAttribute, products []map[string]string) shein.ResultSaleAttribute {
+func (h *SaleAttributeHandler) validateVariantCompleteness(data sheinattr.ResultSaleAttribute, products []map[string]string) sheinattr.ResultSaleAttribute {
 	productASINs := make(map[string]bool)
 	for _, product := range products {
 		productASINs[product["asin"]] = true
@@ -172,7 +172,7 @@ func (h *SaleAttributeHandler) validateVariantCompleteness(data shein.ResultSale
 }
 
 // validateVariantAttributes 验证变体属性完整性（关键修复）
-func (h *SaleAttributeHandler) validateVariantAttributes(data shein.ResultSaleAttribute, products []map[string]string) shein.ResultSaleAttribute {
+func (h *SaleAttributeHandler) validateVariantAttributes(data sheinattr.ResultSaleAttribute, products []map[string]string) sheinattr.ResultSaleAttribute {
 	logger.GetGlobalLogger("shein/product").Info("🔍 开始验证变体属性完整性...")
 
 	// 构建产品数据映射：ASIN -> 产品属性
@@ -228,7 +228,7 @@ func (h *SaleAttributeHandler) validateVariantAttributes(data shein.ResultSaleAt
 }
 
 // filterValidASINs 过滤有效的ASIN
-func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product, saleAttributeData shein.ResultSaleAttribute) shein.ResultSaleAttribute {
+func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product, saleAttributeData sheinattr.ResultSaleAttribute) sheinattr.ResultSaleAttribute {
 	providedASINs := make(map[string]bool)
 
 	// 如果没有变体，说明是单体产品，不需要过滤
@@ -242,7 +242,7 @@ func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product
 		providedASINs[product.Asin] = true
 	}
 
-	var validVariants []shein.Variant
+	var validVariants []sheinattr.Variant
 	removedCount := 0
 
 	for _, variant := range saleAttributeData.Variants {
@@ -266,7 +266,7 @@ func (h *SaleAttributeHandler) filterValidASINs(variantProducts *[]model.Product
 }
 
 // validateAttributeValueConsistency 验证属性值与原始数据的一致性
-func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct model.Product, data shein.ResultSaleAttribute) shein.ResultSaleAttribute {
+func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct model.Product, data sheinattr.ResultSaleAttribute) sheinattr.ResultSaleAttribute {
 
 	if amazonProduct.VariationsValues == nil {
 		logger.GetGlobalLogger("shein/product").Info("原始产品无变体属性值，跳过一致性验证")

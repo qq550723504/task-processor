@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"task-processor/internal/shein"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/validation"
 
@@ -53,14 +54,14 @@ func (h *BuildAttributeHandler) Handle(ctx *shein.TaskContext) error {
 }
 
 // BuildAttributeData 构建属性数据（智能筛选版本）
-func (h *BuildAttributeHandler) BuildAttributeData(attributeTemplates *attribute.AttributeTemplateInfo) (shein.BuildAttributeInfo, error) {
+func (h *BuildAttributeHandler) BuildAttributeData(attributeTemplates *attribute.AttributeTemplateInfo) (sheinattr.BuildAttributeInfo, error) {
 	if len(attributeTemplates.Data) == 0 {
-		return shein.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
+		return sheinattr.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
 	}
 
-	attributeInfo := shein.BuildAttributeInfo{
-		AttributeData:     []shein.GenerateAttribute{},
-		SaleAttributeData: []shein.GenerateAttribute{},
+	attributeInfo := sheinattr.BuildAttributeInfo{
+		AttributeData:     []sheinattr.GenerateAttribute{},
+		SaleAttributeData: []sheinattr.GenerateAttribute{},
 	}
 
 	// 基于attributeTemplates数据动态判断必填属性
@@ -72,14 +73,14 @@ func (h *BuildAttributeHandler) BuildAttributeData(attributeTemplates *attribute
 }
 
 // BuildAttributeDataWithContext 构建属性数据（带上下文的智能筛选版本）
-func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskContext) (shein.BuildAttributeInfo, error) {
+func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskContext) (sheinattr.BuildAttributeInfo, error) {
 	if ctx.AttributeTemplates == nil || len(ctx.AttributeTemplates.Data) == 0 {
-		return shein.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
+		return sheinattr.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
 	}
 
-	attributeInfo := shein.BuildAttributeInfo{
-		AttributeData:     []shein.GenerateAttribute{},
-		SaleAttributeData: []shein.GenerateAttribute{},
+	attributeInfo := sheinattr.BuildAttributeInfo{
+		AttributeData:     []sheinattr.GenerateAttribute{},
+		SaleAttributeData: []sheinattr.GenerateAttribute{},
 	}
 
 	// 使用智能筛选器筛选相关的销售属性

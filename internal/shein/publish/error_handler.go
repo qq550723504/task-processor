@@ -78,8 +78,7 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *shein.TaskContex
 					}
 
 					// 保存到草稿箱
-					handler := &PublishProductHandler{}
-					handler.SaveDraftProduct(ctx)
+					NewPublishProductHandler(false).SaveDraftProduct(ctx)
 
 					// 产品已保存到草稿箱，不需要再重试
 					return shein.NewNonRetryableError("产品已保存到草稿箱，请手动处理", fmt.Errorf("%+v", response.Info.PreValidResult))
@@ -126,8 +125,7 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *s
 
 	// 重新提交产品
 	logger.GetGlobalLogger("shein/publish").Info("开始执行敏感词替换后的产品重新提交...")
-	handler := &PublishProductHandler{}
-	response, err := handler.publishProduct(ctx)
+	response, err := doPublishProduct(ctx)
 	if err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("敏感词重试失败 - 重新提交产品时发生错误: %v", err)
 		return false
@@ -440,8 +438,7 @@ func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.T
 
 	// 重新提交产品
 	logger.GetGlobalLogger("shein/publish").Info("开始执行数量类型修复后的产品重新提交...")
-	handler := &PublishProductHandler{}
-	response, err := handler.publishProduct(ctx)
+	response, err := doPublishProduct(ctx)
 	if err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("数量类型修复重试失败 - 重新提交产品时发生错误: %v", err)
 		return false

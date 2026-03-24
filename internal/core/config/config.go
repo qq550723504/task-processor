@@ -27,6 +27,13 @@ type Config struct {
 	Database   *DatabaseConfig   `yaml:"database"`
 	Redis      *RedisConfig      `yaml:"redis"`
 	Prompts    PromptsConfig     `yaml:"prompts"`
+	Debug      DebugConfig       `yaml:"debug"`
+}
+
+// DebugConfig 调试功能配置，默认全部关闭，不影响生产流程
+type DebugConfig struct {
+	// SavePublishJSON 为 true 时，发布前将产品数据保存为 JSON 文件（仅用于调试）
+	SavePublishJSON bool `yaml:"save_publish_json"`
 }
 
 // PromptsConfig Prompt 外置功能配置

@@ -2,21 +2,21 @@
 package variant
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
-	"task-processor/internal/shein"
 
+	"task-processor/internal/core/logger"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // findMatchesWithFunc 通用变体匹配外层循环，matchFn 为具体匹配逻辑
 func findMatchesWithFunc(
-	variants []shein.Variant,
+	variants []sheinattr.Variant,
 	attrNames []string,
 	targetValueNorm, targetValue string,
 	matchLabel string,
 	matchFn func(valueNorm, targetNorm string) bool,
-) []shein.Variant {
-	var matches []shein.Variant
+) []sheinattr.Variant {
+	var matches []sheinattr.Variant
 
 	for variantIndex, variant := range variants {
 		matchedInVariant := false

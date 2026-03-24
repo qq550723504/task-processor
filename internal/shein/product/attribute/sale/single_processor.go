@@ -5,7 +5,8 @@ import (
 	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
+	sheinattr "task-processor/internal/shein/product/attribute"
 
 )
 
@@ -37,7 +38,7 @@ func NewSaleAttributeSingleProcessor(handler *SaleAttributeHandler) *SaleAttribu
 //
 // 返回值:
 //   - ResultSaleAttribute: 销售属性结果
-func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext, request *shein.GenerationRequest) shein.ResultSaleAttribute {
+func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *sheinctx.TaskContext, request *sheinattr.GenerationRequest) sheinattr.ResultSaleAttribute {
 	promptGenerator := NewSaleAttributePromptGenerator()
 	systemPrompt := promptGenerator.GenerateSystemPrompt()
 
@@ -63,7 +64,7 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext
 			logger.GetGlobalLogger("shein/product").Errorf("⚠️ 保存调试数据失败: %v", saveErr)
 		}
 
-		return shein.ResultSaleAttribute{}
+		return sheinattr.ResultSaleAttribute{}
 	}
 
 	if len(response.Choices) == 0 {
@@ -75,7 +76,7 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext
 			logger.GetGlobalLogger("shein/product").Errorf("⚠️ 保存调试数据失败: %v", saveErr)
 		}
 
-		return shein.ResultSaleAttribute{}
+		return sheinattr.ResultSaleAttribute{}
 	}
 
 	content := strings.TrimSpace(response.Choices[0].Message.Content)
@@ -110,7 +111,7 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext
 			logger.GetGlobalLogger("shein/product").Errorf("⚠️ 保存修复失败调试数据失败: %v", saveErr)
 		}
 
-		return shein.ResultSaleAttribute{}
+		return sheinattr.ResultSaleAttribute{}
 	}
 
 	// 清理和验证JSON
@@ -127,3 +128,5 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(ctx *shein.TaskContext
 
 	return result
 }
+
+

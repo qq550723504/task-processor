@@ -85,14 +85,12 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	pipeline.AddHandler(store.NewStoreInfoHandler(storeClient))
 	// 重新上架任务处理器
 	//pipeline.AddHandler(modules.NewReListingHandler())
-	// 获取原始数据（支持从Amazon爬虫抓取，使用共享的Amazon处理器）
-	pipeline.AddHandler(productdata.NewRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
+	// 获取并缓存主产品数据（Fetch + Cache 合并为一步；缓存失败仅记录警告，不阻断上架）
+	pipeline.AddHandler(productdata.NewFetchAndCacheProductHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
 	// 早期检查产品是否已上架（避免后续无效处理）
 	pipeline.AddHandler(publish.NewProductExistsCheckHandler())
 	// 验证图片数量（SHEIN要求至少3张：1张主图+2张细节图）
 	pipeline.AddHandler(image.NewImageValidationHandler(3))
-	// 提交原始JSON数据到服务器缓存（使用公共缓存逻辑）
-	pipeline.AddHandler(productdata.NewSubmitRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
 	// 初始化产品数据
 	pipeline.AddHandler(product.NewInitProductDataHandler())
 	// 获取店铺ID
@@ -109,10 +107,8 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	pipeline.AddHandler(validation.NewApplyFilterRuleHandler())
 	// 查询是否有发品记录
 	pipeline.AddHandler(product.NewHasSpuRecordHandler())
-	// 获取所有变体的Json数据（支持从Amazon爬虫抓取，使用共享的Amazon处理器）
-	pipeline.AddHandler(productdata.NewVariantJsonDataHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
-	// 提交变体原始JSON数据到服务器缓存（使用公共缓存逻辑）
-	pipeline.AddHandler(productdata.NewSubmitVariantRawJsonDataHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
+	// 获取并缓存变体数据（Fetch + Cache 合并为一步；缓存失败仅记录警告，不阻断上架）
+	pipeline.AddHandler(productdata.NewFetchAndCacheVariantsHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
 	// 重新应用筛选规则到变体
 	pipeline.AddHandler(validation.NewReapplyFilterRuleHandler())
 	// 检查每日上架限制（在获取变体数据后检查，以便准确计算SKC/SKU数量）
@@ -152,7 +148,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 		pipeline.AddHandler(content.NewSensitiveWordsCleanHandler(sensitiveFilter))
 	}
 	// 发布产品
-	pipeline.AddHandler(publish.NewPublishProductHandler())
+	pipeline.AddHandler(publish.NewPublishProductHandler(cfg.Debug.SavePublishJSON))
 	// 标记变体构建成功
 	pipeline.AddHandler(publish.NewMarkVariantPublishSuccessHandler())
 	// 错误时收集分类限制及敏感词

@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/attribute"
 )
@@ -29,7 +30,7 @@ func (h *SaleAttributeHandler) Name() string {
 }
 
 // Handle 执行生成销售规格处理
-func (h *SaleAttributeHandler) Handle(ctx *shein.TaskContext) error {
+func (h *SaleAttributeHandler) Handle(ctx *sheinctx.TaskContext) error {
 	// 检查是否已获取属性模板
 	if ctx.AttributeTemplates == nil {
 		return fmt.Errorf("属性模板未获取，请先执行获取属性模板步骤")
@@ -49,7 +50,7 @@ func (h *SaleAttributeHandler) Handle(ctx *shein.TaskContext) error {
 }
 
 // generateSaleSpec 生成销售规格
-func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
+func (h *SaleAttributeHandler) generateSaleSpec(ctx *sheinctx.TaskContext) error {
 	logger.GetGlobalLogger("shein/product").Info("🚀 开始生成销售规格")
 
 	// 构造缓存 key：同一父 ASIN + 分类的销售规格可复用
@@ -57,7 +58,7 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 
 	// 查缓存
 	if ctx.AICache != nil {
-		var cached shein.ResultSaleAttribute
+		var cached sheinattr.ResultSaleAttribute
 		if ctx.AICache.Get(aicache.TypeSaleAttr, cacheKey, &cached) {
 			logger.GetGlobalLogger("shein/product").Infof("AI销售规格命中缓存: parentAsin=%s, categoryID=%d", ctx.AmazonProduct.ParentAsin, ctx.ProductData.CategoryID)
 			ctx.SaleSpecResult = &cached
@@ -137,9 +138,9 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *shein.TaskContext) error {
 }
 
 // defaultAttributeConfig 返回默认属性配置
-func (h *SaleAttributeHandler) defaultAttributeConfig() *shein.AttributeConfig {
-	return &shein.AttributeConfig{
-		ImportanceRules: shein.ImportanceRules{
+func (h *SaleAttributeHandler) defaultAttributeConfig() *sheinattr.AttributeConfig {
+	return &sheinattr.AttributeConfig{
+		ImportanceRules: sheinattr.ImportanceRules{
 			RemarkListScore: 100,
 			RequiredScore:   80,
 			SampleScore:     40,
@@ -150,9 +151,9 @@ func (h *SaleAttributeHandler) defaultAttributeConfig() *shein.AttributeConfig {
 }
 
 // newAttributeImportanceCalculator 创建属性重要性计算器
-func (h *SaleAttributeHandler) newAttributeImportanceCalculator(rules *shein.ImportanceRules) *shein.AttributeImportanceCalculator {
+func (h *SaleAttributeHandler) newAttributeImportanceCalculator(rules *sheinattr.ImportanceRules) *sheinattr.AttributeImportanceCalculator {
 	// 使用 model 包提供的带自定义规则的构造函数
-	return shein.NewAttributeImportanceCalculatorWithRules(rules)
+	return sheinattr.NewAttributeImportanceCalculatorWithRules(rules)
 }
 
 // createChatCompletionRequest 创建聊天完成请求
@@ -182,18 +183,18 @@ func (h *SaleAttributeHandler) createChatCompletionRequest(systemPrompt, userPro
 // 以下方法委托给preparationHandler，保持原有业务逻辑
 
 // prepareProductsData 准备产品数据
-func (h *SaleAttributeHandler) prepareProductsData(ctx *shein.TaskContext) []map[string]string {
+func (h *SaleAttributeHandler) prepareProductsData(ctx *sheinctx.TaskContext) []map[string]string {
 	return h.preparationHandler.prepareProductsData(ctx)
 }
 
 // buildAttributeMetadata 构建属性元数据
-func (h *SaleAttributeHandler) buildAttributeMetadata(ctx *shein.TaskContext, importanceCalc *shein.AttributeImportanceCalculator) []shein.AttributeMetadata {
+func (h *SaleAttributeHandler) buildAttributeMetadata(ctx *sheinctx.TaskContext, importanceCalc *sheinattr.AttributeImportanceCalculator) []sheinattr.AttributeMetadata {
 	return h.preparationHandler.buildAttributeMetadata(ctx, importanceCalc)
 }
 
 // buildAttributeNameMappings 构建属性名称映射
 func (h *SaleAttributeHandler) buildAttributeNameMappings(
-	attributeData shein.BuildAttributeInfo,
+	attributeData sheinattr.BuildAttributeInfo,
 	attributeTemplates *attribute.AttributeTemplateInfo,
 ) map[int]string {
 	return h.preparationHandler.buildAttributeNameMappings(attributeData, attributeTemplates)
@@ -201,19 +202,21 @@ func (h *SaleAttributeHandler) buildAttributeNameMappings(
 
 // buildGenerationRequest 构建生成请求
 func (h *SaleAttributeHandler) buildGenerationRequest(
-	ctx *shein.TaskContext,
+	ctx *sheinctx.TaskContext,
 	productsData []map[string]string,
-	attributeMetadata []shein.AttributeMetadata,
-	attributeNameMappings map[int]string) *shein.GenerationRequest {
+	attributeMetadata []sheinattr.AttributeMetadata,
+	attributeNameMappings map[int]string) *sheinattr.GenerationRequest {
 	return h.preparationHandler.buildGenerationRequest(ctx, productsData, attributeMetadata, attributeNameMappings)
 }
 
 // filterVariantsByRules 在生成销售属性之前过滤变体
-func (h *SaleAttributeHandler) filterVariantsByRules(ctx *shein.TaskContext) {
+func (h *SaleAttributeHandler) filterVariantsByRules(ctx *sheinctx.TaskContext) {
 	h.preparationHandler.filterVariantsByRules(ctx)
 }
 
 // buildUserPrompt 构建用户提示词
-func (h *SaleAttributeHandler) buildUserPrompt(ctx *shein.TaskContext, request *shein.GenerationRequest) string {
+func (h *SaleAttributeHandler) buildUserPrompt(ctx *sheinctx.TaskContext, request *sheinattr.GenerationRequest) string {
 	return h.preparationHandler.buildUserPrompt(ctx, request)
 }
+
+

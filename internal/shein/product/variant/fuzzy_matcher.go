@@ -2,11 +2,11 @@
 package variant
 
 import (
-	"task-processor/internal/core/logger"
 	"regexp"
 	"strings"
-	"task-processor/internal/shein"
 
+	"task-processor/internal/core/logger"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // VariantFuzzyMatcher 变体模糊匹配器
@@ -22,7 +22,7 @@ func NewVariantFuzzyMatcher(utils *VariantMatcherUtils) *VariantFuzzyMatcher {
 }
 
 // FindFuzzyMatches 查找模糊匹配的变体
-func (m *VariantFuzzyMatcher) FindFuzzyMatches(variants []shein.Variant, attrNames []string, targetValueNorm, targetValue string) []shein.Variant {
+func (m *VariantFuzzyMatcher) FindFuzzyMatches(variants []sheinattr.Variant, attrNames []string, targetValueNorm, targetValue string) []sheinattr.Variant {
 	return findMatchesWithFunc(variants, attrNames, targetValueNorm, targetValue, "模糊", m.isValidFuzzyMatch)
 }
 

@@ -1,28 +1,27 @@
-// Package attribute 提供SHEIN平台属性重要性计算功能
+﻿// Package attribute 提供SHEIN平台属性重要性计算功能
 package attribute
 
 import (
 	"strings"
 
-	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 )
 
 // ImportanceService 属性重要性计算服务
 type ImportanceService struct {
-	calculator *shein.AttributeImportanceCalculator
+	calculator *AttributeImportanceCalculator
 }
 
 // NewImportanceService 创建新的属性重要性计算服务
 func NewImportanceService() *ImportanceService {
 	return &ImportanceService{
-		calculator: shein.NewAttributeImportanceCalculator(),
+		calculator: NewAttributeImportanceCalculator(),
 	}
 }
 
 // EnhanceAttributeDataWithTemplateInfo 增强属性数据，添加重要性评分和依赖关系
-func (s *ImportanceService) EnhanceAttributeDataWithTemplateInfo(attributeData []shein.GenerateAttribute, attributeTemplates *attribute.AttributeTemplateInfo) []shein.EnhancedGenerateAttribute {
-	var enhancedData []shein.EnhancedGenerateAttribute
+func (s *ImportanceService) EnhanceAttributeDataWithTemplateInfo(attributeData []GenerateAttribute, attributeTemplates *attribute.AttributeTemplateInfo) []EnhancedGenerateAttribute {
+	var enhancedData []EnhancedGenerateAttribute
 
 	// 创建属性模板映射，便于快速查找
 	templateMap := make(map[int]*attribute.AttributeInfo)
@@ -33,7 +32,7 @@ func (s *ImportanceService) EnhanceAttributeDataWithTemplateInfo(attributeData [
 	}
 
 	for _, attr := range attributeData {
-		enhanced := shein.EnhancedGenerateAttribute{
+		enhanced := EnhancedGenerateAttribute{
 			AttrID:        attr.AttrID,
 			AttrValue:     attr.AttrValue,
 			Required:      attr.Required,
@@ -69,8 +68,8 @@ func (s *ImportanceService) EnhanceAttributeDataWithTemplateInfo(attributeData [
 }
 
 // CalculateAttributeImportance 计算属性重要性评分
-func (s *ImportanceService) CalculateAttributeImportance(attribute *attribute.AttributeInfo) shein.AttributeImportanceResult {
-	result := shein.AttributeImportanceResult{
+func (s *ImportanceService) CalculateAttributeImportance(attribute *attribute.AttributeInfo) AttributeImportanceResult {
+	result := AttributeImportanceResult{
 		Importance: 0,
 	}
 

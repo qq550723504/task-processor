@@ -3,6 +3,11 @@ package validation
 import "task-processor/internal/shein"
 
 // ApplyFilterRuleHandler 应用筛选规则处理器
+// 作用对象：主产品（ctx.AmazonProduct）
+// 注意：此步骤与 ReapplyFilterRuleHandler 不合并，原因如下：
+//   - 本步骤在获取变体数据之前执行，用于快速过滤不符合条件的主产品，避免后续无效的变体抓取
+//   - ReapplyFilterRuleHandler 在获取变体数据之后执行，作用于每个变体（ctx.Variants）
+//   - 两者检查时机和作用对象不同，合并会破坏管道的早期退出优化
 type ApplyFilterRuleHandler struct {
 	ruleChecker *FilterRuleChecker
 }

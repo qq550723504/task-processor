@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"task-processor/internal/model"
-	shein "task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
+	sheinattr "task-processor/internal/shein/product/attribute"
 
 )
 
@@ -27,20 +28,20 @@ func NewSaleAttributeRequestBuilder() *SaleAttributeRequestBuilder {
 
 // BuildGenerationRequest 构建生成请求
 func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(
-	ctx *shein.TaskContext,
+	ctx *sheinctx.TaskContext,
 	productsData []map[string]string,
-	attributeMetadata []shein.AttributeMetadata,
-	attributeNameMappings map[int]string) *shein.GenerationRequest {
+	attributeMetadata []sheinattr.AttributeMetadata,
+	attributeNameMappings map[int]string) *sheinattr.GenerationRequest {
 
-	var attributeMappings []shein.AttributeNameMapping
+	var attributeMappings []sheinattr.AttributeNameMapping
 	for attrID, attrName := range attributeNameMappings {
-		attributeMappings = append(attributeMappings, shein.AttributeNameMapping{
+		attributeMappings = append(attributeMappings, sheinattr.AttributeNameMapping{
 			AttrID:               attrID,
 			VariantAttributeName: attrName,
 		})
 	}
 
-	var productVariantData []shein.ProductVariantData
+	var productVariantData []sheinattr.ProductVariantData
 	emptyDimensionsCount := 0
 	emptyWeightCount := 0
 
@@ -69,7 +70,7 @@ func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(
 			emptyWeightCount++
 		}
 
-		productVariantData = append(productVariantData, shein.ProductVariantData{
+		productVariantData = append(productVariantData, sheinattr.ProductVariantData{
 			ASIN:       product["asin"],
 			Title:      product["title"],
 			Attributes: attributes,
@@ -93,7 +94,7 @@ func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(
 		variationAttributeValues = &emptyVariations
 	}
 
-	return &shein.GenerationRequest{
+	return &sheinattr.GenerationRequest{
 		ProductsData:             productVariantData,
 		VariationData:            ctx.AmazonProduct.Variations,
 		VariationAttributeValues: variationAttributeValues,
@@ -104,7 +105,7 @@ func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(
 }
 
 // BuildUserPrompt 构建用户提示词
-func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *shein.TaskContext, request *shein.GenerationRequest) string {
+func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *sheinctx.TaskContext, request *sheinattr.GenerationRequest) string {
 	saleAttributeDataBytes, _ := json.Marshal(request.SaleAttributesData)
 	productsDataBytes, _ := json.Marshal(request.ProductsData)
 	attributeMappingBytes, _ := json.Marshal(request.AttributeMappings)
@@ -184,3 +185,5 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(ctx *shein.TaskContext, re
 		string(attributeMappingBytes),
 		extraContextSection)
 }
+
+

@@ -2,11 +2,11 @@
 package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
-	"task-processor/internal/model"
-	shein "task-processor/internal/shein"
 
+	"task-processor/internal/core/logger"
+	"task-processor/internal/model"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // SaleAttributeValueFilter 销售属性值筛选器，负责根据实际变体使用情况筛选属性值
@@ -26,10 +26,10 @@ func NewSaleAttributeValueFilter() *SaleAttributeValueFilter {
 // 返回值:
 //   - []GenerateAttributeValue: 筛选后的属性值列表
 func (f *SaleAttributeValueFilter) FilterAttributeValuesByUsage(
-	candidateValues []shein.GenerateAttributeValue,
+	candidateValues []sheinattr.GenerateAttributeValue,
 	actualValues []string,
 	attributeName string,
-) []shein.GenerateAttributeValue {
+) []sheinattr.GenerateAttributeValue {
 	if len(actualValues) == 0 {
 		logger.GetGlobalLogger("shein/product").Debugf("属性 %s 没有实际使用值，保留前5个候选值", attributeName)
 		if len(candidateValues) > 5 {
@@ -38,7 +38,7 @@ func (f *SaleAttributeValueFilter) FilterAttributeValuesByUsage(
 		return candidateValues
 	}
 
-	var filteredValues []shein.GenerateAttributeValue
+	var filteredValues []sheinattr.GenerateAttributeValue
 	usedValueMap := make(map[string]bool)
 
 	// 创建实际使用值的映射
@@ -109,7 +109,7 @@ func (f *SaleAttributeValueFilter) ExtractActualValuesFromVariations(
 // 返回值:
 //   - []string: 实际使用的属性值列表
 func (f *SaleAttributeValueFilter) ExtractActualValuesFromProducts(
-	productsData []shein.ProductVariantData,
+	productsData []sheinattr.ProductVariantData,
 	attributeName string,
 ) []string {
 	var actualValues []string

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/internal/pkg/types"
-	"task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/api/attribute"
 
 )
@@ -25,7 +25,7 @@ func (h *ValidateRepairSaleAttributeHandler) Name() string {
 }
 
 // Handle 执行验证修复销售属性处理
-func (h *ValidateRepairSaleAttributeHandler) Handle(ctx *shein.TaskContext) error {
+func (h *ValidateRepairSaleAttributeHandler) Handle(ctx *sheinctx.TaskContext) error {
 	// 检查是否已获取产品数据
 	if ctx.ProductData == nil {
 		return fmt.Errorf("产品数据未获取，请先执行获取产品数据步骤")
@@ -45,7 +45,7 @@ func (h *ValidateRepairSaleAttributeHandler) Handle(ctx *shein.TaskContext) erro
 }
 
 // 如果对应不上则修改为负数递增
-func (h *ValidateRepairSaleAttributeHandler) fixAttributeValueIDs(saleAttributeData *shein.ResultSaleAttribute, attributeTemplates *attribute.AttributeTemplateInfo) *shein.ResultSaleAttribute {
+func (h *ValidateRepairSaleAttributeHandler) fixAttributeValueIDs(saleAttributeData *ResultSaleAttribute, attributeTemplates *attribute.AttributeTemplateInfo) *ResultSaleAttribute {
 	logger.GetGlobalLogger("shein/product").Info("🔧 开始修复属性值ID，确保与SHEIN平台一致")
 
 	// 构建SHEIN平台属性值映射表

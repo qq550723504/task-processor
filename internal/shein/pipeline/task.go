@@ -2,15 +2,14 @@
 package pipeline
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
+	"task-processor/internal/core/logger"
 
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/metrics"
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
-	"task-processor/internal/pipeline"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api"
 	shein_attribute "task-processor/internal/shein/api/attribute"
@@ -45,24 +44,22 @@ func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
 	}
 }
 
-// ProcessTask 处理任务（统一接口）
-func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, pipeline pipeline.Pipeline) error {
+// ProcessTask 处理任务
+func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipeline) error {
 	logger.GetGlobalLogger("shein/pipeline").Infof("开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
 
 	// 创建任务上下文
 	taskCtx := h.createTaskContext(ctx, &task)
 
 	// 检查初始化是否成功
-	if initError, exists := taskCtx.GetData("init_error"); exists {
-		if err, ok := initError.(error); ok {
-			logger.GetGlobalLogger("shein/pipeline").Errorf("任务初始化失败，停止处理: %v", err)
-			h.handleError(task, err)
-			return err
-		}
+	if taskCtx.InitError != nil {
+		logger.GetGlobalLogger("shein/pipeline").Errorf("任务初始化失败，停止处理: %v", taskCtx.InitError)
+		h.handleError(task, taskCtx.InitError)
+		return taskCtx.InitError
 	}
 
 	// 执行管道处理
-	if err := pipeline.Process(taskCtx); err != nil {
+	if err := p.Process(taskCtx); err != nil {
 		logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败: %v", err)
 		h.handleError(task, err)
 		return err
@@ -85,8 +82,7 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 	// 初始化店铺客户端
 	if err := h.initShopClient(taskCtx); err != nil {
 		logrus.WithError(err).Error("店铺客户端初始化失败")
-		// 设置错误标记，让调用方知道初始化失败
-		taskCtx.SetData("init_error", err)
+		taskCtx.InitError = err
 		return taskCtx
 	}
 

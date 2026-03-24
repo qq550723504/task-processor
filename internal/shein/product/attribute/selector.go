@@ -9,9 +9,10 @@ import (
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/attribute"
+	sheinctx "task-processor/internal/shein/context"
+	"task-processor/internal/shein/sherr"
 )
 
 // AttributeSelectorHandler AI属性选择处理器
@@ -40,7 +41,7 @@ func (h *AttributeSelectorHandler) Name() string {
 }
 
 // Handle 执行AI属性选择处理
-func (h *AttributeSelectorHandler) Handle(ctx *shein.TaskContext) error {
+func (h *AttributeSelectorHandler) Handle(ctx *sheinctx.TaskContext) error {
 	// 检查前置条件
 	if err := h.validatePreconditions(ctx); err != nil {
 		return err
@@ -51,7 +52,7 @@ func (h *AttributeSelectorHandler) Handle(ctx *shein.TaskContext) error {
 
 	// 查缓存
 	if ctx.AICache != nil {
-		var cached shein.AttributeData
+		var cached AttributeData
 		if ctx.AICache.Get(aicache.TypeAttribute, cacheKey, &cached) {
 			logger.GetGlobalLogger("shein/product").Infof("AI属性选择命中缓存: asin=%s, categoryID=%d", ctx.AmazonProduct.Asin, ctx.ProductData.CategoryID)
 			ctx.GenerateAttribute = &cached
@@ -61,7 +62,7 @@ func (h *AttributeSelectorHandler) Handle(ctx *shein.TaskContext) error {
 
 	attributeInfo, err := h.convertAttributeFromGpt(ctx, ctx.BuildAttributeData, ctx.AttributeTemplates)
 	if err != nil {
-		return shein.NewRetryableError("转换属性数据失败", err)
+		return sherr.NewRetryableError("转换属性数据失败", err)
 	}
 
 	// 写缓存
@@ -74,22 +75,22 @@ func (h *AttributeSelectorHandler) Handle(ctx *shein.TaskContext) error {
 }
 
 // validatePreconditions 验证处理前置条件
-func (h *AttributeSelectorHandler) validatePreconditions(ctx *shein.TaskContext) error {
+func (h *AttributeSelectorHandler) validatePreconditions(ctx *sheinctx.TaskContext) error {
 	if ctx.ProductData == nil {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return shein.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
+		return sherr.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
 	}
 
 	if len(ctx.BuildAttributeData.AttributeData) == 0 {
 		// 这是一个程序逻辑错误，不应该发生，不可重试
-		return shein.NewNonRetryableError("属性数据未构建，请先执行构建属性信息步骤", nil)
+		return sherr.NewNonRetryableError("属性数据未构建，请先执行构建属性信息步骤", nil)
 	}
 
 	return nil
 }
 
 // convertAttributeFromGpt 使用GPT生成产品属性
-func (h *AttributeSelectorHandler) convertAttributeFromGpt(ctx *shein.TaskContext, attributeInfo *shein.BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) (shein.AttributeData, error) {
+func (h *AttributeSelectorHandler) convertAttributeFromGpt(ctx *sheinctx.TaskContext, attributeInfo *BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) (AttributeData, error) {
 	// 生成系统提示词
 	systemPrompt, err := h.promptGenerator.GenerateSystemPrompt(attributeTemplates)
 	if err != nil {
@@ -110,12 +111,12 @@ func (h *AttributeSelectorHandler) convertAttributeFromGpt(ctx *shein.TaskContex
 	response, err := h.openaiClient.CreateChatCompletion(ctx.Context, req)
 	if err != nil {
 		// AI服务调用失败，可重试
-		return shein.AttributeData{}, shein.NewRetryableError("生成产品属性失败", err)
+		return AttributeData{}, sherr.NewRetryableError("生成产品属性失败", err)
 	}
 
 	if len(response.Choices) == 0 {
 		// AI响应为空，可重试
-		return shein.AttributeData{}, shein.NewRetryableError("AI响应为空", nil)
+		return AttributeData{}, sherr.NewRetryableError("AI响应为空", nil)
 	}
 
 	// 处理AI响应
@@ -145,7 +146,7 @@ func (h *AttributeSelectorHandler) createChatCompletionRequest(systemPrompt, use
 }
 
 // processAIResponse 处理AI响应
-func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.ChatCompletionResponse, attributeInfo shein.BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) (shein.AttributeData, error) {
+func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.ChatCompletionResponse, attributeInfo BuildAttributeInfo, attributeTemplates *attribute.AttributeTemplateInfo) (AttributeData, error) {
 	content := response.Choices[0].Message.Content
 	content = strings.TrimSpace(content)
 
@@ -167,16 +168,16 @@ func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.Chat
 			var temp any
 			jsonErr = json.Unmarshal([]byte(fixedContent), &temp)
 			// JSON格式无效且无法修复，可能是AI模型问题，可重试
-			return shein.AttributeData{}, shein.NewRetryableError("AI返回的JSON格式无效且无法修复", jsonErr)
+			return AttributeData{}, sherr.NewRetryableError("AI返回的JSON格式无效且无法修复", jsonErr)
 		}
 		content = fixedContent
 	}
 
-	var attributeData shein.AttributeData
+	var attributeData AttributeData
 	if err := jsonx.UnmarshalBytes([]byte(content), &attributeData, "解析属性数据失败"); err != nil {
 		logger.GetGlobalLogger("shein/product").Errorf("解析属性数据失败: %v，清理后内容: %s", err, content)
 		// 解析属性数据失败，可重试
-		return shein.AttributeData{}, shein.NewRetryableError("解析属性数据失败", err)
+		return AttributeData{}, sherr.NewRetryableError("解析属性数据失败", err)
 	}
 
 	// 使用增强版验证并修复AI选择的属性值
