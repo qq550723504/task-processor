@@ -9,6 +9,7 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/prompt"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/product"
@@ -306,7 +307,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 // batchOptimizeEnglishContent 批量优化英文内容
 func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context, contents []string, sourceTitle string) ([]string, error) {
 	// 构建批量优化的系统提示词
-	systemPrompt := `你是一个专业的电商产品内容优化专家。请批量优化产品标题，使其更适合SHEIN平台销售。
+	systemPrompt := prompt.GlobalRegistry.Get("shein.translation.batch_optimize_system", `你是一个专业的电商产品内容优化专家。请批量优化产品标题，使其更适合SHEIN平台销售。
 
 要求：
 1. 所有标题必须是英文，长度在10-800个字符之间
@@ -314,7 +315,7 @@ func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context,
 3. 使用简洁、吸引人的描述
 4. 避免使用品牌名称和敏感词汇
 5. 符合英语语法规范
-6. 返回JSON格式：{"optimized_titles": ["优化后的标题1", "优化后的标题2", ...]}`
+6. 返回JSON格式：{"optimized_titles": ["优化后的标题1", "优化后的标题2", ...]}`)
 
 	// 构建用户提示词，包含所有需要优化的内容
 	var contentList strings.Builder

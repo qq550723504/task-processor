@@ -1,0 +1,36 @@
+understanding:
+  analyze_image:
+    description: "产品图片属性分析提示词"
+    content: |
+      Analyze this product image and extract the following attributes in JSON format:
+      {
+        "color": "the main color of the product",
+        "material": "the material the product is made of",
+        "scene": "the scene or context where the product is shown",
+        "usage": "the intended use or purpose of the product"
+      }
+
+      Only return the JSON object, no additional text.
+
+  extract_text:
+    description: "产品描述文本属性提取提示词"
+    content: |
+      Analyze this product description and extract the following information in JSON format:
+      {
+        "title": "a concise product title",
+        "attributes": {
+          "key1": "value1",
+          "key2": "value2"
+        },
+        "selling_points": ["point1", "point2", "point3"]
+      }
+
+      Product description:
+      {{.Text}}
+
+      Only return the JSON object, no additional text.
+
+  fuse_multimodal:
+    description: "多模态信息融合提示词（静态前缀部分）"
+    content: |
+      Combine the following image and text attributes to create a unified product representation:

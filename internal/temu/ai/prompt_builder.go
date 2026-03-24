@@ -3,6 +3,8 @@ package ai
 import (
 	"fmt"
 	"strings"
+
+	"task-processor/internal/prompt"
 	temucontext "task-processor/internal/temu/context"
 )
 
@@ -16,7 +18,7 @@ func NewPromptBuilder() *PromptBuilder {
 
 // BuildSystemPrompt 构建系统提示词
 func (p *PromptBuilder) BuildSystemPrompt() string {
-	return `你是TEMU平台的产品属性映射专家。根据Amazon产品信息，为TEMU属性填充有价值的信息。
+	return prompt.GlobalRegistry.Get("temu.attribute_mapping.system", `你是TEMU平台的产品属性映射专家。根据Amazon产品信息，为TEMU属性填充有价值的信息。
 
 【核心目标】
 🎯 最大化属性填充率：从Amazon产品信息中提取尽可能多的有价值属性
@@ -94,7 +96,7 @@ func (p *PromptBuilder) BuildSystemPrompt() string {
 ✅ 条件依赖的子属性值在父属性约束的范围内
 ✅ 尽可能多的可选属性被填充
 ✅ 当找不到精确匹配时，使用了合理的降级选项
-✅ 绝对没有自创任何不在可选列表中的值`
+✅ 绝对没有自创任何不在可选列表中的值`)
 }
 
 // BuildUserPrompt 构建用户提示词

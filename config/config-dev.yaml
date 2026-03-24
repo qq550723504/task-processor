@@ -157,7 +157,8 @@ browser:
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:
   enabled: true  # 启用RabbitMQ连接
-  url: "amqp://admin:admin123@localhost:5672/"  # 连接到unified的RabbitMQ
+  #url: "amqp://admin:admin123@localhost:5672/"  # 连接到unified的RabbitMQ
+  url: "amqp://admin:RabbitMQ%402026%23Prod@101.33.34.102:30567/"  # 通过NodePort连接到k3s中的RabbitMQ
   reconnectInterval: "5s"   # 重连间隔
   maxReconnectTries: 10  # 最大重连次数
   

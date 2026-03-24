@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/appenv"
+	"task-processor/internal/prompt"
 )
 
 var (
@@ -63,6 +64,17 @@ func main() {
 		logger.Fatal("❌ RabbitMQ配置未启用，请在配置文件中设置 rabbitmq.enabled: true")
 	}
 
+	ctx := context.Background()
+
+	// 初始化 Prompt 全局注册表
+	promptsDir := appCfg.Prompts.Dir
+	if promptsDir == "" {
+		promptsDir = "./prompts"
+	}
+	if err := prompt.InitGlobal(ctx, promptsDir, appCfg.Prompts.HotReload, logger.WithField("component", "prompt")); err != nil {
+		logger.Warnf("⚠️  Prompt 注册表初始化失败，将使用硬编码 fallback: %v", err)
+	}
+
 	// 创建服务管理器
 	serviceManager, err := consumer.NewServiceManager(appCfg.RabbitMQ, logger)
 	if err != nil {
@@ -71,7 +83,6 @@ func main() {
 
 	// 创建平台注册器并注册所有处理器（不指定平台，根据任务动态判断）
 	platformRegistry := consumer.NewPlatformRegistry(appCfg, logger, "")
-	ctx := context.Background()
 	if err := platformRegistry.RegisterAllProcessors(ctx, serviceManager); err != nil {
 		logger.Fatalf("❌ 注册平台处理器失败: %v", err)
 	}

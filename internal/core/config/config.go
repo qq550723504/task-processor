@@ -26,6 +26,15 @@ type Config struct {
 	Watermark  *watermark.Config `yaml:"watermark"`
 	Database   *DatabaseConfig   `yaml:"database"`
 	Redis      *RedisConfig      `yaml:"redis"`
+	Prompts    PromptsConfig     `yaml:"prompts"`
+}
+
+// PromptsConfig Prompt 外置功能配置
+type PromptsConfig struct {
+	// Dir 是 prompt YAML 文件的根目录，默认为 ./prompts
+	Dir string `yaml:"dir"`
+	// HotReload 是否启用热更新，默认 false
+	HotReload bool `yaml:"hotReload"`
 }
 
 // LoggingConfig 日志配置

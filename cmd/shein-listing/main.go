@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/appenv"
+	"task-processor/internal/prompt"
 )
 
 var (
@@ -57,6 +58,16 @@ func main() {
 	// 只注册 SHEIN 平台处理器
 	platformRegistry := consumer.NewPlatformRegistry(cfg, logger, "shein")
 	ctx := context.Background()
+
+	// 初始化 Prompt 全局注册表
+	promptsDir := cfg.Prompts.Dir
+	if promptsDir == "" {
+		promptsDir = "./prompts"
+	}
+	if err := prompt.InitGlobal(ctx, promptsDir, cfg.Prompts.HotReload, logger.WithField("component", "prompt")); err != nil {
+		logger.Warnf("⚠️  Prompt 注册表初始化失败，将使用硬编码 fallback: %v", err)
+	}
+
 	if err := platformRegistry.RegisterSheinProcessor(ctx, serviceManager); err != nil {
 		logger.Fatalf("❌ 注册 SHEIN 处理器失败: %v", err)
 	}

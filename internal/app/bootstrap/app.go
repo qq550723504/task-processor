@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/prompt"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -118,6 +119,16 @@ func (a *ApplicationBootstrap) loadConfiguration(configPath string) error {
 func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("配置未加载")
+	}
+
+	// 初始化 Prompt 全局注册表
+	promptsDir := cfg.Prompts.Dir
+	if promptsDir == "" {
+		promptsDir = "./prompts"
+	}
+	promptLog := logger.WithField("component", "prompt")
+	if err := prompt.InitGlobal(context.Background(), promptsDir, cfg.Prompts.HotReload, promptLog); err != nil {
+		logger.Warnf("Prompt 注册表初始化失败，将使用硬编码 fallback: %v", err)
 	}
 
 	// 认证客户端

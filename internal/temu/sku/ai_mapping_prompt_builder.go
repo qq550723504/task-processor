@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/prompt"
 	temutemplate "task-processor/internal/temu/api/template"
 	temucontext "task-processor/internal/temu/context"
 )
 
 // buildSystemPrompt 构建系统提示词
 func (vp *SkuVariantProcessor) buildSystemPrompt() string {
-	return `你是TEMU平台的专业产品数据转换专家，专门负责将Amazon产品变体转换为TEMU平台的SKC/SKU结构。
+	return prompt.GlobalRegistry.Get("temu.sku_variant_mapping.system", `你是TEMU平台的专业产品数据转换专家，专门负责将Amazon产品变体转换为TEMU平台的SKC/SKU结构。
 
 【你的专业能力】
 🎯 精通Amazon和TEMU两个平台的产品数据结构
@@ -105,7 +106,7 @@ func (vp *SkuVariantProcessor) buildSystemPrompt() string {
 ✅ 严格遵循平台规范，不允许任何违规操作
 ✅ 优先保证数据准确性和一致性
 ✅ 充分利用所有可用的产品信息
-✅ 采用智能推理填补信息空缺`
+✅ 采用智能推理填补信息空缺`)
 }
 
 // buildUserPrompt 构建用户提示词

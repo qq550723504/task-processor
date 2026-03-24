@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/appenv"
 	"task-processor/internal/productenrich"
+	"task-processor/internal/prompt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -115,6 +116,15 @@ func run(logger *logrus.Logger) error {
 func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.WorkerPool, []func() error, error) {
 	cfg := config.LoadConfigFromFile(*configPath)
 	var closers []func() error
+
+	// 初始化 Prompt 全局注册表
+	promptsDir := cfg.Prompts.Dir
+	if promptsDir == "" {
+		promptsDir = "./prompts"
+	}
+	if err := prompt.InitGlobal(context.Background(), promptsDir, cfg.Prompts.HotReload, logger.WithField("component", "prompt")); err != nil {
+		logger.Warnf("⚠️  Prompt 注册表初始化失败，将使用硬编码 fallback: %v", err)
+	}
 
 	// LLM Manager（接入 OpenAI）
 	llmMgr, err := newLLMManager(cfg.OpenAI)

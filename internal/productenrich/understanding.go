@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"task-processor/internal/core/logger"
+	"task-processor/internal/prompt"
 
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/strx"
@@ -152,7 +153,7 @@ func (p *productUnderstanding) AnalyzeImage(ctx context.Context, imagePath strin
 	logger.GetGlobalLogger("productenrich/understanding.go").WithField("path", imagePath).Info("analyzing image")
 
 	// 构建提示词
-	prompt := `Analyze this product image and extract the following attributes in JSON format:
+	promptText := prompt.GlobalRegistry.Get("productenrich.understanding.analyze_image", `Analyze this product image and extract the following attributes in JSON format:
 {
   "color": "the main color of the product",
   "material": "the material the product is made of",
@@ -160,7 +161,7 @@ func (p *productUnderstanding) AnalyzeImage(ctx context.Context, imagePath strin
   "usage": "the intended use or purpose of the product"
 }
 
-Only return the JSON object, no additional text.`
+Only return the JSON object, no additional text.`)
 
 	// 使用视觉客户端分析图片
 	visionClient, err := p.llmManager.GetClient("vision")
@@ -172,7 +173,7 @@ Only return the JSON object, no additional text.`
 		}
 	}
 
-	response, err := visionClient.AnalyzeImage(ctx, imagePath, prompt)
+	response, err := visionClient.AnalyzeImage(ctx, imagePath, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze image: %w", err)
 	}
@@ -204,7 +205,11 @@ func (p *productUnderstanding) ExtractTextAttributes(ctx context.Context, text s
 	logger.GetGlobalLogger("productenrich/understanding.go").Info("extracting text attributes")
 
 	// 构建提示词
-	prompt := fmt.Sprintf(`Analyze this product description and extract the following information in JSON format:
+	promptText, promptErr := prompt.GlobalRegistry.Render("productenrich.understanding.extract_text", map[string]any{
+		"Text": text,
+	}, "")
+	if promptErr != nil || promptText == "" {
+		promptText = fmt.Sprintf(`Analyze this product description and extract the following information in JSON format:
 {
   "title": "a concise product title",
   "attributes": {
@@ -218,6 +223,7 @@ Product description:
 %s
 
 Only return the JSON object, no additional text.`, text)
+	}
 
 	// 使用快速客户端提取属性
 	fastClient, err := p.llmManager.GetClient("fast")
@@ -229,7 +235,7 @@ Only return the JSON object, no additional text.`, text)
 		}
 	}
 
-	response, err := fastClient.Generate(ctx, prompt)
+	response, err := fastClient.Generate(ctx, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract text attributes: %w", err)
 	}
@@ -255,19 +261,20 @@ func (p *productUnderstanding) FuseMultimodal(ctx context.Context, imageAttr *Im
 	logger.GetGlobalLogger("productenrich/understanding.go").Info("fusing multimodal information")
 
 	// 构建融合提示词
-	prompt := "Combine the following image and text attributes to create a unified product representation:\n\n"
+	promptPrefix := prompt.GlobalRegistry.Get("productenrich.understanding.fuse_multimodal", "Combine the following image and text attributes to create a unified product representation:")
+	promptText := promptPrefix + "\n\n"
 
 	if imageAttr != nil {
 		imageJSON, _ := json.Marshal(imageAttr)
-		prompt += fmt.Sprintf("Image attributes: %s\n\n", string(imageJSON))
+		promptText += fmt.Sprintf("Image attributes: %s\n\n", string(imageJSON))
 	}
 
 	if textAttr != nil {
 		textJSON, _ := json.Marshal(textAttr)
-		prompt += fmt.Sprintf("Text attributes: %s\n\n", string(textJSON))
+		promptText += fmt.Sprintf("Text attributes: %s\n\n", string(textJSON))
 	}
 
-	prompt += `Generate a unified product representation in JSON format:
+	promptText += `Generate a unified product representation in JSON format:
 {
   "product_type": "the type or category of the product",
   "attributes": {
@@ -284,7 +291,7 @@ Only return the JSON object, no additional text.`
 	if err != nil || defaultClient == nil {
 		return nil, fmt.Errorf("failed to get default client: %w", err)
 	}
-	response, err := defaultClient.Generate(ctx, prompt)
+	response, err := defaultClient.Generate(ctx, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fuse multimodal information: %w", err)
 	}

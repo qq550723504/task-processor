@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
+	"task-processor/internal/prompt"
 
 	"github.com/sirupsen/logrus"
 
@@ -69,7 +70,7 @@ func (v *VisionDetector) detectWithVisionAPI(ctx context.Context, img image.Imag
 	}
 
 	// 构建简化的文本请求（避免复杂的多媒体消息）
-	prompt := fmt.Sprintf(`请分析这张产品图片，判断是否包含尺寸标注信息。
+	const fallbackPrompt = `请分析这张产品图片，判断是否包含尺寸标注信息。
 
 尺寸标注特征：
 1. 包含尺寸单位：cm, mm, inch, in, 厘米, 英寸等
@@ -80,12 +81,22 @@ func (v *VisionDetector) detectWithVisionAPI(ctx context.Context, img image.Imag
 图片数据：data:image/png;base64,%s
 
 请只回答 "YES" 或 "NO"，然后简要说明理由（不超过30字）。
-格式：YES/NO - 理由`, base64Image)
+格式：YES/NO - 理由`
+
+	rendered, renderErr := prompt.GlobalRegistry.Render("temu.vision_detector.detect", map[string]any{
+		"Base64Image": base64Image,
+	}, "")
+	var promptText string
+	if renderErr != nil || rendered == "" {
+		promptText = fmt.Sprintf(fallbackPrompt, base64Image)
+	} else {
+		promptText = rendered
+	}
 
 	messages := []openaiClient.ChatCompletionMessage{
 		{
 			Role:    "user",
-			Content: prompt,
+			Content: promptText,
 		},
 	}
 

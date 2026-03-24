@@ -1,0 +1,16 @@
+vision_detector:
+  detect:
+    description: "TEMU视觉检测提示词，用于检测图片是否包含尺寸标注"
+    content: |
+      请分析这张产品图片，判断是否包含尺寸标注信息。
+
+      尺寸标注特征：
+      1. 包含尺寸单位：cm, mm, inch, in, 厘米, 英寸等
+      2. 尺寸数字：如2.8cm/1.1inch, 5.2cm, 10mm等
+      3. 标注线条、箭头、引线等图形元素
+      4. "Product size", "Size", "Dimensions", "尺寸"等标题
+
+      图片数据：data:image/png;base64,{{.Base64Image}}
+
+      请只回答 "YES" 或 "NO"，然后简要说明理由（不超过30字）。
+      格式：YES/NO - 理由
