@@ -1,4 +1,4 @@
-﻿// Package mapping 提供SHEIN平台SKU映射关系修复服务
+// Package mapping 提供SHEIN平台SKU映射关系修复服务
 package mapping
 
 import (

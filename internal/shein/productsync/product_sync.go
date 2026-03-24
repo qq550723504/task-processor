@@ -1,4 +1,4 @@
-﻿// Package productsync 提供 SHEIN 平台商品同步功能
+// Package productsync 提供 SHEIN 平台商品同步功能
 package productsync
 
 import (

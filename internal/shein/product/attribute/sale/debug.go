@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台的销售属性调试数据保存功能
+// Package sale 提供SHEIN平台的销售属性调试数据保存功能
 package sale
 
 import (

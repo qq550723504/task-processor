@@ -1,4 +1,4 @@
-﻿package category
+package category
 
 import (
 	"task-processor/internal/core/logger"

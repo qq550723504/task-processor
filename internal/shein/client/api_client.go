@@ -1,4 +1,4 @@
-﻿// Package client 提供SHEIN平台的API客户端
+// Package client 提供SHEIN平台的API客户端
 package client
 
 import (

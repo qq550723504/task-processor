@@ -1,4 +1,4 @@
-﻿// Package sku 提供SHEIN平台SKU构建工具方法
+// Package sku 提供SHEIN平台SKU构建工具方法
 package sku
 
 import (

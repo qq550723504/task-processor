@@ -1,4 +1,4 @@
-﻿// Package attribute 提供SHEIN平台属性选择提示词生成功能
+// Package attribute 提供SHEIN平台属性选择提示词生成功能
 package attribute
 
 import (

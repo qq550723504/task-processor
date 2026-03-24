@@ -1,4 +1,4 @@
-﻿package image
+package image
 
 import (
 	"task-processor/internal/core/logger"

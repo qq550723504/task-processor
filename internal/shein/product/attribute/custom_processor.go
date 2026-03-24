@@ -1,4 +1,4 @@
-﻿// Package attribute 提供SHEIN平台的自定义属性处理功能
+// Package attribute 提供SHEIN平台的自定义属性处理功能
 package attribute
 
 import (

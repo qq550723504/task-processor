@@ -1,4 +1,4 @@
-﻿package shein
+package shein
 
 import (
 	"fmt"

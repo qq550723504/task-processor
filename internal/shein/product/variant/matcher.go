@@ -1,4 +1,4 @@
-﻿package variant
+package variant
 
 import (
 	"task-processor/internal/core/logger"

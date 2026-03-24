@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供SHEIN平台的任务处理器
+// Package pipeline 提供SHEIN平台的任务处理器
 package pipeline
 
 import (

@@ -1,4 +1,4 @@
-﻿package build
+package build
 
 import (
 	"task-processor/internal/core/logger"

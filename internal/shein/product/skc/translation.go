@@ -1,4 +1,4 @@
-﻿// Package skc 提供SHEIN平台SKC翻译处理功能
+// Package skc 提供SHEIN平台SKC翻译处理功能
 package skc
 
 import (

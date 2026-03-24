@@ -1,4 +1,4 @@
-﻿package sale
+package sale
 
 import (
 	"strings"

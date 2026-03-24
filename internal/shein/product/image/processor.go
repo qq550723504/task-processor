@@ -1,4 +1,4 @@
-﻿// Package image 提供SHEIN平台的各种处理模块，包括图片处理、上传等功能
+// Package image 提供SHEIN平台的各种处理模块，包括图片处理、上传等功能
 package image
 
 import (

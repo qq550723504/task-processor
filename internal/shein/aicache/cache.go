@@ -1,4 +1,4 @@
-﻿// Package aicache 提供 SHEIN 上架流程中 AI 调用结果的持久化缓存。
+// Package aicache 提供 SHEIN 上架流程中 AI 调用结果的持久化缓存。
 //
 // 架构：PostgreSQL 持久层（永久存储）+ 进程内内存二级缓存（30分钟）。
 // 同一产品（相同 cacheKey）的 AI 结果跨租户、跨店铺共享，

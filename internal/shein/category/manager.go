@@ -1,4 +1,4 @@
-﻿// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
+// Package category 提供SHEIN平台的分类管理功能，包括AI智能分类选择等
 package category
 
 import (

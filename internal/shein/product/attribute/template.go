@@ -1,4 +1,4 @@
-﻿package attribute
+package attribute
 
 import (
 	"task-processor/internal/core/logger"

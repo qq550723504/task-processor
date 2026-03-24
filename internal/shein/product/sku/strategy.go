@@ -1,4 +1,4 @@
-﻿// Package sku 提供SHEIN平台SKU策略处理功能
+// Package sku 提供SHEIN平台SKU策略处理功能
 package sku
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台销售属性文件保存功能
+// Package sale 提供SHEIN平台销售属性文件保存功能
 package sale
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package sale 提供SHEIN平台销售属性的元数据构建功能
+// Package sale 提供SHEIN平台销售属性的元数据构建功能
 package sale
 
 import (

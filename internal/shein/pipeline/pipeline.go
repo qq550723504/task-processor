@@ -1,4 +1,4 @@
-﻿package pipeline
+package pipeline
 
 import (
 	"task-processor/internal/core/config"

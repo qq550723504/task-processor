@@ -1,4 +1,4 @@
-﻿// package scheduler 提供SHEIN平台活动报名任务实现
+// package scheduler 提供SHEIN平台活动报名任务实现
 package scheduler
 
 import (

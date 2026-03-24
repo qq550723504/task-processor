@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"task-processor/internal/core/logger"
