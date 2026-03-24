@@ -1,8 +1,8 @@
 ﻿package build
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/product/attribute"
@@ -10,7 +10,6 @@ import (
 	"task-processor/internal/shein/product/skc"
 	"task-processor/internal/shein/product/sku"
 	"task-processor/internal/shein/product/variant"
-
 )
 
 // BuildSkcListHandler 构建SKU列表处理器
@@ -20,27 +19,23 @@ type BuildSkcListHandler struct {
 	}
 	strategyHandler *skc.AttributeStrategyHandler
 	skcBuilder      *skc.SKCBuilder
-	openaiConfig    *openaiClient.ClientConfig
 }
 
 // NewBuildSkcListHandler 创建新的构建SKC列表处理器
 func NewBuildSkcListHandler(imageDownloader interface {
 	DownloadImage(url string) ([]byte, error)
-}, openaiConfig *openaiClient.ClientConfig) *BuildSkcListHandler {
-	openaiClient := openaiClient.NewClient(openaiConfig)
-	// 创建依赖组件
+}, client openaiClient.ChatCompleter) *BuildSkcListHandler {
 	imageProcessor := image.NewImageProcessor(imageDownloader)
 	attributeMapper := attribute.NewAttributeMapper()
 	variantMatcher := variant.NewVariantMatcher()
 	skuBuilder := sku.NewSKUBuilder(variantMatcher)
-	skcBuilder := skc.NewSKCBuilder(imageProcessor, attributeMapper, variantMatcher, skuBuilder, openaiClient)
+	skcBuilder := skc.NewSKCBuilder(imageProcessor, attributeMapper, variantMatcher, skuBuilder, client)
 	strategyHandler := skc.NewAttributeStrategyHandler()
 
 	return &BuildSkcListHandler{
 		imageDownloader: imageDownloader,
 		strategyHandler: strategyHandler,
 		skcBuilder:      skcBuilder,
-		openaiConfig:    openaiConfig,
 	}
 }
 

@@ -1,22 +1,21 @@
 ﻿package category
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
-
 )
 
 // AICategorySelectorHandler AI分类选择处理器
 type AICategorySelectorHandler struct {
-	openaiClient *openaiClient.Client
+	openaiClient openaiClient.ChatCompleter
 }
 
 // NewAICategorySelectorHandler 创建新的AI分类选择处理器
-func NewAICategorySelectorHandler(config *openaiClient.ClientConfig) *AICategorySelectorHandler {
+func NewAICategorySelectorHandler(client openaiClient.ChatCompleter) *AICategorySelectorHandler {
 	return &AICategorySelectorHandler{
-		openaiClient: openaiClient.NewClient(config),
+		openaiClient: client,
 	}
 }
 

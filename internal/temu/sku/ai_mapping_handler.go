@@ -8,14 +8,15 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
 // AISkuMappingHandler AI SKU映射处理器 - 提前生成AI映射供后续处理器使用
 type AISkuMappingHandler struct {
 	logger     *logrus.Entry
-	aiClient   *openai.Client
+	aiClient   openai.ChatCompleter
 	skuBuilder *SkuBuilder
 }
 
@@ -23,7 +24,7 @@ type AISkuMappingHandler struct {
 func NewAISkuMappingHandler(openaiConfig *openai.ClientConfig) *AISkuMappingHandler {
 	logger := logger.GetGlobalLogger("AISkuMappingHandler")
 
-	var aiClient *openai.Client
+	var aiClient openai.ChatCompleter
 	if openaiConfig != nil {
 		aiClient = openai.NewClient(openaiConfig)
 	}

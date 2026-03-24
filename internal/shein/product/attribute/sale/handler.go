@@ -1,25 +1,24 @@
 ﻿package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/attribute"
-
 )
 
 // SaleAttributeHandler 销售属性处理器
 type SaleAttributeHandler struct {
-	openaiClient       *openaiClient.Client
+	openaiClient       openaiClient.ChatCompleter
 	preparationHandler *SaleAttributePreparationHandler
 }
 
 // NewSaleAttributeHandler 创建新的销售属性处理器
-func NewSaleAttributeHandler(config *openaiClient.ClientConfig) *SaleAttributeHandler {
+func NewSaleAttributeHandler(client openaiClient.ChatCompleter) *SaleAttributeHandler {
 	return &SaleAttributeHandler{
-		openaiClient:       openaiClient.NewClient(config),
+		openaiClient:       client,
 		preparationHandler: NewSaleAttributePreparationHandler(),
 	}
 }

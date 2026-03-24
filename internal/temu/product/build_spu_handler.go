@@ -9,26 +9,27 @@ import (
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/handlerbase"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
 // BuildSpuHandler SPU构建处理器
 type BuildSpuHandler struct {
-	logger       *logrus.Entry
-	builder      *SpuBuilder
-	validator    *SpuValidator
-	openaiConfig *openaiClient.ClientConfig
+	logger    *logrus.Entry
+	builder   *SpuBuilder
+	validator *SpuValidator
+	aiClient  openaiClient.ChatCompleter
 }
 
 // NewBuildSpuHandler 创建新的SPU构建处理器
-func NewBuildSpuHandler(openaiConfig *openaiClient.ClientConfig, profitRuleClient api.ProfitRuleAPI, skuBuilder handlerbase.SkuBuilder, specHandler handlerbase.SpecHandler) *BuildSpuHandler {
+func NewBuildSpuHandler(aiClient openaiClient.ChatCompleter, profitRuleClient api.ProfitRuleAPI, skuBuilder handlerbase.SkuBuilder, specHandler handlerbase.SpecHandler) *BuildSpuHandler {
 	logger := logger.GetGlobalLogger("build_spu")
 	return &BuildSpuHandler{
-		logger:       logger,
-		builder:      NewSpuBuilder(logger, openaiConfig, profitRuleClient, skuBuilder, specHandler),
-		validator:    NewSpuValidator(logger),
-		openaiConfig: openaiConfig,
+		logger:    logger,
+		builder:   NewSpuBuilder(logger, aiClient, profitRuleClient, skuBuilder, specHandler),
+		validator: NewSpuValidator(logger),
+		aiClient:  aiClient,
 	}
 }
 
@@ -112,22 +113,16 @@ func (h *BuildSpuHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 
 // triggerAIContentRewrite 触发AI内容重写
 func (h *BuildSpuHandler) triggerAIContentRewrite(temuCtx *temucontext.TemuTaskContext) error {
-	// 检查是否配置了OpenAI
-	if h.openaiConfig == nil {
+	if h.aiClient == nil {
 		h.logger.Info("OpenAI未配置，跳过AI内容重写")
 		return nil
 	}
 
 	h.logger.Info("🤖 开始AI内容重写（并行执行）")
-
-	// 创建AI内容重写器
-	rewriter := ai.NewAIContentRewriterHandler(h.openaiConfig)
-
-	// 执行重写
+	rewriter := ai.NewAIContentRewriterHandler(h.aiClient)
 	if err := rewriter.HandleTemu(temuCtx); err != nil {
 		return fmt.Errorf("AI内容重写失败: %w", err)
 	}
-
 	h.logger.Info("✅ AI内容重写完成")
 	return nil
 }

@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -65,7 +66,7 @@ func NewManager(config *ManagerConfig) (*Manager, error) {
 }
 
 // GetClient 获取指定名称的客户端
-func (m *Manager) GetClient(name string) (*Client, error) {
+func (m *Manager) GetClient(name string) (ChatCompleter, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	client, exists := m.clients[name]
@@ -76,7 +77,7 @@ func (m *Manager) GetClient(name string) (*Client, error) {
 }
 
 // GetDefaultClient 获取默认客户端
-func (m *Manager) GetDefaultClient() *Client {
+func (m *Manager) GetDefaultClient() ChatCompleter {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.defaultClient

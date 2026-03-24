@@ -1,7 +1,10 @@
 // Package openai 提供OpenAI API客户端功能
 package openai
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // ChatCompletionMessage 聊天完成消息
 type ChatCompletionMessage struct {
@@ -84,4 +87,13 @@ type PoolConfig struct {
 	BurstLimit    float64         `json:"burst_limit"`
 	ClientConfigs []*ClientConfig `json:"client_configs"`
 	MaxConcurrent int             `json:"max_concurrent"`
+}
+
+// ChatCompleter 是业务层使用 AI 客户端的最小接口。
+// 所有 Handler 应依赖此接口而非具体的 *Client，以便测试和替换实现。
+type ChatCompleter interface {
+	CreateChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error)
+	Generate(ctx context.Context, prompt string) (string, error)
+	AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error)
+	GetDefaultModel() string
 }

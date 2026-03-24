@@ -9,7 +9,8 @@ import (
 	"image/draw"
 	"task-processor/internal/temu/rules"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
@@ -20,7 +21,7 @@ import (
 // ImageDimensionAnnotator 图片尺寸标注器
 type ImageDimensionAnnotator struct {
 	logger         *logrus.Entry
-	openaiClient   *openaiClient.Client
+	openaiClient   openaiClient.ChatCompleter
 	downloader     *downloader.ImageDownloader
 	drawer         *DimensionDrawer
 	textRenderer   *rules.TextRenderer
@@ -39,7 +40,7 @@ func NewImageDimensionAnnotator() *ImageDimensionAnnotator {
 }
 
 // NewImageDimensionAnnotatorWithOpenAI 创建带OpenAI支持的图片尺寸标注器
-func NewImageDimensionAnnotatorWithOpenAI(client *openaiClient.Client) *ImageDimensionAnnotator {
+func NewImageDimensionAnnotatorWithOpenAI(client openaiClient.ChatCompleter) *ImageDimensionAnnotator {
 	return &ImageDimensionAnnotator{
 		logger:         logger.GetGlobalLogger("ImageDimensionAnnotator"),
 		openaiClient:   client,

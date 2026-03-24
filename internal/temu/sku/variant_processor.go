@@ -16,7 +16,7 @@ import (
 // SkuVariantProcessor SKU变体处理器
 type SkuVariantProcessor struct {
 	logger           *logrus.Entry
-	aiClient         *openai.Client
+	aiClient         openai.ChatCompleter
 	specHandler      *SkuSpecHandler
 	skcBuilder       *SkuSkcBuilder
 	mappingProcessor *SkuMappingProcessor
@@ -25,7 +25,7 @@ type SkuVariantProcessor struct {
 }
 
 // NewSkuVariantProcessor 创建新的SKU变体处理器
-func NewSkuVariantProcessor(logger *logrus.Entry, aiClient *openai.Client, specHandler *SkuSpecHandler, skcBuilder *SkuSkcBuilder, specResolver *spec.SpecResolverService, itemBuilder *SkuItemBuilder) *SkuVariantProcessor {
+func NewSkuVariantProcessor(logger *logrus.Entry, aiClient openai.ChatCompleter, specHandler *SkuSpecHandler, skcBuilder *SkuSkcBuilder, specResolver *spec.SpecResolverService, itemBuilder *SkuItemBuilder) *SkuVariantProcessor {
 	return &SkuVariantProcessor{
 		logger:           logger,
 		aiClient:         aiClient,

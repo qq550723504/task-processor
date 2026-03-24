@@ -2,10 +2,10 @@
 package skc
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
@@ -13,17 +13,16 @@ import (
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/translate"
-
 )
 
 // SKCTranslationHandler SKC翻译处理器
 type SKCTranslationHandler struct {
 	taskContext  *shein.TaskContext
-	openaiClient *openaiClient.Client
+	openaiClient openaiClient.ChatCompleter
 }
 
 // NewSKCTranslationHandler 创建新的SKC翻译处理器
-func NewSKCTranslationHandler(taskContext *shein.TaskContext, openaiClient *openaiClient.Client) *SKCTranslationHandler {
+func NewSKCTranslationHandler(taskContext *shein.TaskContext, openaiClient openaiClient.ChatCompleter) *SKCTranslationHandler {
 	return &SKCTranslationHandler{
 		taskContext:  taskContext,
 		openaiClient: openaiClient,
@@ -379,11 +378,7 @@ func (h *SKCTranslationHandler) callOpenAIForBatchOptimization(ctx context.Conte
 // parseBatchOptimizedResponse 解析批量优化响应
 func (h *SKCTranslationHandler) parseBatchOptimizedResponse(content string, expectedCount int) ([]string, error) {
 	// 清理内容
-	cleanContent := strings.TrimSpace(content)
-	cleanContent = strings.TrimPrefix(cleanContent, "```json")
-	cleanContent = strings.TrimPrefix(cleanContent, "```")
-	cleanContent = strings.TrimSuffix(cleanContent, "```")
-	cleanContent = strings.TrimSpace(cleanContent)
+	cleanContent := jsonx.CleanLLMResponse(content)
 
 	// 尝试解析JSON
 	type BatchOptimizedResponse struct {
@@ -451,11 +446,7 @@ func (h *SKCTranslationHandler) callOpenAIForOptimization(ctx context.Context, c
 // parseOptimizedResponse 解析优化响应
 func (h *SKCTranslationHandler) parseOptimizedResponse(content string) (string, error) {
 	// 清理内容
-	cleanContent := strings.TrimSpace(content)
-	cleanContent = strings.TrimPrefix(cleanContent, "```json")
-	cleanContent = strings.TrimPrefix(cleanContent, "```")
-	cleanContent = strings.TrimSuffix(cleanContent, "```")
-	cleanContent = strings.TrimSpace(cleanContent)
+	cleanContent := jsonx.CleanLLMResponse(content)
 
 	// 尝试解析JSON
 	type OptimizedResponse struct {

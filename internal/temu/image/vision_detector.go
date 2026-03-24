@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
@@ -19,11 +20,11 @@ import (
 // VisionDetector Vision API检测器
 type VisionDetector struct {
 	logger       *logrus.Entry
-	openaiClient *openaiClient.Client
+	openaiClient openaiClient.ChatCompleter
 }
 
 // NewVisionDetector 创建Vision检测器
-func NewVisionDetector(client *openaiClient.Client) *VisionDetector {
+func NewVisionDetector(client openaiClient.ChatCompleter) *VisionDetector {
 	return &VisionDetector{
 		logger:       logger.GetGlobalLogger("VisionDetector"),
 		openaiClient: client,

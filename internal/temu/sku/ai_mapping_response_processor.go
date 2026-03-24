@@ -117,15 +117,3 @@ func (vp *SkuVariantProcessor) getSpecPriority(specName string) int {
 	// 其他规格优先级较低
 	return 3
 }
-
-// cleanJSONContent 清理JSON内容
-func (vp *SkuVariantProcessor) cleanJSONContent(content string) string {
-	// 移除markdown代码块标记
-	if after, found := strings.CutPrefix(content, "```json"); found {
-		content = after
-	}
-	if before, found := strings.CutSuffix(content, "```"); found {
-		content = before
-	}
-	return strings.TrimSpace(content)
-}

@@ -2,9 +2,9 @@
 package skc
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
 	api_attribute "task-processor/internal/shein/api/attribute"
@@ -13,7 +13,6 @@ import (
 	"task-processor/internal/shein/product/image"
 	"task-processor/internal/shein/product/sku"
 	"task-processor/internal/shein/product/variant"
-
 )
 
 // SKCVariantProcessor SKC变体处理器
@@ -22,11 +21,11 @@ type SKCVariantProcessor struct {
 	attributeMapper *attribute.AttributeMapper
 	skuBuilder      *sku.SKUBuilder
 	taskContext     *shein.TaskContext
-	openaiClient    *openaiClient.Client
+	openaiClient    openaiClient.ChatCompleter
 }
 
 // NewSKCVariantProcessor 创建新的SKC变体处理器
-func NewSKCVariantProcessor(imageProcessor *image.ImageProcessor, attributeMapper *attribute.AttributeMapper, skuBuilder *sku.SKUBuilder, taskContext *shein.TaskContext, openaiClient *openaiClient.Client) *SKCVariantProcessor {
+func NewSKCVariantProcessor(imageProcessor *image.ImageProcessor, attributeMapper *attribute.AttributeMapper, skuBuilder *sku.SKUBuilder, taskContext *shein.TaskContext, openaiClient openaiClient.ChatCompleter) *SKCVariantProcessor {
 	return &SKCVariantProcessor{
 		imageProcessor:  imageProcessor,
 		attributeMapper: attributeMapper,

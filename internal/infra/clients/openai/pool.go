@@ -2,10 +2,10 @@
 package openai
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"sync"
+	"task-processor/internal/core/logger"
 	"time"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -106,7 +106,7 @@ func (p *RequestPool) CreateChatCompletion(ctx context.Context, req *ChatComplet
 	duration := time.Since(startTime)
 
 	// 5. 记录指标
-	p.logMetrics(duration, err)
+	p.logMetrics(duration, resp, err)
 
 	return resp, err
 }
@@ -217,18 +217,25 @@ func (p *RequestPool) getNextClient() *BaseClient {
 	return client
 }
 
-// logMetrics 记录请求指标
-func (p *RequestPool) logMetrics(duration time.Duration, err error) {
+// logMetrics 记录请求指标，包含耗时和 token 用量
+func (p *RequestPool) logMetrics(duration time.Duration, resp *ChatCompletionResponse, err error) {
 	if err != nil {
 		p.logger.WithFields(logrus.Fields{
-			"duration": duration,
-			"error":    err.Error(),
+			"duration_ms": duration.Milliseconds(),
+			"error":       err.Error(),
 		}).Warn("OpenAI API请求失败")
-	} else {
-		p.logger.WithFields(logrus.Fields{
-			"duration": duration,
-		}).Debug("OpenAI API请求成功")
+		return
 	}
+	fields := logrus.Fields{
+		"duration_ms": duration.Milliseconds(),
+	}
+	if resp != nil {
+		fields["model"] = resp.Model
+		fields["prompt_tokens"] = resp.Usage.PromptTokens
+		fields["completion_tokens"] = resp.Usage.CompletionTokens
+		fields["total_tokens"] = resp.Usage.TotalTokens
+	}
+	p.logger.WithFields(fields).Debug("OpenAI API请求成功")
 }
 
 // GetStats 获取请求池统计信息

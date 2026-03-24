@@ -19,9 +19,9 @@ import (
 // LLM 适配器
 // =============================================================================
 
-// LLMClientAdapter 将 openai.Client 适配为 LLMClient 接口。
+// LLMClientAdapter 将 openai.ChatCompleter 适配为 LLMClient 接口。
 type LLMClientAdapter struct {
-	client *openai.Client
+	client openai.ChatCompleter
 }
 
 // Generate 实现 LLMClient.Generate。

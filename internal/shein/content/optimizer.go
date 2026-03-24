@@ -12,11 +12,11 @@ import (
 
 // ContentOptimizer 内容优化器
 type ContentOptimizer struct {
-	openaiClient *openaiClient.Client
+	openaiClient openaiClient.ChatCompleter
 }
 
 // NewContentOptimizer 创建新的内容优化器
-func NewContentOptimizer(client *openaiClient.Client) *ContentOptimizer {
+func NewContentOptimizer(client openaiClient.ChatCompleter) *ContentOptimizer {
 	return &ContentOptimizer{
 		openaiClient: client,
 	}
@@ -147,11 +147,7 @@ func (o *ContentOptimizer) parseOptimizedContent(content, defaultTitle, defaultD
 	var optimized OptimizedContent
 
 	// 清理内容，移除可能的markdown代码块标记
-	cleanContent := strings.TrimSpace(content)
-	cleanContent = strings.TrimPrefix(cleanContent, "```json")
-	cleanContent = strings.TrimPrefix(cleanContent, "```")
-	cleanContent = strings.TrimSuffix(cleanContent, "```")
-	cleanContent = strings.TrimSpace(cleanContent)
+	cleanContent := jsonx.CleanLLMResponse(content)
 
 	// 尝试解析JSON
 	if err := jsonx.UnmarshalString(cleanContent, &optimized, ""); err == nil {

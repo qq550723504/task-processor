@@ -5,19 +5,20 @@ import (
 	"fmt"
 	"task-processor/internal/infra/clients/openai"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
 // OpenAILLMClient OpenAI LLM客户端适配器
 type OpenAILLMClient struct {
-	client *openai.Client
+	client openai.ChatCompleter
 	model  string
 	logger *logrus.Entry
 }
 
 // NewOpenAILLMClient 创建OpenAI LLM客户端
-func NewOpenAILLMClient(client *openai.Client) *OpenAILLMClient {
+func NewOpenAILLMClient(client openai.ChatCompleter) *OpenAILLMClient {
 	return &OpenAILLMClient{
 		client: client,
 		model:  client.GetDefaultModel(),

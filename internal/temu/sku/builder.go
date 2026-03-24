@@ -23,7 +23,7 @@ type SkuBuilder struct {
 	priceHandler           *product.PriceHandler
 	imageProcessor         *image.ImageProcessor
 	parallelImageProcessor *image.ParallelImageProcessor
-	aiClient               *openai.Client
+	aiClient               openai.ChatCompleter
 	specHandler            *SkuSpecHandler
 	itemBuilder            *SkuItemBuilder
 	skcBuilder             *SkuSkcBuilder
@@ -33,7 +33,7 @@ type SkuBuilder struct {
 }
 
 // NewSkuBuilder 创建新的SKU构建器
-func NewSkuBuilder(logger *logrus.Entry, aiClient *openai.Client, profitRuleClient api.ProfitRuleAPI) *SkuBuilder {
+func NewSkuBuilder(logger *logrus.Entry, aiClient openai.ChatCompleter, profitRuleClient api.ProfitRuleAPI) *SkuBuilder {
 	priceHandler := product.NewPriceHandler(profitRuleClient)
 	imageProcessor := image.NewImageProcessor()
 	parallelImageProcessor := image.NewParallelImageProcessor(3) // 使用3个并发

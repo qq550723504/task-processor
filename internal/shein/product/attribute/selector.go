@@ -2,22 +2,21 @@
 package attribute
 
 import (
-	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/attribute"
-
 )
 
 // AttributeSelectorHandler AI属性选择处理器
 type AttributeSelectorHandler struct {
-	openaiClient      *openaiClient.Client
+	openaiClient      openaiClient.ChatCompleter
 	promptGenerator   *AttributePromptGenerator
 	validator         *AttributeSelectionValidator
 	importanceService *ImportanceService
@@ -25,9 +24,9 @@ type AttributeSelectorHandler struct {
 }
 
 // NewAttributeSelectorHandler 创建新的AI属性选择处理器
-func NewAttributeSelectorHandler(config *openaiClient.ClientConfig) *AttributeSelectorHandler {
+func NewAttributeSelectorHandler(client openaiClient.ChatCompleter) *AttributeSelectorHandler {
 	return &AttributeSelectorHandler{
-		openaiClient:      openaiClient.NewClient(config),
+		openaiClient:      client,
 		promptGenerator:   NewAttributePromptGenerator(),
 		validator:         NewAttributeSelectionValidator(),
 		importanceService: NewImportanceService(),

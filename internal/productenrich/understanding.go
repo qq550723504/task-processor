@@ -2,26 +2,17 @@
 package productenrich
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
+	"task-processor/internal/core/logger"
 
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/strx"
 
 	"github.com/sirupsen/logrus"
 )
-
-// cleanLLMJSON 清理 LLM 响应中可能包含的 markdown 代码块包裹。
-func cleanLLMJSON(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.TrimPrefix(s, "```json")
-	s = strings.TrimPrefix(s, "```")
-	s = strings.TrimSuffix(s, "```")
-	return strings.TrimSpace(s)
-}
 
 // ProductUnderstanding 产品理解接口
 type ProductUnderstanding interface {
@@ -188,7 +179,7 @@ Only return the JSON object, no additional text.`
 
 	// 解析响应
 	var attributes ImageAttributes
-	if err := json.Unmarshal([]byte(cleanLLMJSON(response)), &attributes); err != nil {
+	if err := json.Unmarshal([]byte(jsonx.CleanLLMResponse(response)), &attributes); err != nil {
 		// 如果解析失败，尝试从文本中提取
 		logrus.WithError(err).Warn("failed to parse JSON response, using text extraction")
 
@@ -245,7 +236,7 @@ Only return the JSON object, no additional text.`, text)
 
 	// 解析响应
 	var attributes TextAttributes
-	if err := json.Unmarshal([]byte(cleanLLMJSON(response)), &attributes); err != nil {
+	if err := json.Unmarshal([]byte(jsonx.CleanLLMResponse(response)), &attributes); err != nil {
 		logrus.WithError(err).Warn("failed to parse JSON response")
 
 		// 返回默认值
@@ -300,7 +291,7 @@ Only return the JSON object, no additional text.`
 
 	// 解析响应
 	var representation ProductRepresentation
-	if err := json.Unmarshal([]byte(cleanLLMJSON(response)), &representation); err != nil {
+	if err := json.Unmarshal([]byte(jsonx.CleanLLMResponse(response)), &representation); err != nil {
 		logrus.WithError(err).Warn("failed to parse JSON response")
 
 		// 创建默认表示

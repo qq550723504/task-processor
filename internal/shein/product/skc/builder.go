@@ -2,8 +2,8 @@
 package skc
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
 	api_attribute "task-processor/internal/shein/api/attribute"
@@ -13,7 +13,6 @@ import (
 	"task-processor/internal/shein/product/image"
 	"task-processor/internal/shein/product/sku"
 	"task-processor/internal/shein/product/variant"
-
 )
 
 // SKCBuilder SKC构建器
@@ -22,12 +21,12 @@ type SKCBuilder struct {
 	attributeMapper *attribute.AttributeMapper
 	variantMatcher  *variant.VariantMatcher
 	skuBuilder      *sku.SKUBuilder
-	taskContext     *shein.TaskContext // 添加TaskContext字段
-	openaiClient    *openaiClient.Client
+	taskContext     *shein.TaskContext
+	openaiClient    openaiClient.ChatCompleter
 }
 
 // NewSKCBuilder 创建新的SKC构建器
-func NewSKCBuilder(imageProcessor *image.ImageProcessor, attributeMapper *attribute.AttributeMapper, variantMatcher *variant.VariantMatcher, skuBuilder *sku.SKUBuilder, openaiClient *openaiClient.Client) *SKCBuilder {
+func NewSKCBuilder(imageProcessor *image.ImageProcessor, attributeMapper *attribute.AttributeMapper, variantMatcher *variant.VariantMatcher, skuBuilder *sku.SKUBuilder, openaiClient openaiClient.ChatCompleter) *SKCBuilder {
 	return &SKCBuilder{
 		imageProcessor:  imageProcessor,
 		attributeMapper: attributeMapper,

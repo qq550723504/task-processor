@@ -8,7 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -236,6 +237,33 @@ func (r *ResilientClient) CreateChatCompletion(ctx context.Context, req *ChatCom
 		"duration_ms": duration.Milliseconds(),
 	}).Debug("OpenAI API调用成功")
 	return resp, nil
+}
+
+// Generate 简单文本生成（委托给内部客户端，带熔断保护）
+func (r *ResilientClient) Generate(ctx context.Context, prompt string) (string, error) {
+	var result string
+	err := r.circuitBreaker.Execute(ctx, func() error {
+		var execErr error
+		result, execErr = r.client.Generate(ctx, prompt)
+		return execErr
+	})
+	return result, err
+}
+
+// AnalyzeImage 图片分析（委托给内部客户端，带熔断保护）
+func (r *ResilientClient) AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error) {
+	var result string
+	err := r.circuitBreaker.Execute(ctx, func() error {
+		var execErr error
+		result, execErr = r.client.AnalyzeImage(ctx, imageURL, prompt)
+		return execErr
+	})
+	return result, err
+}
+
+// GetDefaultModel 获取默认模型
+func (r *ResilientClient) GetDefaultModel() string {
+	return r.client.GetDefaultModel()
 }
 
 // GetCircuitBreakerState 获取熔断器状态

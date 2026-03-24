@@ -3,6 +3,7 @@
 import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
+	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/category"
 	"task-processor/internal/shein/content"
@@ -74,7 +75,7 @@ func (p *Pipeline) Process(ctx *shein.TaskContext) error {
 // CreateTaskProcessingPipeline 创建任务处理管道
 func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config) *Pipeline {
 	pipeline := NewPipeline()
-	openaiConfig := cfg.OpenAI.ToClientConfig()
+	aiClient := openaiClient.NewClient(cfg.OpenAI.ToClientConfig())
 	// 添加处理步骤
 	storeClient := processor.GetManagementClient().GetStoreClient()
 	imageDownloder := processor.GetManagementClient().GetImageDownloader()
@@ -119,11 +120,11 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 获取分类树
 	pipeline.AddHandler(category.NewGetCategoryTreeHandler())
 	// AI选择分类
-	pipeline.AddHandler(category.NewAICategorySelectorHandler(openaiConfig))
+	pipeline.AddHandler(category.NewAICategorySelectorHandler(aiClient))
 	// 获取仓库信息
 	pipeline.AddHandler(store.NewWarehouseInfoHandler())
 	// 翻译标题描述
-	pipeline.AddHandler(translate.NewTranslateHandler(openaiConfig))
+	pipeline.AddHandler(translate.NewTranslateHandler(aiClient))
 	// 设置站点信息
 	pipeline.AddHandler(store.NewSiteInfoHandler())
 	// 获取属性模板
@@ -131,15 +132,15 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 构建属性信息
 	pipeline.AddHandler(build.NewBuildAttributeHandler())
 	// AI选择属性
-	pipeline.AddHandler(attribute.NewAttributeSelectorHandler(openaiConfig))
+	pipeline.AddHandler(attribute.NewAttributeSelectorHandler(aiClient))
 	// 填充属性
 	pipeline.AddHandler(attribute.NewFillAttributeHandler())
 	// AI生成销售规格
-	pipeline.AddHandler(sale.NewSaleAttributeHandler(openaiConfig))
+	pipeline.AddHandler(sale.NewSaleAttributeHandler(aiClient))
 	// 验证修复销售属性
 	pipeline.AddHandler(attribute.NewValidateRepairSaleAttributeHandler())
 	// 构建SKC列表
-	pipeline.AddHandler(build.NewBuildSkcListHandler(imageDownloder, openaiConfig))
+	pipeline.AddHandler(build.NewBuildSkcListHandler(imageDownloder, aiClient))
 	// 构建最终的发品数据
 	pipeline.AddHandler(build.NewBuildSpuHandler())
 	// 清理敏感词（集成硬编码敏感词检查）

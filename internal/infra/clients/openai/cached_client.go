@@ -9,7 +9,8 @@ import (
 	"fmt"
 	"time"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -126,6 +127,21 @@ func (c *CachedClient) generateCacheKey(req *ChatCompletionRequest) string {
 	hashStr := hex.EncodeToString(hash[:])
 
 	return fmt.Sprintf("openai:chat:%s", hashStr)
+}
+
+// Generate 简单文本生成（带缓存）
+func (c *CachedClient) Generate(ctx context.Context, prompt string) (string, error) {
+	return c.client.Generate(ctx, prompt)
+}
+
+// AnalyzeImage 图片分析（带缓存）
+func (c *CachedClient) AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error) {
+	return c.client.AnalyzeImage(ctx, imageURL, prompt)
+}
+
+// GetDefaultModel 获取默认模型
+func (c *CachedClient) GetDefaultModel() string {
+	return c.client.GetDefaultModel()
 }
 
 // ClearCache 清除指定请求的缓存

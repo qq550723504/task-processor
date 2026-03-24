@@ -2,19 +2,18 @@
 package category
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/category"
-
 )
 
 // CategorySelectionResult 分类选择结果
@@ -35,11 +34,11 @@ type AISelector interface {
 
 // OpenAISelector OpenAI选择器实现
 type OpenAISelector struct {
-	openaiClient *openaiClient.Client
+	openaiClient openaiClient.ChatCompleter
 }
 
 // NewOpenAISelector 创建新的OpenAI选择器
-func NewOpenAISelector(client *openaiClient.Client) *OpenAISelector {
+func NewOpenAISelector(client openaiClient.ChatCompleter) *OpenAISelector {
 	return &OpenAISelector{
 		openaiClient: client,
 	}

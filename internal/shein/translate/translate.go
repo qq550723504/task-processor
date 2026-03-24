@@ -14,15 +14,14 @@ import (
 
 // TranslateHandler 翻译处理器
 type TranslateHandler struct {
-	openaiClient     *openaiClient.Client
+	openaiClient     openaiClient.ChatCompleter
 	languageDetector *LanguageDetector
 	contentOptimizer *content.ContentOptimizer
 	textCleaner      *content.TextCleaner
 }
 
 // NewTranslateHandler 创建新的翻译处理器
-func NewTranslateHandler(config *openaiClient.ClientConfig) *TranslateHandler {
-	client := openaiClient.NewClient(config)
+func NewTranslateHandler(client openaiClient.ChatCompleter) *TranslateHandler {
 	return &TranslateHandler{
 		openaiClient:     client,
 		languageDetector: NewLanguageDetector(),

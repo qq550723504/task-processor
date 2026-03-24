@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	models "task-processor/internal/temu/api/product"
@@ -19,16 +18,14 @@ import (
 
 // AIService AI服务调用器
 type AIService struct {
-	openaiClient *openaiClient.Client
-	config       *config.OpenAIConfig
+	openaiClient openaiClient.ChatCompleter
 	logger       *logrus.Entry
 }
 
 // NewAIService 创建新的AI服务调用器
-func NewAIService(openaiClient *openaiClient.Client, config *config.OpenAIConfig, logger *logrus.Entry) *AIService {
+func NewAIService(client openaiClient.ChatCompleter, logger *logrus.Entry) *AIService {
 	return &AIService{
-		openaiClient: openaiClient,
-		config:       config,
+		openaiClient: client,
 		logger:       logger,
 	}
 }
@@ -81,7 +78,7 @@ func (s *AIService) createChatCompletionRequest(systemPrompt, userPrompt string)
 	temperature := float32(0.1)
 
 	return &openaiClient.ChatCompletionRequest{
-		Model: s.config.Model, // 使用配置文件中的模型
+		Model: s.openaiClient.GetDefaultModel(),
 		Messages: []openaiClient.ChatCompletionMessage{
 			{
 				Role:    "system",
@@ -102,7 +99,7 @@ func (s *AIService) processAIResponse(response *openaiClient.ChatCompletionRespo
 	content := strings.TrimSpace(response.Choices[0].Message.Content)
 
 	// 清理JSON格式
-	content = s.cleanJSONContent(content)
+	content = jsonx.CleanLLMResponse(content)
 
 	// 验证JSON格式
 	if !json.Valid([]byte(content)) {
@@ -126,16 +123,4 @@ func (s *AIService) processAIResponse(response *openaiClient.ChatCompletionRespo
 
 	s.logger.Infof("AI属性映射成功，返回 %d 个属性", len(validatedProperties))
 	return validatedProperties, nil
-}
-
-// cleanJSONContent 清理JSON内容
-func (s *AIService) cleanJSONContent(content string) string {
-	// 移除markdown代码块标记
-	if after, found := strings.CutPrefix(content, "```json"); found {
-		content = strings.TrimSuffix(after, "```")
-	} else if after, found := strings.CutPrefix(content, "```"); found {
-		content = strings.TrimSuffix(after, "```")
-	}
-
-	return strings.TrimSpace(content)
 }

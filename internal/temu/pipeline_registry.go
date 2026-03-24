@@ -132,7 +132,7 @@ func (pr *PipelineRegistry) registerContentHandlers() {
 	skuBuilder := sku.NewSkuBuilder(nil, aiClient, managementClient.GetProfitRuleClient())
 	specHandler := skuBuilder.GetSpecHandler()
 
-	pr.register("build_spu", NewTemuHandlerAdapter("build_spu", product.NewBuildSpuHandler(openaiConfig, managementClient.GetProfitRuleClient(), skuBuilder, specHandler)))
+	pr.register("build_spu", NewTemuHandlerAdapter("build_spu", product.NewBuildSpuHandler(aiClient, managementClient.GetProfitRuleClient(), skuBuilder, specHandler)))
 	pr.register("content_validation", commonPipeline.NewParallelHandler(
 		"内容验证并行处理",
 		product.NewProductNameValidator(),

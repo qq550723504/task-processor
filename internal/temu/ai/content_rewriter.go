@@ -12,14 +12,15 @@ import (
 	"task-processor/internal/pkg/timeout"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
 // AIContentRewriter AI内容重构器
 type AIContentRewriter struct {
 	logger       *logrus.Entry
-	openaiClient *openaiClient.Client
+	openaiClient openaiClient.ChatCompleter
 }
 
 // RewriteResult 重构结果
@@ -30,7 +31,7 @@ type RewriteResult struct {
 }
 
 // NewAIContentRewriter 创建新的AI内容重构器
-func NewAIContentRewriter(logger *logrus.Entry, openaiClient *openaiClient.Client) *AIContentRewriter {
+func NewAIContentRewriter(logger *logrus.Entry, openaiClient openaiClient.ChatCompleter) *AIContentRewriter {
 	return &AIContentRewriter{
 		logger:       logger,
 		openaiClient: openaiClient,
@@ -38,15 +39,8 @@ func NewAIContentRewriter(logger *logrus.Entry, openaiClient *openaiClient.Clien
 }
 
 // NewAIContentRewriterHandler 创建新的AI内容重构处理器（用于pipeline）
-func NewAIContentRewriterHandler(openaiConfig *openaiClient.ClientConfig) *AIContentRewriter {
-	logger := logger.GetGlobalLogger("ai_content_rewriter")
-
-	var aiClient *openaiClient.Client
-	if openaiConfig != nil {
-		aiClient = openaiClient.NewClient(openaiConfig)
-	}
-
-	return NewAIContentRewriter(logger, aiClient)
+func NewAIContentRewriterHandler(client openaiClient.ChatCompleter) *AIContentRewriter {
+	return NewAIContentRewriter(logger.GetGlobalLogger("ai_content_rewriter"), client)
 }
 
 // Name 返回处理器名称
@@ -290,7 +284,7 @@ func (r *AIContentRewriter) callAIForRewrite(ctx context.Context, systemPrompt, 
 
 	// 解析响应
 	content := strings.TrimSpace(response.Choices[0].Message.Content)
-	content = r.cleanJSONContent(content)
+	content = jsonx.CleanLLMResponse(content)
 
 	var result RewriteResult
 	if err := jsonx.UnmarshalBytes([]byte(content), &result, "解析AI响应失败"); err != nil {
@@ -302,18 +296,6 @@ func (r *AIContentRewriter) callAIForRewrite(ctx context.Context, systemPrompt, 
 		len(result.Title), len(result.Description), len(result.BulletPoints))
 
 	return &result, nil
-}
-
-// cleanJSONContent 清理JSON内容
-func (r *AIContentRewriter) cleanJSONContent(content string) string {
-	// 移除markdown代码块标记
-	if after, found := strings.CutPrefix(content, "```json"); found {
-		content = strings.TrimSuffix(after, "```")
-	} else if after, found := strings.CutPrefix(content, "```"); found {
-		content = strings.TrimSuffix(after, "```")
-	}
-
-	return strings.TrimSpace(content)
 }
 
 // applyRewriteResult 应用重构结果

@@ -34,16 +34,11 @@ type SpuBuilder struct {
 	skuBuilder     handlerbase.SkuBuilder
 	specHandler    handlerbase.SpecHandler
 	propertyMapper *property.PropertyMapper
-	openaiClient   *openaiClient.Client
+	openaiClient   openaiClient.ChatCompleter
 }
 
 // NewSpuBuilder 创建新的SPU构建器
-func NewSpuBuilder(logger *logrus.Entry, openaiConfig *openaiClient.ClientConfig, profitRuleClient api.ProfitRuleAPI, skuBuilder handlerbase.SkuBuilder, specHandler handlerbase.SpecHandler) *SpuBuilder {
-	var aiClient *openaiClient.Client
-	if openaiConfig != nil {
-		aiClient = openaiClient.NewClient(openaiConfig)
-	}
-
+func NewSpuBuilder(logger *logrus.Entry, aiClient openaiClient.ChatCompleter, profitRuleClient api.ProfitRuleAPI, skuBuilder handlerbase.SkuBuilder, specHandler handlerbase.SpecHandler) *SpuBuilder {
 	return &SpuBuilder{
 		logger:         logger,
 		textProcessor:  rules.NewTextProcessor(),

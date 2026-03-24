@@ -207,7 +207,7 @@ func (vp *SkuVariantProcessor) parseAIResponse(resp *openai.ChatCompletionRespon
 	}
 
 	// 清理JSON内容，移除可能导致解析失败的字符
-	jsonContent = vp.cleanJSONContent(jsonContent)
+	jsonContent = jsonx.CleanLLMResponse(jsonContent)
 
 	if err := jsonx.UnmarshalBytes([]byte(jsonContent), &aiResponse, "解析AI响应失败"); err != nil {
 		vp.logParseError(err, content, jsonContent)

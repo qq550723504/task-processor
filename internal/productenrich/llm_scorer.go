@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+	"task-processor/internal/pkg/jsonx"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -292,11 +293,7 @@ func (s *llmScorer) buildImageScoringPrompt(baseScore float64) string {
 // parseLLMScore 解析 LLM 返回的评分（增强版）
 func (s *llmScorer) parseLLMScore(response string) (float64, error) {
 	// 清理响应
-	response = strings.TrimSpace(response)
-	response = strings.TrimPrefix(response, "```json")
-	response = strings.TrimPrefix(response, "```")
-	response = strings.TrimSuffix(response, "```")
-	response = strings.TrimSpace(response)
+	response = jsonx.CleanLLMResponse(response)
 
 	// 解析 JSON
 	var result struct {

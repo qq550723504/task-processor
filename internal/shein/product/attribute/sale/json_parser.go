@@ -2,13 +2,12 @@
 package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"encoding/json"
 	"regexp"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
-
 )
 
 // SaleAttributeJSONParser 销售属性JSON解析器，负责解析和修复GPT API返回的JSON数据
@@ -31,12 +30,8 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) shein.Res
 	logger.GetGlobalLogger("shein/product").Infof("📝 开始解析AI响应，长度: %d 字符", len(content))
 
 	// 清理JSON格式
-	if strings.HasPrefix(content, "```json") {
-		content = strings.TrimPrefix(content, "```json")
-		content = strings.TrimSuffix(content, "```")
-		logger.GetGlobalLogger("shein/product").Debug("清理了markdown代码块标记")
-	}
-	content = strings.TrimSpace(content)
+	content = jsonx.CleanLLMResponse(content)
+	logger.GetGlobalLogger("shein/product").Debug("清理了markdown代码块标记")
 
 	// 验证JSON格式
 	if !json.Valid([]byte(content)) {

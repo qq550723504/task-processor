@@ -4,7 +4,6 @@ package ai
 import (
 	"fmt"
 
-	"task-processor/internal/core/config"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/timeout"
 	models "task-processor/internal/temu/api/product"
@@ -19,7 +18,7 @@ import (
 // AIPropertyMapper AI属性映射器
 type AIPropertyMapper struct {
 	logger       *logrus.Entry
-	openaiClient *openaiClient.Client
+	openaiClient openaiClient.ChatCompleter
 
 	// 注入的专职处理器
 	aiService         *AIService
@@ -36,17 +35,8 @@ type AIPropertyMapper struct {
 }
 
 // NewAIPropertyMapper 创建新的AI属性映射器
-func NewAIPropertyMapper(logger *logrus.Entry, openaiClient *openaiClient.Client, openaiConfig *openaiClient.ClientConfig) *AIPropertyMapper {
-	// 创建专职处理器
-	// 将ClientConfig转换为config.OpenAIConfig
-	configOpenAI := &config.OpenAIConfig{
-		APIKey:  openaiConfig.APIKey,
-		Model:   openaiConfig.Model,
-		BaseURL: openaiConfig.BaseURL,
-		Timeout: int(openaiConfig.Timeout.Seconds()),
-	}
-
-	aiService := NewAIService(openaiClient, configOpenAI, logger)
+func NewAIPropertyMapper(logger *logrus.Entry, client openaiClient.ChatCompleter) *AIPropertyMapper {
+	aiService := NewAIService(client, logger)
 	propertyValidator := property.NewPropertyValidator(logger)
 
 	// 创建新的严格验证组件
@@ -59,7 +49,7 @@ func NewAIPropertyMapper(logger *logrus.Entry, openaiClient *openaiClient.Client
 
 	return &AIPropertyMapper{
 		logger:             logger,
-		openaiClient:       openaiClient,
+		openaiClient:       client,
 		aiService:          aiService,
 		propertyValidator:  propertyValidator,
 		defaultFiller:      propertyGuardian.GetDefaultFiller(), // 使用propertyGuardian中的DefaultPropertyFiller
