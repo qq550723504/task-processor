@@ -37,7 +37,7 @@ func (g *AttributePromptGenerator) GenerateUserPrompt(ctx *shein.TaskContext, en
 
 // generateAttributeSystemPrompt 生成基础系统提示词
 func (g *AttributePromptGenerator) generateAttributeSystemPrompt() (string, error) {
-	return prompt.GlobalRegistry.Get("shein.attribute_selector.system", `你是一个专业的产品属性优化专家。请将亚马逊产品属性转换为SHEIN平台适用的属性格式。
+	return prompt.GlobalRegistry.Get(prompt.KSheinAttributeSelectorSystem, `你是一个专业的产品属性优化专家。请将亚马逊产品属性转换为SHEIN平台适用的属性格式。
 
 【核心原则】
 绝对禁止跨属性使用属性值！每个属性(AttrID)都有独立的属性值列表，不能混用。

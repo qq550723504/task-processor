@@ -307,7 +307,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 // batchOptimizeEnglishContent 批量优化英文内容
 func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context, contents []string, sourceTitle string) ([]string, error) {
 	// 构建批量优化的系统提示词
-	systemPrompt := prompt.GlobalRegistry.Get("shein.translation.batch_optimize_system", `你是一个专业的电商产品内容优化专家。请批量优化产品标题，使其更适合SHEIN平台销售。
+	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinTranslationBatchOptimizeSystem, `你是一个专业的电商产品内容优化专家。请批量优化产品标题，使其更适合SHEIN平台销售。
 
 要求：
 1. 所有标题必须是英文，长度在10-800个字符之间

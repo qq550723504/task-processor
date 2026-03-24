@@ -153,7 +153,7 @@ func (p *productUnderstanding) AnalyzeImage(ctx context.Context, imagePath strin
 	logger.GetGlobalLogger("productenrich/understanding.go").WithField("path", imagePath).Info("analyzing image")
 
 	// 构建提示词
-	promptText := prompt.GlobalRegistry.Get("productenrich.understanding.analyze_image", `Analyze this product image and extract the following attributes in JSON format:
+	promptText := prompt.GlobalRegistry.Get(prompt.KProductEnrichUnderstandingAnalyzeImage, `Analyze this product image and extract the following attributes in JSON format:
 {
   "color": "the main color of the product",
   "material": "the material the product is made of",
@@ -205,7 +205,7 @@ func (p *productUnderstanding) ExtractTextAttributes(ctx context.Context, text s
 	logger.GetGlobalLogger("productenrich/understanding.go").Info("extracting text attributes")
 
 	// 构建提示词
-	promptText, promptErr := prompt.GlobalRegistry.Render("productenrich.understanding.extract_text", map[string]any{
+	promptText, promptErr := prompt.GlobalRegistry.Render(prompt.KProductEnrichUnderstandingExtractText, map[string]any{
 		"Text": text,
 	}, "")
 	if promptErr != nil || promptText == "" {
@@ -261,7 +261,7 @@ func (p *productUnderstanding) FuseMultimodal(ctx context.Context, imageAttr *Im
 	logger.GetGlobalLogger("productenrich/understanding.go").Info("fusing multimodal information")
 
 	// 构建融合提示词
-	promptPrefix := prompt.GlobalRegistry.Get("productenrich.understanding.fuse_multimodal", "Combine the following image and text attributes to create a unified product representation:")
+	promptPrefix := prompt.GlobalRegistry.Get(prompt.KProductEnrichUnderstandingFuseMultimodal, "Combine the following image and text attributes to create a unified product representation:")
 	promptText := promptPrefix + "\n\n"
 
 	if imageAttr != nil {

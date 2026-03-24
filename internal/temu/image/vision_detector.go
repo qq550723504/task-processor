@@ -83,7 +83,7 @@ func (v *VisionDetector) detectWithVisionAPI(ctx context.Context, img image.Imag
 请只回答 "YES" 或 "NO"，然后简要说明理由（不超过30字）。
 格式：YES/NO - 理由`
 
-	rendered, renderErr := prompt.GlobalRegistry.Render("temu.vision_detector.detect", map[string]any{
+	rendered, renderErr := prompt.GlobalRegistry.Render(prompt.KTemuVisionDetectorDetect, map[string]any{
 		"Base64Image": base64Image,
 	}, "")
 	var promptText string

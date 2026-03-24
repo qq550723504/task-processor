@@ -95,7 +95,7 @@ func (r *AIContentRewriter) Handle(ctx pipeline.TaskContext) error {
 
 // buildSystemPrompt 构建系统提示词
 func (r *AIContentRewriter) buildSystemPrompt() string {
-	return prompt.GlobalRegistry.Get("temu.content_rewriter.system", `你是TEMU平台的专业产品文案专家。你的任务是将Amazon产品信息重写为适合TEMU平台的标题、描述和要点。
+	return prompt.GlobalRegistry.Get(prompt.KTemuContentRewriterSystem, `你是TEMU平台的专业产品文案专家。你的任务是将Amazon产品信息重写为适合TEMU平台的标题、描述和要点。
 
 【关键语言要求】
 🚨 所有输出内容必须是纯英文

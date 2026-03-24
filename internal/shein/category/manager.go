@@ -11,6 +11,7 @@ import (
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
+	"task-processor/internal/prompt"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/category"
@@ -71,8 +72,9 @@ func (s *OpenAISelector) selectCategoryByAI(
 	categoryInfo string,
 	categoryType string,
 ) (int, error) {
-	// 构建系统提示词（所有分类类型通用）
-	systemPrompt := `你是一个专业的电商产品分类专家。根据产品标题，从给定的分类列表中选择最合适的分类ID。
+	// 从 prompt registry 获取系统提示词
+	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinCategorySelectorSelectCategorySystem,
+		`你是一个专业的电商产品分类专家。根据产品标题，从给定的分类列表中选择最合适的分类ID。
 
 分析原则：
 1. 仔细分析产品标题中的关键词
@@ -88,14 +90,13 @@ func (s *OpenAISelector) selectCategoryByAI(
   "reason": "选择该分类的详细理由"
 }
 
-注意：category_id必须是给定列表中的有效ID。`
+注意：category_id必须是给定列表中的有效ID。`)
 
-	// 构建用户提示词
-	userPrompt := fmt.Sprintf(`产品标题：%s
-
-%s
-
-请分析产品标题，选择最合适的分类ID（必须从上述列表中选择）：`, title, categoryInfo)
+	// 从 prompt registry 渲染用户提示词
+	userPrompt, _ := prompt.GlobalRegistry.Render(prompt.KSheinCategorySelectorSelectCategoryUser, map[string]any{
+		"title":        title,
+		"categoryInfo": categoryInfo,
+	}, fmt.Sprintf("产品标题：%s\n\n%s\n\n请分析产品标题，选择最合适的分类ID（必须从上述列表中选择）：", title, categoryInfo))
 
 	// 设置seed确保结果一致性
 	seed := 42
@@ -178,12 +179,13 @@ func (s *OpenAISelector) parseOpenAIResponse(resp *openaiClient.ChatCompletionRe
 
 // ExtractCoreItemByAI 通过AI从Amazon标题中提取核心物品的简短描述，用于SuggestCategoryByText。
 func (s *OpenAISelector) ExtractCoreItemByAI(ctx context.Context, title string) (string, error) {
-	systemPrompt := `你是一个电商产品分析专家。请从Amazon产品标题中提取出该商品的核心物品描述。
+	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinCategorySelectorExtractCoreItemSystem,
+		`你是一个电商产品分析专家。请从Amazon产品标题中提取出该商品的核心物品描述。
 要求：
 1. 用简洁的中文描述核心物品，例如"环保塑料杯套装"、"不锈钢保温水壶"、"儿童棉质连衣裙"
 2. 保留关键材质、用途、人群等修饰词，但去掉品牌名、数量、尺寸、颜色等无关信息
 3. 长度控制在5-20个汉字
-4. 只返回描述文本，不要任何解释`
+4. 只返回描述文本，不要任何解释`)
 
 	temperature := float32(0.1)
 	seed := 42

@@ -12,7 +12,7 @@ import (
 
 // buildSystemPrompt 构建系统提示词
 func (vp *SkuVariantProcessor) buildSystemPrompt() string {
-	return prompt.GlobalRegistry.Get("temu.sku_variant_mapping.system", `你是TEMU平台的专业产品数据转换专家，专门负责将Amazon产品变体转换为TEMU平台的SKC/SKU结构。
+	return prompt.GlobalRegistry.Get(prompt.KTemuSkuVariantMappingSystem, `你是TEMU平台的专业产品数据转换专家，专门负责将Amazon产品变体转换为TEMU平台的SKC/SKU结构。
 
 【你的专业能力】
 🎯 精通Amazon和TEMU两个平台的产品数据结构

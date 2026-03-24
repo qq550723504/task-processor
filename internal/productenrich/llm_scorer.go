@@ -230,7 +230,7 @@ func (s *llmScorer) retryLLMCall(ctx context.Context, maxRetries int, call func(
 
 // buildTextScoringPrompt 构建文本评分提示词（优化版）
 func (s *llmScorer) buildTextScoringPrompt(text string, baseScore float64) string {
-	rendered, err := prompt.GlobalRegistry.Render("productenrich.llm_scorer.text_scoring", map[string]any{
+	rendered, err := prompt.GlobalRegistry.Render(prompt.KProductEnrichLlmScorerTextScoring, map[string]any{
 		"Text":      text,
 		"BaseScore": fmt.Sprintf("%.1f", baseScore),
 	}, "")
@@ -270,7 +270,7 @@ func (s *llmScorer) buildTextScoringPrompt(text string, baseScore float64) strin
 
 // buildImageScoringPrompt 构建图片评分提示词（优化版）
 func (s *llmScorer) buildImageScoringPrompt(baseScore float64) string {
-	rendered, err := prompt.GlobalRegistry.Render("productenrich.llm_scorer.image_scoring", map[string]any{
+	rendered, err := prompt.GlobalRegistry.Render(prompt.KProductEnrichLlmScorerImageScoring, map[string]any{
 		"BaseScore": fmt.Sprintf("%.1f", baseScore),
 	}, "")
 	if err != nil || rendered == "" {

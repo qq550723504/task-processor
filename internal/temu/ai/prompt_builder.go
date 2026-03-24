@@ -18,7 +18,7 @@ func NewPromptBuilder() *PromptBuilder {
 
 // BuildSystemPrompt 构建系统提示词
 func (p *PromptBuilder) BuildSystemPrompt() string {
-	return prompt.GlobalRegistry.Get("temu.attribute_mapping.system", `你是TEMU平台的产品属性映射专家。根据Amazon产品信息，为TEMU属性填充有价值的信息。
+	return prompt.GlobalRegistry.Get(prompt.KTemuAttributeMappingSystem, `你是TEMU平台的产品属性映射专家。根据Amazon产品信息，为TEMU属性填充有价值的信息。
 
 【核心目标】
 🎯 最大化属性填充率：从Amazon产品信息中提取尽可能多的有价值属性

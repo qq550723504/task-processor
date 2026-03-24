@@ -5,13 +5,13 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$Version,
     
-    [ValidateSet("task-processor", "rabbitmq-consumer")]
-    [string]$App = "task-processor",
+    [ValidateSet("task", "rabbitmq-consumer")]
+    [string]$App = "task",
 
     [string]$Changelog = "Bug fixes and improvements",
     [string]$CosBucket = "auto-update-1303159911",
     [string]$CosRegion = "ap-shanghai",
-    [string]$CosPath = "task-processor",
+    [string]$CosPath = "task",
     [switch]$ForceUpdate = $false,
     [switch]$AutoUpload = $true
 )
