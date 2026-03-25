@@ -9,17 +9,15 @@ import (
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/activity"
-	"task-processor/internal/shein/client"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // ActivityTask SHEIN活动报名任务
 type ActivityTask struct {
 	*BaseTask
 	managementClient *management.ClientManager
-	clientManager    *client.ClientManager
 	activityService  activity.ActivityRegistrationService
 	logger           *logrus.Entry
 }
@@ -29,15 +27,14 @@ func NewActivityTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
-	clientManager *client.ClientManager,
 	activityService activity.ActivityRegistrationService,
 ) *ActivityTask {
+	_ = ctx
 	baseTask := NewBaseTask(config)
 
 	return &ActivityTask{
 		BaseTask:         baseTask,
 		managementClient: managementClient,
-		clientManager:    clientManager,
 		activityService:  activityService,
 		logger: logger.GetGlobalLogger("shein/scheduler").WithFields(logrus.Fields{
 			"component": "SheinActivityTask",

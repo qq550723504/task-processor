@@ -25,6 +25,7 @@ type TaskBuilder func(ctx context.Context, config appscheduler.TaskConfig, facto
 type PricingServiceBuilder func(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.AutoPricingService, error)
 type ProductSyncServiceBuilder func(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.ProductSyncService, error)
 type InventoryServiceBuilder func(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.InventorySyncService, error)
+type ActivityServiceBuilder func(config appscheduler.TaskConfig, factory *SheinTaskFactory) (activity.ActivityRegistrationService, error)
 
 type Dependencies struct {
 	CookieManager             *state.CookieManager
@@ -33,6 +34,7 @@ type Dependencies struct {
 	PricingServiceBuilder     PricingServiceBuilder
 	ProductSyncServiceBuilder ProductSyncServiceBuilder
 	InventoryServiceBuilder   InventoryServiceBuilder
+	ActivityServiceBuilder    ActivityServiceBuilder
 	PricingTaskBuilder        TaskBuilder
 	ProductSyncTaskBuilder    TaskBuilder
 	InventoryTaskBuilder      TaskBuilder
@@ -48,6 +50,7 @@ type SheinTaskFactory struct {
 	pricingServiceBuilder     PricingServiceBuilder
 	productSyncServiceBuilder ProductSyncServiceBuilder
 	inventoryServiceBuilder   InventoryServiceBuilder
+	activityServiceBuilder    ActivityServiceBuilder
 	pricingTaskBuilder        TaskBuilder
 	productSyncTaskBuilder    TaskBuilder
 	inventoryTaskBuilder      TaskBuilder
@@ -120,6 +123,10 @@ func NewSheinTaskFactoryWithDependencies(
 	factory.inventoryServiceBuilder = deps.InventoryServiceBuilder
 	if factory.inventoryServiceBuilder == nil {
 		factory.inventoryServiceBuilder = defaultBuildSheinInventoryService
+	}
+	factory.activityServiceBuilder = deps.ActivityServiceBuilder
+	if factory.activityServiceBuilder == nil {
+		factory.activityServiceBuilder = defaultBuildSheinActivityService
 	}
 	factory.pricingTaskBuilder = deps.PricingTaskBuilder
 	if factory.pricingTaskBuilder == nil {
@@ -256,14 +263,21 @@ func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *
 }
 
 func defaultBuildSheinActivityTask(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error) {
+	activityService, err := factory.activityServiceBuilder(config, factory)
+	if err != nil {
+		return nil, fmt.Errorf("build SHEIN activity service: %w", err)
+	}
+	return NewActivityTask(ctx, config, factory.GetManagementClient(), activityService), nil
+}
+
+func defaultBuildSheinActivityService(config appscheduler.TaskConfig, factory *SheinTaskFactory) (activity.ActivityRegistrationService, error) {
 	baseClient, err := factory.createBaseClient(config.StoreID)
 	if err != nil {
 		return nil, err
 	}
 
 	marketingAPI := marketing.NewClient(baseClient)
-	activityService := activity.NewActivityRegistrationService(factory.GetManagementClient(), marketingAPI)
-	return NewActivityTask(ctx, config, factory.GetManagementClient(), factory.clientManager, activityService), nil
+	return activity.NewActivityRegistrationService(factory.GetManagementClient(), marketingAPI), nil
 }
 
 func (f *SheinTaskFactory) createBaseClient(storeID int64) (*client.BaseAPIClient, error) {
