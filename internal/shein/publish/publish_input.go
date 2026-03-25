@@ -3,6 +3,7 @@ package publish
 import (
 	"fmt"
 
+	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
@@ -30,6 +31,45 @@ func buildPublishProductInput(ctx *shein.TaskContext) (*PublishProductInput, err
 		Task:        ctx.Task,
 		ProductData: ctx.ProductData,
 		ProductAPI:  ctx.ProductAPI,
+	}, nil
+}
+
+type ValidationInput struct {
+	Task        *model.Task
+	ProductData *sheinproduct.Product
+}
+
+func buildValidationInput(ctx *shein.TaskContext) (*ValidationInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+	if ctx.ProductData == nil {
+		return nil, fmt.Errorf("product data is nil")
+	}
+
+	return &ValidationInput{
+		Task:        ctx.Task,
+		ProductData: ctx.ProductData,
+	}, nil
+}
+
+type ExistenceCheckInput struct {
+	Task                 *model.Task
+	ManagementClientMgr  *management.ClientManager
+	Variants             *[]model.Product
+	SetVariantFilteredFn func(asin string, filteredOut bool, reason string)
+}
+
+func buildExistenceCheckInput(ctx *shein.TaskContext) (*ExistenceCheckInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+
+	return &ExistenceCheckInput{
+		Task:                 ctx.Task,
+		ManagementClientMgr:  ctx.ManagementClientMgr,
+		Variants:             ctx.Variants,
+		SetVariantFilteredFn: ctx.SetVariantFiltered,
 	}, nil
 }
 

@@ -46,7 +46,12 @@ func (h *PublishProductHandler) Handle(ctx *shein.TaskContext) error {
 	// 方案3：发布前预验证
 	logger.GetGlobalLogger("shein/publish").Info("🔍 开始发布前预验证...")
 
-	if err := h.validator.PreValidateProductData(ctx); err != nil {
+	validationInput, err := buildValidationInput(ctx)
+	if err != nil {
+		return shein.NewNonRetryableError("构建发布验证输入失败", err)
+	}
+
+	if err := h.validator.PreValidateProductData(ctx, validationInput); err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("❌ 发布前预验证失败: %v", err)
 		h.maybeDebugSave(ctx, "validation_failed")
 		// 预验证失败通常是数据问题，可重试（可能通过重新处理解决）

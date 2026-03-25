@@ -30,14 +30,14 @@ func NewPublishProductValidator() *PublishProductValidator {
 }
 
 // PreValidateProductData 发布前预验证产品数据
-func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext) error {
+func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext, input *ValidationInput) error {
 	v.logger.Info("🔍 开始产品数据预验证...")
 
-	if ctx.ProductData == nil {
+	if input == nil || input.ProductData == nil {
 		return fmt.Errorf("产品数据为空")
 	}
 
-	report := v.generateValidationReport(ctx)
+	report := v.generateValidationReport(ctx, input)
 
 	if len(report.CriticalIssues) > 0 {
 		v.trySaveReport(ctx, report, "validation_failed_report", "保存验证失败报告失败")
@@ -59,8 +59,8 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext)
 }
 
 // validateBasicProductInfo 验证基本产品信息
-func (v *PublishProductValidator) validateBasicProductInfo(ctx *shein.TaskContext) error {
-	product := ctx.ProductData
+func (v *PublishProductValidator) validateBasicProductInfo(input *ValidationInput) error {
+	product := input.ProductData
 
 	if len(product.MultiLanguageNameList) == 0 {
 		return fmt.Errorf("缺少产品名称")
@@ -77,8 +77,8 @@ func (v *PublishProductValidator) validateBasicProductInfo(ctx *shein.TaskContex
 }
 
 // validateSKCAndSKUData 验证SKC和SKU数据完整性
-func (v *PublishProductValidator) validateSKCAndSKUData(ctx *shein.TaskContext) error {
-	product := ctx.ProductData
+func (v *PublishProductValidator) validateSKCAndSKUData(input *ValidationInput) error {
+	product := input.ProductData
 
 	if len(product.SKCList) == 0 {
 		return fmt.Errorf("缺少SKC数据")
@@ -152,7 +152,7 @@ type ValidationReport struct {
 }
 
 // generateValidationReport 生成验证报告
-func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContext) *ValidationReport {
+func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContext, input *ValidationInput) *ValidationReport {
 	startTime := time.Now()
 
 	report := &ValidationReport{
@@ -164,7 +164,7 @@ func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContex
 	}
 
 	// 1. 验证基本产品信息
-	if err := v.validateBasicProductInfo(ctx); err != nil {
+	if err := v.validateBasicProductInfo(input); err != nil {
 		report.FailedChecks++
 		report.CriticalIssues = append(report.CriticalIssues, fmt.Sprintf("基本信息: %v", err))
 	} else {
@@ -182,7 +182,7 @@ func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContex
 	report.AutoFixedIssues += len(report.FixedIssues) - beforeSKUValidation
 
 	// 3. 验证SKC和SKU数据完整性
-	if err := v.validateSKCAndSKUData(ctx); err != nil {
+	if err := v.validateSKCAndSKUData(input); err != nil {
 		report.FailedChecks++
 		report.CriticalIssues = append(report.CriticalIssues, fmt.Sprintf("SKC/SKU数据: %v", err))
 	} else {
