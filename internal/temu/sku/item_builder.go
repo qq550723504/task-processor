@@ -302,38 +302,25 @@ func (ib *SkuItemBuilder) processSkuItem(ctx pipeline.TaskContext, skcIndex, sku
 
 // processSkuItemTemu 处理SKU项目（强类型上下文）
 func (ib *SkuItemBuilder) processSkuItemTemu(temuCtx *temucontext.TemuTaskContext, skcIndex, skuIndex int) error {
-	// 获取TEMU产品数据
-	if temuCtx.TemuProduct == nil {
-		return fmt.Errorf("TEMU产品数据不存在")
+	input, err := buildSKUProcessInput(temuCtx, skcIndex, skuIndex)
+	if err != nil {
+		return err
 	}
 
-	temuProduct := temuCtx.TemuProduct
+	sku := &input.Product.SkcList[input.SKCIndex].SkuList[input.SKUIndex]
 
-	if skcIndex >= len(temuProduct.SkcList) || skuIndex >= len(temuProduct.SkcList[skcIndex].SkuList) {
-		return fmt.Errorf("SKU索引超出范围")
-	}
-
-	sku := &temuProduct.SkcList[skcIndex].SkuList[skuIndex]
-
-	// 验证SKU的规格
 	if err := ib.specHandler.ValidateSpecs(sku.Spec); err != nil {
-		ib.logger.Errorf("❌ SKU[%d][%d]规格验证失败: %v", skcIndex, skuIndex, err)
-		ib.logger.Error("❌ 无法修复，因为不允许使用默认规格")
-		// 不修复，让错误暴露出来
+		ib.logger.Errorf("sku[%d][%d] spec validation failed: %v", input.SKCIndex, input.SKUIndex, err)
+		ib.logger.Error("sku repair is not allowed because default specs are forbidden")
 	}
 
-	// 从店铺配置读取库存设置
 	if sku.Quantity == "" || sku.Quantity == "0" {
-		// 使用统一的库存获取方法
-		runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
-		if err != nil {
+		if input.Runtime == nil {
 			sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStock(temuCtx))
 		} else {
-			sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStockWithRuntime(runtime))
+			sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStockWithRuntime(input.Runtime))
 		}
 	}
-
-	// TemuProduct已经是引用，直接修改即可
 
 	return nil
 }
