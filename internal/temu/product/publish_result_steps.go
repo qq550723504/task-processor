@@ -74,15 +74,15 @@ func (h *SavePublishResultHandler) applyImportMappingMetadata(
 		}
 	}
 
-	if input.FilterRule != nil {
-		createReq.FilterRuleId = &input.FilterRule.ID
+	if filterRuleID, ok := input.FilterRuleID(); ok {
+		createReq.FilterRuleId = &filterRuleID
 		if filterRuleRange, ok := input.FilterRuleRange(); ok {
 			createReq.FilterRuleRange = &filterRuleRange
 		}
 	}
 
-	if input.ProfitRule != nil {
-		createReq.ProfitRuleId = &input.ProfitRule.ID
+	if profitRuleID, ok := input.ProfitRuleID(); ok {
+		createReq.ProfitRuleId = &profitRuleID
 		if salePriceMultiplier, ok := input.SalePriceMultiplier(); ok {
 			createReq.SalePriceMultiplier = &salePriceMultiplier
 		}
@@ -128,7 +128,7 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 	if count > int64(dailyLimit) {
 		h.logger.Warnf("?? %d ? %s ?????(%d)?????(%d)??????",
 			input.Task.StoreID, currentDate, count, dailyLimit)
-		h.pauseShopUntilEndOfDayWithInput(input, fmt.Sprintf("????????(%d/%d)", count, dailyLimit))
+		h.pauseShopUntilEndOfDayWithInput(input, input.DailyLimitExceededReason(count, dailyLimit))
 	}
 }
 

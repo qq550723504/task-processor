@@ -87,6 +87,24 @@ func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku
 	}
 }
 
+func (input *SavePublishResultInput) FilterRuleID() (int64, bool) {
+	if input == nil || input.FilterRule == nil {
+		return 0, false
+	}
+	return input.FilterRule.ID, true
+}
+
+func (input *SavePublishResultInput) ProfitRuleID() (int64, bool) {
+	if input == nil || input.ProfitRule == nil {
+		return 0, false
+	}
+	return input.ProfitRule.ID, true
+}
+
+func (input *SavePublishResultInput) DailyLimitExceededReason(count int64, dailyLimit int) string {
+	return fmt.Sprintf("????????(%d/%d)", count, dailyLimit)
+}
+
 func (input *SavePublishResultInput) ProductIDForSKU(sku *models.Sku) (string, bool) {
 	if input == nil || sku == nil || input.AsinSkuMap == nil {
 		return "", false
