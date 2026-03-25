@@ -10,7 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func BuildDefaultProcessorDependencies() ProcessorDependencies {
+func buildProcessorDependencies() ProcessorDependencies {
 	return ProcessorDependencies{
 		TemuProcessorCreator: func(ctx context.Context, cfg *config.Config, logger *logrus.Logger, deps temu.Dependencies) (*temu.TemuProcessor, error) {
 			return temu.NewTemuProcessor(ctx, cfg, logger, deps)
