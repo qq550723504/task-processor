@@ -1,4 +1,4 @@
-﻿// Package spec 提供TEMU平台的规格解析服务
+// Package spec 提供TEMU平台的规格解析服务
 package spec
 
 import (
@@ -6,8 +6,8 @@ import (
 	"strings"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // SpecResolverService 规格解析服务
@@ -18,7 +18,7 @@ type SpecResolverService struct {
 
 // SpecQueryAPI 规格查询API接口
 type SpecQueryAPI interface {
-	QuerySpecID(temuCtx *temucontext.TemuTaskContext, parentSpecID, specName string) (string, error)
+	QuerySpecID(runtime *ResolveSpecRuntimeInput, parentSpecID, specName string) (string, error)
 }
 
 // NewSpecResolverService 创建规格解析服务
@@ -30,7 +30,7 @@ func NewSpecResolverService(apiClient SpecQueryAPI) *SpecResolverService {
 }
 
 // ResolveTemporarySpecIDs 解析AI映射中的临时规格ID
-func (s *SpecResolverService) ResolveTemporarySpecIDs(temuCtx *temucontext.TemuTaskContext, aiMapping *temucontext.AISkuMappingResponse) error {
+func (s *SpecResolverService) ResolveTemporarySpecIDs(runtime *ResolveSpecRuntimeInput, aiMapping *temucontext.AISkuMappingResponse) error {
 	s.logger.Info("🔍 开始解析临时规格ID")
 
 	tempIDCount := 0
@@ -60,7 +60,7 @@ func (s *SpecResolverService) ResolveTemporarySpecIDs(temuCtx *temucontext.TemuT
 				s.logger.Infof("🔍 解析临时规格ID: %s -> %s/%s", spec.SpecID, spec.ParentSpecName, spec.SpecName)
 
 				// 调用规格查询API获取真实的spec_id
-				realSpecID, err := s.apiClient.QuerySpecID(temuCtx, spec.ParentSpecID, spec.SpecName)
+				realSpecID, err := s.apiClient.QuerySpecID(runtime, spec.ParentSpecID, spec.SpecName)
 				if err != nil {
 					s.logger.Errorf("❌ 规格查询失败 [%s/%s]: %v", spec.ParentSpecName, spec.SpecName, err)
 					return fmt.Errorf("规格查询失败 [%s/%s]: %w", spec.ParentSpecName, spec.SpecName, err)

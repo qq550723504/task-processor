@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 	temuapi "task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // ProductSaveHandler 产品保存处理器
@@ -70,22 +70,16 @@ func (h *ProductSaveHandler) Handle(ctx pipeline.TaskContext) error {
 // saveProduct 保存产品到草稿箱
 func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始保存产品到TEMU草稿箱")
-
-	// 获取API客户端
-	if temuCtx.APIClient == nil {
-		return fmt.Errorf("API客户端未初始化")
-	}
-
-	// 获取TEMU产品信息
-	if temuCtx.TemuProduct == nil {
-		return fmt.Errorf("TEMU产品信息为空")
+	input, err := BuildProductRequestInput(temuCtx)
+	if err != nil {
+		return err
 	}
 
 	// 构造TEMU产品保存请求
-	request := h.buildSaveRequest(temuCtx)
+	request := h.buildSaveRequest(input)
 
 	// 创建ProductAPI
-	productAPI := temuapi.NewProductAPI(temuCtx.APIClient, h.logger)
+	productAPI := temuapi.NewProductAPI(input.APIClient, h.logger)
 
 	// 调用API保存产品
 	response, err := productAPI.Save(request)
@@ -95,23 +89,25 @@ func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) e
 	}
 
 	// 记录保存结果
-	if response.Result != nil {
+	output := &SaveProductOutput{
+		Response: response,
+		Result:   response.Result,
+	}
+	if output.Result != nil {
 		// 更新产品信息中的ID
-		h.updateProductWithSaveResult(temuCtx, response.Result)
+		h.updateProductWithSaveResult(temuCtx, output.Result)
 	} else {
 		h.logger.Info("产品保存成功，但未返回详细结果")
 	}
 
-	// 将保存结果存储到强类型字段
-	temuCtx.SaveResult = response
+	ApplySaveProductOutput(temuCtx, output)
 
 	return nil
 }
 
 // buildSaveRequest 构建保存请求
-func (h *ProductSaveHandler) buildSaveRequest(temuCtx *temucontext.TemuTaskContext) *temuapi.SaveRequest {
-	// 获取TEMU产品信息
-	temuProduct := temuCtx.TemuProduct
+func (h *ProductSaveHandler) buildSaveRequest(input *ProductRequestInput) *temuapi.SaveRequest {
+	temuProduct := input.Product
 
 	// 转换Extra类型
 	extra := temuapi.ExtraInfo{

@@ -2,6 +2,7 @@
 package context
 
 import (
+	"task-processor/internal/model"
 	temutemplate "task-processor/internal/temu/api/template"
 )
 
@@ -30,4 +31,32 @@ type AmazonProductData struct {
 type ProductDetailData struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`
+}
+
+func ConvertAmazonProductData(amazonProduct *model.Product) AmazonProductData {
+	if amazonProduct == nil {
+		return AmazonProductData{}
+	}
+
+	productDetails := make([]ProductDetailData, 0, len(amazonProduct.ProductDetails))
+	for _, detail := range amazonProduct.ProductDetails {
+		productDetails = append(productDetails, ProductDetailData{
+			Type:  detail.Type,
+			Value: detail.Value,
+		})
+	}
+
+	return AmazonProductData{
+		Title:             amazonProduct.Title,
+		Brand:             amazonProduct.Brand,
+		Description:       amazonProduct.Description,
+		Features:          amazonProduct.Features,
+		ProductDetails:    productDetails,
+		ProductDimensions: amazonProduct.ProductDimensions,
+		ItemWeight:        amazonProduct.ItemWeight,
+		ModelNumber:       amazonProduct.ModelNumber,
+		Department:        amazonProduct.Department,
+		Manufacturer:      amazonProduct.Manufacturer,
+		Categories:        amazonProduct.Categories,
+	}
 }

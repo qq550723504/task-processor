@@ -17,6 +17,18 @@ type API struct {
 	logger *logrus.Entry
 }
 
+type QueryAPI interface {
+	CheckText(request *TextCheckRequest) (*TextCheckResponse, error)
+	QueryTemplate(request *TemplateQueryRequest) (*TemplateQueryResponse, error)
+	QueryTemplateAdvanced(request *temutemplate.TemplateQueryRequest) (*temutemplate.TemplateQueryResponse, error)
+	QuerySpec(request *SpecQueryRequest) (*SpecQueryResponse, error)
+	CheckSkuSn(request *SkuSnCheckRequest) (*SkuSnCheckResponse, error)
+	QueryCostTemplate(request *CostTemplateRequest) (*CostTemplateResponse, error)
+	QueryCommitDetail(request *CommitDetailRequest) (*CommitDetailResponse, error)
+	QuerySkuPriceAndStock(commitID, goodsID string) (*SkuQueryResponse, error)
+	QuerySkuPriceAndStockWithOptions(options SkuQueryOptions) (*SkuQueryResponse, error)
+}
+
 // NewAPI 创建查询API管理器
 func NewAPI(c client.ClientAPI, logger *logrus.Entry) *API {
 	return &API{client: c, logger: logger}

@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -11,8 +11,8 @@ import (
 	pkgproduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // PriceHandler 价格处理器（参考SHEIN的简洁设计）
@@ -53,8 +53,17 @@ func (ph *PriceHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 
 // CalculateDefaultPrice 计算默认价格（参考SHEIN的价格计算逻辑）
 func (ph *PriceHandler) CalculateDefaultPrice(temuCtx *temucontext.TemuTaskContext, variant *model.Product) int {
+	runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
+	if err != nil {
+		ph.logger.Warnf("构建SKU运行时失败: %v，使用默认价格逻辑", err)
+		return ph.calculatePriceWithMultiplierAndRuntime(nil, variant, 2.0)
+	}
+	return ph.CalculateDefaultPriceWithRuntime(runtime, temuCtx, variant)
+}
+
+func (ph *PriceHandler) CalculateDefaultPriceWithRuntime(runtime *temucontext.SKUBuildRuntime, temuCtx *temucontext.TemuTaskContext, variant *model.Product) int {
 	// 获取租户ID和店铺ID
-	tenantID, storeID := ph.getTenantAndStoreID(temuCtx)
+	tenantID, storeID := ph.getTenantAndStoreID(runtime)
 
 	// 获取利润规则
 	profitRule, err := ph.profitRuleClient.GetProfitRule(&api.ProfitRuleReqDTO{
@@ -64,19 +73,19 @@ func (ph *PriceHandler) CalculateDefaultPrice(temuCtx *temucontext.TemuTaskConte
 	if err != nil {
 		ph.logger.Warnf("获取利润规则失败: %v，使用默认倍数", err)
 		// 使用默认倍数
-		return ph.calculatePriceWithMultiplier(temuCtx, variant, 2.0)
+		return ph.calculatePriceWithMultiplierAndRuntime(runtime, variant, 2.0)
 	}
 
 	// 检查规则是否为空
 	if profitRule == nil {
 		ph.logger.Warn("利润规则数据为空，使用默认倍数")
-		return ph.calculatePriceWithMultiplier(temuCtx, variant, 2.0)
+		return ph.calculatePriceWithMultiplierAndRuntime(runtime, variant, 2.0)
 	}
 
 	// 检查规则是否启用（Status = 1 表示禁用，0 表示启用）
 	if profitRule.Status == 1 {
 		ph.logger.Warnf("利润规则已禁用，使用默认倍数")
-		return ph.calculatePriceWithMultiplier(temuCtx, variant, 2.0)
+		return ph.calculatePriceWithMultiplierAndRuntime(runtime, variant, 2.0)
 	}
 
 	// 保存利润规则到强类型上下文
@@ -84,7 +93,7 @@ func (ph *PriceHandler) CalculateDefaultPrice(temuCtx *temucontext.TemuTaskConte
 	ph.logger.Infof("保存利润规则到context: ID=%d, Name=%s", profitRule.ID, profitRule.Name)
 
 	// 获取产品原始价格（根据店铺配置的价格类型）
-	originalPrice := ph.getSupplierCost(temuCtx, variant)
+	originalPrice := ph.getSupplierCost(runtime, variant)
 
 	// 应用利润规则：原始价格 * 售价倍数（参考SHEIN的计算方式）
 	salePrice := math.Round(originalPrice*profitRule.SalePriceMultiplier*100) / 100
@@ -98,7 +107,15 @@ func (ph *PriceHandler) CalculateDefaultPrice(temuCtx *temucontext.TemuTaskConte
 
 // calculatePriceWithMultiplier 使用指定倍数计算价格
 func (ph *PriceHandler) calculatePriceWithMultiplier(temuCtx *temucontext.TemuTaskContext, variant *model.Product, multiplier float64) int {
-	originalPrice := ph.getSupplierCost(temuCtx, variant)
+	runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
+	if err != nil {
+		return ph.calculatePriceWithMultiplierAndRuntime(nil, variant, multiplier)
+	}
+	return ph.calculatePriceWithMultiplierAndRuntime(runtime, variant, multiplier)
+}
+
+func (ph *PriceHandler) calculatePriceWithMultiplierAndRuntime(runtime *temucontext.SKUBuildRuntime, variant *model.Product, multiplier float64) int {
+	originalPrice := ph.getSupplierCost(runtime, variant)
 	salePrice := math.Round(originalPrice*multiplier*100) / 100
 	return int(math.Round(salePrice * 100))
 }
@@ -108,45 +125,49 @@ func (ph *PriceHandler) CalculateVariantPrice(temuCtx *temucontext.TemuTaskConte
 	return ph.CalculateDefaultPrice(temuCtx, variant)
 }
 
+func (ph *PriceHandler) CalculateVariantPriceWithRuntime(runtime *temucontext.SKUBuildRuntime, temuCtx *temucontext.TemuTaskContext, variant *model.Product) int {
+	return ph.CalculateDefaultPriceWithRuntime(runtime, temuCtx, variant)
+}
+
 // getTenantAndStoreID 获取租户ID和店铺ID
-func (ph *PriceHandler) getTenantAndStoreID(temuCtx *temucontext.TemuTaskContext) (int64, int64) {
-	tenantID := int64(1) // 默认租户ID
-	storeID := int64(1)  // 默认店铺ID
-
-	task := temuCtx.GetTask()
-	if task != nil && task.StoreID != 0 {
-		storeID = task.StoreID
-		if task.TenantID != 0 {
-			tenantID = task.TenantID
-		}
+func (ph *PriceHandler) getTenantAndStoreID(runtime *temucontext.SKUBuildRuntime) (int64, int64) {
+	if runtime == nil {
+		return 1, 1
 	}
-
-	return tenantID, storeID
+	return runtime.TenantID, runtime.StoreID
 }
 
 // getSupplierCost 获取供应商成本（根据店铺配置的价格类型）
-func (ph *PriceHandler) getSupplierCost(temuCtx *temucontext.TemuTaskContext, variant *model.Product) float64 {
+func (ph *PriceHandler) getSupplierCost(runtime *temucontext.SKUBuildRuntime, variant *model.Product) float64 {
 	// 获取店铺配置的价格类型(默认使用特价)
-	priceType := ph.getPriceTypeFromContext(temuCtx)
+	priceType := ph.getPriceTypeFromRuntime(runtime)
 
 	// 根据价格类型获取价格(包含运费) - 使用公共函数
 	return pkgproduct.GetProductPrice(variant, priceType)
 }
 
 // getPriceTypeFromContext 从上下文获取价格类型
-func (ph *PriceHandler) getPriceTypeFromContext(temuCtx *temucontext.TemuTaskContext) string {
+func (ph *PriceHandler) getPriceTypeFromRuntime(runtime *temucontext.SKUBuildRuntime) string {
 	// 从强类型上下文获取店铺信息
-	if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.PriceType != "" {
-		return temuCtx.StoreInfo.PriceType
+	if runtime != nil && runtime.StoreInfo != nil && runtime.StoreInfo.PriceType != "" {
+		return runtime.StoreInfo.PriceType
 	}
 	return "special" // 默认值
 }
 
 // GetDefaultStock 获取默认库存
 func (ph *PriceHandler) GetDefaultStock(temuCtx *temucontext.TemuTaskContext) int {
+	runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
+	if err != nil {
+		return ph.GetDefaultStockWithRuntime(nil)
+	}
+	return ph.GetDefaultStockWithRuntime(runtime)
+}
+
+func (ph *PriceHandler) GetDefaultStockWithRuntime(runtime *temucontext.SKUBuildRuntime) int {
 	// 从强类型上下文获取店铺信息
-	if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.FixedStockCount != nil {
-		stockCount := *temuCtx.StoreInfo.FixedStockCount
+	if runtime != nil && runtime.StoreInfo != nil && runtime.StoreInfo.FixedStockCount != nil {
+		stockCount := *runtime.StoreInfo.FixedStockCount
 
 		// 如果固定库存为-1，设置库存数量为0
 		if stockCount == -1 {
@@ -191,8 +212,17 @@ func (ph *PriceHandler) getStockFromStoreRespDTO(storeInfo *api.StoreRespDTO) in
 
 // GetPriceMultiplier 获取价格倍数（用于计算最大零售价格）
 func (ph *PriceHandler) GetPriceMultiplier(temuCtx *temucontext.TemuTaskContext) float64 {
+	runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
+	if err != nil {
+		ph.logger.Warnf("构建SKU运行时失败: %v，使用默认倍数3.0", err)
+		return 3.0
+	}
+	return ph.GetPriceMultiplierWithRuntime(runtime)
+}
+
+func (ph *PriceHandler) GetPriceMultiplierWithRuntime(runtime *temucontext.SKUBuildRuntime) float64 {
 	// 获取租户ID和店铺ID
-	tenantID, storeID := ph.getTenantAndStoreID(temuCtx)
+	tenantID, storeID := ph.getTenantAndStoreID(runtime)
 
 	// 获取利润规则
 	profitRule, err := ph.profitRuleClient.GetProfitRule(&api.ProfitRuleReqDTO{

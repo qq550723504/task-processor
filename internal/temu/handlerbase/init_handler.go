@@ -95,8 +95,6 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 	temuCtx.TemuProduct = temuProduct
 
 	// 也可以同时保持兼容性，设置到通用数据存储（可选）
-	temuCtx.SetData("temu_product", temuProduct)
-
 	h.logger.WithFields(map[string]any{
 		logger.FieldProductID: task.ProductID,
 		logger.FieldPlatform:  task.Platform,

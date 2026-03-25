@@ -10,16 +10,18 @@ import (
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
-	temutemplate "task-processor/internal/temu/api/template"
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/property"
-	"task-processor/internal/temu/template"
 )
 
 // generateAISkuMappingSingleBatch 单批次生成AI SKU映射
 func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucontext.TemuTaskContext, variants []*model.Product) (*temucontext.AISkuMappingResponse, error) {
 	// 准备AI请求数据
 	vp.logger.Infof("开始准备AI请求数据，变体数量: %d", len(variants))
+	input, err := BuildAIMappingInput(temuCtx, variants, vp.specHandler)
+	if err != nil {
+		return nil, err
+	}
 
 	aiVariants := make([]temucontext.AmazonVariantForAI, len(variants))
 	// 创建ASIN到attributes的映射，用于后续填充VariantAttributes
@@ -29,7 +31,7 @@ func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucont
 
 	// 创建ASIN到完整变体信息的映射
 	asinToFullVariant := make(map[string]*model.Product)
-	if amazonVariants := temuCtx.Variants; len(amazonVariants) > 0 {
+	if amazonVariants := input.Variants; len(amazonVariants) > 0 {
 		for _, fullVariant := range amazonVariants {
 			asinToFullVariant[fullVariant.Asin] = fullVariant
 		}
@@ -37,7 +39,7 @@ func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucont
 	}
 
 	// 获取Amazon产品信息
-	amazonProduct := temuCtx.AmazonProduct
+	amazonProduct := input.AmazonProduct
 
 	// 创建属性提取管理器
 	attributeManager := property.NewAttributeExtractionManager(vp.logger)
@@ -91,7 +93,7 @@ func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucont
 	vp.validateAsinAttributeMapping(asinToAttributes, aiVariants)
 
 	// 从上下文获取TEMU模板信息，合并使用goods_spec_properties和user_input_parent_spec_list
-	temuSpecProperties := vp.getTemuSpecProperties(temuCtx)
+	temuSpecProperties := input.TemuSpecProperties
 
 	request := temucontext.VariantMappingRequest{
 		ProductTitle:       amazonProduct.Title,
@@ -115,36 +117,6 @@ func (vp *SkuVariantProcessor) GenerateAISkuMappingSingleBatch(temuCtx *temucont
 	vp.fillVariantAttributes(aiResponse, asinToAttributes)
 
 	return aiResponse, nil
-}
-
-// getTemuSpecProperties 获取TEMU规格属性
-func (vp *SkuVariantProcessor) getTemuSpecProperties(temuCtx *temucontext.TemuTaskContext) []temutemplate.TemplateRespGoodsSpecProperty {
-	// 从上下文获取TEMU模板信息，优先使用goods_spec_properties
-	var temuSpecProperties []temutemplate.TemplateRespGoodsSpecProperty
-	if templateInfo, exists := template.GetTemplateInfoFromContext(temuCtx); exists {
-		temuSpecProperties = templateInfo.GoodsSpecProperties
-		vp.logger.Infof("成功获取TEMU模板信息，goods_spec_properties数量: %d", len(temuSpecProperties))
-
-		// 如果goods_spec_properties为空，尝试使用user_input_parent_spec_list
-		if len(temuSpecProperties) == 0 {
-			if userInputSpecs, exists := template.GetUserInputParentSpecListFromContext(temuCtx); exists {
-				vp.logger.Infof("goods_spec_properties为空，使用user_input_parent_spec_list，数量: %d", len(userInputSpecs))
-				temuSpecProperties = vp.specHandler.convertUserInputSpecsToGoodsSpecProperties(userInputSpecs)
-			} else {
-				vp.logger.Warn("goods_spec_properties和user_input_parent_spec_list都为空")
-			}
-		}
-
-	} else {
-		vp.logger.Warn("未能从上下文获取TEMU模板信息")
-
-		// 尝试直接获取user_input_parent_spec_list作为备选
-		if userInputSpecs, exists := template.GetUserInputParentSpecListFromContext(temuCtx); exists {
-			vp.logger.Infof("使用备选方案：user_input_parent_spec_list，数量: %d", len(userInputSpecs))
-			temuSpecProperties = vp.specHandler.convertUserInputSpecsToGoodsSpecProperties(userInputSpecs)
-		}
-	}
-	return temuSpecProperties
 }
 
 // callAIAPI 调用AI API

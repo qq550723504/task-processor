@@ -86,29 +86,20 @@ func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 	}
 
 	// 将TemuTaskContext转换为TaskContext接口
-	if err := vp.specResolver.ResolveTemporarySpecIDs(temuCtx, aiMapping); err != nil {
+	resolveRuntime, err := spec.BuildResolveSpecRuntimeInput(temuCtx)
+	if err != nil {
+		return nil, fmt.Errorf("构建规格解析运行时失败: %w", err)
+	}
+	if err := vp.specResolver.ResolveTemporarySpecIDs(resolveRuntime, aiMapping); err != nil {
 		vp.logger.Errorf("❌ 解析规格ID失败: %v", err)
 		return nil, fmt.Errorf("解析临时规格ID失败: %w", err)
 	}
 
 	// 检查规格来源：只有GoodsSpecProperties不为空且有预置规格值时，才创建多SKC
-	var templateInfo *temutemplate.TemplateInfo
-	var hasTemplateInfo bool
-	if temuCtx.TemplateInfo != nil {
-		if info, ok := temuCtx.TemplateInfo.(*temutemplate.TemplateInfo); ok {
-			templateInfo = info
-			hasTemplateInfo = true
-		}
-	}
-
-	var userInputSpecs []temutemplate.UserInputParentSpec
-	var hasUserInputSpecs bool
-	if temuCtx.UserInputParentSpecList != nil {
-		if specs, ok := temuCtx.UserInputParentSpecList.([]temutemplate.UserInputParentSpec); ok {
-			userInputSpecs = specs
-			hasUserInputSpecs = true
-		}
-	}
+	templateInfo := temuCtx.TemplateInfo
+	hasTemplateInfo := templateInfo != nil
+	userInputSpecs := temuCtx.UserInputParentSpecList
+	hasUserInputSpecs := len(userInputSpecs) > 0
 
 	var skcList []models.Skc
 
@@ -201,7 +192,11 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 	vp.logger.Infof("✅ AI提取的重量尺寸: weight=%s, length=%s, width=%s, height=%s",
 		aiSku.Weight, aiSku.Length, aiSku.Width, aiSku.Height)
 
-	if err := vp.specResolver.ResolveTemporarySpecIDs(temuCtx, aiMapping); err != nil {
+	resolveRuntime, err := spec.BuildResolveSpecRuntimeInput(temuCtx)
+	if err != nil {
+		return models.Skc{}, fmt.Errorf("构建规格解析运行时失败: %w", err)
+	}
+	if err := vp.specResolver.ResolveTemporarySpecIDs(resolveRuntime, aiMapping); err != nil {
 		vp.logger.Errorf("❌ 解析规格ID失败: %v", err)
 		return models.Skc{}, fmt.Errorf("解析临时规格ID失败: %w", err)
 	}

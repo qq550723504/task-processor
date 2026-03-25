@@ -24,7 +24,7 @@ func getPropertyTypeName(propertyValueType int) string {
 }
 
 // preparePropertyMappingData 准备属性映射数据
-func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templateProps []temutemplate.TemplateRespGoodsProperty) temucontext.PropertyMappingData {
+func preparePropertyMappingData(input *temucontext.PropertyMappingInput, templateProps []temutemplate.TemplateRespGoodsProperty) temucontext.PropertyMappingData {
 	log := logger.GetGlobalLogger("ai_property_mapper")
 	data := temucontext.PropertyMappingData{
 		TemuProperties: make([]temutemplate.TemplateRespGoodsProperty, 0, len(templateProps)),
@@ -36,8 +36,8 @@ func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templatePr
 		log.Infof("📋 准备属性映射数据，模板属性数量: %d", len(templateProps))
 	}
 
-	if temuCtx.GetAmazonProduct() != nil {
-		data.AmazonProduct = convertAmazonProductData(temuCtx)
+	if input != nil {
+		data.AmazonProduct = input.AmazonProduct
 	}
 
 	for _, templateProp := range templateProps {
@@ -45,36 +45,6 @@ func preparePropertyMappingData(temuCtx *temucontext.TemuTaskContext, templatePr
 	}
 
 	return data
-}
-
-// convertAmazonProductData 将Amazon产品数据转换为AI映射所需的格式
-func convertAmazonProductData(temuCtx *temucontext.TemuTaskContext) temucontext.AmazonProductData {
-	amazonProduct := temuCtx.GetAmazonProduct()
-	if amazonProduct == nil {
-		return temucontext.AmazonProductData{}
-	}
-
-	productDetails := make([]temucontext.ProductDetailData, 0, len(amazonProduct.ProductDetails))
-	for _, detail := range amazonProduct.ProductDetails {
-		productDetails = append(productDetails, temucontext.ProductDetailData{
-			Type:  detail.Type,
-			Value: detail.Value,
-		})
-	}
-
-	return temucontext.AmazonProductData{
-		Title:             amazonProduct.Title,
-		Brand:             amazonProduct.Brand,
-		Description:       amazonProduct.Description,
-		Features:          amazonProduct.Features,
-		ProductDetails:    productDetails,
-		ProductDimensions: amazonProduct.ProductDimensions,
-		ItemWeight:        amazonProduct.ItemWeight,
-		ModelNumber:       amazonProduct.ModelNumber,
-		Department:        amazonProduct.Department,
-		Manufacturer:      amazonProduct.Manufacturer,
-		Categories:        amazonProduct.Categories,
-	}
 }
 
 // selectBestTemplate 从多个相同PID的模板中选择最佳匹配

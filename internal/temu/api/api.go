@@ -24,12 +24,13 @@ type (
 
 // 重新导出各功能包的 API 类型
 type (
-	ProductAPI   = product.API
-	CategoryAPI  = category.API
-	ImageAPI     = image.API
-	InventoryAPI = inventory.API
-	PricingAPI   = pricing.API
-	QueryAPI     = query.API
+	ProductAPI        = product.API
+	CategoryAPI       = category.API
+	ImageAPI          = image.API
+	InventoryAPI      = inventory.API
+	PricingAPI        = pricing.API
+	QueryAPI          = query.API
+	QueryAPIInterface = query.QueryAPI
 )
 
 // 重新导出产品相关类型

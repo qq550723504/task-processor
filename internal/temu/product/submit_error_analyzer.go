@@ -174,7 +174,7 @@ func (ea *ProductSubmitErrorAnalyzer) saveDetailedTemplateDataForError(temuCtx *
 	}
 
 	// 获取用户输入规格信息
-	if temuCtx.UserInputParentSpecList != nil {
+	if len(temuCtx.UserInputParentSpecList) > 0 {
 		analysisData["user_input_specs"] = temuCtx.UserInputParentSpecList
 	}
 

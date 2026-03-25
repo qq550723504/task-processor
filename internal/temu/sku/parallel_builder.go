@@ -1,4 +1,4 @@
-﻿// Package sku 提供并行SKU构建功能
+// Package sku 提供并行SKU构建功能
 package sku
 
 import (
@@ -10,8 +10,8 @@ import (
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/image"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // SkuParallelBuilder 并行SKU构建器
@@ -73,14 +73,20 @@ func (spb *SkuParallelBuilder) BuildSkusWithParallelImages(temuCtx *temucontext.
 
 // buildSkuWithoutImages 构建SKU（不包含图片处理）
 func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku, _ int) models.Sku {
+	runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
+	if err != nil {
+		spb.logger.Errorf("failed to build sku runtime: %v", err)
+		runtime = &temucontext.SKUBuildRuntime{}
+	}
+
 	// 使用利润规则计算最终销售价格
-	finalSalePrice := spb.itemBuilder.priceHandler.CalculateVariantPrice(temuCtx, variant)
+	finalSalePrice := spb.itemBuilder.priceHandler.CalculateVariantPriceWithRuntime(runtime, temuCtx, variant)
 
 	// 生成SKU编码
-	outSkuSN := spb.itemBuilder.generateSkuFromStoreConfigTemu(temuCtx, variant.Asin)
+	outSkuSN := spb.itemBuilder.generateSkuFromRuntime(runtime, variant.Asin)
 
 	// 保存ASIN到SKU的映射关系
-	spb.itemBuilder.saveAsinSkuMappingTemu(temuCtx, outSkuSN, variant.Asin)
+	temuCtx.AsinSkuMap = spb.itemBuilder.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, variant.Asin)
 
 	// 构建规格信息
 	specList := spb.buildSpecList(temuCtx, variant, aiSku)
@@ -89,7 +95,7 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTa
 	originNetContentNumber, netContentUnitCode := spb.extractNetContentInfo(variant, aiSku)
 
 	// 从店铺配置读取库存设置（使用统一的方法）
-	quantity := spb.itemBuilder.priceHandler.GetDefaultStock(temuCtx)
+	quantity := spb.itemBuilder.priceHandler.GetDefaultStockWithRuntime(runtime)
 
 	// 使用AI提取/估算的重量和尺寸（单位：lb和in）
 	weight, length, width, height := spb.buildProductExpressInfo(variant, aiSku)

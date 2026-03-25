@@ -47,8 +47,14 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx pipeline.TaskContext, va
 
 // buildSkuFromVariantWithAITemu 使用AI映射从变体构建SKU（强类型上下文）
 func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku) models.Sku {
+	runtime, runtimeErr := temucontext.BuildSKUBuildRuntime(temuCtx)
+	if runtimeErr != nil {
+		ib.logger.Errorf("failed to build sku runtime: %v", runtimeErr)
+		return ib.buildSkuFromVariantBasic(variant, aiSku)
+	}
+
 	// 使用利润规则计算最终销售价格（已经应用了利润倍数）
-	finalSalePrice := ib.priceHandler.CalculateVariantPrice(temuCtx, variant)
+	finalSalePrice := ib.priceHandler.CalculateVariantPriceWithRuntime(runtime, temuCtx, variant)
 	basePrice := float64(finalSalePrice) / 100 // 转换为元用于显示
 
 	// 最大零售价格就是最终销售价格（不需要再次应用倍数）
@@ -57,13 +63,13 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	// 使用原来的SKU生成逻辑
 	asin := variant.Asin
 
-	outSkuSN := ib.generateSkuFromStoreConfigTemu(temuCtx, asin)
+	outSkuSN := ib.generateSkuFromRuntime(runtime, asin)
 
 	// 保存ASIN到SKU的映射关系到上下文，供后续SavePublishResultHandler使用
-	ib.saveAsinSkuMappingTemu(temuCtx, outSkuSN, asin)
+	temuCtx.AsinSkuMap = ib.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, asin)
 
 	// 从店铺配置读取库存设置（使用统一的方法）
-	quantity := ib.priceHandler.GetDefaultStock(temuCtx)
+	quantity := ib.priceHandler.GetDefaultStockWithRuntime(runtime)
 
 	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
 
@@ -319,7 +325,12 @@ func (ib *SkuItemBuilder) processSkuItemTemu(temuCtx *temucontext.TemuTaskContex
 	// 从店铺配置读取库存设置
 	if sku.Quantity == "" || sku.Quantity == "0" {
 		// 使用统一的库存获取方法
-		sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStock(temuCtx))
+		runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
+		if err != nil {
+			sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStock(temuCtx))
+		} else {
+			sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStockWithRuntime(runtime))
+		}
 	}
 
 	// TemuProduct已经是引用，直接修改即可
@@ -331,26 +342,29 @@ func (ib *SkuItemBuilder) processSkuItemTemu(temuCtx *temucontext.TemuTaskContex
 func (ib *SkuItemBuilder) generateSkuFromStoreConfig(ctx pipeline.TaskContext, asin string) string {
 	// 类型断言为强类型上下文
 	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
-		return ib.generateSkuFromStoreConfigTemu(temuCtx, asin)
+		runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
+		if err == nil {
+			return ib.generateSkuFromRuntime(runtime, asin)
+		}
 	}
 
 	// 兼容旧接口的基本实现
 	return asin // 简单使用ASIN作为SKU
 }
 
-// generateSkuFromStoreConfigTemu 根据店铺配置生成SKU编码（强类型上下文）
-func (ib *SkuItemBuilder) generateSkuFromStoreConfigTemu(temuCtx *temucontext.TemuTaskContext, asin string) string {
+// generateSkuFromRuntime 根据店铺配置生成SKU编码
+func (ib *SkuItemBuilder) generateSkuFromRuntime(runtime *temucontext.SKUBuildRuntime, asin string) string {
 	// 从强类型上下文获取店铺配置
 	var prefix, suffix, strategyStr string
-	if temuCtx.StoreInfo != nil {
-		if temuCtx.StoreInfo.Prefix != "" {
-			prefix = temuCtx.StoreInfo.Prefix
+	if runtime != nil && runtime.StoreInfo != nil {
+		if runtime.StoreInfo.Prefix != "" {
+			prefix = runtime.StoreInfo.Prefix
 		}
-		if temuCtx.StoreInfo.Suffix != "" {
-			suffix = temuCtx.StoreInfo.Suffix
+		if runtime.StoreInfo.Suffix != "" {
+			suffix = runtime.StoreInfo.Suffix
 		}
-		if temuCtx.StoreInfo.SkuGenerateStrategy != "" {
-			strategyStr = temuCtx.StoreInfo.SkuGenerateStrategy
+		if runtime.StoreInfo.SkuGenerateStrategy != "" {
+			strategyStr = runtime.StoreInfo.SkuGenerateStrategy
 		}
 	}
 
@@ -399,25 +413,27 @@ func (ib *SkuItemBuilder) deduplicateSpecs(specs []models.SpecInfo) []models.Spe
 
 // saveAsinSkuMapping 保存ASIN到SKU的映射关系到上下文（兼容接口）
 func (ib *SkuItemBuilder) saveAsinSkuMapping(ctx pipeline.TaskContext, outSkuSN string, asin string) {
-	// 类型断言为强类型上下文
+	// ???????????
 	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
-		ib.saveAsinSkuMappingTemu(temuCtx, outSkuSN, asin)
+		runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
+		if err == nil {
+			temuCtx.AsinSkuMap = ib.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, asin)
+			return
+		}
 		return
 	}
 
-	// 兼容旧接口的基本实现
-	ib.logger.Warnf("无法保存ASIN到SKU映射，不支持的上下文类型")
+	// ??????????
+	ib.logger.Warnf("????ASIN?SKU????????????")
 }
 
-// saveAsinSkuMappingTemu 保存ASIN到SKU的映射关系到强类型上下文
-func (ib *SkuItemBuilder) saveAsinSkuMappingTemu(temuCtx *temucontext.TemuTaskContext, outSkuSN string, asin string) {
-	// 获取或创建映射表
-	if temuCtx.AsinSkuMap == nil {
-		temuCtx.AsinSkuMap = make(map[string]string)
+// saveAsinSkuMappingWithRuntime ??ASIN?SKU?????????
+func (ib *SkuItemBuilder) saveAsinSkuMappingWithRuntime(runtime *temucontext.SKUBuildRuntime, outSkuSN string, asin string) map[string]string {
+	if runtime == nil {
+		runtime = &temucontext.SKUBuildRuntime{}
 	}
 
-	// 保存映射关系：SKU -> ASIN
-	temuCtx.AsinSkuMap[outSkuSN] = asin
-
-	ib.logger.Debugf("保存ASIN到SKU映射: %s -> %s", outSkuSN, asin)
+	mapping := runtime.SaveAsinSkuMapping(outSkuSN, asin)
+	ib.logger.Debugf("save asin sku mapping: %s -> %s", outSkuSN, asin)
+	return mapping
 }

@@ -127,33 +127,33 @@ func (sb *SkuBuilder) GetSpecHandler() *SkuSpecHandler {
 }
 
 // QuerySpecID 实现SpecQueryAPI接口，查询规格ID
-func (sb *SkuBuilder) QuerySpecID(temuCtx *temucontext.TemuTaskContext, parentSpecID, specName string) (string, error) {
-	return sb.querySpecID(temuCtx, parentSpecID, specName)
+func (sb *SkuBuilder) QuerySpecID(runtime *spec.ResolveSpecRuntimeInput, parentSpecID, specName string) (string, error) {
+	return sb.querySpecID(runtime, parentSpecID, specName)
 }
 
 // querySpecID 查询或创建规格ID
-func (sb *SkuBuilder) querySpecID(temuCtx *temucontext.TemuTaskContext, parentSpecID, specName string) (string, error) {
-	if temuCtx.APIClient == nil {
+func (sb *SkuBuilder) querySpecID(runtime *spec.ResolveSpecRuntimeInput, parentSpecID, specName string) (string, error) {
+	if runtime == nil {
+		return "", fmt.Errorf("spec resolve runtime is nil")
+	}
+	if runtime.APIClient == nil {
 		return "", fmt.Errorf("API客户端未初始化")
 	}
 
 	// 获取goods_id
-	goodsID := ""
-	if temuCtx.TemuProduct != nil && temuCtx.TemuProduct.GoodsBasic.GoodsID != "" {
-		goodsID = temuCtx.TemuProduct.GoodsBasic.GoodsID
-	} else {
+	if runtime.GoodsID == "" {
 		return "", fmt.Errorf("goods_id未设置")
 	}
 
 	sb.logger.Infof("🔍 查询规格ID: goods_id=%s, parent_spec_id=%s, spec_name=%s",
-		goodsID, parentSpecID, specName)
+		runtime.GoodsID, parentSpecID, specName)
 
 	// 创建QueryAPI实例
-	queryAPI := temuapi.NewQueryAPI(temuCtx.APIClient, sb.logger)
+	queryAPI := temuapi.NewQueryAPI(runtime.APIClient, sb.logger)
 
 	// 构建请求
 	request := &temuapi.SpecQueryRequest{
-		GoodsID:       goodsID,
+		GoodsID:       runtime.GoodsID,
 		ChildSpecName: specName,
 		ParentSpecID:  parentSpecID,
 		ExistSpecList: []string{}, // 可以传入已存在的规格列表

@@ -104,8 +104,6 @@ func (h *PriceQueryHandler) queryMaxRetailPrices(temuCtx *temucontext.TemuTaskCo
 	temuCtx.PriceQueryResponse = response
 
 	// 保持兼容性，也设置到通用数据存储（可选）
-	temuCtx.SetData("price_query_response", response)
-
 	return nil
 }
 

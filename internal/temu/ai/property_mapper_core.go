@@ -10,7 +10,6 @@ import (
 	temutemplate "task-processor/internal/temu/api/template"
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/property"
-	"task-processor/internal/temu/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -80,12 +79,12 @@ func (m *AIPropertyMapper) HandleTemu(temuCtx *temucontext.TemuTaskContext) erro
 
 // BuildGoodsProperties 构建商品属性（使用AI智能映射）
 func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskContext, ext *models.ExtensionInfo) error {
-	// 获取模板信息
-	templateInfo, exists := template.GetTemplateInfoFromContext(temuCtx)
-	if !exists {
-		m.logger.Warn("未找到模板信息，跳过属性构建")
+	input, err := temucontext.BuildPropertyMappingInput(temuCtx)
+	if err != nil {
+		m.logger.WithError(err).Warn("property mapping input is incomplete, skip property build")
 		return nil
 	}
+	templateInfo := input.TemplateInfo
 
 	m.logger.WithFields(logrus.Fields{
 		"templateID":           templateInfo.TemplateID,
@@ -97,7 +96,7 @@ func (m *AIPropertyMapper) BuildGoodsProperties(temuCtx *temucontext.TemuTaskCon
 	aiCtx, cancel := timeout.WithAITimeout(temuCtx.GetContext())
 	defer cancel()
 
-	mappingData := preparePropertyMappingData(temuCtx, templateInfo.GoodsProperties)
+	mappingData := preparePropertyMappingData(input, templateInfo.GoodsProperties)
 
 	mappedProperties, err := m.aiService.CallAIForPropertyMapping(aiCtx, mappingData)
 	if err != nil {

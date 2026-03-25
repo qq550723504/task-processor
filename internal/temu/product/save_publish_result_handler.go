@@ -1,4 +1,4 @@
-﻿package product
+package product
 
 import (
 	"fmt"
@@ -14,11 +14,12 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/ptr"
 	pkgproduct "task-processor/internal/product"
+	temuapi "task-processor/internal/temu/api"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // SavePublishResultHandler 保存发品成功后返回信息处理器（参考SHEIN实现）
@@ -57,12 +58,8 @@ func (h *SavePublishResultHandler) HandleTemu(temuCtx *temucontext.TemuTaskConte
 	h.logger.Info("开始保存发品成功后的信息")
 
 	// 检查是否有提交响应数据（兼容两个字段）
-	submitResponse := temuCtx.SubmitResponse
-	if submitResponse == nil {
-		submitResponse = temuCtx.SubmitResult
-	}
-
-	if submitResponse == nil {
+	submitResponse, exists := getSubmitResponseFromContext(temuCtx)
+	if !exists {
 		h.logger.Warn("TEMU提交响应数据为空，跳过保存")
 		return nil
 	}
@@ -94,12 +91,8 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 	}
 
 	// 检查提交响应数据（兼容两个字段）
-	submitResponse := temuCtx.SubmitResponse
-	if submitResponse == nil {
-		submitResponse = temuCtx.SubmitResult
-	}
-
-	if submitResponse == nil {
+	_, exists := getSubmitResponseFromContext(temuCtx)
+	if !exists {
 		h.logger.Warn("提交响应数据不存在")
 		return nil
 	}
@@ -110,9 +103,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temuconte
 	// 检查产品数据
 	var temuProduct *models.Product
 	if temuCtx.ProductData != nil {
-		if product, ok := temuCtx.ProductData.(*models.Product); ok {
-			temuProduct = product
-		}
+		temuProduct = temuCtx.ProductData
 	}
 
 	// 如果ProductData为空，尝试使用TemuProduct
@@ -333,7 +324,7 @@ func (h *SavePublishResultHandler) pauseShopUntilEndOfDay(temuCtx *temucontext.T
 }
 
 // logSubmitResponse 记录提交响应数据到日志
-func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTaskContext, submitResponse any) error {
+func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTaskContext, submitResponse *temuapi.SubmitResponse) error {
 	task := temuCtx.GetTask()
 	if task == nil {
 		return fmt.Errorf("任务信息未初始化")
@@ -369,33 +360,30 @@ func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTa
 }
 
 // logResponseDetails 记录响应详细信息
-func (h *SavePublishResultHandler) logResponseDetails(submitResponse any, task *commontypes.Task) {
-	// 尝试解析为ProductSubmitResponse结构
-	if responseMap, ok := submitResponse.(map[string]any); ok {
-		// 记录基本响应信息
-		success, _ := responseMap["success"].(bool)
-		errorCode, _ := responseMap["error_code"].(float64)
-		message, _ := responseMap["error_msg"].(string)
-
-		h.logger.WithFields(logrus.Fields{
-			"task_id":    task.ID,
-			"success":    success,
-			"error_code": int(errorCode),
-			"message":    message,
-		}).Info("TEMU提交响应基本信息")
-
-		// 记录结果详情
-		if result, ok := responseMap["result"].(map[string]any); ok {
-			submitSuccess, _ := result["submit_success"].(bool)
-			editAlert, _ := result["edit_customized_info_alert"].(bool)
-
-			h.logger.WithFields(logrus.Fields{
-				"task_id":                    task.ID,
-				"submit_success":             submitSuccess,
-				"edit_customized_info_alert": editAlert,
-			}).Info("TEMU提交结果详情")
-		}
+func (h *SavePublishResultHandler) logResponseDetails(submitResponse *temuapi.SubmitResponse, task *commontypes.Task) {
+	if submitResponse == nil || task == nil {
+		return
 	}
+
+	h.logger.WithFields(logrus.Fields{
+		"task_id":    task.ID,
+		"success":    submitResponse.Success,
+		"error_code": submitResponse.ErrorCode,
+		"message":    submitResponse.Message,
+	}).Info("TEMU????????????")
+
+	if submitResponse.Result == nil {
+		return
+	}
+
+	h.logger.WithFields(logrus.Fields{
+		"task_id":                task.ID,
+		"listing_commit_id":      submitResponse.Result.ListingCommitID,
+		"listing_commit_version": submitResponse.Result.ListingCommitVersion,
+		"goods_commit_id":        submitResponse.Result.GoodsCommitID,
+		"status":                 submitResponse.Result.Status,
+		"result_message":         submitResponse.Result.Message,
+	}).Info("TEMU?????????")
 }
 
 // saveResponseToFile 保存响应数据到文件

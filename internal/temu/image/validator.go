@@ -74,7 +74,7 @@ func (h *ImageValidator) HandleTemu(temuCtx *temucontext.TemuTaskContext) error 
 
 // ValidateImageUploadRequirement 验证图片上传要求
 func (h *ImageValidator) ValidateImageUploadRequirement(temuCtx *temucontext.TemuTaskContext) error {
-	h.logger.Info("检查图片上传要求")
+	h.logger.Info("check image upload requirement")
 
 	temuProduct := temuCtx.TemuProduct
 	totalImages := len(temuProduct.GoodsBasic.GoodsGallery.DetailImage)
@@ -85,9 +85,12 @@ func (h *ImageValidator) ValidateImageUploadRequirement(temuCtx *temucontext.Tem
 	}
 
 	if totalImages > 0 {
-		temuCtx.DefaultTaskContext.SetData("requires_image_upload", true)
-		temuCtx.DefaultTaskContext.SetData("total_image_count", totalImages)
-		h.logger.Infof("检测到 %d 张图片需要处理", totalImages)
+		temuCtx.RequiresImageUpload = true
+		temuCtx.TotalImageCount = totalImages
+		h.logger.Infof("detected %d images requiring upload", totalImages)
+	} else {
+		temuCtx.RequiresImageUpload = false
+		temuCtx.TotalImageCount = 0
 	}
 
 	return nil

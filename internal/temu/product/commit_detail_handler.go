@@ -139,14 +139,19 @@ func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskCon
 	}).Info("提交详情查询API响应")
 
 	// 解析并更新产品数据
-	if response.Result != nil {
-		err := h.updateProductFromCommitDetail(temuProduct, response.Result)
+	output := &CommitDetailOutput{
+		Response: response,
+		Result:   response.Result,
+	}
+	if output.Result != nil {
+		err := h.updateProductFromCommitDetail(temuProduct, output.Result)
 		if err != nil {
 			h.logger.WithError(err).Warn("更新产品数据失败，但继续执行")
 		}
 
 		h.logger.Info("提交详情数据已存储到上下文")
 	}
+	ApplyCommitDetailOutput(temuCtx, output)
 
 	h.logger.Info("提交详情查询成功")
 	return nil
@@ -272,15 +277,3 @@ func (h *CommitDetailHandler) updateCategoryTree(temuProduct *temuapi.Product, t
 }
 
 // GetCommitDetailFromContext 从强类型上下文中获取提交详情
-func GetCommitDetailFromContext(temuCtx *temucontext.TemuTaskContext) (any, bool) {
-	// 优先从强类型上下文字段获取
-	if temuCtx.CommitDetail != nil {
-		return temuCtx.CommitDetail, true
-	}
-
-	// 兼容性：从基础上下文的GetData方法获取
-	if data, exists := temuCtx.DefaultTaskContext.GetData("commit_detail"); exists {
-		return data, true
-	}
-	return nil, false
-}
