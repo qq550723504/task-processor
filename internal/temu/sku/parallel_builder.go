@@ -2,7 +2,6 @@ package sku
 
 import (
 	"fmt"
-	"strings"
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
@@ -78,18 +77,13 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(
 	variant *model.Product,
 	aiSku temucontext.AIGeneratedSku,
 ) models.Sku {
-	finalSalePrice := spb.itemBuilder.priceHandler.CalculateVariantPriceWithRuntime(runtime, temuCtx, variant)
+	pricingInfo := spb.itemBuilder.buildSkuPricingInfo(runtime, temuCtx, variant)
 	outSkuSN := spb.itemBuilder.generateSkuFromRuntime(runtime, variant.Asin)
 	temuCtx.SetAsinSkuMap(spb.itemBuilder.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, variant.Asin))
 
-	specList := spb.buildSpecList(aiSku)
-	originNetContentNumber, netContentUnitCode := spb.extractNetContentInfo(variant, aiSku)
-	quantity := spb.itemBuilder.priceHandler.GetDefaultStockWithRuntime(runtime)
-	weight, length, width, height := spb.buildProductExpressInfo(variant, aiSku)
-	multiplePackage := spb.buildMultiplePackage(aiSku)
-
-	marketPrice := finalSalePrice * 2
-	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
+	specList := spb.itemBuilder.buildSkuSpecList(aiSku)
+	packagingInfo := spb.itemBuilder.buildSkuPackagingInfo(variant, aiSku)
+	expressInfo := spb.itemBuilder.buildSkuExpressInfo(variant, aiSku)
 
 	return models.Sku{
 		Spec:                     specList,
@@ -98,65 +92,17 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(
 		DimensionGallery:         []models.ImageInfo{},
 		CarouselGallery:          []models.ImageInfo{},
 		FoodIngredientGallery:    []models.ImageInfo{},
-		Quantity:                 fmt.Sprintf("%d", quantity),
-		ProductExpressInfo: models.ProductExpressInfo{
-			WeightInfo: models.WeightInfo{Weight: weight},
-			VolumeInfo: models.VolumeInfo{Length: length, Width: width, Height: height},
-		},
-		SupplierPriceStr:       fmt.Sprintf("%.2f", float64(finalSalePrice)/100),
-		OutSkuSN:               outSkuSN,
-		MultiplePackage:        multiplePackage,
-		OriginNetContentNumber: originNetContentNumber,
-		NetContentUnitCode:     netContentUnitCode,
-		MaxRetailPriceStr:      marketPriceStr,
-		SupplierPrice:          finalSalePrice,
-		SkuPriceDocuments:      make(map[string]any),
-		MarketPrice:            marketPrice,
-		MarketPriceStr:         marketPriceStr,
+		Quantity:                 fmt.Sprintf("%d", pricingInfo.quantity),
+		ProductExpressInfo:       expressInfo.productExpressInfo,
+		SupplierPriceStr:         pricingInfo.supplierPriceStr,
+		OutSkuSN:                 outSkuSN,
+		MultiplePackage:          packagingInfo.multiplePackage,
+		OriginNetContentNumber:   packagingInfo.originNetContentNumber,
+		NetContentUnitCode:       packagingInfo.netContentUnitCode,
+		MaxRetailPriceStr:        pricingInfo.marketPriceStr,
+		SupplierPrice:            pricingInfo.finalSalePrice,
+		SkuPriceDocuments:        make(map[string]any),
+		MarketPrice:              pricingInfo.marketPrice,
+		MarketPriceStr:           pricingInfo.marketPriceStr,
 	}
-}
-
-func (spb *SkuParallelBuilder) buildSpecList(aiSku temucontext.AIGeneratedSku) []models.SpecInfo {
-	specList := spb.itemBuilder.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
-
-	hasTemporaryIDs := false
-	for i, specInfo := range specList {
-		if strings.HasPrefix(specInfo.SpecID, "TEMP_") {
-			spb.logger.Errorf(
-				"found unresolved temporary spec id[%d]: spec_id=%s spec_name=%s parent_spec_id=%s",
-				i, specInfo.SpecID, specInfo.SpecName, specInfo.ParentSpecID,
-			)
-			hasTemporaryIDs = true
-		}
-	}
-
-	if hasTemporaryIDs {
-		spb.logger.Error("unresolved temporary spec ids remain after spec resolution")
-		return []models.SpecInfo{}
-	}
-
-	if err := spb.itemBuilder.specHandler.ValidateSpecs(specList); err != nil {
-		spb.logger.Errorf("spec validation failed: %v", err)
-		spb.logger.Error("sku payload cannot be built because the spec list is invalid")
-	}
-
-	return specList
-}
-
-func (spb *SkuParallelBuilder) buildProductExpressInfo(
-	variant *model.Product,
-	aiSku temucontext.AIGeneratedSku,
-) (weight, length, width, height string) {
-	return spb.itemBuilder.buildProductExpressInfo(variant, aiSku)
-}
-
-func (spb *SkuParallelBuilder) buildMultiplePackage(aiSku temucontext.AIGeneratedSku) models.MultiplePackage {
-	return spb.itemBuilder.buildMultiplePackage(aiSku)
-}
-
-func (spb *SkuParallelBuilder) extractNetContentInfo(
-	variant *model.Product,
-	aiSku temucontext.AIGeneratedSku,
-) (string, int) {
-	return spb.itemBuilder.extractNetContentInfo(variant, aiSku)
 }
