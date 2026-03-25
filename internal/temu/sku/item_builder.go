@@ -88,32 +88,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	weight, length, width, height := ib.buildProductExpressInfo(input.Variant, input.AISKU)
 	multiplePackage := ib.buildMultiplePackage(input.AISKU)
 	originNetContentNumber, netContentUnitCode := ib.extractNetContentInfo(input.Variant, input.AISKU)
-
-	dimensionGallery, err := ib.imageProcessor.BuildDimensionImagesWithUpload(temuCtx, input.Variant)
-	if err != nil {
-		ib.logger.Errorf("failed to build dimension gallery: %v", err)
-		dimensionGallery = []models.ImageInfo{}
-	}
-
-	carouselGallery, err := ib.imageProcessor.BuildCarouselImagesWithoutAnnotation(temuCtx, input.Variant)
-	if err != nil {
-		ib.logger.Errorf("failed to build carousel gallery: %v", err)
-		carouselGallery = []models.ImageInfo{}
-	}
-
-	const maxTotalImages = 10
-	totalImages := len(dimensionGallery) + len(carouselGallery)
-	if totalImages > maxTotalImages {
-		remainingSlots := maxTotalImages - len(dimensionGallery)
-		if remainingSlots < 0 {
-			dimensionGallery = dimensionGallery[:maxTotalImages]
-			carouselGallery = []models.ImageInfo{}
-			ib.logger.Warnf("sku image count exceeded limit, keeping %d dimension images and clearing carousel images", maxTotalImages)
-		} else if remainingSlots < len(carouselGallery) {
-			carouselGallery = carouselGallery[:remainingSlots]
-			ib.logger.Warnf("sku image count exceeded limit, keeping %d dimension images and trimming carousel images to %d", len(dimensionGallery), remainingSlots)
-		}
-	}
+	dimensionGallery, carouselGallery := ib.buildSkuGalleries(temuCtx, input.Variant)
 
 	marketPrice := finalSalePrice * 2
 	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
@@ -140,6 +115,45 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 		MarketPriceStr:         marketPriceStr,
 		SkuPriceDocuments:      map[string]any{},
 	}
+}
+
+func (ib *SkuItemBuilder) buildSkuGalleries(temuCtx *temucontext.TemuTaskContext, variant *model.Product) ([]models.ImageInfo, []models.ImageInfo) {
+	dimensionGallery, err := ib.imageProcessor.BuildDimensionImagesWithUpload(temuCtx, variant)
+	if err != nil {
+		ib.logger.Errorf("failed to build dimension gallery: %v", err)
+		dimensionGallery = []models.ImageInfo{}
+	}
+
+	carouselGallery, err := ib.imageProcessor.BuildCarouselImagesWithoutAnnotation(temuCtx, variant)
+	if err != nil {
+		ib.logger.Errorf("failed to build carousel gallery: %v", err)
+		carouselGallery = []models.ImageInfo{}
+	}
+
+	return ib.limitSkuGalleries(dimensionGallery, carouselGallery)
+}
+
+func (ib *SkuItemBuilder) limitSkuGalleries(dimensionGallery []models.ImageInfo, carouselGallery []models.ImageInfo) ([]models.ImageInfo, []models.ImageInfo) {
+	const maxTotalImages = 10
+	totalImages := len(dimensionGallery) + len(carouselGallery)
+	if totalImages <= maxTotalImages {
+		return dimensionGallery, carouselGallery
+	}
+
+	remainingSlots := maxTotalImages - len(dimensionGallery)
+	if remainingSlots < 0 {
+		dimensionGallery = dimensionGallery[:maxTotalImages]
+		carouselGallery = []models.ImageInfo{}
+		ib.logger.Warnf("sku image count exceeded limit, keeping %d dimension images and clearing carousel images", maxTotalImages)
+		return dimensionGallery, carouselGallery
+	}
+
+	if remainingSlots < len(carouselGallery) {
+		carouselGallery = carouselGallery[:remainingSlots]
+		ib.logger.Warnf("sku image count exceeded limit, keeping %d dimension images and trimming carousel images to %d", len(dimensionGallery), remainingSlots)
+	}
+
+	return dimensionGallery, carouselGallery
 }
 
 // buildSkuFromVariantBasic 基本SKU构建（不依赖上下文）
