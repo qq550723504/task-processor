@@ -38,6 +38,16 @@ type skuExpressInfo struct {
 	productExpressInfo models.ProductExpressInfo
 }
 
+type skuPricingInfo struct {
+	quantity         int
+	basePrice        float64
+	finalSalePrice   int
+	maxRetailPrice   int
+	marketPrice      int
+	marketPriceStr   string
+	supplierPriceStr string
+}
+
 // NewSkuItemBuilder 创建新的SKU项目构建器
 func NewSkuItemBuilder(logger *logrus.Entry, priceHandler *product.PriceHandler, imageProcessor *image.ImageProcessor) *SkuItemBuilder {
 	return &SkuItemBuilder{
@@ -71,13 +81,10 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 		return ib.buildSkuFromVariantBasic(variant, aiSku)
 	}
 
-	finalSalePrice := ib.priceHandler.CalculateVariantPriceWithRuntime(input.Runtime, temuCtx, input.Variant)
-	basePrice := float64(finalSalePrice) / 100
-	maxRetailPrice := finalSalePrice
+	pricingInfo := ib.buildSkuPricingInfo(input.Runtime, temuCtx, input.Variant)
 	asin := input.Variant.Asin
 	outSkuSN := ib.generateSkuFromRuntime(input.Runtime, asin)
 	temuCtx.SetAsinSkuMap(ib.saveAsinSkuMappingWithRuntime(input.Runtime, outSkuSN, asin))
-	quantity := ib.priceHandler.GetDefaultStockWithRuntime(input.Runtime)
 
 	specList := ib.deduplicateSpecs(convertSpecInfos(input.AISKU.Spec))
 	hasTemp := false
@@ -103,8 +110,6 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	packagingInfo := ib.buildSkuPackagingInfo(input.Variant, input.AISKU)
 	dimensionGallery, carouselGallery := ib.buildSkuGalleries(temuCtx, input.Variant)
 
-	marketPrice := finalSalePrice * 2
-	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
 	return models.Sku{
 		Spec:                     specList,
 		Currency:                 "USD",
@@ -112,17 +117,17 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 		DimensionGallery:         dimensionGallery,
 		CarouselGallery:          carouselGallery,
 		FoodIngredientGallery:    []models.ImageInfo{},
-		Quantity:                 fmt.Sprintf("%d", quantity),
+		Quantity:                 fmt.Sprintf("%d", pricingInfo.quantity),
 		ProductExpressInfo:       expressInfo.productExpressInfo,
-		SupplierPriceStr:         fmt.Sprintf("%.2f", basePrice),
+		SupplierPriceStr:         pricingInfo.supplierPriceStr,
 		OutSkuSN:                 outSkuSN,
 		MultiplePackage:          packagingInfo.multiplePackage,
 		OriginNetContentNumber:   packagingInfo.originNetContentNumber,
 		NetContentUnitCode:       packagingInfo.netContentUnitCode,
-		MaxRetailPriceStr:        fmt.Sprintf("%.2f", float64(maxRetailPrice)/100),
-		SupplierPrice:            finalSalePrice,
-		MarketPrice:              marketPrice,
-		MarketPriceStr:           marketPriceStr,
+		MaxRetailPriceStr:        fmt.Sprintf("%.2f", float64(pricingInfo.maxRetailPrice)/100),
+		SupplierPrice:            pricingInfo.finalSalePrice,
+		MarketPrice:              pricingInfo.marketPrice,
+		MarketPriceStr:           pricingInfo.marketPriceStr,
 		SkuPriceDocuments:        map[string]any{},
 	}
 }
@@ -186,6 +191,21 @@ func (ib *SkuItemBuilder) buildSkuExpressInfo(variant *model.Product, aiSku temu
 			WeightInfo: models.WeightInfo{Weight: weight},
 			VolumeInfo: models.VolumeInfo{Length: length, Width: width, Height: height},
 		},
+	}
+}
+
+func (ib *SkuItemBuilder) buildSkuPricingInfo(runtime *temucontext.SKUBuildRuntime, temuCtx *temucontext.TemuTaskContext, variant *model.Product) skuPricingInfo {
+	finalSalePrice := ib.priceHandler.CalculateVariantPriceWithRuntime(runtime, temuCtx, variant)
+	basePrice := float64(finalSalePrice) / 100
+	marketPrice := finalSalePrice * 2
+	return skuPricingInfo{
+		quantity:         ib.priceHandler.GetDefaultStockWithRuntime(runtime),
+		basePrice:        basePrice,
+		finalSalePrice:   finalSalePrice,
+		maxRetailPrice:   finalSalePrice,
+		marketPrice:      marketPrice,
+		marketPriceStr:   fmt.Sprintf("%.2f", float64(marketPrice)/100),
+		supplierPriceStr: fmt.Sprintf("%.2f", basePrice),
 	}
 }
 
