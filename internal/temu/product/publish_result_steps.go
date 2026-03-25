@@ -49,41 +49,7 @@ func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *Sa
 			Status:       ptr.Int16Ptr(1),
 		}
 
-		if input.AsinSkuMap != nil {
-			if asin, exists := input.AsinSkuMap[sku.OutSkuSN]; exists {
-				createReq.ProductId = asin
-			}
-		}
-
-		if input.AmazonProduct != nil && input.AmazonProduct.ParentAsin != "" {
-			createReq.ParentProductId = &input.AmazonProduct.ParentAsin
-			if input.StoreInfo != nil && input.StoreInfo.PriceType != "" {
-				costPrice := pkgproduct.GetProductPrice(input.AmazonProduct, input.StoreInfo.PriceType)
-				if costPrice > 0 {
-					createReq.CostPrice = &costPrice
-				}
-			}
-		}
-
-		if input.FilterRule != nil {
-			createReq.FilterRuleId = &input.FilterRule.ID
-			filterRuleRange := h.buildFilterRuleRange(input.FilterRule)
-			if filterRuleRange != "" {
-				createReq.FilterRuleRange = &filterRuleRange
-			}
-		}
-
-		if input.ProfitRule != nil {
-			createReq.ProfitRuleId = &input.ProfitRule.ID
-			if input.ProfitRule.SalePriceMultiplier > 0 {
-				salePriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.SalePriceMultiplier)
-				createReq.SalePriceMultiplier = &salePriceMultiplierStr
-			}
-			if input.ProfitRule.DiscountPriceMultiplier > 0 {
-				discountPriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.DiscountPriceMultiplier)
-				createReq.DiscountPriceMultiplier = &discountPriceMultiplierStr
-			}
-		}
+		h.applyImportMappingMetadata(input, sku, createReq)
 
 		_, err := h.mappingClient.CreateProductImportMapping(createReq)
 		if err != nil {
@@ -97,6 +63,48 @@ func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *Sa
 
 	h.logger.Infof("????????????: ??=%d", createdCount)
 	return nil
+}
+
+func (h *SavePublishResultHandler) applyImportMappingMetadata(
+	input *SavePublishResultInput,
+	sku *models.Sku,
+	createReq *api.ProductImportMappingCreateReqDTO,
+) {
+	if input.AsinSkuMap != nil {
+		if asin, exists := input.AsinSkuMap[sku.OutSkuSN]; exists {
+			createReq.ProductId = asin
+		}
+	}
+
+	if input.AmazonProduct != nil && input.AmazonProduct.ParentAsin != "" {
+		createReq.ParentProductId = &input.AmazonProduct.ParentAsin
+		if input.StoreInfo != nil && input.StoreInfo.PriceType != "" {
+			costPrice := pkgproduct.GetProductPrice(input.AmazonProduct, input.StoreInfo.PriceType)
+			if costPrice > 0 {
+				createReq.CostPrice = &costPrice
+			}
+		}
+	}
+
+	if input.FilterRule != nil {
+		createReq.FilterRuleId = &input.FilterRule.ID
+		filterRuleRange := h.buildFilterRuleRange(input.FilterRule)
+		if filterRuleRange != "" {
+			createReq.FilterRuleRange = &filterRuleRange
+		}
+	}
+
+	if input.ProfitRule != nil {
+		createReq.ProfitRuleId = &input.ProfitRule.ID
+		if input.ProfitRule.SalePriceMultiplier > 0 {
+			salePriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.SalePriceMultiplier)
+			createReq.SalePriceMultiplier = &salePriceMultiplierStr
+		}
+		if input.ProfitRule.DiscountPriceMultiplier > 0 {
+			discountPriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.DiscountPriceMultiplier)
+			createReq.DiscountPriceMultiplier = &discountPriceMultiplierStr
+		}
+	}
 }
 
 func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SavePublishResultInput) {
