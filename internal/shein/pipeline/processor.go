@@ -3,13 +3,14 @@ package pipeline
 import (
 	"context"
 	"fmt"
+
+	"task-processor/internal/app/ports"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	"task-processor/internal/model"
 	types "task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein/aicache"
@@ -17,127 +18,99 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// amazonCrawler 定义 SHEIN 处理器对 Amazon 爬虫的依赖（消费者定义接口原则）。
-type amazonCrawler interface {
-	Process(url string, zipcode string) (*model.Product, error)
-	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
+type Dependencies struct {
+	ManagementClient *management.ClientManager
+	ProductSource    ports.ProductSource
+	RabbitMQClient   *rabbitmq.Client
 }
 
-// SheinProcessor SHEIN任务处理器
 type SheinProcessor struct {
-	*processor.BaseProcessor                  // 继承基础处理器
-	amazonProcessor          amazonCrawler    // SHEIN特定：共享的Amazon爬虫（接口）
-	rabbitmqClient           *rabbitmq.Client // RabbitMQ客户端（用于分布式爬虫）
-	taskHandler              *TaskHandler     // SHEIN特定：任务处理器
-	pipeline                 *Pipeline        // SHEIN特定：处理管道
-	aiCache                  *aicache.Cache   // AI 结果持久化缓存（跨任务共享）
+	*processor.BaseProcessor
+	amazonProcessor ports.ProductSource
+	rabbitmqClient  *rabbitmq.Client
+	taskHandler     *TaskHandler
+	pipeline        *Pipeline
+	aiCache         *aicache.Cache
 }
 
-// NewSheinProcessor 创建SHEIN处理器（参考Temu实现）
-// 返回 error 而不是 panic，让调用方决定如何处理错误
-func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor amazonCrawler, rabbitmqClient *rabbitmq.Client) (*SheinProcessor, error) {
-	// ManagementClient必须由调用方提供（共享实例）
-	if managementClient == nil {
-		logger.Error("[SHEIN] ManagementClient不能为空，必须使用共享实例")
-		return nil, fmt.Errorf("managementClient不能为空")
+func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, deps Dependencies) (*SheinProcessor, error) {
+	if deps.ManagementClient == nil {
+		logger.Error("[SHEIN] ManagementClient is required")
+		return nil, fmt.Errorf("managementClient is required")
+	}
+	if deps.ProductSource == nil {
+		logger.Error("[SHEIN] ProductSource is required")
+		return nil, fmt.Errorf("productSource is required")
 	}
 
-	// 如果提供了Amazon处理器，记录日志
-	if sharedAmazonProcessor != nil {
-		logger.Info("[SHEIN] 使用共享的Amazon爬虫实例")
-	}
-
-	// 记录RabbitMQ客户端状态
-	if rabbitmqClient != nil {
-		logger.Info("[SHEIN] ✅ 使用RabbitMQ客户端，将启用分布式爬虫")
+	if deps.RabbitMQClient != nil {
+		logger.Info("[SHEIN] using RabbitMQ client for distributed fetching")
 	} else {
-		logger.Warn("[SHEIN] ⚠️ 未提供RabbitMQ客户端，将使用本地爬虫")
+		logger.Warn("[SHEIN] RabbitMQ client not provided, using local fetching")
 	}
 
-	logger.Info("[SHEIN] 使用共享的管理客户端")
-
-	// 创建基础处理器
 	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
 		Config:           cfg,
-		ManagementClient: managementClient,
+		ManagementClient: deps.ManagementClient,
 		Logger:           logger,
 		Platform:         "SHEIN",
 	})
 
 	p := &SheinProcessor{
 		BaseProcessor:   baseProcessor,
-		amazonProcessor: sharedAmazonProcessor,
-		rabbitmqClient:  rabbitmqClient,
+		amazonProcessor: deps.ProductSource,
+		rabbitmqClient:  deps.RabbitMQClient,
 	}
 
-	// 初始化 AI 结果持久化缓存
 	if cfg.Database == nil {
-		logger.Warn("[SHEIN] cfg.Database 为 nil，AI 缓存将退化为纯内存模式")
-	} else {
-		logger.Infof("[SHEIN] 数据库配置: host=%s port=%d db=%s", cfg.Database.Host, cfg.Database.Port, cfg.Database.Database)
+		logger.Warn("[SHEIN] database config is nil, AI cache will fall back to memory")
 	}
 	db, err := database.NewDatabaseFromConfig(cfg.Database)
 	if err != nil {
-		logger.Warnf("[SHEIN] 数据库连接失败，AI 缓存将退化为纯内存模式: %v", err)
-	} else if db != nil {
-		logger.Info("[SHEIN] 数据库连接成功，AI 缓存将使用 PostgreSQL 持久化")
+		logger.Warnf("[SHEIN] database unavailable, AI cache falling back to memory: %v", err)
 	}
 	p.aiCache = aicache.New(db)
 
-	// 创建 WorkerPool（内部管理）
 	workerPool := worker.NewPool(p, cfg.Worker)
 	p.SetWorkerPool(workerPool)
-
-	// 初始化SHEIN特定组件
 	p.taskHandler = NewTaskHandler(p)
 	p.pipeline = p.buildPipeline()
 
 	return p, nil
 }
 
-// buildPipeline 构建 SHEIN 处理管道，直接返回 shein 专用管道
 func (p *SheinProcessor) buildPipeline() *Pipeline {
 	return CreateTaskProcessingPipeline(p, p.GetConfig())
 }
 
-// Start 启动任务处理器
 func (p *SheinProcessor) Start(ctx context.Context) error {
-	// 启动基础组件
 	if err := p.StartBase(ctx); err != nil {
 		return err
 	}
 
-	p.GetLogger().Info("[SHEIN] 任务处理器启动完成")
+	p.GetLogger().Info("[SHEIN] processor started")
 	return nil
 }
 
-// ProcessTask 处理任务 - 实现worker.Processor接口
 func (p *SheinProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
-	// 解析任务数据
 	var task types.Task
-	if err := jsonx.UnmarshalString(job.TaskData, &task, "解析任务数据失败"); err != nil {
+	if err := jsonx.UnmarshalString(job.TaskData, &task, "parse task data"); err != nil {
 		return err
 	}
 
 	return p.taskHandler.ProcessTask(ctx, task, p.pipeline)
 }
 
-// GetAICache 获取共享的 AI 结果缓存
 func (p *SheinProcessor) GetAICache() *aicache.Cache {
 	return p.aiCache
 }
 
-// GetAmazonProcessor 获取共享的Amazon处理器
-func (p *SheinProcessor) GetAmazonProcessor() amazonCrawler {
+func (p *SheinProcessor) GetAmazonProcessor() ports.ProductSource {
 	return p.amazonProcessor
 }
 
-// Close 关闭处理器
 func (p *SheinProcessor) Close(ctx context.Context) {
-	p.GetLogger().Info("[SHEIN] 关闭任务处理器")
-
-	// 关闭基础组件
+	p.GetLogger().Info("[SHEIN] closing processor")
 	p.CloseBase(ctx)
-
-	p.GetLogger().Info("[SHEIN] 任务处理器已关闭")
+	p.GetLogger().Info("[SHEIN] processor closed")
 }

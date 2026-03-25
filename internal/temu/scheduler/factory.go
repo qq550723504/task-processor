@@ -1,57 +1,112 @@
-﻿// Package scheduler 提供TEMU平台的任务工厂
 package scheduler
 
 import (
-"context"
-"fmt"
+	"context"
+	"fmt"
 
-appscheduler "task-processor/internal/app/scheduler"
-"task-processor/internal/app/crawler/fetcher"
-"task-processor/internal/core/config"
-"task-processor/internal/core/logger"
-"task-processor/internal/infra/clients/management"
-"task-processor/internal/infra/rabbitmq"
-"task-processor/internal/platformbase"
-temuapi "task-processor/internal/temu/api"
-"task-processor/internal/temu/api/client"
-schedulerservice "task-processor/internal/temu/sync"
+	appscheduler "task-processor/internal/app/scheduler"
+	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
+	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platformbase"
+	temuapi "task-processor/internal/temu/api"
+	"task-processor/internal/temu/api/client"
+	schedulerservice "task-processor/internal/temu/sync"
 )
 
-// TemuTaskFactory TEMU平台任务工厂
+type TaskBuilder func(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error)
+
+type Dependencies struct {
+	ClientManager          *client.APIClientManager
+	FetcherBuilder         platformbase.ProductFetcherBuilder
+	PricingTaskBuilder     TaskBuilder
+	ProductSyncTaskBuilder TaskBuilder
+	InventoryTaskBuilder   TaskBuilder
+	ActivityTaskBuilder    TaskBuilder
+}
+
 type TemuTaskFactory struct {
-*platformbase.BaseFactory
-clientManager  *client.APIClientManager
-rabbitmqClient *rabbitmq.Client
+	*platformbase.BaseFactory
+	clientManager          *client.APIClientManager
+	rabbitmqClient         *rabbitmq.Client
+	fetcherBuilder         platformbase.ProductFetcherBuilder
+	pricingTaskBuilder     TaskBuilder
+	productSyncTaskBuilder TaskBuilder
+	inventoryTaskBuilder   TaskBuilder
+	activityTaskBuilder    TaskBuilder
 }
 
-// NewTemuTaskFactory 创建TEMU任务工厂
 func NewTemuTaskFactory(
-managementClient *management.ClientManager,
-amazonProcessor platformbase.AmazonCrawler,
-amazonConfig *config.AmazonConfig,
-monitorConfig *config.MonitorConfig,
-rabbitmqClient *rabbitmq.Client,
+	managementClient *management.ClientManager,
+	amazonProcessor platformbase.AmazonCrawler,
+	amazonConfig *config.AmazonConfig,
+	monitorConfig *config.MonitorConfig,
+	rabbitmqClient *rabbitmq.Client,
 ) *TemuTaskFactory {
-clientManager := client.NewAPIClientManager(managementClient)
-
-baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
-Platform:         "TEMU",
-ManagementClient: managementClient,
-AmazonProcessor:  amazonProcessor,
-AmazonConfig:     amazonConfig,
-MonitorConfig:    monitorConfig,
-})
-
-return &TemuTaskFactory{
-BaseFactory:    baseFactory,
-clientManager:  clientManager,
-rabbitmqClient: rabbitmqClient,
-}
+	return NewTemuTaskFactoryWithDependencies(
+		managementClient,
+		amazonProcessor,
+		amazonConfig,
+		monitorConfig,
+		rabbitmqClient,
+		Dependencies{
+			ClientManager:  client.NewAPIClientManager(managementClient),
+			FetcherBuilder: platformbase.NewDefaultProductFetcherBuilder(),
+		},
+	)
 }
 
-// CreateTask 创建任务
+func NewTemuTaskFactoryWithDependencies(
+	managementClient *management.ClientManager,
+	amazonProcessor platformbase.AmazonCrawler,
+	amazonConfig *config.AmazonConfig,
+	monitorConfig *config.MonitorConfig,
+	rabbitmqClient *rabbitmq.Client,
+	deps Dependencies,
+) *TemuTaskFactory {
+	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
+		Platform:         "TEMU",
+		ManagementClient: managementClient,
+		AmazonProcessor:  amazonProcessor,
+		AmazonConfig:     amazonConfig,
+		MonitorConfig:    monitorConfig,
+	})
+
+	factory := &TemuTaskFactory{
+		BaseFactory:    baseFactory,
+		clientManager:  deps.ClientManager,
+		rabbitmqClient: rabbitmqClient,
+		fetcherBuilder: deps.FetcherBuilder,
+	}
+
+	if factory.clientManager == nil {
+		factory.clientManager = client.NewAPIClientManager(managementClient)
+	}
+	if factory.fetcherBuilder == nil {
+		factory.fetcherBuilder = platformbase.NewDefaultProductFetcherBuilder()
+	}
+	factory.pricingTaskBuilder = deps.PricingTaskBuilder
+	if factory.pricingTaskBuilder == nil {
+		factory.pricingTaskBuilder = defaultBuildTemuPricingTask
+	}
+	factory.productSyncTaskBuilder = deps.ProductSyncTaskBuilder
+	if factory.productSyncTaskBuilder == nil {
+		factory.productSyncTaskBuilder = defaultBuildTemuProductSyncTask
+	}
+	factory.inventoryTaskBuilder = deps.InventoryTaskBuilder
+	if factory.inventoryTaskBuilder == nil {
+		factory.inventoryTaskBuilder = defaultBuildTemuInventoryTask
+	}
+	factory.activityTaskBuilder = deps.ActivityTaskBuilder
+	if factory.activityTaskBuilder == nil {
+		factory.activityTaskBuilder = defaultBuildTemuActivityTask
+	}
+
+	return factory
+}
+
 func (f *TemuTaskFactory) CreateTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error) {
-	// 使用基类验证平台和任务类型
 	if err := f.ValidatePlatform(config); err != nil {
 		return nil, err
 	}
@@ -61,49 +116,42 @@ func (f *TemuTaskFactory) CreateTask(ctx context.Context, config appscheduler.Ta
 
 	switch config.TaskType {
 	case appscheduler.TaskTypePricing:
-		return NewPricingTask(ctx, config, f.GetManagementClient()), nil
+		return f.pricingTaskBuilder(ctx, config, f)
 	case appscheduler.TaskTypeProductSync:
-		return f.createProductSyncTask(ctx, config)
+		return f.productSyncTaskBuilder(ctx, config, f)
 	case appscheduler.TaskTypeInventory:
-		return f.createInventoryTask(ctx, config)
+		return f.inventoryTaskBuilder(ctx, config, f)
 	case appscheduler.TaskTypeActivity:
-		return NewActivityTask(ctx, config, f.GetManagementClient()), nil
+		return f.activityTaskBuilder(ctx, config, f)
 	default:
-		return nil, fmt.Errorf("不支持的任务类型: %s", config.TaskType)
+		return nil, fmt.Errorf("unsupported task type: %s", config.TaskType)
 	}
 }
 
-// createProductSyncTask 创建产品同步任务
-func (f *TemuTaskFactory) createProductSyncTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error) {
-	// 获取 API 客户端
-	apiClient, err := f.clientManager.GetClient(config.TenantID, config.StoreID)
+func defaultBuildTemuPricingTask(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error) {
+	return NewPricingTask(ctx, config, factory.GetManagementClient()), nil
+}
+
+func defaultBuildTemuProductSyncTask(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error) {
+	apiClient, err := factory.clientManager.GetClient(config.TenantID, config.StoreID)
 	if err != nil {
-		return nil, fmt.Errorf("获取TEMU API客户端失败: %w", err)
+		return nil, fmt.Errorf("get TEMU API client: %w", err)
 	}
 
-	// 创建 ProductAPI
 	productAPI := temuapi.NewProductAPI(apiClient, logger.GetGlobalLogger("TemuProductAPI"))
-
-	// 创建 SkuQueryAPI
 	skuQueryAPI := temuapi.NewQueryAPI(apiClient, logger.GetGlobalLogger("TemuSkuQueryAPI"))
+	mappingClient := factory.GetManagementClient().GetProductImportMappingClient()
+	storeAPI := factory.GetManagementClient().GetStoreClient()
 
-	// 获取映射客户端
-	mappingClient := f.GetManagementClient().GetProductImportMappingClient()
-
-	// 获取店铺客户端
-	storeAPI := f.GetManagementClient().GetStoreClient()
-
-	// 创建产品同步服务配置
 	syncConfig := &schedulerservice.ProductSyncConfig{
 		PageSize:        100,
-		MaxPages:        0, // 暂时只处理一页数据用于调试
+		MaxPages:        0,
 		Language:        "en",
 		IncludeInactive: false,
 	}
 
-	// 创建产品同步服务
 	syncService := schedulerservice.NewProductSyncService(
-		f.GetManagementClient(),
+		factory.GetManagementClient(),
 		productAPI,
 		skuQueryAPI,
 		mappingClient,
@@ -111,48 +159,44 @@ func (f *TemuTaskFactory) createProductSyncTask(ctx context.Context, config apps
 		syncConfig,
 	)
 
-	return NewProductSyncTask(ctx, config, f.GetManagementClient(), syncService), nil
+	return NewProductSyncTask(ctx, config, factory.GetManagementClient(), syncService), nil
 }
 
-// createInventoryTask 创建库存同步任务
-func (f *TemuTaskFactory) createInventoryTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error) {
-temuAPIClient, err := f.clientManager.GetClient(config.TenantID, config.StoreID)
-if err != nil {
-return nil, fmt.Errorf("获取TEMU API客户端失败: %w", err)
+func defaultBuildTemuInventoryTask(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error) {
+	temuAPIClient, err := factory.clientManager.GetClient(config.TenantID, config.StoreID)
+	if err != nil {
+		return nil, fmt.Errorf("get TEMU API client: %w", err)
+	}
+
+	rawJSONDataClient := factory.GetManagementClient().GetRawJsonDataAdapter()
+	inventoryRecordClient := factory.GetManagementClient().GetInventoryRecordClient()
+
+	productFetcher, err := factory.fetcherBuilder.Build(
+		rawJSONDataClient,
+		factory.GetAmazonConfig(),
+		factory.GetAmazonProcessor(),
+		factory.rabbitmqClient,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create product fetcher: %w", err)
+	}
+
+	inventoryService := schedulerservice.NewInventorySyncService(
+		factory.GetManagementClient(),
+		temuAPIClient,
+		productFetcher,
+		factory.GetMonitorConfig(),
+		rawJSONDataClient,
+		inventoryRecordClient,
+	)
+
+	return NewInventoryTask(ctx, config, factory.GetManagementClient(), inventoryService), nil
 }
 
-rawJsonDataClient := f.GetManagementClient().GetRawJsonDataAdapter()
-inventoryRecordClient := f.GetManagementClient().GetInventoryRecordClient()
-
-fetcherType := fetcher.LocalFetcher
-if f.rabbitmqClient != nil {
-fetcherType = fetcher.DistributedFetcher
-}
-productFetcher, err := fetcher.NewFetcherFactory().CreateFetcher(
-fetcherType,
-rawJsonDataClient,
-f.GetAmazonConfig(),
-f.GetAmazonProcessor(),
-f.rabbitmqClient,
-)
-if err != nil {
-return nil, fmt.Errorf("创建产品获取器失败: %w", err)
+func defaultBuildTemuActivityTask(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error) {
+	return NewActivityTask(ctx, config, factory.GetManagementClient()), nil
 }
 
-inventoryService := schedulerservice.NewInventorySyncService(
-f.GetManagementClient(),
-temuAPIClient,
-productFetcher,
-f.GetMonitorConfig(),
-rawJsonDataClient,
-inventoryRecordClient,
-)
-
-return NewInventoryTask(ctx, config, f.GetManagementClient(), inventoryService), nil
-}
-
-// SupportedTaskTypes 支持的任务类型
 func (f *TemuTaskFactory) SupportedTaskTypes() []appscheduler.TaskType {
-	// TEMU平台支持所有基础任务类型
 	return f.BaseFactory.SupportedTaskTypes()
 }

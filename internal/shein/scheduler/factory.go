@@ -1,11 +1,9 @@
-// package scheduler 提供SHEIN平台的任务工厂
 package scheduler
 
 import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/app/crawler/fetcher"
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
@@ -14,23 +12,38 @@ import (
 	"task-processor/internal/platformbase"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
-	shein_pricing "task-processor/internal/shein/api/pricing"
-	shein_product "task-processor/internal/shein/api/product"
+	sheinpricingapi "task-processor/internal/shein/api/pricing"
+	sheinproductapi "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/client"
 	"task-processor/internal/shein/inventory"
 	sheinpricing "task-processor/internal/shein/pricing"
 	"task-processor/internal/shein/productsync"
 )
 
-// SheinTaskFactory SHEIN平台任务工厂
-type SheinTaskFactory struct {
-	*platformbase.BaseFactory
-	cookieManager  *state.CookieManager
-	clientManager  *client.ClientManager
-	rabbitmqClient *rabbitmq.Client
+type TaskBuilder func(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error)
+
+type Dependencies struct {
+	CookieManager          *state.CookieManager
+	ClientManager          *client.ClientManager
+	FetcherBuilder         platformbase.ProductFetcherBuilder
+	PricingTaskBuilder     TaskBuilder
+	ProductSyncTaskBuilder TaskBuilder
+	InventoryTaskBuilder   TaskBuilder
+	ActivityTaskBuilder    TaskBuilder
 }
 
-// NewSheinTaskFactory 创建SHEIN任务工厂
+type SheinTaskFactory struct {
+	*platformbase.BaseFactory
+	cookieManager          *state.CookieManager
+	clientManager          *client.ClientManager
+	rabbitmqClient         *rabbitmq.Client
+	fetcherBuilder         platformbase.ProductFetcherBuilder
+	pricingTaskBuilder     TaskBuilder
+	productSyncTaskBuilder TaskBuilder
+	inventoryTaskBuilder   TaskBuilder
+	activityTaskBuilder    TaskBuilder
+}
+
 func NewSheinTaskFactory(
 	managementClient *management.ClientManager,
 	amazonProcessor platformbase.AmazonCrawler,
@@ -39,8 +52,28 @@ func NewSheinTaskFactory(
 	rabbitmqClient *rabbitmq.Client,
 ) *SheinTaskFactory {
 	cookieManager := state.NewCookieManager()
-	clientManager := client.NewClientManager(cookieManager, managementClient)
+	return NewSheinTaskFactoryWithDependencies(
+		managementClient,
+		amazonProcessor,
+		amazonConfig,
+		monitorConfig,
+		rabbitmqClient,
+		Dependencies{
+			CookieManager:  cookieManager,
+			ClientManager:  client.NewClientManager(cookieManager, managementClient),
+			FetcherBuilder: platformbase.NewDefaultProductFetcherBuilder(),
+		},
+	)
+}
 
+func NewSheinTaskFactoryWithDependencies(
+	managementClient *management.ClientManager,
+	amazonProcessor platformbase.AmazonCrawler,
+	amazonConfig *config.AmazonConfig,
+	monitorConfig *config.MonitorConfig,
+	rabbitmqClient *rabbitmq.Client,
+	deps Dependencies,
+) *SheinTaskFactory {
 	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
 		Platform:         "SHEIN",
 		ManagementClient: managementClient,
@@ -49,17 +82,44 @@ func NewSheinTaskFactory(
 		MonitorConfig:    monitorConfig,
 	})
 
-	return &SheinTaskFactory{
+	factory := &SheinTaskFactory{
 		BaseFactory:    baseFactory,
-		cookieManager:  cookieManager,
-		clientManager:  clientManager,
+		cookieManager:  deps.CookieManager,
+		clientManager:  deps.ClientManager,
 		rabbitmqClient: rabbitmqClient,
+		fetcherBuilder: deps.FetcherBuilder,
 	}
+
+	if factory.cookieManager == nil {
+		factory.cookieManager = state.NewCookieManager()
+	}
+	if factory.clientManager == nil {
+		factory.clientManager = client.NewClientManager(factory.cookieManager, managementClient)
+	}
+	if factory.fetcherBuilder == nil {
+		factory.fetcherBuilder = platformbase.NewDefaultProductFetcherBuilder()
+	}
+	factory.pricingTaskBuilder = deps.PricingTaskBuilder
+	if factory.pricingTaskBuilder == nil {
+		factory.pricingTaskBuilder = defaultBuildSheinPricingTask
+	}
+	factory.productSyncTaskBuilder = deps.ProductSyncTaskBuilder
+	if factory.productSyncTaskBuilder == nil {
+		factory.productSyncTaskBuilder = defaultBuildSheinProductSyncTask
+	}
+	factory.inventoryTaskBuilder = deps.InventoryTaskBuilder
+	if factory.inventoryTaskBuilder == nil {
+		factory.inventoryTaskBuilder = defaultBuildSheinInventoryTask
+	}
+	factory.activityTaskBuilder = deps.ActivityTaskBuilder
+	if factory.activityTaskBuilder == nil {
+		factory.activityTaskBuilder = defaultBuildSheinActivityTask
+	}
+
+	return factory
 }
 
-// CreateTask 创建任务
 func (f *SheinTaskFactory) CreateTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error) {
-	// 使用基类验证平台和任务类型
 	if err := f.ValidatePlatform(config); err != nil {
 		return nil, err
 	}
@@ -67,70 +127,46 @@ func (f *SheinTaskFactory) CreateTask(ctx context.Context, config appscheduler.T
 		return nil, err
 	}
 
-	// 获取店铺信息和 BaseAPIClient（公共逻辑）
-	baseClient, err := f.createBaseClient(config.StoreID)
+	switch config.TaskType {
+	case appscheduler.TaskTypePricing:
+		return f.pricingTaskBuilder(ctx, config, f)
+	case appscheduler.TaskTypeProductSync:
+		return f.productSyncTaskBuilder(ctx, config, f)
+	case appscheduler.TaskTypeInventory:
+		return f.inventoryTaskBuilder(ctx, config, f)
+	case appscheduler.TaskTypeActivity:
+		return f.activityTaskBuilder(ctx, config, f)
+	default:
+		return nil, fmt.Errorf("unsupported task type: %s", config.TaskType)
+	}
+}
+
+func defaultBuildSheinPricingTask(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error) {
+	baseClient, err := factory.createBaseClient(config.StoreID)
 	if err != nil {
 		return nil, err
 	}
 
-	switch config.TaskType {
-	case appscheduler.TaskTypePricing:
-		return f.createPricingTask(ctx, config, baseClient)
-	case appscheduler.TaskTypeProductSync:
-		return f.createProductSyncTask(ctx, config, baseClient)
-	case appscheduler.TaskTypeInventory:
-		return f.createInventoryTask(ctx, config, baseClient)
-	case appscheduler.TaskTypeActivity:
-		return f.createActivityTask(ctx, config, baseClient)
-	default:
-		return nil, fmt.Errorf("不支持的任务类型: %s", config.TaskType)
-	}
+	pricingAPI := sheinpricingapi.NewClient(baseClient)
+	pricingService := sheinpricing.NewAutoPricingService(factory.GetManagementClient(), pricingAPI)
+	return NewPricingTask(ctx, config, factory.GetManagementClient(), factory.clientManager, pricingService), nil
 }
 
-// createBaseClient 创建基础API客户端
-func (f *SheinTaskFactory) createBaseClient(storeID int64) (*client.BaseAPIClient, error) {
-	// 获取店铺信息
-	storeInfo, err := f.GetManagementClient().GetStoreClient().GetStore(storeID)
+func defaultBuildSheinProductSyncTask(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error) {
+	baseClient, err := factory.createBaseClient(config.StoreID)
 	if err != nil {
-		return nil, fmt.Errorf("获取店铺信息失败: %w", err)
+		return nil, err
 	}
 
-	// 获取 API 客户端
-	apiClient, err := f.clientManager.GetClient(storeID, storeInfo)
-	if err != nil {
-		return nil, fmt.Errorf("获取API客户端失败: %w", err)
-	}
-
-	// 创建 BaseAPIClient
-	baseClient := client.NewBaseAPIClient(
-		apiClient.GetBaseURL(),
-		apiClient.GetTenantID(),
-		apiClient.GetStoreID(),
-		apiClient.GetHTTPClient(),
-	)
-
-	return baseClient, nil
-}
-
-// createPricingTask 创建核价任务
-func (f *SheinTaskFactory) createPricingTask(ctx context.Context, config appscheduler.TaskConfig, baseClient *client.BaseAPIClient) (appscheduler.Task, error) {
-	pricingAPI := shein_pricing.NewClient(baseClient)
-	pricingService := sheinpricing.NewAutoPricingService(f.GetManagementClient(), pricingAPI)
-	return NewPricingTask(ctx, config, f.GetManagementClient(), f.clientManager, pricingService), nil
-}
-
-// createProductSyncTask 创建产品同步任务
-func (f *SheinTaskFactory) createProductSyncTask(ctx context.Context, config appscheduler.TaskConfig, baseClient *client.BaseAPIClient) (appscheduler.Task, error) {
 	errorHandler := client.NewAPIErrorHandler(baseClient)
-
-	productAPI := shein_product.NewClient(baseClient)
-	inventoryManager := shein_product.NewInventoryManager(baseClient, errorHandler)
-	priceManager := shein_product.NewPriceManager(baseClient, errorHandler)
-	storeInfoClient := f.GetManagementClient().GetStoreClient()
-	mappingClient := f.GetManagementClient().GetProductImportMappingClient()
+	productAPI := sheinproductapi.NewClient(baseClient)
+	inventoryManager := sheinproductapi.NewInventoryManager(baseClient, errorHandler)
+	priceManager := sheinproductapi.NewPriceManager(baseClient, errorHandler)
+	storeInfoClient := factory.GetManagementClient().GetStoreClient()
+	mappingClient := factory.GetManagementClient().GetProductImportMappingClient()
 
 	syncService := productsync.NewProductSyncService(
-		f.GetManagementClient(),
+		factory.GetManagementClient(),
 		productAPI,
 		inventoryManager,
 		priceManager,
@@ -138,51 +174,71 @@ func (f *SheinTaskFactory) createProductSyncTask(ctx context.Context, config app
 		storeInfoClient,
 	)
 
-	return NewProductSyncTask(ctx, config, f.GetManagementClient(), f.clientManager, syncService), nil
+	return NewProductSyncTask(ctx, config, factory.GetManagementClient(), factory.clientManager, syncService), nil
 }
 
-// createInventoryTask 创建库存监控任务
-func (f *SheinTaskFactory) createInventoryTask(ctx context.Context, config appscheduler.TaskConfig, baseClient *client.BaseAPIClient) (appscheduler.Task, error) {
-	productAPI := shein_product.NewClient(baseClient)
-	rawJsonDataClient := f.GetManagementClient().GetRawJsonDataAdapter()
-	inventoryRecordClient := f.GetManagementClient().GetInventoryRecordClient()
-
-	fetcherType := fetcher.LocalFetcher
-	if f.rabbitmqClient != nil {
-		fetcherType = fetcher.DistributedFetcher
+func defaultBuildSheinInventoryTask(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error) {
+	baseClient, err := factory.createBaseClient(config.StoreID)
+	if err != nil {
+		return nil, err
 	}
-	productFetcher, err := fetcher.NewFetcherFactory().CreateFetcher(
-		fetcherType,
-		rawJsonDataClient,
-		f.GetAmazonConfig(),
-		f.GetAmazonProcessor(),
-		f.rabbitmqClient,
+
+	productAPI := sheinproductapi.NewClient(baseClient)
+	rawJSONDataClient := factory.GetManagementClient().GetRawJsonDataAdapter()
+	inventoryRecordClient := factory.GetManagementClient().GetInventoryRecordClient()
+
+	productFetcher, err := factory.fetcherBuilder.Build(
+		rawJSONDataClient,
+		factory.GetAmazonConfig(),
+		factory.GetAmazonProcessor(),
+		factory.rabbitmqClient,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("创建产品获取器失败: %w", err)
+		return nil, fmt.Errorf("create product fetcher: %w", err)
 	}
 
 	inventoryService := inventory.NewInventorySyncService(
-		f.GetManagementClient(),
+		factory.GetManagementClient(),
 		productAPI,
 		productFetcher,
-		f.GetMonitorConfig(),
-		rawJsonDataClient,
+		factory.GetMonitorConfig(),
+		rawJSONDataClient,
 		inventoryRecordClient,
 	)
 
-	return NewInventoryTask(ctx, config, f.GetManagementClient(), f.clientManager, inventoryService), nil
+	return NewInventoryTask(ctx, config, factory.GetManagementClient(), factory.clientManager, inventoryService), nil
 }
 
-// createActivityTask 创建活动报名任务
-func (f *SheinTaskFactory) createActivityTask(ctx context.Context, config appscheduler.TaskConfig, baseClient *client.BaseAPIClient) (appscheduler.Task, error) {
+func defaultBuildSheinActivityTask(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error) {
+	baseClient, err := factory.createBaseClient(config.StoreID)
+	if err != nil {
+		return nil, err
+	}
+
 	marketingAPI := marketing.NewClient(baseClient)
-	activityService := activity.NewActivityRegistrationService(f.GetManagementClient(), marketingAPI)
-	return NewActivityTask(ctx, config, f.GetManagementClient(), f.clientManager, activityService), nil
+	activityService := activity.NewActivityRegistrationService(factory.GetManagementClient(), marketingAPI)
+	return NewActivityTask(ctx, config, factory.GetManagementClient(), factory.clientManager, activityService), nil
 }
 
-// SupportedTaskTypes 支持的任务类型
+func (f *SheinTaskFactory) createBaseClient(storeID int64) (*client.BaseAPIClient, error) {
+	storeInfo, err := f.GetManagementClient().GetStoreClient().GetStore(storeID)
+	if err != nil {
+		return nil, fmt.Errorf("get store info: %w", err)
+	}
+
+	apiClient, err := f.clientManager.GetClient(storeID, storeInfo)
+	if err != nil {
+		return nil, fmt.Errorf("get API client: %w", err)
+	}
+
+	return client.NewBaseAPIClient(
+		apiClient.GetBaseURL(),
+		apiClient.GetTenantID(),
+		apiClient.GetStoreID(),
+		apiClient.GetHTTPClient(),
+	), nil
+}
+
 func (f *SheinTaskFactory) SupportedTaskTypes() []appscheduler.TaskType {
-	// SHEIN平台支持所有基础任务类型
 	return f.BaseFactory.SupportedTaskTypes()
 }

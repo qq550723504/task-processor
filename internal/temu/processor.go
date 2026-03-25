@@ -3,6 +3,8 @@ package temu
 import (
 	"context"
 	"fmt"
+
+	"task-processor/internal/app/ports"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
@@ -15,81 +17,62 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// amazonCrawler 定义 TEMU 处理器对 Amazon 爬虫的依赖（消费者定义接口原则）。
-// 包含抓取和关闭两个能力，粒度刚好满足 TEMU 的需求。
-type amazonCrawler interface {
-	Process(url string, zipcode string) (*model.Product, error)
-	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
-	Shutdown()
+type Dependencies struct {
+	ManagementClient *management.ClientManager
+	ProductSource    ports.ProductSource
+	RabbitMQClient   *rabbitmq.Client
 }
 
-// TemuProcessor TEMU平台处理器
 type TemuProcessor struct {
-	*processor.BaseProcessor                       // 继承基础处理器
-	amazonProcessor          amazonCrawler         // TEMU特定：Amazon爬虫（接口）
-	rabbitmqClient           *rabbitmq.Client      // RabbitMQ客户端（用于分布式爬虫）
-	taskHandler              *TaskHandler          // TEMU特定：任务处理器
-	pipelineExecutor         *TemuPipelineExecutor // TEMU特定：强类型管道执行器
+	*processor.BaseProcessor
+	amazonProcessor  ports.ProductSource
+	rabbitmqClient   *rabbitmq.Client
+	taskHandler      *TaskHandler
+	pipelineExecutor *TemuPipelineExecutor
 }
 
-// NewTemuProcessor 创建TEMU处理器
-// 返回 error 而不是 panic，让调用方决定如何处理错误
-func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, managementClient *management.ClientManager, sharedAmazonProcessor amazonCrawler, rabbitmqClient *rabbitmq.Client) (*TemuProcessor, error) {
+func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, deps Dependencies) (*TemuProcessor, error) {
 	log := logger.GetGlobalLogger("temu_processor").WithField(logger.FieldPlatform, "temu")
 
-	// ManagementClient必须由调用方提供（共享实例）
-	if managementClient == nil {
-		log.Error("ManagementClient不能为空，必须使用共享实例")
-		return nil, fmt.Errorf("managementClient不能为空")
+	if deps.ManagementClient == nil {
+		log.Error("ManagementClient is required")
+		return nil, fmt.Errorf("managementClient is required")
+	}
+	if deps.ProductSource == nil {
+		log.Error("ProductSource is required")
+		return nil, fmt.Errorf("productSource is required")
 	}
 
-	// Amazon处理器必须使用共享实例（资源优化）
-	if sharedAmazonProcessor == nil {
-		log.Error("SharedAmazonProcessor不能为空，必须使用共享实例")
-		return nil, fmt.Errorf("sharedAmazonProcessor不能为空")
-	}
-
-	log.Info("使用共享的Amazon爬虫实例和管理客户端")
-
-	// 记录RabbitMQ客户端状态
-	if rabbitmqClient != nil {
-		log.Info("✅ 使用RabbitMQ客户端，将启用分布式爬虫")
+	if deps.RabbitMQClient != nil {
+		log.Info("using RabbitMQ client for distributed fetching")
 	} else {
-		log.Warn("⚠️ 未提供RabbitMQ客户端，将使用本地爬虫")
+		log.Warn("RabbitMQ client not provided, using local fetching")
 	}
 
-	// 创建基础处理器
 	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
 		Config:           cfg,
-		ManagementClient: managementClient,
+		ManagementClient: deps.ManagementClient,
 		Logger:           loggerInstance,
 		Platform:         "TEMU",
 	})
 
 	p := &TemuProcessor{
 		BaseProcessor:   baseProcessor,
-		amazonProcessor: sharedAmazonProcessor,
-		rabbitmqClient:  rabbitmqClient,
+		amazonProcessor: deps.ProductSource,
+		rabbitmqClient:  deps.RabbitMQClient,
 	}
 
-	// 创建 WorkerPool（内部管理）
 	workerPool := worker.NewPool(p, cfg.Worker)
 	p.SetWorkerPool(workerPool)
-
-	// 初始化任务处理器
 	p.taskHandler = NewTaskHandler(p)
-
-	// 使用统一的管道构建方法
 	p.pipelineExecutor = p.buildPipelineExecutor()
 
 	return p, nil
 }
 
-// ProcessTask 处理TEMU任务 - 实现worker.Processor接口
 func (p *TemuProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
-	// 解析任务数据
 	var task model.Task
-	if err := jsonx.UnmarshalString(job.TaskData, &task, "解析任务数据失败"); err != nil {
+	if err := jsonx.UnmarshalString(job.TaskData, &task, "parse task data"); err != nil {
 		return err
 	}
 
@@ -98,67 +81,56 @@ func (p *TemuProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) e
 		logger.FieldTaskID:    task.ID,
 		logger.FieldProductID: task.ProductID,
 		logger.FieldStoreID:   task.StoreID,
-	}).Info("开始处理任务")
+	}).Info("start task")
 
-	// TEMU特定的任务处理逻辑
 	if err := p.processTemuProduct(ctx, task); err != nil {
-		log.WithError(err).WithField(logger.FieldTaskID, task.ID).Error("处理产品失败")
+		log.WithError(err).WithField(logger.FieldTaskID, task.ID).Error("process product failed")
 		return err
 	}
 
-	log.WithField(logger.FieldTaskID, task.ID).Info("任务处理完成")
+	log.WithField(logger.FieldTaskID, task.ID).Info("task complete")
 	return nil
 }
 
-// processTemuProduct 处理TEMU产品
 func (p *TemuProcessor) processTemuProduct(ctx context.Context, task model.Task) error {
 	log := p.GetLogger()
-	log.WithField(logger.FieldProductID, task.ProductID).Info("处理产品")
+	log.WithField(logger.FieldProductID, task.ProductID).Info("processing product")
 
-	// 使用任务处理器处理任务
 	if err := p.taskHandler.ProcessTask(ctx, task, p.pipelineExecutor); err != nil {
-		return fmt.Errorf("任务处理失败: %w", err)
+		return fmt.Errorf("task processing failed: %w", err)
 	}
 
-	log.WithField(logger.FieldProductID, task.ProductID).Info("产品处理完成")
+	log.WithField(logger.FieldProductID, task.ProductID).Info("product processed")
 	return nil
 }
 
-// buildPipelineExecutor 构建完整的TEMU强类型管道执行器
 func (p *TemuProcessor) buildPipelineExecutor() *TemuPipelineExecutor {
-	// 使用专门的管道构建器，避免循环导入
 	builder := NewPipelineBuilder(p)
 	return builder.BuildPipeline()
 }
 
-// Start 启动TEMU处理器
 func (p *TemuProcessor) Start(ctx context.Context) error {
-	// 启动基础组件
 	if err := p.StartBase(ctx); err != nil {
 		return err
 	}
 
-	p.GetLogger().Info("任务处理器启动完成")
+	p.GetLogger().Info("processor started")
 	return nil
 }
 
-// GetAmazonProcessor 获取共享的Amazon处理器
-func (p *TemuProcessor) GetAmazonProcessor() amazonCrawler {
+func (p *TemuProcessor) GetAmazonProcessor() ports.ProductSource {
 	return p.amazonProcessor
 }
 
-// Close 关闭处理器
 func (p *TemuProcessor) Close(ctx context.Context) {
 	log := p.GetLogger()
-	log.Info("关闭TEMU任务处理器")
+	log.Info("closing TEMU processor")
 
-	// 关闭基础组件
 	p.CloseBase(ctx)
 
-	// 关闭Amazon处理器
 	if p.amazonProcessor != nil {
 		p.amazonProcessor.Shutdown()
 	}
 
-	log.Info("任务处理器已关闭")
+	log.Info("processor closed")
 }

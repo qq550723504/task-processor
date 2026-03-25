@@ -1,34 +1,26 @@
-// Package consumer 提供爬虫处理器注册功能
 package consumer
 
 import (
 	"fmt"
 
+	"task-processor/internal/app/bootstrap"
 	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/infra/auth"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
 
-// CrawlerRegistry 爬虫处理器注册器
 type CrawlerRegistry struct {
 	config         *config.Config
 	logger         *logrus.Logger
 	rabbitmqClient *rabbitmq.Client
 }
 
-// NewCrawlerRegistry 创建爬虫处理器注册器
-func NewCrawlerRegistry(
-	cfg *config.Config,
-	logger *logrus.Logger,
-	rabbitmqClient *rabbitmq.Client,
-) *CrawlerRegistry {
+func NewCrawlerRegistry(cfg *config.Config, logger *logrus.Logger, rabbitmqClient *rabbitmq.Client) *CrawlerRegistry {
 	return &CrawlerRegistry{
 		config:         cfg,
 		logger:         logger,
@@ -36,33 +28,26 @@ func NewCrawlerRegistry(
 	}
 }
 
-// RegisterCrawlerProcessorWithAmazon 注册爬虫处理器到服务管理器（可选共享Amazon处理器）
 func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManager, sharedAmazonProcessor *amazon.AmazonProcessor) error {
-	r.logger.Info(" 注册Amazon爬虫处理器...")
+	r.logger.Info(" 娉ㄥ唽Amazon鐖櫕澶勭悊鍣?..")
 
-	// 使用共享的Amazon处理器，如果没有则创建新的
 	var amazonProcessor *amazon.AmazonProcessor
 	if sharedAmazonProcessor != nil {
-		r.logger.Info(" 复用共享的Amazon处理器（避免重复初始化浏览器池）")
+		r.logger.Info(" 澶嶇敤鍏变韓鐨凙mazon澶勭悊鍣紙閬垮厤閲嶅鍒濆鍖栨祻瑙堝櫒姹狅級")
 		amazonProcessor = sharedAmazonProcessor
 	} else {
-		r.logger.Info(" 创建新的Amazon处理器")
+		r.logger.Info(" 鍒涘缓鏂扮殑Amazon澶勭悊鍣?")
 		amazonProcessor = amazon.CreateProcessor(r.config, r.logger)
 	}
 
-	// 创建产品获取器
 	productFetcher, err := r.createProductFetcher(amazonProcessor)
 	if err != nil {
-		return fmt.Errorf("创建产品获取器失败: %w", err)
+		return fmt.Errorf("鍒涘缓浜у搧鑾峰彇鍣ㄥけ璐? %w", err)
 	}
 
-	// 创建任务提交器
 	taskSubmitter := NewTaskSubmitter(r.rabbitmqClient, r.logger)
-
-	// 直接使用 RabbitMQAdapter，发原始 JSON 不包装
 	rabbitmqPublisher := distributed.NewRabbitMQAdapter(r.rabbitmqClient)
 
-	// 创建爬虫处理器
 	crawlerProcessor := processor.NewCrawlerProcessor(
 		r.logger,
 		amazonProcessor,
@@ -71,35 +56,26 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManage
 		rabbitmqPublisher,
 	)
 
-	// 注册到服务管理器（使用 amazon.crawler 避免与上架服务冲突）
 	if err := serviceManager.RegisterProcessor("amazon.crawler", crawlerProcessor); err != nil {
-		return fmt.Errorf("注册Amazon爬虫处理器失败: %w", err)
+		return fmt.Errorf("娉ㄥ唽Amazon鐖櫕澶勭悊鍣ㄥけ璐? %w", err)
 	}
 
-	r.logger.Info(" Amazon爬虫处理器注册成功")
+	r.logger.Info(" Amazon鐖櫕澶勭悊鍣ㄦ敞鍐屾垚鍔?")
 	return nil
 }
 
-// RegisterAmazonCrawler 只注册 Amazon 爬虫处理器
 func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) error {
-	r.logger.Info(" 注册 Amazon 爬虫处理器...")
+	r.logger.Info(" 娉ㄥ唽 Amazon 鐖櫕澶勭悊鍣?..")
 
-	// 创建新的 Amazon 处理器
 	amazonProcessor := amazon.CreateProcessor(r.config, r.logger)
-
-	// 创建产品获取器
 	productFetcher, err := r.createProductFetcher(amazonProcessor)
 	if err != nil {
-		return fmt.Errorf("创建产品获取器失败: %w", err)
+		return fmt.Errorf("鍒涘缓浜у搧鑾峰彇鍣ㄥけ璐? %w", err)
 	}
 
-	// 创建任务提交器
 	taskSubmitter := NewTaskSubmitter(r.rabbitmqClient, r.logger)
-
-	// 直接使用 RabbitMQAdapter，发原始 JSON 不包装
 	rabbitmqPublisher := distributed.NewRabbitMQAdapter(r.rabbitmqClient)
 
-	// 创建爬虫处理器
 	crawlerProcessor := processor.NewCrawlerProcessor(
 		r.logger,
 		amazonProcessor,
@@ -108,59 +84,28 @@ func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) 
 		rabbitmqPublisher,
 	)
 
-	// 注册到服务管理器
 	if err := serviceManager.RegisterProcessor("amazon.crawler", crawlerProcessor); err != nil {
-		return fmt.Errorf("注册 Amazon 爬虫处理器失败: %w", err)
+		return fmt.Errorf("娉ㄥ唽 Amazon 鐖櫕澶勭悊鍣ㄥけ璐? %w", err)
 	}
 
-	r.logger.Info(" Amazon 爬虫处理器注册成功")
+	r.logger.Info(" Amazon 鐖櫕澶勭悊鍣ㄦ敞鍐屾垚鍔?")
 	return nil
 }
 
-// Register1688Crawler 只注册 1688 爬虫处理器
 func (r *CrawlerRegistry) Register1688Crawler(serviceManager *ServiceManager) error {
-	r.logger.Info(" 注册 1688 爬虫处理器...")
-
-	// TODO: 实现 1688 爬虫处理器注册
-	// 目前 1688 爬虫还没有独立的处理器实现
-
-	r.logger.Warn(" 1688 爬虫处理器尚未实现")
-	return fmt.Errorf("1688 爬虫处理器尚未实现")
+	r.logger.Info(" 娉ㄥ唽 1688 鐖櫕澶勭悊鍣?..")
+	r.logger.Warn(" 1688 鐖櫕澶勭悊鍣ㄥ皻鏈疄鐜?")
+	return fmt.Errorf("1688 鐖櫕澶勭悊鍣ㄥ皻鏈疄鐜?")
 }
 
-// createProductFetcher 创建产品获取器
 func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonProcessor) (*product.ProductFetcher, error) {
-	// 创建认证客户端
-	authClient := auth.NewClientCredentialsAuthClient(
-		r.config.Management.BaseURL,
-		r.config.Management.ClientID,
-		r.config.Management.ClientSecret,
-		r.config.Management.TenantID,
-		r.logger,
-	)
-
-	// 创建管理客户端
-	managementClient := management.NewClientManager(&r.config.Management)
-
-	// 先获取一次客户端，确保客户端已创建
-	_ = managementClient.GetClient()
-
-	// 获取访问令牌并设置
-	token, err := authClient.GetAccessToken()
+	resources, err := bootstrap.BuildSharedResources(r.config, r.logger, bootstrap.SharedResourceOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("获取访问令牌失败: %w", err)
+		return nil, err
 	}
 
-	// 设置访问令牌
-	managementClient.SetUserToken(token, r.config.Management.TenantID)
-	r.logger.Info(" 访问令牌设置成功")
-
-	// 设置数据新鲜度
-	managementClient.SetDataFreshnessDays(r.config.Amazon.DataFreshnessDays)
-
-	// 创建产品获取器
 	productFetcher := product.NewProductFetcher(
-		managementClient.GetRawJsonDataAdapter(),
+		resources.ManagementClient.GetRawJsonDataAdapter(),
 		&r.config.Amazon,
 		amazonProcessor,
 	)
