@@ -4,12 +4,19 @@ package consumer
 import (
 	"context"
 
-	"task-processor/internal/app/runner"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )
+
+// SchedulerService 是 consumer 包对调度服务的最小依赖接口。
+// 遵循"消费者定义接口"原则，避免直接依赖 app/runner 包。
+type SchedulerService interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+	GetStatus() map[string]any
+}
 
 // rabbitmqComponent 将 RabbitMQService 适配为 lifecycle.Component。
 type rabbitmqComponent struct {
@@ -121,14 +128,14 @@ func (c *loadMonitorComponent) Stop(ctx context.Context) error {
 	return c.svc.Stop(ctx)
 }
 
-// schedulerComponent 将 runner.SchedulerService 适配为 lifecycle.Component。
+// schedulerComponent 将 SchedulerService 适配为 lifecycle.Component。
 type schedulerComponent struct {
 	*lifecycle.BaseComponent
-	svc runner.SchedulerService
+	svc SchedulerService
 }
 
 // newSchedulerComponent 创建调度器组件适配器（优先级 25，依赖 rabbitmq）。
-func newSchedulerComponent(svc runner.SchedulerService) lifecycle.Component {
+func newSchedulerComponent(svc SchedulerService) lifecycle.Component {
 	return &schedulerComponent{
 		BaseComponent: lifecycle.NewBaseComponent("scheduler", []string{"rabbitmq"}, 25),
 		svc:           svc,

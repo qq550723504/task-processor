@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"task-processor/internal/app/runner"
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
@@ -24,8 +23,8 @@ type ServiceManager struct {
 	logger           *logrus.Logger
 	lifecycleMgr     lifecycle.LifecycleManager
 	shutdownCoord    *ShutdownCoordinator
-	rabbitmqService  *RabbitMQService        // 保留引用，用于 RegisterProcessor / GetClient
-	schedulerService runner.SchedulerService // 可选，由外部通过 SetSchedulerService 注入
+	rabbitmqService  *RabbitMQService // 保留引用，用于 RegisterProcessor / GetClient
+	schedulerService SchedulerService // 可选，由外部通过 SetSchedulerService 注入
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -54,7 +53,7 @@ func NewServiceManager(rabbitmqConfig *config.RabbitMQConfig, logger *logrus.Log
 }
 
 // SetSchedulerService 注入调度服务，必须在 Start 之前调用。
-func (sm *ServiceManager) SetSchedulerService(svc runner.SchedulerService) {
+func (sm *ServiceManager) SetSchedulerService(svc SchedulerService) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.schedulerService = svc
