@@ -142,6 +142,7 @@ func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskCon
 	output := &CommitDetailOutput{
 		Response: response,
 		Result:   response.Result,
+		Product:  temuProduct,
 	}
 	if output.Result != nil {
 		err := h.updateProductFromCommitDetail(temuProduct, output.Result)

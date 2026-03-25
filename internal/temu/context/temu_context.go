@@ -120,4 +120,45 @@ func (tc *TemuTaskContext) AddVariant(variant *model.Product) {
 	tc.Variants = append(tc.Variants, variant)
 }
 
+func (tc *TemuTaskContext) SetTemuProduct(product *api.Product) {
+	tc.TemuProduct = product
+}
+
+func (tc *TemuTaskContext) SetPublishProductData(product *api.Product) {
+	tc.ProductData = product
+}
+
+func (tc *TemuTaskContext) SetSaveResponse(response *api.SaveResponse) {
+	tc.SaveResult = response
+}
+
+func (tc *TemuTaskContext) SetCommitDetailResponse(response *api.CommitDetailResponse) {
+	tc.CommitDetail = response
+}
+
+func (tc *TemuTaskContext) SetSubmitResponse(response *api.SubmitResponse) {
+	tc.SubmitResponse = response
+}
+
+func (tc *TemuTaskContext) SetSavedToDraft(saved bool) {
+	tc.SavedToDraft = saved
+}
+
+func (tc *TemuTaskContext) ApplySaveResult(result *api.SaveResult) {
+	if tc == nil || tc.TemuProduct == nil || result == nil {
+		return
+	}
+
+	basic := &tc.TemuProduct.GoodsBasic
+	if result.ListingCommitID != "" {
+		basic.ListingCommitID = result.ListingCommitID
+	}
+	if result.ListingCommitVersion != "" {
+		basic.ListingCommitVersion = result.ListingCommitVersion
+	}
+	if result.GoodsCommitID != "" {
+		basic.GoodsCommitID = result.GoodsCommitID
+	}
+}
+
 var _ pipeline.AmazonContext = (*TemuTaskContext)(nil)

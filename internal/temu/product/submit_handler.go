@@ -216,12 +216,14 @@ func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContex
 		applySubmitProductOutput(temuCtx, &SubmitProductOutput{
 			Response:     response,
 			SavedToDraft: true,
+			Product:      temuCtx.TemuProduct,
 		})
 		return nil // 返回nil表示处理成功，不再重试
 	}
 
 	applySubmitProductOutput(temuCtx, &SubmitProductOutput{
 		Response: response,
+		Product:  temuCtx.TemuProduct,
 	})
 
 	h.logger.WithFields(logrus.Fields{

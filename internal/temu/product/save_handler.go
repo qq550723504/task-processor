@@ -92,6 +92,7 @@ func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) e
 	output := &SaveProductOutput{
 		Response: response,
 		Result:   response.Result,
+		Product:  temuCtx.TemuProduct,
 	}
 	if output.Result != nil {
 		// 更新产品信息中的ID
@@ -144,28 +145,21 @@ func (h *ProductSaveHandler) buildSaveRequest(input *ProductRequestInput) *temua
 
 // updateProductWithSaveResult 使用保存结果更新产品信息
 func (h *ProductSaveHandler) updateProductWithSaveResult(temuCtx *temucontext.TemuTaskContext, result *temuapi.SaveResult) {
-	// 获取TEMU产品信息
-	temuProduct := temuCtx.TemuProduct
-	if temuProduct == nil {
+	if temuCtx.TemuProduct == nil {
 		h.logger.Error("TEMU产品信息为空")
 		return
 	}
 
-	basic := &temuProduct.GoodsBasic
+	temuCtx.ApplySaveResult(result)
 
-	// 更新产品ID信息
+	basic := &temuCtx.TemuProduct.GoodsBasic
 	if result.ListingCommitID != "" {
-		basic.ListingCommitID = result.ListingCommitID
 		h.logger.Infof("更新ListingCommitID: %s", basic.ListingCommitID)
 	}
-
 	if result.ListingCommitVersion != "" {
-		basic.ListingCommitVersion = result.ListingCommitVersion
 		h.logger.Infof("更新ListingCommitVersion: %s", basic.ListingCommitVersion)
 	}
-
 	if result.GoodsCommitID != "" {
-		basic.GoodsCommitID = result.GoodsCommitID
 		h.logger.Infof("更新GoodsCommitID: %s", basic.GoodsCommitID)
 	}
 

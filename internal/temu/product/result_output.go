@@ -8,38 +8,50 @@ import (
 type CommitDetailOutput struct {
 	Response *temuapi.CommitDetailResponse
 	Result   *temuapi.CommitDetailResult
+	Product  *temuapi.Product
 }
 
 type SaveProductOutput struct {
 	Response *temuapi.SaveResponse
 	Result   *temuapi.SaveResult
+	Product  *temuapi.Product
 }
 
 type SubmitProductOutput struct {
 	Response     *temuapi.SubmitResponse
 	SavedToDraft bool
+	Product      *temuapi.Product
 }
 
 func applyCommitDetailOutput(temuCtx *temucontext.TemuTaskContext, output *CommitDetailOutput) {
 	if temuCtx == nil || output == nil {
 		return
 	}
-	temuCtx.CommitDetail = output.Response
+	temuCtx.SetCommitDetailResponse(output.Response)
+	if output.Product != nil {
+		temuCtx.SetPublishProductData(output.Product)
+	}
 }
 
 func applySaveProductOutput(temuCtx *temucontext.TemuTaskContext, output *SaveProductOutput) {
 	if temuCtx == nil || output == nil {
 		return
 	}
-	temuCtx.SaveResult = output.Response
+	temuCtx.SetSaveResponse(output.Response)
+	if output.Product != nil {
+		temuCtx.SetPublishProductData(output.Product)
+	}
 }
 
 func applySubmitProductOutput(temuCtx *temucontext.TemuTaskContext, output *SubmitProductOutput) {
 	if temuCtx == nil || output == nil {
 		return
 	}
-	temuCtx.SubmitResponse = output.Response
-	temuCtx.SavedToDraft = output.SavedToDraft
+	temuCtx.SetSubmitResponse(output.Response)
+	temuCtx.SetSavedToDraft(output.SavedToDraft)
+	if output.Product != nil {
+		temuCtx.SetPublishProductData(output.Product)
+	}
 }
 
 func getSubmitResponseFromContext(temuCtx *temucontext.TemuTaskContext) (*temuapi.SubmitResponse, bool) {
