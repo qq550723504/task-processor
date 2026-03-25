@@ -1,4 +1,4 @@
-// Package main 测试 adapters.go 中的内存回退实现
+// Package main 测试内存回退实现（委托给 productenrich 包）
 package main
 
 import (
@@ -8,6 +8,11 @@ import (
 
 	"task-processor/internal/productenrich"
 )
+
+// 本文件的测试直接使用 productenrich 包导出的内存实现，
+// 不再依赖 adapters.go 中的本地函数。
+func newMemRedisClient() productenrich.RedisClient       { return productenrich.NewMemRedisClient() }
+func newMemTaskRepository() productenrich.TaskRepository { return productenrich.NewMemTaskRepository() }
 
 // =============================================================================
 // memRedisClient 单元测试

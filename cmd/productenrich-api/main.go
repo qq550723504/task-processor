@@ -179,7 +179,7 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 		closers = append(closers, closer)
 	} else {
 		logger.Warn("⚠️  未配置 database，TaskRepository 使用内存实现（重启后数据丢失）")
-		taskRepo = newMemTaskRepository()
+		taskRepo = productenrich.NewMemTaskRepository()
 	}
 
 	// RedisClient（仅作降级备用，主路径走 WorkerPool）
@@ -192,7 +192,7 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 		redisC = rc
 	} else {
 		logger.Warn("⚠️  未配置 redis，RedisClient 使用内存实现")
-		redisC = newMemRedisClient()
+		redisC = productenrich.NewMemRedisClient()
 	}
 
 	// WebScraper + InputParser（接入 1688 爬虫）

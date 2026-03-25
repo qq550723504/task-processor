@@ -153,7 +153,7 @@ func (p *productUnderstanding) AnalyzeImage(ctx context.Context, imagePath strin
 	logger.GetGlobalLogger("productenrich/understanding.go").WithField("path", imagePath).Info("analyzing image")
 
 	// 构建提示词
-	promptText := prompt.GlobalRegistry.Get(prompt.KProductEnrichUnderstandingAnalyzeImage, `Analyze this product image and extract the following attributes in JSON format:
+	defaultImagePrompt := `Analyze this product image and extract the following attributes in JSON format:
 {
   "color": "the main color of the product",
   "material": "the material the product is made of",
@@ -161,7 +161,13 @@ func (p *productUnderstanding) AnalyzeImage(ctx context.Context, imagePath strin
   "usage": "the intended use or purpose of the product"
 }
 
-Only return the JSON object, no additional text.`)
+Only return the JSON object, no additional text.`
+	var promptText string
+	if prompt.GlobalRegistry != nil {
+		promptText = prompt.GlobalRegistry.Get(prompt.KProductEnrichUnderstandingAnalyzeImage, defaultImagePrompt)
+	} else {
+		promptText = defaultImagePrompt
+	}
 
 	// 使用视觉客户端分析图片
 	visionClient, err := p.llmManager.GetClient("vision")
@@ -205,10 +211,17 @@ func (p *productUnderstanding) ExtractTextAttributes(ctx context.Context, text s
 	logger.GetGlobalLogger("productenrich/understanding.go").Info("extracting text attributes")
 
 	// 构建提示词
-	promptText, promptErr := prompt.GlobalRegistry.Render(prompt.KProductEnrichUnderstandingExtractText, map[string]any{
-		"Text": text,
-	}, "")
-	if promptErr != nil || promptText == "" {
+	var promptText string
+	if prompt.GlobalRegistry != nil {
+		var promptErr error
+		promptText, promptErr = prompt.GlobalRegistry.Render(prompt.KProductEnrichUnderstandingExtractText, map[string]any{
+			"Text": text,
+		}, "")
+		if promptErr != nil {
+			promptText = ""
+		}
+	}
+	if promptText == "" {
 		promptText = fmt.Sprintf(`Analyze this product description and extract the following information in JSON format:
 {
   "title": "a concise product title",
@@ -261,7 +274,13 @@ func (p *productUnderstanding) FuseMultimodal(ctx context.Context, imageAttr *Im
 	logger.GetGlobalLogger("productenrich/understanding.go").Info("fusing multimodal information")
 
 	// 构建融合提示词
-	promptPrefix := prompt.GlobalRegistry.Get(prompt.KProductEnrichUnderstandingFuseMultimodal, "Combine the following image and text attributes to create a unified product representation:")
+	defaultFusePrompt := "Combine the following image and text attributes to create a unified product representation:"
+	var promptPrefix string
+	if prompt.GlobalRegistry != nil {
+		promptPrefix = prompt.GlobalRegistry.Get(prompt.KProductEnrichUnderstandingFuseMultimodal, defaultFusePrompt)
+	} else {
+		promptPrefix = defaultFusePrompt
+	}
 	promptText := promptPrefix + "\n\n"
 
 	if imageAttr != nil {

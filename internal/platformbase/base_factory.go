@@ -10,7 +10,8 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/model"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,13 +20,6 @@ import (
 type AmazonCrawler interface {
 	Process(url string, zipcode string) (*model.Product, error)
 	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
-}
-
-// BaseTaskFactory 基础任务工厂接口
-type BaseTaskFactory interface {
-	CreateTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error)
-	SupportedPlatform() string
-	SupportedTaskTypes() []appscheduler.TaskType
 }
 
 // BaseFactoryConfig 基础工厂配置
@@ -100,29 +94,12 @@ func (f *BaseFactory) SupportedPlatform() string {
 	return f.config.Platform
 }
 
-// SupportedTaskTypes 支持的任务类型（子类需要重写）
+// SupportedTaskTypes 支持的任务类型（子工厂可覆盖）
 func (f *BaseFactory) SupportedTaskTypes() []appscheduler.TaskType {
-	// 默认支持所有常见任务类型
 	return []appscheduler.TaskType{
 		appscheduler.TaskTypePricing,
 		appscheduler.TaskTypeProductSync,
 		appscheduler.TaskTypeInventory,
 		appscheduler.TaskTypeActivity,
 	}
-}
-
-// CreateTask 创建任务（子类需要重写）
-func (f *BaseFactory) CreateTask(ctx context.Context, config appscheduler.TaskConfig) (appscheduler.Task, error) {
-	// 验证平台
-	if err := f.ValidatePlatform(config); err != nil {
-		return nil, err
-	}
-
-	// 验证任务类型
-	if err := f.ValidateTaskType(config.TaskType); err != nil {
-		return nil, err
-	}
-
-	// 子类需要实现具体的任务创建逻辑
-	return nil, fmt.Errorf("CreateTask方法需要由子类实现")
 }

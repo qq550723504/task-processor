@@ -7,7 +7,8 @@ import (
 	"sort"
 	"strings"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -141,7 +142,7 @@ func (s *enhancementSuggester) calculatePriority(suggestion string) int {
 }
 
 // estimateQualityAfterImprovement 根据各分项评分动态估算改进后的质量等级。
-// 假设用户按建议补全所有必需项后，各分项可达到的最大分值。
+// 权重与 scorer.go 保持一致：有抓取数据时图片40%+文本40%+抓取20%，无抓取时图片50%+文本50%。
 func (s *enhancementSuggester) estimateQualityAfterImprovement(validation *ValidationResult) string {
 	// 图片：若当前不足，假设改进后可达 75 分（3 张）；否则保留现有分数
 	imageScore := validation.ImageScore
@@ -155,11 +156,16 @@ func (s *enhancementSuggester) estimateQualityAfterImprovement(validation *Valid
 		textScore = 60
 	}
 
-	// 抓取数据：若有则保留，否则不计入估算
 	scrapedScore := validation.ScrapedScore
 
-	// 与 scorer.go 保持一致的加权公式（图片 40% + 文本 30% + 抓取 30%）
-	estimatedScore := imageScore*0.4 + textScore*0.3 + scrapedScore*0.3
+	var estimatedScore float64
+	if scrapedScore > 0 {
+		// 有抓取数据：图片40% + 文本40% + 抓取20%
+		estimatedScore = imageScore*0.4 + textScore*0.4 + scrapedScore*0.2
+	} else {
+		// 无抓取数据：图片40% + 文本40%（合计80%，与有抓取时的图片+文本权重一致）
+		estimatedScore = imageScore*0.4 + textScore*0.4
+	}
 
 	if estimatedScore >= 80 {
 		return "高质量（完整处理）"
