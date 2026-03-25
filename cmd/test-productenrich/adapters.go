@@ -1,18 +1,32 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	corelogger "task-processor/internal/core/logger"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/productenrich"
+	"task-processor/internal/prompt"
 )
 
 // buildService 组装 productenrich.ProductService（全内存，无 Worker Pool）。
 func buildService(cfg *config.Config) (productenrich.ProductService, error) {
 	logger := corelogger.GetGlobalLogManager().GetRawLogger()
+
+	// 初始化全局 Prompt Registry
+	_, thisFile, _, _ := runtime.Caller(0)
+	projectRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	promptsDir := filepath.Join(projectRoot, "prompts")
+	if err := prompt.InitGlobal(context.Background(), promptsDir, false, nil); err != nil {
+		logger.WithError(err).Warn("⚠️ Prompt Registry 初始化失败，将使用内置 fallback 提示词")
+	} else {
+		logger.Info("✅ Prompt Registry 已初始化")
+	}
 
 	llmMgr, err := productenrich.NewLLMManagerAdapter(cfg.OpenAI)
 	if err != nil {

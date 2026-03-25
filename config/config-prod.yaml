@@ -145,8 +145,8 @@ rabbitmq:
   reconnectInterval: 5   # 重连间隔（秒）
   maxReconnectTries: 10  # 最大重连次数
   node:
-    ownedStores: [836]
-    regions: [CA]  # 该节点只处理这三个 region 的爬虫任务
+    ownedStores: [505]
+    regions: [US]  # 该节点只处理这三个 region 的爬虫任务
   # 消费者配置
   consumer:
     prefetchCount: 1      # 预取消息数量（允许同时处理5条消息）

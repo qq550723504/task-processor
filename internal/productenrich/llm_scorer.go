@@ -89,9 +89,13 @@ func (s *llmScorer) ScoreText(ctx context.Context, text string, baseScore float6
 	if text == "" {
 		return baseScore, nil
 	}
-	return s.scoreWithCache(ctx, baseScore,
-		func() (float64, bool) { return s.scoreCache.GetTextScore(ctx, text) },
-		func(score float64) error { return s.scoreCache.SetTextScore(ctx, text, score, s.cacheTTL) },
+	var getCached func() (float64, bool)
+	var setCached func(float64) error
+	if s.scoreCache != nil {
+		getCached = func() (float64, bool) { return s.scoreCache.GetTextScore(ctx, text) }
+		setCached = func(score float64) error { return s.scoreCache.SetTextScore(ctx, text, score, s.cacheTTL) }
+	}
+	return s.scoreWithCache(ctx, baseScore, getCached, setCached,
 		func() (float64, error) { return s.scoreTextWithLLM(ctx, text, baseScore) },
 		"text",
 	)
@@ -102,9 +106,13 @@ func (s *llmScorer) ScoreImage(ctx context.Context, imageURL string, baseScore f
 	if imageURL == "" {
 		return baseScore, nil
 	}
-	return s.scoreWithCache(ctx, baseScore,
-		func() (float64, bool) { return s.scoreCache.GetImageScore(ctx, imageURL) },
-		func(score float64) error { return s.scoreCache.SetImageScore(ctx, imageURL, score, s.cacheTTL) },
+	var getCached func() (float64, bool)
+	var setCached func(float64) error
+	if s.scoreCache != nil {
+		getCached = func() (float64, bool) { return s.scoreCache.GetImageScore(ctx, imageURL) }
+		setCached = func(score float64) error { return s.scoreCache.SetImageScore(ctx, imageURL, score, s.cacheTTL) }
+	}
+	return s.scoreWithCache(ctx, baseScore, getCached, setCached,
 		func() (float64, error) { return s.scoreImageWithLLM(ctx, imageURL, baseScore) },
 		"image",
 	)
@@ -230,12 +238,16 @@ func (s *llmScorer) retryLLMCall(ctx context.Context, maxRetries int, call func(
 
 // buildTextScoringPrompt 构建文本评分提示词（优化版）
 func (s *llmScorer) buildTextScoringPrompt(text string, baseScore float64) string {
-	rendered, err := prompt.GlobalRegistry.Render(prompt.KProductEnrichLlmScorerTextScoring, map[string]any{
-		"Text":      text,
-		"BaseScore": fmt.Sprintf("%.1f", baseScore),
-	}, "")
-	if err != nil || rendered == "" {
-		return fmt.Sprintf(`你是一个专业的产品描述质量评估专家。请对以下产品描述文本进行质量评分（0-100分）。
+	if prompt.GlobalRegistry != nil {
+		rendered, err := prompt.GlobalRegistry.Render(prompt.KProductEnrichLlmScorerTextScoring, map[string]any{
+			"Text":      text,
+			"BaseScore": fmt.Sprintf("%.1f", baseScore),
+		}, "")
+		if err == nil && rendered != "" {
+			return rendered
+		}
+	}
+	return fmt.Sprintf(`你是一个专业的产品描述质量评估专家。请对以下产品描述文本进行质量评分（0-100分）。
 
 评分维度：
 1. 信息完整性（30分）：是否包含产品名称、类别、主要特性、规格参数等关键信息
@@ -264,17 +276,19 @@ func (s *llmScorer) buildTextScoringPrompt(text string, baseScore float64) strin
 }
 
 只返回 JSON，不要其他内容。`, text, baseScore)
-	}
-	return rendered
 }
 
 // buildImageScoringPrompt 构建图片评分提示词（优化版）
 func (s *llmScorer) buildImageScoringPrompt(baseScore float64) string {
-	rendered, err := prompt.GlobalRegistry.Render(prompt.KProductEnrichLlmScorerImageScoring, map[string]any{
-		"BaseScore": fmt.Sprintf("%.1f", baseScore),
-	}, "")
-	if err != nil || rendered == "" {
-		return fmt.Sprintf(`你是一个专业的产品图片质量评估专家。请对这张产品图片进行质量评分（0-100分）。
+	if prompt.GlobalRegistry != nil {
+		rendered, err := prompt.GlobalRegistry.Render(prompt.KProductEnrichLlmScorerImageScoring, map[string]any{
+			"BaseScore": fmt.Sprintf("%.1f", baseScore),
+		}, "")
+		if err == nil && rendered != "" {
+			return rendered
+		}
+	}
+	return fmt.Sprintf(`你是一个专业的产品图片质量评估专家。请对这张产品图片进行质量评分（0-100分）。
 
 评分维度：
 1. 清晰度（30分）：图片是否清晰、分辨率是否足够、是否有模糊或噪点
@@ -300,8 +314,6 @@ func (s *llmScorer) buildImageScoringPrompt(baseScore float64) string {
 }
 
 只返回 JSON，不要其他内容。`, baseScore)
-	}
-	return rendered
 }
 
 // parseLLMScore 解析 LLM 返回的评分（增强版）

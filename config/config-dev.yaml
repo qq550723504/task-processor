@@ -45,15 +45,15 @@ openai:
   clients:
     # 图片分析阶段（understanding.go: AnalyzeImage）
     vision:
-      model: "gemini-2.0-flash"
+      model: "gemini-2.5-flash"
       timeout: 120
     # 文本属性提取 / 规格生成（understanding.go, variant.go）
     fast:
-      model: "gemini-2.0-flash"
+      model: "gemini-2.5-flash"
       timeout: 60
     # 质量评分阶段（llm_scorer.go）
     scorer:
-      model: "gemini-2.0-flash"
+      model: "gemini-2.5-flash"
       timeout: 60
   
   # 请求池配置 - 更保守的设置
