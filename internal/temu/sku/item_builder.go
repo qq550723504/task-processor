@@ -30,6 +30,14 @@ type skuPackagingInfo struct {
 	netContentUnitCode     int
 }
 
+type skuExpressInfo struct {
+	weight             string
+	length             string
+	width              string
+	height             string
+	productExpressInfo models.ProductExpressInfo
+}
+
 // NewSkuItemBuilder 创建新的SKU项目构建器
 func NewSkuItemBuilder(logger *logrus.Entry, priceHandler *product.PriceHandler, imageProcessor *image.ImageProcessor) *SkuItemBuilder {
 	return &SkuItemBuilder{
@@ -91,7 +99,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 		ib.logger.Error("sku build cannot continue because default specs are not allowed")
 	}
 
-	weight, length, width, height := ib.buildProductExpressInfo(input.Variant, input.AISKU)
+	expressInfo := ib.buildSkuExpressInfo(input.Variant, input.AISKU)
 	packagingInfo := ib.buildSkuPackagingInfo(input.Variant, input.AISKU)
 	dimensionGallery, carouselGallery := ib.buildSkuGalleries(temuCtx, input.Variant)
 
@@ -105,20 +113,17 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 		CarouselGallery:          carouselGallery,
 		FoodIngredientGallery:    []models.ImageInfo{},
 		Quantity:                 fmt.Sprintf("%d", quantity),
-		ProductExpressInfo: models.ProductExpressInfo{
-			WeightInfo: models.WeightInfo{Weight: weight},
-			VolumeInfo: models.VolumeInfo{Length: length, Width: width, Height: height},
-		},
-		SupplierPriceStr:       fmt.Sprintf("%.2f", basePrice),
-		OutSkuSN:               outSkuSN,
-		MultiplePackage:        packagingInfo.multiplePackage,
-		OriginNetContentNumber: packagingInfo.originNetContentNumber,
-		NetContentUnitCode:     packagingInfo.netContentUnitCode,
-		MaxRetailPriceStr:      fmt.Sprintf("%.2f", float64(maxRetailPrice)/100),
-		SupplierPrice:          finalSalePrice,
-		MarketPrice:            marketPrice,
-		MarketPriceStr:         marketPriceStr,
-		SkuPriceDocuments:      map[string]any{},
+		ProductExpressInfo:       expressInfo.productExpressInfo,
+		SupplierPriceStr:         fmt.Sprintf("%.2f", basePrice),
+		OutSkuSN:                 outSkuSN,
+		MultiplePackage:          packagingInfo.multiplePackage,
+		OriginNetContentNumber:   packagingInfo.originNetContentNumber,
+		NetContentUnitCode:       packagingInfo.netContentUnitCode,
+		MaxRetailPriceStr:        fmt.Sprintf("%.2f", float64(maxRetailPrice)/100),
+		SupplierPrice:            finalSalePrice,
+		MarketPrice:              marketPrice,
+		MarketPriceStr:           marketPriceStr,
+		SkuPriceDocuments:        map[string]any{},
 	}
 }
 
@@ -170,6 +175,20 @@ func (ib *SkuItemBuilder) buildSkuPackagingInfo(variant *model.Product, aiSku te
 	}
 }
 
+func (ib *SkuItemBuilder) buildSkuExpressInfo(variant *model.Product, aiSku temucontext.AIGeneratedSku) skuExpressInfo {
+	weight, length, width, height := ib.buildProductExpressInfo(variant, aiSku)
+	return skuExpressInfo{
+		weight: weight,
+		length: length,
+		width:  width,
+		height: height,
+		productExpressInfo: models.ProductExpressInfo{
+			WeightInfo: models.WeightInfo{Weight: weight},
+			VolumeInfo: models.VolumeInfo{Length: length, Width: width, Height: height},
+		},
+	}
+}
+
 // buildSkuFromVariantBasic 基本SKU构建（不依赖上下文）
 func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku temucontext.AIGeneratedSku) models.Sku {
 	asin := variant.Asin
@@ -180,7 +199,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 	quantity := 10
 
 	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
-	weight, length, width, height := ib.buildProductExpressInfo(variant, aiSku)
+	expressInfo := ib.buildSkuExpressInfo(variant, aiSku)
 	packagingInfo := ib.buildSkuPackagingInfo(variant, aiSku)
 
 	marketPrice := int(finalSalePrice * 2)
@@ -194,20 +213,17 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 		CarouselGallery:          []models.ImageInfo{},
 		FoodIngredientGallery:    []models.ImageInfo{},
 		Quantity:                 fmt.Sprintf("%d", quantity),
-		ProductExpressInfo: models.ProductExpressInfo{
-			WeightInfo: models.WeightInfo{Weight: weight},
-			VolumeInfo: models.VolumeInfo{Length: length, Width: width, Height: height},
-		},
-		SupplierPriceStr:       fmt.Sprintf("%.2f", basePrice),
-		OutSkuSN:               outSkuSN,
-		MultiplePackage:        packagingInfo.multiplePackage,
-		OriginNetContentNumber: packagingInfo.originNetContentNumber,
-		NetContentUnitCode:     packagingInfo.netContentUnitCode,
-		MaxRetailPriceStr:      fmt.Sprintf("%.2f", basePrice),
-		SupplierPrice:          int(finalSalePrice),
-		MarketPrice:            marketPrice,
-		MarketPriceStr:         marketPriceStr,
-		SkuPriceDocuments:      map[string]any{},
+		ProductExpressInfo:       expressInfo.productExpressInfo,
+		SupplierPriceStr:         fmt.Sprintf("%.2f", basePrice),
+		OutSkuSN:                 outSkuSN,
+		MultiplePackage:          packagingInfo.multiplePackage,
+		OriginNetContentNumber:   packagingInfo.originNetContentNumber,
+		NetContentUnitCode:       packagingInfo.netContentUnitCode,
+		MaxRetailPriceStr:        fmt.Sprintf("%.2f", basePrice),
+		SupplierPrice:            int(finalSalePrice),
+		MarketPrice:              marketPrice,
+		MarketPriceStr:           marketPriceStr,
+		SkuPriceDocuments:        map[string]any{},
 	}
 }
 
