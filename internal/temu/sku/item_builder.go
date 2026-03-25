@@ -348,12 +348,20 @@ func (ib *SkuItemBuilder) processSkuItemTemu(temuCtx *temucontext.TemuTaskContex
 	}
 
 	sku := &input.Product.SkcList[input.SKCIndex].SkuList[input.SKUIndex]
+	ib.validateBuiltSkuSpecs(input, sku)
+	ib.ensureBuiltSkuQuantity(input, temuCtx, sku)
 
+	return nil
+}
+
+func (ib *SkuItemBuilder) validateBuiltSkuSpecs(input *SKUProcessInput, sku *models.Sku) {
 	if err := ib.specHandler.ValidateSpecs(sku.Spec); err != nil {
 		ib.logger.Errorf("sku[%d][%d] spec validation failed: %v", input.SKCIndex, input.SKUIndex, err)
 		ib.logger.Error("sku repair is not allowed because default specs are forbidden")
 	}
+}
 
+func (ib *SkuItemBuilder) ensureBuiltSkuQuantity(input *SKUProcessInput, temuCtx *temucontext.TemuTaskContext, sku *models.Sku) {
 	if sku.Quantity == "" || sku.Quantity == "0" {
 		if input.Runtime == nil {
 			sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStock(temuCtx))
@@ -361,8 +369,6 @@ func (ib *SkuItemBuilder) processSkuItemTemu(temuCtx *temucontext.TemuTaskContex
 			sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStockWithRuntime(input.Runtime))
 		}
 	}
-
-	return nil
 }
 
 // generateSkuFromStoreConfig 根据店铺配置生成SKU编码（兼容接口）
