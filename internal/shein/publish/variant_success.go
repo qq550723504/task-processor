@@ -110,7 +110,11 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error 
 	}
 
 	// 更新任务状态为已上架
-	updateTaskStatusToPublished(ctx)
+	publishResultInput, err := buildPublishResultInput(ctx)
+	if err != nil {
+		return err
+	}
+	updateTaskStatusToPublished(publishResultInput)
 
 	return nil
 }

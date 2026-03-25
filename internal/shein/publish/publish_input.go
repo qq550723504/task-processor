@@ -3,6 +3,7 @@ package publish
 import (
 	"fmt"
 
+	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
@@ -141,5 +142,36 @@ func buildTaskStatusUpdateInput(ctx *shein.TaskContext) (*TaskStatusUpdateInput,
 	return &TaskStatusUpdateInput{
 		Task:                ctx.Task,
 		ManagementClientMgr: ctx.ManagementClientMgr,
+	}, nil
+}
+
+type PublishResultInput struct {
+	Task                *model.Task
+	ManagementClientMgr *management.ClientManager
+	MemoryManager       *state.MemoryManager
+	StoreInfo           *managementapi.StoreRespDTO
+	SheinResponse       *sheinproduct.SheinResponse
+	AsinSkuMap          map[string]string
+	MappingInput        *MappingRequestInput
+}
+
+func buildPublishResultInput(ctx *shein.TaskContext) (*PublishResultInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+
+	mappingInput, err := buildMappingRequestInput(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PublishResultInput{
+		Task:                ctx.Task,
+		ManagementClientMgr: ctx.ManagementClientMgr,
+		MemoryManager:       ctx.MemoryManager,
+		StoreInfo:           ctx.StoreInfo,
+		SheinResponse:       ctx.SheinResponse,
+		AsinSkuMap:          ctx.AsinSkuMap,
+		MappingInput:        mappingInput,
 	}, nil
 }
