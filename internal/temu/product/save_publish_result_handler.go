@@ -12,10 +12,7 @@ import (
 	commontypes "task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/pkg/ptr"
-	pkgproduct "task-processor/internal/product"
 	temuapi "task-processor/internal/temu/api"
-	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -89,115 +86,12 @@ func (h *SavePublishResultHandler) HandleTemu(temuCtx *temucontext.TemuTaskConte
 
 // createProductImportMapping 创建产品导入映射关系
 func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temucontext.TemuTaskContext) error {
-	task := temuCtx.GetTask()
-	if task == nil {
-		return fmt.Errorf("任务信息未初始化")
+	input, err := buildSavePublishResultInput(temuCtx)
+	if err != nil {
+		return err
 	}
 
-	// 检查提交响应数据（兼容两个字段）
-	_, exists := getSubmitResponseFromContext(temuCtx)
-	if !exists {
-		h.logger.Warn("提交响应数据不存在")
-		return nil
-	}
-
-	// 解析任务ID（任务ID已经是int64类型）
-	taskID := task.ID
-
-	// 检查产品数据
-	var temuProduct *models.Product
-	if temuCtx.ProductData != nil {
-		temuProduct = temuCtx.ProductData
-	}
-
-	// 如果ProductData为空，尝试使用TemuProduct
-	if temuProduct == nil {
-		temuProduct = temuCtx.TemuProduct
-	}
-
-	if temuProduct == nil {
-		h.logger.Warn("产品数据不存在，无法创建映射关系")
-		return nil
-	}
-
-	createdCount := 0
-
-	// 遍历SKC和SKU列表创建映射关系
-	if len(temuProduct.SkcList) > 0 {
-		for _, skc := range temuProduct.SkcList {
-			for _, sku := range skc.SkuList {
-				createReq := &api.ProductImportMappingCreateReqDTO{
-					ImportTaskId: taskID,
-					TenantID:     task.TenantID,
-					StoreId:      task.StoreID,
-					Platform:     "TEMU",
-					Region:       task.Region,
-					Sku:          &sku.OutSkuSN,
-					ProductId:    "",              // 将在下面设置
-					Status:       ptr.Int16Ptr(1), // 1表示导入成功
-				}
-
-				// 从AsinSkuMap中查找对应的ASIN
-				if temuCtx.AsinSkuMap != nil {
-					// 映射关系是 SKU -> ASIN
-					if asin, exists := temuCtx.AsinSkuMap[sku.OutSkuSN]; exists {
-						createReq.ProductId = asin
-					}
-				}
-
-				// 设置父产品ASIN和成本价
-				amazonProduct := temuCtx.GetAmazonProduct()
-				if amazonProduct != nil && amazonProduct.ParentAsin != "" {
-					createReq.ParentProductId = &amazonProduct.ParentAsin
-
-					// 根据店铺设置获取成本价（原价或特价）- 使用公共函数
-					if temuCtx.StoreInfo != nil && temuCtx.StoreInfo.PriceType != "" {
-						costPrice := pkgproduct.GetProductPrice(amazonProduct, temuCtx.StoreInfo.PriceType)
-						if costPrice > 0 {
-							createReq.CostPrice = &costPrice
-						}
-					}
-				}
-
-				// 设置筛选规则信息
-				if temuCtx.FilterRule != nil {
-					createReq.FilterRuleId = &temuCtx.FilterRule.ID
-					// 设置筛选规则范围，格式为 "价格范围:最小价格-最大价格"
-					filterRuleRange := h.buildFilterRuleRange(temuCtx.FilterRule)
-					if filterRuleRange != "" {
-						createReq.FilterRuleRange = &filterRuleRange
-					}
-				}
-
-				// 设置利润规则信息
-				if temuCtx.ProfitRule != nil {
-					createReq.ProfitRuleId = &temuCtx.ProfitRule.ID
-					// 将float64转换为string指针
-					if temuCtx.ProfitRule.SalePriceMultiplier > 0 {
-						salePriceMultiplierStr := fmt.Sprintf("%.4f", temuCtx.ProfitRule.SalePriceMultiplier)
-						createReq.SalePriceMultiplier = &salePriceMultiplierStr
-					}
-					if temuCtx.ProfitRule.DiscountPriceMultiplier > 0 {
-						discountPriceMultiplierStr := fmt.Sprintf("%.4f", temuCtx.ProfitRule.DiscountPriceMultiplier)
-						createReq.DiscountPriceMultiplier = &discountPriceMultiplierStr
-					}
-				}
-
-				// 调用API创建映射关系
-				_, err := h.mappingClient.CreateProductImportMapping(createReq)
-				if err != nil {
-					h.logger.Errorf("创建产品导入映射关系失败: OutSkuSn=%s, Error=%v", sku.OutSkuSN, err)
-					continue
-				}
-
-				createdCount++
-				h.logger.Debugf("成功创建产品导入映射关系: OutSkuSn=%s", sku.OutSkuSN)
-			}
-		}
-	}
-
-	h.logger.Infof("产品导入映射关系创建完成: 成功=%d", createdCount)
-	return nil
+	return h.createProductImportMappingWithInput(input)
 }
 
 // getStringValue 安全获取字符串指针的值
@@ -210,71 +104,13 @@ func getStringValue(s *string) string {
 
 // recordDailyListingCount 记录每日上架成功数量并检查限额（参考SHEIN实现）
 func (h *SavePublishResultHandler) recordDailyListingCount(temuCtx *temucontext.TemuTaskContext) {
-	// 检查必要的上下文信息
-	if h.memoryManager == nil {
-		h.logger.Debug("内存管理器未初始化，跳过每日上架计数")
+	input, err := buildSavePublishResultInput(temuCtx)
+	if err != nil {
+		h.logger.Debugf("build publish result input failed, skip daily listing count: %v", err)
 		return
 	}
 
-	task := temuCtx.GetTask()
-	if task == nil {
-		h.logger.Debug("任务信息未初始化，跳过每日上架计数")
-		return
-	}
-
-	if temuCtx.StoreInfo == nil {
-		h.logger.Debug("店铺信息未初始化，跳过每日上架计数")
-		return
-	}
-
-	if temuCtx.StoreInfo.DailyLimit == nil || *temuCtx.StoreInfo.DailyLimit <= 0 {
-		h.logger.Debugf("店铺 %d 没有设置每日上架限额，跳过限额检查", task.StoreID)
-		return
-	}
-
-	dailyLimit := *temuCtx.StoreInfo.DailyLimit
-	dailyLimitType := "SPU" // 默认值
-	if temuCtx.StoreInfo.DailyLimitType != "" {
-		dailyLimitType = temuCtx.StoreInfo.DailyLimitType
-	}
-
-	h.logger.Debugf("店铺 %d 的每日上架限额为: %d，限制类型: %s", task.StoreID, dailyLimit, dailyLimitType)
-
-	// 获取当前日期（格式：YYYY-MM-DD）
-	currentDate := time.Now().Format("2006-01-02")
-
-	// 根据店铺配置的限制类型计算增加的数量
-	increment := h.calculateIncrementFromContext(temuCtx, dailyLimitType)
-	if increment <= 0 {
-		h.logger.Warnf("计算增量失败，跳过计数更新")
-		return
-	}
-
-	// 增加每日上架计数
-	count := h.memoryManager.DailyCountManager.IncrementCount(
-		task.TenantID,
-		task.StoreID,
-		currentDate,
-		increment,
-	)
-
-	h.logger.Infof("店铺 %d 在 %s 的上架计数: %d (本次增加: %d, 类型: %s)",
-		task.StoreID, currentDate, count, increment, dailyLimitType)
-
-	// 检查是否超过限额
-	if count > int64(dailyLimit) {
-		h.logger.Warnf("店铺 %d 在 %s 的上架数量(%d)已超过限额(%d)，将暂停上架", task.StoreID, currentDate, count, dailyLimit)
-
-		// 暂停店铺上架到当日结束
-		h.pauseShopUntilEndOfDay(
-			temuCtx,
-			fmt.Sprintf("超过每日上架限额(%d/%d)", count, dailyLimit),
-		)
-
-		h.logger.Infof("已暂停店铺 %d 上架到当日结束，因为已超过每日限额 %d", task.StoreID, dailyLimit)
-	} else {
-		h.logger.Infof("店铺 %d 在 %s 的上架数量(%d)未超过限额(%d)", task.StoreID, currentDate, count, dailyLimit)
-	}
+	h.recordDailyListingCountWithInput(input)
 }
 
 // calculateIncrementFromContext 根据店铺配置的限制类型计算增量
@@ -329,38 +165,12 @@ func (h *SavePublishResultHandler) pauseShopUntilEndOfDay(temuCtx *temucontext.T
 
 // logSubmitResponse 记录提交响应数据到日志
 func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTaskContext, submitResponse *temuapi.SubmitResponse) error {
-	task := temuCtx.GetTask()
-	if task == nil {
-		return fmt.Errorf("任务信息未初始化")
-	}
-
-	// 序列化响应数据
-	responseJSON, err := h.marshalWithoutHTMLEscape(submitResponse)
+	input, err := buildSavePublishResultInput(temuCtx)
 	if err != nil {
-		h.logger.Errorf("序列化响应数据失败: %v", err)
-		return fmt.Errorf("序列化响应数据失败: %w", err)
+		return err
 	}
-
-	// 记录到结构化日志
-	h.logger.WithFields(logrus.Fields{
-		"task_id":    task.ID,
-		"tenant_id":  task.TenantID,
-		"store_id":   task.StoreID,
-		"platform":   task.Platform,
-		"product_id": task.ProductID,
-		"response":   string(responseJSON),
-	}).Info("TEMU产品提交响应数据")
-
-	// // 保存响应数据到文件（用于调试和审计）
-	// if err := h.saveResponseToFile(task.ID, responseJSON); err != nil {
-	// 	h.logger.Warnf("保存响应数据到文件失败: %v", err)
-	// 	// 不返回错误，因为这不是关键功能
-	// }
-
-	// 提取关键信息进行详细记录
-	//h.logResponseDetails(submitResponse, task)
-
-	return nil
+	input.SubmitResponse = submitResponse
+	return h.logSubmitResponseWithInput(input)
 }
 
 // logResponseDetails 记录响应详细信息
