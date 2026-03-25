@@ -40,8 +40,12 @@ func (s *processorServiceImpl) startTemuProcessor(ctx context.Context, cfg *conf
 	if s.amazonProcessor == nil {
 		return fmt.Errorf("Amazon processor not initialized")
 	}
+	creator := s.resolveTemuProcessorCreator()
+	if creator == nil {
+		return fmt.Errorf("TEMU processor creator not configured")
+	}
 
-	p, err := temu.NewTemuProcessor(ctx, cfg, s.logger, temu.Dependencies{
+	p, err := creator(ctx, cfg, s.logger, temu.Dependencies{
 		ManagementClient: s.managementClient,
 		ProductSource:    s.amazonProcessor,
 		RabbitMQClient:   nil,
@@ -61,8 +65,12 @@ func (s *processorServiceImpl) startSheinProcessor(ctx context.Context, cfg *con
 	if s.amazonProcessor == nil {
 		return fmt.Errorf("Amazon processor not initialized")
 	}
+	creator := s.resolveSheinProcessorCreator()
+	if creator == nil {
+		return fmt.Errorf("SHEIN processor creator not configured")
+	}
 
-	p, err := pipeline.NewSheinProcessor(ctx, cfg, s.logger, pipeline.Dependencies{
+	p, err := creator(ctx, cfg, s.logger, pipeline.Dependencies{
 		ManagementClient: s.managementClient,
 		ProductSource:    s.amazonProcessor,
 		RabbitMQClient:   nil,

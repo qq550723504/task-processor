@@ -126,7 +126,12 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 		authClient:       resources.AuthClient,
 		managementClient: resources.ManagementClient,
 		amazonCrawler:    resources.AmazonCrawler,
-		processorService: runner.NewProcessorServiceWithDependencies(logger, resources.ManagementClient, resources.AmazonCrawler),
+		processorService: runner.NewProcessorServiceWithCreators(
+			logger,
+			resources.ManagementClient,
+			resources.AmazonCrawler,
+			BuildProcessorDependencies(),
+		),
 		schedulerService: runner.NewSchedulerServiceWithDependencies(
 			logger,
 			resources.ManagementClient,

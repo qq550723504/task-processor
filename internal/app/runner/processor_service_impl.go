@@ -35,8 +35,10 @@ type processorServiceImpl struct {
 	healthChecker    *monitoring.HealthChecker
 
 	// 共享资源（通过依赖注入获取）
-	managementClient *management.ClientManager
-	amazonProcessor  amazonCrawler
+	managementClient      *management.ClientManager
+	amazonProcessor       amazonCrawler
+	temuProcessorCreator  TemuProcessorCreator
+	sheinProcessorCreator SheinProcessorCreator
 
 	// 生命周期管理
 	ctx     context.Context

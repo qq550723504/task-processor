@@ -46,9 +46,35 @@ func NewProcessorServiceWithDependencies(
 	amazonProcessor amazonCrawler,
 ) ProcessorService {
 	return &processorServiceImpl{
-		logger:           logger,
-		lifecycleManager: lifecycle.NewLifecycleManager(logger),
-		managementClient: managementClient,
-		amazonProcessor:  amazonProcessor,
+		logger:                logger,
+		lifecycleManager:      lifecycle.NewLifecycleManager(logger),
+		managementClient:      managementClient,
+		amazonProcessor:       amazonProcessor,
+		temuProcessorCreator:  BuildDefaultProcessorDependencies().TemuProcessorCreator,
+		sheinProcessorCreator: BuildDefaultProcessorDependencies().SheinProcessorCreator,
+	}
+}
+
+func NewProcessorServiceWithCreators(
+	logger *logrus.Logger,
+	managementClient *management.ClientManager,
+	amazonProcessor amazonCrawler,
+	deps ProcessorDependencies,
+) ProcessorService {
+	defaultDeps := BuildDefaultProcessorDependencies()
+	if deps.TemuProcessorCreator == nil {
+		deps.TemuProcessorCreator = defaultDeps.TemuProcessorCreator
+	}
+	if deps.SheinProcessorCreator == nil {
+		deps.SheinProcessorCreator = defaultDeps.SheinProcessorCreator
+	}
+
+	return &processorServiceImpl{
+		logger:                logger,
+		lifecycleManager:      lifecycle.NewLifecycleManager(logger),
+		managementClient:      managementClient,
+		amazonProcessor:       amazonProcessor,
+		temuProcessorCreator:  deps.TemuProcessorCreator,
+		sheinProcessorCreator: deps.SheinProcessorCreator,
 	}
 }

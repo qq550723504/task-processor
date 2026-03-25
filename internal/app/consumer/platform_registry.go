@@ -24,6 +24,7 @@ type PlatformRegistry struct {
 	sharedAmazonProcessor *amazon.AmazonProcessor
 	rabbitmqClient        *rabbitmq.Client
 	enabledPlatforms      []string
+	processorCreators     ProcessorCreators
 }
 
 func NewPlatformRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string) *PlatformRegistry {
@@ -37,9 +38,10 @@ func NewPlatformRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr
 	logger.Infof("enabled platforms: %v", enabledPlatforms)
 
 	return &PlatformRegistry{
-		config:           cfg,
-		logger:           logger,
-		enabledPlatforms: enabledPlatforms,
+		config:            cfg,
+		logger:            logger,
+		enabledPlatforms:  enabledPlatforms,
+		processorCreators: defaultProcessorCreators(),
 	}
 }
 
@@ -112,7 +114,11 @@ func (r *PlatformRegistry) registerTemuPlatform(ctx context.Context, serviceMana
 	}
 
 	r.logger.Info("registering TEMU processor")
-	temuProcessor, err := temu.NewTemuProcessor(ctx, r.config, r.logger, temu.Dependencies{
+	creator := r.processorCreators.TemuProcessorCreator
+	if creator == nil {
+		return fmt.Errorf("TEMU processor creator not configured")
+	}
+	temuProcessor, err := creator(ctx, r.config, r.logger, temu.Dependencies{
 		ManagementClient: r.managementClient,
 		ProductSource:    r.sharedAmazonProcessor,
 		RabbitMQClient:   r.rabbitmqClient,
@@ -136,7 +142,11 @@ func (r *PlatformRegistry) registerSheinPlatform(ctx context.Context, serviceMan
 	}
 
 	r.logger.Info("registering SHEIN processor")
-	sheinProcessor, err := pipeline.NewSheinProcessor(ctx, r.config, r.logger, pipeline.Dependencies{
+	creator := r.processorCreators.SheinProcessorCreator
+	if creator == nil {
+		return fmt.Errorf("SHEIN processor creator not configured")
+	}
+	sheinProcessor, err := creator(ctx, r.config, r.logger, pipeline.Dependencies{
 		ManagementClient: r.managementClient,
 		ProductSource:    r.sharedAmazonProcessor,
 		RabbitMQClient:   r.rabbitmqClient,
