@@ -1,34 +1,20 @@
-// Package sale 提供SHEIN平台的销售属性GPT处理功能
 package sale
 
 import (
 	"task-processor/internal/core/logger"
-	sheinctx "task-processor/internal/shein/context"
 	sheinattr "task-processor/internal/shein/product/attribute"
-
 )
 
-// callGPTAPI 调用GPT API
-// 参数:
-//   - ctx: 任务上下文
-//   - request: 生成请求
-//
-// 返回值:
-//   - ResultSaleAttribute: 销售属性结果
-func (h *SaleAttributeHandler) callGPTAPI(ctx *sheinctx.TaskContext, request *sheinattr.GenerationRequest) sheinattr.ResultSaleAttribute {
-	// 检查变体数量，决定是否需要分批处理
+func (h *SaleAttributeHandler) callGPTAPI(input *SaleAttributeInput, request *sheinattr.GenerationRequest) sheinattr.ResultSaleAttribute {
 	const maxVariantsPerBatch = 20
 	variantCount := len(request.VariationData)
 
 	if variantCount > maxVariantsPerBatch {
-		logger.GetGlobalLogger("shein/product").Infof("🔄 变体数量(%d)超过单批限制(%d)，将分批处理", variantCount, maxVariantsPerBatch)
+		logger.GetGlobalLogger("shein/product").Infof("processing sale attributes in batches: variants=%d batch_size=%d", variantCount, maxVariantsPerBatch)
 		batchProcessor := NewSaleAttributeBatchProcessor(h)
-		return batchProcessor.ProcessInBatches(ctx, request, maxVariantsPerBatch)
+		return batchProcessor.ProcessInBatches(input, request, maxVariantsPerBatch)
 	}
 
-	// 单批处理
 	singleProcessor := NewSaleAttributeSingleProcessor(h)
-	return singleProcessor.ProcessSingleBatch(ctx, request)
+	return singleProcessor.ProcessSingleBatch(input, request)
 }
-
-

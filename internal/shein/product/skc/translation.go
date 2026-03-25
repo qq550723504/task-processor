@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
 	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
@@ -18,42 +19,31 @@ import (
 
 // SKCTranslationHandler SKC翻译处理器
 type SKCTranslationHandler struct {
-	taskContext  *shein.TaskContext
+	runtime      *SKCRuntimeInput
 	openaiClient openaiClient.ChatCompleter
 }
 
 // NewSKCTranslationHandler 创建新的SKC翻译处理器
-func NewSKCTranslationHandler(taskContext *shein.TaskContext, openaiClient openaiClient.ChatCompleter) *SKCTranslationHandler {
+func NewSKCTranslationHandler(runtime *SKCRuntimeInput, openaiClient openaiClient.ChatCompleter) *SKCTranslationHandler {
 	return &SKCTranslationHandler{
-		taskContext:  taskContext,
+		runtime:      runtime,
 		openaiClient: openaiClient,
 	}
 }
 
 // CreateSKC 创建SKC的工厂函数
 func (h *SKCTranslationHandler) CreateSKC(ctx *shein.TaskContext, params shein.SKCCreationParams) product.SKC {
-	// 1. 获取目标语言列表
-	targetLanguages := translate.GetTargetLanguagesByRegion(ctx.Task.Region)
-
-	// 2. 查找标题作为翻译源
-	sourceTitle := h.findBestSourceTitle(ctx, params)
-
-	// 3. 检测源标题的语言
+	targetLanguages := translate.GetTargetLanguagesByRegion(h.runtime.Region)
+	sourceTitle := h.findBestSourceTitle(params)
 	sourceLang := h.detectTitleLanguage(sourceTitle)
-
-	// 4. 初始化多语言内容结构
 	multiLanguageNameList := h.initializeMultiLanguageContent(targetLanguages)
 
-	// 5. 翻译到所有目标语言
-	h.translateToAllLanguages(ctx, sourceTitle, sourceLang, &multiLanguageNameList)
+	h.translateToAllLanguages(ctx.Context, sourceTitle, sourceLang, &multiLanguageNameList)
+	h.optimizeMultiLanguageContent(ctx.Context, &multiLanguageNameList, sourceTitle)
 
-	// 6. 使用AI优化多语言内容
-	h.optimizeMultiLanguageContent(ctx, &multiLanguageNameList, sourceTitle)
-
-	// 7. 选择主要显示语言
 	primaryLanguageContent := h.selectPrimaryDisplayLanguage(targetLanguages, multiLanguageNameList, sourceTitle)
 
-	skc := product.SKC{
+	return product.SKC{
 		SaleAttribute: product.SaleAttribute{
 			AttributeID:        params.AttributeID,
 			AttributeValueID:   params.AttributeValueID,
@@ -69,184 +59,121 @@ func (h *SKCTranslationHandler) CreateSKC(ctx *shein.TaskContext, params shein.S
 		MultiLanguageNameList:   multiLanguageNameList,
 		Sort:                    params.Sort,
 	}
-	return skc
 }
 
-// findBestSourceTitle 查找最佳的源标题作为翻译源
-func (h *SKCTranslationHandler) findBestSourceTitle(ctx *shein.TaskContext, params shein.SKCCreationParams) string {
-	logger.GetGlobalLogger("shein/product").Debugf("🔍 开始查找源标题...")
+func (h *SKCTranslationHandler) findBestSourceTitle(params shein.SKCCreationParams) string {
+	logger.GetGlobalLogger("shein/product").Debugf("开始查找源标题")
 
-	// 优先尝试根据SKU的SupplierSKU反向查找对应的ASIN，然后匹配变体标题
-	if ctx.Variants != nil && len(*ctx.Variants) > 0 && len(params.SKUS) > 0 {
-		// 获取当前SKC对应的SupplierSKU（从第一个SKU获取）
-		if len(params.SKUS) > 0 && params.SKUS[0].SupplierSKU != "" {
+	if len(h.runtime.Variants) > 0 && len(params.SKUS) > 0 {
+		if params.SKUS[0].SupplierSKU != "" {
 			supplierSKU := params.SKUS[0].SupplierSKU
-			logger.GetGlobalLogger("shein/product").Debugf("🎯 通过SupplierSKU %s 反向查找对应的ASIN", supplierSKU)
-
-			// 通过AsinSkuMap反向查找ASIN
 			var targetASIN string
-			if ctx.AsinSkuMap != nil {
-				for asin, sku := range ctx.AsinSkuMap {
-					if sku == supplierSKU {
-						targetASIN = asin
-						logger.GetGlobalLogger("shein/product").Debugf("✅ 找到对应的ASIN: %s -> %s", supplierSKU, targetASIN)
-						break
-					}
+			for asin, sku := range h.runtime.AsinSkuMap {
+				if sku == supplierSKU {
+					targetASIN = asin
+					break
 				}
 			}
-
-			// 如果找到了ASIN，查找对应的变体标题
 			if targetASIN != "" {
-				for _, variant := range *ctx.Variants {
+				for _, variant := range h.runtime.Variants {
 					if variant.Asin == targetASIN && variant.Title != "" {
-						logger.GetGlobalLogger("shein/product").Infof("✅ 找到匹配变体标题: ASIN=%s, Title=%s", variant.Asin, variant.Title)
 						return variant.Title
 					}
 				}
-				logger.GetGlobalLogger("shein/product").Debugf("⚠️ ASIN %s 对应的变体标题为空", targetASIN)
-			} else {
-				logger.GetGlobalLogger("shein/product").Debugf("⚠️ 未找到SupplierSKU %s 对应的ASIN", supplierSKU)
 			}
 		}
 
-		// 如果没有找到匹配的变体标题，尝试使用任何有效的变体标题
-		for _, variant := range *ctx.Variants {
+		for _, variant := range h.runtime.Variants {
 			if variant.Title != "" {
-				logger.GetGlobalLogger("shein/product").Infof("✅ 使用其他变体标题: ASIN=%s, Title=%s", variant.Asin, variant.Title)
 				return variant.Title
 			}
 		}
 	}
 
-	// 如果没有找到变体标题，尝试使用产品标题
-	if ctx.AmazonProduct.Title != "" {
-		logger.GetGlobalLogger("shein/product").Infof("✅ 使用产品标题: %s", ctx.AmazonProduct.Title)
-		return ctx.AmazonProduct.Title
+	if h.runtime.AmazonProduct != nil && h.runtime.AmazonProduct.Title != "" {
+		return h.runtime.AmazonProduct.Title
 	}
-
-	logger.GetGlobalLogger("shein/product").Warnf("⚠️ 未找到有效的标题")
 	return ""
 }
 
-// detectTitleLanguage 检测标题的语言
 func (h *SKCTranslationHandler) detectTitleLanguage(title string) string {
 	title = strings.TrimSpace(title)
-
 	if title == "" {
-		return "en" // 默认返回英文
+		return "en"
 	}
 
-	// 简单的语言检测：统计不同字符集的字符数量
 	var japaneseCount, chineseCount, englishCount int
-
 	for _, r := range title {
 		switch {
-		case (r >= 0x3040 && r <= 0x309F) || (r >= 0x30A0 && r <= 0x30FF): // 平假名和片假名
+		case (r >= 0x3040 && r <= 0x309F) || (r >= 0x30A0 && r <= 0x30FF):
 			japaneseCount++
-		case r >= 0x4E00 && r <= 0x9FFF: // 中日韩统一表意文字
+		case r >= 0x4E00 && r <= 0x9FFF:
 			chineseCount++
 		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
 			englishCount++
 		}
 	}
 
-	// 判断主要语言
 	if japaneseCount > chineseCount && japaneseCount > englishCount {
-		logger.GetGlobalLogger("shein/product").Infof("🔍 检测到标题语言: 日语")
 		return "ja"
 	}
 	if chineseCount > englishCount && chineseCount > japaneseCount {
-		logger.GetGlobalLogger("shein/product").Infof("🔍 检测到标题语言: 中文")
 		return "zh"
 	}
-
-	logger.GetGlobalLogger("shein/product").Infof("🔍 检测到标题语言: 英文")
 	return "en"
 }
 
-// initializeMultiLanguageContent 初始化多语言内容结构
 func (h *SKCTranslationHandler) initializeMultiLanguageContent(targetLanguages []string) []product.LanguageContent {
-	logger.GetGlobalLogger("shein/product").Debugf("🌐 初始化多语言内容结构，目标语言数量: %d", len(targetLanguages))
-
 	multiLanguageNameList := make([]product.LanguageContent, 0, len(targetLanguages))
-
 	for _, lang := range targetLanguages {
-		multiLanguageNameList = append(multiLanguageNameList, product.LanguageContent{
-			Language: lang,
-			Name:     "", // 初始化为空，后续通过翻译填充
-		})
-		logger.GetGlobalLogger("shein/product").Debugf("📝 初始化语言: %s", lang)
+		multiLanguageNameList = append(multiLanguageNameList, product.LanguageContent{Language: lang, Name: ""})
 	}
-
 	return multiLanguageNameList
 }
 
-// translateToAllLanguages 翻译到所有目标语言
-func (h *SKCTranslationHandler) translateToAllLanguages(ctx *shein.TaskContext, sourceTitle string, sourceLang string, multiLanguageNameList *[]product.LanguageContent) {
-
+func (h *SKCTranslationHandler) translateToAllLanguages(ctx context.Context, sourceTitle string, sourceLang string, multiLanguageNameList *[]product.LanguageContent) {
 	for i := range *multiLanguageNameList {
 		langContent := &(*multiLanguageNameList)[i]
-
-		// 如果目标语言与源语言相同，直接设置原标题
 		if langContent.Language == sourceLang {
 			langContent.Name = sourceTitle
-			logger.GetGlobalLogger("shein/product").Debugf("✅ 设置源语言(%s)标题: %s", sourceLang, sourceTitle)
 			continue
 		}
-
-		// 翻译到目标语言
-		translatedTitle, err := ctx.TranslateAPI.Translate(sourceTitle, sourceLang, langContent.Language)
+		translatedTitle, err := h.runtime.TranslateAPI.Translate(sourceTitle, sourceLang, langContent.Language)
 		if err != nil {
-			logger.GetGlobalLogger("shein/product").Warnf("❌ 翻译到语言 %s 失败: %v，使用源标题作为后备", langContent.Language, err)
-			langContent.Name = sourceTitle // 翻译失败时使用源标题作为后备
+			logger.GetGlobalLogger("shein/product").Warnf("翻译到语言 %s 失败: %v，使用源标题作为后备", langContent.Language, err)
+			langContent.Name = sourceTitle
 			continue
 		}
-
 		langContent.Name = translatedTitle
+		_ = ctx
 	}
 }
 
-// optimizeMultiLanguageContent 使用AI优化多语言内容
-func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskContext, multiLanguageNameList *[]product.LanguageContent, sourceTitle string) {
-	logger.GetGlobalLogger("shein/product").Debugf("🤖 开始AI优化多语言内容...")
-
-	// 检查前置条件
+func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx context.Context, multiLanguageNameList *[]product.LanguageContent, sourceTitle string) {
 	if multiLanguageNameList == nil || len(*multiLanguageNameList) == 0 {
-		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 跳过AI优化：多语言内容为空")
 		return
 	}
 
-	// 收集所有需要优化的英文内容
 	var englishContents []string
 	var englishIndexes []int
-
 	for i := range *multiLanguageNameList {
 		langContent := &(*multiLanguageNameList)[i]
-
-		// 只收集英文内容
 		if langContent.Language == "en" && langContent.Name != "" {
 			englishContents = append(englishContents, langContent.Name)
 			englishIndexes = append(englishIndexes, i)
 		}
 	}
-
 	if len(englishContents) == 0 {
-		logger.GetGlobalLogger("shein/product").Debugf("⚠️ 没有找到需要优化的英文内容")
 		return
 	}
 
-	// 创建带超时的上下文
-	aiCtx, cancel := timeout.WithAIShortTimeout(ctx.Context)
+	aiCtx, cancel := timeout.WithAIShortTimeout(ctx)
 	defer cancel()
 
-	// 构造缓存 key（基于英文内容列表哈希）
 	cacheKey := aicache.HashKey(englishContents...)
-
-	// 查缓存
-	if ctx.AICache != nil {
+	if h.runtime.AICache != nil {
 		var cached []string
-		if ctx.AICache.Get(aicache.TypeSKCTranslate, cacheKey, &cached) && len(cached) == len(englishContents) {
-			logger.GetGlobalLogger("shein/product").Infof("SKC翻译优化命中缓存，共 %d 条", len(cached))
+		if h.runtime.AICache.Get(aicache.TypeSKCTranslate, cacheKey, &cached) && len(cached) == len(englishContents) {
 			for i, optimizedContent := range cached {
 				if i >= len(englishIndexes) {
 					break
@@ -264,49 +191,33 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx *shein.TaskCont
 		}
 	}
 
-	// 一次性批量优化所有英文内容
 	optimizedContents, err := h.batchOptimizeEnglishContent(aiCtx, englishContents, sourceTitle)
 	if err != nil {
-		logger.GetGlobalLogger("shein/product").Warnf("❌ 批量优化英文内容失败: %v，保持原内容", err)
+		logger.GetGlobalLogger("shein/product").Warnf("批量优化英文内容失败: %v，保持原内容", err)
 		return
 	}
 
-	// 更新优化后的内容
 	for i, optimizedContent := range optimizedContents {
 		if i >= len(englishIndexes) {
 			break
 		}
-
 		langContent := &(*multiLanguageNameList)[englishIndexes[i]]
-
-		// 验证和清理优化后的内容
 		cleanedName := strings.TrimSpace(optimizedContent)
 		if len(cleanedName) < 10 {
-			logger.GetGlobalLogger("shein/product").Warnf("⚠️ 优化后的英文内容太短，保持原内容")
 			continue
 		}
-
 		if len(cleanedName) > 800 {
 			cleanedName = h.truncateContent(cleanedName, 800)
-			logger.GetGlobalLogger("shein/product").Debugf("✂️ 截断英文内容到800字符")
 		}
-
-		// 更新内容
 		langContent.Name = cleanedName
-		logger.GetGlobalLogger("shein/product").Infof("✅ 英文内容优化完成: %s", cleanedName)
 	}
 
-	// 写缓存
-	if ctx.AICache != nil && len(optimizedContents) > 0 {
-		ctx.AICache.Set(aicache.TypeSKCTranslate, cacheKey, optimizedContents)
+	if h.runtime.AICache != nil && len(optimizedContents) > 0 {
+		h.runtime.AICache.Set(aicache.TypeSKCTranslate, cacheKey, optimizedContents)
 	}
-
-	logger.GetGlobalLogger("shein/product").Infof("🎉 AI批量优化多语言内容完成")
 }
 
-// batchOptimizeEnglishContent 批量优化英文内容
 func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context, contents []string, sourceTitle string) ([]string, error) {
-	// 构建批量优化的系统提示词
 	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinTranslationBatchOptimizeSystem, `你是一个专业的电商产品内容优化专家。请批量优化产品标题，使其更适合SHEIN平台销售。
 
 要求：
@@ -317,7 +228,6 @@ func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context,
 5. 符合英语语法规范
 6. 返回JSON格式：{"optimized_titles": ["优化后的标题1", "优化后的标题2", ...]}`)
 
-	// 构建用户提示词，包含所有需要优化的内容
 	var contentList strings.Builder
 	for i, content := range contents {
 		contentList.WriteString(fmt.Sprintf("%d. %s\n", i+1, content))
@@ -331,189 +241,95 @@ func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context,
 		sourceTitle,
 		contentList.String())
 
-	// 调用OpenAI API
 	return h.callOpenAIForBatchOptimization(ctx, systemPrompt, userPrompt, len(contents))
 }
 
-// callOpenAIForBatchOptimization 调用OpenAI API进行批量优化
 func (h *SKCTranslationHandler) callOpenAIForBatchOptimization(ctx context.Context, systemPrompt, userPrompt string, expectedCount int) ([]string, error) {
 	temperature := float32(0.7)
-
-	// 构建消息
-	messages := []openaiClient.ChatCompletionMessage{
-		{
-			Role:    "system",
-			Content: systemPrompt,
-		},
-		{
-			Role:    "user",
-			Content: userPrompt,
-		},
-	}
-
-	// 构建请求
-	req := &openaiClient.ChatCompletionRequest{
-		Model:       h.openaiClient.GetDefaultModel(),
-		Messages:    messages,
-		Temperature: &temperature,
-	}
-
-	// 调用OpenAI API
+	messages := []openaiClient.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}}
+	req := &openaiClient.ChatCompletionRequest{Model: h.openaiClient.GetDefaultModel(), Messages: messages, Temperature: &temperature}
 	resp, err := h.openaiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("调用OpenAI API失败: %w", err)
 	}
-
-	// 检查响应是否有效
 	if len(resp.Choices) == 0 {
 		return nil, fmt.Errorf("OpenAI API返回空响应")
 	}
-
-	// 解析响应内容
-	content := resp.Choices[0].Message.Content
-
-	// 解析批量JSON响应
-	return h.parseBatchOptimizedResponse(content, expectedCount)
+	return h.parseBatchOptimizedResponse(resp.Choices[0].Message.Content, expectedCount)
 }
 
-// parseBatchOptimizedResponse 解析批量优化响应
 func (h *SKCTranslationHandler) parseBatchOptimizedResponse(content string, expectedCount int) ([]string, error) {
-	// 清理内容
 	cleanContent := jsonx.CleanLLMResponse(content)
-
-	// 尝试解析JSON
 	type BatchOptimizedResponse struct {
 		OptimizedTitles []string `json:"optimized_titles"`
 	}
-
 	var response BatchOptimizedResponse
 	if err := jsonx.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
 		return nil, err
 	}
-
 	if len(response.OptimizedTitles) == 0 {
 		return nil, fmt.Errorf("优化后的标题列表为空")
 	}
-
-	// 如果返回的数量不匹配，记录警告但继续处理
 	if len(response.OptimizedTitles) != expectedCount {
-		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 返回的优化标题数量(%d)与期望数量(%d)不匹配", len(response.OptimizedTitles), expectedCount)
+		logger.GetGlobalLogger("shein/product").Warnf("返回的优化标题数量(%d)与期望数量(%d)不匹配", len(response.OptimizedTitles), expectedCount)
 	}
-
 	return response.OptimizedTitles, nil
 }
 
-// callOpenAIForOptimization 调用OpenAI API进行优化
 func (h *SKCTranslationHandler) callOpenAIForOptimization(ctx context.Context, client *openaiClient.Client, systemPrompt, userPrompt string) (string, error) {
 	temperature := float32(0.7)
-
-	// 构建消息
-	messages := []openaiClient.ChatCompletionMessage{
-		{
-			Role:    "system",
-			Content: systemPrompt,
-		},
-		{
-			Role:    "user",
-			Content: userPrompt,
-		},
-	}
-
-	// 构建请求
-	req := &openaiClient.ChatCompletionRequest{
-		Model:       client.GetDefaultModel(),
-		Messages:    messages,
-		Temperature: &temperature,
-	}
-
-	// 调用OpenAI API
+	messages := []openaiClient.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}}
+	req := &openaiClient.ChatCompletionRequest{Model: client.GetDefaultModel(), Messages: messages, Temperature: &temperature}
 	resp, err := client.CreateChatCompletion(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("调用OpenAI API失败: %w", err)
 	}
-
-	// 检查响应是否有效
 	if len(resp.Choices) == 0 {
 		return "", fmt.Errorf("OpenAI API返回空响应")
 	}
-
-	// 解析响应内容
-	content := resp.Choices[0].Message.Content
-
-	// 解析JSON响应
-	return h.parseOptimizedResponse(content)
+	return h.parseOptimizedResponse(resp.Choices[0].Message.Content)
 }
 
-// parseOptimizedResponse 解析优化响应
 func (h *SKCTranslationHandler) parseOptimizedResponse(content string) (string, error) {
-	// 清理内容
 	cleanContent := jsonx.CleanLLMResponse(content)
-
-	// 尝试解析JSON
 	type OptimizedResponse struct {
 		OptimizedTitle string `json:"optimized_title"`
 	}
-
 	var response OptimizedResponse
 	if err := jsonx.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
 		return "", err
 	}
-
 	if response.OptimizedTitle == "" {
 		return "", fmt.Errorf("优化后的标题为空")
 	}
-
 	return response.OptimizedTitle, nil
 }
 
-// truncateContent 截断内容到指定长度
 func (h *SKCTranslationHandler) truncateContent(content string, maxLength int) string {
 	if len(content) <= maxLength {
 		return content
 	}
-
-	// 在单词边界处截断
 	truncated := content[:maxLength]
 	lastSpace := strings.LastIndex(truncated, " ")
 	if lastSpace > 0 && lastSpace > maxLength-50 {
 		truncated = truncated[:lastSpace]
 	}
-
 	return strings.TrimSpace(truncated)
 }
 
-// selectPrimaryDisplayLanguage 选择主要显示语言
 func (h *SKCTranslationHandler) selectPrimaryDisplayLanguage(targetLanguages []string, multiLanguageNameList []product.LanguageContent, sourceTitle string) product.LanguageContent {
 	if len(targetLanguages) == 0 {
-		// 如果没有目标语言，尝试从多语言列表中选择第一个有效的
 		if len(multiLanguageNameList) > 0 && multiLanguageNameList[0].Name != "" {
-			logger.GetGlobalLogger("shein/product").Infof("📋 无目标语言，使用多语言列表第一项作为主要显示语言: %s", multiLanguageNameList[0].Language)
 			return multiLanguageNameList[0]
 		}
-		// 最后的后备方案
-		logger.GetGlobalLogger("shein/product").Infof("📋 无目标语言，使用源标题作为主要显示语言")
-		return product.LanguageContent{
-			Language: "en",
-			Name:     sourceTitle,
-		}
+		return product.LanguageContent{Language: "en", Name: sourceTitle}
 	}
 
-	// 使用第一个目标语言作为主要显示语言
 	primaryTargetLang := targetLanguages[0]
-	logger.GetGlobalLogger("shein/product").Infof("🎯 选择主要显示语言: %s", primaryTargetLang)
-
-	// 在多语言列表中查找对应的翻译内容
 	for _, langContent := range multiLanguageNameList {
 		if langContent.Language == primaryTargetLang && langContent.Name != "" {
-			logger.GetGlobalLogger("shein/product").Infof("✅ 使用目标语言 %s 作为主要显示标题: %s", primaryTargetLang, langContent.Name)
 			return langContent
 		}
 	}
-
-	// 如果没有找到目标语言的翻译，使用源标题作为后备
-	logger.GetGlobalLogger("shein/product").Warnf("⚠️ 未找到语言 %s 的翻译内容，使用源标题作为后备", primaryTargetLang)
-	return product.LanguageContent{
-		Language: primaryTargetLang,
-		Name:     sourceTitle,
-	}
+	return product.LanguageContent{Language: primaryTargetLang, Name: sourceTitle}
 }

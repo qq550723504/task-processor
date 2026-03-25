@@ -11,15 +11,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// FetchAndCacheProductHandler 获取并缓存主产品数据处理器
-// 合并原 RawJsonDataHandler + SubmitRawJsonDataHandler 两步为一步，
-// 缓存失败仅记录警告，不阻断上架流程（仅影响后续任务的缓存命中率）
 type FetchAndCacheProductHandler struct {
 	fetcher appProduct.ProductFetcher
 	logger  *logrus.Entry
 }
 
-// NewFetchAndCacheProductHandler 创建获取并缓存主产品数据处理器
 func NewFetchAndCacheProductHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
@@ -31,21 +27,19 @@ func NewFetchAndCacheProductHandler(
 	factory := appProduct.NewFetcherFactory()
 	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
-		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		logger.Errorf("create product fetcher failed, fallback to local fetcher: %v", err)
 		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
 	}
 
 	return &FetchAndCacheProductHandler{fetcher: fetcher, logger: logger}
 }
 
-// Name 返回处理器名称
 func (h *FetchAndCacheProductHandler) Name() string {
-	return "获取并缓存主产品数据"
+	return "fetch_and_cache_product"
 }
 
-// Handle 获取产品数据，成功后尝试缓存
 func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
-	h.logger.Infof("开始获取原始JSON数据: ProductID=%s, Region=%s", ctx.Task.ProductID, ctx.Task.Region)
+	h.logger.Infof("fetch product data: product_id=%s region=%s", ctx.Task.ProductID, ctx.Task.Region)
 
 	req := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
@@ -60,15 +54,14 @@ func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 	amazonProduct, err := h.fetcher.FetchProduct(ctx.Context, req)
 	if err != nil {
 		if isProductNotFoundError(err) {
-			h.logger.Warnf("产品不存在，不需要重试: ProductID=%s, Error=%v", ctx.Task.ProductID, err)
-			return shein.NewNonRetryableError("Amazon产品不存在", err)
+			h.logger.Warnf("product not found: product_id=%s err=%v", ctx.Task.ProductID, err)
+			return shein.NewNonRetryableError("Amazon product not found", err)
 		}
-		return shein.NewRetryableError("获取产品数据失败", err)
+		return shein.NewRetryableError("fetch product data failed", err)
 	}
 
-	ctx.AmazonProduct = amazonProduct
+	ctx.SetAmazonProduct(amazonProduct)
 
-	// 缓存失败不阻断本次上架，仅影响后续任务的缓存命中率
 	cacheReq := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.Platform,
@@ -79,9 +72,9 @@ func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 		Creator:    ctx.Task.Creator,
 	}
 	if err := h.fetcher.CacheProduct(cacheReq, amazonProduct); err != nil {
-		h.logger.Warnf("⚠️ 缓存产品数据失败（不影响本次上架）: %v", err)
+		h.logger.Warnf("cache product data failed: %v", err)
 	} else {
-		h.logger.Infof("✅ 产品数据已缓存: ProductID=%s", ctx.Task.ProductID)
+		h.logger.Infof("cached product data: product_id=%s", ctx.Task.ProductID)
 	}
 
 	return nil

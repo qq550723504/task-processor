@@ -14,13 +14,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// RawJsonDataHandler 获取原始Json数据处理器
 type RawJsonDataHandler struct {
 	fetcher appProduct.ProductFetcher
 	logger  *logrus.Entry
 }
 
-// NewRawJsonDataHandler 创建新的获取原始Json数据处理器（支持分布式获取器）
 func NewRawJsonDataHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
@@ -28,69 +26,48 @@ func NewRawJsonDataHandler(
 	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandler {
 	logger := coreLogger.GetGlobalLogger("RawJsonDataHandler")
-
 	factory := appProduct.NewFetcherFactory()
 
 	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
-		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		logger.Errorf("create product fetcher failed, fallback to local fetcher: %v", err)
 		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
-		logger.Warn("⚠️ [诊断] SHEIN 已降级到本地获取器")
 	}
 
-	if amazonProcessor != nil {
-		logger.Info("[SHEIN] 使用共享的 Amazon 爬虫实例")
-	} else {
-		logger.Info("[SHEIN] Amazon 爬虫未提供，仅使用缓存模式")
-	}
-
-	// 打印实际使用的获取器类型
 	if stats := fetcher.GetStats(); stats != nil {
-		logger.Infof("✅ SHEIN产品获取器创建成功，实际类型: %v", stats["type"])
+		logger.Infof("SHEIN product fetcher type: %v", stats["type"])
 	}
 
 	return &RawJsonDataHandler{fetcher: fetcher, logger: logger}
 }
 
-// Name 返回处理器名称
 func (h *RawJsonDataHandler) Name() string {
-	return "获取原始Json数据"
+	return "raw_json_data"
 }
 
-// isProductNotFoundError 检查错误是否为产品不存在错误
 func isProductNotFoundError(err error) bool {
 	if err == nil {
 		return false
 	}
-
 	if _, ok := err.(*model.ProductNotFoundError); ok {
 		return true
 	}
 
 	errorStr := strings.ToLower(err.Error())
 	productNotFoundPatterns := []string{
-		"产品页面不存在",
-		"产品页面缺少必要元素",
 		"page not found",
-		"页面不存在(404)",
-		"页面不存在",
-		"产品不存在",
-		"asin无效",
-		"产品已下架",
+		"404",
+		"asin",
 	}
-
 	for _, pattern := range productNotFoundPatterns {
 		if strings.Contains(errorStr, strings.ToLower(pattern)) {
 			return true
 		}
 	}
-
 	return false
 }
 
 func (h *RawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
-	h.logger.Infof("开始获取原始JSON数据: ProductID=%s, Region=%s", ctx.Task.ProductID, ctx.Task.Region)
-
 	req := &domainProduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.SourcePlatform,
@@ -104,18 +81,15 @@ func (h *RawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	amazonProduct, err := h.fetcher.FetchProduct(ctx.Context, req)
 	if err != nil {
 		if isProductNotFoundError(err) {
-			h.logger.Warnf("产品不存在，不需要重试: ProductID=%s, Error=%v", ctx.Task.ProductID, err)
-			return shein.NewNonRetryableError("Amazon产品不存在", err)
+			return shein.NewNonRetryableError("Amazon product not found", err)
 		}
-		return shein.NewRetryableError("获取产品数据失败", err)
+		return shein.NewRetryableError("fetch product data failed", err)
 	}
 
-	ctx.AmazonProduct = amazonProduct
-
+	ctx.SetAmazonProduct(amazonProduct)
 	return nil
 }
 
-// Shutdown 关闭处理器，释放资源
 func (h *RawJsonDataHandler) Shutdown() {
-	h.logger.Debug("RawJsonDataHandler 关闭（Amazon处理器由外部管理）")
+	h.logger.Debug("RawJsonDataHandler closed")
 }

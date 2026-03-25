@@ -1,94 +1,67 @@
 package build
 
 import (
-	"task-processor/internal/core/logger"
 	"errors"
 	"fmt"
-	"task-processor/internal/shein"
-	sheinattr "task-processor/internal/shein/product/attribute"
-	"task-processor/internal/shein/api/attribute"
-	"task-processor/internal/shein/validation"
 
+	"task-processor/internal/core/logger"
+	shein "task-processor/internal/shein"
+	"task-processor/internal/shein/api/attribute"
+	sheinattr "task-processor/internal/shein/product/attribute"
+	"task-processor/internal/shein/validation"
 )
 
-// BuildAttributeHandler 构建属性信息处理器
 type BuildAttributeHandler struct {
 	validator  *validation.AttributeValidator
 	builder    *AttributeBuilder
 	classifier *AttributeClassifier
 }
 
-// NewBuildAttributeHandler 创建新的构建属性信息处理器
 func NewBuildAttributeHandler() *BuildAttributeHandler {
 	validator := validation.NewAttributeValidator()
 	builder := NewAttributeBuilder(validator)
 	classifier := NewAttributeClassifier(builder)
-
-	return &BuildAttributeHandler{
-		validator:  validator,
-		builder:    builder,
-		classifier: classifier,
-	}
+	return &BuildAttributeHandler{validator: validator, builder: builder, classifier: classifier}
 }
 
-// Name 返回处理器名称
 func (h *BuildAttributeHandler) Name() string {
-	return "构建属性信息"
+	return "build_attribute"
 }
 
-// Handle 执行构建属性信息处理
 func (h *BuildAttributeHandler) Handle(ctx *shein.TaskContext) error {
-	// 检查是否已获取产品数据
 	if ctx.ProductData == nil {
-		return fmt.Errorf("产品数据未获取，请先执行获取产品数据步骤")
+		return fmt.Errorf("product data is not initialized")
 	}
 
-	// 使用带上下文的智能筛选版本
 	buildInfo, err := h.BuildAttributeDataWithContext(ctx)
 	if err != nil {
 		return err
 	}
-	ctx.BuildAttributeData = &buildInfo
-
+	ctx.SetBuildAttributeData(&buildInfo)
 	return nil
 }
 
-// BuildAttributeData 构建属性数据（智能筛选版本）
 func (h *BuildAttributeHandler) BuildAttributeData(attributeTemplates *attribute.AttributeTemplateInfo) (sheinattr.BuildAttributeInfo, error) {
 	if len(attributeTemplates.Data) == 0 {
-		return sheinattr.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
+		return sheinattr.BuildAttributeInfo{}, errors.New("attribute templates are empty")
 	}
 
-	attributeInfo := sheinattr.BuildAttributeInfo{
-		AttributeData:     []sheinattr.GenerateAttribute{},
-		SaleAttributeData: []sheinattr.GenerateAttribute{},
-	}
-
-	// 基于attributeTemplates数据动态判断必填属性
+	attributeInfo := sheinattr.BuildAttributeInfo{AttributeData: []sheinattr.GenerateAttribute{}, SaleAttributeData: []sheinattr.GenerateAttribute{}}
 	for _, attr := range attributeTemplates.Data[0].AttributeInfos {
 		h.classifier.ClassifyAndBuildAttribute(attr, &attributeInfo)
 	}
-
 	return attributeInfo, nil
 }
 
-// BuildAttributeDataWithContext 构建属性数据（带上下文的智能筛选版本）
 func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskContext) (sheinattr.BuildAttributeInfo, error) {
 	if ctx.AttributeTemplates == nil || len(ctx.AttributeTemplates.Data) == 0 {
-		return sheinattr.BuildAttributeInfo{}, errors.New("attributeTemplates is empty")
+		return sheinattr.BuildAttributeInfo{}, errors.New("attribute templates are empty")
 	}
 
-	attributeInfo := sheinattr.BuildAttributeInfo{
-		AttributeData:     []sheinattr.GenerateAttribute{},
-		SaleAttributeData: []sheinattr.GenerateAttribute{},
-	}
-
-	// 使用智能筛选器筛选相关的销售属性
+	attributeInfo := sheinattr.BuildAttributeInfo{AttributeData: []sheinattr.GenerateAttribute{}, SaleAttributeData: []sheinattr.GenerateAttribute{}}
 	relevantSaleAttributes := h.classifier.filter.FilterRelevantAttributes(ctx, ctx.AttributeTemplates)
+	logger.GetGlobalLogger("shein/product").Infof("filtered relevant sale attributes: %d", len(relevantSaleAttributes))
 
-	logger.GetGlobalLogger("shein/product").Infof("🎯 智能筛选结果: 筛选出 %d 个相关销售属性", len(relevantSaleAttributes))
-
-	// 处理所有属性，但只有相关的销售属性会被标记为必填
 	relevantSaleAttrMap := make(map[int]bool)
 	for _, attr := range relevantSaleAttributes {
 		relevantSaleAttrMap[attr.AttributeID] = true
@@ -96,23 +69,12 @@ func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskCon
 
 	for _, attr := range ctx.AttributeTemplates.Data[0].AttributeInfos {
 		switch attr.AttributeType {
-		case 4: // 产品属性
+		case 4, 3:
+			attributeInfo.AttributeData = append(attributeInfo.AttributeData, h.builder.BuildGenerateAttribute(attr))
+		case 1:
 			generateAttr := h.builder.BuildGenerateAttribute(attr)
-			attributeInfo.AttributeData = append(attributeInfo.AttributeData, generateAttr)
-		case 1: // 销售规格
-			generateAttr := h.builder.BuildGenerateAttribute(attr)
-			// 只有相关的销售属性才标记为必填
-			if relevantSaleAttrMap[attr.AttributeID] {
-				generateAttr.Required = true
-				logger.GetGlobalLogger("shein/product").Infof("✅ 销售属性 %s (ID:%d) 标记为必填", attr.AttributeNameEn, attr.AttributeID)
-			} else {
-				generateAttr.Required = false
-				logger.GetGlobalLogger("shein/product").Infof("❌ 销售属性 %s (ID:%d) 标记为非必填", attr.AttributeNameEn, attr.AttributeID)
-			}
+			generateAttr.Required = relevantSaleAttrMap[attr.AttributeID]
 			attributeInfo.SaleAttributeData = append(attributeInfo.SaleAttributeData, generateAttr)
-		case 3: // 成分属性
-			generateAttr := h.builder.BuildGenerateAttribute(attr)
-			attributeInfo.AttributeData = append(attributeInfo.AttributeData, generateAttr)
 		}
 	}
 

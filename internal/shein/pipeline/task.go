@@ -1,38 +1,36 @@
-// Package pipeline 提供SHEIN平台的任务处理器
 package pipeline
 
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/core/logger"
 
 	"task-processor/internal/app/processor"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/core/metrics"
-	management_api "task-processor/internal/infra/clients/management/api"
+	managementAPI "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/api"
-	shein_attribute "task-processor/internal/shein/api/attribute"
-	shein_category "task-processor/internal/shein/api/category"
-	shein_image "task-processor/internal/shein/api/image"
-	shein_other "task-processor/internal/shein/api/other"
-	shein_pricing "task-processor/internal/shein/api/pricing"
-	shein_product "task-processor/internal/shein/api/product"
-	shein_translate "task-processor/internal/shein/api/translate"
-	shein_warehouse "task-processor/internal/shein/api/warehouse"
+	sheinattribute "task-processor/internal/shein/api/attribute"
+	sheincategory "task-processor/internal/shein/api/category"
+	sheinimage "task-processor/internal/shein/api/image"
+	sheinother "task-processor/internal/shein/api/other"
+	sheinpricing "task-processor/internal/shein/api/pricing"
+	sheinproduct "task-processor/internal/shein/api/product"
+	sheintranslate "task-processor/internal/shein/api/translate"
+	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 	"task-processor/internal/shein/client"
+	sheincontext "task-processor/internal/shein/context"
 
 	"github.com/sirupsen/logrus"
 )
 
-// TaskHandler SHEIN任务处理器（统一架构版本）
 type TaskHandler struct {
 	*processor.BaseTaskHandler
 	processor    *SheinProcessor
 	errorHandler *TaskErrorHandler
 }
 
-// NewTaskHandler 创建SHEIN任务处理器
 func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
 	baseHandler := processor.NewBaseTaskHandler(proc, "SHEIN")
 	errorHandler := NewTaskErrorHandler(proc)
@@ -44,44 +42,36 @@ func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
 	}
 }
 
-// ProcessTask 处理任务
 func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipeline) error {
-	logger.GetGlobalLogger("shein/pipeline").Infof("开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
+	logger.GetGlobalLogger("shein/pipeline").Infof("start task: id=%d, product_id=%s", task.ID, task.ProductID)
 
-	// 创建任务上下文
 	taskCtx := h.createTaskContext(ctx, &task)
-
-	// 检查初始化是否成功
 	if taskCtx.InitError != nil {
-		logger.GetGlobalLogger("shein/pipeline").Errorf("任务初始化失败，停止处理: %v", taskCtx.InitError)
+		logger.GetGlobalLogger("shein/pipeline").Errorf("task initialization failed: %v", taskCtx.InitError)
 		h.handleError(task, taskCtx.InitError)
 		return taskCtx.InitError
 	}
 
-	// 执行管道处理
 	if err := p.Process(taskCtx); err != nil {
-		logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败: %v", err)
+		logger.GetGlobalLogger("shein/pipeline").Errorf("task processing failed: %v", err)
 		h.handleError(task, err)
 		return err
 	}
 
-	// 处理成功
 	h.handleSuccess(task)
 	return nil
 }
 
-// createTaskContext 创建任务上下文
-func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *shein.TaskContext {
-	taskCtx := shein.NewTaskContext(ctx, task)
+func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *sheincontext.TaskContext {
+	taskCtx := sheincontext.NewTaskContext(ctx, task)
+	taskCtx.AttachRuntime(
+		h.processor.GetMemoryManager(),
+		h.processor.GetManagementClient(),
+		h.processor.GetAICache(),
+	)
 
-	// 设置基础组件
-	taskCtx.MemoryManager = h.processor.GetMemoryManager()
-	taskCtx.ManagementClientMgr = h.processor.GetManagementClient()
-	taskCtx.AICache = h.processor.GetAICache()
-
-	// 初始化店铺客户端
 	if err := h.initShopClient(taskCtx); err != nil {
-		logrus.WithError(err).Error("店铺客户端初始化失败")
+		logrus.WithError(err).Error("shop client initialization failed")
 		taskCtx.InitError = err
 		return taskCtx
 	}
@@ -89,18 +79,16 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 	return taskCtx
 }
 
-// initShopClient 初始化店铺客户端（参考TEMU的cookie加载机制）
-func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
+func (h *TaskHandler) initShopClient(taskCtx *sheincontext.TaskContext) error {
 	if taskCtx.Task == nil || taskCtx.Task.StoreID == 0 {
-		err := fmt.Errorf("任务信息或店铺ID为空")
+		err := fmt.Errorf("task info or store id is empty")
 		logger.GetGlobalLogger("shein/pipeline").Warn(err.Error())
 		return err
 	}
 
-	// 获取管理系统客户端
 	managementClient := h.processor.GetManagementClient()
 	if managementClient == nil {
-		err := fmt.Errorf("管理系统客户端未初始化")
+		err := fmt.Errorf("management client is not initialized")
 		logger.GetGlobalLogger("shein/pipeline").Error(err.Error())
 		return err
 	}
@@ -108,27 +96,20 @@ func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
 	logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
 		"tenantID": taskCtx.Task.TenantID,
 		"storeID":  taskCtx.Task.StoreID,
-	}).Debug("开始初始化SHEIN店铺客户端")
+	}).Debug("initialize SHEIN shop client")
 
-	// 先获取店铺信息，用于后续的端点和代理配置
-	var storeInfo *management_api.StoreRespDTO
+	var storeInfo *managementAPI.StoreRespDTO
 	storeClient := managementClient.GetStoreClient()
 	if storeClient != nil {
 		if info, err := storeClient.GetStore(taskCtx.Task.StoreID); err != nil {
-			logrus.WithError(err).Warn("获取店铺信息失败，将使用默认配置")
+			logrus.WithError(err).Warn("failed to load store info, using default config")
 		} else {
 			storeInfo = info
 			taskCtx.StoreInfo = storeInfo
 		}
 	}
 
-	// 创建SHEIN API客户端（会自动根据loginUrl设置端点并加载Cookie）
-	apiClient := client.NewAPIClient(
-		taskCtx.Task.StoreID,
-		managementClient,
-	)
-
-	// 创建BaseAPIClient用于各个API调用
+	apiClient := client.NewAPIClient(taskCtx.Task.StoreID, managementClient)
 	baseAPIClient := client.NewBaseAPIClient(
 		apiClient.GetBaseURL(),
 		apiClient.GetTenantID(),
@@ -136,42 +117,38 @@ func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
 		apiClient.GetHTTPClient(),
 	)
 
-	// 初始化各个具体的API实例
-	taskCtx.ProductAPI = shein_product.NewClient(baseAPIClient)
-	taskCtx.CategoryAPI = shein_category.NewClient(baseAPIClient)
-	taskCtx.AttributeAPI = shein_attribute.NewClient(baseAPIClient)
-	taskCtx.WarehouseAPI = shein_warehouse.NewClient(baseAPIClient)
-	taskCtx.TranslateAPI = shein_translate.NewClient(baseAPIClient)
-	taskCtx.PricingAPI = shein_pricing.NewClient(baseAPIClient)
-	taskCtx.ImageAPI = shein_image.NewClient(baseAPIClient)
-	taskCtx.OtherAPI = shein_other.NewClient(baseAPIClient)
+	taskCtx.ProductAPI = sheinproduct.NewClient(baseAPIClient)
+	taskCtx.CategoryAPI = sheincategory.NewClient(baseAPIClient)
+	taskCtx.AttributeAPI = sheinattribute.NewClient(baseAPIClient)
+	taskCtx.WarehouseAPI = sheinwarehouse.NewClient(baseAPIClient)
+	taskCtx.TranslateAPI = sheintranslate.NewClient(baseAPIClient)
+	taskCtx.PricingAPI = sheinpricing.NewClient(baseAPIClient)
+	taskCtx.ImageAPI = sheinimage.NewClient(baseAPIClient)
+	taskCtx.OtherAPI = sheinother.NewClient(baseAPIClient)
 
-	// 检查Cookie加载状态（参考TEMU的检查方式）
 	if apiClient.HasCookies() {
 		logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
 			"tenantID":    taskCtx.Task.TenantID,
 			"storeID":     taskCtx.Task.StoreID,
 			"cookieCount": apiClient.GetCookieCount(),
-		}).Info("SHEIN API客户端初始化成功，已加载Cookie")
+		}).Info("SHEIN API client initialized with cookies")
 	} else {
-		// Cookie加载失败，记录详细错误信息并返回错误
 		logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
 			"tenantID": taskCtx.Task.TenantID,
 			"storeID":  taskCtx.Task.StoreID,
-		}).Error("SHEIN API客户端初始化失败，未加载到Cookie")
+		}).Error("SHEIN API client initialization failed because cookies were not loaded")
 
-		// 获取详细的Cookie加载失败原因
 		var cookieError string
 		if storeClient != nil {
 			if cookieStr, err := storeClient.GetStoreCookie(taskCtx.Task.StoreID); err != nil {
-				cookieError = fmt.Sprintf("从管理系统获取Cookie失败: %v", err)
+				cookieError = fmt.Sprintf("failed to load cookie from management service: %v", err)
 			} else if cookieStr == "" {
-				cookieError = "管理系统中未找到Cookie数据，请检查店铺登录状态"
+				cookieError = "management service returned no cookie data"
 			} else {
-				cookieError = "Cookie数据存在但解析或设置失败"
+				cookieError = "cookie data exists but failed to parse or apply"
 			}
 		} else {
-			cookieError = "店铺客户端未初始化"
+			cookieError = "store client is not initialized"
 		}
 
 		return shein.NewCookieLoadError(taskCtx.Task.TenantID, taskCtx.Task.StoreID, cookieError)
@@ -180,39 +157,35 @@ func (h *TaskHandler) initShopClient(taskCtx *shein.TaskContext) error {
 	return nil
 }
 
-// handleError 处理错误
 func (h *TaskHandler) handleError(task model.Task, err error) {
-	// 添加调试日志，查看错误的具体类型和内容
-	logger.GetGlobalLogger("shein/pipeline").Infof("处理错误: 类型=%T, 内容=%v", err, err)
+	logger.GetGlobalLogger("shein/pipeline").Infof("handle error: type=%T, value=%v", err, err)
 
-	// 检查是否是Cookie加载失败错误
 	if cookieErr, isCookieError := shein.IsCookieLoadError(err); isCookieError {
-		logger.GetGlobalLogger("shein/pipeline").Errorf("检测到Cookie加载失败错误: %v", cookieErr)
-		// Cookie加载失败，直接处理为任务失败，不进行重试
+		logger.GetGlobalLogger("shein/pipeline").Errorf("detected cookie load error: %v", cookieErr)
 		h.errorHandler.HandleTaskFailure(task, cookieErr)
 		return
 	}
 
-	// 检查是否是认证过期错误
 	if authErr, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
-		logger.GetGlobalLogger("shein/pipeline").Warnf("检测到认证过期错误: %v", authErr)
+		logger.GetGlobalLogger("shein/pipeline").Warnf("detected authentication expired error: %v", authErr)
 		h.errorHandler.HandleAuthenticationExpired(authErr, task)
 		return
 	}
 
-	// 添加调试日志，显示未匹配到认证过期错误
-	logger.GetGlobalLogger("shein/pipeline").Debugf("未检测到认证过期错误，按一般错误处理: %v", err)
-
-	// 处理一般错误
+	logger.GetGlobalLogger("shein/pipeline").Debugf("treating as generic error: %v", err)
 	h.errorHandler.HandleTaskFailure(task, err)
 }
 
-// handleSuccess 处理成功
 func (h *TaskHandler) handleSuccess(task model.Task) {
 	statusUpdater := NewTaskStatusUpdater(h.processor)
 	statusUpdater.UpdateTaskStatusAsync(fmt.Sprintf("%d", task.ID), model.TaskStatusPublished, "")
 	metrics.GlobalTaskMetrics().IncrementCompleted()
 
-	logger.GetGlobalLogger("shein/pipeline").Infof("任务处理成功: ID=%d, TenantID=%d, StoreID=%d, ProductID=%s",
-		task.ID, task.TenantID, task.StoreID, task.ProductID)
+	logger.GetGlobalLogger("shein/pipeline").Infof(
+		"task completed: id=%d, tenant_id=%d, store_id=%d, product_id=%s",
+		task.ID,
+		task.TenantID,
+		task.StoreID,
+		task.ProductID,
+	)
 }

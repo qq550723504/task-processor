@@ -16,16 +16,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// FetchAndCacheVariantsHandler 获取并缓存变体数据处理器
-// 合并原 VariantJsonDataHandler + SubmitVariantRawJsonDataHandler 两步为一步，
-// 缓存失败仅记录警告，不阻断上架流程（仅影响后续任务的缓存命中率）
 type FetchAndCacheVariantsHandler struct {
 	fetcher      appProduct.ProductFetcher
 	amazonConfig *config.AmazonConfig
 	logger       *logrus.Entry
 }
 
-// NewFetchAndCacheVariantsHandler 创建获取并缓存变体数据处理器
 func NewFetchAndCacheVariantsHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
@@ -37,49 +33,37 @@ func NewFetchAndCacheVariantsHandler(
 	factory := appProduct.NewFetcherFactory()
 	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
 	if err != nil {
-		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
+		logger.Errorf("create product fetcher failed, fallback to local fetcher: %v", err)
 		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
 	}
 
-	return &FetchAndCacheVariantsHandler{
-		fetcher:      fetcher,
-		amazonConfig: &cfg.Amazon,
-		logger:       logger,
-	}
+	return &FetchAndCacheVariantsHandler{fetcher: fetcher, amazonConfig: &cfg.Amazon, logger: logger}
 }
 
-// Name 返回处理器名称
 func (h *FetchAndCacheVariantsHandler) Name() string {
-	return "获取并缓存变体数据"
+	return "fetch_and_cache_variants"
 }
 
-// Handle 获取变体数据，成功后尝试缓存
 func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
-	tracker := perf.NewTracker("获取并缓存变体数据", h.logger)
+	tracker := perf.NewTracker("fetch_and_cache_variants", h.logger)
 	defer tracker.Finish()
 
 	if ctx.Task == nil {
-		return fmt.Errorf("任务信息为空")
+		return fmt.Errorf("task is nil")
 	}
 
 	mainProductAsin := ctx.Task.ProductID
 	variantAsins := getAsinListFromContext(ctx, mainProductAsin, h.logger)
-
 	if len(variantAsins) == 0 {
-		h.logger.Infof("✅ 产品 %s 没有变体（单品），跳过变体数据获取", mainProductAsin)
-		emptyVariants := make([]model.Product, 0)
-		ctx.Variants = &emptyVariants
+		h.logger.Infof("no variants found for product %s", mainProductAsin)
+		ctx.SetVariants([]model.Product{})
 		return nil
 	}
-
-	h.logger.Infof("找到 %d 个变体ASIN", len(variantAsins))
-
 	if len(variantAsins) > 100 {
-		h.logger.Warnf("变体ASIN数量过多（%d），停止处理", len(variantAsins))
-		return shein.NewNonRetryableError("变体ASIN数量过多，停止处理", nil)
+		return shein.NewNonRetryableError("too many variant ASINs", nil)
 	}
 
-	tracker.StartStep("并行获取变体数据")
+	tracker.StartStep("fetch_variants")
 	req := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.SourcePlatform,
@@ -88,10 +72,9 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 		CategoryID: ctx.Task.CategoryID,
 		Creator:    ctx.Task.Creator,
 	}
-
 	variants, err := h.fetcher.FetchVariants(context.Background(), req, variantAsins)
 	if err != nil {
-		return fmt.Errorf("并行获取变体数据失败: %w", err)
+		return fmt.Errorf("fetch variants failed: %w", err)
 	}
 	tracker.EndStep()
 
@@ -101,10 +84,8 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 			variantList = append(variantList, *v)
 		}
 	}
-	ctx.Variants = &variantList
-	h.logger.Infof("✅ 获取到 %d/%d 个变体数据", len(variantList), len(variantAsins))
+	ctx.SetVariants(variantList)
 
-	// 缓存失败不阻断本次上架，仅影响后续任务的缓存命中率
 	cacheReq := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
 		Platform:   ctx.Task.Platform,
@@ -119,10 +100,9 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 		variantPtrs[i] = &variantList[i]
 	}
 	if err := h.fetcher.CacheVariants(cacheReq, variantPtrs); err != nil {
-		h.logger.Warnf("⚠️ 缓存变体数据失败（不影响本次上架）: %v", err)
-	} else {
-		h.logger.Infof("✅ 变体数据已缓存: 数量=%d", len(variantList))
+		h.logger.Warnf("cache variants failed: %v", err)
 	}
 
+	h.logger.Infof("loaded variants: %d/%d", len(variantList), len(variantAsins))
 	return nil
 }

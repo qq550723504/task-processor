@@ -1,25 +1,22 @@
-// Package sku 提供SHEIN平台SKU构建核心功能
 package sku
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
-	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/api/product"
+	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/product/variant"
-
 )
 
-// SKUBuilder SKU构建器
 type SKUBuilder struct {
 	variantMatcher    *variant.VariantMatcher
 	strategyProcessor *SKUStrategyProcessor
 	creator           *SKUCreator
 }
 
-// NewSKUBuilder 创建新的SKU构建器
 func NewSKUBuilder(variantMatcher *variant.VariantMatcher) *SKUBuilder {
 	return &SKUBuilder{
 		variantMatcher:    variantMatcher,
@@ -28,89 +25,87 @@ func NewSKUBuilder(variantMatcher *variant.VariantMatcher) *SKUBuilder {
 	}
 }
 
-// BuildSKUListWithStrategy 根据策略构建SKU列表
 func (b *SKUBuilder) BuildSKUListWithStrategy(ctx *shein.TaskContext, req shein.SKUBuildRequest) ([]product.SKU, error) {
-	logger.GetGlobalLogger("shein/product").Infof("🔧 === 开始SKU构建流程 ===")
-	logger.GetGlobalLogger("shein/product").Infof("📊 SKU构建请求信息:")
-	logger.GetGlobalLogger("shein/product").Infof("  - 主要属性ID: %d", req.Strategy.PrimaryAttribute.AttrID)
-	logger.GetGlobalLogger("shein/product").Infof("  - 次要属性ID: %d", req.Strategy.SecondaryAttribute.AttrID)
-	logger.GetGlobalLogger("shein/product").Infof("  - 主要属性值: %s", req.PrimaryAttrValue)
-	logger.GetGlobalLogger("shein/product").Infof("  - 仓库代码: %s", req.WarehouseCode)
-	logger.GetGlobalLogger("shein/product").Infof("  - 变体数量: %d", len(req.SaleAttributeData.Variants))
-
-	// SHEIN规则验证：检查次要属性是否与主要属性相同
-	if req.Strategy.SecondaryAttribute.AttrID > 0 && req.Strategy.SecondaryAttribute.AttrID == req.Strategy.PrimaryAttribute.AttrID {
-		logger.GetGlobalLogger("shein/product").Warnf("⚠️ SHEIN规则冲突：次要属性ID(%d)与主要属性ID(%d)相同，降级为单SKU模式",
-			req.Strategy.SecondaryAttribute.AttrID, req.Strategy.PrimaryAttribute.AttrID)
-		return b.strategyProcessor.BuildSingleSKU(ctx, req)
-	}
-
-	// 如果没有次要属性，只创建一个 SKU
-	if req.Strategy.SecondaryAttribute.AttrID <= 0 {
-		logger.GetGlobalLogger("shein/product").Infof("🎯 检测到无次要属性，使用单SKU构建模式")
-		return b.strategyProcessor.BuildSingleSKU(ctx, req)
-	}
-
-	logger.GetGlobalLogger("shein/product").Infof("🎯 检测到有次要属性，使用多SKU构建模式")
-	logger.GetGlobalLogger("shein/product").Infof("  - 次要属性值数量: %d", len(req.Strategy.SecondaryAttribute.AttrValue))
-
-	// 打印次要属性值详情
-	for i, attrValue := range req.Strategy.SecondaryAttribute.AttrValue {
-		logger.GetGlobalLogger("shein/product").Infof("  - 次要属性值[%d]: %s (ID: %d)", i+1, attrValue.Value, attrValue.ID.Int())
-	}
-
-	return b.strategyProcessor.BuildMultipleSKUs(ctx, req)
+	return b.BuildSKUListWithRuntime(ctx, newRuntimeInput(ctx), req)
 }
 
-// BuildSKUListForSingleVariant 为单变体构建SKU列表
+func (b *SKUBuilder) BuildSKUListWithRuntime(ctx *shein.TaskContext, runtime *RuntimeInput, req shein.SKUBuildRequest) ([]product.SKU, error) {
+	if err := runtime.Validate(); err != nil {
+		return nil, err
+	}
+
+	logger.GetGlobalLogger("shein/product").Infof("start SKU build flow")
+	logger.GetGlobalLogger("shein/product").Infof("primary attribute ID=%d secondary attribute ID=%d primary value=%s variants=%d",
+		req.Strategy.PrimaryAttribute.AttrID,
+		req.Strategy.SecondaryAttribute.AttrID,
+		req.PrimaryAttrValue,
+		len(req.SaleAttributeData.Variants),
+	)
+
+	if req.Strategy.SecondaryAttribute.AttrID > 0 && req.Strategy.SecondaryAttribute.AttrID == req.Strategy.PrimaryAttribute.AttrID {
+		logger.GetGlobalLogger("shein/product").Warnf("secondary attribute ID %d conflicts with primary attribute ID %d; falling back to single-SKU mode",
+			req.Strategy.SecondaryAttribute.AttrID, req.Strategy.PrimaryAttribute.AttrID)
+		return b.strategyProcessor.BuildSingleSKUWithRuntime(ctx, runtime, req)
+	}
+
+	if req.Strategy.SecondaryAttribute.AttrID <= 0 {
+		logger.GetGlobalLogger("shein/product").Info("no secondary attribute; using single-SKU mode")
+		return b.strategyProcessor.BuildSingleSKUWithRuntime(ctx, runtime, req)
+	}
+
+	logger.GetGlobalLogger("shein/product").Infof("secondary attribute values=%d; using multi-SKU mode", len(req.Strategy.SecondaryAttribute.AttrValue))
+	return b.strategyProcessor.BuildMultipleSKUsWithRuntime(ctx, runtime, req)
+}
+
 func (b *SKUBuilder) BuildSKUListForSingleVariant(ctx *shein.TaskContext, variant shein.Variant, strategy sheinattr.AttributeStrategy) ([]product.SKU, error) {
-	logger.GetGlobalLogger("shein/product").Infof("为单变体构建SKU列表: ASIN %s", variant.ASIN)
+	warehouseCode := ""
+	if ctx.Warehouses != nil && len(ctx.Warehouses.Data) > 0 {
+		warehouseCode = ctx.Warehouses.Data[0].WarehouseCode
+	}
+	return b.BuildSKUListForSingleVariantWithRuntime(ctx, newRuntimeInput(ctx), variant, strategy, warehouseCode)
+}
 
-	// 根据策略构建销售属性列表
+func (b *SKUBuilder) BuildSKUListForSingleVariantWithRuntime(ctx *shein.TaskContext, runtime *RuntimeInput, variant shein.Variant, strategy sheinattr.AttributeStrategy, warehouseCode string) ([]product.SKU, error) {
+	if err := runtime.Validate(); err != nil {
+		return nil, err
+	}
+	if warehouseCode == "" {
+		return nil, fmt.Errorf("warehouse code is not initialized")
+	}
+
+	logger.GetGlobalLogger("shein/product").Infof("build SKU list for single variant: ASIN=%s", variant.ASIN)
+
 	var saleAttributeList []product.SaleAttribute
-
-	// 如果有次要属性，需要基于变体属性创建销售属性
 	if strategy.SecondaryAttribute.AttrID != 0 {
-		saleAttributeList = b.creator.BuildSaleAttributeListForSingleVariant(ctx, variant, strategy)
+		saleAttributeList = b.creator.BuildSaleAttributeListForSingleVariantWithRuntime(runtime, variant, strategy)
 	}
 
-	// 遍历变体来找到对应的productInfo
-	var productInfo *model.Product
-	if ctx.Variants != nil {
-		for _, v := range *ctx.Variants {
-			if v.Asin == variant.ASIN {
-				productInfo = &v
-				break
-			}
-		}
-	}
-
-	// 如果在变体中找不到，使用主产品信息作为备选
+	productInfo := runtime.FindProductInfoByASIN(variant.ASIN)
 	if productInfo == nil {
-		logger.GetGlobalLogger("shein/product").Warnf("在变体中未找到ASIN %s 的产品信息，使用主产品信息", variant.ASIN)
-		if ctx.AmazonProduct != nil {
-			productInfo = ctx.AmazonProduct
-		} else {
-			return nil, fmt.Errorf("未找到ASIN %s 对应的产品信息，且主产品信息也为空", variant.ASIN)
-		}
+		return nil, fmt.Errorf("product info not found for ASIN %s", variant.ASIN)
 	}
 
-	// 使用统一的SKU创建函数
-	sku, err := b.creator.CreateSKU(ctx, shein.SKUCreationParams{
+	skuItem, err := b.creator.CreateSKU(ctx, shein.SKUCreationParams{
 		ASIN:              variant.ASIN,
 		ProductInfo:       productInfo,
-		WarehouseCode:     ctx.Warehouses.Data[0].WarehouseCode,
+		WarehouseCode:     warehouseCode,
 		SaleAttributeList: saleAttributeList,
 		Variant:           variant,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if sku == nil {
-		// 价格为0的情况，返回空列表
+	if skuItem == nil {
 		return []product.SKU{}, nil
 	}
 
-	logger.GetGlobalLogger("shein/product").Infof("成功为单变体创建SKU，销售属性数量: %d", len(saleAttributeList))
-	return []product.SKU{*sku}, nil
+	logger.GetGlobalLogger("shein/product").Infof("built single-variant SKU with %d sale attributes", len(saleAttributeList))
+	return []product.SKU{*skuItem}, nil
+}
+
+func findProductInfo(runtime *RuntimeInput, asin string) *model.Product {
+	if runtime == nil {
+		return nil
+	}
+	return runtime.FindProductInfoByASIN(asin)
 }

@@ -1,36 +1,29 @@
 package category
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
-	"task-processor/internal/shein"
 
+	"task-processor/internal/core/logger"
+	"task-processor/internal/shein"
 )
 
-// GetCategoryTreeHandler 获取分类树处理器
-type GetCategoryTreeHandler struct {
-}
+type GetCategoryTreeHandler struct{}
 
-// NewGetCategoryTreeHandler 创建新的获取分类树处理器
 func NewGetCategoryTreeHandler() *GetCategoryTreeHandler {
 	return &GetCategoryTreeHandler{}
 }
 
-// Name 返回处理器名称
 func (h *GetCategoryTreeHandler) Name() string {
-	return "获取分类树"
+	return "get_category_tree"
 }
 
-// Handle 执行获取分类树处理
 func (h *GetCategoryTreeHandler) Handle(ctx *shein.TaskContext) error {
-	// 调用API获取分类树
 	categoryTree, err := ctx.CategoryAPI.GetCategoryTree()
 	if err != nil {
-		return fmt.Errorf("获取分类树失败: %w", err)
+		return fmt.Errorf("get category tree failed: %w", err)
 	}
 
-	ctx.CategoryTree = categoryTree
-
-	logger.GetGlobalLogger("shein/category").Infof("成功获取分类树，共 %d 个分类\n", len(categoryTree.Data))
+	ctx.SetCategoryTree(categoryTree)
+	logger.GetGlobalLogger("shein/category").Infof("loaded category tree: total=%d", len(categoryTree.Data))
 	return nil
 }

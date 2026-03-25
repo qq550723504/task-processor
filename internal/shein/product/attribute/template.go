@@ -1,76 +1,48 @@
 package attribute
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
 	sheinctx "task-processor/internal/shein/context"
-
 )
 
-// AttributeTemplateHandler 属性模板处理器
-type AttributeTemplateHandler struct {
-}
+type AttributeTemplateHandler struct{}
 
-// NewAttributeTemplateHandler 创建新的属性模板处理器
 func NewAttributeTemplateHandler() *AttributeTemplateHandler {
 	return &AttributeTemplateHandler{}
 }
 
-// Name 返回处理器名称
 func (h *AttributeTemplateHandler) Name() string {
-	return "获取属性模板"
+	return "attribute_template"
 }
 
-// Handle 执行获取属性模板处理
 func (h *AttributeTemplateHandler) Handle(ctx *sheinctx.TaskContext) error {
-
 	categoryID := ctx.ProductData.CategoryID
 	if categoryID == 0 {
-		return fmt.Errorf("分类ID未设置，请先执行AI分类选择步骤")
+		return fmt.Errorf("category id is not set")
 	}
 
-	logger.GetGlobalLogger("shein/product").Debugf("开始获取属性模板，分类ID: %d", categoryID)
-
-	// 调用API获取属性模板
+	logger.GetGlobalLogger("shein/product").Debugf("load attribute templates: category_id=%d", categoryID)
 	attributeTemplates, err := ctx.AttributeAPI.GetAttributeTemplates(categoryID)
 	if err != nil {
-		return fmt.Errorf("获取属性模板失败: %w", err)
+		return fmt.Errorf("get attribute templates failed: %w", err)
 	}
 
-	logger.GetGlobalLogger("shein/product").Infof("成功获取属性模板，模板数量: %d\n", len(attributeTemplates.Data))
-
-	// 将属性模板信息存储到上下文中
-	ctx.AttributeTemplates = attributeTemplates
-
-	// // 保存属性模板数据到JSON文件用于调试
-	// if ctx.Task != nil && attributeTemplates != nil {
-	// 	taskID := fmt.Sprintf("%d", ctx.Task.ID)
-	// 	if jsonData, jsonErr := h.marshalWithoutHTMLEscape(attributeTemplates); jsonErr == nil {
-	// 		filename := fmt.Sprintf("%s_%s_attribute_templates.json", ctx.Task.ProductID, taskID)
-	// 		if saveErr := h.saveJSONToFileWithName(filename, jsonData); saveErr != nil {
-	// 			logger.GetGlobalLogger("shein/product").Errorf("保存属性模板JSON文件失败: %v", saveErr)
-	// 		} else {
-	// 			logger.GetGlobalLogger("shein/product").Infof("📄 属性模板数据已保存: %s", filename)
-	// 		}
-	// 	} else {
-	// 		logger.GetGlobalLogger("shein/product").Errorf("序列化属性模板数据失败: %v", jsonErr)
-	// 	}
-	// }
-
+	ctx.SetAttributeTemplates(attributeTemplates)
+	logger.GetGlobalLogger("shein/product").Infof("loaded attribute templates: total=%d", len(attributeTemplates.Data))
 	return nil
 }
 
-// marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
 func (h *AttributeTemplateHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
 	return jsonx.MarshalWithoutHTMLEscape(v)
 }
 
-// saveJSONToFileWithName 使用指定文件名保存JSON数据到文件
 func (h *AttributeTemplateHandler) saveJSONToFileWithName(filename string, jsonData []byte) error {
 	if err := jsonx.SaveToFile(filename, jsonData); err != nil {
 		return err
 	}
-	logger.GetGlobalLogger("shein/product").Infof("JSON数据已保存到文件: logs/%s", filename)
+	logger.GetGlobalLogger("shein/product").Infof("saved JSON to logs/%s", filename)
 	return nil
 }
