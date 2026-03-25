@@ -175,3 +175,34 @@ func buildPublishResultInput(ctx *shein.TaskContext) (*PublishResultInput, error
 		MappingInput:        mappingInput,
 	}, nil
 }
+
+type VariantPublishResultInput struct {
+	Task                *model.Task
+	ManagementClientMgr *management.ClientManager
+	SheinResponse       *sheinproduct.SheinResponse
+	UnfilteredVariants  *[]model.Product
+	AsinSkuMap          map[string]string
+	MappingInput        *MappingRequestInput
+	GetVariantFilterFn  func(asin string) *shein.VariantFilterInfo
+}
+
+func buildVariantPublishResultInput(ctx *shein.TaskContext) (*VariantPublishResultInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+
+	mappingInput, err := buildMappingRequestInput(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &VariantPublishResultInput{
+		Task:                ctx.Task,
+		ManagementClientMgr: ctx.ManagementClientMgr,
+		SheinResponse:       ctx.SheinResponse,
+		UnfilteredVariants:  ctx.UnFilteredVariants,
+		AsinSkuMap:          ctx.AsinSkuMap,
+		MappingInput:        mappingInput,
+		GetVariantFilterFn:  ctx.GetVariantFilterInfo,
+	}, nil
+}

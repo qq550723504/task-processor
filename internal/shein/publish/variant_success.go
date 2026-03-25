@@ -1,4 +1,3 @@
-// Package publish 提供SHEIN平台的各种处理模块，包括变体发布成功标记等功能
 package publish
 
 import (
@@ -7,132 +6,118 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
-	"task-processor/internal/shein/product"
 
 	"github.com/sirupsen/logrus"
 )
 
-// MarkVariantPublishSuccessHandler 标记变体发布成功处理器
+// MarkVariantPublishSuccessHandler marks published and filtered variants.
 type MarkVariantPublishSuccessHandler struct {
 	logger *logrus.Entry
 }
 
-// NewMarkVariantPublishSuccessHandler 创建新的标记变体发布成功处理器
-// 返回一个用于标记产品变体发布成功状态的处理器实例
+// NewMarkVariantPublishSuccessHandler creates a variant publish result handler.
 func NewMarkVariantPublishSuccessHandler() *MarkVariantPublishSuccessHandler {
 	return &MarkVariantPublishSuccessHandler{
 		logger: logger.GetGlobalLogger("mark_variant_success"),
 	}
 }
 
-// Name 返回处理器名称
-// 实现Handler接口，用于标识当前处理器的功能
+// Name returns the handler name.
 func (h *MarkVariantPublishSuccessHandler) Name() string {
-	return "开始标记产品发布成功"
+	return "??????????"
 }
 
-// Handle 执行标记变体发布成功处理
-// 处理发布成功后的变体标记，包括：
-// 1. 标记成功发布的变体
-// 2. 标记被筛选掉的变体为失败
-// 3. 更新任务状态为已上架
-// 参数:
-//   - ctx: 任务上下文，包含任务信息、响应数据等
-//
-// 返回值:
-//   - error: 处理过程中的错误，如果为nil表示处理成功
+// Handle marks published variants and filtered variants after publish.
 func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error {
-	h.logger.Info("=== 开始标记产品发布成功 ===")
-
-	// 检查必要的上下文字段
+	h.logger.Info("start marking published variants")
 	if ctx == nil {
-		h.logger.Error("❌ TaskContext 为 nil")
-		return fmt.Errorf("TaskContext 为 nil")
+		h.logger.Error("task context is nil")
+		return fmt.Errorf("task context is nil")
 	}
 
-	// 检查管理客户端是否可用
-	if ctx.ManagementClientMgr == nil {
-		h.logger.Warn("管理客户端管理器未初始化，跳过状态更新")
+	input, err := buildVariantPublishResultInput(ctx)
+	if err != nil {
+		return err
+	}
+	if input.ManagementClientMgr == nil {
+		h.logger.Warn("management client manager is nil, skip variant publish marking")
 		return nil
 	}
 
-	// 标记成功发布的变体
-	if ctx.Task != nil && ctx.SheinResponse != nil {
-		if len(ctx.SheinResponse.Info.PreValidResult) > 0 {
-			h.logger.Warnf("发现 %d 个错误项", len(ctx.SheinResponse.Info.PreValidResult))
-			for _, preValidResult := range ctx.SheinResponse.Info.PreValidResult {
-				h.logger.Warnf("错误项: %+v", preValidResult)
+	if input.Task != nil && input.SheinResponse != nil {
+		if len(input.SheinResponse.Info.PreValidResult) > 0 {
+			h.logger.Warnf("found %d validation errors in publish response", len(input.SheinResponse.Info.PreValidResult))
+			for _, preValidResult := range input.SheinResponse.Info.PreValidResult {
+				h.logger.Warnf("validation error item: %+v", preValidResult)
 			}
 			return nil
 		}
-		// 遍历发布后的响应数据来构建任务数据
-		skus := []string{}
-		for _, skc := range ctx.SheinResponse.Info.SKCList {
-			for _, sku := range skc.SKUList {
-				skus = append(skus, sku.SupplierSKU)
-			}
-		}
 
-		h.logger.Infof("📊 开始标记 %d 个 SKU 为已发布", len(skus))
+		skus := collectPublishedSupplierSKUs(input)
+		h.logger.Infof("start marking %d published SKUs", len(skus))
 		successCount := 0
 		failCount := 0
 
 		for _, sku := range skus {
-			// 使用GetAsinBySku函数从AsinSkuMap中反向查找原始ASIN
-			if asin := product.GetAsinBySku(ctx, sku); asin != "" {
-				if err := h.markVariantPublished(ctx, asin, sku); err != nil {
-					h.logger.Errorf("标记变体发布成功失败 (ASIN: %s, SKU: %s): %v", asin, sku, err)
-					failCount++
-				} else {
-					successCount++
-				}
-			} else {
-				h.logger.Warnf("⚠️ 未找到SKU %s 对应的ASIN", sku)
+			asin := resolveAsinForPublishedSKU(&PublishResultInput{Task: input.Task, AsinSkuMap: input.AsinSkuMap}, sku)
+			if asin == "" {
+				h.logger.Warnf("missing ASIN for published SKU %s", sku)
 				failCount++
+				continue
+			}
+			if err := h.markVariantPublished(input, asin, sku); err != nil {
+				h.logger.Errorf("mark variant published failed (ASIN: %s, SKU: %s): %v", asin, sku, err)
+				failCount++
+			} else {
+				successCount++
 			}
 		}
 
-		h.logger.Infof("📊 标记完成: 成功 %d 个, 失败 %d 个, 总计 %d 个", successCount, failCount, len(skus))
+		h.logger.Infof("variant publish marking done: success=%d fail=%d total=%d", successCount, failCount, len(skus))
 	} else {
-		h.logger.Warn("⚠️ 任务信息或Shein响应不可用，无法标记任务完成")
+		h.logger.Warn("task or shein response is unavailable, skip success marking")
 	}
 
-	// 处理被筛选掉的变体
-	if ctx.UnFilteredVariants != nil && len(*ctx.UnFilteredVariants) > 0 {
-		for _, variant := range *ctx.UnFilteredVariants {
-			filterInfo := ctx.GetVariantFilterInfo(variant.Asin)
+	if input.UnfilteredVariants != nil && len(*input.UnfilteredVariants) > 0 {
+		for _, variant := range *input.UnfilteredVariants {
+			filterInfo := input.GetVariantFilterFn(variant.Asin)
 			if filterInfo != nil && filterInfo.FilteredOut {
-				if err := h.markVariantFailed(ctx, variant.Asin, filterInfo.FilterReason); err != nil {
-					h.logger.Errorf("标记变体失败失败 (ASIN: %s): %v", variant.Asin, err)
+				if err := h.markVariantFailed(input, variant.Asin, filterInfo.FilterReason); err != nil {
+					h.logger.Errorf("mark variant failed failed (ASIN: %s): %v", variant.Asin, err)
 				}
 			}
 		}
 	}
 
-	// 更新任务状态为已上架
 	publishResultInput, err := buildPublishResultInput(ctx)
 	if err != nil {
 		return err
 	}
 	updateTaskStatusToPublished(publishResultInput)
-
 	return nil
 }
 
-// markVariantPublished 标记变体为已发布
-func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *shein.TaskContext, asin, sku string) error {
-	mappingClient := ctx.ManagementClientMgr.GetProductImportMappingClient()
+func collectPublishedSupplierSKUs(input *VariantPublishResultInput) []string {
+	if input.SheinResponse == nil {
+		return nil
+	}
+
+	skus := make([]string, 0)
+	for _, skc := range input.SheinResponse.Info.SKCList {
+		for _, sku := range skc.SKUList {
+			skus = append(skus, sku.SupplierSKU)
+		}
+	}
+	return skus
+}
+
+func (h *MarkVariantPublishSuccessHandler) markVariantPublished(input *VariantPublishResultInput, asin, sku string) error {
+	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
 	if mappingClient == nil {
-		return fmt.Errorf("产品导入映射客户端未初始化")
+		return fmt.Errorf("?????????????")
 	}
 
-	mappingInput, err := buildMappingRequestInput(ctx)
-	if err != nil {
-		return err
-	}
-
-	createReq := buildMappingReq(mappingInput, asin, sku, model.TaskStatusPublished)
-
+	createReq := buildMappingReq(input.MappingInput, asin, sku, model.TaskStatusPublished)
 	id, err := mappingClient.CreateProductImportMapping(createReq)
 	if err != nil {
 		h.logger.WithFields(logrus.Fields{
@@ -140,8 +125,8 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *shein.TaskC
 			"sku":                        sku,
 			"platform_parent_product_id": createReq.PlatformParentProductId,
 			"error":                      err.Error(),
-		}).Error("❌ 创建产品导入映射关系失败")
-		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
+		}).Error("create product import mapping failed")
+		return fmt.Errorf("????????????: %w", err)
 	}
 
 	h.logger.WithFields(logrus.Fields{
@@ -149,30 +134,24 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *shein.TaskC
 		"asin":                       asin,
 		"sku":                        sku,
 		"platform_parent_product_id": createReq.PlatformParentProductId,
-	}).Info("✅ 成功标记变体为已发布")
+	}).Info("marked variant as published")
 	return nil
 }
 
-// markVariantFailed 标记变体为失败
-func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *shein.TaskContext, asin, reason string) error {
-	mappingClient := ctx.ManagementClientMgr.GetProductImportMappingClient()
+func (h *MarkVariantPublishSuccessHandler) markVariantFailed(input *VariantPublishResultInput, asin, reason string) error {
+	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
 	if mappingClient == nil {
-		return fmt.Errorf("产品导入映射客户端未初始化")
+		return fmt.Errorf("?????????????")
 	}
 
-	mappingInput, err := buildMappingRequestInput(ctx)
-	if err != nil {
-		return err
-	}
-
-	createReq := buildMappingReq(mappingInput, asin, "", model.TaskStatusCrawlFailed)
+	createReq := buildMappingReq(input.MappingInput, asin, "", model.TaskStatusCrawlFailed)
 	createReq.Remark = &reason
 
 	id, err := mappingClient.CreateProductImportMapping(createReq)
 	if err != nil {
-		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
+		return fmt.Errorf("????????????: %w", err)
 	}
 
-	h.logger.Infof("❌ 成功标记变体为失败 (ID: %d, ASIN: %s, Reason: %s)", id, asin, reason)
+	h.logger.Infof("marked variant as failed (ID: %d, ASIN: %s, Reason: %s)", id, asin, reason)
 	return nil
 }
