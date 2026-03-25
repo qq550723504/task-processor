@@ -125,7 +125,13 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *s
 
 	// 重新提交产品
 	logger.GetGlobalLogger("shein/publish").Info("开始执行敏感词替换后的产品重新提交...")
-	response, err := doPublishProduct(ctx)
+	input, err := buildPublishProductInput(ctx)
+	if err != nil {
+		logger.GetGlobalLogger("shein/publish").Errorf("构建发布输入失败: %v", err)
+		return false
+	}
+
+	response, err := doPublishProduct(ctx, input)
 	if err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("敏感词重试失败 - 重新提交产品时发生错误: %v", err)
 		return false
@@ -438,7 +444,13 @@ func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.T
 
 	// 重新提交产品
 	logger.GetGlobalLogger("shein/publish").Info("开始执行数量类型修复后的产品重新提交...")
-	response, err := doPublishProduct(ctx)
+	input, err := buildPublishProductInput(ctx)
+	if err != nil {
+		logger.GetGlobalLogger("shein/publish").Errorf("构建发布输入失败: %v", err)
+		return false
+	}
+
+	response, err := doPublishProduct(ctx, input)
 	if err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("数量类型修复重试失败 - 重新提交产品时发生错误: %v", err)
 		return false

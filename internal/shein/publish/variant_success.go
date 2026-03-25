@@ -122,7 +122,12 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(ctx *shein.TaskC
 		return fmt.Errorf("产品导入映射客户端未初始化")
 	}
 
-	createReq := buildMappingReq(ctx, asin, sku, model.TaskStatusPublished)
+	mappingInput, err := buildMappingRequestInput(ctx)
+	if err != nil {
+		return err
+	}
+
+	createReq := buildMappingReq(mappingInput, asin, sku, model.TaskStatusPublished)
 
 	id, err := mappingClient.CreateProductImportMapping(createReq)
 	if err != nil {
@@ -151,7 +156,12 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(ctx *shein.TaskCont
 		return fmt.Errorf("产品导入映射客户端未初始化")
 	}
 
-	createReq := buildMappingReq(ctx, asin, "", model.TaskStatusCrawlFailed)
+	mappingInput, err := buildMappingRequestInput(ctx)
+	if err != nil {
+		return err
+	}
+
+	createReq := buildMappingReq(mappingInput, asin, "", model.TaskStatusCrawlFailed)
 	createReq.Remark = &reason
 
 	id, err := mappingClient.CreateProductImportMapping(createReq)

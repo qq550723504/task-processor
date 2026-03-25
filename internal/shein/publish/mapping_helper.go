@@ -6,21 +6,20 @@ import (
 
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
-	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/productdata"
 	"task-processor/internal/shein/validation"
 )
 
 // buildMappingReq 构建产品导入映射请求，供 result.go 和 variant_success.go 共用。
 // asin 为来源平台产品ID，supplierSKU 为供应商SKU，status 为映射状态。
-func buildMappingReq(ctx *shein.TaskContext, asin, supplierSKU string, status model.TaskStatus) *management_api.ProductImportMappingCreateReqDTO {
+func buildMappingReq(input *MappingRequestInput, asin, supplierSKU string, status model.TaskStatus) *management_api.ProductImportMappingCreateReqDTO {
 	s := status.Int16()
 	req := &management_api.ProductImportMappingCreateReqDTO{
-		TenantID:     ctx.Task.TenantID,
-		ImportTaskId: ctx.Task.ID,
-		StoreId:      ctx.Task.StoreID,
-		Platform:     ctx.Task.Platform,
-		Region:       ctx.Task.Region,
+		TenantID:     input.Task.TenantID,
+		ImportTaskId: input.Task.ID,
+		StoreId:      input.Task.StoreID,
+		Platform:     input.Task.Platform,
+		Region:       input.Task.Region,
 		ProductId:    asin,
 		Status:       &s,
 	}
@@ -30,41 +29,41 @@ func buildMappingReq(ctx *shein.TaskContext, asin, supplierSKU string, status mo
 	}
 
 	// 成本价
-	variant := productdata.GetVariantByAsinFromVariants(ctx.Variants, asin)
+	variant := productdata.GetVariantByAsinFromVariants(input.Variants, asin)
 	if variant == nil {
-		variant = productdata.GetVariantByAsinFromVariants(ctx.UnFilteredVariants, asin)
+		variant = productdata.GetVariantByAsinFromVariants(input.UnfilteredVariants, asin)
 	}
-	if variant != nil && ctx.StoreInfo != nil {
-		costPrice := validation.GetProductPrice(variant, ctx.StoreInfo.PriceType)
+	if variant != nil && input.StoreInfo != nil {
+		costPrice := validation.GetProductPrice(variant, input.StoreInfo.PriceType)
 		req.CostPrice = &costPrice
 	}
 
 	// 父产品ID
-	if ctx.AmazonProduct != nil && ctx.AmazonProduct.ParentAsin != "" {
-		req.ParentProductId = &ctx.AmazonProduct.ParentAsin
+	if input.AmazonProduct != nil && input.AmazonProduct.ParentAsin != "" {
+		req.ParentProductId = &input.AmazonProduct.ParentAsin
 	}
 
 	// 平台父产品ID
-	if ctx.ProductData != nil && ctx.ProductData.SPUName != "" {
-		req.PlatformParentProductId = &ctx.ProductData.SPUName
+	if input.ProductData != nil && input.ProductData.SPUName != "" {
+		req.PlatformParentProductId = &input.ProductData.SPUName
 	}
 
 	// 筛选规则
-	if ctx.FilterRule != nil {
-		req.FilterRuleId = &ctx.FilterRule.ID
-		filterRuleRange := buildFilterRuleRange(ctx.FilterRule)
+	if input.FilterRule != nil {
+		req.FilterRuleId = &input.FilterRule.ID
+		filterRuleRange := buildFilterRuleRange(input.FilterRule)
 		if filterRuleRange != "" {
 			req.FilterRuleRange = &filterRuleRange
 		}
 	}
 
 	// 利润规则
-	if ctx.ProfitRule != nil {
-		req.ProfitRuleId = &ctx.ProfitRule.ID
-		salePriceMultiplier := fmt.Sprintf("%.2f", ctx.ProfitRule.SalePriceMultiplier)
+	if input.ProfitRule != nil {
+		req.ProfitRuleId = &input.ProfitRule.ID
+		salePriceMultiplier := fmt.Sprintf("%.2f", input.ProfitRule.SalePriceMultiplier)
 		req.SalePriceMultiplier = &salePriceMultiplier
-		if ctx.ProfitRule.DiscountPriceMultiplier > 0 {
-			discountPriceMultiplier := fmt.Sprintf("%.2f", ctx.ProfitRule.DiscountPriceMultiplier)
+		if input.ProfitRule.DiscountPriceMultiplier > 0 {
+			discountPriceMultiplier := fmt.Sprintf("%.2f", input.ProfitRule.DiscountPriceMultiplier)
 			req.DiscountPriceMultiplier = &discountPriceMultiplier
 		}
 	}

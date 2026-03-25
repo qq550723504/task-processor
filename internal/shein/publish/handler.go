@@ -68,19 +68,28 @@ func (h *PublishProductHandler) Handle(ctx *shein.TaskContext) error {
 
 // publishProduct 统一的产品发布方法
 func (h *PublishProductHandler) publishProduct(ctx *shein.TaskContext) (*product.SheinResponse, error) {
-	return doPublishProduct(ctx)
+	input, err := buildPublishProductInput(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return doPublishProduct(ctx, input)
 }
 
 // doPublishProduct 包级发布函数，供 error_handler 等复用，避免零值实例化 PublishProductHandler。
-func doPublishProduct(ctx *shein.TaskContext) (*product.SheinResponse, error) {
-	response, _, err := ctx.ProductAPI.PublishProduct(ctx.ProductData)
+func doPublishProduct(ctx *shein.TaskContext, input *PublishProductInput) (*product.SheinResponse, error) {
+	response, _, err := input.ProductAPI.PublishProduct(input.ProductData)
 	ctx.SheinResponse = response
 	return response, err
 }
 
 // SaveDraftProduct 保存产品到草稿箱
 func (h *PublishProductHandler) SaveDraftProduct(ctx *shein.TaskContext) (*product.SheinResponse, error) {
-	response, _, err := ctx.ProductAPI.SaveDraftProduct(ctx.ProductData)
+	input, err := buildPublishProductInput(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	response, _, err := input.ProductAPI.SaveDraftProduct(input.ProductData)
 	if err != nil {
 		return nil, err
 	}

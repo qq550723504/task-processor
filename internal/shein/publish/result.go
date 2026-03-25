@@ -86,6 +86,11 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 		return nil
 	}
 
+	mappingInput, err := buildMappingRequestInput(ctx)
+	if err != nil {
+		return err
+	}
+
 	// 使用 map 去重，避免同一个 SupplierSKU 创建多次映射
 	processed := make(map[string]bool)
 	createdCount := 0
@@ -116,7 +121,7 @@ func (h *SavePublishResultHandler) createProductImportMapping(ctx *shein.TaskCon
 				}
 			}
 
-			createReq := buildMappingReq(ctx, asin, sku.SupplierSKU, model.TaskStatusPublished)
+			createReq := buildMappingReq(mappingInput, asin, sku.SupplierSKU, model.TaskStatusPublished)
 			createReq.PlatformProductId = &sku.SKUCode
 
 			// 幂等：已存在则更新，否则创建

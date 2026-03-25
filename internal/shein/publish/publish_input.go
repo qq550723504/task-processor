@@ -1,0 +1,65 @@
+package publish
+
+import (
+	"fmt"
+
+	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
+	shein "task-processor/internal/shein"
+	sheinproduct "task-processor/internal/shein/api/product"
+)
+
+type PublishProductInput struct {
+	Task        *model.Task
+	ProductData *sheinproduct.Product
+	ProductAPI  sheinproduct.ProductAPI
+}
+
+func buildPublishProductInput(ctx *shein.TaskContext) (*PublishProductInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+	if ctx.ProductData == nil {
+		return nil, fmt.Errorf("product data is nil")
+	}
+	if ctx.ProductAPI == nil {
+		return nil, fmt.Errorf("product api is nil")
+	}
+
+	return &PublishProductInput{
+		Task:        ctx.Task,
+		ProductData: ctx.ProductData,
+		ProductAPI:  ctx.ProductAPI,
+	}, nil
+}
+
+type MappingRequestInput struct {
+	Task               *model.Task
+	Variants           *[]model.Product
+	UnfilteredVariants *[]model.Product
+	StoreInfo          *managementapi.StoreRespDTO
+	AmazonProduct      *model.Product
+	ProductData        *sheinproduct.Product
+	FilterRule         *managementapi.FilterRuleRespDTO
+	ProfitRule         *managementapi.ProfitRuleRespDTO
+}
+
+func buildMappingRequestInput(ctx *shein.TaskContext) (*MappingRequestInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+	if ctx.Task == nil {
+		return nil, fmt.Errorf("task is nil")
+	}
+
+	return &MappingRequestInput{
+		Task:               ctx.Task,
+		Variants:           ctx.Variants,
+		UnfilteredVariants: ctx.UnFilteredVariants,
+		StoreInfo:          ctx.StoreInfo,
+		AmazonProduct:      ctx.AmazonProduct,
+		ProductData:        ctx.ProductData,
+		FilterRule:         ctx.FilterRule,
+		ProfitRule:         ctx.ProfitRule,
+	}, nil
+}
