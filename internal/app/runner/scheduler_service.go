@@ -77,7 +77,7 @@ func NewSchedulerServiceWithAmazon(
 		cfg,
 		amazonProcessor,
 		rabbitmqClient,
-		SchedulerDependencies{},
+		BuildDefaultSchedulerDependencies(managementClient, amazonProcessor, rabbitmqClient),
 	)
 }
 
