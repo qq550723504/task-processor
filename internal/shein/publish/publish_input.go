@@ -35,6 +35,31 @@ func buildPublishProductInput(ctx *shein.TaskContext) (*PublishProductInput, err
 	}, nil
 }
 
+type PublishRetryInput struct {
+	ProductData           *sheinproduct.Product
+	PublishInput          *PublishProductInput
+	BuildSaveStateInputFn func(response *sheinproduct.SheinResponse) (*SavePublishStateInput, error)
+}
+
+func buildPublishRetryInput(ctx *shein.TaskContext) (*PublishRetryInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+
+	publishInput, err := buildPublishProductInput(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PublishRetryInput{
+		ProductData:  ctx.ProductData,
+		PublishInput: publishInput,
+		BuildSaveStateInputFn: func(response *sheinproduct.SheinResponse) (*SavePublishStateInput, error) {
+			return buildSavePublishStateInput(ctx, response)
+		},
+	}, nil
+}
+
 type ValidationInput struct {
 	Task        *model.Task
 	ProductData *sheinproduct.Product
