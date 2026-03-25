@@ -86,25 +86,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	outSkuSN := ib.generateSkuFromRuntime(input.Runtime, asin)
 	temuCtx.SetAsinSkuMap(ib.saveAsinSkuMappingWithRuntime(input.Runtime, outSkuSN, asin))
 
-	specList := ib.deduplicateSpecs(convertSpecInfos(input.AISKU.Spec))
-	hasTemp := false
-	for i, spec := range specList {
-		if strings.HasPrefix(spec.SpecID, "TEMP_") {
-			ib.logger.Errorf("found unresolved temporary spec id[%d]: spec_id=%s spec_name=%s parent_spec_id=%s",
-				i, spec.SpecID, spec.SpecName, spec.ParentSpecID)
-			hasTemp = true
-		}
-	}
-
-	if hasTemp {
-		ib.logger.Error("temporary spec ids remain after spec resolution")
-		specList = []models.SpecInfo{}
-	}
-
-	if err := ib.specHandler.ValidateSpecs(specList); err != nil {
-		ib.logger.Errorf("spec validation failed: %v", err)
-		ib.logger.Error("sku build cannot continue because default specs are not allowed")
-	}
+	specList := ib.buildSkuSpecList(input.AISKU)
 
 	expressInfo := ib.buildSkuExpressInfo(input.Variant, input.AISKU)
 	packagingInfo := ib.buildSkuPackagingInfo(input.Variant, input.AISKU)
@@ -207,6 +189,30 @@ func (ib *SkuItemBuilder) buildSkuPricingInfo(runtime *temucontext.SKUBuildRunti
 		marketPriceStr:   fmt.Sprintf("%.2f", float64(marketPrice)/100),
 		supplierPriceStr: fmt.Sprintf("%.2f", basePrice),
 	}
+}
+
+func (ib *SkuItemBuilder) buildSkuSpecList(aiSku temucontext.AIGeneratedSku) []models.SpecInfo {
+	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
+	hasTemp := false
+	for i, spec := range specList {
+		if strings.HasPrefix(spec.SpecID, "TEMP_") {
+			ib.logger.Errorf("found unresolved temporary spec id[%d]: spec_id=%s spec_name=%s parent_spec_id=%s",
+				i, spec.SpecID, spec.SpecName, spec.ParentSpecID)
+			hasTemp = true
+		}
+	}
+
+	if hasTemp {
+		ib.logger.Error("temporary spec ids remain after spec resolution")
+		return []models.SpecInfo{}
+	}
+
+	if err := ib.specHandler.ValidateSpecs(specList); err != nil {
+		ib.logger.Errorf("spec validation failed: %v", err)
+		ib.logger.Error("sku build cannot continue because default specs are not allowed")
+	}
+
+	return specList
 }
 
 // buildSkuFromVariantBasic 基本SKU构建（不依赖上下文）
