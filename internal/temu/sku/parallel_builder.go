@@ -91,24 +91,13 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(
 	packagingInfo := spb.itemBuilder.buildSkuPackagingInfo(input.Variant, input.AISKU)
 	expressInfo := spb.itemBuilder.buildSkuExpressInfo(input.Variant, input.AISKU)
 
-	return models.Sku{
-		Spec:                     specList,
-		Currency:                 "USD",
-		UseEstimateSupplierPrice: true,
-		DimensionGallery:         []models.ImageInfo{},
-		CarouselGallery:          []models.ImageInfo{},
-		FoodIngredientGallery:    []models.ImageInfo{},
-		Quantity:                 fmt.Sprintf("%d", pricingInfo.quantity),
-		ProductExpressInfo:       expressInfo.productExpressInfo,
-		SupplierPriceStr:         pricingInfo.supplierPriceStr,
-		OutSkuSN:                 outSkuSN,
-		MultiplePackage:          packagingInfo.multiplePackage,
-		OriginNetContentNumber:   packagingInfo.originNetContentNumber,
-		NetContentUnitCode:       packagingInfo.netContentUnitCode,
-		MaxRetailPriceStr:        pricingInfo.marketPriceStr,
-		SupplierPrice:            pricingInfo.finalSalePrice,
-		SkuPriceDocuments:        make(map[string]any),
-		MarketPrice:              pricingInfo.marketPrice,
-		MarketPriceStr:           pricingInfo.marketPriceStr,
-	}
+	return spb.itemBuilder.buildSkuPayload(
+		specList,
+		pricingInfo,
+		outSkuSN,
+		expressInfo,
+		packagingInfo,
+		[]models.ImageInfo{},
+		[]models.ImageInfo{},
+	)
 }

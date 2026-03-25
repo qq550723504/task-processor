@@ -92,26 +92,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	packagingInfo := ib.buildSkuPackagingInfo(input.Variant, input.AISKU)
 	dimensionGallery, carouselGallery := ib.buildSkuGalleries(temuCtx, input.Variant)
 
-	return models.Sku{
-		Spec:                     specList,
-		Currency:                 "USD",
-		UseEstimateSupplierPrice: true,
-		DimensionGallery:         dimensionGallery,
-		CarouselGallery:          carouselGallery,
-		FoodIngredientGallery:    []models.ImageInfo{},
-		Quantity:                 fmt.Sprintf("%d", pricingInfo.quantity),
-		ProductExpressInfo:       expressInfo.productExpressInfo,
-		SupplierPriceStr:         pricingInfo.supplierPriceStr,
-		OutSkuSN:                 outSkuSN,
-		MultiplePackage:          packagingInfo.multiplePackage,
-		OriginNetContentNumber:   packagingInfo.originNetContentNumber,
-		NetContentUnitCode:       packagingInfo.netContentUnitCode,
-		MaxRetailPriceStr:        fmt.Sprintf("%.2f", float64(pricingInfo.maxRetailPrice)/100),
-		SupplierPrice:            pricingInfo.finalSalePrice,
-		MarketPrice:              pricingInfo.marketPrice,
-		MarketPriceStr:           pricingInfo.marketPriceStr,
-		SkuPriceDocuments:        map[string]any{},
-	}
+	return ib.buildSkuPayload(specList, pricingInfo, outSkuSN, expressInfo, packagingInfo, dimensionGallery, carouselGallery)
 }
 
 func (ib *SkuItemBuilder) buildSkuGalleries(temuCtx *temucontext.TemuTaskContext, variant *model.Product) ([]models.ImageInfo, []models.ImageInfo) {
@@ -188,6 +169,37 @@ func (ib *SkuItemBuilder) buildSkuPricingInfo(runtime *temucontext.SKUBuildRunti
 		marketPrice:      marketPrice,
 		marketPriceStr:   fmt.Sprintf("%.2f", float64(marketPrice)/100),
 		supplierPriceStr: fmt.Sprintf("%.2f", basePrice),
+	}
+}
+
+func (ib *SkuItemBuilder) buildSkuPayload(
+	specList []models.SpecInfo,
+	pricingInfo skuPricingInfo,
+	outSkuSN string,
+	expressInfo skuExpressInfo,
+	packagingInfo skuPackagingInfo,
+	dimensionGallery []models.ImageInfo,
+	carouselGallery []models.ImageInfo,
+) models.Sku {
+	return models.Sku{
+		Spec:                     specList,
+		Currency:                 "USD",
+		UseEstimateSupplierPrice: true,
+		DimensionGallery:         dimensionGallery,
+		CarouselGallery:          carouselGallery,
+		FoodIngredientGallery:    []models.ImageInfo{},
+		Quantity:                 fmt.Sprintf("%d", pricingInfo.quantity),
+		ProductExpressInfo:       expressInfo.productExpressInfo,
+		SupplierPriceStr:         pricingInfo.supplierPriceStr,
+		OutSkuSN:                 outSkuSN,
+		MultiplePackage:          packagingInfo.multiplePackage,
+		OriginNetContentNumber:   packagingInfo.originNetContentNumber,
+		NetContentUnitCode:       packagingInfo.netContentUnitCode,
+		MaxRetailPriceStr:        fmt.Sprintf("%.2f", float64(pricingInfo.maxRetailPrice)/100),
+		SupplierPrice:            pricingInfo.finalSalePrice,
+		MarketPrice:              pricingInfo.marketPrice,
+		MarketPriceStr:           pricingInfo.marketPriceStr,
+		SkuPriceDocuments:        map[string]any{},
 	}
 }
 
