@@ -48,8 +48,8 @@ func (b *SKCBuilder) BuildSKCListWithSpecAdaptation(input *SKCBuildInput, ctx *s
 		logger.GetGlobalLogger("shein/product").Infof("SKC strategy adapted: reasons=%d", len(adaptationReasons))
 	}
 
-	validator := NewSKCValidationUtils(ctx)
-	if err := validator.ValidateAttributeStrategy(strategy, input.SaleAttributeOutput.Result); err != nil {
+	validator := NewSKCValidationUtils()
+	if err := validator.ValidateAttributeStrategy(input.Validation, strategy); err != nil {
 		logger.GetGlobalLogger("shein/product").Warnf("strategy validation warning: %v", err)
 	}
 

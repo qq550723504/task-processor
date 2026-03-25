@@ -4,13 +4,20 @@ import (
 	"strings"
 	"testing"
 
+	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/product/skc"
 )
 
-// newUtils 创建 SKCValidationUtils，taskContext 在 ValidateAttributeStrategy 中未被使用，传 nil 即可
 func newUtils() *skc.SKCValidationUtils {
-	return skc.NewSKCValidationUtils(nil)
+	return skc.NewSKCValidationUtils()
+}
+
+func makeValidationInput(result sheinattr.ResultSaleAttribute) *skc.SKCValidationInput {
+	return &skc.SKCValidationInput{
+		StrategyData:       result,
+		AttributeTemplates: &sheinattribute.AttributeTemplateInfo{Data: []sheinattribute.AttributeTemplate{{AttributeInfos: []sheinattribute.AttributeInfo{{AttributeID: 1}, {AttributeID: 27}}}}},
+	}
 }
 
 func makeStrategy(primaryID int, primaryValues []string, secondaryID int, secondaryValues []string) sheinattr.AttributeStrategy {
@@ -53,7 +60,7 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_Pass(t *testing.T) {
 		),
 	}
 
-	if err := utils.ValidateAttributeStrategy(strategy, saleAttr); err != nil {
+	if err := utils.ValidateAttributeStrategy(makeValidationInput(saleAttr), strategy); err != nil {
 		t.Errorf("expected no error, got: %v", err)
 	}
 }
@@ -70,11 +77,11 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_InvalidPrimaryAttrID(t *te
 		),
 	}
 
-	err := utils.ValidateAttributeStrategy(strategy, saleAttr)
+	err := utils.ValidateAttributeStrategy(makeValidationInput(saleAttr), strategy)
 	if err == nil {
 		t.Fatal("expected error for invalid primary attr ID, got nil")
 	}
-	if !strings.Contains(err.Error(), "主要属性ID无效") {
+	if !strings.Contains(err.Error(), "primary attribute ID is invalid") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -91,11 +98,11 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_EmptyPrimaryAttrValue(t *t
 		),
 	}
 
-	err := utils.ValidateAttributeStrategy(strategy, saleAttr)
+	err := utils.ValidateAttributeStrategy(makeValidationInput(saleAttr), strategy)
 	if err == nil {
 		t.Fatal("expected error for empty primary attr value, got nil")
 	}
-	if !strings.Contains(err.Error(), "主要属性值为空") {
+	if !strings.Contains(err.Error(), "primary attribute values are empty") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -104,7 +111,6 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_NoValidVariants(t *testing
 	utils := newUtils()
 
 	strategy := makeStrategy(1, []string{"Red"}, 0, nil)
-	// 变体 price=0 且 ASIN 为空，均无效
 	saleAttr := sheinattr.ResultSaleAttribute{
 		Variants: makeVariants(
 			[]map[string]string{{"color": "Red"}},
@@ -113,11 +119,11 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_NoValidVariants(t *testing
 		),
 	}
 
-	err := utils.ValidateAttributeStrategy(strategy, saleAttr)
+	err := utils.ValidateAttributeStrategy(makeValidationInput(saleAttr), strategy)
 	if err == nil {
 		t.Fatal("expected error for no valid variants, got nil")
 	}
-	if !strings.Contains(err.Error(), "没有有效的变体数据") {
+	if !strings.Contains(err.Error(), "no valid variants found") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -126,7 +132,6 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_LowValidVariantRatio(t *te
 	utils := newUtils()
 
 	strategy := makeStrategy(1, []string{"Red"}, 0, nil)
-	// 4个变体只有1个有效，比例 25% < 50%
 	saleAttr := sheinattr.ResultSaleAttribute{
 		Variants: makeVariants(
 			[]map[string]string{
@@ -140,11 +145,11 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_LowValidVariantRatio(t *te
 		),
 	}
 
-	err := utils.ValidateAttributeStrategy(strategy, saleAttr)
+	err := utils.ValidateAttributeStrategy(makeValidationInput(saleAttr), strategy)
 	if err == nil {
 		t.Fatal("expected error for low valid variant ratio, got nil")
 	}
-	if !strings.Contains(err.Error(), "有效变体比例过低") {
+	if !strings.Contains(err.Error(), "valid variant ratio is too low") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -152,7 +157,6 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_LowValidVariantRatio(t *te
 func TestSKCValidationUtils_ValidateAttributeStrategy_SecondaryAttrLowMatchRate(t *testing.T) {
 	utils := newUtils()
 
-	// 次要属性有5个值，但变体中只能匹配0个 → 匹配率0% < 30%
 	strategy := makeStrategy(1, []string{"Red"}, 1, []string{"S", "M", "L", "XL", "XXL"})
 	saleAttr := sheinattr.ResultSaleAttribute{
 		Variants: makeVariants(
@@ -165,11 +169,11 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_SecondaryAttrLowMatchRate(
 		),
 	}
 
-	err := utils.ValidateAttributeStrategy(strategy, saleAttr)
+	err := utils.ValidateAttributeStrategy(makeValidationInput(saleAttr), strategy)
 	if err == nil {
 		t.Fatal("expected error for low secondary attr match rate, got nil")
 	}
-	if !strings.Contains(err.Error(), "匹配率过低") {
+	if !strings.Contains(err.Error(), "secondary attribute match rate is too low") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -177,7 +181,6 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_SecondaryAttrLowMatchRate(
 func TestSKCValidationUtils_ValidateAttributeStrategy_SecondaryAttrHighMatchRate(t *testing.T) {
 	utils := newUtils()
 
-	// 次要属性3个值，变体中能匹配2个 → 匹配率 66% > 30%，通过
 	strategy := makeStrategy(1, []string{"Red"}, 1, []string{"S", "M", "L"})
 	saleAttr := sheinattr.ResultSaleAttribute{
 		Variants: makeVariants(
@@ -191,7 +194,7 @@ func TestSKCValidationUtils_ValidateAttributeStrategy_SecondaryAttrHighMatchRate
 		),
 	}
 
-	if err := utils.ValidateAttributeStrategy(strategy, saleAttr); err != nil {
+	if err := utils.ValidateAttributeStrategy(makeValidationInput(saleAttr), strategy); err != nil {
 		t.Errorf("expected no error, got: %v", err)
 	}
 }

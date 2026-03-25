@@ -20,6 +20,7 @@ type SKCBuildInput struct {
 	ManagementClient    *management.ClientManager
 	Runtime             *SKCRuntimeInput
 	VariantBuild        *SKCVariantBuildInput
+	Validation          *SKCValidationInput
 }
 
 type SKCRuntimeInput struct {
@@ -39,6 +40,11 @@ type SKCVariantBuildInput struct {
 	WarehouseCode     string
 }
 
+type SKCValidationInput struct {
+	StrategyData       shein.ResultSaleAttribute
+	AttributeTemplates *sheinattribute.AttributeTemplateInfo
+}
+
 func NewSKCBuildInput(ctx *shein.TaskContext) *SKCBuildInput {
 	input := &SKCBuildInput{
 		ProductData:        ctx.ProductData,
@@ -46,6 +52,7 @@ func NewSKCBuildInput(ctx *shein.TaskContext) *SKCBuildInput {
 		ManagementClient:   ctx.ManagementClientMgr,
 		Runtime:            newSKCRuntimeInput(ctx),
 		VariantBuild:       newSKCVariantBuildInput(ctx),
+		Validation:         newSKCValidationInput(ctx),
 	}
 	if ctx.SaleSpecResult != nil {
 		input.SaleAttributeOutput = sheinsale.NewSaleAttributeOutput(*ctx.SaleSpecResult)
@@ -84,6 +91,14 @@ func newSKCVariantBuildInput(ctx *shein.TaskContext) *SKCVariantBuildInput {
 	return input
 }
 
+func newSKCValidationInput(ctx *shein.TaskContext) *SKCValidationInput {
+	input := &SKCValidationInput{AttributeTemplates: ctx.AttributeTemplates}
+	if ctx.SaleSpecResult != nil {
+		input.StrategyData = *ctx.SaleSpecResult
+	}
+	return input
+}
+
 func (in *SKCBuildInput) Validate() error {
 	if in.ProductData == nil {
 		return fmt.Errorf("product data is not initialized")
@@ -100,10 +115,16 @@ func (in *SKCBuildInput) Validate() error {
 	if in.VariantBuild == nil {
 		return fmt.Errorf("SKC variant build input is not initialized")
 	}
+	if in.Validation == nil {
+		return fmt.Errorf("SKC validation input is not initialized")
+	}
 	if err := in.Runtime.Validate(); err != nil {
 		return err
 	}
-	return in.VariantBuild.Validate()
+	if err := in.VariantBuild.Validate(); err != nil {
+		return err
+	}
+	return in.Validation.Validate()
 }
 
 func (in *SKCRuntimeInput) Validate() error {
@@ -131,6 +152,16 @@ func (in *SKCVariantBuildInput) Validate() error {
 	}
 	if in.WarehouseCode == "" {
 		return fmt.Errorf("warehouse code is not initialized")
+	}
+	return nil
+}
+
+func (in *SKCValidationInput) Validate() error {
+	if in.AttributeTemplates == nil {
+		return fmt.Errorf("attribute templates are not initialized")
+	}
+	if len(in.StrategyData.Variants) == 0 {
+		return fmt.Errorf("sale attribute data contains no variants")
 	}
 	return nil
 }

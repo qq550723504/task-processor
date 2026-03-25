@@ -1,59 +1,47 @@
-// Package skc 提供SHEIN平台SKC验证和工具功能
 package skc
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
-	"task-processor/internal/shein"
-	sheinattr "task-processor/internal/shein/product/attribute"
 
+	"task-processor/internal/core/logger"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
-// SKCValidationUtils SKC验证工具
-type SKCValidationUtils struct {
-	taskContext *shein.TaskContext
+type SKCValidationUtils struct{}
+
+func NewSKCValidationUtils() *SKCValidationUtils {
+	return &SKCValidationUtils{}
 }
 
-// NewSKCValidationUtils 创建新的SKC验证工具
-func NewSKCValidationUtils(taskContext *shein.TaskContext) *SKCValidationUtils {
-	return &SKCValidationUtils{
-		taskContext: taskContext,
+func (v *SKCValidationUtils) ValidateAttributeStrategy(input *SKCValidationInput, strategy sheinattr.AttributeStrategy) error {
+	if err := input.Validate(); err != nil {
+		return err
 	}
-}
 
-// ValidateAttributeStrategy 验证属性策略的有效性
-func (v *SKCValidationUtils) ValidateAttributeStrategy(strategy sheinattr.AttributeStrategy, saleAttributeData sheinattr.ResultSaleAttribute) error {
 	var warnings []string
-
-	// 验证主要属性
 	if strategy.PrimaryAttribute.AttrID <= 0 {
-		warnings = append(warnings, "主要属性ID无效")
+		warnings = append(warnings, "primary attribute ID is invalid")
 	} else if len(strategy.PrimaryAttribute.AttrValue) == 0 {
-		warnings = append(warnings, "主要属性值为空")
+		warnings = append(warnings, "primary attribute values are empty")
 	}
 
-	// 验证次要属性（如果存在）
 	hasSecondaryAttribute := strategy.SecondaryAttribute.AttrID > 0 && len(strategy.SecondaryAttribute.AttrValue) > 0
 	if hasSecondaryAttribute {
-		// 检查次要属性值是否在变体中存在
-		secondaryAttrNames := []string{"size", "Size", "尺寸", "尺码"}
+		secondaryAttrNames := []string{"size", "Size", "dimension", "sizing"}
 		if strategy.SecondaryAttribute.AttrID == 27 {
-			secondaryAttrNames = []string{"color", "Color", "颜色"}
+			secondaryAttrNames = []string{"color", "Color", "colour"}
 		}
 
 		matchedCount := 0
 		totalValues := len(strategy.SecondaryAttribute.AttrValue)
-
 		for _, attrValue := range strategy.SecondaryAttribute.AttrValue {
 			found := false
-			for _, variant := range saleAttributeData.Variants {
+			for _, variant := range input.StrategyData.Variants {
 				for _, attrName := range secondaryAttrNames {
-					if variantValue, exists := variant.Attributes[attrName]; exists {
-						if strings.EqualFold(variantValue, attrValue.Value) {
-							found = true
-							break
-						}
+					if variantValue, exists := variant.Attributes[attrName]; exists && strings.EqualFold(variantValue, attrValue.Value) {
+						found = true
+						break
 					}
 				}
 				if found {
@@ -67,35 +55,33 @@ func (v *SKCValidationUtils) ValidateAttributeStrategy(strategy sheinattr.Attrib
 
 		validationRate := float64(matchedCount) / float64(totalValues)
 		if validationRate < 0.3 {
-			warnings = append(warnings, fmt.Sprintf("次要属性值在变体中的匹配率过低: %.1f%% (%d/%d)",
-				validationRate*100, matchedCount, totalValues))
+			warnings = append(warnings, fmt.Sprintf("secondary attribute match rate is too low: %.1f%% (%d/%d)", validationRate*100, matchedCount, totalValues))
 		}
 
-		logger.GetGlobalLogger("shein/product").Infof("次要属性验证结果: 属性ID=%d, 匹配率=%.1f%% (%d/%d)",
+		logger.GetGlobalLogger("shein/product").Infof("secondary attribute validation: attr_id=%d match_rate=%.1f%% (%d/%d)",
 			strategy.SecondaryAttribute.AttrID, validationRate*100, matchedCount, totalValues)
 	}
 
-	// 验证变体数据完整性
 	validVariantCount := 0
-	for _, variant := range saleAttributeData.Variants {
+	for _, variant := range input.StrategyData.Variants {
 		if variant.Price > 0 && variant.ASIN != "" {
 			validVariantCount++
 		}
 	}
 
 	if validVariantCount == 0 {
-		warnings = append(warnings, "没有有效的变体数据）")
-	} else if float64(validVariantCount)/float64(len(saleAttributeData.Variants)) < 0.5 {
-		warnings = append(warnings, fmt.Sprintf("有效变体比例过低: %.1f%% (%d/%d)",
-			float64(validVariantCount)*100/float64(len(saleAttributeData.Variants)),
-			validVariantCount, len(saleAttributeData.Variants)))
+		warnings = append(warnings, "no valid variants found")
+	} else if float64(validVariantCount)/float64(len(input.StrategyData.Variants)) < 0.5 {
+		warnings = append(warnings, fmt.Sprintf("valid variant ratio is too low: %.1f%% (%d/%d)",
+			float64(validVariantCount)*100/float64(len(input.StrategyData.Variants)),
+			validVariantCount, len(input.StrategyData.Variants)))
 	}
 
 	if len(warnings) > 0 {
-		return fmt.Errorf("策略验证发现问题: %s", strings.Join(warnings, "; "))
+		return fmt.Errorf("strategy validation warnings: %s", strings.Join(warnings, "; "))
 	}
 
-	logger.GetGlobalLogger("shein/product").Infof("属性策略验证通过: 策略=%s, 有效变体=%d/%d",
-		strategy.StrategyType, validVariantCount, len(saleAttributeData.Variants))
+	logger.GetGlobalLogger("shein/product").Infof("attribute strategy validated: strategy=%s valid_variants=%d/%d",
+		strategy.StrategyType, validVariantCount, len(input.StrategyData.Variants))
 	return nil
 }
