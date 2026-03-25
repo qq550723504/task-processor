@@ -86,12 +86,18 @@ func main() {
 	}
 
 	if appCfg.Platforms.Temu.SchedulerEnabled || appCfg.Platforms.Shein.SchedulerEnabled {
-		schedulerSvc := runner.NewSchedulerServiceWithAmazon(
+		schedulerSvc := runner.NewSchedulerServiceWithDependencies(
 			logger,
 			platformRegistry.GetManagementClient(),
 			appCfg,
 			platformRegistry.GetSharedAmazonProcessor(),
 			serviceManager.GetClient(),
+			bootstrap.BuildSchedulerDependencies(
+				platformRegistry.GetManagementClient(),
+				appCfg,
+				platformRegistry.GetSharedAmazonProcessor(),
+				serviceManager.GetClient(),
+			),
 		)
 		serviceManager.SetSchedulerService(schedulerSvc)
 		logger.Info("scheduler service injected")

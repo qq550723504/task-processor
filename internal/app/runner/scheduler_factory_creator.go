@@ -8,32 +8,49 @@ import (
 	temuscheduler "task-processor/internal/temu/scheduler"
 )
 
-// createTemuFactory 创建TEMU任务工厂
-func (s *schedulerServiceImpl) createTemuFactory(cfg *config.Config) scheduler.TaskFactory {
-	if cfg.Amazon.Enabled && s.amazonProcessor != nil {
-		s.logger.Info("✅ TEMU启用Amazon库存监控")
-	}
+// TaskFactoryCreator 定义平台任务工厂的创建函数。
+type TaskFactoryCreator func(cfg *config.Config) scheduler.TaskFactory
 
-	return temuscheduler.NewTemuTaskFactory(
-		s.managementClient,
-		s.amazonProcessor,
-		&cfg.Amazon,
-		&cfg.Platforms.Temu.Monitor,
-		s.rabbitmqClient,
-	)
+// SchedulerDependencies 描述调度服务需要的可注入依赖。
+type SchedulerDependencies struct {
+	TemuFactoryCreator  TaskFactoryCreator
+	SheinFactoryCreator TaskFactoryCreator
 }
 
-// createSheinFactory 创建SHEIN任务工厂
-func (s *schedulerServiceImpl) createSheinFactory(cfg *config.Config) scheduler.TaskFactory {
-	if cfg.Amazon.Enabled && s.amazonProcessor != nil {
-		s.logger.Info("✅ SHEIN启用Amazon库存监控")
+func (s *schedulerServiceImpl) resolveTemuFactoryCreator() TaskFactoryCreator {
+	if s.temuFactoryCreator != nil {
+		return s.temuFactoryCreator
 	}
+	return func(cfg *config.Config) scheduler.TaskFactory {
+		if cfg.Amazon.Enabled && s.amazonProcessor != nil {
+			s.logger.Info("TEMU 启用 Amazon 库存监控")
+		}
 
-	return sheinscheduler.NewSheinTaskFactory(
-		s.managementClient,
-		s.amazonProcessor,
-		&cfg.Amazon,
-		&cfg.Platforms.Shein.Monitor,
-		s.rabbitmqClient,
-	)
+		return temuscheduler.NewTemuTaskFactory(
+			s.managementClient,
+			s.amazonProcessor,
+			&cfg.Amazon,
+			&cfg.Platforms.Temu.Monitor,
+			s.rabbitmqClient,
+		)
+	}
+}
+
+func (s *schedulerServiceImpl) resolveSheinFactoryCreator() TaskFactoryCreator {
+	if s.sheinFactoryCreator != nil {
+		return s.sheinFactoryCreator
+	}
+	return func(cfg *config.Config) scheduler.TaskFactory {
+		if cfg.Amazon.Enabled && s.amazonProcessor != nil {
+			s.logger.Info("SHEIN 启用 Amazon 库存监控")
+		}
+
+		return sheinscheduler.NewSheinTaskFactory(
+			s.managementClient,
+			s.amazonProcessor,
+			&cfg.Amazon,
+			&cfg.Platforms.Shein.Monitor,
+			s.rabbitmqClient,
+		)
+	}
 }

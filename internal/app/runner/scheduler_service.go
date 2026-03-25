@@ -21,15 +21,17 @@ type SchedulerService interface {
 
 // schedulerServiceImpl 调度服务实现
 type schedulerServiceImpl struct {
-	logger           *logrus.Logger
-	managementClient *management.ClientManager
-	config           *config.Config
-	amazonProcessor  amazonCrawler
-	rabbitmqClient   *rabbitmq.Client
-	schedulerManager *scheduler.Manager
-	ctx              context.Context
-	cancel           context.CancelFunc
-	running          bool
+	logger              *logrus.Logger
+	managementClient    *management.ClientManager
+	config              *config.Config
+	amazonProcessor     amazonCrawler
+	rabbitmqClient      *rabbitmq.Client
+	temuFactoryCreator  TaskFactoryCreator
+	sheinFactoryCreator TaskFactoryCreator
+	schedulerManager    *scheduler.Manager
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	running             bool
 }
 
 // NewSchedulerService 创建调度服务
@@ -41,7 +43,27 @@ func NewSchedulerService(logger *logrus.Logger, managementClient *management.Cli
 	}
 }
 
-// NewSchedulerServiceWithAmazon 创建调度服务（带Amazon处理器）
+// NewSchedulerServiceWithDependencies 创建调度服务并显式注入依赖。
+func NewSchedulerServiceWithDependencies(
+	logger *logrus.Logger,
+	managementClient *management.ClientManager,
+	cfg *config.Config,
+	amazonProcessor amazonCrawler,
+	rabbitmqClient *rabbitmq.Client,
+	deps SchedulerDependencies,
+) SchedulerService {
+	return &schedulerServiceImpl{
+		logger:              logger,
+		managementClient:    managementClient,
+		config:              cfg,
+		amazonProcessor:     amazonProcessor,
+		rabbitmqClient:      rabbitmqClient,
+		temuFactoryCreator:  deps.TemuFactoryCreator,
+		sheinFactoryCreator: deps.SheinFactoryCreator,
+	}
+}
+
+// NewSchedulerServiceWithAmazon 创建调度服务（带 Amazon 处理器）。
 func NewSchedulerServiceWithAmazon(
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
@@ -49,13 +71,14 @@ func NewSchedulerServiceWithAmazon(
 	amazonProcessor amazonCrawler,
 	rabbitmqClient *rabbitmq.Client,
 ) SchedulerService {
-	return &schedulerServiceImpl{
-		logger:           logger,
-		managementClient: managementClient,
-		config:           cfg,
-		amazonProcessor:  amazonProcessor,
-		rabbitmqClient:   rabbitmqClient,
-	}
+	return NewSchedulerServiceWithDependencies(
+		logger,
+		managementClient,
+		cfg,
+		amazonProcessor,
+		rabbitmqClient,
+		SchedulerDependencies{},
+	)
 }
 
 // Start 启动调度服务
@@ -64,49 +87,40 @@ func (s *schedulerServiceImpl) Start(ctx context.Context) error {
 		return nil
 	}
 
-	s.logger.Info("🚀 开始启动调度服务...")
-
-	// 创建上下文
+	s.logger.Info("开始启动调度服务")
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
-	// 初始化资源
 	if err := s.initializeResources(); err != nil {
 		return err
 	}
-
-	// 启动所有调度任务
 	if err := s.startScheduledTasks(); err != nil {
 		return err
 	}
 
 	s.running = true
-	s.logger.Info("✅ 调度服务启动完成")
-
+	s.logger.Info("调度服务启动完成")
 	return nil
 }
 
 // Stop 停止调度服务
 func (s *schedulerServiceImpl) Stop(ctx context.Context) error {
+	_ = ctx
 	if !s.running {
 		return nil
 	}
 
-	s.logger.Info("🛑 开始停止调度服务...")
+	s.logger.Info("开始停止调度服务")
 
-	// 停止调度器
 	if s.schedulerManager != nil {
 		s.schedulerManager.StopAll()
-		s.logger.Info("✅ 调度器已停止")
+		s.logger.Info("调度器已停止")
 	}
-
-	// 取消上下文
 	if s.cancel != nil {
 		s.cancel()
 	}
 
 	s.running = false
-	s.logger.Info("✅ 调度服务已停止")
-
+	s.logger.Info("调度服务已停止")
 	return nil
 }
 

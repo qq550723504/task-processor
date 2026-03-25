@@ -32,13 +32,13 @@ func (s *schedulerServiceImpl) getPlatformConfigs(cfg *config.Config) []platform
 	// 注意：使用 SchedulerEnabled 控制调度任务，Enabled 控制处理器（上架任务）
 	if cfg.Platforms.Temu.SchedulerEnabled {
 		configs = append(configs, buildPlatformTaskConfig("TEMU", cfg.Platforms.Temu, func() scheduler.TaskFactory {
-			return s.createTemuFactory(cfg)
+			return s.resolveTemuFactoryCreator()(cfg)
 		}))
 	}
 
 	if cfg.Platforms.Shein.SchedulerEnabled {
 		configs = append(configs, buildPlatformTaskConfig("SHEIN", cfg.Platforms.Shein, func() scheduler.TaskFactory {
-			return s.createSheinFactory(cfg)
+			return s.resolveSheinFactoryCreator()(cfg)
 		}))
 	}
 
