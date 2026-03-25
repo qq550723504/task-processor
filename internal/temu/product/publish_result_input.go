@@ -53,6 +53,22 @@ func (input *SavePublishResultInput) ForEachSKU(fn func(sku *models.Sku)) {
 	}
 }
 
+func (input *SavePublishResultInput) DailyLimitConfig() (limit int, limitType string, ok bool) {
+	if input == nil || input.StoreInfo == nil || input.StoreInfo.DailyLimit == nil {
+		return 0, "", false
+	}
+	if *input.StoreInfo.DailyLimit <= 0 {
+		return 0, "", false
+	}
+
+	limitType = input.StoreInfo.DailyLimitType
+	if limitType == "" {
+		limitType = "SPU"
+	}
+
+	return *input.StoreInfo.DailyLimit, limitType, true
+}
+
 func buildSavePublishResultInput(temuCtx *temucontext.TemuTaskContext) (*SavePublishResultInput, error) {
 	if temuCtx == nil {
 		return nil, fmt.Errorf("temu context is nil")

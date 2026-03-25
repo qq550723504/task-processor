@@ -116,28 +116,24 @@ func (h *SavePublishResultHandler) applyImportMappingMetadata(
 
 func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SavePublishResultInput) {
 	if h.memoryManager == nil {
-		h.logger.Debug("内存管理器未初始化，跳过每日上架计数")
+		h.logger.Debug("??????????????????")
 		return
 	}
 	if input.StoreInfo == nil {
-		h.logger.Debug("店铺信息未初始化，跳过每日上架计数")
-		return
-	}
-	if input.StoreInfo.DailyLimit == nil || *input.StoreInfo.DailyLimit <= 0 {
-		h.logger.Debugf("店铺 %d 没有设置每日上架限额，跳过限额检查", input.Task.StoreID)
+		h.logger.Debug("?????????????????")
 		return
 	}
 
-	dailyLimit := *input.StoreInfo.DailyLimit
-	dailyLimitType := "SPU"
-	if input.StoreInfo.DailyLimitType != "" {
-		dailyLimitType = input.StoreInfo.DailyLimitType
+	dailyLimit, dailyLimitType, ok := input.DailyLimitConfig()
+	if !ok {
+		h.logger.Debugf("?? %d ?????????????????", input.Task.StoreID)
+		return
 	}
 
 	currentDate := time.Now().Format("2006-01-02")
 	increment := h.calculateIncrementFromInput(input, dailyLimitType)
 	if increment <= 0 {
-		h.logger.Warn("计算增量失败，跳过计数更新")
+		h.logger.Warn("?????????????")
 		return
 	}
 
@@ -148,13 +144,13 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 		increment,
 	)
 
-	h.logger.Infof("店铺 %d 在 %s 的上架计数: %d (本次增加: %d, 类型: %s)",
+	h.logger.Infof("?? %d ? %s ?????: %d (????: %d, ??: %s)",
 		input.Task.StoreID, currentDate, count, increment, dailyLimitType)
 
 	if count > int64(dailyLimit) {
-		h.logger.Warnf("店铺 %d 在 %s 的上架数量(%d)已超过限额(%d)，将暂停上架",
+		h.logger.Warnf("?? %d ? %s ?????(%d)?????(%d)??????",
 			input.Task.StoreID, currentDate, count, dailyLimit)
-		h.pauseShopUntilEndOfDayWithInput(input, fmt.Sprintf("超过每日上架限额(%d/%d)", count, dailyLimit))
+		h.pauseShopUntilEndOfDayWithInput(input, fmt.Sprintf("????????(%d/%d)", count, dailyLimit))
 	}
 }
 
