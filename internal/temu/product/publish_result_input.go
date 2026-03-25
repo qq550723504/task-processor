@@ -2,10 +2,12 @@ package product
 
 import (
 	"fmt"
+	"strings"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/ptr"
+	pkgproduct "task-processor/internal/product"
 	temuapi "task-processor/internal/temu/api"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
@@ -83,6 +85,90 @@ func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku
 		ProductId:    "",
 		Status:       ptr.Int16Ptr(1),
 	}
+}
+
+func (input *SavePublishResultInput) ProductIDForSKU(sku *models.Sku) (string, bool) {
+	if input == nil || sku == nil || input.AsinSkuMap == nil {
+		return "", false
+	}
+
+	productID, exists := input.AsinSkuMap[sku.OutSkuSN]
+	return productID, exists && productID != ""
+}
+
+func (input *SavePublishResultInput) ParentProductID() (string, bool) {
+	if input == nil || input.AmazonProduct == nil || input.AmazonProduct.ParentAsin == "" {
+		return "", false
+	}
+
+	return input.AmazonProduct.ParentAsin, true
+}
+
+func (input *SavePublishResultInput) CostPrice() (float64, bool) {
+	if input == nil || input.AmazonProduct == nil || input.StoreInfo == nil || input.StoreInfo.PriceType == "" {
+		return 0, false
+	}
+
+	costPrice := pkgproduct.GetProductPrice(input.AmazonProduct, input.StoreInfo.PriceType)
+	return costPrice, costPrice > 0
+}
+
+func (input *SavePublishResultInput) FilterRuleRange() (string, bool) {
+	if input == nil || input.FilterRule == nil {
+		return "", false
+	}
+
+	var rangeParts []string
+
+	if input.FilterRule.PriceMin != nil || input.FilterRule.PriceMax != nil {
+		var priceRange string
+		if input.FilterRule.PriceMin != nil && input.FilterRule.PriceMax != nil {
+			priceRange = fmt.Sprintf("???:%.2f-%.2f", *input.FilterRule.PriceMin, *input.FilterRule.PriceMax)
+		} else if input.FilterRule.PriceMin != nil {
+			priceRange = fmt.Sprintf("???:>=%.2f", *input.FilterRule.PriceMin)
+		} else if input.FilterRule.PriceMax != nil {
+			priceRange = fmt.Sprintf("???:<=%.2f", *input.FilterRule.PriceMax)
+		}
+		if priceRange != "" {
+			rangeParts = append(rangeParts, priceRange)
+		}
+	}
+
+	if input.FilterRule.StockMin != nil {
+		rangeParts = append(rangeParts, fmt.Sprintf("???:>=%d", *input.FilterRule.StockMin))
+	}
+	if input.FilterRule.RatingMin != nil {
+		rangeParts = append(rangeParts, fmt.Sprintf("???:>=%.1f", *input.FilterRule.RatingMin))
+	}
+	if input.FilterRule.ReviewCountMin != nil {
+		rangeParts = append(rangeParts, fmt.Sprintf("?????>=%d", *input.FilterRule.ReviewCountMin))
+	}
+	if input.FilterRule.DeliveryTimeMax != nil {
+		rangeParts = append(rangeParts, fmt.Sprintf("??????:<=%d??", *input.FilterRule.DeliveryTimeMax))
+	}
+	if input.FilterRule.FulfillmentType != "" && input.FilterRule.FulfillmentType != "ALL" {
+		rangeParts = append(rangeParts, fmt.Sprintf("????%s", input.FilterRule.FulfillmentType))
+	}
+
+	if len(rangeParts) == 0 {
+		return "", false
+	}
+
+	return fmt.Sprintf("[%s]", strings.Join(rangeParts, ",")), true
+}
+
+func (input *SavePublishResultInput) SalePriceMultiplier() (string, bool) {
+	if input == nil || input.ProfitRule == nil || input.ProfitRule.SalePriceMultiplier <= 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%.4f", input.ProfitRule.SalePriceMultiplier), true
+}
+
+func (input *SavePublishResultInput) DiscountPriceMultiplier() (string, bool) {
+	if input == nil || input.ProfitRule == nil || input.ProfitRule.DiscountPriceMultiplier <= 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%.4f", input.ProfitRule.DiscountPriceMultiplier), true
 }
 
 func (input *SavePublishResultInput) DailyLimitConfig() (limit int, limitType string, ok bool) {

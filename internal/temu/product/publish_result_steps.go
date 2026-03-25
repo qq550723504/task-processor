@@ -6,7 +6,6 @@ import (
 
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
-	pkgproduct "task-processor/internal/product"
 	models "task-processor/internal/temu/api/product"
 )
 
@@ -64,39 +63,31 @@ func (h *SavePublishResultHandler) applyImportMappingMetadata(
 	sku *models.Sku,
 	createReq *api.ProductImportMappingCreateReqDTO,
 ) {
-	if input.AsinSkuMap != nil {
-		if asin, exists := input.AsinSkuMap[sku.OutSkuSN]; exists {
-			createReq.ProductId = asin
-		}
+	if productID, ok := input.ProductIDForSKU(sku); ok {
+		createReq.ProductId = productID
 	}
 
-	if input.AmazonProduct != nil && input.AmazonProduct.ParentAsin != "" {
-		createReq.ParentProductId = &input.AmazonProduct.ParentAsin
-		if input.StoreInfo != nil && input.StoreInfo.PriceType != "" {
-			costPrice := pkgproduct.GetProductPrice(input.AmazonProduct, input.StoreInfo.PriceType)
-			if costPrice > 0 {
-				createReq.CostPrice = &costPrice
-			}
+	if parentProductID, ok := input.ParentProductID(); ok {
+		createReq.ParentProductId = &parentProductID
+		if costPrice, ok := input.CostPrice(); ok {
+			createReq.CostPrice = &costPrice
 		}
 	}
 
 	if input.FilterRule != nil {
 		createReq.FilterRuleId = &input.FilterRule.ID
-		filterRuleRange := h.buildFilterRuleRange(input.FilterRule)
-		if filterRuleRange != "" {
+		if filterRuleRange, ok := input.FilterRuleRange(); ok {
 			createReq.FilterRuleRange = &filterRuleRange
 		}
 	}
 
 	if input.ProfitRule != nil {
 		createReq.ProfitRuleId = &input.ProfitRule.ID
-		if input.ProfitRule.SalePriceMultiplier > 0 {
-			salePriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.SalePriceMultiplier)
-			createReq.SalePriceMultiplier = &salePriceMultiplierStr
+		if salePriceMultiplier, ok := input.SalePriceMultiplier(); ok {
+			createReq.SalePriceMultiplier = &salePriceMultiplier
 		}
-		if input.ProfitRule.DiscountPriceMultiplier > 0 {
-			discountPriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.DiscountPriceMultiplier)
-			createReq.DiscountPriceMultiplier = &discountPriceMultiplierStr
+		if discountPriceMultiplier, ok := input.DiscountPriceMultiplier(); ok {
+			createReq.DiscountPriceMultiplier = &discountPriceMultiplier
 		}
 	}
 }
