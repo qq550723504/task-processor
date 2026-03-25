@@ -47,118 +47,98 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAI(ctx pipeline.TaskContext, va
 
 // buildSkuFromVariantWithAITemu 使用AI映射从变体构建SKU（强类型上下文）
 func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.TemuTaskContext, variant *model.Product, aiSku temucontext.AIGeneratedSku) models.Sku {
-	runtime, runtimeErr := temucontext.BuildSKUBuildRuntime(temuCtx)
-	if runtimeErr != nil {
-		ib.logger.Errorf("failed to build sku runtime: %v", runtimeErr)
+	input, err := buildSKUVariantBuildInput(temuCtx, variant, aiSku)
+	if err != nil {
+		ib.logger.Errorf("failed to build sku variant input: %v", err)
+		return ib.buildSkuFromVariantBasic(variant, aiSku)
+	}
+	if input.Runtime == nil {
+		ib.logger.Error("failed to build sku runtime")
 		return ib.buildSkuFromVariantBasic(variant, aiSku)
 	}
 
-	// 使用利润规则计算最终销售价格（已经应用了利润倍数）
-	finalSalePrice := ib.priceHandler.CalculateVariantPriceWithRuntime(runtime, temuCtx, variant)
-	basePrice := float64(finalSalePrice) / 100 // 转换为元用于显示
-
-	// 最大零售价格就是最终销售价格（不需要再次应用倍数）
+	finalSalePrice := ib.priceHandler.CalculateVariantPriceWithRuntime(input.Runtime, temuCtx, input.Variant)
+	basePrice := float64(finalSalePrice) / 100
 	maxRetailPrice := finalSalePrice
+	asin := input.Variant.Asin
+	outSkuSN := ib.generateSkuFromRuntime(input.Runtime, asin)
+	temuCtx.SetAsinSkuMap(ib.saveAsinSkuMappingWithRuntime(input.Runtime, outSkuSN, asin))
+	quantity := ib.priceHandler.GetDefaultStockWithRuntime(input.Runtime)
 
-	// 使用原来的SKU生成逻辑
-	asin := variant.Asin
-
-	outSkuSN := ib.generateSkuFromRuntime(runtime, asin)
-
-	// 保存ASIN到SKU的映射关系到上下文，供后续SavePublishResultHandler使用
-	temuCtx.SetAsinSkuMap(ib.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, asin))
-
-	// 从店铺配置读取库存设置（使用统一的方法）
-	quantity := ib.priceHandler.GetDefaultStockWithRuntime(runtime)
-
-	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
-
-	// 验证规格是否有效（检查是否还有临时ID）
+	specList := ib.deduplicateSpecs(convertSpecInfos(input.AISKU.Spec))
 	hasTemp := false
 	for i, spec := range specList {
 		if strings.HasPrefix(spec.SpecID, "TEMP_") {
-			ib.logger.Errorf("❌ 发现未解析的临时规格ID[%d]: SpecID=%s, SpecName=%s, ParentSpecID=%s",
+			ib.logger.Errorf("found unresolved temporary spec id[%d]: spec_id=%s spec_name=%s parent_spec_id=%s",
 				i, spec.SpecID, spec.SpecName, spec.ParentSpecID)
 			hasTemp = true
 		}
 	}
 
 	if hasTemp {
-		ib.logger.Error("❌ 存在未解析的临时规格ID，这表明resolveTemporarySpecIDs没有正确工作")
+		ib.logger.Error("temporary spec ids remain after spec resolution")
 		specList = []models.SpecInfo{}
 	}
 
 	if err := ib.specHandler.ValidateSpecs(specList); err != nil {
-		ib.logger.Errorf("❌ 规格验证失败: %v", err)
-		ib.logger.Error("❌ 无法创建SKU，因为规格无效且不允许使用默认规格")
+		ib.logger.Errorf("spec validation failed: %v", err)
+		ib.logger.Error("sku build cannot continue because default specs are not allowed")
 	}
 
-	weight, length, width, height := ib.buildProductExpressInfo(variant, aiSku)
-	multiplePackage := ib.buildMultiplePackage(aiSku)
-	originNetContentNumber, netContentUnitCode := ib.extractNetContentInfo(variant, aiSku)
+	weight, length, width, height := ib.buildProductExpressInfo(input.Variant, input.AISKU)
+	multiplePackage := ib.buildMultiplePackage(input.AISKU)
+	originNetContentNumber, netContentUnitCode := ib.extractNetContentInfo(input.Variant, input.AISKU)
 
-	// 构建图片，确保总数不超过10张
-	// DimensionGallery: 使用标注过的尺寸图
-	dimensionGallery, err := ib.imageProcessor.BuildDimensionImagesWithUpload(temuCtx, variant)
+	dimensionGallery, err := ib.imageProcessor.BuildDimensionImagesWithUpload(temuCtx, input.Variant)
 	if err != nil {
-		ib.logger.Errorf("❌ 构建尺寸图片失败: %v", err)
-		dimensionGallery = []models.ImageInfo{} // 使用空数组作为降级处理
+		ib.logger.Errorf("failed to build dimension gallery: %v", err)
+		dimensionGallery = []models.ImageInfo{}
 	}
 
-	// CarouselGallery: 使用非标注的轮播图（排除标注过的图片）
-	carouselGallery, err := ib.imageProcessor.BuildCarouselImagesWithoutAnnotation(temuCtx, variant)
+	carouselGallery, err := ib.imageProcessor.BuildCarouselImagesWithoutAnnotation(temuCtx, input.Variant)
 	if err != nil {
-		ib.logger.Errorf("❌ 构建轮播图片失败: %v", err)
-		carouselGallery = []models.ImageInfo{} // 使用空数组作为降级处理
+		ib.logger.Errorf("failed to build carousel gallery: %v", err)
+		carouselGallery = []models.ImageInfo{}
 	}
 
-	// 限制图片总数不超过10张
 	const maxTotalImages = 10
 	totalImages := len(dimensionGallery) + len(carouselGallery)
 	if totalImages > maxTotalImages {
-		// 优先保留尺寸图，然后是轮播图
 		remainingSlots := maxTotalImages - len(dimensionGallery)
 		if remainingSlots < 0 {
-			// 如果尺寸图就超过10张，只保留前10张尺寸图
 			dimensionGallery = dimensionGallery[:maxTotalImages]
 			carouselGallery = []models.ImageInfo{}
-			ib.logger.Warnf("⚠️ SKU图片总数超限，尺寸图=%d，已截断为%d张，轮播图清空",
-				len(dimensionGallery), maxTotalImages)
+			ib.logger.Warnf("sku image count exceeded limit, keeping %d dimension images and clearing carousel images", maxTotalImages)
 		} else if remainingSlots < len(carouselGallery) {
-			// 截断轮播图
 			carouselGallery = carouselGallery[:remainingSlots]
-			ib.logger.Warnf("⚠️ SKU图片总数超限，尺寸图=%d，轮播图从%d截断为%d张",
-				len(dimensionGallery), len(carouselGallery)+remainingSlots, remainingSlots)
+			ib.logger.Warnf("sku image count exceeded limit, keeping %d dimension images and trimming carousel images to %d", len(dimensionGallery), remainingSlots)
 		}
 	}
 
-	// 计算市场价：最终销售价格 * 2
-	marketPrice := finalSalePrice * 2                                    // 市场价（分）
-	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100) // 市场价字符串（元）
-
+	marketPrice := finalSalePrice * 2
+	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
 	return models.Sku{
-		// 必需字段（按照正确的JSON格式）
 		Spec:                     specList,
 		Currency:                 "USD",
-		UseEstimateSupplierPrice: true, // 根据正确JSON设置为true
+		UseEstimateSupplierPrice: true,
 		DimensionGallery:         dimensionGallery,
 		CarouselGallery:          carouselGallery,
-		FoodIngredientGallery:    []models.ImageInfo{},        // 空数组
-		Quantity:                 fmt.Sprintf("%d", quantity), // 转换为字符串
+		FoodIngredientGallery:    []models.ImageInfo{},
+		Quantity:                 fmt.Sprintf("%d", quantity),
 		ProductExpressInfo: models.ProductExpressInfo{
 			WeightInfo: models.WeightInfo{Weight: weight},
 			VolumeInfo: models.VolumeInfo{Length: length, Width: width, Height: height},
 		},
-		SupplierPriceStr:       fmt.Sprintf("%.2f", basePrice), // 保留两位小数，单位：元
+		SupplierPriceStr:       fmt.Sprintf("%.2f", basePrice),
 		OutSkuSN:               outSkuSN,
 		MultiplePackage:        multiplePackage,
 		OriginNetContentNumber: originNetContentNumber,
 		NetContentUnitCode:     netContentUnitCode,
 		MaxRetailPriceStr:      fmt.Sprintf("%.2f", float64(maxRetailPrice)/100),
 		SupplierPrice:          finalSalePrice,
-		MarketPrice:            marketPrice,      // 市场价（分），供货价*2
-		MarketPriceStr:         marketPriceStr,   // 市场价字符串（元），供货价*2
-		SkuPriceDocuments:      map[string]any{}, // 空对象
+		MarketPrice:            marketPrice,
+		MarketPriceStr:         marketPriceStr,
+		SkuPriceDocuments:      map[string]any{},
 	}
 }
 
