@@ -74,3 +74,50 @@ func buildFillAttributeInput(ctx *sheinctx.TaskContext) (*FillAttributeInput, er
 		AttributeTemplates: ctx.AttributeTemplates,
 	}, nil
 }
+
+type AttributeTemplateInput struct {
+	CategoryID   int
+	AttributeAPI apiattribute.AttributeAPI
+}
+
+func buildAttributeTemplateInput(ctx *sheinctx.TaskContext) (*AttributeTemplateInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+	if ctx.ProductData == nil {
+		return nil, fmt.Errorf("product data is nil")
+	}
+	if ctx.ProductData.CategoryID == 0 {
+		return nil, fmt.Errorf("category id is not set")
+	}
+	if ctx.AttributeAPI == nil {
+		return nil, fmt.Errorf("attribute api is nil")
+	}
+
+	return &AttributeTemplateInput{
+		CategoryID:   ctx.ProductData.CategoryID,
+		AttributeAPI: ctx.AttributeAPI,
+	}, nil
+}
+
+type ValidateRepairInput struct {
+	SaleSpecResult     *ResultSaleAttribute
+	AttributeTemplates *apiattribute.AttributeTemplateInfo
+}
+
+func buildValidateRepairInput(ctx *sheinctx.TaskContext) (*ValidateRepairInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+	if ctx.ProductData == nil {
+		return nil, fmt.Errorf("product data is not initialized")
+	}
+	if ctx.SaleSpecResult == nil {
+		return nil, fmt.Errorf("sale spec result is nil")
+	}
+
+	return &ValidateRepairInput{
+		SaleSpecResult:     ctx.SaleSpecResult,
+		AttributeTemplates: ctx.AttributeTemplates,
+	}, nil
+}

@@ -1,114 +1,88 @@
 package attribute
 
 import (
-	"task-processor/internal/core/logger"
-	"fmt"
 	"strings"
-	"task-processor/internal/pkg/types"
-	sheinctx "task-processor/internal/shein/context"
-	"task-processor/internal/shein/api/attribute"
 
+	"task-processor/internal/core/logger"
+	"task-processor/internal/pkg/types"
+	apiattribute "task-processor/internal/shein/api/attribute"
+	sheinctx "task-processor/internal/shein/context"
 )
 
-// ValidateRepairSaleAttributeHandler 验证修复销售属性处理器
-type ValidateRepairSaleAttributeHandler struct {
-}
+type ValidateRepairSaleAttributeHandler struct{}
 
-// NewValidateRepairSaleAttributeHandler 创建新的验证修复销售属性处理器
 func NewValidateRepairSaleAttributeHandler() *ValidateRepairSaleAttributeHandler {
 	return &ValidateRepairSaleAttributeHandler{}
 }
 
-// Name 返回处理器名称
 func (h *ValidateRepairSaleAttributeHandler) Name() string {
-	return "验证修复销售属性"
+	return "validate_repair_sale_attribute"
 }
 
-// Handle 执行验证修复销售属性处理
 func (h *ValidateRepairSaleAttributeHandler) Handle(ctx *sheinctx.TaskContext) error {
-	// 检查是否已获取产品数据
-	if ctx.ProductData == nil {
-		return fmt.Errorf("产品数据未获取，请先执行获取产品数据步骤")
+	input, err := buildValidateRepairInput(ctx)
+	if err != nil {
+		return err
 	}
 
-	// 确保 ctx.SaleSpecResult 不为 nil
-	if ctx.SaleSpecResult == nil {
-		return fmt.Errorf("销售规格结果未获取，请先执行相关步骤")
-	}
-
-	// 修复属性值ID
-	h.fixAttributeValueIDs(ctx.SaleSpecResult, ctx.AttributeTemplates)
-
-	logger.GetGlobalLogger("shein/product").Info("销售属性验证修复完成")
-
+	h.fixAttributeValueIDs(input)
+	logger.GetGlobalLogger("shein/product").Info("validated and repaired sale attributes")
 	return nil
 }
 
-// 如果对应不上则修改为负数递增
-func (h *ValidateRepairSaleAttributeHandler) fixAttributeValueIDs(saleAttributeData *ResultSaleAttribute, attributeTemplates *attribute.AttributeTemplateInfo) *ResultSaleAttribute {
-	logger.GetGlobalLogger("shein/product").Info("🔧 开始修复属性值ID，确保与SHEIN平台一致")
+func (h *ValidateRepairSaleAttributeHandler) fixAttributeValueIDs(input *ValidateRepairInput) *ResultSaleAttribute {
+	logger.GetGlobalLogger("shein/product").Info("start repairing sale attribute value ids")
 
-	// 构建SHEIN平台属性值映射表
-	platformValueMap := h.buildPlatformAttributeValueMap(attributeTemplates)
-
-	// 用于生成负数ID的计数器
+	platformValueMap := h.buildPlatformAttributeValueMap(input.AttributeTemplates)
 	negativeIDCounter := -1
 
-	// 处理每个销售属性
-	for attrIndex := range saleAttributeData.SaleAttributes {
-		attr := &saleAttributeData.SaleAttributes[attrIndex]
+	for attrIndex := range input.SaleSpecResult.SaleAttributes {
+		attr := &input.SaleSpecResult.SaleAttributes[attrIndex]
 		attrID := attr.AttrID
 
-		logger.GetGlobalLogger("shein/product").Infof("处理属性ID %d 的属性值，数量: %d", attrID, len(attr.AttrValue))
+		logger.GetGlobalLogger("shein/product").Infof("repairing attribute %d, value_count=%d", attrID, len(attr.AttrValue))
 
-		// 获取该属性在平台中的可用值
 		platformValues, exists := platformValueMap[attrID]
 		if !exists {
-			logger.GetGlobalLogger("shein/product").Warnf("属性ID %d 在平台模板中不存在，将所有属性值设为负数ID", attrID)
-			// 如果属性不存在，将所有值设为负数ID
+			logger.GetGlobalLogger("shein/product").Warnf("attribute %d not found in templates, assign negative ids", attrID)
 			for valueIndex := range attr.AttrValue {
 				attr.AttrValue[valueIndex].ID = types.FlexibleID(negativeIDCounter)
-				logger.GetGlobalLogger("shein/product").Debugf("属性值 '%s' 设置为负数ID: %d", attr.AttrValue[valueIndex].Value, negativeIDCounter)
+				logger.GetGlobalLogger("shein/product").Debugf("attribute value %q assigned negative id %d", attr.AttrValue[valueIndex].Value, negativeIDCounter)
 				negativeIDCounter--
 			}
 			continue
 		}
 
-		// 处理每个属性值
 		for valueIndex := range attr.AttrValue {
 			attrValue := &attr.AttrValue[valueIndex]
 			originalValue := strings.TrimSpace(attrValue.Value)
 
-			// 尝试在平台值中找到精确匹配
 			if platformID, found := h.findExactMatch(originalValue, platformValues); found {
 				attrValue.ID = types.FlexibleID(platformID)
-				logger.GetGlobalLogger("shein/product").Debugf("✓ 属性值 '%s' 找到精确匹配，平台ID: %d", originalValue, platformID)
+				logger.GetGlobalLogger("shein/product").Debugf("attribute value %q exact matched platform id %d", originalValue, platformID)
 				continue
 			}
 
-			// 尝试模糊匹配
 			if platformID, found := h.findFuzzyMatch(originalValue, platformValues); found {
 				attrValue.ID = types.FlexibleID(platformID)
-				logger.GetGlobalLogger("shein/product").Debugf("✓ 属性值 '%s' 找到模糊匹配，平台ID: %d", originalValue, platformID)
+				logger.GetGlobalLogger("shein/product").Debugf("attribute value %q fuzzy matched platform id %d", originalValue, platformID)
 				continue
 			}
 
-			// 如果都没有匹配，设置为负数ID
 			attrValue.ID = types.FlexibleID(negativeIDCounter)
-			logger.GetGlobalLogger("shein/product").Debugf("✗ 属性值 '%s' 未找到匹配，设置为负数ID: %d", originalValue, negativeIDCounter)
+			logger.GetGlobalLogger("shein/product").Debugf("attribute value %q unmatched, assigned negative id %d", originalValue, negativeIDCounter)
 			negativeIDCounter--
 		}
 	}
 
-	return saleAttributeData
+	return input.SaleSpecResult
 }
 
-// buildPlatformAttributeValueMap 构建SHEIN平台属性值映射表
-func (h *ValidateRepairSaleAttributeHandler) buildPlatformAttributeValueMap(attributeTemplates *attribute.AttributeTemplateInfo) map[int]map[string]int {
+func (h *ValidateRepairSaleAttributeHandler) buildPlatformAttributeValueMap(attributeTemplates *apiattribute.AttributeTemplateInfo) map[int]map[string]int {
 	platformValueMap := make(map[int]map[string]int)
 
 	if attributeTemplates == nil || len(attributeTemplates.Data) == 0 {
-		logger.GetGlobalLogger("shein/product").Warn("属性模板为空，无法构建平台属性值映射")
+		logger.GetGlobalLogger("shein/product").Warn("attribute templates are empty, skip platform value map build")
 		return platformValueMap
 	}
 
@@ -118,11 +92,9 @@ func (h *ValidateRepairSaleAttributeHandler) buildPlatformAttributeValueMap(attr
 			valueMap := make(map[string]int)
 
 			for _, valueInfo := range attrInfo.AttributeValueInfoList {
-				// 使用英文值作为主要匹配键
 				if valueInfo.AttributeValueEn != "" {
 					valueMap[strings.TrimSpace(valueInfo.AttributeValueEn)] = valueInfo.AttributeValueID
 				}
-				// 同时使用中文值作为备用匹配键
 				if valueInfo.AttributeValue != "" {
 					valueMap[strings.TrimSpace(valueInfo.AttributeValue)] = valueInfo.AttributeValueID
 				}
@@ -130,23 +102,20 @@ func (h *ValidateRepairSaleAttributeHandler) buildPlatformAttributeValueMap(attr
 
 			if len(valueMap) > 0 {
 				platformValueMap[attrID] = valueMap
-				logger.GetGlobalLogger("shein/product").Debugf("构建属性ID %d 的平台值映射，包含 %d 个值", attrID, len(valueMap))
+				logger.GetGlobalLogger("shein/product").Debugf("built platform value map for attribute %d, total=%d", attrID, len(valueMap))
 			}
 		}
 	}
 
-	logger.GetGlobalLogger("shein/product").Infof("构建平台属性值映射完成，包含 %d 个属性", len(platformValueMap))
+	logger.GetGlobalLogger("shein/product").Infof("built platform attribute value map, total_attributes=%d", len(platformValueMap))
 	return platformValueMap
 }
 
-// findExactMatch 查找精确匹配的平台属性值ID
 func (h *ValidateRepairSaleAttributeHandler) findExactMatch(value string, platformValues map[string]int) (int, bool) {
-	// 直接匹配
 	if id, exists := platformValues[value]; exists {
 		return id, true
 	}
 
-	// 忽略大小写匹配
 	valueLower := strings.ToLower(value)
 	for platformValue, id := range platformValues {
 		if strings.ToLower(platformValue) == valueLower {
@@ -157,20 +126,14 @@ func (h *ValidateRepairSaleAttributeHandler) findExactMatch(value string, platfo
 	return 0, false
 }
 
-// findFuzzyMatch 模糊匹配平台属性值ID
 func (h *ValidateRepairSaleAttributeHandler) findFuzzyMatch(value string, platformValues map[string]int) (int, bool) {
 	valueLower := strings.ToLower(strings.TrimSpace(value))
 
 	for platformValue, id := range platformValues {
 		platformValueLower := strings.ToLower(strings.TrimSpace(platformValue))
-
-		// 只进行基本的大小写忽略匹配，不做过度标准化
 		if valueLower == platformValueLower {
 			return id, true
 		}
-
-		// 移除过度的模糊匹配逻辑，避免不同的Amazon属性值被错误地映射到相同ID
-		// 如果需要更精确的匹配，应该通过自定义属性值创建来处理
 	}
 
 	return 0, false
