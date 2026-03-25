@@ -2,7 +2,6 @@ package product
 
 import (
 	"fmt"
-	"strings"
 
 	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management/api"
@@ -76,59 +75,4 @@ func (h *SavePublishResultHandler) HandleTemu(temuCtx *temucontext.TemuTaskConte
 
 	h.logger.Info("发品成功后返回信息保存完成")
 	return nil
-}
-
-// buildFilterRuleRange 构建筛选规则范围字符串
-func (h *SavePublishResultHandler) buildFilterRuleRange(filterRule *api.FilterRuleRespDTO) string {
-	if filterRule == nil {
-		return ""
-	}
-
-	var rangeParts []string
-
-	// 价格范围
-	if filterRule.PriceMin != nil || filterRule.PriceMax != nil {
-		var priceRange string
-		if filterRule.PriceMin != nil && filterRule.PriceMax != nil {
-			priceRange = fmt.Sprintf("价格:%.2f-%.2f", *filterRule.PriceMin, *filterRule.PriceMax)
-		} else if filterRule.PriceMin != nil {
-			priceRange = fmt.Sprintf("价格:>=%.2f", *filterRule.PriceMin)
-		} else if filterRule.PriceMax != nil {
-			priceRange = fmt.Sprintf("价格:<=%.2f", *filterRule.PriceMax)
-		}
-		if priceRange != "" {
-			rangeParts = append(rangeParts, priceRange)
-		}
-	}
-
-	// 库存范围
-	if filterRule.StockMin != nil {
-		rangeParts = append(rangeParts, fmt.Sprintf("库存:>=%d", *filterRule.StockMin))
-	}
-
-	// 评分范围
-	if filterRule.RatingMin != nil {
-		rangeParts = append(rangeParts, fmt.Sprintf("评分:>=%.1f", *filterRule.RatingMin))
-	}
-
-	// 评论数量范围
-	if filterRule.ReviewCountMin != nil {
-		rangeParts = append(rangeParts, fmt.Sprintf("评论数:>=%d", *filterRule.ReviewCountMin))
-	}
-
-	// 发货时效
-	if filterRule.DeliveryTimeMax != nil {
-		rangeParts = append(rangeParts, fmt.Sprintf("发货时效:<=%d天", *filterRule.DeliveryTimeMax))
-	}
-
-	// 配送方式
-	if filterRule.FulfillmentType != "" && filterRule.FulfillmentType != "ALL" {
-		rangeParts = append(rangeParts, fmt.Sprintf("配送:%s", filterRule.FulfillmentType))
-	}
-
-	if len(rangeParts) == 0 {
-		return ""
-	}
-
-	return fmt.Sprintf("[%s]", strings.Join(rangeParts, ","))
 }
