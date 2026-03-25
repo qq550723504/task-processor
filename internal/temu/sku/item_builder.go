@@ -66,7 +66,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	outSkuSN := ib.generateSkuFromRuntime(runtime, asin)
 
 	// 保存ASIN到SKU的映射关系到上下文，供后续SavePublishResultHandler使用
-	temuCtx.AsinSkuMap = ib.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, asin)
+	temuCtx.SetAsinSkuMap(ib.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, asin))
 
 	// 从店铺配置读取库存设置（使用统一的方法）
 	quantity := ib.priceHandler.GetDefaultStockWithRuntime(runtime)
@@ -417,7 +417,7 @@ func (ib *SkuItemBuilder) saveAsinSkuMapping(ctx pipeline.TaskContext, outSkuSN 
 	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
 		runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
 		if err == nil {
-			temuCtx.AsinSkuMap = ib.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, asin)
+			temuCtx.SetAsinSkuMap(ib.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, asin))
 			return
 		}
 		return

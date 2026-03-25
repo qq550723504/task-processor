@@ -120,6 +120,10 @@ func (tc *TemuTaskContext) AddVariant(variant *model.Product) {
 	tc.Variants = append(tc.Variants, variant)
 }
 
+func (tc *TemuTaskContext) SetAsinSkuMap(mapping map[string]string) {
+	tc.AsinSkuMap = mapping
+}
+
 func (tc *TemuTaskContext) SetTemuProduct(product *api.Product) {
 	tc.TemuProduct = product
 }

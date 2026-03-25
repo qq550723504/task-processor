@@ -86,7 +86,7 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(temuCtx *temucontext.TemuTa
 	outSkuSN := spb.itemBuilder.generateSkuFromRuntime(runtime, variant.Asin)
 
 	// 保存ASIN到SKU的映射关系
-	temuCtx.AsinSkuMap = spb.itemBuilder.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, variant.Asin)
+	temuCtx.SetAsinSkuMap(spb.itemBuilder.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, variant.Asin))
 
 	// 构建规格信息
 	specList := spb.buildSpecList(temuCtx, variant, aiSku)
