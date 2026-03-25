@@ -1,4 +1,3 @@
-// Package runner 提供处理器和调度器的运行管理功能
 package runner
 
 import (
@@ -12,14 +11,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// SchedulerService 调度服务接口
 type SchedulerService interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 	GetStatus() map[string]any
 }
 
-// schedulerServiceImpl 调度服务实现
 type schedulerServiceImpl struct {
 	logger              *logrus.Logger
 	managementClient    *management.ClientManager
@@ -34,16 +31,6 @@ type schedulerServiceImpl struct {
 	running             bool
 }
 
-// NewSchedulerService 创建调度服务
-func NewSchedulerService(logger *logrus.Logger, managementClient *management.ClientManager, cfg *config.Config) SchedulerService {
-	return &schedulerServiceImpl{
-		logger:           logger,
-		managementClient: managementClient,
-		config:           cfg,
-	}
-}
-
-// NewSchedulerServiceWithDependencies 创建调度服务并显式注入依赖。
 func NewSchedulerServiceWithDependencies(
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
@@ -63,31 +50,12 @@ func NewSchedulerServiceWithDependencies(
 	}
 }
 
-// NewSchedulerServiceWithAmazon 创建调度服务（带 Amazon 处理器）。
-func NewSchedulerServiceWithAmazon(
-	logger *logrus.Logger,
-	managementClient *management.ClientManager,
-	cfg *config.Config,
-	amazonProcessor amazonCrawler,
-	rabbitmqClient *rabbitmq.Client,
-) SchedulerService {
-	return NewSchedulerServiceWithDependencies(
-		logger,
-		managementClient,
-		cfg,
-		amazonProcessor,
-		rabbitmqClient,
-		BuildDefaultSchedulerDependencies(managementClient, amazonProcessor, rabbitmqClient),
-	)
-}
-
-// Start 启动调度服务
 func (s *schedulerServiceImpl) Start(ctx context.Context) error {
 	if s.running {
 		return nil
 	}
 
-	s.logger.Info("开始启动调度服务")
+	s.logger.Info("start scheduler service")
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
 	if err := s.initializeResources(); err != nil {
@@ -98,33 +66,31 @@ func (s *schedulerServiceImpl) Start(ctx context.Context) error {
 	}
 
 	s.running = true
-	s.logger.Info("调度服务启动完成")
+	s.logger.Info("scheduler service started")
 	return nil
 }
 
-// Stop 停止调度服务
 func (s *schedulerServiceImpl) Stop(ctx context.Context) error {
 	_ = ctx
 	if !s.running {
 		return nil
 	}
 
-	s.logger.Info("开始停止调度服务")
+	s.logger.Info("stop scheduler service")
 
 	if s.schedulerManager != nil {
 		s.schedulerManager.StopAll()
-		s.logger.Info("调度器已停止")
+		s.logger.Info("scheduler manager stopped")
 	}
 	if s.cancel != nil {
 		s.cancel()
 	}
 
 	s.running = false
-	s.logger.Info("调度服务已停止")
+	s.logger.Info("scheduler service stopped")
 	return nil
 }
 
-// GetStatus 获取调度服务状态
 func (s *schedulerServiceImpl) GetStatus() map[string]any {
 	status := map[string]any{
 		"running": s.running,
