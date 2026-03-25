@@ -57,15 +57,19 @@ func (h *SavePublishResultHandler) Handle(ctx pipeline.TaskContext) error {
 func (h *SavePublishResultHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始保存发品成功后的信息")
 
-	// 检查是否有提交响应数据（兼容两个字段）
-	submitResponse, exists := getSubmitResponseFromContext(temuCtx)
-	if !exists {
+	input, err := buildSavePublishResultInput(temuCtx)
+	if err != nil {
 		h.logger.Warn("TEMU提交响应数据为空，跳过保存")
 		return nil
 	}
 
+	if input.Product == nil {
+		h.logger.Warn("产品数据不存在，跳过发布结果保存")
+		return nil
+	}
+
 	// 记录响应数据到日志
-	if err := h.logSubmitResponse(temuCtx, submitResponse); err != nil {
+	if err := h.logSubmitResponse(temuCtx, input.SubmitResponse); err != nil {
 		h.logger.Warnf("记录响应数据失败: %v", err)
 		// 不阻断流程，继续执行
 	}
