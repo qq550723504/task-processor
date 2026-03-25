@@ -44,42 +44,42 @@ func NewApplicationBootstrap(logger *logrus.Logger) *ApplicationBootstrap {
 }
 
 func (a *ApplicationBootstrap) Initialize(configPath, appVersion string) error {
-	a.logger.Info("寮€濮嬪垵濮嬪寲搴旂敤...")
+	a.logger.Info("initializing application bootstrap")
 	a.appVersion = appVersion
 
 	if err := a.loadConfiguration(configPath); err != nil {
-		return fmt.Errorf("鍔犺浇閰嶇疆澶辫触: %w", err)
+		return fmt.Errorf("load configuration: %w", err)
 	}
 
 	svc, err := buildServices(a.configManager.GetCurrent(), a.logger)
 	if err != nil {
-		return fmt.Errorf("鏋勫缓鏈嶅姟澶辫触: %w", err)
+		return fmt.Errorf("build services: %w", err)
 	}
 	a.services = svc
 
 	if err := registerComponents(a.lifecycleManager, a.services, a.logger, a.appVersion); err != nil {
-		return fmt.Errorf("娉ㄥ唽缁勪欢澶辫触: %w", err)
+		return fmt.Errorf("register lifecycle components: %w", err)
 	}
 
-	a.logger.Info("鉁?搴旂敤鍒濆鍖栧畬鎴?")
+	a.logger.Info("application bootstrap initialized")
 	return nil
 }
 
 func (a *ApplicationBootstrap) Start(ctx context.Context, appVersion string) error {
-	a.logger.Info("寮€濮嬪惎鍔ㄥ簲鐢?..")
+	a.logger.Info("starting application bootstrap")
 	if err := a.lifecycleManager.StartAll(ctx); err != nil {
-		return fmt.Errorf("鍚姩缁勪欢澶辫触: %w", err)
+		return fmt.Errorf("start lifecycle components: %w", err)
 	}
-	a.logger.Info("鉁?搴旂敤鍚姩瀹屾垚")
+	a.logger.Info("application bootstrap started")
 	return nil
 }
 
 func (a *ApplicationBootstrap) Stop(ctx context.Context) error {
-	a.logger.Info("寮€濮嬪仠姝㈠簲鐢?..")
+	a.logger.Info("stopping application bootstrap")
 	if err := a.lifecycleManager.StopAll(ctx); err != nil {
-		a.logger.Errorf("鍋滄缁勪欢澶辫触: %v", err)
+		a.logger.Errorf("stop lifecycle components: %v", err)
 	}
-	a.logger.Info("鉁?搴旂敤鍋滄瀹屾垚")
+	a.logger.Info("application bootstrap stopped")
 	return nil
 }
 
@@ -92,53 +92,65 @@ func (a *ApplicationBootstrap) GetLifecycleManager() lifecycle.LifecycleManager 
 }
 
 func (a *ApplicationBootstrap) loadConfiguration(configPath string) error {
-	a.logger.Infof("鍔犺浇閰嶇疆鏂囦欢: %s", configPath)
+	a.logger.Infof("loading configuration from %s", configPath)
 	source := config.NewFileConfigSource(configPath)
 	cfg, err := a.configManager.Load(source)
 	if err != nil {
 		return err
 	}
-	a.logger.Infof("娴忚鍣ㄩ厤缃?- 鍚敤: %v, 璺緞: %s, 姹犲ぇ灏? %d",
+	a.logger.Infof("browser config loaded: enabled=%v path=%s poolSize=%d",
 		cfg.Browser.Enabled, cfg.Browser.BrowserPath, cfg.Browser.PoolSize)
-	a.logger.Infof("绠＄悊绯荤粺閰嶇疆 - URL: %s, 瀹㈡埛绔疘D: %s",
+	a.logger.Infof("management config loaded: url=%s clientId=%s",
 		cfg.Management.BaseURL, cfg.Management.ClientID)
 	return nil
 }
 
 func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("閰嶇疆鏈姞杞?")
+		return nil, fmt.Errorf("config is nil")
 	}
 
 	if err := InitializePrompts(context.Background(), cfg, logger); err != nil {
-		logger.Warnf("Prompt 娉ㄥ唽琛ㄥ垵濮嬪寲澶辫触锛屽皢浣跨敤纭紪鐮?fallback: %v", err)
+		logger.Warnf("prompt initialization failed, fallback will be used: %v", err)
 	}
 
 	resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{
 		NeedAmazonCrawler: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("鏋勫缓鍏变韩璧勬簮澶辫触: %w", err)
+		return nil, fmt.Errorf("build shared resources: %w", err)
 	}
 
+	return buildAppServices(cfg, logger, resources), nil
+}
+
+func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *SharedResources) *appServices {
 	return &appServices{
 		cfg:              cfg,
 		authClient:       resources.AuthClient,
 		managementClient: resources.ManagementClient,
 		amazonCrawler:    resources.AmazonCrawler,
-		processorService: runner.NewProcessorServiceWithCreators(
-			logger,
-			resources.ManagementClient,
-			resources.AmazonCrawler,
-			BuildProcessorDependencies(),
-		),
-		schedulerService: runner.NewSchedulerServiceWithDependencies(
-			logger,
-			resources.ManagementClient,
-			cfg,
-			resources.AmazonCrawler,
-			nil,
-			BuildSchedulerDependencies(resources.ManagementClient, cfg, resources.AmazonCrawler, nil),
-		),
-	}, nil
+		processorService: buildProcessorService(logger, resources),
+		schedulerService: buildSchedulerService(logger, cfg, resources),
+	}
+}
+
+func buildProcessorService(logger *logrus.Logger, resources *SharedResources) runner.ProcessorService {
+	return runner.NewProcessorServiceWithCreators(
+		logger,
+		resources.ManagementClient,
+		resources.AmazonCrawler,
+		BuildProcessorDependencies(),
+	)
+}
+
+func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources *SharedResources) runner.SchedulerService {
+	return runner.NewSchedulerServiceWithDependencies(
+		logger,
+		resources.ManagementClient,
+		cfg,
+		resources.AmazonCrawler,
+		nil,
+		BuildSchedulerDependencies(resources.ManagementClient, cfg, resources.AmazonCrawler, nil),
+	)
 }
