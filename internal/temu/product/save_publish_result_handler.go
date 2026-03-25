@@ -9,7 +9,6 @@ import (
 
 	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management/api"
-	commontypes "task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/jsonx"
 	temuapi "task-processor/internal/temu/api"
@@ -114,55 +113,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(temuCtx *temucontext.
 }
 
 // calculateIncrementFromContext 根据店铺配置的限制类型计算增量
-func (h *SavePublishResultHandler) calculateIncrementFromContext(temuCtx *temucontext.TemuTaskContext, dailyLimitType string) int64 {
-	// 检查TEMU产品数据是否存在
-	if temuCtx.TemuProduct == nil {
-		h.logger.Warn("TEMU产品数据为空，无法计算增量")
-		return 0
-	}
-
-	temuProduct := temuCtx.TemuProduct
-
-	switch dailyLimitType {
-	case "SPU":
-		// SPU级别：每个产品算1个
-		return 1
-	case "SKC":
-		// SKC级别：按SKC数量计算
-		skcCount := int64(len(temuProduct.SkcList))
-		h.logger.Debugf("SKC计数: %d", skcCount)
-		return skcCount
-	case "SKU":
-		// SKU级别：按所有SKU数量计算
-		var skuCount int64
-		for _, skc := range temuProduct.SkcList {
-			skuCount += int64(len(skc.SkuList))
-		}
-		h.logger.Debugf("SKU计数: %d", skuCount)
-		return skuCount
-	default:
-		// 默认按SPU计算
-		h.logger.Warnf("未知的限制类型: %s，默认按SPU计算", dailyLimitType)
-		return 1
-	}
-}
-
 // pauseShopUntilEndOfDay 暂停店铺到当日结束
-func (h *SavePublishResultHandler) pauseShopUntilEndOfDay(temuCtx *temucontext.TemuTaskContext, reason string) {
-	task := temuCtx.GetTask()
-	if task == nil {
-		return
-	}
-
-	h.memoryManager.ShopPauseManager.PauseShopUntilEndOfDay(
-		task.TenantID,
-		task.StoreID,
-		reason,
-	)
-
-	h.logger.Infof("已暂停店铺 %d:%d 上架到当日结束，原因: %s", task.TenantID, task.StoreID, reason)
-}
-
 // logSubmitResponse 记录提交响应数据到日志
 func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTaskContext, submitResponse *temuapi.SubmitResponse) error {
 	input, err := buildSavePublishResultInput(temuCtx)
@@ -174,32 +125,6 @@ func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTa
 }
 
 // logResponseDetails 记录响应详细信息
-func (h *SavePublishResultHandler) logResponseDetails(submitResponse *temuapi.SubmitResponse, task *commontypes.Task) {
-	if submitResponse == nil || task == nil {
-		return
-	}
-
-	h.logger.WithFields(logrus.Fields{
-		"task_id":    task.ID,
-		"success":    submitResponse.Success,
-		"error_code": submitResponse.ErrorCode,
-		"message":    submitResponse.Message,
-	}).Info("TEMU????????????")
-
-	if submitResponse.Result == nil {
-		return
-	}
-
-	h.logger.WithFields(logrus.Fields{
-		"task_id":                task.ID,
-		"listing_commit_id":      submitResponse.Result.ListingCommitID,
-		"listing_commit_version": submitResponse.Result.ListingCommitVersion,
-		"goods_commit_id":        submitResponse.Result.GoodsCommitID,
-		"status":                 submitResponse.Result.Status,
-		"result_message":         submitResponse.Result.Message,
-	}).Info("TEMU?????????")
-}
-
 // saveResponseToFile 保存响应数据到文件
 func (h *SavePublishResultHandler) saveResponseToFile(taskID int64, responseData []byte) error {
 	// 创建文件名
