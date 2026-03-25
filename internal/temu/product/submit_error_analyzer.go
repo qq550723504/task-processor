@@ -9,7 +9,6 @@ import (
 
 	"task-processor/internal/pkg/jsonx"
 	temucontext "task-processor/internal/temu/context"
-	"task-processor/internal/temu/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -87,7 +86,7 @@ func (ea *ProductSubmitErrorAnalyzer) saveDetailedTemplateDataForError(temuCtx *
 	}
 
 	// 获取模板信息
-	if templateInfo, exists := template.GetTemplateInfoFromContext(temuCtx); exists {
+	if templateInfo := temuCtx.TemplateInfo; templateInfo != nil {
 		analysisData["template_info"] = map[string]any{
 			"template_id":           templateInfo.TemplateID,
 			"goods_properties":      templateInfo.GoodsProperties,
@@ -237,8 +236,8 @@ func (ea *ProductSubmitErrorAnalyzer) saveDetailedTemplateDataForError(temuCtx *
 // saveTemplateDataForError 保存模板数据用于错误分析
 func (ea *ProductSubmitErrorAnalyzer) saveTemplateDataForError(temuCtx *temucontext.TemuTaskContext, errorCode int, errorMessage string, requiredProps string) error {
 	// 获取模板信息
-	templateInfo, exists := template.GetTemplateInfoFromContext(temuCtx)
-	if !exists {
+	templateInfo := temuCtx.TemplateInfo
+	if templateInfo == nil {
 		ea.logger.Warn("未找到模板信息，无法保存模板数据")
 		return nil
 	}

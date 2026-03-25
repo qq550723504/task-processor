@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/model"
 	temutemplate "task-processor/internal/temu/api/template"
 	temucontext "task-processor/internal/temu/context"
-	"task-processor/internal/temu/template"
 )
 
 type AIMappingInput struct {
@@ -34,14 +33,12 @@ func BuildAIMappingInput(temuCtx *temucontext.TemuTaskContext, variants []*model
 }
 
 func buildTemuSpecProperties(temuCtx *temucontext.TemuTaskContext, specHandler *SkuSpecHandler) []temutemplate.TemplateRespGoodsSpecProperty {
-	if templateInfo, exists := template.GetTemplateInfoFromContext(temuCtx); exists {
-		if len(templateInfo.GoodsSpecProperties) > 0 {
-			return templateInfo.GoodsSpecProperties
-		}
+	if templateInfo := temuCtx.TemplateInfo; templateInfo != nil && len(templateInfo.GoodsSpecProperties) > 0 {
+		return templateInfo.GoodsSpecProperties
 	}
 
-	if userInputSpecs, exists := template.GetUserInputParentSpecListFromContext(temuCtx); exists {
-		return specHandler.convertUserInputSpecsToGoodsSpecProperties(userInputSpecs)
+	if len(temuCtx.UserInputParentSpecList) > 0 {
+		return specHandler.convertUserInputSpecsToGoodsSpecProperties(temuCtx.UserInputParentSpecList)
 	}
 
 	return []temutemplate.TemplateRespGoodsSpecProperty{}

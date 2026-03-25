@@ -13,7 +13,7 @@ type TemplateQueryInput struct {
 	ListingCommitVersion string
 }
 
-func BuildTemplateQueryInput(temuCtx *temucontext.TemuTaskContext) TemplateQueryInput {
+func buildTemplateQueryInput(temuCtx *temucontext.TemuTaskContext) TemplateQueryInput {
 	input := TemplateQueryInput{}
 	if temuCtx.TemuProduct == nil {
 		return input

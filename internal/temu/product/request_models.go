@@ -14,7 +14,7 @@ type ProductRequestInput struct {
 	ProductID string
 }
 
-func BuildProductRequestInput(temuCtx *temucontext.TemuTaskContext) (*ProductRequestInput, error) {
+func buildProductRequestInput(temuCtx *temucontext.TemuTaskContext) (*ProductRequestInput, error) {
 	if temuCtx == nil {
 		return nil, fmt.Errorf("temu context is nil")
 	}

@@ -6,7 +6,6 @@ import (
 
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
-	"task-processor/internal/temu/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -33,8 +32,8 @@ func NewPropertyMappingOrchestrator(logger *logrus.Entry) *PropertyMappingOrches
 // ProcessProperties 处理属性（主入口方法）
 func (o *PropertyMappingOrchestrator) ProcessProperties(temuCtx *temucontext.TemuTaskContext, ext *models.ExtensionInfo) error {
 	// 获取模板信息
-	templateInfo, exists := template.GetTemplateInfoFromContext(temuCtx)
-	if !exists {
+	templateInfo := temuCtx.TemplateInfo
+	if templateInfo == nil {
 		o.logger.Warn("未找到模板信息，跳过属性处理")
 		return nil
 	}

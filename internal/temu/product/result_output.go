@@ -20,21 +20,21 @@ type SubmitProductOutput struct {
 	SavedToDraft bool
 }
 
-func ApplyCommitDetailOutput(temuCtx *temucontext.TemuTaskContext, output *CommitDetailOutput) {
+func applyCommitDetailOutput(temuCtx *temucontext.TemuTaskContext, output *CommitDetailOutput) {
 	if temuCtx == nil || output == nil {
 		return
 	}
 	temuCtx.CommitDetail = output.Response
 }
 
-func ApplySaveProductOutput(temuCtx *temucontext.TemuTaskContext, output *SaveProductOutput) {
+func applySaveProductOutput(temuCtx *temucontext.TemuTaskContext, output *SaveProductOutput) {
 	if temuCtx == nil || output == nil {
 		return
 	}
 	temuCtx.SaveResult = output.Response
 }
 
-func ApplySubmitProductOutput(temuCtx *temucontext.TemuTaskContext, output *SubmitProductOutput) {
+func applySubmitProductOutput(temuCtx *temucontext.TemuTaskContext, output *SubmitProductOutput) {
 	if temuCtx == nil || output == nil {
 		return
 	}

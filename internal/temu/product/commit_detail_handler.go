@@ -151,7 +151,7 @@ func (h *CommitDetailHandler) queryCommitDetail(temuCtx *temucontext.TemuTaskCon
 
 		h.logger.Info("提交详情数据已存储到上下文")
 	}
-	ApplyCommitDetailOutput(temuCtx, output)
+	applyCommitDetailOutput(temuCtx, output)
 
 	h.logger.Info("提交详情查询成功")
 	return nil

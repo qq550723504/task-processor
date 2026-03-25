@@ -70,7 +70,7 @@ func (h *ProductSaveHandler) Handle(ctx pipeline.TaskContext) error {
 // saveProduct 保存产品到草稿箱
 func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始保存产品到TEMU草稿箱")
-	input, err := BuildProductRequestInput(temuCtx)
+	input, err := buildProductRequestInput(temuCtx)
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func (h *ProductSaveHandler) saveProduct(temuCtx *temucontext.TemuTaskContext) e
 		h.logger.Info("产品保存成功，但未返回详细结果")
 	}
 
-	ApplySaveProductOutput(temuCtx, output)
+	applySaveProductOutput(temuCtx, output)
 
 	return nil
 }

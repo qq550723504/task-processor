@@ -14,13 +14,9 @@ import (
 	"task-processor/internal/temu/handlerbase"
 	"task-processor/internal/temu/property"
 	"task-processor/internal/temu/rules"
-	"task-processor/internal/temu/template"
 
 	"github.com/sirupsen/logrus"
 )
-
-// 辅助函数别名
-var GetTemplateInfoFromContext = template.GetTemplateInfoFromContext
 
 // =============================================================================
 // 核心构建器
@@ -346,7 +342,7 @@ func (b *SpuBuilder) buildGoodsSpecProperties(temuCtx *temucontext.TemuTaskConte
 					}
 
 					// 从模板信息中获取TemplateModuleID和TemplatePid
-					if templateInfo, exists := GetTemplateInfoFromContext(temuCtx); exists {
+					if templateInfo := temuCtx.TemplateInfo; templateInfo != nil {
 						for _, templateSpec := range templateInfo.GoodsSpecProperties {
 							if templateSpec.ParentSpecID == spec.ParentSpecID {
 								templateModuleID = templateSpec.TemplateModuleID
@@ -409,7 +405,7 @@ func (b *SpuBuilder) buildTemplateSpecMap(temuCtx *temucontext.TemuTaskContext) 
 	templateSpecMap := make(map[string]map[string]int)
 
 	// 尝试从上下文获取模板信息
-	if templateInfo, exists := template.GetTemplateInfoFromContext(temuCtx); exists {
+	if templateInfo := temuCtx.TemplateInfo; templateInfo != nil {
 		for _, specProp := range templateInfo.GoodsSpecProperties {
 			if specProp.ParentSpecID != "" && len(specProp.Values) > 0 {
 				if templateSpecMap[specProp.ParentSpecID] == nil {

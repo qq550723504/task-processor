@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/logger"
-	temutemplate "task-processor/internal/temu/api/template"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -32,7 +31,7 @@ func (h *TemplateQueryHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) 
 		return nil
 	}
 
-	input := BuildTemplateQueryInput(temuCtx)
+	input := buildTemplateQueryInput(temuCtx)
 	output, err := h.queryTemplate(temuCtx, input)
 	if err != nil {
 		h.logger.WithError(err).Error("template query failed")
@@ -72,12 +71,4 @@ func (h *TemplateQueryHandler) queryTemplate(temuCtx *temucontext.TemuTaskContex
 	}).Info("template query succeeded")
 
 	return output, nil
-}
-
-func GetTemplateInfoFromContext(temuCtx *temucontext.TemuTaskContext) (*temutemplate.TemplateInfo, bool) {
-	return temuCtx.TemplateInfo, temuCtx.TemplateInfo != nil
-}
-
-func GetUserInputParentSpecListFromContext(temuCtx *temucontext.TemuTaskContext) ([]temutemplate.UserInputParentSpec, bool) {
-	return temuCtx.UserInputParentSpecList, len(temuCtx.UserInputParentSpecList) > 0
 }

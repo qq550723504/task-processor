@@ -3,7 +3,6 @@ package product
 import (
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
-	"task-processor/internal/temu/template"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,7 +26,8 @@ func (f *ProductSubmitFixer) AutoFixSpecConfiguration(temuCtx *temucontext.TemuT
 	temuProduct := temuCtx.TemuProduct
 
 	// 获取模板信息用于验证
-	templateInfo, hasTemplate := template.GetTemplateInfoFromContext(temuCtx)
+	templateInfo := temuCtx.TemplateInfo
+	hasTemplate := templateInfo != nil
 
 	// 首先修复现有规格的缺失字段
 	for i := range temuProduct.GoodsExtensionInfo.GoodsProperty.GoodsSpecProperties {

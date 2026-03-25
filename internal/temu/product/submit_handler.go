@@ -111,7 +111,7 @@ func (h *ProductSubmitHandler) Handle(ctx pipeline.TaskContext) error {
 // submitProduct 提交产品
 func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContext) error {
 	h.logger.Info("开始提交产品到TEMU")
-	input, err := BuildProductRequestInput(temuCtx)
+	input, err := buildProductRequestInput(temuCtx)
 	if err != nil {
 		return err
 	}
@@ -213,14 +213,14 @@ func (h *ProductSubmitHandler) submitProduct(temuCtx *temucontext.TemuTaskContex
 		}
 		h.logger.Info("产品已保存到草稿箱，任务标记为已完成")
 		// 保存到草稿箱成功，标记为特殊的成功状态，避免重复处理
-		ApplySubmitProductOutput(temuCtx, &SubmitProductOutput{
+		applySubmitProductOutput(temuCtx, &SubmitProductOutput{
 			Response:     response,
 			SavedToDraft: true,
 		})
 		return nil // 返回nil表示处理成功，不再重试
 	}
 
-	ApplySubmitProductOutput(temuCtx, &SubmitProductOutput{
+	applySubmitProductOutput(temuCtx, &SubmitProductOutput{
 		Response: response,
 	})
 
