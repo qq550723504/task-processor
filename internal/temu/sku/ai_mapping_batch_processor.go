@@ -20,7 +20,7 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 		return nil, err
 	}
 
-	totalBatches := (len(input.Variants) + input.BatchSize - 1) / input.BatchSize
+	totalBatches := input.TotalBatches()
 	vp.logger.Infof(
 		"start generating AI SKU mapping in batches: variants=%d, batch_size=%d, batches=%d",
 		len(input.Variants), input.BatchSize, totalBatches,
@@ -30,13 +30,10 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 	var selectedSpecDimensions []string
 
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
-		start := batchIndex * input.BatchSize
-		end := start + input.BatchSize
-		if end > len(input.Variants) {
-			end = len(input.Variants)
+		batchVariants, start, end, ok := input.BatchVariants(batchIndex)
+		if !ok {
+			return nil, fmt.Errorf("invalid ai batch index: %d", batchIndex)
 		}
-
-		batchVariants := input.Variants[start:end]
 		vp.logger.Infof(
 			"processing AI mapping batch %d/%d: variants[%d-%d]",
 			batchIndex+1, totalBatches, start, end-1,
