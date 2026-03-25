@@ -25,6 +25,11 @@ type SharedResources struct {
 	AmazonCrawler    *amazon.AmazonProcessor
 }
 
+type managementRuntime struct {
+	authClient       *auth.ClientCredentialsAuthClient
+	managementClient *management.ClientManager
+}
+
 // InitializePrompts centralizes prompt registry initialization.
 func InitializePrompts(ctx context.Context, cfg *config.Config, logger *logrus.Logger) error {
 	if cfg == nil {
@@ -49,10 +54,25 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	tenantID := cfg.Management.TenantID
-	if tenantID == "" {
-		tenantID = "1"
+	runtime, err := buildManagementRuntime(cfg, logger)
+	if err != nil {
+		return nil, err
 	}
+
+	resources := &SharedResources{
+		AuthClient:       runtime.authClient,
+		ManagementClient: runtime.managementClient,
+	}
+
+	if options.NeedAmazonCrawler {
+		resources.AmazonCrawler = buildAmazonCrawler(cfg, logger)
+	}
+
+	return resources, nil
+}
+
+func buildManagementRuntime(cfg *config.Config, logger *logrus.Logger) (*managementRuntime, error) {
+	tenantID := resolveTenantID(cfg)
 
 	authClient := auth.NewClientCredentialsAuthClient(
 		cfg.Management.BaseURL,
@@ -72,14 +92,21 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 	managementClient.SetUserToken(accessToken, tenantID)
 	managementClient.SetDataFreshnessDays(cfg.Amazon.DataFreshnessDays)
 
-	resources := &SharedResources{
-		AuthClient:       authClient,
-		ManagementClient: managementClient,
+	return &managementRuntime{
+		authClient:       authClient,
+		managementClient: managementClient,
+	}, nil
+}
+
+func buildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) *amazon.AmazonProcessor {
+	return amazon.CreateProcessor(cfg, logger)
+}
+
+func resolveTenantID(cfg *config.Config) string {
+	tenantID := cfg.Management.TenantID
+	if tenantID == "" {
+		return "1"
 	}
 
-	if options.NeedAmazonCrawler {
-		resources.AmazonCrawler = amazon.CreateProcessor(cfg, logger)
-	}
-
-	return resources, nil
+	return tenantID
 }
