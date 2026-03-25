@@ -1,4 +1,3 @@
-// Package bootstrap 提供组件适配器实现
 package bootstrap
 
 import (
@@ -17,81 +16,94 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// registerComponents 注册所有组件到生命周期管理器
 func registerComponents(
 	lm lifecycle.LifecycleManager,
 	svc *appServices,
 	logger *logrus.Logger,
 	appVersion string,
 ) error {
-	// 更新服务（无依赖，优先级最高）
-	if err := lm.Register(&updaterComponent{
-		BaseComponent: lifecycle.NewBaseComponent("updater", nil, 10),
-		logger:        logger,
-		cfg:           svc.cfg,
-		appVersion:    appVersion,
-	}); err != nil {
+	deps, err := registerCoreComponents(lm, svc, logger, appVersion)
+	if err != nil {
 		return err
+	}
+
+	if err := registerTaskFetcherComponent(lm, svc, logger, deps); err != nil {
+		return err
+	}
+
+	return registerSchedulerComponent(lm, svc, logger, deps)
+}
+
+func registerCoreComponents(
+	lm lifecycle.LifecycleManager,
+	svc *appServices,
+	logger *logrus.Logger,
+	appVersion string,
+) ([]string, error) {
+	if err := lm.Register(newUpdaterComponent(logger, svc.cfg, appVersion)); err != nil {
+		return nil, err
 	}
 
 	deps := []string{"updater"}
 
-	// TEMU 处理器
 	if svc.cfg.Platforms.Temu.Enabled {
 		temuProc, err := buildTemuProcessor(svc, logger)
 		if err != nil {
-			return fmt.Errorf("构建TEMU处理器失败: %w", err)
+			return nil, fmt.Errorf("build TEMU processor: %w", err)
 		}
 		svc.temuProcessor = temuProc
-		if err := lm.Register(&temuComponent{
-			BaseComponent: lifecycle.NewBaseComponent("temu-processor", []string{"updater"}, 20),
-			processor:     temuProc,
-			logger:        logger,
-		}); err != nil {
-			return err
+		if err := lm.Register(newTemuComponent(temuProc, logger)); err != nil {
+			return nil, err
 		}
 		deps = append(deps, "temu-processor")
 	}
 
-	// SHEIN 处理器
 	if svc.cfg.Platforms.Shein.Enabled {
 		sheinProc, err := buildSheinProcessor(svc, logger)
 		if err != nil {
-			return fmt.Errorf("构建SHEIN处理器失败: %w", err)
+			return nil, fmt.Errorf("build SHEIN processor: %w", err)
 		}
 		svc.sheinProcessor = sheinProc
-		if err := lm.Register(&sheinComponent{
-			BaseComponent: lifecycle.NewBaseComponent("shein-processor", []string{"updater"}, 20),
-			processor:     sheinProc,
-			logger:        logger,
-		}); err != nil {
-			return err
+		if err := lm.Register(newSheinComponent(sheinProc, logger)); err != nil {
+			return nil, err
 		}
 		deps = append(deps, "shein-processor")
 	}
 
-	// 任务获取器（依赖处理器）
-	if svc.cfg.Platforms.Temu.Enabled || svc.cfg.Platforms.Shein.Enabled {
-		if err := lm.Register(&taskFetcherComponent{
-			BaseComponent:    lifecycle.NewBaseComponent("task-fetcher", deps, 25),
-			processorService: svc.processorService,
-			authClient:       svc.authClient,
-			cfg:              svc.cfg,
-			logger:           logger,
-		}); err != nil {
-			return err
-		}
-	}
-
-	// 调度服务
-	return lm.Register(&schedulerComponent{
-		BaseComponent:    lifecycle.NewBaseComponent("scheduler", deps, 30),
-		schedulerService: svc.schedulerService,
-		logger:           logger,
-	})
+	return deps, nil
 }
 
-// updaterComponent 更新服务组件
+func registerTaskFetcherComponent(
+	lm lifecycle.LifecycleManager,
+	svc *appServices,
+	logger *logrus.Logger,
+	deps []string,
+) error {
+	if !svc.cfg.Platforms.Temu.Enabled && !svc.cfg.Platforms.Shein.Enabled {
+		return nil
+	}
+
+	return lm.Register(newTaskFetcherComponent(svc.processorService, svc.authClient, svc.cfg, logger, deps))
+}
+
+func registerSchedulerComponent(
+	lm lifecycle.LifecycleManager,
+	svc *appServices,
+	logger *logrus.Logger,
+	deps []string,
+) error {
+	return lm.Register(newSchedulerComponent(svc.schedulerService, logger, deps))
+}
+
+func newUpdaterComponent(logger *logrus.Logger, cfg *config.Config, appVersion string) *updaterComponent {
+	return &updaterComponent{
+		BaseComponent: lifecycle.NewBaseComponent("updater", nil, 10),
+		logger:        logger,
+		cfg:           cfg,
+		appVersion:    appVersion,
+	}
+}
+
 type updaterComponent struct {
 	*lifecycle.BaseComponent
 	logger     *logrus.Logger
@@ -110,7 +122,7 @@ func (u *updaterComponent) Start(_ context.Context) error {
 			interval = 5 * time.Minute
 		}
 		go updater.NewUpdater(u.appVersion, updateURL, interval, u.cfg.Updater.InsecureSkipVerify).Start()
-		u.logger.Infof("自动更新器已启动 (版本: %s, 间隔: %v)", u.appVersion, interval)
+		u.logger.Infof("updater started: version=%s interval=%v", u.appVersion, interval)
 	}
 	u.SetRunning(true)
 	return nil
@@ -121,7 +133,14 @@ func (u *updaterComponent) Stop(_ context.Context) error {
 	return nil
 }
 
-// temuComponent TEMU 处理器组件
+func newTemuComponent(processor *temu.TemuProcessor, logger *logrus.Logger) *temuComponent {
+	return &temuComponent{
+		BaseComponent: lifecycle.NewBaseComponent("temu-processor", []string{"updater"}, 20),
+		processor:     processor,
+		logger:        logger,
+	}
+}
+
 type temuComponent struct {
 	*lifecycle.BaseComponent
 	processor *temu.TemuProcessor
@@ -130,7 +149,7 @@ type temuComponent struct {
 
 func (t *temuComponent) Start(ctx context.Context) error {
 	if err := t.processor.Start(ctx); err != nil {
-		return fmt.Errorf("启动TEMU处理器失败: %w", err)
+		return fmt.Errorf("start TEMU processor: %w", err)
 	}
 	t.SetRunning(true)
 	return nil
@@ -142,7 +161,14 @@ func (t *temuComponent) Stop(ctx context.Context) error {
 	return nil
 }
 
-// sheinComponent SHEIN 处理器组件
+func newSheinComponent(processor *pipeline.SheinProcessor, logger *logrus.Logger) *sheinComponent {
+	return &sheinComponent{
+		BaseComponent: lifecycle.NewBaseComponent("shein-processor", []string{"updater"}, 20),
+		processor:     processor,
+		logger:        logger,
+	}
+}
+
 type sheinComponent struct {
 	*lifecycle.BaseComponent
 	processor *pipeline.SheinProcessor
@@ -151,7 +177,7 @@ type sheinComponent struct {
 
 func (s *sheinComponent) Start(ctx context.Context) error {
 	if err := s.processor.Start(ctx); err != nil {
-		return fmt.Errorf("启动SHEIN处理器失败: %w", err)
+		return fmt.Errorf("start SHEIN processor: %w", err)
 	}
 	s.SetRunning(true)
 	return nil
@@ -163,7 +189,16 @@ func (s *sheinComponent) Stop(ctx context.Context) error {
 	return nil
 }
 
-// taskFetcherComponent 任务获取器组件
+func newTaskFetcherComponent(processorService runner.ProcessorService, authClient *auth.ClientCredentialsAuthClient, cfg *config.Config, logger *logrus.Logger, deps []string) *taskFetcherComponent {
+	return &taskFetcherComponent{
+		BaseComponent:    lifecycle.NewBaseComponent("task-fetcher", deps, 25),
+		processorService: processorService,
+		authClient:       authClient,
+		cfg:              cfg,
+		logger:           logger,
+	}
+}
+
 type taskFetcherComponent struct {
 	*lifecycle.BaseComponent
 	processorService runner.ProcessorService
@@ -174,7 +209,7 @@ type taskFetcherComponent struct {
 
 func (t *taskFetcherComponent) Start(ctx context.Context) error {
 	if err := t.processorService.StartProcessors(ctx, t.cfg, t.authClient); err != nil {
-		return fmt.Errorf("启动任务获取器失败: %w", err)
+		return fmt.Errorf("start task fetcher: %w", err)
 	}
 	t.SetRunning(true)
 	return nil
@@ -182,13 +217,20 @@ func (t *taskFetcherComponent) Start(ctx context.Context) error {
 
 func (t *taskFetcherComponent) Stop(_ context.Context) error {
 	if err := t.processorService.StopProcessors(); err != nil {
-		t.logger.Errorf("停止任务获取器失败: %v", err)
+		t.logger.Errorf("stop task fetcher: %v", err)
 	}
 	t.SetRunning(false)
 	return nil
 }
 
-// schedulerComponent 调度服务组件
+func newSchedulerComponent(schedulerService runner.SchedulerService, logger *logrus.Logger, deps []string) *schedulerComponent {
+	return &schedulerComponent{
+		BaseComponent:    lifecycle.NewBaseComponent("scheduler", deps, 30),
+		schedulerService: schedulerService,
+		logger:           logger,
+	}
+}
+
 type schedulerComponent struct {
 	*lifecycle.BaseComponent
 	schedulerService runner.SchedulerService
@@ -197,7 +239,7 @@ type schedulerComponent struct {
 
 func (s *schedulerComponent) Start(ctx context.Context) error {
 	if err := s.schedulerService.Start(ctx); err != nil {
-		return fmt.Errorf("启动调度服务失败: %w", err)
+		return fmt.Errorf("start scheduler service: %w", err)
 	}
 	s.SetRunning(true)
 	return nil
@@ -205,7 +247,7 @@ func (s *schedulerComponent) Start(ctx context.Context) error {
 
 func (s *schedulerComponent) Stop(ctx context.Context) error {
 	if err := s.schedulerService.Stop(ctx); err != nil {
-		s.logger.Errorf("停止调度服务失败: %v", err)
+		s.logger.Errorf("stop scheduler service: %v", err)
 	}
 	s.SetRunning(false)
 	return nil
