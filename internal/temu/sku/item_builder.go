@@ -24,6 +24,12 @@ type SkuItemBuilder struct {
 	specHandler    *SkuSpecHandler
 }
 
+type skuPackagingInfo struct {
+	multiplePackage        models.MultiplePackage
+	originNetContentNumber string
+	netContentUnitCode     int
+}
+
 // NewSkuItemBuilder 创建新的SKU项目构建器
 func NewSkuItemBuilder(logger *logrus.Entry, priceHandler *product.PriceHandler, imageProcessor *image.ImageProcessor) *SkuItemBuilder {
 	return &SkuItemBuilder{
@@ -86,8 +92,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 	}
 
 	weight, length, width, height := ib.buildProductExpressInfo(input.Variant, input.AISKU)
-	multiplePackage := ib.buildMultiplePackage(input.AISKU)
-	originNetContentNumber, netContentUnitCode := ib.extractNetContentInfo(input.Variant, input.AISKU)
+	packagingInfo := ib.buildSkuPackagingInfo(input.Variant, input.AISKU)
 	dimensionGallery, carouselGallery := ib.buildSkuGalleries(temuCtx, input.Variant)
 
 	marketPrice := finalSalePrice * 2
@@ -106,9 +111,9 @@ func (ib *SkuItemBuilder) buildSkuFromVariantWithAITemu(temuCtx *temucontext.Tem
 		},
 		SupplierPriceStr:       fmt.Sprintf("%.2f", basePrice),
 		OutSkuSN:               outSkuSN,
-		MultiplePackage:        multiplePackage,
-		OriginNetContentNumber: originNetContentNumber,
-		NetContentUnitCode:     netContentUnitCode,
+		MultiplePackage:        packagingInfo.multiplePackage,
+		OriginNetContentNumber: packagingInfo.originNetContentNumber,
+		NetContentUnitCode:     packagingInfo.netContentUnitCode,
 		MaxRetailPriceStr:      fmt.Sprintf("%.2f", float64(maxRetailPrice)/100),
 		SupplierPrice:          finalSalePrice,
 		MarketPrice:            marketPrice,
@@ -156,6 +161,15 @@ func (ib *SkuItemBuilder) limitSkuGalleries(dimensionGallery []models.ImageInfo,
 	return dimensionGallery, carouselGallery
 }
 
+func (ib *SkuItemBuilder) buildSkuPackagingInfo(variant *model.Product, aiSku temucontext.AIGeneratedSku) skuPackagingInfo {
+	originNetContentNumber, netContentUnitCode := ib.extractNetContentInfo(variant, aiSku)
+	return skuPackagingInfo{
+		multiplePackage:        ib.buildMultiplePackage(aiSku),
+		originNetContentNumber: originNetContentNumber,
+		netContentUnitCode:     netContentUnitCode,
+	}
+}
+
 // buildSkuFromVariantBasic 基本SKU构建（不依赖上下文）
 func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku temucontext.AIGeneratedSku) models.Sku {
 	asin := variant.Asin
@@ -167,8 +181,7 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 
 	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
 	weight, length, width, height := ib.buildProductExpressInfo(variant, aiSku)
-	multiplePackage := ib.buildMultiplePackage(aiSku)
-	originNetContentNumber, netContentUnitCode := ib.extractNetContentInfo(variant, aiSku)
+	packagingInfo := ib.buildSkuPackagingInfo(variant, aiSku)
 
 	marketPrice := int(finalSalePrice * 2)
 	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
@@ -187,9 +200,9 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 		},
 		SupplierPriceStr:       fmt.Sprintf("%.2f", basePrice),
 		OutSkuSN:               outSkuSN,
-		MultiplePackage:        multiplePackage,
-		OriginNetContentNumber: originNetContentNumber,
-		NetContentUnitCode:     netContentUnitCode,
+		MultiplePackage:        packagingInfo.multiplePackage,
+		OriginNetContentNumber: packagingInfo.originNetContentNumber,
+		NetContentUnitCode:     packagingInfo.netContentUnitCode,
 		MaxRetailPriceStr:      fmt.Sprintf("%.2f", basePrice),
 		SupplierPrice:          int(finalSalePrice),
 		MarketPrice:            marketPrice,
