@@ -40,6 +40,39 @@ type AISkuMappingResponse struct {
 	SkuList []AIGeneratedSku `json:"sku_list"`
 }
 
+func (r *AISkuMappingResponse) SkuCount() int {
+	if r == nil {
+		return 0
+	}
+	return len(r.SkuList)
+}
+
+func (r *AISkuMappingResponse) FirstSKU() (*AIGeneratedSku, bool) {
+	if r == nil || len(r.SkuList) == 0 {
+		return nil, false
+	}
+	return &r.SkuList[0], true
+}
+
+func (r *AISkuMappingResponse) FirstSpecDimensions() []string {
+	firstSKU, ok := r.FirstSKU()
+	if !ok {
+		return []string{}
+	}
+
+	specDimensions := make(map[string]bool)
+	ordered := make([]string, 0, len(firstSKU.Spec))
+	for _, specInfo := range firstSKU.Spec {
+		if specDimensions[specInfo.ParentSpecID] {
+			continue
+		}
+		specDimensions[specInfo.ParentSpecID] = true
+		ordered = append(ordered, specInfo.ParentSpecID)
+	}
+
+	return ordered
+}
+
 // AIGeneratedSku AI生成的SKU结构
 type AIGeneratedSku struct {
 	UniqueID           string            `json:"unique_id"`

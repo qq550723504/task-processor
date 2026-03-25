@@ -45,21 +45,17 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 			return nil, fmt.Errorf("AI mapping batch %d failed: %w", batchIndex+1, err)
 		}
 
-		if batchIndex == 0 && len(batchResponse.SkuList) > 0 {
-			specDimensions := make(map[string]bool)
-			for _, specInfo := range batchResponse.SkuList[0].Spec {
-				specDimensions[specInfo.ParentSpecID] = true
+		if batchIndex == 0 {
+			selectedSpecDimensions = batchResponse.FirstSpecDimensions()
+			if len(selectedSpecDimensions) > 0 {
+				vp.logger.Infof("selected spec dimensions from first batch: %v", selectedSpecDimensions)
 			}
-			for parentSpecID := range specDimensions {
-				selectedSpecDimensions = append(selectedSpecDimensions, parentSpecID)
-			}
-			vp.logger.Infof("selected spec dimensions from first batch: %v", selectedSpecDimensions)
 		}
 
 		allSkus = append(allSkus, batchResponse.SkuList...)
 		vp.logger.Infof(
 			"AI mapping batch %d/%d completed: generated_skus=%d",
-			batchIndex+1, totalBatches, len(batchResponse.SkuList),
+			batchIndex+1, totalBatches, batchResponse.SkuCount(),
 		)
 	}
 

@@ -175,12 +175,15 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 		}
 	}
 
-	if len(aiMapping.SkuList) == 0 {
+	if aiMapping.SkuCount() == 0 {
 		return models.Skc{}, fmt.Errorf("AI未生成任何SKU")
 	}
 
 	// 使用第一个AI生成的SKU
-	aiSku := aiMapping.SkuList[0]
+	aiSku, ok := aiMapping.FirstSKU()
+	if !ok {
+		return models.Skc{}, fmt.Errorf("AI?????????")
+	}
 
 	// 验证规格
 	if err := vp.specHandler.ValidateSpecs(convertSpecInfos(aiSku.Spec)); err != nil {
@@ -203,7 +206,7 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 	vp.logger.Info("✅ 成功解析所有临时规格ID")
 
 	// 使用AI生成的SKU构建完整的SKU
-	sku := vp.itemBuilder.buildSkuFromVariantWithAI(temuCtx, amazonProduct, aiSku)
+	sku := vp.itemBuilder.buildSkuFromVariantWithAI(temuCtx, amazonProduct, *aiSku)
 
 	return models.Skc{
 		SkuList: []models.Sku{sku},
