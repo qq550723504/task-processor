@@ -55,7 +55,7 @@ func (c *SKUCreator) CreateSKUWithRuntime(ctx *shein.TaskContext, runtime *Runti
 
 	currency := store.GetCurrencyByRegion(runtime.Region)
 	quantityInfo := c.utils.BuildQuantityInfo(params)
-	skuImageInfo := c.utils.BuildSKUImageInfoForMultiPiece(ctx, params)
+	skuImageInfo := c.utils.BuildSKUImageInfoForMultiPieceWithRuntime(runtime, params)
 
 	skuItem := &product.SKU{
 		SaleAttributeList: func() []product.SaleAttribute {

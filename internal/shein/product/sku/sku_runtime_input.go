@@ -6,6 +6,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	sheinattribute "task-processor/internal/shein/api/attribute"
+	sheinimage "task-processor/internal/shein/api/image"
 	productapi "task-processor/internal/shein/api/product"
 	sheinctx "task-processor/internal/shein/context"
 )
@@ -19,6 +20,7 @@ type RuntimeInput struct {
 	ProfitRule         *managementapi.ProfitRuleRespDTO
 	SiteList           []productapi.SiteInfo
 	Region             string
+	ImageAPI           sheinimage.ImageAPI
 }
 
 func newRuntimeInput(ctx *sheinctx.TaskContext) *RuntimeInput {
@@ -28,6 +30,7 @@ func newRuntimeInput(ctx *sheinctx.TaskContext) *RuntimeInput {
 		StoreInfo:          ctx.StoreInfo,
 		ProfitRule:         ctx.ProfitRule,
 		Region:             "",
+		ImageAPI:           ctx.ImageAPI,
 	}
 	if ctx.Variants != nil {
 		input.Variants = append([]model.Product(nil), (*ctx.Variants)...)
@@ -65,6 +68,9 @@ func (in *RuntimeInput) Validate() error {
 	}
 	if len(in.SiteList) == 0 || len(in.SiteList[0].SubSiteList) == 0 {
 		return fmt.Errorf("site list is not initialized")
+	}
+	if in.ImageAPI == nil {
+		return fmt.Errorf("image api is not initialized")
 	}
 	return nil
 }
