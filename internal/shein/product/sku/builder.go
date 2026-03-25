@@ -85,7 +85,7 @@ func (b *SKUBuilder) BuildSKUListForSingleVariantWithRuntime(ctx *shein.TaskCont
 		return nil, fmt.Errorf("product info not found for ASIN %s", variant.ASIN)
 	}
 
-	skuItem, err := b.creator.CreateSKU(ctx, shein.SKUCreationParams{
+	skuItem, err := b.creator.CreateSKUWithRuntime(ctx, runtime, shein.SKUCreationParams{
 		ASIN:              variant.ASIN,
 		ProductInfo:       productInfo,
 		WarehouseCode:     warehouseCode,

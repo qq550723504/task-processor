@@ -24,9 +24,17 @@ func NewSKUCreator() *SKUCreator {
 }
 
 func (c *SKUCreator) CreateSKU(ctx *shein.TaskContext, params shein.SKUCreationParams) (*product.SKU, error) {
-	salePriceMultiplier := ctx.ProfitRule.SalePriceMultiplier
-	discountPriceMultiplier := ctx.ProfitRule.DiscountPriceMultiplier
-	productPrice := validation.GetProductPrice(params.ProductInfo, ctx.StoreInfo.PriceType)
+	return c.CreateSKUWithRuntime(ctx, newRuntimeInput(ctx), params)
+}
+
+func (c *SKUCreator) CreateSKUWithRuntime(ctx *shein.TaskContext, runtime *RuntimeInput, params shein.SKUCreationParams) (*product.SKU, error) {
+	if err := runtime.Validate(); err != nil {
+		return nil, err
+	}
+
+	salePriceMultiplier := runtime.ProfitRule.SalePriceMultiplier
+	discountPriceMultiplier := runtime.ProfitRule.DiscountPriceMultiplier
+	productPrice := validation.GetProductPrice(params.ProductInfo, runtime.StoreInfo.PriceType)
 	originalPrice := math.Round(productPrice*100) / 100
 	salePrice := math.Round(originalPrice*salePriceMultiplier*100) / 100
 	var specialPrice float64
@@ -38,22 +46,14 @@ func (c *SKUCreator) CreateSKU(ctx *shein.TaskContext, params shein.SKUCreationP
 		return nil, nil
 	}
 
-	supplierSKU := ""
-	if ctx.AsinSkuMap != nil {
-		if sku, exists := ctx.AsinSkuMap[params.ASIN]; exists {
-			supplierSKU = sku
-		}
-	}
+	supplierSKU := runtime.SupplierSKUForASIN(params.ASIN)
 
-	stockCount := 0
-	if ctx.StoreInfo.FixedStockCount != nil {
-		stockCount = *ctx.StoreInfo.FixedStockCount
-	}
+	stockCount := runtime.FixedStockCount()
 	if stockCount == 0 {
 		stockCount = rand.Intn(1000) + 10
 	}
 
-	currency := store.GetCurrencyByRegion(ctx.Task.Region)
+	currency := store.GetCurrencyByRegion(runtime.Region)
 	quantityInfo := c.utils.BuildQuantityInfo(params)
 	skuImageInfo := c.utils.BuildSKUImageInfoForMultiPiece(ctx, params)
 
@@ -68,9 +68,9 @@ func (c *SKUCreator) CreateSKU(ctx *shein.TaskContext, params shein.SKUCreationP
 			CostPrice: fmt.Sprintf("%.2f", c.utils.FormatPriceByCurrency(salePrice, currency)),
 			Currency:  currency,
 		},
-		StockInfoList: c.utils.BuildStockInfoList(ctx, stockCount, params.WarehouseCode),
+		StockInfoList: c.utils.BuildStockInfoList(stockCount, params.WarehouseCode),
 		PriceInfoList: []product.PriceInfo{{
-			SubSite:   ctx.SiteList[0].SubSiteList[0],
+			SubSite:   runtime.DefaultSubSite(),
 			BasePrice: salePrice,
 			SpecialPrice: func() *float64 {
 				if specialPrice != 0 && specialPrice < salePrice {

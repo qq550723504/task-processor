@@ -2,14 +2,13 @@
 package sku
 
 import (
-	"task-processor/internal/core/logger"
 	"strconv"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/validation"
-
 )
 
 // SKUUtils SKU工具类
@@ -80,7 +79,7 @@ func (u *SKUUtils) FormatPriceByCurrency(price float64, currency string) float64
 }
 
 // BuildStockInfoList 构建库存信息列表
-func (u *SKUUtils) BuildStockInfoList(ctx *shein.TaskContext, stockCount int, warehouseCode string) []product.StockInfo {
+func (u *SKUUtils) BuildStockInfoList(stockCount int, warehouseCode string) []product.StockInfo {
 	return []product.StockInfo{
 		{
 			InventoryNum:          stockCount,

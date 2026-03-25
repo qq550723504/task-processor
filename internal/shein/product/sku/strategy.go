@@ -88,7 +88,7 @@ func (p *SKUStrategyProcessor) BuildSingleSKUWithRuntime(ctx *shein.TaskContext,
 	}
 
 	productInfo := runtime.FindProductInfoByASIN(matchedVariant.ASIN)
-	skuItem, err := p.creator.CreateSKU(ctx, shein.SKUCreationParams{
+	skuItem, err := p.creator.CreateSKUWithRuntime(ctx, runtime, shein.SKUCreationParams{
 		ASIN:              matchedVariant.ASIN,
 		ProductInfo:       productInfo,
 		WarehouseCode:     req.WarehouseCode,
@@ -178,7 +178,7 @@ func (p *SKUStrategyProcessor) buildSKUListForMultipleVariantsWithRuntime(ctx *s
 			}}
 		}
 
-		skuItem, err := p.creator.CreateSKU(ctx, shein.SKUCreationParams{
+		skuItem, err := p.creator.CreateSKUWithRuntime(ctx, runtime, shein.SKUCreationParams{
 			ASIN:              varInfo.Variant.ASIN,
 			ProductInfo:       productInfo,
 			WarehouseCode:     req.WarehouseCode,
