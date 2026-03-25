@@ -1,4 +1,3 @@
-// Package sku 提供TEMU平台的AI SKU映射批处理功能
 package sku
 
 import (
@@ -9,65 +8,77 @@ import (
 	"task-processor/internal/temu/spec"
 )
 
-// generateAISkuMappingInBatches 分批生成AI SKU映射
-func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, batchSize int) (*temucontext.AISkuMappingResponse, error) {
+// generateAISkuMappingInBatches splits large variant sets into smaller AI requests
+// and merges the generated SKU mappings back into one response.
+func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
+	temuCtx *temucontext.TemuTaskContext,
+	variants []*model.Product,
+	batchSize int,
+) (*temucontext.AISkuMappingResponse, error) {
+	input, err := buildAIBatchInput(variants, batchSize)
+	if err != nil {
+		return nil, err
+	}
 
-	totalBatches := (len(variants) + batchSize - 1) / batchSize
-	vp.logger.Infof("🔨 开始分批处理: 总变体数=%d, 批次大小=%d, 总批次=%d", len(variants), batchSize, totalBatches)
+	totalBatches := (len(input.Variants) + input.BatchSize - 1) / input.BatchSize
+	vp.logger.Infof(
+		"start generating AI SKU mapping in batches: variants=%d, batch_size=%d, batches=%d",
+		len(input.Variants), input.BatchSize, totalBatches,
+	)
 
 	var allSkus []temucontext.AIGeneratedSku
-	var selectedSpecDimensions []string // 记录第一批选择的规格维度
+	var selectedSpecDimensions []string
 
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
-		start := batchIndex * batchSize
-		end := start + batchSize
-		if end > len(variants) {
-			end = len(variants)
+		start := batchIndex * input.BatchSize
+		end := start + input.BatchSize
+		if end > len(input.Variants) {
+			end = len(input.Variants)
 		}
 
-		batchVariants := variants[start:end]
-		vp.logger.Infof("🔨 处理批次 %d/%d: 变体[%d-%d]", batchIndex+1, totalBatches, start, end-1)
+		batchVariants := input.Variants[start:end]
+		vp.logger.Infof(
+			"processing AI mapping batch %d/%d: variants[%d-%d]",
+			batchIndex+1, totalBatches, start, end-1,
+		)
 
-		// 处理当前批次 - 使用强类型上下文
 		batchResponse, err := vp.GenerateAISkuMappingSingleBatch(temuCtx, batchVariants)
 		if err != nil {
-			vp.logger.Errorf("❌ 批次 %d/%d 处理失败: %v", batchIndex+1, totalBatches, err)
-			return nil, fmt.Errorf("批次 %d 处理失败: %w", batchIndex+1, err)
+			vp.logger.Errorf("AI mapping batch %d/%d failed: %v", batchIndex+1, totalBatches, err)
+			return nil, fmt.Errorf("AI mapping batch %d failed: %w", batchIndex+1, err)
 		}
 
-		// 第一批：记录选择的规格维度
 		if batchIndex == 0 && len(batchResponse.SkuList) > 0 {
 			specDimensions := make(map[string]bool)
-			for _, spec := range batchResponse.SkuList[0].Spec {
-				specDimensions[spec.ParentSpecID] = true
+			for _, specInfo := range batchResponse.SkuList[0].Spec {
+				specDimensions[specInfo.ParentSpecID] = true
 			}
 			for parentSpecID := range specDimensions {
 				selectedSpecDimensions = append(selectedSpecDimensions, parentSpecID)
 			}
-			vp.logger.Infof("📋 第一批选择的规格维度: %v", selectedSpecDimensions)
+			vp.logger.Infof("selected spec dimensions from first batch: %v", selectedSpecDimensions)
 		}
 
 		allSkus = append(allSkus, batchResponse.SkuList...)
-		vp.logger.Infof("✅ 批次 %d/%d 完成，生成%d个SKU", batchIndex+1, totalBatches, len(batchResponse.SkuList))
+		vp.logger.Infof(
+			"AI mapping batch %d/%d completed: generated_skus=%d",
+			batchIndex+1, totalBatches, len(batchResponse.SkuList),
+		)
 	}
 
-	vp.logger.Infof("✅ 所有批次处理完成，共生成%d个SKU", len(allSkus))
+	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", len(allSkus))
 
-	// 合并后的结果需要再次统一规格维度
 	mergedResponse := &temucontext.AISkuMappingResponse{
 		SkuList: allSkus,
 	}
 
-	// 重新启用规格维度统一器，处理混合属性和批次间的不一致问题
-	// 1. 统一规格维度（解决不同批次选择不同维度的问题）
 	unifier := spec.NewSpecDimensionUnifier()
 	if err := unifier.UnifySpecDimensions(mergedResponse); err != nil {
-		vp.logger.Errorf("❌ 规格维度统一失败: %v", err)
-		return nil, fmt.Errorf("规格维度统一失败: %w", err)
+		vp.logger.Errorf("failed to unify spec dimensions after batch merge: %v", err)
+		return nil, fmt.Errorf("unify spec dimensions after batch merge: %w", err)
 	}
 
-	// 2. 执行规格数量限制
-	vp.logger.Info("🔧 对合并结果执行规格数量限制...")
+	vp.logger.Info("enforcing spec count limit on merged AI mapping result")
 	vp.enforceSpecCountLimit(mergedResponse)
 
 	return mergedResponse, nil
