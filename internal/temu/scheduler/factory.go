@@ -20,6 +20,7 @@ type TaskBuilder func(ctx context.Context, config appscheduler.TaskConfig, facto
 type PricingServiceBuilder func(config appscheduler.TaskConfig, factory *TemuTaskFactory) (platformtask.AutoPricingService, error)
 type ProductSyncServiceBuilder func(config appscheduler.TaskConfig, factory *TemuTaskFactory) (platformtask.ProductSyncService, error)
 type InventoryServiceBuilder func(config appscheduler.TaskConfig, factory *TemuTaskFactory) (platformtask.InventorySyncService, error)
+type ActivityServiceBuilder func(config appscheduler.TaskConfig, factory *TemuTaskFactory) (ActivityService, error)
 
 type Dependencies struct {
 	ClientManager             *client.APIClientManager
@@ -27,6 +28,7 @@ type Dependencies struct {
 	PricingServiceBuilder     PricingServiceBuilder
 	ProductSyncServiceBuilder ProductSyncServiceBuilder
 	InventoryServiceBuilder   InventoryServiceBuilder
+	ActivityServiceBuilder    ActivityServiceBuilder
 	PricingTaskBuilder        TaskBuilder
 	ProductSyncTaskBuilder    TaskBuilder
 	InventoryTaskBuilder      TaskBuilder
@@ -41,6 +43,7 @@ type TemuTaskFactory struct {
 	pricingServiceBuilder     PricingServiceBuilder
 	productSyncServiceBuilder ProductSyncServiceBuilder
 	inventoryServiceBuilder   InventoryServiceBuilder
+	activityServiceBuilder    ActivityServiceBuilder
 	pricingTaskBuilder        TaskBuilder
 	productSyncTaskBuilder    TaskBuilder
 	inventoryTaskBuilder      TaskBuilder
@@ -107,6 +110,10 @@ func NewTemuTaskFactoryWithDependencies(
 	factory.inventoryServiceBuilder = deps.InventoryServiceBuilder
 	if factory.inventoryServiceBuilder == nil {
 		factory.inventoryServiceBuilder = defaultBuildTemuInventoryService
+	}
+	factory.activityServiceBuilder = deps.ActivityServiceBuilder
+	if factory.activityServiceBuilder == nil {
+		factory.activityServiceBuilder = defaultBuildTemuActivityService
 	}
 	factory.pricingTaskBuilder = deps.PricingTaskBuilder
 	if factory.pricingTaskBuilder == nil {
@@ -244,7 +251,17 @@ func defaultBuildTemuInventoryService(config appscheduler.TaskConfig, factory *T
 }
 
 func defaultBuildTemuActivityTask(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error) {
-	return NewActivityTask(ctx, config, factory.GetManagementClient()), nil
+	activityService, err := factory.activityServiceBuilder(config, factory)
+	if err != nil {
+		return nil, fmt.Errorf("build TEMU activity service: %w", err)
+	}
+	return NewActivityTask(ctx, config, activityService), nil
+}
+
+func defaultBuildTemuActivityService(config appscheduler.TaskConfig, factory *TemuTaskFactory) (ActivityService, error) {
+	_ = config
+	_ = factory
+	return newNoopActivityService(), nil
 }
 
 func (f *TemuTaskFactory) SupportedTaskTypes() []appscheduler.TaskType {
