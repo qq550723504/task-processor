@@ -38,7 +38,7 @@ func main() {
 	}
 
 	crawlerDeps := bootstrap.BuildCrawlerDependencies()
-	crawlerRegistry := consumer.NewCrawlerRegistryWithDependencies(appCfg, logger, serviceManager.GetClient(), crawlerDeps)
+	crawlerRegistry := consumer.NewCrawlerRegistry(appCfg, logger, serviceManager.GetClient(), crawlerDeps)
 	if err := crawlerRegistry.RegisterCrawlerProcessor(serviceManager, nil); err != nil {
 		logger.Fatalf("register crawler processor failed: %v", err)
 	}

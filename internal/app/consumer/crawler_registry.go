@@ -20,13 +20,7 @@ type CrawlerRegistry struct {
 	productFetcherProvider ProductFetcherProvider
 }
 
-func NewCrawlerRegistry(cfg *config.Config, logger *logrus.Logger, rabbitmqClient *rabbitmq.Client) *CrawlerRegistry {
-	return NewCrawlerRegistryWithDependencies(cfg, logger, rabbitmqClient, CrawlerRegistryDependencies{
-		AmazonCrawlerCreator: defaultAmazonCrawlerCreator,
-	})
-}
-
-func NewCrawlerRegistryWithDependencies(cfg *config.Config, logger *logrus.Logger, rabbitmqClient *rabbitmq.Client, deps CrawlerRegistryDependencies) *CrawlerRegistry {
+func NewCrawlerRegistry(cfg *config.Config, logger *logrus.Logger, rabbitmqClient *rabbitmq.Client, deps CrawlerRegistryDependencies) *CrawlerRegistry {
 	return &CrawlerRegistry{
 		config:                 cfg,
 		logger:                 logger,

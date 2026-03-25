@@ -44,7 +44,7 @@ func main() {
 	}
 
 	consumerDeps := bootstrap.BuildConsumerDependencies()
-	platformRegistry := consumer.NewPlatformRegistryWithDependencies(cfg, logger, "shein", consumerDeps)
+	platformRegistry := consumer.NewPlatformRegistry(cfg, logger, "shein", consumerDeps)
 	ctx := context.Background()
 
 	promptsDir := cfg.Prompts.Dir

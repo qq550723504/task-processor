@@ -68,13 +68,13 @@ func main() {
 
 	consumerDeps := bootstrap.BuildConsumerDependencies()
 	crawlerDeps := bootstrap.BuildCrawlerDependencies()
-	platformRegistry := consumer.NewPlatformRegistryWithDependencies(appCfg, logger, "", consumerDeps)
+	platformRegistry := consumer.NewPlatformRegistry(appCfg, logger, "", consumerDeps)
 	if err := platformRegistry.RegisterAllProcessors(ctx, serviceManager); err != nil {
 		logger.Fatalf("register platform processors failed: %v", err)
 	}
 
 	logger.Info("registering crawler processor")
-	crawlerRegistry := consumer.NewCrawlerRegistryWithDependencies(appCfg, logger, serviceManager.GetClient(), crawlerDeps)
+	crawlerRegistry := consumer.NewCrawlerRegistry(appCfg, logger, serviceManager.GetClient(), crawlerDeps)
 	if err := crawlerRegistry.RegisterCrawlerProcessor(serviceManager, platformRegistry.GetSharedAmazonProcessor()); err != nil {
 		logger.Fatalf("register crawler processor failed: %v", err)
 	}

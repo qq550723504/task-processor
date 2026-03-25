@@ -27,13 +27,7 @@ type PlatformRegistry struct {
 	sharedResourceProvider SharedResourceProvider
 }
 
-func NewPlatformRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string) *PlatformRegistry {
-	return NewPlatformRegistryWithDependencies(cfg, logger, platformsStr, PlatformRegistryDependencies{
-		ProcessorCreators: defaultProcessorCreators(),
-	})
-}
-
-func NewPlatformRegistryWithDependencies(cfg *config.Config, logger *logrus.Logger, platformsStr string, deps PlatformRegistryDependencies) *PlatformRegistry {
+func NewPlatformRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string, deps PlatformRegistryDependencies) *PlatformRegistry {
 	var enabledPlatforms []string
 	if platformsStr != "" {
 		enabledPlatforms = parsePlatformList(platformsStr)

@@ -40,7 +40,7 @@ func main() {
 	}
 
 	crawlerDeps := bootstrap.BuildCrawlerDependencies()
-	crawlerRegistry := consumer.NewCrawlerRegistryWithDependencies(cfg, logger, serviceManager.GetClient(), crawlerDeps)
+	crawlerRegistry := consumer.NewCrawlerRegistry(cfg, logger, serviceManager.GetClient(), crawlerDeps)
 	if err := crawlerRegistry.Register1688Crawler(serviceManager); err != nil {
 		logger.Fatalf("register 1688 crawler failed: %v", err)
 	}

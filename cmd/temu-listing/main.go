@@ -44,7 +44,7 @@ func main() {
 	}
 
 	consumerDeps := bootstrap.BuildConsumerDependencies()
-	platformRegistry := consumer.NewPlatformRegistryWithDependencies(cfg, logger, "temu", consumerDeps)
+	platformRegistry := consumer.NewPlatformRegistry(cfg, logger, "temu", consumerDeps)
 	ctx := context.Background()
 
 	promptsDir := cfg.Prompts.Dir
