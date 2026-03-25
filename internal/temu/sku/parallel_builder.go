@@ -77,13 +77,19 @@ func (spb *SkuParallelBuilder) buildSkuWithoutImages(
 	variant *model.Product,
 	aiSku temucontext.AIGeneratedSku,
 ) models.Sku {
-	pricingInfo := spb.itemBuilder.buildSkuPricingInfo(runtime, temuCtx, variant)
-	outSkuSN := spb.itemBuilder.generateSkuFromRuntime(runtime, variant.Asin)
-	temuCtx.SetAsinSkuMap(spb.itemBuilder.saveAsinSkuMappingWithRuntime(runtime, outSkuSN, variant.Asin))
+	input, err := buildSKUVariantBuildInputWithRuntime(runtime, variant, aiSku)
+	if err != nil {
+		spb.logger.Errorf("failed to build sku variant input: %v", err)
+		return models.Sku{}
+	}
 
-	specList := spb.itemBuilder.buildSkuSpecList(aiSku)
-	packagingInfo := spb.itemBuilder.buildSkuPackagingInfo(variant, aiSku)
-	expressInfo := spb.itemBuilder.buildSkuExpressInfo(variant, aiSku)
+	pricingInfo := spb.itemBuilder.buildSkuPricingInfo(input.Runtime, temuCtx, input.Variant)
+	outSkuSN := spb.itemBuilder.generateSkuFromRuntime(input.Runtime, input.Variant.Asin)
+	temuCtx.SetAsinSkuMap(spb.itemBuilder.saveAsinSkuMappingWithRuntime(input.Runtime, outSkuSN, input.Variant.Asin))
+
+	specList := spb.itemBuilder.buildSkuSpecList(input.AISKU)
+	packagingInfo := spb.itemBuilder.buildSkuPackagingInfo(input.Variant, input.AISKU)
+	expressInfo := spb.itemBuilder.buildSkuExpressInfo(input.Variant, input.AISKU)
 
 	return models.Sku{
 		Spec:                     specList,

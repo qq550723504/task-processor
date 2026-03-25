@@ -21,6 +21,22 @@ type SKUProcessInput struct {
 	SKUIndex int
 }
 
+func buildSKUVariantBuildInputWithRuntime(
+	runtime *temucontext.SKUBuildRuntime,
+	variant *model.Product,
+	aiSKU temucontext.AIGeneratedSku,
+) (*SKUVariantBuildInput, error) {
+	if variant == nil {
+		return nil, fmt.Errorf("variant is nil")
+	}
+
+	return &SKUVariantBuildInput{
+		Runtime: runtime,
+		Variant: variant,
+		AISKU:   aiSKU,
+	}, nil
+}
+
 func buildSKUVariantBuildInput(
 	temuCtx *temucontext.TemuTaskContext,
 	variant *model.Product,
@@ -38,11 +54,7 @@ func buildSKUVariantBuildInput(
 		runtime = nil
 	}
 
-	return &SKUVariantBuildInput{
-		Runtime: runtime,
-		Variant: variant,
-		AISKU:   aiSKU,
-	}, nil
+	return buildSKUVariantBuildInputWithRuntime(runtime, variant, aiSKU)
 }
 
 func buildSKUProcessInput(temuCtx *temucontext.TemuTaskContext, skcIndex, skuIndex int) (*SKUProcessInput, error) {
