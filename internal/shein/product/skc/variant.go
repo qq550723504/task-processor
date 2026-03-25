@@ -147,7 +147,7 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(input *SKCVariantBuildInp
 		}
 
 		translationHandler := NewSKCTranslationHandler(p.runtime, p.openaiClient)
-		skc := translationHandler.CreateSKC(ctx, shein.SKCCreationParams{
+		skc := translationHandler.CreateSKC(ctx.Context, shein.SKCCreationParams{
 			AttributeID:      strategy.PrimaryAttribute.AttrID,
 			AttributeValueID: attrValueID,
 			SKUS:             skuList,
@@ -199,7 +199,7 @@ func (p *SKCVariantProcessor) buildSingleVariantDirect(input *SKCVariantBuildInp
 	}
 
 	translationHandler := NewSKCTranslationHandler(p.runtime, p.openaiClient)
-	skc := translationHandler.CreateSKC(ctx, shein.SKCCreationParams{
+	skc := translationHandler.CreateSKC(ctx.Context, shein.SKCCreationParams{
 		AttributeID:      strategy.PrimaryAttribute.AttrID,
 		AttributeValueID: primaryAttrValue.ID.Int(),
 		SKUS:             skuList,

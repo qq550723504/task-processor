@@ -1,4 +1,3 @@
-// Package skc 提供SHEIN平台SKC翻译处理功能
 package skc
 
 import (
@@ -11,19 +10,17 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/prompt"
-	"task-processor/internal/shein"
+	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/translate"
 )
 
-// SKCTranslationHandler SKC翻译处理器
 type SKCTranslationHandler struct {
 	runtime      *SKCRuntimeInput
 	openaiClient openaiClient.ChatCompleter
 }
 
-// NewSKCTranslationHandler 创建新的SKC翻译处理器
 func NewSKCTranslationHandler(runtime *SKCRuntimeInput, openaiClient openaiClient.ChatCompleter) *SKCTranslationHandler {
 	return &SKCTranslationHandler{
 		runtime:      runtime,
@@ -31,15 +28,14 @@ func NewSKCTranslationHandler(runtime *SKCRuntimeInput, openaiClient openaiClien
 	}
 }
 
-// CreateSKC 创建SKC的工厂函数
-func (h *SKCTranslationHandler) CreateSKC(ctx *shein.TaskContext, params shein.SKCCreationParams) product.SKC {
+func (h *SKCTranslationHandler) CreateSKC(ctx context.Context, params shein.SKCCreationParams) product.SKC {
 	targetLanguages := translate.GetTargetLanguagesByRegion(h.runtime.Region)
 	sourceTitle := h.findBestSourceTitle(params)
 	sourceLang := h.detectTitleLanguage(sourceTitle)
 	multiLanguageNameList := h.initializeMultiLanguageContent(targetLanguages)
 
-	h.translateToAllLanguages(ctx.Context, sourceTitle, sourceLang, &multiLanguageNameList)
-	h.optimizeMultiLanguageContent(ctx.Context, &multiLanguageNameList, sourceTitle)
+	h.translateToAllLanguages(ctx, sourceTitle, sourceLang, &multiLanguageNameList)
+	h.optimizeMultiLanguageContent(ctx, &multiLanguageNameList, sourceTitle)
 
 	primaryLanguageContent := h.selectPrimaryDisplayLanguage(targetLanguages, multiLanguageNameList, sourceTitle)
 
@@ -62,7 +58,7 @@ func (h *SKCTranslationHandler) CreateSKC(ctx *shein.TaskContext, params shein.S
 }
 
 func (h *SKCTranslationHandler) findBestSourceTitle(params shein.SKCCreationParams) string {
-	logger.GetGlobalLogger("shein/product").Debugf("开始查找源标题")
+	logger.GetGlobalLogger("shein/product").Debug("start resolving SKC source title")
 
 	if len(h.runtime.Variants) > 0 && len(params.SKUS) > 0 {
 		if params.SKUS[0].SupplierSKU != "" {
@@ -140,7 +136,7 @@ func (h *SKCTranslationHandler) translateToAllLanguages(ctx context.Context, sou
 		}
 		translatedTitle, err := h.runtime.TranslateAPI.Translate(sourceTitle, sourceLang, langContent.Language)
 		if err != nil {
-			logger.GetGlobalLogger("shein/product").Warnf("翻译到语言 %s 失败: %v，使用源标题作为后备", langContent.Language, err)
+			logger.GetGlobalLogger("shein/product").Warnf("translate to %s failed: %v, use source title as fallback", langContent.Language, err)
 			langContent.Name = sourceTitle
 			continue
 		}
@@ -193,7 +189,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx context.Context
 
 	optimizedContents, err := h.batchOptimizeEnglishContent(aiCtx, englishContents, sourceTitle)
 	if err != nil {
-		logger.GetGlobalLogger("shein/product").Warnf("批量优化英文内容失败: %v，保持原内容", err)
+		logger.GetGlobalLogger("shein/product").Warnf("batch optimize english content failed: %v, keep original content", err)
 		return
 	}
 
@@ -218,29 +214,20 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx context.Context
 }
 
 func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context, contents []string, sourceTitle string) ([]string, error) {
-	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinTranslationBatchOptimizeSystem, `你是一个专业的电商产品内容优化专家。请批量优化产品标题，使其更适合SHEIN平台销售。
-
-要求：
-1. 所有标题必须是英文，长度在10-800个字符之间
-2. 突出产品主要特征和卖点
-3. 使用简洁、吸引人的描述
-4. 避免使用品牌名称和敏感词汇
-5. 符合英语语法规范
-6. 返回JSON格式：{"optimized_titles": ["优化后的标题1", "优化后的标题2", ...]}`)
+	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinTranslationBatchOptimizeSystem, `You are an e-commerce content optimization expert. Optimize product titles for SHEIN listings.
+Requirements:
+1. Output must be English and 10-800 characters long.
+2. Highlight major product features and selling points.
+3. Keep wording concise and attractive.
+4. Avoid brand names and sensitive words.
+5. Return JSON: {"optimized_titles": ["title1", "title2"]}`)
 
 	var contentList strings.Builder
 	for i, content := range contents {
 		contentList.WriteString(fmt.Sprintf("%d. %s\n", i+1, content))
 	}
 
-	userPrompt := fmt.Sprintf(`原始标题：%s
-
-需要优化的英文内容列表：
-%s
-请批量优化这些英文产品标题，使其更适合SHEIN平台销售。返回JSON格式：{"optimized_titles": ["优化后的标题1", "优化后的标题2", ...]}`,
-		sourceTitle,
-		contentList.String())
-
+	userPrompt := fmt.Sprintf("Original title:\n%s\n\nEnglish content list to optimize:\n%s\nReturn JSON in the format {\"optimized_titles\": [\"title1\", \"title2\"]}.", sourceTitle, contentList.String())
 	return h.callOpenAIForBatchOptimization(ctx, systemPrompt, userPrompt, len(contents))
 }
 
@@ -250,10 +237,10 @@ func (h *SKCTranslationHandler) callOpenAIForBatchOptimization(ctx context.Conte
 	req := &openaiClient.ChatCompletionRequest{Model: h.openaiClient.GetDefaultModel(), Messages: messages, Temperature: &temperature}
 	resp, err := h.openaiClient.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("调用OpenAI API失败: %w", err)
+		return nil, fmt.Errorf("call OpenAI API failed: %w", err)
 	}
 	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("OpenAI API返回空响应")
+		return nil, fmt.Errorf("OpenAI API returned no choices")
 	}
 	return h.parseBatchOptimizedResponse(resp.Choices[0].Message.Content, expectedCount)
 }
@@ -264,14 +251,14 @@ func (h *SKCTranslationHandler) parseBatchOptimizedResponse(content string, expe
 		OptimizedTitles []string `json:"optimized_titles"`
 	}
 	var response BatchOptimizedResponse
-	if err := jsonx.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes([]byte(cleanContent), &response, "failed to parse JSON response"); err != nil {
 		return nil, err
 	}
 	if len(response.OptimizedTitles) == 0 {
-		return nil, fmt.Errorf("优化后的标题列表为空")
+		return nil, fmt.Errorf("optimized title list is empty")
 	}
 	if len(response.OptimizedTitles) != expectedCount {
-		logger.GetGlobalLogger("shein/product").Warnf("返回的优化标题数量(%d)与期望数量(%d)不匹配", len(response.OptimizedTitles), expectedCount)
+		logger.GetGlobalLogger("shein/product").Warnf("optimized title count %d does not match expected %d", len(response.OptimizedTitles), expectedCount)
 	}
 	return response.OptimizedTitles, nil
 }
@@ -282,10 +269,10 @@ func (h *SKCTranslationHandler) callOpenAIForOptimization(ctx context.Context, c
 	req := &openaiClient.ChatCompletionRequest{Model: client.GetDefaultModel(), Messages: messages, Temperature: &temperature}
 	resp, err := client.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("调用OpenAI API失败: %w", err)
+		return "", fmt.Errorf("call OpenAI API failed: %w", err)
 	}
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("OpenAI API返回空响应")
+		return "", fmt.Errorf("OpenAI API returned no choices")
 	}
 	return h.parseOptimizedResponse(resp.Choices[0].Message.Content)
 }
@@ -296,11 +283,11 @@ func (h *SKCTranslationHandler) parseOptimizedResponse(content string) (string, 
 		OptimizedTitle string `json:"optimized_title"`
 	}
 	var response OptimizedResponse
-	if err := jsonx.UnmarshalBytes([]byte(cleanContent), &response, "解析JSON响应失败"); err != nil {
+	if err := jsonx.UnmarshalBytes([]byte(cleanContent), &response, "failed to parse JSON response"); err != nil {
 		return "", err
 	}
 	if response.OptimizedTitle == "" {
-		return "", fmt.Errorf("优化后的标题为空")
+		return "", fmt.Errorf("optimized title is empty")
 	}
 	return response.OptimizedTitle, nil
 }
