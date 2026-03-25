@@ -234,35 +234,21 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 
 	basePrice := variant.FinalPrice
 	finalSalePrice := int64(basePrice * 100)
-	quantity := 10
+	pricingInfo := skuPricingInfo{
+		quantity:         10,
+		basePrice:        basePrice,
+		finalSalePrice:   int(finalSalePrice),
+		maxRetailPrice:   int(finalSalePrice),
+		marketPrice:      int(finalSalePrice * 2),
+		marketPriceStr:   fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100),
+		supplierPriceStr: fmt.Sprintf("%.2f", basePrice),
+	}
 
 	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
 	expressInfo := ib.buildSkuExpressInfo(variant, aiSku)
 	packagingInfo := ib.buildSkuPackagingInfo(variant, aiSku)
 
-	marketPrice := int(finalSalePrice * 2)
-	marketPriceStr := fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100)
-
-	return models.Sku{
-		Spec:                     specList,
-		Currency:                 "USD",
-		UseEstimateSupplierPrice: true,
-		DimensionGallery:         []models.ImageInfo{},
-		CarouselGallery:          []models.ImageInfo{},
-		FoodIngredientGallery:    []models.ImageInfo{},
-		Quantity:                 fmt.Sprintf("%d", quantity),
-		ProductExpressInfo:       expressInfo.productExpressInfo,
-		SupplierPriceStr:         fmt.Sprintf("%.2f", basePrice),
-		OutSkuSN:                 outSkuSN,
-		MultiplePackage:          packagingInfo.multiplePackage,
-		OriginNetContentNumber:   packagingInfo.originNetContentNumber,
-		NetContentUnitCode:       packagingInfo.netContentUnitCode,
-		MaxRetailPriceStr:        fmt.Sprintf("%.2f", basePrice),
-		SupplierPrice:            int(finalSalePrice),
-		MarketPrice:              marketPrice,
-		MarketPriceStr:           marketPriceStr,
-		SkuPriceDocuments:        map[string]any{},
-	}
+	return ib.buildSkuPayload(specList, pricingInfo, outSkuSN, expressInfo, packagingInfo, []models.ImageInfo{}, []models.ImageInfo{})
 }
 
 // buildProductExpressInfo 构建产品物流信息（重量和尺寸）
