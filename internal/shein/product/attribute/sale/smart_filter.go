@@ -2,12 +2,10 @@
 package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
-	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/api/attribute"
-
 )
 
 // SaleAttributeSmartFilter 销售属性智能筛选器
@@ -20,7 +18,7 @@ func NewSaleAttributeSmartFilter() *SaleAttributeSmartFilter {
 
 // FilterRelevantAttributes 筛选与实际产品数据相关的销售属性
 func (f *SaleAttributeSmartFilter) FilterRelevantAttributes(
-	ctx *sheinctx.TaskContext,
+	input *SmartFilterInput,
 	attributeTemplates *attribute.AttributeTemplateInfo,
 ) []attribute.AttributeInfo {
 
@@ -45,7 +43,7 @@ func (f *SaleAttributeSmartFilter) FilterRelevantAttributes(
 		logger.GetGlobalLogger("shein/product").Info("🔍 没有找到必填销售属性，开始基于产品变化进行智能筛选")
 
 		// 分析产品数据中的实际变化
-		variationAnalysis := f.analyzeProductVariations(ctx)
+		variationAnalysis := f.analyzeProductVariations(input)
 		logger.GetGlobalLogger("shein/product").Infof("🔍 产品变化分析结果: %+v", variationAnalysis)
 
 		// 遍历所有销售属性（AttributeType == 1）
@@ -112,15 +110,15 @@ type ProductVariationAnalysis struct {
 }
 
 // analyzeProductVariations 分析产品变化
-func (f *SaleAttributeSmartFilter) analyzeProductVariations(ctx *sheinctx.TaskContext) ProductVariationAnalysis {
+func (f *SaleAttributeSmartFilter) analyzeProductVariations(input *SmartFilterInput) ProductVariationAnalysis {
 	analysis := ProductVariationAnalysis{}
 
 	// 如果是单变体产品，仍需要分析基础属性信息
-	if ctx.Variants == nil || len(*ctx.Variants) <= 1 {
+	if len(input.Variants) <= 1 {
 		logger.GetGlobalLogger("shein/product").Info("单变体产品，分析基础属性信息")
 		// 对于单变体产品，从主产品中提取基础属性信息
-		if ctx.AmazonProduct != nil {
-			f.extractBasicAttributesFromSingleVariant(ctx.AmazonProduct, &analysis)
+		if input.AmazonProduct != nil {
+			f.extractBasicAttributesFromSingleVariant(input.AmazonProduct, &analysis)
 		}
 		return analysis
 	}
@@ -131,15 +129,15 @@ func (f *SaleAttributeSmartFilter) analyzeProductVariations(ctx *sheinctx.TaskCo
 	quantitySet := make(map[string]bool)
 
 	// 分析Amazon产品的Variations数据
-	if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.Variations) > 0 {
-		for _, variation := range ctx.AmazonProduct.Variations {
+	if input.AmazonProduct != nil && len(input.AmazonProduct.Variations) > 0 {
+		for _, variation := range input.AmazonProduct.Variations {
 			f.extractVariationValues(variation, colorSet, sizeSet, patternSet, quantitySet)
 		}
 	}
 
 	// 分析VariationsValues数据
-	if ctx.AmazonProduct != nil && len(ctx.AmazonProduct.VariationsValues) > 0 {
-		for _, vv := range ctx.AmazonProduct.VariationsValues {
+	if input.AmazonProduct != nil && len(input.AmazonProduct.VariationsValues) > 0 {
+		for _, vv := range input.AmazonProduct.VariationsValues {
 			f.extractVariationValuesFromList(vv, colorSet, sizeSet, patternSet, quantitySet)
 		}
 	}
@@ -362,5 +360,3 @@ func (f *SaleAttributeSmartFilter) selectDefaultSaleAttribute(attributes []attri
 	logger.GetGlobalLogger("shein/product").Warn("❌ 未找到任何销售属性")
 	return nil
 }
-
-

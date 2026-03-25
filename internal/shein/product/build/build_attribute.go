@@ -2,7 +2,6 @@ package build
 
 import (
 	"errors"
-	"fmt"
 
 	"task-processor/internal/core/logger"
 	shein "task-processor/internal/shein"
@@ -29,11 +28,11 @@ func (h *BuildAttributeHandler) Name() string {
 }
 
 func (h *BuildAttributeHandler) Handle(ctx *shein.TaskContext) error {
-	if ctx.ProductData == nil {
-		return fmt.Errorf("product data is not initialized")
+	input, err := buildAttributeInput(ctx)
+	if err != nil {
+		return err
 	}
-
-	buildInfo, err := h.BuildAttributeDataWithContext(ctx)
+	buildInfo, err := h.BuildAttributeDataWithInput(input)
 	if err != nil {
 		return err
 	}
@@ -53,13 +52,9 @@ func (h *BuildAttributeHandler) BuildAttributeData(attributeTemplates *attribute
 	return attributeInfo, nil
 }
 
-func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskContext) (sheinattr.BuildAttributeInfo, error) {
-	if ctx.AttributeTemplates == nil || len(ctx.AttributeTemplates.Data) == 0 {
-		return sheinattr.BuildAttributeInfo{}, errors.New("attribute templates are empty")
-	}
-
+func (h *BuildAttributeHandler) BuildAttributeDataWithInput(input *BuildAttributeInput) (sheinattr.BuildAttributeInfo, error) {
 	attributeInfo := sheinattr.BuildAttributeInfo{AttributeData: []sheinattr.GenerateAttribute{}, SaleAttributeData: []sheinattr.GenerateAttribute{}}
-	relevantSaleAttributes := h.classifier.filter.FilterRelevantAttributes(ctx, ctx.AttributeTemplates)
+	relevantSaleAttributes := h.classifier.filter.FilterRelevantAttributes(input.SmartFilterInput, input.AttributeTemplates)
 	logger.GetGlobalLogger("shein/product").Infof("filtered relevant sale attributes: %d", len(relevantSaleAttributes))
 
 	relevantSaleAttrMap := make(map[int]bool)
@@ -67,7 +62,7 @@ func (h *BuildAttributeHandler) BuildAttributeDataWithContext(ctx *shein.TaskCon
 		relevantSaleAttrMap[attr.AttributeID] = true
 	}
 
-	for _, attr := range ctx.AttributeTemplates.Data[0].AttributeInfos {
+	for _, attr := range input.AttributeTemplates.Data[0].AttributeInfos {
 		switch attr.AttributeType {
 		case 4, 3:
 			attributeInfo.AttributeData = append(attributeInfo.AttributeData, h.builder.BuildGenerateAttribute(attr))

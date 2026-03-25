@@ -1,13 +1,9 @@
 package build
 
 import (
-	"fmt"
-
 	"github.com/google/uuid"
 
 	shein "task-processor/internal/shein"
-	productapi "task-processor/internal/shein/api/product"
-	sheinproduct "task-processor/internal/shein/product"
 )
 
 type BuildSpuHandler struct{}
@@ -21,17 +17,16 @@ func (h *BuildSpuHandler) Name() string {
 }
 
 func (h *BuildSpuHandler) Handle(ctx *shein.TaskContext) error {
-	if ctx.ProductData == nil {
-		return fmt.Errorf("product data is not initialized")
+	input, err := buildSpuInput(ctx)
+	if err != nil {
+		return err
 	}
-	buildSpuData(ctx)
+	buildSpuData(input)
 	return nil
 }
 
-func buildSpuData(ctx *shein.TaskContext) {
-	supplierCode := sheinproduct.GetSkuByAsin(ctx, ctx.Task.ProductID)
-	ctx.UpdateProductData(func(productData *productapi.Product) {
-		productData.SupplierCode = supplierCode
-		productData.PointKey = uuid.New().String()
-	})
+func buildSpuData(input *BuildSpuInput) {
+	supplierCode := input.AsinSkuMap[input.TaskID]
+	input.ProductData.SupplierCode = supplierCode
+	input.ProductData.PointKey = uuid.New().String()
 }
