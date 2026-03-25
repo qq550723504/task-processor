@@ -1,4 +1,3 @@
-// Package consumer 提供任务处理器注册表
 package consumer
 
 import (
@@ -13,7 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// TaskProcessorRegistry 任务处理器注册表，负责将 worker.Processor 包装为 rabbitmq.MessageHandler。
+// TaskProcessorRegistry stores processors and builds RabbitMQ handlers from shared components.
 type TaskProcessorRegistry struct {
 	processors     map[string]worker.Processor
 	handlers       map[string]rabbitmq.MessageHandler
@@ -25,7 +24,7 @@ type TaskProcessorRegistry struct {
 	mu             sync.RWMutex
 }
 
-// NewTaskProcessorRegistry 创建任务处理器注册表。
+// NewTaskProcessorRegistry creates a registry for platform processors.
 func NewTaskProcessorRegistry(
 	resultReporter *ResultReporter,
 	storeAPI api.StoreAPI,
@@ -44,26 +43,46 @@ func NewTaskProcessorRegistry(
 	}
 }
 
-// RegisterProcessor 注册处理器，同时创建对应的消息处理器。
+// RegisterProcessor registers a processor and builds its handler with current shared components.
 func (r *TaskProcessorRegistry) RegisterProcessor(platform string, processor worker.Processor) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.processors[platform] = processor
-	r.handlers[platform] = NewTaskHandler(TaskHandlerConfig{
-		Platform:       platform,
-		Processor:      processor,
-		ResultReporter: r.resultReporter,
-		StoreAPI:       r.storeAPI,
-		OwnedStores:    r.ownedStores,
-		Deduplicator:   r.deduplicator,
-		Logger:         r.logger,
-	})
+	r.handlers[platform] = r.newHandler(platform, processor)
 
-	r.logger.Infof("注册增强处理器: 平台=%s", platform)
+	r.logger.Infof("registered task processor: platform=%s", platform)
 }
 
-// GetHandler 获取指定平台的消息处理器。
+// UpdateComponents refreshes shared components and rebuilds handlers in place.
+func (r *TaskProcessorRegistry) UpdateComponents(
+	resultReporter *ResultReporter,
+	storeAPI api.StoreAPI,
+	ownedStores []int64,
+	deduplicator *apptask.DeduplicationManager,
+) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if resultReporter != nil {
+		r.resultReporter = resultReporter
+	}
+	if storeAPI != nil {
+		r.storeAPI = storeAPI
+	}
+	if ownedStores != nil {
+		r.ownedStores = ownedStores
+	}
+	if deduplicator != nil {
+		r.deduplicator = deduplicator
+	}
+
+	for platform, processor := range r.processors {
+		r.handlers[platform] = r.newHandler(platform, processor)
+	}
+}
+
+// GetHandler returns the handler for a platform.
 func (r *TaskProcessorRegistry) GetHandler(platform string) (rabbitmq.MessageHandler, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -72,7 +91,7 @@ func (r *TaskProcessorRegistry) GetHandler(platform string) (rabbitmq.MessageHan
 	return handler, exists
 }
 
-// GetAllHandlers 返回所有消息处理器的副本。
+// GetAllHandlers returns a copy of all handlers.
 func (r *TaskProcessorRegistry) GetAllHandlers() map[string]rabbitmq.MessageHandler {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -82,12 +101,12 @@ func (r *TaskProcessorRegistry) GetAllHandlers() map[string]rabbitmq.MessageHand
 	return handlers
 }
 
-// GetQueueName 根据平台获取队列名称。
+// GetQueueName returns the queue name for a platform.
 func (r *TaskProcessorRegistry) GetQueueName(platform string) string {
 	return apptask.NewMessageAdapter().GetQueueName(platform)
 }
 
-// GetStats 返回注册表统计信息。
+// GetStats returns registry statistics.
 func (r *TaskProcessorRegistry) GetStats() map[string]any {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -107,4 +126,16 @@ func (r *TaskProcessorRegistry) GetStats() map[string]any {
 	}
 
 	return stats
+}
+
+func (r *TaskProcessorRegistry) newHandler(platform string, processor worker.Processor) rabbitmq.MessageHandler {
+	return NewTaskHandler(TaskHandlerConfig{
+		Platform:       platform,
+		Processor:      processor,
+		ResultReporter: r.resultReporter,
+		StoreAPI:       r.storeAPI,
+		OwnedStores:    r.ownedStores,
+		Deduplicator:   r.deduplicator,
+		Logger:         r.logger,
+	})
 }

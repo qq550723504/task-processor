@@ -142,18 +142,13 @@ func (s *RabbitMQService) SetComponents(
 		s.deduplicator = deduplicator
 	}
 
-	// 重新创建处理器注册表，使用最新的组件，并迁移已注册的处理器
-	newRegistry := NewTaskProcessorRegistry(
+	// 原地更新注册表依赖，避免重建和迁移注册表对象。
+	s.processorRegistry.UpdateComponents(
 		s.resultReporter,
 		s.storeAPI,
 		s.ownedStores,
 		s.deduplicator,
-		s.logger,
 	)
-	for platform, processor := range s.processorRegistry.processors {
-		newRegistry.RegisterProcessor(platform, processor)
-	}
-	s.processorRegistry = newRegistry
 
 	s.logger.Info("设置服务组件完成")
 }
