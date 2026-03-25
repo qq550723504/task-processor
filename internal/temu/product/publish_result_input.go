@@ -3,6 +3,7 @@ package product
 import (
 	"fmt"
 
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	temuapi "task-processor/internal/temu/api"
 	models "task-processor/internal/temu/api/product"
@@ -13,6 +14,11 @@ type SavePublishResultInput struct {
 	Task           *model.Task
 	SubmitResponse *temuapi.SubmitResponse
 	Product        *models.Product
+	AmazonProduct  *model.Product
+	StoreInfo      *managementapi.StoreRespDTO
+	FilterRule     *managementapi.FilterRuleRespDTO
+	ProfitRule     *managementapi.ProfitRuleRespDTO
+	AsinSkuMap     map[string]string
 }
 
 func buildSavePublishResultInput(temuCtx *temucontext.TemuTaskContext) (*SavePublishResultInput, error) {
@@ -39,5 +45,10 @@ func buildSavePublishResultInput(temuCtx *temucontext.TemuTaskContext) (*SavePub
 		Task:           task,
 		SubmitResponse: submitResponse,
 		Product:        product,
+		AmazonProduct:  temuCtx.GetAmazonProduct(),
+		StoreInfo:      temuCtx.StoreInfo,
+		FilterRule:     temuCtx.FilterRule,
+		ProfitRule:     temuCtx.ProfitRule,
+		AsinSkuMap:     temuCtx.AsinSkuMap,
 	}, nil
 }

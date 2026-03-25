@@ -69,19 +69,19 @@ func (h *SavePublishResultHandler) HandleTemu(temuCtx *temucontext.TemuTaskConte
 	}
 
 	// 记录响应数据到日志
-	if err := h.logSubmitResponse(temuCtx, input.SubmitResponse); err != nil {
+	if err := h.logSubmitResponseWithInput(input); err != nil {
 		h.logger.Warnf("记录响应数据失败: %v", err)
 		// 不阻断流程，继续执行
 	}
 
 	// 创建产品导入映射关系
-	if err := h.createProductImportMapping(temuCtx); err != nil {
+	if err := h.createProductImportMappingWithInput(input); err != nil {
 		h.logger.Warnf("创建产品导入映射关系失败: %v", err)
 		// 不阻断流程，继续执行
 	}
 
 	// 记录每日上架成功数量并检查限额
-	h.recordDailyListingCount(temuCtx)
+	h.recordDailyListingCountWithInput(input)
 
 	h.logger.Info("发品成功后返回信息保存完成")
 	return nil
