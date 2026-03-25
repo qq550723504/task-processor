@@ -5,6 +5,7 @@ import (
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
+	"task-processor/internal/pkg/ptr"
 	temuapi "task-processor/internal/temu/api"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
@@ -50,6 +51,37 @@ func (input *SavePublishResultInput) ForEachSKU(fn func(sku *models.Sku)) {
 		for skuIndex := range skc.SkuList {
 			fn(&skc.SkuList[skuIndex])
 		}
+	}
+}
+
+func (input *SavePublishResultInput) TaskLogFields() map[string]any {
+	if input == nil || input.Task == nil {
+		return map[string]any{}
+	}
+
+	return map[string]any{
+		"task_id":    input.Task.ID,
+		"tenant_id":  input.Task.TenantID,
+		"store_id":   input.Task.StoreID,
+		"platform":   input.Task.Platform,
+		"product_id": input.Task.ProductID,
+	}
+}
+
+func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku) *managementapi.ProductImportMappingCreateReqDTO {
+	if input == nil || input.Task == nil || sku == nil {
+		return nil
+	}
+
+	return &managementapi.ProductImportMappingCreateReqDTO{
+		ImportTaskId: input.Task.ID,
+		TenantID:     input.Task.TenantID,
+		StoreId:      input.Task.StoreID,
+		Platform:     "TEMU",
+		Region:       input.Task.Region,
+		Sku:          &sku.OutSkuSN,
+		ProductId:    "",
+		Status:       ptr.Int16Ptr(1),
 	}
 }
 

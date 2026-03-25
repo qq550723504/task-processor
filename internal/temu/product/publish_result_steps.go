@@ -6,7 +6,6 @@ import (
 
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/pkg/ptr"
 	pkgproduct "task-processor/internal/product"
 	models "task-processor/internal/temu/api/product"
 )
@@ -38,7 +37,11 @@ func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *Sa
 
 	createdCount := 0
 	input.ForEachSKU(func(sku *models.Sku) {
-		createReq := h.buildImportMappingCreateReq(input, sku)
+		createReq := input.BuildImportMappingCreateReq(sku)
+		if createReq == nil {
+			h.logger.Warn("TEMU import mapping request build skipped due to invalid input")
+			return
+		}
 
 		h.applyImportMappingMetadata(input, sku, createReq)
 
@@ -54,22 +57,6 @@ func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *Sa
 
 	h.logger.Infof("????????????: ??=%d", createdCount)
 	return nil
-}
-
-func (h *SavePublishResultHandler) buildImportMappingCreateReq(
-	input *SavePublishResultInput,
-	sku *models.Sku,
-) *api.ProductImportMappingCreateReqDTO {
-	return &api.ProductImportMappingCreateReqDTO{
-		ImportTaskId: input.Task.ID,
-		TenantID:     input.Task.TenantID,
-		StoreId:      input.Task.StoreID,
-		Platform:     "TEMU",
-		Region:       input.Task.Region,
-		Sku:          &sku.OutSkuSN,
-		ProductId:    "",
-		Status:       ptr.Int16Ptr(1),
-	}
 }
 
 func (h *SavePublishResultHandler) applyImportMappingMetadata(
