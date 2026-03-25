@@ -159,10 +159,13 @@ func (ib *SkuItemBuilder) buildSkuExpressInfo(variant *model.Product, aiSku temu
 
 func (ib *SkuItemBuilder) buildSkuPricingInfo(runtime *temucontext.SKUBuildRuntime, temuCtx *temucontext.TemuTaskContext, variant *model.Product) skuPricingInfo {
 	finalSalePrice := ib.priceHandler.CalculateVariantPriceWithRuntime(runtime, temuCtx, variant)
-	basePrice := float64(finalSalePrice) / 100
+	return ib.buildSkuPricingInfoFromAmounts(float64(finalSalePrice)/100, finalSalePrice, ib.priceHandler.GetDefaultStockWithRuntime(runtime))
+}
+
+func (ib *SkuItemBuilder) buildSkuPricingInfoFromAmounts(basePrice float64, finalSalePrice int, quantity int) skuPricingInfo {
 	marketPrice := finalSalePrice * 2
 	return skuPricingInfo{
-		quantity:         ib.priceHandler.GetDefaultStockWithRuntime(runtime),
+		quantity:         quantity,
 		basePrice:        basePrice,
 		finalSalePrice:   finalSalePrice,
 		maxRetailPrice:   finalSalePrice,
@@ -232,19 +235,9 @@ func (ib *SkuItemBuilder) buildSkuFromVariantBasic(variant *model.Product, aiSku
 	asin := variant.Asin
 	outSkuSN := asin
 
-	basePrice := variant.FinalPrice
-	finalSalePrice := int64(basePrice * 100)
-	pricingInfo := skuPricingInfo{
-		quantity:         10,
-		basePrice:        basePrice,
-		finalSalePrice:   int(finalSalePrice),
-		maxRetailPrice:   int(finalSalePrice),
-		marketPrice:      int(finalSalePrice * 2),
-		marketPriceStr:   fmt.Sprintf("%.2f", float64(finalSalePrice)*2/100),
-		supplierPriceStr: fmt.Sprintf("%.2f", basePrice),
-	}
+	pricingInfo := ib.buildSkuPricingInfoFromAmounts(variant.FinalPrice, int(variant.FinalPrice*100), 10)
 
-	specList := ib.deduplicateSpecs(convertSpecInfos(aiSku.Spec))
+	specList := ib.buildSkuSpecList(aiSku)
 	expressInfo := ib.buildSkuExpressInfo(variant, aiSku)
 	packagingInfo := ib.buildSkuPackagingInfo(variant, aiSku)
 
