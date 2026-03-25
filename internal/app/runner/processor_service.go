@@ -39,35 +39,13 @@ func NewProcessorService(logger *logrus.Logger) ProcessorService {
 	}
 }
 
-// NewProcessorServiceWithDependencies 创建处理器服务（带依赖注入）
-func NewProcessorServiceWithDependencies(
-	logger *logrus.Logger,
-	managementClient *management.ClientManager,
-	amazonProcessor amazonCrawler,
-) ProcessorService {
-	return &processorServiceImpl{
-		logger:                logger,
-		lifecycleManager:      lifecycle.NewLifecycleManager(logger),
-		managementClient:      managementClient,
-		amazonProcessor:       amazonProcessor,
-		temuProcessorCreator:  BuildDefaultProcessorDependencies().TemuProcessorCreator,
-		sheinProcessorCreator: BuildDefaultProcessorDependencies().SheinProcessorCreator,
-	}
-}
-
 func NewProcessorServiceWithCreators(
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
 	amazonProcessor amazonCrawler,
 	deps ProcessorDependencies,
 ) ProcessorService {
-	defaultDeps := BuildDefaultProcessorDependencies()
-	if deps.TemuProcessorCreator == nil {
-		deps.TemuProcessorCreator = defaultDeps.TemuProcessorCreator
-	}
-	if deps.SheinProcessorCreator == nil {
-		deps.SheinProcessorCreator = defaultDeps.SheinProcessorCreator
-	}
+	deps = normalizeProcessorDependencies(deps)
 
 	return &processorServiceImpl{
 		logger:                logger,
@@ -77,4 +55,16 @@ func NewProcessorServiceWithCreators(
 		temuProcessorCreator:  deps.TemuProcessorCreator,
 		sheinProcessorCreator: deps.SheinProcessorCreator,
 	}
+}
+
+func normalizeProcessorDependencies(deps ProcessorDependencies) ProcessorDependencies {
+	defaultDeps := BuildDefaultProcessorDependencies()
+	if deps.TemuProcessorCreator == nil {
+		deps.TemuProcessorCreator = defaultDeps.TemuProcessorCreator
+	}
+	if deps.SheinProcessorCreator == nil {
+		deps.SheinProcessorCreator = defaultDeps.SheinProcessorCreator
+	}
+
+	return deps
 }
