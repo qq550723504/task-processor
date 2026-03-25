@@ -2,16 +2,11 @@ package product
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"task-processor/internal/app/state"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
-	"task-processor/internal/pkg/jsonx"
-	temuapi "task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"
@@ -81,74 +76,6 @@ func (h *SavePublishResultHandler) HandleTemu(temuCtx *temucontext.TemuTaskConte
 
 	h.logger.Info("发品成功后返回信息保存完成")
 	return nil
-}
-
-// createProductImportMapping 创建产品导入映射关系
-func (h *SavePublishResultHandler) createProductImportMapping(temuCtx *temucontext.TemuTaskContext) error {
-	input, err := buildSavePublishResultInput(temuCtx)
-	if err != nil {
-		return err
-	}
-
-	return h.createProductImportMappingWithInput(input)
-}
-
-// getStringValue 安全获取字符串指针的值
-func getStringValue(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-// recordDailyListingCount 记录每日上架成功数量并检查限额（参考SHEIN实现）
-func (h *SavePublishResultHandler) recordDailyListingCount(temuCtx *temucontext.TemuTaskContext) {
-	input, err := buildSavePublishResultInput(temuCtx)
-	if err != nil {
-		h.logger.Debugf("build publish result input failed, skip daily listing count: %v", err)
-		return
-	}
-
-	h.recordDailyListingCountWithInput(input)
-}
-
-// calculateIncrementFromContext 根据店铺配置的限制类型计算增量
-// pauseShopUntilEndOfDay 暂停店铺到当日结束
-// logSubmitResponse 记录提交响应数据到日志
-func (h *SavePublishResultHandler) logSubmitResponse(temuCtx *temucontext.TemuTaskContext, submitResponse *temuapi.SubmitResponse) error {
-	input, err := buildSavePublishResultInput(temuCtx)
-	if err != nil {
-		return err
-	}
-	input.SubmitResponse = submitResponse
-	return h.logSubmitResponseWithInput(input)
-}
-
-// logResponseDetails 记录响应详细信息
-// saveResponseToFile 保存响应数据到文件
-func (h *SavePublishResultHandler) saveResponseToFile(taskID int64, responseData []byte) error {
-	// 创建文件名
-	filename := fmt.Sprintf("submit_response_%d_%s.json", taskID, time.Now().Format("20060102_150405"))
-
-	// 确保目录存在
-	logDir := "logs/responses"
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return fmt.Errorf("创建响应日志目录失败: %w", err)
-	}
-
-	// 写入文件
-	filePath := filepath.Join(logDir, filename)
-	if err := os.WriteFile(filePath, responseData, 0644); err != nil {
-		return fmt.Errorf("写入响应文件失败: %w", err)
-	}
-
-	h.logger.Infof("响应数据已保存到文件: %s", filePath)
-	return nil
-}
-
-// marshalWithoutHTMLEscape 序列化JSON但不转义HTML字符
-func (h *SavePublishResultHandler) marshalWithoutHTMLEscape(v any) ([]byte, error) {
-	return jsonx.MarshalWithoutHTMLEscape(v)
 }
 
 // buildFilterRuleRange 构建筛选规则范围字符串
