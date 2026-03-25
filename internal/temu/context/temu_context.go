@@ -124,6 +124,10 @@ func (tc *TemuTaskContext) SetAsinSkuMap(mapping map[string]string) {
 	tc.AsinSkuMap = mapping
 }
 
+func (tc *TemuTaskContext) SetAISkuMapping(mapping *AISkuMappingResponse) {
+	tc.AISkuMapping = mapping
+}
+
 func (tc *TemuTaskContext) SetTemuProduct(product *api.Product) {
 	tc.TemuProduct = product
 }

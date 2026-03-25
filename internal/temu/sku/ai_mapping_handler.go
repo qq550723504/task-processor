@@ -1,10 +1,9 @@
-﻿package sku
+package sku
 
 import (
 	"fmt"
 
 	"task-processor/internal/infra/clients/openai"
-	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
@@ -52,41 +51,34 @@ func (h *AISkuMappingHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 		return nil
 	}
 
-	variants := h.getVariants(temuCtx)
-
-	// 如果没有变体，尝试使用主产品
-	if len(variants) == 0 {
-		// 直接从强类型上下文获取Amazon产品
-		amazonProduct := temuCtx.GetAmazonProduct()
-		if amazonProduct != nil {
-			h.logger.Info("没有变体，使用主产品生成AI映射")
-			variants = []*model.Product{amazonProduct}
-		} else {
-			h.logger.Info("没有变体也没有主产品，跳过AI映射生成")
-			return nil
-		}
+	input, err := buildAIHandlerInput(temuCtx)
+	if err != nil {
+		return fmt.Errorf("构建AI映射输入失败: %w", err)
 	}
 
-	h.logger.Infof("开始为 %d 个产品生成AI映射", len(variants))
+	if len(input.Variants) == 0 {
+		h.logger.Info("没有变体也没有主产品，跳过AI映射生成")
+		return nil
+	}
+
+	if input.Source == "amazon_product" {
+		h.logger.Info("没有变体，使用主产品生成AI映射")
+	}
+
+	h.logger.Infof("开始为 %d 个产品生成AI映射", len(input.Variants))
 
 	// 生成AI SKU映射
-	aiMapping, err := h.skuBuilder.variantProcessor.GenerateAISkuMapping(temuCtx, variants)
+	aiMapping, err := h.skuBuilder.variantProcessor.GenerateAISkuMapping(temuCtx, input.Variants)
 	if err != nil {
 		h.logger.Errorf("❌ AI生成SKU映射失败: %v", err)
 		return fmt.Errorf("AI生成SKU映射失败: %w", err)
 	}
 
-	// 将AI映射存储到强类型字段中
-	temuCtx.AISkuMapping = aiMapping
+	temuCtx.SetAISkuMapping(aiMapping)
 
 	h.logger.Infof("✅ AI SKU映射已生成并存储，包含 %d 个SKU", len(aiMapping.SkuList))
 
 	return nil
-}
-
-// getVariants 从context获取变体列表
-func (h *AISkuMappingHandler) getVariants(temuCtx *temucontext.TemuTaskContext) []*model.Product {
-	return temuCtx.GetVariants()
 }
 
 // Handle 兼容原有的Handler接口（用于pipeline.AddHandler）
