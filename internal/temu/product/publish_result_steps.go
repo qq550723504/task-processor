@@ -38,16 +38,7 @@ func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *Sa
 
 	createdCount := 0
 	input.ForEachSKU(func(sku *models.Sku) {
-		createReq := &api.ProductImportMappingCreateReqDTO{
-			ImportTaskId: input.Task.ID,
-			TenantID:     input.Task.TenantID,
-			StoreId:      input.Task.StoreID,
-			Platform:     "TEMU",
-			Region:       input.Task.Region,
-			Sku:          &sku.OutSkuSN,
-			ProductId:    "",
-			Status:       ptr.Int16Ptr(1),
-		}
+		createReq := h.buildImportMappingCreateReq(input, sku)
 
 		h.applyImportMappingMetadata(input, sku, createReq)
 
@@ -63,6 +54,22 @@ func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *Sa
 
 	h.logger.Infof("????????????: ??=%d", createdCount)
 	return nil
+}
+
+func (h *SavePublishResultHandler) buildImportMappingCreateReq(
+	input *SavePublishResultInput,
+	sku *models.Sku,
+) *api.ProductImportMappingCreateReqDTO {
+	return &api.ProductImportMappingCreateReqDTO{
+		ImportTaskId: input.Task.ID,
+		TenantID:     input.Task.TenantID,
+		StoreId:      input.Task.StoreID,
+		Platform:     "TEMU",
+		Region:       input.Task.Region,
+		Sku:          &sku.OutSkuSN,
+		ProductId:    "",
+		Status:       ptr.Int16Ptr(1),
+	}
 }
 
 func (h *SavePublishResultHandler) applyImportMappingMetadata(
