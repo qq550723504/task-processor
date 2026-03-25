@@ -2,15 +2,16 @@
 package task
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/infra/worker"
 	types "task-processor/internal/model"
-
 )
 
 // fetchAndDispatchTasks 获取并分发任务
@@ -215,13 +216,12 @@ func (f *TaskFetcher) submitTask(ctx context.Context, apiTask *api.ProductImport
 	// 提交任务
 	if err := submitter.SubmitTask(ctx, string(taskData)); err != nil {
 		// 检查是否是队列满的错误
-		if err.Error() == "工作队列已满" || err.Error() == "工作池已满" {
+		if errors.Is(err, worker.ErrQueueFull) {
 			logger.GetGlobalLogger("app/task").Debugf("[%s] 队列已满，任务将重试: TaskID=%d", platform, internalTask.ID)
 			return false, true
-		} else {
-			logger.GetGlobalLogger("app/task").Errorf("[%s] 提交失败: TaskID=%d, Error=%v", platform, internalTask.ID, err)
-			return false, false
 		}
+		logger.GetGlobalLogger("app/task").Errorf("[%s] 提交失败: TaskID=%d, Error=%v", platform, internalTask.ID, err)
+		return false, false
 	}
 
 	logger.GetGlobalLogger("app/task").Debugf("[%s] 任务已提交: ID=%d, ProductID=%s", platform, internalTask.ID, internalTask.ProductID)

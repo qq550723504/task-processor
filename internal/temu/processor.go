@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"task-processor/internal/app/processor"
-	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
@@ -146,11 +145,6 @@ func (p *TemuProcessor) Start(ctx context.Context) error {
 // GetAmazonProcessor 获取共享的Amazon处理器
 func (p *TemuProcessor) GetAmazonProcessor() amazonCrawler {
 	return p.amazonProcessor
-}
-
-// CreateTaskSubmitter 创建任务提交器（使用WorkerPool）
-func (p *TemuProcessor) CreateTaskSubmitter(workerPool worker.WorkerPool) task.TaskSubmitter {
-	return NewTemuTaskSubmitter(workerPool)
 }
 
 // Close 关闭处理器

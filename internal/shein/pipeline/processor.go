@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"task-processor/internal/app/processor"
-	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/database"
@@ -131,11 +130,6 @@ func (p *SheinProcessor) GetAICache() *aicache.Cache {
 // GetAmazonProcessor 获取共享的Amazon处理器
 func (p *SheinProcessor) GetAmazonProcessor() amazonCrawler {
 	return p.amazonProcessor
-}
-
-// CreateTaskSubmitter 创建任务提交器（使用WorkerPool）
-func (p *SheinProcessor) CreateTaskSubmitter(workerPool worker.WorkerPool) task.TaskSubmitter {
-	return NewSheinTaskSubmitter(workerPool)
 }
 
 // Close 关闭处理器
