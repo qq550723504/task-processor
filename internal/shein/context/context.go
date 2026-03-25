@@ -179,6 +179,21 @@ func (ctx *TaskContext) SetSaleSpecResult(saleSpecResult *ResultSaleAttribute) {
 	ctx.SaleSpecResult = saleSpecResult
 }
 
+func (ctx *TaskContext) SetSheinResponse(response *product.SheinResponse) {
+	ctx.SheinResponse = response
+}
+
+func (ctx *TaskContext) SetSpecificationErrors(errors []PreValidResult) {
+	ctx.SpecificationErrors = errors
+}
+
+func (ctx *TaskContext) SetSupplierSkuMapping(platformSKU, supplierSKU string) {
+	if ctx.SupplierSkuMap == nil {
+		ctx.SupplierSkuMap = make(map[string]string)
+	}
+	ctx.SupplierSkuMap[platformSKU] = supplierSKU
+}
+
 func (ctx *TaskContext) SetWarehouses(warehouses *warehouse.WarehouseResponse) {
 	ctx.Warehouses = warehouses
 }

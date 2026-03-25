@@ -1,4 +1,3 @@
-// Package publish 提供SHEIN平台产品发布结果保存功能
 package publish
 
 import (
@@ -6,95 +5,78 @@ import (
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/recovery"
-	shein "task-processor/internal/shein"
-	product "task-processor/internal/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
 
-// PublishProductSaver 产品发布结果保存器
+// PublishProductSaver persists publish-side state updates.
 type PublishProductSaver struct {
 	logger *logrus.Entry
 }
 
-// NewPublishProductSaver 创建新的产品发布结果保存器
+// NewPublishProductSaver creates a saver for publish results.
 func NewPublishProductSaver() *PublishProductSaver {
 	return &PublishProductSaver{
 		logger: logger.GetGlobalLogger("publish_saver"),
 	}
 }
 
-// SavePublishResult 保存发布成功后的所有对应记录
-func (s *PublishProductSaver) SavePublishResult(ctx *shein.TaskContext, response *product.SheinResponse) error {
-	// 保存SPU名称
-	if response.Info.SPUName != "" {
-		ctx.ProductData.SPUName = response.Info.SPUName
+// SavePublishResult applies publish response data to local task state.
+func (s *PublishProductSaver) SavePublishResult(input *SavePublishStateInput) error {
+	if input.SetSupplierSkuMapFn == nil {
+		return nil
 	}
 
-	// 保存版本信息
-	// ...
-
-	// 保存SKC和SKU的对应关系
-	if ctx.SupplierSkuMap == nil {
-		ctx.SupplierSkuMap = make(map[string]string)
+	if input.SheinResponse.Info.SPUName != "" {
+		input.ProductData.SPUName = input.SheinResponse.Info.SPUName
 	}
 
-	// 遍历返回的SKC列表，建立ASIN和SKU的对应关系
-	for _, skc := range response.Info.SKCList {
-		// 遍历每个SKC中的SKU列表
+	for _, skc := range input.SheinResponse.Info.SKCList {
 		for _, sku := range skc.SKUList {
-			// 保存对应关系到AsinSkuMap中
-			ctx.SupplierSkuMap[sku.SKUCode] = sku.SupplierSKU
+			input.SetSupplierSkuMapFn(sku.SKUCode, sku.SupplierSKU)
 		}
 	}
 
 	return nil
 }
 
-// UpdateTaskStatusToDraft 更新任务状态为草稿箱
-func (s *PublishProductSaver) UpdateTaskStatusToDraft(ctx *shein.TaskContext) {
-	// 检查必要的上下文信息
-	if ctx.ManagementClientMgr == nil {
-		s.logger.Warn("管理客户端管理器未初始化，跳过状态更新")
+// UpdateTaskStatusToDraft marks the task as saved to draft asynchronously.
+func (s *PublishProductSaver) UpdateTaskStatusToDraft(input *TaskStatusUpdateInput) {
+	if input.ManagementClientMgr == nil {
+		s.logger.Warn("management client manager is nil, skip draft status update")
 		return
 	}
 
-	if ctx.Task == nil {
-		s.logger.Warn("任务信息未初始化，跳过状态更新")
+	if input.Task == nil {
+		s.logger.Warn("task is nil, skip draft status update")
 		return
 	}
 
-	// 获取导入任务客户端
-	importTaskClient := ctx.ManagementClientMgr.GetImportTaskClient()
+	importTaskClient := input.ManagementClientMgr.GetImportTaskClient()
 	if importTaskClient == nil {
-		s.logger.Warn("导入任务客户端未初始化，跳过状态更新")
+		s.logger.Warn("import task client is nil, skip draft status update")
 		return
 	}
 
-	// Task.ID已经是int64类型，直接使用
-	taskID := ctx.Task.ID
-
-	// 构建更新请求
+	taskID := input.Task.ID
 	req := &management_api.ProductImportTaskUpdateReqDTO{
 		ID:     taskID,
 		Status: model.TaskStatusDraft.Int16(),
 	}
 
-	// 提前捕获，避免 goroutine 内访问可能已变更的外部状态
 	baseLogger := s.logger
 	if baseLogger == nil {
 		baseLogger = logger.GetGlobalLogger("publish_saver")
 	}
 	taskLogger := baseLogger.WithField("task_id", taskID)
 
-	// 异步更新状态
 	go func() {
-		defer recovery.RecoverWithStack("更新任务状态", taskLogger)
+		defer recovery.RecoverWithStack("update draft task status", taskLogger)
 
 		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-			taskLogger.Errorf("更新任务状态为草稿箱失败 (TaskID: %d): %v", taskID, err)
+			taskLogger.Errorf("update draft task status failed (TaskID: %d): %v", taskID, err)
 		} else {
-			taskLogger.Infof("✅ 任务状态已更新为草稿箱 (TaskID: %d)", taskID)
+			taskLogger.Infof("task status updated to draft (TaskID: %d)", taskID)
 		}
 	}()
 }

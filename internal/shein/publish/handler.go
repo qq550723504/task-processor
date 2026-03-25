@@ -83,7 +83,7 @@ func (h *PublishProductHandler) publishProduct(ctx *shein.TaskContext) (*product
 // doPublishProduct 包级发布函数，供 error_handler 等复用，避免零值实例化 PublishProductHandler。
 func doPublishProduct(ctx *shein.TaskContext, input *PublishProductInput) (*product.SheinResponse, error) {
 	response, _, err := input.ProductAPI.PublishProduct(input.ProductData)
-	ctx.SheinResponse = response
+	ctx.SetSheinResponse(response)
 	return response, err
 }
 
@@ -100,7 +100,11 @@ func (h *PublishProductHandler) SaveDraftProduct(ctx *shein.TaskContext) (*produ
 	}
 
 	// 保存到草稿箱成功后，更新任务状态为草稿箱
-	h.saver.UpdateTaskStatusToDraft(ctx)
+	statusInput, err := buildTaskStatusUpdateInput(ctx)
+	if err != nil {
+		return nil, err
+	}
+	h.saver.UpdateTaskStatusToDraft(statusInput)
 
 	return response, nil
 }

@@ -103,3 +103,43 @@ func buildMappingRequestInput(ctx *shein.TaskContext) (*MappingRequestInput, err
 		ProfitRule:         ctx.ProfitRule,
 	}, nil
 }
+
+type SavePublishStateInput struct {
+	ProductData         *sheinproduct.Product
+	SheinResponse       *sheinproduct.SheinResponse
+	SetSupplierSkuMapFn func(platformSKU, supplierSKU string)
+}
+
+func buildSavePublishStateInput(ctx *shein.TaskContext, response *sheinproduct.SheinResponse) (*SavePublishStateInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+	if ctx.ProductData == nil {
+		return nil, fmt.Errorf("product data is nil")
+	}
+	if response == nil {
+		return nil, fmt.Errorf("shein response is nil")
+	}
+
+	return &SavePublishStateInput{
+		ProductData:         ctx.ProductData,
+		SheinResponse:       response,
+		SetSupplierSkuMapFn: ctx.SetSupplierSkuMapping,
+	}, nil
+}
+
+type TaskStatusUpdateInput struct {
+	Task                *model.Task
+	ManagementClientMgr *management.ClientManager
+}
+
+func buildTaskStatusUpdateInput(ctx *shein.TaskContext) (*TaskStatusUpdateInput, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("task context is nil")
+	}
+
+	return &TaskStatusUpdateInput{
+		Task:                ctx.Task,
+		ManagementClientMgr: ctx.ManagementClientMgr,
+	}, nil
+}

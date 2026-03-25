@@ -41,7 +41,7 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *shein.TaskContex
 				if h.isSpecificationError(validResults) {
 					logger.GetGlobalLogger("shein/publish").Warnf("检测到规格配置错误，提交任务限制到管理系统")
 					// 将规格配置错误信息记录到上下文中
-					ctx.SpecificationErrors = validResults
+					ctx.SetSpecificationErrors(validResults)
 					// 规格配置错误通常需要人工处理，但仍然继续执行后续处理器
 					logger.GetGlobalLogger("shein/publish").Info("规格配置错误已记录，继续执行后续处理器")
 					return nil
@@ -88,7 +88,11 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *shein.TaskContex
 
 		// 保存发布成功后的所有对应记录
 		saver := NewPublishProductSaver()
-		if err := saver.SavePublishResult(ctx, response); err != nil {
+		saveInput, err := buildSavePublishStateInput(ctx, response)
+		if err != nil {
+			return shein.NewNonRetryableError("????????????", err)
+		}
+		if err := saver.SavePublishResult(saveInput); err != nil {
 			// 保存结果失败可能是数据问题，不可重试
 			return shein.NewNonRetryableError("保存发布结果失败", err)
 		}
@@ -164,7 +168,12 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *s
 
 	// 保存发布成功后的结果
 	saver := NewPublishProductSaver()
-	if err := saver.SavePublishResult(ctx, response); err != nil {
+	saveInput, err := buildSavePublishStateInput(ctx, response)
+	if err != nil {
+		logger.GetGlobalLogger("shein/publish").Errorf("????????????: %v", err)
+		return false
+	}
+	if err := saver.SavePublishResult(saveInput); err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("敏感词重试成功但保存结果失败: %v", err)
 		return false
 	}
@@ -483,7 +492,12 @@ func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.T
 
 	// 保存发布成功后的结果
 	saver := NewPublishProductSaver()
-	if err := saver.SavePublishResult(ctx, response); err != nil {
+	saveInput, err := buildSavePublishStateInput(ctx, response)
+	if err != nil {
+		logger.GetGlobalLogger("shein/publish").Errorf("????????????: %v", err)
+		return false
+	}
+	if err := saver.SavePublishResult(saveInput); err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("数量类型修复重试成功但保存结果失败: %v", err)
 		return false
 	}
