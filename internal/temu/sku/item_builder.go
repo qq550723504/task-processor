@@ -159,7 +159,7 @@ func (ib *SkuItemBuilder) buildSkuExpressInfo(variant *model.Product, aiSku temu
 
 func (ib *SkuItemBuilder) buildSkuPricingInfo(runtime *temucontext.SKUBuildRuntime, temuCtx *temucontext.TemuTaskContext, variant *model.Product) skuPricingInfo {
 	finalSalePrice := ib.priceHandler.CalculateVariantPriceWithRuntime(runtime, temuCtx, variant)
-	return ib.buildSkuPricingInfoFromAmounts(float64(finalSalePrice)/100, finalSalePrice, ib.priceHandler.GetDefaultStockWithRuntime(runtime))
+	return ib.buildSkuPricingInfoFromAmounts(float64(finalSalePrice)/100, finalSalePrice, ib.resolveDefaultSkuQuantity(runtime, temuCtx))
 }
 
 func (ib *SkuItemBuilder) buildSkuPricingInfoFromAmounts(basePrice float64, finalSalePrice int, quantity int) skuPricingInfo {
@@ -228,6 +228,13 @@ func (ib *SkuItemBuilder) buildSkuSpecList(aiSku temucontext.AIGeneratedSku) []m
 	}
 
 	return specList
+}
+
+func (ib *SkuItemBuilder) resolveDefaultSkuQuantity(runtime *temucontext.SKUBuildRuntime, temuCtx *temucontext.TemuTaskContext) int {
+	if runtime == nil {
+		return ib.priceHandler.GetDefaultStock(temuCtx)
+	}
+	return ib.priceHandler.GetDefaultStockWithRuntime(runtime)
 }
 
 // buildSkuFromVariantBasic 基本SKU构建（不依赖上下文）
@@ -363,11 +370,7 @@ func (ib *SkuItemBuilder) validateBuiltSkuSpecs(input *SKUProcessInput, sku *mod
 
 func (ib *SkuItemBuilder) ensureBuiltSkuQuantity(input *SKUProcessInput, temuCtx *temucontext.TemuTaskContext, sku *models.Sku) {
 	if sku.Quantity == "" || sku.Quantity == "0" {
-		if input.Runtime == nil {
-			sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStock(temuCtx))
-		} else {
-			sku.Quantity = fmt.Sprintf("%d", ib.priceHandler.GetDefaultStockWithRuntime(input.Runtime))
-		}
+		sku.Quantity = fmt.Sprintf("%d", ib.resolveDefaultSkuQuantity(input.Runtime, temuCtx))
 	}
 }
 
