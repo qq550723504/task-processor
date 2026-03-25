@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	platformAmazon "task-processor/internal/amazon"
-	"task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
@@ -18,16 +17,23 @@ import (
 )
 
 type PlatformRegistry struct {
-	config                *config.Config
-	logger                *logrus.Logger
-	managementClient      *management.ClientManager
-	sharedAmazonProcessor *amazon.AmazonProcessor
-	rabbitmqClient        *rabbitmq.Client
-	enabledPlatforms      []string
-	processorCreators     ProcessorCreators
+	config                 *config.Config
+	logger                 *logrus.Logger
+	managementClient       *management.ClientManager
+	sharedAmazonProcessor  *amazon.AmazonProcessor
+	rabbitmqClient         *rabbitmq.Client
+	enabledPlatforms       []string
+	processorCreators      ProcessorCreators
+	sharedResourceProvider SharedResourceProvider
 }
 
 func NewPlatformRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string) *PlatformRegistry {
+	return NewPlatformRegistryWithDependencies(cfg, logger, platformsStr, PlatformRegistryDependencies{
+		ProcessorCreators: defaultProcessorCreators(),
+	})
+}
+
+func NewPlatformRegistryWithDependencies(cfg *config.Config, logger *logrus.Logger, platformsStr string, deps PlatformRegistryDependencies) *PlatformRegistry {
 	var enabledPlatforms []string
 	if platformsStr != "" {
 		enabledPlatforms = parsePlatformList(platformsStr)
@@ -38,10 +44,11 @@ func NewPlatformRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr
 	logger.Infof("enabled platforms: %v", enabledPlatforms)
 
 	return &PlatformRegistry{
-		config:            cfg,
-		logger:            logger,
-		enabledPlatforms:  enabledPlatforms,
-		processorCreators: defaultProcessorCreators(),
+		config:                 cfg,
+		logger:                 logger,
+		enabledPlatforms:       enabledPlatforms,
+		processorCreators:      deps.ProcessorCreators,
+		sharedResourceProvider: deps.SharedResourceProvider,
 	}
 }
 
@@ -74,15 +81,16 @@ func (r *PlatformRegistry) RegisterAllProcessors(ctx context.Context, serviceMan
 }
 
 func (r *PlatformRegistry) initializeSharedResources() error {
-	resources, err := bootstrap.BuildSharedResources(r.config, r.logger, bootstrap.SharedResourceOptions{
-		NeedAmazonCrawler: r.needsAmazonProcessor(),
-	})
+	if r.sharedResourceProvider == nil {
+		return fmt.Errorf("shared resource provider not configured")
+	}
+	resources, err := r.sharedResourceProvider(r.config, r.logger, r.needsAmazonProcessor())
 	if err != nil {
 		return err
 	}
 
 	r.managementClient = resources.ManagementClient
-	r.sharedAmazonProcessor = resources.AmazonCrawler
+	r.sharedAmazonProcessor = resources.AmazonProcessor
 	r.logger.Info("shared resources initialized")
 	return nil
 }
@@ -186,15 +194,16 @@ func (r *PlatformRegistry) RegisterAmazonProcessor(ctx context.Context, serviceM
 
 func (r *PlatformRegistry) initForSinglePlatform(serviceManager *ServiceManager, needsAmazon bool) error {
 	r.rabbitmqClient = serviceManager.GetClient()
-	resources, err := bootstrap.BuildSharedResources(r.config, r.logger, bootstrap.SharedResourceOptions{
-		NeedAmazonCrawler: needsAmazon,
-	})
+	if r.sharedResourceProvider == nil {
+		return fmt.Errorf("shared resource provider not configured")
+	}
+	resources, err := r.sharedResourceProvider(r.config, r.logger, needsAmazon)
 	if err != nil {
 		return err
 	}
 
 	r.managementClient = resources.ManagementClient
-	r.sharedAmazonProcessor = resources.AmazonCrawler
+	r.sharedAmazonProcessor = resources.AmazonProcessor
 	return nil
 }
 

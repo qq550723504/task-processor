@@ -3,46 +3,60 @@ package consumer
 import (
 	"fmt"
 
-	"task-processor/internal/app/bootstrap"
 	"task-processor/internal/app/crawler/distributed"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
 
 type CrawlerRegistry struct {
-	config         *config.Config
-	logger         *logrus.Logger
-	rabbitmqClient *rabbitmq.Client
+	config                 *config.Config
+	logger                 *logrus.Logger
+	rabbitmqClient         *rabbitmq.Client
+	amazonCrawlerCreator   AmazonCrawlerCreator
+	productFetcherProvider ProductFetcherProvider
 }
 
 func NewCrawlerRegistry(cfg *config.Config, logger *logrus.Logger, rabbitmqClient *rabbitmq.Client) *CrawlerRegistry {
+	return NewCrawlerRegistryWithDependencies(cfg, logger, rabbitmqClient, CrawlerRegistryDependencies{
+		AmazonCrawlerCreator: defaultAmazonCrawlerCreator,
+	})
+}
+
+func NewCrawlerRegistryWithDependencies(cfg *config.Config, logger *logrus.Logger, rabbitmqClient *rabbitmq.Client, deps CrawlerRegistryDependencies) *CrawlerRegistry {
 	return &CrawlerRegistry{
-		config:         cfg,
-		logger:         logger,
-		rabbitmqClient: rabbitmqClient,
+		config:                 cfg,
+		logger:                 logger,
+		rabbitmqClient:         rabbitmqClient,
+		amazonCrawlerCreator:   deps.AmazonCrawlerCreator,
+		productFetcherProvider: deps.ProductFetcherProvider,
 	}
 }
 
 func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManager, sharedAmazonProcessor *amazon.AmazonProcessor) error {
-	r.logger.Info(" 娉ㄥ唽Amazon鐖櫕澶勭悊鍣?..")
+	r.logger.Info("Registering Amazon crawler processor...")
+	if r.amazonCrawlerCreator == nil {
+		return fmt.Errorf("amazon crawler creator not configured")
+	}
+	if r.productFetcherProvider == nil {
+		return fmt.Errorf("product fetcher provider not configured")
+	}
 
 	var amazonProcessor *amazon.AmazonProcessor
 	if sharedAmazonProcessor != nil {
-		r.logger.Info(" 澶嶇敤鍏变韓鐨凙mazon澶勭悊鍣紙閬垮厤閲嶅鍒濆鍖栨祻瑙堝櫒姹狅級")
+		r.logger.Info("Using shared Amazon processor for crawler registration")
 		amazonProcessor = sharedAmazonProcessor
 	} else {
-		r.logger.Info(" 鍒涘缓鏂扮殑Amazon澶勭悊鍣?")
-		amazonProcessor = amazon.CreateProcessor(r.config, r.logger)
+		r.logger.Info("Creating dedicated Amazon processor for crawler registration")
+		amazonProcessor = r.amazonCrawlerCreator(r.config, r.logger)
 	}
 
-	productFetcher, err := r.createProductFetcher(amazonProcessor)
+	productFetcher, err := r.productFetcherProvider(r.config, r.logger, amazonProcessor)
 	if err != nil {
-		return fmt.Errorf("鍒涘缓浜у搧鑾峰彇鍣ㄥけ璐? %w", err)
+		return fmt.Errorf("create product fetcher: %w", err)
 	}
 
 	taskSubmitter := NewTaskSubmitter(r.rabbitmqClient, r.logger)
@@ -57,20 +71,26 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManage
 	)
 
 	if err := serviceManager.RegisterProcessor("amazon.crawler", crawlerProcessor); err != nil {
-		return fmt.Errorf("娉ㄥ唽Amazon鐖櫕澶勭悊鍣ㄥけ璐? %w", err)
+		return fmt.Errorf("register amazon crawler processor: %w", err)
 	}
 
-	r.logger.Info(" Amazon鐖櫕澶勭悊鍣ㄦ敞鍐屾垚鍔?")
+	r.logger.Info("Amazon crawler processor registered")
 	return nil
 }
 
 func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) error {
-	r.logger.Info(" 娉ㄥ唽 Amazon 鐖櫕澶勭悊鍣?..")
+	r.logger.Info("Registering Amazon crawler...")
+	if r.amazonCrawlerCreator == nil {
+		return fmt.Errorf("amazon crawler creator not configured")
+	}
+	if r.productFetcherProvider == nil {
+		return fmt.Errorf("product fetcher provider not configured")
+	}
 
-	amazonProcessor := amazon.CreateProcessor(r.config, r.logger)
-	productFetcher, err := r.createProductFetcher(amazonProcessor)
+	amazonProcessor := r.amazonCrawlerCreator(r.config, r.logger)
+	productFetcher, err := r.productFetcherProvider(r.config, r.logger, amazonProcessor)
 	if err != nil {
-		return fmt.Errorf("鍒涘缓浜у搧鑾峰彇鍣ㄥけ璐? %w", err)
+		return fmt.Errorf("create product fetcher: %w", err)
 	}
 
 	taskSubmitter := NewTaskSubmitter(r.rabbitmqClient, r.logger)
@@ -85,30 +105,15 @@ func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) 
 	)
 
 	if err := serviceManager.RegisterProcessor("amazon.crawler", crawlerProcessor); err != nil {
-		return fmt.Errorf("娉ㄥ唽 Amazon 鐖櫕澶勭悊鍣ㄥけ璐? %w", err)
+		return fmt.Errorf("register amazon crawler: %w", err)
 	}
 
-	r.logger.Info(" Amazon 鐖櫕澶勭悊鍣ㄦ敞鍐屾垚鍔?")
+	r.logger.Info("Amazon crawler registered")
 	return nil
 }
 
 func (r *CrawlerRegistry) Register1688Crawler(serviceManager *ServiceManager) error {
-	r.logger.Info(" 娉ㄥ唽 1688 鐖櫕澶勭悊鍣?..")
-	r.logger.Warn(" 1688 鐖櫕澶勭悊鍣ㄥ皻鏈疄鐜?")
-	return fmt.Errorf("1688 鐖櫕澶勭悊鍣ㄥ皻鏈疄鐜?")
-}
-
-func (r *CrawlerRegistry) createProductFetcher(amazonProcessor *amazon.AmazonProcessor) (*product.ProductFetcher, error) {
-	resources, err := bootstrap.BuildSharedResources(r.config, r.logger, bootstrap.SharedResourceOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	productFetcher := product.NewProductFetcher(
-		resources.ManagementClient.GetRawJsonDataAdapter(),
-		&r.config.Amazon,
-		amazonProcessor,
-	)
-
-	return productFetcher, nil
+	r.logger.Info("Registering 1688 crawler...")
+	r.logger.Warn("1688 crawler is not implemented yet")
+	return fmt.Errorf("1688 crawler is not implemented yet")
 }
