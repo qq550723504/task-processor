@@ -54,6 +54,13 @@ func (r *AISkuMappingResponse) FirstSKU() (*AIGeneratedSku, bool) {
 	return &r.SkuList[0], true
 }
 
+func (r *AISkuMappingResponse) SKUAt(index int) (*AIGeneratedSku, bool) {
+	if r == nil || index < 0 || index >= len(r.SkuList) {
+		return nil, false
+	}
+	return &r.SkuList[index], true
+}
+
 func (r *AISkuMappingResponse) FirstSpecDimensions() []string {
 	firstSKU, ok := r.FirstSKU()
 	if !ok {

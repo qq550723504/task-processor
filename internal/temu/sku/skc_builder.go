@@ -84,8 +84,12 @@ func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx pipeline.TaskContext, 
 		skuList := make([]models.Sku, 0, len(skuIndices))
 		for _, skuIndex := range skuIndices {
 			variant := variants[skuIndex]
-			aiSku := aiMapping.SkuList[skuIndex]
-			sku := sb.itemBuilder.buildSkuFromVariantWithAI(ctx, variant, aiSku)
+			aiSku, ok := aiMapping.SKUAt(skuIndex)
+			if !ok {
+				sb.logger.Warnf("skip color group sku due to missing ai mapping: index=%d asin=%s", skuIndex, variant.Asin)
+				continue
+			}
+			sku := sb.itemBuilder.buildSkuFromVariantWithAI(ctx, variant, *aiSku)
 			skuList = append(skuList, sku)
 			sb.logger.Infof("使用现有变体: 颜色=%s, index=%d", colorSpecID, skuIndex)
 		}
@@ -99,7 +103,11 @@ func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx pipeline.TaskContext, 
 	// 创建现有SKU的映射
 	existingSkuMap := make(map[string]int)
 	for _, skuIndex := range skuIndices {
-		aiSku := aiMapping.SkuList[skuIndex]
+		aiSku, ok := aiMapping.SKUAt(skuIndex)
+		if !ok {
+			sb.logger.Warnf("skip existing sku map build due to missing ai mapping: index=%d", skuIndex)
+			continue
+		}
 		key := sb.specHandler.createNonColorSpecKey(convertSpecInfos(aiSku.Spec))
 		existingSkuMap[key] = skuIndex
 		sb.logger.Debugf("存储现有SKU映射: key=%s, index=%d", key, skuIndex)
@@ -117,8 +125,12 @@ func (sb *SkuSkcBuilder) buildCompleteSkuListForColor(ctx pipeline.TaskContext, 
 		if existingIndex, exists := existingSkuMap[combinationKey]; exists {
 			// 存在的变体，使用真实数据
 			variant := variants[existingIndex]
-			aiSku := aiMapping.SkuList[existingIndex]
-			sku := sb.itemBuilder.buildSkuFromVariantWithAI(ctx, variant, aiSku)
+			aiSku, ok := aiMapping.SKUAt(existingIndex)
+			if !ok {
+				sb.logger.Warnf("skip color group sku due to missing ai mapping: index=%d asin=%s", existingIndex, variant.Asin)
+				continue
+			}
+			sku := sb.itemBuilder.buildSkuFromVariantWithAI(ctx, variant, *aiSku)
 			skuList = append(skuList, sku)
 			sb.logger.Infof("使用现有变体: 颜色=%s, 组合=%s", colorSpecID, combinationKey)
 		} else {
@@ -170,7 +182,12 @@ func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.T
 			continue
 		}
 
-		aiSku := aiMapping.SkuList[i]
+		aiSku, ok := aiMapping.SKUAt(i)
+		if !ok {
+			sb.logger.Errorf("????????[%d]???AI??????(???=%d)?????????: ASIN=%s",
+				i, aiMapping.SkuCount(), variant.Asin)
+			continue
+		}
 
 		// 检查ASIN是否重复
 		if asinMap[variant.Asin] {
@@ -180,7 +197,7 @@ func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.T
 		asinMap[variant.Asin] = true
 
 		validVariants = append(validVariants, variant)
-		validAiSkus = append(validAiSkus, aiSku)
+		validAiSkus = append(validAiSkus, *aiSku)
 		sb.logger.Infof("为变体[%d]准备SKU，规格: %+v", i, aiSku.Spec)
 	}
 
@@ -218,7 +235,12 @@ func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants
 			continue
 		}
 
-		aiSku := aiMapping.SkuList[i]
+		aiSku, ok := aiMapping.SKUAt(i)
+		if !ok {
+			sb.logger.Errorf("????????[%d]???AI??????(???=%d)?????????: ASIN=%s",
+				i, aiMapping.SkuCount(), variant.Asin)
+			continue
+		}
 
 		// 检查ASIN是否重复
 		if asinMap[variant.Asin] {
@@ -227,7 +249,7 @@ func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants
 		}
 		asinMap[variant.Asin] = true
 
-		sku := sb.itemBuilder.buildSkuFromVariantWithAI(ctx, variant, aiSku)
+		sku := sb.itemBuilder.buildSkuFromVariantWithAI(ctx, variant, *aiSku)
 		skuList = append(skuList, sku)
 		sb.logger.Infof("为变体[%d]创建SKU，ASIN: %s，规格: %+v", i, variant.Asin, aiSku.Spec)
 	}
