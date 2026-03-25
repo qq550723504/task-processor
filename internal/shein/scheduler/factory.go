@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/platformbase"
+	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
 	sheinpricingapi "task-processor/internal/shein/api/pricing"
@@ -21,27 +22,36 @@ import (
 )
 
 type TaskBuilder func(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error)
+type PricingServiceBuilder func(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.AutoPricingService, error)
+type ProductSyncServiceBuilder func(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.ProductSyncService, error)
+type InventoryServiceBuilder func(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.InventorySyncService, error)
 
 type Dependencies struct {
-	CookieManager          *state.CookieManager
-	ClientManager          *client.ClientManager
-	FetcherBuilder         platformbase.ProductFetcherBuilder
-	PricingTaskBuilder     TaskBuilder
-	ProductSyncTaskBuilder TaskBuilder
-	InventoryTaskBuilder   TaskBuilder
-	ActivityTaskBuilder    TaskBuilder
+	CookieManager             *state.CookieManager
+	ClientManager             *client.ClientManager
+	FetcherBuilder            platformbase.ProductFetcherBuilder
+	PricingServiceBuilder     PricingServiceBuilder
+	ProductSyncServiceBuilder ProductSyncServiceBuilder
+	InventoryServiceBuilder   InventoryServiceBuilder
+	PricingTaskBuilder        TaskBuilder
+	ProductSyncTaskBuilder    TaskBuilder
+	InventoryTaskBuilder      TaskBuilder
+	ActivityTaskBuilder       TaskBuilder
 }
 
 type SheinTaskFactory struct {
 	*platformbase.BaseFactory
-	cookieManager          *state.CookieManager
-	clientManager          *client.ClientManager
-	rabbitmqClient         *rabbitmq.Client
-	fetcherBuilder         platformbase.ProductFetcherBuilder
-	pricingTaskBuilder     TaskBuilder
-	productSyncTaskBuilder TaskBuilder
-	inventoryTaskBuilder   TaskBuilder
-	activityTaskBuilder    TaskBuilder
+	cookieManager             *state.CookieManager
+	clientManager             *client.ClientManager
+	rabbitmqClient            *rabbitmq.Client
+	fetcherBuilder            platformbase.ProductFetcherBuilder
+	pricingServiceBuilder     PricingServiceBuilder
+	productSyncServiceBuilder ProductSyncServiceBuilder
+	inventoryServiceBuilder   InventoryServiceBuilder
+	pricingTaskBuilder        TaskBuilder
+	productSyncTaskBuilder    TaskBuilder
+	inventoryTaskBuilder      TaskBuilder
+	activityTaskBuilder       TaskBuilder
 }
 
 func NewSheinTaskFactory(
@@ -99,6 +109,18 @@ func NewSheinTaskFactoryWithDependencies(
 	if factory.fetcherBuilder == nil {
 		factory.fetcherBuilder = platformbase.NewDefaultProductFetcherBuilder()
 	}
+	factory.pricingServiceBuilder = deps.PricingServiceBuilder
+	if factory.pricingServiceBuilder == nil {
+		factory.pricingServiceBuilder = defaultBuildSheinPricingService
+	}
+	factory.productSyncServiceBuilder = deps.ProductSyncServiceBuilder
+	if factory.productSyncServiceBuilder == nil {
+		factory.productSyncServiceBuilder = defaultBuildSheinProductSyncService
+	}
+	factory.inventoryServiceBuilder = deps.InventoryServiceBuilder
+	if factory.inventoryServiceBuilder == nil {
+		factory.inventoryServiceBuilder = defaultBuildSheinInventoryService
+	}
 	factory.pricingTaskBuilder = deps.PricingTaskBuilder
 	if factory.pricingTaskBuilder == nil {
 		factory.pricingTaskBuilder = defaultBuildSheinPricingTask
@@ -142,6 +164,14 @@ func (f *SheinTaskFactory) CreateTask(ctx context.Context, config appscheduler.T
 }
 
 func defaultBuildSheinPricingTask(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error) {
+	pricingService, err := factory.pricingServiceBuilder(config, factory)
+	if err != nil {
+		return nil, fmt.Errorf("build SHEIN pricing service: %w", err)
+	}
+	return NewPricingTask(ctx, config, factory.GetManagementClient(), pricingService), nil
+}
+
+func defaultBuildSheinPricingService(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.AutoPricingService, error) {
 	baseClient, err := factory.createBaseClient(config.StoreID)
 	if err != nil {
 		return nil, err
@@ -149,10 +179,18 @@ func defaultBuildSheinPricingTask(ctx context.Context, config appscheduler.TaskC
 
 	pricingAPI := sheinpricingapi.NewClient(baseClient)
 	pricingService := sheinpricing.NewAutoPricingService(factory.GetManagementClient(), pricingAPI)
-	return NewPricingTask(ctx, config, factory.GetManagementClient(), factory.clientManager, pricingService), nil
+	return NewSheinAutoPricingAdapter(pricingService), nil
 }
 
 func defaultBuildSheinProductSyncTask(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error) {
+	syncService, err := factory.productSyncServiceBuilder(config, factory)
+	if err != nil {
+		return nil, fmt.Errorf("build SHEIN product sync service: %w", err)
+	}
+	return NewProductSyncTask(ctx, config, factory.GetManagementClient(), syncService), nil
+}
+
+func defaultBuildSheinProductSyncService(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.ProductSyncService, error) {
 	baseClient, err := factory.createBaseClient(config.StoreID)
 	if err != nil {
 		return nil, err
@@ -174,10 +212,18 @@ func defaultBuildSheinProductSyncTask(ctx context.Context, config appscheduler.T
 		storeInfoClient,
 	)
 
-	return NewProductSyncTask(ctx, config, factory.GetManagementClient(), factory.clientManager, syncService), nil
+	return newProductSyncServiceAdapter(syncService), nil
 }
 
 func defaultBuildSheinInventoryTask(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error) {
+	inventoryService, err := factory.inventoryServiceBuilder(config, factory)
+	if err != nil {
+		return nil, fmt.Errorf("build SHEIN inventory service: %w", err)
+	}
+	return NewInventoryTask(ctx, config, factory.GetManagementClient(), inventoryService), nil
+}
+
+func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.InventorySyncService, error) {
 	baseClient, err := factory.createBaseClient(config.StoreID)
 	if err != nil {
 		return nil, err
@@ -206,7 +252,7 @@ func defaultBuildSheinInventoryTask(ctx context.Context, config appscheduler.Tas
 		inventoryRecordClient,
 	)
 
-	return NewInventoryTask(ctx, config, factory.GetManagementClient(), factory.clientManager, inventoryService), nil
+	return newInventorySyncServiceAdapter(inventoryService), nil
 }
 
 func defaultBuildSheinActivityTask(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error) {

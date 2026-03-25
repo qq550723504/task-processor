@@ -1,44 +1,41 @@
-﻿// Package scheduler 提供TEMU平台库存同步任务实现
+// Package scheduler 提供TEMU平台库存同步任务实现
 package scheduler
 
 import (
-"context"
+	"context"
 
-appscheduler "task-processor/internal/app/scheduler"
-"task-processor/internal/infra/clients/management"
-platformtask "task-processor/internal/platformtask"
-"task-processor/internal/temu/api/client"
-temuscheduler "task-processor/internal/temu/sync"
+	appscheduler "task-processor/internal/app/scheduler"
+	"task-processor/internal/infra/clients/management"
+	platformtask "task-processor/internal/platformtask"
 )
 
 // InventoryTask TEMU库存同步任务
 type InventoryTask struct {
-*platformtask.InventorySyncTask
-temuAPIClient client.ClientAPI
+	*platformtask.InventorySyncTask
 }
 
 // NewInventoryTask 创建库存同步任务
 func NewInventoryTask(
-ctx context.Context,
-config appscheduler.TaskConfig,
-managementClient *management.ClientManager,
-inventoryService temuscheduler.InventorySyncService,
+	ctx context.Context,
+	config appscheduler.TaskConfig,
+	managementClient *management.ClientManager,
+	inventoryService platformtask.InventorySyncService,
 ) *InventoryTask {
-adapter := newInventorySyncServiceAdapter(inventoryService)
+	_ = ctx
 
-baseTask := platformtask.NewInventorySyncTask(platformtask.InventorySyncTaskConfig{
-TaskConfig:       config,
-ManagementClient: managementClient,
-InventoryService: adapter,
-PlatformName:     "TEMU",
-})
+	baseTask := platformtask.NewInventorySyncTask(platformtask.InventorySyncTaskConfig{
+		TaskConfig:       config,
+		ManagementClient: managementClient,
+		InventoryService: inventoryService,
+		PlatformName:     "TEMU",
+	})
 
-return &InventoryTask{
-InventorySyncTask: baseTask,
-}
+	return &InventoryTask{
+		InventorySyncTask: baseTask,
+	}
 }
 
 // Execute 执行库存同步任务
 func (t *InventoryTask) Execute(ctx context.Context) error {
-return t.InventorySyncTask.Execute(ctx)
+	return t.InventorySyncTask.Execute(ctx)
 }

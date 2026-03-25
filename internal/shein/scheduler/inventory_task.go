@@ -1,4 +1,4 @@
-// package scheduler 提供SHEIN平台库存监控任务实现
+// package scheduler 提供SHEIN平台库存同步任务实现
 package scheduler
 
 import (
@@ -7,15 +7,11 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 	platformtask "task-processor/internal/platformtask"
-	"task-processor/internal/shein/client"
-	"task-processor/internal/shein/inventory"
 )
 
-// InventoryTask SHEIN库存监控任务
-// 使用通用基类实现
+// InventoryTask SHEIN库存同步任务
 type InventoryTask struct {
 	*platformtask.InventorySyncTask
-	clientManager *client.ClientManager // 保留SHEIN特定的字段
 }
 
 // NewInventoryTask 创建库存同步任务
@@ -23,28 +19,23 @@ func NewInventoryTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
 	managementClient *management.ClientManager,
-	clientManager *client.ClientManager,
-	inventoryService inventory.InventorySyncService,
+	inventoryService platformtask.InventorySyncService,
 ) *InventoryTask {
-	// 创建适配器
-	adapter := newInventorySyncServiceAdapter(inventoryService)
+	_ = ctx
 
-	// 使用通用基类创建任务
 	baseTask := platformtask.NewInventorySyncTask(platformtask.InventorySyncTaskConfig{
 		TaskConfig:       config,
 		ManagementClient: managementClient,
-		InventoryService: adapter,
+		InventoryService: inventoryService,
 		PlatformName:     "SHEIN",
 	})
 
 	return &InventoryTask{
 		InventorySyncTask: baseTask,
-		clientManager:     clientManager,
 	}
 }
 
-// Execute 执行库存监控任务
-// 直接使用基类的Execute方法
+// Execute 执行库存同步任务
 func (t *InventoryTask) Execute(ctx context.Context) error {
 	return t.InventorySyncTask.Execute(ctx)
 }

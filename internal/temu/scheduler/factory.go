@@ -10,31 +10,41 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/platformbase"
+	platformtask "task-processor/internal/platformtask"
 	temuapi "task-processor/internal/temu/api"
 	"task-processor/internal/temu/api/client"
 	schedulerservice "task-processor/internal/temu/sync"
 )
 
 type TaskBuilder func(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error)
+type PricingServiceBuilder func(config appscheduler.TaskConfig, factory *TemuTaskFactory) (platformtask.AutoPricingService, error)
+type ProductSyncServiceBuilder func(config appscheduler.TaskConfig, factory *TemuTaskFactory) (platformtask.ProductSyncService, error)
+type InventoryServiceBuilder func(config appscheduler.TaskConfig, factory *TemuTaskFactory) (platformtask.InventorySyncService, error)
 
 type Dependencies struct {
-	ClientManager          *client.APIClientManager
-	FetcherBuilder         platformbase.ProductFetcherBuilder
-	PricingTaskBuilder     TaskBuilder
-	ProductSyncTaskBuilder TaskBuilder
-	InventoryTaskBuilder   TaskBuilder
-	ActivityTaskBuilder    TaskBuilder
+	ClientManager             *client.APIClientManager
+	FetcherBuilder            platformbase.ProductFetcherBuilder
+	PricingServiceBuilder     PricingServiceBuilder
+	ProductSyncServiceBuilder ProductSyncServiceBuilder
+	InventoryServiceBuilder   InventoryServiceBuilder
+	PricingTaskBuilder        TaskBuilder
+	ProductSyncTaskBuilder    TaskBuilder
+	InventoryTaskBuilder      TaskBuilder
+	ActivityTaskBuilder       TaskBuilder
 }
 
 type TemuTaskFactory struct {
 	*platformbase.BaseFactory
-	clientManager          *client.APIClientManager
-	rabbitmqClient         *rabbitmq.Client
-	fetcherBuilder         platformbase.ProductFetcherBuilder
-	pricingTaskBuilder     TaskBuilder
-	productSyncTaskBuilder TaskBuilder
-	inventoryTaskBuilder   TaskBuilder
-	activityTaskBuilder    TaskBuilder
+	clientManager             *client.APIClientManager
+	rabbitmqClient            *rabbitmq.Client
+	fetcherBuilder            platformbase.ProductFetcherBuilder
+	pricingServiceBuilder     PricingServiceBuilder
+	productSyncServiceBuilder ProductSyncServiceBuilder
+	inventoryServiceBuilder   InventoryServiceBuilder
+	pricingTaskBuilder        TaskBuilder
+	productSyncTaskBuilder    TaskBuilder
+	inventoryTaskBuilder      TaskBuilder
+	activityTaskBuilder       TaskBuilder
 }
 
 func NewTemuTaskFactory(
@@ -86,6 +96,18 @@ func NewTemuTaskFactoryWithDependencies(
 	if factory.fetcherBuilder == nil {
 		factory.fetcherBuilder = platformbase.NewDefaultProductFetcherBuilder()
 	}
+	factory.pricingServiceBuilder = deps.PricingServiceBuilder
+	if factory.pricingServiceBuilder == nil {
+		factory.pricingServiceBuilder = defaultBuildTemuPricingService
+	}
+	factory.productSyncServiceBuilder = deps.ProductSyncServiceBuilder
+	if factory.productSyncServiceBuilder == nil {
+		factory.productSyncServiceBuilder = defaultBuildTemuProductSyncService
+	}
+	factory.inventoryServiceBuilder = deps.InventoryServiceBuilder
+	if factory.inventoryServiceBuilder == nil {
+		factory.inventoryServiceBuilder = defaultBuildTemuInventoryService
+	}
 	factory.pricingTaskBuilder = deps.PricingTaskBuilder
 	if factory.pricingTaskBuilder == nil {
 		factory.pricingTaskBuilder = defaultBuildTemuPricingTask
@@ -129,10 +151,30 @@ func (f *TemuTaskFactory) CreateTask(ctx context.Context, config appscheduler.Ta
 }
 
 func defaultBuildTemuPricingTask(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error) {
-	return NewPricingTask(ctx, config, factory.GetManagementClient()), nil
+	pricingService, err := factory.pricingServiceBuilder(config, factory)
+	if err != nil {
+		return nil, fmt.Errorf("build TEMU pricing service: %w", err)
+	}
+	return NewPricingTask(ctx, config, factory.GetManagementClient(), pricingService), nil
+}
+
+func defaultBuildTemuPricingService(config appscheduler.TaskConfig, factory *TemuTaskFactory) (platformtask.AutoPricingService, error) {
+	apiClient := temuapi.NewAPIClient(config.StoreID, factory.GetManagementClient())
+	if apiClient == nil {
+		return nil, fmt.Errorf("create TEMU API client")
+	}
+	return NewTemuAutoPricingAdapter(apiClient, factory.GetManagementClient()), nil
 }
 
 func defaultBuildTemuProductSyncTask(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error) {
+	syncService, err := factory.productSyncServiceBuilder(config, factory)
+	if err != nil {
+		return nil, fmt.Errorf("build TEMU product sync service: %w", err)
+	}
+	return NewProductSyncTask(ctx, config, factory.GetManagementClient(), syncService), nil
+}
+
+func defaultBuildTemuProductSyncService(config appscheduler.TaskConfig, factory *TemuTaskFactory) (platformtask.ProductSyncService, error) {
 	apiClient, err := factory.clientManager.GetClient(config.TenantID, config.StoreID)
 	if err != nil {
 		return nil, fmt.Errorf("get TEMU API client: %w", err)
@@ -159,10 +201,18 @@ func defaultBuildTemuProductSyncTask(ctx context.Context, config appscheduler.Ta
 		syncConfig,
 	)
 
-	return NewProductSyncTask(ctx, config, factory.GetManagementClient(), syncService), nil
+	return newProductSyncServiceAdapter(syncService), nil
 }
 
 func defaultBuildTemuInventoryTask(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error) {
+	inventoryService, err := factory.inventoryServiceBuilder(config, factory)
+	if err != nil {
+		return nil, fmt.Errorf("build TEMU inventory service: %w", err)
+	}
+	return NewInventoryTask(ctx, config, factory.GetManagementClient(), inventoryService), nil
+}
+
+func defaultBuildTemuInventoryService(config appscheduler.TaskConfig, factory *TemuTaskFactory) (platformtask.InventorySyncService, error) {
 	temuAPIClient, err := factory.clientManager.GetClient(config.TenantID, config.StoreID)
 	if err != nil {
 		return nil, fmt.Errorf("get TEMU API client: %w", err)
@@ -190,7 +240,7 @@ func defaultBuildTemuInventoryTask(ctx context.Context, config appscheduler.Task
 		inventoryRecordClient,
 	)
 
-	return NewInventoryTask(ctx, config, factory.GetManagementClient(), inventoryService), nil
+	return newInventorySyncServiceAdapter(inventoryService), nil
 }
 
 func defaultBuildTemuActivityTask(ctx context.Context, config appscheduler.TaskConfig, factory *TemuTaskFactory) (appscheduler.Task, error) {
