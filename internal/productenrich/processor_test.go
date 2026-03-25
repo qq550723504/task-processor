@@ -26,7 +26,7 @@ func (m *mockService) GetTaskResult(_ context.Context, _ string) (*TaskResult, e
 func (m *mockService) ProcessProduct(_ context.Context, _ *Task) (*ProductJSON, error) {
 	return m.result, m.err
 }
-func (m *mockService) SetWorkerPool(_ worker.WorkerPool) {}
+func (m *mockService) SetTaskSubmitter(_ TaskSubmitter) {}
 
 type mockTaskRepo struct {
 	tasks        map[string]*Task

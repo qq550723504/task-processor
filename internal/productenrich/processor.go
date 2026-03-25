@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
@@ -13,11 +12,11 @@ import (
 
 // Processor 实现 worker.Processor 接口，将 ProductService 接入 infra/worker.Pool。
 type Processor struct {
-	service    ProductService
-	taskRepo   TaskRepository
-	pool       worker.WorkerPool
-	logger     *logrus.Logger
-	maxRetries int
+	service       ProductService
+	taskRepo      TaskRepository
+	taskSubmitter TaskSubmitter
+	logger        *logrus.Logger
+	maxRetries    int
 }
 
 // NewProcessor 创建 Processor 实例。
@@ -42,10 +41,10 @@ func NewProcessor(service ProductService, taskRepo TaskRepository, logger *logru
 	}, nil
 }
 
-// SetWorkerPool 注入 WorkerPool，用于重试时重新入队。
+// SetTaskSubmitter 注入任务提交器，用于重试时重新入队。
 // 必须在 pool.Start 之前调用。
-func (p *Processor) SetWorkerPool(pool worker.WorkerPool) {
-	p.pool = pool
+func (p *Processor) SetTaskSubmitter(submitter TaskSubmitter) {
+	p.taskSubmitter = submitter
 }
 
 // errNoRetry 标记不应重试的错误（如数据质量拒绝）
@@ -110,17 +109,17 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		}
 
 		if updated.RetryCount < p.maxRetries {
-			// 重置状态为 pending，然后重新提交到 WorkerPool
+			// 重置状态为 pending，然后重新提交
 			if resetErr := p.taskRepo.ResetForRetry(ctx, taskID); resetErr != nil {
 				log.WithError(resetErr).Warn("failed to reset task for retry")
-			} else if p.pool != nil {
-				if submitErr := p.pool.Submit(worker.WorkerJob{TaskData: taskID}); submitErr != nil {
+			} else if p.taskSubmitter != nil {
+				if submitErr := p.taskSubmitter.Submit(taskID); submitErr != nil {
 					log.WithError(submitErr).Warn("failed to resubmit task to worker pool")
 				} else {
 					log.WithField("retry_count", updated.RetryCount).Info("task resubmitted for retry")
 				}
 			} else {
-				log.Warn("worker pool not set, task reset to pending but not resubmitted")
+				log.Warn("task submitter not set, task reset to pending but not resubmitted")
 			}
 		} else {
 			log.WithField("retry_count", updated.RetryCount).Warn("task exceeded max retries, keeping failed")

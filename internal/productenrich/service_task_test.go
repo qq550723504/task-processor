@@ -4,38 +4,30 @@ import (
 	"context"
 	"errors"
 	"testing"
-
-	"task-processor/internal/infra/worker"
 )
 
-// mockWorkerPool 用于捕获 Submit 调用
-type mockWorkerPool struct {
-	submitted []worker.WorkerJob
+// mockTaskSubmitter 捕获 Submit 调用，实现 TaskSubmitter 接口
+type mockTaskSubmitter struct {
+	submitted []string
 	submitErr error
 }
 
-func (m *mockWorkerPool) Submit(job worker.WorkerJob) error {
+func (m *mockTaskSubmitter) Submit(taskID string) error {
 	if m.submitErr != nil {
 		return m.submitErr
 	}
-	m.submitted = append(m.submitted, job)
+	m.submitted = append(m.submitted, taskID)
 	return nil
 }
-func (m *mockWorkerPool) Start(_ context.Context)           {}
-func (m *mockWorkerPool) Stop(_ context.Context)            {}
-func (m *mockWorkerPool) AvailableSlots() int               { return 10 }
-func (m *mockWorkerPool) GetQueueStats() worker.QueueStats  { return worker.QueueStats{} }
-func (m *mockWorkerPool) SetJobHandler(_ worker.JobHandler) {}
-func (m *mockWorkerPool) GetMetrics() *worker.Metrics       { return &worker.Metrics{} }
 
-func newSvcWithPool(t *testing.T, pool worker.WorkerPool) (*productService, *mockTaskRepo) {
+func newSvcWithSubmitter(t *testing.T, submitter TaskSubmitter) (*productService, *mockTaskRepo) {
 	t.Helper()
 	repo := newMockTaskRepo()
 	svc, err := NewProductService(&ProductServiceConfig{
-		QueueName:   "q",
-		TaskRepo:    repo,
-		RedisClient: &mockRedisClient{},
-		WorkerPool:  pool,
+		QueueName:     "q",
+		TaskRepo:      repo,
+		RedisClient:   &mockRedisClient{},
+		TaskSubmitter: submitter,
 	})
 	if err != nil {
 		t.Fatalf("NewProductService: %v", err)
@@ -46,7 +38,7 @@ func newSvcWithPool(t *testing.T, pool worker.WorkerPool) (*productService, *moc
 // --- validateRequest ---
 
 func TestValidateRequest_NoInput_ReturnsError(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	err := svc.validateRequest(&GenerateRequest{})
 	if err == nil {
 		t.Fatal("expected error when no input provided")
@@ -54,7 +46,7 @@ func TestValidateRequest_NoInput_ReturnsError(t *testing.T) {
 }
 
 func TestValidateRequest_TooManyImages_ReturnsError(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	urls := make([]string, 11)
 	for i := range urls {
 		urls[i] = "http://example.com/img.jpg"
@@ -66,7 +58,7 @@ func TestValidateRequest_TooManyImages_ReturnsError(t *testing.T) {
 }
 
 func TestValidateRequest_TextTooLong_ReturnsError(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	longText := make([]byte, 10001)
 	err := svc.validateRequest(&GenerateRequest{Text: string(longText)})
 	if err == nil {
@@ -75,7 +67,7 @@ func TestValidateRequest_TextTooLong_ReturnsError(t *testing.T) {
 }
 
 func TestValidateRequest_ValidInputs_NoError(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	cases := []struct {
 		name string
 		req  *GenerateRequest
@@ -96,7 +88,7 @@ func TestValidateRequest_ValidInputs_NoError(t *testing.T) {
 // --- CreateGenerateTask ---
 
 func TestCreateGenerateTask_NilRequest_ReturnsError(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	_, err := svc.CreateGenerateTask(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error for nil request")
@@ -104,16 +96,16 @@ func TestCreateGenerateTask_NilRequest_ReturnsError(t *testing.T) {
 }
 
 func TestCreateGenerateTask_InvalidRequest_ReturnsError(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	_, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{})
 	if err == nil {
 		t.Fatal("expected error for invalid request")
 	}
 }
 
-func TestCreateGenerateTask_WithWorkerPool_SubmitsJob(t *testing.T) {
-	pool := &mockWorkerPool{}
-	svc, repo := newSvcWithPool(t, pool)
+func TestCreateGenerateTask_WithSubmitter_SubmitsJob(t *testing.T) {
+	submitter := &mockTaskSubmitter{}
+	svc, repo := newSvcWithSubmitter(t, submitter)
 
 	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{Text: "a product"})
 	if err != nil {
@@ -128,26 +120,25 @@ func TestCreateGenerateTask_WithWorkerPool_SubmitsJob(t *testing.T) {
 	if _, ok := repo.tasks[task.ID]; !ok {
 		t.Error("task not saved to repo")
 	}
-	if len(pool.submitted) != 1 {
-		t.Errorf("pool.submitted len = %d, want 1", len(pool.submitted))
+	if len(submitter.submitted) != 1 {
+		t.Errorf("submitter.submitted len = %d, want 1", len(submitter.submitted))
 	}
-	if pool.submitted[0].TaskData != task.ID {
-		t.Errorf("submitted TaskData = %q, want %q", pool.submitted[0].TaskData, task.ID)
+	if submitter.submitted[0] != task.ID {
+		t.Errorf("submitted taskID = %q, want %q", submitter.submitted[0], task.ID)
 	}
 }
 
-func TestCreateGenerateTask_PoolSubmitFail_ReturnsError(t *testing.T) {
-	pool := &mockWorkerPool{submitErr: errors.New("pool full")}
-	svc, _ := newSvcWithPool(t, pool)
+func TestCreateGenerateTask_SubmitFail_ReturnsError(t *testing.T) {
+	submitter := &mockTaskSubmitter{submitErr: errors.New("pool full")}
+	svc, _ := newSvcWithSubmitter(t, submitter)
 
 	_, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{Text: "a product"})
 	if err == nil {
-		t.Fatal("expected error when pool.Submit fails")
+		t.Fatal("expected error when submitter.Submit fails")
 	}
 }
 
-func TestCreateGenerateTask_NoPool_FallsBackToRedis(t *testing.T) {
-	// 无 WorkerPool 时应走 Redis Push 降级路径
+func TestCreateGenerateTask_NoSubmitter_FallsBackToRedis(t *testing.T) {
 	repo := newMockTaskRepo()
 	rc := newMockRedisForCache()
 	svc, err := NewProductService(&ProductServiceConfig{
@@ -171,7 +162,7 @@ func TestCreateGenerateTask_NoPool_FallsBackToRedis(t *testing.T) {
 // --- GetTaskResult ---
 
 func TestGetTaskResult_EmptyID_ReturnsError(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	_, err := svc.GetTaskResult(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected error for empty task ID")
@@ -179,7 +170,7 @@ func TestGetTaskResult_EmptyID_ReturnsError(t *testing.T) {
 }
 
 func TestGetTaskResult_NotFound_ReturnsErrTaskNotFound(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	_, err := svc.GetTaskResult(context.Background(), "nonexistent")
 	if !errors.Is(err, ErrTaskNotFound) {
 		t.Errorf("expected ErrTaskNotFound, got %v", err)
@@ -187,7 +178,7 @@ func TestGetTaskResult_NotFound_ReturnsErrTaskNotFound(t *testing.T) {
 }
 
 func TestGetTaskResult_CompletedTask_SetsCompletedAt(t *testing.T) {
-	svc, repo := newSvcWithPool(t, nil)
+	svc, repo := newSvcWithSubmitter(t, nil)
 	task := &Task{
 		ID:      "t1",
 		Request: &GenerateRequest{},
@@ -212,7 +203,7 @@ func TestGetTaskResult_CompletedTask_SetsCompletedAt(t *testing.T) {
 }
 
 func TestGetTaskResult_PendingTask_NoCompletedAt(t *testing.T) {
-	svc, repo := newSvcWithPool(t, nil)
+	svc, repo := newSvcWithSubmitter(t, nil)
 	task := &Task{
 		ID:      "t2",
 		Request: &GenerateRequest{},

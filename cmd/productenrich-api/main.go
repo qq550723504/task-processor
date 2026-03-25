@@ -236,10 +236,10 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 	})
 	logger.Infof("✅ Worker Pool 已创建（concurrency=%d）", cfg.Worker.Concurrency)
 
-	// 将 Pool 注入 service，使 CreateGenerateTask 能直接 Submit
-	svc.SetWorkerPool(pool)
-	// 将 Pool 注入 proc，使重试时能重新入队
-	proc.SetWorkerPool(pool)
+	// 将 Pool 注入 service 和 processor，使 CreateGenerateTask 能直接 Submit，重试时也能重新入队
+	submitter := &poolSubmitter{pool: pool}
+	svc.SetTaskSubmitter(submitter)
+	proc.SetTaskSubmitter(submitter)
 	handler, err := productenrich.NewProductHandler(svc)
 	if err != nil {
 		return nil, nil, closers, fmt.Errorf("创建 ProductHandler 失败: %w", err)

@@ -38,3 +38,9 @@ type LLMClient interface {
 	Generate(ctx context.Context, prompt string) (string, error)
 	AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error)
 }
+
+// TaskSubmitter 任务提交接口，解耦 ProductService 与 WorkerPool 的双向依赖。
+// ProductService 只需要提交能力，不需要感知 Pool 的完整生命周期。
+type TaskSubmitter interface {
+	Submit(taskID string) error
+}

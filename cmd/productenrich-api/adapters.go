@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/redisclient"
+	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 )
 
@@ -19,6 +20,16 @@ func newLLMManager(cfg config.OpenAIConfig) (productenrich.LLMManager, error) {
 // newWebScraper 创建基于 1688 爬虫的 WebScraper（委托给 productenrich 包）。
 func newWebScraper(cfg *config.Config) productenrich.WebScraper {
 	return productenrich.NewCrawler1688Adapter(cfg)
+}
+
+// poolSubmitter 将 worker.WorkerPool 适配为 productenrich.TaskSubmitter。
+// 解耦 ProductService 与 WorkerPool 的双向依赖：Service 只感知提交能力，不感知 Pool 生命周期。
+type poolSubmitter struct {
+	pool worker.WorkerPool
+}
+
+func (s *poolSubmitter) Submit(taskID string) error {
+	return s.pool.Submit(worker.WorkerJob{TaskData: taskID})
 }
 
 // newRedisClient 创建真实 Redis 客户端（连接失败时返回错误）。

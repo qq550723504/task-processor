@@ -4,11 +4,11 @@ package productenrich
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/infra/worker"
 	"time"
 
+	"task-processor/internal/core/logger"
+
 	"github.com/google/uuid"
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -43,9 +43,8 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 	}
 
 	// 将任务提交到 Worker Pool
-	if s.workerPool != nil {
-		job := worker.WorkerJob{TaskData: taskID}
-		if err := s.workerPool.Submit(job); err != nil {
+	if s.taskSubmitter != nil {
+		if err := s.taskSubmitter.Submit(taskID); err != nil {
 			logger.GetGlobalLogger("productenrich/service_task.go").WithField("task_id", taskID).WithError(err).Error("failed to submit task to worker pool")
 			// Submit 失败时将任务标记为 failed，避免留下永久 pending 的孤儿任务
 			if dbErr := s.taskRepo.UpdateTaskError(ctx, taskID, fmt.Sprintf("failed to submit task: %v", err)); dbErr != nil {

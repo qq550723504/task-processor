@@ -1,4 +1,4 @@
-package productenrich
+﻿package productenrich
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 // --- buildRejectionMessage ---
 
 func TestBuildRejectionMessage_WithRequiredAndOptional(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	validation := &ValidationResult{QualityScore: 25.5}
 	suggestion := &EnhancementSuggestion{
 		RequiredActions:  []string{"添加图片", "补充描述"},
@@ -34,7 +34,7 @@ func TestBuildRejectionMessage_WithRequiredAndOptional(t *testing.T) {
 }
 
 func TestBuildRejectionMessage_NoActions(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	validation := &ValidationResult{QualityScore: 10.0}
 	suggestion := &EnhancementSuggestion{}
 
@@ -53,14 +53,14 @@ func TestBuildRejectionMessage_NoActions(t *testing.T) {
 
 func TestValidateResult_NilValidator_DoesNothing(t *testing.T) {
 	// 无 ResultValidator 时应静默跳过，不 panic
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	task := &Task{ID: "t1", Request: &GenerateRequest{}}
 	// 不应 panic
 	svc.validateResult(context.Background(), task, &ParsedInput{}, &ProductJSON{Title: "ok"})
 }
 
 func TestValidateResult_WithValidator_LogsIssues(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	svc.resultValidator = &mockResultValidator{
 		result: &ResultValidation{
 			IsValid: false,
@@ -75,7 +75,7 @@ func TestValidateResult_WithValidator_LogsIssues(t *testing.T) {
 }
 
 func TestValidateResult_ValidatorError_ContinuesSilently(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	svc.resultValidator = &mockResultValidator{
 		err: errTestValidation,
 	}
@@ -87,7 +87,7 @@ func TestValidateResult_ValidatorError_ContinuesSilently(t *testing.T) {
 // --- analyzeProduct ---
 
 func TestAnalyzeProduct_WithUnderstanding_CallsAnalyze(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	expected := &ProductAnalysis{
 		Representation: &ProductRepresentation{ProductType: "Widget"},
 	}
@@ -104,7 +104,7 @@ func TestAnalyzeProduct_WithUnderstanding_CallsAnalyze(t *testing.T) {
 }
 
 func TestAnalyzeProduct_NoUnderstanding_ReturnsSimpleAnalysis(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	// productUnderstanding 为 nil
 	task := &Task{ID: "t1", Request: &GenerateRequest{}}
 
@@ -123,7 +123,7 @@ func TestAnalyzeProduct_NoUnderstanding_ReturnsSimpleAnalysis(t *testing.T) {
 // --- parseInput ---
 
 func TestParseInput_WithParser_CallsParser(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	expected := &ParsedInput{
 		Images: []string{"http://img.jpg"},
 		Text:   "parsed text",
@@ -141,7 +141,7 @@ func TestParseInput_WithParser_CallsParser(t *testing.T) {
 }
 
 func TestParseInput_NoParser_UsesRequestFields(t *testing.T) {
-	svc, _ := newSvcWithPool(t, nil)
+	svc, _ := newSvcWithSubmitter(t, nil)
 	task := &Task{
 		ID: "t1",
 		Request: &GenerateRequest{

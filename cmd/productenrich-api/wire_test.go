@@ -198,11 +198,25 @@ func (m *mockWorkerPool) Submit(job worker.WorkerJob) error {
 	return nil
 }
 
+// mockTaskSubmitter 实现 productenrich.TaskSubmitter，记录提交的 taskID
+type mockTaskSubmitter struct {
+	submitted []string
+	err       error
+}
+
+func (m *mockTaskSubmitter) Submit(taskID string) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.submitted = append(m.submitted, taskID)
+	return nil
+}
+
 func TestProductService_SetWorkerPool_SubmitsJobOnCreate(t *testing.T) {
 	ctx := context.Background()
 	repo := newMemTaskRepository()
 	redis := newMemRedisClient()
-	pool := &mockWorkerPool{}
+	submitter := &mockTaskSubmitter{}
 
 	svc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
 		QueueName:            "test_queue",
@@ -218,19 +232,19 @@ func TestProductService_SetWorkerPool_SubmitsJobOnCreate(t *testing.T) {
 		t.Fatalf("NewProductService: %v", err)
 	}
 
-	// 注入 pool（解决循环依赖）
-	svc.SetWorkerPool(pool)
+	// 注入 submitter
+	svc.SetTaskSubmitter(submitter)
 
 	task, err := svc.CreateGenerateTask(ctx, &productenrich.GenerateRequest{Text: "蓝牙耳机"})
 	if err != nil {
 		t.Fatalf("CreateGenerateTask: %v", err)
 	}
 
-	if len(pool.submitted) != 1 {
-		t.Errorf("submitted jobs = %d, want 1", len(pool.submitted))
+	if len(submitter.submitted) != 1 {
+		t.Errorf("submitted jobs = %d, want 1", len(submitter.submitted))
 	}
-	if pool.submitted[0].TaskData != task.ID {
-		t.Errorf("submitted TaskData = %q, want %q", pool.submitted[0].TaskData, task.ID)
+	if submitter.submitted[0] != task.ID {
+		t.Errorf("submitted TaskID = %q, want %q", submitter.submitted[0], task.ID)
 	}
 }
 
@@ -297,7 +311,7 @@ func buildTestRouter(t *testing.T) *gin.Engine {
 
 	repo := newMemTaskRepository()
 	redis := newMemRedisClient()
-	pool := &mockWorkerPool{}
+	submitter := &mockTaskSubmitter{}
 
 	svc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
 		QueueName:            "test_queue",
@@ -312,7 +326,7 @@ func buildTestRouter(t *testing.T) *gin.Engine {
 	if err != nil {
 		t.Fatalf("NewProductService: %v", err)
 	}
-	svc.SetWorkerPool(pool)
+	svc.SetTaskSubmitter(submitter)
 
 	handler, err := productenrich.NewProductHandler(svc)
 	if err != nil {
