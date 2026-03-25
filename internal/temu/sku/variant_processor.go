@@ -56,8 +56,8 @@ func (vp *SkuVariantProcessor) BuildVariantSkcs(temuCtx *temucontext.TemuTaskCon
 // buildSkcsFromAIMapping 根据AI映射构建SKC
 func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiMapping *temucontext.AISkuMappingResponse) ([]models.Skc, error) {
 	// 检查AI映射数量
-	if len(aiMapping.SkuList) != len(variants) {
-		vp.logger.Warnf("⚠️ AI映射数量(%d)与变体数量(%d)不匹配", len(aiMapping.SkuList), len(variants))
+	if aiMapping.SkuCount() != len(variants) {
+		vp.logger.Warnf("⚠️ AI映射数量(%d)与变体数量(%d)不匹配", aiMapping.SkuCount(), len(variants))
 
 		// 使用映射处理器修复数量不匹配问题
 		if err := vp.mappingProcessor.FixMappingCountMismatch(aiMapping, variants); err != nil {

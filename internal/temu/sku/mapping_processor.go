@@ -26,13 +26,13 @@ func NewSkuMappingProcessor(logger *logrus.Entry, specHandler *SkuSpecHandler) *
 // FixMappingCountMismatch 修复映射数量不匹配问题
 func (mp *SkuMappingProcessor) FixMappingCountMismatch(aiMapping *temucontext.AISkuMappingResponse, variants []*model.Product) error {
 	// 如果AI映射数量少于变体数量，尝试补充缺失的映射
-	if len(aiMapping.SkuList) < len(variants) {
-		mp.logger.Infof("尝试为缺失的%d个变体补充默认映射", len(variants)-len(aiMapping.SkuList))
+	if aiMapping.SkuCount() < len(variants) {
+		mp.logger.Infof("尝试为缺失的%d个变体补充默认映射", len(variants)-aiMapping.SkuCount())
 		mp.supplementMissingMappings(aiMapping, variants)
-		mp.logger.Infof("✅ 成功补充缺失映射，当前映射数量: %d", len(aiMapping.SkuList))
+		mp.logger.Infof("✅ 成功补充缺失映射，当前映射数量: %d", aiMapping.SkuCount())
 	} else {
 		// AI映射数量多于变体数量，尝试去重或移除多余的映射
-		diff := len(aiMapping.SkuList) - len(variants)
+		diff := aiMapping.SkuCount() - len(variants)
 		mp.logger.Warnf("⚠️ AI映射数量多于变体数量，差异: %d个", diff)
 
 		// 如果差异在可接受范围内（≤2个），尝试智能处理
@@ -41,11 +41,11 @@ func (mp *SkuMappingProcessor) FixMappingCountMismatch(aiMapping *temucontext.AI
 			if err := mp.removeDuplicateOrExcessMappings(aiMapping, variants); err != nil {
 				return fmt.Errorf("移除多余映射失败: %w", err)
 			}
-			mp.logger.Infof("✅ 成功处理多余映射，当前映射数量: %d", len(aiMapping.SkuList))
+			mp.logger.Infof("✅ 成功处理多余映射，当前映射数量: %d", aiMapping.SkuCount())
 		} else {
 			// 差异过大，无法处理
 			return fmt.Errorf("AI映射数量(%d)远多于变体数量(%d)，差异过大(%d)，无法处理",
-				len(aiMapping.SkuList), len(variants), diff)
+				aiMapping.SkuCount(), len(variants), diff)
 		}
 	}
 
@@ -115,13 +115,13 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temuco
 	}
 
 	// 更新映射列表
-	removedCount := len(aiMapping.SkuList) - len(filteredSkus)
+	removedCount := aiMapping.SkuCount() - len(filteredSkus)
 	aiMapping.SkuList = filteredSkus
 	mp.logger.Infof("✅ 移除了%d个多余/重复的映射，剩余%d个映射", removedCount, len(filteredSkus))
 
 	// 验证最终数量
-	if len(aiMapping.SkuList) != len(variants) {
-		return fmt.Errorf("处理后映射数量(%d)仍与变体数量(%d)不匹配", len(aiMapping.SkuList), len(variants))
+	if aiMapping.SkuCount() != len(variants) {
+		return fmt.Errorf("处理后映射数量(%d)仍与变体数量(%d)不匹配", aiMapping.SkuCount(), len(variants))
 	}
 
 	return nil
@@ -170,7 +170,7 @@ func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *temucontext.
 
 // analyzeSpecPattern 分析已有映射的spec模式，返回一个spec模板
 func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *temucontext.AISkuMappingResponse) []temucontext.SpecInfo {
-	if len(aiMapping.SkuList) == 0 {
+	if aiMapping.SkuCount() == 0 {
 		return []temucontext.SpecInfo{}
 	}
 
@@ -196,7 +196,7 @@ func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *temucontext.AISkuMa
 	// 选择出现频率最高的spec作为模板
 	var template []temucontext.SpecInfo
 	for specID, spec := range specExamples {
-		if specFrequency[specID] > len(aiMapping.SkuList)/2 {
+		if specFrequency[specID] > aiMapping.SkuCount()/2 {
 			template = append(template, spec)
 		}
 	}

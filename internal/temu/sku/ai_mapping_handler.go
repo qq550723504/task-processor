@@ -76,7 +76,7 @@ func (h *AISkuMappingHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) e
 
 	temuCtx.SetAISkuMapping(aiMapping)
 
-	h.logger.Infof("✅ AI SKU映射已生成并存储，包含 %d 个SKU", len(aiMapping.SkuList))
+	h.logger.Infof("✅ AI SKU映射已生成并存储，包含 %d 个SKU", aiMapping.SkuCount())
 
 	return nil
 }

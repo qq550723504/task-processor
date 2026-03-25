@@ -164,9 +164,9 @@ func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.T
 	// 过滤重复的ASIN
 	for i, variant := range variants {
 		// 边界检查：防止数组越界
-		if i >= len(aiMapping.SkuList) {
+		if i >= aiMapping.SkuCount() {
 			sb.logger.Errorf("❌ 变体索引[%d]超出AI映射范围(长度=%d)，跳过该变体: ASIN=%s",
-				i, len(aiMapping.SkuList), variant.Asin)
+				i, aiMapping.SkuCount(), variant.Asin)
 			continue
 		}
 
@@ -212,9 +212,9 @@ func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants
 	// 因为这是单SKC模式，所有变体都在同一个SKC中
 	for i, variant := range variants {
 		// 边界检查：防止数组越界
-		if i >= len(aiMapping.SkuList) {
+		if i >= aiMapping.SkuCount() {
 			sb.logger.Errorf("❌ 变体索引[%d]超出AI映射范围(长度=%d)，跳过该变体: ASIN=%s",
-				i, len(aiMapping.SkuList), variant.Asin)
+				i, aiMapping.SkuCount(), variant.Asin)
 			continue
 		}
 
