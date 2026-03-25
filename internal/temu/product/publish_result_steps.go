@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/ptr"
 	pkgproduct "task-processor/internal/product"
+	models "task-processor/internal/temu/api/product"
 )
 
 func (h *SavePublishResultHandler) logSubmitResponseWithInput(input *SavePublishResultInput) error {
@@ -31,72 +32,70 @@ func (h *SavePublishResultHandler) logSubmitResponseWithInput(input *SavePublish
 
 func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *SavePublishResultInput) error {
 	if input.Product == nil {
-		h.logger.Warn("产品数据不存在，无法创建映射关系")
+		h.logger.Warn("????????????????")
 		return nil
 	}
 
 	createdCount := 0
-	for _, skc := range input.Product.SkcList {
-		for _, sku := range skc.SkuList {
-			createReq := &api.ProductImportMappingCreateReqDTO{
-				ImportTaskId: input.Task.ID,
-				TenantID:     input.Task.TenantID,
-				StoreId:      input.Task.StoreID,
-				Platform:     "TEMU",
-				Region:       input.Task.Region,
-				Sku:          &sku.OutSkuSN,
-				ProductId:    "",
-				Status:       ptr.Int16Ptr(1),
-			}
-
-			if input.AsinSkuMap != nil {
-				if asin, exists := input.AsinSkuMap[sku.OutSkuSN]; exists {
-					createReq.ProductId = asin
-				}
-			}
-
-			if input.AmazonProduct != nil && input.AmazonProduct.ParentAsin != "" {
-				createReq.ParentProductId = &input.AmazonProduct.ParentAsin
-				if input.StoreInfo != nil && input.StoreInfo.PriceType != "" {
-					costPrice := pkgproduct.GetProductPrice(input.AmazonProduct, input.StoreInfo.PriceType)
-					if costPrice > 0 {
-						createReq.CostPrice = &costPrice
-					}
-				}
-			}
-
-			if input.FilterRule != nil {
-				createReq.FilterRuleId = &input.FilterRule.ID
-				filterRuleRange := h.buildFilterRuleRange(input.FilterRule)
-				if filterRuleRange != "" {
-					createReq.FilterRuleRange = &filterRuleRange
-				}
-			}
-
-			if input.ProfitRule != nil {
-				createReq.ProfitRuleId = &input.ProfitRule.ID
-				if input.ProfitRule.SalePriceMultiplier > 0 {
-					salePriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.SalePriceMultiplier)
-					createReq.SalePriceMultiplier = &salePriceMultiplierStr
-				}
-				if input.ProfitRule.DiscountPriceMultiplier > 0 {
-					discountPriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.DiscountPriceMultiplier)
-					createReq.DiscountPriceMultiplier = &discountPriceMultiplierStr
-				}
-			}
-
-			_, err := h.mappingClient.CreateProductImportMapping(createReq)
-			if err != nil {
-				h.logger.Errorf("创建产品导入映射关系失败: OutSkuSn=%s, Error=%v", sku.OutSkuSN, err)
-				continue
-			}
-
-			createdCount++
-			h.logger.Debugf("成功创建产品导入映射关系: OutSkuSn=%s", sku.OutSkuSN)
+	input.ForEachSKU(func(sku *models.Sku) {
+		createReq := &api.ProductImportMappingCreateReqDTO{
+			ImportTaskId: input.Task.ID,
+			TenantID:     input.Task.TenantID,
+			StoreId:      input.Task.StoreID,
+			Platform:     "TEMU",
+			Region:       input.Task.Region,
+			Sku:          &sku.OutSkuSN,
+			ProductId:    "",
+			Status:       ptr.Int16Ptr(1),
 		}
-	}
 
-	h.logger.Infof("产品导入映射关系创建完成: 成功=%d", createdCount)
+		if input.AsinSkuMap != nil {
+			if asin, exists := input.AsinSkuMap[sku.OutSkuSN]; exists {
+				createReq.ProductId = asin
+			}
+		}
+
+		if input.AmazonProduct != nil && input.AmazonProduct.ParentAsin != "" {
+			createReq.ParentProductId = &input.AmazonProduct.ParentAsin
+			if input.StoreInfo != nil && input.StoreInfo.PriceType != "" {
+				costPrice := pkgproduct.GetProductPrice(input.AmazonProduct, input.StoreInfo.PriceType)
+				if costPrice > 0 {
+					createReq.CostPrice = &costPrice
+				}
+			}
+		}
+
+		if input.FilterRule != nil {
+			createReq.FilterRuleId = &input.FilterRule.ID
+			filterRuleRange := h.buildFilterRuleRange(input.FilterRule)
+			if filterRuleRange != "" {
+				createReq.FilterRuleRange = &filterRuleRange
+			}
+		}
+
+		if input.ProfitRule != nil {
+			createReq.ProfitRuleId = &input.ProfitRule.ID
+			if input.ProfitRule.SalePriceMultiplier > 0 {
+				salePriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.SalePriceMultiplier)
+				createReq.SalePriceMultiplier = &salePriceMultiplierStr
+			}
+			if input.ProfitRule.DiscountPriceMultiplier > 0 {
+				discountPriceMultiplierStr := fmt.Sprintf("%.4f", input.ProfitRule.DiscountPriceMultiplier)
+				createReq.DiscountPriceMultiplier = &discountPriceMultiplierStr
+			}
+		}
+
+		_, err := h.mappingClient.CreateProductImportMapping(createReq)
+		if err != nil {
+			h.logger.Errorf("????????????: OutSkuSn=%s, Error=%v", sku.OutSkuSN, err)
+			return
+		}
+
+		createdCount++
+		h.logger.Debugf("????????????: OutSkuSn=%s", sku.OutSkuSN)
+	})
+
+	h.logger.Infof("????????????: ??=%d", createdCount)
 	return nil
 }
 
@@ -146,7 +145,7 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 
 func (h *SavePublishResultHandler) calculateIncrementFromInput(input *SavePublishResultInput, dailyLimitType string) int64 {
 	if input.Product == nil {
-		h.logger.Warn("TEMU产品数据为空，无法计算增量")
+		h.logger.Warn("TEMU?????????????")
 		return 0
 	}
 
@@ -154,15 +153,11 @@ func (h *SavePublishResultHandler) calculateIncrementFromInput(input *SavePublis
 	case "SPU":
 		return 1
 	case "SKC":
-		return int64(len(input.Product.SkcList))
+		return int64(input.SKCCount())
 	case "SKU":
-		var skuCount int64
-		for _, skc := range input.Product.SkcList {
-			skuCount += int64(len(skc.SkuList))
-		}
-		return skuCount
+		return int64(input.SKUCount())
 	default:
-		h.logger.Warnf("未知的限制类型: %s，默认按SPU计算", dailyLimitType)
+		h.logger.Warnf("???????: %s????SPU??", dailyLimitType)
 		return 1
 	}
 }
