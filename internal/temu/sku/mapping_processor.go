@@ -54,15 +54,23 @@ func (mp *SkuMappingProcessor) FixMappingCountMismatch(aiMapping *temucontext.AI
 
 // removeDuplicateOrExcessMappings 移除重复或多余的AI映射
 func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temucontext.AISkuMappingResponse, variants []*model.Product) error {
-	// 创建变体ASIN集合
+	validAsins := mp.buildValidAsins(variants)
+	duplicateAsins, invalidAsins := mp.analyzeInvalidAndDuplicateAsins(aiMapping, validAsins)
+	filteredSkus := mp.collectFilteredMappings(aiMapping, duplicateAsins, invalidAsins)
+
+	return mp.finalizeFilteredMappings(aiMapping, variants, filteredSkus)
+}
+
+func (mp *SkuMappingProcessor) buildValidAsins(variants []*model.Product) map[string]bool {
 	validAsins := make(map[string]bool)
 	for _, variant := range variants {
 		validAsins[variant.Asin] = true
 	}
 
-	duplicateAsins, invalidAsins := mp.analyzeInvalidAndDuplicateAsins(aiMapping, validAsins)
-	filteredSkus := mp.collectFilteredMappings(aiMapping, duplicateAsins, invalidAsins)
+	return validAsins
+}
 
+func (mp *SkuMappingProcessor) finalizeFilteredMappings(aiMapping *temucontext.AISkuMappingResponse, variants []*model.Product, filteredSkus []temucontext.AIGeneratedSku) error {
 	// 如果过滤后数量仍然不匹配，移除多余的映射（保留前N个）
 	if len(filteredSkus) > len(variants) {
 		excess := len(filteredSkus) - len(variants)
