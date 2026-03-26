@@ -1,116 +1,168 @@
 # productenrich-api
 
-商品信息增强服务，接收商品图片、文本描述或 1688 商品链接，通过 LLM 多模态分析，异步生成结构化的商品 JSON 数据。
+商品信息增强服务，接收商品图片、文本描述或 1688 商品详情页链接，只支持 `https://detail.1688.com/offer/...`，通过 LLM 多模态分析异步生成结构化商品 JSON。
+
+## 当前架构
+
+### 1. 接入层
+- `POST /api/v1/products/generate`
+  负责参数绑定、基础校验、创建任务。
+- `GET /api/v1/products/tasks/:task_id`
+  负责查询任务状态和结果。
+
+### 2. 任务状态机
+任务状态由 [state_machine.go](/D:/code/task-processor/internal/productenrich/pipeline/state_machine.go) 收口，当前主状态为：
+- `pending`
+- `processing`
+- `completed`
+- `failed`
+
+处理器只会消费 `pending` 任务；拒绝类错误不会重试；可重试错误最多自动重试 3 次。
+
+### 3. 执行层
+[processor.go](/D:/code/task-processor/internal/productenrich/pipeline/processor.go) 负责：
+- 从仓储加载任务
+- 调用 `ProductService.ProcessProduct`
+- 失败分类
+- 增加重试计数
+- `PrepareRetry` 后重新入队
+
+### 4. 编排层
+[service_process.go](/D:/code/task-processor/internal/productenrich/service_process.go) 是薄编排入口，只做：
+- `MarkProcessing`
+- 运行 pipeline
+- `MarkCompleted` / `MarkFailed`
+
+### 5. 流水线层
+[pipeline.go](/D:/code/task-processor/internal/productenrich/pipeline.go) 将主流程拆成 5 个显式阶段：
+
+1. `parse_input`
+2. `validate_strategy`
+3. `analyze_product`
+4. `generate_json`
+5. `validate_result`
+
+每个 stage 都会记录统一日志字段：
+- `task_id`
+- `stage`
+- `duration_ms`
+- `outcome`
+- `failure_disposition`
+
+### 6. 能力边界
+[service.go](/D:/code/task-processor/internal/productenrich/service.go) 里支持两种 capability 模式：
+- `compat`
+  允许简单 fallback，适合测试或联调。
+- `strict`
+  缺少关键组件时直接失败，不静默降级。
+
+API 装配入口 [main.go](/D:/code/task-processor/cmd/productenrich-api/main.go) 默认使用 `strict`。
+
+### 7. 包结构
+- 根包 [internal/productenrich](/D:/code/task-processor/internal/productenrich) 保留领域模型、接口契约、service 编排和通用规则
+- [api](/D:/code/task-processor/internal/productenrich/api) 负责 HTTP handler
+- [pipeline](/D:/code/task-processor/internal/productenrich/pipeline) 负责异步执行、状态机和重试
+- [store](/D:/code/task-processor/internal/productenrich/store) 负责仓储实现
+- [enrich](/D:/code/task-processor/internal/productenrich/enrich) 负责输入解析、理解、JSON 生成和变体生成等富化能力实现
 
 ## 业务流程
 
-```
-客户端
-  │
-  ▼
-POST /api/v1/products/generate
-  │  接收 image_urls / text / product_url（三选一或组合）
-  │
-  ▼
-Handler（handler.go）
-  │  参数绑定与基础校验
-  │
-  ▼
-ProductService.CreateGenerateTask（service_task.go）
-  │  1. 校验请求（至少一种输入，图片数 ≤ 10，文本 ≤ 10000 字符）
-  │  2. 生成 UUID 任务 ID，写入数据库（status=pending）
-  │  3. 提交 taskID 到 WorkerPool（降级时写 Redis 队列）
-  │  4. 立即返回 task_id 给客户端（异步模式）
-  │
-  ▼
-WorkerPool（infra/worker）
-  │  并发消费队列，调用 Processor.ProcessTask
-  │
-  ▼
-Processor.ProcessTask（processor.go）
-  │  从数据库加载 Task，调用 ProductService.ProcessProduct
-  │  失败时自动重试（最多 3 次），拒绝类错误不重试
-  │
-  ▼
-ProductService.ProcessProduct（service_process.go）
-  │
-  ├─ 步骤 1：InputParser.ParseInput（parser.go）
-  │    ├─ 收集图片 URL
-  │    ├─ 清洗文本（去除特殊字符、多余空白）
-  │    └─ 若有 product_url → WebScraper 抓取 1688 页面
-  │         获取标题、描述、图片、规格、价格，合并去重
-  │
-  ├─ 步骤 2：InputValidator + QualityScorer + StrategySelector（validator.go / scorer.go / strategy.go）
-  │    ├─ 验证图片可访问性（并发检测，超时 5s）
-  │    ├─ 验证文本长度与关键词
-  │    ├─ 计算质量分（图片 40% + 文本 30% + 抓取数据 30%，可选 LLM 重评分）
-  │    └─ 按分数选择处理策略：
-  │         ≥ 80 → full    （完整处理：图片分析 + 文本提取 + 变体生成 + SEO）
-  │         ≥ 60 → basic   （跳过变体生成和详细规格）
-  │         ≥ 50 → minimal （仅基础信息提取）
-  │         < 50 → reject  （数据质量不足，直接失败）
-  │
-  ├─ 步骤 3：ProductUnderstanding.AnalyzeProduct（understanding.go）
-  │    ├─ AnalyzeImage：调用 LLM vision 接口，提取颜色、材质、场景、用途
-  │    │   多张图片逐一分析，后续图片补充空白字段
-  │    ├─ ExtractTextAttributes：调用 LLM fast 接口，提取标题、属性、卖点
-  │    │   若有抓取描述，合并属性并去重卖点
-  │    └─ FuseMultimodal：调用 LLM default 接口，融合图文信息
-  │         生成统一的 ProductRepresentation（产品类型 + 属性 + 特性）
-  │
-  ├─ 步骤 4：JSONGenerator + VariantGenerator（generator_json.go / variant.go）
-  │    ├─ 调用 LLM 生成完整 ProductJSON
-  │    │   包含：标题、分类、属性、规格、卖点、SEO 关键词、描述
-  │    ├─ minimal 策略跳过变体生成
-  │    └─ 图片列表直接使用 ParsedInput.Images（不由 LLM 生成）
-  │
-  ├─ 步骤 5：ResultValidator（result_validator.go）
-  │    ├─ 校验图片一致性
-  │    ├─ 关键词匹配度评分
-  │    └─ 完整性检查（必填字段覆盖率）
-  │
-  └─ 保存结果到数据库（status=completed）
-       失败时更新 error 字段（status=failed）
+```text
+Client
+  -> POST /api/v1/products/generate
+  -> api.Handler
+  -> ProductService.CreateGenerateTask
+     - 校验 image_urls / text / product_url
+     - product_url 必须是 1688 商品详情页
+     - 创建 Task(status=pending)
+     - 提交到 WorkerPool
 
-客户端轮询
-  │
-  ▼
-GET /api/v1/products/tasks/:task_id
-  │  返回 status + product_json（completed 时）或 error（failed 时）
+WorkerPool
+  -> pipeline.Processor.ProcessTask
+     - 仅处理 pending
+     - 调用 ProductService.ProcessProduct
+     - 失败时按状态机判断是否重试
+
+ProductService.ProcessProduct
+  -> MarkProcessing
+  -> PipelineRunner
+     1. parse_input
+     2. validate_strategy
+     3. analyze_product
+     4. generate_json
+     5. validate_result
+  -> MarkCompleted
+
+若任一步失败：
+  -> MarkFailed(status=failed, error=...)
+  -> Processor 决定 no-retry / retryable
 ```
+
+## Pipeline 说明
+
+### 1. `parse_input`
+- 收集图片 URL
+- 清洗文本
+- 若存在 `product_url`，抓取 1688 商品详情页
+- 合并 scraped 标题、描述、图片和属性
+
+### 2. `validate_strategy`
+- 校验输入质量
+- 计算质量分
+- 选择处理策略：
+  - `full`
+  - `basic`
+  - `minimal`
+  - `reject`
+
+### 3. `analyze_product`
+- 分析图片属性
+- 提取文本属性
+- 融合多模态信息为统一 `ProductAnalysis`
+
+### 4. `generate_json`
+- 调用 `enrich.JSONGenerator` 实现生成结果
+- 根据策略决定是否生成规格和变体
+- 图片列表直接来自 `ParsedInput.Images`
+
+### 5. `validate_result`
+- 校验结果完整性
+- 检查图片一致性
+- 检查关键词匹配
+- 无效结果直接失败，不保存 completed 结果
 
 ## 数据模型
 
-**请求（GenerateRequest）**
+### 请求：`GenerateRequest`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| image_urls | []string | 商品图片 URL，最多 10 张 |
-| text | string | 商品文本描述，最多 10000 字符 |
-| product_url | string | 1688 商品页面 URL，自动抓取 |
+| `image_urls` | `[]string` | 商品图片 URL，最多 10 张 |
+| `text` | `string` | 商品文本描述，最多 10000 字符 |
+| `product_url` | `string` | 1688 商品详情页 URL，仅支持 `https://detail.1688.com/offer/...` |
 
-三个字段至少提供一个，可组合使用。
+三个字段至少提供一个，可组合使用。非法 `product_url` 会在创建任务阶段直接被拒绝。
 
-**结果（ProductJSON）**
+### 结果：`ProductJSON`
 
 | 字段 | 说明 |
 |------|------|
-| title | 商品标题 |
-| category | 分类路径 |
-| attributes | 商品属性键值对 |
-| specifications | 规格（尺寸、重量、包装） |
-| variants | SKU 变体列表（颜色/尺码等） |
-| selling_points | 卖点列表 |
-| seo_keywords | SEO 关键词 |
-| description | 商品详情描述 |
-| images | 图片 URL 列表 |
+| `title` | 商品标题 |
+| `category` | 分类路径 |
+| `attributes` | 商品属性键值对 |
+| `specifications` | 规格信息 |
+| `variants` | SKU 变体列表 |
+| `selling_points` | 卖点列表 |
+| `seo_keywords` | SEO 关键词 |
+| `description` | 商品详情描述 |
+| `images` | 图片 URL 列表 |
 
-## API 端点
+## API
 
-```
-POST /api/v1/products/generate       提交生成任务，立即返回 task_id
-GET  /api/v1/products/tasks/:task_id 查询任务状态和结果
-GET  /health                         健康检查
+```text
+POST /api/v1/products/generate
+GET  /api/v1/products/tasks/:task_id
+GET  /health
 ```
 
 ## 启动
@@ -122,4 +174,8 @@ go run ./cmd/productenrich-api \
   -log-level info
 ```
 
-依赖配置项：`openai`（必须）、`database`（可选，缺省用内存）、`redis`（可选，缺省用内存）、`worker.concurrency`。
+依赖配置项：
+- `openai` 必填
+- `database` 可选，缺省使用内存仓储
+- `redis` 可选，缺省使用内存实现
+- `worker.concurrency` 控制并发度

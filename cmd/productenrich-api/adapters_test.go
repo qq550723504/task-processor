@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"task-processor/internal/productenrich"
+	"task-processor/internal/productenrich/store"
 )
 
 // 本文件的测试直接使用 productenrich 包导出的内存实现，
 // 不再依赖 adapters.go 中的本地函数。
 func newMemRedisClient() productenrich.RedisClient       { return productenrich.NewMemRedisClient() }
-func newMemTaskRepository() productenrich.TaskRepository { return productenrich.NewMemTaskRepository() }
+func newMemTaskRepository() productenrich.TaskRepository { return store.NewMemTaskRepository() }
 
 // =============================================================================
 // memRedisClient 单元测试
@@ -160,6 +161,30 @@ func TestMemTaskRepository_UpdateTaskStatus(t *testing.T) {
 	}
 }
 
+func TestMemTaskRepository_MarkProcessing(t *testing.T) {
+	repo := newMemTaskRepository()
+	ctx := context.Background()
+
+	task := &productenrich.Task{
+		ID:      "t-proc",
+		Request: &productenrich.GenerateRequest{Text: "x"},
+		Status:  productenrich.TaskStatusFailed,
+		Error:   "old error",
+	}
+	_ = repo.CreateTask(ctx, task)
+
+	if err := repo.MarkProcessing(ctx, "t-proc"); err != nil {
+		t.Fatalf("MarkProcessing: %v", err)
+	}
+	got, _ := repo.GetTask(ctx, "t-proc")
+	if got.Status != productenrich.TaskStatusProcessing {
+		t.Errorf("Status = %q, want processing", got.Status)
+	}
+	if got.Error != "" {
+		t.Errorf("Error = %q, want empty", got.Error)
+	}
+}
+
 func TestMemTaskRepository_UpdateTaskError(t *testing.T) {
 	repo := newMemTaskRepository()
 	ctx := context.Background()
@@ -193,6 +218,34 @@ func TestMemTaskRepository_SaveTaskResult(t *testing.T) {
 	got, _ := repo.GetTask(ctx, "t-004")
 	if got.Status != productenrich.TaskStatusCompleted {
 		t.Errorf("Status = %q, want completed", got.Status)
+	}
+	if got.Result == nil || got.Result.Title != "Widget" {
+		t.Errorf("Result.Title = %q, want Widget", got.Result.Title)
+	}
+}
+
+func TestMemTaskRepository_MarkCompleted(t *testing.T) {
+	repo := newMemTaskRepository()
+	ctx := context.Background()
+
+	task := &productenrich.Task{
+		ID:      "t-done",
+		Request: &productenrich.GenerateRequest{Text: "x"},
+		Status:  productenrich.TaskStatusProcessing,
+		Error:   "old error",
+	}
+	_ = repo.CreateTask(ctx, task)
+
+	result := &productenrich.ProductJSON{Title: "Widget", Description: "A fine widget"}
+	if err := repo.MarkCompleted(ctx, "t-done", result); err != nil {
+		t.Fatalf("MarkCompleted: %v", err)
+	}
+	got, _ := repo.GetTask(ctx, "t-done")
+	if got.Status != productenrich.TaskStatusCompleted {
+		t.Errorf("Status = %q, want completed", got.Status)
+	}
+	if got.Error != "" {
+		t.Errorf("Error = %q, want empty", got.Error)
 	}
 	if got.Result == nil || got.Result.Title != "Widget" {
 		t.Errorf("Result.Title = %q, want Widget", got.Result.Title)
@@ -234,9 +287,33 @@ func TestMemTaskRepository_ResetForRetry_PreservesError(t *testing.T) {
 	if got.Status != productenrich.TaskStatusPending {
 		t.Errorf("Status = %q, want pending", got.Status)
 	}
-	// error 字段必须保留，不能被清空
-	if got.Error != "previous error" {
-		t.Errorf("Error = %q, want %q", got.Error, "previous error")
+	// 重试时应清空旧 error，避免 pending 状态暴露过期错误
+	if got.Error != "" {
+		t.Errorf("Error = %q, want empty", got.Error)
+	}
+}
+
+func TestMemTaskRepository_PrepareRetry(t *testing.T) {
+	repo := newMemTaskRepository()
+	ctx := context.Background()
+
+	task := &productenrich.Task{
+		ID:      "t-retry",
+		Request: &productenrich.GenerateRequest{Text: "x"},
+		Status:  productenrich.TaskStatusFailed,
+		Error:   "previous error",
+	}
+	_ = repo.CreateTask(ctx, task)
+
+	if err := repo.PrepareRetry(ctx, "t-retry"); err != nil {
+		t.Fatalf("PrepareRetry: %v", err)
+	}
+	got, _ := repo.GetTask(ctx, "t-retry")
+	if got.Status != productenrich.TaskStatusPending {
+		t.Errorf("Status = %q, want pending", got.Status)
+	}
+	if got.Error != "" {
+		t.Errorf("Error = %q, want empty", got.Error)
 	}
 }
 

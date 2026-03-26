@@ -10,6 +10,8 @@ import (
 	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
+	productenrichenrich "task-processor/internal/productenrich/enrich"
+	"task-processor/internal/productenrich/store"
 )
 
 // newLLMManager 创建 OpenAI LLMManager（委托给 productenrich 包）。
@@ -19,7 +21,7 @@ func newLLMManager(cfg config.OpenAIConfig) (productenrich.LLMManager, error) {
 
 // newWebScraper 创建基于 1688 爬虫的 WebScraper（委托给 productenrich 包）。
 func newWebScraper(cfg *config.Config) productenrich.WebScraper {
-	return productenrich.NewCrawler1688Adapter(cfg)
+	return productenrichenrich.NewCrawler1688Adapter(cfg)
 }
 
 // poolSubmitter 将 worker.WorkerPool 适配为 productenrich.TaskSubmitter。
@@ -58,7 +60,7 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 		return nil, nil, fmt.Errorf("数据库迁移失败: %w", err)
 	}
 
-	repo := productenrich.NewTaskRepository(db)
+	repo := store.NewTaskRepository(db)
 	closer := func() error { return database.CloseDatabase(db) }
 	return repo, closer, nil
 }

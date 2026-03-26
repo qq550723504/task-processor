@@ -1,4 +1,4 @@
-﻿// package productenrich 提供产品JSON生成的应用层实现
+// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -122,7 +122,16 @@ func (s *productService) validateRequest(req *GenerateRequest) error {
 		return fmt.Errorf("text too long (max 10000 characters)")
 	}
 
+	// product_url 当前仅支持 1688 商品页，避免异步阶段才失败
+	if req.ProductURL != "" && !isSupportedProductURL(req.ProductURL) {
+		return fmt.Errorf("product_url must be a valid 1688 product page URL")
+	}
+
 	return nil
+}
+
+func isSupportedProductURL(rawURL string) bool {
+	return is1688ProductDetailURL(rawURL)
 }
 
 // generateTaskID 生成唯一的任务 ID

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/productenrich"
+	productenrichenrich "task-processor/internal/productenrich/enrich"
 )
 
 // =============================================================================
@@ -220,7 +221,7 @@ func TestVariantGenerator_Integration(t *testing.T) {
 	}
 	mgr := &variantLLMManager{client: client}
 
-	gen, err := productenrich.NewVariantGenerator(mgr)
+	gen, err := productenrichenrich.NewVariantGenerator(mgr)
 	require.NoError(t, err)
 
 	analysis := &productenrich.ProductAnalysis{
@@ -295,7 +296,7 @@ func TestVariantGenerator_Integration(t *testing.T) {
 	})
 
 	t.Run("NewVariantGenerator_nil_manager_returns_error", func(t *testing.T) {
-		_, err := productenrich.NewVariantGenerator(nil)
+		_, err := productenrichenrich.NewVariantGenerator(nil)
 		assert.Error(t, err)
 	})
 }
@@ -311,7 +312,7 @@ func TestVariantGenerator_Integration_VariantPrice(t *testing.T) {
 	client := &variantLLMClient{variantsJSON: variantsJSON}
 	mgr := &variantLLMManager{client: client}
 
-	gen, err := productenrich.NewVariantGenerator(mgr)
+	gen, err := productenrichenrich.NewVariantGenerator(mgr)
 	require.NoError(t, err)
 
 	analysis := &productenrich.ProductAnalysis{

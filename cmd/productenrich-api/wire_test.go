@@ -12,6 +12,8 @@ import (
 
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
+	productapi "task-processor/internal/productenrich/api"
+	productpipeline "task-processor/internal/productenrich/pipeline"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -289,7 +291,7 @@ func TestProcessor_StartAndClose_NoError(t *testing.T) {
 		RedisClient: newMemRedisClient(),
 	})
 
-	proc, err := productenrich.NewProcessor(svc, repo, logrus.New(), 3)
+	proc, err := productpipeline.NewProcessor(svc, repo, logrus.New(), 3)
 	if err != nil {
 		t.Fatalf("NewProcessor: %v", err)
 	}
@@ -328,7 +330,7 @@ func buildTestRouter(t *testing.T) *gin.Engine {
 	}
 	svc.SetTaskSubmitter(submitter)
 
-	handler, err := productenrich.NewProductHandler(svc)
+	handler, err := productapi.NewProductHandler(svc)
 	if err != nil {
 		t.Fatalf("NewProductHandler: %v", err)
 	}
@@ -392,17 +394,16 @@ func TestE2E_GenerateTask_EmptyRequest_Returns400(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 
-	// service 层 validateRequest 会拒绝，返回 500（task_creation_failed）
-	// 因为 handler 将 service 错误统一映射为 500
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("empty request = %d, want 500", w.Code)
+	// service 层 validateRequest 会拒绝，handler 将其映射为 400 invalid_request
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("empty request = %d, want 400", w.Code)
 	}
 	var errResp productenrich.ErrorResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if errResp.Error != "task_creation_failed" {
-		t.Errorf("error = %q, want task_creation_failed", errResp.Error)
+	if errResp.Error != "invalid_request" {
+		t.Errorf("error = %q, want invalid_request", errResp.Error)
 	}
 }
 

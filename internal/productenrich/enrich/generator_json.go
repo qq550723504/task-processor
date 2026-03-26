@@ -1,5 +1,4 @@
-// package productenrich 提供产品JSON生成的应用层实现
-package productenrich
+package enrich
 
 import (
 	"context"
@@ -7,11 +6,12 @@ import (
 	"fmt"
 	"strings"
 
+	productenrich "task-processor/internal/productenrich"
+
 	"github.com/sirupsen/logrus"
 )
 
-// GenerateJSON 生成产品 JSON
-func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *ProductAnalysis, variantGen VariantGenerator, skipVariants bool) (*ProductJSON, error) {
+func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *productenrich.ProductAnalysis, variantGen productenrich.VariantGenerator, skipVariants bool) (*productenrich.ProductJSON, error) {
 	if analysis == nil {
 		return nil, fmt.Errorf("analysis cannot be nil")
 	}
@@ -24,7 +24,6 @@ func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *ProductAnaly
 		productJSON = g.fallbackFromAnalysis(analysis)
 	}
 
-	// variantGen != nil 时生成规格（full + basic 策略）
 	if variantGen != nil {
 		if specs, err := variantGen.GenerateSpecs(ctx, analysis); err != nil {
 			logrus.WithError(err).Warn("failed to generate specs")
@@ -32,7 +31,6 @@ func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *ProductAnaly
 			productJSON.Specifications = specs
 		}
 
-		// skipVariants=true 时跳过变体生成（basic 策略）
 		if !skipVariants {
 			if variants, err := variantGen.GenerateVariants(ctx, analysis); err != nil {
 				logrus.WithError(err).Warn("failed to generate variants")
@@ -46,8 +44,7 @@ func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *ProductAnaly
 	return productJSON, nil
 }
 
-// generateWithLLM 调用 LLM 生成产品核心字段。
-func (g *jsonGenerator) generateWithLLM(ctx context.Context, analysis *ProductAnalysis) (*ProductJSON, error) {
+func (g *jsonGenerator) generateWithLLM(ctx context.Context, analysis *productenrich.ProductAnalysis) (*productenrich.ProductJSON, error) {
 	client := g.llmManager.GetDefaultClient()
 
 	prompt := g.buildPrompt(analysis)
@@ -56,22 +53,20 @@ func (g *jsonGenerator) generateWithLLM(ctx context.Context, analysis *ProductAn
 		return nil, fmt.Errorf("LLM call failed: %w", err)
 	}
 
-	// 清理 markdown 代码块包裹
 	response = strings.TrimSpace(response)
 	response = strings.TrimPrefix(response, "```json")
 	response = strings.TrimPrefix(response, "```")
 	response = strings.TrimSuffix(response, "```")
 	response = strings.TrimSpace(response)
 
-	var result ProductJSON
+	var result productenrich.ProductJSON
 	if err := json.Unmarshal([]byte(response), &result); err != nil {
 		return nil, fmt.Errorf("failed to parse LLM response: %w", err)
 	}
 	return &result, nil
 }
 
-// buildPrompt 根据 ProductAnalysis 构建 prompt。
-func (g *jsonGenerator) buildPrompt(analysis *ProductAnalysis) string {
+func (g *jsonGenerator) buildPrompt(analysis *productenrich.ProductAnalysis) string {
 	var sb strings.Builder
 
 	sb.WriteString("You are an e-commerce product data expert. Based on the following product analysis, generate a complete product listing in JSON format.\n\n")
@@ -109,9 +104,8 @@ Rules:
 	return sb.String()
 }
 
-// fallbackFromAnalysis 当 LLM 调用失败时，从 analysis 直接组装结果。
-func (g *jsonGenerator) fallbackFromAnalysis(analysis *ProductAnalysis) *ProductJSON {
-	result := &ProductJSON{
+func (g *jsonGenerator) fallbackFromAnalysis(analysis *productenrich.ProductAnalysis) *productenrich.ProductJSON {
+	result := &productenrich.ProductJSON{
 		Category:   []string{"General", "Product"},
 		Attributes: make(map[string]string),
 	}
@@ -130,9 +124,15 @@ func (g *jsonGenerator) fallbackFromAnalysis(analysis *ProductAnalysis) *Product
 		if len(result.SellingPoints) == 0 {
 			result.SellingPoints = analysis.TextAttributes.SellingPoints
 		}
+		if analysis.TextAttributes.Title != "" && result.Description == "" {
+			result.Description = analysis.TextAttributes.Title
+		}
 	}
 	if result.Title == "" {
 		result.Title = "Product"
+	}
+	if result.Description == "" {
+		result.Description = fmt.Sprintf("%s generated from fallback analysis.", result.Title)
 	}
 
 	return result

@@ -15,6 +15,10 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/pkg/appenv"
 	"task-processor/internal/productenrich"
+	productapi "task-processor/internal/productenrich/api"
+	productenrichenrich "task-processor/internal/productenrich/enrich"
+	productpipeline "task-processor/internal/productenrich/pipeline"
+	"task-processor/internal/productenrich/store"
 	"task-processor/internal/prompt"
 
 	"github.com/gin-gonic/gin"
@@ -134,17 +138,17 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 	logger.Info("✅ OpenAI LLMManager 已初始化")
 
 	// 基于 LLMManager 构建各 LLM 依赖组件
-	productUnderstanding, err := productenrich.NewProductUnderstanding(llmMgr)
+	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("创建 ProductUnderstanding 失败: %w", err)
 	}
 
-	jsonGenerator, err := productenrich.NewJSONGenerator(logger, llmMgr)
+	jsonGenerator, err := productenrichenrich.NewJSONGenerator(logger, llmMgr)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("创建 JSONGenerator 失败: %w", err)
 	}
 
-	variantGenerator, err := productenrich.NewVariantGenerator(llmMgr)
+	variantGenerator, err := productenrichenrich.NewVariantGenerator(llmMgr)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("创建 VariantGenerator 失败: %w", err)
 	}
@@ -179,7 +183,7 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 		closers = append(closers, closer)
 	} else {
 		logger.Warn("⚠️  未配置 database，TaskRepository 使用内存实现（重启后数据丢失）")
-		taskRepo = productenrich.NewMemTaskRepository()
+		taskRepo = store.NewMemTaskRepository()
 	}
 
 	// RedisClient（仅作降级备用，主路径走 WorkerPool）
@@ -197,17 +201,19 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 
 	// WebScraper + InputParser（接入 1688 爬虫）
 	webScraper := newWebScraper(cfg)
-	inputParser, err := productenrich.NewInputParser(logger, &productenrich.InputParserConfig{}, webScraper)
+	inputParser, err := productenrichenrich.NewInputParser(logger, &productenrich.InputParserConfig{}, webScraper)
 	if err != nil {
 		return nil, nil, closers, fmt.Errorf("创建 InputParser 失败: %w", err)
 	}
 	logger.Info("✅ InputParser（1688爬虫）已初始化")
 
 	// 先创建 service（不含 Pool，后续注入）
+	strictCapabilities := productenrich.StrictProductServiceCapabilities()
 	svc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
 		QueueName:            "product_enrich_tasks",
 		TaskRepo:             taskRepo,
 		RedisClient:          redisC,
+		Capabilities:         &strictCapabilities,
 		InputParser:          inputParser,
 		ProductUnderstanding: productUnderstanding,
 		JSONGenerator:        jsonGenerator,
@@ -223,7 +229,7 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 	}
 
 	// 创建 Processor 并用 infra/worker.Pool 驱动
-	proc, err := productenrich.NewProcessor(svc, taskRepo, logger, 3)
+	proc, err := productpipeline.NewProcessor(svc, taskRepo, logger, 3)
 	if err != nil {
 		return nil, nil, closers, fmt.Errorf("创建 Processor 失败: %w", err)
 	}
@@ -240,7 +246,7 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 	submitter := &poolSubmitter{pool: pool}
 	svc.SetTaskSubmitter(submitter)
 	proc.SetTaskSubmitter(submitter)
-	handler, err := productenrich.NewProductHandler(svc)
+	handler, err := productapi.NewProductHandler(svc)
 	if err != nil {
 		return nil, nil, closers, fmt.Errorf("创建 ProductHandler 失败: %w", err)
 	}

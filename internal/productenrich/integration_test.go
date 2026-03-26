@@ -19,6 +19,8 @@ import (
 
 	"task-processor/internal/infra/database"
 	"task-processor/internal/productenrich"
+	productenrichenrich "task-processor/internal/productenrich/enrich"
+	"task-processor/internal/productenrich/store"
 )
 
 // integrationSuite 集成测试套件，持有容器和共享资源
@@ -65,7 +67,7 @@ func setupSuite(t *testing.T) (*integrationSuite, func()) {
 	err = db.AutoMigrate(&productenrich.Task{})
 	require.NoError(t, err, "auto migrate")
 
-	taskRepo := productenrich.NewTaskRepository(db)
+	taskRepo := store.NewTaskRepository(db)
 
 	// --- Redis ---
 	redisC, err := tcredis.Run(ctx, "redis:7-alpine")
@@ -265,10 +267,10 @@ func TestProductService_Integration_CreateAndProcess(t *testing.T) {
 	// 用 mock LLM（不调用真实 API）
 	llmManager := newMockLLMManagerForInteg()
 
-	understanding, err := productenrich.NewProductUnderstanding(llmManager)
+	understanding, err := productenrichenrich.NewProductUnderstanding(llmManager)
 	require.NoError(t, err)
 
-	jsonGen, err := productenrich.NewJSONGenerator(logrus.New(), llmManager)
+	jsonGen, err := productenrichenrich.NewJSONGenerator(logrus.New(), llmManager)
 	require.NoError(t, err)
 
 	svc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{

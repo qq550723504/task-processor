@@ -1,4 +1,4 @@
-﻿package productenrich
+package productenrich
 
 import (
 	"context"
