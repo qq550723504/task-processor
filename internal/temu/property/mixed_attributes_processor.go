@@ -41,19 +41,7 @@ func (p *MixedAttributesProcessor) DetectMixedAttributes(aiMapping *temucontext.
 		p.logger.Infof("🔍 检测到多个规格维度: %v，可能存在混合属性", usedDimensions)
 
 		// 进一步检查：是否不同SKU使用了不同的维度组合
-		dimensionCombinations := make(map[string]int)
-		aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
-			var combination []string
-			for _, spec := range sku.Spec {
-				combination = append(combination, spec.ParentSpecID)
-			}
-			// 排序以确保一致性
-			if len(combination) > 1 && combination[0] > combination[1] {
-				combination[0], combination[1] = combination[1], combination[0]
-			}
-			key := fmt.Sprintf("%v", combination)
-			dimensionCombinations[key]++
-		})
+		dimensionCombinations := p.collectDimensionCombinations(aiMapping)
 
 		if len(dimensionCombinations) > 1 {
 			p.logger.Warnf("⚠️ 检测到混合属性：不同SKU使用了不同的规格维度组合: %v", dimensionCombinations)
@@ -79,39 +67,61 @@ func (p *MixedAttributesProcessor) ForceUnification(aiMapping *temucontext.AISku
 
 	// 为所有SKU统一使用该维度
 	aiMapping.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
-
-		// 查找当前SKU是否已有该维度的规格
-		var existingSpec *temucontext.SpecInfo
-		for j := range sku.Spec {
-			if sku.Spec[j].ParentSpecID == unifiedDimension {
-				existingSpec = &sku.Spec[j]
-				break
-			}
-		}
-
-		if existingSpec != nil {
-			// 如果已有该维度的规格，只保留这一个
-			sku.Spec = []temucontext.SpecInfo{*existingSpec}
-			p.logger.Infof("✅ SKU[%d] 保留现有规格: %s = %s", i, existingSpec.ParentSpecID, existingSpec.SpecName)
-		} else {
-			// 如果没有该维度的规格，需要转换现有规格
-			convertedSpec := p.convertToUnifiedDimension(sku.Spec, unifiedDimension)
-			if convertedSpec != nil {
-				sku.Spec = []temucontext.SpecInfo{*convertedSpec}
-				p.logger.Infof("🔄 SKU[%d] 转换规格到统一维度: %s = %s", i, convertedSpec.ParentSpecID, convertedSpec.SpecName)
-			} else {
-				// 如果无法转换，创建默认规格
-				defaultSpec := p.createDefaultSpec(unifiedDimension)
-				sku.Spec = []temucontext.SpecInfo{defaultSpec}
-				p.logger.Warnf("⚠️ SKU[%d] 无法转换，使用默认规格: %s = %s", i, defaultSpec.ParentSpecID, defaultSpec.SpecName)
-			}
-		}
-
-		// 重新生成unique_id
-		p.regenerateUniqueID(sku)
+		p.applyUnifiedDimensionToSKU(i, sku, unifiedDimension)
 	})
 
 	p.logger.Info("✅ 混合属性强制统一完成")
+	return nil
+}
+
+func (p *MixedAttributesProcessor) collectDimensionCombinations(aiMapping *temucontext.AISkuMappingResponse) map[string]int {
+	dimensionCombinations := make(map[string]int)
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
+		var combination []string
+		for _, spec := range sku.Spec {
+			combination = append(combination, spec.ParentSpecID)
+		}
+		// 排序以确保一致性
+		if len(combination) > 1 && combination[0] > combination[1] {
+			combination[0], combination[1] = combination[1], combination[0]
+		}
+		key := fmt.Sprintf("%v", combination)
+		dimensionCombinations[key]++
+	})
+
+	return dimensionCombinations
+}
+
+func (p *MixedAttributesProcessor) applyUnifiedDimensionToSKU(index int, sku *temucontext.AIGeneratedSku, unifiedDimension string) {
+	existingSpec := p.findSpecByDimension(sku.Spec, unifiedDimension)
+	if existingSpec != nil {
+		sku.Spec = []temucontext.SpecInfo{*existingSpec}
+		p.logger.Infof("✅ SKU[%d] 保留现有规格: %s = %s", index, existingSpec.ParentSpecID, existingSpec.SpecName)
+		p.regenerateUniqueID(sku)
+		return
+	}
+
+	convertedSpec := p.convertToUnifiedDimension(sku.Spec, unifiedDimension)
+	if convertedSpec != nil {
+		sku.Spec = []temucontext.SpecInfo{*convertedSpec}
+		p.logger.Infof("🔄 SKU[%d] 转换规格到统一维度: %s = %s", index, convertedSpec.ParentSpecID, convertedSpec.SpecName)
+		p.regenerateUniqueID(sku)
+		return
+	}
+
+	defaultSpec := p.createDefaultSpec(unifiedDimension)
+	sku.Spec = []temucontext.SpecInfo{defaultSpec}
+	p.logger.Warnf("⚠️ SKU[%d] 无法转换，使用默认规格: %s = %s", index, defaultSpec.ParentSpecID, defaultSpec.SpecName)
+	p.regenerateUniqueID(sku)
+}
+
+func (p *MixedAttributesProcessor) findSpecByDimension(specs []temucontext.SpecInfo, targetDimension string) *temucontext.SpecInfo {
+	for i := range specs {
+		if specs[i].ParentSpecID == targetDimension {
+			return &specs[i]
+		}
+	}
+
 	return nil
 }
 
