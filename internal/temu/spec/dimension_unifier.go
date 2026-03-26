@@ -96,15 +96,10 @@ func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *temucontext.AIS
 		return nil
 	}
 
-	for i := range aiMapping.SkuList {
-		sku := &aiMapping.SkuList[i]
-
-		// 提取当前SKU在目标维度上的规格
+	aiMapping.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
 		unifiedSpecs := u.extractTargetSpecs(sku.Spec, targetDimensions)
 
-		// 只为缺少少量维度的SKU添加默认规格
 		if len(unifiedSpecs) < len(targetDimensions) && len(unifiedSpecs) > 0 {
-			// 添加缺失的维度
 			for _, targetDim := range targetDimensions {
 				found := false
 				for _, spec := range unifiedSpecs {
@@ -116,21 +111,19 @@ func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *temucontext.AIS
 				if !found {
 					defaultSpec := u.createDefaultSpec(targetDim)
 					unifiedSpecs = append(unifiedSpecs, defaultSpec)
-					u.logger.Warnf("⚠️ SKU[%d] 缺少维度 %s，使用默认规格: %+v", i, targetDim, defaultSpec)
+					u.logger.Warnf("SKU[%d] missing dimension %s, applying default spec: %+v", i, targetDim, defaultSpec)
 				}
 			}
 		} else if len(unifiedSpecs) == 0 {
-			u.logger.Warnf("⚠️ SKU[%d] 在目标维度上没有规格，保持原有规格", i)
-			continue // 保持原有规格，不添加默认规格
+			u.logger.Warnf("SKU[%d] has no specs on target dimensions, keeping original specs", i)
+			return
 		}
 
-		// 更新SKU的规格
 		if len(unifiedSpecs) > 0 {
 			sku.Spec = unifiedSpecs
-			// 重新生成unique_id
 			u.regenerateUniqueID(sku)
 		}
-	}
+	})
 
 	u.logger.Info("✅ 规格维度统一完成")
 	return nil
