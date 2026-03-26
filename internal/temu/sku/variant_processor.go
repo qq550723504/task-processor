@@ -172,6 +172,13 @@ func (vp *SkuVariantProcessor) resolveAndBuildDefaultSkc(temuCtx *temucontext.Te
 		return models.Skc{}, err
 	}
 
+	return vp.buildDefaultSkcFromResolvedProduct(temuCtx, amazonProduct)
+}
+
+func (vp *SkuVariantProcessor) buildDefaultSkcFromResolvedProduct(
+	temuCtx *temucontext.TemuTaskContext,
+	amazonProduct *model.Product,
+) (models.Skc, error) {
 	aiMapping, err := vp.prepareDefaultAIMappingForBuild(temuCtx, amazonProduct)
 	if err != nil {
 		return models.Skc{}, err
