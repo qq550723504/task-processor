@@ -79,6 +79,20 @@ func (r *AISkuMappingResponse) ForEachSKUIndexed(fn func(int, *AIGeneratedSku)) 
 	}
 }
 
+func (r *AISkuMappingResponse) ReplaceSKUs(skus []AIGeneratedSku) {
+	if r == nil {
+		return
+	}
+	r.SkuList = skus
+}
+
+func (r *AISkuMappingResponse) AppendSKU(sku AIGeneratedSku) {
+	if r == nil {
+		return
+	}
+	r.SkuList = append(r.SkuList, sku)
+}
+
 func (r *AISkuMappingResponse) FirstSpecDimensions() []string {
 	firstSKU, ok := r.FirstSKU()
 	if !ok {

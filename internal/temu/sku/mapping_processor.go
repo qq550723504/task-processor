@@ -116,7 +116,7 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temuco
 
 	// 更新映射列表
 	removedCount := aiMapping.SkuCount() - len(filteredSkus)
-	aiMapping.SkuList = filteredSkus
+	aiMapping.ReplaceSKUs(filteredSkus)
 	mp.logger.Infof("✅ 移除了%d个多余/重复的映射，剩余%d个映射", removedCount, len(filteredSkus))
 
 	// 验证最终数量
@@ -157,7 +157,7 @@ func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *temucontext.
 				VariantAttributes: make(map[string]string),
 			}
 
-			aiMapping.SkuList = append(aiMapping.SkuList, defaultSku)
+			aiMapping.AppendSKU(defaultSku)
 			mp.logger.Infof("✅ 已为变体 %s 添加补充映射 (使用spec模板: %d个规格)", variant.Asin, len(specTemplate))
 		}
 	}
