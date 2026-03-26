@@ -157,7 +157,7 @@ func (input *SavePublishResultInput) ProfitRuleID() (int64, bool) {
 }
 
 func (input *SavePublishResultInput) DailyLimitExceededReason(count int64, dailyLimit int) string {
-	return fmt.Sprintf("????????(%d/%d)", count, dailyLimit)
+	return fmt.Sprintf("超过每日上架限额(%d/%d)", count, dailyLimit)
 }
 
 func (input *SavePublishResultInput) ProductIDForSKU(sku *models.Sku) (string, bool) {
@@ -196,11 +196,11 @@ func (input *SavePublishResultInput) FilterRuleRange() (string, bool) {
 	if input.FilterRule.PriceMin != nil || input.FilterRule.PriceMax != nil {
 		var priceRange string
 		if input.FilterRule.PriceMin != nil && input.FilterRule.PriceMax != nil {
-			priceRange = fmt.Sprintf("???:%.2f-%.2f", *input.FilterRule.PriceMin, *input.FilterRule.PriceMax)
+			priceRange = fmt.Sprintf("价格:%.2f-%.2f", *input.FilterRule.PriceMin, *input.FilterRule.PriceMax)
 		} else if input.FilterRule.PriceMin != nil {
-			priceRange = fmt.Sprintf("???:>=%.2f", *input.FilterRule.PriceMin)
+			priceRange = fmt.Sprintf("价格:>=%.2f", *input.FilterRule.PriceMin)
 		} else if input.FilterRule.PriceMax != nil {
-			priceRange = fmt.Sprintf("???:<=%.2f", *input.FilterRule.PriceMax)
+			priceRange = fmt.Sprintf("价格:<=%.2f", *input.FilterRule.PriceMax)
 		}
 		if priceRange != "" {
 			rangeParts = append(rangeParts, priceRange)
@@ -208,19 +208,19 @@ func (input *SavePublishResultInput) FilterRuleRange() (string, bool) {
 	}
 
 	if input.FilterRule.StockMin != nil {
-		rangeParts = append(rangeParts, fmt.Sprintf("???:>=%d", *input.FilterRule.StockMin))
+		rangeParts = append(rangeParts, fmt.Sprintf("库存:>=%d", *input.FilterRule.StockMin))
 	}
 	if input.FilterRule.RatingMin != nil {
-		rangeParts = append(rangeParts, fmt.Sprintf("???:>=%.1f", *input.FilterRule.RatingMin))
+		rangeParts = append(rangeParts, fmt.Sprintf("评分:>=%.1f", *input.FilterRule.RatingMin))
 	}
 	if input.FilterRule.ReviewCountMin != nil {
-		rangeParts = append(rangeParts, fmt.Sprintf("?????>=%d", *input.FilterRule.ReviewCountMin))
+		rangeParts = append(rangeParts, fmt.Sprintf("评论数:>=%d", *input.FilterRule.ReviewCountMin))
 	}
 	if input.FilterRule.DeliveryTimeMax != nil {
-		rangeParts = append(rangeParts, fmt.Sprintf("??????:<=%d??", *input.FilterRule.DeliveryTimeMax))
+		rangeParts = append(rangeParts, fmt.Sprintf("发货时效:<=%d天", *input.FilterRule.DeliveryTimeMax))
 	}
 	if input.FilterRule.FulfillmentType != "" && input.FilterRule.FulfillmentType != "ALL" {
-		rangeParts = append(rangeParts, fmt.Sprintf("????%s", input.FilterRule.FulfillmentType))
+		rangeParts = append(rangeParts, fmt.Sprintf("履约方式:%s", input.FilterRule.FulfillmentType))
 	}
 
 	if len(rangeParts) == 0 {

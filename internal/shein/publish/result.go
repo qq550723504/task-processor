@@ -28,42 +28,42 @@ func NewSavePublishResultHandler() *SavePublishResultHandler {
 
 // Name returns the handler name.
 func (h *SavePublishResultHandler) Name() string {
-	return "????????????"
+	return "保存发品成功后返回的信息"
 }
 
 // Handle persists mapping records, daily counters, and task status updates.
 func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 	if ctx.ProductData == nil {
-		return shein.NewNonRetryableError("????????????????????", nil)
+		return shein.NewNonRetryableError("产品数据未获取，请先执行获取产品数据步骤", nil)
 	}
 
 	input, err := buildPublishResultInput(ctx)
 	if err != nil {
-		return shein.NewNonRetryableError("??????????", err)
+		return shein.NewNonRetryableError("构建发布结果输入失败", err)
 	}
 
 	if err := h.createProductImportMapping(input); err != nil {
-		h.logger.Warnf("????????????: %v", err)
+		h.logger.Warnf("创建产品导入映射关系失败: %v", err)
 	}
 
 	h.recordDailyListingCount(input)
 	updateTaskStatusToPublished(input)
 
-	h.logger.Info("??????????????")
+	h.logger.Info("发品成功后返回信息保存完成")
 	return nil
 }
 
 func (h *SavePublishResultHandler) createProductImportMapping(input *PublishResultInput) error {
 	if input.ManagementClientMgr == nil {
-		return shein.NewNonRetryableError("????????????", nil)
+		return shein.NewNonRetryableError("管理客户端管理器未初始化", nil)
 	}
 	if input.Task == nil {
-		return shein.NewNonRetryableError("????????", nil)
+		return shein.NewNonRetryableError("任务信息未初始化", nil)
 	}
 
 	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
 	if mappingClient == nil {
-		return shein.NewNonRetryableError("?????????????", nil)
+		return shein.NewNonRetryableError("产品导入映射客户端未初始化", nil)
 	}
 
 	if input.SheinResponse == nil || len(input.SheinResponse.Info.SKCList) == 0 {
@@ -170,7 +170,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(input *PublishResultI
 
 	if count > int64(dailyLimit) {
 		h.logger.Warnf("store %d exceeded daily limit %d with count %d, pause listing", input.StoreInfo.ID, dailyLimit, count)
-		h.pauseShopWithCacheCleanup(input, "????????", 24*time.Hour)
+		h.pauseShopWithCacheCleanup(input, "超过每日上架限额", 24*time.Hour)
 		h.logger.Infof("store %d paused for 24 hours after exceeding daily limit %d", input.StoreInfo.ID, dailyLimit)
 		return
 	}

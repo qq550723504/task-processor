@@ -449,7 +449,7 @@ func (ib *SkuItemBuilder) deduplicateSpecs(specs []models.SpecInfo) []models.Spe
 
 // saveAsinSkuMapping 保存ASIN到SKU的映射关系到上下文（兼容接口）
 func (ib *SkuItemBuilder) saveAsinSkuMapping(ctx pipeline.TaskContext, outSkuSN string, asin string) {
-	// ???????????
+	// 类型断言为强类型上下文
 	if temuCtx, ok := ctx.(*temucontext.TemuTaskContext); ok {
 		runtime, err := temucontext.BuildSKUBuildRuntime(temuCtx)
 		if err == nil {
@@ -459,11 +459,11 @@ func (ib *SkuItemBuilder) saveAsinSkuMapping(ctx pipeline.TaskContext, outSkuSN 
 		return
 	}
 
-	// ??????????
-	ib.logger.Warnf("????ASIN?SKU????????????")
+	// 兼容旧接口的基本实现
+	ib.logger.Warnf("无法保存ASIN到SKU映射，不支持的上下文类型")
 }
 
-// saveAsinSkuMappingWithRuntime ??ASIN?SKU?????????
+// saveAsinSkuMappingWithRuntime 保存ASIN到SKU的映射关系
 func (ib *SkuItemBuilder) saveAsinSkuMappingWithRuntime(runtime *temucontext.SKUBuildRuntime, outSkuSN string, asin string) map[string]string {
 	if runtime == nil {
 		runtime = &temucontext.SKUBuildRuntime{}

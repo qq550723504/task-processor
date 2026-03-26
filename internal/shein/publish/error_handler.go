@@ -90,7 +90,7 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *shein.TaskContex
 		saver := NewPublishProductSaver()
 		saveInput, err := buildSavePublishStateInput(ctx, response)
 		if err != nil {
-			return shein.NewNonRetryableError("????????????", err)
+			return shein.NewNonRetryableError("构建发布结果保存输入失败", err)
 		}
 		if err := saver.SavePublishResult(saveInput); err != nil {
 			// 保存结果失败可能是数据问题，不可重试
@@ -115,58 +115,58 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *shein.TaskContex
 func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *shein.TaskContext, results []shein.PreValidResult) bool {
 	retryInput, err := buildPublishRetryInput(ctx)
 	if err != nil {
-		logger.GetGlobalLogger("shein/publish").Errorf("??????????: %v", err)
+		logger.GetGlobalLogger("shein/publish").Errorf("构建发布重试输入失败: %v", err)
 		return false
 	}
 
-	logger.GetGlobalLogger("shein/publish").Info("??????????????????")
+	logger.GetGlobalLogger("shein/publish").Info("开始检查敏感词错误并尝试自动替换重试...")
 	sensitiveWordService := h.getSensitiveWordService()
 	if sensitiveWordService == nil {
-		logger.GetGlobalLogger("shein/publish").Error("?????????????????")
+		logger.GetGlobalLogger("shein/publish").Error("无法创建敏感词服务，跳过敏感词处理")
 		return false
 	}
 	if !sensitiveWordService.HandleValidationErrors(ctx, results) {
 		return false
 	}
 
-	logger.GetGlobalLogger("shein/publish").Info("?????????????????")
+	logger.GetGlobalLogger("shein/publish").Info("开始执行敏感词替换后的产品重新提交...")
 	response, err := doPublishProduct(ctx, retryInput.PublishInput)
 	if err != nil {
-		logger.GetGlobalLogger("shein/publish").Errorf("???????????????????: %v", err)
+		logger.GetGlobalLogger("shein/publish").Errorf("敏感词重试失败 - 重新提交产品时发生错误: %v", err)
 		return false
 	}
 
 	if response == nil {
-		logger.GetGlobalLogger("shein/publish").Warn("??????????????")
+		logger.GetGlobalLogger("shein/publish").Warn("敏感词重试失败 - 产品发布返回空响应")
 		return false
 	}
 	if response.Code != "0" {
-		logger.GetGlobalLogger("shein/publish").Warnf("?????????????: %s", response.Code)
+		logger.GetGlobalLogger("shein/publish").Warnf("敏感词重试失败 - 产品发布失败，响应码: %s", response.Code)
 		return false
 	}
 
 	validResults, parseErr := h.parsePreValidResult(response.Info.PreValidResult)
 	if parseErr != nil {
-		logger.GetGlobalLogger("shein/publish").Warnf("??????????: %v", parseErr)
+		logger.GetGlobalLogger("shein/publish").Warnf("解析重新提交的验证结果失败: %v", parseErr)
 		return false
 	}
 	if h.hasValidationError(validResults) {
-		logger.GetGlobalLogger("shein/publish").Warn("?????????????")
+		logger.GetGlobalLogger("shein/publish").Warn("敏感词重试后仍有验证错误，敏感词替换未完全解决问题")
 		return false
 	}
 
 	saver := NewPublishProductSaver()
 	saveInput, err := retryInput.BuildSaveStateInputFn(response)
 	if err != nil {
-		logger.GetGlobalLogger("shein/publish").Errorf("????????????: %v", err)
+		logger.GetGlobalLogger("shein/publish").Errorf("构建发布结果保存输入失败: %v", err)
 		return false
 	}
 	if err := saver.SavePublishResult(saveInput); err != nil {
-		logger.GetGlobalLogger("shein/publish").Errorf("??????????????: %v", err)
+		logger.GetGlobalLogger("shein/publish").Errorf("敏感词重试成功但保存结果失败: %v", err)
 		return false
 	}
 
-	logger.GetGlobalLogger("shein/publish").Info("??????????????")
+	logger.GetGlobalLogger("shein/publish").Info("敏感词重试成功 - 产品发布成功")
 	return true
 }
 
@@ -393,13 +393,13 @@ func (h *PublishProductErrorHandler) isQuantityTypeError(results []shein.PreVali
 func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.TaskContext, _ []shein.PreValidResult) bool {
 	retryInput, err := buildPublishRetryInput(ctx)
 	if err != nil {
-		logger.GetGlobalLogger("shein/publish").Errorf("??????????: %v", err)
+		logger.GetGlobalLogger("shein/publish").Errorf("构建发布重试输入失败: %v", err)
 		return false
 	}
 
-	logger.GetGlobalLogger("shein/publish").Info("????????????")
+	logger.GetGlobalLogger("shein/publish").Info("开始自动修复数量类型错误...")
 	if retryInput.ProductData == nil || len(retryInput.ProductData.SKCList) == 0 {
-		logger.GetGlobalLogger("shein/publish").Error("?????????????????")
+		logger.GetGlobalLogger("shein/publish").Error("产品数据为空，无法修复数量类型错误")
 		return false
 	}
 
@@ -432,7 +432,7 @@ func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.T
 			sku.QuantityInfo.QuantityType = &correctedQuantityType
 			sku.QuantityInfo.Quantity = &correctedQuantity
 			logger.GetGlobalLogger("shein/publish").Infof(
-				"??SKC[%d] SKU[%d] %s: quantityType %d->%d, quantity %d->%d",
+				"修复SKC[%d] SKU[%d] %s: quantityType %d->%d, quantity %d->%d",
 				skcIndex,
 				skuIndex,
 				sku.SupplierSKU,
@@ -446,45 +446,45 @@ func (h *PublishProductErrorHandler) autoFixQuantityTypeAndResubmit(ctx *shein.T
 	}
 
 	if !fixed {
-		logger.GetGlobalLogger("shein/publish").Warn("??????????????")
+		logger.GetGlobalLogger("shein/publish").Warn("未发现需要修复的数量类型问题")
 		return false
 	}
 
 	response, err := doPublishProduct(ctx, retryInput.PublishInput)
 	if err != nil {
-		logger.GetGlobalLogger("shein/publish").Errorf("??????????????????????: %v", err)
+		logger.GetGlobalLogger("shein/publish").Errorf("数量类型修复重试失败 - 重新提交产品时发生错误: %v", err)
 		return false
 	}
 	if response == nil {
-		logger.GetGlobalLogger("shein/publish").Warn("?????????????????")
+		logger.GetGlobalLogger("shein/publish").Warn("数量类型修复重试失败 - 产品发布返回空响应")
 		return false
 	}
 	if response.Code != "0" {
-		logger.GetGlobalLogger("shein/publish").Warnf("????????????????: %s", response.Code)
+		logger.GetGlobalLogger("shein/publish").Warnf("数量类型修复重试失败 - 产品发布失败，响应码: %s", response.Code)
 		return false
 	}
 
 	validResults, parseErr := h.parsePreValidResult(response.Info.PreValidResult)
 	if parseErr != nil {
-		logger.GetGlobalLogger("shein/publish").Warnf("????????????: %v", parseErr)
+		logger.GetGlobalLogger("shein/publish").Warnf("解析重新提交的验证结果失败: %v", parseErr)
 		return false
 	}
 	if h.hasValidationError(validResults) {
-		logger.GetGlobalLogger("shein/publish").Warn("????????????????")
+		logger.GetGlobalLogger("shein/publish").Warn("数量类型修复重试后仍有验证错误，修复未完全解决问题")
 		return false
 	}
 
 	saver := NewPublishProductSaver()
 	saveInput, err := retryInput.BuildSaveStateInputFn(response)
 	if err != nil {
-		logger.GetGlobalLogger("shein/publish").Errorf("????????????: %v", err)
+		logger.GetGlobalLogger("shein/publish").Errorf("构建发布结果保存输入失败: %v", err)
 		return false
 	}
 	if err := saver.SavePublishResult(saveInput); err != nil {
-		logger.GetGlobalLogger("shein/publish").Errorf("?????????????????: %v", err)
+		logger.GetGlobalLogger("shein/publish").Errorf("数量类型修复重试成功但保存结果失败: %v", err)
 		return false
 	}
 
-	logger.GetGlobalLogger("shein/publish").Info("?????????????????")
+	logger.GetGlobalLogger("shein/publish").Info("数量类型修复重试成功 - 产品发布成功")
 	return true
 }

@@ -33,19 +33,19 @@ func NewAttributeSelectorHandler(client openaiClient.ChatCompleter) *AttributeSe
 }
 
 func (h *AttributeSelectorHandler) Name() string {
-	return "AI????"
+	return "AI属性选择"
 }
 
 func (h *AttributeSelectorHandler) Handle(ctx *sheinctx.TaskContext) error {
 	input, err := buildAttributeSelectionInput(ctx, h.openaiClient)
 	if err != nil {
-		return sherr.NewNonRetryableError("???????????", err)
+		return sherr.NewNonRetryableError("构建属性选择输入失败", err)
 	}
 
 	if input.AICache != nil {
 		var cached AttributeData
 		if input.AICache.Get(aicache.TypeAttribute, input.CacheKey, &cached) {
-			logger.GetGlobalLogger("shein/product").Infof("AI????????: key=%s", input.CacheKey)
+			logger.GetGlobalLogger("shein/product").Infof("AI属性选择命中缓存: key=%s", input.CacheKey)
 			ctx.GenerateAttribute = &cached
 			return nil
 		}
@@ -53,7 +53,7 @@ func (h *AttributeSelectorHandler) Handle(ctx *sheinctx.TaskContext) error {
 
 	attributeInfo, err := h.convertAttributeFromGpt(input, ctx)
 	if err != nil {
-		return sherr.NewRetryableError("????????", err)
+		return sherr.NewRetryableError("转换属性数据失败", err)
 	}
 
 	if input.AICache != nil {
@@ -67,7 +67,7 @@ func (h *AttributeSelectorHandler) Handle(ctx *sheinctx.TaskContext) error {
 func (h *AttributeSelectorHandler) convertAttributeFromGpt(input *AttributeSelectionInput, ctx *sheinctx.TaskContext) (AttributeData, error) {
 	systemPrompt, err := h.promptGenerator.GenerateSystemPrompt(input.AttributeTemplates)
 	if err != nil {
-		logger.GetGlobalLogger("shein/product").Warnf("???????????????????: %v", err)
+		logger.GetGlobalLogger("shein/product").Warnf("生成动态系统提示词失败，使用默认提示词: %v", err)
 		systemPrompt = h.promptGenerator.GenerateDefaultSystemPrompt()
 	}
 
@@ -80,10 +80,10 @@ func (h *AttributeSelectorHandler) convertAttributeFromGpt(input *AttributeSelec
 
 	response, err := input.OpenAIClient.CreateChatCompletion(input.Context, req)
 	if err != nil {
-		return AttributeData{}, sherr.NewRetryableError("????????", err)
+		return AttributeData{}, sherr.NewRetryableError("生成产品属性失败", err)
 	}
 	if len(response.Choices) == 0 {
-		return AttributeData{}, sherr.NewRetryableError("AI????", nil)
+		return AttributeData{}, sherr.NewRetryableError("AI响应为空", nil)
 	}
 
 	return h.processAIResponse(response, *input.BuildAttributeData, input.AttributeTemplates)
@@ -109,21 +109,21 @@ func (h *AttributeSelectorHandler) processAIResponse(response *openaiClient.Chat
 	content = h.utils.CleanJSONContent(content)
 
 	if !json.Valid([]byte(content)) {
-		logger.GetGlobalLogger("shein/product").Errorf("AI???JSON??????????: %s", content)
+		logger.GetGlobalLogger("shein/product").Errorf("AI返回的JSON格式无效，清理后内容: %s", content)
 		fixedContent := h.utils.FixCommonJSONIssues(content)
-		logger.GetGlobalLogger("shein/product").Infof("?????: %s", fixedContent)
+		logger.GetGlobalLogger("shein/product").Infof("修复后内容: %s", fixedContent)
 		if !json.Valid([]byte(fixedContent)) {
 			var temp any
 			jsonErr := json.Unmarshal([]byte(fixedContent), &temp)
-			return AttributeData{}, sherr.NewRetryableError("AI???JSON?????????", jsonErr)
+			return AttributeData{}, sherr.NewRetryableError("AI返回的JSON格式无效且无法修复", jsonErr)
 		}
 		content = fixedContent
 	}
 
 	var attributeData AttributeData
-	if err := jsonx.UnmarshalBytes([]byte(content), &attributeData, "????????"); err != nil {
-		logger.GetGlobalLogger("shein/product").Errorf("????????: %v??????: %s", err, content)
-		return AttributeData{}, sherr.NewRetryableError("????????", err)
+	if err := jsonx.UnmarshalBytes([]byte(content), &attributeData, "解析属性数据失败"); err != nil {
+		logger.GetGlobalLogger("shein/product").Errorf("解析属性数据失败: %v，清理后内容: %s", err, content)
+		return AttributeData{}, sherr.NewRetryableError("解析属性数据失败", err)
 	}
 
 	attributeData = h.validator.ValidateAndFixAttributeSelection(attributeData, attributeInfo, attributeTemplates)

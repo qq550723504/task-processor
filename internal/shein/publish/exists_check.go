@@ -22,12 +22,12 @@ func NewProductExistsCheckHandler() *ProductExistsCheckHandler {
 
 // Name returns the handler name.
 func (h *ProductExistsCheckHandler) Name() string {
-	return "???????"
+	return "产品存在性检查"
 }
 
 // Handle checks both the main product and variants before publish.
 func (h *ProductExistsCheckHandler) Handle(ctx *shein.TaskContext) error {
-	logger.GetGlobalLogger("shein/publish").Info("???????????")
+	logger.GetGlobalLogger("shein/publish").Info("🔍 开始检查产品是否已上架...")
 
 	input, err := buildExistenceCheckInput(ctx)
 	if err != nil {
@@ -38,7 +38,7 @@ func (h *ProductExistsCheckHandler) Handle(ctx *shein.TaskContext) error {
 		return nil
 	}
 	if input.Task == nil {
-		return shein.NewNonRetryableError("????????", nil)
+		return shein.NewNonRetryableError("任务信息未初始化", nil)
 	}
 
 	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
@@ -54,7 +54,7 @@ func (h *ProductExistsCheckHandler) Handle(ctx *shein.TaskContext) error {
 		return err
 	}
 
-	logger.GetGlobalLogger("shein/publish").Info("?????????")
+	logger.GetGlobalLogger("shein/publish").Info("✅ 产品存在性检查完成")
 	return nil
 }
 
@@ -74,11 +74,11 @@ func (h *ProductExistsCheckHandler) checkMainProduct(input *ExistenceCheckInput,
 	exists, err := mappingClient.CheckProductExists(req)
 	if err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("check main product %s existence failed: %v", input.Task.ProductID, err)
-		return shein.NewRetryableError("????????????", err)
+		return shein.NewRetryableError("检查主产品是否已上架失败", err)
 	}
 	if exists {
 		logger.GetGlobalLogger("shein/publish").Warnf("main product %s already exists, skip publish", input.Task.ProductID)
-		return shein.NewNonRetryableError(fmt.Sprintf("??? %s ?????", input.Task.ProductID), nil)
+		return shein.NewNonRetryableError(fmt.Sprintf("主产品 %s 已经上架过", input.Task.ProductID), nil)
 	}
 
 	logger.GetGlobalLogger("shein/publish").Infof("main product %s is not published yet", input.Task.ProductID)
@@ -121,7 +121,7 @@ func (h *ProductExistsCheckHandler) checkSingleVariant(input *ExistenceCheckInpu
 	if exists {
 		logger.GetGlobalLogger("shein/publish").Warnf("variant[%d/%d] %s already exists", index, total, asin)
 		if input.SetVariantFilteredFn != nil {
-			input.SetVariantFilteredFn(asin, true, fmt.Sprintf("?? %s ?????", asin))
+			input.SetVariantFilteredFn(asin, true, fmt.Sprintf("产品 %s 已经上架过", asin))
 		}
 		return nil
 	}

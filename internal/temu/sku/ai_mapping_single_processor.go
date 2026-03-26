@@ -186,7 +186,7 @@ func (vp *SkuVariantProcessor) parseAIResponse(resp *openai.ChatCompletionRespon
 		return nil, fmt.Errorf("解析AI响应失败: %w, 响应内容长度: %d", err, len(jsonContent))
 	}
 
-	vp.logger.Infof("AI????%d?SKU??", aiResponse.SkuCount())
+	vp.logger.Infof("AI成功生成%d个SKU映射", aiResponse.SkuCount())
 	return &aiResponse, nil
 }
 
@@ -212,22 +212,22 @@ func (vp *SkuVariantProcessor) logParseError(err error, content, jsonContent str
 	}
 }
 
-// fillVariantAttributes ??????
+// fillVariantAttributes 填充变体属性
 func (vp *SkuVariantProcessor) fillVariantAttributes(aiResponse *temucontext.AISkuMappingResponse, asinToAttributes map[string]map[string]any) {
-	vp.logger.Infof("?? ????VariantAttributes?SKU??: %d", aiResponse.SkuCount())
+	vp.logger.Infof("🔄 开始填充VariantAttributes，SKU数量: %d", aiResponse.SkuCount())
 
 	aiResponse.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
-		vp.logger.Infof("?? ??SKU[%d]: UniqueID=%s, ASIN=%s", i, sku.UniqueID, sku.Asin)
+		vp.logger.Infof("🔍 处理SKU[%d]: UniqueID=%s, ASIN=%s", i, sku.UniqueID, sku.Asin)
 
 		if attributes, exists := asinToAttributes[sku.Asin]; exists {
 			sku.VariantAttributes = make(map[string]string)
 			for key, value := range attributes {
 				sku.VariantAttributes[key] = fmt.Sprintf("%v", value)
 			}
-			vp.logger.Infof("? ?SKU %s (ASIN: %s) ???VariantAttributes: %+v",
+			vp.logger.Infof("✅ 为SKU %s (ASIN: %s) 填充了VariantAttributes: %+v",
 				sku.UniqueID, sku.Asin, sku.VariantAttributes)
 		} else {
-			vp.logger.Warnf("SKU %s (ASIN: %s) ??????attributes", sku.UniqueID, sku.Asin)
+			vp.logger.Warnf("SKU %s (ASIN: %s) 未找到对应的attributes", sku.UniqueID, sku.Asin)
 		}
 	})
 }

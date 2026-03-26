@@ -73,7 +73,7 @@ management:
   scopes: ["user.read"]
   #tenantID: "286"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [505]# 店铺ID列表 ->775
+  storeIDs: [837]# 店铺ID列表 ->775
 
 platforms:
   # TEMU 平台配置
@@ -145,7 +145,7 @@ rabbitmq:
   reconnectInterval: 5   # 重连间隔（秒）
   maxReconnectTries: 10  # 最大重连次数
   node:
-    ownedStores: [505]
+    ownedStores: [837]
     regions: [US]  # 该节点只处理这三个 region 的爬虫任务
   # 消费者配置
   consumer:
