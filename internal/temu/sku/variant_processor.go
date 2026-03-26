@@ -41,8 +41,13 @@ func NewSkuVariantProcessor(logger *logrus.Entry, aiClient openai.ChatCompleter,
 func (vp *SkuVariantProcessor) BuildVariantSkcs(temuCtx *temucontext.TemuTaskContext, variants []*model.Product) error {
 	vp.logger.Infof("构建变体SKC，变体数量: %d", len(variants))
 
-	// 根据AI映射构建SKC列表
-	skcList, err := vp.BuildSkcsFromAIMapping(temuCtx, variants, temuCtx.AISkuMapping)
+	aiMapping, err := vp.resolveVariantAIMapping(temuCtx)
+	if err != nil {
+		vp.logger.Warnf("获取AI映射失败: %v，使用默认映射", err)
+		return nil
+	}
+
+	skcList, err := vp.BuildSkcsFromAIMapping(temuCtx, variants, aiMapping)
 	if err != nil {
 		vp.logger.Warnf("根据AI映射构建SKC失败: %v，使用默认映射", err)
 		return nil
@@ -51,6 +56,14 @@ func (vp *SkuVariantProcessor) BuildVariantSkcs(temuCtx *temucontext.TemuTaskCon
 	temuCtx.TemuProduct.SkcList = skcList
 	vp.logger.Infof("AI辅助构建完成，创建了%d个SKC", len(skcList))
 	return nil
+}
+
+func (vp *SkuVariantProcessor) resolveVariantAIMapping(temuCtx *temucontext.TemuTaskContext) (*temucontext.AISkuMappingResponse, error) {
+	if temuCtx.AISkuMapping != nil {
+		return temuCtx.AISkuMapping, nil
+	}
+
+	return nil, fmt.Errorf("没有可用的AI映射")
 }
 
 // buildSkcsFromAIMapping 根据AI映射构建SKC
