@@ -75,9 +75,7 @@ func (vp *SkuVariantProcessor) normalizeMergedAIMapping(aiMapping *temucontext.A
 		return fmt.Errorf("unify spec dimensions after batch merge: %w", err)
 	}
 
-	vp.logger.Info("enforcing spec count limit on merged AI mapping result")
-	vp.enforceSpecCountLimit(aiMapping)
-
+	vp.enforceMergedSpecCountLimit(aiMapping)
 	return nil
 }
 
@@ -175,4 +173,9 @@ func (vp *SkuVariantProcessor) appendBatchResponse(
 		"AI mapping batch %d/%d completed: generated_skus=%d",
 		batchIndex+1, totalBatches, batchResponse.SkuCount(),
 	)
+}
+
+func (vp *SkuVariantProcessor) enforceMergedSpecCountLimit(aiMapping *temucontext.AISkuMappingResponse) {
+	vp.logger.Info("enforcing spec count limit on merged AI mapping result")
+	vp.enforceSpecCountLimit(aiMapping)
 }
