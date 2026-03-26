@@ -92,8 +92,7 @@ func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *temucontext.AI
 
 	// 验证和修复每个SKU的spec
 	fixedCount := 0
-	for i := range response.SkuList {
-		sku := &response.SkuList[i]
+	response.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
 		validSpecs := make([]temucontext.SpecInfo, 0, len(sku.Spec))
 
 		for _, spec := range sku.Spec {
@@ -197,14 +196,14 @@ func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *temucontext.AI
 
 		// 更新SKU的spec列表
 		sku.Spec = validSpecs
-	}
+	})
 
 	if fixedCount > 0 {
 		vp.logger.Infof("🔧 修复了 %d 个规格问题，并为所有规格补充了parent_spec_name", fixedCount)
 
 		// 再次验证是否还有无效的spec_id
 		invalidSpecCount := 0
-		for _, sku := range response.SkuList {
+		response.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 			for _, spec := range sku.Spec {
 				// 检查是否有非TEMP_格式且不在模板中的spec_id
 				if !strings.HasPrefix(spec.SpecID, "TEMP_") {
@@ -217,7 +216,7 @@ func (vp *SkuVariantProcessor) validateAndFixAIResponse(response *temucontext.AI
 					}
 				}
 			}
-		}
+		})
 
 		if invalidSpecCount > 0 {
 			vp.logger.Errorf("❌ 仍有 %d 个无效spec_id未被修复", invalidSpecCount)
