@@ -93,7 +93,7 @@ func (r *AISkuMappingResponse) ReplaceSKUs(skus []AIGeneratedSku) {
 	if r == nil {
 		return
 	}
-	r.SkuList = skus
+	r.SkuList = append(r.SkuList[:0], skus...)
 }
 
 func (r *AISkuMappingResponse) AppendSKU(sku AIGeneratedSku) {
@@ -107,14 +107,18 @@ func (r *AISkuMappingResponse) AppendSKUs(skus []AIGeneratedSku) {
 	if r == nil || len(skus) == 0 {
 		return
 	}
-	r.SkuList = append(r.SkuList, skus...)
+	for _, sku := range skus {
+		r.AppendSKU(sku)
+	}
 }
 
 func (r *AISkuMappingResponse) AppendResponse(other *AISkuMappingResponse) {
 	if r == nil || other == nil || other.SkuCount() == 0 {
 		return
 	}
-	r.AppendSKUs(other.SkuList)
+	other.ForEachSKU(func(sku *AIGeneratedSku) {
+		r.AppendSKU(*sku)
+	})
 }
 
 func (r *AISkuMappingResponse) FirstSpecDimensions() []string {
