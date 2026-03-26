@@ -189,13 +189,7 @@ func (vp *SkuVariantProcessor) GenerateAISkuMapping(temuCtx *temucontext.TemuTas
 		return vp.generateAISkuMappingInBatches(temuCtx, variants, maxVariantsPerBatch)
 	}
 
-	// 单批处理
-	response, err := vp.GenerateAISkuMappingSingleBatch(temuCtx, variants)
-	if err != nil {
-		return nil, err
-	}
-
-	return vp.finalizeGeneratedAIMapping(response)
+	return vp.generateAISkuMappingSingle(temuCtx, variants)
 }
 
 func (vp *SkuVariantProcessor) validateAIMappingSpecs(aiMapping *temucontext.AISkuMappingResponse) error {
@@ -286,6 +280,15 @@ func (vp *SkuVariantProcessor) finalizeGeneratedAIMapping(aiMapping *temucontext
 	}
 
 	return aiMapping, nil
+}
+
+func (vp *SkuVariantProcessor) generateAISkuMappingSingle(temuCtx *temucontext.TemuTaskContext, variants []*model.Product) (*temucontext.AISkuMappingResponse, error) {
+	response, err := vp.GenerateAISkuMappingSingleBatch(temuCtx, variants)
+	if err != nil {
+		return nil, err
+	}
+
+	return vp.finalizeGeneratedAIMapping(response)
 }
 
 func (vp *SkuVariantProcessor) unifyAIMappingSpecDimensions(aiMapping *temucontext.AISkuMappingResponse) error {
