@@ -24,7 +24,7 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 		return nil, err
 	}
 
-	if err := vp.normalizeMergedAIMapping(mergedResponse); err != nil {
+	if err := vp.finalizeMergedAIMapping(mergedResponse); err != nil {
 		return nil, err
 	}
 
@@ -61,8 +61,12 @@ func (vp *SkuVariantProcessor) processAllAIMappingBatches(
 		}
 	}
 
-	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", mergedResponse.SkuCount())
 	return mergedResponse, nil
+}
+
+func (vp *SkuVariantProcessor) finalizeMergedAIMapping(aiMapping *temucontext.AISkuMappingResponse) error {
+	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", aiMapping.SkuCount())
+	return vp.normalizeMergedAIMapping(aiMapping)
 }
 
 func (vp *SkuVariantProcessor) normalizeMergedAIMapping(aiMapping *temucontext.AISkuMappingResponse) error {
