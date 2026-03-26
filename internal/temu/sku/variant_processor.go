@@ -63,47 +63,57 @@ func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 }
 
 func (vp *SkuVariantProcessor) buildSkcsFromPreparedAIMapping(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiMapping *temucontext.AISkuMappingResponse) []models.Skc {
+	templateSpecs, shouldCreateMultipleSkcs := vp.resolveSkcBuildSpecs(temuCtx)
+	if shouldCreateMultipleSkcs {
+		return vp.buildMultipleSkcs(temuCtx, variants, aiMapping, templateSpecs)
+	}
 
-	// 检查规格来源：只有GoodsSpecProperties不为空且有预置规格值时，才创建多SKC
+	return vp.buildSingleSkc(temuCtx, variants, aiMapping, templateSpecs)
+}
+
+func (vp *SkuVariantProcessor) resolveSkcBuildSpecs(temuCtx *temucontext.TemuTaskContext) ([]temutemplate.TemplateRespGoodsSpecProperty, bool) {
 	templateInfo := temuCtx.TemplateInfo
 	hasTemplateInfo := templateInfo != nil
 	userInputSpecs := temuCtx.UserInputParentSpecList
 	hasUserInputSpecs := len(userInputSpecs) > 0
 
-	// 检查是否应该创建多SKC：GoodsSpecProperties不为空且有预置规格值
-	shouldCreateMultipleSkcs := false
 	if hasTemplateInfo && len(templateInfo.GoodsSpecProperties) > 0 {
-		// 检查是否有预置的规格值
 		for _, prop := range templateInfo.GoodsSpecProperties {
 			if len(prop.Values) > 0 {
-				shouldCreateMultipleSkcs = true
-				break
+				vp.logger.Infof("GoodsSpecProperties有预置规格值，构建多个SKC，规格属性数量: %d", len(templateInfo.GoodsSpecProperties))
+				return templateInfo.GoodsSpecProperties, true
 			}
 		}
 	}
 
-	if shouldCreateMultipleSkcs {
-		// 创建多个SKC（按主变体分组）
-		vp.logger.Infof("GoodsSpecProperties有预置规格值，构建多个SKC，规格属性数量: %d", len(templateInfo.GoodsSpecProperties))
-		return vp.skcBuilder.buildMultipleSkcsFromTemplate(temuCtx, variants, aiMapping, templateInfo.GoodsSpecProperties)
-	}
-
-	// 创建单个SKC，多个SKU
-	vp.logger.Info("创建单个SKC，多个SKU")
-
-	// 优先使用UserInputParentSpecList，否则使用空的模板规格
-	var templateSpecs []temutemplate.TemplateRespGoodsSpecProperty
 	if hasUserInputSpecs && len(userInputSpecs) > 0 {
 		vp.logger.Infof("使用UserInputParentSpecList，用户规格数量: %d", len(userInputSpecs))
-		templateSpecs = vp.specHandler.convertUserInputSpecsToGoodsSpecProperties(userInputSpecs)
+		return vp.specHandler.convertUserInputSpecsToGoodsSpecProperties(userInputSpecs), false
 	} else if hasTemplateInfo {
 		vp.logger.Infof("使用GoodsSpecProperties（无预置值），规格属性数量: %d", len(templateInfo.GoodsSpecProperties))
-		templateSpecs = templateInfo.GoodsSpecProperties
-	} else {
-		vp.logger.Warn("未找到任何规格信息")
-		templateSpecs = []temutemplate.TemplateRespGoodsSpecProperty{}
+		return templateInfo.GoodsSpecProperties, false
 	}
 
+	vp.logger.Warn("未找到任何规格信息")
+	return []temutemplate.TemplateRespGoodsSpecProperty{}, false
+}
+
+func (vp *SkuVariantProcessor) buildMultipleSkcs(
+	temuCtx *temucontext.TemuTaskContext,
+	variants []*model.Product,
+	aiMapping *temucontext.AISkuMappingResponse,
+	templateSpecs []temutemplate.TemplateRespGoodsSpecProperty,
+) []models.Skc {
+	return vp.skcBuilder.buildMultipleSkcsFromTemplate(temuCtx, variants, aiMapping, templateSpecs)
+}
+
+func (vp *SkuVariantProcessor) buildSingleSkc(
+	temuCtx *temucontext.TemuTaskContext,
+	variants []*model.Product,
+	aiMapping *temucontext.AISkuMappingResponse,
+	templateSpecs []temutemplate.TemplateRespGoodsSpecProperty,
+) []models.Skc {
+	vp.logger.Info("创建单个SKC，多个SKU")
 	return vp.skcBuilder.buildSingleSkcFromUserInput(temuCtx, variants, aiMapping, templateSpecs)
 }
 
