@@ -62,9 +62,9 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temuco
 
 	// 统计每个ASIN出现的次数
 	asinCount := make(map[string]int)
-	for _, sku := range aiMapping.SkuList {
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 		asinCount[sku.Asin]++
-	}
+	})
 
 	// 找出重复的ASIN
 	duplicateAsins := make(map[string]bool)
@@ -77,35 +77,35 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temuco
 
 	// 找出不在变体列表中的ASIN
 	invalidAsins := make(map[string]bool)
-	for _, sku := range aiMapping.SkuList {
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 		if !validAsins[sku.Asin] {
 			invalidAsins[sku.Asin] = true
 			mp.logger.Warnf("⚠️ 检测到无效的ASIN: %s (不在变体列表中)", sku.Asin)
 		}
-	}
+	})
 
 	// 过滤SKU列表：移除重复和无效的映射
 	var filteredSkus []temucontext.AIGeneratedSku
 	seenAsins := make(map[string]bool)
 
-	for _, sku := range aiMapping.SkuList {
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 		// 跳过无效的ASIN
 		if invalidAsins[sku.Asin] {
 			mp.logger.Infof("🗑️ 移除无效映射: ASIN=%s", sku.Asin)
-			continue
+			return
 		}
 
 		// 如果是重复的ASIN，只保留第一个
 		if duplicateAsins[sku.Asin] {
 			if seenAsins[sku.Asin] {
 				mp.logger.Infof("🗑️ 移除重复映射: ASIN=%s", sku.Asin)
-				continue
+				return
 			}
 		}
 
-		filteredSkus = append(filteredSkus, sku)
+		filteredSkus = append(filteredSkus, *sku)
 		seenAsins[sku.Asin] = true
-	}
+	})
 
 	// 如果过滤后数量仍然不匹配，移除多余的映射（保留前N个）
 	if len(filteredSkus) > len(variants) {
@@ -131,9 +131,9 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temuco
 func (mp *SkuMappingProcessor) supplementMissingMappings(aiMapping *temucontext.AISkuMappingResponse, variants []*model.Product) {
 	// 创建已映射的ASIN集合
 	mappedAsins := make(map[string]bool)
-	for _, sku := range aiMapping.SkuList {
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 		mappedAsins[sku.Asin] = true
-	}
+	})
 
 	// 分析已有映射的spec模式，用于推断缺失映射的spec
 	specTemplate := mp.analyzeSpecPattern(aiMapping)
@@ -178,7 +178,7 @@ func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *temucontext.AISkuMa
 	specFrequency := make(map[string]int)
 	specExamples := make(map[string]temucontext.SpecInfo)
 
-	for _, sku := range aiMapping.SkuList {
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 		for _, spec := range sku.Spec {
 			specFrequency[spec.SpecID]++
 			if _, exists := specExamples[spec.SpecID]; !exists {
@@ -191,7 +191,7 @@ func (mp *SkuMappingProcessor) analyzeSpecPattern(aiMapping *temucontext.AISkuMa
 				}
 			}
 		}
-	}
+	})
 
 	// 选择出现频率最高的spec作为模板
 	var template []temucontext.SpecInfo
