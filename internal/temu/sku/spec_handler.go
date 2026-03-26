@@ -44,7 +44,11 @@ func (sh *SkuSpecHandler) collectNonColorSpecsForColor(aiMapping *temucontext.AI
 
 	// 从该颜色组的SKU中收集非颜色规格
 	for _, skuIndex := range skuIndices {
-		aiSku := aiMapping.SkuList[skuIndex]
+		aiSku, ok := aiMapping.SKUAt(skuIndex)
+		if !ok {
+			sh.logger.Warnf("skip color spec collection due to missing ai mapping: index=%d", skuIndex)
+			continue
+		}
 		for _, spec := range aiSku.Spec {
 			parentSpecID := spec.ParentSpecID
 

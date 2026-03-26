@@ -65,24 +65,33 @@ func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 		}
 	}
 
-	// 预防性检查：验证AI映射中的规格数量和有效性
-	for i, aiSku := range aiMapping.SkuList {
-		// 检查规格数量是否超过2个（TEMU限制）
+	// ????????AI????????????
+	var validationErr error
+	aiMapping.ForEachSKUIndexed(func(i int, aiSku *temucontext.AIGeneratedSku) {
+		if validationErr != nil {
+			return
+		}
+		// ??????????2??TEMU???
 		if len(aiSku.Spec) > 2 {
-			vp.logger.Errorf("❌ AI映射[%d]规格数量超限: 当前有%d个规格，TEMU最多允许2个销售规格", i, len(aiSku.Spec))
-			vp.logger.Errorf("❌ 规格详情: %+v", aiSku.Spec)
-			return nil, fmt.Errorf("AI映射[%d]规格数量超限: 有%d个规格，但TEMU最多允许2个", i, len(aiSku.Spec))
+			vp.logger.Errorf("? AI??[%d]??????: ???%d????TEMU????2?????", i, len(aiSku.Spec))
+			vp.logger.Errorf("? ????: %+v", aiSku.Spec)
+			validationErr = fmt.Errorf("AI??[%d]??????: ?%d?????TEMU????2?", i, len(aiSku.Spec))
+			return
 		}
 
-		// 验证规格是否有效
+		// ????????
 		if err := vp.specHandler.ValidateSpecs(convertSpecInfos(aiSku.Spec)); err != nil {
-			vp.logger.Errorf("❌ AI映射[%d]规格验证失败: %v", i, err)
-			vp.logger.Error("❌ AI必须从TEMU模板中选择有效的规格，不能使用默认规格")
-			return nil, fmt.Errorf("AI映射[%d]规格无效: %w", i, err)
+			vp.logger.Errorf("? AI??[%d]??????: %v", i, err)
+			vp.logger.Error("? AI???TEMU???????????????????")
+			validationErr = fmt.Errorf("AI??[%d]????: %w", i, err)
+			return
 		}
-		// 输出AI提取的物流信息
-		vp.logger.Infof("📦 SKU[%d] AI提取的物流信息: weight=%s, length=%s, width=%s, height=%s",
+		// ??AI???????
+		vp.logger.Infof("?? SKU[%d] AI???????: weight=%s, length=%s, width=%s, height=%s",
 			i, aiSku.Weight, aiSku.Length, aiSku.Width, aiSku.Height)
+	})
+	if validationErr != nil {
+		return nil, validationErr
 	}
 
 	// 将TemuTaskContext转换为TaskContext接口
