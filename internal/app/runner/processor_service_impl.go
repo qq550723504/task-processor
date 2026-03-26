@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/monitoring"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -37,6 +38,7 @@ type processorServiceImpl struct {
 	// 共享资源（通过依赖注入获取）
 	managementClient      *management.ClientManager
 	amazonProcessor       amazonCrawler
+	rabbitmqClient        *rabbitmq.Client
 	temuProcessorCreator  TemuProcessorCreator
 	sheinProcessorCreator SheinProcessorCreator
 
@@ -106,8 +108,15 @@ func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *c
 	log.Info("启动调度服务...")
 
 	// 创建调度服务（通过依赖注入，不再使用全局状态）
-	// processor_service_impl 没有 rabbitmqClient，传 nil 退化为本地爬虫
-	s.schedulerService = NewSchedulerServiceWithDependencies(s.logger, s.managementClient, cfg, s.amazonProcessor, nil, buildSchedulerDependencies(s.managementClient, cfg, s.amazonProcessor, nil))
+	// Reuse the shared RabbitMQ client so scheduler-triggered fetches can use distributed crawling.
+	s.schedulerService = NewSchedulerServiceWithDependencies(
+		s.logger,
+		s.managementClient,
+		cfg,
+		s.amazonProcessor,
+		s.rabbitmqClient,
+		buildSchedulerDependencies(s.managementClient, cfg, s.amazonProcessor, s.rabbitmqClient),
+	)
 
 	// 启动调度服务
 	if err := s.schedulerService.Start(ctx); err != nil {

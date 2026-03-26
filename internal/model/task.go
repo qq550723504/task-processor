@@ -39,6 +39,27 @@ func (t *Task) GetBasePlatform() string {
 	return strings.TrimSuffix(t.Platform, ".crawler")
 }
 
+// GetSourcePlatformOrDefault returns the crawler source platform, with a
+// backward-compatible fallback for older tasks that do not carry sourcePlatform.
+func (t *Task) GetSourcePlatformOrDefault() string {
+	if t == nil {
+		return ""
+	}
+
+	if strings.TrimSpace(t.SourcePlatform) != "" {
+		return t.SourcePlatform
+	}
+
+	switch strings.ToLower(strings.TrimSpace(t.GetBasePlatform())) {
+	case "shein", "temu":
+		return "amazon"
+	case "amazon", "1688":
+		return strings.ToLower(strings.TrimSpace(t.GetBasePlatform()))
+	default:
+		return strings.TrimSpace(t.GetBasePlatform())
+	}
+}
+
 // CanRetry 判断是否可以重试
 func (t *Task) CanRetry() bool {
 	return t.RetryCount < t.MaxRetryCount

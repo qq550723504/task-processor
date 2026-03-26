@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -21,6 +22,7 @@ type appServices struct {
 	authClient       *auth.ClientCredentialsAuthClient
 	managementClient *management.ClientManager
 	amazonCrawler    *amazon.AmazonProcessor
+	rabbitmqClient   *rabbitmq.Client
 	temuProcessor    *temu.TemuProcessor
 	sheinProcessor   *pipeline.SheinProcessor
 	processorService runner.ProcessorService
@@ -146,6 +148,7 @@ func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *Shar
 		authClient:       resources.AuthClient,
 		managementClient: resources.ManagementClient,
 		amazonCrawler:    resources.AmazonCrawler,
+		rabbitmqClient:   resources.RabbitMQClient,
 		processorService: buildProcessorService(logger, resources),
 		schedulerService: buildSchedulerService(logger, cfg, resources),
 	}
@@ -156,6 +159,7 @@ func buildProcessorService(logger *logrus.Logger, resources *SharedResources) ru
 		logger,
 		resources.ManagementClient,
 		resources.AmazonCrawler,
+		resources.RabbitMQClient,
 		BuildProcessorDependencies(),
 	)
 }
@@ -166,7 +170,7 @@ func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources 
 		resources.ManagementClient,
 		cfg,
 		resources.AmazonCrawler,
-		nil,
-		BuildSchedulerDependencies(resources.ManagementClient, cfg, resources.AmazonCrawler, nil),
+		resources.RabbitMQClient,
+		BuildSchedulerDependencies(resources.ManagementClient, cfg, resources.AmazonCrawler, resources.RabbitMQClient),
 	)
 }

@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/prompt"
 
 	"github.com/sirupsen/logrus"
@@ -23,6 +24,7 @@ type SharedResources struct {
 	AuthClient       *auth.ClientCredentialsAuthClient
 	ManagementClient *management.ClientManager
 	AmazonCrawler    *amazon.AmazonProcessor
+	RabbitMQClient   *rabbitmq.Client
 }
 
 type managementRuntime struct {
@@ -62,6 +64,15 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 	resources := &SharedResources{
 		AuthClient:       runtime.authClient,
 		ManagementClient: runtime.managementClient,
+	}
+
+	if cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled {
+		connManager := rabbitmq.NewConnectionManager(rabbitmq.ConnectionConfig{
+			URL:               cfg.RabbitMQ.URL,
+			ReconnectInterval: cfg.RabbitMQ.ReconnectInterval,
+			MaxReconnectTries: cfg.RabbitMQ.MaxReconnectTries,
+		}, logger)
+		resources.RabbitMQClient = rabbitmq.NewClient(connManager, logger)
 	}
 
 	if options.NeedAmazonCrawler {

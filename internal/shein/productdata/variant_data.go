@@ -73,7 +73,7 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	tracker.StartStep("fetch_variants")
 	req := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.SourcePlatform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		StoreID:    ctx.Task.StoreID,
 		CategoryID: ctx.Task.CategoryID,

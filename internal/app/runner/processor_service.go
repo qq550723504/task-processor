@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -28,6 +29,7 @@ func NewProcessorServiceWithCreators(
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
 	amazonProcessor amazonCrawler,
+	rabbitmqClient *rabbitmq.Client,
 	deps ProcessorDependencies,
 ) ProcessorService {
 	deps = normalizeProcessorDependencies(deps)
@@ -37,6 +39,7 @@ func NewProcessorServiceWithCreators(
 		lifecycleManager:      lifecycle.NewLifecycleManager(logger),
 		managementClient:      managementClient,
 		amazonProcessor:       amazonProcessor,
+		rabbitmqClient:        rabbitmqClient,
 		temuProcessorCreator:  deps.TemuProcessorCreator,
 		sheinProcessorCreator: deps.SheinProcessorCreator,
 	}

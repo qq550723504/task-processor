@@ -43,7 +43,7 @@ func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 
 	req := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.SourcePlatform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		ProductID:  ctx.Task.ProductID,
 		StoreID:    ctx.Task.StoreID,
@@ -64,7 +64,7 @@ func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 
 	cacheReq := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.Platform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		ProductID:  ctx.Task.ProductID,
 		StoreID:    ctx.Task.StoreID,

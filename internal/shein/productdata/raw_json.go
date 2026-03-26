@@ -70,7 +70,7 @@ func isProductNotFoundError(err error) bool {
 func (h *RawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	req := &domainProduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.SourcePlatform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		ProductID:  ctx.Task.ProductID,
 		StoreID:    ctx.Task.StoreID,

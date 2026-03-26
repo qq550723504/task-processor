@@ -48,7 +48,7 @@ func (s *processorServiceImpl) startTemuProcessor(ctx context.Context, cfg *conf
 	p, err := creator(ctx, cfg, s.logger, temu.Dependencies{
 		ManagementClient: s.managementClient,
 		ProductSource:    s.amazonProcessor,
-		RabbitMQClient:   nil,
+		RabbitMQClient:   s.rabbitmqClient,
 	})
 	if err != nil {
 		return fmt.Errorf("create TEMU processor: %w", err)
@@ -73,7 +73,7 @@ func (s *processorServiceImpl) startSheinProcessor(ctx context.Context, cfg *con
 	p, err := creator(ctx, cfg, s.logger, pipeline.Dependencies{
 		ManagementClient: s.managementClient,
 		ProductSource:    s.amazonProcessor,
-		RabbitMQClient:   nil,
+		RabbitMQClient:   s.rabbitmqClient,
 	})
 	if err != nil {
 		return fmt.Errorf("create SHEIN processor: %w", err)

@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -45,6 +46,13 @@ func registerCoreComponents(
 	}
 
 	deps := []string{"updater"}
+
+	if svc.rabbitmqClient != nil {
+		if err := lm.Register(newRabbitMQClientComponent(svc.rabbitmqClient, logger)); err != nil {
+			return nil, err
+		}
+		deps = append(deps, "rabbitmq-client")
+	}
 
 	if svc.cfg.Platforms.Temu.Enabled {
 		temuProc, err := buildTemuProcessor(svc, logger)
@@ -109,6 +117,42 @@ type updaterComponent struct {
 	logger     *logrus.Logger
 	cfg        *config.Config
 	appVersion string
+}
+
+func newRabbitMQClientComponent(client *rabbitmq.Client, logger *logrus.Logger) *rabbitmqClientComponent {
+	return &rabbitmqClientComponent{
+		BaseComponent: lifecycle.NewBaseComponent("rabbitmq-client", []string{"updater"}, 15),
+		client:        client,
+		logger:        logger,
+	}
+}
+
+type rabbitmqClientComponent struct {
+	*lifecycle.BaseComponent
+	client *rabbitmq.Client
+	logger *logrus.Logger
+}
+
+func (r *rabbitmqClientComponent) Start(ctx context.Context) error {
+	if r.client == nil {
+		return nil
+	}
+	if err := r.client.GetConnectionManager().Connect(ctx); err != nil {
+		return fmt.Errorf("start RabbitMQ client: %w", err)
+	}
+	r.logger.Info("RabbitMQ client started for distributed crawler access")
+	r.SetRunning(true)
+	return nil
+}
+
+func (r *rabbitmqClientComponent) Stop(_ context.Context) error {
+	if r.client != nil {
+		if err := r.client.Close(); err != nil {
+			r.logger.Errorf("stop RabbitMQ client: %v", err)
+		}
+	}
+	r.SetRunning(false)
+	return nil
 }
 
 func (u *updaterComponent) Start(_ context.Context) error {

@@ -66,7 +66,7 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 	tracker.StartStep("fetch_variants")
 	req := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.SourcePlatform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		StoreID:    ctx.Task.StoreID,
 		CategoryID: ctx.Task.CategoryID,
@@ -88,7 +88,7 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 
 	cacheReq := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.Platform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		ProductID:  ctx.Task.ProductID,
 		StoreID:    ctx.Task.StoreID,

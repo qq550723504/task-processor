@@ -1,4 +1,4 @@
-﻿// Package product 提供TEMU平台的原始JSON数据处理功能
+// Package product 提供TEMU平台的原始JSON数据处理功能
 package product
 
 import (
@@ -83,7 +83,7 @@ func (h *RawJsonDataHandlerV2) Handle(ctx pipeline.TaskContext) error {
 	// 使用公共ProductFetcher获取产品数据
 	req := &domainProduct.FetchRequest{
 		TenantID:   task.TenantID,
-		Platform:   task.SourcePlatform,
+		Platform:   task.GetSourcePlatformOrDefault(),
 		Region:     task.Region,
 		ProductID:  task.ProductID,
 		StoreID:    task.StoreID,
