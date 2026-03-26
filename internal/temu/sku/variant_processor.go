@@ -68,7 +68,7 @@ func (vp *SkuVariantProcessor) resolveAndBuildVariantSkcs(
 		return nil, fmt.Errorf("获取AI映射失败: %w", err)
 	}
 
-	skcList, err := vp.BuildSkcsFromAIMapping(temuCtx, variants, aiMapping)
+	skcList, err := vp.prepareAndBuildVariantSkcs(temuCtx, variants, aiMapping)
 	if err != nil {
 		return nil, fmt.Errorf("根据AI映射构建SKC失败: %w", err)
 	}
@@ -83,6 +83,14 @@ func (vp *SkuVariantProcessor) assignBuiltVariantSkcs(temuCtx *temucontext.TemuT
 
 // buildSkcsFromAIMapping 根据AI映射构建SKC
 func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuTaskContext, variants []*model.Product, aiMapping *temucontext.AISkuMappingResponse) ([]models.Skc, error) {
+	return vp.prepareAndBuildVariantSkcs(temuCtx, variants, aiMapping)
+}
+
+func (vp *SkuVariantProcessor) prepareAndBuildVariantSkcs(
+	temuCtx *temucontext.TemuTaskContext,
+	variants []*model.Product,
+	aiMapping *temucontext.AISkuMappingResponse,
+) ([]models.Skc, error) {
 	if err := vp.prepareAIMappingForBuild(temuCtx, variants, aiMapping); err != nil {
 		return nil, err
 	}
@@ -172,10 +180,10 @@ func (vp *SkuVariantProcessor) resolveAndBuildDefaultSkc(temuCtx *temucontext.Te
 		return models.Skc{}, err
 	}
 
-	return vp.buildDefaultSkcFromResolvedProduct(temuCtx, amazonProduct)
+	return vp.prepareAndBuildDefaultSkc(temuCtx, amazonProduct)
 }
 
-func (vp *SkuVariantProcessor) buildDefaultSkcFromResolvedProduct(
+func (vp *SkuVariantProcessor) prepareAndBuildDefaultSkc(
 	temuCtx *temucontext.TemuTaskContext,
 	amazonProduct *model.Product,
 ) (models.Skc, error) {
