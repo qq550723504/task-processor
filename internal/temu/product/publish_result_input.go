@@ -70,6 +70,14 @@ func (input *SavePublishResultInput) TaskLogFields() map[string]any {
 	}
 }
 
+func (input *SavePublishResultInput) TenantAndStoreIDs() (tenantID int64, storeID int64, ok bool) {
+	if input == nil || input.Task == nil {
+		return 0, 0, false
+	}
+
+	return input.Task.TenantID, input.Task.StoreID, true
+}
+
 func (input *SavePublishResultInput) SubmitResponseLogFields(response string) map[string]any {
 	fields := input.TaskLogFields()
 	fields["response"] = response

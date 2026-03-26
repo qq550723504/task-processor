@@ -103,19 +103,25 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 		return
 	}
 
+	tenantID, storeID, ok := input.TenantAndStoreIDs()
+	if !ok {
+		h.logger.Warn("TEMU发布结果缺少任务作用域，无法记录每日上架数量")
+		return
+	}
+
 	count := h.memoryManager.DailyCountManager.IncrementCount(
-		input.Task.TenantID,
-		input.Task.StoreID,
+		tenantID,
+		storeID,
 		currentDate,
 		increment,
 	)
 
 	h.logger.Infof("?? %d ? %s ?????: %d (????: %d, ??: %s)",
-		input.Task.StoreID, currentDate, count, increment, dailyLimitType)
+		storeID, currentDate, count, increment, dailyLimitType)
 
 	if count > int64(dailyLimit) {
 		h.logger.Warnf("?? %d ? %s ?????(%d)?????(%d)??????",
-			input.Task.StoreID, currentDate, count, dailyLimit)
+			storeID, currentDate, count, dailyLimit)
 		h.pauseShopUntilEndOfDayWithInput(input, input.DailyLimitExceededReason(count, dailyLimit))
 	}
 }
@@ -125,12 +131,18 @@ func (h *SavePublishResultHandler) pauseShopUntilEndOfDayWithInput(input *SavePu
 		return
 	}
 
+	tenantID, storeID, ok := input.TenantAndStoreIDs()
+	if !ok {
+		h.logger.Warn("TEMU发布结果缺少任务作用域，无法暂停店铺")
+		return
+	}
+
 	h.memoryManager.ShopPauseManager.PauseShopUntilEndOfDay(
-		input.Task.TenantID,
-		input.Task.StoreID,
+		tenantID,
+		storeID,
 		reason,
 	)
 
 	h.logger.Infof("已暂停店铺 %d:%d 上架到当日结束，原因: %s",
-		input.Task.TenantID, input.Task.StoreID, reason)
+		tenantID, storeID, reason)
 }
