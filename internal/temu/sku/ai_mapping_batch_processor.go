@@ -27,16 +27,9 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 
 	mergedResponse := temucontext.NewEmptyAISkuMappingResponse()
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
-		batchResponse, err := vp.processAIMappingBatch(temuCtx, input, batchIndex, totalBatches)
-		if err != nil {
+		if err := vp.processAndMergeAIMappingBatch(temuCtx, input, mergedResponse, batchIndex, totalBatches); err != nil {
 			return nil, err
 		}
-
-		if batchIndex == 0 {
-			vp.logFirstBatchSpecDimensions(batchResponse)
-		}
-
-		vp.appendBatchResponse(mergedResponse, batchResponse, batchIndex, totalBatches)
 	}
 
 	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", mergedResponse.SkuCount())
@@ -57,6 +50,26 @@ func (vp *SkuVariantProcessor) normalizeMergedAIMapping(aiMapping *temucontext.A
 	vp.logger.Info("enforcing spec count limit on merged AI mapping result")
 	vp.enforceSpecCountLimit(aiMapping)
 
+	return nil
+}
+
+func (vp *SkuVariantProcessor) processAndMergeAIMappingBatch(
+	temuCtx *temucontext.TemuTaskContext,
+	input *AIBatchInput,
+	mergedResponse *temucontext.AISkuMappingResponse,
+	batchIndex int,
+	totalBatches int,
+) error {
+	batchResponse, err := vp.processAIMappingBatch(temuCtx, input, batchIndex, totalBatches)
+	if err != nil {
+		return err
+	}
+
+	if batchIndex == 0 {
+		vp.logFirstBatchSpecDimensions(batchResponse)
+	}
+
+	vp.appendBatchResponse(mergedResponse, batchResponse, batchIndex, totalBatches)
 	return nil
 }
 
