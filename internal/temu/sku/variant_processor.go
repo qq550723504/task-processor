@@ -195,13 +195,7 @@ func (vp *SkuVariantProcessor) GenerateAISkuMapping(temuCtx *temucontext.TemuTas
 		return nil, err
 	}
 
-	// 重新启用规格维度统一器，但改进逻辑以处理混合属性情况
-	// AI可能仍然会为混合属性选择不同维度，需要统一处理
-	if err := vp.normalizeGeneratedAIMapping(response); err != nil {
-		return nil, err
-	}
-
-	return response, nil
+	return vp.finalizeGeneratedAIMapping(response)
 }
 
 func (vp *SkuVariantProcessor) validateAIMappingSpecs(aiMapping *temucontext.AISkuMappingResponse) error {
@@ -284,6 +278,14 @@ func (vp *SkuVariantProcessor) normalizeGeneratedAIMapping(aiMapping *temucontex
 	}
 
 	return nil
+}
+
+func (vp *SkuVariantProcessor) finalizeGeneratedAIMapping(aiMapping *temucontext.AISkuMappingResponse) (*temucontext.AISkuMappingResponse, error) {
+	if err := vp.normalizeGeneratedAIMapping(aiMapping); err != nil {
+		return nil, err
+	}
+
+	return aiMapping, nil
 }
 
 func (vp *SkuVariantProcessor) unifyAIMappingSpecDimensions(aiMapping *temucontext.AISkuMappingResponse) error {
