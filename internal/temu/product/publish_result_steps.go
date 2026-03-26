@@ -22,7 +22,7 @@ func (h *SavePublishResultHandler) logSubmitResponseWithInput(input *SavePublish
 }
 
 func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *SavePublishResultInput) error {
-	if input.Product == nil {
+	if !input.HasProduct() {
 		h.logger.Warn("????????????????")
 		return nil
 	}
@@ -92,7 +92,11 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 	}
 	dailyLimit, dailyLimitType, ok := input.DailyLimitConfig()
 	if !ok {
-		h.logger.Debugf("?? %d ?????????????????", input.Task.StoreID)
+		if _, storeID, scopeOK := input.TenantAndStoreIDs(); scopeOK {
+			h.logger.Debugf("?? %d ?????????????????", storeID)
+		} else {
+			h.logger.Debug("?????????????????")
+		}
 		return
 	}
 

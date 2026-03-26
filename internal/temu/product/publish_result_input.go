@@ -24,15 +24,19 @@ type SavePublishResultInput struct {
 	AsinSkuMap     map[string]string
 }
 
+func (input *SavePublishResultInput) HasProduct() bool {
+	return input != nil && input.Product != nil
+}
+
 func (input *SavePublishResultInput) SKCCount() int {
-	if input == nil || input.Product == nil {
+	if !input.HasProduct() {
 		return 0
 	}
 	return len(input.Product.SkcList)
 }
 
 func (input *SavePublishResultInput) SKUCount() int {
-	if input == nil || input.Product == nil {
+	if !input.HasProduct() {
 		return 0
 	}
 
@@ -44,7 +48,7 @@ func (input *SavePublishResultInput) SKUCount() int {
 }
 
 func (input *SavePublishResultInput) ForEachSKU(fn func(sku *models.Sku)) {
-	if input == nil || input.Product == nil || fn == nil {
+	if !input.HasProduct() || fn == nil {
 		return
 	}
 
@@ -220,7 +224,7 @@ func (input *SavePublishResultInput) DailyLimitConfig() (limit int, limitType st
 }
 
 func (input *SavePublishResultInput) DailyLimitIncrement(limitType string) int64 {
-	if input == nil || input.Product == nil {
+	if !input.HasProduct() {
 		return 0
 	}
 
