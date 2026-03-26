@@ -127,13 +127,8 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 		return models.Skc{}, fmt.Errorf("没有Amazon产品信息")
 	}
 
-	aiMapping, err := vp.resolveDefaultAIMapping(temuCtx, amazonProduct)
+	aiMapping, err := vp.prepareDefaultAIMappingForBuild(temuCtx, amazonProduct)
 	if err != nil {
-		return models.Skc{}, err
-	}
-
-	variants := []*model.Product{amazonProduct}
-	if err := vp.prepareAIMappingForBuild(temuCtx, variants, aiMapping); err != nil {
 		return models.Skc{}, err
 	}
 
@@ -189,6 +184,20 @@ func (vp *SkuVariantProcessor) resolveDefaultAIMapping(temuCtx *temucontext.Temu
 	if err != nil {
 		vp.logger.Errorf("❌ AI生成SKU映射失败: %v", err)
 		return nil, fmt.Errorf("AI生成SKU映射失败: %w", err)
+	}
+
+	return aiMapping, nil
+}
+
+func (vp *SkuVariantProcessor) prepareDefaultAIMappingForBuild(temuCtx *temucontext.TemuTaskContext, amazonProduct *model.Product) (*temucontext.AISkuMappingResponse, error) {
+	aiMapping, err := vp.resolveDefaultAIMapping(temuCtx, amazonProduct)
+	if err != nil {
+		return nil, err
+	}
+
+	variants := []*model.Product{amazonProduct}
+	if err := vp.prepareAIMappingForBuild(temuCtx, variants, aiMapping); err != nil {
+		return nil, err
 	}
 
 	return aiMapping, nil
