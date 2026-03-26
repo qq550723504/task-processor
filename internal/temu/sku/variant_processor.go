@@ -149,10 +149,27 @@ func (vp *SkuVariantProcessor) buildSingleSkc(
 func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskContext) (models.Skc, error) {
 	vp.logger.Info("创建默认SKC（产品没有变体）")
 
-	// 直接从强类型上下文获取Amazon产品信息
+	defaultSkc, err := vp.resolveAndBuildDefaultSkc(temuCtx)
+	if err != nil {
+		return models.Skc{}, err
+	}
+
+	return defaultSkc, nil
+}
+
+func (vp *SkuVariantProcessor) resolveDefaultBuildProduct(temuCtx *temucontext.TemuTaskContext) (*model.Product, error) {
 	amazonProduct := temuCtx.GetAmazonProduct()
 	if amazonProduct == nil {
-		return models.Skc{}, fmt.Errorf("没有Amazon产品信息")
+		return nil, fmt.Errorf("没有Amazon产品信息")
+	}
+
+	return amazonProduct, nil
+}
+
+func (vp *SkuVariantProcessor) resolveAndBuildDefaultSkc(temuCtx *temucontext.TemuTaskContext) (models.Skc, error) {
+	amazonProduct, err := vp.resolveDefaultBuildProduct(temuCtx)
+	if err != nil {
+		return models.Skc{}, err
 	}
 
 	aiMapping, err := vp.prepareDefaultAIMappingForBuild(temuCtx, amazonProduct)
