@@ -70,6 +70,12 @@ func (input *SavePublishResultInput) TaskLogFields() map[string]any {
 	}
 }
 
+func (input *SavePublishResultInput) SubmitResponseLogFields(response string) map[string]any {
+	fields := input.TaskLogFields()
+	fields["response"] = response
+	return fields
+}
+
 func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku) *managementapi.ProductImportMappingCreateReqDTO {
 	if input == nil || input.Task == nil || sku == nil {
 		return nil

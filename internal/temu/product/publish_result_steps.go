@@ -16,14 +16,7 @@ func (h *SavePublishResultHandler) logSubmitResponseWithInput(input *SavePublish
 		return fmt.Errorf("序列化响应数据失败: %w", err)
 	}
 
-	h.logger.WithFields(map[string]any{
-		"task_id":    input.Task.ID,
-		"tenant_id":  input.Task.TenantID,
-		"store_id":   input.Task.StoreID,
-		"platform":   input.Task.Platform,
-		"product_id": input.Task.ProductID,
-		"response":   string(responseJSON),
-	}).Info("TEMU产品提交响应数据")
+	h.logger.WithFields(input.SubmitResponseLogFields(string(responseJSON))).Info("TEMU产品提交响应数据")
 
 	return nil
 }
