@@ -71,13 +71,7 @@ func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *temucontext.AIS
 	isMixedAttributes := u.mixedAttributesProcessor.DetectMixedAttributes(aiMapping)
 
 	// 统计需要添加默认规格的SKU数量
-	needsDefaultCount := 0
-	aiMapping.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
-		unifiedSpecs := u.extractTargetSpecs(sku.Spec, targetDimensions)
-		if len(unifiedSpecs) < len(targetDimensions) {
-			needsDefaultCount++
-		}
-	})
+	needsDefaultCount := u.countSkusNeedingDefaultSpecs(aiMapping, targetDimensions)
 
 	// 对于混合属性情况，强制进行统一处理
 	if isMixedAttributes {
@@ -96,6 +90,25 @@ func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *temucontext.AIS
 		return nil
 	}
 
+	u.applyUnifiedSpecs(aiMapping, targetDimensions)
+
+	u.logger.Info("✅ 规格维度统一完成")
+	return nil
+}
+
+func (u *SpecDimensionUnifier) countSkusNeedingDefaultSpecs(aiMapping *temucontext.AISkuMappingResponse, targetDimensions []string) int {
+	needsDefaultCount := 0
+	aiMapping.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
+		unifiedSpecs := u.extractTargetSpecs(sku.Spec, targetDimensions)
+		if len(unifiedSpecs) < len(targetDimensions) {
+			needsDefaultCount++
+		}
+	})
+
+	return needsDefaultCount
+}
+
+func (u *SpecDimensionUnifier) applyUnifiedSpecs(aiMapping *temucontext.AISkuMappingResponse, targetDimensions []string) {
 	aiMapping.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
 		unifiedSpecs := u.extractTargetSpecs(sku.Spec, targetDimensions)
 
@@ -124,9 +137,6 @@ func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *temucontext.AIS
 			u.regenerateUniqueID(sku)
 		}
 	})
-
-	u.logger.Info("✅ 规格维度统一完成")
-	return nil
 }
 
 // extractTargetSpecs 提取目标维度的规格
