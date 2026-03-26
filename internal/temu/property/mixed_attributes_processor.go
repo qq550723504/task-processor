@@ -1,4 +1,4 @@
-﻿// Package property 提供混合属性处理功能
+// Package property 提供混合属性处理功能
 package property
 
 import (
@@ -6,8 +6,8 @@ import (
 	"strings"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // MixedAttributesProcessor 混合属性处理器
@@ -24,17 +24,17 @@ func NewMixedAttributesProcessor() *MixedAttributesProcessor {
 
 // DetectMixedAttributes 检测是否存在混合属性情况
 func (p *MixedAttributesProcessor) DetectMixedAttributes(aiMapping *temucontext.AISkuMappingResponse) bool {
-	if len(aiMapping.SkuList) <= 1 {
+	if aiMapping.SkuCount() <= 1 {
 		return false
 	}
 
 	// 收集所有使用的规格维度
 	usedDimensions := make(map[string]bool)
-	for _, sku := range aiMapping.SkuList {
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 		for _, spec := range sku.Spec {
 			usedDimensions[spec.ParentSpecID] = true
 		}
-	}
+	})
 
 	// 如果使用了多个不同的规格维度，可能是混合属性
 	if len(usedDimensions) > 1 {
@@ -42,7 +42,7 @@ func (p *MixedAttributesProcessor) DetectMixedAttributes(aiMapping *temucontext.
 
 		// 进一步检查：是否不同SKU使用了不同的维度组合
 		dimensionCombinations := make(map[string]int)
-		for _, sku := range aiMapping.SkuList {
+		aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 			var combination []string
 			for _, spec := range sku.Spec {
 				combination = append(combination, spec.ParentSpecID)
@@ -53,7 +53,7 @@ func (p *MixedAttributesProcessor) DetectMixedAttributes(aiMapping *temucontext.
 			}
 			key := fmt.Sprintf("%v", combination)
 			dimensionCombinations[key]++
-		}
+		})
 
 		if len(dimensionCombinations) > 1 {
 			p.logger.Warnf("⚠️ 检测到混合属性：不同SKU使用了不同的规格维度组合: %v", dimensionCombinations)
@@ -78,8 +78,7 @@ func (p *MixedAttributesProcessor) ForceUnification(aiMapping *temucontext.AISku
 	p.logger.Infof("🎯 选择统一维度: %s", unifiedDimension)
 
 	// 为所有SKU统一使用该维度
-	for i := range aiMapping.SkuList {
-		sku := &aiMapping.SkuList[i]
+	aiMapping.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
 
 		// 查找当前SKU是否已有该维度的规格
 		var existingSpec *temucontext.SpecInfo
@@ -110,7 +109,7 @@ func (p *MixedAttributesProcessor) ForceUnification(aiMapping *temucontext.AISku
 
 		// 重新生成unique_id
 		p.regenerateUniqueID(sku)
-	}
+	})
 
 	p.logger.Info("✅ 混合属性强制统一完成")
 	return nil
