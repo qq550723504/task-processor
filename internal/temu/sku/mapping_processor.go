@@ -60,52 +60,8 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temuco
 		validAsins[variant.Asin] = true
 	}
 
-	// 统计每个ASIN出现的次数
-	asinCount := make(map[string]int)
-	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
-		asinCount[sku.Asin]++
-	})
-
-	// 找出重复的ASIN
-	duplicateAsins := make(map[string]bool)
-	for asin, count := range asinCount {
-		if count > 1 {
-			duplicateAsins[asin] = true
-			mp.logger.Warnf("⚠️ 检测到重复的ASIN: %s (出现%d次)", asin, count)
-		}
-	}
-
-	// 找出不在变体列表中的ASIN
-	invalidAsins := make(map[string]bool)
-	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
-		if !validAsins[sku.Asin] {
-			invalidAsins[sku.Asin] = true
-			mp.logger.Warnf("⚠️ 检测到无效的ASIN: %s (不在变体列表中)", sku.Asin)
-		}
-	})
-
-	// 过滤SKU列表：移除重复和无效的映射
-	var filteredSkus []temucontext.AIGeneratedSku
-	seenAsins := make(map[string]bool)
-
-	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
-		// 跳过无效的ASIN
-		if invalidAsins[sku.Asin] {
-			mp.logger.Infof("🗑️ 移除无效映射: ASIN=%s", sku.Asin)
-			return
-		}
-
-		// 如果是重复的ASIN，只保留第一个
-		if duplicateAsins[sku.Asin] {
-			if seenAsins[sku.Asin] {
-				mp.logger.Infof("🗑️ 移除重复映射: ASIN=%s", sku.Asin)
-				return
-			}
-		}
-
-		filteredSkus = append(filteredSkus, *sku)
-		seenAsins[sku.Asin] = true
-	})
+	duplicateAsins, invalidAsins := mp.analyzeInvalidAndDuplicateAsins(aiMapping, validAsins)
+	filteredSkus := mp.collectFilteredMappings(aiMapping, duplicateAsins, invalidAsins)
 
 	// 如果过滤后数量仍然不匹配，移除多余的映射（保留前N个）
 	if len(filteredSkus) > len(variants) {
@@ -125,6 +81,53 @@ func (mp *SkuMappingProcessor) removeDuplicateOrExcessMappings(aiMapping *temuco
 	}
 
 	return nil
+}
+
+func (mp *SkuMappingProcessor) analyzeInvalidAndDuplicateAsins(aiMapping *temucontext.AISkuMappingResponse, validAsins map[string]bool) (map[string]bool, map[string]bool) {
+	asinCount := make(map[string]int)
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
+		asinCount[sku.Asin]++
+	})
+
+	duplicateAsins := make(map[string]bool)
+	for asin, count := range asinCount {
+		if count > 1 {
+			duplicateAsins[asin] = true
+			mp.logger.Warnf("Detected duplicate ASIN: %s (%d occurrences)", asin, count)
+		}
+	}
+
+	invalidAsins := make(map[string]bool)
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
+		if !validAsins[sku.Asin] {
+			invalidAsins[sku.Asin] = true
+			mp.logger.Warnf("Detected invalid ASIN: %s (not in variant list)", sku.Asin)
+		}
+	})
+
+	return duplicateAsins, invalidAsins
+}
+
+func (mp *SkuMappingProcessor) collectFilteredMappings(aiMapping *temucontext.AISkuMappingResponse, duplicateAsins, invalidAsins map[string]bool) []temucontext.AIGeneratedSku {
+	var filteredSkus []temucontext.AIGeneratedSku
+	seenAsins := make(map[string]bool)
+
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
+		if invalidAsins[sku.Asin] {
+			mp.logger.Infof("Removing invalid mapping: ASIN=%s", sku.Asin)
+			return
+		}
+
+		if duplicateAsins[sku.Asin] && seenAsins[sku.Asin] {
+			mp.logger.Infof("Removing duplicate mapping: ASIN=%s", sku.Asin)
+			return
+		}
+
+		filteredSkus = append(filteredSkus, *sku)
+		seenAsins[sku.Asin] = true
+	})
+
+	return filteredSkus
 }
 
 // supplementMissingMappings 为缺失的变体补充默认映射
