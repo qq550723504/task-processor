@@ -206,9 +206,8 @@ func (vp *SkuVariantProcessor) GenerateAISkuMapping(temuCtx *temucontext.TemuTas
 
 	// 重新启用规格维度统一器，但改进逻辑以处理混合属性情况
 	// AI可能仍然会为混合属性选择不同维度，需要统一处理
-	if err := vp.unifyAIMappingSpecDimensions(response); err != nil {
-		vp.logger.Errorf("❌ 单批处理规格维度统一失败: %v", err)
-		return nil, fmt.Errorf("规格维度统一失败: %w", err)
+	if err := vp.normalizeGeneratedAIMapping(response); err != nil {
+		return nil, err
 	}
 
 	return response, nil
@@ -261,6 +260,15 @@ func (vp *SkuVariantProcessor) normalizeAIMappingForBuild(temuCtx *temucontext.T
 	}
 	if err := vp.resolveAIMappingSpecIDs(temuCtx, aiMapping); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (vp *SkuVariantProcessor) normalizeGeneratedAIMapping(aiMapping *temucontext.AISkuMappingResponse) error {
+	if err := vp.unifyAIMappingSpecDimensions(aiMapping); err != nil {
+		vp.logger.Errorf("single-batch spec dimension unify failed: %v", err)
+		return fmt.Errorf("single-batch spec dimension unify: %w", err)
 	}
 
 	return nil
