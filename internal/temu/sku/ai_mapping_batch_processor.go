@@ -27,19 +27,9 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 
 	mergedResponse := temucontext.NewEmptyAISkuMappingResponse()
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
-		batchVariants, start, end, ok := input.BatchVariants(batchIndex)
-		if !ok {
-			return nil, fmt.Errorf("invalid ai batch index: %d", batchIndex)
-		}
-		vp.logger.Infof(
-			"processing AI mapping batch %d/%d: variants[%d-%d]",
-			batchIndex+1, totalBatches, start, end-1,
-		)
-
-		batchResponse, err := vp.GenerateAISkuMappingSingleBatch(temuCtx, batchVariants)
+		batchResponse, err := vp.processAIMappingBatch(temuCtx, input, batchIndex, totalBatches)
 		if err != nil {
-			vp.logger.Errorf("AI mapping batch %d/%d failed: %v", batchIndex+1, totalBatches, err)
-			return nil, fmt.Errorf("AI mapping batch %d failed: %w", batchIndex+1, err)
+			return nil, err
 		}
 
 		if batchIndex == 0 {
@@ -68,6 +58,31 @@ func (vp *SkuVariantProcessor) normalizeMergedAIMapping(aiMapping *temucontext.A
 	vp.enforceSpecCountLimit(aiMapping)
 
 	return nil
+}
+
+func (vp *SkuVariantProcessor) processAIMappingBatch(
+	temuCtx *temucontext.TemuTaskContext,
+	input *AIBatchInput,
+	batchIndex int,
+	totalBatches int,
+) (*temucontext.AISkuMappingResponse, error) {
+	batchVariants, start, end, ok := input.BatchVariants(batchIndex)
+	if !ok {
+		return nil, fmt.Errorf("invalid ai batch index: %d", batchIndex)
+	}
+
+	vp.logger.Infof(
+		"processing AI mapping batch %d/%d: variants[%d-%d]",
+		batchIndex+1, totalBatches, start, end-1,
+	)
+
+	batchResponse, err := vp.GenerateAISkuMappingSingleBatch(temuCtx, batchVariants)
+	if err != nil {
+		vp.logger.Errorf("AI mapping batch %d/%d failed: %v", batchIndex+1, totalBatches, err)
+		return nil, fmt.Errorf("AI mapping batch %d failed: %w", batchIndex+1, err)
+	}
+
+	return batchResponse, nil
 }
 
 func (vp *SkuVariantProcessor) logFirstBatchSpecDimensions(batchResponse *temucontext.AISkuMappingResponse) {
