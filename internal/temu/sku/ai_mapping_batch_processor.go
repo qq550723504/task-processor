@@ -25,6 +25,23 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 		len(input.Variants), input.BatchSize, totalBatches,
 	)
 
+	mergedResponse, err := vp.processAllAIMappingBatches(temuCtx, input, totalBatches)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := vp.normalizeMergedAIMapping(mergedResponse); err != nil {
+		return nil, err
+	}
+
+	return mergedResponse, nil
+}
+
+func (vp *SkuVariantProcessor) processAllAIMappingBatches(
+	temuCtx *temucontext.TemuTaskContext,
+	input *AIBatchInput,
+	totalBatches int,
+) (*temucontext.AISkuMappingResponse, error) {
 	mergedResponse := temucontext.NewEmptyAISkuMappingResponse()
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
 		if err := vp.processAndMergeAIMappingBatch(temuCtx, input, mergedResponse, batchIndex, totalBatches); err != nil {
@@ -33,11 +50,6 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 	}
 
 	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", mergedResponse.SkuCount())
-
-	if err := vp.normalizeMergedAIMapping(mergedResponse); err != nil {
-		return nil, err
-	}
-
 	return mergedResponse, nil
 }
 
