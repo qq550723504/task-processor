@@ -38,13 +38,13 @@ func (s *SpecResolverService) ResolveTemporarySpecIDs(runtime *ResolveSpecRuntim
 	failedCount := 0
 
 	// 统计临时ID数量
-	for _, sku := range aiMapping.SkuList {
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 		for _, spec := range sku.Spec {
 			if strings.HasPrefix(spec.SpecID, "TEMP_") {
 				tempIDCount++
 			}
 		}
-	}
+	})
 
 	s.logger.Infof("🔍 发现 %d 个临时规格ID需要解析", tempIDCount)
 
@@ -92,12 +92,17 @@ func (s *SpecResolverService) ResolveTemporarySpecIDs(runtime *ResolveSpecRuntim
 
 // HasTemporaryIDs 检查是否还有未解析的临时规格ID
 func (s *SpecResolverService) HasTemporaryIDs(aiMapping *temucontext.AISkuMappingResponse) bool {
-	for _, sku := range aiMapping.SkuList {
+	hasTemporaryIDs := false
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
+		if hasTemporaryIDs {
+			return
+		}
 		for _, spec := range sku.Spec {
 			if strings.HasPrefix(spec.SpecID, "TEMP_") || strings.HasPrefix(spec.ParentSpecID, "TEMP_") {
-				return true
+				hasTemporaryIDs = true
+				return
 			}
 		}
-	}
-	return false
+	})
+	return hasTemporaryIDs
 }

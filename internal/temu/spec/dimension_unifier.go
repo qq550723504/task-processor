@@ -1,4 +1,4 @@
-﻿// Package spec 提供规格维度统一服务
+// Package spec 提供规格维度统一服务
 package spec
 
 import (
@@ -6,8 +6,8 @@ import (
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/property"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // SpecDimensionUnifier 规格维度统一器
@@ -28,7 +28,7 @@ func NewSpecDimensionUnifier() *SpecDimensionUnifier {
 
 // UnifySpecDimensions 统一AI映射中的规格维度
 func (u *SpecDimensionUnifier) UnifySpecDimensions(aiMapping *temucontext.AISkuMappingResponse) error {
-	if len(aiMapping.SkuList) == 0 {
+	if aiMapping.SkuCount() == 0 {
 		return nil
 	}
 
@@ -48,11 +48,11 @@ func (u *SpecDimensionUnifier) UnifySpecDimensions(aiMapping *temucontext.AISkuM
 func (u *SpecDimensionUnifier) analyzeSpecDimensions(aiMapping *temucontext.AISkuMappingResponse) map[string]int {
 	dimensionCount := make(map[string]int)
 
-	for _, sku := range aiMapping.SkuList {
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 		for _, spec := range sku.Spec {
 			dimensionCount[spec.ParentSpecID]++
 		}
-	}
+	})
 
 	u.logger.Infof("📊 规格维度使用统计: %v", dimensionCount)
 	return dimensionCount
@@ -72,13 +72,12 @@ func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *temucontext.AIS
 
 	// 统计需要添加默认规格的SKU数量
 	needsDefaultCount := 0
-	for i := range aiMapping.SkuList {
-		sku := &aiMapping.SkuList[i]
+	aiMapping.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
 		unifiedSpecs := u.extractTargetSpecs(sku.Spec, targetDimensions)
 		if len(unifiedSpecs) < len(targetDimensions) {
 			needsDefaultCount++
 		}
-	}
+	})
 
 	// 对于混合属性情况，强制进行统一处理
 	if isMixedAttributes {
@@ -87,9 +86,9 @@ func (u *SpecDimensionUnifier) applyUnifiedDimensions(aiMapping *temucontext.AIS
 	}
 
 	// 如果超过一半的SKU需要添加默认规格，说明统一策略可能有问题
-	if needsDefaultCount > len(aiMapping.SkuList)/2 {
+	if needsDefaultCount > aiMapping.SkuCount()/2 {
 		u.logger.Warnf("⚠️ 超过一半的SKU(%d/%d)需要添加默认规格，可能存在规格维度不匹配问题",
-			needsDefaultCount, len(aiMapping.SkuList))
+			needsDefaultCount, aiMapping.SkuCount())
 		u.logger.Warn("⚠️ 建议检查AI生成的规格是否合理，或调整统一策略")
 
 		// 在这种情况下，不强制统一，保持原有规格
