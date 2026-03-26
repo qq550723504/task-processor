@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
 	models "task-processor/internal/temu/api/product"
 )
@@ -35,7 +34,7 @@ func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *Sa
 			return
 		}
 
-		h.applyImportMappingMetadata(input, sku, createReq)
+		input.ApplyImportMappingMetadata(sku, createReq)
 
 		_, err := h.mappingClient.CreateProductImportMapping(createReq)
 		if err != nil {
@@ -49,40 +48,6 @@ func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *Sa
 
 	h.logger.Infof("????????????: ??=%d", createdCount)
 	return nil
-}
-
-func (h *SavePublishResultHandler) applyImportMappingMetadata(
-	input *SavePublishResultInput,
-	sku *models.Sku,
-	createReq *api.ProductImportMappingCreateReqDTO,
-) {
-	if productID, ok := input.ProductIDForSKU(sku); ok {
-		createReq.ProductId = productID
-	}
-
-	if parentProductID, ok := input.ParentProductID(); ok {
-		createReq.ParentProductId = &parentProductID
-		if costPrice, ok := input.CostPrice(); ok {
-			createReq.CostPrice = &costPrice
-		}
-	}
-
-	if filterRuleID, ok := input.FilterRuleID(); ok {
-		createReq.FilterRuleId = &filterRuleID
-		if filterRuleRange, ok := input.FilterRuleRange(); ok {
-			createReq.FilterRuleRange = &filterRuleRange
-		}
-	}
-
-	if profitRuleID, ok := input.ProfitRuleID(); ok {
-		createReq.ProfitRuleId = &profitRuleID
-		if salePriceMultiplier, ok := input.SalePriceMultiplier(); ok {
-			createReq.SalePriceMultiplier = &salePriceMultiplier
-		}
-		if discountPriceMultiplier, ok := input.DiscountPriceMultiplier(); ok {
-			createReq.DiscountPriceMultiplier = &discountPriceMultiplier
-		}
-	}
 }
 
 func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SavePublishResultInput) {

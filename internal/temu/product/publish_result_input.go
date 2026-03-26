@@ -105,6 +105,43 @@ func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku
 	}
 }
 
+func (input *SavePublishResultInput) ApplyImportMappingMetadata(
+	sku *models.Sku,
+	createReq *managementapi.ProductImportMappingCreateReqDTO,
+) {
+	if input == nil || sku == nil || createReq == nil {
+		return
+	}
+
+	if productID, ok := input.ProductIDForSKU(sku); ok {
+		createReq.ProductId = productID
+	}
+
+	if parentProductID, ok := input.ParentProductID(); ok {
+		createReq.ParentProductId = &parentProductID
+		if costPrice, ok := input.CostPrice(); ok {
+			createReq.CostPrice = &costPrice
+		}
+	}
+
+	if filterRuleID, ok := input.FilterRuleID(); ok {
+		createReq.FilterRuleId = &filterRuleID
+		if filterRuleRange, ok := input.FilterRuleRange(); ok {
+			createReq.FilterRuleRange = &filterRuleRange
+		}
+	}
+
+	if profitRuleID, ok := input.ProfitRuleID(); ok {
+		createReq.ProfitRuleId = &profitRuleID
+		if salePriceMultiplier, ok := input.SalePriceMultiplier(); ok {
+			createReq.SalePriceMultiplier = &salePriceMultiplier
+		}
+		if discountPriceMultiplier, ok := input.DiscountPriceMultiplier(); ok {
+			createReq.DiscountPriceMultiplier = &discountPriceMultiplier
+		}
+	}
+}
+
 func (input *SavePublishResultInput) FilterRuleID() (int64, bool) {
 	if input == nil || input.FilterRule == nil {
 		return 0, false
