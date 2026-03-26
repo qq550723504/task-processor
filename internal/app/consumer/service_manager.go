@@ -104,29 +104,22 @@ func (sm *ServiceManager) Start(ctx context.Context) error {
 
 // registerComponents 构造各子服务并注册到 lifecycleMgr 和 shutdownCoord。
 func (sm *ServiceManager) registerComponents() error {
-	cfg := sm.config
+	components := sm.buildManagedComponents()
 
-	// 结果上报器
-	reporterCfg := ReporterConfig{
-		ReportURL:   cfg.ResultReporter.ReportURL,
-		NodeID:      cfg.ResultReporter.NodeID,
-		Timeout:     cfg.ResultReporter.Timeout,
-		BufferSize:  cfg.ResultReporter.BufferSize,
-		RetryConfig: cfg.ResultReporter.Retry,
+	for _, c := range components {
+		if err := sm.lifecycleMgr.Register(c); err != nil {
+			return fmt.Errorf("注册组件 %s 失败: %w", c.Name(), err)
+		}
 	}
-	reporter := NewResultReporter(reporterCfg, sm.logger)
 
-	// 负载监控
-	monitorCfg := rabbitmq.MonitorConfig{
-		UpdateInterval: cfg.LoadMonitor.UpdateInterval,
-		EnableCPU:      cfg.LoadMonitor.EnableCPU,
-		EnableMemory:   cfg.LoadMonitor.EnableMemory,
-		EnableTasks:    cfg.LoadMonitor.EnableTasks,
-	}
-	loadMonitor := rabbitmq.NewLoadMonitor(monitorCfg, sm.logger)
+	sm.shutdownCoord = NewShutdownCoordinator(components, sm.config.Node.ShutdownTimeout, sm.logger)
+	return nil
+}
 
-	// HTTP 服务器
-	httpServer := NewHTTPServerManager(cfg, loadMonitor, sm.rabbitmqService, sm.logger)
+func (sm *ServiceManager) buildManagedComponents() []lifecycle.Component {
+	reporter := sm.buildResultReporter()
+	loadMonitor := sm.buildLoadMonitor()
+	httpServer := sm.buildHTTPServerManager(loadMonitor)
 
 	components := []lifecycle.Component{
 		newReporterComponent(reporter),
@@ -135,20 +128,41 @@ func (sm *ServiceManager) registerComponents() error {
 		newHTTPServerComponent(httpServer),
 	}
 
-	// 如果注入了调度服务，加入生命周期
 	if sm.schedulerService != nil {
 		components = append(components, newSchedulerComponent(sm.schedulerService))
 		sm.logger.Info("调度服务已注入，将随服务管理器启动")
 	}
 
-	for _, c := range components {
-		if err := sm.lifecycleMgr.Register(c); err != nil {
-			return fmt.Errorf("注册组件 %s 失败: %w", c.Name(), err)
-		}
+	return components
+}
+
+func (sm *ServiceManager) buildResultReporter() *ResultReporter {
+	cfg := sm.config
+	reporterCfg := ReporterConfig{
+		ReportURL:   cfg.ResultReporter.ReportURL,
+		NodeID:      cfg.ResultReporter.NodeID,
+		Timeout:     cfg.ResultReporter.Timeout,
+		BufferSize:  cfg.ResultReporter.BufferSize,
+		RetryConfig: cfg.ResultReporter.Retry,
 	}
 
-	sm.shutdownCoord = NewShutdownCoordinator(components, cfg.Node.ShutdownTimeout, sm.logger)
-	return nil
+	return NewResultReporter(reporterCfg, sm.logger)
+}
+
+func (sm *ServiceManager) buildLoadMonitor() *rabbitmq.LoadMonitor {
+	cfg := sm.config
+	monitorCfg := rabbitmq.MonitorConfig{
+		UpdateInterval: cfg.LoadMonitor.UpdateInterval,
+		EnableCPU:      cfg.LoadMonitor.EnableCPU,
+		EnableMemory:   cfg.LoadMonitor.EnableMemory,
+		EnableTasks:    cfg.LoadMonitor.EnableTasks,
+	}
+
+	return rabbitmq.NewLoadMonitor(monitorCfg, sm.logger)
+}
+
+func (sm *ServiceManager) buildHTTPServerManager(loadMonitor *rabbitmq.LoadMonitor) *HTTPServerManager {
+	return NewHTTPServerManager(sm.config, loadMonitor, sm.rabbitmqService, sm.logger)
 }
 
 // Stop 优雅停止所有服务。
