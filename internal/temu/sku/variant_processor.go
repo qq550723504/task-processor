@@ -127,27 +127,9 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 		return models.Skc{}, fmt.Errorf("没有Amazon产品信息")
 	}
 
-	// 优先使用AISkuMappingHandler已经生成的AI映射
-	var aiMapping *temucontext.AISkuMappingResponse
-	if temuCtx.AISkuMapping != nil {
-		aiMapping = temuCtx.AISkuMapping
-		vp.logger.Info("✅ 使用AISkuMappingHandler已生成的AI映射，避免重复调用")
-	}
-
-	// 如果没有现有映射，才调用AI生成
-	if aiMapping == nil {
-		vp.logger.Info("未找到现有AI映射，开始生成新的AI映射")
-
-		// 将单一产品包装成变体列表，让AI处理
-		variants := []*model.Product{amazonProduct}
-
-		// 使用AI生成SKU映射
-		var err error
-		aiMapping, err = vp.GenerateAISkuMapping(temuCtx, variants)
-		if err != nil {
-			vp.logger.Errorf("❌ AI生成SKU映射失败: %v", err)
-			return models.Skc{}, fmt.Errorf("AI生成SKU映射失败: %w", err)
-		}
+	aiMapping, err := vp.resolveDefaultAIMapping(temuCtx, amazonProduct)
+	if err != nil {
+		return models.Skc{}, err
 	}
 
 	variants := []*model.Product{amazonProduct}
@@ -180,6 +162,23 @@ func (vp *SkuVariantProcessor) buildDefaultSkcFromPreparedMapping(temuCtx *temuc
 	return models.Skc{
 		SkuList: []models.Sku{sku},
 	}, nil
+}
+
+func (vp *SkuVariantProcessor) resolveDefaultAIMapping(temuCtx *temucontext.TemuTaskContext, amazonProduct *model.Product) (*temucontext.AISkuMappingResponse, error) {
+	if temuCtx.AISkuMapping != nil {
+		vp.logger.Info("✅ 使用AISkuMappingHandler已生成的AI映射，避免重复调用")
+		return temuCtx.AISkuMapping, nil
+	}
+
+	vp.logger.Info("未找到现有AI映射，开始生成新的AI映射")
+	variants := []*model.Product{amazonProduct}
+	aiMapping, err := vp.GenerateAISkuMapping(temuCtx, variants)
+	if err != nil {
+		vp.logger.Errorf("❌ AI生成SKU映射失败: %v", err)
+		return nil, fmt.Errorf("AI生成SKU映射失败: %w", err)
+	}
+
+	return aiMapping, nil
 }
 
 // generateAISkuMapping 生成AI SKU映射
