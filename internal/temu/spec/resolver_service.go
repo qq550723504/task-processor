@@ -33,18 +33,9 @@ func NewSpecResolverService(apiClient SpecQueryAPI) *SpecResolverService {
 func (s *SpecResolverService) ResolveTemporarySpecIDs(runtime *ResolveSpecRuntimeInput, aiMapping *temucontext.AISkuMappingResponse) error {
 	s.logger.Info("🔍 开始解析临时规格ID")
 
-	tempIDCount := 0
+	tempIDCount := s.countTemporarySpecIDs(aiMapping)
 	resolvedCount := 0
 	failedCount := 0
-
-	// 统计临时ID数量
-	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
-		for _, spec := range sku.Spec {
-			if strings.HasPrefix(spec.SpecID, "TEMP_") {
-				tempIDCount++
-			}
-		}
-	})
 
 	s.logger.Infof("🔍 发现 %d 个临时规格ID需要解析", tempIDCount)
 
@@ -73,16 +64,7 @@ func (s *SpecResolverService) ResolveTemporarySpecIDs(runtime *ResolveSpecRuntim
 			}
 		}
 
-		if len(sku.Spec) >= 2 {
-			sku.UniqueID = fmt.Sprintf("%s_%s", sku.Spec[0].SpecID, sku.Spec[1].SpecID)
-		} else if len(sku.Spec) == 1 {
-			sku.UniqueID = sku.Spec[0].SpecID
-		}
-
-		if len(sku.Spec) > 0 {
-			sku.SpecID = sku.Spec[len(sku.Spec)-1].SpecID
-			s.logger.Debugf("SKU[%d] set spec_id: %s", i, sku.SpecID)
-		}
+		s.refreshResolvedSKUIdentifiers(i, sku)
 	})
 	if resolveErr != nil {
 		return resolveErr
@@ -90,6 +72,32 @@ func (s *SpecResolverService) ResolveTemporarySpecIDs(runtime *ResolveSpecRuntim
 
 	s.logger.Infof("✅ 临时规格ID解析完成: 总计=%d, 成功=%d, 失败=%d", tempIDCount, resolvedCount, failedCount)
 	return nil
+}
+
+func (s *SpecResolverService) countTemporarySpecIDs(aiMapping *temucontext.AISkuMappingResponse) int {
+	tempIDCount := 0
+	aiMapping.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
+		for _, spec := range sku.Spec {
+			if strings.HasPrefix(spec.SpecID, "TEMP_") {
+				tempIDCount++
+			}
+		}
+	})
+
+	return tempIDCount
+}
+
+func (s *SpecResolverService) refreshResolvedSKUIdentifiers(index int, sku *temucontext.AIGeneratedSku) {
+	if len(sku.Spec) >= 2 {
+		sku.UniqueID = fmt.Sprintf("%s_%s", sku.Spec[0].SpecID, sku.Spec[1].SpecID)
+	} else if len(sku.Spec) == 1 {
+		sku.UniqueID = sku.Spec[0].SpecID
+	}
+
+	if len(sku.Spec) > 0 {
+		sku.SpecID = sku.Spec[len(sku.Spec)-1].SpecID
+		s.logger.Debugf("SKU[%d] set spec_id: %s", index, sku.SpecID)
+	}
 }
 
 // HasTemporaryIDs 检查是否还有未解析的临时规格ID
