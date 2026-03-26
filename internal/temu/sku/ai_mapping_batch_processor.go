@@ -93,11 +93,7 @@ func (vp *SkuVariantProcessor) processAndMergeAIMappingBatch(
 		return err
 	}
 
-	if batchIndex == 0 {
-		vp.logFirstBatchSpecDimensions(batchResponse)
-	}
-
-	vp.appendBatchResponse(mergedResponse, batchResponse, batchIndex, totalBatches)
+	vp.handleProcessedBatchResponse(mergedResponse, batchResponse, batchIndex, totalBatches)
 	return nil
 }
 
@@ -131,6 +127,19 @@ func (vp *SkuVariantProcessor) logFirstBatchSpecDimensions(batchResponse *temuco
 	if len(selectedSpecDimensions) > 0 {
 		vp.logger.Infof("selected spec dimensions from first batch: %v", selectedSpecDimensions)
 	}
+}
+
+func (vp *SkuVariantProcessor) handleProcessedBatchResponse(
+	mergedResponse *temucontext.AISkuMappingResponse,
+	batchResponse *temucontext.AISkuMappingResponse,
+	batchIndex int,
+	totalBatches int,
+) {
+	if batchIndex == 0 {
+		vp.logFirstBatchSpecDimensions(batchResponse)
+	}
+
+	vp.appendBatchResponse(mergedResponse, batchResponse, batchIndex, totalBatches)
 }
 
 func (vp *SkuVariantProcessor) appendBatchResponse(
