@@ -5,7 +5,6 @@ import (
 
 	"task-processor/internal/model"
 	temucontext "task-processor/internal/temu/context"
-	"task-processor/internal/temu/spec"
 )
 
 // generateAISkuMappingInBatches splits large variant sets into smaller AI requests
@@ -61,8 +60,7 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 
 	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", mergedResponse.SkuCount())
 
-	unifier := spec.NewSpecDimensionUnifier()
-	if err := unifier.UnifySpecDimensions(mergedResponse); err != nil {
+	if err := vp.unifyAIMappingSpecDimensions(mergedResponse); err != nil {
 		vp.logger.Errorf("failed to unify spec dimensions after batch merge: %v", err)
 		return nil, fmt.Errorf("unify spec dimensions after batch merge: %w", err)
 	}
