@@ -26,7 +26,7 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 		len(input.Variants), input.BatchSize, totalBatches,
 	)
 
-	var allSkus []temucontext.AIGeneratedSku
+	mergedResponse := &temucontext.AISkuMappingResponse{}
 	var selectedSpecDimensions []string
 
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
@@ -52,18 +52,14 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 			}
 		}
 
-		allSkus = append(allSkus, batchResponse.SkuList...)
+		mergedResponse.AppendSKUs(batchResponse.SkuList)
 		vp.logger.Infof(
 			"AI mapping batch %d/%d completed: generated_skus=%d",
 			batchIndex+1, totalBatches, batchResponse.SkuCount(),
 		)
 	}
 
-	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", len(allSkus))
-
-	mergedResponse := &temucontext.AISkuMappingResponse{
-		SkuList: allSkus,
-	}
+	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", mergedResponse.SkuCount())
 
 	unifier := spec.NewSpecDimensionUnifier()
 	if err := unifier.UnifySpecDimensions(mergedResponse); err != nil {

@@ -93,6 +93,13 @@ func (r *AISkuMappingResponse) AppendSKU(sku AIGeneratedSku) {
 	r.SkuList = append(r.SkuList, sku)
 }
 
+func (r *AISkuMappingResponse) AppendSKUs(skus []AIGeneratedSku) {
+	if r == nil || len(skus) == 0 {
+		return
+	}
+	r.SkuList = append(r.SkuList, skus...)
+}
+
 func (r *AISkuMappingResponse) FirstSpecDimensions() []string {
 	firstSKU, ok := r.FirstSKU()
 	if !ok {
