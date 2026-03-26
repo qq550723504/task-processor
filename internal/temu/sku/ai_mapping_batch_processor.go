@@ -26,7 +26,7 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 		len(input.Variants), input.BatchSize, totalBatches,
 	)
 
-	mergedResponse := &temucontext.AISkuMappingResponse{}
+	mergedResponse := temucontext.NewEmptyAISkuMappingResponse()
 	var selectedSpecDimensions []string
 
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {

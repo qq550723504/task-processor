@@ -40,8 +40,12 @@ type AISkuMappingResponse struct {
 	SkuList []AIGeneratedSku `json:"sku_list"`
 }
 
+func NewEmptyAISkuMappingResponse() *AISkuMappingResponse {
+	return &AISkuMappingResponse{}
+}
+
 func NewAISkuMappingResponse(skus []AIGeneratedSku) *AISkuMappingResponse {
-	response := &AISkuMappingResponse{}
+	response := NewEmptyAISkuMappingResponse()
 	response.ReplaceSKUs(skus)
 	return response
 }
