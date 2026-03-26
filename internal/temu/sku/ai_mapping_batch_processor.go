@@ -14,16 +14,10 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 	variants []*model.Product,
 	batchSize int,
 ) (*temucontext.AISkuMappingResponse, error) {
-	input, err := buildAIBatchInput(variants, batchSize)
+	input, totalBatches, err := vp.prepareAIMappingBatches(variants, batchSize)
 	if err != nil {
 		return nil, err
 	}
-
-	totalBatches := input.TotalBatches()
-	vp.logger.Infof(
-		"start generating AI SKU mapping in batches: variants=%d, batch_size=%d, batches=%d",
-		len(input.Variants), input.BatchSize, totalBatches,
-	)
 
 	mergedResponse, err := vp.processAllAIMappingBatches(temuCtx, input, totalBatches)
 	if err != nil {
@@ -35,6 +29,24 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 	}
 
 	return mergedResponse, nil
+}
+
+func (vp *SkuVariantProcessor) prepareAIMappingBatches(
+	variants []*model.Product,
+	batchSize int,
+) (*AIBatchInput, int, error) {
+	input, err := buildAIBatchInput(variants, batchSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	totalBatches := input.TotalBatches()
+	vp.logger.Infof(
+		"start generating AI SKU mapping in batches: variants=%d, batch_size=%d, batches=%d",
+		len(input.Variants), input.BatchSize, totalBatches,
+	)
+
+	return input, totalBatches, nil
 }
 
 func (vp *SkuVariantProcessor) processAllAIMappingBatches(
