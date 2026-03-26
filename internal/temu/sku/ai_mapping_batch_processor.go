@@ -52,7 +52,7 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 			}
 		}
 
-		mergedResponse.AppendSKUs(batchResponse.SkuList)
+		mergedResponse.AppendResponse(batchResponse)
 		vp.logger.Infof(
 			"AI mapping batch %d/%d completed: generated_skus=%d",
 			batchIndex+1, totalBatches, batchResponse.SkuCount(),
