@@ -139,6 +139,11 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 		}
 	}
 
+	variants := []*model.Product{amazonProduct}
+	if err := vp.prepareAIMappingForBuild(temuCtx, variants, aiMapping); err != nil {
+		return models.Skc{}, err
+	}
+
 	if aiMapping.SkuCount() == 0 {
 		return models.Skc{}, fmt.Errorf("AI未生成任何SKU")
 	}
@@ -147,10 +152,6 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 	aiSku, ok := aiMapping.FirstSKU()
 	if !ok {
 		return models.Skc{}, fmt.Errorf("AI?????????")
-	}
-
-	if err := vp.normalizeAIMappingForBuild(temuCtx, aiMapping); err != nil {
-		return models.Skc{}, err
 	}
 
 	vp.logger.Infof("✅ AI成功生成规格: %+v", aiSku.Spec)
