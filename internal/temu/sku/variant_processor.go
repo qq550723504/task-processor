@@ -141,27 +141,40 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 }
 
 func (vp *SkuVariantProcessor) buildDefaultSkcFromPreparedMapping(temuCtx *temucontext.TemuTaskContext, amazonProduct *model.Product, aiMapping *temucontext.AISkuMappingResponse) (models.Skc, error) {
-
-	if aiMapping.SkuCount() == 0 {
-		return models.Skc{}, fmt.Errorf("AI未生成任何SKU")
+	aiSku, err := vp.selectDefaultAIMapping(aiMapping)
+	if err != nil {
+		return models.Skc{}, err
 	}
-
-	// 使用第一个AI生成的SKU
-	aiSku, ok := aiMapping.FirstSKU()
-	if !ok {
-		return models.Skc{}, fmt.Errorf("AI?????????")
-	}
-
-	vp.logger.Infof("✅ AI成功生成规格: %+v", aiSku.Spec)
-	vp.logger.Infof("✅ AI提取的重量尺寸: weight=%s, length=%s, width=%s, height=%s",
-		aiSku.Weight, aiSku.Length, aiSku.Width, aiSku.Height)
-
-	// 使用AI生成的SKU构建完整的SKU
-	sku := vp.itemBuilder.buildSkuFromVariantWithAI(temuCtx, amazonProduct, *aiSku)
+	sku := vp.buildDefaultSkuFromAIMapping(temuCtx, amazonProduct, aiSku)
 
 	return models.Skc{
 		SkuList: []models.Sku{sku},
 	}, nil
+}
+
+func (vp *SkuVariantProcessor) selectDefaultAIMapping(aiMapping *temucontext.AISkuMappingResponse) (*temucontext.AIGeneratedSku, error) {
+	if aiMapping.SkuCount() == 0 {
+		return nil, fmt.Errorf("AI未生成任何SKU")
+	}
+
+	aiSku, ok := aiMapping.FirstSKU()
+	if !ok {
+		return nil, fmt.Errorf("AI?????????")
+	}
+
+	return aiSku, nil
+}
+
+func (vp *SkuVariantProcessor) buildDefaultSkuFromAIMapping(
+	temuCtx *temucontext.TemuTaskContext,
+	amazonProduct *model.Product,
+	aiSku *temucontext.AIGeneratedSku,
+) models.Sku {
+	vp.logger.Infof("✅ AI成功生成规格: %+v", aiSku.Spec)
+	vp.logger.Infof("✅ AI提取的重量尺寸: weight=%s, length=%s, width=%s, height=%s",
+		aiSku.Weight, aiSku.Length, aiSku.Width, aiSku.Height)
+
+	return vp.itemBuilder.buildSkuFromVariantWithAI(temuCtx, amazonProduct, *aiSku)
 }
 
 func (vp *SkuVariantProcessor) resolveDefaultAIMapping(temuCtx *temucontext.TemuTaskContext, amazonProduct *model.Product) (*temucontext.AISkuMappingResponse, error) {
