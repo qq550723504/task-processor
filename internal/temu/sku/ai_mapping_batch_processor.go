@@ -26,8 +26,6 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 	)
 
 	mergedResponse := temucontext.NewEmptyAISkuMappingResponse()
-	var selectedSpecDimensions []string
-
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
 		batchVariants, start, end, ok := input.BatchVariants(batchIndex)
 		if !ok {
@@ -45,17 +43,10 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 		}
 
 		if batchIndex == 0 {
-			selectedSpecDimensions = batchResponse.FirstSpecDimensions()
-			if len(selectedSpecDimensions) > 0 {
-				vp.logger.Infof("selected spec dimensions from first batch: %v", selectedSpecDimensions)
-			}
+			vp.logFirstBatchSpecDimensions(batchResponse)
 		}
 
-		mergedResponse.AppendResponse(batchResponse)
-		vp.logger.Infof(
-			"AI mapping batch %d/%d completed: generated_skus=%d",
-			batchIndex+1, totalBatches, batchResponse.SkuCount(),
-		)
+		vp.appendBatchResponse(mergedResponse, batchResponse, batchIndex, totalBatches)
 	}
 
 	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", mergedResponse.SkuCount())
@@ -77,4 +68,24 @@ func (vp *SkuVariantProcessor) normalizeMergedAIMapping(aiMapping *temucontext.A
 	vp.enforceSpecCountLimit(aiMapping)
 
 	return nil
+}
+
+func (vp *SkuVariantProcessor) logFirstBatchSpecDimensions(batchResponse *temucontext.AISkuMappingResponse) {
+	selectedSpecDimensions := batchResponse.FirstSpecDimensions()
+	if len(selectedSpecDimensions) > 0 {
+		vp.logger.Infof("selected spec dimensions from first batch: %v", selectedSpecDimensions)
+	}
+}
+
+func (vp *SkuVariantProcessor) appendBatchResponse(
+	mergedResponse *temucontext.AISkuMappingResponse,
+	batchResponse *temucontext.AISkuMappingResponse,
+	batchIndex int,
+	totalBatches int,
+) {
+	mergedResponse.AppendResponse(batchResponse)
+	vp.logger.Infof(
+		"AI mapping batch %d/%d completed: generated_skus=%d",
+		batchIndex+1, totalBatches, batchResponse.SkuCount(),
+	)
 }
