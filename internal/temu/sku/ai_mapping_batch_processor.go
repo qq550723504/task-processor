@@ -103,6 +103,25 @@ func (vp *SkuVariantProcessor) processAIMappingBatch(
 	batchIndex int,
 	totalBatches int,
 ) (*temucontext.AISkuMappingResponse, error) {
+	batchVariants, err := vp.prepareAIMappingBatch(input, batchIndex, totalBatches)
+	if err != nil {
+		return nil, err
+	}
+
+	batchResponse, err := vp.GenerateAISkuMappingSingleBatch(temuCtx, batchVariants)
+	if err != nil {
+		vp.logger.Errorf("AI mapping batch %d/%d failed: %v", batchIndex+1, totalBatches, err)
+		return nil, fmt.Errorf("AI mapping batch %d failed: %w", batchIndex+1, err)
+	}
+
+	return batchResponse, nil
+}
+
+func (vp *SkuVariantProcessor) prepareAIMappingBatch(
+	input *AIBatchInput,
+	batchIndex int,
+	totalBatches int,
+) ([]*model.Product, error) {
 	batchVariants, start, end, ok := input.BatchVariants(batchIndex)
 	if !ok {
 		return nil, fmt.Errorf("invalid ai batch index: %d", batchIndex)
@@ -113,13 +132,7 @@ func (vp *SkuVariantProcessor) processAIMappingBatch(
 		batchIndex+1, totalBatches, start, end-1,
 	)
 
-	batchResponse, err := vp.GenerateAISkuMappingSingleBatch(temuCtx, batchVariants)
-	if err != nil {
-		vp.logger.Errorf("AI mapping batch %d/%d failed: %v", batchIndex+1, totalBatches, err)
-		return nil, fmt.Errorf("AI mapping batch %d failed: %w", batchIndex+1, err)
-	}
-
-	return batchResponse, nil
+	return batchVariants, nil
 }
 
 func (vp *SkuVariantProcessor) logFirstBatchSpecDimensions(batchResponse *temucontext.AISkuMappingResponse) {
