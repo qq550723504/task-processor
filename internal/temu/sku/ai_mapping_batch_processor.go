@@ -60,13 +60,21 @@ func (vp *SkuVariantProcessor) generateAISkuMappingInBatches(
 
 	vp.logger.Infof("all AI mapping batches completed: generated_skus=%d", mergedResponse.SkuCount())
 
-	if err := vp.unifyAIMappingSpecDimensions(mergedResponse); err != nil {
+	if err := vp.normalizeMergedAIMapping(mergedResponse); err != nil {
+		return nil, err
+	}
+
+	return mergedResponse, nil
+}
+
+func (vp *SkuVariantProcessor) normalizeMergedAIMapping(aiMapping *temucontext.AISkuMappingResponse) error {
+	if err := vp.unifyAIMappingSpecDimensions(aiMapping); err != nil {
 		vp.logger.Errorf("failed to unify spec dimensions after batch merge: %v", err)
-		return nil, fmt.Errorf("unify spec dimensions after batch merge: %w", err)
+		return fmt.Errorf("unify spec dimensions after batch merge: %w", err)
 	}
 
 	vp.logger.Info("enforcing spec count limit on merged AI mapping result")
-	vp.enforceSpecCountLimit(mergedResponse)
+	vp.enforceSpecCountLimit(aiMapping)
 
-	return mergedResponse, nil
+	return nil
 }
