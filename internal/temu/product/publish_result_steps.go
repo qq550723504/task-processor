@@ -97,7 +97,7 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 	}
 
 	currentDate := time.Now().Format("2006-01-02")
-	increment := h.calculateIncrementFromInput(input, dailyLimitType)
+	increment := input.DailyLimitIncrement(dailyLimitType)
 	if increment <= 0 {
 		h.logger.Warn("?????????????")
 		return
@@ -117,25 +117,6 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 		h.logger.Warnf("?? %d ? %s ?????(%d)?????(%d)??????",
 			input.Task.StoreID, currentDate, count, dailyLimit)
 		h.pauseShopUntilEndOfDayWithInput(input, input.DailyLimitExceededReason(count, dailyLimit))
-	}
-}
-
-func (h *SavePublishResultHandler) calculateIncrementFromInput(input *SavePublishResultInput, dailyLimitType string) int64 {
-	if input.Product == nil {
-		h.logger.Warn("TEMU?????????????")
-		return 0
-	}
-
-	switch dailyLimitType {
-	case "SPU":
-		return 1
-	case "SKC":
-		return int64(input.SKCCount())
-	case "SKU":
-		return int64(input.SKUCount())
-	default:
-		h.logger.Warnf("???????: %s????SPU??", dailyLimitType)
-		return 1
 	}
 }
 

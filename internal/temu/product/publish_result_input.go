@@ -211,6 +211,23 @@ func (input *SavePublishResultInput) DailyLimitConfig() (limit int, limitType st
 	return *input.StoreInfo.DailyLimit, limitType, true
 }
 
+func (input *SavePublishResultInput) DailyLimitIncrement(limitType string) int64 {
+	if input == nil || input.Product == nil {
+		return 0
+	}
+
+	switch limitType {
+	case "SPU":
+		return 1
+	case "SKC":
+		return int64(input.SKCCount())
+	case "SKU":
+		return int64(input.SKUCount())
+	default:
+		return 1
+	}
+}
+
 func buildSavePublishResultInput(temuCtx *temucontext.TemuTaskContext) (*SavePublishResultInput, error) {
 	if temuCtx == nil {
 		return nil, fmt.Errorf("temu context is nil")
