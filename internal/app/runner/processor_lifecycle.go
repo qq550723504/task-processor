@@ -32,24 +32,11 @@ func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.
 		return errors.New(errors.ErrCodeSystem, "Amazon处理器未注入")
 	}
 
-	// 启动处理器
-	if err := s.startProcessors(ctx, cfg); err != nil {
-		return errors.Wrap(err, errors.ErrCodeSystem, "启动处理器失败")
+	if err := s.startProcessingComponents(ctx, cfg); err != nil {
+		return err
 	}
 
-	// 启动任务获取器
-	s.startTaskFetcher(cfg)
-
-	// 启动调度服务
-	if err := s.startSchedulerService(ctx, cfg); err != nil {
-		return errors.Wrap(err, errors.ErrCodeSystem, "启动调度服务失败")
-	}
-
-	// 初始化监控组件
-	s.initializeMonitoring(cfg)
-
-	// 启动所有组件
-	if err := s.lifecycleManager.StartAll(s.ctx); err != nil {
+	if err := s.startLifecycleComponents(); err != nil {
 		return errors.Wrap(err, errors.ErrCodeSystem, "启动组件失败")
 	}
 
@@ -60,6 +47,25 @@ func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.
 	go s.startStatusMonitor()
 
 	return nil
+}
+
+func (s *processorServiceImpl) startProcessingComponents(ctx context.Context, cfg *config.Config) error {
+	if err := s.startProcessors(ctx, cfg); err != nil {
+		return errors.Wrap(err, errors.ErrCodeSystem, "启动处理器失败")
+	}
+
+	s.startTaskFetcher(cfg)
+
+	if err := s.startSchedulerService(ctx, cfg); err != nil {
+		return errors.Wrap(err, errors.ErrCodeSystem, "启动调度服务失败")
+	}
+
+	s.initializeMonitoring(cfg)
+	return nil
+}
+
+func (s *processorServiceImpl) startLifecycleComponents() error {
+	return s.lifecycleManager.StartAll(s.ctx)
 }
 
 // StopProcessors 停止所有处理器
