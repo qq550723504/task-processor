@@ -65,43 +65,11 @@ func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 		}
 	}
 
-	// ????????AI????????????
-	var validationErr error
-	aiMapping.ForEachSKUIndexed(func(i int, aiSku *temucontext.AIGeneratedSku) {
-		if validationErr != nil {
-			return
-		}
-		// ??????????2??TEMU???
-		if len(aiSku.Spec) > 2 {
-			vp.logger.Errorf("? AI??[%d]??????: ???%d????TEMU????2?????", i, len(aiSku.Spec))
-			vp.logger.Errorf("? ????: %+v", aiSku.Spec)
-			validationErr = fmt.Errorf("AI??[%d]??????: ?%d?????TEMU????2?", i, len(aiSku.Spec))
-			return
-		}
-
-		// ????????
-		if err := vp.specHandler.ValidateSpecs(convertSpecInfos(aiSku.Spec)); err != nil {
-			vp.logger.Errorf("? AI??[%d]??????: %v", i, err)
-			vp.logger.Error("? AI???TEMU???????????????????")
-			validationErr = fmt.Errorf("AI??[%d]????: %w", i, err)
-			return
-		}
-		// ??AI???????
-		vp.logger.Infof("?? SKU[%d] AI???????: weight=%s, length=%s, width=%s, height=%s",
-			i, aiSku.Weight, aiSku.Length, aiSku.Width, aiSku.Height)
-	})
-	if validationErr != nil {
-		return nil, validationErr
+	if err := vp.validateAIMappingSpecs(aiMapping); err != nil {
+		return nil, err
 	}
-
-	// 将TemuTaskContext转换为TaskContext接口
-	resolveRuntime, err := spec.BuildResolveSpecRuntimeInput(temuCtx)
-	if err != nil {
-		return nil, fmt.Errorf("构建规格解析运行时失败: %w", err)
-	}
-	if err := vp.specResolver.ResolveTemporarySpecIDs(resolveRuntime, aiMapping); err != nil {
-		vp.logger.Errorf("❌ 解析规格ID失败: %v", err)
-		return nil, fmt.Errorf("解析临时规格ID失败: %w", err)
+	if err := vp.resolveAIMappingSpecIDs(temuCtx, aiMapping); err != nil {
+		return nil, err
 	}
 
 	// 检查规格来源：只有GoodsSpecProperties不为空且有预置规格值时，才创建多SKC
@@ -194,25 +162,16 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 		return models.Skc{}, fmt.Errorf("AI?????????")
 	}
 
-	// 验证规格
-	if err := vp.specHandler.ValidateSpecs(convertSpecInfos(aiSku.Spec)); err != nil {
-		vp.logger.Errorf("❌ AI生成的规格验证失败: %v", err)
-		return models.Skc{}, fmt.Errorf("AI生成的规格无效: %w", err)
+	if err := vp.validateAIMappingSpecs(aiMapping); err != nil {
+		return models.Skc{}, err
+	}
+	if err := vp.resolveAIMappingSpecIDs(temuCtx, aiMapping); err != nil {
+		return models.Skc{}, err
 	}
 
 	vp.logger.Infof("✅ AI成功生成规格: %+v", aiSku.Spec)
 	vp.logger.Infof("✅ AI提取的重量尺寸: weight=%s, length=%s, width=%s, height=%s",
 		aiSku.Weight, aiSku.Length, aiSku.Width, aiSku.Height)
-
-	resolveRuntime, err := spec.BuildResolveSpecRuntimeInput(temuCtx)
-	if err != nil {
-		return models.Skc{}, fmt.Errorf("构建规格解析运行时失败: %w", err)
-	}
-	if err := vp.specResolver.ResolveTemporarySpecIDs(resolveRuntime, aiMapping); err != nil {
-		vp.logger.Errorf("❌ 解析规格ID失败: %v", err)
-		return models.Skc{}, fmt.Errorf("解析临时规格ID失败: %w", err)
-	}
-	vp.logger.Info("✅ 成功解析所有临时规格ID")
 
 	// 使用AI生成的SKU构建完整的SKU
 	sku := vp.itemBuilder.buildSkuFromVariantWithAI(temuCtx, amazonProduct, *aiSku)
@@ -260,4 +219,45 @@ func (vp *SkuVariantProcessor) GenerateAISkuMapping(temuCtx *temucontext.TemuTas
 	}
 
 	return response, nil
+}
+
+func (vp *SkuVariantProcessor) validateAIMappingSpecs(aiMapping *temucontext.AISkuMappingResponse) error {
+	var validationErr error
+	aiMapping.ForEachSKUIndexed(func(i int, aiSku *temucontext.AIGeneratedSku) {
+		if validationErr != nil {
+			return
+		}
+		if len(aiSku.Spec) > 2 {
+			vp.logger.Errorf("AI mapping[%d] has too many specs: %d", i, len(aiSku.Spec))
+			vp.logger.Errorf("Specs: %+v", aiSku.Spec)
+			validationErr = fmt.Errorf("AI mapping[%d] has too many specs: %d", i, len(aiSku.Spec))
+			return
+		}
+
+		if err := vp.specHandler.ValidateSpecs(convertSpecInfos(aiSku.Spec)); err != nil {
+			vp.logger.Errorf("AI mapping[%d] spec validation failed: %v", i, err)
+			vp.logger.Error("AI generated specs do not match TEMU spec constraints")
+			validationErr = fmt.Errorf("AI mapping[%d] spec validation failed: %w", i, err)
+			return
+		}
+
+		vp.logger.Infof("SKU[%d] AI dimensions: weight=%s, length=%s, width=%s, height=%s",
+			i, aiSku.Weight, aiSku.Length, aiSku.Width, aiSku.Height)
+	})
+
+	return validationErr
+}
+
+func (vp *SkuVariantProcessor) resolveAIMappingSpecIDs(temuCtx *temucontext.TemuTaskContext, aiMapping *temucontext.AISkuMappingResponse) error {
+	resolveRuntime, err := spec.BuildResolveSpecRuntimeInput(temuCtx)
+	if err != nil {
+		return fmt.Errorf("build spec resolve runtime: %w", err)
+	}
+	if err := vp.specResolver.ResolveTemporarySpecIDs(resolveRuntime, aiMapping); err != nil {
+		vp.logger.Errorf("failed to resolve temporary spec IDs: %v", err)
+		return fmt.Errorf("resolve temporary spec IDs: %w", err)
+	}
+
+	vp.logger.Info("Resolved all temporary spec IDs")
+	return nil
 }
