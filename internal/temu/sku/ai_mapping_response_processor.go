@@ -14,12 +14,12 @@ func (vp *SkuVariantProcessor) enforceSpecCountLimit(aiResponse *temucontext.AIS
 	parentSpecUsage := make(map[string]int)
 	parentSpecNames := make(map[string]string)
 
-	for _, sku := range aiResponse.SkuList {
+	aiResponse.ForEachSKU(func(sku *temucontext.AIGeneratedSku) {
 		for _, spec := range sku.Spec {
 			parentSpecUsage[spec.ParentSpecID]++
 			parentSpecNames[spec.ParentSpecID] = spec.ParentSpecName
 		}
-	}
+	})
 
 	vp.logger.Infof("📊 规格维度使用统计: 总维度数=%d", len(parentSpecUsage))
 	for parentSpecID, usage := range parentSpecUsage {
@@ -78,8 +78,7 @@ func (vp *SkuVariantProcessor) enforceSpecCountLimit(aiResponse *temucontext.AIS
 	}
 
 	// 5. 过滤每个SKU的规格，只保留选中的维度
-	for i := range aiResponse.SkuList {
-		sku := &aiResponse.SkuList[i]
+	aiResponse.ForEachSKUIndexed(func(i int, sku *temucontext.AIGeneratedSku) {
 		filteredSpecs := make([]temucontext.SpecInfo, 0, 2)
 
 		for _, spec := range sku.Spec {
@@ -96,7 +95,7 @@ func (vp *SkuVariantProcessor) enforceSpecCountLimit(aiResponse *temucontext.AIS
 		} else if len(filteredSpecs) == 1 {
 			sku.UniqueID = filteredSpecs[0].SpecID
 		}
-	}
+	})
 
 	vp.logger.Infof("🔧 规格维度限制执行完成，保留了2个最重要的维度")
 }
