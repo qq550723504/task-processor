@@ -51,14 +51,12 @@ func (a *ApplicationBootstrap) Initialize(configPath, appVersion string) error {
 		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	svc, err := buildServices(a.configManager.GetCurrent(), a.logger)
-	if err != nil {
-		return fmt.Errorf("build services: %w", err)
+	if err := a.initializeServices(); err != nil {
+		return err
 	}
-	a.services = svc
 
-	if err := registerComponents(a.lifecycleManager, a.services, a.logger, a.appVersion); err != nil {
-		return fmt.Errorf("register lifecycle components: %w", err)
+	if err := a.registerLifecycleComponents(); err != nil {
+		return err
 	}
 
 	a.logger.Info("application bootstrap initialized")
@@ -102,6 +100,24 @@ func (a *ApplicationBootstrap) loadConfiguration(configPath string) error {
 		cfg.Browser.Enabled, cfg.Browser.BrowserPath, cfg.Browser.PoolSize)
 	a.logger.Infof("management config loaded: url=%s clientId=%s",
 		cfg.Management.BaseURL, cfg.Management.ClientID)
+	return nil
+}
+
+func (a *ApplicationBootstrap) initializeServices() error {
+	svc, err := buildServices(a.configManager.GetCurrent(), a.logger)
+	if err != nil {
+		return fmt.Errorf("build services: %w", err)
+	}
+
+	a.services = svc
+	return nil
+}
+
+func (a *ApplicationBootstrap) registerLifecycleComponents() error {
+	if err := registerComponents(a.lifecycleManager, a.services, a.logger, a.appVersion); err != nil {
+		return fmt.Errorf("register lifecycle components: %w", err)
+	}
+
 	return nil
 }
 
