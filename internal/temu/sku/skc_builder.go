@@ -208,7 +208,7 @@ func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.T
 	if err != nil {
 		sb.logger.Errorf("❌ 并行SKU构建失败: %v，回退到串行处理", err)
 		// 回退到串行处理
-		return sb.buildSingleSkcSerial(temuCtx, validVariants, &temucontext.AISkuMappingResponse{SkuList: validAiSkus})
+		return sb.buildSingleSkcSerial(temuCtx, validVariants, temucontext.NewAISkuMappingResponse(validAiSkus))
 	}
 
 	// 创建单个SKC
