@@ -65,10 +65,7 @@ func (vp *SkuVariantProcessor) BuildSkcsFromAIMapping(temuCtx *temucontext.TemuT
 		}
 	}
 
-	if err := vp.validateAIMappingSpecs(aiMapping); err != nil {
-		return nil, err
-	}
-	if err := vp.resolveAIMappingSpecIDs(temuCtx, aiMapping); err != nil {
+	if err := vp.normalizeAIMappingForBuild(temuCtx, aiMapping); err != nil {
 		return nil, err
 	}
 
@@ -162,10 +159,7 @@ func (vp *SkuVariantProcessor) CreateDefaultSkc(temuCtx *temucontext.TemuTaskCon
 		return models.Skc{}, fmt.Errorf("AI?????????")
 	}
 
-	if err := vp.validateAIMappingSpecs(aiMapping); err != nil {
-		return models.Skc{}, err
-	}
-	if err := vp.resolveAIMappingSpecIDs(temuCtx, aiMapping); err != nil {
+	if err := vp.normalizeAIMappingForBuild(temuCtx, aiMapping); err != nil {
 		return models.Skc{}, err
 	}
 
@@ -258,6 +252,17 @@ func (vp *SkuVariantProcessor) resolveAIMappingSpecIDs(temuCtx *temucontext.Temu
 	}
 
 	vp.logger.Info("Resolved all temporary spec IDs")
+	return nil
+}
+
+func (vp *SkuVariantProcessor) normalizeAIMappingForBuild(temuCtx *temucontext.TemuTaskContext, aiMapping *temucontext.AISkuMappingResponse) error {
+	if err := vp.validateAIMappingSpecs(aiMapping); err != nil {
+		return err
+	}
+	if err := vp.resolveAIMappingSpecIDs(temuCtx, aiMapping); err != nil {
+		return err
+	}
+
 	return nil
 }
 
