@@ -45,13 +45,13 @@ func (sb *SkuSkcBuilder) initParallelBuilder() {
 func (sb *SkuSkcBuilder) buildMultipleSkcsFromTemplate(ctx pipeline.TaskContext, variants []*model.Product, aiMapping *temucontext.AISkuMappingResponse, templateSpecs []temutemplate.TemplateRespGoodsSpecProperty) []models.Skc {
 	// 按颜色分组SKU
 	colorGroups := make(map[string][]int)
-	for i, aiSku := range aiMapping.SkuList {
+	aiMapping.ForEachSKUIndexed(func(i int, aiSku *temucontext.AIGeneratedSku) {
 		colorSpecID := aiSku.ColorSpecID
 		if colorSpecID == "" {
 			colorSpecID = "default"
 		}
 		colorGroups[colorSpecID] = append(colorGroups[colorSpecID], i)
-	}
+	})
 
 	skcList := make([]models.Skc, 0, len(colorGroups))
 
