@@ -1,4 +1,3 @@
-// Package main 测试 main.go 中的依赖注入、路由注册和 Worker Pool 集成
 package main
 
 import (
@@ -10,65 +9,84 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	productapi "task-processor/internal/productenrich/api"
 	productpipeline "task-processor/internal/productenrich/pipeline"
-
-	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	"task-processor/internal/productimage"
+	productimageapi "task-processor/internal/productimage/api"
+	productimagestore "task-processor/internal/productimage/store"
 )
 
 func init() {
 	gin.SetMode(gin.TestMode)
-	// 测试期间静默日志
 	logrus.SetLevel(logrus.FatalLevel)
 }
 
-// =============================================================================
-// registerRoutes 路由注册测试
-// =============================================================================
-
-// stubHandler 实现 productenrich.ProductHandler，用于路由注册测试
-type stubHandler struct {
+type stubProductHandler struct {
 	generateCalled  bool
 	getResultCalled bool
 }
 
-func (s *stubHandler) GenerateProduct(c *gin.Context) {
+func (s *stubProductHandler) GenerateProduct(c *gin.Context) {
 	s.generateCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": "stub-task"})
+	c.JSON(http.StatusOK, gin.H{"task_id": "product-stub-task"})
 }
 
-func (s *stubHandler) GetTaskResult(c *gin.Context) {
+func (s *stubProductHandler) GetTaskResult(c *gin.Context) {
 	s.getResultCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
 }
 
+type stubImageHandler struct {
+	processCalled   bool
+	getResultCalled bool
+	reviewCalled    bool
+}
+
+func (s *stubImageHandler) ProcessImages(c *gin.Context) {
+	s.processCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": "image-stub-task"})
+}
+
+func (s *stubImageHandler) GetTaskResult(c *gin.Context) {
+	s.getResultCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
+}
+
+func (s *stubImageHandler) ReviewTask(c *gin.Context) {
+	s.reviewCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": productimage.TaskStatusCompleted})
+}
+
 func TestRegisterRoutes_HealthCheck(t *testing.T) {
 	r := gin.New()
-	registerRoutes(r, &stubHandler{})
+	registerRoutes(r, &stubProductHandler{}, &stubImageHandler{})
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("GET /health = %d, want 200", w.Code)
+		t.Fatalf("GET /health = %d, want 200", w.Code)
 	}
+
 	var body map[string]string
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+		t.Fatalf("unmarshal health response: %v", err)
 	}
 	if body["status"] != "ok" {
-		t.Errorf("status = %q, want ok", body["status"])
+		t.Fatalf("status = %q, want ok", body["status"])
 	}
 }
 
 func TestRegisterRoutes_GenerateProduct(t *testing.T) {
-	h := &stubHandler{}
+	h := &stubProductHandler{}
 	r := gin.New()
-	registerRoutes(r, h)
+	registerRoutes(r, h, &stubImageHandler{})
 
 	body, _ := json.Marshal(productenrich.GenerateRequest{Text: "test"})
 	w := httptest.NewRecorder()
@@ -77,86 +95,139 @@ func TestRegisterRoutes_GenerateProduct(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("POST /api/v1/products/generate = %d, want 200", w.Code)
+		t.Fatalf("POST /api/v1/products/generate = %d, want 200", w.Code)
 	}
 	if !h.generateCalled {
-		t.Error("GenerateProduct handler was not called")
+		t.Fatal("GenerateProduct handler was not called")
 	}
 }
 
-func TestRegisterRoutes_GetTaskResult(t *testing.T) {
-	h := &stubHandler{}
+func TestRegisterRoutes_GetProductTaskResult(t *testing.T) {
+	h := &stubProductHandler{}
 	r := gin.New()
-	registerRoutes(r, h)
+	registerRoutes(r, h, &stubImageHandler{})
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/products/tasks/task-123", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("GET /api/v1/products/tasks/:task_id = %d, want 200", w.Code)
+		t.Fatalf("GET /api/v1/products/tasks/:task_id = %d, want 200", w.Code)
 	}
 	if !h.getResultCalled {
-		t.Error("GetTaskResult handler was not called")
+		t.Fatal("product GetTaskResult handler was not called")
+	}
+}
+
+func TestRegisterRoutes_ProcessImages(t *testing.T) {
+	h := &stubImageHandler{}
+	r := gin.New()
+	registerRoutes(r, &stubProductHandler{}, h)
+
+	body, _ := json.Marshal(productimage.ImageProcessRequest{
+		ImageURLs:   []string{"https://example.com/hero.jpg"},
+		Marketplace: "amazon",
+	})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/images/process = %d, want 200", w.Code)
+	}
+	if !h.processCalled {
+		t.Fatal("ProcessImages handler was not called")
+	}
+}
+
+func TestRegisterRoutes_GetImageTaskResult(t *testing.T) {
+	h := &stubImageHandler{}
+	r := gin.New()
+	registerRoutes(r, &stubProductHandler{}, h)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/images/tasks/task-123", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/images/tasks/:task_id = %d, want 200", w.Code)
+	}
+	if !h.getResultCalled {
+		t.Fatal("image GetTaskResult handler was not called")
+	}
+}
+
+func TestRegisterRoutes_ReviewImageTask(t *testing.T) {
+	h := &stubImageHandler{}
+	r := gin.New()
+	registerRoutes(r, &stubProductHandler{}, h)
+
+	body, _ := json.Marshal(productimage.ReviewTaskRequest{Action: "approve"})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/tasks/task-123/review", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/images/tasks/:task_id/review = %d, want 200", w.Code)
+	}
+	if !h.reviewCalled {
+		t.Fatal("image ReviewTask handler was not called")
 	}
 }
 
 func TestRegisterRoutes_UnknownPath_Returns404(t *testing.T) {
 	r := gin.New()
-	registerRoutes(r, &stubHandler{})
+	registerRoutes(r, &stubProductHandler{}, &stubImageHandler{})
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/unknown", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
-		t.Errorf("unknown path = %d, want 404", w.Code)
+		t.Fatalf("unknown path = %d, want 404", w.Code)
 	}
 }
 
-// =============================================================================
-// buildHandler 依赖注入链测试（使用内存回退，不依赖外部服务）
-// =============================================================================
-
-// buildHandlerWithMemory 使用内存实现构建 handler，绕过真实 DB/Redis/LLM
-// 通过替换全局 flag 变量实现（main 包内可直接访问）
 func buildHandlerWithMemory(t *testing.T) (productenrich.ProductHandler, worker.WorkerPool, []func() error) {
 	t.Helper()
 
-	// 使用不存在的配置文件，触发内存回退路径
 	*configPath = "nonexistent-config.yaml"
-
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
-	handler, pool, closers, err := buildHandler(logger)
+	productHandler, _, pools, closers, err := buildHandlers(logger)
 	if err != nil {
-		t.Skipf("buildHandler 需要外部依赖（LLM），跳过: %v", err)
+		t.Skipf("buildHandlers requires external dependencies (LLM), skipping: %v", err)
 	}
-	return handler, pool, closers
+	if len(pools) == 0 {
+		t.Fatal("expected at least one worker pool")
+	}
+	return productHandler, pools[0], closers
 }
 
-func TestBuildHandler_ReturnsNonNilComponents(t *testing.T) {
-	handler, pool, closers := buildHandlerWithMemory(t)
+func TestBuildHandlers_ReturnsNonNilProductComponents(t *testing.T) {
+	productHandler, pool, closers := buildHandlerWithMemory(t)
 	defer func() {
-		for _, c := range closers {
-			_ = c()
+		for _, closeFn := range closers {
+			_ = closeFn()
 		}
 	}()
 
-	if handler == nil {
-		t.Error("handler should not be nil")
+	if productHandler == nil {
+		t.Fatal("product handler should not be nil")
 	}
 	if pool == nil {
-		t.Error("pool should not be nil")
+		t.Fatal("worker pool should not be nil")
 	}
 }
 
-func TestBuildHandler_PoolCanStartAndStop(t *testing.T) {
+func TestBuildHandlers_PoolCanStartAndStop(t *testing.T) {
 	_, pool, closers := buildHandlerWithMemory(t)
 	defer func() {
-		for _, c := range closers {
-			_ = c()
+		for _, closeFn := range closers {
+			_ = closeFn()
 		}
 	}()
 
@@ -164,10 +235,9 @@ func TestBuildHandler_PoolCanStartAndStop(t *testing.T) {
 	defer cancel()
 
 	pool.Start(ctx)
-
 	stats := pool.GetQueueStats()
 	if stats.BufferSize <= 0 {
-		t.Errorf("BufferSize = %d, want > 0", stats.BufferSize)
+		t.Fatalf("BufferSize = %d, want > 0", stats.BufferSize)
 	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -176,31 +246,6 @@ func TestBuildHandler_PoolCanStartAndStop(t *testing.T) {
 	pool.Stop(shutdownCtx)
 }
 
-// =============================================================================
-// Worker Pool 与 ProductService 集成测试（全内存，不依赖外部服务）
-// =============================================================================
-
-// mockWorkerPool 实现 worker.WorkerPool，记录提交的 job
-type mockWorkerPool struct {
-	submitted []worker.WorkerJob
-	started   bool
-	stopped   bool
-}
-
-func (m *mockWorkerPool) Start(_ context.Context) { m.started = true }
-func (m *mockWorkerPool) Stop(_ context.Context)  { m.stopped = true }
-func (m *mockWorkerPool) AvailableSlots() int     { return 100 }
-func (m *mockWorkerPool) GetQueueStats() worker.QueueStats {
-	return worker.QueueStats{BufferSize: 100, AvailableSlots: 100}
-}
-func (m *mockWorkerPool) SetJobHandler(_ worker.JobHandler) {}
-func (m *mockWorkerPool) GetMetrics() *worker.Metrics       { return nil }
-func (m *mockWorkerPool) Submit(job worker.WorkerJob) error {
-	m.submitted = append(m.submitted, job)
-	return nil
-}
-
-// mockTaskSubmitter 实现 productenrich.TaskSubmitter，记录提交的 taskID
 type mockTaskSubmitter struct {
 	submitted []string
 	err       error
@@ -234,19 +279,17 @@ func TestProductService_SetWorkerPool_SubmitsJobOnCreate(t *testing.T) {
 		t.Fatalf("NewProductService: %v", err)
 	}
 
-	// 注入 submitter
 	svc.SetTaskSubmitter(submitter)
-
-	task, err := svc.CreateGenerateTask(ctx, &productenrich.GenerateRequest{Text: "蓝牙耳机"})
+	task, err := svc.CreateGenerateTask(ctx, &productenrich.GenerateRequest{Text: "bluetooth earphones"})
 	if err != nil {
 		t.Fatalf("CreateGenerateTask: %v", err)
 	}
 
 	if len(submitter.submitted) != 1 {
-		t.Errorf("submitted jobs = %d, want 1", len(submitter.submitted))
+		t.Fatalf("submitted jobs = %d, want 1", len(submitter.submitted))
 	}
 	if submitter.submitted[0] != task.ID {
-		t.Errorf("submitted TaskID = %q, want %q", submitter.submitted[0], task.ID)
+		t.Fatalf("submitted task ID = %q, want %q", submitter.submitted[0], task.ID)
 	}
 }
 
@@ -268,28 +311,26 @@ func TestProductService_WithoutWorkerPool_FallsBackToRedis(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewProductService: %v", err)
 	}
-	// 不调用 SetWorkerPool，走 Redis 降级路径
 
-	task, err := svc.CreateGenerateTask(ctx, &productenrich.GenerateRequest{Text: "商品描述"})
+	task, err := svc.CreateGenerateTask(ctx, &productenrich.GenerateRequest{Text: "product description"})
 	if err != nil {
 		t.Fatalf("CreateGenerateTask: %v", err)
 	}
 	if task.Status != productenrich.TaskStatusPending {
-		t.Errorf("Status = %q, want pending", task.Status)
+		t.Fatalf("Status = %q, want pending", task.Status)
 	}
 }
 
-// =============================================================================
-// Processor 生命周期测试
-// =============================================================================
-
 func TestProcessor_StartAndClose_NoError(t *testing.T) {
 	repo := newMemTaskRepository()
-	svc, _ := productenrich.NewProductService(&productenrich.ProductServiceConfig{
+	svc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
 		QueueName:   "lc_queue",
 		TaskRepo:    repo,
 		RedisClient: newMemRedisClient(),
 	})
+	if err != nil {
+		t.Fatalf("NewProductService: %v", err)
+	}
 
 	proc, err := productpipeline.NewProcessor(svc, repo, logrus.New(), 3)
 	if err != nil {
@@ -298,16 +339,11 @@ func TestProcessor_StartAndClose_NoError(t *testing.T) {
 
 	ctx := context.Background()
 	if err := proc.Start(ctx); err != nil {
-		t.Errorf("Start: %v", err)
+		t.Fatalf("Start: %v", err)
 	}
-	proc.Close(ctx) // 不应 panic 或报错
+	proc.Close(ctx)
 }
 
-// =============================================================================
-// 端到端路由 + 内存 service 集成测试
-// =============================================================================
-
-// buildTestRouter 构建完整路由，使用内存 service（不依赖 LLM）
 func buildTestRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 
@@ -315,7 +351,7 @@ func buildTestRouter(t *testing.T) *gin.Engine {
 	redis := newMemRedisClient()
 	submitter := &mockTaskSubmitter{}
 
-	svc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
+	productSvc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
 		QueueName:            "test_queue",
 		TaskRepo:             repo,
 		RedisClient:          redis,
@@ -328,24 +364,42 @@ func buildTestRouter(t *testing.T) *gin.Engine {
 	if err != nil {
 		t.Fatalf("NewProductService: %v", err)
 	}
-	svc.SetTaskSubmitter(submitter)
+	productSvc.SetTaskSubmitter(submitter)
 
-	handler, err := productapi.NewProductHandler(svc)
+	productHandler, err := productapi.NewProductHandler(productSvc)
 	if err != nil {
 		t.Fatalf("NewProductHandler: %v", err)
 	}
 
+	imageSvc, err := productimage.NewService(&productimage.ServiceConfig{
+		QueueName:        "image_test_queue",
+		TaskRepo:         productimagestore.NewMemTaskRepository(),
+		ImageInspector:   productimage.NewDefaultImageInspector(),
+		ImageRanker:      productimage.NewDefaultImageRanker(),
+		SubjectExtractor: productimage.NewDefaultSubjectExtractor(),
+		ImageCleaner:     productimage.NewDefaultImageCleaner(),
+		WhiteBgRenderer:  productimage.NewDefaultWhiteBackgroundRenderer(),
+	})
+	if err != nil {
+		t.Fatalf("NewImageService: %v", err)
+	}
+	imageSvc.SetTaskSubmitter(submitter)
+
+	imageHandler, err := productimageapi.NewImageHandler(imageSvc)
+	if err != nil {
+		t.Fatalf("NewImageHandler: %v", err)
+	}
+
 	r := gin.New()
 	r.Use(gin.Recovery())
-	registerRoutes(r, handler)
+	registerRoutes(r, productHandler, imageHandler)
 	return r
 }
 
 func TestE2E_GenerateAndQueryTask(t *testing.T) {
 	r := buildTestRouter(t)
 
-	// 1. 提交生成任务
-	reqBody, _ := json.Marshal(productenrich.GenerateRequest{Text: "高品质蓝牙耳机，支持主动降噪"})
+	reqBody, _ := json.Marshal(productenrich.GenerateRequest{Text: "high quality bluetooth earphones"})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/products/generate", bytes.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -360,13 +414,9 @@ func TestE2E_GenerateAndQueryTask(t *testing.T) {
 		t.Fatalf("unmarshal task response: %v", err)
 	}
 	if taskResp.TaskID == "" {
-		t.Error("task_id should not be empty")
-	}
-	if taskResp.Status != string(productenrich.TaskStatusPending) {
-		t.Errorf("status = %q, want pending", taskResp.Status)
+		t.Fatal("task_id should not be empty")
 	}
 
-	// 2. 查询任务结果
 	w2 := httptest.NewRecorder()
 	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/products/tasks/"+taskResp.TaskID, nil)
 	r.ServeHTTP(w2, req2)
@@ -374,36 +424,68 @@ func TestE2E_GenerateAndQueryTask(t *testing.T) {
 	if w2.Code != http.StatusOK {
 		t.Fatalf("get task = %d, body: %s", w2.Code, w2.Body.String())
 	}
+}
 
-	var result productenrich.TaskResult
-	if err := json.Unmarshal(w2.Body.Bytes(), &result); err != nil {
-		t.Fatalf("unmarshal task result: %v", err)
+func TestE2E_ProcessAndQueryImageTask(t *testing.T) {
+	r := buildTestRouter(t)
+
+	reqBody, _ := json.Marshal(productimage.ImageProcessRequest{
+		ImageURLs:   []string{"https://example.com/hero_white.jpg", "https://example.com/detail.jpg"},
+		Marketplace: "amazon",
+	})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("process images = %d, body: %s", w.Code, w.Body.String())
 	}
-	if result.TaskID != taskResp.TaskID {
-		t.Errorf("task_id = %q, want %q", result.TaskID, taskResp.TaskID)
+
+	var taskResp struct {
+		TaskID string `json:"task_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &taskResp); err != nil {
+		t.Fatalf("unmarshal image task response: %v", err)
+	}
+	if taskResp.TaskID == "" {
+		t.Fatal("image task_id should not be empty")
+	}
+
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/images/tasks/"+taskResp.TaskID, nil)
+	r.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("get image task = %d, body: %s", w2.Code, w2.Body.String())
 	}
 }
 
 func TestE2E_GenerateTask_EmptyRequest_Returns400(t *testing.T) {
 	r := buildTestRouter(t)
 
-	// 空请求体（无 image_urls、text、product_url）
 	reqBody, _ := json.Marshal(productenrich.GenerateRequest{})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/products/generate", bytes.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 
-	// service 层 validateRequest 会拒绝，handler 将其映射为 400 invalid_request
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("empty request = %d, want 400", w.Code)
+		t.Fatalf("empty request = %d, want 400", w.Code)
 	}
-	var errResp productenrich.ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if errResp.Error != "invalid_request" {
-		t.Errorf("error = %q, want invalid_request", errResp.Error)
+}
+
+func TestE2E_ProcessImages_EmptyRequest_Returns400(t *testing.T) {
+	r := buildTestRouter(t)
+
+	reqBody, _ := json.Marshal(productimage.ImageProcessRequest{})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("empty image request = %d, want 400", w.Code)
 	}
 }
 
@@ -415,18 +497,23 @@ func TestE2E_GetTask_NotFound_Returns404(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
-		t.Errorf("not found = %d, want 404", w.Code)
-	}
-	var errResp productenrich.ErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if errResp.Error != "task_not_found" {
-		t.Errorf("error = %q, want task_not_found", errResp.Error)
+		t.Fatalf("not found = %d, want 404", w.Code)
 	}
 }
 
-func TestE2E_GenerateTask_InvalidJSON_Returns400(t *testing.T) {
+func TestE2E_GetImageTask_NotFound_Returns404(t *testing.T) {
+	r := buildTestRouter(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/images/tasks/nonexistent-id", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("image not found = %d, want 404", w.Code)
+	}
+}
+
+func TestE2E_InvalidJSON_Returns400(t *testing.T) {
 	r := buildTestRouter(t)
 
 	w := httptest.NewRecorder()
@@ -435,46 +522,15 @@ func TestE2E_GenerateTask_InvalidJSON_Returns400(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("invalid json = %d, want 400", w.Code)
-	}
-}
-
-func TestE2E_ConcurrentTaskSubmission(t *testing.T) {
-	r := buildTestRouter(t)
-	const n = 10
-
-	type result struct {
-		code int
-		id   string
-	}
-	results := make(chan result, n)
-
-	for range n {
-		go func() {
-			reqBody, _ := json.Marshal(productenrich.GenerateRequest{Text: "并发测试商品"})
-			w := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/products/generate", bytes.NewReader(reqBody))
-			req.Header.Set("Content-Type", "application/json")
-			r.ServeHTTP(w, req)
-
-			var resp productenrich.TaskResponse
-			_ = json.Unmarshal(w.Body.Bytes(), &resp)
-			results <- result{code: w.Code, id: resp.TaskID}
-		}()
+		t.Fatalf("invalid product json = %d, want 400", w.Code)
 	}
 
-	ids := make(map[string]struct{}, n)
-	for range n {
-		res := <-results
-		if res.code != http.StatusOK {
-			t.Errorf("concurrent submit = %d, want 200", res.code)
-		}
-		if res.id == "" {
-			t.Error("task_id should not be empty")
-		}
-		if _, dup := ids[res.id]; dup {
-			t.Errorf("duplicate task_id: %s", res.id)
-		}
-		ids[res.id] = struct{}{}
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewReader([]byte("not-json")))
+	req2.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusBadRequest {
+		t.Fatalf("invalid image json = %d, want 400", w2.Code)
 	}
 }

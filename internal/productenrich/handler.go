@@ -1,16 +1,18 @@
 package productenrich
 
-import "context"
+import (
+	"context"
 
-import "github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin"
+)
 
-// ProductHandlerService is the service contract required by the HTTP handler layer.
+// ProductHandlerService 是 HTTP handler 层需要的服务契约。
 type ProductHandlerService interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
 }
 
-// ProductHandler defines the HTTP endpoints exposed by productenrich.
+// ProductHandler 定义 productenrich 的 HTTP 端点。
 type ProductHandler interface {
 	GenerateProduct(c *gin.Context)
 	GetTaskResult(c *gin.Context)

@@ -51,6 +51,14 @@ func TestConfigBuild(t *testing.T) {
 	viper.Set("browser.randomConfig.presetName", "mac_high_end")
 	viper.Set("amazon.enabled", true)
 	viper.Set("amazon.dataFreshnessDays", 10)
+	viper.Set("productimage.workDir", "./tmp/images")
+	viper.Set("productimage.segmenter.enabled", true)
+	viper.Set("productimage.segmenter.endpoint", "http://segmenter.local")
+	viper.Set("productimage.whiteBackground.timeout", 90)
+	viper.Set("productimage.publisher.outputDir", "./published")
+	viper.Set("productimage.publisher.publicBase", "https://cdn.example.com/productimage")
+	viper.Set("productimage.lifecycle.cleanupTemporaryFiles", true)
+	viper.Set("productimage.lifecycle.reuseExistingAssets", true)
 
 	cfg := buildConfig()
 
@@ -61,6 +69,14 @@ func TestConfigBuild(t *testing.T) {
 	assert.Equal(t, "mac_high_end", cfg.Browser.RandomConfig.PresetName)
 	assert.True(t, cfg.Amazon.Enabled)
 	assert.Equal(t, 10, cfg.Amazon.DataFreshnessDays)
+	assert.Equal(t, "./tmp/images", cfg.ProductImage.WorkDir)
+	assert.True(t, cfg.ProductImage.Segmenter.Enabled)
+	assert.Equal(t, "http://segmenter.local", cfg.ProductImage.Segmenter.Endpoint)
+	assert.Equal(t, 90, cfg.ProductImage.WhiteBackground.Timeout)
+	assert.Equal(t, "./published", cfg.ProductImage.Publisher.OutputDir)
+	assert.Equal(t, "https://cdn.example.com/productimage", cfg.ProductImage.Publisher.PublicBase)
+	assert.True(t, cfg.ProductImage.Lifecycle.CleanupTemporaryFiles)
+	assert.True(t, cfg.ProductImage.Lifecycle.ReuseExistingAssets)
 }
 
 // TestConfigValidation 测试配置验证

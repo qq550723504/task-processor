@@ -1,4 +1,4 @@
-﻿// Package config 提供配置管理功能
+// Package config 提供配置管理功能
 package config
 
 import (
@@ -13,21 +13,22 @@ import (
 
 // Config 主配置结构体
 type Config struct {
-	Logging    LoggingConfig     `yaml:"logging"`
-	Processor  ProcessorConfig   `yaml:"processor"`
-	Worker     WorkerConfig      `yaml:"worker"`
-	OpenAI     OpenAIConfig      `yaml:"openai"`
-	Management ManagementConfig  `yaml:"management"`
-	Browser    BrowserConfig     `yaml:"browser"`
-	Amazon     AmazonConfig      `yaml:"amazon"`
-	RabbitMQ   *RabbitMQConfig   `yaml:"rabbitmq"`
-	Updater    UpdaterConfig     `yaml:"updater"`
-	Platforms  PlatformsConfig   `yaml:"platforms"`
-	Watermark  *watermark.Config `yaml:"watermark"`
-	Database   *DatabaseConfig   `yaml:"database"`
-	Redis      *RedisConfig      `yaml:"redis"`
-	Prompts    PromptsConfig     `yaml:"prompts"`
-	Debug      DebugConfig       `yaml:"debug"`
+	Logging      LoggingConfig      `yaml:"logging"`
+	Processor    ProcessorConfig    `yaml:"processor"`
+	Worker       WorkerConfig       `yaml:"worker"`
+	OpenAI       OpenAIConfig       `yaml:"openai"`
+	Management   ManagementConfig   `yaml:"management"`
+	Browser      BrowserConfig      `yaml:"browser"`
+	Amazon       AmazonConfig       `yaml:"amazon"`
+	RabbitMQ     *RabbitMQConfig    `yaml:"rabbitmq"`
+	Updater      UpdaterConfig      `yaml:"updater"`
+	Platforms    PlatformsConfig    `yaml:"platforms"`
+	Watermark    *watermark.Config  `yaml:"watermark"`
+	ProductImage ProductImageConfig `yaml:"productimage"`
+	Database     *DatabaseConfig    `yaml:"database"`
+	Redis        *RedisConfig       `yaml:"redis"`
+	Prompts      PromptsConfig      `yaml:"prompts"`
+	Debug        DebugConfig        `yaml:"debug"`
 }
 
 // DebugConfig 调试功能配置，默认全部关闭，不影响生产流程

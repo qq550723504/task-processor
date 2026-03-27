@@ -30,12 +30,12 @@ func (v *variantGenerator) GenerateSpecs(ctx context.Context, analysis *producte
 
 	logger.GetGlobalLogger("productenrich/variant.go").Info("generating product specifications")
 
-	prompt := "Extract product specifications from the following information:\n\n"
+	prompt := "从以下信息中提取产品规格：\n\n"
 	if analysis.Representation != nil {
 		repJSON, _ := json.Marshal(analysis.Representation)
-		prompt += fmt.Sprintf("Product: %s\n\n", string(repJSON))
+		prompt += fmt.Sprintf("产品：%s\n\n", string(repJSON))
 	}
-	prompt += `Generate specifications in JSON format:
+	prompt += `以 JSON 格式生成规格：
 {
   "dimensions": {
     "length": 0.0,
@@ -67,8 +67,8 @@ func (v *variantGenerator) GenerateSpecs(ctx context.Context, analysis *producte
   }
 }
 
-If information is not available, omit the field or use null.
-Only return the JSON object, no additional text.`
+如果信息不可用，省略该字段或使用 null。
+只返回 JSON 对象，不要额外文本。`
 
 	fastClient, err := v.llmManager.GetClient("fast")
 	if err != nil {
@@ -96,17 +96,17 @@ func (v *variantGenerator) GenerateVariants(ctx context.Context, analysis *produ
 
 	logger.GetGlobalLogger("productenrich/variant.go").Info("generating product variants")
 
-	prompt := "Identify product variants (SKUs) based on the following information:\n\n"
+	prompt := "根据以下信息识别产品变体（SKU）：\n\n"
 	if analysis.Representation != nil {
 		repJSON, _ := json.Marshal(analysis.Representation)
-		prompt += fmt.Sprintf("Product: %s\n\n", string(repJSON))
+		prompt += fmt.Sprintf("产品：%s\n\n", string(repJSON))
 	}
 	if analysis.ImageAttributes != nil {
 		imageJSON, _ := json.Marshal(analysis.ImageAttributes)
-		prompt += fmt.Sprintf("Image attributes: %s\n\n", string(imageJSON))
+		prompt += fmt.Sprintf("图片属性：%s\n\n", string(imageJSON))
 	}
 
-	prompt += `Generate variants in JSON array format:
+	prompt += `以 JSON 数组格式生成变体：
 [
   {
     "sku": "PROD-001-RED-M",
@@ -125,14 +125,14 @@ func (v *variantGenerator) GenerateVariants(ctx context.Context, analysis *produ
   }
 ]
 
-Rules:
-1. Generate variants based on color, size, style, or other distinguishing attributes
-2. If no variants exist, return a single default variant
-3. SKU format: PRODUCT-VARIANT-ATTRIBUTES
-4. Set one variant as default (is_default: true)
-5. Estimate reasonable prices in CNY (Chinese Yuan)
+规则：
+1. 基于颜色、尺寸、款式或其他区分属性生成变体
+2. 如果没有变体，返回一个默认变体
+3. SKU 格式：产品 - 变体 - 属性
+4. 设置一个变体为默认 (is_default: true)
+5. 以 CNY（人民币）估算合理价格
 
-Only return the JSON array, no additional text.`
+只返回 JSON 数组，不要额外文本。`
 
 	defaultClient := v.llmManager.GetDefaultClient()
 	response, err := defaultClient.Generate(ctx, prompt)
@@ -173,11 +173,11 @@ func (v *variantGenerator) ExtractDimensions(ctx context.Context, text string) (
 	}
 
 	logger.GetGlobalLogger("productenrich/variant.go").Info("extracting dimensions")
-	prompt := fmt.Sprintf(`Extract product dimensions from the following text:
+	prompt := fmt.Sprintf(`从以下文本中提取产品尺寸：
 
 %s
 
-Return in JSON format:
+以 JSON 格式返回：
 {
   "length": 0.0,
   "width": 0.0,
@@ -185,8 +185,8 @@ Return in JSON format:
   "unit": "cm"
 }
 
-If dimensions are not found, return null.
-Only return the JSON object, no additional text.`, text)
+如果未找到尺寸，返回 null。
+只返回 JSON 对象，不要额外文本。`, text)
 
 	var dimensions productenrich.Dimensions
 	if err := v.extractWithLLM(ctx, prompt, &dimensions); err != nil {
@@ -201,18 +201,18 @@ func (v *variantGenerator) ExtractWeight(ctx context.Context, text string) (*pro
 	}
 
 	logger.GetGlobalLogger("productenrich/variant.go").Info("extracting weight")
-	prompt := fmt.Sprintf(`Extract product weight from the following text:
+	prompt := fmt.Sprintf(`从以下文本中提取产品重量：
 
 %s
 
-Return in JSON format:
+以 JSON 格式返回：
 {
   "value": 0.0,
   "unit": "kg"
 }
 
-If weight is not found, return null.
-Only return the JSON object, no additional text.`, text)
+如果未找到重量，返回 null。
+只返回 JSON 对象，不要额外文本。`, text)
 
 	var weight productenrich.Weight
 	if err := v.extractWithLLM(ctx, prompt, &weight); err != nil {

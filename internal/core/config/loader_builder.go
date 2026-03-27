@@ -75,6 +75,31 @@ func BuildConfig() *Config {
 			DataFreshnessDays: viper.GetInt("amazon.dataFreshnessDays"),
 			CrawlTimeout:      viper.GetInt("amazon.crawlTimeout"),
 		},
+		ProductImage: ProductImageConfig{
+			WorkDir: viper.GetString("productimage.workDir"),
+			Segmenter: ProductImageModelConfig{
+				Enabled:  viper.GetBool("productimage.segmenter.enabled"),
+				Endpoint: viper.GetString("productimage.segmenter.endpoint"),
+				APIKey:   viper.GetString("productimage.segmenter.apiKey"),
+				Timeout:  viper.GetInt("productimage.segmenter.timeout"),
+			},
+			WhiteBackground: ProductImageModelConfig{
+				Enabled:  viper.GetBool("productimage.whiteBackground.enabled"),
+				Endpoint: viper.GetString("productimage.whiteBackground.endpoint"),
+				APIKey:   viper.GetString("productimage.whiteBackground.apiKey"),
+				Timeout:  viper.GetInt("productimage.whiteBackground.timeout"),
+			},
+			Publisher: ProductImagePublisherConfig{
+				Enabled:    viper.GetBool("productimage.publisher.enabled"),
+				Provider:   viper.GetString("productimage.publisher.provider"),
+				OutputDir:  viper.GetString("productimage.publisher.outputDir"),
+				PublicBase: viper.GetString("productimage.publisher.publicBase"),
+			},
+			Lifecycle: ProductImageLifecycleConfig{
+				CleanupTemporaryFiles: viper.GetBool("productimage.lifecycle.cleanupTemporaryFiles"),
+				ReuseExistingAssets:   viper.GetBool("productimage.lifecycle.reuseExistingAssets"),
+			},
+		},
 		Updater: UpdaterConfig{
 			Enabled:            viper.GetBool("updater.enabled"),
 			UpdateURL:          viper.GetString("updater.updateURL"),

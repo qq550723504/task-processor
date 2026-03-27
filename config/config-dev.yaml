@@ -35,9 +35,9 @@ worker:
 
 # OpenAI配置
 openai:
-  apiKey: "sk-yJ3RQprPLyBcoqEkeBNimE6Dhj86CAjY2uHAc5yqLZd1KHa3"
+  apiKey: "sk-DDMXQY4RWdoM6UVdBrf77mFCIttKAmJT7uGFneKiZ3NBTkoJ"
   model: "gemini-2.5-flash"
-  baseURL: "https://ai.linkcloudai.com/v1"
+  baseURL: "https://api.bltcy.ai/v1"
   timeout: 300  # API调用超时5分钟
 
   # 各阶段命名客户端（key 与代码中 GetClient(name) 对应）
@@ -49,7 +49,7 @@ openai:
       timeout: 120
     # 文本属性提取 / 规格生成（understanding.go, variant.go）
     fast:
-      model: "gemini-2.5-flash"
+      model: "gemini-2.5-flash-lite"
       timeout: 60
     # 质量评分阶段（llm_scorer.go）
     scorer:
@@ -324,3 +324,24 @@ watermark:
     max_image_size: 4096  # 最大图片尺寸（像素）
     quality_score: 0.8  # 质量评分阈值
 
+
+productimage:
+  workDir: "./tmp/productimage"
+  segmenter:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 45
+  whiteBackground:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 45
+  publisher:
+    enabled: true
+    provider: "local"
+    outputDir: "./tmp/productimage-published"
+    publicBase: ""
+  lifecycle:
+    cleanupTemporaryFiles: true
+    reuseExistingAssets: true

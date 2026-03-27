@@ -12,6 +12,8 @@ import (
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productenrich/store"
+	productimage "task-processor/internal/productimage"
+	productimagestore "task-processor/internal/productimage/store"
 )
 
 // newLLMManager 创建 OpenAI LLMManager（委托给 productenrich 包）。
@@ -61,6 +63,25 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	}
 
 	repo := store.NewTaskRepository(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return repo, closer, nil
+}
+
+func newDBImageTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (productimage.TaskRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("鏁版嵁搴撹繛鎺ュけ璐?(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("productimage 鏁版嵁搴撳凡杩炴帴: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := db.AutoMigrate(&productimage.Task{}); err != nil {
+		return nil, nil, fmt.Errorf("productimage 鏁版嵁搴撹縼绉诲け璐? %w", err)
+	}
+
+	repo := productimagestore.NewTaskRepository(db)
 	closer := func() error { return database.CloseDatabase(db) }
 	return repo, closer, nil
 }

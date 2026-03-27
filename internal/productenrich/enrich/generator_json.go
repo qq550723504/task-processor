@@ -69,37 +69,37 @@ func (g *jsonGenerator) generateWithLLM(ctx context.Context, analysis *producten
 func (g *jsonGenerator) buildPrompt(analysis *productenrich.ProductAnalysis) string {
 	var sb strings.Builder
 
-	sb.WriteString("You are an e-commerce product data expert. Based on the following product analysis, generate a complete product listing in JSON format.\n\n")
+	sb.WriteString("你是一位电商产品数据专家。根据以下产品分析，生成完整的产品列表 JSON 格式。\n\n")
 
 	if analysis.Representation != nil {
 		repJSON, _ := json.Marshal(analysis.Representation)
-		sb.WriteString(fmt.Sprintf("Product analysis:\n%s\n\n", string(repJSON)))
+		sb.WriteString(fmt.Sprintf("产品分析：\n%s\n\n", string(repJSON)))
 	}
 	if analysis.TextAttributes != nil {
 		textJSON, _ := json.Marshal(analysis.TextAttributes)
-		sb.WriteString(fmt.Sprintf("Text attributes:\n%s\n\n", string(textJSON)))
+		sb.WriteString(fmt.Sprintf("文本属性：\n%s\n\n", string(textJSON)))
 	}
 	if analysis.ImageAttributes != nil {
 		imgJSON, _ := json.Marshal(analysis.ImageAttributes)
-		sb.WriteString(fmt.Sprintf("Image attributes:\n%s\n\n", string(imgJSON)))
+		sb.WriteString(fmt.Sprintf("图片属性：\n%s\n\n", string(imgJSON)))
 	}
 
-	sb.WriteString(`Generate the product JSON with these fields:
+	sb.WriteString(`生成包含以下字段的产品 JSON：
 {
-  "title": "concise, SEO-friendly product title (max 80 chars)",
-  "category": ["primary category", "sub category"],
-  "attributes": {"key": "value"},
-  "selling_points": ["point1", "point2", "point3"],
-  "seo_keywords": ["keyword1", "keyword2"],
-  "description": "detailed product description (100-300 chars)"
+  "title": "简洁、SEO 友好的产品标题（最多 80 个字符）",
+  "category": ["主类别", "子类别"],
+  "attributes": {"键": "值"},
+  "selling_points": ["卖点 1", "卖点 2", "卖点 3"],
+  "seo_keywords": ["关键词 1", "关键词 2"],
+  "description": "详细产品描述（100-300 个字符）"
 }
 
-Rules:
-- title must be specific and descriptive
-- category should reflect the product hierarchy
-- selling_points should highlight key benefits (3-5 points)
-- seo_keywords should include product type, material, use case
-- Only return the JSON object, no additional text.`)
+规则：
+- title 必须具体且具有描述性
+- category 应反映产品层次结构
+- selling_points 应突出关键优势（3-5 点）
+- seo_keywords 应包含产品类型、材质、使用场景
+- 只返回 JSON 对象，不要额外文本。`)
 
 	return sb.String()
 }

@@ -127,6 +127,27 @@ func NewDefaultConfig() *Config {
 				DefaultCondition:       "New",
 			},
 		},
+		ProductImage: ProductImageConfig{
+			WorkDir: "./tmp/productimage",
+			Segmenter: ProductImageModelConfig{
+				Enabled: false,
+				Timeout: 45,
+			},
+			WhiteBackground: ProductImageModelConfig{
+				Enabled: false,
+				Timeout: 45,
+			},
+			Publisher: ProductImagePublisherConfig{
+				Enabled:    true,
+				Provider:   "local",
+				OutputDir:  "./tmp/productimage-published",
+				PublicBase: "",
+			},
+			Lifecycle: ProductImageLifecycleConfig{
+				CleanupTemporaryFiles: true,
+				ReuseExistingAssets:   true,
+			},
+		},
 		Updater: UpdaterConfig{
 			Enabled:            false,
 			UpdateURL:          "https://auto-update-1303159911.cos.ap-shanghai.myqcloud.com/task-processor/version.json",
@@ -262,6 +283,21 @@ func applyDefaults(cfg *Config) {
 	}
 	if !cfg.Amazon.Enabled && cfg.Amazon.DataFreshnessDays == 0 {
 		cfg.Amazon = defaultCfg.Amazon
+	}
+	if cfg.ProductImage.WorkDir == "" {
+		cfg.ProductImage.WorkDir = defaultCfg.ProductImage.WorkDir
+	}
+	if cfg.ProductImage.Segmenter.Timeout == 0 {
+		cfg.ProductImage.Segmenter.Timeout = defaultCfg.ProductImage.Segmenter.Timeout
+	}
+	if cfg.ProductImage.WhiteBackground.Timeout == 0 {
+		cfg.ProductImage.WhiteBackground.Timeout = defaultCfg.ProductImage.WhiteBackground.Timeout
+	}
+	if cfg.ProductImage.Publisher.Provider == "" {
+		cfg.ProductImage.Publisher.Provider = defaultCfg.ProductImage.Publisher.Provider
+	}
+	if cfg.ProductImage.Publisher.OutputDir == "" {
+		cfg.ProductImage.Publisher.OutputDir = defaultCfg.ProductImage.Publisher.OutputDir
 	}
 	if cfg.Updater.UpdateURL == "" {
 		cfg.Updater = defaultCfg.Updater

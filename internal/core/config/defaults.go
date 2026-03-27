@@ -40,8 +40,30 @@ func setDefaults() {
 	// 将默认配置传递给各个模块的默认值设置函数
 	setBrowserDefaults(defaults)
 	setAmazonDefaults(defaults)
+	setProductImageDefaults(defaults)
 	setUpdaterDefaults(defaults)
 	setPlatformDefaults(defaults)
+}
+
+// setProductImageDefaults 设置 productimage 默认配置
+func setProductImageDefaults(defaults *Config) {
+	pi := defaults.ProductImage
+
+	viper.SetDefault("productimage.workDir", pi.WorkDir)
+	viper.SetDefault("productimage.segmenter.enabled", pi.Segmenter.Enabled)
+	viper.SetDefault("productimage.segmenter.endpoint", pi.Segmenter.Endpoint)
+	viper.SetDefault("productimage.segmenter.apiKey", pi.Segmenter.APIKey)
+	viper.SetDefault("productimage.segmenter.timeout", pi.Segmenter.Timeout)
+	viper.SetDefault("productimage.whiteBackground.enabled", pi.WhiteBackground.Enabled)
+	viper.SetDefault("productimage.whiteBackground.endpoint", pi.WhiteBackground.Endpoint)
+	viper.SetDefault("productimage.whiteBackground.apiKey", pi.WhiteBackground.APIKey)
+	viper.SetDefault("productimage.whiteBackground.timeout", pi.WhiteBackground.Timeout)
+	viper.SetDefault("productimage.publisher.enabled", pi.Publisher.Enabled)
+	viper.SetDefault("productimage.publisher.provider", pi.Publisher.Provider)
+	viper.SetDefault("productimage.publisher.outputDir", pi.Publisher.OutputDir)
+	viper.SetDefault("productimage.publisher.publicBase", pi.Publisher.PublicBase)
+	viper.SetDefault("productimage.lifecycle.cleanupTemporaryFiles", pi.Lifecycle.CleanupTemporaryFiles)
+	viper.SetDefault("productimage.lifecycle.reuseExistingAssets", pi.Lifecycle.ReuseExistingAssets)
 }
 
 // setBrowserDefaults 设置浏览器默认配置

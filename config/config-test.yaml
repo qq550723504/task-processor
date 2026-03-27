@@ -254,3 +254,24 @@ updater:
   checkInterval: 300  # 检查间隔（秒），默认5分钟
   insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）
 
+
+productimage:
+  workDir: "./tmp/productimage-test"
+  segmenter:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 45
+  whiteBackground:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 45
+  publisher:
+    enabled: false
+    provider: "local"
+    outputDir: "./tmp/productimage-published-test"
+    publicBase: ""
+  lifecycle:
+    cleanupTemporaryFiles: true
+    reuseExistingAssets: true

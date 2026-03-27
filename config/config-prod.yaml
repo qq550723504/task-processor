@@ -243,3 +243,24 @@ database:
   max_connections: 10
   max_idle_connections: 5
   connection_max_lifetime: "1h"
+
+productimage:
+  workDir: "./tmp/productimage"
+  segmenter:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 45
+  whiteBackground:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 45
+  publisher:
+    enabled: true
+    provider: "local"
+    outputDir: "./tmp/productimage-published"
+    publicBase: ""
+  lifecycle:
+    cleanupTemporaryFiles: true
+    reuseExistingAssets: true

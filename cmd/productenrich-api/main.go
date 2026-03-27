@@ -1,4 +1,3 @@
-// Package main 提供商品信息增强（productenrich）HTTP API 服务入口
 package main
 
 import (
@@ -8,8 +7,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
@@ -19,16 +23,17 @@ import (
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	productpipeline "task-processor/internal/productenrich/pipeline"
 	"task-processor/internal/productenrich/store"
+	"task-processor/internal/productimage"
+	productimageapi "task-processor/internal/productimage/api"
+	productimagepipeline "task-processor/internal/productimage/pipeline"
+	productimagestore "task-processor/internal/productimage/store"
 	"task-processor/internal/prompt"
-
-	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 )
 
 var (
-	configPath = flag.String("config", "config/config-dev.yaml", "配置文件路径")
-	logLevel   = flag.String("log-level", "info", "日志级别")
-	port       = flag.Int("port", 8085, "API 服务端口")
+	configPath = flag.String("config", "config/config-dev.yaml", "config file path")
+	logLevel   = flag.String("log-level", "info", "log level")
+	port       = flag.Int("port", 8085, "API service port")
 )
 
 var (
@@ -40,30 +45,32 @@ func main() {
 	flag.Parse()
 
 	logger := appenv.SetupLoggerWithLevel(*logLevel)
-
 	appenv.PrintVersionInfo(logger, appenv.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	})
 
-	logger.Info("🚀 启动商品信息增强 API 服务...")
-	logger.Infof("📋 配置文件路径: %s", *configPath)
-	logger.Infof("🌐 API 端口: %d", *port)
+	logger.Info("starting productenrich API service")
+	logger.Infof("config path: %s", *configPath)
+	logger.Infof("API port: %d", *port)
 
 	if err := run(logger); err != nil {
-		logger.Fatalf("❌ 服务启动失败: %v", err)
+		logger.Fatalf("service startup failed: %v", err)
 	}
 }
 
 func run(logger *logrus.Logger) error {
-	handler, pool, closers, err := buildHandler(logger)
+	productHandler, imageHandler, pools, closers, err := buildHandlers(logger)
 	if err != nil {
-		return fmt.Errorf("构建 handler 失败: %w", err)
+		return fmt.Errorf("build handlers: %w", err)
 	}
 	defer func() {
-		for _, close := range closers {
-			if err := close(); err != nil {
-				logger.Warnf("关闭资源失败: %v", err)
+		for _, closeFn := range closers {
+			if closeFn == nil {
+				continue
+			}
+			if closeErr := closeFn(); closeErr != nil {
+				logger.Warnf("close resource failed: %v", closeErr)
 			}
 		}
 	}()
@@ -71,13 +78,14 @@ func run(logger *logrus.Logger) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 启动 Worker Pool
-	pool.Start(ctx)
-	logger.Info("✅ Worker Pool 已启动")
+	for _, pool := range pools {
+		pool.Start(ctx)
+	}
+	logger.Infof("worker pools started: %d", len(pools))
 
 	router := gin.New()
 	router.Use(gin.Recovery())
-	registerRoutes(router, handler)
+	registerRoutes(router, productHandler, imageHandler)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", *port),
@@ -85,77 +93,73 @@ func run(logger *logrus.Logger) error {
 	}
 
 	go func() {
-		logger.Infof("✅ 商品信息增强 API 服务已启动，监听端口 %d", *port)
-		logger.Info("📊 API 端点:")
-		logger.Info("   - POST /api/v1/products/generate       - 提交商品生成任务")
-		logger.Info("   - GET  /api/v1/products/tasks/:task_id - 查询任务结果")
-		logger.Info("   - GET  /health                         - 健康检查")
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatalf("❌ HTTP 服务异常退出: %v", err)
+		logger.Infof("API service listening on port %d", *port)
+		logger.Info("endpoints:")
+		logger.Info("  - POST /api/v1/products/generate")
+		logger.Info("  - GET  /api/v1/products/tasks/:task_id")
+		logger.Info("  - POST /api/v1/images/process")
+		logger.Info("  - GET  /api/v1/images/tasks/:task_id")
+		logger.Info("  - POST /api/v1/images/tasks/:task_id/review")
+		logger.Info("  - GET  /health")
+		if listenErr := srv.ListenAndServe(); listenErr != nil && listenErr != http.ErrServerClosed {
+			logger.Fatalf("HTTP service exited unexpectedly: %v", listenErr)
 		}
 	}()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	sig := <-sigChan
-	logger.Infof("收到信号: %v，开始优雅关闭...", sig)
+	logger.Infof("received signal %v, shutting down", sig)
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
-	// 先停止接收新请求
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("优雅关闭失败: %w", err)
+		return fmt.Errorf("shutdown HTTP server: %w", err)
 	}
 
-	// 再停止 Worker Pool，等待在途任务完成
 	cancel()
-	pool.Stop(shutdownCtx)
-	logger.Info("✅ 服务已优雅关闭")
+	for _, pool := range pools {
+		pool.Stop(shutdownCtx)
+	}
+	logger.Info("service shut down gracefully")
 	return nil
 }
 
-// buildHandler 组装 productenrich 依赖并返回 ProductHandler、WorkerPool 和资源关闭函数列表。
-// 优先使用配置文件中的 database/redis 配置；若未配置则回退到内存实现。
-func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.WorkerPool, []func() error, error) {
+func buildHandlers(logger *logrus.Logger) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {
 	cfg := config.LoadConfigFromFile(*configPath)
 	var closers []func() error
+	imageWorkDir := resolveImageWorkDir(cfg)
 
-	// 初始化 Prompt 全局注册表
 	promptsDir := cfg.Prompts.Dir
 	if promptsDir == "" {
 		promptsDir = "./prompts"
 	}
 	if err := prompt.InitGlobal(context.Background(), promptsDir, cfg.Prompts.HotReload, logger.WithField("component", "prompt")); err != nil {
-		logger.Warnf("⚠️  Prompt 注册表初始化失败，将使用硬编码 fallback: %v", err)
+		logger.Warnf("prompt registry init failed, using fallback prompts: %v", err)
 	}
 
-	// LLM Manager（接入 OpenAI）
 	llmMgr, err := newLLMManager(cfg.OpenAI)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("创建 LLMManager 失败: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("create llm manager: %w", err)
 	}
-	logger.Info("✅ OpenAI LLMManager 已初始化")
 
-	// 基于 LLMManager 构建各 LLM 依赖组件
 	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("创建 ProductUnderstanding 失败: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("create product understanding: %w", err)
 	}
 
 	jsonGenerator, err := productenrichenrich.NewJSONGenerator(logger, llmMgr)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("创建 JSONGenerator 失败: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("create JSON generator: %w", err)
 	}
 
 	variantGenerator, err := productenrichenrich.NewVariantGenerator(llmMgr)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("创建 VariantGenerator 失败: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("create variant generator: %w", err)
 	}
 
-	llmScorer := productenrich.NewLLMScorer(&productenrich.LLMScorerConfig{
-		LLMManager: llmMgr,
-	})
+	llmScorer := productenrich.NewLLMScorer(&productenrich.LLMScorerConfig{LLMManager: llmMgr})
 	qualityScorer := productenrich.NewQualityScorer(&productenrich.QualityScorerConfig{
 		ImageWeight:   0.4,
 		TextWeight:    0.3,
@@ -163,57 +167,51 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 		LLMScorer:     llmScorer,
 		EnableLLM:     true,
 	})
-	strategySelector := productenrich.NewStrategySelector(nil) // 使用默认阈值
+	strategySelector := productenrich.NewStrategySelector(nil)
 	resultValidator := productenrich.NewResultValidator()
 	enhancementSuggester := productenrich.NewEnhancementSuggester()
 	inputValidator := productenrich.NewInputValidator(&productenrich.InputValidatorConfig{
 		HTTPTimeout: 5 * time.Second,
 		MaxWorkers:  10,
 	})
-	logger.Info("✅ LLM 相关组件已初始化")
 
-	// TaskRepository
 	var taskRepo productenrich.TaskRepository
 	if cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBTaskRepository(cfg.Database, logger)
-		if err != nil {
-			return nil, nil, closers, fmt.Errorf("创建 TaskRepository 失败: %w", err)
+		repo, closer, repoErr := newDBTaskRepository(cfg.Database, logger)
+		if repoErr != nil {
+			return nil, nil, nil, closers, fmt.Errorf("create task repository: %w", repoErr)
 		}
 		taskRepo = repo
 		closers = append(closers, closer)
 	} else {
-		logger.Warn("⚠️  未配置 database，TaskRepository 使用内存实现（重启后数据丢失）")
+		logger.Warn("database not configured, using in-memory productenrich repository")
 		taskRepo = store.NewMemTaskRepository()
 	}
 
-	// RedisClient（仅作降级备用，主路径走 WorkerPool）
 	var redisC productenrich.RedisClient
 	if cfg.Redis != nil && cfg.Redis.Host != "" {
-		rc, err := newRedisClient(cfg.Redis, logger)
-		if err != nil {
-			return nil, nil, closers, fmt.Errorf("创建 RedisClient 失败: %w", err)
+		rc, redisErr := newRedisClient(cfg.Redis, logger)
+		if redisErr != nil {
+			return nil, nil, nil, closers, fmt.Errorf("create Redis client: %w", redisErr)
 		}
 		redisC = rc
 	} else {
-		logger.Warn("⚠️  未配置 redis，RedisClient 使用内存实现")
+		logger.Warn("redis not configured, using in-memory productenrich queue fallback")
 		redisC = productenrich.NewMemRedisClient()
 	}
 
-	// WebScraper + InputParser（接入 1688 爬虫）
 	webScraper := newWebScraper(cfg)
 	inputParser, err := productenrichenrich.NewInputParser(logger, &productenrich.InputParserConfig{}, webScraper)
 	if err != nil {
-		return nil, nil, closers, fmt.Errorf("创建 InputParser 失败: %w", err)
+		return nil, nil, nil, closers, fmt.Errorf("create input parser: %w", err)
 	}
-	logger.Info("✅ InputParser（1688爬虫）已初始化")
 
-	// 先创建 service（不含 Pool，后续注入）
-	strictCapabilities := productenrich.StrictProductServiceCapabilities()
-	svc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
+	productCapabilities := productenrich.StrictProductServiceCapabilities()
+	productSvc, err := productenrich.NewProductService(&productenrich.ProductServiceConfig{
 		QueueName:            "product_enrich_tasks",
 		TaskRepo:             taskRepo,
 		RedisClient:          redisC,
-		Capabilities:         &strictCapabilities,
+		Capabilities:         &productCapabilities,
 		InputParser:          inputParser,
 		ProductUnderstanding: productUnderstanding,
 		JSONGenerator:        jsonGenerator,
@@ -225,43 +223,207 @@ func buildHandler(logger *logrus.Logger) (productenrich.ProductHandler, worker.W
 		InputValidator:       inputValidator,
 	})
 	if err != nil {
-		return nil, nil, closers, fmt.Errorf("创建 ProductService 失败: %w", err)
+		return nil, nil, nil, closers, fmt.Errorf("create product service: %w", err)
 	}
 
-	// 创建 Processor 并用 infra/worker.Pool 驱动
-	proc, err := productpipeline.NewProcessor(svc, taskRepo, logger, 3)
+	productProcessor, err := productpipeline.NewProcessor(productSvc, taskRepo, logger, 3)
 	if err != nil {
-		return nil, nil, closers, fmt.Errorf("创建 Processor 失败: %w", err)
+		return nil, nil, nil, closers, fmt.Errorf("create product processor: %w", err)
 	}
-	pool := worker.NewPoolWithConfig(proc, worker.PoolConfig{
+	productPool := worker.NewPoolWithConfig(productProcessor, worker.PoolConfig{
 		Concurrency:     cfg.Worker.Concurrency,
 		BufferSize:      cfg.Worker.BufferSize,
-		TaskTimeout:     15 * 60 * 1e9, // 15 分钟
+		TaskTimeout:     15 * time.Minute,
 		EnableMetrics:   true,
-		ShutdownTimeout: 30 * 1e9,
+		ShutdownTimeout: 30 * time.Second,
 	})
-	logger.Infof("✅ Worker Pool 已创建（concurrency=%d）", cfg.Worker.Concurrency)
+	productSubmitter := &poolSubmitter{pool: productPool}
+	productSvc.SetTaskSubmitter(productSubmitter)
+	productProcessor.SetTaskSubmitter(productSubmitter)
 
-	// 将 Pool 注入 service 和 processor，使 CreateGenerateTask 能直接 Submit，重试时也能重新入队
-	submitter := &poolSubmitter{pool: pool}
-	svc.SetTaskSubmitter(submitter)
-	proc.SetTaskSubmitter(submitter)
-	handler, err := productapi.NewProductHandler(svc)
+	productHandler, err := productapi.NewProductHandler(productSvc)
 	if err != nil {
-		return nil, nil, closers, fmt.Errorf("创建 ProductHandler 失败: %w", err)
+		return nil, nil, nil, closers, fmt.Errorf("create product handler: %w", err)
 	}
-	return handler, pool, closers, nil
+
+	sourceParser, err := productimage.NewSourceParser(inputParser)
+	if err != nil {
+		return nil, nil, nil, closers, fmt.Errorf("create image source parser: %w", err)
+	}
+	contextAnalyzer, err := productimage.NewProductContextAnalyzer(productUnderstanding)
+	if err != nil {
+		return nil, nil, nil, closers, fmt.Errorf("create image context analyzer: %w", err)
+	}
+
+	var imageRepo productimage.TaskRepository
+	if cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, repoErr := newDBImageTaskRepository(cfg.Database, logger)
+		if repoErr != nil {
+			return nil, nil, nil, closers, fmt.Errorf("create image task repository: %w", repoErr)
+		}
+		imageRepo = repo
+		closers = append(closers, closer)
+	} else {
+		logger.Warn("database not configured, using in-memory productimage repository")
+		imageRepo = productimagestore.NewMemTaskRepository()
+	}
+	imageCapabilities := productimage.StrictServiceCapabilities()
+	imageInspector, err := productimage.NewDownloadedImageInspector(imageWorkDir)
+	if err != nil {
+		return nil, nil, nil, closers, fmt.Errorf("create downloaded image inspector: %w", err)
+	}
+	subjectExtractor, err := buildImageSubjectExtractor(cfg, imageWorkDir)
+	if err != nil {
+		return nil, nil, nil, closers, fmt.Errorf("create subject extractor: %w", err)
+	}
+	imageCleaner, err := productimage.NewWatermarkAwareImageCleaner(imageWorkDir, cfg.Watermark, logger)
+	if err != nil {
+		return nil, nil, nil, closers, fmt.Errorf("create downloaded image cleaner: %w", err)
+	}
+	whiteBgRenderer, err := buildWhiteBackgroundRenderer(cfg, imageWorkDir)
+	if err != nil {
+		return nil, nil, nil, closers, fmt.Errorf("create white background renderer: %w", err)
+	}
+	imageSvc, err := productimage.NewService(&productimage.ServiceConfig{
+		QueueName:             "product_image_tasks",
+		TaskRepo:              imageRepo,
+		Capabilities:          &imageCapabilities,
+		SourceParser:          sourceParser,
+		ContextAnalyzer:       contextAnalyzer,
+		ImageInspector:        imageInspector,
+		ImageRanker:           productimage.NewDefaultImageRanker(),
+		SubjectExtractor:      subjectExtractor,
+		ImageCleaner:          imageCleaner,
+		WhiteBgRenderer:       whiteBgRenderer,
+		AssetPublisher:        buildImageAssetPublisher(cfg, logger),
+		CleanupTemporaryFiles: cfg.ProductImage.Lifecycle.CleanupTemporaryFiles,
+		ReuseExistingAssets:   cfg.ProductImage.Lifecycle.ReuseExistingAssets,
+	})
+	if err != nil {
+		return nil, nil, nil, closers, fmt.Errorf("create image service: %w", err)
+	}
+
+	imageProcessor, err := productimagepipeline.NewProcessor(imageSvc, imageRepo, logger, 2)
+	if err != nil {
+		return nil, nil, nil, closers, fmt.Errorf("create image processor: %w", err)
+	}
+	imagePool := worker.NewPoolWithConfig(imageProcessor, worker.PoolConfig{
+		Concurrency:     cfg.Worker.Concurrency,
+		BufferSize:      cfg.Worker.BufferSize,
+		TaskTimeout:     15 * time.Minute,
+		EnableMetrics:   true,
+		ShutdownTimeout: 30 * time.Second,
+	})
+	imageSubmitter := &poolSubmitter{pool: imagePool}
+	imageSvc.SetTaskSubmitter(imageSubmitter)
+	imageProcessor.SetTaskSubmitter(imageSubmitter)
+
+	imageHandler, err := productimageapi.NewImageHandler(imageSvc)
+	if err != nil {
+		return nil, nil, nil, closers, fmt.Errorf("create image handler: %w", err)
+	}
+
+	return productHandler, imageHandler, []worker.WorkerPool{productPool, imagePool}, closers, nil
 }
 
-// registerRoutes 注册所有 API 路由
-func registerRoutes(r *gin.Engine, h productenrich.ProductHandler) {
+func resolveImageWorkDir(cfg *config.Config) string {
+	if cfg == nil {
+		return filepath.Join(".", "tmp", "productimage")
+	}
+	workDir := filepath.Clean(cfg.ProductImage.WorkDir)
+	if workDir == "" || workDir == "." {
+		return filepath.Join(".", "tmp", "productimage")
+	}
+	return workDir
+}
+
+func buildImageSubjectExtractor(cfg *config.Config, imageWorkDir string) (productimage.SubjectExtractor, error) {
+	if cfg == nil || !cfg.ProductImage.Segmenter.Enabled || cfg.ProductImage.Segmenter.Endpoint == "" {
+		return productimage.NewHybridSubjectExtractor(imageWorkDir, nil)
+	}
+	client, err := productimage.NewHTTPSegmentationClient(productimage.HTTPSegmentationClientConfig{
+		Endpoint: cfg.ProductImage.Segmenter.Endpoint,
+		APIKey:   cfg.ProductImage.Segmenter.APIKey,
+		Timeout:  time.Duration(cfg.ProductImage.Segmenter.Timeout) * time.Second,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return productimage.NewHybridSubjectExtractor(imageWorkDir, client)
+}
+
+func buildWhiteBackgroundRenderer(cfg *config.Config, imageWorkDir string) (productimage.WhiteBackgroundRenderer, error) {
+	if cfg == nil || !cfg.ProductImage.WhiteBackground.Enabled || cfg.ProductImage.WhiteBackground.Endpoint == "" {
+		return productimage.NewHybridWhiteBackgroundRenderer(imageWorkDir, nil)
+	}
+	client, err := productimage.NewHTTPWhiteBackgroundClient(productimage.HTTPWhiteBackgroundClientConfig{
+		Endpoint: cfg.ProductImage.WhiteBackground.Endpoint,
+		APIKey:   cfg.ProductImage.WhiteBackground.APIKey,
+		Timeout:  time.Duration(cfg.ProductImage.WhiteBackground.Timeout) * time.Second,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return productimage.NewHybridWhiteBackgroundRenderer(imageWorkDir, client)
+}
+
+func buildImageAssetPublisher(cfg *config.Config, logger *logrus.Logger) productimage.AssetPublisher {
+	if cfg == nil || !cfg.ProductImage.Publisher.Enabled {
+		return nil
+	}
+	provider := strings.ToLower(strings.TrimSpace(cfg.ProductImage.Publisher.Provider))
+	switch provider {
+	case "", "local":
+		publisher, err := productimage.NewLocalAssetPublisher(cfg.ProductImage.Publisher.OutputDir, cfg.ProductImage.Publisher.PublicBase)
+		if err != nil {
+			logger.WithError(err).Warn("productimage local asset publisher is disabled")
+			return nil
+		}
+		return publisher
+	case "amazon":
+		publisher, err := productimage.NewAmazonAssetPublisher(cfg)
+		if err != nil {
+			logger.WithError(err).Warn("productimage amazon asset publisher is disabled")
+			return nil
+		}
+		return publisher
+	case "hybrid":
+		localPublisher, err := productimage.NewLocalAssetPublisher(cfg.ProductImage.Publisher.OutputDir, cfg.ProductImage.Publisher.PublicBase)
+		if err != nil {
+			logger.WithError(err).Warn("productimage hybrid local asset publisher is disabled")
+			return nil
+		}
+		amazonPublisher, err := productimage.NewAmazonAssetPublisher(cfg)
+		if err != nil {
+			logger.WithError(err).Warn("productimage hybrid amazon asset publisher is partially disabled")
+			return localPublisher
+		}
+		return productimage.NewMultiAssetPublisher(localPublisher, amazonPublisher)
+	default:
+		logger.Warnf("unsupported productimage publisher provider: %s", provider)
+		return nil
+	}
+}
+
+func registerRoutes(r *gin.Engine, productHandler productenrich.ProductHandler, imageHandler productimage.Handler) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	v1 := r.Group("/api/v1/products")
-	{
-		v1.POST("/generate", h.GenerateProduct)
-		v1.GET("/tasks/:task_id", h.GetTaskResult)
+	if productHandler != nil {
+		v1 := r.Group("/api/v1/products")
+		{
+			v1.POST("/generate", productHandler.GenerateProduct)
+			v1.GET("/tasks/:task_id", productHandler.GetTaskResult)
+		}
+	}
+
+	if imageHandler != nil {
+		v1 := r.Group("/api/v1/images")
+		{
+			v1.POST("/process", imageHandler.ProcessImages)
+			v1.GET("/tasks/:task_id", imageHandler.GetTaskResult)
+			v1.POST("/tasks/:task_id/review", imageHandler.ReviewTask)
+		}
 	}
 }
