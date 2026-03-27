@@ -1,4 +1,4 @@
-﻿package sku
+package sku
 
 import (
 	"fmt"

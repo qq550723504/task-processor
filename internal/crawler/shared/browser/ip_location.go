@@ -1,4 +1,4 @@
-﻿package browser
+package browser
 
 import (
 	"task-processor/internal/core/logger"

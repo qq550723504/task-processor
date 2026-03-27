@@ -1,4 +1,4 @@
-﻿// Package amazon 提供Amazon产品检查功能
+// Package amazon 提供Amazon产品检查功能
 package amazon
 
 import (

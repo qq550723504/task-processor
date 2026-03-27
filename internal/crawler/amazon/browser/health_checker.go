@@ -1,4 +1,4 @@
-﻿// Package browser 提供浏览器健康检查功能
+// Package browser 提供浏览器健康检查功能
 package browser
 
 import (

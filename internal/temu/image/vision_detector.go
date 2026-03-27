@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台Vision API检测功能
+// Package image 提供TEMU平台Vision API检测功能
 package image
 
 import (

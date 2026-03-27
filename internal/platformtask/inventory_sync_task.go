@@ -1,4 +1,4 @@
-﻿// Package platformtask 提供平台通用的调度任务基础实现
+// Package platformtask 提供平台通用的调度任务基础实现
 package platformtask
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package filter 提供TEMU平台的各种处理器，包括筛选规则处理等功能
+// Package filter 提供TEMU平台的各种处理器，包括筛选规则处理等功能
 package filter
 
 import (

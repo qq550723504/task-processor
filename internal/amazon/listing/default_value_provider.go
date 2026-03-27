@@ -1,4 +1,4 @@
-﻿package listing
+package listing
 
 import (
 	"task-processor/internal/amazon/model"

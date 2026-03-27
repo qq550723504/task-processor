@@ -1,4 +1,4 @@
-﻿// package pricing 提供店铺配置服务
+// package pricing 提供店铺配置服务
 package pricing
 
 import (

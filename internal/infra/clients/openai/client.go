@@ -1,4 +1,4 @@
-﻿// Package openai 提供OpenAI API客户端功能
+// Package openai 提供OpenAI API客户端功能
 package openai
 
 import (

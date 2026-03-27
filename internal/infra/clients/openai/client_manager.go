@@ -1,4 +1,4 @@
-﻿// Package openai 提供OpenAI客户端管理器
+// Package openai 提供OpenAI客户端管理器
 package openai
 
 import (

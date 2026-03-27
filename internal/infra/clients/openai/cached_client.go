@@ -1,4 +1,4 @@
-﻿// Package openai 提供带缓存的OpenAI客户端
+// Package openai 提供带缓存的OpenAI客户端
 package openai
 
 import (

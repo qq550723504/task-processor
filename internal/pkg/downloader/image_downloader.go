@@ -1,4 +1,4 @@
-﻿package downloader
+package downloader
 
 import (
 	"task-processor/internal/core/logger"

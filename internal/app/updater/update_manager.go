@@ -1,4 +1,4 @@
-﻿// Package updater 提供自动更新器的更新逻辑管理功能
+// Package updater 提供自动更新器的更新逻辑管理功能
 package updater
 
 import (

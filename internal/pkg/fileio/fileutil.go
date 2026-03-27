@@ -1,4 +1,4 @@
-﻿// package fileio 提供文件操作工具
+// package fileio 提供文件操作工具
 package fileio
 
 import (

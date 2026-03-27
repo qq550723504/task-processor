@@ -1,4 +1,4 @@
-﻿// package pipeline 提供Amazon处理器管理功能
+// package pipeline 提供Amazon处理器管理功能
 package pipeline
 
 import (

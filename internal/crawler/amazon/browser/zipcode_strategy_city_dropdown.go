@@ -1,4 +1,4 @@
-﻿// Package browser 提供城市下拉框邮编输入策略（沙特、阿联酋等站点）
+// Package browser 提供城市下拉框邮编输入策略（沙特、阿联酋等站点）
 package browser
 
 import (

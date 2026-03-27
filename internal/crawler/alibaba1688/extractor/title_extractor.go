@@ -1,4 +1,4 @@
-﻿// Package extractor 提供1688产品数据提取功能
+// Package extractor 提供1688产品数据提取功能
 package extractor
 
 import (

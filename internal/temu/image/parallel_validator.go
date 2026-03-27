@@ -1,4 +1,4 @@
-﻿// Package image 提供TEMU平台并行图片验证功能
+// Package image 提供TEMU平台并行图片验证功能
 package image
 
 import (

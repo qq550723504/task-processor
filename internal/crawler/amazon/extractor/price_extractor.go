@@ -1,4 +1,4 @@
-﻿// Package extractor 提供Amazon价格提取器的核心功能
+// Package extractor 提供Amazon价格提取器的核心功能
 package extractor
 
 import (

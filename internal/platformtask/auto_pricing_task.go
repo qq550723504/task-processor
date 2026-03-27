@@ -1,4 +1,4 @@
-﻿// Package platformtask 提供平台通用的调度任务基础实现
+// Package platformtask 提供平台通用的调度任务基础实现
 // 用于半托管模式电商平台的自动核价功能
 package platformtask
 

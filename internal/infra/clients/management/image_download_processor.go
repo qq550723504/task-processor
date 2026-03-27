@@ -1,4 +1,4 @@
-﻿package management
+package management
 
 import (
 	"task-processor/internal/core/logger"

@@ -1,4 +1,4 @@
-﻿// package pipeline 提供基础Handler实现，减少重复代码
+// package pipeline 提供基础Handler实现，减少重复代码
 package pipeline
 
 import (

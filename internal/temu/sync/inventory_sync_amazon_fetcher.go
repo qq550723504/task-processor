@@ -1,4 +1,4 @@
-﻿// package sync 提供TEMU平台Amazon数据获取逻辑
+// package sync 提供TEMU平台Amazon数据获取逻辑
 package sync
 
 import (

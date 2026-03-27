@@ -1,4 +1,4 @@
-﻿// Package client 提供TEMU平台API客户端核心功能
+// Package client 提供TEMU平台API客户端核心功能
 package client
 
 import (

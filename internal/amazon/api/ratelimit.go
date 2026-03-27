@@ -1,4 +1,4 @@
-﻿// Package api 提供速率限制器实现
+// Package api 提供速率限制器实现
 package api
 
 import (

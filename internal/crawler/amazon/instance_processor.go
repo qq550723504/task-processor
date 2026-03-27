@@ -1,4 +1,4 @@
-﻿// Package amazon 提供Amazon实例处理功能
+// Package amazon 提供Amazon实例处理功能
 package amazon
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package amazon 提供超时管理功能
+// Package amazon 提供超时管理功能
 package amazon
 
 import (

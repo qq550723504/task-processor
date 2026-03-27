@@ -1,4 +1,4 @@
-﻿// Package ai 提供TEMU平台的各种处理器，包括AI内容重构等功能
+// Package ai 提供TEMU平台的各种处理器，包括AI内容重构等功能
 package ai
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package handlerbase 提供TEMU处理器基类
+// Package handlerbase 提供TEMU处理器基类
 package handlerbase
 
 import (

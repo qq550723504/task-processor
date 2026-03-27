@@ -1,4 +1,4 @@
-﻿// Package alibaba1688 提供1688 URL处理工具
+// Package alibaba1688 提供1688 URL处理工具
 package alibaba1688
 
 import (

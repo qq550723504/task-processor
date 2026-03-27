@@ -1,4 +1,4 @@
-﻿// Package pipeline 管道并行处理器
+// Package pipeline 管道并行处理器
 package pipeline
 
 import (

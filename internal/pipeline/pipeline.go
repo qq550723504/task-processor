@@ -1,4 +1,4 @@
-﻿// Package pipeline 提供统一的管道实现
+// Package pipeline 提供统一的管道实现
 package pipeline
 
 import (

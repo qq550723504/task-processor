@@ -1,4 +1,4 @@
-﻿// Package alibaba1688 提供1688单个产品处理器
+// Package alibaba1688 提供1688单个产品处理器
 package alibaba1688
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package updater 提供自动更新器的核心功能
+// Package updater 提供自动更新器的核心功能
 package updater
 
 import (

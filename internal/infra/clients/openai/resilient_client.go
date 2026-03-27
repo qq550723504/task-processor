@@ -1,4 +1,4 @@
-﻿// Package openai 提供带弹性机制的OpenAI客户端
+// Package openai 提供带弹性机制的OpenAI客户端
 package openai
 
 import (

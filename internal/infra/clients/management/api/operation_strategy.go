@@ -1,4 +1,4 @@
-﻿package api
+package api
 
 import (
 	"task-processor/internal/core/logger"

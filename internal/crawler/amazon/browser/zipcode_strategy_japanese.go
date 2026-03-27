@@ -1,4 +1,4 @@
-﻿// Package browser 提供日本站邮编输入策略
+// Package browser 提供日本站邮编输入策略
 package browser
 
 import (

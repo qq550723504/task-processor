@@ -1,4 +1,4 @@
-﻿// Package extractor 提供Amazon价格解析功能
+// Package extractor 提供Amazon价格解析功能
 package extractor
 
 import (

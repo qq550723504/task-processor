@@ -1,4 +1,4 @@
-﻿// Package browser 提供Amazon浏览器自动化的邮编验证功能
+// Package browser 提供Amazon浏览器自动化的邮编验证功能
 package browser
 
 import (

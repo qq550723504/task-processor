@@ -1,4 +1,4 @@
-﻿// Package alibaba1688 提供1688浏览器管理功能
+// Package alibaba1688 提供1688浏览器管理功能
 package alibaba1688
 
 import (

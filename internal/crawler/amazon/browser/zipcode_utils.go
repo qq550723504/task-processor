@@ -1,4 +1,4 @@
-﻿// Package browser 提供Amazon浏览器自动化的邮编处理工具方法
+// Package browser 提供Amazon浏览器自动化的邮编处理工具方法
 package browser
 
 import (

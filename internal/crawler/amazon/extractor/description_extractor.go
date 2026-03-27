@@ -1,4 +1,4 @@
-﻿// Package extractor 提供Amazon描述提取核心功能
+// Package extractor 提供Amazon描述提取核心功能
 package extractor
 
 import (

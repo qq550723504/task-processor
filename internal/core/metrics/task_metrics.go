@@ -1,4 +1,4 @@
-﻿// Package metrics 提供任务流转指标统计
+// Package metrics 提供任务流转指标统计
 package metrics
 
 import (

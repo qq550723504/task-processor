@@ -1,4 +1,4 @@
-﻿// Package amazon 提供Amazon单浏览器处理功能（降级模式）
+// Package amazon 提供Amazon单浏览器处理功能（降级模式）
 package amazon
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package alibaba1688 提供1688平台处理器核心功能
+// Package alibaba1688 提供1688平台处理器核心功能
 package alibaba1688
 
 import (

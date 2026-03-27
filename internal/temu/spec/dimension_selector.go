@@ -1,4 +1,4 @@
-﻿// Package spec 提供规格维度选择功能
+// Package spec 提供规格维度选择功能
 package spec
 
 import (

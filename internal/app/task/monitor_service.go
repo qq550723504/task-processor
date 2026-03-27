@@ -1,4 +1,4 @@
-﻿// Package task 提供统一的队列监控服务
+// Package task 提供统一的队列监控服务
 package task
 
 import (

@@ -1,4 +1,4 @@
-﻿// Package api 提供Amazon SP-API客户端
+// Package api 提供Amazon SP-API客户端
 package api
 
 import (
