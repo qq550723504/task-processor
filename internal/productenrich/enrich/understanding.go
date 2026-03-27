@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
@@ -31,7 +32,9 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 		return nil, fmt.Errorf("input cannot be nil")
 	}
 
-	analysis := &productenrich.ProductAnalysis{}
+	analysis := &productenrich.ProductAnalysis{
+		ScrapedData: input.ScrapedData,
+	}
 
 	if len(input.Images) > 0 {
 		type result struct {
@@ -83,35 +86,39 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 		}
 	}
 
-	if input.ScrapedData != nil && input.ScrapedData.Description != "" {
-		scrapedAttr, err := p.ExtractTextAttributes(ctx, input.ScrapedData.Description)
-		if err != nil {
-			logrus.WithError(err).Warn("failed to extract scraped text attributes")
-		} else if analysis.TextAttributes == nil {
-			analysis.TextAttributes = scrapedAttr
-		} else {
-			if analysis.TextAttributes.Attributes == nil {
-				analysis.TextAttributes.Attributes = make(map[string]string)
-			}
-			if scrapedAttr.Attributes == nil {
-				scrapedAttr.Attributes = make(map[string]string)
-			}
-			for k, v := range scrapedAttr.Attributes {
-				if _, exists := analysis.TextAttributes.Attributes[k]; !exists {
-					analysis.TextAttributes.Attributes[k] = v
+	if input.ScrapedData != nil {
+		scrapedText := buildScrapedText(input.ScrapedData)
+		if scrapedText != "" {
+			scrapedAttr, err := p.ExtractTextAttributes(ctx, scrapedText)
+			if err != nil {
+				logrus.WithError(err).Warn("failed to extract scraped text attributes")
+			} else if analysis.TextAttributes == nil {
+				analysis.TextAttributes = scrapedAttr
+			} else {
+				if analysis.TextAttributes.Attributes == nil {
+					analysis.TextAttributes.Attributes = make(map[string]string)
 				}
-			}
-			existing := make(map[string]struct{}, len(analysis.TextAttributes.SellingPoints))
-			for _, sp := range analysis.TextAttributes.SellingPoints {
-				existing[sp] = struct{}{}
-			}
-			for _, sp := range scrapedAttr.SellingPoints {
-				if _, dup := existing[sp]; !dup {
-					analysis.TextAttributes.SellingPoints = append(analysis.TextAttributes.SellingPoints, sp)
+				if scrapedAttr.Attributes == nil {
+					scrapedAttr.Attributes = make(map[string]string)
+				}
+				for k, v := range scrapedAttr.Attributes {
+					if _, exists := analysis.TextAttributes.Attributes[k]; !exists {
+						analysis.TextAttributes.Attributes[k] = v
+					}
+				}
+				existing := make(map[string]struct{}, len(analysis.TextAttributes.SellingPoints))
+				for _, sp := range analysis.TextAttributes.SellingPoints {
 					existing[sp] = struct{}{}
+				}
+				for _, sp := range scrapedAttr.SellingPoints {
+					if _, dup := existing[sp]; !dup {
+						analysis.TextAttributes.SellingPoints = append(analysis.TextAttributes.SellingPoints, sp)
+						existing[sp] = struct{}{}
+					}
 				}
 			}
 		}
+		mergeScrapedDataIntoTextAttributes(analysis.TextAttributes, input.ScrapedData)
 	}
 
 	if analysis.ImageAttributes != nil || analysis.TextAttributes != nil {
@@ -120,10 +127,89 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 			logrus.WithError(err).Error("failed to fuse multimodal information")
 			return nil, err
 		}
+		mergeScrapedDataIntoRepresentation(representation, input.ScrapedData)
 		analysis.Representation = representation
 	}
 
 	return analysis, nil
+}
+
+func buildScrapedText(data *productenrich.ScrapedData) string {
+	if data == nil {
+		return ""
+	}
+	parts := make([]string, 0, 2+len(data.Specs))
+	if data.Title != "" {
+		parts = append(parts, data.Title)
+	}
+	if data.Description != "" {
+		parts = append(parts, data.Description)
+	}
+	for k, v := range data.Specs {
+		if k == "" || v == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s", k, v))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func mergeScrapedDataIntoTextAttributes(attr *productenrich.TextAttributes, data *productenrich.ScrapedData) {
+	if attr == nil || data == nil {
+		return
+	}
+	if attr.Attributes == nil {
+		attr.Attributes = make(map[string]string)
+	}
+	if attr.Title == "" && data.Title != "" {
+		attr.Title = data.Title
+	}
+	for k, v := range data.Specs {
+		if k == "" || v == "" {
+			continue
+		}
+		if _, exists := attr.Attributes[k]; !exists {
+			attr.Attributes[k] = v
+		}
+	}
+	if data.Price > 0 {
+		if _, exists := attr.Attributes["source_price"]; !exists {
+			attr.Attributes["source_price"] = fmt.Sprintf("%.2f", data.Price)
+		}
+		if _, exists := attr.Attributes["source_currency"]; !exists {
+			attr.Attributes["source_currency"] = "CNY"
+		}
+	}
+}
+
+func mergeScrapedDataIntoRepresentation(rep *productenrich.ProductRepresentation, data *productenrich.ScrapedData) {
+	if rep == nil || data == nil {
+		return
+	}
+	if rep.Attributes == nil {
+		rep.Attributes = make(map[string]string)
+	}
+	if rep.ProductType == "" || rep.ProductType == "unknown" {
+		if data.Title != "" {
+			rep.ProductType = data.Title
+		}
+	}
+	for k, v := range data.Specs {
+		if k == "" || v == "" {
+			continue
+		}
+		if _, exists := rep.Attributes[k]; !exists {
+			rep.Attributes[k] = v
+		}
+	}
+	if data.Price > 0 {
+		if _, exists := rep.Attributes["source_price"]; !exists {
+			rep.Attributes["source_price"] = fmt.Sprintf("%.2f", data.Price)
+		}
+		if _, exists := rep.Attributes["source_currency"]; !exists {
+			rep.Attributes["source_currency"] = "CNY"
+		}
+	}
 }
 
 func (p *productUnderstanding) AnalyzeImage(ctx context.Context, imagePath string) (*productenrich.ImageAttributes, error) {

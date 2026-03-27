@@ -67,6 +67,8 @@ func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productModul
 		return nil, fmt.Errorf("创建产品服务：%w", err)
 	}
 
+	deps.productService = productSvc
+
 	productProcessor, err := productpipeline.NewProcessor(productSvc, taskRepo, logger, 3)
 	if err != nil {
 		return nil, fmt.Errorf("创建产品处理器：%w", err)

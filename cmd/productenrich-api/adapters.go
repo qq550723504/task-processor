@@ -5,6 +5,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/amazonlisting"
+	amazonlistingstore "task-processor/internal/amazonlisting/store"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/redisclient"
@@ -82,6 +84,25 @@ func newDBImageTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger)
 	}
 
 	repo := productimagestore.NewTaskRepository(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return repo, closer, nil
+}
+
+func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (amazonlisting.Repository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := db.AutoMigrate(&amazonlisting.Task{}); err != nil {
+		return nil, nil, fmt.Errorf("amazonlisting auto-migrate failed: %w", err)
+	}
+
+	repo := amazonlistingstore.NewTaskRepository(db)
 	closer := func() error { return database.CloseDatabase(db) }
 	return repo, closer, nil
 }

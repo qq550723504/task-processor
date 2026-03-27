@@ -5,17 +5,19 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/amazonlisting"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
 
 type appBootstrap struct {
-	productHandler productenrich.ProductHandler
-	imageHandler   productimage.Handler
-	server         *http.Server
-	pools          []worker.WorkerPool
-	closers        []func() error
+	productHandler       productenrich.ProductHandler
+	imageHandler         productimage.Handler
+	amazonListingHandler amazonlisting.Handler
+	server               *http.Server
+	pools                []worker.WorkerPool
+	closers              []func() error
 }
 
 type productModule struct {
@@ -25,6 +27,11 @@ type productModule struct {
 
 type imageModule struct {
 	handler productimage.Handler
+	pool    worker.WorkerPool
+}
+
+type amazonListingModule struct {
+	handler amazonlisting.Handler
 	pool    worker.WorkerPool
 }
 
@@ -44,13 +51,19 @@ func buildBootstrap(logger *logrus.Logger) (*appBootstrap, error) {
 		return nil, err
 	}
 
-	server := buildHTTPServer(productModule.handler, imageModule.handler)
+	amazonListingModule, err := buildAmazonListingModule(logger, deps)
+	if err != nil {
+		return nil, err
+	}
+
+	server := buildHTTPServer(productModule.handler, imageModule.handler, amazonListingModule.handler)
 	return &appBootstrap{
-		productHandler: productModule.handler,
-		imageHandler:   imageModule.handler,
-		server:         server,
-		pools:          []worker.WorkerPool{productModule.pool, imageModule.pool},
-		closers:        deps.closers,
+		productHandler:       productModule.handler,
+		imageHandler:         imageModule.handler,
+		amazonListingHandler: amazonListingModule.handler,
+		server:               server,
+		pools:                []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool},
+		closers:              deps.closers,
 	}, nil
 }
 

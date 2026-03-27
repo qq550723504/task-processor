@@ -10,16 +10,19 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	"task-processor/internal/productimage"
 	"task-processor/internal/prompt"
 )
 
 type runtimeDeps struct {
-	cfg           *config.Config
-	closers       []func() error
-	llmMgr        productenrich.LLMManager
-	inputParser   productenrich.InputParser
-	understanding productenrich.ProductUnderstanding
-	imageWorkDir  string
+	cfg            *config.Config
+	closers        []func() error
+	llmMgr         productenrich.LLMManager
+	inputParser    productenrich.InputParser
+	understanding  productenrich.ProductUnderstanding
+	imageWorkDir   string
+	productService productenrich.ProductService
+	imageService   productimage.Service
 }
 
 func buildRuntimeDeps(logger *logrus.Logger) (*runtimeDeps, error) {

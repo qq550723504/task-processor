@@ -123,6 +123,7 @@ type ProductAnalysis struct {
 	ImageAttributes *ImageAttributes       `json:"image_attributes,omitempty"`
 	TextAttributes  *TextAttributes        `json:"text_attributes,omitempty"`
 	Representation  *ProductRepresentation `json:"representation,omitempty"`
+	ScrapedData     *ScrapedData           `json:"scraped_data,omitempty"`
 }
 
 // ImageAttributes 图片属性

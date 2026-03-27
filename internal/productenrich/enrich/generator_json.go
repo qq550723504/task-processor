@@ -69,37 +69,40 @@ func (g *jsonGenerator) generateWithLLM(ctx context.Context, analysis *producten
 func (g *jsonGenerator) buildPrompt(analysis *productenrich.ProductAnalysis) string {
 	var sb strings.Builder
 
-	sb.WriteString("你是一位电商产品数据专家。根据以下产品分析，生成完整的产品列表 JSON 格式。\n\n")
+	sb.WriteString("You are an e-commerce product data expert. Generate a complete product JSON based on the following analysis.\n\n")
 
 	if analysis.Representation != nil {
 		repJSON, _ := json.Marshal(analysis.Representation)
-		sb.WriteString(fmt.Sprintf("产品分析：\n%s\n\n", string(repJSON)))
+		sb.WriteString(fmt.Sprintf("Product representation:\n%s\n\n", string(repJSON)))
 	}
 	if analysis.TextAttributes != nil {
 		textJSON, _ := json.Marshal(analysis.TextAttributes)
-		sb.WriteString(fmt.Sprintf("文本属性：\n%s\n\n", string(textJSON)))
+		sb.WriteString(fmt.Sprintf("Text attributes:\n%s\n\n", string(textJSON)))
 	}
 	if analysis.ImageAttributes != nil {
 		imgJSON, _ := json.Marshal(analysis.ImageAttributes)
-		sb.WriteString(fmt.Sprintf("图片属性：\n%s\n\n", string(imgJSON)))
+		sb.WriteString(fmt.Sprintf("Image attributes:\n%s\n\n", string(imgJSON)))
+	}
+	if analysis.ScrapedData != nil {
+		scrapedJSON, _ := json.Marshal(analysis.ScrapedData)
+		sb.WriteString(fmt.Sprintf("1688 scraped data:\n%s\n\n", string(scrapedJSON)))
 	}
 
-	sb.WriteString(`生成包含以下字段的产品 JSON：
+	sb.WriteString(`Return product JSON with fields:
 {
-  "title": "简洁、SEO 友好的产品标题（最多 80 个字符）",
-  "category": ["主类别", "子类别"],
-  "attributes": {"键": "值"},
-  "selling_points": ["卖点 1", "卖点 2", "卖点 3"],
-  "seo_keywords": ["关键词 1", "关键词 2"],
-  "description": "详细产品描述（100-300 个字符）"
+  "title": "concise SEO-friendly product title",
+  "category": ["primary category", "secondary category"],
+  "attributes": {"key": "value"},
+  "selling_points": ["point 1", "point 2", "point 3"],
+  "seo_keywords": ["keyword 1", "keyword 2"],
+  "description": "detailed product description"
 }
 
-规则：
-- title 必须具体且具有描述性
-- category 应反映产品层次结构
-- selling_points 应突出关键优势（3-5 点）
-- seo_keywords 应包含产品类型、材质、使用场景
-- 只返回 JSON 对象，不要额外文本。`)
+Rules:
+- Prefer title, specs, and price context from scraped 1688 data when available.
+- Merge scraped specs into attributes and technical details naturally.
+- Keep the output consistent with the analyzed product type and features.
+- Return JSON only.`)
 
 	return sb.String()
 }
@@ -126,6 +129,22 @@ func (g *jsonGenerator) fallbackFromAnalysis(analysis *productenrich.ProductAnal
 		}
 		if analysis.TextAttributes.Title != "" && result.Description == "" {
 			result.Description = analysis.TextAttributes.Title
+		}
+	}
+	if analysis.ScrapedData != nil {
+		if result.Title == "" {
+			result.Title = analysis.ScrapedData.Title
+		}
+		for k, v := range analysis.ScrapedData.Specs {
+			if _, exists := result.Attributes[k]; !exists {
+				result.Attributes[k] = v
+			}
+		}
+		if analysis.ScrapedData.Description != "" && result.Description == "" {
+			result.Description = analysis.ScrapedData.Description
+		}
+		if len(result.Images) == 0 && len(analysis.ScrapedData.Images) > 0 {
+			result.Images = append(result.Images, analysis.ScrapedData.Images...)
 		}
 	}
 	if result.Title == "" {

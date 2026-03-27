@@ -67,6 +67,8 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 		return nil, fmt.Errorf("创建图片服务：%w", err)
 	}
 
+	deps.imageService = imageSvc
+
 	imageProcessor, err := productimagepipeline.NewProcessor(imageSvc, imageRepo, logger, 2)
 	if err != nil {
 		return nil, fmt.Errorf("创建图片处理器：%w", err)

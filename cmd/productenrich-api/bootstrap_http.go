@@ -7,16 +7,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/amazonlisting"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
 
-func buildHTTPServer(productHandler productenrich.ProductHandler, imageHandler productimage.Handler) *http.Server {
+func buildHTTPServer(productHandler productenrich.ProductHandler, imageHandler productimage.Handler, amazonListingHandler amazonlisting.Handler) *http.Server {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	registerRoutes(router, productHandler, imageHandler)
+	registerRoutes(router, productHandler, imageHandler, amazonListingHandler)
 	return &http.Server{
 		Addr:    fmt.Sprintf(":%d", *port),
 		Handler: router,
@@ -33,7 +34,7 @@ func newWorkerPool(processor worker.Processor, cfg *config.Config) worker.Worker
 	})
 }
 
-func registerRoutes(r *gin.Engine, productHandler productenrich.ProductHandler, imageHandler productimage.Handler) {
+func registerRoutes(r *gin.Engine, productHandler productenrich.ProductHandler, imageHandler productimage.Handler, amazonListingHandler ...amazonlisting.Handler) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -52,6 +53,22 @@ func registerRoutes(r *gin.Engine, productHandler productenrich.ProductHandler, 
 			v1.POST("/process", imageHandler.ProcessImages)
 			v1.GET("/tasks/:task_id", imageHandler.GetTaskResult)
 			v1.POST("/tasks/:task_id/review", imageHandler.ReviewTask)
+		}
+	}
+
+	var listingHandler amazonlisting.Handler
+	if len(amazonListingHandler) > 0 {
+		listingHandler = amazonListingHandler[0]
+	}
+
+	if listingHandler != nil {
+		v1 := r.Group("/api/v1/amazon/listings")
+		{
+			v1.POST("/generate", listingHandler.GenerateListing)
+			v1.GET("/tasks/:task_id", listingHandler.GetTaskResult)
+			v1.GET("/tasks/:task_id/workbench", listingHandler.GetTaskWorkbench)
+			v1.POST("/tasks/:task_id/review", listingHandler.ReviewTask)
+			v1.POST("/tasks/:task_id/submit", listingHandler.SubmitTask)
 		}
 	}
 }
