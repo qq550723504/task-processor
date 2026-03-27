@@ -66,7 +66,9 @@
   - 定时调度模式，支持核价、库存同步等周期性任务
 - **高并发处理**: Worker Pool 模式，单机可配置并发数
 - **智能容错**: 自动重试、死信队列、优雅降级
-- **图片处理**: 集成图片优化组件（规划中）
+- **图片处理**:
+  - `productimage` 图片处理流水线（主图、白底图、审核、资产发布）
+  - `amazonlisting` Listing 草稿生成、审核工作台与提交流程
 - **监控运维**: 健康检查、指标监控、负载统计
 - **浏览器池**: 复用浏览器实例，提升爬取效率
 
@@ -182,6 +184,7 @@
   - 自动核价任务: 定期检查并调整商品价格
   - 库存同步任务: 监测源平台库存变化
   - 营销活动任务: 自动报名平台活动
+- **HTTP API Runtime**: 统一 HTTP 入口，负责 `productenrich` / `productimage` / `amazonlisting` 三条异步流水线
 - **Platform Crawlers**: 平台爬虫，从源平台抓取商品信息
   - Amazon Crawler: 爬取 Amazon 商品和库存
   - 1688 Crawler: 爬取 1688 商品和库存
@@ -202,7 +205,8 @@
   - 活动信息抓取
   - 自动报名符合条件的活动
   - 活动效果跟踪
-- **Image Optimizer**: 图片优化组件（规划中），处理商品图片
+- **Product Image Pipeline**: 商品图片处理流水线，负责图片审查、主体提取、白底图生成、审核与发布
+- **Amazon Listing Pipeline**: Amazon Listing 草稿生成、校验、审核工作台与提交
 - **Worker Pool**: 工作池，管理并发任务执行
 - **Browser Pool**: 浏览器池，复用 Chrome 实例提高爬取效率
 - **Lifecycle Manager**: 生命周期管理器，统一管理组件启停
@@ -223,12 +227,14 @@ task-processor/
 │   ├── amazon-crawler-api/      # Amazon 爬虫 HTTP API 服务
 │   ├── shein-listing/           # SHEIN 上架独立入口
 │   ├── temu-listing/            # TEMU 上架独立入口
-│   └── productjson-api/         # 商品 JSON 数据 API 服务
+│   ├── product-listing-api/     # 商品增强/图片处理/Amazon Listing 统一 HTTP API
+│   └── productenrich-api/       # 兼容入口，复用统一 HTTP API 装配
 ├── internal/                    # 私有业务逻辑（Go 编译器强制不对外暴露）
 │   ├── app/                     # 应用层：启动、调度、消息、任务编排
 │   │   ├── bootstrap/           # 应用启动与依赖组装
-│   │   ├── di/                  # 依赖注入容器
-│   │   ├── messaging/           # RabbitMQ 服务、队列配置、消息路由
+│   │   ├── consumer/            # RabbitMQ 服务、处理器注册、节点运行时
+│   │   ├── httpapi/             # 统一 HTTP API 装配（productenrich/productimage/amazonlisting）
+│   │   ├── ports/               # 应用层抽象端口
 │   │   ├── processor/           # 通用处理器基类与接口
 │   │   ├── runner/              # 处理器/调度器生命周期管理
 │   │   ├── scheduler/           # 定时任务调度器（含分布式锁）
@@ -257,6 +263,8 @@ task-processor/
 │   ├── platformbase/            # 平台处理器公共基类与任务类型定义
 │   ├── pricing/                 # 通用成本与利润计算
 │   ├── productenrich/           # 商品信息 AI 增强（标题优化、属性补全）
+│   ├── productimage/            # 商品图片处理流水线（审核、白底图、资产发布）
+│   ├── amazonlisting/           # Amazon Listing 草稿生成、工作台、提交
 │   ├── crawler/                 # 源平台爬虫实现
 │   │   ├── amazon/              # Amazon 爬虫（浏览器+API 双模式）
 │   │   ├── alibaba1688/         # 1688 爬虫（含验证码处理）
@@ -334,7 +342,7 @@ task-processor/
 
 1. 在 `internal/` 下创建新平台目录（如 `internal/walmart/`）
 2. 实现 `internal/platformbase` 中定义的 `Processor` 接口
-3. 在 `internal/app/bootstrap/platform_processors.go` 中注册处理器
+3. 在 `internal/app/bootstrap/platform_modules.go` 中注册平台模块
 4. 在配置文件中添加平台配置
 
 示例：
@@ -460,7 +468,6 @@ rabbitmq:
 - ✅ 源平台库存自动监测
 
 ### 进行中
-- 🚧 图片优化组件开发
 - 🚧 1688 → Amazon/SHEIN/TEMU 上架流程
 - 🚧 性能优化和稳定性提升
 - 🚧 智能定价策略优化
