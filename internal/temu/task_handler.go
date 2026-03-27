@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/logger"
-	managementAPI "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
@@ -49,23 +49,21 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, executor
 	}
 
 	processTime := time.Since(startTime)
-	savedToDraft := taskCtx.SavedToDraft
-
-	if savedToDraft {
+	if taskCtx.SavedToDraft {
 		h.logger.WithFields(logrus.Fields{
 			logger.FieldTaskID:     task.ID,
 			logger.FieldDurationMs: processTime.Milliseconds(),
-			logger.FieldStatus:     "draft",
+			logger.FieldStatus:     model.TaskStatusDraft.String(),
 		}).Info("task completed with draft status")
-		h.updateTaskStatusSync(task.ID, "draft", "product saved to draft")
-	} else {
-		h.logger.WithFields(logrus.Fields{
-			logger.FieldTaskID:     task.ID,
-			logger.FieldDurationMs: processTime.Milliseconds(),
-		}).Info("task completed")
-		h.updateTaskStatusSync(task.ID, "completed", "")
+		h.updateTaskStatusSync(task.ID, model.TaskStatusDraft, "product saved to draft")
+		return nil
 	}
 
+	h.logger.WithFields(logrus.Fields{
+		logger.FieldTaskID:     task.ID,
+		logger.FieldDurationMs: processTime.Milliseconds(),
+	}).Info("task completed")
+	h.updateTaskStatusSync(task.ID, model.TaskStatusPublished, "")
 	return nil
 }
 
@@ -83,7 +81,8 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 
 func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 	if IsAuthExpiredError(err) {
-		h.updateTaskStatusSync(task.ID, "paused", err.Error())
+		h.handleAuthenticationExpired(task, err)
+		h.updateTaskStatusSync(task.ID, model.TaskStatusPaused, err.Error())
 		h.logger.WithFields(logrus.Fields{
 			logger.FieldTaskID:  task.ID,
 			logger.FieldStoreID: task.StoreID,
@@ -98,7 +97,7 @@ func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 	}).Debug("error analysis")
 
 	if !isRetryable {
-		h.updateTaskStatusSync(task.ID, "terminated", err.Error())
+		h.updateTaskStatusSync(task.ID, model.TaskStatusTerminated, err.Error())
 		h.logger.WithError(err).WithFields(logrus.Fields{
 			logger.FieldTaskID: task.ID,
 			"priority":         task.Priority,
@@ -106,107 +105,101 @@ func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 		return
 	}
 
-	task.RetryCount++
-	originalPriority := task.Priority
-
-	if task.RetryCount > 0 && task.Priority > 10 {
-		task.Priority = max(0, task.Priority-10)
-	}
-
-	maxRetries := h.processor.GetConfig().Processor.MaxRetries
-	if maxRetries <= 0 {
-		maxRetries = 3
-	}
-
-	if task.RetryCount >= maxRetries {
-		h.updateTaskStatusSync(task.ID, "terminated", err.Error())
+	retryDecision := model.ApplyRetryFailure(&task, h.processor.GetConfig().Processor.MaxRetries)
+	if retryDecision.Exhausted {
+		h.updateTaskStatusSyncWithTask(&task, model.TaskStatusTerminated, err.Error())
 		h.logger.WithError(err).WithFields(logrus.Fields{
 			logger.FieldTaskID:     task.ID,
 			"priority":             task.Priority,
 			logger.FieldRetryCount: task.RetryCount,
 		}).Error("task failed after max retries")
-	} else {
-		h.updateTaskStatusSync(task.ID, "pending_retry", err.Error())
-		h.logger.WithFields(logrus.Fields{
-			logger.FieldTaskID:     task.ID,
-			"old_priority":         originalPriority,
-			"new_priority":         task.Priority,
-			logger.FieldRetryCount: task.RetryCount,
-		}).Warn("task failed and will be retried")
+		return
 	}
+
+	h.updateTaskStatusSyncWithTask(&task, model.TaskStatusPendingRetry, err.Error())
+	h.logger.WithFields(logrus.Fields{
+		logger.FieldTaskID:     task.ID,
+		"old_priority":         retryDecision.OriginalPriority,
+		"new_priority":         retryDecision.CurrentPriority,
+		logger.FieldRetryCount: task.RetryCount,
+	}).Warn("task failed and will be retried")
 }
 
 func (h *TaskHandler) isRetryableError(err error) bool {
 	return IsRetryableError(err)
 }
 
-func (h *TaskHandler) updateTaskStatusSync(taskID int64, status, errorMsg string) {
-	h.logger.WithFields(logrus.Fields{
-		logger.FieldTaskID: taskID,
-		logger.FieldStatus: status,
-	}).Debug("update task status synchronously")
-
+func (h *TaskHandler) handleAuthenticationExpired(task model.Task, err error) {
 	managementClient := h.processor.GetManagementClient()
 	if managementClient == nil {
-		h.logger.WithField(logger.FieldTaskID, taskID).Error("management client is not initialized")
+		h.logger.WithField(logger.FieldTaskID, task.ID).Warn("management client is not initialized, skip store auth pause handling")
 		return
 	}
 
-	importTaskClient := managementClient.GetImportTaskClient()
-	if importTaskClient == nil {
-		h.logger.WithField(logger.FieldTaskID, taskID).Error("import task client is not initialized")
+	if memoryManager := h.processor.GetMemoryManager(); memoryManager != nil {
+		memoryManager.ShopPauseManager.PauseShopForDuration(
+			task.TenantID,
+			task.StoreID,
+			"temu authentication expired",
+			10*time.Minute,
+		)
+	}
+
+	storeClient := managementClient.GetStoreClient()
+	if storeClient == nil {
+		h.logger.WithField(logger.FieldStoreID, task.StoreID).Warn("store client is not initialized, skip remote store pause")
 		return
 	}
 
-	var statusCode int16
-	switch status {
-	case "completed":
-		statusCode = model.TaskStatusPublished.Int16()
-	case "draft":
-		statusCode = model.TaskStatusDraft.Int16()
-	case "pending_retry":
-		statusCode = model.TaskStatusPendingRetry.Int16()
-	case "terminated":
-		statusCode = model.TaskStatusTerminated.Int16()
-	case "paused":
-		statusCode = model.TaskStatusPaused.Int16()
-	default:
-		h.logger.WithFields(logrus.Fields{
-			logger.FieldTaskID: taskID,
-			logger.FieldStatus: status,
-		}).Warn("unknown task status, using pending_retry")
-		statusCode = model.TaskStatusPendingRetry.Int16()
+	if success, pauseErr := storeClient.SetStorePauseStatus(task.StoreID, true, "auth_expired"); pauseErr != nil {
+		h.logger.WithError(pauseErr).WithField(logger.FieldStoreID, task.StoreID).Warn("failed to set remote store pause status for auth expiry")
+	} else if !success {
+		h.logger.WithField(logger.FieldStoreID, task.StoreID).Warn("remote store pause status update returned unsuccessful for auth expiry")
 	}
+}
 
-	req := &managementAPI.ProductImportTaskUpdateReqDTO{
-		ID:           taskID,
-		Status:       statusCode,
+func (h *TaskHandler) updateTaskStatusSync(taskID int64, status model.TaskStatus, errorMsg string) {
+	h.updateTaskStatusSyncWithInput(taskstatus.UpdateInput{
+		TaskID:       taskID,
+		Status:       status,
 		ErrorMessage: errorMsg,
+	})
+}
+
+func (h *TaskHandler) updateTaskStatusSyncWithTask(task *model.Task, status model.TaskStatus, errorMsg string) {
+	if task == nil {
+		return
 	}
 
-	const maxRetries = 3
-	var lastErr error
-	for i := 0; i < maxRetries; i++ {
-		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-			lastErr = err
-			if i < maxRetries-1 {
-				h.helper.LogRetry("update_task_status", i+1, maxRetries, err)
-				time.Sleep(time.Second * time.Duration(i+1))
-				continue
-			}
-		} else {
-			h.logger.WithFields(logrus.Fields{
-				logger.FieldTaskID: taskID,
-				logger.FieldStatus: status,
-			}).Info("task status updated")
-			return
+	h.updateTaskStatusSyncWithInput(taskstatus.UpdateInput{
+		TaskID:       task.ID,
+		Status:       status,
+		ErrorMessage: errorMsg,
+		RetryCount:   &task.RetryCount,
+		Priority:     &task.Priority,
+	})
+}
+
+func (h *TaskHandler) updateTaskStatusSyncWithInput(input taskstatus.UpdateInput) {
+	h.logger.WithFields(logrus.Fields{
+		logger.FieldTaskID: input.TaskID,
+		logger.FieldStatus: input.Status.String(),
+	}).Debug("update task status synchronously")
+
+	statusService := taskstatus.NewService("temu/task_handler", func() taskstatus.ImportTaskStatusClient {
+		managementClient := h.processor.GetManagementClient()
+		if managementClient == nil {
+			return nil
 		}
-	}
+		return managementClient.GetImportTaskClient()
+	})
 
-	h.logger.WithError(lastErr).WithFields(logrus.Fields{
-		logger.FieldTaskID:     taskID,
-		logger.FieldRetryCount: maxRetries,
-	}).Error("failed to update task status")
+	if err := statusService.TransitionSyncWithInput(model.TaskStatusProcessing, input); err != nil {
+		h.logger.WithError(err).WithFields(logrus.Fields{
+			logger.FieldTaskID: input.TaskID,
+			logger.FieldStatus: input.Status.String(),
+		}).Error("failed to update task status")
+	}
 }
 
 func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *model.Task) {

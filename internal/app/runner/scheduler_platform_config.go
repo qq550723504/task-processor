@@ -10,42 +10,34 @@ import (
 
 // taskTypeConfig 任务类型配置
 type taskTypeConfig struct {
-	Enabled  bool // 是否启用
-	Interval int  // 执行间隔（秒）
+	Enabled  bool
+	Interval int
 }
 
 // platformTaskConfig 平台任务配置
 type platformTaskConfig struct {
-	PlatformName         string                       // 平台名称
-	Enabled              bool                         // 是否启用
-	AutoPricing          taskTypeConfig               // 自动核价配置
-	ProductSync          taskTypeConfig               // 产品同步配置
-	InventorySync        taskTypeConfig               // 库存同步配置
-	ActivityRegistration taskTypeConfig               // 活动报名配置
-	FactoryCreator       func() scheduler.TaskFactory // 工厂创建函数
+	PlatformName         string
+	Enabled              bool
+	AutoPricing          taskTypeConfig
+	ProductSync          taskTypeConfig
+	InventorySync        taskTypeConfig
+	ActivityRegistration taskTypeConfig
+	FactoryCreator       func() scheduler.TaskFactory
 }
 
 // getPlatformConfigs 获取所有平台配置
 func (s *schedulerServiceImpl) getPlatformConfigs(cfg *config.Config) []platformTaskConfig {
-	configs := make([]platformTaskConfig, 0, 2)
-
-	// 注意：使用 SchedulerEnabled 控制调度任务，Enabled 控制处理器（上架任务）
-	if cfg.Platforms.Temu.SchedulerEnabled {
-		if creator := s.resolveTemuFactoryCreator(); creator != nil {
-			configs = append(configs, buildPlatformTaskConfig("TEMU", cfg.Platforms.Temu, func() scheduler.TaskFactory {
-				return creator(cfg)
-			}))
+	configs := make([]platformTaskConfig, 0, len(s.schedulerModules()))
+	for _, module := range s.schedulerModules() {
+		if !module.enabled(cfg) {
+			continue
 		}
-	}
-
-	if cfg.Platforms.Shein.SchedulerEnabled {
-		if creator := s.resolveSheinFactoryCreator(); creator != nil {
-			configs = append(configs, buildPlatformTaskConfig("SHEIN", cfg.Platforms.Shein, func() scheduler.TaskFactory {
-				return creator(cfg)
-			}))
+		platformConfig, ok := module.build(s, cfg)
+		if !ok {
+			continue
 		}
+		configs = append(configs, platformConfig)
 	}
-
 	return configs
 }
 
@@ -77,7 +69,7 @@ func buildPlatformTaskConfig(name string, pc config.PlatformConfig, factory func
 // getDefaultInterval 获取默认间隔
 func getDefaultInterval(interval int) time.Duration {
 	if interval <= 0 {
-		return 86400 * time.Minute // 默认24小时
+		return 86400 * time.Minute
 	}
 	return time.Duration(interval) * time.Second
 }

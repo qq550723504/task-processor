@@ -1,4 +1,3 @@
-// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
@@ -6,24 +5,57 @@ import (
 	"fmt"
 )
 
-// ProductService 产品服务接口
 type ProductService interface {
-	// CreateGenerateTask 创建产品生成任务
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
-	// GetTaskResult 获取任务结果
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
-	// ProcessProduct 处理产品生成（由 Worker 调用）
 	ProcessProduct(ctx context.Context, task *Task) (*ProductJSON, error)
-	// SetTaskSubmitter 注入任务提交器（解决 Pool↔Service 的初始化顺序问题）
 	SetTaskSubmitter(submitter TaskSubmitter)
 }
 
-// productService 产品服务实现
+type CapabilityMode string
+
+const (
+	CapabilityModeCompat CapabilityMode = "compat"
+	CapabilityModeStrict CapabilityMode = "strict"
+)
+
+type ProductServiceCapabilities struct {
+	Mode                           CapabilityMode
+	AllowSimpleInputParsing        bool
+	AllowDefaultValidationStrategy bool
+	AllowSimpleAnalysis            bool
+	AllowSimpleGeneration          bool
+	AllowMissingResultValidator    bool
+}
+
+func DefaultProductServiceCapabilities() ProductServiceCapabilities {
+	return ProductServiceCapabilities{
+		Mode:                           CapabilityModeCompat,
+		AllowSimpleInputParsing:        true,
+		AllowDefaultValidationStrategy: true,
+		AllowSimpleAnalysis:            true,
+		AllowSimpleGeneration:          true,
+		AllowMissingResultValidator:    true,
+	}
+}
+
+func StrictProductServiceCapabilities() ProductServiceCapabilities {
+	return ProductServiceCapabilities{
+		Mode:                           CapabilityModeStrict,
+		AllowSimpleInputParsing:        false,
+		AllowDefaultValidationStrategy: false,
+		AllowSimpleAnalysis:            false,
+		AllowSimpleGeneration:          false,
+		AllowMissingResultValidator:    false,
+	}
+}
+
 type productService struct {
 	taskRepo             TaskRepository
 	redisClient          RedisClient
 	taskSubmitter        TaskSubmitter
 	queueName            string
+	capabilities         ProductServiceCapabilities
 	inputParser          InputParser
 	productUnderstanding ProductUnderstanding
 	jsonGenerator        JSONGenerator
@@ -35,12 +67,12 @@ type productService struct {
 	resultValidator      ResultValidator
 }
 
-// ProductServiceConfig 产品服务配置
 type ProductServiceConfig struct {
 	QueueName            string
 	TaskRepo             TaskRepository
 	RedisClient          RedisClient
 	TaskSubmitter        TaskSubmitter
+	Capabilities         *ProductServiceCapabilities
 	InputParser          InputParser
 	ProductUnderstanding ProductUnderstanding
 	JSONGenerator        JSONGenerator
@@ -52,13 +84,10 @@ type ProductServiceConfig struct {
 	ResultValidator      ResultValidator
 }
 
-// SetTaskSubmitter 注入任务提交器。
-// 在 Pool 和 Service 都创建完成后调用，解决两者的初始化顺序问题。
 func (s *productService) SetTaskSubmitter(submitter TaskSubmitter) {
 	s.taskSubmitter = submitter
 }
 
-// NewProductService 创建新的产品服务。
 func NewProductService(config *ProductServiceConfig) (ProductService, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
@@ -74,11 +103,20 @@ func NewProductService(config *ProductServiceConfig) (ProductService, error) {
 		config.QueueName = "product_tasks"
 	}
 
+	capabilities := DefaultProductServiceCapabilities()
+	if config.Capabilities != nil {
+		capabilities = *config.Capabilities
+		if capabilities.Mode == "" {
+			capabilities.Mode = CapabilityModeCompat
+		}
+	}
+
 	return &productService{
 		taskRepo:             config.TaskRepo,
 		redisClient:          config.RedisClient,
 		taskSubmitter:        config.TaskSubmitter,
 		queueName:            config.QueueName,
+		capabilities:         capabilities,
 		inputParser:          config.InputParser,
 		productUnderstanding: config.ProductUnderstanding,
 		jsonGenerator:        config.JSONGenerator,

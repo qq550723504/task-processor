@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/productenrich"
+	productapi "task-processor/internal/productenrich/api"
 )
 
 // =============================================================================
@@ -43,7 +44,7 @@ func setupRouter(t *testing.T, svc productenrich.ProductHandlerService) *gin.Eng
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 
-	handler, err := productenrich.NewProductHandler(svc)
+	handler, err := productapi.NewProductHandler(svc)
 	require.NoError(t, err)
 
 	r.POST("/products/generate", handler.GenerateProduct)

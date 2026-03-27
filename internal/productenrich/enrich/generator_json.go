@@ -1,0 +1,158 @@
+package enrich
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	productenrich "task-processor/internal/productenrich"
+
+	"github.com/sirupsen/logrus"
+)
+
+func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *productenrich.ProductAnalysis, variantGen productenrich.VariantGenerator, skipVariants bool) (*productenrich.ProductJSON, error) {
+	if analysis == nil {
+		return nil, fmt.Errorf("analysis cannot be nil")
+	}
+
+	g.logger.Info("generating product JSON")
+
+	productJSON, err := g.generateWithLLM(ctx, analysis)
+	if err != nil {
+		g.logger.WithError(err).Warn("LLM generation failed, falling back to analysis data")
+		productJSON = g.fallbackFromAnalysis(analysis)
+	}
+
+	if variantGen != nil {
+		if specs, err := variantGen.GenerateSpecs(ctx, analysis); err != nil {
+			logrus.WithError(err).Warn("failed to generate specs")
+		} else {
+			productJSON.Specifications = specs
+		}
+
+		if !skipVariants {
+			if variants, err := variantGen.GenerateVariants(ctx, analysis); err != nil {
+				logrus.WithError(err).Warn("failed to generate variants")
+			} else {
+				productJSON.Variants = variants
+			}
+		}
+	}
+
+	g.logger.Info("product JSON generated successfully")
+	return productJSON, nil
+}
+
+func (g *jsonGenerator) generateWithLLM(ctx context.Context, analysis *productenrich.ProductAnalysis) (*productenrich.ProductJSON, error) {
+	client := g.llmManager.GetDefaultClient()
+
+	prompt := g.buildPrompt(analysis)
+	response, err := client.Generate(ctx, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	response = strings.TrimSpace(response)
+	response = strings.TrimPrefix(response, "```json")
+	response = strings.TrimPrefix(response, "```")
+	response = strings.TrimSuffix(response, "```")
+	response = strings.TrimSpace(response)
+
+	var result productenrich.ProductJSON
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response: %w", err)
+	}
+	return &result, nil
+}
+
+func (g *jsonGenerator) buildPrompt(analysis *productenrich.ProductAnalysis) string {
+	var sb strings.Builder
+
+	sb.WriteString("You are an e-commerce product data expert. Generate a complete product JSON based on the following analysis.\n\n")
+
+	if analysis.Representation != nil {
+		repJSON, _ := json.Marshal(analysis.Representation)
+		sb.WriteString(fmt.Sprintf("Product representation:\n%s\n\n", string(repJSON)))
+	}
+	if analysis.TextAttributes != nil {
+		textJSON, _ := json.Marshal(analysis.TextAttributes)
+		sb.WriteString(fmt.Sprintf("Text attributes:\n%s\n\n", string(textJSON)))
+	}
+	if analysis.ImageAttributes != nil {
+		imgJSON, _ := json.Marshal(analysis.ImageAttributes)
+		sb.WriteString(fmt.Sprintf("Image attributes:\n%s\n\n", string(imgJSON)))
+	}
+	if analysis.ScrapedData != nil {
+		scrapedJSON, _ := json.Marshal(analysis.ScrapedData)
+		sb.WriteString(fmt.Sprintf("1688 scraped data:\n%s\n\n", string(scrapedJSON)))
+	}
+
+	sb.WriteString(`Return product JSON with fields:
+{
+  "title": "concise SEO-friendly product title",
+  "category": ["primary category", "secondary category"],
+  "attributes": {"key": "value"},
+  "selling_points": ["point 1", "point 2", "point 3"],
+  "seo_keywords": ["keyword 1", "keyword 2"],
+  "description": "detailed product description"
+}
+
+Rules:
+- Prefer title, specs, and price context from scraped 1688 data when available.
+- Merge scraped specs into attributes and technical details naturally.
+- Keep the output consistent with the analyzed product type and features.
+- Return JSON only.`)
+
+	return sb.String()
+}
+
+func (g *jsonGenerator) fallbackFromAnalysis(analysis *productenrich.ProductAnalysis) *productenrich.ProductJSON {
+	result := &productenrich.ProductJSON{
+		Category:   []string{"General", "Product"},
+		Attributes: make(map[string]string),
+	}
+
+	if analysis.Representation != nil {
+		result.Title = analysis.Representation.ProductType
+		result.SellingPoints = analysis.Representation.Features
+		for k, v := range analysis.Representation.Attributes {
+			result.Attributes[k] = v
+		}
+	}
+	if analysis.TextAttributes != nil {
+		if result.Title == "" {
+			result.Title = analysis.TextAttributes.Title
+		}
+		if len(result.SellingPoints) == 0 {
+			result.SellingPoints = analysis.TextAttributes.SellingPoints
+		}
+		if analysis.TextAttributes.Title != "" && result.Description == "" {
+			result.Description = analysis.TextAttributes.Title
+		}
+	}
+	if analysis.ScrapedData != nil {
+		if result.Title == "" {
+			result.Title = analysis.ScrapedData.Title
+		}
+		for k, v := range analysis.ScrapedData.Specs {
+			if _, exists := result.Attributes[k]; !exists {
+				result.Attributes[k] = v
+			}
+		}
+		if analysis.ScrapedData.Description != "" && result.Description == "" {
+			result.Description = analysis.ScrapedData.Description
+		}
+		if len(result.Images) == 0 && len(analysis.ScrapedData.Images) > 0 {
+			result.Images = append(result.Images, analysis.ScrapedData.Images...)
+		}
+	}
+	if result.Title == "" {
+		result.Title = "Product"
+	}
+	if result.Description == "" {
+		result.Description = fmt.Sprintf("%s generated from fallback analysis.", result.Title)
+	}
+
+	return result
+}

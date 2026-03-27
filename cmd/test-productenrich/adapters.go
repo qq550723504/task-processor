@@ -11,6 +11,8 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/productenrich"
+	productenrichenrich "task-processor/internal/productenrich/enrich"
+	"task-processor/internal/productenrich/store"
 	"task-processor/internal/prompt"
 )
 
@@ -34,17 +36,17 @@ func buildService(cfg *config.Config) (productenrich.ProductService, error) {
 	}
 	logger.Info("✅ OpenAI LLMManager 已初始化")
 
-	productUnderstanding, err := productenrich.NewProductUnderstanding(llmMgr)
+	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
 	if err != nil {
 		return nil, fmt.Errorf("创建 ProductUnderstanding 失败: %w", err)
 	}
 
-	jsonGenerator, err := productenrich.NewJSONGenerator(logger, llmMgr)
+	jsonGenerator, err := productenrichenrich.NewJSONGenerator(logger, llmMgr)
 	if err != nil {
 		return nil, fmt.Errorf("创建 JSONGenerator 失败: %w", err)
 	}
 
-	variantGenerator, err := productenrich.NewVariantGenerator(llmMgr)
+	variantGenerator, err := productenrichenrich.NewVariantGenerator(llmMgr)
 	if err != nil {
 		return nil, fmt.Errorf("创建 VariantGenerator 失败: %w", err)
 	}
@@ -58,8 +60,8 @@ func buildService(cfg *config.Config) (productenrich.ProductService, error) {
 		EnableLLM:     true,
 	})
 
-	inputParser, err := productenrich.NewInputParser(logger, &productenrich.InputParserConfig{},
-		productenrich.NewCrawler1688Adapter(cfg))
+	inputParser, err := productenrichenrich.NewInputParser(logger, &productenrich.InputParserConfig{},
+		productenrichenrich.NewCrawler1688Adapter(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("创建 InputParser 失败: %w", err)
 	}
@@ -67,7 +69,7 @@ func buildService(cfg *config.Config) (productenrich.ProductService, error) {
 
 	return productenrich.NewProductService(&productenrich.ProductServiceConfig{
 		QueueName:            "product_enrich_tasks",
-		TaskRepo:             productenrich.NewMemTaskRepository(),
+		TaskRepo:             store.NewMemTaskRepository(),
 		RedisClient:          productenrich.NewMemRedisClient(),
 		InputParser:          inputParser,
 		ProductUnderstanding: productUnderstanding,

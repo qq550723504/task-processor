@@ -10,6 +10,8 @@ import (
 	"image/png"
 	"io"
 	"strings"
+
+	_ "golang.org/x/image/webp"
 )
 
 // Format 图片格式

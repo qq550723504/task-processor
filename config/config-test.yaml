@@ -26,50 +26,26 @@ worker:
 
 # OpenAI配置
 openai:
-  apiKey: "sk-yJ3RQprPLyBcoqEkeBNimE6Dhj86CAjY2uHAc5yqLZd1KHa3"
+  apiKey: ""
   model: "gemini-2.0-flash"
   baseURL: "https://ai.linkcloudai.com/v1"
   timeout: 300  # API调用超时5分钟
-  
-  # 请求池配置 - 更保守的设置
-  pool:
-    maxConcurrent: 1         # 降低最大并发请求数，减少API压力
-    rateLimit: 3.0          # 降低每秒请求数限制，更稳定
-    burstLimit: 8.0         # 降低突发请求限制
-    
-  # 上下文超时配置
-  context:
-    defaultTimeout: 300     # 默认超时5分钟
-    maxTimeout: 900         # 最大超时15分钟
-    
-  # 重试配置
-  retry:
-    maxRetries: 3           # 最大重试次数
-    retryDelay: 2           # 初始重试延迟（秒）
-    backoffMultiplier: 2    # 退避倍数
-    
-  # 监控配置
-  monitoring:
-    enabled: true           # 启用性能监控
-    healthCheckInterval: 60 # 健康检查间隔（秒）
-    circuitBreakerThreshold: 0.7  # 熔断器阈值（成功率低于70%时触发）
-    circuitBreakerTimeout: 300    # 熔断器恢复时间（秒）
 
 # 管理API配置
 management:
   baseURL: "http://localhost:48080"
   clientID: "go-listing"
-  clientSecret: "go-listing-secret"
+  clientSecret: ""
   tokenURL: "http://localhost:48080/admin-api/system/oauth2/token"
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [2]# 店铺ID列表 ->775
+  storeIDs: [2] # 店铺ID列表 ->775
 
 platforms:
   # TEMU 平台配置
   temu:
-    enabled: true          # 是否启用TEMU处理器（处理上架任务）
+    enabled: false          # 是否启用TEMU处理器（处理上架任务）
     schedulerEnabled: false  # 是否启用TEMU调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
@@ -82,7 +58,7 @@ platforms:
       interval: 3600        # 执行间隔（秒），默认1小时
     # 库存同步配置
     inventorySync:
-      enabled: true        # 启用库存同步
+      enabled: false        # 启用库存同步
       interval: 1800        # 执行间隔（秒），默认30分钟
     # 活动报名配置
     activityRegistration:
@@ -91,11 +67,11 @@ platforms:
 
   # SHEIN 平台配置
   shein:
-    enabled: true            # 是否启用SHEIN处理器（处理上架任务）
+    enabled: false            # 是否启用SHEIN处理器（处理上架任务）
     schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
     # 自动核价配置
     autoPricing:
-      enabled: true        # 启用自动核价
+      enabled: false        # 启用自动核价
       interval: 300         # 执行间隔（秒），默认30分钟
       batchSize: 100
     # 产品同步配置
@@ -113,17 +89,15 @@ platforms:
 
   # 1688 平台配置
   alibaba1688:
-    enabled: true   # 是否启用1688处理器
+    enabled: false   # 是否启用1688处理器
     timeout: 120    # 处理超时时间（秒）
     poolSize: 3     # 浏览器池大小
-    
+
 # 浏览器配置（通用）
 browser:
   enabled: true
   headless: true  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
-  chromeVersion: "144"  # fingerprint-chromium 版本（如 144, 142, 139 等）
-  chromeDownloadDir: "./chrome"  # Chrome 下载目录（自动下载时使用）
   poolSize: 3     # 浏览器池大小
   viewportWidth: 1920
   viewportHeight: 1080
@@ -131,18 +105,18 @@ browser:
 
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:
-  enabled: true  # 启用RabbitMQ连接
+  enabled: false  # 启用RabbitMQ连接
   url: "amqp://admin:admin123@localhost:5672/"  # 连接到unified的RabbitMQ
-  reconnectInterval: 5   # 重连间隔（秒）
+  reconnectInterval: 5s   # 重连间隔（秒）
   maxReconnectTries: 10  # 最大重连次数
-  
+
   # 消费者配置
   consumer:
     prefetchCount: 5      # 预取消息数量（允许同时处理5条消息）
     prefetchSize: 0       # 预取大小（0表示不限制）
-    retryDelay: 5         # 重试延迟（秒）
+    retryDelay: 5s         # 重试延迟（秒）
     maxRetries: 3         # 最大重试次数
-    
+
     # 队列配置（可为不同队列设置不同的并发度）
     queues:
       # 上架任务队列 - 高优先级
@@ -196,56 +170,55 @@ rabbitmq:
       - name: "1688.crawler.low"
         priority: 5
         prefetch: 1
-  
+
 # Amazon配置
 amazon:
   # Amazon 爬虫配置
-  enabled: true
+  enabled: false
   dataFreshnessDays: 15  # 数据新鲜度天数，默认15天
   crawlTimeout: 300      # 爬虫超时时间（秒），默认5分钟
-  
+
   # Amazon SP-API 配置（用于上架）
   # 注意：以下凭证仅为示例，请替换为你自己的真实凭证
   # 获取方法：登录 Amazon Seller Central > 设置 > 用户权限 > 开发者中心
   # 详细步骤：config/amazon-spapi-setup.md
   spapi:
-    enabled: true
+    enabled: false
     region: "us-east-1"
-    marketplaceID: "ATVPDKIKX0DER"  # 美国市场ID
-    clientID: "amzn1.application-oa2-client.6125bb74233247eea9cb3fbdffb7b564"  # 请填写你的 Client ID
-    clientSecret: "amzn1.oa2-cs.v1.ce6327083ebcdb06ee5e7cbb044fbff007be3edc5e756decfc5867bb94c6f57b"  # 请填写你的 Client Secret  
-    refreshToken: "Atzr|IwEBIApLq3Y7KlAlMEiN2tSPzH8vgxMTik1IQzZzcXxDuX0Z0ZzuAjudiiG2rPpZNa6yjz-919nJeNcC25-7_9U_W6WkkIsk2dLHuTpUYANNr3c3JA7mLtiFH332Z2bM3ETiJLsO_vfFqECnJclZcLP_R-REvpUDBI0aDoRFva8ZgPJ2v99WiFcDMxtUyYmMfd3RvKPIz6vMBJpxMeJNx9TSX3tuyKu4Vygw47XkAUdE_n8w2z4oH3i7aGTBu_NudxEb9oRZxNc6mhyv72vQ0ufXbHfPgM9sArCvYqNDQr-WIRKac-Zkjezf6DG5R8RHEa9tRBkhyebRPvRQ4LCuXTLeZVnT"  # 请填写你的 Refresh Token
+    clientID: ""  # 请填写你的 Client ID
+    clientSecret: ""  # 请填写你的 Client Secret
+    refreshToken: ""  # 请填写你的 Refresh Token
     # AWS凭证（可选，用于API签名，某些操作可能需要）
     awsAccessKeyID: ""    # AWS Access Key ID（可选）
     awsSecretKey: ""      # AWS Secret Access Key（可选）
     defaultFulfillmentType: "FBM"
     defaultCondition: "New"
-    
+
     # 多市场配置（可选，用于切换不同市场）
-    defaultMarketplace: "us"
+    defaultMarketplace: "ATVPDKIKX0DER"
     markets:
       us:
         name: "Amazon.com"
         marketplaceID: "ATVPDKIKX0DER"
         currency: "USD"
-        sellerID: "A3G4LX4BVICE56"  # 与主配置保持一致
+        sellerID: ""  # 与主配置保持一致
         enabled: true
       ca:
         name: "Amazon.ca"
         marketplaceID: "A2EUQ1WTGCTBG2"
         currency: "CAD"
-        sellerID: "A3G4LX4BVICE56"
+        sellerID: ""
         enabled: true
       mx:
         name: "Amazon.com.mx"
         marketplaceID: "A1AM78C64UM0Y8"
         currency: "MXN"
-        sellerID: "A3G4LX4BVICE56"
+        sellerID: ""
       br:
         name: "Amazon.com.br"
         marketplaceID: "A2Q3Y263D00KWC"
         currency: "BRL"
-        sellerID: "A3G4LX4BVICE56"
+        sellerID: ""
 
 # 自动更新配置
 updater:
@@ -254,3 +227,23 @@ updater:
   checkInterval: 300  # 检查间隔（秒），默认5分钟
   insecureSkipVerify: false  # 是否跳过TLS证书验证（不建议在生产环境启用）
 
+productimage:
+  workDir: "./tmp/productimage-test"
+  segmenter:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 45
+  whiteBackground:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 45
+  publisher:
+    enabled: false
+    provider: "local"
+    outputDir: "./tmp/productimage-published-test"
+    publicBase: ""
+  lifecycle:
+    cleanupTemporaryFiles: true
+    reuseExistingAssets: true

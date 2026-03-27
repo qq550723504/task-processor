@@ -124,12 +124,14 @@ func (s *processorServiceImpl) GetStatus() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	processors := make(map[string]any)
+	for _, module := range s.processorModules() {
+		processors[module.name] = module.get(s) != nil
+	}
+
 	status := map[string]any{
-		"running": s.running,
-		"processors": map[string]any{
-			"temu":  s.temuProcessor != nil,
-			"shein": s.sheinProcessor != nil,
-		},
+		"running":     s.running,
+		"processors":  processors,
 		"taskFetcher": s.taskFetcher != nil && s.taskFetcher.IsRunning(),
 		"components":  s.lifecycleManager.GetStatus(),
 	}

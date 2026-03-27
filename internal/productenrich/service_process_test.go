@@ -330,6 +330,97 @@ func TestProcessProduct_JSONGeneratorFail_ReturnsError(t *testing.T) {
 	}
 }
 
+func TestProcessProduct_StrictMode_RequiresInputParser(t *testing.T) {
+	task := &Task{
+		ID:      "strict-parse",
+		Request: &GenerateRequest{Text: "product"},
+		Status:  TaskStatusPending,
+	}
+	repo := newMockTaskRepo(task)
+	capabilities := StrictProductServiceCapabilities()
+
+	svc, _ := NewProductService(&ProductServiceConfig{
+		QueueName:     "test",
+		TaskRepo:      repo,
+		RedisClient:   &mockRedisClient{},
+		Capabilities:  &capabilities,
+		JSONGenerator: &mockJSONGenerator{result: &ProductJSON{Title: "x"}},
+	})
+
+	_, err := svc.ProcessProduct(context.Background(), task)
+	if err == nil {
+		t.Fatal("expected error when InputParser is missing in strict mode")
+	}
+}
+
+func TestProcessProduct_StrictMode_RequiresValidationPipeline(t *testing.T) {
+	task := &Task{
+		ID:      "strict-validate",
+		Request: &GenerateRequest{Text: "product"},
+		Status:  TaskStatusPending,
+	}
+	repo := newMockTaskRepo(task)
+	capabilities := StrictProductServiceCapabilities()
+
+	svc, _ := NewProductService(&ProductServiceConfig{
+		QueueName:    "test",
+		TaskRepo:     repo,
+		RedisClient:  &mockRedisClient{},
+		Capabilities: &capabilities,
+		InputParser: &mockInputParser{
+			result: &ParsedInput{Text: "product"},
+		},
+		ProductUnderstanding: &mockProductUnderstanding{
+			result: &ProductAnalysis{},
+		},
+		JSONGenerator: &mockJSONGenerator{
+			result: &ProductJSON{Title: "x"},
+		},
+		ResultValidator: &mockResultValidator{
+			result: &ResultValidation{IsValid: true},
+		},
+	})
+
+	_, err := svc.ProcessProduct(context.Background(), task)
+	if err == nil {
+		t.Fatal("expected error when validation components are missing in strict mode")
+	}
+}
+
+func TestProcessProduct_StrictMode_RequiresResultValidator(t *testing.T) {
+	task := &Task{
+		ID:      "strict-result",
+		Request: &GenerateRequest{Text: "product"},
+		Status:  TaskStatusPending,
+	}
+	repo := newMockTaskRepo(task)
+	capabilities := StrictProductServiceCapabilities()
+
+	svc, _ := NewProductService(&ProductServiceConfig{
+		QueueName:    "test",
+		TaskRepo:     repo,
+		RedisClient:  &mockRedisClient{},
+		Capabilities: &capabilities,
+		InputParser: &mockInputParser{
+			result: &ParsedInput{Text: "product"},
+		},
+		InputValidator:   &mockInputValidator{result: &ValidationResult{QualityScore: 80}},
+		QualityScorer:    &mockQualityScorer{score: 80},
+		StrategySelector: &mockStrategySelector{strategy: StrategyFull},
+		ProductUnderstanding: &mockProductUnderstanding{
+			result: &ProductAnalysis{},
+		},
+		JSONGenerator: &mockJSONGenerator{
+			result: &ProductJSON{Title: "x"},
+		},
+	})
+
+	_, err := svc.ProcessProduct(context.Background(), task)
+	if err == nil {
+		t.Fatal("expected error when ResultValidator is missing in strict mode")
+	}
+}
+
 func TestProcessProduct_SaveResultFail_ReturnsError(t *testing.T) {
 	task := &Task{ID: "t8", Request: &GenerateRequest{}, Status: TaskStatusPending}
 	repo := &failingSaveRepo{mockTaskRepo: newMockTaskRepo(task)}
@@ -377,6 +468,10 @@ func (m *mockVariantGeneratorCapture) ExtractWeight(_ context.Context, _ string)
 // failingSaveRepo 让 SaveTaskResult 返回错误
 type failingSaveRepo struct {
 	*mockTaskRepo
+}
+
+func (r *failingSaveRepo) MarkCompleted(_ context.Context, _ string, _ *ProductJSON) error {
+	return errors.New("db write failed")
 }
 
 func (r *failingSaveRepo) SaveTaskResult(_ context.Context, _ string, _ *ProductJSON) error {

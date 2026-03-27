@@ -30,7 +30,7 @@ func buildTemuProcessorDependencies(svc *appServices) temu.Dependencies {
 	return temu.Dependencies{
 		ManagementClient: svc.managementClient,
 		ProductSource:    svc.amazonCrawler,
-		RabbitMQClient:   nil,
+		RabbitMQClient:   svc.rabbitmqClient,
 	}
 }
 
@@ -38,6 +38,6 @@ func buildSheinProcessorDependencies(svc *appServices) pipeline.Dependencies {
 	return pipeline.Dependencies{
 		ManagementClient: svc.managementClient,
 		ProductSource:    svc.amazonCrawler,
-		RabbitMQClient:   nil,
+		RabbitMQClient:   svc.rabbitmqClient,
 	}
 }

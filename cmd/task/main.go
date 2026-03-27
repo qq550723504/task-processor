@@ -1,10 +1,11 @@
-// Package main 提供应用程序入口点
 package main
 
 import (
 	"context"
+	"flag"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,83 +16,75 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// 版本信息（通过 -ldflags 在编译时注入）
 var (
-	appVersion = "1.0.0" // 默认版本，编译时会被覆盖
+	appConfig = flag.String("app-config", "config/config-dev.yaml", "application config path")
+	logLevel  = flag.String("log-level", "info", "log level")
+)
+
+var (
+	appVersion = "1.0.0"
 	buildTime  = "unknown"
 )
 
-// mainApp 应用主函数
 func main() {
-	// 记录进程启动时间
+	flag.Parse()
+
 	monitoring.RecordProcessStartTime()
 
-	// 设置日志
-	logger := appenv.SetupLogger()
-
-	// 创建应用启动器
+	logger := appenv.SetupLoggerWithLevel(*logLevel)
 	app := bootstrap.NewApplicationBootstrap(logger)
 
-	// 运行应用
 	if err := runApplication(app, logger); err != nil {
-		logger.Fatalf("应用启动失败: %v", err)
+		logger.Fatalf("application start failed: %v", err)
 	}
 }
 
-// runApplication 运行应用
 func runApplication(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger) error {
-	// 显示版本信息
 	versionInfo := appenv.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	}
 	appenv.PrintVersionInfo(logger, versionInfo)
 
-	// 初始化应用（使用默认配置文件路径）
-	configPath := "config/config-dev.yaml"
+	configPath := *appConfig
+	if !strings.HasSuffix(configPath, ".yaml") && !strings.HasSuffix(configPath, ".yml") {
+		configPath += ".yaml"
+		logger.Infof("config path missing extension, completed to %s", configPath)
+	}
+
 	if err := app.Initialize(configPath, appVersion); err != nil {
 		return err
 	}
 
-	// 创建应用上下文
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 启动应用
 	if err := app.Start(ctx, appVersion); err != nil {
 		return err
 	}
 
-	// 等待程序退出信号
 	waitForShutdown(logger, cancel)
 
-	// 优雅关闭应用
 	return gracefulShutdown(app, logger)
 }
 
-// waitForShutdown 等待程序退出信号
 func waitForShutdown(logger *logrus.Logger, cancel context.CancelFunc) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// 等待信号
 	sig := <-sigChan
-	logger.Infof("收到信号: %v，开始优雅关闭...", sig)
+	logger.Infof("received signal: %v, starting graceful shutdown", sig)
 
-	// 取消context，通知所有子组件停止
 	cancel()
 }
 
-// gracefulShutdown 优雅关闭应用
 func gracefulShutdown(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger) error {
-	// 设置关闭超时
 	shutdownTimeout := 30 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	logger.Infof("开始优雅关闭，超时时间: %v", shutdownTimeout)
+	logger.Infof("starting graceful shutdown, timeout: %v", shutdownTimeout)
 
-	// 停止应用
 	done := make(chan error, 1)
 	go func() {
 		done <- app.Stop(ctx)
@@ -100,14 +93,13 @@ func gracefulShutdown(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger
 	select {
 	case err := <-done:
 		if err != nil {
-			logger.Errorf("关闭过程中发生错误: %v", err)
+			logger.Errorf("shutdown failed: %v", err)
 			return err
 		}
-		logger.Info("✅ 程序已优雅关闭")
+		logger.Info("application shutdown completed")
 		return nil
-
 	case <-ctx.Done():
-		logger.Warn("⚠️ 关闭超时，强制退出")
+		logger.Warn("shutdown timed out, forcing exit")
 		return ctx.Err()
 	}
 }

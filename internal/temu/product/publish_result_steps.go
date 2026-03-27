@@ -22,7 +22,7 @@ func (h *SavePublishResultHandler) logSubmitResponseWithInput(input *SavePublish
 
 func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *SavePublishResultInput) error {
 	if !input.HasProduct() {
-		h.logger.Warn("????????????????")
+		h.logger.Warn("产品数据为空，跳过产品导入映射创建")
 		return nil
 	}
 
@@ -38,29 +38,29 @@ func (h *SavePublishResultHandler) createProductImportMappingWithInput(input *Sa
 
 		_, err := h.mappingClient.CreateProductImportMapping(createReq)
 		if err != nil {
-			h.logger.Errorf("????????????: OutSkuSn=%s, Error=%v", sku.OutSkuSN, err)
+			h.logger.Errorf("创建产品导入映射失败: OutSkuSn=%s, Error=%v", sku.OutSkuSN, err)
 			return
 		}
 
 		createdCount++
-		h.logger.Debugf("????????????: OutSkuSn=%s", sku.OutSkuSN)
+		h.logger.Debugf("创建产品导入映射成功: OutSkuSn=%s", sku.OutSkuSN)
 	})
 
-	h.logger.Infof("????????????: ??=%d", createdCount)
+	h.logger.Infof("产品导入映射创建完成: 数量=%d", createdCount)
 	return nil
 }
 
 func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SavePublishResultInput) {
 	if h.memoryManager == nil {
-		h.logger.Debug("??????????????????")
+		h.logger.Debug("内存管理器未初始化，跳过每日上架计数")
 		return
 	}
 	dailyLimit, dailyLimitType, ok := input.DailyLimitConfig()
 	if !ok {
 		if _, storeID, scopeOK := input.TenantAndStoreIDs(); scopeOK {
-			h.logger.Debugf("?? %d ?????????????????", storeID)
+			h.logger.Debugf("店铺 %d 未配置每日上架限制", storeID)
 		} else {
-			h.logger.Debug("?????????????????")
+			h.logger.Debug("未配置每日上架限制")
 		}
 		return
 	}
@@ -68,7 +68,7 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 	currentDate := time.Now().Format("2006-01-02")
 	increment := input.DailyLimitIncrement(dailyLimitType)
 	if increment <= 0 {
-		h.logger.Warn("?????????????")
+		h.logger.Warn("每日上架增量无效")
 		return
 	}
 
@@ -85,11 +85,11 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 		increment,
 	)
 
-	h.logger.Infof("?? %d ? %s ?????: %d (????: %d, ??: %s)",
+	h.logger.Infof("店铺 %d 在 %s 的上架数量: %d (增量: %d, 类型: %s)",
 		storeID, currentDate, count, increment, dailyLimitType)
 
 	if count > int64(dailyLimit) {
-		h.logger.Warnf("?? %d ? %s ?????(%d)?????(%d)??????",
+		h.logger.Warnf("店铺 %d 在 %s 的上架数量(%d)超过限制(%d)，暂停上架",
 			storeID, currentDate, count, dailyLimit)
 		h.pauseShopUntilEndOfDayWithInput(input, input.DailyLimitExceededReason(count, dailyLimit))
 	}

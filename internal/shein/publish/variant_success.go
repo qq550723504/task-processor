@@ -24,7 +24,7 @@ func NewMarkVariantPublishSuccessHandler() *MarkVariantPublishSuccessHandler {
 
 // Name returns the handler name.
 func (h *MarkVariantPublishSuccessHandler) Name() string {
-	return "??????????"
+	return "开始标记产品发布成功"
 }
 
 // Handle marks published variants and filtered variants after publish.
@@ -114,7 +114,7 @@ func collectPublishedSupplierSKUs(input *VariantPublishResultInput) []string {
 func (h *MarkVariantPublishSuccessHandler) markVariantPublished(input *VariantPublishResultInput, asin, sku string) error {
 	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
 	if mappingClient == nil {
-		return fmt.Errorf("?????????????")
+		return fmt.Errorf("产品导入映射客户端未初始化")
 	}
 
 	createReq := buildMappingReq(input.MappingInput, asin, sku, model.TaskStatusPublished)
@@ -126,7 +126,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(input *VariantPu
 			"platform_parent_product_id": createReq.PlatformParentProductId,
 			"error":                      err.Error(),
 		}).Error("create product import mapping failed")
-		return fmt.Errorf("????????????: %w", err)
+		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
 	}
 
 	h.logger.WithFields(logrus.Fields{
@@ -141,7 +141,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(input *VariantPu
 func (h *MarkVariantPublishSuccessHandler) markVariantFailed(input *VariantPublishResultInput, asin, reason string) error {
 	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
 	if mappingClient == nil {
-		return fmt.Errorf("?????????????")
+		return fmt.Errorf("产品导入映射客户端未初始化")
 	}
 
 	createReq := buildMappingReq(input.MappingInput, asin, "", model.TaskStatusCrawlFailed)
@@ -149,7 +149,7 @@ func (h *MarkVariantPublishSuccessHandler) markVariantFailed(input *VariantPubli
 
 	id, err := mappingClient.CreateProductImportMapping(createReq)
 	if err != nil {
-		return fmt.Errorf("????????????: %w", err)
+		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
 	}
 
 	h.logger.Infof("marked variant as failed (ID: %d, ASIN: %s, Reason: %s)", id, asin, reason)

@@ -1,16 +1,17 @@
-﻿package product
+package product
 
 import (
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	domainProduct "task-processor/internal/product"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // CacheProductHandler 缓存产品数据处理器
@@ -24,7 +25,7 @@ type CacheProductHandler struct {
 func NewCacheProductHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor domainProduct.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *CacheProductHandler {
 	logger := logger.GetGlobalLogger("CacheProductHandler")

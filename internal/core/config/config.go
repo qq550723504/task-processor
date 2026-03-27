@@ -1,131 +1,272 @@
-﻿// Package config 提供配置管理功能
 package config
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/watermark"
 
 	"github.com/spf13/viper"
 )
 
-// Config 主配置结构体
-type Config struct {
-	Logging    LoggingConfig     `yaml:"logging"`
-	Processor  ProcessorConfig   `yaml:"processor"`
-	Worker     WorkerConfig      `yaml:"worker"`
-	OpenAI     OpenAIConfig      `yaml:"openai"`
-	Management ManagementConfig  `yaml:"management"`
-	Browser    BrowserConfig     `yaml:"browser"`
-	Amazon     AmazonConfig      `yaml:"amazon"`
-	RabbitMQ   *RabbitMQConfig   `yaml:"rabbitmq"`
-	Updater    UpdaterConfig     `yaml:"updater"`
-	Platforms  PlatformsConfig   `yaml:"platforms"`
-	Watermark  *watermark.Config `yaml:"watermark"`
-	Database   *DatabaseConfig   `yaml:"database"`
-	Redis      *RedisConfig      `yaml:"redis"`
-	Prompts    PromptsConfig     `yaml:"prompts"`
-	Debug      DebugConfig       `yaml:"debug"`
+type envBinding struct {
+	Primary    string
+	Deprecated []string
 }
 
-// DebugConfig 调试功能配置，默认全部关闭，不影响生产流程
+type Config struct {
+	Logging      LoggingConfig      `yaml:"logging"`
+	Processor    ProcessorConfig    `yaml:"processor"`
+	Worker       WorkerConfig       `yaml:"worker"`
+	OpenAI       OpenAIConfig       `yaml:"openai"`
+	Management   ManagementConfig   `yaml:"management"`
+	Browser      BrowserConfig      `yaml:"browser"`
+	Amazon       AmazonConfig       `yaml:"amazon"`
+	RabbitMQ     *RabbitMQConfig    `yaml:"rabbitmq"`
+	Updater      UpdaterConfig      `yaml:"updater"`
+	Platforms    PlatformsConfig    `yaml:"platforms"`
+	Watermark    *watermark.Config  `yaml:"watermark"`
+	ProductImage ProductImageConfig `yaml:"productimage"`
+	Database     *DatabaseConfig    `yaml:"database"`
+	Redis        *RedisConfig       `yaml:"redis"`
+	Prompts      PromptsConfig      `yaml:"prompts"`
+	Debug        DebugConfig        `yaml:"debug"`
+}
+
 type DebugConfig struct {
-	// SavePublishJSON 为 true 时，发布前将产品数据保存为 JSON 文件（仅用于调试）
 	SavePublishJSON bool `yaml:"save_publish_json"`
 }
 
-// PromptsConfig Prompt 外置功能配置
 type PromptsConfig struct {
-	// Dir 是 prompt YAML 文件的根目录，默认为 ./prompts
-	Dir string `yaml:"dir"`
-	// HotReload 是否启用热更新，默认 false
-	HotReload bool `yaml:"hotReload"`
+	Dir       string `yaml:"dir"`
+	HotReload bool   `yaml:"hotReload"`
 }
 
-// LoggingConfig 日志配置
 type LoggingConfig struct {
-	Level  string `yaml:"level"`
-	Format string `yaml:"format"`
-	File   string `yaml:"file"`
-	// SplitByLevel 按级别分文件输出，配置后不同级别的日志写入不同文件
-	// 示例：
-	//   split_by_level:
-	//     - levels: [error, fatal, panic]
-	//       file: logs/error.log
-	//     - levels: [warn]
-	//       file: logs/warn.log
-	//     - levels: [info]
-	//       file: logs/info.log
-	//     - levels: [debug, trace]
-	//       file: logs/debug.log
+	Level        string                   `yaml:"level"`
+	Format       string                   `yaml:"format"`
+	File         string                   `yaml:"file"`
 	SplitByLevel []logger.LevelFileConfig `yaml:"split_by_level"`
 }
 
-// LoadConfig 加载配置
-func LoadConfig() *Config {
+func newViper() *viper.Viper {
+	v := viper.New()
+	v.SetConfigType("yaml")
+	v.SetEnvPrefix("TASK_PROCESSOR")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+	bindKnownEnvs(v)
+	setDefaults(v)
+	return v
+}
+
+func bindKnownEnvs(v *viper.Viper) {
+	for key, binding := range knownEnvBindings() {
+		args := []string{key, binding.Primary}
+		args = append(args, binding.Deprecated...)
+		_ = v.BindEnv(args...)
+	}
+}
+
+func knownEnvBindings() map[string]envBinding {
+	return map[string]envBinding{
+		"management.baseURL": {
+			Primary:    "TASK_PROCESSOR_MANAGEMENT_BASE_URL",
+			Deprecated: []string{"MANAGEMENT_BASE_URL"},
+		},
+		"management.clientID": {
+			Primary:    "TASK_PROCESSOR_MANAGEMENT_CLIENT_ID",
+			Deprecated: []string{"MANAGEMENT_CLIENT_ID"},
+		},
+		"management.clientSecret": {
+			Primary:    "TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET",
+			Deprecated: []string{"MANAGEMENT_CLIENT_SECRET"},
+		},
+		"management.tokenURL": {
+			Primary:    "TASK_PROCESSOR_MANAGEMENT_TOKEN_URL",
+			Deprecated: []string{"MANAGEMENT_TOKEN_URL"},
+		},
+		"management.tenantID": {
+			Primary:    "TASK_PROCESSOR_MANAGEMENT_TENANT_ID",
+			Deprecated: []string{"MANAGEMENT_TENANT_ID"},
+		},
+		"openai.apiKey": {
+			Primary:    "TASK_PROCESSOR_OPENAI_API_KEY",
+			Deprecated: []string{"OPENAI_API_KEY"},
+		},
+		"openai.model": {
+			Primary:    "TASK_PROCESSOR_OPENAI_MODEL",
+			Deprecated: []string{"OPENAI_MODEL"},
+		},
+		"openai.baseURL": {
+			Primary:    "TASK_PROCESSOR_OPENAI_BASE_URL",
+			Deprecated: []string{"OPENAI_BASE_URL"},
+		},
+		"amazon.spapi.clientID": {
+			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_CLIENT_ID",
+			Deprecated: []string{"AMAZON_SPAPI_CLIENT_ID"},
+		},
+		"amazon.spapi.clientSecret": {
+			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_CLIENT_SECRET",
+			Deprecated: []string{"AMAZON_SPAPI_CLIENT_SECRET"},
+		},
+		"amazon.spapi.refreshToken": {
+			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_REFRESH_TOKEN",
+			Deprecated: []string{"AMAZON_SPAPI_REFRESH_TOKEN"},
+		},
+		"amazon.spapi.region": {
+			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_REGION",
+			Deprecated: []string{"AMAZON_SPAPI_REGION"},
+		},
+		"amazon.spapi.defaultMarketplace": {
+			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_DEFAULT_MARKETPLACE",
+			Deprecated: []string{"TASK_PROCESSOR_AMAZON_SPAPI_MARKETPLACE_ID", "AMAZON_SPAPI_DEFAULT_MARKETPLACE", "AMAZON_SPAPI_MARKETPLACE_ID"},
+		},
+		"amazon.spapi.defaultFulfillmentType": {
+			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_DEFAULT_FULFILLMENT_TYPE",
+			Deprecated: []string{"AMAZON_SPAPI_DEFAULT_FULFILLMENT_TYPE"},
+		},
+		"amazon.spapi.defaultCondition": {
+			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_DEFAULT_CONDITION",
+			Deprecated: []string{"AMAZON_SPAPI_DEFAULT_CONDITION"},
+		},
+		"rabbitmq.url": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_URL",
+			Deprecated: []string{"RABBITMQ_URL"},
+		},
+		"rabbitmq.node.maxConcurrency": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_MAX_CONCURRENCY",
+			Deprecated: []string{"RABBITMQ_NODE_MAX_CONCURRENCY"},
+		},
+		"rabbitmq.node.healthCheckPort": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT",
+			Deprecated: []string{"RABBITMQ_NODE_HEALTH_CHECK_PORT", "HEALTH_CHECK_PORT"},
+		},
+		"rabbitmq.node.metricsPort": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_METRICS_PORT",
+			Deprecated: []string{"RABBITMQ_NODE_METRICS_PORT", "METRICS_PORT"},
+		},
+		"browser.browserPath": {
+			Primary:    "TASK_PROCESSOR_BROWSER_PATH",
+			Deprecated: []string{"BROWSER_PATH"},
+		},
+		"browser.headless": {
+			Primary:    "TASK_PROCESSOR_BROWSER_HEADLESS",
+			Deprecated: []string{"BROWSER_HEADLESS"},
+		},
+		"browser.poolSize": {
+			Primary:    "TASK_PROCESSOR_BROWSER_POOL_SIZE",
+			Deprecated: []string{"BROWSER_POOL_SIZE"},
+		},
+		"worker.concurrency": {
+			Primary:    "TASK_PROCESSOR_WORKER_CONCURRENCY",
+			Deprecated: []string{"WORKER_CONCURRENCY"},
+		},
+		"worker.bufferSize": {
+			Primary:    "TASK_PROCESSOR_WORKER_BUFFER_SIZE",
+			Deprecated: []string{"WORKER_BUFFER_SIZE"},
+		},
+		"worker.taskInterval": {
+			Primary:    "TASK_PROCESSOR_WORKER_TASK_INTERVAL",
+			Deprecated: []string{"WORKER_TASK_INTERVAL"},
+		},
+		"platforms.temu.enabled": {
+			Primary:    "TASK_PROCESSOR_PLATFORM_TEMU_ENABLED",
+			Deprecated: []string{"PLATFORM_TEMU_ENABLED"},
+		},
+		"platforms.shein.enabled": {
+			Primary:    "TASK_PROCESSOR_PLATFORM_SHEIN_ENABLED",
+			Deprecated: []string{"PLATFORM_SHEIN_ENABLED"},
+		},
+		"platforms.alibaba1688.enabled": {
+			Primary:    "TASK_PROCESSOR_PLATFORM_1688_ENABLED",
+			Deprecated: []string{"PLATFORM_1688_ENABLED"},
+		},
+	}
+}
+
+func deprecatedEnvWarnings() []string {
+	var warnings []string
+
+	for key, binding := range knownEnvBindings() {
+		primaryValue, primarySet := os.LookupEnv(binding.Primary)
+		for _, deprecated := range binding.Deprecated {
+			deprecatedValue, deprecatedSet := os.LookupEnv(deprecated)
+			if !deprecatedSet {
+				continue
+			}
+
+			warning := fmt.Sprintf("environment variable %s is deprecated; use %s for %s instead", deprecated, binding.Primary, key)
+			if primarySet && strings.TrimSpace(primaryValue) != "" && strings.TrimSpace(deprecatedValue) != "" {
+				warning = fmt.Sprintf("%s (both are set; %s takes precedence)", warning, binding.Primary)
+			}
+			warnings = append(warnings, warning)
+		}
+	}
+
+	return warnings
+}
+
+func logDeprecatedEnvUsage() {
+	logger := logger.GetGlobalLogger("core/config")
+	for _, warning := range deprecatedEnvWarnings() {
+		logger.Warn(warning)
+	}
+}
+
+func loadWithViper(v *viper.Viper) (*Config, error) {
+	cfg := BuildConfig(v)
+	if err := cfg.ValidateWithError(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func LoadConfig() (*Config, error) {
 	env := os.Getenv("TASK_PROCESSOR_ENV")
 	if env == "" {
 		env = "dev"
 	}
 
-	// 加载统一配置文件 config-dev.yaml
 	configName := fmt.Sprintf("config-%s", env)
-	logger.GetGlobalLogger("core/config").Infof("加载配置文件: %s.yaml", configName)
+	logger.GetGlobalLogger("core/config").Infof("loading config file: %s.yaml", configName)
+	logDeprecatedEnvUsage()
 
-	viper.SetConfigName(configName)
-	viper.SetConfigType("yaml")
+	v := newViper()
+	v.SetConfigName(configName)
 
-	// 获取可执行文件所在目录
 	exePath, err := os.Executable()
 	if err == nil {
 		exeDir := filepath.Dir(exePath)
-		viper.AddConfigPath(filepath.Join(exeDir, "config"))
-		viper.AddConfigPath(exeDir)
+		v.AddConfigPath(filepath.Join(exeDir, "config"))
+		v.AddConfigPath(exeDir)
 	}
 
-	viper.AddConfigPath("./config")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("/etc/task-processor/")
+	v.AddConfigPath("./config")
+	v.AddConfigPath(".")
+	v.AddConfigPath("/etc/task-processor/")
 
-	viper.SetEnvPrefix("TASK_PROCESSOR")
-	viper.AutomaticEnv()
-
-	// 设置默认值
-	setDefaults()
-
-	// 读取配置文件
-	if err := viper.ReadInConfig(); err != nil {
-		logger.GetGlobalLogger("core/config").Warnf("无法读取配置文件: %v", err)
-		logger.GetGlobalLogger("core/config").Info("使用默认配置和环境变量")
-	} else {
-		logger.GetGlobalLogger("core/config").Infof("成功加载配置文件: %s", viper.ConfigFileUsed())
+	if err := v.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("read config %s.yaml: %w", configName, err)
 	}
 
-	return buildConfig()
+	logger.GetGlobalLogger("core/config").Infof("loaded config file: %s", v.ConfigFileUsed())
+	return loadWithViper(v)
 }
 
-// LoadConfigFromFile 从指定文件加载配置
-func LoadConfigFromFile(configFile string) *Config {
-	logger.GetGlobalLogger("core/config").Infof("加载指定配置文件: %s", configFile)
+func LoadConfigFromFile(configFile string) (*Config, error) {
+	logger.GetGlobalLogger("core/config").Infof("loading config file: %s", configFile)
+	logDeprecatedEnvUsage()
 
-	viper.SetConfigFile(configFile)
-	viper.SetConfigType("yaml")
+	v := newViper()
+	v.SetConfigFile(configFile)
 
-	viper.SetEnvPrefix("TASK_PROCESSOR")
-	viper.AutomaticEnv()
-
-	// 设置默认值
-	setDefaults()
-
-	// 读取配置文件
-	if err := viper.ReadInConfig(); err != nil {
-		logger.GetGlobalLogger("core/config").Warnf("无法读取配置文件 %s: %v", configFile, err)
-		logger.GetGlobalLogger("core/config").Info("使用默认配置和环境变量")
-	} else {
-		logger.GetGlobalLogger("core/config").Infof("成功加载配置文件: %s", viper.ConfigFileUsed())
+	if err := v.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("read config file %s: %w", configFile, err)
 	}
 
-	return buildConfig()
+	logger.GetGlobalLogger("core/config").Infof("loaded config file: %s", v.ConfigFileUsed())
+	return loadWithViper(v)
 }

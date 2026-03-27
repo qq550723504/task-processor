@@ -3,20 +3,17 @@ package runner
 import (
 	"context"
 
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/model"
+	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )
 
-type amazonCrawler interface {
-	Process(url string, zipcode string) (*model.Product, error)
-	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
-	Shutdown()
-}
+type amazonCrawler = ports.ProductSource
 
 type ProcessorService interface {
 	StartProcessors(ctx context.Context, cfg *config.Config, authClient *auth.ClientCredentialsAuthClient) error
@@ -27,7 +24,8 @@ type ProcessorService interface {
 func NewProcessorServiceWithCreators(
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
-	amazonProcessor amazonCrawler,
+	amazonProcessor ports.ProductSource,
+	rabbitmqClient *rabbitmq.Client,
 	deps ProcessorDependencies,
 ) ProcessorService {
 	deps = normalizeProcessorDependencies(deps)
@@ -37,6 +35,7 @@ func NewProcessorServiceWithCreators(
 		lifecycleManager:      lifecycle.NewLifecycleManager(logger),
 		managementClient:      managementClient,
 		amazonProcessor:       amazonProcessor,
+		rabbitmqClient:        rabbitmqClient,
 		temuProcessorCreator:  deps.TemuProcessorCreator,
 		sheinProcessorCreator: deps.SheinProcessorCreator,
 	}

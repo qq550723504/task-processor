@@ -184,7 +184,7 @@ func (sb *SkuSkcBuilder) buildSingleSkcWithParallelImages(temuCtx *temucontext.T
 
 		aiSku, ok := aiMapping.SKUAt(i)
 		if !ok {
-			sb.logger.Errorf("????????[%d]???AI??????(???=%d)?????????: ASIN=%s",
+			sb.logger.Errorf("变体索引[%d]无法获取AI映射数据(总数=%d)，跳过该变体: ASIN=%s",
 				i, aiMapping.SkuCount(), variant.Asin)
 			continue
 		}
@@ -237,7 +237,7 @@ func (sb *SkuSkcBuilder) buildSingleSkcSerial(ctx pipeline.TaskContext, variants
 
 		aiSku, ok := aiMapping.SKUAt(i)
 		if !ok {
-			sb.logger.Errorf("????????[%d]???AI??????(???=%d)?????????: ASIN=%s",
+			sb.logger.Errorf("变体索引[%d]无法获取AI映射数据(总数=%d)，跳过该变体: ASIN=%s",
 				i, aiMapping.SkuCount(), variant.Asin)
 			continue
 		}

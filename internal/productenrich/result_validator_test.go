@@ -126,6 +126,18 @@ func TestResultValidator_CheckKeywordMatch(t *testing.T) {
 	}
 }
 
+func TestResultValidator_CheckKeywordMatch_ChineseText(t *testing.T) {
+	v := NewResultValidator()
+
+	score, err := v.CheckKeywordMatch("高品质蓝牙耳机，支持主动降噪", "高品质蓝牙耳机", "这款耳机支持主动降噪")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if score <= 0 {
+		t.Fatalf("expected positive match score for chinese text, got %.2f", score)
+	}
+}
+
 func TestResultValidator_ValidateResult(t *testing.T) {
 	ctx := context.Background()
 	v := NewResultValidator()

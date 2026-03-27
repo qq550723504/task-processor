@@ -3,6 +3,7 @@ package runner
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/monitoring"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -37,6 +39,7 @@ type processorServiceImpl struct {
 	// 共享资源（通过依赖注入获取）
 	managementClient      *management.ClientManager
 	amazonProcessor       amazonCrawler
+	rabbitmqClient        *rabbitmq.Client
 	temuProcessorCreator  TemuProcessorCreator
 	sheinProcessorCreator SheinProcessorCreator
 
@@ -52,23 +55,18 @@ func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) {
 	log := logger.GetGlobalLogger("service.processor")
 	log.Info("启动任务获取器...")
 
-	// 收集所有平台的任务提交器
 	submitters := make(map[string]task.TaskSubmitter)
-
-	log.WithFields(map[string]any{
-		"temu_available":  s.temuProcessor != nil,
-		"shein_available": s.sheinProcessor != nil,
-	}).Info("检查处理器状态")
-
-	if s.temuProcessor != nil {
-		submitters["temu"] = task.NewTaskSubmitterAdapter(s.temuProcessor, "temu", s.logger)
-		log.Info("✅ TEMU任务提交器已注册")
+	availability := make(map[string]any)
+	for _, module := range s.processorModules() {
+		processor := module.get(s)
+		availability[module.name] = processor != nil
+		if processor == nil {
+			continue
+		}
+		submitters[module.name] = task.NewTaskSubmitterAdapter(processor, module.name, s.logger)
+		log.Infof("✅ %s任务提交器已注册", strings.ToUpper(module.name))
 	}
-
-	if s.sheinProcessor != nil {
-		submitters["shein"] = task.NewTaskSubmitterAdapter(s.sheinProcessor, "shein", s.logger)
-		log.Info("✅ SHEIN任务提交器已注册")
-	}
+	log.WithFields(availability).Info("检查处理器状态")
 
 	if len(submitters) == 0 {
 		log.Warn("没有可用的平台处理器，跳过任务获取器启动")
@@ -106,8 +104,15 @@ func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *c
 	log.Info("启动调度服务...")
 
 	// 创建调度服务（通过依赖注入，不再使用全局状态）
-	// processor_service_impl 没有 rabbitmqClient，传 nil 退化为本地爬虫
-	s.schedulerService = NewSchedulerServiceWithDependencies(s.logger, s.managementClient, cfg, s.amazonProcessor, nil, buildSchedulerDependencies(s.managementClient, cfg, s.amazonProcessor, nil))
+	// Reuse the shared RabbitMQ client so scheduler-triggered fetches can use distributed crawling.
+	s.schedulerService = NewSchedulerServiceWithDependencies(
+		s.logger,
+		s.managementClient,
+		cfg,
+		s.amazonProcessor,
+		s.rabbitmqClient,
+		buildSchedulerDependencies(s.managementClient, cfg, s.amazonProcessor, s.rabbitmqClient),
+	)
 
 	// 启动调度服务
 	if err := s.schedulerService.Start(ctx); err != nil {
@@ -144,28 +149,22 @@ func (s *processorServiceImpl) initializeMonitoring(cfg *config.Config) {
 
 // registerHealthChecks 注册健康检查
 func (s *processorServiceImpl) registerHealthChecks(cfg *config.Config) {
-	// 注册配置健康检查
 	s.healthChecker.RegisterCheck(&ConfigHealthCheck{config: cfg})
 
-	// 注册管理客户端健康检查
 	if s.managementClient != nil {
 		s.healthChecker.RegisterCheck(&ManagementClientHealthCheck{
 			client: s.managementClient,
 		})
 	}
 
-	// 注册处理器健康检查
-	if s.temuProcessor != nil {
+	for _, module := range s.processorModules() {
+		processor := module.get(s)
+		if processor == nil {
+			continue
+		}
 		s.healthChecker.RegisterCheck(&ProcessorHealthCheck{
-			name:      "temu",
-			processor: s.temuProcessor,
-		})
-	}
-
-	if s.sheinProcessor != nil {
-		s.healthChecker.RegisterCheck(&ProcessorHealthCheck{
-			name:      "shein",
-			processor: s.sheinProcessor,
+			name:      module.name,
+			processor: processor,
 		})
 	}
 }
@@ -190,30 +189,21 @@ func (s *processorServiceImpl) collectBusinessMetrics() {
 
 // updateBusinessMetrics 更新业务指标
 func (s *processorServiceImpl) updateBusinessMetrics() {
-	// 收集处理器状态指标
-	if s.temuProcessor != nil {
-		workerPool := s.temuProcessor.GetWorkerPool()
+	for _, module := range s.processorModules() {
+		processor := module.get(s)
+		if processor == nil {
+			continue
+		}
+		workerPool := processor.GetWorkerPool()
 		if workerPool != nil {
 			stats := workerPool.GetQueueStats()
 			s.metricsCollector.SetGauge("queue_size", float64(stats.QueueSize),
-				map[string]string{"platform": "temu"}, "队列大小")
+				map[string]string{"platform": module.name}, "队列大小")
 			s.metricsCollector.SetGauge("queue_usage_percent", stats.UsagePercent,
-				map[string]string{"platform": "temu"}, "队列使用率")
+				map[string]string{"platform": module.name}, "队列使用率")
 		}
 	}
 
-	if s.sheinProcessor != nil {
-		workerPool := s.sheinProcessor.GetWorkerPool()
-		if workerPool != nil {
-			stats := workerPool.GetQueueStats()
-			s.metricsCollector.SetGauge("queue_size", float64(stats.QueueSize),
-				map[string]string{"platform": "shein"}, "队列大小")
-			s.metricsCollector.SetGauge("queue_usage_percent", stats.UsagePercent,
-				map[string]string{"platform": "shein"}, "队列使用率")
-		}
-	}
-
-	// 收集系统运行状态
 	s.metricsCollector.SetGauge("processor_running", func() float64 {
 		if s.running {
 			return 1

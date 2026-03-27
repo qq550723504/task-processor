@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
@@ -25,7 +26,7 @@ type FetchAndCacheVariantsHandler struct {
 func NewFetchAndCacheVariantsHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor product.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *FetchAndCacheVariantsHandler {
 	logger := coreLogger.GetGlobalLogger("FetchAndCacheVariantsHandler")
@@ -66,7 +67,7 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 	tracker.StartStep("fetch_variants")
 	req := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.SourcePlatform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		StoreID:    ctx.Task.StoreID,
 		CategoryID: ctx.Task.CategoryID,
@@ -88,7 +89,7 @@ func (h *FetchAndCacheVariantsHandler) Handle(ctx *shein.TaskContext) error {
 
 	cacheReq := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.Platform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		ProductID:  ctx.Task.ProductID,
 		StoreID:    ctx.Task.StoreID,

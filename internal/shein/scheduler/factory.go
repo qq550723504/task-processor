@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/ports"
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/app/state"
 	"task-processor/internal/core/config"
@@ -59,7 +60,7 @@ type SheinTaskFactory struct {
 
 func NewSheinTaskFactory(
 	managementClient *management.ClientManager,
-	amazonProcessor platformbase.AmazonCrawler,
+	amazonProcessor ports.ProductSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
@@ -81,7 +82,7 @@ func NewSheinTaskFactory(
 
 func NewSheinTaskFactoryWithDependencies(
 	managementClient *management.ClientManager,
-	amazonProcessor platformbase.AmazonCrawler,
+	amazonProcessor ports.ProductSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,

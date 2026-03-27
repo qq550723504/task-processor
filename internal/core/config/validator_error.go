@@ -7,6 +7,7 @@ import "fmt"
 type ValidationError struct {
 	Field   string
 	Message string
+	Hint    string
 }
 
 func (e *ValidationError) Error() string {

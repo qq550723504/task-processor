@@ -2,6 +2,7 @@ package productdata
 
 import (
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
@@ -19,7 +20,7 @@ type FetchAndCacheProductHandler struct {
 func NewFetchAndCacheProductHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor product.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *FetchAndCacheProductHandler {
 	logger := coreLogger.GetGlobalLogger("FetchAndCacheProductHandler")
@@ -43,7 +44,7 @@ func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 
 	req := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.SourcePlatform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		ProductID:  ctx.Task.ProductID,
 		StoreID:    ctx.Task.StoreID,
@@ -64,7 +65,7 @@ func (h *FetchAndCacheProductHandler) Handle(ctx *shein.TaskContext) error {
 
 	cacheReq := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.Platform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		ProductID:  ctx.Task.ProductID,
 		StoreID:    ctx.Task.StoreID,

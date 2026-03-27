@@ -2,6 +2,7 @@ package platformbase
 
 import (
 	"task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	domainProduct "task-processor/internal/product"
@@ -11,7 +12,7 @@ type ProductFetcherBuilder interface {
 	Build(
 		rawJsonDataClient domainProduct.RawJsonDataClient,
 		amazonConfig *config.AmazonConfig,
-		amazonProcessor AmazonCrawler,
+		amazonProcessor ports.ProductSource,
 		rabbitmqClient *rabbitmq.Client,
 	) (fetcher.ProductFetcher, error)
 }
@@ -27,7 +28,7 @@ func NewDefaultProductFetcherBuilder() *DefaultProductFetcherBuilder {
 func (b *DefaultProductFetcherBuilder) Build(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor AmazonCrawler,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (fetcher.ProductFetcher, error) {
 	fetcherType := fetcher.LocalFetcher

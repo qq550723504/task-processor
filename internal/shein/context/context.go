@@ -286,11 +286,19 @@ func (ctx *TaskContext) GetBoolData(key string) (bool, bool) {
 }
 
 func (ctx *TaskContext) IsCompleted() bool {
-	return false
+	return ctx.SkipSheinPipeline
 }
 
 func (ctx *TaskContext) SetCompleted(completed bool) {
 	ctx.SkipSheinPipeline = completed
+}
+
+func (ctx *TaskContext) ShouldSkipPipeline() bool {
+	return ctx.SkipSheinPipeline
+}
+
+func (ctx *TaskContext) SetSkipPipeline(skip bool) {
+	ctx.SkipSheinPipeline = skip
 }
 
 func (ctx *TaskContext) GetError() error {

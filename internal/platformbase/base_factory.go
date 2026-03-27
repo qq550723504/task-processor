@@ -1,32 +1,23 @@
-﻿// Package platformbase 提供多平台通用的基础功能
+// Package platformbase 提供多平台通用的基础功能
 package platformbase
 
 import (
-	"context"
 	"fmt"
 
+	"task-processor/internal/app/ports"
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/model"
-
 	"task-processor/internal/core/logger"
+	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )
-
-// AmazonCrawler 定义平台工厂对 Amazon 爬虫的依赖（消费者定义接口原则）。
-// 平台工厂只需要抓取能力，不需要关心具体实现。
-type AmazonCrawler interface {
-	Process(url string, zipcode string) (*model.Product, error)
-	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
-}
 
 // BaseFactoryConfig 基础工厂配置
 type BaseFactoryConfig struct {
 	Platform         string
 	ManagementClient *management.ClientManager
-	AmazonProcessor  AmazonCrawler
+	AmazonProcessor  ports.ProductSource
 	AmazonConfig     *config.AmazonConfig
 	MonitorConfig    *config.MonitorConfig
 }
@@ -70,7 +61,7 @@ func (f *BaseFactory) GetManagementClient() *management.ClientManager {
 }
 
 // GetAmazonProcessor 获取Amazon处理器
-func (f *BaseFactory) GetAmazonProcessor() AmazonCrawler {
+func (f *BaseFactory) GetAmazonProcessor() ports.ProductSource {
 	return f.config.AmazonProcessor
 }
 

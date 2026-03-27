@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
@@ -26,7 +27,7 @@ type VariantJsonDataHandler struct {
 func NewVariantJsonDataHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor product.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *VariantJsonDataHandler {
 	logger := coreLogger.GetGlobalLogger("VariantJsonDataHandler")
@@ -73,7 +74,7 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	tracker.StartStep("fetch_variants")
 	req := &product.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.SourcePlatform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		StoreID:    ctx.Task.StoreID,
 		CategoryID: ctx.Task.CategoryID,

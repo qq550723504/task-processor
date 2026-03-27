@@ -121,7 +121,7 @@ func (p *Processor) Close(ctx context.Context) {
 func createAPIClient(cfg *config.Config) *api.Client {
 	apiConfig := &api.Config{
 		Region:         cfg.Amazon.SPAPI.Region,
-		MarketplaceID:  cfg.Amazon.SPAPI.DefaultMarketplace,
+		MarketplaceID:  config.ResolveAmazonMarketplaceID(cfg.Amazon.SPAPI),
 		ClientID:       cfg.Amazon.SPAPI.ClientID,
 		ClientSecret:   cfg.Amazon.SPAPI.ClientSecret,
 		RefreshToken:   cfg.Amazon.SPAPI.RefreshToken,

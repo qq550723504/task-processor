@@ -157,14 +157,32 @@ func TestTaskContext_SetData_GetData(t *testing.T) {
 func TestTaskContext_SetCompleted(t *testing.T) {
 	ctx := newCtx()
 
-	// IsCompleted 始终返回 false（当前实现）
 	if ctx.IsCompleted() {
 		t.Error("IsCompleted should return false initially")
 	}
 
 	ctx.SetCompleted(true)
+	if !ctx.IsCompleted() {
+		t.Error("IsCompleted should return true after SetCompleted(true)")
+	}
 	if !ctx.SkipSheinPipeline {
 		t.Error("SetCompleted(true) should set SkipSheinPipeline=true")
+	}
+}
+
+func TestTaskContext_SkipPipelineHelpers(t *testing.T) {
+	ctx := newCtx()
+
+	if ctx.ShouldSkipPipeline() {
+		t.Error("ShouldSkipPipeline should return false initially")
+	}
+
+	ctx.SetSkipPipeline(true)
+	if !ctx.ShouldSkipPipeline() {
+		t.Error("ShouldSkipPipeline should return true after SetSkipPipeline(true)")
+	}
+	if !ctx.IsCompleted() {
+		t.Error("IsCompleted should stay compatible with SkipSheinPipeline")
 	}
 }
 

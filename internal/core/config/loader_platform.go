@@ -1,48 +1,57 @@
-// Package loaders 提供配置加载功能
 package config
 
-import (
-	"github.com/spf13/viper"
-)
+import "github.com/spf13/viper"
 
-// BuildPlatformConfig 构建单个平台配置
-func BuildPlatformConfig(prefix string) PlatformConfig {
-	return PlatformConfig{
-		Enabled:          viper.GetBool(prefix + ".enabled"),
-		SchedulerEnabled: viper.GetBool(prefix + ".schedulerEnabled"),
+func BuildPlatformConfig(v *viper.Viper, prefix string) PlatformConfig {
+	cfg := PlatformConfig{
+		Enabled:          v.GetBool(prefix + ".enabled"),
+		SchedulerEnabled: v.GetBool(prefix + ".schedulerEnabled"),
 		AutoPricing: AutoPricingConfig{
-			Enabled:        viper.GetBool(prefix + ".autoPricing.enabled"),
-			Interval:       viper.GetInt(prefix + ".autoPricing.interval"),
-			BatchSize:      viper.GetInt(prefix + ".autoPricing.batchSize"),
-			UseAmazonPrice: viper.GetBool(prefix + ".autoPricing.useAmazonPrice"),
+			Enabled:        v.GetBool(prefix + ".autoPricing.enabled"),
+			Interval:       v.GetInt(prefix + ".autoPricing.interval"),
+			BatchSize:      v.GetInt(prefix + ".autoPricing.batchSize"),
+			UseAmazonPrice: v.GetBool(prefix + ".autoPricing.useAmazonPrice"),
 		},
 		ProductSync: ScheduledTaskConfig{
-			Enabled:  viper.GetBool(prefix + ".productSync.enabled"),
-			Interval: viper.GetInt(prefix + ".productSync.interval"),
+			Enabled:  v.GetBool(prefix + ".productSync.enabled"),
+			Interval: v.GetInt(prefix + ".productSync.interval"),
 		},
 		InventorySync: ScheduledTaskConfig{
-			Enabled:  viper.GetBool(prefix + ".inventorySync.enabled"),
-			Interval: viper.GetInt(prefix + ".inventorySync.interval"),
+			Enabled:  v.GetBool(prefix + ".inventorySync.enabled"),
+			Interval: v.GetInt(prefix + ".inventorySync.interval"),
 		},
 		ActivityRegistration: ScheduledTaskConfig{
-			Enabled:  viper.GetBool(prefix + ".activityRegistration.enabled"),
-			Interval: viper.GetInt(prefix + ".activityRegistration.interval"),
+			Enabled:  v.GetBool(prefix + ".activityRegistration.enabled"),
+			Interval: v.GetInt(prefix + ".activityRegistration.interval"),
 		},
 		SyncProduct: SyncProductConfig{
-			Enabled:   viper.GetBool(prefix + ".sync.enabled"),
-			StoreIDs:  getInt64Slice(prefix + ".sync.storeIDs"),
-			Interval:  viper.GetInt(prefix + ".sync.interval"),
-			BatchSize: viper.GetInt(prefix + ".sync.batchSize"),
+			Enabled:   v.GetBool(prefix + ".sync.enabled"),
+			StoreIDs:  getInt64Slice(v, prefix+".sync.storeIDs"),
+			Interval:  v.GetInt(prefix + ".sync.interval"),
+			BatchSize: v.GetInt(prefix + ".sync.batchSize"),
 		},
 		Monitor: MonitorConfig{
-			Enabled:              viper.GetBool(prefix + ".monitor.enabled"),
-			StoreIDs:             getInt64Slice(prefix + ".monitor.storeIDs"),
-			CheckInterval:        viper.GetInt(prefix + ".monitor.checkInterval"),
-			BatchSize:            viper.GetInt(prefix + ".monitor.batchSize"),
-			EnablePriceAlert:     viper.GetBool(prefix + ".monitor.enablePriceAlert"),
-			EnableStockAlert:     viper.GetBool(prefix + ".monitor.enableStockAlert"),
-			PriceChangeThreshold: viper.GetFloat64(prefix + ".monitor.priceChangeThreshold"),
-			StockChangeThreshold: viper.GetInt(prefix + ".monitor.stockChangeThreshold"),
+			Enabled:              v.GetBool(prefix + ".monitor.enabled"),
+			StoreIDs:             getInt64Slice(v, prefix+".monitor.storeIDs"),
+			CheckInterval:        v.GetInt(prefix + ".monitor.checkInterval"),
+			BatchSize:            v.GetInt(prefix + ".monitor.batchSize"),
+			EnablePriceAlert:     v.GetBool(prefix + ".monitor.enablePriceAlert"),
+			EnableStockAlert:     v.GetBool(prefix + ".monitor.enableStockAlert"),
+			PriceChangeThreshold: v.GetFloat64(prefix + ".monitor.priceChangeThreshold"),
+			StockChangeThreshold: v.GetInt(prefix + ".monitor.stockChangeThreshold"),
 		},
 	}
+
+	return normalizePlatformConfig(cfg)
+}
+
+func normalizePlatformConfig(cfg PlatformConfig) PlatformConfig {
+	if !cfg.ProductSync.Enabled && cfg.SyncProduct.Enabled {
+		cfg.ProductSync.Enabled = true
+	}
+	if cfg.ProductSync.Interval == 0 && cfg.SyncProduct.Interval > 0 {
+		cfg.ProductSync.Interval = cfg.SyncProduct.Interval
+	}
+
+	return cfg
 }

@@ -214,7 +214,7 @@ func (vp *SkuVariantProcessor) selectDefaultAIMapping(aiMapping *temucontext.AIS
 
 	aiSku, ok := aiMapping.FirstSKU()
 	if !ok {
-		return nil, fmt.Errorf("AI?????????")
+		return nil, fmt.Errorf("AI映射中未找到首个SKU")
 	}
 
 	return aiSku, nil

@@ -27,7 +27,10 @@ func main() {
 	appenv.PrintVersionInfo(logger, appenv.VersionInfo{Version: appVersion, BuildTime: buildTime})
 	logger.Info("starting crawler consumer")
 
-	appCfg := config.LoadConfigWithFallback(*appConfig, logger)
+	appCfg, err := config.LoadConfigWithFallback(*appConfig, logger)
+	if err != nil {
+		logger.Fatalf("load config failed: %v", err)
+	}
 	if appCfg.RabbitMQ == nil {
 		logger.Fatal("RabbitMQ config is required")
 	}

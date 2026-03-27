@@ -1,13 +1,14 @@
-﻿// package productenrich 提供产品JSON生成的应用层实现
+// package productenrich 提供产品JSON生成的应用层实现
 package productenrich
 
 import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // ResultValidator 结果验证器接口
@@ -51,7 +52,7 @@ func (v *resultValidator) ValidateResult(ctx context.Context, input *ParsedInput
 		validation.Issues = append(validation.Issues, ValidationIssue{
 			Field:    "images",
 			Severity: SeverityWarning,
-			Message:  "生成的图片数量超过输入图片数量",
+			Message:  "生成结果缺少部分输入图片",
 			Code:     "IMAGE_COUNT_MISMATCH",
 		})
 	}
@@ -151,6 +152,10 @@ func (v *resultValidator) CheckKeywordMatch(inputText string, resultTitle string
 
 // extractKeywords 提取关键词
 func (v *resultValidator) extractKeywords(text string) []string {
+	if looksLikeCJK(text) {
+		return extractCJKKeywords(text)
+	}
+
 	// 简单实现：按空格分割并过滤短词
 	words := strings.Fields(text)
 	keywords := make([]string, 0)
@@ -168,6 +173,46 @@ func (v *resultValidator) extractKeywords(text string) []string {
 	}
 
 	return keywords
+}
+
+func looksLikeCJK(text string) bool {
+	for _, r := range text {
+		if unicode.Is(unicode.Han, r) {
+			return true
+		}
+	}
+	return false
+}
+
+func extractCJKKeywords(text string) []string {
+	fields := strings.FieldsFunc(text, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r)
+	})
+	keywords := make([]string, 0, len(fields))
+	seen := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if utf8RuneCount(field) < 2 {
+			continue
+		}
+		if _, ok := seen[field]; ok {
+			continue
+		}
+		seen[field] = struct{}{}
+		keywords = append(keywords, field)
+		if len(keywords) >= 20 {
+			break
+		}
+	}
+	return keywords
+}
+
+func utf8RuneCount(s string) int {
+	count := 0
+	for range s {
+		count++
+	}
+	return count
 }
 
 // CheckCompleteness 检查完整性

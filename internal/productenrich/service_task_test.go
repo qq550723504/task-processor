@@ -74,7 +74,7 @@ func TestValidateRequest_ValidInputs_NoError(t *testing.T) {
 	}{
 		{"image url", &GenerateRequest{ImageURLs: []string{"http://example.com/img.jpg"}}},
 		{"text", &GenerateRequest{Text: "a product"}},
-		{"product url", &GenerateRequest{ProductURL: "http://1688.com/product/123"}},
+		{"product url", &GenerateRequest{ProductURL: "https://detail.1688.com/offer/123.html"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -82,6 +82,22 @@ func TestValidateRequest_ValidInputs_NoError(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestValidateRequest_UnsupportedProductURL_ReturnsError(t *testing.T) {
+	svc, _ := newSvcWithSubmitter(t, nil)
+	err := svc.validateRequest(&GenerateRequest{ProductURL: "https://example.com/product/123"})
+	if err == nil {
+		t.Fatal("expected error for unsupported product_url host")
+	}
+}
+
+func TestValidateRequest_NonDetail1688ProductURL_ReturnsError(t *testing.T) {
+	svc, _ := newSvcWithSubmitter(t, nil)
+	err := svc.validateRequest(&GenerateRequest{ProductURL: "https://detail.1688.com/product/123.html"})
+	if err == nil {
+		t.Fatal("expected error for non-detail 1688 product_url path")
 	}
 }
 
@@ -217,5 +233,31 @@ func TestGetTaskResult_PendingTask_NoCompletedAt(t *testing.T) {
 	}
 	if result.CompletedAt != nil {
 		t.Error("expected CompletedAt to be nil for pending task")
+	}
+}
+
+func TestGetTaskResult_PendingTask_DoesNotExposeStaleErrorAfterRetryReset(t *testing.T) {
+	svc, repo := newSvcWithSubmitter(t, nil)
+	task := &Task{
+		ID:      "t3",
+		Request: &GenerateRequest{},
+		Status:  TaskStatusFailed,
+		Error:   "old failure",
+	}
+	repo.tasks[task.ID] = task
+
+	if err := repo.ResetForRetry(context.Background(), task.ID); err != nil {
+		t.Fatalf("ResetForRetry: %v", err)
+	}
+
+	result, err := svc.GetTaskResult(context.Background(), "t3")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != TaskStatusPending {
+		t.Fatalf("Status = %q, want pending", result.Status)
+	}
+	if result.Error != "" {
+		t.Errorf("Error = %q, want empty after retry reset", result.Error)
 	}
 }

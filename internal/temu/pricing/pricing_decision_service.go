@@ -1,4 +1,4 @@
-﻿// package pricing 提供TEMU平台核价决策服务功能
+// package pricing 提供TEMU平台核价决策服务功能
 package pricing
 
 import (
@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
@@ -15,8 +16,8 @@ import (
 	"task-processor/internal/product"
 	temupricing "task-processor/internal/temu/api/pricing"
 
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
+	"task-processor/internal/core/logger"
 )
 
 // ServiceConfig 服务配置
@@ -74,7 +75,7 @@ func NewPricingDecisionService(
 	managementClient *management.ClientManager,
 	storeID int64,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor product.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	platformConfig *config.PlatformConfig,
 ) (DecisionMaker, error) {
 	config := &ServiceConfig{
@@ -97,7 +98,7 @@ func newPricingDecisionServiceWithConfig(
 	managementClient *management.ClientManager,
 	config *ServiceConfig,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor product.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 ) (DecisionMaker, error) {
 	if managementClient == nil {
 		return nil, errors.New("managementClient不能为空")

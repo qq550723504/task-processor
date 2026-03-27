@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
@@ -22,7 +23,7 @@ type RawJsonDataHandler struct {
 func NewRawJsonDataHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor domainProduct.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandler {
 	logger := coreLogger.GetGlobalLogger("RawJsonDataHandler")
@@ -70,7 +71,7 @@ func isProductNotFoundError(err error) bool {
 func (h *RawJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 	req := &domainProduct.FetchRequest{
 		TenantID:   ctx.Task.TenantID,
-		Platform:   ctx.Task.SourcePlatform,
+		Platform:   ctx.Task.GetSourcePlatformOrDefault(),
 		Region:     ctx.Task.Region,
 		ProductID:  ctx.Task.ProductID,
 		StoreID:    ctx.Task.StoreID,

@@ -15,7 +15,7 @@ func NewFillAttributeHandler() *FillAttributeHandler {
 }
 
 func (h *FillAttributeHandler) Name() string {
-	return "????"
+	return "填充属性"
 }
 
 func (h *FillAttributeHandler) Handle(ctx *sheinctx.TaskContext) error {
@@ -25,7 +25,7 @@ func (h *FillAttributeHandler) Handle(ctx *sheinctx.TaskContext) error {
 	}
 
 	h.fillProductAttributes(input)
-	logger.GetGlobalLogger("shein/product").Info("??????")
+	logger.GetGlobalLogger("shein/product").Info("属性填充完成")
 	return nil
 }
 

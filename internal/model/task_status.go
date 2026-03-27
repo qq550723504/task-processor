@@ -1,29 +1,28 @@
-// Package model 提供数据结构定义
 package model
 
-// TaskStatus 任务状态类型
+import "fmt"
+
+// TaskStatus represents the lifecycle state of an import task in management.
 type TaskStatus int16
 
-// 任务状态常量定义
 const (
-	TaskStatusPending      TaskStatus = 0  // 待处理
-	TaskStatusProcessing   TaskStatus = 1  // 处理中
-	TaskStatusCrawled      TaskStatus = 2  // 已抓取
-	TaskStatusCrawlFailed  TaskStatus = 3  // 抓取失败
-	TaskStatusPendingRetry TaskStatus = 4  // 待重试
-	TaskStatusQueued       TaskStatus = 5  // 队列中
-	TaskStatusPublished    TaskStatus = 6  // 已上架
-	TaskStatusRepublishing TaskStatus = 7  // 重新上架中
-	TaskStatusDraft        TaskStatus = 8  // 草稿箱
-	TaskStatusCancelled    TaskStatus = 9  // 已取消
-	TaskStatusPaused       TaskStatus = 10 // 已暂停
-	TaskStatusResumed      TaskStatus = 11 // 已恢复
-	TaskStatusResuming     TaskStatus = 12 // 恢复中
-	TaskStatusTerminated   TaskStatus = 13 // 已终止
+	TaskStatusPending      TaskStatus = 0
+	TaskStatusProcessing   TaskStatus = 1
+	TaskStatusCrawled      TaskStatus = 2
+	TaskStatusCrawlFailed  TaskStatus = 3
+	TaskStatusPendingRetry TaskStatus = 4
+	TaskStatusQueued       TaskStatus = 5
+	TaskStatusPublished    TaskStatus = 6
+	TaskStatusRepublishing TaskStatus = 7
+	TaskStatusDraft        TaskStatus = 8
+	TaskStatusCancelled    TaskStatus = 9
+	TaskStatusPaused       TaskStatus = 10
+	TaskStatusResumed      TaskStatus = 11
+	TaskStatusResuming     TaskStatus = 12
+	TaskStatusTerminated   TaskStatus = 13
 )
 
-// TaskStatusNames 任务状态名称映射
-var TaskStatusNames = map[TaskStatus]string{
+var taskStatusNames = map[TaskStatus]string{
 	TaskStatusPending:      "待处理",
 	TaskStatusProcessing:   "处理中",
 	TaskStatusCrawled:      "已抓取",
@@ -40,59 +39,136 @@ var TaskStatusNames = map[TaskStatus]string{
 	TaskStatusTerminated:   "已终止",
 }
 
-// String 返回任务状态的字符串表示
-func (s TaskStatus) String() string {
-	if name, ok := TaskStatusNames[s]; ok {
-		return name
-	}
-	return "未知状态"
+var taskStatusTransitions = map[TaskStatus]map[TaskStatus]struct{}{
+	TaskStatusPending: {
+		TaskStatusProcessing: {},
+		TaskStatusCancelled:  {},
+	},
+	TaskStatusProcessing: {
+		TaskStatusCrawled:      {},
+		TaskStatusCrawlFailed:  {},
+		TaskStatusPendingRetry: {},
+		TaskStatusPublished:    {},
+		TaskStatusDraft:        {},
+		TaskStatusPaused:       {},
+		TaskStatusTerminated:   {},
+		TaskStatusCancelled:    {},
+	},
+	TaskStatusCrawled: {
+		TaskStatusQueued:    {},
+		TaskStatusDraft:     {},
+		TaskStatusCancelled: {},
+	},
+	TaskStatusCrawlFailed: {
+		TaskStatusPendingRetry: {},
+		TaskStatusTerminated:   {},
+		TaskStatusCancelled:    {},
+	},
+	TaskStatusPendingRetry: {
+		TaskStatusProcessing: {},
+		TaskStatusCancelled:  {},
+	},
+	TaskStatusQueued: {
+		TaskStatusPublished:  {},
+		TaskStatusDraft:      {},
+		TaskStatusCancelled:  {},
+		TaskStatusTerminated: {},
+	},
+	TaskStatusPublished: {
+		TaskStatusRepublishing: {},
+		TaskStatusPaused:       {},
+	},
+	TaskStatusPaused: {
+		TaskStatusResumed:    {},
+		TaskStatusCancelled:  {},
+		TaskStatusTerminated: {},
+	},
+	TaskStatusResumed: {
+		TaskStatusResuming: {},
+	},
+	TaskStatusResuming: {
+		TaskStatusPublished:  {},
+		TaskStatusPaused:     {},
+		TaskStatusTerminated: {},
+	},
 }
 
-// Int16 返回任务状态的int16值
+func ParseTaskStatus(code int16) (TaskStatus, error) {
+	status := TaskStatus(code)
+	if !status.IsValid() {
+		return 0, fmt.Errorf("unknown task status code: %d", code)
+	}
+	return status, nil
+}
+
+func (s TaskStatus) IsValid() bool {
+	_, ok := taskStatusNames[s]
+	return ok
+}
+
+func (s TaskStatus) String() string {
+	if name, ok := taskStatusNames[s]; ok {
+		return name
+	}
+	return fmt.Sprintf("未知状态(%d)", s)
+}
+
 func (s TaskStatus) Int16() int16 {
 	return int16(s)
 }
 
-// IsTerminal 检查是否为终态
 func (s TaskStatus) IsTerminal() bool {
-	return s == TaskStatusPublished ||
-		s == TaskStatusCancelled ||
-		s == TaskStatusTerminated ||
-		s == TaskStatusDraft
-}
-
-// IsProcessing 检查是否为处理中状态
-func (s TaskStatus) IsProcessing() bool {
-	return s == TaskStatusProcessing ||
-		s == TaskStatusRepublishing ||
-		s == TaskStatusResuming
-}
-
-// CanTransitionTo 检查是否可以转换到目标状态
-func (s TaskStatus) CanTransitionTo(target TaskStatus) bool {
-	// 简化的状态转换规则，实际应用中可能更复杂
 	switch s {
-	case TaskStatusPending:
-		return target == TaskStatusProcessing || target == TaskStatusCancelled
-	case TaskStatusProcessing:
-		return target == TaskStatusCrawled || target == TaskStatusCrawlFailed || target == TaskStatusCancelled
-	case TaskStatusCrawled:
-		return target == TaskStatusQueued || target == TaskStatusDraft || target == TaskStatusCancelled
-	case TaskStatusCrawlFailed:
-		return target == TaskStatusPendingRetry || target == TaskStatusCancelled
-	case TaskStatusPendingRetry:
-		return target == TaskStatusProcessing || target == TaskStatusCancelled
-	case TaskStatusQueued:
-		return target == TaskStatusPublished || target == TaskStatusDraft || target == TaskStatusCancelled
-	case TaskStatusPublished:
-		return target == TaskStatusRepublishing || target == TaskStatusPaused
-	case TaskStatusPaused:
-		return target == TaskStatusResumed || target == TaskStatusCancelled
-	case TaskStatusResumed:
-		return target == TaskStatusResuming
-	case TaskStatusResuming:
-		return target == TaskStatusPublished || target == TaskStatusPaused
+	case TaskStatusPublished, TaskStatusCancelled, TaskStatusTerminated, TaskStatusDraft:
+		return true
 	default:
 		return false
 	}
+}
+
+func (s TaskStatus) IsProcessing() bool {
+	switch s {
+	case TaskStatusProcessing, TaskStatusRepublishing, TaskStatusResuming:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s TaskStatus) CanTransitionTo(target TaskStatus) bool {
+	if !s.IsValid() || !target.IsValid() {
+		return false
+	}
+	if s == target {
+		return true
+	}
+
+	allowed, ok := taskStatusTransitions[s]
+	if !ok {
+		return false
+	}
+
+	_, ok = allowed[target]
+	return ok
+}
+
+func ValidateTaskStatusTransition(from, to TaskStatus) error {
+	if !from.IsValid() {
+		return fmt.Errorf("invalid source task status: %d", from)
+	}
+	if !to.IsValid() {
+		return fmt.Errorf("invalid target task status: %d", to)
+	}
+	if !from.CanTransitionTo(to) {
+		return fmt.Errorf("invalid task status transition: %s -> %s", from.String(), to.String())
+	}
+	return nil
+}
+
+func ValidateTaskStatusTransitionCode(fromCode int16, to TaskStatus) error {
+	from, err := ParseTaskStatus(fromCode)
+	if err != nil {
+		return err
+	}
+	return ValidateTaskStatusTransition(from, to)
 }

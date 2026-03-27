@@ -1,4 +1,3 @@
-// Package loaders 提供配置加载功能
 package config
 
 import (
@@ -8,143 +7,162 @@ import (
 	"github.com/spf13/viper"
 )
 
-// BuildConfig 构建配置对象
-func BuildConfig() *Config {
+func BuildConfig(v *viper.Viper) *Config {
 	cfg := &Config{
 		Processor: ProcessorConfig{
-			MaxRetries: viper.GetInt("processor.maxRetries"),
-			Timeout:    viper.GetInt("processor.timeout"),
+			MaxRetries: v.GetInt("processor.maxRetries"),
+			Timeout:    v.GetInt("processor.timeout"),
 		},
 		Worker: WorkerConfig{
-			Concurrency:        viper.GetInt("worker.concurrency"),
-			BufferSize:         viper.GetInt("worker.bufferSize"),
-			TaskInterval:       viper.GetInt("worker.taskInterval"),
-			MaxFetchPerCycle:   viper.GetInt("worker.maxFetchPerCycle"),
-			QueueThreshold:     viper.GetInt("worker.queueThreshold"),
-			CleanupInterval:    viper.GetInt("worker.cleanupInterval"),
-			TaskTimeout:        viper.GetInt("worker.taskTimeout"),
-			StuckTaskThreshold: viper.GetInt("worker.stuckTaskThreshold"),
-			ForceCleanupAfter:  viper.GetInt("worker.forceCleanupAfter"),
+			Concurrency:        v.GetInt("worker.concurrency"),
+			BufferSize:         v.GetInt("worker.bufferSize"),
+			TaskInterval:       v.GetInt("worker.taskInterval"),
+			MaxFetchPerCycle:   v.GetInt("worker.maxFetchPerCycle"),
+			QueueThreshold:     v.GetInt("worker.queueThreshold"),
+			CleanupInterval:    v.GetInt("worker.cleanupInterval"),
+			TaskTimeout:        v.GetInt("worker.taskTimeout"),
+			StuckTaskThreshold: v.GetInt("worker.stuckTaskThreshold"),
+			ForceCleanupAfter:  v.GetInt("worker.forceCleanupAfter"),
 		},
 		OpenAI: OpenAIConfig{
-			APIKey:  viper.GetString("openai.apiKey"),
-			Model:   viper.GetString("openai.model"),
-			BaseURL: viper.GetString("openai.baseURL"),
-			Timeout: viper.GetInt("openai.timeout"),
-			Clients: buildOpenAIClients(),
+			APIKey:  v.GetString("openai.apiKey"),
+			Model:   v.GetString("openai.model"),
+			BaseURL: v.GetString("openai.baseURL"),
+			Timeout: v.GetInt("openai.timeout"),
+			Clients: buildOpenAIClients(v),
 		},
 		Management: ManagementConfig{
-			BaseURL:      viper.GetString("management.baseURL"),
-			ClientID:     viper.GetString("management.clientID"),
-			ClientSecret: viper.GetString("management.clientSecret"),
-			TokenURL:     viper.GetString("management.tokenURL"),
-			Scopes:       viper.GetStringSlice("management.scopes"),
-			TenantID:     viper.GetString("management.tenantID"),
-			UserID:       viper.GetInt64("management.userID"),
-			StoreIDs:     getInt64Slice("management.storeIDs"),
+			BaseURL:      v.GetString("management.baseURL"),
+			ClientID:     v.GetString("management.clientID"),
+			ClientSecret: v.GetString("management.clientSecret"),
+			TokenURL:     v.GetString("management.tokenURL"),
+			Scopes:       v.GetStringSlice("management.scopes"),
+			TenantID:     v.GetString("management.tenantID"),
+			UserID:       v.GetInt64("management.userID"),
+			StoreIDs:     getInt64Slice(v, "management.storeIDs"),
 		},
 		Platforms: PlatformsConfig{
-			Temu:  BuildPlatformConfig("platforms.temu"),
-			Shein: BuildPlatformConfig("platforms.shein"),
+			Temu:  BuildPlatformConfig(v, "platforms.temu"),
+			Shein: BuildPlatformConfig(v, "platforms.shein"),
 			Alibaba1688: Alibaba1688Config{
-				Enabled:  viper.GetBool("platforms.alibaba1688.enabled"),
-				Timeout:  viper.GetInt("platforms.alibaba1688.timeout"),
-				PoolSize: viper.GetInt("platforms.alibaba1688.poolSize"),
+				Enabled:  v.GetBool("platforms.alibaba1688.enabled"),
+				Timeout:  v.GetInt("platforms.alibaba1688.timeout"),
+				PoolSize: v.GetInt("platforms.alibaba1688.poolSize"),
 			},
 		},
 		Browser: BrowserConfig{
-			Enabled:        viper.GetBool("browser.enabled"),
-			Headless:       viper.GetBool("browser.headless"),
-			BrowserPath:    viper.GetString("browser.browserPath"),
-			PoolSize:       viper.GetInt("browser.poolSize"),
-			ViewportWidth:  viper.GetInt("browser.viewportWidth"),
-			ViewportHeight: viper.GetInt("browser.viewportHeight"),
-			ProxyServer:    viper.GetString("browser.proxyServer"),
+			Enabled:        v.GetBool("browser.enabled"),
+			Headless:       v.GetBool("browser.headless"),
+			BrowserPath:    v.GetString("browser.browserPath"),
+			PoolSize:       v.GetInt("browser.poolSize"),
+			ViewportWidth:  v.GetInt("browser.viewportWidth"),
+			ViewportHeight: v.GetInt("browser.viewportHeight"),
+			ProxyServer:    v.GetString("browser.proxyServer"),
 			RandomConfig: BrowserRandomConfig{
-				Enabled:             viper.GetBool("browser.randomConfig.enabled"),
-				Strategy:            viper.GetString("browser.randomConfig.strategy"),
-				PresetName:          viper.GetString("browser.randomConfig.presetName"),
-				FingerprintStrategy: viper.GetString("browser.randomConfig.fingerprintStrategy"),
-				HealthCheckEnabled:  viper.GetBool("browser.randomConfig.healthCheckEnabled"),
-				MaxRetries:          viper.GetInt("browser.randomConfig.maxRetries"),
+				Enabled:             v.GetBool("browser.randomConfig.enabled"),
+				Strategy:            v.GetString("browser.randomConfig.strategy"),
+				PresetName:          v.GetString("browser.randomConfig.presetName"),
+				FingerprintStrategy: v.GetString("browser.randomConfig.fingerprintStrategy"),
+				HealthCheckEnabled:  v.GetBool("browser.randomConfig.healthCheckEnabled"),
+				MaxRetries:          v.GetInt("browser.randomConfig.maxRetries"),
 			},
 		},
 		Amazon: AmazonConfig{
-			Enabled:           viper.GetBool("amazon.enabled"),
-			Zipcodes:          viper.GetStringMapString("amazon.zipcodes"),
-			DataFreshnessDays: viper.GetInt("amazon.dataFreshnessDays"),
-			CrawlTimeout:      viper.GetInt("amazon.crawlTimeout"),
+			Enabled:           v.GetBool("amazon.enabled"),
+			Zipcodes:          v.GetStringMapString("amazon.zipcodes"),
+			DataFreshnessDays: v.GetInt("amazon.dataFreshnessDays"),
+			CrawlTimeout:      v.GetInt("amazon.crawlTimeout"),
+		},
+		ProductImage: ProductImageConfig{
+			WorkDir: v.GetString("productimage.workDir"),
+			Segmenter: ProductImageModelConfig{
+				Enabled:  v.GetBool("productimage.segmenter.enabled"),
+				Endpoint: v.GetString("productimage.segmenter.endpoint"),
+				APIKey:   v.GetString("productimage.segmenter.apiKey"),
+				Timeout:  v.GetInt("productimage.segmenter.timeout"),
+			},
+			WhiteBackground: ProductImageModelConfig{
+				Enabled:  v.GetBool("productimage.whiteBackground.enabled"),
+				Endpoint: v.GetString("productimage.whiteBackground.endpoint"),
+				APIKey:   v.GetString("productimage.whiteBackground.apiKey"),
+				Timeout:  v.GetInt("productimage.whiteBackground.timeout"),
+			},
+			Publisher: ProductImagePublisherConfig{
+				Enabled:    v.GetBool("productimage.publisher.enabled"),
+				Provider:   v.GetString("productimage.publisher.provider"),
+				OutputDir:  v.GetString("productimage.publisher.outputDir"),
+				PublicBase: v.GetString("productimage.publisher.publicBase"),
+			},
+			Lifecycle: ProductImageLifecycleConfig{
+				CleanupTemporaryFiles: v.GetBool("productimage.lifecycle.cleanupTemporaryFiles"),
+				ReuseExistingAssets:   v.GetBool("productimage.lifecycle.reuseExistingAssets"),
+			},
 		},
 		Updater: UpdaterConfig{
-			Enabled:            viper.GetBool("updater.enabled"),
-			UpdateURL:          viper.GetString("updater.updateURL"),
-			CheckInterval:      viper.GetInt("updater.checkInterval"),
-			InsecureSkipVerify: viper.GetBool("updater.insecureSkipVerify"),
+			Enabled:            v.GetBool("updater.enabled"),
+			UpdateURL:          v.GetString("updater.updateURL"),
+			CheckInterval:      v.GetInt("updater.checkInterval"),
+			InsecureSkipVerify: v.GetBool("updater.insecureSkipVerify"),
 		},
 	}
 
-	// 构建RabbitMQ配置（可选）
-	if viper.GetBool("rabbitmq.enabled") {
-		cfg.RabbitMQ = BuildRabbitMQConfig()
+	if v.GetBool("rabbitmq.enabled") {
+		cfg.RabbitMQ = BuildRabbitMQConfig(v)
 	}
 
-	// 构建数据库配置（可选，host 不为空时才构建）
-	if viper.GetString("database.host") != "" {
+	if v.GetString("database.host") != "" {
 		cfg.Database = &DatabaseConfig{
-			Host:                  viper.GetString("database.host"),
-			Port:                  viper.GetInt("database.port"),
-			User:                  viper.GetString("database.user"),
-			Password:              viper.GetString("database.password"),
-			Database:              viper.GetString("database.database"),
-			MaxConnections:        viper.GetInt("database.max_connections"),
-			MaxIdleConnections:    viper.GetInt("database.max_idle_connections"),
-			ConnectionMaxLifetime: time.Duration(viper.GetInt64("database.connection_max_lifetime")),
+			Host:                  v.GetString("database.host"),
+			Port:                  v.GetInt("database.port"),
+			User:                  v.GetString("database.user"),
+			Password:              v.GetString("database.password"),
+			Database:              v.GetString("database.database"),
+			MaxConnections:        v.GetInt("database.max_connections"),
+			MaxIdleConnections:    v.GetInt("database.max_idle_connections"),
+			ConnectionMaxLifetime: time.Duration(v.GetInt64("database.connection_max_lifetime")),
 		}
 	}
 
-	// 构建日志配置
 	cfg.Logging = LoggingConfig{
-		Level:        viper.GetString("logging.level"),
-		Format:       viper.GetString("logging.format"),
-		File:         viper.GetString("logging.file"),
-		SplitByLevel: buildSplitByLevelConfig(),
+		Level:        v.GetString("logging.level"),
+		Format:       v.GetString("logging.format"),
+		File:         v.GetString("logging.file"),
+		SplitByLevel: buildSplitByLevelConfig(v),
 	}
 
 	return cfg
 }
 
-// buildOpenAIClients 从 viper 读取 openai.clients.* 配置，构建命名客户端 map。
-// 未配置的字段（apiKey/baseURL/timeout）继承顶层默认值。
-func buildOpenAIClients() map[string]OpenAIClientConfig {
-	raw := viper.GetStringMap("openai.clients")
+func buildOpenAIClients(v *viper.Viper) map[string]OpenAIClientConfig {
+	raw := v.GetStringMap("openai.clients")
 	if len(raw) == 0 {
 		return nil
 	}
 
-	defaultKey := viper.GetString("openai.apiKey")
-	defaultBase := viper.GetString("openai.baseURL")
-	defaultTimeout := viper.GetInt("openai.timeout")
+	defaultKey := v.GetString("openai.apiKey")
+	defaultBase := v.GetString("openai.baseURL")
+	defaultTimeout := v.GetInt("openai.timeout")
 
 	clients := make(map[string]OpenAIClientConfig, len(raw))
 	for name := range raw {
 		prefix := "openai.clients." + name
 
-		apiKey := viper.GetString(prefix + ".apiKey")
+		apiKey := v.GetString(prefix + ".apiKey")
 		if apiKey == "" {
 			apiKey = defaultKey
 		}
-		baseURL := viper.GetString(prefix + ".baseURL")
+		baseURL := v.GetString(prefix + ".baseURL")
 		if baseURL == "" {
 			baseURL = defaultBase
 		}
-		timeout := viper.GetInt(prefix + ".timeout")
+		timeout := v.GetInt(prefix + ".timeout")
 		if timeout == 0 {
 			timeout = defaultTimeout
 		}
 
 		clients[name] = OpenAIClientConfig{
 			APIKey:  apiKey,
-			Model:   viper.GetString(prefix + ".model"),
+			Model:   v.GetString(prefix + ".model"),
 			BaseURL: baseURL,
 			Timeout: timeout,
 		}
@@ -152,9 +170,8 @@ func buildOpenAIClients() map[string]OpenAIClientConfig {
 	return clients
 }
 
-// buildSplitByLevelConfig 从 viper 读取 logging.split_by_level 配置
-func buildSplitByLevelConfig() []logger.LevelFileConfig {
-	raw := viper.Get("logging.split_by_level")
+func buildSplitByLevelConfig(v *viper.Viper) []logger.LevelFileConfig {
+	raw := v.Get("logging.split_by_level")
 	if raw == nil {
 		return nil
 	}
@@ -176,15 +193,15 @@ func buildSplitByLevelConfig() []logger.LevelFileConfig {
 		}
 
 		if levelsRaw, ok := m["levels"]; ok {
-			switch v := levelsRaw.(type) {
+			switch values := levelsRaw.(type) {
 			case []any:
-				for _, l := range v {
-					if s, ok := l.(string); ok {
+				for _, level := range values {
+					if s, ok := level.(string); ok {
 						cfg.Levels = append(cfg.Levels, s)
 					}
 				}
 			case []string:
-				cfg.Levels = v
+				cfg.Levels = values
 			}
 		}
 

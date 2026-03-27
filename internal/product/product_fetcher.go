@@ -3,6 +3,8 @@ package product
 
 import (
 	"context"
+
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/model"
@@ -10,18 +12,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// AmazonScraper 定义 Amazon 商品抓取能力（消费者定义接口原则）。
-// 与 crawler/amazon.Scraper 保持相同签名，domain 层不直接依赖 crawler 包。
-type AmazonScraper interface {
-	Process(url string, zipcode string) (*model.Product, error)
-	ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error)
-}
-
 // ProductFetcher 产品获取器
 type ProductFetcher struct {
 	cacheManager    *CacheManager
 	amazonConfig    *config.AmazonConfig
-	amazonProcessor AmazonScraper
+	amazonProcessor ports.ProductSource
 	logger          *logrus.Entry
 }
 
@@ -29,17 +24,16 @@ type ProductFetcher struct {
 func NewProductFetcher(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor AmazonScraper,
+	amazonProcessor ports.ProductSource,
 ) *ProductFetcher {
 	return NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, amazonProcessor, nil)
 }
 
 // NewProductFetcherWithLogger 创建产品获取器，支持传入自定义 logger。
-// logger 为 nil 时使用全局日志管理器。
 func NewProductFetcherWithLogger(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	log *logrus.Entry,
 ) *ProductFetcher {
 	if log == nil {
@@ -57,13 +51,13 @@ func NewProductFetcherWithLogger(
 func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*model.Product, error) {
 	if f.cacheManager != nil {
 		if product, err := f.cacheManager.GetFromCache(req); err == nil {
-			f.logger.Debugf("从缓存获取产品成功: %s", req.ProductID)
+			f.logger.Debugf("got product from cache: %s", req.ProductID)
 			return product, nil
 		}
 	}
 
 	if f.amazonProcessor != nil && f.amazonConfig != nil && f.amazonConfig.Enabled {
-		f.logger.Debugf("使用爬虫获取产品: %s", req.ProductID)
+		f.logger.Debugf("fetching product via crawler: %s", req.ProductID)
 		resolver := NewDomainResolver()
 		productURL := resolver.BuildAmazonProductURL(req.Region, req.ProductID)
 		zipcode := resolver.GetZipcodeByRegion(req.Region)
@@ -83,37 +77,37 @@ func (f *ProductFetcher) FetchProductWithRetry(productID, region string, storeID
 			return product, nil
 		}
 		lastErr = err
-		f.logger.Warnf("第%d次尝试获取产品失败: %v", i+1, err)
+		f.logger.Warnf("retry %d fetch product failed: %v", i+1, err)
 	}
 	return nil, lastErr
 }
 
-// CacheProduct 缓存产品数据到服务器
+// CacheProduct 缓存产品数据到服务端
 func (f *ProductFetcher) CacheProduct(req *FetchRequest, product *model.Product) error {
 	if product == nil {
-		f.logger.Warn("产品数据为空，跳过缓存")
+		f.logger.Warn("product is nil, skipping cache")
 		return nil
 	}
 	if f.cacheManager == nil {
-		f.logger.Warn("cacheManager未初始化，无法缓存")
+		f.logger.Warn("cacheManager is nil, cannot cache product")
 		return nil
 	}
 	return f.cacheManager.CacheProduct(req, product)
 }
 
-// CacheVariants 批量缓存变体数据到服务器
+// CacheVariants 批量缓存变体数据到服务端
 func (f *ProductFetcher) CacheVariants(req *FetchRequest, variants []*model.Product) error {
 	if len(variants) == 0 {
 		return nil
 	}
 	if f.cacheManager == nil {
-		f.logger.Warn("cacheManager未初始化，无法缓存变体")
+		f.logger.Warn("cacheManager is nil, cannot cache variants")
 		return nil
 	}
 	return f.cacheManager.CacheVariants(req, variants)
 }
 
-// FetchVariants 批量获取变体数据（本地模式：串行调用本地爬虫，受浏览器池并发限制）
+// FetchVariants 批量获取变体数据
 func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, variantASINs []string) ([]*model.Product, error) {
 	if len(variantASINs) == 0 {
 		return []*model.Product{}, nil
@@ -132,7 +126,7 @@ func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, v
 		}
 		product, err := f.FetchProduct(ctx, variantReq)
 		if err != nil {
-			f.logger.Warnf("获取变体失败: ASIN=%s, err=%v", asin, err)
+			f.logger.Warnf("fetch variant failed: ASIN=%s, err=%v", asin, err)
 			continue
 		}
 		if product != nil {
