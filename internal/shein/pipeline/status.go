@@ -1,37 +1,44 @@
-// Package pipeline 提供SHEIN平台的任务状态更新功能
 package pipeline
 
 import (
 	"fmt"
+
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 )
 
-// TaskStatusUpdater 任务状态更新器
 type TaskStatusUpdater struct {
 	processor *SheinProcessor
 }
 
-// NewTaskStatusUpdater 创建任务状态更新器
 func NewTaskStatusUpdater(processor *SheinProcessor) *TaskStatusUpdater {
-	return &TaskStatusUpdater{
-		processor: processor,
-	}
+	return &TaskStatusUpdater{processor: processor}
 }
 
-// UpdateTaskStatusAsync 异步更新任务状态
 func (u *TaskStatusUpdater) UpdateTaskStatusAsync(taskID string, status model.TaskStatus, errorMsg string) {
-	u.updateTaskStatusWithMode(taskID, status, errorMsg, false)
+	u.updateTaskStatusWithMode(taskID, nil, status, errorMsg, false)
 }
 
-// UpdateTaskStatusSync 同步更新任务状态
+func (u *TaskStatusUpdater) UpdateTaskStatusAsyncWithTask(task *model.Task, status model.TaskStatus, errorMsg string) {
+	if task == nil {
+		return
+	}
+	u.updateTaskStatusWithMode(fmt.Sprintf("%d", task.ID), task, status, errorMsg, false)
+}
+
 func (u *TaskStatusUpdater) UpdateTaskStatusSync(taskID string, status model.TaskStatus, errorMsg string) error {
-	return u.updateTaskStatusWithMode(taskID, status, errorMsg, true)
+	return u.updateTaskStatusWithMode(taskID, nil, status, errorMsg, true)
 }
 
-// updateTaskStatusWithMode 更新任务状态（支持同步/异步模式）
-func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, status model.TaskStatus, errorMsg string, sync bool) error {
+func (u *TaskStatusUpdater) UpdateTaskStatusSyncWithTask(task *model.Task, status model.TaskStatus, errorMsg string) error {
+	if task == nil {
+		return fmt.Errorf("task is nil")
+	}
+	return u.updateTaskStatusWithMode(fmt.Sprintf("%d", task.ID), task, status, errorMsg, true)
+}
+
+func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, task *model.Task, status model.TaskStatus, errorMsg string, sync bool) error {
 	var id int64
 	if _, err := fmt.Sscanf(taskID, "%d", &id); err != nil {
 		logger.GetGlobalLogger("shein/pipeline").Errorf("解析任务ID失败: %v", err)
@@ -48,6 +55,16 @@ func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, status model
 		return err
 	}
 
+	input := taskstatus.UpdateInput{
+		TaskID:       id,
+		Status:       status,
+		ErrorMessage: errorMsg,
+	}
+	if task != nil {
+		input.RetryCount = &task.RetryCount
+		input.Priority = &task.Priority
+	}
+
 	statusService := taskstatus.NewService("shein/pipeline", func() taskstatus.ImportTaskStatusClient {
 		managementClient := u.processor.GetManagementClient()
 		if managementClient == nil {
@@ -57,8 +74,7 @@ func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, status model
 	})
 
 	if sync {
-		return statusService.TransitionSync(id, model.TaskStatusProcessing, status, errorMsg)
+		return statusService.TransitionSyncWithInput(model.TaskStatusProcessing, input)
 	}
-
-	return statusService.TransitionAsync(id, model.TaskStatusProcessing, status, errorMsg)
+	return statusService.TransitionAsyncWithInput(model.TaskStatusProcessing, input)
 }

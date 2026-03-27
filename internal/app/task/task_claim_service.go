@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management/api"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 )
 
@@ -17,7 +17,7 @@ func NewTaskClaimService(fetcher *TaskFetcher) *TaskClaimService {
 	return &TaskClaimService{fetcher: fetcher}
 }
 
-func (s *TaskClaimService) Claim(apiTask *api.ProductImportTaskRespDTO) (string, bool) {
+func (s *TaskClaimService) Claim(apiTask *managementapi.ProductImportTaskRespDTO) (string, bool) {
 	if s == nil || s.fetcher == nil || apiTask == nil {
 		return "", false
 	}
@@ -28,7 +28,12 @@ func (s *TaskClaimService) Claim(apiTask *api.ProductImportTaskRespDTO) (string,
 	}
 
 	if err := model.ValidateTaskStatusTransitionCode(apiTask.Status, model.TaskStatusProcessing); err != nil {
-		logger.GetGlobalLogger("app/task").Warnf("任务状态不允许进入处理中，跳过抢占: TaskID=%s, CurrentStatus=%d, Error=%v", taskID, apiTask.Status, err)
+		logger.GetGlobalLogger("app/task").Warnf(
+			"任务状态不允许进入 processing，跳过抢占: TaskID=%s, CurrentStatus=%d, Error=%v",
+			taskID,
+			apiTask.Status,
+			err,
+		)
 		return taskID, false
 	}
 
@@ -36,7 +41,33 @@ func (s *TaskClaimService) Claim(apiTask *api.ProductImportTaskRespDTO) (string,
 	s.fetcher.processingTasks[taskID] = time.Now()
 	s.fetcher.tasksMutex.Unlock()
 
-	logger.GetGlobalLogger("app/task").Debugf("🔒 任务已立即标记为处理中: TaskID=%s", taskID)
-	s.fetcher.updateTaskStatusToProcessing(apiTask.ID)
+	if err := s.fetcher.updateTaskStatusToProcessing(apiTask.ID, apiTask.Status); err != nil {
+		s.fetcher.rollbackProcessingStatus(taskID)
+		logger.GetGlobalLogger("app/task").WithError(err).Warnf("任务远端 claim 失败，跳过抢占: TaskID=%s", taskID)
+		return taskID, false
+	}
+
+	fromStatus, err := model.ParseTaskStatus(apiTask.Status)
+	if err != nil {
+		s.fetcher.rollbackClaimState(taskID, apiTask, "failed to parse original status for claim journal")
+		logger.GetGlobalLogger("app/task").WithError(err).Warnf("解析原始任务状态失败，回滚 claim: TaskID=%s", taskID)
+		return taskID, false
+	}
+
+	if err := s.fetcher.recordClaimJournalEntry(apiTask.ID, &ClaimJournalEntry{
+		TaskID:       apiTask.ID,
+		ClaimedAt:    time.Now(),
+		FromStatus:   fromStatus,
+		ProductID:    apiTask.ProductID,
+		StoreID:      apiTask.StoreID,
+		Platform:     apiTask.Platform,
+		ErrorMessage: apiTask.ErrorMessage,
+	}); err != nil {
+		s.fetcher.rollbackClaimState(taskID, apiTask, "failed to persist claim journal")
+		logger.GetGlobalLogger("app/task").WithError(err).Warnf("claim journal 持久化失败，回滚 claim: TaskID=%s", taskID)
+		return taskID, false
+	}
+
+	logger.GetGlobalLogger("app/task").Debugf("任务已成功 claim 并标记为 processing: TaskID=%s", taskID)
 	return taskID, true
 }

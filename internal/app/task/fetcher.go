@@ -1,43 +1,42 @@
-﻿// Package task 提供任务获取核心功能
+// Package task provides the task fetcher lifecycle.
 package task
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"sync"
 	"time"
 
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )
 
-// UnifiedTaskFetcher 统一任务获取器
 type TaskFetcher struct {
 	*lifecycle.BaseComponent
-	config           *config.Config
-	managementClient *management.ClientManager
-	submitters       map[string]TaskSubmitter // platform -> submitter
-	interval         time.Duration
-	processingTasks  map[string]time.Time // taskID -> 提交时间，用于去重
-	tasksMutex       sync.RWMutex         // 保护 processingTasks
+	config               *config.Config
+	managementClient     *management.ClientManager
+	submitters           map[string]TaskSubmitter
+	interval             time.Duration
+	processingTasks      map[string]time.Time
+	tasksMutex           sync.RWMutex
+	statusServiceFactory func(component string) *taskstatus.Service
+	claimJournal         *ClaimJournal
 
-	// 生命周期管理
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	logger *logrus.Logger
 
-	// 子服务
 	cleanupService *CleanupService
 	monitorService *MonitorService
 }
 
-// NewUnifiedTaskFetcher 创建统一任务获取器
 func NewUnifiedTaskFetcher(
 	cfg *config.Config,
 	managementClient *management.ClientManager,
@@ -57,32 +56,30 @@ func NewUnifiedTaskFetcher(
 		interval:         interval,
 		processingTasks:  make(map[string]time.Time),
 		logger:           logger,
+		claimJournal:     NewClaimJournal(""),
 	}
 
-	// 创建子服务
 	fetcher.cleanupService = NewCleanupService(fetcher, cfg)
 	fetcher.monitorService = NewMonitorService(fetcher)
-
 	return fetcher
 }
 
-// Start 启动任务获取器
 func (f *TaskFetcher) Start(ctx context.Context) error {
 	if f.IsRunning() {
 		return errors.New(errors.ErrCodeSystem, "TaskFetcher已在运行")
 	}
 
 	f.logger.Infof("启动统一任务获取器，间隔: %v", f.interval)
-
-	// 创建子上下文
 	f.ctx, f.cancel = context.WithCancel(ctx)
 
-	// 启动子服务
+	if err := f.recoverInterruptedClaims(); err != nil {
+		f.logger.WithError(err).Warn("恢复中断 claim 任务失败")
+	}
+
 	f.wg.Add(2)
 	go f.runCleanupService()
 	go f.runMonitorService()
 
-	// 启动主循环
 	f.wg.Add(1)
 	go f.runMainLoop()
 
@@ -91,7 +88,6 @@ func (f *TaskFetcher) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop 停止任务获取器
 func (f *TaskFetcher) Stop(ctx context.Context) error {
 	if !f.IsRunning() {
 		f.logger.Info("TaskFetcher未运行，无需停止")
@@ -99,13 +95,10 @@ func (f *TaskFetcher) Stop(ctx context.Context) error {
 	}
 
 	f.logger.Info("开始停止统一任务获取器...")
-
-	// 取消子上下文
 	if f.cancel != nil {
 		f.cancel()
 	}
 
-	// 等待所有goroutine完成
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -125,12 +118,10 @@ func (f *TaskFetcher) Stop(ctx context.Context) error {
 	return nil
 }
 
-// runMainLoop 运行主循环
 func (f *TaskFetcher) runMainLoop() {
 	defer f.wg.Done()
 
-	// 启动时立即执行一次任务获取
-	f.logger.Info("🚀 启动时立即执行首次任务获取")
+	f.logger.Info("启动时立即执行首次任务获取")
 	f.fetchAndDispatchTasks(f.ctx)
 
 	ticker := time.NewTicker(f.interval)
@@ -147,32 +138,33 @@ func (f *TaskFetcher) runMainLoop() {
 	}
 }
 
-// runCleanupService 运行清理服务
 func (f *TaskFetcher) runCleanupService() {
 	defer f.wg.Done()
 	f.cleanupService.Start(f.ctx)
 }
 
-// runMonitorService 运行监控服务
 func (f *TaskFetcher) runMonitorService() {
 	defer f.wg.Done()
 	f.monitorService.StartMonitoring(f.ctx)
 }
 
-// RemoveProcessingTask 从处理中任务列表移除（任务完成或失败时调用）
 func (f *TaskFetcher) RemoveProcessingTask(taskID string) {
 	f.tasksMutex.Lock()
 	delete(f.processingTasks, taskID)
 	f.tasksMutex.Unlock()
-	logger.GetGlobalLogger("app/task").Infof("✅ 任务已从处理队列移除: TaskID=%s", taskID)
+
+	var numericTaskID int64
+	if _, err := fmt.Sscanf(taskID, "%d", &numericTaskID); err == nil {
+		f.removeClaimJournalEntry(numericTaskID)
+	}
+
+	logger.GetGlobalLogger("app/task").Infof("任务已从处理队列移除: TaskID=%s", taskID)
 }
 
-// OnTaskCompleted 实现 TaskCompletionNotifier 接口
 func (f *TaskFetcher) OnTaskCompleted(taskID int64) {
 	f.RemoveProcessingTask(fmt.Sprintf("%d", taskID))
 }
 
-// GetLongRunningTasks 获取超过指定阈值的长时间运行任务
 func (f *TaskFetcher) GetLongRunningTasks(threshold time.Duration) []QueueTaskInfo {
 	f.tasksMutex.RLock()
 	defer f.tasksMutex.RUnlock()

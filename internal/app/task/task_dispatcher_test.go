@@ -3,9 +3,12 @@ package task
 import (
 	"context"
 	"testing"
+	"time"
 
-	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/app/taskstatus"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/model"
 )
 
 type stubTaskSubmitter struct {
@@ -35,13 +38,13 @@ func TestTaskDispatcherDispatchQueueFull(t *testing.T) {
 		},
 	})
 
-	success, isQueueFull := dispatcher.Dispatch(context.Background(), &api.ProductImportTaskRespDTO{
+	success, isQueueFull := dispatcher.Dispatch(context.Background(), &managementapi.ProductImportTaskRespDTO{
 		ID:        1,
 		TenantID:  10,
 		StoreID:   20,
 		ProductID: "P-1",
 		Platform:  "temu",
-	}, &api.StoreRespDTO{
+	}, &managementapi.StoreRespDTO{
 		ID:       20,
 		Platform: "temu",
 	})
@@ -59,13 +62,13 @@ func TestTaskDispatcherDispatchMissingSubmitter(t *testing.T) {
 		submitters: map[string]TaskSubmitter{},
 	})
 
-	success, isQueueFull := dispatcher.Dispatch(context.Background(), &api.ProductImportTaskRespDTO{
+	success, isQueueFull := dispatcher.Dispatch(context.Background(), &managementapi.ProductImportTaskRespDTO{
 		ID:        2,
 		TenantID:  10,
 		StoreID:   30,
 		ProductID: "P-2",
 		Platform:  "shein",
-	}, &api.StoreRespDTO{
+	}, &managementapi.StoreRespDTO{
 		ID:       30,
 		Platform: "shein",
 	})
@@ -75,5 +78,38 @@ func TestTaskDispatcherDispatchMissingSubmitter(t *testing.T) {
 	}
 	if isQueueFull {
 		t.Fatal("Dispatch should not report queue full when submitter is missing")
+	}
+}
+
+func TestRollbackClaimStateRestoresRemoteStatusAndLocalMarker(t *testing.T) {
+	client := &stubImportTaskStatusClient{}
+	fetcher := &TaskFetcher{
+		processingTasks: map[string]time.Time{"404": time.Now()},
+		statusServiceFactory: func(component string) *taskstatus.Service {
+			return taskstatus.NewService(component, func() taskstatus.ImportTaskStatusClient {
+				return client
+			})
+		},
+	}
+
+	apiTask := &managementapi.ProductImportTaskRespDTO{
+		ID:           404,
+		Status:       model.TaskStatusPendingRetry.Int16(),
+		ErrorMessage: "previous error",
+	}
+
+	fetcher.rollbackClaimState("404", apiTask, "queue full")
+
+	if _, exists := fetcher.processingTasks["404"]; exists {
+		t.Fatal("rollbackClaimState should clear local processing mark")
+	}
+	if len(client.updates) != 1 {
+		t.Fatalf("rollbackClaimState updates = %d, want 1", len(client.updates))
+	}
+	if client.updates[0].Status != model.TaskStatusPendingRetry.Int16() {
+		t.Fatalf("rollbackClaimState status = %d, want %d", client.updates[0].Status, model.TaskStatusPendingRetry.Int16())
+	}
+	if client.updates[0].ErrorMessage != "previous error" {
+		t.Fatalf("rollbackClaimState errorMessage = %q, want previous error", client.updates[0].ErrorMessage)
 	}
 }

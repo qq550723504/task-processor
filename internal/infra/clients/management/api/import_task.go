@@ -23,9 +23,12 @@ type ProductImportTaskRespDTO struct {
 
 // ProductImportTaskUpdateReqDTO 产品导入任务更新请求DTO
 type ProductImportTaskUpdateReqDTO struct {
-	ID           int64  `json:"id"`
-	Status       int16  `json:"status"`
-	ErrorMessage string `json:"errorMessage,omitempty"`
+	ID                    int64  `json:"id"`
+	Status                int16  `json:"status"`
+	ErrorMessage          string `json:"errorMessage,omitempty"`
+	ExpectedCurrentStatus *int16 `json:"expectedCurrentStatus,omitempty"`
+	RetryCount            *int   `json:"retryCount,omitempty"`
+	Priority              *int   `json:"priority,omitempty"`
 }
 
 // ImportTaskAPI 导入任务API接口定义

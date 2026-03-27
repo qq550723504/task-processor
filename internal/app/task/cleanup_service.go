@@ -1,26 +1,28 @@
-﻿// Package task 提供统一的任务清理服务
+// Package task provides a conservative cleanup service for in-flight tasks.
 package task
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
-	"task-processor/internal/core/config"
 	"time"
 
+	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 )
 
-// CleanupService 统一清理服务
+// CleanupService periodically inspects long-running tasks and reports suspicious ones.
+//
+// It intentionally does not remove entries from processingTasks automatically, because
+// local cleanup without a verified remote/task-runtime completion signal can cause the
+// same task to be fetched and executed twice.
 type CleanupService struct {
 	fetcher    *TaskFetcher
 	config     *CleanupConfig
 	strategies []CleanupStrategy
 }
 
-// NewCleanupService 创建清理服务
 func NewCleanupService(fetcher *TaskFetcher, cfg *config.Config) *CleanupService {
 	cleanupConfig := DefaultCleanupConfig()
 
-	// 从配置文件读取参数
 	if cfg != nil && cfg.Worker.CleanupInterval > 0 {
 		cleanupConfig.CleanupInterval = time.Duration(cfg.Worker.CleanupInterval) * time.Second
 	}
@@ -38,14 +40,10 @@ func NewCleanupService(fetcher *TaskFetcher, cfg *config.Config) *CleanupService
 		fetcher: fetcher,
 		config:  cleanupConfig,
 	}
-
-	// 注册清理策略
 	service.registerStrategies()
-
 	return service
 }
 
-// registerStrategies 注册清理策略
 func (s *CleanupService) registerStrategies() {
 	s.strategies = []CleanupStrategy{
 		&ForceCleanupStrategy{threshold: s.config.ForceCleanupAfter},
@@ -54,7 +52,6 @@ func (s *CleanupService) registerStrategies() {
 	}
 }
 
-// Start 启动清理服务
 func (s *CleanupService) Start(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -78,10 +75,9 @@ func (s *CleanupService) Start(ctx context.Context) {
 	}
 }
 
-// performCleanup 执行清理
 func (s *CleanupService) performCleanup() {
-	s.fetcher.tasksMutex.Lock()
-	defer s.fetcher.tasksMutex.Unlock()
+	s.fetcher.tasksMutex.RLock()
+	defer s.fetcher.tasksMutex.RUnlock()
 
 	stats := NewCleanupStats()
 	now := time.Now()
@@ -89,16 +85,11 @@ func (s *CleanupService) performCleanup() {
 	for taskID, submitTime := range s.fetcher.processingTasks {
 		duration := now.Sub(submitTime)
 
-		// 使用策略模式进行清理判断
 		for _, strategy := range s.strategies {
-			if shouldClean, reason := strategy.ShouldCleanup(taskID, duration); shouldClean {
-				delete(s.fetcher.processingTasks, taskID)
-
-				// 根据原因分类统计
+			if shouldFlag, reason := strategy.ShouldCleanup(taskID, duration); shouldFlag {
 				status := s.getTaskStatusByReason(reason)
 				stats.AddCleaned(status)
-
-				s.logCleanup(taskID, duration, reason)
+				s.logCleanupCandidate(taskID, duration, reason)
 				break
 			}
 		}
@@ -107,13 +98,11 @@ func (s *CleanupService) performCleanup() {
 	stats.RemainingTasks = len(s.fetcher.processingTasks)
 	s.reportCleanupStats(stats)
 
-	// 检查是否需要紧急处理
 	if stats.RemainingTasks > 15 {
 		s.handleEmergencyCleanup()
 	}
 }
 
-// getTaskStatusByReason 根据清理原因获取任务状态
 func (s *CleanupService) getTaskStatusByReason(reason string) TaskStatus {
 	switch reason {
 	case "30分钟强制清理", "强制清理":
@@ -127,86 +116,106 @@ func (s *CleanupService) getTaskStatusByReason(reason string) TaskStatus {
 	}
 }
 
-// logCleanup 记录清理日志
-func (s *CleanupService) logCleanup(taskID string, duration time.Duration, reason string) {
+func (s *CleanupService) logCleanupCandidate(taskID string, duration time.Duration, reason string) {
 	if reason == "30分钟强制清理" {
-		logger.GetGlobalLogger("app/task").Errorf("🚨 %s: TaskID=%s, 运行时长=%.1fm", reason, taskID, duration.Minutes())
-	} else {
-		logger.GetGlobalLogger("app/task").Warnf("🗑️ 清理任务: TaskID=%s, 运行时长=%.1fm, 原因=%s",
-			taskID, duration.Minutes(), reason)
+		logger.GetGlobalLogger("app/task").Errorf(
+			"🚨 检测到需要人工介入的长跑任务: TaskID=%s, 运行时长=%.1fm, 原因=%s",
+			taskID,
+			duration.Minutes(),
+			reason,
+		)
+		return
 	}
+
+	logger.GetGlobalLogger("app/task").Warnf(
+		"⏰ 检测到可疑处理中任务: TaskID=%s, 运行时长=%.1fm, 原因=%s",
+		taskID,
+		duration.Minutes(),
+		reason,
+	)
 }
 
-// reportCleanupStats 报告清理统计
 func (s *CleanupService) reportCleanupStats(stats *CleanupStats) {
 	if stats.TotalCleaned > 0 {
-		logger.GetGlobalLogger("app/task").Infof("🧹 清理完成: 强制=%d, 超时=%d, 卡住=%d, 总计=%d, 剩余=%d",
-			stats.ForcedTasks, stats.ExpiredTasks, stats.StuckTasks,
-			stats.TotalCleaned, stats.RemainingTasks)
+		logger.GetGlobalLogger("app/task").Infof(
+			"🧹 任务巡检完成: 强制候选=%d, 超时候选=%d, 卡住候选=%d, 总候选=%d, 当前处理中=%d",
+			stats.ForcedTasks,
+			stats.ExpiredTasks,
+			stats.StuckTasks,
+			stats.TotalCleaned,
+			stats.RemainingTasks,
+		)
 	}
 }
 
-// handleEmergencyCleanup 处理紧急清理
 func (s *CleanupService) handleEmergencyCleanup() {
-	logger.GetGlobalLogger("app/task").Warnf("⚠️ 处理中任务过多(%d)，执行紧急清理", len(s.fetcher.processingTasks))
+	logger.GetGlobalLogger("app/task").Warnf(
+		"⚠️ 处理中任务过多(%d)，进入保护模式，仅告警不自动释放任务",
+		len(s.fetcher.processingTasks),
+	)
 
 	emergencyThreshold := 2 * time.Minute
 	now := time.Now()
-	emergencyCleaned := 0
+	emergencyCandidates := 0
 
 	for taskID, submitTime := range s.fetcher.processingTasks {
 		if now.Sub(submitTime) > emergencyThreshold {
-			delete(s.fetcher.processingTasks, taskID)
-			emergencyCleaned++
-
-			logger.GetGlobalLogger("app/task").Warnf("🚨 紧急清理: TaskID=%s", taskID)
+			emergencyCandidates++
+			logger.GetGlobalLogger("app/task").Warnf(
+				"🚨 紧急巡检命中: TaskID=%s, 运行时长=%.1fm，保留 processing 标记等待真实完成信号",
+				taskID,
+				now.Sub(submitTime).Minutes(),
+			)
 		}
 	}
 
-	if emergencyCleaned > 0 {
-		logger.GetGlobalLogger("app/task").Warnf("🚨 紧急清理完成: 清理=%d, 剩余=%d",
-			emergencyCleaned, len(s.fetcher.processingTasks))
+	if emergencyCandidates > 0 {
+		logger.GetGlobalLogger("app/task").Warnf(
+			"🚨 紧急巡检完成: 候选=%d, 当前处理中=%d",
+			emergencyCandidates,
+			len(s.fetcher.processingTasks),
+		)
 	}
 }
 
-// ForceCleanupAll 强制清理所有超过阈值的任务
+// ForceCleanupAll keeps the old API for callers, but no longer releases tasks automatically.
+// It now reports how many tasks exceed the threshold and require manual intervention.
 func (s *CleanupService) ForceCleanupAll(threshold time.Duration) int {
-	s.fetcher.tasksMutex.Lock()
-	defer s.fetcher.tasksMutex.Unlock()
+	s.fetcher.tasksMutex.RLock()
+	defer s.fetcher.tasksMutex.RUnlock()
 
 	now := time.Now()
-	forceCleaned := 0
+	candidates := 0
 
-	logger.GetGlobalLogger("app/task").Warnf("🚨 执行强制清理，阈值: %.1fm", threshold.Minutes())
+	logger.GetGlobalLogger("app/task").Warnf("🚨 执行人工巡检，阈值: %.1fm", threshold.Minutes())
 
 	for taskID, submitTime := range s.fetcher.processingTasks {
 		duration := now.Sub(submitTime)
-
 		if duration > threshold {
-			delete(s.fetcher.processingTasks, taskID)
-			forceCleaned++
-
-			logger.GetGlobalLogger("app/task").Errorf("🚨 强制清理: TaskID=%s, 运行时长=%.1fm",
-				taskID, duration.Minutes())
+			candidates++
+			logger.GetGlobalLogger("app/task").Errorf(
+				"🚨 人工介入候选: TaskID=%s, 运行时长=%.1fm，未自动移除 processing 标记",
+				taskID,
+				duration.Minutes(),
+			)
 		}
 	}
 
-	if forceCleaned > 0 {
-		logger.GetGlobalLogger("app/task").Errorf("🚨 强制清理完成: 清理=%d, 剩余=%d",
-			forceCleaned, len(s.fetcher.processingTasks))
+	if candidates > 0 {
+		logger.GetGlobalLogger("app/task").Errorf(
+			"🚨 人工巡检完成: 候选=%d, 当前处理中=%d",
+			candidates,
+			len(s.fetcher.processingTasks),
+		)
 	}
 
-	return forceCleaned
+	return candidates
 }
 
-// GetLongRunningTasks 获取长时间运行的任务
 func (s *CleanupService) GetLongRunningTasks(threshold time.Duration) []QueueTaskInfo {
 	return s.fetcher.GetLongRunningTasks(threshold)
 }
 
-// 清理策略实现
-
-// ForceCleanupStrategy 强制清理策略
 type ForceCleanupStrategy struct {
 	threshold time.Duration
 }
@@ -219,10 +228,9 @@ func (s *ForceCleanupStrategy) ShouldCleanup(taskID string, duration time.Durati
 }
 
 func (s *ForceCleanupStrategy) GetPriority() int {
-	return 1 // 最高优先级
+	return 1
 }
 
-// TimeoutCleanupStrategy 超时清理策略
 type TimeoutCleanupStrategy struct {
 	threshold time.Duration
 }
@@ -238,14 +246,12 @@ func (s *TimeoutCleanupStrategy) GetPriority() int {
 	return 2
 }
 
-// StuckTaskCleanupStrategy 卡住任务清理策略
 type StuckTaskCleanupStrategy struct {
 	threshold time.Duration
 }
 
 func (s *StuckTaskCleanupStrategy) ShouldCleanup(taskID string, duration time.Duration) (bool, string) {
 	if duration > s.threshold {
-		// 简单的卡住检测逻辑
 		return true, "任务卡住"
 	}
 	return false, ""
