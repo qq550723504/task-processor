@@ -10,7 +10,6 @@ import (
 	managementAPI "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
-	"task-processor/internal/shein/api"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
 	sheinimage "task-processor/internal/shein/api/image"
@@ -29,6 +28,7 @@ type TaskHandler struct {
 	*processor.BaseTaskHandler
 	processor    *SheinProcessor
 	errorHandler *TaskErrorHandler
+	errorRouter  *TaskErrorRouter
 }
 
 func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
@@ -39,6 +39,7 @@ func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
 		BaseTaskHandler: baseHandler,
 		processor:       proc,
 		errorHandler:    errorHandler,
+		errorRouter:     NewTaskErrorRouter(),
 	}
 }
 
@@ -159,21 +160,16 @@ func (h *TaskHandler) initShopClient(taskCtx *sheincontext.TaskContext) error {
 
 func (h *TaskHandler) handleError(task model.Task, err error) {
 	logger.GetGlobalLogger("shein/pipeline").Infof("handle error: type=%T, value=%v", err, err)
+	decision := h.errorRouter.Route(task, err)
 
-	if cookieErr, isCookieError := shein.IsCookieLoadError(err); isCookieError {
-		logger.GetGlobalLogger("shein/pipeline").Errorf("detected cookie load error: %v", cookieErr)
-		h.errorHandler.HandleTaskFailure(task, cookieErr)
-		return
+	switch decision.route {
+	case taskErrorRouteAuthenticationExpired:
+		logger.GetGlobalLogger("shein/pipeline").Warnf("detected authentication expired error: %v", decision.authErr)
+		h.errorHandler.HandleAuthenticationExpired(decision.authErr, task)
+	default:
+		logger.GetGlobalLogger("shein/pipeline").Debugf("treating as generic error: %v", decision.err)
+		h.errorHandler.HandleTaskFailure(task, decision.err)
 	}
-
-	if authErr, isAuthExpired := api.IsAuthenticationExpired(err); isAuthExpired {
-		logger.GetGlobalLogger("shein/pipeline").Warnf("detected authentication expired error: %v", authErr)
-		h.errorHandler.HandleAuthenticationExpired(authErr, task)
-		return
-	}
-
-	logger.GetGlobalLogger("shein/pipeline").Debugf("treating as generic error: %v", err)
-	h.errorHandler.HandleTaskFailure(task, err)
 }
 
 func (h *TaskHandler) handleSuccess(task model.Task) {

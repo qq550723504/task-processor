@@ -1,31 +1,18 @@
-﻿// Package task 提供任务处理工具功能
+// Package task 提供任务处理工具功能
 package task
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
-	"time"
+	"task-processor/internal/app/taskstatus"
+	"task-processor/internal/core/logger"
 
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
-
 )
 
 // fetchTasksFromAPI 从API获取任务
 func (f *TaskFetcher) fetchTasksFromAPI(maxTasks int) ([]api.ProductImportTaskRespDTO, error) {
-	// 使用适配器包装管理客户端
-	managementClientProvider := f.managementClient
-	importTaskClient := managementClientProvider.GetImportTaskClient()
-
-	// 添加调试日志
-	logger.GetGlobalLogger("app/task").Infof("🔍 任务获取参数: maxTasks=%d, userID=%d, storeIDs=%v",
-		maxTasks, f.config.Management.UserID, f.config.Management.StoreIDs)
-
-	return importTaskClient.GetPendingAndRetryTasks(
-		maxTasks,
-		f.config.Management.UserID,
-		f.config.Management.StoreIDs,
-	)
+	return NewTaskSource(f).FetchPendingTasks(maxTasks)
 }
 
 // extractAPITask 从切片中提取API任务（现在直接返回任务，无需类型断言）
@@ -72,19 +59,6 @@ func (f *TaskFetcher) isTaskProcessing(taskID string) bool {
 	return false
 }
 
-// markTaskAsProcessingImmediately 立即标记任务为处理中（获取到任务后立即调用）
-func (f *TaskFetcher) markTaskAsProcessingImmediately(taskID string, apiTaskID int64) {
-	// 立即标记为处理中，防止重复获取
-	f.tasksMutex.Lock()
-	f.processingTasks[taskID] = time.Now()
-	f.tasksMutex.Unlock()
-
-	logger.GetGlobalLogger("app/task").Debugf("🔒 任务已立即标记为处理中: TaskID=%s", taskID)
-
-	// 立即更新API端任务状态为处理中
-	f.updateTaskStatusToProcessing(apiTaskID)
-}
-
 // rollbackProcessingStatus 回滚处理中状态（当任务提交失败时调用）
 func (f *TaskFetcher) rollbackProcessingStatus(taskID string) {
 	f.tasksMutex.Lock()
@@ -96,35 +70,13 @@ func (f *TaskFetcher) rollbackProcessingStatus(taskID string) {
 
 // updateTaskStatusToProcessing 更新任务状态为"处理中"
 func (f *TaskFetcher) updateTaskStatusToProcessing(taskID int64) {
-	// 异步更新，避免阻塞任务分发 - 添加panic recovery
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.GetGlobalLogger("app/task").Errorf("异步更新任务状态goroutine panic (TaskID=%d): %v", taskID, r)
-			}
-		}()
-
-		// 使用适配器包装管理客户端
-		managementClientProvider := f.managementClient
-		importTaskClient := managementClientProvider.GetImportTaskClient()
-		if importTaskClient == nil {
-			logger.GetGlobalLogger("app/task").Error("导入任务客户端未初始化，无法更新任务状态")
-			return
+	statusService := taskstatus.NewService("app/task_fetcher", func() taskstatus.ImportTaskStatusClient {
+		if f.managementClient == nil {
+			return nil
 		}
-
-		// 更新状态为"处理中"（状态码1）
-		updateReq := &api.ProductImportTaskUpdateReqDTO{
-			ID:           taskID,
-			Status:       model.TaskStatusProcessing.Int16(),
-			ErrorMessage: "",
-		}
-
-		if err := importTaskClient.UpdateTaskStatus(updateReq); err != nil {
-			logger.GetGlobalLogger("app/task").Warnf("更新任务状态为处理中失败: TaskID=%d, Error=%v", taskID, err)
-		} else {
-			logger.GetGlobalLogger("app/task").Debugf("✅ 任务状态已更新为处理中: TaskID=%d", taskID)
-		}
-	}()
+		return f.managementClient.GetImportTaskClient()
+	})
+	statusService.UpdateAsync(taskID, model.TaskStatusProcessing, "")
 }
 
 // getSubmitterKeys 获取所有提交器的键（用于日志输出）

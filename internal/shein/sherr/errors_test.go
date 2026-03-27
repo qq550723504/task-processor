@@ -154,6 +154,27 @@ func TestIsRetryableError_AuthExpiredVariants(t *testing.T) {
 	}
 }
 
+func TestIsAuthenticationExpiredError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "code and redirect message", err: fmt.Errorf("20302 子系统登录重定向"), want: true},
+		{name: "expired message", err: fmt.Errorf("认证已过期，请重新登录"), want: true},
+		{name: "rewrapped auth message", err: fmt.Errorf("outer: %w", fmt.Errorf("需要重新登录")), want: true},
+		{name: "generic error", err: fmt.Errorf("temporary network error"), want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sherr.IsAuthenticationExpiredError(tc.err); got != tc.want {
+				t.Fatalf("IsAuthenticationExpiredError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
 func containsStr(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
 		func() bool {

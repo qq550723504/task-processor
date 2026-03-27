@@ -1,0 +1,13 @@
+services:
+  task:
+    image: xuwei190/task-processor-task:latest
+    container_name: task
+    restart: unless-stopped
+    volumes:
+      - /app/task/config:/app/config
+      - /app/task/logs:/app/logs
+      - /app/task/tmp:/app/tmp
+      - /app/task/chrome:/app/chrome
+    ports:
+      - "8081:8081"
+      - "8082:8082"

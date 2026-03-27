@@ -1,17 +1,13 @@
-﻿// Package task 提供任务分发功能
+// Package task 提供任务分发功能
 package task
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/infra/worker"
-	types "task-processor/internal/model"
 )
 
 // fetchAndDispatchTasks 获取并分发任务
@@ -110,9 +106,12 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 	platformCounts := make(map[string]int)
 	errorCount := 0
 	queueFullCount := 0
+	claimService := NewTaskClaimService(f)
+	taskDispatcher := NewTaskDispatcher(f)
 
 	// 使用适配器包装管理客户端
 	storeClient := f.managementClient.GetStoreClient()
+	dispatchGuard := NewTaskDispatchGuard(f, storeClient)
 
 	for _, apiTask := range apiTasks {
 		// 直接使用任务信息，无需类型断言
@@ -122,41 +121,26 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 		logger.GetGlobalLogger("app/task").Debugf("🔍 处理任务: TaskID=%s, StoreID=%d, ProductID=%s",
 			taskID, apiTaskPtr.StoreID, apiTaskPtr.ProductID)
 
-		// 去重检查：跳过已在处理中的任务
-		if f.isTaskProcessing(taskID) {
-			continue
-		}
-
 		// 🚀 关键优化：获取到任务后立即标记为处理中，防止重复获取
-		f.markTaskAsProcessingImmediately(taskID, apiTaskPtr.ID)
-
-		// 获取店铺信息判断平台
-		storeInfo, err := f.getStoreInfo(apiTaskPtr.StoreID, storeClient)
-		if err != nil {
-			// 如果获取店铺信息失败，需要回滚处理中状态
-			f.rollbackProcessingStatus(taskID)
-			errorCount++
+		if _, ok := claimService.Claim(apiTaskPtr); !ok {
 			continue
 		}
 
-		// 检查店铺是否被暂停
-		isPaused, err := storeClient.GetStorePauseStatus(apiTaskPtr.StoreID)
+		// 获取店铺信息并检查是否允许分发
+		storeInfo, isPaused, err := dispatchGuard.Check(apiTaskPtr)
 		if err != nil {
-			logger.GetGlobalLogger("app/task").Warnf("获取店铺 %d 暂停状态失败: %v，跳过任务", apiTaskPtr.StoreID, err)
 			f.rollbackProcessingStatus(taskID)
 			errorCount++
 			continue
 		}
 
 		if isPaused {
-			logger.GetGlobalLogger("app/task").Infof("🛑 店铺 %d 已被暂停，跳过任务: TaskID=%s, ProductID=%s",
-				apiTaskPtr.StoreID, taskID, apiTaskPtr.ProductID)
 			f.rollbackProcessingStatus(taskID)
 			continue
 		}
 
 		// 转换为内部任务格式并提交
-		success, isQueueFull := f.submitTask(ctx, apiTaskPtr, storeInfo)
+		success, isQueueFull := taskDispatcher.Dispatch(ctx, apiTaskPtr, storeInfo)
 		if success {
 			platform := strings.ToLower(storeInfo.Platform)
 			platformCounts[platform]++
@@ -179,51 +163,4 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 	if queueFullCount > 0 {
 		logger.GetGlobalLogger("app/task").Warnf("⚠️ 有 %d 个任务因队列满未提交，将在下次获取时重试", queueFullCount)
 	}
-}
-
-// submitTask 提交单个任务
-func (f *TaskFetcher) submitTask(ctx context.Context, apiTask *api.ProductImportTaskRespDTO, storeInfo *api.StoreRespDTO) (success bool, isQueueFull bool) {
-	// 转换为内部任务格式
-	internalTask := types.Task{
-		ID:         apiTask.ID,
-		TenantID:   apiTask.TenantID,
-		ProductID:  apiTask.ProductID,
-		Platform:   apiTask.Platform,
-		Region:     apiTask.Region,
-		StoreID:    apiTask.StoreID,
-		CategoryID: apiTask.CategoryID,
-		CreateTime: apiTask.CreateTime / 1000, // 转换毫秒时间戳为秒
-		RetryCount: apiTask.RetryCount,
-		Priority:   apiTask.Priority,
-		Creator:    apiTask.Creator,
-	}
-
-	taskData, err := json.Marshal(internalTask)
-	if err != nil {
-		logger.GetGlobalLogger("app/task").Errorf("序列化任务失败: %v", err)
-		return false, false
-	}
-
-	// 根据店铺平台分发任务
-	platform := strings.ToLower(storeInfo.Platform)
-	submitter, exists := f.submitters[platform]
-	if !exists {
-		logger.GetGlobalLogger("app/task").Errorf("❌ 未找到平台处理器: TaskID=%d, StoreID=%d, Platform=%s, 可用平台=%v",
-			internalTask.ID, apiTask.StoreID, platform, f.getSubmitterKeys())
-		return false, false
-	}
-
-	// 提交任务
-	if err := submitter.SubmitTask(ctx, string(taskData)); err != nil {
-		// 检查是否是队列满的错误
-		if errors.Is(err, worker.ErrQueueFull) {
-			logger.GetGlobalLogger("app/task").Debugf("[%s] 队列已满，任务将重试: TaskID=%d", platform, internalTask.ID)
-			return false, true
-		}
-		logger.GetGlobalLogger("app/task").Errorf("[%s] 提交失败: TaskID=%d, Error=%v", platform, internalTask.ID, err)
-		return false, false
-	}
-
-	logger.GetGlobalLogger("app/task").Debugf("[%s] 任务已提交: ID=%d, ProductID=%s", platform, internalTask.ID, internalTask.ProductID)
-	return true, false
 }

@@ -2,9 +2,9 @@
 package pipeline
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"sync"
+	"task-processor/internal/core/logger"
 	"time"
 
 	"task-processor/internal/core/metrics"
@@ -33,6 +33,11 @@ func NewTaskErrorHandler(processor *SheinProcessor) *TaskErrorHandler {
 
 // HandleTaskFailure 处理任务失败
 func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
+	if shein.IsFilteredError(err) {
+		logger.GetGlobalLogger("shein/pipeline").Infof("✓ 任务被筛选规则过滤: ID=%d, Priority=%d, 原因=%v", task.ID, task.Priority, err)
+		return
+	}
+
 	isRetryable := shein.IsRetryableError(err)
 
 	logger.GetGlobalLogger("shein/pipeline").Infof("错误类型: %T, 错误值: %v, 是否可重试: %t", err, err, isRetryable)
@@ -47,32 +52,18 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
 			h.pauseShopWithCacheCleanup(cookieErr.TenantID, cookieErr.StoreID, "Cookie加载失败，等待重新登录", 24*time.Hour)
 		}
 
-		// 区分业务过滤和真正的错误
-		if shein.IsFilteredError(err) {
-			logger.GetGlobalLogger("shein/pipeline").Infof("✓ 任务被筛选规则过滤: ID=%d, Priority=%d, 原因=%v", task.ID, task.Priority, err)
-		} else {
-			logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败且不可重试: ID=%d, Priority=%d, 错误=%v", task.ID, task.Priority, err)
-		}
+		logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败且不可重试: ID=%d, Priority=%d, 错误=%v", task.ID, task.Priority, err)
 		return
 	}
 
-	task.RetryCount++
-	originalPriority := task.Priority
-	if task.RetryCount > 0 && task.Priority > 10 {
-		task.Priority = task.Priority - 10
-		if task.Priority < 0 {
-			task.Priority = 0
-		}
-	}
-
-	maxRetries := h.processor.GetConfig().Processor.MaxRetries
-	if task.RetryCount >= maxRetries {
+	retryDecision := model.ApplyRetryFailure(&task, h.processor.GetConfig().Processor.MaxRetries)
+	if retryDecision.Exhausted {
 		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, err.Error())
 		metrics.GlobalTaskMetrics().IncrementFailed()
 		logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败且达到最大重试次数: ID=%d, Priority=%d, 重试次数=%d, 错误=%v", task.ID, task.Priority, task.RetryCount, err)
 	} else {
 		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusPendingRetry, err.Error())
-		logger.GetGlobalLogger("shein/pipeline").Warnf("任务处理失败，等待重试: ID=%d, Priority=%d->%d, 重试次数=%d", task.ID, originalPriority, task.Priority, task.RetryCount)
+		logger.GetGlobalLogger("shein/pipeline").Warnf("任务处理失败，等待重试: ID=%d, Priority=%d->%d, 重试次数=%d", task.ID, retryDecision.OriginalPriority, retryDecision.CurrentPriority, task.RetryCount)
 		metrics.GlobalTaskMetrics().IncrementRequeued()
 	}
 }

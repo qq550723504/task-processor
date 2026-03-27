@@ -28,6 +28,9 @@ var IsFilteredError = sherr.IsFilteredError
 // IsRetryableError 检查错误是否可重试
 var IsRetryableError = sherr.IsRetryableError
 
+// IsAuthenticationExpiredError 检查是否为认证过期错误
+var IsAuthenticationExpiredError = sherr.IsAuthenticationExpiredError
+
 // NewCookieLoadError 创建Cookie加载错误
 var NewCookieLoadError = sherr.NewCookieLoadError
 

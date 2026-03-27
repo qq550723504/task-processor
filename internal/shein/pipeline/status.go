@@ -2,14 +2,10 @@
 package pipeline
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
-	management_api "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/app/taskstatus"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/recovery"
-	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // TaskStatusUpdater 任务状态更新器
@@ -42,56 +38,27 @@ func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, status model
 		return fmt.Errorf("解析任务ID失败: %w", err)
 	}
 
-	importTaskClient := u.processor.GetManagementClient().GetImportTaskClient()
-	if importTaskClient == nil {
-		err := fmt.Errorf("导入任务客户端未初始化")
+	if !status.IsValid() {
+		err := fmt.Errorf("非法任务状态: %d", status)
 		logger.GetGlobalLogger("shein/pipeline").Warn(err.Error())
 		return err
 	}
 
-	req := &management_api.ProductImportTaskUpdateReqDTO{
-		ID:           id,
-		Status:       status.Int16(),
-		ErrorMessage: errorMsg,
+	if err := model.ValidateTaskStatusTransition(model.TaskStatusProcessing, status); err != nil {
+		return err
 	}
 
-	updateFunc := func() error {
-		maxRetries := 5
-		var lastErr error
-
-		for i := 0; i < maxRetries; i++ {
-			if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-				lastErr = err
-				if i < maxRetries-1 {
-					retryDelay := time.Second * time.Duration(i+1)
-					logger.GetGlobalLogger("shein/pipeline").Warnf("更新任务状态到API失败 (TaskID: %s, Status: %s, 重试 %d/%d): %v, %v后重试",
-						taskID, status.String(), i+1, maxRetries, err, retryDelay)
-					time.Sleep(retryDelay)
-					continue
-				}
-				logger.GetGlobalLogger("shein/pipeline").Errorf("⚠️ 更新任务状态到API失败，已达最大重试次数 (TaskID: %s, Status: %s): %v",
-					taskID, status.String(), err)
-				return fmt.Errorf("更新任务状态失败: %w", err)
-			} else {
-				logger.GetGlobalLogger("shein/pipeline").Infof("✅ 成功更新任务状态到API (TaskID: %s, Status: %s)", taskID, status.String())
-				return nil
-			}
+	statusService := taskstatus.NewService("shein/pipeline", func() taskstatus.ImportTaskStatusClient {
+		managementClient := u.processor.GetManagementClient()
+		if managementClient == nil {
+			return nil
 		}
-		return lastErr
-	}
+		return managementClient.GetImportTaskClient()
+	})
 
 	if sync {
-		return updateFunc()
-	} else {
-		go func() {
-			defer recovery.Recover("异步更新任务状态", logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
-				"task_id": taskID,
-				"status":  status.String(),
-			}))
-			if err := updateFunc(); err != nil {
-				logger.GetGlobalLogger("shein/pipeline").Errorf("异步更新任务状态最终失败 (TaskID: %s, Status: %s): %v", taskID, status.String(), err)
-			}
-		}()
-		return nil
+		return statusService.TransitionSync(id, model.TaskStatusProcessing, status, errorMsg)
 	}
+
+	return statusService.TransitionAsync(id, model.TaskStatusProcessing, status, errorMsg)
 }

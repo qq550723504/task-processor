@@ -72,6 +72,10 @@
 
 ## 架构设计
 
+补充架构文档：
+
+- [任务状态流转说明](./docs/architecture/task-status-lifecycle.md)
+
 ### 整体业务架构
 
 ```

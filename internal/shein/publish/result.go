@@ -4,9 +4,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
-	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
-	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timex"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/validation"
@@ -205,38 +203,9 @@ func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(input *PublishResul
 func updateTaskStatusToPublished(input *PublishResultInput) {
 	log := logger.GetGlobalLogger("publish_result")
 
-	statusInput := &TaskStatusUpdateInput{
+	notifier := NewTaskStatusNotifier("shein/publish_result", log)
+	notifier.Notify(&TaskStatusUpdateInput{
 		Task:                input.Task,
 		ManagementClientMgr: input.ManagementClientMgr,
-	}
-	if statusInput.ManagementClientMgr == nil {
-		log.Warn("management client manager is nil, skip published status update")
-		return
-	}
-	if statusInput.Task == nil {
-		log.Warn("task is nil, skip published status update")
-		return
-	}
-
-	importTaskClient := statusInput.ManagementClientMgr.GetImportTaskClient()
-	if importTaskClient == nil {
-		log.Warn("import task client is nil, skip published status update")
-		return
-	}
-
-	req := &management_api.ProductImportTaskUpdateReqDTO{
-		ID:     statusInput.Task.ID,
-		Status: model.TaskStatusPublished.Int16(),
-	}
-	taskID := statusInput.Task.ID
-
-	go func() {
-		defer recovery.Recover("update published task status", log.WithField("task_id", taskID))
-
-		if err := importTaskClient.UpdateTaskStatus(req); err != nil {
-			log.Errorf("update published task status failed (TaskID: %d): %v", taskID, err)
-		} else {
-			log.Infof("task status updated to published (TaskID: %d)", taskID)
-		}
-	}()
+	}, model.TaskStatusPublished, "")
 }
