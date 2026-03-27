@@ -16,6 +16,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type processorRegistration struct {
+	name        string
+	needsAmazon bool
+	register    func(context.Context, *PlatformRegistry, *ServiceManager) error
+}
+
 type PlatformRegistry struct {
 	config                 *config.Config
 	logger                 *logrus.Logger
@@ -56,138 +62,92 @@ func (r *PlatformRegistry) RegisterAllProcessors(ctx context.Context, serviceMan
 		r.logger.Warn("RabbitMQ client unavailable, local fetching will be used")
 	}
 
-	if err := r.initializeSharedResources(); err != nil {
+	registrations := r.buildProcessorRegistrations()
+	if err := r.initializeSharedResources(r.anyRegistrationNeedsAmazon(registrations)); err != nil {
 		return fmt.Errorf("initialize shared resources: %w", err)
 	}
 
-	if err := r.registerAmazonPlatform(ctx, serviceManager); err != nil {
-		return err
-	}
-	if err := r.registerTemuPlatform(ctx, serviceManager); err != nil {
-		return err
-	}
-	if err := r.registerSheinPlatform(ctx, serviceManager); err != nil {
-		return err
+	for _, registration := range registrations {
+		if !r.isPlatformEnabled(registration.name) {
+			r.logger.Debugf("skipping %s platform registration", strings.ToUpper(registration.name))
+			continue
+		}
+		if err := registration.register(ctx, r, serviceManager); err != nil {
+			return err
+		}
 	}
 
 	r.logger.Info("platform processors registered")
 	return nil
 }
 
-func (r *PlatformRegistry) initializeSharedResources() error {
-	if r.sharedResourceProvider == nil {
-		return fmt.Errorf("shared resource provider not configured")
+func (r *PlatformRegistry) buildProcessorRegistrations() []processorRegistration {
+	return []processorRegistration{
+		{
+			name:        "amazon",
+			needsAmazon: false,
+			register: func(ctx context.Context, registry *PlatformRegistry, serviceManager *ServiceManager) error {
+				registry.logger.Info("registering Amazon processor")
+				amazonProcessor := platformAmazon.NewProcessor(ctx, registry.config, registry.logger)
+				if err := serviceManager.RegisterProcessor("amazon", amazonProcessor); err != nil {
+					return fmt.Errorf("register Amazon processor: %w", err)
+				}
+				registry.logger.Info("Amazon processor registered")
+				return nil
+			},
+		},
+		{
+			name:        "temu",
+			needsAmazon: true,
+			register: func(ctx context.Context, registry *PlatformRegistry, serviceManager *ServiceManager) error {
+				registry.logger.Info("registering TEMU processor")
+				creator := registry.processorCreators.TemuProcessorCreator
+				if creator == nil {
+					return fmt.Errorf("TEMU processor creator not configured")
+				}
+				temuProcessor, err := creator(ctx, registry.config, registry.logger, temu.Dependencies{
+					ManagementClient: registry.managementClient,
+					ProductSource:    registry.sharedAmazonProcessor,
+					RabbitMQClient:   registry.rabbitmqClient,
+				})
+				if err != nil {
+					return fmt.Errorf("create TEMU processor: %w", err)
+				}
+				if err := serviceManager.RegisterProcessor("temu", temuProcessor); err != nil {
+					return fmt.Errorf("register TEMU processor: %w", err)
+				}
+				registry.logger.Info("TEMU processor registered")
+				return nil
+			},
+		},
+		{
+			name:        "shein",
+			needsAmazon: true,
+			register: func(ctx context.Context, registry *PlatformRegistry, serviceManager *ServiceManager) error {
+				registry.logger.Info("registering SHEIN processor")
+				creator := registry.processorCreators.SheinProcessorCreator
+				if creator == nil {
+					return fmt.Errorf("SHEIN processor creator not configured")
+				}
+				sheinProcessor, err := creator(ctx, registry.config, registry.logger, pipeline.Dependencies{
+					ManagementClient: registry.managementClient,
+					ProductSource:    registry.sharedAmazonProcessor,
+					RabbitMQClient:   registry.rabbitmqClient,
+				})
+				if err != nil {
+					return fmt.Errorf("create SHEIN processor: %w", err)
+				}
+				if err := serviceManager.RegisterProcessor("shein", sheinProcessor); err != nil {
+					return fmt.Errorf("register SHEIN processor: %w", err)
+				}
+				registry.logger.Info("SHEIN processor registered")
+				return nil
+			},
+		},
 	}
-	resources, err := r.sharedResourceProvider(r.config, r.logger, r.needsAmazonProcessor())
-	if err != nil {
-		return err
-	}
-
-	r.managementClient = resources.ManagementClient
-	r.sharedAmazonProcessor = resources.AmazonProcessor
-	r.logger.Info("shared resources initialized")
-	return nil
 }
 
-func (r *PlatformRegistry) needsAmazonProcessor() bool {
-	return containsPlatform(r.enabledPlatforms, "temu") || containsPlatform(r.enabledPlatforms, "shein")
-}
-
-func (r *PlatformRegistry) registerAmazonPlatform(ctx context.Context, serviceManager *ServiceManager) error {
-	if !containsPlatform(r.enabledPlatforms, "amazon") {
-		r.logger.Debug("skipping Amazon platform registration")
-		return nil
-	}
-
-	r.logger.Info("registering Amazon processor")
-	amazonProcessor := platformAmazon.NewProcessor(ctx, r.config, r.logger)
-	if err := serviceManager.RegisterProcessor("amazon", amazonProcessor); err != nil {
-		return fmt.Errorf("register Amazon processor: %w", err)
-	}
-
-	r.logger.Info("Amazon processor registered")
-	return nil
-}
-
-func (r *PlatformRegistry) registerTemuPlatform(ctx context.Context, serviceManager *ServiceManager) error {
-	if !containsPlatform(r.enabledPlatforms, "temu") {
-		r.logger.Debug("skipping TEMU platform registration")
-		return nil
-	}
-
-	r.logger.Info("registering TEMU processor")
-	creator := r.processorCreators.TemuProcessorCreator
-	if creator == nil {
-		return fmt.Errorf("TEMU processor creator not configured")
-	}
-	temuProcessor, err := creator(ctx, r.config, r.logger, temu.Dependencies{
-		ManagementClient: r.managementClient,
-		ProductSource:    r.sharedAmazonProcessor,
-		RabbitMQClient:   r.rabbitmqClient,
-	})
-	if err != nil {
-		return fmt.Errorf("create TEMU processor: %w", err)
-	}
-
-	if err := serviceManager.RegisterProcessor("temu", temuProcessor); err != nil {
-		return fmt.Errorf("register TEMU processor: %w", err)
-	}
-
-	r.logger.Info("TEMU processor registered")
-	return nil
-}
-
-func (r *PlatformRegistry) registerSheinPlatform(ctx context.Context, serviceManager *ServiceManager) error {
-	if !containsPlatform(r.enabledPlatforms, "shein") {
-		r.logger.Debug("skipping SHEIN platform registration")
-		return nil
-	}
-
-	r.logger.Info("registering SHEIN processor")
-	creator := r.processorCreators.SheinProcessorCreator
-	if creator == nil {
-		return fmt.Errorf("SHEIN processor creator not configured")
-	}
-	sheinProcessor, err := creator(ctx, r.config, r.logger, pipeline.Dependencies{
-		ManagementClient: r.managementClient,
-		ProductSource:    r.sharedAmazonProcessor,
-		RabbitMQClient:   r.rabbitmqClient,
-	})
-	if err != nil {
-		return fmt.Errorf("create SHEIN processor: %w", err)
-	}
-
-	if err := serviceManager.RegisterProcessor("shein", sheinProcessor); err != nil {
-		return fmt.Errorf("register SHEIN processor: %w", err)
-	}
-
-	r.logger.Info("SHEIN processor registered")
-	return nil
-}
-
-func (r *PlatformRegistry) RegisterTemuProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	if err := r.initForSinglePlatform(serviceManager, true); err != nil {
-		return err
-	}
-	return r.registerTemuPlatform(ctx, serviceManager)
-}
-
-func (r *PlatformRegistry) RegisterSheinProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	if err := r.initForSinglePlatform(serviceManager, true); err != nil {
-		return err
-	}
-	return r.registerSheinPlatform(ctx, serviceManager)
-}
-
-func (r *PlatformRegistry) RegisterAmazonProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	if err := r.initForSinglePlatform(serviceManager, false); err != nil {
-		return err
-	}
-	return r.registerAmazonPlatform(ctx, serviceManager)
-}
-
-func (r *PlatformRegistry) initForSinglePlatform(serviceManager *ServiceManager, needsAmazon bool) error {
-	r.rabbitmqClient = serviceManager.GetClient()
+func (r *PlatformRegistry) initializeSharedResources(needsAmazon bool) error {
 	if r.sharedResourceProvider == nil {
 		return fmt.Errorf("shared resource provider not configured")
 	}
@@ -198,7 +158,54 @@ func (r *PlatformRegistry) initForSinglePlatform(serviceManager *ServiceManager,
 
 	r.managementClient = resources.ManagementClient
 	r.sharedAmazonProcessor = resources.AmazonProcessor
+	r.logger.Info("shared resources initialized")
 	return nil
+}
+
+func (r *PlatformRegistry) RegisterTemuProcessor(ctx context.Context, serviceManager *ServiceManager) error {
+	return r.registerSinglePlatform(ctx, serviceManager, "temu")
+}
+
+func (r *PlatformRegistry) RegisterSheinProcessor(ctx context.Context, serviceManager *ServiceManager) error {
+	return r.registerSinglePlatform(ctx, serviceManager, "shein")
+}
+
+func (r *PlatformRegistry) RegisterAmazonProcessor(ctx context.Context, serviceManager *ServiceManager) error {
+	return r.registerSinglePlatform(ctx, serviceManager, "amazon")
+}
+
+func (r *PlatformRegistry) registerSinglePlatform(ctx context.Context, serviceManager *ServiceManager, platform string) error {
+	r.rabbitmqClient = serviceManager.GetClient()
+
+	if !r.isPlatformEnabled(platform) {
+		r.logger.Debugf("skipping %s platform registration", strings.ToUpper(platform))
+		return nil
+	}
+
+	for _, registration := range r.buildProcessorRegistrations() {
+		if registration.name != platform {
+			continue
+		}
+		if err := r.initializeSharedResources(registration.needsAmazon); err != nil {
+			return err
+		}
+		return registration.register(ctx, r, serviceManager)
+	}
+
+	return fmt.Errorf("unsupported platform: %s", platform)
+}
+
+func (r *PlatformRegistry) anyRegistrationNeedsAmazon(registrations []processorRegistration) bool {
+	for _, registration := range registrations {
+		if registration.needsAmazon && r.isPlatformEnabled(registration.name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *PlatformRegistry) isPlatformEnabled(platform string) bool {
+	return containsPlatform(r.enabledPlatforms, platform)
 }
 
 func parsePlatformList(platformsStr string) []string {

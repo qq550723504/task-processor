@@ -2,6 +2,7 @@ package productdata
 
 import (
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
@@ -19,7 +20,7 @@ type FetchAndCacheProductHandler struct {
 func NewFetchAndCacheProductHandler(
 	rawJsonDataClient product.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor product.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *FetchAndCacheProductHandler {
 	logger := coreLogger.GetGlobalLogger("FetchAndCacheProductHandler")

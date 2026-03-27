@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
@@ -26,7 +27,7 @@ type RawJsonDataHandlerV2 struct {
 func NewRawJsonDataHandlerV2(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor domainProduct.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandlerV2 {
 	logger := logger.GetGlobalLogger("RawJsonDataHandlerV2")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/ports"
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
@@ -52,7 +53,7 @@ type TemuTaskFactory struct {
 
 func NewTemuTaskFactory(
 	managementClient *management.ClientManager,
-	amazonProcessor platformbase.AmazonCrawler,
+	amazonProcessor ports.ProductSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
@@ -72,7 +73,7 @@ func NewTemuTaskFactory(
 
 func NewTemuTaskFactoryWithDependencies(
 	managementClient *management.ClientManager,
-	amazonProcessor platformbase.AmazonCrawler,
+	amazonProcessor ports.ProductSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,

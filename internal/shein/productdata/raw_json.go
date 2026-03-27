@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
@@ -22,7 +23,7 @@ type RawJsonDataHandler struct {
 func NewRawJsonDataHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor domainProduct.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *RawJsonDataHandler {
 	logger := coreLogger.GetGlobalLogger("RawJsonDataHandler")

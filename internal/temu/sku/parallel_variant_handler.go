@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
@@ -30,7 +31,7 @@ type ParallelVariantHandler struct {
 func NewParallelVariantHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor domainProduct.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *ParallelVariantHandler {
 	logger := logger.GetGlobalLogger("ParallelVariantHandler")

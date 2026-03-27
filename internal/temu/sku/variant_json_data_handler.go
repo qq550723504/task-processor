@@ -1,4 +1,4 @@
-﻿// Package sku 提供TEMU平台的变体JSON数据处理功能
+// Package sku 提供TEMU平台的变体JSON数据处理功能
 package sku
 
 import (
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
@@ -31,7 +32,7 @@ type VariantJsonDataHandler struct {
 func NewVariantJsonDataHandler(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	cfg *config.Config,
-	amazonProcessor domainProduct.AmazonScraper,
+	amazonProcessor ports.ProductSource,
 	rabbitmqClient *rabbitmq.Client,
 ) *VariantJsonDataHandler {
 	log := logger.GetGlobalLogger("VariantJsonDataHandler")
