@@ -24,7 +24,7 @@ import (
 type realImageComponents struct {
 	workDir    string
 	downloader *downloader.ImageDownloader
-	processor  *amazonimage.ImageProcessor
+	processor  *amazonimage.AmazonImageProcessor
 }
 
 func newRealImageComponents(workDir string) (*realImageComponents, error) {
@@ -38,7 +38,7 @@ func newRealImageComponents(workDir string) (*realImageComponents, error) {
 	return &realImageComponents{
 		workDir:    workDir,
 		downloader: downloader.NewImageDownloader(),
-		processor:  amazonimage.NewImageProcessor(),
+		processor:  amazonimage.NewAmazonImageProcessor(),
 	}, nil
 }
 
@@ -406,209 +406,6 @@ func (r *realImageComponents) writeProcessed(sourceName, stage string, data []by
 		return "", nil, fmt.Errorf("write processed asset: %w", err)
 	}
 	return path, info, nil
-}
-
-func looksWhiteBackground(img image.Image) bool {
-	if img == nil {
-		return false
-	}
-	b := img.Bounds()
-	points := []image.Point{
-		{X: b.Min.X + 2, Y: b.Min.Y + 2},
-		{X: b.Max.X - 3, Y: b.Min.Y + 2},
-		{X: b.Min.X + 2, Y: b.Max.Y - 3},
-		{X: b.Max.X - 3, Y: b.Max.Y - 3},
-	}
-	whiteCount := 0
-	for _, pt := range points {
-		r, g, b, _ := img.At(pt.X, pt.Y).RGBA()
-		if r>>8 >= 240 && g>>8 >= 240 && b>>8 >= 240 {
-			whiteCount++
-		}
-	}
-	return whiteCount >= 3
-}
-
-func extensionForFormat(format string) string {
-	switch strings.ToLower(format) {
-	case "jpeg", "jpg":
-		return "jpg"
-	case "png":
-		return "png"
-	case "gif":
-		return "gif"
-	case "webp":
-		return "webp"
-	default:
-		return "jpg"
-	}
-}
-
-func (c *downloadedImageCleaner) detectCleanupRegions(ctx context.Context, img image.Image, lowerSourceURL string) ([]*watermark.WatermarkRegion, bool) {
-	if c.watermarkProcessor == nil {
-		return c.syntheticOverlayRegions(img, lowerSourceURL), containsAny(lowerSourceURL, "text", "poster", "caption", "label", "desc", "promo", "sale", "discount", "coupon", "price", "badge", "logo", "watermark", "brandmark")
-	}
-	detection, err := c.watermarkProcessor.DetectOnly(ctx, img)
-	if err == nil && detection != nil && len(detection.Regions) > 0 {
-		return detection.Regions, true
-	}
-	regions := c.syntheticOverlayRegions(img, lowerSourceURL)
-	return regions, len(regions) > 0
-}
-
-func (c *downloadedImageCleaner) syntheticOverlayRegions(img image.Image, lowerSourceURL string) []*watermark.WatermarkRegion {
-	if img == nil {
-		return nil
-	}
-	if !containsAny(lowerSourceURL, "text", "poster", "caption", "label", "desc", "promo", "sale", "discount", "coupon", "price", "badge", "logo", "watermark", "brandmark") {
-		return nil
-	}
-	b := img.Bounds()
-	width := b.Dx()
-	height := b.Dy()
-	regionW := max(width/5, 80)
-	regionH := max(height/7, 50)
-	if regionW > width {
-		regionW = width
-	}
-	if regionH > height {
-		regionH = height
-	}
-	return []*watermark.WatermarkRegion{
-		{
-			X:           b.Min.X,
-			Y:           b.Min.Y,
-			Width:       regionW,
-			Height:      regionH,
-			Type:        watermark.WatermarkTypeText,
-			Position:    watermark.PositionTopLeft,
-			Confidence:  0.7,
-			Description: "synthetic overlay cleanup region",
-		},
-	}
-}
-
-func imagexFormat(format string) imagex.Format {
-	switch strings.ToLower(format) {
-	case "png":
-		return imagex.FormatPNG
-	default:
-		return imagex.FormatJPEG
-	}
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func extractPrimarySubject(img image.Image) (image.Image, image.Rectangle) {
-	if img == nil {
-		return nil, image.Rectangle{}
-	}
-	bounds := img.Bounds()
-	bg := estimateBackgroundColor(img)
-	tolerance := uint32(28)
-
-	minX, minY := bounds.Max.X, bounds.Max.Y
-	maxX, maxY := bounds.Min.X, bounds.Min.Y
-	found := false
-
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			if !isNearBackground(img.At(x, y), bg, tolerance) {
-				if x < minX {
-					minX = x
-				}
-				if y < minY {
-					minY = y
-				}
-				if x > maxX {
-					maxX = x
-				}
-				if y > maxY {
-					maxY = y
-				}
-				found = true
-			}
-		}
-	}
-
-	if !found {
-		return img, bounds
-	}
-
-	paddingX := max((maxX-minX+1)/12, 12)
-	paddingY := max((maxY-minY+1)/12, 12)
-	rect := image.Rect(
-		max(bounds.Min.X, minX-paddingX),
-		max(bounds.Min.Y, minY-paddingY),
-		min(bounds.Max.X, maxX+paddingX+1),
-		min(bounds.Max.Y, maxY+paddingY+1),
-	)
-	if rect.Empty() {
-		return img, bounds
-	}
-	return imaging.Crop(img, rect), rect
-}
-
-func estimateBackgroundColor(img image.Image) color.NRGBA {
-	b := img.Bounds()
-	points := []image.Point{
-		{X: b.Min.X + 1, Y: b.Min.Y + 1},
-		{X: b.Max.X - 2, Y: b.Min.Y + 1},
-		{X: b.Min.X + 1, Y: b.Max.Y - 2},
-		{X: b.Max.X - 2, Y: b.Max.Y - 2},
-		{X: b.Min.X + b.Dx()/2, Y: b.Min.Y + 1},
-		{X: b.Min.X + b.Dx()/2, Y: b.Max.Y - 2},
-	}
-
-	var sr, sg, sb, sa uint32
-	count := uint32(0)
-	for _, pt := range points {
-		if !pt.In(b) {
-			continue
-		}
-		r, g, bl, a := img.At(pt.X, pt.Y).RGBA()
-		sr += r >> 8
-		sg += g >> 8
-		sb += bl >> 8
-		sa += a >> 8
-		count++
-	}
-	if count == 0 {
-		return color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-	}
-	return color.NRGBA{
-		R: uint8(sr / count),
-		G: uint8(sg / count),
-		B: uint8(sb / count),
-		A: uint8(sa / count),
-	}
-}
-
-func isNearBackground(c color.Color, bg color.NRGBA, tolerance uint32) bool {
-	r, g, b, _ := c.RGBA()
-	dr := absDiff(r>>8, uint32(bg.R))
-	dg := absDiff(g>>8, uint32(bg.G))
-	db := absDiff(b>>8, uint32(bg.B))
-	return dr <= tolerance && dg <= tolerance && db <= tolerance
-}
-
-func absDiff(a, b uint32) uint32 {
-	if a > b {
-		return a - b
-	}
-	return b - a
 }
 
 func (e *optimizedSubjectExtractor) extractWithSegmenter(ctx context.Context, data []byte, filename, imageURL string, analysis *productenrich.ProductAnalysis) (*ImageAsset, error) {

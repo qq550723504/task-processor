@@ -11,25 +11,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ImageProcessor 图片处理器
-type ImageProcessor struct {
+// AmazonImageProcessor 负责执行 Amazon 图片规格校验和优化。
+type AmazonImageProcessor struct {
 	logger *logrus.Entry
 }
 
-// NewImageProcessor 创建图片处理器
-func NewImageProcessor() *ImageProcessor {
-	return &ImageProcessor{
+// NewAmazonImageProcessor 创建 Amazon 图片处理器。
+func NewAmazonImageProcessor() *AmazonImageProcessor {
+	return &AmazonImageProcessor{
 		logger: logger.GetGlobalLogger("ImageProcessor"),
 	}
 }
 
 // ImageInfo 图片信息
-type ImageInfo struct {
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-	Format string `json:"format"`
-	Size   int    `json:"size"`
-}
+type ImageInfo = imagex.ImageInfo
 
 // ProcessingOptions 图片处理选项
 type ProcessingOptions struct {
@@ -40,7 +35,7 @@ type ProcessingOptions struct {
 }
 
 // Resize 调整图片大小
-func (p *ImageProcessor) Resize(imageData []byte, width, height int) ([]byte, error) {
+func (p *AmazonImageProcessor) Resize(imageData []byte, width, height int) ([]byte, error) {
 	p.logger.WithFields(logrus.Fields{
 		"target_width":  width,
 		"target_height": height,
@@ -72,7 +67,7 @@ func (p *ImageProcessor) Resize(imageData []byte, width, height int) ([]byte, er
 }
 
 // ResizeWithOptions 使用选项调整图片大小
-func (p *ImageProcessor) ResizeWithOptions(imageData []byte, options ProcessingOptions) ([]byte, error) {
+func (p *AmazonImageProcessor) ResizeWithOptions(imageData []byte, options ProcessingOptions) ([]byte, error) {
 	p.logger.WithFields(logrus.Fields{
 		"options":       options,
 		"original_size": len(imageData),
@@ -109,7 +104,7 @@ func (p *ImageProcessor) ResizeWithOptions(imageData []byte, options ProcessingO
 }
 
 // ValidateFormat 验证图片格式
-func (p *ImageProcessor) ValidateFormat(imageData []byte) error {
+func (p *AmazonImageProcessor) ValidateFormat(imageData []byte) error {
 	_, format, err := imagex.FromBytesWithFormat(imageData)
 	if err != nil {
 		return fmt.Errorf("无效的图片格式: %w", err)
@@ -131,23 +126,16 @@ func (p *ImageProcessor) ValidateFormat(imageData []byte) error {
 }
 
 // GetImageInfo 获取图片信息
-func (p *ImageProcessor) GetImageInfo(imageData []byte) (*ImageInfo, error) {
-	img, format, err := imagex.FromBytesWithFormat(imageData)
+func (p *AmazonImageProcessor) GetImageInfo(imageData []byte) (*ImageInfo, error) {
+	info, err := imagex.Inspect(imageData)
 	if err != nil {
 		return nil, fmt.Errorf("解码图片失败: %w", err)
 	}
-
-	bounds := img.Bounds()
-	return &ImageInfo{
-		Width:  bounds.Dx(),
-		Height: bounds.Dy(),
-		Format: format,
-		Size:   len(imageData),
-	}, nil
+	return info, nil
 }
 
 // ValidateSize 验证图片尺寸
-func (p *ImageProcessor) ValidateSize(imageData []byte, maxWidth, maxHeight, maxSize int) error {
+func (p *AmazonImageProcessor) ValidateSize(imageData []byte, maxWidth, maxHeight, maxSize int) error {
 	info, err := p.GetImageInfo(imageData)
 	if err != nil {
 		return err
@@ -169,7 +157,7 @@ func (p *ImageProcessor) ValidateSize(imageData []byte, maxWidth, maxHeight, max
 }
 
 // OptimizeForAmazon 为Amazon优化图片
-func (p *ImageProcessor) OptimizeForAmazon(imageData []byte) ([]byte, error) {
+func (p *AmazonImageProcessor) OptimizeForAmazon(imageData []byte) ([]byte, error) {
 	p.logger.Info("为Amazon平台优化图片")
 
 	// Amazon推荐的图片规格
@@ -239,7 +227,7 @@ func (p *ImageProcessor) OptimizeForAmazon(imageData []byte) ([]byte, error) {
 }
 
 // BatchProcess 批量处理图片
-func (p *ImageProcessor) BatchProcess(images [][]byte, options ProcessingOptions) ([][]byte, error) {
+func (p *AmazonImageProcessor) BatchProcess(images [][]byte, options ProcessingOptions) ([][]byte, error) {
 	p.logger.WithField("count", len(images)).Info("开始批量处理图片")
 
 	results := make([][]byte, 0, len(images))
@@ -269,12 +257,12 @@ func (p *ImageProcessor) BatchProcess(images [][]byte, options ProcessingOptions
 }
 
 // encodeImage 编码图片
-func (p *ImageProcessor) encodeImage(img image.Image, format string) ([]byte, error) {
+func (p *AmazonImageProcessor) encodeImage(img image.Image, format string) ([]byte, error) {
 	return p.encodeImageWithQuality(img, format, 95)
 }
 
 // encodeImageWithQuality 使用指定质量编码图片
-func (p *ImageProcessor) encodeImageWithQuality(img image.Image, format string, quality int) ([]byte, error) {
+func (p *AmazonImageProcessor) encodeImageWithQuality(img image.Image, format string, quality int) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := imagex.Encode(&buf, img, format, quality); err != nil {
 		return nil, fmt.Errorf("编码图片失败: %w", err)

@@ -23,6 +23,14 @@ const (
 	FormatAuto Format = "auto"
 )
 
+// ImageInfo describes basic image metadata derived from decoded bytes.
+type ImageInfo struct {
+	Width  int
+	Height int
+	Format string
+	Size   int
+}
+
 // ToBase64 将图片转换为base64字符串
 func ToBase64(img image.Image, format Format, quality int) (string, error) {
 	if img == nil {
@@ -101,6 +109,22 @@ func FromBytesWithFormat(data []byte) (image.Image, string, error) {
 	}
 
 	return img, format, nil
+}
+
+// Inspect decodes image bytes and returns their basic metadata.
+func Inspect(data []byte) (*ImageInfo, error) {
+	img, format, err := FromBytesWithFormat(data)
+	if err != nil {
+		return nil, err
+	}
+
+	bounds := img.Bounds()
+	return &ImageInfo{
+		Width:  bounds.Dx(),
+		Height: bounds.Dy(),
+		Format: format,
+		Size:   len(data),
+	}, nil
 }
 
 // ToBytes 将图片转换为字节数组

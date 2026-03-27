@@ -1,11 +1,13 @@
-# productenrich-api
+# product-listing-api
 
-`productenrich-api` 当前同时提供两条异步流水线：
+`product-listing-api` 当前通过统一的 [`internal/app/httpapi`](/D:/code/task-processor/internal/app/httpapi) 入口提供三条异步流水线：
 
 - `productenrich`
   负责商品理解与结构化 JSON 生成
 - `productimage`
   负责 1688 图片处理、Amazon 主图/白底图生成、审核和资产发布
+- `amazonlisting`
+  负责聚合商品信息与图片资产，生成 Amazon Listing 草稿、审核工作台和提交动作
 
 ## API
 
@@ -16,6 +18,12 @@ GET  /api/v1/products/tasks/:task_id
 POST /api/v1/images/process
 GET  /api/v1/images/tasks/:task_id
 POST /api/v1/images/tasks/:task_id/review
+
+POST /api/v1/amazon/listings/generate
+GET  /api/v1/amazon/listings/tasks/:task_id
+GET  /api/v1/amazon/listings/tasks/:task_id/workbench
+POST /api/v1/amazon/listings/tasks/:task_id/review
+POST /api/v1/amazon/listings/tasks/:task_id/submit
 
 GET  /health
 ```
@@ -210,6 +218,78 @@ productimage:
 - `amazon`
 - `hybrid`
 
+## amazonlisting
+
+### 请求
+
+`POST /api/v1/amazon/listings/generate`
+
+```json
+{
+  "marketplace": "amazon",
+  "country": "US",
+  "language": "en_US",
+  "image_urls": ["https://example.com/hero.jpg"],
+  "text": "Bluetooth headphones with ANC",
+  "product_url": "https://detail.1688.com/offer/123456789.html",
+  "target_category_hint": "Electronics",
+  "brand_hint": "DemoBrand",
+  "options": {
+    "process_images": true,
+    "publish_images": true,
+    "strict_validation": true
+  }
+}
+```
+
+说明：
+- 输入源和 `productenrich` / `productimage` 一样，支持 `image_urls`、`text`、`product_url` 组合输入
+- `marketplace` 当前主目标是 Amazon
+- `options.process_images` 控制是否触发图片处理
+- `options.publish_images` 控制是否发布图片资产
+- `options.strict_validation` 控制是否严格校验导出结果
+
+### 状态
+
+- `pending`
+- `processing`
+- `needs_review`
+- `completed`
+- `rejected`
+- `failed`
+
+### 结果接口
+
+- `GET /api/v1/amazon/listings/tasks/:task_id`
+  返回最终任务结果，核心字段包括 `title`、`bullet_points`、`description`、`attributes`、`variants`、`images`、`pricing`、`compliance`、`review`、`export`、`submission`
+- `GET /api/v1/amazon/listings/tasks/:task_id/workbench`
+  返回审核工作台视图，包含 `ready`、`needs_review`、`top_action`、`action_buckets`
+
+### 审核接口
+
+`POST /api/v1/amazon/listings/tasks/:task_id/review`
+
+```json
+{
+  "action": "approve",
+  "reason": "optional"
+}
+```
+
+### 提交接口
+
+`POST /api/v1/amazon/listings/tasks/:task_id/submit`
+
+```json
+{
+  "action": "preview"
+}
+```
+
+说明：
+- `review` 和 `submit` 的可选动作由服务端按当前任务状态校验
+- `submit` 会把当前草稿导出为 Amazon 提交载荷，并记录提交结果/预览结果
+
 ## 包结构
 
 ### productenrich
@@ -227,10 +307,18 @@ productimage:
 - [pipeline](/D:/code/task-processor/internal/productimage/pipeline)
 - [store](/D:/code/task-processor/internal/productimage/store)
 
+### amazonlisting
+
+- [internal/amazonlisting](/D:/code/task-processor/internal/amazonlisting)
+- [api](/D:/code/task-processor/internal/amazonlisting/api)
+- [store](/D:/code/task-processor/internal/amazonlisting/store)
+
 ## 启动
 
+当前二进制入口位于 [`cmd/product-listing-api/main.go`](/D:/code/task-processor/cmd/product-listing-api/main.go)，内部通过 [`internal/app/httpapi`](/D:/code/task-processor/internal/app/httpapi) 统一装配三个模块。
+
 ```bash
-go run ./cmd/productenrich-api \
+go run ./cmd/product-listing-api \
   -config config/config-dev.yaml \
   -port 8085 \
   -log-level info

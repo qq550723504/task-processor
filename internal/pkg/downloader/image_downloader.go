@@ -26,7 +26,7 @@ type ImageDownloader struct {
 	rateLimit     *RateLimit
 	blockDetector *BlockDetector
 	logger        *logrus.Entry
-	processor     *ImageProcessor // 图片处理器V2
+	processor     *PlatformImageMutator // 平台图片扰动器
 }
 
 // RateLimit 速率限制器
@@ -193,7 +193,7 @@ func NewImageDownloader() *ImageDownloader {
 			blockCount: 0,
 		},
 		logger:    logger.GetGlobalLogger("ImageDownloader"),
-		processor: NewImageProcessor(), // 初始化图片处理器V2
+		processor: NewPlatformImageMutator(), // 初始化平台图片扰动器
 	}
 
 	return downloader

@@ -10,20 +10,20 @@ import (
 	"time"
 )
 
-// ImageProcessor 图片处理器 - 每次生成不同MD5的图片
-type ImageProcessor struct {
+// PlatformImageMutator 为不同平台生成带扰动的图片字节，避免复用完全相同的文件指纹。
+type PlatformImageMutator struct {
 	rand *rand.Rand // 随机数生成器
 }
 
-// NewImageProcessor 创建图片处理器
-func NewImageProcessor() *ImageProcessor {
-	return &ImageProcessor{
+// NewPlatformImageMutator 创建平台图片扰动器。
+func NewPlatformImageMutator() *PlatformImageMutator {
+	return &PlatformImageMutator{
 		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
 // ProcessImageForPlatform 为特定平台处理图片，每次生成不同的MD5值
-func (p *ImageProcessor) ProcessImageForPlatform(imageData []byte, platform string) ([]byte, error) {
+func (p *PlatformImageMutator) ProcessImageForPlatform(imageData []byte, platform string) ([]byte, error) {
 	// 生成随机标识符
 	randomID := p.generateRandomID()
 
@@ -42,7 +42,7 @@ func (p *ImageProcessor) ProcessImageForPlatform(imageData []byte, platform stri
 }
 
 // generateRandomID 生成随机标识符
-func (p *ImageProcessor) generateRandomID() string {
+func (p *PlatformImageMutator) generateRandomID() string {
 	// 使用时间戳 + 随机数确保唯一性
 	timestamp := time.Now().UnixNano()
 	randomNum := p.rand.Int63()
@@ -50,7 +50,7 @@ func (p *ImageProcessor) generateRandomID() string {
 }
 
 // processJPEGWithRandom 处理JPEG图片，添加随机性
-func (p *ImageProcessor) processJPEGWithRandom(imageData []byte, platform, randomID string) ([]byte, error) {
+func (p *PlatformImageMutator) processJPEGWithRandom(imageData []byte, platform, randomID string) ([]byte, error) {
 	// 解码图片
 	img, err := jpeg.Decode(bytes.NewReader(imageData))
 	if err != nil {
@@ -86,7 +86,7 @@ func (p *ImageProcessor) processJPEGWithRandom(imageData []byte, platform, rando
 }
 
 // processPNGWithRandom 处理PNG图片，添加随机性
-func (p *ImageProcessor) processPNGWithRandom(imageData []byte, platform, randomID string) ([]byte, error) {
+func (p *PlatformImageMutator) processPNGWithRandom(imageData []byte, platform, randomID string) ([]byte, error) {
 	// 解码图片
 	img, err := png.Decode(bytes.NewReader(imageData))
 	if err != nil {
@@ -109,14 +109,14 @@ func (p *ImageProcessor) processPNGWithRandom(imageData []byte, platform, random
 }
 
 // processOtherWithRandom 处理其他格式图片，添加随机性
-func (p *ImageProcessor) processOtherWithRandom(imageData []byte, platform, randomID string) ([]byte, error) {
+func (p *PlatformImageMutator) processOtherWithRandom(imageData []byte, platform, randomID string) ([]byte, error) {
 	// 在文件末尾添加随机标识
 	randomComment := fmt.Sprintf("_%s_%s_", platform, randomID)
 	return append(imageData, []byte(randomComment)...), nil
 }
 
 // getPlatformQuality 根据平台获取基础JPEG质量参数
-func (p *ImageProcessor) getPlatformQuality(platform string) int {
+func (p *PlatformImageMutator) getPlatformQuality(platform string) int {
 	qualityMap := map[string]int{
 		"amazon": 95,
 		"shein":  94,
@@ -134,7 +134,7 @@ func (p *ImageProcessor) getPlatformQuality(platform string) int {
 }
 
 // detectFormat 检测图片格式
-func (p *ImageProcessor) detectFormat(data []byte) string {
+func (p *PlatformImageMutator) detectFormat(data []byte) string {
 	if len(data) < 12 {
 		return ""
 	}
@@ -163,13 +163,13 @@ func (p *ImageProcessor) detectFormat(data []byte) string {
 }
 
 // GetImageMD5 计算图片的MD5值
-func (p *ImageProcessor) GetImageMD5(imageData []byte) string {
+func (p *PlatformImageMutator) GetImageMD5(imageData []byte) string {
 	hash := md5.Sum(imageData)
 	return fmt.Sprintf("%x", hash)
 }
 
 // ProcessAndGetMD5 处理图片并返回新的MD5值
-func (p *ImageProcessor) ProcessAndGetMD5(imageData []byte, platform string) ([]byte, string, error) {
+func (p *PlatformImageMutator) ProcessAndGetMD5(imageData []byte, platform string) ([]byte, string, error) {
 	processedData, err := p.ProcessImageForPlatform(imageData, platform)
 	if err != nil {
 		return nil, "", err
@@ -180,7 +180,7 @@ func (p *ImageProcessor) ProcessAndGetMD5(imageData []byte, platform string) ([]
 }
 
 // ProcessWithMultipleStrategies 使用多种策略处理图片，确保每次都不同
-func (p *ImageProcessor) ProcessWithMultipleStrategies(imageData []byte, platform string) ([]byte, string, error) {
+func (p *PlatformImageMutator) ProcessWithMultipleStrategies(imageData []byte, platform string) ([]byte, string, error) {
 	// 策略1: 随机质量 + 随机标识
 	processedData, err := p.ProcessImageForPlatform(imageData, platform)
 	if err != nil {
