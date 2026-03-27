@@ -43,7 +43,13 @@ func (m *mockProductUnderstanding) FuseMultimodal(_ context.Context, _ *producte
 }
 
 func TestSourceParserAdapter_Parse(t *testing.T) {
-	adapter, err := productimage.NewSourceParser(&mockInputParser{result: &productenrich.ParsedInput{Images: []string{"a", "b"}, Text: "desc"}})
+	adapter, err := productimage.NewSourceParser(&mockInputParser{result: &productenrich.ParsedInput{
+		Images: []string{"a", "b"},
+		Text:   "desc",
+		ScrapedData: &productenrich.ScrapedData{
+			Title: "Breathable Running Shoes",
+		},
+	}})
 	if err != nil {
 		t.Fatalf("NewSourceParser() error = %v", err)
 	}
@@ -56,6 +62,9 @@ func TestSourceParserAdapter_Parse(t *testing.T) {
 	}
 	if source.ParsedInput == nil {
 		t.Fatal("expected parsed input to be preserved")
+	}
+	if source.TitleHint != "Breathable Running Shoes" {
+		t.Fatalf("title hint = %q, want scraped title", source.TitleHint)
 	}
 }
 
@@ -89,6 +98,19 @@ func TestDefaultImageRanker_Select(t *testing.T) {
 	}
 	if len(result.RejectedImages) != 1 || result.RejectedImages[0] != "promo_badge_text.jpg" {
 		t.Fatalf("unexpected rejected images: %+v", result.RejectedImages)
+	}
+}
+
+func TestDefaultImageInspector_UsesTitleHintAsPrimaryObject(t *testing.T) {
+	inspector := productimage.NewDefaultImageInspector()
+	audit, err := inspector.Inspect(context.Background(), &productimage.SourceBundle{
+		TitleHint: "Running Shoes",
+	}, "hero_white.jpg")
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if audit.PrimaryObject != "Running Shoes" {
+		t.Fatalf("primary object = %q, want Running Shoes", audit.PrimaryObject)
 	}
 }
 
@@ -159,7 +181,7 @@ func TestDefaultMarketplaceValidator_FailsForUnsafeMainImage(t *testing.T) {
 func TestDefaultReviewAssessor_Assess(t *testing.T) {
 	assessor := productimage.NewDefaultReviewAssessor()
 	decision, err := assessor.Assess(context.Background(), nil, []productimage.ImageAudit{
-		{ImageURL: "hero.jpg", HasOverlayText: true, HasPromoBadge: true},
+		{ImageURL: "hero.jpg", HasOverlayText: true, HasPromoBadge: true, PrimaryObject: "Running Shoes"},
 	}, &productimage.ImageCandidateSet{PrimarySource: "hero.jpg"}, &productimage.ImageProcessResult{
 		Quality: &productimage.QualityAssessment{
 			OverallScore: 0.55,
@@ -178,6 +200,16 @@ func TestDefaultReviewAssessor_Assess(t *testing.T) {
 	}
 	if len(decision.Reasons) < 2 {
 		t.Fatalf("expected multiple review reasons, got %+v", decision.Reasons)
+	}
+	foundObject := false
+	for _, reason := range decision.Reasons {
+		if reason == "primary image contains overlay text and was auto-cleaned for Running Shoes" {
+			foundObject = true
+			break
+		}
+	}
+	if !foundObject {
+		t.Fatalf("expected review reasons to include primary object, got %+v", decision.Reasons)
 	}
 }
 
@@ -204,7 +236,7 @@ func TestDefaultReviewAssessor_DoesNotFlagRenderGalleryFallbackByItself(t *testi
 func TestDefaultQualityAssessor_Assess(t *testing.T) {
 	assessor := productimage.NewDefaultQualityAssessor()
 	assessment, err := assessor.Assess(context.Background(), nil, []productimage.ImageAudit{
-		{ImageURL: "hero.jpg", QualityScore: 0.82, HasOverlayText: true},
+		{ImageURL: "hero.jpg", QualityScore: 0.82, HasOverlayText: true, PrimaryObject: "Running Shoes"},
 	}, &productimage.ImageCandidateSet{PrimarySource: "hero.jpg"}, &productimage.ImageProcessResult{
 		WhiteBgImage: &productimage.ImageAsset{
 			Type:     productimage.AssetTypeWhiteBgImage,
@@ -222,6 +254,16 @@ func TestDefaultQualityAssessor_Assess(t *testing.T) {
 	}
 	if len(assessment.Issues) == 0 {
 		t.Fatal("expected quality issues")
+	}
+	foundObject := false
+	for _, issue := range assessment.Issues {
+		if issue == "primary image contains overlay text for Running Shoes" {
+			foundObject = true
+			break
+		}
+	}
+	if !foundObject {
+		t.Fatalf("expected quality issues to include primary object, got %+v", assessment.Issues)
 	}
 }
 

@@ -37,7 +37,7 @@ func TestDownloadedImageInspectorAndRenderers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDownloadedImageInspector: %v", err)
 	}
-	audit, err := inspector.Inspect(ctx, server.URL+"/hero_white.jpg")
+	audit, err := inspector.Inspect(ctx, &SourceBundle{TitleHint: "White Mug"}, server.URL+"/hero_white.jpg")
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}
@@ -46,6 +46,9 @@ func TestDownloadedImageInspectorAndRenderers(t *testing.T) {
 	}
 	if audit.QualityScore < 0.7 {
 		t.Fatalf("quality score = %v, want >= 0.7", audit.QualityScore)
+	}
+	if audit.PrimaryObject != "White Mug" {
+		t.Fatalf("primary object = %q, want White Mug", audit.PrimaryObject)
 	}
 
 	extractor, err := NewOptimizedSubjectExtractor(workDir)
@@ -117,7 +120,7 @@ func TestDownloadedImageInspector_GivesPassableScoreToCleanMediumImage(t *testin
 	if err != nil {
 		t.Fatalf("NewDownloadedImageInspector: %v", err)
 	}
-	audit, err := inspector.Inspect(context.Background(), server.URL+"/clean-medium.jpg")
+	audit, err := inspector.Inspect(context.Background(), &SourceBundle{TitleHint: "Clean Product"}, server.URL+"/clean-medium.jpg")
 	if err != nil {
 		t.Fatalf("Inspect: %v", err)
 	}

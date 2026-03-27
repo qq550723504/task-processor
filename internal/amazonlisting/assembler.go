@@ -112,6 +112,8 @@ func (a *assembler) Assemble(task *Task, product *productenrich.ProductJSON, ima
 		draft.Images = &AmazonImageBundle{RawInputImages: append([]string(nil), product.Images...)}
 	}
 
+	applyTargetCategoryHint(draft, task.Request)
+
 	if image != nil {
 		if draft.Images == nil {
 			draft.Images = &AmazonImageBundle{RawInputImages: append([]string(nil), task.Request.ImageURLs...)}
@@ -131,6 +133,13 @@ func (a *assembler) Assemble(task *Task, product *productenrich.ProductJSON, ima
 				Reasons:     append([]string(nil), image.Review.Reasons...),
 			}
 		}
+		if image.IPRisk != nil {
+			draft.ListingIPRisk = mergeListingIPRisk(draft.ListingIPRisk, &IPRiskReport{
+				Level:   image.IPRisk.Level,
+				Score:   image.IPRisk.Score,
+				Reasons: append([]string(nil), image.IPRisk.Reasons...),
+			})
+		}
 	}
 
 	if draft.Pricing == nil {
@@ -140,6 +149,50 @@ func (a *assembler) Assemble(task *Task, product *productenrich.ProductJSON, ima
 		draft.Images = &AmazonImageBundle{RawInputImages: append([]string(nil), task.Request.ImageURLs...)}
 	}
 	return draft
+}
+
+func applyTargetCategoryHint(draft *AmazonListingDraft, req *GenerateRequest) {
+	if draft == nil || req == nil {
+		return
+	}
+	path := parseCategoryHint(req.TargetCategoryHint)
+	if len(path) == 0 {
+		return
+	}
+	draft.CategoryPath = append([]string(nil), path...)
+	draft.ProductType = path[len(path)-1]
+}
+
+func parseCategoryHint(hint string) []string {
+	hint = strings.TrimSpace(hint)
+	if hint == "" {
+		return nil
+	}
+
+	var parts []string
+	switch {
+	case strings.Contains(hint, ">"):
+		parts = strings.Split(hint, ">")
+	case strings.Contains(hint, "/"):
+		parts = strings.Split(hint, "/")
+	case strings.Contains(hint, "|"):
+		parts = strings.Split(hint, "|")
+	default:
+		parts = []string{hint}
+	}
+
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		result = append(result, part)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func currencyByCountry(country string) string {
@@ -156,4 +209,42 @@ func normalizeCurrency(currency, country string) string {
 		return currencyByCountry(country)
 	}
 	return strings.ToUpper(currency)
+}
+
+func mergeListingIPRisk(base *IPRiskReport, incoming *IPRiskReport) *IPRiskReport {
+	if base == nil && incoming == nil {
+		return nil
+	}
+	if base == nil {
+		return &IPRiskReport{
+			Level:   incoming.Level,
+			Score:   incoming.Score,
+			Reasons: append([]string(nil), incoming.Reasons...),
+		}
+	}
+	if incoming == nil {
+		return base
+	}
+	base.Score += incoming.Score
+	if base.Score > 1 {
+		base.Score = 1
+	}
+	if ipRiskPriority(incoming.Level) > ipRiskPriority(base.Level) {
+		base.Level = incoming.Level
+	}
+	base.Reasons = uniqueSorted(append(base.Reasons, incoming.Reasons...))
+	return base
+}
+
+func ipRiskPriority(level string) int {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	case "low":
+		return 1
+	default:
+		return 0
+	}
 }

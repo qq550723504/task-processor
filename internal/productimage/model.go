@@ -59,6 +59,7 @@ type Task struct {
 type SourceBundle struct {
 	Images      []string                       `json:"images"`
 	Text        string                         `json:"text,omitempty"`
+	TitleHint   string                         `json:"title_hint,omitempty"`
 	ProductURL  string                         `json:"product_url,omitempty"`
 	Marketplace string                         `json:"marketplace,omitempty"`
 	Country     string                         `json:"country,omitempty"`
@@ -137,6 +138,12 @@ type ReviewDecision struct {
 	Reasons     []string `json:"reasons,omitempty"`
 }
 
+type IPRiskReport struct {
+	Level   string   `json:"level"`
+	Score   float64  `json:"score"`
+	Reasons []string `json:"reasons,omitempty"`
+}
+
 type ImageProcessResult struct {
 	MainImage      *ImageAsset         `json:"main_image,omitempty"`
 	WhiteBgImage   *ImageAsset         `json:"white_bg_image,omitempty"`
@@ -144,6 +151,7 @@ type ImageProcessResult struct {
 	GalleryImages  []ImageAsset        `json:"gallery_images,omitempty"`
 	RejectedImages []ImageIssue        `json:"rejected_images,omitempty"`
 	Compliance     *ComplianceReport   `json:"compliance,omitempty"`
+	IPRisk         *IPRiskReport       `json:"ip_risk,omitempty"`
 	Quality        *QualityAssessment  `json:"quality,omitempty"`
 	Review         *ReviewDecision     `json:"review,omitempty"`
 	StageSummaries []ImageStageSummary `json:"stage_summaries,omitempty"`

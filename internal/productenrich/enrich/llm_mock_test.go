@@ -8,15 +8,17 @@ import (
 )
 
 type mockLLMClient struct {
-	response string
-	err      error
+	response          string
+	err               error
+	lastAnalyzePrompt string
 }
 
 func (m *mockLLMClient) Generate(_ context.Context, _ string) (string, error) {
 	return m.response, m.err
 }
 
-func (m *mockLLMClient) AnalyzeImage(_ context.Context, _ string, _ string) (string, error) {
+func (m *mockLLMClient) AnalyzeImage(_ context.Context, _ string, prompt string) (string, error) {
+	m.lastAnalyzePrompt = prompt
 	return m.response, m.err
 }
 

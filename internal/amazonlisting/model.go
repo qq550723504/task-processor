@@ -113,6 +113,8 @@ type AmazonListingDraft struct {
 	Images             *AmazonImageBundle      `json:"images,omitempty"`
 	Pricing            *AmazonPricingDraft     `json:"pricing,omitempty"`
 	Compliance         *AmazonComplianceReport `json:"compliance,omitempty"`
+	IPRisk             *IPRiskReport           `json:"ip_risk,omitempty"`
+	ListingIPRisk      *IPRiskReport           `json:"listing_ip_risk,omitempty"`
 	Review             *AmazonReviewReport     `json:"review,omitempty"`
 	Export             *AmazonListingExport    `json:"export,omitempty"`
 	Submission         *AmazonSubmissionReport `json:"submission,omitempty"`
@@ -187,6 +189,12 @@ type AmazonComplianceReport struct {
 	Ready          bool     `json:"ready"`
 	BlockingIssues []string `json:"blocking_issues,omitempty"`
 	Warnings       []string `json:"warnings,omitempty"`
+}
+
+type IPRiskReport struct {
+	Level   string   `json:"level"`
+	Score   float64  `json:"score"`
+	Reasons []string `json:"reasons,omitempty"`
 }
 
 type AmazonReviewReport struct {

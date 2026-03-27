@@ -54,7 +54,7 @@ func NewDownloadedImageInspector(workDir string) (ImageInspector, error) {
 	return &downloadedImageInspector{runtime: rt}, nil
 }
 
-func (i *downloadedImageInspector) Inspect(_ context.Context, imageURL string) (*ImageAudit, error) {
+func (i *downloadedImageInspector) Inspect(_ context.Context, source *SourceBundle, imageURL string) (*ImageAudit, error) {
 	data, _, err := i.runtime.download(imageURL)
 	if err != nil {
 		return nil, err
@@ -94,6 +94,7 @@ func (i *downloadedImageInspector) Inspect(_ context.Context, imageURL string) (
 		IsCollage:         containsAny(lower, "collage", "grid", "contact-sheet", "mosaic"),
 		SharpnessScore:    quality,
 		QualityScore:      quality,
+		PrimaryObject:     sourceTitleHint(source),
 	}
 	if audit.IsWhiteBackground {
 		audit.QualityScore += 0.1

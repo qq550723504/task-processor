@@ -83,6 +83,7 @@ parse_source
 - `subject_cutout`
 - `gallery_images`
 - `compliance`
+- `ip_risk`
 - `quality`
 - `review`
 - `stage_summaries`
@@ -91,12 +92,25 @@ parse_source
 其中：
 - `quality`
   包含 `overall_score / main_score / white_bg_score / issues`
+- `ip_risk`
+  包含 `level / score / reasons`，表示图片侧侵权风险信号
 - `review`
   包含 `needs_review / reasons`
+- `audit_images`
+  会结合商品标题上下文，为每张图记录 `PrimaryObject`
 - `stage_summaries`
   记录每个 stage 的 `outcome / duration_ms`
 - `image_traces`
   记录每张图在各阶段的执行轨迹
+
+补充说明：
+- `quality.issues`
+  现在可能带上商品上下文，例如 `primary image contains overlay text for Running Shoes`
+- `review.reasons`
+  现在可能带上商品上下文，例如 `primary image contains promo badge and was auto-cleaned for Running Shoes`
+- 这类上下文优先来自 1688 抓取标题，其次来自输入文本和商品分析结果
+- `ip_risk.reasons`
+  当前会描述图片里的 logo / watermark / overlay text / promo badge / 1688 原图来源等风险信号
 
 ## 当前策略
 

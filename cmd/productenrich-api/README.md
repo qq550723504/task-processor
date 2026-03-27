@@ -154,6 +154,11 @@ parse_source
 - `image_traces`
   记录每张图在各阶段的执行轨迹，可能出现 `success / failed / fallback / reused`
 
+补充说明：
+- `audit_images` 阶段会结合商品标题上下文，为图片审计补充 `PrimaryObject`
+- `quality.issues` 和 `review.reasons` 可能会带上商品上下文，例如 `... for Running Shoes`
+- 这类上下文优先来自 1688 抓取标题，其次来自输入文本和商品分析结果
+
 ### 资产地址语义
 
 - `url`

@@ -65,6 +65,13 @@ parse_input
   -> validate_result
 ```
 
+步骤说明：
+- `parse_input`：解析输入源（图片、文本、1688 链接），统一为内部处理结构。
+- `validate_strategy`：根据输入完整度与可用能力校验可执行策略，避免进入无效流程。
+- `analyze_product`：对商品进行语义理解与信息抽取，生成后续结构化数据的上下文。
+- `generate_json`：基于分析结果生成目标 JSON 草稿（包含关键字段与结构）。
+- `validate_result`：对输出 JSON 做完整性与一致性校验，确保可被下游消费。
+
 ## productimage
 
 ### 请求
@@ -121,6 +128,20 @@ parse_source
   -> publish_assets
 ```
 
+步骤说明：
+- `parse_source`：解析请求输入，聚合图片、文本、商品链接、站点与国家信息。
+- `analyze_context`：分析商品语境（品类、用途、卖点等），为后续图像处理提供上下文。
+- `audit_images`：对输入图片做基础审计（清晰度、质量、可用性）并记录审计结果。
+- `rank_candidates`：按审计与语境结果筛选主图候选与场景图候选。
+- `extract_subject`：从主候选图中提取主体（抠图/主体定位），产出主体资产。
+- `cleanup_image`：对主体图做清理与优化（例如去干扰元素），生成主图资产。
+- `render_white_bg`：基于主图渲染白底图，满足平台主图规范要求。
+- `render_gallery`：生成或整理辅图/场景图集合，用于详情展示。
+- `assess_quality`：对主图、白底图、辅图做质量评分并汇总问题项。
+- `validate_marketplace`：按目标平台规则校验图片合规性，不通过时拦截后续提交。
+- `assess_review`：评估是否需要人工审核（低分、fallback、风险信号等）。
+- `publish_assets`：发布图片资产（本地或远端），写入可访问地址与发布元数据。
+
 ### 审核接口
 
 `POST /api/v1/images/tasks/:task_id/review`
@@ -147,6 +168,7 @@ parse_source
 - `subject_cutout`
 - `gallery_images`
 - `compliance`
+- `ip_risk`
 - `quality`
 - `review`
 - `stage_summaries`
@@ -155,6 +177,8 @@ parse_source
 其中：
 - `quality`
   包含 `overall_score / main_score / white_bg_score / issues`
+- `ip_risk`
+  包含 `level / score / reasons`，表示图片侧侵权风险信号
 - `review`
   包含 `needs_review / reasons`
 - `stage_summaries`
@@ -245,6 +269,8 @@ productimage:
 说明：
 - 输入源和 `productenrich` / `productimage` 一样，支持 `image_urls`、`text`、`product_url` 组合输入
 - `marketplace` 当前主目标是 Amazon
+- `target_category_hint` 是可选提示字段，不填时走自动类目推断；填写后会优先影响生成草稿里的 `category_path` 和 `product_type`
+  支持单值或路径形式，例如：`Electronics`、`Electronics > Headphones`、`Home & Kitchen / Drinkware`
 - `options.process_images` 控制是否触发图片处理
 - `options.publish_images` 控制是否发布图片资产
 - `options.strict_validation` 控制是否严格校验导出结果
@@ -261,9 +287,18 @@ productimage:
 ### 结果接口
 
 - `GET /api/v1/amazon/listings/tasks/:task_id`
-  返回最终任务结果，核心字段包括 `title`、`bullet_points`、`description`、`attributes`、`variants`、`images`、`pricing`、`compliance`、`review`、`export`、`submission`
+  返回最终任务结果，核心字段包括 `title`、`bullet_points`、`description`、`attributes`、`variants`、`images`、`pricing`、`compliance`、`ip_risk`、`listing_ip_risk`、`review`、`export`、`submission`
 - `GET /api/v1/amazon/listings/tasks/:task_id/workbench`
   返回审核工作台视图，包含 `ready`、`needs_review`、`top_action`、`action_buckets`
+
+补充说明：
+- `ip_risk`
+  主要表示文案侧侵权风险，例如品牌词、`compatible with`、`replacement for`
+- `listing_ip_risk`
+  表示最终汇总风险，会把文案侧风险和 `productimage` 的图片侧风险合并后再决策
+- 当前审核/阻断更应该看 `listing_ip_risk`
+  - `medium`：进入 `needs_review`
+  - `high`：阻断生成结果
 
 ### 审核接口
 

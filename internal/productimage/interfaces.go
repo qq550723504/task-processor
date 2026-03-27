@@ -19,7 +19,7 @@ type ProductContextAnalyzer interface {
 }
 
 type ImageInspector interface {
-	Inspect(ctx context.Context, imageURL string) (*ImageAudit, error)
+	Inspect(ctx context.Context, source *SourceBundle, imageURL string) (*ImageAudit, error)
 }
 
 type ImageRanker interface {

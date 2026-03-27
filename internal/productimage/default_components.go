@@ -32,6 +32,7 @@ func (a *sourceParserAdapter) Parse(ctx context.Context, req *ImageProcessReques
 	return &SourceBundle{
 		Images:      append([]string(nil), parsedInput.Images...),
 		Text:        parsedInput.Text,
+		TitleHint:   sourceTitleHintFromParsedInput(parsedInput),
 		ProductURL:  req.ProductURL,
 		Marketplace: req.Marketplace,
 		Country:     req.Country,
@@ -64,7 +65,7 @@ type defaultImageInspector struct{}
 
 func NewDefaultImageInspector() ImageInspector { return &defaultImageInspector{} }
 
-func (i *defaultImageInspector) Inspect(_ context.Context, imageURL string) (*ImageAudit, error) {
+func (i *defaultImageInspector) Inspect(_ context.Context, source *SourceBundle, imageURL string) (*ImageAudit, error) {
 	lower := strings.ToLower(imageURL)
 	audit := &ImageAudit{
 		ImageURL:          imageURL,
@@ -75,6 +76,7 @@ func (i *defaultImageInspector) Inspect(_ context.Context, imageURL string) (*Im
 		IsCollage:         containsAny(lower, "collage", "grid", "contact-sheet", "mosaic"),
 		SharpnessScore:    0.8,
 		QualityScore:      0.8,
+		PrimaryObject:     sourceTitleHint(source),
 	}
 	if audit.IsWhiteBackground {
 		audit.QualityScore += 0.15
@@ -269,19 +271,19 @@ func (a *defaultQualityAssessor) Assess(_ context.Context, source *SourceBundle,
 		assessment.MainScore = primaryAudit.QualityScore
 		if primaryAudit.IsCollage {
 			assessment.MainScore -= 0.35
-			assessment.Issues = append(assessment.Issues, "primary image collage risk")
+			assessment.Issues = append(assessment.Issues, describePrimaryAuditIssue(primaryAudit, "primary image collage risk"))
 		}
 		if primaryAudit.HasOverlayText {
 			assessment.MainScore -= 0.15
-			assessment.Issues = append(assessment.Issues, "primary image contains overlay text")
+			assessment.Issues = append(assessment.Issues, describePrimaryAuditIssue(primaryAudit, "primary image contains overlay text"))
 		}
 		if primaryAudit.HasPromoBadge {
 			assessment.MainScore -= 0.2
-			assessment.Issues = append(assessment.Issues, "primary image contains promo badge")
+			assessment.Issues = append(assessment.Issues, describePrimaryAuditIssue(primaryAudit, "primary image contains promo badge"))
 		}
 		if primaryAudit.HasLogo {
 			assessment.MainScore -= 0.2
-			assessment.Issues = append(assessment.Issues, "primary image contains logo or watermark")
+			assessment.Issues = append(assessment.Issues, describePrimaryAuditIssue(primaryAudit, "primary image contains logo or watermark"))
 		}
 	}
 	if result != nil && result.WhiteBgImage != nil {
@@ -327,16 +329,16 @@ func (a *defaultReviewAssessor) Assess(_ context.Context, source *SourceBundle, 
 	primaryAudit := findPrimaryAudit(audits, candidates)
 	if primaryAudit != nil {
 		if primaryAudit.HasOverlayText {
-			decision.Reasons = append(decision.Reasons, "primary image contains overlay text and was auto-cleaned")
+			decision.Reasons = append(decision.Reasons, describePrimaryAuditIssue(primaryAudit, "primary image contains overlay text and was auto-cleaned"))
 		}
 		if primaryAudit.HasPromoBadge {
-			decision.Reasons = append(decision.Reasons, "primary image contains promo badge and was auto-cleaned")
+			decision.Reasons = append(decision.Reasons, describePrimaryAuditIssue(primaryAudit, "primary image contains promo badge and was auto-cleaned"))
 		}
 		if primaryAudit.HasLogo {
-			decision.Reasons = append(decision.Reasons, "primary image contains logo or watermark and was auto-cleaned")
+			decision.Reasons = append(decision.Reasons, describePrimaryAuditIssue(primaryAudit, "primary image contains logo or watermark and was auto-cleaned"))
 		}
 		if primaryAudit.IsCollage {
-			decision.Reasons = append(decision.Reasons, "primary image has collage risk")
+			decision.Reasons = append(decision.Reasons, describePrimaryAuditIssue(primaryAudit, "primary image has collage risk"))
 		}
 	}
 	if result != nil {
@@ -371,6 +373,66 @@ func cloneMetadata(src map[string]string) map[string]string {
 		dst[k] = v
 	}
 	return dst
+}
+
+func describePrimaryAuditIssue(audit *ImageAudit, message string) string {
+	if audit == nil {
+		return message
+	}
+	if object := strings.TrimSpace(audit.PrimaryObject); object != "" {
+		return fmt.Sprintf("%s for %s", message, object)
+	}
+	return message
+}
+
+func sourceTitleHint(source *SourceBundle) string {
+	if source == nil {
+		return ""
+	}
+	if strings.TrimSpace(source.TitleHint) != "" {
+		return strings.TrimSpace(source.TitleHint)
+	}
+	if source.Analysis != nil {
+		if source.Analysis.TextAttributes != nil && strings.TrimSpace(source.Analysis.TextAttributes.Title) != "" {
+			return strings.TrimSpace(source.Analysis.TextAttributes.Title)
+		}
+		if source.Analysis.ScrapedData != nil && strings.TrimSpace(source.Analysis.ScrapedData.Title) != "" {
+			return strings.TrimSpace(source.Analysis.ScrapedData.Title)
+		}
+		if source.Analysis.Representation != nil && strings.TrimSpace(source.Analysis.Representation.ProductType) != "" {
+			return strings.TrimSpace(source.Analysis.Representation.ProductType)
+		}
+	}
+	if source.ParsedInput != nil && source.ParsedInput.ScrapedData != nil && strings.TrimSpace(source.ParsedInput.ScrapedData.Title) != "" {
+		return strings.TrimSpace(source.ParsedInput.ScrapedData.Title)
+	}
+	if strings.TrimSpace(source.Text) != "" {
+		text := strings.TrimSpace(source.Text)
+		runes := []rune(text)
+		if len(runes) > 120 {
+			return strings.TrimSpace(string(runes[:120]))
+		}
+		return text
+	}
+	return ""
+}
+
+func sourceTitleHintFromParsedInput(input *productenrich.ParsedInput) string {
+	if input == nil {
+		return ""
+	}
+	if input.ScrapedData != nil && strings.TrimSpace(input.ScrapedData.Title) != "" {
+		return strings.TrimSpace(input.ScrapedData.Title)
+	}
+	if strings.TrimSpace(input.Text) != "" {
+		text := strings.TrimSpace(input.Text)
+		runes := []rune(text)
+		if len(runes) > 120 {
+			return strings.TrimSpace(string(runes[:120]))
+		}
+		return text
+	}
+	return ""
 }
 
 func containsAny(s string, parts ...string) bool {

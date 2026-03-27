@@ -267,3 +267,27 @@ func TestService_ProcessImages_ReusesExistingAssetsOnRetry(t *testing.T) {
 		t.Fatalf("expected reused trace, got %+v", secondResult.ImageTraces)
 	}
 }
+
+func TestService_ProcessImages_FlagsImageIPRisk(t *testing.T) {
+	repo := store.NewMemTaskRepository()
+	svc, err := productimage.NewService(&productimage.ServiceConfig{
+		TaskRepo:       repo,
+		AssetPublisher: &stubAssetPublisher{},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task, err := svc.CreateProcessTask(context.Background(), &productimage.ImageProcessRequest{
+		ImageURLs:   []string{"https://example.com/nike_logo_promo.jpg"},
+		Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask() error = %v", err)
+	}
+
+	_, err = svc.ProcessImages(context.Background(), task)
+	if err == nil {
+		t.Fatal("expected high image IP risk to block processing")
+	}
+}

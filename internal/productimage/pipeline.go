@@ -45,6 +45,7 @@ func (s *service) buildStages() []Stage {
 		stageFunc{name: "render_white_bg", run: s.runWhiteBgStage},
 		stageFunc{name: "render_gallery", run: s.runGalleryStage},
 		stageFunc{name: "assess_quality", run: s.runQualityStage},
+		stageFunc{name: "assess_ip_risk", run: s.runIPRiskStage},
 		stageFunc{name: "validate_marketplace", run: s.runValidateStage},
 		stageFunc{name: "assess_review", run: s.runReviewStage},
 		stageFunc{name: "publish_assets", run: s.runPublishStage},
@@ -138,14 +139,18 @@ func (s *service) runAuditStage(ctx context.Context, state *PipelineState) error
 		audits := make([]ImageAudit, 0, len(state.Source.Images))
 		for _, imageURL := range state.Source.Images {
 			startedAt := time.Now()
-			audit, err := s.imageInspector.Inspect(ctx, imageURL)
+			audit, err := s.imageInspector.Inspect(ctx, state.Source, imageURL)
 			if err != nil {
 				state.addTrace("audit_images", imageURL, string(AssetTypeSourceImage), "failed", time.Since(startedAt), err.Error())
 				return err
 			}
 			if audit != nil {
 				audits = append(audits, *audit)
-				state.addTrace("audit_images", imageURL, string(AssetTypeSourceImage), "success", time.Since(startedAt), fmt.Sprintf("quality=%.2f sharpness=%.2f", audit.QualityScore, audit.SharpnessScore))
+				message := fmt.Sprintf("quality=%.2f sharpness=%.2f", audit.QualityScore, audit.SharpnessScore)
+				if audit.PrimaryObject != "" {
+					message += " object=" + audit.PrimaryObject
+				}
+				state.addTrace("audit_images", imageURL, string(AssetTypeSourceImage), "success", time.Since(startedAt), message)
 			}
 		}
 		state.Audits = audits
@@ -359,6 +364,15 @@ func (s *service) runPublishStage(ctx context.Context, state *PipelineState) err
 	return nil
 }
 
+func (s *service) runIPRiskStage(_ context.Context, state *PipelineState) error {
+	state.ensureResult()
+	state.Result.IPRisk = assessImageIPRisk(state.Source, state.Audits)
+	if state.Result.IPRisk != nil && state.Result.IPRisk.Level == "high" {
+		return NewNoRetryError(fmt.Errorf("image assets have high intellectual property risk"))
+	}
+	return nil
+}
+
 func (s *service) runReviewStage(ctx context.Context, state *PipelineState) error {
 	if state.Result == nil {
 		return fmt.Errorf("result is required before review assessment")
@@ -373,6 +387,10 @@ func (s *service) runReviewStage(ctx context.Context, state *PipelineState) erro
 		return err
 	}
 	state.Result.Review = decision
+	if state.Result.IPRisk != nil && state.Result.IPRisk.Level == "medium" {
+		state.Result.Review.NeedsReview = true
+		state.Result.Review.Reasons = uniqueStrings(append(state.Result.Review.Reasons, state.Result.IPRisk.Reasons...))
+	}
 	outcome := "success"
 	message := ""
 	if decision != nil && decision.NeedsReview {

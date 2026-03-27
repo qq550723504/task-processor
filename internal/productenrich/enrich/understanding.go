@@ -47,7 +47,7 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 			wg.Add(1)
 			go func(idx int, url string) {
 				defer wg.Done()
-				attr, err := p.AnalyzeImage(ctx, url)
+				attr, err := p.analyzeImageWithContext(ctx, url, resolveImageTitleHint(input))
 				results[idx] = result{attr: attr, err: err}
 			}(i, imgURL)
 		}
@@ -213,6 +213,10 @@ func mergeScrapedDataIntoRepresentation(rep *productenrich.ProductRepresentation
 }
 
 func (p *productUnderstanding) AnalyzeImage(ctx context.Context, imagePath string) (*productenrich.ImageAttributes, error) {
+	return p.analyzeImageWithContext(ctx, imagePath, "")
+}
+
+func (p *productUnderstanding) analyzeImageWithContext(ctx context.Context, imagePath string, titleHint string) (*productenrich.ImageAttributes, error) {
 	if imagePath == "" {
 		return nil, fmt.Errorf("image path cannot be empty")
 	}
@@ -227,12 +231,17 @@ func (p *productUnderstanding) AnalyzeImage(ctx context.Context, imagePath strin
   "usage": "the intended use or purpose of the product"
 }
 
+If a product title or product context is provided, use it only as supporting context to identify the product correctly. Ignore watermarks, promo text, badges, logos, and overlaid marketing copy.
+
 Only return the JSON object, no additional text.`
 	var promptText string
 	if prompt.GlobalRegistry != nil {
 		promptText = prompt.GlobalRegistry.Get(prompt.KProductEnrichUnderstandingAnalyzeImage, defaultImagePrompt)
 	} else {
 		promptText = defaultImagePrompt
+	}
+	if titleHint = strings.TrimSpace(titleHint); titleHint != "" {
+		promptText += "\n\nProduct title/context:\n" + titleHint
 	}
 
 	visionClient, err := p.llmManager.GetClient("vision")
@@ -261,6 +270,24 @@ Only return the JSON object, no additional text.`
 	}
 
 	return &attributes, nil
+}
+
+func resolveImageTitleHint(input *productenrich.ParsedInput) string {
+	if input == nil {
+		return ""
+	}
+	if input.ScrapedData != nil && strings.TrimSpace(input.ScrapedData.Title) != "" {
+		return strings.TrimSpace(input.ScrapedData.Title)
+	}
+	if strings.TrimSpace(input.Text) != "" {
+		text := strings.TrimSpace(input.Text)
+		runes := []rune(text)
+		if len(runes) > 120 {
+			return strings.TrimSpace(string(runes[:120]))
+		}
+		return text
+	}
+	return ""
 }
 
 func (p *productUnderstanding) ExtractTextAttributes(ctx context.Context, text string) (*productenrich.TextAttributes, error) {

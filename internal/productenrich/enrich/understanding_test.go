@@ -3,6 +3,7 @@ package enrich_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	productenrich "task-processor/internal/productenrich"
@@ -204,6 +205,28 @@ func TestAnalyzeImage_LLMError_ReturnsError(t *testing.T) {
 	_, err := p.AnalyzeImage(context.Background(), "http://example.com/img.jpg")
 	if err == nil {
 		t.Fatal("expected error when LLM fails")
+	}
+}
+
+func TestAnalyzeProduct_ImagePromptIncludesScrapedTitleContext(t *testing.T) {
+	mgr := newMockLLMManager(`{"color":"black","material":"mesh","scene":"studio","usage":"running"}`)
+	p, err := productenrichenrich.NewProductUnderstanding(mgr)
+	if err != nil {
+		t.Fatalf("NewProductUnderstanding() error = %v", err)
+	}
+
+	_, err = p.AnalyzeProduct(context.Background(), &productenrich.ParsedInput{
+		Images: []string{"http://example.com/img.jpg"},
+		ScrapedData: &productenrich.ScrapedData{
+			Title: "Men Running Shoes Breathable Sneaker",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(mgr.def.lastAnalyzePrompt, "Men Running Shoes Breathable Sneaker") {
+		t.Fatalf("expected analyze image prompt to include scraped title context, got %q", mgr.def.lastAnalyzePrompt)
 	}
 }
 

@@ -29,6 +29,7 @@ func (v *validator) Validate(req *GenerateRequest, draft *AmazonListingDraft) *V
 	v.validatePricing(report, draft)
 	v.validateVariants(report, draft)
 	v.validateDimensions(report, draft)
+	v.validateIPRisk(report, req, draft)
 	v.mergeReviewSignals(report, draft)
 
 	report.BlockingIssues = uniqueSorted(report.BlockingIssues)
@@ -223,6 +224,28 @@ func (v *validator) validateDimensions(report *ValidationReport, draft *AmazonLi
 		report.Warnings = append(report.Warnings, "weight unit is missing")
 		report.NeedsReview = true
 		report.ReviewReasons = append(report.ReviewReasons, "weight unit is missing")
+	}
+}
+
+func (v *validator) validateIPRisk(report *ValidationReport, req *GenerateRequest, draft *AmazonListingDraft) {
+	ipRisk := assessContentIPRisk(req, draft)
+	draft.IPRisk = ipRisk
+	draft.ListingIPRisk = mergeListingIPRisk(draft.ListingIPRisk, ipRisk)
+	if ipRisk == nil {
+		ipRisk = draft.ListingIPRisk
+	}
+	if ipRisk == nil {
+		return
+	}
+	switch draft.ListingIPRisk.Level {
+	case "high":
+		report.Ready = false
+		report.BlockingIssues = append(report.BlockingIssues, "listing has high intellectual property risk")
+		report.ReviewReasons = append(report.ReviewReasons, draft.ListingIPRisk.Reasons...)
+	case "medium":
+		report.Warnings = append(report.Warnings, "listing may contain intellectual property risk signals")
+		report.NeedsReview = true
+		report.ReviewReasons = append(report.ReviewReasons, draft.ListingIPRisk.Reasons...)
 	}
 }
 
