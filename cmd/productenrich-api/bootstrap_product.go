@@ -17,12 +17,12 @@ import (
 func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productModule, error) {
 	jsonGenerator, err := productenrichenrich.NewJSONGenerator(logger, deps.llmMgr)
 	if err != nil {
-		return nil, fmt.Errorf("create JSON generator: %w", err)
+		return nil, fmt.Errorf("创建 JSON 生成器：%w", err)
 	}
 
 	variantGenerator, err := productenrichenrich.NewVariantGenerator(deps.llmMgr)
 	if err != nil {
-		return nil, fmt.Errorf("create variant generator: %w", err)
+		return nil, fmt.Errorf("创建变体生成器：%w", err)
 	}
 
 	taskRepo, closers, err := buildProductTaskRepository(deps.cfg, logger)
@@ -64,12 +64,12 @@ func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productModul
 		}),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create product service: %w", err)
+		return nil, fmt.Errorf("创建产品服务：%w", err)
 	}
 
 	productProcessor, err := productpipeline.NewProcessor(productSvc, taskRepo, logger, 3)
 	if err != nil {
-		return nil, fmt.Errorf("create product processor: %w", err)
+		return nil, fmt.Errorf("创建产品处理器：%w", err)
 	}
 	productPool := newWorkerPool(productProcessor, deps.cfg)
 	productSubmitter := &poolSubmitter{pool: productPool}
@@ -78,7 +78,7 @@ func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productModul
 
 	productHandler, err := productapi.NewProductHandler(productSvc)
 	if err != nil {
-		return nil, fmt.Errorf("create product handler: %w", err)
+		return nil, fmt.Errorf("创建产品处理器：%w", err)
 	}
 
 	return &productModule{handler: productHandler, pool: productPool}, nil
@@ -88,11 +88,11 @@ func buildProductTaskRepository(cfg *config.Config, logger *logrus.Logger) (prod
 	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
 		repo, closer, err := newDBTaskRepository(cfg.Database, logger)
 		if err != nil {
-			return nil, nil, fmt.Errorf("create task repository: %w", err)
+			return nil, nil, fmt.Errorf("创建任务仓库：%w", err)
 		}
 		return repo, []func() error{closer}, nil
 	}
-	logger.Warn("database not configured, using in-memory productenrich repository")
+	logger.Warn("未配置数据库，使用内存 productenrich 仓库")
 	return store.NewMemTaskRepository(), nil, nil
 }
 
@@ -100,10 +100,10 @@ func buildProductRedisClient(cfg *config.Config, logger *logrus.Logger) (product
 	if cfg != nil && cfg.Redis != nil && cfg.Redis.Host != "" {
 		redisClient, err := newRedisClient(cfg.Redis, logger)
 		if err != nil {
-			return nil, fmt.Errorf("create Redis client: %w", err)
+			return nil, fmt.Errorf("创建 Redis 客户端：%w", err)
 		}
 		return redisClient, nil
 	}
-	logger.Warn("redis not configured, using in-memory productenrich queue fallback")
+	logger.Warn("未配置 Redis，使用内存 productenrich 队列降级方案")
 	return productenrich.NewMemRedisClient(), nil
 }

@@ -17,11 +17,11 @@ import (
 func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, error) {
 	sourceParser, err := productimage.NewSourceParser(deps.inputParser)
 	if err != nil {
-		return nil, fmt.Errorf("create image source parser: %w", err)
+		return nil, fmt.Errorf("创建图片源解析器：%w", err)
 	}
 	contextAnalyzer, err := productimage.NewProductContextAnalyzer(deps.understanding)
 	if err != nil {
-		return nil, fmt.Errorf("create image context analyzer: %w", err)
+		return nil, fmt.Errorf("创建图片上下文分析器：%w", err)
 	}
 
 	imageRepo, closers, err := buildImageTaskRepository(deps.cfg, logger)
@@ -32,19 +32,19 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 
 	imageInspector, err := productimage.NewDownloadedImageInspector(deps.imageWorkDir)
 	if err != nil {
-		return nil, fmt.Errorf("create downloaded image inspector: %w", err)
+		return nil, fmt.Errorf("创建下载图片检查器：%w", err)
 	}
 	subjectExtractor, err := buildImageSubjectExtractor(deps.cfg, deps.imageWorkDir)
 	if err != nil {
-		return nil, fmt.Errorf("create subject extractor: %w", err)
+		return nil, fmt.Errorf("创建主体提取器：%w", err)
 	}
 	imageCleaner, err := productimage.NewWatermarkAwareImageCleaner(deps.imageWorkDir, deps.cfg.Watermark, logger)
 	if err != nil {
-		return nil, fmt.Errorf("create downloaded image cleaner: %w", err)
+		return nil, fmt.Errorf("创建下载图片清洗器：%w", err)
 	}
 	whiteBgRenderer, err := buildWhiteBackgroundRenderer(deps.cfg, deps.imageWorkDir)
 	if err != nil {
-		return nil, fmt.Errorf("create white background renderer: %w", err)
+		return nil, fmt.Errorf("创建白底图渲染器：%w", err)
 	}
 
 	imageCapabilities := productimage.StrictServiceCapabilities()
@@ -64,12 +64,12 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 		ReuseExistingAssets:   deps.cfg.ProductImage.Lifecycle.ReuseExistingAssets,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create image service: %w", err)
+		return nil, fmt.Errorf("创建图片服务：%w", err)
 	}
 
 	imageProcessor, err := productimagepipeline.NewProcessor(imageSvc, imageRepo, logger, 2)
 	if err != nil {
-		return nil, fmt.Errorf("create image processor: %w", err)
+		return nil, fmt.Errorf("创建图片处理器：%w", err)
 	}
 	imagePool := newWorkerPool(imageProcessor, deps.cfg)
 	imageSubmitter := &poolSubmitter{pool: imagePool}
@@ -78,7 +78,7 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 
 	imageHandler, err := productimageapi.NewImageHandler(imageSvc)
 	if err != nil {
-		return nil, fmt.Errorf("create image handler: %w", err)
+		return nil, fmt.Errorf("创建图片处理器：%w", err)
 	}
 
 	return &imageModule{handler: imageHandler, pool: imagePool}, nil
@@ -88,11 +88,11 @@ func buildImageTaskRepository(cfg *config.Config, logger *logrus.Logger) (produc
 	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
 		repo, closer, err := newDBImageTaskRepository(cfg.Database, logger)
 		if err != nil {
-			return nil, nil, fmt.Errorf("create image task repository: %w", err)
+			return nil, nil, fmt.Errorf("创建图片任务仓库：%w", err)
 		}
 		return repo, []func() error{closer}, nil
 	}
-	logger.Warn("database not configured, using in-memory productimage repository")
+	logger.Warn("未配置数据库，使用内存 productimage 仓库")
 	return productimagestore.NewMemTaskRepository(), nil, nil
 }
 
@@ -135,31 +135,31 @@ func buildImageAssetPublisher(cfg *config.Config, logger *logrus.Logger) product
 	case "", "local":
 		publisher, err := productimage.NewLocalAssetPublisher(cfg.ProductImage.Publisher.OutputDir, cfg.ProductImage.Publisher.PublicBase)
 		if err != nil {
-			logger.WithError(err).Warn("productimage local asset publisher is disabled")
+			logger.WithError(err).Warn("本地图片资源发布器无法使用")
 			return nil
 		}
 		return publisher
 	case "amazon":
 		publisher, err := productimage.NewAmazonAssetPublisher(cfg)
 		if err != nil {
-			logger.WithError(err).Warn("productimage amazon asset publisher is disabled")
+			logger.WithError(err).Warn("亚马逊图片资源发布器无法使用")
 			return nil
 		}
 		return publisher
 	case "hybrid":
 		localPublisher, err := productimage.NewLocalAssetPublisher(cfg.ProductImage.Publisher.OutputDir, cfg.ProductImage.Publisher.PublicBase)
 		if err != nil {
-			logger.WithError(err).Warn("productimage hybrid local asset publisher is disabled")
+			logger.WithError(err).Warn("混合本地图片资源发布器无法使用")
 			return nil
 		}
 		amazonPublisher, err := productimage.NewAmazonAssetPublisher(cfg)
 		if err != nil {
-			logger.WithError(err).Warn("productimage hybrid amazon asset publisher is partially disabled")
+			logger.WithError(err).Warn("混合亚马逊图片资源发布器部分无法使用")
 			return localPublisher
 		}
 		return productimage.NewMultiAssetPublisher(localPublisher, amazonPublisher)
 	default:
-		logger.Warnf("unsupported productimage publisher provider: %s", provider)
+		logger.Warnf("不支持的图片发布器提供者：%s", provider)
 		return nil
 	}
 }

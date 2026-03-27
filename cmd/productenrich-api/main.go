@@ -35,12 +35,12 @@ func main() {
 		BuildTime: buildTime,
 	})
 
-	logger.Info("starting productenrich API service")
-	logger.Infof("config path: %s", *configPath)
-	logger.Infof("API port: %d", *port)
+	logger.Info("正在启动 productenrich API 服务")
+	logger.Infof("配置文件路径：%s", *configPath)
+	logger.Infof("API 端口：%d", *port)
 
 	if err := run(logger); err != nil {
-		logger.Fatalf("service startup failed: %v", err)
+		logger.Fatalf("服务启动失败：%v", err)
 	}
 }
 
@@ -55,7 +55,7 @@ func run(logger *logrus.Logger) error {
 				continue
 			}
 			if closeErr := closeFn(); closeErr != nil {
-				logger.Warnf("close resource failed: %v", closeErr)
+				logger.Warnf("关闭资源失败：%v", closeErr)
 			}
 		}
 	}()
@@ -66,38 +66,38 @@ func run(logger *logrus.Logger) error {
 	for _, pool := range bootstrap.pools {
 		pool.Start(ctx)
 	}
-	logger.Infof("worker pools started: %d", len(bootstrap.pools))
+	logger.Infof("工作池已启动：%d", len(bootstrap.pools))
 
 	go func() {
-		logger.Infof("API service listening on port %d", *port)
-		logger.Info("endpoints:")
-		logger.Info("  - POST /api/v1/products/generate")
-		logger.Info("  - GET  /api/v1/products/tasks/:task_id")
-		logger.Info("  - POST /api/v1/images/process")
-		logger.Info("  - GET  /api/v1/images/tasks/:task_id")
-		logger.Info("  - POST /api/v1/images/tasks/:task_id/review")
-		logger.Info("  - GET  /health")
+		logger.Infof("API 服务正在监听端口 %d", *port)
+		logger.Info("可用端点：")
+		logger.Info("  - POST /api/v1/products/generate（生成产品）")
+		logger.Info("  - GET  /api/v1/products/tasks/:task_id（查询任务）")
+		logger.Info("  - POST /api/v1/images/process（处理图片）")
+		logger.Info("  - GET  /api/v1/images/tasks/:task_id（查询图片任务）")
+		logger.Info("  - POST /api/v1/images/tasks/:task_id/review（审核任务）")
+		logger.Info("  - GET  /health（健康检查）")
 		if listenErr := bootstrap.server.ListenAndServe(); listenErr != nil && listenErr != http.ErrServerClosed {
-			logger.Fatalf("HTTP service exited unexpectedly: %v", listenErr)
+			logger.Fatalf("HTTP 服务异常退出：%v", listenErr)
 		}
 	}()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	sig := <-sigChan
-	logger.Infof("received signal %v, shutting down", sig)
+	logger.Infof("收到信号 %v，正在关闭", sig)
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := bootstrap.server.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown HTTP server: %w", err)
+		return fmt.Errorf("关闭 HTTP 服务器：%w", err)
 	}
 
 	cancel()
 	for _, pool := range bootstrap.pools {
 		pool.Stop(shutdownCtx)
 	}
-	logger.Info("service shut down gracefully")
+	logger.Info("服务已正常关闭")
 	return nil
 }

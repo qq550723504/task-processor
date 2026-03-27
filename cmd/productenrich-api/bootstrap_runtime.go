@@ -32,23 +32,23 @@ func buildRuntimeDeps(logger *logrus.Logger) (*runtimeDeps, error) {
 		promptsDir = "./prompts"
 	}
 	if err := prompt.InitGlobal(context.Background(), promptsDir, cfg.Prompts.HotReload, logger.WithField("component", "prompt")); err != nil {
-		logger.Warnf("prompt registry init failed, using fallback prompts: %v", err)
+		logger.Warnf("提示词注册表初始化失败，使用备用提示词：%v", err)
 	}
 
 	llmMgr, err := newLLMManager(cfg.OpenAI)
 	if err != nil {
-		return nil, fmt.Errorf("create llm manager: %w", err)
+		return nil, fmt.Errorf("创建 LLM 管理器：%w", err)
 	}
 
 	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
 	if err != nil {
-		return nil, fmt.Errorf("create product understanding: %w", err)
+		return nil, fmt.Errorf("创建产品理解模块：%w", err)
 	}
 
 	webScraper := newWebScraper(cfg)
 	inputParser, err := productenrichenrich.NewInputParser(logger, &productenrich.InputParserConfig{}, webScraper)
 	if err != nil {
-		return nil, fmt.Errorf("create input parser: %w", err)
+		return nil, fmt.Errorf("创建输入解析器：%w", err)
 	}
 
 	return &runtimeDeps{
