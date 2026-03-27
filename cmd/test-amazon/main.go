@@ -28,7 +28,10 @@ func main() {
 	fmt.Println()
 
 	// 加载配置
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("load config failed: %v", err)
+	}
 
 	// 创建Amazon处理器
 	processor := amazon.NewAmazonProcessor(cfg)

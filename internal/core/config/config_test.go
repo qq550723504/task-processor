@@ -7,60 +7,72 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestBrowserConfigDefaults 测试浏览器配置默认值
 func TestBrowserConfigDefaults(t *testing.T) {
-	viper.Reset()
-	setDefaults()
+	v := viper.New()
+	setDefaults(v)
 
-	assert.True(t, viper.GetBool("browser.enabled"))
-	assert.True(t, viper.GetBool("browser.headless"))
-	assert.Equal(t, "./chrome/chrome.exe", viper.GetString("browser.browserPath"))
-	assert.Equal(t, 3, viper.GetInt("browser.poolSize"))
-	assert.Equal(t, 1920, viper.GetInt("browser.viewportWidth"))
-	assert.Equal(t, 1080, viper.GetInt("browser.viewportHeight"))
-	assert.Equal(t, "", viper.GetString("browser.proxyServer"))
-	assert.True(t, viper.GetBool("browser.randomConfig.enabled"))
-	assert.Equal(t, "random", viper.GetString("browser.randomConfig.strategy"))
-	assert.Equal(t, "windows_high_end", viper.GetString("browser.randomConfig.presetName"))
-	assert.Equal(t, "random", viper.GetString("browser.randomConfig.fingerprintStrategy"))
-	assert.True(t, viper.GetBool("browser.randomConfig.healthCheckEnabled"))
-	assert.Equal(t, 3, viper.GetInt("browser.randomConfig.maxRetries"))
+	assert.True(t, v.GetBool("browser.enabled"))
+	assert.True(t, v.GetBool("browser.headless"))
+	assert.Equal(t, "./chrome/chrome.exe", v.GetString("browser.browserPath"))
+	assert.Equal(t, 3, v.GetInt("browser.poolSize"))
+	assert.Equal(t, 1920, v.GetInt("browser.viewportWidth"))
+	assert.Equal(t, 1080, v.GetInt("browser.viewportHeight"))
+	assert.Equal(t, "", v.GetString("browser.proxyServer"))
+	assert.True(t, v.GetBool("browser.randomConfig.enabled"))
+	assert.Equal(t, "random", v.GetString("browser.randomConfig.strategy"))
+	assert.Equal(t, "windows_high_end", v.GetString("browser.randomConfig.presetName"))
+	assert.Equal(t, "random", v.GetString("browser.randomConfig.fingerprintStrategy"))
+	assert.True(t, v.GetBool("browser.randomConfig.healthCheckEnabled"))
+	assert.Equal(t, 3, v.GetInt("browser.randomConfig.maxRetries"))
 }
 
-// TestAmazonConfigDefaults 测试Amazon配置默认值
 func TestAmazonConfigDefaults(t *testing.T) {
-	viper.Reset()
-	setDefaults()
+	v := viper.New()
+	setDefaults(v)
 
-	assert.True(t, viper.GetBool("amazon.enabled"))
-	assert.Equal(t, 7, viper.GetInt("amazon.dataFreshnessDays"))
-	assert.False(t, viper.GetBool("amazon.spapi.enabled"))
-	assert.Equal(t, "us-east-1", viper.GetString("amazon.spapi.region"))
-	assert.Equal(t, "us", viper.GetString("amazon.spapi.defaultMarketplace"))
-	assert.Equal(t, "FBM", viper.GetString("amazon.spapi.defaultFulfillmentType"))
-	assert.Equal(t, "New", viper.GetString("amazon.spapi.defaultCondition"))
+	assert.False(t, v.GetBool("amazon.enabled"))
+	assert.Equal(t, 7, v.GetInt("amazon.dataFreshnessDays"))
+	assert.False(t, v.GetBool("amazon.spapi.enabled"))
+	assert.Equal(t, "us-east-1", v.GetString("amazon.spapi.region"))
+	assert.Equal(t, "ATVPDKIKX0DER", v.GetString("amazon.spapi.defaultMarketplace"))
+	assert.Equal(t, "FBM", v.GetString("amazon.spapi.defaultFulfillmentType"))
+	assert.Equal(t, "New", v.GetString("amazon.spapi.defaultCondition"))
 }
 
-// TestConfigBuild 测试配置构建
-func TestConfigBuild(t *testing.T) {
-	viper.Reset()
-	viper.Set("browser.enabled", true)
-	viper.Set("browser.poolSize", 5)
-	viper.Set("browser.randomConfig.enabled", true)
-	viper.Set("browser.randomConfig.strategy", "stable")
-	viper.Set("browser.randomConfig.presetName", "mac_high_end")
-	viper.Set("amazon.enabled", true)
-	viper.Set("amazon.dataFreshnessDays", 10)
-	viper.Set("productimage.workDir", "./tmp/images")
-	viper.Set("productimage.segmenter.enabled", true)
-	viper.Set("productimage.segmenter.endpoint", "http://segmenter.local")
-	viper.Set("productimage.whiteBackground.timeout", 90)
-	viper.Set("productimage.publisher.outputDir", "./published")
-	viper.Set("productimage.publisher.publicBase", "https://cdn.example.com/productimage")
-	viper.Set("productimage.lifecycle.cleanupTemporaryFiles", true)
-	viper.Set("productimage.lifecycle.reuseExistingAssets", true)
+func TestRabbitMQConfigDefaults(t *testing.T) {
+	v := viper.New()
+	setDefaults(v)
 
-	cfg := buildConfig()
+	assert.False(t, v.GetBool("rabbitmq.enabled"))
+	assert.Equal(t, "amqp://guest:guest@localhost:5672/", v.GetString("rabbitmq.url"))
+	assert.Equal(t, 10, v.GetInt("rabbitmq.maxReconnectTries"))
+	assert.Equal(t, 5, v.GetInt("rabbitmq.consumer.prefetchCount"))
+	assert.Equal(t, 3, v.GetInt("rabbitmq.consumer.maxRetries"))
+	assert.Equal(t, 10, v.GetInt("rabbitmq.node.maxConcurrency"))
+	assert.Equal(t, 8081, v.GetInt("rabbitmq.node.healthCheckPort"))
+	assert.Equal(t, 8082, v.GetInt("rabbitmq.node.metricsPort"))
+	assert.Equal(t, "info", v.GetString("rabbitmq.node.logLevel"))
+}
+
+func TestConfigBuild(t *testing.T) {
+	v := viper.New()
+	v.Set("browser.enabled", true)
+	v.Set("browser.poolSize", 5)
+	v.Set("browser.randomConfig.enabled", true)
+	v.Set("browser.randomConfig.strategy", "stable")
+	v.Set("browser.randomConfig.presetName", "mac_high_end")
+	v.Set("amazon.enabled", true)
+	v.Set("amazon.dataFreshnessDays", 10)
+	v.Set("productimage.workDir", "./tmp/images")
+	v.Set("productimage.segmenter.enabled", true)
+	v.Set("productimage.segmenter.endpoint", "http://segmenter.local")
+	v.Set("productimage.whiteBackground.timeout", 90)
+	v.Set("productimage.publisher.outputDir", "./published")
+	v.Set("productimage.publisher.publicBase", "https://cdn.example.com/productimage")
+	v.Set("productimage.lifecycle.cleanupTemporaryFiles", true)
+	v.Set("productimage.lifecycle.reuseExistingAssets", true)
+
+	cfg := BuildConfig(v)
 
 	assert.True(t, cfg.Browser.Enabled)
 	assert.Equal(t, 5, cfg.Browser.PoolSize)
@@ -79,7 +91,6 @@ func TestConfigBuild(t *testing.T) {
 	assert.True(t, cfg.ProductImage.Lifecycle.ReuseExistingAssets)
 }
 
-// TestConfigValidation 测试配置验证
 func TestConfigValidation(t *testing.T) {
 	validConfig := &Config{
 		Worker: WorkerConfig{
@@ -92,11 +103,15 @@ func TestConfigValidation(t *testing.T) {
 			BaseURL:      "http://example.com",
 			ClientID:     "test-client",
 			ClientSecret: "test-secret",
+			TokenURL:     "http://example.com/token",
+			Scopes:       []string{"user.read"},
 			TenantID:     "1",
 		},
 		OpenAI: OpenAIConfig{
-			APIKey: "test-key",
-			Model:  "test-model",
+			APIKey:  "test-key",
+			Model:   "test-model",
+			BaseURL: "http://example.com/v1",
+			Timeout: 30,
 		},
 		Browser: BrowserConfig{
 			Enabled:        true,
@@ -112,7 +127,9 @@ func TestConfigValidation(t *testing.T) {
 			},
 		},
 		Amazon: AmazonConfig{
-			Enabled: true,
+			Enabled:           true,
+			DataFreshnessDays: 7,
+			CrawlTimeout:      30,
 		},
 		Platforms: PlatformsConfig{
 			Temu: PlatformConfig{
@@ -122,10 +139,9 @@ func TestConfigValidation(t *testing.T) {
 					Interval:  300,
 					BatchSize: 100,
 				},
-				SyncProduct: SyncProductConfig{
-					Enabled:   true,
-					Interval:  60,
-					BatchSize: 50,
+				ProductSync: ScheduledTaskConfig{
+					Enabled:  true,
+					Interval: 60,
 				},
 				Monitor: MonitorConfig{
 					Enabled:              true,
@@ -141,10 +157,9 @@ func TestConfigValidation(t *testing.T) {
 					Interval:  300,
 					BatchSize: 100,
 				},
-				SyncProduct: SyncProductConfig{
-					Enabled:   false,
-					Interval:  60,
-					BatchSize: 50,
+				ProductSync: ScheduledTaskConfig{
+					Enabled:  false,
+					Interval: 60,
 				},
 				Monitor: MonitorConfig{
 					Enabled:              false,
@@ -157,7 +172,7 @@ func TestConfigValidation(t *testing.T) {
 	}
 
 	errors := validConfig.Validate()
-	assert.Empty(t, errors, "有效配置不应该有验证错误")
+	assert.Empty(t, errors)
 
 	invalidConfig := &Config{
 		Browser: BrowserConfig{
@@ -178,11 +193,10 @@ func TestConfigValidation(t *testing.T) {
 	}
 
 	errors = invalidConfig.Validate()
-	assert.NotEmpty(t, errors, "无效配置应该有验证错误")
-	assert.True(t, len(errors) >= 4, "应该检测到多个验证错误")
+	assert.NotEmpty(t, errors)
+	assert.True(t, len(errors) >= 4)
 }
 
-// TestBrowserConfigValidation 测试浏览器配置验证
 func TestBrowserConfigValidation(t *testing.T) {
 	validConfig := &Config{
 		Browser: BrowserConfig{
@@ -201,7 +215,7 @@ func TestBrowserConfigValidation(t *testing.T) {
 	}
 
 	errors := ValidateBrowserConfig(&validConfig.Browser)
-	assert.Empty(t, errors, "有效的浏览器配置不应该有验证错误")
+	assert.Empty(t, errors)
 
 	invalidConfig := &Config{
 		Browser: BrowserConfig{
@@ -219,6 +233,6 @@ func TestBrowserConfigValidation(t *testing.T) {
 	}
 
 	errors = ValidateBrowserConfig(&invalidConfig.Browser)
-	assert.NotEmpty(t, errors, "无效的浏览器配置应该有验证错误")
-	assert.True(t, len(errors) >= 3, "应该检测到多个验证错误")
+	assert.NotEmpty(t, errors)
+	assert.True(t, len(errors) >= 3)
 }

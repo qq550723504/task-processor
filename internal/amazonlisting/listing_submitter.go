@@ -90,19 +90,8 @@ func resolveMarketplaceConfig(cfg *coreconfig.Config, marketplaceID string) (*co
 	if cfg == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
-	for _, market := range cfg.Amazon.SPAPI.Marketplaces {
-		if strings.EqualFold(strings.TrimSpace(market.MarketplaceID), marketplaceID) {
-			m := market
-			return &m, nil
-		}
-	}
-
-	key := strings.TrimSpace(cfg.Amazon.SPAPI.DefaultMarketplace)
-	if key != "" {
-		if market, ok := cfg.Amazon.SPAPI.Marketplaces[key]; ok && strings.TrimSpace(market.MarketplaceID) != "" {
-			m := market
-			return &m, nil
-		}
+	if market := coreconfig.ResolveAmazonMarketplaceConfig(cfg.Amazon.SPAPI, marketplaceID); market != nil {
+		return market, nil
 	}
 
 	return nil, fmt.Errorf("marketplace %s is not configured", marketplaceID)

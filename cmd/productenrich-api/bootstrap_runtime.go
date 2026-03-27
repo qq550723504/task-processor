@@ -26,7 +26,10 @@ type runtimeDeps struct {
 }
 
 func buildRuntimeDeps(logger *logrus.Logger) (*runtimeDeps, error) {
-	cfg := config.LoadConfigFromFile(*configPath)
+	cfg, err := config.LoadConfigFromFile(*configPath)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
 	var closers []func() error
 	imageWorkDir := resolveImageWorkDir(cfg)
 

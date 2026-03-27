@@ -29,7 +29,10 @@ func main() {
 	logger.Info("starting 1688 crawler service")
 	logger.Infof("config path: %s", *configPath)
 
-	cfg := config.LoadConfigWithFallback(*configPath, logger)
+	cfg, err := config.LoadConfigWithFallback(*configPath, logger)
+	if err != nil {
+		logger.Fatalf("load config failed: %v", err)
+	}
 	if cfg.RabbitMQ == nil || !cfg.RabbitMQ.Enabled {
 		logger.Fatal("RabbitMQ is not enabled")
 	}

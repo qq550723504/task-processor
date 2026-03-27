@@ -44,7 +44,10 @@ func main() {
 	logger.Infof("🌐 API 端口: %d", *port)
 
 	// 加载配置
-	cfg := config.LoadConfigWithFallback(*configPath, logger)
+	cfg, err := config.LoadConfigWithFallback(*configPath, logger)
+	if err != nil {
+		logger.Fatalf("load config failed: %v", err)
+	}
 
 	// 创建 API 服务
 	apiService := crawleramazon.NewAPIService(cfg, logger, *port)

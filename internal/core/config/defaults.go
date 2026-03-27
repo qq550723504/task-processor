@@ -1,218 +1,190 @@
-// Package config 提供配置管理功能
 package config
 
 import "github.com/spf13/viper"
 
-// setDefaults 设置默认配置值
-func setDefaults() {
-	// 统一使用 NewDefaultConfig 作为默认值来源，避免散落的硬编码
+func setDefaults(v *viper.Viper) {
 	defaults := NewDefaultConfig()
 
-	// 处理器默认配置
-	viper.SetDefault("processor.maxRetries", defaults.Processor.MaxRetries)
-	viper.SetDefault("processor.timeout", defaults.Processor.Timeout)
+	v.SetDefault("processor.maxRetries", defaults.Processor.MaxRetries)
+	v.SetDefault("processor.timeout", defaults.Processor.Timeout)
 
-	// 工作池默认配置
-	viper.SetDefault("worker.concurrency", defaults.Worker.Concurrency)
-	viper.SetDefault("worker.bufferSize", defaults.Worker.BufferSize)
-	viper.SetDefault("worker.taskInterval", defaults.Worker.TaskInterval)
-	viper.SetDefault("worker.maxFetchPerCycle", defaults.Worker.MaxFetchPerCycle)
-	viper.SetDefault("worker.queueThreshold", defaults.Worker.QueueThreshold)
-	viper.SetDefault("worker.cleanupInterval", defaults.Worker.CleanupInterval)       // 2分钟清理间隔
-	viper.SetDefault("worker.taskTimeout", defaults.Worker.TaskTimeout)               // 15分钟任务超时
-	viper.SetDefault("worker.stuckTaskThreshold", defaults.Worker.StuckTaskThreshold) // 5分钟卡住阈值
-	viper.SetDefault("worker.forceCleanupAfter", defaults.Worker.ForceCleanupAfter)   // 30分钟强制清理
+	v.SetDefault("worker.concurrency", defaults.Worker.Concurrency)
+	v.SetDefault("worker.bufferSize", defaults.Worker.BufferSize)
+	v.SetDefault("worker.taskInterval", defaults.Worker.TaskInterval)
+	v.SetDefault("worker.maxFetchPerCycle", defaults.Worker.MaxFetchPerCycle)
+	v.SetDefault("worker.queueThreshold", defaults.Worker.QueueThreshold)
+	v.SetDefault("worker.cleanupInterval", defaults.Worker.CleanupInterval)
+	v.SetDefault("worker.taskTimeout", defaults.Worker.TaskTimeout)
+	v.SetDefault("worker.stuckTaskThreshold", defaults.Worker.StuckTaskThreshold)
+	v.SetDefault("worker.forceCleanupAfter", defaults.Worker.ForceCleanupAfter)
 
-	// OpenAI默认配置
-	viper.SetDefault("openai.apiKey", defaults.OpenAI.APIKey)
-	viper.SetDefault("openai.model", defaults.OpenAI.Model)
-	viper.SetDefault("openai.baseURL", defaults.OpenAI.BaseURL)
-	viper.SetDefault("openai.timeout", defaults.OpenAI.Timeout)
+	v.SetDefault("openai.apiKey", defaults.OpenAI.APIKey)
+	v.SetDefault("openai.model", defaults.OpenAI.Model)
+	v.SetDefault("openai.baseURL", defaults.OpenAI.BaseURL)
+	v.SetDefault("openai.timeout", defaults.OpenAI.Timeout)
 
-	// 管理系统默认配置
-	viper.SetDefault("management.baseURL", defaults.Management.BaseURL)
-	viper.SetDefault("management.clientID", defaults.Management.ClientID)
-	viper.SetDefault("management.clientSecret", defaults.Management.ClientSecret)
-	viper.SetDefault("management.tokenURL", defaults.Management.TokenURL)
-	viper.SetDefault("management.scopes", defaults.Management.Scopes)
-	viper.SetDefault("management.tenantID", defaults.Management.TenantID)
+	v.SetDefault("management.baseURL", defaults.Management.BaseURL)
+	v.SetDefault("management.clientID", defaults.Management.ClientID)
+	v.SetDefault("management.clientSecret", defaults.Management.ClientSecret)
+	v.SetDefault("management.tokenURL", defaults.Management.TokenURL)
+	v.SetDefault("management.scopes", defaults.Management.Scopes)
+	v.SetDefault("management.tenantID", defaults.Management.TenantID)
 
-	// 将默认配置传递给各个模块的默认值设置函数
-	setBrowserDefaults(defaults)
-	setAmazonDefaults(defaults)
-	setProductImageDefaults(defaults)
-	setUpdaterDefaults(defaults)
-	setPlatformDefaults(defaults)
+	setBrowserDefaults(v, defaults)
+	setAmazonDefaults(v, defaults)
+	setProductImageDefaults(v, defaults)
+	setUpdaterDefaults(v, defaults)
+	setPlatformDefaults(v, defaults)
+	setRabbitMQDefaults(v, defaults)
 }
 
-// setProductImageDefaults 设置 productimage 默认配置
-func setProductImageDefaults(defaults *Config) {
+func setProductImageDefaults(v *viper.Viper, defaults *Config) {
 	pi := defaults.ProductImage
 
-	viper.SetDefault("productimage.workDir", pi.WorkDir)
-	viper.SetDefault("productimage.segmenter.enabled", pi.Segmenter.Enabled)
-	viper.SetDefault("productimage.segmenter.endpoint", pi.Segmenter.Endpoint)
-	viper.SetDefault("productimage.segmenter.apiKey", pi.Segmenter.APIKey)
-	viper.SetDefault("productimage.segmenter.timeout", pi.Segmenter.Timeout)
-	viper.SetDefault("productimage.whiteBackground.enabled", pi.WhiteBackground.Enabled)
-	viper.SetDefault("productimage.whiteBackground.endpoint", pi.WhiteBackground.Endpoint)
-	viper.SetDefault("productimage.whiteBackground.apiKey", pi.WhiteBackground.APIKey)
-	viper.SetDefault("productimage.whiteBackground.timeout", pi.WhiteBackground.Timeout)
-	viper.SetDefault("productimage.publisher.enabled", pi.Publisher.Enabled)
-	viper.SetDefault("productimage.publisher.provider", pi.Publisher.Provider)
-	viper.SetDefault("productimage.publisher.outputDir", pi.Publisher.OutputDir)
-	viper.SetDefault("productimage.publisher.publicBase", pi.Publisher.PublicBase)
-	viper.SetDefault("productimage.lifecycle.cleanupTemporaryFiles", pi.Lifecycle.CleanupTemporaryFiles)
-	viper.SetDefault("productimage.lifecycle.reuseExistingAssets", pi.Lifecycle.ReuseExistingAssets)
+	v.SetDefault("productimage.workDir", pi.WorkDir)
+	v.SetDefault("productimage.segmenter.enabled", pi.Segmenter.Enabled)
+	v.SetDefault("productimage.segmenter.endpoint", pi.Segmenter.Endpoint)
+	v.SetDefault("productimage.segmenter.apiKey", pi.Segmenter.APIKey)
+	v.SetDefault("productimage.segmenter.timeout", pi.Segmenter.Timeout)
+	v.SetDefault("productimage.whiteBackground.enabled", pi.WhiteBackground.Enabled)
+	v.SetDefault("productimage.whiteBackground.endpoint", pi.WhiteBackground.Endpoint)
+	v.SetDefault("productimage.whiteBackground.apiKey", pi.WhiteBackground.APIKey)
+	v.SetDefault("productimage.whiteBackground.timeout", pi.WhiteBackground.Timeout)
+	v.SetDefault("productimage.publisher.enabled", pi.Publisher.Enabled)
+	v.SetDefault("productimage.publisher.provider", pi.Publisher.Provider)
+	v.SetDefault("productimage.publisher.outputDir", pi.Publisher.OutputDir)
+	v.SetDefault("productimage.publisher.publicBase", pi.Publisher.PublicBase)
+	v.SetDefault("productimage.lifecycle.cleanupTemporaryFiles", pi.Lifecycle.CleanupTemporaryFiles)
+	v.SetDefault("productimage.lifecycle.reuseExistingAssets", pi.Lifecycle.ReuseExistingAssets)
 }
 
-// setBrowserDefaults 设置浏览器默认配置
-func setBrowserDefaults(defaults *Config) {
+func setBrowserDefaults(v *viper.Viper, defaults *Config) {
 	b := defaults.Browser
 
-	viper.SetDefault("browser.enabled", b.Enabled)
-	viper.SetDefault("browser.headless", b.Headless)
-	viper.SetDefault("browser.browserPath", b.BrowserPath)
-	viper.SetDefault("browser.poolSize", b.PoolSize) // 浏览器池大小
-	viper.SetDefault("browser.viewportWidth", b.ViewportWidth)
-	viper.SetDefault("browser.viewportHeight", b.ViewportHeight)
-	viper.SetDefault("browser.proxyServer", b.ProxyServer)
+	v.SetDefault("browser.enabled", b.Enabled)
+	v.SetDefault("browser.headless", b.Headless)
+	v.SetDefault("browser.browserPath", b.BrowserPath)
+	v.SetDefault("browser.poolSize", b.PoolSize)
+	v.SetDefault("browser.viewportWidth", b.ViewportWidth)
+	v.SetDefault("browser.viewportHeight", b.ViewportHeight)
+	v.SetDefault("browser.proxyServer", b.ProxyServer)
 
-	// 随机配置默认值
 	rc := b.RandomConfig
-	viper.SetDefault("browser.randomConfig.enabled", rc.Enabled)
-	viper.SetDefault("browser.randomConfig.strategy", rc.Strategy)
-	viper.SetDefault("browser.randomConfig.presetName", rc.PresetName)
-	viper.SetDefault("browser.randomConfig.fingerprintStrategy", rc.FingerprintStrategy)
-	viper.SetDefault("browser.randomConfig.healthCheckEnabled", rc.HealthCheckEnabled)
-	viper.SetDefault("browser.randomConfig.maxRetries", rc.MaxRetries)
+	v.SetDefault("browser.randomConfig.enabled", rc.Enabled)
+	v.SetDefault("browser.randomConfig.strategy", rc.Strategy)
+	v.SetDefault("browser.randomConfig.presetName", rc.PresetName)
+	v.SetDefault("browser.randomConfig.fingerprintStrategy", rc.FingerprintStrategy)
+	v.SetDefault("browser.randomConfig.healthCheckEnabled", rc.HealthCheckEnabled)
+	v.SetDefault("browser.randomConfig.maxRetries", rc.MaxRetries)
 }
 
-// setAmazonDefaults 设置Amazon默认配置
-func setAmazonDefaults(defaults *Config) {
+func setAmazonDefaults(v *viper.Viper, defaults *Config) {
 	a := defaults.Amazon
 
-	viper.SetDefault("amazon.enabled", a.Enabled)
-	viper.SetDefault("amazon.dataFreshnessDays", a.DataFreshnessDays)
+	v.SetDefault("amazon.enabled", a.Enabled)
+	v.SetDefault("amazon.dataFreshnessDays", a.DataFreshnessDays)
 
-	// Amazon SPAPI 默认配置
 	sp := defaults.Amazon.SPAPI
-	viper.SetDefault("amazon.spapi.enabled", sp.Enabled)
-	viper.SetDefault("amazon.spapi.region", sp.Region)
-	viper.SetDefault("amazon.spapi.defaultMarketplace", sp.DefaultMarketplace)
-	viper.SetDefault("amazon.spapi.defaultFulfillmentType", sp.DefaultFulfillmentType)
-	viper.SetDefault("amazon.spapi.defaultCondition", sp.DefaultCondition)
+	v.SetDefault("amazon.spapi.enabled", sp.Enabled)
+	v.SetDefault("amazon.spapi.region", sp.Region)
+	v.SetDefault("amazon.spapi.defaultMarketplace", sp.DefaultMarketplace)
+	v.SetDefault("amazon.spapi.defaultFulfillmentType", sp.DefaultFulfillmentType)
+	v.SetDefault("amazon.spapi.defaultCondition", sp.DefaultCondition)
 }
 
-// setUpdaterDefaults 设置更新器默认配置
-func setUpdaterDefaults(defaults *Config) {
+func setUpdaterDefaults(v *viper.Viper, defaults *Config) {
 	u := defaults.Updater
 
-	viper.SetDefault("updater.enabled", u.Enabled)
-	viper.SetDefault("updater.updateURL", u.UpdateURL)
-	viper.SetDefault("updater.checkInterval", u.CheckInterval)
-	viper.SetDefault("updater.insecureSkipVerify", u.InsecureSkipVerify)
+	v.SetDefault("updater.enabled", u.Enabled)
+	v.SetDefault("updater.updateURL", u.UpdateURL)
+	v.SetDefault("updater.checkInterval", u.CheckInterval)
+	v.SetDefault("updater.insecureSkipVerify", u.InsecureSkipVerify)
 }
 
-// setPlatformDefaults 设置平台配置默认值
-func setPlatformDefaults(defaults *Config) {
-	// TEMU 平台默认配置
-	setTemuDefaults(&defaults.Platforms.Temu)
+func setRabbitMQDefaults(v *viper.Viper, defaults *Config) {
+	if defaults.RabbitMQ == nil {
+		return
+	}
 
-	// SHEIN 平台默认配置
-	setSheinDefaults(&defaults.Platforms.Shein)
+	r := defaults.RabbitMQ
+	v.SetDefault("rabbitmq.enabled", r.Enabled)
+	v.SetDefault("rabbitmq.url", r.URL)
+	v.SetDefault("rabbitmq.maxReconnectTries", r.MaxReconnectTries)
+	v.SetDefault("rabbitmq.consumer.prefetchCount", r.Consumer.PrefetchCount)
+	v.SetDefault("rabbitmq.consumer.prefetchSize", r.Consumer.PrefetchSize)
+	v.SetDefault("rabbitmq.consumer.maxRetries", r.Consumer.MaxRetries)
+	v.SetDefault("rabbitmq.node.maxConcurrency", r.Node.MaxConcurrency)
+	v.SetDefault("rabbitmq.node.healthCheckPort", r.Node.HealthCheckPort)
+	v.SetDefault("rabbitmq.node.metricsPort", r.Node.MetricsPort)
+	v.SetDefault("rabbitmq.node.logLevel", r.Node.LogLevel)
 }
 
-// setTemuDefaults 设置TEMU平台默认配置
-func setTemuDefaults(p *PlatformConfig) {
+func setPlatformDefaults(v *viper.Viper, defaults *Config) {
+	setTemuDefaults(v, &defaults.Platforms.Temu)
+	setSheinDefaults(v, &defaults.Platforms.Shein)
+}
 
-	// 平台启用状态默认配置
-	viper.SetDefault("platforms.temu.enabled", p.Enabled)                   // 默认启用处理器（上架任务）
-	viper.SetDefault("platforms.temu.schedulerEnabled", p.SchedulerEnabled) // 默认禁用调度任务
+func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
+	v.SetDefault("platforms.temu.enabled", p.Enabled)
+	v.SetDefault("platforms.temu.schedulerEnabled", p.SchedulerEnabled)
 
-	// 自动核价默认配置
 	ap := p.AutoPricing
-	viper.SetDefault("platforms.temu.autoPricing.enabled", ap.Enabled)
-	viper.SetDefault("platforms.temu.autoPricing.interval", ap.Interval)
-	viper.SetDefault("platforms.temu.autoPricing.batchSize", ap.BatchSize)
-	viper.SetDefault("platforms.temu.autoPricing.useAmazonPrice", ap.UseAmazonPrice) // 默认使用Amazon价格数据
+	v.SetDefault("platforms.temu.autoPricing.enabled", ap.Enabled)
+	v.SetDefault("platforms.temu.autoPricing.interval", ap.Interval)
+	v.SetDefault("platforms.temu.autoPricing.batchSize", ap.BatchSize)
+	v.SetDefault("platforms.temu.autoPricing.useAmazonPrice", ap.UseAmazonPrice)
 
-	// 产品同步默认配置
 	ps := p.ProductSync
-	viper.SetDefault("platforms.temu.productSync.enabled", ps.Enabled)
-	viper.SetDefault("platforms.temu.productSync.interval", ps.Interval) // 1小时
+	v.SetDefault("platforms.temu.productSync.enabled", ps.Enabled)
+	v.SetDefault("platforms.temu.productSync.interval", ps.Interval)
 
-	// 库存同步默认配置
 	is := p.InventorySync
-	viper.SetDefault("platforms.temu.inventorySync.enabled", is.Enabled)
-	viper.SetDefault("platforms.temu.inventorySync.interval", is.Interval) // 30分钟
+	v.SetDefault("platforms.temu.inventorySync.enabled", is.Enabled)
+	v.SetDefault("platforms.temu.inventorySync.interval", is.Interval)
 
-	// 活动报名默认配置
 	ar := p.ActivityRegistration
-	viper.SetDefault("platforms.temu.activityRegistration.enabled", ar.Enabled)
-	viper.SetDefault("platforms.temu.activityRegistration.interval", ar.Interval) // 2小时
+	v.SetDefault("platforms.temu.activityRegistration.enabled", ar.Enabled)
+	v.SetDefault("platforms.temu.activityRegistration.interval", ar.Interval)
 
-	// 旧版产品同步默认配置（保留兼容）
-	sp := p.SyncProduct
-	viper.SetDefault("platforms.temu.sync.enabled", sp.Enabled)
-	viper.SetDefault("platforms.temu.sync.storeIDs", sp.StoreIDs)
-	viper.SetDefault("platforms.temu.sync.interval", sp.Interval)
-	viper.SetDefault("platforms.temu.sync.batchSize", sp.BatchSize)
-
-	// 产品监控默认配置
 	m := p.Monitor
-	viper.SetDefault("platforms.temu.monitor.enabled", m.Enabled)
-	viper.SetDefault("platforms.temu.monitor.storeIDs", m.StoreIDs)
-	viper.SetDefault("platforms.temu.monitor.checkInterval", m.CheckInterval)
-	viper.SetDefault("platforms.temu.monitor.batchSize", m.BatchSize)
-	viper.SetDefault("platforms.temu.monitor.enablePriceAlert", m.EnablePriceAlert)
-	viper.SetDefault("platforms.temu.monitor.enableStockAlert", m.EnableStockAlert)
-	viper.SetDefault("platforms.temu.monitor.priceChangeThreshold", m.PriceChangeThreshold)
-	viper.SetDefault("platforms.temu.monitor.stockChangeThreshold", m.StockChangeThreshold)
+	v.SetDefault("platforms.temu.monitor.enabled", m.Enabled)
+	v.SetDefault("platforms.temu.monitor.storeIDs", m.StoreIDs)
+	v.SetDefault("platforms.temu.monitor.checkInterval", m.CheckInterval)
+	v.SetDefault("platforms.temu.monitor.batchSize", m.BatchSize)
+	v.SetDefault("platforms.temu.monitor.enablePriceAlert", m.EnablePriceAlert)
+	v.SetDefault("platforms.temu.monitor.enableStockAlert", m.EnableStockAlert)
+	v.SetDefault("platforms.temu.monitor.priceChangeThreshold", m.PriceChangeThreshold)
+	v.SetDefault("platforms.temu.monitor.stockChangeThreshold", m.StockChangeThreshold)
 }
 
-// setSheinDefaults 设置SHEIN平台默认配置
-func setSheinDefaults(p *PlatformConfig) {
-	// 平台启用状态默认配置
-	viper.SetDefault("platforms.shein.enabled", p.Enabled)                   // 默认启用处理器（上架任务）
-	viper.SetDefault("platforms.shein.schedulerEnabled", p.SchedulerEnabled) // 默认禁用调度任务
+func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
+	v.SetDefault("platforms.shein.enabled", p.Enabled)
+	v.SetDefault("platforms.shein.schedulerEnabled", p.SchedulerEnabled)
 
-	// 自动核价默认配置
 	ap := p.AutoPricing
-	viper.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)
-	viper.SetDefault("platforms.shein.autoPricing.interval", ap.Interval)
-	viper.SetDefault("platforms.shein.autoPricing.batchSize", ap.BatchSize)
+	v.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)
+	v.SetDefault("platforms.shein.autoPricing.interval", ap.Interval)
+	v.SetDefault("platforms.shein.autoPricing.batchSize", ap.BatchSize)
 
-	// 产品同步默认配置
 	ps := p.ProductSync
-	viper.SetDefault("platforms.shein.productSync.enabled", ps.Enabled)
-	viper.SetDefault("platforms.shein.productSync.interval", ps.Interval) // 1小时
+	v.SetDefault("platforms.shein.productSync.enabled", ps.Enabled)
+	v.SetDefault("platforms.shein.productSync.interval", ps.Interval)
 
-	// 库存同步默认配置
 	is := p.InventorySync
-	viper.SetDefault("platforms.shein.inventorySync.enabled", is.Enabled)
-	viper.SetDefault("platforms.shein.inventorySync.interval", is.Interval) // 30分钟
+	v.SetDefault("platforms.shein.inventorySync.enabled", is.Enabled)
+	v.SetDefault("platforms.shein.inventorySync.interval", is.Interval)
 
-	// 活动报名默认配置
 	ar := p.ActivityRegistration
-	viper.SetDefault("platforms.shein.activityRegistration.enabled", ar.Enabled)
-	viper.SetDefault("platforms.shein.activityRegistration.interval", ar.Interval) // 2小时
+	v.SetDefault("platforms.shein.activityRegistration.enabled", ar.Enabled)
+	v.SetDefault("platforms.shein.activityRegistration.interval", ar.Interval)
 
-	// 旧版产品同步默认配置（保留兼容）
-	sp := p.SyncProduct
-	viper.SetDefault("platforms.shein.sync.enabled", sp.Enabled)
-	viper.SetDefault("platforms.shein.sync.storeIDs", sp.StoreIDs)
-	viper.SetDefault("platforms.shein.sync.interval", sp.Interval)
-	viper.SetDefault("platforms.shein.sync.batchSize", sp.BatchSize)
-
-	// 产品监控默认配置
 	m := p.Monitor
-	viper.SetDefault("platforms.shein.monitor.enabled", m.Enabled)
-	viper.SetDefault("platforms.shein.monitor.storeIDs", m.StoreIDs)
-	viper.SetDefault("platforms.shein.monitor.checkInterval", m.CheckInterval)
-	viper.SetDefault("platforms.shein.monitor.batchSize", m.BatchSize)
-	viper.SetDefault("platforms.shein.monitor.enablePriceAlert", m.EnablePriceAlert)
-	viper.SetDefault("platforms.shein.monitor.enableStockAlert", m.EnableStockAlert)
-	viper.SetDefault("platforms.shein.monitor.priceChangeThreshold", m.PriceChangeThreshold)
-	viper.SetDefault("platforms.shein.monitor.stockChangeThreshold", m.StockChangeThreshold)
+	v.SetDefault("platforms.shein.monitor.enabled", m.Enabled)
+	v.SetDefault("platforms.shein.monitor.storeIDs", m.StoreIDs)
+	v.SetDefault("platforms.shein.monitor.checkInterval", m.CheckInterval)
+	v.SetDefault("platforms.shein.monitor.batchSize", m.BatchSize)
+	v.SetDefault("platforms.shein.monitor.enablePriceAlert", m.EnablePriceAlert)
+	v.SetDefault("platforms.shein.monitor.enableStockAlert", m.EnableStockAlert)
+	v.SetDefault("platforms.shein.monitor.priceChangeThreshold", m.PriceChangeThreshold)
+	v.SetDefault("platforms.shein.monitor.stockChangeThreshold", m.StockChangeThreshold)
 }

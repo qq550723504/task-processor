@@ -15,7 +15,7 @@ type PlatformConfig struct {
 	ProductSync          ScheduledTaskConfig `yaml:"productSync"`          // 产品同步配置
 	InventorySync        ScheduledTaskConfig `yaml:"inventorySync"`        // 库存同步配置
 	ActivityRegistration ScheduledTaskConfig `yaml:"activityRegistration"` // 活动报名配置
-	SyncProduct          SyncProductConfig   `yaml:"sync"`                 // 产品同步配置（旧版，保留兼容）
+	SyncProduct          SyncProductConfig   `yaml:"sync"`                 // 旧版产品同步配置，仅保留兼容
 	Monitor              MonitorConfig       `yaml:"monitor"`              // 产品监控配置
 	ConfigPaths          PlatformConfigPaths `yaml:"configPaths"`          // 业务配置文件路径（统一管理）
 }
@@ -41,7 +41,7 @@ type ScheduledTaskConfig struct {
 	Interval int  `yaml:"interval"` // 执行间隔（秒）
 }
 
-// SyncProductConfig 产品同步配置
+// SyncProductConfig 旧版产品同步配置
 type SyncProductConfig struct {
 	Enabled   bool    `yaml:"enabled"`   // 是否启用产品同步
 	StoreIDs  []int64 `yaml:"storeIDs"`  // 需要同步的店铺ID列表

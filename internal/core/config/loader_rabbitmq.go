@@ -1,68 +1,61 @@
-// Package loaders 提供配置加载功能
 package config
 
-import (
-	"github.com/spf13/viper"
-)
+import "github.com/spf13/viper"
 
-// BuildRabbitMQConfig 构建RabbitMQ配置
-func BuildRabbitMQConfig() *RabbitMQConfig {
+func BuildRabbitMQConfig(v *viper.Viper) *RabbitMQConfig {
 	return &RabbitMQConfig{
-		Enabled:           viper.GetBool("rabbitmq.enabled"),
-		URL:               viper.GetString("rabbitmq.url"),
-		ReconnectInterval: getDuration("rabbitmq.reconnectInterval", 5),
-		MaxReconnectTries: viper.GetInt("rabbitmq.maxReconnectTries"),
+		Enabled:           v.GetBool("rabbitmq.enabled"),
+		URL:               v.GetString("rabbitmq.url"),
+		ReconnectInterval: getDuration(v, "rabbitmq.reconnectInterval", 5),
+		MaxReconnectTries: v.GetInt("rabbitmq.maxReconnectTries"),
 		Consumer: RabbitMQConsumerConfig{
-			PrefetchCount: viper.GetInt("rabbitmq.consumer.prefetchCount"),
-			PrefetchSize:  viper.GetInt("rabbitmq.consumer.prefetchSize"),
-			RetryDelay:    getDuration("rabbitmq.consumer.retryDelay", 5),
-			MaxRetries:    viper.GetInt("rabbitmq.consumer.maxRetries"),
-			Queues:        buildQueueConfigs(),
+			PrefetchCount: v.GetInt("rabbitmq.consumer.prefetchCount"),
+			PrefetchSize:  v.GetInt("rabbitmq.consumer.prefetchSize"),
+			RetryDelay:    getDuration(v, "rabbitmq.consumer.retryDelay", 5),
+			MaxRetries:    v.GetInt("rabbitmq.consumer.maxRetries"),
+			Queues:        buildQueueConfigs(v),
 		},
 		ResultReporter: ResultReporterConfig{
-			ReportURL:  viper.GetString("rabbitmq.resultReporter.reportURL"),
-			NodeID:     viper.GetString("rabbitmq.resultReporter.nodeID"),
-			Timeout:    getDuration("rabbitmq.resultReporter.timeout", 30),
-			BufferSize: viper.GetInt("rabbitmq.resultReporter.bufferSize"),
-			Retry:      buildRetryConfig("rabbitmq.resultReporter.retry"),
+			ReportURL:  v.GetString("rabbitmq.resultReporter.reportURL"),
+			NodeID:     v.GetString("rabbitmq.resultReporter.nodeID"),
+			Timeout:    getDuration(v, "rabbitmq.resultReporter.timeout", 30),
+			BufferSize: v.GetInt("rabbitmq.resultReporter.bufferSize"),
+			Retry:      buildRetryConfig(v, "rabbitmq.resultReporter.retry"),
 		},
 		LoadMonitor: LoadMonitorConfig{
-			UpdateInterval: getDuration("rabbitmq.loadMonitor.updateInterval", 30),
-			EnableCPU:      viper.GetBool("rabbitmq.loadMonitor.enableCPU"),
-			EnableMemory:   viper.GetBool("rabbitmq.loadMonitor.enableMemory"),
-			EnableTasks:    viper.GetBool("rabbitmq.loadMonitor.enableTasks"),
+			UpdateInterval: getDuration(v, "rabbitmq.loadMonitor.updateInterval", 30),
+			EnableCPU:      v.GetBool("rabbitmq.loadMonitor.enableCPU"),
+			EnableMemory:   v.GetBool("rabbitmq.loadMonitor.enableMemory"),
+			EnableTasks:    v.GetBool("rabbitmq.loadMonitor.enableTasks"),
 		},
 		Node: NodeConfig{
-			NodeID:          viper.GetString("rabbitmq.node.nodeID"),
-			MaxConcurrency:  viper.GetInt("rabbitmq.node.maxConcurrency"),
-			HealthCheckPort: viper.GetInt("rabbitmq.node.healthCheckPort"),
-			MetricsPort:     viper.GetInt("rabbitmq.node.metricsPort"),
-			LogLevel:        viper.GetString("rabbitmq.node.logLevel"),
-			ShutdownTimeout: getDuration("rabbitmq.node.shutdownTimeout", 30),
-			OwnedStores:     getInt64Slice("rabbitmq.node.ownedStores"),
-			Regions:         viper.GetStringSlice("rabbitmq.node.regions"),
+			NodeID:          v.GetString("rabbitmq.node.nodeID"),
+			MaxConcurrency:  v.GetInt("rabbitmq.node.maxConcurrency"),
+			HealthCheckPort: v.GetInt("rabbitmq.node.healthCheckPort"),
+			MetricsPort:     v.GetInt("rabbitmq.node.metricsPort"),
+			LogLevel:        v.GetString("rabbitmq.node.logLevel"),
+			ShutdownTimeout: getDuration(v, "rabbitmq.node.shutdownTimeout", 30),
+			OwnedStores:     getInt64Slice(v, "rabbitmq.node.ownedStores"),
+			Regions:         v.GetStringSlice("rabbitmq.node.regions"),
 		},
 		Deduplicator: DeduplicatorConfig{
-			TTL: getDuration("rabbitmq.deduplicator.ttl", 600),
+			TTL: getDuration(v, "rabbitmq.deduplicator.ttl", 600),
 		},
 		StoreAPI: StoreAPIConfig{
-			BaseURL:  viper.GetString("rabbitmq.storeAPI.baseURL"),
-			CacheTTL: getDuration("rabbitmq.storeAPI.cacheTTL", 300),
+			BaseURL:  v.GetString("rabbitmq.storeAPI.baseURL"),
+			CacheTTL: getDuration(v, "rabbitmq.storeAPI.cacheTTL", 300),
 		},
 	}
 }
 
-// buildQueueConfigs 构建队列配置列表
-func buildQueueConfigs() []QueueConfig {
+func buildQueueConfigs(v *viper.Viper) []QueueConfig {
 	var queues []QueueConfig
 
-	// 从配置中读取队列列表
-	queueMaps := viper.Get("rabbitmq.consumer.queues")
+	queueMaps := v.Get("rabbitmq.consumer.queues")
 	if queueMaps == nil {
 		return queues
 	}
 
-	// 类型断言为 []any
 	queueList, ok := queueMaps.([]any)
 	if !ok {
 		return queues
@@ -85,16 +78,15 @@ func buildQueueConfigs() []QueueConfig {
 	return queues
 }
 
-// buildRetryConfig 构建重试配置
-func buildRetryConfig(prefix string) *RetryConfig {
-	if !viper.IsSet(prefix) {
+func buildRetryConfig(v *viper.Viper, prefix string) *RetryConfig {
+	if !v.IsSet(prefix) {
 		return DefaultRetryConfig()
 	}
 
 	return &RetryConfig{
-		MaxRetries:    viper.GetInt(prefix + ".maxRetries"),
-		InitialDelay:  getDuration(prefix+".initialDelay", 1),
-		MaxDelay:      getDuration(prefix+".maxDelay", 30),
-		BackoffFactor: viper.GetFloat64(prefix + ".backoffFactor"),
+		MaxRetries:    v.GetInt(prefix + ".maxRetries"),
+		InitialDelay:  getDuration(v, prefix+".initialDelay", 1),
+		MaxDelay:      getDuration(v, prefix+".maxDelay", 30),
+		BackoffFactor: v.GetFloat64(prefix + ".backoffFactor"),
 	}
 }

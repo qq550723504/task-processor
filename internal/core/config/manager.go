@@ -111,6 +111,7 @@ func (m *managerImpl) Validate(cfg *Config) error {
 		&cfg.Management,
 		&cfg.Browser,
 		&cfg.Amazon,
+		cfg.RabbitMQ,
 		&cfg.Platforms,
 	)
 	return v.ValidateWithError()

@@ -9,10 +9,10 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - APP_ENV=development
+      - TASK_PROCESSOR_ENV=dev
       - DB_HOST=postgres
       - REDIS_HOST=redis
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - TASK_PROCESSOR_RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     depends_on:
       - postgres
       - redis

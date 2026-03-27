@@ -26,7 +26,10 @@ func main() {
 	fmt.Println("3. 支持三种输入模式：图片URL、文本描述、1688商品URL")
 	fmt.Println()
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("load config failed: %v", err)
+	}
 
 	// 默认测试数据：1688 商品 URL
 	req := &productenrich.GenerateRequest{

@@ -226,19 +226,7 @@ func resolveMarketplaceID(cfg *coreconfig.Config) string {
 	if cfg == nil {
 		return ""
 	}
-	key := strings.TrimSpace(cfg.Amazon.SPAPI.DefaultMarketplace)
-	if key != "" {
-		if market, ok := cfg.Amazon.SPAPI.Marketplaces[key]; ok && market.MarketplaceID != "" {
-			return market.MarketplaceID
-		}
-		return key
-	}
-	for _, market := range cfg.Amazon.SPAPI.Marketplaces {
-		if market.Enabled && market.MarketplaceID != "" {
-			return market.MarketplaceID
-		}
-	}
-	return ""
+	return coreconfig.ResolveAmazonMarketplaceID(cfg.Amazon.SPAPI)
 }
 
 func publisherTaskKey(req *ImageProcessRequest) string {

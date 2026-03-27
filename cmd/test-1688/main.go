@@ -27,7 +27,10 @@ func main() {
 	fmt.Println("4. 复杂的缓动函数和轨迹控制")
 	fmt.Println()
 	// 加载配置
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("load config failed: %v", err)
+	}
 
 	// 创建1688处理器
 	processor := alibaba1688.NewAlibaba1688Processor(cfg)

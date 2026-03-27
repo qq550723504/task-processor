@@ -40,7 +40,10 @@ func main() {
 		logger.Infof("config path missing extension, completed to %s", configPath)
 	}
 
-	appCfg := config.LoadConfigWithFallback(configPath, logger)
+	appCfg, err := config.LoadConfigWithFallback(configPath, logger)
+	if err != nil {
+		logger.Fatalf("load config failed: %v", err)
+	}
 
 	if err := appenv.ApplyLoggingConfig(logger, appenv.LoggingConfig{
 		Level:        appCfg.Logging.Level,

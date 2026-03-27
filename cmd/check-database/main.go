@@ -47,7 +47,10 @@ func main() {
 	configPath := normalizeConfigPath(*appConfig)
 	logger.Infof("loading config: %s", configPath)
 
-	cfg := config.LoadConfigWithFallback(configPath, logger)
+	cfg, err := config.LoadConfigWithFallback(configPath, logger)
+	if err != nil {
+		logger.Fatalf("load config failed: %v", err)
+	}
 	if cfg.Database == nil {
 		logger.Fatal("database config is missing")
 	}

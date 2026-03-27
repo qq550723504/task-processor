@@ -1,4 +1,3 @@
-// Package loaders 提供配置加载功能
 package config
 
 import (
@@ -7,26 +6,23 @@ import (
 	"github.com/spf13/viper"
 )
 
-// getDuration 获取时长配置（秒转换为 time.Duration）
-func getDuration(key string, defaultSeconds int) time.Duration {
-	seconds := viper.GetInt(key)
+func getDuration(v *viper.Viper, key string, defaultSeconds int) time.Duration {
+	seconds := v.GetInt(key)
 	if seconds == 0 {
 		seconds = defaultSeconds
 	}
 	return time.Duration(seconds) * time.Second
 }
 
-// getInt64Slice 获取int64切片
-func getInt64Slice(key string) []int64 {
-	intSlice := viper.GetIntSlice(key)
+func getInt64Slice(v *viper.Viper, key string) []int64 {
+	intSlice := v.GetIntSlice(key)
 	result := make([]int64, len(intSlice))
-	for i, v := range intSlice {
-		result[i] = int64(v)
+	for i, value := range intSlice {
+		result[i] = int64(value)
 	}
 	return result
 }
 
-// getStringFromMap 从 map 中获取字符串值
 func getStringFromMap(m map[string]any, key string) string {
 	if val, ok := m[key]; ok {
 		if str, ok := val.(string); ok {
@@ -36,7 +32,6 @@ func getStringFromMap(m map[string]any, key string) string {
 	return ""
 }
 
-// getIntFromMap 从 map 中获取整数值
 func getIntFromMap(m map[string]any, key string) int {
 	if val, ok := m[key]; ok {
 		switch v := val.(type) {

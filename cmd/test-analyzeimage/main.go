@@ -38,7 +38,11 @@ func main() {
 		promptText = os.Args[2]
 	}
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "load config failed: %v\n", err)
+		os.Exit(1)
+	}
 	llmManager, err := productenrich.NewLLMManagerAdapter(cfg.OpenAI)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create llm manager: %v\n", err)
