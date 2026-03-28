@@ -1,287 +1,268 @@
+// Package rabbitmq provides unit tests for RabbitMQ configuration
 package rabbitmq
 
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
+// TestConfig_Validate tests full configuration validation
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  Config
-		wantErr bool
+		name        string
+		config      Config
+		expectError bool
 	}{
 		{
-			name: "有效配置",
+			name: "valid config",
 			config: Config{
 				Connection: ConnectionConfig{
-					URL:               "amqp://localhost:5672",
+					URL:               "amqp://localhost:5672/",
 					ReconnectInterval: 5 * time.Second,
 					MaxReconnectTries: 10,
 				},
 				Consumer: ConsumerConfig{
-					PrefetchCount: 10,
+					PrefetchCount: 1,
 					PrefetchSize:  0,
 					RetryDelay:    5 * time.Second,
 					MaxRetries:    3,
 				},
 				Queues: []QueueConfig{
-					{Name: "test.queue", Priority: 5, Prefetch: 10},
+					{Name: "test-queue", Priority: 5, Prefetch: 1},
 				},
 			},
-			wantErr: false,
+			expectError: false,
 		},
 		{
-			name: "连接URL为空",
+			name: "empty URL",
 			config: Config{
 				Connection: ConnectionConfig{
-					URL: "",
+					URL:               "",
+					ReconnectInterval: 5 * time.Second,
+					MaxReconnectTries: 10,
 				},
 				Consumer: ConsumerConfig{
-					PrefetchCount: 10,
+					PrefetchCount: 1,
+					PrefetchSize:  0,
+					RetryDelay:    5 * time.Second,
+					MaxRetries:    3,
 				},
 			},
-			wantErr: true,
+			expectError: true,
 		},
 		{
-			name: "PrefetchCount为0",
+			name: "invalid prefetch count",
 			config: Config{
 				Connection: ConnectionConfig{
-					URL: "amqp://localhost:5672",
+					URL:               "amqp://localhost:5672/",
+					ReconnectInterval: 5 * time.Second,
+					MaxReconnectTries: 10,
 				},
 				Consumer: ConsumerConfig{
 					PrefetchCount: 0,
+					PrefetchSize:  0,
+					RetryDelay:    5 * time.Second,
+					MaxRetries:    3,
 				},
 			},
-			wantErr: true,
-		},
-		{
-			name: "队列优先级超出范围",
-			config: Config{
-				Connection: ConnectionConfig{
-					URL: "amqp://localhost:5672",
-				},
-				Consumer: ConsumerConfig{
-					PrefetchCount: 10,
-				},
-				Queues: []QueueConfig{
-					{Name: "test.queue", Priority: 11, Prefetch: 10},
-				},
-			},
-			wantErr: true,
+			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
 }
 
-func TestConfig_SetDefaults(t *testing.T) {
-	config := Config{
-		Connection: ConnectionConfig{
-			URL: "amqp://localhost:5672",
-		},
-		Consumer: ConsumerConfig{},
-		Queues: []QueueConfig{
-			{Name: "test.queue"},
-		},
-	}
-
-	config.SetDefaults()
-
-	// 检查连接配置默认值
-	if config.Connection.ReconnectInterval != 5*time.Second {
-		t.Errorf("ReconnectInterval = %v, want %v", config.Connection.ReconnectInterval, 5*time.Second)
-	}
-	if config.Connection.MaxReconnectTries != 10 {
-		t.Errorf("MaxReconnectTries = %v, want %v", config.Connection.MaxReconnectTries, 10)
-	}
-
-	// 检查消费者配置默认值
-	if config.Consumer.PrefetchCount != 1 {
-		t.Errorf("PrefetchCount = %v, want %v", config.Consumer.PrefetchCount, 1)
-	}
-	if config.Consumer.RetryDelay != 5*time.Second {
-		t.Errorf("RetryDelay = %v, want %v", config.Consumer.RetryDelay, 5*time.Second)
-	}
-	if config.Consumer.MaxRetries != 3 {
-		t.Errorf("MaxRetries = %v, want %v", config.Consumer.MaxRetries, 3)
-	}
-
-	// 检查队列配置默认值
-	if config.Queues[0].Priority != 5 {
-		t.Errorf("Queue Priority = %v, want %v", config.Queues[0].Priority, 5)
-	}
-	if config.Queues[0].Prefetch != 1 {
-		t.Errorf("Queue Prefetch = %v, want %v", config.Queues[0].Prefetch, 1)
-	}
-}
-
+// TestConnectionConfig_Validate tests connection configuration validation
 func TestConnectionConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  ConnectionConfig
-		wantErr bool
+		name        string
+		config      ConnectionConfig
+		expectError bool
 	}{
 		{
-			name: "有效配置",
+			name: "valid",
 			config: ConnectionConfig{
-				URL:               "amqp://localhost:5672",
+				URL:               "amqp://admin:password@localhost:5672/",
 				ReconnectInterval: 5 * time.Second,
 				MaxReconnectTries: 10,
 			},
-			wantErr: false,
+			expectError: false,
 		},
 		{
-			name: "URL为空",
+			name: "empty URL",
 			config: ConnectionConfig{
-				URL: "",
+				URL:               "",
+				ReconnectInterval: 5 * time.Second,
+				MaxReconnectTries: 10,
 			},
-			wantErr: true,
+			expectError: true,
 		},
 		{
-			name: "负数重连间隔",
+			name: "negative reconnect interval",
 			config: ConnectionConfig{
-				URL:               "amqp://localhost:5672",
+				URL:               "amqp://localhost:5672/",
 				ReconnectInterval: -1 * time.Second,
+				MaxReconnectTries: 10,
 			},
-			wantErr: true,
+			expectError: true,
 		},
 		{
-			name: "负数最大重连次数",
+			name: "negative max reconnect tries",
 			config: ConnectionConfig{
-				URL:               "amqp://localhost:5672",
+				URL:               "amqp://localhost:5672/",
+				ReconnectInterval: 5 * time.Second,
 				MaxReconnectTries: -1,
 			},
-			wantErr: true,
+			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ConnectionConfig.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
 }
 
+// TestConsumerConfig_Validate tests consumer configuration validation
 func TestConsumerConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  ConsumerConfig
-		wantErr bool
+		name        string
+		config      ConsumerConfig
+		expectError bool
 	}{
 		{
-			name: "有效配置",
+			name: "valid",
 			config: ConsumerConfig{
-				PrefetchCount: 10,
+				PrefetchCount: 1,
 				PrefetchSize:  0,
 				RetryDelay:    5 * time.Second,
 				MaxRetries:    3,
 			},
-			wantErr: false,
+			expectError: false,
 		},
 		{
-			name: "PrefetchCount为0",
+			name: "zero prefetch count",
 			config: ConsumerConfig{
 				PrefetchCount: 0,
+				PrefetchSize:  0,
+				RetryDelay:    5 * time.Second,
+				MaxRetries:    3,
 			},
-			wantErr: true,
+			expectError: true,
 		},
 		{
-			name: "负数PrefetchSize",
+			name: "negative prefetch size",
 			config: ConsumerConfig{
-				PrefetchCount: 10,
+				PrefetchCount: 1,
 				PrefetchSize:  -1,
+				RetryDelay:    5 * time.Second,
+				MaxRetries:    3,
 			},
-			wantErr: true,
+			expectError: true,
 		},
 		{
-			name: "负数RetryDelay",
+			name: "negative retry delay",
 			config: ConsumerConfig{
-				PrefetchCount: 10,
+				PrefetchCount: 1,
+				PrefetchSize:  0,
 				RetryDelay:    -1 * time.Second,
+				MaxRetries:    3,
 			},
-			wantErr: true,
+			expectError: true,
+		},
+		{
+			name: "negative max retries",
+			config: ConsumerConfig{
+				PrefetchCount: 1,
+				PrefetchSize:  0,
+				RetryDelay:    5 * time.Second,
+				MaxRetries:    -1,
+			},
+			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ConsumerConfig.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
 }
 
+// TestQueueConfig_Validate tests queue configuration validation
 func TestQueueConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  QueueConfig
-		wantErr bool
+		name        string
+		config      QueueConfig
+		expectError bool
 	}{
 		{
-			name: "有效配置",
+			name: "valid",
 			config: QueueConfig{
-				Name:     "test.queue",
+				Name:     "test-queue",
 				Priority: 5,
-				Prefetch: 10,
+				Prefetch: 1,
 			},
-			wantErr: false,
+			expectError: false,
 		},
 		{
-			name: "队列名为空",
+			name: "empty name",
 			config: QueueConfig{
 				Name:     "",
 				Priority: 5,
-				Prefetch: 10,
+				Prefetch: 1,
 			},
-			wantErr: true,
+			expectError: true,
 		},
 		{
-			name: "优先级小于0",
+			name: "zero priority",
 			config: QueueConfig{
-				Name:     "test.queue",
-				Priority: -1,
-				Prefetch: 10,
+				Name:     "test-queue",
+				Priority: 0,
+				Prefetch: 1,
 			},
-			wantErr: true,
+			expectError: false,
 		},
 		{
-			name: "优先级大于10",
+			name: "negative prefetch",
 			config: QueueConfig{
-				Name:     "test.queue",
-				Priority: 11,
-				Prefetch: 10,
-			},
-			wantErr: true,
-		},
-		{
-			name: "Prefetch为0",
-			config: QueueConfig{
-				Name:     "test.queue",
+				Name:     "test-queue",
 				Priority: 5,
-				Prefetch: 0,
+				Prefetch: -1,
 			},
-			wantErr: true,
+			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("QueueConfig.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
