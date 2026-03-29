@@ -13,14 +13,16 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	if req == nil {
 		return nil, fmt.Errorf("submit request cannot be nil")
 	}
-	if s.listingSubmitter == nil {
-		return nil, fmt.Errorf("amazon listing submitter is not configured")
-	}
 
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
+
+	if s.listingSubmitter == nil {
+		return nil, fmt.Errorf("amazon listing submitter is not configured")
+	}
+
 	if task.Result == nil {
 		return nil, fmt.Errorf("task result is empty")
 	}
