@@ -69,7 +69,7 @@ func TestAppError_Is(t *testing.T) {
 	err2 := New(ErrCodePlatformError, "another platform error")
 	err3 := New(ErrCodeTaskNotFound, "task not found")
 	
-	assert.True(t, errors.Is(err1, ErrCodePlatformError))
+	assert.True(t, errors.Is(err1, New(ErrCodePlatformError, "")))
 	assert.True(t, errors.Is(err1, err2))
 	assert.False(t, errors.Is(err1, err3))
 }

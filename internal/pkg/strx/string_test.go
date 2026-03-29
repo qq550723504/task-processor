@@ -2,7 +2,7 @@ package strx
 
 import "testing"
 
-func TestContainsIgnoreCase(t *testing.T) {
+func TestContainsIgnoreCaseLegacy(t *testing.T) {
 	tests := []struct {
 		s        string
 		substr   string
@@ -22,7 +22,7 @@ func TestContainsIgnoreCase(t *testing.T) {
 	}
 }
 
-func TestFindSubstring(t *testing.T) {
+func TestFindSubstringLegacy(t *testing.T) {
 	tests := []struct {
 		s        string
 		substr   string
@@ -42,7 +42,7 @@ func TestFindSubstring(t *testing.T) {
 	}
 }
 
-func TestTruncateString(t *testing.T) {
+func TestTruncateStringLegacy(t *testing.T) {
 	tests := []struct {
 		s        string
 		maxLen   int
