@@ -8,6 +8,8 @@ services:
       dockerfile: deployments/docker/Dockerfile
     ports:
       - "8080:8080"
+    env_file:
+      - ../../.env
     environment:
       - TASK_PROCESSOR_ENV=dev
       - TASK_PROCESSOR_DATABASE_HOST=postgres

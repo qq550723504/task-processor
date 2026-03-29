@@ -3,6 +3,10 @@ services:
     image: xuwei190/task-processor-task:latest
     container_name: task
     restart: unless-stopped
+    env_file:
+      - /app/task/.env
+    environment:
+      TASK_PROCESSOR_ENV: prod
     volumes:
       - /app/task/config:/app/config
       - /app/task/logs:/app/logs

@@ -3,6 +3,10 @@ services:
     image: xuwei190/rabbitmq-consumer:latest
     container_name: rabbitmq-consumer
     restart: unless-stopped
+    env_file:
+      - /app/rabbitmq-consumer/.env
+    environment:
+      TASK_PROCESSOR_ENV: prod
     volumes:
       - /app/rabbitmq-consumer/config:/app/config
       - /app/rabbitmq-consumer/logs:/app/logs
