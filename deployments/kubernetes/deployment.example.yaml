@@ -24,16 +24,16 @@ spec:
         env:
         - name: APP_ENV
           value: "production"
-        - name: DB_HOST
+        - name: TASK_PROCESSOR_DATABASE_HOST
           valueFrom:
             configMapKeyRef:
               name: task-processor-config
-              key: db_host
-        - name: DB_PASSWORD
+              key: database_host
+        - name: TASK_PROCESSOR_DATABASE_PASSWORD
           valueFrom:
             secretKeyRef:
               name: task-processor-secret
-              key: db_password
+              key: database_password
         resources:
           requests:
             memory: "256Mi"
