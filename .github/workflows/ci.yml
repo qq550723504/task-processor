@@ -25,13 +25,16 @@ jobs:
           cache: true
 
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 
       - name: Add Go bin to PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Run golangci-lint
-        run: golangci-lint run --timeout=5m
+        run: |
+          golangci-lint run --timeout=5m
 
   test:
     name: Test
