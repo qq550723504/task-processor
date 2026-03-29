@@ -5,6 +5,8 @@ import (
 
 	"task-processor/internal/app/httpapi"
 	"task-processor/internal/pkg/appenv"
+
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -17,6 +19,10 @@ var (
 	appVersion = "1.0.0"
 	buildTime  = "unknown"
 )
+
+func start(logger *logrus.Logger, options httpapi.Options) error {
+	return httpapi.Run(logger, options)
+}
 
 func main() {
 	flag.Parse()
@@ -31,7 +37,7 @@ func main() {
 	logger.Infof("config path: %s", *configPath)
 	logger.Infof("API port: %d", *port)
 
-	if err := httpapi.Run(logger, httpapi.Options{
+	if err := start(logger, httpapi.Options{
 		ConfigPath: *configPath,
 		Port:       *port,
 	}); err != nil {

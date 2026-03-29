@@ -99,6 +99,13 @@ func (e *AppError) WithDetails(details string) *AppError {
 	return e
 }
 
+// WithFileLine 添加文件和行号
+func (e *AppError) WithFileLine(file string, line int) *AppError {
+	e.File = file
+	e.Line = line
+	return e
+}
+
 // WithStack 添加堆栈信息
 func (e *AppError) WithStack() *AppError {
 	e.Stack = getStack()
