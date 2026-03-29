@@ -1,9 +1,9 @@
 package variations
 
 import (
-	"task-processor/internal/core/logger"
 	"strconv"
 	"strings"
+	"task-processor/internal/core/logger"
 
 	"github.com/playwright-community/playwright-go"
 )

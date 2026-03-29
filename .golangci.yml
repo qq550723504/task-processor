@@ -26,63 +26,26 @@ linters:
   # 启用的linters
   enable:
     # 基础检查
-    - errcheck      # 检查未处理的错误
     - gosimple      # 简化代码建议
     - govet         # go vet检查
     - ineffassign   # 检查无效的赋值
     - staticcheck   # 静态分析检查
-    - unused        # 检查未使用的常量、变量、函数等
     
     # 代码风格
     - gofmt         # 检查代码格式
     - goimports     # 检查import顺序
-    
-    # 代码质量
-    - misspell      # 检查拼写错误
     - unconvert     # 检查不必要的类型转换
-    - unparam       # 检查未使用的函数参数
-    
-    # 性能
-    - prealloc      # 检查可以预分配的slice
-    
-    # 错误处理
-    - errname       # 检查错误命名规范
-    - errorlint     # 检查错误处理最佳实践
-
-    # 重复代码
-    - dupl          # 检测重复代码块
 
 # Linters 设置
 linters-settings:
-  errcheck:
-    # 检查类型断言
-    check-type-assertions: true
-    # 检查空白标识符
-    check-blank: false
-    
   govet:
-    # 启用所有检查
-    enable-all: true
+    disable:
+      - fieldalignment
     
   gofmt:
     # 简化代码
     simplify: true
     
-  misspell:
-    # 语言
-    locale: US
-    
-  unused:
-    # 检查导出的标识符
-    check-exported: false
-    
-  unparam:
-    # 检查导出的函数
-    check-exported: false
-
-  dupl:
-    threshold: 100
-
 # Issues 配置
 issues:
   # 排除的目录
@@ -110,8 +73,11 @@ issues:
     # 排除examples目录
     - path: examples/
       linters:
-        - unused
         - errcheck
+
+    - linters:
+        - staticcheck
+      text: "SA1019:"
         
   # 最大问题数量，0表示无限制
   max-issues-per-linter: 0

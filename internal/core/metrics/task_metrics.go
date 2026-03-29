@@ -2,10 +2,9 @@
 package metrics
 
 import (
-	"task-processor/internal/core/logger"
 	"sync"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // TaskMetrics 任务流转指标统计

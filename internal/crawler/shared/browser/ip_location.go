@@ -1,13 +1,12 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/httpclient"
 	"time"
-
 )
 
 // IPLocationInfo IP地理位置信息

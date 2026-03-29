@@ -6,7 +6,8 @@ import (
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

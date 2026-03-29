@@ -8,7 +8,8 @@ import (
 	"task-processor/internal/infra/clients/management"
 	management_api "task-processor/internal/infra/clients/management/api"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,7 +28,7 @@ func NewClientManager(cookieManager *state.CookieManager, managementClient *mana
 		clients:          make(map[string]*APIClient),
 		cookieManager:    cookieManager,
 		managementClient: managementClient,
-		logger: logger.GetGlobalLogger("SHEINClientManager"),
+		logger:           logger.GetGlobalLogger("SHEINClientManager"),
 	}
 }
 

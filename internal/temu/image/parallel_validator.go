@@ -9,7 +9,8 @@ import (
 	temuproduct "task-processor/internal/temu/api/product"
 	"task-processor/internal/temu/handlerbase"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

@@ -38,7 +38,7 @@ func TestCircuitBreaker_SuccessExecution(t *testing.T) {
 func TestCircuitBreaker_FailureExecution(t *testing.T) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		FailureThreshold: 3,
-		Timeout:         1 * time.Second,
+		Timeout:          1 * time.Second,
 	})
 	for i := 0; i < 3; i++ {
 		_ = cb.Execute(context.Background(), func() error { return errors.New("error") })

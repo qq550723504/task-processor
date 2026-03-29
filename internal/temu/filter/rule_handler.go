@@ -10,7 +10,8 @@ import (
 	"task-processor/internal/temu/product"
 	"task-processor/internal/temu/rules"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

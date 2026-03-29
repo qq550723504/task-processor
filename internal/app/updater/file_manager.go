@@ -2,7 +2,6 @@
 package updater
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"io"
 	"os"
@@ -10,8 +9,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // FileManager 文件操作管理器

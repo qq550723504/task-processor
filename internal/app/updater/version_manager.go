@@ -2,15 +2,14 @@
 package updater
 
 import (
-	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/httpclient"
 	"time"
-
 )
 
 // VersionManager 版本管理器

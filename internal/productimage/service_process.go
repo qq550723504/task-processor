@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	corelogger "task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 func (s *service) ProcessImages(ctx context.Context, task *Task) (*ImageProcessResult, error) {

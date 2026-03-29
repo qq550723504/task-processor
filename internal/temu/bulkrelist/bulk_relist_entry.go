@@ -6,7 +6,8 @@ import (
 	"task-processor/internal/temu/api/client"
 	"task-processor/internal/temu/api/inventory"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

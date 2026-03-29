@@ -2,7 +2,6 @@
 package updater
 
 import (
-	"task-processor/internal/core/logger"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
@@ -11,10 +10,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/httpclient"
 	"task-processor/internal/pkg/strx"
 	"time"
-
 )
 
 // FileDownloader 文件下载器

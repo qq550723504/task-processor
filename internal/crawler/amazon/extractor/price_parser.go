@@ -2,11 +2,11 @@
 package extractor
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"task-processor/internal/core/logger"
 
 	"github.com/playwright-community/playwright-go"
 )

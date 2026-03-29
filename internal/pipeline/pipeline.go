@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -30,7 +31,7 @@ func NewPipeline(name string) Pipeline {
 	return &BasePipeline{
 		name:     name,
 		handlers: make([]Handler, 0),
-		logger: logger.GetGlobalLogger("Pipeline").WithField("pipeline", name),
+		logger:   logger.GetGlobalLogger("Pipeline").WithField("pipeline", name),
 	}
 }
 

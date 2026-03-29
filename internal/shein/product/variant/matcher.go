@@ -1,12 +1,11 @@
 package variant
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
-	sheinattr "task-processor/internal/shein/product/attribute"
 	"task-processor/internal/shein/api/attribute"
-
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 // VariantMatcher 变体匹配器

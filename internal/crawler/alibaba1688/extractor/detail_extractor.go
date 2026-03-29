@@ -2,8 +2,8 @@
 package extractor
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 
 	"github.com/playwright-community/playwright-go"

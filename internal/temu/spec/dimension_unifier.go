@@ -6,8 +6,9 @@ import (
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/property"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // SpecDimensionUnifier 规格维度统一器

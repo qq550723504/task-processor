@@ -1,10 +1,10 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 
 	"github.com/playwright-community/playwright-go"

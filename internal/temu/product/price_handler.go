@@ -11,8 +11,9 @@ import (
 	pkgproduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // PriceHandler 价格处理器（参考SHEIN的简洁设计）

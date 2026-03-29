@@ -2,7 +2,8 @@
 package spec
 
 import (
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

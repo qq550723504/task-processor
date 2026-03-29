@@ -6,7 +6,8 @@ import (
 
 	shein "task-processor/internal/shein"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

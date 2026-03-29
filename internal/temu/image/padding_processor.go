@@ -10,7 +10,8 @@ import (
 	"task-processor/internal/pkg/downloader"
 	"task-processor/internal/pkg/imagex"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

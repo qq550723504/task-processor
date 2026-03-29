@@ -6,7 +6,8 @@ import (
 
 	"task-processor/internal/infra/clients/management"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,7 +24,7 @@ func NewAPIClientManager(managementClient *management.ClientManager) *APIClientM
 	return &APIClientManager{
 		clients:          make(map[string]*APIClient),
 		managementClient: managementClient,
-		logger: logger.GetGlobalLogger("TEMUAPIClientManager"),
+		logger:           logger.GetGlobalLogger("TEMUAPIClientManager"),
 	}
 }
 

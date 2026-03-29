@@ -1,10 +1,9 @@
 package state
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"sync"
-
+	"task-processor/internal/core/logger"
 )
 
 // ReListingQueueManager 重新上架队列管理器（内存版）

@@ -7,8 +7,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // ResultValidator 结果验证器接口

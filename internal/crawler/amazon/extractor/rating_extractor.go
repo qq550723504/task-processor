@@ -1,13 +1,13 @@
 package extractor
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/timeout"
 

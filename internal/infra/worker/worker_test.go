@@ -13,7 +13,7 @@ func TestWorkerJob(t *testing.T) {
 	job := WorkerJob{
 		TaskID:   12345,
 		TenantID: "tenant-1",
-		ShopID:  "shop-837",
+		ShopID:   "shop-837",
 		TaskData: `{"product_id": "abc123"}`,
 	}
 
@@ -130,9 +130,9 @@ func TestPoolConfig_Validate(t *testing.T) {
 func TestPoolConfig_ValidateCorrections(t *testing.T) {
 	config := PoolConfig{
 		Concurrency:     -5,  // invalid
-		BufferSize:      -10,  // invalid
-		TaskTimeout:     -1,   // invalid
-		ShutdownTimeout: -30,   // invalid
+		BufferSize:      -10, // invalid
+		TaskTimeout:     -1,  // invalid
+		ShutdownTimeout: -30, // invalid
 	}
 
 	err := config.Validate()

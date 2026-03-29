@@ -156,4 +156,3 @@ func (s *SensitiveWordService) Close() {
 	s.wg.Wait()
 	s.logger.Info("敏感词服务已关闭")
 }
-

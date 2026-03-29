@@ -2,13 +2,12 @@
 package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
+	"task-processor/internal/shein/api/attribute"
 	sheinctx "task-processor/internal/shein/context"
 	sheinattr "task-processor/internal/shein/product/attribute"
-	"task-processor/internal/shein/api/attribute"
-
 )
 
 // SaleAttributeMetadataBuilder 销售属性元数据构建器
@@ -152,5 +151,3 @@ func CalculateImportanceForSaleAttribute(calc *sheinattr.AttributeImportanceCalc
 	}
 	return importance
 }
-
-

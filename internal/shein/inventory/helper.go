@@ -2,16 +2,15 @@
 package inventory
 
 import (
-	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/product"
 	"task-processor/internal/shein/productsync"
-
 )
 
 // extractMappingInfoFromAttributes 从Attributes JSON中提取所有映射信息和库存

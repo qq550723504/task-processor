@@ -1,10 +1,9 @@
 package state
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
-
 )
 
 // MemoryManager 内存管理器（统一管理所有内存存储）

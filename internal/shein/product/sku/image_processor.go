@@ -2,12 +2,11 @@
 package sku
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
-
 )
 
 // buildSKUImageInfoForMultiPiece 为多件商品构建SKU图片信息

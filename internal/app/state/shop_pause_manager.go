@@ -1,12 +1,11 @@
 package state
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"sync"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // ShopPauseInfo 店铺暂停信息

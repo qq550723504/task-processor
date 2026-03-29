@@ -1,15 +1,14 @@
 package management
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management/api"
 	"time"
-
 )
 
 // ImageDownloadProcessor 图片下载处理器

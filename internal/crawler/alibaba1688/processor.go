@@ -2,11 +2,10 @@
 package alibaba1688
 
 import (
-	"task-processor/internal/core/logger"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 	"time"
-
 )
 
 // Alibaba1688Processor 1688爬虫处理器

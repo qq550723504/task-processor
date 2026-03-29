@@ -3,7 +3,6 @@ package product
 import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
-
 )
 
 // ShelfQuotaHandler SKC上架额度检查处理器

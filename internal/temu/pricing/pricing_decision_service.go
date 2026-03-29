@@ -16,8 +16,9 @@ import (
 	"task-processor/internal/product"
 	temupricing "task-processor/internal/temu/api/pricing"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // ServiceConfig 服务配置

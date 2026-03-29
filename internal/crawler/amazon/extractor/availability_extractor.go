@@ -1,8 +1,8 @@
 package extractor
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 
 	"github.com/playwright-community/playwright-go"

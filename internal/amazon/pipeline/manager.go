@@ -5,7 +5,8 @@ import (
 	"context"
 	"task-processor/internal/amazon/model"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

@@ -7,8 +7,9 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"time"
 
+	"task-processor/internal/core/logger"
+
 	"github.com/imroc/req/v3"
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 

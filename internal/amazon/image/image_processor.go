@@ -6,8 +6,9 @@ import (
 	"image"
 	"task-processor/internal/pkg/imagex"
 
+	"task-processor/internal/core/logger"
+
 	"github.com/disintegration/imaging"
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 )
 

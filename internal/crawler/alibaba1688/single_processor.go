@@ -2,13 +2,12 @@
 package alibaba1688
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/extractor"
 	"task-processor/internal/crawler/alibaba1688/model"
 	"time"
-
 )
 
 // SingleProcessor 单个产品处理器

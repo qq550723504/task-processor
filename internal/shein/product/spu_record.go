@@ -1,12 +1,11 @@
 package product
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/skugen"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
-
 )
 
 // HasSpuRecordHandler 检查SPU发布记录处理器

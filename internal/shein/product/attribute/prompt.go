@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"task-processor/internal/prompt"
-	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/api/attribute"
+	sheinctx "task-processor/internal/shein/context"
 )
 
 // AttributePromptGenerator 属性提示词生成器

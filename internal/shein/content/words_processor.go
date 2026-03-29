@@ -135,4 +135,3 @@ func NewSensitiveWordsCleanHandler(filter SensitiveWordsFilter) *SensitiveWordsP
 func NewSensitiveWordsWarnHandler(filter SensitiveWordsFilter) *SensitiveWordsProcessor {
 	return NewSensitiveWordsProcessor(ModeWarn, filter)
 }
-

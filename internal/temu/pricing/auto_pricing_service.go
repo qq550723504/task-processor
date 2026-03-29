@@ -7,7 +7,8 @@ import (
 	temuapi "task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

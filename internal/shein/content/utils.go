@@ -302,4 +302,3 @@ func (s *SensitiveWordService) logSensitiveWordStats() {
 	s.logger.Infof("   配置文件: %s", s.configPath)
 	s.logger.Infof("   最后更新: %s", s.config.LastUpdated.Format("2006-01-02 15:04:05"))
 }
-

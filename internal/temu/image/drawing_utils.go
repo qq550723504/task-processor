@@ -5,7 +5,8 @@ import (
 	"image"
 	"image/color"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

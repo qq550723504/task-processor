@@ -1,9 +1,9 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"task-processor/internal/core/config"
+	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 
 	"github.com/sirupsen/logrus"

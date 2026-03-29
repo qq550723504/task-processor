@@ -1,11 +1,10 @@
 package state
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"sync"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // CookieInfo Cookie信息

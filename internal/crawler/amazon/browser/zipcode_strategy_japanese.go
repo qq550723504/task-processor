@@ -2,9 +2,9 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
+	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/playwright-community/playwright-go"

@@ -1,11 +1,10 @@
 package variations
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"regexp"
 	"strings"
-
+	"task-processor/internal/core/logger"
 )
 
 // Mapper 属性映射器

@@ -10,7 +10,8 @@ import (
 	"sync"
 	"time"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

@@ -40,9 +40,7 @@ func preparePropertyMappingData(input *temucontext.PropertyMappingInput, templat
 		data.AmazonProduct = input.AmazonProduct
 	}
 
-	for _, templateProp := range templateProps {
-		data.TemuProperties = append(data.TemuProperties, templateProp)
-	}
+	data.TemuProperties = append(data.TemuProperties, templateProps...)
 
 	return data
 }

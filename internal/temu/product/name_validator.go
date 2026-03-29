@@ -8,7 +8,8 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

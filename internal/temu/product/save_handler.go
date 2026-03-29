@@ -8,8 +8,9 @@ import (
 	temuapi "task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // ProductSaveHandler 产品保存处理器

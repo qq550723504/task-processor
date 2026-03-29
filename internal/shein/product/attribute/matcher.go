@@ -2,11 +2,10 @@
 package attribute
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/content"
-
 )
 
 // AttributeValueMatcher 属性值匹配器，负责在平台已有属性值中查找匹配

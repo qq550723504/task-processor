@@ -9,7 +9,8 @@ import (
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/infra/clients/management"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

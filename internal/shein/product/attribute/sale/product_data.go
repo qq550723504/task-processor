@@ -2,13 +2,12 @@
 package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"strconv"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/validation"
-
 )
 
 // SaleAttributeProductDataPreparer 销售属性产品数据准备器
@@ -217,5 +216,3 @@ func (p *SaleAttributeProductDataPreparer) logAttributeCount(productDetails map[
 
 	logger.GetGlobalLogger("shein/product").Debugf("✅ 为%s %s 提取了 %d 个属性信息", productType, asin, attributeCount)
 }
-
-

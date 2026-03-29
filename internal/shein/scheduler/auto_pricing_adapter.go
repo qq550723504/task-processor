@@ -8,7 +8,8 @@ import (
 	"task-processor/internal/shein/api/pricing"
 	sheinpricing "task-processor/internal/shein/pricing"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,7 +23,7 @@ type SheinAutoPricingAdapter struct {
 func NewSheinAutoPricingAdapter(pricingService sheinpricing.AutoPricingService) *SheinAutoPricingAdapter {
 	return &SheinAutoPricingAdapter{
 		pricingService: pricingService,
-		logger: logger.GetGlobalLogger("SheinAutoPricingAdapter"),
+		logger:         logger.GetGlobalLogger("SheinAutoPricingAdapter"),
 	}
 }
 

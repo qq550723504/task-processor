@@ -8,7 +8,8 @@ import (
 
 	"task-processor/internal/pkg/hashx"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

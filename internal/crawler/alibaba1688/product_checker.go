@@ -2,11 +2,10 @@
 package alibaba1688
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"strings"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
-
 )
 
 // ProductChecker 1688产品检查器

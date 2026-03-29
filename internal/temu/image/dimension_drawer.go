@@ -7,7 +7,8 @@ import (
 	"image/color"
 	"task-processor/internal/temu/rules"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

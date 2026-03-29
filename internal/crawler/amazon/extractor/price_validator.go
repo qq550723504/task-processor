@@ -2,8 +2,8 @@
 package extractor
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
+	"task-processor/internal/core/logger"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"

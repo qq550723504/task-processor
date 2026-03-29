@@ -2,11 +2,10 @@
 package product
 
 import (
-	"task-processor/internal/core/logger"
 	"regexp"
 	"strconv"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
-
 )
 
 // GetProductPrice 根据价格类型获取Amazon产品价格（包含运费）

@@ -7,9 +7,10 @@ import (
 	"image/color"
 	"task-processor/internal/temu/handlerbase"
 
+	"task-processor/internal/core/logger"
+
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
-		"task-processor/internal/core/logger"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/image/font/gofont/goregular"
 )

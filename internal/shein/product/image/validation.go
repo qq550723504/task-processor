@@ -1,10 +1,9 @@
 package image
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
-
 )
 
 // ImageValidationHandler 图片验证处理器

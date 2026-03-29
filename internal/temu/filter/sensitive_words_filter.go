@@ -11,7 +11,8 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	temucontext "task-processor/internal/temu/context"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

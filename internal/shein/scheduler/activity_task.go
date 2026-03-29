@@ -10,8 +10,9 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/activity"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // ActivityTask SHEIN活动报名任务

@@ -2,13 +2,12 @@
 package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // SaleAttributeDebugSaver 销售属性调试数据保存器
@@ -94,5 +93,3 @@ func (s *SaleAttributeDebugSaver) saveDebugData(taskID, productID, systemPrompt,
 	logger.GetGlobalLogger("shein/product").Infof("💾 调试数据已保存: %s", filepath)
 	return nil
 }
-
-

@@ -1,11 +1,10 @@
 package management
 
 import (
-	"task-processor/internal/core/logger"
 	"sync"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management/api"
 	"time"
-
 )
 
 // CategoryRestrictionCache 品类限制缓存

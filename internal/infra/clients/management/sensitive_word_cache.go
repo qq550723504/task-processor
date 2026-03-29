@@ -1,11 +1,10 @@
 package management
 
 import (
-	"task-processor/internal/core/logger"
 	"strings"
 	"sync"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // SensitiveWordCache 敏感词缓存管理器

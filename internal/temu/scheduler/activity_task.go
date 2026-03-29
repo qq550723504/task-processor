@@ -6,8 +6,9 @@ import (
 
 	appscheduler "task-processor/internal/app/scheduler"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // ActivityService 定义 TEMU 活动任务的执行边界。

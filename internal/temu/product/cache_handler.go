@@ -10,8 +10,9 @@ import (
 	"task-processor/internal/pipeline"
 	domainProduct "task-processor/internal/product"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // CacheProductHandler 缓存产品数据处理器

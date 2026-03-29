@@ -2,10 +2,10 @@
 package alibaba1688
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"math"
 	"strings"
+	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/playwright-community/playwright-go"

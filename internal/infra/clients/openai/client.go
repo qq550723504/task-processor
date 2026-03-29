@@ -2,9 +2,9 @@
 package openai
 
 import (
-	"task-processor/internal/core/logger"
 	"context"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/ptr"
 	"time"
 

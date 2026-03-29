@@ -8,8 +8,9 @@ import (
 	"task-processor/internal/pipeline"
 	temucontext "task-processor/internal/temu/context"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // SavePublishResultHandler 保存发品成功后返回信息处理器（参考SHEIN实现）

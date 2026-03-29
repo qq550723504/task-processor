@@ -6,8 +6,9 @@ import (
 	"strings"
 	temucontext "task-processor/internal/temu/context"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // MixedAttributesProcessor 混合属性处理器

@@ -13,7 +13,8 @@ import (
 
 	// pricingsvc 别名已废弃，包已重命名为 pricing
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,7 +34,7 @@ func NewTemuAutoPricingAdapter(
 	return &TemuAutoPricingAdapter{
 		autoPricingService: pricing.NewAutoPricingService(apiClient),
 		managementClient:   managementClient,
-		logger: logger.GetGlobalLogger("TemuAutoPricingAdapter").WithField("store_id", apiClient.GetStoreID()),
+		logger:             logger.GetGlobalLogger("TemuAutoPricingAdapter").WithField("store_id", apiClient.GetStoreID()),
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
-
 )
 
 // SKUImageAutoFixer SKU图片自动修复器

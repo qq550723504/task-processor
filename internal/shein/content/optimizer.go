@@ -250,4 +250,3 @@ func (o *ContentOptimizer) TruncateDescription(description string, maxLength int
 
 	return strings.TrimSpace(truncated)
 }
-

@@ -22,7 +22,7 @@ func TestRetry_SuccessFirstAttempt(t *testing.T) {
 	}
 
 	err := Retry(context.Background(), nil, fn)
-	
+
 	assert.NoError(t, err)
 	assert.Equal(t, 1, callCount, "should call once")
 }
@@ -47,7 +47,7 @@ func TestRetry_SuccessAfterRetries(t *testing.T) {
 	}
 
 	err := Retry(context.Background(), config, fn)
-	
+
 	require.NoError(t, err)
 	assert.Equal(t, 3, callCount, "should retry 3 times")
 }
@@ -69,7 +69,7 @@ func TestRetry_MaxAttemptsExceeded(t *testing.T) {
 	}
 
 	err := Retry(context.Background(), config, fn)
-	
+
 	assert.Error(t, err)
 	assert.Equal(t, 3, callCount, "should retry 3 times")
 	assert.Contains(t, err.Error(), "max retry attempts")
@@ -80,7 +80,7 @@ func TestRetry_NonRetryableError(t *testing.T) {
 	callCount := 0
 	retryableErr := errors.New("retryable error")
 	nonRetryableErr := errors.New("non-retryable error")
-	
+
 	fn := func(ctx context.Context) error {
 		callCount++
 		return nonRetryableErr
@@ -90,13 +90,13 @@ func TestRetry_NonRetryableError(t *testing.T) {
 		MaxAttempts:     3,
 		InitialDelay:    1 * time.Millisecond,
 		MaxDelay:        10 * time.Millisecond,
-		Multiplier:     2.0,
-		MaxJitter:      0,
+		Multiplier:      2.0,
+		MaxJitter:       0,
 		RetryableErrors: []error{retryableErr},
 	}
 
 	err := Retry(context.Background(), config, fn)
-	
+
 	assert.Error(t, err)
 	assert.Equal(t, 1, callCount, "non-retryable error should return immediately")
 	assert.Contains(t, err.Error(), "non-retryable error")
@@ -120,7 +120,7 @@ func TestRetry_ContextCancellation(t *testing.T) {
 	}
 
 	err := Retry(ctx, config, fn)
-	
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "retry canceled")
 }
@@ -128,7 +128,7 @@ func TestRetry_ContextCancellation(t *testing.T) {
 // TestRetry_ExponentialBackoff tests exponential backoff timing
 func TestRetry_ExponentialBackoff(t *testing.T) {
 	callTimes := []time.Time{}
-	
+
 	fn := func(ctx context.Context) error {
 		callTimes = append(callTimes, time.Now())
 		if len(callTimes) < 3 {
@@ -146,7 +146,7 @@ func TestRetry_ExponentialBackoff(t *testing.T) {
 	}
 
 	err := Retry(context.Background(), config, fn)
-	
+
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(callTimes), 3)
 
@@ -163,7 +163,7 @@ func TestRetry_ExponentialBackoff(t *testing.T) {
 func TestRetry_WithCustomRetryableErrors(t *testing.T) {
 	callCount := 0
 	errTemporary := errors.New("temporary error")
-	
+
 	fn := func(ctx context.Context) error {
 		callCount++
 		return errTemporary
@@ -173,13 +173,13 @@ func TestRetry_WithCustomRetryableErrors(t *testing.T) {
 		MaxAttempts:     3,
 		InitialDelay:    1 * time.Millisecond,
 		MaxDelay:        10 * time.Millisecond,
-		Multiplier:     2.0,
-		MaxJitter:      0,
+		Multiplier:      2.0,
+		MaxJitter:       0,
 		RetryableErrors: []error{errTemporary},
 	}
 
 	err := Retry(context.Background(), config, fn)
-	
+
 	// errTemporary is in RetryableErrors, should retry
 	assert.Error(t, err)
 	assert.Equal(t, 3, callCount)
@@ -201,7 +201,7 @@ func TestRetry_PermanentErrorNotInRetryableList(t *testing.T) {
 	callCount := 0
 	errPermanent := errors.New("permanent error")
 	errTemp := errors.New("temporary error")
-	
+
 	fn := func(ctx context.Context) error {
 		callCount++
 		return errTemp
@@ -211,13 +211,13 @@ func TestRetry_PermanentErrorNotInRetryableList(t *testing.T) {
 		MaxAttempts:     5,
 		InitialDelay:    1 * time.Millisecond,
 		MaxDelay:        10 * time.Millisecond,
-		Multiplier:     2.0,
-		MaxJitter:      0,
+		Multiplier:      2.0,
+		MaxJitter:       0,
 		RetryableErrors: []error{errPermanent}, // only permanent errors are retryable
 	}
 
 	err := Retry(context.Background(), config, fn)
-	
+
 	// errTemp is NOT in RetryableErrors, should NOT retry
 	assert.Error(t, err)
 	assert.Equal(t, 1, callCount)
@@ -233,16 +233,16 @@ func TestRetry_AllErrorsRetryableByDefault(t *testing.T) {
 	}
 
 	config := &RetryConfig{
-		MaxAttempts:     3,
-		InitialDelay:    1 * time.Millisecond,
-		MaxDelay:        10 * time.Millisecond,
-		Multiplier:     2.0,
-		MaxJitter:      0,
+		MaxAttempts:  3,
+		InitialDelay: 1 * time.Millisecond,
+		MaxDelay:     10 * time.Millisecond,
+		Multiplier:   2.0,
+		MaxJitter:    0,
 		// No RetryableErrors specified, all errors should be retryable
 	}
 
 	err := Retry(context.Background(), config, fn)
-	
+
 	assert.Error(t, err)
 	assert.Equal(t, 3, callCount)
 }
@@ -250,7 +250,7 @@ func TestRetry_AllErrorsRetryableByDefault(t *testing.T) {
 // TestDefaultRetryConfig tests default configuration values
 func TestDefaultRetryConfig(t *testing.T) {
 	config := DefaultRetryConfig()
-	
+
 	require.NotNil(t, config)
 	assert.Equal(t, 3, config.MaxAttempts)
 	assert.Equal(t, 1*time.Second, config.InitialDelay)

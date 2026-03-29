@@ -2,10 +2,9 @@
 package task
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // QueueManager 简化的队列管理器

@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 func (s *productService) ProcessProduct(ctx context.Context, task *Task) (*ProductJSON, error) {

@@ -2,13 +2,12 @@
 package sale
 
 import (
-	"task-processor/internal/core/logger"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // SaleAttributeFileSaver 销售属性文件保存器，负责保存提示词和响应数据到文件
@@ -116,5 +115,3 @@ func (s *SaleAttributeFileSaver) saveToFile(filename string, data any) error {
 	logger.GetGlobalLogger("shein/product").Infof("📁 数据已保存到文件: %s", filePath)
 	return nil
 }
-
-

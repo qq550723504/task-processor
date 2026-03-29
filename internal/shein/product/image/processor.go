@@ -2,7 +2,6 @@
 package image
 
 import (
-	"task-processor/internal/core/logger"
 	"bytes"
 	"fmt"
 	"image"
@@ -10,11 +9,11 @@ import (
 	"image/jpeg"
 	"strings"
 	"sync"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/imagex"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/product"
-
 )
 
 // ImageProcessor 图片处理器

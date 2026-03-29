@@ -2,12 +2,11 @@
 package alibaba1688
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
-
+	"task-processor/internal/core/logger"
 )
 
 // URLHelper 1688 URL处理辅助工具

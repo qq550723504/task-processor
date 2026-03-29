@@ -10,7 +10,8 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	shein_product "task-processor/internal/shein/api/product"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

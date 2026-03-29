@@ -1,7 +1,6 @@
 package downloader
 
 import (
-	"task-processor/internal/core/logger"
 	"bytes"
 	"crypto/tls"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/imroc/req/v3"

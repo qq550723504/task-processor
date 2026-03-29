@@ -7,7 +7,8 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
 
-		"task-processor/internal/core/logger"
+	"task-processor/internal/core/logger"
+
 	"github.com/sirupsen/logrus"
 )
 

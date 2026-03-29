@@ -2,11 +2,10 @@
 package product
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
 	sheinattr "task-processor/internal/shein/product/attribute"
-
 )
 
 // ResultMerger 结果合并器，负责合并多个批次的处理结果

@@ -167,4 +167,3 @@ func (c *TextCleaner) TruncateAtSentenceBoundary(text string, maxLength int) str
 
 	return strings.TrimSpace(truncated)
 }
-

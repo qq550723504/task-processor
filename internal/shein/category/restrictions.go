@@ -1,13 +1,12 @@
 package category
 
 import (
-	"task-processor/internal/core/logger"
 	"regexp"
 	"strconv"
+	"task-processor/internal/core/logger"
 
 	management_api "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein"
-
 )
 
 // CollectCategoryRestrictionsHandler 错误时收集分类限制及敏感词处理器

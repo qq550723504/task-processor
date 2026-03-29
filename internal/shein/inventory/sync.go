@@ -2,27 +2,27 @@
 package inventory
 
 import (
-"context"
-"encoding/json"
-"fmt"
-"sync"
-"sync/atomic"
-"time"
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
 
-"task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
-"task-processor/internal/core/logger"
-"task-processor/internal/infra/clients/management"
-managementapi "task-processor/internal/infra/clients/management/api"
-"task-processor/internal/model"
-"task-processor/internal/pkg/jsonx"
-"task-processor/internal/pkg/recovery"
-"task-processor/internal/pricing"
-"task-processor/internal/product"
-shein_product "task-processor/internal/shein/api/product"
-"task-processor/internal/shein/productsync"
+	"task-processor/internal/core/logger"
+	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
+	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/pkg/recovery"
+	"task-processor/internal/pricing"
+	"task-processor/internal/product"
+	shein_product "task-processor/internal/shein/api/product"
+	"task-processor/internal/shein/productsync"
 
-"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 // InventorySyncService 库存监控服务接口（监控Amazon价格和库存变化）
@@ -45,46 +45,46 @@ type InventoryUpdateRequest struct {
 
 // inventorySyncServiceImpl 库存监控服务实现
 type inventorySyncServiceImpl struct {
-managementClient      *management.ClientManager
-productAPI            shein_product.ProductAPI
-productFetcher        fetcher.ProductFetcher
-rawJsonDataClient     product.RawJsonDataClient
-inventoryRecordClient managementapi.InventoryRecordAPI
-monitorConfig         *config.MonitorConfig
-costCalculator        *pricing.CostCalculator
-logger                *logrus.Entry
+	managementClient      *management.ClientManager
+	productAPI            shein_product.ProductAPI
+	productFetcher        fetcher.ProductFetcher
+	rawJsonDataClient     product.RawJsonDataClient
+	inventoryRecordClient managementapi.InventoryRecordAPI
+	monitorConfig         *config.MonitorConfig
+	costCalculator        *pricing.CostCalculator
+	logger                *logrus.Entry
 
-// 批量库存更新收集器
-inventoryUpdates sync.Map // map[string][]InventoryUpdateRequest - key: productID
+	// 批量库存更新收集器
+	inventoryUpdates sync.Map // map[string][]InventoryUpdateRequest - key: productID
 }
 
 // NewInventorySyncService 创建库存监控服务
 func NewInventorySyncService(
-managementClient *management.ClientManager,
-productAPI shein_product.ProductAPI,
-productFetcher fetcher.ProductFetcher,
-monitorConfig *config.MonitorConfig,
-rawJsonDataClient product.RawJsonDataClient,
-inventoryRecordClient managementapi.InventoryRecordAPI,
+	managementClient *management.ClientManager,
+	productAPI shein_product.ProductAPI,
+	productFetcher fetcher.ProductFetcher,
+	monitorConfig *config.MonitorConfig,
+	rawJsonDataClient product.RawJsonDataClient,
+	inventoryRecordClient managementapi.InventoryRecordAPI,
 ) InventorySyncService {
-// 临时设置 Debug 级别以便调试映射问题
-logger.SetGlobalLogLevel("debug")
+	// 临时设置 Debug 级别以便调试映射问题
+	logger.SetGlobalLogLevel("debug")
 
-log := logger.GetGlobalLogger("InventorySyncService")
+	log := logger.GetGlobalLogger("InventorySyncService")
 
-// 创建通用成本计算器（SHEIN需要详细日志）
-costCalculator := pricing.NewCostCalculator(managementClient, log, true)
+	// 创建通用成本计算器（SHEIN需要详细日志）
+	costCalculator := pricing.NewCostCalculator(managementClient, log, true)
 
-return &inventorySyncServiceImpl{
-managementClient:      managementClient,
-productAPI:            productAPI,
-productFetcher:        productFetcher,
-rawJsonDataClient:     rawJsonDataClient,
-inventoryRecordClient: inventoryRecordClient,
-monitorConfig:         monitorConfig,
-costCalculator:        costCalculator,
-logger:                log,
-}
+	return &inventorySyncServiceImpl{
+		managementClient:      managementClient,
+		productAPI:            productAPI,
+		productFetcher:        productFetcher,
+		rawJsonDataClient:     rawJsonDataClient,
+		inventoryRecordClient: inventoryRecordClient,
+		monitorConfig:         monitorConfig,
+		costCalculator:        costCalculator,
+		logger:                log,
+	}
 }
 
 // FetchProductsForInventorySync 获取需要监控库存的产品列表
@@ -172,7 +172,7 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 				if err := s.monitorSingleSKU(ctx, product, skuMapping, tenantID, storeID, result, &resultMutex); err != nil {
 					s.logger.WithError(err).WithFields(logrus.Fields{
 						"product_id": product.ProductID,
-						"sku":	s.getStringValue(skuMapping.MappingInfo.Sku),
+						"sku":        s.getStringValue(skuMapping.MappingInfo.Sku),
 					}).Warn("监控SKU失败")
 				}
 			}
@@ -203,9 +203,9 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 	wg.Wait()
 
 	s.logger.WithFields(logrus.Fields{
-		"total":	  result.TotalProducts,
+		"total":          result.TotalProducts,
 		"processed":      result.ProcessedProducts,
-		"skipped":	result.SkippedProducts,
+		"skipped":        result.SkippedProducts,
 		"price_changes":  result.PriceChanges,
 		"stock_changes":  result.StockChanges,
 		"amazon_fetched": result.AmazonFetched,
@@ -232,7 +232,7 @@ func (s *inventorySyncServiceImpl) logProgress(currentIndex, totalCount int, res
 	progress := float64(currentIndex) / float64(totalCount) * 100
 	s.logger.WithFields(logrus.Fields{
 		"processed":      currentIndex,
-		"total":	  totalCount,
+		"total":          totalCount,
 		"progress":       fmt.Sprintf("%.1f%%", progress),
 		"price_changes":  result.PriceChanges,
 		"stock_changes":  result.StockChanges,
@@ -317,9 +317,9 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 						newStock = s.extractStockFromProduct(amazonProduct)
 						asin = amazonProduct.Asin
 						sku.AmazonMonitorData = &AmazonMonitorData{
-							ASIN:	  asin,
-							Price:	 currentPrice,
-							Stock:	 newStock,
+							ASIN:          asin,
+							Price:         currentPrice,
+							Stock:         newStock,
 							LastCheckTime: time.Now().Unix(),
 						}
 					}
@@ -333,7 +333,7 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 						"amazon_stock":  newStock,
 						"amazon_price":  currentPrice,
 						"price_type":    priceType,
-						"asin":	  asin,
+						"asin":          asin,
 					}).Debug("已更新SKU库存和Amazon监控数据")
 					break
 				}
@@ -362,8 +362,8 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 		Products: []managementapi.ProductAttributesItemDTO{
 			{
 				PlatformProductID: prod.PlatformProductID,
-				Attributes:	string(updatedAttributes),
-				UpdateTime:	&[]int64{time.Now().Unix()}[0],
+				Attributes:        string(updatedAttributes),
+				UpdateTime:        &[]int64{time.Now().Unix()}[0],
 			},
 		},
 	}

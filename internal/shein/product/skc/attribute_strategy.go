@@ -1,12 +1,12 @@
 package skc
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"task-processor/internal/shein"
-	sheinattr "task-processor/internal/shein/product/attribute"
 	api_attribute "task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/product/attribute"
+	sheinattr "task-processor/internal/shein/product/attribute"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"

@@ -6,8 +6,9 @@ import (
 	"strings"
 	temucontext "task-processor/internal/temu/context"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/core/logger"
+
+	"github.com/sirupsen/logrus"
 )
 
 // SpecResolverService 规格解析服务

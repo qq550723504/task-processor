@@ -1,11 +1,11 @@
 package browser
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
 	"os"
 	"runtime"
 	"strings"
+	"task-processor/internal/core/logger"
 
 	"github.com/playwright-community/playwright-go"
 )

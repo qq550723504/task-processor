@@ -2,10 +2,9 @@
 package updater
 
 import (
-	"task-processor/internal/core/logger"
 	"fmt"
+	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // UpdateManager 更新逻辑管理器

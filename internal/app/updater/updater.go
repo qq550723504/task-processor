@@ -4,7 +4,6 @@ package updater
 import (
 	"task-processor/internal/core/logger"
 	"time"
-
 )
 
 // Updater 自动更新器
