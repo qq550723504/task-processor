@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	api_attribute "task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/api/product"
@@ -98,11 +99,7 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(input *SKCVariantBuildInp
 
 	p.ensureVariantsHaveRequiredAttributes(input, strategy)
 
-	skuRuntime := &sku.RuntimeInput{
-		AmazonProduct:      p.runtime.AmazonProduct,
-		Variants:           p.runtime.Variants,
-		AttributeTemplates: p.runtime.AttributeTemplates,
-	}
+	skuRuntime := p.newSKURuntimeInput(ctx)
 
 	for i := 0; i < len(strategy.PrimaryAttribute.AttrValue); i++ {
 		attrValue := &strategy.PrimaryAttribute.AttrValue[i]
@@ -179,11 +176,7 @@ func (p *SKCVariantProcessor) buildSingleVariantDirect(input *SKCVariantBuildInp
 		return nil, nil, fmt.Errorf("primary attribute value ID is invalid: %s (ID: %d)", primaryAttrValue.Value, primaryAttrValue.ID.Int())
 	}
 
-	skuRuntime := &sku.RuntimeInput{
-		AmazonProduct:      p.runtime.AmazonProduct,
-		Variants:           p.runtime.Variants,
-		AttributeTemplates: p.runtime.AttributeTemplates,
-	}
+	skuRuntime := p.newSKURuntimeInput(ctx)
 	skuList, err := p.skuBuilder.BuildSKUListForSingleVariantWithRuntime(ctx, skuRuntime, variantItem, strategy, input.WarehouseCode)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build SKU list: %w", err)
@@ -210,6 +203,41 @@ func (p *SKCVariantProcessor) buildSingleVariantDirect(input *SKCVariantBuildInp
 
 	p.autoFixMultiPieceSKUImages(&skc, &imageInfo)
 	return []product.SKC{skc}, customAttributeRelations, nil
+}
+
+func (p *SKCVariantProcessor) newSKURuntimeInput(ctx *shein.TaskContext) *sku.RuntimeInput {
+	input := &sku.RuntimeInput{}
+
+	if p.runtime != nil {
+		input.AmazonProduct = p.runtime.AmazonProduct
+		input.AttributeTemplates = p.runtime.AttributeTemplates
+		input.Region = p.runtime.Region
+
+		if len(p.runtime.Variants) > 0 {
+			input.Variants = append([]model.Product(nil), p.runtime.Variants...)
+		}
+		if p.runtime.AsinSkuMap != nil {
+			input.AsinSkuMap = make(map[string]string, len(p.runtime.AsinSkuMap))
+			for k, v := range p.runtime.AsinSkuMap {
+				input.AsinSkuMap[k] = v
+			}
+		}
+	}
+
+	if ctx != nil {
+		input.StoreInfo = ctx.StoreInfo
+		input.ProfitRule = ctx.ProfitRule
+		input.ImageAPI = ctx.ImageAPI
+
+		if len(ctx.SiteList) > 0 {
+			input.SiteList = append([]product.SiteInfo(nil), ctx.SiteList...)
+		}
+		if input.Region == "" && ctx.Task != nil {
+			input.Region = ctx.Task.Region
+		}
+	}
+
+	return input
 }
 
 func (p *SKCVariantProcessor) ensureVariantsHaveRequiredAttributes(input *SKCVariantBuildInput, strategy sheinattr.AttributeStrategy) {

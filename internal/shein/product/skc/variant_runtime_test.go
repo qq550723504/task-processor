@@ -1,0 +1,62 @@
+package skc
+
+import (
+	"context"
+	"testing"
+
+	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/model"
+	shein "task-processor/internal/shein"
+	sheinimage "task-processor/internal/shein/api/image"
+	productapi "task-processor/internal/shein/api/product"
+)
+
+func TestSKCVariantProcessor_NewSKURuntimeInputIncludesContextDependencies(t *testing.T) {
+	ctx := shein.NewTaskContext(context.Background(), &model.Task{Region: "US"})
+	fixedStock := 7
+
+	ctx.StoreInfo = &managementapi.StoreRespDTO{FixedStockCount: &fixedStock}
+	ctx.ProfitRule = &managementapi.ProfitRuleRespDTO{}
+	ctx.SiteList = []productapi.SiteInfo{{SubSiteList: []string{"us"}}}
+	ctx.ImageAPI = &sheinimage.Client{}
+
+	amazonProduct := &model.Product{Title: "Test Product"}
+	variants := []model.Product{{Asin: "A1"}}
+	asinSkuMap := map[string]string{"A1": "SKU-1"}
+
+	processor := &SKCVariantProcessor{
+		runtime: &SKCRuntimeInput{
+			Region:             "SG",
+			AmazonProduct:      amazonProduct,
+			Variants:           variants,
+			AttributeTemplates: nil,
+			AsinSkuMap:         asinSkuMap,
+		},
+	}
+
+	runtime := processor.newSKURuntimeInput(ctx)
+	if runtime.StoreInfo != ctx.StoreInfo {
+		t.Fatal("expected store info to be copied from task context")
+	}
+	if runtime.ProfitRule != ctx.ProfitRule {
+		t.Fatal("expected profit rule to be copied from task context")
+	}
+	if runtime.ImageAPI != ctx.ImageAPI {
+		t.Fatal("expected image API to be copied from task context")
+	}
+	if len(runtime.SiteList) != 1 || len(runtime.SiteList[0].SubSiteList) != 1 || runtime.SiteList[0].SubSiteList[0] != "us" {
+		t.Fatalf("expected site list to be copied from task context, got %+v", runtime.SiteList)
+	}
+	if runtime.Region != "SG" {
+		t.Fatalf("expected runtime region to prefer SKC runtime value, got %q", runtime.Region)
+	}
+	if runtime.AmazonProduct != amazonProduct {
+		t.Fatal("expected amazon product to be copied from SKC runtime")
+	}
+	if len(runtime.Variants) != 1 || runtime.Variants[0].Asin != "A1" {
+		t.Fatalf("expected variants to be copied, got %+v", runtime.Variants)
+	}
+	if runtime.AsinSkuMap["A1"] != "SKU-1" {
+		t.Fatalf("expected asin sku map to be copied, got %+v", runtime.AsinSkuMap)
+	}
+}
