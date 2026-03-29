@@ -1,10 +1,13 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/watermark"
 
@@ -15,6 +18,8 @@ type envBinding struct {
 	Primary    string
 	Deprecated []string
 }
+
+var loadDotEnvOnce sync.Once
 
 type Config struct {
 	Logging      LoggingConfig      `yaml:"logging"`
@@ -60,6 +65,90 @@ func newViper() *viper.Viper {
 	bindKnownEnvs(v)
 	setDefaults(v)
 	return v
+}
+
+func tryLoadDotEnv() {
+	loadDotEnvOnce.Do(func() {
+		for _, candidate := range dotEnvCandidates() {
+			if err := loadDotEnvFile(candidate); err == nil {
+				logger.GetGlobalLogger("core/config").Infof("loaded .env file: %s", candidate)
+				return
+			}
+		}
+	})
+}
+
+func dotEnvCandidates() []string {
+	candidates := []string{
+		".env",
+		filepath.Join(".", ".env"),
+	}
+
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		candidates = append(candidates,
+			filepath.Join(exeDir, ".env"),
+			filepath.Join(exeDir, "..", ".env"),
+		)
+	}
+
+	seen := make(map[string]struct{}, len(candidates))
+	result := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		cleaned := filepath.Clean(candidate)
+		if _, ok := seen[cleaned]; ok {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		result = append(result, cleaned)
+	}
+	return result
+}
+
+func loadDotEnvFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "export ") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+		}
+
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+
+		value = strings.TrimSpace(value)
+		value = strings.Trim(value, `"'`)
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("set env %s from %s: %w", key, path, err)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("scan .env file %s: %w", path, err)
+	}
+
+	return nil
 }
 
 func bindKnownEnvs(v *viper.Viper) {
@@ -132,6 +221,10 @@ func knownEnvBindings() map[string]envBinding {
 			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_DEFAULT_CONDITION",
 			Deprecated: []string{"AMAZON_SPAPI_DEFAULT_CONDITION"},
 		},
+		"rabbitmq.enabled": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_ENABLED",
+			Deprecated: []string{"RABBITMQ_ENABLED"},
+		},
 		"rabbitmq.url": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_URL",
 			Deprecated: []string{"RABBITMQ_URL"},
@@ -184,6 +277,54 @@ func knownEnvBindings() map[string]envBinding {
 			Primary:    "TASK_PROCESSOR_PLATFORM_1688_ENABLED",
 			Deprecated: []string{"PLATFORM_1688_ENABLED"},
 		},
+		"database.host": {
+			Primary:    "TASK_PROCESSOR_DATABASE_HOST",
+			Deprecated: []string{"DB_HOST"},
+		},
+		"database.port": {
+			Primary:    "TASK_PROCESSOR_DATABASE_PORT",
+			Deprecated: []string{"DB_PORT"},
+		},
+		"database.user": {
+			Primary:    "TASK_PROCESSOR_DATABASE_USER",
+			Deprecated: []string{"DB_USER"},
+		},
+		"database.password": {
+			Primary:    "TASK_PROCESSOR_DATABASE_PASSWORD",
+			Deprecated: []string{"DB_PASSWORD"},
+		},
+		"database.database": {
+			Primary:    "TASK_PROCESSOR_DATABASE_NAME",
+			Deprecated: []string{"DB_NAME"},
+		},
+		"database.max_connections": {
+			Primary:    "TASK_PROCESSOR_DATABASE_MAX_CONNECTIONS",
+			Deprecated: []string{"DB_MAX_CONNECTIONS"},
+		},
+		"database.max_idle_connections": {
+			Primary:    "TASK_PROCESSOR_DATABASE_MAX_IDLE_CONNECTIONS",
+			Deprecated: []string{"DB_MAX_IDLE_CONNECTIONS"},
+		},
+		"redis.host": {
+			Primary:    "TASK_PROCESSOR_REDIS_HOST",
+			Deprecated: []string{"REDIS_HOST"},
+		},
+		"redis.port": {
+			Primary:    "TASK_PROCESSOR_REDIS_PORT",
+			Deprecated: []string{"REDIS_PORT"},
+		},
+		"redis.password": {
+			Primary:    "TASK_PROCESSOR_REDIS_PASSWORD",
+			Deprecated: []string{"REDIS_PASSWORD"},
+		},
+		"redis.db": {
+			Primary:    "TASK_PROCESSOR_REDIS_DB",
+			Deprecated: []string{"REDIS_DB"},
+		},
+		"redis.pool_size": {
+			Primary:    "TASK_PROCESSOR_REDIS_POOL_SIZE",
+			Deprecated: []string{"REDIS_POOL_SIZE"},
+		},
 	}
 }
 
@@ -191,22 +332,186 @@ func deprecatedEnvWarnings() []string {
 	var warnings []string
 
 	for key, binding := range knownEnvBindings() {
-		primaryValue, primarySet := os.LookupEnv(binding.Primary)
+		_, primarySet := os.LookupEnv(binding.Primary)
 		for _, deprecated := range binding.Deprecated {
-			deprecatedValue, deprecatedSet := os.LookupEnv(deprecated)
+			_, deprecatedSet := os.LookupEnv(deprecated)
 			if !deprecatedSet {
+				continue
+			}
+			// 已设置新名称时不再提示旧别名（避免系统环境仍带 REDIS_* 等与项目 TASK_PROCESSOR_* 并存时刷屏）
+			if primarySet {
 				continue
 			}
 
 			warning := fmt.Sprintf("environment variable %s is deprecated; use %s for %s instead", deprecated, binding.Primary, key)
-			if primarySet && strings.TrimSpace(primaryValue) != "" && strings.TrimSpace(deprecatedValue) != "" {
-				warning = fmt.Sprintf("%s (both are set; %s takes precedence)", warning, binding.Primary)
-			}
 			warnings = append(warnings, warning)
 		}
 	}
 
 	return warnings
+}
+
+func lookupKnownEnvValue(key string) (string, bool) {
+	binding, ok := knownEnvBindings()[key]
+	if !ok {
+		return "", false
+	}
+
+	candidates := append([]string{binding.Primary}, binding.Deprecated...)
+	for _, envKey := range candidates {
+		if value, exists := os.LookupEnv(envKey); exists && strings.TrimSpace(value) != "" {
+			return value, true
+		}
+	}
+
+	return "", false
+}
+
+func lookupKnownEnvInt(key string) (int, bool) {
+	binding, ok := knownEnvBindings()[key]
+	if !ok {
+		return 0, false
+	}
+
+	candidates := append([]string{binding.Primary}, binding.Deprecated...)
+	for _, envKey := range candidates {
+		if value, exists := os.LookupEnv(envKey); exists && strings.TrimSpace(value) != "" {
+			i, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return 0, false
+			}
+			return i, true
+		}
+	}
+
+	return 0, false
+}
+
+func applyEnvOverrides(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
+	tryLoadDotEnv()
+
+	if value, ok := lookupKnownEnvValue("management.baseURL"); ok {
+		cfg.Management.BaseURL = value
+	}
+	if value, ok := lookupKnownEnvValue("management.clientID"); ok {
+		cfg.Management.ClientID = value
+	}
+	if value, ok := lookupKnownEnvValue("management.clientSecret"); ok {
+		cfg.Management.ClientSecret = value
+	}
+	if value, ok := lookupKnownEnvValue("management.tokenURL"); ok {
+		cfg.Management.TokenURL = value
+	}
+	if value, ok := lookupKnownEnvValue("management.tenantID"); ok {
+		cfg.Management.TenantID = value
+	}
+
+	if value, ok := lookupKnownEnvValue("openai.apiKey"); ok {
+		cfg.OpenAI.APIKey = value
+	}
+	if value, ok := lookupKnownEnvValue("openai.model"); ok {
+		cfg.OpenAI.Model = value
+	}
+	if value, ok := lookupKnownEnvValue("openai.baseURL"); ok {
+		cfg.OpenAI.BaseURL = value
+	}
+
+	if value, ok := lookupKnownEnvValue("amazon.spapi.clientID"); ok {
+		cfg.Amazon.SPAPI.ClientID = value
+	}
+	if value, ok := lookupKnownEnvValue("amazon.spapi.clientSecret"); ok {
+		cfg.Amazon.SPAPI.ClientSecret = value
+	}
+	if value, ok := lookupKnownEnvValue("amazon.spapi.refreshToken"); ok {
+		cfg.Amazon.SPAPI.RefreshToken = value
+	}
+	if value, ok := lookupKnownEnvValue("amazon.spapi.region"); ok {
+		cfg.Amazon.SPAPI.Region = value
+	}
+	if value, ok := lookupKnownEnvValue("amazon.spapi.defaultMarketplace"); ok {
+		cfg.Amazon.SPAPI.DefaultMarketplace = value
+	}
+	if value, ok := lookupKnownEnvValue("amazon.spapi.defaultFulfillmentType"); ok {
+		cfg.Amazon.SPAPI.DefaultFulfillmentType = value
+	}
+	if value, ok := lookupKnownEnvValue("amazon.spapi.defaultCondition"); ok {
+		cfg.Amazon.SPAPI.DefaultCondition = value
+	}
+
+	if value, ok := lookupKnownEnvValue("rabbitmq.enabled"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		parsed, err := strconv.ParseBool(value)
+		if err == nil {
+			cfg.RabbitMQ.Enabled = parsed
+		}
+	}
+	if value, ok := lookupKnownEnvValue("rabbitmq.url"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.URL = value
+	}
+	if value, ok := lookupKnownEnvInt("rabbitmq.node.maxConcurrency"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.Node.MaxConcurrency = value
+	}
+	if value, ok := lookupKnownEnvInt("rabbitmq.node.healthCheckPort"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.Node.HealthCheckPort = value
+	}
+	if value, ok := lookupKnownEnvInt("rabbitmq.node.metricsPort"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.Node.MetricsPort = value
+	}
+	if value, ok := lookupKnownEnvValue("browser.browserPath"); ok {
+		cfg.Browser.BrowserPath = value
+	}
+
+	ensureDatabase := func() {
+		if cfg.Database == nil {
+			cfg.Database = &DatabaseConfig{}
+		}
+	}
+	if value, ok := lookupKnownEnvValue("database.host"); ok {
+		ensureDatabase()
+		cfg.Database.Host = value
+	}
+	if value, ok := lookupKnownEnvInt("database.port"); ok {
+		ensureDatabase()
+		cfg.Database.Port = value
+	}
+	if value, ok := lookupKnownEnvValue("database.user"); ok {
+		ensureDatabase()
+		cfg.Database.User = value
+	}
+	if value, ok := lookupKnownEnvValue("database.password"); ok {
+		ensureDatabase()
+		cfg.Database.Password = value
+	}
+	if value, ok := lookupKnownEnvValue("database.database"); ok {
+		ensureDatabase()
+		cfg.Database.Database = value
+	}
+	if value, ok := lookupKnownEnvInt("database.max_connections"); ok {
+		ensureDatabase()
+		cfg.Database.MaxConnections = value
+	}
+	if value, ok := lookupKnownEnvInt("database.max_idle_connections"); ok {
+		ensureDatabase()
+		cfg.Database.MaxIdleConnections = value
+	}
 }
 
 func logDeprecatedEnvUsage() {
@@ -225,6 +530,8 @@ func loadWithViper(v *viper.Viper) (*Config, error) {
 }
 
 func LoadConfig() (*Config, error) {
+	tryLoadDotEnv()
+
 	env := os.Getenv("TASK_PROCESSOR_ENV")
 	if env == "" {
 		env = "dev"
@@ -257,6 +564,8 @@ func LoadConfig() (*Config, error) {
 }
 
 func LoadConfigFromFile(configFile string) (*Config, error) {
+	tryLoadDotEnv()
+
 	logger.GetGlobalLogger("core/config").Infof("loading config file: %s", configFile)
 	logDeprecatedEnvUsage()
 

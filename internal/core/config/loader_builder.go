@@ -123,6 +123,24 @@ func BuildConfig(v *viper.Viper) *Config {
 		}
 	}
 
+	if v.GetString("redis.host") != "" {
+		port := v.GetInt("redis.port")
+		if port == 0 {
+			port = 6379
+		}
+		poolSize := v.GetInt("redis.pool_size")
+		if poolSize == 0 {
+			poolSize = 10
+		}
+		cfg.Redis = &RedisConfig{
+			Host:     v.GetString("redis.host"),
+			Port:     port,
+			Password: v.GetString("redis.password"),
+			DB:       v.GetInt("redis.db"),
+			PoolSize: poolSize,
+		}
+	}
+
 	cfg.Logging = LoggingConfig{
 		Level:        v.GetString("logging.level"),
 		Format:       v.GetString("logging.format"),

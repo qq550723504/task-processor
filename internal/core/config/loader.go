@@ -11,7 +11,12 @@ import (
 
 func LoadFromBytes(data []byte) (*Config, error) {
 	if len(data) == 0 {
-		return NewDefaultConfig(), nil
+		cfg := NewDefaultConfig()
+		applyEnvOverrides(cfg)
+		if err := cfg.ValidateWithError(); err != nil {
+			return nil, err
+		}
+		return cfg, nil
 	}
 
 	cfg := &Config{}
@@ -20,6 +25,7 @@ func LoadFromBytes(data []byte) (*Config, error) {
 	}
 
 	applyDefaults(cfg)
+	applyEnvOverrides(cfg)
 	if err := cfg.ValidateWithError(); err != nil {
 		return nil, err
 	}
