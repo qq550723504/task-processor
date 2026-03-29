@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 
@@ -13,8 +14,9 @@ import (
 )
 
 type Options struct {
-	ConfigPath string
-	Port       int
+	ConfigPath     string
+	Port           int
+	ShutdownSignal chan os.Signal
 }
 
 type runtimeDeps struct {

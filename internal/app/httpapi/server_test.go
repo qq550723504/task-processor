@@ -47,6 +47,42 @@ func (s *stubAmazonListingHandler) SubmitTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "submitted"})
 }
 
+type stubProductHandler struct {
+	generateCalled  bool
+	getResultCalled bool
+}
+
+func (s *stubProductHandler) GenerateProduct(c *gin.Context) {
+	s.generateCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": "product-task"})
+}
+
+func (s *stubProductHandler) GetTaskResult(c *gin.Context) {
+	s.getResultCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
+}
+
+type stubImageHandler struct {
+	processCalled   bool
+	getResultCalled bool
+	reviewCalled    bool
+}
+
+func (s *stubImageHandler) ProcessImages(c *gin.Context) {
+	s.processCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": "image-task"})
+}
+
+func (s *stubImageHandler) GetTaskResult(c *gin.Context) {
+	s.getResultCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
+}
+
+func (s *stubImageHandler) ReviewTask(c *gin.Context) {
+	s.reviewCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "reviewed"})
+}
+
 func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +183,89 @@ func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 			}
 			tt.assertFn(t)
 		})
+	}
+}
+
+func TestRegisterRoutes_ProductEndpoints(t *testing.T) {
+	t.Parallel()
+
+	handler := &stubProductHandler{}
+	router := gin.New()
+	RegisterRoutes(router, handler, nil, nil)
+
+	// generate endpoint
+	generatePayload := map[string]any{"text": "test"}
+	body, _ := json.Marshal(generatePayload)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products/generate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/products/generate = %d, want 200", resp.Code)
+	}
+	if !handler.generateCalled {
+		t.Fatal("GenerateProduct handler was not called")
+	}
+
+	// get task result
+	handler.getResultCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/products/tasks/task-123", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/products/tasks/task-123 = %d, want 200", resp.Code)
+	}
+	if !handler.getResultCalled {
+		t.Fatal("GetTaskResult handler was not called")
+	}
+}
+
+func TestRegisterRoutes_ImageEndpoints(t *testing.T) {
+	t.Parallel()
+
+	handler := &stubImageHandler{}
+	router := gin.New()
+	RegisterRoutes(router, nil, handler, nil)
+
+	// process endpoint
+	processPayload := map[string]any{"image_urls": []string{"https://example.com/1.jpg"}, "marketplace": "amazon"}
+	body, _ := json.Marshal(processPayload)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/images/process = %d, want 200", resp.Code)
+	}
+	if !handler.processCalled {
+		t.Fatal("ProcessImages handler was not called")
+	}
+
+	// get task result
+	handler.getResultCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/images/tasks/task-123", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/images/tasks/task-123 = %d, want 200", resp.Code)
+	}
+	if !handler.getResultCalled {
+		t.Fatal("image GetTaskResult handler was not called")
+	}
+
+	// review endpoint
+	handler.reviewCalled = false
+	reviewPayload := map[string]any{"action": "approve"}
+	body, _ = json.Marshal(reviewPayload)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/images/tasks/task-123/review", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/images/tasks/task-123/review = %d, want 200", resp.Code)
+	}
+	if !handler.reviewCalled {
+		t.Fatal("ReviewTask handler was not called")
 	}
 }
 

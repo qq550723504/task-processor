@@ -32,8 +32,11 @@ func Run(logger *logrus.Logger, options Options) error {
 		serverErr <- serveHTTP(logger, bootstrap.server, options.Port)
 	}()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	sigChan := options.ShutdownSignal
+	if sigChan == nil {
+		sigChan = make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	}
 
 	select {
 	case err := <-serverErr:
