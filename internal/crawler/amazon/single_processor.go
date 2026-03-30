@@ -12,18 +12,26 @@ import (
 // SingleProcessor 单浏览器处理器，用于浏览器池初始化失败时的降级模式。
 // 每次调用都会启动一个独立的浏览器实例，处理完毕后关闭。
 type SingleProcessor struct {
-	config         *config.Config
-	urlHelper      *URLHelper
-	productChecker *ProductChecker
+	config               *config.Config
+	urlHelper            *URLHelper
+	productChecker       *ProductChecker
+	failureArtifactStore *FailureArtifactStore
+	qualityMetrics       qualityMetricsRecorder
 }
 
 // NewSingleProcessor 创建单浏览器处理器
 func NewSingleProcessor(cfg *config.Config, urlHelper *URLHelper, productChecker *ProductChecker) *SingleProcessor {
 	return &SingleProcessor{
-		config:         cfg,
-		urlHelper:      urlHelper,
-		productChecker: productChecker,
+		config:               cfg,
+		urlHelper:            urlHelper,
+		productChecker:       productChecker,
+		failureArtifactStore: NewFailureArtifactStore(cfg),
+		qualityMetrics:       nil,
 	}
+}
+
+func (sp *SingleProcessor) SetQualityMetricsRecorder(recorder qualityMetricsRecorder) {
+	sp.qualityMetrics = recorder
 }
 
 // ProcessWithSingleBrowser 使用独立浏览器实例处理单个产品（降级路径）。
@@ -45,6 +53,9 @@ func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, zipcode string) 
 		Manager: mgr,
 	}
 
-	ip := NewInstanceProcessor(sp.urlHelper, sp.productChecker)
+	ip := NewInstanceProcessor(sp.urlHelper, sp.productChecker, NewProductResultValidator())
+	ip.SetFailureArtifactStore(sp.failureArtifactStore)
+	ip.SetQualityControlOptions(sp.config.Amazon.QualityControl.RetryOnValidationFailure, sp.config.Amazon.QualityControl.ValidationRetryMaxAttempts)
+	ip.SetQualityMetricsRecorder(sp.qualityMetrics)
 	return ip.ProcessWithInstance(context.Background(), instance, url, zipcode)
 }

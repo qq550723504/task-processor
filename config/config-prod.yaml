@@ -50,7 +50,7 @@ management:
   scopes: ["user.read"]
   #tenantID: "286"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [837] # 店铺ID列表 ->775
+  storeIDs: [873] # 店铺ID列表 ->775
 
 platforms:
   # TEMU 平台配置
@@ -120,6 +120,7 @@ rabbitmq:
   reconnectInterval: 5s   # 重连间隔（秒）
   maxReconnectTries: 10  # 最大重连次数
   node:
+    role: "hybrid" # task | crawler | hybrid
     ownedStores: [837]
     regions: [US]  # 该节点只处理这三个 region 的爬虫任务
   # 消费者配置
@@ -156,6 +157,10 @@ amazon:
   enabled: true
   dataFreshnessDays: 15  # 数据新鲜度天数，默认15天
   crawlTimeout: 300      # 爬虫超时时间（秒），默认5分钟
+  remoteAPI:
+    enabled: false
+    baseURL: "http://amazon-crawler-api:8080"
+    timeout: 300
   
   # Amazon SP-API 配置（用于上架）
   # 注意：以下凭证仅为示例，请替换为你自己的真实凭证

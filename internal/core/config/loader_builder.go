@@ -72,6 +72,41 @@ func BuildConfig(v *viper.Viper) *Config {
 			Zipcodes:          v.GetStringMapString("amazon.zipcodes"),
 			DataFreshnessDays: v.GetInt("amazon.dataFreshnessDays"),
 			CrawlTimeout:      v.GetInt("amazon.crawlTimeout"),
+			ProductDedupe: ProductDedupeConfig{
+				LockTTLSeconds:     v.GetInt("amazon.productDedupe.lockTTLSeconds"),
+				ResultTTLSeconds:   v.GetInt("amazon.productDedupe.resultTTLSeconds"),
+				WaitTimeoutSeconds: v.GetInt("amazon.productDedupe.waitTimeoutSeconds"),
+				PollIntervalMillis: v.GetInt("amazon.productDedupe.pollIntervalMillis"),
+			},
+			FailureArtifacts: FailureArtifactsConfig{
+				Enabled:      v.GetBool("amazon.failureArtifacts.enabled"),
+				Directory:    v.GetString("amazon.failureArtifacts.directory"),
+				CaptureHTML:  v.GetBool("amazon.failureArtifacts.captureHTML"),
+				MaxHTMLBytes: v.GetInt("amazon.failureArtifacts.maxHTMLBytes"),
+			},
+			RiskControl: AmazonRiskControlConfig{
+				CaptchaRecreateThreshold:        v.GetInt("amazon.riskControl.captchaRecreateThreshold"),
+				AuthenticationRecreateThreshold: v.GetInt("amazon.riskControl.authenticationRecreateThreshold"),
+				BrowserCrashRecreateThreshold:   v.GetInt("amazon.riskControl.browserCrashRecreateThreshold"),
+				TimeoutRecreateThreshold:        v.GetInt("amazon.riskControl.timeoutRecreateThreshold"),
+				NetworkRecreateThreshold:        v.GetInt("amazon.riskControl.networkRecreateThreshold"),
+				ServerErrorRecreateThreshold:    v.GetInt("amazon.riskControl.serverErrorRecreateThreshold"),
+			},
+			RegionGuard: AmazonRegionGuardConfig{
+				Enabled:                 v.GetBool("amazon.regionGuard.enabled"),
+				FailureThreshold:        v.GetInt("amazon.regionGuard.failureThreshold"),
+				EvaluationWindowSeconds: v.GetInt("amazon.regionGuard.evaluationWindowSeconds"),
+				CooldownSeconds:         v.GetInt("amazon.regionGuard.cooldownSeconds"),
+			},
+			QualityControl: AmazonQualityControlConfig{
+				RetryOnValidationFailure:   v.GetBool("amazon.qualityControl.retryOnValidationFailure"),
+				ValidationRetryMaxAttempts: v.GetInt("amazon.qualityControl.validationRetryMaxAttempts"),
+			},
+			RemoteAPI: RemoteAPIConfig{
+				Enabled: v.GetBool("amazon.remoteAPI.enabled"),
+				BaseURL: v.GetString("amazon.remoteAPI.baseURL"),
+				Timeout: v.GetInt("amazon.remoteAPI.timeout"),
+			},
 		},
 		ProductImage: ProductImageConfig{
 			WorkDir: v.GetString("productimage.workDir"),

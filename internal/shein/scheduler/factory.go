@@ -60,7 +60,7 @@ type SheinTaskFactory struct {
 
 func NewSheinTaskFactory(
 	managementClient *management.ClientManager,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
@@ -68,7 +68,7 @@ func NewSheinTaskFactory(
 	cookieManager := state.NewCookieManager()
 	return NewSheinTaskFactoryWithDependencies(
 		managementClient,
-		amazonProcessor,
+		crawlSource,
 		amazonConfig,
 		monitorConfig,
 		rabbitmqClient,
@@ -80,18 +80,41 @@ func NewSheinTaskFactory(
 	)
 }
 
+func NewSheinTaskFactoryWithFetcherBuilder(
+	managementClient *management.ClientManager,
+	fetcherBuilder platformbase.ProductFetcherBuilder,
+	amazonConfig *config.AmazonConfig,
+	monitorConfig *config.MonitorConfig,
+	rabbitmqClient *rabbitmq.Client,
+) *SheinTaskFactory {
+	cookieManager := state.NewCookieManager()
+	return NewSheinTaskFactoryWithDependencies(
+		managementClient,
+		nil,
+		amazonConfig,
+		monitorConfig,
+		rabbitmqClient,
+		Dependencies{
+			CookieManager:  cookieManager,
+			ClientManager:  client.NewClientManager(cookieManager, managementClient),
+			FetcherBuilder: fetcherBuilder,
+		},
+	)
+}
+
 func NewSheinTaskFactoryWithDependencies(
 	managementClient *management.ClientManager,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
 	deps Dependencies,
 ) *SheinTaskFactory {
+	_ = crawlSource
 	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
 		Platform:         "SHEIN",
 		ManagementClient: managementClient,
-		AmazonProcessor:  amazonProcessor,
+		FetcherBuilder:   deps.FetcherBuilder,
 		AmazonConfig:     amazonConfig,
 		MonitorConfig:    monitorConfig,
 	})
@@ -101,7 +124,7 @@ func NewSheinTaskFactoryWithDependencies(
 		cookieManager:  deps.CookieManager,
 		clientManager:  deps.ClientManager,
 		rabbitmqClient: rabbitmqClient,
-		fetcherBuilder: deps.FetcherBuilder,
+		fetcherBuilder: baseFactory.GetFetcherBuilder(),
 	}
 
 	if factory.cookieManager == nil {
@@ -109,9 +132,6 @@ func NewSheinTaskFactoryWithDependencies(
 	}
 	if factory.clientManager == nil {
 		factory.clientManager = client.NewClientManager(factory.cookieManager, managementClient)
-	}
-	if factory.fetcherBuilder == nil {
-		factory.fetcherBuilder = platformbase.NewDefaultProductFetcherBuilder()
 	}
 	factory.pricingServiceBuilder = deps.PricingServiceBuilder
 	if factory.pricingServiceBuilder == nil {
@@ -238,15 +258,9 @@ func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *
 	}
 
 	productAPI := sheinproductapi.NewClient(baseClient)
-	rawJSONDataClient := factory.GetManagementClient().GetRawJsonDataAdapter()
 	inventoryRecordClient := factory.GetManagementClient().GetInventoryRecordClient()
 
-	productFetcher, err := factory.fetcherBuilder.Build(
-		rawJSONDataClient,
-		factory.GetAmazonConfig(),
-		factory.GetAmazonProcessor(),
-		factory.rabbitmqClient,
-	)
+	productFetcher, err := factory.BuildProductFetcher(factory.rabbitmqClient)
 	if err != nil {
 		return nil, fmt.Errorf("create product fetcher: %w", err)
 	}
@@ -256,7 +270,7 @@ func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *
 		productAPI,
 		productFetcher,
 		factory.GetMonitorConfig(),
-		rawJSONDataClient,
+		factory.GetManagementClient().GetRawJsonDataAdapter(),
 		inventoryRecordClient,
 	)
 

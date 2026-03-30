@@ -2,6 +2,7 @@ package amazonlisting
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -50,6 +51,9 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		return nil
 	}
 	if _, err := p.service.ProcessListing(ctx, task); err != nil {
+		if errors.Is(err, ErrTaskNotPending) {
+			return nil
+		}
 		if task.RetryCount < p.maxRetries {
 			_ = p.repo.IncrementRetryCount(ctx, task.ID)
 			_ = p.repo.PrepareRetry(ctx, task.ID)

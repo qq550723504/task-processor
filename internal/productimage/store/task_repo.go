@@ -45,10 +45,29 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*productim
 }
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
-	return r.updateTaskFields(ctx, taskID, map[string]any{
-		"status": productimage.TaskStatusProcessing,
-		"error":  "",
-	})
+	result := r.db.WithContext(ctx).
+		Model(&productimage.Task{}).
+		Where("id = ? AND status = ?", taskID, productimage.TaskStatusPending).
+		Updates(map[string]any{
+			"status":     productimage.TaskStatusProcessing,
+			"error":      "",
+			"updated_at": gorm.Expr("NOW()"),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("failed to update task: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		return nil
+	}
+
+	task, err := r.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if task.Status != productimage.TaskStatusPending {
+		return productimage.ErrTaskNotPending
+	}
+	return fmt.Errorf("task not found: %s", taskID)
 }
 
 func (r *taskRepository) MarkCompleted(ctx context.Context, taskID string, result *productimage.ImageProcessResult) error {

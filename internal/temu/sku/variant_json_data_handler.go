@@ -7,9 +7,6 @@ import (
 	"strings"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
-	"task-processor/internal/app/ports"
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/strx"
@@ -25,29 +22,15 @@ import (
 type VariantJsonDataHandler struct {
 	logger         *logrus.Entry
 	productFetcher appProduct.ProductFetcher
-	amazonConfig   *config.AmazonConfig
 }
 
 // NewVariantJsonDataHandler 创建新的变体JSON数据处理器
-func NewVariantJsonDataHandler(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
-	cfg *config.Config,
-	amazonProcessor ports.ProductSource,
-	rabbitmqClient *rabbitmq.Client,
-) *VariantJsonDataHandler {
+func NewVariantJsonDataHandler(fetcher appProduct.ProductFetcher) *VariantJsonDataHandler {
 	log := logger.GetGlobalLogger("VariantJsonDataHandler")
-
-	factory := appProduct.NewFetcherFactory()
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
-	if err != nil {
-		log.Errorf("创建产品获取器失败，降级到本地获取器: %v", err)
-		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
-	}
 
 	return &VariantJsonDataHandler{
 		logger:         log,
 		productFetcher: fetcher,
-		amazonConfig:   &cfg.Amazon,
 	}
 }
 

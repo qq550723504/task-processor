@@ -4,10 +4,7 @@ import (
 	"strings"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
-	"task-processor/internal/app/ports"
-	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	domainProduct "task-processor/internal/product"
 	shein "task-processor/internal/shein"
@@ -20,20 +17,8 @@ type RawJsonDataHandler struct {
 	logger  *logrus.Entry
 }
 
-func NewRawJsonDataHandler(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
-	cfg *config.Config,
-	amazonProcessor ports.ProductSource,
-	rabbitmqClient *rabbitmq.Client,
-) *RawJsonDataHandler {
+func NewRawJsonDataHandler(fetcher appProduct.ProductFetcher) *RawJsonDataHandler {
 	logger := coreLogger.GetGlobalLogger("RawJsonDataHandler")
-	factory := appProduct.NewFetcherFactory()
-
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
-	if err != nil {
-		logger.Errorf("create product fetcher failed, fallback to local fetcher: %v", err)
-		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
-	}
 
 	if stats := fetcher.GetStats(); stats != nil {
 		logger.Infof("SHEIN product fetcher type: %v", stats["type"])

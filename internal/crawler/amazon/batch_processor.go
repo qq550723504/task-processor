@@ -4,6 +4,7 @@ package amazon
 import (
 	"context"
 	"fmt"
+	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/model"
@@ -13,14 +14,22 @@ import (
 type BatchProcessor struct {
 	urlHelper      *URLHelper
 	productChecker *ProductChecker
+	qualityControl config.AmazonQualityControlConfig
+	qualityMetrics qualityMetricsRecorder
 }
 
 // NewBatchProcessor 创建批量处理器
-func NewBatchProcessor(urlHelper *URLHelper, productChecker *ProductChecker) *BatchProcessor {
+func NewBatchProcessor(urlHelper *URLHelper, productChecker *ProductChecker, qualityControl config.AmazonQualityControlConfig) *BatchProcessor {
 	return &BatchProcessor{
 		urlHelper:      urlHelper,
 		productChecker: productChecker,
+		qualityControl: qualityControl,
+		qualityMetrics: nil,
 	}
+}
+
+func (bp *BatchProcessor) SetQualityMetricsRecorder(recorder qualityMetricsRecorder) {
+	bp.qualityMetrics = recorder
 }
 
 // batchPool 定义 BatchProcessor 依赖的浏览器池行为
@@ -56,6 +65,8 @@ func (bp *BatchProcessor) ProcessWithPool(requests []model.ProductRequest, pool 
 
 	// 使用同一个实例处理所有请求
 	instanceProcessor := NewInstanceProcessor(bp.urlHelper, bp.productChecker)
+	instanceProcessor.SetQualityControlOptions(bp.qualityControl.RetryOnValidationFailure, bp.qualityControl.ValidationRetryMaxAttempts)
+	instanceProcessor.SetQualityMetricsRecorder(bp.qualityMetrics)
 	for i, req := range requests {
 		product, err := instanceProcessor.ProcessWithInstance(context.Background(), instance, req.URL, req.Zipcode)
 		results[i] = model.ProductResult{

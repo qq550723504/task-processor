@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -78,6 +79,13 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 	}
 
 	if _, err := p.service.ProcessProduct(ctx, task); err != nil {
+		if errors.Is(err, productenrich.ErrTaskNotPending) {
+			log.WithFields(logrus.Fields{
+				"duration_ms": time.Since(startedAt).Milliseconds(),
+				"outcome":     "skipped",
+			}).Info("task already claimed by another worker")
+			return nil
+		}
 		disposition := p.stateMachine.ClassifyFailure(err)
 		log.WithError(err).WithFields(logrus.Fields{
 			"duration_ms":         time.Since(startedAt).Milliseconds(),

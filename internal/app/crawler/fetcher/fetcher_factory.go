@@ -21,6 +21,7 @@ type FetcherType string
 const (
 	LocalFetcher       FetcherType = "local"
 	DistributedFetcher FetcherType = "distributed"
+	RemoteAPIFetcher   FetcherType = "remote-api"
 )
 
 // ProductFetcher 产品获取器接口
@@ -49,13 +50,16 @@ func (f *FetcherFactory) CreateFetcher(
 	fetcherType FetcherType,
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (ProductFetcher, error) {
 	switch fetcherType {
 	case LocalFetcher:
 		f.logger.Info("creating local product fetcher")
-		return domainProduct.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor), nil
+		return domainProduct.NewProductFetcher(rawJsonDataClient, amazonConfig, crawlSource), nil
+	case RemoteAPIFetcher:
+		f.logger.Info("creating remote api product fetcher")
+		return NewRemoteAPIProductFetcher(rawJsonDataClient, amazonConfig)
 	case DistributedFetcher:
 		f.logger.Info("creating distributed product fetcher")
 		if rabbitmqClient == nil {
@@ -71,27 +75,34 @@ func (f *FetcherFactory) CreateFetcher(
 func (f *FetcherFactory) CreateFetcherFromConfig(
 	cfg *config.Config,
 	rawJsonDataClient domainProduct.RawJsonDataClient,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (ProductFetcher, error) {
-	if cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled && rabbitmqClient != nil {
-		f.logger.Info("creating distributed fetcher from config")
+	if cfg.Amazon.RemoteAPI.Enabled {
+		f.logger.Info("creating remote api fetcher from config")
 		return f.CreateFetcher(
-			DistributedFetcher,
+			RemoteAPIFetcher,
 			rawJsonDataClient,
 			&cfg.Amazon,
-			amazonProcessor,
+			crawlSource,
 			rabbitmqClient,
 		)
 	}
 
-	f.logger.Info("creating local fetcher from config")
+	if cfg.RabbitMQ == nil || !cfg.RabbitMQ.Enabled {
+		return nil, fmt.Errorf("crawler fetcher requires amazon.remoteAPI.enabled=true or rabbitmq.enabled=true; local fallback is disabled")
+	}
+	if rabbitmqClient == nil {
+		return nil, fmt.Errorf("distributed fetcher requires RabbitMQ client; local fallback is disabled")
+	}
+
+	f.logger.Info("creating distributed fetcher from config")
 	return f.CreateFetcher(
-		LocalFetcher,
+		DistributedFetcher,
 		rawJsonDataClient,
 		&cfg.Amazon,
-		amazonProcessor,
-		nil,
+		crawlSource,
+		rabbitmqClient,
 	)
 }
 

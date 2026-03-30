@@ -9,6 +9,11 @@ import (
 	"github.com/playwright-community/playwright-go"
 )
 
+const (
+	maxListPriceCandidatesPerSelector = 6
+	maxListPriceParentDepth           = 4
+)
+
 // ListPriceExtractor 原价提取器
 type ListPriceExtractor struct {
 	marketplace string
@@ -69,6 +74,10 @@ func (l *ListPriceExtractor) extractFromSelector(page playwright.Page, selector 
 	count, err := locator.Count()
 	if err != nil || count == 0 {
 		return false
+	}
+
+	if count > maxListPriceCandidatesPerSelector {
+		count = maxListPriceCandidatesPerSelector
 	}
 
 	for i := 0; i < count; i++ {
@@ -196,7 +205,7 @@ func (l *ListPriceExtractor) hasListPriceContext(element playwright.Locator) boo
 func (l *ListPriceExtractor) isInSponsoredContent(element playwright.Locator) bool {
 	// 检查元素及其父元素是否包含赞助内容标识
 	current := element
-	for i := 0; i < 5; i++ { // 向上检查5层父元素
+	for i := 0; i < maxListPriceParentDepth; i++ { // 向上检查有限层级，避免大页面深链路扫描
 		// 检查class属性
 		className, err := current.GetAttribute("class")
 		if err == nil && className != "" {
@@ -227,18 +236,6 @@ func (l *ListPriceExtractor) isInSponsoredContent(element playwright.Locator) bo
 			}
 		}
 
-		// 检查文本内容是否包含赞助标识
-		text, err := current.TextContent()
-		if err == nil {
-			if strings.Contains(text, "Sponsored") ||
-				strings.Contains(text, "Ad") ||
-				strings.Contains(text, "Customers who viewed this item also viewed") ||
-				strings.Contains(text, "Frequently bought together") ||
-				strings.Contains(text, "Compare with similar items") {
-				return true
-			}
-		}
-
 		// 向上移动到父元素
 		parent := current.Locator("..")
 		if parent == nil {
@@ -258,7 +255,7 @@ func (l *ListPriceExtractor) isRelatedToCurrentProduct(element playwright.Locato
 
 	// 检查元素及其父元素是否包含当前产品的ASIN
 	current := element
-	for i := 0; i < 8; i++ { // 向上检查8层父元素
+	for i := 0; i < maxListPriceParentDepth; i++ { // 向上检查有限层级，避免多次深层属性扫描
 		// 检查各种可能包含ASIN的属性
 		attributes := []string{"data-asin", "data-parent-asin", "data-original-asin", "id", "class"}
 

@@ -72,7 +72,7 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 	taskCtx.AttachRuntime(
 		h.processor.GetManagementClient(),
 		h.processor.GetMemoryManager(),
-		h.processor.amazonProcessor,
+		nil,
 	)
 
 	h.initAPIClient(taskCtx, task)

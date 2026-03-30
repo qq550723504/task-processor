@@ -83,6 +83,29 @@ func setAmazonDefaults(v *viper.Viper, defaults *Config) {
 
 	v.SetDefault("amazon.enabled", a.Enabled)
 	v.SetDefault("amazon.dataFreshnessDays", a.DataFreshnessDays)
+	v.SetDefault("amazon.productDedupe.lockTTLSeconds", a.ProductDedupe.LockTTLSeconds)
+	v.SetDefault("amazon.productDedupe.resultTTLSeconds", a.ProductDedupe.ResultTTLSeconds)
+	v.SetDefault("amazon.productDedupe.waitTimeoutSeconds", a.ProductDedupe.WaitTimeoutSeconds)
+	v.SetDefault("amazon.productDedupe.pollIntervalMillis", a.ProductDedupe.PollIntervalMillis)
+	v.SetDefault("amazon.failureArtifacts.enabled", a.FailureArtifacts.Enabled)
+	v.SetDefault("amazon.failureArtifacts.directory", a.FailureArtifacts.Directory)
+	v.SetDefault("amazon.failureArtifacts.captureHTML", a.FailureArtifacts.CaptureHTML)
+	v.SetDefault("amazon.failureArtifacts.maxHTMLBytes", a.FailureArtifacts.MaxHTMLBytes)
+	v.SetDefault("amazon.riskControl.captchaRecreateThreshold", a.RiskControl.CaptchaRecreateThreshold)
+	v.SetDefault("amazon.riskControl.authenticationRecreateThreshold", a.RiskControl.AuthenticationRecreateThreshold)
+	v.SetDefault("amazon.riskControl.browserCrashRecreateThreshold", a.RiskControl.BrowserCrashRecreateThreshold)
+	v.SetDefault("amazon.riskControl.timeoutRecreateThreshold", a.RiskControl.TimeoutRecreateThreshold)
+	v.SetDefault("amazon.riskControl.networkRecreateThreshold", a.RiskControl.NetworkRecreateThreshold)
+	v.SetDefault("amazon.riskControl.serverErrorRecreateThreshold", a.RiskControl.ServerErrorRecreateThreshold)
+	v.SetDefault("amazon.regionGuard.enabled", a.RegionGuard.Enabled)
+	v.SetDefault("amazon.regionGuard.failureThreshold", a.RegionGuard.FailureThreshold)
+	v.SetDefault("amazon.regionGuard.evaluationWindowSeconds", a.RegionGuard.EvaluationWindowSeconds)
+	v.SetDefault("amazon.regionGuard.cooldownSeconds", a.RegionGuard.CooldownSeconds)
+	v.SetDefault("amazon.qualityControl.retryOnValidationFailure", a.QualityControl.RetryOnValidationFailure)
+	v.SetDefault("amazon.qualityControl.validationRetryMaxAttempts", a.QualityControl.ValidationRetryMaxAttempts)
+	v.SetDefault("amazon.remoteAPI.enabled", a.RemoteAPI.Enabled)
+	v.SetDefault("amazon.remoteAPI.baseURL", a.RemoteAPI.BaseURL)
+	v.SetDefault("amazon.remoteAPI.timeout", a.RemoteAPI.Timeout)
 
 	sp := defaults.Amazon.SPAPI
 	v.SetDefault("amazon.spapi.enabled", sp.Enabled)
@@ -114,6 +137,7 @@ func setRabbitMQDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("rabbitmq.consumer.prefetchSize", r.Consumer.PrefetchSize)
 	v.SetDefault("rabbitmq.consumer.maxRetries", r.Consumer.MaxRetries)
 	v.SetDefault("rabbitmq.node.maxConcurrency", r.Node.MaxConcurrency)
+	v.SetDefault("rabbitmq.node.role", r.Node.Role)
 	v.SetDefault("rabbitmq.node.healthCheckPort", r.Node.HealthCheckPort)
 	v.SetDefault("rabbitmq.node.metricsPort", r.Node.MetricsPort)
 	v.SetDefault("rabbitmq.node.logLevel", r.Node.LogLevel)
@@ -122,6 +146,7 @@ func setRabbitMQDefaults(v *viper.Viper, defaults *Config) {
 func setPlatformDefaults(v *viper.Viper, defaults *Config) {
 	setTemuDefaults(v, &defaults.Platforms.Temu)
 	setSheinDefaults(v, &defaults.Platforms.Shein)
+	setAlibaba1688Defaults(v, &defaults.Platforms.Alibaba1688)
 }
 
 func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
@@ -187,4 +212,10 @@ func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.monitor.enableStockAlert", m.EnableStockAlert)
 	v.SetDefault("platforms.shein.monitor.priceChangeThreshold", m.PriceChangeThreshold)
 	v.SetDefault("platforms.shein.monitor.stockChangeThreshold", m.StockChangeThreshold)
+}
+
+func setAlibaba1688Defaults(v *viper.Viper, p *Alibaba1688Config) {
+	v.SetDefault("platforms.alibaba1688.enabled", p.Enabled)
+	v.SetDefault("platforms.alibaba1688.timeout", p.Timeout)
+	v.SetDefault("platforms.alibaba1688.poolSize", p.PoolSize)
 }

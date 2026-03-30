@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -67,6 +68,13 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 	}
 
 	if _, err := p.service.ProcessImages(ctx, task); err != nil {
+		if errors.Is(err, productimage.ErrTaskNotPending) {
+			log.WithFields(logrus.Fields{
+				"duration_ms": time.Since(startedAt).Milliseconds(),
+				"outcome":     "skipped",
+			}).Info("productimage task already claimed by another worker")
+			return nil
+		}
 		log.WithError(err).WithFields(logrus.Fields{
 			"duration_ms": time.Since(startedAt).Milliseconds(),
 			"outcome":     "failed",

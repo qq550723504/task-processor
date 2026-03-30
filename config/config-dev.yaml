@@ -66,7 +66,7 @@ management:
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [870] # 店铺ID列表 ->CA:836
+  storeIDs: [873] # 店铺ID列表 ->CA:836
 
 platforms:
   # TEMU 平台配置
@@ -122,7 +122,7 @@ platforms:
 # 浏览器配置（通用）
 browser:
   enabled: true
-  headless: true  # false=可见模式（便于调试），true=无头模式
+  headless: false  # false=可见模式（便于调试），true=无头模式
   browserPath: "./chrome/chrome.exe"
   poolSize: 3     # 浏览器池大小
   viewportWidth: 1920
@@ -165,7 +165,8 @@ rabbitmq:
         priority: 8
         prefetch: 0
   node:
-    ownedStores: [837]
+    role: "hybrid" # task | crawler | hybrid
+    ownedStores: [836]
     regions: [US]  # 该节点只处理这三个 region 的爬虫任务
 # Amazon配置
 amazon:
@@ -173,6 +174,10 @@ amazon:
   enabled: false
   dataFreshnessDays: 15  # 数据新鲜度天数，默认15天
   crawlTimeout: 300      # 爬虫超时时间（秒），默认5分钟
+  remoteAPI:
+    enabled: false
+    baseURL: "http://localhost:8080"
+    timeout: 300
   
   # Amazon SP-API 配置（用于上架）
   # 注意：以下凭证仅为示例，请替换为你自己的真实凭证

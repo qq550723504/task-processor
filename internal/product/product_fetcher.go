@@ -14,36 +14,36 @@ import (
 
 // ProductFetcher 产品获取器
 type ProductFetcher struct {
-	cacheManager    *CacheManager
-	amazonConfig    *config.AmazonConfig
-	amazonProcessor ports.ProductSource
-	logger          *logrus.Entry
+	cacheManager *CacheManager
+	amazonConfig *config.AmazonConfig
+	crawlSource  ports.CrawlSource
+	logger       *logrus.Entry
 }
 
 // NewProductFetcher 创建产品获取器
 func NewProductFetcher(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 ) *ProductFetcher {
-	return NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, amazonProcessor, nil)
+	return NewProductFetcherWithLogger(rawJsonDataClient, amazonConfig, crawlSource, nil)
 }
 
 // NewProductFetcherWithLogger 创建产品获取器，支持传入自定义 logger。
 func NewProductFetcherWithLogger(
 	rawJsonDataClient RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	log *logrus.Entry,
 ) *ProductFetcher {
 	if log == nil {
 		log = corelogger.GetGlobalLogger("product.fetcher")
 	}
 	return &ProductFetcher{
-		cacheManager:    NewCacheManager(rawJsonDataClient, log),
-		amazonConfig:    amazonConfig,
-		amazonProcessor: amazonProcessor,
-		logger:          log,
+		cacheManager: NewCacheManager(rawJsonDataClient, log),
+		amazonConfig: amazonConfig,
+		crawlSource:  crawlSource,
+		logger:       log,
 	}
 }
 
@@ -56,12 +56,12 @@ func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*
 		}
 	}
 
-	if f.amazonProcessor != nil && f.amazonConfig != nil && f.amazonConfig.Enabled {
+	if f.crawlSource != nil && f.amazonConfig != nil && f.amazonConfig.Enabled {
 		f.logger.Debugf("fetching product via crawler: %s", req.ProductID)
 		resolver := NewDomainResolver()
 		productURL := resolver.BuildAmazonProductURL(req.Region, req.ProductID)
 		zipcode := resolver.GetZipcodeByRegion(req.Region)
-		return f.amazonProcessor.ProcessWithContext(ctx, productURL, zipcode)
+		return f.crawlSource.ProcessWithContext(ctx, productURL, zipcode)
 	}
 
 	return nil, nil

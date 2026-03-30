@@ -16,7 +16,7 @@ import (
 type RuntimeState struct {
 	ManagementClientMgr *management.ClientManager
 	MemoryManager       *state.MemoryManager
-	AmazonProcessor     ports.ProductSource
+	CrawlSource         ports.CrawlSource
 	APIClient           api.APIClientInterface
 	QueryAPI            api.QueryAPIInterface
 }
@@ -89,10 +89,10 @@ func NewTemuTaskContext(ctx context.Context, task *model.Task) *TemuTaskContext 
 	}
 }
 
-func (tc *TemuTaskContext) AttachRuntime(managementClient *management.ClientManager, memoryManager *state.MemoryManager, productSource ports.ProductSource) {
+func (tc *TemuTaskContext) AttachRuntime(managementClient *management.ClientManager, memoryManager *state.MemoryManager, crawlSource ports.CrawlSource) {
 	tc.ManagementClientMgr = managementClient
 	tc.MemoryManager = memoryManager
-	tc.AmazonProcessor = productSource
+	tc.CrawlSource = crawlSource
 }
 
 func (tc *TemuTaskContext) SetAPIClients(apiClient api.APIClientInterface, queryAPI api.QueryAPIInterface) {

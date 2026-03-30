@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	appConfig = flag.String("app-config", "config/config-dev.yaml", "application config path")
+	appConfig = flag.String("app-config", "config/config-task.yaml", "application config path")
 	logLevel  = flag.String("log-level", "info", "log level")
 )
 

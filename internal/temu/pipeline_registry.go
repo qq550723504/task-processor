@@ -75,28 +75,24 @@ func (pr *PipelineRegistry) registerCommonHandlers() {
 // registerInitHandlers 注册初始化阶段处理器
 func (pr *PipelineRegistry) registerInitHandlers() {
 	managementClient := pr.processor.GetManagementClient()
-	cfg := pr.processor.GetConfig()
-	rabbitmqClient := pr.processor.rabbitmqClient
 
 	pr.register("init_data", handlerbase.NewInitDataHandler())
 	pr.register("store_info", store.NewStoreInfoHandler(managementClient.GetStoreClient()))
-	pr.register("raw_json_data", product.NewRawJsonDataHandlerV2(managementClient.GetRawJsonDataAdapter(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
+	pr.register("raw_json_data", product.NewRawJsonDataHandlerV2(pr.processor.GetProductFetcher()))
 	pr.register("prohibited_items", NewTemuHandlerAdapter("prohibited_items_detector", filter.NewProhibitedItemsDetector()))
-	pr.register("cache_product", product.NewCacheProductHandler(managementClient.GetRawJsonDataAdapter(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
+	pr.register("cache_product", product.NewCacheProductHandler(pr.processor.GetProductFetcher()))
 	pr.register("product_exists", product.NewProductExistsCheckHandler(managementClient.GetProductImportMappingClient()))
 }
 
 // registerFilterHandlers 注册筛选和验证阶段处理器
 func (pr *PipelineRegistry) registerFilterHandlers() {
 	managementClient := pr.processor.GetManagementClient()
-	cfg := pr.processor.GetConfig()
-	rabbitmqClient := pr.processor.rabbitmqClient
 
 	pr.register("filter_rule", filter.NewFilterRuleHandler(managementClient.GetFilterRuleClient()))
 	pr.register("store_id", store.NewStoreIDHandler(managementClient.GetStoreClient()))
 	pr.register("text_check", rules.NewTextCheckHandler())
-	pr.register("parallel_variant", sku.NewParallelVariantHandler(managementClient.GetRawJsonDataAdapter(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
-	pr.register("cache_variants", sku.NewCacheVariantsHandler(managementClient.GetRawJsonDataAdapter(), cfg, pr.processor.amazonProcessor, rabbitmqClient))
+	pr.register("parallel_variant", sku.NewParallelVariantHandler(pr.processor.GetProductFetcher()))
+	pr.register("cache_variants", sku.NewCacheVariantsHandler(pr.processor.GetProductFetcher()))
 	pr.register("variant_filter", sku.NewVariantFilterHandler(managementClient.GetFilterRuleClient()))
 	pr.register("daily_limit", product.NewCheckDailyLimitHandler(pr.processor.GetMemoryManager()))
 }

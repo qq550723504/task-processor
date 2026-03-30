@@ -1,0 +1,178 @@
+package amazon
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"testing"
+	"time"
+
+	"task-processor/internal/core/config"
+	"task-processor/internal/model"
+
+	"github.com/sirupsen/logrus"
+)
+
+type memProductDedupeStore struct {
+	mu      sync.Mutex
+	values  map[string]string
+	expires map[string]time.Time
+}
+
+func newMemProductDedupeStore() *memProductDedupeStore {
+	return &memProductDedupeStore{
+		values:  make(map[string]string),
+		expires: make(map[string]time.Time),
+	}
+}
+
+func (m *memProductDedupeStore) cleanupLocked(key string) {
+	if exp, ok := m.expires[key]; ok && time.Now().After(exp) {
+		delete(m.values, key)
+		delete(m.expires, key)
+	}
+}
+
+func (m *memProductDedupeStore) Get(ctx context.Context, key string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cleanupLocked(key)
+	value, ok := m.values[key]
+	if !ok {
+		return "", fmt.Errorf("key not found: %s", key)
+	}
+	return value, nil
+}
+
+func (m *memProductDedupeStore) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.values[key] = value
+	m.expires[key] = time.Now().Add(ttl)
+	return nil
+}
+
+func (m *memProductDedupeStore) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cleanupLocked(key)
+	if _, exists := m.values[key]; exists {
+		return false, nil
+	}
+	m.values[key] = value
+	m.expires[key] = time.Now().Add(ttl)
+	return true, nil
+}
+
+func (m *memProductDedupeStore) Delete(ctx context.Context, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.values, key)
+	delete(m.expires, key)
+	return nil
+}
+
+func TestServiceFetchProductDeduplicatesConcurrentRequests(t *testing.T) {
+	store := newMemProductDedupeStore()
+	cfg := &config.Config{
+		Amazon: config.AmazonConfig{
+			Enabled:      true,
+			CrawlTimeout: 30,
+			Zipcodes: map[string]string{
+				"us": "10001",
+			},
+		},
+	}
+
+	service := &Service{
+		config:         cfg,
+		logger:         logrus.New(),
+		domainResolver: NewDomainResolver(),
+		dedupeStore:    store,
+	}
+
+	var mu sync.Mutex
+	calls := 0
+	service.processProduct = func(ctx context.Context, url, zipcode string) (*model.Product, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		time.Sleep(150 * time.Millisecond)
+		return &model.Product{
+			Asin:  "B001234567",
+			Title: "Demo Product",
+			URL:   url,
+		}, nil
+	}
+
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	results := make([]*model.Product, 2)
+	errs := make([]error, 2)
+
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			results[index], _, errs[index] = service.FetchProduct(ctx, "", "B001234567", "us", "")
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("request %d returned error: %v", i, err)
+		}
+	}
+	for i, product := range results {
+		if product == nil || product.Asin != "B001234567" {
+			t.Fatalf("request %d returned unexpected product: %+v", i, product)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("expected 1 real crawl, got %d", calls)
+	}
+}
+
+func TestServiceFetchProductBlocksRegionWhenGuardIsOpen(t *testing.T) {
+	cfg := &config.Config{
+		Amazon: config.AmazonConfig{
+			Enabled:      true,
+			CrawlTimeout: 30,
+			RegionGuard: config.AmazonRegionGuardConfig{
+				Enabled:                 true,
+				FailureThreshold:        1,
+				EvaluationWindowSeconds: 60,
+				CooldownSeconds:         30,
+			},
+			Zipcodes: map[string]string{
+				"us": "10001",
+			},
+		},
+	}
+
+	service := &Service{
+		config:         cfg,
+		logger:         logrus.New(),
+		domainResolver: NewDomainResolver(),
+		metrics:        newServiceMetrics(),
+		regionGuard:    newRegionGuard(cfg.Amazon.RegionGuard),
+	}
+	service.processProduct = func(ctx context.Context, url, zipcode string) (*model.Product, error) {
+		return nil, fmt.Errorf("captcha challenge detected")
+	}
+
+	if _, _, err := service.FetchProduct(context.Background(), "https://www.amazon.com/dp/B001234567", "", "us", ""); err == nil {
+		t.Fatalf("expected initial captcha failure")
+	}
+
+	_, _, err := service.FetchProduct(context.Background(), "https://www.amazon.com/dp/B001234567", "", "us", "")
+	if err == nil {
+		t.Fatalf("expected region guard to block second request")
+	}
+
+	classified := ClassifyFetchError(err)
+	if classified == nil || classified.ErrorType() != FetchErrorTypeRegionCircuitOpen {
+		t.Fatalf("expected region_circuit_open, got %v", err)
+	}
+}

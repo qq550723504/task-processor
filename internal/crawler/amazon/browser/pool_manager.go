@@ -22,6 +22,7 @@ type ProductProcessor interface {
 // poolBehavior 定义 PoolManager 依赖的浏览器池行为，便于测试注入 mock
 type poolBehavior interface {
 	IsBlockedOrSeriousError(err error) bool
+	ShouldSyncRecreateAfterFailure(instance *BrowserInstance, err error) bool
 	RecreateInstanceSync(old *BrowserInstance) *BrowserInstance
 	RecreateInstanceAsync(old *BrowserInstance)
 	Release(instance *BrowserInstance)
@@ -143,7 +144,7 @@ func (pm *PoolManager) processProduct(ctx context.Context, url, zipcode string, 
 	}
 
 	// 检测到 WebSocket 断连等严重错误时，同步重建实例并重试一次
-	if processErr != nil && pm.pool.IsBlockedOrSeriousError(processErr) {
+	if processErr != nil && pm.pool.ShouldSyncRecreateAfterFailure(instance, processErr) {
 		pm.logger.Warnf("浏览器实例 %d 出现严重错误，同步重建后重试: %v", instance.ID, processErr)
 
 		newInstance := pm.pool.RecreateInstanceSync(instance)

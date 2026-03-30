@@ -3,6 +3,7 @@ package browser
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
@@ -22,6 +23,7 @@ func truncateString(s string, maxLen int) string {
 // ZipcodeInputHandler 邮编输入处理器
 type ZipcodeInputHandler struct {
 	strategies []ZipcodeStrategy // 邮编输入策略列表
+	targetURL  string
 }
 
 // NewZipcodeInputHandler 创建邮编输入处理器实例
@@ -35,6 +37,10 @@ func NewZipcodeInputHandler() *ZipcodeInputHandler {
 	}
 }
 
+func (zih *ZipcodeInputHandler) SetTargetURL(targetURL string) {
+	zih.targetURL = targetURL
+}
+
 // SetZipcode 设置邮编
 func (zih *ZipcodeInputHandler) SetZipcode(page playwright.Page, zipcode string) error {
 	// 检查页面状态
@@ -46,6 +52,9 @@ func (zih *ZipcodeInputHandler) SetZipcode(page playwright.Page, zipcode string)
 	if err := zih.checkSignInDialog(page); err != nil {
 		return err
 	}
+
+	// 先处理跨站点访问提示，例如 "Visiting from Singapore"
+	DismissRegionalPrompt(page, zih.targetURL)
 
 	// 触发邮编设置界面
 	if err := zih.triggerZipcodeInterface(page); err != nil {
@@ -157,14 +166,18 @@ func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) er
 				if !waitSuccess {
 					logger.GetGlobalLogger("crawler/amazon").Infof("等待弹窗超时,继续尝试")
 				}
-
-				time.Sleep(1 * time.Second) // 额外等待确保弹窗完全加载
+				zih.waitForZipcodeInterfaceReady(page)
 				break
 			}
 		}
 	}
 
 	if !triggered {
+		if DismissRegionalPrompt(page, zih.targetURL) {
+			logger.GetGlobalLogger("crawler/amazon").Infof("已处理跨站点访问提示弹窗，重新尝试查找地址触发元素")
+			return zih.triggerZipcodeInterface(page)
+		}
+
 		logger.GetGlobalLogger("crawler/amazon").Infof("警告: 未找到任何可点击的触发元素")
 		// 在英语页面上，某些地区可能不需要设置邮编
 		if CheckIfPriceAvailable(page) {
@@ -187,27 +200,44 @@ func (zih *ZipcodeInputHandler) handleCountrySelection(page playwright.Page, zip
 		return nil
 	}
 
-	// 根据邮编格式推断目标国家
-	targetCountry := inferCountryFromZipcode(zipcode)
+	// 优先根据目标 Amazon 站点确定配送国家/货币环境，再用邮编做补充兜底。
+	targetCountry := inferDeliveryCountry(zih.targetURL, zipcode)
 	if targetCountry == "" {
-		logger.GetGlobalLogger("crawler/amazon").Infof("检测到国家选择框，但当前邮编 %s 不需要切换国家（可能是 IP 被误识别），跳过国家选择直接尝试填写邮编", zipcode)
+		logger.GetGlobalLogger("crawler/amazon").Infof("检测到国家选择框，但无法从目标URL=%s 或邮编=%s 推断目标配送国家，跳过国家选择直接尝试填写邮编", zih.targetURL, zipcode)
 		return nil
 	}
 
-	logger.GetGlobalLogger("crawler/amazon").Infof("检测到国家选择框，尝试选择国家: %s (邮编: %s)", targetCountry, zipcode)
+	logger.GetGlobalLogger("crawler/amazon").Infof("检测到国家选择框，尝试选择目标配送国家: %s (目标URL: %s, 邮编: %s)", targetCountry, zih.targetURL, zipcode)
 
-	// 先通过 JS 获取匹配的 option value（避免对隐藏元素调用 Playwright 的 SelectOption 超时）
-	result, err := page.Evaluate(`(targetCountry) => {
+	countryQueries := buildCountrySelectionQueries(targetCountry)
+	if len(countryQueries) == 0 {
+		logger.GetGlobalLogger("crawler/amazon").Infof("目标配送国家 %s 不适合通过 GLUXCountryList 切换，跳过国家选择，继续尝试填写邮编", targetCountry)
+		return nil
+	}
+
+	// 先通过 JS 获取最佳匹配的 option value（避免对隐藏元素调用 Playwright 的 SelectOption 超时）
+	result, err := page.Evaluate(`(queries) => {
 		const sel = document.querySelector('select#GLUXCountryList');
 		if (!sel) return null;
-		const target = targetCountry.toLowerCase();
-		for (const opt of sel.options) {
-			if (opt.text.toLowerCase().includes(target)) {
-				return opt.value;
+		const normalize = (text) => (text || '').toLowerCase().replace(/[^a-z]/g, '');
+		const options = Array.from(sel.options).map((opt) => ({
+			value: opt.value,
+			text: (opt.text || '').trim(),
+			normalized: normalize(opt.text || ''),
+		}));
+
+		for (const query of queries) {
+			const normalizedQuery = normalize(query);
+			if (!normalizedQuery) continue;
+
+			const exact = options.find((opt) => opt.normalized === normalizedQuery);
+			if (exact) {
+				return { value: exact.value, text: exact.text };
 			}
 		}
+
 		return null;
-	}`, targetCountry)
+	}`, countryQueries)
 	if err != nil {
 		return fmt.Errorf("查找国家选项失败: %w", err)
 	}
@@ -215,8 +245,14 @@ func (zih *ZipcodeInputHandler) handleCountrySelection(page playwright.Page, zip
 		return fmt.Errorf("未找到匹配的国家选项: %s", targetCountry)
 	}
 
-	countryValue, ok := result.(string)
-	if !ok || countryValue == "" {
+	resultMap, ok := result.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("国家选项结果格式无效: %v", result)
+	}
+
+	countryValue, _ := resultMap["value"].(string)
+	matchedText, _ := resultMap["text"].(string)
+	if countryValue == "" {
 		return fmt.Errorf("国家选项值无效: %v", result)
 	}
 
@@ -232,20 +268,98 @@ func (zih *ZipcodeInputHandler) handleCountrySelection(page playwright.Page, zip
 		return fmt.Errorf("设置国家值失败: %w", err)
 	}
 
-	logger.GetGlobalLogger("crawler/amazon").Infof("成功选择国家: %s (value: %s)", targetCountry, countryValue)
-	time.Sleep(1 * time.Second)
+	logger.GetGlobalLogger("crawler/amazon").Infof("成功选择国家: %s (命中文案: %s, value: %s)", targetCountry, matchedText, countryValue)
+	zih.waitForZipcodeInterfaceReady(page)
 	return nil
 }
 
-// inferCountryFromZipcode 根据邮编格式推断目标国家名称（用于 GLUXCountryList 选项匹配）
-// 注意：只有在 IP 被识别为非目标国家时才会出现国家选择框，加拿大站本身不需要选国家
-func inferCountryFromZipcode(zipcode string) string {
-	// 英国邮编: SW1A 1AA 等（字母开头，含空格或纯字母数字混合 5-7 位）
-	ukRegex := regexp.MustCompile(`(?i)^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$`)
-	if ukRegex.MatchString(strings.TrimSpace(zipcode)) {
-		// 英国站弹窗里的国家下拉是"配送到英国以外"的选项，不需要选国家，直接输入邮编即可
+func buildCountrySelectionQueries(targetCountry string) []string {
+	switch strings.ToLower(strings.TrimSpace(targetCountry)) {
+	case "united states":
+		return nil
+	case "united kingdom":
+		return []string{"United Kingdom", "UK", "Great Britain"}
+	case "japan":
+		return []string{"Japan"}
+	case "canada":
+		return []string{"Canada"}
+	default:
+		return []string{targetCountry}
+	}
+}
+
+func inferDeliveryCountry(targetURL string, zipcode string) string {
+	if country := inferCountryFromTargetURL(targetURL); country != "" {
+		return country
+	}
+	return inferCountryFromZipcode(zipcode)
+}
+
+func inferCountryFromTargetURL(targetURL string) string {
+	if targetURL == "" {
 		return ""
 	}
+
+	parsed, err := url.Parse(targetURL)
+	if err != nil {
+		return ""
+	}
+
+	host := strings.ToLower(strings.TrimSpace(parsed.Host))
+	host = strings.TrimPrefix(host, "www.")
+
+	targetCountries := map[string]string{
+		"amazon.com":    "United States",
+		"amazon.ca":     "Canada",
+		"amazon.co.uk":  "United Kingdom",
+		"amazon.de":     "Germany",
+		"amazon.fr":     "France",
+		"amazon.it":     "Italy",
+		"amazon.es":     "Spain",
+		"amazon.co.jp":  "Japan",
+		"amazon.com.au": "Australia",
+		"amazon.in":     "India",
+		"amazon.com.mx": "Mexico",
+		"amazon.com.br": "Brazil",
+		"amazon.nl":     "Netherlands",
+		"amazon.se":     "Sweden",
+		"amazon.pl":     "Poland",
+	}
+
+	return targetCountries[host]
+}
+
+// inferCountryFromZipcode 根据邮编格式推断目标国家名称（用于 GLUXCountryList 选项匹配）
+func inferCountryFromZipcode(zipcode string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(zipcode))
+	if normalized == "" {
+		return ""
+	}
+
+	// 美国 ZIP: 10001 或 10001-1234
+	usRegex := regexp.MustCompile(`^\d{5}(?:-\d{4})?$`)
+	if usRegex.MatchString(normalized) {
+		return "United States"
+	}
+
+	// 加拿大邮编: M5V2T6 / M5V 2T6
+	canadaRegex := regexp.MustCompile(`^[A-Z]\d[A-Z]\s?\d[A-Z]\d$`)
+	if canadaRegex.MatchString(normalized) {
+		return "Canada"
+	}
+
+	// 日本邮编: 100-0001 / 1000001
+	japanRegex := regexp.MustCompile(`^\d{3}-?\d{4}$`)
+	if japanRegex.MatchString(normalized) {
+		return "Japan"
+	}
+
+	// 英国邮编: SW1A 1AA 等
+	ukRegex := regexp.MustCompile(`(?i)^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$`)
+	if ukRegex.MatchString(normalized) {
+		return "United Kingdom"
+	}
+
 	return ""
 }
 
@@ -266,12 +380,110 @@ func (zih *ZipcodeInputHandler) handleZipcodeInput(page playwright.Page, zipcode
 	return fmt.Errorf("没有找到合适的邮编输入策略")
 }
 
-// submitZipcodeChange 提交邮编设置
+func (zih *ZipcodeInputHandler) waitForZipcodeInterfaceReady(page playwright.Page) {
+	if page.IsClosed() {
+		return
+	}
+
+	readySelectors := []string{
+		"#GLUXZipUpdateInput",
+		"#GLUXZipUpdate",
+		"input[aria-labelledby='GLUXZipUpdate-announce']",
+		"div[role='dialog']",
+	}
+
+	for _, selector := range readySelectors {
+		if err := page.Locator(selector).First().WaitFor(playwright.LocatorWaitForOptions{
+			State:   playwright.WaitForSelectorStateVisible,
+			Timeout: playwright.Float(1500),
+		}); err == nil {
+			return
+		}
+	}
+}
+
+func (zih *ZipcodeInputHandler) getAddressDisplayText(page playwright.Page) string {
+	if page.IsClosed() {
+		return ""
+	}
+
+	addressSelectors := []string{
+		"#glow-ingress-line2",
+		"#glow-ingress-block",
+		"#nav-global-location-slot",
+		"#GLUXZipConfirmationMessage",
+	}
+
+	for _, selector := range addressSelectors {
+		text, err := page.Locator(selector).First().TextContent()
+		if err == nil && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+
+	return ""
+}
+
+func (zih *ZipcodeInputHandler) closeLocationDialogIfVisible(page playwright.Page) {
+	if page.IsClosed() {
+		return
+	}
+
+	dialogLocator := page.Locator("div[role='dialog']").First()
+	for i := 0; i < 2; i++ {
+		isVisible, err := dialogLocator.IsVisible()
+		if err != nil || !isVisible {
+			return
+		}
+
+		if err := page.Keyboard().Press("Escape"); err != nil {
+			return
+		}
+
+		logger.GetGlobalLogger("crawler/amazon").Infof("地址弹层仍存在，发送 ESC 关闭 (第%d次)", i+1)
+		if err := dialogLocator.WaitFor(playwright.LocatorWaitForOptions{
+			State:   playwright.WaitForSelectorStateHidden,
+			Timeout: playwright.Float(800),
+		}); err == nil {
+			return
+		}
+	}
+}
+
+func (zih *ZipcodeInputHandler) waitForZipcodeApplyCompletion(page playwright.Page, beforeText string) {
+	if page.IsClosed() {
+		return
+	}
+
+	deadline := time.Now().Add(6 * time.Second)
+	for time.Now().Before(deadline) {
+		if page.IsClosed() {
+			return
+		}
+
+		currentText := zih.getAddressDisplayText(page)
+		if beforeText != "" && currentText != "" && currentText != beforeText {
+			logger.GetGlobalLogger("crawler/amazon").Infof("检测到地址文本变化: '%s' -> '%s'", beforeText, currentText)
+			return
+		}
+
+		inputVisible, _ := page.Locator("#GLUXZipUpdateInput").First().IsVisible()
+		dialogVisible, _ := page.Locator("div[role='dialog']").First().IsVisible()
+		if !inputVisible && !dialogVisible {
+			return
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
 // submitZipcodeChange 提交邮编设置
 func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error {
 	if page.IsClosed() {
 		return fmt.Errorf("页面在查找Apply按钮前被关闭")
 	}
+
+	beforeText := zih.getAddressDisplayText(page)
 
 	// 优先查找 Apply 按钮（保存邮编）
 	applyButtonSelectors := []string{
@@ -350,26 +562,15 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 		logger.GetGlobalLogger("crawler/amazon").Infof("成功点击Apply按钮")
 	}
 
-	// 等待Apply按钮处理完成，等待页面更新
-	logger.GetGlobalLogger("crawler/amazon").Infof("等待Apply按钮处理完成，等待页面更新...")
-	time.Sleep(2 * time.Second)
+	logger.GetGlobalLogger("crawler/amazon").Infof("等待Apply按钮处理完成，等待地址信息更新...")
+	zih.waitForZipcodeApplyCompletion(page, beforeText)
 
 	// 检查页面状态
 	if page.IsClosed() {
 		return fmt.Errorf("页面在Apply按钮处理后被关闭")
 	}
 
-	// 尝试关闭可能存在的任何对话框（Cookie对话框、邮编确认对话框等）
-	logger.GetGlobalLogger("crawler/amazon").Infof("尝试关闭可能存在的对话框...")
-	for i := 0; i < 3; i++ {
-		if err := page.Keyboard().Press("Escape"); err == nil {
-			logger.GetGlobalLogger("crawler/amazon").Infof("已按 ESC 键 (第%d次)", i+1)
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
-
-	logger.GetGlobalLogger("crawler/amazon").Infof("邮编设置操作完成，等待页面稳定...")
-	time.Sleep(2 * time.Second)
+	zih.closeLocationDialogIfVisible(page)
 
 	return nil
 }

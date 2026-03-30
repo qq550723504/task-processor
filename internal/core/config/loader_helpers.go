@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -16,6 +18,28 @@ func getDuration(v *viper.Viper, key string, defaultSeconds int) time.Duration {
 
 func getInt64Slice(v *viper.Viper, key string) []int64 {
 	intSlice := v.GetIntSlice(key)
+	if len(intSlice) == 0 {
+		raw := strings.TrimSpace(v.GetString(key))
+		if raw == "" {
+			return nil
+		}
+
+		parts := strings.Split(raw, ",")
+		result := make([]int64, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			value, err := strconv.ParseInt(part, 10, 64)
+			if err != nil {
+				return nil
+			}
+			result = append(result, value)
+		}
+		return result
+	}
+
 	result := make([]int64, len(intSlice))
 	for i, value := range intSlice {
 		result[i] = int64(value)

@@ -3,9 +3,6 @@ package product
 import (
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
-	"task-processor/internal/app/ports"
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	domainProduct "task-processor/internal/product"
@@ -24,23 +21,9 @@ type CacheProductHandler struct {
 
 // NewCacheProductHandler 创建缓存产品数据处理器（支持分布式获取器）
 func NewCacheProductHandler(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
-	cfg *config.Config,
-	amazonProcessor ports.ProductSource,
-	rabbitmqClient *rabbitmq.Client,
+	fetcher appProduct.ProductFetcher,
 ) *CacheProductHandler {
 	logger := logger.GetGlobalLogger("CacheProductHandler")
-
-	// 使用工厂模式创建获取器
-	factory := appProduct.NewFetcherFactory()
-
-	// 根据配置创建获取器
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
-	if err != nil {
-		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
-		// 降级到本地获取器
-		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
-	}
 
 	return &CacheProductHandler{
 		logger:  logger,

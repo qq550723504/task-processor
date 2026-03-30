@@ -4,11 +4,12 @@ package platformbase
 import (
 	"fmt"
 
-	"task-processor/internal/app/ports"
+	appfetcher "task-processor/internal/app/crawler/fetcher"
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )
@@ -17,7 +18,7 @@ import (
 type BaseFactoryConfig struct {
 	Platform         string
 	ManagementClient *management.ClientManager
-	AmazonProcessor  ports.ProductSource
+	FetcherBuilder   ProductFetcherBuilder
 	AmazonConfig     *config.AmazonConfig
 	MonitorConfig    *config.MonitorConfig
 }
@@ -60,9 +61,22 @@ func (f *BaseFactory) GetManagementClient() *management.ClientManager {
 	return f.config.ManagementClient
 }
 
-// GetAmazonProcessor 获取Amazon处理器
-func (f *BaseFactory) GetAmazonProcessor() ports.ProductSource {
-	return f.config.AmazonProcessor
+// GetFetcherBuilder 获取产品获取器构建器。
+func (f *BaseFactory) GetFetcherBuilder() ProductFetcherBuilder {
+	if f.config.FetcherBuilder == nil {
+		return NewDefaultProductFetcherBuilder()
+	}
+	return f.config.FetcherBuilder
+}
+
+// BuildProductFetcher 构建统一产品获取器。
+func (f *BaseFactory) BuildProductFetcher(rabbitmqClient *rabbitmq.Client) (appfetcher.ProductFetcher, error) {
+	return f.GetFetcherBuilder().Build(
+		f.GetManagementClient().GetRawJsonDataAdapter(),
+		f.GetAmazonConfig(),
+		nil,
+		rabbitmqClient,
+	)
 }
 
 // GetAmazonConfig 获取Amazon配置

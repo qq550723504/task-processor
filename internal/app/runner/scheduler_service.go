@@ -21,7 +21,6 @@ type schedulerServiceImpl struct {
 	logger              *logrus.Logger
 	managementClient    *management.ClientManager
 	config              *config.Config
-	amazonProcessor     amazonCrawler
 	rabbitmqClient      *rabbitmq.Client
 	temuFactoryCreator  TaskFactoryCreator
 	sheinFactoryCreator TaskFactoryCreator
@@ -35,7 +34,6 @@ func NewSchedulerServiceWithDependencies(
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
 	cfg *config.Config,
-	amazonProcessor amazonCrawler,
 	rabbitmqClient *rabbitmq.Client,
 	deps SchedulerDependencies,
 ) SchedulerService {
@@ -43,7 +41,6 @@ func NewSchedulerServiceWithDependencies(
 		logger:              logger,
 		managementClient:    managementClient,
 		config:              cfg,
-		amazonProcessor:     amazonProcessor,
 		rabbitmqClient:      rabbitmqClient,
 		temuFactoryCreator:  deps.TemuFactoryCreator,
 		sheinFactoryCreator: deps.SheinFactoryCreator,

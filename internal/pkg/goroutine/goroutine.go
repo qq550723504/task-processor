@@ -202,6 +202,7 @@ func (p *Processor) ProcessParallel(ctx context.Context, tasks []*Task, processF
 func (p *Processor) worker(ctx context.Context, workerID int, taskChan <-chan *Task, resultChan chan<- *Result, processFunc ProcessFunc) {
 	for task := range taskChan {
 		result := &Result{Index: task.Index, ID: task.ID, Success: false}
+		startedAt := time.Now()
 
 		taskCtx, cancel := context.WithTimeout(ctx, p.timeout)
 		data, err := p.executeTask(taskCtx, task, processFunc)
@@ -210,13 +211,13 @@ func (p *Processor) worker(ctx context.Context, workerID int, taskChan <-chan *T
 		if err != nil {
 			result.Error = err
 			if p.logger != nil {
-				p.logger.WithError(err).Warnf("Worker[%d] 任务[%s]处理失败", workerID, task.ID)
+				p.logger.WithError(err).Warnf("Worker[%d] 任务[%s]处理失败 (耗时=%s)", workerID, task.ID, time.Since(startedAt).Round(time.Millisecond))
 			}
 		} else {
 			result.Data = data
 			result.Success = true
 			if p.logger != nil {
-				p.logger.Debugf("Worker[%d] 任务[%s]处理成功", workerID, task.ID)
+				p.logger.Infof("Worker[%d] 任务[%s]处理成功 (耗时=%s)", workerID, task.ID, time.Since(startedAt).Round(time.Millisecond))
 			}
 		}
 

@@ -78,6 +78,30 @@
 补充架构文档：
 
 - [任务状态流转说明](./docs/architecture/task-status-lifecycle.md)
+- [中心化部署改造方案](./docs/architecture/centralized-deployment-plan.md)
+- [Amazon Crawler API 说明](./cmd/amazon-crawler-api/README.md)
+- [Amazon 爬虫商用化清单](./docs/architecture/amazon-crawler-commercialization-checklist.md)
+- [Amazon 爬虫商用化执行计划](./docs/architecture/amazon-crawler-commercialization-execution-plan.md)
+
+### 推荐部署形态
+
+当前更推荐把任务程序和爬虫程序拆开部署：
+
+- `task` 程序负责上架编排、调度、状态流转
+- `amazon-crawler-api` 负责 Amazon 商品抓取
+- `task` 通过 HTTP 调用 crawler API，而不是在本地直接持有浏览器爬虫
+
+对应默认配置文件：
+
+- `task`: [config-task.yaml](./config/config-task.yaml)
+- `amazon-crawler-api`: [config-amazon-crawler-api.yaml](./config/config-amazon-crawler-api.yaml)
+
+启动示例：
+
+```bash
+go run ./cmd/task -app-config config/config-task.yaml
+go run ./cmd/amazon-crawler-api -config config/config-amazon-crawler-api.yaml
+```
 
 ### 整体业务架构
 

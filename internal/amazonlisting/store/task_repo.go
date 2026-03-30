@@ -34,7 +34,28 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*amazonlis
 }
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
-	return r.UpdateTaskStatus(ctx, taskID, amazonlisting.TaskStatusProcessing)
+	result := r.db.WithContext(ctx).
+		Model(&amazonlisting.Task{}).
+		Where("id = ? AND status = ?", taskID, amazonlisting.TaskStatusPending).
+		Updates(map[string]any{
+			"status":     amazonlisting.TaskStatusProcessing,
+			"updated_at": gorm.Expr("NOW()"),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("failed to update task: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		return nil
+	}
+
+	task, err := r.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if task.Status != amazonlisting.TaskStatusPending {
+		return amazonlisting.ErrTaskNotPending
+	}
+	return amazonlisting.ErrTaskNotFound
 }
 
 func (r *taskRepository) MarkCompleted(ctx context.Context, taskID string, result *amazonlisting.AmazonListingDraft) error {

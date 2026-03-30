@@ -86,7 +86,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 重新上架任务处理器
 	//pipeline.AddHandler(modules.NewReListingHandler())
 	// 获取并缓存主产品数据（Fetch + Cache 合并为一步；缓存失败仅记录警告，不阻断上架）
-	pipeline.AddHandler(productdata.NewFetchAndCacheProductHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
+	pipeline.AddHandler(productdata.NewFetchAndCacheProductHandler(processor.GetProductFetcher()))
 	// 早期检查产品是否已上架（避免后续无效处理）
 	pipeline.AddHandler(publish.NewProductExistsCheckHandler())
 	// 验证图片数量（SHEIN要求至少3张：1张主图+2张细节图）
@@ -108,7 +108,7 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 查询是否有发品记录
 	pipeline.AddHandler(product.NewHasSpuRecordHandler())
 	// 获取并缓存变体数据（Fetch + Cache 合并为一步；缓存失败仅记录警告，不阻断上架）
-	pipeline.AddHandler(productdata.NewFetchAndCacheVariantsHandler(processor.GetManagementClient().GetRawJsonDataAdapter(), cfg, processor.amazonProcessor, processor.rabbitmqClient))
+	pipeline.AddHandler(productdata.NewFetchAndCacheVariantsHandler(processor.GetProductFetcher()))
 	// 重新应用筛选规则到变体
 	pipeline.AddHandler(validation.NewReapplyFilterRuleHandler())
 	// 检查每日上架限制（在获取变体数据后检查，以便准确计算SKC/SKU数量）

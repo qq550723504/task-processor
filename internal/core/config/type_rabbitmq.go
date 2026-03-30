@@ -2,6 +2,12 @@ package config
 
 import "time"
 
+const (
+	NodeRoleTask    = "task"
+	NodeRoleCrawler = "crawler"
+	NodeRoleHybrid  = "hybrid"
+)
+
 // RabbitMQConfig RabbitMQ完整配置
 type RabbitMQConfig struct {
 	Enabled           bool                   `yaml:"enabled"`           // 是否启用RabbitMQ分布式爬虫
@@ -53,6 +59,7 @@ type LoadMonitorConfig struct {
 // NodeConfig 节点配置
 type NodeConfig struct {
 	NodeID          string        `yaml:"nodeID"`          // 节点ID
+	Role            string        `yaml:"role"`            // 节点角色：task | crawler | hybrid
 	MaxConcurrency  int           `yaml:"maxConcurrency"`  // 最大并发数
 	HealthCheckPort int           `yaml:"healthCheckPort"` // 健康检查端口
 	MetricsPort     int           `yaml:"metricsPort"`     // 指标端口
@@ -60,6 +67,38 @@ type NodeConfig struct {
 	ShutdownTimeout time.Duration `yaml:"shutdownTimeout"` // 关闭超时
 	OwnedStores     []int64       `yaml:"ownedStores"`     // 本节点负责的店铺ID列表，为空则处理所有店铺
 	Regions         []string      `yaml:"regions"`         // 本节点负责的 region 列表（如 US、UK、JP），为空则处理所有 region
+}
+
+// NormalizedRole returns the effective node role, defaulting to hybrid for backward compatibility.
+func (c NodeConfig) NormalizedRole() string {
+	switch c.Role {
+	case NodeRoleTask, NodeRoleCrawler, NodeRoleHybrid:
+		return c.Role
+	default:
+		return NodeRoleHybrid
+	}
+}
+
+// HasValidRole reports whether the configured role is explicitly supported.
+func (c NodeConfig) HasValidRole() bool {
+	switch c.Role {
+	case "", NodeRoleTask, NodeRoleCrawler, NodeRoleHybrid:
+		return true
+	default:
+		return false
+	}
+}
+
+// HandlesTaskWork reports whether the node should register task processors and schedulers.
+func (c NodeConfig) HandlesTaskWork() bool {
+	role := c.NormalizedRole()
+	return role == NodeRoleTask || role == NodeRoleHybrid
+}
+
+// HandlesCrawlerWork reports whether the node should register crawler processors.
+func (c NodeConfig) HandlesCrawlerWork() bool {
+	role := c.NormalizedRole()
+	return role == NodeRoleCrawler || role == NodeRoleHybrid
 }
 
 // DeduplicatorConfig 去重器配置

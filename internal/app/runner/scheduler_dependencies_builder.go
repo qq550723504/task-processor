@@ -5,6 +5,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platformbase"
 	sheinscheduler "task-processor/internal/shein/scheduler"
 	temuscheduler "task-processor/internal/temu/scheduler"
 )
@@ -12,24 +13,25 @@ import (
 func buildSchedulerDependencies(
 	managementClient *management.ClientManager,
 	cfg *config.Config,
-	amazonProcessor amazonCrawler,
+	crawlSource crawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) SchedulerDependencies {
 	_ = cfg
+	boundFetcherBuilder := platformbase.BindProductFetcherBuilder(platformbase.NewDefaultProductFetcherBuilder(), crawlSource)
 	return SchedulerDependencies{
 		TemuFactoryCreator: func(cfg *config.Config) scheduler.TaskFactory {
-			return temuscheduler.NewTemuTaskFactory(
+			return temuscheduler.NewTemuTaskFactoryWithFetcherBuilder(
 				managementClient,
-				amazonProcessor,
+				boundFetcherBuilder,
 				&cfg.Amazon,
 				&cfg.Platforms.Temu.Monitor,
 				rabbitmqClient,
 			)
 		},
 		SheinFactoryCreator: func(cfg *config.Config) scheduler.TaskFactory {
-			return sheinscheduler.NewSheinTaskFactory(
+			return sheinscheduler.NewSheinTaskFactoryWithFetcherBuilder(
 				managementClient,
-				amazonProcessor,
+				boundFetcherBuilder,
 				&cfg.Amazon,
 				&cfg.Platforms.Shein.Monitor,
 				rabbitmqClient,

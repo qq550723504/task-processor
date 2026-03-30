@@ -12,6 +12,7 @@ type JSON struct {
 	Message string `json:"message,omitempty"`
 	Data    any    `json:"data,omitempty"`
 	Error   string `json:"error,omitempty"`
+	Code    string `json:"code,omitempty"`
 }
 
 // Success 发送成功响应
@@ -27,11 +28,16 @@ func Success(w http.ResponseWriter, message string, data any) {
 
 // Error 发送错误响应
 func Error(w http.ResponseWriter, statusCode int, errMsg string) {
+	ErrorWithCode(w, statusCode, errMsg, "")
+}
+
+func ErrorWithCode(w http.ResponseWriter, statusCode int, errMsg string, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(JSON{
 		Success: false,
 		Error:   errMsg,
+		Code:    code,
 	})
 }
 

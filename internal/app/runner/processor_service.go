@@ -13,7 +13,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type amazonCrawler = ports.ProductSource
+type crawlSource = ports.CrawlSource
+type CrawlSource = ports.CrawlSource
 
 type ProcessorService interface {
 	StartProcessors(ctx context.Context, cfg *config.Config, authClient *auth.ClientCredentialsAuthClient) error
@@ -24,7 +25,7 @@ type ProcessorService interface {
 func NewProcessorServiceWithCreators(
 	logger *logrus.Logger,
 	managementClient *management.ClientManager,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 	deps ProcessorDependencies,
 ) ProcessorService {
@@ -34,7 +35,7 @@ func NewProcessorServiceWithCreators(
 		logger:                logger,
 		lifecycleManager:      lifecycle.NewLifecycleManager(logger),
 		managementClient:      managementClient,
-		amazonProcessor:       amazonProcessor,
+		crawlSource:           crawlSource,
 		rabbitmqClient:        rabbitmqClient,
 		temuProcessorCreator:  deps.TemuProcessorCreator,
 		sheinProcessorCreator: deps.SheinProcessorCreator,

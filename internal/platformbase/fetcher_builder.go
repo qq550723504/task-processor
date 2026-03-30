@@ -12,7 +12,7 @@ type ProductFetcherBuilder interface {
 	Build(
 		rawJsonDataClient domainProduct.RawJsonDataClient,
 		amazonConfig *config.AmazonConfig,
-		amazonProcessor ports.ProductSource,
+		crawlSource ports.CrawlSource,
 		rabbitmqClient *rabbitmq.Client,
 	) (fetcher.ProductFetcher, error)
 }
@@ -28,7 +28,7 @@ func NewDefaultProductFetcherBuilder() *DefaultProductFetcherBuilder {
 func (b *DefaultProductFetcherBuilder) Build(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (fetcher.ProductFetcher, error) {
 	fetcherType := fetcher.LocalFetcher
@@ -40,7 +40,35 @@ func (b *DefaultProductFetcherBuilder) Build(
 		fetcherType,
 		rawJsonDataClient,
 		amazonConfig,
-		amazonProcessor,
+		crawlSource,
 		rabbitmqClient,
 	)
+}
+
+type boundProductFetcherBuilder struct {
+	base        ProductFetcherBuilder
+	crawlSource ports.CrawlSource
+}
+
+// BindProductFetcherBuilder returns a builder that reuses a pre-bound product source.
+func BindProductFetcherBuilder(base ProductFetcherBuilder, crawlSource ports.CrawlSource) ProductFetcherBuilder {
+	if base == nil {
+		base = NewDefaultProductFetcherBuilder()
+	}
+	return &boundProductFetcherBuilder{
+		base:        base,
+		crawlSource: crawlSource,
+	}
+}
+
+func (b *boundProductFetcherBuilder) Build(
+	rawJsonDataClient domainProduct.RawJsonDataClient,
+	amazonConfig *config.AmazonConfig,
+	crawlSource ports.CrawlSource,
+	rabbitmqClient *rabbitmq.Client,
+) (fetcher.ProductFetcher, error) {
+	if crawlSource == nil {
+		crawlSource = b.crawlSource
+	}
+	return b.base.Build(rawJsonDataClient, amazonConfig, crawlSource, rabbitmqClient)
 }

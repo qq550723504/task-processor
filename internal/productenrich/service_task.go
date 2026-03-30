@@ -43,7 +43,7 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 	}
 
 	// 将任务提交到 Worker Pool
-	if s.taskSubmitter != nil {
+	if s.taskSubmitter != nil && shouldEnqueueTask(ctx) {
 		if err := s.taskSubmitter.Submit(taskID); err != nil {
 			logger.GetGlobalLogger("productenrich/service_task.go").WithField("task_id", taskID).WithError(err).Error("failed to submit task to worker pool")
 			// Submit 失败时将任务标记为 failed，避免留下永久 pending 的孤儿任务
@@ -52,7 +52,7 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 			}
 			return nil, fmt.Errorf("failed to submit task: %w", err)
 		}
-	} else if s.redisClient != nil {
+	} else if s.redisClient != nil && shouldEnqueueTask(ctx) {
 		// 降级：无 Pool 时写入 Redis 队列（兼容旧模式）
 		if err := s.redisClient.Push(ctx, s.queueName, taskID); err != nil {
 			logger.GetGlobalLogger("productenrich/service_task.go").WithField("task_id", taskID).WithError(err).Error("failed to push task to queue")
@@ -61,7 +61,7 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 			}
 			return nil, fmt.Errorf("failed to enqueue task: %w", err)
 		}
-	} else {
+	} else if shouldEnqueueTask(ctx) {
 		logger.GetGlobalLogger("productenrich/service_task.go").WithField("task_id", taskID).Warn("no worker pool or redis configured, task will not be processed automatically")
 	}
 

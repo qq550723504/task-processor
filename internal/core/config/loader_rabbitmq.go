@@ -30,6 +30,7 @@ func BuildRabbitMQConfig(v *viper.Viper) *RabbitMQConfig {
 		},
 		Node: NodeConfig{
 			NodeID:          v.GetString("rabbitmq.node.nodeID"),
+			Role:            v.GetString("rabbitmq.node.role"),
 			MaxConcurrency:  v.GetInt("rabbitmq.node.maxConcurrency"),
 			HealthCheckPort: v.GetInt("rabbitmq.node.healthCheckPort"),
 			MetricsPort:     v.GetInt("rabbitmq.node.metricsPort"),

@@ -34,6 +34,11 @@ func main() {
 	if appCfg.RabbitMQ == nil {
 		logger.Fatal("RabbitMQ config is required")
 	}
+	nodeRole := appCfg.RabbitMQ.Node.NormalizedRole()
+	if !appCfg.RabbitMQ.Node.HandlesCrawlerWork() {
+		logger.Fatalf("crawler-consumer requires rabbitmq.node.role to allow crawler work, current role: %s", nodeRole)
+	}
+	logger.Infof("node role: %s", nodeRole)
 
 	serviceManager, err := consumer.NewServiceManager(appCfg.RabbitMQ, logger)
 	if err != nil {

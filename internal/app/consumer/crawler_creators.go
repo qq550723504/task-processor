@@ -10,4 +10,4 @@ import (
 
 type AmazonCrawlerCreator func(cfg *config.Config, logger *logrus.Logger) *amazon.AmazonProcessor
 
-type ProductFetcherProvider func(cfg *config.Config, logger *logrus.Logger, amazonProcessor *amazon.AmazonProcessor) (*product.ProductFetcher, error)
+type ProductFetcherProvider func(cfg *config.Config, logger *logrus.Logger, crawlSource *amazon.AmazonProcessor) (*product.ProductFetcher, error)

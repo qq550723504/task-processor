@@ -2,6 +2,7 @@ package productenrich
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -24,6 +25,10 @@ func (s *productService) ProcessProduct(ctx context.Context, task *Task) (*Produ
 	}).Info("starting product processing")
 
 	if err := s.taskRepo.MarkProcessing(ctx, task.ID); err != nil {
+		if errors.Is(err, ErrTaskNotPending) {
+			log.WithField("status", task.Status).Info("skipping product processing because task is already claimed")
+			return nil, ErrTaskNotPending
+		}
 		log.WithError(err).Error("failed to mark task as processing")
 		return nil, fmt.Errorf("failed to update task status: %w", err)
 	}

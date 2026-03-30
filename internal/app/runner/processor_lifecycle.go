@@ -28,8 +28,8 @@ func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.
 	if s.managementClient == nil {
 		return errors.New(errors.ErrCodeSystem, "管理客户端未注入")
 	}
-	if s.amazonProcessor == nil {
-		return errors.New(errors.ErrCodeSystem, "Amazon处理器未注入")
+	if s.crawlSource == nil {
+		return errors.New(errors.ErrCodeSystem, "抓取源未注入")
 	}
 
 	if err := s.startProcessingComponents(ctx, cfg); err != nil {

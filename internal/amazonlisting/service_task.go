@@ -104,14 +104,24 @@ func (s *service) ReviewTask(ctx context.Context, taskID string, req *ReviewTask
 }
 
 func validateRequest(req *GenerateRequest) error {
+	hasImages := len(req.ImageURLs) > 0
+	hasText := strings.TrimSpace(req.Text) != ""
+	hasProductURL := strings.TrimSpace(req.ProductURL) != ""
+
 	if req.Marketplace == "" {
 		req.Marketplace = "amazon"
 	}
 	if req.Marketplace != "amazon" {
 		return fmt.Errorf("only amazon marketplace is supported currently")
 	}
-	if len(req.ImageURLs) == 0 && strings.TrimSpace(req.Text) == "" && strings.TrimSpace(req.ProductURL) == "" {
+	if !hasImages && !hasText && !hasProductURL {
 		return fmt.Errorf("at least one input type is required")
 	}
-	return nil
+	if hasProductURL {
+		return nil
+	}
+	if hasImages && hasText {
+		return nil
+	}
+	return fmt.Errorf("provide product_url, or provide both image_urls and text")
 }

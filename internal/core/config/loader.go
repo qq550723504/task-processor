@@ -112,6 +112,41 @@ func NewDefaultConfig() *Config {
 		Amazon: AmazonConfig{
 			Enabled:           false,
 			DataFreshnessDays: 7,
+			ProductDedupe: ProductDedupeConfig{
+				LockTTLSeconds:     300,
+				ResultTTLSeconds:   600,
+				WaitTimeoutSeconds: 120,
+				PollIntervalMillis: 500,
+			},
+			FailureArtifacts: FailureArtifactsConfig{
+				Enabled:      false,
+				Directory:    "./tmp/amazon-failure-artifacts",
+				CaptureHTML:  true,
+				MaxHTMLBytes: 262144,
+			},
+			RiskControl: AmazonRiskControlConfig{
+				CaptchaRecreateThreshold:        1,
+				AuthenticationRecreateThreshold: 1,
+				BrowserCrashRecreateThreshold:   1,
+				TimeoutRecreateThreshold:        3,
+				NetworkRecreateThreshold:        2,
+				ServerErrorRecreateThreshold:    3,
+			},
+			RegionGuard: AmazonRegionGuardConfig{
+				Enabled:                 true,
+				FailureThreshold:        3,
+				EvaluationWindowSeconds: 300,
+				CooldownSeconds:         180,
+			},
+			QualityControl: AmazonQualityControlConfig{
+				RetryOnValidationFailure:   true,
+				ValidationRetryMaxAttempts: 2,
+			},
+			RemoteAPI: RemoteAPIConfig{
+				Enabled: false,
+				BaseURL: "",
+				Timeout: 300,
+			},
 			SPAPI: SPAPIConfig{
 				Enabled:                false,
 				Region:                 "us-east-1",
@@ -211,6 +246,11 @@ func NewDefaultConfig() *Config {
 					StockChangeThreshold: 5,
 				},
 			},
+			Alibaba1688: Alibaba1688Config{
+				Enabled:  false,
+				Timeout:  120,
+				PoolSize: 2,
+			},
 		},
 		RabbitMQ: &RabbitMQConfig{
 			Enabled:           false,
@@ -225,6 +265,7 @@ func NewDefaultConfig() *Config {
 				Queues:        []QueueConfig{},
 			},
 			Node: NodeConfig{
+				Role:            NodeRoleHybrid,
 				MaxConcurrency:  10,
 				HealthCheckPort: 8081,
 				MetricsPort:     8082,
@@ -270,6 +311,58 @@ func applyDefaults(cfg *Config) {
 	}
 	if !cfg.Amazon.Enabled && cfg.Amazon.DataFreshnessDays == 0 {
 		cfg.Amazon = defaultCfg.Amazon
+	} else {
+		if cfg.Amazon.RemoteAPI.Timeout == 0 {
+			cfg.Amazon.RemoteAPI.Timeout = defaultCfg.Amazon.RemoteAPI.Timeout
+		}
+		if cfg.Amazon.ProductDedupe.LockTTLSeconds == 0 {
+			cfg.Amazon.ProductDedupe.LockTTLSeconds = defaultCfg.Amazon.ProductDedupe.LockTTLSeconds
+		}
+		if cfg.Amazon.ProductDedupe.ResultTTLSeconds == 0 {
+			cfg.Amazon.ProductDedupe.ResultTTLSeconds = defaultCfg.Amazon.ProductDedupe.ResultTTLSeconds
+		}
+		if cfg.Amazon.ProductDedupe.WaitTimeoutSeconds == 0 {
+			cfg.Amazon.ProductDedupe.WaitTimeoutSeconds = defaultCfg.Amazon.ProductDedupe.WaitTimeoutSeconds
+		}
+		if cfg.Amazon.ProductDedupe.PollIntervalMillis == 0 {
+			cfg.Amazon.ProductDedupe.PollIntervalMillis = defaultCfg.Amazon.ProductDedupe.PollIntervalMillis
+		}
+		if cfg.Amazon.FailureArtifacts.Directory == "" {
+			cfg.Amazon.FailureArtifacts.Directory = defaultCfg.Amazon.FailureArtifacts.Directory
+		}
+		if cfg.Amazon.FailureArtifacts.MaxHTMLBytes == 0 {
+			cfg.Amazon.FailureArtifacts.MaxHTMLBytes = defaultCfg.Amazon.FailureArtifacts.MaxHTMLBytes
+		}
+		if cfg.Amazon.RiskControl.CaptchaRecreateThreshold == 0 {
+			cfg.Amazon.RiskControl.CaptchaRecreateThreshold = defaultCfg.Amazon.RiskControl.CaptchaRecreateThreshold
+		}
+		if cfg.Amazon.RiskControl.AuthenticationRecreateThreshold == 0 {
+			cfg.Amazon.RiskControl.AuthenticationRecreateThreshold = defaultCfg.Amazon.RiskControl.AuthenticationRecreateThreshold
+		}
+		if cfg.Amazon.RiskControl.BrowserCrashRecreateThreshold == 0 {
+			cfg.Amazon.RiskControl.BrowserCrashRecreateThreshold = defaultCfg.Amazon.RiskControl.BrowserCrashRecreateThreshold
+		}
+		if cfg.Amazon.RiskControl.TimeoutRecreateThreshold == 0 {
+			cfg.Amazon.RiskControl.TimeoutRecreateThreshold = defaultCfg.Amazon.RiskControl.TimeoutRecreateThreshold
+		}
+		if cfg.Amazon.RiskControl.NetworkRecreateThreshold == 0 {
+			cfg.Amazon.RiskControl.NetworkRecreateThreshold = defaultCfg.Amazon.RiskControl.NetworkRecreateThreshold
+		}
+		if cfg.Amazon.RiskControl.ServerErrorRecreateThreshold == 0 {
+			cfg.Amazon.RiskControl.ServerErrorRecreateThreshold = defaultCfg.Amazon.RiskControl.ServerErrorRecreateThreshold
+		}
+		if cfg.Amazon.RegionGuard.FailureThreshold == 0 {
+			cfg.Amazon.RegionGuard.FailureThreshold = defaultCfg.Amazon.RegionGuard.FailureThreshold
+		}
+		if cfg.Amazon.RegionGuard.EvaluationWindowSeconds == 0 {
+			cfg.Amazon.RegionGuard.EvaluationWindowSeconds = defaultCfg.Amazon.RegionGuard.EvaluationWindowSeconds
+		}
+		if cfg.Amazon.RegionGuard.CooldownSeconds == 0 {
+			cfg.Amazon.RegionGuard.CooldownSeconds = defaultCfg.Amazon.RegionGuard.CooldownSeconds
+		}
+		if cfg.Amazon.QualityControl.ValidationRetryMaxAttempts == 0 {
+			cfg.Amazon.QualityControl.ValidationRetryMaxAttempts = defaultCfg.Amazon.QualityControl.ValidationRetryMaxAttempts
+		}
 	}
 	if cfg.ProductImage.WorkDir == "" {
 		cfg.ProductImage.WorkDir = defaultCfg.ProductImage.WorkDir
@@ -288,5 +381,11 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Updater.UpdateURL == "" {
 		cfg.Updater = defaultCfg.Updater
+	}
+	if cfg.Platforms.Alibaba1688.Timeout == 0 {
+		cfg.Platforms.Alibaba1688.Timeout = defaultCfg.Platforms.Alibaba1688.Timeout
+	}
+	if cfg.Platforms.Alibaba1688.PoolSize == 0 {
+		cfg.Platforms.Alibaba1688.PoolSize = defaultCfg.Platforms.Alibaba1688.PoolSize
 	}
 }

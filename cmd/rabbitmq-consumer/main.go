@@ -57,6 +57,8 @@ func main() {
 	if appCfg.RabbitMQ == nil {
 		logger.Fatal("RabbitMQ config is required, please set rabbitmq.enabled=true")
 	}
+	nodeRole := appCfg.RabbitMQ.Node.NormalizedRole()
+	logger.Infof("node role: %s", nodeRole)
 
 	ctx := context.Background()
 
@@ -72,30 +74,37 @@ func main() {
 	consumerDeps := bootstrap.BuildConsumerDependencies()
 	crawlerDeps := bootstrap.BuildCrawlerDependencies()
 	platformRegistry := consumer.NewPlatformRegistry(appCfg, logger, "", consumerDeps)
-	if err := platformRegistry.RegisterAllProcessors(ctx, serviceManager); err != nil {
-		logger.Fatalf("register platform processors failed: %v", err)
+	if appCfg.RabbitMQ.Node.HandlesTaskWork() {
+		if err := platformRegistry.RegisterAllProcessors(ctx, serviceManager); err != nil {
+			logger.Fatalf("register platform processors failed: %v", err)
+		}
+	} else {
+		logger.Info("skip platform processor registration for crawler-only node")
 	}
 
-	logger.Info("registering crawler processor")
-	crawlerRegistry := consumer.NewCrawlerRegistry(appCfg, logger, serviceManager.GetClient(), crawlerDeps)
-	if err := crawlerRegistry.RegisterCrawlerProcessor(serviceManager, platformRegistry.GetSharedAmazonProcessor()); err != nil {
-		logger.Fatalf("register crawler processor failed: %v", err)
+	if appCfg.RabbitMQ.Node.HandlesCrawlerWork() {
+		logger.Info("registering crawler processor")
+		crawlerRegistry := consumer.NewCrawlerRegistry(appCfg, logger, serviceManager.GetClient(), crawlerDeps)
+		if err := crawlerRegistry.RegisterCrawlerProcessor(serviceManager, platformRegistry.GetSharedAmazonProcessor()); err != nil {
+			logger.Fatalf("register crawler processor failed: %v", err)
+		}
+	} else {
+		logger.Info("skip crawler processor registration for task-only node")
 	}
 
 	ownedStores := appCfg.RabbitMQ.Node.OwnedStores
-	if len(ownedStores) > 0 {
+	if appCfg.RabbitMQ.Node.HandlesTaskWork() && len(ownedStores) > 0 {
 		logger.Infof("owned stores: %v", ownedStores)
 		serviceManager.SetStoreComponents(nil, ownedStores, nil)
-	} else {
+	} else if appCfg.RabbitMQ.Node.HandlesTaskWork() {
 		logger.Warn("rabbitmq.node.ownedStores is empty, this node will subscribe to platform-level queues")
 	}
 
-	if appCfg.Platforms.Temu.SchedulerEnabled || appCfg.Platforms.Shein.SchedulerEnabled {
+	if appCfg.RabbitMQ.Node.HandlesTaskWork() && (appCfg.Platforms.Temu.SchedulerEnabled || appCfg.Platforms.Shein.SchedulerEnabled) {
 		schedulerSvc := runner.NewSchedulerServiceWithDependencies(
 			logger,
 			platformRegistry.GetManagementClient(),
 			appCfg,
-			platformRegistry.GetSharedAmazonProcessor(),
 			serviceManager.GetClient(),
 			bootstrap.BuildSchedulerDependencies(
 				platformRegistry.GetManagementClient(),
@@ -106,6 +115,8 @@ func main() {
 		)
 		serviceManager.SetSchedulerService(schedulerSvc)
 		logger.Info("scheduler service injected")
+	} else if !appCfg.RabbitMQ.Node.HandlesTaskWork() {
+		logger.Info("skip scheduler injection for crawler-only node")
 	}
 
 	if err := serviceManager.Start(ctx); err != nil {
@@ -113,7 +124,7 @@ func main() {
 	}
 
 	logger.Info("RabbitMQ consumer started")
-	logger.Info("services: listing processors and crawler processor")
+	logger.Infof("services started for role %s", nodeRole)
 	logger.Info("monitoring endpoints: http://localhost:8081/health, http://localhost:8081/ready, http://localhost:8082/metrics, http://localhost:8082/stats")
 	logger.Info("press Ctrl+C to exit")
 

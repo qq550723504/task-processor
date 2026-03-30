@@ -38,7 +38,7 @@ type processorServiceImpl struct {
 
 	// 共享资源（通过依赖注入获取）
 	managementClient      *management.ClientManager
-	amazonProcessor       amazonCrawler
+	crawlSource           crawlSource
 	rabbitmqClient        *rabbitmq.Client
 	temuProcessorCreator  TemuProcessorCreator
 	sheinProcessorCreator SheinProcessorCreator
@@ -109,9 +109,8 @@ func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *c
 		s.logger,
 		s.managementClient,
 		cfg,
-		s.amazonProcessor,
 		s.rabbitmqClient,
-		buildSchedulerDependencies(s.managementClient, cfg, s.amazonProcessor, s.rabbitmqClient),
+		buildSchedulerDependencies(s.managementClient, cfg, s.crawlSource, s.rabbitmqClient),
 	)
 
 	// 启动调度服务

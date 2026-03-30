@@ -67,12 +67,18 @@ func (b *BaseService) UpdateResult(taskID string, fn func(*CrawlerResult)) {
 
 // GetStats 获取通用队列与指标统计
 func (b *BaseService) GetStats() map[string]any {
-	queueStats := b.workerPool.GetQueueStats()
 	stats := map[string]any{
-		"queue_size":      queueStats.QueueSize,
-		"queue_capacity":  queueStats.BufferSize,
-		"available_slots": queueStats.AvailableSlots,
-		"usage_percent":   queueStats.UsagePercent,
+		"queue_size":      0,
+		"queue_capacity":  0,
+		"available_slots": 0,
+		"usage_percent":   0.0,
+	}
+	if b.workerPool != nil {
+		queueStats := b.workerPool.GetQueueStats()
+		stats["queue_size"] = queueStats.QueueSize
+		stats["queue_capacity"] = queueStats.BufferSize
+		stats["available_slots"] = queueStats.AvailableSlots
+		stats["usage_percent"] = queueStats.UsagePercent
 	}
 
 	statusCount := make(map[string]int)
@@ -82,18 +88,20 @@ func (b *BaseService) GetStats() map[string]any {
 	})
 	stats["status_count"] = statusCount
 
-	if metrics := b.workerPool.GetMetrics(); metrics != nil {
-		snapshot := metrics.GetSnapshot()
-		stats["total_submitted"] = snapshot.TotalSubmitted
-		stats["total_processed"] = snapshot.TotalProcessed
-		stats["total_succeeded"] = snapshot.TotalSucceeded
-		stats["total_failed"] = snapshot.TotalFailed
-		stats["total_panicked"] = snapshot.TotalPanicked
-		stats["queue_full_count"] = snapshot.QueueFullCount
-		stats["success_rate"] = snapshot.SuccessRate()
-		stats["failure_rate"] = snapshot.FailureRate()
-		stats["panic_rate"] = snapshot.PanicRate()
-		stats["uptime"] = snapshot.Uptime.String()
+	if b.workerPool != nil {
+		if metrics := b.workerPool.GetMetrics(); metrics != nil {
+			snapshot := metrics.GetSnapshot()
+			stats["total_submitted"] = snapshot.TotalSubmitted
+			stats["total_processed"] = snapshot.TotalProcessed
+			stats["total_succeeded"] = snapshot.TotalSucceeded
+			stats["total_failed"] = snapshot.TotalFailed
+			stats["total_panicked"] = snapshot.TotalPanicked
+			stats["queue_full_count"] = snapshot.QueueFullCount
+			stats["success_rate"] = snapshot.SuccessRate()
+			stats["failure_rate"] = snapshot.FailureRate()
+			stats["panic_rate"] = snapshot.PanicRate()
+			stats["uptime"] = snapshot.Uptime.String()
+		}
 	}
 
 	return stats

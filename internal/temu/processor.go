@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/app/ports"
+	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
@@ -19,13 +19,13 @@ import (
 
 type Dependencies struct {
 	ManagementClient *management.ClientManager
-	ProductSource    ports.ProductSource
+	ProductFetcher   appfetcher.ProductFetcher
 	RabbitMQClient   *rabbitmq.Client
 }
 
 type TemuProcessor struct {
 	*processor.BaseProcessor
-	amazonProcessor  ports.ProductSource
+	productFetcher   appfetcher.ProductFetcher
 	rabbitmqClient   *rabbitmq.Client
 	taskHandler      *TaskHandler
 	pipelineExecutor *TemuPipelineExecutor
@@ -38,15 +38,15 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 		log.Error("ManagementClient is required")
 		return nil, fmt.Errorf("managementClient is required")
 	}
-	if deps.ProductSource == nil {
-		log.Error("ProductSource is required")
-		return nil, fmt.Errorf("productSource is required")
+	if deps.ProductFetcher == nil {
+		log.Error("ProductFetcher is required")
+		return nil, fmt.Errorf("productFetcher is required")
 	}
 
 	if deps.RabbitMQClient != nil {
 		log.Info("using RabbitMQ client for distributed fetching")
 	} else {
-		log.Warn("RabbitMQ client not provided, using local fetching")
+		log.Warn("RabbitMQ client not provided; distributed fetching is unavailable")
 	}
 
 	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
@@ -57,9 +57,9 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 	})
 
 	p := &TemuProcessor{
-		BaseProcessor:   baseProcessor,
-		amazonProcessor: deps.ProductSource,
-		rabbitmqClient:  deps.RabbitMQClient,
+		BaseProcessor:  baseProcessor,
+		productFetcher: deps.ProductFetcher,
+		rabbitmqClient: deps.RabbitMQClient,
 	}
 
 	workerPool := worker.NewPool(p, cfg.Worker)
@@ -118,8 +118,8 @@ func (p *TemuProcessor) Start(ctx context.Context) error {
 	return nil
 }
 
-func (p *TemuProcessor) GetAmazonProcessor() ports.ProductSource {
-	return p.amazonProcessor
+func (p *TemuProcessor) GetProductFetcher() appfetcher.ProductFetcher {
+	return p.productFetcher
 }
 
 func (p *TemuProcessor) Close(ctx context.Context) {
@@ -127,10 +127,6 @@ func (p *TemuProcessor) Close(ctx context.Context) {
 	log.Info("closing TEMU processor")
 
 	p.CloseBase(ctx)
-
-	if p.amazonProcessor != nil {
-		p.amazonProcessor.Shutdown()
-	}
 
 	log.Info("processor closed")
 }

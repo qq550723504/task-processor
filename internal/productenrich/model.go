@@ -11,6 +11,9 @@ import (
 // ErrTaskNotFound 任务不存在错误
 var ErrTaskNotFound = errors.New("task not found")
 
+// ErrTaskNotPending 表示任务已被其他执行器抢占或已不再处于待处理状态。
+var ErrTaskNotPending = errors.New("task is not pending")
+
 // TaskStatus 表示任务的状态
 type TaskStatus string
 

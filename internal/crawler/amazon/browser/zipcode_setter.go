@@ -3,6 +3,7 @@ package browser
 
 import (
 	"fmt"
+	"strings"
 	"task-processor/internal/core/logger"
 	"time"
 
@@ -29,6 +30,13 @@ func NewZipcodeSetter(browserManager *BrowserManager) *ZipcodeSetter {
 	}
 }
 
+func (zs *ZipcodeSetter) SetTargetURL(targetURL string) {
+	if zs == nil || zs.inputHandler == nil {
+		return
+	}
+	zs.inputHandler.SetTargetURL(targetURL)
+}
+
 // SetAndVerifyZipcode 设置并验证邮编（基础方法）
 // 第二次重试前会刷新页面
 func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode string) error {
@@ -53,6 +61,8 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 			}
 		}
 
+		DismissRegionalPrompt(page, zs.inputHandler.targetURL)
+
 		// 先验证当前邮编是否正确
 		if isValid, err := zs.isZipcodeValid(page, zipcode); err == nil && isValid {
 			logger.GetGlobalLogger("crawler/amazon").Infof("当前邮编已经是目标邮编: %s，无需设置", zipcode)
@@ -67,6 +77,9 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 			// 检查是否是页面关闭导致的错误
 			if page.IsClosed() {
 				return fmt.Errorf("页面已关闭: %w", err)
+			}
+			if zs.shouldFailFast(err) {
+				return err
 			}
 			if attempt == zs.maxRetries {
 				return fmt.Errorf("设置邮编失败，已达到最大重试次数: %w", err)
@@ -86,8 +99,14 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 			if page.IsClosed() {
 				return fmt.Errorf("页面已关闭: %w", err)
 			}
+			if err != nil && zs.shouldFailFast(err) {
+				return err
+			}
 			if attempt == zs.maxRetries {
-				return fmt.Errorf("验证邮编失败，已达到最大重试次数: %w", err)
+				if err != nil {
+					return fmt.Errorf("验证邮编失败，已达到最大重试次数: %w", err)
+				}
+				return fmt.Errorf("验证邮编失败，已达到最大重试次数")
 			}
 
 			// 第一次失败后等待，第二次失败会在下次循环开始时刷新页面
@@ -103,6 +122,28 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 	}
 
 	return fmt.Errorf("设置并验证邮编失败，已达到最大重试次数")
+}
+
+func (zs *ZipcodeSetter) shouldFailFast(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := strings.ToUpper(err.Error())
+	fatalMarkers := []string{
+		"SIGN_IN_REQUIRED",
+		"CAPTCHA",
+		"AUTHENTICATION",
+	}
+
+	for _, marker := range fatalMarkers {
+		if strings.Contains(message, marker) {
+			logger.GetGlobalLogger("crawler/amazon").Infof("检测到不可恢复的邮编设置错误，立即终止当前实例重试: %s", err)
+			return true
+		}
+	}
+
+	return false
 }
 
 // isZipcodeValid 验证当前邮编是否匹配目标邮编（统一的验证入口）
@@ -129,5 +170,6 @@ func (zs *ZipcodeSetter) refreshPageForRetry(page playwright.Page) error {
 	}
 
 	logger.GetGlobalLogger("crawler/amazon").Infof("页面已刷新，继续尝试设置邮编")
+	DismissRegionalPrompt(page, zs.inputHandler.targetURL)
 	return nil
 }

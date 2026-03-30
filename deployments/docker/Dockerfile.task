@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # ============================================================
 # Multi-stage build for task service
 # ============================================================
@@ -9,22 +11,20 @@ RUN apk add --no-cache git make
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w" \
-    -o task \
-    ./cmd/task/main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+        -ldflags="-s -w" \
+        -o task \
+        ./cmd/task/main.go
 
 FROM xuwei190/crawler-env:latest
-
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata && \
-    ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
-    echo "Asia/Shanghai" > /etc/timezone && \
-    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -35,4 +35,4 @@ RUN chmod +x ./task
 
 EXPOSE 8081 8082
 
-CMD ["./task", "-app-config", "config/config-prod.yaml"]
+CMD ["./task", "-app-config", "config/config-task.yaml"]

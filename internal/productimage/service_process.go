@@ -2,6 +2,7 @@ package productimage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -25,6 +26,10 @@ func (s *service) ProcessImages(ctx context.Context, task *Task) (*ImageProcessR
 	}).Info("starting productimage processing")
 
 	if err := s.taskRepo.MarkProcessing(ctx, task.ID); err != nil {
+		if errors.Is(err, ErrTaskNotPending) {
+			log.WithField("status", task.Status).Info("skipping productimage processing because task is already claimed")
+			return nil, ErrTaskNotPending
+		}
 		log.WithError(err).Error("failed to mark image task as processing")
 		return nil, fmt.Errorf("failed to update task status: %w", err)
 	}

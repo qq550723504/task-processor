@@ -169,7 +169,6 @@ func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources 
 		logger,
 		resources.ManagementClient,
 		cfg,
-		resources.AmazonCrawler,
 		resources.RabbitMQClient,
 		BuildSchedulerDependencies(resources.ManagementClient, cfg, resources.AmazonCrawler, resources.RabbitMQClient),
 	)

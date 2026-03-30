@@ -37,7 +37,19 @@ func (r *MemTaskRepository) GetTask(_ context.Context, taskID string) (*producti
 }
 
 func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {
-	return r.UpdateTaskStatus(ctx, taskID, productimage.TaskStatusProcessing)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return productimage.ErrTaskNotFound
+	}
+	if task.Status != productimage.TaskStatusPending {
+		return productimage.ErrTaskNotPending
+	}
+	task.Status = productimage.TaskStatusProcessing
+	task.Error = ""
+	task.UpdatedAt = time.Now()
+	return nil
 }
 
 func (r *MemTaskRepository) MarkCompleted(ctx context.Context, taskID string, result *productimage.ImageProcessResult) error {

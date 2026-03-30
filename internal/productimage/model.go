@@ -10,6 +10,7 @@ import (
 )
 
 var ErrTaskNotFound = errors.New("task not found")
+var ErrTaskNotPending = errors.New("task is not pending")
 
 type TaskStatus string
 

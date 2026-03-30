@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/shein/pipeline"
@@ -35,17 +36,18 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				return s.temuProcessor
 			},
 			start: func(ctx context.Context, s *processorServiceImpl, cfg *config.Config) error {
-				if s.amazonProcessor == nil {
-					return fmt.Errorf("Amazon processor not initialized")
-				}
 				creator := s.resolveTemuProcessorCreator()
 				if creator == nil {
 					return fmt.Errorf("TEMU processor creator not configured")
 				}
+				productFetcher, err := buildRuntimeProductFetcher(cfg, s)
+				if err != nil {
+					return err
+				}
 
 				p, err := creator(ctx, cfg, s.logger, temu.Dependencies{
 					ManagementClient: s.managementClient,
-					ProductSource:    s.amazonProcessor,
+					ProductFetcher:   productFetcher,
 					RabbitMQClient:   s.rabbitmqClient,
 				})
 				if err != nil {
@@ -69,17 +71,18 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				return s.sheinProcessor
 			},
 			start: func(ctx context.Context, s *processorServiceImpl, cfg *config.Config) error {
-				if s.amazonProcessor == nil {
-					return fmt.Errorf("Amazon processor not initialized")
-				}
 				creator := s.resolveSheinProcessorCreator()
 				if creator == nil {
 					return fmt.Errorf("SHEIN processor creator not configured")
 				}
+				productFetcher, err := buildRuntimeProductFetcher(cfg, s)
+				if err != nil {
+					return err
+				}
 
 				p, err := creator(ctx, cfg, s.logger, pipeline.Dependencies{
 					ManagementClient: s.managementClient,
-					ProductSource:    s.amazonProcessor,
+					ProductFetcher:   productFetcher,
 					RabbitMQClient:   s.rabbitmqClient,
 				})
 				if err != nil {
@@ -94,4 +97,23 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 			},
 		},
 	}
+}
+
+func buildRuntimeProductFetcher(cfg *config.Config, s *processorServiceImpl) (appfetcher.ProductFetcher, error) {
+	if s.managementClient == nil {
+		return nil, fmt.Errorf("management client not initialized")
+	}
+
+	factory := appfetcher.NewFetcherFactory()
+	fetcher, err := factory.CreateFetcherFromConfig(
+		cfg,
+		s.managementClient.GetRawJsonDataAdapter(),
+		s.crawlSource,
+		s.rabbitmqClient,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create distributed product fetcher: %w", err)
+	}
+
+	return fetcher, nil
 }

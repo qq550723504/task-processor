@@ -54,7 +54,17 @@ func (c *Client) Set(ctx context.Context, key string, value string, ttl time.Dur
 	return c.rdb.Set(ctx, key, value, ttl).Err()
 }
 
+// SetNX sets key only when it does not already exist.
+func (c *Client) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	return c.rdb.SetNX(ctx, key, value, ttl).Result()
+}
+
 // Delete 删除指定 key。
 func (c *Client) Delete(ctx context.Context, key string) error {
 	return c.rdb.Del(ctx, key).Err()
+}
+
+// Close closes the underlying Redis client.
+func (c *Client) Close() error {
+	return c.rdb.Close()
 }

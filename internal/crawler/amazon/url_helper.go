@@ -58,6 +58,26 @@ func (uh *URLHelper) AddLanguageParam(originalURL string) string {
 	return parsedURL.String()
 }
 
+// AddNoRedirectParam 为 URL 添加阻止 Amazon 根据 IP 自动跳转站点的参数。
+func (uh *URLHelper) AddNoRedirectParam(originalURL string) string {
+	parsedURL, err := url.Parse(originalURL)
+	if err != nil {
+		return originalURL
+	}
+
+	host := strings.ToLower(strings.TrimSpace(parsedURL.Host))
+	if host == "" || !strings.Contains(host, "amazon.") {
+		return originalURL
+	}
+
+	query := parsedURL.Query()
+	if query.Get("mr_donotredirect") == "" {
+		query.Set("mr_donotredirect", "1")
+	}
+	parsedURL.RawQuery = query.Encode()
+	return parsedURL.String()
+}
+
 // ExtractASINFromURL 从URL中提取ASIN
 func (uh *URLHelper) ExtractASINFromURL(productURL string) string {
 	// 匹配Amazon ASIN的正则表达式

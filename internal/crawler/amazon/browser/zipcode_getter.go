@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
-	"time"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -21,9 +20,6 @@ func NewZipcodeGetter() *ZipcodeGetter {
 
 // GetCurrentZipcode 获取当前邮编或城市名称
 func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error) {
-	// 等待页面稳定
-	time.Sleep(500 * time.Millisecond)
-
 	// 查找显示当前邮编的元素（按优先级排序）
 	zipDisplaySelectors := []string{
 		"#glow-ingress-line2",         // 主要的邮编显示位置（最常见）

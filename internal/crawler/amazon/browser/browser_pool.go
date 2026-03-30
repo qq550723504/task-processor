@@ -21,6 +21,7 @@ type BrowserInstance struct {
 	Closed         bool   // 已被超时路径关闭，不可再归还池
 	CurrentZipcode string // 当前设置的邮编，用于避免重复设置
 	Mu             sync.Mutex
+	riskState      instanceRiskState
 }
 
 // instanceRebuilder 定义实例重建行为，便于测试注入 mock
@@ -42,6 +43,7 @@ type BrowserPool struct {
 	instanceManager      instanceRebuilder
 	healthChecker        *HealthChecker
 	errorDetector        *ErrorDetector
+	riskPolicy           *riskPolicy
 	shutdownOnce         sync.Once // 确保只关闭一次
 	closed               bool      // 标记是否已关闭
 }
@@ -91,6 +93,7 @@ func NewBrowserPool(cfg *config.Config, poolConfig *BrowserPoolConfig) *BrowserP
 	bp.instanceManager = NewInstanceManager(bp)
 	bp.healthChecker = NewHealthChecker(bp)
 	bp.errorDetector = NewErrorDetector()
+	bp.riskPolicy = newRiskPolicy(cfg, bp.errorDetector)
 
 	return bp
 }
@@ -160,6 +163,9 @@ func (bp *BrowserPool) Release(instance *BrowserInstance) {
 	instance.Mu.Lock()
 	instance.InUse = false
 	instance.Mu.Unlock()
+	if bp.riskPolicy != nil {
+		bp.riskPolicy.OnSuccess(instance)
+	}
 
 	bp.Mu.Lock()
 	if bp.closed || bp.available == nil {
@@ -201,7 +207,7 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 	bp.Mu.Unlock()
 
 	// 检测是否为风控或严重错误
-	if bp.errorDetector.IsBlockedOrSeriousError(err) {
+	if bp.ShouldRecreateAfterFailure(instance, err) {
 		logger.GetGlobalLogger("crawler/amazon").Infof("检测到浏览器实例 %d 被风控或出现严重错误: %v", instance.ID, err)
 		bp.instanceManager.RecreateInstanceAsync(instance)
 		return
@@ -214,6 +220,26 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 	default:
 		logger.GetGlobalLogger("crawler/amazon").Warnf("无法释放浏览器实例 %d，通道可能已满或已关闭", instance.ID)
 	}
+}
+
+func (bp *BrowserPool) ShouldRecreateAfterFailure(instance *BrowserInstance, err error) bool {
+	if err == nil {
+		return false
+	}
+	if bp.riskPolicy != nil {
+		return bp.riskPolicy.OnFailure(instance, err)
+	}
+	return bp.errorDetector != nil && bp.errorDetector.IsBlockedOrSeriousError(err)
+}
+
+func (bp *BrowserPool) ShouldSyncRecreateAfterFailure(instance *BrowserInstance, err error) bool {
+	if err == nil {
+		return false
+	}
+	if bp.riskPolicy != nil {
+		return bp.riskPolicy.ShouldSyncRecreateAfterFailure(instance, err)
+	}
+	return bp.errorDetector != nil && bp.errorDetector.IsBlockedOrSeriousError(err)
 }
 
 // RecreateInstanceSync 同步重新创建浏览器实例（用于任务内重试）

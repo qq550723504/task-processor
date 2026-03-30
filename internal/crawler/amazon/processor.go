@@ -14,18 +14,21 @@ import (
 
 // AmazonProcessor Amazon爬虫处理器
 type AmazonProcessor struct {
-	browserPool     *browser.BrowserPool
-	poolManager     *browser.PoolManager
-	config          *config.Config
-	usePool         bool
-	singleProcessor *SingleProcessor
-	batchProcessor  *BatchProcessor
-	urlHelper       *URLHelper
-	productChecker  *ProductChecker
-	timeoutManager  *TimeoutManager
-	shutdownOnce    sync.Once    // 确保只关闭一次
-	closed          bool         // 标记是否已关闭
-	mu              sync.RWMutex // 保护 closed 字段
+	browserPool          *browser.BrowserPool
+	poolManager          *browser.PoolManager
+	config               *config.Config
+	usePool              bool
+	singleProcessor      *SingleProcessor
+	batchProcessor       *BatchProcessor
+	urlHelper            *URLHelper
+	productChecker       *ProductChecker
+	resultValidator      *ProductResultValidator
+	failureArtifactStore *FailureArtifactStore
+	timeoutManager       *TimeoutManager
+	qualityMetrics       *qualityMetrics
+	shutdownOnce         sync.Once    // 确保只关闭一次
+	closed               bool         // 标记是否已关闭
+	mu                   sync.RWMutex // 保护 closed 字段
 }
 
 // NewAmazonProcessor 使用全局配置创建Amazon处理器
@@ -73,20 +76,27 @@ func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 	}
 
 	singleProcessor := NewSingleProcessor(cfg, urlHelper, productChecker)
-	batchProcessor := NewBatchProcessor(urlHelper, productChecker)
+	batchProcessor := NewBatchProcessor(urlHelper, productChecker, cfg.Amazon.QualityControl)
 	timeoutManager := NewTimeoutManager(5 * time.Minute) // 默认5分钟超时
+	failureArtifactStore := NewFailureArtifactStore(cfg)
+	qualityMetrics := newQualityMetrics()
+	singleProcessor.SetQualityMetricsRecorder(qualityMetrics)
+	batchProcessor.SetQualityMetricsRecorder(qualityMetrics)
 
 	return &AmazonProcessor{
-		browserPool:     browserPool,
-		poolManager:     poolManager,
-		config:          cfg,
-		usePool:         usePool,
-		singleProcessor: singleProcessor,
-		batchProcessor:  batchProcessor,
-		urlHelper:       urlHelper,
-		productChecker:  productChecker,
-		timeoutManager:  timeoutManager,
-		closed:          false,
+		browserPool:          browserPool,
+		poolManager:          poolManager,
+		config:               cfg,
+		usePool:              usePool,
+		singleProcessor:      singleProcessor,
+		batchProcessor:       batchProcessor,
+		urlHelper:            urlHelper,
+		productChecker:       productChecker,
+		resultValidator:      NewProductResultValidator(),
+		failureArtifactStore: failureArtifactStore,
+		timeoutManager:       timeoutManager,
+		qualityMetrics:       qualityMetrics,
+		closed:               false,
 	}
 }
 
@@ -118,9 +128,19 @@ func (ap *AmazonProcessor) processWithPoolManager(ctx context.Context, url strin
 	timeout := 3 * time.Minute // 单个产品处理超时3分钟
 
 	// 创建实例处理器
-	processor := NewInstanceProcessor(ap.urlHelper, ap.productChecker)
+	processor := NewInstanceProcessor(ap.urlHelper, ap.productChecker, ap.resultValidator)
+	processor.SetFailureArtifactStore(ap.failureArtifactStore)
+	processor.SetQualityControlOptions(ap.config.Amazon.QualityControl.RetryOnValidationFailure, ap.config.Amazon.QualityControl.ValidationRetryMaxAttempts)
+	processor.SetQualityMetricsRecorder(ap.qualityMetrics)
 
 	return ap.poolManager.ProcessWithTimeout(ctx, url, zipcode, timeout, processor)
+}
+
+func (ap *AmazonProcessor) QualityStats() map[string]any {
+	if ap == nil || ap.qualityMetrics == nil {
+		return nil
+	}
+	return ap.qualityMetrics.Snapshot()
 }
 
 // ProcessBatch 批量处理多个Amazon产品页面

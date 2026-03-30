@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/core/config"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -41,6 +42,7 @@ func (m *mockProcessor) ProcessWithInstance(_ context.Context, _ *BrowserInstanc
 type mockPool struct {
 	available       chan *BrowserInstance
 	errorDetector   *ErrorDetector
+	riskPolicy      *riskPolicy
 	onRecreateSync  func(*BrowserInstance) *BrowserInstance
 	onRecreateAsync func(*BrowserInstance)
 }
@@ -50,6 +52,7 @@ func newMockPool(size int) *mockPool {
 		available:     make(chan *BrowserInstance, size),
 		errorDetector: NewErrorDetector(),
 	}
+	mp.riskPolicy = newRiskPolicy(&config.Config{}, mp.errorDetector)
 	for i := 0; i < size; i++ {
 		mp.available <- &BrowserInstance{ID: i}
 	}
@@ -58,6 +61,14 @@ func newMockPool(size int) *mockPool {
 
 func (mp *mockPool) IsBlockedOrSeriousError(err error) bool {
 	return mp.errorDetector.IsBlockedOrSeriousError(err)
+}
+
+func (mp *mockPool) ShouldSyncRecreateAfterFailure(instance *BrowserInstance, err error) bool {
+	return mp.riskPolicy.ShouldSyncRecreateAfterFailure(instance, err)
+}
+
+func (mp *mockPool) ShouldRecreateAfterFailure(instance *BrowserInstance, err error) bool {
+	return mp.riskPolicy.OnFailure(instance, err)
 }
 
 func (mp *mockPool) RecreateInstanceSync(old *BrowserInstance) *BrowserInstance {
@@ -77,6 +88,22 @@ func (mp *mockPool) Release(instance *BrowserInstance) {
 	if instance == nil {
 		return
 	}
+	if mp.riskPolicy != nil {
+		mp.riskPolicy.OnSuccess(instance)
+	}
+	instance.Mu.Lock()
+	instance.InUse = false
+	instance.Mu.Unlock()
+	select {
+	case mp.available <- instance:
+	default:
+	}
+}
+
+func (mp *mockPool) releaseWithoutReset(instance *BrowserInstance) {
+	if instance == nil {
+		return
+	}
 	instance.Mu.Lock()
 	instance.InUse = false
 	instance.Mu.Unlock()
@@ -88,8 +115,12 @@ func (mp *mockPool) Release(instance *BrowserInstance) {
 
 func (mp *mockPool) ReleaseWithError(instance *BrowserInstance, err error) {
 	// 测试中严重错误走 RecreateInstanceAsync，其余直接归还
-	if err != nil && mp.errorDetector.IsBlockedOrSeriousError(err) {
+	if err != nil && mp.riskPolicy.OnFailure(instance, err) {
 		mp.RecreateInstanceAsync(instance)
+		return
+	}
+	if err != nil {
+		mp.releaseWithoutReset(instance)
 		return
 	}
 	mp.Release(instance)
@@ -201,6 +232,49 @@ func TestProcessProduct_RecreateSync_Success_RetryAndRelease(t *testing.T) {
 	// 新实例（ID=99）应被归还
 	if len(mp.available) != 1 {
 		t.Fatalf("新实例应归还池中，期望 1，实际: %d", len(mp.available))
+	}
+}
+
+func TestProcessProduct_TimeoutNeedsThresholdBeforeRecreate(t *testing.T) {
+	mp := newMockPool(1)
+	mp.riskPolicy = newRiskPolicy(&config.Config{
+		Amazon: config.AmazonConfig{
+			RiskControl: config.AmazonRiskControlConfig{
+				CaptchaRecreateThreshold:        1,
+				AuthenticationRecreateThreshold: 1,
+				BrowserCrashRecreateThreshold:   1,
+				TimeoutRecreateThreshold:        2,
+				NetworkRecreateThreshold:        2,
+				ServerErrorRecreateThreshold:    2,
+			},
+		},
+	}, mp.errorDetector)
+	asyncCount := 0
+	mp.onRecreateAsync = func(_ *BrowserInstance) { asyncCount++ }
+
+	pm := newPoolManagerWithMock(mp)
+	proc := &mockProcessor{results: []mockCallResult{
+		{err: errors.New("navigation timeout exceeded")},
+		{err: errors.New("navigation timeout exceeded")},
+	}}
+
+	first := pm.processProduct(context.Background(), "http://example.com", "10001", proc, make(chan *BrowserInstance, 1))
+	if first.Error == nil {
+		t.Fatal("第一次调用期望返回超时错误")
+	}
+	if asyncCount != 0 {
+		t.Fatalf("第一次超时不应立即重建，实际重建次数=%d", asyncCount)
+	}
+	if len(mp.available) != 1 {
+		t.Fatalf("第一次超时后实例应归还池中，实际可用=%d", len(mp.available))
+	}
+
+	second := pm.processProduct(context.Background(), "http://example.com", "10001", proc, make(chan *BrowserInstance, 1))
+	if second.Error == nil {
+		t.Fatal("第二次调用期望返回超时错误")
+	}
+	if asyncCount != 1 {
+		t.Fatalf("第二次连续超时应触发重建，实际重建次数=%d", asyncCount)
 	}
 }
 

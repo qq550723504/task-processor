@@ -8,12 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/app/ports"
+	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
-	"task-processor/internal/product"
 	temupricing "task-processor/internal/temu/api/pricing"
 
 	"task-processor/internal/core/logger"
@@ -36,7 +35,7 @@ type PricingDecisionService struct {
 	storeConfig    StoreConfigProvider
 	dataService    ProductDataProvider
 	ruleCalculator PriceCalculator
-	productFetcher *product.ProductFetcher
+	productFetcher appfetcher.ProductFetcher
 	logger         *logrus.Entry
 
 	// 缓存相关
@@ -75,8 +74,7 @@ type PricingContext struct {
 func NewPricingDecisionService(
 	managementClient *management.ClientManager,
 	storeID int64,
-	amazonConfig *config.AmazonConfig,
-	amazonProcessor ports.ProductSource,
+	productFetcher appfetcher.ProductFetcher,
 	platformConfig *config.PlatformConfig,
 ) (DecisionMaker, error) {
 	config := &ServiceConfig{
@@ -91,15 +89,14 @@ func NewPricingDecisionService(
 		config.UseAmazonPrice = platformConfig.AutoPricing.UseAmazonPrice
 	}
 
-	return newPricingDecisionServiceWithConfig(managementClient, config, amazonConfig, amazonProcessor)
+	return newPricingDecisionServiceWithConfig(managementClient, config, productFetcher)
 }
 
 // newPricingDecisionServiceWithConfig 内部构造函数
 func newPricingDecisionServiceWithConfig(
 	managementClient *management.ClientManager,
 	config *ServiceConfig,
-	amazonConfig *config.AmazonConfig,
-	amazonProcessor ports.ProductSource,
+	productFetcher appfetcher.ProductFetcher,
 ) (DecisionMaker, error) {
 	if managementClient == nil {
 		return nil, errors.New("managementClient不能为空")
@@ -118,15 +115,6 @@ func newPricingDecisionServiceWithConfig(
 
 	dataService := NewPricingDataService(managementClient, logger)
 	ruleCalculator := NewPricingRuleCalculator(logger)
-
-	// 创建ProductFetcher用于获取Amazon产品数据
-	var productFetcher *product.ProductFetcher
-	if amazonConfig != nil && amazonProcessor != nil {
-		rawJsonDataClient := managementClient.GetRawJsonDataAdapter()
-		if rawJsonDataClient != nil {
-			productFetcher = product.NewProductFetcher(rawJsonDataClient, amazonConfig, amazonProcessor)
-		}
-	}
 
 	return &PricingDecisionService{
 		config:         config,

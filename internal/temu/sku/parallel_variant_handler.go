@@ -6,9 +6,6 @@ import (
 	"fmt"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
-	"task-processor/internal/app/ports"
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/perf"
@@ -24,29 +21,15 @@ import (
 type ParallelVariantHandler struct {
 	logger         *logrus.Entry
 	productFetcher appProduct.ProductFetcher
-	amazonConfig   *config.AmazonConfig
 }
 
-// NewParallelVariantHandler 创建并行变体数据处理器（支持分布式获取器）
-func NewParallelVariantHandler(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
-	cfg *config.Config,
-	amazonProcessor ports.ProductSource,
-	rabbitmqClient *rabbitmq.Client,
-) *ParallelVariantHandler {
+// NewParallelVariantHandler 创建并行变体数据处理器。
+func NewParallelVariantHandler(fetcher appProduct.ProductFetcher) *ParallelVariantHandler {
 	logger := logger.GetGlobalLogger("ParallelVariantHandler")
-
-	factory := appProduct.NewFetcherFactory()
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
-	if err != nil {
-		logger.Errorf("创建产品获取器失败，降级到本地获取器: %v", err)
-		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
-	}
 
 	return &ParallelVariantHandler{
 		logger:         logger,
 		productFetcher: fetcher,
-		amazonConfig:   &cfg.Amazon,
 	}
 }
 

@@ -30,7 +30,7 @@ func (s *service) CreateProcessTask(ctx context.Context, req *ImageProcessReques
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
-	if s.taskSubmitter != nil {
+	if s.taskSubmitter != nil && shouldEnqueueTask(ctx) {
 		if err := s.taskSubmitter.Submit(task.ID); err != nil {
 			_ = s.taskRepo.UpdateTaskError(ctx, task.ID, fmt.Sprintf("failed to submit task: %v", err))
 			return nil, fmt.Errorf("failed to submit task: %w", err)

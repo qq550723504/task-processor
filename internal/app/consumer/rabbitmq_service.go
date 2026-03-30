@@ -158,6 +158,8 @@ func (s *RabbitMQService) SetQueueConfigs(configs []config.QueueConfig) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	configs = s.filterQueueConfigsByRole(configs)
+
 	// 转换为内部类型
 	queueConfigs := make([]rabbitmq.ConsumerQueueConfig, len(configs))
 	for i, cfg := range configs {
@@ -169,7 +171,7 @@ func (s *RabbitMQService) SetQueueConfigs(configs []config.QueueConfig) {
 	}
 
 	s.consumer.SetQueueConfigs(queueConfigs)
-	s.logger.Infof("设置队列配置: %d个队列", len(configs))
+	s.logger.Infof("设置队列配置: %d个队列, role=%s", len(configs), s.config.Node.NormalizedRole())
 }
 
 // Start 启动RabbitMQ服务
@@ -216,7 +218,7 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	}
 
 	// 4. 初始化店铺专属队列（如果配置了 ownedStores）
-	if len(s.ownedStores) > 0 {
+	if s.config.Node.HandlesTaskWork() && len(s.ownedStores) > 0 {
 		platforms := s.getRegisteredPlatforms()
 		for _, platform := range platforms {
 			if err := s.initializer.InitializeStoreQueues(platform, s.ownedStores); err != nil {
@@ -227,7 +229,7 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	}
 
 	// 4.1 初始化 region 爬虫队列（如果配置了 regions）
-	if len(s.config.Node.Regions) > 0 {
+	if s.config.Node.HandlesCrawlerWork() && len(s.config.Node.Regions) > 0 {
 		if err := s.initializer.InitializeRegionCrawlerQueues(s.config.Node.Regions); err != nil {
 			return fmt.Errorf("初始化 region 爬虫队列失败: %w", err)
 		}
@@ -269,6 +271,10 @@ func (s *RabbitMQService) registerMessageHandlers() {
 		isCrawler := platform == "amazon.crawler" || platform == "1688.crawler"
 
 		if isCrawler {
+			if !s.config.Node.HandlesCrawlerWork() {
+				s.logger.Infof("跳过爬虫处理器注册: platform=%s, role=%s", platform, s.config.Node.NormalizedRole())
+				continue
+			}
 			regions := s.config.Node.Regions
 			if len(regions) > 0 {
 				for _, region := range regions {
@@ -282,6 +288,11 @@ func (s *RabbitMQService) registerMessageHandlers() {
 				s.consumer.RegisterHandler(queueName, handler)
 				s.logger.Infof("注册爬虫处理器（全局队列）: 平台=%s", platform)
 			}
+			continue
+		}
+
+		if !s.config.Node.HandlesTaskWork() {
+			s.logger.Infof("跳过任务处理器注册: platform=%s, role=%s", platform, s.config.Node.NormalizedRole())
 			continue
 		}
 
@@ -301,6 +312,28 @@ func (s *RabbitMQService) registerMessageHandlers() {
 	if len(handlers) == 0 {
 		s.logger.Warn("没有注册任何消息处理器")
 	}
+}
+
+func (s *RabbitMQService) filterQueueConfigsByRole(configs []config.QueueConfig) []config.QueueConfig {
+	if len(configs) == 0 {
+		return configs
+	}
+
+	filtered := make([]config.QueueConfig, 0, len(configs))
+	for _, cfg := range configs {
+		if s.shouldUseQueueConfig(cfg.Name) {
+			filtered = append(filtered, cfg)
+		}
+	}
+	return filtered
+}
+
+func (s *RabbitMQService) shouldUseQueueConfig(name string) bool {
+	isCrawlerQueue := strings.Contains(strings.ToLower(name), ".crawler")
+	if isCrawlerQueue {
+		return s.config.Node.HandlesCrawlerWork()
+	}
+	return s.config.Node.HandlesTaskWork()
 }
 
 // getRegisteredPlatforms 获取已注册的非爬虫平台列表

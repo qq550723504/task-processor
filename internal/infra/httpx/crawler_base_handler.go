@@ -21,6 +21,7 @@ func (b *baseCrawlerHandler) registerCommonRoutes(mux *http.ServeMux, crawlHandl
 	mux.HandleFunc("/api/v1/tasks/", b.handleTask)
 	mux.HandleFunc("/api/v1/tasks", b.handleTasks)
 	mux.HandleFunc("/api/v1/stats", b.handleStats)
+	mux.HandleFunc("/metrics", b.handleMetrics)
 	mux.HandleFunc("/health", HealthHandler())
 	mux.HandleFunc("/ready", ReadyHandler(b.crawlerService))
 
@@ -72,4 +73,12 @@ func (b *baseCrawlerHandler) handleStats(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	Success(w, "查询成功", b.crawlerService.GetStats())
+}
+
+func (b *baseCrawlerHandler) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		MethodNotAllowed(w, "只支持 GET 方法")
+		return
+	}
+	writeMetricsResponse(w, b.crawlerService.GetStats())
 }

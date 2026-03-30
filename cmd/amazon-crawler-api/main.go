@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	configPath = flag.String("config", "config/config-prod.yaml", "配置文件路径")
+	configPath = flag.String("config", "config/config-amazon-crawler-api.yaml", "配置文件路径")
 	logLevel   = flag.String("log-level", "info", "日志级别")
 	port       = flag.Int("port", 8080, "API 服务端口")
 )
@@ -48,6 +48,14 @@ func main() {
 	if err != nil {
 		logger.Fatalf("load config failed: %v", err)
 	}
+	if err := appenv.ApplyLoggingConfig(logger, appenv.LoggingConfig{
+		Level:        cfg.Logging.Level,
+		Format:       cfg.Logging.Format,
+		File:         cfg.Logging.File,
+		SplitByLevel: cfg.Logging.SplitByLevel,
+	}); err != nil {
+		logger.Warnf("apply logging config failed: %v", err)
+	}
 
 	// 创建 API 服务
 	apiService := crawleramazon.NewAPIService(cfg, logger, *port)
@@ -61,6 +69,7 @@ func main() {
 	logger.Info("✅ Amazon 爬虫 API 服务启动完成")
 	logger.Infof("📊 API 地址: http://localhost:%d", *port)
 	logger.Info("📊 API 端点:")
+	logger.Info("   - POST   /api/v1/products/fetch - 同步抓取单个商品")
 	logger.Info("   - POST   /api/v1/crawl          - 提交爬虫任务")
 	logger.Info("   - GET    /api/v1/tasks/{id}     - 查询任务状态")
 	logger.Info("   - GET    /api/v1/tasks          - 查询所有任务")

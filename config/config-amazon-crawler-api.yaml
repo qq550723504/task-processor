@@ -1,0 +1,94 @@
+# Amazon crawler API standalone configuration
+# This file is dedicated to cmd/amazon-crawler-api and keeps crawler runtime
+# settings isolated from task/listing worker configuration.
+
+logging:
+  level: "INFO"
+  format: "text"
+  file: "logs/amazon-crawler-api.log"
+  split_by_level:
+    - levels: [error, fatal, panic]
+      file: logs/amazon-crawler-api-error.log
+    - levels: [warn]
+      file: logs/amazon-crawler-api-warn.log
+    - levels: [info]
+      file: logs/amazon-crawler-api-info.log
+    - levels: [debug, trace]
+      file: logs/amazon-crawler-api-debug.log
+
+browser:
+  enabled: true
+  headless: false
+  browserPath: "./chrome/chrome.exe"
+  poolSize: 4
+  viewportWidth: 1920
+  viewportHeight: 1080
+  proxyServer: ""
+
+amazon:
+  enabled: true
+  dataFreshnessDays: 15
+  crawlTimeout: 300
+  productDedupe:
+    lockTTLSeconds: 300
+    resultTTLSeconds: 600
+    waitTimeoutSeconds: 120
+    pollIntervalMillis: 500
+  failureArtifacts:
+    enabled: true
+    directory: "./tmp/amazon-failure-artifacts"
+    captureHTML: true
+    maxHTMLBytes: 262144
+  riskControl:
+    captchaRecreateThreshold: 1
+    authenticationRecreateThreshold: 1
+    browserCrashRecreateThreshold: 1
+    timeoutRecreateThreshold: 3
+    networkRecreateThreshold: 2
+    serverErrorRecreateThreshold: 3
+  regionGuard:
+    enabled: true
+    failureThreshold: 3
+    evaluationWindowSeconds: 300
+    cooldownSeconds: 180
+  qualityControl:
+    retryOnValidationFailure: true
+    validationRetryMaxAttempts: 2
+  remoteAPI:
+    enabled: false
+    baseURL: ""
+    timeout: 300
+  zipcodes:
+    us: "10001"
+    uk: "SW1A1AA"
+    de: "10115"
+    fr: "75001"
+    it: "00118"
+    es: "28001"
+    ca: "M5V2T6"
+    jp: "1000001"
+
+rabbitmq:
+  enabled: false
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+
+platforms:
+  temu:
+    enabled: false
+    schedulerEnabled: false
+  shein:
+    enabled: false
+    schedulerEnabled: false
+  alibaba1688:
+    enabled: false
+    timeout: 120
+    poolSize: 2
+
+updater:
+  enabled: false

@@ -32,36 +32,25 @@ func NewInventorySyncServiceFactory(managementClient *management.ClientManager) 
 // CreateInventorySyncService 创建库存监控服务
 func (f *InventorySyncServiceFactory) CreateInventorySyncService(
 	temuAPIClient client.ClientAPI,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
-) InventorySyncService {
+) (InventorySyncService, error) {
 	f.logger.Info("创建TEMU库存监控服务")
 
 	rawJsonDataClient := f.managementClient.GetRawJsonDataAdapter()
 	inventoryRecordClient := f.managementClient.GetInventoryRecordClient()
 
-	fetcherType := fetcher.LocalFetcher
-	if rabbitmqClient != nil {
-		fetcherType = fetcher.DistributedFetcher
-	}
 	productFetcher, err := fetcher.NewFetcherFactory().CreateFetcher(
-		fetcherType,
+		fetcher.DistributedFetcher,
 		rawJsonDataClient,
 		amazonConfig,
-		amazonProcessor,
+		crawlSource,
 		rabbitmqClient,
 	)
 	if err != nil {
-		f.logger.WithError(err).Warn("创建分布式获取器失败，降级为本地获取器")
-		productFetcher, _ = fetcher.NewFetcherFactory().CreateFetcher(
-			fetcher.LocalFetcher,
-			rawJsonDataClient,
-			amazonConfig,
-			amazonProcessor,
-			nil,
-		)
+		return nil, fmt.Errorf("create distributed product fetcher: %w", err)
 	}
 
 	service := NewInventorySyncService(
@@ -74,7 +63,7 @@ func (f *InventorySyncServiceFactory) CreateInventorySyncService(
 	)
 
 	f.logger.Info("TEMU库存监控服务创建完成")
-	return service
+	return service, nil
 }
 
 // ValidateConfig 验证配置

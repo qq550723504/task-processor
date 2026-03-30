@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	platformAmazon "task-processor/internal/amazon"
+	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
@@ -26,7 +27,8 @@ type PlatformRegistry struct {
 	config                 *config.Config
 	logger                 *logrus.Logger
 	managementClient       *management.ClientManager
-	sharedAmazonProcessor  *amazon.AmazonProcessor
+	sharedCrawlSource      *amazon.AmazonProcessor
+	sharedProductFetcher   appfetcher.ProductFetcher
 	rabbitmqClient         *rabbitmq.Client
 	enabledPlatforms       []string
 	processorCreators      ProcessorCreators
@@ -59,7 +61,7 @@ func (r *PlatformRegistry) RegisterAllProcessors(ctx context.Context, serviceMan
 	if r.rabbitmqClient != nil {
 		r.logger.Info("RabbitMQ client available for distributed fetching")
 	} else {
-		r.logger.Warn("RabbitMQ client unavailable, local fetching will be used")
+		r.logger.Warn("RabbitMQ client unavailable; distributed fetching is unavailable")
 	}
 
 	registrations := r.buildProcessorRegistrations()
@@ -98,7 +100,7 @@ func (r *PlatformRegistry) buildProcessorRegistrations() []processorRegistration
 		},
 		{
 			name:        "temu",
-			needsAmazon: true,
+			needsAmazon: false,
 			register: func(ctx context.Context, registry *PlatformRegistry, serviceManager *ServiceManager) error {
 				registry.logger.Info("registering TEMU processor")
 				creator := registry.processorCreators.TemuProcessorCreator
@@ -107,7 +109,7 @@ func (r *PlatformRegistry) buildProcessorRegistrations() []processorRegistration
 				}
 				temuProcessor, err := creator(ctx, registry.config, registry.logger, temu.Dependencies{
 					ManagementClient: registry.managementClient,
-					ProductSource:    registry.sharedAmazonProcessor,
+					ProductFetcher:   registry.sharedProductFetcher,
 					RabbitMQClient:   registry.rabbitmqClient,
 				})
 				if err != nil {
@@ -122,7 +124,7 @@ func (r *PlatformRegistry) buildProcessorRegistrations() []processorRegistration
 		},
 		{
 			name:        "shein",
-			needsAmazon: true,
+			needsAmazon: false,
 			register: func(ctx context.Context, registry *PlatformRegistry, serviceManager *ServiceManager) error {
 				registry.logger.Info("registering SHEIN processor")
 				creator := registry.processorCreators.SheinProcessorCreator
@@ -131,7 +133,7 @@ func (r *PlatformRegistry) buildProcessorRegistrations() []processorRegistration
 				}
 				sheinProcessor, err := creator(ctx, registry.config, registry.logger, pipeline.Dependencies{
 					ManagementClient: registry.managementClient,
-					ProductSource:    registry.sharedAmazonProcessor,
+					ProductFetcher:   registry.sharedProductFetcher,
 					RabbitMQClient:   registry.rabbitmqClient,
 				})
 				if err != nil {
@@ -157,7 +159,8 @@ func (r *PlatformRegistry) initializeSharedResources(needsAmazon bool) error {
 	}
 
 	r.managementClient = resources.ManagementClient
-	r.sharedAmazonProcessor = resources.AmazonProcessor
+	r.sharedCrawlSource = resources.CrawlSource
+	r.sharedProductFetcher = resources.ProductFetcher
 	r.logger.Info("shared resources initialized")
 	return nil
 }
@@ -249,7 +252,15 @@ func containsPlatform(platforms []string, platform string) bool {
 }
 
 func (r *PlatformRegistry) GetSharedAmazonProcessor() *amazon.AmazonProcessor {
-	return r.sharedAmazonProcessor
+	return r.sharedCrawlSource
+}
+
+func (r *PlatformRegistry) GetSharedCrawlSource() *amazon.AmazonProcessor {
+	return r.sharedCrawlSource
+}
+
+func (r *PlatformRegistry) GetSharedProductFetcher() appfetcher.ProductFetcher {
+	return r.sharedProductFetcher
 }
 
 func (r *PlatformRegistry) GetManagementClient() *management.ClientManager {

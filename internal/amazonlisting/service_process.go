@@ -2,6 +2,7 @@ package amazonlisting
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -14,10 +15,14 @@ func (s *service) ProcessListing(ctx context.Context, task *Task) (*AmazonListin
 		return nil, fmt.Errorf("task cannot be nil")
 	}
 	if err := s.repo.MarkProcessing(ctx, task.ID); err != nil {
+		if errors.Is(err, ErrTaskNotPending) {
+			return nil, ErrTaskNotPending
+		}
 		return nil, fmt.Errorf("failed to mark task as processing: %w", err)
 	}
 
-	productTask, err := s.productService.CreateGenerateTask(ctx, &productenrich.GenerateRequest{
+	inlineProductCtx := productenrich.WithInlineTaskExecution(ctx)
+	productTask, err := s.productService.CreateGenerateTask(inlineProductCtx, &productenrich.GenerateRequest{
 		ImageURLs:  task.Request.ImageURLs,
 		Text:       task.Request.Text,
 		ProductURL: task.Request.ProductURL,
@@ -41,7 +46,8 @@ func (s *service) ProcessListing(ctx context.Context, task *Task) (*AmazonListin
 			_ = s.repo.MarkFailed(ctx, task.ID, "image service is not configured")
 			return nil, fmt.Errorf("image service is not configured")
 		}
-		imageTask, err = s.imageService.CreateProcessTask(ctx, &productimage.ImageProcessRequest{
+		inlineImageCtx := productimage.WithInlineTaskExecution(ctx)
+		imageTask, err = s.imageService.CreateProcessTask(inlineImageCtx, &productimage.ImageProcessRequest{
 			ProductURL:  task.Request.ProductURL,
 			ImageURLs:   task.Request.ImageURLs,
 			Text:        task.Request.Text,

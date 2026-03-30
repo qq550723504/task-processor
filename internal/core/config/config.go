@@ -19,7 +19,10 @@ type envBinding struct {
 	Deprecated []string
 }
 
-var loadDotEnvOnce sync.Once
+var (
+	loadDotEnvMu      sync.Mutex
+	loadedDotEnvPaths = map[string]struct{}{}
+)
 
 type Config struct {
 	Logging      LoggingConfig      `yaml:"logging"`
@@ -68,14 +71,11 @@ func newViper() *viper.Viper {
 }
 
 func tryLoadDotEnv() {
-	loadDotEnvOnce.Do(func() {
-		for _, candidate := range dotEnvCandidates() {
-			if err := loadDotEnvFile(candidate); err == nil {
-				logger.GetGlobalLogger("core/config").Infof("loaded .env file: %s", candidate)
-				return
-			}
-		}
-	})
+	loadDotEnvCandidates(dotEnvCandidates())
+}
+
+func tryLoadDotEnvForConfig(configFile string) {
+	loadDotEnvCandidates(dotEnvCandidatesForConfig(configFile))
 }
 
 func dotEnvCandidates() []string {
@@ -103,6 +103,67 @@ func dotEnvCandidates() []string {
 		result = append(result, cleaned)
 	}
 	return result
+}
+
+func dotEnvCandidatesForConfig(configFile string) []string {
+	baseCandidates := dotEnvCandidates()
+	if strings.TrimSpace(configFile) == "" {
+		return baseCandidates
+	}
+
+	configDir := filepath.Dir(configFile)
+	configBase := strings.TrimSuffix(filepath.Base(configFile), filepath.Ext(configFile))
+	candidates := []string{
+		filepath.Join(configDir, ".env."+configBase),
+		filepath.Join(configDir, configBase+".env"),
+	}
+	candidates = append(candidates, baseCandidates...)
+
+	seen := make(map[string]struct{}, len(candidates))
+	result := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		cleaned := filepath.Clean(candidate)
+		if _, ok := seen[cleaned]; ok {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		result = append(result, cleaned)
+	}
+	return result
+}
+
+func loadDotEnvCandidates(candidates []string) {
+	for _, candidate := range candidates {
+		if loadDotEnvFileIfNeeded(candidate) {
+			logger.GetGlobalLogger("core/config").Infof("loaded .env file: %s", candidate)
+		}
+	}
+}
+
+func loadDotEnvFileIfNeeded(path string) bool {
+	cleaned := filepath.Clean(path)
+
+	loadDotEnvMu.Lock()
+	if _, ok := loadedDotEnvPaths[cleaned]; ok {
+		loadDotEnvMu.Unlock()
+		return false
+	}
+	loadDotEnvMu.Unlock()
+
+	if err := loadDotEnvFile(cleaned); err != nil {
+		return false
+	}
+
+	loadDotEnvMu.Lock()
+	loadedDotEnvPaths[cleaned] = struct{}{}
+	loadDotEnvMu.Unlock()
+	return true
+}
+
+func resetDotEnvLoadStateForTests() {
+	loadDotEnvMu.Lock()
+	defer loadDotEnvMu.Unlock()
+	loadedDotEnvPaths = map[string]struct{}{}
 }
 
 func loadDotEnvFile(path string) error {
@@ -181,6 +242,10 @@ func knownEnvBindings() map[string]envBinding {
 			Primary:    "TASK_PROCESSOR_MANAGEMENT_TENANT_ID",
 			Deprecated: []string{"MANAGEMENT_TENANT_ID"},
 		},
+		"management.storeIDs": {
+			Primary:    "TASK_PROCESSOR_MANAGEMENT_STORE_IDS",
+			Deprecated: []string{"MANAGEMENT_STORE_IDS"},
+		},
 		"openai.apiKey": {
 			Primary:    "TASK_PROCESSOR_OPENAI_API_KEY",
 			Deprecated: []string{"OPENAI_API_KEY"},
@@ -221,6 +286,18 @@ func knownEnvBindings() map[string]envBinding {
 			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_DEFAULT_CONDITION",
 			Deprecated: []string{"AMAZON_SPAPI_DEFAULT_CONDITION"},
 		},
+		"amazon.remoteAPI.enabled": {
+			Primary:    "TASK_PROCESSOR_AMAZON_REMOTE_API_ENABLED",
+			Deprecated: []string{"AMAZON_REMOTE_API_ENABLED"},
+		},
+		"amazon.remoteAPI.baseURL": {
+			Primary:    "TASK_PROCESSOR_AMAZON_REMOTE_API_BASE_URL",
+			Deprecated: []string{"AMAZON_REMOTE_API_BASE_URL"},
+		},
+		"amazon.remoteAPI.timeout": {
+			Primary:    "TASK_PROCESSOR_AMAZON_REMOTE_API_TIMEOUT",
+			Deprecated: []string{"AMAZON_REMOTE_API_TIMEOUT"},
+		},
 		"rabbitmq.enabled": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_ENABLED",
 			Deprecated: []string{"RABBITMQ_ENABLED"},
@@ -232,6 +309,10 @@ func knownEnvBindings() map[string]envBinding {
 		"rabbitmq.node.maxConcurrency": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_MAX_CONCURRENCY",
 			Deprecated: []string{"RABBITMQ_NODE_MAX_CONCURRENCY"},
+		},
+		"rabbitmq.node.role": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_ROLE",
+			Deprecated: []string{"RABBITMQ_NODE_ROLE"},
 		},
 		"rabbitmq.node.healthCheckPort": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT",
@@ -387,6 +468,40 @@ func lookupKnownEnvInt(key string) (int, bool) {
 	return 0, false
 }
 
+func lookupKnownEnvInt64Slice(key string) ([]int64, bool) {
+	binding, ok := knownEnvBindings()[key]
+	if !ok {
+		return nil, false
+	}
+
+	candidates := append([]string{binding.Primary}, binding.Deprecated...)
+	for _, envKey := range candidates {
+		value, exists := os.LookupEnv(envKey)
+		if !exists || strings.TrimSpace(value) == "" {
+			continue
+		}
+
+		parts := strings.Split(value, ",")
+		result := make([]int64, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+
+			parsed, err := strconv.ParseInt(part, 10, 64)
+			if err != nil {
+				return nil, false
+			}
+			result = append(result, parsed)
+		}
+
+		return result, true
+	}
+
+	return nil, false
+}
+
 func applyEnvOverrides(cfg *Config) {
 	if cfg == nil {
 		return
@@ -408,6 +523,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if value, ok := lookupKnownEnvValue("management.tenantID"); ok {
 		cfg.Management.TenantID = value
+	}
+	if value, ok := lookupKnownEnvInt64Slice("management.storeIDs"); ok {
+		cfg.Management.StoreIDs = value
 	}
 
 	if value, ok := lookupKnownEnvValue("openai.apiKey"); ok {
@@ -440,6 +558,18 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if value, ok := lookupKnownEnvValue("amazon.spapi.defaultCondition"); ok {
 		cfg.Amazon.SPAPI.DefaultCondition = value
+	}
+	if value, ok := lookupKnownEnvValue("amazon.remoteAPI.enabled"); ok {
+		parsed, err := strconv.ParseBool(value)
+		if err == nil {
+			cfg.Amazon.RemoteAPI.Enabled = parsed
+		}
+	}
+	if value, ok := lookupKnownEnvValue("amazon.remoteAPI.baseURL"); ok {
+		cfg.Amazon.RemoteAPI.BaseURL = value
+	}
+	if value, ok := lookupKnownEnvInt("amazon.remoteAPI.timeout"); ok {
+		cfg.Amazon.RemoteAPI.Timeout = value
 	}
 
 	if value, ok := lookupKnownEnvValue("rabbitmq.enabled"); ok {
@@ -564,7 +694,7 @@ func LoadConfig() (*Config, error) {
 }
 
 func LoadConfigFromFile(configFile string) (*Config, error) {
-	tryLoadDotEnv()
+	tryLoadDotEnvForConfig(configFile)
 
 	logger.GetGlobalLogger("core/config").Infof("loading config file: %s", configFile)
 	logDeprecatedEnvUsage()

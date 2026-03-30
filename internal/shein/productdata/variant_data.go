@@ -6,10 +6,7 @@ import (
 	"strings"
 
 	appProduct "task-processor/internal/app/crawler/fetcher"
-	"task-processor/internal/app/ports"
-	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/perf"
 	"task-processor/internal/product"
@@ -21,31 +18,11 @@ import (
 type VariantJsonDataHandler struct {
 	logger         *logrus.Entry
 	productFetcher appProduct.ProductFetcher
-	amazonConfig   *config.AmazonConfig
 }
 
-func NewVariantJsonDataHandler(
-	rawJsonDataClient product.RawJsonDataClient,
-	cfg *config.Config,
-	amazonProcessor ports.ProductSource,
-	rabbitmqClient *rabbitmq.Client,
-) *VariantJsonDataHandler {
+func NewVariantJsonDataHandler(fetcher appProduct.ProductFetcher) *VariantJsonDataHandler {
 	logger := coreLogger.GetGlobalLogger("VariantJsonDataHandler")
-	factory := appProduct.NewFetcherFactory()
-
-	var fetcher appProduct.ProductFetcher
-	var err error
-	if amazonProcessor != nil {
-		fetcher, err = factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
-		if err != nil {
-			logger.Errorf("create product fetcher failed, fallback to local fetcher: %v", err)
-			fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
-		}
-	} else {
-		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, nil)
-	}
-
-	return &VariantJsonDataHandler{logger: logger, productFetcher: fetcher, amazonConfig: &cfg.Amazon}
+	return &VariantJsonDataHandler{logger: logger, productFetcher: fetcher}
 }
 
 func (h *VariantJsonDataHandler) Name() string {

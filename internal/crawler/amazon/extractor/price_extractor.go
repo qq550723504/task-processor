@@ -5,6 +5,7 @@ import (
 	"strings"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
+	"time"
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
@@ -58,7 +59,9 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 	}
 
 	// 提取价格文本
+	priceTextStartedAt := time.Now()
 	priceText := e.extractPriceText(page)
+	logger.GetGlobalLogger("crawler/amazon").Infof("价格文本提取完成 (耗时=%s)", time.Since(priceTextStartedAt).Round(time.Millisecond))
 	if priceText == "" {
 		logger.GetGlobalLogger("crawler/amazon").Warn("未找到价格信息，使用默认值")
 		product.FinalPrice = 0
@@ -99,7 +102,9 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 	}
 
 	// 提取原价（list price）
+	listPriceStartedAt := time.Now()
 	e.listPriceExt.ExtractListPrice(page, product)
+	logger.GetGlobalLogger("crawler/amazon").Infof("原价提取完成 (耗时=%s)", time.Since(listPriceStartedAt).Round(time.Millisecond))
 
 	return nil
 }

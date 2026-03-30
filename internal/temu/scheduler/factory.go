@@ -53,14 +53,14 @@ type TemuTaskFactory struct {
 
 func NewTemuTaskFactory(
 	managementClient *management.ClientManager,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) *TemuTaskFactory {
 	return NewTemuTaskFactoryWithDependencies(
 		managementClient,
-		amazonProcessor,
+		crawlSource,
 		amazonConfig,
 		monitorConfig,
 		rabbitmqClient,
@@ -71,18 +71,39 @@ func NewTemuTaskFactory(
 	)
 }
 
+func NewTemuTaskFactoryWithFetcherBuilder(
+	managementClient *management.ClientManager,
+	fetcherBuilder platformbase.ProductFetcherBuilder,
+	amazonConfig *config.AmazonConfig,
+	monitorConfig *config.MonitorConfig,
+	rabbitmqClient *rabbitmq.Client,
+) *TemuTaskFactory {
+	return NewTemuTaskFactoryWithDependencies(
+		managementClient,
+		nil,
+		amazonConfig,
+		monitorConfig,
+		rabbitmqClient,
+		Dependencies{
+			ClientManager:  client.NewAPIClientManager(managementClient),
+			FetcherBuilder: fetcherBuilder,
+		},
+	)
+}
+
 func NewTemuTaskFactoryWithDependencies(
 	managementClient *management.ClientManager,
-	amazonProcessor ports.ProductSource,
+	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
 	deps Dependencies,
 ) *TemuTaskFactory {
+	_ = crawlSource
 	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
 		Platform:         "TEMU",
 		ManagementClient: managementClient,
-		AmazonProcessor:  amazonProcessor,
+		FetcherBuilder:   deps.FetcherBuilder,
 		AmazonConfig:     amazonConfig,
 		MonitorConfig:    monitorConfig,
 	})
@@ -91,14 +112,11 @@ func NewTemuTaskFactoryWithDependencies(
 		BaseFactory:    baseFactory,
 		clientManager:  deps.ClientManager,
 		rabbitmqClient: rabbitmqClient,
-		fetcherBuilder: deps.FetcherBuilder,
+		fetcherBuilder: baseFactory.GetFetcherBuilder(),
 	}
 
 	if factory.clientManager == nil {
 		factory.clientManager = client.NewAPIClientManager(managementClient)
-	}
-	if factory.fetcherBuilder == nil {
-		factory.fetcherBuilder = platformbase.NewDefaultProductFetcherBuilder()
 	}
 	factory.pricingServiceBuilder = deps.PricingServiceBuilder
 	if factory.pricingServiceBuilder == nil {
@@ -226,15 +244,9 @@ func defaultBuildTemuInventoryService(config appscheduler.TaskConfig, factory *T
 		return nil, fmt.Errorf("get TEMU API client: %w", err)
 	}
 
-	rawJSONDataClient := factory.GetManagementClient().GetRawJsonDataAdapter()
 	inventoryRecordClient := factory.GetManagementClient().GetInventoryRecordClient()
 
-	productFetcher, err := factory.fetcherBuilder.Build(
-		rawJSONDataClient,
-		factory.GetAmazonConfig(),
-		factory.GetAmazonProcessor(),
-		factory.rabbitmqClient,
-	)
+	productFetcher, err := factory.BuildProductFetcher(factory.rabbitmqClient)
 	if err != nil {
 		return nil, fmt.Errorf("create product fetcher: %w", err)
 	}
@@ -244,7 +256,7 @@ func defaultBuildTemuInventoryService(config appscheduler.TaskConfig, factory *T
 		temuAPIClient,
 		productFetcher,
 		factory.GetMonitorConfig(),
-		rawJSONDataClient,
+		factory.GetManagementClient().GetRawJsonDataAdapter(),
 		inventoryRecordClient,
 	)
 

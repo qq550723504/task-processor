@@ -49,6 +49,9 @@ func (r *MemTaskRepository) MarkProcessing(_ context.Context, taskID string) err
 	if !ok {
 		return fmt.Errorf("task not found: %s", taskID)
 	}
+	if task.Status != productenrich.TaskStatusPending {
+		return productenrich.ErrTaskNotPending
+	}
 	task.Status = productenrich.TaskStatusProcessing
 	task.Error = ""
 	return nil

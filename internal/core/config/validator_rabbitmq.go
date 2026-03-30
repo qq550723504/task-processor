@@ -41,6 +41,13 @@ func ValidateRabbitMQConfig(rabbitmq *RabbitMQConfig) []error {
 			Hint:    "set rabbitmq.node.maxConcurrency in YAML or export TASK_PROCESSOR_RABBITMQ_NODE_MAX_CONCURRENCY",
 		})
 	}
+	if !rabbitmq.Node.HasValidRole() {
+		errors = append(errors, &ValidationError{
+			Field:   "rabbitmq.node.role",
+			Message: "RabbitMQ node role must be one of task, crawler, hybrid",
+			Hint:    "set rabbitmq.node.role in YAML or export TASK_PROCESSOR_RABBITMQ_NODE_ROLE",
+		})
+	}
 	if rabbitmq.Node.HealthCheckPort <= 0 {
 		errors = append(errors, &ValidationError{
 			Field:   "rabbitmq.node.healthCheckPort",

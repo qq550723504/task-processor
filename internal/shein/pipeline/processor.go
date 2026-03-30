@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/app/ports"
+	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/app/processor"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
@@ -20,17 +20,17 @@ import (
 
 type Dependencies struct {
 	ManagementClient *management.ClientManager
-	ProductSource    ports.ProductSource
+	ProductFetcher   appfetcher.ProductFetcher
 	RabbitMQClient   *rabbitmq.Client
 }
 
 type SheinProcessor struct {
 	*processor.BaseProcessor
-	amazonProcessor ports.ProductSource
-	rabbitmqClient  *rabbitmq.Client
-	taskHandler     *TaskHandler
-	pipeline        *Pipeline
-	aiCache         *aicache.Cache
+	productFetcher appfetcher.ProductFetcher
+	rabbitmqClient *rabbitmq.Client
+	taskHandler    *TaskHandler
+	pipeline       *Pipeline
+	aiCache        *aicache.Cache
 }
 
 func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, deps Dependencies) (*SheinProcessor, error) {
@@ -38,15 +38,15 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 		logger.Error("[SHEIN] ManagementClient is required")
 		return nil, fmt.Errorf("managementClient is required")
 	}
-	if deps.ProductSource == nil {
-		logger.Error("[SHEIN] ProductSource is required")
-		return nil, fmt.Errorf("productSource is required")
+	if deps.ProductFetcher == nil {
+		logger.Error("[SHEIN] ProductFetcher is required")
+		return nil, fmt.Errorf("productFetcher is required")
 	}
 
 	if deps.RabbitMQClient != nil {
 		logger.Info("[SHEIN] using RabbitMQ client for distributed fetching")
 	} else {
-		logger.Warn("[SHEIN] RabbitMQ client not provided, using local fetching")
+		logger.Warn("[SHEIN] RabbitMQ client not provided; distributed fetching is unavailable")
 	}
 
 	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
@@ -57,9 +57,9 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 	})
 
 	p := &SheinProcessor{
-		BaseProcessor:   baseProcessor,
-		amazonProcessor: deps.ProductSource,
-		rabbitmqClient:  deps.RabbitMQClient,
+		BaseProcessor:  baseProcessor,
+		productFetcher: deps.ProductFetcher,
+		rabbitmqClient: deps.RabbitMQClient,
 	}
 
 	if cfg.Database == nil {
@@ -105,8 +105,8 @@ func (p *SheinProcessor) GetAICache() *aicache.Cache {
 	return p.aiCache
 }
 
-func (p *SheinProcessor) GetAmazonProcessor() ports.ProductSource {
-	return p.amazonProcessor
+func (p *SheinProcessor) GetProductFetcher() appfetcher.ProductFetcher {
+	return p.productFetcher
 }
 
 func (p *SheinProcessor) Close(ctx context.Context) {

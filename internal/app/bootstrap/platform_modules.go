@@ -4,12 +4,12 @@ import (
 	"context"
 
 	"task-processor/internal/app/consumer"
-	"task-processor/internal/app/ports"
 	"task-processor/internal/app/runner"
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platformbase"
 	"task-processor/internal/shein/pipeline"
 	sheinscheduler "task-processor/internal/shein/scheduler"
 	"task-processor/internal/temu"
@@ -31,7 +31,7 @@ type processorModule struct {
 type schedulerModule struct {
 	name   string
 	assign func(runner.SchedulerDependencies, runner.TaskFactoryCreator) runner.SchedulerDependencies
-	build  func(*management.ClientManager, *config.Config, ports.ProductSource, *rabbitmq.Client) runner.TaskFactoryCreator
+	build  func(*management.ClientManager, *config.Config, platformbase.ProductFetcherBuilder, *rabbitmq.Client) runner.TaskFactoryCreator
 }
 
 func platformProcessorModules() []processorModule {
@@ -71,15 +71,15 @@ func platformSchedulerModules() []schedulerModule {
 				deps.TemuFactoryCreator = creator
 				return deps
 			},
-			build: func(managementClient *management.ClientManager, fallbackCfg *config.Config, amazonProcessor ports.ProductSource, rabbitmqClient *rabbitmq.Client) runner.TaskFactoryCreator {
+			build: func(managementClient *management.ClientManager, fallbackCfg *config.Config, fetcherBuilder platformbase.ProductFetcherBuilder, rabbitmqClient *rabbitmq.Client) runner.TaskFactoryCreator {
 				return func(currentCfg *config.Config) appscheduler.TaskFactory {
 					effectiveCfg := currentCfg
 					if effectiveCfg == nil {
 						effectiveCfg = fallbackCfg
 					}
-					return temuscheduler.NewTemuTaskFactory(
+					return temuscheduler.NewTemuTaskFactoryWithFetcherBuilder(
 						managementClient,
-						amazonProcessor,
+						fetcherBuilder,
 						&effectiveCfg.Amazon,
 						&effectiveCfg.Platforms.Temu.Monitor,
 						rabbitmqClient,
@@ -93,15 +93,15 @@ func platformSchedulerModules() []schedulerModule {
 				deps.SheinFactoryCreator = creator
 				return deps
 			},
-			build: func(managementClient *management.ClientManager, fallbackCfg *config.Config, amazonProcessor ports.ProductSource, rabbitmqClient *rabbitmq.Client) runner.TaskFactoryCreator {
+			build: func(managementClient *management.ClientManager, fallbackCfg *config.Config, fetcherBuilder platformbase.ProductFetcherBuilder, rabbitmqClient *rabbitmq.Client) runner.TaskFactoryCreator {
 				return func(currentCfg *config.Config) appscheduler.TaskFactory {
 					effectiveCfg := currentCfg
 					if effectiveCfg == nil {
 						effectiveCfg = fallbackCfg
 					}
-					return sheinscheduler.NewSheinTaskFactory(
+					return sheinscheduler.NewSheinTaskFactoryWithFetcherBuilder(
 						managementClient,
-						amazonProcessor,
+						fetcherBuilder,
 						&effectiveCfg.Amazon,
 						&effectiveCfg.Platforms.Shein.Monitor,
 						rabbitmqClient,

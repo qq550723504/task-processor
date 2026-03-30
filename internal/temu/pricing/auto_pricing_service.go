@@ -41,7 +41,7 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRules(managementClient 
 
 	// 使用基础决策服务
 	s.logger.Info("使用基础决策服务处理待核价商品")
-	decisionService, err := NewPricingDecisionService(managementClient, s.apiClient.GetStoreID(), nil, nil, nil)
+	decisionService, err := NewPricingDecisionService(managementClient, s.apiClient.GetStoreID(), nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建决策服务失败: %w", err)
 	}

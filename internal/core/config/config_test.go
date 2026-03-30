@@ -32,6 +32,16 @@ func TestAmazonConfigDefaults(t *testing.T) {
 
 	assert.False(t, v.GetBool("amazon.enabled"))
 	assert.Equal(t, 7, v.GetInt("amazon.dataFreshnessDays"))
+	assert.Equal(t, 1, v.GetInt("amazon.riskControl.captchaRecreateThreshold"))
+	assert.Equal(t, 1, v.GetInt("amazon.riskControl.authenticationRecreateThreshold"))
+	assert.Equal(t, 1, v.GetInt("amazon.riskControl.browserCrashRecreateThreshold"))
+	assert.Equal(t, 3, v.GetInt("amazon.riskControl.timeoutRecreateThreshold"))
+	assert.True(t, v.GetBool("amazon.regionGuard.enabled"))
+	assert.Equal(t, 3, v.GetInt("amazon.regionGuard.failureThreshold"))
+	assert.Equal(t, 300, v.GetInt("amazon.regionGuard.evaluationWindowSeconds"))
+	assert.Equal(t, 180, v.GetInt("amazon.regionGuard.cooldownSeconds"))
+	assert.True(t, v.GetBool("amazon.qualityControl.retryOnValidationFailure"))
+	assert.Equal(t, 2, v.GetInt("amazon.qualityControl.validationRetryMaxAttempts"))
 	assert.False(t, v.GetBool("amazon.spapi.enabled"))
 	assert.Equal(t, "us-east-1", v.GetString("amazon.spapi.region"))
 	assert.Equal(t, "ATVPDKIKX0DER", v.GetString("amazon.spapi.defaultMarketplace"))
@@ -52,6 +62,15 @@ func TestRabbitMQConfigDefaults(t *testing.T) {
 	assert.Equal(t, 8081, v.GetInt("rabbitmq.node.healthCheckPort"))
 	assert.Equal(t, 8082, v.GetInt("rabbitmq.node.metricsPort"))
 	assert.Equal(t, "info", v.GetString("rabbitmq.node.logLevel"))
+}
+
+func TestAlibaba1688ConfigDefaults(t *testing.T) {
+	v := viper.New()
+	setDefaults(v)
+
+	assert.False(t, v.GetBool("platforms.alibaba1688.enabled"))
+	assert.Equal(t, 120, v.GetInt("platforms.alibaba1688.timeout"))
+	assert.Equal(t, 2, v.GetInt("platforms.alibaba1688.poolSize"))
 }
 
 func TestConfigBuild(t *testing.T) {
@@ -130,6 +149,24 @@ func TestConfigValidation(t *testing.T) {
 			Enabled:           true,
 			DataFreshnessDays: 7,
 			CrawlTimeout:      30,
+			RiskControl: AmazonRiskControlConfig{
+				CaptchaRecreateThreshold:        1,
+				AuthenticationRecreateThreshold: 1,
+				BrowserCrashRecreateThreshold:   1,
+				TimeoutRecreateThreshold:        3,
+				NetworkRecreateThreshold:        2,
+				ServerErrorRecreateThreshold:    3,
+			},
+			RegionGuard: AmazonRegionGuardConfig{
+				Enabled:                 true,
+				FailureThreshold:        3,
+				EvaluationWindowSeconds: 300,
+				CooldownSeconds:         180,
+			},
+			QualityControl: AmazonQualityControlConfig{
+				RetryOnValidationFailure:   true,
+				ValidationRetryMaxAttempts: 2,
+			},
 		},
 		Platforms: PlatformsConfig{
 			Temu: PlatformConfig{

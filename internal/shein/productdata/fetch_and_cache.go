@@ -2,10 +2,7 @@ package productdata
 
 import (
 	appProduct "task-processor/internal/app/crawler/fetcher"
-	"task-processor/internal/app/ports"
-	"task-processor/internal/core/config"
 	coreLogger "task-processor/internal/core/logger"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/product"
 	shein "task-processor/internal/shein"
 
@@ -17,22 +14,8 @@ type FetchAndCacheProductHandler struct {
 	logger  *logrus.Entry
 }
 
-func NewFetchAndCacheProductHandler(
-	rawJsonDataClient product.RawJsonDataClient,
-	cfg *config.Config,
-	amazonProcessor ports.ProductSource,
-	rabbitmqClient *rabbitmq.Client,
-) *FetchAndCacheProductHandler {
-	logger := coreLogger.GetGlobalLogger("FetchAndCacheProductHandler")
-
-	factory := appProduct.NewFetcherFactory()
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
-	if err != nil {
-		logger.Errorf("create product fetcher failed, fallback to local fetcher: %v", err)
-		fetcher = product.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
-	}
-
-	return &FetchAndCacheProductHandler{fetcher: fetcher, logger: logger}
+func NewFetchAndCacheProductHandler(fetcher appProduct.ProductFetcher) *FetchAndCacheProductHandler {
+	return &FetchAndCacheProductHandler{fetcher: fetcher, logger: coreLogger.GetGlobalLogger("FetchAndCacheProductHandler")}
 }
 
 func (h *FetchAndCacheProductHandler) Name() string {

@@ -12,16 +12,20 @@ import (
 
 func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_MANAGEMENT_TENANT_ID", "tenant-123")
+	t.Setenv("TASK_PROCESSOR_MANAGEMENT_STORE_IDS", "101, 202,303")
 	t.Setenv("TASK_PROCESSOR_AMAZON_SPAPI_CLIENT_ID", "amzn-client")
 	t.Setenv("TASK_PROCESSOR_AMAZON_SPAPI_DEFAULT_MARKETPLACE", "ATVPDKIKX0DER")
+	t.Setenv("TASK_PROCESSOR_AMAZON_REMOTE_API_BASE_URL", "http://crawler.internal:8080")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT", "18081")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_METRICS_PORT", "19090")
 
 	v := newViper()
 
 	assert.Equal(t, "tenant-123", v.GetString("management.tenantID"))
+	assert.Equal(t, []int64{101, 202, 303}, getInt64Slice(v, "management.storeIDs"))
 	assert.Equal(t, "amzn-client", v.GetString("amazon.spapi.clientID"))
 	assert.Equal(t, "ATVPDKIKX0DER", v.GetString("amazon.spapi.defaultMarketplace"))
+	assert.Equal(t, "http://crawler.internal:8080", v.GetString("amazon.remoteAPI.baseURL"))
 	assert.Equal(t, 18081, v.GetInt("rabbitmq.node.healthCheckPort"))
 	assert.Equal(t, 19090, v.GetInt("rabbitmq.node.metricsPort"))
 }
@@ -129,6 +133,7 @@ func TestLoadDotEnvFile_DoesNotOverrideExistingEnvironmentVariables(t *testing.T
 
 func TestLoadFromBytes_AppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "env-management-secret")
+	t.Setenv("TASK_PROCESSOR_MANAGEMENT_STORE_IDS", "11,22")
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "env-openai-key")
 
 	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
@@ -148,6 +153,47 @@ func TestLoadFromBytes_AppliesEnvironmentOverrides(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "env-management-secret", cfg.Management.ClientSecret)
+	assert.Equal(t, []int64{11, 22}, cfg.Management.StoreIDs)
 	assert.Equal(t, "env-openai-key", cfg.OpenAI.APIKey)
 	assert.Equal(t, "env-openai-key", cfg.OpenAI.ToClientConfigs()["vision"].APIKey)
+}
+
+func TestDotEnvCandidatesForConfig_PrioritizesScopedEnvFile(t *testing.T) {
+	candidates := dotEnvCandidatesForConfig(filepath.Join("config", "config-amazon-crawler-api.yaml"))
+
+	require.NotEmpty(t, candidates)
+	assert.Equal(t, filepath.Clean(filepath.Join("config", ".env.config-amazon-crawler-api")), candidates[0])
+	assert.Equal(t, filepath.Clean(filepath.Join("config", "config-amazon-crawler-api.env")), candidates[1])
+}
+
+func TestLoadDotEnvCandidates_LoadsScopedEnvBeforeSharedDotEnv(t *testing.T) {
+	resetDotEnvLoadStateForTests()
+	t.Cleanup(func() {
+		resetDotEnvLoadStateForTests()
+		_ = os.Unsetenv("TASK_PROCESSOR_PLATFORM_1688_ENABLED")
+		_ = os.Unsetenv("TASK_PROCESSOR_OPENAI_API_KEY")
+	})
+
+	tempDir := t.TempDir()
+	configDir := filepath.Join(tempDir, "config")
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+
+	sharedEnvPath := filepath.Join(tempDir, ".env")
+	scopedEnvPath := filepath.Join(configDir, ".env.config-amazon-crawler-api")
+
+	require.NoError(t, os.WriteFile(sharedEnvPath, []byte(strings.Join([]string{
+		"TASK_PROCESSOR_PLATFORM_1688_ENABLED=true",
+		"TASK_PROCESSOR_OPENAI_API_KEY=shared-key",
+	}, "\n")), 0o600))
+	require.NoError(t, os.WriteFile(scopedEnvPath, []byte(strings.Join([]string{
+		"TASK_PROCESSOR_PLATFORM_1688_ENABLED=false",
+	}, "\n")), 0o600))
+
+	_ = os.Unsetenv("TASK_PROCESSOR_PLATFORM_1688_ENABLED")
+	_ = os.Unsetenv("TASK_PROCESSOR_OPENAI_API_KEY")
+
+	loadDotEnvCandidates([]string{scopedEnvPath, sharedEnvPath})
+
+	assert.Equal(t, "false", os.Getenv("TASK_PROCESSOR_PLATFORM_1688_ENABLED"))
+	assert.Equal(t, "shared-key", os.Getenv("TASK_PROCESSOR_OPENAI_API_KEY"))
 }

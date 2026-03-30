@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	appProduct "task-processor/internal/app/crawler/fetcher"
-	"task-processor/internal/app/ports"
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	domainProduct "task-processor/internal/product"
@@ -25,31 +22,9 @@ type RawJsonDataHandlerV2 struct {
 
 // NewRawJsonDataHandlerV2 创建新的原始JSON数据处理器V2（支持分布式获取器）
 func NewRawJsonDataHandlerV2(
-	rawJsonDataClient domainProduct.RawJsonDataClient,
-	cfg *config.Config,
-	amazonProcessor ports.ProductSource,
-	rabbitmqClient *rabbitmq.Client,
+	fetcher appProduct.ProductFetcher,
 ) *RawJsonDataHandlerV2 {
 	logger := logger.GetGlobalLogger("RawJsonDataHandlerV2")
-
-	// 使用工厂模式创建获取器
-	factory := appProduct.NewFetcherFactory()
-
-	// 诊断日志：打印关键条件
-	logger.Infof("🔍 [诊断] RabbitMQ配置: cfg.RabbitMQ=%v, Enabled=%v, rabbitmqClient=%v",
-		cfg.RabbitMQ != nil,
-		cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled,
-		rabbitmqClient != nil,
-	)
-
-	// 根据配置创建获取器
-	fetcher, err := factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, amazonProcessor, rabbitmqClient)
-	if err != nil {
-		logger.Errorf("创建产品获取器失败，使用本地获取器: %v", err)
-		// 降级到本地获取器
-		fetcher = domainProduct.NewProductFetcher(rawJsonDataClient, &cfg.Amazon, amazonProcessor)
-		logger.Warn("⚠️ [诊断] 已降级到本地获取器")
-	}
 
 	// 打印实际使用的获取器类型（通过 GetStats 判断）
 	if stats := fetcher.GetStats(); stats != nil {

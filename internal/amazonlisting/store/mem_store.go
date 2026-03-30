@@ -37,7 +37,18 @@ func (r *MemTaskRepository) GetTask(_ context.Context, taskID string) (*amazonli
 }
 
 func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {
-	return r.UpdateTaskStatus(ctx, taskID, amazonlisting.TaskStatusProcessing)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return amazonlisting.ErrTaskNotFound
+	}
+	if task.Status != amazonlisting.TaskStatusPending {
+		return amazonlisting.ErrTaskNotPending
+	}
+	task.Status = amazonlisting.TaskStatusProcessing
+	task.UpdatedAt = time.Now()
+	return nil
 }
 
 func (r *MemTaskRepository) MarkCompleted(ctx context.Context, taskID string, result *amazonlisting.AmazonListingDraft) error {

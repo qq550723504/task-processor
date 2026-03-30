@@ -67,12 +67,17 @@ func (ce *CompositeExtractor) ExtractWithContext(ctx context.Context, page playw
 	}
 
 	for _, extractor := range serialExtractors {
+		extractorName := getExtractorName(extractor)
+		startedAt := time.Now()
+		logger.GetGlobalLogger("crawler/amazon").Infof("提取器开始执行: %s", extractorName)
 		if err := extractor.Extract(page, product); err != nil {
-			logger.GetGlobalLogger("crawler/amazon").Infof("提取器执行失败 (%T): %v", extractor, err)
+			logger.GetGlobalLogger("crawler/amazon").Infof("提取器执行失败 (%s): %v (耗时=%s)", extractorName, err, time.Since(startedAt).Round(time.Millisecond))
 			if ce.errorDetector.IsCriticalError(err) {
 				logger.GetGlobalLogger("crawler/amazon").Infof("检测到关键错误，停止后续提取器执行: %v", err)
 				return err
 			}
+		} else {
+			logger.GetGlobalLogger("crawler/amazon").Infof("提取器执行完成: %s (耗时=%s)", extractorName, time.Since(startedAt).Round(time.Millisecond))
 		}
 	}
 
@@ -95,6 +100,11 @@ func (ce *CompositeExtractor) ExtractWithContext(ctx context.Context, page playw
 	// 定义处理函数
 	processFunc := func(ctx context.Context, task *goroutine.Task) (any, error) {
 		extractor := task.Data.(Extractor)
+		startedAt := time.Now()
+		logger.GetGlobalLogger("crawler/amazon").Infof("并行提取器开始执行: %s", task.ID)
+		defer func() {
+			logger.GetGlobalLogger("crawler/amazon").Infof("并行提取器执行结束: %s (耗时=%s)", task.ID, time.Since(startedAt).Round(time.Millisecond))
+		}()
 		return nil, extractor.Extract(page, product)
 	}
 
