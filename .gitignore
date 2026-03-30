@@ -60,3 +60,4 @@ logs
 .new
 .update-marker
 .gocache/
+tmp

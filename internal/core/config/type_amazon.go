@@ -11,6 +11,7 @@ type AmazonConfig struct {
 	RiskControl       AmazonRiskControlConfig    `yaml:"riskControl"`
 	RegionGuard       AmazonRegionGuardConfig    `yaml:"regionGuard"`
 	QualityControl    AmazonQualityControlConfig `yaml:"qualityControl"`
+	ProxyPool         AmazonProxyPoolConfig      `yaml:"proxyPool"`
 	RemoteAPI         RemoteAPIConfig            `yaml:"remoteAPI"`
 	SPAPI             SPAPIConfig                `yaml:"spapi"`
 	ConfigPaths       AmazonConfigPaths          `yaml:"configPaths"` // 业务配置文件路径（统一管理）
@@ -56,6 +57,13 @@ type AmazonRegionGuardConfig struct {
 type AmazonQualityControlConfig struct {
 	RetryOnValidationFailure   bool `yaml:"retryOnValidationFailure"`
 	ValidationRetryMaxAttempts int  `yaml:"validationRetryMaxAttempts"`
+}
+
+type AmazonProxyPoolConfig struct {
+	Enabled                bool     `yaml:"enabled"`
+	Strategy               string   `yaml:"strategy"`
+	FailureCooldownSeconds int      `yaml:"failureCooldownSeconds"`
+	Proxies                []string `yaml:"proxies"`
 }
 
 // AmazonConfigPaths Amazon业务配置文件路径

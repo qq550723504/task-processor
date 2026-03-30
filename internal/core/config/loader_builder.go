@@ -102,6 +102,12 @@ func BuildConfig(v *viper.Viper) *Config {
 				RetryOnValidationFailure:   v.GetBool("amazon.qualityControl.retryOnValidationFailure"),
 				ValidationRetryMaxAttempts: v.GetInt("amazon.qualityControl.validationRetryMaxAttempts"),
 			},
+			ProxyPool: AmazonProxyPoolConfig{
+				Enabled:                v.GetBool("amazon.proxyPool.enabled"),
+				Strategy:               v.GetString("amazon.proxyPool.strategy"),
+				FailureCooldownSeconds: v.GetInt("amazon.proxyPool.failureCooldownSeconds"),
+				Proxies:                v.GetStringSlice("amazon.proxyPool.proxies"),
+			},
 			RemoteAPI: RemoteAPIConfig{
 				Enabled: v.GetBool("amazon.remoteAPI.enabled"),
 				BaseURL: v.GetString("amazon.remoteAPI.baseURL"),

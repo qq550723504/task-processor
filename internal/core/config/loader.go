@@ -142,6 +142,11 @@ func NewDefaultConfig() *Config {
 				RetryOnValidationFailure:   true,
 				ValidationRetryMaxAttempts: 2,
 			},
+			ProxyPool: AmazonProxyPoolConfig{
+				Enabled:                false,
+				Strategy:               "round_robin",
+				FailureCooldownSeconds: 300,
+			},
 			RemoteAPI: RemoteAPIConfig{
 				Enabled: false,
 				BaseURL: "",
@@ -362,6 +367,12 @@ func applyDefaults(cfg *Config) {
 		}
 		if cfg.Amazon.QualityControl.ValidationRetryMaxAttempts == 0 {
 			cfg.Amazon.QualityControl.ValidationRetryMaxAttempts = defaultCfg.Amazon.QualityControl.ValidationRetryMaxAttempts
+		}
+		if cfg.Amazon.ProxyPool.Strategy == "" {
+			cfg.Amazon.ProxyPool.Strategy = defaultCfg.Amazon.ProxyPool.Strategy
+		}
+		if cfg.Amazon.ProxyPool.FailureCooldownSeconds == 0 {
+			cfg.Amazon.ProxyPool.FailureCooldownSeconds = defaultCfg.Amazon.ProxyPool.FailureCooldownSeconds
 		}
 	}
 	if cfg.ProductImage.WorkDir == "" {

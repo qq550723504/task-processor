@@ -20,6 +20,7 @@ type BrowserInstance struct {
 	InUse          bool
 	Closed         bool   // 已被超时路径关闭，不可再归还池
 	CurrentZipcode string // 当前设置的邮编，用于避免重复设置
+	CurrentProxy   string
 	Mu             sync.Mutex
 	riskState      instanceRiskState
 }
@@ -44,6 +45,7 @@ type BrowserPool struct {
 	healthChecker        *HealthChecker
 	errorDetector        *ErrorDetector
 	riskPolicy           *riskPolicy
+	proxyPool            *sharedbrowser.ProxyPool
 	shutdownOnce         sync.Once // 确保只关闭一次
 	closed               bool      // 标记是否已关闭
 }
@@ -94,6 +96,7 @@ func NewBrowserPool(cfg *config.Config, poolConfig *BrowserPoolConfig) *BrowserP
 	bp.healthChecker = NewHealthChecker(bp)
 	bp.errorDetector = NewErrorDetector()
 	bp.riskPolicy = newRiskPolicy(cfg, bp.errorDetector)
+	bp.proxyPool = newProxyPool(cfg)
 
 	return bp
 }
@@ -163,6 +166,9 @@ func (bp *BrowserPool) Release(instance *BrowserInstance) {
 	instance.Mu.Lock()
 	instance.InUse = false
 	instance.Mu.Unlock()
+	if bp.proxyPool != nil && instance.CurrentProxy != "" {
+		bp.proxyPool.MarkSuccess(instance.CurrentProxy)
+	}
 	if bp.riskPolicy != nil {
 		bp.riskPolicy.OnSuccess(instance)
 	}
@@ -196,6 +202,9 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 	instance.Mu.Lock()
 	instance.InUse = false
 	instance.Mu.Unlock()
+	if bp.proxyPool != nil && instance.CurrentProxy != "" {
+		bp.proxyPool.MarkFailure(instance.CurrentProxy)
+	}
 
 	// 检查池是否已关闭
 	bp.Mu.Lock()
@@ -244,6 +253,7 @@ func (bp *BrowserPool) ShouldSyncRecreateAfterFailure(instance *BrowserInstance,
 
 // RecreateInstanceSync 同步重新创建浏览器实例（用于任务内重试）
 func (bp *BrowserPool) RecreateInstanceSync(oldInstance *BrowserInstance) *BrowserInstance {
+	bp.markProxyFailure(oldInstance)
 	return bp.instanceManager.RecreateInstanceSync(oldInstance)
 }
 
@@ -329,4 +339,34 @@ func (bp *BrowserPool) UpdateInstance(oldInstance, newInstance *BrowserInstance)
 			break
 		}
 	}
+}
+
+func (bp *BrowserPool) AcquireProxy(instanceID int) string {
+	if bp == nil || bp.proxyPool == nil {
+		return ""
+	}
+	proxyServer := bp.proxyPool.Acquire()
+	if proxyServer == "" {
+		return ""
+	}
+	logProxyAssigned(instanceID, proxyServer, bp.config.Amazon.ProxyPool.Strategy)
+	return proxyServer
+}
+
+func (bp *BrowserPool) markProxyFailure(instance *BrowserInstance) {
+	if bp == nil || bp.proxyPool == nil || instance == nil {
+		return
+	}
+	if instance.CurrentProxy == "" {
+		return
+	}
+	bp.proxyPool.MarkFailure(instance.CurrentProxy)
+	logProxyCooldown(instance.CurrentProxy, bp.config.Amazon.ProxyPool.FailureCooldownSeconds)
+}
+
+func (bp *BrowserPool) ProxyStats() map[string]any {
+	if bp == nil || bp.proxyPool == nil {
+		return nil
+	}
+	return bp.proxyPool.Snapshot()
 }

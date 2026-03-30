@@ -107,6 +107,29 @@ func ValidateAmazonConfig(amazon *AmazonConfig) []error {
 				Hint:    "set a positive retry attempt count for amazon.qualityControl.validationRetryMaxAttempts",
 			})
 		}
+		if amazon.ProxyPool.Enabled {
+			if amazon.ProxyPool.Strategy == "" {
+				errors = append(errors, &ValidationError{
+					Field:   "amazon.proxyPool.strategy",
+					Message: "Amazon proxyPool strategy cannot be empty when enabled",
+					Hint:    "set amazon.proxyPool.strategy to round_robin",
+				})
+			}
+			if amazon.ProxyPool.FailureCooldownSeconds <= 0 {
+				errors = append(errors, &ValidationError{
+					Field:   "amazon.proxyPool.failureCooldownSeconds",
+					Message: "Amazon proxyPool failureCooldownSeconds must be greater than 0 when enabled",
+					Hint:    "set a positive cooldown in seconds for amazon.proxyPool.failureCooldownSeconds",
+				})
+			}
+			if len(amazon.ProxyPool.Proxies) == 0 {
+				errors = append(errors, &ValidationError{
+					Field:   "amazon.proxyPool.proxies",
+					Message: "Amazon proxyPool proxies cannot be empty when enabled",
+					Hint:    "configure at least one proxy server under amazon.proxyPool.proxies",
+				})
+			}
+		}
 	}
 
 	if amazon.RemoteAPI.Enabled {

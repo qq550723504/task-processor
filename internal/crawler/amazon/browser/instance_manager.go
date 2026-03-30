@@ -29,9 +29,20 @@ func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error) {
 	// 根据池配置决定使用的策略
 	strategy := im.pool.poolConfig.FingerprintStrategy
 	presetName := im.pool.poolConfig.PresetName
+	cfg := im.pool.GetConfig()
+	if cfg == nil {
+		return nil, fmt.Errorf("浏览器池配置为空")
+	}
+
+	selectedProxy := im.pool.AcquireProxy(id)
+	cfgCopy := *cfg
+	cfgCopy.Browser = cfg.Browser
+	if selectedProxy != "" {
+		cfgCopy.Browser.ProxyServer = selectedProxy
+	}
 
 	// 使用新的配置管理器创建管理器
-	manager := NewBrowserManagerWithConfig(im.pool.GetConfig(), strategy, presetName, id)
+	manager := NewBrowserManagerWithConfig(&cfgCopy, strategy, presetName, id)
 
 	// 如果启用随机指纹，为每个实例生成指纹
 	if im.pool.UseRandomFingerprint() && im.pool.GetFingerprintGenerator() != nil {
@@ -71,10 +82,11 @@ func (im *InstanceManager) CreateInstance(id int) (*BrowserInstance, error) {
 	}
 
 	return &BrowserInstance{
-		ID:      id,
-		Manager: manager,
-		Page:    page,
-		InUse:   false,
+		ID:           id,
+		Manager:      manager,
+		Page:         page,
+		InUse:        false,
+		CurrentProxy: selectedProxy,
 	}, nil
 }
 

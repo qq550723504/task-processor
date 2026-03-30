@@ -143,6 +143,13 @@ func (ap *AmazonProcessor) QualityStats() map[string]any {
 	return ap.qualityMetrics.Snapshot()
 }
 
+func (ap *AmazonProcessor) ProxyStats() map[string]any {
+	if ap == nil || ap.browserPool == nil {
+		return nil
+	}
+	return ap.browserPool.ProxyStats()
+}
+
 // ProcessBatch 批量处理多个Amazon产品页面
 func (ap *AmazonProcessor) ProcessBatch(requests []model.ProductRequest) []model.ProductResult {
 	// 检查处理器是否已关闭

@@ -147,6 +147,11 @@ func (s *Service) GetStats() map[string]any {
 				stats[key] = value
 			}
 		}
+		if proxyStats := s.amazonProcessor.ProxyStats(); proxyStats != nil {
+			for key, value := range proxyStats {
+				stats[key] = value
+			}
+		}
 	}
 	if s.regionGuard != nil {
 		stats["region_guard_open_state_by_region"] = s.regionGuard.Snapshot()

@@ -54,6 +54,11 @@ amazon:
   qualityControl:
     retryOnValidationFailure: true
     validationRetryMaxAttempts: 2
+  proxyPool:
+    enabled: false
+    strategy: "round_robin"
+    failureCooldownSeconds: 300
+    proxies: []
   remoteAPI:
     enabled: false
     baseURL: ""
