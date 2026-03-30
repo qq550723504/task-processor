@@ -20,6 +20,7 @@ const (
 	FetchErrorTypeProductQuality    = "product_quality"
 	FetchErrorTypeCrawlInProgress   = "crawl_in_progress"
 	FetchErrorTypeRegionCircuitOpen = "region_circuit_open"
+	FetchErrorTypeSystemBusy        = "system_busy"
 	FetchErrorTypeUnknown           = "unknown"
 )
 
@@ -90,6 +91,14 @@ func ClassifyFetchError(err error) *FetchError {
 	if strings.Contains(strings.ToLower(err.Error()), "crawl already in progress and shared result timed out") {
 		return &FetchError{
 			Type:      FetchErrorTypeCrawlInProgress,
+			Retryable: true,
+			Cause:     err,
+		}
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "crawler concurrency limit exceeded") ||
+		strings.Contains(strings.ToLower(err.Error()), "crawler concurrency acquire timeout") {
+		return &FetchError{
+			Type:      FetchErrorTypeSystemBusy,
 			Retryable: true,
 			Cause:     err,
 		}

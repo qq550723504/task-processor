@@ -176,3 +176,96 @@ func TestServiceFetchProductBlocksRegionWhenGuardIsOpen(t *testing.T) {
 		t.Fatalf("expected region_circuit_open, got %v", err)
 	}
 }
+
+func TestServiceFetchProductReturnsSystemBusyWhenConcurrencyAcquireTimesOut(t *testing.T) {
+	cfg := &config.Config{
+		Amazon: config.AmazonConfig{
+			Enabled:      true,
+			CrawlTimeout: 30,
+			ConcurrencyControl: config.AmazonConcurrencyControlConfig{
+				Enabled:               true,
+				MaxInFlight:           1,
+				MaxWaiting:            10,
+				AcquireTimeoutSeconds: 1,
+			},
+			Zipcodes: map[string]string{
+				"us": "10001",
+			},
+		},
+	}
+
+	service := &Service{
+		config:         cfg,
+		logger:         logrus.New(),
+		domainResolver: NewDomainResolver(),
+		metrics:        newServiceMetrics(),
+		regionGuard:    newRegionGuard(cfg.Amazon.RegionGuard),
+		concurrency:    newConcurrencyControl(cfg.Amazon.ConcurrencyControl),
+	}
+
+	blocker := make(chan struct{})
+	service.processProduct = func(ctx context.Context, url, zipcode string) (*model.Product, error) {
+		select {
+		case <-blocker:
+			return &model.Product{Asin: "B001", Title: "Demo Product", URL: url}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		_, _, _ = service.FetchProduct(context.Background(), "https://www.amazon.com/dp/B001", "", "us", "")
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	_, _, err := service.FetchProduct(ctx, "https://www.amazon.com/dp/B002", "", "us", "")
+	close(blocker)
+	<-firstDone
+
+	if err == nil {
+		t.Fatal("expected system busy error")
+	}
+
+	classified := ClassifyFetchError(err)
+	if classified == nil || classified.ErrorType() != FetchErrorTypeSystemBusy {
+		t.Fatalf("expected system_busy, got %v", err)
+	}
+}
+
+func TestServiceStatsIncludeConcurrencySnapshot(t *testing.T) {
+	cfg := &config.Config{
+		Amazon: config.AmazonConfig{
+			Enabled:      true,
+			CrawlTimeout: 30,
+			ConcurrencyControl: config.AmazonConcurrencyControlConfig{
+				Enabled:               true,
+				MaxInFlight:           2,
+				MaxWaiting:            5,
+				AcquireTimeoutSeconds: 5,
+				PerRegion: map[string]int{
+					"us": 1,
+				},
+			},
+		},
+	}
+
+	service := &Service{
+		config:      cfg,
+		logger:      logrus.New(),
+		metrics:     newServiceMetrics(),
+		concurrency: newConcurrencyControl(cfg.Amazon.ConcurrencyControl),
+	}
+
+	stats := service.GetStats()
+	if _, ok := stats["concurrency_global_limit"]; !ok {
+		t.Fatalf("expected concurrency stats in snapshot, got %#v", stats)
+	}
+	if _, ok := stats["concurrency_region_limit_by_region"]; !ok {
+		t.Fatalf("expected region concurrency stats in snapshot, got %#v", stats)
+	}
+}

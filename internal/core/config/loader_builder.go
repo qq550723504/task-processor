@@ -108,6 +108,13 @@ func BuildConfig(v *viper.Viper) *Config {
 				FailureCooldownSeconds: v.GetInt("amazon.proxyPool.failureCooldownSeconds"),
 				Proxies:                v.GetStringSlice("amazon.proxyPool.proxies"),
 			},
+			ConcurrencyControl: AmazonConcurrencyControlConfig{
+				Enabled:               v.GetBool("amazon.concurrencyControl.enabled"),
+				MaxInFlight:           v.GetInt("amazon.concurrencyControl.maxInFlight"),
+				MaxWaiting:            v.GetInt("amazon.concurrencyControl.maxWaiting"),
+				AcquireTimeoutSeconds: v.GetInt("amazon.concurrencyControl.acquireTimeoutSeconds"),
+				PerRegion:             getStringIntMap(v, "amazon.concurrencyControl.perRegion"),
+			},
 			RemoteAPI: RemoteAPIConfig{
 				Enabled: v.GetBool("amazon.remoteAPI.enabled"),
 				BaseURL: v.GetString("amazon.remoteAPI.baseURL"),
@@ -227,6 +234,28 @@ func buildOpenAIClients(v *viper.Viper) map[string]OpenAIClientConfig {
 		}
 	}
 	return clients
+}
+
+func getStringIntMap(v *viper.Viper, key string) map[string]int {
+	raw := v.GetStringMap(key)
+	if len(raw) == 0 {
+		return nil
+	}
+
+	result := make(map[string]int, len(raw))
+	for mapKey, value := range raw {
+		switch typed := value.(type) {
+		case int:
+			result[mapKey] = typed
+		case int64:
+			result[mapKey] = int(typed)
+		case float64:
+			result[mapKey] = int(typed)
+		case float32:
+			result[mapKey] = int(typed)
+		}
+	}
+	return result
 }
 
 func buildSplitByLevelConfig(v *viper.Viper) []logger.LevelFileConfig {

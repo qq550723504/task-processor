@@ -133,6 +133,9 @@ func (h *CrawlerHandler) handleFetchProduct(w http.ResponseWriter, r *http.Reque
 		if errorType == "product_not_found" {
 			statusCode = http.StatusNotFound
 		}
+		if errorType == "system_busy" {
+			statusCode = http.StatusTooManyRequests
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
 		_ = json.NewEncoder(w).Encode(JSON{

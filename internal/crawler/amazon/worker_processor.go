@@ -35,18 +35,14 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 		return err
 	}
 
-	product, err := p.service.amazonProcessor.Process(crawlerTask.URL, zipcode)
+	product, _, err := p.service.fetchProduct(ctx, "async_task", crawlerTask.URL, crawlerTask.ASIN, crawlerTask.Region, zipcode)
 	if err != nil {
-		p.service.recordRegionGuardFailure(region, err)
-		p.service.metrics.RecordFailure("async_task", region, err)
 		return err
 	}
 
 	p.service.UpdateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.ProductData = shared.ProductToMap(product)
 	})
-	p.service.recordRegionGuardSuccess(region)
-	p.service.metrics.RecordSuccess("async_task", region)
 
 	return nil
 }

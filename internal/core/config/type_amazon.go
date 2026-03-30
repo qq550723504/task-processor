@@ -2,19 +2,20 @@ package config
 
 // AmazonConfig Amazon爬虫配置
 type AmazonConfig struct {
-	Enabled           bool                       `yaml:"enabled"`
-	Zipcodes          map[string]string          `yaml:"zipcodes"`
-	DataFreshnessDays int                        `yaml:"dataFreshnessDays"`
-	CrawlTimeout      int                        `yaml:"crawlTimeout"` // 爬虫超时时间（秒）
-	ProductDedupe     ProductDedupeConfig        `yaml:"productDedupe"`
-	FailureArtifacts  FailureArtifactsConfig     `yaml:"failureArtifacts"`
-	RiskControl       AmazonRiskControlConfig    `yaml:"riskControl"`
-	RegionGuard       AmazonRegionGuardConfig    `yaml:"regionGuard"`
-	QualityControl    AmazonQualityControlConfig `yaml:"qualityControl"`
-	ProxyPool         AmazonProxyPoolConfig      `yaml:"proxyPool"`
-	RemoteAPI         RemoteAPIConfig            `yaml:"remoteAPI"`
-	SPAPI             SPAPIConfig                `yaml:"spapi"`
-	ConfigPaths       AmazonConfigPaths          `yaml:"configPaths"` // 业务配置文件路径（统一管理）
+	Enabled            bool                           `yaml:"enabled"`
+	Zipcodes           map[string]string              `yaml:"zipcodes"`
+	DataFreshnessDays  int                            `yaml:"dataFreshnessDays"`
+	CrawlTimeout       int                            `yaml:"crawlTimeout"` // 爬虫超时时间（秒）
+	ProductDedupe      ProductDedupeConfig            `yaml:"productDedupe"`
+	FailureArtifacts   FailureArtifactsConfig         `yaml:"failureArtifacts"`
+	RiskControl        AmazonRiskControlConfig        `yaml:"riskControl"`
+	RegionGuard        AmazonRegionGuardConfig        `yaml:"regionGuard"`
+	QualityControl     AmazonQualityControlConfig     `yaml:"qualityControl"`
+	ProxyPool          AmazonProxyPoolConfig          `yaml:"proxyPool"`
+	ConcurrencyControl AmazonConcurrencyControlConfig `yaml:"concurrencyControl"`
+	RemoteAPI          RemoteAPIConfig                `yaml:"remoteAPI"`
+	SPAPI              SPAPIConfig                    `yaml:"spapi"`
+	ConfigPaths        AmazonConfigPaths              `yaml:"configPaths"` // 业务配置文件路径（统一管理）
 
 }
 
@@ -64,6 +65,14 @@ type AmazonProxyPoolConfig struct {
 	Strategy               string   `yaml:"strategy"`
 	FailureCooldownSeconds int      `yaml:"failureCooldownSeconds"`
 	Proxies                []string `yaml:"proxies"`
+}
+
+type AmazonConcurrencyControlConfig struct {
+	Enabled               bool           `yaml:"enabled"`
+	MaxInFlight           int            `yaml:"maxInFlight"`
+	MaxWaiting            int            `yaml:"maxWaiting"`
+	AcquireTimeoutSeconds int            `yaml:"acquireTimeoutSeconds"`
+	PerRegion             map[string]int `yaml:"perRegion"`
 }
 
 // AmazonConfigPaths Amazon业务配置文件路径

@@ -40,6 +40,7 @@ type Service struct {
 	processProduct  func(ctx context.Context, url, zipcode string) (*model.Product, error)
 	metrics         *serviceMetrics
 	regionGuard     *regionGuard
+	concurrency     *concurrencyControl
 }
 
 // NewService 创建爬虫应用服务
@@ -57,6 +58,7 @@ func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
 		processProduct:  amazonProcessor.ProcessWithContext,
 		metrics:         newServiceMetrics(),
 		regionGuard:     newRegionGuard(cfg.Amazon.RegionGuard),
+		concurrency:     newConcurrencyControl(cfg.Amazon.ConcurrencyControl),
 	}
 
 	poolConfig := worker.DefaultPoolConfig()
@@ -97,40 +99,44 @@ func (s *Service) Stop(ctx context.Context) error {
 
 // FetchProduct 直接抓取单个商品，供同步 API 使用。
 func (s *Service) FetchProduct(ctx context.Context, url, asin, region, zipcode string) (*model.Product, string, error) {
+	return s.fetchProduct(ctx, "sync_api", url, asin, region, zipcode)
+}
+
+func (s *Service) fetchProduct(ctx context.Context, mode, url, asin, region, zipcode string) (*model.Product, string, error) {
 	url, zipcode, err := s.resolveFetchInputs(url, asin, region, zipcode)
 	if err != nil {
 		classified := ClassifyFetchError(err)
-		s.metrics.RecordFailure("sync_api", s.resolveMetricsRegion(region, url), classified)
+		s.metrics.RecordFailure(mode, s.resolveMetricsRegion(region, url), classified)
 		return nil, "", classified
 	}
 	metricsRegion := s.resolveMetricsRegion(region, url)
 
 	if s.dedupeStore == nil {
 		if err := s.checkRegionGuard(metricsRegion); err != nil {
-			s.metrics.RecordFailure("sync_api", metricsRegion, err)
+			s.metrics.RecordFailure(mode, metricsRegion, err)
 			return nil, url, err
 		}
-		product, err := s.fetchProductDirect(ctx, url, zipcode)
+		product, err := s.fetchProductDirect(ctx, metricsRegion, url, zipcode)
 		if err != nil {
 			classified := ClassifyFetchError(err)
 			s.recordRegionGuardFailure(metricsRegion, classified)
-			s.metrics.RecordFailure("sync_api", metricsRegion, classified)
+			s.metrics.RecordFailure(mode, metricsRegion, classified)
 			return nil, url, classified
 		}
 		s.recordRegionGuardSuccess(metricsRegion)
-		s.metrics.RecordSuccess("sync_api", metricsRegion)
+		s.metrics.RecordSuccess(mode, metricsRegion)
 		return product, url, nil
 	}
 
-	product, err := s.fetchProductWithDedupe(ctx, url, asin, region, zipcode)
+	product, err := s.fetchProductWithDedupe(ctx, metricsRegion, url, asin, region, zipcode)
 	if err != nil {
 		classified := ClassifyFetchError(err)
 		s.recordRegionGuardFailure(metricsRegion, classified)
-		s.metrics.RecordFailure("sync_api", metricsRegion, classified)
+		s.metrics.RecordFailure(mode, metricsRegion, classified)
 		return nil, url, classified
 	}
 	s.recordRegionGuardSuccess(metricsRegion)
-	s.metrics.RecordSuccess("sync_api", metricsRegion)
+	s.metrics.RecordSuccess(mode, metricsRegion)
 	return product, url, nil
 }
 
@@ -155,6 +161,13 @@ func (s *Service) GetStats() map[string]any {
 	}
 	if s.regionGuard != nil {
 		stats["region_guard_open_state_by_region"] = s.regionGuard.Snapshot()
+	}
+	if s.concurrency != nil {
+		if concurrencyStats := s.concurrency.Snapshot(); concurrencyStats != nil {
+			for key, value := range concurrencyStats {
+				stats[key] = value
+			}
+		}
 	}
 	return stats
 }
@@ -254,12 +267,18 @@ func (s *Service) resolveFetchInputs(url, asin, region, zipcode string) (string,
 	return url, zipcode, nil
 }
 
-func (s *Service) fetchProductDirect(ctx context.Context, url, zipcode string) (*model.Product, error) {
+func (s *Service) fetchProductDirect(ctx context.Context, region, url, zipcode string) (*model.Product, error) {
+	if s.concurrency != nil {
+		ticket, err := s.concurrency.Acquire(ctx, region)
+		if err != nil {
+			return nil, err
+		}
+		defer ticket.Release()
+	}
 	return s.processProduct(ctx, url, zipcode)
 }
 
-func (s *Service) fetchProductWithDedupe(ctx context.Context, url, asin, region, zipcode string) (*model.Product, error) {
-	metricsRegion := s.resolveMetricsRegion(region, url)
+func (s *Service) fetchProductWithDedupe(ctx context.Context, metricsRegion, url, asin, region, zipcode string) (*model.Product, error) {
 	if err := s.checkRegionGuard(metricsRegion); err != nil {
 		return nil, err
 	}
@@ -279,7 +298,7 @@ func (s *Service) fetchProductWithDedupe(ctx context.Context, url, asin, region,
 		acquired, err := s.dedupeStore.SetNX(ctx, lockKey, "1", s.productFetchLockTTL())
 		if err != nil {
 			s.logger.Warnf("产品去重锁获取失败，改为直接抓取: %v", err)
-			return s.fetchProductDirect(ctx, url, zipcode)
+			return s.fetchProductDirect(ctx, metricsRegion, url, zipcode)
 		}
 
 		if acquired {
@@ -289,7 +308,7 @@ func (s *Service) fetchProductWithDedupe(ctx context.Context, url, asin, region,
 				}
 			}()
 
-			product, err := s.fetchProductDirect(ctx, url, zipcode)
+			product, err := s.fetchProductDirect(ctx, metricsRegion, url, zipcode)
 			if err != nil {
 				return nil, err
 			}

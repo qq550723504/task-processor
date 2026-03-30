@@ -137,3 +137,31 @@ func TestCrawlerHandlerFetchProductReturnsClassifiedError(t *testing.T) {
 		t.Fatalf("expected retryable=true, got %#v", data["retryable"])
 	}
 }
+
+func TestCrawlerHandlerFetchProductReturnsTooManyRequestsForSystemBusy(t *testing.T) {
+	handler := NewCrawlerHandler(&stubAmazonCrawlerService{
+		err: &stubClassifiedCrawlerError{
+			message:   "crawler concurrency acquire timeout",
+			errorType: "system_busy",
+			retryable: true,
+		},
+	}, logrus.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/products/fetch", strings.NewReader(`{"asin":"B001","region":"us"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.RegisterRoutes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp JSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Code != "system_busy" {
+		t.Fatalf("expected code system_busy, got %s", resp.Code)
+	}
+}

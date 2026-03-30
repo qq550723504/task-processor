@@ -130,6 +130,38 @@ func ValidateAmazonConfig(amazon *AmazonConfig) []error {
 				})
 			}
 		}
+		if amazon.ConcurrencyControl.Enabled {
+			if amazon.ConcurrencyControl.MaxInFlight <= 0 {
+				errors = append(errors, &ValidationError{
+					Field:   "amazon.concurrencyControl.maxInFlight",
+					Message: "Amazon concurrencyControl maxInFlight must be greater than 0 when enabled",
+					Hint:    "set a positive in-flight concurrency limit for amazon.concurrencyControl.maxInFlight",
+				})
+			}
+			if amazon.ConcurrencyControl.MaxWaiting < 0 {
+				errors = append(errors, &ValidationError{
+					Field:   "amazon.concurrencyControl.maxWaiting",
+					Message: "Amazon concurrencyControl maxWaiting must be 0 or greater when enabled",
+					Hint:    "set maxWaiting to 0 or a positive queue limit for amazon.concurrencyControl.maxWaiting",
+				})
+			}
+			if amazon.ConcurrencyControl.AcquireTimeoutSeconds <= 0 {
+				errors = append(errors, &ValidationError{
+					Field:   "amazon.concurrencyControl.acquireTimeoutSeconds",
+					Message: "Amazon concurrencyControl acquireTimeoutSeconds must be greater than 0 when enabled",
+					Hint:    "set a positive timeout in seconds for amazon.concurrencyControl.acquireTimeoutSeconds",
+				})
+			}
+			for region, limit := range amazon.ConcurrencyControl.PerRegion {
+				if limit <= 0 {
+					errors = append(errors, &ValidationError{
+						Field:   "amazon.concurrencyControl.perRegion." + region,
+						Message: "Amazon concurrencyControl per-region limit must be greater than 0",
+						Hint:    "set a positive concurrency limit for amazon.concurrencyControl.perRegion." + region,
+					})
+				}
+			}
+		}
 	}
 
 	if amazon.RemoteAPI.Enabled {

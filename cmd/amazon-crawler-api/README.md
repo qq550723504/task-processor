@@ -167,6 +167,14 @@ redis:
 - `crawler_region_guard_block_by_region{key="..."}`
 - `crawler_success_by_mode{key="sync_api|async_task"}`
 - `crawler_failure_by_mode{key="sync_api|async_task"}`
+- `crawler_concurrency_waiting_total`
+- `crawler_concurrency_global_inflight`
+- `crawler_concurrency_global_limit`
+- `crawler_concurrency_region_inflight_by_region{key="..."}`
+- `crawler_concurrency_region_limit_by_region{key="..."}`
+- `crawler_proxy_failure_by_server{key="..."}`
+- `crawler_proxy_cooldown_by_server{key="..."}`
+- `crawler_proxy_health_score_by_server{key="..."}`
 
 默认可调参数：
 
@@ -272,3 +280,55 @@ amazon:
 - crawler API 只负责“抓数据”，不负责上架、调度、任务编排
 
 这样可以保持 crawler service 足够简单，也方便单独扩容。
+
+## 告警建议
+
+下面这组阈值比较适合作为第一版线上告警基线，先以 `5 分钟` 窗口观察，再按你的真实流量慢慢调。
+
+### P1 告警
+
+- `crawler_failure_rate > 0.30` 持续 `5 分钟`
+  说明整体失败率已经明显异常，优先排查页面结构变化、代理池和站点风控。
+
+- `crawler_failure_by_type{key="captcha"}` 在 `5 分钟` 内持续快速上升
+  如果同时看到 `crawler_proxy_failure_by_server` 也在升高，通常优先怀疑代理质量或站点风控升级。
+
+- `crawler_region_guard_block_total` 在短时间内明显增加
+  说明某个 region 已经频繁进入熔断，通常代表该站点正在被打抖。
+
+- `crawler_concurrency_waiting_total >= 20` 持续 `3 分钟`
+  说明当前流量已经开始堆积，请求在 Service 层明显排队，接下来大概率会出现 `system_busy`。
+
+- `crawler_failure_by_type{key="system_busy"}` 在 `5 分钟` 内持续增加
+  说明集群容量不够或限流阈值过低，需要看是否扩容 crawler 节点或调大并发上限。
+
+### P2 告警
+
+- `crawler_proxy_health_score_by_server{key="..."}` 持续显著低于其他代理
+  用于发现“没完全挂，但明显拖后腿”的代理。
+
+- `crawler_proxy_cooldown_by_server{key="..."}` 在 `10 分钟` 内反复增加
+  说明某个代理频繁进入冷却，建议从代理池中临时摘除。
+
+- `crawler_concurrency_global_inflight / crawler_concurrency_global_limit > 0.8` 持续 `5 分钟`
+  说明整体容量已经逼近上限，短期内很容易因为流量小波动触发排队和 `429`。
+
+- `crawler_concurrency_region_inflight_by_region{key="us"} / crawler_concurrency_region_limit_by_region{key="us"} > 0.8`
+  用于发现某个 region 单独过热，避免误以为是全局容量问题。
+
+- `crawler_retryable_failure_total` 或 `crawler_retryable_failure_by_type` 持续升高
+  说明系统还没完全坏，但已经进入“反复重试”的不稳定状态。
+
+### 观察建议
+
+- `failure_rate` 高，同时 `system_busy` 高：
+  优先看并发配置和节点数。
+
+- `failure_rate` 高，同时 `captcha` 高：
+  优先看代理池、站点风控和 IP 质量。
+
+- `region_guard_block_total` 高，但全局并发不高：
+  更像是某个 region 被打坏了，不一定是整体容量问题。
+
+- `proxy_health_score_by_server` 某几个代理持续明显偏低：
+  可以直接从代理池里先摘掉这些代理，再观察整体成功率是否恢复。

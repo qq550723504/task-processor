@@ -147,6 +147,12 @@ func NewDefaultConfig() *Config {
 				Strategy:               "round_robin",
 				FailureCooldownSeconds: 300,
 			},
+			ConcurrencyControl: AmazonConcurrencyControlConfig{
+				Enabled:               false,
+				MaxInFlight:           12,
+				MaxWaiting:            50,
+				AcquireTimeoutSeconds: 20,
+			},
 			RemoteAPI: RemoteAPIConfig{
 				Enabled: false,
 				BaseURL: "",
@@ -373,6 +379,15 @@ func applyDefaults(cfg *Config) {
 		}
 		if cfg.Amazon.ProxyPool.FailureCooldownSeconds == 0 {
 			cfg.Amazon.ProxyPool.FailureCooldownSeconds = defaultCfg.Amazon.ProxyPool.FailureCooldownSeconds
+		}
+		if cfg.Amazon.ConcurrencyControl.MaxInFlight == 0 {
+			cfg.Amazon.ConcurrencyControl.MaxInFlight = defaultCfg.Amazon.ConcurrencyControl.MaxInFlight
+		}
+		if cfg.Amazon.ConcurrencyControl.MaxWaiting == 0 {
+			cfg.Amazon.ConcurrencyControl.MaxWaiting = defaultCfg.Amazon.ConcurrencyControl.MaxWaiting
+		}
+		if cfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds == 0 {
+			cfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds = defaultCfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds
 		}
 	}
 	if cfg.ProductImage.WorkDir == "" {

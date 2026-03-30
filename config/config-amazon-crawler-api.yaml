@@ -59,6 +59,12 @@ amazon:
     strategy: "round_robin"
     failureCooldownSeconds: 300
     proxies: []
+  concurrencyControl:
+    enabled: false
+    maxInFlight: 12
+    maxWaiting: 50
+    acquireTimeoutSeconds: 20
+    perRegion: {}
   remoteAPI:
     enabled: false
     baseURL: ""
