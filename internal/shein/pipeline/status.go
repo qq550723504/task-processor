@@ -39,6 +39,10 @@ func (u *TaskStatusUpdater) UpdateTaskStatusSyncWithTask(task *model.Task, statu
 }
 
 func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, task *model.Task, status model.TaskStatus, errorMsg string, sync bool) error {
+	if u == nil || u.processor == nil {
+		return fmt.Errorf("task status updater is not initialized")
+	}
+
 	var id int64
 	if _, err := fmt.Sscanf(taskID, "%d", &id); err != nil {
 		logger.GetGlobalLogger("shein/pipeline").Errorf("解析任务ID失败: %v", err)

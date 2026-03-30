@@ -80,8 +80,8 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *shein.TaskContex
 					// 保存到草稿箱
 					NewPublishProductHandler(false).SaveDraftProduct(ctx)
 
-					// 产品已保存到草稿箱，不需要再重试
-					return shein.NewNonRetryableError("产品已保存到草稿箱，请手动处理", fmt.Errorf("%+v", response.Info.PreValidResult))
+					// 产品已保存到草稿箱，状态已在内部处理完成，不再走通用失败流转
+					return shein.NewTaskHandledError("产品已保存到草稿箱，请手动处理")
 				}
 			}
 		}

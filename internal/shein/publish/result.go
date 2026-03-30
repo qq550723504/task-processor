@@ -44,7 +44,6 @@ func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 	}
 
 	h.recordDailyListingCount(input)
-	updateTaskStatusToPublished(input)
 
 	h.logger.Info("发品成功后返回信息保存完成")
 	return nil
@@ -202,14 +201,4 @@ func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(input *PublishResul
 		input.Task.StoreID,
 		reason,
 	)
-}
-
-func updateTaskStatusToPublished(input *PublishResultInput) {
-	log := logger.GetGlobalLogger("publish_result")
-
-	notifier := NewTaskStatusNotifier("shein/publish_result", log)
-	notifier.Notify(&TaskStatusUpdateInput{
-		Task:                input.Task,
-		ManagementClientMgr: input.ManagementClientMgr,
-	}, model.TaskStatusPublished, "")
 }

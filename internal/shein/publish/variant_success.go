@@ -89,11 +89,6 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error 
 		}
 	}
 
-	publishResultInput, err := buildPublishResultInput(ctx)
-	if err != nil {
-		return err
-	}
-	updateTaskStatusToPublished(publishResultInput)
 	return nil
 }
 

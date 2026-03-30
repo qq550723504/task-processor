@@ -13,6 +13,9 @@ type CookieLoadError = sherr.CookieLoadError
 // FilteredError 业务过滤错误
 type FilteredError = sherr.FilteredError
 
+// TaskHandledError 任务状态已处理完成错误
+type TaskHandledError = sherr.TaskHandledError
+
 // NewRetryableError 创建可重试错误
 var NewRetryableError = sherr.NewRetryableError
 
@@ -22,8 +25,14 @@ var NewNonRetryableError = sherr.NewNonRetryableError
 // NewFilteredError 创建业务过滤错误
 var NewFilteredError = sherr.NewFilteredError
 
+// NewTaskHandledError 创建任务状态已处理完成错误
+var NewTaskHandledError = sherr.NewTaskHandledError
+
 // IsFilteredError 检查是否为业务过滤错误
 var IsFilteredError = sherr.IsFilteredError
+
+// IsTaskHandledError 检查是否为任务状态已处理完成错误
+var IsTaskHandledError = sherr.IsTaskHandledError
 
 // IsRetryableError 检查错误是否可重试
 var IsRetryableError = sherr.IsRetryableError

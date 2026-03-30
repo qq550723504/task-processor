@@ -54,6 +54,10 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipel
 	}
 
 	if err := p.Process(taskCtx); err != nil {
+		if shein.IsTaskHandledError(err) {
+			logger.GetGlobalLogger("shein/pipeline").Infof("task finished with handled status: id=%d, reason=%v", task.ID, err)
+			return nil
+		}
 		logger.GetGlobalLogger("shein/pipeline").Errorf("task processing failed: %v", err)
 		h.handleError(task, err)
 		return err

@@ -31,6 +31,7 @@ func NewTaskErrorHandler(processor *SheinProcessor) *TaskErrorHandler {
 func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
 	if shein.IsFilteredError(err) {
 		logger.GetGlobalLogger("shein/pipeline").Infof("任务被筛选规则过滤: ID=%d, Priority=%d, 原因=%v", task.ID, task.Priority, err)
+		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, err.Error())
 		return
 	}
 
