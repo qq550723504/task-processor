@@ -1,12 +1,11 @@
 package publish
 
 import (
-	"time"
-
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/timex"
 	shein "task-processor/internal/shein"
+	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/validation"
 
 	"github.com/sirupsen/logrus"
@@ -168,8 +167,8 @@ func (h *SavePublishResultHandler) recordDailyListingCount(input *PublishResultI
 
 	if count > int64(dailyLimit) {
 		h.logger.Warnf("store %d exceeded daily limit %d with count %d, pause listing", input.StoreInfo.ID, dailyLimit, count)
-		h.pauseShopWithCacheCleanup(input, "超过每日上架限额", 24*time.Hour)
-		h.logger.Infof("store %d paused for 24 hours after exceeding daily limit %d", input.StoreInfo.ID, dailyLimit)
+		h.pauseShopWithCacheCleanup(input, "超过每日上架限额")
+		h.logger.Infof("store %d paused until end of day after exceeding daily limit %d", input.StoreInfo.ID, dailyLimit)
 		return
 	}
 
@@ -181,22 +180,27 @@ func (h *SavePublishResultHandler) calculateIncrement(input *PublishResultInput)
 		h.logger.Warn("shein response is nil, cannot calculate listing increment")
 		return 0
 	}
-	ctx := &shein.TaskContext{}
-	ctx.SetSheinResponse(input.SheinResponse)
+	ctx := &sheinctx.TaskContext{
+		RuntimeState: sheinctx.RuntimeState{
+			StoreInfo: input.StoreInfo,
+		},
+		TaskState: sheinctx.TaskState{
+			SheinResponse: input.SheinResponse,
+		},
+	}
 	return validation.EstimateListingIncrement(ctx)
 }
 
-func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(input *PublishResultInput, reason string, duration time.Duration) {
+func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(input *PublishResultInput, reason string) {
 	if input.MemoryManager == nil || input.Task == nil {
 		return
 	}
 
 	h.logger.Infof("clearing cache for store %d:%d before pause", input.Task.TenantID, input.Task.StoreID)
-	input.MemoryManager.ShopPauseManager.PauseShop(
+	input.MemoryManager.ShopPauseManager.PauseShopUntilEndOfDay(
 		input.Task.TenantID,
 		input.Task.StoreID,
 		reason,
-		duration,
 	)
 }
 

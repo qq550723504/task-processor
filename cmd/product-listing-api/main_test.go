@@ -119,7 +119,11 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	resp.Body.Close()
 
 	// 创建 Amazon listing 任务
-	amazonReqBody := amazonlisting.GenerateRequest{Marketplace: "amazon", Text: "高品质运动鞋"}
+	amazonReqBody := amazonlisting.GenerateRequest{
+		Marketplace: "amazon",
+		Text:        "高品质运动鞋",
+		ImageURLs:   []string{"https://example.com/amazon-listing.jpg"},
+	}
 	b3, err := json.Marshal(amazonReqBody)
 	require.NoError(t, err)
 	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader(b3))
@@ -258,7 +262,11 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	resp.Body.Close()
 
 	// Create an amazon listing task for review/submit branch coverage
-	amazonReqBody := amazonlisting.GenerateRequest{Marketplace: "amazon", Text: "检测内容"}
+	amazonReqBody := amazonlisting.GenerateRequest{
+		Marketplace: "amazon",
+		Text:        "检测内容",
+		ImageURLs:   []string{"https://example.com/amazon-review.jpg"},
+	}
 	b3, err := json.Marshal(amazonReqBody)
 	require.NoError(t, err)
 	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader(b3))

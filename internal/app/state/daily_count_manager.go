@@ -1,6 +1,9 @@
 package state
 
 import (
+	"fmt"
+	"sync"
+
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/clients/management/api"
@@ -15,17 +18,24 @@ type DailyCountInfo struct {
 // DailyCountManager 每日上架计数管理器（API版）
 type DailyCountManager struct {
 	managementClientMgr *management.ClientManager
+	locksMu             sync.Mutex
+	locks               map[string]*sync.Mutex
 }
 
 // NewDailyCountManager 创建每日计数管理器
 func NewDailyCountManager(managementClientMgr *management.ClientManager) *DailyCountManager {
 	return &DailyCountManager{
 		managementClientMgr: managementClientMgr,
+		locks:               make(map[string]*sync.Mutex),
 	}
 }
 
 // IncrementCount 增加计数
 func (m *DailyCountManager) IncrementCount(tenantID, shopID int64, date string, increment int64) int64 {
+	lock := m.getLock(tenantID, shopID, date)
+	lock.Lock()
+	defer lock.Unlock()
+
 	client := m.managementClientMgr.GetDailyListingCountClient()
 	if client == nil {
 		logger.GetGlobalLogger("app/state").Warn("每日上架数量客户端未初始化，返回默认值")
@@ -54,6 +64,21 @@ func (m *DailyCountManager) IncrementCount(tenantID, shopID int64, date string, 
 	logger.GetGlobalLogger("app/state").Infof("成功增加每日上架数量: tenantID=%d, shopID=%d, date=%s, increment=%d, newCount=%d",
 		tenantID, shopID, date, increment, newCount)
 	return newCount
+}
+
+func (m *DailyCountManager) getLock(tenantID, shopID int64, date string) *sync.Mutex {
+	key := fmt.Sprintf("%d:%d:%s", tenantID, shopID, date)
+
+	m.locksMu.Lock()
+	defer m.locksMu.Unlock()
+
+	if lock, ok := m.locks[key]; ok {
+		return lock
+	}
+
+	lock := &sync.Mutex{}
+	m.locks[key] = lock
+	return lock
 }
 
 // GetCount 获取计数

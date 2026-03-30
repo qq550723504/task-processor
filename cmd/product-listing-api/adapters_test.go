@@ -168,8 +168,8 @@ func TestMemTaskRepository_MarkProcessing(t *testing.T) {
 	task := &productenrich.Task{
 		ID:      "t-proc",
 		Request: &productenrich.GenerateRequest{Text: "x"},
-		Status:  productenrich.TaskStatusFailed,
-		Error:   "old error",
+		Status:  productenrich.TaskStatusPending,
+		Error:   "stale error",
 	}
 	_ = repo.CreateTask(ctx, task)
 
@@ -182,6 +182,23 @@ func TestMemTaskRepository_MarkProcessing(t *testing.T) {
 	}
 	if got.Error != "" {
 		t.Errorf("Error = %q, want empty", got.Error)
+	}
+}
+
+func TestMemTaskRepository_MarkProcessingRejectsNonPending(t *testing.T) {
+	repo := newMemTaskRepository()
+	ctx := context.Background()
+
+	task := &productenrich.Task{
+		ID:      "t-proc-failed",
+		Request: &productenrich.GenerateRequest{Text: "x"},
+		Status:  productenrich.TaskStatusFailed,
+		Error:   "old error",
+	}
+	_ = repo.CreateTask(ctx, task)
+
+	if err := repo.MarkProcessing(ctx, "t-proc-failed"); err == nil {
+		t.Fatal("MarkProcessing should reject non-pending task")
 	}
 }
 
