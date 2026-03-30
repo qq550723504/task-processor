@@ -2,6 +2,7 @@ package product
 
 import (
 	"task-processor/internal/core/logger"
+	"task-processor/internal/model"
 	"task-processor/internal/shein"
 )
 
@@ -68,7 +69,14 @@ func (h *ShelfQuotaHandler) Handle(ctx *shein.TaskContext) error {
 			)
 		}
 
-		return shein.NewFilteredError("SKC上架额度不足")
+		return shein.NewTaskHandledError(
+			model.TaskStatusPaused,
+			"SKC上架额度不足",
+			shein.FormatTaskStageMessage(
+				ctx.GetStage(),
+				shein.FormatTaskReasonMessage(shein.TaskReasonShelfQuotaExhausted, "SKC上架额度不足"),
+			),
+		)
 	}
 
 	// 将SKC上架额度信息保存到上下文中，供后续步骤使用

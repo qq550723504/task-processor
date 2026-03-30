@@ -3,6 +3,7 @@ package validation
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/timex"
 	"task-processor/internal/shein"
 )
@@ -82,10 +83,17 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 			fmt.Sprintf("达到每日上架限额(%d/%d)", currentCount, dailyLimit),
 		)
 
-		// 返回不可重试错误，阻止产品发布
-		return shein.NewNonRetryableError(
+		// 店铺级阻塞落 paused，由 pipeline 统一更新主任务状态。
+		return shein.NewTaskHandledError(
+			model.TaskStatusPaused,
 			fmt.Sprintf("店铺已达到每日上架限额(%d/%d)，已暂停上架到当日结束", currentCount, dailyLimit),
-			nil,
+			shein.FormatTaskStageMessage(
+				ctx.GetStage(),
+				shein.FormatTaskReasonMessage(
+					shein.TaskReasonDailyLimitReached,
+					fmt.Sprintf("店铺已达到每日上架限额(%d/%d)，已暂停上架到当日结束", currentCount, dailyLimit),
+				),
+			),
 		)
 	}
 

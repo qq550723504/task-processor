@@ -28,10 +28,18 @@ func NewTaskErrorHandler(processor *SheinProcessor) *TaskErrorHandler {
 	}
 }
 
-func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
+func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error, stage string) {
 	if shein.IsFilteredError(err) {
 		logger.GetGlobalLogger("shein/pipeline").Infof("任务被筛选规则过滤: ID=%d, Priority=%d, 原因=%v", task.ID, task.Priority, err)
-		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, err.Error())
+		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, buildTaskStatusErrorMessage(stage, err))
+		return
+	}
+
+	if cookieErr, ok := shein.IsCookieLoadError(err); ok {
+		logger.GetGlobalLogger("shein/pipeline").Warnf("Cookie加载失败，暂停店铺 %d:%d 24小时，等待重新登录", cookieErr.TenantID, cookieErr.StoreID)
+		h.pauseShopWithCacheCleanup(cookieErr.TenantID, cookieErr.StoreID, "Cookie加载失败，等待重新登录", 24*time.Hour)
+		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusPaused, buildTaskStatusErrorMessage(stage, err))
+		logger.GetGlobalLogger("shein/pipeline").Warnf("任务因Cookie加载失败进入暂停状态: ID=%d, Priority=%d", task.ID, task.Priority)
 		return
 	}
 
@@ -39,13 +47,8 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
 	logger.GetGlobalLogger("shein/pipeline").Infof("错误类型: %T, 错误值: %v, 是否可重试: %t", err, err, isRetryable)
 
 	if !isRetryable {
-		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, err.Error())
+		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, buildTaskStatusErrorMessage(stage, err))
 		metrics.GlobalTaskMetrics().IncrementFailed()
-
-		if cookieErr, ok := shein.IsCookieLoadError(err); ok {
-			logger.GetGlobalLogger("shein/pipeline").Warnf("Cookie加载失败，暂停店铺 %d:%d 24小时，等待重新登录", cookieErr.TenantID, cookieErr.StoreID)
-			h.pauseShopWithCacheCleanup(cookieErr.TenantID, cookieErr.StoreID, "Cookie加载失败，等待重新登录", 24*time.Hour)
-		}
 
 		logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败且不可重试: ID=%d, Priority=%d, 错误=%v", task.ID, task.Priority, err)
 		return
@@ -53,18 +56,18 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error) {
 
 	retryDecision := model.ApplyRetryFailure(&task, h.processor.GetConfig().Processor.MaxRetries)
 	if retryDecision.Exhausted {
-		h.updateTaskStatusToAPIWithTask(&task, model.TaskStatusTerminated, err.Error())
+		h.updateTaskStatusToAPIWithTask(&task, model.TaskStatusTerminated, buildTaskStatusErrorMessage(stage, err))
 		metrics.GlobalTaskMetrics().IncrementFailed()
 		logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败且达到最大重试次数: ID=%d, Priority=%d, 重试次数=%d, 错误=%v", task.ID, task.Priority, task.RetryCount, err)
 		return
 	}
 
-	h.updateTaskStatusToAPIWithTask(&task, model.TaskStatusPendingRetry, err.Error())
+	h.updateTaskStatusToAPIWithTask(&task, model.TaskStatusPendingRetry, buildTaskStatusErrorMessage(stage, err))
 	logger.GetGlobalLogger("shein/pipeline").Warnf("任务处理失败，等待重试: ID=%d, Priority=%d->%d, 重试次数=%d", task.ID, retryDecision.OriginalPriority, retryDecision.CurrentPriority, task.RetryCount)
 	metrics.GlobalTaskMetrics().IncrementRequeued()
 }
 
-func (h *TaskErrorHandler) HandleAuthenticationExpired(authErr *api.AuthenticationExpiredError, task model.Task) {
+func (h *TaskErrorHandler) HandleAuthenticationExpired(authErr *api.AuthenticationExpiredError, task model.Task, stage string) {
 	tenantID := authErr.TenantID
 	shopID := authErr.ShopID
 
@@ -89,10 +92,13 @@ func (h *TaskErrorHandler) HandleAuthenticationExpired(authErr *api.Authenticati
 
 	h.pauseShopWithCacheCleanup(tenantID, shopID, "认证过期(20302)", 10*time.Minute)
 	logger.GetGlobalLogger("shein/pipeline").Infof("已暂停店铺 %d:%d 执行任务10分钟并清理缓存，原因: 认证过期", tenantID, shopID)
-	h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusPendingRetry, fmt.Sprintf("认证过期: %s", authErr.Message))
+	h.updateTaskStatusToAPI(
+		fmt.Sprintf("%d", task.ID),
+		model.TaskStatusPaused,
+		formatStageStatusMessage(stage, shein.FormatTaskReasonMessage(shein.TaskReasonAuthExpired, fmt.Sprintf("认证过期: %s", authErr.Message))),
+	)
 
-	logger.GetGlobalLogger("shein/pipeline").Infof("认证过期任务已标记为待重试: TaskID=%d, TenantID=%d, ShopID=%d", task.ID, tenantID, shopID)
-	metrics.GlobalTaskMetrics().IncrementRequeued()
+	logger.GetGlobalLogger("shein/pipeline").Infof("认证过期任务已标记为暂停: TaskID=%d, TenantID=%d, ShopID=%d", task.ID, tenantID, shopID)
 }
 
 func (h *TaskErrorHandler) shouldDeleteCookie(shopID int64) bool {

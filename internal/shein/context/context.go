@@ -92,6 +92,7 @@ type TaskState struct {
 	SpecificationErrors     []PreValidResult
 	SensitiveWordRetryCount int
 	ProcessedSensitiveWords map[string]bool
+	CurrentStage            string
 	Platform                string
 	SkipSheinPipeline       bool
 	InitError               error
@@ -185,6 +186,14 @@ func (ctx *TaskContext) SetSheinResponse(response *product.SheinResponse) {
 
 func (ctx *TaskContext) SetSpecificationErrors(errors []PreValidResult) {
 	ctx.SpecificationErrors = errors
+}
+
+func (ctx *TaskContext) SetStage(stage string) {
+	ctx.CurrentStage = stage
+}
+
+func (ctx *TaskContext) GetStage() string {
+	return ctx.CurrentStage
 }
 
 func (ctx *TaskContext) SetSupplierSkuMapping(platformSKU, supplierSKU string) {

@@ -53,6 +53,7 @@ func (p *Pipeline) Process(ctx *shein.TaskContext) error {
 
 	for i, handler := range p.handlers {
 		stepNum := i + 1
+		ctx.SetStage(resolveStageName(handler.Name()))
 		logger.GetGlobalLogger("shein/pipeline").Infof("开始执行步骤 [%d/%d]: %s", stepNum, len(p.handlers), handler.Name())
 
 		if err := handler.Handle(ctx); err != nil {
@@ -68,6 +69,7 @@ func (p *Pipeline) Process(ctx *shein.TaskContext) error {
 		logger.GetGlobalLogger("shein/pipeline").Infof("步骤执行完成 [%d/%d]: %s", stepNum, len(p.handlers), handler.Name())
 	}
 
+	ctx.SetStage("completed")
 	logger.GetGlobalLogger("shein/pipeline").Info("任务处理管道执行完成")
 	return nil
 }

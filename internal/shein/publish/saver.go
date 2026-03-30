@@ -2,7 +2,6 @@ package publish
 
 import (
 	"task-processor/internal/core/logger"
-	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
@@ -36,14 +35,4 @@ func (s *PublishProductSaver) SavePublishResult(input *SavePublishStateInput) er
 	}
 
 	return nil
-}
-
-// UpdateTaskStatusToDraft marks the task as saved to draft asynchronously.
-func (s *PublishProductSaver) UpdateTaskStatusToDraft(input *TaskStatusUpdateInput) {
-	baseLogger := s.logger
-	if baseLogger == nil {
-		baseLogger = logger.GetGlobalLogger("publish_saver")
-	}
-	notifier := NewTaskStatusNotifier("shein/publish_saver", baseLogger)
-	notifier.Notify(input, model.TaskStatusDraft, "")
 }

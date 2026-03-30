@@ -28,6 +28,9 @@ var NewFilteredError = sherr.NewFilteredError
 // NewTaskHandledError 创建任务状态已处理完成错误
 var NewTaskHandledError = sherr.NewTaskHandledError
 
+// AsTaskHandledError 返回任务已处理错误及其断言结果
+var AsTaskHandledError = sherr.AsTaskHandledError
+
 // IsFilteredError 检查是否为业务过滤错误
 var IsFilteredError = sherr.IsFilteredError
 

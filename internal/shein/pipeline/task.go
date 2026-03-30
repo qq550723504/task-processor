@@ -49,17 +49,17 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipel
 	taskCtx := h.createTaskContext(ctx, &task)
 	if taskCtx.InitError != nil {
 		logger.GetGlobalLogger("shein/pipeline").Errorf("task initialization failed: %v", taskCtx.InitError)
-		h.handleError(task, taskCtx.InitError)
+		h.handleError(taskCtx, taskCtx.InitError)
 		return taskCtx.InitError
 	}
 
 	if err := p.Process(taskCtx); err != nil {
-		if shein.IsTaskHandledError(err) {
-			logger.GetGlobalLogger("shein/pipeline").Infof("task finished with handled status: id=%d, reason=%v", task.ID, err)
+		if handledErr, ok := shein.AsTaskHandledError(err); ok {
+			h.handleHandledStatus(task, handledErr)
 			return nil
 		}
 		logger.GetGlobalLogger("shein/pipeline").Errorf("task processing failed: %v", err)
-		h.handleError(task, err)
+		h.handleError(taskCtx, err)
 		return err
 	}
 
@@ -162,17 +162,26 @@ func (h *TaskHandler) initShopClient(taskCtx *sheincontext.TaskContext) error {
 	return nil
 }
 
-func (h *TaskHandler) handleError(task model.Task, err error) {
+func (h *TaskHandler) handleError(taskCtx *sheincontext.TaskContext, err error) {
+	task := model.Task{}
+	if taskCtx != nil && taskCtx.Task != nil {
+		task = *taskCtx.Task
+	}
+
 	logger.GetGlobalLogger("shein/pipeline").Infof("handle error: type=%T, value=%v", err, err)
 	decision := h.errorRouter.Route(task, err)
+	stage := ""
+	if taskCtx != nil {
+		stage = taskCtx.GetStage()
+	}
 
 	switch decision.route {
 	case taskErrorRouteAuthenticationExpired:
 		logger.GetGlobalLogger("shein/pipeline").Warnf("detected authentication expired error: %v", decision.authErr)
-		h.errorHandler.HandleAuthenticationExpired(decision.authErr, task)
+		h.errorHandler.HandleAuthenticationExpired(decision.authErr, task, stage)
 	default:
 		logger.GetGlobalLogger("shein/pipeline").Debugf("treating as generic error: %v", decision.err)
-		h.errorHandler.HandleTaskFailure(task, decision.err)
+		h.errorHandler.HandleTaskFailure(task, decision.err, stage)
 	}
 }
 
@@ -187,5 +196,32 @@ func (h *TaskHandler) handleSuccess(task model.Task) {
 		task.TenantID,
 		task.StoreID,
 		task.ProductID,
+	)
+}
+
+func (h *TaskHandler) handleHandledStatus(task model.Task, handledErr *shein.TaskHandledError) {
+	if handledErr == nil {
+		return
+	}
+
+	targetStatus := handledErr.TargetStatus()
+	if !targetStatus.IsValid() {
+		logger.GetGlobalLogger("shein/pipeline").Warnf(
+			"task handled with invalid target status: id=%d, status=%d, message=%s",
+			task.ID,
+			targetStatus,
+			handledErr.Error(),
+		)
+		return
+	}
+
+	statusUpdater := NewTaskStatusUpdater(h.processor)
+	statusUpdater.UpdateTaskStatusAsyncWithTask(&task, targetStatus, handledErr.ErrorMessage())
+
+	logger.GetGlobalLogger("shein/pipeline").Infof(
+		"task finished with handled status: id=%d, status=%s, reason=%s",
+		task.ID,
+		targetStatus.String(),
+		handledErr.Error(),
 	)
 }

@@ -154,22 +154,6 @@ func buildSavePublishStateInput(ctx *shein.TaskContext, response *sheinproduct.S
 	}, nil
 }
 
-type TaskStatusUpdateInput struct {
-	Task                *model.Task
-	ManagementClientMgr *management.ClientManager
-}
-
-func buildTaskStatusUpdateInput(ctx *shein.TaskContext) (*TaskStatusUpdateInput, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("task context is nil")
-	}
-
-	return &TaskStatusUpdateInput{
-		Task:                ctx.Task,
-		ManagementClientMgr: ctx.ManagementClientMgr,
-	}, nil
-}
-
 type PublishResultInput struct {
 	Task                *model.Task
 	ManagementClientMgr *management.ClientManager

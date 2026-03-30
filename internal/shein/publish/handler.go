@@ -13,7 +13,6 @@ import (
 type PublishProductHandler struct {
 	validator     *PublishProductValidator
 	errorHandler  *PublishProductErrorHandler
-	saver         *PublishProductSaver
 	checker       *PublishProductChecker
 	debugSaveJSON bool
 }
@@ -24,7 +23,6 @@ func NewPublishProductHandler(debugSaveJSON bool) *PublishProductHandler {
 	return &PublishProductHandler{
 		validator:     NewPublishProductValidator(),
 		errorHandler:  NewPublishProductErrorHandler(),
-		saver:         NewPublishProductSaver(),
 		checker:       NewPublishProductChecker(),
 		debugSaveJSON: debugSaveJSON,
 	}
@@ -98,13 +96,6 @@ func (h *PublishProductHandler) SaveDraftProduct(ctx *shein.TaskContext) (*produ
 	if err != nil {
 		return nil, err
 	}
-
-	// 保存到草稿箱成功后，更新任务状态为草稿箱
-	statusInput, err := buildTaskStatusUpdateInput(ctx)
-	if err != nil {
-		return nil, err
-	}
-	h.saver.UpdateTaskStatusToDraft(statusInput)
 
 	return response, nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/internal/core/logger"
+	"task-processor/internal/model"
 
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
@@ -78,10 +79,19 @@ func (h *PublishProductErrorHandler) HandlePublishResponse(ctx *shein.TaskContex
 					}
 
 					// 保存到草稿箱
-					NewPublishProductHandler(false).SaveDraftProduct(ctx)
+					if _, err := NewPublishProductHandler(false).SaveDraftProduct(ctx); err != nil {
+						return shein.NewNonRetryableError("保存产品到草稿箱失败", err)
+					}
 
-					// 产品已保存到草稿箱，状态已在内部处理完成，不再走通用失败流转
-					return shein.NewTaskHandledError("产品已保存到草稿箱，请手动处理")
+					// 草稿状态由 pipeline 统一回写，避免 publish 侧和通用流转竞争。
+					return shein.NewTaskHandledError(
+						model.TaskStatusDraft,
+						"产品已保存到草稿箱，请手动处理",
+						shein.FormatTaskStageMessage(
+							ctx.GetStage(),
+							shein.FormatTaskReasonMessage(shein.TaskReasonDraftSavedValidationFailed, "产品已保存到草稿箱，请手动处理"),
+						),
+					)
 				}
 			}
 		}

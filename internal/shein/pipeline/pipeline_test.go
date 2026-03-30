@@ -204,3 +204,22 @@ func TestPipeline_Process_FailedStepSkipsRemaining(t *testing.T) {
 		t.Error("handler after failed step should not be called")
 	}
 }
+
+func TestPipeline_Process_SetsCurrentStage(t *testing.T) {
+	ctx := shein.NewTaskContext(nil, nil)
+
+	p := pipeline.NewPipeline()
+	p.AddHandler(newMockHandler("获取店铺信息", nil))
+	p.AddHandler(newMockHandler("发布产品", func(ctx *shein.TaskContext) error {
+		if got := ctx.GetStage(); got != "publish_product" {
+			t.Fatalf("stage = %q, want publish_product", got)
+		}
+		return errors.New("boom")
+	}))
+
+	_ = p.Process(ctx)
+
+	if got := ctx.GetStage(); got != "publish_product" {
+		t.Fatalf("final stage = %q, want publish_product", got)
+	}
+}

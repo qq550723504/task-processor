@@ -10,5 +10,5 @@ import (
 func TestHandleTaskFailureFilteredErrorReturnsEarly(t *testing.T) {
 	handler := &TaskErrorHandler{}
 
-	handler.HandleTaskFailure(model.Task{ID: 1, Priority: 5}, shein.NewFilteredError("低于筛选规则最低价格"))
+	handler.HandleTaskFailure(model.Task{ID: 1, Priority: 5}, shein.NewFilteredError("低于筛选规则最低价格"), "validate_rules")
 }
