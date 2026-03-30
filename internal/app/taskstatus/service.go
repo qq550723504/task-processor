@@ -2,6 +2,7 @@ package taskstatus
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"task-processor/internal/core/logger"
@@ -20,6 +21,8 @@ type UpdateInput struct {
 	TaskID                int64
 	Status                model.TaskStatus
 	ErrorMessage          string
+	ReasonCode            string
+	Stage                 string
 	ExpectedCurrentStatus *model.TaskStatus
 	RetryCount            *int
 	Priority              *int
@@ -149,6 +152,8 @@ func (s *Service) updateSync(input UpdateInput) error {
 		ID:           input.TaskID,
 		Status:       input.Status.Int16(),
 		ErrorMessage: input.ErrorMessage,
+		ReasonCode:   firstNonEmpty(strings.TrimSpace(input.ReasonCode), extractReasonCode(input.ErrorMessage)),
+		Stage:        firstNonEmpty(strings.TrimSpace(input.Stage), extractStage(input.ErrorMessage)),
 		RetryCount:   input.RetryCount,
 		Priority:     input.Priority,
 	}
@@ -183,4 +188,44 @@ func (s *Service) updateSync(input UpdateInput) error {
 	}
 
 	return fmt.Errorf("update task status failed: %w", lastErr)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func extractReasonCode(message string) string {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return ""
+	}
+
+	for _, token := range strings.Fields(message) {
+		if strings.HasPrefix(token, "[") && strings.HasSuffix(token, "]") {
+			content := strings.TrimSuffix(strings.TrimPrefix(token, "["), "]")
+			if content != "" && !strings.HasPrefix(content, "stage:") {
+				return content
+			}
+		}
+	}
+	return ""
+}
+
+func extractStage(message string) string {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return ""
+	}
+
+	for _, token := range strings.Fields(message) {
+		if strings.HasPrefix(token, "[stage:") && strings.HasSuffix(token, "]") {
+			return strings.TrimSuffix(strings.TrimPrefix(token, "[stage:"), "]")
+		}
+	}
+	return ""
 }

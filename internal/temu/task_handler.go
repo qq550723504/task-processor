@@ -55,7 +55,13 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, executor
 			logger.FieldDurationMs: processTime.Milliseconds(),
 			logger.FieldStatus:     model.TaskStatusDraft.String(),
 		}).Info("task completed with draft status")
-		h.updateTaskStatusSync(task.ID, model.TaskStatusDraft, "product saved to draft")
+		h.updateTaskStatusSyncWithInput(taskstatus.UpdateInput{
+			TaskID:       task.ID,
+			Status:       model.TaskStatusDraft,
+			ErrorMessage: "product saved to draft",
+			ReasonCode:   temuTaskReasonDraftSaved,
+			Stage:        temuTaskStageSaveDraft,
+		})
 		return nil
 	}
 
@@ -63,7 +69,11 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, executor
 		logger.FieldTaskID:     task.ID,
 		logger.FieldDurationMs: processTime.Milliseconds(),
 	}).Info("task completed")
-	h.updateTaskStatusSync(task.ID, model.TaskStatusPublished, "")
+	h.updateTaskStatusSyncWithInput(taskstatus.UpdateInput{
+		TaskID: task.ID,
+		Status: model.TaskStatusPublished,
+		Stage:  temuTaskStagePublishProduct,
+	})
 	return nil
 }
 
@@ -80,9 +90,17 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 }
 
 func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
+	reasonCode, stage := classifyTaskError(err)
+
 	if IsAuthExpiredError(err) {
 		h.handleAuthenticationExpired(task, err)
-		h.updateTaskStatusSync(task.ID, model.TaskStatusPaused, err.Error())
+		h.updateTaskStatusSyncWithInput(taskstatus.UpdateInput{
+			TaskID:       task.ID,
+			Status:       model.TaskStatusPaused,
+			ErrorMessage: err.Error(),
+			ReasonCode:   reasonCode,
+			Stage:        stage,
+		})
 		h.logger.WithFields(logrus.Fields{
 			logger.FieldTaskID:  task.ID,
 			logger.FieldStoreID: task.StoreID,
@@ -97,7 +115,13 @@ func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 	}).Debug("error analysis")
 
 	if !isRetryable {
-		h.updateTaskStatusSync(task.ID, model.TaskStatusTerminated, err.Error())
+		h.updateTaskStatusSyncWithInput(taskstatus.UpdateInput{
+			TaskID:       task.ID,
+			Status:       model.TaskStatusTerminated,
+			ErrorMessage: err.Error(),
+			ReasonCode:   reasonCode,
+			Stage:        stage,
+		})
 		h.logger.WithError(err).WithFields(logrus.Fields{
 			logger.FieldTaskID: task.ID,
 			"priority":         task.Priority,
@@ -107,7 +131,15 @@ func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 
 	retryDecision := model.ApplyRetryFailure(&task, h.processor.GetConfig().Processor.MaxRetries)
 	if retryDecision.Exhausted {
-		h.updateTaskStatusSyncWithTask(&task, model.TaskStatusTerminated, err.Error())
+		h.updateTaskStatusSyncWithInput(taskstatus.UpdateInput{
+			TaskID:       task.ID,
+			Status:       model.TaskStatusTerminated,
+			ErrorMessage: err.Error(),
+			ReasonCode:   reasonCode,
+			Stage:        stage,
+			RetryCount:   &task.RetryCount,
+			Priority:     &task.Priority,
+		})
 		h.logger.WithError(err).WithFields(logrus.Fields{
 			logger.FieldTaskID:     task.ID,
 			"priority":             task.Priority,
@@ -116,7 +148,15 @@ func (h *TaskHandler) handleTaskFailure(task model.Task, err error) {
 		return
 	}
 
-	h.updateTaskStatusSyncWithTask(&task, model.TaskStatusPendingRetry, err.Error())
+	h.updateTaskStatusSyncWithInput(taskstatus.UpdateInput{
+		TaskID:       task.ID,
+		Status:       model.TaskStatusPendingRetry,
+		ErrorMessage: err.Error(),
+		ReasonCode:   reasonCode,
+		Stage:        stage,
+		RetryCount:   &task.RetryCount,
+		Priority:     &task.Priority,
+	})
 	h.logger.WithFields(logrus.Fields{
 		logger.FieldTaskID:     task.ID,
 		"old_priority":         retryDecision.OriginalPriority,

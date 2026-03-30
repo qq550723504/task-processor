@@ -73,3 +73,51 @@ func TestServiceTransitionSyncWithInputPreservesRetryMetadata(t *testing.T) {
 		t.Fatal("TransitionSyncWithInput should include priority")
 	}
 }
+
+func TestServiceUpdateSyncWithInputParsesReasonCodeAndStageFromErrorMessage(t *testing.T) {
+	client := &stubImportTaskClient{}
+	service := NewService("test", func() ImportTaskStatusClient { return client })
+
+	err := service.UpdateSyncWithInput(UpdateInput{
+		TaskID:       3,
+		Status:       model.TaskStatusPaused,
+		ErrorMessage: "[stage:check_daily_limit] [DAILY_LIMIT_REACHED] daily limit reached",
+	})
+	if err != nil {
+		t.Fatalf("UpdateSyncWithInput returned error: %v", err)
+	}
+	if client.lastReq == nil {
+		t.Fatal("UpdateSyncWithInput should call UpdateTaskStatus")
+	}
+	if client.lastReq.ReasonCode != "DAILY_LIMIT_REACHED" {
+		t.Fatalf("ReasonCode = %q, want DAILY_LIMIT_REACHED", client.lastReq.ReasonCode)
+	}
+	if client.lastReq.Stage != "check_daily_limit" {
+		t.Fatalf("Stage = %q, want check_daily_limit", client.lastReq.Stage)
+	}
+}
+
+func TestServiceUpdateSyncWithInputPrefersExplicitReasonCodeAndStage(t *testing.T) {
+	client := &stubImportTaskClient{}
+	service := NewService("test", func() ImportTaskStatusClient { return client })
+
+	err := service.UpdateSyncWithInput(UpdateInput{
+		TaskID:       4,
+		Status:       model.TaskStatusTerminated,
+		ErrorMessage: "[stage:publish_product] [SKU_DUPLICATED] duplicate sku",
+		ReasonCode:   "MANUAL_OVERRIDE",
+		Stage:        "custom_stage",
+	})
+	if err != nil {
+		t.Fatalf("UpdateSyncWithInput returned error: %v", err)
+	}
+	if client.lastReq == nil {
+		t.Fatal("UpdateSyncWithInput should call UpdateTaskStatus")
+	}
+	if client.lastReq.ReasonCode != "MANUAL_OVERRIDE" {
+		t.Fatalf("ReasonCode = %q, want MANUAL_OVERRIDE", client.lastReq.ReasonCode)
+	}
+	if client.lastReq.Stage != "custom_stage" {
+		t.Fatalf("Stage = %q, want custom_stage", client.lastReq.Stage)
+	}
+}

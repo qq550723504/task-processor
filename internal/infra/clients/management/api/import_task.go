@@ -11,6 +11,8 @@ type ProductImportTaskRespDTO struct {
 	ProductID     string `json:"productId"`
 	Status        int16  `json:"status"`
 	ErrorMessage  string `json:"errorMessage"`
+	ReasonCode    string `json:"reasonCode"`
+	Stage         string `json:"stage"`
 	RetryCount    int    `json:"retryCount"`
 	MaxRetryCount int    `json:"maxRetryCount"`
 	Remark        string `json:"remark"`
@@ -26,6 +28,8 @@ type ProductImportTaskUpdateReqDTO struct {
 	ID                    int64  `json:"id"`
 	Status                int16  `json:"status"`
 	ErrorMessage          string `json:"errorMessage,omitempty"`
+	ReasonCode            string `json:"reasonCode,omitempty"`
+	Stage                 string `json:"stage,omitempty"`
 	ExpectedCurrentStatus *int16 `json:"expectedCurrentStatus,omitempty"`
 	RetryCount            *int   `json:"retryCount,omitempty"`
 	Priority              *int   `json:"priority,omitempty"`
