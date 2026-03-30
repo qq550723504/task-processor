@@ -54,6 +54,11 @@ go run ./cmd/amazon-crawler-api -config config/config-amazon-crawler-api.yaml
 
 默认端口是 `8080`。
 
+Docker 部署文件：
+
+- `deployments/docker/Dockerfile.amazon-crawler-api`
+- `deployments/docker/docker-compose.amazon-crawler-api.yml`
+
 ## 主要接口
 
 健康检查：

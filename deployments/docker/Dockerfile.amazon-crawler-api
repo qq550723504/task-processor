@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1.7
+
+# ============================================================
+# Multi-stage build for amazon-crawler-api
+# ============================================================
+
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache git make
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+COPY . .
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+        -ldflags="-s -w" \
+        -o amazon-crawler-api \
+        ./cmd/amazon-crawler-api/main.go
+
+FROM xuwei190/crawler-env:latest
+
+WORKDIR /app
+
+ENV TZ=Asia/Shanghai
+
+COPY --from=builder /app/amazon-crawler-api ./
+COPY --from=builder /app/config ./config
+
+RUN chmod +x ./amazon-crawler-api && \
+    mkdir -p /app/logs /app/tmp /app/chrome
+
+EXPOSE 8080
+
+CMD ["./amazon-crawler-api", "-config", "config/config-amazon-crawler-api.yaml", "-port", "8080"]
