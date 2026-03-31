@@ -25,10 +25,11 @@ func NewLockedTaskExecutor(
 	ctx context.Context,
 	task Task,
 	depManager *DependencyManager,
+	taskTimeout time.Duration,
 	distributedLock lock.DistributedLock,
 	logger *logrus.Logger,
 ) *LockedTaskExecutor {
-	executor := NewTaskExecutor(ctx, task, depManager)
+	executor := NewTaskExecutor(ctx, task, depManager, taskTimeout)
 
 	// 生成锁的键名：platform:taskType:storeID
 	lockKey := fmt.Sprintf("task:lock:%s:%s", task.GetPlatform(), task.GetType())

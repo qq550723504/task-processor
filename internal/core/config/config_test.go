@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBrowserConfigDefaults(t *testing.T) {
@@ -272,4 +273,28 @@ func TestBrowserConfigValidation(t *testing.T) {
 	errors = ValidateBrowserConfig(&invalidConfig.Browser)
 	assert.NotEmpty(t, errors)
 	assert.True(t, len(errors) >= 3)
+}
+
+func TestLoadFromBytesAppliesRabbitMQDefaultsWhenSectionMissing(t *testing.T) {
+	cfg, err := LoadFromBytes([]byte(`
+openai:
+  apiKey: "test-key"
+  model: "test-model"
+  baseURL: "http://example.com/v1"
+  timeout: 30
+management:
+  baseURL: "http://example.com"
+  clientID: "test-client"
+  clientSecret: "test-secret"
+  tokenURL: "http://example.com/token"
+  scopes: ["user.read"]
+`))
+	require.NoError(t, err)
+	require.NotNil(t, cfg.RabbitMQ)
+
+	assert.False(t, cfg.RabbitMQ.Enabled)
+	assert.Equal(t, 5, cfg.RabbitMQ.Consumer.PrefetchCount)
+	assert.Equal(t, 10, cfg.RabbitMQ.Node.MaxConcurrency)
+	assert.Equal(t, 8081, cfg.RabbitMQ.Node.HealthCheckPort)
+	assert.Equal(t, 8082, cfg.RabbitMQ.Node.MetricsPort)
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -32,6 +33,39 @@ type remoteFetchResponse struct {
 		Product *model.Product `json:"product"`
 	} `json:"data"`
 	Error string `json:"error,omitempty"`
+}
+
+type remoteErrorResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+	Code    string `json:"code,omitempty"`
+	Data    struct {
+		Retryable bool `json:"retryable"`
+	} `json:"data"`
+}
+
+type remoteAsyncSubmitResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+	Data    struct {
+		TaskID string `json:"task_id"`
+		URL    string `json:"url"`
+	} `json:"data"`
+	Error string `json:"error,omitempty"`
+	Code  string `json:"code,omitempty"`
+}
+
+type remoteTaskResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+	Data    struct {
+		TaskID      string         `json:"TaskID"`
+		Status      string         `json:"Status"`
+		ProductData map[string]any `json:"ProductData"`
+		Error       string         `json:"Error"`
+	} `json:"data"`
+	Error string `json:"error,omitempty"`
+	Code  string `json:"code,omitempty"`
 }
 
 type RemoteAPIProductFetcher struct {
@@ -91,32 +125,17 @@ func (f *RemoteAPIProductFetcher) FetchProduct(ctx context.Context, req *domainP
 	}
 	defer resp.Body.Close()
 
-	var payload remoteFetchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("decode crawler api response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		if payload.Error != "" {
-			return nil, fmt.Errorf("crawler api returned %d: %s", resp.StatusCode, payload.Error)
-		}
-		return nil, fmt.Errorf("crawler api returned %d", resp.StatusCode)
-	}
-	if !payload.Success {
-		if payload.Error != "" {
-			return nil, fmt.Errorf("crawler api failed: %s", payload.Error)
-		}
-		return nil, fmt.Errorf("crawler api failed")
-	}
-	if payload.Data.Product == nil {
-		return nil, fmt.Errorf("crawler api returned empty product")
+	product, err := f.handleFetchResponse(ctx, resp, req)
+	if err != nil {
+		return nil, err
 	}
 
 	if f.canUseCache() {
-		if err := f.cacheManager.SaveToCache(req, payload.Data.Product); err != nil {
+		if err := f.cacheManager.SaveToCache(req, product); err != nil {
 			f.logger.WithError(err).Warn("save product cache failed")
 		}
 	}
-	return payload.Data.Product, nil
+	return product, nil
 }
 
 func (f *RemoteAPIProductFetcher) canUseCache() bool {
@@ -144,6 +163,189 @@ func (f *RemoteAPIProductFetcher) buildRequest(ctx context.Context, req *domainP
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	return httpReq, nil
+}
+
+func (f *RemoteAPIProductFetcher) handleFetchResponse(ctx context.Context, resp *http.Response, req *domainProduct.FetchRequest) (*model.Product, error) {
+	if resp.StatusCode == http.StatusOK {
+		var payload remoteFetchResponse
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			return nil, fmt.Errorf("decode crawler api response: %w", err)
+		}
+		if !payload.Success {
+			if payload.Error != "" {
+				return nil, fmt.Errorf("crawler api failed: %s", payload.Error)
+			}
+			return nil, fmt.Errorf("crawler api failed")
+		}
+		if payload.Data.Product == nil {
+			return nil, fmt.Errorf("crawler api returned empty product")
+		}
+		return payload.Data.Product, nil
+	}
+
+	var errorPayload remoteErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errorPayload); err != nil {
+		return nil, fmt.Errorf("decode crawler api error response: %w", err)
+	}
+	if f.shouldFallbackToAsync(resp.StatusCode, errorPayload) {
+		f.logger.WithFields(logrus.Fields{
+			"status_code": resp.StatusCode,
+			"code":        errorPayload.Code,
+		}).Warn("crawler api is busy, falling back to async crawl polling")
+		return f.fetchProductAsync(ctx, req)
+	}
+
+	if errorPayload.Error != "" {
+		return nil, fmt.Errorf("crawler api returned %d: %s", resp.StatusCode, errorPayload.Error)
+	}
+	return nil, fmt.Errorf("crawler api returned %d", resp.StatusCode)
+}
+
+func (f *RemoteAPIProductFetcher) shouldFallbackToAsync(statusCode int, payload remoteErrorResponse) bool {
+	if statusCode == http.StatusTooManyRequests {
+		return true
+	}
+	if !payload.Data.Retryable {
+		return false
+	}
+	switch payload.Code {
+	case "system_busy", "timeout", "network", "server_error":
+		return true
+	default:
+		return false
+	}
+}
+
+func (f *RemoteAPIProductFetcher) fetchProductAsync(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
+	taskID, err := f.submitAsyncCrawl(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return f.pollAsyncResult(ctx, taskID)
+}
+
+func (f *RemoteAPIProductFetcher) submitAsyncCrawl(ctx context.Context, req *domainProduct.FetchRequest) (string, error) {
+	region := strings.ToLower(req.Region)
+	payload := remoteFetchRequest{
+		ASIN:   req.ProductID,
+		Region: region,
+	}
+	if region != "" {
+		payload.Zipcode = f.domainResolver.GetZipcodeByRegion(region)
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal async crawl request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, f.baseURL+"/api/v1/crawl", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("build async crawl request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := f.client.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("submit async crawl task: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var payloadResp remoteAsyncSubmitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payloadResp); err != nil {
+		return "", fmt.Errorf("decode async crawl response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK || !payloadResp.Success || strings.TrimSpace(payloadResp.Data.TaskID) == "" {
+		if payloadResp.Error != "" {
+			return "", fmt.Errorf("submit async crawl failed: %s", payloadResp.Error)
+		}
+		return "", fmt.Errorf("submit async crawl failed with status %d", resp.StatusCode)
+	}
+	return payloadResp.Data.TaskID, nil
+}
+
+func (f *RemoteAPIProductFetcher) pollAsyncResult(ctx context.Context, taskID string) (*model.Product, error) {
+	pollInterval := f.asyncPollInterval()
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		product, done, err := f.fetchAsyncTask(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			return product, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func (f *RemoteAPIProductFetcher) fetchAsyncTask(ctx context.Context, taskID string) (*model.Product, bool, error) {
+	taskURL := f.baseURL + "/api/v1/tasks/" + url.PathEscape(taskID)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, taskURL, nil)
+	if err != nil {
+		return nil, false, fmt.Errorf("build async task request: %w", err)
+	}
+
+	resp, err := f.client.Do(httpReq)
+	if err != nil {
+		return nil, false, fmt.Errorf("poll async task: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var taskResp remoteTaskResponse
+	if err := json.NewDecoder(resp.Body).Decode(&taskResp); err != nil {
+		return nil, false, fmt.Errorf("decode async task response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK || !taskResp.Success {
+		if taskResp.Error != "" {
+			return nil, false, fmt.Errorf("async task query failed: %s", taskResp.Error)
+		}
+		return nil, false, fmt.Errorf("async task query failed with status %d", resp.StatusCode)
+	}
+
+	switch strings.ToLower(taskResp.Data.Status) {
+	case "pending", "processing":
+		return nil, false, nil
+	case "failed":
+		if taskResp.Data.Error != "" {
+			return nil, true, fmt.Errorf("async crawl failed: %s", taskResp.Data.Error)
+		}
+		return nil, true, fmt.Errorf("async crawl failed")
+	case "success":
+		product, err := decodeProductMap(taskResp.Data.ProductData)
+		if err != nil {
+			return nil, true, err
+		}
+		return product, true, nil
+	default:
+		return nil, false, nil
+	}
+}
+
+func (f *RemoteAPIProductFetcher) asyncPollInterval() time.Duration {
+	return 2 * time.Second
+}
+
+func decodeProductMap(data map[string]any) (*model.Product, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("async crawl returned empty product")
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("marshal async product payload: %w", err)
+	}
+	var product model.Product
+	if err := json.Unmarshal(raw, &product); err != nil {
+		return nil, fmt.Errorf("decode async product payload: %w", err)
+	}
+	return &product, nil
 }
 
 func (f *RemoteAPIProductFetcher) CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error {

@@ -133,7 +133,9 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 	}
 
 	resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{
-		NeedAmazonCrawler: true,
+		// cmd/task should not initialize the in-process Amazon crawler by default.
+		// Scheduler/processor fetch paths can use remote API or distributed crawl instead.
+		NeedAmazonCrawler: false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)

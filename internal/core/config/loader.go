@@ -408,6 +408,47 @@ func applyDefaults(cfg *Config) {
 	if cfg.Updater.UpdateURL == "" {
 		cfg.Updater = defaultCfg.Updater
 	}
+	if cfg.RabbitMQ == nil {
+		rabbitMQCopy := *defaultCfg.RabbitMQ
+		cfg.RabbitMQ = &rabbitMQCopy
+	} else {
+		if cfg.RabbitMQ.URL == "" {
+			cfg.RabbitMQ.URL = defaultCfg.RabbitMQ.URL
+		}
+		if cfg.RabbitMQ.ReconnectInterval == 0 {
+			cfg.RabbitMQ.ReconnectInterval = defaultCfg.RabbitMQ.ReconnectInterval
+		}
+		if cfg.RabbitMQ.MaxReconnectTries == 0 {
+			cfg.RabbitMQ.MaxReconnectTries = defaultCfg.RabbitMQ.MaxReconnectTries
+		}
+		if cfg.RabbitMQ.Consumer.PrefetchCount == 0 {
+			cfg.RabbitMQ.Consumer.PrefetchCount = defaultCfg.RabbitMQ.Consumer.PrefetchCount
+		}
+		if cfg.RabbitMQ.Consumer.RetryDelay == 0 {
+			cfg.RabbitMQ.Consumer.RetryDelay = defaultCfg.RabbitMQ.Consumer.RetryDelay
+		}
+		if cfg.RabbitMQ.Consumer.MaxRetries == 0 {
+			cfg.RabbitMQ.Consumer.MaxRetries = defaultCfg.RabbitMQ.Consumer.MaxRetries
+		}
+		if cfg.RabbitMQ.Node.Role == "" {
+			cfg.RabbitMQ.Node.Role = defaultCfg.RabbitMQ.Node.Role
+		}
+		if cfg.RabbitMQ.Node.MaxConcurrency == 0 {
+			cfg.RabbitMQ.Node.MaxConcurrency = defaultCfg.RabbitMQ.Node.MaxConcurrency
+		}
+		if cfg.RabbitMQ.Node.HealthCheckPort == 0 {
+			cfg.RabbitMQ.Node.HealthCheckPort = defaultCfg.RabbitMQ.Node.HealthCheckPort
+		}
+		if cfg.RabbitMQ.Node.MetricsPort == 0 {
+			cfg.RabbitMQ.Node.MetricsPort = defaultCfg.RabbitMQ.Node.MetricsPort
+		}
+		if cfg.RabbitMQ.Node.LogLevel == "" {
+			cfg.RabbitMQ.Node.LogLevel = defaultCfg.RabbitMQ.Node.LogLevel
+		}
+		if cfg.RabbitMQ.Node.ShutdownTimeout == 0 {
+			cfg.RabbitMQ.Node.ShutdownTimeout = defaultCfg.RabbitMQ.Node.ShutdownTimeout
+		}
+	}
 	if cfg.Platforms.Alibaba1688.Timeout == 0 {
 		cfg.Platforms.Alibaba1688.Timeout = defaultCfg.Platforms.Alibaba1688.Timeout
 	}

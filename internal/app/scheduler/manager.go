@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"task-processor/internal/core/logger"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -16,6 +17,7 @@ type Manager struct {
 	executors         map[string]*TaskExecutor // key: taskID
 	dependencyManager *DependencyManager
 	monitorService    *MonitorService
+	taskTimeout       time.Duration
 	mutex             sync.RWMutex
 	ctx               context.Context
 	cancel            context.CancelFunc
@@ -23,7 +25,7 @@ type Manager struct {
 }
 
 // NewManager 创建新的调度器管理器
-func NewManager(ctx context.Context) *Manager {
+func NewManager(ctx context.Context, taskTimeout time.Duration) *Manager {
 	managerCtx, cancel := context.WithCancel(ctx)
 
 	// 创建依赖管理器并注册默认依赖关系
@@ -36,6 +38,7 @@ func NewManager(ctx context.Context) *Manager {
 		registry:          NewRegistry(),
 		executors:         make(map[string]*TaskExecutor),
 		dependencyManager: depManager,
+		taskTimeout:       taskTimeout,
 		ctx:               managerCtx,
 		cancel:            cancel,
 		logger: logger.GetGlobalLogger("scheduler_manager").WithField(
@@ -78,7 +81,7 @@ func (m *Manager) CreateAndStartTask(config TaskConfig) error {
 	}
 
 	// 创建任务执行器
-	executor := NewTaskExecutor(m.ctx, task, m.dependencyManager)
+	executor := NewTaskExecutor(m.ctx, task, m.dependencyManager, m.taskTimeout)
 	m.executors[taskID] = executor
 	m.mutex.Unlock()
 

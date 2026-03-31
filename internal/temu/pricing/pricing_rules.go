@@ -82,11 +82,29 @@ func (s *PricingDecisionService) getAmazonProductWithCache(ctx context.Context, 
 		s.logger.Warnf("第%d次获取Amazon产品数据失败: %v", attempt, lastErr)
 		if attempt < s.config.MaxRetries {
 			s.logger.Infof("将进行第%d次重试获取Amazon产品数据: %s", attempt+1, productID)
-			time.Sleep(time.Duration(attempt) * time.Second)
+			if err := waitForNextRetry(ctx, time.Duration(attempt)*time.Second); err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	return nil, fmt.Errorf("经过%d次重试后仍无法获取Amazon产品数据: %w", s.config.MaxRetries, lastErr)
+}
+
+func waitForNextRetry(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // makeDecisionByPrice 根据价格做出决策

@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amazon-crawler-api
+  namespace: task-processor
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: amazon-crawler-api
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"

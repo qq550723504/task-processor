@@ -41,22 +41,28 @@ management:
 
 platforms:
   temu:
-    enabled: true
+    enabled: false
     schedulerEnabled: false
   shein:
     enabled: true
-    schedulerEnabled: false
-  alibaba1688:
-    enabled: false
+    schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
+    # 自动核价配置
+    autoPricing:
+      enabled: true        # 启用自动核价
+      interval: 300         # 执行间隔（秒），默认30分钟
+      batchSize: 100
 
 browser:
-  enabled: false
+  enabled: true
   headless: true
   browserPath: "./chrome/chrome.exe"
   poolSize: 1
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
+
+rabbitmq:
+  enabled: false
 
 amazon:
   enabled: false

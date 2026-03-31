@@ -32,6 +32,9 @@ func (b *DefaultProductFetcherBuilder) Build(
 	rabbitmqClient *rabbitmq.Client,
 ) (fetcher.ProductFetcher, error) {
 	fetcherType := fetcher.LocalFetcher
+	if amazonConfig != nil && amazonConfig.RemoteAPI.Enabled {
+		fetcherType = fetcher.RemoteAPIFetcher
+	}
 	if rabbitmqClient != nil {
 		fetcherType = fetcher.DistributedFetcher
 	}

@@ -55,6 +55,16 @@ func runApplication(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger) 
 	if err := app.Initialize(configPath, appVersion); err != nil {
 		return err
 	}
+	if cfg := app.GetConfigManager().GetCurrent(); cfg != nil {
+		if err := appenv.ApplyLoggingConfig(logger, appenv.LoggingConfig{
+			Level:        cfg.Logging.Level,
+			Format:       cfg.Logging.Format,
+			File:         cfg.Logging.File,
+			SplitByLevel: cfg.Logging.SplitByLevel,
+		}); err != nil {
+			logger.Warnf("apply logging config failed: %v", err)
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

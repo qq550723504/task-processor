@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"task-processor/internal/infra/lock"
+	"time"
 )
 
 // ManagerWithLock 带分布式锁的调度器管理器
@@ -15,8 +16,8 @@ type ManagerWithLock struct {
 }
 
 // NewManagerWithLock 创建带分布式锁的调度器管理器
-func NewManagerWithLock(ctx context.Context, distributedLock lock.DistributedLock, enableLock bool) *ManagerWithLock {
-	baseManager := NewManager(ctx)
+func NewManagerWithLock(ctx context.Context, taskTimeout time.Duration, distributedLock lock.DistributedLock, enableLock bool) *ManagerWithLock {
+	baseManager := NewManager(ctx, taskTimeout)
 
 	return &ManagerWithLock{
 		Manager:         baseManager,
@@ -56,6 +57,7 @@ func (m *ManagerWithLock) CreateAndStartTask(config TaskConfig) error {
 			m.ctx,
 			task,
 			m.dependencyManager,
+			m.taskTimeout,
 			m.distributedLock,
 			m.logger.Logger,
 		)
@@ -64,7 +66,7 @@ func (m *ManagerWithLock) CreateAndStartTask(config TaskConfig) error {
 		m.mutex.Lock()
 		// 注意：这里需要将 LockedTaskExecutor 包装为 TaskExecutor 接口
 		// 暂时使用原始执行器，后续可以优化
-		executor := NewTaskExecutor(m.ctx, task, m.dependencyManager)
+		executor := NewTaskExecutor(m.ctx, task, m.dependencyManager, m.taskTimeout)
 		m.executors[taskID] = executor
 		m.mutex.Unlock()
 
@@ -77,7 +79,7 @@ func (m *ManagerWithLock) CreateAndStartTask(config TaskConfig) error {
 		}
 	} else {
 		// 使用普通执行器（原有逻辑）
-		executor := NewTaskExecutor(m.ctx, task, m.dependencyManager)
+		executor := NewTaskExecutor(m.ctx, task, m.dependencyManager, m.taskTimeout)
 
 		m.mutex.Lock()
 		m.executors[taskID] = executor

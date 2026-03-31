@@ -3,6 +3,7 @@ package runner
 
 import (
 	"fmt"
+	"time"
 
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/logger"
@@ -34,7 +35,7 @@ func (s *schedulerServiceImpl) startScheduledTasks() error {
 	}
 
 	// 创建统一调度器管理器
-	s.schedulerManager = scheduler.NewManager(s.ctx)
+	s.schedulerManager = scheduler.NewManager(s.ctx, time.Duration(cfg.Worker.TaskTimeout)*time.Second)
 
 	// 获取所有平台配置
 	platformConfigs := s.getPlatformConfigs(cfg)

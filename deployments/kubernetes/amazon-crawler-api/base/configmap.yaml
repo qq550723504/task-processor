@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amazon-crawler-api-config
+  namespace: task-processor
+data:
+  config-amazon-crawler-api.yaml: |
+    logging:
+      level: "INFO"
+      format: "text"
+      file: ""
+      split_by_level: []
+
+    browser:
+      enabled: true
+      headless: true
+      browserPath: "/usr/bin/chromium"
+      poolSize: 4
+      viewportWidth: 1920
+      viewportHeight: 1080
+      proxyServer: ""
+
+    amazon:
+      enabled: true
+      dataFreshnessDays: 15
+      crawlTimeout: 300
+      productDedupe:
+        lockTTLSeconds: 300
+        resultTTLSeconds: 600
+        waitTimeoutSeconds: 120
+        pollIntervalMillis: 500
+      failureArtifacts:
+        enabled: true
+        directory: "./tmp/amazon-failure-artifacts"
+        captureHTML: true
+        maxHTMLBytes: 262144
+      riskControl:
+        captchaRecreateThreshold: 1
+        authenticationRecreateThreshold: 1
+        browserCrashRecreateThreshold: 1
+        timeoutRecreateThreshold: 3
+        networkRecreateThreshold: 2
+        serverErrorRecreateThreshold: 3
+      regionGuard:
+        enabled: true
+        failureThreshold: 3
+        evaluationWindowSeconds: 300
+        cooldownSeconds: 180
+      qualityControl:
+        retryOnValidationFailure: true
+        validationRetryMaxAttempts: 2
+      proxyPool:
+        enabled: false
+        strategy: "round_robin"
+        failureCooldownSeconds: 300
+        proxies: []
+      concurrencyControl:
+        enabled: false
+        maxInFlight: 12
+        maxWaiting: 50
+        acquireTimeoutSeconds: 20
+        perRegion: {}
+      remoteAPI:
+        enabled: false
+        baseURL: ""
+        timeout: 300
+      zipcodes:
+        us: "10001"
+        uk: "SW1A1AA"
+        de: "10115"
+        fr: "75001"
+        it: "00118"
+        es: "28001"
+        ca: "M5V2T6"
+        jp: "1000001"
+
+    rabbitmq:
+      enabled: false
+
+    redis:
+      host: "redis-master.default.svc.cluster.local"
+      port: 6379
+      password: ""
+      db: 0
+      pool_size: 10
+
+    platforms:
+      temu:
+        enabled: false
+        schedulerEnabled: false
+      shein:
+        enabled: false
+        schedulerEnabled: false
+      alibaba1688:
+        enabled: false
+        timeout: 120
+        poolSize: 2
+
+    updater:
+      enabled: false

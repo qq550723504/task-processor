@@ -19,6 +19,7 @@ type TaskExecutor struct {
 	ctx               context.Context
 	cancel            context.CancelFunc
 	wg                sync.WaitGroup
+	taskTimeout       time.Duration
 	logger            *logrus.Entry
 	dependencyManager *DependencyManager
 	isRunning         int32          // 任务执行状态标志 (0: 空闲, 1: 执行中)
@@ -27,13 +28,17 @@ type TaskExecutor struct {
 }
 
 // NewTaskExecutor 创建新的任务执行器
-func NewTaskExecutor(ctx context.Context, task Task, depManager *DependencyManager) *TaskExecutor {
+func NewTaskExecutor(ctx context.Context, task Task, depManager *DependencyManager, taskTimeout time.Duration) *TaskExecutor {
 	executorCtx, cancel := context.WithCancel(ctx)
+	if taskTimeout <= 0 {
+		taskTimeout = timeout.TaskExtraTimeout
+	}
 
 	return &TaskExecutor{
 		task:              task,
 		ctx:               executorCtx,
 		cancel:            cancel,
+		taskTimeout:       taskTimeout,
 		dependencyManager: depManager,
 		stats:             NewExecutorStats(),
 		logger: logger.GetGlobalLogger("task_executor").WithFields(logrus.Fields{
@@ -124,7 +129,7 @@ func (e *TaskExecutor) executeTask() {
 	e.logger.Info("开始执行任务")
 
 	// 创建任务上下文，设置超时
-	taskCtx, cancel := timeout.WithTaskExtraTimeout(e.ctx)
+	taskCtx, cancel := context.WithTimeout(e.ctx, e.taskTimeout)
 	defer cancel()
 
 	// 检查依赖任务是否满足
