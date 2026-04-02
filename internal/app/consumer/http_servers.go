@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -18,10 +19,12 @@ type HTTPServerManager struct {
 	config          *config.RabbitMQConfig
 	loadMonitor     *rabbitmq.LoadMonitor
 	rabbitmqService *RabbitMQService
+	statsProvider   func() map[string]any
 	logger          *logrus.Logger
 
 	healthServer  *http.Server
 	metricsServer *http.Server
+	startedAt     time.Time
 
 	wg sync.WaitGroup
 }
@@ -31,13 +34,16 @@ func NewHTTPServerManager(
 	cfg *config.RabbitMQConfig,
 	loadMonitor *rabbitmq.LoadMonitor,
 	rabbitmqService *RabbitMQService,
+	statsProvider func() map[string]any,
 	logger *logrus.Logger,
 ) *HTTPServerManager {
 	return &HTTPServerManager{
 		config:          cfg,
 		loadMonitor:     loadMonitor,
 		rabbitmqService: rabbitmqService,
+		statsProvider:   statsProvider,
 		logger:          logger,
+		startedAt:       time.Now(),
 	}
 }
 
@@ -116,19 +122,37 @@ func runServer(srv *http.Server, name string, port int, logger *logrus.Logger) {
 // handleHealth 处理健康检查请求
 func (h *HTTPServerManager) handleHealth(w http.ResponseWriter, r *http.Request) {
 	health := h.loadMonitor.GetHealthStatus()
+	ready := h.rabbitmqService.IsConnected()
 
 	w.Header().Set("Content-Type", "application/json")
 
 	status := health["status"].(string)
-	if status == "healthy" {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusServiceUnavailable)
+	httpStatus := http.StatusOK
+	if !ready {
+		status = "degraded"
+	} else if status != "healthy" {
+		httpStatus = http.StatusServiceUnavailable
 	}
 
-	// 简单的JSON响应
-	fmt.Fprintf(w, `{"status":"%s","timestamp":"%s"}`,
-		status, time.Now().Format(time.RFC3339))
+	response := map[string]any{
+		"status":    status,
+		"ready":     ready,
+		"timestamp": time.Now().Format(time.RFC3339),
+		"health":    health,
+		"node": map[string]any{
+			"node_id":      h.config.Node.NodeID,
+			"role":         h.config.Node.NormalizedRole(),
+			"health_port":  h.config.Node.HealthCheckPort,
+			"metrics_port": h.config.Node.MetricsPort,
+			"started_at":   h.startedAt.Format(time.RFC3339),
+		},
+	}
+	if h.statsProvider != nil {
+		response["service"] = h.statsProvider()
+	}
+
+	w.WriteHeader(httpStatus)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // handleReady 处理就绪检查请求
@@ -137,13 +161,24 @@ func (h *HTTPServerManager) handleReady(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 
+	response := map[string]any{
+		"ready":     ready,
+		"timestamp": time.Now().Format(time.RFC3339),
+		"node": map[string]any{
+			"node_id": h.config.Node.NodeID,
+			"role":    h.config.Node.NormalizedRole(),
+		},
+	}
+	if h.statsProvider != nil {
+		response["service"] = h.statsProvider()
+	}
+
 	if ready {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"ready":true,"timestamp":"%s"}`, time.Now().Format(time.RFC3339))
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintf(w, `{"ready":false,"timestamp":"%s"}`, time.Now().Format(time.RFC3339))
 	}
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // handleMetrics 处理指标请求
@@ -216,13 +251,17 @@ func (h *HTTPServerManager) handleStats(w http.ResponseWriter, r *http.Request) 
 	// 节点信息
 	stats["node"] = map[string]any{
 		"node_id":    h.config.Node.NodeID,
-		"started_at": time.Now().Format(time.RFC3339),
+		"role":       h.config.Node.NormalizedRole(),
+		"started_at": h.startedAt.Format(time.RFC3339),
+	}
+	if h.statsProvider != nil {
+		stats["service"] = h.statsProvider()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-
-	// 简单的JSON序列化
-	fmt.Fprintf(w, `{"timestamp":"%s","stats":%v}`,
-		time.Now().Format(time.RFC3339), stats)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"timestamp": time.Now().Format(time.RFC3339),
+		"stats":     stats,
+	})
 }

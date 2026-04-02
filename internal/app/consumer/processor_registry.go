@@ -19,6 +19,7 @@ type TaskProcessorRegistry struct {
 	resultReporter *ResultReporter
 	storeAPI       api.StoreAPI
 	ownedStores    []int64
+	useStoreQueues bool
 	deduplicator   *apptask.DeduplicationManager
 	logger         *logrus.Logger
 	mu             sync.RWMutex
@@ -29,6 +30,7 @@ func NewTaskProcessorRegistry(
 	resultReporter *ResultReporter,
 	storeAPI api.StoreAPI,
 	ownedStores []int64,
+	useStoreQueues bool,
 	deduplicator *apptask.DeduplicationManager,
 	logger *logrus.Logger,
 ) *TaskProcessorRegistry {
@@ -38,6 +40,7 @@ func NewTaskProcessorRegistry(
 		resultReporter: resultReporter,
 		storeAPI:       storeAPI,
 		ownedStores:    ownedStores,
+		useStoreQueues: useStoreQueues,
 		deduplicator:   deduplicator,
 		logger:         logger,
 	}
@@ -59,6 +62,7 @@ func (r *TaskProcessorRegistry) UpdateComponents(
 	resultReporter *ResultReporter,
 	storeAPI api.StoreAPI,
 	ownedStores []int64,
+	useStoreQueues *bool,
 	deduplicator *apptask.DeduplicationManager,
 ) {
 	r.mu.Lock()
@@ -72,6 +76,9 @@ func (r *TaskProcessorRegistry) UpdateComponents(
 	}
 	if ownedStores != nil {
 		r.ownedStores = ownedStores
+	}
+	if useStoreQueues != nil {
+		r.useStoreQueues = *useStoreQueues
 	}
 	if deduplicator != nil {
 		r.deduplicator = deduplicator
@@ -135,6 +142,7 @@ func (r *TaskProcessorRegistry) newHandler(platform string, processor worker.Pro
 		ResultReporter: r.resultReporter,
 		StoreAPI:       r.storeAPI,
 		OwnedStores:    r.ownedStores,
+		UseStoreQueues: r.useStoreQueues,
 		Deduplicator:   r.deduplicator,
 		Logger:         r.logger,
 	})

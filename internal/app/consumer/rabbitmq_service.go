@@ -4,6 +4,7 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,7 @@ type RabbitMQService struct {
 	resultReporter *ResultReporter
 	storeAPI       api.StoreAPI
 	ownedStores    []int64
+	useStoreQueues bool
 	deduplicator   *apptask.DeduplicationManager
 
 	// 生命周期管理
@@ -89,7 +91,7 @@ func NewRabbitMQService(cfg *config.RabbitMQConfig, logger *logrus.Logger) *Rabb
 	initializer := rabbitmq.NewQueueInitializer(client, logger)
 
 	// 创建增强的处理器注册表（暂时传nil，后续通过SetComponents设置）
-	processorRegistry := NewTaskProcessorRegistry(nil, nil, nil, nil, logger)
+	processorRegistry := NewTaskProcessorRegistry(nil, nil, nil, false, nil, logger)
 
 	return &RabbitMQService{
 		config:            cfg,
@@ -99,6 +101,7 @@ func NewRabbitMQService(cfg *config.RabbitMQConfig, logger *logrus.Logger) *Rabb
 		initializer:       initializer,
 		processorRegistry: processorRegistry,
 		logger:            logger,
+		useStoreQueues:    cfg.Node.UsesStoreAffinity(),
 	}
 }
 
@@ -138,6 +141,7 @@ func (s *RabbitMQService) SetComponents(
 	if ownedStores != nil {
 		s.ownedStores = ownedStores
 	}
+	s.useStoreQueues = s.config.Node.UsesStoreAffinity()
 	if deduplicator != nil {
 		s.deduplicator = deduplicator
 	}
@@ -147,6 +151,7 @@ func (s *RabbitMQService) SetComponents(
 		s.resultReporter,
 		s.storeAPI,
 		s.ownedStores,
+		&s.useStoreQueues,
 		s.deduplicator,
 	)
 
@@ -177,18 +182,16 @@ func (s *RabbitMQService) SetQueueConfigs(configs []config.QueueConfig) {
 // Start 启动RabbitMQ服务
 func (s *RabbitMQService) Start(ctx context.Context) error {
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
 	if s.started {
+		s.mutex.Unlock()
 		return fmt.Errorf("RabbitMQ服务已启动")
 	}
-
 	s.logger.Info("启动RabbitMQ服务...")
-
 	s.ctx, s.cancel = context.WithCancel(ctx)
+	s.mutex.Unlock()
 
-	// 1. 建立连接
-	if err := s.connManager.Connect(s.ctx); err != nil {
+	// 1. 建立连接。启动阶段不因依赖瞬时不可用直接退出，而是持续重试直到成功或上下文取消。
+	if err := s.connectWithRetry(s.ctx); err != nil {
 		return fmt.Errorf("建立RabbitMQ连接失败: %w", err)
 	}
 
@@ -217,8 +220,18 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 		return fmt.Errorf("初始化RabbitMQ队列失败: %w", err)
 	}
 
-	// 4. 初始化店铺专属队列（如果配置了 ownedStores）
-	if s.config.Node.HandlesTaskWork() && len(s.ownedStores) > 0 {
+	// 4. 初始化店铺专属队列（仅在显式启用店铺亲和模式时）
+	if s.config.Node.HandlesTaskWork() {
+		platforms := s.getRegisteredPlatforms()
+		if !s.useStoreQueues && len(platforms) > 0 {
+			if err := s.initializer.InitializePlatformQueues(platforms); err != nil {
+				return fmt.Errorf("初始化平台共享队列失败: %w", err)
+			}
+			s.logger.Infof("平台共享队列初始化完成: platforms=%v", platforms)
+		}
+	}
+
+	if s.config.Node.HandlesTaskWork() && s.useStoreQueues && len(s.ownedStores) > 0 {
 		platforms := s.getRegisteredPlatforms()
 		for _, platform := range platforms {
 			if err := s.initializer.InitializeStoreQueues(platform, s.ownedStores); err != nil {
@@ -236,7 +249,7 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	}
 
 	// 4. 预加载店铺配置（如果启用）
-	if s.storeAPI != nil && len(s.ownedStores) > 0 {
+	if s.storeAPI != nil && s.useStoreQueues && len(s.ownedStores) > 0 {
 		s.logger.Infof("开始预加载 %d 个店铺配置...", len(s.ownedStores))
 		for _, storeID := range s.ownedStores {
 			_, err := s.storeAPI.GetStore(storeID)
@@ -258,9 +271,56 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 		return fmt.Errorf("启动消息消费者失败: %w", err)
 	}
 
+	s.mutex.Lock()
 	s.started = true
+	s.mutex.Unlock()
 	s.logger.Info("RabbitMQ服务启动完成")
 	return nil
+}
+
+func (s *RabbitMQService) connectWithRetry(ctx context.Context) error {
+	for attempt := 0; ; attempt++ {
+		err := s.connManager.Connect(ctx)
+		if err == nil {
+			return nil
+		}
+
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		delay := startupRetryDelay(attempt, s.config.ReconnectInterval)
+
+		s.logger.Warnf("RabbitMQ 初始连接失败，第 %d 次重试前等待 %v: %v", attempt+1, delay, err)
+		if err := waitForRetry(ctx, delay); err != nil {
+			return err
+		}
+	}
+}
+
+func startupRetryDelay(attempt int, base time.Duration) time.Duration {
+	if base <= 0 {
+		base = 5 * time.Second
+	}
+
+	delay := time.Duration(float64(base) * math.Pow(2, float64(attempt)))
+	maxDelay := 30 * time.Second
+	if delay > maxDelay {
+		return maxDelay
+	}
+	return delay
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // registerMessageHandlers 注册消息处理器
@@ -296,7 +356,7 @@ func (s *RabbitMQService) registerMessageHandlers() {
 			continue
 		}
 
-		if len(s.ownedStores) > 0 {
+		if s.useStoreQueues && len(s.ownedStores) > 0 {
 			for _, storeID := range s.ownedStores {
 				queueName := fmt.Sprintf("%s.tasks.store.%d", platform, storeID)
 				s.consumer.RegisterHandler(queueName, handler)
@@ -305,7 +365,7 @@ func (s *RabbitMQService) registerMessageHandlers() {
 		} else {
 			queueName := fmt.Sprintf("%s.tasks", platform)
 			s.consumer.RegisterHandler(queueName, handler)
-			s.logger.Warnf("注册处理器（平台级队列，未配置店铺隔离）: 平台=%s", platform)
+			s.logger.Infof("注册处理器（平台共享队列）: 平台=%s", platform)
 		}
 	}
 

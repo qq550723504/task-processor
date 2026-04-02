@@ -60,6 +60,10 @@ func newReporterComponent(svc *ResultReporter) lifecycle.Component {
 }
 
 func (c *reporterComponent) Start(ctx context.Context) error {
+	if c.svc == nil {
+		c.SetRunning(true)
+		return nil
+	}
 	if err := c.svc.Start(ctx); err != nil {
 		return err
 	}
@@ -69,6 +73,9 @@ func (c *reporterComponent) Start(ctx context.Context) error {
 
 func (c *reporterComponent) Stop(ctx context.Context) error {
 	defer c.SetRunning(false)
+	if c.svc == nil {
+		return nil
+	}
 	return c.svc.Stop(ctx)
 }
 
@@ -78,10 +85,12 @@ type httpServerComponent struct {
 	svc *HTTPServerManager
 }
 
-// newHTTPServerComponent 创建 HTTP 服务器组件适配器（优先级 30，依赖 rabbitmq）。
+// newHTTPServerComponent 创建 HTTP 服务器组件适配器。
+// 健康检查服务应尽早启动，这样依赖抖动时 Pod 仍能返回 liveness，
+// readiness 则继续由 /ready 反映 RabbitMQ 是否已连通。
 func newHTTPServerComponent(svc *HTTPServerManager) lifecycle.Component {
 	return &httpServerComponent{
-		BaseComponent: lifecycle.NewBaseComponent("http-server", []string{"rabbitmq"}, 30),
+		BaseComponent: lifecycle.NewBaseComponent("http-server", []string{"load-monitor"}, 18),
 		svc:           svc,
 	}
 }

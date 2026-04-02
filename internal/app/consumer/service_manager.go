@@ -4,6 +4,7 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	apptask "task-processor/internal/app/task"
@@ -138,6 +139,11 @@ func (sm *ServiceManager) buildManagedComponents() []lifecycle.Component {
 
 func (sm *ServiceManager) buildResultReporter() *ResultReporter {
 	cfg := sm.config
+	if strings.TrimSpace(cfg.ResultReporter.ReportURL) == "" {
+		sm.logger.Info("结果上报器未配置 reportURL，当前节点跳过异步结果上报，依赖任务状态直连回写")
+		return nil
+	}
+
 	reporterCfg := ReporterConfig{
 		ReportURL:   cfg.ResultReporter.ReportURL,
 		NodeID:      cfg.ResultReporter.NodeID,
@@ -162,7 +168,7 @@ func (sm *ServiceManager) buildLoadMonitor() *rabbitmq.LoadMonitor {
 }
 
 func (sm *ServiceManager) buildHTTPServerManager(loadMonitor *rabbitmq.LoadMonitor) *HTTPServerManager {
-	return NewHTTPServerManager(sm.config, loadMonitor, sm.rabbitmqService, sm.logger)
+	return NewHTTPServerManager(sm.config, loadMonitor, sm.rabbitmqService, sm.GetStats, sm.logger)
 }
 
 // Stop 优雅停止所有服务。
