@@ -14,6 +14,7 @@ type ImportTaskAPIClient struct {
 
 // GetPendingAndRetryTasks 获取待处理及待重试的任务列表
 func (m *ImportTaskAPIClient) GetPendingAndRetryTasks(limit int, userId int64, storeIds []int64) ([]api.ProductImportTaskRespDTO, error) {
+	logger.GetGlobalLogger("infra/clients").Warn("[GetPendingAndRetryTasks] legacy polling API is deprecated; prefer RabbitMQ-driven task dispatch")
 	url := fmt.Sprintf("%s/rpc-api/listing/import-task/list-pending-and-retry?limit=%d", m.baseURL, limit)
 
 	if userId > 0 {
@@ -48,6 +49,16 @@ func (m *ImportTaskAPIClient) GetPendingAndRetryTasks(limit int, userId int64, s
 		if taskCount == 0 {
 			logger.GetGlobalLogger("infra/clients").Warnf("[GetPendingAndRetryTasks] 未获取到任何任务！请求参数: limit=%d, userId=%d, storeIds=%v",
 				limit, userId, storeIds)
+		} else {
+			firstTask := (*tasksPtr)[0]
+			logger.GetGlobalLogger("infra/clients").Debugf(
+				"[GetPendingAndRetryTasks] 获取任务成功: count=%d, firstTaskID=%d, firstStatusCode=%d, firstStatusKey=%s, firstCanonicalStatus=%s",
+				taskCount,
+				firstTask.ID,
+				firstTask.Status,
+				firstTask.StatusKey,
+				firstTask.CanonicalStatus,
+			)
 		}
 		return *tasksPtr, nil
 	}

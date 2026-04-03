@@ -19,13 +19,20 @@ import (
 func TestCheckDailyLimitHandlerReturnsPausedHandledErrorWhenLimitReached(t *testing.T) {
 	limit := 5
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rpc-api/listing/store/get-daily-listing-count" {
+		if r.URL.Path != "/rpc-api/listing/store/try-consume-daily-quota" {
 			http.NotFound(w, r)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": 5})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{
+				"allowed":      false,
+				"newCount":     5,
+				"remaining":    0,
+				"reachedLimit": true,
+			},
+		})
 	}))
 	defer server.Close()
 

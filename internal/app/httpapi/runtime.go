@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
@@ -44,13 +45,20 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		return nil, fmt.Errorf("create input parser: %w", err)
 	}
 
+	shared, err := appbootstrap.BuildSharedResources(cfg, logger, appbootstrap.SharedResourceOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("build shared resources: %w", err)
+	}
+
 	return &runtimeDeps{
-		cfg:           cfg,
-		closers:       nil,
-		llmMgr:        llmMgr,
-		inputParser:   inputParser,
-		understanding: productUnderstanding,
-		imageWorkDir:  imageWorkDir,
+		cfg:              cfg,
+		closers:          nil,
+		llmMgr:           llmMgr,
+		inputParser:      inputParser,
+		understanding:    productUnderstanding,
+		imageWorkDir:     imageWorkDir,
+		shared:           shared,
+		managementClient: shared.ManagementClient,
 	}, nil
 }
 

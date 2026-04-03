@@ -78,6 +78,12 @@ func (h *SavePublishResultHandler) recordDailyListingCountWithInput(input *SaveP
 		return
 	}
 
+	if input.DailyQuotaReserved {
+		h.logger.Infof("店铺 %d 复用已预占的每日额度: 日期=%s, 增量=%d, 类型=%s",
+			storeID, input.DailyQuotaDate, input.DailyQuotaIncrement, dailyLimitType)
+		return
+	}
+
 	count := h.memoryManager.DailyCountManager.IncrementCount(
 		tenantID,
 		storeID,

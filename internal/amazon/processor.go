@@ -39,6 +39,8 @@ func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger
 
 	// 创建服务容器
 	services := amazonModel.NewServices()
+	services.SetManagementClient(baseProcessor.GetManagementClient())
+	services.SetMemoryManager(baseProcessor.GetMemoryManager())
 
 	// 创建 API 客户端
 	apiClient := createAPIClient(cfg)
@@ -97,12 +99,18 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 	}
 
 	// 使用现有的管道处理逻辑
-	err := p.ProcessTaskWithPipeline(ctx, taskData)
+	taskContext := p.createTaskContext(taskData)
+	defer p.rollbackReservedDailyQuota(taskContext)
+
+	err := p.ProcessTaskWithPipeline(ctx, taskContext)
 	if err != nil {
+		p.handleTaskFailure(&task, err)
 		logger.Errorf("[Amazon] 任务处理失败: ID=%d, Error=%v", task.ID, err)
 		return fmt.Errorf("Amazon任务处理失败: %w", err)
 	}
 
+	taskContext.ClearDailyQuotaReservation()
+	p.handleTaskSuccess(&task)
 	logger.Infof("[Amazon] 任务处理成功: ID=%d", task.ID)
 	return nil
 }
@@ -141,15 +149,12 @@ func (p *Processor) GetStatus() map[string]any {
 }
 
 // ProcessTaskWithPipeline 使用完整管道处理任务并显示详细流程
-func (p *Processor) ProcessTaskWithPipeline(ctx context.Context, taskData map[string]any) error {
+func (p *Processor) ProcessTaskWithPipeline(ctx context.Context, taskContext *amazonModel.TaskContext) error {
 	logger := p.GetLogger()
 	logger.Info("🔧 开始管道流程详细处理")
 
 	// 创建流水线管理器
 	manager := pipeline.NewHandlerManager(p.services)
-
-	// 创建任务上下文
-	taskContext := p.createTaskContext(taskData)
 
 	// 执行完整处理流程
 	logger.Info("🚀 开始执行管道处理流程:")
@@ -165,11 +170,67 @@ func (p *Processor) ProcessTaskWithPipeline(ctx context.Context, taskData map[st
 
 // createTaskContext 创建任务上下文
 func (p *Processor) createTaskContext(taskData map[string]any) *amazonModel.TaskContext {
+	taskID := "pipeline-task-001"
+	if rawTaskID, ok := taskData["taskId"]; ok {
+		taskID = fmt.Sprintf("%v", rawTaskID)
+	}
 	return &amazonModel.TaskContext{
-		TaskID:        "pipeline-task-001",
+		TaskID:        taskID,
 		MarketplaceID: "ATVPDKIKX0DER",
 		LanguageTag:   "en_US",
 		Currency:      "USD",
 		Data:          taskData,
+	}
+}
+
+func (p *Processor) rollbackReservedDailyQuota(taskContext *amazonModel.TaskContext) {
+	if taskContext == nil || !taskContext.DailyQuotaReserved {
+		return
+	}
+	if p.GetMemoryManager() == nil {
+		return
+	}
+
+	if listingSKU, exists := taskContext.GetResult("listing_sku"); exists && listingSKU != nil {
+		return
+	}
+
+	tenantIDValue, tenantExists := taskContext.Data["tenantId"]
+	storeIDValue, storeExists := taskContext.Data["storeId"]
+	if !tenantExists || !storeExists {
+		return
+	}
+
+	tenantID, okTenant := toInt64(tenantIDValue)
+	storeID, okStore := toInt64(storeIDValue)
+	if !okTenant || !okStore {
+		return
+	}
+
+	if _, err := p.GetMemoryManager().DailyCountManager.RollbackReservedQuota(
+		tenantID,
+		storeID,
+		taskContext.DailyQuotaDate,
+		taskContext.DailyQuotaIncrement,
+	); err != nil {
+		p.GetLogger().WithError(err).Warnf("[Amazon] 回滚预占额度失败: tenant=%d, store=%d", tenantID, storeID)
+		return
+	}
+
+	taskContext.ClearDailyQuotaReservation()
+}
+
+func toInt64(value any) (int64, bool) {
+	switch v := value.(type) {
+	case int64:
+		return v, true
+	case int:
+		return int64(v), true
+	case int32:
+		return int64(v), true
+	case float64:
+		return int64(v), true
+	default:
+		return 0, false
 	}
 }

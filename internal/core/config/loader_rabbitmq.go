@@ -37,6 +37,7 @@ func BuildRabbitMQConfig(v *viper.Viper) *RabbitMQConfig {
 			LogLevel:        v.GetString("rabbitmq.node.logLevel"),
 			ShutdownTimeout: getDuration(v, "rabbitmq.node.shutdownTimeout", 30),
 			OwnedStores:     getInt64Slice(v, "rabbitmq.node.ownedStores"),
+			UseStoreQueues:  v.GetBool("rabbitmq.node.useStoreQueues"),
 			Regions:         v.GetStringSlice("rabbitmq.node.regions"),
 		},
 		Deduplicator: DeduplicatorConfig{

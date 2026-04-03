@@ -15,13 +15,15 @@ import (
 // 提供通用功能，减少重复代码
 type BaseHandler struct {
 	name   string
+	stage  string
 	logger *logrus.Entry
 }
 
 // NewBaseHandler 创建基础处理器
-func NewBaseHandler(name string) *BaseHandler {
+func NewBaseHandler(name string, stage string) *BaseHandler {
 	return &BaseHandler{
 		name:   name,
+		stage:  stage,
 		logger: logger.GetGlobalLogger("amazon/pipeline").WithField("handler", name),
 	}
 }
@@ -29,6 +31,11 @@ func NewBaseHandler(name string) *BaseHandler {
 // Name 返回处理器名称
 func (bh *BaseHandler) Name() string {
 	return bh.name
+}
+
+// Stage 返回处理阶段标识
+func (bh *BaseHandler) Stage() string {
+	return bh.stage
 }
 
 // GetLogger 获取日志器

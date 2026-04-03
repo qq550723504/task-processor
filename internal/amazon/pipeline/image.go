@@ -14,7 +14,7 @@ type ImageHandler struct {
 // NewImageHandler 创建图片处理器
 func NewImageHandler(services *model.Services) *ImageHandler {
 	return &ImageHandler{
-		BaseHandler: NewBaseHandler("图片处理器"),
+		BaseHandler: NewBaseHandler("图片处理器", amazonTaskStageProcessImages),
 	}
 }
 

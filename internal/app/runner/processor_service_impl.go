@@ -53,7 +53,7 @@ type processorServiceImpl struct {
 // startTaskFetcher 启动任务获取器
 func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) {
 	log := logger.GetGlobalLogger("service.processor")
-	log.Info("启动任务获取器...")
+	log.Warn("启动已废弃的 legacy task fetcher；生产主链应使用 RabbitMQ platform consumers")
 
 	submitters := make(map[string]task.TaskSubmitter)
 	availability := make(map[string]any)

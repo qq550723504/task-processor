@@ -16,7 +16,7 @@ type InventoryHandler struct {
 // NewInventoryHandler 创建库存处理器
 func NewInventoryHandler(services *model.Services) *InventoryHandler {
 	return &InventoryHandler{
-		BaseHandler: NewBaseHandler("库存处理器"),
+		BaseHandler: NewBaseHandler("库存处理器", amazonTaskStageSetInventory),
 	}
 }
 

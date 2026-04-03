@@ -52,13 +52,6 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 	// 获取当前日期（格式：YYYY-MM-DD）
 	currentDate := timex.NowDate()
 
-	// 获取当前已上架数量
-	currentCount := ctx.MemoryManager.DailyCountManager.GetCount(
-		ctx.Task.TenantID,
-		ctx.Task.StoreID,
-		currentDate,
-	)
-
 	// 计算本次发布会增加的数量
 	increment := h.calculateIncrement(ctx)
 	if increment <= 0 {
@@ -66,14 +59,31 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 		return nil
 	}
 
-	// 预测发布后的总数量
-	predictedCount := currentCount + increment
+	reservation, err := ctx.MemoryManager.DailyCountManager.TryReserveQuota(
+		ctx.Task.TenantID,
+		ctx.Task.StoreID,
+		currentDate,
+		increment,
+		int64(dailyLimit),
+	)
+	if err != nil {
+		return err
+	}
+
+	currentCount := reservation.NewCount
+	predictedCount := reservation.NewCount
+	if reservation.Allowed {
+		currentCount = reservation.NewCount - increment
+	}
+	if !reservation.Allowed {
+		predictedCount = reservation.NewCount + increment
+	}
 
 	logger.GetGlobalLogger("shein/validation").Infof("店铺 %d 在 %s 的上架情况: 当前=%d, 本次增加=%d, 预计=%d, 限额=%d (类型: %s)",
 		ctx.StoreInfo.ID, currentDate, currentCount, increment, predictedCount, dailyLimit, ctx.StoreInfo.DailyLimitType)
 
 	// 检查是否会超过限额
-	if predictedCount > int64(dailyLimit) {
+	if !reservation.Allowed {
 		logger.GetGlobalLogger("shein/validation").Warnf("店铺 %d 在 %s 的上架数量即将超过限额: 当前=%d, 本次增加=%d, 预计=%d, 限额=%d",
 			ctx.StoreInfo.ID, currentDate, currentCount, increment, predictedCount, dailyLimit)
 
@@ -96,6 +106,8 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 			),
 		)
 	}
+
+	ctx.SetDailyQuotaReservation(currentDate, increment)
 
 	logger.GetGlobalLogger("shein/validation").Infof("店铺 %d 在 %s 的上架数量未超过限额，允许继续发布", ctx.StoreInfo.ID, currentDate)
 	return nil

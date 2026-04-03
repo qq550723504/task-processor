@@ -65,7 +65,8 @@ type NodeConfig struct {
 	MetricsPort     int           `yaml:"metricsPort"`     // 指标端口
 	LogLevel        string        `yaml:"logLevel"`        // 日志级别
 	ShutdownTimeout time.Duration `yaml:"shutdownTimeout"` // 关闭超时
-	OwnedStores     []int64       `yaml:"ownedStores"`     // 本节点负责的店铺ID列表，为空则处理所有店铺
+	OwnedStores     []int64       `yaml:"ownedStores"`     // 店铺亲和性白名单，仅在启用亲和模式时生效
+	UseStoreQueues  bool          `yaml:"useStoreQueues"`  // 是否启用按店铺队列/店铺亲和消费，默认 false 走平台共享队列
 	Regions         []string      `yaml:"regions"`         // 本节点负责的 region 列表（如 US、UK、JP），为空则处理所有 region
 }
 
@@ -99,6 +100,11 @@ func (c NodeConfig) HandlesTaskWork() bool {
 func (c NodeConfig) HandlesCrawlerWork() bool {
 	role := c.NormalizedRole()
 	return role == NodeRoleCrawler || role == NodeRoleHybrid
+}
+
+// UsesStoreAffinity reports whether the node should consume store-scoped queues only.
+func (c NodeConfig) UsesStoreAffinity() bool {
+	return c.UseStoreQueues && len(c.OwnedStores) > 0
 }
 
 // DeduplicatorConfig 去重器配置

@@ -44,7 +44,7 @@ func main() {
 	logger.Infof("🌐 API 端口: %d", *port)
 
 	// 加载配置
-	cfg, err := config.LoadConfigWithFallback(*configPath, logger)
+	cfg, err := config.LoadAmazonCrawlerAPIConfigWithFallback(*configPath, logger)
 	if err != nil {
 		logger.Fatalf("load config failed: %v", err)
 	}

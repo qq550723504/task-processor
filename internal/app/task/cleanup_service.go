@@ -3,6 +3,7 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"task-processor/internal/core/config"
@@ -76,31 +77,103 @@ func (s *CleanupService) Start(ctx context.Context) {
 }
 
 func (s *CleanupService) performCleanup() {
-	s.fetcher.tasksMutex.RLock()
-	defer s.fetcher.tasksMutex.RUnlock()
-
 	stats := NewCleanupStats()
 	now := time.Now()
+	processingTasks := s.snapshotProcessingTasks()
+	claimEntries := s.loadClaimJournalEntries()
 
-	for taskID, submitTime := range s.fetcher.processingTasks {
+	for taskID, submitTime := range processingTasks {
 		duration := now.Sub(submitTime)
 
 		for _, strategy := range s.strategies {
 			if shouldFlag, reason := strategy.ShouldCleanup(taskID, duration); shouldFlag {
 				status := s.getTaskStatusByReason(reason)
 				stats.AddCleaned(status)
-				s.logCleanupCandidate(taskID, duration, reason)
+				recovered := false
+				if reason == "30分钟强制清理" {
+					recovered = s.tryRecoverClaimedTask(taskID, duration, reason, claimEntries)
+				}
+				if !recovered {
+					s.logCleanupCandidate(taskID, duration, reason)
+				}
 				break
 			}
 		}
 	}
 
-	stats.RemainingTasks = len(s.fetcher.processingTasks)
+	stats.RemainingTasks = len(s.snapshotProcessingTasks())
 	s.reportCleanupStats(stats)
 
 	if stats.RemainingTasks > 15 {
 		s.handleEmergencyCleanup()
 	}
+}
+
+func (s *CleanupService) snapshotProcessingTasks() map[string]time.Time {
+	s.fetcher.tasksMutex.RLock()
+	defer s.fetcher.tasksMutex.RUnlock()
+
+	snapshot := make(map[string]time.Time, len(s.fetcher.processingTasks))
+	for taskID, submitTime := range s.fetcher.processingTasks {
+		snapshot[taskID] = submitTime
+	}
+	return snapshot
+}
+
+func (s *CleanupService) loadClaimJournalEntries() map[string]ClaimJournalEntry {
+	if s == nil || s.fetcher == nil || s.fetcher.claimJournal == nil {
+		return nil
+	}
+
+	entries, err := s.fetcher.claimJournal.LoadAll()
+	if err != nil {
+		logger.GetGlobalLogger("app/task").WithError(err).Warn("加载 claim journal 失败，跳过自动恢复")
+		return nil
+	}
+
+	result := make(map[string]ClaimJournalEntry, len(entries))
+	for _, entry := range entries {
+		result[fmt.Sprintf("%d", entry.TaskID)] = entry
+	}
+	return result
+}
+
+func (s *CleanupService) tryRecoverClaimedTask(
+	taskID string,
+	duration time.Duration,
+	reason string,
+	claimEntries map[string]ClaimJournalEntry,
+) bool {
+	if s == nil || s.fetcher == nil {
+		return false
+	}
+
+	entry, exists := claimEntries[taskID]
+	if !exists {
+		return false
+	}
+
+	statusService := s.fetcher.newTaskStatusService("app/task_cleanup_recovery")
+	input := taskStatusRecoveryInputWithFallback(entry, "task processing lease expired, recovered by cleanup service")
+	if err := statusService.UpdateSyncWithInput(input); err != nil {
+		logger.GetGlobalLogger("app/task").WithError(err).Warnf(
+			"自动恢复超时任务失败: TaskID=%s, Duration=%.1fm, Reason=%s",
+			taskID,
+			duration.Minutes(),
+			reason,
+		)
+		return false
+	}
+
+	s.fetcher.RemoveProcessingTask(taskID)
+	logger.GetGlobalLogger("app/task").Warnf(
+		"自动回收超时 claim 任务为 pending_retry: TaskID=%s, 运行时长=%.1fm, Reason=%s, ProductID=%s",
+		taskID,
+		duration.Minutes(),
+		reason,
+		entry.ProductID,
+	)
+	return true
 }
 
 func (s *CleanupService) getTaskStatusByReason(reason string) TaskStatus {

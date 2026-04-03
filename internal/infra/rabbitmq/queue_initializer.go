@@ -81,6 +81,25 @@ func (qi *QueueInitializer) InitializeStoreQueues(platform string, storeIDs []in
 	}
 	return nil
 }
+
+// InitializePlatformQueues 为指定平台初始化共享队列和绑定
+func (qi *QueueInitializer) InitializePlatformQueues(platforms []string) error {
+	for _, platform := range platforms {
+		for _, q := range GetPlatformQueueDeclareConfigs(platform) {
+			if err := qi.declareQueueWithRetry(q); err != nil {
+				return fmt.Errorf("声明平台共享队列 %s 失败: %w", q.Name, err)
+			}
+		}
+		for _, b := range GetPlatformQueueBindingConfigs(platform) {
+			if err := qi.client.BindQueue(b.QueueName, b.RoutingKey, b.ExchangeName, b.NoWait, b.Args); err != nil {
+				return fmt.Errorf("绑定平台共享队列 %s 失败: %w", b.QueueName, err)
+			}
+			qi.logger.Infof("平台共享队列绑定成功: queue=%s, routingKey=%s", b.QueueName, b.RoutingKey)
+		}
+	}
+	return nil
+}
+
 func (qi *QueueInitializer) declareQueueWithRetry(q QueueDeclareConfig) error {
 	err := qi.client.DeclareQueue(q.Name, q.Durable, q.AutoDelete, q.Exclusive, q.NoWait, q.Args)
 	if err == nil {

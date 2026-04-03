@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: temu-listing-config
+  namespace: task-processor
+data:
+  config-temu-listing.yaml: |
+    logging:
+      level: "INFO"
+      format: "text"
+      file: ""
+      split_by_level: []
+
+    openai:
+      apiKey: ""
+      model: "gemini-2.5-flash"
+      baseURL: "https://ai.linkcloudai.com/v1"
+      timeout: 300
+
+    management:
+      baseURL: "http://management-api.default.svc.cluster.local:8080"
+      clientID: "go-listing"
+      clientSecret: ""
+      tokenURL: "http://management-api.default.svc.cluster.local:8080/admin-api/system/oauth2/token"
+      scopes: ["user.read"]
+      storeIDs: []
+
+    browser:
+      enabled: true
+      headless: true
+      browserPath: "/usr/bin/chromium"
+      poolSize: 2
+      viewportWidth: 1920
+      viewportHeight: 1080
+      proxyServer: ""
+
+    rabbitmq:
+      enabled: true
+      url: "amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/"
+      reconnectInterval: "5s"
+      maxReconnectTries: 10
+      consumer:
+        prefetchCount: 1
+        prefetchSize: 0
+        retryDelay: "5s"
+        maxRetries: 3
+        queues:
+          - name: "temu.tasks"
+            priority: 8
+            prefetch: 1
+          - name: "temu.tasks.store.*"
+            priority: 8
+            prefetch: 1
+      node:
+        role: "task"
+        useStoreQueues: false
+        ownedStores: []
+        regions: [US]
+        healthCheckPort: 8081
+        metricsPort: 8082
+
+    platforms:
+      temu:
+        enabled: true
+        schedulerEnabled: false
+      shein:
+        enabled: false
+        schedulerEnabled: false
+      alibaba1688:
+        enabled: false
+        timeout: 120
+        poolSize: 1
+
+    amazon:
+      enabled: false
+      remoteAPI:
+        enabled: true
+        baseURL: "http://amazon-crawler-external-lb.task-processor.svc.cluster.local:8080"
+        timeout: 300
+
+    redis:
+      host: "redis-master.default.svc.cluster.local"
+      port: 6379
+      password: ""
+      db: 0
+      pool_size: 10
+
+    prompts:
+      dir: "./prompts"
+      hotReload: false
+
+    updater:
+      enabled: false

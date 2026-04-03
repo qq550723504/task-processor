@@ -9,7 +9,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ImageName = "amazon-crawler-api"
+$RepoRoot = (git rev-parse --show-toplevel 2>$null)
+if (-not $RepoRoot) {
+    throw "Unable to determine repository root. Run this script inside the git repository."
+}
+
+Set-Location $RepoRoot
+
+$ImageName = "task-processor-amazon-crawler-api"
 $Dockerfile = "deployments/docker/Dockerfile.amazon-crawler-api"
 
 if (-not $Tag) {
@@ -23,6 +30,7 @@ $LatestImage = "$DockerHubUser/${ImageName}:latest"
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Build & Push Amazon Crawler API" -ForegroundColor Cyan
 Write-Host "  Image: $FullImage" -ForegroundColor Cyan
+Write-Host "  Also tag: $LatestImage" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 Write-Host "`n[1/3] Building image..." -ForegroundColor Yellow

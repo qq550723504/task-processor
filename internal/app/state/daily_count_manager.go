@@ -15,6 +15,14 @@ type DailyCountInfo struct {
 	Count int64
 }
 
+// DailyQuotaReservation 原子额度预占结果
+type DailyQuotaReservation struct {
+	Allowed      bool
+	NewCount     int64
+	Remaining    int64
+	ReachedLimit bool
+}
+
 // DailyCountManager 每日上架计数管理器（API版）
 type DailyCountManager struct {
 	managementClientMgr *management.ClientManager
@@ -64,6 +72,62 @@ func (m *DailyCountManager) IncrementCount(tenantID, shopID int64, date string, 
 	logger.GetGlobalLogger("app/state").Infof("成功增加每日上架数量: tenantID=%d, shopID=%d, date=%s, increment=%d, newCount=%d",
 		tenantID, shopID, date, increment, newCount)
 	return newCount
+}
+
+// TryReserveQuota 原子预占每日额度
+func (m *DailyCountManager) TryReserveQuota(tenantID, shopID int64, date string, increment, limit int64) (*DailyQuotaReservation, error) {
+	client := m.managementClientMgr.GetDailyListingCountClient()
+	if client == nil {
+		logger.GetGlobalLogger("app/state").Warn("每日上架数量客户端未初始化，无法预占额度")
+		return nil, fmt.Errorf("daily listing count client is not initialized")
+	}
+
+	resp, err := client.TryConsumeDailyQuota(&api.TryConsumeDailyQuotaReqDTO{
+		TenantID:  tenantID,
+		StoreID:   shopID,
+		UserID:    tenantID,
+		Date:      date,
+		Increment: increment,
+		Limit:     limit,
+	})
+	if err != nil {
+		logger.GetGlobalLogger("app/state").Errorf("原子预占每日上架额度失败: tenantID=%d, shopID=%d, date=%s, increment=%d, limit=%d, error=%v",
+			tenantID, shopID, date, increment, limit, err)
+		return nil, err
+	}
+
+	return &DailyQuotaReservation{
+		Allowed:      resp.Allowed,
+		NewCount:     resp.NewCount,
+		Remaining:    resp.Remaining,
+		ReachedLimit: resp.ReachedLimit,
+	}, nil
+}
+
+// RollbackReservedQuota 回滚预占额度
+func (m *DailyCountManager) RollbackReservedQuota(tenantID, shopID int64, date string, decrement int64) (int64, error) {
+	client := m.managementClientMgr.GetDailyListingCountClient()
+	if client == nil {
+		logger.GetGlobalLogger("app/state").Warn("每日上架数量客户端未初始化，无法回滚额度")
+		return 0, fmt.Errorf("daily listing count client is not initialized")
+	}
+
+	newCount, err := client.RollbackDailyQuota(&api.RollbackDailyQuotaReqDTO{
+		TenantID:  tenantID,
+		StoreID:   shopID,
+		UserID:    tenantID,
+		Date:      date,
+		Decrement: decrement,
+	})
+	if err != nil {
+		logger.GetGlobalLogger("app/state").Errorf("回滚每日上架额度失败: tenantID=%d, shopID=%d, date=%s, decrement=%d, error=%v",
+			tenantID, shopID, date, decrement, err)
+		return 0, err
+	}
+
+	logger.GetGlobalLogger("app/state").Infof("成功回滚每日上架额度: tenantID=%d, shopID=%d, date=%s, decrement=%d, newCount=%d",
+		tenantID, shopID, date, decrement, newCount)
+	return newCount, nil
 }
 
 func (m *DailyCountManager) getLock(tenantID, shopID int64, date string) *sync.Mutex {

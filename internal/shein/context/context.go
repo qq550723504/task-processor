@@ -96,6 +96,9 @@ type TaskState struct {
 	Platform                string
 	SkipSheinPipeline       bool
 	InitError               error
+	DailyQuotaReserved      bool
+	DailyQuotaDate          string
+	DailyQuotaIncrement     int64
 }
 
 type TaskContext struct {
@@ -194,6 +197,18 @@ func (ctx *TaskContext) SetStage(stage string) {
 
 func (ctx *TaskContext) GetStage() string {
 	return ctx.CurrentStage
+}
+
+func (ctx *TaskContext) SetDailyQuotaReservation(date string, increment int64) {
+	ctx.DailyQuotaReserved = true
+	ctx.DailyQuotaDate = date
+	ctx.DailyQuotaIncrement = increment
+}
+
+func (ctx *TaskContext) ClearDailyQuotaReservation() {
+	ctx.DailyQuotaReserved = false
+	ctx.DailyQuotaDate = ""
+	ctx.DailyQuotaIncrement = 0
 }
 
 func (ctx *TaskContext) SetSupplierSkuMapping(platformSKU, supplierSKU string) {

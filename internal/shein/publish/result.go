@@ -43,7 +43,7 @@ func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 		h.logger.Warnf("创建产品导入映射关系失败: %v", err)
 	}
 
-	h.recordDailyListingCount(input)
+	h.recordDailyListingCount(ctx, input)
 
 	h.logger.Info("发品成功后返回信息保存完成")
 	return nil
@@ -128,7 +128,7 @@ func resolveAsinForPublishedSKU(input *PublishResultInput, supplierSKU string) s
 	return ""
 }
 
-func (h *SavePublishResultHandler) recordDailyListingCount(input *PublishResultInput) {
+func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContext, input *PublishResultInput) {
 	if input.MemoryManager == nil {
 		h.logger.Warn("memory manager is nil, skip daily listing count")
 		return
@@ -151,6 +151,13 @@ func (h *SavePublishResultHandler) recordDailyListingCount(input *PublishResultI
 	increment := h.calculateIncrement(input)
 	if increment <= 0 {
 		h.logger.Warn("calculated listing increment is 0, skip count update")
+		return
+	}
+
+	if ctx != nil && ctx.DailyQuotaReserved {
+		h.logger.Infof("store %d reused reserved daily quota on %s (increment: %d, type: %s)",
+			input.StoreInfo.ID, ctx.DailyQuotaDate, ctx.DailyQuotaIncrement, input.StoreInfo.DailyLimitType)
+		ctx.ClearDailyQuotaReservation()
 		return
 	}
 

@@ -18,9 +18,9 @@ logging:
 
 browser:
   enabled: true
-  headless: false
+  headless: true
   browserPath: "./chrome/chrome.exe"
-  poolSize: 4
+  poolSize: 3
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
@@ -65,10 +65,7 @@ amazon:
     maxWaiting: 50
     acquireTimeoutSeconds: 20
     perRegion: {}
-  remoteAPI:
-    enabled: false
-    baseURL: ""
-    timeout: 300
+
   zipcodes:
     us: "10001"
     uk: "SW1A1AA"
@@ -78,28 +75,3 @@ amazon:
     es: "28001"
     ca: "M5V2T6"
     jp: "1000001"
-
-rabbitmq:
-  enabled: false
-
-redis:
-  host: "localhost"
-  port: 6379
-  password: ""
-  db: 0
-  pool_size: 10
-
-platforms:
-  temu:
-    enabled: false
-    schedulerEnabled: false
-  shein:
-    enabled: false
-    schedulerEnabled: false
-  alibaba1688:
-    enabled: false
-    timeout: 120
-    poolSize: 2
-
-updater:
-  enabled: false

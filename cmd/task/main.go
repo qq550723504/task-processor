@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -17,8 +18,9 @@ import (
 )
 
 var (
-	appConfig = flag.String("app-config", "config/config-task.yaml", "application config path")
-	logLevel  = flag.String("log-level", "info", "log level")
+	appConfig          = flag.String("app-config", "config/config-task.yaml", "application config path")
+	logLevel           = flag.String("log-level", "info", "log level")
+	allowLegacyPolling = flag.Bool("allow-legacy-polling", false, "allow deprecated legacy polling mode")
 )
 
 var (
@@ -40,11 +42,16 @@ func main() {
 }
 
 func runApplication(app *bootstrap.ApplicationBootstrap, logger *logrus.Logger) error {
+	if !*allowLegacyPolling {
+		return fmt.Errorf("legacy polling entrypoint is disabled by default; rerun with --allow-legacy-polling only for emergency fallback")
+	}
+
 	versionInfo := appenv.VersionInfo{
 		Version:   appVersion,
 		BuildTime: buildTime,
 	}
 	appenv.PrintVersionInfo(logger, versionInfo)
+	logger.Warn("running deprecated legacy polling entrypoint cmd/task; production should consume tasks from RabbitMQ platform consumers instead")
 
 	configPath := *appConfig
 	if !strings.HasSuffix(configPath, ".yaml") && !strings.HasSuffix(configPath, ".yml") {

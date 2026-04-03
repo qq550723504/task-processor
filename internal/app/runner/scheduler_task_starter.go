@@ -88,6 +88,10 @@ func (s *schedulerServiceImpl) startTasksByType(
 ) int {
 	taskCount := 0
 
+	if len(cfg.Management.StoreIDs) > 0 {
+		s.logger.Infof("%s平台调度任务使用 management.storeIDs 作为店铺白名单: %v", platformName, cfg.Management.StoreIDs)
+	}
+
 	for _, storeID := range cfg.Management.StoreIDs {
 		if err := s.createStoreTask(platformName, storeID, taskType, interval); err != nil {
 			s.logger.Debugf("创建%s任务失败 (店铺:%d, 类型:%s): %v",

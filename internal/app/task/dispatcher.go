@@ -108,10 +108,13 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 		taskID := fmt.Sprintf("%d", apiTaskPtr.ID)
 
 		logger.GetGlobalLogger("app/task").Debugf(
-			"处理任务: TaskID=%s, StoreID=%d, ProductID=%s",
+			"处理任务: TaskID=%s, StoreID=%d, ProductID=%s, StatusCode=%d, StatusKey=%s, CanonicalStatus=%s",
 			taskID,
 			apiTaskPtr.StoreID,
 			apiTaskPtr.ProductID,
+			apiTaskPtr.Status,
+			apiTaskPtr.StatusKey,
+			apiTaskPtr.CanonicalStatus,
 		)
 
 		if _, ok := claimService.Claim(apiTaskPtr); !ok {

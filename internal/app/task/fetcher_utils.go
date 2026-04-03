@@ -95,26 +95,37 @@ func (f *TaskFetcher) rollbackClaimState(taskID string, apiTask *api.ProductImpo
 
 	originalStatus, err := model.ParseTaskStatus(apiTask.Status)
 	if err != nil {
-		logger.GetGlobalLogger("app/task").WithError(err).Warnf("无法回滚任务远端状态: TaskID=%s, Reason=%s", taskID, reason)
+		logger.GetGlobalLogger("app/task").WithError(err).Warnf(
+			"无法回滚任务远端状态: TaskID=%s, Reason=%s, StatusCode=%d, StatusKey=%s, CanonicalStatus=%s",
+			taskID,
+			reason,
+			apiTask.Status,
+			apiTask.StatusKey,
+			apiTask.CanonicalStatus,
+		)
 		return
 	}
 
 	statusService := f.newTaskStatusService("app/task_fetcher")
 	if err := statusService.UpdateSync(apiTask.ID, originalStatus, apiTask.ErrorMessage); err != nil {
 		logger.GetGlobalLogger("app/task").WithError(err).Warnf(
-			"回滚任务远端状态失败: TaskID=%s, TargetStatus=%s, Reason=%s",
+			"回滚任务远端状态失败: TaskID=%s, TargetStatus=%s, Reason=%s, OriginalStatusKey=%s, OriginalCanonicalStatus=%s",
 			taskID,
 			originalStatus.String(),
 			reason,
+			apiTask.StatusKey,
+			apiTask.CanonicalStatus,
 		)
 		return
 	}
 
 	logger.GetGlobalLogger("app/task").Infof(
-		"任务 claim 后补偿回滚成功: TaskID=%s, TargetStatus=%s, Reason=%s",
+		"任务 claim 后补偿回滚成功: TaskID=%s, TargetStatus=%s, Reason=%s, OriginalStatusKey=%s, OriginalCanonicalStatus=%s",
 		taskID,
 		originalStatus.String(),
 		reason,
+		apiTask.StatusKey,
+		apiTask.CanonicalStatus,
 	)
 	f.removeClaimJournalEntry(apiTask.ID)
 }

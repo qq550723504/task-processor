@@ -37,6 +37,7 @@ func (m *HandlerManager) initializeHandlers() {
 		NewDataParserHandler(m.services),
 		NewValidationHandler(m.services),
 		NewStoreInfoHandler(m.services),
+		NewDailyLimitHandler(m.services),
 		NewProductTypeHandler(m.services),
 		NewAttributeMapperHandler(m.services),
 		NewProductDataHandler(m.services),
@@ -63,12 +64,14 @@ func (m *HandlerManager) ProcessProduct(ctx context.Context, taskContext *model.
 		}).Info("执行处理器")
 
 		if err := handler.Handle(ctx, taskContext); err != nil {
+			normalizedErr := normalizeTaskStatusError(handler.Stage(), err)
 			m.logger.WithError(err).WithFields(logrus.Fields{
-				"task_id":      taskContext.TaskID,
-				"handler_step": i + 1,
-				"handler_name": handler.Name(),
+				"task_id":       taskContext.TaskID,
+				"handler_step":  i + 1,
+				"handler_name":  handler.Name(),
+				"handler_stage": handler.Stage(),
 			}).Error("处理器执行失败")
-			return err
+			return normalizedErr
 		}
 
 		m.logger.WithFields(logrus.Fields{

@@ -24,7 +24,7 @@ func TestRegisterAmazonProcessorSkipsDisabledPlatform(t *testing.T) {
 
 	serviceManager := &ServiceManager{
 		rabbitmqService: &RabbitMQService{
-			processorRegistry: NewTaskProcessorRegistry(nil, nil, nil, nil, logger),
+			processorRegistry: NewTaskProcessorRegistry(nil, nil, nil, false, nil, logger),
 			logger:            logger,
 		},
 	}
@@ -39,5 +39,38 @@ func TestRegisterAmazonProcessorSkipsDisabledPlatform(t *testing.T) {
 
 	if got := len(serviceManager.rabbitmqService.processorRegistry.processors); got != 0 {
 		t.Fatalf("expected no processors to be registered, got %d", got)
+	}
+}
+
+func TestRegisterAmazonProcessorRegistersEnabledPlatform(t *testing.T) {
+	t.Parallel()
+
+	logger := logrus.New()
+	cfg := &config.Config{}
+	cfg.Amazon.Enabled = true
+
+	registry := NewPlatformRegistry(cfg, logger, "amazon", PlatformRegistryDependencies{
+		SharedResourceProvider: func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*SharedResources, error) {
+			return &SharedResources{}, nil
+		},
+	})
+
+	serviceManager := &ServiceManager{
+		rabbitmqService: &RabbitMQService{
+			processorRegistry: NewTaskProcessorRegistry(nil, nil, nil, false, nil, logger),
+			logger:            logger,
+		},
+	}
+
+	if err := registry.RegisterAmazonProcessor(context.Background(), serviceManager); err != nil {
+		t.Fatalf("RegisterAmazonProcessor returned error: %v", err)
+	}
+
+	if got := len(serviceManager.rabbitmqService.processorRegistry.processors); got != 1 {
+		t.Fatalf("expected one processor to be registered, got %d", got)
+	}
+
+	if _, exists := serviceManager.rabbitmqService.processorRegistry.processors["amazon"]; !exists {
+		t.Fatal("expected amazon processor to be registered")
 	}
 }

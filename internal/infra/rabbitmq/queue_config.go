@@ -83,10 +83,49 @@ func GetStoreQueueBindingConfigs(platform string, storeID int64) []BindingConfig
 	}
 }
 
+// GetPlatformQueueDeclareConfigs 获取平台共享任务队列声明配置
+func GetPlatformQueueDeclareConfigs(platform string) []QueueDeclareConfig {
+	return []QueueDeclareConfig{
+		{
+			Name:    buildPlatformQueueName(platform),
+			Durable: true,
+			Args: amqp.Table{
+				"x-max-priority":            10,
+				"x-dead-letter-exchange":    "tasks.dlx",
+				"x-dead-letter-routing-key": "failed",
+			},
+		},
+	}
+}
+
+// GetPlatformQueueBindingConfigs 获取平台共享队列绑定配置
+// 兼容两种路由方式：
+// 1. 新共享模式: {platform}.tasks
+// 2. 现有店铺模式: {platform}.tasks.store.{storeId}
+func GetPlatformQueueBindingConfigs(platform string) []BindingConfig {
+	queueName := buildPlatformQueueName(platform)
+	return []BindingConfig{
+		{
+			QueueName:    queueName,
+			ExchangeName: "tasks.exchange",
+			RoutingKey:   queueName,
+		},
+		{
+			QueueName:    queueName,
+			ExchangeName: "tasks.exchange",
+			RoutingKey:   queueName + ".store.*",
+		},
+	}
+}
+
 // buildStoreQueueName 构建店铺专属队列名称
 // 格式: {platform}.tasks.store.{storeID}
 func buildStoreQueueName(platform string, storeID int64) string {
 	return fmt.Sprintf("%s.tasks.store.%d", platform, storeID)
+}
+
+func buildPlatformQueueName(platform string) string {
+	return fmt.Sprintf("%s.tasks", platform)
 }
 
 func getCrawlerQueues() []QueueDeclareConfig {

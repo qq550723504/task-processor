@@ -14,14 +14,17 @@ import (
 )
 
 type SavePublishResultInput struct {
-	Task           *model.Task
-	SubmitResponse *temuapi.SubmitResponse
-	Product        *models.Product
-	AmazonProduct  *model.Product
-	StoreInfo      *managementapi.StoreRespDTO
-	FilterRule     *managementapi.FilterRuleRespDTO
-	ProfitRule     *managementapi.ProfitRuleRespDTO
-	AsinSkuMap     map[string]string
+	Task                *model.Task
+	SubmitResponse      *temuapi.SubmitResponse
+	Product             *models.Product
+	AmazonProduct       *model.Product
+	StoreInfo           *managementapi.StoreRespDTO
+	FilterRule          *managementapi.FilterRuleRespDTO
+	ProfitRule          *managementapi.ProfitRuleRespDTO
+	AsinSkuMap          map[string]string
+	DailyQuotaReserved  bool
+	DailyQuotaDate      string
+	DailyQuotaIncrement int64
 }
 
 func (input *SavePublishResultInput) HasProduct() bool {
@@ -298,13 +301,16 @@ func buildSavePublishResultInput(temuCtx *temucontext.TemuTaskContext) (*SavePub
 	}
 
 	return &SavePublishResultInput{
-		Task:           task,
-		SubmitResponse: submitResponse,
-		Product:        product,
-		AmazonProduct:  temuCtx.GetAmazonProduct(),
-		StoreInfo:      temuCtx.StoreInfo,
-		FilterRule:     temuCtx.FilterRule,
-		ProfitRule:     temuCtx.ProfitRule,
-		AsinSkuMap:     temuCtx.AsinSkuMap,
+		Task:                task,
+		SubmitResponse:      submitResponse,
+		Product:             product,
+		AmazonProduct:       temuCtx.GetAmazonProduct(),
+		StoreInfo:           temuCtx.StoreInfo,
+		FilterRule:          temuCtx.FilterRule,
+		ProfitRule:          temuCtx.ProfitRule,
+		AsinSkuMap:          temuCtx.AsinSkuMap,
+		DailyQuotaReserved:  temuCtx.DailyQuotaReserved,
+		DailyQuotaDate:      temuCtx.DailyQuotaDate,
+		DailyQuotaIncrement: temuCtx.DailyQuotaIncrement,
 	}, nil
 }

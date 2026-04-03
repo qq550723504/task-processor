@@ -16,7 +16,7 @@ type ListingHandler struct {
 // NewListingHandler 创建Listing处理器
 func NewListingHandler(services *model.Services) *ListingHandler {
 	return &ListingHandler{
-		BaseHandler: NewBaseHandler("创建Amazon Listing"),
+		BaseHandler: NewBaseHandler("创建Amazon Listing", amazonTaskStageCreateListing),
 	}
 }
 

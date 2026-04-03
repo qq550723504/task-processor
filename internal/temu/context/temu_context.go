@@ -36,12 +36,15 @@ type TemplateState struct {
 }
 
 type PublishState struct {
-	SaveResult         *api.SaveResponse
-	SavedToDraft       bool
-	PriceQueryResponse *api.PriceQueryResponse
-	CommitDetail       *api.CommitDetailResponse
-	SubmitResponse     *api.SubmitResponse
-	ProductData        *api.Product
+	SaveResult          *api.SaveResponse
+	SavedToDraft        bool
+	PriceQueryResponse  *api.PriceQueryResponse
+	CommitDetail        *api.CommitDetailResponse
+	SubmitResponse      *api.SubmitResponse
+	ProductData         *api.Product
+	DailyQuotaReserved  bool
+	DailyQuotaDate      string
+	DailyQuotaIncrement int64
 }
 
 type AssetState struct {
@@ -150,6 +153,18 @@ func (tc *TemuTaskContext) SetSubmitResponse(response *api.SubmitResponse) {
 
 func (tc *TemuTaskContext) SetSavedToDraft(saved bool) {
 	tc.SavedToDraft = saved
+}
+
+func (tc *TemuTaskContext) SetDailyQuotaReservation(date string, increment int64) {
+	tc.DailyQuotaReserved = true
+	tc.DailyQuotaDate = date
+	tc.DailyQuotaIncrement = increment
+}
+
+func (tc *TemuTaskContext) ClearDailyQuotaReservation() {
+	tc.DailyQuotaReserved = false
+	tc.DailyQuotaDate = ""
+	tc.DailyQuotaIncrement = 0
 }
 
 func (tc *TemuTaskContext) ApplySaveResult(result *api.SaveResult) {

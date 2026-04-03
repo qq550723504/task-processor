@@ -47,6 +47,7 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipel
 	logger.GetGlobalLogger("shein/pipeline").Infof("start task: id=%d, product_id=%s", task.ID, task.ProductID)
 
 	taskCtx := h.createTaskContext(ctx, &task)
+	defer h.rollbackReservedDailyQuota(taskCtx)
 	if taskCtx.InitError != nil {
 		logger.GetGlobalLogger("shein/pipeline").Errorf("task initialization failed: %v", taskCtx.InitError)
 		h.handleError(taskCtx, taskCtx.InitError)
@@ -65,6 +66,32 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipel
 
 	h.handleSuccess(task)
 	return nil
+}
+
+func (h *TaskHandler) rollbackReservedDailyQuota(taskCtx *sheincontext.TaskContext) {
+	if taskCtx == nil || !taskCtx.DailyQuotaReserved || taskCtx.Task == nil || taskCtx.MemoryManager == nil {
+		return
+	}
+
+	if taskCtx.SheinResponse != nil && len(taskCtx.SheinResponse.Info.SKCList) > 0 {
+		return
+	}
+
+	if _, err := taskCtx.MemoryManager.DailyCountManager.RollbackReservedQuota(
+		taskCtx.Task.TenantID,
+		taskCtx.Task.StoreID,
+		taskCtx.DailyQuotaDate,
+		taskCtx.DailyQuotaIncrement,
+	); err != nil {
+		logger.GetGlobalLogger("shein/pipeline").WithError(err).Warnf(
+			"failed to rollback reserved daily quota: task_id=%d, store_id=%d",
+			taskCtx.Task.ID,
+			taskCtx.Task.StoreID,
+		)
+		return
+	}
+
+	taskCtx.ClearDailyQuotaReservation()
 }
 
 func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *sheincontext.TaskContext {

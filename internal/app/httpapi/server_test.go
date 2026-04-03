@@ -22,6 +22,19 @@ type stubAmazonListingHandler struct {
 	submitCalled    bool
 }
 
+type stubTaskRPCHandler struct {
+	healthCalled     bool
+	statusCalled     bool
+	retryCalled      bool
+	cancelCalled     bool
+	queueStatsCalled bool
+}
+
+func (s *stubTaskRPCHandler) GetHealth(c *gin.Context) {
+	s.healthCalled = true
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func (s *stubAmazonListingHandler) GenerateListing(c *gin.Context) {
 	s.generateCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": "listing-task"})
@@ -45,6 +58,26 @@ func (s *stubAmazonListingHandler) ReviewTask(c *gin.Context) {
 func (s *stubAmazonListingHandler) SubmitTask(c *gin.Context) {
 	s.submitCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "submitted"})
+}
+
+func (s *stubTaskRPCHandler) GetTaskStatus(c *gin.Context) {
+	s.statusCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "canonicalStatus": "processing"})
+}
+
+func (s *stubTaskRPCHandler) RetryTask(c *gin.Context) {
+	s.retryCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "canonicalStatus": "retried"})
+}
+
+func (s *stubTaskRPCHandler) CancelTask(c *gin.Context) {
+	s.cancelCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "canonicalStatus": "cancelled"})
+}
+
+func (s *stubTaskRPCHandler) GetQueueStats(c *gin.Context) {
+	s.queueStatsCalled = true
+	c.JSON(http.StatusOK, gin.H{"queueStats": "ok"})
 }
 
 type stubProductHandler struct {
@@ -88,7 +121,7 @@ func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 
 	handler := &stubAmazonListingHandler{}
 	router := gin.New()
-	RegisterRoutes(router, nil, nil, handler)
+	RegisterRoutes(router, nil, nil, handler, nil)
 
 	tests := []struct {
 		name     string
@@ -191,7 +224,7 @@ func TestRegisterRoutes_ProductEndpoints(t *testing.T) {
 
 	handler := &stubProductHandler{}
 	router := gin.New()
-	RegisterRoutes(router, handler, nil, nil)
+	RegisterRoutes(router, handler, nil, nil, nil)
 
 	// generate endpoint
 	generatePayload := map[string]any{"text": "test"}
@@ -225,7 +258,7 @@ func TestRegisterRoutes_ImageEndpoints(t *testing.T) {
 
 	handler := &stubImageHandler{}
 	router := gin.New()
-	RegisterRoutes(router, nil, handler, nil)
+	RegisterRoutes(router, nil, handler, nil, nil)
 
 	// process endpoint
 	processPayload := map[string]any{"image_urls": []string{"https://example.com/1.jpg"}, "marketplace": "amazon"}
@@ -273,7 +306,7 @@ func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 	t.Parallel()
 
 	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil)
+	RegisterRoutes(router, nil, nil, nil, nil)
 
 	tests := []struct {
 		method string
@@ -282,6 +315,8 @@ func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/products/generate"},
 		{method: http.MethodPost, path: "/api/v1/images/process"},
 		{method: http.MethodPost, path: "/api/v1/amazon/listings/generate"},
+		{method: http.MethodGet, path: "/api/v1/management/tasks/health"},
+		{method: http.MethodGet, path: "/api/v1/management/tasks/123/status"},
 	}
 
 	for _, tt := range tests {
@@ -291,5 +326,84 @@ func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 		if resp.Code != http.StatusNotFound {
 			t.Fatalf("%s %s = %d, want 404", tt.method, tt.path, resp.Code)
 		}
+	}
+}
+
+func TestRegisterRoutes_TaskRPCEndpoints(t *testing.T) {
+	t.Parallel()
+
+	handler := &stubTaskRPCHandler{}
+	router := gin.New()
+	RegisterRoutes(router, nil, nil, nil, handler)
+
+	tests := []struct {
+		name     string
+		method   string
+		path     string
+		assertFn func(*testing.T)
+	}{
+		{
+			name:   "health",
+			method: http.MethodGet,
+			path:   "/api/v1/management/tasks/health",
+			assertFn: func(t *testing.T) {
+				if !handler.healthCalled {
+					t.Fatal("GetHealth handler was not called")
+				}
+			},
+		},
+		{
+			name:   "status",
+			method: http.MethodGet,
+			path:   "/api/v1/management/tasks/123/status",
+			assertFn: func(t *testing.T) {
+				if !handler.statusCalled {
+					t.Fatal("GetTaskStatus handler was not called")
+				}
+			},
+		},
+		{
+			name:   "retry",
+			method: http.MethodPost,
+			path:   "/api/v1/management/tasks/123/retry",
+			assertFn: func(t *testing.T) {
+				if !handler.retryCalled {
+					t.Fatal("RetryTask handler was not called")
+				}
+			},
+		},
+		{
+			name:   "cancel",
+			method: http.MethodPost,
+			path:   "/api/v1/management/tasks/123/cancel",
+			assertFn: func(t *testing.T) {
+				if !handler.cancelCalled {
+					t.Fatal("CancelTask handler was not called")
+				}
+			},
+		},
+		{
+			name:   "queue-stats",
+			method: http.MethodGet,
+			path:   "/api/v1/management/tasks/queue-stats",
+			assertFn: func(t *testing.T) {
+				if !handler.queueStatsCalled {
+					t.Fatal("GetQueueStats handler was not called")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+
+			if resp.Code != http.StatusOK {
+				t.Fatalf("%s %s = %d, want 200", tt.method, tt.path, resp.Code)
+			}
+			tt.assertFn(t)
+		})
 	}
 }

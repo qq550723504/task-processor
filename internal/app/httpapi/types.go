@@ -7,10 +7,13 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/amazonlisting"
+	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	"task-processor/internal/taskrpcapi"
 )
 
 type Options struct {
@@ -20,20 +23,23 @@ type Options struct {
 }
 
 type runtimeDeps struct {
-	cfg            *config.Config
-	closers        []func() error
-	llmMgr         productenrich.LLMManager
-	inputParser    productenrich.InputParser
-	understanding  productenrich.ProductUnderstanding
-	imageWorkDir   string
-	productService productenrich.ProductService
-	imageService   productimage.Service
+	cfg              *config.Config
+	closers          []func() error
+	llmMgr           productenrich.LLMManager
+	inputParser      productenrich.InputParser
+	understanding    productenrich.ProductUnderstanding
+	imageWorkDir     string
+	shared           *appbootstrap.SharedResources
+	managementClient *management.ClientManager
+	productService   productenrich.ProductService
+	imageService     productimage.Service
 }
 
 type appBootstrap struct {
 	productHandler       productenrich.ProductHandler
 	imageHandler         productimage.Handler
 	amazonListingHandler amazonlisting.Handler
+	taskRPCHandler       taskrpcapi.Handler
 	server               *http.Server
 	pools                []worker.WorkerPool
 	closers              []func() error
@@ -71,4 +77,12 @@ type amazonListingRouteHandler interface {
 	GetTaskWorkbench(c *gin.Context)
 	ReviewTask(c *gin.Context)
 	SubmitTask(c *gin.Context)
+}
+
+type taskRPCRouteHandler interface {
+	GetTaskStatus(c *gin.Context)
+	RetryTask(c *gin.Context)
+	CancelTask(c *gin.Context)
+	GetQueueStats(c *gin.Context)
+	GetHealth(c *gin.Context)
 }

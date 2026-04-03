@@ -28,9 +28,10 @@ type TaskHandler struct {
 	logger         *logrus.Logger
 
 	// 店铺亲和性支持
-	storeAPI     api.StoreAPI
-	ownedStores  []int64
-	deduplicator *apptask.DeduplicationManager
+	storeAPI       api.StoreAPI
+	ownedStores    []int64
+	useStoreQueues bool
+	deduplicator   *apptask.DeduplicationManager
 }
 
 // TaskHandlerConfig 任务处理器配置
@@ -40,6 +41,7 @@ type TaskHandlerConfig struct {
 	ResultReporter *ResultReporter
 	StoreAPI       api.StoreAPI
 	OwnedStores    []int64
+	UseStoreQueues bool
 	Deduplicator   *apptask.DeduplicationManager
 	Logger         *logrus.Logger
 }
@@ -54,6 +56,7 @@ func NewTaskHandler(cfg TaskHandlerConfig) *TaskHandler {
 		logger:         cfg.Logger,
 		storeAPI:       cfg.StoreAPI,
 		ownedStores:    cfg.OwnedStores,
+		useStoreQueues: cfg.UseStoreQueues,
 		deduplicator:   cfg.Deduplicator,
 	}
 }
@@ -179,14 +182,14 @@ func (eth *TaskHandler) shouldSkipDuplicate(task *model.Task) bool {
 	return false
 }
 
-// validateStoreAccess 验证店铺访问权限，若配置了 ownedStores 则只处理自己的店铺
+// validateStoreAccess 验证店铺访问权限，仅在启用店铺亲和模式时限制 ownedStores
 func (eth *TaskHandler) validateStoreAccess(task *model.Task) (bool, error) {
 	if eth.storeAPI == nil {
 		return true, nil
 	}
 
-	// 未配置 ownedStores 时处理所有店铺
-	if len(eth.ownedStores) == 0 {
+	// 默认共享消费；仅在显式启用店铺亲和模式时才限制 ownedStores
+	if !eth.useStoreQueues || len(eth.ownedStores) == 0 {
 		return true, nil
 	}
 
@@ -340,6 +343,8 @@ func (eth *TaskHandler) shouldRetry(task *model.Task, err error) bool {
 
 	// 不重试的错误类型
 	nonRetryableErrors := []string{
+		"nonretryable:",
+		"terminated:",
 		"invalid product id",
 		"product not found",
 		"access denied",

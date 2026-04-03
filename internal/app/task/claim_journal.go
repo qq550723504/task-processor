@@ -199,9 +199,13 @@ func (f *TaskFetcher) recoverInterruptedClaims() error {
 }
 
 func taskStatusRecoveryInput(entry ClaimJournalEntry) taskstatus.UpdateInput {
+	return taskStatusRecoveryInputWithFallback(entry, "task processing interrupted, recovered on startup")
+}
+
+func taskStatusRecoveryInputWithFallback(entry ClaimJournalEntry, fallback string) taskstatus.UpdateInput {
 	errorMsg := entry.ErrorMessage
 	if errorMsg == "" {
-		errorMsg = "task processing interrupted, recovered on startup"
+		errorMsg = fallback
 	}
 
 	return taskstatus.UpdateInput{

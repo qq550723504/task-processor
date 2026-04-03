@@ -4,6 +4,7 @@ package pipeline
 import (
 	"context"
 	"task-processor/internal/amazon/model"
+	"task-processor/internal/core/logger"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,7 @@ func TestHandlerManager_ProcessProduct(t *testing.T) {
 	manager := NewHandlerManager(services)
 
 	// 验证处理器数量
-	assert.Equal(t, 11, manager.GetHandlerCount())
+	assert.Equal(t, 12, manager.GetHandlerCount())
 
 	// 创建测试任务上下文
 	taskContext := &model.TaskContext{
@@ -30,6 +31,8 @@ func TestHandlerManager_ProcessProduct(t *testing.T) {
 			"product_id":    "test-product-123",
 			"store_id":      int64(1),
 			"tenant_id":     int64(1),
+			"tenantId":      int64(1),
+			"storeId":       int64(1),
 			"raw_json_data": `{"title":"Test Product","price":29.99}`,
 		},
 	}
@@ -59,11 +62,11 @@ func TestHandlerManager_GetStatus(t *testing.T) {
 
 	status := manager.GetStatus()
 
-	assert.Equal(t, 11, status["total_handlers"])
+	assert.Equal(t, 12, status["total_handlers"])
 	assert.NotNil(t, status["handlers"])
 
 	handlers := status["handlers"].([]map[string]any)
-	assert.Len(t, handlers, 11)
+	assert.Len(t, handlers, 12)
 
 	// 验证第一个处理器
 	firstHandler := handlers[0]
@@ -82,6 +85,7 @@ func TestHandlerManager_GetHandlerNames(t *testing.T) {
 		"数据解析器",
 		"产品数据验证",
 		"获取店铺信息",
+		"检查每日上架限额",
 		"产品类型处理器",
 		"LLM属性映射器",
 		"获取产品数据",
@@ -93,4 +97,41 @@ func TestHandlerManager_GetHandlerNames(t *testing.T) {
 	}
 
 	assert.Equal(t, expectedNames, names)
+}
+
+type failingHandler struct {
+	name  string
+	stage string
+	err   error
+}
+
+func (h failingHandler) Name() string  { return h.name }
+func (h failingHandler) Stage() string { return h.stage }
+func (h failingHandler) Handle(ctx context.Context, taskContext *model.TaskContext) error {
+	return h.err
+}
+
+func TestHandlerManager_ProcessProductWrapsStructuredTaskError(t *testing.T) {
+	manager := &HandlerManager{
+		services: model.NewServices(),
+		logger:   logger.GetGlobalLogger("amazon/pipeline-test"),
+		handlers: []Handler{
+			failingHandler{
+				name:  "创建Amazon Listing",
+				stage: amazonTaskStageCreateListing,
+				err:   model.NewAmazonError(model.ErrorCodeRateLimit, "slow down"),
+			},
+		},
+	}
+
+	taskContext := &model.TaskContext{
+		TaskID: "test-wrap-001",
+		Data:   map[string]any{"product_id": "demo"},
+	}
+
+	err := manager.ProcessProduct(context.Background(), taskContext)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "[stage:"+amazonTaskStageCreateListing+"]")
+	assert.Contains(t, err.Error(), "["+amazonTaskReasonRateLimit+"]")
+	assert.NotContains(t, err.Error(), "NONRETRYABLE:")
 }

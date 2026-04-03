@@ -29,9 +29,11 @@ func (s *TaskClaimService) Claim(apiTask *managementapi.ProductImportTaskRespDTO
 
 	if err := model.ValidateTaskStatusTransitionCode(apiTask.Status, model.TaskStatusProcessing); err != nil {
 		logger.GetGlobalLogger("app/task").Warnf(
-			"任务状态不允许进入 processing，跳过抢占: TaskID=%s, CurrentStatus=%d, Error=%v",
+			"任务状态不允许进入 processing，跳过抢占: TaskID=%s, CurrentStatus=%d, CurrentStatusKey=%s, CurrentCanonicalStatus=%s, Error=%v",
 			taskID,
 			apiTask.Status,
+			apiTask.StatusKey,
+			apiTask.CanonicalStatus,
 			err,
 		)
 		return taskID, false
@@ -50,7 +52,13 @@ func (s *TaskClaimService) Claim(apiTask *managementapi.ProductImportTaskRespDTO
 	fromStatus, err := model.ParseTaskStatus(apiTask.Status)
 	if err != nil {
 		s.fetcher.rollbackClaimState(taskID, apiTask, "failed to parse original status for claim journal")
-		logger.GetGlobalLogger("app/task").WithError(err).Warnf("解析原始任务状态失败，回滚 claim: TaskID=%s", taskID)
+		logger.GetGlobalLogger("app/task").WithError(err).Warnf(
+			"解析原始任务状态失败，回滚 claim: TaskID=%s, CurrentStatus=%d, CurrentStatusKey=%s, CurrentCanonicalStatus=%s",
+			taskID,
+			apiTask.Status,
+			apiTask.StatusKey,
+			apiTask.CanonicalStatus,
+		)
 		return taskID, false
 	}
 
@@ -68,6 +76,12 @@ func (s *TaskClaimService) Claim(apiTask *managementapi.ProductImportTaskRespDTO
 		return taskID, false
 	}
 
-	logger.GetGlobalLogger("app/task").Debugf("任务已成功 claim 并标记为 processing: TaskID=%s", taskID)
+	logger.GetGlobalLogger("app/task").Debugf(
+		"任务已成功 claim 并标记为 processing: TaskID=%s, FromStatus=%s, FromStatusKey=%s, FromCanonicalStatus=%s",
+		taskID,
+		fromStatus.String(),
+		apiTask.StatusKey,
+		apiTask.CanonicalStatus,
+	)
 	return taskID, true
 }

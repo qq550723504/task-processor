@@ -659,6 +659,10 @@ func loadWithViper(v *viper.Viper) (*Config, error) {
 	return cfg, nil
 }
 
+func loadWithViperWithoutValidation(v *viper.Viper) *Config {
+	return BuildConfig(v)
+}
+
 func LoadConfig() (*Config, error) {
 	tryLoadDotEnv()
 
@@ -708,4 +712,21 @@ func LoadConfigFromFile(configFile string) (*Config, error) {
 
 	logger.GetGlobalLogger("core/config").Infof("loaded config file: %s", v.ConfigFileUsed())
 	return loadWithViper(v)
+}
+
+func LoadConfigFromFileWithoutValidation(configFile string) (*Config, error) {
+	tryLoadDotEnvForConfig(configFile)
+
+	logger.GetGlobalLogger("core/config").Infof("loading config file: %s", configFile)
+	logDeprecatedEnvUsage()
+
+	v := newViper()
+	v.SetConfigFile(configFile)
+
+	if err := v.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("read config file %s: %w", configFile, err)
+	}
+
+	logger.GetGlobalLogger("core/config").Infof("loaded config file: %s", v.ConfigFileUsed())
+	return loadWithViperWithoutValidation(v), nil
 }

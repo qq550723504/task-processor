@@ -184,6 +184,14 @@ func (cm *ClientManager) GetDailyListingCountClient() *DailyListingCountAPIClien
 	}
 }
 
+// GetTaskRPCClient 获取任务 RPC API 客户端
+func (cm *ClientManager) GetTaskRPCClient() *TaskRPCAPIClient {
+	baseClient := cm.GetClient()
+	return &TaskRPCAPIClient{
+		ManagementAPIClient: baseClient,
+	}
+}
+
 // GetProductImportMappingClient 获取产品导入映射API客户端
 func (cm *ClientManager) GetProductImportMappingClient() *ProductImportMappingAPIClient {
 	// 直接基于基础客户端创建

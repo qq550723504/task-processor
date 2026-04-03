@@ -15,7 +15,7 @@ type ProductDataHandler struct {
 // NewProductDataHandler 创建产品数据处理器
 func NewProductDataHandler(services *model.Services) *ProductDataHandler {
 	return &ProductDataHandler{
-		BaseHandler: NewBaseHandler("获取产品数据"),
+		BaseHandler: NewBaseHandler("获取产品数据", amazonTaskStageLoadProductData),
 	}
 }
 

@@ -7,27 +7,16 @@ services:
     container_name: amazon-crawler-api
     restart: unless-stopped
     env_file:
-      - /app/amazon-crawler-api/.env
+      - .env
     environment:
-      TASK_PROCESSOR_ENV: prod
-      TASK_PROCESSOR_REDIS_HOST: redis
-      TASK_PROCESSOR_REDIS_PORT: 6379
+      - TASK_PROCESSOR_ENV=prod
+      - TASK_PROCESSOR_REDIS_HOST=${REDIS_HOST:-127.0.0.1}
+      - TASK_PROCESSOR_REDIS_PORT=${REDIS_PORT:-6379}
+      - TASK_PROCESSOR_REDIS_PASSWORD=${REDIS_PASSWORD:-}
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:8080"
     volumes:
-      - /app/amazon-crawler-api/config:/app/config
-      - /app/amazon-crawler-api/logs:/app/logs
-      - /app/amazon-crawler-api/tmp:/app/tmp
-      - /app/amazon-crawler-api/chrome:/app/chrome
-    depends_on:
-      - redis
-
-  redis:
-    image: redis:7-alpine
-    container_name: amazon-crawler-redis
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
-    volumes:
-      - /app/amazon-crawler-api/redis:/data
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./tmp:/app/tmp
+      - ./chrome:/app/chrome

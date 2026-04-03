@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shein-listing
+  namespace: task-processor
+  labels:
+    app: shein-listing
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: shein-listing
+  template:
+    metadata:
+      labels:
+        app: shein-listing
+    spec:
+      containers:
+        - name: shein-listing
+          image: xuwei190/task-processor-shein-listing:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/app/listing-service"]
+          args:
+            - -config
+            - /app/config/config-shein-listing.yaml
+            - -log-level
+            - info
+          ports:
+            - name: http
+              containerPort: 8081
+            - name: metrics
+              containerPort: 8082
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+            - name: TASK_PROCESSOR_ENV
+              value: prod
+            - name: TASK_PROCESSOR_BROWSER_HEADLESS
+              value: "true"
+            - name: TASK_PROCESSOR_BROWSER_PATH
+              value: /usr/bin/chromium
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_ROLE
+              value: task
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT
+              value: "8081"
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_METRICS_PORT
+              value: "8082"
+          envFrom:
+            - secretRef:
+                name: shein-listing-secret
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 18
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config/config-shein-listing.yaml
+              subPath: config-shein-listing.yaml
+            - name: app-tmp
+              mountPath: /app/tmp
+            - name: app-logs
+              mountPath: /app/logs
+      volumes:
+        - name: app-config
+          configMap:
+            name: shein-listing-config
+        - name: app-tmp
+          emptyDir: {}
+        - name: app-logs
+          emptyDir: {}

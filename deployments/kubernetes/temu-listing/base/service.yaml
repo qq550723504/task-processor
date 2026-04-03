@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: temu-listing
+  namespace: task-processor
+  labels:
+    app: temu-listing
+spec:
+  selector:
+    app: temu-listing
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+    - name: metrics
+      port: 8082
+      targetPort: metrics
+  type: ClusterIP

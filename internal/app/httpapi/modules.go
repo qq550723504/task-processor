@@ -21,6 +21,7 @@ import (
 	productimageapi "task-processor/internal/productimage/api"
 	productimagepipeline "task-processor/internal/productimage/pipeline"
 	productimagestore "task-processor/internal/productimage/store"
+	"task-processor/internal/taskrpcapi"
 )
 
 func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, error) {
@@ -44,11 +45,23 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
-	server := buildHTTPServer(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler)
+	localTaskHealthProvider := buildLocalTaskHealthProvider(map[string]worker.WorkerPool{
+		"product_enrich": productModule.pool,
+		"product_image":  imageModule.pool,
+		"amazon_listing": amazonListingModule.pool,
+	})
+
+	taskRPCHandler, err := buildTaskRPCModule(deps, localTaskHealthProvider)
+	if err != nil {
+		return nil, err
+	}
+
+	server := buildHTTPServer(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, taskRPCHandler)
 	return &appBootstrap{
 		productHandler:       productModule.handler,
 		imageHandler:         imageModule.handler,
 		amazonListingHandler: amazonListingModule.handler,
+		taskRPCHandler:       taskRPCHandler,
 		server:               server,
 		pools:                []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool},
 		closers:              deps.closers,
@@ -377,4 +390,78 @@ func buildAmazonListingTaskRepository(cfg *config.Config, logger *logrus.Logger)
 
 	logger.Warn("database not configured, using in-memory amazonlisting repository")
 	return amazonlistingstore.NewMemTaskRepository(), nil, nil
+}
+
+func buildTaskRPCModule(deps *runtimeDeps, localStatusProvider taskrpcapi.LocalStatusProvider) (taskrpcapi.Handler, error) {
+	if deps == nil || deps.managementClient == nil {
+		return nil, nil
+	}
+
+	return taskrpcapi.NewHandler(deps.managementClient.GetTaskRPCClient(), localStatusProvider)
+}
+
+func buildLocalTaskHealthProvider(pools map[string]worker.WorkerPool) taskrpcapi.LocalStatusProvider {
+	return func() map[string]any {
+		summary := map[string]any{
+			"poolCount":           0,
+			"totalQueueSize":      0,
+			"totalBufferSize":     0,
+			"totalAvailableSlots": 0,
+			"totalSubmitted":      int64(0),
+			"totalProcessed":      int64(0),
+			"totalSucceeded":      int64(0),
+			"totalFailed":         int64(0),
+			"totalPanicked":       int64(0),
+			"queueFullCount":      int64(0),
+		}
+		poolSnapshots := make(map[string]any, len(pools))
+
+		for name, pool := range pools {
+			if pool == nil {
+				continue
+			}
+
+			queueStats := pool.GetQueueStats()
+			poolSnapshot := map[string]any{
+				"queueSize":      queueStats.QueueSize,
+				"bufferSize":     queueStats.BufferSize,
+				"availableSlots": queueStats.AvailableSlots,
+				"usagePercent":   queueStats.UsagePercent,
+			}
+
+			summary["poolCount"] = summary["poolCount"].(int) + 1
+			summary["totalQueueSize"] = summary["totalQueueSize"].(int) + queueStats.QueueSize
+			summary["totalBufferSize"] = summary["totalBufferSize"].(int) + queueStats.BufferSize
+			summary["totalAvailableSlots"] = summary["totalAvailableSlots"].(int) + queueStats.AvailableSlots
+
+			if metrics := pool.GetMetrics(); metrics != nil {
+				snapshot := metrics.GetSnapshot()
+				poolSnapshot["metrics"] = map[string]any{
+					"totalSubmitted": snapshot.TotalSubmitted,
+					"totalProcessed": snapshot.TotalProcessed,
+					"totalSucceeded": snapshot.TotalSucceeded,
+					"totalFailed":    snapshot.TotalFailed,
+					"totalPanicked":  snapshot.TotalPanicked,
+					"queueFullCount": snapshot.QueueFullCount,
+					"successRate":    snapshot.SuccessRate(),
+					"failureRate":    snapshot.FailureRate(),
+					"panicRate":      snapshot.PanicRate(),
+					"uptimeSeconds":  int64(snapshot.Uptime.Seconds()),
+				}
+				summary["totalSubmitted"] = summary["totalSubmitted"].(int64) + snapshot.TotalSubmitted
+				summary["totalProcessed"] = summary["totalProcessed"].(int64) + snapshot.TotalProcessed
+				summary["totalSucceeded"] = summary["totalSucceeded"].(int64) + snapshot.TotalSucceeded
+				summary["totalFailed"] = summary["totalFailed"].(int64) + snapshot.TotalFailed
+				summary["totalPanicked"] = summary["totalPanicked"].(int64) + snapshot.TotalPanicked
+				summary["queueFullCount"] = summary["queueFullCount"].(int64) + snapshot.QueueFullCount
+			}
+
+			poolSnapshots[name] = poolSnapshot
+		}
+
+		return map[string]any{
+			"summary": summary,
+			"pools":   poolSnapshots,
+		}
+	}
 }

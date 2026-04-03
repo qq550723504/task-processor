@@ -17,7 +17,7 @@ type AttributeMapperHandler struct {
 // NewAttributeMapperHandler 创建属性映射处理器
 func NewAttributeMapperHandler(services *model.Services) *AttributeMapperHandler {
 	return &AttributeMapperHandler{
-		BaseHandler: NewBaseHandler("LLM属性映射器"),
+		BaseHandler: NewBaseHandler("LLM属性映射器", amazonTaskStageMapAttributes),
 		services:    services,
 	}
 }

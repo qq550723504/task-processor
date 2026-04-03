@@ -85,21 +85,25 @@
 
 ### 推荐部署形态
 
-当前更推荐把任务程序和爬虫程序拆开部署：
+当前更推荐按平台消费者拆开部署：
 
-- `task` 程序负责上架编排、调度、状态流转
+- `shein-listing` / `temu-listing` / `amazon-listing` 负责从 RabbitMQ 消费上架任务
 - `amazon-crawler-api` 负责 Amazon 商品抓取
-- `task` 通过 HTTP 调用 crawler API，而不是在本地直接持有浏览器爬虫
+- 平台消费者通过 HTTP 调用 crawler API，而不是在本地直接持有浏览器爬虫
+- `cmd/task` 已降级为 legacy emergency fallback，不作为生产主入口
 
 对应默认配置文件：
 
-- `task`: [config-task.yaml](./config/config-task.yaml)
+- `shein-listing` / `temu-listing` / `amazon-listing`: [config-dev.yaml](./config/config-dev.yaml) 或对应环境配置
 - `amazon-crawler-api`: [config-amazon-crawler-api.yaml](./config/config-amazon-crawler-api.yaml)
+- `task`: [config-task.yaml](./config/config-task.yaml) 仅用于 legacy fallback
 
 启动示例：
 
 ```bash
-go run ./cmd/task -app-config config/config-task.yaml
+go run ./cmd/shein-listing -app-config config/config-dev.yaml
+go run ./cmd/temu-listing -app-config config/config-dev.yaml
+go run ./cmd/amazon-listing -app-config config/config-dev.yaml
 go run ./cmd/amazon-crawler-api -config config/config-amazon-crawler-api.yaml
 ```
 
@@ -243,7 +247,7 @@ go run ./cmd/amazon-crawler-api -config config/config-amazon-crawler-api.yaml
 ```
 task-processor/
 ├── cmd/                          # 应用入口（每个子目录一个 main.go）
-│   ├── task/                    # 定时调度模式（核价、库存同步等）
+│   ├── task/                    # 已废弃的 legacy polling 入口（仅应急回滚）
 │   ├── rabbitmq-consumer/       # RabbitMQ 消费者模式（上架任务）
 │   ├── crawler-consumer/        # 爬虫专用消费者
 │   ├── 1688-crawler/            # 1688 爬虫独立入口

@@ -10,6 +10,7 @@ import (
 // 使用依赖注入模式，避免循环导入
 type Handler interface {
 	Name() string
+	Stage() string
 	Handle(ctx context.Context, taskContext *model.TaskContext) error
 }
 
@@ -19,6 +20,11 @@ type HandlerFunc func(ctx context.Context, taskContext *model.TaskContext) error
 // Name 返回函数处理器的名称
 func (hf HandlerFunc) Name() string {
 	return "HandlerFunc"
+}
+
+// Stage 返回函数处理器阶段
+func (hf HandlerFunc) Stage() string {
+	return ""
 }
 
 // Handle 执行处理器函数

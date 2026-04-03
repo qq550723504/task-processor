@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: amazon-crawler-external-lb
+  namespace: task-processor
+  labels:
+    app: amazon-crawler-api
+    component: external-lb
+spec:
+  # 无 selector：K3s 不会自动关联 Pod，由手动 Endpoints 控制后端
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP

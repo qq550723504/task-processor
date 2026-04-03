@@ -84,13 +84,6 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 	// 获取当前日期（格式：YYYY-MM-DD）
 	currentDate := timex.NowDate()
 
-	// 获取当前已上架数量
-	currentCount := h.memoryManager.DailyCountManager.GetCount(
-		task.TenantID,
-		task.StoreID,
-		currentDate,
-	)
-
 	// 计算本次发布会增加的数量
 	increment := h.calculateIncrement(temuCtx, dailyLimitType)
 	if increment <= 0 {
@@ -98,8 +91,25 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		return nil
 	}
 
-	// 预测发布后的总数量
-	predictedCount := currentCount + increment
+	reservation, err := h.memoryManager.DailyCountManager.TryReserveQuota(
+		task.TenantID,
+		task.StoreID,
+		currentDate,
+		increment,
+		int64(dailyLimit),
+	)
+	if err != nil {
+		return err
+	}
+
+	currentCount := reservation.NewCount
+	predictedCount := reservation.NewCount
+	if reservation.Allowed {
+		currentCount = reservation.NewCount - increment
+	}
+	if !reservation.Allowed {
+		predictedCount = reservation.NewCount + increment
+	}
 
 	h.logger.WithFields(map[string]any{
 		logger.FieldStoreID: task.StoreID,
@@ -112,7 +122,7 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 	}).Info("店铺上架情况")
 
 	// 检查是否会超过限额
-	if predictedCount > int64(dailyLimit) {
+	if !reservation.Allowed {
 		h.logger.WithFields(map[string]any{
 			logger.FieldStoreID: task.StoreID,
 			"date":              currentDate,
@@ -133,6 +143,8 @@ func (h *CheckDailyLimitHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext
 		// 返回不可重试错误，阻止产品发布
 		return fmt.Errorf("NONRETRYABLE: 店铺已达到每日上架限额(%d/%d)，已暂停上架到当日结束", currentCount, dailyLimit)
 	}
+
+	temuCtx.SetDailyQuotaReservation(currentDate, increment)
 
 	h.logger.WithFields(map[string]any{
 		logger.FieldStoreID: task.StoreID,

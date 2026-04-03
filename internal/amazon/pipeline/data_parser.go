@@ -17,7 +17,7 @@ type DataParserHandler struct {
 // NewDataParserHandler 创建数据解析处理器
 func NewDataParserHandler(services *model.Services) *DataParserHandler {
 	return &DataParserHandler{
-		BaseHandler: NewBaseHandler("数据解析器"),
+		BaseHandler: NewBaseHandler("数据解析器", amazonTaskStageParseSourceData),
 	}
 }
 

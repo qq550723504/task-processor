@@ -1,6 +1,6 @@
-# Task service standalone configuration
-# Dedicated to cmd/task. This keeps task orchestration settings separate from
-# crawler API runtime configuration.
+# Legacy task service standalone configuration
+# Dedicated to deprecated cmd/task emergency fallback only.
+# Production cluster deployment should use RabbitMQ platform consumers instead.
 
 logging:
   level: "INFO"

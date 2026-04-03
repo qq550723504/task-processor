@@ -66,7 +66,7 @@ management:
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [873] # 店铺ID列表 ->CA:836
+  storeIDs: [873] # 仅用于平台调度任务/legacy fallback，不再用于主上架消费链
 
 platforms:
   # TEMU 平台配置
@@ -146,7 +146,16 @@ rabbitmq:
     
     # 队列配置（可为不同队列设置不同的并发度）
     queues:
-      # 上架任务队列（同一节点同时只处理1个上架任务，其余排队）
+      # 上架任务队列，默认走平台共享队列；只有启用 useStoreQueues 时才消费 *.store.* 队列
+      - name: "amazon.tasks"
+        priority: 8
+        prefetch: 1
+      - name: "temu.tasks"
+        priority: 8
+        prefetch: 1
+      - name: "shein.tasks"
+        priority: 8
+        prefetch: 1
       - name: "amazon.tasks.store.*"
         priority: 8
         prefetch: 1
@@ -166,7 +175,8 @@ rabbitmq:
         prefetch: 0
   node:
     role: "hybrid" # task | crawler | hybrid
-    ownedStores: [836]
+    useStoreQueues: false
+    ownedStores: [836] # 仅在 useStoreQueues=true 时生效
     regions: [US]  # 该节点只处理这三个 region 的爬虫任务
 # Amazon配置
 amazon:

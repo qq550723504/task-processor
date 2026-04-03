@@ -24,6 +24,7 @@ func (s *TaskSource) FetchPendingTasks(maxTasks int) ([]api.ProductImportTaskRes
 	}
 
 	importTaskClient := s.fetcher.managementClient.GetImportTaskClient()
+	logger.GetGlobalLogger("app/task").Warn("using deprecated legacy polling task source; migrate this workload to RabbitMQ platform consumers")
 	logger.GetGlobalLogger("app/task").Infof("🔍 任务获取参数: maxTasks=%d, userID=%d, storeIDs=%v",
 		maxTasks, s.fetcher.config.Management.UserID, s.fetcher.config.Management.StoreIDs)
 

@@ -15,7 +15,7 @@ type VariantHandler struct {
 // NewVariantHandler 创建变体处理器
 func NewVariantHandler(services *model.Services) *VariantHandler {
 	return &VariantHandler{
-		BaseHandler: NewBaseHandler("变体处理器"),
+		BaseHandler: NewBaseHandler("变体处理器", amazonTaskStageBuildVariants),
 	}
 }
 

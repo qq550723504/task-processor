@@ -15,7 +15,7 @@ type ProductTypeHandler struct {
 
 func NewProductTypeHandler(services *model.Services) *ProductTypeHandler {
 	return &ProductTypeHandler{
-		BaseHandler:   NewBaseHandler("产品类型处理器"),
+		BaseHandler:   NewBaseHandler("产品类型处理器", amazonTaskStageResolveProductType),
 		services:      services,
 		marketplaceID: "ATVPDKIKX0DER",
 	}

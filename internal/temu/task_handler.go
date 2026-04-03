@@ -40,6 +40,7 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, executor
 	}).Info("start task")
 
 	taskCtx := h.createTaskContext(ctx, &task)
+	defer h.rollbackReservedDailyQuota(taskCtx)
 	startTime := time.Now()
 
 	if err := executor.Execute(taskCtx); err != nil {
@@ -75,6 +76,36 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, executor
 		Stage:  temuTaskStagePublishProduct,
 	})
 	return nil
+}
+
+func (h *TaskHandler) rollbackReservedDailyQuota(taskCtx *temucontext.TemuTaskContext) {
+	if taskCtx == nil || !taskCtx.DailyQuotaReserved || taskCtx.MemoryManager == nil {
+		return
+	}
+
+	task := taskCtx.GetTask()
+	if task == nil {
+		return
+	}
+
+	if taskCtx.SubmitResponse != nil && !taskCtx.SavedToDraft {
+		return
+	}
+
+	if _, err := taskCtx.MemoryManager.DailyCountManager.RollbackReservedQuota(
+		task.TenantID,
+		task.StoreID,
+		taskCtx.DailyQuotaDate,
+		taskCtx.DailyQuotaIncrement,
+	); err != nil {
+		h.logger.WithError(err).WithFields(logrus.Fields{
+			logger.FieldTaskID:  task.ID,
+			logger.FieldStoreID: task.StoreID,
+		}).Warn("failed to rollback reserved daily quota")
+		return
+	}
+
+	taskCtx.ClearDailyQuotaReservation()
 }
 
 func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *temucontext.TemuTaskContext {

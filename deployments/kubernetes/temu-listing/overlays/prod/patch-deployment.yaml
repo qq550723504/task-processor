@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temu-listing
+  namespace: task-processor
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: temu-listing
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "3"
+              memory: "6Gi"

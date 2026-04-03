@@ -15,7 +15,7 @@ type ValidationHandler struct {
 // NewValidationHandler 创建验证处理器
 func NewValidationHandler(services *model.Services) *ValidationHandler {
 	return &ValidationHandler{
-		BaseHandler: NewBaseHandler("产品数据验证"),
+		BaseHandler: NewBaseHandler("产品数据验证", amazonTaskStageValidateInput),
 	}
 }
 

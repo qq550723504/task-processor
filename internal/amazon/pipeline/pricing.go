@@ -16,7 +16,7 @@ type PricingHandler struct {
 // NewPricingHandler 创建价格处理器
 func NewPricingHandler(services *model.Services) *PricingHandler {
 	return &PricingHandler{
-		BaseHandler: NewBaseHandler("设置产品价格"),
+		BaseHandler: NewBaseHandler("设置产品价格", amazonTaskStageSetPricing),
 	}
 }
 
