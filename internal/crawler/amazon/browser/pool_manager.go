@@ -28,6 +28,7 @@ type poolBehavior interface {
 	Release(instance *BrowserInstance)
 	ReleaseWithError(instance *BrowserInstance, err error)
 	GetAvailableChannel() chan *BrowserInstance
+	GetInstancesSnapshot() []*BrowserInstance
 }
 
 // PoolManager 增强的浏览器池管理器
@@ -37,6 +38,8 @@ type PoolManager struct {
 	mu         sync.RWMutex
 	isShutdown bool
 }
+
+const strongStickyWaitBudget = 8 * time.Second
 
 // NewEnhancedPoolManager 创建增强的浏览器池管理器
 func NewPoolManager(pool *BrowserPool) *PoolManager {
@@ -107,7 +110,7 @@ func (pm *PoolManager) processProduct(ctx context.Context, url, zipcode string, 
 	// 获取浏览器实例：等待时间跟随父 ctx，不单独设30s硬超时。
 	// 若父 ctx 还有3分钟，就最多等3分钟，避免池满时30s就报超时失败。
 	acquireStart := time.Now()
-	instance, err := pm.acquireInstanceWithTimeout(ctx, 0)
+	instance, err := pm.acquireInstanceWithTimeout(ctx, 0, inferRegionFromURL(url))
 	acquireElapsed := time.Since(acquireStart)
 	if err != nil {
 		pm.logger.Errorf("获取浏览器实例失败: 等待耗时=%.1fs, Error=%v", acquireElapsed.Seconds(), err)
@@ -162,6 +165,7 @@ func (pm *PoolManager) processProduct(ctx context.Context, url, zipcode string, 
 	}
 
 	// 正常路径：释放实例
+	pm.recordSuccessfulRegionContext(instance, url, processErr)
 	pm.releaseInstanceSafely(instance, processErr)
 	return &ProcessResult{Product: product, Error: processErr}
 }
@@ -169,7 +173,7 @@ func (pm *PoolManager) processProduct(ctx context.Context, url, zipcode string, 
 // acquireInstanceWithTimeout 带超时获取浏览器实例。
 // acquireTimeout=0 时直接使用父 ctx 的 deadline，适合"等到任务超时为止"的场景。
 // acquireTimeout>0 时使用独立超时，不受父 ctx 影响（用于需要精确控制等待时长的场景）。
-func (pm *PoolManager) acquireInstanceWithTimeout(ctx context.Context, acquireTimeout time.Duration) (*BrowserInstance, error) {
+func (pm *PoolManager) acquireInstanceWithTimeout(ctx context.Context, acquireTimeout time.Duration, preferredRegion string) (*BrowserInstance, error) {
 	pm.mu.RLock()
 	if pm.isShutdown {
 		pm.mu.RUnlock()
@@ -193,6 +197,34 @@ func (pm *PoolManager) acquireInstanceWithTimeout(ctx context.Context, acquireTi
 		defer cancel()
 	} else {
 		acquireCtx = ctx
+	}
+
+	if instance, ok := pm.acquirePreferredInstance(preferredRegion); ok {
+		if ctx.Err() != nil {
+			pm.pool.Release(instance)
+			return nil, fmt.Errorf("context 已取消，跳过获取浏览器实例: %w", ctx.Err())
+		}
+		instance.Mu.Lock()
+		instance.InUse = true
+		instance.Mu.Unlock()
+		pm.logger.Infof("成功获取浏览器实例: %d (preferred_region=%s)", instance.ID, preferredRegion)
+		return instance, nil
+	}
+
+	if pm.hasPreferredRegionInstance(preferredRegion) {
+		if instance, ok, err := pm.waitForPreferredInstance(acquireCtx, preferredRegion); err != nil {
+			return nil, err
+		} else if ok {
+			if ctx.Err() != nil {
+				pm.pool.Release(instance)
+				return nil, fmt.Errorf("context 已取消，跳过获取浏览器实例: %w", ctx.Err())
+			}
+			instance.Mu.Lock()
+			instance.InUse = true
+			instance.Mu.Unlock()
+			pm.logger.Infof("成功获取浏览器实例: %d (sticky_wait_region=%s)", instance.ID, preferredRegion)
+			return instance, nil
+		}
 	}
 
 	select {
@@ -220,6 +252,194 @@ func (pm *PoolManager) acquireInstanceWithTimeout(ctx context.Context, acquireTi
 	case <-ctx.Done():
 		return nil, fmt.Errorf("context 已取消，跳过获取浏览器实例: %w", ctx.Err())
 	}
+}
+
+func (pm *PoolManager) acquirePreferredInstance(preferredRegion string) (*BrowserInstance, bool) {
+	preferredRegion = normalizePreferredRegion(preferredRegion)
+	if preferredRegion == "" {
+		return nil, false
+	}
+
+	available := pm.pool.GetAvailableChannel()
+	if available == nil {
+		return nil, false
+	}
+
+	bufferedCount := len(available)
+	if bufferedCount == 0 {
+		return nil, false
+	}
+
+	buffered := make([]*BrowserInstance, 0, bufferedCount)
+	var preferred *BrowserInstance
+	for i := 0; i < bufferedCount; i++ {
+		select {
+		case instance, ok := <-available:
+			if !ok || instance == nil {
+				continue
+			}
+			if preferred == nil && instanceMatchesRegion(instance, preferredRegion) {
+				preferred = instance
+				continue
+			}
+			buffered = append(buffered, instance)
+		default:
+			i = bufferedCount
+		}
+	}
+
+	for _, instance := range buffered {
+		select {
+		case available <- instance:
+		default:
+			pm.logger.Warnf("恢复浏览器实例到可用池失败: %d", instance.ID)
+		}
+	}
+
+	return preferred, preferred != nil
+}
+
+func (pm *PoolManager) hasPreferredRegionInstance(preferredRegion string) bool {
+	preferredRegion = normalizePreferredRegion(preferredRegion)
+	if preferredRegion == "" {
+		return false
+	}
+
+	for _, instance := range pm.pool.GetInstancesSnapshot() {
+		if instanceMatchesRegion(instance, preferredRegion) {
+			return true
+		}
+	}
+	return false
+}
+
+func (pm *PoolManager) waitForPreferredInstance(acquireCtx context.Context, preferredRegion string) (*BrowserInstance, bool, error) {
+	preferredRegion = normalizePreferredRegion(preferredRegion)
+	if preferredRegion == "" {
+		return nil, false, nil
+	}
+
+	waitCtx := acquireCtx
+	var cancel context.CancelFunc
+	if strongStickyWaitBudget > 0 {
+		waitCtx, cancel = context.WithTimeout(acquireCtx, strongStickyWaitBudget)
+		defer cancel()
+	}
+
+	available := pm.pool.GetAvailableChannel()
+	if available == nil {
+		return nil, false, nil
+	}
+
+	buffered := make([]*BrowserInstance, 0, len(available))
+	restoreBuffered := func(instances []*BrowserInstance) {
+		for _, instance := range instances {
+			select {
+			case available <- instance:
+			default:
+				pm.logger.Warnf("恢复浏览器实例到可用池失败: %d", instance.ID)
+			}
+		}
+	}
+
+	for {
+		select {
+		case instance, ok := <-available:
+			if !ok || instance == nil {
+				restoreBuffered(buffered)
+				return nil, false, fmt.Errorf("浏览器池已关闭")
+			}
+			if instanceMatchesRegion(instance, preferredRegion) {
+				restoreBuffered(buffered)
+				return instance, true, nil
+			}
+			buffered = append(buffered, instance)
+		case <-waitCtx.Done():
+			if len(buffered) > 0 {
+				fallback := buffered[0]
+				restoreBuffered(buffered[1:])
+				pm.logger.Warnf("强粘性等待超时，回退到非匹配实例: preferred_region=%s fallback_instance=%d", preferredRegion, fallback.ID)
+				return fallback, true, nil
+			}
+			return nil, false, nil
+		}
+	}
+}
+
+func (pm *PoolManager) recordSuccessfulRegionContext(instance *BrowserInstance, url string, processErr error) {
+	if instance == nil || processErr != nil {
+		return
+	}
+
+	region := normalizePreferredRegion(inferRegionFromURL(url))
+	if region == "" {
+		return
+	}
+
+	instance.Mu.Lock()
+	instance.CurrentRegion = region
+	instance.Mu.Unlock()
+}
+
+func inferRegionFromURL(url string) string {
+	lowerURL := strings.ToLower(strings.TrimSpace(url))
+	if lowerURL == "" {
+		return ""
+	}
+
+	switch {
+	case strings.Contains(lowerURL, "amazon.co.jp"):
+		return "jp"
+	case strings.Contains(lowerURL, "amazon.ca"):
+		return "ca"
+	case strings.Contains(lowerURL, "amazon.co.uk"):
+		return "uk"
+	case strings.Contains(lowerURL, "amazon.com.au"):
+		return "au"
+	case strings.Contains(lowerURL, "amazon.com.mx"):
+		return "mx"
+	case strings.Contains(lowerURL, "amazon.com.br"):
+		return "br"
+	case strings.Contains(lowerURL, "amazon.com"):
+		return "us"
+	case strings.Contains(lowerURL, "amazon.de"):
+		return "de"
+	case strings.Contains(lowerURL, "amazon.fr"):
+		return "fr"
+	case strings.Contains(lowerURL, "amazon.it"):
+		return "it"
+	case strings.Contains(lowerURL, "amazon.es"):
+		return "es"
+	case strings.Contains(lowerURL, "amazon.in"):
+		return "in"
+	case strings.Contains(lowerURL, "amazon.ae"):
+		return "ae"
+	case strings.Contains(lowerURL, "amazon.sa"):
+		return "sa"
+	case strings.Contains(lowerURL, "amazon.nl"):
+		return "nl"
+	case strings.Contains(lowerURL, "amazon.se"):
+		return "se"
+	case strings.Contains(lowerURL, "amazon.pl"):
+		return "pl"
+	default:
+		return ""
+	}
+}
+
+func normalizePreferredRegion(region string) string {
+	return strings.ToLower(strings.TrimSpace(region))
+}
+
+func instanceMatchesRegion(instance *BrowserInstance, preferredRegion string) bool {
+	if instance == nil {
+		return false
+	}
+
+	instance.Mu.Lock()
+	currentRegion := normalizePreferredRegion(instance.CurrentRegion)
+	instance.Mu.Unlock()
+	return currentRegion != "" && currentRegion == preferredRegion
 }
 
 // releaseInstanceSafely 安全释放浏览器实例

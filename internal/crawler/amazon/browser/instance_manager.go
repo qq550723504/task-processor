@@ -260,6 +260,7 @@ func (im *InstanceManager) GetInstanceInfo(instance *BrowserInstance) map[string
 	info := map[string]any{
 		"id":              instance.ID,
 		"in_use":          instance.InUse,
+		"current_region":  instance.CurrentRegion,
 		"current_zipcode": instance.CurrentZipcode,
 		"valid":           im.ValidateInstance(instance),
 	}

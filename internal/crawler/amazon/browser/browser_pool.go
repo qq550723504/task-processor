@@ -19,6 +19,7 @@ type BrowserInstance struct {
 	Page           playwright.Page
 	InUse          bool
 	Closed         bool   // 已被超时路径关闭，不可再归还池
+	CurrentRegion  string // 当前实例最近一次成功服务的站点上下文
 	CurrentZipcode string // 当前设置的邮编，用于避免重复设置
 	CurrentProxy   string
 	Mu             sync.Mutex

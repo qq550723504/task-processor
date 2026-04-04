@@ -41,6 +41,7 @@ func (m *mockProcessor) ProcessWithInstance(_ context.Context, _ *BrowserInstanc
 
 type mockPool struct {
 	available       chan *BrowserInstance
+	instances       []*BrowserInstance
 	errorDetector   *ErrorDetector
 	riskPolicy      *riskPolicy
 	onRecreateSync  func(*BrowserInstance) *BrowserInstance
@@ -54,7 +55,9 @@ func newMockPool(size int) *mockPool {
 	}
 	mp.riskPolicy = newRiskPolicy(&config.Config{}, mp.errorDetector)
 	for i := 0; i < size; i++ {
-		mp.available <- &BrowserInstance{ID: i}
+		instance := &BrowserInstance{ID: i}
+		mp.instances = append(mp.instances, instance)
+		mp.available <- instance
 	}
 	return mp
 }
@@ -128,6 +131,12 @@ func (mp *mockPool) ReleaseWithError(instance *BrowserInstance, err error) {
 
 func (mp *mockPool) GetAvailableChannel() chan *BrowserInstance {
 	return mp.available
+}
+
+func (mp *mockPool) GetInstancesSnapshot() []*BrowserInstance {
+	snapshot := make([]*BrowserInstance, len(mp.instances))
+	copy(snapshot, mp.instances)
+	return snapshot
 }
 
 // ---- mock: instanceRebuilder（用于 BrowserPool.instanceManager）----
@@ -285,7 +294,7 @@ func TestAcquireInstanceWithTimeout_EmptyPool(t *testing.T) {
 	mp := newMockPool(0)
 	pm := newPoolManagerWithMock(mp)
 
-	_, err := pm.acquireInstanceWithTimeout(context.Background(), 50*time.Millisecond)
+	_, err := pm.acquireInstanceWithTimeout(context.Background(), 50*time.Millisecond, "")
 	if err == nil {
 		t.Fatal("期望超时错误，但得到 nil")
 	}
@@ -299,12 +308,70 @@ func TestAcquireInstanceWithTimeout_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := pm.acquireInstanceWithTimeout(ctx, 5*time.Second)
+	_, err := pm.acquireInstanceWithTimeout(ctx, 5*time.Second, "")
 	if err == nil {
 		t.Fatal("期望 context 取消错误，但得到 nil")
 	}
 	if len(mp.available) != 1 {
 		t.Fatalf("context 取消后实例不应被消耗，期望 1，实际: %d", len(mp.available))
+	}
+}
+
+func TestAcquireInstanceWithTimeout_PrefersMatchingRegion(t *testing.T) {
+	mp := newMockPool(0)
+	usInstance := &BrowserInstance{ID: 1, CurrentRegion: "us"}
+	jpInstance := &BrowserInstance{ID: 2, CurrentRegion: "jp"}
+	mp.instances = []*BrowserInstance{usInstance, jpInstance}
+	mp.available = make(chan *BrowserInstance, 2)
+	mp.available <- usInstance
+	mp.available <- jpInstance
+
+	pm := newPoolManagerWithMock(mp)
+
+	instance, err := pm.acquireInstanceWithTimeout(context.Background(), 50*time.Millisecond, "jp")
+	if err != nil {
+		t.Fatalf("期望成功获取 jp 实例，得到错误: %v", err)
+	}
+	if instance == nil || instance.ID != 2 {
+		t.Fatalf("期望优先获取 jp 实例(ID=2)，实际: %+v", instance)
+	}
+	if len(mp.available) != 1 {
+		t.Fatalf("获取后应剩余 1 个实例，实际: %d", len(mp.available))
+	}
+	remaining := <-mp.available
+	if remaining.ID != 1 {
+		t.Fatalf("期望剩余 us 实例(ID=1)，实际: %+v", remaining)
+	}
+}
+
+func TestAcquireInstanceWithTimeout_StrongStickyWaitForMatchingRegion(t *testing.T) {
+	mp := newMockPool(0)
+	usInstance := &BrowserInstance{ID: 1, CurrentRegion: "us"}
+	jpInstance := &BrowserInstance{ID: 2, CurrentRegion: "jp"}
+	mp.instances = []*BrowserInstance{usInstance, jpInstance}
+	mp.available = make(chan *BrowserInstance, 2)
+	mp.available <- usInstance
+
+	pm := newPoolManagerWithMock(mp)
+
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		mp.available <- jpInstance
+	}()
+
+	instance, err := pm.acquireInstanceWithTimeout(context.Background(), 300*time.Millisecond, "jp")
+	if err != nil {
+		t.Fatalf("期望等待后成功获取 jp 实例，得到错误: %v", err)
+	}
+	if instance == nil || instance.ID != 2 {
+		t.Fatalf("期望等待并拿到 jp 实例(ID=2)，实际: %+v", instance)
+	}
+	if len(mp.available) != 1 {
+		t.Fatalf("等待后应仍剩余 1 个实例，实际: %d", len(mp.available))
+	}
+	remaining := <-mp.available
+	if remaining.ID != 1 {
+		t.Fatalf("期望剩余 us 实例(ID=1)，实际: %+v", remaining)
 	}
 }
 
