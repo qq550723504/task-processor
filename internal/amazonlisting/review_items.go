@@ -26,6 +26,9 @@ func buildReviewItemsFromCanonical(product *productenrich.CanonicalProduct) []Am
 			NeedsHuman:     true,
 			CurrentValue:   canonicalFieldValue(product, field),
 			RecommendedFix: reviewRecommendationForField(field),
+			Confidence:     trace.Confidence,
+			IsInferred:     trace.IsInferred,
+			Evidence:       buildFieldEvidence(product, field, trace),
 		})
 	}
 	for key, attr := range product.Attributes {
@@ -42,6 +45,9 @@ func buildReviewItemsFromCanonical(product *productenrich.CanonicalProduct) []Am
 			NeedsHuman:     true,
 			CurrentValue:   attr.Value,
 			RecommendedFix: reviewRecommendationForField(field),
+			Confidence:     attr.Trace.Confidence,
+			IsInferred:     attr.Trace.IsInferred,
+			Evidence:       buildFieldEvidence(product, field, attr.Trace),
 		})
 	}
 	for idx, variant := range product.Variants {
@@ -59,6 +65,9 @@ func buildReviewItemsFromCanonical(product *productenrich.CanonicalProduct) []Am
 				NeedsHuman:     true,
 				CurrentValue:   attr.Value,
 				RecommendedFix: reviewRecommendationForField(field),
+				Confidence:     attr.Trace.Confidence,
+				IsInferred:     attr.Trace.IsInferred,
+				Evidence:       buildFieldEvidence(product, field, attr.Trace),
 			})
 		}
 	}
@@ -187,6 +196,42 @@ func reviewSourceFromTrace(trace productenrich.FieldTrace) string {
 		parts = append(parts, string(source.Type))
 	}
 	return strings.Join(parts, ",")
+}
+
+func reviewEvidenceFromTrace(trace productenrich.FieldTrace) []AmazonReviewEvidence {
+	if len(trace.Sources) == 0 {
+		return nil
+	}
+	evidence := make([]AmazonReviewEvidence, 0, len(trace.Sources))
+	for _, source := range trace.Sources {
+		evidence = append(evidence, AmazonReviewEvidence{
+			Type:   string(source.Type),
+			Detail: strings.TrimSpace(source.Detail),
+		})
+	}
+	return evidence
+}
+
+func buildFieldEvidence(product *productenrich.CanonicalProduct, field string, trace productenrich.FieldTrace) []AmazonReviewEvidence {
+	evidence := reviewEvidenceFromTrace(trace)
+	if snippet := fieldValueEvidence(product, field); snippet != "" {
+		evidence = append(evidence, AmazonReviewEvidence{
+			Type:   "field_value",
+			Detail: snippet,
+		})
+	}
+	return evidence
+}
+
+func fieldValueEvidence(product *productenrich.CanonicalProduct, field string) string {
+	value := strings.TrimSpace(canonicalFieldValue(product, field))
+	if value == "" {
+		return ""
+	}
+	if len(value) > 120 {
+		value = value[:117] + "..."
+	}
+	return field + ` = "` + value + `"`
 }
 
 func canonicalFieldValue(product *productenrich.CanonicalProduct, field string) string {

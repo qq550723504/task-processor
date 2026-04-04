@@ -40,6 +40,7 @@ func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHand
 	if amazonListingHandler != nil {
 		v1 := r.Group("/api/v1/amazon/listings")
 		v1.POST("/generate", amazonListingHandler.GenerateListing)
+		v1.GET("/tasks", amazonListingHandler.ListTaskQueue)
 		v1.GET("/tasks/:task_id", amazonListingHandler.GetTaskResult)
 		v1.GET("/tasks/:task_id/workbench", amazonListingHandler.GetTaskWorkbench)
 		v1.POST("/tasks/:task_id/review", amazonListingHandler.ReviewTask)

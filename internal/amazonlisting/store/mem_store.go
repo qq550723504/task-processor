@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -34,6 +35,32 @@ func (r *MemTaskRepository) GetTask(_ context.Context, taskID string) (*amazonli
 	}
 	copied := *task
 	return &copied, nil
+}
+
+func (r *MemTaskRepository) ListTasks(_ context.Context, statuses []amazonlisting.TaskStatus, limit int) ([]*amazonlisting.Task, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	allowed := make(map[amazonlisting.TaskStatus]struct{}, len(statuses))
+	for _, status := range statuses {
+		allowed[status] = struct{}{}
+	}
+	items := make([]*amazonlisting.Task, 0, len(r.tasks))
+	for _, task := range r.tasks {
+		if len(allowed) > 0 {
+			if _, ok := allowed[task.Status]; !ok {
+				continue
+			}
+		}
+		copied := *task
+		items = append(items, &copied)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].UpdatedAt.After(items[j].UpdatedAt)
+	})
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
 }
 
 func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {

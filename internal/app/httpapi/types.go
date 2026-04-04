@@ -73,6 +73,7 @@ type imageRouteHandler interface {
 
 type amazonListingRouteHandler interface {
 	GenerateListing(c *gin.Context)
+	ListTaskQueue(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	GetTaskWorkbench(c *gin.Context)
 	ReviewTask(c *gin.Context)

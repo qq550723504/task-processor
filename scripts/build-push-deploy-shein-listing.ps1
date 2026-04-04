@@ -22,7 +22,11 @@ $ImageName = "task-processor-shein-listing"
 $Dockerfile = "deployments/docker/Dockerfile.listing"
 
 if (-not $Tag) {
-    $Tag = git rev-parse --short HEAD 2>$null
+    $GitSha = (git rev-parse --short HEAD 2>$null)
+    $Dirty = (git status --short --untracked-files=no 2>$null)
+    if ($GitSha) {
+        $Tag = if ([string]::IsNullOrWhiteSpace($Dirty)) { $GitSha } else { "$GitSha-dirty" }
+    }
     if (-not $Tag) {
         $Tag = Get-Date -Format "yyyyMMdd-HHmmss"
     }

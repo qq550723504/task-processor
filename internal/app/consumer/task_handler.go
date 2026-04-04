@@ -19,6 +19,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	storeStatusEnabled  int16 = 0
+	storeStatusDisabled int16 = 1
+)
+
 // TaskHandler 增强的任务处理器，集成结果上报、去重和店铺亲和性
 type TaskHandler struct {
 	processor      worker.Processor
@@ -78,13 +83,16 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	}
 
 	// 3. 验证店铺访问权限
-	_, err = eth.validateStoreAccess(task)
+	canProcess, err := eth.validateStoreAccess(task)
 	if err != nil {
 		// 非本节点店铺，静默跳过（不算错误，消息正常 ack）
 		if apptask.IsStoreNotOwnedError(err) {
 			return nil
 		}
 		return err
+	}
+	if !canProcess {
+		return nil
 	}
 
 	// 4. 验证平台匹配
@@ -182,10 +190,26 @@ func (eth *TaskHandler) shouldSkipDuplicate(task *model.Task) bool {
 	return false
 }
 
-// validateStoreAccess 验证店铺访问权限，仅在启用店铺亲和模式时限制 ownedStores
+// validateStoreAccess 验证店铺访问权限，并在共享队列模式下提前丢弃已禁用店铺任务。
 func (eth *TaskHandler) validateStoreAccess(task *model.Task) (bool, error) {
 	if eth.storeAPI == nil {
 		return true, nil
+	}
+
+	storeInfo, err := eth.storeAPI.GetStore(task.StoreID)
+	if err != nil {
+		eth.logger.Errorf("[%s] 获取店铺 %d 配置失败: %v", eth.platform, task.StoreID, err)
+		return false, apptask.NewStoreNotFoundError(task.ID, task.StoreID, err)
+	}
+	if storeInfo == nil {
+		eth.logger.Warnf("[%s] 店铺信息为空，跳过任务: ID=%d, StoreID=%d", eth.platform, task.ID, task.StoreID)
+		return false, nil
+	}
+
+	if !eth.isStoreDispatchEnabled(storeInfo) {
+		eth.logger.Warnf("[%s] 丢弃已禁用店铺任务: ID=%d, StoreID=%d, StoreName=%s, Status=%d, EnableAutoListing=%s",
+			eth.platform, task.ID, task.StoreID, storeInfo.Name, storeInfo.Status, formatBoolPointer(storeInfo.EnableAutoListing))
+		return false, nil
 	}
 
 	// 默认共享消费；仅在显式启用店铺亲和模式时才限制 ownedStores
@@ -199,15 +223,29 @@ func (eth *TaskHandler) validateStoreAccess(task *model.Task) (bool, error) {
 		return false, apptask.NewStoreNotOwnedError(task.ID, task.StoreID)
 	}
 
-	storeInfo, err := eth.storeAPI.GetStore(task.StoreID)
-	if err != nil {
-		eth.logger.Errorf("[%s] 获取店铺 %d 配置失败: %v", eth.platform, task.StoreID, err)
-		return false, apptask.NewStoreNotFoundError(task.ID, task.StoreID, err)
-	}
-
 	eth.logger.Infof("[%s] 🎯 处理自己店铺的任务: ID=%d, StoreID=%d, StoreName=%s",
 		eth.platform, task.ID, task.StoreID, storeInfo.Name)
 	return true, nil
+}
+
+func (eth *TaskHandler) isStoreDispatchEnabled(storeInfo *api.StoreRespDTO) bool {
+	if storeInfo == nil {
+		return false
+	}
+	if storeInfo.Status != storeStatusEnabled {
+		return false
+	}
+	return storeInfo.EnableAutoListing != nil && *storeInfo.EnableAutoListing
+}
+
+func formatBoolPointer(value *bool) string {
+	if value == nil {
+		return "nil"
+	}
+	if *value {
+		return "true"
+	}
+	return "false"
 }
 
 // validatePlatform 验证平台匹配

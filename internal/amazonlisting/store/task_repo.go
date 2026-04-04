@@ -33,6 +33,21 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*amazonlis
 	return &task, nil
 }
 
+func (r *taskRepository) ListTasks(ctx context.Context, statuses []amazonlisting.TaskStatus, limit int) ([]*amazonlisting.Task, error) {
+	query := r.db.WithContext(ctx).Model(&amazonlisting.Task{})
+	if len(statuses) > 0 {
+		query = query.Where("status IN ?", statuses)
+	}
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	var tasks []*amazonlisting.Task
+	if err := query.Order("updated_at DESC").Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
 	result := r.db.WithContext(ctx).
 		Model(&amazonlisting.Task{}).

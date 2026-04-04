@@ -130,6 +130,17 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	require.NotNil(t, workbench.ReviewSummary)
 	require.GreaterOrEqual(t, workbench.ReviewSummary.TotalCount, 0)
 	require.NotEmpty(t, workbench.ActionBuckets)
+	var itemWithEvidence *amazonlisting.AmazonReviewItem
+	for i := range workbench.ReviewItems {
+		if len(workbench.ReviewItems[i].Evidence) > 0 {
+			itemWithEvidence = &workbench.ReviewItems[i]
+			break
+		}
+	}
+	require.NotNil(t, itemWithEvidence)
+	require.NotZero(t, itemWithEvidence.Confidence)
+	require.NotEmpty(t, itemWithEvidence.Evidence[0].Type)
+	require.NotEmpty(t, itemWithEvidence.Evidence[0].Detail)
 }
 
 type e2eWebScraper struct{}

@@ -1,6 +1,9 @@
 package productenrich
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 type CanonicalSourceType string
 
@@ -71,7 +74,6 @@ func BuildCanonicalProduct(req *GenerateRequest, product *ProductJSON) *Canonica
 	}
 
 	baseSources := inferBaseSources(req)
-	inferredTrace := buildFieldTrace(baseSources, true)
 	directTrace := buildFieldTrace(baseSources, false)
 
 	canonical := &CanonicalProduct{
@@ -88,20 +90,20 @@ func BuildCanonicalProduct(req *GenerateRequest, product *ProductJSON) *Canonica
 		FieldTraces:    map[string]FieldTrace{},
 	}
 
-	canonical.FieldTraces["title"] = inferredTrace
+	canonical.FieldTraces["title"] = traceWithEvidence(product, "title", baseSources, true)
 	canonical.FieldTraces["brand"] = traceForBrand(product, baseSources)
-	canonical.FieldTraces["category_path"] = inferredTrace
-	canonical.FieldTraces["description"] = inferredTrace
-	canonical.FieldTraces["selling_points"] = inferredTrace
-	canonical.FieldTraces["seo_keywords"] = inferredTrace
+	canonical.FieldTraces["category_path"] = traceWithEvidence(product, "category_path", baseSources, true)
+	canonical.FieldTraces["description"] = traceWithEvidence(product, "description", baseSources, true)
+	canonical.FieldTraces["selling_points"] = traceWithEvidence(product, "selling_points", baseSources, true)
+	canonical.FieldTraces["seo_keywords"] = traceWithEvidence(product, "seo_keywords", baseSources, true)
 	if product.Specifications != nil {
-		canonical.FieldTraces["specifications"] = inferredTrace
+		canonical.FieldTraces["specifications"] = traceWithEvidence(product, "specifications", baseSources, true)
 	}
 
 	for key, value := range product.Attributes {
 		canonical.Attributes[key] = CanonicalAttribute{
 			Value: value,
-			Trace: traceForAttribute(key, baseSources),
+			Trace: traceForAttribute(product, key, baseSources),
 		}
 	}
 
@@ -122,12 +124,12 @@ func BuildCanonicalProduct(req *GenerateRequest, product *ProductJSON) *Canonica
 			Stock:     variant.Stock,
 			Barcode:   variant.Barcode,
 			IsDefault: variant.IsDefault,
-			Trace:     inferredTrace,
+			Trace:     traceWithEvidence(product, "variants", baseSources, true),
 		}
 		for key, value := range variant.Attributes {
 			converted.Attributes[key] = CanonicalAttribute{
 				Value: value,
-				Trace: traceForAttribute(key, baseSources),
+				Trace: traceWithEvidence(product, "variants.attributes."+key, baseSources, true),
 			}
 		}
 		for _, imageURL := range variant.Images {
@@ -150,15 +152,15 @@ func inferBaseSources(req *GenerateRequest) []CanonicalSource {
 		return []CanonicalSource{{Type: CanonicalSourceDerived, Detail: "unknown_request_context"}}
 	}
 	if strings.TrimSpace(req.Text) != "" {
-		sources = append(sources, CanonicalSource{Type: CanonicalSourceUserText, Detail: "generate_request.text"})
+		sources = append(sources, CanonicalSource{Type: CanonicalSourceUserText, Detail: summarizeUserText(req.Text)})
 	}
 	if len(req.ImageURLs) > 0 {
-		sources = append(sources, CanonicalSource{Type: CanonicalSourceUserImage, Detail: "generate_request.image_urls"})
+		sources = append(sources, CanonicalSource{Type: CanonicalSourceUserImage, Detail: summarizeImageSources(req.ImageURLs)})
 	}
 	if strings.TrimSpace(req.ProductURL) != "" {
 		sources = append(sources,
 			CanonicalSource{Type: CanonicalSourceProductURL, Detail: req.ProductURL},
-			CanonicalSource{Type: CanonicalSourceScrapedData, Detail: "normalized_from_product_url"},
+			CanonicalSource{Type: CanonicalSourceScrapedData, Detail: "normalized from product page: " + strings.TrimSpace(req.ProductURL)},
 		)
 	}
 	if len(sources) == 0 {
@@ -170,7 +172,7 @@ func inferBaseSources(req *GenerateRequest) []CanonicalSource {
 func buildFieldTrace(base []CanonicalSource, inferred bool) FieldTrace {
 	sources := append([]CanonicalSource(nil), base...)
 	if inferred {
-		sources = append(sources, CanonicalSource{Type: CanonicalSourceLLM, Detail: "productenrich_product_json"})
+		sources = append(sources, CanonicalSource{Type: CanonicalSourceLLM, Detail: "LLM-generated product normalization"})
 	}
 
 	confidence := 0.6
@@ -196,9 +198,9 @@ func buildFieldTrace(base []CanonicalSource, inferred bool) FieldTrace {
 	}
 }
 
-func traceForAttribute(key string, base []CanonicalSource) FieldTrace {
+func traceForAttribute(product *ProductJSON, key string, base []CanonicalSource) FieldTrace {
 	key = strings.ToLower(strings.TrimSpace(key))
-	trace := buildFieldTrace(base, true)
+	trace := traceWithEvidence(product, "attributes."+key, base, true)
 	if key == "brand" || key == "material" || key == "color" {
 		trace.Confidence += 0.05
 		if trace.Confidence > 1 {
@@ -214,7 +216,7 @@ func traceForBrand(product *ProductJSON, base []CanonicalSource) FieldTrace {
 		return buildFieldTrace(base, true)
 	}
 	if brand, ok := product.Attributes["brand"]; ok && strings.TrimSpace(brand) != "" {
-		trace := buildFieldTrace(base, true)
+		trace := traceWithEvidence(product, "brand", base, true)
 		trace.Confidence += 0.08
 		if trace.Confidence > 1 {
 			trace.Confidence = 1
@@ -222,7 +224,7 @@ func traceForBrand(product *ProductJSON, base []CanonicalSource) FieldTrace {
 		trace.NeedsReview = strings.EqualFold(strings.TrimSpace(brand), "generic")
 		return trace
 	}
-	return buildFieldTrace(base, true)
+	return traceWithEvidence(product, "brand", base, true)
 }
 
 func canonicalNeedsReview(product *CanonicalProduct) bool {
@@ -261,4 +263,42 @@ func cloneStrings(values []string) []string {
 		return nil
 	}
 	return append([]string(nil), values...)
+}
+
+func traceWithEvidence(product *ProductJSON, field string, base []CanonicalSource, inferred bool) FieldTrace {
+	trace := buildFieldTrace(base, inferred)
+	if product == nil || len(product.Evidence) == 0 {
+		return trace
+	}
+	extra := append([]CanonicalSource(nil), product.Evidence[field]...)
+	if len(extra) == 0 && strings.HasPrefix(field, "brand") {
+		extra = append(extra, product.Evidence["attributes.brand"]...)
+	}
+	if len(extra) == 0 {
+		return trace
+	}
+	trace.Sources = append(trace.Sources, extra...)
+	return trace
+}
+
+func summarizeUserText(text string) string {
+	text = strings.TrimSpace(strings.Join(strings.Fields(text), " "))
+	if text == "" {
+		return ""
+	}
+	if len(text) <= 96 {
+		return `user input: "` + text + `"`
+	}
+	return `user input: "` + text[:93] + `..."`
+}
+
+func summarizeImageSources(urls []string) string {
+	if len(urls) == 0 {
+		return ""
+	}
+	first := strings.TrimSpace(urls[0])
+	if len(urls) == 1 {
+		return "user image: " + first
+	}
+	return "user images: " + first + " +" + strconv.Itoa(len(urls)-1) + " more"
 }

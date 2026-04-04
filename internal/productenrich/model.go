@@ -54,6 +54,7 @@ type ProductJSON struct {
 	SEOKeywords    []string          `json:"seo_keywords"`
 	Description    string            `json:"description"`
 	Images         []string          `json:"images"`
+	Evidence       map[string][]CanonicalSource `json:"evidence,omitempty"`
 }
 
 // ProductSpecs 产品规格信息

@@ -2,6 +2,7 @@ package productenrich
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -99,6 +100,7 @@ func (s *productService) runGenerateStage(ctx context.Context, state *PipelineSt
 		return err
 	}
 	productJSON.Images = state.ParsedInput.Images
+	attachProductEvidence(productJSON, state.ParsedInput)
 	state.ProductJSON = productJSON
 	return nil
 }
@@ -126,4 +128,50 @@ func stageFailureFields(err error, startedAt time.Time) map[string]any {
 		"duration_ms":         time.Since(startedAt).Milliseconds(),
 		"failure_disposition": ClassifyProcessFailure(err),
 	}
+}
+
+func attachProductEvidence(productJSON *ProductJSON, parsedInput *ParsedInput) {
+	if productJSON == nil || parsedInput == nil || parsedInput.ScrapedData == nil {
+		return
+	}
+	if productJSON.Evidence == nil {
+		productJSON.Evidence = map[string][]CanonicalSource{}
+	}
+	scraped := parsedInput.ScrapedData
+	if title := truncateEvidenceDetail(scraped.Title); title != "" {
+		productJSON.Evidence["title"] = append(productJSON.Evidence["title"], CanonicalSource{
+			Type:   CanonicalSourceScrapedData,
+			Detail: `scraped title: "` + title + `"`,
+		})
+	}
+	if description := truncateEvidenceDetail(scraped.Description); description != "" {
+		productJSON.Evidence["description"] = append(productJSON.Evidence["description"], CanonicalSource{
+			Type:   CanonicalSourceScrapedData,
+			Detail: `scraped description: "` + description + `"`,
+		})
+	}
+	for key, value := range scraped.Specs {
+		key = strings.TrimSpace(key)
+		value = truncateEvidenceDetail(value)
+		if key == "" || value == "" {
+			continue
+		}
+		source := CanonicalSource{
+			Type:   CanonicalSourceScrapedData,
+			Detail: "scraped spec " + key + ": " + value,
+		}
+		productJSON.Evidence["attributes."+key] = append(productJSON.Evidence["attributes."+key], source)
+		productJSON.Evidence["specifications.technical."+key] = append(productJSON.Evidence["specifications.technical."+key], source)
+	}
+}
+
+func truncateEvidenceDetail(value string) string {
+	value = strings.TrimSpace(strings.Join(strings.Fields(value), " "))
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 120 {
+		return value
+	}
+	return value[:117] + "..."
 }

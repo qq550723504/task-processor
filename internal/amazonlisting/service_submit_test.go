@@ -49,6 +49,26 @@ func (r *stubRepository) GetTask(_ context.Context, taskID string) (*Task, error
 	return &copied, nil
 }
 
+func (r *stubRepository) ListTasks(_ context.Context, statuses []TaskStatus, limit int) ([]*Task, error) {
+	if r.task == nil {
+		return nil, nil
+	}
+	if len(statuses) > 0 {
+		matched := false
+		for _, status := range statuses {
+			if r.task.Status == status {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return nil, nil
+		}
+	}
+	copied := *r.task
+	return []*Task{&copied}, nil
+}
+
 func (r *stubRepository) MarkProcessing(_ context.Context, _ string) error { return nil }
 func (r *stubRepository) MarkCompleted(_ context.Context, _ string, result *AmazonListingDraft) error {
 	r.task.Result = result

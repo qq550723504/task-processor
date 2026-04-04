@@ -92,6 +92,23 @@ type TaskWorkbench struct {
 	ActionBuckets []WorkbenchActionBox `json:"action_buckets,omitempty"`
 }
 
+type TaskQueueQuery struct {
+	Status      []TaskStatus `json:"status,omitempty"`
+	Action      string       `json:"action,omitempty"`
+	Field       string       `json:"field,omitempty"`
+	Severity    string       `json:"severity,omitempty"`
+	Source      string       `json:"source,omitempty"`
+	ChildStatus string       `json:"child_status,omitempty"`
+	NeedsHuman  *bool        `json:"needs_human,omitempty"`
+	Limit       int          `json:"limit,omitempty"`
+}
+
+type TaskQueueResult struct {
+	Items []TaskWorkbench `json:"items,omitempty"`
+	Count int             `json:"count"`
+	Query TaskQueueQuery  `json:"query"`
+}
+
 type ReviewItemSummary struct {
 	TotalCount      int            `json:"total_count"`
 	BlockingCount   int            `json:"blocking_count"`
@@ -244,6 +261,14 @@ type AmazonReviewItem struct {
 	NeedsHuman     bool   `json:"needs_human,omitempty"`
 	CurrentValue   string `json:"current_value,omitempty"`
 	RecommendedFix string `json:"recommended_fix,omitempty"`
+	Confidence     float64                `json:"confidence,omitempty"`
+	IsInferred     bool                   `json:"is_inferred,omitempty"`
+	Evidence       []AmazonReviewEvidence `json:"evidence,omitempty"`
+}
+
+type AmazonReviewEvidence struct {
+	Type   string `json:"type,omitempty"`
+	Detail string `json:"detail,omitempty"`
 }
 
 type AmazonListingExport struct {

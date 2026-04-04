@@ -11,16 +11,59 @@ func (s *service) GetTaskWorkbench(ctx context.Context, taskID string) (*TaskWor
 	if err != nil {
 		return nil, err
 	}
+	return buildTaskWorkbench(task), nil
+}
 
+func (s *service) ListTaskQueue(ctx context.Context, query TaskQueueQuery) (*TaskQueueResult, error) {
+	statuses := normalizedStatuses(query.Status)
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	tasks, err := s.repo.ListTasks(ctx, statuses, limit*3)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]TaskWorkbench, 0, len(tasks))
+	for _, task := range tasks {
+		workbench := buildTaskWorkbench(task)
+		if !matchesTaskQueueQuery(workbench, query) {
+			continue
+		}
+		items = append(items, *workbench)
+		if len(items) >= limit {
+			break
+		}
+	}
+	return &TaskQueueResult{
+		Items: items,
+		Count: len(items),
+		Query: TaskQueueQuery{
+			Status:      statuses,
+			Action:      strings.TrimSpace(query.Action),
+			Field:       strings.TrimSpace(query.Field),
+			Severity:    strings.TrimSpace(query.Severity),
+			Source:      strings.TrimSpace(query.Source),
+			ChildStatus: strings.TrimSpace(query.ChildStatus),
+			NeedsHuman:  query.NeedsHuman,
+			Limit:       limit,
+		},
+	}, nil
+}
+
+func buildTaskWorkbench(task *Task) *TaskWorkbench {
+	if task == nil {
+		return &TaskWorkbench{}
+	}
 	workbench := &TaskWorkbench{
 		TaskID:      task.ID,
 		Status:      task.Status,
 		NeedsReview: task.Status == TaskStatusNeedsReview,
 	}
 	if task.Result == nil {
-		return workbench, nil
+		return workbench
 	}
-
 	workbench.Ready = task.Result.Compliance != nil && task.Result.Compliance.Ready
 	workbench.ChildTasks = cloneChildTasks(task.Result.ChildTasks)
 	workbench.ReviewItems = append([]AmazonReviewItem(nil), task.Result.ReviewItems...)
@@ -32,7 +75,93 @@ func (s *service) GetTaskWorkbench(ctx context.Context, taskID string) (*TaskWor
 	if len(workbench.ActionBuckets) > 0 {
 		workbench.TopAction = workbench.ActionBuckets[0].Action
 	}
-	return workbench, nil
+	return workbench
+}
+
+func normalizedStatuses(statuses []TaskStatus) []TaskStatus {
+	if len(statuses) == 0 {
+		return nil
+	}
+	seen := map[TaskStatus]struct{}{}
+	result := make([]TaskStatus, 0, len(statuses))
+	for _, status := range statuses {
+		status = TaskStatus(strings.ToLower(strings.TrimSpace(string(status))))
+		if status == "" {
+			continue
+		}
+		if _, ok := seen[status]; ok {
+			continue
+		}
+		seen[status] = struct{}{}
+		result = append(result, status)
+	}
+	return result
+}
+
+func matchesTaskQueueQuery(workbench *TaskWorkbench, query TaskQueueQuery) bool {
+	if workbench == nil {
+		return false
+	}
+	action := strings.TrimSpace(query.Action)
+	field := strings.TrimSpace(query.Field)
+	severity := strings.TrimSpace(query.Severity)
+	source := strings.TrimSpace(query.Source)
+	childStatus := strings.TrimSpace(query.ChildStatus)
+
+	if query.NeedsHuman != nil {
+		matched := false
+		for _, item := range workbench.ReviewItems {
+			if item.NeedsHuman == *query.NeedsHuman {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	if action != "" && !hasReviewItem(workbench.ReviewItems, func(item AmazonReviewItem) bool {
+		return strings.EqualFold(strings.TrimSpace(item.Action), action)
+	}) {
+		return false
+	}
+	if field != "" && !hasReviewItem(workbench.ReviewItems, func(item AmazonReviewItem) bool {
+		return strings.EqualFold(strings.TrimSpace(item.Field), field)
+	}) {
+		return false
+	}
+	if severity != "" && !hasReviewItem(workbench.ReviewItems, func(item AmazonReviewItem) bool {
+		return strings.EqualFold(strings.TrimSpace(item.Severity), severity)
+	}) {
+		return false
+	}
+	if source != "" && !hasReviewItem(workbench.ReviewItems, func(item AmazonReviewItem) bool {
+		return strings.Contains(strings.ToLower(strings.TrimSpace(item.Source)), strings.ToLower(source))
+	}) {
+		return false
+	}
+	if childStatus != "" {
+		found := false
+		for _, child := range workbench.ChildTasks {
+			if strings.EqualFold(strings.TrimSpace(child.Status), childStatus) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func hasReviewItem(items []AmazonReviewItem, match func(AmazonReviewItem) bool) bool {
+	for _, item := range items {
+		if match(item) {
+			return true
+		}
+	}
+	return false
 }
 
 func buildReviewItemSummary(items []AmazonReviewItem) *ReviewItemSummary {

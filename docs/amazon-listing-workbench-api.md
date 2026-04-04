@@ -1,5 +1,53 @@
 # Amazon Listing Workbench API
 
+## Task Queue
+
+`GET /api/v1/amazon/listings/tasks`
+
+Use this endpoint to build an operator queue instead of loading one task at a time.
+
+Supported query params:
+
+- `status=needs_review,failed`
+- `action=fill_brand`
+- `field=brand`
+- `severity=warning`
+- `source=llm`
+- `child_status=failed`
+- `needs_human=true`
+- `limit=20`
+
+Example response:
+
+```json
+{
+  "count": 1,
+  "query": {
+    "status": ["needs_review"],
+    "action": "fill_brand",
+    "needs_human": true,
+    "limit": 20
+  },
+  "items": [
+    {
+      "task_id": "listing-queue-1",
+      "status": "needs_review",
+      "needs_review": true,
+      "top_action": "fill_brand",
+      "total_items": 3,
+      "review_summary": {
+        "total_count": 3,
+        "blocking_count": 0,
+        "needs_human_count": 3,
+        "by_action": {
+          "fill_brand": 1
+        }
+      }
+    }
+  ]
+}
+```
+
 ## Workbench Response
 
 `GET /api/v1/amazon/listings/tasks/:task_id/workbench`
@@ -34,8 +82,24 @@ Example response:
       "severity": "warning",
       "reason": "missing brand",
       "source": "llm,user_text",
+      "confidence": 0.58,
+      "is_inferred": true,
       "needs_human": true,
-      "recommended_fix": "confirm or fill the selling brand"
+      "recommended_fix": "confirm or fill the selling brand",
+      "evidence": [
+        {
+          "type": "user_text",
+          "detail": "user input: \"portable blender bottle for smoothies\""
+        },
+        {
+          "type": "llm",
+          "detail": "LLM-generated product normalization"
+        },
+        {
+          "type": "field_value",
+          "detail": "brand = \"Generic\""
+        }
+      ]
     },
     {
       "field": "title",
@@ -44,7 +108,19 @@ Example response:
       "reason": "title may be too short for Amazon listing quality",
       "needs_human": true,
       "current_value": "Ceramic Mug",
-      "recommended_fix": "expand the title with concrete product facts"
+      "recommended_fix": "expand the title with concrete product facts",
+      "confidence": 0.62,
+      "is_inferred": true,
+      "evidence": [
+        {
+          "type": "scraped_data",
+          "detail": "scraped title: \"Ceramic Mug\""
+        },
+        {
+          "type": "field_value",
+          "detail": "title = \"Ceramic Mug\""
+        }
+      ]
     }
   ],
   "top_action": "fill_brand",
@@ -125,6 +201,14 @@ Supported edit fields:
 - `pricing.suggested_price`
 - `pricing.min_price`
 - `pricing.source_cost`
+
+Review item evidence fields:
+
+- `confidence`: numeric confidence score from canonical trace
+- `is_inferred`: whether the field is primarily inferred/generated
+- `evidence[]`: source details plus field snippets for operator review
+- `evidence[].type`: source type such as `user_text`, `user_image`, `product_url`, `scraped_data`, `llm`, `field_value`
+- `evidence[].detail`: human-readable evidence text, for example scraped title/spec fragments or the current field snapshot
 
 Behavior after `apply_edits`:
 

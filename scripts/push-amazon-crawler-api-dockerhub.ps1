@@ -1,10 +1,11 @@
-# Amazon crawler Docker image build and push to Docker Hub
-# Usage: .\push-amazon-crawler-api-dockerhub.ps1 [-DockerHubUser yourname] [-Tag v1.0.0]
-
 [CmdletBinding()]
 param(
     [string]$DockerHubUser = $(if ($env:DOCKERHUB_USER) { $env:DOCKERHUB_USER } else { "xuwei190" }),
     [string]$Tag = "",
+    [string]$Namespace = "task-processor",
+    [string]$DeploymentName = "amazon-crawler-api",
+    [string]$OverlayPath = "deployments/kubernetes/amazon-crawler-api/overlays/prod",
+    [switch]$SkipApply,
     [switch]$PublishLatest
 )
 
@@ -21,44 +22,79 @@ $ImageName = "task-processor-amazon-crawler-api"
 $Dockerfile = "deployments/docker/Dockerfile.amazon-crawler-api"
 
 if (-not $Tag) {
-    $Tag = git rev-parse --short HEAD 2>$null
-    if (-not $Tag) { $Tag = Get-Date -Format 'yyyyMMdd' }
+    $GitSha = (git rev-parse --short HEAD 2>$null)
+    $Dirty = (git status --short --untracked-files=no 2>$null)
+    if ($GitSha) {
+        $Tag = if ([string]::IsNullOrWhiteSpace($Dirty)) { $GitSha } else { "$GitSha-dirty" }
+    }
+    if (-not $Tag) {
+        $Tag = Get-Date -Format "yyyyMMdd-HHmmss"
+    }
 }
 
-$FullImage = "$DockerHubUser/${ImageName}:$Tag"
+$VersionedImage = "$DockerHubUser/${ImageName}:$Tag"
 $LatestImage = "$DockerHubUser/${ImageName}:latest"
 
+function Invoke-Step {
+    param(
+        [string]$Title,
+        [scriptblock]$Action
+    )
+
+    Write-Host ""
+    Write-Host "==> $Title" -ForegroundColor Cyan
+    & $Action
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Title failed"
+    }
+}
+
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Build & Push Amazon Crawler API" -ForegroundColor Cyan
-Write-Host "  Image: $FullImage" -ForegroundColor Cyan
-if ($PublishLatest) {
-    Write-Host "  Also tag: $LatestImage" -ForegroundColor Cyan
-}
+Write-Host "  Amazon Crawler API Build / Push / Deploy" -ForegroundColor Cyan
+Write-Host "  Image: $VersionedImage" -ForegroundColor Cyan
+Write-Host "  Namespace: $Namespace" -ForegroundColor Cyan
+Write-Host "  Deployment: $DeploymentName" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-Write-Host "`n[1/3] Building image..." -ForegroundColor Yellow
-$dockerArgs = @("build", "-f", $Dockerfile, "-t", $FullImage)
-if ($PublishLatest) {
-    $dockerArgs += @("-t", $LatestImage)
-}
-$dockerArgs += "."
-& docker @dockerArgs
-if ($LASTEXITCODE -ne 0) { Write-Host "Build failed" -ForegroundColor Red; exit 1 }
-
-Write-Host "`n[2/3] Pushing $FullImage ..." -ForegroundColor Yellow
-docker push $FullImage
-if ($LASTEXITCODE -ne 0) { Write-Host "Push failed" -ForegroundColor Red; exit 1 }
-
-if ($PublishLatest) {
-    Write-Host "`n[3/3] Pushing $LatestImage ..." -ForegroundColor Yellow
-    docker push $LatestImage
-    if ($LASTEXITCODE -ne 0) { Write-Host "Push failed" -ForegroundColor Red; exit 1 }
+Invoke-Step "Build Docker image" {
+    $dockerArgs = @("build", "-f", $Dockerfile, "-t", $VersionedImage)
+    if ($PublishLatest) {
+        $dockerArgs += @("-t", $LatestImage)
+    }
+    $dockerArgs += "."
+    & docker @dockerArgs
 }
 
-Write-Host "`nDone" -ForegroundColor Green
-Write-Host "  $FullImage" -ForegroundColor Green
+Invoke-Step "Push versioned image" {
+    docker push $VersionedImage
+}
+
 if ($PublishLatest) {
-    Write-Host "  $LatestImage" -ForegroundColor Green
+    Invoke-Step "Push latest image" {
+        docker push $LatestImage
+    }
+}
+
+if (-not $SkipApply) {
+    Invoke-Step "Apply Kubernetes manifests" {
+        kubectl apply -k $OverlayPath
+    }
+
+    Invoke-Step "Update deployment image" {
+        kubectl -n $Namespace set image deployment/$DeploymentName "$DeploymentName=$VersionedImage"
+    }
+
+    Invoke-Step "Wait for rollout" {
+        kubectl -n $Namespace rollout status deployment/$DeploymentName --timeout=5m
+        kubectl -n $Namespace get pods -l "app=$DeploymentName" -o wide
+    }
+}
+
+Write-Host ""
+Write-Host "Deployment finished successfully." -ForegroundColor Green
+Write-Host "  Version image: $VersionedImage" -ForegroundColor Green
+if ($PublishLatest) {
+    Write-Host "  Latest image:  $LatestImage" -ForegroundColor Green
 } else {
-    Write-Host "  (skipped :latest; use -PublishLatest to refresh it)" -ForegroundColor Yellow
+    Write-Host "Skipped pushing :latest. Use -PublishLatest if you intentionally want to refresh the floating tag." -ForegroundColor Yellow
 }

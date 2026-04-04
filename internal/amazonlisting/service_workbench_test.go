@@ -36,8 +36,15 @@ func TestGetTaskWorkbenchGroupsManualActions(t *testing.T) {
 					Action:         OperatorActionFillBrand,
 					Severity:       "warning",
 					Reason:         "missing brand",
+					Source:         "user_text,llm",
 					NeedsHuman:     true,
 					RecommendedFix: "fill the brand",
+					Confidence:     0.58,
+					IsInferred:     true,
+					Evidence: []AmazonReviewEvidence{
+						{Type: "user_text", Detail: "generate_request.text"},
+						{Type: "llm", Detail: "productenrich_product_json"},
+					},
 				},
 			},
 			Submission: &AmazonSubmissionReport{
@@ -101,6 +108,12 @@ func TestGetTaskWorkbenchGroupsManualActions(t *testing.T) {
 	if len(workbench.ReviewItems) != 1 {
 		t.Fatalf("expected review items to be exposed, got %d", len(workbench.ReviewItems))
 	}
+	if workbench.ReviewItems[0].Confidence != 0.58 || !workbench.ReviewItems[0].IsInferred {
+		t.Fatalf("expected review item trace metadata, got %+v", workbench.ReviewItems[0])
+	}
+	if len(workbench.ReviewItems[0].Evidence) != 2 {
+		t.Fatalf("expected review item evidence, got %+v", workbench.ReviewItems[0].Evidence)
+	}
 	if workbench.ReviewSummary == nil {
 		t.Fatal("expected review summary")
 	}
@@ -161,5 +174,55 @@ func TestGetTaskWorkbenchBuildsBucketsFromStructuredReviewItems(t *testing.T) {
 	}
 	if workbench.ReviewSummary.ByField["title"] != 1 || workbench.ReviewSummary.ByField["brand"] != 1 {
 		t.Fatalf("unexpected field summary: %+v", workbench.ReviewSummary.ByField)
+	}
+}
+
+func TestListTaskQueueFiltersByActionAndChildStatus(t *testing.T) {
+	repo := &stubRepository{}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: &stubProductService{},
+		Assembler:      NewAssembler(),
+		ExportBuilder:  NewExportBuilder(),
+		Validator:      NewValidator(),
+		AutoFixer:      NewAutoFixer(),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	repo.task = &Task{
+		ID:        "task-queue-1",
+		Status:    TaskStatusNeedsReview,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Result: &AmazonListingDraft{
+			TaskID: "task-queue-1",
+			ChildTasks: []ChildTaskState{
+				{Kind: "product_image", Status: "failed"},
+			},
+			ReviewItems: []AmazonReviewItem{
+				{Field: "brand", Action: OperatorActionFillBrand, Severity: "warning", NeedsHuman: true, Source: "user_text,llm"},
+			},
+		},
+	}
+
+	needsHuman := true
+	result, err := svc.ListTaskQueue(context.Background(), TaskQueueQuery{
+		Status:      []TaskStatus{TaskStatusNeedsReview},
+		Action:      OperatorActionFillBrand,
+		ChildStatus: "failed",
+		Source:      "llm",
+		NeedsHuman:  &needsHuman,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListTaskQueue: %v", err)
+	}
+	if result.Count != 1 || len(result.Items) != 1 {
+		t.Fatalf("unexpected queue result: %+v", result)
+	}
+	if result.Items[0].TaskID != "task-queue-1" {
+		t.Fatalf("task_id = %q, want task-queue-1", result.Items[0].TaskID)
 	}
 }

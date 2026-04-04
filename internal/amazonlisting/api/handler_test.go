@@ -24,6 +24,8 @@ type mockAmazonListingHandlerSvc struct {
 	createErr       error
 	getResult       *amazonlisting.TaskResult
 	getErr          error
+	listQueueResult *amazonlisting.TaskQueueResult
+	listQueueErr    error
 	workbenchResult *amazonlisting.TaskWorkbench
 	workbenchErr    error
 	reviewResult    *amazonlisting.TaskResult
@@ -38,6 +40,10 @@ func (m *mockAmazonListingHandlerSvc) CreateGenerateTask(_ context.Context, _ *a
 
 func (m *mockAmazonListingHandlerSvc) GetTaskResult(_ context.Context, _ string) (*amazonlisting.TaskResult, error) {
 	return m.getResult, m.getErr
+}
+
+func (m *mockAmazonListingHandlerSvc) ListTaskQueue(_ context.Context, _ amazonlisting.TaskQueueQuery) (*amazonlisting.TaskQueueResult, error) {
+	return m.listQueueResult, m.listQueueErr
 }
 
 func (m *mockAmazonListingHandlerSvc) GetTaskWorkbench(_ context.Context, _ string) (*amazonlisting.TaskWorkbench, error) {
@@ -56,6 +62,7 @@ func newAmazonListingTestRouter(svc amazonlisting.HandlerService) *gin.Engine {
 	h, _ := NewHandler(svc)
 	r := gin.New()
 	r.POST("/listings/generate", h.GenerateListing)
+	r.GET("/listings/tasks", h.ListTaskQueue)
 	r.GET("/listings/tasks/:task_id", h.GetTaskResult)
 	r.GET("/listings/tasks/:task_id/workbench", h.GetTaskWorkbench)
 	r.POST("/listings/tasks/:task_id/review", h.ReviewTask)
@@ -130,6 +137,12 @@ func TestGetTaskWorkbench_ReturnsStructuredReviewItems(t *testing.T) {
 					Action:         amazonlisting.OperatorActionFillBrand,
 					Reason:         "missing brand",
 					RecommendedFix: "confirm or fill the selling brand",
+					Confidence:     0.58,
+					IsInferred:     true,
+					Evidence: []amazonlisting.AmazonReviewEvidence{
+						{Type: "user_text", Detail: `user input: "portable blender"`},
+						{Type: "field_value", Detail: `brand = "Generic"`},
+					},
 				},
 			},
 		},
@@ -155,5 +168,55 @@ func TestGetTaskWorkbench_ReturnsStructuredReviewItems(t *testing.T) {
 	}
 	if len(resp.ReviewItems) != 1 {
 		t.Fatalf("len(review_items) = %d, want 1", len(resp.ReviewItems))
+	}
+	if resp.ReviewItems[0].Confidence != 0.58 || !resp.ReviewItems[0].IsInferred {
+		t.Fatalf("unexpected review item trace fields: %+v", resp.ReviewItems[0])
+	}
+	if len(resp.ReviewItems[0].Evidence) != 2 || resp.ReviewItems[0].Evidence[0].Type != "user_text" {
+		t.Fatalf("unexpected review item evidence: %+v", resp.ReviewItems[0].Evidence)
+	}
+}
+
+func TestListTaskQueue_ReturnsFilteredItems(t *testing.T) {
+	needsHuman := true
+	svc := &mockAmazonListingHandlerSvc{
+		listQueueResult: &amazonlisting.TaskQueueResult{
+			Count: 1,
+			Query: amazonlisting.TaskQueueQuery{
+				Status:     []amazonlisting.TaskStatus{amazonlisting.TaskStatusNeedsReview},
+				Action:     amazonlisting.OperatorActionFillBrand,
+				NeedsHuman: &needsHuman,
+				Limit:      20,
+			},
+			Items: []amazonlisting.TaskWorkbench{
+				{
+					TaskID:      "listing-queue-1",
+					Status:      amazonlisting.TaskStatusNeedsReview,
+					NeedsReview: true,
+					ReviewItems: []amazonlisting.AmazonReviewItem{
+						{Field: "brand", Action: amazonlisting.OperatorActionFillBrand, NeedsHuman: true},
+					},
+				},
+			},
+		},
+	}
+	r := newAmazonListingTestRouter(svc)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/listings/tasks?status=needs_review&action=fill_brand&needs_human=true&limit=20", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var resp amazonlisting.TaskQueueResult
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("parse response: %v", err)
+	}
+	if resp.Count != 1 || len(resp.Items) != 1 {
+		t.Fatalf("unexpected queue response: %+v", resp)
+	}
+	if resp.Items[0].TaskID != "listing-queue-1" {
+		t.Fatalf("task_id = %q, want listing-queue-1", resp.Items[0].TaskID)
 	}
 }

@@ -29,6 +29,7 @@ type ImageService interface {
 type Repository interface {
 	CreateTask(ctx context.Context, task *Task) error
 	GetTask(ctx context.Context, taskID string) (*Task, error)
+	ListTasks(ctx context.Context, statuses []TaskStatus, limit int) ([]*Task, error)
 	MarkProcessing(ctx context.Context, taskID string) error
 	MarkCompleted(ctx context.Context, taskID string, result *AmazonListingDraft) error
 	MarkNeedsReview(ctx context.Context, taskID string, result *AmazonListingDraft, reason string) error
@@ -72,6 +73,7 @@ type Service interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
 	GetTaskWorkbench(ctx context.Context, taskID string) (*TaskWorkbench, error)
+	ListTaskQueue(ctx context.Context, query TaskQueueQuery) (*TaskQueueResult, error)
 	ReviewTask(ctx context.Context, taskID string, req *ReviewTaskRequest) (*TaskResult, error)
 	SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*TaskResult, error)
 	ProcessListing(ctx context.Context, task *Task) (*AmazonListingDraft, error)
@@ -82,12 +84,14 @@ type HandlerService interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
 	GetTaskWorkbench(ctx context.Context, taskID string) (*TaskWorkbench, error)
+	ListTaskQueue(ctx context.Context, query TaskQueueQuery) (*TaskQueueResult, error)
 	ReviewTask(ctx context.Context, taskID string, req *ReviewTaskRequest) (*TaskResult, error)
 	SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*TaskResult, error)
 }
 
 type Handler interface {
 	GenerateListing(c *gin.Context)
+	ListTaskQueue(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	GetTaskWorkbench(c *gin.Context)
 	ReviewTask(c *gin.Context)

@@ -16,6 +16,7 @@ func init() {
 
 type stubAmazonListingHandler struct {
 	generateCalled  bool
+	listQueueCalled bool
 	getResultCalled bool
 	workbenchCalled bool
 	reviewCalled    bool
@@ -38,6 +39,11 @@ func (s *stubTaskRPCHandler) GetHealth(c *gin.Context) {
 func (s *stubAmazonListingHandler) GenerateListing(c *gin.Context) {
 	s.generateCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": "listing-task"})
+}
+
+func (s *stubAmazonListingHandler) ListTaskQueue(c *gin.Context) {
+	s.listQueueCalled = true
+	c.JSON(http.StatusOK, gin.H{"count": 1})
 }
 
 func (s *stubAmazonListingHandler) GetTaskResult(c *gin.Context) {
@@ -140,6 +146,16 @@ func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 			assertFn: func(t *testing.T) {
 				if !handler.generateCalled {
 					t.Fatal("GenerateListing handler was not called")
+				}
+			},
+		},
+		{
+			name:   "list queue",
+			method: http.MethodGet,
+			path:   "/api/v1/amazon/listings/tasks",
+			assertFn: func(t *testing.T) {
+				if !handler.listQueueCalled {
+					t.Fatal("ListTaskQueue handler was not called")
 				}
 			},
 		},

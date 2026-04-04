@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -37,6 +38,39 @@ func (h *handler) GenerateListing(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"task_id": task.ID, "status": task.Status, "created_at": task.CreatedAt})
+}
+
+func (h *handler) ListTaskQueue(c *gin.Context) {
+	query := amazonlisting.TaskQueueQuery{
+		Status:      parseStatusesQuery(c.Query("status")),
+		Action:      c.Query("action"),
+		Field:       c.Query("field"),
+		Severity:    c.Query("severity"),
+		Source:      c.Query("source"),
+		ChildStatus: c.Query("child_status"),
+	}
+	if needsHuman := strings.TrimSpace(c.Query("needs_human")); needsHuman != "" {
+		parsed, err := strconv.ParseBool(needsHuman)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "needs_human must be true or false"})
+			return
+		}
+		query.NeedsHuman = &parsed
+	}
+	if limit := strings.TrimSpace(c.Query("limit")); limit != "" {
+		parsed, err := strconv.Atoi(limit)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "limit must be a positive integer"})
+			return
+		}
+		query.Limit = parsed
+	}
+	result, err := h.service.ListTaskQueue(c.Request.Context(), query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "query_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *handler) GetTaskResult(c *gin.Context) {
@@ -105,4 +139,21 @@ func (h *handler) SubmitTask(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func parseStatusesQuery(raw string) []amazonlisting.TaskStatus {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	result := make([]amazonlisting.TaskStatus, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		result = append(result, amazonlisting.TaskStatus(part))
+	}
+	return result
 }

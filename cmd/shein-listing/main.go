@@ -62,6 +62,17 @@ func main() {
 		logger.Fatalf("register SHEIN processor failed: %v", err)
 	}
 
+	if managementClient := platformRegistry.GetManagementClient(); managementClient != nil {
+		serviceManager.SetStoreComponents(
+			managementClient.GetStoreClient(),
+			cfg.RabbitMQ.Node.OwnedStores,
+			nil,
+		)
+		logger.Info("store dispatch guard initialized")
+	} else {
+		logger.Warn("management client unavailable; store dispatch guard is disabled")
+	}
+
 	if err := serviceManager.Start(ctx); err != nil {
 		logger.Fatalf("start service manager failed: %v", err)
 	}

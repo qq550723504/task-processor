@@ -1,6 +1,9 @@
 package productenrich
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestBuildCanonicalProduct_WithMixedInputSources(t *testing.T) {
 	req := &GenerateRequest{
@@ -22,6 +25,14 @@ func TestBuildCanonicalProduct_WithMixedInputSources(t *testing.T) {
 				Attributes: map[string]string{"color": "white"},
 				Images:     []string{"https://example.com/variant.jpg"},
 				IsDefault:  true,
+			},
+		},
+		Evidence: map[string][]CanonicalSource{
+			"title": {
+				{Type: CanonicalSourceScrapedData, Detail: `scraped title: "Portable Blender Bottle"`},
+			},
+			"attributes.color": {
+				{Type: CanonicalSourceScrapedData, Detail: "scraped spec color: white"},
 			},
 		},
 	}
@@ -48,8 +59,26 @@ func TestBuildCanonicalProduct_WithMixedInputSources(t *testing.T) {
 	if !hasSourceType(canonical.FieldTraces["title"].Sources, CanonicalSourceProductURL) {
 		t.Fatal("title trace should include product_url source")
 	}
+	if got := canonical.FieldTraces["title"].Sources[0].Detail; !strings.Contains(got, `user input: "portable blender"`) {
+		t.Fatalf("user text detail = %q", got)
+	}
+	if got := canonical.FieldTraces["title"].Sources[1].Detail; !strings.Contains(got, "user image: https://example.com/1.jpg") {
+		t.Fatalf("image detail = %q", got)
+	}
+	if got := canonical.FieldTraces["title"].Sources[3].Detail; got != "normalized from product page: https://detail.1688.com/offer/123.html" {
+		t.Fatalf("scraped detail = %q", got)
+	}
+	if got := canonical.FieldTraces["title"].Sources[4].Detail; got != "LLM-generated product normalization" {
+		t.Fatalf("llm detail = %q", got)
+	}
+	if got := canonical.FieldTraces["title"].Sources[5].Detail; got != `scraped title: "Portable Blender Bottle"` {
+		t.Fatalf("title evidence detail = %q", got)
+	}
 	if canonical.Attributes["color"].Trace.Confidence <= 0 {
 		t.Fatal("attribute confidence should be populated")
+	}
+	if got := canonical.Attributes["color"].Trace.Sources[len(canonical.Attributes["color"].Trace.Sources)-1].Detail; got != "scraped spec color: white" {
+		t.Fatalf("attribute evidence detail = %q", got)
 	}
 	if len(canonical.Variants) != 1 {
 		t.Fatalf("len(Variants) = %d, want 1", len(canonical.Variants))
