@@ -290,9 +290,15 @@ func (s *Service) fetchProductWithDedupe(ctx context.Context, metricsRegion, url
 
 	for {
 		if product, ok, err := s.loadSharedProduct(ctx, resultKey); err == nil && ok {
-			s.logger.Infof("♻️ 复用共享抓取结果: %s", resultKey)
-			s.metrics.RecordDedupeSharedHit(s.resolveMetricsRegion(region, url))
-			return product, nil
+			if s.isSharedProductUsable(url, product) {
+				s.logger.Infof("♻️ 复用共享抓取结果: %s", resultKey)
+				s.metrics.RecordDedupeSharedHit(s.resolveMetricsRegion(region, url))
+				return product, nil
+			}
+			s.logger.Warnf("共享抓取结果已失效，忽略缓存并重新抓取: %s", resultKey)
+			if err := s.dedupeStore.Delete(ctx, resultKey); err != nil {
+				s.logger.Warnf("删除失效共享抓取结果失败: %v", err)
+			}
 		}
 
 		acquired, err := s.dedupeStore.SetNX(ctx, lockKey, "1", s.productFetchLockTTL())
@@ -328,6 +334,24 @@ func (s *Service) fetchProductWithDedupe(ctx context.Context, metricsRegion, url
 		case <-waitTicker.C:
 		}
 	}
+}
+
+func (s *Service) isSharedProductUsable(url string, product *model.Product) bool {
+	if product == nil {
+		return false
+	}
+
+	expectedCurrency := NewURLHelper().GetCurrencyFromURL(url)
+	if expectedCurrency == "" || product.FinalPrice <= 0 || strings.TrimSpace(product.Currency) == "" {
+		return true
+	}
+
+	if !strings.EqualFold(strings.TrimSpace(product.Currency), expectedCurrency) {
+		s.logger.Warnf("共享抓取结果货币不匹配: expected=%s actual=%s url=%s", expectedCurrency, product.Currency, url)
+		return false
+	}
+
+	return true
 }
 
 func (s *Service) checkRegionGuard(region string) error {

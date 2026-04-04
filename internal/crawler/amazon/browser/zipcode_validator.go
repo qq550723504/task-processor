@@ -3,6 +3,8 @@ package browser
 
 import (
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
 
@@ -11,7 +13,8 @@ import (
 
 // ZipcodeValidator 邮编验证器
 type ZipcodeValidator struct {
-	getter *ZipcodeGetter
+	getter    *ZipcodeGetter
+	targetURL string
 }
 
 // NewZipcodeValidator 创建邮编验证器实例
@@ -19,6 +22,13 @@ func NewZipcodeValidator() *ZipcodeValidator {
 	return &ZipcodeValidator{
 		getter: NewZipcodeGetter(),
 	}
+}
+
+func (zv *ZipcodeValidator) SetTargetURL(targetURL string) {
+	if zv == nil {
+		return
+	}
+	zv.targetURL = targetURL
 }
 
 // VerifyZipcode 验证邮编是否设置成功
@@ -65,8 +75,129 @@ func (zv *ZipcodeValidator) VerifyZipcode(page playwright.Page, expectedZipcode 
 		return true, nil
 	}
 
+	// 5. 如果当前位置文本已经明确显示目标国家/目标配送上下文，则无需再次设置邮编。
+	targetCountry := inferTargetCountry(zv.targetURL, expectedZipcode)
+	if targetCountry != "" && locationMatchesTargetCountry(currentZipcode, targetCountry) {
+		logger.GetGlobalLogger("crawler/amazon").Infof("当前位置已命中目标国家/配送上下文，跳过邮编设置: target=%s current=%s", targetCountry, currentZipcode)
+		return true, nil
+	}
+
 	logger.GetGlobalLogger("crawler/amazon").Warnf("邮编验证失败 - 期望: '%s', 当前: '%s'", cleanExpected, cleanCurrent)
 	return false, nil
+}
+
+func inferTargetCountry(targetURL, expectedZipcode string) string {
+	if country := inferCountryFromTargetURLForValidation(targetURL); country != "" {
+		return country
+	}
+	return inferCountryFromZipcodeForValidation(expectedZipcode)
+}
+
+func inferCountryFromTargetURLForValidation(targetURL string) string {
+	if targetURL == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(targetURL)
+	if err != nil {
+		return ""
+	}
+
+	host := strings.ToLower(strings.TrimSpace(parsed.Host))
+	host = strings.TrimPrefix(host, "www.")
+
+	targetCountries := map[string]string{
+		"amazon.com":    "United States",
+		"amazon.ca":     "Canada",
+		"amazon.co.uk":  "United Kingdom",
+		"amazon.de":     "Germany",
+		"amazon.fr":     "France",
+		"amazon.it":     "Italy",
+		"amazon.es":     "Spain",
+		"amazon.co.jp":  "Japan",
+		"amazon.com.au": "Australia",
+		"amazon.in":     "India",
+		"amazon.com.mx": "Mexico",
+		"amazon.com.br": "Brazil",
+		"amazon.nl":     "Netherlands",
+		"amazon.se":     "Sweden",
+		"amazon.pl":     "Poland",
+	}
+
+	return targetCountries[host]
+}
+
+func inferCountryFromZipcodeForValidation(zipcode string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(zipcode))
+	if normalized == "" {
+		return ""
+	}
+
+	usRegex := regexp.MustCompile(`^\d{5}(?:-\d{4})?$`)
+	if usRegex.MatchString(normalized) {
+		return "United States"
+	}
+
+	canadaRegex := regexp.MustCompile(`^[A-Z]\d[A-Z]\s?\d[A-Z]\d$`)
+	if canadaRegex.MatchString(normalized) {
+		return "Canada"
+	}
+
+	japanRegex := regexp.MustCompile(`^\d{3}-?\d{4}$`)
+	if japanRegex.MatchString(normalized) {
+		return "Japan"
+	}
+
+	ukRegex := regexp.MustCompile(`(?i)^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$`)
+	if ukRegex.MatchString(normalized) {
+		return "United Kingdom"
+	}
+
+	return ""
+}
+
+func locationMatchesTargetCountry(currentText, targetCountry string) bool {
+	raw := strings.TrimSpace(currentText)
+	if raw == "" {
+		return false
+	}
+
+	normalizedRaw := normalizeLocationText(raw)
+	for _, keyword := range countryContextKeywords(targetCountry) {
+		if strings.Contains(normalizedRaw, normalizeLocationText(keyword)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func normalizeLocationText(text string) string {
+	text = strings.ToUpper(strings.TrimSpace(text))
+	text = strings.ReplaceAll(text, " ", "")
+	text = strings.ReplaceAll(text, "\n", "")
+	text = strings.ReplaceAll(text, "\r", "")
+	text = strings.ReplaceAll(text, "\t", "")
+	text = strings.ReplaceAll(text, "-", "")
+	text = strings.ReplaceAll(text, "_", "")
+	text = strings.ReplaceAll(text, ",", "")
+	text = strings.ReplaceAll(text, ".", "")
+	return text
+}
+
+func countryContextKeywords(targetCountry string) []string {
+	switch strings.ToLower(strings.TrimSpace(targetCountry)) {
+	case "japan":
+		return []string{"Japan", "日本", "Tokyo", "東京都", "Osaka", "大阪", "Kyoto", "京都", "Kanagawa", "神奈川", "Saitama", "埼玉", "Chiba", "千葉", "Hokkaido", "北海道", "Fukuoka", "福岡"}
+	case "united kingdom":
+		return []string{"United Kingdom", "UK", "Great Britain", "England", "London"}
+	case "canada":
+		return []string{"Canada", "Toronto", "Ontario", "Vancouver"}
+	case "united states":
+		return []string{"United States", "USA", "US"}
+	default:
+		return []string{targetCountry}
+	}
 }
 
 // mapZipcodeToCity 将邮编映射到城市名称(用于验证)

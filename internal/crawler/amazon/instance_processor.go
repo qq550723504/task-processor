@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/crawler/amazon/extractor"
@@ -125,7 +126,9 @@ func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *
 			logger.GetGlobalLogger("crawler/amazon").Warnf("关闭页面超时（5s），WebSocket 可能已断连")
 		}
 	}()
-	defer ip.captureFailureArtifacts(page, instance, url, zipcode, retErr)
+	defer func() {
+		ip.captureFailureArtifacts(page, instance, url, zipcode, retErr)
+	}()
 
 	// 检查 ctx 是否已取消
 	if err := ctx.Err(); err != nil {
@@ -213,6 +216,10 @@ func (ip *InstanceProcessor) extractWithQualityRetry(ctx context.Context, page p
 	}
 
 	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := ip.alignTargetContext(page, url, waitTimeout); err != nil {
+			logger.GetGlobalLogger("crawler/amazon").Warnf("目标站点上下文对齐失败，继续提取: %v", err)
+		}
+
 		product, err := ip.extractAndValidateProduct(ctx, page, url, zipcode)
 		if err == nil {
 			if hadRetry && ip.qualityMetrics != nil {
@@ -237,6 +244,33 @@ func (ip *InstanceProcessor) extractWithQualityRetry(ctx context.Context, page p
 	}
 
 	return nil, fmt.Errorf("产品质量重抓失败")
+}
+
+func (ip *InstanceProcessor) alignTargetContext(page playwright.Page, url string, waitTimeout time.Duration) error {
+	if page == nil || ip.urlHelper == nil {
+		return nil
+	}
+
+	expectedCurrency := strings.TrimSpace(ip.urlHelper.GetCurrencyFromURL(url))
+	if expectedCurrency == "" {
+		return nil
+	}
+
+	currencySetter := browser.NewCurrencySetter(nil)
+	if err := currencySetter.SetAndVerifyCurrency(page, expectedCurrency); err != nil {
+		return err
+	}
+
+	if err := ip.productChecker.HandleContinueShoppingButton(page); err != nil {
+		logger.GetGlobalLogger("crawler/amazon").Warnf("货币对齐后处理Continue shopping按钮时出错: %v", err)
+	}
+	if waitTimeout > 0 {
+		if err := ip.productChecker.WaitForPageReady(page, waitTimeout); err != nil {
+			return fmt.Errorf("货币对齐后页面未准备就绪: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (ip *InstanceProcessor) extractAndValidateProduct(ctx context.Context, page playwright.Page, url, zipcode string) (*model.Product, error) {
@@ -316,6 +350,17 @@ func (ip *InstanceProcessor) validateProductData(product *model.Product) error {
 		if err := ip.resultValidator.Validate(product); err != nil {
 			return err
 		}
+	}
+
+	expectedCurrency := ""
+	if ip.urlHelper != nil && product.URL != "" {
+		expectedCurrency = ip.urlHelper.GetCurrencyFromURL(product.URL)
+	}
+	if expectedCurrency != "" && product.FinalPrice > 0 && strings.TrimSpace(product.Currency) != "" &&
+		!strings.EqualFold(strings.TrimSpace(product.Currency), expectedCurrency) {
+		return &ProductQualityError{Reasons: []string{
+			fmt.Sprintf("currency mismatch: expected %s got %s", expectedCurrency, strings.TrimSpace(product.Currency)),
+		}}
 	}
 
 	return nil

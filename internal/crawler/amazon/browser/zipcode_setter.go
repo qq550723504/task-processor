@@ -31,10 +31,15 @@ func NewZipcodeSetter(browserManager *BrowserManager) *ZipcodeSetter {
 }
 
 func (zs *ZipcodeSetter) SetTargetURL(targetURL string) {
-	if zs == nil || zs.inputHandler == nil {
+	if zs == nil {
 		return
 	}
-	zs.inputHandler.SetTargetURL(targetURL)
+	if zs.inputHandler != nil {
+		zs.inputHandler.SetTargetURL(targetURL)
+	}
+	if zs.validator != nil {
+		zs.validator.SetTargetURL(targetURL)
+	}
 }
 
 // SetAndVerifyZipcode 设置并验证邮编（基础方法）
@@ -45,6 +50,8 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 		logger.GetGlobalLogger("crawler/amazon").Infof("邮编为空，跳过设置")
 		return nil
 	}
+
+	contextChanged := false
 
 	for attempt := 1; attempt <= zs.maxRetries; attempt++ {
 		logger.GetGlobalLogger("crawler/amazon").Infof("尝试设置邮编 (第 %d/%d 次): %s", attempt, zs.maxRetries, zipcode)
@@ -93,6 +100,8 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 			continue
 		}
 
+		contextChanged = true
+
 		// 验证邮编
 		if isValid, err := zs.isZipcodeValid(page, zipcode); err != nil || !isValid {
 			// 检查是否是页面关闭导致的错误
@@ -115,6 +124,12 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 				time.Sleep(2 * time.Second)
 			}
 			continue
+		}
+
+		if contextChanged {
+			if err := zs.refreshPageAfterZipcodeUpdate(page); err != nil {
+				logger.GetGlobalLogger("crawler/amazon").Warnf("邮编更新后刷新页面失败，继续使用当前页面: %v", err)
+			}
 		}
 
 		logger.GetGlobalLogger("crawler/amazon").Infof("成功设置并验证邮编: %s", zipcode)
@@ -170,6 +185,30 @@ func (zs *ZipcodeSetter) refreshPageForRetry(page playwright.Page) error {
 	}
 
 	logger.GetGlobalLogger("crawler/amazon").Infof("页面已刷新，继续尝试设置邮编")
+	DismissRegionalPrompt(page, zs.inputHandler.targetURL)
+	return nil
+}
+
+func (zs *ZipcodeSetter) refreshPageAfterZipcodeUpdate(page playwright.Page) error {
+	if page == nil || page.IsClosed() {
+		return fmt.Errorf("页面已关闭，无法在邮编更新后刷新")
+	}
+
+	logger.GetGlobalLogger("crawler/amazon").Infof("邮编更新完成，刷新页面以同步最新配送/货币上下文")
+	if _, err := page.Reload(playwright.PageReloadOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(20000),
+	}); err != nil {
+		return fmt.Errorf("邮编更新后刷新页面失败: %w", err)
+	}
+
+	if err := page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State:   playwright.LoadStateDomcontentloaded,
+		Timeout: playwright.Float(15000),
+	}); err != nil {
+		logger.GetGlobalLogger("crawler/amazon").Warnf("等待邮编更新后的页面加载完成失败: %v", err)
+	}
+
 	DismissRegionalPrompt(page, zs.inputHandler.targetURL)
 	return nil
 }

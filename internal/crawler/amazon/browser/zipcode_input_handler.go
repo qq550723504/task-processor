@@ -219,11 +219,15 @@ func (zih *ZipcodeInputHandler) handleCountrySelection(page playwright.Page, zip
 	result, err := page.Evaluate(`(queries) => {
 		const sel = document.querySelector('select#GLUXCountryList');
 		if (!sel) return null;
-		const normalize = (text) => (text || '').toLowerCase().replace(/[^a-z]/g, '');
+		const normalize = (text) => (text || '')
+			.toLowerCase()
+			.normalize('NFKC')
+			.replace(/[\s\-_()（）]/g, '');
 		const options = Array.from(sel.options).map((opt) => ({
 			value: opt.value,
 			text: (opt.text || '').trim(),
 			normalized: normalize(opt.text || ''),
+			valueNormalized: normalize(opt.value || ''),
 		}));
 
 		for (const query of queries) {
@@ -234,26 +238,45 @@ func (zih *ZipcodeInputHandler) handleCountrySelection(page playwright.Page, zip
 			if (exact) {
 				return { value: exact.value, text: exact.text };
 			}
+
+			const byValue = options.find((opt) => opt.valueNormalized === normalizedQuery);
+			if (byValue) {
+				return { value: byValue.value, text: byValue.text };
+			}
+
+			const partial = options.find((opt) => opt.normalized.includes(normalizedQuery));
+			if (partial) {
+				return { value: partial.value, text: partial.text };
+			}
 		}
 
-		return null;
+		return {
+			options: options.map((opt) => ({ value: opt.value, text: opt.text })),
+		};
 	}`, countryQueries)
 	if err != nil {
 		return fmt.Errorf("查找国家选项失败: %w", err)
 	}
 	if result == nil {
-		return fmt.Errorf("未找到匹配的国家选项: %s", targetCountry)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("国家选择框存在，但未拿到任何选项结果，跳过国家切换并继续尝试填写邮编: %s", targetCountry)
+		return nil
 	}
 
 	resultMap, ok := result.(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("国家选项结果格式无效: %v", result)
+		logger.GetGlobalLogger("crawler/amazon").Warnf("国家选项结果格式无效，跳过国家切换并继续尝试填写邮编: %v", result)
+		return nil
 	}
 
 	countryValue, _ := resultMap["value"].(string)
 	matchedText, _ := resultMap["text"].(string)
 	if countryValue == "" {
-		return fmt.Errorf("国家选项值无效: %v", result)
+		if options, ok := resultMap["options"]; ok {
+			logger.GetGlobalLogger("crawler/amazon").Warnf("未找到匹配的国家选项: %s，可用选项=%v，跳过国家切换并继续尝试填写邮编", targetCountry, options)
+		} else {
+			logger.GetGlobalLogger("crawler/amazon").Warnf("未找到匹配的国家选项: %s，跳过国家切换并继续尝试填写邮编", targetCountry)
+		}
+		return nil
 	}
 
 	// 通过 JS 设置 select 值并触发 change 事件（绕过隐藏元素限制）
@@ -278,11 +301,11 @@ func buildCountrySelectionQueries(targetCountry string) []string {
 	case "united states":
 		return nil
 	case "united kingdom":
-		return []string{"United Kingdom", "UK", "Great Britain"}
+		return []string{"United Kingdom", "UK", "Great Britain", "GB", "英国"}
 	case "japan":
-		return []string{"Japan"}
+		return []string{"Japan", "JP", "日本"}
 	case "canada":
-		return []string{"Canada"}
+		return []string{"Canada", "CA", "加拿大"}
 	default:
 		return []string{targetCountry}
 	}

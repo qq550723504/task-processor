@@ -104,6 +104,21 @@ func (cs *CurrencySetter) getCurrentCurrency(page playwright.Page) (string, erro
 				if strings.Contains(text, "£") {
 					logger.GetGlobalLogger("crawler/amazon").Infof("从价格符号获取到货币: GBP (符号: %s)", text)
 					return "GBP", nil
+				} else if strings.Contains(text, "HK$") {
+					logger.GetGlobalLogger("crawler/amazon").Infof("从价格符号获取到货币: HKD (符号: %s)", text)
+					return "HKD", nil
+				} else if strings.Contains(text, "S$") {
+					logger.GetGlobalLogger("crawler/amazon").Infof("从价格符号获取到货币: SGD (符号: %s)", text)
+					return "SGD", nil
+				} else if strings.Contains(text, "C$") || strings.Contains(text, "CA$") {
+					logger.GetGlobalLogger("crawler/amazon").Infof("从价格符号获取到货币: CAD (符号: %s)", text)
+					return "CAD", nil
+				} else if strings.Contains(text, "A$") || strings.Contains(text, "AU$") {
+					logger.GetGlobalLogger("crawler/amazon").Infof("从价格符号获取到货币: AUD (符号: %s)", text)
+					return "AUD", nil
+				} else if strings.Contains(text, "¥") {
+					logger.GetGlobalLogger("crawler/amazon").Infof("从价格符号获取到货币: JPY (符号: %s)", text)
+					return "JPY", nil
 				} else if strings.Contains(text, "$") {
 					logger.GetGlobalLogger("crawler/amazon").Infof("从价格符号获取到货币: USD (符号: %s)", text)
 					return "USD", nil
@@ -168,8 +183,13 @@ func (cs *CurrencySetter) setCurrencyViaNavBar(page playwright.Page, currency st
 
 	// 1. 点击导航栏的语言/货币按钮
 	navButtonSelectors := []string{
+		"#icp-nav-flyout button.nav-flyout-button",
+		"#icp-nav-flyout .nav-flyout-button",
 		"button[name='Expand to Change Language or Country']", // 正确的货币选择器
 		"button:has-text('Expand to Change Language or Country')",
+		"button[aria-label*='Change Language or Country']",
+		"button[aria-label*='Language or Country']",
+		"button[aria-label*='言語または国を変更']",
 		"button[aria-label*='Country']",
 	}
 
