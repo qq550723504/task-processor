@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"task-processor/internal/productenrich"
-	"task-processor/internal/productimage"
 )
 
 func (s *service) ProcessListing(ctx context.Context, task *Task) (*AmazonListingDraft, error) {
@@ -21,61 +18,17 @@ func (s *service) ProcessListing(ctx context.Context, task *Task) (*AmazonListin
 		return nil, fmt.Errorf("failed to mark task as processing: %w", err)
 	}
 
-	inlineProductCtx := productenrich.WithInlineTaskExecution(ctx)
-	productTask, err := s.productService.CreateGenerateTask(inlineProductCtx, &productenrich.GenerateRequest{
-		ImageURLs:  task.Request.ImageURLs,
-		Text:       task.Request.Text,
-		ProductURL: task.Request.ProductURL,
-	})
+	artifacts, err := s.workflow.Run(ctx, task)
 	if err != nil {
-		_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to create product task: %v", err))
-		return nil, err
-	}
-	productJSON, err := s.productService.ProcessProduct(ctx, productTask)
-	if err != nil {
-		_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("product enrichment failed: %v", err))
+		var workflowErr *WorkflowError
+		if errors.As(err, &workflowErr) && workflowErr.Artifacts != nil && workflowErr.Artifacts.Draft != nil {
+			_ = s.repo.SaveTaskResult(ctx, task.ID, workflowErr.Artifacts.Draft)
+		}
+		_ = s.repo.MarkFailed(ctx, task.ID, err.Error())
 		return nil, err
 	}
 
-	var (
-		imageResult *productimage.ImageProcessResult
-		imageTask   *productimage.Task
-	)
-	if task.Request.Options == nil || task.Request.Options.ProcessImages {
-		if s.imageService == nil {
-			_ = s.repo.MarkFailed(ctx, task.ID, "image service is not configured")
-			return nil, fmt.Errorf("image service is not configured")
-		}
-		inlineImageCtx := productimage.WithInlineTaskExecution(ctx)
-		imageTask, err = s.imageService.CreateProcessTask(inlineImageCtx, &productimage.ImageProcessRequest{
-			ProductURL:  task.Request.ProductURL,
-			ImageURLs:   task.Request.ImageURLs,
-			Text:        task.Request.Text,
-			Marketplace: task.Request.Marketplace,
-			Country:     task.Request.Country,
-		})
-		if err != nil {
-			_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to create image task: %v", err))
-			return nil, err
-		}
-		imageResult, err = s.imageService.ProcessImages(ctx, imageTask)
-		if err != nil {
-			_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("image processing failed: %v", err))
-			return nil, err
-		}
-	}
-
-	draft := s.assembler.Assemble(task, productJSON, imageResult)
-	draft.ProductTaskID = productTask.ID
-	if imageTask != nil {
-		draft.ProductImageTaskID = imageTask.ID
-	}
-	if s.autoFixer != nil {
-		s.autoFixer.Fix(task.Request, draft)
-	}
-	if s.exportBuilder != nil {
-		draft.Export = s.exportBuilder.Build(task.Request, draft)
-	}
+	draft := artifacts.Draft
 
 	report := s.validator.Validate(task.Request, draft)
 	draft.Compliance = &AmazonComplianceReport{

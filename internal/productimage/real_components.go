@@ -18,7 +18,6 @@ import (
 	"task-processor/internal/pkg/downloader"
 	"task-processor/internal/pkg/imagex"
 	"task-processor/internal/pkg/watermark"
-	productenrich "task-processor/internal/productenrich"
 )
 
 type realImageComponents struct {
@@ -144,17 +143,17 @@ func NewHybridSubjectExtractor(workDir string, segmenter SegmentationClient) (Su
 	return &optimizedSubjectExtractor{runtime: rt, segmenter: segmenter}, nil
 }
 
-func (e *optimizedSubjectExtractor) Extract(ctx context.Context, imageURL string, analysis *productenrich.ProductAnalysis) (*ImageAsset, error) {
+func (e *optimizedSubjectExtractor) Extract(ctx context.Context, imageURL string, productContext *ProductContext) (*ImageAsset, error) {
 	data, filename, err := e.runtime.download(imageURL)
 	if err != nil {
 		return nil, err
 	}
 	if e.segmenter != nil {
-		if asset, segErr := e.extractWithSegmenter(ctx, data, filename, imageURL, analysis); segErr == nil {
+		if asset, segErr := e.extractWithSegmenter(ctx, data, filename, imageURL, productContext); segErr == nil {
 			return asset, nil
 		}
 	}
-	return e.extractWithLocalCrop(data, filename, imageURL, analysis)
+	return e.extractWithLocalCrop(data, filename, imageURL, productContext)
 }
 
 type downloadedImageCleaner struct {
@@ -177,7 +176,7 @@ func NewWatermarkAwareImageCleaner(workDir string, config *watermark.Config, log
 	}, nil
 }
 
-func (c *downloadedImageCleaner) Clean(ctx context.Context, asset *ImageAsset, _ *productenrich.ProductAnalysis) (*ImageAsset, error) {
+func (c *downloadedImageCleaner) Clean(ctx context.Context, asset *ImageAsset, _ *ProductContext) (*ImageAsset, error) {
 	if asset == nil {
 		return nil, fmt.Errorf("asset cannot be nil")
 	}
@@ -264,7 +263,7 @@ func NewHybridWhiteBackgroundRenderer(workDir string, renderer WhiteBackgroundCl
 	return &whiteCanvasRenderer{runtime: rt, renderer: renderer}, nil
 }
 
-func (r *whiteCanvasRenderer) Render(ctx context.Context, asset *ImageAsset, _ *productenrich.ProductAnalysis) (*ImageAsset, error) {
+func (r *whiteCanvasRenderer) Render(ctx context.Context, asset *ImageAsset, _ *ProductContext) (*ImageAsset, error) {
 	if asset == nil {
 		return nil, fmt.Errorf("asset cannot be nil")
 	}
@@ -409,7 +408,7 @@ func (r *realImageComponents) writeProcessed(sourceName, stage string, data []by
 	return path, info, nil
 }
 
-func (e *optimizedSubjectExtractor) extractWithSegmenter(ctx context.Context, data []byte, filename, imageURL string, analysis *productenrich.ProductAnalysis) (*ImageAsset, error) {
+func (e *optimizedSubjectExtractor) extractWithSegmenter(ctx context.Context, data []byte, filename, imageURL string, productContext *ProductContext) (*ImageAsset, error) {
 	result, err := e.segmenter.SegmentSubject(ctx, data, imageURL)
 	if err != nil {
 		return nil, err
@@ -436,8 +435,8 @@ func (e *optimizedSubjectExtractor) extractWithSegmenter(ctx context.Context, da
 	if result.BBox != "" {
 		metadata["subject_box"] = result.BBox
 	}
-	if analysis != nil && analysis.Representation != nil && analysis.Representation.ProductType != "" {
-		metadata["product_type"] = analysis.Representation.ProductType
+	if productContext != nil && productContext.ProductType != "" {
+		metadata["product_type"] = productContext.ProductType
 	}
 	return &ImageAsset{
 		URL:        path,
@@ -450,7 +449,7 @@ func (e *optimizedSubjectExtractor) extractWithSegmenter(ctx context.Context, da
 	}, nil
 }
 
-func (e *optimizedSubjectExtractor) extractWithLocalCrop(data []byte, filename, imageURL string, analysis *productenrich.ProductAnalysis) (*ImageAsset, error) {
+func (e *optimizedSubjectExtractor) extractWithLocalCrop(data []byte, filename, imageURL string, productContext *ProductContext) (*ImageAsset, error) {
 	img, format, err := imagex.FromBytesWithFormat(data)
 	if err != nil {
 		return nil, err
@@ -474,8 +473,8 @@ func (e *optimizedSubjectExtractor) extractWithLocalCrop(data []byte, filename, 
 		"format":      info.Format,
 		"subject_box": fmt.Sprintf("%d,%d,%d,%d", bbox.Min.X, bbox.Min.Y, bbox.Max.X, bbox.Max.Y),
 	}
-	if analysis != nil && analysis.Representation != nil && analysis.Representation.ProductType != "" {
-		metadata["product_type"] = analysis.Representation.ProductType
+	if productContext != nil && productContext.ProductType != "" {
+		metadata["product_type"] = productContext.ProductType
 	}
 	return &ImageAsset{
 		URL:        path,

@@ -16,7 +16,8 @@ import (
 
 // SharedResourceOptions controls which shared runtime dependencies are built.
 type SharedResourceOptions struct {
-	NeedAmazonCrawler bool
+	NeedAmazonCrawler          bool
+	AllowMissingManagementAuth bool
 }
 
 // SharedResources groups dependencies that were previously assembled in multiple places.
@@ -58,7 +59,12 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 
 	runtime, err := buildManagementRuntime(cfg, logger)
 	if err != nil {
-		return nil, err
+		if !options.AllowMissingManagementAuth {
+			return nil, err
+		}
+
+		logger.WithError(err).Warn("management runtime unavailable, continuing without management client")
+		runtime = &managementRuntime{}
 	}
 
 	resources := &SharedResources{

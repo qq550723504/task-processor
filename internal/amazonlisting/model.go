@@ -7,6 +7,7 @@ import (
 	"time"
 
 	amazonapi "task-processor/internal/amazon/api"
+	"task-processor/internal/productenrich"
 )
 
 var ErrTaskNotFound = errors.New("task not found")
@@ -42,8 +43,16 @@ type GenerateOptions struct {
 }
 
 type ReviewTaskRequest struct {
-	Action string `json:"action"`
-	Reason string `json:"reason,omitempty"`
+	Action string           `json:"action"`
+	Reason string           `json:"reason,omitempty"`
+	Edits  []DraftFieldEdit `json:"edits,omitempty"`
+}
+
+type DraftFieldEdit struct {
+	Field       string   `json:"field"`
+	StringValue string   `json:"string_value,omitempty"`
+	StringList  []string `json:"string_list,omitempty"`
+	NumberValue *float64 `json:"number_value,omitempty"`
 }
 
 type SubmitTaskRequest struct {
@@ -75,9 +84,28 @@ type TaskWorkbench struct {
 	Status        TaskStatus           `json:"status"`
 	Ready         bool                 `json:"ready"`
 	NeedsReview   bool                 `json:"needs_review"`
+	ChildTasks    []ChildTaskState     `json:"child_tasks,omitempty"`
+	ReviewItems   []AmazonReviewItem   `json:"review_items,omitempty"`
+	ReviewSummary *ReviewItemSummary   `json:"review_summary,omitempty"`
 	TotalItems    int                  `json:"total_items"`
 	TopAction     string               `json:"top_action,omitempty"`
 	ActionBuckets []WorkbenchActionBox `json:"action_buckets,omitempty"`
+}
+
+type ReviewItemSummary struct {
+	TotalCount      int            `json:"total_count"`
+	BlockingCount   int            `json:"blocking_count"`
+	NeedsHumanCount int            `json:"needs_human_count"`
+	ByAction        map[string]int `json:"by_action,omitempty"`
+	ByField         map[string]int `json:"by_field,omitempty"`
+	BySeverity      map[string]int `json:"by_severity,omitempty"`
+}
+
+type ChildTaskState struct {
+	Kind   string `json:"kind"`
+	TaskID string `json:"task_id,omitempty"`
+	Status string `json:"status,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 type WorkbenchActionBox struct {
@@ -123,6 +151,9 @@ type AmazonListingDraft struct {
 	FixHistory         []AmazonFixRecord       `json:"fix_history,omitempty"`
 	ProductTaskID      string                  `json:"product_task_id,omitempty"`
 	ProductImageTaskID string                  `json:"product_image_task_id,omitempty"`
+	CanonicalProduct   *productenrich.CanonicalProduct `json:"canonical_product,omitempty"`
+	ChildTasks         []ChildTaskState        `json:"child_tasks,omitempty"`
+	ReviewItems        []AmazonReviewItem      `json:"review_items,omitempty"`
 	CreatedAt          time.Time               `json:"created_at"`
 	UpdatedAt          time.Time               `json:"updated_at"`
 }
@@ -201,6 +232,18 @@ type IPRiskReport struct {
 type AmazonReviewReport struct {
 	NeedsReview bool     `json:"needs_review"`
 	Reasons     []string `json:"reasons,omitempty"`
+}
+
+type AmazonReviewItem struct {
+	Field          string `json:"field,omitempty"`
+	Action         string `json:"action,omitempty"`
+	Severity       string `json:"severity,omitempty"`
+	Reason         string `json:"reason"`
+	Source         string `json:"source,omitempty"`
+	IsBlocking     bool   `json:"is_blocking,omitempty"`
+	NeedsHuman     bool   `json:"needs_human,omitempty"`
+	CurrentValue   string `json:"current_value,omitempty"`
+	RecommendedFix string `json:"recommended_fix,omitempty"`
 }
 
 type AmazonListingExport struct {

@@ -8,7 +8,7 @@ resources:
 
 images:
   - name: xuwei190/task-processor-temu-listing
-    newTag: latest
+    newTag: "8324377"
 
 patches:
   - path: patch-deployment.yaml

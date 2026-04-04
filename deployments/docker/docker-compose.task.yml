@@ -1,6 +1,6 @@
 services:
   task:
-    image: xuwei190/task-processor-task:latest
+    image: xuwei190/task-processor-task:${TASK_IMAGE_TAG:-8324377}
     container_name: task
     restart: unless-stopped
     env_file:

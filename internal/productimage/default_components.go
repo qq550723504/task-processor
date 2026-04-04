@@ -51,14 +51,18 @@ func NewProductContextAnalyzer(understanding productenrich.ProductUnderstanding)
 	return &productContextAnalyzerAdapter{understanding: understanding}, nil
 }
 
-func (a *productContextAnalyzerAdapter) Analyze(ctx context.Context, source *SourceBundle) (*productenrich.ProductAnalysis, error) {
+func (a *productContextAnalyzerAdapter) Analyze(ctx context.Context, source *SourceBundle) (*ProductContext, error) {
 	if source == nil {
 		return nil, fmt.Errorf("source cannot be nil")
 	}
 	if source.ParsedInput == nil {
 		return nil, fmt.Errorf("parsed input is required for context analysis")
 	}
-	return a.understanding.AnalyzeProduct(ctx, source.ParsedInput)
+	analysis, err := a.understanding.AnalyzeProduct(ctx, source.ParsedInput)
+	if err != nil {
+		return nil, err
+	}
+	return productContextFromAnalysis(analysis), nil
 }
 
 type defaultImageInspector struct{}
@@ -107,7 +111,7 @@ type defaultImageRanker struct{}
 
 func NewDefaultImageRanker() ImageRanker { return &defaultImageRanker{} }
 
-func (r *defaultImageRanker) Select(_ context.Context, source *SourceBundle, audits []ImageAudit, _ *productenrich.ProductAnalysis) (*ImageCandidateSet, error) {
+func (r *defaultImageRanker) Select(_ context.Context, source *SourceBundle, audits []ImageAudit, _ *ProductContext) (*ImageCandidateSet, error) {
 	if source == nil {
 		return nil, fmt.Errorf("source cannot be nil")
 	}
@@ -150,13 +154,13 @@ type defaultSubjectExtractor struct{}
 
 func NewDefaultSubjectExtractor() SubjectExtractor { return &defaultSubjectExtractor{} }
 
-func (e *defaultSubjectExtractor) Extract(_ context.Context, imageURL string, analysis *productenrich.ProductAnalysis) (*ImageAsset, error) {
+func (e *defaultSubjectExtractor) Extract(_ context.Context, imageURL string, productContext *ProductContext) (*ImageAsset, error) {
 	if imageURL == "" {
 		return nil, fmt.Errorf("image URL cannot be empty")
 	}
 	metadata := map[string]string{"mode": "placeholder"}
-	if analysis != nil && analysis.Representation != nil && analysis.Representation.ProductType != "" {
-		metadata["product_type"] = analysis.Representation.ProductType
+	if productContext != nil && productContext.ProductType != "" {
+		metadata["product_type"] = productContext.ProductType
 	}
 	return &ImageAsset{URL: imageURL, Type: AssetTypeSubjectCutout, SourceURL: imageURL, Operations: []string{"select_subject", "extract_subject_placeholder"}, Metadata: metadata}, nil
 }
@@ -165,7 +169,7 @@ type defaultImageCleaner struct{}
 
 func NewDefaultImageCleaner() ImageCleaner { return &defaultImageCleaner{} }
 
-func (c *defaultImageCleaner) Clean(_ context.Context, asset *ImageAsset, _ *productenrich.ProductAnalysis) (*ImageAsset, error) {
+func (c *defaultImageCleaner) Clean(_ context.Context, asset *ImageAsset, _ *ProductContext) (*ImageAsset, error) {
 	if asset == nil {
 		return nil, fmt.Errorf("asset cannot be nil")
 	}
@@ -199,7 +203,7 @@ func NewDefaultWhiteBackgroundRenderer() WhiteBackgroundRenderer {
 	return &defaultWhiteBackgroundRenderer{}
 }
 
-func (r *defaultWhiteBackgroundRenderer) Render(_ context.Context, asset *ImageAsset, _ *productenrich.ProductAnalysis) (*ImageAsset, error) {
+func (r *defaultWhiteBackgroundRenderer) Render(_ context.Context, asset *ImageAsset, _ *ProductContext) (*ImageAsset, error) {
 	if asset == nil {
 		return nil, fmt.Errorf("asset cannot be nil")
 	}
@@ -392,15 +396,15 @@ func sourceTitleHint(source *SourceBundle) string {
 	if strings.TrimSpace(source.TitleHint) != "" {
 		return strings.TrimSpace(source.TitleHint)
 	}
-	if source.Analysis != nil {
-		if source.Analysis.TextAttributes != nil && strings.TrimSpace(source.Analysis.TextAttributes.Title) != "" {
-			return strings.TrimSpace(source.Analysis.TextAttributes.Title)
+	if source.Context != nil {
+		if strings.TrimSpace(source.Context.Title) != "" {
+			return strings.TrimSpace(source.Context.Title)
 		}
-		if source.Analysis.ScrapedData != nil && strings.TrimSpace(source.Analysis.ScrapedData.Title) != "" {
-			return strings.TrimSpace(source.Analysis.ScrapedData.Title)
+		if strings.TrimSpace(source.Context.ScrapedTitle) != "" {
+			return strings.TrimSpace(source.Context.ScrapedTitle)
 		}
-		if source.Analysis.Representation != nil && strings.TrimSpace(source.Analysis.Representation.ProductType) != "" {
-			return strings.TrimSpace(source.Analysis.Representation.ProductType)
+		if strings.TrimSpace(source.Context.ProductType) != "" {
+			return strings.TrimSpace(source.Context.ProductType)
 		}
 	}
 	if source.ParsedInput != nil && source.ParsedInput.ScrapedData != nil && strings.TrimSpace(source.ParsedInput.ScrapedData.Title) != "" {
@@ -433,6 +437,38 @@ func sourceTitleHintFromParsedInput(input *productenrich.ParsedInput) string {
 		return text
 	}
 	return ""
+}
+
+func productContextFromAnalysis(analysis *productenrich.ProductAnalysis) *ProductContext {
+	if analysis == nil {
+		return nil
+	}
+	ctx := &ProductContext{
+		Attributes: map[string]string{},
+	}
+	if analysis.TextAttributes != nil {
+		ctx.Title = strings.TrimSpace(analysis.TextAttributes.Title)
+		for key, value := range analysis.TextAttributes.Attributes {
+			ctx.Attributes[key] = value
+		}
+	}
+	if analysis.Representation != nil {
+		if ctx.ProductType == "" {
+			ctx.ProductType = strings.TrimSpace(analysis.Representation.ProductType)
+		}
+		for key, value := range analysis.Representation.Attributes {
+			if _, exists := ctx.Attributes[key]; !exists {
+				ctx.Attributes[key] = value
+			}
+		}
+	}
+	if analysis.ScrapedData != nil {
+		ctx.ScrapedTitle = strings.TrimSpace(analysis.ScrapedData.Title)
+	}
+	if len(ctx.Attributes) == 0 {
+		ctx.Attributes = nil
+	}
+	return ctx
 }
 
 func containsAny(s string, parts ...string) bool {

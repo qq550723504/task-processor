@@ -3,7 +3,7 @@ services:
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.amazon-crawler-api
-    image: xuwei190/task-processor-amazon-crawler-api:latest
+    image: xuwei190/task-processor-amazon-crawler-api:${AMAZON_CRAWLER_API_IMAGE_TAG:-8324377}
     container_name: amazon-crawler-api
     restart: unless-stopped
     env_file:

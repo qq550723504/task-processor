@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: amazon-crawler-api
-          image: xuwei190/task-processor-amazon-crawler-api:latest
+          image: xuwei190/task-processor-amazon-crawler-api:8324377
           imagePullPolicy: IfNotPresent
           args:
             - -config

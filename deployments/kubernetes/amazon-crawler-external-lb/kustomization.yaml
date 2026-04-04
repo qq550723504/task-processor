@@ -6,4 +6,4 @@ namespace: task-processor
 resources:
   - namespace.yaml
   - service.yaml
-  - endpoints.yaml
+  - endpointslice.yaml

@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: shein-listing
-          image: xuwei190/task-processor-shein-listing:latest
+          image: xuwei190/task-processor-shein-listing@sha256:2e4617a0c381bc8bdf4a5b6e1bb4cc351ac9013a4f9299057e6ea0201786bc08
           imagePullPolicy: IfNotPresent
           command: ["/app/listing-service"]
           args:

@@ -22,6 +22,9 @@ func (s *service) GetTaskWorkbench(ctx context.Context, taskID string) (*TaskWor
 	}
 
 	workbench.Ready = task.Result.Compliance != nil && task.Result.Compliance.Ready
+	workbench.ChildTasks = cloneChildTasks(task.Result.ChildTasks)
+	workbench.ReviewItems = append([]AmazonReviewItem(nil), task.Result.ReviewItems...)
+	workbench.ReviewSummary = buildReviewItemSummary(task.Result.ReviewItems)
 	workbench.ActionBuckets = buildWorkbenchBuckets(task.Result)
 	for _, bucket := range workbench.ActionBuckets {
 		workbench.TotalItems += bucket.Count
@@ -32,30 +35,87 @@ func (s *service) GetTaskWorkbench(ctx context.Context, taskID string) (*TaskWor
 	return workbench, nil
 }
 
-func buildWorkbenchBuckets(draft *AmazonListingDraft) []WorkbenchActionBox {
-	if draft == nil || draft.Submission == nil || draft.Submission.IssueSummary == nil {
+func buildReviewItemSummary(items []AmazonReviewItem) *ReviewItemSummary {
+	if len(items) == 0 {
 		return nil
 	}
+	summary := &ReviewItemSummary{
+		ByAction:   map[string]int{},
+		ByField:    map[string]int{},
+		BySeverity: map[string]int{},
+	}
+	for _, item := range items {
+		summary.TotalCount++
+		if item.IsBlocking {
+			summary.BlockingCount++
+		}
+		if item.NeedsHuman {
+			summary.NeedsHumanCount++
+		}
+		if action := strings.TrimSpace(item.Action); action != "" {
+			summary.ByAction[action]++
+		}
+		if field := strings.TrimSpace(item.Field); field != "" {
+			summary.ByField[field]++
+		}
+		if severity := strings.TrimSpace(item.Severity); severity != "" {
+			summary.BySeverity[severity]++
+		}
+	}
+	return summary
+}
 
+func buildWorkbenchBuckets(draft *AmazonListingDraft) []WorkbenchActionBox {
 	grouped := map[string]*WorkbenchActionBox{}
-	for _, issue := range draft.Submission.IssueSummary.ManualIssues {
-		action := strings.TrimSpace(issue.OperatorAction)
-		if action == "" {
-			action = OperatorActionManualReview
-		}
-		bucket, exists := grouped[action]
-		if !exists {
-			bucket = &WorkbenchActionBox{
-				Action:   action,
-				Label:    operatorActionLabel(action),
-				Priority: operatorActionPriority(action),
+	if draft != nil && draft.Submission != nil && draft.Submission.IssueSummary != nil {
+		for _, issue := range draft.Submission.IssueSummary.ManualIssues {
+			action := strings.TrimSpace(issue.OperatorAction)
+			if action == "" {
+				action = OperatorActionManualReview
 			}
-			grouped[action] = bucket
+			bucket, exists := grouped[action]
+			if !exists {
+				bucket = &WorkbenchActionBox{
+					Action:   action,
+					Label:    operatorActionLabel(action),
+					Priority: operatorActionPriority(action),
+				}
+				grouped[action] = bucket
+			}
+			bucket.Items = append(bucket.Items, issue)
+			bucket.Count++
+			if issue.IsBlocking {
+				bucket.BlockingCount++
+			}
 		}
-		bucket.Items = append(bucket.Items, issue)
-		bucket.Count++
-		if issue.IsBlocking {
-			bucket.BlockingCount++
+	}
+	if draft != nil {
+		for _, item := range draft.ReviewItems {
+			action := strings.TrimSpace(item.Action)
+			if action == "" {
+				action = OperatorActionManualReview
+			}
+			bucket, exists := grouped[action]
+			if !exists {
+				bucket = &WorkbenchActionBox{
+					Action:   action,
+					Label:    operatorActionLabel(action),
+					Priority: operatorActionPriority(action),
+				}
+				grouped[action] = bucket
+			}
+			bucket.Items = append(bucket.Items, AmazonIssue{
+				Message:        item.Reason,
+				Severity:       item.Severity,
+				IsBlocking:     item.IsBlocking,
+				OperatorAction: action,
+				OperatorAdvice: item.RecommendedFix,
+				Target:         item.Field,
+			})
+			bucket.Count++
+			if item.IsBlocking {
+				bucket.BlockingCount++
+			}
 		}
 	}
 

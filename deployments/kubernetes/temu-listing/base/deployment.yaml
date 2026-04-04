@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: temu-listing
-          image: xuwei190/task-processor-temu-listing:latest
+          image: xuwei190/task-processor-temu-listing:8324377
           imagePullPolicy: IfNotPresent
           command: ["/app/listing-service"]
           args:

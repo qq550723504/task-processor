@@ -16,11 +16,13 @@ type TaskSubmitter interface {
 
 type ProductService interface {
 	CreateGenerateTask(ctx context.Context, req *productenrich.GenerateRequest) (*productenrich.Task, error)
+	GetTaskResult(ctx context.Context, taskID string) (*productenrich.TaskResult, error)
 	ProcessProduct(ctx context.Context, task *productenrich.Task) (*productenrich.ProductJSON, error)
 }
 
 type ImageService interface {
 	CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error)
+	GetTaskResult(ctx context.Context, taskID string) (*productimage.TaskResult, error)
 	ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error)
 }
 
@@ -41,7 +43,7 @@ type Repository interface {
 }
 
 type Assembler interface {
-	Assemble(task *Task, product *productenrich.ProductJSON, image *productimage.ImageProcessResult) *AmazonListingDraft
+	Assemble(task *Task, product *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *AmazonListingDraft
 }
 
 type ValidationReport struct {

@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: amazon-listing
-          image: xuwei190/task-processor-amazon-listing:latest
+          image: xuwei190/task-processor-amazon-listing:8324377
           imagePullPolicy: IfNotPresent
           command: ["/app/listing-service"]
           args:

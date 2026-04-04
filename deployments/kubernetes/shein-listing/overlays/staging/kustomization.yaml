@@ -8,7 +8,7 @@ resources:
 
 images:
   - name: xuwei190/task-processor-shein-listing
-    newTag: latest
+    digest: sha256:2e4617a0c381bc8bdf4a5b6e1bb4cc351ac9013a4f9299057e6ea0201786bc08
 
 patches:
   - path: patch-deployment.yaml

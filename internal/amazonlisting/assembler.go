@@ -14,7 +14,7 @@ func NewAssembler() Assembler {
 	return &assembler{}
 }
 
-func (a *assembler) Assemble(task *Task, product *productenrich.ProductJSON, image *productimage.ImageProcessResult) *AmazonListingDraft {
+func (a *assembler) Assemble(task *Task, product *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *AmazonListingDraft {
 	now := time.Now()
 	draft := &AmazonListingDraft{
 		TaskID:       task.ID,
@@ -42,17 +42,17 @@ func (a *assembler) Assemble(task *Task, product *productenrich.ProductJSON, ima
 	if product != nil {
 		draft.Title = product.Title
 		draft.Description = product.Description
-		draft.CategoryPath = append(draft.CategoryPath, product.Category...)
+		draft.CategoryPath = append(draft.CategoryPath, product.CategoryPath...)
 		draft.BulletPoints = append(draft.BulletPoints, product.SellingPoints...)
 		draft.SearchTerms = append(draft.SearchTerms, product.SEOKeywords...)
 		for k, v := range product.Attributes {
-			draft.Attributes[k] = v
+			draft.Attributes[k] = v.Value
 		}
 		if draft.Brand == "" {
-			draft.Brand = product.Attributes["brand"]
+			draft.Brand = product.Brand
 		}
-		if draft.ProductType == "" && len(product.Category) > 0 {
-			draft.ProductType = product.Category[len(product.Category)-1]
+		if draft.ProductType == "" && len(product.CategoryPath) > 0 {
+			draft.ProductType = product.CategoryPath[len(product.CategoryPath)-1]
 		}
 		if draft.ProductType == "" {
 			draft.ProductType = product.Title
@@ -91,9 +91,13 @@ func (a *assembler) Assemble(task *Task, product *productenrich.ProductJSON, ima
 			}
 		}
 		for _, v := range product.Variants {
+			attributes := make(map[string]string, len(v.Attributes))
+			for key, value := range v.Attributes {
+				attributes[key] = value.Value
+			}
 			variant := AmazonVariantDraft{
 				SKU:        v.SKU,
-				Attributes: v.Attributes,
+				Attributes: attributes,
 				Inventory:  v.Stock,
 				Barcode:    v.Barcode,
 				IsDefault:  v.IsDefault,
@@ -105,11 +109,15 @@ func (a *assembler) Assemble(task *Task, product *productenrich.ProductJSON, ima
 				}
 			}
 			if len(v.Images) > 0 {
-				variant.MainImage = v.Images[0]
+				variant.MainImage = v.Images[0].URL
 			}
 			draft.Variants = append(draft.Variants, variant)
 		}
-		draft.Images = &AmazonImageBundle{RawInputImages: append([]string(nil), product.Images...)}
+		rawImages := make([]string, 0, len(product.Images))
+		for _, image := range product.Images {
+			rawImages = append(rawImages, image.URL)
+		}
+		draft.Images = &AmazonImageBundle{RawInputImages: rawImages}
 	}
 
 	applyTargetCategoryHint(draft, task.Request)

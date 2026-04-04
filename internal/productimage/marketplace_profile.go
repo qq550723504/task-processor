@@ -119,10 +119,10 @@ func sourceCountry(source *SourceBundle) string {
 }
 
 func sourceProductType(source *SourceBundle) string {
-	if source == nil || source.Analysis == nil || source.Analysis.Representation == nil {
+	if source == nil || source.Context == nil {
 		return ""
 	}
-	return source.Analysis.Representation.ProductType
+	return source.Context.ProductType
 }
 
 func resolveAmazonUSFamily(productType string) string {

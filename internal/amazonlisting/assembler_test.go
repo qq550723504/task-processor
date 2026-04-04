@@ -16,10 +16,10 @@ func TestAssemblerUsesTargetCategoryHintPath(t *testing.T) {
 			Country:            "US",
 			TargetCategoryHint: "Electronics > Headphones",
 		},
-	}, &productenrich.ProductJSON{
+	}, &productenrich.CanonicalProduct{
 		Title:       "Wireless Headphones",
 		Description: "Over-ear wireless headphones with long battery life.",
-		Category:    []string{"Consumer Goods", "Audio"},
+		CategoryPath: []string{"Consumer Goods", "Audio"},
 	}, nil)
 
 	if assembled.ProductType != "Headphones" {
@@ -39,10 +39,10 @@ func TestAssemblerKeepsProductCategoryWhenTargetCategoryHintMissing(t *testing.T
 			Marketplace: "amazon",
 			Country:     "US",
 		},
-	}, &productenrich.ProductJSON{
+	}, &productenrich.CanonicalProduct{
 		Title:       "Ceramic Mug",
 		Description: "A ceramic mug for coffee and tea.",
-		Category:    []string{"Home & Kitchen", "Drinkware"},
+		CategoryPath: []string{"Home & Kitchen", "Drinkware"},
 	}, nil)
 
 	if assembled.ProductType != "Drinkware" {
@@ -62,7 +62,7 @@ func TestAssemblerCarriesImageIPRiskIntoListingIPRisk(t *testing.T) {
 			Marketplace: "amazon",
 			Country:     "US",
 		},
-	}, &productenrich.ProductJSON{
+	}, &productenrich.CanonicalProduct{
 		Title:       "Ceramic Mug",
 		Description: "A ceramic mug for coffee and tea.",
 	}, &productimage.ImageProcessResult{

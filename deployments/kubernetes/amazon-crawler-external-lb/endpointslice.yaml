@@ -1,0 +1,23 @@
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: amazon-crawler-external-lb-1
+  namespace: task-processor
+  labels:
+    app: amazon-crawler-api
+    component: external-lb
+    kubernetes.io/service-name: amazon-crawler-external-lb
+    endpointslice.kubernetes.io/managed-by: manual
+addressType: IPv4
+ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+endpoints:
+  # ⚠️ 这里只能填写纯 IP，不能带端口；端口统一在上面的 ports.port 配置
+  - addresses:
+      - 43.130.46.73
+  - addresses:
+      - 170.106.197.86
+  - addresses:
+      - 43.166.247.253

@@ -4,7 +4,8 @@
 [CmdletBinding()]
 param(
     [string]$DockerHubUser = $(if ($env:DOCKERHUB_USER) { $env:DOCKERHUB_USER } else { "xuwei190" }),
-    [string]$Tag = ""
+    [string]$Tag = "",
+    [switch]$PublishLatest
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,7 +21,7 @@ $ImageName = "task-processor-amazon-crawler-api"
 $Dockerfile = "deployments/docker/Dockerfile.amazon-crawler-api"
 
 if (-not $Tag) {
-    $Tag = git describe --tags --always --dirty 2>$null
+    $Tag = git rev-parse --short HEAD 2>$null
     if (-not $Tag) { $Tag = Get-Date -Format 'yyyyMMdd' }
 }
 
@@ -30,21 +31,34 @@ $LatestImage = "$DockerHubUser/${ImageName}:latest"
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Build & Push Amazon Crawler API" -ForegroundColor Cyan
 Write-Host "  Image: $FullImage" -ForegroundColor Cyan
-Write-Host "  Also tag: $LatestImage" -ForegroundColor Cyan
+if ($PublishLatest) {
+    Write-Host "  Also tag: $LatestImage" -ForegroundColor Cyan
+}
 Write-Host "========================================" -ForegroundColor Cyan
 
 Write-Host "`n[1/3] Building image..." -ForegroundColor Yellow
-docker build -f $Dockerfile -t $FullImage -t $LatestImage .
+$dockerArgs = @("build", "-f", $Dockerfile, "-t", $FullImage)
+if ($PublishLatest) {
+    $dockerArgs += @("-t", $LatestImage)
+}
+$dockerArgs += "."
+& docker @dockerArgs
 if ($LASTEXITCODE -ne 0) { Write-Host "Build failed" -ForegroundColor Red; exit 1 }
 
 Write-Host "`n[2/3] Pushing $FullImage ..." -ForegroundColor Yellow
 docker push $FullImage
 if ($LASTEXITCODE -ne 0) { Write-Host "Push failed" -ForegroundColor Red; exit 1 }
 
-Write-Host "`n[3/3] Pushing $LatestImage ..." -ForegroundColor Yellow
-docker push $LatestImage
-if ($LASTEXITCODE -ne 0) { Write-Host "Push failed" -ForegroundColor Red; exit 1 }
+if ($PublishLatest) {
+    Write-Host "`n[3/3] Pushing $LatestImage ..." -ForegroundColor Yellow
+    docker push $LatestImage
+    if ($LASTEXITCODE -ne 0) { Write-Host "Push failed" -ForegroundColor Red; exit 1 }
+}
 
 Write-Host "`nDone" -ForegroundColor Green
 Write-Host "  $FullImage" -ForegroundColor Green
-Write-Host "  $LatestImage" -ForegroundColor Green
+if ($PublishLatest) {
+    Write-Host "  $LatestImage" -ForegroundColor Green
+} else {
+    Write-Host "  (skipped :latest; use -PublishLatest to refresh it)" -ForegroundColor Yellow
+}

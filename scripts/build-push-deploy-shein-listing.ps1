@@ -12,7 +12,8 @@ param(
     [string]$DeploymentName = "shein-listing",
     [string]$OverlayPath = "deployments/kubernetes/shein-listing/overlays/prod",
     [switch]$SkipTests,
-    [switch]$SkipApply
+    [switch]$SkipApply,
+    [switch]$PublishLatest
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,7 +22,7 @@ $ImageName = "task-processor-shein-listing"
 $Dockerfile = "deployments/docker/Dockerfile.listing"
 
 if (-not $Tag) {
-    $Tag = git describe --tags --always --dirty 2>$null
+    $Tag = git rev-parse --short HEAD 2>$null
     if (-not $Tag) {
         $Tag = Get-Date -Format "yyyyMMdd-HHmmss"
     }
@@ -59,12 +60,17 @@ if (-not $SkipTests) {
 }
 
 Invoke-Step "[2/7] Building image..." {
-    docker build `
-      --build-arg SERVICE_CMD=./cmd/shein-listing/main.go `
-      -f $Dockerfile `
-      -t $FullImage `
-      -t $LatestImage `
-      .
+    $dockerArgs = @(
+      "build",
+      "--build-arg", "SERVICE_CMD=./cmd/shein-listing/main.go",
+      "-f", $Dockerfile,
+      "-t", $FullImage
+    )
+    if ($PublishLatest) {
+        $dockerArgs += @("-t", $LatestImage)
+    }
+    $dockerArgs += "."
+    & docker @dockerArgs
     if ($LASTEXITCODE -ne 0) { throw "docker build failed" }
 }
 
@@ -73,9 +79,11 @@ Invoke-Step "[3/7] Pushing version tag..." {
     if ($LASTEXITCODE -ne 0) { throw "docker push $FullImage failed" }
 }
 
-Invoke-Step "[4/7] Pushing latest tag..." {
-    docker push $LatestImage
-    if ($LASTEXITCODE -ne 0) { throw "docker push $LatestImage failed" }
+if ($PublishLatest) {
+    Invoke-Step "[4/7] Pushing latest tag..." {
+        docker push $LatestImage
+        if ($LASTEXITCODE -ne 0) { throw "docker push $LatestImage failed" }
+    }
 }
 
 if (-not $SkipApply) {
@@ -100,5 +108,10 @@ Invoke-Step "[7/7] Waiting for rollout..." {
 
 Write-Host ""
 Write-Host "Deployment finished successfully." -ForegroundColor Green
+if (-not $PublishLatest) {
+    Write-Host "Skipped pushing :latest. Use -PublishLatest if you intentionally want to refresh the floating tag." -ForegroundColor Yellow
+}
 Write-Host "  Version image: $FullImage" -ForegroundColor Green
-Write-Host "  Latest image:  $LatestImage" -ForegroundColor Green
+if ($PublishLatest) {
+    Write-Host "  Latest image:  $LatestImage" -ForegroundColor Green
+}

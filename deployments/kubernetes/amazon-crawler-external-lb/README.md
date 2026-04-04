@@ -8,7 +8,7 @@
 
 对应后端节点清单：
 
-- [endpoints.yaml](D:/code/task-processor/deployments/kubernetes/amazon-crawler-external-lb/endpoints.yaml)
+- [endpointslice.yaml](D:/code/task-processor/deployments/kubernetes/amazon-crawler-external-lb/endpointslice.yaml)
 
 ## 作用
 
@@ -22,7 +22,7 @@
 
 编辑：
 
-- [endpoints.yaml](D:/code/task-processor/deployments/kubernetes/amazon-crawler-external-lb/endpoints.yaml)
+- [endpointslice.yaml](D:/code/task-processor/deployments/kubernetes/amazon-crawler-external-lb/endpointslice.yaml)
 
 把里面的外部 crawler IP 改成你的真实节点列表。
 
@@ -30,7 +30,7 @@
 
 - 这里只能写 IP，不能写域名
 - 端口统一在 `ports.port` 配成 `8080`
-- 新增 crawler 节点时，只要继续追加 `- ip: ...` 即可
+- 新增 crawler 节点时，只要继续追加一个 `endpoints` 条目即可
 
 ## 部署命令
 
@@ -41,13 +41,13 @@ kubectl apply -k deployments/kubernetes/amazon-crawler-external-lb
 ## 部署后检查
 
 ```bash
-kubectl -n task-processor get svc,endpoints amazon-crawler-external-lb
+kubectl -n task-processor get svc,endpointslice -l kubernetes.io/service-name=amazon-crawler-external-lb
 ```
 
 正常情况下应该看到：
 
 - `Service` 已创建
-- `Endpoints` 里有你配置的外部 IP
+- `EndpointSlice` 里有你配置的外部 IP
 
 ## 连通性验证
 

@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	productenrich "task-processor/internal/productenrich"
 )
 
 type PipelineState struct {
 	Task       *Task
 	Source     *SourceBundle
-	Analysis   *productenrich.ProductAnalysis
+	Context    *ProductContext
 	Audits     []ImageAudit
 	Candidates *ImageCandidateSet
 	Result     *ImageProcessResult
@@ -118,13 +116,13 @@ func (s *service) runParseStage(ctx context.Context, state *PipelineState) error
 
 func (s *service) runAnalyzeContextStage(ctx context.Context, state *PipelineState) error {
 	if s.contextAnalyzer != nil {
-		analysis, err := s.contextAnalyzer.Analyze(ctx, state.Source)
+		productContext, err := s.contextAnalyzer.Analyze(ctx, state.Source)
 		if err != nil {
 			return err
 		}
-		state.Analysis = analysis
+		state.Context = productContext
 		if state.Source != nil {
-			state.Source.Analysis = analysis
+			state.Source.Context = productContext
 		}
 		return nil
 	}
@@ -168,7 +166,7 @@ func (s *service) runAuditStage(ctx context.Context, state *PipelineState) error
 
 func (s *service) runRankStage(ctx context.Context, state *PipelineState) error {
 	if s.imageRanker != nil {
-		candidates, err := s.imageRanker.Select(ctx, state.Source, state.Audits, state.Analysis)
+		candidates, err := s.imageRanker.Select(ctx, state.Source, state.Audits, state.Context)
 		if err != nil {
 			return err
 		}
@@ -201,7 +199,7 @@ func (s *service) runSubjectStage(ctx context.Context, state *PipelineState) err
 	}
 	if s.subjectExtractor != nil {
 		startedAt := time.Now()
-		asset, err := s.subjectExtractor.Extract(ctx, state.Candidates.PrimarySource, state.Analysis)
+		asset, err := s.subjectExtractor.Extract(ctx, state.Candidates.PrimarySource, state.Context)
 		if err != nil {
 			state.addTrace("extract_subject", state.Candidates.PrimarySource, string(AssetTypeSubjectCutout), "failed", time.Since(startedAt), err.Error())
 			return err
@@ -228,7 +226,7 @@ func (s *service) runCleanupStage(ctx context.Context, state *PipelineState) err
 	}
 	if s.imageCleaner != nil {
 		startedAt := time.Now()
-		asset, err := s.imageCleaner.Clean(ctx, state.Result.SubjectCutout, state.Analysis)
+		asset, err := s.imageCleaner.Clean(ctx, state.Result.SubjectCutout, state.Context)
 		if err != nil {
 			state.addTrace("cleanup_image", state.Result.SubjectCutout.SourceURL, string(AssetTypeMainImage), "failed", time.Since(startedAt), err.Error())
 			return err
@@ -252,7 +250,7 @@ func (s *service) runWhiteBgStage(ctx context.Context, state *PipelineState) err
 	}
 	if s.whiteBgRenderer != nil {
 		startedAt := time.Now()
-		asset, err := s.whiteBgRenderer.Render(ctx, state.Result.MainImage, state.Analysis)
+		asset, err := s.whiteBgRenderer.Render(ctx, state.Result.MainImage, state.Context)
 		if err != nil {
 			state.addTrace("render_white_bg", state.Result.MainImage.SourceURL, string(AssetTypeWhiteBgImage), "failed", time.Since(startedAt), err.Error())
 			return err
@@ -270,7 +268,7 @@ func (s *service) runGalleryStage(ctx context.Context, state *PipelineState) err
 	state.ensureResult()
 	if s.sceneRenderer != nil {
 		startedAt := time.Now()
-		images, err := s.sceneRenderer.Render(ctx, state.Result.SubjectCutout, state.Analysis)
+		images, err := s.sceneRenderer.Render(ctx, state.Result.SubjectCutout, state.Context)
 		if err != nil {
 			state.addTrace("render_gallery", state.Result.SubjectCutout.SourceURL, string(AssetTypeGalleryImage), "failed", time.Since(startedAt), err.Error())
 			return err

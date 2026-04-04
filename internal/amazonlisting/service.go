@@ -14,6 +14,7 @@ type service struct {
 	listingSubmitter ListingSubmitter
 	validator        Validator
 	autoFixer        AutoFixer
+	workflow         ListingWorkflow
 	taskSubmitter    TaskSubmitter
 }
 
@@ -26,6 +27,7 @@ type ServiceConfig struct {
 	ListingSubmitter ListingSubmitter
 	Validator        Validator
 	AutoFixer        AutoFixer
+	Workflow         ListingWorkflow
 	TaskSubmitter    TaskSubmitter
 }
 
@@ -51,6 +53,9 @@ func NewService(config *ServiceConfig) (Service, error) {
 	if config.AutoFixer == nil {
 		config.AutoFixer = NewAutoFixer()
 	}
+	if config.Workflow == nil {
+		config.Workflow = NewListingWorkflow(config.ProductService, config.ImageService, config.Assembler, config.AutoFixer, config.ExportBuilder)
+	}
 	return &service{
 		repo:             config.Repository,
 		productService:   config.ProductService,
@@ -60,6 +65,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 		listingSubmitter: config.ListingSubmitter,
 		validator:        config.Validator,
 		autoFixer:        config.AutoFixer,
+		workflow:         config.Workflow,
 		taskSubmitter:    config.TaskSubmitter,
 	}, nil
 }

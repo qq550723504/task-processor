@@ -78,8 +78,8 @@ func TestProductContextAnalyzer_Analyze(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Analyze() error = %v", err)
 	}
-	if result.Representation.ProductType != "chair" {
-		t.Fatalf("product type = %q, want chair", result.Representation.ProductType)
+	if result.ProductType != "chair" {
+		t.Fatalf("product type = %q, want chair", result.ProductType)
 	}
 }
 
@@ -116,7 +116,7 @@ func TestDefaultImageInspector_UsesTitleHintAsPrimaryObject(t *testing.T) {
 
 func TestDefaultCleanerSubjectExtractorWhiteBackgroundAndValidator(t *testing.T) {
 	extractor := productimage.NewDefaultSubjectExtractor()
-	asset, err := extractor.Extract(context.Background(), "promo_badge_text_logo_hero.jpg", &productenrich.ProductAnalysis{Representation: &productenrich.ProductRepresentation{ProductType: "lamp"}})
+	asset, err := extractor.Extract(context.Background(), "promo_badge_text_logo_hero.jpg", &productimage.ProductContext{ProductType: "lamp"})
 	if err != nil {
 		t.Fatalf("Extract() error = %v", err)
 	}
@@ -272,9 +272,7 @@ func TestDefaultQualityAssessor_UsesCategorySpecificWhiteCanvasPenalty(t *testin
 	softAssessment, err := assessor.Assess(context.Background(), &productimage.SourceBundle{
 		Marketplace: "amazon",
 		Country:     "US",
-		Analysis: &productenrich.ProductAnalysis{
-			Representation: &productenrich.ProductRepresentation{ProductType: "Slippers"},
-		},
+		Context:     &productimage.ProductContext{ProductType: "Slippers"},
 	}, nil, nil, &productimage.ImageProcessResult{
 		WhiteBgImage: &productimage.ImageAsset{
 			Type:     productimage.AssetTypeWhiteBgImage,
@@ -287,9 +285,7 @@ func TestDefaultQualityAssessor_UsesCategorySpecificWhiteCanvasPenalty(t *testin
 	hardAssessment, err := assessor.Assess(context.Background(), &productimage.SourceBundle{
 		Marketplace: "amazon",
 		Country:     "US",
-		Analysis: &productenrich.ProductAnalysis{
-			Representation: &productenrich.ProductRepresentation{ProductType: "Electronics"},
-		},
+		Context:     &productimage.ProductContext{ProductType: "Electronics"},
 	}, nil, nil, &productimage.ImageProcessResult{
 		WhiteBgImage: &productimage.ImageAsset{
 			Type:     productimage.AssetTypeWhiteBgImage,
@@ -309,9 +305,7 @@ func TestDefaultReviewAssessor_UsesCategorySpecificThresholds(t *testing.T) {
 	softDecision, err := assessor.Assess(context.Background(), &productimage.SourceBundle{
 		Marketplace: "amazon",
 		Country:     "US",
-		Analysis: &productenrich.ProductAnalysis{
-			Representation: &productenrich.ProductRepresentation{ProductType: "Slippers"},
-		},
+		Context:     &productimage.ProductContext{ProductType: "Slippers"},
 	}, nil, nil, &productimage.ImageProcessResult{
 		Quality: &productimage.QualityAssessment{
 			OverallScore: 0.63,
@@ -329,9 +323,7 @@ func TestDefaultReviewAssessor_UsesCategorySpecificThresholds(t *testing.T) {
 	hardDecision, err := assessor.Assess(context.Background(), &productimage.SourceBundle{
 		Marketplace: "amazon",
 		Country:     "US",
-		Analysis: &productenrich.ProductAnalysis{
-			Representation: &productenrich.ProductRepresentation{ProductType: "Electronics"},
-		},
+		Context:     &productimage.ProductContext{ProductType: "Electronics"},
 	}, nil, nil, &productimage.ImageProcessResult{
 		Quality: &productimage.QualityAssessment{
 			OverallScore: 0.63,
@@ -352,9 +344,7 @@ func TestMarketplaceProfile_DefaultsWhenMarketplaceUnknown(t *testing.T) {
 	decision, err := assessor.Assess(context.Background(), &productimage.SourceBundle{
 		Marketplace: "etsy",
 		Country:     "US",
-		Analysis: &productenrich.ProductAnalysis{
-			Representation: &productenrich.ProductRepresentation{ProductType: "Slippers"},
-		},
+		Context:     &productimage.ProductContext{ProductType: "Slippers"},
 	}, nil, nil, &productimage.ImageProcessResult{
 		Quality: &productimage.QualityAssessment{
 			OverallScore: 0.63,
@@ -385,9 +375,7 @@ func TestMarketplaceProfile_ResolvesFineGrainedFamilies(t *testing.T) {
 	family, mainThreshold, _, _ := productimage.ResolveMarketplaceProfileForTest(&productimage.SourceBundle{
 		Marketplace: "amazon",
 		Country:     "US",
-		Analysis: &productenrich.ProductAnalysis{
-			Representation: &productenrich.ProductRepresentation{ProductType: "Running Shoes"},
-		},
+		Context:     &productimage.ProductContext{ProductType: "Running Shoes"},
 	})
 	if family != "footwear" {
 		t.Fatalf("family = %q, want footwear", family)
@@ -396,9 +384,7 @@ func TestMarketplaceProfile_ResolvesFineGrainedFamilies(t *testing.T) {
 	family, electronicsThreshold, _, _ := productimage.ResolveMarketplaceProfileForTest(&productimage.SourceBundle{
 		Marketplace: "amazon",
 		Country:     "US",
-		Analysis: &productenrich.ProductAnalysis{
-			Representation: &productenrich.ProductRepresentation{ProductType: "Bluetooth Speaker"},
-		},
+		Context:     &productimage.ProductContext{ProductType: "Bluetooth Speaker"},
 	})
 	if family != "electronics" {
 		t.Fatalf("family = %q, want electronics", family)

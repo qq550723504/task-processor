@@ -58,14 +58,21 @@ type Task struct {
 }
 
 type SourceBundle struct {
-	Images      []string                       `json:"images"`
-	Text        string                         `json:"text,omitempty"`
-	TitleHint   string                         `json:"title_hint,omitempty"`
-	ProductURL  string                         `json:"product_url,omitempty"`
-	Marketplace string                         `json:"marketplace,omitempty"`
-	Country     string                         `json:"country,omitempty"`
-	ParsedInput *productenrich.ParsedInput     `json:"parsed_input,omitempty" gorm:"-"`
-	Analysis    *productenrich.ProductAnalysis `json:"analysis,omitempty" gorm:"-"`
+	Images      []string                   `json:"images"`
+	Text        string                     `json:"text,omitempty"`
+	TitleHint   string                     `json:"title_hint,omitempty"`
+	ProductURL  string                     `json:"product_url,omitempty"`
+	Marketplace string                     `json:"marketplace,omitempty"`
+	Country     string                     `json:"country,omitempty"`
+	ParsedInput *productenrich.ParsedInput `json:"parsed_input,omitempty" gorm:"-"`
+	Context     *ProductContext            `json:"context,omitempty" gorm:"-"`
+}
+
+type ProductContext struct {
+	Title       string            `json:"title,omitempty"`
+	ProductType string            `json:"product_type,omitempty"`
+	Attributes  map[string]string `json:"attributes,omitempty"`
+	ScrapedTitle string           `json:"scraped_title,omitempty"`
 }
 
 type ImageAudit struct {

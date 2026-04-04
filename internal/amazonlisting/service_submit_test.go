@@ -27,6 +27,10 @@ func (s *stubProductService) CreateGenerateTask(_ context.Context, _ *productenr
 	return nil, nil
 }
 
+func (s *stubProductService) GetTaskResult(_ context.Context, _ string) (*productenrich.TaskResult, error) {
+	return nil, nil
+}
+
 func (s *stubProductService) ProcessProduct(_ context.Context, _ *productenrich.Task) (*productenrich.ProductJSON, error) {
 	return nil, nil
 }

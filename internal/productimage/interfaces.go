@@ -1,10 +1,6 @@
 package productimage
 
-import (
-	"context"
-
-	productenrich "task-processor/internal/productenrich"
-)
+import "context"
 
 type TaskSubmitter interface {
 	Submit(taskID string) error
@@ -15,7 +11,7 @@ type SourceParser interface {
 }
 
 type ProductContextAnalyzer interface {
-	Analyze(ctx context.Context, source *SourceBundle) (*productenrich.ProductAnalysis, error)
+	Analyze(ctx context.Context, source *SourceBundle) (*ProductContext, error)
 }
 
 type ImageInspector interface {
@@ -23,19 +19,19 @@ type ImageInspector interface {
 }
 
 type ImageRanker interface {
-	Select(ctx context.Context, source *SourceBundle, audits []ImageAudit, analysis *productenrich.ProductAnalysis) (*ImageCandidateSet, error)
+	Select(ctx context.Context, source *SourceBundle, audits []ImageAudit, context *ProductContext) (*ImageCandidateSet, error)
 }
 
 type SubjectExtractor interface {
-	Extract(ctx context.Context, imageURL string, analysis *productenrich.ProductAnalysis) (*ImageAsset, error)
+	Extract(ctx context.Context, imageURL string, context *ProductContext) (*ImageAsset, error)
 }
 
 type ImageCleaner interface {
-	Clean(ctx context.Context, asset *ImageAsset, analysis *productenrich.ProductAnalysis) (*ImageAsset, error)
+	Clean(ctx context.Context, asset *ImageAsset, context *ProductContext) (*ImageAsset, error)
 }
 
 type WhiteBackgroundRenderer interface {
-	Render(ctx context.Context, asset *ImageAsset, analysis *productenrich.ProductAnalysis) (*ImageAsset, error)
+	Render(ctx context.Context, asset *ImageAsset, context *ProductContext) (*ImageAsset, error)
 }
 
 type AssetPublisher interface {
@@ -43,7 +39,7 @@ type AssetPublisher interface {
 }
 
 type SceneRenderer interface {
-	Render(ctx context.Context, asset *ImageAsset, analysis *productenrich.ProductAnalysis) ([]ImageAsset, error)
+	Render(ctx context.Context, asset *ImageAsset, context *ProductContext) ([]ImageAsset, error)
 }
 
 type MarketplaceValidator interface {

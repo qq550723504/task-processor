@@ -45,7 +45,9 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		return nil, fmt.Errorf("create input parser: %w", err)
 	}
 
-	shared, err := appbootstrap.BuildSharedResources(cfg, logger, appbootstrap.SharedResourceOptions{})
+	shared, err := appbootstrap.BuildSharedResources(cfg, logger, appbootstrap.SharedResourceOptions{
+		AllowMissingManagementAuth: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)
 	}
