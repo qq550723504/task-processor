@@ -3,6 +3,4 @@ kind: HorizontalPodAutoscaler
 metadata:
   name: amazon-crawler-api
   namespace: task-processor
-spec:
-  minReplicas: 3
-  maxReplicas: 10
+$patch: delete

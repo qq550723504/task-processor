@@ -3,7 +3,9 @@ package browser
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"task-processor/internal/core/logger"
 
@@ -142,6 +144,11 @@ func (cl *ContextLauncher) ensureBrowserPath() (string, error) {
 		}
 	}
 
+	if managedPath, err := findManagedPlaywrightBrowser(); err == nil && managedPath != "" {
+		logger.GetGlobalLogger("crawler/shared").Infof("使用 Playwright 预装浏览器: %s", managedPath)
+		return managedPath, nil
+	}
+
 	// 从配置中获取 Chrome 版本和下载目录
 	version := cl.config.ChromeVersion
 	if version == "" {
@@ -161,4 +168,58 @@ func (cl *ContextLauncher) ensureBrowserPath() (string, error) {
 	}
 
 	return chromePath, nil
+}
+
+func findManagedPlaywrightBrowser() (string, error) {
+	candidates := []string{}
+	if browsersPath := os.Getenv("PLAYWRIGHT_BROWSERS_PATH"); browsersPath != "" {
+		candidates = append(candidates, browsersPath)
+	}
+	candidates = append(candidates,
+		"/ms-playwright",
+		filepath.Join(os.Getenv("HOME"), ".cache", "ms-playwright"),
+	)
+
+	patterns := playwrightExecutablePatterns()
+	for _, base := range candidates {
+		if base == "" {
+			continue
+		}
+		for _, pattern := range patterns {
+			matches, err := filepath.Glob(filepath.Join(base, pattern))
+			if err != nil {
+				continue
+			}
+			sort.Strings(matches)
+			for i := len(matches) - 1; i >= 0; i-- {
+				if info, err := os.Stat(matches[i]); err == nil && !info.IsDir() {
+					return matches[i], nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("managed playwright browser not found")
+}
+
+func playwrightExecutablePatterns() []string {
+	switch runtime.GOOS {
+	case "linux":
+		return []string{
+			"chromium-*/chrome-linux64/chrome",
+			"chromium-*/chrome-linux/chrome",
+			"chromium_headless_shell-*/chrome-linux/headless_shell",
+			"chromium_headless_shell-*/chrome-linux64/headless_shell",
+		}
+	case "darwin":
+		return []string{
+			"chromium-*/chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+		}
+	case "windows":
+		return []string{
+			"chromium-*\\chrome-win\\chrome.exe",
+		}
+	default:
+		return nil
+	}
 }
