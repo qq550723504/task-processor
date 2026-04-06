@@ -25,6 +25,13 @@
    - 自动上架到目标平台（SHEIN、TEMU、Amazon 等）
    - 支持批量上架和多店铺管理
 
+### 平台字段约定
+
+- `sourcePlatform` / `source_platform`: 来源抓取平台，例如 `amazon`、`1688`
+- `targetPlatform` / `target_platform`: 目标上架平台，例如 `shein`、`temu`、`amazon`
+- `platform`: 兼容字段，在 `task-processor` 任务模型和成功回执里默认等于目标上架平台
+- RabbitMQ `TaskMessage.platform`: 历史上表示来源平台，排查消息体时需要和 `targetPlatform` 一起看
+
 ### 智能运营功能
 
 1. **自动核价**:

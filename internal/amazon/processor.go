@@ -84,7 +84,8 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 	}
 
 	logger := p.GetLogger()
-	logger.Infof("[Amazon] 开始处理任务: ID=%d, ProductID=%s", task.ID, task.ProductID)
+	logger.Infof("[Amazon] 开始处理任务: ID=%d, ProductID=%s, targetPlatform=%s, sourcePlatform=%s",
+		task.ID, task.ProductID, task.Platform, task.GetSourcePlatformOrDefault())
 
 	// 将任务转换为处理所需的数据格式
 	taskData := map[string]any{
@@ -109,8 +110,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		return fmt.Errorf("Amazon任务处理失败: %w", err)
 	}
 
-	taskContext.ClearDailyQuotaReservation()
-	p.handleTaskSuccess(&task)
+	p.handleTaskSuccess(&task, taskContext)
 	logger.Infof("[Amazon] 任务处理成功: ID=%d", task.ID)
 	return nil
 }

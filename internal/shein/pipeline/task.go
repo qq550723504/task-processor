@@ -44,7 +44,14 @@ func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
 }
 
 func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipeline) error {
-	logger.GetGlobalLogger("shein/pipeline").Infof("start task: id=%d, product_id=%s", task.ID, task.ProductID)
+	logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
+		"task_id":         task.ID,
+		"tenant_id":       task.TenantID,
+		"store_id":        task.StoreID,
+		"product_id":      task.ProductID,
+		"target_platform": task.Platform,
+		"source_platform": task.GetSourcePlatformOrDefault(),
+	}).Info("start task")
 
 	taskCtx := h.createTaskContext(ctx, &task)
 	defer h.rollbackReservedDailyQuota(taskCtx)
@@ -218,11 +225,13 @@ func (h *TaskHandler) handleSuccess(task model.Task) {
 	metrics.GlobalTaskMetrics().IncrementCompleted()
 
 	logger.GetGlobalLogger("shein/pipeline").Infof(
-		"task completed: id=%d, tenant_id=%d, store_id=%d, product_id=%s",
+		"task completed: id=%d, tenant_id=%d, store_id=%d, product_id=%s, target_platform=%s, source_platform=%s",
 		task.ID,
 		task.TenantID,
 		task.StoreID,
 		task.ProductID,
+		task.Platform,
+		task.GetSourcePlatformOrDefault(),
 	)
 }
 
@@ -246,9 +255,11 @@ func (h *TaskHandler) handleHandledStatus(task model.Task, handledErr *shein.Tas
 	statusUpdater.UpdateTaskStatusAsyncWithTask(&task, targetStatus, handledErr.ErrorMessage())
 
 	logger.GetGlobalLogger("shein/pipeline").Infof(
-		"task finished with handled status: id=%d, status=%s, reason=%s",
+		"task finished with handled status: id=%d, status=%s, reason=%s, target_platform=%s, source_platform=%s",
 		task.ID,
 		targetStatus.String(),
 		handledErr.Error(),
+		task.Platform,
+		task.GetSourcePlatformOrDefault(),
 	)
 }

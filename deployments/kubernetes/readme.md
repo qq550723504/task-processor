@@ -33,3 +33,8 @@ kubectl apply -k deployments/kubernetes/amazon-listing/overlays/staging
 
 # 查看token
 kubectl -n kubernetes-dashboard create token admin-user
+
+curl -sfL https://get.k3s.io | \
+K3S_URL=https://101.33.34.102:6443 \
+K3S_TOKEN='K106d307a8203c82df970ad850a99a06c1a977c3047455b5ca9d554a93397e02347::server:9abe15a6701e84fbc441b166acfbcea1' \
+sh -s - agent --node-external-ip <远程机器公网IP>

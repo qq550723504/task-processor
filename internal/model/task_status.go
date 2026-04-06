@@ -69,6 +69,7 @@ var taskStatusTransitions = map[TaskStatus]map[TaskStatus]struct{}{
 		TaskStatusCancelled:  {},
 	},
 	TaskStatusQueued: {
+		TaskStatusProcessing: {},
 		TaskStatusPublished:  {},
 		TaskStatusDraft:      {},
 		TaskStatusCancelled:  {},

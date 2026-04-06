@@ -26,6 +26,7 @@ func TestValidateTaskStatusTransition(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "pending to processing", from: TaskStatusPending, to: TaskStatusProcessing},
+		{name: "queued to processing", from: TaskStatusQueued, to: TaskStatusProcessing},
 		{name: "processing to published", from: TaskStatusProcessing, to: TaskStatusPublished},
 		{name: "processing to paused", from: TaskStatusProcessing, to: TaskStatusPaused},
 		{name: "processing to pending retry", from: TaskStatusProcessing, to: TaskStatusPendingRetry},

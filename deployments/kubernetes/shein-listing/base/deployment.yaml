@@ -36,10 +36,6 @@ spec:
               value: Asia/Shanghai
             - name: TASK_PROCESSOR_ENV
               value: prod
-            - name: TASK_PROCESSOR_BROWSER_HEADLESS
-              value: "true"
-            - name: TASK_PROCESSOR_BROWSER_PATH
-              value: /usr/bin/chromium
             - name: TASK_PROCESSOR_RABBITMQ_NODE_ROLE
               value: task
             - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT

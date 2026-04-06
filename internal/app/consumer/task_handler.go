@@ -10,6 +10,8 @@ import (
 	"time"
 
 	apptask "task-processor/internal/app/task"
+	"task-processor/internal/app/taskstatus"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -37,6 +39,10 @@ type TaskHandler struct {
 	ownedStores    []int64
 	useStoreQueues bool
 	deduplicator   *apptask.DeduplicationManager
+}
+
+type managementClientProvider interface {
+	GetManagementClient() *management.ClientManager
 }
 
 // TaskHandlerConfig 任务处理器配置
@@ -101,8 +107,13 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 		return err
 	}
 
-	eth.logger.Infof("[%s] 处理任务: ID=%d, ProductID=%s, Priority=%d",
-		eth.platform, task.ID, task.ProductID, task.Priority)
+	// 4.1 在真正执行前先 claim 远端任务状态，避免成功结果回写时仍停留在 queued。
+	if err = eth.claimTaskStatus(task); err != nil {
+		return err
+	}
+
+	eth.logger.Infof("[%s] 处理任务: ID=%d, ProductID=%s, Priority=%d, TargetPlatform=%s, SourcePlatform=%s",
+		eth.platform, task.ID, task.ProductID, task.Priority, task.Platform, task.GetSourcePlatformOrDefault())
 
 	// 5. 处理任务
 	err = eth.processTaskWithReporting(ctx, task, originalPayload, startTime)
@@ -116,6 +127,37 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	eth.logger.Infof("[%s] 任务处理成功: ID=%d, Duration=%v",
 		eth.platform, task.ID, processingTime)
 
+	return nil
+}
+
+func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
+	if task == nil || task.IsCrawlerTask() {
+		return nil
+	}
+	if task.Status == model.TaskStatusProcessing.Int16() {
+		return nil
+	}
+
+	provider, ok := eth.processor.(managementClientProvider)
+	if !ok {
+		eth.logger.Debugf("[%s] processor does not expose management client, skip remote claim: ID=%d, Status=%d",
+			eth.platform, task.ID, task.Status)
+		return nil
+	}
+
+	managementClient := provider.GetManagementClient()
+	if managementClient == nil {
+		return fmt.Errorf("management client is not initialized for platform %s", eth.platform)
+	}
+
+	statusService := taskstatus.NewService("app/consumer", func() taskstatus.ImportTaskStatusClient {
+		return managementClient.GetImportTaskClient()
+	})
+	if err := statusService.TransitionFromCodeSync(task.ID, task.Status, model.TaskStatusProcessing, ""); err != nil {
+		return fmt.Errorf("claim task %d as processing failed from status %d: %w", task.ID, task.Status, err)
+	}
+
+	task.Status = model.TaskStatusProcessing.Int16()
 	return nil
 }
 
@@ -145,8 +187,8 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 
 	// 验证任务的关键字段
 	if !task.IsValid() {
-		eth.logger.Errorf("[%s] 收到无效任务消息: ID=%d, ProductID=%s, Platform=%s, MessageID=%s",
-			eth.platform, task.ID, task.ProductID, task.Platform, msg.ID)
+		eth.logger.Errorf("[%s] 收到无效任务消息: ID=%d, ProductID=%s, TargetPlatform=%s, SourcePlatform=%s, MessageID=%s",
+			eth.platform, task.ID, task.ProductID, task.Platform, task.GetSourcePlatformOrDefault(), msg.ID)
 		return nil, nil, apptask.NewInvalidTaskError(task.ID,
 			fmt.Sprintf("invalid task data: ID=%d, ProductID=%s", task.ID, task.ProductID))
 	}
@@ -352,7 +394,7 @@ func (eth *TaskHandler) processTaskWithReporting(
 
 	// 上报成功结果
 	if eth.resultReporter != nil {
-		successData := apptask.NewSuccessData(task.Platform, task.ProductID, task.StoreID)
+		successData := apptask.NewSuccessData(task.Platform, task.GetSourcePlatformOrDefault(), task.ProductID, task.StoreID)
 
 		if reportErr := eth.resultReporter.ReportSuccess(task, successData.ToMap(), processingTime); reportErr != nil {
 			eth.logger.Errorf("[%s] 上报成功结果失败: ID=%d, Error=%v",

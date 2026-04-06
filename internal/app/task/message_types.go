@@ -51,25 +51,31 @@ type ResultPayload struct {
 
 // SuccessData 成功结果数据
 type SuccessData struct {
-	Platform  string `json:"platform"`
-	ProductID string `json:"product_id"`
-	StoreID   int64  `json:"store_id"`
+	Platform       string `json:"platform"`
+	TargetPlatform string `json:"target_platform,omitempty"`
+	SourcePlatform string `json:"source_platform,omitempty"`
+	ProductID      string `json:"product_id"`
+	StoreID        int64  `json:"store_id"`
 }
 
 // ToMap 转换为 map
 func (s *SuccessData) ToMap() map[string]any {
 	return map[string]any{
-		"platform":   s.Platform,
-		"product_id": s.ProductID,
-		"store_id":   s.StoreID,
+		"platform":        s.Platform,
+		"target_platform": s.TargetPlatform,
+		"source_platform": s.SourcePlatform,
+		"product_id":      s.ProductID,
+		"store_id":        s.StoreID,
 	}
 }
 
 // NewSuccessData 创建成功数据
-func NewSuccessData(platform, productID string, storeID int64) *SuccessData {
+func NewSuccessData(targetPlatform, sourcePlatform, productID string, storeID int64) *SuccessData {
 	return &SuccessData{
-		Platform:  platform,
-		ProductID: productID,
-		StoreID:   storeID,
+		Platform:       targetPlatform,
+		TargetPlatform: targetPlatform,
+		SourcePlatform: sourcePlatform,
+		ProductID:      productID,
+		StoreID:        storeID,
 	}
 }

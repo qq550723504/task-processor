@@ -4,7 +4,7 @@ metadata:
   name: shein-listing
   namespace: task-processor
 spec:
-  replicas: 2
+  replicas: 3
   template:
     spec:
       containers:
@@ -12,7 +12,7 @@ spec:
           resources:
             requests:
               cpu: "1"
-              memory: "2Gi"
+              memory: "256Mi"
             limits:
               cpu: "3"
-              memory: "6Gi"
+              memory: "1Gi"

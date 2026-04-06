@@ -141,12 +141,6 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 		h.logger.Warn("store info is nil, skip daily listing count")
 		return
 	}
-	if input.StoreInfo.DailyLimit == nil || *input.StoreInfo.DailyLimit <= 0 {
-		h.logger.Debugf("store %d has no daily limit, skip limit check", input.StoreInfo.ID)
-		return
-	}
-
-	dailyLimit := *input.StoreInfo.DailyLimit
 	currentDate := timex.NowDate()
 	increment := h.calculateIncrement(input)
 	if increment <= 0 {
@@ -154,7 +148,15 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 		return
 	}
 
-	if ctx != nil && ctx.DailyQuotaReserved {
+	hasDailyLimit := input.StoreInfo.DailyLimit != nil && *input.StoreInfo.DailyLimit > 0
+	dailyLimit := 0
+	if hasDailyLimit {
+		dailyLimit = *input.StoreInfo.DailyLimit
+	} else {
+		h.logger.Debugf("store %d has no daily limit, only record listing count", input.StoreInfo.ID)
+	}
+
+	if hasDailyLimit && ctx != nil && ctx.DailyQuotaReserved {
 		h.logger.Infof("store %d reused reserved daily quota on %s (increment: %d, type: %s)",
 			input.StoreInfo.ID, ctx.DailyQuotaDate, ctx.DailyQuotaIncrement, input.StoreInfo.DailyLimitType)
 		ctx.ClearDailyQuotaReservation()
@@ -170,6 +172,11 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 
 	h.logger.Infof("store %d listing count on %s is %d (increment: %d, type: %s)",
 		input.StoreInfo.ID, currentDate, count, increment, input.StoreInfo.DailyLimitType)
+
+	if !hasDailyLimit {
+		h.logger.Infof("store %d has no daily limit configured, skip pause check after count update", input.StoreInfo.ID)
+		return
+	}
 
 	if count > int64(dailyLimit) {
 		h.logger.Warnf("store %d exceeded daily limit %d with count %d, pause listing", input.StoreInfo.ID, dailyLimit, count)

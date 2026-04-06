@@ -33,12 +33,14 @@ func (h *LoggingHandler) Handle(ctx pipeline.TaskContext) error {
 	}
 
 	h.Logger().WithFields(map[string]any{
-		"task_id":    task.ID,
-		"product_id": task.ProductID,
-		"store_id":   task.StoreID,
-		"platform":   task.Platform,
-		"status":     task.Status,
-		"created_at": task.CreateTime,
+		"task_id":         task.ID,
+		"product_id":      task.ProductID,
+		"store_id":        task.StoreID,
+		"platform":        task.Platform,
+		"target_platform": task.Platform,
+		"source_platform": task.GetSourcePlatformOrDefault(),
+		"status":          task.Status,
+		"created_at":      task.CreateTime,
 	}).Info("任务详细信息记录")
 
 	if h.logLevel == "debug" {

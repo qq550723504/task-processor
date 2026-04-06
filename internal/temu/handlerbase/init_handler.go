@@ -98,6 +98,7 @@ func (h *InitDataHandler) HandleTemu(temuCtx *temucontext.TemuTaskContext) error
 	h.logger.WithFields(map[string]any{
 		logger.FieldProductID: task.ProductID,
 		logger.FieldPlatform:  task.Platform,
+		"source_platform":     task.GetSourcePlatformOrDefault(),
 	}).Info("初始化TEMU产品结构完成")
 	return nil
 }

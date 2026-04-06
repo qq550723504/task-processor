@@ -36,8 +36,8 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error, stage s
 	}
 
 	if cookieErr, ok := shein.IsCookieLoadError(err); ok {
-		logger.GetGlobalLogger("shein/pipeline").Warnf("Cookie加载失败，暂停店铺 %d:%d 24小时，等待重新登录", cookieErr.TenantID, cookieErr.StoreID)
-		h.pauseShopWithCacheCleanup(cookieErr.TenantID, cookieErr.StoreID, "Cookie加载失败，等待重新登录", 24*time.Hour)
+		logger.GetGlobalLogger("shein/pipeline").Warnf("Cookie加载失败，暂停店铺 %d:%d 30分钟，等待重新登录", cookieErr.TenantID, cookieErr.StoreID)
+		h.pauseShopWithCacheCleanup(cookieErr.TenantID, cookieErr.StoreID, "Cookie加载失败，等待重新登录", 30*time.Minute)
 		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusPaused, buildTaskStatusErrorMessage(stage, err))
 		logger.GetGlobalLogger("shein/pipeline").Warnf("任务因Cookie加载失败进入暂停状态: ID=%d, Priority=%d", task.ID, task.Priority)
 		return

@@ -59,6 +59,7 @@ func (h *StoreInfoHandler) Handle(ctx *shein.TaskContext) error {
 
 	storeInfo, fromCache := h.getStoreWithCache(ctx.Task.StoreID)
 	if fromCache {
+		h.syncTaskTenant(ctx, storeInfo)
 		h.logger.Infof("store info loaded from cache: store_id=%d store_name=%s", storeInfo.ID, storeInfo.Name)
 		if err := h.validateStoreStatus(ctx, storeInfo); err != nil {
 			return err
@@ -79,10 +80,25 @@ func (h *StoreInfoHandler) Handle(ctx *shein.TaskContext) error {
 		return err
 	}
 
+	h.syncTaskTenant(ctx, storeInfo)
 	h.setStoreCache(ctx.Task.StoreID, storeInfo)
 	ctx.SetStoreInfo(storeInfo)
 	h.logger.Infof("store info loaded: store_id=%d store_name=%s", storeInfo.ID, storeInfo.Name)
 	return nil
+}
+
+func (h *StoreInfoHandler) syncTaskTenant(ctx *shein.TaskContext, storeInfo *managementAPI.StoreRespDTO) {
+	if ctx == nil || ctx.Task == nil || storeInfo == nil || storeInfo.TenantID == 0 {
+		return
+	}
+
+	if ctx.Task.TenantID == storeInfo.TenantID {
+		return
+	}
+
+	h.logger.Warnf("task tenant mismatch detected, correcting with store info: task_id=%d store_id=%d task_tenant_id=%d store_tenant_id=%d",
+		ctx.Task.ID, ctx.Task.StoreID, ctx.Task.TenantID, storeInfo.TenantID)
+	ctx.Task.TenantID = storeInfo.TenantID
 }
 
 func (h *StoreInfoHandler) validateStoreStatus(ctx *shein.TaskContext, storeInfo *managementAPI.StoreRespDTO) error {

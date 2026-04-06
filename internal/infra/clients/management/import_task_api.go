@@ -70,13 +70,13 @@ func (m *ImportTaskAPIClient) GetPendingAndRetryTasks(limit int, userId int64, s
 func (m *ImportTaskAPIClient) UpdateTaskStatus(req *api.ProductImportTaskUpdateReqDTO) error {
 	url := fmt.Sprintf("%s/rpc-api/listing/import-task/update-status", m.baseURL)
 
-	var result APIResponse
-	if err := m.apiRequest(http.MethodPost, url, req, &result); err != nil {
+	success, err := getTypedResult[bool](m.ManagementAPIClient, http.MethodPost, url, req)
+	if err != nil {
 		return fmt.Errorf("更新任务状态失败: %w", err)
 	}
-
-	if err := m.ProcessAPIResponse(&result, 0); err != nil {
-		return fmt.Errorf("处理API响应失败: %w", err)
+	if !success {
+		return fmt.Errorf("管理端拒绝更新任务状态: taskId=%d, status=%d, expectedCurrentStatus=%v",
+			req.ID, req.Status, req.ExpectedCurrentStatus)
 	}
 
 	return nil

@@ -13,8 +13,8 @@ data:
 
     openai:
       apiKey: ""
-      model: "gemini-2.5-flash"
-      baseURL: "https://ai.linkcloudai.com/v1"
+      model: "gemini-2.5-flash-lite"
+      baseURL: "https://api.gptbest.vip/v1"
       timeout: 300
 
     management:
@@ -26,10 +26,10 @@ data:
       storeIDs: []
 
     browser:
-      enabled: true
+      enabled: false
       headless: true
-      browserPath: "/usr/bin/chromium"
-      poolSize: 2
+      browserPath: ""
+      poolSize: 0
       viewportWidth: 1920
       viewportHeight: 1080
       proxyServer: ""
@@ -40,7 +40,7 @@ data:
       reconnectInterval: "5s"
       maxReconnectTries: 10
       consumer:
-        prefetchCount: 1
+        prefetchCount: 2
         prefetchSize: 0
         retryDelay: "5s"
         maxRetries: 3

@@ -6,7 +6,7 @@ metadata:
   labels:
     app: amazon-crawler-api
 spec:
-  replicas: 2
+  replicas: 7
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -16,9 +16,18 @@ spec:
       labels:
         app: amazon-crawler-api
     spec:
+      nodeSelector:
+        node-role.kubernetes.io/agent: "true"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: amazon-crawler-api
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: amazon-crawler-api
-          image: xuwei190/task-processor-amazon-crawler-api:8324377
+          image: xuwei190/task-processor-amazon-crawler-api:119d85a
           imagePullPolicy: IfNotPresent
           args:
             - -config

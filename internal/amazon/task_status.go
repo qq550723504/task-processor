@@ -4,8 +4,11 @@ import (
 	"strings"
 	"time"
 
+	amazonModel "task-processor/internal/amazon/model"
+	"task-processor/internal/app/state"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/model"
+	"task-processor/internal/pkg/timex"
 
 	"github.com/sirupsen/logrus"
 )
@@ -76,10 +79,12 @@ func (p *Processor) handleTaskFailure(task *model.Task, err error) {
 	})
 }
 
-func (p *Processor) handleTaskSuccess(task *model.Task) {
+func (p *Processor) handleTaskSuccess(task *model.Task, taskContext *amazonModel.TaskContext) {
 	if task == nil {
 		return
 	}
+
+	recordAmazonDailyListingCount(task, taskContext, p.GetMemoryManager(), p.GetLogger())
 
 	p.updateTaskStatusSyncWithInput(taskstatus.UpdateInput{
 		TaskID: task.ID,
@@ -133,6 +138,85 @@ func (p *Processor) pauseStoreForAuthentication(task *model.Task) {
 	} else if !success {
 		p.GetLogger().Warnf("[Amazon] remote store pause status update returned unsuccessful for auth expiry: store=%d", task.StoreID)
 	}
+}
+
+func recordAmazonDailyListingCount(task *model.Task, taskContext *amazonModel.TaskContext, memoryManager *state.MemoryManager, logger *logrus.Logger) {
+	if memoryManager == nil || memoryManager.DailyCountManager == nil {
+		return
+	}
+	if task == nil || taskContext == nil || taskContext.StoreInfo == nil {
+		return
+	}
+
+	increment := calculateAmazonDailyListingIncrement(taskContext)
+	if increment <= 0 {
+		return
+	}
+
+	hasDailyLimit := taskContext.StoreInfo.DailyLimit != nil && *taskContext.StoreInfo.DailyLimit > 0
+	if hasDailyLimit && taskContext.DailyQuotaReserved {
+		if logger != nil {
+			logger.WithFields(logrus.Fields{
+				"tenant_id": task.TenantID,
+				"store_id":  task.StoreID,
+				"date":      taskContext.DailyQuotaDate,
+				"increment": taskContext.DailyQuotaIncrement,
+			}).Info("[Amazon] reuse reserved daily quota after publish success")
+		}
+		taskContext.ClearDailyQuotaReservation()
+		return
+	}
+
+	currentDate := timex.NowDate()
+	count := memoryManager.DailyCountManager.IncrementCount(
+		task.TenantID,
+		task.StoreID,
+		currentDate,
+		increment,
+	)
+
+	if logger != nil {
+		logger.WithFields(logrus.Fields{
+			"tenant_id": task.TenantID,
+			"store_id":  task.StoreID,
+			"date":      currentDate,
+			"increment": increment,
+			"count":     count,
+		}).Info("[Amazon] recorded daily listing count after publish success")
+	}
+}
+
+func calculateAmazonDailyListingIncrement(taskContext *amazonModel.TaskContext) int64 {
+	if taskContext == nil || taskContext.StoreInfo == nil {
+		return 1
+	}
+
+	limitType := taskContext.StoreInfo.DailyLimitType
+	if limitType == "" {
+		limitType = "SPU"
+	}
+
+	switch limitType {
+	case "SKU", "SKC":
+		if count, exists := taskContext.GetResult("variant_children_count"); exists {
+			switch value := count.(type) {
+			case int:
+				if value > 0 {
+					return int64(value)
+				}
+			case int64:
+				if value > 0 {
+					return value
+				}
+			case float64:
+				if value > 0 {
+					return int64(value)
+				}
+			}
+		}
+	}
+
+	return 1
 }
 
 func isAmazonRetryableTaskError(err error) bool {
