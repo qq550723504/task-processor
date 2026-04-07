@@ -192,7 +192,7 @@ func (qc *QueueConsumer) handleProcessError(delivery amqp.Delivery, msg *Message
 	if qc.shouldRetry(msg, err) {
 		qc.retryMessage(delivery, msg)
 	} else {
-		qc.sendToDeadLetter(delivery, msg)
+		qc.sendToDeadLetter(delivery, msg, err)
 	}
 }
 
@@ -246,9 +246,18 @@ func (qc *QueueConsumer) calculateRetryDelay(retryCount int) time.Duration {
 }
 
 // sendToDeadLetter 发送到死信队列
-func (qc *QueueConsumer) sendToDeadLetter(delivery amqp.Delivery, msg *Message) {
-	qc.logger.Warnf("消息已达到最大重试次数，发送到死信队列: ID=%s, RetryCount=%d/%d",
-		msg.ID, msg.RetryCount, msg.MaxRetries)
+func (qc *QueueConsumer) sendToDeadLetter(delivery amqp.Delivery, msg *Message, err error) {
+	switch {
+	case msg.RetryCount >= msg.MaxRetries:
+		qc.logger.Warnf("消息已达到最大重试次数，发送到死信队列: ID=%s, RetryCount=%d/%d",
+			msg.ID, msg.RetryCount, msg.MaxRetries)
+	case isNonRetryableError(err):
+		qc.logger.Warnf("消息不可重试，发送到死信队列: ID=%s, RetryCount=%d/%d, Error=%v",
+			msg.ID, msg.RetryCount, msg.MaxRetries, err)
+	default:
+		qc.logger.Warnf("消息不再重试，发送到死信队列: ID=%s, RetryCount=%d/%d, Error=%v",
+			msg.ID, msg.RetryCount, msg.MaxRetries, err)
+	}
 	if nackErr := delivery.Nack(false, false); nackErr != nil {
 		qc.logger.Errorf("发送消息到死信队列失败: %v", nackErr)
 	}
@@ -291,18 +300,20 @@ type retryableError interface {
 	IsRetryable() bool
 }
 
+func isNonRetryableError(err error) bool {
+	var retryable retryableError
+	if errors.As(err, &retryable) {
+		return !retryable.IsRetryable()
+	}
+	return false
+}
+
 // shouldRetry 判断是否应该重试
 func (qc *QueueConsumer) shouldRetry(msg *Message, err error) bool {
 	if msg.RetryCount >= msg.MaxRetries {
 		return false
 	}
-
-	var retryable retryableError
-	if errors.As(err, &retryable) {
-		return retryable.IsRetryable()
-	}
-
-	return true
+	return !isNonRetryableError(err)
 }
 
 // republishWithRetryCount 重新发布消息并更新重试计数
