@@ -251,3 +251,8 @@ func (sm *ServiceManager) SetStoreComponents(
 ) {
 	sm.rabbitmqService.SetComponents(nil, storeAPI, ownedStores, deduplicator)
 }
+
+// SetStoreAssignmentProvider injects a dynamic store-assignment resolver for dedicated queue nodes.
+func (sm *ServiceManager) SetStoreAssignmentProvider(provider StoreAssignmentProvider) {
+	sm.rabbitmqService.SetStoreAssignmentProvider(provider)
+}

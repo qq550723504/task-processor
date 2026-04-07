@@ -70,6 +70,19 @@ func (mc *MessageConsumer) RegisterHandler(queueName string, handler MessageHand
 	mc.stateManager[queueName] = NewConsumerStateManager()
 }
 
+// ReplaceHandlers atomically replaces the required handler set.
+func (mc *MessageConsumer) ReplaceHandlers(handlers map[string]MessageHandler) {
+	mc.mutex.Lock()
+	defer mc.mutex.Unlock()
+
+	mc.handlers = make(map[string]MessageHandler, len(handlers))
+	mc.stateManager = make(map[string]*ConsumerStateManager, len(handlers))
+	for queueName, handler := range handlers {
+		mc.handlers[queueName] = handler
+		mc.stateManager[queueName] = NewConsumerStateManager()
+	}
+}
+
 // Start 启动消费者
 func (mc *MessageConsumer) Start(ctx context.Context) error {
 	mc.mutex.Lock()

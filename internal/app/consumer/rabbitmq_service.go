@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 )
+
+const sheinBucketQueueCount = 8
 
 // RabbitMQService RabbitMQ服务管理器
 // 结构上分为三类职责：
@@ -33,15 +36,17 @@ type RabbitMQService struct {
 	logger            *logrus.Logger
 
 	// 新增组件
-	resultReporter *ResultReporter
-	storeAPI       api.StoreAPI
-	ownedStores    []int64
-	useStoreQueues bool
-	deduplicator   *apptask.DeduplicationManager
+	resultReporter          *ResultReporter
+	storeAPI                api.StoreAPI
+	ownedStores             []int64
+	useStoreQueues          bool
+	storeAssignmentProvider StoreAssignmentProvider
+	deduplicator            *apptask.DeduplicationManager
 
 	// 生命周期管理
 	ctx    context.Context
 	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
 	// 状态管理
 	started bool
@@ -101,7 +106,8 @@ func NewRabbitMQService(cfg *config.RabbitMQConfig, logger *logrus.Logger) *Rabb
 		initializer:       initializer,
 		processorRegistry: processorRegistry,
 		logger:            logger,
-		useStoreQueues:    cfg.Node.UsesStoreAffinity(),
+		ownedStores:       append([]int64(nil), cfg.Node.OwnedStores...),
+		useStoreQueues:    cfg.Node.UseStoreQueues,
 	}
 }
 
@@ -141,7 +147,7 @@ func (s *RabbitMQService) SetComponents(
 	if ownedStores != nil {
 		s.ownedStores = ownedStores
 	}
-	s.useStoreQueues = s.config.Node.UsesStoreAffinity()
+	s.useStoreQueues = s.config.Node.UseStoreQueues
 	if deduplicator != nil {
 		s.deduplicator = deduplicator
 	}
@@ -156,6 +162,13 @@ func (s *RabbitMQService) SetComponents(
 	)
 
 	s.logger.Info("设置服务组件完成")
+}
+
+// SetStoreAssignmentProvider enables dynamic owned-store refresh for dedicated queue nodes.
+func (s *RabbitMQService) SetStoreAssignmentProvider(provider StoreAssignmentProvider) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.storeAssignmentProvider = provider
 }
 
 // SetQueueConfigs 设置队列配置
@@ -274,6 +287,7 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	s.mutex.Lock()
 	s.started = true
 	s.mutex.Unlock()
+	s.startStoreAssignmentSync()
 	s.logger.Info("RabbitMQ服务启动完成")
 	return nil
 }
@@ -325,7 +339,12 @@ func waitForRetry(ctx context.Context, delay time.Duration) error {
 
 // registerMessageHandlers 注册消息处理器
 func (s *RabbitMQService) registerMessageHandlers() {
+	s.consumer.ReplaceHandlers(s.buildQueueHandlers())
+}
+
+func (s *RabbitMQService) buildQueueHandlers() map[string]rabbitmq.MessageHandler {
 	handlers := s.processorRegistry.GetAllHandlers()
+	queueHandlers := make(map[string]rabbitmq.MessageHandler)
 
 	for platform, handler := range handlers {
 		isCrawler := platform == "amazon.crawler" || platform == "1688.crawler"
@@ -340,12 +359,12 @@ func (s *RabbitMQService) registerMessageHandlers() {
 				for _, region := range regions {
 					basePlatform := strings.TrimSuffix(platform, ".crawler")
 					queueName := fmt.Sprintf("%s.crawler.%s", basePlatform, strings.ToLower(region))
-					s.consumer.RegisterHandler(queueName, handler)
+					queueHandlers[queueName] = handler
 				}
 				s.logger.Infof("注册爬虫处理器（按 region）: 平台=%s, regions=%v", platform, regions)
 			} else {
 				queueName := platform // e.g. "amazon.crawler"
-				s.consumer.RegisterHandler(queueName, handler)
+				queueHandlers[queueName] = handler
 				s.logger.Infof("注册爬虫处理器（全局队列）: 平台=%s", platform)
 			}
 			continue
@@ -359,19 +378,34 @@ func (s *RabbitMQService) registerMessageHandlers() {
 		if s.useStoreQueues && len(s.ownedStores) > 0 {
 			for _, storeID := range s.ownedStores {
 				queueName := fmt.Sprintf("%s.tasks.store.%d", platform, storeID)
-				s.consumer.RegisterHandler(queueName, handler)
+				queueHandlers[queueName] = handler
 			}
 			s.logger.Infof("注册处理器: 平台=%s, 店铺=%v", platform, s.ownedStores)
 		} else {
-			queueName := fmt.Sprintf("%s.tasks", platform)
-			s.consumer.RegisterHandler(queueName, handler)
-			s.logger.Infof("注册处理器（平台共享队列）: 平台=%s", platform)
+			s.registerSharedPlatformHandlers(queueHandlers, platform, handler)
 		}
 	}
 
 	if len(handlers) == 0 {
 		s.logger.Warn("没有注册任何消息处理器")
 	}
+	return queueHandlers
+}
+
+func (s *RabbitMQService) registerSharedPlatformHandlers(queueHandlers map[string]rabbitmq.MessageHandler, platform string, handler rabbitmq.MessageHandler) {
+	queueName := fmt.Sprintf("%s.tasks", platform)
+	queueHandlers[queueName] = handler
+
+	if strings.EqualFold(platform, "shein") {
+		for bucket := 0; bucket < sheinBucketQueueCount; bucket++ {
+			bucketQueueName := fmt.Sprintf("%s.tasks.bucket.%d", platform, bucket)
+			queueHandlers[bucketQueueName] = handler
+		}
+		s.logger.Infof("注册处理器（平台共享分桶队列）: 平台=%s, bucketCount=%d", platform, sheinBucketQueueCount)
+		return
+	}
+
+	s.logger.Infof("注册处理器（平台共享队列）: 平台=%s", platform)
 }
 
 func (s *RabbitMQService) filterQueueConfigsByRole(configs []config.QueueConfig) []config.QueueConfig {
@@ -408,6 +442,103 @@ func (s *RabbitMQService) getRegisteredPlatforms() []string {
 	return platforms
 }
 
+func (s *RabbitMQService) startStoreAssignmentSync() {
+	s.mutex.RLock()
+	provider := s.storeAssignmentProvider
+	useStoreQueues := s.useStoreQueues
+	ctx := s.ctx
+	nodeID := s.config.Node.NodeID
+	s.mutex.RUnlock()
+
+	if !useStoreQueues || provider == nil || strings.TrimSpace(nodeID) == "" || ctx == nil {
+		return
+	}
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+
+		s.syncStoreAssignments(ctx)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.syncStoreAssignments(ctx)
+			}
+		}
+	}()
+}
+
+func (s *RabbitMQService) syncStoreAssignments(ctx context.Context) {
+	s.mutex.RLock()
+	provider := s.storeAssignmentProvider
+	nodeID := s.config.Node.NodeID
+	currentStores := append([]int64(nil), s.ownedStores...)
+	started := s.started
+	s.mutex.RUnlock()
+
+	if provider == nil || strings.TrimSpace(nodeID) == "" {
+		return
+	}
+
+	ownedStores, err := provider.GetOwnedStores(ctx, nodeID)
+	if err != nil {
+		s.logger.WithError(err).WithField("node_id", nodeID).Warn("refresh dynamic store assignments failed")
+		return
+	}
+	if slices.Equal(currentStores, ownedStores) {
+		return
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"node_id":    nodeID,
+		"old_stores": currentStores,
+		"new_stores": ownedStores,
+	}).Info("dynamic store assignments changed, reloading consumers")
+
+	if err := s.reloadOwnedStores(ctx, ownedStores, started); err != nil {
+		s.logger.WithError(err).WithField("node_id", nodeID).Error("reload consumers for dynamic store assignments failed")
+	}
+}
+
+func (s *RabbitMQService) reloadOwnedStores(ctx context.Context, ownedStores []int64, started bool) error {
+	s.mutex.Lock()
+	s.ownedStores = append([]int64(nil), ownedStores...)
+	s.processorRegistry.UpdateComponents(
+		s.resultReporter,
+		s.storeAPI,
+		append([]int64(nil), s.ownedStores...),
+		&s.useStoreQueues,
+		s.deduplicator,
+	)
+	platforms := s.getRegisteredPlatforms()
+	s.mutex.Unlock()
+
+	if s.useStoreQueues && len(ownedStores) > 0 {
+		for _, platform := range platforms {
+			if err := s.initializer.InitializeStoreQueues(platform, ownedStores); err != nil {
+				return fmt.Errorf("初始化动态店铺队列失败: %w", err)
+			}
+		}
+	}
+	if s.storeAPI != nil && len(ownedStores) > 0 {
+		for _, storeID := range ownedStores {
+			if _, err := s.storeAPI.GetStore(storeID); err != nil {
+				s.logger.WithError(err).WithField("store_id", storeID).Warn("预加载动态店铺配置失败")
+			}
+		}
+	}
+
+	s.registerMessageHandlers()
+	if !started {
+		return nil
+	}
+	return s.consumer.Restart()
+}
+
 // Stop 停止RabbitMQ服务
 func (s *RabbitMQService) Stop(ctx context.Context) error {
 	s.mutex.Lock()
@@ -438,6 +569,12 @@ func (s *RabbitMQService) Stop(ctx context.Context) error {
 	// 4. 关闭连接
 	if err := s.connManager.Close(); err != nil {
 		s.logger.Errorf("关闭RabbitMQ连接失败: %v", err)
+	}
+
+	if s.storeAssignmentProvider != nil {
+		if err := s.storeAssignmentProvider.Close(); err != nil {
+			s.logger.Errorf("关闭动态店铺归属提供器失败: %v", err)
+		}
 	}
 
 	s.started = false
@@ -476,6 +613,8 @@ func (s *RabbitMQService) GetStats() map[string]any {
 	stats["connected"] = s.IsConnected()
 	stats["required_consumers_healthy"] = s.HasHealthyRequiredConsumers()
 	stats["unhealthy_required_queues"] = s.GetUnhealthyRequiredQueues()
+	stats["use_store_queues"] = s.useStoreQueues
+	stats["owned_stores"] = append([]int64(nil), s.ownedStores...)
 
 	// 处理器统计
 	stats["processors"] = s.processorRegistry.GetStats()

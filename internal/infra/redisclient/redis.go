@@ -64,6 +64,11 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	return c.rdb.Del(ctx, key).Err()
 }
 
+// SMembers returns all set members for the given key.
+func (c *Client) SMembers(ctx context.Context, key string) ([]string, error) {
+	return c.rdb.SMembers(ctx, key).Result()
+}
+
 // Close closes the underlying Redis client.
 func (c *Client) Close() error {
 	return c.rdb.Close()
