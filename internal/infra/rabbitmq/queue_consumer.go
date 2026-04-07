@@ -4,6 +4,7 @@ package rabbitmq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -188,7 +189,7 @@ func (qc *QueueConsumer) handleProcessError(delivery amqp.Delivery, msg *Message
 	msg.RetryCount++
 
 	// 检查是否需要重试
-	if qc.shouldRetry(msg) {
+	if qc.shouldRetry(msg, err) {
 		qc.retryMessage(delivery, msg)
 	} else {
 		qc.sendToDeadLetter(delivery, msg)
@@ -285,9 +286,23 @@ func isChannelClosedError(err error) bool {
 		strings.Contains(msg, "connection is not open")
 }
 
+type retryableError interface {
+	error
+	IsRetryable() bool
+}
+
 // shouldRetry 判断是否应该重试
-func (qc *QueueConsumer) shouldRetry(msg *Message) bool {
-	return msg.RetryCount < msg.MaxRetries
+func (qc *QueueConsumer) shouldRetry(msg *Message, err error) bool {
+	if msg.RetryCount >= msg.MaxRetries {
+		return false
+	}
+
+	var retryable retryableError
+	if errors.As(err, &retryable) {
+		return retryable.IsRetryable()
+	}
+
+	return true
 }
 
 // republishWithRetryCount 重新发布消息并更新重试计数
