@@ -1,6 +1,7 @@
 package publish
 
 import (
+	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/timex"
@@ -157,11 +158,30 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 	}
 
 	if hasDailyLimit && ctx != nil && ctx.DailyQuotaReserved {
-		h.logger.Infof("store %d reused reserved daily quota on %s (increment: %d, type: %s)",
-			input.StoreInfo.ID, ctx.DailyQuotaDate, ctx.DailyQuotaIncrement, input.StoreInfo.DailyLimitType)
+		h.logger.WithFields(logrus.Fields{
+			"task_id":          input.Task.ID,
+			"tenant_id":        input.Task.TenantID,
+			"store_id":         input.Task.StoreID,
+			"product_id":       input.Task.ProductID,
+			"quota_date":       ctx.DailyQuotaDate,
+			"quota_increment":  ctx.DailyQuotaIncrement,
+			"daily_count_key":  buildDailyListingCounterKey(input.Task.TenantID, input.Task.StoreID, ctx.DailyQuotaDate),
+			"daily_limit_type": input.StoreInfo.DailyLimitType,
+		}).Info("store reused reserved daily quota after publish success")
 		ctx.ClearDailyQuotaReservation()
 		return
 	}
+
+	h.logger.WithFields(logrus.Fields{
+		"task_id":          input.Task.ID,
+		"tenant_id":        input.Task.TenantID,
+		"store_id":         input.Task.StoreID,
+		"product_id":       input.Task.ProductID,
+		"date":             currentDate,
+		"increment":        increment,
+		"daily_count_key":  buildDailyListingCounterKey(input.Task.TenantID, input.Task.StoreID, currentDate),
+		"daily_limit_type": input.StoreInfo.DailyLimitType,
+	}).Info("record daily listing count after publish success")
 
 	count := input.MemoryManager.DailyCountManager.IncrementCount(
 		input.Task.TenantID,
@@ -186,6 +206,10 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 	}
 
 	h.logger.Infof("store %d remains under daily limit %d on %s", input.StoreInfo.ID, dailyLimit, currentDate)
+}
+
+func buildDailyListingCounterKey(tenantID, storeID int64, date string) string {
+	return fmt.Sprintf("%d:%d:%s", tenantID, storeID, date)
 }
 
 func (h *SavePublishResultHandler) calculateIncrement(input *PublishResultInput) int64 {

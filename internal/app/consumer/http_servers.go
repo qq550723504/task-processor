@@ -122,7 +122,9 @@ func runServer(srv *http.Server, name string, port int, logger *logrus.Logger) {
 // handleHealth 处理健康检查请求
 func (h *HTTPServerManager) handleHealth(w http.ResponseWriter, r *http.Request) {
 	health := h.loadMonitor.GetHealthStatus()
-	ready := h.rabbitmqService.IsConnected()
+	connected := h.rabbitmqService.IsConnected()
+	consumerReady := h.rabbitmqService.HasHealthyRequiredConsumers()
+	ready := connected && consumerReady
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -137,8 +139,11 @@ func (h *HTTPServerManager) handleHealth(w http.ResponseWriter, r *http.Request)
 	response := map[string]any{
 		"status":    status,
 		"ready":     ready,
+		"connected": connected,
+		"consumer_ready": consumerReady,
 		"timestamp": time.Now().Format(time.RFC3339),
 		"health":    health,
+		"unhealthy_required_queues": h.rabbitmqService.GetUnhealthyRequiredQueues(),
 		"node": map[string]any{
 			"node_id":      h.config.Node.NodeID,
 			"role":         h.config.Node.NormalizedRole(),
@@ -157,12 +162,17 @@ func (h *HTTPServerManager) handleHealth(w http.ResponseWriter, r *http.Request)
 
 // handleReady 处理就绪检查请求
 func (h *HTTPServerManager) handleReady(w http.ResponseWriter, r *http.Request) {
-	ready := h.rabbitmqService.IsConnected()
+	connected := h.rabbitmqService.IsConnected()
+	consumerReady := h.rabbitmqService.HasHealthyRequiredConsumers()
+	ready := connected && consumerReady
 
 	w.Header().Set("Content-Type", "application/json")
 
 	response := map[string]any{
 		"ready":     ready,
+		"connected": connected,
+		"consumer_ready": consumerReady,
+		"unhealthy_required_queues": h.rabbitmqService.GetUnhealthyRequiredQueues(),
 		"timestamp": time.Now().Format(time.RFC3339),
 		"node": map[string]any{
 			"node_id": h.config.Node.NodeID,

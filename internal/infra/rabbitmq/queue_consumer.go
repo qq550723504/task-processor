@@ -73,6 +73,9 @@ func (qc *QueueConsumer) consume() {
 
 	// 等待所有 worker 完成
 	qc.wg.Wait()
+	if qc.ctx.Err() == nil && qc.stateManager != nil {
+		qc.stateManager.SetError(fmt.Errorf("queue workers stopped unexpectedly"), qc.queueName)
+	}
 	qc.logger.Infof("队列 %s 所有 worker 已停止", qc.queueName)
 }
 

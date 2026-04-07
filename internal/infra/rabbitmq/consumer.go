@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,30 +77,7 @@ func (mc *MessageConsumer) Start(ctx context.Context) error {
 
 	mc.ctx, mc.cancel = context.WithCancel(ctx)
 
-	var failedQueues []string
-
-	// 启动所有队列的消费者，单个队列失败不中断其他队列
-	for queueName, handler := range mc.handlers {
-		// 设置状态为启动中
-		if sm, exists := mc.stateManager[queueName]; exists {
-			sm.SetState(ConsumerStateStarting, queueName)
-		}
-
-		if err := mc.startQueueConsumer(queueName, handler); err != nil {
-			mc.logger.Errorf("启动队列 %s 消费者失败: %v", queueName, err)
-			mc.errorCollector.Collect(ErrorTypeConsumer, queueName, "", err, "启动消费者失败")
-			if sm, exists := mc.stateManager[queueName]; exists {
-				sm.SetError(err, queueName)
-			}
-			failedQueues = append(failedQueues, queueName)
-			continue
-		}
-
-		// 设置状态为运行中
-		if sm, exists := mc.stateManager[queueName]; exists {
-			sm.SetState(ConsumerStateRunning, queueName)
-		}
-	}
+	failedQueues := mc.startConsumersLocked("启动")
 
 	successCount := len(mc.handlers) - len(failedQueues)
 	mc.logger.Infof("消息消费者启动完成: 成功=%d, 失败=%d", successCount, len(failedQueues))
@@ -146,16 +124,46 @@ func (mc *MessageConsumer) Restart() error {
 	mc.mutex.Lock()
 	defer mc.mutex.Unlock()
 
+	failedQueues := mc.startConsumersLocked("重启")
+
+	mc.logger.Info("消费者重启完成")
+	if len(failedQueues) > 0 {
+		return fmt.Errorf("重启后仍有队列未恢复: %s", strings.Join(failedQueues, ", "))
+	}
+	return nil
+}
+
+func (mc *MessageConsumer) startConsumersLocked(action string) []string {
+	return mc.startConsumersLockedWithStarter(action, mc.startQueueConsumer)
+}
+
+func (mc *MessageConsumer) startConsumersLockedWithStarter(
+	action string,
+	starter func(string, MessageHandler) error,
+) []string {
+	var failedQueues []string
+
 	for queueName, handler := range mc.handlers {
-		if err := mc.startQueueConsumer(queueName, handler); err != nil {
-			mc.logger.Errorf("重启队列 %s 消费者失败: %v", queueName, err)
-			// 不返回错误，继续尝试启动其他队列
+		if sm, exists := mc.stateManager[queueName]; exists {
+			sm.SetState(ConsumerStateStarting, queueName)
+		}
+
+		if err := starter(queueName, handler); err != nil {
+			mc.logger.Errorf("%s队列 %s 消费者失败: %v", action, queueName, err)
+			mc.errorCollector.Collect(ErrorTypeConsumer, queueName, "", err, fmt.Sprintf("%s消费者失败", action))
+			if sm, exists := mc.stateManager[queueName]; exists {
+				sm.SetError(err, queueName)
+			}
+			failedQueues = append(failedQueues, queueName)
 			continue
+		}
+
+		if sm, exists := mc.stateManager[queueName]; exists {
+			sm.SetState(ConsumerStateRunning, queueName)
 		}
 	}
 
-	mc.logger.Info("消费者重启完成")
-	return nil
+	return failedQueues
 }
 
 // startQueueConsumer 启动队列消费者
@@ -392,6 +400,48 @@ func (mc *MessageConsumer) GetQueueStats() map[string]any {
 	}
 
 	return stats
+}
+
+// HasHealthyRequiredConsumers 返回已注册队列是否都有健康消费者。
+func (mc *MessageConsumer) HasHealthyRequiredConsumers() bool {
+	mc.mutex.RLock()
+	defer mc.mutex.RUnlock()
+
+	if len(mc.handlers) == 0 {
+		return true
+	}
+
+	for queueName := range mc.handlers {
+		sm, exists := mc.stateManager[queueName]
+		if !exists || !sm.IsHealthy() {
+			return false
+		}
+	}
+
+	return true
+}
+
+// GetUnhealthyRequiredQueues 返回当前不健康或缺失的已注册队列。
+func (mc *MessageConsumer) GetUnhealthyRequiredQueues() []string {
+	mc.mutex.RLock()
+	defer mc.mutex.RUnlock()
+
+	var queues []string
+	for queueName := range mc.handlers {
+		sm, exists := mc.stateManager[queueName]
+		if !exists || !sm.IsHealthy() {
+			queues = append(queues, queueName)
+		}
+	}
+
+	return queues
+}
+
+// GetStateManager 返回指定队列的状态管理器，供测试和诊断使用。
+func (mc *MessageConsumer) GetStateManager(queueName string) *ConsumerStateManager {
+	mc.mutex.RLock()
+	defer mc.mutex.RUnlock()
+	return mc.stateManager[queueName]
 }
 
 // GetErrorCollector 获取错误收集器

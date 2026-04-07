@@ -6,6 +6,8 @@ import (
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
+
+	"github.com/sirupsen/logrus"
 )
 
 type TaskStatusUpdater struct {
@@ -58,6 +60,21 @@ func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, task *model.
 	if err := model.ValidateTaskStatusTransition(model.TaskStatusProcessing, status); err != nil {
 		return err
 	}
+
+	logFields := logrus.Fields{
+		"task_id":     id,
+		"target":      status.String(),
+		"sync":        sync,
+		"error_empty": errorMsg == "",
+	}
+	if task != nil {
+		logFields["tenant_id"] = task.TenantID
+		logFields["store_id"] = task.StoreID
+		logFields["product_id"] = task.ProductID
+		logFields["priority"] = task.Priority
+		logFields["retry_count"] = task.RetryCount
+	}
+	logger.GetGlobalLogger("shein/pipeline").WithFields(logFields).Info("submit task status update")
 
 	input := taskstatus.UpdateInput{
 		TaskID:       id,

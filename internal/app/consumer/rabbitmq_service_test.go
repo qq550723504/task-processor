@@ -1,6 +1,8 @@
 package consumer
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +13,12 @@ import (
 
 	"github.com/sirupsen/logrus"
 )
+
+type noopRabbitHandler struct{}
+
+func (noopRabbitHandler) HandleMessage(_ context.Context, _ *rabbitmq.Message) error {
+	return nil
+}
 
 func TestRabbitMQServiceFilterQueueConfigsByRole(t *testing.T) {
 	tests := []struct {
@@ -110,6 +118,34 @@ func TestHTTPServerReadinessWhenRabbitMQDisconnected(t *testing.T) {
 
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected /ready to return 503 when RabbitMQ is disconnected, got %d", recorder.Code)
+	}
+}
+
+func TestRabbitMQServiceReportsUnhealthyRequiredConsumers(t *testing.T) {
+	logger := logrus.New()
+	cfg := &config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:            config.NodeRoleTask,
+			HealthCheckPort: 8081,
+			MetricsPort:     8082,
+		},
+	}
+	svc := NewRabbitMQService(cfg, logger)
+
+	svc.GetConsumer().RegisterHandler("shein.tasks", noopRabbitHandler{})
+	svc.GetConsumer().RegisterHandler("amazon.tasks", noopRabbitHandler{})
+
+	if svc.HasHealthyRequiredConsumers() {
+		t.Fatal("expected registered queues without running consumers to be unhealthy")
+	}
+
+	svc.GetConsumer().GetStateManager("shein.tasks").SetState(rabbitmq.ConsumerStateRunning, "shein.tasks")
+	svc.GetConsumer().GetStateManager("amazon.tasks").SetError(errors.New("worker stopped"), "amazon.tasks")
+
+	unhealthy := svc.GetUnhealthyRequiredQueues()
+	if len(unhealthy) != 1 || unhealthy[0] != "amazon.tasks" {
+		t.Fatalf("unexpected unhealthy queues: %#v", unhealthy)
 	}
 }
 

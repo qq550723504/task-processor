@@ -221,7 +221,7 @@ func (h *TaskHandler) handleError(taskCtx *sheincontext.TaskContext, err error) 
 
 func (h *TaskHandler) handleSuccess(task model.Task) {
 	statusUpdater := NewTaskStatusUpdater(h.processor)
-	statusUpdater.UpdateTaskStatusAsync(fmt.Sprintf("%d", task.ID), model.TaskStatusPublished, "")
+	statusUpdater.UpdateTaskStatusAsyncWithTask(&task, model.TaskStatusPublished, "")
 	metrics.GlobalTaskMetrics().IncrementCompleted()
 
 	logger.GetGlobalLogger("shein/pipeline").Infof(

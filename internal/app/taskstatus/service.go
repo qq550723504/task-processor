@@ -166,12 +166,21 @@ func (s *Service) updateSync(input UpdateInput) error {
 	for i := 0; i < s.maxRetries; i++ {
 		if err := client.UpdateTaskStatus(req); err != nil {
 			lastErr = err
+			if isNonRetriableUpdateErr(err) {
+				s.log.WithError(err).WithFields(logrus.Fields{
+					logger.FieldTaskID: input.TaskID,
+					logger.FieldStatus: input.Status.String(),
+					"expected_status":  formatExpectedStatus(input.ExpectedCurrentStatus),
+				}).Warn("task status update rejected without retry")
+				break
+			}
 			if i < s.maxRetries-1 {
 				retryDelay := time.Second * time.Duration(i+1)
 				s.log.WithError(err).WithFields(logrus.Fields{
 					logger.FieldTaskID:     input.TaskID,
 					logger.FieldRetryCount: i + 1,
 					logger.FieldStatus:     input.Status.String(),
+					"expected_status":      formatExpectedStatus(input.ExpectedCurrentStatus),
 					"retry_delay":          retryDelay.String(),
 				}).Warn("retrying task status update")
 				time.Sleep(retryDelay)
@@ -183,11 +192,28 @@ func (s *Service) updateSync(input UpdateInput) error {
 		s.log.WithFields(logrus.Fields{
 			logger.FieldTaskID: input.TaskID,
 			logger.FieldStatus: input.Status.String(),
+			"expected_status":  formatExpectedStatus(input.ExpectedCurrentStatus),
 		}).Info("task status updated")
 		return nil
 	}
 
 	return fmt.Errorf("update task status failed: %w", lastErr)
+}
+
+func isNonRetriableUpdateErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "管理端拒绝更新任务状态") ||
+		strings.Contains(message, "expectedCurrentStatus")
+}
+
+func formatExpectedStatus(status *model.TaskStatus) any {
+	if status == nil {
+		return nil
+	}
+	return status.String()
 }
 
 func firstNonEmpty(values ...string) string {

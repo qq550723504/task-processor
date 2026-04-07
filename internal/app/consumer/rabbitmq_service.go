@@ -450,6 +450,22 @@ func (s *RabbitMQService) IsConnected() bool {
 	return s.connManager.IsConnected()
 }
 
+// HasHealthyRequiredConsumers 检查当前节点所需消费者是否都健康。
+func (s *RabbitMQService) HasHealthyRequiredConsumers() bool {
+	if s.consumer == nil {
+		return true
+	}
+	return s.consumer.HasHealthyRequiredConsumers()
+}
+
+// GetUnhealthyRequiredQueues 返回不健康的必需队列。
+func (s *RabbitMQService) GetUnhealthyRequiredQueues() []string {
+	if s.consumer == nil {
+		return nil
+	}
+	return s.consumer.GetUnhealthyRequiredQueues()
+}
+
 // GetStats 获取服务统计信息
 func (s *RabbitMQService) GetStats() map[string]any {
 	s.mutex.RLock()
@@ -458,6 +474,8 @@ func (s *RabbitMQService) GetStats() map[string]any {
 	stats := make(map[string]any)
 	stats["started"] = s.started
 	stats["connected"] = s.IsConnected()
+	stats["required_consumers_healthy"] = s.HasHealthyRequiredConsumers()
+	stats["unhealthy_required_queues"] = s.GetUnhealthyRequiredQueues()
 
 	// 处理器统计
 	stats["processors"] = s.processorRegistry.GetStats()
