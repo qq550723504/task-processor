@@ -75,7 +75,7 @@ data:
       enabled: false
       remoteAPI:
         enabled: true
-        baseURL: "http://amazon-crawler-external-lb.task-processor.svc.cluster.local:8080"
+        baseURL: "http://amazon-crawler-api.task-processor.svc.cluster.local:8080"
         timeout: 300
 
     redis:
