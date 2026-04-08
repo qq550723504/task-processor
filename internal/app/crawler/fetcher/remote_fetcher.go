@@ -100,6 +100,10 @@ func NewRemoteAPIProductFetcher(
 		amazonConfig:   amazonConfig,
 		client: &http.Client{
 			Timeout: time.Duration(amazonConfig.RemoteAPI.Timeout) * time.Second,
+			Transport: &http.Transport{
+				Proxy:             http.ProxyFromEnvironment,
+				DisableKeepAlives: true,
+			},
 		},
 		baseURL: strings.TrimRight(amazonConfig.RemoteAPI.BaseURL, "/"),
 		logger:  logger,
@@ -107,7 +111,7 @@ func NewRemoteAPIProductFetcher(
 }
 
 func (f *RemoteAPIProductFetcher) FetchProduct(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
-	if f.canUseCache() {
+	if f.canUseCache(req) {
 		if product, err := f.cacheManager.GetFromCache(req); err == nil && product != nil {
 			f.logger.Debugf("got product from cache: %s", req.ProductID)
 			return product, nil
@@ -130,7 +134,7 @@ func (f *RemoteAPIProductFetcher) FetchProduct(ctx context.Context, req *domainP
 		return nil, err
 	}
 
-	if f.canUseCache() {
+	if f.canUseCache(req) {
 		if err := f.cacheManager.SaveToCache(req, product); err != nil {
 			f.logger.WithError(err).Warn("save product cache failed")
 		}
@@ -138,8 +142,11 @@ func (f *RemoteAPIProductFetcher) FetchProduct(ctx context.Context, req *domainP
 	return product, nil
 }
 
-func (f *RemoteAPIProductFetcher) canUseCache() bool {
-	return f.cacheEnabled && f.cacheManager != nil
+func (f *RemoteAPIProductFetcher) canUseCache(req *domainProduct.FetchRequest) bool {
+	if !f.cacheEnabled || f.cacheManager == nil {
+		return false
+	}
+	return req == nil || strings.TrimSpace(req.Zipcode) == ""
 }
 
 func (f *RemoteAPIProductFetcher) buildRequest(ctx context.Context, req *domainProduct.FetchRequest) (*http.Request, error) {
@@ -148,8 +155,8 @@ func (f *RemoteAPIProductFetcher) buildRequest(ctx context.Context, req *domainP
 		ASIN:   req.ProductID,
 		Region: region,
 	}
-	if region != "" {
-		payload.Zipcode = f.domainResolver.GetZipcodeByRegion(region)
+	if zipcode := f.resolveZipcode(req); zipcode != "" {
+		payload.Zipcode = zipcode
 	}
 
 	body, err := json.Marshal(payload)
@@ -191,6 +198,11 @@ func (f *RemoteAPIProductFetcher) handleFetchResponse(ctx context.Context, resp 
 		f.logger.WithFields(logrus.Fields{
 			"status_code": resp.StatusCode,
 			"code":        errorPayload.Code,
+			"tenant_id":   req.TenantID,
+			"store_id":    req.StoreID,
+			"platform":    req.Platform,
+			"region":      req.Region,
+			"product_id":  req.ProductID,
 		}).Warn("crawler api is busy, falling back to async crawl polling")
 		return f.fetchProductAsync(ctx, req)
 	}
@@ -230,8 +242,8 @@ func (f *RemoteAPIProductFetcher) submitAsyncCrawl(ctx context.Context, req *dom
 		ASIN:   req.ProductID,
 		Region: region,
 	}
-	if region != "" {
-		payload.Zipcode = f.domainResolver.GetZipcodeByRegion(region)
+	if zipcode := f.resolveZipcode(req); zipcode != "" {
+		payload.Zipcode = zipcode
 	}
 
 	body, err := json.Marshal(payload)
@@ -261,7 +273,34 @@ func (f *RemoteAPIProductFetcher) submitAsyncCrawl(ctx context.Context, req *dom
 		}
 		return "", fmt.Errorf("submit async crawl failed with status %d", resp.StatusCode)
 	}
+
+	f.logger.WithFields(logrus.Fields{
+		"crawler_task_id": payloadResp.Data.TaskID,
+		"tenant_id":       req.TenantID,
+		"store_id":        req.StoreID,
+		"platform":        req.Platform,
+		"region":          req.Region,
+		"product_id":      req.ProductID,
+		"creator":         req.Creator,
+	}).Info("submitted async crawl task")
 	return payloadResp.Data.TaskID, nil
+}
+
+func (f *RemoteAPIProductFetcher) resolveZipcode(req *domainProduct.FetchRequest) string {
+	if req == nil {
+		return ""
+	}
+
+	if zipcode := strings.TrimSpace(req.Zipcode); zipcode != "" {
+		return zipcode
+	}
+
+	region := strings.ToLower(strings.TrimSpace(req.Region))
+	if region == "" || !f.domainResolver.ShouldUseDefaultZipcode(region) {
+		return ""
+	}
+
+	return f.domainResolver.GetZipcodeByRegion(region)
 }
 
 func (f *RemoteAPIProductFetcher) pollAsyncResult(ctx context.Context, taskID string) (*model.Product, error) {
@@ -304,9 +343,18 @@ func (f *RemoteAPIProductFetcher) fetchAsyncTask(ctx context.Context, taskID str
 		return nil, false, fmt.Errorf("decode async task response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK || !taskResp.Success {
+		logFields := logrus.Fields{
+			"crawler_task_id": taskID,
+			"task_url":        taskURL,
+			"status_code":     resp.StatusCode,
+			"response_code":   taskResp.Code,
+		}
 		if taskResp.Error != "" {
+			logFields["error"] = taskResp.Error
+			f.logger.WithFields(logFields).Warn("async crawl task query failed")
 			return nil, false, fmt.Errorf("async task query failed: %s", taskResp.Error)
 		}
+		f.logger.WithFields(logFields).Warn("async crawl task query failed without error payload")
 		return nil, false, fmt.Errorf("async task query failed with status %d", resp.StatusCode)
 	}
 
@@ -314,11 +362,20 @@ func (f *RemoteAPIProductFetcher) fetchAsyncTask(ctx context.Context, taskID str
 	case "pending", "processing":
 		return nil, false, nil
 	case "failed":
+		f.logger.WithFields(logrus.Fields{
+			"crawler_task_id": taskID,
+			"task_status":     taskResp.Data.Status,
+			"error":           taskResp.Data.Error,
+		}).Warn("async crawl task finished with failure")
 		if taskResp.Data.Error != "" {
 			return nil, true, fmt.Errorf("async crawl failed: %s", taskResp.Data.Error)
 		}
 		return nil, true, fmt.Errorf("async crawl failed")
 	case "success":
+		f.logger.WithFields(logrus.Fields{
+			"crawler_task_id": taskID,
+			"task_status":     taskResp.Data.Status,
+		}).Info("async crawl task finished successfully")
 		product, err := decodeProductMap(taskResp.Data.ProductData)
 		if err != nil {
 			return nil, true, err
@@ -349,14 +406,14 @@ func decodeProductMap(data map[string]any) (*model.Product, error) {
 }
 
 func (f *RemoteAPIProductFetcher) CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error {
-	if !f.canUseCache() {
+	if !f.canUseCache(req) {
 		return nil
 	}
 	return f.cacheManager.CacheProduct(req, product)
 }
 
 func (f *RemoteAPIProductFetcher) CacheVariants(req *domainProduct.FetchRequest, variants []*model.Product) error {
-	if !f.canUseCache() {
+	if !f.canUseCache(req) {
 		return nil
 	}
 	return f.cacheManager.CacheVariants(req, variants)

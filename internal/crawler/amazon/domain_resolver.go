@@ -91,6 +91,12 @@ func (r *DomainResolver) GetZipcodeByRegion(region string) string {
 	return "94107" // 默认使用美国邮编
 }
 
+// ShouldUseDefaultZipcode 判断该地区是否应自动补默认邮编。
+// 美国站默认不主动补邮编，只有显式指定时才设置。
+func (r *DomainResolver) ShouldUseDefaultZipcode(region string) bool {
+	return shouldUseDefaultZipcode(region)
+}
+
 // BuildAmazonProductURL 构建Amazon产品URL
 func (r *DomainResolver) BuildAmazonProductURL(region, asin string) string {
 	domain := r.GetAmazonDomainByRegion(region)
@@ -140,4 +146,9 @@ func (r *DomainResolver) ExtractRegionFromURL(url string) string {
 	}
 
 	return ""
+}
+
+func shouldUseDefaultZipcode(region string) bool {
+	region = strings.ToLower(strings.TrimSpace(region))
+	return region != "" && region != "us"
 }

@@ -74,6 +74,9 @@ func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
 		UpdateResult: svc.UpdateResult,
 	})
 	svc.SetWorkerPool(pool)
+	if err := svc.ConfigureRedisResultStore(cfg.Redis, logger, "crawler:amazon:task-result", 6*time.Hour); err != nil {
+		logger.Warnf("初始化 crawler 异步任务共享结果存储失败，将退化为 Pod 本地内存: %v", err)
+	}
 
 	return svc
 }
@@ -92,6 +95,9 @@ func (s *Service) Stop(ctx context.Context) error {
 		if err := closer.Close(); err != nil {
 			s.logger.Warnf("关闭产品去重 Redis 客户端失败: %v", err)
 		}
+	}
+	if err := s.BaseService.Close(); err != nil {
+		s.logger.Warnf("关闭 crawler 结果 Redis 客户端失败: %v", err)
 	}
 	s.logger.Info("爬虫应用服务已停止")
 	return nil
@@ -183,7 +189,9 @@ func (s *Service) SubmitTask(crawlerTask *shared.CrawlerTask) error {
 		return err
 	}
 
-	s.StoreResult(crawlerTask.TaskID, shared.NewCrawlerResult(crawlerTask.TaskID))
+	if err := s.StoreResult(crawlerTask.TaskID, shared.NewCrawlerResult(crawlerTask.TaskID)); err != nil {
+		return fmt.Errorf("persist crawler task result: %w", err)
+	}
 
 	taskData, err := json.Marshal(crawlerTask)
 	if err != nil {
@@ -206,15 +214,18 @@ func (s *Service) getZipcodeForTask(crawlerTask *shared.CrawlerTask) string {
 	if crawlerTask.Zipcode != "" {
 		return crawlerTask.Zipcode
 	}
-	if crawlerTask.Region != "" {
-		return s.getZipcodeForRegion(crawlerTask.Region)
+
+	region := strings.ToLower(strings.TrimSpace(crawlerTask.Region))
+	if region == "" && crawlerTask.URL != "" {
+		region = s.domainResolver.ExtractRegionFromURL(crawlerTask.URL)
 	}
-	if crawlerTask.URL != "" {
-		if region := s.domainResolver.ExtractRegionFromURL(crawlerTask.URL); region != "" {
-			return s.getZipcodeForRegion(region)
-		}
+	if region == "" {
+		return ""
 	}
-	return s.getZipcodeForRegion("us")
+	if !s.domainResolver.ShouldUseDefaultZipcode(region) {
+		return ""
+	}
+	return s.getZipcodeForRegion(region)
 }
 
 // getZipcodeForRegion 获取地区对应的邮编
@@ -283,7 +294,7 @@ func (s *Service) fetchProductWithDedupe(ctx context.Context, metricsRegion, url
 		return nil, err
 	}
 
-	lockKey, resultKey := s.buildProductDedupeKeys(url, asin, region)
+	lockKey, resultKey := s.buildProductDedupeKeys(url, asin, region, zipcode)
 	waitUntil := time.Now().Add(s.productFetchWaitTimeout())
 	waitTicker := time.NewTicker(s.productFetchPollInterval())
 	defer waitTicker.Stop()
@@ -394,7 +405,7 @@ func (s *Service) resolveMetricsRegion(region, url string) string {
 	return "unknown"
 }
 
-func (s *Service) buildProductDedupeKeys(url, asin, region string) (string, string) {
+func (s *Service) buildProductDedupeKeys(url, asin, region, zipcode string) (string, string) {
 	identity := strings.TrimSpace(strings.ToLower(asin))
 	if identity == "" {
 		h := fnv.New64a()
@@ -407,6 +418,9 @@ func (s *Service) buildProductDedupeKeys(url, asin, region string) (string, stri
 	}
 
 	base := fmt.Sprintf("crawler:amazon:product:%s:%s", region, identity)
+	if normalizedZipcode := strings.TrimSpace(strings.ToLower(zipcode)); normalizedZipcode != "" {
+		base += ":zipcode:" + normalizedZipcode
+	}
 	return base + ":lock", base + ":result"
 }
 

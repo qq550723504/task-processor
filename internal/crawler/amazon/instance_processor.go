@@ -184,10 +184,20 @@ func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *
 	}
 
 	// 设置邮编
-	if zipcode != "" {
+	zipcodeToSet := strings.TrimSpace(zipcode)
+	if zipcodeToSet == "" {
+		if fallbackZipcode := ip.resolveDefaultZipcodeForTargetContext(page, urlWithParams); fallbackZipcode != "" {
+			zipcodeToSet = fallbackZipcode
+			logger.GetGlobalLogger("crawler/amazon").Infof("当前不在目标配送上下文，回退使用默认邮编切换目标站点上下文: %s", zipcodeToSet)
+		} else {
+			logger.GetGlobalLogger("crawler/amazon").Info("当前配送上下文已满足目标站点要求，跳过默认邮编设置")
+		}
+	}
+
+	if zipcodeToSet != "" {
 		zipcodeSetter := browser.NewZipcodeSetter(instance.Manager)
 		zipcodeSetter.SetTargetURL(urlWithParams)
-		if err := zipcodeSetter.SetAndVerifyZipcode(page, zipcode); err != nil {
+		if err := zipcodeSetter.SetAndVerifyZipcode(page, zipcodeToSet); err != nil {
 			logger.GetGlobalLogger("crawler/amazon").Errorf("设置邮编失败: %v", err)
 			// 严重错误（WebSocket 断连、需要登录等）交由上层重建实例
 			return nil, fmt.Errorf("邮编设置失败，终止数据抓取: %w", err)
@@ -206,6 +216,31 @@ func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *
 
 	logger.GetGlobalLogger("crawler/amazon").Infof("成功处理产品: (ASIN: %s)", product.Asin)
 	return product, nil
+}
+
+func (ip *InstanceProcessor) resolveDefaultZipcodeForTargetContext(page playwright.Page, targetURL string) string {
+	if page == nil || strings.TrimSpace(targetURL) == "" {
+		return ""
+	}
+
+	resolver := NewDomainResolver()
+	region := strings.ToLower(strings.TrimSpace(resolver.ExtractRegionFromURL(targetURL)))
+	if region != "us" {
+		return ""
+	}
+
+	validator := browser.NewZipcodeValidator()
+	validator.SetTargetURL(targetURL)
+	inTargetContext, err := validator.MatchesTargetContext(page)
+	if err != nil {
+		logger.GetGlobalLogger("crawler/amazon").Warnf("判断目标配送上下文失败，继续使用默认美国邮编兜底: %v", err)
+		return resolver.GetZipcodeByRegion(region)
+	}
+	if inTargetContext {
+		return ""
+	}
+
+	return resolver.GetZipcodeByRegion(region)
 }
 
 func (ip *InstanceProcessor) extractWithQualityRetry(ctx context.Context, page playwright.Page, url, zipcode string, waitTimeout time.Duration) (*model.Product, error) {

@@ -269,3 +269,40 @@ func TestServiceStatsIncludeConcurrencySnapshot(t *testing.T) {
 		t.Fatalf("expected region concurrency stats in snapshot, got %#v", stats)
 	}
 }
+
+func TestServiceResolveFetchInputsDoesNotAutoFillUSZipcode(t *testing.T) {
+	service := &Service{
+		config:         &config.Config{},
+		logger:         logrus.New(),
+		domainResolver: NewDomainResolver(),
+		processProduct: func(ctx context.Context, url, zipcode string) (*model.Product, error) { return nil, nil },
+	}
+
+	url, zipcode, err := service.resolveFetchInputs("", "B001234567", "us", "")
+	if err != nil {
+		t.Fatalf("resolve fetch inputs failed: %v", err)
+	}
+	if url == "" {
+		t.Fatalf("expected resolved url")
+	}
+	if zipcode != "" {
+		t.Fatalf("expected empty zipcode for us by default, got %q", zipcode)
+	}
+}
+
+func TestServiceResolveFetchInputsKeepsExplicitZipcode(t *testing.T) {
+	service := &Service{
+		config:         &config.Config{},
+		logger:         logrus.New(),
+		domainResolver: NewDomainResolver(),
+		processProduct: func(ctx context.Context, url, zipcode string) (*model.Product, error) { return nil, nil },
+	}
+
+	_, zipcode, err := service.resolveFetchInputs("", "B001234567", "us", "10001")
+	if err != nil {
+		t.Fatalf("resolve fetch inputs failed: %v", err)
+	}
+	if zipcode != "10001" {
+		t.Fatalf("expected explicit zipcode to be preserved, got %q", zipcode)
+	}
+}

@@ -48,6 +48,7 @@ type FetchRequest struct {
 	Platform   string `json:"platform" validate:"required,min=1"`
 	Region     string `json:"region" validate:"required,min=1"`
 	ProductID  string `json:"product_id" validate:"required,min=1"`
+	Zipcode    string `json:"zipcode,omitempty"`
 	StoreID    int64  `json:"store_id" validate:"min=0"`
 	CategoryID int64  `json:"category_id" validate:"min=0"`
 	Creator    string `json:"creator" validate:"required,min=1"`

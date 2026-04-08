@@ -52,6 +52,7 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 	}
 
 	contextChanged := false
+	lastObservedMismatch := ""
 
 	for attempt := 1; attempt <= zs.maxRetries; attempt++ {
 		logger.GetGlobalLogger("crawler/amazon").Infof("尝试设置邮编 (第 %d/%d 次): %s", attempt, zs.maxRetries, zipcode)
@@ -104,6 +105,13 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 
 		// 验证邮编
 		if isValid, err := zs.isZipcodeValid(page, zipcode); err != nil || !isValid {
+			if mismatchValue := zs.detectStableMismatch(page, zipcode); mismatchValue != "" {
+				if lastObservedMismatch != "" && lastObservedMismatch == mismatchValue {
+					return fmt.Errorf("邮编更新未生效，当前仍为: %s", mismatchValue)
+				}
+				lastObservedMismatch = mismatchValue
+			}
+
 			// 检查是否是页面关闭导致的错误
 			if page.IsClosed() {
 				return fmt.Errorf("页面已关闭: %w", err)
@@ -159,6 +167,25 @@ func (zs *ZipcodeSetter) shouldFailFast(err error) bool {
 	}
 
 	return false
+}
+
+func (zs *ZipcodeSetter) detectStableMismatch(page playwright.Page, expectedZipcode string) string {
+	if zs == nil || zs.getter == nil || page == nil || page.IsClosed() {
+		return ""
+	}
+
+	currentZipcode, err := zs.getter.GetCurrentZipcode(page)
+	if err != nil {
+		return ""
+	}
+
+	cleanCurrent := cleanZipcodeText(currentZipcode)
+	cleanExpected := cleanZipcodeText(expectedZipcode)
+	if cleanCurrent == "" || cleanExpected == "" || cleanCurrent == cleanExpected {
+		return ""
+	}
+
+	return cleanCurrent
 }
 
 // isZipcodeValid 验证当前邮编是否匹配目标邮编（统一的验证入口）

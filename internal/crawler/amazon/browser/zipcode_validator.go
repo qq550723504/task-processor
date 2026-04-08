@@ -17,6 +17,14 @@ type ZipcodeValidator struct {
 	targetURL string
 }
 
+type targetContextState struct {
+	CurrentText      string
+	ExtractedZipcode string
+	InferredCountry  string
+	TargetCountry    string
+	Matched          bool
+}
+
 // NewZipcodeValidator 创建邮编验证器实例
 func NewZipcodeValidator() *ZipcodeValidator {
 	return &ZipcodeValidator{
@@ -29,6 +37,56 @@ func (zv *ZipcodeValidator) SetTargetURL(targetURL string) {
 		return
 	}
 	zv.targetURL = targetURL
+}
+
+// MatchesTargetContext 判断当前页面配送上下文是否已经落在目标国家。
+// 对美国站这类场景，如果当前文本里已经是合法美国 ZIP，也认为无需再设置默认邮编。
+func (zv *ZipcodeValidator) MatchesTargetContext(page playwright.Page) (bool, error) {
+	state, err := zv.inspectTargetContext(page)
+	if err != nil {
+		return false, err
+	}
+
+	logger.GetGlobalLogger("crawler/amazon").Infof(
+		"配送上下文判断: current_text=%q extracted_zipcode=%q inferred_country=%q target_country=%q matched=%t",
+		state.CurrentText,
+		state.ExtractedZipcode,
+		state.InferredCountry,
+		state.TargetCountry,
+		state.Matched,
+	)
+
+	return state.Matched, nil
+}
+
+func (zv *ZipcodeValidator) inspectTargetContext(page playwright.Page) (*targetContextState, error) {
+	if zv == nil || zv.getter == nil {
+		return nil, fmt.Errorf("zipcode validator is not initialized")
+	}
+
+	currentText, err := zv.getter.GetCurrentZipcode(page)
+	if err != nil {
+		return nil, fmt.Errorf("获取当前邮编失败: %w", err)
+	}
+
+	targetCountry := inferCountryFromTargetURLForValidation(zv.targetURL)
+	if targetCountry == "" {
+		return &targetContextState{CurrentText: currentText}, nil
+	}
+
+	extractedZipcode := ExtractZipcode(currentText)
+	inferenceSource := strings.TrimSpace(currentText)
+	if extractedZipcode != "" {
+		inferenceSource = extractedZipcode
+	}
+
+	return &targetContextState{
+		CurrentText:      currentText,
+		ExtractedZipcode: extractedZipcode,
+		InferredCountry:  inferCountryFromZipcodeForValidation(inferenceSource),
+		TargetCountry:    targetCountry,
+		Matched:          textMatchesTargetContext(currentText, targetCountry),
+	}, nil
 }
 
 // VerifyZipcode 验证邮编是否设置成功
@@ -170,6 +228,25 @@ func locationMatchesTargetCountry(currentText, targetCountry string) bool {
 	}
 
 	return false
+}
+
+func textMatchesTargetContext(currentText, targetCountry string) bool {
+	raw := strings.TrimSpace(currentText)
+	if raw == "" {
+		return false
+	}
+
+	candidate := raw
+	if extractedZipcode := ExtractZipcode(raw); extractedZipcode != "" {
+		candidate = extractedZipcode
+	}
+
+	if inferredCountry := inferCountryFromZipcodeForValidation(candidate); inferredCountry != "" &&
+		strings.EqualFold(inferredCountry, targetCountry) {
+		return true
+	}
+
+	return locationMatchesTargetCountry(raw, targetCountry)
 }
 
 func normalizeLocationText(text string) string {

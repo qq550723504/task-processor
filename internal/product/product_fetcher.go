@@ -3,6 +3,7 @@ package product
 
 import (
 	"context"
+	"strings"
 
 	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
@@ -49,7 +50,7 @@ func NewProductFetcherWithLogger(
 
 // FetchProduct 获取产品
 func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*model.Product, error) {
-	if f.cacheManager != nil {
+	if f.cacheManager != nil && f.shouldUseCache(req) {
 		if product, err := f.cacheManager.GetFromCache(req); err == nil {
 			f.logger.Debugf("got product from cache: %s", req.ProductID)
 			return product, nil
@@ -60,7 +61,10 @@ func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*
 		f.logger.Debugf("fetching product via crawler: %s", req.ProductID)
 		resolver := NewDomainResolver()
 		productURL := resolver.BuildAmazonProductURL(req.Region, req.ProductID)
-		zipcode := resolver.GetZipcodeByRegion(req.Region)
+		zipcode := strings.TrimSpace(req.Zipcode)
+		if zipcode == "" && resolver.ShouldUseDefaultZipcode(req.Region) {
+			zipcode = resolver.GetZipcodeByRegion(req.Region)
+		}
 		return f.crawlSource.ProcessWithContext(ctx, productURL, zipcode)
 	}
 
@@ -84,6 +88,10 @@ func (f *ProductFetcher) FetchProductWithRetry(productID, region string, storeID
 
 // CacheProduct 缓存产品数据到服务端
 func (f *ProductFetcher) CacheProduct(req *FetchRequest, product *model.Product) error {
+	if !f.shouldUseCache(req) {
+		f.logger.Debug("skip cache because request uses explicit zipcode")
+		return nil
+	}
 	if product == nil {
 		f.logger.Warn("product is nil, skipping cache")
 		return nil
@@ -139,4 +147,8 @@ func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, v
 // GetStats 获取统计信息
 func (f *ProductFetcher) GetStats() map[string]any {
 	return map[string]any{"type": "local"}
+}
+
+func (f *ProductFetcher) shouldUseCache(req *FetchRequest) bool {
+	return req == nil || strings.TrimSpace(req.Zipcode) == ""
 }

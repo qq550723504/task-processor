@@ -126,7 +126,10 @@ func (r *CrawlerRepository) buildCrawlURL(req *product.FetchRequest) (string, st
 	if domain == "" {
 		return "", "", fmt.Errorf("不支持的地区: %s", req.Region)
 	}
-	zipcode := r.getZipcodeForRegion(req.Region)
+	zipcode := strings.TrimSpace(req.Zipcode)
+	if zipcode == "" {
+		zipcode = r.getZipcodeForRegion(req.Region)
+	}
 	url := r.domainResolver.BuildAmazonProductURL(req.Region, req.ProductID)
 	return url, zipcode, nil
 }
@@ -137,7 +140,10 @@ func (r *CrawlerRepository) buildBatchRequests(req *product.FetchRequest, produc
 		return nil, fmt.Errorf("不支持的地区: %s", req.Region)
 	}
 
-	zipcode := r.getZipcodeForRegion(req.Region)
+	zipcode := strings.TrimSpace(req.Zipcode)
+	if zipcode == "" {
+		zipcode = r.getZipcodeForRegion(req.Region)
+	}
 	requests := make([]model.ProductRequest, 0, len(productIDs))
 
 	for _, productID := range productIDs {
@@ -151,6 +157,9 @@ func (r *CrawlerRepository) buildBatchRequests(req *product.FetchRequest, produc
 }
 
 func (r *CrawlerRepository) getZipcodeForRegion(region string) string {
+	if !amazonpkg.NewDomainResolver().ShouldUseDefaultZipcode(region) {
+		return ""
+	}
 	if r.amazonConfig != nil && r.amazonConfig.Zipcodes != nil {
 		if zipcode, exists := r.amazonConfig.Zipcodes[strings.ToLower(region)]; exists && zipcode != "" {
 			return zipcode

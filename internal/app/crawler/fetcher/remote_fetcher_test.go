@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -95,5 +96,80 @@ func TestRemoteAPIProductFetcherFallsBackToAsyncPollingWhenBusy(t *testing.T) {
 	}
 	if taskPolls.Load() < 2 {
 		t.Fatalf("expected async polling to happen at least twice, got %d", taskPolls.Load())
+	}
+}
+
+func TestRemoteAPIProductFetcherDoesNotSendDefaultUSZipcode(t *testing.T) {
+	var payload remoteFetchRequest
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"url":"https://www.amazon.com/dp/B001","product":{"asin":"B001","title":"Demo"}}}`))
+	}))
+	defer server.Close()
+
+	fetcher, err := NewRemoteAPIProductFetcher(nil, &config.AmazonConfig{
+		Enabled: true,
+		RemoteAPI: config.RemoteAPIConfig{
+			Enabled: true,
+			BaseURL: server.URL,
+			Timeout: 10,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create fetcher: %v", err)
+	}
+
+	_, err = fetcher.FetchProduct(context.Background(), &domainProduct.FetchRequest{
+		Platform:  "shein",
+		Region:    "us",
+		ProductID: "B001",
+	})
+	if err != nil {
+		t.Fatalf("fetch product: %v", err)
+	}
+	if payload.Zipcode != "" {
+		t.Fatalf("expected no default us zipcode in payload, got %q", payload.Zipcode)
+	}
+}
+
+func TestRemoteAPIProductFetcherPreservesExplicitZipcode(t *testing.T) {
+	var payload remoteFetchRequest
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"url":"https://www.amazon.com/dp/B001","product":{"asin":"B001","title":"Demo"}}}`))
+	}))
+	defer server.Close()
+
+	fetcher, err := NewRemoteAPIProductFetcher(nil, &config.AmazonConfig{
+		Enabled: true,
+		RemoteAPI: config.RemoteAPIConfig{
+			Enabled: true,
+			BaseURL: server.URL,
+			Timeout: 10,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create fetcher: %v", err)
+	}
+
+	_, err = fetcher.FetchProduct(context.Background(), &domainProduct.FetchRequest{
+		Platform:  "shein",
+		Region:    "us",
+		ProductID: "B001",
+		Zipcode:   "10001",
+	})
+	if err != nil {
+		t.Fatalf("fetch product: %v", err)
+	}
+	if payload.Zipcode != "10001" {
+		t.Fatalf("expected explicit zipcode to be preserved, got %q", payload.Zipcode)
 	}
 }

@@ -82,14 +82,16 @@ func (f *DistributedProductFetcher) FetchProduct(ctx context.Context, req *domai
 		req.ProductID, req.Platform, req.Region)
 
 	// 第一步：检查缓存
-	product, err := f.cacheManager.GetFromCache(req)
-	if err == nil && product != nil {
-		f.logger.Infof("✅ 从缓存获取产品数据: ProductID=%s", req.ProductID)
-		return product, nil
-	}
+	if f.shouldUseCache(req) {
+		product, err := f.cacheManager.GetFromCache(req)
+		if err == nil && product != nil {
+			f.logger.Infof("✅ 从缓存获取产品数据: ProductID=%s", req.ProductID)
+			return product, nil
+		}
 
-	if err != nil {
-		f.logger.Debugf("缓存获取失败或数据需要更新: %v", err)
+		if err != nil {
+			f.logger.Debugf("缓存获取失败或数据需要更新: %v", err)
+		}
 	}
 
 	// 第二步：使用分布式爬虫获取
@@ -102,8 +104,12 @@ func (f *DistributedProductFetcher) FetchProduct(ctx context.Context, req *domai
 		}
 
 		// 保存到缓存
-		if saveErr := f.cacheManager.SaveToCache(req, product); saveErr != nil {
-			f.logger.Warnf("⚠️ 保存到缓存失败: %v", saveErr)
+		if f.shouldUseCache(req) {
+			if saveErr := f.cacheManager.SaveToCache(req, product); saveErr != nil {
+				f.logger.Warnf("⚠️ 保存到缓存失败: %v", saveErr)
+			}
+		} else {
+			f.logger.Debug("skip cache because request uses explicit zipcode")
 		}
 
 		f.logger.Infof("✅ 分布式爬虫抓取成功: ProductID=%s", req.ProductID)
@@ -196,6 +202,10 @@ func (f *DistributedProductFetcher) shouldUseCrawler(platform string) bool {
 
 // CacheProduct 缓存产品数据到服务器
 func (f *DistributedProductFetcher) CacheProduct(req *domainProduct.FetchRequest, product *model.Product) error {
+	if !f.shouldUseCache(req) {
+		f.logger.Debug("skip cache because request uses explicit zipcode")
+		return nil
+	}
 	if product == nil {
 		f.logger.Warn("产品数据为空，跳过缓存")
 		return nil
@@ -300,6 +310,10 @@ func (f *DistributedProductFetcher) GetStats() map[string]any {
 	}
 
 	return stats
+}
+
+func (f *DistributedProductFetcher) shouldUseCache(req *domainProduct.FetchRequest) bool {
+	return req == nil || strings.TrimSpace(req.Zipcode) == ""
 }
 
 // Close 关闭获取器
