@@ -45,6 +45,27 @@ type managementClientProvider interface {
 	GetManagementClient() *management.ClientManager
 }
 
+type staleTaskMessageError struct {
+	taskID           int64
+	messageStatus    int16
+	currentStatus    string
+	currentStatusKey string
+	reason           string
+}
+
+func (e *staleTaskMessageError) Error() string {
+	return fmt.Sprintf("stale task message discarded: task_id=%d message_status=%d current_status=%s current_status_key=%s reason=%s",
+		e.taskID, e.messageStatus, e.currentStatus, e.currentStatusKey, e.reason)
+}
+
+func (e *staleTaskMessageError) IsRetryable() bool {
+	return false
+}
+
+func (e *staleTaskMessageError) ShouldDiscard() bool {
+	return true
+}
+
 // TaskHandlerConfig 任务处理器配置
 type TaskHandlerConfig struct {
 	Platform       string
@@ -134,6 +155,21 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 	if task == nil || task.IsCrawlerTask() {
 		return nil
 	}
+	if task.Status == model.TaskStatusPaused.Int16() {
+		eth.logger.WithFields(logrus.Fields{
+			"task_id":           task.ID,
+			"message_status":    task.Status,
+			"current_status":    model.TaskStatusPaused.String(),
+			"current_status_key": "PAUSED",
+		}).Warn("discarding paused task message before claim")
+		return &staleTaskMessageError{
+			taskID:           task.ID,
+			messageStatus:    task.Status,
+			currentStatus:    model.TaskStatusPaused.String(),
+			currentStatusKey: "PAUSED",
+			reason:           "paused_message",
+		}
+	}
 	if task.Status == model.TaskStatusProcessing.Int16() {
 		return nil
 	}
@@ -153,12 +189,86 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 	statusService := taskstatus.NewService("app/consumer", func() taskstatus.ImportTaskStatusClient {
 		return managementClient.GetImportTaskClient()
 	})
-	if err := statusService.TransitionFromCodeSync(task.ID, task.Status, model.TaskStatusProcessing, ""); err != nil {
-		return fmt.Errorf("claim task %d as processing failed from status %d: %w", task.ID, task.Status, err)
+	expectedStatuses := []int16{task.Status}
+	if shouldRetryClaimFromQueued(task.Status) {
+		expectedStatuses = append(expectedStatuses, model.TaskStatusQueued.Int16())
 	}
 
-	task.Status = model.TaskStatusProcessing.Int16()
-	return nil
+	var lastErr error
+	for idx, expectedStatus := range expectedStatuses {
+		if err := statusService.TransitionFromCodeSync(task.ID, expectedStatus, model.TaskStatusProcessing, ""); err != nil {
+			lastErr = err
+			if idx < len(expectedStatuses)-1 {
+				eth.logger.WithError(err).WithFields(logrus.Fields{
+					"task_id":         task.ID,
+					"original_status": task.Status,
+					"expected_status": expectedStatus,
+					"fallback_status": model.TaskStatusQueued.Int16(),
+					"target_status":   model.TaskStatusProcessing.Int16(),
+				}).Warn("claim task status failed, retrying with queued fallback")
+				continue
+			}
+			return eth.resolveClaimFailure(managementClient, task, expectedStatus, err)
+		}
+
+		task.Status = model.TaskStatusProcessing.Int16()
+		return nil
+	}
+
+	return fmt.Errorf("claim task %d as processing failed: %w", task.ID, lastErr)
+}
+
+func (eth *TaskHandler) resolveClaimFailure(managementClient *management.ClientManager, task *model.Task, expectedStatus int16, claimErr error) error {
+	if !isClaimConflictError(claimErr) || managementClient == nil {
+		return fmt.Errorf("claim task %d as processing failed from status %d: %w", task.ID, expectedStatus, claimErr)
+	}
+
+	taskRPCClient := managementClient.GetTaskRPCClient()
+	if taskRPCClient == nil {
+		return fmt.Errorf("claim task %d as processing failed from status %d: %w", task.ID, expectedStatus, claimErr)
+	}
+
+	statusResp, err := taskRPCClient.GetTaskStatus(task.ID)
+	if err != nil {
+		eth.logger.WithError(err).WithFields(logrus.Fields{
+			"task_id":         task.ID,
+			"message_status":  task.Status,
+			"expected_status": expectedStatus,
+		}).Warn("failed to query current task status after claim conflict")
+		return fmt.Errorf("claim task %d as processing failed from status %d: %w", task.ID, expectedStatus, claimErr)
+	}
+
+	eth.logger.WithFields(logrus.Fields{
+		"task_id":            task.ID,
+		"message_status":     task.Status,
+		"expected_status":    expectedStatus,
+		"current_status":     statusResp.CanonicalStatus,
+		"current_status_key": statusResp.StatusKey,
+		"processing_node":    statusResp.ProcessingNode,
+	}).Warn("discarding stale task message after claim conflict")
+
+	return &staleTaskMessageError{
+		taskID:           task.ID,
+		messageStatus:    task.Status,
+		currentStatus:    statusResp.CanonicalStatus,
+		currentStatusKey: statusResp.StatusKey,
+		reason:           "claim_conflict",
+	}
+}
+
+func isClaimConflictError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "Management API error 409") ||
+		strings.Contains(message, "管理端拒绝更新任务状态")
+}
+
+func shouldRetryClaimFromQueued(status int16) bool {
+	return status == model.TaskStatusPending.Int16() ||
+		status == model.TaskStatusPendingRetry.Int16() ||
+		status == model.TaskStatusCrawled.Int16()
 }
 
 // convertAndValidateMessage 转换并验证消息

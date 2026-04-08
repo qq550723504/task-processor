@@ -55,11 +55,14 @@ data:
         failureCooldownSeconds: 300
         proxies: []
       concurrencyControl:
-        enabled: false
-        maxInFlight: 12
+        enabled: true
+        maxInFlight: 6
         maxWaiting: 50
         acquireTimeoutSeconds: 20
-        perRegion: {}
+        perRegion:
+          us: 3
+          jp: 1
+          uk: 1
       remoteAPI:
         enabled: false
         baseURL: ""

@@ -206,7 +206,8 @@ func isNonRetriableUpdateErr(err error) bool {
 	}
 	message := err.Error()
 	return strings.Contains(message, "管理端拒绝更新任务状态") ||
-		strings.Contains(message, "expectedCurrentStatus")
+		strings.Contains(message, "expectedCurrentStatus") ||
+		strings.Contains(message, "Management API error 409")
 }
 
 func formatExpectedStatus(status *model.TaskStatus) any {

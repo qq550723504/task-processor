@@ -21,7 +21,7 @@ spec:
         node-role.kubernetes.io/agent: "true"
       containers:
         - name: amazon-crawler-api
-          image: xuwei190/task-processor-amazon-crawler-api:d00932a-fp144
+          image: xuwei190/task-processor-amazon-crawler-api:cd8db1b-redistrace
           imagePullPolicy: IfNotPresent
           command:
             - /app/amazon-crawler-api

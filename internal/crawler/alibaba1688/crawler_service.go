@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/shared"
@@ -47,6 +48,9 @@ func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
 		UpdateResult: svc.UpdateResult,
 	})
 	svc.SetWorkerPool(pool)
+	if err := svc.ConfigureRedisResultStore(cfg.Redis, logger, "crawler:1688:task-result", 6*time.Hour); err != nil {
+		logger.Warnf("初始化 1688 crawler 异步任务共享结果存储失败，将退化为 Pod 本地内存: %v", err)
+	}
 
 	return svc
 }
@@ -62,6 +66,9 @@ func (s *Service) Start(ctx context.Context) error {
 func (s *Service) Stop(ctx context.Context) error {
 	s.WorkerPool().Stop(ctx)
 	s.processor1688.Shutdown()
+	if err := s.BaseService.Close(); err != nil {
+		s.logger.Warnf("关闭 1688 crawler 结果 Redis 客户端失败: %v", err)
+	}
 	s.logger.Info("1688爬虫应用服务已停止")
 	return nil
 }
@@ -72,7 +79,9 @@ func (s *Service) SubmitTask(crawlerTask *shared.CrawlerTask) error {
 		return err
 	}
 
-	s.StoreResult(crawlerTask.TaskID, shared.NewCrawlerResult(crawlerTask.TaskID))
+	if err := s.StoreResult(crawlerTask.TaskID, shared.NewCrawlerResult(crawlerTask.TaskID)); err != nil {
+		return fmt.Errorf("persist crawler task result: %w", err)
+	}
 
 	taskData, err := json.Marshal(crawlerTask)
 	if err != nil {

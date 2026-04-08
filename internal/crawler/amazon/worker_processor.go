@@ -40,9 +40,11 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 		return err
 	}
 
-	p.service.UpdateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
+	if err := p.service.UpdateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.ProductData = shared.ProductToMap(product)
-	})
+	}); err != nil {
+		return fmt.Errorf("update crawler result: %w", err)
+	}
 
 	return nil
 }

@@ -8,6 +8,8 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const sheinBucketQueueCount = 8
+
 // QueueDeclareConfig AMQP 队列声明参数
 type QueueDeclareConfig struct {
 	Name       string
@@ -85,7 +87,7 @@ func GetStoreQueueBindingConfigs(platform string, storeID int64) []BindingConfig
 
 // GetPlatformQueueDeclareConfigs 获取平台共享任务队列声明配置
 func GetPlatformQueueDeclareConfigs(platform string) []QueueDeclareConfig {
-	return []QueueDeclareConfig{
+	queues := []QueueDeclareConfig{
 		{
 			Name:    buildPlatformQueueName(platform),
 			Durable: true,
@@ -96,6 +98,20 @@ func GetPlatformQueueDeclareConfigs(platform string) []QueueDeclareConfig {
 			},
 		},
 	}
+	if usesBucketQueues(platform) {
+		for bucket := 0; bucket < sheinBucketQueueCount; bucket++ {
+			queues = append(queues, QueueDeclareConfig{
+				Name:    buildBucketQueueName(platform, bucket),
+				Durable: true,
+				Args: amqp.Table{
+					"x-max-priority":            10,
+					"x-dead-letter-exchange":    "tasks.dlx",
+					"x-dead-letter-routing-key": "failed",
+				},
+			})
+		}
+	}
+	return queues
 }
 
 // GetPlatformQueueBindingConfigs 获取平台共享队列绑定配置
@@ -104,7 +120,7 @@ func GetPlatformQueueDeclareConfigs(platform string) []QueueDeclareConfig {
 // 2. 现有店铺模式: {platform}.tasks.store.{storeId}
 func GetPlatformQueueBindingConfigs(platform string) []BindingConfig {
 	queueName := buildPlatformQueueName(platform)
-	return []BindingConfig{
+	bindings := []BindingConfig{
 		{
 			QueueName:    queueName,
 			ExchangeName: "tasks.exchange",
@@ -116,6 +132,16 @@ func GetPlatformQueueBindingConfigs(platform string) []BindingConfig {
 			RoutingKey:   queueName + ".store.*",
 		},
 	}
+	if usesBucketQueues(platform) {
+		for bucket := 0; bucket < sheinBucketQueueCount; bucket++ {
+			bindings = append(bindings, BindingConfig{
+				QueueName:    buildBucketQueueName(platform, bucket),
+				ExchangeName: "tasks.exchange",
+				RoutingKey:   buildBucketQueueName(platform, bucket),
+			})
+		}
+	}
+	return bindings
 }
 
 // buildStoreQueueName 构建店铺专属队列名称
@@ -126,6 +152,14 @@ func buildStoreQueueName(platform string, storeID int64) string {
 
 func buildPlatformQueueName(platform string) string {
 	return fmt.Sprintf("%s.tasks", platform)
+}
+
+func buildBucketQueueName(platform string, bucket int) string {
+	return fmt.Sprintf("%s.tasks.bucket.%d", platform, bucket)
+}
+
+func usesBucketQueues(platform string) bool {
+	return strings.EqualFold(platform, "shein")
 }
 
 func getCrawlerQueues() []QueueDeclareConfig {

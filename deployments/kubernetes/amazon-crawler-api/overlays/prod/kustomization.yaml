@@ -11,5 +11,6 @@ images:
     newTag: "d00932a-fp144"
 
 patches:
+  - path: patch-deployment.yaml
   - path: patch-ingress.yaml
   - path: patch-hpa.yaml

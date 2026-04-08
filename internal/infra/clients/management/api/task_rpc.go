@@ -1,5 +1,7 @@
 package api
 
+import "task-processor/internal/pkg/types"
+
 // TaskSubmitReqDTO 任务提交请求。
 type TaskSubmitReqDTO struct {
 	TaskID           int64  `json:"taskId"`
@@ -75,9 +77,9 @@ type TaskStatusRespDTO struct {
 	Priority         int      `json:"priority"`
 	RetryCount       int      `json:"retryCount"`
 	MaxRetries       int      `json:"maxRetries"`
-	CreatedAt        string   `json:"createdAt"`
-	StartedAt        string   `json:"startedAt"`
-	CompletedAt      string   `json:"completedAt"`
+	CreatedAt        *types.FlexibleTime `json:"createdAt"`
+	StartedAt        *types.FlexibleTime `json:"startedAt"`
+	CompletedAt      *types.FlexibleTime `json:"completedAt"`
 	ProcessingTimeMs int64    `json:"processingTimeMs"`
 	QueueName        string   `json:"queueName"`
 	ProcessingNode   string   `json:"processingNode"`
@@ -86,7 +88,7 @@ type TaskStatusRespDTO struct {
 	ErrorMessage     string   `json:"errorMessage"`
 	ErrorStack       string   `json:"errorStack"`
 	ExecutionLogs    []string `json:"executionLogs"`
-	NextRetryAt      string   `json:"nextRetryAt"`
+	NextRetryAt      *types.FlexibleTime `json:"nextRetryAt"`
 	TaskDetails      string   `json:"taskDetails"`
 }
 

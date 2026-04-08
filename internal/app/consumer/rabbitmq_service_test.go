@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,6 +22,14 @@ func (noopRabbitHandler) HandleMessage(_ context.Context, _ *rabbitmq.Message) e
 	return nil
 }
 
+type noopProcessor struct{}
+
+func (noopProcessor) Start(_ context.Context) error { return nil }
+
+func (noopProcessor) ProcessTask(_ context.Context, _ worker.WorkerJob) error { return nil }
+
+func (noopProcessor) Close(_ context.Context) {}
+
 func TestRabbitMQServiceFilterQueueConfigsByRole(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -29,7 +39,7 @@ func TestRabbitMQServiceFilterQueueConfigsByRole(t *testing.T) {
 		{
 			name:     "task role keeps only task queues",
 			role:     config.NodeRoleTask,
-			expected: []string{"amazon.tasks.store.*", "shein.tasks.store.*"},
+			expected: []string{"amazon.tasks.store.*", "shein.tasks", "shein.tasks.bucket.*", "shein.tasks.store.*"},
 		},
 		{
 			name:     "crawler role keeps only crawler queues",
@@ -39,7 +49,7 @@ func TestRabbitMQServiceFilterQueueConfigsByRole(t *testing.T) {
 		{
 			name:     "hybrid role keeps all queues",
 			role:     config.NodeRoleHybrid,
-			expected: []string{"amazon.tasks.store.*", "amazon.crawler", "1688.crawler", "shein.tasks.store.*"},
+			expected: []string{"amazon.tasks.store.*", "amazon.crawler", "1688.crawler", "shein.tasks", "shein.tasks.bucket.*", "shein.tasks.store.*"},
 		},
 	}
 
@@ -47,6 +57,8 @@ func TestRabbitMQServiceFilterQueueConfigsByRole(t *testing.T) {
 		{Name: "amazon.tasks.store.*"},
 		{Name: "amazon.crawler"},
 		{Name: "1688.crawler"},
+		{Name: "shein.tasks"},
+		{Name: "shein.tasks.bucket.*"},
 		{Name: "shein.tasks.store.*"},
 	}
 
@@ -70,6 +82,29 @@ func TestRabbitMQServiceFilterQueueConfigsByRole(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRabbitMQServiceRegistersSheinBucketHandlers(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+
+	svc.processorRegistry.RegisterProcessor("shein", noopProcessor{})
+	svc.registerMessageHandlers()
+
+	if svc.GetConsumer().GetStateManager("shein.tasks") == nil {
+		t.Fatal("expected shared shein queue handler to be registered")
+	}
+
+	for bucket := 0; bucket < sheinBucketQueueCount; bucket++ {
+		queueName := fmt.Sprintf("shein.tasks.bucket.%d", bucket)
+		if svc.GetConsumer().GetStateManager(queueName) == nil {
+			t.Fatalf("expected shein bucket handler %s to be registered", queueName)
+		}
 	}
 }
 

@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -213,11 +214,15 @@ func TestTaskHandlerHandleMessage_ClaimsQueuedTaskBeforeProcessing(t *testing.T)
 func TestTaskHandlerHandleMessage_StopsWhenClaimRejected(t *testing.T) {
 	autoListingEnabled := true
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rpc-api/listing/import-task/update-status" {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/rpc-api/listing/import-task/update-status":
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":false}`))
+		case "/rpc-api/listing/task/status":
+			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"taskId":7812001,"status":"PROCESSING","statusKey":"PROCESSING","statusName":"处理中","canonicalStatus":"processing"}}`))
+		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":false}`))
 	}))
 	defer server.Close()
 
@@ -263,5 +268,58 @@ func TestTaskHandlerHandleMessage_StopsWhenClaimRejected(t *testing.T) {
 	}
 	if processor.processCalls != 0 {
 		t.Fatalf("expected processor not to be called when claim is rejected, got %d calls", processor.processCalls)
+	}
+}
+
+func TestTaskHandlerHandleMessage_DiscardsPausedMessageBeforeClaim(t *testing.T) {
+	autoListingEnabled := true
+	processor := &stubProcessor{}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "shein",
+		Processor: processor,
+		StoreAPI: &stubStoreAPI{
+			store: &managementapi.StoreRespDTO{
+				ID:                846,
+				Name:              "enabled-store",
+				Status:            storeStatusEnabled,
+				EnableAutoListing: &autoListingEnabled,
+			},
+		},
+		Logger: logrus.New(),
+	})
+
+	msg := &rabbitmq.Message{
+		ID:   "msg-paused-1",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(7812002),
+			"tenantId":       float64(286),
+			"storeId":        float64(846),
+			"sourcePlatform": "amazon",
+			"targetPlatform": "shein",
+			"region":         "US",
+			"productId":      "B0BGPRQ6N9",
+			"priority":       float64(10),
+			"retryCount":     float64(0),
+			"maxRetryCount":  float64(3),
+			"status":         "paused",
+		},
+	}
+
+	err := handler.HandleMessage(context.Background(), msg)
+	if err == nil {
+		t.Fatal("expected paused message to be discarded")
+	}
+
+	type discardable interface {
+		ShouldDiscard() bool
+	}
+	var discardErr discardable
+	if !errors.As(err, &discardErr) || !discardErr.ShouldDiscard() {
+		t.Fatalf("expected discardable error, got %v", err)
+	}
+
+	if processor.processCalls != 0 {
+		t.Fatalf("expected processor not to be called for paused message, got %d calls", processor.processCalls)
 	}
 }

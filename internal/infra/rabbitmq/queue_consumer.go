@@ -185,6 +185,11 @@ func (qc *QueueConsumer) handleProcessError(delivery amqp.Delivery, msg *Message
 	// 更新状态统计
 	qc.stateManager.IncrementMessageCount(false)
 
+	if isDiscardableError(err) {
+		qc.discardMessage(delivery, msg, err)
+		return
+	}
+
 	// 递增重试计数
 	msg.RetryCount++
 
@@ -193,6 +198,17 @@ func (qc *QueueConsumer) handleProcessError(delivery amqp.Delivery, msg *Message
 		qc.retryMessage(delivery, msg)
 	} else {
 		qc.sendToDeadLetter(delivery, msg, err)
+	}
+}
+
+func (qc *QueueConsumer) discardMessage(delivery amqp.Delivery, msg *Message, err error) {
+	qc.logger.Warnf("消息已丢弃不重试: ID=%s, Queue=%s, Error=%v", msg.ID, qc.queueName, err)
+	if ackErr := delivery.Ack(false); ackErr != nil {
+		if isChannelClosedError(ackErr) {
+			qc.logger.Warnf("丢弃消息确认失败（连接已关闭）: ID=%s", msg.ID)
+			return
+		}
+		qc.logger.Errorf("丢弃消息确认失败: ID=%s, Error=%v", msg.ID, ackErr)
 	}
 }
 
@@ -300,10 +316,23 @@ type retryableError interface {
 	IsRetryable() bool
 }
 
+type discardableError interface {
+	error
+	ShouldDiscard() bool
+}
+
 func isNonRetryableError(err error) bool {
 	var retryable retryableError
 	if errors.As(err, &retryable) {
 		return !retryable.IsRetryable()
+	}
+	return false
+}
+
+func isDiscardableError(err error) bool {
+	var discardable discardableError
+	if errors.As(err, &discardable) {
+		return discardable.ShouldDiscard()
 	}
 	return false
 }

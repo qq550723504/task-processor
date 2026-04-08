@@ -105,6 +105,8 @@ func (csm *ConsumerStateManager) SetState(newState ConsumerState, queueName stri
 	switch newState {
 	case ConsumerStateRunning:
 		csm.stateInfo.StartTime = now
+		// 队列恢复运行后，旧错误不应继续把 readiness 永久判死。
+		csm.stateInfo.LastError = nil
 	case ConsumerStateStopped:
 		csm.stateInfo.StopTime = now
 	}

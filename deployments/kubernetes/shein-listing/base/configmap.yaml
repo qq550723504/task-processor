@@ -40,17 +40,20 @@ data:
       reconnectInterval: "5s"
       maxReconnectTries: 10
       consumer:
-        prefetchCount: 2
+        prefetchCount: 8
         prefetchSize: 0
         retryDelay: "5s"
         maxRetries: 3
         queues:
           - name: "shein.tasks"
-            priority: 8
+            priority: 1
+            prefetch: 1
+          - name: "shein.tasks.bucket.*"
+            priority: 10
             prefetch: 1
           - name: "shein.tasks.store.*"
             priority: 8
-            prefetch: 1
+            prefetch: 2
       node:
         role: "task"
         useStoreQueues: false

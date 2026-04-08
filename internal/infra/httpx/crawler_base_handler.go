@@ -41,12 +41,34 @@ func (b *baseCrawlerHandler) handleTask(w http.ResponseWriter, r *http.Request) 
 	case http.MethodGet:
 		result, err := b.crawlerService.GetTask(taskID)
 		if err != nil {
+			if b.logger != nil {
+				b.logger.WithFields(logrus.Fields{
+					"task_id": taskID,
+					"method":  r.Method,
+					"path":    r.URL.Path,
+				}).Warnf("crawler task lookup failed: %v", err)
+			}
 			NotFound(w, err.Error())
 			return
+		}
+		if b.logger != nil {
+			b.logger.WithFields(logrus.Fields{
+				"task_id": taskID,
+				"status":  result.Status,
+				"method":  r.Method,
+				"path":    r.URL.Path,
+			}).Info("crawler task lookup succeeded")
 		}
 		Success(w, "查询成功", result)
 	case http.MethodDelete:
 		b.crawlerService.DeleteTask(taskID)
+		if b.logger != nil {
+			b.logger.WithFields(logrus.Fields{
+				"task_id": taskID,
+				"method":  r.Method,
+				"path":    r.URL.Path,
+			}).Info("crawler task deleted")
+		}
 		Success(w, "任务已删除", nil)
 	default:
 		MethodNotAllowed(w, "不支持的方法")

@@ -15,7 +15,7 @@ import (
 type BaseJobHandler struct {
 	Name         string
 	Logger       *logrus.Logger
-	UpdateResult func(taskID string, fn func(*CrawlerResult))
+	UpdateResult func(taskID string, fn func(*CrawlerResult)) error
 }
 
 // parseCrawlTask 从 WorkerJob 中解析 CrawlerTask
@@ -35,7 +35,9 @@ func (h *BaseJobHandler) OnJobStart(job worker.WorkerJob) {
 		return
 	}
 	h.Logger.Infof("🕷️ 开始处理%s任务: %s (URL: %s)", h.Name, task.TaskID, task.URL)
-	h.UpdateResult(task.TaskID, func(r *CrawlerResult) { r.MarkProcessing() })
+	if err := h.UpdateResult(task.TaskID, func(r *CrawlerResult) { r.MarkProcessing() }); err != nil {
+		h.Logger.Errorf("更新%s任务开始状态失败: taskID=%s err=%v", h.Name, task.TaskID, err)
+	}
 }
 
 // OnJobSuccess 任务处理成功
@@ -45,11 +47,13 @@ func (h *BaseJobHandler) OnJobSuccess(job worker.WorkerJob) {
 		return
 	}
 	h.Logger.Infof("✅ %s任务成功: %s", h.Name, task.TaskID)
-	h.UpdateResult(task.TaskID, func(r *CrawlerResult) {
+	if err := h.UpdateResult(task.TaskID, func(r *CrawlerResult) {
 		if r.ProductData != nil {
 			r.MarkSuccess(r.ProductData)
 		}
-	})
+	}); err != nil {
+		h.Logger.Errorf("更新%s任务成功状态失败: taskID=%s err=%v", h.Name, task.TaskID, err)
+	}
 }
 
 // OnJobFailure 任务处理失败
@@ -59,7 +63,9 @@ func (h *BaseJobHandler) OnJobFailure(job worker.WorkerJob, err error) {
 		return
 	}
 	h.Logger.Errorf("❌ %s任务失败: %s, 错误: %v", h.Name, task.TaskID, err)
-	h.UpdateResult(task.TaskID, func(r *CrawlerResult) { r.MarkFailed(err) })
+	if updateErr := h.UpdateResult(task.TaskID, func(r *CrawlerResult) { r.MarkFailed(err) }); updateErr != nil {
+		h.Logger.Errorf("更新%s任务失败状态失败: taskID=%s err=%v", h.Name, task.TaskID, updateErr)
+	}
 }
 
 // OnJobPanic 任务处理发生 panic
@@ -69,9 +75,11 @@ func (h *BaseJobHandler) OnJobPanic(job worker.WorkerJob, panicValue any, _ stri
 		return
 	}
 	h.Logger.Errorf("💥 %s任务Panic: %s, 错误: %v", h.Name, task.TaskID, panicValue)
-	h.UpdateResult(task.TaskID, func(r *CrawlerResult) {
+	if err := h.UpdateResult(task.TaskID, func(r *CrawlerResult) {
 		r.MarkFailed(fmt.Errorf("panic: %v", panicValue))
-	})
+	}); err != nil {
+		h.Logger.Errorf("更新%s任务 panic 状态失败: taskID=%s err=%v", h.Name, task.TaskID, err)
+	}
 }
 
 // OnJobCompleted 任务处理完成（留空，子类可按需覆盖）
