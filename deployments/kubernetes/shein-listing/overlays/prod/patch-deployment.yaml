@@ -20,8 +20,8 @@ spec:
         - name: shein-listing
           resources:
             requests:
-              cpu: "500m"
-              memory: "256Mi"
+              cpu: "50m"
+              memory: "128Mi"
             limits:
-              cpu: "3"
-              memory: "1Gi"
+              cpu: "500m"
+              memory: "512Mi"

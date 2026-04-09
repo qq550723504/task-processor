@@ -97,8 +97,8 @@ hostname
 $scriptPath = Join-Path $env:TEMP "codex-join-k3s-agents.py"
 Set-Content -Path $scriptPath -Value $pythonScript -Encoding ASCII
 
-foreach ($host in $Hosts) {
-    ssh-keygen -R $host | Out-Null
+foreach ($targetHost in $Hosts) {
+    ssh-keygen -R $targetHost | Out-Null
 }
 
 $argList = @(
@@ -115,8 +115,8 @@ python @argList
 
 if ($LabelAgent) {
     Start-Sleep -Seconds 5
-    foreach ($host in $Hosts) {
-        $node = kubectl --context=default get nodes -o jsonpath="{range .items[?(@.status.addresses[?(@.type=='ExternalIP')].address=='$host')]}{.metadata.name}{end}"
+    foreach ($targetHost in $Hosts) {
+        $node = kubectl --context=default get nodes -o jsonpath="{range .items[?(@.status.addresses[?(@.type=='ExternalIP')].address=='$targetHost')]}{.metadata.name}{end}"
         if ($node) {
             kubectl --context=default label node $node node-role.kubernetes.io/agent=true --overwrite | Out-Null
         }
