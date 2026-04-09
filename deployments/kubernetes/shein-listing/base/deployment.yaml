@@ -72,9 +72,10 @@ spec:
             httpGet:
               path: /health
               port: http
+            initialDelaySeconds: 10
             periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 18
+            timeoutSeconds: 5
+            failureThreshold: 36
           volumeMounts:
             - name: app-config
               mountPath: /app/config/config-shein-listing.yaml

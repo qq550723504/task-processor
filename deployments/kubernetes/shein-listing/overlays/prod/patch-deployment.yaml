@@ -7,15 +7,6 @@ spec:
   replicas: 3
   template:
     spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - ser724424133953-98065f14
       containers:
         - name: shein-listing
           resources:
