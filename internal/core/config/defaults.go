@@ -76,6 +76,7 @@ func setBrowserDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("browser.randomConfig.fingerprintStrategy", rc.FingerprintStrategy)
 	v.SetDefault("browser.randomConfig.healthCheckEnabled", rc.HealthCheckEnabled)
 	v.SetDefault("browser.randomConfig.maxRetries", rc.MaxRetries)
+	v.SetDefault("browser.randomConfig.maxUsesPerInstance", rc.MaxUsesPerInstance)
 }
 
 func setAmazonDefaults(v *viper.Viper, defaults *Config) {

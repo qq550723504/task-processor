@@ -1,0 +1,29 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: amazon-crawler-api-wecom
+  namespace: task-processor
+  labels:
+    app.kubernetes.io/name: amazon-crawler-api-wecom
+    app.kubernetes.io/part-of: task-processor
+spec:
+  route:
+    groupBy:
+      - alertname
+      - service
+      - severity
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 2h
+    receiver: wecom-webhook
+    matchers:
+      - name: service
+        value: amazon-crawler-api
+        matchType: "="
+  receivers:
+    - name: wecom-webhook
+      webhookConfigs:
+        - url: http://alertmanager-wecom.monitoring.svc.cluster.local:8080/webhook
+          sendResolved: true
+          maxAlerts: 10
+          timeout: 10s

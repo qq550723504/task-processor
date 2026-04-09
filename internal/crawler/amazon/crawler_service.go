@@ -36,6 +36,7 @@ type Service struct {
 	logger          *logrus.Logger
 	amazonProcessor *AmazonProcessor
 	domainResolver  *DomainResolver
+	urlHelper       *URLHelper
 	dedupeStore     productDedupeStore
 	processProduct  func(ctx context.Context, url, zipcode string) (*model.Product, error)
 	metrics         *serviceMetrics
@@ -47,6 +48,7 @@ type Service struct {
 func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
 	amazonProcessor := CreateProcessor(cfg, logger)
 	domainResolver := NewDomainResolver()
+	urlHelper := NewURLHelper()
 	dedupeStore := buildProductDedupeStore(cfg, logger)
 
 	svc := &Service{
@@ -54,6 +56,7 @@ func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
 		logger:          logger,
 		amazonProcessor: amazonProcessor,
 		domainResolver:  domainResolver,
+		urlHelper:       urlHelper,
 		dedupeStore:     dedupeStore,
 		processProduct:  amazonProcessor.ProcessWithContext,
 		metrics:         newServiceMetrics(),
@@ -66,7 +69,7 @@ func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
 	poolConfig.BufferSize = 1000
 	poolConfig.EnableMetrics = true
 
-	processor := &CrawlerProcessor{service: svc}
+	processor := &AsyncTaskProcessor{service: svc}
 	pool := worker.NewPoolWithConfig(processor, poolConfig)
 	pool.SetJobHandler(&shared.BaseJobHandler{
 		Name:         "Amazon",
@@ -91,6 +94,9 @@ func (s *Service) Start(ctx context.Context) error {
 // Stop 停止服务
 func (s *Service) Stop(ctx context.Context) error {
 	s.WorkerPool().Stop(ctx)
+	if s.amazonProcessor != nil {
+		s.amazonProcessor.Shutdown()
+	}
 	if closer, ok := s.dedupeStore.(interface{ Close() error }); ok {
 		if err := closer.Close(); err != nil {
 			s.logger.Warnf("关闭产品去重 Redis 客户端失败: %v", err)
@@ -159,6 +165,11 @@ func (s *Service) GetStats() map[string]any {
 				stats[key] = value
 			}
 		}
+		if poolStats := s.amazonProcessor.PoolStats(); poolStats != nil {
+			for key, value := range poolStats {
+				stats[key] = value
+			}
+		}
 		if proxyStats := s.amazonProcessor.ProxyStats(); proxyStats != nil {
 			for key, value := range proxyStats {
 				stats[key] = value
@@ -195,6 +206,8 @@ func (s *Service) SubmitTask(crawlerTask *shared.CrawlerTask) error {
 
 	taskData, err := json.Marshal(crawlerTask)
 	if err != nil {
+		s.metrics.RecordTaskSubmitFailure("marshal")
+		s.markTaskSubmissionFailed(crawlerTask.TaskID, fmt.Errorf("序列化任务失败: %w", err))
 		return fmt.Errorf("序列化任务失败: %w", err)
 	}
 
@@ -202,6 +215,8 @@ func (s *Service) SubmitTask(crawlerTask *shared.CrawlerTask) error {
 		TaskID:   crawlerTask.CreatedAt.UnixNano(),
 		TaskData: string(taskData),
 	}); err != nil {
+		s.metrics.RecordTaskSubmitFailure("enqueue")
+		s.markTaskSubmissionFailed(crawlerTask.TaskID, fmt.Errorf("提交任务失败: %w", err))
 		return err
 	}
 
@@ -256,14 +271,14 @@ func buildProductDedupeStore(cfg *config.Config, logger *logrus.Logger) productD
 
 func (s *Service) resolveFetchInputs(url, asin, region, zipcode string) (string, string, error) {
 	if s.processProduct == nil {
-		return "", "", fmt.Errorf("Amazon crawler is not initialized")
+		return "", "", newInvalidRequestError("Amazon crawler is not initialized")
 	}
 
 	if url == "" && asin != "" {
 		url = s.domainResolver.BuildAmazonProductURL(region, asin)
 	}
 	if url == "" {
-		return "", "", fmt.Errorf("url or asin is required")
+		return "", "", newInvalidRequestError("url or asin is required")
 	}
 
 	if zipcode == "" {
@@ -294,7 +309,7 @@ func (s *Service) fetchProductWithDedupe(ctx context.Context, metricsRegion, url
 		return nil, err
 	}
 
-	lockKey, resultKey := s.buildProductDedupeKeys(url, asin, region, zipcode)
+	lockKey, resultKey := s.buildProductDedupeKeys(url, asin, metricsRegion, zipcode)
 	waitUntil := time.Now().Add(s.productFetchWaitTimeout())
 	waitTicker := time.NewTicker(s.productFetchPollInterval())
 	defer waitTicker.Stop()
@@ -303,7 +318,7 @@ func (s *Service) fetchProductWithDedupe(ctx context.Context, metricsRegion, url
 		if product, ok, err := s.loadSharedProduct(ctx, resultKey); err == nil && ok {
 			if s.isSharedProductUsable(url, product) {
 				s.logger.Infof("♻️ 复用共享抓取结果: %s", resultKey)
-				s.metrics.RecordDedupeSharedHit(s.resolveMetricsRegion(region, url))
+				s.metrics.RecordDedupeSharedHit(metricsRegion)
 				return product, nil
 			}
 			s.logger.Warnf("共享抓取结果已失效，忽略缓存并重新抓取: %s", resultKey)
@@ -336,7 +351,8 @@ func (s *Service) fetchProductWithDedupe(ctx context.Context, metricsRegion, url
 		}
 
 		if time.Now().After(waitUntil) {
-			return nil, fmt.Errorf("crawl already in progress and shared result timed out")
+			s.metrics.RecordDedupeWaitTimeout(metricsRegion)
+			return nil, newCrawlInProgressError()
 		}
 
 		select {
@@ -352,7 +368,11 @@ func (s *Service) isSharedProductUsable(url string, product *model.Product) bool
 		return false
 	}
 
-	expectedCurrency := NewURLHelper().GetCurrencyFromURL(url)
+	helper := s.urlHelper
+	if helper == nil {
+		helper = NewURLHelper()
+	}
+	expectedCurrency := helper.GetCurrencyFromURL(url)
 	if expectedCurrency == "" || product.FinalPrice <= 0 || strings.TrimSpace(product.Currency) == "" {
 		return true
 	}
@@ -406,7 +426,7 @@ func (s *Service) resolveMetricsRegion(region, url string) string {
 }
 
 func (s *Service) buildProductDedupeKeys(url, asin, region, zipcode string) (string, string) {
-	identity := strings.TrimSpace(strings.ToLower(asin))
+	identity := s.resolveProductIdentity(url, asin)
 	if identity == "" {
 		h := fnv.New64a()
 		_, _ = h.Write([]byte(strings.TrimSpace(strings.ToLower(url))))
@@ -422,6 +442,43 @@ func (s *Service) buildProductDedupeKeys(url, asin, region, zipcode string) (str
 		base += ":zipcode:" + normalizedZipcode
 	}
 	return base + ":lock", base + ":result"
+}
+
+func (s *Service) resolveProductIdentity(url, asin string) string {
+	if normalizedASIN := strings.TrimSpace(strings.ToLower(asin)); normalizedASIN != "" {
+		return normalizedASIN
+	}
+
+	helper := s.urlHelper
+	if helper == nil {
+		helper = NewURLHelper()
+	}
+
+	if extracted := strings.TrimSpace(strings.ToLower(helper.ExtractASINFromURL(url))); extracted != "" {
+		return extracted
+	}
+
+	normalizedURL := strings.TrimSpace(strings.ToLower(helper.NormalizeURL(url)))
+	if normalizedURL == "" {
+		return ""
+	}
+
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(normalizedURL))
+	return fmt.Sprintf("url-%x", h.Sum64())
+}
+
+func (s *Service) markTaskSubmissionFailed(taskID string, err error) {
+	if s == nil || strings.TrimSpace(taskID) == "" || err == nil {
+		return
+	}
+
+	if updateErr := s.UpdateResult(taskID, func(result *shared.CrawlerResult) {
+		result.MarkFailed(err)
+	}); updateErr != nil {
+		s.logger.Warnf("标记任务提交失败结果时出错，删除悬挂结果: task_id=%s err=%v", taskID, updateErr)
+		s.DeleteTask(taskID)
+	}
 }
 
 func (s *Service) loadSharedProduct(ctx context.Context, resultKey string) (*model.Product, bool, error) {

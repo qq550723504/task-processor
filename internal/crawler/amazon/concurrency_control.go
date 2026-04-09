@@ -59,7 +59,7 @@ func (cc *concurrencyControl) Acquire(ctx context.Context, region string) (*conc
 		waitingNow := cc.waiting.Add(1)
 		defer cc.waiting.Add(-1)
 		if cc.maxWaiting > 0 && waitingNow > cc.maxWaiting {
-			return nil, fmt.Errorf("crawler concurrency limit exceeded: waiting queue is full")
+			return nil, newSystemBusyError("crawler concurrency limit exceeded: waiting queue is full", nil)
 		}
 	}
 
@@ -68,14 +68,14 @@ func (cc *concurrencyControl) Acquire(ctx context.Context, region string) (*conc
 
 	ticket := &concurrencyTicket{cc: cc}
 	if err := cc.acquireSlot(acquireCtx, cc.global); err != nil {
-		return nil, fmt.Errorf("crawler concurrency acquire timeout: %w", err)
+		return nil, newSystemBusyError(fmt.Sprintf("crawler concurrency acquire timeout: %v", err), err)
 	}
 	ticket.global = cc.global
 
 	if regionCh := cc.perRegion[normalizeConcurrencyRegion(region)]; regionCh != nil {
 		if err := cc.acquireSlot(acquireCtx, regionCh); err != nil {
 			ticket.Release()
-			return nil, fmt.Errorf("crawler concurrency acquire timeout: %w", err)
+			return nil, newSystemBusyError(fmt.Sprintf("crawler concurrency acquire timeout: %v", err), err)
 		}
 		ticket.region = regionCh
 	}

@@ -10,19 +10,19 @@ import (
 	"task-processor/internal/infra/worker"
 )
 
-// CrawlerProcessor 实现 worker.Processor 接口
-type CrawlerProcessor struct {
+// AsyncTaskProcessor 实现 worker.Processor 接口，负责 Amazon 异步任务消费。
+type AsyncTaskProcessor struct {
 	service *Service
 }
 
 // Start 启动处理器
-func (p *CrawlerProcessor) Start(_ context.Context) error { return nil }
+func (p *AsyncTaskProcessor) Start(_ context.Context) error { return nil }
 
 // Close 关闭处理器
-func (p *CrawlerProcessor) Close(_ context.Context) {}
+func (p *AsyncTaskProcessor) Close(_ context.Context) {}
 
 // ProcessTask 处理任务
-func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
+func (p *AsyncTaskProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 	var crawlerTask shared.CrawlerTask
 	if err := json.Unmarshal([]byte(job.TaskData), &crawlerTask); err != nil {
 		return fmt.Errorf("解析任务数据失败: %w", err)

@@ -1,0 +1,941 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-amazon-crawler-api
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: amazon-crawler-api
+    app.kubernetes.io/part-of: task-processor
+data:
+  amazon-crawler-api-dashboard.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "注释与告警",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 0,
+            "y": 28
+          },
+          "id": 12,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.1.0",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(crawler_failure_by_type{kubernetes_namespace=\"$namespace\", pod=~\"$pod\", key=\"processor_unavailable\"}[10m]))",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "处理器不可用 (10m)",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 6,
+            "y": 28
+          },
+          "id": 7,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.1.0",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(crawler_task_submit_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[10m]))",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "任务提交失败 (10m)",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 12,
+            "y": 28
+          },
+          "id": 8,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.1.0",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(crawler_dedupe_wait_timeout_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[10m]))",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Dedupe 超时 (10m)",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 18,
+            "y": 28
+          },
+          "id": 9,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.1.0",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(crawler_pool_async_recreate_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[30m])) + sum(increase(crawler_pool_sync_recreate_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[30m]))",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "实例重建失败 (30m)",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 36
+          },
+          "id": 10,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "max by (pod) (crawler_total_instances{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"})",
+              "legendFormat": "{{ pod }} / current",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "editorMode": "code",
+              "expr": "max by (pod) (crawler_configured_pool_size{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"})",
+              "legendFormat": "{{ pod }} / configured",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "浏览器池当前实例数 vs 配置",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 36
+          },
+          "id": 11,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "max by (pod) (crawler_pool_active_rebuild_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"})",
+              "legendFormat": "{{ pod }}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "活跃实例重建数",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.6
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.8
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.1.0",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(rate(crawler_fetch_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[5m])) / clamp_min(sum(rate(crawler_fetch_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[5m])), 0.001)",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "5 分钟失败率",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.6
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.8
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "11.1.0",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(crawler_concurrency_global_inflight{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}) / clamp_min(sum(crawler_concurrency_global_limit{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}), 1)",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "并发占用率",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+          },
+          "id": 3,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod) (rate(crawler_fetch_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[5m]))",
+              "legendFormat": "{{ pod }}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "按 Pod 的抓取吞吐",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "id": 4,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod, key) (rate(crawler_failure_by_type{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[5m]))",
+              "legendFormat": "{{ pod }} / {{ key }}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "按错误类型的失败趋势",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          },
+          "id": 5,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod, key) (crawler_concurrency_region_inflight_by_region{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"})",
+              "legendFormat": "{{ pod }} / {{ key }}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "按 Pod / Region 的并发",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 18
+          },
+          "id": 6,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "pluginVersion": "11.1.0",
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod) (rate(crawler_fetch_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[5m]))",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "A"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod) (rate(crawler_fetch_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[5m])) / clamp_min(sum by (pod) (rate(crawler_fetch_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[5m])), 0.001)",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "B"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod) (crawler_concurrency_global_inflight{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"})",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "C"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod) (crawler_region_guard_block_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"})",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "D"
+            },
+            {
+              "editorMode": "code",
+              "expr": "max by (pod) (crawler_total_instances{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"})",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "E"
+            },
+            {
+              "editorMode": "code",
+              "expr": "max by (pod) (crawler_configured_pool_size{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"})",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "F"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod) (increase(crawler_pool_async_recreate_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[30m])) + sum by (pod) (increase(crawler_pool_sync_recreate_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[30m]))",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "G"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod) (increase(crawler_task_submit_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[30m]))",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "H"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod) (increase(crawler_dedupe_wait_timeout_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[30m]))",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "I"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum by (pod) (increase(crawler_failure_by_type{kubernetes_namespace=\"$namespace\", pod=~\"$pod\", key=\"processor_unavailable\"}[30m]))",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "J"
+            }
+          ],
+          "title": "Pod 汇总",
+          "transformations": [
+            {
+              "id": "joinByField",
+              "options": {
+                "byField": "pod",
+                "mode": "outer"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time 1": true,
+                  "Time 2": true,
+                  "Time 3": true,
+                  "Time 4": true,
+                  "Time 5": true,
+                  "Time 6": true,
+                  "Time 7": true,
+                  "Time 8": true,
+                  "Time 9": true,
+                  "Time 10": true
+                },
+                "indexByName": {},
+                "renameByName": {
+                  "Value #A": "近 5 分钟抓取速率",
+                  "Value #B": "近 5 分钟失败率",
+                  "Value #C": "当前全局并发",
+                  "Value #D": "Region Guard 总拦截数",
+                  "Value #E": "当前实例数",
+                  "Value #F": "配置池大小",
+                  "Value #G": "近 30 分钟重建失败",
+                  "Value #H": "近 30 分钟提交失败",
+                  "Value #I": "近 30 分钟 Dedupe 超时",
+                  "Value #J": "近 30 分钟处理器不可用"
+                }
+              }
+            }
+          ],
+          "type": "table"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "style": "dark",
+      "tags": [
+        "task-processor",
+        "amazon",
+        "crawler"
+      ],
+      "templating": {
+        "list": [
+          {
+            "current": {
+              "selected": false,
+              "text": "task-processor",
+              "value": "task-processor"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "label": "命名空间",
+            "multi": false,
+            "name": "namespace",
+            "options": [],
+            "query": "label_values(crawler_fetch_total, kubernetes_namespace)",
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 1,
+            "type": "query"
+          },
+          {
+            "current": {
+              "selected": true,
+              "text": "All",
+              "value": ".*"
+            },
+            "hide": 0,
+            "includeAll": true,
+            "label": "Pod",
+            "multi": true,
+            "name": "pod",
+            "options": [],
+            "query": "label_values(crawler_fetch_total{kubernetes_namespace=\"$namespace\"}, pod)",
+            "refresh": 1,
+            "regex": "amazon-crawler-api-.*",
+            "skipUrlSync": false,
+            "sort": 1,
+            "type": "query"
+          }
+        ]
+      },
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "",
+      "title": "Amazon 爬虫 Pod 看板",
+      "uid": "amazon-crawler-api-pods",
+      "version": 2,
+      "weekStart": ""
+    }

@@ -29,6 +29,7 @@
 - [pool_manager.go](D:/code/task-processor/internal/crawler/amazon/browser/pool_manager.go)
 - [captcha_handler.go](D:/code/task-processor/internal/crawler/amazon/captcha_handler.go)
 - [crawler_service.go](D:/code/task-processor/internal/crawler/amazon/crawler_service.go)
+- [amazon-crawler-runtime-flow.md](D:/code/task-processor/docs/architecture/amazon-crawler-runtime-flow.md)
 
 但从商用标准看，当前仍然更接近“内部生产试跑”而不是“高稳定商用服务”。
 

@@ -155,6 +155,7 @@ func NewDefaultConfig() *Config {
 				FingerprintStrategy: "random",
 				HealthCheckEnabled:  true,
 				MaxRetries:          3,
+				MaxUsesPerInstance:  25,
 			},
 		},
 		Amazon: AmazonConfig{
@@ -437,6 +438,9 @@ func applyDefaults(cfg *Config) {
 		if cfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds == 0 {
 			cfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds = defaultCfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds
 		}
+	}
+	if cfg.Browser.RandomConfig.MaxUsesPerInstance == 0 {
+		cfg.Browser.RandomConfig.MaxUsesPerInstance = defaultCfg.Browser.RandomConfig.MaxUsesPerInstance
 	}
 	if cfg.ProductImage.WorkDir == "" {
 		cfg.ProductImage.WorkDir = defaultCfg.ProductImage.WorkDir

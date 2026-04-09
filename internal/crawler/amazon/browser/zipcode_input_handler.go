@@ -4,7 +4,6 @@ package browser
 import (
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
 	"time"
@@ -354,36 +353,7 @@ func inferCountryFromTargetURL(targetURL string) string {
 
 // inferCountryFromZipcode 根据邮编格式推断目标国家名称（用于 GLUXCountryList 选项匹配）
 func inferCountryFromZipcode(zipcode string) string {
-	normalized := strings.ToUpper(strings.TrimSpace(zipcode))
-	if normalized == "" {
-		return ""
-	}
-
-	// 美国 ZIP: 10001 或 10001-1234
-	usRegex := regexp.MustCompile(`^\d{5}(?:-\d{4})?$`)
-	if usRegex.MatchString(normalized) {
-		return "United States"
-	}
-
-	// 加拿大邮编: M5V2T6 / M5V 2T6
-	canadaRegex := regexp.MustCompile(`^[A-Z]\d[A-Z]\s?\d[A-Z]\d$`)
-	if canadaRegex.MatchString(normalized) {
-		return "Canada"
-	}
-
-	// 日本邮编: 100-0001 / 1000001
-	japanRegex := regexp.MustCompile(`^\d{3}-?\d{4}$`)
-	if japanRegex.MatchString(normalized) {
-		return "Japan"
-	}
-
-	// 英国邮编: SW1A 1AA 等
-	ukRegex := regexp.MustCompile(`(?i)^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$`)
-	if ukRegex.MatchString(normalized) {
-		return "United Kingdom"
-	}
-
-	return ""
+	return inferCountryFromZipcodeValue(zipcode)
 }
 
 // handleZipcodeInput 处理邮编输入（使用策略模式）

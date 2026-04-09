@@ -2,16 +2,31 @@ package amazon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/shared"
+	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
 )
+
+type stubWorkerPool struct {
+	submitErr error
+}
+
+func (s *stubWorkerPool) Start(ctx context.Context)               {}
+func (s *stubWorkerPool) Stop(ctx context.Context)                {}
+func (s *stubWorkerPool) Submit(job worker.WorkerJob) error       { return s.submitErr }
+func (s *stubWorkerPool) AvailableSlots() int                     { return 1 }
+func (s *stubWorkerPool) GetQueueStats() worker.QueueStats        { return worker.QueueStats{} }
+func (s *stubWorkerPool) SetJobHandler(handler worker.JobHandler) {}
+func (s *stubWorkerPool) GetMetrics() *worker.Metrics             { return nil }
 
 type memProductDedupeStore struct {
 	mu      sync.Mutex
@@ -131,6 +146,128 @@ func TestServiceFetchProductDeduplicatesConcurrentRequests(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("expected 1 real crawl, got %d", calls)
+	}
+}
+
+func TestServiceFetchProductDeduplicatesAcrossNormalizedRegion(t *testing.T) {
+	store := newMemProductDedupeStore()
+	cfg := &config.Config{
+		Amazon: config.AmazonConfig{
+			Enabled:      true,
+			CrawlTimeout: 30,
+			Zipcodes: map[string]string{
+				"us": "10001",
+			},
+		},
+	}
+
+	service := &Service{
+		config:         cfg,
+		logger:         logrus.New(),
+		domainResolver: NewDomainResolver(),
+		dedupeStore:    store,
+	}
+
+	var mu sync.Mutex
+	calls := 0
+	service.processProduct = func(ctx context.Context, url, zipcode string) (*model.Product, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		time.Sleep(150 * time.Millisecond)
+		return &model.Product{
+			Asin:  "B001234567",
+			Title: "Demo Product",
+			URL:   url,
+		}, nil
+	}
+
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _, errs[0] = service.FetchProduct(ctx, "https://www.amazon.com/dp/B001234567", "B001234567", "", "")
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _, errs[1] = service.FetchProduct(ctx, "", "B001234567", "us", "")
+	}()
+
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("request %d returned error: %v", i, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("expected 1 real crawl after region normalization, got %d", calls)
+	}
+}
+
+func TestServiceFetchProductDeduplicatesAcrossASINAndURLIdentity(t *testing.T) {
+	store := newMemProductDedupeStore()
+	cfg := &config.Config{
+		Amazon: config.AmazonConfig{
+			Enabled:      true,
+			CrawlTimeout: 30,
+			Zipcodes: map[string]string{
+				"us": "10001",
+			},
+		},
+	}
+
+	service := &Service{
+		config:         cfg,
+		logger:         logrus.New(),
+		domainResolver: NewDomainResolver(),
+		dedupeStore:    store,
+	}
+
+	var mu sync.Mutex
+	calls := 0
+	service.processProduct = func(ctx context.Context, url, zipcode string) (*model.Product, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		time.Sleep(150 * time.Millisecond)
+		return &model.Product{
+			Asin:  "B001234567",
+			Title: "Demo Product",
+			URL:   url,
+		}, nil
+	}
+
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _, errs[0] = service.FetchProduct(ctx, "https://www.amazon.com/gp/product/B001234567?psc=1&language=en_US", "", "us", "")
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _, errs[1] = service.FetchProduct(ctx, "", "B001234567", "us", "")
+	}()
+
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("request %d returned error: %v", i, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("expected 1 real crawl after identity normalization, got %d", calls)
 	}
 }
 
@@ -304,5 +441,46 @@ func TestServiceResolveFetchInputsKeepsExplicitZipcode(t *testing.T) {
 	}
 	if zipcode != "10001" {
 		t.Fatalf("expected explicit zipcode to be preserved, got %q", zipcode)
+	}
+}
+
+func TestServiceStopShutsDownAmazonProcessor(t *testing.T) {
+	service := &Service{
+		logger:          logrus.New(),
+		amazonProcessor: &AmazonProcessor{},
+	}
+	service.SetWorkerPool(&stubWorkerPool{})
+
+	if err := service.Stop(context.Background()); err != nil {
+		t.Fatalf("service stop failed: %v", err)
+	}
+	if !service.amazonProcessor.closed {
+		t.Fatal("expected amazon processor to be closed on service stop")
+	}
+}
+
+func TestServiceSubmitTaskMarksResultFailedWhenSubmitFails(t *testing.T) {
+	service := &Service{
+		logger: logrus.New(),
+	}
+	service.SetWorkerPool(&stubWorkerPool{submitErr: errors.New("queue full")})
+
+	task := shared.NewCrawlerTask("https://www.amazon.com/dp/B001234567")
+	if err := service.SubmitTask(task); err == nil {
+		t.Fatal("expected submit task to fail")
+	}
+
+	result, err := service.GetTask(task.TaskID)
+	if err != nil {
+		t.Fatalf("expected task result to exist, got error: %v", err)
+	}
+	if result.Status != shared.StatusFailed {
+		t.Fatalf("expected failed status, got %s", result.Status)
+	}
+	if result.Error == "" || result.Error != "提交任务失败: queue full" {
+		t.Fatalf("unexpected task error: %q", result.Error)
+	}
+	if result.CompletedAt == nil {
+		t.Fatal("expected completed timestamp on failed submission")
 	}
 }

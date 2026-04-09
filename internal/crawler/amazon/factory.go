@@ -11,14 +11,14 @@ import (
 func CreateProcessor(cfg *config.Config, logger *logrus.Logger) *AmazonProcessor {
 	logger.Info("🔧 创建Amazon爬虫处理器...")
 
-	// 确保浏览器配置合理
-	if cfg.Browser.PoolSize <= 0 {
-		cfg.Browser.PoolSize = 3 // 爬虫默认使用3个浏览器实例
-	}
-
 	// 创建Amazon爬虫处理器
 	amazonProcessor := NewAmazonProcessor(cfg)
+	effectivePoolSize := effectiveBrowserPoolSize(cfg)
 
-	logger.Infof("✅ Amazon爬虫处理器创建成功，浏览器池大小: %d", cfg.Browser.PoolSize)
+	if amazonProcessor != nil && amazonProcessor.initErr != nil {
+		logger.Errorf("⚠️ Amazon爬虫处理器创建完成，但浏览器池不可用: %v", amazonProcessor.initErr)
+	} else {
+		logger.Infof("✅ Amazon爬虫处理器创建成功，浏览器池大小: %d", effectivePoolSize)
+	}
 	return amazonProcessor
 }

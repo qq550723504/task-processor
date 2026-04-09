@@ -1,0 +1,74 @@
+prometheus:
+  prometheusSpec:
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    retention: 7d
+    retentionSize: 20GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20Gi
+
+grafana:
+  initChownData:
+    enabled: false
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+
+alertmanager:
+  alertmanagerSpec:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:
+                    - vm-4-17-ubuntu
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - alertmanager
+                  - key: alertmanager
+                    operator: In
+                    values:
+                      - monitoring-kube-prometheus-alertmanager
+              topologyKey: kubernetes.io/hostname
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 5Gi
+
+prometheusOperator:
+  admissionWebhooks:
+    patch:
+      enabled: true

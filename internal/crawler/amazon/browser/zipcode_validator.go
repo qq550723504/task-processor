@@ -4,7 +4,6 @@ package browser
 import (
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
 
@@ -186,32 +185,7 @@ func inferCountryFromTargetURLForValidation(targetURL string) string {
 }
 
 func inferCountryFromZipcodeForValidation(zipcode string) string {
-	normalized := strings.ToUpper(strings.TrimSpace(zipcode))
-	if normalized == "" {
-		return ""
-	}
-
-	usRegex := regexp.MustCompile(`^\d{5}(?:-\d{4})?$`)
-	if usRegex.MatchString(normalized) {
-		return "United States"
-	}
-
-	canadaRegex := regexp.MustCompile(`^[A-Z]\d[A-Z]\s?\d[A-Z]\d$`)
-	if canadaRegex.MatchString(normalized) {
-		return "Canada"
-	}
-
-	japanRegex := regexp.MustCompile(`^\d{3}-?\d{4}$`)
-	if japanRegex.MatchString(normalized) {
-		return "Japan"
-	}
-
-	ukRegex := regexp.MustCompile(`(?i)^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$`)
-	if ukRegex.MatchString(normalized) {
-		return "United Kingdom"
-	}
-
-	return ""
+	return inferCountryFromZipcodeValue(zipcode)
 }
 
 func locationMatchesTargetCountry(currentText, targetCountry string) bool {

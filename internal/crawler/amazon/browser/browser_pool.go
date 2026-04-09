@@ -8,17 +8,15 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
-
-	"github.com/playwright-community/playwright-go"
 )
 
 // BrowserInstance 浏览器实例
 type BrowserInstance struct {
 	ID             int
 	Manager        *BrowserManager
-	Page           playwright.Page
 	InUse          bool
 	Closed         bool   // 已被超时路径关闭，不可再归还池
+	UsageCount     int    // 当前实例已完成的任务次数，用于定期轮换 context
 	CurrentRegion  string // 当前实例最近一次成功服务的站点上下文
 	CurrentZipcode string // 当前设置的邮编，用于避免重复设置
 	CurrentProxy   string
@@ -47,8 +45,18 @@ type BrowserPool struct {
 	errorDetector        *ErrorDetector
 	riskPolicy           *riskPolicy
 	proxyPool            *sharedbrowser.ProxyPool
+	stats                *poolStats
 	shutdownOnce         sync.Once // 确保只关闭一次
 	closed               bool      // 标记是否已关闭
+}
+
+type poolStats struct {
+	mu                   sync.RWMutex
+	initFailureTotal     int64
+	syncRecreateSuccess  int64
+	syncRecreateFailure  int64
+	asyncRecreateSuccess int64
+	asyncRecreateFailure int64
 }
 
 // BrowserPoolConfig 浏览器池配置
@@ -57,6 +65,7 @@ type BrowserPoolConfig struct {
 	MaxRetries           int    // 最大重试次数
 	HealthCheckEnabled   bool   // 是否启用健康检查
 	UseRandomFingerprint bool   // 是否使用随机指纹
+	MaxInstanceUses      int    // 单实例最大复用次数，达到后轮换
 	FingerprintStrategy  string // "random", "stable", "preset"
 	PresetName           string // 预设配置名称
 }
@@ -66,6 +75,7 @@ func DefaultBrowserPoolConfig() *BrowserPoolConfig {
 	return &BrowserPoolConfig{
 		Size:                 1,
 		UseRandomFingerprint: true, // 默认启用随机指纹
+		MaxInstanceUses:      25,
 		FingerprintStrategy:  "random",
 		PresetName:           "windows_high_end",
 	}
@@ -84,6 +94,7 @@ func NewBrowserPool(cfg *config.Config, poolConfig *BrowserPoolConfig) *BrowserP
 		instances:            make([]*BrowserInstance, 0, poolConfig.Size),
 		available:            make(chan *BrowserInstance, poolConfig.Size),
 		useRandomFingerprint: poolConfig.UseRandomFingerprint,
+		stats:                &poolStats{},
 	}
 
 	// 如果启用随机指纹，初始化指纹生成器
@@ -116,6 +127,7 @@ func (bp *BrowserPool) Initialize() error {
 		instance, err := bp.instanceManager.CreateInstance(i)
 		if err != nil {
 			logger.GetGlobalLogger("crawler/amazon").Infof("创建浏览器实例 %d 失败: %v", i, err)
+			bp.recordInitFailure()
 			// 清理已创建的实例
 			bp.Shutdown()
 			return fmt.Errorf("初始化浏览器池失败: %w", err)
@@ -164,6 +176,7 @@ func (bp *BrowserPool) Release(instance *BrowserInstance) {
 		return
 	}
 
+	rotateAfterUse, usageCount := bp.markInstanceUsed(instance)
 	instance.Mu.Lock()
 	instance.InUse = false
 	instance.Mu.Unlock()
@@ -184,6 +197,12 @@ func (bp *BrowserPool) Release(instance *BrowserInstance) {
 
 	logger.GetGlobalLogger("crawler/amazon").Infof("释放浏览器实例 %d", instance.ID)
 
+	if rotateAfterUse {
+		logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例 %d 已完成 %d 次任务，触发轮换重建", instance.ID, usageCount)
+		bp.instanceManager.RecreateInstanceAsync(instance)
+		return
+	}
+
 	// 使用 select 防止在关闭过程中阻塞
 	select {
 	case bp.available <- instance:
@@ -200,6 +219,7 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 		return
 	}
 
+	rotateAfterUse, usageCount := bp.markInstanceUsed(instance)
 	instance.Mu.Lock()
 	instance.InUse = false
 	instance.Mu.Unlock()
@@ -219,6 +239,12 @@ func (bp *BrowserPool) ReleaseWithError(instance *BrowserInstance, err error) {
 	// 检测是否为风控或严重错误
 	if bp.ShouldRecreateAfterFailure(instance, err) {
 		logger.GetGlobalLogger("crawler/amazon").Infof("检测到浏览器实例 %d 被风控或出现严重错误: %v", instance.ID, err)
+		bp.instanceManager.RecreateInstanceAsync(instance)
+		return
+	}
+
+	if rotateAfterUse {
+		logger.GetGlobalLogger("crawler/amazon").Infof("浏览器实例 %d 已完成 %d 次任务，错误释放后触发轮换重建", instance.ID, usageCount)
 		bp.instanceManager.RecreateInstanceAsync(instance)
 		return
 	}
@@ -370,4 +396,99 @@ func (bp *BrowserPool) ProxyStats() map[string]any {
 		return nil
 	}
 	return bp.proxyPool.Snapshot()
+}
+
+func (bp *BrowserPool) PoolStats() map[string]any {
+	if bp == nil {
+		return nil
+	}
+
+	stats := map[string]any{}
+	if bp.healthChecker != nil {
+		for key, value := range bp.healthChecker.GetPoolStats() {
+			stats[key] = value
+		}
+	}
+	if len(stats) == 0 {
+		stats["total_instances"] = 0
+		stats["available_instances"] = 0
+		stats["in_use_instances"] = 0
+		stats["healthy_instances"] = 0
+	}
+
+	if bp.poolConfig != nil {
+		stats["configured_pool_size"] = bp.poolConfig.Size
+		stats["max_instance_uses"] = bp.poolConfig.MaxInstanceUses
+	}
+
+	if bp.stats != nil {
+		bp.stats.mu.RLock()
+		stats["pool_init_failure_total"] = bp.stats.initFailureTotal
+		stats["pool_sync_recreate_success_total"] = bp.stats.syncRecreateSuccess
+		stats["pool_sync_recreate_failure_total"] = bp.stats.syncRecreateFailure
+		stats["pool_async_recreate_success_total"] = bp.stats.asyncRecreateSuccess
+		stats["pool_async_recreate_failure_total"] = bp.stats.asyncRecreateFailure
+		bp.stats.mu.RUnlock()
+	}
+
+	if manager, ok := bp.instanceManager.(*InstanceManager); ok && manager != nil {
+		stats["pool_active_rebuild_total"] = manager.ActiveRebuildCount()
+	} else {
+		stats["pool_active_rebuild_total"] = 0
+	}
+
+	return stats
+}
+
+func (bp *BrowserPool) recordInitFailure() {
+	if bp == nil || bp.stats == nil {
+		return
+	}
+	bp.stats.mu.Lock()
+	defer bp.stats.mu.Unlock()
+	bp.stats.initFailureTotal++
+}
+
+func (bp *BrowserPool) recordSyncRecreateResult(success bool) {
+	if bp == nil || bp.stats == nil {
+		return
+	}
+	bp.stats.mu.Lock()
+	defer bp.stats.mu.Unlock()
+	if success {
+		bp.stats.syncRecreateSuccess++
+		return
+	}
+	bp.stats.syncRecreateFailure++
+}
+
+func (bp *BrowserPool) recordAsyncRecreateResult(success bool) {
+	if bp == nil || bp.stats == nil {
+		return
+	}
+	bp.stats.mu.Lock()
+	defer bp.stats.mu.Unlock()
+	if success {
+		bp.stats.asyncRecreateSuccess++
+		return
+	}
+	bp.stats.asyncRecreateFailure++
+}
+
+func (bp *BrowserPool) markInstanceUsed(instance *BrowserInstance) (bool, int) {
+	if bp == nil || instance == nil {
+		return false, 0
+	}
+
+	maxUses := 0
+	if bp.poolConfig != nil {
+		maxUses = bp.poolConfig.MaxInstanceUses
+	}
+
+	instance.Mu.Lock()
+	instance.UsageCount++
+	usageCount := instance.UsageCount
+	instance.Mu.Unlock()
+
+	return maxUses > 0 && usageCount >= maxUses, usageCount
 }

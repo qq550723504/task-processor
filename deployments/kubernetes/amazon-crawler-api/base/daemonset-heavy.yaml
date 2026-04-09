@@ -1,10 +1,11 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: amazon-crawler-api
+  name: amazon-crawler-api-heavy
   namespace: task-processor
   labels:
     app: amazon-crawler-api
+    crawler-tier: heavy
 spec:
   revisionHistoryLimit: 3
   updateStrategy:
@@ -12,13 +13,16 @@ spec:
   selector:
     matchLabels:
       app: amazon-crawler-api
+      crawler-tier: heavy
   template:
     metadata:
       labels:
         app: amazon-crawler-api
+        crawler-tier: heavy
     spec:
       nodeSelector:
         node-role.kubernetes.io/agent: "true"
+        task-processor/crawler-tier: heavy
       containers:
         - name: amazon-crawler-api
           image: xuwei190/task-processor-amazon-crawler-api:cd8db1b-redistrace
@@ -47,11 +51,11 @@ spec:
                 name: amazon-crawler-api-secret
           resources:
             requests:
-              cpu: "200m"
-              memory: "1Gi"
+              cpu: "400m"
+              memory: "1500Mi"
             limits:
-              cpu: "1500m"
-              memory: "2500Mi"
+              cpu: "2500m"
+              memory: "4Gi"
           readinessProbe:
             httpGet:
               path: /ready
@@ -86,7 +90,7 @@ spec:
       volumes:
         - name: app-config
           configMap:
-            name: amazon-crawler-api-config
+            name: amazon-crawler-api-config-heavy
         - name: app-tmp
           emptyDir: {}
         - name: app-logs

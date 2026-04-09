@@ -3,8 +3,9 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-  - configmap.yaml
-  - deployment.yaml
+  - configmap-lite.yaml
+  - configmap-heavy.yaml
+  - daemonset-lite.yaml
+  - daemonset-heavy.yaml
   - service.yaml
   - ingress.yaml
-  - hpa.yaml

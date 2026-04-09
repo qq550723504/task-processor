@@ -4,6 +4,7 @@ param(
     [string]$Tag = "",
     [string]$Namespace = "task-processor",
     [string]$DeploymentName = "amazon-crawler-api",
+    [string]$AppLabel = "amazon-crawler-api",
     [string]$OverlayPath = "deployments/kubernetes/amazon-crawler-api/overlays/prod",
     [switch]$SkipApply,
     [switch]$PublishLatest
@@ -53,8 +54,28 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Amazon Crawler API Build / Push / Deploy" -ForegroundColor Cyan
 Write-Host "  Image: $VersionedImage" -ForegroundColor Cyan
 Write-Host "  Namespace: $Namespace" -ForegroundColor Cyan
-Write-Host "  Deployment: $DeploymentName" -ForegroundColor Cyan
+Write-Host "  App Label: $AppLabel" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+
+function Get-RolloutTargets {
+    param(
+        [string]$Namespace,
+        [string]$AppLabel,
+        [string]$FallbackDeploymentName
+    )
+
+    $targets = @()
+    $resolved = kubectl -n $Namespace get deployment,daemonset -l "app=$AppLabel" -o name 2>$null
+    if ($LASTEXITCODE -eq 0 -and $resolved) {
+        $targets = @($resolved | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+
+    if (-not $targets -or $targets.Count -eq 0) {
+        $targets = @("deployment/$FallbackDeploymentName")
+    }
+
+    return $targets
+}
 
 Invoke-Step "Build Docker image" {
     $dockerArgs = @("build", "-f", $Dockerfile, "-t", $VersionedImage)
@@ -80,12 +101,31 @@ if (-not $SkipApply) {
         kubectl apply -k $OverlayPath
     }
 
-    Invoke-Step "Update deployment image" {
-        kubectl -n $Namespace set image deployment/$DeploymentName "$DeploymentName=$VersionedImage"
+    $rolloutTargets = Get-RolloutTargets -Namespace $Namespace -AppLabel $AppLabel -FallbackDeploymentName $DeploymentName
+    if (-not $rolloutTargets -or $rolloutTargets.Count -eq 0) {
+        throw "No deployment or daemonset targets found for app=$AppLabel"
+    }
+
+    Write-Host ""
+    Write-Host "Resolved rollout targets:" -ForegroundColor Cyan
+    $rolloutTargets | ForEach-Object { Write-Host "  - $_" -ForegroundColor Cyan }
+
+    Invoke-Step "Update workload images" {
+        foreach ($target in $rolloutTargets) {
+            kubectl -n $Namespace set image $target "amazon-crawler-api=$VersionedImage"
+            if ($LASTEXITCODE -ne 0) {
+                throw "set image failed for $target"
+            }
+        }
     }
 
     Invoke-Step "Wait for rollout" {
-        kubectl -n $Namespace rollout status deployment/$DeploymentName --timeout=5m
+        foreach ($target in $rolloutTargets) {
+            kubectl -n $Namespace rollout status $target --timeout=5m
+            if ($LASTEXITCODE -ne 0) {
+                throw "rollout status failed for $target"
+            }
+        }
         kubectl -n $Namespace get pods -l "app=$DeploymentName" -o wide
     }
 }

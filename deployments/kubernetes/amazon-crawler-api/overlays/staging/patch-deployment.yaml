@@ -1,19 +1,37 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
-  name: amazon-crawler-api
+  name: amazon-crawler-api-lite
   namespace: task-processor
 spec:
-  replicas: 2
   template:
     spec:
+      nodeSelector:
+        node-role.kubernetes.io/agent: "true"
+        task-processor/crawler-tier: lite
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
       containers:
         - name: amazon-crawler-api
           imagePullPolicy: Always
-          resources:
-            requests:
-              cpu: "500m"
-              memory: "1Gi"
-            limits:
-              cpu: "2"
-              memory: "4Gi"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: amazon-crawler-api-heavy
+  namespace: task-processor
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/agent: "true"
+        task-processor/crawler-tier: heavy
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: amazon-crawler-api
+          imagePullPolicy: Always

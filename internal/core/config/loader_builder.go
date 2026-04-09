@@ -65,6 +65,7 @@ func BuildConfig(v *viper.Viper) *Config {
 				FingerprintStrategy: v.GetString("browser.randomConfig.fingerprintStrategy"),
 				HealthCheckEnabled:  v.GetBool("browser.randomConfig.healthCheckEnabled"),
 				MaxRetries:          v.GetInt("browser.randomConfig.maxRetries"),
+				MaxUsesPerInstance:  v.GetInt("browser.randomConfig.maxUsesPerInstance"),
 			},
 		},
 		Amazon: AmazonConfig{

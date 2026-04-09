@@ -42,8 +42,8 @@ func (zs *ZipcodeSetter) SetTargetURL(targetURL string) {
 	}
 }
 
-// SetAndVerifyZipcode 设置并验证邮编（基础方法）
-// 第二次重试前会刷新页面
+// SetAndVerifyZipcode 设置并验证邮编（基础方法）。
+// 仅在上一次失败疑似由页面状态导致时，才在下一轮尝试前刷新页面。
 func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode string) error {
 	// 如果邮编为空，跳过设置
 	if zipcode == "" {
@@ -51,8 +51,8 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 		return nil
 	}
 
-	contextChanged := false
 	lastObservedMismatch := ""
+	needsRefreshBeforeRetry := false
 
 	for attempt := 1; attempt <= zs.maxRetries; attempt++ {
 		logger.GetGlobalLogger("crawler/amazon").Infof("尝试设置邮编 (第 %d/%d 次): %s", attempt, zs.maxRetries, zipcode)
@@ -62,11 +62,12 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 			return fmt.Errorf("页面已关闭，无法继续操作")
 		}
 
-		// 如果是第二次尝试，先刷新页面
-		if attempt == 2 {
+		// 只在上一次失败确实可能由页面状态引起时，才在下一次尝试前刷新。
+		if attempt > 1 && needsRefreshBeforeRetry {
 			if err := zs.refreshPageForRetry(page); err != nil {
 				return fmt.Errorf("刷新页面失败: %w", err)
 			}
+			needsRefreshBeforeRetry = false
 		}
 
 		DismissRegionalPrompt(page, zs.inputHandler.targetURL)
@@ -93,6 +94,8 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 				return fmt.Errorf("设置邮编失败，已达到最大重试次数: %w", err)
 			}
 
+			needsRefreshBeforeRetry = true
+
 			// 第一次失败后等待，第二次失败会在下次循环开始时刷新页面
 			if attempt == 1 {
 				logger.GetGlobalLogger("crawler/amazon").Infof("等待 2 秒后重试")
@@ -101,10 +104,8 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 			continue
 		}
 
-		contextChanged = true
-
 		// 验证邮编
-		if isValid, err := zs.isZipcodeValid(page, zipcode); err != nil || !isValid {
+		if isValid, err := zs.verifyZipcodeWithSettle(page, zipcode); err != nil || !isValid {
 			if mismatchValue := zs.detectStableMismatch(page, zipcode); mismatchValue != "" {
 				if lastObservedMismatch != "" && lastObservedMismatch == mismatchValue {
 					return fmt.Errorf("邮编更新未生效，当前仍为: %s", mismatchValue)
@@ -126,18 +127,14 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 				return fmt.Errorf("验证邮编失败，已达到最大重试次数")
 			}
 
+			needsRefreshBeforeRetry = zs.shouldRefreshAfterValidationFailure(err, lastObservedMismatch)
+
 			// 第一次失败后等待，第二次失败会在下次循环开始时刷新页面
 			if attempt == 1 {
 				logger.GetGlobalLogger("crawler/amazon").Infof("等待 2 秒后重试")
 				time.Sleep(2 * time.Second)
 			}
 			continue
-		}
-
-		if contextChanged {
-			if err := zs.refreshPageAfterZipcodeUpdate(page); err != nil {
-				logger.GetGlobalLogger("crawler/amazon").Warnf("邮编更新后刷新页面失败，继续使用当前页面: %v", err)
-			}
 		}
 
 		logger.GetGlobalLogger("crawler/amazon").Infof("成功设置并验证邮编: %s", zipcode)
@@ -188,6 +185,28 @@ func (zs *ZipcodeSetter) detectStableMismatch(page playwright.Page, expectedZipc
 	return cleanCurrent
 }
 
+func (zs *ZipcodeSetter) verifyZipcodeWithSettle(page playwright.Page, expectedZipcode string) (bool, error) {
+	isValid, err := zs.isZipcodeValid(page, expectedZipcode)
+	if err != nil || isValid {
+		return isValid, err
+	}
+
+	// Apply 之后 Amazon 往往会异步更新配送信息，给一次短暂 settle 机会，
+	// 避免因为 UI 尚未同步就进入下一轮重试/刷新。
+	time.Sleep(1200 * time.Millisecond)
+	return zs.isZipcodeValid(page, expectedZipcode)
+}
+
+func (zs *ZipcodeSetter) shouldRefreshAfterValidationFailure(err error, stableMismatch string) bool {
+	if err != nil {
+		return true
+	}
+
+	// 已经拿到了稳定但错误的地址/邮编，说明页面活着，只是设置没生效，
+	// 优先再做一次输入尝试，避免每次都 reload。
+	return strings.TrimSpace(stableMismatch) == ""
+}
+
 // isZipcodeValid 验证当前邮编是否匹配目标邮编（统一的验证入口）
 func (zs *ZipcodeSetter) isZipcodeValid(page playwright.Page, expectedZipcode string) (bool, error) {
 	return zs.validator.VerifyZipcode(page, expectedZipcode)
@@ -195,7 +214,7 @@ func (zs *ZipcodeSetter) isZipcodeValid(page playwright.Page, expectedZipcode st
 
 // refreshPageForRetry 为重试刷新页面
 func (zs *ZipcodeSetter) refreshPageForRetry(page playwright.Page) error {
-	logger.GetGlobalLogger("crawler/amazon").Infof("第二次尝试前刷新页面")
+	logger.GetGlobalLogger("crawler/amazon").Infof("重试前刷新页面")
 	if _, err := page.Reload(playwright.PageReloadOptions{
 		Timeout: playwright.Float(15000), // 15秒超时，防止 WebSocket 断连时永久 hang
 	}); err != nil {
@@ -212,30 +231,6 @@ func (zs *ZipcodeSetter) refreshPageForRetry(page playwright.Page) error {
 	}
 
 	logger.GetGlobalLogger("crawler/amazon").Infof("页面已刷新，继续尝试设置邮编")
-	DismissRegionalPrompt(page, zs.inputHandler.targetURL)
-	return nil
-}
-
-func (zs *ZipcodeSetter) refreshPageAfterZipcodeUpdate(page playwright.Page) error {
-	if page == nil || page.IsClosed() {
-		return fmt.Errorf("页面已关闭，无法在邮编更新后刷新")
-	}
-
-	logger.GetGlobalLogger("crawler/amazon").Infof("邮编更新完成，刷新页面以同步最新配送/货币上下文")
-	if _, err := page.Reload(playwright.PageReloadOptions{
-		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-		Timeout:   playwright.Float(20000),
-	}); err != nil {
-		return fmt.Errorf("邮编更新后刷新页面失败: %w", err)
-	}
-
-	if err := page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
-		State:   playwright.LoadStateDomcontentloaded,
-		Timeout: playwright.Float(15000),
-	}); err != nil {
-		logger.GetGlobalLogger("crawler/amazon").Warnf("等待邮编更新后的页面加载完成失败: %v", err)
-	}
-
 	DismissRegionalPrompt(page, zs.inputHandler.targetURL)
 	return nil
 }

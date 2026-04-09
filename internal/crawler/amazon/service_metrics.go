@@ -3,38 +3,44 @@ package amazon
 import "sync"
 
 type serviceMetrics struct {
-	mu                       sync.RWMutex
-	totalFetches             int64
-	totalSuccesses           int64
-	totalFailures            int64
-	retryableFailures        int64
-	dedupeSharedHits         int64
-	regionGuardOpenTotal     int64
-	regionGuardBlockTotal    int64
-	successByMode            map[string]int64
-	failureByMode            map[string]int64
-	successByRegion          map[string]int64
-	failureByRegion          map[string]int64
-	failureByType            map[string]int64
-	retryableByType          map[string]int64
-	failureByRegionType      map[string]map[string]int64
-	retryableByRegionType    map[string]map[string]int64
-	regionGuardOpenByRegion  map[string]int64
-	regionGuardBlockByRegion map[string]int64
+	mu                        sync.RWMutex
+	totalFetches              int64
+	totalSuccesses            int64
+	totalFailures             int64
+	retryableFailures         int64
+	dedupeSharedHits          int64
+	dedupeWaitTimeouts        int64
+	taskSubmitFailures        int64
+	regionGuardOpenTotal      int64
+	regionGuardBlockTotal     int64
+	successByMode             map[string]int64
+	failureByMode             map[string]int64
+	successByRegion           map[string]int64
+	failureByRegion           map[string]int64
+	dedupeWaitTimeoutByRegion map[string]int64
+	taskSubmitFailureByStage  map[string]int64
+	failureByType             map[string]int64
+	retryableByType           map[string]int64
+	failureByRegionType       map[string]map[string]int64
+	retryableByRegionType     map[string]map[string]int64
+	regionGuardOpenByRegion   map[string]int64
+	regionGuardBlockByRegion  map[string]int64
 }
 
 func newServiceMetrics() *serviceMetrics {
 	return &serviceMetrics{
-		successByMode:            make(map[string]int64),
-		failureByMode:            make(map[string]int64),
-		successByRegion:          make(map[string]int64),
-		failureByRegion:          make(map[string]int64),
-		failureByType:            make(map[string]int64),
-		retryableByType:          make(map[string]int64),
-		failureByRegionType:      make(map[string]map[string]int64),
-		retryableByRegionType:    make(map[string]map[string]int64),
-		regionGuardOpenByRegion:  make(map[string]int64),
-		regionGuardBlockByRegion: make(map[string]int64),
+		successByMode:             make(map[string]int64),
+		failureByMode:             make(map[string]int64),
+		successByRegion:           make(map[string]int64),
+		failureByRegion:           make(map[string]int64),
+		dedupeWaitTimeoutByRegion: make(map[string]int64),
+		taskSubmitFailureByStage:  make(map[string]int64),
+		failureByType:             make(map[string]int64),
+		retryableByType:           make(map[string]int64),
+		failureByRegionType:       make(map[string]map[string]int64),
+		retryableByRegionType:     make(map[string]map[string]int64),
+		regionGuardOpenByRegion:   make(map[string]int64),
+		regionGuardBlockByRegion:  make(map[string]int64),
 	}
 }
 
@@ -88,6 +94,26 @@ func (m *serviceMetrics) RecordDedupeSharedHit(region string) {
 	m.successByRegion[normalizeMetricsRegion(region)] += 0
 }
 
+func (m *serviceMetrics) RecordDedupeWaitTimeout(region string) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dedupeWaitTimeouts++
+	m.dedupeWaitTimeoutByRegion[normalizeMetricsRegion(region)]++
+}
+
+func (m *serviceMetrics) RecordTaskSubmitFailure(stage string) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.taskSubmitFailures++
+	m.taskSubmitFailureByStage[normalizeTaskSubmitStage(stage)]++
+}
+
 func (m *serviceMetrics) RecordRegionGuardOpen(region string) {
 	if m == nil {
 		return
@@ -116,23 +142,27 @@ func (m *serviceMetrics) Snapshot() map[string]any {
 	defer m.mu.RUnlock()
 
 	stats := map[string]any{
-		"fetch_total":                  m.totalFetches,
-		"fetch_success_total":          m.totalSuccesses,
-		"fetch_failure_total":          m.totalFailures,
-		"retryable_failure_total":      m.retryableFailures,
-		"dedupe_shared_hit_total":      m.dedupeSharedHits,
-		"region_guard_open_total":      m.regionGuardOpenTotal,
-		"region_guard_block_total":     m.regionGuardBlockTotal,
-		"success_by_mode":              copyInt64Map(m.successByMode),
-		"failure_by_mode":              copyInt64Map(m.failureByMode),
-		"success_by_region":            copyInt64Map(m.successByRegion),
-		"failure_by_region":            copyInt64Map(m.failureByRegion),
-		"failure_by_type":              copyInt64Map(m.failureByType),
-		"retryable_failure_by_type":    copyInt64Map(m.retryableByType),
-		"failure_by_region_type":       copyNestedInt64Map(m.failureByRegionType),
-		"retryable_by_region_type":     copyNestedInt64Map(m.retryableByRegionType),
-		"region_guard_open_by_region":  copyInt64Map(m.regionGuardOpenByRegion),
-		"region_guard_block_by_region": copyInt64Map(m.regionGuardBlockByRegion),
+		"fetch_total":                   m.totalFetches,
+		"fetch_success_total":           m.totalSuccesses,
+		"fetch_failure_total":           m.totalFailures,
+		"retryable_failure_total":       m.retryableFailures,
+		"dedupe_shared_hit_total":       m.dedupeSharedHits,
+		"dedupe_wait_timeout_total":     m.dedupeWaitTimeouts,
+		"task_submit_failure_total":     m.taskSubmitFailures,
+		"region_guard_open_total":       m.regionGuardOpenTotal,
+		"region_guard_block_total":      m.regionGuardBlockTotal,
+		"success_by_mode":               copyInt64Map(m.successByMode),
+		"failure_by_mode":               copyInt64Map(m.failureByMode),
+		"success_by_region":             copyInt64Map(m.successByRegion),
+		"failure_by_region":             copyInt64Map(m.failureByRegion),
+		"dedupe_wait_timeout_by_region": copyInt64Map(m.dedupeWaitTimeoutByRegion),
+		"task_submit_failure_by_stage":  copyInt64Map(m.taskSubmitFailureByStage),
+		"failure_by_type":               copyInt64Map(m.failureByType),
+		"retryable_failure_by_type":     copyInt64Map(m.retryableByType),
+		"failure_by_region_type":        copyNestedInt64Map(m.failureByRegionType),
+		"retryable_by_region_type":      copyNestedInt64Map(m.retryableByRegionType),
+		"region_guard_open_by_region":   copyInt64Map(m.regionGuardOpenByRegion),
+		"region_guard_block_by_region":  copyInt64Map(m.regionGuardBlockByRegion),
 	}
 
 	if m.totalFetches > 0 {
@@ -186,5 +216,14 @@ func normalizeMetricsRegion(region string) string {
 		return "unknown"
 	default:
 		return region
+	}
+}
+
+func normalizeTaskSubmitStage(stage string) string {
+	switch stage {
+	case "marshal", "enqueue":
+		return stage
+	default:
+		return "unknown"
 	}
 }

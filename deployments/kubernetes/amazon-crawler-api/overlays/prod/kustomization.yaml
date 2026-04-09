@@ -13,4 +13,3 @@ images:
 patches:
   - path: patch-deployment.yaml
   - path: patch-ingress.yaml
-  - path: patch-hpa.yaml

@@ -20,4 +20,5 @@ type BrowserRandomConfig struct {
 	FingerprintStrategy string `yaml:"fingerprintStrategy"` // 指纹策略: random, stable
 	HealthCheckEnabled  bool   `yaml:"healthCheckEnabled"`  // 是否启用健康检查
 	MaxRetries          int    `yaml:"maxRetries"`          // 最大重试次数
+	MaxUsesPerInstance  int    `yaml:"maxUsesPerInstance"`  // 单实例最大复用次数，达到后轮换 context
 }

@@ -3,7 +3,6 @@ package browser
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
 
@@ -97,8 +96,7 @@ func (zg *ZipcodeGetter) GetCurrentZipcode(page playwright.Page) (string, error)
 func isLocationPlaceholder(text string) bool {
 	// 清理文本：压缩所有空白为单个空格
 	cleaned := strings.ToUpper(strings.TrimSpace(text))
-	spaceRe := regexp.MustCompile(`\s+`)
-	cleaned = spaceRe.ReplaceAllString(cleaned, " ")
+	cleaned = locationWhitespacePattern.ReplaceAllString(cleaned, " ")
 
 	// 纯占位符：清理后的文本完全匹配
 	purePlaceholders := []string{
@@ -131,8 +129,9 @@ func extractCityName(text string) string {
 	}
 
 	// 检查文本中是否包含已知城市名称
+	lowerText := strings.ToLower(text)
 	for _, city := range knownCities {
-		if regexp.MustCompile(`(?i)` + regexp.QuoteMeta(city)).MatchString(text) {
+		if strings.Contains(lowerText, strings.ToLower(city)) {
 			return city
 		}
 	}

@@ -1,6 +1,7 @@
 package amazon
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -35,6 +36,24 @@ func TestClassifyFetchError(t *testing.T) {
 			err:       errors.New("crawl already in progress and shared result timed out"),
 			wantType:  FetchErrorTypeCrawlInProgress,
 			retryable: true,
+		},
+		{
+			name:      "processor unavailable",
+			err:       errors.New("初始化浏览器池失败: chromium launch failed"),
+			wantType:  FetchErrorTypeProcessorUnavailable,
+			retryable: true,
+		},
+		{
+			name:      "typed system busy",
+			err:       newSystemBusyError("crawler concurrency acquire timeout: context deadline exceeded", context.DeadlineExceeded),
+			wantType:  FetchErrorTypeSystemBusy,
+			retryable: true,
+		},
+		{
+			name:      "typed invalid request",
+			err:       newInvalidRequestError("url or asin is required"),
+			wantType:  FetchErrorTypeInvalidRequest,
+			retryable: false,
 		},
 	}
 

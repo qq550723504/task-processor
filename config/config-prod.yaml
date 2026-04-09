@@ -112,6 +112,14 @@ browser:
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
+  randomConfig:
+    enabled: true
+    strategy: "random"
+    presetName: "windows_high_end"
+    fingerprintStrategy: "random"
+    healthCheckEnabled: true
+    maxRetries: 3
+    maxUsesPerInstance: 18  # 实例累计处理 18 个任务后主动轮换，避免 context 持续膨胀
 
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:

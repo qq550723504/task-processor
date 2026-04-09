@@ -15,6 +15,12 @@ type ProductChecker struct {
 	captchaHandler *CaptchaHandler
 }
 
+const (
+	pageReadyPollInterval = 200 * time.Millisecond
+	pageReadyMaxSettle    = 1500 * time.Millisecond
+	pageReadyMinSettle    = 200 * time.Millisecond
+)
+
 // NewProductChecker 创建产品检查器
 func NewProductChecker() *ProductChecker {
 	return &ProductChecker{
@@ -59,8 +65,7 @@ func (pc *ProductChecker) HandleContinueShoppingButton(page playwright.Page) err
 				continue // 尝试下一个选择器
 			}
 
-			// 等待页面跳转
-			time.Sleep(2 * time.Second)
+			pc.waitForPostActionSettle(page, pageReadyMaxSettle)
 			logger.GetGlobalLogger("crawler/amazon").Info("已成功点击Continue shopping按钮")
 			return nil
 		}
@@ -284,11 +289,82 @@ func (pc *ProductChecker) WaitForPageReady(page playwright.Page, timeout time.Du
 		return fmt.Errorf("等待页面加载超时: %w", err)
 	}
 
-	// 额外等待一小段时间让动态内容加载
-	time.Sleep(2 * time.Second)
+	pc.waitForPostActionSettle(page, pageReadySettleBudget(timeout))
 
 	// 检查页面状态
 	return pc.CheckPageLoadStatus(page)
+}
+
+func (pc *ProductChecker) waitForPostActionSettle(page playwright.Page, maxWait time.Duration) {
+	if page == nil || maxWait <= 0 {
+		return
+	}
+
+	deadline := time.Now().Add(maxWait)
+	for time.Now().Before(deadline) {
+		ready, err := pc.hasRenderableContent(page)
+		if err == nil && ready {
+			return
+		}
+		time.Sleep(pageReadyPollInterval)
+	}
+}
+
+func (pc *ProductChecker) hasRenderableContent(page playwright.Page) (bool, error) {
+	if page == nil {
+		return false, fmt.Errorf("页面对象为空")
+	}
+	if page.IsClosed() {
+		return false, fmt.Errorf("页面已关闭")
+	}
+
+	meaningfulSelectors := []string{
+		"#productTitle",
+		"#feature-bullets",
+		"#availability",
+		".a-price",
+		"#add-to-cart-button",
+		"#captchacharacters",
+	}
+	for _, selector := range meaningfulSelectors {
+		count, err := page.Locator(selector).Count()
+		if err == nil && count > 0 {
+			return true, nil
+		}
+	}
+
+	bodyText, err := page.Locator("body").TextContent()
+	if err != nil {
+		return false, err
+	}
+
+	return isLikelyRenderableBody(bodyText), nil
+}
+
+func pageReadySettleBudget(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		return 0
+	}
+
+	settle := timeout / 5
+	if settle > pageReadyMaxSettle {
+		settle = pageReadyMaxSettle
+	}
+	if settle < pageReadyMinSettle {
+		settle = pageReadyMinSettle
+	}
+	if settle > timeout {
+		settle = timeout
+	}
+	return settle
+}
+
+func isLikelyRenderableBody(bodyText string) bool {
+	trimmed := strings.TrimSpace(bodyText)
+	if trimmed == "" {
+		return false
+	}
+	return len(trimmed) >= 50
 }
 
 // IsProductPage 检查是否为产品页面

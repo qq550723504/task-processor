@@ -25,6 +25,7 @@ func TestBrowserConfigDefaults(t *testing.T) {
 	assert.Equal(t, "random", v.GetString("browser.randomConfig.fingerprintStrategy"))
 	assert.True(t, v.GetBool("browser.randomConfig.healthCheckEnabled"))
 	assert.Equal(t, 3, v.GetInt("browser.randomConfig.maxRetries"))
+	assert.Equal(t, 25, v.GetInt("browser.randomConfig.maxUsesPerInstance"))
 }
 
 func TestAmazonConfigDefaults(t *testing.T) {
@@ -144,6 +145,7 @@ func TestConfigValidation(t *testing.T) {
 				PresetName:          "windows_high_end",
 				FingerprintStrategy: "random",
 				MaxRetries:          3,
+				MaxUsesPerInstance:  25,
 			},
 		},
 		Amazon: AmazonConfig{
@@ -223,6 +225,7 @@ func TestConfigValidation(t *testing.T) {
 				Strategy:            "invalid_strategy",
 				FingerprintStrategy: "invalid_fingerprint",
 				MaxRetries:          -1,
+				MaxUsesPerInstance:  -1,
 			},
 		},
 		Amazon: AmazonConfig{
@@ -248,6 +251,7 @@ func TestBrowserConfigValidation(t *testing.T) {
 				PresetName:          "windows_high_end",
 				FingerprintStrategy: "random",
 				MaxRetries:          3,
+				MaxUsesPerInstance:  25,
 			},
 		},
 	}
@@ -266,6 +270,7 @@ func TestBrowserConfigValidation(t *testing.T) {
 				Strategy:            "invalid_strategy",
 				FingerprintStrategy: "invalid_fingerprint",
 				MaxRetries:          -1,
+				MaxUsesPerInstance:  -1,
 			},
 		},
 	}
