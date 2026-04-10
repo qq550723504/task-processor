@@ -51,8 +51,6 @@ func (s *processorServiceImpl) startProcessingComponents(ctx context.Context, cf
 		return errors.Wrap(err, errors.ErrCodeSystem, "启动处理器失败")
 	}
 
-	s.startTaskFetcher(cfg)
-
 	if err := s.startSchedulerService(ctx, cfg); err != nil {
 		return errors.Wrap(err, errors.ErrCodeSystem, "启动调度服务失败")
 	}
@@ -127,10 +125,9 @@ func (s *processorServiceImpl) GetStatus() map[string]any {
 	}
 
 	status := map[string]any{
-		"running":     s.running,
-		"processors":  processors,
-		"taskFetcher": s.taskFetcher != nil && s.taskFetcher.IsRunning(),
-		"components":  s.lifecycleManager.GetStatus(),
+		"running":    s.running,
+		"processors": processors,
+		"components": s.lifecycleManager.GetStatus(),
 	}
 
 	// 添加调度服务状态

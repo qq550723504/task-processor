@@ -48,6 +48,10 @@ func (s *stubStoreAPI) GetStore(id int64) (*managementapi.StoreRespDTO, error) {
 	return s.store, s.err
 }
 
+func (s *stubStoreAPI) PageStores(req *managementapi.StorePageReqDTO) (*managementapi.PageResult[*managementapi.StoreRespDTO], error) {
+	return &managementapi.PageResult[*managementapi.StoreRespDTO]{}, nil
+}
+
 func (s *stubStoreAPI) GetStoreCookie(id int64) (string, error) { return "", nil }
 
 func (s *stubStoreAPI) UpdateStoreId(req *managementapi.StoreIdUpdateReqDTO) (bool, error) {
@@ -62,6 +66,14 @@ func (s *stubStoreAPI) DeleteStoreCookie(id int64) (bool, error) { return true, 
 
 func (s *stubStoreAPI) SetStorePauseStatus(id int64, pause bool, pauseType string) (bool, error) {
 	return true, nil
+}
+
+func (s *stubStoreAPI) GetStorePauseStatus(id int64) (bool, error) {
+	return false, nil
+}
+
+func (s *stubStoreAPI) GetStorePauseStatusDetail(id int64) (*managementapi.StorePauseStatusRespDTO, error) {
+	return &managementapi.StorePauseStatusRespDTO{}, nil
 }
 
 func TestTaskHandlerHandleMessage_SkipsDisabledStore(t *testing.T) {

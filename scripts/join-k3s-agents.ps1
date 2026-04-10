@@ -116,7 +116,16 @@ python @argList
 if ($LabelAgent) {
     Start-Sleep -Seconds 5
     foreach ($targetHost in $Hosts) {
-        $node = kubectl --context=default get nodes -o jsonpath="{range .items[?(@.status.addresses[?(@.type=='ExternalIP')].address=='$targetHost')]}{.metadata.name}{end}"
+        $node = kubectl --context=default get nodes -o json |
+            ConvertFrom-Json |
+            Select-Object -ExpandProperty items |
+            Where-Object {
+                $_.status.addresses | Where-Object {
+                    $_.type -eq "ExternalIP" -and $_.address -eq $targetHost
+                }
+            } |
+            Select-Object -ExpandProperty metadata |
+            Select-Object -ExpandProperty name -First 1
         if ($node) {
             kubectl --context=default label node $node node-role.kubernetes.io/agent=true --overwrite | Out-Null
         }

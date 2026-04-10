@@ -99,6 +99,7 @@ type TaskState struct {
 	DailyQuotaReserved      bool
 	DailyQuotaDate          string
 	DailyQuotaIncrement     int64
+	DailyQuotaPauseApplied  bool
 }
 
 type TaskContext struct {
@@ -209,6 +210,11 @@ func (ctx *TaskContext) ClearDailyQuotaReservation() {
 	ctx.DailyQuotaReserved = false
 	ctx.DailyQuotaDate = ""
 	ctx.DailyQuotaIncrement = 0
+	ctx.DailyQuotaPauseApplied = false
+}
+
+func (ctx *TaskContext) MarkDailyQuotaPauseApplied() {
+	ctx.DailyQuotaPauseApplied = true
 }
 
 func (ctx *TaskContext) SetSupplierSkuMapping(platformSKU, supplierSKU string) {

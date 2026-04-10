@@ -109,6 +109,14 @@ func (h *CheckDailyLimitHandler) Handle(ctx *shein.TaskContext) error {
 
 	ctx.SetDailyQuotaReservation(currentDate, increment)
 
+	if reservation.ReachedLimit {
+		reason := fmt.Sprintf("达到每日上架限额(%d/%d)", reservation.NewCount, dailyLimit)
+		h.pauseShopUntilEndOfDay(ctx, reason)
+		ctx.MarkDailyQuotaPauseApplied()
+		logger.GetGlobalLogger("shein/validation").Infof("店铺 %d 在本次预占后已打满当日额度，已提前暂停后续任务: 当前=%d, 限额=%d",
+			ctx.StoreInfo.ID, reservation.NewCount, dailyLimit)
+	}
+
 	logger.GetGlobalLogger("shein/validation").Infof("店铺 %d 在 %s 的上架数量未超过限额，允许继续发布", ctx.StoreInfo.ID, currentDate)
 	return nil
 }
