@@ -49,6 +49,14 @@ func (b *BaseService) WorkerPool() worker.WorkerPool {
 	return b.workerPool
 }
 
+// RequireSharedResultStore 检查异步任务共享结果存储是否可用。
+func (b *BaseService) RequireSharedResultStore() error {
+	if b.sharedResultStore == nil {
+		return ErrSharedResultStoreUnavailable
+	}
+	return nil
+}
+
 // ConfigureSharedResultStore 配置共享任务结果存储。
 func (b *BaseService) ConfigureSharedResultStore(store resultStore, prefix string, ttl time.Duration) {
 	b.sharedResultStore = store

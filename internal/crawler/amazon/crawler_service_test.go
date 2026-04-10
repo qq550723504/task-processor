@@ -464,6 +464,7 @@ func TestServiceSubmitTaskMarksResultFailedWhenSubmitFails(t *testing.T) {
 		logger: logrus.New(),
 	}
 	service.SetWorkerPool(&stubWorkerPool{submitErr: errors.New("queue full")})
+	service.ConfigureSharedResultStore(newMemProductDedupeStore(), "crawler:amazon:task-result", time.Hour)
 
 	task := shared.NewCrawlerTask("https://www.amazon.com/dp/B001234567")
 	if err := service.SubmitTask(task); err == nil {

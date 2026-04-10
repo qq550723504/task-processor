@@ -191,6 +191,10 @@ func (s *Service) GetStats() map[string]any {
 
 // SubmitTask 提交任务
 func (s *Service) SubmitTask(crawlerTask *shared.CrawlerTask) error {
+	if err := s.RequireSharedResultStore(); err != nil {
+		return err
+	}
+
 	// 如果只提供了 ASIN，构造 URL
 	if crawlerTask.URL == "" && crawlerTask.ASIN != "" {
 		crawlerTask.BuildURLFromASIN(s.domainResolver)

@@ -16,9 +16,10 @@ import (
 )
 
 type stubAmazonCrawlerService struct {
-	product *model.Product
-	err     error
-	url     string
+	product  *model.Product
+	err      error
+	url      string
+	asyncErr error
 }
 
 type stubClassifiedCrawlerError struct {
@@ -32,7 +33,7 @@ func (e *stubClassifiedCrawlerError) ErrorType() string    { return e.errorType 
 func (e *stubClassifiedCrawlerError) RetryableError() bool { return e.retryable }
 
 func (s *stubAmazonCrawlerService) SubmitTask(crawlerTask *shared.CrawlerTask) error {
-	return nil
+	return s.asyncErr
 }
 
 func (s *stubAmazonCrawlerService) GetTask(taskID string) (*shared.CrawlerResult, error) {
@@ -59,6 +60,10 @@ func (s *stubAmazonCrawlerService) IsReady() bool {
 
 func (s *stubAmazonCrawlerService) FetchProduct(ctx context.Context, url, asin, region, zipcode string) (*model.Product, string, error) {
 	return s.product, s.url, s.err
+}
+
+func (s *stubAmazonCrawlerService) RequireSharedResultStore() error {
+	return s.asyncErr
 }
 
 func TestCrawlerHandlerFetchProduct(t *testing.T) {
@@ -163,5 +168,25 @@ func TestCrawlerHandlerFetchProductReturnsTooManyRequestsForSystemBusy(t *testin
 	}
 	if resp.Code != "system_busy" {
 		t.Fatalf("expected code system_busy, got %s", resp.Code)
+	}
+}
+
+func TestCrawlerHandlerRejectsAsyncWhenSharedResultStoreUnavailable(t *testing.T) {
+	handler := NewCrawlerHandler(&stubAmazonCrawlerService{
+		asyncErr: shared.ErrSharedResultStoreUnavailable,
+	}, logrus.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", strings.NewReader(`{"asin":"B001","region":"us"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.RegisterRoutes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status 503, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	if !strings.Contains(rec.Body.String(), shared.ErrSharedResultStoreUnavailable.Error()) {
+		t.Fatalf("expected error body to mention shared result store, got %s", rec.Body.String())
 	}
 }
