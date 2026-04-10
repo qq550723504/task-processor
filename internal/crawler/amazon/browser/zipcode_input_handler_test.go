@@ -53,3 +53,58 @@ func TestBuildCountrySelectionQueries(t *testing.T) {
 		t.Fatalf("buildCountrySelectionQueries returned %v", got)
 	}
 }
+
+func TestShouldRefreshAfterPriceVisibleTriggerFailure(t *testing.T) {
+	if !shouldRefreshAfterPriceVisibleTriggerFailure(true, false) {
+		t.Fatal("价格已可见且邮编界面未就绪时，应触发刷新")
+	}
+
+	if shouldRefreshAfterPriceVisibleTriggerFailure(true, true) {
+		t.Fatal("邮编界面已就绪时，不应触发刷新")
+	}
+
+	if shouldRefreshAfterPriceVisibleTriggerFailure(false, false) {
+		t.Fatal("页面没有价格时，不应因为该规则触发刷新")
+	}
+}
+
+func TestIsZipcodeSuccessConfirmationText(t *testing.T) {
+	if !isZipcodeSuccessConfirmationText("You're now shopping for delivery to: 10001 We will use your selected location to show all products available for the United States. Continue") {
+		t.Fatal("应识别 Amazon 邮编更新成功确认态")
+	}
+
+	if isZipcodeSuccessConfirmationText("Choose your location or enter a US zip code Apply") {
+		t.Fatal("普通邮编输入弹层不应被识别为成功确认态")
+	}
+}
+
+func TestShouldRefreshAfterSuccessfulZipcodeConfirmation(t *testing.T) {
+	if !shouldRefreshAfterSuccessfulZipcodeConfirmation("Japan", "Japan", true) {
+		t.Fatal("成功确认后地址未变化时，应触发刷新")
+	}
+
+	if !shouldRefreshAfterSuccessfulZipcodeConfirmation("Japan", "", true) {
+		t.Fatal("成功确认后地址为空时，应触发刷新")
+	}
+
+	if shouldRefreshAfterSuccessfulZipcodeConfirmation("Japan", "New York 10001", true) {
+		t.Fatal("成功确认后地址已变化时，不应刷新")
+	}
+
+	if shouldRefreshAfterSuccessfulZipcodeConfirmation("Japan", "Japan", false) {
+		t.Fatal("没有成功确认弹层时，不应按该规则刷新")
+	}
+}
+
+func TestZipcodeAddressSyncWaitAfterConfirmIsShorter(t *testing.T) {
+	if zipcodeAddressSyncWaitAfterConfirm >= zipcodeAddressSyncWaitDefault {
+		t.Fatal("成功确认后的地址同步等待应短于默认等待")
+	}
+}
+
+func TestBuildCountrySelectionQueriesForUnitedKingdom(t *testing.T) {
+	got := buildCountrySelectionQueries("United Kingdom")
+	if got != nil {
+		t.Fatal("United Kingdom 不应再尝试通过 GLUXCountryList 切换国家")
+	}
+}

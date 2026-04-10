@@ -330,7 +330,17 @@ func (ip *InstanceProcessor) alignTargetContext(page playwright.Page, url string
 		logger.GetGlobalLogger("crawler/amazon").Warnf("货币对齐后处理Continue shopping按钮时出错: %v", err)
 	}
 	if waitTimeout > 0 {
-		if err := ip.productChecker.WaitForPageReady(page, waitTimeout); err != nil {
+		renderableTimeout := waitTimeout / 3
+		if renderableTimeout < 2*time.Second {
+			renderableTimeout = 2 * time.Second
+		}
+		if renderableTimeout > 5*time.Second {
+			renderableTimeout = 5 * time.Second
+		}
+		if renderableTimeout > waitTimeout {
+			renderableTimeout = waitTimeout
+		}
+		if err := ip.productChecker.WaitForRenderableContent(page, renderableTimeout); err != nil {
 			return fmt.Errorf("货币对齐后页面未准备就绪: %w", err)
 		}
 	}

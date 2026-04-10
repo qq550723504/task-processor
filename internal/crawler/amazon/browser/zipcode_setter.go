@@ -10,6 +10,8 @@ import (
 	"github.com/playwright-community/playwright-go"
 )
 
+const zipcodeVerificationSettleWindow = 4 * time.Second
+
 // ZipcodeSetter 邮编设置器
 type ZipcodeSetter struct {
 	browserManager *BrowserManager
@@ -106,9 +108,11 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 
 		// 验证邮编
 		if isValid, err := zs.verifyZipcodeWithSettle(page, zipcode); err != nil || !isValid {
+			repeatedStableMismatch := false
 			if mismatchValue := zs.detectStableMismatch(page, zipcode); mismatchValue != "" {
 				if lastObservedMismatch != "" && lastObservedMismatch == mismatchValue {
-					return fmt.Errorf("邮编更新未生效，当前仍为: %s", mismatchValue)
+					logger.GetGlobalLogger("crawler/amazon").Infof("邮编仍停留在稳定错误上下文: %s，下一轮优先刷新页面后重试", mismatchValue)
+					repeatedStableMismatch = true
 				}
 				lastObservedMismatch = mismatchValue
 			}
@@ -124,10 +128,13 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 				if err != nil {
 					return fmt.Errorf("验证邮编失败，已达到最大重试次数: %w", err)
 				}
+				if lastObservedMismatch != "" {
+					return fmt.Errorf("邮编更新未生效，当前仍为: %s", lastObservedMismatch)
+				}
 				return fmt.Errorf("验证邮编失败，已达到最大重试次数")
 			}
 
-			needsRefreshBeforeRetry = zs.shouldRefreshAfterValidationFailure(err, lastObservedMismatch)
+			needsRefreshBeforeRetry = zs.shouldRefreshAfterValidationFailure(err, lastObservedMismatch) || repeatedStableMismatch
 
 			// 第一次失败后等待，第二次失败会在下次循环开始时刷新页面
 			if attempt == 1 {
@@ -186,15 +193,41 @@ func (zs *ZipcodeSetter) detectStableMismatch(page playwright.Page, expectedZipc
 }
 
 func (zs *ZipcodeSetter) verifyZipcodeWithSettle(page playwright.Page, expectedZipcode string) (bool, error) {
-	isValid, err := zs.isZipcodeValid(page, expectedZipcode)
-	if err != nil || isValid {
-		return isValid, err
+	deadline := time.Now().Add(zipcodeVerificationSettleWindow)
+	var lastErr error
+	observedInvalid := false
+
+	for {
+		isValid, err := zs.isZipcodeValid(page, expectedZipcode)
+		if err == nil && isValid {
+			return true, nil
+		}
+
+		if err != nil {
+			lastErr = err
+		} else {
+			observedInvalid = true
+			lastErr = nil
+		}
+
+		if time.Now().After(deadline) {
+			break
+		}
+
+		time.Sleep(300 * time.Millisecond)
 	}
 
-	// Apply 之后 Amazon 往往会异步更新配送信息，给一次短暂 settle 机会，
-	// 避免因为 UI 尚未同步就进入下一轮重试/刷新。
-	time.Sleep(1200 * time.Millisecond)
-	return zs.isZipcodeValid(page, expectedZipcode)
+	return finalizeZipcodeVerificationResult(observedInvalid, lastErr)
+}
+
+func finalizeZipcodeVerificationResult(observedInvalid bool, lastErr error) (bool, error) {
+	if observedInvalid {
+		return false, nil
+	}
+	if lastErr != nil {
+		return false, lastErr
+	}
+	return false, nil
 }
 
 func (zs *ZipcodeSetter) shouldRefreshAfterValidationFailure(err error, stableMismatch string) bool {

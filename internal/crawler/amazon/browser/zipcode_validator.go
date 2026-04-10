@@ -241,11 +241,11 @@ func countryContextKeywords(targetCountry string) []string {
 	case "japan":
 		return []string{"Japan", "日本", "Tokyo", "東京都", "Osaka", "大阪", "Kyoto", "京都", "Kanagawa", "神奈川", "Saitama", "埼玉", "Chiba", "千葉", "Hokkaido", "北海道", "Fukuoka", "福岡"}
 	case "united kingdom":
-		return []string{"United Kingdom", "UK", "Great Britain", "England", "London"}
+		return []string{"United Kingdom", "Great Britain", "England", "London"}
 	case "canada":
 		return []string{"Canada", "Toronto", "Ontario", "Vancouver"}
 	case "united states":
-		return []string{"United States", "USA", "US"}
+		return []string{"United States", "USA"}
 	default:
 		return []string{targetCountry}
 	}

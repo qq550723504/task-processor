@@ -3,6 +3,7 @@ package browser
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"task-processor/internal/core/logger"
 	"time"
@@ -15,6 +16,13 @@ type CurrencySetter struct {
 	browserManager *BrowserManager
 	maxRetries     int
 }
+
+const (
+	currencyRetryBackoff      = 2 * time.Second
+	currencyOptionWaitTimeout = 2 * time.Second
+	currencyURLWaitTimeout    = 4 * time.Second
+	currencyURLPollInterval   = 200 * time.Millisecond
+)
 
 // NewCurrencySetter 创建货币设置器实例
 func NewCurrencySetter(browserManager *BrowserManager) *CurrencySetter {
@@ -59,7 +67,7 @@ func (cs *CurrencySetter) SetAndVerifyCurrency(page playwright.Page, expectedCur
 			if attempt == cs.maxRetries {
 				return fmt.Errorf("设置货币失败，已达到最大重试次数: %w", err)
 			}
-			time.Sleep(2 * time.Second)
+			time.Sleep(currencyRetryBackoff)
 			continue
 		}
 
@@ -73,7 +81,7 @@ func (cs *CurrencySetter) SetAndVerifyCurrency(page playwright.Page, expectedCur
 			if attempt == cs.maxRetries {
 				return fmt.Errorf("验证货币失败，已达到最大重试次数")
 			}
-			time.Sleep(2 * time.Second)
+			time.Sleep(currencyRetryBackoff)
 			continue
 		}
 
@@ -86,6 +94,11 @@ func (cs *CurrencySetter) SetAndVerifyCurrency(page playwright.Page, expectedCur
 
 // getCurrentCurrency 获取当前页面的货币设置
 func (cs *CurrencySetter) getCurrentCurrency(page playwright.Page) (string, error) {
+	if currency := extractCurrencyFromURL(page.URL()); currency != "" {
+		logger.GetGlobalLogger("crawler/amazon").Infof("从URL参数获取到货币: %s", currency)
+		return currency, nil
+	}
+
 	// 方法1: 从价格元素中提取货币符号(最可靠且最快的方法)
 	priceSelectors := []string{
 		".a-price-symbol",       // 价格符号
@@ -132,6 +145,8 @@ func (cs *CurrencySetter) getCurrentCurrency(page playwright.Page) (string, erro
 
 	// 方法2: 从页脚的货币选择器中提取
 	currencySelectors := []string{
+		"#icp-touch-link-cop",
+		"a#icp-touch-link-cop",
 		"span.icp-nav-currency",             // 货币代码
 		"#icp-nav-flyout .icp-nav-currency", // 货币显示区域
 		".icp-nav-currency",                 // 通用货币类
@@ -153,15 +168,9 @@ func (cs *CurrencySetter) getCurrentCurrency(page playwright.Page) (string, erro
 			text, err := locator.TextContent()
 			if err == nil {
 				text = strings.TrimSpace(text)
-				if text != "" {
-					// 提取货币代码（通常是3个字母）
-					parts := strings.Fields(text)
-					for _, part := range parts {
-						if len(part) == 3 && strings.ToUpper(part) == part {
-							logger.GetGlobalLogger("crawler/amazon").Infof("从选择器 %s 获取到货币: %s", selector, part)
-							return part, nil
-						}
-					}
+				if currency := parseCurrencyCodeFromText(text); currency != "" {
+					logger.GetGlobalLogger("crawler/amazon").Infof("从选择器 %s 获取到货币: %s", selector, currency)
+					return currency, nil
 				}
 			}
 		}
@@ -185,7 +194,7 @@ func (cs *CurrencySetter) setCurrencyViaNavBar(page playwright.Page, currency st
 	navButtonSelectors := []string{
 		"#icp-nav-flyout button.nav-flyout-button",
 		"#icp-nav-flyout .nav-flyout-button",
-		"button[name='Expand to Change Language or Country']", // 正确的货币选择器
+		"button[aria-label='Expand to Change Language or Country']",
 		"button:has-text('Expand to Change Language or Country')",
 		"button[aria-label*='Change Language or Country']",
 		"button[aria-label*='Language or Country']",
@@ -211,7 +220,6 @@ func (cs *CurrencySetter) setCurrencyViaNavBar(page playwright.Page, currency st
 			if err := locator.Click(); err == nil {
 				logger.GetGlobalLogger("crawler/amazon").Infof("成功点击导航栏货币按钮")
 				clicked = true
-				time.Sleep(1 * time.Second) // 等待弹窗出现
 				break
 			} else {
 				logger.GetGlobalLogger("crawler/amazon").Warnf("点击导航栏按钮失败: %v", err)
@@ -223,10 +231,7 @@ func (cs *CurrencySetter) setCurrencyViaNavBar(page playwright.Page, currency st
 		return fmt.Errorf("无法找到或点击导航栏货币按钮")
 	}
 
-	// 2. 等待货币选择弹窗出现 - 直接等待货币链接出现
-	time.Sleep(1 * time.Second) // 给弹窗一点时间完全加载
-
-	// 3. 点击目标货币选项
+	// 2. 点击目标货币选项
 	currencyLinkSelectors := []string{
 		fmt.Sprintf("a[href*='switch-currency=%s']", currency),
 		fmt.Sprintf("a:has-text('%s - %s')", getCurrencySymbol(currency), currency),
@@ -239,7 +244,7 @@ func (cs *CurrencySetter) setCurrencyViaNavBar(page playwright.Page, currency st
 
 		if err := locator.WaitFor(playwright.LocatorWaitForOptions{
 			State:   playwright.WaitForSelectorStateVisible,
-			Timeout: playwright.Float(2000),
+			Timeout: playwright.Float(float64(currencyOptionWaitTimeout.Milliseconds())),
 		}); err != nil {
 			logger.GetGlobalLogger("crawler/amazon").Debugf("货币选项 %s 未找到", selector)
 			continue
@@ -262,11 +267,11 @@ func (cs *CurrencySetter) setCurrencyViaNavBar(page playwright.Page, currency st
 		return fmt.Errorf("无法找到或点击货币选项: %s", currency)
 	}
 
-	// 4. 等待页面刷新完成
+	// 3. 等待页面刷新完成
 	logger.GetGlobalLogger("crawler/amazon").Infof("等待页面刷新...")
-	time.Sleep(2 * time.Second)
+	cs.waitForCurrencyURL(page, currency)
 
-	// 5. 验证URL是否包含货币参数
+	// 4. 验证URL是否包含货币参数
 	currentURL := page.URL()
 	expectedParam := fmt.Sprintf("currency=%s", currency)
 	if strings.Contains(currentURL, expectedParam) {
@@ -276,6 +281,21 @@ func (cs *CurrencySetter) setCurrencyViaNavBar(page playwright.Page, currency st
 
 	logger.GetGlobalLogger("crawler/amazon").Warnf("URL未包含预期的货币参数,当前URL: %s", currentURL)
 	return nil // 即使URL未更新也返回成功,因为货币可能已经生效
+}
+
+func (cs *CurrencySetter) waitForCurrencyURL(page playwright.Page, currency string) {
+	if page == nil || page.IsClosed() {
+		return
+	}
+
+	deadline := time.Now().Add(currencyURLWaitTimeout)
+	expectedParam := fmt.Sprintf("CURRENCY=%s", strings.ToUpper(strings.TrimSpace(currency)))
+	for time.Now().Before(deadline) {
+		if strings.Contains(strings.ToUpper(page.URL()), expectedParam) {
+			return
+		}
+		time.Sleep(currencyURLPollInterval)
+	}
 }
 
 // getCurrencySymbol 获取货币符号
@@ -290,4 +310,38 @@ func getCurrencySymbol(currency string) string {
 		return symbol
 	}
 	return currency
+}
+
+func parseCurrencyCodeFromText(text string) string {
+	parts := strings.Fields(strings.ToUpper(strings.TrimSpace(text)))
+	for _, part := range parts {
+		candidate := strings.Trim(part, "-–()")
+		if len(candidate) == 3 && candidate == strings.ToUpper(candidate) {
+			switch candidate {
+			case "GBP", "USD", "EUR", "JPY", "CNY", "HKD", "SGD", "CAD", "AUD":
+				return candidate
+			}
+		}
+	}
+
+	for _, candidate := range []string{"GBP", "USD", "EUR", "JPY", "CNY", "HKD", "SGD", "CAD", "AUD"} {
+		if strings.Contains(strings.ToUpper(text), candidate) {
+			return candidate
+		}
+	}
+
+	return ""
+}
+
+func extractCurrencyFromURL(rawURL string) string {
+	if strings.TrimSpace(rawURL) == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	return strings.ToUpper(strings.TrimSpace(parsed.Query().Get("currency")))
 }

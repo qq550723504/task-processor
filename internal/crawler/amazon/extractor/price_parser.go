@@ -80,22 +80,45 @@ func (p *PriceParser) ParsePrice(priceText string) float64 {
 
 // ExtractCombinedPrice 提取组合价格（整数部分+小数部分+货币符号）
 func (p *PriceParser) ExtractCombinedPrice(page playwright.Page) string {
-	wholeSelectors := []string{
+	return p.ExtractCombinedPriceInScopes(page, nil)
+}
+
+// ExtractCombinedPriceInScopes 在指定容器内提取组合价格。
+func (p *PriceParser) ExtractCombinedPriceInScopes(page playwright.Page, scopes []string) string {
+	wholeSelectors := buildScopedSelectors(scopes, []string{
 		".a-price-whole",
 		".a-price .a-price-whole",
 		"span.a-price-whole",
-	}
+	})
 
-	fractionSelectors := []string{
+	fractionSelectors := buildScopedSelectors(scopes, []string{
 		".a-price-fraction",
 		".a-price .a-price-fraction",
 		"span.a-price-fraction",
-	}
+	})
 
-	symbolSelectors := []string{
+	symbolSelectors := buildScopedSelectors(scopes, []string{
 		".a-price-symbol",
 		".a-price .a-price-symbol",
 		"span.a-price-symbol",
+	})
+
+	if len(scopes) == 0 {
+		wholeSelectors = []string{
+			".a-price-whole",
+			".a-price .a-price-whole",
+			"span.a-price-whole",
+		}
+		fractionSelectors = []string{
+			".a-price-fraction",
+			".a-price .a-price-fraction",
+			"span.a-price-fraction",
+		}
+		symbolSelectors = []string{
+			".a-price-symbol",
+			".a-price .a-price-symbol",
+			"span.a-price-symbol",
+		}
 	}
 
 	var wholePart, fractionPart, currencySymbol string

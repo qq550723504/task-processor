@@ -1,6 +1,7 @@
 package extractor
 
 import (
+	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
@@ -18,6 +19,9 @@ func (e *AvailabilityExtractor) Extract(page playwright.Page, product *model.Pro
 
 	// 设置IsAvailable字段
 	product.IsAvailable = e.isAvailable(availability)
+	if strings.EqualFold(strings.TrimSpace(availability), "Unknown") && e.hasPurchaseSignals(page) {
+		product.IsAvailable = true
+	}
 
 	return nil
 }
@@ -79,7 +83,10 @@ func (e *AvailabilityExtractor) getAvailability(page playwright.Page) string {
 
 // isValidAvailabilityText 检查文本是否是有效的库存信息（多语言支持）
 func (e *AvailabilityExtractor) isValidAvailabilityText(text string) bool {
-	text = strings.ToLower(text)
+	normalizedText := strings.ToLower(strings.TrimSpace(text))
+	if normalizedText == "" || looksLikeImplementationNoise(normalizedText) {
+		return false
+	}
 
 	// 包含库存相关关键词（多语言）
 	stockKeywords := []string{
@@ -87,8 +94,9 @@ func (e *AvailabilityExtractor) isValidAvailabilityText(text string) bool {
 		"in stock", "out of stock", "available", "unavailable",
 		"ships", "delivery", "arrives", "sold out",
 		"temporarily out", "currently unavailable",
-		"only", "left in stock", "more on the way",
-		"usually ships", "in stock soon",
+		"left in stock", "more on the way",
+		"usually ships", "in stock soon", "pre-order",
+		"available on", "available from",
 		// 西班牙语
 		"disponible", "no disponible", "agotado",
 		"envío", "entrega", "llega",
@@ -96,7 +104,11 @@ func (e *AvailabilityExtractor) isValidAvailabilityText(text string) bool {
 		"quedan", "en camino",
 		// 日语
 		"在庫あり", "在庫切れ", "一時的に在庫切れ",
-		"配送", "お届け", "発送",
+		"配送", "お届け", "発送", "予約注文", "予約受付中",
+		"入荷予定", "発売予定",
+		// 中文
+		"有货", "缺货", "无货", "预售商品", "可预先订购",
+		"预订", "预售", "预计", "送达",
 		// 德语
 		"auf lager", "nicht auf lager", "ausverkauft",
 		"versand", "lieferung",
@@ -111,7 +123,26 @@ func (e *AvailabilityExtractor) isValidAvailabilityText(text string) bool {
 	}
 
 	for _, keyword := range stockKeywords {
-		if strings.Contains(text, keyword) {
+		if containsAvailabilityKeyword(normalizedText, keyword) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func looksLikeImplementationNoise(text string) bool {
+	noiseMarkers := []string{
+		"//",
+		"logged at this place",
+		"progressively loaded",
+		"function(",
+		"console.",
+		"request is not",
+	}
+
+	for _, marker := range noiseMarkers {
+		if strings.Contains(text, marker) {
 			return true
 		}
 	}
@@ -140,12 +171,56 @@ func (e *AvailabilityExtractor) extractAvailabilityFromText(pageText string) str
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if e.isValidAvailabilityText(line) && len(line) < 200 {
+		if e.isBodyAvailabilityCandidate(line) && len(line) < 200 {
 			return e.normalizeAvailabilityText(line)
 		}
 	}
 
 	return ""
+}
+
+func (e *AvailabilityExtractor) isBodyAvailabilityCandidate(text string) bool {
+	normalizedText := strings.ToLower(strings.TrimSpace(text))
+	if normalizedText == "" || looksLikeImplementationNoise(normalizedText) {
+		return false
+	}
+
+	if strings.ContainsAny(normalizedText, "{}[]") || strings.Contains(normalizedText, "merchantid") {
+		return false
+	}
+
+	strongKeywords := []string{
+		"in stock",
+		"out of stock",
+		"currently unavailable",
+		"temporarily out of stock",
+		"left in stock",
+		"sold out",
+		"pre-order",
+		"available on",
+		"available from",
+		"在庫あり",
+		"在庫切れ",
+		"一時的に在庫切れ",
+		"現在お取り扱いできません",
+		"予約注文",
+		"予約受付中",
+		"入荷予定",
+		"発売予定",
+		"有货",
+		"缺货",
+		"无货",
+		"预售商品",
+		"可预先订购",
+	}
+
+	for _, keyword := range strongKeywords {
+		if containsAvailabilityKeyword(normalizedText, keyword) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isAvailable 根据可用性文本判断产品是否可用（多语言支持）
@@ -191,7 +266,7 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 	}
 
 	for _, keyword := range unavailableKeywords {
-		if strings.Contains(lowerText, keyword) {
+		if containsAvailabilityKeyword(lowerText, keyword) {
 			logger.GetGlobalLogger("crawler/amazon").WithFields(logrus.Fields{
 				"keyword": keyword,
 				"result":  "不可用",
@@ -212,6 +287,9 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 		"more on the way",
 		"usually ships",
 		"in stock soon",
+		"pre-order",
+		"available on",
+		"available from",
 		// 西班牙语
 		"disponible",
 		"en stock",
@@ -225,6 +303,18 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 		"配送",
 		"お届け",
 		"発送",
+		"予約注文",
+		"予約受付中",
+		"入荷予定",
+		"発売予定",
+		// 中文
+		"有货",
+		"预售商品",
+		"可预先订购",
+		"预订",
+		"预售",
+		"预计",
+		"送达",
 		// 德语
 		"auf lager",
 		"versand",
@@ -245,7 +335,7 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 	}
 
 	for _, keyword := range availableKeywords {
-		if strings.Contains(lowerText, keyword) {
+		if containsAvailabilityKeyword(lowerText, keyword) {
 			return true
 		}
 	}
@@ -255,4 +345,50 @@ func (e *AvailabilityExtractor) isAvailable(availabilityText string) bool {
 		"text": availabilityText,
 	}).Warn("⚠️ 未匹配到任何关键词，默认判断为不可用")
 	return false
+}
+
+func (e *AvailabilityExtractor) hasPurchaseSignals(page playwright.Page) bool {
+	if page == nil {
+		return false
+	}
+
+	selectors := []string{
+		"#add-to-cart-button",
+		"input[name='submit.add-to-cart']",
+		"#buy-now-button",
+		".a-price",
+		"#corePriceDisplay_desktop_feature_div",
+	}
+
+	for _, selector := range selectors {
+		count, err := page.Locator(selector).Count()
+		if err == nil && count > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func containsAvailabilityKeyword(text, keyword string) bool {
+	if text == "" || keyword == "" {
+		return false
+	}
+
+	if isASCIIAvailabilityKeyword(keyword) {
+		pattern := `\b` + regexp.QuoteMeta(strings.ToLower(keyword)) + `\b`
+		return regexp.MustCompile(pattern).MatchString(strings.ToLower(text))
+	}
+
+	return strings.Contains(text, keyword)
+}
+
+func isASCIIAvailabilityKeyword(keyword string) bool {
+	for _, r := range keyword {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == ' ' {
+			continue
+		}
+		return false
+	}
+	return true
 }

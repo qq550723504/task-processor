@@ -11,6 +11,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var primaryPriceContainers = []string{
+	"#corePriceDisplay_desktop_feature_div",
+	"#corePrice_feature_div",
+	"#apex_desktop",
+}
+
 // PriceExtractor 价格提取器
 type PriceExtractor struct {
 	// Marketplace 用于区分不同站点 (US, JP, UK, DE, FR, IT, ES, etc.)
@@ -74,7 +80,7 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 	price := e.parser.ParsePrice(priceText)
 	if price > 0 {
 		product.FinalPrice = price
-		product.InitialPrice = price
+		product.InitialPrice = 0
 
 		// 从价格文本中提取货币
 		extractedCurrency := e.currencyMgr.ExtractCurrency(priceText)
@@ -103,47 +109,105 @@ func (e *PriceExtractor) Extract(page playwright.Page, product *model.Product) e
 
 	// 提取原价（list price）
 	listPriceStartedAt := time.Now()
-	e.listPriceExt.ExtractListPrice(page, product)
+	if e.listPriceExt.ShouldExtract(page, product) {
+		e.listPriceExt.ExtractListPrice(page, product)
+	}
+	e.syncInitialPriceWithListPrice(product)
 	logger.GetGlobalLogger("crawler/amazon").Infof("原价提取完成 (耗时=%s)", time.Since(listPriceStartedAt).Round(time.Millisecond))
 
 	return nil
 }
 
+func (e *PriceExtractor) syncInitialPriceWithListPrice(product *model.Product) {
+	if product == nil {
+		return
+	}
+
+	product.InitialPrice = 0
+	if product.PricesBreakdown.ListPrice != nil && *product.PricesBreakdown.ListPrice > 0 {
+		product.InitialPrice = *product.PricesBreakdown.ListPrice
+	}
+}
+
 // extractPriceText 提取价格文本
 func (e *PriceExtractor) extractPriceText(page playwright.Page) string {
-	// 完整价格选择器，按优先级排序
-	completeSelectors := []string{
-		"span.a-price.aok-align-center .a-offscreen",
-		"#tp_price_block_total_price_ww .a-offscreen",
+	primarySelectors := buildScopedSelectors(primaryPriceContainers, []string{
 		".a-price.aok-align-center .a-offscreen",
+		".a-price.priceToPay .a-offscreen",
+		".a-price.apex-pricetopay-value .a-offscreen",
+		".a-price .a-offscreen",
+	})
+	primarySelectors = append(primarySelectors, "#tp_price_block_total_price_ww .a-offscreen")
+
+	if priceText := firstNonEmptyText(page, primarySelectors); priceText != "" {
+		return priceText
+	}
+
+	if priceText := e.parser.ExtractCombinedPriceInScopes(page, primaryPriceContainers); priceText != "" {
+		logger.GetGlobalLogger("crawler/amazon").Infof("主价格容器组合价格提取成功: %s", priceText)
+		return priceText
+	}
+
+	secondarySelectors := []string{
+		"#tp_price_block_total_price_ww .a-offscreen",
 		".a-price.a-text-price.a-size-medium.apexPriceToPay .a-offscreen",
-		"#apex_desktop .a-price .a-offscreen",
+		"span.a-price.aok-align-center .a-offscreen",
+		".a-price.aok-align-center .a-offscreen",
 		"#priceblock_dealprice",
 		"#priceblock_ourprice",
 		".a-price.a-text-price .a-offscreen",
-		".a-price .a-offscreen",
 		"span.a-price-range",
 	}
 
-	var priceText string
-	for _, selector := range completeSelectors {
+	if priceText := firstNonEmptyText(page, secondarySelectors); priceText != "" {
+		return priceText
+	}
+
+	if priceText := e.parser.ExtractCombinedPrice(page); priceText != "" {
+		logger.GetGlobalLogger("crawler/amazon").Infof("组合价格提取成功: %s", priceText)
+		return priceText
+	}
+
+	return firstNonEmptyText(page, []string{
+		".a-price .a-offscreen",
+	})
+}
+
+func firstNonEmptyText(page playwright.Page, selectors []string) string {
+	for _, selector := range selectors {
 		element, err := page.QuerySelector(selector)
-		if err == nil && element != nil {
-			text, _ := element.TextContent()
-			if strings.TrimSpace(text) != "" {
-				priceText = text
-				break
+		if err != nil || element == nil {
+			continue
+		}
+		text, err := element.TextContent()
+		if err != nil {
+			continue
+		}
+		if trimmed := strings.TrimSpace(text); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func buildScopedSelectors(scopes []string, selectors []string) []string {
+	if len(scopes) == 0 {
+		return append([]string(nil), selectors...)
+	}
+
+	scoped := make([]string, 0, len(scopes)*len(selectors))
+	for _, scope := range scopes {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		for _, selector := range selectors {
+			selector = strings.TrimSpace(selector)
+			if selector == "" {
+				continue
 			}
+			scoped = append(scoped, scope+" "+selector)
 		}
 	}
-
-	// 如果没找到完整价格，尝试组合
-	if priceText == "" {
-		priceText = e.parser.ExtractCombinedPrice(page)
-		if priceText != "" {
-			logger.GetGlobalLogger("crawler/amazon").Infof("组合价格提取成功: %s", priceText)
-		}
-	}
-
-	return priceText
+	return scoped
 }

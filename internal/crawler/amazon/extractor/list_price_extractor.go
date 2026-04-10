@@ -20,6 +20,25 @@ type ListPriceExtractor struct {
 	parser      *PriceParser
 }
 
+var listPriceSignalSelectors = []string{
+	"#corePriceDisplay_desktop_feature_div .basisPrice",
+	"#corePriceDisplay_desktop_feature_div .a-price.a-text-price",
+	"#corePriceDisplay_desktop_feature_div #priceblock_listprice",
+	"#corePriceDisplay_desktop_feature_div .a-text-strike .a-offscreen",
+	"#corePrice_feature_div .basisPrice",
+	"#corePrice_feature_div .a-price.a-text-price",
+	"#apex_desktop .basisPrice",
+	"#apex_desktop .a-price.a-text-price",
+	"#apex_desktop #priceblock_listprice",
+	"#apex_desktop .a-text-strike .a-offscreen",
+}
+
+var listPriceSignalContainers = []string{
+	"#corePriceDisplay_desktop_feature_div",
+	"#corePrice_feature_div",
+	"#apex_desktop",
+}
+
 // NewListPriceExtractor 创建原价提取器
 func NewListPriceExtractor(marketplace string) *ListPriceExtractor {
 	return &ListPriceExtractor{
@@ -28,13 +47,47 @@ func NewListPriceExtractor(marketplace string) *ListPriceExtractor {
 	}
 }
 
+// ShouldExtract 判断当前页面是否值得执行原价提取。
+func (l *ListPriceExtractor) ShouldExtract(page playwright.Page, product *model.Product) bool {
+	if page == nil || product == nil || product.FinalPrice <= 0 {
+		return false
+	}
+
+	for _, selector := range listPriceSignalSelectors {
+		element, err := page.QuerySelector(selector)
+		if err == nil && element != nil {
+			return true
+		}
+	}
+
+	for _, selector := range listPriceSignalContainers {
+		container, err := page.QuerySelector(selector)
+		if err != nil || container == nil {
+			continue
+		}
+		text, err := container.TextContent()
+		if err != nil {
+			continue
+		}
+		if containsListPriceMarker(text) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ExtractListPrice 提取原价（list price）
 func (l *ListPriceExtractor) ExtractListPrice(page playwright.Page, product *model.Product) {
+	if !l.ShouldExtract(page, product) {
+		return
+	}
+
 	// 优先检查包含明确原价标识的选择器，限制在主产品区域
 	prioritySelectors := []string{
+		"#corePriceDisplay_desktop_feature_div span.a-size-small.aok-offscreen",
+		"#corePrice_feature_div span.a-size-small.aok-offscreen",
 		"#apex_desktop span.a-size-small.aok-offscreen", // 限制在主产品区域（含 "Was:" / "Typical price:" 等标识）
-		"#centerCol span.a-size-small.aok-offscreen",    // 中心列区域
-		"#dp-container span.a-size-small.aok-offscreen", // 产品详情容器
 	}
 
 	// 首先尝试优先选择器，这些通常包含明确的原价标识
@@ -46,19 +99,23 @@ func (l *ListPriceExtractor) ExtractListPrice(page playwright.Page, product *mod
 
 	// 如果优先选择器没有找到，尝试其他选择器，但需要更严格的验证
 	fallbackSelectors := []string{
+		"#corePriceDisplay_desktop_feature_div .a-price.a-text-price .a-offscreen",
+		"#corePriceDisplay_desktop_feature_div #priceblock_listprice",
+		"#corePriceDisplay_desktop_feature_div .a-text-strike .a-offscreen",
+		"#corePriceDisplay_desktop_feature_div .basisPrice .a-offscreen",
+		"#corePriceDisplay_desktop_feature_div .basisPrice",
+		"#corePrice_feature_div .a-price.a-text-price .a-offscreen",
+		"#corePrice_feature_div #priceblock_listprice",
+		"#corePrice_feature_div .a-text-strike .a-offscreen",
+		"#corePrice_feature_div .basisPrice .a-offscreen",
+		"#corePrice_feature_div .basisPrice",
 		// 美国站常见原价选择器（优先）
 		"#apex_desktop .a-price.a-text-price .a-offscreen",
-		"#centerCol .a-price.a-text-price .a-offscreen",
-		"#dp-container .a-price.a-text-price .a-offscreen",
 		"#apex_desktop #priceblock_listprice",
-		"#centerCol #priceblock_listprice",
 		"#apex_desktop .a-text-strike .a-offscreen",
-		"#centerCol .a-text-strike .a-offscreen",
 		// 加拿大站 "Was:" 原价容器（兜底）
 		"#apex_desktop .basisPrice .a-offscreen",
-		"#centerCol .basisPrice .a-offscreen",
 		"#apex_desktop .basisPrice",
-		"#centerCol .basisPrice",
 	}
 
 	for _, selector := range fallbackSelectors {
@@ -83,8 +140,17 @@ func (l *ListPriceExtractor) extractFromSelector(page playwright.Page, selector 
 	for i := 0; i < count; i++ {
 		element := locator.Nth(i)
 
+		isVisible, err := element.IsVisible()
+		if err != nil || !isVisible {
+			continue
+		}
+
 		// 检查元素是否在赞助内容区域
 		if l.isInSponsoredContent(element) {
+			continue
+		}
+
+		if l.isInExcludedListPriceContainer(element) {
 			continue
 		}
 
@@ -100,6 +166,10 @@ func (l *ListPriceExtractor) extractFromSelector(page playwright.Page, selector 
 
 		text = strings.TrimSpace(text)
 		if text == "" {
+			continue
+		}
+
+		if l.shouldSkipCandidateByText(text, product.FinalPrice) {
 			continue
 		}
 
@@ -126,12 +196,22 @@ func (l *ListPriceExtractor) extractFromSelector(page playwright.Page, selector 
 	return false
 }
 
+func (l *ListPriceExtractor) shouldSkipCandidateByText(text string, finalPrice float64) bool {
+	if strings.TrimSpace(text) == "" {
+		return true
+	}
+
+	if finalPrice <= 0 {
+		return false
+	}
+
+	parsed := l.parser.ParsePrice(text)
+	return parsed > 0 && parsed == finalPrice
+}
+
 // validatePriorityPrice 验证优先选择器中的价格
 func (l *ListPriceExtractor) validatePriorityPrice(text string) (bool, string) {
-	// 支持的原价标识列表（含加拿大站 "Was:"）
-	markers := []string{"Typical price", "List Price", "Was:"}
-
-	for _, marker := range markers {
+	for _, marker := range listPriceMarkers {
 		if strings.Contains(text, marker) {
 			parts := strings.SplitN(text, marker, 2)
 			if len(parts) > 1 {
@@ -151,7 +231,7 @@ func (l *ListPriceExtractor) validatePriorityPrice(text string) (bool, string) {
 // validateFallbackPrice 验证备用选择器中的价格
 func (l *ListPriceExtractor) validateFallbackPrice(element playwright.Locator, text string) (bool, string) {
 	// 文本本身包含原价标识，直接走优先逻辑
-	if strings.Contains(text, "Typical price") || strings.Contains(text, "List Price") || strings.Contains(text, "Was:") {
+	if containsListPriceMarker(text) {
 		return l.validatePriorityPrice(text)
 	}
 
@@ -187,9 +267,7 @@ func (l *ListPriceExtractor) hasListPriceContext(element playwright.Locator) boo
 		parentText, err := parent.TextContent()
 		if err == nil {
 			parentText = strings.TrimSpace(parentText)
-			if strings.Contains(parentText, "Typical price") ||
-				strings.Contains(parentText, "List Price") ||
-				strings.Contains(parentText, "Was:") ||
+			if containsListPriceMarker(parentText) ||
 				strings.Contains(parentText, "Originally:") {
 				return true
 			}
@@ -198,6 +276,57 @@ func (l *ListPriceExtractor) hasListPriceContext(element playwright.Locator) boo
 		element = parent
 	}
 
+	return false
+}
+
+func (l *ListPriceExtractor) isInExcludedListPriceContainer(element playwright.Locator) bool {
+	current := element
+	for i := 0; i < maxListPriceParentDepth; i++ {
+		className, err := current.GetAttribute("class")
+		if err == nil && isExcludedListPriceContainerClass(className) {
+			return true
+		}
+
+		parent := current.Locator("..")
+		if parent == nil {
+			break
+		}
+		current = parent
+	}
+
+	return false
+}
+
+func isExcludedListPriceContainerClass(className string) bool {
+	className = strings.ToLower(strings.TrimSpace(className))
+	if className == "" {
+		return false
+	}
+
+	excludedMarkers := []string{
+		"productdetailscontainer",
+		"multi-brand-video",
+		"comparison",
+		"twister-plus-buying-options",
+	}
+
+	for _, marker := range excludedMarkers {
+		if strings.Contains(className, marker) {
+			return true
+		}
+	}
+
+	return false
+}
+
+var listPriceMarkers = []string{"Typical price", "List Price", "Was:"}
+
+func containsListPriceMarker(text string) bool {
+	for _, marker := range listPriceMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
 	return false
 }
 

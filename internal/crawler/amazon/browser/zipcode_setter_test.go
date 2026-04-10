@@ -18,6 +18,20 @@ func TestShouldRefreshAfterValidationFailure(t *testing.T) {
 	}
 }
 
+func TestFinalizeZipcodeVerificationResult(t *testing.T) {
+	if valid, err := finalizeZipcodeVerificationResult(true, assertionErr("transient")); valid || err != nil {
+		t.Fatal("只要观测到明确 mismatch，就应返回 false 且不保留临时错误")
+	}
+
+	if valid, err := finalizeZipcodeVerificationResult(false, assertionErr("getter failed")); valid || err == nil {
+		t.Fatal("只有临时读取错误时，应把错误向上返回")
+	}
+
+	if valid, err := finalizeZipcodeVerificationResult(false, nil); valid || err != nil {
+		t.Fatal("没有命中且没有错误时，应返回 false,nil")
+	}
+}
+
 type assertionErr string
 
 func (e assertionErr) Error() string {

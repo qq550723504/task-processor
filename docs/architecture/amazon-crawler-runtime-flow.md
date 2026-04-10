@@ -258,6 +258,45 @@
 - `导航到页面失败`
 - `导航超时`
 
+## 8. Deferred Issues
+
+### 8.1 多站点语言对齐问题
+
+状态：
+
+- `2026-04-10` 已确认根因，暂时记录，后续再修
+
+现象：
+
+- 日本站、德国站等本地站点会出现混合语言页面
+- 例如 `amazon.co.jp` 页面里同时出现日文、英文，甚至局部中文文案
+- 这会放大库存、配送、评论等文本提取的不稳定性
+
+已确认根因：
+
+1. [url_helper.go](D:/code/task-processor/internal/crawler/amazon/url_helper.go)
+   - `AddLanguageParam(...)` 当前对所有站点统一追加 `language=en_US`
+2. [manager.go](D:/code/task-processor/internal/crawler/amazon/browser/manager.go)
+   - `setLanguageCookies(...)` 当前对所有站点统一写入 `lc-main=en_US`
+3. [launcher.go](D:/code/task-processor/internal/crawler/shared/browser/launcher.go)
+   - `CreateContextOptions(...)` 当前默认 `Locale: en-US`
+
+风险：
+
+- 本地站点页面被强制拉到英文或混合语言态
+- extractor 关键词需要同时兼容多语言，复杂度和误判率都会升高
+- 同一站点的回归结果不稳定，不利于长期维护
+
+建议修复方向：
+
+1. URL 语言参数改成按 marketplace 推导，而不是固定 `en_US`
+2. `lc-main` cookie 改成按站点语言写入
+3. 浏览器上下文 `Locale` 与目标站点保持一致
+4. 修复后优先回归：
+   - `amazon.co.jp`
+   - `amazon.de`
+   - `amazon.co.uk`
+
 优先看：
 
 - browser crash

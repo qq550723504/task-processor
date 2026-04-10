@@ -21,6 +21,7 @@ func TestLocationMatchesTargetCountry(t *testing.T) {
 		{name: "jp-browser-deliver-to", currentText: "Deliver to Japan", targetCountry: "Japan", want: true},
 		{name: "jp-foreign", currentText: "シンガポール", targetCountry: "Japan", want: false},
 		{name: "uk-country", currentText: "United Kingdom SW1A 1AA", targetCountry: "United Kingdom", want: true},
+		{name: "uk-should-not-match-ukraine", currentText: "Ukraine", targetCountry: "United Kingdom", want: false},
 		{name: "ca-country", currentText: "Delivering to Toronto, Canada", targetCountry: "Canada", want: true},
 		{name: "us-browser-mismatch", currentText: "Deliver to Japan", targetCountry: "United States", want: false},
 	}

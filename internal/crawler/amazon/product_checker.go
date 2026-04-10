@@ -295,6 +295,25 @@ func (pc *ProductChecker) WaitForPageReady(page playwright.Page, timeout time.Du
 	return pc.CheckPageLoadStatus(page)
 }
 
+// WaitForRenderableContent 等待页面出现可用内容，适合货币切换、弹层关闭等轻量刷新场景。
+func (pc *ProductChecker) WaitForRenderableContent(page playwright.Page, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = pageReadyMinSettle
+	}
+
+	pc.waitForPostActionSettle(page, timeout)
+
+	ready, err := pc.hasRenderableContent(page)
+	if err != nil {
+		return err
+	}
+	if !ready {
+		return fmt.Errorf("页面仍未出现可用内容")
+	}
+
+	return nil
+}
+
 func (pc *ProductChecker) waitForPostActionSettle(page playwright.Page, maxWait time.Duration) {
 	if page == nil || maxWait <= 0 {
 		return

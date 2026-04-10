@@ -137,6 +137,8 @@ func (e *RatingExtractor) extractReviewsCount(_ context.Context, page playwright
 		// 次快选择器（0.7-0.9ms）
 		"[data-hook='total-review-count']",
 		"#acrCustomerReviewText",
+		"a[href='#customerReviews']",
+		"a[href*='customerReviews']",
 	}
 
 	for _, selector := range reviewSelectors {
@@ -162,12 +164,22 @@ func (e *RatingExtractor) extractReviewsCount(_ context.Context, page playwright
 			logger.GetGlobalLogger("crawler/amazon").Infof("成功提取评论数: %d", reviewCount)
 			return nil
 		}
+
+		if e.looksLikeReviewSectionLabel(text) {
+			logger.GetGlobalLogger("crawler/amazon").Infof("页面存在评论区入口但未展示评论数，保持 ReviewsCount=0: %q", strings.TrimSpace(text))
+			return nil
+		}
 	}
 
 	// 尝试从页面源码中提取评论数
 	if reviewCount := e.extractReviewsCountFromPageSource(page); reviewCount > 0 {
 		product.ReviewsCount = reviewCount
 		logger.GetGlobalLogger("crawler/amazon").Infof("从页面源码提取评论数: %d", reviewCount)
+		return nil
+	}
+
+	if e.hasReviewSectionWithoutCount(page) {
+		logger.GetGlobalLogger("crawler/amazon").Info("页面存在评论区但未发现数字评论数，保持 ReviewsCount=0")
 		return nil
 	}
 
@@ -211,6 +223,7 @@ func (e *RatingExtractor) parseReviewsCount(text string) int {
 	patterns := []string{
 		`(\d+)\s*(?:ratings?|reviews?|评价|评论)`,
 		`(\d+)\s*(?:global\s*ratings?)`,
+		`(\d+)\s*件(?:の評価|のレビュー|のグローバル評価)?`,
 		`(\d+)`,
 	}
 
@@ -267,6 +280,7 @@ func (e *RatingExtractor) extractReviewsCountFromPageSource(page playwright.Page
 		`"totalReviewCount":\s*(\d+)`,
 		`reviewCount['"]\s*:\s*['"]*(\d+)`,
 		`(\d+)\s*global\s*ratings?`,
+		`(\d+)\s*件(?:の評価|のレビュー|のグローバル評価)?`,
 	}
 
 	for _, pattern := range patterns {
@@ -280,4 +294,47 @@ func (e *RatingExtractor) extractReviewsCountFromPageSource(page playwright.Page
 	}
 
 	return 0
+}
+
+func (e *RatingExtractor) looksLikeReviewSectionLabel(text string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(text)), " "))
+	if normalized == "" || e.parseReviewsCount(normalized) > 0 {
+		return false
+	}
+
+	labels := []string{
+		"customer reviews",
+		"global ratings",
+		"ratings",
+		"reviews",
+		"评论",
+		"評価",
+		"レビュー",
+		"カスタマーレビュー",
+	}
+
+	for _, label := range labels {
+		if strings.Contains(normalized, strings.ToLower(label)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (e *RatingExtractor) hasReviewSectionWithoutCount(page playwright.Page) bool {
+	selectors := []string{
+		"a[href='#customerReviews']",
+		"a[href*='customerReviews']",
+		"#cm_cr_dp_d_rating_histogram",
+	}
+
+	for _, selector := range selectors {
+		count, err := page.Locator(selector).Count()
+		if err == nil && count > 0 {
+			return true
+		}
+	}
+
+	return false
 }

@@ -85,6 +85,25 @@ func TestListPriceExtractor_PriceBreakdownAssignment(t *testing.T) {
 	assert.Equal(t, 78.19, *product.PricesBreakdown.ListPrice)
 }
 
+func TestContainsListPriceMarker(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		expected bool
+	}{
+		{name: "typical price", text: "Typical price: $78.19", expected: true},
+		{name: "list price", text: "List Price: $99.99", expected: true},
+		{name: "was marker", text: "Was: $59.99", expected: true},
+		{name: "normal price", text: "$19.99", expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, containsListPriceMarker(tt.text))
+		})
+	}
+}
+
 func TestListPriceExtractor_NoListPriceScenario(t *testing.T) {
 	extractor := NewListPriceExtractor("US")
 
@@ -187,4 +206,18 @@ func TestListPriceExtractor_containsOtherProductURL(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestIsExcludedListPriceContainerClass(t *testing.T) {
+	assert.True(t, isExcludedListPriceContainerClass("_multi-brand-video-desktop_style_pdDetail__2UpGM productDetailsContainer"))
+	assert.True(t, isExcludedListPriceContainerClass("foo comparison-card bar"))
+	assert.False(t, isExcludedListPriceContainerClass("celwidget apex-core-price-identifier"))
+}
+
+func TestListPriceExtractor_shouldSkipCandidateByText(t *testing.T) {
+	extractor := NewListPriceExtractor("US")
+
+	assert.True(t, extractor.shouldSkipCandidateByText("$15.98", 15.98))
+	assert.False(t, extractor.shouldSkipCandidateByText("$21.99", 15.98))
+	assert.False(t, extractor.shouldSkipCandidateByText("Typical price: $21.99", 15.98))
 }
