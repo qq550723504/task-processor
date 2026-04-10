@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -42,5 +43,25 @@ func TestStartConsumersLockedTracksFailuresAndStates(t *testing.T) {
 	}
 	if got := mc.stateManager["shein.tasks.store.1"].GetState(); got != ConsumerStateRunning {
 		t.Fatalf("expected store queue state=running, got %s", got.String())
+	}
+}
+
+func TestStopClearsConsumerRegistry(t *testing.T) {
+	logger := logrus.New()
+	mc := NewMessageConsumer(nil, ConsumerConfig{PrefetchCount: 1}, logger)
+	mc.consumers["shein.tasks"] = &QueueConsumer{
+		queueName: "shein.tasks",
+		cancel:    func() {},
+	}
+	mc.stateManager["shein.tasks"] = NewConsumerStateManager()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if err := mc.Stop(ctx); err != nil {
+		t.Fatalf("expected stop to succeed, got %v", err)
+	}
+	if len(mc.consumers) != 0 {
+		t.Fatalf("expected consumers to be cleared after stop, got %d", len(mc.consumers))
 	}
 }

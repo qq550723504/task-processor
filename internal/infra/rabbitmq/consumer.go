@@ -89,6 +89,7 @@ func (mc *MessageConsumer) Start(ctx context.Context) error {
 	defer mc.mutex.Unlock()
 
 	mc.ctx, mc.cancel = context.WithCancel(ctx)
+	mc.consumers = make(map[string]*QueueConsumer)
 
 	failedQueues := mc.startConsumersLocked("启动")
 
@@ -364,6 +365,7 @@ func (mc *MessageConsumer) Stop(ctx context.Context) error {
 		for queueName, sm := range mc.stateManager {
 			sm.SetState(ConsumerStateStopped, queueName)
 		}
+		mc.consumers = make(map[string]*QueueConsumer)
 	case <-ctx.Done():
 		mc.logger.Warn("等待消费者停止超时")
 		return fmt.Errorf("停止消费者超时")

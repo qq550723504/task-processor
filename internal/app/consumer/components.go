@@ -18,6 +18,13 @@ type SchedulerService interface {
 	GetStatus() map[string]any
 }
 
+// AutoShardService is the minimal interface for automatic store-shard coordination.
+type AutoShardService interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+	GetStatus() map[string]any
+}
+
 // rabbitmqComponent 将 RabbitMQService 适配为 lifecycle.Component。
 type rabbitmqComponent struct {
 	*lifecycle.BaseComponent
@@ -133,6 +140,31 @@ func (c *loadMonitorComponent) Start(ctx context.Context) error {
 }
 
 func (c *loadMonitorComponent) Stop(ctx context.Context) error {
+	defer c.SetRunning(false)
+	return c.svc.Stop(ctx)
+}
+
+type autoShardComponent struct {
+	*lifecycle.BaseComponent
+	svc AutoShardService
+}
+
+func newAutoShardComponent(svc AutoShardService) lifecycle.Component {
+	return &autoShardComponent{
+		BaseComponent: lifecycle.NewBaseComponent("auto-shard", []string{"reporter"}, 17),
+		svc:           svc,
+	}
+}
+
+func (c *autoShardComponent) Start(ctx context.Context) error {
+	if err := c.svc.Start(ctx); err != nil {
+		return err
+	}
+	c.SetRunning(true)
+	return nil
+}
+
+func (c *autoShardComponent) Stop(ctx context.Context) error {
 	defer c.SetRunning(false)
 	return c.svc.Stop(ctx)
 }

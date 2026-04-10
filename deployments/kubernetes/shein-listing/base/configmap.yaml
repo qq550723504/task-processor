@@ -58,6 +58,7 @@ data:
         role: "task"
         useStoreQueues: false
         ownedStores: []
+        ownedBuckets: []
         regions: [US]
         healthCheckPort: 8081
         metricsPort: 8082

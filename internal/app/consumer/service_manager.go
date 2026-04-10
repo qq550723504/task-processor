@@ -10,6 +10,7 @@ import (
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
+	"task-processor/internal/core/metrics"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -26,6 +27,7 @@ type ServiceManager struct {
 	shutdownCoord    *ShutdownCoordinator
 	rabbitmqService  *RabbitMQService // 保留引用，用于 RegisterProcessor / GetClient
 	schedulerService SchedulerService // 可选，由外部通过 SetSchedulerService 注入
+	autoShardService AutoShardService // 可选，用于自动分片配置
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -125,9 +127,12 @@ func (sm *ServiceManager) buildManagedComponents() []lifecycle.Component {
 	components := []lifecycle.Component{
 		newReporterComponent(reporter),
 		newLoadMonitorComponent(loadMonitor, sm.logger),
-		newRabbitMQComponent(sm.rabbitmqService),
 		newHTTPServerComponent(httpServer),
 	}
+	if sm.autoShardService != nil {
+		components = append(components, newAutoShardComponent(sm.autoShardService))
+	}
+	components = append(components, newRabbitMQComponent(sm.rabbitmqService))
 
 	if sm.schedulerService != nil {
 		components = append(components, newSchedulerComponent(sm.schedulerService))
@@ -232,6 +237,44 @@ func (sm *ServiceManager) GetStats() map[string]any {
 	if sm.rabbitmqService != nil {
 		stats["rabbitmq_detail"] = sm.rabbitmqService.GetStats()
 	}
+	taskMetrics := metrics.GlobalTaskMetrics()
+	snapshot := taskMetrics.GetSnapshot()
+	sheinSnapshot := metrics.GlobalSheinMetrics().GetSnapshot()
+	stats["task_metrics"] = map[string]any{
+		"pending_count":           snapshot.PendingCount,
+		"processing_count":        snapshot.ProcessingCount,
+		"completed_count":         snapshot.CompletedCount,
+		"failed_count":            snapshot.FailedCount,
+		"requeued_count":          snapshot.RequeuedCount,
+		"high_priority_count":     snapshot.HighPriorityCount,
+		"medium_priority_count":   snapshot.MediumPriorityCount,
+		"low_priority_count":      snapshot.LowPriorityCount,
+		"average_wait_seconds":    taskMetrics.GetAverageWaitTime().Seconds(),
+		"average_process_seconds": taskMetrics.GetAverageProcessTime().Seconds(),
+		"heartbeat_timeout_count": snapshot.HeartbeatTimeoutCount,
+		"task_loss_count":         snapshot.TaskLossCount,
+		"requeue_failure_count":   snapshot.RequeueFailureCount,
+		"mark_failed_error_count": snapshot.MarkFailedErrorCount,
+		"last_update_time":        snapshot.LastUpdateTime,
+	}
+	stats["shein_metrics"] = map[string]any{
+		"published_count":              sheinSnapshot.PublishedCount,
+		"paused_count":                 sheinSnapshot.PausedCount,
+		"draft_count":                  sheinSnapshot.DraftCount,
+		"terminated_count":             sheinSnapshot.TerminatedCount,
+		"auth_expired_count":           sheinSnapshot.AuthExpiredCount,
+		"cookie_load_failed_count":     sheinSnapshot.CookieLoadFailedCount,
+		"daily_limit_reached_count":    sheinSnapshot.DailyLimitReachedCount,
+		"shelf_quota_exhausted_count":  sheinSnapshot.ShelfQuotaExhaustedCount,
+		"draft_saved_validation_count": sheinSnapshot.DraftSavedValidationCount,
+		"sku_duplicated_count":         sheinSnapshot.SkuDuplicatedCount,
+		"filter_rule_rejected_count":   sheinSnapshot.FilterRuleRejectedCount,
+		"retryable_failure_count":      sheinSnapshot.RetryableFailureCount,
+		"non_retryable_failure_count":  sheinSnapshot.NonRetryableFailureCount,
+		"top_stores":                   sheinSnapshot.TopStores,
+		"top_success_stores":           sheinSnapshot.TopSuccessStores,
+		"top_problem_stores":           sheinSnapshot.TopProblemStores,
+	}
 	return stats
 }
 
@@ -255,4 +298,11 @@ func (sm *ServiceManager) SetStoreComponents(
 // SetStoreAssignmentProvider injects a dynamic store-assignment resolver for dedicated queue nodes.
 func (sm *ServiceManager) SetStoreAssignmentProvider(provider StoreAssignmentProvider) {
 	sm.rabbitmqService.SetStoreAssignmentProvider(provider)
+}
+
+// SetAutoShardService injects the automatic store-shard coordinator.
+func (sm *ServiceManager) SetAutoShardService(svc AutoShardService) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.autoShardService = svc
 }

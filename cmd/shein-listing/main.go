@@ -81,6 +81,24 @@ func main() {
 		serviceManager.SetStoreAssignmentProvider(provider)
 		logger.Infof("dynamic store assignment provider enabled: nodeID=%s", cfg.RabbitMQ.Node.NodeID)
 	}
+	if cfg.RabbitMQ.AutoShard.Enabled {
+		if managementClient := platformRegistry.GetManagementClient(); managementClient != nil && cfg.Redis != nil {
+			autoShardService, autoShardErr := consumer.NewAutoShardCoordinator(
+				cfg.RabbitMQ.AutoShard,
+				managementClient.GetStoreClient(),
+				cfg.Redis,
+				cfg.RabbitMQ.Node.NodeID,
+				logger,
+			)
+			if autoShardErr != nil {
+				logger.Fatalf("create auto shard coordinator failed: %v", autoShardErr)
+			}
+			serviceManager.SetAutoShardService(autoShardService)
+			logger.Infof("auto shard coordinator enabled: platform=%s, candidateNodes=%v", cfg.RabbitMQ.AutoShard.Platform, cfg.RabbitMQ.AutoShard.CandidateNodes)
+		} else {
+			logger.Warn("auto shard is enabled but management client or redis config is unavailable")
+		}
+	}
 
 	if err := serviceManager.Start(ctx); err != nil {
 		logger.Fatalf("start service manager failed: %v", err)

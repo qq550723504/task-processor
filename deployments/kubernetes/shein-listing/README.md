@@ -14,6 +14,7 @@
   - `secret.example.yaml`
 - `overlays/staging`
 - `overlays/prod`
+- `overlays/prod-store-shards-example`
 
 ## 镜像构建
 
@@ -65,6 +66,10 @@ docker build \
 
 - `rabbitmq.node.useStoreQueues: false`
   - 默认走平台共享队列
+- `rabbitmq.node.ownedStores: []`
+  - 可通过环境变量 `TASK_PROCESSOR_RABBITMQ_NODE_OWNED_STORES` 为每个 Deployment 单独覆盖
+- `rabbitmq.node.nodeID: ""`
+  - 可通过环境变量 `TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID` 指定固定节点标识
 - `rabbitmq.consumer.queues`
   - 同时监听 `shein.tasks` 和 `shein.tasks.store.*`
 - `platforms.shein.enabled: true`
@@ -107,6 +112,12 @@ Prod：
 
 ```bash
 kubectl apply -k deployments/kubernetes/shein-listing/overlays/prod
+```
+
+按店铺分片示例：
+
+```bash
+kubectl apply -k deployments/kubernetes/shein-listing/overlays/prod-store-shards-example
 ```
 
 ## 部署后检查

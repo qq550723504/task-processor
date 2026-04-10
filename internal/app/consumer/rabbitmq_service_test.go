@@ -108,6 +108,37 @@ func TestRabbitMQServiceRegistersSheinBucketHandlers(t *testing.T) {
 	}
 }
 
+func TestRabbitMQServiceRegistersOwnedSheinBucketsOnly(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:         config.NodeRoleTask,
+			OwnedBuckets: []int{5, 2, 2, 9, -1},
+		},
+	}, logrus.New())
+
+	svc.processorRegistry.RegisterProcessor("shein", noopProcessor{})
+	svc.registerMessageHandlers()
+
+	if svc.GetConsumer().GetStateManager("shein.tasks") == nil {
+		t.Fatal("expected shared shein queue handler to stay registered")
+	}
+
+	for _, bucket := range []int{2, 5} {
+		queueName := fmt.Sprintf("shein.tasks.bucket.%d", bucket)
+		if svc.GetConsumer().GetStateManager(queueName) == nil {
+			t.Fatalf("expected shein owned bucket handler %s to be registered", queueName)
+		}
+	}
+
+	for _, bucket := range []int{0, 1, 3, 4, 6, 7} {
+		queueName := fmt.Sprintf("shein.tasks.bucket.%d", bucket)
+		if svc.GetConsumer().GetStateManager(queueName) != nil {
+			t.Fatalf("did not expect shein bucket handler %s to be registered", queueName)
+		}
+	}
+}
+
 func TestHTTPServerHealthWhenRabbitMQDisconnected(t *testing.T) {
 	logger := logrus.New()
 	cfg := &config.RabbitMQConfig{
@@ -203,5 +234,80 @@ func TestStartupRetryDelayCapsAtThirtySeconds(t *testing.T) {
 				t.Fatalf("expected delay %v, got %v", tt.expected, got)
 			}
 		})
+	}
+}
+
+func TestDecideConsumerAction(t *testing.T) {
+	tests := []struct {
+		name             string
+		started          bool
+		connected        bool
+		consumerActive   bool
+		consumersHealthy bool
+		expected         consumerReconcileAction
+	}{
+		{
+			name:             "not started does nothing",
+			started:          false,
+			connected:        true,
+			consumerActive:   true,
+			consumersHealthy: true,
+			expected:         consumerActionNone,
+		},
+		{
+			name:             "disconnect pauses active consumers",
+			started:          true,
+			connected:        false,
+			consumerActive:   true,
+			consumersHealthy: false,
+			expected:         consumerActionPause,
+		},
+		{
+			name:             "connected but inactive resumes consumers",
+			started:          true,
+			connected:        true,
+			consumerActive:   false,
+			consumersHealthy: false,
+			expected:         consumerActionResume,
+		},
+		{
+			name:             "connected active unhealthy restarts consumers",
+			started:          true,
+			connected:        true,
+			consumerActive:   true,
+			consumersHealthy: false,
+			expected:         consumerActionRestart,
+		},
+		{
+			name:             "connected active healthy does nothing",
+			started:          true,
+			connected:        true,
+			consumerActive:   true,
+			consumersHealthy: true,
+			expected:         consumerActionNone,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decideConsumerAction(tt.started, tt.connected, tt.consumerActive, tt.consumersHealthy)
+			if got != tt.expected {
+				t.Fatalf("expected action %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestNormalizeOwnedBuckets(t *testing.T) {
+	got := normalizeOwnedBuckets([]int{7, 2, 2, -1, 8, 0})
+	expected := []int{0, 2, 7}
+
+	if len(got) != len(expected) {
+		t.Fatalf("expected %d buckets, got %d", len(expected), len(got))
+	}
+	for i := range expected {
+		if got[i] != expected[i] {
+			t.Fatalf("expected bucket %d at index %d, got %d", expected[i], i, got[i])
+		}
 	}
 }

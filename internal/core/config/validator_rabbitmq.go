@@ -62,6 +62,39 @@ func ValidateRabbitMQConfig(rabbitmq *RabbitMQConfig) []error {
 			Hint:    "set rabbitmq.node.metricsPort in YAML or export TASK_PROCESSOR_RABBITMQ_NODE_METRICS_PORT",
 		})
 	}
+	for _, bucket := range rabbitmq.Node.OwnedBuckets {
+		if bucket < 0 || bucket >= 8 {
+			errors = append(errors, &ValidationError{
+				Field:   "rabbitmq.node.ownedBuckets",
+				Message: "RabbitMQ node ownedBuckets must be within [0,7] for SHEIN bucket queues",
+				Hint:    "set rabbitmq.node.ownedBuckets to a list like [0,1,2] for explicit bucket sharding",
+			})
+			break
+		}
+	}
+	if rabbitmq.AutoShard.Enabled {
+		if len(rabbitmq.AutoShard.CandidateNodes) == 0 {
+			errors = append(errors, &ValidationError{
+				Field:   "rabbitmq.autoShard.candidateNodes",
+				Message: "RabbitMQ autoShard candidateNodes cannot be empty when auto sharding is enabled",
+				Hint:    "set rabbitmq.autoShard.candidateNodes to a list like [shein-listing-store-a, shein-listing-store-b]",
+			})
+		}
+		if rabbitmq.AutoShard.Interval <= 0 {
+			errors = append(errors, &ValidationError{
+				Field:   "rabbitmq.autoShard.interval",
+				Message: "RabbitMQ autoShard interval must be greater than 0",
+				Hint:    "set rabbitmq.autoShard.interval to a positive number of seconds",
+			})
+		}
+		if rabbitmq.AutoShard.LockTTL <= 0 {
+			errors = append(errors, &ValidationError{
+				Field:   "rabbitmq.autoShard.lockTTL",
+				Message: "RabbitMQ autoShard lockTTL must be greater than 0",
+				Hint:    "set rabbitmq.autoShard.lockTTL to a positive number of seconds",
+			})
+		}
+	}
 
 	return errors
 }

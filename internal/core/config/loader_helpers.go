@@ -47,6 +47,64 @@ func getInt64Slice(v *viper.Viper, key string) []int64 {
 	return result
 }
 
+func getIntSlice(v *viper.Viper, key string) []int {
+	intSlice := v.GetIntSlice(key)
+	if len(intSlice) > 0 {
+		return intSlice
+	}
+
+	raw := strings.TrimSpace(v.GetString(key))
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	result := make([]int, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		value, err := strconv.Atoi(part)
+		if err != nil {
+			return nil
+		}
+		result = append(result, value)
+	}
+	return result
+}
+
+func getStringSlice(v *viper.Viper, key string) []string {
+	stringSlice := v.GetStringSlice(key)
+	if len(stringSlice) > 0 {
+		result := make([]string, 0, len(stringSlice))
+		for _, item := range stringSlice {
+			item = strings.TrimSpace(strings.Trim(item, ","))
+			if item == "" {
+				continue
+			}
+			result = append(result, item)
+		}
+		return result
+	}
+
+	raw := strings.TrimSpace(v.GetString(key))
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		result = append(result, part)
+	}
+	return result
+}
+
 func getStringFromMap(m map[string]any, key string) string {
 	if val, ok := m[key]; ok {
 		if str, ok := val.(string); ok {

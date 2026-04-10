@@ -18,6 +18,13 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_AMAZON_REMOTE_API_BASE_URL", "http://crawler.internal:8080")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT", "18081")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_METRICS_PORT", "19090")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID", "shein-store-a")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_OWNED_STORES", "101, 202")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_OWNED_BUCKETS", "0, 3")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_USE_STORE_QUEUES", "true")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_PLATFORM", "shein")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES", "shein-store-a, shein-store-b")
 
 	v := newViper()
 
@@ -26,6 +33,13 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "amzn-client", v.GetString("amazon.spapi.clientID"))
 	assert.Equal(t, "ATVPDKIKX0DER", v.GetString("amazon.spapi.defaultMarketplace"))
 	assert.Equal(t, "http://crawler.internal:8080", v.GetString("amazon.remoteAPI.baseURL"))
+	assert.Equal(t, "shein-store-a", v.GetString("rabbitmq.node.nodeID"))
+	assert.Equal(t, []int64{101, 202}, getInt64Slice(v, "rabbitmq.node.ownedStores"))
+	assert.Equal(t, []int{0, 3}, getIntSlice(v, "rabbitmq.node.ownedBuckets"))
+	assert.True(t, v.GetBool("rabbitmq.node.useStoreQueues"))
+	assert.True(t, v.GetBool("rabbitmq.autoShard.enabled"))
+	assert.Equal(t, "shein", v.GetString("rabbitmq.autoShard.platform"))
+	assert.Equal(t, []string{"shein-store-a", "shein-store-b"}, getStringSlice(v, "rabbitmq.autoShard.candidateNodes"))
 	assert.Equal(t, 18081, v.GetInt("rabbitmq.node.healthCheckPort"))
 	assert.Equal(t, 19090, v.GetInt("rabbitmq.node.metricsPort"))
 }
@@ -135,6 +149,9 @@ func TestLoadFromBytes_AppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "env-management-secret")
 	t.Setenv("TASK_PROCESSOR_MANAGEMENT_STORE_IDS", "11,22")
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "env-openai-key")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID", "store-shard-a")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_OWNED_STORES", "3001,3002")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_USE_STORE_QUEUES", "true")
 
 	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
 		"management:",
@@ -149,6 +166,12 @@ func TestLoadFromBytes_AppliesEnvironmentOverrides(t *testing.T) {
 		"    vision:",
 		"      model: \"gemini-2.5-flash\"",
 		"      timeout: 30",
+		"rabbitmq:",
+		"  enabled: true",
+		"  node:",
+		"    maxConcurrency: 1",
+		"    healthCheckPort: 8081",
+		"    metricsPort: 8082",
 	}, "\n")))
 	require.NoError(t, err)
 
@@ -156,6 +179,9 @@ func TestLoadFromBytes_AppliesEnvironmentOverrides(t *testing.T) {
 	assert.Equal(t, []int64{11, 22}, cfg.Management.StoreIDs)
 	assert.Equal(t, "env-openai-key", cfg.OpenAI.APIKey)
 	assert.Equal(t, "env-openai-key", cfg.OpenAI.ToClientConfigs()["vision"].APIKey)
+	assert.Equal(t, "store-shard-a", cfg.RabbitMQ.Node.NodeID)
+	assert.Equal(t, []int64{3001, 3002}, cfg.RabbitMQ.Node.OwnedStores)
+	assert.True(t, cfg.RabbitMQ.Node.UseStoreQueues)
 }
 
 func TestDotEnvCandidatesForConfig_PrioritizesScopedEnvFile(t *testing.T) {

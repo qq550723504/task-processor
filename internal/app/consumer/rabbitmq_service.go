@@ -39,6 +39,7 @@ type RabbitMQService struct {
 	resultReporter          *ResultReporter
 	storeAPI                api.StoreAPI
 	ownedStores             []int64
+	ownedBuckets            []int
 	useStoreQueues          bool
 	storeAssignmentProvider StoreAssignmentProvider
 	deduplicator            *apptask.DeduplicationManager
@@ -49,9 +50,21 @@ type RabbitMQService struct {
 	wg     sync.WaitGroup
 
 	// 状态管理
-	started bool
-	mutex   sync.RWMutex
+	started        bool
+	consumerActive bool
+	mutex          sync.RWMutex
 }
+
+const consumerGuardInterval = 5 * time.Second
+
+type consumerReconcileAction string
+
+const (
+	consumerActionNone    consumerReconcileAction = "none"
+	consumerActionPause   consumerReconcileAction = "pause"
+	consumerActionResume  consumerReconcileAction = "resume"
+	consumerActionRestart consumerReconcileAction = "restart"
+)
 
 // NewRabbitMQService 创建RabbitMQ服务
 func NewRabbitMQService(cfg *config.RabbitMQConfig, logger *logrus.Logger) *RabbitMQService {
@@ -107,6 +120,7 @@ func NewRabbitMQService(cfg *config.RabbitMQConfig, logger *logrus.Logger) *Rabb
 		processorRegistry: processorRegistry,
 		logger:            logger,
 		ownedStores:       append([]int64(nil), cfg.Node.OwnedStores...),
+		ownedBuckets:      normalizeOwnedBuckets(cfg.Node.OwnedBuckets),
 		useStoreQueues:    cfg.Node.UseStoreQueues,
 	}
 }
@@ -286,7 +300,9 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 
 	s.mutex.Lock()
 	s.started = true
+	s.consumerActive = true
 	s.mutex.Unlock()
+	s.startConsumerGuard()
 	s.startStoreAssignmentSync()
 	s.logger.Info("RabbitMQ服务启动完成")
 	return nil
@@ -397,15 +413,52 @@ func (s *RabbitMQService) registerSharedPlatformHandlers(queueHandlers map[strin
 	queueHandlers[queueName] = handler
 
 	if strings.EqualFold(platform, "shein") {
-		for bucket := 0; bucket < sheinBucketQueueCount; bucket++ {
+		buckets := s.sharedBucketsForPlatform(platform)
+		for _, bucket := range buckets {
 			bucketQueueName := fmt.Sprintf("%s.tasks.bucket.%d", platform, bucket)
 			queueHandlers[bucketQueueName] = handler
 		}
-		s.logger.Infof("注册处理器（平台共享分桶队列）: 平台=%s, bucketCount=%d", platform, sheinBucketQueueCount)
+		s.logger.Infof("注册处理器（平台共享分桶队列）: 平台=%s, buckets=%v", platform, buckets)
 		return
 	}
 
 	s.logger.Infof("注册处理器（平台共享队列）: 平台=%s", platform)
+}
+
+func (s *RabbitMQService) sharedBucketsForPlatform(platform string) []int {
+	if !strings.EqualFold(platform, "shein") {
+		return nil
+	}
+	if len(s.ownedBuckets) > 0 {
+		return append([]int(nil), s.ownedBuckets...)
+	}
+
+	buckets := make([]int, 0, sheinBucketQueueCount)
+	for bucket := 0; bucket < sheinBucketQueueCount; bucket++ {
+		buckets = append(buckets, bucket)
+	}
+	return buckets
+}
+
+func normalizeOwnedBuckets(buckets []int) []int {
+	if len(buckets) == 0 {
+		return nil
+	}
+
+	seen := make(map[int]struct{}, len(buckets))
+	normalized := make([]int, 0, len(buckets))
+	for _, bucket := range buckets {
+		if bucket < 0 || bucket >= sheinBucketQueueCount {
+			continue
+		}
+		if _, exists := seen[bucket]; exists {
+			continue
+		}
+		seen[bucket] = struct{}{}
+		normalized = append(normalized, bucket)
+	}
+	slices.Sort(normalized)
+	return normalized
 }
 
 func (s *RabbitMQService) filterQueueConfigsByRole(configs []config.QueueConfig) []config.QueueConfig {
@@ -470,6 +523,138 @@ func (s *RabbitMQService) startStoreAssignmentSync() {
 			}
 		}
 	}()
+}
+
+func (s *RabbitMQService) startConsumerGuard() {
+	s.mutex.RLock()
+	ctx := s.ctx
+	s.mutex.RUnlock()
+
+	if ctx == nil {
+		return
+	}
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+
+		ticker := time.NewTicker(consumerGuardInterval)
+		defer ticker.Stop()
+
+		s.reconcileConsumers()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.reconcileConsumers()
+			}
+		}
+	}()
+}
+
+func (s *RabbitMQService) reconcileConsumers() {
+	s.mutex.RLock()
+	started := s.started
+	connected := s.connManager.IsConnected()
+	consumerActive := s.consumerActive
+	serviceCtx := s.ctx
+	s.mutex.RUnlock()
+
+	action := decideConsumerAction(started, connected, consumerActive, s.consumer.HasHealthyRequiredConsumers())
+	if action == consumerActionNone || serviceCtx == nil {
+		return
+	}
+
+	switch action {
+	case consumerActionPause:
+		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.pauseConsumers(stopCtx, "rabbitmq disconnected"); err != nil {
+			s.logger.WithError(err).Warn("暂停消费者失败")
+		}
+	case consumerActionResume:
+		if err := s.resumeConsumers("rabbitmq reconnected or consumer previously paused"); err != nil {
+			s.logger.WithError(err).Warn("恢复消费者失败")
+		}
+	case consumerActionRestart:
+		if err := s.restartConsumers("required consumers unhealthy"); err != nil {
+			s.logger.WithError(err).Warn("重启消费者失败")
+		}
+	}
+}
+
+func decideConsumerAction(started, connected, consumerActive, consumersHealthy bool) consumerReconcileAction {
+	if !started {
+		return consumerActionNone
+	}
+	if !connected {
+		if consumerActive {
+			return consumerActionPause
+		}
+		return consumerActionNone
+	}
+	if !consumerActive {
+		return consumerActionResume
+	}
+	if !consumersHealthy {
+		return consumerActionRestart
+	}
+	return consumerActionNone
+}
+
+func (s *RabbitMQService) pauseConsumers(ctx context.Context, reason string) error {
+	s.mutex.Lock()
+	if !s.started || !s.consumerActive {
+		s.mutex.Unlock()
+		return nil
+	}
+	s.mutex.Unlock()
+
+	s.logger.WithField("reason", reason).Warn("暂停 RabbitMQ 消费者")
+	if err := s.consumer.Stop(ctx); err != nil {
+		return err
+	}
+
+	s.mutex.Lock()
+	s.consumerActive = false
+	s.mutex.Unlock()
+	return nil
+}
+
+func (s *RabbitMQService) resumeConsumers(reason string) error {
+	s.mutex.Lock()
+	if !s.started || s.consumerActive || s.ctx == nil {
+		s.mutex.Unlock()
+		return nil
+	}
+	serviceCtx := s.ctx
+	s.mutex.Unlock()
+
+	s.logger.WithField("reason", reason).Info("恢复 RabbitMQ 消费者")
+	if err := s.consumer.Start(serviceCtx); err != nil {
+		return err
+	}
+
+	s.mutex.Lock()
+	s.consumerActive = true
+	s.mutex.Unlock()
+	return nil
+}
+
+func (s *RabbitMQService) restartConsumers(reason string) error {
+	s.mutex.RLock()
+	if !s.started || !s.consumerActive {
+		s.mutex.RUnlock()
+		return nil
+	}
+	s.mutex.RUnlock()
+
+	s.logger.WithField("reason", reason).Warn("重启 RabbitMQ 消费者")
+	if err := s.consumer.Restart(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *RabbitMQService) syncStoreAssignments(ctx context.Context) {
@@ -578,6 +763,7 @@ func (s *RabbitMQService) Stop(ctx context.Context) error {
 	}
 
 	s.started = false
+	s.consumerActive = false
 	s.logger.Info("RabbitMQ服务停止完成")
 	return nil
 }
@@ -615,6 +801,7 @@ func (s *RabbitMQService) GetStats() map[string]any {
 	stats["unhealthy_required_queues"] = s.GetUnhealthyRequiredQueues()
 	stats["use_store_queues"] = s.useStoreQueues
 	stats["owned_stores"] = append([]int64(nil), s.ownedStores...)
+	stats["owned_buckets"] = append([]int(nil), s.ownedBuckets...)
 
 	// 处理器统计
 	stats["processors"] = s.processorRegistry.GetStats()
