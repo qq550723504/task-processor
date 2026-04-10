@@ -29,6 +29,7 @@ type MessageConsumer struct {
 	// 配置
 	config       ConsumerConfig
 	queueConfigs []QueueConfig // 多队列配置
+	workTokens   chan struct{}
 
 	// 状态管理和错误收集
 	stateManager   map[string]*ConsumerStateManager // queue -> state manager
@@ -47,6 +48,7 @@ func NewMessageConsumer(client *Client, config ConsumerConfig, logger *logrus.Lo
 		consumers:      make(map[string]*QueueConsumer),
 		config:         config,
 		queueConfigs:   []QueueConfig{},
+		workTokens:     newWorkTokenBucket(config.MaxConcurrency),
 		stateManager:   make(map[string]*ConsumerStateManager),
 		errorCollector: NewErrorCollector(1000),
 	}
@@ -306,6 +308,7 @@ func (mc *MessageConsumer) createQueueConsumer(
 		config:          mc.config,
 		priority:        queueConfig.Priority,
 		prefetch:        queueConfig.Prefetch,
+		workTokens:      mc.workTokens,
 		client:          mc.client,
 		channel:         channel,
 		panicCounts:     make(map[string]int),
@@ -322,6 +325,13 @@ func (mc *MessageConsumer) launchConsumerWorkers(consumer *QueueConsumer) {
 		defer mc.wg.Done()
 		consumer.consume()
 	}()
+}
+
+func newWorkTokenBucket(maxConcurrency int) chan struct{} {
+	if maxConcurrency <= 0 {
+		return nil
+	}
+	return make(chan struct{}, maxConcurrency)
 }
 
 // Stop 停止消费者

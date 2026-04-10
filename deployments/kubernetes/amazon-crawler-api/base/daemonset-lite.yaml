@@ -51,11 +51,11 @@ spec:
                 name: amazon-crawler-api-secret
           resources:
             requests:
-              cpu: "200m"
-              memory: "1Gi"
+              cpu: "700m"
+              memory: "1500Mi"
             limits:
-              cpu: "1200m"
-              memory: "2200Mi"
+              cpu: "1800m"
+              memory: "3Gi"
           readinessProbe:
             httpGet:
               path: /ready

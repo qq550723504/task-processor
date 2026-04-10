@@ -15,7 +15,7 @@ data:
       enabled: true
       headless: true
       browserPath: "/usr/bin/chromium"
-      poolSize: 4
+      poolSize: 5
       viewportWidth: 1920
       viewportHeight: 1080
       proxyServer: ""
@@ -64,11 +64,11 @@ data:
         proxies: []
       concurrencyControl:
         enabled: true
-        maxInFlight: 4
+        maxInFlight: 5
         maxWaiting: 40
         acquireTimeoutSeconds: 60
         perRegion:
-          us: 2
+          us: 3
           jp: 1
           uk: 1
       remoteAPI:

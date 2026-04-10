@@ -46,7 +46,7 @@ data:
       firing = [a for a in alerts if str(a.get("status")).lower() == "firing"]
       resolved = [a for a in alerts if str(a.get("status")).lower() == "resolved"]
 
-      title = common_labels.get("alertname") or "Amazon 爬虫告警"
+      title = common_labels.get("alertname") or "监控告警"
       service = common_labels.get("service") or "未知服务"
       severity = common_labels.get("severity") or "未知"
       status_text = "告警中" if status == "firing" else "已恢复" if status == "resolved" else status
@@ -57,9 +57,11 @@ data:
         "none": "无级别",
       }
       severity_text = severity_map.get(severity, severity)
+      dashboard_url = common_annotations.get("dashboard_url")
+      runbook_url = common_annotations.get("runbook_url")
 
       lines = [
-        "## Amazon 爬虫告警通知",
+        "## 监控告警通知",
         f"> 状态：<font color=\"{'warning' if status == 'firing' else 'info'}\">{status_text}</font>",
         f"> 告警：`{title}`",
         f"> 服务：`{service}`",
@@ -76,6 +78,10 @@ data:
         lines.append(f"> 说明：{truncate(description, 500)}")
       if action:
         lines.append(f"> 处置：{truncate(action, 500)}")
+      if dashboard_url:
+        lines.append(f"> 看板：<{truncate(dashboard_url, 500)}>")
+      if runbook_url:
+        lines.append(f"> 排障：<{truncate(runbook_url, 500)}>")
 
       max_alerts = 5
       for index, alert in enumerate(alerts[:max_alerts], start=1):
@@ -87,6 +93,8 @@ data:
         item_summary = annotations.get("summary") or annotations.get("message") or labels.get("alertname") or "alert"
         item_description = annotations.get("description") or ""
         item_action = annotations.get("action") or ""
+        item_dashboard_url = annotations.get("dashboard_url") or ""
+        item_runbook_url = annotations.get("runbook_url") or ""
         lines.extend([
           "",
           f"**{index}. {truncate(item_summary, 120)}**",
@@ -98,6 +106,10 @@ data:
           lines.append(f"> 详情：{truncate(item_description, 300)}")
         if item_action:
           lines.append(f"> 处置：{truncate(item_action, 300)}")
+        if item_dashboard_url:
+          lines.append(f"> 看板：<{truncate(item_dashboard_url, 500)}>")
+        if item_runbook_url:
+          lines.append(f"> 排障：<{truncate(item_runbook_url, 500)}>")
 
       if len(alerts) > max_alerts:
         lines.extend(["", f"> 其余还有 {len(alerts) - max_alerts} 条告警未展开。"])

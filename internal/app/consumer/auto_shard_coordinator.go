@@ -212,12 +212,6 @@ func (c *AutoShardCoordinator) reconcile(ctx context.Context) (map[string]any, e
 		return nil, err
 	}
 
-	for _, nodeID := range c.cfg.CandidateNodes {
-		if err := c.redis.Delete(ctx, fmt.Sprintf(storeQueueOwnerNodeKey, nodeID)); err != nil {
-			return nil, err
-		}
-	}
-
 	nodeMembers := make(map[string][]string, len(c.cfg.CandidateNodes))
 	for _, store := range stores {
 		owner := assignments[store.ID]
@@ -236,11 +230,9 @@ func (c *AutoShardCoordinator) reconcile(ctx context.Context) (map[string]any, e
 	for _, members := range nodeMembers {
 		slices.Sort(members)
 	}
-	for nodeID, members := range nodeMembers {
-		if len(members) == 0 {
-			continue
-		}
-		if err := c.redis.SAdd(ctx, fmt.Sprintf(storeQueueOwnerNodeKey, nodeID), members...); err != nil {
+	for _, nodeID := range c.cfg.CandidateNodes {
+		members := nodeMembers[nodeID]
+		if err := c.redis.ReplaceSet(ctx, fmt.Sprintf(storeQueueOwnerNodeKey, nodeID), members...); err != nil {
 			return nil, err
 		}
 	}

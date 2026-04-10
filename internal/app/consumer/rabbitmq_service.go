@@ -98,10 +98,11 @@ func NewRabbitMQService(cfg *config.RabbitMQConfig, logger *logrus.Logger) *Rabb
 
 	// 转换消费者配置
 	consumerConfig := rabbitmq.ConsumerConfig{
-		PrefetchCount: cfg.Consumer.PrefetchCount,
-		PrefetchSize:  cfg.Consumer.PrefetchSize,
-		RetryDelay:    cfg.Consumer.RetryDelay,
-		MaxRetries:    cfg.Consumer.MaxRetries,
+		PrefetchCount:  cfg.Consumer.PrefetchCount,
+		PrefetchSize:   cfg.Consumer.PrefetchSize,
+		RetryDelay:     cfg.Consumer.RetryDelay,
+		MaxRetries:     cfg.Consumer.MaxRetries,
+		MaxConcurrency: cfg.Node.MaxConcurrency,
 	}
 	consumer := rabbitmq.NewMessageConsumer(client, consumerConfig, logger)
 
@@ -183,6 +184,9 @@ func (s *RabbitMQService) SetStoreAssignmentProvider(provider StoreAssignmentPro
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.storeAssignmentProvider = provider
+	if provider != nil {
+		s.useStoreQueues = true
+	}
 }
 
 // SetQueueConfigs 设置队列配置
@@ -247,10 +251,13 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 		return fmt.Errorf("初始化RabbitMQ队列失败: %w", err)
 	}
 
+	// 3.1 在首次注册处理器前，先同步一次动态店铺归属，避免新分片启动时短暂回退到共享队列。
+	s.syncInitialStoreAssignments(s.ctx)
+
 	// 4. 初始化店铺专属队列（仅在显式启用店铺亲和模式时）
 	if s.config.Node.HandlesTaskWork() {
 		platforms := s.getRegisteredPlatforms()
-		if !s.useStoreQueues && len(platforms) > 0 {
+		if !s.usesDedicatedStoreQueues() && len(platforms) > 0 {
 			if err := s.initializer.InitializePlatformQueues(platforms); err != nil {
 				return fmt.Errorf("初始化平台共享队列失败: %w", err)
 			}
@@ -258,7 +265,7 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 		}
 	}
 
-	if s.config.Node.HandlesTaskWork() && s.useStoreQueues && len(s.ownedStores) > 0 {
+	if s.config.Node.HandlesTaskWork() && s.usesDedicatedStoreQueues() && len(s.ownedStores) > 0 {
 		platforms := s.getRegisteredPlatforms()
 		for _, platform := range platforms {
 			if err := s.initializer.InitializeStoreQueues(platform, s.ownedStores); err != nil {
@@ -276,7 +283,7 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	}
 
 	// 4. 预加载店铺配置（如果启用）
-	if s.storeAPI != nil && s.useStoreQueues && len(s.ownedStores) > 0 {
+	if s.storeAPI != nil && s.usesDedicatedStoreQueues() && len(s.ownedStores) > 0 {
 		s.logger.Infof("开始预加载 %d 个店铺配置...", len(s.ownedStores))
 		for _, storeID := range s.ownedStores {
 			_, err := s.storeAPI.GetStore(storeID)
@@ -391,7 +398,11 @@ func (s *RabbitMQService) buildQueueHandlers() map[string]rabbitmq.MessageHandle
 			continue
 		}
 
-		if s.useStoreQueues && len(s.ownedStores) > 0 {
+		if s.usesDedicatedStoreQueues() {
+			if len(s.ownedStores) == 0 {
+				s.logger.Infof("跳过共享队列注册: 平台=%s, useStoreQueues=true, ownedStores=0", platform)
+				continue
+			}
 			for _, storeID := range s.ownedStores {
 				queueName := fmt.Sprintf("%s.tasks.store.%d", platform, storeID)
 				queueHandlers[queueName] = handler
@@ -438,6 +449,10 @@ func (s *RabbitMQService) sharedBucketsForPlatform(platform string) []int {
 		buckets = append(buckets, bucket)
 	}
 	return buckets
+}
+
+func (s *RabbitMQService) usesDedicatedStoreQueues() bool {
+	return s.useStoreQueues || s.storeAssignmentProvider != nil
 }
 
 func normalizeOwnedBuckets(buckets []int) []int {
@@ -523,6 +538,20 @@ func (s *RabbitMQService) startStoreAssignmentSync() {
 			}
 		}
 	}()
+}
+
+func (s *RabbitMQService) syncInitialStoreAssignments(ctx context.Context) {
+	s.mutex.RLock()
+	provider := s.storeAssignmentProvider
+	useStoreQueues := s.useStoreQueues
+	nodeID := s.config.Node.NodeID
+	s.mutex.RUnlock()
+
+	if !useStoreQueues || provider == nil || strings.TrimSpace(nodeID) == "" || ctx == nil {
+		return
+	}
+
+	s.syncStoreAssignments(ctx)
 }
 
 func (s *RabbitMQService) startConsumerGuard() {
@@ -702,7 +731,7 @@ func (s *RabbitMQService) reloadOwnedStores(ctx context.Context, ownedStores []i
 	platforms := s.getRegisteredPlatforms()
 	s.mutex.Unlock()
 
-	if s.useStoreQueues && len(ownedStores) > 0 {
+	if s.usesDedicatedStoreQueues() && len(ownedStores) > 0 {
 		for _, platform := range platforms {
 			if err := s.initializer.InitializeStoreQueues(platform, ownedStores); err != nil {
 				return fmt.Errorf("初始化动态店铺队列失败: %w", err)

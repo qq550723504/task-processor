@@ -28,6 +28,7 @@ type QueueConsumer struct {
 	config      ConsumerConfig
 	priority    int           // 队列优先级
 	prefetch    int           // 预取数量
+	workTokens  chan struct{} // Pod 级全局并发令牌
 	client      *Client       // client字段用于重新发布消息
 	channel     *amqp.Channel // 独立通道（用于避免QoS冲突）
 
@@ -65,8 +66,16 @@ func (qc *QueueConsumer) consume() {
 						return
 					}
 
+					if !qc.acquireWorkToken() {
+						qc.logger.Debugf("队列 %s Worker #%d 停止等待全局并发令牌", qc.queueName, workerID)
+						return
+					}
+
 					qc.logger.Debugf("队列 %s Worker #%d 处理消息: %s", qc.queueName, workerID, delivery.MessageId)
-					qc.processMessage(delivery)
+					func() {
+						defer qc.releaseWorkToken()
+						qc.processMessage(delivery)
+					}()
 				}
 			}
 		}(i)
@@ -390,4 +399,28 @@ func (qc *QueueConsumer) republishWithRetryCount(msg *Message) error {
 
 	qc.logger.Debugf("重新发布消息成功: ID=%s, RetryCount=%d", msg.ID, msg.RetryCount)
 	return nil
+}
+
+func (qc *QueueConsumer) acquireWorkToken() bool {
+	if qc.workTokens == nil {
+		return true
+	}
+
+	select {
+	case qc.workTokens <- struct{}{}:
+		return true
+	case <-qc.ctx.Done():
+		return false
+	}
+}
+
+func (qc *QueueConsumer) releaseWorkToken() {
+	if qc.workTokens == nil {
+		return
+	}
+
+	select {
+	case <-qc.workTokens:
+	default:
+	}
 }

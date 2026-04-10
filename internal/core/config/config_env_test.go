@@ -44,6 +44,17 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, 19090, v.GetInt("rabbitmq.node.metricsPort"))
 }
 
+func TestGetStringSlice_SplitsCommaSeparatedSingleEntry(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES", "shein-store-a,shein-store-b,shein-store-c,shein-store-d")
+
+	v := newViper()
+
+	assert.Equal(t,
+		[]string{"shein-store-a", "shein-store-b", "shein-store-c", "shein-store-d"},
+		getStringSlice(v, "rabbitmq.autoShard.candidateNodes"),
+	)
+}
+
 func TestNewViper_BindsLegacyEnvironmentAliases(t *testing.T) {
 	t.Setenv("AMAZON_SPAPI_CLIENT_SECRET", "legacy-secret")
 	t.Setenv("AMAZON_SPAPI_MARKETPLACE_ID", "LEGACY-MARKET")

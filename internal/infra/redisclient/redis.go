@@ -84,6 +84,24 @@ func (c *Client) SAdd(ctx context.Context, key string, members ...string) error 
 	return c.rdb.SAdd(ctx, key, values...).Err()
 }
 
+// ReplaceSet atomically replaces the full member set for the target key.
+func (c *Client) ReplaceSet(ctx context.Context, key string, members ...string) error {
+	_, err := c.rdb.TxPipelined(ctx, func(pipe goredis.Pipeliner) error {
+		pipe.Del(ctx, key)
+		if len(members) == 0 {
+			return nil
+		}
+
+		values := make([]any, 0, len(members))
+		for _, member := range members {
+			values = append(values, member)
+		}
+		pipe.SAdd(ctx, key, values...)
+		return nil
+	})
+	return err
+}
+
 // Close closes the underlying Redis client.
 func (c *Client) Close() error {
 	return c.rdb.Close()

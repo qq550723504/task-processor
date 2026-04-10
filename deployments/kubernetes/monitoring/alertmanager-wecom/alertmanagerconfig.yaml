@@ -1,10 +1,10 @@
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: AlertmanagerConfig
 metadata:
-  name: amazon-crawler-api-wecom
+  name: task-processor-wecom
   namespace: task-processor
   labels:
-    app.kubernetes.io/name: amazon-crawler-api-wecom
+    app.kubernetes.io/name: task-processor-wecom
     app.kubernetes.io/part-of: task-processor
 spec:
   route:
@@ -18,8 +18,8 @@ spec:
     receiver: wecom-webhook
     matchers:
       - name: service
-        value: amazon-crawler-api
-        matchType: "="
+        value: amazon-crawler-api|shein-listing
+        matchType: "=~"
   receivers:
     - name: wecom-webhook
       webhookConfigs:

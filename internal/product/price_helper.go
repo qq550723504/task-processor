@@ -27,11 +27,14 @@ func GetProductPrice(amazonProduct *model.Product, priceType string) float64 {
 		// 特价，使用最终价格
 		price = amazonProduct.FinalPrice
 	case "original":
-		// 原价，优先使用list_price，否则使用initial_price
-		if amazonProduct.PricesBreakdown.ListPrice != nil {
+		// 原价，优先使用 list_price，其次使用 initial_price。
+		// 当原价链路缺失时，回退到 final_price，避免把正常商品误判为 0 价。
+		if amazonProduct.PricesBreakdown.ListPrice != nil && *amazonProduct.PricesBreakdown.ListPrice > 0 {
 			price = *amazonProduct.PricesBreakdown.ListPrice
-		} else {
+		} else if amazonProduct.InitialPrice > 0 {
 			price = amazonProduct.InitialPrice
+		} else {
+			price = amazonProduct.FinalPrice
 		}
 	default:
 		// 默认使用最终价格

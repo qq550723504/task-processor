@@ -223,6 +223,7 @@ func (h *TaskHandler) handleSuccess(task model.Task) {
 	statusUpdater := NewTaskStatusUpdater(h.processor)
 	statusUpdater.UpdateTaskStatusAsyncWithTask(&task, model.TaskStatusPublished, "")
 	metrics.GlobalTaskMetrics().IncrementCompleted()
+	metrics.GlobalSheinMetrics().IncrementPublishedForStore(task.TenantID, task.StoreID)
 
 	logger.GetGlobalLogger("shein/pipeline").Infof(
 		"task completed: id=%d, tenant_id=%d, store_id=%d, product_id=%s, target_platform=%s, source_platform=%s",
@@ -253,6 +254,12 @@ func (h *TaskHandler) handleHandledStatus(task model.Task, handledErr *shein.Tas
 
 	statusUpdater := NewTaskStatusUpdater(h.processor)
 	statusUpdater.UpdateTaskStatusAsyncWithTask(&task, targetStatus, handledErr.ErrorMessage())
+	metrics.GlobalSheinMetrics().IncrementHandledStatusForStore(task.TenantID, task.StoreID, targetStatus)
+	if reasonCode := metrics.ExtractReasonCode(handledErr.ErrorMessage()); reasonCode != "" {
+		metrics.GlobalSheinMetrics().IncrementReasonForStore(task.TenantID, task.StoreID, reasonCode)
+	} else if reasonCode := metrics.ExtractReasonCode(handledErr.Error()); reasonCode != "" {
+		metrics.GlobalSheinMetrics().IncrementReasonForStore(task.TenantID, task.StoreID, reasonCode)
+	}
 
 	logger.GetGlobalLogger("shein/pipeline").Infof(
 		"task finished with handled status: id=%d, status=%s, reason=%s, target_platform=%s, source_platform=%s",

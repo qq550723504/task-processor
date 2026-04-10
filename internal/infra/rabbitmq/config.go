@@ -22,10 +22,11 @@ type ConnectionConfig struct {
 
 // ConsumerConfig 消费者配置
 type ConsumerConfig struct {
-	PrefetchCount int           `yaml:"prefetch_count"`
-	PrefetchSize  int           `yaml:"prefetch_size"`
-	RetryDelay    time.Duration `yaml:"retry_delay"`
-	MaxRetries    int           `yaml:"max_retries"`
+	PrefetchCount  int           `yaml:"prefetch_count"`
+	PrefetchSize   int           `yaml:"prefetch_size"`
+	RetryDelay     time.Duration `yaml:"retry_delay"`
+	MaxRetries     int           `yaml:"max_retries"`
+	MaxConcurrency int           `yaml:"max_concurrency"`
 }
 
 // QueueConfig 队列配置
@@ -82,6 +83,9 @@ func (c *ConsumerConfig) Validate() error {
 	}
 	if c.MaxRetries < 0 {
 		return fmt.Errorf("max_retries不能为负数")
+	}
+	if c.MaxConcurrency < 0 {
+		return fmt.Errorf("max_concurrency不能为负数")
 	}
 	return nil
 }

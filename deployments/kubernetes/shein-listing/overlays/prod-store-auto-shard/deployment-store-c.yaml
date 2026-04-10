@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: shein-listing-store-a
+  name: shein-listing-store-c
   namespace: task-processor
   labels:
-    app: shein-listing-store-a
-    shard: store-a
+    app: shein-listing-store-c
+    shard: store-c
 spec:
   replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app: shein-listing-store-a
+      app: shein-listing-store-c
   template:
     metadata:
       labels:
-        app: shein-listing-store-a
-        shard: store-a
+        app: shein-listing-store-c
+        shard: store-c
     spec:
       containers:
         - name: shein-listing
@@ -41,7 +41,7 @@ spec:
             - name: TASK_PROCESSOR_RABBITMQ_NODE_ROLE
               value: task
             - name: TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID
-              value: shein-listing-store-a
+              value: shein-listing-store-c
             - name: TASK_PROCESSOR_RABBITMQ_NODE_USE_STORE_QUEUES
               value: "true"
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED

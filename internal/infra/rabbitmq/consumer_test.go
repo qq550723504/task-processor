@@ -65,3 +65,31 @@ func TestStopClearsConsumerRegistry(t *testing.T) {
 		t.Fatalf("expected consumers to be cleared after stop, got %d", len(mc.consumers))
 	}
 }
+
+func TestNewMessageConsumerCreatesGlobalConcurrencyLimiter(t *testing.T) {
+	logger := logrus.New()
+	mc := NewMessageConsumer(nil, ConsumerConfig{PrefetchCount: 1, MaxConcurrency: 4}, logger)
+
+	if mc.workTokens == nil {
+		t.Fatal("expected work token bucket to be initialized")
+	}
+	if cap(mc.workTokens) != 4 {
+		t.Fatalf("expected work token bucket capacity 4, got %d", cap(mc.workTokens))
+	}
+}
+
+func TestCreateQueueConsumerSharesGlobalConcurrencyLimiter(t *testing.T) {
+	logger := logrus.New()
+	mc := NewMessageConsumer(nil, ConsumerConfig{PrefetchCount: 1, MaxConcurrency: 3}, logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mc.ctx = ctx
+	mc.stateManager["shein.tasks.store.181"] = NewConsumerStateManager()
+	queueConfig := &QueueConfig{Name: "shein.tasks.store.181", Prefetch: 1, Priority: 8}
+
+	consumer := mc.createQueueConsumer("shein.tasks.store.181", "tag", noopHandler{}, nil, nil, queueConfig)
+	if consumer.workTokens != mc.workTokens {
+		t.Fatal("expected queue consumer to share message consumer work token bucket")
+	}
+}

@@ -4,6 +4,7 @@
 
 - `kube-prometheus-stack`
 - `amazon-crawler-api` 指标、告警和 Grafana 看板
+- `shein-listing` 指标、告警和 Grafana 看板
 - 企业微信告警适配器
 - Grafana 域名入口
 
@@ -22,6 +23,7 @@ kubectl -n monitoring get secret monitoring-grafana -o jsonpath="{.data.admin-pa
 
 - `deployments/kubernetes/monitoring/kube-prometheus-stack-values.yaml`
 - `deployments/kubernetes/monitoring/amazon-crawler-api`
+- `deployments/kubernetes/monitoring/shein-listing`
 - `deployments/kubernetes/monitoring/alertmanager-wecom`
 - `deployments/kubernetes/monitoring/grafana-ingress`
 - `deployments/kubernetes/cert-manager/letsencrypt-prod`
@@ -38,6 +40,7 @@ helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
 
 kubectl apply -k deployments/kubernetes/cert-manager/letsencrypt-prod
 kubectl apply -k deployments/kubernetes/monitoring/amazon-crawler-api
+kubectl apply -k deployments/kubernetes/monitoring/shein-listing
 kubectl apply -k deployments/kubernetes/monitoring/alertmanager-wecom
 kubectl apply -k deployments/kubernetes/monitoring/grafana-ingress
 ```
@@ -56,6 +59,7 @@ kubectl -n monitoring create secret generic alertmanager-wecom-secret \
 当前默认只转发：
 
 - `service=amazon-crawler-api`
+- `service=shein-listing`
 
 ## 当前监控覆盖
 
@@ -67,6 +71,9 @@ kubectl -n monitoring create secret generic alertmanager-wecom-secret \
 - 浏览器池初始化失败、实例重建成功/失败、活跃重建数量
 - 浏览器池当前实例数与配置池大小对比、`processor_unavailable` 快速定位
 - 任务提交失败和 `dedupe` 等待超时
+- 每个 `shein-listing` pod 的上架成功、失败、重试
+- `shein-listing` 的认证过期、Cookie 加载失败、每日限额、上架额度耗尽、SKU 重复
+- `shein-listing` 的平均等待时长、平均处理时长
 - 企业微信中文告警
 
 ## Amazon Crawler 当前分层部署

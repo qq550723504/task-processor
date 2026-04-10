@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: shein-listing
-          image: xuwei190/task-processor-shein-listing:storegray-20260410a
+          image: xuwei190/task-processor-shein-listing:autoshard-20260410
           imagePullPolicy: Always
           command: ["/app/listing-service"]
           args:
@@ -57,7 +57,9 @@ spec:
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_LOCK_TTL
               value: "25"
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES
-              value: shein-listing-store-a,shein-listing-store-b
+              value: shein-listing-store-a,shein-listing-store-b,shein-listing-store-c,shein-listing-store-d
+            - name: TASK_PROCESSOR_REDIS_DB
+              value: "9"
             - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT
               value: "8081"
             - name: TASK_PROCESSOR_RABBITMQ_NODE_METRICS_PORT

@@ -6,3 +6,5 @@ namespace: task-processor
 resources:
   - deployment-store-a.yaml
   - deployment-store-b.yaml
+  - deployment-store-c.yaml
+  - deployment-store-d.yaml

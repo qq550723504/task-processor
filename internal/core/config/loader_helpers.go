@@ -79,11 +79,13 @@ func getStringSlice(v *viper.Viper, key string) []string {
 	if len(stringSlice) > 0 {
 		result := make([]string, 0, len(stringSlice))
 		for _, item := range stringSlice {
-			item = strings.TrimSpace(strings.Trim(item, ","))
-			if item == "" {
-				continue
+			for _, part := range strings.Split(item, ",") {
+				part = strings.TrimSpace(strings.Trim(part, ","))
+				if part == "" {
+					continue
+				}
+				result = append(result, part)
 			}
-			result = append(result, item)
 		}
 		return result
 	}

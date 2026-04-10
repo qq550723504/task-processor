@@ -28,5 +28,6 @@ kubectl apply -k deployments/kubernetes/monitoring/alertmanager-wecom
 默认只接收：
 
 - `service=amazon-crawler-api`
+- `service=shein-listing`
 
-如果后续要扩展到其他服务，可以再加新的 `AlertmanagerConfig` 或放宽 matcher。
+如果后续要扩展到其他服务，可以继续在 `matcher` 里追加，或拆分成新的 `AlertmanagerConfig`。

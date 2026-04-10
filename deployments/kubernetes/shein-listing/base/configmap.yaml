@@ -14,7 +14,7 @@ data:
     openai:
       apiKey: ""
       model: "gemini-2.5-flash-lite"
-      baseURL: "https://api.gptbest.vip/v1"
+      baseURL: "https://api.bltcy.ai/v1"
       timeout: 300
 
     management:
@@ -45,18 +45,13 @@ data:
         retryDelay: "5s"
         maxRetries: 3
         queues:
-          - name: "shein.tasks"
-            priority: 1
-            prefetch: 1
-          - name: "shein.tasks.bucket.*"
-            priority: 10
-            prefetch: 1
           - name: "shein.tasks.store.*"
             priority: 8
-            prefetch: 2
+            prefetch: 3
       node:
         role: "task"
-        useStoreQueues: false
+        maxConcurrency: 4
+        useStoreQueues: true
         ownedStores: []
         ownedBuckets: []
         regions: [US]

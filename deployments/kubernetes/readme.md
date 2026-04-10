@@ -95,7 +95,7 @@ kubectl label node <node-name> task-processor/crawler-tier-
 - `amazon-crawler-api` 已移除 HPA，因为工作负载是 `DaemonSet`，此前的 HPA 会持续报 `deployments.apps "amazon-crawler-api" not found`
 
 # 查看token
-kubectl -n kubernetes-dashboard create token admin-user
+kubectl -n kubernetes-dashboard create token admin-user --duration=168h
 
 curl -sfL https://get.k3s.io | \
 K3S_URL=https://101.33.34.102:6443 \

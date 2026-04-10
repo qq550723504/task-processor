@@ -73,13 +73,15 @@ func main() {
 		logger.Warn("management client unavailable; store dispatch guard is disabled")
 	}
 
-	if cfg.RabbitMQ.Node.UseStoreQueues && cfg.Redis != nil {
+	if cfg.RabbitMQ.Node.UseStoreQueues && len(cfg.RabbitMQ.Node.OwnedStores) == 0 && cfg.Redis != nil {
 		provider, providerErr := consumer.NewRedisStoreAssignmentProvider(cfg.Redis, logger)
 		if providerErr != nil {
 			logger.Fatalf("create dynamic store assignment provider failed: %v", providerErr)
 		}
 		serviceManager.SetStoreAssignmentProvider(provider)
 		logger.Infof("dynamic store assignment provider enabled: nodeID=%s", cfg.RabbitMQ.Node.NodeID)
+	} else if cfg.RabbitMQ.Node.UseStoreQueues && len(cfg.RabbitMQ.Node.OwnedStores) > 0 {
+		logger.Infof("static store assignment enabled: nodeID=%s, ownedStores=%v", cfg.RabbitMQ.Node.NodeID, cfg.RabbitMQ.Node.OwnedStores)
 	}
 	if cfg.RabbitMQ.AutoShard.Enabled {
 		if managementClient := platformRegistry.GetManagementClient(); managementClient != nil && cfg.Redis != nil {
