@@ -34,6 +34,32 @@ func (m *StoreAPIClient) GetStore(id int64) (*api.StoreRespDTO, error) {
 	return store, nil
 }
 
+// PageStores 分页查询店铺列表
+func (m *StoreAPIClient) PageStores(req *api.StorePageReqDTO) (*api.PageResult[*api.StoreRespDTO], error) {
+	url := fmt.Sprintf("%s/rpc-api/listing/store/page", m.baseURL)
+
+	reqBody := map[string]any{
+		"pageNo":   req.PageNo,
+		"pageSize": req.PageSize,
+	}
+	if req.Platform != "" {
+		reqBody["platform"] = req.Platform
+	}
+	if req.EnableAutoPrice != nil {
+		reqBody["enableAutoPrice"] = *req.EnableAutoPrice
+	}
+
+	var result api.CommonResult[api.PageResult[*api.StoreRespDTO]]
+	if err := m.apiRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return nil, fmt.Errorf("分页查询店铺失败: %w", err)
+	}
+	if result.Code != 0 {
+		return nil, fmt.Errorf("分页查询店铺失败: %s", result.Msg)
+	}
+
+	return &result.Data, nil
+}
+
 // GetStoreCookie 通过店铺ID获取用户Cookie
 func (m *StoreAPIClient) GetStoreCookie(id int64) (string, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/store/get-cookie?id=%d", m.baseURL, id)
@@ -75,4 +101,10 @@ func (m *StoreAPIClient) SetStorePauseStatus(id int64, pause bool, pauseType str
 func (m *StoreAPIClient) GetStorePauseStatus(id int64) (bool, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/store/get-pause-status?id=%d", m.baseURL, id)
 	return getTypedResult[bool](m.ManagementAPIClient, http.MethodGet, url, nil)
+}
+
+// GetStorePauseStatusDetail 获取店铺任务暂停状态详情
+func (m *StoreAPIClient) GetStorePauseStatusDetail(id int64) (*api.StorePauseStatusRespDTO, error) {
+	url := fmt.Sprintf("%s/rpc-api/listing/store/get-pause-status-detail?id=%d", m.baseURL, id)
+	return getTypedResult[*api.StorePauseStatusRespDTO](m.ManagementAPIClient, http.MethodGet, url, nil)
 }

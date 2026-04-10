@@ -30,6 +30,14 @@ type StoreRespDTO struct {
 	Status                  int16  `json:"status"`
 }
 
+// StorePageReqDTO 分页查询店铺请求
+type StorePageReqDTO struct {
+	Platform        string `json:"platform,omitempty"`
+	PageNo          int    `json:"pageNo"`
+	PageSize        int    `json:"pageSize"`
+	EnableAutoPrice *bool  `json:"enableAutoPrice,omitempty"`
+}
+
 // StoreStatusUpdateReqDTO 店铺状态更新请求DTO
 type StoreStatusUpdateReqDTO struct {
 	ID     int64 `json:"id"`
@@ -42,12 +50,25 @@ type StoreIdUpdateReqDTO struct {
 	StoreID string `json:"storeId"`
 }
 
+// StorePauseStatusRespDTO 店铺暂停状态详情
+type StorePauseStatusRespDTO struct {
+	Paused     bool   `json:"paused"`
+	PauseType  string `json:"pauseType"`
+	Reason     string `json:"reason"`
+	PausedAt   int64  `json:"pausedAt"`
+	PauseUntil int64  `json:"pauseUntil"`
+	TTLSeconds int64  `json:"ttlSeconds"`
+}
+
 // StoreAPI 店铺管理API接口定义
 type StoreAPI interface {
 	GetStore(id int64) (*StoreRespDTO, error)
+	PageStores(req *StorePageReqDTO) (*PageResult[*StoreRespDTO], error)
 	GetStoreCookie(id int64) (string, error)
 	UpdateStoreId(req *StoreIdUpdateReqDTO) (bool, error)
 	UpdateStoreStatus(req *StoreStatusUpdateReqDTO) (bool, error)
 	DeleteStoreCookie(id int64) (bool, error)
 	SetStorePauseStatus(id int64, pause bool, pauseType string) (bool, error)
+	GetStorePauseStatus(id int64) (bool, error)
+	GetStorePauseStatusDetail(id int64) (*StorePauseStatusRespDTO, error)
 }
