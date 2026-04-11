@@ -2,10 +2,8 @@ package bootstrap
 
 import (
 	"task-processor/internal/app/consumer"
-	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
-	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
@@ -61,14 +59,4 @@ func BuildCrawlerDependencies() consumer.CrawlerRegistryDependencies {
 			return productFetcher, nil
 		},
 	}
-}
-
-func buildSharedProductFetcher(
-	cfg *config.Config,
-	rawJsonDataClient product.RawJsonDataClient,
-	crawlSource *amazon.AmazonProcessor,
-	rabbitmqClient *rabbitmq.Client,
-) (appfetcher.ProductFetcher, error) {
-	factory := appfetcher.NewFetcherFactory()
-	return factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, crawlSource, rabbitmqClient)
 }

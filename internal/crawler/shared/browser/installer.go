@@ -30,7 +30,7 @@ func (pi *PlaywrightInstaller) InstallIfNeeded() (*playwright.Playwright, error)
 
 		// 使用 playwright-go 原生 API 安装驱动，无需 go 环境
 		if installErr := playwright.Install(&playwright.RunOptions{
-			Browsers: []string{"chromium"},
+			SkipInstallBrowsers: true,
 		}); installErr != nil {
 			return nil, fmt.Errorf("自动安装 Playwright 驱动失败: %w", installErr)
 		}

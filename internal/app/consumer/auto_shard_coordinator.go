@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"net"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,8 +13,10 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/redisclient"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,19 +30,35 @@ const (
 )
 
 type autoShardManagedKey struct {
-	tenantID int64
-	storeID  int64
-	ownerKey string
-	modeKey  string
+	tenantID  int64
+	storeID   int64
+	ownerKey  string
+	modeKey   string
+	ownerNode string
+}
+
+type autoShardStoreLoad struct {
+	store        *api.StoreRespDTO
+	backlog      int
+	currentOwner string
+	stableOwner  string
+}
+
+type autoShardNodeLoad struct {
+	nodeID     string
+	weight     int
+	load       int64
+	storeCount int
 }
 
 // AutoShardCoordinator assigns dedicated-queue stores to candidate nodes and writes Redis ownership.
 type AutoShardCoordinator struct {
-	cfg      config.AutoShardConfig
-	storeAPI api.StoreAPI
-	redis    *redisclient.Client
-	logger   *logrus.Logger
-	nodeID   string
+	cfg         config.AutoShardConfig
+	storeAPI    api.StoreAPI
+	redis       *redisclient.Client
+	logger      *logrus.Logger
+	nodeID      string
+	rabbitMQURL string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -56,6 +75,7 @@ func NewAutoShardCoordinator(
 	cfg config.AutoShardConfig,
 	storeAPI api.StoreAPI,
 	redisCfg *config.RedisConfig,
+	rabbitMQURL string,
 	nodeID string,
 	logger *logrus.Logger,
 ) (*AutoShardCoordinator, error) {
@@ -94,6 +114,7 @@ func NewAutoShardCoordinator(
 		redis:       redisClient,
 		logger:      logger,
 		nodeID:      strings.TrimSpace(nodeID),
+		rabbitMQURL: strings.TrimSpace(rabbitMQURL),
 		lastSummary: map[string]any{},
 	}, nil
 }
@@ -205,14 +226,16 @@ func (c *AutoShardCoordinator) reconcile(ctx context.Context) (map[string]any, e
 	if err != nil {
 		return nil, err
 	}
-	assignments := c.buildAssignments(stores)
-
 	currentManaged, err := c.loadCurrentManagedKeys(ctx)
 	if err != nil {
 		return nil, err
 	}
+	queueBacklogs := c.loadStoreQueueBacklogs(ctx, stores)
+	assignments := c.buildAssignments(stores, queueBacklogs, currentManaged)
 
 	nodeMembers := make(map[string][]string, len(c.cfg.CandidateNodes))
+	nodeBacklogs := make(map[string]int, len(c.cfg.CandidateNodes))
+	queueBacklogTotal := 0
 	for _, store := range stores {
 		owner := assignments[store.ID]
 		modeKey := fmt.Sprintf(storeQueueModeKeyPattern, store.TenantID, store.ID)
@@ -224,6 +247,9 @@ func (c *AutoShardCoordinator) reconcile(ctx context.Context) (map[string]any, e
 			return nil, err
 		}
 		nodeMembers[owner] = append(nodeMembers[owner], strconv.FormatInt(store.ID, 10))
+		backlog := queueBacklogs[store.ID]
+		nodeBacklogs[owner] += backlog
+		queueBacklogTotal += backlog
 		delete(currentManaged, store.ID)
 	}
 
@@ -252,9 +278,11 @@ func (c *AutoShardCoordinator) reconcile(ctx context.Context) (map[string]any, e
 		"managed_store_count": len(stores),
 		"candidate_nodes":     len(c.cfg.CandidateNodes),
 		"cleaned_store_count": cleaned,
+		"queue_backlog_total": queueBacklogTotal,
 	}
 	for nodeID, members := range nodeMembers {
 		summary["node_"+nodeID] = len(members)
+		summary["node_"+nodeID+"_backlog"] = nodeBacklogs[nodeID]
 	}
 	return summary, nil
 }
@@ -318,12 +346,174 @@ func (c *AutoShardCoordinator) listEligibleStores(ctx context.Context) ([]*api.S
 	return result, nil
 }
 
-func (c *AutoShardCoordinator) buildAssignments(stores []*api.StoreRespDTO) map[int64]string {
+func (c *AutoShardCoordinator) buildAssignments(
+	stores []*api.StoreRespDTO,
+	queueBacklogs map[int64]int,
+	currentManaged map[int64]autoShardManagedKey,
+) map[int64]string {
 	assignments := make(map[int64]string, len(stores))
+	if len(c.cfg.CandidateNodes) == 0 {
+		for _, store := range stores {
+			assignments[store.ID] = ""
+		}
+		return assignments
+	}
+
+	nodeLoads := make([]*autoShardNodeLoad, 0, len(c.cfg.CandidateNodes))
+	for _, nodeID := range c.cfg.CandidateNodes {
+		nodeLoads = append(nodeLoads, &autoShardNodeLoad{
+			nodeID: nodeID,
+			weight: normalizeNodeWeight(c.cfg.NodeWeights[nodeID]),
+		})
+	}
+
+	storeLoads := make([]autoShardStoreLoad, 0, len(stores))
 	for _, store := range stores {
-		assignments[store.ID] = pickCandidateNode(c.cfg.CandidateNodes, store.TenantID, store.ID)
+		currentOwner := ""
+		if managed, ok := currentManaged[store.ID]; ok {
+			currentOwner = managed.ownerNode
+		}
+		storeLoads = append(storeLoads, autoShardStoreLoad{
+			store:        store,
+			backlog:      queueBacklogs[store.ID],
+			currentOwner: currentOwner,
+			stableOwner:  pickCandidateNode(c.cfg.CandidateNodes, store.TenantID, store.ID),
+		})
+	}
+	slices.SortFunc(storeLoads, func(a, b autoShardStoreLoad) int {
+		switch {
+		case a.backlog > b.backlog:
+			return -1
+		case a.backlog < b.backlog:
+			return 1
+		case a.store.TenantID < b.store.TenantID:
+			return -1
+		case a.store.TenantID > b.store.TenantID:
+			return 1
+		case a.store.ID < b.store.ID:
+			return -1
+		case a.store.ID > b.store.ID:
+			return 1
+		default:
+			return 0
+		}
+	})
+
+	for _, storeLoad := range storeLoads {
+		nodeLoad := pickLeastLoadedNode(nodeLoads, storeLoad.currentOwner, storeLoad.stableOwner)
+		assignments[storeLoad.store.ID] = nodeLoad.nodeID
+		nodeLoad.load += storeAssignmentCost(storeLoad.backlog)
+		nodeLoad.storeCount++
 	}
 	return assignments
+}
+
+func (c *AutoShardCoordinator) loadStoreQueueBacklogs(ctx context.Context, stores []*api.StoreRespDTO) map[int64]int {
+	backlogs := make(map[int64]int, len(stores))
+	rabbitMQURL := strings.TrimSpace(c.rabbitMQURL)
+	if rabbitMQURL == "" || len(stores) == 0 {
+		return backlogs
+	}
+
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	conn, err := amqp.DialConfig(rabbitMQURL, amqp.Config{Dial: dialer.Dial})
+	if err != nil {
+		c.logger.WithError(err).Warn("auto shard: inspect queue backlog skipped because RabbitMQ dial failed")
+		return backlogs
+	}
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			c.logger.WithError(closeErr).Debug("auto shard: close RabbitMQ inspection connection failed")
+		}
+	}()
+
+	platform := strings.ToLower(strings.TrimSpace(c.cfg.Platform))
+	if platform == "" {
+		platform = "shein"
+	}
+	for _, store := range stores {
+		select {
+		case <-ctx.Done():
+			return backlogs
+		default:
+		}
+
+		backlog, inspectErr := inspectStoreQueueBacklog(conn, platform, store.ID)
+		if inspectErr != nil {
+			c.logger.WithError(inspectErr).WithField("store_id", store.ID).Debug("auto shard: inspect store queue backlog failed")
+			continue
+		}
+		backlogs[store.ID] = backlog
+	}
+	return backlogs
+}
+
+func inspectStoreQueueBacklog(conn *amqp.Connection, platform string, storeID int64) (int, error) {
+	ch, err := conn.Channel()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = ch.Close()
+	}()
+
+	queue, err := ch.QueueInspect(rabbitmq.GetStoreQueueName(platform, storeID))
+	if err != nil {
+		return 0, err
+	}
+	return queue.Messages, nil
+}
+
+func normalizeNodeWeight(weight int) int {
+	if weight <= 0 {
+		return 1
+	}
+	return weight
+}
+
+func storeAssignmentCost(backlog int) int64 {
+	if backlog <= 0 {
+		return 1
+	}
+	return int64(backlog)
+}
+
+func pickLeastLoadedNode(nodeLoads []*autoShardNodeLoad, currentOwner string, stableOwner string) *autoShardNodeLoad {
+	best := nodeLoads[0]
+	for _, candidate := range nodeLoads[1:] {
+		if isBetterNodeLoad(candidate, best, currentOwner, stableOwner) {
+			best = candidate
+		}
+	}
+	return best
+}
+
+func isBetterNodeLoad(candidate, best *autoShardNodeLoad, currentOwner string, stableOwner string) bool {
+	candidateScore := candidate.load * int64(best.weight)
+	bestScore := best.load * int64(candidate.weight)
+	if candidateScore != bestScore {
+		return candidateScore < bestScore
+	}
+	if currentOwner != "" {
+		switch {
+		case candidate.nodeID == currentOwner && best.nodeID != currentOwner:
+			return true
+		case best.nodeID == currentOwner && candidate.nodeID != currentOwner:
+			return false
+		}
+	}
+	if stableOwner != "" {
+		switch {
+		case candidate.nodeID == stableOwner && best.nodeID != stableOwner:
+			return true
+		case best.nodeID == stableOwner && candidate.nodeID != stableOwner:
+			return false
+		}
+	}
+	if candidate.storeCount != best.storeCount {
+		return candidate.storeCount < best.storeCount
+	}
+	return candidate.nodeID < best.nodeID
 }
 
 func (c *AutoShardCoordinator) loadCurrentManagedKeys(ctx context.Context) (map[int64]autoShardManagedKey, error) {
@@ -352,10 +542,11 @@ func (c *AutoShardCoordinator) loadCurrentManagedKeys(ctx context.Context) (map[
 				continue
 			}
 			currentManaged[storeID] = autoShardManagedKey{
-				tenantID: tenantID,
-				storeID:  storeID,
-				ownerKey: key,
-				modeKey:  fmt.Sprintf(storeQueueModeKeyPattern, tenantID, storeID),
+				tenantID:  tenantID,
+				storeID:   storeID,
+				ownerKey:  key,
+				modeKey:   fmt.Sprintf(storeQueueModeKeyPattern, tenantID, storeID),
+				ownerNode: strings.TrimSpace(ownerNode),
 			}
 		}
 		if nextCursor == 0 {

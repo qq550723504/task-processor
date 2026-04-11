@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: shein-listing-config
+  name: shein-listing-config-lite
   namespace: task-processor
 data:
   config-shein-listing.yaml: |
@@ -10,6 +10,21 @@ data:
       format: "text"
       file: ""
       split_by_level: []
+
+    processor:
+      maxRetries: 3
+      timeout: 1800
+
+    worker:
+      concurrency: 1
+      bufferSize: 10
+      taskInterval: 50
+      maxFetchPerCycle: 1
+      queueThreshold: 75
+      cleanupInterval: 1800
+      taskTimeout: 2400
+      stuckTaskThreshold: 1200
+      forceCleanupAfter: 3600
 
     openai:
       apiKey: ""
@@ -48,23 +63,58 @@ data:
       reconnectInterval: "5s"
       maxReconnectTries: 10
       consumer:
-        prefetchCount: 8
+        prefetchCount: 1
         prefetchSize: 0
         retryDelay: "5s"
         maxRetries: 3
         queues:
           - name: "shein.tasks.store.*"
             priority: 8
-            prefetch: 3
+            prefetch: 1
       node:
         role: "task"
-        maxConcurrency: 4
+        maxConcurrency: 1
         useStoreQueues: true
         ownedStores: []
         ownedBuckets: []
         regions: [US]
         healthCheckPort: 8081
         metricsPort: 8082
+      autoShard:
+        enabled: true
+        platform: shein
+        interval: 1800
+        pageSize: 200
+        lockKey: listing:queue:auto-shard:lock
+        lockTTL: "25s"
+        candidateNodes:
+          - ser014109001694-18a1fb88
+          - ser040603662398-d8519de1
+          - ser053398539127-4d1883c9
+          - ser073611649668-5b2124d8
+          - ser131513269712-27af51d3
+          - ser243152649255-7ffca083
+          - ser248979913476-07e8bd93
+          - ser356510320880-0aba3d17
+          - ser376996273941-c4e40df6
+          - ser388467755489-93ff7927
+          - ser443186839518-782eb3d5
+          - ser519124477485-e83379d0
+          - ser595905437333-90dbde80
+          - ser600460588159-1163926f
+          - ser724424133953-98065f14
+          - ser804638640694-b480450e
+          - ser917615394999-9ddc1906
+          - ser967362906644-70309f35
+          - ser984651857980-4ee73c1f
+        nodeWeights:
+          ser040603662398-d8519de1: 3
+          ser073611649668-5b2124d8: 3
+          ser248979913476-07e8bd93: 3
+          ser376996273941-c4e40df6: 3
+          ser519124477485-e83379d0: 3
+          ser595905437333-90dbde80: 3
+          ser917615394999-9ddc1906: 3
 
     platforms:
       temu:

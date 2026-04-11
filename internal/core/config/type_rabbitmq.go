@@ -74,13 +74,14 @@ type NodeConfig struct {
 
 // AutoShardConfig controls automatic store-to-node assignment for dedicated store queues.
 type AutoShardConfig struct {
-	Enabled        bool          `yaml:"enabled"`        // 是否启用自动分片
-	Platform       string        `yaml:"platform"`       // 目标平台，默认 shein
-	Interval       time.Duration `yaml:"interval"`       // 自动分片刷新间隔
-	PageSize       int           `yaml:"pageSize"`       // 分页拉取店铺大小
-	LockKey        string        `yaml:"lockKey"`        // Redis 分布式锁 key
-	LockTTL        time.Duration `yaml:"lockTTL"`        // Redis 分布式锁 TTL
-	CandidateNodes []string      `yaml:"candidateNodes"` // 可分配的节点列表
+	Enabled        bool           `yaml:"enabled"`        // 是否启用自动分片
+	Platform       string         `yaml:"platform"`       // 目标平台，默认 shein
+	Interval       time.Duration  `yaml:"interval"`       // 自动分片刷新间隔
+	PageSize       int            `yaml:"pageSize"`       // 分页拉取店铺大小
+	LockKey        string         `yaml:"lockKey"`        // Redis 分布式锁 key
+	LockTTL        time.Duration  `yaml:"lockTTL"`        // Redis 分布式锁 TTL
+	CandidateNodes []string       `yaml:"candidateNodes"` // 可分配的节点列表
+	NodeWeights    map[string]int `yaml:"nodeWeights"`    // 节点权重，未配置默认为 1
 }
 
 // NormalizedRole returns the effective node role, defaulting to hybrid for backward compatibility.

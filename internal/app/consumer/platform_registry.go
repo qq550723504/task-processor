@@ -107,9 +107,20 @@ func (r *PlatformRegistry) buildProcessorRegistrations() []processorRegistration
 				if creator == nil {
 					return fmt.Errorf("TEMU processor creator not configured")
 				}
+				productFetcher, err := buildPlatformProductFetcher(
+					registry.config,
+					"temu",
+					registry.managementClient,
+					registry.sharedCrawlSource,
+					registry.rabbitmqClient,
+				)
+				if err != nil {
+					return fmt.Errorf("build TEMU product fetcher: %w", err)
+				}
+
 				temuProcessor, err := creator(ctx, registry.config, registry.logger, temu.Dependencies{
 					ManagementClient: registry.managementClient,
-					ProductFetcher:   registry.sharedProductFetcher,
+					ProductFetcher:   productFetcher,
 					RabbitMQClient:   registry.rabbitmqClient,
 				})
 				if err != nil {
@@ -131,9 +142,20 @@ func (r *PlatformRegistry) buildProcessorRegistrations() []processorRegistration
 				if creator == nil {
 					return fmt.Errorf("SHEIN processor creator not configured")
 				}
+				productFetcher, err := buildPlatformProductFetcher(
+					registry.config,
+					"shein",
+					registry.managementClient,
+					registry.sharedCrawlSource,
+					registry.rabbitmqClient,
+				)
+				if err != nil {
+					return fmt.Errorf("build SHEIN product fetcher: %w", err)
+				}
+
 				sheinProcessor, err := creator(ctx, registry.config, registry.logger, pipeline.Dependencies{
 					ManagementClient: registry.managementClient,
-					ProductFetcher:   registry.sharedProductFetcher,
+					ProductFetcher:   productFetcher,
 					RabbitMQClient:   registry.rabbitmqClient,
 				})
 				if err != nil {
@@ -189,7 +211,8 @@ func (r *PlatformRegistry) registerSinglePlatform(ctx context.Context, serviceMa
 		if registration.name != platform {
 			continue
 		}
-		if err := r.initializeSharedResources(registration.needsAmazon); err != nil {
+		needsAmazon := registration.needsAmazon || platformUsesLocalFetcher(r.config, platform)
+		if err := r.initializeSharedResources(needsAmazon); err != nil {
 			return err
 		}
 		return registration.register(ctx, r, serviceManager)
@@ -200,7 +223,7 @@ func (r *PlatformRegistry) registerSinglePlatform(ctx context.Context, serviceMa
 
 func (r *PlatformRegistry) anyRegistrationNeedsAmazon(registrations []processorRegistration) bool {
 	for _, registration := range registrations {
-		if registration.needsAmazon && r.isPlatformEnabled(registration.name) {
+		if r.isPlatformEnabled(registration.name) && (registration.needsAmazon || platformUsesLocalFetcher(r.config, registration.name)) {
 			return true
 		}
 	}

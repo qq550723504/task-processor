@@ -1,26 +1,31 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
-  name: shein-listing-store-b
+  name: shein-listing-heavy
   namespace: task-processor
   labels:
-    app: shein-listing-store-b
-    shard: store-b
+    app: shein-listing
+    crawler-tier: heavy
 spec:
-  replicas: 1
   revisionHistoryLimit: 3
+  updateStrategy:
+    type: RollingUpdate
   selector:
     matchLabels:
-      app: shein-listing-store-b
+      app: shein-listing
+      crawler-tier: heavy
   template:
     metadata:
       labels:
-        app: shein-listing-store-b
-        shard: store-b
+        app: shein-listing
+        crawler-tier: heavy
     spec:
+      nodeSelector:
+        node-role.kubernetes.io/agent: "true"
+        task-processor/crawler-tier: heavy
       containers:
         - name: shein-listing
-          image: xuwei190/task-processor-shein-listing:autoshard-20260410
+          image: xuwei190/task-processor-shein-listing:localfetch-dynrebalance-20260411-214938
           imagePullPolicy: Always
           command: ["/app/listing-service"]
           args:
@@ -38,26 +43,16 @@ spec:
               value: Asia/Shanghai
             - name: TASK_PROCESSOR_ENV
               value: prod
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID
+              value: "$(NODE_NAME)"
             - name: TASK_PROCESSOR_RABBITMQ_NODE_ROLE
               value: task
-            - name: TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID
-              value: shein-listing-store-b
             - name: TASK_PROCESSOR_RABBITMQ_NODE_USE_STORE_QUEUES
               value: "true"
-            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED
-              value: "true"
-            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_PLATFORM
-              value: shein
-            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_INTERVAL
-              value: "30"
-            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_PAGE_SIZE
-              value: "200"
-            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_LOCK_KEY
-              value: listing:queue:auto-shard:lock
-            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_LOCK_TTL
-              value: "25"
-            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES
-              value: shein-listing-store-a,shein-listing-store-b,shein-listing-store-c,shein-listing-store-d
             - name: TASK_PROCESSOR_REDIS_DB
               value: "9"
             - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT
@@ -69,11 +64,11 @@ spec:
                 name: shein-listing-secret
           resources:
             requests:
-              cpu: "300m"
-              memory: "1Gi"
+              cpu: "1000m"
+              memory: "2500Mi"
             limits:
-              cpu: "1"
-              memory: "2Gi"
+              cpu: "3000m"
+              memory: "5Gi"
           readinessProbe:
             httpGet:
               path: /ready
@@ -109,7 +104,7 @@ spec:
       volumes:
         - name: app-config
           configMap:
-            name: shein-listing-config
+            name: shein-listing-config-heavy
         - name: app-tmp
           emptyDir: {}
         - name: app-logs

@@ -11,6 +11,7 @@ type PlatformsConfig struct {
 type PlatformConfig struct {
 	Enabled              bool                `yaml:"enabled"`              // 是否启用该平台处理器（上架任务处理）
 	SchedulerEnabled     bool                `yaml:"schedulerEnabled"`     // 是否启用调度任务（核价、同步等）
+	FetchMode            string              `yaml:"fetchMode"`            // 商品抓取模式：auto/local/distributed/remote-api
 	AutoPricing          AutoPricingConfig   `yaml:"autoPricing"`          // 自动核价配置
 	ProductSync          ScheduledTaskConfig `yaml:"productSync"`          // 产品同步配置
 	InventorySync        ScheduledTaskConfig `yaml:"inventorySync"`        // 库存同步配置

@@ -79,6 +79,7 @@ platforms:
   shein:
     enabled: true            # 是否启用SHEIN处理器（处理上架任务）
     schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
+    fetchMode: "local"       # SHEIN 上架服务直接走本地浏览器抓取，不依赖爬虫 API / 分布式队列
     # 自动核价配置
     autoPricing:
       enabled: true        # 启用自动核价

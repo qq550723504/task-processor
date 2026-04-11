@@ -162,6 +162,7 @@ func setPlatformDefaults(v *viper.Viper, defaults *Config) {
 func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.temu.enabled", p.Enabled)
 	v.SetDefault("platforms.temu.schedulerEnabled", p.SchedulerEnabled)
+	v.SetDefault("platforms.temu.fetchMode", p.FetchMode)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.temu.autoPricing.enabled", ap.Enabled)
@@ -195,6 +196,7 @@ func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
 func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.enabled", p.Enabled)
 	v.SetDefault("platforms.shein.schedulerEnabled", p.SchedulerEnabled)
+	v.SetDefault("platforms.shein.fetchMode", p.FetchMode)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)

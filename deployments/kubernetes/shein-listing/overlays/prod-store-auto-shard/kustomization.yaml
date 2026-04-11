@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: task-processor
 
 resources:
-  - deployment-store-a.yaml
-  - deployment-store-b.yaml
-  - deployment-store-c.yaml
-  - deployment-store-d.yaml
+  - configmap-lite.yaml
+  - configmap-heavy.yaml
+  - daemonset-lite.yaml
+  - daemonset-heavy.yaml

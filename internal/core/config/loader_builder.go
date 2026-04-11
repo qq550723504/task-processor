@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strconv"
+	"strings"
 	"task-processor/internal/core/logger"
 	"time"
 
@@ -245,6 +247,10 @@ func getStringIntMap(v *viper.Viper, key string) map[string]int {
 
 	result := make(map[string]int, len(raw))
 	for mapKey, value := range raw {
+		mapKey = strings.TrimSpace(mapKey)
+		if mapKey == "" {
+			continue
+		}
 		switch typed := value.(type) {
 		case int:
 			result[mapKey] = typed
@@ -254,7 +260,15 @@ func getStringIntMap(v *viper.Viper, key string) map[string]int {
 			result[mapKey] = int(typed)
 		case float32:
 			result[mapKey] = int(typed)
+		case string:
+			parsed, err := strconv.Atoi(strings.TrimSpace(typed))
+			if err == nil {
+				result[mapKey] = parsed
+			}
 		}
+	}
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }

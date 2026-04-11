@@ -75,6 +75,14 @@ func TestAlibaba1688ConfigDefaults(t *testing.T) {
 	assert.Equal(t, 2, v.GetInt("platforms.alibaba1688.poolSize"))
 }
 
+func TestPlatformFetchModeDefaults(t *testing.T) {
+	v := viper.New()
+	setDefaults(v)
+
+	assert.Equal(t, "auto", v.GetString("platforms.temu.fetchMode"))
+	assert.Equal(t, "auto", v.GetString("platforms.shein.fetchMode"))
+}
+
 func TestConfigBuild(t *testing.T) {
 	v := viper.New()
 	v.Set("browser.enabled", true)
@@ -84,6 +92,7 @@ func TestConfigBuild(t *testing.T) {
 	v.Set("browser.randomConfig.presetName", "mac_high_end")
 	v.Set("amazon.enabled", true)
 	v.Set("amazon.dataFreshnessDays", 10)
+	v.Set("platforms.shein.fetchMode", "local")
 	v.Set("productimage.workDir", "./tmp/images")
 	v.Set("productimage.segmenter.enabled", true)
 	v.Set("productimage.segmenter.endpoint", "http://segmenter.local")
@@ -102,6 +111,7 @@ func TestConfigBuild(t *testing.T) {
 	assert.Equal(t, "mac_high_end", cfg.Browser.RandomConfig.PresetName)
 	assert.True(t, cfg.Amazon.Enabled)
 	assert.Equal(t, 10, cfg.Amazon.DataFreshnessDays)
+	assert.Equal(t, "local", cfg.Platforms.Shein.FetchMode)
 	assert.Equal(t, "./tmp/images", cfg.ProductImage.WorkDir)
 	assert.True(t, cfg.ProductImage.Segmenter.Enabled)
 	assert.Equal(t, "http://segmenter.local", cfg.ProductImage.Segmenter.Endpoint)

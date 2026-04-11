@@ -89,6 +89,7 @@ func main() {
 				cfg.RabbitMQ.AutoShard,
 				managementClient.GetStoreClient(),
 				cfg.Redis,
+				cfg.RabbitMQ.URL,
 				cfg.RabbitMQ.Node.NodeID,
 				logger,
 			)

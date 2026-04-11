@@ -246,6 +246,7 @@ func NewDefaultConfig() *Config {
 			Temu: PlatformConfig{
 				Enabled:          false,
 				SchedulerEnabled: false,
+				FetchMode:        "auto",
 				AutoPricing: AutoPricingConfig{
 					Enabled:        false,
 					Interval:       300,
@@ -278,6 +279,7 @@ func NewDefaultConfig() *Config {
 			Shein: PlatformConfig{
 				Enabled:          false,
 				SchedulerEnabled: false,
+				FetchMode:        "auto",
 				AutoPricing: AutoPricingConfig{
 					Enabled:   false,
 					Interval:  300,

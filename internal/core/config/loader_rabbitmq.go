@@ -49,6 +49,7 @@ func BuildRabbitMQConfig(v *viper.Viper) *RabbitMQConfig {
 			LockKey:        v.GetString("rabbitmq.autoShard.lockKey"),
 			LockTTL:        getDuration(v, "rabbitmq.autoShard.lockTTL", 25),
 			CandidateNodes: getStringSlice(v, "rabbitmq.autoShard.candidateNodes"),
+			NodeWeights:    getStringIntMap(v, "rabbitmq.autoShard.nodeWeights"),
 		},
 		Deduplicator: DeduplicatorConfig{
 			TTL: getDuration(v, "rabbitmq.deduplicator.ttl", 600),

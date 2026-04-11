@@ -85,6 +85,11 @@ func GetStoreQueueBindingConfigs(platform string, storeID int64) []BindingConfig
 	}
 }
 
+// GetStoreQueueName returns the store-scoped task queue name.
+func GetStoreQueueName(platform string, storeID int64) string {
+	return buildStoreQueueName(platform, storeID)
+}
+
 // GetPlatformQueueDeclareConfigs 获取平台共享任务队列声明配置
 func GetPlatformQueueDeclareConfigs(platform string) []QueueDeclareConfig {
 	queues := []QueueDeclareConfig{
