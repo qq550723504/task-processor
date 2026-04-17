@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	"task-processor/internal/taskrpcapi"
@@ -39,6 +40,7 @@ type appBootstrap struct {
 	productHandler       productenrich.ProductHandler
 	imageHandler         productimage.Handler
 	amazonListingHandler amazonlisting.Handler
+	listingKitHandler    listingkit.Handler
 	taskRPCHandler       taskrpcapi.Handler
 	server               *http.Server
 	pools                []worker.WorkerPool
@@ -60,6 +62,11 @@ type amazonListingModule struct {
 	pool    worker.WorkerPool
 }
 
+type listingKitModule struct {
+	handler listingkit.Handler
+	pool    worker.WorkerPool
+}
+
 type productRouteHandler interface {
 	GenerateProduct(c *gin.Context)
 	GetTaskResult(c *gin.Context)
@@ -78,6 +85,17 @@ type amazonListingRouteHandler interface {
 	GetTaskWorkbench(c *gin.Context)
 	ReviewTask(c *gin.Context)
 	SubmitTask(c *gin.Context)
+}
+
+type listingKitRouteHandler interface {
+	GenerateListingKit(c *gin.Context)
+	GetTaskResult(c *gin.Context)
+	GetTaskPreview(c *gin.Context)
+	GetTaskRevisionHistory(c *gin.Context)
+	GetTaskRevisionHistoryDetail(c *gin.Context)
+	GetTaskExport(c *gin.Context)
+	ApplyTaskRevision(c *gin.Context)
+	ValidateTaskRevision(c *gin.Context)
 }
 
 type taskRPCRouteHandler interface {

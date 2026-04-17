@@ -12,6 +12,9 @@ import (
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit"
+	listingkitapi "task-processor/internal/listingkit/api"
+	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/productenrich"
 	productapi "task-processor/internal/productenrich/api"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
@@ -45,10 +48,16 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
+	listingKitModule, err := buildListingKitModule(logger, deps)
+	if err != nil {
+		return nil, err
+	}
+
 	localTaskHealthProvider := buildLocalTaskHealthProvider(map[string]worker.WorkerPool{
 		"product_enrich": productModule.pool,
 		"product_image":  imageModule.pool,
 		"amazon_listing": amazonListingModule.pool,
+		"listing_kit":    listingKitModule.pool,
 	})
 
 	taskRPCHandler, err := buildTaskRPCModule(deps, localTaskHealthProvider)
@@ -56,14 +65,15 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
-	server := buildHTTPServer(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, taskRPCHandler)
+	server := buildHTTPServer(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, taskRPCHandler)
 	return &appBootstrap{
 		productHandler:       productModule.handler,
 		imageHandler:         imageModule.handler,
 		amazonListingHandler: amazonListingModule.handler,
+		listingKitHandler:    listingKitModule.handler,
 		taskRPCHandler:       taskRPCHandler,
 		server:               server,
-		pools:                []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool},
+		pools:                []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool, listingKitModule.pool},
 		closers:              deps.closers,
 	}, nil
 }
@@ -390,6 +400,56 @@ func buildAmazonListingTaskRepository(cfg *config.Config, logger *logrus.Logger)
 
 	logger.Warn("database not configured, using in-memory amazonlisting repository")
 	return amazonlistingstore.NewMemTaskRepository(), nil, nil
+}
+
+func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKitModule, error) {
+	repo, closers, err := buildListingKitTaskRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, closers...)
+
+	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
+		Repository:     repo,
+		ProductService: deps.productService,
+		ImageService:   deps.imageService,
+		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
+			SheinCategoryResolver:      listingkit.NewManagedSheinCategoryResolver(deps.managementClient),
+			SheinAttributeResolver:     listingkit.NewManagedSheinAttributeResolver(deps.managementClient),
+			SheinSaleAttributeResolver: listingkit.NewManagedSheinSaleAttributeResolver(deps.managementClient),
+		}),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create listing kit service: %w", err)
+	}
+
+	processor, err := listingkit.NewProcessor(svc, repo, logger, 2)
+	if err != nil {
+		return nil, fmt.Errorf("create listing kit processor: %w", err)
+	}
+	pool := newWorkerPool(processor, deps.cfg)
+	submitter := &poolSubmitter{pool: pool}
+	svc.SetTaskSubmitter(submitter)
+	processor.SetTaskSubmitter(submitter)
+
+	handler, err := listingkitapi.NewHandler(svc)
+	if err != nil {
+		return nil, fmt.Errorf("create listing kit handler: %w", err)
+	}
+	return &listingKitModule{handler: handler, pool: pool}, nil
+}
+
+func buildListingKitTaskRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.Repository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingKitTaskRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing kit task repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, using in-memory listingkit repository")
+	return listingkitstore.NewMemTaskRepository(), nil, nil
 }
 
 func buildTaskRPCModule(deps *runtimeDeps, localStatusProvider taskrpcapi.LocalStatusProvider) (taskrpcapi.Handler, error) {

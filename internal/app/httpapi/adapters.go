@@ -11,6 +11,8 @@ import (
 	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit"
+	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productenrich/store"
@@ -96,6 +98,25 @@ func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus
 	}
 
 	repo := amazonlistingstore.NewTaskRepository(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.Repository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		return nil, nil, fmt.Errorf("listingkit auto-migrate failed: %w", err)
+	}
+
+	repo := listingkitstore.NewTaskRepository(db)
 	closer := func() error { return database.CloseDatabase(db) }
 	return repo, closer, nil
 }
