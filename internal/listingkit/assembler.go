@@ -5,13 +5,14 @@ import (
 
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type assembler struct {
 	amazonBuilder              AmazonDraftBuilder
-	sheinCategoryResolver      SheinCategoryResolver
-	sheinAttributeResolver     SheinAttributeResolver
-	sheinSaleAttributeResolver SheinSaleAttributeResolver
+	sheinCategoryResolver      sheinpub.CategoryResolver
+	sheinAttributeResolver     sheinpub.AttributeResolver
+	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 }
 
 func NewAssembler(amazonBuilder AmazonDraftBuilder) Assembler {
@@ -20,9 +21,9 @@ func NewAssembler(amazonBuilder AmazonDraftBuilder) Assembler {
 
 type AssemblerConfig struct {
 	AmazonBuilder              AmazonDraftBuilder
-	SheinCategoryResolver      SheinCategoryResolver
-	SheinAttributeResolver     SheinAttributeResolver
-	SheinSaleAttributeResolver SheinSaleAttributeResolver
+	SheinCategoryResolver      sheinpub.CategoryResolver
+	SheinAttributeResolver     sheinpub.AttributeResolver
+	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 }
 
 func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
@@ -55,7 +56,12 @@ func (a *assembler) Assemble(task *Task, canonical *productenrich.CanonicalProdu
 		case "amazon":
 			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonical, image)}
 		case "shein":
-			result.Shein = buildSheinPackage(task.Request, canonical, image, a.sheinCategoryResolver, a.sheinAttributeResolver, a.sheinSaleAttributeResolver)
+			result.Shein = sheinpub.NewAssembler(sheinpub.AssemblerConfig{
+				CategoryResolver:      a.sheinCategoryResolver,
+				AttributeResolver:     a.sheinAttributeResolver,
+				SaleAttributeResolver: a.sheinSaleAttributeResolver,
+			}).Build(buildSheinPublishRequest(task.Request), canonical, image)
+			refreshSheinReviewState(result.Shein, collectReviewNotes(canonical, image)...)
 		case "temu":
 			result.Temu = buildTemuPackage(task.Request, canonical, image)
 		case "walmart":
@@ -64,6 +70,20 @@ func (a *assembler) Assemble(task *Task, canonical *productenrich.CanonicalProdu
 	}
 
 	return result
+}
+
+func buildSheinPublishRequest(req *GenerateRequest) *sheinpub.BuildRequest {
+	if req == nil {
+		return &sheinpub.BuildRequest{}
+	}
+	return &sheinpub.BuildRequest{
+		Country:            req.Country,
+		Language:           req.Language,
+		Text:               req.Text,
+		BrandHint:          req.BrandHint,
+		TargetCategoryHint: req.TargetCategoryHint,
+		SheinStoreID:       req.SheinStoreID,
+	}
 }
 
 func buildSummary(task *Task, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *GenerationSummary {

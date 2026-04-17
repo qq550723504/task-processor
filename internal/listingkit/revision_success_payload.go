@@ -1,5 +1,7 @@
 package listingkit
 
+import sheinworkspace "task-processor/internal/workspace/shein"
+
 func buildRevisionSuccessPayloadForApply(
 	actionType string,
 	headline string,
@@ -11,20 +13,20 @@ func buildRevisionSuccessPayloadForApply(
 	suggestedFollowUpRevision *SheinEditorRevisionSkeleton,
 	appliedChanges *RevisionDiffPreview,
 ) *RevisionSuccessPayload {
-	return &RevisionSuccessPayload{
-		Mode: string(revisionSuccessModeApply),
-		Core: &RevisionSuccessCoreData{
-			ActionType:                actionType,
-			Headline:                  headline,
-			ChangeCount:               changeCount,
-			StatusSummary:             statusSummary,
-			FollowUpChecklist:         followUpChecklist,
-			FollowUpOverview:          followUpOverview,
-			SuggestedFollowUpRevision: suggestedFollowUpRevision,
-			AppliedChanges:            appliedChanges,
-		},
-		Presentation: presentation,
-	}
+	return sheinworkspace.BuildSuccessPayload(
+		string(revisionSuccessModeApply),
+		actionType,
+		headline,
+		"",
+		"",
+		changeCount,
+		statusSummary,
+		presentation,
+		followUpChecklist,
+		followUpOverview,
+		suggestedFollowUpRevision,
+		appliedChanges,
+	)
 }
 
 func buildRevisionSuccessPayloadForRestore(
@@ -40,34 +42,18 @@ func buildRevisionSuccessPayloadForRestore(
 	suggestedFollowUpRevision *SheinEditorRevisionSkeleton,
 	appliedChanges *RevisionDiffPreview,
 ) *RevisionSuccessPayload {
-	return &RevisionSuccessPayload{
-		Mode: string(revisionSuccessModeRestore),
-		Core: &RevisionSuccessCoreData{
-			ActionType:                actionType,
-			Headline:                  headline,
-			ChangeCount:               changeCount,
-			SourceRevisionID:          sourceRevisionID,
-			RelationText:              relationText,
-			StatusSummary:             statusSummary,
-			FollowUpChecklist:         followUpChecklist,
-			FollowUpOverview:          followUpOverview,
-			SuggestedFollowUpRevision: suggestedFollowUpRevision,
-			AppliedChanges:            appliedChanges,
-		},
-		Presentation: presentation,
-	}
-}
-
-func cloneRevisionSuccessSummaryCard(card *RevisionSuccessSummaryCard) *RevisionSuccessSummaryCard {
-	if card == nil {
-		return nil
-	}
-	return &RevisionSuccessSummaryCard{
-		Status:        card.Status,
-		Title:         card.Title,
-		Subtitle:      card.Subtitle,
-		PrimaryAction: card.PrimaryAction,
-		PrimaryView:   card.PrimaryView,
-		Highlights:    append([]string(nil), card.Highlights...),
-	}
+	return sheinworkspace.BuildSuccessPayload(
+		string(revisionSuccessModeRestore),
+		actionType,
+		headline,
+		sourceRevisionID,
+		relationText,
+		changeCount,
+		statusSummary,
+		presentation,
+		followUpChecklist,
+		followUpOverview,
+		suggestedFollowUpRevision,
+		appliedChanges,
+	)
 }

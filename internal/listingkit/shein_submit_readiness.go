@@ -1,81 +1,24 @@
 package listingkit
 
-type SheinSubmitReadiness struct {
-	Ready         bool                  `json:"ready"`
-	Status        string                `json:"status,omitempty"`
-	Summary       []string              `json:"summary,omitempty"`
-	BlockingItems []SheinReadinessItem  `json:"blocking_items,omitempty"`
-	WarningItems  []SheinReadinessItem  `json:"warning_items,omitempty"`
-	Checks        []SheinReadinessCheck `json:"checks,omitempty"`
-}
-
-type SheinReadinessItem struct {
-	Key             string                `json:"key,omitempty"`
-	Label           string                `json:"label,omitempty"`
-	Message         string                `json:"message,omitempty"`
-	FieldPaths      []string              `json:"field_paths,omitempty"`
-	SuggestedAction string                `json:"suggested_action,omitempty"`
-	Reason          *SheinReadinessReason `json:"reason,omitempty"`
-	RepairHints     []SheinRepairHint     `json:"repair_hints,omitempty"`
-}
-
-type SheinReadinessCheck struct {
-	Key             string                `json:"key,omitempty"`
-	Label           string                `json:"label,omitempty"`
-	Status          string                `json:"status,omitempty"`
-	Message         string                `json:"message,omitempty"`
-	FieldPaths      []string              `json:"field_paths,omitempty"`
-	SuggestedAction string                `json:"suggested_action,omitempty"`
-	Reason          *SheinReadinessReason `json:"reason,omitempty"`
-	RepairHints     []SheinRepairHint     `json:"repair_hints,omitempty"`
-}
+import sheinworkspace "task-processor/internal/workspace/shein"
 
 func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 	if pkg == nil {
 		return nil
 	}
 
-	readiness := &SheinSubmitReadiness{}
-	var blockers []SheinReadinessItem
-	var warnings []SheinReadinessItem
-	var checks []SheinReadinessCheck
+	checks := make([]sheinworkspace.ReadinessCheckSpec, 0, 8)
 
 	addCheck := func(key, label string, ok bool, message string, fieldPaths []string, suggestedAction string, warningOnly bool) {
-		guidance := buildSheinReadinessGuidance(pkg, key, fieldPaths, suggestedAction, warningOnly)
-		status := "ready"
-		if !ok && warningOnly {
-			status = "warning"
-		}
-		if !ok && !warningOnly {
-			status = "blocking"
-		}
-		checks = append(checks, SheinReadinessCheck{
+		checks = append(checks, sheinworkspace.ReadinessCheckSpec{
 			Key:             key,
 			Label:           label,
-			Status:          status,
+			OK:              ok,
 			Message:         message,
 			FieldPaths:      append([]string(nil), fieldPaths...),
 			SuggestedAction: suggestedAction,
-			Reason:          cloneSheinReadinessReason(guidance.reason),
-			RepairHints:     cloneSheinRepairHints(guidance.repairHints),
+			WarningOnly:     warningOnly,
 		})
-		if ok {
-			return
-		}
-		item := SheinReadinessItem{
-			Key:             key,
-			Label:           label,
-			Message:         message,
-			FieldPaths:      append([]string(nil), fieldPaths...),
-			SuggestedAction: suggestedAction,
-			Reason:          cloneSheinReadinessReason(guidance.reason),
-			RepairHints:     cloneSheinRepairHints(guidance.repairHints),
-		}
-		if warningOnly {
-			warnings = append(warnings, item)
-			return
-		}
-		blockers = append(blockers, item)
 	}
 
 	categoryReady := isSheinCategoryResolved(pkg) && pkg.CategoryID > 0 && pkg.ProductTypeID != nil && *pkg.ProductTypeID > 0
@@ -169,60 +112,28 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 		true,
 	)
 
-	readiness.Checks = checks
-	readiness.BlockingItems = blockers
-	readiness.WarningItems = warnings
-	readiness.Ready = len(blockers) == 0
-	switch {
-	case len(blockers) > 0:
-		readiness.Status = "blocked"
-		readiness.Summary = append(readiness.Summary, "当前仍有关键字段未完成，SHEIN 资料包还不能直接进入提交态")
-	case len(warnings) > 0:
-		readiness.Status = "ready_with_warnings"
-		readiness.Summary = append(readiness.Summary, "SHEIN 资料包已经基本可提交，但仍建议先处理人工备注")
-	default:
-		readiness.Status = "ready"
-		readiness.Summary = append(readiness.Summary, "SHEIN 资料包已具备提交前所需的关键骨架")
+	readiness := sheinworkspace.BuildSubmitReadiness(
+		checks,
+		func(spec sheinworkspace.ReadinessCheckSpec) sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint] {
+			guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)
+			return sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint]{
+				Reason:      cloneSheinReadinessReason(guidance.reason),
+				RepairHints: cloneSheinRepairHints(guidance.repairHints),
+			}
+		},
+		"当前仍有关键字段未完成，SHEIN 资料包还不能直接进入提交态",
+		"SHEIN 资料包已经基本可提交，但仍建议先处理人工备注",
+		"SHEIN 资料包已具备提交前所需的关键骨架",
+	)
+	if readiness == nil {
+		return nil
 	}
-	if len(blockers) > 0 {
-		readiness.Summary = append(readiness.Summary, "待补关键项："+joinReadinessLabels(blockers))
+	if len(readiness.BlockingItems) > 0 {
+		readiness.Summary = append(readiness.Summary, "待补关键项："+joinReadinessLabels(readiness.BlockingItems))
 	}
-	if len(warnings) > 0 {
-		readiness.Summary = append(readiness.Summary, "待确认项："+joinReadinessLabels(warnings))
+	if len(readiness.WarningItems) > 0 {
+		readiness.Summary = append(readiness.Summary, "待确认项："+joinReadinessLabels(readiness.WarningItems))
 	}
 	readiness.Summary = uniqueStrings(readiness.Summary)
 	return readiness
-}
-
-func sheinHasAnySKU(pkg *SheinPackage) bool {
-	if pkg == nil {
-		return false
-	}
-	for _, skc := range pkg.SkcList {
-		if len(skc.SKUs) > 0 {
-			return true
-		}
-	}
-	if pkg.RequestDraft != nil {
-		for _, skc := range pkg.RequestDraft.SKCList {
-			if len(skc.SKUList) > 0 {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func joinReadinessLabels(items []SheinReadinessItem) string {
-	if len(items) == 0 {
-		return ""
-	}
-	labels := make([]string, 0, len(items))
-	for _, item := range items {
-		if item.Label == "" {
-			continue
-		}
-		labels = append(labels, item.Label)
-	}
-	return joinStrings(labels, "、")
 }

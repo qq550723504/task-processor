@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type service struct {
@@ -38,9 +39,9 @@ func NewService(config *ServiceConfig) (Service, error) {
 	if config.Assembler == nil {
 		config.Assembler = NewAssemblerWithConfig(AssemblerConfig{
 			AmazonBuilder:              newAmazonDraftBuilder(),
-			SheinCategoryResolver:      NewSheinCategoryResolver(nil),
-			SheinAttributeResolver:     NewSheinAttributeResolver(nil),
-			SheinSaleAttributeResolver: NewSheinSaleAttributeResolver(nil),
+			SheinCategoryResolver:      sheinpub.NewCategoryResolver(nil),
+			SheinAttributeResolver:     sheinpub.NewAttributeResolver(nil),
+			SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(nil),
 		})
 	}
 	return &service{

@@ -1,6 +1,11 @@
 package listingkit
 
-import "strings"
+import (
+	"strings"
+
+	sheinpub "task-processor/internal/publishing/shein"
+	sheinworkspace "task-processor/internal/workspace/shein"
+)
 
 func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPreview, error) {
 	if task == nil {
@@ -33,6 +38,8 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 
 	preview.Overview = buildPreviewHeader(task.Result, selectedPlatform)
 	preview.NeedsReview = task.Result.Summary != nil && task.Result.Summary.NeedsReview
+	preview.Catalog = task.Result.CatalogProduct
+	preview.Assets = task.Result.AssetBundle
 	preview.RevisionHistoryMeta = buildRevisionHistoryMeta(task.Result)
 	preview.RevisionHistory = buildRevisionHistoryPreviewItems(task.Result.RevisionHistory)
 
@@ -152,7 +159,7 @@ func buildAmazonPreviewPayload(pkg *AmazonPackage) *AmazonPreviewPayload {
 	}
 }
 
-func buildSheinPreviewPayload(pkg *SheinPackage) *SheinPreviewPayload {
+func buildSheinPreviewPayload(pkg *sheinpub.Package) *SheinPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
@@ -161,7 +168,7 @@ func buildSheinPreviewPayload(pkg *SheinPackage) *SheinPreviewPayload {
 	readiness := buildSheinSubmitReadiness(pkg)
 	checklist := buildSheinSubmitChecklist(readiness)
 	repairCenter := buildSheinRepairCenter(readiness, checklist)
-	statusOverview := buildSheinStatusOverview(pkg, readiness)
+	statusOverview := sheinworkspace.BuildStatusOverview(pkg.Inspection, toSheinWorkspaceSubmitState(readiness))
 	if pkg.Inspection != nil {
 		needsReview = needsReview || pkg.Inspection.NeedsReview
 		summary = uniqueStrings(append(summary, pkg.Inspection.Summary...))
@@ -179,11 +186,75 @@ func buildSheinPreviewPayload(pkg *SheinPackage) *SheinPreviewPayload {
 		SubmitChecklist:   checklist,
 		RepairCenter:      repairCenter,
 		StatusOverview:    statusOverview,
-		WorkspaceOverview: buildSheinWorkspaceOverview(statusOverview, readiness, repairCenter),
+		WorkspaceOverview: sheinworkspace.BuildWorkspaceOverview(statusOverview, toSheinWorkspaceSubmitState(readiness), toSheinWorkspaceRepairState(repairCenter)),
 		EditorContext:     buildSheinEditorContext(pkg),
 		RequestDraft:      pkg.RequestDraft,
 		PreviewProduct:    pkg.PreviewProduct,
+		InspectionData:    pkg.Inspection,
 	}
+}
+
+func toSheinWorkspaceSubmitState(readiness *SheinSubmitReadiness) *sheinworkspace.SubmitStateInput {
+	if readiness == nil {
+		return nil
+	}
+	return &sheinworkspace.SubmitStateInput{
+		Status:        readiness.Status,
+		Ready:         readiness.Ready,
+		Summary:       append([]string(nil), readiness.Summary...),
+		BlockingItems: toSheinWorkspaceActionItems(readiness.BlockingItems),
+		WarningItems:  toSheinWorkspaceActionItems(readiness.WarningItems),
+	}
+}
+
+func toSheinWorkspaceActionItems(items []SheinReadinessItem) []sheinworkspace.ActionItem {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]sheinworkspace.ActionItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, sheinworkspace.ActionItem{
+			Key:             item.Key,
+			SuggestedAction: item.SuggestedAction,
+		})
+	}
+	return out
+}
+
+func toSheinWorkspaceRepairState(center *SheinRepairCenter) *sheinworkspace.RepairStateInput {
+	if center == nil {
+		return nil
+	}
+	out := &sheinworkspace.RepairStateInput{
+		Status:             center.Status,
+		TotalActions:       safeRepairActionCount(center),
+		DirectApplyActions: safeRepairDirectApplyCount(center),
+		PrimaryPlanStatus:  safeRepairPlanStatus(center),
+		SessionStatus:      safeRepairSessionStatus(center),
+		Summary:            append([]string(nil), center.Summary...),
+	}
+	if center.PrimaryAction != nil {
+		out.PrimaryAction = center.PrimaryAction.SuggestedAction
+		out.PrimaryActionKey = center.PrimaryAction.Key
+	}
+	if center.Session != nil {
+		out.Session = &sheinworkspace.SessionInput{
+			Status:        center.Session.Status,
+			CurrentStepID: center.Session.CurrentStepID,
+			NextStepID:    center.Session.NextStepID,
+			RefreshBlocks: append([]string(nil), center.Session.RefreshBlocks...),
+		}
+		if center.Session.ResumeState != nil {
+			out.Session.ResumeMode = center.Session.ResumeState.ResumeMode
+			if out.Session.CurrentStepID == "" {
+				out.Session.CurrentStepID = center.Session.ResumeState.ResumeStepID
+			}
+			if len(out.Session.RefreshBlocks) == 0 {
+				out.Session.RefreshBlocks = append([]string(nil), center.Session.ResumeState.RefreshBlocks...)
+			}
+		}
+	}
+	return out
 }
 
 func buildTemuPreviewPayload(pkg *TemuPackage) *TemuPreviewPayload {
@@ -221,7 +292,7 @@ func buildAmazonPreviewCard(pkg *AmazonPackage) (ListingKitPlatformCard, bool) {
 	}, true
 }
 
-func buildSheinPreviewCard(pkg *SheinPackage) (ListingKitPlatformCard, bool) {
+func buildSheinPreviewCard(pkg *sheinpub.Package) (ListingKitPlatformCard, bool) {
 	if pkg == nil {
 		return ListingKitPlatformCard{}, false
 	}

@@ -3,6 +3,9 @@ package listingkit
 import (
 	"strings"
 	"time"
+
+	common "task-processor/internal/publishing/common"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func applyListingKitRevision(result *ListingKitResult, req *ApplyRevisionRequest) error {
@@ -84,7 +87,7 @@ func applyAmazonRevision(pkg *AmazonPackage, req *AmazonRevisionInput) {
 	}
 }
 
-func applySheinRevision(pkg *SheinPackage, req *SheinRevisionInput) {
+func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 	if pkg == nil || req == nil {
 		return
 	}
@@ -126,10 +129,10 @@ func applySheinRevision(pkg *SheinPackage, req *SheinRevisionInput) {
 		pkg.Images = clonePlatformImageSet(req.Images)
 	}
 	if req.ProductAttributes != nil {
-		pkg.ProductAttributes = append([]PlatformAttribute(nil), req.ProductAttributes...)
+		pkg.ProductAttributes = append([]common.Attribute(nil), req.ProductAttributes...)
 	}
 	if req.ResolvedAttributes != nil {
-		pkg.ResolvedAttributes = append([]SheinResolvedAttribute(nil), req.ResolvedAttributes...)
+		pkg.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), req.ResolvedAttributes...)
 	}
 	if req.CategoryResolution != nil {
 		applySheinCategoryResolutionPatch(pkg, req.CategoryResolution)
@@ -154,16 +157,16 @@ func applySheinRevision(pkg *SheinPackage, req *SheinRevisionInput) {
 
 	ensureSheinRequestDraft(pkg)
 	syncSheinDraftFromPackage(pkg)
-	pkg.PreviewProduct = buildSheinPreviewProduct(pkg)
+	pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
 	refreshSheinReviewState(pkg)
 }
 
-func applySheinCategoryResolutionPatch(pkg *SheinPackage, patch *SheinCategoryResolutionPatch) {
+func applySheinCategoryResolutionPatch(pkg *sheinpub.Package, patch *SheinCategoryResolutionPatch) {
 	if pkg == nil || patch == nil {
 		return
 	}
 	if pkg.CategoryResolution == nil {
-		pkg.CategoryResolution = &SheinCategoryResolution{}
+		pkg.CategoryResolution = &sheinpub.CategoryResolution{}
 	}
 	if patch.Status != nil {
 		pkg.CategoryResolution.Status = strings.TrimSpace(*patch.Status)
@@ -203,12 +206,12 @@ func applySheinCategoryResolutionPatch(pkg *SheinPackage, patch *SheinCategoryRe
 	}
 }
 
-func applySheinAttributeResolutionPatch(pkg *SheinPackage, patch *SheinAttributeResolutionPatch) {
+func applySheinAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinAttributeResolutionPatch) {
 	if pkg == nil || patch == nil {
 		return
 	}
 	if pkg.AttributeResolution == nil {
-		pkg.AttributeResolution = &SheinAttributeResolution{}
+		pkg.AttributeResolution = &sheinpub.AttributeResolution{}
 	}
 	if patch.Status != nil {
 		pkg.AttributeResolution.Status = strings.TrimSpace(*patch.Status)
@@ -229,9 +232,9 @@ func applySheinAttributeResolutionPatch(pkg *SheinPackage, patch *SheinAttribute
 		pkg.AttributeResolution.UnresolvedCount = *patch.UnresolvedCount
 	}
 	if patch.ResolvedAttributes != nil {
-		resolved := append([]SheinResolvedAttribute(nil), patch.ResolvedAttributes...)
+		resolved := append([]sheinpub.ResolvedAttribute(nil), patch.ResolvedAttributes...)
 		pkg.AttributeResolution.ResolvedAttributes = resolved
-		pkg.ResolvedAttributes = append([]SheinResolvedAttribute(nil), patch.ResolvedAttributes...)
+		pkg.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), patch.ResolvedAttributes...)
 	}
 	if patch.ReviewNotes != nil {
 		pkg.AttributeResolution.ReviewNotes = uniqueStrings(append([]string(nil), patch.ReviewNotes...))
@@ -241,12 +244,12 @@ func applySheinAttributeResolutionPatch(pkg *SheinPackage, patch *SheinAttribute
 	}
 }
 
-func applySheinSaleAttributeResolutionPatch(pkg *SheinPackage, patch *SheinSaleAttributeResolutionPatch) {
+func applySheinSaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinSaleAttributeResolutionPatch) {
 	if pkg == nil || patch == nil {
 		return
 	}
 	if pkg.SaleAttributeResolution == nil {
-		pkg.SaleAttributeResolution = &SheinSaleAttributeResolution{}
+		pkg.SaleAttributeResolution = &sheinpub.SaleAttributeResolution{}
 	}
 	if patch.Status != nil {
 		pkg.SaleAttributeResolution.Status = strings.TrimSpace(*patch.Status)
@@ -261,10 +264,10 @@ func applySheinSaleAttributeResolutionPatch(pkg *SheinPackage, patch *SheinSaleA
 		pkg.SaleAttributeResolution.SecondaryAttributeID = *patch.SecondaryAttributeID
 	}
 	if patch.SKCAttributes != nil {
-		pkg.SaleAttributeResolution.SKCAttributes = append([]SheinResolvedSaleAttribute(nil), patch.SKCAttributes...)
+		pkg.SaleAttributeResolution.SKCAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), patch.SKCAttributes...)
 	}
 	if patch.SKUAttributes != nil {
-		pkg.SaleAttributeResolution.SKUAttributes = append([]SheinResolvedSaleAttribute(nil), patch.SKUAttributes...)
+		pkg.SaleAttributeResolution.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), patch.SKUAttributes...)
 	}
 	if patch.SelectionSummary != nil {
 		pkg.SaleAttributeResolution.SelectionSummary = append([]string(nil), patch.SelectionSummary...)
@@ -274,7 +277,7 @@ func applySheinSaleAttributeResolutionPatch(pkg *SheinPackage, patch *SheinSaleA
 	}
 }
 
-func applySheinSKCRevisionPatches(pkg *SheinPackage, patches []SheinSKCRevisionPatch) {
+func applySheinSKCRevisionPatches(pkg *sheinpub.Package, patches []SheinSKCRevisionPatch) {
 	if pkg == nil || pkg.RequestDraft == nil || len(patches) == 0 {
 		return
 	}
@@ -314,9 +317,9 @@ func applySheinSKCRevisionPatches(pkg *SheinPackage, patches []SheinSKCRevisionP
 			saleAttribute := *patch.SaleAttribute
 			draft.SaleAttribute = &saleAttribute
 			if pkg.SaleAttributeResolution == nil {
-				pkg.SaleAttributeResolution = &SheinSaleAttributeResolution{}
+				pkg.SaleAttributeResolution = &sheinpub.SaleAttributeResolution{}
 			}
-			pkg.SaleAttributeResolution.SKCAttributes = []SheinResolvedSaleAttribute{saleAttribute}
+			pkg.SaleAttributeResolution.SKCAttributes = []sheinpub.ResolvedSaleAttribute{saleAttribute}
 			if saleAttribute.AttributeID > 0 {
 				pkg.SaleAttributeResolution.PrimaryAttributeID = saleAttribute.AttributeID
 			}
@@ -325,7 +328,7 @@ func applySheinSKCRevisionPatches(pkg *SheinPackage, patches []SheinSKCRevisionP
 	}
 }
 
-func applySheinSKURevisionPatches(pkg *SheinPackage, draft *SheinSKCRequestDraft, pkgSKC *SheinSKCPackage, patches []SheinSKURevisionPatch) {
+func applySheinSKURevisionPatches(pkg *sheinpub.Package, draft *sheinpub.SKCRequestDraft, pkgSKC *sheinpub.SKCPackage, patches []SheinSKURevisionPatch) {
 	if pkg == nil || draft == nil || len(patches) == 0 {
 		return
 	}
@@ -374,30 +377,30 @@ func applySheinSKURevisionPatches(pkg *SheinPackage, draft *SheinSKCRequestDraft
 		if patch.SaleAttributes != nil {
 			skuDraft.SaleAttributes = append([]SheinResolvedSaleAttribute(nil), patch.SaleAttributes...)
 			if pkg.SaleAttributeResolution == nil {
-				pkg.SaleAttributeResolution = &SheinSaleAttributeResolution{}
+				pkg.SaleAttributeResolution = &sheinpub.SaleAttributeResolution{}
 			}
-			pkg.SaleAttributeResolution.SKUAttributes = append([]SheinResolvedSaleAttribute(nil), patch.SaleAttributes...)
+			pkg.SaleAttributeResolution.SKUAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), patch.SaleAttributes...)
 			if len(patch.SaleAttributes) > 0 && patch.SaleAttributes[0].AttributeID > 0 {
 				pkg.SaleAttributeResolution.SecondaryAttributeID = patch.SaleAttributes[0].AttributeID
 			}
 		}
 		if patch.SitePriceList != nil {
-			skuDraft.SitePriceList = append([]SheinSitePrice(nil), patch.SitePriceList...)
+			skuDraft.SitePriceList = append([]sheinpub.SitePrice(nil), patch.SitePriceList...)
 		}
 		if patch.StockInfoList != nil {
-			skuDraft.StockInfoList = append([]SheinStockInfo(nil), patch.StockInfoList...)
+			skuDraft.StockInfoList = append([]sheinpub.StockInfo(nil), patch.StockInfoList...)
 		}
 	}
 }
 
-func ensureSheinImageDraft(info **SheinImageDraft) {
+func ensureSheinImageDraft(info **sheinpub.ImageDraft) {
 	if info == nil || *info != nil {
 		return
 	}
-	*info = &SheinImageDraft{}
+	*info = &sheinpub.ImageDraft{}
 }
 
-func findSheinRequestSKC(items []SheinSKCRequestDraft, supplierCode string) *SheinSKCRequestDraft {
+func findSheinRequestSKC(items []sheinpub.SKCRequestDraft, supplierCode string) *sheinpub.SKCRequestDraft {
 	for i := range items {
 		if strings.EqualFold(strings.TrimSpace(items[i].SupplierCode), strings.TrimSpace(supplierCode)) {
 			return &items[i]
@@ -406,7 +409,7 @@ func findSheinRequestSKC(items []SheinSKCRequestDraft, supplierCode string) *She
 	return nil
 }
 
-func findSheinPackageSKC(items []SheinSKCPackage, supplierCode string) *SheinSKCPackage {
+func findSheinPackageSKC(items []sheinpub.SKCPackage, supplierCode string) *sheinpub.SKCPackage {
 	for i := range items {
 		if strings.EqualFold(strings.TrimSpace(items[i].SupplierCode), strings.TrimSpace(supplierCode)) {
 			return &items[i]
@@ -415,7 +418,7 @@ func findSheinPackageSKC(items []SheinSKCPackage, supplierCode string) *SheinSKC
 	return nil
 }
 
-func findSheinRequestSKU(items []SheinSKUDraft, supplierSKU string) *SheinSKUDraft {
+func findSheinRequestSKU(items []sheinpub.SKUDraft, supplierSKU string) *sheinpub.SKUDraft {
 	for i := range items {
 		if strings.EqualFold(strings.TrimSpace(items[i].SupplierSKU), strings.TrimSpace(supplierSKU)) {
 			return &items[i]
@@ -424,7 +427,7 @@ func findSheinRequestSKU(items []SheinSKUDraft, supplierSKU string) *SheinSKUDra
 	return nil
 }
 
-func findSheinPackageSKU(skc *SheinSKCPackage, supplierSKU string) *PlatformVariant {
+func findSheinPackageSKU(skc *sheinpub.SKCPackage, supplierSKU string) *common.Variant {
 	if skc == nil {
 		return nil
 	}
@@ -436,14 +439,14 @@ func findSheinPackageSKU(skc *SheinSKCPackage, supplierSKU string) *PlatformVari
 	return nil
 }
 
-func ensureSheinRequestDraft(pkg *SheinPackage) {
+func ensureSheinRequestDraft(pkg *sheinpub.Package) {
 	if pkg == nil || pkg.RequestDraft != nil {
 		return
 	}
-	pkg.RequestDraft = &SheinRequestDraft{}
+	pkg.RequestDraft = &sheinpub.RequestDraft{}
 }
 
-func syncSheinDraftFromPackage(pkg *SheinPackage) {
+func syncSheinDraftFromPackage(pkg *sheinpub.Package) {
 	if pkg == nil || pkg.RequestDraft == nil {
 		return
 	}
@@ -451,13 +454,13 @@ func syncSheinDraftFromPackage(pkg *SheinPackage) {
 		pkg.RequestDraft.SpuName = pkg.SpuName
 	}
 	if pkg.Images != nil {
-		pkg.RequestDraft.ImageInfo = buildSheinImageDraft(pkg.Images)
+		pkg.RequestDraft.ImageInfo = sheinpub.BuildImageDraft(pkg.Images)
 	}
 	if pkg.ProductAttributes != nil {
-		pkg.RequestDraft.ProductAttributeList = append([]PlatformAttribute(nil), pkg.ProductAttributes...)
+		pkg.RequestDraft.ProductAttributeList = append([]common.Attribute(nil), pkg.ProductAttributes...)
 	}
 	if pkg.ResolvedAttributes != nil {
-		pkg.RequestDraft.ResolvedAttributes = append([]SheinResolvedAttribute(nil), pkg.ResolvedAttributes...)
+		pkg.RequestDraft.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...)
 	}
 	if strings.TrimSpace(pkg.Description) != "" {
 		updateLocalizedTexts(&pkg.RequestDraft.MultiLanguageDescList, pkg.Description)
@@ -468,7 +471,7 @@ func syncSheinDraftFromPackage(pkg *SheinPackage) {
 	}
 }
 
-func updateLocalizedTexts(items *[]LocalizedText, value string) {
+func updateLocalizedTexts(items *[]sheinpub.LocalizedText, value string) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return
@@ -477,7 +480,7 @@ func updateLocalizedTexts(items *[]LocalizedText, value string) {
 		return
 	}
 	if len(*items) == 0 {
-		*items = []LocalizedText{
+		*items = []sheinpub.LocalizedText{
 			{Language: "en", Name: value},
 		}
 		return

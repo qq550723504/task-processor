@@ -8,8 +8,6 @@ import (
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
-	sheinattribute "task-processor/internal/shein/api/attribute"
-	sheincategory "task-processor/internal/shein/api/category"
 )
 
 type TaskSubmitter interface{ Submit(taskID string) error }
@@ -43,27 +41,6 @@ type Assembler interface {
 
 type AmazonDraftBuilder interface {
 	Build(req *GenerateRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft
-}
-
-type SheinCategoryAPI interface {
-	GetCategory(categoryID int) (*sheincategory.CategoryInfo, error)
-	SuggestCategoryByText(productInfo string) (*sheincategory.SuggestCategoryResponse, error)
-}
-
-type SheinCategoryResolver interface {
-	Resolve(req *GenerateRequest, canonical *productenrich.CanonicalProduct, pkg *SheinPackage) *SheinCategoryResolution
-}
-
-type SheinAttributeAPI interface {
-	GetAttributeTemplates(categoryID int) (*sheinattribute.AttributeTemplateInfo, error)
-}
-
-type SheinAttributeResolver interface {
-	Resolve(req *GenerateRequest, canonical *productenrich.CanonicalProduct, pkg *SheinPackage) *SheinAttributeResolution
-}
-
-type SheinSaleAttributeResolver interface {
-	Resolve(req *GenerateRequest, canonical *productenrich.CanonicalProduct, pkg *SheinPackage) *SheinSaleAttributeResolution
 }
 
 type Service interface {

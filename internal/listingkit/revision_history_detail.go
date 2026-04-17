@@ -1,19 +1,14 @@
 package listingkit
 
-import "errors"
+import (
+	"errors"
+
+	sheinworkspace "task-processor/internal/workspace/shein"
+)
 
 var ErrRevisionHistoryRecordNotFound = errors.New("revision history record not found")
 
-type ListingKitRevisionHistoryDetail struct {
-	TaskID         string                         `json:"task_id"`
-	Record         *ListingKitRevisionRecord      `json:"record,omitempty"`
-	Navigation     *RevisionHistoryNavigation     `json:"navigation,omitempty"`
-	RestorePayload *RevisionRestorePreviewPayload `json:"restore_payload,omitempty"`
-	HistoryIndex   int                            `json:"history_index"`
-	TotalRecords   int                            `json:"total_records"`
-	IsTruncated    bool                           `json:"is_truncated"`
-	MaxRecords     int                            `json:"max_records"`
-}
+type ListingKitRevisionHistoryDetail = sheinworkspace.HistoryDetail[ListingKitRevisionRecord, RevisionRestorePreviewPayload]
 
 func buildRevisionHistoryDetail(result *ListingKitResult, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error) {
 	if result == nil {
@@ -36,33 +31,51 @@ func buildRevisionHistoryDetail(result *ListingKitResult, revisionID string, que
 		if err != nil {
 			return nil, err
 		}
-		restoreSafety := buildRevisionHistoryRestoreSafety(result, &recordWithID, restoreDraft, comparePreview)
-		restoreContext := buildRevisionHistoryRestoreContext(&recordWithID, restoreRevisionPayload, comparePreview)
-		restorePresentation := buildRevisionRestorePreviewPresentation(&recordWithID, restoreContext, restoreSafety, comparePreview)
-		return &ListingKitRevisionHistoryDetail{
-			TaskID: result.TaskID,
-			Record: &recordWithID,
-			Navigation: buildRevisionHistoryNavigation(
+		restoreDetail := buildRevisionHistoryRestoreDetailData(result, &recordWithID, restoreDraft, restoreRevisionPayload, comparePreview)
+		restorePresentation := buildRevisionRestorePreviewPresentation(
+			&recordWithID,
+			restoreDetailContextValue(restoreDetail),
+			restoreDetailSafetyValue(restoreDetail),
+			comparePreview,
+		)
+		return sheinworkspace.BuildHistoryDetail(
+			result.TaskID,
+			&recordWithID,
+			buildRevisionHistoryNavigation(
 				buildAdjacentRevisionID(result.RevisionHistory, i-1),
 				buildAdjacentRevisionID(result.RevisionHistory, i+1),
 			),
-			RestorePayload: buildRevisionHistoryDetailRestorePayload(
+			buildRevisionHistoryDetailRestorePayload(
 				&recordWithID,
 				restoreDraft,
 				restoreRevisionPayload,
-				restoreContext,
-				restoreSafety,
+				restoreDetailContextValue(restoreDetail),
+				restoreDetailSafetyValue(restoreDetail),
 				restorePresentation,
 				comparePreview,
 			),
-			HistoryIndex: i,
-			TotalRecords: total,
-			IsTruncated:  total > len(result.RevisionHistory),
-			MaxRecords:   maxRevisionHistoryRecords,
-		}, nil
+			i,
+			total,
+			total > len(result.RevisionHistory),
+			maxRevisionHistoryRecords,
+		), nil
 	}
 
 	return nil, ErrRevisionHistoryRecordNotFound
+}
+
+func restoreDetailContextValue(detail *revisionHistoryRestoreDetailData) *RevisionHistoryRestoreContext {
+	if detail == nil {
+		return nil
+	}
+	return detail.Context
+}
+
+func restoreDetailSafetyValue(detail *revisionHistoryRestoreDetailData) *RevisionHistoryRestoreSafety {
+	if detail == nil {
+		return nil
+	}
+	return detail.Safety
 }
 
 func buildAdjacentRevisionID(records []ListingKitRevisionRecord, index int) string {

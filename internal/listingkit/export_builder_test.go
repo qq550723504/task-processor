@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/asset"
+	"task-processor/internal/catalog"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -19,6 +21,15 @@ func TestBuildListingKitExportForSelectedPlatform(t *testing.T) {
 			Platforms: []string{"amazon", "shein", "temu", "walmart"},
 			Country:   "US",
 			Language:  "en_US",
+			CatalogProduct: &catalog.Product{
+				Title: "Travel Bottle",
+				Brand: "DemoBrand",
+			},
+			AssetBundle: &asset.Bundle{
+				Assets: []asset.Asset{
+					{ID: "asset-main", Kind: asset.KindMainImage, URL: "https://cdn.example.com/main.jpg"},
+				},
+			},
 			Summary: &GenerationSummary{
 				SourceType:   "1688_url",
 				ImageCount:   4,
@@ -47,6 +58,12 @@ func TestBuildListingKitExportForSelectedPlatform(t *testing.T) {
 
 	if export.SelectedPlatform != "shein" {
 		t.Fatalf("selected platform = %q, want shein", export.SelectedPlatform)
+	}
+	if export.CatalogProduct == nil || export.CatalogProduct.Title != "Travel Bottle" {
+		t.Fatalf("catalog product = %+v", export.CatalogProduct)
+	}
+	if export.AssetBundle == nil || len(export.AssetBundle.Assets) != 1 {
+		t.Fatalf("asset bundle = %+v", export.AssetBundle)
 	}
 	if export.Shein == nil {
 		t.Fatal("expected shein export payload")

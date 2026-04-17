@@ -1,5 +1,7 @@
 package listingkit
 
+import sheinworkspace "task-processor/internal/workspace/shein"
+
 func buildRevisionApplyResult(req *ApplyRevisionRequest, listingResult *ListingKitResult, appliedChanges *RevisionDiffPreview) *RevisionApplyResult {
 	if req == nil || listingResult == nil {
 		return nil
@@ -11,10 +13,10 @@ func buildRevisionApplyResult(req *ApplyRevisionRequest, listingResult *ListingK
 	if appliedChanges != nil {
 		changeCount = appliedChanges.ChangeCount
 	}
-	nextActions := buildRevisionRestoreResultNextActions(listingResult)
-	statusSummary := buildRevisionRestoreStatusSummary(listingResult)
-	messages := buildRevisionApplyResultMessages(headline, changeCount, statusSummary)
-	recommendedView := buildRevisionApplyRecommendedView(listingResult)
+	nextActions := buildRevisionSuccessNextActions(listingResult)
+	statusSummary := buildRevisionSuccessStatusSummary(listingResult)
+	messages := buildRevisionSuccessMessages(revisionSuccessModeApply, headline, changeCount, "", statusSummary)
+	recommendedView := buildRevisionSuccessRecommendedView(revisionSuccessModeApply, listingResult, statusSummary)
 	applyFollowUp := buildRevisionSuccessFollowUpData(
 		revisionSuccessModeApply,
 		listingResult,
@@ -30,15 +32,19 @@ func buildRevisionApplyResult(req *ApplyRevisionRequest, listingResult *ListingK
 		followUpOverview = applyFollowUp.Overview
 		suggestedFollowUpRevision = applyFollowUp.SuggestedRevision
 	}
-	summaryCard := buildRevisionApplySummaryCard(
+	summaryCard := sheinworkspace.BuildSuccessSummaryCard(
+		sheinworkspace.SuccessModeApply,
 		headline,
+		"",
 		changeCount,
 		messages,
 		appliedChanges,
-		listingResult,
+		statusSummary,
+		recommendedView,
+		nextActions,
 	)
-	presentation := buildRevisionInteractionPresentation(
-		revisionPresentationSceneApplySuccess,
+	presentation := sheinworkspace.BuildSuccessPresentation(
+		sheinworkspace.SceneApplySuccess,
 		nextActions,
 		messages,
 		recommendedView,

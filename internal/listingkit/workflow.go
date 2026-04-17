@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/asset"
+	"task-processor/internal/catalog"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -28,6 +30,8 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 
 	canonical := productenrich.BuildCanonicalProduct(productTask.Request, productJSON)
 	result.CanonicalProduct = canonical
+	result.CatalogProduct = catalog.BuildProduct(canonical)
+	result.AssetBundle = asset.BuildBundle(canonical, nil)
 
 	var imageResult *productimage.ImageProcessResult
 	if shouldProcessImages(task.Request) && s.imageSvc != nil {
@@ -44,11 +48,14 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 			} else {
 				markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusCompleted), "")
 				result.ImageAssets = imageResult
+				result.AssetBundle = asset.BuildBundle(canonical, imageResult)
 			}
 		}
 	}
 
 	final := s.assembler.Assemble(task, canonical, imageResult)
+	final.CatalogProduct = result.CatalogProduct
+	final.AssetBundle = result.AssetBundle
 	final.ChildTasks = append([]ChildTaskState(nil), result.ChildTasks...)
 	if final.Summary == nil {
 		final.Summary = &GenerationSummary{}

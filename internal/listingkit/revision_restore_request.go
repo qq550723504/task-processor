@@ -1,6 +1,10 @@
 package listingkit
 
-import "strings"
+import (
+	"strings"
+
+	sheinworkspace "task-processor/internal/workspace/shein"
+)
 
 func resolveRevisionValidationRequest(result *ListingKitResult, req *ApplyRevisionRequest) (*ApplyRevisionRequest, *RevisionRestorePreviewPayload, error) {
 	if req == nil {
@@ -43,17 +47,21 @@ func applyRestoreDraftToRevisionRequest(req *ApplyRevisionRequest, draft *SheinE
 	if req == nil || draft == nil {
 		return
 	}
-	if draft.Platform != "" {
-		req.Platform = draft.Platform
+	seed := sheinworkspace.BuildRestoreRequestSeed(draft)
+	if seed == nil {
+		return
 	}
-	if draft.Actor != "" {
-		req.Actor = draft.Actor
+	if seed.Platform != "" {
+		req.Platform = seed.Platform
 	}
-	if draft.Reason != "" {
-		req.Reason = draft.Reason
+	if seed.Actor != "" {
+		req.Actor = seed.Actor
 	}
-	if draft.Shein != nil {
-		req.Shein = cloneHistorySheinRevisionInput(draft.Shein)
+	if seed.Reason != "" {
+		req.Reason = seed.Reason
+	}
+	if seed.Shein != nil {
+		req.Shein = seed.Shein
 	}
 }
 

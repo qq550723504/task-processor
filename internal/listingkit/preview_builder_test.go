@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/asset"
+	"task-processor/internal/catalog"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -25,6 +27,15 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 			Platforms: []string{"amazon", "shein", "temu"},
 			Country:   "US",
 			Language:  "en_US",
+			CatalogProduct: &catalog.Product{
+				Title: "Wireless Earbuds",
+				Brand: "DemoBrand",
+			},
+			AssetBundle: &asset.Bundle{
+				Assets: []asset.Asset{
+					{ID: "asset-main", Kind: asset.KindMainImage, URL: "https://cdn.example.com/main.jpg"},
+				},
+			},
 			Summary: &GenerationSummary{
 				SourceType:   "text",
 				ImageCount:   2,
@@ -59,6 +70,12 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 
 	if preview.SelectedPlatform != "shein" {
 		t.Fatalf("selected platform = %q, want shein", preview.SelectedPlatform)
+	}
+	if preview.Catalog == nil || preview.Catalog.Title != "Wireless Earbuds" {
+		t.Fatalf("catalog = %+v", preview.Catalog)
+	}
+	if preview.Assets == nil || len(preview.Assets.Assets) != 1 {
+		t.Fatalf("assets = %+v", preview.Assets)
 	}
 	if preview.Shein == nil {
 		t.Fatal("expected shein payload")

@@ -30,6 +30,8 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 		return export, nil
 	}
 
+	export.CatalogProduct = task.Result.CatalogProduct
+	export.AssetBundle = task.Result.AssetBundle
 	export.Overview = buildListingKitExportMeta(task.Result)
 
 	if selectedPlatform == "" || selectedPlatform == "amazon" {

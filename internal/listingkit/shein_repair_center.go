@@ -1,6 +1,10 @@
 package listingkit
 
-import "sort"
+import (
+	"sort"
+
+	sheinworkspace "task-processor/internal/workspace/shein"
+)
 
 type sheinRepairActionCandidate struct {
 	action       SheinRepairCenterAction
@@ -22,57 +26,44 @@ func buildSheinRepairCenter(readiness *SheinSubmitReadiness, checklist *SheinSub
 		return compareSheinRepairActions(candidates[i].action, candidates[j].action)
 	})
 
-	center := &SheinRepairCenter{
-		Actions: make([]SheinRepairCenterAction, 0, len(candidates)),
-		Stats:   &SheinRepairCenterStats{},
-	}
-	sectionMap := map[string]*SheinRepairCenterSection{}
-	sectionOrder := make([]string, 0, 4)
-
+	seeds := make([]sheinworkspace.RepairCenterSeedAction[SheinReadinessReason, SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview], 0, len(candidates))
 	for _, candidate := range candidates {
-		action := candidate.action
-		center.Actions = append(center.Actions, action)
-		center.Stats.TotalActions++
-		if action.Status == "blocking" {
-			center.Stats.BlockingActions++
-		}
-		if action.Status == "warning" {
-			center.Stats.WarningActions++
-		}
-		if action.CanApplyDirectly {
-			center.Stats.DirectApplyActions++
-		}
-		if center.PrimaryAction == nil {
-			primary := action
-			center.PrimaryAction = &primary
-		}
+		seeds = append(seeds, sheinworkspace.RepairCenterSeedAction[SheinReadinessReason, SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]{
+			Action:       candidate.action,
+			SectionKey:   candidate.sectionKey,
+			SectionLabel: candidate.sectionLabel,
+		})
+	}
 
-		section, ok := sectionMap[candidate.sectionKey]
-		if !ok {
-			section = &SheinRepairCenterSection{
-				Key:   candidate.sectionKey,
-				Label: candidate.sectionLabel,
+	return sheinworkspace.BuildRepairCenter(
+		seeds,
+		func(validation *SheinRepairValidationPreview) int {
+			if validation == nil || validation.RevisionDiffPreview == nil {
+				return 0
 			}
-			sectionMap[candidate.sectionKey] = section
-			sectionOrder = append(sectionOrder, candidate.sectionKey)
-		}
-		section.ActionCount++
-		if action.CanApplyDirectly {
-			section.DirectApplyCount++
-		}
-		section.Highlights = uniqueStrings(append(section.Highlights, action.Label))
-	}
-
-	for _, key := range sectionOrder {
-		center.Sections = append(center.Sections, *sectionMap[key])
-	}
-
-	center.PrimaryPlan = buildSheinRepairPlan(center.Actions)
-	center.ApplyQueue = buildSheinRepairApplyQueue(center.Actions)
-	center.Session = buildSheinRepairSession(center.Actions, center.PrimaryPlan)
-	center.Status = buildSheinRepairCenterStatus(center.Stats)
-	center.Summary = buildSheinRepairCenterSummary(center)
-	return center
+			return validation.RevisionDiffPreview.ChangeCount
+		},
+		func(validation *SheinRepairValidationPreview) bool {
+			return validation != nil && !validation.Valid
+		},
+		func(reason *SheinReadinessReason) string {
+			if reason == nil {
+				return ""
+			}
+			return reason.Summary
+		},
+		func(action SheinRepairCenterAction) sheinworkspace.RepairSessionActionInfo {
+			info := sheinworkspace.RepairSessionActionInfo{
+				ID:               action.ID,
+				CanApplyDirectly: action.CanApplyDirectly,
+			}
+			if action.Validation != nil {
+				info.ValidationValid = action.Validation.Valid
+				info.AffectedSections = append([]string(nil), action.Validation.AffectedSections...)
+			}
+			return info
+		},
+	)
 }
 
 func collectSheinRepairCandidates(readiness *SheinSubmitReadiness, checklist *SheinSubmitChecklist) []sheinRepairActionCandidate {
@@ -244,41 +235,4 @@ func sheinRepairSectionLabel(section string) string {
 	default:
 		return "系统动作"
 	}
-}
-
-func buildSheinRepairCenterStatus(stats *SheinRepairCenterStats) string {
-	if stats == nil || stats.TotalActions == 0 {
-		return "empty"
-	}
-	if stats.BlockingActions > 0 {
-		return "needs_repair"
-	}
-	if stats.WarningActions > 0 {
-		return "review_recommended"
-	}
-	return "ready"
-}
-
-func buildSheinRepairCenterSummary(center *SheinRepairCenter) []string {
-	if center == nil || center.Stats == nil {
-		return nil
-	}
-	summary := make([]string, 0, 3)
-	if center.Stats.TotalActions > 0 {
-		summary = append(summary, "已整理 "+repairCenterIntString(center.Stats.TotalActions)+" 个修复动作")
-	}
-	if center.Stats.BlockingActions > 0 {
-		summary = append(summary, "其中 "+repairCenterIntString(center.Stats.BlockingActions)+" 个会直接影响提交")
-	}
-	if center.Stats.DirectApplyActions > 0 {
-		summary = append(summary, "有 "+repairCenterIntString(center.Stats.DirectApplyActions)+" 个动作可直接生成最小修复请求")
-	}
-	return summary
-}
-
-func repairCenterIntString(v int) string {
-	if v == 0 {
-		return "0"
-	}
-	return formatInt(v)
 }

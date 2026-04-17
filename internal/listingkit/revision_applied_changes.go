@@ -1,6 +1,8 @@
 package listingkit
 
 import "strings"
+import sheinpub "task-processor/internal/publishing/shein"
+import sheinworkspace "task-processor/internal/workspace/shein"
 
 func buildAppliedChangesPreview(platform string, before, after *ListingKitResult) *RevisionDiffPreview {
 	platform = strings.ToLower(strings.TrimSpace(platform))
@@ -15,9 +17,6 @@ func buildAppliedChangesPreview(platform string, before, after *ListingKitResult
 	}
 }
 
-func buildSheinAppliedChanges(before, after *SheinPackage) *RevisionDiffPreview {
-	if before == nil || after == nil {
-		return nil
-	}
-	return buildSheinRevisionDiffPreview(before, buildSheinMinimalRevisionSkeleton(after))
+func buildSheinAppliedChanges(before, after *sheinpub.Package) *RevisionDiffPreview {
+	return sheinworkspace.BuildAppliedChangesPreview(before, after)
 }

@@ -1,5 +1,7 @@
 package listingkit
 
+import sheinworkspace "task-processor/internal/workspace/shein"
+
 func buildRevisionRestoreResult(req *ApplyRevisionRequest, listingResult *ListingKitResult, appliedChanges *RevisionDiffPreview) *RevisionRestoreResult {
 	sourceRevisionID := revisionRestoreSourceID(req)
 	if sourceRevisionID == "" {
@@ -21,10 +23,10 @@ func buildRevisionRestoreResult(req *ApplyRevisionRequest, listingResult *Listin
 		relationText = record.Timeline.RelationText
 		restoredFieldCount = record.Timeline.ChangeCount
 	}
-	nextActions := buildRevisionRestoreResultNextActions(listingResult)
-	statusSummary := buildRevisionRestoreStatusSummary(listingResult)
-	messages := buildRevisionRestoreResultMessages(headline, restoredFieldCount, sourceRevisionID, statusSummary)
-	recommendedView := buildRevisionRestoreRecommendedView(listingResult, statusSummary)
+	nextActions := buildRevisionSuccessNextActions(listingResult)
+	statusSummary := buildRevisionSuccessStatusSummary(listingResult)
+	messages := buildRevisionSuccessMessages(revisionSuccessModeRestore, headline, restoredFieldCount, sourceRevisionID, statusSummary)
+	recommendedView := buildRevisionSuccessRecommendedView(revisionSuccessModeRestore, listingResult, statusSummary)
 	restoreFollowUp := buildRevisionSuccessFollowUpData(
 		revisionSuccessModeRestore,
 		listingResult,
@@ -40,16 +42,19 @@ func buildRevisionRestoreResult(req *ApplyRevisionRequest, listingResult *Listin
 		followUpOverview = restoreFollowUp.Overview
 		suggestedFollowUpRevision = restoreFollowUp.SuggestedRevision
 	}
-	summaryCard := buildRevisionRestoreSummaryCard(
+	summaryCard := sheinworkspace.BuildSuccessSummaryCard(
+		sheinworkspace.SuccessModeRestore,
 		headline,
 		relationText,
-		nextActions,
-		statusSummary,
+		restoredFieldCount,
 		messages,
+		appliedChanges,
+		statusSummary,
 		recommendedView,
+		nextActions,
 	)
-	presentation := buildRevisionInteractionPresentation(
-		revisionPresentationSceneRestoreSuccess,
+	presentation := sheinworkspace.BuildSuccessPresentation(
+		sheinworkspace.SceneRestoreSuccess,
 		nextActions,
 		messages,
 		recommendedView,

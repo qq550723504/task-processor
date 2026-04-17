@@ -6,48 +6,30 @@ func buildRevisionRestorePreviewPresentation(
 	safety *RevisionHistoryRestoreSafety,
 	comparePreview *RevisionHistoryComparePreview,
 ) *RevisionInteractionPresentation {
-	overview := buildRevisionHistoryRestoreOverview(record, safety, comparePreview)
-	messages := buildRevisionHistoryRestoreMessages(record, context, safety, overview)
-	if overview == nil && messages == nil {
+	data := buildRevisionHistoryRestorePresentationData(record, context, safety, comparePreview)
+	if data == nil {
 		return nil
 	}
 
-	var summaryCard *RevisionSuccessSummaryCard
-	if overview != nil {
-		summaryCard = &RevisionSuccessSummaryCard{
-			Status:        overview.Status,
-			Title:         overview.Headline,
-			Subtitle:      overview.Subheadline,
-			PrimaryAction: overview.PrimaryAction,
-			Highlights:    append([]string(nil), overview.Highlights...),
-		}
+	summaryCard := &RevisionSuccessSummaryCard{
+		Status:        data.Status,
+		Title:         data.Headline,
+		Subtitle:      data.Subheadline,
+		PrimaryAction: data.PrimaryAction,
+		Highlights:    append([]string(nil), data.Highlights...),
 	}
 
 	return buildRevisionInteractionPresentation(
 		revisionPresentationSceneRestorePreview,
-		overviewNextActions(overview),
-		convertRestoreMessages(messages),
-		buildRevisionRestorePreviewRecommendedView(safety),
+		append([]string(nil), data.NextActions...),
+		&RevisionResultMessages{
+			Title:            data.Title,
+			Description:      data.Description,
+			SuccessLabel:     data.ConfirmLabel,
+			WarningTitle:     data.WarningTitle,
+			WarningSummaries: append([]string(nil), data.WarningSummaries...),
+		},
+		convertHistoryRestoreRecommendedView(data.RecommendedView),
 		summaryCard,
 	)
-}
-
-func overviewNextActions(overview *RevisionHistoryRestoreOverview) []string {
-	if overview == nil {
-		return nil
-	}
-	return append([]string(nil), overview.NextActions...)
-}
-
-func convertRestoreMessages(messages *RevisionHistoryRestoreMessages) *RevisionResultMessages {
-	if messages == nil {
-		return nil
-	}
-	return &RevisionResultMessages{
-		Title:            messages.Title,
-		Description:      messages.Description,
-		SuccessLabel:     messages.ConfirmLabel,
-		WarningTitle:     messages.WarningTitle,
-		WarningSummaries: append([]string(nil), messages.WarningSummaries...),
-	}
 }

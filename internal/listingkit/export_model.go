@@ -4,6 +4,9 @@ import (
 	"time"
 
 	"task-processor/internal/amazonlisting"
+	"task-processor/internal/asset"
+	"task-processor/internal/catalog"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -15,6 +18,8 @@ type ListingKitExport struct {
 	MimeType         string                `json:"mime_type"`
 	GeneratedAt      time.Time             `json:"generated_at"`
 	Platforms        []string              `json:"platforms,omitempty"`
+	CatalogProduct   *catalog.Product      `json:"catalog_product,omitempty"`
+	AssetBundle      *asset.Bundle         `json:"asset_bundle,omitempty"`
 	Overview         *ListingKitExportMeta `json:"overview,omitempty"`
 	Amazon           *AmazonExportPayload  `json:"amazon,omitempty"`
 	Shein            *SheinExportPayload   `json:"shein,omitempty"`
@@ -36,10 +41,10 @@ type AmazonExportPayload struct {
 }
 
 type SheinExportPayload struct {
-	Inspection     *SheinInspection      `json:"inspection,omitempty"`
-	RequestDraft   *SheinRequestDraft    `json:"request_draft,omitempty"`
-	PreviewProduct *sheinproduct.Product `json:"preview_product,omitempty"`
-	ReviewNotes    []string              `json:"review_notes,omitempty"`
+	Inspection     *sheinpub.Inspection   `json:"inspection,omitempty"`
+	RequestDraft   *sheinpub.RequestDraft `json:"request_draft,omitempty"`
+	PreviewProduct *sheinproduct.Product  `json:"preview_product,omitempty"`
+	ReviewNotes    []string               `json:"review_notes,omitempty"`
 }
 
 type TemuExportPayload struct {

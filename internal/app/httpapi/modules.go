@@ -24,6 +24,7 @@ import (
 	productimageapi "task-processor/internal/productimage/api"
 	productimagepipeline "task-processor/internal/productimage/pipeline"
 	productimagestore "task-processor/internal/productimage/store"
+	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/taskrpcapi"
 )
 
@@ -414,9 +415,9 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		ProductService: deps.productService,
 		ImageService:   deps.imageService,
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
-			SheinCategoryResolver:      listingkit.NewManagedSheinCategoryResolver(deps.managementClient),
-			SheinAttributeResolver:     listingkit.NewManagedSheinAttributeResolver(deps.managementClient),
-			SheinSaleAttributeResolver: listingkit.NewManagedSheinSaleAttributeResolver(deps.managementClient),
+			SheinCategoryResolver:      sheinpub.NewManagedCategoryResolver(deps.managementClient),
+			SheinAttributeResolver:     sheinpub.NewManagedAttributeResolver(deps.managementClient),
+			SheinSaleAttributeResolver: sheinpub.NewManagedSaleAttributeResolver(deps.managementClient),
 		}),
 	})
 	if err != nil {

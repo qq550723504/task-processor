@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
 )
@@ -202,7 +203,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 	levelFourName := "Wireless Earbuds"
 	assembler := NewAssemblerWithConfig(AssemblerConfig{
 		AmazonBuilder: stubAmazonDraftBuilder{},
-		SheinCategoryResolver: NewSheinCategoryResolver(stubSheinCategoryAPI{
+		SheinCategoryResolver: sheinpub.NewCategoryResolver(stubSheinCategoryAPI{
 			info: &sheincategory.CategoryInfo{
 				ProductTypeID:          9001,
 				LevelOneCategoryID:     1001,
@@ -215,7 +216,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 				LevelFourCategoryName:  &levelFourName,
 			},
 		}),
-		SheinAttributeResolver: NewSheinAttributeResolver(stubSheinAttributeAPI{
+		SheinAttributeResolver: sheinpub.NewAttributeResolver(stubSheinAttributeAPI{
 			templates: &sheinattribute.AttributeTemplateInfo{
 				Data: []sheinattribute.AttributeTemplate{{
 					AttributeInfos: []sheinattribute.AttributeInfo{
@@ -239,7 +240,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 				}},
 			},
 		}),
-		SheinSaleAttributeResolver: NewSheinSaleAttributeResolver(stubSheinAttributeAPI{
+		SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(stubSheinAttributeAPI{
 			templates: &sheinattribute.AttributeTemplateInfo{
 				Data: []sheinattribute.AttributeTemplate{{
 					AttributeInfos: []sheinattribute.AttributeInfo{
@@ -406,7 +407,7 @@ func TestBuildPlatformImagesFallsBackToCanonicalImages(t *testing.T) {
 func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
-	resolver := NewManagedSheinCategoryResolver(nil)
+	resolver := sheinpub.NewManagedCategoryResolver(nil)
 	req := &GenerateRequest{
 		Text:      "wireless earbuds",
 		Country:   "US",
@@ -422,7 +423,7 @@ func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
 		CategoryPath: []string{"Electronics", "Headphones"},
 	}
 
-	resolution := resolver.Resolve(req, canonical, pkg)
+	resolution := resolver.Resolve(buildSheinPublishRequest(req), canonical, pkg)
 	if resolution == nil {
 		t.Fatal("expected resolution")
 	}
@@ -437,7 +438,7 @@ func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
 func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
-	resolver := NewManagedSheinAttributeResolver(nil)
+	resolver := sheinpub.NewManagedAttributeResolver(nil)
 	req := &GenerateRequest{
 		Text:      "wireless earbuds",
 		Country:   "US",
@@ -454,7 +455,7 @@ func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 		},
 	}
 
-	resolution := resolver.Resolve(req, canonical, pkg)
+	resolution := resolver.Resolve(buildSheinPublishRequest(req), canonical, pkg)
 	if resolution == nil {
 		t.Fatal("expected resolution")
 	}
@@ -469,7 +470,7 @@ func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 func TestManagedSheinSaleAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
-	resolver := NewManagedSheinSaleAttributeResolver(nil)
+	resolver := sheinpub.NewManagedSaleAttributeResolver(nil)
 	req := &GenerateRequest{
 		Text:      "wireless earbuds",
 		Country:   "US",
@@ -489,7 +490,7 @@ func TestManagedSheinSaleAttributeResolverFallsBackWithoutStoreID(t *testing.T) 
 		}},
 	}
 
-	resolution := resolver.Resolve(req, canonical, pkg)
+	resolution := resolver.Resolve(buildSheinPublishRequest(req), canonical, pkg)
 	if resolution == nil {
 		t.Fatal("expected resolution")
 	}
