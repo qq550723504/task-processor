@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/app/bootstrap"
 	"task-processor/internal/app/consumer"
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/appenv"
 	"task-processor/internal/prompt"
@@ -60,6 +61,32 @@ func main() {
 
 	if err := platformRegistry.RegisterSheinProcessor(ctx, serviceManager); err != nil {
 		logger.Fatalf("register SHEIN processor failed: %v", err)
+	}
+
+	if cfg.Platforms.Shein.SchedulerEnabled {
+		if managementClient := platformRegistry.GetManagementClient(); managementClient != nil {
+			schedulerService := runner.NewSchedulerServiceWithDependencies(
+				logger,
+				managementClient,
+				cfg,
+				serviceManager.GetClient(),
+				bootstrap.BuildSchedulerDependencies(
+					managementClient,
+					cfg,
+					platformRegistry.GetSharedAmazonProcessor(),
+					serviceManager.GetClient(),
+				),
+			)
+			serviceManager.SetSchedulerService(schedulerService)
+			logger.Infof(
+				"SHEIN scheduler enabled: autoPricing=%v interval=%ds batchSize=%d",
+				cfg.Platforms.Shein.AutoPricing.Enabled,
+				cfg.Platforms.Shein.AutoPricing.Interval,
+				cfg.Platforms.Shein.AutoPricing.BatchSize,
+			)
+		} else {
+			logger.Warn("SHEIN scheduler is enabled but management client is unavailable")
+		}
 	}
 
 	if managementClient := platformRegistry.GetManagementClient(); managementClient != nil {

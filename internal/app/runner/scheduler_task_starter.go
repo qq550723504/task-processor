@@ -156,7 +156,6 @@ func discoverAutoPricingStoreIDs(platformName string, storeClient schedulerStore
 
 	for {
 		page, err := storeClient.PageStores(&managementapi.StorePageReqDTO{
-			Platform:        strings.ToLower(platformName),
 			PageNo:          pageNo,
 			PageSize:        storeDiscoveryPageSize,
 			EnableAutoPrice: &enableAutoPrice,
@@ -170,6 +169,9 @@ func discoverAutoPricingStoreIDs(platformName string, storeClient schedulerStore
 
 		for _, store := range page.List {
 			if store == nil || store.ID == 0 {
+				continue
+			}
+			if !strings.EqualFold(store.Platform, platformName) {
 				continue
 			}
 			storeIDs = append(storeIDs, store.ID)

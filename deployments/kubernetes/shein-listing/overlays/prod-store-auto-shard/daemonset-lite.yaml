@@ -27,7 +27,7 @@ spec:
         task-processor/crawler-tier: lite
       containers:
         - name: shein-listing
-          image: xuwei190/task-processor-shein-listing:localfetch-dynrebalance-20260411-214938
+          image: xuwei190/task-processor-shein-listing:localfetch-pricingfix-20260412-224800
           imagePullPolicy: Always
           command: ["/app/listing-service"]
           args:

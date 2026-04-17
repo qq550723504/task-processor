@@ -51,8 +51,8 @@ func TestResolveStoreIDsForTaskDiscoversAutoPricingStores(t *testing.T) {
 	storeClient := &stubSchedulerStoreClient{
 		pageStoresFunc: func(req *managementapi.StorePageReqDTO) (*managementapi.PageResult[*managementapi.StoreRespDTO], error) {
 			calls++
-			if req.Platform != "shein" {
-				t.Fatalf("expected platform shein, got %s", req.Platform)
+			if req.Platform != "" {
+				t.Fatalf("expected empty platform filter, got %s", req.Platform)
 			}
 			if req.EnableAutoPrice == nil || !*req.EnableAutoPrice {
 				t.Fatalf("expected enableAutoPrice=true")
@@ -62,13 +62,14 @@ func TestResolveStoreIDsForTaskDiscoversAutoPricingStores(t *testing.T) {
 			case 1:
 				return &managementapi.PageResult[*managementapi.StoreRespDTO]{
 					List: []*managementapi.StoreRespDTO{
-						{ID: 10},
-						{ID: 8},
-						{ID: 10},
+						{ID: 10, Platform: "SHEIN"},
+						{ID: 8, Platform: "shein"},
+						{ID: 10, Platform: "SHEIN"},
+						{ID: 99, Platform: "TEMU"},
 					},
 					PageNo:   1,
 					PageSize: req.PageSize,
-					Total:    3,
+					Total:    4,
 				}, nil
 			case 2:
 				return &managementapi.PageResult[*managementapi.StoreRespDTO]{

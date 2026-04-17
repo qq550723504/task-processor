@@ -122,8 +122,12 @@ data:
         schedulerEnabled: false
       shein:
         enabled: true
-        schedulerEnabled: false
+        schedulerEnabled: true
         fetchMode: "local"
+        autoPricing:
+          enabled: true
+          interval: 10800
+          batchSize: 100
       alibaba1688:
         enabled: false
         timeout: 120
