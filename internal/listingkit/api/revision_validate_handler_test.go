@@ -28,6 +28,27 @@ func (s *stubRevisionValidateService) GetTaskResult(ctx context.Context, taskID 
 func (s *stubRevisionValidateService) GetTaskPreview(ctx context.Context, taskID string, platform string) (*listingkit.ListingKitPreview, error) {
 	return nil, errors.New("not implemented")
 }
+func (s *stubRevisionValidateService) GetTaskGenerationTasks(ctx context.Context, taskID string, query *listingkit.GenerationTaskQuery) (*listingkit.GenerationTaskPage, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *stubRevisionValidateService) GetTaskGenerationQueue(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationQueuePage, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *stubRevisionValidateService) GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewSessionResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *stubRevisionValidateService) GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewPreviewResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *stubRevisionValidateService) DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *listingkit.GenerationReviewNavigationDispatchRequest) (*listingkit.GenerationReviewNavigationDispatchResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *stubRevisionValidateService) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *listingkit.RetryGenerationTasksRequest) (*listingkit.GenerationTaskPage, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *stubRevisionValidateService) ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *listingkit.ExecuteGenerationActionRequest) (*listingkit.GenerationActionExecutionResult, error) {
+	return nil, errors.New("not implemented")
+}
 func (s *stubRevisionValidateService) GetTaskRevisionHistory(ctx context.Context, taskID string, query *listingkit.RevisionHistoryQuery) (*listingkit.ListingKitRevisionHistoryPage, error) {
 	return nil, errors.New("not implemented")
 }

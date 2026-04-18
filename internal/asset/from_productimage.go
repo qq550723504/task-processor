@@ -72,17 +72,18 @@ func buildProcessedAsset(id string, kind Kind, role, generator string, asset *pr
 	}
 	labels := append([]string{role}, asset.Metadata["stage"])
 	return Asset{
-		ID:         id,
-		Kind:       kind,
-		URL:        asset.URL,
-		Role:       role,
-		Generator:  generator,
-		SourceURL:  asset.SourceURL,
-		Operations: append([]string(nil), asset.Operations...),
-		Labels:     uniqueStrings(labels),
-		Width:      asset.Width,
-		Height:     asset.Height,
-		Metadata:   metadata,
+		ID:             id,
+		Kind:           kind,
+		URL:            asset.URL,
+		Role:           role,
+		Generator:      generator,
+		SourceURL:      asset.SourceURL,
+		SourceAssetIDs: firstNonEmptySlice(asset.Metadata["source_asset_id"]),
+		Operations:     append([]string(nil), asset.Operations...),
+		Labels:         uniqueStrings(labels),
+		Width:          asset.Width,
+		Height:         asset.Height,
+		Metadata:       metadata,
 	}
 }
 
@@ -142,11 +143,14 @@ func buildIPRiskSummary(report *productimage.IPRiskReport) *IPRiskSummary {
 func buildStats(assets []Asset) *Stats {
 	stats := &Stats{TotalAssets: len(assets)}
 	for _, asset := range assets {
-		if asset.Kind == KindSourceImage {
+		switch originForAsset(asset) {
+		case OriginSource:
 			stats.SourceAssets++
-			continue
+		case OriginGenerated:
+			stats.GeneratedAssets++
+		default:
+			stats.DerivedAssets++
 		}
-		stats.DerivedAssets++
 	}
 	return stats
 }
@@ -178,4 +182,19 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func firstNonEmptySlice(values ...string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

@@ -24,16 +24,19 @@ type Options struct {
 }
 
 type runtimeDeps struct {
-	cfg              *config.Config
-	closers          []func() error
-	llmMgr           productenrich.LLMManager
-	inputParser      productenrich.InputParser
-	understanding    productenrich.ProductUnderstanding
-	imageWorkDir     string
-	shared           *appbootstrap.SharedResources
-	managementClient *management.ClientManager
-	productService   productenrich.ProductService
-	imageService     productimage.Service
+	cfg                   *config.Config
+	closers               []func() error
+	llmMgr                productenrich.LLMManager
+	inputParser           productenrich.InputParser
+	understanding         productenrich.ProductUnderstanding
+	imageWorkDir          string
+	shared                *appbootstrap.SharedResources
+	managementClient      *management.ClientManager
+	productService        productenrich.ProductService
+	imageService          productimage.Service
+	imageSubjectExtractor productimage.SubjectExtractor
+	imageWhiteBgRenderer  productimage.WhiteBackgroundRenderer
+	imageSceneRenderer    productimage.SceneRenderer
 }
 
 type appBootstrap struct {
@@ -91,6 +94,13 @@ type listingKitRouteHandler interface {
 	GenerateListingKit(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	GetTaskPreview(c *gin.Context)
+	GetTaskGenerationTasks(c *gin.Context)
+	GetTaskGenerationQueue(c *gin.Context)
+	GetTaskGenerationReviewSession(c *gin.Context)
+	GetTaskGenerationReviewPreview(c *gin.Context)
+	DispatchTaskGenerationNavigation(c *gin.Context)
+	RetryTaskGenerationTasks(c *gin.Context)
+	ExecuteTaskGenerationAction(c *gin.Context)
 	GetTaskRevisionHistory(c *gin.Context)
 	GetTaskRevisionHistoryDetail(c *gin.Context)
 	GetTaskExport(c *gin.Context)

@@ -33,6 +33,34 @@ func (s *stubHistoryService) GetTaskPreview(ctx context.Context, taskID string, 
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubHistoryService) GetTaskGenerationTasks(ctx context.Context, taskID string, query *listingkit.GenerationTaskQuery) (*listingkit.GenerationTaskPage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryService) GetTaskGenerationQueue(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationQueuePage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryService) GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewSessionResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryService) GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewPreviewResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryService) DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *listingkit.GenerationReviewNavigationDispatchRequest) (*listingkit.GenerationReviewNavigationDispatchResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryService) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *listingkit.RetryGenerationTasksRequest) (*listingkit.GenerationTaskPage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryService) ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *listingkit.ExecuteGenerationActionRequest) (*listingkit.GenerationActionExecutionResult, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubHistoryService) GetTaskRevisionHistory(ctx context.Context, taskID string, query *listingkit.RevisionHistoryQuery) (*listingkit.ListingKitRevisionHistoryPage, error) {
 	s.lastTask = taskID
 	s.lastQuery = query

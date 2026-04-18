@@ -40,12 +40,24 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 	preview.NeedsReview = task.Result.Summary != nil && task.Result.Summary.NeedsReview
 	preview.Catalog = task.Result.CatalogProduct
 	preview.Assets = task.Result.AssetBundle
+	preview.AssetInventory = task.Result.AssetInventorySummary
+	preview.AssetRenderPreviews = append([]AssetRenderPreview(nil), task.Result.AssetRenderPreviews...)
+	preview.PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil), task.Result.PlatformAssetRenderPreviews...)
+	if len(preview.AssetRenderPreviews) == 0 {
+		preview.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
+	}
+	if len(preview.PlatformAssetRenderPreviews) == 0 {
+		preview.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
+	}
+	preview.PlatformAssetRenderPreviews = filterPlatformAssetRenderPreviews(preview.PlatformAssetRenderPreviews, selectedPlatform)
+	preview.AssetGenerationQueue = task.Result.AssetGenerationQueue
+	preview.AssetGenerationOverview = task.Result.AssetGenerationOverview
 	preview.RevisionHistoryMeta = buildRevisionHistoryMeta(task.Result)
 	preview.RevisionHistory = buildRevisionHistoryPreviewItems(task.Result.RevisionHistory)
 
 	if selectedPlatform == "" || selectedPlatform == "amazon" {
 		if task.Result.Amazon != nil {
-			preview.Amazon = buildAmazonPreviewPayload(task.Result.Amazon)
+			preview.Amazon = buildAmazonPreviewPayload(task.Result.Amazon, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "amazon"))
 		} else if selectedPlatform == "amazon" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
@@ -53,7 +65,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 
 	if selectedPlatform == "" || selectedPlatform == "shein" {
 		if task.Result.Shein != nil {
-			preview.Shein = buildSheinPreviewPayload(task.Result.Shein)
+			preview.Shein = buildSheinPreviewPayload(task.Result.Shein, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "shein"))
 			preview.NeedsReview = preview.NeedsReview || preview.Shein.NeedsReview
 		} else if selectedPlatform == "shein" {
 			return nil, ErrPreviewPlatformUnavailable
@@ -62,7 +74,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 
 	if selectedPlatform == "" || selectedPlatform == "temu" {
 		if task.Result.Temu != nil {
-			preview.Temu = buildTemuPreviewPayload(task.Result.Temu)
+			preview.Temu = buildTemuPreviewPayload(task.Result.Temu, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "temu"))
 			preview.NeedsReview = preview.NeedsReview || preview.Temu.NeedsReview
 		} else if selectedPlatform == "temu" {
 			return nil, ErrPreviewPlatformUnavailable
@@ -71,7 +83,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 
 	if selectedPlatform == "" || selectedPlatform == "walmart" {
 		if task.Result.Walmart != nil {
-			preview.Walmart = buildWalmartPreviewPayload(task.Result.Walmart)
+			preview.Walmart = buildWalmartPreviewPayload(task.Result.Walmart, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "walmart"))
 			preview.NeedsReview = preview.NeedsReview || preview.Walmart.NeedsReview
 		} else if selectedPlatform == "walmart" {
 			return nil, ErrPreviewPlatformUnavailable
@@ -123,43 +135,26 @@ func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *List
 	}
 
 	cards := []ListingKitPlatformCard{}
-	if selectedPlatform == "" || selectedPlatform == "amazon" {
-		if card, ok := buildAmazonPreviewCard(result.Amazon); ok {
-			cards = append(cards, card)
-		}
-	}
-	if selectedPlatform == "" || selectedPlatform == "shein" {
-		if card, ok := buildSheinPreviewCard(result.Shein); ok {
-			cards = append(cards, card)
-		}
-	}
-	if selectedPlatform == "" || selectedPlatform == "temu" {
-		if card, ok := buildTemuPreviewCard(result.Temu); ok {
-			cards = append(cards, card)
-		}
-	}
-	if selectedPlatform == "" || selectedPlatform == "walmart" {
-		if card, ok := buildWalmartPreviewCard(result.Walmart); ok {
-			cards = append(cards, card)
-		}
-	}
+	cards = buildPlatformPreviewCards(result, selectedPlatform)
 	header.PlatformCards = cards
 	return header
 }
 
-func buildAmazonPreviewPayload(pkg *AmazonPackage) *AmazonPreviewPayload {
+func buildAmazonPreviewPayload(pkg *AmazonPackage, renderPreviews *PlatformAssetRenderPreviews) *AmazonPreviewPayload {
 	if pkg == nil || pkg.Draft == nil {
 		return nil
 	}
 	return &AmazonPreviewPayload{
-		Title:       pkg.Draft.Title,
-		Brand:       pkg.Draft.Brand,
-		ProductType: pkg.Draft.ProductType,
-		Draft:       pkg.Draft,
+		Title:          pkg.Draft.Title,
+		Brand:          pkg.Draft.Brand,
+		ProductType:    pkg.Draft.ProductType,
+		ImageBundle:    pkg.ImageBundle,
+		RenderPreviews: renderPreviews,
+		Draft:          pkg.Draft,
 	}
 }
 
-func buildSheinPreviewPayload(pkg *sheinpub.Package) *SheinPreviewPayload {
+func buildSheinPreviewPayload(pkg *sheinpub.Package, renderPreviews *PlatformAssetRenderPreviews) *SheinPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
@@ -188,6 +183,8 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package) *SheinPreviewPayload {
 		StatusOverview:    statusOverview,
 		WorkspaceOverview: sheinworkspace.BuildWorkspaceOverview(statusOverview, toSheinWorkspaceSubmitState(readiness), toSheinWorkspaceRepairState(repairCenter)),
 		EditorContext:     buildSheinEditorContext(pkg),
+		ImageBundle:       pkg.ImageBundle,
+		RenderPreviews:    renderPreviews,
 		RequestDraft:      pkg.RequestDraft,
 		PreviewProduct:    pkg.PreviewProduct,
 		InspectionData:    pkg.Inspection,
@@ -257,85 +254,32 @@ func toSheinWorkspaceRepairState(center *SheinRepairCenter) *sheinworkspace.Repa
 	return out
 }
 
-func buildTemuPreviewPayload(pkg *TemuPackage) *TemuPreviewPayload {
+func buildTemuPreviewPayload(pkg *TemuPackage, renderPreviews *PlatformAssetRenderPreviews) *TemuPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
 	return &TemuPreviewPayload{
-		Headline:    pkg.GoodsName,
-		NeedsReview: len(pkg.ReviewNotes) > 0,
-		ReviewNotes: append([]string(nil), pkg.ReviewNotes...),
-		Package:     pkg,
+		Headline:       pkg.GoodsName,
+		NeedsReview:    len(pkg.ReviewNotes) > 0,
+		ReviewNotes:    append([]string(nil), pkg.ReviewNotes...),
+		ImageBundle:    pkg.ImageBundle,
+		RenderPreviews: renderPreviews,
+		Package:        pkg,
 	}
 }
 
-func buildWalmartPreviewPayload(pkg *WalmartPackage) *WalmartPreviewPayload {
+func buildWalmartPreviewPayload(pkg *WalmartPackage, renderPreviews *PlatformAssetRenderPreviews) *WalmartPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
 	return &WalmartPreviewPayload{
-		Headline:    pkg.ProductName,
-		NeedsReview: len(pkg.ReviewNotes) > 0,
-		ReviewNotes: append([]string(nil), pkg.ReviewNotes...),
-		Package:     pkg,
+		Headline:       pkg.ProductName,
+		NeedsReview:    len(pkg.ReviewNotes) > 0,
+		ReviewNotes:    append([]string(nil), pkg.ReviewNotes...),
+		ImageBundle:    pkg.ImageBundle,
+		RenderPreviews: renderPreviews,
+		Package:        pkg,
 	}
-}
-
-func buildAmazonPreviewCard(pkg *AmazonPackage) (ListingKitPlatformCard, bool) {
-	if pkg == nil || pkg.Draft == nil {
-		return ListingKitPlatformCard{}, false
-	}
-	return ListingKitPlatformCard{
-		Platform: "amazon",
-		Status:   "ready",
-		Summary:  firstNonEmpty(pkg.Draft.Title, "已生成 Amazon 草稿"),
-	}, true
-}
-
-func buildSheinPreviewCard(pkg *sheinpub.Package) (ListingKitPlatformCard, bool) {
-	if pkg == nil {
-		return ListingKitPlatformCard{}, false
-	}
-	status := "ready"
-	summary := firstNonEmpty(pkg.SpuName, pkg.ProductNameEn, "已生成 SHEIN 预览")
-	needsReview := len(pkg.ReviewNotes) > 0
-	if pkg.Inspection != nil {
-		needsReview = needsReview || pkg.Inspection.NeedsReview
-		if pkg.Inspection.NeedsReview {
-			status = "needs_review"
-		}
-		summary = firstNonEmpty(joinStrings(pkg.Inspection.Summary, "；"), summary)
-	}
-	return ListingKitPlatformCard{
-		Platform:    "shein",
-		Status:      status,
-		Summary:     summary,
-		NeedsReview: needsReview,
-	}, true
-}
-
-func buildTemuPreviewCard(pkg *TemuPackage) (ListingKitPlatformCard, bool) {
-	if pkg == nil {
-		return ListingKitPlatformCard{}, false
-	}
-	return ListingKitPlatformCard{
-		Platform:    "temu",
-		Status:      previewStatusFromReviewNotes(pkg.ReviewNotes),
-		Summary:     firstNonEmpty(pkg.GoodsName, "已生成 TEMU 资料包"),
-		NeedsReview: len(pkg.ReviewNotes) > 0,
-	}, true
-}
-
-func buildWalmartPreviewCard(pkg *WalmartPackage) (ListingKitPlatformCard, bool) {
-	if pkg == nil {
-		return ListingKitPlatformCard{}, false
-	}
-	return ListingKitPlatformCard{
-		Platform:    "walmart",
-		Status:      previewStatusFromReviewNotes(pkg.ReviewNotes),
-		Summary:     firstNonEmpty(pkg.ProductName, "已生成 Walmart 资料包"),
-		NeedsReview: len(pkg.ReviewNotes) > 0,
-	}, true
 }
 
 func previewStatusFromReviewNotes(reviewNotes []string) string {

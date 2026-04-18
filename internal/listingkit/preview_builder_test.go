@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog"
+	common "task-processor/internal/publishing/common"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -36,6 +37,79 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 					{ID: "asset-main", Kind: asset.KindMainImage, URL: "https://cdn.example.com/main.jpg"},
 				},
 			},
+			AssetInventorySummary: &asset.InventorySummary{
+				TotalRecords:  3,
+				SelectedCount: 2,
+			},
+			AssetRenderPreviews: []AssetRenderPreview{
+				{
+					AssetID:             "asset-main",
+					Kind:                asset.KindSellingPointImage,
+					RenderProfile:       "shein_selling_point",
+					TemplateLabel:       "SHEIN Editorial Main",
+					PreviewFormat:       "svg",
+					PreviewSVG:          "<svg>preview</svg>",
+					VisualMode:          "selling_point",
+					LayoutEngine:        "selling_point_output_v2",
+					RenderOutputVersion: "v2",
+					DrawOutputVersion:   "v1",
+					DrawPreviewVersion:  "v1",
+					LayerTypes:          []string{"background", "badge", "text"},
+					Regions:             []string{"full_canvas", "title_band", "body_copy"},
+					StyleTokens:         []string{"bg-soft", "badge-dark", "copy-primary"},
+				},
+			},
+			AssetGenerationQueue: &GenerationWorkQueue{
+				Summary: &GenerationWorkQueueSummary{
+					TotalItems:         1,
+					QualityGradeCounts: map[string]int{"provisional": 1},
+				},
+				Items: []GenerationWorkQueueItem{{
+					Platform:          "shein",
+					Slot:              "main",
+					State:             "fallback_in_use",
+					Retryable:         true,
+					QualityGrade:      "provisional",
+					QualityGradeLabel: "Provisional",
+				}},
+			},
+			AssetGenerationOverview: &AssetGenerationOverview{
+				PrimaryAction:    "Upgrade Fallback Assets",
+				PrimaryActionKey: "upgrade_fallback_assets",
+				PrimaryActionTarget: &AssetGenerationActionTarget{
+					ActionKey: "upgrade_fallback_assets",
+					Filters: &AssetGenerationRecommendedFilters{
+						QualityGrade:      "provisional",
+						QualityGradeLabel: "Provisional",
+						Platforms:         []string{"shein"},
+						RetryableOnly:     true,
+					},
+					QueueQuery: &GenerationQueueQuery{
+						QualityGrade:      "provisional",
+						QualityGradeLabel: "Provisional",
+						Retryable:         true,
+						RetryablePresent:  true,
+						SortBy:            "quality_grade",
+						SortOrder:         "asc",
+					},
+					RetryRequest: &RetryGenerationTasksRequest{
+						QualityGrade:      "provisional",
+						QualityGradeLabel: "Provisional",
+					},
+				},
+				PrimaryActionReason:       "1 asset slots are still using fallback outputs.",
+				SecondaryActionKeys:       []string{"retry_provisional_slots"},
+				DominantQualityGrade:      "provisional",
+				DominantQualityGradeLabel: "Provisional",
+				BlockingPlatforms:         []string{"shein"},
+				BlockingQualityGrades:     []string{"provisional"},
+				RecommendedFilters: &AssetGenerationRecommendedFilters{
+					QualityGrade:  "provisional",
+					Platforms:     []string{"shein"},
+					RetryableOnly: true,
+				},
+				RetryableCount: 1,
+			},
 			Summary: &GenerationSummary{
 				SourceType:   "text",
 				ImageCount:   2,
@@ -48,7 +122,21 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 				BrandName:    "DemoBrand",
 				CategoryPath: []string{"Electronics", "Headphones"},
 				CategoryID:   123,
-				ReviewNotes:  []string{"确认主销售属性"},
+				ImageBundle: &common.PublishImageBundle{
+					Platform: "shein",
+					Main: &common.BundleSlot{
+						AssetID:         "asset-main",
+						URL:             "https://cdn.example.com/main.jpg",
+						TemplateLabel:   "SHEIN Editorial Main",
+						IdealKind:       string(asset.KindModelImage),
+						StateLabel:      "fallback_in_use",
+						RetryHint:       "retry generation for this slot to replace the fallback asset",
+						SatisfiedBy:     "fallback_asset",
+						FallbackFrom:    string(asset.KindModelImage),
+						ExecutionStatus: "fallback",
+					},
+				},
+				ReviewNotes: []string{"确认主销售属性"},
 				Inspection: &SheinInspection{
 					NeedsReview: true,
 					Summary:     []string{"销售属性仍需人工确认"},
@@ -77,8 +165,77 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 	if preview.Assets == nil || len(preview.Assets.Assets) != 1 {
 		t.Fatalf("assets = %+v", preview.Assets)
 	}
+	if preview.AssetInventory == nil || preview.AssetInventory.TotalRecords != 3 {
+		t.Fatalf("asset inventory = %+v", preview.AssetInventory)
+	}
+	if len(preview.AssetRenderPreviews) != 1 || preview.AssetRenderPreviews[0].PreviewFormat != "svg" {
+		t.Fatalf("asset render previews = %+v", preview.AssetRenderPreviews)
+	}
+	if len(preview.PlatformAssetRenderPreviews) != 1 {
+		t.Fatalf("platform asset render previews = %+v", preview.PlatformAssetRenderPreviews)
+	}
+	if preview.PlatformAssetRenderPreviews[0].Platform != "shein" {
+		t.Fatalf("platform asset render previews = %+v, want shein platform", preview.PlatformAssetRenderPreviews)
+	}
+	if preview.PlatformAssetRenderPreviews[0].Main == nil || preview.PlatformAssetRenderPreviews[0].Main.PreviewSVG != "<svg>preview</svg>" {
+		t.Fatalf("platform asset render previews main = %+v", preview.PlatformAssetRenderPreviews[0].Main)
+	}
+	if preview.PlatformAssetRenderPreviews[0].Main.Slot != "main" {
+		t.Fatalf("platform asset render previews main = %+v, want main slot", preview.PlatformAssetRenderPreviews[0].Main)
+	}
+	if preview.PlatformAssetRenderPreviews[0].Main.VisualMode != "selling_point" || preview.PlatformAssetRenderPreviews[0].Main.LayoutEngine != "selling_point_output_v2" {
+		t.Fatalf("platform asset render previews main summary = %+v", preview.PlatformAssetRenderPreviews[0].Main)
+	}
+	if preview.PlatformAssetRenderPreviews[0].Summary == nil {
+		t.Fatalf("platform asset render previews summary = %+v", preview.PlatformAssetRenderPreviews[0])
+	}
+	if preview.PlatformAssetRenderPreviews[0].Summary.TotalPreviews != 1 || !preview.PlatformAssetRenderPreviews[0].Summary.MainAvailable {
+		t.Fatalf("platform asset render previews summary = %+v", preview.PlatformAssetRenderPreviews[0].Summary)
+	}
+	if preview.PlatformAssetRenderPreviews[0].Summary.CapabilityCounts["badge_preview"] != 1 || preview.PlatformAssetRenderPreviews[0].Summary.CapabilityCounts["copy_preview"] != 1 {
+		t.Fatalf("platform asset render previews summary = %+v", preview.PlatformAssetRenderPreviews[0].Summary)
+	}
+	if preview.AssetGenerationQueue == nil || preview.AssetGenerationQueue.Summary == nil || preview.AssetGenerationQueue.Summary.TotalItems != 1 {
+		t.Fatalf("asset generation queue = %+v", preview.AssetGenerationQueue)
+	}
+	if preview.AssetGenerationOverview == nil || preview.AssetGenerationOverview.PrimaryAction != "Upgrade Fallback Assets" {
+		t.Fatalf("asset generation overview = %+v, want fallback upgrade CTA", preview.AssetGenerationOverview)
+	}
+	if preview.AssetGenerationOverview.PrimaryActionKey != "upgrade_fallback_assets" {
+		t.Fatalf("asset generation overview = %+v, want fallback action key", preview.AssetGenerationOverview)
+	}
+	if preview.AssetGenerationOverview.PrimaryActionTarget == nil || preview.AssetGenerationOverview.PrimaryActionTarget.RetryRequest == nil {
+		t.Fatalf("asset generation overview = %+v, want executable primary action target", preview.AssetGenerationOverview)
+	}
 	if preview.Shein == nil {
 		t.Fatal("expected shein payload")
+	}
+	if preview.Shein.ImageBundle == nil {
+		t.Fatalf("shein image bundle = %+v", preview.Shein)
+	}
+	if preview.Shein.ImageBundle.Main == nil || preview.Shein.ImageBundle.Main.ExecutionStatus != "fallback" {
+		t.Fatalf("shein image bundle main = %+v, want fallback status", preview.Shein.ImageBundle.Main)
+	}
+	if preview.Shein.ImageBundle.Main.TemplateLabel != "SHEIN Editorial Main" {
+		t.Fatalf("shein image bundle main = %+v, want template label", preview.Shein.ImageBundle.Main)
+	}
+	if preview.Shein.ImageBundle.Main.StateLabel != "fallback_in_use" {
+		t.Fatalf("shein image bundle main = %+v, want state_label", preview.Shein.ImageBundle.Main)
+	}
+	if preview.Shein.ImageBundle.Main.RetryHint == "" {
+		t.Fatalf("shein image bundle main = %+v, want retry hint", preview.Shein.ImageBundle.Main)
+	}
+	if preview.Shein.RenderPreviews == nil || preview.Shein.RenderPreviews.Main == nil {
+		t.Fatalf("shein render previews = %+v", preview.Shein.RenderPreviews)
+	}
+	if preview.Shein.RenderPreviews.Main.PreviewSVG != "<svg>preview</svg>" {
+		t.Fatalf("shein render previews main = %+v", preview.Shein.RenderPreviews.Main)
+	}
+	if len(preview.Shein.RenderPreviews.Main.LayerTypes) != 3 || preview.Shein.RenderPreviews.Main.StyleTokens[1] != "badge-dark" {
+		t.Fatalf("shein render previews main summary = %+v", preview.Shein.RenderPreviews.Main)
+	}
+	if preview.Shein.RenderPreviews.Summary == nil || preview.Shein.RenderPreviews.Summary.TotalPreviews != 1 {
+		t.Fatalf("shein render previews summary = %+v", preview.Shein.RenderPreviews.Summary)
 	}
 	if preview.Amazon != nil || preview.Temu != nil || preview.Walmart != nil {
 		t.Fatal("expected only selected platform payload")
@@ -88,6 +245,18 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 	}
 	if preview.Overview == nil || len(preview.Overview.PlatformCards) != 1 {
 		t.Fatalf("overview cards = %+v, want single shein card", preview.Overview)
+	}
+	if preview.Overview.PlatformCards[0].PreviewSummary == nil || preview.Overview.PlatformCards[0].PreviewSummary.TotalPreviews != 1 {
+		t.Fatalf("overview card preview summary = %+v", preview.Overview.PlatformCards[0])
+	}
+	if preview.Overview.PlatformCards[0].PreviewCapabilityCounts["badge_preview"] != 1 {
+		t.Fatalf("overview card capability counts = %+v", preview.Overview.PlatformCards[0])
+	}
+	if preview.Overview.PlatformCards[0].PrimaryActionKey != "upgrade_fallback_assets" {
+		t.Fatalf("overview card primary action = %+v", preview.Overview.PlatformCards[0])
+	}
+	if preview.Overview.PlatformCards[0].PrimaryActionTarget == nil || preview.Overview.PlatformCards[0].PrimaryActionTarget.RetryRequest == nil {
+		t.Fatalf("overview card primary action target = %+v", preview.Overview.PlatformCards[0])
 	}
 	if preview.Shein.PreviewProduct == nil || preview.Shein.PreviewProduct.SPUName != "Wireless Earbuds" {
 		t.Fatalf("unexpected shein preview product: %+v", preview.Shein.PreviewProduct)

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"task-processor/internal/asset"
+	assetgeneration "task-processor/internal/asset/generation"
+	assetrecipe "task-processor/internal/asset/recipe"
 	"task-processor/internal/catalog"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
@@ -32,6 +34,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	result.CanonicalProduct = canonical
 	result.CatalogProduct = catalog.BuildProduct(canonical)
 	result.AssetBundle = asset.BuildBundle(canonical, nil)
+	result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
 
 	var imageResult *productimage.ImageProcessResult
 	if shouldProcessImages(task.Request) && s.imageSvc != nil {
@@ -49,18 +52,114 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 				markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusCompleted), "")
 				result.ImageAssets = imageResult
 				result.AssetBundle = asset.BuildBundle(canonical, imageResult)
+				result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
 			}
+		}
+	}
+
+	inventory := asset.BuildInventory(task.ID, result.AssetBundle)
+	recipesByPlatform := resolveRecipesForPlatforms(s.assetRecipeResolver, task.Request.Platforms, canonical)
+	baseRecipes := baselineGenerationRecipes()
+	var generationPlan *assetgeneration.Result
+	if inventory != nil {
+		if s.assetRepo != nil {
+			if err := s.assetRepo.SaveInventory(ctx, inventory); err != nil {
+				appendWarning(result, "asset inventory persistence failed: "+err.Error())
+			}
+		}
+		if s.assetGenerator != nil && len(baseRecipes) > 0 {
+			execution, _ := s.assetGenerator.Execute(ctx, assetgeneration.Request{
+				TaskID:    task.ID,
+				Product:   result.CatalogProduct,
+				Inventory: inventory,
+				Recipes:   append([]assetrecipe.AssetRecipe(nil), baseRecipes...),
+			})
+			if execution != nil && len(execution.Assets) > 0 {
+				inventory.Records = append(inventory.Records, execution.Assets...)
+				inventory.Summary = rebuildInventorySummary(inventory)
+				result.AssetBundle = rebuildBundleWithGeneratedAssets(result.AssetBundle, execution.Assets)
+				if s.assetRepo != nil {
+					_ = s.assetRepo.SaveInventory(ctx, inventory)
+				}
+			}
+		}
+		if s.assetGenerator != nil && s.assetRecipeResolver != nil {
+			generationPlan, _ = s.assetGenerator.Plan(ctx, assetgeneration.Request{
+				TaskID:    task.ID,
+				Product:   result.CatalogProduct,
+				Inventory: inventory,
+				Recipes:   flattenRecipes(recipesByPlatform),
+			})
+			if generationPlan != nil && len(generationPlan.Tasks) > 0 {
+				dispatchResult, _ := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
+					TaskID:    task.ID,
+					Product:   result.CatalogProduct,
+					Inventory: inventory,
+					Tasks:     generationPlan.Tasks,
+				})
+				if dispatchResult != nil {
+					generationPlan.Tasks = append([]assetgeneration.Task(nil), dispatchResult.Tasks...)
+					if len(dispatchResult.Assets) > 0 {
+						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
+						inventory.Summary = rebuildInventorySummary(inventory)
+						result.AssetBundle = rebuildBundleWithGeneratedAssets(result.AssetBundle, dispatchResult.Assets)
+						if s.assetRepo != nil {
+							_ = s.assetRepo.SaveInventory(ctx, inventory)
+						}
+					}
+				}
+			}
+		}
+		result.AssetInventorySummary = inventory.Summary
+		if result.AssetInventorySummary != nil {
+			result.AssetInventorySummary.RecipeCount = len(baseRecipes) + len(flattenRecipes(recipesByPlatform))
 		}
 	}
 
 	final := s.assembler.Assemble(task, canonical, imageResult)
 	final.CatalogProduct = result.CatalogProduct
 	final.AssetBundle = result.AssetBundle
+	final.AssetInventorySummary = result.AssetInventorySummary
 	final.ChildTasks = append([]ChildTaskState(nil), result.ChildTasks...)
 	if final.Summary == nil {
 		final.Summary = &GenerationSummary{}
 	}
 	final.Summary.Warnings = uniqueStrings(append(final.Summary.Warnings, result.Summary.Warnings...))
+	if inventory != nil {
+		var tasksToPersist []assetgeneration.Task
+		attachPlatformImageBundles(final, inventory, recipesByPlatform, generationPlan, s.assetBundleBuilder)
+		pendingTasks := collectPlatformGenerationTasks(final)
+		if s.assetGenerator != nil && len(pendingTasks) > 0 {
+			dispatchResult, _ := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
+				TaskID:    task.ID,
+				Product:   result.CatalogProduct,
+				Inventory: inventory,
+				Tasks:     pendingTasks,
+			})
+			if dispatchResult != nil {
+				if len(dispatchResult.Assets) > 0 {
+					inventory.Records = append(inventory.Records, dispatchResult.Assets...)
+					inventory.Summary = rebuildInventorySummary(inventory)
+					result.AssetBundle = rebuildBundleWithGeneratedAssets(result.AssetBundle, dispatchResult.Assets)
+					final.AssetBundle = result.AssetBundle
+					final.AssetInventorySummary = inventory.Summary
+					if s.assetRepo != nil {
+						_ = s.assetRepo.SaveInventory(ctx, inventory)
+					}
+				}
+				attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, s.assetBundleBuilder)
+				pendingTasks = dispatchResult.Tasks
+				tasksToPersist = dispatchResult.Tasks
+			}
+		}
+		decorateListingKitResultGeneration(final, tasksToPersist)
+		if s.assetRepo != nil && len(tasksToPersist) > 0 {
+			if err := s.assetRepo.SaveGenerationTasks(ctx, task.ID, tasksToPersist); err != nil {
+				appendWarning(final, "asset generation task persistence failed: "+err.Error())
+			}
+		}
+	}
+	syncAssetRenderPreviews(final)
 	return final, nil
 }
 
@@ -102,7 +201,7 @@ func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
 		ProductURL:  task.Request.ProductURL,
 		ImageURLs:   append([]string(nil), task.Request.ImageURLs...),
 		Text:        task.Request.Text,
-		Marketplace: "amazon",
+		Marketplace: detectImageMarketplace(task.Request),
 		Country:     task.Request.Country,
 	}
 }
@@ -151,4 +250,15 @@ func detectSourceType(req *GenerateRequest) string {
 	default:
 		return "unknown"
 	}
+}
+
+func detectImageMarketplace(req *GenerateRequest) string {
+	if req == nil {
+		return "amazon"
+	}
+	platforms := normalizePlatforms(req.Platforms)
+	if len(platforms) == 0 {
+		return "amazon"
+	}
+	return platforms[0]
 }

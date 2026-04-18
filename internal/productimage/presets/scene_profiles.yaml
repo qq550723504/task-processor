@@ -1,0 +1,211 @@
+default: local_canvas_default
+presets:
+  - name: local_canvas_default
+    group: default
+    blur_radius: 14
+    background_brightness: -6
+    background_contrast: 8
+    subject_scale: 0.78
+    background_template: background/default-soft
+    overlay_template: overlay/neutral-card
+    layout_variant: center_card
+    visual_mode: catalog
+    copy_slots: [headline]
+    badge_slots: [badge_top_left]
+    measurement_slots: [measurement_bottom]
+    detail_anchor_slots: [detail_right]
+    max_copy_lines: 2
+    max_badges: 1
+    measurement_mode: single_axis
+    detail_anchor_mode: single_anchor
+    card_color: { r: 245, g: 245, b: 245, a: 230 }
+  - name: shein_model_editorial
+    group: editorial
+    blur_radius: 12
+    background_brightness: 2
+    background_contrast: 10
+    subject_scale: 0.84
+    background_template: background/shein-soft-studio
+    overlay_template: overlay/editorial-frame
+    layout_variant: hero_editorial
+    visual_mode: editorial
+    copy_slots: [headline, subheadline]
+    badge_slots: [badge_top_right]
+    measurement_slots: [measurement_bottom]
+    detail_anchor_slots: [detail_left, detail_right]
+    max_copy_lines: 2
+    max_badges: 1
+    measurement_mode: single_axis
+    detail_anchor_mode: dual_anchor
+    card_color: { r: 250, g: 247, b: 247, a: 236 }
+  - name: shein_lifestyle_gallery
+    group: lifestyle
+    blur_radius: 16
+    background_brightness: -4
+    background_contrast: 10
+    subject_scale: 0.76
+    background_template: background/shein-lifestyle-room
+    overlay_template: overlay/gallery-soft
+    layout_variant: gallery_lifestyle
+    visual_mode: lifestyle
+    copy_slots: [headline]
+    badge_slots: [badge_top_left]
+    measurement_slots: [measurement_bottom]
+    detail_anchor_slots: [detail_right]
+    max_copy_lines: 2
+    max_badges: 1
+    measurement_mode: single_axis
+    detail_anchor_mode: single_anchor
+    card_color: { r: 244, g: 244, b: 244, a: 228 }
+  - name: shein_selling_point
+    group: spec_detail
+    blur_radius: 10
+    background_brightness: -2
+    background_contrast: 6
+    subject_scale: 0.68
+    background_template: background/shein-detail-clean
+    overlay_template: overlay/selling-point-card
+    layout_variant: info_card_right
+    visual_mode: selling_point
+    copy_slots: [headline, bullet_1, bullet_2]
+    badge_slots: [badge_top_left, badge_top_right]
+    measurement_slots: [measurement_bottom]
+    detail_anchor_slots: [detail_left, detail_right]
+    max_copy_lines: 3
+    max_badges: 2
+    measurement_mode: single_axis
+    detail_anchor_mode: dual_anchor
+    card_color: { r: 247, g: 247, b: 247, a: 238 }
+  - name: shein_size_infographic
+    group: spec_detail
+    blur_radius: 10
+    background_brightness: -2
+    background_contrast: 6
+    subject_scale: 0.68
+    background_template: background/shein-size-board
+    overlay_template: overlay/measurement-grid
+    layout_variant: measurement_sheet
+    visual_mode: size_infographic
+    copy_slots: [headline]
+    badge_slots: [badge_top_left]
+    measurement_slots: [measurement_top, measurement_bottom]
+    detail_anchor_slots: [detail_center]
+    max_copy_lines: 2
+    max_badges: 1
+    measurement_mode: dual_axis
+    detail_anchor_mode: center_anchor
+    card_color: { r: 247, g: 247, b: 247, a: 238 }
+  - name: amazon_lifestyle_scene
+    group: lifestyle
+    blur_radius: 16
+    background_brightness: -4
+    background_contrast: 10
+    subject_scale: 0.76
+    background_template: background/amazon-home-lifestyle
+    overlay_template: overlay/amazon-minimal
+    layout_variant: lifestyle_card
+    visual_mode: lifestyle
+    copy_slots: [headline]
+    badge_slots: [badge_top_left]
+    measurement_slots: [measurement_bottom]
+    detail_anchor_slots: [detail_right]
+    max_copy_lines: 2
+    max_badges: 1
+    measurement_mode: single_axis
+    detail_anchor_mode: single_anchor
+    card_color: { r: 244, g: 244, b: 244, a: 228 }
+  - name: amazon_size_infographic
+    group: spec_detail
+    blur_radius: 10
+    background_brightness: -2
+    background_contrast: 6
+    subject_scale: 0.68
+    background_template: background/amazon-infographic
+    overlay_template: overlay/measurement-grid
+    layout_variant: infographic_sheet
+    visual_mode: size_infographic
+    copy_slots: [headline, subheadline]
+    badge_slots: [badge_top_right]
+    measurement_slots: [measurement_top, measurement_bottom]
+    detail_anchor_slots: [detail_left]
+    max_copy_lines: 2
+    max_badges: 1
+    measurement_mode: dual_axis
+    detail_anchor_mode: single_anchor
+    card_color: { r: 247, g: 247, b: 247, a: 238 }
+  - name: temu_conversion_scene
+    group: lifestyle
+    blur_radius: 16
+    background_brightness: -4
+    background_contrast: 10
+    subject_scale: 0.76
+    background_template: background/temu-conversion-pop
+    overlay_template: overlay/temu-badge-stack
+    layout_variant: promo_lifestyle
+    visual_mode: conversion
+    copy_slots: [headline, promo_copy]
+    badge_slots: [badge_top_left, badge_bottom_right]
+    measurement_slots: [measurement_bottom]
+    detail_anchor_slots: [detail_right]
+    max_copy_lines: 2
+    max_badges: 2
+    measurement_mode: single_axis
+    detail_anchor_mode: single_anchor
+    card_color: { r: 244, g: 244, b: 244, a: 228 }
+  - name: temu_detail_focus
+    group: spec_detail
+    blur_radius: 10
+    background_brightness: -2
+    background_contrast: 6
+    subject_scale: 0.68
+    background_template: background/temu-detail-board
+    overlay_template: overlay/detail-callout
+    layout_variant: detail_focus
+    visual_mode: detail
+    copy_slots: [headline, bullet_1]
+    badge_slots: [badge_top_left]
+    measurement_slots: [measurement_bottom]
+    detail_anchor_slots: [detail_left, detail_center]
+    max_copy_lines: 2
+    max_badges: 1
+    measurement_mode: single_axis
+    detail_anchor_mode: dual_anchor
+    card_color: { r: 247, g: 247, b: 247, a: 238 }
+  - name: walmart_catalog_scene
+    group: lifestyle
+    blur_radius: 16
+    background_brightness: -4
+    background_contrast: 10
+    subject_scale: 0.76
+    background_template: background/walmart-room-soft
+    overlay_template: overlay/walmart-clean
+    layout_variant: catalog_lifestyle
+    visual_mode: catalog
+    copy_slots: [headline]
+    badge_slots: [badge_top_left]
+    measurement_slots: [measurement_bottom]
+    detail_anchor_slots: [detail_right]
+    max_copy_lines: 2
+    max_badges: 1
+    measurement_mode: single_axis
+    detail_anchor_mode: single_anchor
+    card_color: { r: 244, g: 244, b: 244, a: 228 }
+  - name: walmart_spec_support
+    group: spec_detail
+    blur_radius: 10
+    background_brightness: -2
+    background_contrast: 6
+    subject_scale: 0.68
+    background_template: background/walmart-spec-board
+    overlay_template: overlay/spec-support
+    layout_variant: spec_sheet
+    visual_mode: spec_support
+    copy_slots: [headline, bullet_1]
+    badge_slots: [badge_top_right]
+    measurement_slots: [measurement_top, measurement_bottom]
+    detail_anchor_slots: [detail_left]
+    max_copy_lines: 2
+    max_badges: 1
+    measurement_mode: dual_axis
+    detail_anchor_mode: single_anchor
+    card_color: { r: 247, g: 247, b: 247, a: 238 }

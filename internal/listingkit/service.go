@@ -5,25 +5,40 @@ import (
 	"strings"
 
 	"task-processor/internal/amazonlisting"
+	assetbundle "task-processor/internal/asset/bundle"
+	assetgeneration "task-processor/internal/asset/generation"
+	assetrecipe "task-processor/internal/asset/recipe"
+	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type service struct {
-	repo          Repository
-	productSvc    ProductService
-	imageSvc      ImageService
-	assembler     Assembler
-	taskSubmitter TaskSubmitter
+	repo                Repository
+	productSvc          ProductService
+	imageSvc            ImageService
+	assembler           Assembler
+	assetRepo           AssetRepository
+	reviewRepo          GenerationReviewRepository
+	assetRecipeResolver AssetRecipeResolver
+	assetBundleBuilder  AssetBundleBuilder
+	assetGenerator      AssetGenerationService
+	taskSubmitter       TaskSubmitter
 }
 
 type ServiceConfig struct {
-	Repository     Repository
-	ProductService ProductService
-	ImageService   ImageService
-	Assembler      Assembler
-	TaskSubmitter  TaskSubmitter
+	Repository             Repository
+	ProductService         ProductService
+	ImageService           ImageService
+	Assembler              Assembler
+	AssetRepository        AssetRepository
+	ReviewRepository       GenerationReviewRepository
+	AssetRecipeResolver    AssetRecipeResolver
+	AssetBundleBuilder     AssetBundleBuilder
+	AssetGenerationService AssetGenerationService
+	TaskSubmitter          TaskSubmitter
 }
 
 func NewService(config *ServiceConfig) (Service, error) {
@@ -44,12 +59,32 @@ func NewService(config *ServiceConfig) (Service, error) {
 			SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(nil),
 		})
 	}
+	if config.AssetRepository == nil {
+		config.AssetRepository = assetrepo.NewMemRepository()
+	}
+	if config.ReviewRepository == nil {
+		config.ReviewRepository = reviewstore.NewMemRepository()
+	}
+	if config.AssetRecipeResolver == nil {
+		config.AssetRecipeResolver = newDefaultAssetRecipeResolver()
+	}
+	if config.AssetBundleBuilder == nil {
+		config.AssetBundleBuilder = newDefaultAssetBundleBuilder()
+	}
+	if config.AssetGenerationService == nil {
+		config.AssetGenerationService = newDefaultAssetGenerationService()
+	}
 	return &service{
-		repo:          config.Repository,
-		productSvc:    config.ProductService,
-		imageSvc:      config.ImageService,
-		assembler:     config.Assembler,
-		taskSubmitter: config.TaskSubmitter,
+		repo:                config.Repository,
+		productSvc:          config.ProductService,
+		imageSvc:            config.ImageService,
+		assembler:           config.Assembler,
+		assetRepo:           config.AssetRepository,
+		reviewRepo:          config.ReviewRepository,
+		assetRecipeResolver: config.AssetRecipeResolver,
+		assetBundleBuilder:  config.AssetBundleBuilder,
+		assetGenerator:      config.AssetGenerationService,
+		taskSubmitter:       config.TaskSubmitter,
 	}, nil
 }
 
@@ -104,6 +139,18 @@ type amazonDraftBuilder struct {
 
 func newAmazonDraftBuilder() AmazonDraftBuilder {
 	return &amazonDraftBuilder{assembler: amazonlisting.NewAssembler()}
+}
+
+func newDefaultAssetRecipeResolver() AssetRecipeResolver {
+	return assetrecipe.NewStaticResolver()
+}
+
+func newDefaultAssetBundleBuilder() AssetBundleBuilder {
+	return assetbundle.NewBuilder()
+}
+
+func newDefaultAssetGenerationService() AssetGenerationService {
+	return assetgeneration.NewService(assetgeneration.Config{})
 }
 
 func (b *amazonDraftBuilder) Build(req *GenerateRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {

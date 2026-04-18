@@ -10,10 +10,15 @@ import (
 	"task-processor/internal/amazonlisting"
 	amazonlistingapi "task-processor/internal/amazonlisting/api"
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
+	assetbundle "task-processor/internal/asset/bundle"
+	assetgeneration "task-processor/internal/asset/generation"
+	assetrecipe "task-processor/internal/asset/recipe"
+	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
+	"task-processor/internal/listingkit/reviewstore"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/productenrich"
 	productapi "task-processor/internal/productenrich/api"
@@ -228,6 +233,10 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 	if err != nil {
 		return nil, fmt.Errorf("create white background renderer: %w", err)
 	}
+	sceneRenderer, err := buildSceneRenderer(deps.cfg, deps.imageWorkDir)
+	if err != nil {
+		return nil, fmt.Errorf("create scene renderer: %w", err)
+	}
 
 	imageCapabilities := productimage.StrictServiceCapabilities()
 	imageSvc, err := productimage.NewService(&productimage.ServiceConfig{
@@ -241,6 +250,7 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 		SubjectExtractor:      subjectExtractor,
 		ImageCleaner:          imageCleaner,
 		WhiteBgRenderer:       whiteBgRenderer,
+		SceneRenderer:         sceneRenderer,
 		AssetPublisher:        buildImageAssetPublisher(deps.cfg, logger),
 		CleanupTemporaryFiles: deps.cfg.ProductImage.Lifecycle.CleanupTemporaryFiles,
 		ReuseExistingAssets:   deps.cfg.ProductImage.Lifecycle.ReuseExistingAssets,
@@ -250,6 +260,9 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 	}
 
 	deps.imageService = imageSvc
+	deps.imageSubjectExtractor = subjectExtractor
+	deps.imageWhiteBgRenderer = whiteBgRenderer
+	deps.imageSceneRenderer = sceneRenderer
 
 	imageProcessor, err := productimagepipeline.NewProcessor(imageSvc, imageRepo, logger, 2)
 	if err != nil {
@@ -313,6 +326,10 @@ func buildWhiteBackgroundRenderer(cfg *config.Config, imageWorkDir string) (prod
 	}
 
 	return productimage.NewHybridWhiteBackgroundRenderer(imageWorkDir, client)
+}
+
+func buildSceneRenderer(_ *config.Config, imageWorkDir string) (productimage.SceneRenderer, error) {
+	return productimage.NewDefaultSceneRenderer(imageWorkDir)
 }
 
 func buildImageAssetPublisher(cfg *config.Config, logger *logrus.Logger) productimage.AssetPublisher {
@@ -410,10 +427,31 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	}
 	deps.closers = append(deps.closers, closers...)
 
+	assetRepository, assetClosers, err := buildAssetRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, assetClosers...)
+
+	reviewRepository, reviewClosers, err := buildListingKitReviewRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, reviewClosers...)
+
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
-		Repository:     repo,
-		ProductService: deps.productService,
-		ImageService:   deps.imageService,
+		Repository:          repo,
+		ProductService:      deps.productService,
+		ImageService:        deps.imageService,
+		AssetRepository:     assetRepository,
+		ReviewRepository:    reviewRepository,
+		AssetRecipeResolver: assetrecipe.NewStaticResolver(),
+		AssetBundleBuilder:  assetbundle.NewBuilder(),
+		AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
+			SubjectExtractor:        deps.imageSubjectExtractor,
+			WhiteBackgroundRenderer: deps.imageWhiteBgRenderer,
+			DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(deps.imageSceneRenderer),
+		}),
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
 			SheinCategoryResolver:      sheinpub.NewManagedCategoryResolver(deps.managementClient),
 			SheinAttributeResolver:     sheinpub.NewManagedAttributeResolver(deps.managementClient),
@@ -438,6 +476,32 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
 	return &listingKitModule{handler: handler, pool: pool}, nil
+}
+
+func buildListingKitReviewRepository(cfg *config.Config, logger *logrus.Logger) (reviewstore.Repository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingKitReviewRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing kit review repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, using in-memory listingkit review repository")
+	return reviewstore.NewMemRepository(), nil, nil
+}
+
+func buildAssetRepository(cfg *config.Config, logger *logrus.Logger) (assetrepo.Repository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBAssetRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create asset repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, using in-memory asset repository")
+	return assetrepo.NewMemRepository(), nil, nil
 }
 
 func buildListingKitTaskRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.Repository, []func() error, error) {

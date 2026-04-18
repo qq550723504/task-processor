@@ -43,10 +43,20 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 	if err != nil {
 		return nil, err
 	}
+	var resultPayload *ListingKitResult
+	if task.Result != nil {
+		copied := *task.Result
+		tasks, listErr := s.listAssetGenerationTasks(ctx, task.ID)
+		if listErr != nil {
+			return nil, listErr
+		}
+		decorateListingKitResultGeneration(&copied, tasks)
+		resultPayload = &copied
+	}
 	result := &TaskResult{
 		TaskID:    task.ID,
 		Status:    task.Status,
-		Result:    task.Result,
+		Result:    resultPayload,
 		Error:     task.Error,
 		CreatedAt: task.CreatedAt,
 	}

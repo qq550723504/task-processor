@@ -31,6 +31,34 @@ func (s *stubRevisionService) GetTaskPreview(ctx context.Context, taskID string,
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubRevisionService) GetTaskGenerationTasks(ctx context.Context, taskID string, query *listingkit.GenerationTaskQuery) (*listingkit.GenerationTaskPage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) GetTaskGenerationQueue(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationQueuePage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewSessionResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewPreviewResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *listingkit.GenerationReviewNavigationDispatchRequest) (*listingkit.GenerationReviewNavigationDispatchResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *listingkit.RetryGenerationTasksRequest) (*listingkit.GenerationTaskPage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *listingkit.ExecuteGenerationActionRequest) (*listingkit.GenerationActionExecutionResult, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubRevisionService) GetTaskRevisionHistory(ctx context.Context, taskID string, query *listingkit.RevisionHistoryQuery) (*listingkit.ListingKitRevisionHistoryPage, error) {
 	return nil, errors.New("not implemented")
 }

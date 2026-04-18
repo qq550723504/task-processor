@@ -32,6 +32,34 @@ func (s *stubHistoryDetailService) GetTaskPreview(ctx context.Context, taskID st
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubHistoryDetailService) GetTaskGenerationTasks(ctx context.Context, taskID string, query *listingkit.GenerationTaskQuery) (*listingkit.GenerationTaskPage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) GetTaskGenerationQueue(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationQueuePage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewSessionResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewPreviewResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *listingkit.GenerationReviewNavigationDispatchRequest) (*listingkit.GenerationReviewNavigationDispatchResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *listingkit.RetryGenerationTasksRequest) (*listingkit.GenerationTaskPage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *listingkit.ExecuteGenerationActionRequest) (*listingkit.GenerationActionExecutionResult, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubHistoryDetailService) GetTaskRevisionHistory(ctx context.Context, taskID string, query *listingkit.RevisionHistoryQuery) (*listingkit.ListingKitRevisionHistoryPage, error) {
 	return nil, errors.New("not implemented")
 }

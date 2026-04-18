@@ -3,11 +3,17 @@ package asset
 type Kind string
 
 const (
-	KindSourceImage   Kind = "source_image"
-	KindMainImage     Kind = "main_image"
-	KindWhiteBgImage  Kind = "white_bg_image"
-	KindSubjectCutout Kind = "subject_cutout"
-	KindGalleryImage  Kind = "gallery_image"
+	KindSourceImage       Kind = "source_image"
+	KindCleanImage        Kind = "clean_image"
+	KindMainImage         Kind = "main_image"
+	KindWhiteBgImage      Kind = "white_bg_image"
+	KindSubjectCutout     Kind = "subject_cutout"
+	KindGalleryImage      Kind = "gallery_image"
+	KindDetailCrop        Kind = "detail_crop"
+	KindSceneImage        Kind = "scene_image"
+	KindSellingPointImage Kind = "selling_point_image"
+	KindSizeSceneImage    Kind = "size_scene_image"
+	KindModelImage        Kind = "model_image"
 )
 
 type Bundle struct {
@@ -21,17 +27,20 @@ type Bundle struct {
 }
 
 type Asset struct {
-	ID         string            `json:"id,omitempty"`
-	Kind       Kind              `json:"kind,omitempty"`
-	URL        string            `json:"url,omitempty"`
-	Role       string            `json:"role,omitempty"`
-	Generator  string            `json:"generator,omitempty"`
-	SourceURL  string            `json:"source_url,omitempty"`
-	Operations []string          `json:"operations,omitempty"`
-	Labels     []string          `json:"labels,omitempty"`
-	Width      int               `json:"width,omitempty"`
-	Height     int               `json:"height,omitempty"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
+	ID             string            `json:"id,omitempty"`
+	Kind           Kind              `json:"kind,omitempty"`
+	URL            string            `json:"url,omitempty"`
+	Role           string            `json:"role,omitempty"`
+	Generator      string            `json:"generator,omitempty"`
+	RecipeID       string            `json:"recipe_id,omitempty"`
+	SourceURL      string            `json:"source_url,omitempty"`
+	SourceAssetIDs []string          `json:"source_asset_ids,omitempty"`
+	Operations     []string          `json:"operations,omitempty"`
+	Labels         []string          `json:"labels,omitempty"`
+	PlatformTags   []string          `json:"platform_tags,omitempty"`
+	Width          int               `json:"width,omitempty"`
+	Height         int               `json:"height,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
 type Selection struct {
@@ -43,9 +52,10 @@ type Selection struct {
 }
 
 type Stats struct {
-	TotalAssets   int `json:"total_assets"`
-	SourceAssets  int `json:"source_assets"`
-	DerivedAssets int `json:"derived_assets"`
+	TotalAssets     int `json:"total_assets"`
+	SourceAssets    int `json:"source_assets"`
+	DerivedAssets   int `json:"derived_assets"`
+	GeneratedAssets int `json:"generated_assets"`
 }
 
 type ReviewSummary struct {

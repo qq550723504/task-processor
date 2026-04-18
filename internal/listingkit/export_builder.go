@@ -32,11 +32,27 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	export.CatalogProduct = task.Result.CatalogProduct
 	export.AssetBundle = task.Result.AssetBundle
-	export.Overview = buildListingKitExportMeta(task.Result)
+	export.AssetInventorySummary = task.Result.AssetInventorySummary
+	export.AssetRenderPreviews = append([]AssetRenderPreview(nil), task.Result.AssetRenderPreviews...)
+	export.PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil), task.Result.PlatformAssetRenderPreviews...)
+	if len(export.AssetRenderPreviews) == 0 {
+		export.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
+	}
+	if len(export.PlatformAssetRenderPreviews) == 0 {
+		export.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
+	}
+	export.PlatformAssetRenderPreviews = filterPlatformAssetRenderPreviews(export.PlatformAssetRenderPreviews, selectedPlatform)
+	export.AssetGenerationQueue = task.Result.AssetGenerationQueue
+	export.AssetGenerationOverview = task.Result.AssetGenerationOverview
+	export.Overview = buildListingKitExportMeta(task.Result, selectedPlatform)
 
 	if selectedPlatform == "" || selectedPlatform == "amazon" {
 		if task.Result.Amazon != nil {
-			export.Amazon = &AmazonExportPayload{Draft: task.Result.Amazon.Draft}
+			export.Amazon = &AmazonExportPayload{
+				Draft:          task.Result.Amazon.Draft,
+				ImageBundle:    task.Result.Amazon.ImageBundle,
+				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "amazon"),
+			}
 		} else if selectedPlatform == "amazon" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
@@ -46,6 +62,8 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 		if task.Result.Shein != nil {
 			export.Shein = &SheinExportPayload{
 				Inspection:     task.Result.Shein.Inspection,
+				ImageBundle:    task.Result.Shein.ImageBundle,
+				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "shein"),
 				RequestDraft:   task.Result.Shein.RequestDraft,
 				PreviewProduct: task.Result.Shein.PreviewProduct,
 				ReviewNotes:    append([]string(nil), task.Result.Shein.ReviewNotes...),
@@ -57,7 +75,11 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	if selectedPlatform == "" || selectedPlatform == "temu" {
 		if task.Result.Temu != nil {
-			export.Temu = &TemuExportPayload{Package: task.Result.Temu}
+			export.Temu = &TemuExportPayload{
+				ImageBundle:    task.Result.Temu.ImageBundle,
+				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "temu"),
+				Package:        task.Result.Temu,
+			}
 		} else if selectedPlatform == "temu" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
@@ -65,7 +87,11 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	if selectedPlatform == "" || selectedPlatform == "walmart" {
 		if task.Result.Walmart != nil {
-			export.Walmart = &WalmartExportPayload{Package: task.Result.Walmart}
+			export.Walmart = &WalmartExportPayload{
+				ImageBundle:    task.Result.Walmart.ImageBundle,
+				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "walmart"),
+				Package:        task.Result.Walmart,
+			}
 		} else if selectedPlatform == "walmart" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
@@ -74,7 +100,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 	return export, nil
 }
 
-func buildListingKitExportMeta(result *ListingKitResult) *ListingKitExportMeta {
+func buildListingKitExportMeta(result *ListingKitResult, selectedPlatform string) *ListingKitExportMeta {
 	if result == nil {
 		return nil
 	}
@@ -88,6 +114,7 @@ func buildListingKitExportMeta(result *ListingKitResult) *ListingKitExportMeta {
 		meta.VariantCount = result.Summary.VariantCount
 		meta.Warnings = append([]string(nil), result.Summary.Warnings...)
 	}
+	meta.PlatformCards = buildPlatformPreviewCards(result, selectedPlatform)
 	return meta
 }
 

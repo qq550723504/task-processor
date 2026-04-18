@@ -6,6 +6,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/amazonlisting"
+	assetbundle "task-processor/internal/asset/bundle"
+	assetgeneration "task-processor/internal/asset/generation"
+	assetrecipe "task-processor/internal/asset/recipe"
+	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -23,6 +28,12 @@ type ImageService interface {
 	GetTaskResult(ctx context.Context, taskID string) (*productimage.TaskResult, error)
 	ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error)
 }
+
+type AssetRepository = assetrepo.Repository
+type AssetGenerationService = assetgeneration.Service
+type AssetRecipeResolver = assetrecipe.Resolver
+type AssetBundleBuilder = assetbundle.Builder
+type GenerationReviewRepository = reviewstore.Repository
 
 type Repository interface {
 	CreateTask(ctx context.Context, task *Task) error
@@ -47,6 +58,13 @@ type Service interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
 	GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error)
+	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
+	GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error)
+	GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error)
+	GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error)
+	DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error)
+	RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error)
+	ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (*GenerationActionExecutionResult, error)
 	GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error)
 	GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error)
 	GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error)
@@ -60,6 +78,13 @@ type HandlerService interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
 	GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error)
+	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
+	GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error)
+	GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error)
+	GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error)
+	DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error)
+	RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error)
+	ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (*GenerationActionExecutionResult, error)
 	GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error)
 	GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error)
 	GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error)
@@ -71,6 +96,13 @@ type Handler interface {
 	GenerateListingKit(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	GetTaskPreview(c *gin.Context)
+	GetTaskGenerationTasks(c *gin.Context)
+	GetTaskGenerationQueue(c *gin.Context)
+	GetTaskGenerationReviewSession(c *gin.Context)
+	GetTaskGenerationReviewPreview(c *gin.Context)
+	DispatchTaskGenerationNavigation(c *gin.Context)
+	RetryTaskGenerationTasks(c *gin.Context)
+	ExecuteTaskGenerationAction(c *gin.Context)
 	GetTaskRevisionHistory(c *gin.Context)
 	GetTaskRevisionHistoryDetail(c *gin.Context)
 	GetTaskExport(c *gin.Context)

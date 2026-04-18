@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"task-processor/internal/asset"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -42,31 +43,34 @@ func BuildVariants(canonical *productenrich.CanonicalProduct) []Variant {
 }
 
 func BuildImages(canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *ImageSet {
+	return BuildImagesFromBundle(asset.BuildBundle(canonical, image))
+}
+
+func BuildImagesFromBundle(bundle *asset.Bundle) *ImageSet {
 	set := &ImageSet{}
-	if canonical != nil {
-		for _, item := range canonical.Images {
-			set.SourceImages = append(set.SourceImages, item.URL)
-		}
-		if len(set.SourceImages) > 0 {
-			set.MainImage = set.SourceImages[0]
-			if len(set.SourceImages) > 1 {
-				set.Gallery = append(set.Gallery, set.SourceImages[1:]...)
+	if bundle != nil {
+		for _, item := range bundle.Assets {
+			switch item.Kind {
+			case asset.KindSourceImage:
+				set.SourceImages = append(set.SourceImages, item.URL)
+			case asset.KindWhiteBgImage:
+				if set.WhiteBgImage == "" {
+					set.WhiteBgImage = item.URL
+				}
+			case asset.KindGalleryImage, asset.KindSceneImage, asset.KindSellingPointImage, asset.KindSizeSceneImage, asset.KindDetailCrop:
+				set.Gallery = append(set.Gallery, item.URL)
+			case asset.KindMainImage, asset.KindModelImage, asset.KindCleanImage:
+				if set.MainImage == "" {
+					set.MainImage = item.URL
+				}
 			}
-		}
-	}
-	if image != nil {
-		if image.MainImage != nil {
-			set.MainImage = image.MainImage.URL
-		}
-		if image.WhiteBgImage != nil {
-			set.WhiteBgImage = image.WhiteBgImage.URL
-		}
-		for _, gallery := range image.GalleryImages {
-			set.Gallery = append(set.Gallery, gallery.URL)
 		}
 	}
 	if set.MainImage == "" && len(set.Gallery) > 0 {
 		set.MainImage = set.Gallery[0]
+	}
+	if len(set.Gallery) == 0 && len(set.SourceImages) > 1 {
+		set.Gallery = append(set.Gallery, set.SourceImages[1:]...)
 	}
 	if set.MainImage == "" && len(set.SourceImages) == 0 && len(set.Gallery) == 0 && set.WhiteBgImage == "" {
 		return nil
