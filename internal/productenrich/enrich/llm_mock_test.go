@@ -8,12 +8,14 @@ import (
 )
 
 type mockLLMClient struct {
-	response          string
-	err               error
-	lastAnalyzePrompt string
+	response           string
+	err                error
+	lastGeneratePrompt string
+	lastAnalyzePrompt  string
 }
 
-func (m *mockLLMClient) Generate(_ context.Context, _ string) (string, error) {
+func (m *mockLLMClient) Generate(_ context.Context, prompt string) (string, error) {
+	m.lastGeneratePrompt = prompt
 	return m.response, m.err
 }
 

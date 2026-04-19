@@ -1,0 +1,91 @@
+generation:
+  product_json:
+    description: "Structured product JSON generation prompt"
+    content: |
+      You are an e-commerce product data expert. Generate a complete product JSON based on the following analysis.
+
+      {{.analysis_sections}}
+
+      Return product JSON with fields:
+      {
+        "title": "concise SEO-friendly product title",
+        "category": ["primary category", "secondary category"],
+        "attributes": {"key": "value"},
+        "selling_points": ["point 1", "point 2", "point 3"],
+        "seo_keywords": ["keyword 1", "keyword 2"],
+        "description": "detailed product description"
+      }
+
+      Rules:
+      - Prefer title, specs, and price context from scraped 1688 data when available.
+      - Merge scraped specs into attributes and technical details naturally.
+      - Keep the output consistent with the analyzed product type and features.
+      - Return JSON only.
+
+  specs:
+    description: "Product specification extraction prompt"
+    content: |
+      Extract product specifications from the following information:
+
+      {{.analysis_sections}}
+
+      Return JSON:
+      {
+        "dimensions": {"length": 0.0, "width": 0.0, "height": 0.0, "unit": "cm"},
+        "weight": {"value": 0.0, "unit": "kg"},
+        "package": {
+          "dimensions": {"length": 0.0, "width": 0.0, "height": 0.0, "unit": "cm"},
+          "weight": {"value": 0.0, "unit": "kg"},
+          "quantity": 1
+        },
+        "technical": {"material": "value", "power": "value", "voltage": "value"}
+      }
+
+      Prefer values from scraped 1688 specs when available. Return JSON only.
+
+  variants:
+    description: "Product variant extraction prompt"
+    content: |
+      Identify product variants from the following information:
+
+      {{.analysis_sections}}
+
+      Return a JSON array:
+      [
+        {
+          "sku": "PROD-001-RED-M",
+          "attributes": {"color": "Red", "size": "M"},
+          "price": {"currency": "CNY", "amount": 29.99, "compare_at": 39.99, "cost_price": 19.99},
+          "stock": 100,
+          "images": [],
+          "is_default": true
+        }
+      ]
+
+      Rules:
+      - Base variants on color, size, style, capacity, pack count, or other differentiators.
+      - Prefer 1688 price context when available.
+      - If there are no clear variants, return one default variant.
+      - Return JSON only.
+
+  extract_dimensions:
+    description: "Product dimensions extraction prompt"
+    content: |
+      Extract product dimensions from:
+      {{.text}}
+
+      Return JSON:
+      {"length": 0.0, "width": 0.0, "height": 0.0, "unit": "cm"}
+
+      Return null if unavailable.
+
+  extract_weight:
+    description: "Product weight extraction prompt"
+    content: |
+      Extract product weight from:
+      {{.text}}
+
+      Return JSON:
+      {"value": 0.0, "unit": "kg"}
+
+      Return null if unavailable.

@@ -31,16 +31,20 @@ func (v *variantGenerator) GenerateSpecs(ctx context.Context, analysis *producte
 
 	logger.GetGlobalLogger("productenrich/variant.go").Info("generating product specifications")
 
-	prompt := "Extract product specifications from the following information:\n\n"
-	if analysis.Representation != nil {
-		repJSON, _ := json.Marshal(analysis.Representation)
-		prompt += fmt.Sprintf("Representation: %s\n\n", string(repJSON))
-	}
-	if analysis.ScrapedData != nil {
-		scrapedJSON, _ := json.Marshal(analysis.ScrapedData)
-		prompt += fmt.Sprintf("1688 scraped data: %s\n\n", string(scrapedJSON))
-	}
-	prompt += `Return JSON:
+	specsFallback := buildAnalysisSections(
+		analysisSection{
+			title:   "Representation",
+			content: marshalPromptJSON(analysis.Representation),
+			enabled: analysis.Representation != nil,
+		},
+		analysisSection{
+			title:   "1688 scraped data",
+			content: marshalPromptJSON(analysis.ScrapedData),
+			enabled: analysis.ScrapedData != nil,
+		},
+	) + `
+
+Return JSON:
 {
   "dimensions": {"length": 0.0, "width": 0.0, "height": 0.0, "unit": "cm"},
   "weight": {"value": 0.0, "unit": "kg"},
@@ -53,6 +57,7 @@ func (v *variantGenerator) GenerateSpecs(ctx context.Context, analysis *producte
 }
 
 Prefer values from scraped 1688 specs when available. Return JSON only.`
+	prompt := buildProductSpecsPrompt(analysis, specsFallback)
 
 	fastClient, err := v.llmManager.GetClient("fast")
 	if err != nil {
@@ -83,21 +88,25 @@ func (v *variantGenerator) GenerateVariants(ctx context.Context, analysis *produ
 
 	logger.GetGlobalLogger("productenrich/variant.go").Info("generating product variants")
 
-	prompt := "Identify product variants from the following information:\n\n"
-	if analysis.Representation != nil {
-		repJSON, _ := json.Marshal(analysis.Representation)
-		prompt += fmt.Sprintf("Representation: %s\n\n", string(repJSON))
-	}
-	if analysis.ImageAttributes != nil {
-		imageJSON, _ := json.Marshal(analysis.ImageAttributes)
-		prompt += fmt.Sprintf("Image attributes: %s\n\n", string(imageJSON))
-	}
-	if analysis.ScrapedData != nil {
-		scrapedJSON, _ := json.Marshal(analysis.ScrapedData)
-		prompt += fmt.Sprintf("1688 scraped data: %s\n\n", string(scrapedJSON))
-	}
+	variantsFallback := buildAnalysisSections(
+		analysisSection{
+			title:   "Representation",
+			content: marshalPromptJSON(analysis.Representation),
+			enabled: analysis.Representation != nil,
+		},
+		analysisSection{
+			title:   "Image attributes",
+			content: marshalPromptJSON(analysis.ImageAttributes),
+			enabled: analysis.ImageAttributes != nil,
+		},
+		analysisSection{
+			title:   "1688 scraped data",
+			content: marshalPromptJSON(analysis.ScrapedData),
+			enabled: analysis.ScrapedData != nil,
+		},
+	) + `
 
-	prompt += `Return a JSON array:
+Return a JSON array:
 [
   {
     "sku": "PROD-001-RED-M",
@@ -114,6 +123,7 @@ Rules:
 - Prefer 1688 price context when available.
 - If there are no clear variants, return one default variant.
 - Return JSON only.`
+	prompt := buildProductVariantsPrompt(analysis, variantsFallback)
 
 	defaultClient := v.llmManager.GetDefaultClient()
 	response, err := defaultClient.Generate(ctx, prompt)
@@ -138,13 +148,13 @@ func (v *variantGenerator) ExtractDimensions(ctx context.Context, text string) (
 	}
 
 	logger.GetGlobalLogger("productenrich/variant.go").Info("extracting dimensions")
-	prompt := fmt.Sprintf(`Extract product dimensions from:
+	prompt := buildExtractDimensionsPrompt(text, fmt.Sprintf(`Extract product dimensions from:
 %s
 
 Return JSON:
 {"length": 0.0, "width": 0.0, "height": 0.0, "unit": "cm"}
 
-Return null if unavailable.`, text)
+Return null if unavailable.`, text))
 
 	var dimensions productenrich.Dimensions
 	if err := v.extractWithLLM(ctx, prompt, &dimensions); err != nil {
@@ -159,13 +169,13 @@ func (v *variantGenerator) ExtractWeight(ctx context.Context, text string) (*pro
 	}
 
 	logger.GetGlobalLogger("productenrich/variant.go").Info("extracting weight")
-	prompt := fmt.Sprintf(`Extract product weight from:
+	prompt := buildExtractWeightPrompt(text, fmt.Sprintf(`Extract product weight from:
 %s
 
 Return JSON:
 {"value": 0.0, "unit": "kg"}
 
-Return null if unavailable.`, text)
+Return null if unavailable.`, text))
 
 	var weight productenrich.Weight
 	if err := v.extractWithLLM(ctx, prompt, &weight); err != nil {
