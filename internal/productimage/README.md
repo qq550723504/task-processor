@@ -114,6 +114,43 @@ parse_source
 
 ## 当前策略
 
+## Model-backed production path
+
+生产主路径现在按能力优先级运行：
+
+- `subject extraction`
+  优先走远端模型 provider
+- `white background rendering`
+  优先走远端模型 provider
+- `scene generation`
+  只有在显式配置 scene model 时才走生成模型
+  未配置时不会再把本地 `SceneRenderer` 当作模型主路径
+- `review`
+  优先走 LLM review model，再由规则做 guard
+
+本地 scene canvas 只允许作为显式 fallback，不应再被视为默认生产成功路径。
+
+当前配置入口：
+
+- `productimage.segmenter`
+- `productimage.whiteBackground`
+- `productimage.scene`
+- `openai.clients.image`
+
+其中：
+- `productimage.scene.enabled=true`
+- `productimage.scene.endpoint=<remote-scene-model-url>`
+
+后，bootstrap 会为 gallery/scene 资产启用远端 `SceneGenerator`。
+
+如果使用 OpenAI-compatible image API（例如统一成 OpenAI 协议的 `nanobanana` 服务），推荐直接配置：
+
+- `openai.clients.image.model`
+- `openai.clients.image.baseURL`
+- `openai.clients.image.apiKey`
+
+这条路径会优先于 `productimage.segmenter / whiteBackground / scene` 的独立 HTTP endpoint 配置。
+
 ### 主体提取
 
 - 优先走外部分割模型

@@ -225,6 +225,10 @@ func NewDefaultConfig() *Config {
 				Enabled: false,
 				Timeout: 45,
 			},
+			Scene: ProductImageModelConfig{
+				Enabled: false,
+				Timeout: 60,
+			},
 			Publisher: ProductImagePublisherConfig{
 				Enabled:    true,
 				Provider:   "local",
@@ -453,6 +457,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.ProductImage.WhiteBackground.Timeout == 0 {
 		cfg.ProductImage.WhiteBackground.Timeout = defaultCfg.ProductImage.WhiteBackground.Timeout
+	}
+	if cfg.ProductImage.Scene.Timeout == 0 {
+		cfg.ProductImage.Scene.Timeout = defaultCfg.ProductImage.Scene.Timeout
 	}
 	if cfg.ProductImage.Publisher.Provider == "" {
 		cfg.ProductImage.Publisher.Provider = defaultCfg.ProductImage.Publisher.Provider

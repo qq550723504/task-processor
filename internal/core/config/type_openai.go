@@ -4,10 +4,11 @@ import openaiClient "task-processor/internal/infra/clients/openai"
 
 // OpenAIClientConfig 单个 OpenAI 客户端配置
 type OpenAIClientConfig struct {
-	APIKey  string `yaml:"apiKey"`
-	Model   string `yaml:"model"`
-	BaseURL string `yaml:"baseURL"`
-	Timeout int    `yaml:"timeout"`
+	APIKey   string `yaml:"apiKey"`
+	Model    string `yaml:"model"`
+	BaseURL  string `yaml:"baseURL"`
+	Timeout  int    `yaml:"timeout"`
+	APIStyle string `yaml:"apiStyle"`
 }
 
 // OpenAIConfig OpenAI配置
@@ -17,8 +18,9 @@ type OpenAIConfig struct {
 	BaseURL string `yaml:"baseURL"` // 默认 API 基础 URL
 	Timeout int    `yaml:"timeout"` // 默认超时时间（秒）
 
-	// Clients 各阶段命名客户端，key 对应 LLMManager.GetClient(name)
-	// 支持的 key：default, vision, fast, scorer
+	// Clients 各阶段命名客户端。
+	// chat / multimodal 路径使用的 key：default, vision, fast, scorer
+	// image 生成/编辑路径额外支持：image
 	Clients map[string]OpenAIClientConfig `yaml:"clients"`
 }
 

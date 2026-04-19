@@ -55,6 +55,13 @@ openai:
     scorer:
       model: "gemini-2.5-flash"
       timeout: 60
+    # 图片生成 / 图片编辑阶段（productimage faithful edit + scene generation）
+    image:
+      apiKey: ""
+      baseURL: "https://grsai.dakka.com.cn/v1/draw/nano-banana"
+      apiStyle: "nanobanana"
+      model: "nano-banana-fast"
+      timeout: 300
   
   # 请求池配置 - 更保守的设置
 # 管理API配置
@@ -334,6 +341,11 @@ productimage:
     endpoint: ""
     apiKey: ""
     timeout: 45
+  scene:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 60
   publisher:
     enabled: true
     provider: "s3"

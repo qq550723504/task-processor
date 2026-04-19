@@ -50,5 +50,12 @@ func NewLLMManagerAdapter(cfg config.OpenAIConfig) (LLMManager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建 OpenAI Manager 失败: %w", err)
 	}
-	return &llmManagerAdapter{manager: mgr}, nil
+	return NewLLMManagerAdapterFromManager(mgr)
+}
+
+func NewLLMManagerAdapterFromManager(manager *openai.Manager) (LLMManager, error) {
+	if manager == nil {
+		return nil, fmt.Errorf("openai manager cannot be nil")
+	}
+	return &llmManagerAdapter{manager: manager}, nil
 }

@@ -138,6 +138,12 @@ func BuildConfig(v *viper.Viper) *Config {
 				APIKey:   v.GetString("productimage.whiteBackground.apiKey"),
 				Timeout:  v.GetInt("productimage.whiteBackground.timeout"),
 			},
+			Scene: ProductImageModelConfig{
+				Enabled:  v.GetBool("productimage.scene.enabled"),
+				Endpoint: v.GetString("productimage.scene.endpoint"),
+				APIKey:   v.GetString("productimage.scene.apiKey"),
+				Timeout:  v.GetInt("productimage.scene.timeout"),
+			},
 			Publisher: ProductImagePublisherConfig{
 				Enabled:    v.GetBool("productimage.publisher.enabled"),
 				Provider:   v.GetString("productimage.publisher.provider"),
@@ -238,10 +244,11 @@ func buildOpenAIClients(v *viper.Viper) map[string]OpenAIClientConfig {
 		}
 
 		clients[name] = OpenAIClientConfig{
-			APIKey:  apiKey,
-			Model:   v.GetString(prefix + ".model"),
-			BaseURL: baseURL,
-			Timeout: timeout,
+			APIKey:   apiKey,
+			Model:    v.GetString(prefix + ".model"),
+			BaseURL:  baseURL,
+			Timeout:  timeout,
+			APIStyle: v.GetString(prefix + ".apiStyle"),
 		}
 	}
 	return clients

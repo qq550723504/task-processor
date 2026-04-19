@@ -9,6 +9,7 @@ import (
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/infra/worker"
@@ -23,7 +24,18 @@ import (
 )
 
 func newLLMManager(cfg config.OpenAIConfig) (productenrich.LLMManager, error) {
-	return productenrich.NewLLMManagerAdapter(cfg)
+	manager, err := newOpenAIManager(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return productenrich.NewLLMManagerAdapterFromManager(manager)
+}
+
+func newOpenAIManager(cfg config.OpenAIConfig) (*openaiclient.Manager, error) {
+	return openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients:       cfg.ToClientConfigs(),
+		DefaultClient: "default",
+	})
 }
 
 func newWebScraper(cfg *config.Config) productenrich.WebScraper {

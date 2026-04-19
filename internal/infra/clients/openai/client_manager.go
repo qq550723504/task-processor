@@ -76,6 +76,16 @@ func (m *Manager) GetClient(name string) (ChatCompleter, error) {
 	return client, nil
 }
 
+func (m *Manager) GetImageClient(name string) (ImageGenerator, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	client, exists := m.clients[name]
+	if !exists {
+		return nil, fmt.Errorf("client %s not found", name)
+	}
+	return client, nil
+}
+
 // GetDefaultClient 获取默认客户端
 func (m *Manager) GetDefaultClient() ChatCompleter {
 	m.mu.RLock()

@@ -10,6 +10,7 @@ import (
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
@@ -26,6 +27,7 @@ type Options struct {
 type runtimeDeps struct {
 	cfg                   *config.Config
 	closers               []func() error
+	openaiMgr             *openaiclient.Manager
 	llmMgr                productenrich.LLMManager
 	inputParser           productenrich.InputParser
 	understanding         productenrich.ProductUnderstanding

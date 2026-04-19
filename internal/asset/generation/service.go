@@ -75,20 +75,22 @@ func (s *service) Execute(ctx context.Context, req Request) (*Result, error) {
 			continue
 		}
 		result.Tasks = append(result.Tasks, Task{
-			TaskID:          req.TaskID,
-			ID:              fmt.Sprintf("%s-exec-%d", item.Platform, idx+1),
-			Platform:        item.Platform,
-			RecipeID:        item.ID,
-			AssetKind:       item.AssetKind,
-			Slot:            recipeSlot(item),
-			Purpose:         recipePurpose(item),
-			Status:          "completed",
-			ExecutionStatus: "completed",
-			ExecutionMode:   record.Metadata["execution_mode"],
-			CanExecute:      true,
-			SatisfiedBy:     "generated_asset",
-			Lineage:         plannedLineage(item),
-			SourceAssetIDs:  sourceAssetIDsForRecord(record),
+			TaskID:           req.TaskID,
+			ID:               fmt.Sprintf("%s-exec-%d", item.Platform, idx+1),
+			Platform:         item.Platform,
+			RecipeID:         item.ID,
+			AssetKind:        item.AssetKind,
+			Slot:             recipeSlot(item),
+			Purpose:          recipePurpose(item),
+			Status:           "completed",
+			ExecutionStatus:  "completed",
+			ExecutionMode:    record.Metadata["execution_mode"],
+			CanExecute:       true,
+			SatisfiedBy:      "generated_asset",
+			Lineage:          plannedLineage(item),
+			SourceAssetIDs:   sourceAssetIDsForRecord(record),
+			Metadata:         cloneTaskMetadata(record.Metadata),
+			ReviewConfidence: reviewConfidenceFromMetadata(record.Metadata),
 		})
 		result.Assets = append(result.Assets, record)
 	}
@@ -131,6 +133,8 @@ func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int
 			updated.ExecutionStatus = "completed"
 			updated.ExecutionMode = ExecutionModeRendererBacked
 			updated.SatisfiedBy = ExecutionModeGeneratedAsset
+			updated.Metadata = cloneTaskMetadata(record.Metadata)
+			updated.ReviewConfidence = reviewConfidenceFromMetadata(record.Metadata)
 			return updated, []asset.AssetRecord{record}
 		}
 	}
@@ -145,5 +149,7 @@ func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int
 	updated.ExecutionStatus = "completed"
 	updated.ExecutionMode = ExecutionModeDeferredStub
 	updated.SatisfiedBy = ExecutionModeGeneratedAsset
+	updated.Metadata = cloneTaskMetadata(record.Metadata)
+	updated.ReviewConfidence = reviewConfidenceFromMetadata(record.Metadata)
 	return updated, []asset.AssetRecord{record}
 }

@@ -400,3 +400,8 @@ These are intentionally left for implementation planning, not design ambiguity:
 - exact naming of new execution modes in persisted task metadata
 
 The architecture above is stable without locking those implementation details now.
+# Implementation tracking
+
+Implementation status is tracked in:
+
+- `D:\code\task-processor\docs\superpowers\plans\2026-04-19-model-driven-productimage.md`

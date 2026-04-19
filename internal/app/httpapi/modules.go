@@ -222,27 +222,42 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 	if err != nil {
 		return nil, fmt.Errorf("create downloaded image inspector: %w", err)
 	}
-	subjectExtractor, err := buildImageSubjectExtractor(deps.cfg, deps.imageWorkDir)
-	if err != nil {
-		return nil, fmt.Errorf("create subject extractor: %w", err)
-	}
 	imageCleaner, err := productimage.NewWatermarkAwareImageCleaner(deps.imageWorkDir, deps.cfg.Watermark, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create watermark-aware image cleaner: %w", err)
 	}
-	whiteBgRenderer, err := buildWhiteBackgroundRenderer(deps.cfg, deps.imageWorkDir)
+	modelProvider, err := buildProductImageModelProvider(deps.cfg, deps.llmMgr, deps.openaiMgr, deps.imageWorkDir)
 	if err != nil {
-		return nil, fmt.Errorf("create white background renderer: %w", err)
+		return nil, fmt.Errorf("create productimage model provider: %w", err)
 	}
-	sceneRenderer, err := buildSceneRenderer(deps.cfg, deps.imageWorkDir)
-	if err != nil {
-		return nil, fmt.Errorf("create scene renderer: %w", err)
+
+	var subjectExtractor productimage.SubjectExtractor
+	var whiteBgRenderer productimage.WhiteBackgroundRenderer
+	var sceneRenderer productimage.SceneRenderer
+	if !shouldUseModelBackedImagePipeline(modelProvider) || modelProvider.FaithfulEditor() == nil {
+		subjectExtractor, err = buildImageSubjectExtractor(deps.cfg, deps.imageWorkDir)
+		if err != nil {
+			return nil, fmt.Errorf("create subject extractor: %w", err)
+		}
+		whiteBgRenderer, err = buildWhiteBackgroundRenderer(deps.cfg, deps.imageWorkDir)
+		if err != nil {
+			return nil, fmt.Errorf("create white background renderer: %w", err)
+		}
+	}
+	if modelProvider == nil || modelProvider.SceneGenerator() == nil {
+		if !shouldUseModelBackedImagePipeline(modelProvider) {
+			sceneRenderer, err = buildSceneRenderer(deps.cfg, deps.imageWorkDir)
+			if err != nil {
+				return nil, fmt.Errorf("create scene renderer: %w", err)
+			}
+		}
 	}
 
 	imageCapabilities := productimage.StrictServiceCapabilities()
 	imageSvc, err := productimage.NewService(&productimage.ServiceConfig{
 		QueueName:             "product_image_tasks",
 		TaskRepo:              imageRepo,
+		ModelProvider:         modelProvider,
 		Capabilities:          &imageCapabilities,
 		SourceParser:          sourceParser,
 		ContextAnalyzer:       contextAnalyzer,

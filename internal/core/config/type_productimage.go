@@ -5,6 +5,7 @@ type ProductImageConfig struct {
 	WorkDir         string                      `yaml:"workDir"`
 	Segmenter       ProductImageModelConfig     `yaml:"segmenter"`
 	WhiteBackground ProductImageModelConfig     `yaml:"whiteBackground"`
+	Scene           ProductImageModelConfig     `yaml:"scene"`
 	Publisher       ProductImagePublisherConfig `yaml:"publisher"`
 	Lifecycle       ProductImageLifecycleConfig `yaml:"lifecycle"`
 }

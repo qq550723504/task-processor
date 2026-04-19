@@ -39,6 +39,11 @@ openai:
   model: "gemini-2.5-flash"
   baseURL: "https://ai.linkcloudai.com/v1"
   timeout: 300  # API调用超时5分钟
+  clients:
+    image:
+      apiStyle: "nanobanana"
+      model: "nanobanana"
+      timeout: 300
   
   # 请求池配置 - 更保守的设置
 # 管理API配置
@@ -254,6 +259,11 @@ productimage:
     endpoint: ""
     apiKey: ""
     timeout: 45
+  scene:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 60
   publisher:
     enabled: true
     provider: "local"
