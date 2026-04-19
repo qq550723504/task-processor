@@ -86,28 +86,7 @@ Rules:
 - Merge scraped specs into attributes and technical details naturally.
 - Keep the output consistent with the analyzed product type and features.
 - Return JSON only.`
-	fallback = strings.Replace(fallback, "{{analysis_sections}}", buildAnalysisSections(
-		analysisSection{
-			title:   "Product representation",
-			content: marshalPromptJSON(analysis.Representation),
-			enabled: analysis != nil && analysis.Representation != nil,
-		},
-		analysisSection{
-			title:   "Text attributes",
-			content: marshalPromptJSON(analysis.TextAttributes),
-			enabled: analysis != nil && analysis.TextAttributes != nil,
-		},
-		analysisSection{
-			title:   "Image attributes",
-			content: marshalPromptJSON(analysis.ImageAttributes),
-			enabled: analysis != nil && analysis.ImageAttributes != nil,
-		},
-		analysisSection{
-			title:   "1688 scraped data",
-			content: marshalPromptJSON(analysis.ScrapedData),
-			enabled: analysis != nil && analysis.ScrapedData != nil,
-		},
-	), 1)
+	fallback = strings.Replace(fallback, "{{analysis_sections}}", buildProductJSONAnalysisSections(analysis), 1)
 
 	return buildProductJSONPrompt(analysis, fallback)
 }

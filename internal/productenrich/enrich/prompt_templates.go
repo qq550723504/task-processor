@@ -55,32 +55,46 @@ func buildProductJSONPrompt(analysis *productenrich.ProductAnalysis, fallback st
 		return fallback
 	}
 
-	sections := buildAnalysisSections(
-		analysisSection{
+	return renderProductEnrichPrompt(prompt.KProductEnrichGenerationProductJSON, map[string]any{
+		"analysis_sections": buildProductJSONAnalysisSections(analysis),
+	}, fallback)
+}
+
+func buildProductJSONAnalysisSections(analysis *productenrich.ProductAnalysis) string {
+	if analysis == nil {
+		return ""
+	}
+
+	sections := make([]analysisSection, 0, 4)
+	if analysis.Representation != nil {
+		sections = append(sections, analysisSection{
 			title:   "Product representation",
 			content: marshalPromptJSON(analysis.Representation),
-			enabled: analysis.Representation != nil,
-		},
-		analysisSection{
+			enabled: true,
+		})
+	}
+	if analysis.TextAttributes != nil {
+		sections = append(sections, analysisSection{
 			title:   "Text attributes",
 			content: marshalPromptJSON(analysis.TextAttributes),
-			enabled: analysis.TextAttributes != nil,
-		},
-		analysisSection{
+			enabled: true,
+		})
+	}
+	if analysis.ImageAttributes != nil {
+		sections = append(sections, analysisSection{
 			title:   "Image attributes",
 			content: marshalPromptJSON(analysis.ImageAttributes),
-			enabled: analysis.ImageAttributes != nil,
-		},
-		analysisSection{
+			enabled: true,
+		})
+	}
+	if analysis.ScrapedData != nil {
+		sections = append(sections, analysisSection{
 			title:   "1688 scraped data",
 			content: marshalPromptJSON(analysis.ScrapedData),
-			enabled: analysis.ScrapedData != nil,
-		},
-	)
-
-	return renderProductEnrichPrompt(prompt.KProductEnrichGenerationProductJSON, map[string]any{
-		"analysis_sections": sections,
-	}, fallback)
+			enabled: true,
+		})
+	}
+	return buildAnalysisSections(sections...)
 }
 
 func buildProductSpecsPrompt(analysis *productenrich.ProductAnalysis, fallback string) string {
