@@ -36,9 +36,10 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
+	resolvedPrompt := buildSceneGenerationResolvedPrompt(req)
 	response, err := g.client.EditImage(ctx, &openaiclient.ImageEditRequest{
 		Model:          g.client.GetDefaultModel(),
-		Prompt:         buildSceneGenerationPrompt(req),
+		Prompt:         resolvedPrompt.Text,
 		Image:          data,
 		ImageURL:       editableAssetURL(req.SourceAsset),
 		ResponseFormat: "b64_json",
@@ -60,17 +61,15 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
-	normalizedPromptRef := normalizedScenePromptRef(req)
-	metadata := map[string]string{
+	metadata := applyPromptObservabilityMetadata(map[string]string{
 		"provider":        "openai_compatible",
 		"model_family":    g.client.GetDefaultModel(),
 		"generation_mode": "scene_generation",
-		"prompt_ref":      normalizedPromptRef,
 		"scene_intent":    req.SceneIntent,
 		"local_path":      path,
 		"format":          info.Format,
 		"scene_mode":      "model",
-	}
+	}, resolvedPrompt)
 	if revisedPrompt != "" {
 		metadata["revised_prompt"] = revisedPrompt
 	}
@@ -89,12 +88,19 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 			Provider:       "openai_compatible",
 			ModelFamily:    g.client.GetDefaultModel(),
 			GenerationMode: "scene_generation",
-			PromptRef:      normalizedPromptRef,
+			PromptRef:      resolvedPrompt.Key,
+			PromptKey:      resolvedPrompt.Key,
+			PromptSource:   resolvedPrompt.Source,
+			PromptVersion:  resolvedPrompt.Version,
 		},
 	}, nil
 }
 
 func buildSceneGenerationPrompt(req *SceneGenerationRequest) string {
+	return buildSceneGenerationResolvedPrompt(req).Text
+}
+
+func buildSceneGenerationResolvedPrompt(req *SceneGenerationRequest) resolvedProductImagePrompt {
 	productType := ""
 	title := ""
 	if req.ProductContext != nil {
@@ -112,9 +118,13 @@ func buildSceneGenerationPrompt(req *SceneGenerationRequest) string {
 		base += " Product title: " + title + "."
 	}
 	base += " Produce a premium marketplace-ready gallery image with clean composition and no overlaid text."
-	return renderProductImagePrompt(req.PromptRef, prompt.KProductImageSceneDefault, map[string]any{
+	resolved := resolveProductImagePrompt(req.PromptRef, prompt.KProductImageSceneDefault, map[string]any{
 		"product_type": productType,
 		"title":        title,
 		"scene_intent": strings.TrimSpace(req.SceneIntent),
 	}, base)
+	if strings.TrimSpace(resolved.Text) == "" {
+		resolved.Text = base
+	}
+	return resolved
 }
