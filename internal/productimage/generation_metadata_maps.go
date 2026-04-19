@@ -9,15 +9,22 @@ func applyGenerationMetadataMap(metadata map[string]string, generation *Generati
 	if generation == nil {
 		return metadata
 	}
-	metadata["model_provider"] = generation.Provider
-	metadata["model_family"] = generation.ModelFamily
-	metadata["generation_mode"] = generation.GenerationMode
-	metadata["prompt_ref"] = generation.PromptRef
-	metadata["prompt_key"] = generation.PromptKey
-	metadata["prompt_source"] = generation.PromptSource
-	metadata["prompt_version"] = generation.PromptVersion
+	setGenerationMetadataValue(metadata, "model_provider", generation.Provider)
+	setGenerationMetadataValue(metadata, "model_family", generation.ModelFamily)
+	setGenerationMetadataValue(metadata, "generation_mode", generation.GenerationMode)
+	setGenerationMetadataValue(metadata, "prompt_ref", generation.PromptRef)
+	setGenerationMetadataValue(metadata, "prompt_key", generation.PromptKey)
+	setGenerationMetadataValue(metadata, "prompt_source", generation.PromptSource)
+	setGenerationMetadataValue(metadata, "prompt_version", generation.PromptVersion)
 	if generation.ReviewConfidence > 0 {
 		metadata["review_confidence"] = strconv.FormatFloat(generation.ReviewConfidence, 'f', -1, 64)
 	}
 	return metadata
+}
+
+func setGenerationMetadataValue(metadata map[string]string, key string, value string) {
+	if metadata == nil || value == "" {
+		return
+	}
+	metadata[key] = value
 }
