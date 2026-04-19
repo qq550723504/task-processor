@@ -3,13 +3,13 @@ package productimage
 import "encoding/json"
 
 type sellingPointRenderPlanItem struct {
-	BlockID      string `json:"block_id,omitempty"`
-	Kind         string `json:"kind,omitempty"`
-	Slot         string `json:"slot,omitempty"`
-	Region       string `json:"region,omitempty"`
-	VisualRole   string `json:"visual_role,omitempty"`
-	RenderOrder  int    `json:"render_order,omitempty"`
-	Priority     int    `json:"priority,omitempty"`
+	BlockID     string `json:"block_id,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	Slot        string `json:"slot,omitempty"`
+	Region      string `json:"region,omitempty"`
+	VisualRole  string `json:"visual_role,omitempty"`
+	RenderOrder int    `json:"render_order,omitempty"`
+	Priority    int    `json:"priority,omitempty"`
 }
 
 type sellingPointRenderPlan struct {

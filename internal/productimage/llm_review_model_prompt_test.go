@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/prompt"
 	productenrich "task-processor/internal/productenrich"
+	"task-processor/internal/prompt"
 )
 
 type reviewClientStub struct {

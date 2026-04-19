@@ -48,9 +48,7 @@ func matchesSheinAttributeName(attr sheinattribute.AttributeInfo, normalized str
 		attr.AttributeName,
 		attr.AttributeNameEn,
 	}
-	for _, alias := range sheinAttributeAliases(normalized) {
-		candidates = append(candidates, alias)
-	}
+	candidates = append(candidates, sheinAttributeAliases(normalized)...)
 	for _, candidate := range candidates {
 		candidateNorm := normalizeSheinText(candidate)
 		if candidateNorm == "" {

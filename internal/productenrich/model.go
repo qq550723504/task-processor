@@ -45,15 +45,15 @@ type Task struct {
 
 // ProductJSON 表示最终生成的产品 JSON 数据
 type ProductJSON struct {
-	Title          string            `json:"title"`
-	Category       []string          `json:"category"`
-	Attributes     map[string]string `json:"attributes"`
-	Specifications *ProductSpecs     `json:"specifications"`
-	Variants       []ProductVariant  `json:"variants"`
-	SellingPoints  []string          `json:"selling_points"`
-	SEOKeywords    []string          `json:"seo_keywords"`
-	Description    string            `json:"description"`
-	Images         []string          `json:"images"`
+	Title          string                       `json:"title"`
+	Category       []string                     `json:"category"`
+	Attributes     map[string]string            `json:"attributes"`
+	Specifications *ProductSpecs                `json:"specifications"`
+	Variants       []ProductVariant             `json:"variants"`
+	SellingPoints  []string                     `json:"selling_points"`
+	SEOKeywords    []string                     `json:"seo_keywords"`
+	Description    string                       `json:"description"`
+	Images         []string                     `json:"images"`
 	Evidence       map[string][]CanonicalSource `json:"evidence,omitempty"`
 }
 

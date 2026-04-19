@@ -17,8 +17,8 @@ func TestAssemblerUsesTargetCategoryHintPath(t *testing.T) {
 			TargetCategoryHint: "Electronics > Headphones",
 		},
 	}, &productenrich.CanonicalProduct{
-		Title:       "Wireless Headphones",
-		Description: "Over-ear wireless headphones with long battery life.",
+		Title:        "Wireless Headphones",
+		Description:  "Over-ear wireless headphones with long battery life.",
 		CategoryPath: []string{"Consumer Goods", "Audio"},
 	}, nil)
 
@@ -40,8 +40,8 @@ func TestAssemblerKeepsProductCategoryWhenTargetCategoryHintMissing(t *testing.T
 			Country:     "US",
 		},
 	}, &productenrich.CanonicalProduct{
-		Title:       "Ceramic Mug",
-		Description: "A ceramic mug for coffee and tea.",
+		Title:        "Ceramic Mug",
+		Description:  "A ceramic mug for coffee and tea.",
 		CategoryPath: []string{"Home & Kitchen", "Drinkware"},
 	}, nil)
 

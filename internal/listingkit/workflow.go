@@ -148,7 +148,6 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 					}
 				}
 				attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, s.assetBundleBuilder)
-				pendingTasks = dispatchResult.Tasks
 				tasksToPersist = dispatchResult.Tasks
 			}
 		}

@@ -1,8 +1,10 @@
 package listingkit
 
-import "errors"
+import (
+	"errors"
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+	sheinworkspace "task-processor/internal/workspace/shein"
+)
 
 var ErrRevisionHistoryCompareTargetNotFound = errors.New("revision history compare target not found")
 

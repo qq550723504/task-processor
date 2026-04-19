@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"task-processor/internal/productenrich"
 )
 
@@ -642,12 +643,12 @@ func canonicalProductFromDraft(draft *AmazonListingDraft) *productenrich.Canonic
 		product.Variants = make([]productenrich.CanonicalVariant, 0, len(draft.Variants))
 		for _, variant := range draft.Variants {
 			converted := productenrich.CanonicalVariant{
-				SKU:       variant.SKU,
+				SKU:        variant.SKU,
 				Attributes: map[string]productenrich.CanonicalAttribute{},
-				Stock:     variant.Inventory,
-				Barcode:   variant.Barcode,
-				IsDefault: variant.IsDefault,
-				Trace:     manualFieldTrace(),
+				Stock:      variant.Inventory,
+				Barcode:    variant.Barcode,
+				IsDefault:  variant.IsDefault,
+				Trace:      manualFieldTrace(),
 			}
 			for key, value := range variant.Attributes {
 				converted.Attributes[key] = productenrich.CanonicalAttribute{

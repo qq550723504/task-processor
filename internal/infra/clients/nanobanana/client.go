@@ -40,7 +40,7 @@ type submitRequest struct {
 }
 
 type submitResponse struct {
-	Code int `json:"code"`
+	Code int    `json:"code"`
 	Msg  string `json:"msg"`
 	Data struct {
 		ID string `json:"id"`

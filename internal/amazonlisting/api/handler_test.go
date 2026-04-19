@@ -157,7 +157,7 @@ func TestGetTaskWorkbench_ReturnsStructuredReviewItems(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var resp struct {
-		TaskID      string                          `json:"task_id"`
+		TaskID      string                           `json:"task_id"`
 		ReviewItems []amazonlisting.AmazonReviewItem `json:"review_items"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {

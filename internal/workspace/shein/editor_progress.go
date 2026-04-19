@@ -85,14 +85,12 @@ func buildSaleProgressSection(pkg *sheinpub.Package) EditorProgressSection {
 
 func progressSection(key, label string, completed, total int) EditorProgressSection {
 	unresolved := total - completed
-	status := "not_started"
+	status := "in_progress"
 	switch {
 	case completed == 0:
 		status = "not_started"
 	case unresolved == 0:
 		status = "completed"
-	default:
-		status = "in_progress"
 	}
 	return EditorProgressSection{
 		Key:        key,

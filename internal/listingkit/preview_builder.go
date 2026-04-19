@@ -134,9 +134,7 @@ func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *List
 		header.Warnings = append([]string(nil), result.Summary.Warnings...)
 	}
 
-	cards := []ListingKitPlatformCard{}
-	cards = buildPlatformPreviewCards(result, selectedPlatform)
-	header.PlatformCards = cards
+	header.PlatformCards = buildPlatformPreviewCards(result, selectedPlatform)
 	return header
 }
 
