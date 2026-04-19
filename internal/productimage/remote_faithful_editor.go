@@ -143,11 +143,12 @@ func (e *remoteFaithfulEditor) renderWhiteBackground(ctx context.Context, req *F
 }
 
 func generationMetadataFromResult(metadata map[string]string, operation string, promptRef string) *GenerationMetadata {
+	normalizedPromptRef := normalizeProductImagePromptKey(promptRef, "")
 	modelMetadata := &GenerationMetadata{
 		Provider:       metadata["provider"],
 		ModelFamily:    metadata["model_family"],
 		GenerationMode: metadata["generation_mode"],
-		PromptRef:      promptRef,
+		PromptRef:      normalizedPromptRef,
 	}
 	if modelMetadata.Provider == "" {
 		modelMetadata.Provider = "remote_model_service"

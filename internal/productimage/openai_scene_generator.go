@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/prompt"
 )
 
 type openAICompatibleSceneGenerator struct {
@@ -59,11 +60,12 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
+	normalizedPromptRef := normalizedScenePromptRef(req)
 	metadata := map[string]string{
 		"provider":        "openai_compatible",
 		"model_family":    g.client.GetDefaultModel(),
 		"generation_mode": "scene_generation",
-		"prompt_ref":      req.PromptRef,
+		"prompt_ref":      normalizedPromptRef,
 		"scene_intent":    req.SceneIntent,
 		"local_path":      path,
 		"format":          info.Format,
@@ -87,7 +89,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 			Provider:       "openai_compatible",
 			ModelFamily:    g.client.GetDefaultModel(),
 			GenerationMode: "scene_generation",
-			PromptRef:      req.PromptRef,
+			PromptRef:      normalizedPromptRef,
 		},
 	}, nil
 }
@@ -110,5 +112,9 @@ func buildSceneGenerationPrompt(req *SceneGenerationRequest) string {
 		base += " Product title: " + title + "."
 	}
 	base += " Produce a premium marketplace-ready gallery image with clean composition and no overlaid text."
-	return base
+	return renderProductImagePrompt(req.PromptRef, prompt.KProductImageSceneDefault, map[string]any{
+		"product_type": productType,
+		"title":        title,
+		"scene_intent": strings.TrimSpace(req.SceneIntent),
+	}, base)
 }

@@ -77,12 +77,13 @@ func (c *httpSceneGenerationClient) GenerateScene(ctx context.Context, imageData
 	if len(imageData) == 0 {
 		return nil, fmt.Errorf("image data cannot be empty")
 	}
+	normalizedPromptRef := normalizedScenePromptRef(&request)
 	payload := sceneGenerationHTTPPayload{
 		ImageBase64:   base64.StdEncoding.EncodeToString(imageData),
 		SourceURL:     sourceURL,
 		SceneIntent:   request.SceneIntent,
-		PromptRef:     request.PromptRef,
-		GenerationRef: request.PromptRef,
+		PromptRef:     normalizedPromptRef,
+		GenerationRef: normalizedPromptRef,
 	}
 	if request.ProductContext != nil {
 		payload.ProductType = request.ProductContext.ProductType

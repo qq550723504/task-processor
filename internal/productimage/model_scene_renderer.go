@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+
+	"task-processor/internal/prompt"
 )
 
 type modelSceneRenderer struct {
@@ -22,7 +24,7 @@ func (r *modelSceneRenderer) Render(ctx context.Context, asset *ImageAsset, cont
 	result, err := r.generator.GenerateScene(ctx, &SceneGenerationRequest{
 		SourceAsset:    asset,
 		ProductContext: context,
-		PromptRef:      "productimage/scene/default",
+		PromptRef:      prompt.KProductImageSceneDefault,
 		SceneIntent:    "gallery_scene",
 	})
 	if err != nil {

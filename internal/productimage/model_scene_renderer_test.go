@@ -29,7 +29,7 @@ func TestModelSceneRendererUsesSceneGenerator(t *testing.T) {
 				Provider:       "openai",
 				ModelFamily:    "gpt-image",
 				GenerationMode: "scene_generation",
-				PromptRef:      "productimage/scene/default",
+				PromptRef:      "productimage.scene.default",
 			},
 		},
 	}
@@ -42,10 +42,16 @@ func TestModelSceneRendererUsesSceneGenerator(t *testing.T) {
 	if generator.lastReq == nil || generator.lastReq.SceneIntent != "gallery_scene" {
 		t.Fatalf("last request = %+v", generator.lastReq)
 	}
+	if generator.lastReq.PromptRef != "productimage.scene.default" {
+		t.Fatalf("last request = %+v", generator.lastReq)
+	}
 	if len(assets) != 1 || assets[0].URL != "scene.jpg" {
 		t.Fatalf("assets = %+v", assets)
 	}
 	if assets[0].Metadata["generation_mode"] != "scene_generation" || assets[0].Metadata["model_family"] != "gpt-image" {
+		t.Fatalf("asset metadata = %+v", assets[0].Metadata)
+	}
+	if assets[0].Metadata["prompt_ref"] != "productimage.scene.default" {
 		t.Fatalf("asset metadata = %+v", assets[0].Metadata)
 	}
 }

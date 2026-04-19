@@ -306,7 +306,7 @@ func (e *modelSubjectExtractor) Extract(ctx context.Context, imageURL string, co
 		},
 		ProductContext: context,
 		Operation:      "extract_subject",
-		PromptRef:      "productimage/subject/extract",
+		PromptRef:      "productimage.subject.extract",
 	}
 	result, err := e.editor.Edit(ctx, req)
 	if err != nil {
@@ -432,7 +432,7 @@ func (r *modelWhiteBackgroundRenderer) Render(ctx context.Context, asset *ImageA
 		SourceAsset:    asset,
 		ProductContext: context,
 		Operation:      "render_white_background",
-		PromptRef:      "productimage/white-background/default",
+		PromptRef:      "productimage.white_background.default",
 	})
 	if err != nil {
 		return nil, err
@@ -568,7 +568,7 @@ func (r *modelSceneRenderer) Render(ctx context.Context, asset *ImageAsset, cont
 	result, err := r.generator.GenerateScene(ctx, &SceneGenerationRequest{
 		SourceAsset:    asset,
 		ProductContext: context,
-		PromptRef:      "productimage/scene/default",
+		PromptRef:      "productimage.scene.default",
 		SceneIntent:    "gallery_scene",
 	})
 	if err != nil {

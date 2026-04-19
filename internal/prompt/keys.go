@@ -38,4 +38,10 @@ const (
 	KProductEnrichUnderstandingAnalyzeImage   = "productenrich.understanding.analyze_image"
 	KProductEnrichUnderstandingExtractText    = "productenrich.understanding.extract_text"
 	KProductEnrichUnderstandingFuseMultimodal = "productenrich.understanding.fuse_multimodal"
+
+	// ── productimage/generation.yaml ───────────────────────────────────────
+	KProductImageSubjectExtract         = "productimage.subject.extract"
+	KProductImageWhiteBackgroundDefault = "productimage.white_background.default"
+	KProductImageSceneDefault           = "productimage.scene.default"
+	KProductImageReviewDefault          = "productimage.review.default"
 )

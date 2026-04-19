@@ -29,7 +29,7 @@ func TestModelSubjectExtractorUsesFaithfulEditor(t *testing.T) {
 				Provider:       "openai",
 				ModelFamily:    "gpt-image",
 				GenerationMode: "subject_extraction",
-				PromptRef:      "productimage/subject/extract",
+				PromptRef:      "productimage.subject.extract",
 			},
 		},
 	}
@@ -42,10 +42,16 @@ func TestModelSubjectExtractorUsesFaithfulEditor(t *testing.T) {
 	if editor.lastReq == nil || editor.lastReq.Operation != "extract_subject" {
 		t.Fatalf("last request = %+v", editor.lastReq)
 	}
+	if editor.lastReq.PromptRef != "productimage.subject.extract" {
+		t.Fatalf("last request = %+v", editor.lastReq)
+	}
 	if asset == nil || asset.URL != "subject.png" {
 		t.Fatalf("asset = %+v", asset)
 	}
 	if asset.Metadata["generation_mode"] != "subject_extraction" || asset.Metadata["model_family"] != "gpt-image" {
+		t.Fatalf("asset metadata = %+v", asset.Metadata)
+	}
+	if asset.Metadata["prompt_ref"] != "productimage.subject.extract" {
 		t.Fatalf("asset metadata = %+v", asset.Metadata)
 	}
 }

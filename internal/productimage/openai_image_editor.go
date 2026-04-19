@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/prompt"
 )
 
 type openAICompatibleFaithfulEditor struct {
@@ -60,6 +61,7 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 	stageName := "faithful-edit"
 	assetType := AssetTypeSubjectCutout
 	operationMode := "faithful_edit"
+	normalizedPromptRef := normalizedFaithfulEditPromptRef(req)
 	if req.Operation == "extract_subject" {
 		stageName = "subject-model"
 		operationMode = "extract_subject"
@@ -76,7 +78,7 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 		"provider":        "openai_compatible",
 		"model_family":    e.client.GetDefaultModel(),
 		"generation_mode": operationMode,
-		"prompt_ref":      req.PromptRef,
+		"prompt_ref":      normalizedPromptRef,
 		"local_path":      path,
 		"format":          info.Format,
 	}
@@ -101,7 +103,7 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 			Provider:       "openai_compatible",
 			ModelFamily:    e.client.GetDefaultModel(),
 			GenerationMode: operationMode,
-			PromptRef:      req.PromptRef,
+			PromptRef:      normalizedPromptRef,
 		},
 	}, nil
 }
@@ -123,18 +125,35 @@ func buildFaithfulEditPrompt(req *FaithfulEditRequest) string {
 	}
 	switch req.Operation {
 	case "extract_subject":
+		fallback := "Isolate the product as the main subject in a clean ecommerce edit. Preserve the exact identity, shape, texture, and color. Keep the output simple and product-focused with no extra objects or text."
 		if productType != "" {
-			return fmt.Sprintf("Isolate the %s as the main subject in a clean ecommerce edit. Preserve the exact identity, shape, texture, and color. Keep the output simple and product-focused with no extra objects or text.", productType)
+			fallback = fmt.Sprintf("Isolate the %s as the main subject in a clean ecommerce edit. Preserve the exact identity, shape, texture, and color. Keep the output simple and product-focused with no extra objects or text.", productType)
 		}
-		return "Isolate the product as the main subject in a clean ecommerce edit. Preserve the exact identity, shape, texture, and color. Keep the output simple and product-focused with no extra objects or text."
+		return renderProductImagePrompt(req.PromptRef, prompt.KProductImageSubjectExtract, map[string]any{
+			"product_type": productType,
+			"title":        productTitle(req.ProductContext),
+			"operation":    req.Operation,
+		}, fallback)
 	case "render_white_background":
+		fallback := "Place the product on a plain white ecommerce background. Preserve the exact identity, proportions, texture, and color. Keep the image clean, natural, and free of extra text or objects."
 		if productType != "" {
-			return fmt.Sprintf("Place the %s on a plain white ecommerce background. Preserve the exact identity, proportions, texture, and color. Keep the image clean, natural, and free of extra text or objects.", productType)
+			fallback = fmt.Sprintf("Place the %s on a plain white ecommerce background. Preserve the exact identity, proportions, texture, and color. Keep the image clean, natural, and free of extra text or objects.", productType)
 		}
-		return "Place the product on a plain white ecommerce background. Preserve the exact identity, proportions, texture, and color. Keep the image clean, natural, and free of extra text or objects."
+		return renderProductImagePrompt(req.PromptRef, prompt.KProductImageWhiteBackgroundDefault, map[string]any{
+			"product_type": productType,
+			"title":        productTitle(req.ProductContext),
+			"operation":    req.Operation,
+		}, fallback)
 	default:
 		return "Edit this product image faithfully for ecommerce use. Preserve identity and remove irrelevant background elements."
 	}
+}
+
+func productTitle(context *ProductContext) string {
+	if context == nil {
+		return ""
+	}
+	return strings.TrimSpace(context.Title)
 }
 
 func decodeFirstOpenAIImage(response *openaiclient.ImageResponse) ([]byte, string, error) {

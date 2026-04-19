@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+
+	"task-processor/internal/prompt"
 )
 
 type modelWhiteBackgroundRenderer struct {
@@ -23,7 +25,7 @@ func (r *modelWhiteBackgroundRenderer) Render(ctx context.Context, asset *ImageA
 		SourceAsset:    asset,
 		ProductContext: context,
 		Operation:      "render_white_background",
-		PromptRef:      "productimage/white-background/default",
+		PromptRef:      prompt.KProductImageWhiteBackgroundDefault,
 	})
 	if err != nil {
 		return nil, err

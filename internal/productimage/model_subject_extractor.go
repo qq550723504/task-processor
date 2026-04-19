@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+
+	"task-processor/internal/prompt"
 )
 
 type modelSubjectExtractor struct {
@@ -27,7 +29,7 @@ func (e *modelSubjectExtractor) Extract(ctx context.Context, imageURL string, co
 		},
 		ProductContext: context,
 		Operation:      "extract_subject",
-		PromptRef:      "productimage/subject/extract",
+		PromptRef:      prompt.KProductImageSubjectExtract,
 	})
 	if err != nil {
 		return nil, err

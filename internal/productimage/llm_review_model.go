@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/prompt"
 	productenrich "task-processor/internal/productenrich"
 )
 
@@ -35,12 +36,15 @@ func (m *llmReviewModel) Review(ctx context.Context, req *ReviewModelRequest) (*
 	if err != nil {
 		return nil, fmt.Errorf("marshal review summary: %w", err)
 	}
+	promptText := renderProductImagePrompt("", prompt.KProductImageReviewDefault, map[string]any{
+		"product_type": productTypeFromReviewRequest(req),
+		"title":        titleFromReviewRequest(req),
+		"summary_json": string(payload),
+	}, "Review this product image processing result and return JSON only: "+
+		`{"needs_review":true|false,"reasons":["..."],"confidence":0.0}`+
+		"\n\nSummary:\n"+string(payload))
 
-	prompt := "Review this product image processing result and return JSON only: " +
-		`{"needs_review":true|false,"reasons":["..."],"confidence":0.0}` +
-		"\n\nSummary:\n" + string(payload)
-
-	response, err := m.generateReviewResponse(ctx, req, prompt)
+	response, err := m.generateReviewResponse(ctx, req, promptText)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +64,20 @@ func (m *llmReviewModel) Review(ctx context.Context, req *ReviewModelRequest) (*
 		},
 		Confidence: parsed.Confidence,
 	}, nil
+}
+
+func productTypeFromReviewRequest(req *ReviewModelRequest) string {
+	if req == nil || req.Context == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.Context.ProductType)
+}
+
+func titleFromReviewRequest(req *ReviewModelRequest) string {
+	if req == nil || req.Context == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.Context.Title)
 }
 
 func (m *llmReviewModel) generateReviewResponse(ctx context.Context, req *ReviewModelRequest, prompt string) (string, error) {

@@ -137,6 +137,27 @@ parse_source
 - `productimage.scene`
 - `openai.clients.image`
 
+### Prompt registry
+
+白底图、主体提取、场景图和 review prompt 现在优先从现有 prompt registry 读取，而不是继续把模板字符串写死在代码里。
+
+当前 key：
+
+- `productimage.subject.extract`
+- `productimage.white_background.default`
+- `productimage.scene.default`
+- `productimage.review.default`
+
+模板文件位置：
+
+- [prompts/productimage/generation.yaml](/D:/code/task-processor/prompts/productimage/generation.yaml)
+
+运行规则：
+
+- 优先按 `prompt_ref` 查 registry
+- 旧的 slash 风格 prompt ref 会自动归一化成 registry key
+- 如果 registry 未初始化、key 缺失或模板渲染失败，则回退到代码内 fallback prompt
+
 其中：
 - `productimage.scene.enabled=true`
 - `productimage.scene.endpoint=<remote-scene-model-url>`
