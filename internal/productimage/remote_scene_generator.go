@@ -56,6 +56,8 @@ func (g *remoteSceneGenerator) GenerateScene(ctx context.Context, req *SceneGene
 		metadata["local_path"] = path
 		metadata["format"] = info.Format
 		metadata["scene_mode"] = "model"
+		resolvedPrompt := resolvedPromptFromRemoteMetadata(metadata, "scene_generation", req.PromptRef)
+		metadata = applyPromptObservabilityMetadata(metadata, resolvedPrompt)
 		assets = append(assets, ImageAsset{
 			URL:        path,
 			Type:       AssetTypeGalleryImage,

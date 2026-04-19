@@ -65,3 +65,75 @@ func TestReviewModelUsesRegistryPromptWhenAvailable(t *testing.T) {
 		t.Fatalf("prompt = %q", client.lastPrompt)
 	}
 }
+
+func TestBuildReviewResolvedPromptFallsBackWhenRegistryMissing(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = nil
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
+
+	resolved := buildReviewResolvedPrompt(&ReviewModelRequest{
+		Context: &ProductContext{
+			ProductType: "sneaker",
+			Title:       "Red running shoe",
+		},
+	}, `{"quality":"ok"}`)
+
+	if resolved.Key != prompt.KProductImageReviewDefault {
+		t.Fatalf("key = %q", resolved.Key)
+	}
+	if resolved.Source != "fallback" || resolved.Version != "default" {
+		t.Fatalf("resolved = %+v", resolved)
+	}
+	if resolved.Text == "" {
+		t.Fatal("resolved.Text is empty")
+	}
+}
+
+func TestBuildReviewResolvedPromptUsesRegistryMetadata(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = &promptRegistryStub{
+		templates: map[string]string{
+			prompt.KProductImageReviewDefault: "Registry review prompt {{.product_type}} / {{.title}} / {{.summary_json}}",
+		},
+	}
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
+
+	resolved := buildReviewResolvedPrompt(&ReviewModelRequest{
+		Context: &ProductContext{
+			ProductType: "sneaker",
+			Title:       "Red running shoe",
+		},
+	}, `{"quality":"ok"}`)
+
+	if resolved.Key != prompt.KProductImageReviewDefault {
+		t.Fatalf("key = %q", resolved.Key)
+	}
+	if resolved.Source != "registry" || resolved.Version != "default" {
+		t.Fatalf("resolved = %+v", resolved)
+	}
+	if resolved.Text != `Registry review prompt sneaker / Red running shoe / {"quality":"ok"}` {
+		t.Fatalf("prompt = %q", resolved.Text)
+	}
+}
+
+func TestBuildReviewGenerationMetadataFromResolvedPrompt(t *testing.T) {
+	meta := buildReviewGenerationMetadataFromResolvedPrompt(resolvedProductImagePrompt{
+		Key:     prompt.KProductImageReviewDefault,
+		Source:  "registry",
+		Version: "default",
+	})
+
+	if meta.GenerationMode != "review_generation" {
+		t.Fatalf("GenerationMode = %q", meta.GenerationMode)
+	}
+	if meta.PromptRef != prompt.KProductImageReviewDefault || meta.PromptKey != prompt.KProductImageReviewDefault {
+		t.Fatalf("metadata = %+v", meta)
+	}
+	if meta.PromptSource != "registry" || meta.PromptVersion != "default" {
+		t.Fatalf("metadata = %+v", meta)
+	}
+}

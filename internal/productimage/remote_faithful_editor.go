@@ -3,6 +3,8 @@ package productimage
 import (
 	"context"
 	"fmt"
+
+	"task-processor/internal/prompt"
 )
 
 type RemoteFaithfulEditorConfig struct {
@@ -83,6 +85,8 @@ func (e *remoteFaithfulEditor) extractSubject(ctx context.Context, req *Faithful
 	if req.ProductContext != nil && req.ProductContext.ProductType != "" {
 		metadata["product_type"] = req.ProductContext.ProductType
 	}
+	resolvedPrompt := resolvedPromptFromRemoteMetadata(metadata, "extract_subject", req.PromptRef)
+	metadata = applyPromptObservabilityMetadata(metadata, resolvedPrompt)
 	generationMetadata := generationMetadataFromResult(metadata, "extract_subject", req.PromptRef)
 	asset := &ImageAsset{
 		URL:        path,
@@ -129,6 +133,8 @@ func (e *remoteFaithfulEditor) renderWhiteBackground(ctx context.Context, req *F
 	metadata["format"] = info.Format
 	metadata["background"] = "white"
 	metadata["background_mode"] = "model"
+	resolvedPrompt := resolvedPromptFromRemoteMetadata(metadata, "render_white_background", req.PromptRef)
+	metadata = applyPromptObservabilityMetadata(metadata, resolvedPrompt)
 	generationMetadata := generationMetadataFromResult(metadata, "render_white_background", req.PromptRef)
 	asset := &ImageAsset{
 		URL:        path,
@@ -143,12 +149,15 @@ func (e *remoteFaithfulEditor) renderWhiteBackground(ctx context.Context, req *F
 }
 
 func generationMetadataFromResult(metadata map[string]string, operation string, promptRef string) *GenerationMetadata {
-	normalizedPromptRef := normalizeProductImagePromptKey(promptRef, "")
+	resolvedPrompt := resolvedPromptFromRemoteMetadata(metadata, operation, promptRef)
 	modelMetadata := &GenerationMetadata{
 		Provider:       metadata["provider"],
 		ModelFamily:    metadata["model_family"],
 		GenerationMode: metadata["generation_mode"],
-		PromptRef:      normalizedPromptRef,
+		PromptRef:      resolvedPrompt.Key,
+		PromptKey:      resolvedPrompt.Key,
+		PromptSource:   resolvedPrompt.Source,
+		PromptVersion:  resolvedPrompt.Version,
 	}
 	if modelMetadata.Provider == "" {
 		modelMetadata.Provider = "remote_model_service"
@@ -160,4 +169,30 @@ func generationMetadataFromResult(metadata map[string]string, operation string, 
 		modelMetadata.GenerationMode = operation
 	}
 	return modelMetadata
+}
+
+func resolvedPromptFromRemoteMetadata(metadata map[string]string, operation string, promptRef string) resolvedProductImagePrompt {
+	defaultKey := defaultPromptKeyForOperation(operation)
+	normalizedPromptRef := normalizeProductImagePromptKey(
+		firstNonEmpty(metadata["prompt_key"], metadata["prompt_ref"], promptRef),
+		defaultKey,
+	)
+	return resolvedProductImagePrompt{
+		Key:     normalizedPromptRef,
+		Source:  firstNonEmpty(metadata["prompt_source"], "fallback"),
+		Version: firstNonEmpty(metadata["prompt_version"], "default"),
+	}
+}
+
+func defaultPromptKeyForOperation(operation string) string {
+	switch operation {
+	case "extract_subject":
+		return prompt.KProductImageSubjectExtract
+	case "render_white_background":
+		return prompt.KProductImageWhiteBackgroundDefault
+	case "scene_generation":
+		return prompt.KProductImageSceneDefault
+	default:
+		return ""
+	}
 }
