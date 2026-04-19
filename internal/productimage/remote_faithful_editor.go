@@ -3,6 +3,7 @@ package productimage
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"task-processor/internal/prompt"
 )
@@ -151,7 +152,7 @@ func (e *remoteFaithfulEditor) renderWhiteBackground(ctx context.Context, req *F
 func generationMetadataFromResult(metadata map[string]string, operation string, promptRef string) *GenerationMetadata {
 	resolvedPrompt := resolvedPromptFromRemoteMetadata(metadata, operation, promptRef)
 	modelMetadata := &GenerationMetadata{
-		Provider:       metadata["provider"],
+		Provider:       firstNonEmpty(metadata["provider"], metadata["model_provider"]),
 		ModelFamily:    metadata["model_family"],
 		GenerationMode: metadata["generation_mode"],
 		PromptRef:      resolvedPrompt.Key,
@@ -173,14 +174,18 @@ func generationMetadataFromResult(metadata map[string]string, operation string, 
 
 func resolvedPromptFromRemoteMetadata(metadata map[string]string, operation string, promptRef string) resolvedProductImagePrompt {
 	defaultKey := defaultPromptKeyForOperation(operation)
-	normalizedPromptRef := normalizeProductImagePromptKey(
-		firstNonEmpty(metadata["prompt_key"], metadata["prompt_ref"], promptRef),
-		defaultKey,
-	)
+	upstreamPromptRef := firstNonEmpty(metadata["prompt_key"], metadata["prompt_ref"])
+	normalizedPromptRef := normalizeProductImagePromptKey(firstNonEmpty(upstreamPromptRef, promptRef), defaultKey)
+	promptSource := "fallback"
+	promptVersion := "default"
+	if strings.TrimSpace(upstreamPromptRef) != "" {
+		promptSource = firstNonEmpty(metadata["prompt_source"], promptSource)
+		promptVersion = firstNonEmpty(metadata["prompt_version"], promptVersion)
+	}
 	return resolvedProductImagePrompt{
 		Key:     normalizedPromptRef,
-		Source:  firstNonEmpty(metadata["prompt_source"], "fallback"),
-		Version: firstNonEmpty(metadata["prompt_version"], "default"),
+		Source:  promptSource,
+		Version: promptVersion,
 	}
 }
 

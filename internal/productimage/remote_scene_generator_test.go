@@ -116,8 +116,27 @@ func TestGenerationMetadataFromRemoteResultIncludesPromptObservability(t *testin
 		"model_family":   "scene-service",
 	}, "scene_generation", "productimage/scene/default")
 
+	if meta.Provider != "remote" {
+		t.Fatalf("Provider = %q", meta.Provider)
+	}
 	if meta.PromptKey != "productimage.scene.default" {
 		t.Fatalf("PromptKey = %q", meta.PromptKey)
+	}
+	if meta.PromptSource != "fallback" || meta.PromptVersion != "default" {
+		t.Fatalf("metadata = %+v", meta)
+	}
+}
+
+func TestGenerationMetadataFromRemoteResultIgnoresPartialUpstreamPromptMetadata(t *testing.T) {
+	meta := generationMetadataFromResult(map[string]string{
+		"model_provider": "remote",
+		"model_family":   "scene-service",
+		"prompt_source":  "registry",
+		"prompt_version": "v2",
+	}, "scene_generation", "")
+
+	if meta.PromptRef != "productimage.scene.default" || meta.PromptKey != "productimage.scene.default" {
+		t.Fatalf("metadata = %+v", meta)
 	}
 	if meta.PromptSource != "fallback" || meta.PromptVersion != "default" {
 		t.Fatalf("metadata = %+v", meta)

@@ -119,21 +119,3 @@ func TestBuildReviewResolvedPromptUsesRegistryMetadata(t *testing.T) {
 		t.Fatalf("prompt = %q", resolved.Text)
 	}
 }
-
-func TestBuildReviewGenerationMetadataFromResolvedPrompt(t *testing.T) {
-	meta := buildReviewGenerationMetadataFromResolvedPrompt(resolvedProductImagePrompt{
-		Key:     prompt.KProductImageReviewDefault,
-		Source:  "registry",
-		Version: "default",
-	})
-
-	if meta.GenerationMode != "review_generation" {
-		t.Fatalf("GenerationMode = %q", meta.GenerationMode)
-	}
-	if meta.PromptRef != prompt.KProductImageReviewDefault || meta.PromptKey != prompt.KProductImageReviewDefault {
-		t.Fatalf("metadata = %+v", meta)
-	}
-	if meta.PromptSource != "registry" || meta.PromptVersion != "default" {
-		t.Fatalf("metadata = %+v", meta)
-	}
-}

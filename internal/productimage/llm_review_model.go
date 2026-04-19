@@ -38,7 +38,6 @@ func (m *llmReviewModel) Review(ctx context.Context, req *ReviewModelRequest) (*
 	}
 	resolvedPrompt := buildReviewResolvedPrompt(req, string(payload))
 	promptText := resolvedPrompt.Text
-	_ = buildReviewGenerationMetadataFromResolvedPrompt(resolvedPrompt)
 
 	response, err := m.generateReviewResponse(ctx, req, promptText)
 	if err != nil {
@@ -75,16 +74,6 @@ func buildReviewResolvedPrompt(req *ReviewModelRequest, summaryJSON string) reso
 		resolved.Text = fallback
 	}
 	return resolved
-}
-
-func buildReviewGenerationMetadataFromResolvedPrompt(resolved resolvedProductImagePrompt) *GenerationMetadata {
-	return &GenerationMetadata{
-		GenerationMode: "review_generation",
-		PromptRef:      resolved.Key,
-		PromptKey:      resolved.Key,
-		PromptSource:   resolved.Source,
-		PromptVersion:  resolved.Version,
-	}
 }
 
 func productTypeFromReviewRequest(req *ReviewModelRequest) string {
