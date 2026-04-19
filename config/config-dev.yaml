@@ -336,9 +336,16 @@ productimage:
     timeout: 45
   publisher:
     enabled: true
-    provider: "local"
+    provider: "s3"
     outputDir: "./tmp/productimage-published"
-    publicBase: ""
+    publicBase: "http://127.0.0.1:9100/listingkit-assets"
+    s3:
+      bucket: "listingkit-assets"
+      region: "us-east-1"
+      endpoint: "http://127.0.0.1:9100"
+      accessKeyID: "minioadmin"
+      secretAccessKey: "minioadmin"
+      usePathStyle: true
   lifecycle:
     cleanupTemporaryFiles: true
     reuseExistingAssets: true

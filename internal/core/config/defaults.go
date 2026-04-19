@@ -54,6 +54,12 @@ func setProductImageDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("productimage.publisher.provider", pi.Publisher.Provider)
 	v.SetDefault("productimage.publisher.outputDir", pi.Publisher.OutputDir)
 	v.SetDefault("productimage.publisher.publicBase", pi.Publisher.PublicBase)
+	v.SetDefault("productimage.publisher.s3.bucket", pi.Publisher.S3.Bucket)
+	v.SetDefault("productimage.publisher.s3.region", pi.Publisher.S3.Region)
+	v.SetDefault("productimage.publisher.s3.endpoint", pi.Publisher.S3.Endpoint)
+	v.SetDefault("productimage.publisher.s3.accessKeyID", pi.Publisher.S3.AccessKeyID)
+	v.SetDefault("productimage.publisher.s3.secretAccessKey", pi.Publisher.S3.SecretAccessKey)
+	v.SetDefault("productimage.publisher.s3.usePathStyle", pi.Publisher.S3.UsePathStyle)
 	v.SetDefault("productimage.lifecycle.cleanupTemporaryFiles", pi.Lifecycle.CleanupTemporaryFiles)
 	v.SetDefault("productimage.lifecycle.reuseExistingAssets", pi.Lifecycle.ReuseExistingAssets)
 }

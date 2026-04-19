@@ -122,6 +122,29 @@ func TestConfigBuild(t *testing.T) {
 	assert.True(t, cfg.ProductImage.Lifecycle.ReuseExistingAssets)
 }
 
+func TestConfigBuildIncludesProductImagePublisherS3Config(t *testing.T) {
+	v := viper.New()
+	v.Set("productimage.publisher.provider", "s3")
+	v.Set("productimage.publisher.publicBase", "https://cdn.example.com/productimage")
+	v.Set("productimage.publisher.s3.bucket", "listingkit-assets")
+	v.Set("productimage.publisher.s3.region", "ap-southeast-1")
+	v.Set("productimage.publisher.s3.endpoint", "https://s3.example.com")
+	v.Set("productimage.publisher.s3.accessKeyID", "test-access-key")
+	v.Set("productimage.publisher.s3.secretAccessKey", "test-secret-key")
+	v.Set("productimage.publisher.s3.usePathStyle", true)
+
+	cfg := BuildConfig(v)
+
+	assert.Equal(t, "s3", cfg.ProductImage.Publisher.Provider)
+	assert.Equal(t, "https://cdn.example.com/productimage", cfg.ProductImage.Publisher.PublicBase)
+	assert.Equal(t, "listingkit-assets", cfg.ProductImage.Publisher.S3.Bucket)
+	assert.Equal(t, "ap-southeast-1", cfg.ProductImage.Publisher.S3.Region)
+	assert.Equal(t, "https://s3.example.com", cfg.ProductImage.Publisher.S3.Endpoint)
+	assert.Equal(t, "test-access-key", cfg.ProductImage.Publisher.S3.AccessKeyID)
+	assert.Equal(t, "test-secret-key", cfg.ProductImage.Publisher.S3.SecretAccessKey)
+	assert.True(t, cfg.ProductImage.Publisher.S3.UsePathStyle)
+}
+
 func TestConfigValidation(t *testing.T) {
 	validConfig := &Config{
 		Worker: WorkerConfig{

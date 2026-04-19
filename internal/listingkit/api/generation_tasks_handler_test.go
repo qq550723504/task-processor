@@ -23,8 +23,11 @@ type stubGenerationTaskService struct {
 	navigation         *listingkit.GenerationReviewNavigationDispatchResponse
 	reviewSession      *listingkit.GenerationReviewSessionResponse
 	reviewPreview      *listingkit.GenerationReviewPreviewResponse
+	uploadResponse     *listingkit.UploadImagesResponse
+	uploadedImageFile  *listingkit.UploadedImageFile
 	err                error
 	lastTask           string
+	uploadedImageKey   string
 	query              *listingkit.GenerationTaskQuery
 	queueQuery         *listingkit.GenerationQueueQuery
 	retryReq           *listingkit.RetryGenerationTasksRequest
@@ -32,6 +35,7 @@ type stubGenerationTaskService struct {
 	navigationReq      *listingkit.GenerationReviewNavigationDispatchRequest
 	reviewSessionQuery *listingkit.GenerationQueueQuery
 	reviewPreviewQuery *listingkit.GenerationQueueQuery
+	uploadImagesReq    *listingkit.UploadImagesRequest
 }
 
 func (s *stubGenerationTaskService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {

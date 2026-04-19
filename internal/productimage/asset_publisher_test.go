@@ -42,3 +42,42 @@ func TestNewMultiAssetPublisher_SkipsNil(t *testing.T) {
 	publisher := NewMultiAssetPublisher(nil)
 	require.Nil(t, publisher)
 }
+
+func TestS3AssetPublisherPublishSetsPublishedMetadata(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	sourcePath := filepath.Join(workDir, "main.jpg")
+	require.NoError(t, os.WriteFile(sourcePath, []byte("main-image"), 0o644))
+
+	publisher, err := NewS3AssetPublisher(S3AssetPublisherConfig{
+		Uploader: &stubS3AssetUploader{
+			url: "https://listingkit-assets.s3.amazonaws.com/productimage/task/main.jpg",
+		},
+		PublicBase: "https://cdn.example.com/productimage",
+	})
+	require.NoError(t, err)
+
+	result := &ImageProcessResult{
+		MainImage: &ImageAsset{
+			URL:      sourcePath,
+			Type:     AssetTypeMainImage,
+			Metadata: map[string]string{"local_path": sourcePath},
+		},
+	}
+
+	err = publisher.Publish(context.Background(), &ImageProcessRequest{ProductURL: "https://detail.1688.com/offer/123.html"}, result)
+	require.NoError(t, err)
+	require.NotNil(t, result.MainImage)
+	require.Equal(t, "s3", result.MainImage.Metadata["published_provider"])
+	require.NotEmpty(t, result.MainImage.Metadata["published_key"])
+	require.Contains(t, result.MainImage.URL, "https://cdn.example.com/productimage/")
+}
+
+type stubS3AssetUploader struct {
+	url string
+}
+
+func (s *stubS3AssetUploader) Upload(_ context.Context, _ string, _ []byte, _ string) (string, error) {
+	return s.url, nil
+}

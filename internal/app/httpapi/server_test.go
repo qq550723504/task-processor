@@ -124,6 +124,8 @@ func (s *stubImageHandler) ReviewTask(c *gin.Context) {
 
 type stubListingKitHandler struct {
 	generateCalled                     bool
+	uploadImagesCalled                 bool
+	getUploadedImageCalled             bool
 	getResultCalled                    bool
 	getPreviewCalled                   bool
 	getGenerationCalled                bool
@@ -143,6 +145,16 @@ type stubListingKitHandler struct {
 func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
 	s.generateCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": "listing-kit-task"})
+}
+
+func (s *stubListingKitHandler) UploadListingKitImages(c *gin.Context) {
+	s.uploadImagesCalled = true
+	c.JSON(http.StatusOK, gin.H{"image_urls": []string{"/api/v1/listing-kits/uploads/files/test.jpg"}})
+}
+
+func (s *stubListingKitHandler) GetUploadedListingKitImage(c *gin.Context) {
+	s.getUploadedImageCalled = true
+	c.Data(http.StatusOK, "image/jpeg", []byte{0xFF, 0xD8, 0xFF})
 }
 
 func (s *stubListingKitHandler) GetTaskResult(c *gin.Context) {
@@ -432,6 +444,29 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	}
 	if !handler.generateCalled {
 		t.Fatal("GenerateListingKit handler was not called")
+	}
+
+	handler.uploadImagesCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/uploads/images", bytes.NewReader([]byte("--x--")))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=x")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/uploads/images = %d, want 200", resp.Code)
+	}
+	if !handler.uploadImagesCalled {
+		t.Fatal("listing kit UploadListingKitImages handler was not called")
+	}
+
+	handler.getUploadedImageCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/uploads/files/test.jpg", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/uploads/files/test.jpg = %d, want 200", resp.Code)
+	}
+	if !handler.getUploadedImageCalled {
+		t.Fatal("listing kit GetUploadedListingKitImage handler was not called")
 	}
 
 	handler.getResultCalled = false

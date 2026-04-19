@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -346,6 +347,8 @@ func buildImageAssetPublisher(cfg *config.Config, logger *logrus.Logger) product
 			return nil
 		}
 		return publisher
+	case "s3":
+		return buildProductImageS3AssetPublisher(cfg, logger)
 	case "amazon":
 		publisher, err := productimage.NewAmazonAssetPublisher(cfg)
 		if err != nil {
@@ -443,6 +446,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		Repository:          repo,
 		ProductService:      deps.productService,
 		ImageService:        deps.imageService,
+		ImageUploadStore:    buildListingKitImageUploadStore(deps.cfg, logger),
 		AssetRepository:     assetRepository,
 		ReviewRepository:    reviewRepository,
 		AssetRecipeResolver: assetrecipe.NewStaticResolver(),
@@ -476,6 +480,21 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
 	return &listingKitModule{handler: handler, pool: pool}, nil
+}
+
+func buildListingKitImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit.ImageUploadStore {
+	if cfg == nil {
+		return nil
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.ProductImage.Publisher.Provider), "s3") {
+		return buildListingKitS3ImageUploadStore(cfg, logger)
+	}
+	rootDir := filepath.Join(cfg.ProductImage.Publisher.OutputDir, "listingkit-inputs")
+	store, err := listingkit.NewLocalImageUploadStore(rootDir)
+	if err != nil {
+		return nil
+	}
+	return store
 }
 
 func buildListingKitReviewRepository(cfg *config.Config, logger *logrus.Logger) (reviewstore.Repository, []func() error, error) {

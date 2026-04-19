@@ -92,6 +92,8 @@ type amazonListingRouteHandler interface {
 
 type listingKitRouteHandler interface {
 	GenerateListingKit(c *gin.Context)
+	UploadListingKitImages(c *gin.Context)
+	GetUploadedListingKitImage(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	GetTaskPreview(c *gin.Context)
 	GetTaskGenerationTasks(c *gin.Context)

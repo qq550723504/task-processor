@@ -259,6 +259,13 @@ productimage:
     provider: "local"
     outputDir: "./tmp/productimage-published"
     publicBase: ""
+    s3:
+      bucket: ""
+      region: ""
+      endpoint: ""
+      accessKeyID: ""
+      secretAccessKey: ""
+      usePathStyle: false
   lifecycle:
     cleanupTemporaryFiles: true
     reuseExistingAssets: true

@@ -23,6 +23,14 @@ func (s *stubRevisionService) CreateGenerateTask(ctx context.Context, req *listi
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubRevisionService) UploadImages(ctx context.Context, req *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubRevisionService) GetUploadedImage(ctx context.Context, key string) (*listingkit.UploadedImageFile, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubRevisionService) GetTaskResult(ctx context.Context, taskID string) (*listingkit.TaskResult, error) {
 	return nil, errors.New("not implemented")
 }

@@ -230,6 +230,7 @@ func NewDefaultConfig() *Config {
 				Provider:   "local",
 				OutputDir:  "./tmp/productimage-published",
 				PublicBase: "",
+				S3:         ProductImagePublisherS3Config{},
 			},
 			Lifecycle: ProductImageLifecycleConfig{
 				CleanupTemporaryFiles: true,
@@ -458,6 +459,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.ProductImage.Publisher.OutputDir == "" {
 		cfg.ProductImage.Publisher.OutputDir = defaultCfg.ProductImage.Publisher.OutputDir
+	}
+	if cfg.ProductImage.Publisher.S3.Region == "" {
+		cfg.ProductImage.Publisher.S3.Region = defaultCfg.ProductImage.Publisher.S3.Region
+	}
+	if cfg.ProductImage.Publisher.S3.Endpoint == "" {
+		cfg.ProductImage.Publisher.S3.Endpoint = defaultCfg.ProductImage.Publisher.S3.Endpoint
 	}
 	if cfg.Updater.UpdateURL == "" {
 		cfg.Updater = defaultCfg.Updater

@@ -56,6 +56,8 @@ type AmazonDraftBuilder interface {
 
 type Service interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
+	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
+	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
 	GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error)
 	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
@@ -76,6 +78,8 @@ type Service interface {
 
 type HandlerService interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
+	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
+	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
 	GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error)
 	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
@@ -94,6 +98,8 @@ type HandlerService interface {
 
 type Handler interface {
 	GenerateListingKit(c *gin.Context)
+	UploadListingKitImages(c *gin.Context)
+	GetUploadedListingKitImage(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	GetTaskPreview(c *gin.Context)
 	GetTaskGenerationTasks(c *gin.Context)

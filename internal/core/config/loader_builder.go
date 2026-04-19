@@ -143,6 +143,14 @@ func BuildConfig(v *viper.Viper) *Config {
 				Provider:   v.GetString("productimage.publisher.provider"),
 				OutputDir:  v.GetString("productimage.publisher.outputDir"),
 				PublicBase: v.GetString("productimage.publisher.publicBase"),
+				S3: ProductImagePublisherS3Config{
+					Bucket:          v.GetString("productimage.publisher.s3.bucket"),
+					Region:          v.GetString("productimage.publisher.s3.region"),
+					Endpoint:        v.GetString("productimage.publisher.s3.endpoint"),
+					AccessKeyID:     v.GetString("productimage.publisher.s3.accessKeyID"),
+					SecretAccessKey: v.GetString("productimage.publisher.s3.secretAccessKey"),
+					UsePathStyle:    v.GetBool("productimage.publisher.s3.usePathStyle"),
+				},
 			},
 			Lifecycle: ProductImageLifecycleConfig{
 				CleanupTemporaryFiles: v.GetBool("productimage.lifecycle.cleanupTemporaryFiles"),

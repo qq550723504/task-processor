@@ -19,6 +19,7 @@ type service struct {
 	repo                Repository
 	productSvc          ProductService
 	imageSvc            ImageService
+	uploadStore         ImageUploadStore
 	assembler           Assembler
 	assetRepo           AssetRepository
 	reviewRepo          GenerationReviewRepository
@@ -32,6 +33,7 @@ type ServiceConfig struct {
 	Repository             Repository
 	ProductService         ProductService
 	ImageService           ImageService
+	ImageUploadStore       ImageUploadStore
 	Assembler              Assembler
 	AssetRepository        AssetRepository
 	ReviewRepository       GenerationReviewRepository
@@ -78,6 +80,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 		repo:                config.Repository,
 		productSvc:          config.ProductService,
 		imageSvc:            config.ImageService,
+		uploadStore:         config.ImageUploadStore,
 		assembler:           config.Assembler,
 		assetRepo:           config.AssetRepository,
 		reviewRepo:          config.ReviewRepository,

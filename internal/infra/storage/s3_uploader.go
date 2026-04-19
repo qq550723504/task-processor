@@ -16,9 +16,12 @@ import (
 
 // S3Uploader S3上传器
 type S3Uploader struct {
-	s3Client *s3.Client
-	bucket   string
-	logger   *logrus.Entry
+	s3Client     *s3.Client
+	bucket       string
+	publicBase   string
+	endpoint     string
+	usePathStyle bool
+	logger       *logrus.Entry
 }
 
 // S3Config S3配置
@@ -27,12 +30,26 @@ type S3Config struct {
 	Region string `json:"region"`
 }
 
+type S3UploaderOptions struct {
+	Bucket       string
+	PublicBase   string
+	Endpoint     string
+	UsePathStyle bool
+}
+
 // NewS3Uploader 创建S3上传器
 func NewS3Uploader(s3Client *s3.Client, bucket string) *S3Uploader {
+	return NewS3UploaderWithOptions(s3Client, S3UploaderOptions{Bucket: bucket})
+}
+
+func NewS3UploaderWithOptions(s3Client *s3.Client, opts S3UploaderOptions) *S3Uploader {
 	return &S3Uploader{
-		s3Client: s3Client,
-		bucket:   bucket,
-		logger:   logger.GetGlobalLogger("S3Uploader"),
+		s3Client:     s3Client,
+		bucket:       opts.Bucket,
+		publicBase:   opts.PublicBase,
+		endpoint:     opts.Endpoint,
+		usePathStyle: opts.UsePathStyle,
+		logger:       logger.GetGlobalLogger("S3Uploader"),
 	}
 }
 
@@ -62,9 +79,11 @@ func (u *S3Uploader) Upload(
 		return "", fmt.Errorf("上传到S3失败: %w", err)
 	}
 
-	// 构建S3 URL
-	url := fmt.Sprintf("https://%s.s3.amazonaws.com/%s", u.bucket, key)
-	u.logger.WithField("url", url).Info("S3上传成功")
+	url := u.resolveObjectURL(key)
+	u.logger.WithFields(logrus.Fields{
+		"object_key": key,
+		"url":        url,
+	}).Info("S3上传成功")
 
 	return url, nil
 }
@@ -142,8 +161,11 @@ func (u *S3Uploader) UploadWithMetadata(
 		return "", fmt.Errorf("上传到S3失败: %w", err)
 	}
 
-	url := fmt.Sprintf("https://%s.s3.amazonaws.com/%s", u.bucket, key)
-	u.logger.WithField("url", url).Info("带元数据的S3上传成功")
+	url := u.resolveObjectURL(key)
+	u.logger.WithFields(logrus.Fields{
+		"object_key": key,
+		"url":        url,
+	}).Info("带元数据的S3上传成功")
 
 	return url, nil
 }
@@ -229,4 +251,15 @@ func (u *S3Uploader) detectContentType(data []byte) string {
 
 	// 默认JPEG
 	return "image/jpeg"
+}
+
+func (u *S3Uploader) resolveObjectURL(key string) string {
+	fallbackBase := BuildS3PublicBase(u.endpoint, u.bucket, u.usePathStyle)
+	fallbackURL := ""
+	if fallbackBase != "" {
+		fallbackURL = fallbackBase + "/" + key
+	} else {
+		fallbackURL = fmt.Sprintf("https://%s.s3.amazonaws.com/%s", u.bucket, key)
+	}
+	return ResolveObjectURL(u.publicBase, key, fallbackURL)
 }
