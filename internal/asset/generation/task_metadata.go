@@ -18,6 +18,10 @@ func cloneTaskMetadata(src map[string]string) map[string]string {
 	return dst
 }
 
+func taskMetadataFromAssetMetadata(src map[string]string) map[string]string {
+	return cloneTaskMetadata(src)
+}
+
 func reviewConfidenceFromMetadata(metadata map[string]string) float64 {
 	if len(metadata) == 0 {
 		return 0
