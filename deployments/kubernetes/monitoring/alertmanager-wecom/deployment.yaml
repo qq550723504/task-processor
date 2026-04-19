@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager-wecom
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager-wecom
+    app.kubernetes.io/part-of: task-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager-wecom
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alertmanager-wecom
+        app.kubernetes.io/part-of: task-processor
+    spec:
+      containers:
+        - name: alertmanager-wecom
+          image: python:3.12-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - /app/server.py
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: WECOM_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: alertmanager-wecom-secret
+                  key: webhook-url
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: app
+              mountPath: /app
+      volumes:
+        - name: app
+          configMap:
+            name: alertmanager-wecom

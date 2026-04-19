@@ -4,12 +4,29 @@ package browser
 import (
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
+)
+
+var zipcodeInterfaceReadySelectors = []string{
+	"#GLUXZipUpdateInput",
+	"select#GLUXCountryList",
+	"#GLUXZipUpdate",
+}
+
+var zipcodeSuccessConfirmationSelectors = []string{
+	"input#GLUXConfirmClose",
+	"input[aria-labelledby='GLUXConfirmClose-announce']",
+	"button:has-text('Continue')",
+	"text=Continue",
+}
+
+const (
+	zipcodeAddressSyncWaitAfterConfirm = 1500 * time.Millisecond
+	zipcodeAddressSyncWaitDefault      = 4 * time.Second
 )
 
 // truncateString 截断字符串到指定长度
@@ -108,68 +125,79 @@ func (zih *ZipcodeInputHandler) checkSignInDialog(page playwright.Page) error {
 
 // triggerZipcodeInterface 触发邮编设置界面
 func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) error {
-	triggerSelectors := []string{
-		"#nav-global-location-slot",           // 导航栏位置槽（英语页面主要入口）
-		"button:has-text('Delivering to')",    // 沙特站点的配送按钮
-		"#glow-ingress-block",                 // 配送区块
-		"#glow-ingress-line2",                 // Amazon配送地址显示区域
-		"#nav-global-location-popover-link",   // 导航栏位置链接
-		"a#nav-global-location-popover-link",  // 带标签的导航栏位置链接
-		"span#glow-ingress-line2",             // 带标签的配送地址
-		"a[href*='address']",                  // 地址链接
-		"a[href*='zip-code']",                 // 邮编链接
-		".nav-line-2",                         // 导航第二行
-		"[data-csa-c-content-id='nav_cs_gb']", // 全球配送
-		"#GLUXCountryList",                    // 国家列表
+	if zih.isZipcodeInterfaceReady(page) {
+		logger.GetGlobalLogger("crawler/amazon").Infof("邮编设置界面已就绪，跳过重复触发")
+		return nil
+	}
+
+	triggerSelectorGroups := [][]string{
+		{
+			"#nav-global-location-slot",           // 导航栏位置槽（英语页面主要入口）
+			"#glow-ingress-block",                 // 配送区块
+			"#glow-ingress-line2",                 // Amazon配送地址显示区域
+			"#nav-global-location-popover-link",   // 导航栏位置链接
+			"a#nav-global-location-popover-link",  // 带标签的导航栏位置链接
+			"span#glow-ingress-line2",             // 带标签的配送地址
+			".nav-line-2",                         // 导航第二行
+			"[data-csa-c-content-id='nav_cs_gb']", // 全球配送
+		},
+		{
+			"button:has-text('Delivering to')", // 沙特站点的配送按钮
+		},
+		{
+			"a[href*='address']",  // 地址链接
+			"a[href*='zip-code']", // 邮编链接
+		},
 	}
 
 	triggered := false
-	for _, selector := range triggerSelectors {
+	for _, group := range triggerSelectorGroups {
 		if page.IsClosed() {
 			return fmt.Errorf("页面在触发元素查找过程中被关闭")
 		}
 
-		locator := page.Locator(selector).First()
-		count, err := locator.Count()
-		if err == nil && count > 0 {
-			if err := locator.Click(playwright.LocatorClickOptions{
-				Timeout: playwright.Float(5000), // 5s 超时，防止 WebSocket 断连时 hang
-			}); err != nil {
-				// 检查是否是页面关闭导致的错误
-				if page.IsClosed() {
-					return fmt.Errorf("页面在点击触发元素时被关闭: %w", err)
-				}
-			} else {
-				logger.GetGlobalLogger("crawler/amazon").Infof("成功点击触发元素: %s", selector)
-				triggered = true
+		selector := zih.findFirstVisibleSelector(page, group)
+		if selector == "" {
+			continue
+		}
 
-				// 等待弹窗出现(等待对话框或下拉框)
-				dialogSelectors := []string{
-					"div[role='dialog']",
-					"select#GLUXCountryList",
-					"span.a-dropdown-container select",
-					"#GLUXZipUpdateInput",
-				}
+		if err := zih.clickTriggerSelector(page, selector); err != nil {
+			// 检查是否是页面关闭导致的错误
+			if page.IsClosed() {
+				return fmt.Errorf("页面在点击触发元素时被关闭: %w", err)
+			}
+			logger.GetGlobalLogger("crawler/amazon").Infof("点击触发元素失败，继续尝试下一组入口: selector=%s err=%v", selector, err)
+			continue
+		}
 
-				waitSuccess := false
-				for _, dialogSelector := range dialogSelectors {
-					if err := page.Locator(dialogSelector).First().WaitFor(playwright.LocatorWaitForOptions{
-						State:   playwright.WaitForSelectorStateVisible,
-						Timeout: playwright.Float(3000),
-					}); err == nil {
-						logger.GetGlobalLogger("crawler/amazon").Infof("弹窗已出现: %s", dialogSelector)
-						waitSuccess = true
-						break
-					}
-				}
+		logger.GetGlobalLogger("crawler/amazon").Infof("成功点击触发元素: %s", selector)
+		triggered = true
 
-				if !waitSuccess {
-					logger.GetGlobalLogger("crawler/amazon").Infof("等待弹窗超时,继续尝试")
-				}
-				zih.waitForZipcodeInterfaceReady(page)
+		// 等待弹窗出现(等待对话框或下拉框)
+		dialogSelectors := []string{
+			"div[role='dialog']",
+			"select#GLUXCountryList",
+			"span.a-dropdown-container select",
+			"#GLUXZipUpdateInput",
+		}
+
+		waitSuccess := false
+		for _, dialogSelector := range dialogSelectors {
+			if err := page.Locator(dialogSelector).First().WaitFor(playwright.LocatorWaitForOptions{
+				State:   playwright.WaitForSelectorStateVisible,
+				Timeout: playwright.Float(1500),
+			}); err == nil {
+				logger.GetGlobalLogger("crawler/amazon").Infof("弹窗已出现: %s", dialogSelector)
+				waitSuccess = true
 				break
 			}
 		}
+
+		if !waitSuccess {
+			logger.GetGlobalLogger("crawler/amazon").Infof("等待弹窗超时,继续尝试")
+		}
+		zih.waitForZipcodeInterfaceReady(page)
+		break
 	}
 
 	if !triggered {
@@ -179,12 +207,67 @@ func (zih *ZipcodeInputHandler) triggerZipcodeInterface(page playwright.Page) er
 		}
 
 		logger.GetGlobalLogger("crawler/amazon").Infof("警告: 未找到任何可点击的触发元素")
+		// 页面已经有价格，但地址弹层/输入框没起来时，继续尝试输入通常只会空耗时间。
+		// 让外层在下一轮直接刷新页面，再重新对齐配送上下文。
+		if shouldRefreshAfterPriceVisibleTriggerFailure(CheckIfPriceAvailable(page), zih.isZipcodeInterfaceReady(page)) {
+			logger.GetGlobalLogger("crawler/amazon").Infof("页面已有价格但邮编界面不可用，返回刷新信号给上层重试")
+			return fmt.Errorf("ZIPCODE_INTERFACE_REFRESH_REQUIRED: 页面已有价格但邮编界面未就绪")
+		}
+
 		// 在英语页面上，某些地区可能不需要设置邮编
 		if CheckIfPriceAvailable(page) {
 			logger.GetGlobalLogger("crawler/amazon").Infof("页面已显示价格信息，可能不需要设置邮编，跳过")
 			return nil
 		}
 
+	}
+
+	return nil
+}
+
+func shouldRefreshAfterPriceVisibleTriggerFailure(priceAvailable bool, interfaceReady bool) bool {
+	return priceAvailable && !interfaceReady
+}
+
+func (zih *ZipcodeInputHandler) findFirstVisibleSelector(page playwright.Page, selectors []string) string {
+	if page == nil || page.IsClosed() {
+		return ""
+	}
+
+	for _, selector := range selectors {
+		locator := page.Locator(selector).First()
+		count, err := locator.Count()
+		if err != nil || count == 0 {
+			continue
+		}
+		if visible, err := locator.IsVisible(); err == nil && visible {
+			return selector
+		}
+	}
+
+	return ""
+}
+
+func (zih *ZipcodeInputHandler) clickTriggerSelector(page playwright.Page, selector string) error {
+	if page == nil || page.IsClosed() {
+		return fmt.Errorf("页面已关闭，无法点击触发元素")
+	}
+
+	locator := page.Locator(selector).First()
+	if err := locator.Click(playwright.LocatorClickOptions{
+		Timeout: playwright.Float(1800),
+	}); err == nil {
+		return nil
+	}
+
+	_, err := page.Evaluate(`(sel) => {
+		const el = document.querySelector(sel);
+		if (!el) return false;
+		el.click();
+		return true;
+	}`, selector)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -244,9 +327,11 @@ func (zih *ZipcodeInputHandler) handleCountrySelection(page playwright.Page, zip
 				return { value: byValue.value, text: byValue.text };
 			}
 
-			const partial = options.find((opt) => opt.normalized.includes(normalizedQuery));
-			if (partial) {
-				return { value: partial.value, text: partial.text };
+			if (normalizedQuery.length >= 4) {
+				const partial = options.find((opt) => opt.normalized.includes(normalizedQuery));
+				if (partial) {
+					return { value: partial.value, text: partial.text };
+				}
 			}
 		}
 
@@ -301,7 +386,7 @@ func buildCountrySelectionQueries(targetCountry string) []string {
 	case "united states":
 		return nil
 	case "united kingdom":
-		return []string{"United Kingdom", "UK", "Great Britain", "GB", "英国"}
+		return nil
 	case "japan":
 		return []string{"Japan", "JP", "日本"}
 	case "canada":
@@ -354,36 +439,7 @@ func inferCountryFromTargetURL(targetURL string) string {
 
 // inferCountryFromZipcode 根据邮编格式推断目标国家名称（用于 GLUXCountryList 选项匹配）
 func inferCountryFromZipcode(zipcode string) string {
-	normalized := strings.ToUpper(strings.TrimSpace(zipcode))
-	if normalized == "" {
-		return ""
-	}
-
-	// 美国 ZIP: 10001 或 10001-1234
-	usRegex := regexp.MustCompile(`^\d{5}(?:-\d{4})?$`)
-	if usRegex.MatchString(normalized) {
-		return "United States"
-	}
-
-	// 加拿大邮编: M5V2T6 / M5V 2T6
-	canadaRegex := regexp.MustCompile(`^[A-Z]\d[A-Z]\s?\d[A-Z]\d$`)
-	if canadaRegex.MatchString(normalized) {
-		return "Canada"
-	}
-
-	// 日本邮编: 100-0001 / 1000001
-	japanRegex := regexp.MustCompile(`^\d{3}-?\d{4}$`)
-	if japanRegex.MatchString(normalized) {
-		return "Japan"
-	}
-
-	// 英国邮编: SW1A 1AA 等
-	ukRegex := regexp.MustCompile(`(?i)^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$`)
-	if ukRegex.MatchString(normalized) {
-		return "United Kingdom"
-	}
-
-	return ""
+	return inferCountryFromZipcodeValue(zipcode)
 }
 
 // handleZipcodeInput 处理邮编输入（使用策略模式）
@@ -408,14 +464,7 @@ func (zih *ZipcodeInputHandler) waitForZipcodeInterfaceReady(page playwright.Pag
 		return
 	}
 
-	readySelectors := []string{
-		"#GLUXZipUpdateInput",
-		"#GLUXZipUpdate",
-		"input[aria-labelledby='GLUXZipUpdate-announce']",
-		"div[role='dialog']",
-	}
-
-	for _, selector := range readySelectors {
+	for _, selector := range zipcodeInterfaceReadySelectors {
 		if err := page.Locator(selector).First().WaitFor(playwright.LocatorWaitForOptions{
 			State:   playwright.WaitForSelectorStateVisible,
 			Timeout: playwright.Float(1500),
@@ -423,6 +472,55 @@ func (zih *ZipcodeInputHandler) waitForZipcodeInterfaceReady(page playwright.Pag
 			return
 		}
 	}
+}
+
+func (zih *ZipcodeInputHandler) isZipcodeInterfaceReady(page playwright.Page) bool {
+	if page == nil || page.IsClosed() {
+		return false
+	}
+
+	for _, selector := range zipcodeInterfaceReadySelectors {
+		locator := page.Locator(selector).First()
+		count, err := locator.Count()
+		if err != nil || count == 0 {
+			continue
+		}
+
+		if visible, err := locator.IsVisible(); err == nil && visible {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isZipcodeSuccessConfirmationText(text string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(text), " "))
+	if normalized == "" {
+		return false
+	}
+
+	return strings.Contains(normalized, "you're now shopping for delivery to") ||
+		strings.Contains(normalized, "we will use your selected location to show all products available")
+}
+
+func (zih *ZipcodeInputHandler) getVisibleLocationModalText(page playwright.Page) string {
+	if page == nil || page.IsClosed() {
+		return ""
+	}
+
+	modalLocator := page.Locator(".a-popover-modal:visible").First()
+	count, err := modalLocator.Count()
+	if err != nil || count == 0 {
+		return ""
+	}
+
+	text, err := modalLocator.TextContent()
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(text)
 }
 
 func (zih *ZipcodeInputHandler) getAddressDisplayText(page playwright.Page) string {
@@ -447,20 +545,24 @@ func (zih *ZipcodeInputHandler) getAddressDisplayText(page playwright.Page) stri
 	return ""
 }
 
-func (zih *ZipcodeInputHandler) closeLocationDialogIfVisible(page playwright.Page) {
+func (zih *ZipcodeInputHandler) closeLocationDialogIfVisible(page playwright.Page) bool {
 	if page.IsClosed() {
-		return
+		return false
 	}
 
-	dialogLocator := page.Locator("div[role='dialog']").First()
+	if zih.confirmZipcodeSuccessDialog(page) {
+		return true
+	}
+
+	dialogLocator := page.Locator(".a-popover-modal:visible").First()
 	for i := 0; i < 2; i++ {
 		isVisible, err := dialogLocator.IsVisible()
 		if err != nil || !isVisible {
-			return
+			return false
 		}
 
 		if err := page.Keyboard().Press("Escape"); err != nil {
-			return
+			return false
 		}
 
 		logger.GetGlobalLogger("crawler/amazon").Infof("地址弹层仍存在，发送 ESC 关闭 (第%d次)", i+1)
@@ -468,9 +570,75 @@ func (zih *ZipcodeInputHandler) closeLocationDialogIfVisible(page playwright.Pag
 			State:   playwright.WaitForSelectorStateHidden,
 			Timeout: playwright.Float(800),
 		}); err == nil {
-			return
+			return false
 		}
 	}
+
+	return false
+}
+
+func (zih *ZipcodeInputHandler) confirmZipcodeSuccessDialog(page playwright.Page) bool {
+	if page == nil || page.IsClosed() {
+		return false
+	}
+
+	modalText := zih.getVisibleLocationModalText(page)
+	if modalText == "" || !isZipcodeSuccessConfirmationText(modalText) {
+		return false
+	}
+
+	for _, selector := range zipcodeSuccessConfirmationSelectors {
+		locator := page.Locator(selector).First()
+		count, err := locator.Count()
+		if err != nil || count == 0 {
+			continue
+		}
+
+		visible, err := locator.IsVisible()
+		if err != nil || !visible {
+			continue
+		}
+
+		if err := locator.Click(playwright.LocatorClickOptions{
+			Timeout: playwright.Float(2500),
+		}); err != nil {
+			logger.GetGlobalLogger("crawler/amazon").Infof("点击邮编成功确认按钮失败: selector=%s err=%v", selector, err)
+			continue
+		}
+
+		logger.GetGlobalLogger("crawler/amazon").Infof("已确认邮编更新成功弹层: %s", selector)
+		_ = page.Locator(".a-popover-modal:visible").First().WaitFor(playwright.LocatorWaitForOptions{
+			State:   playwright.WaitForSelectorStateHidden,
+			Timeout: playwright.Float(3000),
+		})
+		return true
+	}
+
+	ok, err := page.Evaluate(`() => {
+		const modal = document.querySelector('.a-popover-modal');
+		if (!modal) return false;
+		const candidates = Array.from(modal.querySelectorAll('button,input[type="submit"],input[type="button"]'));
+		for (const el of candidates) {
+			const text = ((el.innerText || el.textContent || el.value || '') + ' ' + (el.getAttribute('aria-label') || '')).trim().toLowerCase();
+			if (el.id === 'GLUXConfirmClose' || text.includes('continue')) {
+				el.click();
+				return true;
+			}
+		}
+		return false;
+	}`)
+	if err == nil {
+		if clicked, _ := ok.(bool); clicked {
+			logger.GetGlobalLogger("crawler/amazon").Infof("已通过脚本兜底确认邮编更新成功弹层")
+			_ = page.Locator(".a-popover-modal:visible").First().WaitFor(playwright.LocatorWaitForOptions{
+				State:   playwright.WaitForSelectorStateHidden,
+				Timeout: playwright.Float(3000),
+			})
+			return true
+		}
+	}
+
+	return false
 }
 
 func (zih *ZipcodeInputHandler) waitForZipcodeApplyCompletion(page playwright.Page, beforeText string) {
@@ -490,6 +658,12 @@ func (zih *ZipcodeInputHandler) waitForZipcodeApplyCompletion(page playwright.Pa
 			return
 		}
 
+		modalText := zih.getVisibleLocationModalText(page)
+		if isZipcodeSuccessConfirmationText(modalText) {
+			logger.GetGlobalLogger("crawler/amazon").Infof("检测到邮编成功确认弹层，等待确认按钮处理")
+			return
+		}
+
 		inputVisible, _ := page.Locator("#GLUXZipUpdateInput").First().IsVisible()
 		dialogVisible, _ := page.Locator("div[role='dialog']").First().IsVisible()
 		if !inputVisible && !dialogVisible {
@@ -498,6 +672,42 @@ func (zih *ZipcodeInputHandler) waitForZipcodeApplyCompletion(page playwright.Pa
 
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+func (zih *ZipcodeInputHandler) waitForAddressTextChange(page playwright.Page, beforeText string, timeout time.Duration) {
+	if page == nil || page.IsClosed() || strings.TrimSpace(beforeText) == "" {
+		return
+	}
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if page.IsClosed() {
+			return
+		}
+
+		currentText := zih.getAddressDisplayText(page)
+		if currentText != "" && currentText != beforeText {
+			logger.GetGlobalLogger("crawler/amazon").Infof("确认弹层关闭后地址已更新: '%s' -> '%s'", beforeText, currentText)
+			return
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+func shouldRefreshAfterSuccessfulZipcodeConfirmation(beforeText, currentText string, confirmed bool) bool {
+	if !confirmed {
+		return false
+	}
+
+	beforeText = strings.TrimSpace(beforeText)
+	currentText = strings.TrimSpace(currentText)
+
+	if beforeText == "" {
+		return currentText == ""
+	}
+
+	return currentText == "" || currentText == beforeText
 }
 
 // submitZipcodeChange 提交邮编设置
@@ -580,9 +790,13 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 			if page.IsClosed() {
 				return fmt.Errorf("页面在点击Apply按钮时被关闭: %w", err)
 			}
-			return fmt.Errorf("点击Apply按钮失败: %w", err)
+			logger.GetGlobalLogger("crawler/amazon").Infof("点击Apply按钮失败，尝试脚本点击兜底: %v", err)
+			if fallbackErr := zih.fallbackApplyZipcodeChange(page, selectedSelector); fallbackErr != nil {
+				return fmt.Errorf("点击Apply按钮失败: %w", err)
+			}
+		} else {
+			logger.GetGlobalLogger("crawler/amazon").Infof("成功点击Apply按钮")
 		}
-		logger.GetGlobalLogger("crawler/amazon").Infof("成功点击Apply按钮")
 	}
 
 	logger.GetGlobalLogger("crawler/amazon").Infof("等待Apply按钮处理完成，等待地址信息更新...")
@@ -593,7 +807,53 @@ func (zih *ZipcodeInputHandler) submitZipcodeChange(page playwright.Page) error 
 		return fmt.Errorf("页面在Apply按钮处理后被关闭")
 	}
 
-	zih.closeLocationDialogIfVisible(page)
+	confirmedSuccess := zih.closeLocationDialogIfVisible(page)
+	addressSyncWait := zipcodeAddressSyncWaitDefault
+	if confirmedSuccess {
+		addressSyncWait = zipcodeAddressSyncWaitAfterConfirm
+	}
+	zih.waitForAddressTextChange(page, beforeText, addressSyncWait)
 
+	currentText := zih.getAddressDisplayText(page)
+	if shouldRefreshAfterSuccessfulZipcodeConfirmation(beforeText, currentText, confirmedSuccess) {
+		logger.GetGlobalLogger("crawler/amazon").Infof("成功确认邮编后地址文本仍未更新，立即刷新页面同步配送上下文")
+		if _, err := page.Reload(playwright.PageReloadOptions{
+			Timeout: playwright.Float(15000),
+		}); err == nil {
+			_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+				State:   playwright.LoadStateDomcontentloaded,
+				Timeout: playwright.Float(15000),
+			})
+		}
+	}
+
+	return nil
+}
+
+func (zih *ZipcodeInputHandler) fallbackApplyZipcodeChange(page playwright.Page, selector string) error {
+	if page == nil || page.IsClosed() {
+		return fmt.Errorf("页面已关闭，无法执行Apply兜底")
+	}
+
+	if selector != "" {
+		ok, err := page.Evaluate(`(sel) => {
+			const el = document.querySelector(sel);
+			if (!el) return false;
+			el.click();
+			return true;
+		}`, selector)
+		if err == nil {
+			if clicked, _ := ok.(bool); clicked {
+				logger.GetGlobalLogger("crawler/amazon").Infof("已通过脚本兜底点击Apply按钮: %s", selector)
+				return nil
+			}
+		}
+	}
+
+	if err := page.Keyboard().Press("Enter"); err != nil {
+		return fmt.Errorf("Apply兜底失败，按回车键失败: %w", err)
+	}
+
+	logger.GetGlobalLogger("crawler/amazon").Infof("已通过回车键兜底提交邮编更新")
 	return nil
 }

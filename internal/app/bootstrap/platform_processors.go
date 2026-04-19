@@ -35,8 +35,9 @@ func buildSheinProcessor(svc *appServices, logger *logrus.Logger) (*pipeline.She
 }
 
 func buildTemuProcessorDependencies(svc *appServices) (temu.Dependencies, error) {
-	productFetcher, err := buildSharedProductFetcher(
+	productFetcher, err := buildPlatformProductFetcher(
 		svc.cfg,
+		"temu",
 		svc.managementClient.GetRawJsonDataAdapter(),
 		svc.amazonCrawler,
 		svc.rabbitmqClient,
@@ -53,8 +54,9 @@ func buildTemuProcessorDependencies(svc *appServices) (temu.Dependencies, error)
 }
 
 func buildSheinProcessorDependencies(svc *appServices) (pipeline.Dependencies, error) {
-	productFetcher, err := buildSharedProductFetcher(
+	productFetcher, err := buildPlatformProductFetcher(
 		svc.cfg,
+		"shein",
 		svc.managementClient.GetRawJsonDataAdapter(),
 		svc.amazonCrawler,
 		svc.rabbitmqClient,

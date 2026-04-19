@@ -50,10 +50,20 @@ func setProductImageDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("productimage.whiteBackground.endpoint", pi.WhiteBackground.Endpoint)
 	v.SetDefault("productimage.whiteBackground.apiKey", pi.WhiteBackground.APIKey)
 	v.SetDefault("productimage.whiteBackground.timeout", pi.WhiteBackground.Timeout)
+	v.SetDefault("productimage.scene.enabled", pi.Scene.Enabled)
+	v.SetDefault("productimage.scene.endpoint", pi.Scene.Endpoint)
+	v.SetDefault("productimage.scene.apiKey", pi.Scene.APIKey)
+	v.SetDefault("productimage.scene.timeout", pi.Scene.Timeout)
 	v.SetDefault("productimage.publisher.enabled", pi.Publisher.Enabled)
 	v.SetDefault("productimage.publisher.provider", pi.Publisher.Provider)
 	v.SetDefault("productimage.publisher.outputDir", pi.Publisher.OutputDir)
 	v.SetDefault("productimage.publisher.publicBase", pi.Publisher.PublicBase)
+	v.SetDefault("productimage.publisher.s3.bucket", pi.Publisher.S3.Bucket)
+	v.SetDefault("productimage.publisher.s3.region", pi.Publisher.S3.Region)
+	v.SetDefault("productimage.publisher.s3.endpoint", pi.Publisher.S3.Endpoint)
+	v.SetDefault("productimage.publisher.s3.accessKeyID", pi.Publisher.S3.AccessKeyID)
+	v.SetDefault("productimage.publisher.s3.secretAccessKey", pi.Publisher.S3.SecretAccessKey)
+	v.SetDefault("productimage.publisher.s3.usePathStyle", pi.Publisher.S3.UsePathStyle)
 	v.SetDefault("productimage.lifecycle.cleanupTemporaryFiles", pi.Lifecycle.CleanupTemporaryFiles)
 	v.SetDefault("productimage.lifecycle.reuseExistingAssets", pi.Lifecycle.ReuseExistingAssets)
 }
@@ -76,6 +86,7 @@ func setBrowserDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("browser.randomConfig.fingerprintStrategy", rc.FingerprintStrategy)
 	v.SetDefault("browser.randomConfig.healthCheckEnabled", rc.HealthCheckEnabled)
 	v.SetDefault("browser.randomConfig.maxRetries", rc.MaxRetries)
+	v.SetDefault("browser.randomConfig.maxUsesPerInstance", rc.MaxUsesPerInstance)
 }
 
 func setAmazonDefaults(v *viper.Viper, defaults *Config) {
@@ -161,6 +172,7 @@ func setPlatformDefaults(v *viper.Viper, defaults *Config) {
 func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.temu.enabled", p.Enabled)
 	v.SetDefault("platforms.temu.schedulerEnabled", p.SchedulerEnabled)
+	v.SetDefault("platforms.temu.fetchMode", p.FetchMode)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.temu.autoPricing.enabled", ap.Enabled)
@@ -194,6 +206,7 @@ func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
 func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.enabled", p.Enabled)
 	v.SetDefault("platforms.shein.schedulerEnabled", p.SchedulerEnabled)
+	v.SetDefault("platforms.shein.fetchMode", p.FetchMode)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)

@@ -32,6 +32,12 @@ var marketplaceInfoMap = map[string]MarketplaceInfo{
 	"amazon.pl":     {Marketplace: "PL", Currency: "PLN"},
 }
 
+var (
+	asinPathRegex      = regexp.MustCompile(`/([A-Z0-9]{10})(?:[/?]|$)`)
+	asinDPPathRegex    = regexp.MustCompile(`/dp/([A-Z0-9]{10})`)
+	asinGPPathRegex    = regexp.MustCompile(`/gp/product/([A-Z0-9]{10})`)
+)
+
 // URLHelper URL处理辅助工具
 type URLHelper struct{}
 
@@ -80,23 +86,19 @@ func (uh *URLHelper) AddNoRedirectParam(originalURL string) string {
 
 // ExtractASINFromURL 从URL中提取ASIN
 func (uh *URLHelper) ExtractASINFromURL(productURL string) string {
-	// 匹配Amazon ASIN的正则表达式
-	asinRegex := regexp.MustCompile(`/([A-Z0-9]{10})(?:[/?]|$)`)
-	matches := asinRegex.FindStringSubmatch(productURL)
+	matches := asinPathRegex.FindStringSubmatch(productURL)
 	if len(matches) > 1 {
 		return matches[1]
 	}
 
 	// 尝试从dp/后面提取
-	dpRegex := regexp.MustCompile(`/dp/([A-Z0-9]{10})`)
-	matches = dpRegex.FindStringSubmatch(productURL)
+	matches = asinDPPathRegex.FindStringSubmatch(productURL)
 	if len(matches) > 1 {
 		return matches[1]
 	}
 
 	// 尝试从gp/product/后面提取
-	gpRegex := regexp.MustCompile(`/gp/product/([A-Z0-9]{10})`)
-	matches = gpRegex.FindStringSubmatch(productURL)
+	matches = asinGPPathRegex.FindStringSubmatch(productURL)
 	if len(matches) > 1 {
 		return matches[1]
 	}

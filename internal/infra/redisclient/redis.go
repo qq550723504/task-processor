@@ -64,9 +64,42 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	return c.rdb.Del(ctx, key).Err()
 }
 
+// Scan iterates keys with a match pattern.
+func (c *Client) Scan(ctx context.Context, cursor uint64, match string, count int64) (uint64, []string, error) {
+	keys, nextCursor, err := c.rdb.Scan(ctx, cursor, match, count).Result()
+	return nextCursor, keys, err
+}
+
 // SMembers returns all set members for the given key.
 func (c *Client) SMembers(ctx context.Context, key string) ([]string, error) {
 	return c.rdb.SMembers(ctx, key).Result()
+}
+
+// SAdd adds members into the target set.
+func (c *Client) SAdd(ctx context.Context, key string, members ...string) error {
+	values := make([]any, 0, len(members))
+	for _, member := range members {
+		values = append(values, member)
+	}
+	return c.rdb.SAdd(ctx, key, values...).Err()
+}
+
+// ReplaceSet atomically replaces the full member set for the target key.
+func (c *Client) ReplaceSet(ctx context.Context, key string, members ...string) error {
+	_, err := c.rdb.TxPipelined(ctx, func(pipe goredis.Pipeliner) error {
+		pipe.Del(ctx, key)
+		if len(members) == 0 {
+			return nil
+		}
+
+		values := make([]any, 0, len(members))
+		for _, member := range members {
+			values = append(values, member)
+		}
+		pipe.SAdd(ctx, key, values...)
+		return nil
+	})
+	return err
 }
 
 // Close closes the underlying Redis client.

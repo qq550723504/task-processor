@@ -9,8 +9,13 @@ param(
     [string]$DockerHubUser = $(if ($env:DOCKERHUB_USER) { $env:DOCKERHUB_USER } else { "xuwei190" }),
     [string]$Tag = "",
     [string]$Namespace = "task-processor",
-    [string]$DeploymentName = "shein-listing",
-    [string]$OverlayPath = "deployments/kubernetes/shein-listing/overlays/prod",
+    [string[]]$DeploymentNames = @(
+        "shein-listing-store-a",
+        "shein-listing-store-b",
+        "shein-listing-store-c",
+        "shein-listing-store-d"
+    ),
+    [string]$OverlayPath = "deployments/kubernetes/shein-listing/overlays/prod-store-auto-shard",
     [switch]$SkipTests,
     [switch]$SkipApply,
     [switch]$PublishLatest
@@ -50,7 +55,8 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  SHEIN Listing Build / Push / Deploy" -ForegroundColor Cyan
 Write-Host "  Image: $FullImage" -ForegroundColor Cyan
 Write-Host "  Namespace: $Namespace" -ForegroundColor Cyan
-Write-Host "  Deployment: $DeploymentName" -ForegroundColor Cyan
+Write-Host "  Overlay: $OverlayPath" -ForegroundColor Cyan
+Write-Host "  Deployments: $($DeploymentNames -join ', ')" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 if (-not $SkipTests) {
@@ -97,17 +103,23 @@ if (-not $SkipApply) {
     }
 }
 
-Invoke-Step "[6/7] Updating deployment image..." {
-    kubectl -n $Namespace set image deployment/$DeploymentName "$DeploymentName=$FullImage"
-    if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed" }
+Invoke-Step "[6/7] Updating deployment images..." {
+    foreach ($deploymentName in $DeploymentNames) {
+        kubectl -n $Namespace set image deployment/$deploymentName "shein-listing=$FullImage"
+        if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$deploymentName" }
+    }
 }
 
-Invoke-Step "[7/7] Waiting for rollout..." {
-    kubectl -n $Namespace rollout status deployment/$DeploymentName --timeout=5m
-    if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed" }
+Invoke-Step "[7/7] Waiting for rollouts..." {
+    foreach ($deploymentName in $DeploymentNames) {
+        kubectl -n $Namespace rollout status deployment/$deploymentName --timeout=5m
+        if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$deploymentName" }
+    }
 
-    kubectl -n $Namespace get pods -l "app=$DeploymentName" -o wide
-    if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed" }
+    foreach ($deploymentName in $DeploymentNames) {
+        kubectl -n $Namespace get pods -l "app=$deploymentName" -o wide
+        if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$deploymentName" }
+    }
 }
 
 Write-Host ""

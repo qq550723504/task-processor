@@ -3,14 +3,19 @@ package browser
 
 import (
 	"context"
+	"fmt"
 	"task-processor/internal/core/logger"
 	"time"
+
+	"github.com/playwright-community/playwright-go"
 )
 
 // HealthChecker 健康检查器
 type HealthChecker struct {
 	pool *BrowserPool
 }
+
+const healthCheckTimeout = 5 * time.Second
 
 // NewHealthChecker 创建健康检查器
 func NewHealthChecker(pool *BrowserPool) *HealthChecker {
@@ -20,16 +25,29 @@ func NewHealthChecker(pool *BrowserPool) *HealthChecker {
 }
 
 // HealthCheck 检查浏览器实例健康状态。
-// Page.Evaluate 在 WebSocket 断连时可能永久 hang，使用 5s 超时保护。
+// 通过临时页面做轻量探测，避免为健康检查长期保留常驻页。
+// NewPage/Evaluate/Close 在 WebSocket 断连时都可能 hang，使用 5s 超时保护。
 func (hc *HealthChecker) HealthCheck(instance *BrowserInstance) bool {
-	if instance == nil || instance.Manager == nil || instance.Page == nil {
+	if instance == nil || instance.Manager == nil {
 		return false
 	}
 
 	type evalResult struct{ err error }
 	ch := make(chan evalResult, 1)
 	go func() {
-		_, err := instance.Page.Evaluate("() => document.readyState")
+		page, err := instance.Manager.NewPage()
+		if err != nil {
+			ch <- evalResult{err: err}
+			return
+		}
+
+		_, err = page.Evaluate("() => document.readyState")
+		closeErr := closeHealthCheckPage(page, instance.ID, healthCheckTimeout)
+		if err == nil {
+			err = closeErr
+		} else if closeErr != nil {
+			logger.GetGlobalLogger("crawler/amazon").Warnf("浏览器实例 %d 健康检查收尾失败: %v", instance.ID, closeErr)
+		}
 		ch <- evalResult{err}
 	}()
 
@@ -40,9 +58,26 @@ func (hc *HealthChecker) HealthCheck(instance *BrowserInstance) bool {
 			return false
 		}
 		return true
-	case <-time.After(5 * time.Second):
-		logger.GetGlobalLogger("crawler/amazon").Warnf("浏览器实例 %d 健康检查超时(5s)", instance.ID)
+	case <-time.After(healthCheckTimeout):
+		logger.GetGlobalLogger("crawler/amazon").Warnf("浏览器实例 %d 健康检查超时(%s)", instance.ID, healthCheckTimeout)
 		return false
+	}
+}
+
+func closeHealthCheckPage(page playwright.Page, instanceID int, timeout time.Duration) error {
+	done := make(chan error, 1)
+	go func() {
+		done <- page.Close()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("关闭健康检查页面失败: %w", err)
+		}
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("关闭健康检查页面超时(%s)，实例 %d 的 WebSocket 可能已断连", timeout, instanceID)
 	}
 }
 

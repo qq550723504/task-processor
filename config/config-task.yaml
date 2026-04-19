@@ -60,6 +60,14 @@ browser:
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
+  randomConfig:
+    enabled: true
+    strategy: "random"
+    presetName: "windows_high_end"
+    fingerprintStrategy: "random"
+    healthCheckEnabled: true
+    maxRetries: 3
+    maxUsesPerInstance: 6
 
 rabbitmq:
   enabled: false

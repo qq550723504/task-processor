@@ -1,0 +1,287 @@
+package shein
+
+import (
+	common "task-processor/internal/publishing/common"
+	sheinproduct "task-processor/internal/shein/api/product"
+)
+
+type BuildRequest struct {
+	Country            string
+	Language           string
+	Text               string
+	BrandHint          string
+	TargetCategoryHint string
+	SheinStoreID       int64
+}
+
+type Package struct {
+	SpuName                 string                     `json:"spu_name,omitempty"`
+	BrandName               string                     `json:"brand_name,omitempty"`
+	ProductNameEn           string                     `json:"product_name_en,omitempty"`
+	ProductNameMulti        string                     `json:"product_name_multi,omitempty"`
+	CategoryName            string                     `json:"category_name,omitempty"`
+	CategoryPath            []string                   `json:"category_path,omitempty"`
+	CategoryID              int                        `json:"category_id,omitempty"`
+	CategoryIDList          []int                      `json:"category_id_list,omitempty"`
+	ProductTypeID           *int                       `json:"product_type_id,omitempty"`
+	TopCategoryID           int                        `json:"top_category_id,omitempty"`
+	CategoryResolution      *CategoryResolution        `json:"category_resolution,omitempty"`
+	AttributeResolution     *AttributeResolution       `json:"attribute_resolution,omitempty"`
+	SaleAttributeResolution *SaleAttributeResolution   `json:"sale_attribute_resolution,omitempty"`
+	Inspection              *Inspection                `json:"inspection,omitempty"`
+	Description             string                     `json:"description,omitempty"`
+	SellingPoints           []string                   `json:"selling_points,omitempty"`
+	Attributes              map[string]string          `json:"attributes,omitempty"`
+	ProductAttributes       []common.Attribute         `json:"product_attributes,omitempty"`
+	ResolvedAttributes      []ResolvedAttribute        `json:"resolved_attributes,omitempty"`
+	SiteList                []common.Site              `json:"site_list,omitempty"`
+	SkcList                 []SKCPackage               `json:"skc_list,omitempty"`
+	Images                  *common.ImageSet           `json:"images,omitempty"`
+	ImageBundle             *common.PublishImageBundle `json:"image_bundle,omitempty"`
+	RequestDraft            *RequestDraft              `json:"request_draft,omitempty"`
+	PreviewProduct          *sheinproduct.Product      `json:"preview_product,omitempty"`
+	Metadata                map[string]string          `json:"metadata,omitempty"`
+	ReviewNotes             []string                   `json:"review_notes,omitempty"`
+}
+
+type RequestDraft struct {
+	SpuName               string              `json:"spu_name,omitempty"`
+	SupplierCode          string              `json:"supplier_code,omitempty"`
+	MultiLanguageNameList []LocalizedText     `json:"multi_language_name_list,omitempty"`
+	MultiLanguageDescList []LocalizedText     `json:"multi_language_desc_list,omitempty"`
+	ProductAttributeList  []common.Attribute  `json:"product_attribute_list,omitempty"`
+	ResolvedAttributes    []ResolvedAttribute `json:"resolved_attributes,omitempty"`
+	ImageInfo             *ImageDraft         `json:"image_info,omitempty"`
+	SiteList              []common.Site       `json:"site_list,omitempty"`
+	SKCList               []SKCRequestDraft   `json:"skc_list,omitempty"`
+}
+
+type ImageDraft struct {
+	MainImage string   `json:"main_image,omitempty"`
+	Gallery   []string `json:"gallery,omitempty"`
+	WhiteBg   string   `json:"white_bg,omitempty"`
+	Source    []string `json:"source,omitempty"`
+}
+
+type LocalizedText struct {
+	Language string `json:"language,omitempty"`
+	Name     string `json:"name,omitempty"`
+}
+
+type SKCPackage struct {
+	SkcName      string            `json:"skc_name,omitempty"`
+	SaleName     string            `json:"sale_name,omitempty"`
+	SupplierCode string            `json:"supplier_code,omitempty"`
+	MainImageURL string            `json:"main_image_url,omitempty"`
+	Attributes   map[string]string `json:"attributes,omitempty"`
+	SKUs         []common.Variant  `json:"skus,omitempty"`
+}
+
+type SKCRequestDraft struct {
+	SkcName               string                 `json:"skc_name,omitempty"`
+	SaleName              string                 `json:"sale_name,omitempty"`
+	SupplierCode          string                 `json:"supplier_code,omitempty"`
+	Sort                  int                    `json:"sort,omitempty"`
+	SaleAttribute         *ResolvedSaleAttribute `json:"sale_attribute,omitempty"`
+	MultiLanguageNameList []LocalizedText        `json:"multi_language_name_list,omitempty"`
+	ImageInfo             *ImageDraft            `json:"image_info,omitempty"`
+	SKUList               []SKUDraft             `json:"sku_list,omitempty"`
+}
+
+type SKUDraft struct {
+	SupplierSKU    string                  `json:"supplier_sku,omitempty"`
+	Attributes     map[string]string       `json:"attributes,omitempty"`
+	Currency       string                  `json:"currency,omitempty"`
+	CostPrice      string                  `json:"cost_price,omitempty"`
+	BasePrice      string                  `json:"base_price,omitempty"`
+	StockCount     int                     `json:"stock_count,omitempty"`
+	Weight         float64                 `json:"weight,omitempty"`
+	WeightUnit     string                  `json:"weight_unit,omitempty"`
+	Length         string                  `json:"length,omitempty"`
+	Width          string                  `json:"width,omitempty"`
+	Height         string                  `json:"height,omitempty"`
+	LengthUnit     string                  `json:"length_unit,omitempty"`
+	MainImage      string                  `json:"main_image,omitempty"`
+	Barcode        string                  `json:"barcode,omitempty"`
+	IsDefault      bool                    `json:"is_default,omitempty"`
+	SaleAttributes []ResolvedSaleAttribute `json:"sale_attributes,omitempty"`
+	SitePriceList  []SitePrice             `json:"site_price_list,omitempty"`
+	StockInfoList  []StockInfo             `json:"stock_info_list,omitempty"`
+}
+
+type SitePrice struct {
+	SubSite   string `json:"sub_site,omitempty"`
+	BasePrice string `json:"base_price,omitempty"`
+	Currency  string `json:"currency,omitempty"`
+}
+
+type StockInfo struct {
+	WarehouseCode string `json:"warehouse_code,omitempty"`
+	InventoryNum  int    `json:"inventory_num,omitempty"`
+}
+
+type CategoryResolution struct {
+	Status         string   `json:"status,omitempty"`
+	Source         string   `json:"source,omitempty"`
+	QueryText      string   `json:"query_text,omitempty"`
+	MatchedPath    []string `json:"matched_path,omitempty"`
+	CategoryID     int      `json:"category_id,omitempty"`
+	CategoryIDList []int    `json:"category_id_list,omitempty"`
+	ProductTypeID  int      `json:"product_type_id,omitempty"`
+	TopCategoryID  int      `json:"top_category_id,omitempty"`
+	ReviewNotes    []string `json:"review_notes,omitempty"`
+}
+
+type ResolvedAttribute struct {
+	Name                string `json:"name,omitempty"`
+	Value               string `json:"value,omitempty"`
+	AttributeID         int    `json:"attribute_id,omitempty"`
+	AttributeValueID    *int   `json:"attribute_value_id,omitempty"`
+	AttributeExtraValue string `json:"attribute_extra_value,omitempty"`
+	MatchedBy           string `json:"matched_by,omitempty"`
+	Required            bool   `json:"required,omitempty"`
+	SKCScope            bool   `json:"skc_scope,omitempty"`
+}
+
+type AttributeResolution struct {
+	Status             string              `json:"status,omitempty"`
+	Source             string              `json:"source,omitempty"`
+	CategoryID         int                 `json:"category_id,omitempty"`
+	TemplateCount      int                 `json:"template_count,omitempty"`
+	ResolvedCount      int                 `json:"resolved_count,omitempty"`
+	UnresolvedCount    int                 `json:"unresolved_count,omitempty"`
+	ResolvedAttributes []ResolvedAttribute `json:"resolved_attributes,omitempty"`
+	ReviewNotes        []string            `json:"review_notes,omitempty"`
+}
+
+type ResolvedSaleAttribute struct {
+	Scope            string `json:"scope,omitempty"`
+	Name             string `json:"name,omitempty"`
+	Value            string `json:"value,omitempty"`
+	AttributeID      int    `json:"attribute_id,omitempty"`
+	AttributeValueID *int   `json:"attribute_value_id,omitempty"`
+	MatchedBy        string `json:"matched_by,omitempty"`
+}
+
+type SaleAttributeResolution struct {
+	Status               string                       `json:"status,omitempty"`
+	Source               string                       `json:"source,omitempty"`
+	CategoryID           int                          `json:"category_id,omitempty"`
+	PrimaryAttributeID   int                          `json:"primary_attribute_id,omitempty"`
+	SecondaryAttributeID int                          `json:"secondary_attribute_id,omitempty"`
+	SKCAttributes        []ResolvedSaleAttribute      `json:"skc_attributes,omitempty"`
+	SKUAttributes        []ResolvedSaleAttribute      `json:"sku_attributes,omitempty"`
+	Candidates           []SaleAttributeCandidateInfo `json:"candidates,omitempty"`
+	SelectionSummary     []string                     `json:"selection_summary,omitempty"`
+	ReviewNotes          []string                     `json:"review_notes,omitempty"`
+}
+
+type SaleAttributeCandidateInfo struct {
+	Name           string   `json:"name,omitempty"`
+	AttributeID    int      `json:"attribute_id,omitempty"`
+	SKCScope       bool     `json:"skc_scope,omitempty"`
+	Required       bool     `json:"required,omitempty"`
+	SKCDistinct    int      `json:"skc_distinct,omitempty"`
+	SKUDistinct    int      `json:"sku_distinct,omitempty"`
+	TotalDistinct  int      `json:"total_distinct,omitempty"`
+	PrimaryScore   int      `json:"primary_score,omitempty"`
+	SecondaryScore int      `json:"secondary_score,omitempty"`
+	SampleValue    string   `json:"sample_value,omitempty"`
+	Reasons        []string `json:"reasons,omitempty"`
+	SelectedScope  string   `json:"selected_scope,omitempty"`
+}
+
+type Inspection struct {
+	NeedsReview bool                `json:"needs_review"`
+	Summary     []string            `json:"summary,omitempty"`
+	Sections    []InspectionSection `json:"sections,omitempty"`
+}
+
+type InspectionSection struct {
+	Key         string             `json:"key,omitempty"`
+	Title       string             `json:"title,omitempty"`
+	Status      string             `json:"status,omitempty"`
+	Summary     string             `json:"summary,omitempty"`
+	Highlights  []string           `json:"highlights,omitempty"`
+	ActionItems []string           `json:"action_items,omitempty"`
+	Actions     []InspectionAction `json:"actions,omitempty"`
+}
+
+type InspectionAction struct {
+	Key         string                          `json:"key,omitempty"`
+	Label       string                          `json:"label,omitempty"`
+	Target      string                          `json:"target,omitempty"`
+	ActionType  string                          `json:"action_type,omitempty"`
+	Description string                          `json:"description,omitempty"`
+	Payload     map[string]any                  `json:"payload,omitempty"`
+	Category    *InspectionCategoryPayload      `json:"category,omitempty"`
+	Attributes  *InspectionAttributePayload     `json:"attributes,omitempty"`
+	Sale        *InspectionSaleAttributePayload `json:"sale,omitempty"`
+}
+
+type InspectionCategoryPayload struct {
+	Platform       string   `json:"platform,omitempty"`
+	Target         string   `json:"target,omitempty"`
+	Status         string   `json:"status,omitempty"`
+	Source         string   `json:"source,omitempty"`
+	CategoryName   string   `json:"category_name,omitempty"`
+	CategoryPath   []string `json:"category_path,omitempty"`
+	CategoryID     int      `json:"category_id,omitempty"`
+	CategoryIDList []int    `json:"category_id_list,omitempty"`
+	ProductTypeID  *int     `json:"product_type_id,omitempty"`
+	TopCategoryID  int      `json:"top_category_id,omitempty"`
+	ReviewNotes    []string `json:"review_notes,omitempty"`
+}
+
+type InspectionAttributePayload struct {
+	Platform           string              `json:"platform,omitempty"`
+	Target             string              `json:"target,omitempty"`
+	Status             string              `json:"status,omitempty"`
+	Source             string              `json:"source,omitempty"`
+	TemplateCount      int                 `json:"template_count,omitempty"`
+	ResolvedCount      int                 `json:"resolved_count,omitempty"`
+	UnresolvedCount    int                 `json:"unresolved_count,omitempty"`
+	ProductAttributes  []common.Attribute  `json:"product_attributes,omitempty"`
+	ResolvedAttributes []ResolvedAttribute `json:"resolved_attributes,omitempty"`
+	PendingAttributes  []common.Attribute  `json:"pending_attributes,omitempty"`
+	ReviewNotes        []string            `json:"review_notes,omitempty"`
+}
+
+type InspectionSaleAttributePayload struct {
+	Platform             string                       `json:"platform,omitempty"`
+	Target               string                       `json:"target,omitempty"`
+	Status               string                       `json:"status,omitempty"`
+	Source               string                       `json:"source,omitempty"`
+	PrimaryAttributeID   int                          `json:"primary_attribute_id,omitempty"`
+	SecondaryAttributeID int                          `json:"secondary_attribute_id,omitempty"`
+	SelectionSummary     []string                     `json:"selection_summary,omitempty"`
+	SKCAttributes        []ResolvedSaleAttribute      `json:"skc_attributes,omitempty"`
+	SKUAttributes        []ResolvedSaleAttribute      `json:"sku_attributes,omitempty"`
+	CandidateCount       int                          `json:"candidate_count,omitempty"`
+	Candidates           []SaleAttributeCandidateInfo `json:"candidates,omitempty"`
+	SKCPatches           []InspectionSKCPatchPayload  `json:"skc_patches,omitempty"`
+	ReviewNotes          []string                     `json:"review_notes,omitempty"`
+}
+
+type InspectionSKCPatchPayload struct {
+	SupplierCode  string                      `json:"supplier_code,omitempty"`
+	SkcName       string                      `json:"skc_name,omitempty"`
+	SaleName      string                      `json:"sale_name,omitempty"`
+	MainImageURL  string                      `json:"main_image_url,omitempty"`
+	SaleAttribute *ResolvedSaleAttribute      `json:"sale_attribute,omitempty"`
+	SKUPatches    []InspectionSKUPatchPayload `json:"sku_patches,omitempty"`
+}
+
+type InspectionSKUPatchPayload struct {
+	SupplierSKU    string                  `json:"supplier_sku,omitempty"`
+	Attributes     map[string]string       `json:"attributes,omitempty"`
+	BasePrice      string                  `json:"base_price,omitempty"`
+	CostPrice      string                  `json:"cost_price,omitempty"`
+	Currency       string                  `json:"currency,omitempty"`
+	StockCount     int                     `json:"stock_count,omitempty"`
+	MainImage      string                  `json:"main_image,omitempty"`
+	Barcode        string                  `json:"barcode,omitempty"`
+	SaleAttributes []ResolvedSaleAttribute `json:"sale_attributes,omitempty"`
+	SitePriceList  []SitePrice             `json:"site_price_list,omitempty"`
+	StockInfoList  []StockInfo             `json:"stock_info_list,omitempty"`
+}

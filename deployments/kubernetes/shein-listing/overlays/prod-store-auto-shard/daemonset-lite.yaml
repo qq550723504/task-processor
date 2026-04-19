@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: shein-listing-lite
+  namespace: task-processor
+  labels:
+    app: shein-listing
+    crawler-tier: lite
+spec:
+  revisionHistoryLimit: 3
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 2
+  selector:
+    matchLabels:
+      app: shein-listing
+      crawler-tier: lite
+  template:
+    metadata:
+      labels:
+        app: shein-listing
+        crawler-tier: lite
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/agent: "true"
+        task-processor/crawler-tier: lite
+      containers:
+        - name: shein-listing
+          image: xuwei190/task-processor-shein-listing:localfetch-pricingfix-20260412-224800
+          imagePullPolicy: Always
+          command: ["/app/listing-service"]
+          args:
+            - -config
+            - /app/config/config-shein-listing.yaml
+            - -log-level
+            - info
+          ports:
+            - name: http
+              containerPort: 8081
+            - name: metrics
+              containerPort: 8082
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+            - name: TASK_PROCESSOR_ENV
+              value: prod
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID
+              value: "$(NODE_NAME)"
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_ROLE
+              value: task
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_USE_STORE_QUEUES
+              value: "true"
+            - name: TASK_PROCESSOR_REDIS_DB
+              value: "9"
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT
+              value: "8081"
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_METRICS_PORT
+              value: "8082"
+          envFrom:
+            - secretRef:
+                name: shein-listing-secret
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1500Mi"
+            limits:
+              cpu: "1800m"
+              memory: "3Gi"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 36
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config/config-shein-listing.yaml
+              subPath: config-shein-listing.yaml
+            - name: app-tmp
+              mountPath: /app/tmp
+            - name: app-logs
+              mountPath: /app/logs
+      volumes:
+        - name: app-config
+          configMap:
+            name: shein-listing-config-lite
+        - name: app-tmp
+          emptyDir: {}
+        - name: app-logs
+          emptyDir: {}

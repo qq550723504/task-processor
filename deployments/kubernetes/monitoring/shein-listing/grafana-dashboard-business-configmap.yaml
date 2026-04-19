@@ -1,0 +1,763 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-shein-listing-business
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: shein-listing
+    app.kubernetes.io/part-of: task-processor
+data:
+  shein-listing-business-dashboard.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 },
+                  { "color": "red", "value": 10 }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 4, "x": 0, "y": 0 },
+          "id": 1,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_published_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]))",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "发布成功 (24h)",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 4, "x": 4, "y": 0 },
+          "id": 2,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_paused_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]))",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "暂停任务 (24h)",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 4, "x": 8, "y": 0 },
+          "id": 3,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_draft_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]))",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "草稿箱 (24h)",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 4, "x": 12, "y": 0 },
+          "id": 4,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_terminated_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]))",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "终止任务 (24h)",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 0.1 },
+                  { "color": "red", "value": 0.3 }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 4, "x": 16, "y": 0 },
+          "id": 5,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(listing_tasks_requeued_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h])) / clamp_min(sum(increase(shein_tasks_published_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]) + increase(listing_tasks_requeued_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h])), 1)",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "重试占比 (24h)",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 30 },
+                  { "color": "red", "value": 120 }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 4, "x": 20, "y": 0 },
+          "id": 6,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "avg(listing_tasks_wait_seconds_avg{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"})",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "平均排队时长",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "palette-classic" }, "unit": "none" },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "id": 13,
+          "options": {
+            "legend": { "calcs": [], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(listing_tasks_requeued_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]))",
+              "legendFormat": "requeued_24h",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_reason_retryable_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]))",
+              "legendFormat": "retryable_failure_24h",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_published_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]))",
+              "legendFormat": "published_24h",
+              "range": true,
+              "refId": "C"
+            }
+          ],
+          "title": "最近 24h 问题恢复趋势",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "orange", "value": 0.6 },
+                  { "color": "green", "value": 1.0 }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+          "id": 14,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_published_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h])) / clamp_min(sum(increase(listing_tasks_requeued_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]) + increase(shein_reason_retryable_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h])), 1)",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "24h 回补率",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 0.3 },
+                  { "color": "red", "value": 0.6 }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+          "id": 15,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(listing_tasks_requeued_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h])) / clamp_min(sum(increase(shein_tasks_published_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h]) + increase(listing_tasks_requeued_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[24h])), 1)",
+              "legendFormat": "",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "24h 重试压力",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "palette-classic" }, "unit": "none" },
+            "overrides": []
+          },
+          "gridPos": { "h": 10, "w": 12, "x": 12, "y": 8 },
+          "id": 7,
+          "options": {
+            "legend": { "calcs": [], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_published_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))",
+              "legendFormat": "published",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_paused_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))",
+              "legendFormat": "paused",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_draft_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))",
+              "legendFormat": "draft",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_tasks_terminated_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))",
+              "legendFormat": "terminated",
+              "range": true,
+              "refId": "D"
+            }
+          ],
+          "title": "业务结果趋势 (1h)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "palette-classic" }, "unit": "none" },
+            "overrides": []
+          },
+          "gridPos": { "h": 10, "w": 12, "x": 0, "y": 16 },
+          "id": 8,
+          "options": {
+            "legend": { "calcs": [], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_reason_auth_expired_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))",
+              "legendFormat": "auth_expired",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_reason_cookie_load_failed_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))",
+              "legendFormat": "cookie_load_failed",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_reason_daily_limit_reached_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))",
+              "legendFormat": "daily_limit_reached",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_reason_shelf_quota_exhausted_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))",
+              "legendFormat": "shelf_quota_exhausted",
+              "range": true,
+              "refId": "D"
+            },
+            {
+              "editorMode": "code",
+              "expr": "sum(increase(shein_reason_sku_duplicated_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))",
+              "legendFormat": "sku_duplicated",
+              "range": true,
+              "refId": "E"
+            }
+          ],
+          "title": "店铺问题类型趋势 (1h)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "custom": {
+                "align": "auto",
+                "cellOptions": { "type": "color-background" },
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
+          "id": 12,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [ "sum" ],
+              "show": false
+            },
+            "showHeader": true,
+            "sortBy": [
+              {
+                "desc": true,
+                "displayName": "最近1h事件数"
+              }
+            ]
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "label_replace(vector(sum(increase(shein_reason_auth_expired_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))), \"reason\", \"auth_expired\", \"__name__\", \".*\") or label_replace(vector(sum(increase(shein_reason_cookie_load_failed_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))), \"reason\", \"cookie_load_failed\", \"__name__\", \".*\") or label_replace(vector(sum(increase(shein_reason_daily_limit_reached_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))), \"reason\", \"daily_limit_reached\", \"__name__\", \".*\") or label_replace(vector(sum(increase(shein_reason_shelf_quota_exhausted_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))), \"reason\", \"shelf_quota_exhausted\", \"__name__\", \".*\") or label_replace(vector(sum(increase(shein_reason_draft_saved_validation_failed_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))), \"reason\", \"draft_saved_validation_failed\", \"__name__\", \".*\") or label_replace(vector(sum(increase(shein_reason_sku_duplicated_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))), \"reason\", \"sku_duplicated\", \"__name__\", \".*\") or label_replace(vector(sum(increase(shein_reason_filter_rule_rejected_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))), \"reason\", \"filter_rule_rejected\", \"__name__\", \".*\") or label_replace(vector(sum(increase(shein_reason_retryable_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))), \"reason\", \"retryable_failure\", \"__name__\", \".*\") or label_replace(vector(sum(increase(shein_reason_non_retryable_failure_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}[1h]))), \"reason\", \"non_retryable_failure\", \"__name__\", \".*\")",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "最近 1h 最异常原因",
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {},
+                "renameByName": {
+                  "reason": "异常原因",
+                  "Value": "最近1h事件数"
+                }
+              }
+            }
+          ],
+          "type": "table"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": { "type": "auto" },
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [ { "color": "green", "value": null } ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 4, "w": 12, "x": 0, "y": 25 },
+          "id": 9,
+          "options": {
+            "content": "当前看板已经支持通过顶部变量切换问题店铺榜的统计口径。\\n\\n如果需要看更细的店铺排障信息，继续使用服务的 `/stats` 接口：\\n- `http://shein-listing.task-processor.svc.cluster.local:8082/stats?view=problem&reason=auth_expired&format=compact`\\n- `http://shein-listing.task-processor.svc.cluster.local:8082/stats?view=problem&reason=cookie_load_failed&format=compact`\\n- `http://shein-listing.task-processor.svc.cluster.local:8082/stats?view=success&limit=20&format=compact`",
+            "mode": "markdown"
+          },
+          "title": "排障入口",
+          "type": "text"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": { "type": "auto" },
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [ { "color": "green", "value": null } ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 10, "w": 12, "x": 12, "y": 25 },
+          "id": 10,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [ "sum" ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "shein_top_problem_store_${problem_metric}{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "问题店铺 Top 榜（按原因切换）",
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {},
+                "renameByName": {
+                  "rank": "排行",
+                  "store_id": "店铺ID",
+                  "tenant_id": "租户ID",
+                  "Value": "事件数"
+                }
+              }
+            }
+          ],
+          "type": "table"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": { "type": "auto" },
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [ { "color": "green", "value": null } ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 10, "w": 12, "x": 0, "y": 29 },
+          "id": 11,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [ "sum" ],
+              "show": false
+            },
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "editorMode": "code",
+              "expr": "shein_top_success_store_published_total{kubernetes_namespace=\"$namespace\", pod=~\"$pod\"}",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "成功店铺 Top 榜",
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {},
+                "renameByName": {
+                  "rank": "排行",
+                  "store_id": "店铺ID",
+                  "tenant_id": "租户ID",
+                  "Value": "发布成功"
+                }
+              }
+            }
+          ],
+          "type": "table"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "style": "dark",
+      "tags": [ "task-processor", "shein", "listing", "business" ],
+      "templating": {
+        "list": [
+          {
+            "current": { "selected": true, "text": "task-processor", "value": "task-processor" },
+            "hide": 0,
+            "includeAll": false,
+            "label": "命名空间",
+            "multi": false,
+            "name": "namespace",
+            "options": [],
+            "query": "label_values(shein_tasks_published_total, kubernetes_namespace)",
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 1,
+            "type": "query"
+          },
+          {
+            "current": { "selected": true, "text": "All", "value": ".*" },
+            "allValue": ".*",
+            "hide": 0,
+            "includeAll": true,
+            "label": "Pod",
+            "multi": true,
+            "name": "pod",
+            "options": [],
+            "query": "label_values(shein_tasks_published_total{kubernetes_namespace=\"$namespace\"}, pod)",
+            "refresh": 1,
+            "regex": "shein-listing-.*",
+            "skipUrlSync": false,
+            "sort": 1,
+            "type": "query"
+          },
+          {
+            "current": { "selected": true, "text": "问题事件", "value": "problem_events" },
+            "hide": 0,
+            "includeAll": false,
+            "label": "问题榜口径",
+            "multi": false,
+            "name": "problem_metric",
+            "options": [
+              { "selected": true, "text": "问题事件", "value": "problem_events" },
+              { "selected": false, "text": "认证过期", "value": "auth_expired_total" },
+              { "selected": false, "text": "Cookie失败", "value": "cookie_load_failed_total" },
+              { "selected": false, "text": "每日限额", "value": "daily_limit_reached_total" },
+              { "selected": false, "text": "上架额度耗尽", "value": "shelf_quota_exhausted_total" },
+              { "selected": false, "text": "草稿校验失败", "value": "draft_saved_validation_failed_total" },
+              { "selected": false, "text": "SKU重复", "value": "sku_duplicated_total" },
+              { "selected": false, "text": "规则过滤", "value": "filter_rule_rejected_total" },
+              { "selected": false, "text": "可重试失败", "value": "retryable_failure_total" },
+              { "selected": false, "text": "不可重试失败", "value": "non_retryable_failure_total" }
+            ],
+            "query": "问题事件 : problem_events,认证过期 : auth_expired_total,Cookie失败 : cookie_load_failed_total,每日限额 : daily_limit_reached_total,上架额度耗尽 : shelf_quota_exhausted_total,草稿校验失败 : draft_saved_validation_failed_total,SKU重复 : sku_duplicated_total,规则过滤 : filter_rule_rejected_total,可重试失败 : retryable_failure_total,不可重试失败 : non_retryable_failure_total",
+            "skipUrlSync": false,
+            "type": "custom"
+          }
+        ]
+      },
+      "time": { "from": "now-24h", "to": "now" },
+      "timepicker": {},
+      "timezone": "",
+      "title": "SHEIN Listing 业务看板",
+      "uid": "shein-listing-business",
+      "version": 7,
+      "weekStart": ""
+    }

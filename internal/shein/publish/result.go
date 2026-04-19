@@ -158,16 +158,8 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 	}
 
 	if hasDailyLimit && ctx != nil && ctx.DailyQuotaReserved {
-		h.logger.WithFields(logrus.Fields{
-			"task_id":          input.Task.ID,
-			"tenant_id":        input.Task.TenantID,
-			"store_id":         input.Task.StoreID,
-			"product_id":       input.Task.ProductID,
-			"quota_date":       ctx.DailyQuotaDate,
-			"quota_increment":  ctx.DailyQuotaIncrement,
-			"daily_count_key":  buildDailyListingCounterKey(input.Task.TenantID, input.Task.StoreID, ctx.DailyQuotaDate),
-			"daily_limit_type": input.StoreInfo.DailyLimitType,
-		}).Info("store reused reserved daily quota after publish success")
+		count := h.reconcileReservedDailyQuota(ctx, input, currentDate, increment)
+		h.syncDailyLimitPauseState(ctx, input, count, dailyLimit)
 		ctx.ClearDailyQuotaReservation()
 		return
 	}
@@ -198,14 +190,7 @@ func (h *SavePublishResultHandler) recordDailyListingCount(ctx *shein.TaskContex
 		return
 	}
 
-	if count > int64(dailyLimit) {
-		h.logger.Warnf("store %d exceeded daily limit %d with count %d, pause listing", input.StoreInfo.ID, dailyLimit, count)
-		h.pauseShopWithCacheCleanup(input, "超过每日上架限额")
-		h.logger.Infof("store %d paused until end of day after exceeding daily limit %d", input.StoreInfo.ID, dailyLimit)
-		return
-	}
-
-	h.logger.Infof("store %d remains under daily limit %d on %s", input.StoreInfo.ID, dailyLimit, currentDate)
+	h.syncDailyLimitPauseState(ctx, input, count, dailyLimit)
 }
 
 func buildDailyListingCounterKey(tenantID, storeID int64, date string) string {
@@ -239,4 +224,105 @@ func (h *SavePublishResultHandler) pauseShopWithCacheCleanup(input *PublishResul
 		input.Task.StoreID,
 		reason,
 	)
+}
+
+func (h *SavePublishResultHandler) reconcileReservedDailyQuota(ctx *shein.TaskContext, input *PublishResultInput, currentDate string, actualIncrement int64) int64 {
+	reservedDate := currentDate
+	if ctx.DailyQuotaDate != "" {
+		reservedDate = ctx.DailyQuotaDate
+	}
+
+	reservedIncrement := ctx.DailyQuotaIncrement
+	if reservedIncrement <= 0 {
+		reservedIncrement = actualIncrement
+	}
+
+	logFields := logrus.Fields{
+		"task_id":          input.Task.ID,
+		"tenant_id":        input.Task.TenantID,
+		"store_id":         input.Task.StoreID,
+		"product_id":       input.Task.ProductID,
+		"quota_date":       reservedDate,
+		"reserved":         reservedIncrement,
+		"actual":           actualIncrement,
+		"daily_count_key":  buildDailyListingCounterKey(input.Task.TenantID, input.Task.StoreID, reservedDate),
+		"daily_limit_type": input.StoreInfo.DailyLimitType,
+	}
+
+	switch {
+	case actualIncrement == reservedIncrement:
+		count := input.MemoryManager.DailyCountManager.GetCount(input.Task.TenantID, input.Task.StoreID, reservedDate)
+		h.logger.WithFields(logFields).Info("store reused reserved daily quota after publish success")
+		return count
+	case actualIncrement < reservedIncrement:
+		rollback := reservedIncrement - actualIncrement
+		newCount, err := input.MemoryManager.DailyCountManager.RollbackReservedQuota(
+			input.Task.TenantID,
+			input.Task.StoreID,
+			reservedDate,
+			rollback,
+		)
+		if err != nil {
+			h.logger.WithFields(logFields).Warnf("rollback reserved daily quota failed, fallback to current counter: %v", err)
+			return input.MemoryManager.DailyCountManager.GetCount(input.Task.TenantID, input.Task.StoreID, reservedDate)
+		}
+		h.logger.WithFields(logFields).Infof("rolled back reserved daily quota difference after publish success: rollback=%d, newCount=%d", rollback, newCount)
+		return newCount
+	default:
+		extra := actualIncrement - reservedIncrement
+		newCount := input.MemoryManager.DailyCountManager.IncrementCount(
+			input.Task.TenantID,
+			input.Task.StoreID,
+			reservedDate,
+			extra,
+		)
+		h.logger.WithFields(logFields).Infof("recorded extra daily quota beyond reservation after publish success: extra=%d, newCount=%d", extra, newCount)
+		return newCount
+	}
+}
+
+func (h *SavePublishResultHandler) syncDailyLimitPauseState(ctx *shein.TaskContext, input *PublishResultInput, count int64, dailyLimit int) {
+	if count >= int64(dailyLimit) {
+		h.logger.Warnf("store %d reached daily limit %d with count %d, pause listing", input.StoreInfo.ID, dailyLimit, count)
+		h.pauseShopWithCacheCleanup(input, "达到每日上架限额")
+		h.logger.Infof("store %d paused until end of day after reaching daily limit %d", input.StoreInfo.ID, dailyLimit)
+		return
+	}
+
+	h.logger.Infof("store %d remains under daily limit %d with count %d", input.StoreInfo.ID, dailyLimit, count)
+
+	if ctx == nil || !ctx.DailyQuotaPauseApplied {
+		return
+	}
+	if !h.canSafelyResumeQuotaPause(input) {
+		return
+	}
+
+	input.MemoryManager.ShopPauseManager.ResumeShop(input.Task.TenantID, input.Task.StoreID)
+	h.logger.Infof("store %d resumed after quota reconciliation dropped below daily limit %d", input.StoreInfo.ID, dailyLimit)
+}
+
+func (h *SavePublishResultHandler) canSafelyResumeQuotaPause(input *PublishResultInput) bool {
+	if input == nil || input.Task == nil || input.ManagementClientMgr == nil {
+		return false
+	}
+
+	storeClient := input.ManagementClientMgr.GetStoreClient()
+	if storeClient == nil {
+		return false
+	}
+
+	pauseDetail, err := storeClient.GetStorePauseStatusDetail(input.Task.StoreID)
+	if err != nil {
+		h.logger.Warnf("query store pause detail failed before quota resume: storeId=%d, err=%v", input.Task.StoreID, err)
+		return false
+	}
+	if pauseDetail == nil || !pauseDetail.Paused {
+		return false
+	}
+	if pauseDetail.PauseType != "quota_limit" {
+		h.logger.Infof("skip quota resume because store %d pause type is %q", input.Task.StoreID, pauseDetail.PauseType)
+		return false
+	}
+	return true
 }

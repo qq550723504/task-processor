@@ -86,5 +86,12 @@ func ValidateBrowserRandomConfig(randomConfig *BrowserRandomConfig) []error {
 		})
 	}
 
+	if randomConfig.MaxUsesPerInstance < 0 {
+		errors = append(errors, &ValidationError{
+			Field:   "browser.randomConfig.maxUsesPerInstance",
+			Message: "单实例最大复用次数不能为负数",
+		})
+	}
+
 	return errors
 }

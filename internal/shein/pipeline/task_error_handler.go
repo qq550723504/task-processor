@@ -32,6 +32,8 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error, stage s
 	if shein.IsFilteredError(err) {
 		logger.GetGlobalLogger("shein/pipeline").Infof("任务被筛选规则过滤: ID=%d, Priority=%d, 原因=%v", task.ID, task.Priority, err)
 		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, buildTaskStatusErrorMessage(stage, err))
+		metrics.GlobalSheinMetrics().IncrementHandledStatusForStore(task.TenantID, task.StoreID, model.TaskStatusTerminated)
+		metrics.GlobalSheinMetrics().IncrementReasonForStore(task.TenantID, task.StoreID, shein.TaskReasonFilterRuleRejected)
 		return
 	}
 
@@ -39,6 +41,8 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error, stage s
 		logger.GetGlobalLogger("shein/pipeline").Warnf("Cookie加载失败，暂停店铺 %d:%d 30分钟，等待重新登录", cookieErr.TenantID, cookieErr.StoreID)
 		h.pauseShopWithCacheCleanup(cookieErr.TenantID, cookieErr.StoreID, "Cookie加载失败，等待重新登录", 30*time.Minute)
 		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusPaused, buildTaskStatusErrorMessage(stage, err))
+		metrics.GlobalSheinMetrics().IncrementHandledStatusForStore(task.TenantID, task.StoreID, model.TaskStatusPaused)
+		metrics.GlobalSheinMetrics().IncrementReasonForStore(task.TenantID, task.StoreID, shein.TaskReasonCookieLoadFailed)
 		logger.GetGlobalLogger("shein/pipeline").Warnf("任务因Cookie加载失败进入暂停状态: ID=%d, Priority=%d", task.ID, task.Priority)
 		return
 	}
@@ -47,8 +51,13 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error, stage s
 	logger.GetGlobalLogger("shein/pipeline").Infof("错误类型: %T, 错误值: %v, 是否可重试: %t", err, err, isRetryable)
 
 	if !isRetryable {
-		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, buildTaskStatusErrorMessage(stage, err))
+		errorMessage := buildTaskStatusErrorMessage(stage, err)
+		h.updateTaskStatusToAPI(fmt.Sprintf("%d", task.ID), model.TaskStatusTerminated, errorMessage)
 		metrics.GlobalTaskMetrics().IncrementFailed()
+		metrics.GlobalSheinMetrics().IncrementHandledStatusForStore(task.TenantID, task.StoreID, model.TaskStatusTerminated)
+		if reasonCode := metrics.ExtractReasonCode(errorMessage); reasonCode != "" {
+			metrics.GlobalSheinMetrics().IncrementReasonForStore(task.TenantID, task.StoreID, reasonCode)
+		}
 
 		logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败且不可重试: ID=%d, Priority=%d, 错误=%v", task.ID, task.Priority, err)
 		return
@@ -56,8 +65,13 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error, stage s
 
 	retryDecision := model.ApplyRetryFailure(&task, h.processor.GetConfig().Processor.MaxRetries)
 	if retryDecision.Exhausted {
-		h.updateTaskStatusToAPIWithTask(&task, model.TaskStatusTerminated, buildTaskStatusErrorMessage(stage, err))
+		errorMessage := buildTaskStatusErrorMessage(stage, err)
+		h.updateTaskStatusToAPIWithTask(&task, model.TaskStatusTerminated, errorMessage)
 		metrics.GlobalTaskMetrics().IncrementFailed()
+		metrics.GlobalSheinMetrics().IncrementHandledStatusForStore(task.TenantID, task.StoreID, model.TaskStatusTerminated)
+		if reasonCode := metrics.ExtractReasonCode(errorMessage); reasonCode != "" {
+			metrics.GlobalSheinMetrics().IncrementReasonForStore(task.TenantID, task.StoreID, reasonCode)
+		}
 		logger.GetGlobalLogger("shein/pipeline").Errorf("任务处理失败且达到最大重试次数: ID=%d, Priority=%d, 重试次数=%d, 错误=%v", task.ID, task.Priority, task.RetryCount, err)
 		return
 	}
@@ -65,6 +79,7 @@ func (h *TaskErrorHandler) HandleTaskFailure(task model.Task, err error, stage s
 	h.updateTaskStatusToAPIWithTask(&task, model.TaskStatusPendingRetry, buildTaskStatusErrorMessage(stage, err))
 	logger.GetGlobalLogger("shein/pipeline").Warnf("任务处理失败，等待重试: ID=%d, Priority=%d->%d, 重试次数=%d", task.ID, retryDecision.OriginalPriority, retryDecision.CurrentPriority, task.RetryCount)
 	metrics.GlobalTaskMetrics().IncrementRequeued()
+	metrics.GlobalSheinMetrics().IncrementReasonForStore(task.TenantID, task.StoreID, shein.TaskReasonRetryableFailure)
 }
 
 func (h *TaskErrorHandler) HandleAuthenticationExpired(authErr *api.AuthenticationExpiredError, task model.Task, stage string) {
@@ -97,6 +112,8 @@ func (h *TaskErrorHandler) HandleAuthenticationExpired(authErr *api.Authenticati
 		model.TaskStatusPaused,
 		formatStageStatusMessage(stage, shein.FormatTaskReasonMessage(shein.TaskReasonAuthExpired, fmt.Sprintf("认证过期: %s", authErr.Message))),
 	)
+	metrics.GlobalSheinMetrics().IncrementHandledStatusForStore(task.TenantID, task.StoreID, model.TaskStatusPaused)
+	metrics.GlobalSheinMetrics().IncrementReasonForStore(task.TenantID, task.StoreID, shein.TaskReasonAuthExpired)
 
 	logger.GetGlobalLogger("shein/pipeline").Infof("认证过期任务已标记为暂停: TaskID=%d, TenantID=%d, ShopID=%d", task.ID, tenantID, shopID)
 }

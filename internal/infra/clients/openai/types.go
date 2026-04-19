@@ -97,3 +97,41 @@ type ChatCompleter interface {
 	AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error)
 	GetDefaultModel() string
 }
+
+type ImageGenerateRequest struct {
+	Model          string `json:"model,omitempty"`
+	Prompt         string `json:"prompt"`
+	Size           string `json:"size,omitempty"`
+	Quality        string `json:"quality,omitempty"`
+	ResponseFormat string `json:"response_format,omitempty"`
+	N              int    `json:"n,omitempty"`
+}
+
+type ImageEditRequest struct {
+	Model          string
+	Prompt         string
+	Image          []byte
+	ImageURL       string
+	Mask           []byte
+	Size           string
+	Quality        string
+	ResponseFormat string
+	N              int
+}
+
+type ImageData struct {
+	B64JSON       string `json:"b64_json,omitempty"`
+	URL           string `json:"url,omitempty"`
+	RevisedPrompt string `json:"revised_prompt,omitempty"`
+}
+
+type ImageResponse struct {
+	Created int64       `json:"created"`
+	Data    []ImageData `json:"data"`
+}
+
+type ImageGenerator interface {
+	GenerateImage(ctx context.Context, req *ImageGenerateRequest) (*ImageResponse, error)
+	EditImage(ctx context.Context, req *ImageEditRequest) (*ImageResponse, error)
+	GetDefaultModel() string
+}

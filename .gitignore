@@ -61,3 +61,5 @@ logs
 .update-marker
 .gocache/
 tmp
+.playwright-cli/
+.tools/

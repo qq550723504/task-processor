@@ -10,6 +10,9 @@ var (
 	// ErrTaskNotFound 任务不存在
 	ErrTaskNotFound = errors.New("任务不存在")
 
+	// ErrSharedResultStoreUnavailable 共享任务结果存储不可用
+	ErrSharedResultStoreUnavailable = errors.New("异步任务共享结果存储不可用")
+
 	// ErrQueueFull 任务队列已满
 	ErrQueueFull = errors.New("任务队列已满")
 )

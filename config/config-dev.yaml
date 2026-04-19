@@ -55,6 +55,13 @@ openai:
     scorer:
       model: "gemini-2.5-flash"
       timeout: 60
+    # 图片生成 / 图片编辑阶段（productimage faithful edit + scene generation）
+    image:
+      apiKey: ""
+      baseURL: "https://grsai.dakka.com.cn/v1/draw/nano-banana"
+      apiStyle: "nanobanana"
+      model: "nano-banana-fast"
+      timeout: 300
   
   # 请求池配置 - 更保守的设置
 # 管理API配置
@@ -128,6 +135,14 @@ browser:
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
+  randomConfig:
+    enabled: true
+    strategy: "random"
+    presetName: "windows_high_end"
+    fingerprintStrategy: "random"
+    healthCheckEnabled: true
+    maxRetries: 3
+    maxUsesPerInstance: 10  # 本地调试环境更保守，便于尽早回收问题实例
 
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:
@@ -326,11 +341,23 @@ productimage:
     endpoint: ""
     apiKey: ""
     timeout: 45
+  scene:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 60
   publisher:
     enabled: true
-    provider: "local"
+    provider: "s3"
     outputDir: "./tmp/productimage-published"
-    publicBase: ""
+    publicBase: "http://127.0.0.1:9100/listingkit-assets"
+    s3:
+      bucket: "listingkit-assets"
+      region: "us-east-1"
+      endpoint: "http://127.0.0.1:9100"
+      accessKeyID: "minioadmin"
+      secretAccessKey: "minioadmin"
+      usePathStyle: true
   lifecycle:
     cleanupTemporaryFiles: true
     reuseExistingAssets: true

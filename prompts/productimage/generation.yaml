@@ -1,0 +1,31 @@
+subject:
+  extract:
+    description: "Product subject extraction prompt"
+    content: |
+      Isolate the {{.product_type}} as the main subject in a clean ecommerce edit. Preserve the exact identity, shape, texture, and color. Keep the output simple and product-focused with no extra objects or text.
+
+white_background:
+  default:
+    description: "White background ecommerce prompt"
+    content: |
+      Place the {{.product_type}} on a plain white ecommerce background. Preserve the exact identity, proportions, texture, and color. Keep the image clean, natural, and free of extra text or objects.
+
+scene:
+  default:
+    description: "Lifestyle scene generation prompt"
+    content: |
+      Create a polished ecommerce lifestyle scene around this product. Preserve the exact product identity, proportions, texture, and color. Do not replace the item.
+      Scene intent: {{.scene_intent}}.
+      Product type: {{.product_type}}.
+      Product title: {{.title}}.
+      Produce a premium marketplace-ready gallery image with clean composition and no overlaid text.
+
+review:
+  default:
+    description: "Product image review prompt"
+    content: |
+      Review this product image processing result and return JSON only:
+      {"needs_review":true|false,"reasons":["..."],"confidence":0.0}
+
+      Summary:
+      {{.summary_json}}

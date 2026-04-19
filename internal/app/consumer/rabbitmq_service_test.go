@@ -30,6 +30,20 @@ func (noopProcessor) ProcessTask(_ context.Context, _ worker.WorkerJob) error { 
 
 func (noopProcessor) Close(_ context.Context) {}
 
+type stubStoreAssignmentProvider struct {
+	stores []int64
+	err    error
+}
+
+func (p stubStoreAssignmentProvider) GetOwnedStores(_ context.Context, _ string) ([]int64, error) {
+	if p.err != nil {
+		return nil, p.err
+	}
+	return append([]int64(nil), p.stores...), nil
+}
+
+func (p stubStoreAssignmentProvider) Close() error { return nil }
+
 func TestRabbitMQServiceFilterQueueConfigsByRole(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -105,6 +119,124 @@ func TestRabbitMQServiceRegistersSheinBucketHandlers(t *testing.T) {
 		if svc.GetConsumer().GetStateManager(queueName) == nil {
 			t.Fatalf("expected shein bucket handler %s to be registered", queueName)
 		}
+	}
+}
+
+func TestRabbitMQServiceRegistersOwnedSheinBucketsOnly(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:         config.NodeRoleTask,
+			OwnedBuckets: []int{5, 2, 2, 9, -1},
+		},
+	}, logrus.New())
+
+	svc.processorRegistry.RegisterProcessor("shein", noopProcessor{})
+	svc.registerMessageHandlers()
+
+	if svc.GetConsumer().GetStateManager("shein.tasks") == nil {
+		t.Fatal("expected shared shein queue handler to stay registered")
+	}
+
+	for _, bucket := range []int{2, 5} {
+		queueName := fmt.Sprintf("shein.tasks.bucket.%d", bucket)
+		if svc.GetConsumer().GetStateManager(queueName) == nil {
+			t.Fatalf("expected shein owned bucket handler %s to be registered", queueName)
+		}
+	}
+
+	for _, bucket := range []int{0, 1, 3, 4, 6, 7} {
+		queueName := fmt.Sprintf("shein.tasks.bucket.%d", bucket)
+		if svc.GetConsumer().GetStateManager(queueName) != nil {
+			t.Fatalf("did not expect shein bucket handler %s to be registered", queueName)
+		}
+	}
+}
+
+func TestRabbitMQServiceDoesNotFallbackToSharedQueuesWhenUsingStoreQueuesWithoutAssignments(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:           config.NodeRoleTask,
+			UseStoreQueues: true,
+		},
+	}, logrus.New())
+
+	svc.processorRegistry.RegisterProcessor("shein", noopProcessor{})
+	svc.registerMessageHandlers()
+
+	if svc.GetConsumer().GetStateManager("shein.tasks") != nil {
+		t.Fatal("did not expect shared shein queue handler to be registered")
+	}
+
+	for bucket := 0; bucket < sheinBucketQueueCount; bucket++ {
+		queueName := fmt.Sprintf("shein.tasks.bucket.%d", bucket)
+		if svc.GetConsumer().GetStateManager(queueName) != nil {
+			t.Fatalf("did not expect shein bucket handler %s to be registered", queueName)
+		}
+	}
+}
+
+func TestRabbitMQServiceLoadsDynamicStoreAssignmentsBeforeRegisteringHandlers(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:           config.NodeRoleTask,
+			UseStoreQueues: true,
+			NodeID:         "shein-listing-store-c",
+		},
+	}, logrus.New())
+
+	svc.SetStoreAssignmentProvider(stubStoreAssignmentProvider{stores: []int64{431, 870}})
+	svc.processorRegistry.RegisterProcessor("shein", noopProcessor{})
+
+	svc.syncInitialStoreAssignments(context.Background())
+	svc.registerMessageHandlers()
+
+	if svc.GetConsumer().GetStateManager("shein.tasks") != nil {
+		t.Fatal("did not expect shared shein queue handler to be registered after initial assignment sync")
+	}
+
+	for bucket := 0; bucket < sheinBucketQueueCount; bucket++ {
+		queueName := fmt.Sprintf("shein.tasks.bucket.%d", bucket)
+		if svc.GetConsumer().GetStateManager(queueName) != nil {
+			t.Fatalf("did not expect shared shein bucket handler %s to be registered after initial assignment sync", queueName)
+		}
+	}
+
+	for _, storeID := range []int64{431, 870} {
+		queueName := fmt.Sprintf("shein.tasks.store.%d", storeID)
+		if svc.GetConsumer().GetStateManager(queueName) == nil {
+			t.Fatalf("expected dynamic store queue handler %s to be registered", queueName)
+		}
+	}
+}
+
+func TestRabbitMQServiceProviderForcesStoreOnlyModeWithoutConfigFlag(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:   config.NodeRoleTask,
+			NodeID: "shein-listing-store-d",
+		},
+	}, logrus.New())
+
+	svc.SetStoreAssignmentProvider(stubStoreAssignmentProvider{stores: []int64{181}})
+	svc.processorRegistry.RegisterProcessor("shein", noopProcessor{})
+
+	svc.syncInitialStoreAssignments(context.Background())
+	svc.registerMessageHandlers()
+
+	if svc.GetConsumer().GetStateManager("shein.tasks") != nil {
+		t.Fatal("did not expect shared shein queue handler to be registered when provider is configured")
+	}
+
+	if svc.GetConsumer().GetStateManager("shein.tasks.bucket.0") != nil {
+		t.Fatal("did not expect shared shein bucket handlers to be registered when provider is configured")
+	}
+
+	if svc.GetConsumer().GetStateManager("shein.tasks.store.181") == nil {
+		t.Fatal("expected store queue handler to be registered when provider is configured")
 	}
 }
 
@@ -203,5 +335,80 @@ func TestStartupRetryDelayCapsAtThirtySeconds(t *testing.T) {
 				t.Fatalf("expected delay %v, got %v", tt.expected, got)
 			}
 		})
+	}
+}
+
+func TestDecideConsumerAction(t *testing.T) {
+	tests := []struct {
+		name             string
+		started          bool
+		connected        bool
+		consumerActive   bool
+		consumersHealthy bool
+		expected         consumerReconcileAction
+	}{
+		{
+			name:             "not started does nothing",
+			started:          false,
+			connected:        true,
+			consumerActive:   true,
+			consumersHealthy: true,
+			expected:         consumerActionNone,
+		},
+		{
+			name:             "disconnect pauses active consumers",
+			started:          true,
+			connected:        false,
+			consumerActive:   true,
+			consumersHealthy: false,
+			expected:         consumerActionPause,
+		},
+		{
+			name:             "connected but inactive resumes consumers",
+			started:          true,
+			connected:        true,
+			consumerActive:   false,
+			consumersHealthy: false,
+			expected:         consumerActionResume,
+		},
+		{
+			name:             "connected active unhealthy restarts consumers",
+			started:          true,
+			connected:        true,
+			consumerActive:   true,
+			consumersHealthy: false,
+			expected:         consumerActionRestart,
+		},
+		{
+			name:             "connected active healthy does nothing",
+			started:          true,
+			connected:        true,
+			consumerActive:   true,
+			consumersHealthy: true,
+			expected:         consumerActionNone,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decideConsumerAction(tt.started, tt.connected, tt.consumerActive, tt.consumersHealthy)
+			if got != tt.expected {
+				t.Fatalf("expected action %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestNormalizeOwnedBuckets(t *testing.T) {
+	got := normalizeOwnedBuckets([]int{7, 2, 2, -1, 8, 0})
+	expected := []int{0, 2, 7}
+
+	if len(got) != len(expected) {
+		t.Fatalf("expected %d buckets, got %d", len(expected), len(got))
+	}
+	for i := range expected {
+		if got[i] != expected[i] {
+			t.Fatalf("expected bucket %d at index %d, got %d", expected[i], i, got[i])
+		}
 	}
 }

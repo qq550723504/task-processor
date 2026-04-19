@@ -11,7 +11,7 @@ import (
 )
 
 func registerRoutes(r *gin.Engine, productHandler productenrich.ProductHandler, imageHandler productimage.Handler) {
-	httpapi.RegisterRoutes(r, productHandler, imageHandler, nil, nil)
+	httpapi.RegisterRoutes(r, productHandler, imageHandler, nil, nil, nil)
 }
 
 func buildHandlers(logger *logrus.Logger) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {

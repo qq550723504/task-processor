@@ -59,6 +59,7 @@ type service struct {
 	taskSubmitter         TaskSubmitter
 	queueName             string
 	capabilities          ServiceCapabilities
+	fallbackPolicy        FallbackPolicy
 	sourceParser          SourceParser
 	contextAnalyzer       ProductContextAnalyzer
 	imageInspector        ImageInspector
@@ -79,7 +80,9 @@ type ServiceConfig struct {
 	QueueName             string
 	TaskRepo              TaskRepository
 	TaskSubmitter         TaskSubmitter
+	ModelProvider         ProductImageModelProvider
 	Capabilities          *ServiceCapabilities
+	FallbackPolicy        *FallbackPolicy
 	SourceParser          SourceParser
 	ContextAnalyzer       ProductContextAnalyzer
 	ImageInspector        ImageInspector
@@ -112,20 +115,32 @@ func NewService(config *ServiceConfig) (Service, error) {
 	if config.ImageRanker == nil {
 		config.ImageRanker = NewDefaultImageRanker()
 	}
+	if config.SubjectExtractor == nil && config.ModelProvider != nil && config.ModelProvider.FaithfulEditor() != nil {
+		config.SubjectExtractor = NewModelSubjectExtractor(config.ModelProvider.FaithfulEditor())
+	}
 	if config.SubjectExtractor == nil {
 		config.SubjectExtractor = NewDefaultSubjectExtractor()
 	}
 	if config.ImageCleaner == nil {
 		config.ImageCleaner = NewDefaultImageCleaner()
 	}
+	if config.WhiteBgRenderer == nil && config.ModelProvider != nil && config.ModelProvider.FaithfulEditor() != nil {
+		config.WhiteBgRenderer = NewModelWhiteBackgroundRenderer(config.ModelProvider.FaithfulEditor())
+	}
 	if config.WhiteBgRenderer == nil {
 		config.WhiteBgRenderer = NewDefaultWhiteBackgroundRenderer()
+	}
+	if config.SceneRenderer == nil && config.ModelProvider != nil && config.ModelProvider.SceneGenerator() != nil {
+		config.SceneRenderer = NewModelSceneRenderer(config.ModelProvider.SceneGenerator())
 	}
 	if config.MarketplaceValidator == nil {
 		config.MarketplaceValidator = NewDefaultMarketplaceValidator()
 	}
 	if config.QualityAssessor == nil {
 		config.QualityAssessor = NewDefaultQualityAssessor()
+	}
+	if config.ReviewAssessor == nil && config.ModelProvider != nil && config.ModelProvider.ReviewModel() != nil {
+		config.ReviewAssessor = NewModelReviewAssessor(config.ModelProvider.ReviewModel())
 	}
 	if config.ReviewAssessor == nil {
 		config.ReviewAssessor = NewDefaultReviewAssessor()
@@ -139,11 +154,17 @@ func NewService(config *ServiceConfig) (Service, error) {
 		}
 	}
 
+	fallbackPolicy := DefaultFallbackPolicy()
+	if config.FallbackPolicy != nil {
+		fallbackPolicy = *config.FallbackPolicy
+	}
+
 	return &service{
 		taskRepo:              config.TaskRepo,
 		taskSubmitter:         config.TaskSubmitter,
 		queueName:             config.QueueName,
 		capabilities:          capabilities,
+		fallbackPolicy:        fallbackPolicy,
 		sourceParser:          config.SourceParser,
 		contextAnalyzer:       config.ContextAnalyzer,
 		imageInspector:        config.ImageInspector,

@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func buildHTTPServer(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, taskRPCHandler taskRPCRouteHandler) *http.Server {
+func buildHTTPServer(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler) *http.Server {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	RegisterRoutes(router, productHandler, imageHandler, amazonListingHandler, taskRPCHandler)
+	RegisterRoutes(router, productHandler, imageHandler, amazonListingHandler, listingKitHandler, taskRPCHandler)
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		Handler:           router,
@@ -19,7 +19,7 @@ func buildHTTPServer(port int, productHandler productRouteHandler, imageHandler 
 	}
 }
 
-func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, taskRPCHandler taskRPCRouteHandler) {
+func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -45,6 +45,27 @@ func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHand
 		v1.GET("/tasks/:task_id/workbench", amazonListingHandler.GetTaskWorkbench)
 		v1.POST("/tasks/:task_id/review", amazonListingHandler.ReviewTask)
 		v1.POST("/tasks/:task_id/submit", amazonListingHandler.SubmitTask)
+	}
+
+	if listingKitHandler != nil {
+		v1 := r.Group("/api/v1/listing-kits")
+		v1.POST("/generate", listingKitHandler.GenerateListingKit)
+		v1.POST("/uploads/images", listingKitHandler.UploadListingKitImages)
+		v1.GET("/uploads/files/*key", listingKitHandler.GetUploadedListingKitImage)
+		v1.GET("/tasks/:task_id", listingKitHandler.GetTaskResult)
+		v1.GET("/tasks/:task_id/preview", listingKitHandler.GetTaskPreview)
+		v1.GET("/tasks/:task_id/generation-tasks", listingKitHandler.GetTaskGenerationTasks)
+		v1.GET("/tasks/:task_id/generation-queue", listingKitHandler.GetTaskGenerationQueue)
+		v1.GET("/tasks/:task_id/generation-review-session", listingKitHandler.GetTaskGenerationReviewSession)
+		v1.GET("/tasks/:task_id/generation-review-preview", listingKitHandler.GetTaskGenerationReviewPreview)
+		v1.POST("/tasks/:task_id/generation-navigation/dispatch", listingKitHandler.DispatchTaskGenerationNavigation)
+		v1.POST("/tasks/:task_id/generation-tasks/retry", listingKitHandler.RetryTaskGenerationTasks)
+		v1.POST("/tasks/:task_id/generation-actions/execute", listingKitHandler.ExecuteTaskGenerationAction)
+		v1.GET("/tasks/:task_id/revision-history", listingKitHandler.GetTaskRevisionHistory)
+		v1.GET("/tasks/:task_id/revision-history/:revision_id", listingKitHandler.GetTaskRevisionHistoryDetail)
+		v1.GET("/tasks/:task_id/export", listingKitHandler.GetTaskExport)
+		v1.POST("/tasks/:task_id/revision", listingKitHandler.ApplyTaskRevision)
+		v1.POST("/tasks/:task_id/revision/validate", listingKitHandler.ValidateTaskRevision)
 	}
 
 	if taskRPCHandler != nil {

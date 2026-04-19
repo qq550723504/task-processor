@@ -1,0 +1,177 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-wecom
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager-wecom
+    app.kubernetes.io/part-of: task-processor
+data:
+  server.py: |
+    import json
+    import os
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+
+    WEBHOOK = os.environ.get("WECOM_WEBHOOK_URL", "").strip()
+    HOST = "0.0.0.0"
+    PORT = int(os.environ.get("PORT", "8080"))
+
+
+    def truncate(value, limit):
+      if value is None:
+        return ""
+      text = str(value).strip()
+      if len(text) <= limit:
+        return text
+      return text[: limit - 3] + "..."
+
+
+    def pick(alert, key, default=""):
+      labels = alert.get("labels") or {}
+      annotations = alert.get("annotations") or {}
+      if key in annotations and str(annotations[key]).strip():
+        return annotations[key]
+      if key in labels and str(labels[key]).strip():
+        return labels[key]
+      return default
+
+
+    def build_markdown(payload):
+      alerts = payload.get("alerts") or []
+      status = str(payload.get("status") or "unknown").lower()
+      common_labels = payload.get("commonLabels") or {}
+      common_annotations = payload.get("commonAnnotations") or {}
+      firing = [a for a in alerts if str(a.get("status")).lower() == "firing"]
+      resolved = [a for a in alerts if str(a.get("status")).lower() == "resolved"]
+
+      title = common_labels.get("alertname") or "监控告警"
+      service = common_labels.get("service") or "未知服务"
+      severity = common_labels.get("severity") or "未知"
+      status_text = "告警中" if status == "firing" else "已恢复" if status == "resolved" else status
+      severity_map = {
+        "critical": "严重",
+        "warning": "警告",
+        "info": "提示",
+        "none": "无级别",
+      }
+      severity_text = severity_map.get(severity, severity)
+      dashboard_url = common_annotations.get("dashboard_url")
+      runbook_url = common_annotations.get("runbook_url")
+
+      lines = [
+        "## 监控告警通知",
+        f"> 状态：<font color=\"{'warning' if status == 'firing' else 'info'}\">{status_text}</font>",
+        f"> 告警：`{title}`",
+        f"> 服务：`{service}`",
+        f"> 级别：`{severity_text}`",
+        f"> 触发中：`{len(firing)}` / 已恢复：`{len(resolved)}`",
+      ]
+
+      summary = common_annotations.get("summary") or common_annotations.get("message")
+      description = common_annotations.get("description")
+      action = common_annotations.get("action")
+      if summary:
+        lines.append(f"> 摘要：{truncate(summary, 300)}")
+      if description:
+        lines.append(f"> 说明：{truncate(description, 500)}")
+      if action:
+        lines.append(f"> 处置：{truncate(action, 500)}")
+      if dashboard_url:
+        lines.append(f"> 看板：<{truncate(dashboard_url, 500)}>")
+      if runbook_url:
+        lines.append(f"> 排障：<{truncate(runbook_url, 500)}>")
+
+      max_alerts = 5
+      for index, alert in enumerate(alerts[:max_alerts], start=1):
+        labels = alert.get("labels") or {}
+        annotations = alert.get("annotations") or {}
+        pod = labels.get("pod") or labels.get("kubernetes_pod_name") or "-"
+        namespace = labels.get("namespace") or labels.get("kubernetes_namespace") or "-"
+        node = labels.get("node") or labels.get("kubernetes_node") or "-"
+        item_summary = annotations.get("summary") or annotations.get("message") or labels.get("alertname") or "alert"
+        item_description = annotations.get("description") or ""
+        item_action = annotations.get("action") or ""
+        item_dashboard_url = annotations.get("dashboard_url") or ""
+        item_runbook_url = annotations.get("runbook_url") or ""
+        lines.extend([
+          "",
+          f"**{index}. {truncate(item_summary, 120)}**",
+          f"> Pod：`{truncate(pod, 80)}`",
+          f"> 命名空间：`{truncate(namespace, 80)}`",
+          f"> 节点：`{truncate(node, 80)}`",
+        ])
+        if item_description:
+          lines.append(f"> 详情：{truncate(item_description, 300)}")
+        if item_action:
+          lines.append(f"> 处置：{truncate(item_action, 300)}")
+        if item_dashboard_url:
+          lines.append(f"> 看板：<{truncate(item_dashboard_url, 500)}>")
+        if item_runbook_url:
+          lines.append(f"> 排障：<{truncate(item_runbook_url, 500)}>")
+
+      if len(alerts) > max_alerts:
+        lines.extend(["", f"> 其余还有 {len(alerts) - max_alerts} 条告警未展开。"])
+
+      return "\n".join(lines)
+
+
+    def send_wecom_markdown(content):
+      if not WEBHOOK:
+        raise RuntimeError("WECOM_WEBHOOK_URL is empty")
+      payload = {
+        "msgtype": "markdown",
+        "markdown": {
+          "content": content
+        }
+      }
+      data = json.dumps(payload).encode("utf-8")
+      req = urllib.request.Request(
+        WEBHOOK,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+      )
+      with urllib.request.urlopen(req, timeout=10) as resp:
+        body = resp.read().decode("utf-8", errors="ignore")
+        return resp.status, body
+
+
+    class Handler(BaseHTTPRequestHandler):
+      def do_GET(self):
+        if self.path in ("/health", "/ready"):
+          self.send_response(200)
+          self.send_header("Content-Type", "application/json")
+          self.end_headers()
+          self.wfile.write(b'{"ok":true}')
+          return
+        self.send_response(404)
+        self.end_headers()
+
+      def do_POST(self):
+        if self.path != "/webhook":
+          self.send_response(404)
+          self.end_headers()
+          return
+
+        try:
+          length = int(self.headers.get("Content-Length", "0"))
+          raw = self.rfile.read(length)
+          payload = json.loads(raw.decode("utf-8"))
+          content = build_markdown(payload)
+          status, body = send_wecom_markdown(content)
+          self.send_response(200 if 200 <= status < 300 else 502)
+          self.send_header("Content-Type", "application/json")
+          self.end_headers()
+          self.wfile.write(json.dumps({"ok": True, "wecom_status": status, "wecom_body": body}).encode("utf-8"))
+        except Exception as exc:
+          self.send_response(500)
+          self.send_header("Content-Type", "application/json")
+          self.end_headers()
+          self.wfile.write(json.dumps({"ok": False, "error": str(exc)}).encode("utf-8"))
+
+
+    if __name__ == "__main__":
+      server = HTTPServer((HOST, PORT), Handler)
+      server.serve_forever()

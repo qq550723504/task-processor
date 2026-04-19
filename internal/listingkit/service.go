@@ -1,0 +1,177 @@
+package listingkit
+
+import (
+	"fmt"
+	"strings"
+
+	"task-processor/internal/amazonlisting"
+	assetbundle "task-processor/internal/asset/bundle"
+	assetgeneration "task-processor/internal/asset/generation"
+	assetrecipe "task-processor/internal/asset/recipe"
+	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/reviewstore"
+	"task-processor/internal/productenrich"
+	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
+)
+
+type service struct {
+	repo                Repository
+	productSvc          ProductService
+	imageSvc            ImageService
+	uploadStore         ImageUploadStore
+	assembler           Assembler
+	assetRepo           AssetRepository
+	reviewRepo          GenerationReviewRepository
+	assetRecipeResolver AssetRecipeResolver
+	assetBundleBuilder  AssetBundleBuilder
+	assetGenerator      AssetGenerationService
+	taskSubmitter       TaskSubmitter
+}
+
+type ServiceConfig struct {
+	Repository             Repository
+	ProductService         ProductService
+	ImageService           ImageService
+	ImageUploadStore       ImageUploadStore
+	Assembler              Assembler
+	AssetRepository        AssetRepository
+	ReviewRepository       GenerationReviewRepository
+	AssetRecipeResolver    AssetRecipeResolver
+	AssetBundleBuilder     AssetBundleBuilder
+	AssetGenerationService AssetGenerationService
+	TaskSubmitter          TaskSubmitter
+}
+
+func NewService(config *ServiceConfig) (Service, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+	if config.Repository == nil {
+		return nil, fmt.Errorf("repository cannot be nil")
+	}
+	if config.ProductService == nil {
+		return nil, fmt.Errorf("product service cannot be nil")
+	}
+	if config.Assembler == nil {
+		config.Assembler = NewAssemblerWithConfig(AssemblerConfig{
+			AmazonBuilder:              newAmazonDraftBuilder(),
+			SheinCategoryResolver:      sheinpub.NewCategoryResolver(nil),
+			SheinAttributeResolver:     sheinpub.NewAttributeResolver(nil),
+			SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(nil),
+		})
+	}
+	if config.AssetRepository == nil {
+		config.AssetRepository = assetrepo.NewMemRepository()
+	}
+	if config.ReviewRepository == nil {
+		config.ReviewRepository = reviewstore.NewMemRepository()
+	}
+	if config.AssetRecipeResolver == nil {
+		config.AssetRecipeResolver = newDefaultAssetRecipeResolver()
+	}
+	if config.AssetBundleBuilder == nil {
+		config.AssetBundleBuilder = newDefaultAssetBundleBuilder()
+	}
+	if config.AssetGenerationService == nil {
+		config.AssetGenerationService = newDefaultAssetGenerationService()
+	}
+	return &service{
+		repo:                config.Repository,
+		productSvc:          config.ProductService,
+		imageSvc:            config.ImageService,
+		uploadStore:         config.ImageUploadStore,
+		assembler:           config.Assembler,
+		assetRepo:           config.AssetRepository,
+		reviewRepo:          config.ReviewRepository,
+		assetRecipeResolver: config.AssetRecipeResolver,
+		assetBundleBuilder:  config.AssetBundleBuilder,
+		assetGenerator:      config.AssetGenerationService,
+		taskSubmitter:       config.TaskSubmitter,
+	}, nil
+}
+
+func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
+	s.taskSubmitter = submitter
+}
+
+func normalizeGenerateRequest(req *GenerateRequest) {
+	if req == nil {
+		return
+	}
+	req.Country = strings.ToUpper(strings.TrimSpace(req.Country))
+	req.Language = strings.TrimSpace(req.Language)
+	if req.Country == "" {
+		req.Country = "US"
+	}
+	if req.Language == "" {
+		req.Language = "en_US"
+	}
+	if req.Options == nil {
+		req.Options = &GenerateOptions{ProcessImages: true}
+	}
+	req.Platforms = normalizePlatforms(req.Platforms)
+	if len(req.Platforms) == 0 {
+		req.Platforms = []string{"amazon", "shein", "temu", "walmart"}
+	}
+}
+
+func normalizePlatforms(platforms []string) []string {
+	if len(platforms) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(platforms))
+	for _, platform := range platforms {
+		normalized := strings.ToLower(strings.TrimSpace(platform))
+		switch normalized {
+		case "amazon", "shein", "temu", "walmart":
+			if _, ok := seen[normalized]; ok {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			result = append(result, normalized)
+		}
+	}
+	return result
+}
+
+type amazonDraftBuilder struct {
+	assembler amazonlisting.Assembler
+}
+
+func newAmazonDraftBuilder() AmazonDraftBuilder {
+	return &amazonDraftBuilder{assembler: amazonlisting.NewAssembler()}
+}
+
+func newDefaultAssetRecipeResolver() AssetRecipeResolver {
+	return assetrecipe.NewStaticResolver()
+}
+
+func newDefaultAssetBundleBuilder() AssetBundleBuilder {
+	return assetbundle.NewBuilder()
+}
+
+func newDefaultAssetGenerationService() AssetGenerationService {
+	return assetgeneration.NewService(assetgeneration.Config{})
+}
+
+func (b *amazonDraftBuilder) Build(req *GenerateRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {
+	task := &amazonlisting.Task{
+		ID: "listingkit-amazon-preview",
+		Request: &amazonlisting.GenerateRequest{
+			Marketplace:        "amazon",
+			Country:            req.Country,
+			Language:           req.Language,
+			ImageURLs:          append([]string(nil), req.ImageURLs...),
+			Text:               req.Text,
+			ProductURL:         req.ProductURL,
+			TargetCategoryHint: req.TargetCategoryHint,
+			BrandHint:          req.BrandHint,
+			Options: &amazonlisting.GenerateOptions{
+				ProcessImages: req.Options != nil && req.Options.ProcessImages,
+			},
+		},
+	}
+	return b.assembler.Assemble(task, canonical, image)
+}

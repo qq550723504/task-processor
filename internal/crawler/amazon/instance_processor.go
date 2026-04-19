@@ -18,6 +18,7 @@ import (
 // InstanceProcessor 实例处理器
 type InstanceProcessor struct {
 	urlHelper            *URLHelper
+	domainResolver       *DomainResolver
 	productChecker       *ProductChecker
 	resultValidator      *ProductResultValidator
 	failureArtifactStore *FailureArtifactStore
@@ -25,6 +26,7 @@ type InstanceProcessor struct {
 	qualityMetrics       qualityMetricsRecorder
 	extractProduct       func(ctx context.Context, page playwright.Page, url, zipcode string) (*model.Product, error)
 	prepareRetry         func(ctx context.Context, page playwright.Page, waitTimeout time.Duration) error
+	matchTargetContext   func(page playwright.Page, targetURL string) (bool, error)
 }
 
 type qualityControlOptions struct {
@@ -41,6 +43,7 @@ func NewInstanceProcessor(urlHelper *URLHelper, productChecker *ProductChecker, 
 	}
 	return &InstanceProcessor{
 		urlHelper:            urlHelper,
+		domainResolver:       NewDomainResolver(),
 		productChecker:       productChecker,
 		resultValidator:      validator,
 		failureArtifactStore: nil,
@@ -219,28 +222,55 @@ func (ip *InstanceProcessor) ProcessWithInstance(ctx context.Context, instance *
 }
 
 func (ip *InstanceProcessor) resolveDefaultZipcodeForTargetContext(page playwright.Page, targetURL string) string {
-	if page == nil || strings.TrimSpace(targetURL) == "" {
+	if strings.TrimSpace(targetURL) == "" {
+		return ""
+	}
+	if page == nil && (ip == nil || ip.matchTargetContext == nil) {
 		return ""
 	}
 
-	resolver := NewDomainResolver()
+	resolver := ip.domainResolver
+	if resolver == nil {
+		resolver = NewDomainResolver()
+	}
 	region := strings.ToLower(strings.TrimSpace(resolver.ExtractRegionFromURL(targetURL)))
 	if region != "us" {
+		logger.GetGlobalLogger("crawler/amazon").Infof("目标站点 %s(region=%s) 不启用默认邮编回退，仅使用当前配送上下文", targetURL, region)
 		return ""
+	}
+
+	inTargetContext, err := ip.matchesTargetContext(page, targetURL)
+	if err != nil {
+		if ip != nil && ip.qualityMetrics != nil {
+			ip.qualityMetrics.RecordTargetContextCheckError(region)
+			ip.qualityMetrics.RecordTargetContextFallback(region)
+		}
+		logger.GetGlobalLogger("crawler/amazon").Warnf("判断目标配送上下文失败，继续使用默认美国邮编兜底: target_url=%s region=%s err=%v", targetURL, region, err)
+		return resolver.GetZipcodeByRegion(region)
+	}
+	if inTargetContext {
+		if ip != nil && ip.qualityMetrics != nil {
+			ip.qualityMetrics.RecordTargetContextSkip(region)
+		}
+		logger.GetGlobalLogger("crawler/amazon").Infof("当前配送上下文已命中目标站点，无需回退默认邮编: target_url=%s region=%s", targetURL, region)
+		return ""
+	}
+
+	if ip != nil && ip.qualityMetrics != nil {
+		ip.qualityMetrics.RecordTargetContextFallback(region)
+	}
+	logger.GetGlobalLogger("crawler/amazon").Infof("当前配送上下文未命中目标站点，回退默认邮编: target_url=%s region=%s zipcode=%s", targetURL, region, resolver.GetZipcodeByRegion(region))
+	return resolver.GetZipcodeByRegion(region)
+}
+
+func (ip *InstanceProcessor) matchesTargetContext(page playwright.Page, targetURL string) (bool, error) {
+	if ip != nil && ip.matchTargetContext != nil {
+		return ip.matchTargetContext(page, targetURL)
 	}
 
 	validator := browser.NewZipcodeValidator()
 	validator.SetTargetURL(targetURL)
-	inTargetContext, err := validator.MatchesTargetContext(page)
-	if err != nil {
-		logger.GetGlobalLogger("crawler/amazon").Warnf("判断目标配送上下文失败，继续使用默认美国邮编兜底: %v", err)
-		return resolver.GetZipcodeByRegion(region)
-	}
-	if inTargetContext {
-		return ""
-	}
-
-	return resolver.GetZipcodeByRegion(region)
+	return validator.MatchesTargetContext(page)
 }
 
 func (ip *InstanceProcessor) extractWithQualityRetry(ctx context.Context, page playwright.Page, url, zipcode string, waitTimeout time.Duration) (*model.Product, error) {
@@ -300,7 +330,17 @@ func (ip *InstanceProcessor) alignTargetContext(page playwright.Page, url string
 		logger.GetGlobalLogger("crawler/amazon").Warnf("货币对齐后处理Continue shopping按钮时出错: %v", err)
 	}
 	if waitTimeout > 0 {
-		if err := ip.productChecker.WaitForPageReady(page, waitTimeout); err != nil {
+		renderableTimeout := waitTimeout / 3
+		if renderableTimeout < 2*time.Second {
+			renderableTimeout = 2 * time.Second
+		}
+		if renderableTimeout > 5*time.Second {
+			renderableTimeout = 5 * time.Second
+		}
+		if renderableTimeout > waitTimeout {
+			renderableTimeout = waitTimeout
+		}
+		if err := ip.productChecker.WaitForRenderableContent(page, renderableTimeout); err != nil {
 			return fmt.Errorf("货币对齐后页面未准备就绪: %w", err)
 		}
 	}

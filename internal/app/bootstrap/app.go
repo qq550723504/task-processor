@@ -135,7 +135,7 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 	resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{
 		// cmd/task should not initialize the in-process Amazon crawler by default.
 		// Scheduler/processor fetch paths can use remote API or distributed crawl instead.
-		NeedAmazonCrawler: false,
+		NeedAmazonCrawler: platformUsesLocalFetcher(cfg, "temu") || platformUsesLocalFetcher(cfg, "shein"),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)

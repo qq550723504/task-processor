@@ -22,6 +22,10 @@ type classifiedCrawlerError interface {
 	RetryableError() bool
 }
 
+type asyncTaskGuard interface {
+	RequireSharedResultStore() error
+}
+
 // CrawlerHandler Amazon爬虫 HTTP 处理器
 type CrawlerHandler struct {
 	baseCrawlerHandler
@@ -76,6 +80,13 @@ func (h *CrawlerHandler) handleCrawl(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Priority > 0 {
 		crawlerTask.WithPriority(req.Priority)
+	}
+
+	if guard, ok := h.crawlerService.(asyncTaskGuard); ok {
+		if err := guard.RequireSharedResultStore(); err != nil {
+			ServiceUnavailable(w, err.Error())
+			return
+		}
 	}
 
 	if err := h.crawlerService.SubmitTask(crawlerTask); err != nil {

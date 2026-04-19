@@ -33,6 +33,10 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	if err != nil {
 		return nil, fmt.Errorf("create LLM manager: %w", err)
 	}
+	openaiMgr, err := newOpenAIManager(cfg.OpenAI)
+	if err != nil {
+		return nil, fmt.Errorf("create OpenAI manager: %w", err)
+	}
 
 	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
 	if err != nil {
@@ -55,6 +59,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	return &runtimeDeps{
 		cfg:              cfg,
 		closers:          nil,
+		openaiMgr:        openaiMgr,
 		llmMgr:           llmMgr,
 		inputParser:      inputParser,
 		understanding:    productUnderstanding,

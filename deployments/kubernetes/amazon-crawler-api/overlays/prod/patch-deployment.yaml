@@ -1,16 +1,17 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: amazon-crawler-api
+  name: amazon-crawler-api-heavy
+  namespace: task-processor
 spec:
   template:
     spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: NotIn
-                    values:
-                      - ser967362906644-70309f35
+      containers:
+        - name: amazon-crawler-api
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1500Mi"
+            limits:
+              cpu: "3000m"
+              memory: "4Gi"

@@ -14,7 +14,7 @@ data:
     openai:
       apiKey: ""
       model: "gemini-2.5-flash-lite"
-      baseURL: "https://api.gptbest.vip/v1"
+      baseURL: "https://api.bltcy.ai/v1"
       timeout: 300
 
     management:
@@ -26,13 +26,21 @@ data:
       storeIDs: []
 
     browser:
-      enabled: false
+      enabled: true
       headless: true
-      browserPath: ""
-      poolSize: 0
+      browserPath: "/opt/fingerprint-chrome/chrome-144/chrome"
+      poolSize: 1
       viewportWidth: 1920
       viewportHeight: 1080
       proxyServer: ""
+      randomConfig:
+        enabled: true
+        strategy: "random"
+        presetName: "windows_high_end"
+        fingerprintStrategy: "random"
+        healthCheckEnabled: true
+        maxRetries: 3
+        maxUsesPerInstance: 12
 
     rabbitmq:
       enabled: true
@@ -45,19 +53,15 @@ data:
         retryDelay: "5s"
         maxRetries: 3
         queues:
-          - name: "shein.tasks"
-            priority: 1
-            prefetch: 1
-          - name: "shein.tasks.bucket.*"
-            priority: 10
-            prefetch: 1
           - name: "shein.tasks.store.*"
             priority: 8
-            prefetch: 2
+            prefetch: 3
       node:
         role: "task"
-        useStoreQueues: false
+        maxConcurrency: 4
+        useStoreQueues: true
         ownedStores: []
+        ownedBuckets: []
         regions: [US]
         healthCheckPort: 8081
         metricsPort: 8082
@@ -69,18 +73,64 @@ data:
       shein:
         enabled: true
         schedulerEnabled: false
+        fetchMode: "local"
       alibaba1688:
         enabled: false
         timeout: 120
         poolSize: 1
 
     amazon:
-      enabled: false
+      enabled: true
+      dataFreshnessDays: 15
       crawlTimeout: 300
-      remoteAPI:
+      productDedupe:
+        lockTTLSeconds: 300
+        resultTTLSeconds: 600
+        waitTimeoutSeconds: 120
+        pollIntervalMillis: 500
+      failureArtifacts:
         enabled: true
-        baseURL: "http://amazon-crawler-api.task-processor.svc.cluster.local:8080"
+        directory: "./tmp/amazon-failure-artifacts"
+        captureHTML: true
+        maxHTMLBytes: 262144
+      riskControl:
+        captchaRecreateThreshold: 1
+        authenticationRecreateThreshold: 1
+        browserCrashRecreateThreshold: 1
+        timeoutRecreateThreshold: 2
+        networkRecreateThreshold: 2
+        serverErrorRecreateThreshold: 3
+      regionGuard:
+        enabled: true
+        failureThreshold: 5
+        evaluationWindowSeconds: 300
+        cooldownSeconds: 90
+      qualityControl:
+        retryOnValidationFailure: true
+        validationRetryMaxAttempts: 2
+      proxyPool:
+        enabled: false
+        strategy: "round_robin"
+        failureCooldownSeconds: 300
+        proxies: []
+      concurrencyControl:
+        enabled: true
+        maxInFlight: 1
+        maxWaiting: 10
+        acquireTimeoutSeconds: 60
+      remoteAPI:
+        enabled: false
+        baseURL: ""
         timeout: 300
+      zipcodes:
+        us: "10001"
+        uk: "SW1A1AA"
+        de: "10115"
+        fr: "75001"
+        it: "00118"
+        es: "28001"
+        ca: "M5V2T6"
+        jp: "1000001"
 
     redis:
       host: "redis-master.default.svc.cluster.local"

@@ -7,10 +7,15 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
+	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/reviewstore"
+	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productenrich/store"
@@ -19,7 +24,18 @@ import (
 )
 
 func newLLMManager(cfg config.OpenAIConfig) (productenrich.LLMManager, error) {
-	return productenrich.NewLLMManagerAdapter(cfg)
+	manager, err := newOpenAIManager(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return productenrich.NewLLMManagerAdapterFromManager(manager)
+}
+
+func newOpenAIManager(cfg config.OpenAIConfig) (*openaiclient.Manager, error) {
+	return openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients:       cfg.ToClientConfigs(),
+		DefaultClient: "default",
+	})
 }
 
 func newWebScraper(cfg *config.Config) productenrich.WebScraper {
@@ -96,6 +112,63 @@ func newDBAmazonListingTaskRepository(cfg *config.DatabaseConfig, logger *logrus
 	}
 
 	repo := amazonlistingstore.NewTaskRepository(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.Repository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		return nil, nil, fmt.Errorf("listingkit auto-migrate failed: %w", err)
+	}
+
+	repo := listingkitstore.NewTaskRepository(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return repo, closer, nil
+}
+
+func newDBAssetRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (assetrepo.Repository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := db.AutoMigrate(&assetrepo.InventorySnapshot{}, &assetrepo.GenerationTaskSnapshot{}); err != nil {
+		return nil, nil, fmt.Errorf("asset inventory auto-migrate failed: %w", err)
+	}
+
+	repo := assetrepo.NewGormRepository(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitReviewRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (reviewstore.Repository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := db.AutoMigrate(&reviewstore.ReviewRecord{}); err != nil {
+		return nil, nil, fmt.Errorf("listingkit review auto-migrate failed: %w", err)
+	}
+
+	repo := reviewstore.NewGormRepository(db)
 	closer := func() error { return database.CloseDatabase(db) }
 	return repo, closer, nil
 }

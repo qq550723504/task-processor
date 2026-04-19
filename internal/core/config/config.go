@@ -10,6 +10,7 @@ import (
 	"sync"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/watermark"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -314,6 +315,50 @@ func knownEnvBindings() map[string]envBinding {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_ROLE",
 			Deprecated: []string{"RABBITMQ_NODE_ROLE"},
 		},
+		"rabbitmq.node.nodeID": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID",
+			Deprecated: []string{"TASK_PROCESSOR_RABBITMQ_NODEID", "RABBITMQ_NODE_NODE_ID", "RABBITMQ_NODEID"},
+		},
+		"rabbitmq.node.ownedStores": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_OWNED_STORES",
+			Deprecated: []string{"RABBITMQ_NODE_OWNED_STORES"},
+		},
+		"rabbitmq.node.ownedBuckets": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_OWNED_BUCKETS",
+			Deprecated: []string{"RABBITMQ_NODE_OWNED_BUCKETS"},
+		},
+		"rabbitmq.node.useStoreQueues": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_USE_STORE_QUEUES",
+			Deprecated: []string{"RABBITMQ_NODE_USE_STORE_QUEUES"},
+		},
+		"rabbitmq.autoShard.enabled": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED",
+			Deprecated: []string{"RABBITMQ_AUTO_SHARD_ENABLED"},
+		},
+		"rabbitmq.autoShard.platform": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_PLATFORM",
+			Deprecated: []string{"RABBITMQ_AUTO_SHARD_PLATFORM"},
+		},
+		"rabbitmq.autoShard.interval": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_INTERVAL",
+			Deprecated: []string{"RABBITMQ_AUTO_SHARD_INTERVAL"},
+		},
+		"rabbitmq.autoShard.pageSize": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_PAGE_SIZE",
+			Deprecated: []string{"RABBITMQ_AUTO_SHARD_PAGE_SIZE"},
+		},
+		"rabbitmq.autoShard.lockKey": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_LOCK_KEY",
+			Deprecated: []string{"RABBITMQ_AUTO_SHARD_LOCK_KEY"},
+		},
+		"rabbitmq.autoShard.lockTTL": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_LOCK_TTL",
+			Deprecated: []string{"RABBITMQ_AUTO_SHARD_LOCK_TTL"},
+		},
+		"rabbitmq.autoShard.candidateNodes": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES",
+			Deprecated: []string{"RABBITMQ_AUTO_SHARD_CANDIDATE_NODES"},
+		},
 		"rabbitmq.node.healthCheckPort": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT",
 			Deprecated: []string{"RABBITMQ_NODE_HEALTH_CHECK_PORT", "HEALTH_CHECK_PORT"},
@@ -502,6 +547,40 @@ func lookupKnownEnvInt64Slice(key string) ([]int64, bool) {
 	return nil, false
 }
 
+func lookupKnownEnvIntSlice(key string) ([]int, bool) {
+	binding, ok := knownEnvBindings()[key]
+	if !ok {
+		return nil, false
+	}
+
+	candidates := append([]string{binding.Primary}, binding.Deprecated...)
+	for _, envKey := range candidates {
+		value, exists := os.LookupEnv(envKey)
+		if !exists || strings.TrimSpace(value) == "" {
+			continue
+		}
+
+		parts := strings.Split(value, ",")
+		result := make([]int, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+
+			parsed, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, false
+			}
+			result = append(result, parsed)
+		}
+
+		return result, true
+	}
+
+	return nil, false
+}
+
 func applyEnvOverrides(cfg *Config) {
 	if cfg == nil {
 		return
@@ -593,6 +672,78 @@ func applyEnvOverrides(cfg *Config) {
 		}
 		cfg.RabbitMQ.Node.MaxConcurrency = value
 	}
+	if value, ok := lookupKnownEnvValue("rabbitmq.node.nodeID"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.Node.NodeID = value
+	}
+	if value, ok := lookupKnownEnvInt64Slice("rabbitmq.node.ownedStores"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.Node.OwnedStores = value
+	}
+	if value, ok := lookupKnownEnvIntSlice("rabbitmq.node.ownedBuckets"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.Node.OwnedBuckets = value
+	}
+	if value, ok := lookupKnownEnvValue("rabbitmq.node.useStoreQueues"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		parsed, err := strconv.ParseBool(value)
+		if err == nil {
+			cfg.RabbitMQ.Node.UseStoreQueues = parsed
+		}
+	}
+	if value, ok := lookupKnownEnvValue("rabbitmq.autoShard.enabled"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		parsed, err := strconv.ParseBool(value)
+		if err == nil {
+			cfg.RabbitMQ.AutoShard.Enabled = parsed
+		}
+	}
+	if value, ok := lookupKnownEnvValue("rabbitmq.autoShard.platform"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.AutoShard.Platform = value
+	}
+	if value, ok := lookupKnownEnvInt("rabbitmq.autoShard.interval"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.AutoShard.Interval = time.Duration(value) * time.Second
+	}
+	if value, ok := lookupKnownEnvInt("rabbitmq.autoShard.pageSize"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.AutoShard.PageSize = value
+	}
+	if value, ok := lookupKnownEnvValue("rabbitmq.autoShard.lockKey"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.AutoShard.LockKey = value
+	}
+	if value, ok := lookupKnownEnvInt("rabbitmq.autoShard.lockTTL"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.AutoShard.LockTTL = time.Duration(value) * time.Second
+	}
+	if value, ok := lookupKnownEnvValue("rabbitmq.autoShard.candidateNodes"); ok {
+		if cfg.RabbitMQ == nil {
+			cfg.RabbitMQ = &RabbitMQConfig{}
+		}
+		cfg.RabbitMQ.AutoShard.CandidateNodes = splitCommaSeparatedStrings(value)
+	}
 	if value, ok := lookupKnownEnvInt("rabbitmq.node.healthCheckPort"); ok {
 		if cfg.RabbitMQ == nil {
 			cfg.RabbitMQ = &RabbitMQConfig{}
@@ -642,6 +793,19 @@ func applyEnvOverrides(cfg *Config) {
 		ensureDatabase()
 		cfg.Database.MaxIdleConnections = value
 	}
+}
+
+func splitCommaSeparatedStrings(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		result = append(result, part)
+	}
+	return result
 }
 
 func logDeprecatedEnvUsage() {

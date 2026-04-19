@@ -2,7 +2,6 @@
 package browser
 
 import (
-	"regexp"
 	"task-processor/internal/core/logger"
 	"time"
 
@@ -19,53 +18,39 @@ func ExtractZipcode(text string) string {
 	// 5. 巴西邮编: 01310-100 (5位-3位)
 
 	// 优先匹配日本邮编格式 (XXX-XXXX)
-	jpZipRegex := regexp.MustCompile(`\b\d{3}-\d{4}\b`)
-	jpMatches := jpZipRegex.FindAllString(text, -1)
-	if len(jpMatches) > 0 {
-		return jpMatches[0]
+	if match := extractJapanZipcodePattern.FindString(text); match != "" {
+		return match
 	}
 
 	// 匹配巴西邮编格式 (XXXXX-XXX)
-	brZipRegex := regexp.MustCompile(`\b\d{5}-\d{3}\b`)
-	brMatches := brZipRegex.FindAllString(text, -1)
-	if len(brMatches) > 0 {
-		return brMatches[0]
+	if match := extractBrazilZipcodePattern.FindString(text); match != "" {
+		return match
 	}
 
 	// 匹配美国邮编格式 (XXXXX 或 XXXXX-XXXX)
-	usZipRegex := regexp.MustCompile(`\b\d{5}(?:-\d{4})?\b`)
-	usMatches := usZipRegex.FindAllString(text, -1)
-	if len(usMatches) > 0 {
-		return usMatches[0]
+	if match := extractUSZipcodePattern.FindString(text); match != "" {
+		return match
 	}
 
 	// 匹配英国邮编格式 (例如: SW1A 1AA, EC1A 1BB)
-	ukZipRegex := regexp.MustCompile(`\b[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}\b`)
-	ukMatches := ukZipRegex.FindAllString(text, -1)
-	if len(ukMatches) > 0 {
-		return ukMatches[0]
+	if match := extractUKZipcodePattern.FindString(text); match != "" {
+		return match
 	}
 
 	// 匹配加拿大邮编格式 (例如: M5H 2N2, K1A 0B1)
-	caZipRegex := regexp.MustCompile(`\b[A-Z]\d[A-Z]\s?\d[A-Z]\d\b`)
-	caMatches := caZipRegex.FindAllString(text, -1)
-	if len(caMatches) > 0 {
-		return caMatches[0]
+	if match := extractCanadaZipcodePattern.FindString(text); match != "" {
+		return match
 	}
 
 	// 匹配加拿大不完整邮编（仅 FSA，如 "Delivering to Balzac T4B 2T" 中的 T4B）
 	// Amazon 有时只显示前向码 + 部分后向码
-	caFSARegex := regexp.MustCompile(`\b[A-Z]\d[A-Z]\b`)
-	caFSAMatches := caFSARegex.FindAllString(text, -1)
-	if len(caFSAMatches) > 0 {
-		return caFSAMatches[0]
+	if match := extractCanadaFSAPattern.FindString(text); match != "" {
+		return match
 	}
 
 	// 如果没有找到任何格式，尝试查找纯数字邮编（德国、法国、意大利等）
-	simpleZipRegex := regexp.MustCompile(`\b\d{4,6}\b`)
-	simpleMatches := simpleZipRegex.FindAllString(text, -1)
-	if len(simpleMatches) > 0 {
-		return simpleMatches[0]
+	if match := extractSimpleZipcodePattern.FindString(text); match != "" {
+		return match
 	}
 
 	return ""

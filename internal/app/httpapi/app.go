@@ -76,6 +76,8 @@ func serveHTTP(logger *logrus.Logger, server *http.Server, port int) error {
 	logger.Info("  - GET  /api/v1/amazon/listings/tasks/:task_id/workbench")
 	logger.Info("  - POST /api/v1/amazon/listings/tasks/:task_id/review")
 	logger.Info("  - POST /api/v1/amazon/listings/tasks/:task_id/submit")
+	logger.Info("  - POST /api/v1/listing-kits/generate")
+	logger.Info("  - GET  /api/v1/listing-kits/tasks/:task_id")
 	logger.Info("  - GET  /api/v1/management/tasks/:task_id/status")
 	logger.Info("  - POST /api/v1/management/tasks/:task_id/retry")
 	logger.Info("  - POST /api/v1/management/tasks/:task_id/cancel")

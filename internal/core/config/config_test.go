@@ -25,6 +25,7 @@ func TestBrowserConfigDefaults(t *testing.T) {
 	assert.Equal(t, "random", v.GetString("browser.randomConfig.fingerprintStrategy"))
 	assert.True(t, v.GetBool("browser.randomConfig.healthCheckEnabled"))
 	assert.Equal(t, 3, v.GetInt("browser.randomConfig.maxRetries"))
+	assert.Equal(t, 25, v.GetInt("browser.randomConfig.maxUsesPerInstance"))
 }
 
 func TestAmazonConfigDefaults(t *testing.T) {
@@ -74,6 +75,14 @@ func TestAlibaba1688ConfigDefaults(t *testing.T) {
 	assert.Equal(t, 2, v.GetInt("platforms.alibaba1688.poolSize"))
 }
 
+func TestPlatformFetchModeDefaults(t *testing.T) {
+	v := viper.New()
+	setDefaults(v)
+
+	assert.Equal(t, "auto", v.GetString("platforms.temu.fetchMode"))
+	assert.Equal(t, "auto", v.GetString("platforms.shein.fetchMode"))
+}
+
 func TestConfigBuild(t *testing.T) {
 	v := viper.New()
 	v.Set("browser.enabled", true)
@@ -83,10 +92,16 @@ func TestConfigBuild(t *testing.T) {
 	v.Set("browser.randomConfig.presetName", "mac_high_end")
 	v.Set("amazon.enabled", true)
 	v.Set("amazon.dataFreshnessDays", 10)
+	v.Set("platforms.shein.fetchMode", "local")
 	v.Set("productimage.workDir", "./tmp/images")
 	v.Set("productimage.segmenter.enabled", true)
 	v.Set("productimage.segmenter.endpoint", "http://segmenter.local")
 	v.Set("productimage.whiteBackground.timeout", 90)
+	v.Set("productimage.scene.enabled", true)
+	v.Set("productimage.scene.endpoint", "http://scene.local")
+	v.Set("openai.clients.image.model", "nanobanana")
+	v.Set("openai.clients.image.timeout", 180)
+	v.Set("openai.clients.image.apiStyle", "nanobanana")
 	v.Set("productimage.publisher.outputDir", "./published")
 	v.Set("productimage.publisher.publicBase", "https://cdn.example.com/productimage")
 	v.Set("productimage.lifecycle.cleanupTemporaryFiles", true)
@@ -101,14 +116,43 @@ func TestConfigBuild(t *testing.T) {
 	assert.Equal(t, "mac_high_end", cfg.Browser.RandomConfig.PresetName)
 	assert.True(t, cfg.Amazon.Enabled)
 	assert.Equal(t, 10, cfg.Amazon.DataFreshnessDays)
+	assert.Equal(t, "local", cfg.Platforms.Shein.FetchMode)
 	assert.Equal(t, "./tmp/images", cfg.ProductImage.WorkDir)
 	assert.True(t, cfg.ProductImage.Segmenter.Enabled)
 	assert.Equal(t, "http://segmenter.local", cfg.ProductImage.Segmenter.Endpoint)
 	assert.Equal(t, 90, cfg.ProductImage.WhiteBackground.Timeout)
+	assert.True(t, cfg.ProductImage.Scene.Enabled)
+	assert.Equal(t, "http://scene.local", cfg.ProductImage.Scene.Endpoint)
+	assert.Equal(t, "nanobanana", cfg.OpenAI.Clients["image"].Model)
+	assert.Equal(t, 180, cfg.OpenAI.Clients["image"].Timeout)
+	assert.Equal(t, "nanobanana", cfg.OpenAI.Clients["image"].APIStyle)
 	assert.Equal(t, "./published", cfg.ProductImage.Publisher.OutputDir)
 	assert.Equal(t, "https://cdn.example.com/productimage", cfg.ProductImage.Publisher.PublicBase)
 	assert.True(t, cfg.ProductImage.Lifecycle.CleanupTemporaryFiles)
 	assert.True(t, cfg.ProductImage.Lifecycle.ReuseExistingAssets)
+}
+
+func TestConfigBuildIncludesProductImagePublisherS3Config(t *testing.T) {
+	v := viper.New()
+	v.Set("productimage.publisher.provider", "s3")
+	v.Set("productimage.publisher.publicBase", "https://cdn.example.com/productimage")
+	v.Set("productimage.publisher.s3.bucket", "listingkit-assets")
+	v.Set("productimage.publisher.s3.region", "ap-southeast-1")
+	v.Set("productimage.publisher.s3.endpoint", "https://s3.example.com")
+	v.Set("productimage.publisher.s3.accessKeyID", "test-access-key")
+	v.Set("productimage.publisher.s3.secretAccessKey", "test-secret-key")
+	v.Set("productimage.publisher.s3.usePathStyle", true)
+
+	cfg := BuildConfig(v)
+
+	assert.Equal(t, "s3", cfg.ProductImage.Publisher.Provider)
+	assert.Equal(t, "https://cdn.example.com/productimage", cfg.ProductImage.Publisher.PublicBase)
+	assert.Equal(t, "listingkit-assets", cfg.ProductImage.Publisher.S3.Bucket)
+	assert.Equal(t, "ap-southeast-1", cfg.ProductImage.Publisher.S3.Region)
+	assert.Equal(t, "https://s3.example.com", cfg.ProductImage.Publisher.S3.Endpoint)
+	assert.Equal(t, "test-access-key", cfg.ProductImage.Publisher.S3.AccessKeyID)
+	assert.Equal(t, "test-secret-key", cfg.ProductImage.Publisher.S3.SecretAccessKey)
+	assert.True(t, cfg.ProductImage.Publisher.S3.UsePathStyle)
 }
 
 func TestConfigValidation(t *testing.T) {
@@ -144,6 +188,7 @@ func TestConfigValidation(t *testing.T) {
 				PresetName:          "windows_high_end",
 				FingerprintStrategy: "random",
 				MaxRetries:          3,
+				MaxUsesPerInstance:  25,
 			},
 		},
 		Amazon: AmazonConfig{
@@ -223,6 +268,7 @@ func TestConfigValidation(t *testing.T) {
 				Strategy:            "invalid_strategy",
 				FingerprintStrategy: "invalid_fingerprint",
 				MaxRetries:          -1,
+				MaxUsesPerInstance:  -1,
 			},
 		},
 		Amazon: AmazonConfig{
@@ -248,6 +294,7 @@ func TestBrowserConfigValidation(t *testing.T) {
 				PresetName:          "windows_high_end",
 				FingerprintStrategy: "random",
 				MaxRetries:          3,
+				MaxUsesPerInstance:  25,
 			},
 		},
 	}
@@ -266,6 +313,7 @@ func TestBrowserConfigValidation(t *testing.T) {
 				Strategy:            "invalid_strategy",
 				FingerprintStrategy: "invalid_fingerprint",
 				MaxRetries:          -1,
+				MaxUsesPerInstance:  -1,
 			},
 		},
 	}

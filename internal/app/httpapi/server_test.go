@@ -122,12 +122,117 @@ func (s *stubImageHandler) ReviewTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "reviewed"})
 }
 
+type stubListingKitHandler struct {
+	generateCalled                     bool
+	uploadImagesCalled                 bool
+	getUploadedImageCalled             bool
+	getResultCalled                    bool
+	getPreviewCalled                   bool
+	getGenerationCalled                bool
+	getGenerationQueueCalled           bool
+	getGenerationReviewSessionCalled   bool
+	getGenerationReviewPreviewCalled   bool
+	dispatchGenerationNavigationCalled bool
+	retryGenerationCalled              bool
+	executeGenerationActionCalled      bool
+	getHistoryCalled                   bool
+	getHistoryDetailCalled             bool
+	getExportCalled                    bool
+	revisionCalled                     bool
+	validateCalled                     bool
+}
+
+func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
+	s.generateCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": "listing-kit-task"})
+}
+
+func (s *stubListingKitHandler) UploadListingKitImages(c *gin.Context) {
+	s.uploadImagesCalled = true
+	c.JSON(http.StatusOK, gin.H{"image_urls": []string{"/api/v1/listing-kits/uploads/files/test.jpg"}})
+}
+
+func (s *stubListingKitHandler) GetUploadedListingKitImage(c *gin.Context) {
+	s.getUploadedImageCalled = true
+	c.Data(http.StatusOK, "image/jpeg", []byte{0xFF, 0xD8, 0xFF})
+}
+
+func (s *stubListingKitHandler) GetTaskResult(c *gin.Context) {
+	s.getResultCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
+}
+
+func (s *stubListingKitHandler) GetTaskPreview(c *gin.Context) {
+	s.getPreviewCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "selected_platform": c.Query("platform")})
+}
+
+func (s *stubListingKitHandler) GetTaskGenerationTasks(c *gin.Context) {
+	s.getGenerationCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "tasks": []any{}})
+}
+
+func (s *stubListingKitHandler) GetTaskGenerationQueue(c *gin.Context) {
+	s.getGenerationQueueCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "items": []any{}})
+}
+
+func (s *stubListingKitHandler) GetTaskGenerationReviewSession(c *gin.Context) {
+	s.getGenerationReviewSessionCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "slot": c.Query("slot")})
+}
+
+func (s *stubListingKitHandler) GetTaskGenerationReviewPreview(c *gin.Context) {
+	s.getGenerationReviewPreviewCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "slot": c.Query("slot")})
+}
+
+func (s *stubListingKitHandler) DispatchTaskGenerationNavigation(c *gin.Context) {
+	s.dispatchGenerationNavigationCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "dispatch_kind": "session"})
+}
+
+func (s *stubListingKitHandler) RetryTaskGenerationTasks(c *gin.Context) {
+	s.retryGenerationCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
+}
+
+func (s *stubListingKitHandler) ExecuteTaskGenerationAction(c *gin.Context) {
+	s.executeGenerationActionCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "executed"})
+}
+
+func (s *stubListingKitHandler) GetTaskRevisionHistory(c *gin.Context) {
+	s.getHistoryCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "limit": c.Query("limit")})
+}
+
+func (s *stubListingKitHandler) GetTaskRevisionHistoryDetail(c *gin.Context) {
+	s.getHistoryDetailCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "revision_id": c.Param("revision_id")})
+}
+
+func (s *stubListingKitHandler) GetTaskExport(c *gin.Context) {
+	s.getExportCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "selected_platform": c.Query("platform")})
+}
+
+func (s *stubListingKitHandler) ApplyTaskRevision(c *gin.Context) {
+	s.revisionCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "revised"})
+}
+
+func (s *stubListingKitHandler) ValidateTaskRevision(c *gin.Context) {
+	s.validateCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "valid": false})
+}
+
 func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubAmazonListingHandler{}
 	router := gin.New()
-	RegisterRoutes(router, nil, nil, handler, nil)
+	RegisterRoutes(router, nil, nil, handler, nil, nil)
 
 	tests := []struct {
 		name     string
@@ -240,7 +345,7 @@ func TestRegisterRoutes_ProductEndpoints(t *testing.T) {
 
 	handler := &stubProductHandler{}
 	router := gin.New()
-	RegisterRoutes(router, handler, nil, nil, nil)
+	RegisterRoutes(router, handler, nil, nil, nil, nil)
 
 	// generate endpoint
 	generatePayload := map[string]any{"text": "test"}
@@ -274,7 +379,7 @@ func TestRegisterRoutes_ImageEndpoints(t *testing.T) {
 
 	handler := &stubImageHandler{}
 	router := gin.New()
-	RegisterRoutes(router, nil, handler, nil, nil)
+	RegisterRoutes(router, nil, handler, nil, nil, nil)
 
 	// process endpoint
 	processPayload := map[string]any{"image_urls": []string{"https://example.com/1.jpg"}, "marketplace": "amazon"}
@@ -318,11 +423,216 @@ func TestRegisterRoutes_ImageEndpoints(t *testing.T) {
 	}
 }
 
+func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
+	t.Parallel()
+
+	handler := &stubListingKitHandler{}
+	router := gin.New()
+	RegisterRoutes(router, nil, nil, nil, handler, nil)
+
+	body, _ := json.Marshal(map[string]any{
+		"text":      "test",
+		"platforms": []string{"amazon", "shein"},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/generate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/generate = %d, want 200", resp.Code)
+	}
+	if !handler.generateCalled {
+		t.Fatal("GenerateListingKit handler was not called")
+	}
+
+	handler.uploadImagesCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/uploads/images", bytes.NewReader([]byte("--x--")))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=x")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/uploads/images = %d, want 200", resp.Code)
+	}
+	if !handler.uploadImagesCalled {
+		t.Fatal("listing kit UploadListingKitImages handler was not called")
+	}
+
+	handler.getUploadedImageCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/uploads/files/test.jpg", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/uploads/files/test.jpg = %d, want 200", resp.Code)
+	}
+	if !handler.getUploadedImageCalled {
+		t.Fatal("listing kit GetUploadedListingKitImage handler was not called")
+	}
+
+	handler.getResultCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123 = %d, want 200", resp.Code)
+	}
+	if !handler.getResultCalled {
+		t.Fatal("listing kit GetTaskResult handler was not called")
+	}
+
+	handler.getPreviewCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/preview?platform=shein", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/preview = %d, want 200", resp.Code)
+	}
+	if !handler.getPreviewCalled {
+		t.Fatal("listing kit GetTaskPreview handler was not called")
+	}
+
+	handler.getHistoryCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/revision-history?limit=5", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/revision-history = %d, want 200", resp.Code)
+	}
+	if !handler.getHistoryCalled {
+		t.Fatal("listing kit GetTaskRevisionHistory handler was not called")
+	}
+
+	handler.getGenerationCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-tasks", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-tasks = %d, want 200", resp.Code)
+	}
+	if !handler.getGenerationCalled {
+		t.Fatal("listing kit GetTaskGenerationTasks handler was not called")
+	}
+
+	handler.getGenerationQueueCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-queue", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-queue = %d, want 200", resp.Code)
+	}
+	if !handler.getGenerationQueueCalled {
+		t.Fatal("listing kit GetTaskGenerationQueue handler was not called")
+	}
+
+	handler.getGenerationReviewSessionCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-review-session?platform=shein&slot=main", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-review-session = %d, want 200", resp.Code)
+	}
+	if !handler.getGenerationReviewSessionCalled {
+		t.Fatal("listing kit GetTaskGenerationReviewSession handler was not called")
+	}
+
+	handler.getGenerationReviewPreviewCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/generation-review-preview?platform=shein&slot=main", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/generation-review-preview = %d, want 200", resp.Code)
+	}
+	if !handler.getGenerationReviewPreviewCalled {
+		t.Fatal("listing kit GetTaskGenerationReviewPreview handler was not called")
+	}
+
+	handler.dispatchGenerationNavigationCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/generation-navigation/dispatch", bytes.NewReader([]byte(`{"target":{"dispatch_kind":"session","session_query":{"platform":"shein","slot":"main"}}}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/generation-navigation/dispatch = %d, want 200", resp.Code)
+	}
+	if !handler.dispatchGenerationNavigationCalled {
+		t.Fatal("listing kit DispatchTaskGenerationNavigation handler was not called")
+	}
+
+	handler.retryGenerationCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/generation-tasks/retry", bytes.NewReader([]byte(`{"task_ids":["amazon:amazon-lifestyle"]}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/generation-tasks/retry = %d, want 200", resp.Code)
+	}
+	if !handler.retryGenerationCalled {
+		t.Fatal("listing kit RetryTaskGenerationTasks handler was not called")
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/generation-actions/execute", bytes.NewReader([]byte(`{"action_key":"generate_missing_assets"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/generation-actions/execute = %d, want 200", resp.Code)
+	}
+	if !handler.executeGenerationActionCalled {
+		t.Fatal("listing kit ExecuteTaskGenerationAction handler was not called")
+	}
+
+	handler.getHistoryDetailCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/revision-history/rev-123", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/revision-history/rev-123 = %d, want 200", resp.Code)
+	}
+	if !handler.getHistoryDetailCalled {
+		t.Fatal("listing kit GetTaskRevisionHistoryDetail handler was not called")
+	}
+
+	handler.getExportCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/export?platform=shein", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/export = %d, want 200", resp.Code)
+	}
+	if !handler.getExportCalled {
+		t.Fatal("listing kit GetTaskExport handler was not called")
+	}
+
+	handler.revisionCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/revision", bytes.NewReader([]byte(`{"platform":"shein","shein":{"spu_name":"updated"}}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/revision = %d, want 200", resp.Code)
+	}
+	if !handler.revisionCalled {
+		t.Fatal("listing kit ApplyTaskRevision handler was not called")
+	}
+
+	handler.validateCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-123/revision/validate", bytes.NewReader([]byte(`{"platform":"shein","shein":{"category_id":0}}`)))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/tasks/task-123/revision/validate = %d, want 200", resp.Code)
+	}
+	if !handler.validateCalled {
+		t.Fatal("listing kit ValidateTaskRevision handler was not called")
+	}
+}
+
 func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 	t.Parallel()
 
 	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, nil)
+	RegisterRoutes(router, nil, nil, nil, nil, nil)
 
 	tests := []struct {
 		method string
@@ -331,6 +641,7 @@ func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/products/generate"},
 		{method: http.MethodPost, path: "/api/v1/images/process"},
 		{method: http.MethodPost, path: "/api/v1/amazon/listings/generate"},
+		{method: http.MethodPost, path: "/api/v1/listing-kits/generate"},
 		{method: http.MethodGet, path: "/api/v1/management/tasks/health"},
 		{method: http.MethodGet, path: "/api/v1/management/tasks/123/status"},
 	}
@@ -350,7 +661,7 @@ func TestRegisterRoutes_TaskRPCEndpoints(t *testing.T) {
 
 	handler := &stubTaskRPCHandler{}
 	router := gin.New()
-	RegisterRoutes(router, nil, nil, nil, handler)
+	RegisterRoutes(router, nil, nil, nil, nil, handler)
 
 	tests := []struct {
 		name     string

@@ -74,7 +74,7 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 		}
 	}()
 
-	routerServer := buildHTTPServer(0, productModule.handler, imageModule.handler, amazonModule.handler, nil)
+	routerServer := buildHTTPServer(0, productModule.handler, imageModule.handler, amazonModule.handler, nil, nil)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
 

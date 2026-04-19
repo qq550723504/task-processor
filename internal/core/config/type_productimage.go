@@ -5,6 +5,7 @@ type ProductImageConfig struct {
 	WorkDir         string                      `yaml:"workDir"`
 	Segmenter       ProductImageModelConfig     `yaml:"segmenter"`
 	WhiteBackground ProductImageModelConfig     `yaml:"whiteBackground"`
+	Scene           ProductImageModelConfig     `yaml:"scene"`
 	Publisher       ProductImagePublisherConfig `yaml:"publisher"`
 	Lifecycle       ProductImageLifecycleConfig `yaml:"lifecycle"`
 }
@@ -19,10 +20,20 @@ type ProductImageModelConfig struct {
 
 // ProductImagePublisherConfig 定义图片产物发布配置。
 type ProductImagePublisherConfig struct {
-	Enabled    bool   `yaml:"enabled"`
-	Provider   string `yaml:"provider"`
-	OutputDir  string `yaml:"outputDir"`
-	PublicBase string `yaml:"publicBase"`
+	Enabled    bool                          `yaml:"enabled"`
+	Provider   string                        `yaml:"provider"`
+	OutputDir  string                        `yaml:"outputDir"`
+	PublicBase string                        `yaml:"publicBase"`
+	S3         ProductImagePublisherS3Config `yaml:"s3"`
+}
+
+type ProductImagePublisherS3Config struct {
+	Bucket          string `yaml:"bucket"`
+	Region          string `yaml:"region"`
+	Endpoint        string `yaml:"endpoint"`
+	AccessKeyID     string `yaml:"accessKeyID"`
+	SecretAccessKey string `yaml:"secretAccessKey"`
+	UsePathStyle    bool   `yaml:"usePathStyle"`
 }
 
 // ProductImageLifecycleConfig 定义图片产物生命周期策略。

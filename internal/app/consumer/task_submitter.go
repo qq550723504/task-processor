@@ -128,7 +128,7 @@ func (ts *TaskSubmitter) SubmitTask(ctx context.Context, t *model.Task) error {
 			queueName = ts.queueNaming.BuildCrawlerQueueName(t.Platform, t.Priority)
 		}
 	} else {
-		queueName = ts.queueNaming.BuildTaskQueueName(t.Platform, t.Priority)
+		queueName = ts.queueNaming.BuildTaskQueueNameForStore(t.Platform, t.Priority, t.StoreID)
 	}
 	priority := ts.adapter.CalculatePriority(t.Priority)
 

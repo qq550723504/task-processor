@@ -6,6 +6,7 @@ func BuildPlatformConfig(v *viper.Viper, prefix string) PlatformConfig {
 	cfg := PlatformConfig{
 		Enabled:          v.GetBool(prefix + ".enabled"),
 		SchedulerEnabled: v.GetBool(prefix + ".schedulerEnabled"),
+		FetchMode:        v.GetString(prefix + ".fetchMode"),
 		AutoPricing: AutoPricingConfig{
 			Enabled:        v.GetBool(prefix + ".autoPricing.enabled"),
 			Interval:       v.GetInt(prefix + ".autoPricing.interval"),

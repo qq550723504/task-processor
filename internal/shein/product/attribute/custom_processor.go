@@ -35,7 +35,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
 	}
 
-	p.fixTranslatedCommas(&validateResponse.Data.AttributeValueNameMultis)
+	p.normalizeTranslatedNameMultis(&validateResponse.Data.AttributeValueNameMultis, sanitizedValue)
 	nameMultis := p.convertToAttributeValueNameMultis(validateResponse.Data.AttributeValueNameMultis)
 	if len(nameMultis) == 0 {
 		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
@@ -90,11 +90,11 @@ func (p *CustomAttributeProcessor) convertToAttributeValueNameMultis(source []st
 	return result
 }
 
-func (p *CustomAttributeProcessor) fixTranslatedCommas(nameMultis *[]struct {
+func (p *CustomAttributeProcessor) normalizeTranslatedNameMultis(nameMultis *[]struct {
 	Language                string `json:"language"`
 	AttributeValueNameMulti string `json:"attribute_value_name_multi"`
 	WarningType             int    `json:"warning_type"`
-}) {
+}, fallbackValue string) {
 	if nameMultis == nil || len(*nameMultis) == 0 {
 		return
 	}
@@ -102,8 +102,15 @@ func (p *CustomAttributeProcessor) fixTranslatedCommas(nameMultis *[]struct {
 	for i := range *nameMultis {
 		original := (*nameMultis)[i].AttributeValueNameMulti
 		fixed := strings.ReplaceAll(original, "锛?", ",")
-		if fixed != original {
-			(*nameMultis)[i].AttributeValueNameMulti = fixed
+		fixed = strings.TrimSpace(fixed)
+		if fixed == "" {
+			fixed = fallbackValue
+			logger.GetGlobalLogger("shein/product").Warnf(
+				"SHEIN custom attribute translation is empty, fallback to source value: language=%s value=%q",
+				(*nameMultis)[i].Language,
+				fallbackValue,
+			)
 		}
+		(*nameMultis)[i].AttributeValueNameMulti = fixed
 	}
 }

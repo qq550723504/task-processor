@@ -30,6 +30,10 @@ openai:
   model: "gemini-2.0-flash"
   baseURL: "https://ai.linkcloudai.com/v1"
   timeout: 300  # API调用超时5分钟
+  clients:
+    image:
+      model: "nanobanana"
+      timeout: 300
 
 # 管理API配置
 management:
@@ -102,6 +106,14 @@ browser:
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
+  randomConfig:
+    enabled: true
+    strategy: "random"
+    presetName: "windows_high_end"
+    fingerprintStrategy: "random"
+    healthCheckEnabled: true
+    maxRetries: 3
+    maxUsesPerInstance: 8
 
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:
@@ -239,11 +251,23 @@ productimage:
     endpoint: ""
     apiKey: ""
     timeout: 45
+  scene:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 60
   publisher:
     enabled: false
     provider: "local"
     outputDir: "./tmp/productimage-published-test"
     publicBase: ""
+    s3:
+      bucket: ""
+      region: ""
+      endpoint: ""
+      accessKeyID: ""
+      secretAccessKey: ""
+      usePathStyle: false
   lifecycle:
     cleanupTemporaryFiles: true
     reuseExistingAssets: true

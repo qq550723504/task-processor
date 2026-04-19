@@ -155,6 +155,7 @@ func NewDefaultConfig() *Config {
 				FingerprintStrategy: "random",
 				HealthCheckEnabled:  true,
 				MaxRetries:          3,
+				MaxUsesPerInstance:  25,
 			},
 		},
 		Amazon: AmazonConfig{
@@ -224,11 +225,16 @@ func NewDefaultConfig() *Config {
 				Enabled: false,
 				Timeout: 45,
 			},
+			Scene: ProductImageModelConfig{
+				Enabled: false,
+				Timeout: 60,
+			},
 			Publisher: ProductImagePublisherConfig{
 				Enabled:    true,
 				Provider:   "local",
 				OutputDir:  "./tmp/productimage-published",
 				PublicBase: "",
+				S3:         ProductImagePublisherS3Config{},
 			},
 			Lifecycle: ProductImageLifecycleConfig{
 				CleanupTemporaryFiles: true,
@@ -245,6 +251,7 @@ func NewDefaultConfig() *Config {
 			Temu: PlatformConfig{
 				Enabled:          false,
 				SchedulerEnabled: false,
+				FetchMode:        "auto",
 				AutoPricing: AutoPricingConfig{
 					Enabled:        false,
 					Interval:       300,
@@ -277,6 +284,7 @@ func NewDefaultConfig() *Config {
 			Shein: PlatformConfig{
 				Enabled:          false,
 				SchedulerEnabled: false,
+				FetchMode:        "auto",
 				AutoPricing: AutoPricingConfig{
 					Enabled:   false,
 					Interval:  300,
@@ -438,6 +446,9 @@ func applyDefaults(cfg *Config) {
 			cfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds = defaultCfg.Amazon.ConcurrencyControl.AcquireTimeoutSeconds
 		}
 	}
+	if cfg.Browser.RandomConfig.MaxUsesPerInstance == 0 {
+		cfg.Browser.RandomConfig.MaxUsesPerInstance = defaultCfg.Browser.RandomConfig.MaxUsesPerInstance
+	}
 	if cfg.ProductImage.WorkDir == "" {
 		cfg.ProductImage.WorkDir = defaultCfg.ProductImage.WorkDir
 	}
@@ -447,11 +458,20 @@ func applyDefaults(cfg *Config) {
 	if cfg.ProductImage.WhiteBackground.Timeout == 0 {
 		cfg.ProductImage.WhiteBackground.Timeout = defaultCfg.ProductImage.WhiteBackground.Timeout
 	}
+	if cfg.ProductImage.Scene.Timeout == 0 {
+		cfg.ProductImage.Scene.Timeout = defaultCfg.ProductImage.Scene.Timeout
+	}
 	if cfg.ProductImage.Publisher.Provider == "" {
 		cfg.ProductImage.Publisher.Provider = defaultCfg.ProductImage.Publisher.Provider
 	}
 	if cfg.ProductImage.Publisher.OutputDir == "" {
 		cfg.ProductImage.Publisher.OutputDir = defaultCfg.ProductImage.Publisher.OutputDir
+	}
+	if cfg.ProductImage.Publisher.S3.Region == "" {
+		cfg.ProductImage.Publisher.S3.Region = defaultCfg.ProductImage.Publisher.S3.Region
+	}
+	if cfg.ProductImage.Publisher.S3.Endpoint == "" {
+		cfg.ProductImage.Publisher.S3.Endpoint = defaultCfg.ProductImage.Publisher.S3.Endpoint
 	}
 	if cfg.Updater.UpdateURL == "" {
 		cfg.Updater = defaultCfg.Updater

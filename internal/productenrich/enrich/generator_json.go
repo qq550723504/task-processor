@@ -67,28 +67,11 @@ func (g *jsonGenerator) generateWithLLM(ctx context.Context, analysis *producten
 }
 
 func (g *jsonGenerator) buildPrompt(analysis *productenrich.ProductAnalysis) string {
-	var sb strings.Builder
+	fallback := `You are an e-commerce product data expert. Generate a complete product JSON based on the following analysis.
 
-	sb.WriteString("You are an e-commerce product data expert. Generate a complete product JSON based on the following analysis.\n\n")
+{{analysis_sections}}
 
-	if analysis.Representation != nil {
-		repJSON, _ := json.Marshal(analysis.Representation)
-		sb.WriteString(fmt.Sprintf("Product representation:\n%s\n\n", string(repJSON)))
-	}
-	if analysis.TextAttributes != nil {
-		textJSON, _ := json.Marshal(analysis.TextAttributes)
-		sb.WriteString(fmt.Sprintf("Text attributes:\n%s\n\n", string(textJSON)))
-	}
-	if analysis.ImageAttributes != nil {
-		imgJSON, _ := json.Marshal(analysis.ImageAttributes)
-		sb.WriteString(fmt.Sprintf("Image attributes:\n%s\n\n", string(imgJSON)))
-	}
-	if analysis.ScrapedData != nil {
-		scrapedJSON, _ := json.Marshal(analysis.ScrapedData)
-		sb.WriteString(fmt.Sprintf("1688 scraped data:\n%s\n\n", string(scrapedJSON)))
-	}
-
-	sb.WriteString(`Return product JSON with fields:
+Return product JSON with fields:
 {
   "title": "concise SEO-friendly product title",
   "category": ["primary category", "secondary category"],
@@ -102,9 +85,10 @@ Rules:
 - Prefer title, specs, and price context from scraped 1688 data when available.
 - Merge scraped specs into attributes and technical details naturally.
 - Keep the output consistent with the analyzed product type and features.
-- Return JSON only.`)
+- Return JSON only.`
+	fallback = strings.Replace(fallback, "{{analysis_sections}}", buildProductJSONAnalysisSections(analysis), 1)
 
-	return sb.String()
+	return buildProductJSONPrompt(analysis, fallback)
 }
 
 func (g *jsonGenerator) fallbackFromAnalysis(analysis *productenrich.ProductAnalysis) *productenrich.ProductJSON {

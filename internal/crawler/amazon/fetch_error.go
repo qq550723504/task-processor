@@ -8,23 +8,96 @@ import (
 )
 
 const (
-	FetchErrorTypeNone              = "none"
-	FetchErrorTypeInvalidRequest    = "invalid_request"
-	FetchErrorTypeProductNotFound   = "product_not_found"
-	FetchErrorTypeAuthentication    = "authentication"
-	FetchErrorTypeCaptcha           = "captcha"
-	FetchErrorTypeBrowserCrash      = "browser_crash"
-	FetchErrorTypeServerError       = "server_error"
-	FetchErrorTypeNetwork           = "network"
-	FetchErrorTypeTimeout           = "timeout"
-	FetchErrorTypeProductQuality    = "product_quality"
-	FetchErrorTypeCrawlInProgress   = "crawl_in_progress"
-	FetchErrorTypeRegionCircuitOpen = "region_circuit_open"
-	FetchErrorTypeSystemBusy        = "system_busy"
-	FetchErrorTypeUnknown           = "unknown"
+	FetchErrorTypeNone                 = "none"
+	FetchErrorTypeInvalidRequest       = "invalid_request"
+	FetchErrorTypeProductNotFound      = "product_not_found"
+	FetchErrorTypeAuthentication       = "authentication"
+	FetchErrorTypeCaptcha              = "captcha"
+	FetchErrorTypeBrowserCrash         = "browser_crash"
+	FetchErrorTypeServerError          = "server_error"
+	FetchErrorTypeNetwork              = "network"
+	FetchErrorTypeTimeout              = "timeout"
+	FetchErrorTypeProductQuality       = "product_quality"
+	FetchErrorTypeCrawlInProgress      = "crawl_in_progress"
+	FetchErrorTypeRegionCircuitOpen    = "region_circuit_open"
+	FetchErrorTypeSystemBusy           = "system_busy"
+	FetchErrorTypeProcessorUnavailable = "processor_unavailable"
+	FetchErrorTypeUnknown              = "unknown"
 )
 
 var sharedErrorDetector = browserpkg.NewErrorDetector()
+
+type classifiedFetchError interface {
+	error
+	FetchErrorTypeValue() string
+	FetchRetryableValue() bool
+}
+
+type typedFetchError struct {
+	message   string
+	fetchType string
+	retryable bool
+	cause     error
+}
+
+func (e *typedFetchError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.message != "" {
+		return e.message
+	}
+	if e.cause != nil {
+		return e.cause.Error()
+	}
+	return e.fetchType
+}
+
+func (e *typedFetchError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+func (e *typedFetchError) FetchErrorTypeValue() string {
+	if e == nil {
+		return FetchErrorTypeUnknown
+	}
+	return e.fetchType
+}
+
+func (e *typedFetchError) FetchRetryableValue() bool {
+	if e == nil {
+		return false
+	}
+	return e.retryable
+}
+
+func newTypedFetchError(fetchType string, retryable bool, message string, cause error) error {
+	return &typedFetchError{
+		message:   message,
+		fetchType: fetchType,
+		retryable: retryable,
+		cause:     cause,
+	}
+}
+
+func newInvalidRequestError(message string) error {
+	return newTypedFetchError(FetchErrorTypeInvalidRequest, false, message, nil)
+}
+
+func newProcessorUnavailableError(message string, cause error) error {
+	return newTypedFetchError(FetchErrorTypeProcessorUnavailable, true, message, cause)
+}
+
+func newCrawlInProgressError() error {
+	return newTypedFetchError(FetchErrorTypeCrawlInProgress, true, "crawl already in progress and shared result timed out", nil)
+}
+
+func newSystemBusyError(message string, cause error) error {
+	return newTypedFetchError(FetchErrorTypeSystemBusy, true, message, cause)
+}
 
 type FetchError struct {
 	Type      string
@@ -70,6 +143,21 @@ func ClassifyFetchError(err error) *FetchError {
 
 	if existing, ok := err.(*FetchError); ok {
 		return existing
+	}
+	if existing, ok := err.(classifiedFetchError); ok {
+		return &FetchError{
+			Type:      existing.FetchErrorTypeValue(),
+			Retryable: existing.FetchRetryableValue(),
+			Cause:     err,
+		}
+	}
+
+	if isProcessorUnavailableError(err) {
+		return &FetchError{
+			Type:      FetchErrorTypeProcessorUnavailable,
+			Retryable: true,
+			Cause:     err,
+		}
 	}
 
 	if isInvalidRequestError(err) {
@@ -124,6 +212,23 @@ func isInvalidRequestError(err error) bool {
 	patterns := []string{
 		"url or asin is required",
 		"amazon crawler is not initialized",
+	}
+	for _, pattern := range patterns {
+		if strings.Contains(message, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func isProcessorUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	patterns := []string{
+		"amazon处理器不可用",
+		"初始化浏览器池失败",
 	}
 	for _, pattern := range patterns {
 		if strings.Contains(message, pattern) {

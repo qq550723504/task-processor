@@ -3,11 +3,9 @@ package runner
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
-	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
@@ -29,7 +27,6 @@ type processorServiceImpl struct {
 	// 处理器组件
 	temuProcessor    *temu.TemuProcessor
 	sheinProcessor   *pipeline.SheinProcessor
-	taskFetcher      *task.TaskFetcher
 	schedulerService SchedulerService
 
 	// 监控组件
@@ -48,54 +45,6 @@ type processorServiceImpl struct {
 	cancel  context.CancelFunc
 	running bool
 	mu      sync.RWMutex
-}
-
-// startTaskFetcher 启动任务获取器
-func (s *processorServiceImpl) startTaskFetcher(cfg *config.Config) {
-	log := logger.GetGlobalLogger("service.processor")
-	log.Warn("启动已废弃的 legacy task fetcher；生产主链应使用 RabbitMQ platform consumers")
-
-	submitters := make(map[string]task.TaskSubmitter)
-	availability := make(map[string]any)
-	for _, module := range s.processorModules() {
-		processor := module.get(s)
-		availability[module.name] = processor != nil
-		if processor == nil {
-			continue
-		}
-		submitters[module.name] = task.NewTaskSubmitterAdapter(processor, module.name, s.logger)
-		log.Infof("✅ %s任务提交器已注册", strings.ToUpper(module.name))
-	}
-	log.WithFields(availability).Info("检查处理器状态")
-
-	if len(submitters) == 0 {
-		log.Warn("没有可用的平台处理器，跳过任务获取器启动")
-		return
-	}
-
-	log.WithField("platforms", getMapKeys(submitters)).Info("创建任务获取器")
-
-	// 创建任务获取器
-	s.taskFetcher = task.NewUnifiedTaskFetcher(
-		cfg,
-		s.managementClient,
-		submitters,
-		s.logger,
-	)
-
-	// 注册到生命周期管理器
-	s.lifecycleManager.Register(s.taskFetcher)
-
-	log.Info("✅ 任务获取器创建完成")
-}
-
-// getMapKeys 获取map的所有键
-func getMapKeys(m map[string]task.TaskSubmitter) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
 }
 
 // startSchedulerService 启动调度服务

@@ -1,0 +1,172 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: amazon-crawler-api
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: amazon-crawler-api
+    app.kubernetes.io/part-of: task-processor
+spec:
+  groups:
+    - name: amazon-crawler-api
+      rules:
+        - alert: AmazonCrawlerApiHighFailureRate
+          expr: |
+            (
+              sum by (pod) (rate(crawler_fetch_failure_total{kubernetes_namespace="task-processor"}[5m]))
+              /
+              clamp_min(sum by (pod) (rate(crawler_fetch_total{kubernetes_namespace="task-processor"}[5m])), 0.001)
+            ) > 0.8
+          for: 10m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫 Pod 失败率过高
+            description: Pod {{ $labels.pod }} 在 task-processor 命名空间中连续 10 分钟失败率超过 80%。
+            action: 先看 Grafana 中该 Pod 的失败类型、浏览器池当前实例数和活跃重建数，再结合最近日志确认是否为浏览器崩溃、Region Guard 熔断或 Redis/DNS 抖动。
+        - alert: AmazonCrawlerApiPodsRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="task-processor", pod=~"amazon-crawler-api-.*"}[15m]) > 1
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫 Pod 频繁重启
+            description: Pod {{ $labels.pod }} 在最近 15 分钟内重启次数超过 1 次。
+            action: 优先检查 OOMKilled、启动探针失败和节点资源压力，再确认该 Pod 所在节点是否符合当前 lite/heavy 分层配置。
+        - alert: AmazonCrawlerApiConcurrencyNearLimit
+          expr: |
+            (
+              crawler_concurrency_global_inflight{kubernetes_namespace="task-processor"}
+              /
+              clamp_min(crawler_concurrency_global_limit{kubernetes_namespace="task-processor"}, 1)
+            ) > 0.8
+          for: 10m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫 Pod 并发接近上限
+            description: Pod {{ $labels.pod }} 的全局并发占用已超过 80%。
+            action: 结合失败率、池实例数和 dedupe 超时一起看；如果同时伴随等待超时上升，优先考虑降低 maxInFlight 或排查池缩容。
+        - alert: AmazonCrawlerApiRegionGuardBlocking
+          expr: |
+            increase(crawler_region_guard_block_total{kubernetes_namespace="task-processor"}[10m]) > 5
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫 Region Guard 正在拦截请求
+            description: Pod {{ $labels.pod }} 在最近 10 分钟内被 Region Guard 拦截超过 5 次。
+            action: 回看同时间窗口的浏览器崩溃、页面超时和邮编设置失败，Region Guard 通常是上游页面异常后的次生保护。
+        - alert: AmazonCrawlerApiPoolInitFailures
+          expr: |
+            increase(crawler_pool_init_failure_total{kubernetes_namespace="task-processor"}[10m]) > 0
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: critical
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫浏览器池初始化失败
+            description: Pod {{ $labels.pod }} 在最近 10 分钟内出现浏览器池初始化失败，通常意味着 Playwright 启动或节点资源存在硬性问题。
+            action: 先检查 Pod 启动日志和节点内存余量，再确认浏览器依赖、容器镜像和宿主机资源是否正常。
+        - alert: AmazonCrawlerApiProcessorUnavailable
+          expr: |
+            increase(crawler_failure_by_type{kubernetes_namespace="task-processor", key="processor_unavailable"}[10m]) > 0
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: critical
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫处理器不可用
+            description: Pod {{ $labels.pod }} 在最近 10 分钟内出现处理器不可用错误，请检查浏览器池初始化和运行状态。
+            action: 先看是否同时出现浏览器池初始化失败或当前实例数为 0；如果是，优先处理池初始化、实例重建和节点资源问题。
+        - alert: AmazonCrawlerApiPoolRecreateFailures
+          expr: |
+            (
+              increase(crawler_pool_async_recreate_failure_total{kubernetes_namespace="task-processor"}[15m])
+              +
+              increase(crawler_pool_sync_recreate_failure_total{kubernetes_namespace="task-processor"}[15m])
+            ) > 0
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: critical
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫浏览器实例重建失败
+            description: Pod {{ $labels.pod }} 在最近 15 分钟内出现浏览器实例重建失败，可能正在发生池缩容。
+            action: 重点看该 Pod 的当前实例数是否低于配置值，以及节点是否存在 OOM、Playwright 崩溃或镜像文件损坏。
+        - alert: AmazonCrawlerApiPoolShrunk
+          expr: |
+            (
+              crawler_configured_pool_size{kubernetes_namespace="task-processor"}
+              -
+              crawler_total_instances{kubernetes_namespace="task-processor"}
+            ) >= 1
+          for: 15m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫浏览器池疑似缩容
+            description: Pod {{ $labels.pod }} 的当前实例数低于配置池大小，且已持续 15 分钟。
+            action: 对照 Grafana 的 configured pool size 和 total instances；如果差值持续存在，优先排查实例重建失败和节点资源不足。
+        - alert: AmazonCrawlerApiPoolEmpty
+          expr: |
+            crawler_total_instances{kubernetes_namespace="task-processor"} <= 0
+          for: 10m
+          labels:
+            namespace: task-processor
+            severity: critical
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫浏览器池已空
+            description: Pod {{ $labels.pod }} 连续 10 分钟没有可用浏览器实例，抓取能力基本不可用。
+            action: 立即检查浏览器池初始化失败、实例重建失败、节点 OOM 和 Playwright 启动日志，必要时重启该 Pod 并迁移到更高规格节点。
+        - alert: AmazonCrawlerApiPoolRebuildStuck
+          expr: |
+            crawler_pool_active_rebuild_total{kubernetes_namespace="task-processor"} > 0
+          for: 15m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫浏览器池长时间处于重建中
+            description: Pod {{ $labels.pod }} 持续 15 分钟存在未完成的浏览器实例重建任务。
+            action: 检查实例重建是否反复失败、是否卡在浏览器启动阶段，以及节点 I/O 和镜像层是否异常。
+        - alert: AmazonCrawlerApiTaskSubmitFailures
+          expr: |
+            increase(crawler_task_submit_failure_total{kubernetes_namespace="task-processor"}[10m]) > 0
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫任务提交失败
+            description: Pod {{ $labels.pod }} 在最近 10 分钟内出现任务提交失败，请检查 worker 队列和服务状态。
+            action: 优先区分 marshal 失败还是 enqueue 失败；如果是 enqueue，重点排查 worker 通道、任务队列和 Redis 连接状态。
+        - alert: AmazonCrawlerApiDedupeWaitTimeouts
+          expr: |
+            increase(crawler_dedupe_wait_timeout_total{kubernetes_namespace="task-processor"}[10m]) > 3
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: amazon-crawler-api
+          annotations:
+            summary: Amazon 爬虫共享结果等待超时偏多
+            description: Pod {{ $labels.pod }} 在最近 10 分钟内出现超过 3 次 dedupe 等待超时，可能存在重复抓取或锁等待异常。
+            action: 结合并发占用、池缩容和任务提交失败一起看；如果同时伴随高并发和低实例数，优先处理浏览器池容量问题。

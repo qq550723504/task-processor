@@ -4,7 +4,6 @@ package browser
 import (
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
 
@@ -186,32 +185,7 @@ func inferCountryFromTargetURLForValidation(targetURL string) string {
 }
 
 func inferCountryFromZipcodeForValidation(zipcode string) string {
-	normalized := strings.ToUpper(strings.TrimSpace(zipcode))
-	if normalized == "" {
-		return ""
-	}
-
-	usRegex := regexp.MustCompile(`^\d{5}(?:-\d{4})?$`)
-	if usRegex.MatchString(normalized) {
-		return "United States"
-	}
-
-	canadaRegex := regexp.MustCompile(`^[A-Z]\d[A-Z]\s?\d[A-Z]\d$`)
-	if canadaRegex.MatchString(normalized) {
-		return "Canada"
-	}
-
-	japanRegex := regexp.MustCompile(`^\d{3}-?\d{4}$`)
-	if japanRegex.MatchString(normalized) {
-		return "Japan"
-	}
-
-	ukRegex := regexp.MustCompile(`(?i)^[A-Z]{1,2}\d{1,2}[A-Z]?\s?\d[A-Z]{2}$`)
-	if ukRegex.MatchString(normalized) {
-		return "United Kingdom"
-	}
-
-	return ""
+	return inferCountryFromZipcodeValue(zipcode)
 }
 
 func locationMatchesTargetCountry(currentText, targetCountry string) bool {
@@ -267,11 +241,11 @@ func countryContextKeywords(targetCountry string) []string {
 	case "japan":
 		return []string{"Japan", "日本", "Tokyo", "東京都", "Osaka", "大阪", "Kyoto", "京都", "Kanagawa", "神奈川", "Saitama", "埼玉", "Chiba", "千葉", "Hokkaido", "北海道", "Fukuoka", "福岡"}
 	case "united kingdom":
-		return []string{"United Kingdom", "UK", "Great Britain", "England", "London"}
+		return []string{"United Kingdom", "Great Britain", "England", "London"}
 	case "canada":
 		return []string{"Canada", "Toronto", "Ontario", "Vancouver"}
 	case "united states":
-		return []string{"United States", "USA", "US"}
+		return []string{"United States", "USA"}
 	default:
 		return []string{targetCountry}
 	}

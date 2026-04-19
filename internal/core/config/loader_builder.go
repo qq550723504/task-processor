@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strconv"
+	"strings"
 	"task-processor/internal/core/logger"
 	"time"
 
@@ -65,6 +67,7 @@ func BuildConfig(v *viper.Viper) *Config {
 				FingerprintStrategy: v.GetString("browser.randomConfig.fingerprintStrategy"),
 				HealthCheckEnabled:  v.GetBool("browser.randomConfig.healthCheckEnabled"),
 				MaxRetries:          v.GetInt("browser.randomConfig.maxRetries"),
+				MaxUsesPerInstance:  v.GetInt("browser.randomConfig.maxUsesPerInstance"),
 			},
 		},
 		Amazon: AmazonConfig{
@@ -135,11 +138,25 @@ func BuildConfig(v *viper.Viper) *Config {
 				APIKey:   v.GetString("productimage.whiteBackground.apiKey"),
 				Timeout:  v.GetInt("productimage.whiteBackground.timeout"),
 			},
+			Scene: ProductImageModelConfig{
+				Enabled:  v.GetBool("productimage.scene.enabled"),
+				Endpoint: v.GetString("productimage.scene.endpoint"),
+				APIKey:   v.GetString("productimage.scene.apiKey"),
+				Timeout:  v.GetInt("productimage.scene.timeout"),
+			},
 			Publisher: ProductImagePublisherConfig{
 				Enabled:    v.GetBool("productimage.publisher.enabled"),
 				Provider:   v.GetString("productimage.publisher.provider"),
 				OutputDir:  v.GetString("productimage.publisher.outputDir"),
 				PublicBase: v.GetString("productimage.publisher.publicBase"),
+				S3: ProductImagePublisherS3Config{
+					Bucket:          v.GetString("productimage.publisher.s3.bucket"),
+					Region:          v.GetString("productimage.publisher.s3.region"),
+					Endpoint:        v.GetString("productimage.publisher.s3.endpoint"),
+					AccessKeyID:     v.GetString("productimage.publisher.s3.accessKeyID"),
+					SecretAccessKey: v.GetString("productimage.publisher.s3.secretAccessKey"),
+					UsePathStyle:    v.GetBool("productimage.publisher.s3.usePathStyle"),
+				},
 			},
 			Lifecycle: ProductImageLifecycleConfig{
 				CleanupTemporaryFiles: v.GetBool("productimage.lifecycle.cleanupTemporaryFiles"),
@@ -227,10 +244,11 @@ func buildOpenAIClients(v *viper.Viper) map[string]OpenAIClientConfig {
 		}
 
 		clients[name] = OpenAIClientConfig{
-			APIKey:  apiKey,
-			Model:   v.GetString(prefix + ".model"),
-			BaseURL: baseURL,
-			Timeout: timeout,
+			APIKey:   apiKey,
+			Model:    v.GetString(prefix + ".model"),
+			BaseURL:  baseURL,
+			Timeout:  timeout,
+			APIStyle: v.GetString(prefix + ".apiStyle"),
 		}
 	}
 	return clients
@@ -244,6 +262,10 @@ func getStringIntMap(v *viper.Viper, key string) map[string]int {
 
 	result := make(map[string]int, len(raw))
 	for mapKey, value := range raw {
+		mapKey = strings.TrimSpace(mapKey)
+		if mapKey == "" {
+			continue
+		}
 		switch typed := value.(type) {
 		case int:
 			result[mapKey] = typed
@@ -253,7 +275,15 @@ func getStringIntMap(v *viper.Viper, key string) map[string]int {
 			result[mapKey] = int(typed)
 		case float32:
 			result[mapKey] = int(typed)
+		case string:
+			parsed, err := strconv.Atoi(strings.TrimSpace(typed))
+			if err == nil {
+				result[mapKey] = parsed
+			}
 		}
+	}
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }

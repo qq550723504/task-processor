@@ -1,0 +1,201 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shein-listing-config-heavy
+  namespace: task-processor
+data:
+  config-shein-listing.yaml: |
+    logging:
+      level: "INFO"
+      format: "text"
+      file: ""
+      split_by_level: []
+
+    processor:
+      maxRetries: 3
+      timeout: 1800
+
+    worker:
+      concurrency: 3
+      bufferSize: 30
+      taskInterval: 50
+      maxFetchPerCycle: 3
+      queueThreshold: 75
+      cleanupInterval: 1800
+      taskTimeout: 2400
+      stuckTaskThreshold: 1200
+      forceCleanupAfter: 3600
+
+    openai:
+      apiKey: ""
+      model: "gemini-2.5-flash-lite"
+      baseURL: "https://api.bltcy.ai/v1"
+      timeout: 300
+
+    management:
+      baseURL: "http://management-api.default.svc.cluster.local:8080"
+      clientID: "go-listing"
+      clientSecret: ""
+      tokenURL: "http://management-api.default.svc.cluster.local:8080/admin-api/system/oauth2/token"
+      scopes: ["user.read"]
+      storeIDs: []
+
+    browser:
+      enabled: true
+      headless: true
+      browserPath: "/opt/fingerprint-chrome/chrome-144/chrome"
+      poolSize: 3
+      viewportWidth: 1920
+      viewportHeight: 1080
+      proxyServer: ""
+      randomConfig:
+        enabled: true
+        strategy: "random"
+        presetName: "windows_high_end"
+        fingerprintStrategy: "random"
+        healthCheckEnabled: true
+        maxRetries: 3
+        maxUsesPerInstance: 12
+
+    rabbitmq:
+      enabled: true
+      url: "amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/"
+      reconnectInterval: "5s"
+      maxReconnectTries: 10
+      consumer:
+        prefetchCount: 3
+        prefetchSize: 0
+        retryDelay: "5s"
+        maxRetries: 3
+        queues:
+          - name: "shein.tasks.store.*"
+            priority: 8
+            prefetch: 3
+      node:
+        role: "task"
+        maxConcurrency: 3
+        useStoreQueues: true
+        ownedStores: []
+        ownedBuckets: []
+        regions: [US]
+        healthCheckPort: 8081
+        metricsPort: 8082
+      autoShard:
+        enabled: true
+        platform: shein
+        interval: 1800
+        pageSize: 200
+        lockKey: listing:queue:auto-shard:lock
+        lockTTL: "25s"
+        candidateNodes:
+          - ser014109001694-18a1fb88
+          - ser040603662398-d8519de1
+          - ser053398539127-4d1883c9
+          - ser073611649668-5b2124d8
+          - ser131513269712-27af51d3
+          - ser243152649255-7ffca083
+          - ser248979913476-07e8bd93
+          - ser356510320880-0aba3d17
+          - ser376996273941-c4e40df6
+          - ser388467755489-93ff7927
+          - ser443186839518-782eb3d5
+          - ser519124477485-e83379d0
+          - ser595905437333-90dbde80
+          - ser600460588159-1163926f
+          - ser724424133953-98065f14
+          - ser804638640694-b480450e
+          - ser917615394999-9ddc1906
+          - ser967362906644-70309f35
+          - ser984651857980-4ee73c1f
+        nodeWeights:
+          ser040603662398-d8519de1: 3
+          ser073611649668-5b2124d8: 3
+          ser248979913476-07e8bd93: 3
+          ser376996273941-c4e40df6: 3
+          ser519124477485-e83379d0: 3
+          ser595905437333-90dbde80: 3
+          ser917615394999-9ddc1906: 3
+
+    platforms:
+      temu:
+        enabled: false
+        schedulerEnabled: false
+      shein:
+        enabled: true
+        schedulerEnabled: true
+        fetchMode: "local"
+        autoPricing:
+          enabled: true
+          interval: 10800
+          batchSize: 100
+      alibaba1688:
+        enabled: false
+        timeout: 120
+        poolSize: 1
+
+    amazon:
+      enabled: true
+      dataFreshnessDays: 15
+      crawlTimeout: 300
+      productDedupe:
+        lockTTLSeconds: 300
+        resultTTLSeconds: 600
+        waitTimeoutSeconds: 120
+        pollIntervalMillis: 500
+      failureArtifacts:
+        enabled: true
+        directory: "./tmp/amazon-failure-artifacts"
+        captureHTML: true
+        maxHTMLBytes: 262144
+      riskControl:
+        captchaRecreateThreshold: 1
+        authenticationRecreateThreshold: 1
+        browserCrashRecreateThreshold: 1
+        timeoutRecreateThreshold: 2
+        networkRecreateThreshold: 2
+        serverErrorRecreateThreshold: 3
+      regionGuard:
+        enabled: true
+        failureThreshold: 5
+        evaluationWindowSeconds: 300
+        cooldownSeconds: 90
+      qualityControl:
+        retryOnValidationFailure: true
+        validationRetryMaxAttempts: 2
+      proxyPool:
+        enabled: false
+        strategy: "round_robin"
+        failureCooldownSeconds: 300
+        proxies: []
+      concurrencyControl:
+        enabled: true
+        maxInFlight: 3
+        maxWaiting: 30
+        acquireTimeoutSeconds: 60
+      remoteAPI:
+        enabled: false
+        baseURL: ""
+        timeout: 300
+      zipcodes:
+        us: "10001"
+        uk: "SW1A1AA"
+        de: "10115"
+        fr: "75001"
+        it: "00118"
+        es: "28001"
+        ca: "M5V2T6"
+        jp: "1000001"
+
+    redis:
+      host: "redis-master.default.svc.cluster.local"
+      port: 6379
+      password: ""
+      db: 0
+      pool_size: 10
+
+    prompts:
+      dir: "./prompts"
+      hotReload: false
+
+    updater:
+      enabled: false

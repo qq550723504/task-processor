@@ -22,6 +22,11 @@ func (h *ShelfQuotaHandler) Name() string {
 
 // submitRemainingShelfQuota 提交剩余SKC上架额度
 func (h *ShelfQuotaHandler) submitRemainingShelfQuota(ctx *shein.TaskContext, remainCount int) {
+	if ctx == nil || ctx.MemoryManager == nil || ctx.MemoryManager.DailyCountManager == nil {
+		logger.GetGlobalLogger("shein/product").Warn("每日上架数量客户端未初始化，无法提交剩余SKC上架额度")
+		return
+	}
+
 	// 通过DailyCountManager获取客户端
 	client := ctx.MemoryManager.DailyCountManager.GetClient()
 	if client == nil {
@@ -29,9 +34,33 @@ func (h *ShelfQuotaHandler) submitRemainingShelfQuota(ctx *shein.TaskContext, re
 		return
 	}
 
-	// 这里可以根据需要扩展客户端接口来支持SKC上架额度
-	// 目前先记录日志
-	logger.GetGlobalLogger("shein/product").Infof("SKC上架额度信息已获取，剩余额度: %d", remainCount)
+	success, err := client.SetRemainingListingQuota(ctx.Task.TenantID, ctx.Task.StoreID, remainCount)
+	if err != nil {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"提交剩余SKC上架额度失败: tenantID=%d, storeID=%d, remainCount=%d, error=%v",
+			ctx.Task.TenantID,
+			ctx.Task.StoreID,
+			remainCount,
+			err,
+		)
+		return
+	}
+	if !success {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"提交剩余SKC上架额度返回失败: tenantID=%d, storeID=%d, remainCount=%d",
+			ctx.Task.TenantID,
+			ctx.Task.StoreID,
+			remainCount,
+		)
+		return
+	}
+
+	logger.GetGlobalLogger("shein/product").Infof(
+		"成功提交剩余SKC上架额度: tenantID=%d, storeID=%d, remainCount=%d",
+		ctx.Task.TenantID,
+		ctx.Task.StoreID,
+		remainCount,
+	)
 }
 
 // Handle 处理SKC上架额度检查

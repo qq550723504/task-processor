@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"task-processor/internal/core/metrics"
 	"time"
 
 	apptask "task-processor/internal/app/task"
@@ -136,6 +137,8 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	eth.logger.Infof("[%s] 处理任务: ID=%d, ProductID=%s, Priority=%d, TargetPlatform=%s, SourcePlatform=%s",
 		eth.platform, task.ID, task.ProductID, task.Priority, task.Platform, task.GetSourcePlatformOrDefault())
 
+	eth.recordListingTaskMetricsOnStart(task, startTime)
+
 	// 5. 处理任务
 	err = eth.processTaskWithReporting(ctx, task, originalPayload, startTime)
 	if err != nil {
@@ -145,10 +148,35 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	}
 
 	processingTime := time.Since(startTime)
+	if !task.IsCrawlerTask() {
+		metrics.GlobalTaskMetrics().RecordProcessTime(processingTime)
+	}
+
 	eth.logger.Infof("[%s] 任务处理成功: ID=%d, Duration=%v",
 		eth.platform, task.ID, processingTime)
 
 	return nil
+}
+
+func (eth *TaskHandler) recordListingTaskMetricsOnStart(task *model.Task, startTime time.Time) {
+	if task == nil || task.IsCrawlerTask() {
+		return
+	}
+
+	taskMetrics := metrics.GlobalTaskMetrics()
+	taskMetrics.IncrementProcessing()
+	taskMetrics.RecordPriority(task.Priority)
+
+	if task.CreateTime <= 0 {
+		return
+	}
+
+	createdAt := time.UnixMilli(task.CreateTime)
+	if createdAt.IsZero() || createdAt.After(startTime) {
+		return
+	}
+
+	taskMetrics.RecordWaitTime(startTime.Sub(createdAt))
 }
 
 func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
@@ -157,9 +185,9 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 	}
 	if task.Status == model.TaskStatusPaused.Int16() {
 		eth.logger.WithFields(logrus.Fields{
-			"task_id":           task.ID,
-			"message_status":    task.Status,
-			"current_status":    model.TaskStatusPaused.String(),
+			"task_id":            task.ID,
+			"message_status":     task.Status,
+			"current_status":     model.TaskStatusPaused.String(),
 			"current_status_key": "PAUSED",
 		}).Warn("discarding paused task message before claim")
 		return &staleTaskMessageError{

@@ -1,0 +1,68 @@
+package consumer
+
+import (
+	"fmt"
+	"strings"
+
+	appfetcher "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/infra/rabbitmq"
+)
+
+func buildPlatformProductFetcher(
+	cfg *config.Config,
+	platform string,
+	managementClient *management.ClientManager,
+	crawlSource *amazon.AmazonProcessor,
+	rabbitmqClient *rabbitmq.Client,
+) (appfetcher.ProductFetcher, error) {
+	if managementClient == nil {
+		return nil, fmt.Errorf("management client is required")
+	}
+
+	factory := appfetcher.NewFetcherFactory()
+	fetcherType, err := resolvePlatformFetcherType(cfg, platform)
+	if err != nil {
+		return nil, err
+	}
+
+	if fetcherType == "" {
+		return factory.CreateFetcherFromConfig(cfg, managementClient.GetRawJsonDataAdapter(), crawlSource, rabbitmqClient)
+	}
+
+	return factory.CreateFetcher(fetcherType, managementClient.GetRawJsonDataAdapter(), &cfg.Amazon, crawlSource, rabbitmqClient)
+}
+
+func resolvePlatformFetcherType(cfg *config.Config, platform string) (appfetcher.FetcherType, error) {
+	if cfg == nil {
+		return "", nil
+	}
+
+	mode := "auto"
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "temu":
+		mode = strings.TrimSpace(cfg.Platforms.Temu.FetchMode)
+	case "shein":
+		mode = strings.TrimSpace(cfg.Platforms.Shein.FetchMode)
+	}
+
+	switch strings.ToLower(mode) {
+	case "", "auto":
+		return "", nil
+	case "local":
+		return appfetcher.LocalFetcher, nil
+	case "distributed":
+		return appfetcher.DistributedFetcher, nil
+	case "remote-api", "remoteapi", "remote_api":
+		return appfetcher.RemoteAPIFetcher, nil
+	default:
+		return "", fmt.Errorf("unsupported fetch mode %q for platform %q", mode, platform)
+	}
+}
+
+func platformUsesLocalFetcher(cfg *config.Config, platform string) bool {
+	fetcherType, err := resolvePlatformFetcherType(cfg, platform)
+	return err == nil && fetcherType == appfetcher.LocalFetcher
+}

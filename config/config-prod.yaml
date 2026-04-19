@@ -39,6 +39,11 @@ openai:
   model: "gemini-2.5-flash"
   baseURL: "https://ai.linkcloudai.com/v1"
   timeout: 300  # API调用超时5分钟
+  clients:
+    image:
+      apiStyle: "nanobanana"
+      model: "nanobanana"
+      timeout: 300
   
   # 请求池配置 - 更保守的设置
 # 管理API配置
@@ -79,6 +84,7 @@ platforms:
   shein:
     enabled: true            # 是否启用SHEIN处理器（处理上架任务）
     schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
+    fetchMode: "local"       # SHEIN 上架服务直接走本地浏览器抓取，不依赖爬虫 API / 分布式队列
     # 自动核价配置
     autoPricing:
       enabled: true        # 启用自动核价
@@ -112,6 +118,14 @@ browser:
   viewportWidth: 1920
   viewportHeight: 1080
   proxyServer: ""
+  randomConfig:
+    enabled: true
+    strategy: "random"
+    presetName: "windows_high_end"
+    fingerprintStrategy: "random"
+    healthCheckEnabled: true
+    maxRetries: 3
+    maxUsesPerInstance: 18  # 实例累计处理 18 个任务后主动轮换，避免 context 持续膨胀
 
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:
@@ -245,11 +259,23 @@ productimage:
     endpoint: ""
     apiKey: ""
     timeout: 45
+  scene:
+    enabled: false
+    endpoint: ""
+    apiKey: ""
+    timeout: 60
   publisher:
     enabled: true
     provider: "local"
     outputDir: "./tmp/productimage-published"
     publicBase: ""
+    s3:
+      bucket: ""
+      region: ""
+      endpoint: ""
+      accessKeyID: ""
+      secretAccessKey: ""
+      usePathStyle: false
   lifecycle:
     cleanupTemporaryFiles: true
     reuseExistingAssets: true

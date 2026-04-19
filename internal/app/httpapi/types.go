@@ -10,7 +10,9 @@ import (
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	"task-processor/internal/taskrpcapi"
@@ -23,22 +25,27 @@ type Options struct {
 }
 
 type runtimeDeps struct {
-	cfg              *config.Config
-	closers          []func() error
-	llmMgr           productenrich.LLMManager
-	inputParser      productenrich.InputParser
-	understanding    productenrich.ProductUnderstanding
-	imageWorkDir     string
-	shared           *appbootstrap.SharedResources
-	managementClient *management.ClientManager
-	productService   productenrich.ProductService
-	imageService     productimage.Service
+	cfg                   *config.Config
+	closers               []func() error
+	openaiMgr             *openaiclient.Manager
+	llmMgr                productenrich.LLMManager
+	inputParser           productenrich.InputParser
+	understanding         productenrich.ProductUnderstanding
+	imageWorkDir          string
+	shared                *appbootstrap.SharedResources
+	managementClient      *management.ClientManager
+	productService        productenrich.ProductService
+	imageService          productimage.Service
+	imageSubjectExtractor productimage.SubjectExtractor
+	imageWhiteBgRenderer  productimage.WhiteBackgroundRenderer
+	imageSceneRenderer    productimage.SceneRenderer
 }
 
 type appBootstrap struct {
 	productHandler       productenrich.ProductHandler
 	imageHandler         productimage.Handler
 	amazonListingHandler amazonlisting.Handler
+	listingKitHandler    listingkit.Handler
 	taskRPCHandler       taskrpcapi.Handler
 	server               *http.Server
 	pools                []worker.WorkerPool
@@ -60,6 +67,11 @@ type amazonListingModule struct {
 	pool    worker.WorkerPool
 }
 
+type listingKitModule struct {
+	handler listingkit.Handler
+	pool    worker.WorkerPool
+}
+
 type productRouteHandler interface {
 	GenerateProduct(c *gin.Context)
 	GetTaskResult(c *gin.Context)
@@ -78,6 +90,26 @@ type amazonListingRouteHandler interface {
 	GetTaskWorkbench(c *gin.Context)
 	ReviewTask(c *gin.Context)
 	SubmitTask(c *gin.Context)
+}
+
+type listingKitRouteHandler interface {
+	GenerateListingKit(c *gin.Context)
+	UploadListingKitImages(c *gin.Context)
+	GetUploadedListingKitImage(c *gin.Context)
+	GetTaskResult(c *gin.Context)
+	GetTaskPreview(c *gin.Context)
+	GetTaskGenerationTasks(c *gin.Context)
+	GetTaskGenerationQueue(c *gin.Context)
+	GetTaskGenerationReviewSession(c *gin.Context)
+	GetTaskGenerationReviewPreview(c *gin.Context)
+	DispatchTaskGenerationNavigation(c *gin.Context)
+	RetryTaskGenerationTasks(c *gin.Context)
+	ExecuteTaskGenerationAction(c *gin.Context)
+	GetTaskRevisionHistory(c *gin.Context)
+	GetTaskRevisionHistoryDetail(c *gin.Context)
+	GetTaskExport(c *gin.Context)
+	ApplyTaskRevision(c *gin.Context)
+	ValidateTaskRevision(c *gin.Context)
 }
 
 type taskRPCRouteHandler interface {

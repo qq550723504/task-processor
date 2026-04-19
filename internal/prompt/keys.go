@@ -38,4 +38,17 @@ const (
 	KProductEnrichUnderstandingAnalyzeImage   = "productenrich.understanding.analyze_image"
 	KProductEnrichUnderstandingExtractText    = "productenrich.understanding.extract_text"
 	KProductEnrichUnderstandingFuseMultimodal = "productenrich.understanding.fuse_multimodal"
+
+	// ── productenrich/generation.yaml ──────────────────────────────────────
+	KProductEnrichGenerationProductJSON       = "productenrich.generation.product_json"
+	KProductEnrichGenerationSpecs             = "productenrich.generation.specs"
+	KProductEnrichGenerationVariants          = "productenrich.generation.variants"
+	KProductEnrichGenerationExtractDimensions = "productenrich.generation.extract_dimensions"
+	KProductEnrichGenerationExtractWeight     = "productenrich.generation.extract_weight"
+
+	// ── productimage/generation.yaml ───────────────────────────────────────
+	KProductImageSubjectExtract         = "productimage.subject.extract"
+	KProductImageWhiteBackgroundDefault = "productimage.white_background.default"
+	KProductImageSceneDefault           = "productimage.scene.default"
+	KProductImageReviewDefault          = "productimage.review.default"
 )

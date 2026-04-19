@@ -1,0 +1,113 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shein-listing
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: shein-listing
+    app.kubernetes.io/part-of: task-processor
+spec:
+  groups:
+    - name: shein-listing
+      rules:
+        - alert: SheinListingHighFailureRate
+          expr: |
+            (
+              sum by (pod) (increase(listing_tasks_failed_total{kubernetes_namespace="task-processor"}[10m]))
+              /
+              clamp_min(
+                sum by (pod) (
+                  increase(listing_tasks_completed_total{kubernetes_namespace="task-processor"}[10m])
+                  +
+                  increase(listing_tasks_failed_total{kubernetes_namespace="task-processor"}[10m])
+                ),
+                1
+              )
+            ) > 0.5
+          for: 10m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: shein-listing
+          annotations:
+            summary: SHEIN 上架失败率过高
+            description: Pod {{ $labels.pod }} 最近 10 分钟失败率持续超过 50%。
+            action: 优先查看 Grafana 中失败、重试、认证过期、Cookie 加载失败等趋势。
+            dashboard_url: https://monitoring.shuomiai.com/d/shein-listing-business
+            runbook_url: https://monitoring.shuomiai.com/d/shein-listing-business?var-namespace=task-processor&var-pod={{ $labels.pod }}
+        - alert: SheinListingRetrySpike
+          expr: increase(listing_tasks_requeued_total{kubernetes_namespace="task-processor"}[10m]) > 10
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: shein-listing
+          annotations:
+            summary: SHEIN 上架重试量激增
+            description: Pod {{ $labels.pod }} 最近 10 分钟重试任务超过 10 个。
+            action: 检查平台接口抖动、RabbitMQ 积压和共享依赖异常。
+            dashboard_url: https://monitoring.shuomiai.com/d/shein-listing-business
+            runbook_url: https://monitoring.shuomiai.com/d/shein-listing-business?var-namespace=task-processor&var-pod={{ $labels.pod }}
+        - alert: SheinListingAuthExpiredSpike
+          expr: increase(shein_reason_auth_expired_total{kubernetes_namespace="task-processor"}[15m]) > 3
+          for: 5m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: shein-listing
+          annotations:
+            summary: SHEIN 认证过期事件增多
+            description: Pod {{ $labels.pod }} 最近 15 分钟认证过期事件超过 3 次。
+            action: 检查店铺登录态、Cookie 刷新链路和 management 侧凭证同步。
+            dashboard_url: https://monitoring.shuomiai.com/d/shein-listing-business
+            runbook_url: http://shein-listing.task-processor.svc.cluster.local:8082/stats?view=problem&reason=auth_expired&format=compact
+        - alert: SheinListingLowRecoveryRate
+          expr: |
+            (
+              sum(increase(shein_tasks_published_total{kubernetes_namespace="task-processor"}[30m]))
+              /
+              clamp_min(
+                sum(
+                  increase(listing_tasks_requeued_total{kubernetes_namespace="task-processor"}[30m])
+                  +
+                  increase(shein_reason_retryable_failure_total{kubernetes_namespace="task-processor"}[30m])
+                ),
+                1
+              )
+            ) < 0.8
+          for: 15m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: shein-listing
+          annotations:
+            summary: SHEIN 上架回补率持续偏低
+            description: 最近 30 分钟发布成功对重试/可重试失败的回补率持续低于 80%。
+            action: 优先查看业务看板中的 24h 回补率、问题恢复趋势和问题店铺榜，确认是否有单一异常原因持续放大。
+            dashboard_url: https://monitoring.shuomiai.com/d/shein-listing-business
+            runbook_url: http://shein-listing.task-processor.svc.cluster.local:8082/stats?view=problem&format=compact
+        - alert: SheinListingHighRetryPressure
+          expr: |
+            (
+              sum(increase(listing_tasks_requeued_total{kubernetes_namespace="task-processor"}[30m]))
+              /
+              clamp_min(
+                sum(
+                  increase(shein_tasks_published_total{kubernetes_namespace="task-processor"}[30m])
+                  +
+                  increase(listing_tasks_requeued_total{kubernetes_namespace="task-processor"}[30m])
+                ),
+                1
+              )
+            ) > 0.4
+          for: 15m
+          labels:
+            namespace: task-processor
+            severity: warning
+            service: shein-listing
+          annotations:
+            summary: SHEIN 上架重试压力持续偏高
+            description: 最近 30 分钟重试量在成功+重试中的占比持续超过 40%。
+            action: 优先查看业务看板中的 24h 重试压力、最近 1h 最异常原因，以及按原因切换的问题店铺榜。
+            dashboard_url: https://monitoring.shuomiai.com/d/shein-listing-business
+            runbook_url: http://shein-listing.task-processor.svc.cluster.local:8082/stats?view=problem&format=compact

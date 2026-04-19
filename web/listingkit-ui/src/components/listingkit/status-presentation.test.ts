@@ -1,0 +1,52 @@
+import {
+  presentPlatformStatus,
+  presentQueueReviewStatus,
+  presentQueueState,
+  presentTaskStatus,
+} from "@/components/listingkit/status-presentation";
+
+describe("status-presentation", () => {
+  it("maps failed task status to a danger presentation", () => {
+    expect(presentTaskStatus("failed")).toEqual({
+      label: "Failed",
+      title: "Task failed",
+      tone: "danger",
+    });
+  });
+
+  it("maps processing task status to an in-progress presentation", () => {
+    expect(presentTaskStatus("processing")).toEqual({
+      label: "In progress",
+      title: "Task in progress",
+      tone: "warning",
+    });
+  });
+
+  it("maps review-ready platform status to warning review copy", () => {
+    expect(presentPlatformStatus({ status: "review_ready", needs_review: true })).toEqual({
+      label: "Ready for review",
+      tone: "warning",
+    });
+  });
+
+  it("maps retry-needed platform status to danger retry copy", () => {
+    expect(presentPlatformStatus({ status: "retry_needed", needs_review: false })).toEqual({
+      label: "Retry needed",
+      tone: "danger",
+    });
+  });
+
+  it("maps queue state to clearer copy", () => {
+    expect(presentQueueState({ state: "fallback" })).toEqual({
+      label: "Fallback",
+      tone: "warning",
+    });
+  });
+
+  it("maps pending review queue status to review copy", () => {
+    expect(presentQueueReviewStatus({ review_status: "pending" })).toEqual({
+      label: "Pending review",
+      tone: "warning",
+    });
+  });
+});
