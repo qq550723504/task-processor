@@ -30,6 +30,9 @@ func TestModelSubjectExtractorUsesFaithfulEditor(t *testing.T) {
 				ModelFamily:    "gpt-image",
 				GenerationMode: "subject_extraction",
 				PromptRef:      "productimage.subject.extract",
+				PromptKey:      "productimage.subject.extract",
+				PromptSource:   "registry",
+				PromptVersion:  "default",
 			},
 		},
 	}
@@ -52,6 +55,9 @@ func TestModelSubjectExtractorUsesFaithfulEditor(t *testing.T) {
 		t.Fatalf("asset metadata = %+v", asset.Metadata)
 	}
 	if asset.Metadata["prompt_ref"] != "productimage.subject.extract" {
+		t.Fatalf("asset metadata = %+v", asset.Metadata)
+	}
+	if asset.Metadata["prompt_key"] != "productimage.subject.extract" || asset.Metadata["prompt_source"] != "registry" || asset.Metadata["prompt_version"] != "default" {
 		t.Fatalf("asset metadata = %+v", asset.Metadata)
 	}
 }
