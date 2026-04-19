@@ -6,6 +6,13 @@ import (
 	"task-processor/internal/prompt"
 )
 
+type resolvedProductImagePrompt struct {
+	Key     string
+	Source  string
+	Version string
+	Text    string
+}
+
 func normalizeProductImagePromptKey(promptRef string, defaultKey string) string {
 	normalized := strings.TrimSpace(promptRef)
 	if normalized == "" {
@@ -36,18 +43,28 @@ func normalizedScenePromptRef(req *SceneGenerationRequest) string {
 	return normalizeProductImagePromptKey(req.PromptRef, "productimage.scene.default")
 }
 
-func renderProductImagePrompt(promptRef string, defaultKey string, vars map[string]any, fallback string) string {
-	if prompt.GlobalRegistry == nil {
-		return fallback
-	}
+func resolveProductImagePrompt(promptRef string, defaultKey string, vars map[string]any, fallback string) resolvedProductImagePrompt {
 	key := normalizeProductImagePromptKey(promptRef, defaultKey)
+	resolved := resolvedProductImagePrompt{
+		Key:     key,
+		Source:  "fallback",
+		Version: "default",
+		Text:    fallback,
+	}
+	if prompt.GlobalRegistry == nil {
+		return resolved
+	}
+
 	rendered, err := prompt.GlobalRegistry.Render(key, vars, fallback)
 	if err != nil {
-		return fallback
+		return resolved
 	}
-	rendered = strings.TrimSpace(rendered)
-	if rendered == "" {
-		return fallback
-	}
-	return rendered
+
+	resolved.Source = "registry"
+	resolved.Text = rendered
+	return resolved
+}
+
+func renderProductImagePrompt(promptRef string, defaultKey string, vars map[string]any, fallback string) string {
+	return strings.TrimSpace(resolveProductImagePrompt(promptRef, defaultKey, vars, fallback).Text)
 }

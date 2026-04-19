@@ -1,27 +1,49 @@
-package productimage_test
+package productimage
 
 import (
 	"testing"
 
-	"task-processor/internal/productimage"
+	"task-processor/internal/prompt"
 )
 
-func TestGenerationMetadataClonePreservesPromptObservability(t *testing.T) {
-	src := &productimage.GenerationMetadata{
-		Provider:       "openai_compatible",
-		ModelFamily:    "nano-banana-fast",
-		GenerationMode: "scene_generation",
-		PromptRef:      "productimage.scene.default",
-		PromptKey:      "productimage.scene.default",
-		PromptSource:   "registry",
-		PromptVersion:  "default",
+func TestResolveProductImagePromptUsesRegistryWhenAvailable(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = &promptRegistryStub{
+		templates: map[string]string{
+			prompt.KProductImageSceneDefault: "scene {{.product_type}}",
+		},
 	}
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
 
-	cloned := src.Clone()
-	if cloned == nil {
-		t.Fatal("Clone() = nil")
+	resolved := resolveProductImagePrompt("productimage.scene.default", prompt.KProductImageSceneDefault, map[string]any{
+		"product_type": "sneaker",
+	}, "fallback text")
+
+	if resolved.Text != "scene sneaker" {
+		t.Fatalf("Text = %q", resolved.Text)
 	}
-	if cloned.PromptKey != "productimage.scene.default" || cloned.PromptSource != "registry" || cloned.PromptVersion != "default" {
-		t.Fatalf("Clone() lost prompt observability fields: %+v", cloned)
+	if resolved.Key != "productimage.scene.default" || resolved.Source != "registry" || resolved.Version != "default" {
+		t.Fatalf("resolved = %+v", resolved)
+	}
+}
+
+func TestResolveProductImagePromptFallsBackWhenRegistryUnavailable(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = nil
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
+
+	resolved := resolveProductImagePrompt("", prompt.KProductImageWhiteBackgroundDefault, map[string]any{
+		"product_type": "sneaker",
+	}, "fallback text")
+
+	if resolved.Text != "fallback text" {
+		t.Fatalf("Text = %q", resolved.Text)
+	}
+	if resolved.Key != "productimage.white_background.default" || resolved.Source != "fallback" || resolved.Version != "default" {
+		t.Fatalf("resolved = %+v", resolved)
 	}
 }
