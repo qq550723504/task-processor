@@ -24,7 +24,10 @@ func (s *stubModelMetadataSceneRenderer) Render(ctx context.Context, asset *prod
 			"model_provider":    "openai",
 			"model_family":      "gpt-image",
 			"generation_mode":   "scene_generation",
-			"prompt_ref":        "preset:selling_point/default",
+			"prompt_ref":        "productimage.scene.default",
+			"prompt_key":        "productimage.scene.default",
+			"prompt_source":     "registry",
+			"prompt_version":    "default",
 			"review_confidence": "0.82",
 		},
 	}}, nil
@@ -75,7 +78,7 @@ func TestRunWorkflowPersistsModelBackedGenerationMetadata(t *testing.T) {
 		},
 	}
 
-	_, err := svc.runWorkflow(context.Background(), task)
+	result, err := svc.runWorkflow(context.Background(), task)
 	if err != nil {
 		t.Fatalf("runWorkflow() error = %v", err)
 	}
@@ -97,7 +100,10 @@ func TestRunWorkflowPersistsModelBackedGenerationMetadata(t *testing.T) {
 		if item.Metadata["model_provider"] != "openai" || item.Metadata["model_family"] != "gpt-image" {
 			t.Fatalf("task metadata = %+v", item.Metadata)
 		}
-		if item.Metadata["generation_mode"] != "scene_generation" || item.Metadata["prompt_ref"] != "preset:selling_point/default" {
+		if item.Metadata["generation_mode"] != "scene_generation" || item.Metadata["prompt_ref"] != "productimage.scene.default" {
+			t.Fatalf("task metadata = %+v", item.Metadata)
+		}
+		if item.Metadata["prompt_key"] != "productimage.scene.default" || item.Metadata["prompt_source"] != "registry" || item.Metadata["prompt_version"] != "default" {
 			t.Fatalf("task metadata = %+v", item.Metadata)
 		}
 		if item.ReviewConfidence != 0.82 {
@@ -106,5 +112,25 @@ func TestRunWorkflowPersistsModelBackedGenerationMetadata(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("generation tasks = %+v, want completed renderer-backed task", generationTasks)
+	}
+
+	if len(result.AssetGenerationTasks) == 0 {
+		t.Fatal("expected workflow result to retain generation tasks")
+	}
+	found = false
+	for _, item := range result.AssetGenerationTasks {
+		if item.ExecutionMode != assetgeneration.ExecutionModeRendererBacked || item.ExecutionStatus != "completed" {
+			continue
+		}
+		found = true
+		if item.Metadata["prompt_ref"] != "productimage.scene.default" {
+			t.Fatalf("workflow result task metadata = %+v", item.Metadata)
+		}
+		if item.Metadata["prompt_key"] != "productimage.scene.default" || item.Metadata["prompt_source"] != "registry" || item.Metadata["prompt_version"] != "default" {
+			t.Fatalf("workflow result task metadata = %+v", item.Metadata)
+		}
+	}
+	if !found {
+		t.Fatalf("workflow result generation tasks = %+v, want completed renderer-backed task", result.AssetGenerationTasks)
 	}
 }

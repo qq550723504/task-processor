@@ -221,7 +221,7 @@ func platformGenerationTasks(platform string, plan *assetgeneration.Result) []as
 	out := make([]assetgeneration.Task, 0, len(plan.Tasks))
 	for _, task := range plan.Tasks {
 		if task.Platform == platform && task.ExecutionStatus != "completed" {
-			out = append(out, task)
+			out = append(out, cloneGenerationTask(task))
 		}
 	}
 	if len(out) == 0 {
@@ -236,16 +236,16 @@ func collectPlatformGenerationTasks(result *ListingKitResult) []assetgeneration.
 	}
 	out := make([]assetgeneration.Task, 0, 8)
 	if result.Amazon != nil && result.Amazon.ImageBundle != nil {
-		out = append(out, result.Amazon.ImageBundle.PendingGeneration...)
+		out = append(out, cloneGenerationTasks(result.Amazon.ImageBundle.PendingGeneration)...)
 	}
 	if result.Shein != nil && result.Shein.ImageBundle != nil {
-		out = append(out, result.Shein.ImageBundle.PendingGeneration...)
+		out = append(out, cloneGenerationTasks(result.Shein.ImageBundle.PendingGeneration)...)
 	}
 	if result.Temu != nil && result.Temu.ImageBundle != nil {
-		out = append(out, result.Temu.ImageBundle.PendingGeneration...)
+		out = append(out, cloneGenerationTasks(result.Temu.ImageBundle.PendingGeneration)...)
 	}
 	if result.Walmart != nil && result.Walmart.ImageBundle != nil {
-		out = append(out, result.Walmart.ImageBundle.PendingGeneration...)
+		out = append(out, cloneGenerationTasks(result.Walmart.ImageBundle.PendingGeneration)...)
 	}
 	if len(out) == 0 {
 		return nil
@@ -255,28 +255,47 @@ func collectPlatformGenerationTasks(result *ListingKitResult) []assetgeneration.
 
 func mergeGenerationTasks(existing []assetgeneration.Task, updates []assetgeneration.Task) []assetgeneration.Task {
 	if len(existing) == 0 {
-		return append([]assetgeneration.Task(nil), updates...)
+		return cloneGenerationTasks(updates)
 	}
 	byID := make(map[string]assetgeneration.Task, len(existing)+len(updates))
 	for _, item := range existing {
-		byID[item.ID] = item
+		byID[item.ID] = cloneGenerationTask(item)
 	}
 	for _, item := range updates {
-		byID[item.ID] = item
+		byID[item.ID] = cloneGenerationTask(item)
 	}
 	out := make([]assetgeneration.Task, 0, len(byID))
 	for _, item := range existing {
-		out = append(out, byID[item.ID])
+		out = append(out, cloneGenerationTask(byID[item.ID]))
 		delete(byID, item.ID)
 	}
 	for _, item := range updates {
 		if _, ok := byID[item.ID]; !ok {
 			continue
 		}
-		out = append(out, item)
+		out = append(out, cloneGenerationTask(byID[item.ID]))
 		delete(byID, item.ID)
 	}
 	return out
+}
+
+func cloneGenerationTasks(tasks []assetgeneration.Task) []assetgeneration.Task {
+	if len(tasks) == 0 {
+		return nil
+	}
+	cloned := make([]assetgeneration.Task, 0, len(tasks))
+	for _, task := range tasks {
+		cloned = append(cloned, cloneGenerationTask(task))
+	}
+	return cloned
+}
+
+func cloneGenerationTask(task assetgeneration.Task) assetgeneration.Task {
+	cloned := task
+	cloned.Lineage = append([]string(nil), task.Lineage...)
+	cloned.SourceAssetIDs = append([]string(nil), task.SourceAssetIDs...)
+	cloned.Metadata = cloneRecordMetadata(task.Metadata)
+	return cloned
 }
 
 func assetbundleRequest(platform string, inventory *asset.Inventory, recipes []assetrecipe.AssetRecipe) assetbundle.BuildRequest {
