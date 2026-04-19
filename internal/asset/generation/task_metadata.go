@@ -19,7 +19,9 @@ func cloneTaskMetadata(src map[string]string) map[string]string {
 }
 
 func taskMetadataFromAssetMetadata(src map[string]string) map[string]string {
-	return cloneTaskMetadata(src)
+	dst := cloneTaskMetadata(src)
+	attachGenerationMetadataMap(&dst, generationMetadataFromMetadataMap(src))
+	return dst
 }
 
 func reviewConfidenceFromMetadata(metadata map[string]string) float64 {
@@ -60,6 +62,31 @@ func attachGenerationMetadataMap(target *map[string]string, metadata *productima
 	setTaskMetadataValue(dst, "prompt_source", metadata.PromptSource)
 	setTaskMetadataValue(dst, "prompt_version", metadata.PromptVersion)
 	*target = dst
+}
+
+func generationMetadataFromMetadataMap(metadata map[string]string) *productimage.GenerationMetadata {
+	if len(metadata) == 0 {
+		return nil
+	}
+	result := &productimage.GenerationMetadata{
+		Provider:       strings.TrimSpace(metadata["model_provider"]),
+		ModelFamily:    strings.TrimSpace(metadata["model_family"]),
+		GenerationMode: strings.TrimSpace(metadata["generation_mode"]),
+		PromptRef:      strings.TrimSpace(metadata["prompt_ref"]),
+		PromptKey:      strings.TrimSpace(metadata["prompt_key"]),
+		PromptSource:   strings.TrimSpace(metadata["prompt_source"]),
+		PromptVersion:  strings.TrimSpace(metadata["prompt_version"]),
+	}
+	if result.Provider == "" &&
+		result.ModelFamily == "" &&
+		result.GenerationMode == "" &&
+		result.PromptRef == "" &&
+		result.PromptKey == "" &&
+		result.PromptSource == "" &&
+		result.PromptVersion == "" {
+		return nil
+	}
+	return result
 }
 
 func setTaskMetadataValue(metadata map[string]string, key string, value string) {

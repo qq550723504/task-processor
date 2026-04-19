@@ -87,6 +87,46 @@ func TestAttachGenerationMetadataSkipsEmptyFields(t *testing.T) {
 	}
 }
 
+func TestTaskMetadataFromAssetMetadataUsesSharedGenerationMetadataPath(t *testing.T) {
+	t.Parallel()
+
+	metadata := taskMetadataFromAssetMetadata(map[string]string{
+		"custom":          "keep",
+		"model_provider":  "openai_compatible",
+		"model_family":    "nano-banana-fast",
+		"generation_mode": "scene_generation",
+		"prompt_ref":      "productimage.scene.default",
+		"prompt_key":      "productimage.scene.default",
+		"prompt_source":   "registry",
+		"prompt_version":  "default",
+	})
+
+	if metadata["custom"] != "keep" {
+		t.Fatalf("custom = %q", metadata["custom"])
+	}
+	if metadata["model_provider"] != "openai_compatible" {
+		t.Fatalf("model_provider = %q", metadata["model_provider"])
+	}
+	if metadata["model_family"] != "nano-banana-fast" {
+		t.Fatalf("model_family = %q", metadata["model_family"])
+	}
+	if metadata["generation_mode"] != "scene_generation" {
+		t.Fatalf("generation_mode = %q", metadata["generation_mode"])
+	}
+	if metadata["prompt_ref"] != "productimage.scene.default" {
+		t.Fatalf("prompt_ref = %q", metadata["prompt_ref"])
+	}
+	if metadata["prompt_key"] != "productimage.scene.default" {
+		t.Fatalf("prompt_key = %q", metadata["prompt_key"])
+	}
+	if metadata["prompt_source"] != "registry" {
+		t.Fatalf("prompt_source = %q", metadata["prompt_source"])
+	}
+	if metadata["prompt_version"] != "default" {
+		t.Fatalf("prompt_version = %q", metadata["prompt_version"])
+	}
+}
+
 type promptMetadataWhiteBackgroundRenderer struct {
 	result *productimage.ImageAsset
 }
