@@ -54,6 +54,9 @@ func resolveProductImagePrompt(promptRef string, defaultKey string, vars map[str
 	if prompt.GlobalRegistry == nil {
 		return resolved
 	}
+	if !productImagePromptKeyExists(prompt.GlobalRegistry, key) {
+		return resolved
+	}
 
 	rendered, err := prompt.GlobalRegistry.Render(key, vars, fallback)
 	if err != nil {
@@ -66,5 +69,21 @@ func resolveProductImagePrompt(promptRef string, defaultKey string, vars map[str
 }
 
 func renderProductImagePrompt(promptRef string, defaultKey string, vars map[string]any, fallback string) string {
-	return strings.TrimSpace(resolveProductImagePrompt(promptRef, defaultKey, vars, fallback).Text)
+	text := strings.TrimSpace(resolveProductImagePrompt(promptRef, defaultKey, vars, fallback).Text)
+	if text == "" {
+		return fallback
+	}
+	return text
+}
+
+func productImagePromptKeyExists(registry prompt.PromptRegistry, key string) bool {
+	if registry == nil {
+		return false
+	}
+	for _, candidate := range registry.Keys() {
+		if candidate == key {
+			return true
+		}
+	}
+	return false
 }
