@@ -327,3 +327,12 @@ This phase should stay focused and avoid:
 - broad metadata schema redesign
 
 The desired outcome is a minimal but durable observability layer that future prompt tooling can build on.
+
+## Verification Note
+
+Runtime verification for this phase should inspect returned or persisted metadata directly, not logs alone.
+
+The verification target is satisfied when at least one real model-backed task shows:
+
+- asset metadata exposing `prompt_key`, `prompt_source`, and `prompt_version`
+- and, where the downstream path is exercised, generation-task metadata exposing the same fields
