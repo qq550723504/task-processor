@@ -118,13 +118,13 @@ func BuildCanonicalProduct(req *GenerateRequest, product *ProductJSON) *Canonica
 
 	for _, variant := range product.Variants {
 		converted := CanonicalVariant{
-			SKU:       variant.SKU,
+			SKU:        variant.SKU,
 			Attributes: make(map[string]CanonicalAttribute, len(variant.Attributes)),
-			Price:     variant.Price,
-			Stock:     variant.Stock,
-			Barcode:   variant.Barcode,
-			IsDefault: variant.IsDefault,
-			Trace:     traceWithEvidence(product, "variants", baseSources, true),
+			Price:      variant.Price,
+			Stock:      variant.Stock,
+			Barcode:    variant.Barcode,
+			IsDefault:  variant.IsDefault,
+			Trace:      traceWithEvidence(product, "variants", baseSources, true),
 		}
 		for key, value := range variant.Attributes {
 			converted.Attributes[key] = CanonicalAttribute{

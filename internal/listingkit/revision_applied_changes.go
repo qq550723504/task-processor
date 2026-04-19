@@ -1,8 +1,11 @@
 package listingkit
 
-import "strings"
-import sheinpub "task-processor/internal/publishing/shein"
-import sheinworkspace "task-processor/internal/workspace/shein"
+import (
+	"strings"
+
+	sheinpub "task-processor/internal/publishing/shein"
+	sheinworkspace "task-processor/internal/workspace/shein"
+)
 
 func buildAppliedChangesPreview(platform string, before, after *ListingKitResult) *RevisionDiffPreview {
 	platform = strings.ToLower(strings.TrimSpace(platform))

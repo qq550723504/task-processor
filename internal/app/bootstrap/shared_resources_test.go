@@ -32,4 +32,3 @@ func TestBuildSharedResources_AllowsMissingManagementAuth(t *testing.T) {
 	require.Nil(t, resources.AuthClient)
 	require.Nil(t, resources.ManagementClient)
 }
-

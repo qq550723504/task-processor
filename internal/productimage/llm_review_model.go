@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/prompt"
 	productenrich "task-processor/internal/productenrich"
+	"task-processor/internal/prompt"
 )
 
 type llmReviewModel struct {

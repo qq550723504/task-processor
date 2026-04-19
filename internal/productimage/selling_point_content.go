@@ -7,8 +7,8 @@ import (
 )
 
 type sellingPointContentEntry struct {
-	Slot       string `json:"slot"`
-	Text       string `json:"text"`
+	Slot        string `json:"slot"`
+	Text        string `json:"text"`
 	ContentType string `json:"content_type,omitempty"`
 	SourceKey   string `json:"source_key,omitempty"`
 	SourceType  string `json:"source_type,omitempty"`

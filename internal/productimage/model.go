@@ -69,10 +69,10 @@ type SourceBundle struct {
 }
 
 type ProductContext struct {
-	Title       string            `json:"title,omitempty"`
-	ProductType string            `json:"product_type,omitempty"`
-	Attributes  map[string]string `json:"attributes,omitempty"`
-	ScrapedTitle string           `json:"scraped_title,omitempty"`
+	Title        string            `json:"title,omitempty"`
+	ProductType  string            `json:"product_type,omitempty"`
+	Attributes   map[string]string `json:"attributes,omitempty"`
+	ScrapedTitle string            `json:"scraped_title,omitempty"`
 }
 
 type ImageAudit struct {

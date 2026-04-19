@@ -115,4 +115,3 @@ func sellingPointBadgeStyle(profile sceneProfile) string {
 	}
 	return "pill-neutral"
 }
-

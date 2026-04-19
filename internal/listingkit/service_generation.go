@@ -384,10 +384,7 @@ func generationTaskMatchesRetryFilter(task assetgeneration.Task, queueIndex map[
 	}
 	queueItem, ok := queueIndex[generationQueueItemKey(task.Platform, task.RecipeID, task.Slot)]
 	if ok {
-		if !queueItemMatchesRetryRequest(queueItem, req) {
-			return false
-		}
-		return true
+		return queueItemMatchesRetryRequest(queueItem, req)
 	}
 	if req.FallbackOnly && task.SatisfiedBy != "fallback_asset" && task.ExecutionMode != assetgeneration.ExecutionModeDeferredStub {
 		return false

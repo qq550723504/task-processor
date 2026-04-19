@@ -46,8 +46,7 @@ func buildProductImageS3AssetPublisher(cfg *config.Config, logger *logrus.Logger
 		)
 	}
 
-	uploader := storageinfra.NewS3Uploader(client, cfg.ProductImage.Publisher.S3.Bucket)
-	uploader = storageinfra.NewS3UploaderWithOptions(client, storageinfra.S3UploaderOptions{
+	uploader := storageinfra.NewS3UploaderWithOptions(client, storageinfra.S3UploaderOptions{
 		Bucket:       cfg.ProductImage.Publisher.S3.Bucket,
 		PublicBase:   publicBase,
 		Endpoint:     cfg.ProductImage.Publisher.S3.Endpoint,

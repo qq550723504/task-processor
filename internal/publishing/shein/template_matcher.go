@@ -71,9 +71,7 @@ func matchesAnyName(name string, candidates []string) bool {
 
 func collectAttributeNames(attr sheinattribute.AttributeInfo) []string {
 	names := []string{attr.AttributeName, attr.AttributeNameEn}
-	for _, alias := range attributeAliases(normalizeText(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName))) {
-		names = append(names, alias)
-	}
+	names = append(names, attributeAliases(normalizeText(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)))...)
 	return names
 }
 

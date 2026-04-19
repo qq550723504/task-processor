@@ -69,7 +69,6 @@ func (zs *ZipcodeSetter) SetAndVerifyZipcode(page playwright.Page, zipcode strin
 			if err := zs.refreshPageForRetry(page); err != nil {
 				return fmt.Errorf("刷新页面失败: %w", err)
 			}
-			needsRefreshBeforeRetry = false
 		}
 
 		DismissRegionalPrompt(page, zs.inputHandler.targetURL)

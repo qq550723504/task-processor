@@ -33,9 +33,9 @@ var marketplaceInfoMap = map[string]MarketplaceInfo{
 }
 
 var (
-	asinPathRegex      = regexp.MustCompile(`/([A-Z0-9]{10})(?:[/?]|$)`)
-	asinDPPathRegex    = regexp.MustCompile(`/dp/([A-Z0-9]{10})`)
-	asinGPPathRegex    = regexp.MustCompile(`/gp/product/([A-Z0-9]{10})`)
+	asinPathRegex   = regexp.MustCompile(`/([A-Z0-9]{10})(?:[/?]|$)`)
+	asinDPPathRegex = regexp.MustCompile(`/dp/([A-Z0-9]{10})`)
+	asinGPPathRegex = regexp.MustCompile(`/gp/product/([A-Z0-9]{10})`)
 )
 
 // URLHelper URL处理辅助工具

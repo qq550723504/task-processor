@@ -16,9 +16,9 @@ type sellingPointFillInput struct {
 }
 
 type sellingPointFillInputSlots struct {
-	Copy         []string `json:"copy,omitempty"`
-	Badges       []string `json:"badges,omitempty"`
-	Measurements []string `json:"measurements,omitempty"`
+	Copy          []string `json:"copy,omitempty"`
+	Badges        []string `json:"badges,omitempty"`
+	Measurements  []string `json:"measurements,omitempty"`
 	DetailAnchors []string `json:"detail_anchors,omitempty"`
 }
 

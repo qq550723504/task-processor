@@ -73,7 +73,7 @@ func TestResolveStoreIDsForTaskDiscoversAutoPricingStores(t *testing.T) {
 				}, nil
 			case 2:
 				return &managementapi.PageResult[*managementapi.StoreRespDTO]{
-					List: []*managementapi.StoreRespDTO{},
+					List:     []*managementapi.StoreRespDTO{},
 					PageNo:   2,
 					PageSize: req.PageSize,
 				}, nil
