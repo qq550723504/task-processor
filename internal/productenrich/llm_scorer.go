@@ -5,14 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"time"
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/prompt"
 
 	"github.com/sirupsen/logrus"
 )
+
+var llmScorePattern = regexp.MustCompile(`"score"\s*:\s*([0-9]+(?:\.[0-9]+)?)`)
 
 // LLMScorer LLM 智能评分器接口
 type LLMScorer interface {
@@ -20,6 +23,21 @@ type LLMScorer interface {
 	ScoreText(ctx context.Context, text string, baseScore float64) (float64, error)
 	// ScoreImage 对图片进行智能评分
 	ScoreImage(ctx context.Context, imageURL string, baseScore float64) (float64, error)
+}
+
+type llmScorerWithObservability interface {
+	scoreTextResult(ctx context.Context, text string, baseScore float64) (*llmScoreResult, error)
+	scoreImageResult(ctx context.Context, imageURL string, baseScore float64) (*llmScoreResult, error)
+}
+
+type llmScoreResult struct {
+	Score  float64
+	Prompt *PromptObservability
+}
+
+type rawLLMScoreResult struct {
+	Score  float64
+	Prompt *PromptObservability
 }
 
 // llmScorer LLM 智能评分器实现
@@ -86,8 +104,16 @@ func NewLLMScorer(config *LLMScorerConfig) LLMScorer {
 
 // ScoreText 对文本进行智能评分
 func (s *llmScorer) ScoreText(ctx context.Context, text string, baseScore float64) (float64, error) {
+	result, err := s.scoreTextResult(ctx, text, baseScore)
+	if err != nil {
+		return result.Score, err
+	}
+	return result.Score, nil
+}
+
+func (s *llmScorer) scoreTextResult(ctx context.Context, text string, baseScore float64) (*llmScoreResult, error) {
 	if text == "" {
-		return baseScore, nil
+		return &llmScoreResult{Score: baseScore}, nil
 	}
 	var getCached func() (float64, bool)
 	var setCached func(float64) error
@@ -96,15 +122,23 @@ func (s *llmScorer) ScoreText(ctx context.Context, text string, baseScore float6
 		setCached = func(score float64) error { return s.scoreCache.SetTextScore(ctx, text, score, s.cacheTTL) }
 	}
 	return s.scoreWithCache(ctx, baseScore, getCached, setCached,
-		func() (float64, error) { return s.scoreTextWithLLM(ctx, text, baseScore) },
+		func() (*rawLLMScoreResult, error) { return s.scoreTextWithLLM(ctx, text, baseScore) },
 		"text",
 	)
 }
 
 // ScoreImage 对图片进行智能评分
 func (s *llmScorer) ScoreImage(ctx context.Context, imageURL string, baseScore float64) (float64, error) {
+	result, err := s.scoreImageResult(ctx, imageURL, baseScore)
+	if err != nil {
+		return result.Score, err
+	}
+	return result.Score, nil
+}
+
+func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseScore float64) (*llmScoreResult, error) {
 	if imageURL == "" {
-		return baseScore, nil
+		return &llmScoreResult{Score: baseScore}, nil
 	}
 	var getCached func() (float64, bool)
 	var setCached func(float64) error
@@ -113,7 +147,7 @@ func (s *llmScorer) ScoreImage(ctx context.Context, imageURL string, baseScore f
 		setCached = func(score float64) error { return s.scoreCache.SetImageScore(ctx, imageURL, score, s.cacheTTL) }
 	}
 	return s.scoreWithCache(ctx, baseScore, getCached, setCached,
-		func() (float64, error) { return s.scoreImageWithLLM(ctx, imageURL, baseScore) },
+		func() (*rawLLMScoreResult, error) { return s.scoreImageWithLLM(ctx, imageURL, baseScore) },
 		"image",
 	)
 }
@@ -124,12 +158,12 @@ func (s *llmScorer) scoreWithCache(
 	baseScore float64,
 	getCached func() (float64, bool),
 	setCached func(float64) error,
-	callLLM func() (float64, error),
+	callLLM func() (*rawLLMScoreResult, error),
 	label string,
-) (float64, error) {
+) (*llmScoreResult, error) {
 	// 检查 context 是否已取消
 	if err := ctx.Err(); err != nil {
-		return baseScore, err
+		return &llmScoreResult{Score: baseScore}, err
 	}
 
 	// 检查缓存
@@ -141,78 +175,97 @@ func (s *llmScorer) scoreWithCache(
 				"cached_score": cachedScore,
 				"final_score":  finalScore,
 			}).Debugf("using cached %s score", label)
-			return finalScore, nil
+			return &llmScoreResult{Score: finalScore}, nil
 		}
 	}
 
 	// 调用 LLM 评分
-	llmScore, err := callLLM()
+	llmResult, err := callLLM()
 	if err != nil {
 		logrus.WithError(err).Warnf("LLM %s scoring failed, using base score", label)
-		return baseScore, err
+		return &llmScoreResult{Score: baseScore}, err
 	}
 
 	// 缓存评分结果
 	if s.scoreCache != nil {
-		if err := setCached(llmScore); err != nil {
+		if err := setCached(llmResult.Score); err != nil {
 			logrus.WithError(err).Warnf("failed to cache %s score", label)
 		}
 	}
 
-	finalScore := s.combineScores(baseScore, llmScore)
+	finalScore := s.combineScores(baseScore, llmResult.Score)
 	logger.GetGlobalLogger("productenrich/llm_scorer.go").WithFields(logrus.Fields{
 		"base_score":  baseScore,
-		"llm_score":   llmScore,
+		"llm_score":   llmResult.Score,
 		"final_score": finalScore,
 	}).Infof("LLM %s scoring completed", label)
 
-	return finalScore, nil
+	return &llmScoreResult{
+		Score:  finalScore,
+		Prompt: llmResult.Prompt,
+	}, nil
 }
 
 // scoreTextWithLLM 使用 LLM 对文本进行评分
-func (s *llmScorer) scoreTextWithLLM(ctx context.Context, text string, baseScore float64) (float64, error) {
+func (s *llmScorer) scoreTextWithLLM(ctx context.Context, text string, baseScore float64) (*rawLLMScoreResult, error) {
 	if s.llmManager == nil {
-		return baseScore, fmt.Errorf("LLM manager not configured")
+		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("LLM manager not configured")
 	}
 	client, err := s.llmManager.GetClient(s.textClient)
 	if err != nil {
-		return baseScore, fmt.Errorf("failed to get LLM client: %w", err)
+		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("failed to get LLM client: %w", err)
 	}
-	prompt := s.buildTextScoringPrompt(text, baseScore)
+	resolvedPrompt := resolveTextScoringPrompt(text, baseScore)
 	response, err := s.retryLLMCall(ctx, s.maxRetries, func() (string, error) {
-		return client.Generate(ctx, prompt)
+		return client.Generate(ctx, resolvedPrompt.Text)
 	})
 	if err != nil {
-		return baseScore, fmt.Errorf("LLM scoring failed after %d attempts: %w", s.maxRetries, err)
+		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("LLM scoring failed after %d attempts: %w", s.maxRetries, err)
 	}
 	score, err := s.parseLLMScore(response)
 	if err != nil {
-		return baseScore, fmt.Errorf("failed to parse LLM score: %w", err)
+		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("failed to parse LLM score: %w", err)
 	}
-	return score, nil
+	return &rawLLMScoreResult{
+		Score: score,
+		Prompt: &PromptObservability{
+			PromptRef:     resolvedPrompt.Key,
+			PromptKey:     resolvedPrompt.Key,
+			PromptSource:  resolvedPrompt.Source,
+			PromptVersion: resolvedPrompt.Version,
+		},
+	}, nil
 }
 
 // scoreImageWithLLM 使用 LLM 对图片进行评分
-func (s *llmScorer) scoreImageWithLLM(ctx context.Context, imageURL string, baseScore float64) (float64, error) {
+func (s *llmScorer) scoreImageWithLLM(ctx context.Context, imageURL string, baseScore float64) (*rawLLMScoreResult, error) {
 	if s.llmManager == nil {
-		return baseScore, fmt.Errorf("LLM manager not configured")
+		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("LLM manager not configured")
 	}
 	client, err := s.llmManager.GetClient(s.visionClient)
 	if err != nil {
-		return baseScore, fmt.Errorf("failed to get vision client: %w", err)
+		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("failed to get vision client: %w", err)
 	}
-	prompt := s.buildImageScoringPrompt(baseScore)
+	resolvedPrompt := resolveImageScoringPrompt(baseScore)
 	response, err := s.retryLLMCall(ctx, s.maxRetries, func() (string, error) {
-		return client.AnalyzeImage(ctx, imageURL, prompt)
+		return client.AnalyzeImage(ctx, imageURL, resolvedPrompt.Text)
 	})
 	if err != nil {
-		return baseScore, fmt.Errorf("LLM image scoring failed after %d attempts: %w", s.maxRetries, err)
+		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("LLM image scoring failed after %d attempts: %w", s.maxRetries, err)
 	}
 	score, err := s.parseLLMScore(response)
 	if err != nil {
-		return baseScore, fmt.Errorf("failed to parse LLM score: %w", err)
+		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("failed to parse LLM score: %w", err)
 	}
-	return score, nil
+	return &rawLLMScoreResult{
+		Score: score,
+		Prompt: &PromptObservability{
+			PromptRef:     resolvedPrompt.Key,
+			PromptKey:     resolvedPrompt.Key,
+			PromptSource:  resolvedPrompt.Source,
+			PromptVersion: resolvedPrompt.Version,
+		},
+	}, nil
 }
 
 // retryLLMCall 通用重试机制，支持 context 取消。
@@ -238,82 +291,12 @@ func (s *llmScorer) retryLLMCall(ctx context.Context, maxRetries int, call func(
 
 // buildTextScoringPrompt 构建文本评分提示词（优化版）
 func (s *llmScorer) buildTextScoringPrompt(text string, baseScore float64) string {
-	if prompt.GlobalRegistry != nil {
-		rendered, err := prompt.GlobalRegistry.Render(prompt.KProductEnrichLlmScorerTextScoring, map[string]any{
-			"Text":      text,
-			"BaseScore": fmt.Sprintf("%.1f", baseScore),
-		}, "")
-		if err == nil && rendered != "" {
-			return rendered
-		}
-	}
-	return fmt.Sprintf(`你是一个专业的产品描述质量评估专家。请对以下产品描述文本进行质量评分（0-100分）。
-
-评分维度：
-1. 信息完整性（30分）：是否包含产品名称、类别、主要特性、规格参数等关键信息
-2. 描述清晰度（25分）：表达是否清晰、逻辑是否连贯、是否易于理解
-3. 专业性（25分）：是否使用准确的专业术语、是否符合行业标准
-4. 吸引力（20分）：是否能吸引潜在买家、是否突出产品优势
-
-产品描述文本：
-%s
-
-参考评分（基于文本长度）：%.1f 分
-
-评分标准：
-- 90-100分：优秀，信息完整、表达专业、极具吸引力
-- 80-89分：良好，信息较完整、表达清晰、有一定吸引力
-- 70-79分：中等，基本信息完整、表达尚可
-- 60-69分：及格，信息不够完整或表达不够清晰
-- 0-59分：不及格，信息严重缺失或表达混乱
-
-请以 JSON 格式返回评分结果：
-{
-  "score": 85,
-  "reason": "简要说明评分理由（50字以内）",
-  "strengths": ["优点1", "优点2"],
-  "weaknesses": ["不足1", "不足2"]
-}
-
-只返回 JSON，不要其他内容。`, text, baseScore)
+	return resolveTextScoringPrompt(text, baseScore).Text
 }
 
 // buildImageScoringPrompt 构建图片评分提示词（优化版）
 func (s *llmScorer) buildImageScoringPrompt(baseScore float64) string {
-	if prompt.GlobalRegistry != nil {
-		rendered, err := prompt.GlobalRegistry.Render(prompt.KProductEnrichLlmScorerImageScoring, map[string]any{
-			"BaseScore": fmt.Sprintf("%.1f", baseScore),
-		}, "")
-		if err == nil && rendered != "" {
-			return rendered
-		}
-	}
-	return fmt.Sprintf(`你是一个专业的产品图片质量评估专家。请对这张产品图片进行质量评分（0-100分）。
-
-评分维度：
-1. 清晰度（30分）：图片是否清晰、分辨率是否足够、是否有模糊或噪点
-2. 专业性（25分）：拍摄角度、光线、背景是否专业、是否符合电商标准
-3. 信息完整性（25分）：是否能清楚展示产品细节、是否有遮挡或缺失
-4. 吸引力（20分）：构图是否美观、色彩是否协调、是否能吸引买家
-
-参考评分（基于图片数量）：%.1f 分
-
-评分标准：
-- 90-100分：优秀，清晰专业、细节完整、极具吸引力
-- 80-89分：良好，清晰度好、较专业、有吸引力
-- 70-79分：中等，基本清晰、一般专业
-- 60-69分：及格，清晰度或专业性不足
-- 0-59分：不及格，模糊不清或严重不专业
-
-请以 JSON 格式返回评分结果：
-{
-  "score": 85,
-  "reason": "简要说明评分理由（50字以内）",
-  "strengths": ["优点1", "优点2"],
-  "weaknesses": ["不足1", "不足2"]
-}
-
-只返回 JSON，不要其他内容。`, baseScore)
+	return resolveImageScoringPrompt(baseScore).Text
 }
 
 // parseLLMScore 解析 LLM 返回的评分（增强版）
@@ -330,7 +313,15 @@ func (s *llmScorer) parseLLMScore(response string) (float64, error) {
 	}
 
 	if err := json.Unmarshal([]byte(response), &result); err != nil {
-		return 0, fmt.Errorf("failed to parse JSON: %w, response: %s", err, response)
+		score, extractErr := extractScoreFromPartialResponse(response)
+		if extractErr != nil {
+			return 0, fmt.Errorf("failed to parse JSON: %w, response: %s", err, response)
+		}
+
+		logger.GetGlobalLogger("productenrich/llm_scorer.go").WithFields(logrus.Fields{
+			"score": score,
+		}).Warn("parsed LLM score from partial response fallback")
+		return score, nil
 	}
 
 	// 验证评分范围
@@ -344,6 +335,22 @@ func (s *llmScorer) parseLLMScore(response string) (float64, error) {
 	}).Debug("parsed LLM score")
 
 	return result.Score, nil
+}
+
+func extractScoreFromPartialResponse(response string) (float64, error) {
+	matches := llmScorePattern.FindStringSubmatch(response)
+	if len(matches) < 2 {
+		return 0, fmt.Errorf("score not found in partial response")
+	}
+
+	score, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse partial score: %w", err)
+	}
+	if score < 0 || score > 100 {
+		return 0, fmt.Errorf("score out of range: %.2f", score)
+	}
+	return score, nil
 }
 
 // combineScores 综合基础评分和 LLM 评分

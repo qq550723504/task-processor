@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"task-processor/internal/prompt"
 )
 
 func newTestLLMScorer(llmResp string, llmErr error) *llmScorer {
@@ -84,6 +86,25 @@ func TestParseLLMScore_InvalidJSON_ReturnsError(t *testing.T) {
 	_, err := s.parseLLMScore("not json")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestParseLLMScore_TruncatedJSON_ExtractsScore(t *testing.T) {
+	s := newTestLLMScorer("", nil)
+	score, err := s.parseLLMScore("{\n  \"score\": 88,\n  \"reason\": \"图片清晰度高")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if score != 88 {
+		t.Errorf("score = %.1f, want 88", score)
+	}
+}
+
+func TestParseLLMScore_TruncatedJSONWithoutScore_ReturnsError(t *testing.T) {
+	s := newTestLLMScorer("", nil)
+	_, err := s.parseLLMScore("{\n  \"reason\": \"图片清晰度高")
+	if err == nil {
+		t.Fatal("expected error when truncated JSON does not contain score")
 	}
 }
 
@@ -266,4 +287,152 @@ func TestScoreText_CacheMiss_StoresResult(t *testing.T) {
 	if _, ok := cache.textScores["new text"]; !ok {
 		t.Error("expected score to be cached after LLM call")
 	}
+}
+
+type scorerPromptRegistryStub struct {
+	templates map[string]string
+}
+
+func (s *scorerPromptRegistryStub) Get(key string, fallback string) string {
+	if value, ok := s.templates[key]; ok {
+		return value
+	}
+	return fallback
+}
+
+func (s *scorerPromptRegistryStub) Render(key string, vars map[string]any, fallback string) (string, error) {
+	if value, ok := s.templates[key]; ok {
+		switch key {
+		case prompt.KProductEnrichLlmScorerTextScoring:
+			if text, ok := vars["Text"].(string); ok {
+				value = replacePromptToken(value, "{{.Text}}", text)
+			}
+		case prompt.KProductEnrichLlmScorerImageScoring:
+			// no-op, only checking source selection in tests
+		}
+		return value, nil
+	}
+	return fallback, nil
+}
+
+func (s *scorerPromptRegistryStub) Keys() []string {
+	keys := make([]string, 0, len(s.templates))
+	for key := range s.templates {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func TestScoreTextResult_RegistryHitCarriesPromptMetadata(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = &scorerPromptRegistryStub{
+		templates: map[string]string{
+			prompt.KProductEnrichLlmScorerTextScoring: "Registry text scoring prompt {{.Text}}",
+		},
+	}
+	t.Cleanup(func() { prompt.GlobalRegistry = previous })
+
+	s := newTestLLMScorer(`{"score":88}`, nil)
+
+	result, err := s.scoreTextResult(context.Background(), "sample text", 60)
+	if err != nil {
+		t.Fatalf("scoreTextResult() error = %v", err)
+	}
+	if result.Prompt == nil {
+		t.Fatal("expected prompt metadata")
+	}
+	if result.Prompt.PromptKey != prompt.KProductEnrichLlmScorerTextScoring {
+		t.Fatalf("PromptKey = %q", result.Prompt.PromptKey)
+	}
+	if result.Prompt.PromptSource != "registry" {
+		t.Fatalf("PromptSource = %q", result.Prompt.PromptSource)
+	}
+	if result.Prompt.PromptVersion != "default" {
+		t.Fatalf("PromptVersion = %q", result.Prompt.PromptVersion)
+	}
+}
+
+func TestScoreTextResult_RegistryMissFallsBackToPromptMetadata(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = &scorerPromptRegistryStub{templates: map[string]string{}}
+	t.Cleanup(func() { prompt.GlobalRegistry = previous })
+
+	s := newTestLLMScorer(`{"score":88}`, nil)
+
+	result, err := s.scoreTextResult(context.Background(), "sample text", 60)
+	if err != nil {
+		t.Fatalf("scoreTextResult() error = %v", err)
+	}
+	if result.Prompt == nil {
+		t.Fatal("expected prompt metadata")
+	}
+	if result.Prompt.PromptKey != prompt.KProductEnrichLlmScorerTextScoring {
+		t.Fatalf("PromptKey = %q", result.Prompt.PromptKey)
+	}
+	if result.Prompt.PromptSource != "fallback" {
+		t.Fatalf("PromptSource = %q", result.Prompt.PromptSource)
+	}
+	if result.Prompt.PromptVersion != "default" {
+		t.Fatalf("PromptVersion = %q", result.Prompt.PromptVersion)
+	}
+}
+
+func TestScoreImageResult_WhitespaceRegistryRenderFallsBack(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = &scorerPromptRegistryStub{
+		templates: map[string]string{
+			prompt.KProductEnrichLlmScorerImageScoring: "   ",
+		},
+	}
+	t.Cleanup(func() { prompt.GlobalRegistry = previous })
+
+	s := newTestLLMScorer(`{"score":92}`, nil)
+
+	result, err := s.scoreImageResult(context.Background(), "https://example.com/image.jpg", 70)
+	if err != nil {
+		t.Fatalf("scoreImageResult() error = %v", err)
+	}
+	if result.Prompt == nil {
+		t.Fatal("expected prompt metadata")
+	}
+	if result.Prompt.PromptKey != prompt.KProductEnrichLlmScorerImageScoring {
+		t.Fatalf("PromptKey = %q", result.Prompt.PromptKey)
+	}
+	if result.Prompt.PromptSource != "fallback" {
+		t.Fatalf("PromptSource = %q", result.Prompt.PromptSource)
+	}
+}
+
+func TestScoreTextResult_CacheHitDoesNotFabricatePromptMetadata(t *testing.T) {
+	s := newTestLLMScorer("", errors.New("should not be called"))
+	cache := newMockLLMScoreCache()
+	cache.textScores["cached text"] = 90
+	s.scoreCache = cache
+
+	result, err := s.scoreTextResult(context.Background(), "cached text", 50)
+	if err != nil {
+		t.Fatalf("scoreTextResult() error = %v", err)
+	}
+	if result.Prompt != nil {
+		t.Fatalf("Prompt = %#v, want nil for cache hit without stored provenance", result.Prompt)
+	}
+}
+
+func replacePromptToken(value string, token string, replacement string) string {
+	for {
+		idx := promptTokenIndex(value, token)
+		if idx < 0 {
+			return value
+		}
+		value = value[:idx] + replacement + value[idx+len(token):]
+	}
+}
+
+func promptTokenIndex(value string, needle string) int {
+	for i := 0; i+len(needle) <= len(value); i++ {
+		if value[i:i+len(needle)] == needle {
+			return i
+		}
+	}
+	return -1
 }

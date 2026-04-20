@@ -8,9 +8,11 @@ import (
 
 // mockLLMScorer mock LLM 评分器
 type mockLLMScorer struct {
-	textScore  float64
-	imageScore float64
-	err        error
+	textScore   float64
+	imageScore  float64
+	err         error
+	textPrompt  *PromptObservability
+	imagePrompt *PromptObservability
 }
 
 func (m *mockLLMScorer) ScoreText(_ context.Context, _ string, base float64) (float64, error) {
@@ -25,6 +27,20 @@ func (m *mockLLMScorer) ScoreImage(_ context.Context, _ string, base float64) (f
 		return base, m.err
 	}
 	return m.imageScore, nil
+}
+
+func (m *mockLLMScorer) scoreTextResult(_ context.Context, _ string, base float64) (*llmScoreResult, error) {
+	if m.err != nil {
+		return &llmScoreResult{Score: base}, m.err
+	}
+	return &llmScoreResult{Score: m.textScore, Prompt: m.textPrompt}, nil
+}
+
+func (m *mockLLMScorer) scoreImageResult(_ context.Context, _ string, base float64) (*llmScoreResult, error) {
+	if m.err != nil {
+		return &llmScoreResult{Score: base}, m.err
+	}
+	return &llmScoreResult{Score: m.imageScore, Prompt: m.imagePrompt}, nil
 }
 
 func TestQualityScorer_LLMBranch(t *testing.T) {
@@ -86,6 +102,68 @@ func TestQualityScorer_LLMBranch(t *testing.T) {
 		// 降级到基础分：60*0.5 + 60*0.5 = 60（scrapedWeight 重分配后各0.5）
 		if score < 55 || score > 65 {
 			t.Errorf("score = %.2f, expected ~60 (fallback to base)", score)
+		}
+	})
+
+	t.Run("LLM scorer prompt metadata survives quality scoring", func(t *testing.T) {
+		llm := &mockLLMScorer{
+			textScore:  90,
+			imageScore: 95,
+			textPrompt: &PromptObservability{
+				PromptRef:     "productenrich.llm_scorer.text_scoring",
+				PromptKey:     "productenrich.llm_scorer.text_scoring",
+				PromptSource:  "registry",
+				PromptVersion: "default",
+			},
+			imagePrompt: &PromptObservability{
+				PromptRef:     "productenrich.llm_scorer.image_scoring",
+				PromptKey:     "productenrich.llm_scorer.image_scoring",
+				PromptSource:  "fallback",
+				PromptVersion: "default",
+			},
+		}
+		scorer := NewQualityScorer(&QualityScorerConfig{
+			ImageWeight:   0.4,
+			TextWeight:    0.4,
+			ScrapedWeight: 0.2,
+			LLMScorer:     llm,
+			EnableLLM:     true,
+		})
+
+		validation := &ValidationResult{
+			ImageScore:   40,
+			TextScore:    40,
+			ScrapedScore: 60,
+			ImageValidation: &ImageValidation{
+				ValidImages: []ImageInfo{{URL: "https://example.com/img.jpg", IsValid: true}},
+			},
+			TextValidation: &TextValidation{
+				Length:  100,
+				RawText: "some product text",
+			},
+		}
+
+		_, err := scorer.CalculateScore(ctx, validation)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if validation.ImageScorePrompt == nil {
+			t.Fatal("expected image score prompt metadata")
+		}
+		if validation.TextScorePrompt == nil {
+			t.Fatal("expected text score prompt metadata")
+		}
+		if validation.ImageScorePrompt.PromptKey != "productenrich.llm_scorer.image_scoring" {
+			t.Fatalf("ImageScorePrompt.PromptKey = %q", validation.ImageScorePrompt.PromptKey)
+		}
+		if validation.TextScorePrompt.PromptKey != "productenrich.llm_scorer.text_scoring" {
+			t.Fatalf("TextScorePrompt.PromptKey = %q", validation.TextScorePrompt.PromptKey)
+		}
+		if validation.ImageScorePrompt.PromptSource != "fallback" {
+			t.Fatalf("ImageScorePrompt.PromptSource = %q", validation.ImageScorePrompt.PromptSource)
+		}
+		if validation.TextScorePrompt.PromptSource != "registry" {
+			t.Fatalf("TextScorePrompt.PromptSource = %q", validation.TextScorePrompt.PromptSource)
 		}
 	})
 }

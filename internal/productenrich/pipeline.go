@@ -10,6 +10,7 @@ type PipelineState struct {
 	Task        *Task
 	ParsedInput *ParsedInput
 	Strategy    ProcessingStrategy
+	Validation  *ValidationResult
 	Analysis    *ProductAnalysis
 	ProductJSON *ProductJSON
 }
@@ -71,11 +72,12 @@ func (s *productService) runParseStage(ctx context.Context, state *PipelineState
 }
 
 func (s *productService) runValidateStage(ctx context.Context, state *PipelineState) error {
-	strategy, err := s.validateAndSelectStrategy(ctx, state.Task, state.ParsedInput)
+	strategy, validation, err := s.validateAndSelectStrategy(ctx, state.Task, state.ParsedInput)
 	if err != nil {
 		return err
 	}
 	state.Strategy = strategy
+	state.Validation = validation
 	return nil
 }
 
@@ -101,6 +103,7 @@ func (s *productService) runGenerateStage(ctx context.Context, state *PipelineSt
 	}
 	productJSON.Images = state.ParsedInput.Images
 	attachProductEvidence(productJSON, state.ParsedInput)
+	productJSON.QualityScoring = buildQualityScoringMetadata(state.Validation)
 	state.ProductJSON = productJSON
 	return nil
 }

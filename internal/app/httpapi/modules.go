@@ -126,7 +126,7 @@ func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productModul
 		return nil, err
 	}
 
-	llmScorer := productenrich.NewLLMScorer(&productenrich.LLMScorerConfig{LLMManager: deps.llmMgr})
+	llmScorer := buildProductLLMScorer(deps.cfg, deps.llmMgr)
 	qualityScorer := productenrich.NewQualityScorer(&productenrich.QualityScorerConfig{
 		ImageWeight:   0.4,
 		TextWeight:    0.3,

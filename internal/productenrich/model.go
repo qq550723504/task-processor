@@ -55,6 +55,7 @@ type ProductJSON struct {
 	Description    string                       `json:"description"`
 	Images         []string                     `json:"images"`
 	Evidence       map[string][]CanonicalSource `json:"evidence,omitempty"`
+	QualityScoring *QualityScoringMetadata      `json:"quality_scoring,omitempty"`
 }
 
 // ProductSpecs 产品规格信息
@@ -181,15 +182,43 @@ const (
 
 // ValidationResult 验证结果
 type ValidationResult struct {
-	IsValid      bool
-	QualityScore float64
-	Issues       []ValidationIssue
-	ImageScore   float64
-	TextScore    float64
-	ScrapedScore float64
+	IsValid          bool
+	QualityScore     float64
+	Issues           []ValidationIssue
+	ImageScore       float64
+	TextScore        float64
+	ScrapedScore     float64
+	ImageScorePrompt *PromptObservability
+	TextScorePrompt  *PromptObservability
 	// 原始验证对象，供 QualityScorer 的 LLM 评分使用
 	ImageValidation *ImageValidation
 	TextValidation  *TextValidation
+}
+
+// PromptObservability 表示一次 prompt 解析和使用的来源信息。
+type PromptObservability struct {
+	PromptRef     string
+	PromptKey     string
+	PromptSource  string
+	PromptVersion string
+}
+
+func (o *PromptObservability) Clone() *PromptObservability {
+	if o == nil {
+		return nil
+	}
+	cloned := *o
+	return &cloned
+}
+
+// QualityScoringMetadata 表示运行时质量评分链的可观测元数据。
+type QualityScoringMetadata struct {
+	QualityScore     float64              `json:"quality_score,omitempty"`
+	ImageScore       float64              `json:"image_score,omitempty"`
+	TextScore        float64              `json:"text_score,omitempty"`
+	ScrapedScore     float64              `json:"scraped_score,omitempty"`
+	ImageScorePrompt *PromptObservability `json:"image_score_prompt,omitempty"`
+	TextScorePrompt  *PromptObservability `json:"text_score_prompt,omitempty"`
 }
 
 // ValidationIssue 验证问题
