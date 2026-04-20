@@ -1,6 +1,10 @@
 package listingkit
 
-import "testing"
+import (
+	"testing"
+
+	"task-processor/internal/productimage"
+)
 
 func TestNormalizeGenerateRequestDefaults(t *testing.T) {
 	t.Parallel()
@@ -26,6 +30,29 @@ func TestNormalizeGenerateRequestDefaults(t *testing.T) {
 	}
 	if req.Platforms[0] != "amazon" || req.Platforms[1] != "shein" || req.Platforms[2] != "temu" {
 		t.Fatalf("normalized platforms = %#v", req.Platforms)
+	}
+}
+
+func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{
+		ProductURL: "https://detail.1688.com/offer/123.html",
+		Platforms:  []string{"shein"},
+		Options: &GenerateOptions{
+			Scene: &productimage.SceneGenerationOptions{
+				SceneCategory: "shoes",
+			},
+		},
+	}
+
+	normalizeGenerateRequest(req)
+
+	if req.Options == nil {
+		t.Fatal("expected options to remain present")
+	}
+	if !req.Options.ProcessImages {
+		t.Fatal("expected process_images=true when scene options are provided")
 	}
 }
 

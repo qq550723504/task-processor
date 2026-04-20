@@ -109,6 +109,8 @@ func normalizeGenerateRequest(req *GenerateRequest) {
 	}
 	if req.Options == nil {
 		req.Options = &GenerateOptions{ProcessImages: true}
+	} else if req.Options.Scene != nil {
+		req.Options.ProcessImages = true
 	}
 	req.Platforms = normalizePlatforms(req.Platforms)
 	if len(req.Platforms) == 0 {

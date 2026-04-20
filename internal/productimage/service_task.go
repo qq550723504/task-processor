@@ -129,8 +129,5 @@ func (s *service) validateRequest(req *ImageProcessRequest) error {
 	if strings.TrimSpace(req.Marketplace) == "" {
 		return fmt.Errorf("marketplace is required")
 	}
-	if !strings.EqualFold(req.Marketplace, "amazon") {
-		return fmt.Errorf("only amazon marketplace is supported currently")
-	}
 	return nil
 }
