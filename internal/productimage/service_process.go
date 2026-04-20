@@ -41,7 +41,9 @@ func (s *service) ProcessImages(ctx context.Context, task *Task) (*ImageProcessR
 			"outcome":     "failed",
 		}).Error("productimage pipeline failed")
 		logPipelineState(log, state)
-		if dbErr := s.taskRepo.MarkFailed(ctx, task.ID, err.Error()); dbErr != nil {
+		persistCtx, cancel := persistenceContext()
+		defer cancel()
+		if dbErr := s.taskRepo.MarkFailed(persistCtx, task.ID, err.Error()); dbErr != nil {
 			return nil, fmt.Errorf("pipeline failed: %v; additionally failed to persist error: %w", err, dbErr)
 		}
 		if s.cleanupTemporaryFiles {
@@ -55,9 +57,13 @@ func (s *service) ProcessImages(ctx context.Context, task *Task) (*ImageProcessR
 			cleanupTemporaryAssets(state.Result)
 		}
 		reason := strings.Join(state.Result.Review.Reasons, "; ")
-		if err := s.taskRepo.MarkNeedsReview(ctx, task.ID, state.Result, reason); err != nil {
+		persistCtx, cancel := persistenceContext()
+		defer cancel()
+		if err := s.taskRepo.MarkNeedsReview(persistCtx, task.ID, state.Result, reason); err != nil {
 			log.WithError(err).Error("failed to save needs_review image task result")
-			_ = s.taskRepo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to save review result: %v", err))
+			failCtx, failCancel := persistenceContext()
+			defer failCancel()
+			_ = s.taskRepo.MarkFailed(failCtx, task.ID, fmt.Sprintf("failed to save review result: %v", err))
 			return nil, fmt.Errorf("failed to save needs_review task result: %w", err)
 		}
 		logPipelineState(log, state)
@@ -72,9 +78,13 @@ func (s *service) ProcessImages(ctx context.Context, task *Task) (*ImageProcessR
 	if s.cleanupTemporaryFiles {
 		cleanupTemporaryAssets(state.Result)
 	}
-	if err := s.taskRepo.MarkCompleted(ctx, task.ID, state.Result); err != nil {
+	persistCtx, cancel := persistenceContext()
+	defer cancel()
+	if err := s.taskRepo.MarkCompleted(persistCtx, task.ID, state.Result); err != nil {
 		log.WithError(err).Error("failed to save image task result")
-		_ = s.taskRepo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to save result: %v", err))
+		failCtx, failCancel := persistenceContext()
+		defer failCancel()
+		_ = s.taskRepo.MarkFailed(failCtx, task.ID, fmt.Sprintf("failed to save result: %v", err))
 		return nil, fmt.Errorf("failed to save task result: %w", err)
 	}
 

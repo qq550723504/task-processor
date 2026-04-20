@@ -55,6 +55,10 @@ func (s *service) runPipeline(ctx context.Context, state *PipelineState) error {
 		startedAt := time.Now()
 		if err := stage.Run(ctx, state); err != nil {
 			durationMS := time.Since(startedAt).Milliseconds()
+			if degraded, ok := asNeedsReviewStageFailure(err); ok {
+				state.markNeedsReviewStage(degraded.stage, durationMS, degraded.reason)
+				return s.runNeedsReviewRecoveryStages(ctx, state)
+			}
 			state.ensureResult()
 			state.Result.StageSummaries = append(state.Result.StageSummaries, ImageStageSummary{
 				Stage:      stage.Name(),
@@ -257,6 +261,9 @@ func (s *service) runWhiteBgStage(ctx context.Context, state *PipelineState) err
 		asset, err := s.whiteBgRenderer.Render(ctx, state.Result.MainImage, state.Context)
 		if err != nil {
 			state.addTrace("render_white_bg", state.Result.MainImage.SourceURL, string(AssetTypeWhiteBgImage), "failed", time.Since(startedAt), err.Error())
+			if state.Result.MainImage != nil {
+				return newNeedsReviewStageFailure("render_white_bg", err, fmt.Sprintf("render_white_bg failed: %v", err))
+			}
 			return err
 		}
 		state.Result.WhiteBgImage = asset
@@ -275,6 +282,9 @@ func (s *service) runGalleryStage(ctx context.Context, state *PipelineState) err
 		images, err := s.sceneRenderer.Render(ctx, state.Result.SubjectCutout, state.Context)
 		if err != nil {
 			state.addTrace("render_gallery", state.Result.SubjectCutout.SourceURL, string(AssetTypeGalleryImage), "failed", time.Since(startedAt), err.Error())
+			if state.Result.MainImage != nil || state.Result.WhiteBgImage != nil {
+				return newNeedsReviewStageFailure("render_gallery", err, fmt.Sprintf("render_gallery failed: %v", err))
+			}
 			return err
 		}
 		state.Result.GalleryImages = images
@@ -388,10 +398,23 @@ func (s *service) runReviewStage(ctx context.Context, state *PipelineState) erro
 		state.addTrace("assess_review", "", "", "failed", time.Since(startedAt), err.Error())
 		return err
 	}
+	var existingReasons []string
+	if state.Result.Review != nil {
+		existingReasons = append([]string(nil), state.Result.Review.Reasons...)
+	}
 	state.Result.Review = decision
+	if state.Result.Review == nil {
+		state.Result.Review = &ReviewDecision{}
+	}
+	if len(existingReasons) > 0 {
+		state.Result.Review.Reasons = uniqueStrings(append(state.Result.Review.Reasons, existingReasons...))
+	}
 	if state.Result.IPRisk != nil && state.Result.IPRisk.Level == "medium" {
 		state.Result.Review.NeedsReview = true
 		state.Result.Review.Reasons = uniqueStrings(append(state.Result.Review.Reasons, state.Result.IPRisk.Reasons...))
+	}
+	if len(state.Result.Review.Reasons) > 0 {
+		state.Result.Review.NeedsReview = true
 	}
 	outcome := "success"
 	message := ""

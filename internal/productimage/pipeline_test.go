@@ -3,6 +3,7 @@ package productimage_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	productimage "task-processor/internal/productimage"
@@ -12,6 +13,30 @@ import (
 type stubAssetPublisher struct{}
 type recordingSubmitter struct {
 	submitted []string
+}
+
+type failingWhiteBackgroundRenderer struct {
+	err error
+}
+
+func (r *failingWhiteBackgroundRenderer) Render(_ context.Context, _ *productimage.ImageAsset, _ *productimage.ProductContext) (*productimage.ImageAsset, error) {
+	return nil, r.err
+}
+
+type failingSceneRenderer struct {
+	err error
+}
+
+func (r *failingSceneRenderer) Render(_ context.Context, _ *productimage.ImageAsset, _ *productimage.ProductContext) ([]productimage.ImageAsset, error) {
+	return nil, r.err
+}
+
+type failingSubjectExtractor struct {
+	err error
+}
+
+func (e *failingSubjectExtractor) Extract(_ context.Context, _ string, _ *productimage.ProductContext) (*productimage.ImageAsset, error) {
+	return nil, e.err
 }
 
 func (s *recordingSubmitter) Submit(taskID string) error {
@@ -290,4 +315,144 @@ func TestService_ProcessImages_FlagsImageIPRisk(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected high image IP risk to block processing")
 	}
+}
+
+func TestService_ProcessImages_DowngradesWhiteBackgroundFailureToNeedsReview(t *testing.T) {
+	repo := store.NewMemTaskRepository()
+	svc, err := productimage.NewService(&productimage.ServiceConfig{
+		TaskRepo:         repo,
+		AssetPublisher:   &stubAssetPublisher{},
+		WhiteBgRenderer:  &failingWhiteBackgroundRenderer{err: fmt.Errorf("white background provider timeout")},
+		SceneRenderer:    nil,
+		ReviewAssessor:   productimage.NewDefaultReviewAssessor(),
+		QualityAssessor:  productimage.NewDefaultQualityAssessor(),
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task, err := svc.CreateProcessTask(context.Background(), &productimage.ImageProcessRequest{
+		ImageURLs:   []string{"https://example.com/a.jpg", "https://example.com/b.jpg"},
+		Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessImages(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessImages() error = %v", err)
+	}
+	if result == nil || result.MainImage == nil {
+		t.Fatalf("expected main image to survive white background failure, got %+v", result)
+	}
+	if result.WhiteBgImage != nil {
+		t.Fatalf("expected white background image to be absent after renderer failure, got %+v", result.WhiteBgImage)
+	}
+	if result.Review == nil || !result.Review.NeedsReview {
+		t.Fatalf("expected needs_review decision, got %+v", result.Review)
+	}
+	if !containsReviewReason(result.Review.Reasons, "render_white_bg") {
+		t.Fatalf("expected render_white_bg failure reason, got %+v", result.Review.Reasons)
+	}
+
+	storedTask, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if storedTask.Status != productimage.TaskStatusNeedsReview {
+		t.Fatalf("stored status = %q, want needs_review", storedTask.Status)
+	}
+}
+
+func TestService_ProcessImages_DowngradesGalleryFailureToNeedsReview(t *testing.T) {
+	repo := store.NewMemTaskRepository()
+	svc, err := productimage.NewService(&productimage.ServiceConfig{
+		TaskRepo:       repo,
+		AssetPublisher: &stubAssetPublisher{},
+		SceneRenderer:  &failingSceneRenderer{err: fmt.Errorf("scene generation timeout")},
+		ReviewAssessor: productimage.NewDefaultReviewAssessor(),
+		QualityAssessor: productimage.NewDefaultQualityAssessor(),
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task, err := svc.CreateProcessTask(context.Background(), &productimage.ImageProcessRequest{
+		ImageURLs:   []string{"https://example.com/a.jpg", "https://example.com/b.jpg"},
+		Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessImages(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessImages() error = %v", err)
+	}
+	if result == nil || result.MainImage == nil || result.WhiteBgImage == nil {
+		t.Fatalf("expected main and white background images to survive gallery failure, got %+v", result)
+	}
+	if len(result.GalleryImages) != 0 {
+		t.Fatalf("expected gallery images to be absent after scene renderer failure, got %+v", result.GalleryImages)
+	}
+	if result.Review == nil || !result.Review.NeedsReview {
+		t.Fatalf("expected needs_review decision, got %+v", result.Review)
+	}
+	if !containsReviewReason(result.Review.Reasons, "render_gallery") {
+		t.Fatalf("expected render_gallery failure reason, got %+v", result.Review.Reasons)
+	}
+
+	storedTask, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if storedTask.Status != productimage.TaskStatusNeedsReview {
+		t.Fatalf("stored status = %q, want needs_review", storedTask.Status)
+	}
+}
+
+func TestService_ProcessImages_StillFailsWhenSubjectExtractionFails(t *testing.T) {
+	repo := store.NewMemTaskRepository()
+	svc, err := productimage.NewService(&productimage.ServiceConfig{
+		TaskRepo:          repo,
+		AssetPublisher:    &stubAssetPublisher{},
+		SubjectExtractor:  &failingSubjectExtractor{err: fmt.Errorf("subject extraction boom")},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task, err := svc.CreateProcessTask(context.Background(), &productimage.ImageProcessRequest{
+		ImageURLs:   []string{"https://example.com/a.jpg", "https://example.com/b.jpg"},
+		Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessImages(context.Background(), task)
+	if err == nil {
+		t.Fatal("expected ProcessImages() to fail when subject extraction fails")
+	}
+	if result != nil {
+		t.Fatalf("expected nil result on subject extraction failure, got %+v", result)
+	}
+
+	storedTask, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if storedTask.Status != productimage.TaskStatusFailed {
+		t.Fatalf("stored status = %q, want failed", storedTask.Status)
+	}
+}
+
+func containsReviewReason(reasons []string, needle string) bool {
+	for _, reason := range reasons {
+		if strings.Contains(reason, needle) {
+			return true
+		}
+	}
+	return false
 }
