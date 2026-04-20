@@ -7,6 +7,9 @@ type GenerationMetadata struct {
 	ModelFamily      string
 	GenerationMode   string
 	PromptRef        string
+	PromptKey        string
+	PromptSource     string
+	PromptVersion    string
 	ReviewConfidence float64
 }
 

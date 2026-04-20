@@ -98,7 +98,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 					Tasks:     generationPlan.Tasks,
 				})
 				if dispatchResult != nil {
-					generationPlan.Tasks = append([]assetgeneration.Task(nil), dispatchResult.Tasks...)
+					generationPlan.Tasks = cloneGenerationTasks(dispatchResult.Tasks)
 					if len(dispatchResult.Assets) > 0 {
 						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
 						inventory.Summary = rebuildInventorySummary(inventory)

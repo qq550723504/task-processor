@@ -109,3 +109,53 @@ func TestHTTPSceneGenerationClientNormalizesLegacyPromptRef(t *testing.T) {
 		t.Fatalf("GenerateScene: %v", err)
 	}
 }
+
+func TestGenerationMetadataFromRemoteResultIncludesPromptObservability(t *testing.T) {
+	meta := generationMetadataFromResult(map[string]string{
+		"model_provider": "remote",
+		"model_family":   "scene-service",
+	}, "scene_generation", "productimage/scene/default")
+
+	if meta.Provider != "remote" {
+		t.Fatalf("Provider = %q", meta.Provider)
+	}
+	if meta.PromptKey != "productimage.scene.default" {
+		t.Fatalf("PromptKey = %q", meta.PromptKey)
+	}
+	if meta.PromptSource != "fallback" || meta.PromptVersion != "default" {
+		t.Fatalf("metadata = %+v", meta)
+	}
+}
+
+func TestGenerationMetadataFromRemoteResultIgnoresPartialUpstreamPromptMetadata(t *testing.T) {
+	meta := generationMetadataFromResult(map[string]string{
+		"model_provider": "remote",
+		"model_family":   "scene-service",
+		"prompt_source":  "registry",
+		"prompt_version": "v2",
+	}, "scene_generation", "")
+
+	if meta.PromptRef != "productimage.scene.default" || meta.PromptKey != "productimage.scene.default" {
+		t.Fatalf("metadata = %+v", meta)
+	}
+	if meta.PromptSource != "fallback" || meta.PromptVersion != "default" {
+		t.Fatalf("metadata = %+v", meta)
+	}
+}
+
+func TestGenerationMetadataFromRemoteResultPrefersUpstreamPromptObservability(t *testing.T) {
+	meta := generationMetadataFromResult(map[string]string{
+		"provider":       "remote",
+		"model_family":   "scene-service",
+		"prompt_ref":     "productimage/scene/default",
+		"prompt_source":  "registry",
+		"prompt_version": "v2",
+	}, "scene_generation", "")
+
+	if meta.PromptRef != "productimage.scene.default" || meta.PromptKey != "productimage.scene.default" {
+		t.Fatalf("metadata = %+v", meta)
+	}
+	if meta.PromptSource != "registry" || meta.PromptVersion != "v2" {
+		t.Fatalf("metadata = %+v", meta)
+	}
+}

@@ -138,6 +138,74 @@ func TestBuildFaithfulEditPromptNormalizesLegacyPromptRef(t *testing.T) {
 	}
 }
 
+func TestBuildFaithfulEditResolvedPromptUsesRegistryMetadata(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = &promptRegistryStub{
+		templates: map[string]string{
+			prompt.KProductImageWhiteBackgroundDefault: "Registry white background prompt for {{.product_type}}",
+		},
+	}
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
+
+	resolved := buildFaithfulEditResolvedPrompt(&FaithfulEditRequest{
+		Operation: "render_white_background",
+		ProductContext: &ProductContext{
+			ProductType: "sneaker",
+		},
+	})
+	metadata := applyPromptObservabilityMetadata(map[string]string{}, resolved)
+
+	if resolved.Text != "Registry white background prompt for sneaker" {
+		t.Fatalf("prompt = %q", resolved.Text)
+	}
+	if metadata["prompt_ref"] != prompt.KProductImageWhiteBackgroundDefault {
+		t.Fatalf("prompt_ref = %q", metadata["prompt_ref"])
+	}
+	if metadata["prompt_key"] != prompt.KProductImageWhiteBackgroundDefault {
+		t.Fatalf("prompt_key = %q", metadata["prompt_key"])
+	}
+	if metadata["prompt_source"] != "registry" {
+		t.Fatalf("prompt_source = %q", metadata["prompt_source"])
+	}
+	if metadata["prompt_version"] != "default" {
+		t.Fatalf("prompt_version = %q", metadata["prompt_version"])
+	}
+}
+
+func TestBuildFaithfulEditResolvedPromptUsesFallbackMetadataWhenRegistryUnavailable(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = nil
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
+
+	resolved := buildFaithfulEditResolvedPrompt(&FaithfulEditRequest{
+		Operation: "render_white_background",
+		ProductContext: &ProductContext{
+			ProductType: "sneaker",
+		},
+	})
+	metadata := applyPromptObservabilityMetadata(map[string]string{}, resolved)
+
+	if !containsInsensitive(resolved.Text, "plain white ecommerce background") {
+		t.Fatalf("prompt = %q", resolved.Text)
+	}
+	if metadata["prompt_ref"] != prompt.KProductImageWhiteBackgroundDefault {
+		t.Fatalf("prompt_ref = %q", metadata["prompt_ref"])
+	}
+	if metadata["prompt_key"] != prompt.KProductImageWhiteBackgroundDefault {
+		t.Fatalf("prompt_key = %q", metadata["prompt_key"])
+	}
+	if metadata["prompt_source"] != "fallback" {
+		t.Fatalf("prompt_source = %q", metadata["prompt_source"])
+	}
+	if metadata["prompt_version"] != "default" {
+		t.Fatalf("prompt_version = %q", metadata["prompt_version"])
+	}
+}
+
 func TestNormalizeProductImagePromptKeyUsesDefaultWhenBlank(t *testing.T) {
 	if got := normalizeProductImagePromptKey("", "productimage.white_background.default"); got != "productimage.white_background.default" {
 		t.Fatalf("normalizeProductImagePromptKey() = %q", got)

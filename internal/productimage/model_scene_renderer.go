@@ -3,7 +3,6 @@ package productimage
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"task-processor/internal/prompt"
 )
@@ -39,13 +38,7 @@ func (r *modelSceneRenderer) Render(ctx context.Context, asset *ImageAsset, cont
 			if result.Assets[idx].Metadata == nil {
 				result.Assets[idx].Metadata = map[string]string{}
 			}
-			result.Assets[idx].Metadata["model_provider"] = result.Metadata.Provider
-			result.Assets[idx].Metadata["model_family"] = result.Metadata.ModelFamily
-			result.Assets[idx].Metadata["generation_mode"] = result.Metadata.GenerationMode
-			result.Assets[idx].Metadata["prompt_ref"] = result.Metadata.PromptRef
-			if result.Metadata.ReviewConfidence > 0 {
-				result.Assets[idx].Metadata["review_confidence"] = strconv.FormatFloat(result.Metadata.ReviewConfidence, 'f', -1, 64)
-			}
+			result.Assets[idx].Metadata = applyGenerationMetadataMap(result.Assets[idx].Metadata, result.Metadata)
 		}
 	}
 

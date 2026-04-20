@@ -167,7 +167,7 @@ func (s *service) listAssetGenerationTasks(ctx context.Context, taskID string) (
 	if err != nil {
 		return nil, err
 	}
-	return append([]assetgeneration.Task(nil), tasks...), nil
+	return cloneGenerationTasks(tasks), nil
 }
 
 func (s *service) listGenerationReviews(ctx context.Context, taskID string) ([]GenerationReviewRecord, error) {
@@ -226,7 +226,7 @@ func decorateListingKitResultGeneration(result *ListingKitResult, tasks []assetg
 	if result == nil {
 		return
 	}
-	result.AssetGenerationTasks = append([]assetgeneration.Task(nil), tasks...)
+	result.AssetGenerationTasks = cloneGenerationTasks(tasks)
 	result.AssetGenerationSummary = buildAssetGenerationSummary(tasks)
 	result.AssetGenerationQueue = buildGenerationWorkQueue(result)
 	result.AssetGenerationOverview = buildAssetGenerationOverview(result.AssetGenerationQueue)
@@ -235,7 +235,7 @@ func decorateListingKitResultGeneration(result *ListingKitResult, tasks []assetg
 func withListingKitResultGeneration(result *ListingKitResult, tasks []assetgeneration.Task) *ListingKitResult {
 	if result == nil {
 		return &ListingKitResult{
-			AssetGenerationTasks: append([]assetgeneration.Task(nil), tasks...),
+			AssetGenerationTasks: cloneGenerationTasks(tasks),
 		}
 	}
 	cloned := *result

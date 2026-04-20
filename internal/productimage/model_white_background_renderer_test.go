@@ -20,6 +20,9 @@ func TestModelWhiteBackgroundRendererUsesFaithfulEditor(t *testing.T) {
 				ModelFamily:    "gpt-image",
 				GenerationMode: "white_background",
 				PromptRef:      "productimage.white_background.default",
+				PromptKey:      "productimage.white_background.default",
+				PromptSource:   "registry",
+				PromptVersion:  "default",
 			},
 		},
 	}
@@ -39,6 +42,9 @@ func TestModelWhiteBackgroundRendererUsesFaithfulEditor(t *testing.T) {
 		t.Fatalf("asset = %+v", asset)
 	}
 	if asset.Metadata["generation_mode"] != "white_background" || asset.Metadata["prompt_ref"] != "productimage.white_background.default" {
+		t.Fatalf("asset metadata = %+v", asset.Metadata)
+	}
+	if asset.Metadata["prompt_key"] != "productimage.white_background.default" || asset.Metadata["prompt_source"] != "registry" || asset.Metadata["prompt_version"] != "default" {
 		t.Fatalf("asset metadata = %+v", asset.Metadata)
 	}
 }

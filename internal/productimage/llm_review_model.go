@@ -36,13 +36,8 @@ func (m *llmReviewModel) Review(ctx context.Context, req *ReviewModelRequest) (*
 	if err != nil {
 		return nil, fmt.Errorf("marshal review summary: %w", err)
 	}
-	promptText := renderProductImagePrompt("", prompt.KProductImageReviewDefault, map[string]any{
-		"product_type": productTypeFromReviewRequest(req),
-		"title":        titleFromReviewRequest(req),
-		"summary_json": string(payload),
-	}, "Review this product image processing result and return JSON only: "+
-		`{"needs_review":true|false,"reasons":["..."],"confidence":0.0}`+
-		"\n\nSummary:\n"+string(payload))
+	resolvedPrompt := buildReviewResolvedPrompt(req, string(payload))
+	promptText := resolvedPrompt.Text
 
 	response, err := m.generateReviewResponse(ctx, req, promptText)
 	if err != nil {
@@ -64,6 +59,21 @@ func (m *llmReviewModel) Review(ctx context.Context, req *ReviewModelRequest) (*
 		},
 		Confidence: parsed.Confidence,
 	}, nil
+}
+
+func buildReviewResolvedPrompt(req *ReviewModelRequest, summaryJSON string) resolvedProductImagePrompt {
+	fallback := "Review this product image processing result and return JSON only: " +
+		`{"needs_review":true|false,"reasons":["..."],"confidence":0.0}` +
+		"\n\nSummary:\n" + summaryJSON
+	resolved := resolveProductImagePrompt("", prompt.KProductImageReviewDefault, map[string]any{
+		"product_type": productTypeFromReviewRequest(req),
+		"title":        titleFromReviewRequest(req),
+		"summary_json": summaryJSON,
+	}, fallback)
+	if strings.TrimSpace(resolved.Text) == "" {
+		resolved.Text = fallback
+	}
+	return resolved
 }
 
 func productTypeFromReviewRequest(req *ReviewModelRequest) string {

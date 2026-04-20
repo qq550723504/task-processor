@@ -37,10 +37,10 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 	if err != nil {
 		return nil, err
 	}
-	prompt := buildFaithfulEditPrompt(req)
+	resolvedPrompt := buildFaithfulEditResolvedPrompt(req)
 	response, err := e.client.EditImage(ctx, &openaiclient.ImageEditRequest{
 		Model:          e.client.GetDefaultModel(),
-		Prompt:         prompt,
+		Prompt:         resolvedPrompt.Text,
 		Image:          data,
 		ImageURL:       editableAssetURL(req.SourceAsset),
 		ResponseFormat: "b64_json",
@@ -61,7 +61,6 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 	stageName := "faithful-edit"
 	assetType := AssetTypeSubjectCutout
 	operationMode := "faithful_edit"
-	normalizedPromptRef := normalizedFaithfulEditPromptRef(req)
 	if req.Operation == "extract_subject" {
 		stageName = "subject-model"
 		operationMode = "extract_subject"
@@ -74,14 +73,13 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 	if err != nil {
 		return nil, err
 	}
-	metadata := map[string]string{
+	metadata := applyPromptObservabilityMetadata(map[string]string{
 		"provider":        "openai_compatible",
 		"model_family":    e.client.GetDefaultModel(),
 		"generation_mode": operationMode,
-		"prompt_ref":      normalizedPromptRef,
 		"local_path":      path,
 		"format":          info.Format,
-	}
+	}, resolvedPrompt)
 	if revisedPrompt != "" {
 		metadata["revised_prompt"] = revisedPrompt
 	}
@@ -103,7 +101,10 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 			Provider:       "openai_compatible",
 			ModelFamily:    e.client.GetDefaultModel(),
 			GenerationMode: operationMode,
-			PromptRef:      normalizedPromptRef,
+			PromptRef:      resolvedPrompt.Key,
+			PromptKey:      resolvedPrompt.Key,
+			PromptSource:   resolvedPrompt.Source,
+			PromptVersion:  resolvedPrompt.Version,
 		},
 	}, nil
 }
@@ -119,6 +120,10 @@ func editableAssetURL(asset *ImageAsset) string {
 }
 
 func buildFaithfulEditPrompt(req *FaithfulEditRequest) string {
+	return buildFaithfulEditResolvedPrompt(req).Text
+}
+
+func buildFaithfulEditResolvedPrompt(req *FaithfulEditRequest) resolvedProductImagePrompt {
 	productType := ""
 	if req.ProductContext != nil {
 		productType = strings.TrimSpace(req.ProductContext.ProductType)
@@ -129,24 +134,52 @@ func buildFaithfulEditPrompt(req *FaithfulEditRequest) string {
 		if productType != "" {
 			fallback = fmt.Sprintf("Isolate the %s as the main subject in a clean ecommerce edit. Preserve the exact identity, shape, texture, and color. Keep the output simple and product-focused with no extra objects or text.", productType)
 		}
-		return renderProductImagePrompt(req.PromptRef, prompt.KProductImageSubjectExtract, map[string]any{
+		resolved := resolveProductImagePrompt(req.PromptRef, prompt.KProductImageSubjectExtract, map[string]any{
 			"product_type": productType,
 			"title":        productTitle(req.ProductContext),
 			"operation":    req.Operation,
 		}, fallback)
+		if strings.TrimSpace(resolved.Text) == "" {
+			resolved.Text = fallback
+		}
+		return resolved
 	case "render_white_background":
 		fallback := "Place the product on a plain white ecommerce background. Preserve the exact identity, proportions, texture, and color. Keep the image clean, natural, and free of extra text or objects."
 		if productType != "" {
 			fallback = fmt.Sprintf("Place the %s on a plain white ecommerce background. Preserve the exact identity, proportions, texture, and color. Keep the image clean, natural, and free of extra text or objects.", productType)
 		}
-		return renderProductImagePrompt(req.PromptRef, prompt.KProductImageWhiteBackgroundDefault, map[string]any{
+		resolved := resolveProductImagePrompt(req.PromptRef, prompt.KProductImageWhiteBackgroundDefault, map[string]any{
 			"product_type": productType,
 			"title":        productTitle(req.ProductContext),
 			"operation":    req.Operation,
 		}, fallback)
+		if strings.TrimSpace(resolved.Text) == "" {
+			resolved.Text = fallback
+		}
+		return resolved
 	default:
-		return "Edit this product image faithfully for ecommerce use. Preserve identity and remove irrelevant background elements."
+		fallback := "Edit this product image faithfully for ecommerce use. Preserve identity and remove irrelevant background elements."
+		resolved := resolveProductImagePrompt(req.PromptRef, "", map[string]any{
+			"product_type": productType,
+			"title":        productTitle(req.ProductContext),
+			"operation":    req.Operation,
+		}, fallback)
+		if strings.TrimSpace(resolved.Text) == "" {
+			resolved.Text = fallback
+		}
+		return resolved
 	}
+}
+
+func applyPromptObservabilityMetadata(metadata map[string]string, resolved resolvedProductImagePrompt) map[string]string {
+	if metadata == nil {
+		metadata = map[string]string{}
+	}
+	metadata["prompt_ref"] = resolved.Key
+	metadata["prompt_key"] = resolved.Key
+	metadata["prompt_source"] = resolved.Source
+	metadata["prompt_version"] = resolved.Version
+	return metadata
 }
 
 func productTitle(context *ProductContext) string {

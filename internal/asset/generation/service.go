@@ -89,7 +89,7 @@ func (s *service) Execute(ctx context.Context, req Request) (*Result, error) {
 			SatisfiedBy:      "generated_asset",
 			Lineage:          plannedLineage(item),
 			SourceAssetIDs:   sourceAssetIDsForRecord(record),
-			Metadata:         cloneTaskMetadata(record.Metadata),
+			Metadata:         taskMetadataFromAssetMetadata(record.Metadata),
 			ReviewConfidence: reviewConfidenceFromMetadata(record.Metadata),
 		})
 		result.Assets = append(result.Assets, record)
@@ -133,7 +133,7 @@ func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int
 			updated.ExecutionStatus = "completed"
 			updated.ExecutionMode = ExecutionModeRendererBacked
 			updated.SatisfiedBy = ExecutionModeGeneratedAsset
-			updated.Metadata = cloneTaskMetadata(record.Metadata)
+			updated.Metadata = taskMetadataFromAssetMetadata(record.Metadata)
 			updated.ReviewConfidence = reviewConfidenceFromMetadata(record.Metadata)
 			return updated, []asset.AssetRecord{record}
 		}
@@ -149,7 +149,7 @@ func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int
 	updated.ExecutionStatus = "completed"
 	updated.ExecutionMode = ExecutionModeDeferredStub
 	updated.SatisfiedBy = ExecutionModeGeneratedAsset
-	updated.Metadata = cloneTaskMetadata(record.Metadata)
+	updated.Metadata = taskMetadataFromAssetMetadata(record.Metadata)
 	updated.ReviewConfidence = reviewConfidenceFromMetadata(record.Metadata)
 	return updated, []asset.AssetRecord{record}
 }

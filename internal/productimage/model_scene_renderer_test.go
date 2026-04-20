@@ -30,6 +30,9 @@ func TestModelSceneRendererUsesSceneGenerator(t *testing.T) {
 				ModelFamily:    "gpt-image",
 				GenerationMode: "scene_generation",
 				PromptRef:      "productimage.scene.default",
+				PromptKey:      "productimage.scene.default",
+				PromptSource:   "registry",
+				PromptVersion:  "default",
 			},
 		},
 	}
@@ -52,6 +55,9 @@ func TestModelSceneRendererUsesSceneGenerator(t *testing.T) {
 		t.Fatalf("asset metadata = %+v", assets[0].Metadata)
 	}
 	if assets[0].Metadata["prompt_ref"] != "productimage.scene.default" {
+		t.Fatalf("asset metadata = %+v", assets[0].Metadata)
+	}
+	if assets[0].Metadata["prompt_key"] != "productimage.scene.default" || assets[0].Metadata["prompt_source"] != "registry" || assets[0].Metadata["prompt_version"] != "default" {
 		t.Fatalf("asset metadata = %+v", assets[0].Metadata)
 	}
 }

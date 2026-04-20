@@ -12,6 +12,9 @@ func TestGenerationMetadataClonePreservesModelFields(t *testing.T) {
 		ModelFamily:      "gpt-image",
 		GenerationMode:   "scene_generation",
 		PromptRef:        "preset:selling_point/default",
+		PromptKey:        "preset:selling_point/default",
+		PromptSource:     "registry",
+		PromptVersion:    "default",
 		ReviewConfidence: 0.82,
 	}
 
@@ -25,7 +28,7 @@ func TestGenerationMetadataClonePreservesModelFields(t *testing.T) {
 	if cloned.Provider != "openai" || cloned.ModelFamily != "gpt-image" || cloned.GenerationMode != "scene_generation" {
 		t.Fatalf("Clone() lost fields: %+v", cloned)
 	}
-	if cloned.PromptRef != "preset:selling_point/default" || cloned.ReviewConfidence != 0.82 {
+	if cloned.PromptRef != "preset:selling_point/default" || cloned.PromptKey != "preset:selling_point/default" || cloned.PromptSource != "registry" || cloned.PromptVersion != "default" || cloned.ReviewConfidence != 0.82 {
 		t.Fatalf("Clone() lost metadata: %+v", cloned)
 	}
 }

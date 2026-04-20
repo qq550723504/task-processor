@@ -158,6 +158,33 @@ parse_source
 - 旧的 slash 风格 prompt ref 会自动归一化成 registry key
 - 如果 registry 未初始化、key 缺失或模板渲染失败，则回退到代码内 fallback prompt
 
+### Prompt observability metadata
+
+模型驱动的图片生成结果现在会在 typed metadata 和 asset metadata 中记录：
+
+- `prompt_ref`
+- `prompt_key`
+- `prompt_source`
+- `prompt_version`
+
+字段含义：
+
+- `prompt_ref`
+  当前运行最终写入的 prompt 引用，兼容历史 slash 风格输入
+- `prompt_key`
+  归一化后的 registry key，例如 `productimage.scene.default`
+- `prompt_source`
+  prompt 文本的实际来源
+- `prompt_version`
+  生成时附带的稳定版本标识，当前默认值一般为 `default`
+
+`prompt_source` 在当前阶段只使用两种值：
+
+- `registry`
+  表示 prompt registry 已命中且模板渲染成功
+- `fallback`
+  表示 registry 不可用、key 缺失、模板渲染失败，或渲染结果退回到代码内 fallback prompt
+
 其中：
 - `productimage.scene.enabled=true`
 - `productimage.scene.endpoint=<remote-scene-model-url>`
