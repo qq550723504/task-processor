@@ -54,3 +54,58 @@ func TestShouldProcessImagesAllowsProductURLSource(t *testing.T) {
 		t.Fatal("expected product_url source to be eligible for image processing")
 	}
 }
+
+func TestToImageProcessRequestAppliesPlatformSceneDefaults(t *testing.T) {
+	task := &Task{
+		Request: &GenerateRequest{
+			Platforms: []string{"amazon"},
+			Options: &GenerateOptions{
+				ProcessImages: true,
+			},
+		},
+	}
+
+	req := toImageProcessRequest(task)
+	if req.Scene == nil {
+		t.Fatal("expected platform defaults to populate scene options")
+	}
+	if req.Scene.SceneStyle != "studio" ||
+		req.Scene.BackgroundTone != "bright" ||
+		req.Scene.Composition != "centered" ||
+		req.Scene.PropsLevel != "none" ||
+		req.Scene.AudienceHint != "premium" {
+		t.Fatalf("scene defaults = %+v", req.Scene)
+	}
+}
+
+func TestToImageProcessRequestMergesExplicitSceneOptionsOverPlatformDefaults(t *testing.T) {
+	task := &Task{
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Options: &GenerateOptions{
+				ProcessImages: true,
+				Scene: &productimage.SceneGenerationOptions{
+					SceneCategory: "bags",
+					Composition:   "multi_angle",
+				},
+			},
+		},
+	}
+
+	req := toImageProcessRequest(task)
+	if req.Scene == nil {
+		t.Fatal("expected merged scene options")
+	}
+	if req.Scene.SceneCategory != "bags" {
+		t.Fatalf("expected explicit scene category to win, got %+v", req.Scene)
+	}
+	if req.Scene.Composition != "multi_angle" {
+		t.Fatalf("expected explicit composition to win, got %+v", req.Scene)
+	}
+	if req.Scene.SceneStyle != "lifestyle" ||
+		req.Scene.BackgroundTone != "warm" ||
+		req.Scene.PropsLevel != "light" ||
+		req.Scene.AudienceHint != "youthful" {
+		t.Fatalf("expected platform defaults to fill empty fields, got %+v", req.Scene)
+	}
+}

@@ -14,6 +14,10 @@ import {
 } from "@/components/listingkit/task-create-draft";
 import { TaskInputGuidance } from "@/components/listingkit/task-input-guidance";
 import {
+  getPlatformSceneDefaults,
+  hasAnySceneCustomization,
+} from "@/components/listingkit/task-scene-defaults";
+import {
   TaskSourceTabs,
   type TaskSourceTab,
 } from "@/components/listingkit/task-source-tabs";
@@ -220,6 +224,34 @@ export function TaskCreateForm({
     control,
     name: "productUrl",
   });
+  const currentSceneCategory = useWatch({
+    control,
+    name: "sceneCategory",
+  });
+  const currentSceneStyle = useWatch({
+    control,
+    name: "sceneStyle",
+  });
+  const currentBackgroundTone = useWatch({
+    control,
+    name: "backgroundTone",
+  });
+  const currentComposition = useWatch({
+    control,
+    name: "composition",
+  });
+  const currentPropsLevel = useWatch({
+    control,
+    name: "propsLevel",
+  });
+  const currentAudienceHint = useWatch({
+    control,
+    name: "audienceHint",
+  });
+  const currentCustomSceneHint = useWatch({
+    control,
+    name: "customSceneHint",
+  });
   const helperText = useMemo(
     () =>
       "Use public image URLs, upload local image files, or paste a product URL such as a 1688 listing.",
@@ -234,6 +266,22 @@ export function TaskCreateForm({
   const imageUrlsRegistration = register("imageUrls");
   const productUrlRegistration = register("productUrl");
   const titleCopy = titleFieldCopy(activeSourceTab);
+  const primaryPlatform = selectedPlatforms?.[0];
+  const platformSceneDefaults = useMemo(
+    () => getPlatformSceneDefaults(primaryPlatform),
+    [primaryPlatform],
+  );
+  const sceneSummary = useMemo(() => {
+    if (!primaryPlatform || !platformSceneDefaults) {
+      return null;
+    }
+    const parts = [
+      platformSceneDefaults.sceneStyle,
+      platformSceneDefaults.backgroundTone,
+      platformSceneDefaults.composition,
+    ].filter(Boolean);
+    return `${primaryPlatform} defaults: ${parts.join(" / ")}`;
+  }, [platformSceneDefaults, primaryPlatform]);
 
   useEffect(() => {
     if (initialFocus === "text") {
@@ -478,7 +526,44 @@ export function TaskCreateForm({
             </div>
             <Button
               onClick={() => {
-                setShowSceneCustomization((current) => !current);
+                setShowSceneCustomization((current) => {
+                  const next = !current;
+                  if (
+                    next &&
+                    platformSceneDefaults &&
+                    !hasAnySceneCustomization({
+                      sceneCategory: currentSceneCategory,
+                      sceneStyle: currentSceneStyle,
+                      backgroundTone: currentBackgroundTone,
+                      composition: currentComposition,
+                      propsLevel: currentPropsLevel,
+                      audienceHint: currentAudienceHint,
+                      customSceneHint: currentCustomSceneHint,
+                    })
+                  ) {
+                    setValue("sceneCategory", platformSceneDefaults.sceneCategory ?? "", {
+                      shouldDirty: true,
+                    });
+                    setValue("sceneStyle", platformSceneDefaults.sceneStyle ?? "", {
+                      shouldDirty: true,
+                    });
+                    setValue(
+                      "backgroundTone",
+                      platformSceneDefaults.backgroundTone ?? "",
+                      { shouldDirty: true },
+                    );
+                    setValue("composition", platformSceneDefaults.composition ?? "", {
+                      shouldDirty: true,
+                    });
+                    setValue("propsLevel", platformSceneDefaults.propsLevel ?? "", {
+                      shouldDirty: true,
+                    });
+                    setValue("audienceHint", platformSceneDefaults.audienceHint ?? "", {
+                      shouldDirty: true,
+                    });
+                  }
+                  return next;
+                });
               }}
               tone="secondary"
               type="button"
@@ -486,6 +571,9 @@ export function TaskCreateForm({
               Customize scene generation
             </Button>
           </div>
+          {sceneSummary ? (
+            <p className="text-sm leading-6 text-zinc-500">{sceneSummary}</p>
+          ) : null}
 
           {showSceneCustomization ? (
             <div className="grid gap-4 md:grid-cols-2">

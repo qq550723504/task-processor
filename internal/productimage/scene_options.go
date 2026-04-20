@@ -29,3 +29,78 @@ func (o *SceneGenerationOptions) IsEmpty() bool {
 		strings.TrimSpace(o.AudienceHint) == "" &&
 		strings.TrimSpace(o.CustomSceneHint) == ""
 }
+
+func DefaultSceneGenerationOptionsForMarketplace(marketplace string) *SceneGenerationOptions {
+	switch strings.ToLower(strings.TrimSpace(marketplace)) {
+	case "amazon":
+		return &SceneGenerationOptions{
+			SceneStyle:     "studio",
+			BackgroundTone: "bright",
+			Composition:    "centered",
+			PropsLevel:     "none",
+			AudienceHint:   "premium",
+		}
+	case "shein":
+		return &SceneGenerationOptions{
+			SceneStyle:     "lifestyle",
+			BackgroundTone: "warm",
+			Composition:    "close_up",
+			PropsLevel:     "light",
+			AudienceHint:   "youthful",
+		}
+	case "temu":
+		return &SceneGenerationOptions{
+			SceneStyle:     "lifestyle",
+			BackgroundTone: "bright",
+			Composition:    "multi_angle",
+			PropsLevel:     "moderate",
+			AudienceHint:   "sporty",
+		}
+	case "walmart":
+		return &SceneGenerationOptions{
+			SceneStyle:     "lifestyle",
+			BackgroundTone: "neutral",
+			Composition:    "centered",
+			PropsLevel:     "light",
+			AudienceHint:   "homey",
+		}
+	default:
+		return nil
+	}
+}
+
+func MergeSceneGenerationOptions(base, override *SceneGenerationOptions) *SceneGenerationOptions {
+	if base == nil && override == nil {
+		return nil
+	}
+	if base == nil {
+		return override.Clone()
+	}
+
+	merged := base.Clone()
+	if override == nil {
+		return merged
+	}
+	if value := strings.TrimSpace(override.SceneCategory); value != "" {
+		merged.SceneCategory = value
+	}
+	if value := strings.TrimSpace(override.SceneStyle); value != "" {
+		merged.SceneStyle = value
+	}
+	if value := strings.TrimSpace(override.BackgroundTone); value != "" {
+		merged.BackgroundTone = value
+	}
+	if value := strings.TrimSpace(override.Composition); value != "" {
+		merged.Composition = value
+	}
+	if value := strings.TrimSpace(override.PropsLevel); value != "" {
+		merged.PropsLevel = value
+	}
+	if value := strings.TrimSpace(override.AudienceHint); value != "" {
+		merged.AudienceHint = value
+	}
+	if value := strings.TrimSpace(override.CustomSceneHint); value != "" {
+		merged.CustomSceneHint = value
+	}
+	return merged
+}

@@ -361,6 +361,22 @@ describe("TaskCreateForm", () => {
     });
   });
 
+  it("applies platform scene defaults when customization is opened with empty fields", () => {
+    render(<TaskCreateForm />);
+
+    fireEvent.click(screen.getByLabelText("Amazon"));
+
+    expect(screen.getByText("amazon defaults: studio / bright / centered")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Customize scene generation" }));
+
+    expect(screen.getByLabelText("Scene style")).toHaveValue("studio");
+    expect(screen.getByLabelText("Background tone")).toHaveValue("bright");
+    expect(screen.getByLabelText("Composition")).toHaveValue("centered");
+    expect(screen.getByLabelText("Props level")).toHaveValue("none");
+    expect(screen.getByLabelText("Audience hint")).toHaveValue("premium");
+  });
+
   it("prefills structured scene customization from an existing draft", () => {
     render(
       <TaskCreateForm
