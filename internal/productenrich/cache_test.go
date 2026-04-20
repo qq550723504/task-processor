@@ -101,6 +101,52 @@ func TestLLMScoreCache_SetAndGet_ImageScore(t *testing.T) {
 	}
 }
 
+func TestLLMScoreCache_SetAndGet_TextScoreResultWithPrompt(t *testing.T) {
+	rc := newMockRedisForCache()
+	c := NewLLMScoreCache(rc, nil)
+	ctx := context.Background()
+	expected := &CachedLLMScore{
+		Score: 85.5,
+		Prompt: &PromptObservability{
+			PromptRef:     "productenrich.llm_scorer.text_scoring",
+			PromptKey:     "productenrich.llm_scorer.text_scoring",
+			PromptSource:  "registry",
+			PromptVersion: "default",
+		},
+	}
+
+	if err := c.SetTextScoreResult(ctx, "product desc", expected, time.Hour); err != nil {
+		t.Fatalf("SetTextScoreResult: %v", err)
+	}
+	result, found := c.GetTextScoreResult(ctx, "product desc")
+	if !found {
+		t.Fatal("expected cache hit after SetTextScoreResult")
+	}
+	if result.Score != expected.Score {
+		t.Fatalf("score = %.1f, want %.1f", result.Score, expected.Score)
+	}
+	if result.Prompt == nil || result.Prompt.PromptKey != expected.Prompt.PromptKey {
+		t.Fatalf("prompt = %#v, want %#v", result.Prompt, expected.Prompt)
+	}
+}
+
+func TestLLMScoreCache_LegacyPayloadStillReadsScore(t *testing.T) {
+	rc := newMockRedisForCache()
+	rc.store["llm_score:text:"+hashx.MD5("legacy")] = `{"score":91}`
+	c := NewLLMScoreCache(rc, nil)
+
+	result, found := c.GetTextScoreResult(context.Background(), "legacy")
+	if !found {
+		t.Fatal("expected cache hit for legacy payload")
+	}
+	if result.Score != 91 {
+		t.Fatalf("score = %.1f, want 91", result.Score)
+	}
+	if result.Prompt != nil {
+		t.Fatalf("prompt = %#v, want nil for legacy payload", result.Prompt)
+	}
+}
+
 func TestLLMScoreCache_GetError_ReturnsMiss(t *testing.T) {
 	rc := newMockRedisForCache()
 	rc.getErr = errors.New("redis down")

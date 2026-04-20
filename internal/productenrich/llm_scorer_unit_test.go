@@ -229,18 +229,25 @@ func TestScoreWithCache_NilCache_CallsLLMDirectly(t *testing.T) {
 // --- mockLLMScoreCache 用于测试缓存命中路径 ---
 
 type mockLLMScoreCache struct {
-	textScores  map[string]float64
-	imageScores map[string]float64
+	textScores   map[string]float64
+	imageScores  map[string]float64
+	textResults  map[string]*CachedLLMScore
+	imageResults map[string]*CachedLLMScore
 }
 
 func newMockLLMScoreCache() *mockLLMScoreCache {
 	return &mockLLMScoreCache{
-		textScores:  make(map[string]float64),
-		imageScores: make(map[string]float64),
+		textScores:   make(map[string]float64),
+		imageScores:  make(map[string]float64),
+		textResults:  make(map[string]*CachedLLMScore),
+		imageResults: make(map[string]*CachedLLMScore),
 	}
 }
 
 func (m *mockLLMScoreCache) GetTextScore(_ context.Context, text string) (float64, bool) {
+	if result, ok := m.textResults[text]; ok && result != nil {
+		return result.Score, true
+	}
 	v, ok := m.textScores[text]
 	return v, ok
 }
@@ -249,11 +256,72 @@ func (m *mockLLMScoreCache) SetTextScore(_ context.Context, text string, score f
 	return nil
 }
 func (m *mockLLMScoreCache) GetImageScore(_ context.Context, url string) (float64, bool) {
+	if result, ok := m.imageResults[url]; ok && result != nil {
+		return result.Score, true
+	}
 	v, ok := m.imageScores[url]
 	return v, ok
 }
 func (m *mockLLMScoreCache) SetImageScore(_ context.Context, url string, score float64, _ time.Duration) error {
 	m.imageScores[url] = score
+	return nil
+}
+func (m *mockLLMScoreCache) GetTextScoreResult(_ context.Context, text string) (*CachedLLMScore, bool) {
+	if result, ok := m.textResults[text]; ok {
+		if result == nil {
+			return nil, false
+		}
+		cloned := &CachedLLMScore{Score: result.Score}
+		if result.Prompt != nil {
+			cloned.Prompt = result.Prompt.Clone()
+		}
+		return cloned, true
+	}
+	v, ok := m.textScores[text]
+	if !ok {
+		return nil, false
+	}
+	return &CachedLLMScore{Score: v}, true
+}
+func (m *mockLLMScoreCache) SetTextScoreResult(_ context.Context, text string, result *CachedLLMScore, _ time.Duration) error {
+	if result == nil {
+		m.textResults[text] = nil
+		return nil
+	}
+	cloned := &CachedLLMScore{Score: result.Score}
+	if result.Prompt != nil {
+		cloned.Prompt = result.Prompt.Clone()
+	}
+	m.textResults[text] = cloned
+	return nil
+}
+func (m *mockLLMScoreCache) GetImageScoreResult(_ context.Context, url string) (*CachedLLMScore, bool) {
+	if result, ok := m.imageResults[url]; ok {
+		if result == nil {
+			return nil, false
+		}
+		cloned := &CachedLLMScore{Score: result.Score}
+		if result.Prompt != nil {
+			cloned.Prompt = result.Prompt.Clone()
+		}
+		return cloned, true
+	}
+	v, ok := m.imageScores[url]
+	if !ok {
+		return nil, false
+	}
+	return &CachedLLMScore{Score: v}, true
+}
+func (m *mockLLMScoreCache) SetImageScoreResult(_ context.Context, url string, result *CachedLLMScore, _ time.Duration) error {
+	if result == nil {
+		m.imageResults[url] = nil
+		return nil
+	}
+	cloned := &CachedLLMScore{Score: result.Score}
+	if result.Prompt != nil {
+		cloned.Prompt = result.Prompt.Clone()
+	}
+	m.imageResults[url] = cloned
 	return nil
 }
 
@@ -283,9 +351,13 @@ func TestScoreText_CacheMiss_StoresResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// 调用后应写入缓存
-	if _, ok := cache.textScores["new text"]; !ok {
-		t.Error("expected score to be cached after LLM call")
+	// 调用后应写入带 provenance 的 typed cache
+	result, ok := cache.textResults["new text"]
+	if !ok || result == nil {
+		t.Fatal("expected score result to be cached after LLM call")
+	}
+	if result.Score != 75 {
+		t.Fatalf("cached score = %.1f, want 75", result.Score)
 	}
 }
 
@@ -415,6 +487,32 @@ func TestScoreTextResult_CacheHitDoesNotFabricatePromptMetadata(t *testing.T) {
 	}
 	if result.Prompt != nil {
 		t.Fatalf("Prompt = %#v, want nil for cache hit without stored provenance", result.Prompt)
+	}
+}
+
+func TestScoreTextResult_CacheHitPreservesPromptMetadataWhenAvailable(t *testing.T) {
+	s := newTestLLMScorer("", errors.New("should not be called"))
+	cache := newMockLLMScoreCache()
+	cache.textResults["cached text"] = &CachedLLMScore{
+		Score: 90,
+		Prompt: &PromptObservability{
+			PromptRef:     prompt.KProductEnrichLlmScorerTextScoring,
+			PromptKey:     prompt.KProductEnrichLlmScorerTextScoring,
+			PromptSource:  "registry",
+			PromptVersion: "default",
+		},
+	}
+	s.scoreCache = cache
+
+	result, err := s.scoreTextResult(context.Background(), "cached text", 50)
+	if err != nil {
+		t.Fatalf("scoreTextResult() error = %v", err)
+	}
+	if result.Prompt == nil {
+		t.Fatal("expected prompt metadata on cache hit")
+	}
+	if result.Prompt.PromptKey != prompt.KProductEnrichLlmScorerTextScoring {
+		t.Fatalf("PromptKey = %q", result.Prompt.PromptKey)
 	}
 }
 

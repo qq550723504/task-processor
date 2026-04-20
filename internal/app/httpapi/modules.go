@@ -125,8 +125,9 @@ func buildProductModule(logger *logrus.Logger, deps *runtimeDeps) (*productModul
 	if err != nil {
 		return nil, err
 	}
+	scoreCache := productenrich.NewLLMScoreCache(redisClient, nil)
 
-	llmScorer := buildProductLLMScorer(deps.cfg, deps.llmMgr)
+	llmScorer := buildProductLLMScorerWithCache(deps.cfg, deps.llmMgr, scoreCache)
 	qualityScorer := productenrich.NewQualityScorer(&productenrich.QualityScorerConfig{
 		ImageWeight:   0.4,
 		TextWeight:    0.3,

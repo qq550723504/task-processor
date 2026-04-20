@@ -115,11 +115,13 @@ func (s *llmScorer) scoreTextResult(ctx context.Context, text string, baseScore 
 	if text == "" {
 		return &llmScoreResult{Score: baseScore}, nil
 	}
-	var getCached func() (float64, bool)
-	var setCached func(float64) error
+	var getCached func() (*CachedLLMScore, bool)
+	var setCached func(*CachedLLMScore) error
 	if s.scoreCache != nil {
-		getCached = func() (float64, bool) { return s.scoreCache.GetTextScore(ctx, text) }
-		setCached = func(score float64) error { return s.scoreCache.SetTextScore(ctx, text, score, s.cacheTTL) }
+		getCached = func() (*CachedLLMScore, bool) { return s.scoreCache.GetTextScoreResult(ctx, text) }
+		setCached = func(result *CachedLLMScore) error {
+			return s.scoreCache.SetTextScoreResult(ctx, text, result, s.cacheTTL)
+		}
 	}
 	return s.scoreWithCache(ctx, baseScore, getCached, setCached,
 		func() (*rawLLMScoreResult, error) { return s.scoreTextWithLLM(ctx, text, baseScore) },
@@ -140,11 +142,13 @@ func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseS
 	if imageURL == "" {
 		return &llmScoreResult{Score: baseScore}, nil
 	}
-	var getCached func() (float64, bool)
-	var setCached func(float64) error
+	var getCached func() (*CachedLLMScore, bool)
+	var setCached func(*CachedLLMScore) error
 	if s.scoreCache != nil {
-		getCached = func() (float64, bool) { return s.scoreCache.GetImageScore(ctx, imageURL) }
-		setCached = func(score float64) error { return s.scoreCache.SetImageScore(ctx, imageURL, score, s.cacheTTL) }
+		getCached = func() (*CachedLLMScore, bool) { return s.scoreCache.GetImageScoreResult(ctx, imageURL) }
+		setCached = func(result *CachedLLMScore) error {
+			return s.scoreCache.SetImageScoreResult(ctx, imageURL, result, s.cacheTTL)
+		}
 	}
 	return s.scoreWithCache(ctx, baseScore, getCached, setCached,
 		func() (*rawLLMScoreResult, error) { return s.scoreImageWithLLM(ctx, imageURL, baseScore) },
@@ -156,8 +160,8 @@ func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseS
 func (s *llmScorer) scoreWithCache(
 	ctx context.Context,
 	baseScore float64,
-	getCached func() (float64, bool),
-	setCached func(float64) error,
+	getCached func() (*CachedLLMScore, bool),
+	setCached func(*CachedLLMScore) error,
 	callLLM func() (*rawLLMScoreResult, error),
 	label string,
 ) (*llmScoreResult, error) {
@@ -168,14 +172,18 @@ func (s *llmScorer) scoreWithCache(
 
 	// 检查缓存
 	if s.scoreCache != nil {
-		if cachedScore, found := getCached(); found {
-			finalScore := s.combineScores(baseScore, cachedScore)
+		if cachedResult, found := getCached(); found && cachedResult != nil {
+			finalScore := s.combineScores(baseScore, cachedResult.Score)
 			logger.GetGlobalLogger("productenrich/llm_scorer.go").WithFields(logrus.Fields{
 				"base_score":   baseScore,
-				"cached_score": cachedScore,
+				"cached_score": cachedResult.Score,
 				"final_score":  finalScore,
+				"has_prompt":   cachedResult.Prompt != nil,
 			}).Debugf("using cached %s score", label)
-			return &llmScoreResult{Score: finalScore}, nil
+			return &llmScoreResult{
+				Score:  finalScore,
+				Prompt: cachedResult.Prompt.Clone(),
+			}, nil
 		}
 	}
 
@@ -188,7 +196,10 @@ func (s *llmScorer) scoreWithCache(
 
 	// 缓存评分结果
 	if s.scoreCache != nil {
-		if err := setCached(llmResult.Score); err != nil {
+		if err := setCached(&CachedLLMScore{
+			Score:  llmResult.Score,
+			Prompt: llmResult.Prompt.Clone(),
+		}); err != nil {
 			logrus.WithError(err).Warnf("failed to cache %s score", label)
 		}
 	}

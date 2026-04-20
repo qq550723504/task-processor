@@ -47,6 +47,27 @@ func TestLLMScoreCache_Integration(t *testing.T) {
 		assert.InDelta(t, 72.0, score, 0.01)
 	})
 
+	t.Run("TextScoreResult_SetAndGetWithPrompt", func(t *testing.T) {
+		text := "带 provenance 的文本评分"
+		expected := &productenrich.CachedLLMScore{
+			Score: 88.0,
+			Prompt: &productenrich.PromptObservability{
+				PromptRef:     "productenrich.llm_scorer.text_scoring",
+				PromptKey:     "productenrich.llm_scorer.text_scoring",
+				PromptSource:  "registry",
+				PromptVersion: "default",
+			},
+		}
+		require.NoError(t, cache.SetTextScoreResult(ctx, text, expected, time.Minute))
+
+		result, found := cache.GetTextScoreResult(ctx, text)
+		assert.True(t, found)
+		require.NotNil(t, result)
+		assert.InDelta(t, 88.0, result.Score, 0.01)
+		require.NotNil(t, result.Prompt)
+		assert.Equal(t, "productenrich.llm_scorer.text_scoring", result.Prompt.PromptKey)
+	})
+
 	t.Run("ImageScore_Miss", func(t *testing.T) {
 		_, found := cache.GetImageScore(ctx, "https://example.com/notcached.jpg")
 		assert.False(t, found)
