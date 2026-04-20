@@ -52,6 +52,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 				Draft:          task.Result.Amazon.Draft,
 				ImageBundle:    task.Result.Amazon.ImageBundle,
 				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "amazon"),
+				ScenePresets:   buildPlatformScenePresetSummaries(task.Result.Amazon.ImageBundle, task.Result.AssetBundle),
 			}
 		} else if selectedPlatform == "amazon" {
 			return nil, ErrPreviewPlatformUnavailable
@@ -64,6 +65,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 				Inspection:     task.Result.Shein.Inspection,
 				ImageBundle:    task.Result.Shein.ImageBundle,
 				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "shein"),
+				ScenePresets:   buildPlatformScenePresetSummaries(task.Result.Shein.ImageBundle, task.Result.AssetBundle),
 				RequestDraft:   task.Result.Shein.RequestDraft,
 				PreviewProduct: task.Result.Shein.PreviewProduct,
 				ReviewNotes:    append([]string(nil), task.Result.Shein.ReviewNotes...),
@@ -78,6 +80,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 			export.Temu = &TemuExportPayload{
 				ImageBundle:    task.Result.Temu.ImageBundle,
 				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "temu"),
+				ScenePresets:   buildPlatformScenePresetSummaries(task.Result.Temu.ImageBundle, task.Result.AssetBundle),
 				Package:        task.Result.Temu,
 			}
 		} else if selectedPlatform == "temu" {
@@ -90,6 +93,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 			export.Walmart = &WalmartExportPayload{
 				ImageBundle:    task.Result.Walmart.ImageBundle,
 				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "walmart"),
+				ScenePresets:   buildPlatformScenePresetSummaries(task.Result.Walmart.ImageBundle, task.Result.AssetBundle),
 				Package:        task.Result.Walmart,
 			}
 		} else if selectedPlatform == "walmart" {
