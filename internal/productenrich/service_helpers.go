@@ -39,15 +39,15 @@ func (s *productService) parseInput(ctx context.Context, task *Task) (*ParsedInp
 	}, nil
 }
 
-func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Task, parsedInput *ParsedInput) (ProcessingStrategy, error) {
+func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Task, parsedInput *ParsedInput) (ProcessingStrategy, *ValidationResult, error) {
 	log := logger.GetGlobalLogger("productenrich/service_helpers.go").WithField("task_id", task.ID)
 
 	if s.inputValidator == nil || s.qualityScorer == nil || s.strategySelector == nil {
 		if !s.capabilities.AllowDefaultValidationStrategy {
-			return "", fmt.Errorf("validation pipeline is not fully configured in %s mode", s.capabilities.Mode)
+			return "", nil, fmt.Errorf("validation pipeline is not fully configured in %s mode", s.capabilities.Mode)
 		}
 		log.Warn("validation components not configured, using full strategy")
-		return StrategyFull, nil
+		return StrategyFull, nil, nil
 	}
 
 	log.Info("step 2: validating input data")
@@ -58,7 +58,7 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 		if dbErr := s.taskRepo.MarkFailed(ctx, task.ID, fmt.Sprintf("input validation failed: %v", err)); dbErr != nil {
 			log.WithError(dbErr).Error("failed to persist task error")
 		}
-		return "", fmt.Errorf("failed to validate input: %w", err)
+		return "", nil, fmt.Errorf("failed to validate input: %w", err)
 	}
 
 	qualityScore, err := s.qualityScorer.CalculateScore(ctx, validationResult)
@@ -67,7 +67,7 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 		if dbErr := s.taskRepo.MarkFailed(ctx, task.ID, fmt.Sprintf("quality scoring failed: %v", err)); dbErr != nil {
 			log.WithError(dbErr).Error("failed to persist task error")
 		}
-		return "", fmt.Errorf("failed to calculate quality score: %w", err)
+		return "", validationResult, fmt.Errorf("failed to calculate quality score: %w", err)
 	}
 
 	log.WithFields(logrus.Fields{
@@ -83,7 +83,7 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 		if dbErr := s.taskRepo.MarkFailed(ctx, task.ID, fmt.Sprintf("strategy selection failed: %v", err)); dbErr != nil {
 			log.WithError(dbErr).Error("failed to persist task error")
 		}
-		return "", fmt.Errorf("failed to select strategy: %w", err)
+		return "", validationResult, fmt.Errorf("failed to select strategy: %w", err)
 	}
 
 	log.WithFields(logrus.Fields{
@@ -92,10 +92,11 @@ func (s *productService) validateAndSelectStrategy(ctx context.Context, task *Ta
 	}).Info("processing strategy selected")
 
 	if strategy == StrategyReject {
-		return s.handleRejection(ctx, task, validationResult)
+		rejectedStrategy, rejectErr := s.handleRejection(ctx, task, validationResult)
+		return rejectedStrategy, validationResult, rejectErr
 	}
 
-	return strategy, nil
+	return strategy, validationResult, nil
 }
 
 func (s *productService) handleRejection(ctx context.Context, task *Task, validationResult *ValidationResult) (ProcessingStrategy, error) {

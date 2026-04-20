@@ -17,6 +17,7 @@ import (
 
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	"task-processor/internal/prompt"
 )
 
 // =============================================================================
@@ -68,6 +69,35 @@ func (m *mockLLMManagerForScorer) GetClient(_ string) (productenrich.LLMClient, 
 
 func (m *mockLLMManagerForScorer) GetDefaultClient() productenrich.LLMClient {
 	return m.client
+}
+
+type scorerPromptRegistryIntegrationStub struct {
+	templates map[string]string
+}
+
+func (s *scorerPromptRegistryIntegrationStub) Get(key string, fallback string) string {
+	if value, ok := s.templates[key]; ok {
+		return value
+	}
+	return fallback
+}
+
+func (s *scorerPromptRegistryIntegrationStub) Render(key string, vars map[string]any, fallback string) (string, error) {
+	if value, ok := s.templates[key]; ok {
+		if text, ok := vars["Text"].(string); ok && text != "" {
+			value = strings.ReplaceAll(value, "{{.Text}}", text)
+		}
+		return value, nil
+	}
+	return fallback, nil
+}
+
+func (s *scorerPromptRegistryIntegrationStub) Keys() []string {
+	keys := make([]string, 0, len(s.templates))
+	for key := range s.templates {
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 func TestLLMScorer_Integration(t *testing.T) {
@@ -150,6 +180,56 @@ func TestLLMScorer_Integration(t *testing.T) {
 		got, err := scorer.ScoreText(ctx, "some text", 60.0)
 		assert.Error(t, err)
 		assert.InDelta(t, 60.0, got, 0.01, "on LLM error, should return base score")
+	})
+
+	t.Run("QualityScorer_preserves_prompt_observability", func(t *testing.T) {
+		previous := prompt.GlobalRegistry
+		prompt.GlobalRegistry = &scorerPromptRegistryIntegrationStub{
+			templates: map[string]string{
+				prompt.KProductEnrichLlmScorerTextScoring:  "Registry text scoring prompt {{.Text}}",
+				prompt.KProductEnrichLlmScorerImageScoring: "Registry image scoring prompt",
+			},
+		}
+		t.Cleanup(func() { prompt.GlobalRegistry = previous })
+
+		mgr := &mockLLMManagerForScorer{client: &mockLLMClientForScorer{score: 86.0}}
+		llmScorer := productenrich.NewLLMScorer(&productenrich.LLMScorerConfig{
+			LLMManager:     mgr,
+			FallbackWeight: 0.3,
+			MaxRetries:     1,
+		})
+		qualityScorer := productenrich.NewQualityScorer(&productenrich.QualityScorerConfig{
+			ImageWeight:   0.4,
+			TextWeight:    0.4,
+			ScrapedWeight: 0.2,
+			LLMScorer:     llmScorer,
+			EnableLLM:     true,
+		})
+
+		validation := &productenrich.ValidationResult{
+			ImageScore:   40,
+			TextScore:    50,
+			ScrapedScore: 60,
+			ImageValidation: &productenrich.ImageValidation{
+				ValidImages: []productenrich.ImageInfo{{URL: "https://example.com/img.jpg", IsValid: true}},
+			},
+			TextValidation: &productenrich.TextValidation{
+				Length:  100,
+				RawText: "高品质蓝牙耳机",
+			},
+		}
+
+		score, err := qualityScorer.CalculateScore(ctx, validation)
+		require.NoError(t, err)
+		assert.True(t, score > 0)
+		require.NotNil(t, validation.TextScorePrompt)
+		require.NotNil(t, validation.ImageScorePrompt)
+		assert.Equal(t, prompt.KProductEnrichLlmScorerTextScoring, validation.TextScorePrompt.PromptKey)
+		assert.Equal(t, "registry", validation.TextScorePrompt.PromptSource)
+		assert.Equal(t, "default", validation.TextScorePrompt.PromptVersion)
+		assert.Equal(t, prompt.KProductEnrichLlmScorerImageScoring, validation.ImageScorePrompt.PromptKey)
+		assert.Equal(t, "registry", validation.ImageScorePrompt.PromptSource)
+		assert.Equal(t, "default", validation.ImageScorePrompt.PromptVersion)
 	})
 }
 

@@ -76,12 +76,22 @@ func (s *qualityScorer) CalculateScore(ctx context.Context, validation *Validati
 
 	imageScore := validation.ImageScore
 	textScore := validation.TextScore
+	validation.ImageScorePrompt = nil
+	validation.TextScorePrompt = nil
 
 	// 用 LLM 对各分项重新评分（仅在有原始验证对象时才能调用）
 	if s.enableLLM && s.llmScorer != nil {
+		observedScorer, _ := s.llmScorer.(llmScorerWithObservability)
 		if validation.ImageValidation != nil && len(validation.ImageValidation.ValidImages) > 0 {
 			firstURL := validation.ImageValidation.ValidImages[0].URL
-			if llmScore, err := s.llmScorer.ScoreImage(ctx, firstURL, imageScore); err != nil {
+			if observedScorer != nil {
+				if llmResult, err := observedScorer.scoreImageResult(ctx, firstURL, imageScore); err != nil {
+					logrus.WithError(err).Warn("LLM image scoring failed, using base score")
+				} else {
+					imageScore = llmResult.Score
+					validation.ImageScorePrompt = llmResult.Prompt.Clone()
+				}
+			} else if llmScore, err := s.llmScorer.ScoreImage(ctx, firstURL, imageScore); err != nil {
 				logrus.WithError(err).Warn("LLM image scoring failed, using base score")
 			} else {
 				imageScore = llmScore
@@ -94,7 +104,14 @@ func (s *qualityScorer) CalculateScore(ctx context.Context, validation *Validati
 				text = joinKeywords(validation.TextValidation.Keywords)
 			}
 			if text != "" {
-				if llmScore, err := s.llmScorer.ScoreText(ctx, text, textScore); err != nil {
+				if observedScorer != nil {
+					if llmResult, err := observedScorer.scoreTextResult(ctx, text, textScore); err != nil {
+						logrus.WithError(err).Warn("LLM text scoring failed, using base score")
+					} else {
+						textScore = llmResult.Score
+						validation.TextScorePrompt = llmResult.Prompt.Clone()
+					}
+				} else if llmScore, err := s.llmScorer.ScoreText(ctx, text, textScore); err != nil {
 					logrus.WithError(err).Warn("LLM text scoring failed, using base score")
 				} else {
 					textScore = llmScore

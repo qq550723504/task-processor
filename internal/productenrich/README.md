@@ -89,6 +89,46 @@ parse_input
 - 支持 `compat / strict` 两种 capability 模式
 - 更适合做“商品理解和结构化输出”，不负责真实图片编辑
 
+## LLM 评分 Prompt 可观测性
+
+`productenrich` 的 `llm_scorer` 现在会在质量评分运行时保留两路 prompt lineage：
+
+- 文本评分：`productenrich.llm_scorer.text_scoring`
+- 图片评分：`productenrich.llm_scorer.image_scoring`
+
+对应 metadata 挂在 [model.go](/D:/code/task-processor/internal/productenrich/model.go) 的 `ValidationResult` 上：
+
+- `TextScorePrompt`
+- `ImageScorePrompt`
+
+每路 metadata 包含：
+
+- `prompt_ref`
+- `prompt_key`
+- `prompt_source`
+- `prompt_version`
+
+`prompt_source` 当前只使用两种值：
+
+- `registry`
+- `fallback`
+
+判定规则：
+
+- registry key 存在且模板渲染成功，记为 `registry`
+- registry 未初始化、key 缺失、模板渲染失败、或渲染结果为空白，记为 `fallback`
+
+缓存命中不会伪造 provenance：
+
+- 当前 `llm_score_cache` 只缓存数值分数
+- 如果评分结果来自缓存而缓存里没有 lineage，`TextScorePrompt` / `ImageScorePrompt` 会保持空
+
+验证方式：
+
+- 不需要看日志
+- 直接检查 `QualityScorer.CalculateScore(...)` 返回后 `ValidationResult` 上的 `TextScorePrompt` / `ImageScorePrompt`
+- integration 测试见 [integration_llm_test.go](/D:/code/task-processor/internal/productenrich/integration_llm_test.go)
+
 ## 适用场景
 
 - 从 1688 商品页提取商品基础信息
