@@ -259,6 +259,26 @@ func knownEnvBindings() map[string]envBinding {
 			Primary:    "TASK_PROCESSOR_OPENAI_BASE_URL",
 			Deprecated: []string{"OPENAI_BASE_URL"},
 		},
+		"openai.clients.image.apiKey": {
+			Primary:    "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY",
+			Deprecated: []string{"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_APIKEY"},
+		},
+		"openai.clients.image.baseURL": {
+			Primary:    "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL",
+			Deprecated: []string{"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASEURL"},
+		},
+		"openai.clients.image.apiStyle": {
+			Primary:    "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE",
+			Deprecated: []string{"TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_APISTYLE"},
+		},
+		"openai.clients.image.model": {
+			Primary:    "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL",
+			Deprecated: nil,
+		},
+		"openai.clients.image.timeout": {
+			Primary:    "TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_TIMEOUT",
+			Deprecated: nil,
+		},
 		"amazon.spapi.clientID": {
 			Primary:    "TASK_PROCESSOR_AMAZON_SPAPI_CLIENT_ID",
 			Deprecated: []string{"AMAZON_SPAPI_CLIENT_ID"},

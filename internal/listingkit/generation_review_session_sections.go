@@ -56,6 +56,7 @@ func buildGenerationReviewSession(result *ListingKitResult, queue *GenerationWor
 		DefaultTarget:          defaultTarget,
 		FocusedTarget:          focusedTarget,
 		FocusedRenderPreview:   focusedRenderPreview,
+		FocusedScenePreset:     buildGenerationScenePresetSummary(sessionResult.AssetBundle, focusedPreviewAssetID(focusedRenderPreview)),
 		FocusedToolbar:         focusedToolbar,
 		Queue:                  reviewQueue,
 		Overview:               buildAssetGenerationOverview(reviewQueue),
@@ -65,6 +66,13 @@ func buildGenerationReviewSession(result *ListingKitResult, queue *GenerationWor
 		SlotNavigation:         slotNavigation,
 		Sections:               sections,
 	}
+}
+
+func focusedPreviewAssetID(preview *AssetRenderPreviewSlot) string {
+	if preview == nil {
+		return ""
+	}
+	return preview.AssetID
 }
 
 func detectReviewSessionPlatform(queue *GenerationWorkQueue, previews []PlatformAssetRenderPreviews) string {

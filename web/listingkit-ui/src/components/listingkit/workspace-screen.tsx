@@ -9,9 +9,11 @@ import { PreviewCanvas } from "@/components/listingkit/preview-canvas";
 import { RecoveryActionList } from "@/components/listingkit/recovery-action-list";
 import { ReviewSectionTabs } from "@/components/listingkit/review-section-tabs";
 import { ReviewToolbar } from "@/components/listingkit/review-toolbar";
+import { ScenePresetPanel } from "@/components/listingkit/scene-preset-panel";
 import { SlotNavigationList } from "@/components/listingkit/slot-navigation-list";
 import { TaskStatusPanel } from "@/components/listingkit/task-status-panel";
 import { TaskProgressNotice } from "@/components/listingkit/task-progress-notice";
+import { resolveWorkspaceScenePreset } from "@/components/listingkit/workspace-scene-preset";
 import {
   deriveTaskPreviewEmptyState,
   shouldSuppressResolvedActionSummary,
@@ -73,6 +75,13 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     sessionData?.platform_cards ?? preview.data?.overview?.platform_cards ?? [];
   const focusedPreview =
     reviewPreview.data?.preview ?? sessionData?.focused_render_preview;
+  const focusedScenePreset = resolveWorkspaceScenePreset({
+    reviewPreviewPreset: reviewPreview.data?.scene_preset,
+    focusedScenePreset: sessionData?.focused_scene_preset,
+    queueItems: sessionData?.queue?.items,
+    selectedSlot: sessionData?.selected_slot,
+    focusedAssetId: focusedPreview?.asset_id,
+  });
   const suppressResolvedActionSummary = shouldSuppressResolvedActionSummary(
     taskResult.data,
     {
@@ -240,6 +249,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             toolbar={reviewPreview.data?.toolbar ?? sessionData.focused_toolbar}
             onAction={handleToolbarAction}
           />
+          <ScenePresetPanel summary={focusedScenePreset} />
           <RecoveryActionList
             descriptors={
               session.data?.recovery_summary?.recommended_descriptors ??

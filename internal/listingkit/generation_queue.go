@@ -20,8 +20,9 @@ func buildGenerationWorkQueue(result *ListingKitResult) *GenerationWorkQueue {
 	items := make([]GenerationWorkQueueItem, 0, 16)
 	index := make(map[generationQueueKey]int)
 	renderPreviewIndex := indexAssetRenderPreviews(result)
+	scenePresetIndex := indexGenerationScenePresets(result)
 	for _, platformBundle := range generationQueueBundles(result) {
-		appendBundleQueueItems(&items, index, renderPreviewIndex, platformBundle.platform, platformBundle.bundle)
+		appendBundleQueueItems(&items, index, renderPreviewIndex, scenePresetIndex, platformBundle.platform, platformBundle.bundle)
 	}
 	for _, task := range mergedGenerationQueueTasks(result) {
 		mergeGenerationTaskIntoQueue(&items, index, task)
@@ -220,25 +221,25 @@ func generationQueueBundles(result *ListingKitResult) []struct {
 	return out
 }
 
-func appendBundleQueueItems(items *[]GenerationWorkQueueItem, index map[generationQueueKey]int, renderPreviewIndex map[string]AssetRenderPreview, platform string, bundle *common.PublishImageBundle) {
+func appendBundleQueueItems(items *[]GenerationWorkQueueItem, index map[generationQueueKey]int, renderPreviewIndex map[string]AssetRenderPreview, scenePresetIndex map[string]*GenerationScenePresetSummary, platform string, bundle *common.PublishImageBundle) {
 	if bundle == nil {
 		return
 	}
 	if bundle.Main != nil {
-		appendBundleSlotQueueItem(items, index, renderPreviewIndex, platform, *bundle.Main)
+		appendBundleSlotQueueItem(items, index, renderPreviewIndex, scenePresetIndex, platform, *bundle.Main)
 	}
 	for _, slot := range bundle.Gallery {
-		appendBundleSlotQueueItem(items, index, renderPreviewIndex, platform, slot)
+		appendBundleSlotQueueItem(items, index, renderPreviewIndex, scenePresetIndex, platform, slot)
 	}
 	for _, slot := range bundle.Auxiliary {
-		appendBundleSlotQueueItem(items, index, renderPreviewIndex, platform, slot)
+		appendBundleSlotQueueItem(items, index, renderPreviewIndex, scenePresetIndex, platform, slot)
 	}
 	for _, slot := range bundle.MissingSlots {
 		appendMissingSlotQueueItem(items, index, platform, slot)
 	}
 }
 
-func appendBundleSlotQueueItem(items *[]GenerationWorkQueueItem, index map[generationQueueKey]int, renderPreviewIndex map[string]AssetRenderPreview, platform string, slot common.BundleSlot) {
+func appendBundleSlotQueueItem(items *[]GenerationWorkQueueItem, index map[generationQueueKey]int, renderPreviewIndex map[string]AssetRenderPreview, scenePresetIndex map[string]*GenerationScenePresetSummary, platform string, slot common.BundleSlot) {
 	renderPreview := renderPreviewIndex[strings.TrimSpace(slot.AssetID)]
 	item := GenerationWorkQueueItem{
 		Platform:                 strings.TrimSpace(platform),
@@ -268,6 +269,7 @@ func appendBundleSlotQueueItem(items *[]GenerationWorkQueueItem, index map[gener
 		RenderPreviewLayerTypes:  append([]string(nil), renderPreview.LayerTypes...),
 		RenderPreviewRegions:     append([]string(nil), renderPreview.Regions...),
 		RenderPreviewStyleTokens: append([]string(nil), renderPreview.StyleTokens...),
+		ScenePreset:              cloneGenerationScenePresetSummary(scenePresetIndex[strings.TrimSpace(slot.AssetID)]),
 	}
 	item.PreviewCapabilities = buildRenderPreviewCapabilities(item)
 	key := generationQueueItemKey(item.Platform, item.RecipeID, item.Slot)
@@ -288,6 +290,25 @@ func indexAssetRenderPreviews(result *ListingKitResult) map[string]AssetRenderPr
 		if assetID := strings.TrimSpace(preview.AssetID); assetID != "" {
 			out[assetID] = preview
 		}
+	}
+	return out
+}
+
+func indexGenerationScenePresets(result *ListingKitResult) map[string]*GenerationScenePresetSummary {
+	out := make(map[string]*GenerationScenePresetSummary)
+	if result == nil || result.AssetBundle == nil {
+		return out
+	}
+	for _, item := range result.AssetBundle.Assets {
+		assetID := strings.TrimSpace(item.ID)
+		if assetID == "" {
+			continue
+		}
+		summary := buildGenerationScenePresetSummaryFromMetadata(item.Metadata)
+		if summary == nil {
+			continue
+		}
+		out[assetID] = summary
 	}
 	return out
 }

@@ -228,6 +228,7 @@ export type QueueItem = {
   review_status?: string;
   review_blocked?: boolean;
   selected_asset_id?: string;
+  scene_preset?: ScenePresetSummary;
   resource_descriptors?: RecoveryDescriptor[];
 };
 
@@ -292,6 +293,18 @@ export type ReviewToolbar = {
   focus_style_tokens?: string[];
   section_actions?: ToolbarAction[];
   preview_actions?: ToolbarAction[];
+};
+
+export type ScenePresetSummary = {
+  prompt_key?: string;
+  defaults_source?: string;
+  scene_category?: string;
+  scene_style?: string;
+  background_tone?: string;
+  composition?: string;
+  props_level?: string;
+  audience_hint?: string;
+  custom_scene_hint?: string;
 };
 
 export type ReviewSlot = {
@@ -364,6 +377,7 @@ export type ReviewSession = {
   default_target?: ReviewTarget;
   focused_target?: ReviewTarget;
   focused_render_preview?: PreviewSlot;
+  focused_scene_preset?: ScenePresetSummary;
   focused_toolbar?: ReviewToolbar;
   review_summary?: ReviewSummary;
   queue?: {
@@ -411,6 +425,7 @@ export type ReviewPreviewResponse = {
   recovery_summary?: RecoverySummary;
   resolved_action_summary?: ResolvedActionSummary;
   preview?: PreviewSlot;
+  scene_preset?: ScenePresetSummary;
   review_target?: ReviewTarget;
   toolbar?: ReviewToolbar;
   revision_status?: string;

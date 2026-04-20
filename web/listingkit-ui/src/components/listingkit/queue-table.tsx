@@ -18,6 +18,28 @@ import {
 } from "@/components/listingkit/status-presentation";
 import type { QueueItem } from "@/lib/types/listingkit";
 
+function presentQueueScenePreset(item: QueueItem): {
+  title: string;
+  detail?: string;
+} | null {
+  const summary = item.scene_preset;
+  if (!summary) {
+    return null;
+  }
+  const title =
+    summary.scene_category ??
+    summary.scene_style ??
+    summary.prompt_key ??
+    "";
+  if (!title) {
+    return null;
+  }
+  const detail = [summary.defaults_source, summary.scene_style]
+    .filter((value) => value && value !== title)
+    .join(" · ");
+  return { title, detail: detail || undefined };
+}
+
 export function QueueTable({
   items,
   onAction,
@@ -36,6 +58,7 @@ export function QueueTable({
             <th className="px-4 py-3">Quality</th>
             <th className="px-4 py-3">Preview</th>
             <th className="px-4 py-3">Review</th>
+            <th className="px-4 py-3">Scene</th>
             <th className="px-4 py-3">Retry Hint</th>
             <th className="px-4 py-3">Recovery</th>
             <th className="px-4 py-3">Action</th>
@@ -51,6 +74,7 @@ export function QueueTable({
             const reviewStatus = presentQueueReviewStatus(item);
             const retryHint = presentRetryHint(item.retry_hint);
             const recovery = presentRecoveryDescriptor(primaryRecovery);
+            const scenePreset = presentQueueScenePreset(item);
 
             return (
               <tr key={`${item.platform}-${item.slot}-${item.generation_task}`}>
@@ -75,6 +99,18 @@ export function QueueTable({
                 </td>
                 <td className="px-4 py-3 text-sm text-zinc-700">
                   <Badge tone={reviewStatus.tone}>{reviewStatus.label}</Badge>
+                </td>
+                <td className="px-4 py-3 text-sm text-zinc-700">
+                  {scenePreset ? (
+                    <div className="space-y-1">
+                      <div className="font-medium text-zinc-900">{scenePreset.title}</div>
+                      <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
+                        {scenePreset.detail ?? "scene preset"}
+                      </div>
+                    </div>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-3 text-sm text-zinc-700">
                   <div className="space-y-1">

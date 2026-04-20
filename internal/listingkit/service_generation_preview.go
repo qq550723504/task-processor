@@ -30,6 +30,7 @@ func (s *service) GetTaskGenerationReviewPreview(ctx context.Context, taskID str
 		DeltaToken:             deltaToken,
 		Viewer:                 viewer,
 		Preview:                preview,
+		ScenePreset:            buildGenerationScenePresetSummary(result.AssetBundle, focusedPreviewAssetID(preview)),
 		ReviewTarget:           target,
 		Toolbar:                toolbar,
 		RevisionStatus:         revisionStatus,

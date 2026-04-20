@@ -238,6 +238,7 @@ type GenerationWorkQueueItem struct {
 	ReviewStatus             string     `json:"review_status,omitempty"`
 	ReviewBlocked            bool       `json:"review_blocked,omitempty"`
 	ReviewedAt               *time.Time `json:"reviewed_at,omitempty"`
+	ScenePreset              *GenerationScenePresetSummary `json:"scene_preset,omitempty"`
 }
 
 type GenerationWorkQueue struct {
@@ -299,6 +300,7 @@ type GenerationReviewSession struct {
 	DefaultTarget          *GenerationReviewTarget         `json:"default_target,omitempty"`
 	FocusedTarget          *GenerationReviewTarget         `json:"focused_target,omitempty"`
 	FocusedRenderPreview   *AssetRenderPreviewSlot         `json:"focused_render_preview,omitempty"`
+	FocusedScenePreset     *GenerationScenePresetSummary   `json:"focused_scene_preset,omitempty"`
 	FocusedToolbar         *GenerationReviewToolbarInput   `json:"focused_toolbar,omitempty"`
 	LastWorkflowResult     *GenerationReviewWorkflowResult `json:"last_workflow_result,omitempty"`
 	ReviewSummary          *GenerationReviewSummary        `json:"review_summary,omitempty"`
@@ -630,6 +632,7 @@ type GenerationReviewPreviewResponse struct {
 	ResolvedActionSummary  *GenerationResolvedActionSummary    `json:"resolved_action_summary,omitempty"`
 	Viewer                 *GenerationReviewPreviewViewer      `json:"viewer,omitempty"`
 	Preview                *AssetRenderPreviewSlot             `json:"preview,omitempty"`
+	ScenePreset            *GenerationScenePresetSummary       `json:"scene_preset,omitempty"`
 	ReviewTarget           *GenerationReviewTarget             `json:"review_target,omitempty"`
 	Toolbar                *GenerationReviewToolbarInput       `json:"toolbar,omitempty"`
 	RevisionStatus         string                              `json:"revision_status,omitempty"`

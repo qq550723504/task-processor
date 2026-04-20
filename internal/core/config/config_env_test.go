@@ -25,6 +25,11 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED", "true")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_PLATFORM", "shein")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES", "shein-store-a, shein-store-b")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY", "image-key")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL", "https://image.example.test/v1")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE", "nanobanana")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL", "nano-banana-fast")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_TIMEOUT", "300")
 
 	v := newViper()
 
@@ -42,6 +47,11 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, []string{"shein-store-a", "shein-store-b"}, getStringSlice(v, "rabbitmq.autoShard.candidateNodes"))
 	assert.Equal(t, 18081, v.GetInt("rabbitmq.node.healthCheckPort"))
 	assert.Equal(t, 19090, v.GetInt("rabbitmq.node.metricsPort"))
+	assert.Equal(t, "image-key", v.GetString("openai.clients.image.apiKey"))
+	assert.Equal(t, "https://image.example.test/v1", v.GetString("openai.clients.image.baseURL"))
+	assert.Equal(t, "nanobanana", v.GetString("openai.clients.image.apiStyle"))
+	assert.Equal(t, "nano-banana-fast", v.GetString("openai.clients.image.model"))
+	assert.Equal(t, 300, v.GetInt("openai.clients.image.timeout"))
 }
 
 func TestGetStringSlice_SplitsCommaSeparatedSingleEntry(t *testing.T) {
@@ -60,6 +70,9 @@ func TestNewViper_BindsLegacyEnvironmentAliases(t *testing.T) {
 	t.Setenv("AMAZON_SPAPI_MARKETPLACE_ID", "LEGACY-MARKET")
 	t.Setenv("HEALTH_CHECK_PORT", "28081")
 	t.Setenv("METRICS_PORT", "29090")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_APIKEY", "legacy-image-key")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASEURL", "https://legacy-image.example.test/v1")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_APISTYLE", "legacy-style")
 
 	v := newViper()
 
@@ -67,6 +80,9 @@ func TestNewViper_BindsLegacyEnvironmentAliases(t *testing.T) {
 	assert.Equal(t, "LEGACY-MARKET", v.GetString("amazon.spapi.defaultMarketplace"))
 	assert.Equal(t, 28081, v.GetInt("rabbitmq.node.healthCheckPort"))
 	assert.Equal(t, 29090, v.GetInt("rabbitmq.node.metricsPort"))
+	assert.Equal(t, "legacy-image-key", v.GetString("openai.clients.image.apiKey"))
+	assert.Equal(t, "https://legacy-image.example.test/v1", v.GetString("openai.clients.image.baseURL"))
+	assert.Equal(t, "legacy-style", v.GetString("openai.clients.image.apiStyle"))
 }
 
 func TestNewViper_BindsDatabaseEnvironmentVariables(t *testing.T) {
