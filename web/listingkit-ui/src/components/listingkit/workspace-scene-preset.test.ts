@@ -54,6 +54,25 @@ describe("resolveWorkspaceScenePreset", () => {
     expect(result?.prompt_key).toBe("productimage.scene.shoes");
   });
 
+  it("falls back to preview scene presets for selected platform and slot", () => {
+    const result = resolveWorkspaceScenePreset({
+      previewScenePresets: {
+        shein: [
+          {
+            slot: "gallery",
+            asset_id: "gallery-1",
+            scene_preset: { prompt_key: "productimage.scene.jewelry" },
+          },
+        ],
+      },
+      selectedPlatform: "shein",
+      selectedSlot: "gallery",
+      focusedAssetId: "gallery-1",
+    });
+
+    expect(result?.prompt_key).toBe("productimage.scene.jewelry");
+  });
+
   it("prefers focused asset match among queue items", () => {
     const result = resolveWorkspaceScenePreset({
       queueItems: [
@@ -84,4 +103,3 @@ describe("resolveWorkspaceScenePreset", () => {
     expect(result).toBeUndefined();
   });
 });
-

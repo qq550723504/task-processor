@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"task-processor/internal/asset"
+	common "task-processor/internal/publishing/common"
 )
 
 type stubValidateRepo struct {
@@ -38,8 +41,27 @@ func TestValidateTaskRevisionReturnsFieldErrorsAndHints(t *testing.T) {
 		ID: "task-validate-1",
 		Result: &ListingKitResult{
 			TaskID: "task-validate-1",
+			AssetBundle: &asset.Bundle{
+				Assets: []asset.Asset{{
+					ID:   "asset-main",
+					Kind: asset.KindMainImage,
+					URL:  "https://cdn.example.com/main.jpg",
+					Metadata: map[string]string{
+						"prompt_key":            "productimage.scene.bags",
+						"scene_defaults_source": "explicit",
+						"scene_category":        "bags",
+						"scene_style":           "studio",
+					},
+				}},
+			},
 			Shein: &SheinPackage{
 				CategoryID: 123,
+				ImageBundle: &common.PublishImageBundle{
+					Platform: "shein",
+					Main: &common.BundleSlot{
+						AssetID: "asset-main",
+					},
+				},
 				RequestDraft: &SheinRequestDraft{
 					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
 				},
@@ -73,6 +95,12 @@ func TestValidateTaskRevisionReturnsFieldErrorsAndHints(t *testing.T) {
 	}
 	if result.Shein.SuggestedMinimalRevision == nil || result.Shein.SuggestedMinimalRevision.Shein == nil {
 		t.Fatalf("minimal revision = %+v", result.Shein.SuggestedMinimalRevision)
+	}
+	if len(result.ScenePresets) != 1 {
+		t.Fatalf("scene presets = %+v, want 1 summary", result.ScenePresets)
+	}
+	if result.ScenePresets[0].ScenePreset == nil || result.ScenePresets[0].ScenePreset.PromptKey != "productimage.scene.bags" {
+		t.Fatalf("scene presets = %+v, want bag scene prompt", result.ScenePresets)
 	}
 	if result.Shein.RevisionDiffPreview == nil {
 		t.Fatalf("revision diff preview = %+v", result.Shein.RevisionDiffPreview)

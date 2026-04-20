@@ -34,7 +34,17 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 			},
 			AssetBundle: &asset.Bundle{
 				Assets: []asset.Asset{
-					{ID: "asset-main", Kind: asset.KindMainImage, URL: "https://cdn.example.com/main.jpg"},
+					{
+						ID:   "asset-main",
+						Kind: asset.KindMainImage,
+						URL:  "https://cdn.example.com/main.jpg",
+						Metadata: map[string]string{
+							"prompt_key":            "productimage.scene.jewelry",
+							"scene_defaults_source": "platform_category",
+							"scene_category":        "jewelry",
+							"scene_style":           "studio",
+						},
+					},
 				},
 			},
 			AssetInventorySummary: &asset.InventorySummary{
@@ -236,6 +246,15 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 	}
 	if preview.Shein.RenderPreviews.Summary == nil || preview.Shein.RenderPreviews.Summary.TotalPreviews != 1 {
 		t.Fatalf("shein render previews summary = %+v", preview.Shein.RenderPreviews.Summary)
+	}
+	if len(preview.Shein.ScenePresets) != 1 {
+		t.Fatalf("shein scene presets = %+v, want 1 summary", preview.Shein.ScenePresets)
+	}
+	if preview.Shein.ScenePresets[0].Slot != "main" || preview.Shein.ScenePresets[0].AssetID != "asset-main" {
+		t.Fatalf("shein scene preset summary = %+v, want main asset summary", preview.Shein.ScenePresets[0])
+	}
+	if preview.Shein.ScenePresets[0].ScenePreset == nil || preview.Shein.ScenePresets[0].ScenePreset.PromptKey != "productimage.scene.jewelry" {
+		t.Fatalf("shein scene preset summary = %+v, want jewelry scene prompt", preview.Shein.ScenePresets[0])
 	}
 	if preview.Amazon != nil || preview.Temu != nil || preview.Walmart != nil {
 		t.Fatal("expected only selected platform payload")

@@ -7,6 +7,7 @@ type RevisionValidationResult struct {
 	Platform    string                          `json:"platform,omitempty"`
 	Valid       bool                            `json:"valid"`
 	FieldErrors []RevisionFieldError            `json:"field_errors,omitempty"`
+	ScenePresets []PlatformScenePresetSummary   `json:"scene_presets,omitempty"`
 	Shein       *SheinRevisionValidationPayload `json:"shein,omitempty"`
 }
 
@@ -22,6 +23,7 @@ func buildRevisionValidationResult(taskID, platform string, result *ListingKitRe
 		output.FieldErrors = append([]RevisionFieldError(nil), validationErr.Fields...)
 	}
 	if result != nil && platform == "shein" && result.Shein != nil {
+		output.ScenePresets = buildPlatformScenePresetSummaries(result.Shein.ImageBundle, result.AssetBundle)
 		output.Shein = sheinworkspace.BuildValidationPayload(result.Shein, restorePreview)
 	}
 	return output

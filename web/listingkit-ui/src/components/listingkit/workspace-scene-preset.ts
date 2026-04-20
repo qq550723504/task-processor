@@ -1,4 +1,8 @@
-import type { QueueItem, ScenePresetSummary } from "@/lib/types/listingkit";
+import type {
+  PlatformScenePresetSummary,
+  QueueItem,
+  ScenePresetSummary,
+} from "@/lib/types/listingkit";
 
 function hasScenePreset(summary?: ScenePresetSummary | null): summary is ScenePresetSummary {
   if (!summary) {
@@ -21,7 +25,11 @@ function hasScenePreset(summary?: ScenePresetSummary | null): summary is ScenePr
 export function resolveWorkspaceScenePreset(params: {
   reviewPreviewPreset?: ScenePresetSummary | null;
   focusedScenePreset?: ScenePresetSummary | null;
+  previewScenePresets?: Partial<
+    Record<string, PlatformScenePresetSummary[] | null | undefined>
+  > | null;
   queueItems?: QueueItem[] | null;
+  selectedPlatform?: string | null;
   selectedSlot?: string | null;
   focusedAssetId?: string | null;
 }): ScenePresetSummary | undefined {
@@ -34,8 +42,38 @@ export function resolveWorkspaceScenePreset(params: {
   }
 
   const queueItems = params.queueItems ?? [];
+  const previewScenePresets = params.previewScenePresets ?? {};
+  const selectedPlatform = params.selectedPlatform?.trim();
   const selectedSlot = params.selectedSlot?.trim();
   const focusedAssetId = params.focusedAssetId?.trim();
+
+  const previewCandidates =
+    (selectedPlatform ? previewScenePresets[selectedPlatform] : undefined) ?? [];
+
+  const matchingPreviewCandidates = previewCandidates.filter((item) => {
+    if (!hasScenePreset(item.scene_preset)) {
+      return false;
+    }
+    if (!selectedSlot) {
+      return true;
+    }
+    return item.slot === selectedSlot;
+  });
+
+  if (matchingPreviewCandidates.length > 0) {
+    if (focusedAssetId) {
+      const focusedPreviewMatch = matchingPreviewCandidates.find(
+        (item) => item.asset_id?.trim() === focusedAssetId,
+      );
+      if (focusedPreviewMatch?.scene_preset) {
+        return focusedPreviewMatch.scene_preset;
+      }
+    }
+
+    if (matchingPreviewCandidates[0]?.scene_preset) {
+      return matchingPreviewCandidates[0].scene_preset;
+    }
+  }
 
   const candidates = queueItems.filter((item) => {
     if (!hasScenePreset(item.scene_preset)) {
@@ -62,4 +100,3 @@ export function resolveWorkspaceScenePreset(params: {
 
   return candidates[0]?.scene_preset;
 }
-

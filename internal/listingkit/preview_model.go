@@ -111,6 +111,7 @@ type AmazonPreviewPayload struct {
 	ProductType    string                            `json:"product_type,omitempty"`
 	ImageBundle    *common.PublishImageBundle        `json:"image_bundle,omitempty"`
 	RenderPreviews *PlatformAssetRenderPreviews      `json:"render_previews,omitempty"`
+	ScenePresets   []PlatformScenePresetSummary      `json:"scene_presets,omitempty"`
 	Draft          *amazonlisting.AmazonListingDraft `json:"draft,omitempty"`
 }
 
@@ -131,6 +132,7 @@ type SheinPreviewPayload struct {
 	EditorContext     *SheinEditorContext               `json:"editor_context,omitempty"`
 	ImageBundle       *common.PublishImageBundle        `json:"image_bundle,omitempty"`
 	RenderPreviews    *PlatformAssetRenderPreviews      `json:"render_previews,omitempty"`
+	ScenePresets      []PlatformScenePresetSummary      `json:"scene_presets,omitempty"`
 	RequestDraft      *sheinpub.RequestDraft            `json:"request_draft,omitempty"`
 	PreviewProduct    *sheinproduct.Product             `json:"preview_product,omitempty"`
 	InspectionData    *sheinpub.Inspection              `json:"inspection_data,omitempty"`
@@ -142,6 +144,7 @@ type TemuPreviewPayload struct {
 	ReviewNotes    []string                     `json:"review_notes,omitempty"`
 	ImageBundle    *common.PublishImageBundle   `json:"image_bundle,omitempty"`
 	RenderPreviews *PlatformAssetRenderPreviews `json:"render_previews,omitempty"`
+	ScenePresets   []PlatformScenePresetSummary `json:"scene_presets,omitempty"`
 	Package        *TemuPackage                 `json:"package,omitempty"`
 }
 
@@ -151,5 +154,6 @@ type WalmartPreviewPayload struct {
 	ReviewNotes    []string                     `json:"review_notes,omitempty"`
 	ImageBundle    *common.PublishImageBundle   `json:"image_bundle,omitempty"`
 	RenderPreviews *PlatformAssetRenderPreviews `json:"render_previews,omitempty"`
+	ScenePresets   []PlatformScenePresetSummary `json:"scene_presets,omitempty"`
 	Package        *WalmartPackage              `json:"package,omitempty"`
 }

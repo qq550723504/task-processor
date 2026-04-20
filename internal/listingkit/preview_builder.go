@@ -3,6 +3,7 @@ package listingkit
 import (
 	"strings"
 
+	"task-processor/internal/asset"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
@@ -57,7 +58,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 
 	if selectedPlatform == "" || selectedPlatform == "amazon" {
 		if task.Result.Amazon != nil {
-			preview.Amazon = buildAmazonPreviewPayload(task.Result.Amazon, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "amazon"))
+			preview.Amazon = buildAmazonPreviewPayload(task.Result.Amazon, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "amazon"))
 		} else if selectedPlatform == "amazon" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
@@ -65,7 +66,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 
 	if selectedPlatform == "" || selectedPlatform == "shein" {
 		if task.Result.Shein != nil {
-			preview.Shein = buildSheinPreviewPayload(task.Result.Shein, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "shein"))
+			preview.Shein = buildSheinPreviewPayload(task.Result.Shein, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "shein"))
 			preview.NeedsReview = preview.NeedsReview || preview.Shein.NeedsReview
 		} else if selectedPlatform == "shein" {
 			return nil, ErrPreviewPlatformUnavailable
@@ -74,7 +75,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 
 	if selectedPlatform == "" || selectedPlatform == "temu" {
 		if task.Result.Temu != nil {
-			preview.Temu = buildTemuPreviewPayload(task.Result.Temu, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "temu"))
+			preview.Temu = buildTemuPreviewPayload(task.Result.Temu, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "temu"))
 			preview.NeedsReview = preview.NeedsReview || preview.Temu.NeedsReview
 		} else if selectedPlatform == "temu" {
 			return nil, ErrPreviewPlatformUnavailable
@@ -83,7 +84,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 
 	if selectedPlatform == "" || selectedPlatform == "walmart" {
 		if task.Result.Walmart != nil {
-			preview.Walmart = buildWalmartPreviewPayload(task.Result.Walmart, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "walmart"))
+			preview.Walmart = buildWalmartPreviewPayload(task.Result.Walmart, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "walmart"))
 			preview.NeedsReview = preview.NeedsReview || preview.Walmart.NeedsReview
 		} else if selectedPlatform == "walmart" {
 			return nil, ErrPreviewPlatformUnavailable
@@ -138,7 +139,7 @@ func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *List
 	return header
 }
 
-func buildAmazonPreviewPayload(pkg *AmazonPackage, renderPreviews *PlatformAssetRenderPreviews) *AmazonPreviewPayload {
+func buildAmazonPreviewPayload(pkg *AmazonPackage, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *AmazonPreviewPayload {
 	if pkg == nil || pkg.Draft == nil {
 		return nil
 	}
@@ -148,11 +149,12 @@ func buildAmazonPreviewPayload(pkg *AmazonPackage, renderPreviews *PlatformAsset
 		ProductType:    pkg.Draft.ProductType,
 		ImageBundle:    pkg.ImageBundle,
 		RenderPreviews: renderPreviews,
+		ScenePresets:   buildPlatformScenePresetSummaries(pkg.ImageBundle, assetBundle),
 		Draft:          pkg.Draft,
 	}
 }
 
-func buildSheinPreviewPayload(pkg *sheinpub.Package, renderPreviews *PlatformAssetRenderPreviews) *SheinPreviewPayload {
+func buildSheinPreviewPayload(pkg *sheinpub.Package, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *SheinPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
@@ -183,6 +185,7 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, renderPreviews *PlatformAss
 		EditorContext:     buildSheinEditorContext(pkg),
 		ImageBundle:       pkg.ImageBundle,
 		RenderPreviews:    renderPreviews,
+		ScenePresets:      buildPlatformScenePresetSummaries(pkg.ImageBundle, assetBundle),
 		RequestDraft:      pkg.RequestDraft,
 		PreviewProduct:    pkg.PreviewProduct,
 		InspectionData:    pkg.Inspection,
@@ -252,7 +255,7 @@ func toSheinWorkspaceRepairState(center *SheinRepairCenter) *sheinworkspace.Repa
 	return out
 }
 
-func buildTemuPreviewPayload(pkg *TemuPackage, renderPreviews *PlatformAssetRenderPreviews) *TemuPreviewPayload {
+func buildTemuPreviewPayload(pkg *TemuPackage, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *TemuPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
@@ -262,11 +265,12 @@ func buildTemuPreviewPayload(pkg *TemuPackage, renderPreviews *PlatformAssetRend
 		ReviewNotes:    append([]string(nil), pkg.ReviewNotes...),
 		ImageBundle:    pkg.ImageBundle,
 		RenderPreviews: renderPreviews,
+		ScenePresets:   buildPlatformScenePresetSummaries(pkg.ImageBundle, assetBundle),
 		Package:        pkg,
 	}
 }
 
-func buildWalmartPreviewPayload(pkg *WalmartPackage, renderPreviews *PlatformAssetRenderPreviews) *WalmartPreviewPayload {
+func buildWalmartPreviewPayload(pkg *WalmartPackage, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *WalmartPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
@@ -276,6 +280,7 @@ func buildWalmartPreviewPayload(pkg *WalmartPackage, renderPreviews *PlatformAss
 		ReviewNotes:    append([]string(nil), pkg.ReviewNotes...),
 		ImageBundle:    pkg.ImageBundle,
 		RenderPreviews: renderPreviews,
+		ScenePresets:   buildPlatformScenePresetSummaries(pkg.ImageBundle, assetBundle),
 		Package:        pkg,
 	}
 }

@@ -78,7 +78,14 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const focusedScenePreset = resolveWorkspaceScenePreset({
     reviewPreviewPreset: reviewPreview.data?.scene_preset,
     focusedScenePreset: sessionData?.focused_scene_preset,
+    previewScenePresets: {
+      amazon: preview.data?.amazon?.scene_presets,
+      shein: preview.data?.shein?.scene_presets,
+      temu: preview.data?.temu?.scene_presets,
+      walmart: preview.data?.walmart?.scene_presets,
+    },
     queueItems: sessionData?.queue?.items,
+    selectedPlatform: sessionData?.selected_platform,
     selectedSlot: sessionData?.selected_slot,
     focusedAssetId: focusedPreview?.asset_id,
   });

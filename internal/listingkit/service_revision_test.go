@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"task-processor/internal/asset"
+	common "task-processor/internal/publishing/common"
 )
 
 type stubApplyRevisionRepo struct {
@@ -42,6 +45,19 @@ func TestApplyTaskRevisionReturnsAppliedChanges(t *testing.T) {
 		Status: TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-1",
+			AssetBundle: &asset.Bundle{
+				Assets: []asset.Asset{{
+					ID:   "asset-main",
+					Kind: asset.KindMainImage,
+					URL:  "https://cdn.example.com/old.jpg",
+					Metadata: map[string]string{
+						"prompt_key":            "productimage.scene.bags",
+						"scene_defaults_source": "explicit",
+						"scene_category":        "bags",
+						"scene_style":           "studio",
+					},
+				}},
+			},
 			Shein: &SheinPackage{
 				SpuName:       "Old Bottle",
 				ProductNameEn: "Old Bottle",
@@ -52,6 +68,12 @@ func TestApplyTaskRevisionReturnsAppliedChanges(t *testing.T) {
 				},
 				RequestDraft: &SheinRequestDraft{
 					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+				ImageBundle: &common.PublishImageBundle{
+					Platform: "shein",
+					Main: &common.BundleSlot{
+						AssetID: "asset-main",
+					},
 				},
 			},
 		},
@@ -77,6 +99,12 @@ func TestApplyTaskRevisionReturnsAppliedChanges(t *testing.T) {
 	}
 	if preview.ApplyResult == nil || preview.ApplyResult.SuccessPayload == nil || preview.ApplyResult.SuccessPayload.Presentation == nil || preview.ApplyResult.SuccessPayload.Presentation.Scene != revisionPresentationSceneApplySuccess || preview.ApplyResult.SuccessPayload.Presentation.SummaryCard == nil || preview.ApplyResult.SuccessPayload.Presentation.SummaryCard.Title == "" {
 		t.Fatalf("apply result = %+v", preview.ApplyResult)
+	}
+	if preview.Shein == nil || len(preview.Shein.ScenePresets) != 1 {
+		t.Fatalf("shein scene presets = %+v", preview.Shein)
+	}
+	if preview.Shein.ScenePresets[0].ScenePreset == nil || preview.Shein.ScenePresets[0].ScenePreset.PromptKey != "productimage.scene.bags" {
+		t.Fatalf("shein scene presets = %+v", preview.Shein.ScenePresets)
 	}
 	if len(preview.ApplyResult.SuccessPayload.Presentation.NextActions) == 0 {
 		t.Fatalf("apply result = %+v", preview.ApplyResult)
@@ -194,11 +222,30 @@ func TestApplyTaskRevisionSupportsRestoreFromRevisionID(t *testing.T) {
 		Status: TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-restore",
+			AssetBundle: &asset.Bundle{
+				Assets: []asset.Asset{{
+					ID:   "asset-main",
+					Kind: asset.KindMainImage,
+					URL:  "https://cdn.example.com/current.jpg",
+					Metadata: map[string]string{
+						"prompt_key":            "productimage.scene.shoes",
+						"scene_defaults_source": "platform_category",
+						"scene_category":        "shoes",
+						"scene_style":           "lifestyle",
+					},
+				}},
+			},
 			Shein: &SheinPackage{
 				SpuName:       "Current Bottle",
 				ProductNameEn: "Current Bottle",
 				RequestDraft: &SheinRequestDraft{
 					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+				ImageBundle: &common.PublishImageBundle{
+					Platform: "shein",
+					Main: &common.BundleSlot{
+						AssetID: "asset-main",
+					},
 				},
 			},
 			RevisionHistory: []ListingKitRevisionRecord{{
@@ -233,6 +280,9 @@ func TestApplyTaskRevisionSupportsRestoreFromRevisionID(t *testing.T) {
 	}
 	if preview.Shein == nil || preview.Shein.Headline != restoreName {
 		t.Fatalf("preview shein = %+v", preview.Shein)
+	}
+	if len(preview.Shein.ScenePresets) != 1 || preview.Shein.ScenePresets[0].ScenePreset == nil || preview.Shein.ScenePresets[0].ScenePreset.PromptKey != "productimage.scene.shoes" {
+		t.Fatalf("shein scene presets = %+v", preview.Shein.ScenePresets)
 	}
 	if repo.task.Result.Shein == nil || repo.task.Result.Shein.SpuName != restoreName {
 		t.Fatalf("result shein = %+v", repo.task.Result.Shein)

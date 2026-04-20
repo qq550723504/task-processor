@@ -307,6 +307,18 @@ export type ScenePresetSummary = {
   custom_scene_hint?: string;
 };
 
+export type PlatformScenePresetSummary = {
+  slot?: string;
+  purpose?: string;
+  asset_id?: string;
+  scene_preset?: ScenePresetSummary;
+};
+
+export type PlatformPreviewPayload = {
+  render_previews?: unknown;
+  scene_presets?: PlatformScenePresetSummary[];
+};
+
 export type ReviewSlot = {
   platform?: string;
   slot?: string;
@@ -515,10 +527,10 @@ export type ListingKitPreview = {
   asset_generation_tasks?: unknown[];
   asset_render_previews?: PreviewSlot[];
   platform_asset_render_previews?: unknown[];
-  amazon?: { render_previews?: unknown };
-  shein?: { render_previews?: unknown };
-  temu?: { render_previews?: unknown };
-  walmart?: { render_previews?: unknown };
+  amazon?: PlatformPreviewPayload;
+  shein?: PlatformPreviewPayload;
+  temu?: PlatformPreviewPayload;
+  walmart?: PlatformPreviewPayload;
 };
 
 export type ListingKitChildTask = {
