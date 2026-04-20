@@ -34,10 +34,17 @@ type FaithfulEditResult struct {
 }
 
 type SceneGenerationRequest struct {
-	SourceAsset    *ImageAsset
-	ProductContext *ProductContext
-	PromptRef      string
-	SceneIntent    string
+	SourceAsset     *ImageAsset
+	ProductContext  *ProductContext
+	PromptRef       string
+	SceneIntent     string
+	SceneCategory   string
+	SceneStyle      string
+	BackgroundTone  string
+	Composition     string
+	PropsLevel      string
+	AudienceHint    string
+	CustomSceneHint string
 }
 
 type SceneGenerationResult struct {

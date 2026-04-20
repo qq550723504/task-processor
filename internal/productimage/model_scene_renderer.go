@@ -3,8 +3,6 @@ package productimage
 import (
 	"context"
 	"fmt"
-
-	"task-processor/internal/prompt"
 )
 
 type modelSceneRenderer struct {
@@ -20,12 +18,7 @@ func (r *modelSceneRenderer) Render(ctx context.Context, asset *ImageAsset, cont
 		return nil, fmt.Errorf("scene generator is not configured")
 	}
 
-	result, err := r.generator.GenerateScene(ctx, &SceneGenerationRequest{
-		SourceAsset:    asset,
-		ProductContext: context,
-		PromptRef:      prompt.KProductImageSceneDefault,
-		SceneIntent:    "gallery_scene",
-	})
+	result, err := r.generator.GenerateScene(ctx, buildSceneGenerationRequest(asset, context))
 	if err != nil {
 		return nil, err
 	}

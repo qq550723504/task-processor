@@ -50,5 +50,8 @@ const (
 	KProductImageSubjectExtract         = "productimage.subject.extract"
 	KProductImageWhiteBackgroundDefault = "productimage.white_background.default"
 	KProductImageSceneDefault           = "productimage.scene.default"
+	KProductImageSceneShoes             = "productimage.scene.shoes"
+	KProductImageSceneJewelry           = "productimage.scene.jewelry"
+	KProductImageSceneBags              = "productimage.scene.bags"
 	KProductImageReviewDefault          = "productimage.review.default"
 )

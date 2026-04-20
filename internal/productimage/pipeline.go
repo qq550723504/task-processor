@@ -120,14 +120,18 @@ func (s *service) runAnalyzeContextStage(ctx context.Context, state *PipelineSta
 		if err != nil {
 			return err
 		}
-		state.Context = productContext
+		state.Context = applySceneOptionsToProductContext(productContext, state.Task.Request)
 		if state.Source != nil {
-			state.Source.Context = productContext
+			state.Source.Context = state.Context
 		}
 		return nil
 	}
 	if !s.capabilities.AllowMissingContext {
 		return fmt.Errorf("context analyzer is not configured in %s mode", s.capabilities.Mode)
+	}
+	state.Context = applySceneOptionsToProductContext(state.Context, state.Task.Request)
+	if state.Source != nil {
+		state.Source.Context = state.Context
 	}
 	return nil
 }

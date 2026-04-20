@@ -27,12 +27,64 @@ const platformOptions = [
   { value: "walmart", label: "Walmart" },
 ] as const;
 
+const sceneCategoryOptions = [
+  { value: "", label: "Auto" },
+  { value: "shoes", label: "Shoes" },
+  { value: "jewelry", label: "Jewelry" },
+  { value: "bags", label: "Bags" },
+] as const;
+
+const sceneStyleOptions = [
+  { value: "", label: "Auto" },
+  { value: "studio", label: "Studio" },
+  { value: "lifestyle", label: "Lifestyle" },
+  { value: "outdoor", label: "Outdoor" },
+  { value: "minimal", label: "Minimal" },
+] as const;
+
+const backgroundToneOptions = [
+  { value: "", label: "Auto" },
+  { value: "warm", label: "Warm" },
+  { value: "cool", label: "Cool" },
+  { value: "neutral", label: "Neutral" },
+  { value: "bright", label: "Bright" },
+] as const;
+
+const compositionOptions = [
+  { value: "", label: "Auto" },
+  { value: "centered", label: "Centered" },
+  { value: "close_up", label: "Close up" },
+  { value: "multi_angle", label: "Multi-angle" },
+] as const;
+
+const propsLevelOptions = [
+  { value: "", label: "Auto" },
+  { value: "none", label: "None" },
+  { value: "light", label: "Light" },
+  { value: "moderate", label: "Moderate" },
+] as const;
+
+const audienceHintOptions = [
+  { value: "", label: "Auto" },
+  { value: "premium", label: "Premium" },
+  { value: "youthful", label: "Youthful" },
+  { value: "sporty", label: "Sporty" },
+  { value: "homey", label: "Homey" },
+] as const;
+
 const schema = z
   .object({
     text: z.string().trim(),
     imageUrls: z.string().trim(),
     productUrl: z.string().trim(),
     platforms: z.array(z.string()).min(1, "Select at least one platform."),
+    sceneCategory: z.string().trim(),
+    sceneStyle: z.string().trim(),
+    backgroundTone: z.string().trim(),
+    composition: z.string().trim(),
+    propsLevel: z.string().trim(),
+    audienceHint: z.string().trim(),
+    customSceneHint: z.string().trim(),
   });
 
 type FormValues = z.infer<typeof schema>;
@@ -42,6 +94,22 @@ function parseImageUrls(input: string) {
     .split(/\r?\n/)
     .map((value) => value.trim())
     .filter(Boolean);
+}
+
+function buildSceneOptions(values: FormValues) {
+  const scene = {
+    scene_category: values.sceneCategory,
+    scene_style: values.sceneStyle,
+    background_tone: values.backgroundTone,
+    composition: values.composition,
+    props_level: values.propsLevel,
+    audience_hint: values.audienceHint,
+    custom_scene_hint: values.customSceneHint,
+  };
+
+  return Object.values(scene).some((value) => value.trim())
+    ? scene
+    : undefined;
 }
 
 function inferInitialSourceTab({
@@ -99,6 +167,17 @@ export function TaskCreateForm({
   const [activeSourceTab, setActiveSourceTab] = useState<TaskSourceTab>(() =>
     inferInitialSourceTab({ initialValues, initialFocus }),
   );
+  const [showSceneCustomization, setShowSceneCustomization] = useState(() =>
+    Boolean(
+      initialValues?.sceneCategory ||
+        initialValues?.sceneStyle ||
+        initialValues?.backgroundTone ||
+        initialValues?.composition ||
+        initialValues?.propsLevel ||
+        initialValues?.audienceHint ||
+        initialValues?.customSceneHint,
+    ),
+  );
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const {
     register,
@@ -115,6 +194,13 @@ export function TaskCreateForm({
       imageUrls: initialValues?.imageUrls ?? "",
       productUrl: initialValues?.productUrl ?? "",
       platforms: initialValues?.platforms ?? [],
+      sceneCategory: initialValues?.sceneCategory ?? "",
+      sceneStyle: initialValues?.sceneStyle ?? "",
+      backgroundTone: initialValues?.backgroundTone ?? "",
+      composition: initialValues?.composition ?? "",
+      propsLevel: initialValues?.propsLevel ?? "",
+      audienceHint: initialValues?.audienceHint ?? "",
+      customSceneHint: initialValues?.customSceneHint ?? "",
     },
   });
 
@@ -185,12 +271,21 @@ export function TaskCreateForm({
             imageUrls,
             productUrl,
             platforms: values.platforms,
+            sceneCategory: values.sceneCategory,
+            sceneStyle: values.sceneStyle,
+            backgroundTone: values.backgroundTone,
+            composition: values.composition,
+            propsLevel: values.propsLevel,
+            audienceHint: values.audienceHint,
+            customSceneHint: values.customSceneHint,
           } satisfies TaskCreateDraft;
+          const sceneOptions = buildSceneOptions(values);
           const request = {
             text: draft.text,
             image_urls: parsedImageUrls,
             platforms: values.platforms,
             ...(draft.productUrl ? { product_url: draft.productUrl } : {}),
+            ...(sceneOptions ? { options: { scene: sceneOptions } } : {}),
           };
           const task = await createTask.mutateAsync(request);
           saveTaskCreateDraft(task.task_id, draft);
@@ -369,6 +464,147 @@ export function TaskCreateForm({
             <p className="text-sm text-red-600">{errors.platforms.message}</p>
           ) : null}
         </fieldset>
+
+        <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h2 className="text-sm font-medium text-zinc-900">
+                Scene generation
+              </h2>
+              <p className="text-sm leading-6 text-zinc-500">
+                Optional. Override the default category scene template with
+                structured style controls.
+              </p>
+            </div>
+            <Button
+              onClick={() => {
+                setShowSceneCustomization((current) => !current);
+              }}
+              tone="secondary"
+              type="button"
+            >
+              Customize scene generation
+            </Button>
+          </div>
+
+          {showSceneCustomization ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-zinc-700">
+                  Scene category
+                </span>
+                <select
+                  aria-label="Scene category"
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                  {...register("sceneCategory")}
+                >
+                  {sceneCategoryOptions.map((option) => (
+                    <option key={option.value || "auto"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-zinc-700">
+                  Scene style
+                </span>
+                <select
+                  aria-label="Scene style"
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                  {...register("sceneStyle")}
+                >
+                  {sceneStyleOptions.map((option) => (
+                    <option key={option.value || "auto"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-zinc-700">
+                  Background tone
+                </span>
+                <select
+                  aria-label="Background tone"
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                  {...register("backgroundTone")}
+                >
+                  {backgroundToneOptions.map((option) => (
+                    <option key={option.value || "auto"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-zinc-700">
+                  Composition
+                </span>
+                <select
+                  aria-label="Composition"
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                  {...register("composition")}
+                >
+                  {compositionOptions.map((option) => (
+                    <option key={option.value || "auto"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-zinc-700">
+                  Props level
+                </span>
+                <select
+                  aria-label="Props level"
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                  {...register("propsLevel")}
+                >
+                  {propsLevelOptions.map((option) => (
+                    <option key={option.value || "auto"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-zinc-700">
+                  Audience hint
+                </span>
+                <select
+                  aria-label="Audience hint"
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                  {...register("audienceHint")}
+                >
+                  {audienceHintOptions.map((option) => (
+                    <option key={option.value || "auto"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2 md:col-span-2">
+                <span className="text-sm font-medium text-zinc-700">
+                  Custom scene hint
+                </span>
+                <textarea
+                  aria-label="Custom scene hint"
+                  className="min-h-28 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                  placeholder="Add a short scene preference that complements the category template."
+                  {...register("customSceneHint")}
+                />
+              </label>
+            </div>
+          ) : null}
+        </section>
 
         {errors.root?.message ? (
           <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">

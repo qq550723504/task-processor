@@ -18,7 +18,55 @@ scene:
       Scene intent: {{.scene_intent}}.
       Product type: {{.product_type}}.
       Product title: {{.title}}.
+      Scene style: {{.scene_style}}.
+      Background tone: {{.background_tone}}.
+      Composition: {{.composition}}.
+      Props level: {{.props_level}}.
+      Audience hint: {{.audience_hint}}.
+      Custom scene hint: {{.custom_scene_hint}}.
       Produce a premium marketplace-ready gallery image with clean composition and no overlaid text.
+  shoes:
+    description: "Shoes-focused lifestyle scene generation prompt"
+    content: |
+      Create a premium footwear ecommerce scene for this product. Preserve the exact shoe identity, silhouette, materials, tread detail, and color. Do not replace the item.
+      Scene intent: {{.scene_intent}}.
+      Product type: {{.product_type}}.
+      Product title: {{.title}}.
+      Scene style: {{.scene_style}}.
+      Background tone: {{.background_tone}}.
+      Composition: {{.composition}}.
+      Props level: {{.props_level}}.
+      Audience hint: {{.audience_hint}}.
+      Custom scene hint: {{.custom_scene_hint}}.
+      Keep the product dominant in frame and produce a marketplace-ready gallery image with no overlaid text.
+  jewelry:
+    description: "Jewelry-focused scene generation prompt"
+    content: |
+      Create an elevated ecommerce jewelry scene for this product. Preserve the exact shape, scale, finish, gemstone details, and metal tone. Do not replace the item.
+      Scene intent: {{.scene_intent}}.
+      Product type: {{.product_type}}.
+      Product title: {{.title}}.
+      Scene style: {{.scene_style}}.
+      Background tone: {{.background_tone}}.
+      Composition: {{.composition}}.
+      Props level: {{.props_level}}.
+      Audience hint: {{.audience_hint}}.
+      Custom scene hint: {{.custom_scene_hint}}.
+      Keep reflections controlled and produce a premium marketplace-ready gallery image with no overlaid text.
+  bags:
+    description: "Bag-focused lifestyle scene generation prompt"
+    content: |
+      Create a polished ecommerce bag scene for this product. Preserve the exact bag identity, structure, hardware details, materials, and color. Do not replace the item.
+      Scene intent: {{.scene_intent}}.
+      Product type: {{.product_type}}.
+      Product title: {{.title}}.
+      Scene style: {{.scene_style}}.
+      Background tone: {{.background_tone}}.
+      Composition: {{.composition}}.
+      Props level: {{.props_level}}.
+      Audience hint: {{.audience_hint}}.
+      Custom scene hint: {{.custom_scene_hint}}.
+      Keep the product dominant in frame and produce a marketplace-ready gallery image with no overlaid text.
 
 review:
   default:

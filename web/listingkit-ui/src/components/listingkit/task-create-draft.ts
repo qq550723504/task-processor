@@ -3,6 +3,13 @@ export type TaskCreateDraft = {
   imageUrls: string;
   productUrl: string;
   platforms: string[];
+  sceneCategory?: string;
+  sceneStyle?: string;
+  backgroundTone?: string;
+  composition?: string;
+  propsLevel?: string;
+  audienceHint?: string;
+  customSceneHint?: string;
 };
 
 const prefix = "listingkit:create-draft:";
@@ -31,6 +38,13 @@ export function loadTaskCreateDraft(taskId: string) {
       imageUrls: parsed.imageUrls ?? "",
       productUrl: parsed.productUrl ?? "",
       platforms: Array.isArray(parsed.platforms) ? parsed.platforms : [],
+      sceneCategory: parsed.sceneCategory ?? "",
+      sceneStyle: parsed.sceneStyle ?? "",
+      backgroundTone: parsed.backgroundTone ?? "",
+      composition: parsed.composition ?? "",
+      propsLevel: parsed.propsLevel ?? "",
+      audienceHint: parsed.audienceHint ?? "",
+      customSceneHint: parsed.customSceneHint ?? "",
     } satisfies TaskCreateDraft;
   } catch {
     return null;

@@ -31,6 +31,27 @@ func (s *promptRegistryStub) Render(key string, vars map[string]any, fallback st
 		if sceneIntent, ok := vars["scene_intent"].(string); ok && sceneIntent != "" {
 			value = replaceToken(value, "{{.scene_intent}}", sceneIntent)
 		}
+		if sceneCategory, ok := vars["scene_category"].(string); ok && sceneCategory != "" {
+			value = replaceToken(value, "{{.scene_category}}", sceneCategory)
+		}
+		if sceneStyle, ok := vars["scene_style"].(string); ok && sceneStyle != "" {
+			value = replaceToken(value, "{{.scene_style}}", sceneStyle)
+		}
+		if backgroundTone, ok := vars["background_tone"].(string); ok && backgroundTone != "" {
+			value = replaceToken(value, "{{.background_tone}}", backgroundTone)
+		}
+		if composition, ok := vars["composition"].(string); ok && composition != "" {
+			value = replaceToken(value, "{{.composition}}", composition)
+		}
+		if propsLevel, ok := vars["props_level"].(string); ok && propsLevel != "" {
+			value = replaceToken(value, "{{.props_level}}", propsLevel)
+		}
+		if audienceHint, ok := vars["audience_hint"].(string); ok && audienceHint != "" {
+			value = replaceToken(value, "{{.audience_hint}}", audienceHint)
+		}
+		if customSceneHint, ok := vars["custom_scene_hint"].(string); ok && customSceneHint != "" {
+			value = replaceToken(value, "{{.custom_scene_hint}}", customSceneHint)
+		}
 		if summaryJSON, ok := vars["summary_json"].(string); ok && summaryJSON != "" {
 			value = replaceToken(value, "{{.summary_json}}", summaryJSON)
 		}

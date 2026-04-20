@@ -546,6 +546,17 @@ export type CreateListingKitTaskRequest = {
   platforms: string[];
   country?: string;
   language?: string;
+  options?: {
+    scene?: {
+      scene_category?: string;
+      scene_style?: string;
+      background_tone?: string;
+      composition?: string;
+      props_level?: string;
+      audience_hint?: string;
+      custom_scene_hint?: string;
+    };
+  };
 };
 
 export type CreateListingKitTaskResponse = {

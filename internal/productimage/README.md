@@ -146,6 +146,9 @@ parse_source
 - `productimage.subject.extract`
 - `productimage.white_background.default`
 - `productimage.scene.default`
+- `productimage.scene.shoes`
+- `productimage.scene.jewelry`
+- `productimage.scene.bags`
 - `productimage.review.default`
 
 模板文件位置：
@@ -157,6 +160,51 @@ parse_source
 - 优先按 `prompt_ref` 查 registry
 - 旧的 slash 风格 prompt ref 会自动归一化成 registry key
 - 如果 registry 未初始化、key 缺失或模板渲染失败，则回退到代码内 fallback prompt
+
+### Category-specific scene prompts and controlled customization
+
+场景图 prompt 现在支持按类目走不同模板，而不是所有商品共用一套 `scene.default`。
+
+当前内置类目：
+
+- `shoes`
+- `jewelry`
+- `bags`
+
+选择顺序：
+
+- 显式 `SceneGenerationRequest.PromptRef`
+- 类目模板，例如 `productimage.scene.shoes`
+- `productimage.scene.default`
+
+类目来源优先级：
+
+- `SceneGenerationRequest.SceneCategory`
+- `ProductContext.Attributes["scene_category"|"category"|"product_category"]`
+- `ProductContext.ProductType / Title / ScrapedTitle` 的归一化映射
+
+当前支持的受控自定义字段：
+
+- `scene_style`
+- `background_tone`
+- `composition`
+- `props_level`
+- `audience_hint`
+- `custom_scene_hint`
+
+这些字段的来源优先级是：
+
+- `SceneGenerationRequest` 显式值
+- `ProductContext.Attributes`
+
+其中 `custom_scene_hint` 仅作为补充约束，不替代模板本身。
+
+任务入口现在也支持显式传这些字段：
+
+- `ImageProcessRequest.scene`
+- `listingkit.GenerateOptions.scene`
+
+当前后端会把这些 request-level scene options 合并进 `ProductContext.Attributes`，再进入现有 scene prompt resolver。
 
 ### Prompt observability metadata
 

@@ -196,17 +196,23 @@ func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
 	if task == nil || task.Request == nil {
 		return &productimage.ImageProcessRequest{}
 	}
+	var scene *productimage.SceneGenerationOptions
+	if task.Request.Options != nil {
+		scene = task.Request.Options.Scene.Clone()
+	}
 	return &productimage.ImageProcessRequest{
 		ProductURL:  task.Request.ProductURL,
 		ImageURLs:   append([]string(nil), task.Request.ImageURLs...),
 		Text:        task.Request.Text,
 		Marketplace: detectImageMarketplace(task.Request),
 		Country:     task.Request.Country,
+		Scene:       scene,
 	}
 }
 
 func shouldProcessImages(req *GenerateRequest) bool {
-	return req != nil && req.Options != nil && req.Options.ProcessImages && len(req.ImageURLs) > 0
+	return req != nil && req.Options != nil && req.Options.ProcessImages &&
+		(len(req.ImageURLs) > 0 || strings.TrimSpace(req.ProductURL) != "")
 }
 
 func markChildTask(result *ListingKitResult, kind, taskID, status, errorMsg string) {

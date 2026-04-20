@@ -107,6 +107,7 @@ func buildSceneGenerationResolvedPrompt(req *SceneGenerationRequest) resolvedPro
 		productType = strings.TrimSpace(req.ProductContext.ProductType)
 		title = strings.TrimSpace(req.ProductContext.Title)
 	}
+	options := resolveScenePromptOptions(req, req.ProductContext)
 	base := "Create a polished ecommerce lifestyle scene around this product. Preserve the exact product identity, proportions, texture, and color. Do not replace the item."
 	if req.SceneIntent != "" {
 		base += " Scene intent: " + req.SceneIntent + "."
@@ -117,14 +118,50 @@ func buildSceneGenerationResolvedPrompt(req *SceneGenerationRequest) resolvedPro
 	if title != "" {
 		base += " Product title: " + title + "."
 	}
+	if options.SceneStyle != "" {
+		base += " Scene style: " + options.SceneStyle + "."
+	}
+	if options.BackgroundTone != "" {
+		base += " Background tone: " + options.BackgroundTone + "."
+	}
+	if options.Composition != "" {
+		base += " Composition: " + options.Composition + "."
+	}
+	if options.PropsLevel != "" {
+		base += " Props level: " + options.PropsLevel + "."
+	}
+	if options.AudienceHint != "" {
+		base += " Audience hint: " + options.AudienceHint + "."
+	}
+	if options.CustomSceneHint != "" {
+		base += " Custom scene hint: " + options.CustomSceneHint + "."
+	}
 	base += " Produce a premium marketplace-ready gallery image with clean composition and no overlaid text."
-	resolved := resolveProductImagePrompt(req.PromptRef, prompt.KProductImageSceneDefault, map[string]any{
-		"product_type": productType,
-		"title":        title,
-		"scene_intent": strings.TrimSpace(req.SceneIntent),
-	}, base)
+	vars := map[string]any{
+		"product_type":      productType,
+		"title":             title,
+		"scene_intent":      strings.TrimSpace(req.SceneIntent),
+		"scene_category":    options.Category,
+		"scene_style":       options.SceneStyle,
+		"background_tone":   options.BackgroundTone,
+		"composition":       options.Composition,
+		"props_level":       options.PropsLevel,
+		"audience_hint":     options.AudienceHint,
+		"custom_scene_hint": options.CustomSceneHint,
+	}
+	resolved := resolveSceneGenerationPrompt(req, vars, base, options)
 	if strings.TrimSpace(resolved.Text) == "" {
 		resolved.Text = base
 	}
 	return resolved
+}
+
+func resolveSceneGenerationPrompt(req *SceneGenerationRequest, vars map[string]any, fallback string, options scenePromptOptions) resolvedProductImagePrompt {
+	for _, key := range resolveScenePromptCandidateKeys(req, options) {
+		resolved := resolveProductImagePrompt(key, prompt.KProductImageSceneDefault, vars, fallback)
+		if resolved.Source == "registry" {
+			return resolved
+		}
+	}
+	return resolveProductImagePrompt("", prompt.KProductImageSceneDefault, vars, fallback)
 }

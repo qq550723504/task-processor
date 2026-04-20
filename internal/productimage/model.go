@@ -34,11 +34,12 @@ const (
 )
 
 type ImageProcessRequest struct {
-	ProductURL  string   `json:"product_url,omitempty"`
-	ImageURLs   []string `json:"image_urls,omitempty"`
-	Text        string   `json:"text,omitempty"`
-	Marketplace string   `json:"marketplace"`
-	Country     string   `json:"country,omitempty"`
+	ProductURL  string                  `json:"product_url,omitempty"`
+	ImageURLs   []string                `json:"image_urls,omitempty"`
+	Text        string                  `json:"text,omitempty"`
+	Marketplace string                  `json:"marketplace"`
+	Country     string                  `json:"country,omitempty"`
+	Scene       *SceneGenerationOptions `json:"scene,omitempty"`
 }
 
 type ReviewTaskRequest struct {

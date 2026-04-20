@@ -45,7 +45,8 @@ type GenerateRequest struct {
 }
 
 type GenerateOptions struct {
-	ProcessImages bool `json:"process_images"`
+	ProcessImages bool                                 `json:"process_images"`
+	Scene         *productimage.SceneGenerationOptions `json:"scene,omitempty"`
 }
 
 type Task struct {

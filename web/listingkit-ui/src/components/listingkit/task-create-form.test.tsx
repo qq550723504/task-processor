@@ -73,6 +73,13 @@ describe("TaskCreateForm", () => {
       imageUrls: "https://example.com/1.jpg\nhttps://example.com/2.jpg",
       productUrl: "",
       platforms: ["shein"],
+      sceneCategory: "",
+      sceneStyle: "",
+      backgroundTone: "",
+      composition: "",
+      propsLevel: "",
+      audienceHint: "",
+      customSceneHint: "",
     });
   });
 
@@ -114,6 +121,13 @@ describe("TaskCreateForm", () => {
       imageUrls: "",
       productUrl: "https://detail.1688.com/offer/123456789.html",
       platforms: ["temu"],
+      sceneCategory: "",
+      sceneStyle: "",
+      backgroundTone: "",
+      composition: "",
+      propsLevel: "",
+      audienceHint: "",
+      customSceneHint: "",
     });
   });
 
@@ -260,6 +274,120 @@ describe("TaskCreateForm", () => {
 
     expect(screen.getByLabelText("Image URLs")).toHaveValue(
       "http://localhost:8080/api/v1/listing-kits/uploads/files/a.jpg\nhttp://localhost:8080/api/v1/listing-kits/uploads/files/b.jpg",
+    );
+  });
+
+  it("submits structured scene customization when provided", async () => {
+    mutateAsync.mockResolvedValue({
+      task_id: "task_scene_123",
+      status: "pending",
+      created_at: "2026-04-20T00:00:00Z",
+    });
+
+    render(<TaskCreateForm />);
+
+    fireEvent.change(screen.getByLabelText("Product title"), {
+      target: { value: "Red running sneaker" },
+    });
+    fireEvent.change(screen.getByLabelText("Image URLs"), {
+      target: {
+        value:
+          "https://example.com/1.jpg\nhttps://example.com/2.jpg\nhttps://example.com/3.jpg",
+      },
+    });
+    fireEvent.click(screen.getByLabelText("Amazon"));
+    fireEvent.click(screen.getByRole("button", { name: "Customize scene generation" }));
+
+    fireEvent.change(screen.getByLabelText("Scene category"), {
+      target: { value: "shoes" },
+    });
+    fireEvent.change(screen.getByLabelText("Scene style"), {
+      target: { value: "lifestyle" },
+    });
+    fireEvent.change(screen.getByLabelText("Background tone"), {
+      target: { value: "warm" },
+    });
+    fireEvent.change(screen.getByLabelText("Composition"), {
+      target: { value: "close_up" },
+    });
+    fireEvent.change(screen.getByLabelText("Props level"), {
+      target: { value: "light" },
+    });
+    fireEvent.change(screen.getByLabelText("Audience hint"), {
+      target: { value: "sporty" },
+    });
+    fireEvent.change(screen.getByLabelText("Custom scene hint"), {
+      target: { value: "show subtle motion energy" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        text: "Red running sneaker",
+        image_urls: [
+          "https://example.com/1.jpg",
+          "https://example.com/2.jpg",
+          "https://example.com/3.jpg",
+        ],
+        platforms: ["amazon"],
+        options: {
+          scene: {
+            scene_category: "shoes",
+            scene_style: "lifestyle",
+            background_tone: "warm",
+            composition: "close_up",
+            props_level: "light",
+            audience_hint: "sporty",
+            custom_scene_hint: "show subtle motion energy",
+          },
+        },
+      });
+    });
+
+    expect(loadTaskCreateDraft("task_scene_123")).toEqual({
+      text: "Red running sneaker",
+      imageUrls:
+        "https://example.com/1.jpg\nhttps://example.com/2.jpg\nhttps://example.com/3.jpg",
+      productUrl: "",
+      platforms: ["amazon"],
+      sceneCategory: "shoes",
+      sceneStyle: "lifestyle",
+      backgroundTone: "warm",
+      composition: "close_up",
+      propsLevel: "light",
+      audienceHint: "sporty",
+      customSceneHint: "show subtle motion energy",
+    });
+  });
+
+  it("prefills structured scene customization from an existing draft", () => {
+    render(
+      <TaskCreateForm
+        initialValues={{
+          text: "Improved sneaker title",
+          imageUrls: "https://example.com/a.jpg",
+          productUrl: "",
+          platforms: ["amazon"],
+          sceneCategory: "shoes",
+          sceneStyle: "lifestyle",
+          backgroundTone: "warm",
+          composition: "close_up",
+          propsLevel: "light",
+          audienceHint: "sporty",
+          customSceneHint: "show subtle motion energy",
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText("Scene category")).toHaveValue("shoes");
+    expect(screen.getByLabelText("Scene style")).toHaveValue("lifestyle");
+    expect(screen.getByLabelText("Background tone")).toHaveValue("warm");
+    expect(screen.getByLabelText("Composition")).toHaveValue("close_up");
+    expect(screen.getByLabelText("Props level")).toHaveValue("light");
+    expect(screen.getByLabelText("Audience hint")).toHaveValue("sporty");
+    expect(screen.getByLabelText("Custom scene hint")).toHaveValue(
+      "show subtle motion energy",
     );
   });
 });
