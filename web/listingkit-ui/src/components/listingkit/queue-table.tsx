@@ -3,6 +3,7 @@
 import { Badge } from "@/components/shared/badge";
 import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
+import { presentScenePresetCompact } from "@/components/listingkit/scene-preset-presentation";
 import {
   deriveQueueItemAction,
   type QueueItemAction,
@@ -17,28 +18,6 @@ import {
   presentQueueState,
 } from "@/components/listingkit/status-presentation";
 import type { QueueItem } from "@/lib/types/listingkit";
-
-function presentQueueScenePreset(item: QueueItem): {
-  title: string;
-  detail?: string;
-} | null {
-  const summary = item.scene_preset;
-  if (!summary) {
-    return null;
-  }
-  const title =
-    summary.scene_category ??
-    summary.scene_style ??
-    summary.prompt_key ??
-    "";
-  if (!title) {
-    return null;
-  }
-  const detail = [summary.defaults_source, summary.scene_style]
-    .filter((value) => value && value !== title)
-    .join(" · ");
-  return { title, detail: detail || undefined };
-}
 
 export function QueueTable({
   items,
@@ -74,7 +53,7 @@ export function QueueTable({
             const reviewStatus = presentQueueReviewStatus(item);
             const retryHint = presentRetryHint(item.retry_hint);
             const recovery = presentRecoveryDescriptor(primaryRecovery);
-            const scenePreset = presentQueueScenePreset(item);
+            const scenePreset = presentScenePresetCompact(item.scene_preset);
 
             return (
               <tr key={`${item.platform}-${item.slot}-${item.generation_task}`}>

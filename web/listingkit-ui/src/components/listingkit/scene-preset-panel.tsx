@@ -1,4 +1,8 @@
 import type { ScenePresetSummary } from "@/lib/types/listingkit";
+import {
+  presentSceneDefaultsSource,
+  presentSceneValue,
+} from "@/components/listingkit/scene-preset-presentation";
 
 function hasScenePreset(summary?: ScenePresetSummary | null): boolean {
   if (!summary) {
@@ -59,17 +63,32 @@ export function ScenePresetPanel({
         <ScenePresetRow label="Prompt key" value={summary?.prompt_key} />
         <ScenePresetRow
           label="Defaults source"
-          value={summary?.defaults_source}
+          value={presentSceneDefaultsSource(summary?.defaults_source)}
         />
-        <ScenePresetRow label="Scene category" value={summary?.scene_category} />
-        <ScenePresetRow label="Scene style" value={summary?.scene_style} />
+        <ScenePresetRow
+          label="Scene category"
+          value={presentSceneValue(summary?.scene_category)}
+        />
+        <ScenePresetRow
+          label="Scene style"
+          value={presentSceneValue(summary?.scene_style)}
+        />
         <ScenePresetRow
           label="Background tone"
-          value={summary?.background_tone}
+          value={presentSceneValue(summary?.background_tone)}
         />
-        <ScenePresetRow label="Composition" value={summary?.composition} />
-        <ScenePresetRow label="Props level" value={summary?.props_level} />
-        <ScenePresetRow label="Audience hint" value={summary?.audience_hint} />
+        <ScenePresetRow
+          label="Composition"
+          value={presentSceneValue(summary?.composition)}
+        />
+        <ScenePresetRow
+          label="Props level"
+          value={presentSceneValue(summary?.props_level)}
+        />
+        <ScenePresetRow
+          label="Audience hint"
+          value={presentSceneValue(summary?.audience_hint)}
+        />
         <ScenePresetRow
           label="Custom scene hint"
           value={summary?.custom_scene_hint}

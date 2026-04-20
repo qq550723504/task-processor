@@ -30,8 +30,10 @@ describe("QueueTable", () => {
       />,
     );
 
-    expect(screen.getByText("shoes")).toBeInTheDocument();
-    expect(screen.getByText("platform_category · studio")).toBeInTheDocument();
+    expect(screen.getByText("Shoes")).toBeInTheDocument();
+    expect(
+      screen.getByText("Platform + category default · Studio"),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /review/i }));
     expect(onAction).toHaveBeenCalledTimes(1);
   });

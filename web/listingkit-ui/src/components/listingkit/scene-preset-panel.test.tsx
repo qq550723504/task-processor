@@ -23,7 +23,11 @@ describe("ScenePresetPanel", () => {
 
     expect(screen.getByText("Scene preset")).toBeInTheDocument();
     expect(screen.getByText("productimage.scene.shoes")).toBeInTheDocument();
-    expect(screen.getByText("platform_category")).toBeInTheDocument();
+    expect(
+      screen.getByText("Platform + category default"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Shoes")).toBeInTheDocument();
+    expect(screen.getByText("Studio")).toBeInTheDocument();
     expect(screen.getByText("Keep shadows soft.")).toBeInTheDocument();
   });
 
