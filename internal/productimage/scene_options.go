@@ -31,42 +31,7 @@ func (o *SceneGenerationOptions) IsEmpty() bool {
 }
 
 func DefaultSceneGenerationOptionsForMarketplace(marketplace string) *SceneGenerationOptions {
-	switch strings.ToLower(strings.TrimSpace(marketplace)) {
-	case "amazon":
-		return &SceneGenerationOptions{
-			SceneStyle:     "studio",
-			BackgroundTone: "bright",
-			Composition:    "centered",
-			PropsLevel:     "none",
-			AudienceHint:   "premium",
-		}
-	case "shein":
-		return &SceneGenerationOptions{
-			SceneStyle:     "lifestyle",
-			BackgroundTone: "warm",
-			Composition:    "close_up",
-			PropsLevel:     "light",
-			AudienceHint:   "youthful",
-		}
-	case "temu":
-		return &SceneGenerationOptions{
-			SceneStyle:     "lifestyle",
-			BackgroundTone: "bright",
-			Composition:    "multi_angle",
-			PropsLevel:     "moderate",
-			AudienceHint:   "sporty",
-		}
-	case "walmart":
-		return &SceneGenerationOptions{
-			SceneStyle:     "lifestyle",
-			BackgroundTone: "neutral",
-			Composition:    "centered",
-			PropsLevel:     "light",
-			AudienceHint:   "homey",
-		}
-	default:
-		return nil
-	}
+	return resolveScenePreset(marketplace, "").Options
 }
 
 func MergeSceneGenerationOptions(base, override *SceneGenerationOptions) *SceneGenerationOptions {

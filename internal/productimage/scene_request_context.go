@@ -3,7 +3,7 @@ package productimage
 import "strings"
 
 func applySceneOptionsToProductContext(context *ProductContext, req *ImageProcessRequest) *ProductContext {
-	if req == nil || req.Scene == nil || req.Scene.IsEmpty() {
+	if req == nil {
 		return context
 	}
 	if context == nil {
@@ -11,6 +11,10 @@ func applySceneOptionsToProductContext(context *ProductContext, req *ImageProces
 	}
 	if context.Attributes == nil {
 		context.Attributes = map[string]string{}
+	}
+	setSceneContextAttribute(context.Attributes, "marketplace", req.Marketplace)
+	if req.Scene == nil || req.Scene.IsEmpty() {
+		return context
 	}
 	setSceneContextAttribute(context.Attributes, "scene_category", req.Scene.SceneCategory)
 	setSceneContextAttribute(context.Attributes, "scene_style", req.Scene.SceneStyle)

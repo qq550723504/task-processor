@@ -55,7 +55,7 @@ func TestShouldProcessImagesAllowsProductURLSource(t *testing.T) {
 	}
 }
 
-func TestToImageProcessRequestAppliesPlatformSceneDefaults(t *testing.T) {
+func TestToImageProcessRequestDoesNotInjectPlatformSceneDefaults(t *testing.T) {
 	task := &Task{
 		Request: &GenerateRequest{
 			Platforms: []string{"amazon"},
@@ -66,19 +66,12 @@ func TestToImageProcessRequestAppliesPlatformSceneDefaults(t *testing.T) {
 	}
 
 	req := toImageProcessRequest(task)
-	if req.Scene == nil {
-		t.Fatal("expected platform defaults to populate scene options")
-	}
-	if req.Scene.SceneStyle != "studio" ||
-		req.Scene.BackgroundTone != "bright" ||
-		req.Scene.Composition != "centered" ||
-		req.Scene.PropsLevel != "none" ||
-		req.Scene.AudienceHint != "premium" {
-		t.Fatalf("scene defaults = %+v", req.Scene)
+	if req.Scene != nil {
+		t.Fatalf("expected scene options to stay empty until productimage runtime resolution, got %+v", req.Scene)
 	}
 }
 
-func TestToImageProcessRequestMergesExplicitSceneOptionsOverPlatformDefaults(t *testing.T) {
+func TestToImageProcessRequestCopiesExplicitSceneOptionsWithoutMutatingThem(t *testing.T) {
 	task := &Task{
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
@@ -94,7 +87,7 @@ func TestToImageProcessRequestMergesExplicitSceneOptionsOverPlatformDefaults(t *
 
 	req := toImageProcessRequest(task)
 	if req.Scene == nil {
-		t.Fatal("expected merged scene options")
+		t.Fatal("expected copied scene options")
 	}
 	if req.Scene.SceneCategory != "bags" {
 		t.Fatalf("expected explicit scene category to win, got %+v", req.Scene)
@@ -102,10 +95,10 @@ func TestToImageProcessRequestMergesExplicitSceneOptionsOverPlatformDefaults(t *
 	if req.Scene.Composition != "multi_angle" {
 		t.Fatalf("expected explicit composition to win, got %+v", req.Scene)
 	}
-	if req.Scene.SceneStyle != "lifestyle" ||
-		req.Scene.BackgroundTone != "warm" ||
-		req.Scene.PropsLevel != "light" ||
-		req.Scene.AudienceHint != "youthful" {
-		t.Fatalf("expected platform defaults to fill empty fields, got %+v", req.Scene)
+	if req.Scene.SceneStyle != "" ||
+		req.Scene.BackgroundTone != "" ||
+		req.Scene.PropsLevel != "" ||
+		req.Scene.AudienceHint != "" {
+		t.Fatalf("expected only explicit fields to be copied, got %+v", req.Scene)
 	}
 }

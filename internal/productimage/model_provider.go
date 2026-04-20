@@ -3,14 +3,22 @@ package productimage
 import "context"
 
 type GenerationMetadata struct {
-	Provider         string
-	ModelFamily      string
-	GenerationMode   string
-	PromptRef        string
-	PromptKey        string
-	PromptSource     string
-	PromptVersion    string
-	ReviewConfidence float64
+	Provider            string
+	ModelFamily         string
+	GenerationMode      string
+	PromptRef           string
+	PromptKey           string
+	PromptSource        string
+	PromptVersion       string
+	SceneDefaultsSource string
+	SceneCategory       string
+	SceneStyle          string
+	BackgroundTone      string
+	Composition         string
+	PropsLevel          string
+	AudienceHint        string
+	CustomSceneHint     string
+	ReviewConfidence    float64
 }
 
 func (m *GenerationMetadata) Clone() *GenerationMetadata {

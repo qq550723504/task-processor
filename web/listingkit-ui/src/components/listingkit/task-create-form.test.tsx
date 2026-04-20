@@ -377,6 +377,23 @@ describe("TaskCreateForm", () => {
     expect(screen.getByLabelText("Audience hint")).toHaveValue("premium");
   });
 
+  it("updates auto-filled defaults when the scene category changes", () => {
+    render(<TaskCreateForm />);
+
+    fireEvent.click(screen.getByLabelText("Amazon"));
+    fireEvent.click(screen.getByRole("button", { name: "Customize scene generation" }));
+
+    fireEvent.change(screen.getByLabelText("Scene category"), {
+      target: { value: "jewelry" },
+    });
+
+    expect(screen.getByLabelText("Scene style")).toHaveValue("studio");
+    expect(screen.getByLabelText("Background tone")).toHaveValue("cool");
+    expect(screen.getByLabelText("Composition")).toHaveValue("close_up");
+    expect(screen.getByLabelText("Props level")).toHaveValue("none");
+    expect(screen.getByLabelText("Audience hint")).toHaveValue("premium");
+  });
+
   it("prefills structured scene customization from an existing draft", () => {
     render(
       <TaskCreateForm

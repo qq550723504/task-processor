@@ -107,7 +107,19 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 	}
 
 	imageResult := &productimage.ImageProcessResult{
-		MainImage:    &productimage.ImageAsset{URL: "https://cdn.example.com/main.jpg"},
+		MainImage: &productimage.ImageAsset{
+			URL: "https://cdn.example.com/main.jpg",
+			Metadata: map[string]string{
+				"scene_defaults_source": "platform_category",
+				"scene_category":        "jewelry",
+				"scene_style":           "studio",
+				"background_tone":       "cool",
+				"composition":           "close_up",
+				"props_level":           "none",
+				"audience_hint":         "premium",
+				"prompt_key":            "productimage.scene.jewelry",
+			},
+		},
 		WhiteBgImage: &productimage.ImageAsset{URL: "https://cdn.example.com/white.jpg"},
 		GalleryImages: []productimage.ImageAsset{
 			{URL: "https://cdn.example.com/gallery-1.jpg"},
@@ -184,6 +196,13 @@ func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
 	}
 	if result.Walmart.ProductType != "Headphones" {
 		t.Fatalf("walmart product type = %q, want %q", result.Walmart.ProductType, "Headphones")
+	}
+	if result.ImageAssets == nil || result.ImageAssets.MainImage == nil {
+		t.Fatalf("listingkit image assets = %+v", result.ImageAssets)
+	}
+	if result.ImageAssets.MainImage.Metadata["scene_defaults_source"] != "platform_category" ||
+		result.ImageAssets.MainImage.Metadata["prompt_key"] != "productimage.scene.jewelry" {
+		t.Fatalf("listingkit image metadata = %+v", result.ImageAssets.MainImage.Metadata)
 	}
 	if got := len(result.Shein.SkcList); got != 1 {
 		t.Fatalf("shein skc count = %d, want 1", got)

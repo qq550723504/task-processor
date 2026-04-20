@@ -36,6 +36,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
+	options := resolveScenePromptOptions(req, req.ProductContext)
 	resolvedPrompt := buildSceneGenerationResolvedPrompt(req)
 	response, err := g.client.EditImage(ctx, &openaiclient.ImageEditRequest{
 		Model:          g.client.GetDefaultModel(),
@@ -70,6 +71,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 		"format":          info.Format,
 		"scene_mode":      "model",
 	}, resolvedPrompt)
+	metadata = applySceneGenerationMetadata(metadata, options)
 	if revisedPrompt != "" {
 		metadata["revised_prompt"] = revisedPrompt
 	}
@@ -84,15 +86,13 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	}
 	return &SceneGenerationResult{
 		Assets: []ImageAsset{asset},
-		Metadata: &GenerationMetadata{
-			Provider:       "openai_compatible",
-			ModelFamily:    g.client.GetDefaultModel(),
-			GenerationMode: "scene_generation",
-			PromptRef:      resolvedPrompt.Key,
-			PromptKey:      resolvedPrompt.Key,
-			PromptSource:   resolvedPrompt.Source,
-			PromptVersion:  resolvedPrompt.Version,
-		},
+		Metadata: sceneGenerationMetadataFromOptions(
+			options,
+			resolvedPrompt,
+			"openai_compatible",
+			g.client.GetDefaultModel(),
+			"scene_generation",
+		),
 	}, nil
 }
 

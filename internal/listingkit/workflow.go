@@ -201,10 +201,6 @@ func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
 	if task.Request.Options != nil {
 		scene = task.Request.Options.Scene.Clone()
 	}
-	scene = productimage.MergeSceneGenerationOptions(
-		productimage.DefaultSceneGenerationOptionsForMarketplace(marketplace),
-		scene,
-	)
 	return &productimage.ImageProcessRequest{
 		ProductURL:  task.Request.ProductURL,
 		ImageURLs:   append([]string(nil), task.Request.ImageURLs...),

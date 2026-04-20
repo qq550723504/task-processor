@@ -4,13 +4,21 @@ import "testing"
 
 func TestApplyGenerationMetadataMapStampsNonEmptyValues(t *testing.T) {
 	metadata := applyGenerationMetadataMap(map[string]string{}, &GenerationMetadata{
-		Provider:       "openai",
-		ModelFamily:    "gpt-image",
-		GenerationMode: "scene_generation",
-		PromptRef:      "productimage.scene.default",
-		PromptKey:      "productimage.scene.default",
-		PromptSource:   "registry",
-		PromptVersion:  "default",
+		Provider:            "openai",
+		ModelFamily:         "gpt-image",
+		GenerationMode:      "scene_generation",
+		PromptRef:           "productimage.scene.default",
+		PromptKey:           "productimage.scene.default",
+		PromptSource:        "registry",
+		PromptVersion:       "default",
+		SceneDefaultsSource: "platform_category",
+		SceneCategory:       "shoes",
+		SceneStyle:          "studio",
+		BackgroundTone:      "bright",
+		Composition:         "centered",
+		PropsLevel:          "none",
+		AudienceHint:        "premium",
+		CustomSceneHint:     "keep the background minimal",
 	})
 
 	if metadata["model_provider"] != "openai" ||
@@ -19,7 +27,15 @@ func TestApplyGenerationMetadataMapStampsNonEmptyValues(t *testing.T) {
 		metadata["prompt_ref"] != "productimage.scene.default" ||
 		metadata["prompt_key"] != "productimage.scene.default" ||
 		metadata["prompt_source"] != "registry" ||
-		metadata["prompt_version"] != "default" {
+		metadata["prompt_version"] != "default" ||
+		metadata["scene_defaults_source"] != "platform_category" ||
+		metadata["scene_category"] != "shoes" ||
+		metadata["scene_style"] != "studio" ||
+		metadata["background_tone"] != "bright" ||
+		metadata["composition"] != "centered" ||
+		metadata["props_level"] != "none" ||
+		metadata["audience_hint"] != "premium" ||
+		metadata["custom_scene_hint"] != "keep the background minimal" {
 		t.Fatalf("metadata = %+v", metadata)
 	}
 }

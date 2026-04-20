@@ -7,6 +7,7 @@ import (
 )
 
 type scenePromptOptions struct {
+	Marketplace     string
 	Category        string
 	SceneStyle      string
 	BackgroundTone  string
@@ -14,6 +15,7 @@ type scenePromptOptions struct {
 	PropsLevel      string
 	AudienceHint    string
 	CustomSceneHint string
+	DefaultsSource  string
 }
 
 func buildSceneGenerationRequest(asset *ImageAsset, context *ProductContext) *SceneGenerationRequest {
@@ -34,14 +36,42 @@ func buildSceneGenerationRequest(asset *ImageAsset, context *ProductContext) *Sc
 }
 
 func resolveScenePromptOptions(req *SceneGenerationRequest, context *ProductContext) scenePromptOptions {
-	return scenePromptOptions{
-		Category:        resolveSceneCategory(req, context),
+	marketplace := firstNonEmpty(
+		contextAttribute(context, "marketplace"),
+		contextAttribute(context, "source_marketplace"),
+	)
+	category := resolveSceneCategory(req, context)
+	preset := resolveScenePreset(marketplace, category)
+	explicit := &SceneGenerationOptions{
+		SceneCategory:   firstNonEmpty(trimmed(reqField(req, "scene_category")), contextAttribute(context, "scene_category")),
 		SceneStyle:      firstNonEmpty(trimmed(reqField(req, "scene_style")), contextAttribute(context, "scene_style")),
 		BackgroundTone:  firstNonEmpty(trimmed(reqField(req, "background_tone")), contextAttribute(context, "background_tone")),
 		Composition:     firstNonEmpty(trimmed(reqField(req, "composition")), contextAttribute(context, "composition")),
 		PropsLevel:      firstNonEmpty(trimmed(reqField(req, "props_level")), contextAttribute(context, "props_level")),
 		AudienceHint:    firstNonEmpty(trimmed(reqField(req, "audience_hint")), contextAttribute(context, "audience_hint")),
 		CustomSceneHint: firstNonEmpty(trimmed(reqField(req, "custom_scene_hint")), contextAttribute(context, "custom_scene_hint")),
+	}
+	merged := MergeSceneGenerationOptions(preset.Options, explicit)
+	if merged == nil {
+		merged = &SceneGenerationOptions{SceneCategory: category}
+	}
+	defaultsSource := preset.Source
+	if defaultsSource == "" {
+		defaultsSource = "fallback"
+	}
+	if explicit != nil && !explicit.IsEmpty() {
+		defaultsSource = "explicit"
+	}
+	return scenePromptOptions{
+		Marketplace:     marketplace,
+		Category:        firstNonEmpty(merged.SceneCategory, category),
+		SceneStyle:      merged.SceneStyle,
+		BackgroundTone:  merged.BackgroundTone,
+		Composition:     merged.Composition,
+		PropsLevel:      merged.PropsLevel,
+		AudienceHint:    merged.AudienceHint,
+		CustomSceneHint: merged.CustomSceneHint,
+		DefaultsSource:  defaultsSource,
 	}
 }
 
@@ -143,6 +173,8 @@ func reqField(req *SceneGenerationRequest, key string) string {
 		return req.AudienceHint
 	case "custom_scene_hint":
 		return req.CustomSceneHint
+	case "scene_category":
+		return req.SceneCategory
 	default:
 		return ""
 	}

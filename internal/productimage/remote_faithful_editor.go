@@ -152,13 +152,21 @@ func (e *remoteFaithfulEditor) renderWhiteBackground(ctx context.Context, req *F
 func generationMetadataFromResult(metadata map[string]string, operation string, promptRef string) *GenerationMetadata {
 	resolvedPrompt := resolvedPromptFromRemoteMetadata(metadata, operation, promptRef)
 	modelMetadata := &GenerationMetadata{
-		Provider:       firstNonEmpty(metadata["provider"], metadata["model_provider"]),
-		ModelFamily:    metadata["model_family"],
-		GenerationMode: metadata["generation_mode"],
-		PromptRef:      resolvedPrompt.Key,
-		PromptKey:      resolvedPrompt.Key,
-		PromptSource:   resolvedPrompt.Source,
-		PromptVersion:  resolvedPrompt.Version,
+		Provider:            firstNonEmpty(metadata["provider"], metadata["model_provider"]),
+		ModelFamily:         metadata["model_family"],
+		GenerationMode:      metadata["generation_mode"],
+		PromptRef:           resolvedPrompt.Key,
+		PromptKey:           resolvedPrompt.Key,
+		PromptSource:        resolvedPrompt.Source,
+		PromptVersion:       resolvedPrompt.Version,
+		SceneDefaultsSource: metadata["scene_defaults_source"],
+		SceneCategory:       metadata["scene_category"],
+		SceneStyle:          metadata["scene_style"],
+		BackgroundTone:      metadata["background_tone"],
+		Composition:         metadata["composition"],
+		PropsLevel:          metadata["props_level"],
+		AudienceHint:        metadata["audience_hint"],
+		CustomSceneHint:     metadata["custom_scene_hint"],
 	}
 	if modelMetadata.Provider == "" {
 		modelMetadata.Provider = "remote_model_service"

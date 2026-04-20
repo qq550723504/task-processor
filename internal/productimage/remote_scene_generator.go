@@ -37,6 +37,7 @@ func (g *remoteSceneGenerator) GenerateScene(ctx context.Context, req *SceneGene
 	if err != nil {
 		return nil, err
 	}
+	options := resolveScenePromptOptions(req, req.ProductContext)
 	renderedImages, err := g.client.GenerateScene(ctx, data, req.SourceAsset.SourceURL, *req)
 	if err != nil {
 		return nil, err
@@ -58,6 +59,7 @@ func (g *remoteSceneGenerator) GenerateScene(ctx context.Context, req *SceneGene
 		metadata["scene_mode"] = "model"
 		resolvedPrompt := resolvedPromptFromRemoteMetadata(metadata, "scene_generation", req.PromptRef)
 		metadata = applyPromptObservabilityMetadata(metadata, resolvedPrompt)
+		metadata = applySceneGenerationMetadata(metadata, options)
 		assets = append(assets, ImageAsset{
 			URL:        path,
 			Type:       AssetTypeGalleryImage,

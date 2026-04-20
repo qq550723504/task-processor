@@ -16,6 +16,7 @@ import { TaskInputGuidance } from "@/components/listingkit/task-input-guidance";
 import {
   getPlatformSceneDefaults,
   hasAnySceneCustomization,
+  matchesSceneDefaults,
 } from "@/components/listingkit/task-scene-defaults";
 import {
   TaskSourceTabs,
@@ -168,6 +169,7 @@ export function TaskCreateForm({
   const imageUrlsRef = useRef<HTMLTextAreaElement | null>(null);
   const productUrlRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const lastAppliedSceneDefaultsRef = useRef<ReturnType<typeof getPlatformSceneDefaults>>(null);
   const [activeSourceTab, setActiveSourceTab] = useState<TaskSourceTab>(() =>
     inferInitialSourceTab({ initialValues, initialFocus }),
   );
@@ -268,8 +270,8 @@ export function TaskCreateForm({
   const titleCopy = titleFieldCopy(activeSourceTab);
   const primaryPlatform = selectedPlatforms?.[0];
   const platformSceneDefaults = useMemo(
-    () => getPlatformSceneDefaults(primaryPlatform),
-    [primaryPlatform],
+    () => getPlatformSceneDefaults(primaryPlatform, currentSceneCategory),
+    [primaryPlatform, currentSceneCategory],
   );
   const sceneSummary = useMemo(() => {
     if (!primaryPlatform || !platformSceneDefaults) {
@@ -282,6 +284,54 @@ export function TaskCreateForm({
     ].filter(Boolean);
     return `${primaryPlatform} defaults: ${parts.join(" / ")}`;
   }, [platformSceneDefaults, primaryPlatform]);
+
+  useEffect(() => {
+    if (!showSceneCustomization || !platformSceneDefaults) {
+      return;
+    }
+    const currentSceneValues = {
+      sceneCategory: currentSceneCategory,
+      sceneStyle: currentSceneStyle,
+      backgroundTone: currentBackgroundTone,
+      composition: currentComposition,
+      propsLevel: currentPropsLevel,
+      audienceHint: currentAudienceHint,
+      customSceneHint: currentCustomSceneHint,
+    };
+    const canApplyDefaults =
+      !hasAnySceneCustomization(currentSceneValues) ||
+      matchesSceneDefaults(currentSceneValues, lastAppliedSceneDefaultsRef.current);
+    if (!canApplyDefaults) {
+      return;
+    }
+    setValue("sceneStyle", platformSceneDefaults.sceneStyle ?? "", {
+      shouldDirty: true,
+    });
+    setValue("backgroundTone", platformSceneDefaults.backgroundTone ?? "", {
+      shouldDirty: true,
+    });
+    setValue("composition", platformSceneDefaults.composition ?? "", {
+      shouldDirty: true,
+    });
+    setValue("propsLevel", platformSceneDefaults.propsLevel ?? "", {
+      shouldDirty: true,
+    });
+    setValue("audienceHint", platformSceneDefaults.audienceHint ?? "", {
+      shouldDirty: true,
+    });
+    lastAppliedSceneDefaultsRef.current = platformSceneDefaults;
+  }, [
+    currentAudienceHint,
+    currentBackgroundTone,
+    currentComposition,
+    currentCustomSceneHint,
+    currentPropsLevel,
+    currentSceneCategory,
+    currentSceneStyle,
+    platformSceneDefaults,
+    setValue,
+    showSceneCustomization,
+  ]);
 
   useEffect(() => {
     if (initialFocus === "text") {
@@ -561,6 +611,7 @@ export function TaskCreateForm({
                     setValue("audienceHint", platformSceneDefaults.audienceHint ?? "", {
                       shouldDirty: true,
                     });
+                    lastAppliedSceneDefaultsRef.current = platformSceneDefaults;
                   }
                   return next;
                 });

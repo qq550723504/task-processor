@@ -65,6 +65,9 @@ func TestServiceProcessImagesPassesSceneRequestOptionsToRenderer(t *testing.T) {
 	if sceneRenderer.lastContext == nil || sceneRenderer.lastContext.Attributes == nil {
 		t.Fatalf("scene renderer context = %+v", sceneRenderer.lastContext)
 	}
+	if sceneRenderer.lastContext.Attributes["marketplace"] != "amazon" {
+		t.Fatalf("context attrs = %+v", sceneRenderer.lastContext.Attributes)
+	}
 	if sceneRenderer.lastContext.Attributes["scene_category"] != "shoes" {
 		t.Fatalf("context attrs = %+v", sceneRenderer.lastContext.Attributes)
 	}
