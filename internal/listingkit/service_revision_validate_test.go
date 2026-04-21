@@ -24,6 +24,9 @@ func (r *stubValidateRepo) MarkProcessing(ctx context.Context, taskID string) er
 func (r *stubValidateRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
 	return nil
 }
+func (r *stubValidateRepo) MarkNeedsReview(ctx context.Context, taskID string, result *ListingKitResult, reason string) error {
+	return nil
+}
 func (r *stubValidateRepo) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	return nil
 }

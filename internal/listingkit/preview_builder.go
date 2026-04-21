@@ -25,7 +25,7 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 		Platforms:        previewPlatforms(task),
 		CreatedAt:        task.CreatedAt,
 	}
-	if task.Status == TaskStatusCompleted || task.Status == TaskStatusFailed {
+	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusFailed {
 		completedAt := task.UpdatedAt
 		preview.CompletedAt = &completedAt
 	}
@@ -298,6 +298,8 @@ func previewStatusMessage(status TaskStatus) string {
 		return "任务已创建，预览结果尚未生成"
 	case TaskStatusProcessing:
 		return "任务处理中，预览结果尚未准备完成"
+	case TaskStatusNeedsReview:
+		return "任务已完成，等待人工审核"
 	case TaskStatusFailed:
 		return "任务执行失败，暂无预览结果"
 	default:

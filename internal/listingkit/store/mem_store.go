@@ -64,6 +64,19 @@ func (r *MemTaskRepository) MarkCompleted(ctx context.Context, taskID string, re
 	return nil
 }
 
+func (r *MemTaskRepository) MarkNeedsReview(ctx context.Context, taskID string, result *listingkit.ListingKitResult, reason string) error {
+	if err := r.SaveTaskResult(ctx, taskID, result); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task := r.tasks[taskID]
+	task.Status = listingkit.TaskStatusNeedsReview
+	task.Error = reason
+	task.UpdatedAt = time.Now()
+	return nil
+}
+
 func (r *MemTaskRepository) MarkFailed(_ context.Context, taskID string, errorMsg string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -65,6 +65,14 @@ func (r *taskRepository) MarkCompleted(ctx context.Context, taskID string, resul
 	})
 }
 
+func (r *taskRepository) MarkNeedsReview(ctx context.Context, taskID string, result *listingkit.ListingKitResult, reason string) error {
+	return r.updateTaskFields(ctx, taskID, map[string]any{
+		"result": result,
+		"status": listingkit.TaskStatusNeedsReview,
+		"error":  reason,
+	})
+}
+
 func (r *taskRepository) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
 		"status": listingkit.TaskStatusFailed,

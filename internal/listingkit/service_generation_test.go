@@ -41,6 +41,14 @@ func (r *stubGenerationRepo) MarkProcessing(ctx context.Context, taskID string) 
 func (r *stubGenerationRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
 	return r.SaveTaskResult(ctx, taskID, result)
 }
+func (r *stubGenerationRepo) MarkNeedsReview(ctx context.Context, taskID string, result *ListingKitResult, reason string) error {
+	if err := r.SaveTaskResult(ctx, taskID, result); err != nil {
+		return err
+	}
+	r.task.Status = TaskStatusNeedsReview
+	r.task.Error = reason
+	return nil
+}
 func (r *stubGenerationRepo) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	return nil
 }

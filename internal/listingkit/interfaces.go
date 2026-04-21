@@ -40,6 +40,7 @@ type Repository interface {
 	GetTask(ctx context.Context, taskID string) (*Task, error)
 	MarkProcessing(ctx context.Context, taskID string) error
 	MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error
+	MarkNeedsReview(ctx context.Context, taskID string, result *ListingKitResult, reason string) error
 	MarkFailed(ctx context.Context, taskID string, errorMsg string) error
 	PrepareRetry(ctx context.Context, taskID string) error
 	IncrementRetryCount(ctx context.Context, taskID string) error

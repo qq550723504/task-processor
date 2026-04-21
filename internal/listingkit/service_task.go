@@ -60,7 +60,7 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 		Error:     task.Error,
 		CreatedAt: task.CreatedAt,
 	}
-	if task.Status == TaskStatusCompleted || task.Status == TaskStatusFailed {
+	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusFailed {
 		result.CompletedAt = &task.UpdatedAt
 	}
 	return result, nil

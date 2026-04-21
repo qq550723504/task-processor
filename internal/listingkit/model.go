@@ -28,6 +28,7 @@ const (
 	TaskStatusPending    TaskStatus = "pending"
 	TaskStatusProcessing TaskStatus = "processing"
 	TaskStatusCompleted  TaskStatus = "completed"
+	TaskStatusNeedsReview TaskStatus = "needs_review"
 	TaskStatusFailed     TaskStatus = "failed"
 )
 
