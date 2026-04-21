@@ -79,6 +79,7 @@ type ListingKitPreviewHeader struct {
 	VariantCount  int                      `json:"variant_count,omitempty"`
 	StatusMessage string                   `json:"status_message,omitempty"`
 	Warnings      []string                 `json:"warnings,omitempty"`
+	ReviewReasons []string                 `json:"review_reasons,omitempty"`
 	PlatformCards []ListingKitPlatformCard `json:"platform_cards,omitempty"`
 }
 

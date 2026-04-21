@@ -21,7 +21,10 @@ export function TaskStatusScreen({
   task?: ListingKitTaskResult | null;
 }) {
   const router = useRouter();
-  const isTerminal = task?.status === "completed" || task?.status === "failed";
+  const isTerminal =
+    task?.status === "completed" ||
+    task?.status === "failed" ||
+    task?.status === "needs_review";
   const taskDraft = useMemo(() => loadTaskCreateDraft(taskId), [taskId]);
   const taskFixes = extractTaskFixes(task);
   const taskDraftFocus = inferTaskDraftFocus(task);
@@ -118,14 +121,20 @@ export function TaskStatusScreen({
         <Card className="p-6">
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-zinc-950">
-              {task.status === "completed" ? "Task completed" : "Inspect task output"}
+              {task.status === "completed"
+                ? "Task completed"
+                : task.status === "needs_review"
+                  ? "Task requires review"
+                  : "Inspect task output"}
             </h2>
             <p className="text-sm leading-6 text-zinc-600">
               {task.status === "completed"
                 ? "Review the generated queue or go straight into the workspace."
-                : "Review the queue and workspace to inspect the failure details and any partial output."}
+                : task.status === "needs_review"
+                  ? "Review the generated queue and workspace before approving or revising the output."
+                  : "Review the queue and workspace to inspect the failure details and any partial output."}
             </p>
-            {task.status === "completed" ? (
+            {task.status === "completed" || task.status === "needs_review" ? (
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-sm leading-6 text-zinc-500">
                   {autoOpenEnabled

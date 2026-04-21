@@ -25,11 +25,11 @@ var ErrGenerationActionNotFound = errors.New("generation action not found")
 type TaskStatus string
 
 const (
-	TaskStatusPending    TaskStatus = "pending"
-	TaskStatusProcessing TaskStatus = "processing"
-	TaskStatusCompleted  TaskStatus = "completed"
+	TaskStatusPending     TaskStatus = "pending"
+	TaskStatusProcessing  TaskStatus = "processing"
+	TaskStatusCompleted   TaskStatus = "completed"
 	TaskStatusNeedsReview TaskStatus = "needs_review"
-	TaskStatusFailed     TaskStatus = "failed"
+	TaskStatusFailed      TaskStatus = "failed"
 )
 
 type GenerateRequest struct {
@@ -62,12 +62,13 @@ type Task struct {
 }
 
 type TaskResult struct {
-	TaskID      string            `json:"task_id"`
-	Status      TaskStatus        `json:"status"`
-	Result      *ListingKitResult `json:"result,omitempty"`
-	Error       string            `json:"error,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	CompletedAt *time.Time        `json:"completed_at,omitempty"`
+	TaskID        string            `json:"task_id"`
+	Status        TaskStatus        `json:"status"`
+	Result        *ListingKitResult `json:"result,omitempty"`
+	Error         string            `json:"error,omitempty"`
+	ReviewReasons []string          `json:"review_reasons,omitempty"`
+	CreatedAt     time.Time         `json:"created_at"`
+	CompletedAt   *time.Time        `json:"completed_at,omitempty"`
 }
 
 type AssetGenerationSummary struct {
@@ -204,41 +205,41 @@ type GenerationWorkQueueSummary struct {
 }
 
 type GenerationWorkQueueItem struct {
-	TaskID                   string     `json:"task_id,omitempty"`
-	GenerationTask           string     `json:"generation_task,omitempty"`
-	Platform                 string     `json:"platform,omitempty"`
-	Slot                     string     `json:"slot,omitempty"`
-	Purpose                  string     `json:"purpose,omitempty"`
-	IdealKind                string     `json:"ideal_kind,omitempty"`
-	State                    string     `json:"state,omitempty"`
-	SatisfiedBy              string     `json:"satisfied_by,omitempty"`
-	IsFallback               bool       `json:"is_fallback,omitempty"`
-	Retryable                bool       `json:"retryable,omitempty"`
-	RecipeID                 string     `json:"recipe_id,omitempty"`
-	TemplateLabel            string     `json:"template_label,omitempty"`
-	RenderProfile            string     `json:"render_profile,omitempty"`
-	AssetID                  string     `json:"asset_id,omitempty"`
-	ExecutionMode            string     `json:"execution_mode,omitempty"`
-	ExecutionState           string     `json:"execution_status,omitempty"`
-	RetryHint                string     `json:"retry_hint,omitempty"`
-	StateReason              string     `json:"state_reason,omitempty"`
-	SelectedAssetID          string     `json:"selected_asset_id,omitempty"`
-	TargetAssetKind          string     `json:"target_asset_kind,omitempty"`
-	ExecutionQuality         string     `json:"execution_quality,omitempty"`
-	ExecutionQualityLabel    string     `json:"execution_quality_label,omitempty"`
-	QualityGrade             string     `json:"quality_grade,omitempty"`
-	QualityGradeLabel        string     `json:"quality_grade_label,omitempty"`
-	RenderPreviewAvailable   bool       `json:"render_preview_available,omitempty"`
-	RenderPreviewFormat      string     `json:"render_preview_format,omitempty"`
-	RenderPreviewVisualMode  string     `json:"render_preview_visual_mode,omitempty"`
-	RenderPreviewLayerTypes  []string   `json:"render_preview_layer_types,omitempty"`
-	RenderPreviewRegions     []string   `json:"render_preview_regions,omitempty"`
-	RenderPreviewStyleTokens []string   `json:"render_preview_style_tokens,omitempty"`
-	PreviewCapabilities      []string   `json:"preview_capabilities,omitempty"`
-	ReviewDecision           string     `json:"review_decision,omitempty"`
-	ReviewStatus             string     `json:"review_status,omitempty"`
-	ReviewBlocked            bool       `json:"review_blocked,omitempty"`
-	ReviewedAt               *time.Time `json:"reviewed_at,omitempty"`
+	TaskID                   string                        `json:"task_id,omitempty"`
+	GenerationTask           string                        `json:"generation_task,omitempty"`
+	Platform                 string                        `json:"platform,omitempty"`
+	Slot                     string                        `json:"slot,omitempty"`
+	Purpose                  string                        `json:"purpose,omitempty"`
+	IdealKind                string                        `json:"ideal_kind,omitempty"`
+	State                    string                        `json:"state,omitempty"`
+	SatisfiedBy              string                        `json:"satisfied_by,omitempty"`
+	IsFallback               bool                          `json:"is_fallback,omitempty"`
+	Retryable                bool                          `json:"retryable,omitempty"`
+	RecipeID                 string                        `json:"recipe_id,omitempty"`
+	TemplateLabel            string                        `json:"template_label,omitempty"`
+	RenderProfile            string                        `json:"render_profile,omitempty"`
+	AssetID                  string                        `json:"asset_id,omitempty"`
+	ExecutionMode            string                        `json:"execution_mode,omitempty"`
+	ExecutionState           string                        `json:"execution_status,omitempty"`
+	RetryHint                string                        `json:"retry_hint,omitempty"`
+	StateReason              string                        `json:"state_reason,omitempty"`
+	SelectedAssetID          string                        `json:"selected_asset_id,omitempty"`
+	TargetAssetKind          string                        `json:"target_asset_kind,omitempty"`
+	ExecutionQuality         string                        `json:"execution_quality,omitempty"`
+	ExecutionQualityLabel    string                        `json:"execution_quality_label,omitempty"`
+	QualityGrade             string                        `json:"quality_grade,omitempty"`
+	QualityGradeLabel        string                        `json:"quality_grade_label,omitempty"`
+	RenderPreviewAvailable   bool                          `json:"render_preview_available,omitempty"`
+	RenderPreviewFormat      string                        `json:"render_preview_format,omitempty"`
+	RenderPreviewVisualMode  string                        `json:"render_preview_visual_mode,omitempty"`
+	RenderPreviewLayerTypes  []string                      `json:"render_preview_layer_types,omitempty"`
+	RenderPreviewRegions     []string                      `json:"render_preview_regions,omitempty"`
+	RenderPreviewStyleTokens []string                      `json:"render_preview_style_tokens,omitempty"`
+	PreviewCapabilities      []string                      `json:"preview_capabilities,omitempty"`
+	ReviewDecision           string                        `json:"review_decision,omitempty"`
+	ReviewStatus             string                        `json:"review_status,omitempty"`
+	ReviewBlocked            bool                          `json:"review_blocked,omitempty"`
+	ReviewedAt               *time.Time                    `json:"reviewed_at,omitempty"`
 	ScenePreset              *GenerationScenePresetSummary `json:"scene_preset,omitempty"`
 }
 
@@ -679,6 +680,7 @@ type GenerationActionAudit struct {
 type ListingKitResult struct {
 	TaskID                      string                           `json:"task_id"`
 	Status                      string                           `json:"status"`
+	ReviewReasons               []string                         `json:"review_reasons,omitempty"`
 	Platforms                   []string                         `json:"platforms,omitempty"`
 	Country                     string                           `json:"country,omitempty"`
 	Language                    string                           `json:"language,omitempty"`

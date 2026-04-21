@@ -119,6 +119,7 @@ func TestBuildListingKitExportForSelectedPlatform(t *testing.T) {
 				SourceType:   "1688_url",
 				ImageCount:   4,
 				VariantCount: 2,
+				Warnings:     []string{"请确认类目", "请确认类目"},
 			},
 			Shein: &SheinPackage{
 				ImageBundle: &common.PublishImageBundle{
@@ -256,6 +257,9 @@ func TestBuildListingKitExportForSelectedPlatform(t *testing.T) {
 	}
 	if export.Overview == nil || len(export.Overview.PlatformCards) != 1 {
 		t.Fatalf("export overview cards = %+v", export.Overview)
+	}
+	if got, want := export.Overview.ReviewReasons, []string{"请确认类目"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("export overview review reasons = %#v, want %#v", got, want)
 	}
 	if export.Overview.PlatformCards[0].PreviewSummary == nil || export.Overview.PlatformCards[0].PreviewSummary.TotalPreviews != 1 {
 		t.Fatalf("export overview preview summary = %+v", export.Overview.PlatformCards[0])

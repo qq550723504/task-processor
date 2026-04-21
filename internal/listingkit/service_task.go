@@ -54,11 +54,12 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 		resultPayload = &copied
 	}
 	result := &TaskResult{
-		TaskID:    task.ID,
-		Status:    task.Status,
-		Result:    resultPayload,
-		Error:     task.Error,
-		CreatedAt: task.CreatedAt,
+		TaskID:        task.ID,
+		Status:        task.Status,
+		Result:        resultPayload,
+		Error:         task.Error,
+		ReviewReasons: reviewReasonsFromTask(task),
+		CreatedAt:     task.CreatedAt,
 	}
 	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusFailed {
 		result.CompletedAt = &task.UpdatedAt

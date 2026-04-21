@@ -189,6 +189,7 @@ export type ListingKitPreviewHeader = {
   variant_count?: number;
   status_message?: string;
   warnings?: string[];
+  review_reasons?: string[];
   platform_cards?: PlatformCard[];
 };
 
@@ -543,6 +544,7 @@ export type ListingKitChildTask = {
 export type ListingKitTaskResultData = {
   task_id?: string;
   status?: string;
+  review_reasons?: string[];
   platforms?: string[];
   country?: string;
   language?: string;
@@ -562,6 +564,7 @@ export type ListingKitTaskResult = {
   status?: string;
   result?: ListingKitTaskResultData;
   error?: string;
+  review_reasons?: string[];
   created_at?: string;
   completed_at?: string;
 };

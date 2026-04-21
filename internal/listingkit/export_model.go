@@ -43,13 +43,14 @@ type ListingKitExportMeta struct {
 	ImageCount    int                      `json:"image_count,omitempty"`
 	VariantCount  int                      `json:"variant_count,omitempty"`
 	Warnings      []string                 `json:"warnings,omitempty"`
+	ReviewReasons []string                 `json:"review_reasons,omitempty"`
 	PlatformCards []ListingKitPlatformCard `json:"platform_cards,omitempty"`
 }
 
 type PlatformScenePresetSummary struct {
-	Slot        string                       `json:"slot,omitempty"`
-	Purpose     string                       `json:"purpose,omitempty"`
-	AssetID     string                       `json:"asset_id,omitempty"`
+	Slot        string                        `json:"slot,omitempty"`
+	Purpose     string                        `json:"purpose,omitempty"`
+	AssetID     string                        `json:"asset_id,omitempty"`
 	ScenePreset *GenerationScenePresetSummary `json:"scene_preset,omitempty"`
 }
 

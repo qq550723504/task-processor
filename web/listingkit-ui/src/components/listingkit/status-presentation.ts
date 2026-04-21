@@ -23,6 +23,12 @@ export function presentTaskStatus(status?: string): TaskStatusPresentation {
   switch (status) {
     case "failed":
       return { label: "Failed", title: "Task failed", tone: "danger" };
+    case "needs_review":
+      return {
+        label: "Needs Review",
+        title: "Task requires review",
+        tone: "warning",
+      };
     case "processing":
       return { label: "In progress", title: "Task in progress", tone: "warning" };
     case "pending":

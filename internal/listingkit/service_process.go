@@ -29,6 +29,7 @@ func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKi
 
 	if result.Summary != nil && result.Summary.NeedsReview {
 		result.Status = string(TaskStatusNeedsReview)
+		result.ReviewReasons = reviewReasonsFromResult(result)
 		if err := s.repo.MarkNeedsReview(ctx, task.ID, result, taskNeedsReviewReason(result)); err != nil {
 			return nil, err
 		}
@@ -43,17 +44,7 @@ func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKi
 }
 
 func taskNeedsReviewReason(result *ListingKitResult) string {
-	if result == nil || result.Summary == nil {
-		return "listing kit requires review"
-	}
-	warnings := make([]string, 0, len(result.Summary.Warnings))
-	for _, warning := range result.Summary.Warnings {
-		warning = strings.TrimSpace(warning)
-		if warning == "" {
-			continue
-		}
-		warnings = append(warnings, warning)
-	}
+	warnings := reviewReasonsFromResult(result)
 	if len(warnings) == 0 {
 		return "listing kit requires review"
 	}

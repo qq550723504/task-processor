@@ -41,6 +41,31 @@ describe("TaskStatusScreen", () => {
     setTimeoutSpy.mockRestore();
   });
 
+  it("treats needs-review as a terminal review state", () => {
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+    render(
+      <TaskStatusScreen
+        taskId="task_123"
+        task={{
+          task_id: "task_123",
+          status: "needs_review",
+          error:
+            "The product type is 'Unknown Product'.\nThe title is 'Unknown Product'.",
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("Task requires review")).toHaveLength(2);
+    expect(
+      screen.getByText("Review the generated queue and workspace before approving or revising the output."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Opening workspace automatically in 1.5 seconds."),
+    ).toBeInTheDocument();
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1500);
+    setTimeoutSpy.mockRestore();
+  });
+
   it("still allows manual workspace entry before auto-open completes", () => {
     render(
       <TaskStatusScreen

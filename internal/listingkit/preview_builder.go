@@ -134,6 +134,7 @@ func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *List
 		header.VariantCount = result.Summary.VariantCount
 		header.Warnings = append([]string(nil), result.Summary.Warnings...)
 	}
+	header.ReviewReasons = reviewReasonsFromResult(result)
 
 	header.PlatformCards = buildPlatformPreviewCards(result, selectedPlatform)
 	return header

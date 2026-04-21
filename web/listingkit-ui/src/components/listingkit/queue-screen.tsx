@@ -16,6 +16,7 @@ import {
 } from "@/components/listingkit/task-status-display";
 import { QueueSummaryStrip } from "@/components/listingkit/queue-summary-strip";
 import { QueueTable } from "@/components/listingkit/queue-table";
+import { ReviewReasonsCard } from "@/components/listingkit/review-reasons-card";
 import { TaskProgressNotice } from "@/components/listingkit/task-progress-notice";
 import { WorkspaceHeader } from "@/components/listingkit/workspace-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -165,6 +166,7 @@ export function QueueScreen({ taskId }: { taskId: string }) {
         onSelectRecovery={handleRecovery}
       />
       <TaskStatusPanel task={taskResult.data} />
+      <ReviewReasonsCard task={taskResult.data} />
       <TaskProgressNotice task={taskResult.data} />
       <QueueSummaryStrip summary={queue.data.summary} />
       <QueueFiltersBar value={filters} onApply={handleApply} />

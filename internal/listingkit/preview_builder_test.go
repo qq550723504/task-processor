@@ -265,6 +265,9 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 	if preview.Overview == nil || len(preview.Overview.PlatformCards) != 1 {
 		t.Fatalf("overview cards = %+v, want single shein card", preview.Overview)
 	}
+	if got, want := preview.Overview.ReviewReasons, []string{"需要确认 SHEIN 销售属性"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("overview review reasons = %#v, want %#v", got, want)
+	}
 	if preview.Overview.PlatformCards[0].PreviewSummary == nil || preview.Overview.PlatformCards[0].PreviewSummary.TotalPreviews != 1 {
 		t.Fatalf("overview card preview summary = %+v", preview.Overview.PlatformCards[0])
 	}

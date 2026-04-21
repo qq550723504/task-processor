@@ -11,6 +11,7 @@ import { ReviewSectionTabs } from "@/components/listingkit/review-section-tabs";
 import { ReviewToolbar } from "@/components/listingkit/review-toolbar";
 import { ScenePresetPanel } from "@/components/listingkit/scene-preset-panel";
 import { SlotNavigationList } from "@/components/listingkit/slot-navigation-list";
+import { ReviewReasonsCard } from "@/components/listingkit/review-reasons-card";
 import { TaskStatusPanel } from "@/components/listingkit/task-status-panel";
 import { TaskProgressNotice } from "@/components/listingkit/task-progress-notice";
 import { resolveWorkspaceScenePreset } from "@/components/listingkit/workspace-scene-preset";
@@ -202,6 +203,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         onSelectRecovery={handleRecovery}
       />
       <TaskStatusPanel task={taskResult.data} />
+      <ReviewReasonsCard task={taskResult.data} />
       <TaskProgressNotice task={taskResult.data} />
       <WorkspaceOverviewPanel
         overview={sessionData.overview}

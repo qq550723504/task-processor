@@ -118,6 +118,7 @@ func buildListingKitExportMeta(result *ListingKitResult, selectedPlatform string
 		meta.VariantCount = result.Summary.VariantCount
 		meta.Warnings = append([]string(nil), result.Summary.Warnings...)
 	}
+	meta.ReviewReasons = reviewReasonsFromResult(result)
 	meta.PlatformCards = buildPlatformPreviewCards(result, selectedPlatform)
 	return meta
 }
