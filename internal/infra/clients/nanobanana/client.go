@@ -210,7 +210,10 @@ func (c *Client) poll(ctx context.Context, id string) (*resultPayload, error) {
 		case "succeeded":
 			return &parsed.Data, nil
 		case "failed":
-			return nil, fmt.Errorf("nanobanana job failed: %s (%s)", parsed.Data.FailureReason, parsed.Data.Error)
+			return nil, &JobError{
+				Reason: parsed.Data.FailureReason,
+				Detail: parsed.Data.Error,
+			}
 		case "running", "":
 		default:
 			return nil, fmt.Errorf("unexpected nanobanana job status: %s", parsed.Data.Status)

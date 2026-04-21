@@ -1,0 +1,30 @@
+package productimage
+
+import (
+	"fmt"
+	"testing"
+
+	"task-processor/internal/infra/clients/nanobanana"
+)
+
+func TestClassifyProcessFailureTreatsModerationAsNoRetry(t *testing.T) {
+	err := fmt.Errorf("extract_subject failed: %w", &nanobanana.JobError{
+		Reason: "output_moderation",
+		Detail: "blocked by provider moderation",
+	})
+
+	if got := ClassifyProcessFailure(err); got != FailureDispositionNoRetry {
+		t.Fatalf("ClassifyProcessFailure() = %q, want %q", got, FailureDispositionNoRetry)
+	}
+}
+
+func TestClassifyProcessFailureKeepsTimeoutRetryable(t *testing.T) {
+	err := fmt.Errorf("render_white_bg failed: %w", &nanobanana.JobError{
+		Reason: "error",
+		Detail: "google gemini timeout",
+	})
+
+	if got := ClassifyProcessFailure(err); got != FailureDispositionRetryable {
+		t.Fatalf("ClassifyProcessFailure() = %q, want %q", got, FailureDispositionRetryable)
+	}
+}

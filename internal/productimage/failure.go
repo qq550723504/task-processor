@@ -1,6 +1,9 @@
 package productimage
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 type FailureDisposition string
 
@@ -39,8 +42,25 @@ func IsNoRetryError(err error) bool {
 	return errors.As(err, &target)
 }
 
+type providerFailureReason interface {
+	FailureReason() string
+}
+
+func isNoRetryProviderError(err error) bool {
+	var providerErr providerFailureReason
+	if !errors.As(err, &providerErr) {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(providerErr.FailureReason())) {
+	case "input_moderation", "output_moderation":
+		return true
+	default:
+		return false
+	}
+}
+
 func ClassifyProcessFailure(err error) FailureDisposition {
-	if IsNoRetryError(err) {
+	if IsNoRetryError(err) || isNoRetryProviderError(err) {
 		return FailureDispositionNoRetry
 	}
 	return FailureDispositionRetryable

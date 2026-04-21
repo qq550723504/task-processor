@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -131,5 +132,58 @@ func TestClientEditImageRequiresImageURL(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for missing image url")
+	}
+}
+
+func TestClientEditImageReturnsTypedModerationError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/draw/nano-banana":
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				Code: 0,
+				Msg:  "success",
+				Data: struct {
+					ID string `json:"id"`
+				}{ID: "job-1"},
+			})
+		case "/v1/draw/result":
+			_ = json.NewEncoder(w).Encode(resultEnvelope{
+				Code: 0,
+				Msg:  "success",
+				Data: resultPayload{
+					ID:            "job-1",
+					Status:        "failed",
+					FailureReason: "output_moderation",
+					Error:         "blocked by provider moderation",
+				},
+			})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		APIKey:       "test-key",
+		Model:        "nano-banana-fast",
+		SubmitURL:    server.URL + "/v1/draw/nano-banana",
+		PollInterval: 10 * time.Millisecond,
+		Timeout:      time.Second,
+		HTTPClient:   server.Client(),
+	})
+
+	_, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
+		Prompt:   "edit faithfully",
+		ImageURL: "https://example.com/source.png",
+	})
+	if err == nil {
+		t.Fatal("expected moderation error")
+	}
+	var jobErr *JobError
+	if !errors.As(err, &jobErr) {
+		t.Fatalf("error = %T, want *JobError", err)
+	}
+	if jobErr.FailureReason() != "output_moderation" {
+		t.Fatalf("failure reason = %q", jobErr.FailureReason())
 	}
 }
