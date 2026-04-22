@@ -315,6 +315,113 @@ export type PlatformScenePresetSummary = {
   scene_preset?: ScenePresetSummary;
 };
 
+export type SheinReadinessReason = {
+  code?: string;
+  category?: string;
+  summary?: string;
+};
+
+export type SheinRepairValidationPreview = {
+  valid?: boolean;
+  status?: string;
+  affected_sections?: string[];
+};
+
+export type SheinRepairHint = {
+  action?: string;
+  priority?: string;
+  target?: string;
+  editor_section?: string;
+  editor_focus?: string[];
+  revision_path?: string;
+  description?: string;
+  field_paths?: string[];
+  validation?: SheinRepairValidationPreview;
+};
+
+export type SheinReadinessItem = {
+  key?: string;
+  label?: string;
+  message?: string;
+  field_paths?: string[];
+  suggested_action?: string;
+  reason?: SheinReadinessReason;
+  repair_hints?: SheinRepairHint[];
+};
+
+export type SheinReadinessCheck = {
+  key?: string;
+  label?: string;
+  status?: string;
+  message?: string;
+  field_paths?: string[];
+  suggested_action?: string;
+  reason?: SheinReadinessReason;
+  repair_hints?: SheinRepairHint[];
+};
+
+export type SheinSubmitReadiness = {
+  ready?: boolean;
+  status?: string;
+  summary?: string[];
+  blocking_items?: SheinReadinessItem[];
+  warning_items?: SheinReadinessItem[];
+  checks?: SheinReadinessCheck[];
+};
+
+export type SheinChecklistGroupItem = {
+  key?: string;
+  label?: string;
+  status?: string;
+  message?: string;
+  field_paths?: string[];
+  suggested_action?: string;
+  reason?: SheinReadinessReason;
+  repair_hints?: SheinRepairHint[];
+};
+
+export type SheinSubmitChecklist = {
+  required?: SheinChecklistGroupItem[];
+  recommended?: SheinChecklistGroupItem[];
+  optional?: SheinChecklistGroupItem[];
+};
+
+export type SheinStatusOverview = {
+  status?: string;
+  headline?: string;
+  subheadline?: string;
+  needs_review?: boolean;
+  blocking_count?: number;
+  warning_count?: number;
+  highlights?: string[];
+  primary_action?: string;
+  primary_action_key?: string;
+  next_actions?: string[];
+};
+
+export type SheinWorkspaceSubmitState = {
+  status?: string;
+  ready?: boolean;
+  blocking_count?: number;
+  warning_count?: number;
+  summary?: string[];
+};
+
+export type SheinWorkspaceOverview = {
+  status?: string;
+  headline?: string;
+  subheadline?: string;
+  primary_action?: string;
+  primary_action_key?: string;
+  primary_view?: string;
+  needs_review?: boolean;
+  blocking_count?: number;
+  warning_count?: number;
+  highlights?: string[];
+  next_actions?: string[];
+  submit_state?: SheinWorkspaceSubmitState;
+};
+
 export type PlatformPreviewPayload = {
   render_previews?: unknown;
   scene_presets?: PlatformScenePresetSummary[];
@@ -343,11 +450,58 @@ export type SheinInspectionCategoryPayload = {
   review_notes?: string[];
 };
 
+export type SheinResolvedAttribute = {
+  name?: string;
+  value?: string;
+  attribute_id?: number;
+  attribute_value_id?: number;
+  attribute_extra_value?: string;
+  matched_by?: string;
+  required?: boolean;
+  skc_scope?: boolean;
+};
+
+export type SheinInspectionAttributePayload = {
+  status?: string;
+  source?: string;
+  template_count?: number;
+  resolved_count?: number;
+  unresolved_count?: number;
+  resolved_attributes?: SheinResolvedAttribute[];
+  review_notes?: string[];
+};
+
+export type SheinResolvedSaleAttribute = {
+  scope?: string;
+  name?: string;
+  value?: string;
+  attribute_id?: number;
+  attribute_value_id?: number;
+  matched_by?: string;
+};
+
+export type SheinSaleAttributeCandidateInfo = {
+  source_dimension?: string;
+  name?: string;
+  attribute_id?: number;
+  skc_scope?: boolean;
+  required?: boolean;
+  selected_scope?: string;
+  reasons?: string[];
+};
+
 export type SheinInspectionSaleAttributePayload = {
   status?: string;
   source?: string;
   recommend_category_review?: boolean;
   category_review_reason?: string;
+  primary_attribute_id?: number;
+  secondary_attribute_id?: number;
+  selection_summary?: string[];
+  skc_attributes?: SheinResolvedSaleAttribute[];
+  sku_attributes?: SheinResolvedSaleAttribute[];
+  candidate_count?: number;
+  candidates?: SheinSaleAttributeCandidateInfo[];
   review_notes?: string[];
 };
 
@@ -359,6 +513,9 @@ export type SheinRevisionSaleAttributePatch = {
 export type SheinEditorContext = {
   category?: {
     current?: SheinInspectionCategoryPayload;
+  };
+  attributes?: {
+    current?: SheinInspectionAttributePayload;
   };
   sale_attributes?: {
     current?: SheinInspectionSaleAttributePayload;
@@ -372,6 +529,10 @@ export type SheinEditorContext = {
 
 export type SheinPreviewPayload = PlatformPreviewPayload & {
   editor_context?: SheinEditorContext;
+  submit_readiness?: SheinSubmitReadiness;
+  submit_checklist?: SheinSubmitChecklist;
+  status_overview?: SheinStatusOverview;
+  workspace_overview?: SheinWorkspaceOverview;
 };
 
 export type ReviewSlot = {

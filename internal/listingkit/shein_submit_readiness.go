@@ -21,13 +21,17 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 		})
 	}
 
-	categoryReady := isSheinCategoryResolved(pkg) && pkg.CategoryID > 0 && pkg.ProductTypeID != nil && *pkg.ProductTypeID > 0
+	categoryReady := isSheinCategoryResolved(pkg) &&
+		pkg.CategoryID > 0 &&
+		pkg.ProductTypeID != nil &&
+		*pkg.ProductTypeID > 0 &&
+		!sheinCategoryReviewPending(pkg)
 	addCheck(
 		"category",
 		"类目骨架",
 		categoryReady,
-		"类目、类目层级和 product_type_id 需要确认后才能进入提交态",
-		[]string{"shein.category_id", "shein.category_id_list", "shein.product_type_id"},
+		"类目、类目层级和 product_type_id 需要确认；如当前类目被建议复核，也不能直接进入提交态",
+		[]string{"shein.category_id", "shein.category_id_list", "shein.product_type_id", "shein.sale_attribute_resolution.category_review_reason"},
 		"确认类目",
 		false,
 	)

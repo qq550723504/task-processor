@@ -11,6 +11,14 @@ import { ReviewSectionTabs } from "@/components/listingkit/review-section-tabs";
 import { ReviewToolbar } from "@/components/listingkit/review-toolbar";
 import { ScenePresetPanel } from "@/components/listingkit/scene-preset-panel";
 import { SheinCategoryReviewCard } from "@/components/listingkit/shein-category-review-card";
+import { SheinAttributeReviewCard } from "@/components/listingkit/shein-attribute-review-card";
+import { SheinSaleAttributeReviewCard } from "@/components/listingkit/shein-sale-attribute-review-card";
+import { SheinSubmitReadinessPanel } from "@/components/listingkit/shein-submit-readiness-panel";
+import {
+  canSelectSheinReadinessItem,
+  isSheinWorkspaceActionKey,
+  sheinWorkspaceTargetIdForKey,
+} from "@/components/listingkit/shein-workspace-actions";
 import { SlotNavigationList } from "@/components/listingkit/slot-navigation-list";
 import { ReviewReasonsCard } from "@/components/listingkit/review-reasons-card";
 import { TaskStatusPanel } from "@/components/listingkit/task-status-panel";
@@ -40,6 +48,7 @@ import type {
   ResolvedActionSummary,
   ReviewSection,
   ReviewSlot,
+  SheinReadinessItem,
   ToolbarAction,
 } from "@/lib/types/listingkit";
 
@@ -199,6 +208,32 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     });
   };
 
+  const canSelectSheinBlockingItem = (item: SheinReadinessItem) =>
+    canSelectSheinReadinessItem(item);
+
+  const handleSelectSheinBlockingItem = (item: SheinReadinessItem) => {
+    if (!isSheinWorkspaceActionKey(item.key)) {
+      return;
+    }
+    const targetId = sheinWorkspaceTargetIdForKey(item.key);
+    const card = document.getElementById(targetId);
+    if (!card) {
+      return;
+    }
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const handleRunSheinPrimaryAction = (key?: string | null) => {
+    if (!isSheinWorkspaceActionKey(key)) {
+      return;
+    }
+    const card = document.getElementById(sheinWorkspaceTargetIdForKey(key));
+    if (!card) {
+      return;
+    }
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const handlePlatformSelect = (platform: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("platform", platform);
@@ -296,11 +331,38 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             onAction={handleToolbarAction}
           />
           {selectedPlatform === "shein" ? (
-            <SheinCategoryReviewCard
-              editorContext={preview.data?.shein?.editor_context}
-              isApplying={applyRevision.isPending}
-              onApplySuggestedCategory={handleApplySuggestedSheinCategory}
+            <SheinSubmitReadinessPanel
+              readiness={preview.data?.shein?.submit_readiness}
+              checklist={preview.data?.shein?.submit_checklist}
+              workspaceOverview={preview.data?.shein?.workspace_overview}
+              canSelectBlockingItem={canSelectSheinBlockingItem}
+              onSelectBlockingItem={handleSelectSheinBlockingItem}
+              canRunPrimaryAction={isSheinWorkspaceActionKey}
+              onRunPrimaryAction={handleRunSheinPrimaryAction}
             />
+          ) : null}
+          {selectedPlatform === "shein" ? (
+            <div id="shein-category-review-card">
+              <SheinCategoryReviewCard
+                editorContext={preview.data?.shein?.editor_context}
+                isApplying={applyRevision.isPending}
+                onApplySuggestedCategory={handleApplySuggestedSheinCategory}
+              />
+            </div>
+          ) : null}
+          {selectedPlatform === "shein" ? (
+            <div id="shein-attribute-review-card">
+              <SheinAttributeReviewCard
+                editorContext={preview.data?.shein?.editor_context}
+              />
+            </div>
+          ) : null}
+          {selectedPlatform === "shein" ? (
+            <div id="shein-sale-attribute-review-card">
+              <SheinSaleAttributeReviewCard
+                editorContext={preview.data?.shein?.editor_context}
+              />
+            </div>
           ) : null}
           <ScenePresetPanel summary={focusedScenePreset} />
           <RecoveryActionList

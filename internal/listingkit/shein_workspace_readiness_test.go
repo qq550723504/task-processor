@@ -144,6 +144,72 @@ func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T
 	}
 }
 
+func TestBuildSheinSubmitReadinessBlockedWhenCategoryReviewStillPending(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	readiness := buildSheinSubmitReadiness(&SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Kitchen", "Bottle"},
+		ProductTypeID: &productTypeID,
+		Images: &PlatformImageSet{
+			MainImage: "https://cdn.example.com/main.jpg",
+		},
+		ResolvedAttributes: []SheinResolvedAttribute{{
+			Name:        "material",
+			AttributeID: 7001,
+		}},
+		CategoryResolution: &SheinCategoryResolution{
+			Status:     "resolved",
+			CategoryID: 3001,
+		},
+		AttributeResolution: &SheinAttributeResolution{
+			Status:        "resolved",
+			ResolvedCount: 1,
+		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			Status:                  "partial",
+			RecommendCategoryReview: true,
+			CategoryReviewReason:    "当前类目路径与商品语义明显不一致",
+			PrimaryAttributeID:      501,
+		},
+		RequestDraft: &SheinRequestDraft{
+			ResolvedAttributes: []SheinResolvedAttribute{{
+				Name:        "material",
+				AttributeID: 7001,
+			}},
+			SKCList: []SheinSKCRequestDraft{{
+				SupplierCode: "SKC-1",
+				SKUList: []SheinSKUDraft{{
+					SupplierSKU: "SKU-1",
+				}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{},
+		SkcList: []SheinSKCPackage{{
+			SupplierCode: "SKC-1",
+			SKUs: []PlatformVariant{{
+				SKU: "SKU-1",
+			}},
+		}},
+	})
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if readiness.Ready {
+		t.Fatalf("ready = true, want false; readiness=%+v", readiness)
+	}
+	if readiness.Status != "blocked" {
+		t.Fatalf("status = %q, want blocked", readiness.Status)
+	}
+	if len(readiness.BlockingItems) == 0 || readiness.BlockingItems[0].Key != "category" {
+		t.Fatalf("blocking items = %+v, want category blocker first", readiness.BlockingItems)
+	}
+	if readiness.BlockingItems[0].Reason == nil || readiness.BlockingItems[0].Reason.Code != "category_unresolved" {
+		t.Fatalf("category blocker reason = %+v", readiness.BlockingItems[0].Reason)
+	}
+}
+
 func TestBuildSheinSubmitChecklistGroupsChecks(t *testing.T) {
 	t.Parallel()
 
