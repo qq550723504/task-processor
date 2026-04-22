@@ -16,7 +16,7 @@ data:
       timeout: 1800
 
     worker:
-      concurrency: 1
+      concurrency: 2
       bufferSize: 10
       taskInterval: 50
       maxFetchPerCycle: 1
@@ -44,7 +44,7 @@ data:
       enabled: true
       headless: true
       browserPath: "/opt/fingerprint-chrome/chrome-144/chrome"
-      poolSize: 1
+      poolSize: 3
       viewportWidth: 1920
       viewportHeight: 1080
       proxyServer: ""
@@ -73,7 +73,7 @@ data:
             prefetch: 1
       node:
         role: "task"
-        maxConcurrency: 1
+        maxConcurrency: 2
         useStoreQueues: true
         ownedStores: []
         ownedBuckets: []
