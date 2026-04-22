@@ -123,6 +123,13 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *productenr
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "未命中可用的 SHEIN 销售属性映射")
 	}
+	if !resolution.RecommendCategoryReview {
+		if recommend, reason := buildCategoryFamilyConflictSummary(canonical, pkg); recommend {
+			resolution.RecommendCategoryReview = true
+			resolution.CategoryReviewReason = reason
+			resolution.ReviewNotes = append(resolution.ReviewNotes, buildCategoryFamilyConflictReviewNotes(canonical, pkg)...)
+		}
+	}
 	return resolution
 }
 

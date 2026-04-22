@@ -10,6 +10,7 @@ import { RecoveryActionList } from "@/components/listingkit/recovery-action-list
 import { ReviewSectionTabs } from "@/components/listingkit/review-section-tabs";
 import { ReviewToolbar } from "@/components/listingkit/review-toolbar";
 import { ScenePresetPanel } from "@/components/listingkit/scene-preset-panel";
+import { SheinCategoryReviewCard } from "@/components/listingkit/shein-category-review-card";
 import { SlotNavigationList } from "@/components/listingkit/slot-navigation-list";
 import { ReviewReasonsCard } from "@/components/listingkit/review-reasons-card";
 import { TaskStatusPanel } from "@/components/listingkit/task-status-panel";
@@ -76,6 +77,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     sessionData?.platform_cards ?? preview.data?.overview?.platform_cards ?? [];
   const focusedPreview =
     reviewPreview.data?.preview ?? sessionData?.focused_render_preview;
+  const selectedPlatform = sessionData?.selected_platform ?? preview.data?.selected_platform;
   const focusedScenePreset = resolveWorkspaceScenePreset({
     reviewPreviewPreset: reviewPreview.data?.scene_preset,
     focusedScenePreset: sessionData?.focused_scene_preset,
@@ -86,7 +88,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       walmart: preview.data?.walmart?.scene_presets,
     },
     queueItems: sessionData?.queue?.items,
-    selectedPlatform: sessionData?.selected_platform,
+    selectedPlatform,
     selectedSlot: sessionData?.selected_slot,
     focusedAssetId: focusedPreview?.asset_id,
   });
@@ -258,6 +260,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             toolbar={reviewPreview.data?.toolbar ?? sessionData.focused_toolbar}
             onAction={handleToolbarAction}
           />
+          {selectedPlatform === "shein" ? (
+            <SheinCategoryReviewCard
+              editorContext={preview.data?.shein?.editor_context}
+            />
+          ) : null}
           <ScenePresetPanel summary={focusedScenePreset} />
           <RecoveryActionList
             descriptors={

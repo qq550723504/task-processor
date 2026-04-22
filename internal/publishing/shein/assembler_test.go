@@ -17,6 +17,35 @@ type assemblerStubCategoryAPI struct {
 	info *sheincategory.CategoryInfo
 }
 
+type assemblerStubCategoryRecommender struct {
+	resolution *CategoryResolution
+	suggestion *CategorySuggestion
+}
+
+func (s assemblerStubCategoryRecommender) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution {
+	if s.resolution == nil {
+		return &CategoryResolution{}
+	}
+	cloned := *s.resolution
+	if len(s.resolution.MatchedPath) > 0 {
+		cloned.MatchedPath = append([]string(nil), s.resolution.MatchedPath...)
+	}
+	if len(s.resolution.CategoryIDList) > 0 {
+		cloned.CategoryIDList = append([]int(nil), s.resolution.CategoryIDList...)
+	}
+	return &cloned
+}
+
+func (s assemblerStubCategoryRecommender) SuggestAlternative(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategorySuggestion {
+	if s.suggestion == nil {
+		return nil
+	}
+	cloned := *s.suggestion
+	cloned.MatchedPath = append([]string(nil), s.suggestion.MatchedPath...)
+	cloned.CategoryIDList = append([]int(nil), s.suggestion.CategoryIDList...)
+	return &cloned
+}
+
 func (s assemblerStubCategoryAPI) GetCategory(categoryID int) (*sheincategory.CategoryInfo, error) {
 	if s.info == nil {
 		return nil, nil
@@ -24,6 +53,10 @@ func (s assemblerStubCategoryAPI) GetCategory(categoryID int) (*sheincategory.Ca
 	info := *s.info
 	info.CategoryID = categoryID
 	return &info, nil
+}
+
+func (assemblerStubCategoryAPI) GetCategoryTree() (*sheincategory.CategoryTreeResponse, error) {
+	return nil, nil
 }
 
 func (assemblerStubCategoryAPI) SuggestCategoryByText(string) (*sheincategory.SuggestCategoryResponse, error) {
@@ -228,6 +261,77 @@ func TestAssemblerBuildCreatesGroupedSKCsWhenSaleAttributeResolverMapsSourceDime
 	}
 	if pkg.RequestDraft.SKCList[0].SkcName != "Red" || pkg.RequestDraft.SKCList[1].SkcName != "Blue" {
 		t.Fatalf("skc names = %q, %q; want Red/Blue", pkg.RequestDraft.SKCList[0].SkcName, pkg.RequestDraft.SKCList[1].SkcName)
+	}
+}
+
+func TestAssemblerBuildTriggersCategoryReviewWhenCategoryFamilyConflicts(t *testing.T) {
+	assembler := NewAssembler(AssemblerConfig{
+		CategoryResolver: assemblerStubCategoryRecommender{
+			resolution: &CategoryResolution{
+				Status:      "resolved",
+				Source:      "target_category_hint",
+				CategoryID:  12143,
+				MatchedPath: []string{"家居&生活", "家庭用品", "鞋用品", "鞋配饰"},
+			},
+			suggestion: &CategorySuggestion{
+				Source:      "ai_category_tree",
+				CategoryID:  6001,
+				MatchedPath: []string{"Kitchen & Dining", "Drinkware", "Tumblers"},
+			},
+		},
+		SaleAttributeResolver: NewSaleAttributeResolver(stubAttributeAPI{
+			templates: &sheinattribute.AttributeTemplateInfo{
+				Data: []sheinattribute.AttributeTemplate{{
+					AttributeInfos: []sheinattribute.AttributeInfo{
+						{
+							AttributeID:       27,
+							AttributeName:     "颜色",
+							AttributeNameEn:   "Color",
+							AttributeType:     1,
+							SKCScope:          boolPointer(true),
+							AttributeInputNum: 1,
+							AttributeValueInfoList: []sheinattribute.AttributeValue{
+								{AttributeValueID: 11, AttributeValue: "黑色", AttributeValueEn: "Black"},
+							},
+						},
+					},
+				}},
+			},
+		}, nil),
+	})
+
+	canonical := &productenrich.CanonicalProduct{
+		Title:        "420ml stainless steel tumbler",
+		Description:  "Vacuum insulated drinkware cup",
+		CategoryPath: []string{"Drinkware", "Tumblers & Water Bottles"},
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"材质": {Value: "不锈钢"},
+			"容量": {Value: "420ml"},
+		},
+		VariantDimensions: []productenrich.ScrapedVariantDimension{
+			{Name: "颜色", Values: []string{"裸粉", "黑色"}},
+		},
+		Variants: []productenrich.CanonicalVariant{
+			{SKU: "SKU-PINK", Attributes: map[string]productenrich.CanonicalAttribute{"颜色": {Value: "裸粉"}}},
+			{SKU: "SKU-BLACK", Attributes: map[string]productenrich.CanonicalAttribute{"颜色": {Value: "黑色"}}},
+		},
+		Images: []productenrich.CanonicalImage{
+			{URL: "main.jpg"},
+		},
+	}
+
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", SheinStoreID: 869, TargetCategoryHint: "12143"}, canonical, nil)
+	if pkg.SaleAttributeResolution == nil || !pkg.SaleAttributeResolution.RecommendCategoryReview {
+		t.Fatalf("expected recommend_category_review to be true: %+v", pkg.SaleAttributeResolution)
+	}
+	if pkg.SaleAttributeResolution.CategoryReviewReason == "" {
+		t.Fatal("expected category review reason")
+	}
+	if pkg.CategoryResolution == nil || pkg.CategoryResolution.SuggestedCategory == nil {
+		t.Fatalf("expected suggested category, got %+v", pkg.CategoryResolution)
+	}
+	if pkg.CategoryResolution.SuggestedCategory.CategoryID != 6001 {
+		t.Fatalf("suggested category id = %d, want 6001", pkg.CategoryResolution.SuggestedCategory.CategoryID)
 	}
 }
 

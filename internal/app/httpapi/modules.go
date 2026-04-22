@@ -474,7 +474,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 			DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(deps.imageSceneRenderer),
 		}),
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
-			SheinCategoryResolver:      sheinpub.NewManagedCategoryResolver(deps.managementClient),
+			SheinCategoryResolver:      sheinpub.NewManagedCategoryResolver(deps.managementClient, buildSheinCategoryLLMClient(deps.openaiMgr)),
 			SheinAttributeResolver:     sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)),
 			SheinSaleAttributeResolver: sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)),
 		}),

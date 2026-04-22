@@ -1,0 +1,34 @@
+package shein
+
+import (
+	"context"
+	"strings"
+
+	openaiclient "task-processor/internal/infra/clients/openai"
+	sheincategoryselector "task-processor/internal/shein/category"
+)
+
+type categorySuggestFallback interface {
+	SelectCategoryID(query string, api CategoryAPI) (int, error)
+}
+
+type aiCategorySuggestFallback struct {
+	manager *sheincategoryselector.CategoryManager
+}
+
+func newAICategorySuggestFallback(client openaiclient.ChatCompleter) categorySuggestFallback {
+	if client == nil {
+		return nil
+	}
+	selector := sheincategoryselector.NewOpenAISelector(client)
+	return &aiCategorySuggestFallback{
+		manager: sheincategoryselector.NewCategoryManager(selector),
+	}
+}
+
+func (f *aiCategorySuggestFallback) SelectCategoryID(query string, api CategoryAPI) (int, error) {
+	if f == nil || f.manager == nil || api == nil || strings.TrimSpace(query) == "" {
+		return 0, nil
+	}
+	return f.manager.GetCategoryIDBySuggest(context.Background(), query, api, nil)
+}

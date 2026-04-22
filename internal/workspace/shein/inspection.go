@@ -178,6 +178,12 @@ func buildCategoryPayload(pkg *sheinpub.Package) *sheinpub.InspectionCategoryPay
 	if pkg.CategoryResolution != nil {
 		payload.Status = pkg.CategoryResolution.Status
 		payload.Source = pkg.CategoryResolution.Source
+		if pkg.CategoryResolution.SuggestedCategory != nil {
+			suggested := *pkg.CategoryResolution.SuggestedCategory
+			suggested.MatchedPath = append([]string(nil), suggested.MatchedPath...)
+			suggested.CategoryIDList = append([]int(nil), suggested.CategoryIDList...)
+			payload.SuggestedCategory = &suggested
+		}
 		payload.ReviewNotes = append([]string(nil), pkg.CategoryResolution.ReviewNotes...)
 	}
 	return payload
@@ -211,6 +217,9 @@ func buildCategoryPayloadMap(payload *sheinpub.InspectionCategoryPayload) map[st
 	}
 	if payload.TopCategoryID > 0 {
 		out["top_category_id"] = payload.TopCategoryID
+	}
+	if payload.SuggestedCategory != nil {
+		out["suggested_category"] = payload.SuggestedCategory
 	}
 	if len(payload.ReviewNotes) > 0 {
 		out["review_notes"] = append([]string(nil), payload.ReviewNotes...)

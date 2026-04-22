@@ -41,6 +41,10 @@ func (s stubSheinCategoryAPI) GetCategory(categoryID int) (*sheincategory.Catego
 	return &info, nil
 }
 
+func (s stubSheinCategoryAPI) GetCategoryTree() (*sheincategory.CategoryTreeResponse, error) {
+	return nil, nil
+}
+
 func (s stubSheinCategoryAPI) SuggestCategoryByText(productInfo string) (*sheincategory.SuggestCategoryResponse, error) {
 	return nil, nil
 }

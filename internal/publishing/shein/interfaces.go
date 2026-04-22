@@ -8,6 +8,7 @@ import (
 
 type CategoryAPI interface {
 	GetCategory(categoryID int) (*sheincategory.CategoryInfo, error)
+	GetCategoryTree() (*sheincategory.CategoryTreeResponse, error)
 	SuggestCategoryByText(productInfo string) (*sheincategory.SuggestCategoryResponse, error)
 }
 

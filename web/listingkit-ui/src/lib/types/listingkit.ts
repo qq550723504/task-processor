@@ -320,6 +320,60 @@ export type PlatformPreviewPayload = {
   scene_presets?: PlatformScenePresetSummary[];
 };
 
+export type SheinCategorySuggestion = {
+  source?: string;
+  reason?: string;
+  matched_path?: string[];
+  category_id?: number;
+  category_id_list?: number[];
+  product_type_id?: number;
+  top_category_id?: number;
+};
+
+export type SheinInspectionCategoryPayload = {
+  status?: string;
+  source?: string;
+  category_name?: string;
+  category_path?: string[];
+  category_id?: number;
+  category_id_list?: number[];
+  product_type_id?: number;
+  top_category_id?: number;
+  suggested_category?: SheinCategorySuggestion;
+  review_notes?: string[];
+};
+
+export type SheinInspectionSaleAttributePayload = {
+  status?: string;
+  source?: string;
+  recommend_category_review?: boolean;
+  category_review_reason?: string;
+  review_notes?: string[];
+};
+
+export type SheinRevisionSaleAttributePatch = {
+  recommend_category_review?: boolean;
+  category_review_reason?: string;
+};
+
+export type SheinEditorContext = {
+  category?: {
+    current?: SheinInspectionCategoryPayload;
+  };
+  sale_attributes?: {
+    current?: SheinInspectionSaleAttributePayload;
+  };
+  revision_skeleton?: {
+    shein?: {
+      sale_attribute_resolution?: SheinRevisionSaleAttributePatch;
+    };
+  };
+};
+
+export type SheinPreviewPayload = PlatformPreviewPayload & {
+  editor_context?: SheinEditorContext;
+};
+
 export type ReviewSlot = {
   platform?: string;
   slot?: string;
@@ -529,7 +583,7 @@ export type ListingKitPreview = {
   asset_render_previews?: PreviewSlot[];
   platform_asset_render_previews?: unknown[];
   amazon?: PlatformPreviewPayload;
-  shein?: PlatformPreviewPayload;
+  shein?: SheinPreviewPayload;
   temu?: PlatformPreviewPayload;
   walmart?: PlatformPreviewPayload;
 };

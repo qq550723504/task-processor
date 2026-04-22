@@ -121,15 +121,26 @@ type StockInfo struct {
 }
 
 type CategoryResolution struct {
-	Status         string   `json:"status,omitempty"`
+	Status            string                `json:"status,omitempty"`
+	Source            string                `json:"source,omitempty"`
+	QueryText         string                `json:"query_text,omitempty"`
+	MatchedPath       []string              `json:"matched_path,omitempty"`
+	CategoryID        int                   `json:"category_id,omitempty"`
+	CategoryIDList    []int                 `json:"category_id_list,omitempty"`
+	ProductTypeID     int                   `json:"product_type_id,omitempty"`
+	TopCategoryID     int                   `json:"top_category_id,omitempty"`
+	SuggestedCategory *CategorySuggestion   `json:"suggested_category,omitempty"`
+	ReviewNotes       []string              `json:"review_notes,omitempty"`
+}
+
+type CategorySuggestion struct {
 	Source         string   `json:"source,omitempty"`
-	QueryText      string   `json:"query_text,omitempty"`
+	Reason         string   `json:"reason,omitempty"`
 	MatchedPath    []string `json:"matched_path,omitempty"`
 	CategoryID     int      `json:"category_id,omitempty"`
 	CategoryIDList []int    `json:"category_id_list,omitempty"`
 	ProductTypeID  int      `json:"product_type_id,omitempty"`
 	TopCategoryID  int      `json:"top_category_id,omitempty"`
-	ReviewNotes    []string `json:"review_notes,omitempty"`
 }
 
 type ResolvedAttribute struct {
@@ -230,17 +241,18 @@ type InspectionAction struct {
 }
 
 type InspectionCategoryPayload struct {
-	Platform       string   `json:"platform,omitempty"`
-	Target         string   `json:"target,omitempty"`
-	Status         string   `json:"status,omitempty"`
-	Source         string   `json:"source,omitempty"`
-	CategoryName   string   `json:"category_name,omitempty"`
-	CategoryPath   []string `json:"category_path,omitempty"`
-	CategoryID     int      `json:"category_id,omitempty"`
-	CategoryIDList []int    `json:"category_id_list,omitempty"`
-	ProductTypeID  *int     `json:"product_type_id,omitempty"`
-	TopCategoryID  int      `json:"top_category_id,omitempty"`
-	ReviewNotes    []string `json:"review_notes,omitempty"`
+	Platform          string              `json:"platform,omitempty"`
+	Target            string              `json:"target,omitempty"`
+	Status            string              `json:"status,omitempty"`
+	Source            string              `json:"source,omitempty"`
+	CategoryName      string              `json:"category_name,omitempty"`
+	CategoryPath      []string            `json:"category_path,omitempty"`
+	CategoryID        int                 `json:"category_id,omitempty"`
+	CategoryIDList    []int               `json:"category_id_list,omitempty"`
+	ProductTypeID     *int                `json:"product_type_id,omitempty"`
+	TopCategoryID     int                 `json:"top_category_id,omitempty"`
+	SuggestedCategory *CategorySuggestion `json:"suggested_category,omitempty"`
+	ReviewNotes       []string            `json:"review_notes,omitempty"`
 }
 
 type InspectionAttributePayload struct {

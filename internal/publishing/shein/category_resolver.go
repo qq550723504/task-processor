@@ -10,9 +10,25 @@ import (
 	sheincategory "task-processor/internal/shein/api/category"
 )
 
-type categoryResolver struct{ api CategoryAPI }
+type categoryResolver struct {
+	api          CategoryAPI
+	suggestFallback categorySuggestFallback
+	treeFallback categoryTreeFallback
+}
 
 func NewCategoryResolver(api CategoryAPI) CategoryResolver { return &categoryResolver{api: api} }
+
+func NewCategoryResolverWithFallbacks(api CategoryAPI, suggestFallback categorySuggestFallback, treeFallback categoryTreeFallback) CategoryResolver {
+	return &categoryResolver{
+		api:             api,
+		suggestFallback: suggestFallback,
+		treeFallback:    treeFallback,
+	}
+}
+
+func NewCategoryResolverWithTreeFallback(api CategoryAPI, treeFallback categoryTreeFallback) CategoryResolver {
+	return NewCategoryResolverWithFallbacks(api, nil, treeFallback)
+}
 
 func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution {
 	resolution := &CategoryResolution{
@@ -41,9 +57,10 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.C
 		if err != nil {
 			resolution.Status = "partial"
 			resolution.ReviewNotes = append(resolution.ReviewNotes, formatCategoryResolutionAPIError(err))
-			return resolution
-		}
-		if resp != nil && len(resp.Data) > 0 {
+			if r.treeFallback == nil {
+				return resolution
+			}
+		} else if resp != nil && len(resp.Data) > 0 {
 			if suggestedID, convErr := strconv.Atoi(strings.TrimSpace(resp.Data[0].CategoryID)); convErr == nil && suggestedID > 0 {
 				if info, infoErr := r.api.GetCategory(suggestedID); infoErr == nil && info != nil {
 					return hydrateCategoryResolution(info, "suggest_category", resolution.QueryText)
@@ -52,6 +69,30 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.C
 				resolution.Status = "partial"
 				resolution.CategoryID = suggestedID
 				resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 推荐类目已命中，但未能拉取完整类目详情")
+				return resolution
+			}
+		}
+		if r.treeFallback != nil {
+			tree, treeErr := r.api.GetCategoryTree()
+			if treeErr != nil {
+				resolution.Status = "partial"
+				resolution.ReviewNotes = append(resolution.ReviewNotes, formatCategoryTreeResolutionAPIError(treeErr))
+				return resolution
+			}
+			selectedID, selectErr := r.treeFallback.SelectCategoryID(resolution.QueryText, tree)
+			if selectErr != nil {
+				resolution.Status = "partial"
+				resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 类目树候选重选失败: "+strings.TrimSpace(selectErr.Error()))
+				return resolution
+			}
+			if selectedID > 0 {
+				if info, infoErr := r.api.GetCategory(selectedID); infoErr == nil && info != nil {
+					return hydrateCategoryResolution(info, "ai_category_tree", resolution.QueryText)
+				}
+				resolution.Source = "ai_category_tree"
+				resolution.Status = "partial"
+				resolution.CategoryID = selectedID
+				resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 分类树重选已命中，但未能拉取完整类目详情")
 				return resolution
 			}
 		}
@@ -69,6 +110,74 @@ func formatCategoryResolutionAPIError(err error) string {
 		return "SHEIN 类目在线解析失败: " + authErr.Error()
 	}
 	return "SHEIN 类目在线解析失败: " + strings.TrimSpace(err.Error())
+}
+
+func formatCategoryTreeResolutionAPIError(err error) string {
+	if authErr, ok := sheinapi.IsAuthenticationExpired(err); ok {
+		return "SHEIN 类目树加载失败: " + authErr.Error()
+	}
+	return "SHEIN 类目树加载失败: " + strings.TrimSpace(err.Error())
+}
+
+func (r *categoryResolver) SuggestAlternative(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategorySuggestion {
+	if r == nil || r.api == nil {
+		return nil
+	}
+	query := buildCategorySuggestionQuery(req, canonical, pkg)
+	if strings.TrimSpace(query) == "" {
+		return nil
+	}
+	tryCandidate := func(selectedID int, source, reason string) *CategorySuggestion {
+		if selectedID <= 0 {
+			return nil
+		}
+		if pkg != nil && selectedID == pkg.CategoryID {
+			return nil
+		}
+		info, err := r.api.GetCategory(selectedID)
+		if err != nil || info == nil {
+			return nil
+		}
+		resolution := hydrateCategoryResolution(info, source, query)
+		if resolution == nil || resolution.CategoryID <= 0 {
+			return nil
+		}
+		suggestion := &CategorySuggestion{
+			Source:         resolution.Source,
+			Reason:         reason,
+			MatchedPath:    append([]string(nil), resolution.MatchedPath...),
+			CategoryID:     resolution.CategoryID,
+			CategoryIDList: append([]int(nil), resolution.CategoryIDList...),
+			ProductTypeID:  resolution.ProductTypeID,
+			TopCategoryID:  resolution.TopCategoryID,
+		}
+		if !shouldAcceptSuggestedCategory(canonical, pkg, suggestion) {
+			return nil
+		}
+		return suggestion
+	}
+
+	if r.suggestFallback != nil {
+		selectedID, err := r.suggestFallback.SelectCategoryID(query, r.api)
+		if err == nil {
+			if suggestion := tryCandidate(selectedID, "suggest_category", "当前类目模板不适配销售属性结构，建议优先复核该推荐类目"); suggestion != nil {
+				return suggestion
+			}
+		}
+	}
+
+	if r.treeFallback == nil {
+		return nil
+	}
+	tree, err := r.api.GetCategoryTree()
+	if err != nil || tree == nil {
+		return nil
+	}
+	selectedID, err := r.treeFallback.SelectCategoryID(query, tree)
+	if err != nil {
+		return nil
+	}
+	return tryCandidate(selectedID, "ai_category_tree", "当前类目模板不适配销售属性结构，建议复核该候选类目")
 }
 
 func hydrateCategoryResolution(info *sheincategory.CategoryInfo, source, query string) *CategoryResolution {
@@ -127,6 +236,23 @@ func buildCategoryIDList(info *sheincategory.CategoryInfo) []int {
 
 func buildCategoryQuery(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) string {
 	candidates := []string{req.TargetCategoryHint, canonical.Title, common.FirstNonEmpty(pkg.CategoryName, common.LastCategory(canonical.CategoryPath)), canonical.Description, req.Text}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate != "" {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func buildCategorySuggestionQuery(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) string {
+	candidates := []string{
+		canonical.Title,
+		common.FirstNonEmpty(pkg.CategoryName, common.LastCategory(canonical.CategoryPath)),
+		canonical.Description,
+		req.Text,
+		req.TargetCategoryHint,
+	}
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate != "" {
