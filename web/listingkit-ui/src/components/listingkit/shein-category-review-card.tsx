@@ -27,6 +27,9 @@ function buildSheinCategoryReviewModel(editorContext?: SheinEditorContext | null
     revisionSale?.category_review_reason ??
     "";
   const suggestedCategory = currentCategory?.suggested_category;
+  const isSuggestionApplied =
+    Boolean(suggestedCategory?.category_id) &&
+    suggestedCategory?.category_id === currentCategory?.category_id;
 
   if (!recommendCategoryReview && !suggestedCategory?.category_id) {
     return null;
@@ -38,6 +41,7 @@ function buildSheinCategoryReviewModel(editorContext?: SheinEditorContext | null
     currentPath: joinPath(currentCategory?.category_path),
     currentCategoryId: currentCategory?.category_id,
     suggestedCategory,
+    isSuggestionApplied,
   };
 }
 
@@ -63,8 +67,10 @@ function SuggestionRow({
 
 function SuggestedCategoryBlock({
   suggestion,
+  isApplied = false,
 }: {
   suggestion?: SheinCategorySuggestion | null;
+  isApplied?: boolean;
 }) {
   if (!suggestion?.category_id) {
     return null;
@@ -74,10 +80,12 @@ function SuggestedCategoryBlock({
     <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
       <div className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-          Suggested category
+          {isApplied ? "Applied category" : "Suggested category"}
         </p>
         <p className="text-sm leading-6 text-zinc-700">
-          Safe alternate candidate accepted by the reselection guardrail.
+          {isApplied
+            ? "The suggested category has already been applied to the current SHEIN draft."
+            : "Safe alternate candidate accepted by the reselection guardrail."}
         </p>
       </div>
       <dl className="grid gap-3">
@@ -115,7 +123,9 @@ export function SheinCategoryReviewCard({
             SHEIN category review
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-700">
-            Current category mapping needs review before final submission.
+            {model.isSuggestionApplied
+              ? "The current category already matches the accepted suggestion."
+              : "Current category mapping needs review before final submission."}
           </p>
         </div>
 
@@ -128,9 +138,14 @@ export function SheinCategoryReviewCard({
           />
         </dl>
 
-        <SuggestedCategoryBlock suggestion={model.suggestedCategory} />
+        <SuggestedCategoryBlock
+          suggestion={model.suggestedCategory}
+          isApplied={model.isSuggestionApplied}
+        />
 
-        {model.suggestedCategory?.category_id && onApplySuggestedCategory ? (
+        {model.suggestedCategory?.category_id &&
+        !model.isSuggestionApplied &&
+        onApplySuggestedCategory ? (
           <div className="flex justify-end">
             <Button
               tone="secondary"

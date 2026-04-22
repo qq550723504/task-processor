@@ -112,4 +112,37 @@ describe("SheinCategoryReviewCard", () => {
     await user.click(screen.getByRole("button", { name: "Apply suggested category" }));
     expect(onApplySuggestedCategory).toHaveBeenCalledTimes(1);
   });
+
+  it("hides apply action after the suggested category is already applied", () => {
+    render(
+      <SheinCategoryReviewCard
+        editorContext={{
+          category: {
+            current: {
+              category_id: 3221,
+              category_path: ["家居&生活", "厨房&餐厅", "饮具", "真空瓶和保温杯"],
+              suggested_category: {
+                category_id: 3221,
+                source: "ai_category_tree",
+                reason: "当前类目模板不适配销售属性结构，建议复核该候选类目",
+                matched_path: ["家居&生活", "厨房&餐厅", "饮具", "真空瓶和保温杯"],
+              },
+            },
+          },
+          sale_attributes: {
+            current: {
+              recommend_category_review: false,
+            },
+          },
+        }}
+        onApplySuggestedCategory={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Applied category")).toBeInTheDocument();
+    expect(
+      screen.getByText("The suggested category has already been applied to the current SHEIN draft."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apply suggested category" })).not.toBeInTheDocument();
+  });
 });
