@@ -2,6 +2,7 @@
 package extractor
 
 import (
+	"sort"
 	"strconv"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
@@ -353,7 +354,49 @@ func (pe *PriceExtractor) validateAndFixPriceRanges(product *model.Product1688) 
 		}
 	}
 
-	product.PriceRanges = validRanges
+	sort.SliceStable(validRanges, func(i, j int) bool {
+		if validRanges[i].MinQuantity != validRanges[j].MinQuantity {
+			return validRanges[i].MinQuantity < validRanges[j].MinQuantity
+		}
+
+		iMax := validRanges[i].MaxQuantity
+		jMax := validRanges[j].MaxQuantity
+		if iMax <= 0 {
+			iMax = int(^uint(0) >> 1)
+		}
+		if jMax <= 0 {
+			jMax = int(^uint(0) >> 1)
+		}
+		if iMax != jMax {
+			return iMax < jMax
+		}
+
+		return validRanges[i].Price < validRanges[j].Price
+	})
+
+	normalizedRanges := make([]model.PriceRange, 0, len(validRanges))
+	for _, priceRange := range validRanges {
+		if len(normalizedRanges) == 0 {
+			normalizedRanges = append(normalizedRanges, priceRange)
+			continue
+		}
+
+		last := &normalizedRanges[len(normalizedRanges)-1]
+		if last.MinQuantity == priceRange.MinQuantity {
+			// 同一数量层出现多个价格时，保留较低价格，避免把“同MOQ的价格区间”误判成非法阶梯。
+			if priceRange.Price < last.Price {
+				last.Price = priceRange.Price
+			}
+			if last.MaxQuantity <= 0 || (priceRange.MaxQuantity > 0 && priceRange.MaxQuantity < last.MaxQuantity) {
+				last.MaxQuantity = priceRange.MaxQuantity
+			}
+			continue
+		}
+
+		normalizedRanges = append(normalizedRanges, priceRange)
+	}
+
+	product.PriceRanges = normalizedRanges
 
 	// 重新计算价格范围
 	if len(validPrices) > 0 {

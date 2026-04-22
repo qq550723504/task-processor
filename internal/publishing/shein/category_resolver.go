@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
+	sheinapi "task-processor/internal/shein/api"
 	sheincategory "task-processor/internal/shein/api/category"
 )
 
@@ -37,7 +38,12 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.C
 	}
 	if r.api != nil && strings.TrimSpace(resolution.QueryText) != "" {
 		resp, err := r.api.SuggestCategoryByText(resolution.QueryText)
-		if err == nil && resp != nil && len(resp.Data) > 0 {
+		if err != nil {
+			resolution.Status = "partial"
+			resolution.ReviewNotes = append(resolution.ReviewNotes, formatCategoryResolutionAPIError(err))
+			return resolution
+		}
+		if resp != nil && len(resp.Data) > 0 {
 			if suggestedID, convErr := strconv.Atoi(strings.TrimSpace(resp.Data[0].CategoryID)); convErr == nil && suggestedID > 0 {
 				if info, infoErr := r.api.GetCategory(suggestedID); infoErr == nil && info != nil {
 					return hydrateCategoryResolution(info, "suggest_category", resolution.QueryText)
@@ -56,6 +62,13 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.C
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 类目解析未命中，请补充 target_category_hint 或接入类目接口")
 	}
 	return resolution
+}
+
+func formatCategoryResolutionAPIError(err error) string {
+	if authErr, ok := sheinapi.IsAuthenticationExpired(err); ok {
+		return "SHEIN 类目在线解析失败: " + authErr.Error()
+	}
+	return "SHEIN 类目在线解析失败: " + strings.TrimSpace(err.Error())
 }
 
 func hydrateCategoryResolution(info *sheincategory.CategoryInfo, source, query string) *CategoryResolution {

@@ -45,17 +45,18 @@ type Task struct {
 
 // ProductJSON 表示最终生成的产品 JSON 数据
 type ProductJSON struct {
-	Title          string                       `json:"title"`
-	Category       []string                     `json:"category"`
-	Attributes     map[string]string            `json:"attributes"`
-	Specifications *ProductSpecs                `json:"specifications"`
-	Variants       []ProductVariant             `json:"variants"`
-	SellingPoints  []string                     `json:"selling_points"`
-	SEOKeywords    []string                     `json:"seo_keywords"`
-	Description    string                       `json:"description"`
-	Images         []string                     `json:"images"`
-	Evidence       map[string][]CanonicalSource `json:"evidence,omitempty"`
-	QualityScoring *QualityScoringMetadata      `json:"quality_scoring,omitempty"`
+	Title             string                       `json:"title"`
+	Category          []string                     `json:"category"`
+	Attributes        map[string]string            `json:"attributes"`
+	Specifications    *ProductSpecs                `json:"specifications"`
+	VariantDimensions []ScrapedVariantDimension    `json:"variant_dimensions,omitempty"`
+	Variants          []ProductVariant             `json:"variants"`
+	SellingPoints     []string                     `json:"selling_points"`
+	SEOKeywords       []string                     `json:"seo_keywords"`
+	Description       string                       `json:"description"`
+	Images            []string                     `json:"images"`
+	Evidence          map[string][]CanonicalSource `json:"evidence,omitempty"`
+	QualityScoring    *QualityScoringMetadata      `json:"quality_scoring,omitempty"`
 }
 
 // ProductSpecs 产品规格信息
@@ -116,11 +117,19 @@ type ParsedInput struct {
 
 // ScrapedData 网页抓取的数据
 type ScrapedData struct {
-	Title       string            `json:"title"`
-	Description string            `json:"description"`
-	Images      []string          `json:"images"`
-	Price       float64           `json:"price"`
-	Specs       map[string]string `json:"specs"`
+	Title             string                    `json:"title"`
+	Description       string                    `json:"description"`
+	Images            []string                  `json:"images"`
+	Price             float64                   `json:"price"`
+	Specs             map[string]string         `json:"specs"`
+	VariantDimensions []ScrapedVariantDimension `json:"variant_dimensions,omitempty"`
+	Variants          []ProductVariant          `json:"variants,omitempty"`
+}
+
+// ScrapedVariantDimension 表示抓取侧提供的销售属性维度和值。
+type ScrapedVariantDimension struct {
+	Name   string   `json:"name"`
+	Values []string `json:"values"`
 }
 
 // ProductAnalysis 产品分析结果

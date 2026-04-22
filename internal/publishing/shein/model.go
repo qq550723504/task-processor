@@ -164,31 +164,41 @@ type ResolvedSaleAttribute struct {
 }
 
 type SaleAttributeResolution struct {
-	Status               string                       `json:"status,omitempty"`
-	Source               string                       `json:"source,omitempty"`
-	CategoryID           int                          `json:"category_id,omitempty"`
-	PrimaryAttributeID   int                          `json:"primary_attribute_id,omitempty"`
-	SecondaryAttributeID int                          `json:"secondary_attribute_id,omitempty"`
-	SKCAttributes        []ResolvedSaleAttribute      `json:"skc_attributes,omitempty"`
-	SKUAttributes        []ResolvedSaleAttribute      `json:"sku_attributes,omitempty"`
-	Candidates           []SaleAttributeCandidateInfo `json:"candidates,omitempty"`
-	SelectionSummary     []string                     `json:"selection_summary,omitempty"`
-	ReviewNotes          []string                     `json:"review_notes,omitempty"`
+	Status                   string                       `json:"status,omitempty"`
+	Source                   string                       `json:"source,omitempty"`
+	CategoryID               int                          `json:"category_id,omitempty"`
+	RecommendCategoryReview  bool                         `json:"recommend_category_review,omitempty"`
+	CategoryReviewReason     string                       `json:"category_review_reason,omitempty"`
+	PrimaryAttributeID       int                          `json:"primary_attribute_id,omitempty"`
+	SecondaryAttributeID     int                          `json:"secondary_attribute_id,omitempty"`
+	PrimarySourceDimension   string                       `json:"primary_source_dimension,omitempty"`
+	SecondarySourceDimension string                       `json:"secondary_source_dimension,omitempty"`
+	SourceDimensions         []SourceVariantDimension     `json:"source_dimensions,omitempty"`
+	SKCAttributes            []ResolvedSaleAttribute      `json:"skc_attributes,omitempty"`
+	SKUAttributes            []ResolvedSaleAttribute      `json:"sku_attributes,omitempty"`
+	Candidates               []SaleAttributeCandidateInfo `json:"candidates,omitempty"`
+	SelectionSummary         []string                     `json:"selection_summary,omitempty"`
+	ReviewNotes              []string                     `json:"review_notes,omitempty"`
+	skcAssignments           map[string]ResolvedSaleAttribute
+	skuAssignments           map[string][]ResolvedSaleAttribute
+	skcValueAssignments      map[string]ResolvedSaleAttribute
+	skuValueAssignments      map[string]ResolvedSaleAttribute
 }
 
 type SaleAttributeCandidateInfo struct {
-	Name           string   `json:"name,omitempty"`
-	AttributeID    int      `json:"attribute_id,omitempty"`
-	SKCScope       bool     `json:"skc_scope,omitempty"`
-	Required       bool     `json:"required,omitempty"`
-	SKCDistinct    int      `json:"skc_distinct,omitempty"`
-	SKUDistinct    int      `json:"sku_distinct,omitempty"`
-	TotalDistinct  int      `json:"total_distinct,omitempty"`
-	PrimaryScore   int      `json:"primary_score,omitempty"`
-	SecondaryScore int      `json:"secondary_score,omitempty"`
-	SampleValue    string   `json:"sample_value,omitempty"`
-	Reasons        []string `json:"reasons,omitempty"`
-	SelectedScope  string   `json:"selected_scope,omitempty"`
+	SourceDimension string   `json:"source_dimension,omitempty"`
+	Name            string   `json:"name,omitempty"`
+	AttributeID     int      `json:"attribute_id,omitempty"`
+	SKCScope        bool     `json:"skc_scope,omitempty"`
+	Required        bool     `json:"required,omitempty"`
+	SKCDistinct     int      `json:"skc_distinct,omitempty"`
+	SKUDistinct     int      `json:"sku_distinct,omitempty"`
+	TotalDistinct   int      `json:"total_distinct,omitempty"`
+	PrimaryScore    int      `json:"primary_score,omitempty"`
+	SecondaryScore  int      `json:"secondary_score,omitempty"`
+	SampleValue     string   `json:"sample_value,omitempty"`
+	Reasons         []string `json:"reasons,omitempty"`
+	SelectedScope   string   `json:"selected_scope,omitempty"`
 }
 
 type Inspection struct {
@@ -248,19 +258,21 @@ type InspectionAttributePayload struct {
 }
 
 type InspectionSaleAttributePayload struct {
-	Platform             string                       `json:"platform,omitempty"`
-	Target               string                       `json:"target,omitempty"`
-	Status               string                       `json:"status,omitempty"`
-	Source               string                       `json:"source,omitempty"`
-	PrimaryAttributeID   int                          `json:"primary_attribute_id,omitempty"`
-	SecondaryAttributeID int                          `json:"secondary_attribute_id,omitempty"`
-	SelectionSummary     []string                     `json:"selection_summary,omitempty"`
-	SKCAttributes        []ResolvedSaleAttribute      `json:"skc_attributes,omitempty"`
-	SKUAttributes        []ResolvedSaleAttribute      `json:"sku_attributes,omitempty"`
-	CandidateCount       int                          `json:"candidate_count,omitempty"`
-	Candidates           []SaleAttributeCandidateInfo `json:"candidates,omitempty"`
-	SKCPatches           []InspectionSKCPatchPayload  `json:"skc_patches,omitempty"`
-	ReviewNotes          []string                     `json:"review_notes,omitempty"`
+	Platform                string                       `json:"platform,omitempty"`
+	Target                  string                       `json:"target,omitempty"`
+	Status                  string                       `json:"status,omitempty"`
+	Source                  string                       `json:"source,omitempty"`
+	RecommendCategoryReview bool                         `json:"recommend_category_review,omitempty"`
+	CategoryReviewReason    string                       `json:"category_review_reason,omitempty"`
+	PrimaryAttributeID      int                          `json:"primary_attribute_id,omitempty"`
+	SecondaryAttributeID    int                          `json:"secondary_attribute_id,omitempty"`
+	SelectionSummary        []string                     `json:"selection_summary,omitempty"`
+	SKCAttributes           []ResolvedSaleAttribute      `json:"skc_attributes,omitempty"`
+	SKUAttributes           []ResolvedSaleAttribute      `json:"sku_attributes,omitempty"`
+	CandidateCount          int                          `json:"candidate_count,omitempty"`
+	Candidates              []SaleAttributeCandidateInfo `json:"candidates,omitempty"`
+	SKCPatches              []InspectionSKCPatchPayload  `json:"skc_patches,omitempty"`
+	ReviewNotes             []string                     `json:"review_notes,omitempty"`
 }
 
 type InspectionSKCPatchPayload struct {

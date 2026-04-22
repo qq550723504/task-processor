@@ -152,9 +152,10 @@ func (s *productService) generateProductJSON(ctx context.Context, task *Task, an
 
 	variantGen := s.variantGenerator
 	skipVariants := false
+	preserveStructuredVariants := analysis != nil && analysis.ScrapedData != nil && len(analysis.ScrapedData.Variants) > 0
 	switch strategy {
 	case StrategyBasic:
-		skipVariants = true
+		skipVariants = !preserveStructuredVariants
 	case StrategyMinimal:
 		variantGen = nil
 	}

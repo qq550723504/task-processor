@@ -8,38 +8,15 @@ import (
 	"task-processor/internal/asset"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	common "task-processor/internal/publishing/common"
 )
 
 func buildPlatformVariants(canonical *productenrich.CanonicalProduct) []PlatformVariant {
-	if canonical == nil || len(canonical.Variants) == 0 {
+	variants := common.BuildVariants(canonical)
+	if len(variants) == 0 {
 		return nil
 	}
-	result := make([]PlatformVariant, 0, len(canonical.Variants))
-	for _, variant := range canonical.Variants {
-		attributes := make(map[string]string, len(variant.Attributes))
-		for key, value := range variant.Attributes {
-			attributes[key] = value.Value
-		}
-		item := PlatformVariant{
-			SKU:        variant.SKU,
-			Attributes: attributes,
-			Stock:      variant.Stock,
-			Barcode:    variant.Barcode,
-			IsDefault:  variant.IsDefault,
-		}
-		if variant.Price != nil {
-			item.Price = &PlatformPrice{
-				Currency:  variant.Price.Currency,
-				Amount:    variant.Price.Amount,
-				CostPrice: variant.Price.CostPrice,
-			}
-		}
-		if len(variant.Images) > 0 {
-			item.Image = variant.Images[0].URL
-		}
-		result = append(result, item)
-	}
-	return result
+	return append([]PlatformVariant(nil), variants...)
 }
 
 func buildPlatformImages(canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *PlatformImageSet {

@@ -285,6 +285,8 @@ func buildSaleAttributePayload(pkg *sheinpub.Package) *sheinpub.InspectionSaleAt
 	if pkg.SaleAttributeResolution != nil {
 		payload.Status = pkg.SaleAttributeResolution.Status
 		payload.Source = pkg.SaleAttributeResolution.Source
+		payload.RecommendCategoryReview = pkg.SaleAttributeResolution.RecommendCategoryReview
+		payload.CategoryReviewReason = pkg.SaleAttributeResolution.CategoryReviewReason
 		payload.PrimaryAttributeID = pkg.SaleAttributeResolution.PrimaryAttributeID
 		payload.SecondaryAttributeID = pkg.SaleAttributeResolution.SecondaryAttributeID
 		payload.SelectionSummary = append([]string(nil), pkg.SaleAttributeResolution.SelectionSummary...)
@@ -307,6 +309,12 @@ func buildSaleAttributePayloadMap(payload *sheinpub.InspectionSaleAttributePaylo
 	}
 	if payload.Source != "" {
 		out["source"] = payload.Source
+	}
+	if payload.RecommendCategoryReview {
+		out["recommend_category_review"] = true
+	}
+	if payload.CategoryReviewReason != "" {
+		out["category_review_reason"] = payload.CategoryReviewReason
 	}
 	out["primary_attribute_id"] = payload.PrimaryAttributeID
 	out["secondary_attribute_id"] = payload.SecondaryAttributeID

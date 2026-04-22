@@ -88,6 +88,10 @@ func (v *variantGenerator) GenerateVariants(ctx context.Context, analysis *produ
 
 	logger.GetGlobalLogger("productenrich/variant.go").Info("generating product variants")
 
+	if variants := variantsFromScrapedData(analysis.ScrapedData); len(variants) > 0 {
+		return variants, nil
+	}
+
 	variantsFallback := buildAnalysisSections(
 		analysisSection{
 			title:   "Representation",
@@ -223,6 +227,12 @@ func (v *variantGenerator) fallbackSpecsFromScraped(analysis *productenrich.Prod
 }
 
 func (v *variantGenerator) fallbackVariantsFromScraped(analysis *productenrich.ProductAnalysis) []productenrich.ProductVariant {
+	if analysis != nil {
+		if variants := variantsFromScrapedData(analysis.ScrapedData); len(variants) > 0 {
+			return variants
+		}
+	}
+
 	variant := productenrich.ProductVariant{
 		SKU:        "DEFAULT-001",
 		Attributes: make(map[string]string),

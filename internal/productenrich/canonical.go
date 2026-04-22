@@ -51,18 +51,19 @@ type CanonicalVariant struct {
 }
 
 type CanonicalProduct struct {
-	Title          string                        `json:"title,omitempty"`
-	Brand          string                        `json:"brand,omitempty"`
-	CategoryPath   []string                      `json:"category_path,omitempty"`
-	Description    string                        `json:"description,omitempty"`
-	SellingPoints  []string                      `json:"selling_points,omitempty"`
-	SEOKeywords    []string                      `json:"seo_keywords,omitempty"`
-	Attributes     map[string]CanonicalAttribute `json:"attributes,omitempty"`
-	Specifications *ProductSpecs                 `json:"specifications,omitempty"`
-	Variants       []CanonicalVariant            `json:"variants,omitempty"`
-	Images         []CanonicalImage              `json:"images,omitempty"`
-	FieldTraces    map[string]FieldTrace         `json:"field_traces,omitempty"`
-	NeedsReview    bool                          `json:"needs_review,omitempty"`
+	Title             string                        `json:"title,omitempty"`
+	Brand             string                        `json:"brand,omitempty"`
+	CategoryPath      []string                      `json:"category_path,omitempty"`
+	Description       string                        `json:"description,omitempty"`
+	SellingPoints     []string                      `json:"selling_points,omitempty"`
+	SEOKeywords       []string                      `json:"seo_keywords,omitempty"`
+	Attributes        map[string]CanonicalAttribute `json:"attributes,omitempty"`
+	Specifications    *ProductSpecs                 `json:"specifications,omitempty"`
+	VariantDimensions []ScrapedVariantDimension     `json:"variant_dimensions,omitempty"`
+	Variants          []CanonicalVariant            `json:"variants,omitempty"`
+	Images            []CanonicalImage              `json:"images,omitempty"`
+	FieldTraces       map[string]FieldTrace         `json:"field_traces,omitempty"`
+	NeedsReview       bool                          `json:"needs_review,omitempty"`
 }
 
 // BuildCanonicalProduct lifts the current ProductJSON output into a platform-neutral
@@ -77,17 +78,18 @@ func BuildCanonicalProduct(req *GenerateRequest, product *ProductJSON) *Canonica
 	directTrace := buildFieldTrace(baseSources, false)
 
 	canonical := &CanonicalProduct{
-		Title:          product.Title,
-		Brand:          strings.TrimSpace(product.Attributes["brand"]),
-		CategoryPath:   cloneStrings(product.Category),
-		Description:    product.Description,
-		SellingPoints:  cloneStrings(product.SellingPoints),
-		SEOKeywords:    cloneStrings(product.SEOKeywords),
-		Attributes:     make(map[string]CanonicalAttribute, len(product.Attributes)),
-		Specifications: product.Specifications,
-		Variants:       make([]CanonicalVariant, 0, len(product.Variants)),
-		Images:         make([]CanonicalImage, 0, len(product.Images)),
-		FieldTraces:    map[string]FieldTrace{},
+		Title:             product.Title,
+		Brand:             strings.TrimSpace(product.Attributes["brand"]),
+		CategoryPath:      cloneStrings(product.Category),
+		Description:       product.Description,
+		SellingPoints:     cloneStrings(product.SellingPoints),
+		SEOKeywords:       cloneStrings(product.SEOKeywords),
+		Attributes:        make(map[string]CanonicalAttribute, len(product.Attributes)),
+		Specifications:    product.Specifications,
+		VariantDimensions: append([]ScrapedVariantDimension(nil), product.VariantDimensions...),
+		Variants:          make([]CanonicalVariant, 0, len(product.Variants)),
+		Images:            make([]CanonicalImage, 0, len(product.Images)),
+		FieldTraces:       map[string]FieldTrace{},
 	}
 
 	canonical.FieldTraces["title"] = traceWithEvidence(product, "title", baseSources, true)

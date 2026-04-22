@@ -56,6 +56,37 @@ func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t 
 	}
 }
 
+func TestApplyGenerateRequestDefaultsSetsSheinStoreIDForSingleStoreConfig(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{
+		Text:      "demo",
+		Platforms: []string{"shein"},
+	}
+
+	applyGenerateRequestDefaults(req, generateRequestDefaults{sheinDefaultStoreID: 873})
+
+	if req.SheinStoreID != 873 {
+		t.Fatalf("shein_store_id = %d, want 873", req.SheinStoreID)
+	}
+}
+
+func TestApplyGenerateRequestDefaultsKeepsExplicitSheinStoreID(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{
+		Text:         "demo",
+		Platforms:    []string{"shein"},
+		SheinStoreID: 431,
+	}
+
+	applyGenerateRequestDefaults(req, generateRequestDefaults{sheinDefaultStoreID: 873})
+
+	if req.SheinStoreID != 431 {
+		t.Fatalf("shein_store_id = %d, want 431", req.SheinStoreID)
+	}
+}
+
 func TestValidateRequest(t *testing.T) {
 	t.Parallel()
 

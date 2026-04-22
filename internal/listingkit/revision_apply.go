@@ -257,6 +257,12 @@ func applySheinSaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinS
 	if patch.Source != nil {
 		pkg.SaleAttributeResolution.Source = strings.TrimSpace(*patch.Source)
 	}
+	if patch.RecommendCategoryReview != nil {
+		pkg.SaleAttributeResolution.RecommendCategoryReview = *patch.RecommendCategoryReview
+	}
+	if patch.CategoryReviewReason != nil {
+		pkg.SaleAttributeResolution.CategoryReviewReason = strings.TrimSpace(*patch.CategoryReviewReason)
+	}
 	if patch.PrimaryAttributeID != nil {
 		pkg.SaleAttributeResolution.PrimaryAttributeID = *patch.PrimaryAttributeID
 	}

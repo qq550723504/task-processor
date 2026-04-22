@@ -23,34 +23,44 @@ func newTemplateIndex(attributes []sheinattribute.AttributeInfo) *templateIndex 
 	return &templateIndex{attributes: append([]sheinattribute.AttributeInfo(nil), attributes...)}
 }
 
-func (i *templateIndex) Match(name, value string) ResolvedAttribute {
+func (i *templateIndex) FindAttribute(name string) *sheinattribute.AttributeInfo {
 	name = normalizeText(name)
-	value = strings.TrimSpace(value)
 	for _, attr := range i.attributes {
 		if !matchesAnyName(name, collectAttributeNames(attr)) {
 			continue
 		}
-		match := ResolvedAttribute{
-			Name:                firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
-			Value:               value,
-			AttributeID:         attr.AttributeID,
-			AttributeExtraValue: value,
-			MatchedBy:           "attribute_name",
-			Required:            isTemplateRequired(attr),
-			SKCScope:            attr.SKCScope != nil && *attr.SKCScope,
-		}
-		for _, option := range attr.AttributeValueInfoList {
-			if normalizeText(firstNonEmpty(option.AttributeValueEn, option.AttributeValue)) == normalizeText(value) {
-				valueID := option.AttributeValueID
-				match.AttributeValueID = &valueID
-				match.AttributeExtraValue = ""
-				match.MatchedBy = "attribute_value"
-				break
-			}
-		}
-		return match
+		attrCopy := attr
+		return &attrCopy
 	}
-	return ResolvedAttribute{Name: strings.TrimSpace(name), Value: value}
+	return nil
+}
+
+func (i *templateIndex) Match(name, value string) ResolvedAttribute {
+	name = normalizeText(name)
+	value = strings.TrimSpace(value)
+	attr := i.FindAttribute(name)
+	if attr == nil {
+		return ResolvedAttribute{Name: strings.TrimSpace(name), Value: value}
+	}
+	match := ResolvedAttribute{
+		Name:                firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
+		Value:               value,
+		AttributeID:         attr.AttributeID,
+		AttributeExtraValue: value,
+		MatchedBy:           "attribute_name",
+		Required:            isTemplateRequired(*attr),
+		SKCScope:            attr.SKCScope != nil && *attr.SKCScope,
+	}
+	for _, option := range attr.AttributeValueInfoList {
+		if normalizeText(firstNonEmpty(option.AttributeValueEn, option.AttributeValue)) == normalizeText(value) {
+			valueID := option.AttributeValueID
+			match.AttributeValueID = &valueID
+			match.AttributeExtraValue = ""
+			match.MatchedBy = "attribute_value"
+			break
+		}
+	}
+	return match
 }
 
 func normalizeText(value string) string {
@@ -71,24 +81,8 @@ func matchesAnyName(name string, candidates []string) bool {
 
 func collectAttributeNames(attr sheinattribute.AttributeInfo) []string {
 	names := []string{attr.AttributeName, attr.AttributeNameEn}
-	names = append(names, attributeAliases(normalizeText(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)))...)
+	names = append(names, attributeAliasesForName(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName))...)
 	return names
-}
-
-func attributeAliases(name string) []string {
-	switch name {
-	case "colour":
-		return []string{"color"}
-	case "color":
-		return []string{"colour"}
-	case "material":
-		return []string{"fabric"}
-	case "pattern":
-		return []string{"print"}
-	case "size":
-		return []string{"dimension"}
-	}
-	return nil
 }
 
 func isTemplateRequired(attr sheinattribute.AttributeInfo) bool {

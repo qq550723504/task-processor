@@ -103,6 +103,54 @@ func TestGenerateVariants_ValidJSON_ParsesVariants(t *testing.T) {
 	}
 }
 
+func TestGenerateVariants_PrefersStructuredScrapedVariants(t *testing.T) {
+	mgr := newMockLLMManager("[]")
+	generator, err := productenrichenrich.NewVariantGenerator(mgr)
+	if err != nil {
+		t.Fatalf("NewVariantGenerator() error = %v", err)
+	}
+
+	variants, err := generator.GenerateVariants(context.Background(), &productenrich.ProductAnalysis{
+		ScrapedData: &productenrich.ScrapedData{
+			Price: 39.9,
+			Images: []string{
+				"https://example.com/main.jpg",
+			},
+			Variants: []productenrich.ProductVariant{
+				{
+					SKU:        "1688-RED-42",
+					Attributes: map[string]string{"颜色": "红色", "尺码": "42"},
+					Stock:      15,
+					Images:     []string{"https://example.com/red-42.jpg"},
+					IsDefault:  true,
+				},
+				{
+					Attributes: map[string]string{"颜色": "蓝色", "尺码": "43"},
+					Stock:      8,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(variants) != 2 {
+		t.Fatalf("variants len = %d, want 2", len(variants))
+	}
+	if got := variants[0].SKU; got != "1688-RED-42" {
+		t.Fatalf("variants[0].SKU = %q, want 1688-RED-42", got)
+	}
+	if variants[1].Price == nil || variants[1].Price.Amount != 39.9 {
+		t.Fatal("expected scraped fallback price on second variant")
+	}
+	if got := variants[1].Images[0]; got != "https://example.com/main.jpg" {
+		t.Fatalf("variants[1].Images[0] = %q, want main image fallback", got)
+	}
+	if mgr.def.lastGeneratePrompt != "" {
+		t.Fatal("expected LLM Generate not to be called when structured scraped variants exist")
+	}
+}
+
 func TestGenerateVariants_InvalidJSON_ReturnsDefaultVariant(t *testing.T) {
 	v := newTestVariantGenerator(t, "not json", nil)
 

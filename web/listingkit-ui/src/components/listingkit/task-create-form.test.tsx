@@ -73,6 +73,7 @@ describe("TaskCreateForm", () => {
       imageUrls: "https://example.com/1.jpg\nhttps://example.com/2.jpg",
       productUrl: "",
       platforms: ["shein"],
+      sheinStoreId: "",
       sceneCategory: "",
       sceneStyle: "",
       backgroundTone: "",
@@ -121,6 +122,7 @@ describe("TaskCreateForm", () => {
       imageUrls: "",
       productUrl: "https://detail.1688.com/offer/123456789.html",
       platforms: ["temu"],
+      sheinStoreId: "",
       sceneCategory: "",
       sceneStyle: "",
       backgroundTone: "",
@@ -351,6 +353,7 @@ describe("TaskCreateForm", () => {
         "https://example.com/1.jpg\nhttps://example.com/2.jpg\nhttps://example.com/3.jpg",
       productUrl: "",
       platforms: ["amazon"],
+      sheinStoreId: "",
       sceneCategory: "shoes",
       sceneStyle: "lifestyle",
       backgroundTone: "warm",
@@ -358,6 +361,50 @@ describe("TaskCreateForm", () => {
       propsLevel: "light",
       audienceHint: "sporty",
       customSceneHint: "show subtle motion energy",
+    });
+  });
+
+  it("submits explicit shein store id when provided", async () => {
+    mutateAsync.mockResolvedValue({
+      task_id: "task_shein_store_123",
+      status: "pending",
+      created_at: "2026-04-21T00:00:00Z",
+    });
+
+    render(<TaskCreateForm />);
+
+    fireEvent.change(screen.getByLabelText("Product title"), {
+      target: { value: "Women knit cardigan" },
+    });
+    fireEvent.click(screen.getByLabelText("Shein"));
+    fireEvent.change(screen.getByLabelText("Shein store ID"), {
+      target: { value: "873" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        text: "Women knit cardigan",
+        image_urls: [],
+        platforms: ["shein"],
+        shein_store_id: 873,
+      });
+    });
+
+    expect(loadTaskCreateDraft("task_shein_store_123")).toEqual({
+      text: "Women knit cardigan",
+      imageUrls: "",
+      productUrl: "",
+      platforms: ["shein"],
+      sheinStoreId: "873",
+      sceneCategory: "",
+      sceneStyle: "",
+      backgroundTone: "",
+      composition: "",
+      propsLevel: "",
+      audienceHint: "",
+      customSceneHint: "",
     });
   });
 

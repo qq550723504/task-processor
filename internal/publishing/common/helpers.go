@@ -11,8 +11,11 @@ import (
 )
 
 func BuildVariants(canonical *productenrich.CanonicalProduct) []Variant {
-	if canonical == nil || len(canonical.Variants) == 0 {
+	if canonical == nil {
 		return nil
+	}
+	if len(canonical.Variants) == 0 {
+		return buildFallbackVariant(canonical)
 	}
 	result := make([]Variant, 0, len(canonical.Variants))
 	for _, variant := range canonical.Variants {

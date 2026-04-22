@@ -574,6 +574,7 @@ export type CreateListingKitTaskRequest = {
   text?: string;
   product_url?: string;
   platforms: string[];
+  shein_store_id?: number;
   country?: string;
   language?: string;
   options?: {

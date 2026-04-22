@@ -3,6 +3,7 @@ export type TaskCreateDraft = {
   imageUrls: string;
   productUrl: string;
   platforms: string[];
+  sheinStoreId?: string;
   sceneCategory?: string;
   sceneStyle?: string;
   backgroundTone?: string;
@@ -38,6 +39,7 @@ export function loadTaskCreateDraft(taskId: string) {
       imageUrls: parsed.imageUrls ?? "",
       productUrl: parsed.productUrl ?? "",
       platforms: Array.isArray(parsed.platforms) ? parsed.platforms : [],
+      sheinStoreId: parsed.sheinStoreId ?? "",
       sceneCategory: parsed.sceneCategory ?? "",
       sceneStyle: parsed.sceneStyle ?? "",
       backgroundTone: parsed.backgroundTone ?? "",

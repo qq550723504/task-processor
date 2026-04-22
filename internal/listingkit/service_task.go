@@ -13,7 +13,7 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 	if req == nil {
 		return nil, fmt.Errorf("request cannot be nil")
 	}
-	normalizeGenerateRequest(req)
+	applyGenerateRequestDefaults(req, s.requestDefaults)
 	if err := validateRequest(req); err != nil {
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}

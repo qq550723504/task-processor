@@ -41,7 +41,7 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext,
 
 	if len(report.CriticalIssues) > 0 {
 		v.trySaveReport(ctx, report, "validation_failed_report", "保存验证失败报告失败")
-		return fmt.Errorf("发现%d个严重问题，无法继续发布", len(report.CriticalIssues))
+		return fmt.Errorf("发现%d个严重问题，无法继续发布: %s", len(report.CriticalIssues), summarizeCriticalIssues(report.CriticalIssues, 2))
 	}
 
 	if report.AutoFixedIssues > 0 {
@@ -56,6 +56,20 @@ func (v *PublishProductValidator) PreValidateProductData(ctx *shein.TaskContext,
 
 	v.logger.Info("✅ 产品数据预验证全部通过")
 	return nil
+}
+
+func summarizeCriticalIssues(issues []string, limit int) string {
+	if len(issues) == 0 {
+		return ""
+	}
+	if limit <= 0 || limit > len(issues) {
+		limit = len(issues)
+	}
+	summary := strings.Join(issues[:limit], "; ")
+	if len(issues) > limit {
+		return fmt.Sprintf("%s; 另有%d项问题", summary, len(issues)-limit)
+	}
+	return summary
 }
 
 // validateBasicProductInfo 验证基本产品信息
@@ -156,7 +170,7 @@ func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContex
 	startTime := time.Now()
 
 	report := &ValidationReport{
-		TotalChecks:    4,
+		TotalChecks:    5,
 		CriticalIssues: []string{},
 		WarningIssues:  []string{},
 		FixedIssues:    []string{},
@@ -189,12 +203,35 @@ func (v *PublishProductValidator) generateValidationReport(ctx *shein.TaskContex
 		report.PassedChecks++
 	}
 
+	// 4. 验证属性与销售属性映射已完成
+	if err := v.validateResolvedMappings(input); err != nil {
+		report.FailedChecks++
+		report.CriticalIssues = append(report.CriticalIssues, fmt.Sprintf("属性映射: %v", err))
+	} else {
+		report.PassedChecks++
+	}
+
 	report.ValidationTime = time.Since(startTime).Milliseconds()
 	return report
 }
 
+func (v *PublishProductValidator) validateResolvedMappings(input *ValidationInput) error {
+	if err := v.validateResolvedAttributes(input); err != nil {
+		return err
+	}
+	if err := v.validateResolvedSaleAttributes(input); err != nil {
+		return err
+	}
+	return nil
+}
+
 // validateMultiPieceSKUImagesWithReport 带报告的多件商品SKU图片验证
 func (v *PublishProductValidator) validateMultiPieceSKUImagesWithReport(ctx *shein.TaskContext, report *ValidationReport) error {
+	if ctx == nil || ctx.ProductData == nil {
+		report.WarningIssues = append(report.WarningIssues, "缺少任务上下文，跳过多件商品SKU图片校验")
+		return nil
+	}
+
 	product := ctx.ProductData
 
 	if len(product.SKCList) == 0 {
@@ -269,7 +306,7 @@ func (v *PublishProductValidator) fixSKUImageSorting(sku *apiproduct.SKU, suppli
 
 // trySaveReport 尝试保存验证报告，失败时只记录日志
 func (v *PublishProductValidator) trySaveReport(ctx *shein.TaskContext, report *ValidationReport, suffix, errMsg string) {
-	if ctx.Task == nil {
+	if ctx == nil || ctx.Task == nil {
 		return
 	}
 	taskID := fmt.Sprintf("%d", ctx.Task.ID)

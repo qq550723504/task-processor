@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"task-processor/internal/infra/clients/management"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
@@ -11,12 +12,14 @@ import (
 type managedSaleAttributeResolver struct {
 	fallback SaleAttributeResolver
 	factory  *managedAPIFactory
+	llm      openaiclient.ChatCompleter
 }
 
-func NewManagedSaleAttributeResolver(client *management.ClientManager) SaleAttributeResolver {
+func NewManagedSaleAttributeResolver(client *management.ClientManager, llm openaiclient.ChatCompleter) SaleAttributeResolver {
 	return &managedSaleAttributeResolver{
-		fallback: NewSaleAttributeResolver(nil),
+		fallback: NewSaleAttributeResolver(nil, llm),
 		factory:  newManagedAPIFactory(client),
+		llm:      llm,
 	}
 }
 
@@ -26,7 +29,7 @@ func (r *managedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *pro
 	}
 
 	api, note := r.buildAPI(req.SheinStoreID)
-	resolver := NewSaleAttributeResolver(api)
+	resolver := NewSaleAttributeResolver(api, r.llm)
 	resolution := resolver.Resolve(req, canonical, pkg)
 	if strings.TrimSpace(note) != "" {
 		resolution.ReviewNotes = append(resolution.ReviewNotes, note)

@@ -27,6 +27,7 @@ describe("task create draft storage", () => {
       imageUrls: "https://example.com/1.jpg",
       productUrl: "",
       platforms: ["shein"],
+      sheinStoreId: "",
       sceneCategory: "",
       sceneStyle: "",
       backgroundTone: "",

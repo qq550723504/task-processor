@@ -462,6 +462,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		Repository:          repo,
 		ProductService:      deps.productService,
 		ImageService:        deps.imageService,
+		SheinDefaultStoreID: resolveListingKitDefaultSheinStoreID(deps.cfg.Management.StoreIDs),
 		ImageUploadStore:    buildListingKitImageUploadStore(deps.cfg, logger),
 		AssetRepository:     assetRepository,
 		ReviewRepository:    reviewRepository,
@@ -474,8 +475,8 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		}),
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
 			SheinCategoryResolver:      sheinpub.NewManagedCategoryResolver(deps.managementClient),
-			SheinAttributeResolver:     sheinpub.NewManagedAttributeResolver(deps.managementClient),
-			SheinSaleAttributeResolver: sheinpub.NewManagedSaleAttributeResolver(deps.managementClient),
+			SheinAttributeResolver:     sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)),
+			SheinSaleAttributeResolver: sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)),
 		}),
 	})
 	if err != nil {

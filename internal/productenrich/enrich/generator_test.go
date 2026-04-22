@@ -81,6 +81,31 @@ func TestGenerateJSON_FullStrategy_WithVariants(t *testing.T) {
 	}
 }
 
+func TestGenerateJSON_PreservesScrapedVariantDimensions(t *testing.T) {
+	resp := `{"title":"Widget","category":["Electronics"],"selling_points":["fast"],"seo_keywords":["widget"],"description":"A widget."}`
+	g := newTestJSONGenerator(t, resp, nil)
+
+	analysis := &productenrich.ProductAnalysis{
+		ScrapedData: &productenrich.ScrapedData{
+			VariantDimensions: []productenrich.ScrapedVariantDimension{
+				{Name: "颜色", Values: []string{"黑灰色", "卡其色"}},
+				{Name: "尺码", Values: []string{"41", "42"}},
+			},
+		},
+	}
+
+	result, err := g.GenerateJSON(context.Background(), analysis, nil, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.VariantDimensions) != 2 {
+		t.Fatalf("len(VariantDimensions) = %d, want 2", len(result.VariantDimensions))
+	}
+	if result.VariantDimensions[0].Name != "颜色" {
+		t.Fatalf("VariantDimensions[0].Name = %q, want 颜色", result.VariantDimensions[0].Name)
+	}
+}
+
 func TestGenerateJSON_BasicStrategy_SkipVariants(t *testing.T) {
 	resp := `{"title":"Widget","category":["Electronics"],"selling_points":["fast"],"seo_keywords":["widget"],"description":"A widget."}`
 	g := newTestJSONGenerator(t, resp, nil)
@@ -237,6 +262,63 @@ func TestGenerateJSON_FallbackUsesDefaultTitleForEmptyAnalysis(t *testing.T) {
 	}
 	if len(result.Category) == 0 {
 		t.Error("expected default category")
+	}
+}
+
+func TestGenerateJSON_PrefersScrapedAttributesOverLLMAttributes(t *testing.T) {
+	resp := `{
+		"title":"420ml Stainless Steel Insulated Water Cup",
+		"category":["Home & Kitchen","Drinkware"],
+		"attributes":{
+			"Brand":"Apple",
+			"Model":"iPhone 15 Pro Max",
+			"Network":"5G"
+		},
+		"selling_points":["insulated","portable"],
+		"seo_keywords":["water bottle"],
+		"description":"A stainless steel cup."
+	}`
+	g := newTestJSONGenerator(t, resp, nil)
+
+	analysis := &productenrich.ProductAnalysis{
+		ScrapedData: &productenrich.ScrapedData{
+			Specs: map[string]string{
+				"材质": "不锈钢",
+				"容量": "420ml",
+				"颜色": "裸粉,抹茶绿,米色,黑色,奶油黄",
+			},
+		},
+		TextAttributes: &productenrich.TextAttributes{
+			Attributes: map[string]string{
+				"Brand": "Apple",
+			},
+		},
+		Representation: &productenrich.ProductRepresentation{
+			Attributes: map[string]string{
+				"Model": "iPhone 15 Pro Max",
+			},
+		},
+	}
+
+	result, err := g.GenerateJSON(context.Background(), analysis, nil, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := result.Attributes["材质"]; got != "不锈钢" {
+		t.Fatalf("Attributes[材质] = %q, want 不锈钢", got)
+	}
+	if got := result.Attributes["容量"]; got != "420ml" {
+		t.Fatalf("Attributes[容量] = %q, want 420ml", got)
+	}
+	if _, exists := result.Attributes["Brand"]; exists {
+		t.Fatalf("unexpected hallucinated Brand attribute in %+v", result.Attributes)
+	}
+	if _, exists := result.Attributes["Model"]; exists {
+		t.Fatalf("unexpected hallucinated Model attribute in %+v", result.Attributes)
+	}
+	if _, exists := result.Attributes["Network"]; exists {
+		t.Fatalf("unexpected hallucinated Network attribute in %+v", result.Attributes)
 	}
 }
 

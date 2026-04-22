@@ -258,7 +258,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 					},
 				}},
 			},
-		}),
+		}, nil),
 		SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(stubSheinAttributeAPI{
 			templates: &sheinattribute.AttributeTemplateInfo{
 				Data: []sheinattribute.AttributeTemplate{{
@@ -282,7 +282,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 					},
 				}},
 			},
-		}),
+		}, nil),
 	})
 
 	task := &Task{
@@ -457,7 +457,7 @@ func TestManagedSheinCategoryResolverFallsBackWithoutStoreID(t *testing.T) {
 func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
-	resolver := sheinpub.NewManagedAttributeResolver(nil)
+	resolver := sheinpub.NewManagedAttributeResolver(nil, nil)
 	req := &GenerateRequest{
 		Text:      "wireless earbuds",
 		Country:   "US",
@@ -489,7 +489,7 @@ func TestManagedSheinAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 func TestManagedSheinSaleAttributeResolverFallsBackWithoutStoreID(t *testing.T) {
 	t.Parallel()
 
-	resolver := sheinpub.NewManagedSaleAttributeResolver(nil)
+	resolver := sheinpub.NewManagedSaleAttributeResolver(nil, nil)
 	req := &GenerateRequest{
 		Text:      "wireless earbuds",
 		Country:   "US",

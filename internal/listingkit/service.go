@@ -27,6 +27,7 @@ type service struct {
 	assetBundleBuilder  AssetBundleBuilder
 	assetGenerator      AssetGenerationService
 	taskSubmitter       TaskSubmitter
+	requestDefaults     generateRequestDefaults
 }
 
 type ServiceConfig struct {
@@ -41,6 +42,7 @@ type ServiceConfig struct {
 	AssetBundleBuilder     AssetBundleBuilder
 	AssetGenerationService AssetGenerationService
 	TaskSubmitter          TaskSubmitter
+	SheinDefaultStoreID    int64
 }
 
 func NewService(config *ServiceConfig) (Service, error) {
@@ -57,8 +59,8 @@ func NewService(config *ServiceConfig) (Service, error) {
 		config.Assembler = NewAssemblerWithConfig(AssemblerConfig{
 			AmazonBuilder:              newAmazonDraftBuilder(),
 			SheinCategoryResolver:      sheinpub.NewCategoryResolver(nil),
-			SheinAttributeResolver:     sheinpub.NewAttributeResolver(nil),
-			SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(nil),
+			SheinAttributeResolver:     sheinpub.NewAttributeResolver(nil, nil),
+			SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(nil, nil),
 		})
 	}
 	if config.AssetRepository == nil {
@@ -88,6 +90,9 @@ func NewService(config *ServiceConfig) (Service, error) {
 		assetBundleBuilder:  config.AssetBundleBuilder,
 		assetGenerator:      config.AssetGenerationService,
 		taskSubmitter:       config.TaskSubmitter,
+		requestDefaults: generateRequestDefaults{
+			sheinDefaultStoreID: config.SheinDefaultStoreID,
+		},
 	}, nil
 }
 

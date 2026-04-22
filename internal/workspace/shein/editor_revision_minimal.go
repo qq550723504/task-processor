@@ -142,10 +142,12 @@ func pruneSaleAttributeResolutionPatch(patch *SaleAttributeResolutionPatch) *Sal
 		return nil
 	}
 	out := &SaleAttributeResolutionPatch{
-		Status:               cloneStringPointer(patch.Status),
-		Source:               cloneStringPointer(patch.Source),
-		PrimaryAttributeID:   clonePositiveIntPointer(patch.PrimaryAttributeID),
-		SecondaryAttributeID: clonePositiveIntPointer(patch.SecondaryAttributeID),
+		Status:                  cloneStringPointer(patch.Status),
+		Source:                  cloneStringPointer(patch.Source),
+		RecommendCategoryReview: cloneBoolPointer(patch.RecommendCategoryReview),
+		CategoryReviewReason:    cloneStringPointer(patch.CategoryReviewReason),
+		PrimaryAttributeID:      clonePositiveIntPointer(patch.PrimaryAttributeID),
+		SecondaryAttributeID:    clonePositiveIntPointer(patch.SecondaryAttributeID),
 	}
 	if len(patch.SKCAttributes) > 0 {
 		out.SKCAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), patch.SKCAttributes...)
@@ -251,6 +253,14 @@ func cloneNonNegativeIntPointer(in *int) *int {
 	return &value
 }
 
+func cloneBoolPointer(in *bool) *bool {
+	if in == nil {
+		return nil
+	}
+	value := *in
+	return &value
+}
+
 func stringsTrim(v string) string {
 	return strings.TrimSpace(v)
 }
@@ -308,6 +318,8 @@ func isEmptySalePatch(in *SaleAttributeResolutionPatch) bool {
 	return in == nil ||
 		(in.Status == nil &&
 			in.Source == nil &&
+			in.RecommendCategoryReview == nil &&
+			in.CategoryReviewReason == nil &&
 			in.PrimaryAttributeID == nil &&
 			in.SecondaryAttributeID == nil &&
 			len(in.SKCAttributes) == 0 &&

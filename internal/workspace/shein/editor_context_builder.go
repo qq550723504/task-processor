@@ -141,6 +141,14 @@ func BuildSaleAttributeResolutionPatch(pkg *sheinpub.Package) *SaleAttributeReso
 		source := pkg.SaleAttributeResolution.Source
 		patch.Source = &source
 	}
+	if pkg.SaleAttributeResolution.RecommendCategoryReview {
+		recommend := pkg.SaleAttributeResolution.RecommendCategoryReview
+		patch.RecommendCategoryReview = &recommend
+	}
+	if pkg.SaleAttributeResolution.CategoryReviewReason != "" {
+		reason := pkg.SaleAttributeResolution.CategoryReviewReason
+		patch.CategoryReviewReason = &reason
+	}
 	if pkg.SaleAttributeResolution.PrimaryAttributeID > 0 {
 		primaryAttributeID := pkg.SaleAttributeResolution.PrimaryAttributeID
 		patch.PrimaryAttributeID = &primaryAttributeID

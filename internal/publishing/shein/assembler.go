@@ -40,11 +40,10 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	images := common.BuildImages(canonical, image)
 	spuName := common.WithBrandHint(canonical.Title, req.BrandHint)
 	brand := common.ResolveBrand(req.BrandHint, canonical)
-	skcList := buildSKCs(canonical, images)
+	variants := common.BuildVariants(canonical)
 	productAttributes := common.BuildAttributes(canonical.Attributes)
 	siteList := common.DefaultSites(req.Country)
 	categoryName := common.LastCategory(canonical.CategoryPath)
-	supplierCode := firstSupplierCode(skcList)
 
 	pkg := &Package{
 		SpuName:           spuName,
@@ -58,11 +57,9 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 		Attributes:        common.FlattenAttributes(canonical.Attributes),
 		ProductAttributes: productAttributes,
 		SiteList:          siteList,
-		SkcList:           skcList,
 		Images:            images,
 		RequestDraft: &RequestDraft{
-			SpuName:      spuName,
-			SupplierCode: supplierCode,
+			SpuName: spuName,
 			MultiLanguageNameList: []LocalizedText{
 				{Language: req.Language, Name: spuName},
 				{Language: "en", Name: spuName},
@@ -74,7 +71,6 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 			ProductAttributeList: productAttributes,
 			ImageInfo:            BuildImageDraft(images),
 			SiteList:             siteList,
-			SKCList:              buildRequestSKCs(canonical, images, siteList),
 		},
 		Metadata: map[string]string{
 			"target_platform": "shein",
@@ -96,58 +92,59 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	}
 	if a.saleAttributeResolver != nil {
 		pkg.SaleAttributeResolution = a.saleAttributeResolver.Resolve(req, canonical, pkg)
-		ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
 	}
+	groups := buildVariantGroups(variants, images, pkg.SaleAttributeResolution)
+	pkg.SkcList = buildSKCs(groups)
+	supplierCode := firstSupplierCode(pkg.SkcList)
+	pkg.RequestDraft.SupplierCode = supplierCode
+	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, siteList, canonical)
+	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
 	pkg.PreviewProduct = BuildPreviewProduct(pkg)
 	return pkg
 }
 
-func buildSKCs(canonical *productenrich.CanonicalProduct, images *common.ImageSet) []SKCPackage {
-	variants := common.BuildVariants(canonical)
-	if len(variants) == 0 {
+func buildSKCs(groups []variantGroup) []SKCPackage {
+	if len(groups) == 0 {
 		return nil
 	}
-	result := make([]SKCPackage, 0, len(variants))
-	for _, variant := range variants {
-		saleName := common.FirstNonEmpty(variant.Attributes["color"], variant.Attributes["style"], variant.Attributes["size"], variant.SKU)
-		mainImage := common.FirstNonEmpty(variant.Image, images.MainImage)
+	result := make([]SKCPackage, 0, len(groups))
+	for _, group := range groups {
 		result = append(result, SKCPackage{
-			SkcName:      saleName,
-			SaleName:     saleName,
-			SupplierCode: variant.SKU,
-			MainImageURL: mainImage,
-			Attributes:   variant.Attributes,
-			SKUs:         []common.Variant{variant},
+			SkcName:      group.skcName,
+			SaleName:     group.saleName,
+			SupplierCode: group.supplierCode,
+			MainImageURL: group.mainImageURL,
+			Attributes:   common.CloneMap(group.attributes),
+			SKUs:         append([]common.Variant(nil), group.skus...),
 		})
 	}
 	return result
 }
 
-func buildRequestSKCs(canonical *productenrich.CanonicalProduct, images *common.ImageSet, siteList []common.Site) []SKCRequestDraft {
-	variants := common.BuildVariants(canonical)
-	if len(variants) == 0 {
+func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList []common.Site, canonical *productenrich.CanonicalProduct) []SKCRequestDraft {
+	if len(groups) == 0 {
 		return nil
 	}
-	result := make([]SKCRequestDraft, 0, len(variants))
-	for idx, variant := range variants {
-		saleName := common.FirstNonEmpty(variant.Attributes["color"], variant.Attributes["style"], variant.Attributes["size"], variant.SKU)
-		mainImage := common.FirstNonEmpty(variant.Image, images.MainImage)
+	result := make([]SKCRequestDraft, 0, len(groups))
+	for idx, group := range groups {
+		skus := make([]SKUDraft, 0, len(group.skus))
+		for _, variant := range group.skus {
+			skus = append(skus, buildSKUDraft(variant, canonical, common.FirstNonEmpty(variant.Image, group.mainImageURL, images.MainImage), siteList))
+		}
 		result = append(result, SKCRequestDraft{
-			SkcName:      saleName,
-			SaleName:     saleName,
-			SupplierCode: variant.SKU,
+			SkcName:      group.skcName,
+			SaleName:     group.saleName,
+			SupplierCode: group.supplierCode,
 			Sort:         idx + 1,
 			MultiLanguageNameList: []LocalizedText{
-				{Language: "en", Name: saleName},
+				{Language: "en", Name: group.skcName},
 			},
 			ImageInfo: BuildImageDraft(&common.ImageSet{
-				MainImage:    mainImage,
+				MainImage:    group.mainImageURL,
 				Gallery:      append([]string(nil), images.Gallery...),
 				WhiteBgImage: images.WhiteBgImage,
 			}),
-			SKUList: []SKUDraft{
-				buildSKUDraft(variant, canonical, mainImage, siteList),
-			},
+			SKUList: skus,
 		})
 	}
 	return result

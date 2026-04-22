@@ -83,6 +83,7 @@ const schema = z
     imageUrls: z.string().trim(),
     productUrl: z.string().trim(),
     platforms: z.array(z.string()).min(1, "Select at least one platform."),
+    sheinStoreId: z.string().trim(),
     sceneCategory: z.string().trim(),
     sceneStyle: z.string().trim(),
     backgroundTone: z.string().trim(),
@@ -99,6 +100,18 @@ function parseImageUrls(input: string) {
     .split(/\r?\n/)
     .map((value) => value.trim())
     .filter(Boolean);
+}
+
+function parseOptionalPositiveInt(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
 }
 
 function buildSceneOptions(values: FormValues) {
@@ -200,6 +213,7 @@ export function TaskCreateForm({
       imageUrls: initialValues?.imageUrls ?? "",
       productUrl: initialValues?.productUrl ?? "",
       platforms: initialValues?.platforms ?? [],
+      sheinStoreId: initialValues?.sheinStoreId ?? "",
       sceneCategory: initialValues?.sceneCategory ?? "",
       sceneStyle: initialValues?.sceneStyle ?? "",
       backgroundTone: initialValues?.backgroundTone ?? "",
@@ -225,6 +239,10 @@ export function TaskCreateForm({
   const currentProductUrl = useWatch({
     control,
     name: "productUrl",
+  });
+  const currentSheinStoreId = useWatch({
+    control,
+    name: "sheinStoreId",
   });
   const currentSceneCategory = useWatch({
     control,
@@ -369,6 +387,7 @@ export function TaskCreateForm({
             imageUrls,
             productUrl,
             platforms: values.platforms,
+            sheinStoreId: currentSheinStoreId,
             sceneCategory: values.sceneCategory,
             sceneStyle: values.sceneStyle,
             backgroundTone: values.backgroundTone,
@@ -378,10 +397,12 @@ export function TaskCreateForm({
             customSceneHint: values.customSceneHint,
           } satisfies TaskCreateDraft;
           const sceneOptions = buildSceneOptions(values);
+          const sheinStoreId = parseOptionalPositiveInt(values.sheinStoreId ?? "");
           const request = {
             text: draft.text,
             image_urls: parsedImageUrls,
             platforms: values.platforms,
+            ...(sheinStoreId ? { shein_store_id: sheinStoreId } : {}),
             ...(draft.productUrl ? { product_url: draft.productUrl } : {}),
             ...(sceneOptions ? { options: { scene: sceneOptions } } : {}),
           };
@@ -562,6 +583,22 @@ export function TaskCreateForm({
             <p className="text-sm text-red-600">{errors.platforms.message}</p>
           ) : null}
         </fieldset>
+
+        {selectedPlatforms?.includes("shein") ? (
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-zinc-700">Shein store ID</span>
+            <input
+              aria-label="Shein store ID"
+              className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+              inputMode="numeric"
+              placeholder="873"
+              {...register("sheinStoreId")}
+            />
+            <p className="text-sm leading-6 text-zinc-500">
+              Optional when this runtime serves a single Shein store. Fill it when multiple Shein stores share the same backend.
+            </p>
+          </label>
+        ) : null}
 
         <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

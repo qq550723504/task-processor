@@ -44,11 +44,13 @@ func (m *mockProductUnderstanding) FuseMultimodal(_ context.Context, _ *ImageAtt
 }
 
 type mockJSONGenerator struct {
-	result *ProductJSON
-	err    error
+	result           *ProductJSON
+	err              error
+	lastSkipVariants bool
 }
 
-func (m *mockJSONGenerator) GenerateJSON(_ context.Context, _ *ProductAnalysis, _ VariantGenerator, _ bool) (*ProductJSON, error) {
+func (m *mockJSONGenerator) GenerateJSON(_ context.Context, _ *ProductAnalysis, _ VariantGenerator, skipVariants bool) (*ProductJSON, error) {
+	m.lastSkipVariants = skipVariants
 	return m.result, m.err
 }
 
@@ -235,6 +237,48 @@ func TestProcessProduct_StrategyBasic_SkipsVariants(t *testing.T) {
 	}
 	if variantCalled {
 		t.Error("GenerateVariants should not be called for StrategyBasic (skipVariants=true)")
+	}
+}
+
+func TestProcessProduct_StrategyBasic_PreservesStructuredScrapedVariants(t *testing.T) {
+	task := &Task{ID: "t3b", Request: &GenerateRequest{}, Status: TaskStatusPending}
+	repo := newMockTaskRepo(task)
+
+	validationResult := &ValidationResult{QualityScore: 65}
+	jsonGenerator := &mockJSONGenerator{result: &ProductJSON{Title: "Basic"}}
+
+	svc, _ := NewProductService(&ProductServiceConfig{
+		QueueName:        "test",
+		TaskRepo:         repo,
+		RedisClient:      &mockRedisClient{},
+		InputParser:      &mockInputParser{result: &ParsedInput{}},
+		InputValidator:   &mockInputValidator{result: validationResult},
+		QualityScorer:    &mockQualityScorer{score: 65},
+		StrategySelector: &mockStrategySelector{strategy: StrategyBasic},
+		ProductUnderstanding: &mockProductUnderstanding{
+			result: &ProductAnalysis{
+				ScrapedData: &ScrapedData{
+					Variants: []ProductVariant{
+						{SKU: "1688-RED-42", Attributes: map[string]string{"颜色": "红色", "尺码": "42"}},
+					},
+				},
+			},
+		},
+		JSONGenerator: jsonGenerator,
+		VariantGenerator: &mockVariantGeneratorCapture{
+			onGenerateVariants: func() {},
+		},
+		ResultValidator: &mockResultValidator{
+			result: &ResultValidation{IsValid: true},
+		},
+	})
+
+	_, err := svc.ProcessProduct(context.Background(), task)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if jsonGenerator.lastSkipVariants {
+		t.Fatal("expected StrategyBasic to preserve structured scraped variants")
 	}
 }
 

@@ -3,14 +3,20 @@ package shein
 import (
 	"strings"
 
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
-type attributeResolver struct{ api AttributeAPI }
+type attributeResolver struct {
+	api AttributeAPI
+	llm openaiclient.ChatCompleter
+}
 
-func NewAttributeResolver(api AttributeAPI) AttributeResolver { return &attributeResolver{api: api} }
+func NewAttributeResolver(api AttributeAPI, llm openaiclient.ChatCompleter) AttributeResolver {
+	return &attributeResolver{api: api, llm: llm}
+}
 
 func (r *attributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *AttributeResolution {
 	resolution := &AttributeResolution{Status: "unresolved", Source: "fallback", CategoryID: categoryID(pkg)}
@@ -36,7 +42,7 @@ func (r *attributeResolver) Resolve(req *BuildRequest, canonical *productenrich.
 	}
 	resolution.Source = "attribute_templates"
 	resolution.TemplateCount = len(templates.Data)
-	resolution.ResolvedAttributes = matchAttributes(templates, pkg)
+	resolution.ResolvedAttributes, resolution.ReviewNotes = matchAttributes(templates, pkg, r.llm)
 	for _, item := range resolution.ResolvedAttributes {
 		if item.AttributeID > 0 {
 			resolution.ResolvedCount++
@@ -56,25 +62,30 @@ func (r *attributeResolver) Resolve(req *BuildRequest, canonical *productenrich.
 	return resolution
 }
 
-func matchAttributes(templates *sheinattribute.AttributeTemplateInfo, pkg *Package) []ResolvedAttribute {
+func matchAttributes(templates *sheinattribute.AttributeTemplateInfo, pkg *Package, llm openaiclient.ChatCompleter) ([]ResolvedAttribute, []string) {
 	if templates == nil || len(templates.Data) == 0 || pkg == nil {
-		return nil
+		return nil, nil
 	}
 	inputs := buildAttributeInputs(pkg)
 	if len(inputs) == 0 {
-		return nil
+		return nil, nil
 	}
 	templateIndex := newTemplateIndex(templates.Data[0].AttributeInfos)
 	resolved := make([]ResolvedAttribute, 0, len(inputs))
+	notes := make([]string, 0)
 	for _, item := range inputs {
-		match := templateIndex.Match(item.Name, item.Value)
+		attr := templateIndex.FindAttribute(item.Name)
+		if attr == nil || isSaleScopeAttribute(*attr) {
+			continue
+		}
+		match, matchNotes := matchTemplateAttributeValue(*attr, item.Name, item.Value, llm)
 		if match.AttributeID == 0 {
-			resolved = append(resolved, ResolvedAttribute{Name: item.Name, Value: item.Value, AttributeExtraValue: item.Value, MatchedBy: "unmatched"})
 			continue
 		}
 		resolved = append(resolved, match)
+		notes = append(notes, matchNotes...)
 	}
-	return resolved
+	return resolved, dedupeStrings(notes)
 }
 
 func buildAttributeInputs(pkg *Package) []common.Attribute {
@@ -95,6 +106,10 @@ func buildAttributeInputs(pkg *Package) []common.Attribute {
 		result = append(result, common.Attribute{Name: name, Value: value})
 	}
 	return result
+}
+
+func isSaleScopeAttribute(attr sheinattribute.AttributeInfo) bool {
+	return attr.AttributeType == 1 || (attr.SKCScope != nil && *attr.SKCScope)
 }
 
 func categoryID(pkg *Package) int {
