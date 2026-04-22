@@ -1,3 +1,4 @@
+import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
 import type {
   SheinCategorySuggestion,
@@ -94,8 +95,12 @@ function SuggestedCategoryBlock({
 
 export function SheinCategoryReviewCard({
   editorContext,
+  isApplying = false,
+  onApplySuggestedCategory,
 }: {
   editorContext?: SheinEditorContext | null;
+  isApplying?: boolean;
+  onApplySuggestedCategory?: (() => void) | null;
 }) {
   const model = buildSheinCategoryReviewModel(editorContext);
   if (!model) {
@@ -124,6 +129,18 @@ export function SheinCategoryReviewCard({
         </dl>
 
         <SuggestedCategoryBlock suggestion={model.suggestedCategory} />
+
+        {model.suggestedCategory?.category_id && onApplySuggestedCategory ? (
+          <div className="flex justify-end">
+            <Button
+              tone="secondary"
+              disabled={isApplying}
+              onClick={onApplySuggestedCategory}
+            >
+              {isApplying ? "Applying..." : "Apply suggested category"}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </Card>
   );

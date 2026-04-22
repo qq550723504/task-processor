@@ -16,33 +16,39 @@ import (
 )
 
 type service struct {
-	repo                Repository
-	productSvc          ProductService
-	imageSvc            ImageService
-	uploadStore         ImageUploadStore
-	assembler           Assembler
-	assetRepo           AssetRepository
-	reviewRepo          GenerationReviewRepository
-	assetRecipeResolver AssetRecipeResolver
-	assetBundleBuilder  AssetBundleBuilder
-	assetGenerator      AssetGenerationService
-	taskSubmitter       TaskSubmitter
-	requestDefaults     generateRequestDefaults
+	repo                       Repository
+	productSvc                 ProductService
+	imageSvc                   ImageService
+	uploadStore                ImageUploadStore
+	assembler                  Assembler
+	sheinCategoryResolver      sheinpub.CategoryResolver
+	sheinAttributeResolver     sheinpub.AttributeResolver
+	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	assetRepo                  AssetRepository
+	reviewRepo                 GenerationReviewRepository
+	assetRecipeResolver        AssetRecipeResolver
+	assetBundleBuilder         AssetBundleBuilder
+	assetGenerator             AssetGenerationService
+	taskSubmitter              TaskSubmitter
+	requestDefaults            generateRequestDefaults
 }
 
 type ServiceConfig struct {
-	Repository             Repository
-	ProductService         ProductService
-	ImageService           ImageService
-	ImageUploadStore       ImageUploadStore
-	Assembler              Assembler
-	AssetRepository        AssetRepository
-	ReviewRepository       GenerationReviewRepository
-	AssetRecipeResolver    AssetRecipeResolver
-	AssetBundleBuilder     AssetBundleBuilder
-	AssetGenerationService AssetGenerationService
-	TaskSubmitter          TaskSubmitter
-	SheinDefaultStoreID    int64
+	Repository                 Repository
+	ProductService             ProductService
+	ImageService               ImageService
+	ImageUploadStore           ImageUploadStore
+	Assembler                  Assembler
+	AssetRepository            AssetRepository
+	ReviewRepository           GenerationReviewRepository
+	AssetRecipeResolver        AssetRecipeResolver
+	AssetBundleBuilder         AssetBundleBuilder
+	AssetGenerationService     AssetGenerationService
+	TaskSubmitter              TaskSubmitter
+	SheinDefaultStoreID        int64
+	SheinCategoryResolver      sheinpub.CategoryResolver
+	SheinAttributeResolver     sheinpub.AttributeResolver
+	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 }
 
 func NewService(config *ServiceConfig) (Service, error) {
@@ -56,12 +62,30 @@ func NewService(config *ServiceConfig) (Service, error) {
 		return nil, fmt.Errorf("product service cannot be nil")
 	}
 	if config.Assembler == nil {
+		if config.SheinCategoryResolver == nil {
+			config.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
+		}
+		if config.SheinAttributeResolver == nil {
+			config.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
+		}
+		if config.SheinSaleAttributeResolver == nil {
+			config.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
+		}
 		config.Assembler = NewAssemblerWithConfig(AssemblerConfig{
 			AmazonBuilder:              newAmazonDraftBuilder(),
-			SheinCategoryResolver:      sheinpub.NewCategoryResolver(nil),
-			SheinAttributeResolver:     sheinpub.NewAttributeResolver(nil, nil),
-			SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(nil, nil),
+			SheinCategoryResolver:      config.SheinCategoryResolver,
+			SheinAttributeResolver:     config.SheinAttributeResolver,
+			SheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
 		})
+	}
+	if config.SheinCategoryResolver == nil {
+		config.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
+	}
+	if config.SheinAttributeResolver == nil {
+		config.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
+	}
+	if config.SheinSaleAttributeResolver == nil {
+		config.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
 	}
 	if config.AssetRepository == nil {
 		config.AssetRepository = assetrepo.NewMemRepository()
@@ -79,17 +103,20 @@ func NewService(config *ServiceConfig) (Service, error) {
 		config.AssetGenerationService = newDefaultAssetGenerationService()
 	}
 	return &service{
-		repo:                config.Repository,
-		productSvc:          config.ProductService,
-		imageSvc:            config.ImageService,
-		uploadStore:         config.ImageUploadStore,
-		assembler:           config.Assembler,
-		assetRepo:           config.AssetRepository,
-		reviewRepo:          config.ReviewRepository,
-		assetRecipeResolver: config.AssetRecipeResolver,
-		assetBundleBuilder:  config.AssetBundleBuilder,
-		assetGenerator:      config.AssetGenerationService,
-		taskSubmitter:       config.TaskSubmitter,
+		repo:                       config.Repository,
+		productSvc:                 config.ProductService,
+		imageSvc:                   config.ImageService,
+		uploadStore:                config.ImageUploadStore,
+		assembler:                  config.Assembler,
+		sheinCategoryResolver:      config.SheinCategoryResolver,
+		sheinAttributeResolver:     config.SheinAttributeResolver,
+		sheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
+		assetRepo:                  config.AssetRepository,
+		reviewRepo:                 config.ReviewRepository,
+		assetRecipeResolver:        config.AssetRecipeResolver,
+		assetBundleBuilder:         config.AssetBundleBuilder,
+		assetGenerator:             config.AssetGenerationService,
+		taskSubmitter:              config.TaskSubmitter,
 		requestDefaults: generateRequestDefaults{
 			sheinDefaultStoreID: config.SheinDefaultStoreID,
 		},

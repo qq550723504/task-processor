@@ -31,6 +31,7 @@ import { useListingKitPreview } from "@/lib/query/use-preview";
 import { useReviewPreview } from "@/lib/query/use-review-preview";
 import { useReviewSession } from "@/lib/query/use-review-session";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
+import { useApplyRevision } from "@/lib/query/use-apply-revision";
 import type {
   ActionExecutionRequest,
   NavigationTarget,
@@ -71,6 +72,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   );
   const dispatch = useDispatchNavigation(taskId, baseQuery);
   const action = useExecuteAction(taskId, baseQuery);
+  const applyRevision = useApplyRevision(taskId);
 
   const sessionData = session.data?.session;
   const platformCards =
@@ -162,6 +164,39 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     if (descriptor.recovery_target) {
       handleDispatch(descriptor.recovery_target);
     }
+  };
+
+  const handleApplySuggestedSheinCategory = () => {
+    const sheinPreview = preview.data?.shein;
+    const current = sheinPreview?.editor_context?.category?.current;
+    const suggested = current?.suggested_category;
+    const saleCurrent = sheinPreview?.editor_context?.sale_attributes?.current;
+
+    if (!suggested?.category_id) {
+      return;
+    }
+
+    applyRevision.mutate({
+      platform: "shein",
+      actor: "workspace",
+      reason: "Apply suggested SHEIN category",
+      shein: {
+        category_resolution: {
+          category_id: suggested.category_id,
+          category_id_list: suggested.category_id_list,
+          product_type_id: suggested.product_type_id,
+          top_category_id: suggested.top_category_id,
+          matched_path: suggested.matched_path,
+          source: suggested.source,
+          status: "resolved",
+        },
+        sale_attribute_resolution: {
+          recommend_category_review: false,
+          category_review_reason:
+            saleCurrent?.category_review_reason,
+        },
+      },
+    });
   };
 
   const handlePlatformSelect = (platform: string) => {
@@ -263,6 +298,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           {selectedPlatform === "shein" ? (
             <SheinCategoryReviewCard
               editorContext={preview.data?.shein?.editor_context}
+              isApplying={applyRevision.isPending}
+              onApplySuggestedCategory={handleApplySuggestedSheinCategory}
             />
           ) : null}
           <ScenePresetPanel summary={focusedScenePreset} />

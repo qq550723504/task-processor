@@ -21,6 +21,9 @@ func (s *service) ApplyTaskRevision(ctx context.Context, taskID string, req *App
 	if err := applyListingKitRevision(task.Result, effectiveReq); err != nil {
 		return nil, err
 	}
+	if effectiveReq.Platform == "shein" {
+		s.refreshSheinDerivedState(task, effectiveReq)
+	}
 	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
 		return nil, err
 	}

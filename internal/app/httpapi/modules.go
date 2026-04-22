@@ -458,6 +458,10 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	}
 	deps.closers = append(deps.closers, reviewClosers...)
 
+	sheinCategoryResolver := sheinpub.NewManagedCategoryResolver(deps.managementClient, buildSheinCategoryLLMClient(deps.openaiMgr))
+	sheinAttributeResolver := sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr))
+	sheinSaleAttributeResolver := sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr))
+
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Repository:          repo,
 		ProductService:      deps.productService,
@@ -473,10 +477,13 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 			WhiteBackgroundRenderer: deps.imageWhiteBgRenderer,
 			DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(deps.imageSceneRenderer),
 		}),
+		SheinCategoryResolver:      sheinCategoryResolver,
+		SheinAttributeResolver:     sheinAttributeResolver,
+		SheinSaleAttributeResolver: sheinSaleAttributeResolver,
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
-			SheinCategoryResolver:      sheinpub.NewManagedCategoryResolver(deps.managementClient, buildSheinCategoryLLMClient(deps.openaiMgr)),
-			SheinAttributeResolver:     sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)),
-			SheinSaleAttributeResolver: sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)),
+			SheinCategoryResolver:      sheinCategoryResolver,
+			SheinAttributeResolver:     sheinAttributeResolver,
+			SheinSaleAttributeResolver: sheinSaleAttributeResolver,
 		}),
 	})
 	if err != nil {

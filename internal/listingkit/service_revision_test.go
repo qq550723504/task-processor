@@ -6,11 +6,49 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
+	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type stubApplyRevisionRepo struct {
 	task *Task
+}
+
+type stubRevisionSheinAttributeResolver struct{}
+
+func (stubRevisionSheinAttributeResolver) Resolve(req *sheinpub.BuildRequest, canonical *productenrich.CanonicalProduct, pkg *sheinpub.Package) *sheinpub.AttributeResolution {
+	return &sheinpub.AttributeResolution{
+		Status:        "resolved",
+		ResolvedCount: 1,
+		ResolvedAttributes: []sheinpub.ResolvedAttribute{{
+			Name:        "Capacity",
+			Value:       "420ml",
+			AttributeID: 7001,
+		}},
+	}
+}
+
+type stubRevisionSheinSaleResolver struct{}
+
+func (stubRevisionSheinSaleResolver) Resolve(req *sheinpub.BuildRequest, canonical *productenrich.CanonicalProduct, pkg *sheinpub.Package) *sheinpub.SaleAttributeResolution {
+	valueID := 2493
+	return &sheinpub.SaleAttributeResolution{
+		Status:                  "resolved",
+		PrimaryAttributeID:      27,
+		PrimarySourceDimension:  "颜色",
+		RecommendCategoryReview: false,
+		CategoryReviewReason:    "",
+		SelectionSummary:        []string{"主销售属性使用源维度 颜色 映射到 Color"},
+		SKCAttributes: []sheinpub.ResolvedSaleAttribute{{
+			Scope:            "skc",
+			Name:             "Color",
+			Value:            "Black",
+			AttributeID:      27,
+			AttributeValueID: &valueID,
+			MatchedBy:        "test",
+		}},
+	}
 }
 
 func (r *stubApplyRevisionRepo) CreateTask(ctx context.Context, task *Task) error {
@@ -215,6 +253,114 @@ func TestApplyTaskRevisionTrimsRevisionHistory(t *testing.T) {
 	}
 }
 
+func TestApplyTaskRevisionRefreshesSheinDerivedStateAfterCategoryChange(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	task := &Task{
+		ID: "task-apply-shein-category-refresh",
+		Request: &GenerateRequest{
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 869,
+			Text:         "420ml stainless steel tumbler",
+		},
+		Status: TaskStatusNeedsReview,
+		Result: &ListingKitResult{
+			TaskID: "task-apply-shein-category-refresh",
+			CanonicalProduct: &productenrich.CanonicalProduct{
+				Title: "420ml stainless steel tumbler",
+				Attributes: map[string]productenrich.CanonicalAttribute{
+					"颜色": {Value: "黑色"},
+				},
+				Variants: []productenrich.CanonicalVariant{{
+					SKU: "SKU-1",
+					Attributes: map[string]productenrich.CanonicalAttribute{
+						"颜色": {Value: "黑色"},
+					},
+				}},
+			},
+			Shein: &SheinPackage{
+				CategoryID:   12143,
+				CategoryPath: []string{"家居&生活", "家庭用品", "鞋用品", "鞋配饰"},
+				CategoryResolution: &SheinCategoryResolution{
+					Status:     "resolved",
+					CategoryID: 12143,
+					MatchedPath: []string{
+						"家居&生活", "家庭用品", "鞋用品", "鞋配饰",
+					},
+				},
+				ProductAttributes: []PlatformAttribute{
+					{Name: "颜色", Value: "黑色"},
+				},
+				SaleAttributeResolution: &SheinSaleAttributeResolution{
+					Status:                  "partial",
+					RecommendCategoryReview: true,
+					CategoryReviewReason:    "当前类目路径与商品语义明显不一致，建议优先人工复核 SHEIN 类目是否正确",
+				},
+				RequestDraft: &SheinRequestDraft{
+					SKCList: []SheinSKCRequestDraft{{SupplierCode: "SKC-1"}},
+				},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = repo.CreateTask(context.Background(), task)
+	svc := &service{
+		repo:                       repo,
+		sheinAttributeResolver:     stubRevisionSheinAttributeResolver{},
+		sheinSaleAttributeResolver: stubRevisionSheinSaleResolver{},
+	}
+
+	categoryID := 3221
+	productTypeID := 2163
+	topCategoryID := 31
+	_, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			CategoryResolution: &SheinCategoryResolutionPatch{
+				Status:         stringPtr("resolved"),
+				Source:         stringPtr("manual_revision"),
+				MatchedPath:    []string{"家居&生活", "厨房&餐厅", "饮具", "真空瓶和保温杯"},
+				CategoryID:     &categoryID,
+				CategoryIDList: []int{31, 3188, 3219, 3221},
+				ProductTypeID:  &productTypeID,
+				TopCategoryID:  &topCategoryID,
+			},
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				RecommendCategoryReview: boolPtr(false),
+				CategoryReviewReason:    stringPtr("stale"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution == nil {
+		t.Fatal("expected refreshed sale attribute resolution")
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.RecommendCategoryReview {
+		t.Fatalf("sale attribute resolution = %+v, want recommend_category_review false", repo.task.Result.Shein.SaleAttributeResolution)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.CategoryReviewReason != "" {
+		t.Fatalf("sale attribute reason = %q, want empty", repo.task.Result.Shein.SaleAttributeResolution.CategoryReviewReason)
+	}
+	if repo.task.Result.Shein.SaleAttributeResolution.PrimaryAttributeID != 27 {
+		t.Fatalf("primary attribute id = %d, want 27", repo.task.Result.Shein.SaleAttributeResolution.PrimaryAttributeID)
+	}
+	if repo.task.Result.Shein.AttributeResolution == nil || repo.task.Result.Shein.AttributeResolution.ResolvedCount != 1 {
+		t.Fatalf("attribute resolution = %+v", repo.task.Result.Shein.AttributeResolution)
+	}
+	if repo.task.Result.Shein.RequestDraft == nil || len(repo.task.Result.Shein.RequestDraft.SKCList) != 1 {
+		t.Fatalf("request draft = %+v", repo.task.Result.Shein.RequestDraft)
+	}
+	if repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute == nil || repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute.AttributeID != 27 {
+		t.Fatalf("request draft skc sale attribute = %+v", repo.task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute)
+	}
+}
+
 func TestApplyTaskRevisionSupportsRestoreFromRevisionID(t *testing.T) {
 	t.Parallel()
 
@@ -406,4 +552,12 @@ func TestApplyTaskRevisionReturnsNotFoundForMissingRestoreRevision(t *testing.T)
 	if err == nil || err != ErrRevisionHistoryRecordNotFound {
 		t.Fatalf("error = %v, want %v", err, ErrRevisionHistoryRecordNotFound)
 	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func stringPtr(v string) *string {
+	return &v
 }

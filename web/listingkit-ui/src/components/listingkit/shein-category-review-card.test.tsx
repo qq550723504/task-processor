@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { SheinCategoryReviewCard } from "@/components/listingkit/shein-category-review-card";
 
@@ -76,5 +77,39 @@ describe("SheinCategoryReviewCard", () => {
     );
 
     expect(container.firstChild).toBeNull();
+  });
+
+  it("fires apply callback when suggested category action is clicked", async () => {
+    const user = userEvent.setup();
+    const onApplySuggestedCategory = vi.fn();
+
+    render(
+      <SheinCategoryReviewCard
+        editorContext={{
+          category: {
+            current: {
+              category_id: 12143,
+              category_path: ["家居&生活", "家庭用品", "鞋用品", "鞋配饰"],
+              suggested_category: {
+                category_id: 3221,
+                source: "ai_category_tree",
+                reason: "当前类目模板不适配销售属性结构，建议复核该候选类目",
+                matched_path: ["家居&生活", "厨房&餐厅", "饮具", "真空瓶和保温杯"],
+              },
+            },
+          },
+          sale_attributes: {
+            current: {
+              recommend_category_review: true,
+              category_review_reason: "当前类目路径与商品语义明显不一致",
+            },
+          },
+        }}
+        onApplySuggestedCategory={onApplySuggestedCategory}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Apply suggested category" }));
+    expect(onApplySuggestedCategory).toHaveBeenCalledTimes(1);
   });
 });
