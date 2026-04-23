@@ -186,7 +186,7 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	}
 }
 
-func TestRunWorkflowGeneratesBaseAssetsWithoutImagePipelineResult(t *testing.T) {
+func TestRunWorkflowSkipsAssetGenerationWhenProcessImagesDisabled(t *testing.T) {
 	t.Parallel()
 
 	productTask := &productenrich.Task{
@@ -234,28 +234,25 @@ func TestRunWorkflowGeneratesBaseAssetsWithoutImagePipelineResult(t *testing.T) 
 	if err != nil {
 		t.Fatalf("runWorkflow() error = %v", err)
 	}
-	if result.AssetInventorySummary == nil || result.AssetInventorySummary.GeneratedRecords < 3 {
-		t.Fatalf("asset inventory summary = %+v, want at least 3 generated records", result.AssetInventorySummary)
+	if result.AssetInventorySummary == nil || result.AssetInventorySummary.GeneratedRecords != 0 {
+		t.Fatalf("asset inventory summary = %+v, want no generated records", result.AssetInventorySummary)
 	}
 	inventory, err := assetRepository.GetInventory(context.Background(), asset.InventoryRef{TaskID: "listingkit-task-2"})
 	if err != nil {
 		t.Fatalf("GetInventory() error = %v", err)
 	}
-	if !hasInventoryKind(inventory, asset.KindCleanImage) {
-		t.Fatalf("inventory = %+v, want clean_image", inventory)
+	if inventory == nil || len(inventory.Records) == 0 {
+		t.Fatalf("inventory = %+v, want persisted source inventory", inventory)
 	}
-	if !hasInventoryKind(inventory, asset.KindWhiteBgImage) {
-		t.Fatalf("inventory = %+v, want white_bg_image", inventory)
+	if hasInventoryKind(inventory, asset.KindCleanImage) || hasInventoryKind(inventory, asset.KindWhiteBgImage) || hasInventoryKind(inventory, asset.KindSubjectCutout) {
+		t.Fatalf("inventory = %+v, want no derived assets when process_images=false", inventory)
 	}
-	if !hasInventoryKind(inventory, asset.KindSubjectCutout) {
-		t.Fatalf("inventory = %+v, want subject_cutout", inventory)
-	}
-	if result.Amazon == nil || result.Amazon.ImageBundle == nil || result.Amazon.ImageBundle.Main == nil {
-		t.Fatalf("amazon image bundle = %+v, want main slot", result.Amazon)
+	if result.Amazon != nil && result.Amazon.ImageBundle != nil {
+		t.Fatalf("amazon image bundle = %+v, want no generated image bundle", result.Amazon)
 	}
 }
 
-func TestRunWorkflowUsesRendererBackedDeferredGenerationWhenInjected(t *testing.T) {
+func TestRunWorkflowSkipsDeferredGenerationWhenProcessImagesDisabled(t *testing.T) {
 	t.Parallel()
 
 	productTask := &productenrich.Task{
@@ -304,25 +301,15 @@ func TestRunWorkflowUsesRendererBackedDeferredGenerationWhenInjected(t *testing.
 	if err != nil {
 		t.Fatalf("runWorkflow() error = %v", err)
 	}
-	if result.Amazon == nil || result.Amazon.ImageBundle == nil {
-		t.Fatalf("amazon image bundle = %+v", result.Amazon)
-	}
-	if len(result.Amazon.ImageBundle.PendingGeneration) != 0 {
-		t.Fatalf("amazon pending generation = %+v, want dispatched renderer-backed tasks completed", result.Amazon.ImageBundle.PendingGeneration)
+	if result.Amazon != nil && result.Amazon.ImageBundle != nil {
+		t.Fatalf("amazon image bundle = %+v, want no image bundle when process_images=false", result.Amazon)
 	}
 	generationTasks, err := assetRepository.ListGenerationTasks(context.Background(), "listingkit-task-3")
 	if err != nil {
 		t.Fatalf("ListGenerationTasks() error = %v", err)
 	}
-	hasRendererBacked := false
-	for _, item := range generationTasks {
-		if item.ExecutionMode == assetgeneration.ExecutionModeRendererBacked && item.ExecutionStatus == "completed" {
-			hasRendererBacked = true
-			break
-		}
-	}
-	if !hasRendererBacked {
-		t.Fatalf("generation tasks = %+v, want completed renderer_backed task", generationTasks)
+	if len(generationTasks) != 0 {
+		t.Fatalf("generation tasks = %+v, want none when process_images=false", generationTasks)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 
 func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResult, error) {
 	result := initResult(task)
+	enableAssetGeneration := shouldGenerateAssets(task.Request)
 
 	productTask, err := s.productSvc.CreateGenerateTask(productenrich.WithInlineTaskExecution(ctx), toProductGenerateRequest(task))
 	if err != nil {
@@ -61,13 +62,14 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	recipesByPlatform := resolveRecipesForPlatforms(s.assetRecipeResolver, task.Request.Platforms, canonical)
 	baseRecipes := baselineGenerationRecipes()
 	var generationPlan *assetgeneration.Result
+	var persistedGenerationTasks []assetgeneration.Task
 	if inventory != nil {
 		if s.assetRepo != nil {
 			if err := s.assetRepo.SaveInventory(ctx, inventory); err != nil {
 				appendWarning(result, "asset inventory persistence failed: "+err.Error())
 			}
 		}
-		if s.assetGenerator != nil && len(baseRecipes) > 0 {
+		if enableAssetGeneration && s.assetGenerator != nil && len(baseRecipes) > 0 {
 			execution, _ := s.assetGenerator.Execute(ctx, assetgeneration.Request{
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
@@ -83,7 +85,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 				}
 			}
 		}
-		if s.assetGenerator != nil && s.assetRecipeResolver != nil {
+		if enableAssetGeneration && s.assetGenerator != nil && s.assetRecipeResolver != nil {
 			generationPlan, _ = s.assetGenerator.Plan(ctx, assetgeneration.Request{
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
@@ -99,6 +101,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 				})
 				if dispatchResult != nil {
 					generationPlan.Tasks = cloneGenerationTasks(dispatchResult.Tasks)
+					persistedGenerationTasks = mergeGenerationTasks(persistedGenerationTasks, dispatchResult.Tasks)
 					if len(dispatchResult.Assets) > 0 {
 						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
 						inventory.Summary = rebuildInventorySummary(inventory)
@@ -126,10 +129,11 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	}
 	final.Summary.Warnings = uniqueStrings(append(final.Summary.Warnings, result.Summary.Warnings...))
 	if inventory != nil {
-		var tasksToPersist []assetgeneration.Task
-		attachPlatformImageBundles(final, inventory, recipesByPlatform, generationPlan, s.assetBundleBuilder)
+		if enableAssetGeneration {
+			attachPlatformImageBundles(final, inventory, recipesByPlatform, generationPlan, s.assetBundleBuilder)
+		}
 		pendingTasks := collectPlatformGenerationTasks(final)
-		if s.assetGenerator != nil && len(pendingTasks) > 0 {
+		if enableAssetGeneration && s.assetGenerator != nil && len(pendingTasks) > 0 {
 			dispatchResult, _ := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
@@ -148,12 +152,12 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 					}
 				}
 				attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, s.assetBundleBuilder)
-				tasksToPersist = dispatchResult.Tasks
+				persistedGenerationTasks = mergeGenerationTasks(persistedGenerationTasks, dispatchResult.Tasks)
 			}
 		}
-		decorateListingKitResultGeneration(final, tasksToPersist)
-		if s.assetRepo != nil && len(tasksToPersist) > 0 {
-			if err := s.assetRepo.SaveGenerationTasks(ctx, task.ID, tasksToPersist); err != nil {
+		decorateListingKitResultGeneration(final, persistedGenerationTasks)
+		if s.assetRepo != nil && len(persistedGenerationTasks) > 0 {
+			if err := s.assetRepo.SaveGenerationTasks(ctx, task.ID, persistedGenerationTasks); err != nil {
 				appendWarning(final, "asset generation task persistence failed: "+err.Error())
 			}
 		}
@@ -214,6 +218,10 @@ func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
 func shouldProcessImages(req *GenerateRequest) bool {
 	return req != nil && req.Options != nil && req.Options.ProcessImages &&
 		(len(req.ImageURLs) > 0 || strings.TrimSpace(req.ProductURL) != "")
+}
+
+func shouldGenerateAssets(req *GenerateRequest) bool {
+	return req != nil && req.Options != nil && req.Options.ProcessImages
 }
 
 func markChildTask(result *ListingKitResult, kind, taskID, status, errorMsg string) {

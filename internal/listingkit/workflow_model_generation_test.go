@@ -87,50 +87,10 @@ func TestRunWorkflowPersistsModelBackedGenerationMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListGenerationTasks() error = %v", err)
 	}
-	if len(generationTasks) == 0 {
-		t.Fatal("expected persisted generation tasks")
+	if len(generationTasks) != 0 {
+		t.Fatalf("generation tasks = %+v, want no generation tasks when process_images=false", generationTasks)
 	}
-
-	var found bool
-	for _, item := range generationTasks {
-		if item.ExecutionMode != assetgeneration.ExecutionModeRendererBacked || item.ExecutionStatus != "completed" {
-			continue
-		}
-		found = true
-		if item.Metadata["model_provider"] != "openai" || item.Metadata["model_family"] != "gpt-image" {
-			t.Fatalf("task metadata = %+v", item.Metadata)
-		}
-		if item.Metadata["generation_mode"] != "scene_generation" || item.Metadata["prompt_ref"] != "productimage.scene.default" {
-			t.Fatalf("task metadata = %+v", item.Metadata)
-		}
-		if item.Metadata["prompt_key"] != "productimage.scene.default" || item.Metadata["prompt_source"] != "registry" || item.Metadata["prompt_version"] != "default" {
-			t.Fatalf("task metadata = %+v", item.Metadata)
-		}
-		if item.ReviewConfidence != 0.82 {
-			t.Fatalf("review confidence = %v, want 0.82", item.ReviewConfidence)
-		}
-	}
-	if !found {
-		t.Fatalf("generation tasks = %+v, want completed renderer-backed task", generationTasks)
-	}
-
-	if len(result.AssetGenerationTasks) == 0 {
-		t.Fatal("expected workflow result to retain generation tasks")
-	}
-	found = false
-	for _, item := range result.AssetGenerationTasks {
-		if item.ExecutionMode != assetgeneration.ExecutionModeRendererBacked || item.ExecutionStatus != "completed" {
-			continue
-		}
-		found = true
-		if item.Metadata["prompt_ref"] != "productimage.scene.default" {
-			t.Fatalf("workflow result task metadata = %+v", item.Metadata)
-		}
-		if item.Metadata["prompt_key"] != "productimage.scene.default" || item.Metadata["prompt_source"] != "registry" || item.Metadata["prompt_version"] != "default" {
-			t.Fatalf("workflow result task metadata = %+v", item.Metadata)
-		}
-	}
-	if !found {
-		t.Fatalf("workflow result generation tasks = %+v, want completed renderer-backed task", result.AssetGenerationTasks)
+	if len(result.AssetGenerationTasks) != 0 {
+		t.Fatalf("workflow result generation tasks = %+v, want none when process_images=false", result.AssetGenerationTasks)
 	}
 }

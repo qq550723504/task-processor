@@ -1,9 +1,11 @@
 package listingkit
 
 import (
+	"context"
 	"testing"
 
 	"task-processor/internal/amazonlisting"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -19,6 +21,31 @@ type stubSheinCategoryAPI struct {
 
 type stubSheinAttributeAPI struct {
 	templates *sheinattribute.AttributeTemplateInfo
+}
+
+type scriptedListingKitLLM struct {
+	responses []string
+}
+
+func (s *scriptedListingKitLLM) CreateChatCompletion(context.Context, *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+	return nil, nil
+}
+
+func (s *scriptedListingKitLLM) Generate(context.Context, string) (string, error) {
+	if len(s.responses) == 0 {
+		return "", nil
+	}
+	response := s.responses[0]
+	s.responses = s.responses[1:]
+	return response, nil
+}
+
+func (s *scriptedListingKitLLM) AnalyzeImage(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+func (s *scriptedListingKitLLM) GetDefaultModel() string {
+	return "test"
 }
 
 func (stubAmazonDraftBuilder) Build(req *GenerateRequest, canonical *productenrich.CanonicalProduct, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft {
@@ -51,6 +78,14 @@ func (s stubSheinCategoryAPI) SuggestCategoryByText(productInfo string) (*sheinc
 
 func (s stubSheinAttributeAPI) GetAttributeTemplates(categoryID int) (*sheinattribute.AttributeTemplateInfo, error) {
 	return s.templates, nil
+}
+
+func (s stubSheinAttributeAPI) ValidateCustomAttributeValue(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+	return nil, nil
+}
+
+func (s stubSheinAttributeAPI) AddCustomAttributeValue(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+	return nil, nil
 }
 
 func TestAssemblerAssembleBuildsPlatformPackages(t *testing.T) {
@@ -224,6 +259,14 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 
 	levelFourID := 4004
 	levelFourName := "Wireless Earbuds"
+	llm := &scriptedListingKitLLM{
+		responses: []string{
+			`{"attribute_id":501,"reasons":["color matches template field"]}`,
+			`{"attribute_id":502,"reasons":["size matches template field"]}`,
+			`{"attribute_value_id":90001,"reasons":["black matches template value"]}`,
+			`{"attribute_value_id":90002,"reasons":["m matches template value"]}`,
+		},
+	}
 	assembler := NewAssemblerWithConfig(AssemblerConfig{
 		AmazonBuilder: stubAmazonDraftBuilder{},
 		SheinCategoryResolver: sheinpub.NewCategoryResolver(stubSheinCategoryAPI{
@@ -262,7 +305,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 					},
 				}},
 			},
-		}, nil),
+		}, llm),
 		SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(stubSheinAttributeAPI{
 			templates: &sheinattribute.AttributeTemplateInfo{
 				Data: []sheinattribute.AttributeTemplate{{

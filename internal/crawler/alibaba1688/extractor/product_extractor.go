@@ -13,6 +13,8 @@ import (
 type ProductExtractor struct {
 	// 基础信息提取器
 	basicInfoExtractor *BasicInfoExtractor
+	// 类目提取器
+	categoryExtractor *CategoryExtractor
 	// 物流信息提取器
 	shippingExtractor *ShippingExtractor
 	// 变体数据提取器
@@ -37,10 +39,11 @@ type ProductExtractor struct {
 
 // NewProductExtractor 创建新的产品提取器
 func NewProductExtractor() *ProductExtractor {
-	return &ProductExtractor{
-		// 优先使用优化的提取器
-		basicInfoExtractor:     NewBasicInfoExtractor(),
-		shippingExtractor:      NewShippingExtractor(),
+		return &ProductExtractor{
+			// 优先使用优化的提取器
+			basicInfoExtractor:     NewBasicInfoExtractor(),
+			categoryExtractor:      NewCategoryExtractor(),
+			shippingExtractor:      NewShippingExtractor(),
 		variantExtractor:       NewVariantExtractor(),
 		attributeExtractor:     NewAttributeExtractor(),
 		detailExtractor:        NewDetailExtractor(),
@@ -73,6 +76,7 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 	// 1. 优先使用优化的提取器（基于结构化数据）
 	optimizedExtractors := []BaseExtractor{
 		pe.basicInfoExtractor,     // 基础信息（标题、ID、销量等）
+		pe.categoryExtractor,      // 类目信息（breadcrumb/结构化类目）
 		pe.shippingExtractor,      // 物流信息（重量、发货地等）
 		pe.variantExtractor,       // 变体数据（价格、库存、属性等）
 		pe.attributeExtractor,     // 商品属性（材质、品牌等）
