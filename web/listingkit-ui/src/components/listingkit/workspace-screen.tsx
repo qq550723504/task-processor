@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 
@@ -12,8 +12,11 @@ import { ReviewToolbar } from "@/components/listingkit/review-toolbar";
 import { ScenePresetPanel } from "@/components/listingkit/scene-preset-panel";
 import { SheinCategoryReviewCard } from "@/components/listingkit/shein-category-review-card";
 import { SheinAttributeReviewCard } from "@/components/listingkit/shein-attribute-review-card";
+import { SheinDataImageGallery } from "@/components/listingkit/shein-data-image-gallery";
 import { SheinSaleAttributeReviewCard } from "@/components/listingkit/shein-sale-attribute-review-card";
 import { SheinSubmitReadinessPanel } from "@/components/listingkit/shein-submit-readiness-panel";
+import { SheinSourceProductPanel } from "@/components/listingkit/shein-source-product-panel";
+import { collectSheinPreviewImages } from "@/components/listingkit/shein-preview-image";
 import {
   canSelectSheinReadinessItem,
   isSheinWorkspaceActionKey,
@@ -23,6 +26,8 @@ import { SlotNavigationList } from "@/components/listingkit/slot-navigation-list
 import { ReviewReasonsCard } from "@/components/listingkit/review-reasons-card";
 import { TaskStatusPanel } from "@/components/listingkit/task-status-panel";
 import { TaskProgressNotice } from "@/components/listingkit/task-progress-notice";
+import { WorkspacePreviewSuggestionCard } from "@/components/listingkit/workspace-preview-suggestion";
+import { deriveWorkspacePreviewSuggestion } from "@/components/listingkit/workspace-preview-routing";
 import { resolveWorkspaceScenePreset } from "@/components/listingkit/workspace-scene-preset";
 import {
   deriveTaskPreviewEmptyState,
@@ -30,6 +35,10 @@ import {
 } from "@/components/listingkit/task-status-display";
 import { WorkspaceHeader } from "@/components/listingkit/workspace-header";
 import { WorkspaceOverviewPanel } from "@/components/listingkit/workspace-overview-panel";
+import {
+  deriveRecoveryNavigationTarget,
+  pickWorkspaceResolvedActionSummary,
+} from "@/components/listingkit/workspace-action-routing";
 import { shouldSyncPlatformOnRecovery } from "@/components/listingkit/workspace-recovery-routing";
 import { buildWorkspaceSearch } from "@/components/listingkit/workspace-routing";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -40,6 +49,8 @@ import { useReviewPreview } from "@/lib/query/use-review-preview";
 import { useReviewSession } from "@/lib/query/use-review-session";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
 import { useApplyRevision } from "@/lib/query/use-apply-revision";
+import { useSubmitTask } from "@/lib/query/use-submit-task";
+import { useClearSheinResolutionCache } from "@/lib/query/use-shein-resolution-cache";
 import type {
   ActionExecutionRequest,
   NavigationTarget,
@@ -51,6 +62,7 @@ import type {
   SheinReadinessItem,
   ToolbarAction,
 } from "@/lib/types/listingkit";
+import { toImageProxyUrl } from "@/lib/utils/image-proxy-url";
 
 function queryFromSearchParams(searchParams: URLSearchParams): QueueQuery {
   return {
@@ -64,6 +76,7 @@ function queryFromSearchParams(searchParams: URLSearchParams): QueueQuery {
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [selectedSheinImageUrl, setSelectedSheinImageUrl] = useState<string>();
   const baseQuery = useMemo(
     () => queryFromSearchParams(searchParams),
     [searchParams],
@@ -82,6 +95,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const dispatch = useDispatchNavigation(taskId, baseQuery);
   const action = useExecuteAction(taskId, baseQuery);
   const applyRevision = useApplyRevision(taskId);
+  const submitTask = useSubmitTask(taskId);
+  const clearSheinResolutionCache = useClearSheinResolutionCache(taskId);
 
   const sessionData = session.data?.session;
   const platformCards =
@@ -110,6 +125,35 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
       queueTotal: sessionData?.queue?.summary?.total_items ?? 0,
     },
   );
+  const resolvedActionSummary = pickWorkspaceResolvedActionSummary(
+    sessionData?.overview?.resolved_action_summary ??
+      session.data?.resolved_action_summary,
+    preview.data?.asset_generation_overview?.resolved_action_summary,
+  );
+  const previewSuggestion = deriveWorkspacePreviewSuggestion({
+    slots: sessionData?.slot_navigation,
+    selectedSlot: sessionData?.selected_slot,
+    focusedPreview,
+  });
+  const sheinImages = useMemo(
+    () =>
+      collectSheinPreviewImages(
+        preview.data?.shein,
+        taskResult.data?.result?.sds_sync,
+      ),
+    [preview.data?.shein, taskResult.data?.result?.sds_sync],
+  );
+  const selectedSheinImage =
+    sheinImages.find((image) => image.url === selectedSheinImageUrl) ??
+    sheinImages[0];
+  const sheinFallbackPreview =
+    selectedPlatform === "shein" && !focusedPreview?.asset_url && !focusedPreview?.preview_svg
+      ? {
+          asset_url: toImageProxyUrl(selectedSheinImage?.url),
+          template_label: selectedSheinImage?.label ?? "SHEIN product image",
+          asset_id: selectedSheinImage?.id ?? "shein-product-image",
+        }
+      : undefined;
 
   useEffect(() => {
     const focusedTarget = session.data?.session?.focused_target;
@@ -170,8 +214,9 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   };
 
   const handleRecovery = (descriptor: RecoveryDescriptor) => {
-    if (descriptor.recovery_target) {
-      handleDispatch(descriptor.recovery_target);
+    const target = deriveRecoveryNavigationTarget(descriptor);
+    if (target) {
+      handleDispatch(target);
     }
   };
 
@@ -234,6 +279,13 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     card.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const handleSubmitShein = () => {
+    submitTask.mutate({
+      platform: "shein",
+      action: "publish",
+    });
+  };
+
   const handlePlatformSelect = (platform: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("platform", platform);
@@ -258,16 +310,17 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6 overflow-x-hidden">
       <WorkspaceHeader
-        title={`Task ${taskId}`}
+        title={`Task ${taskId.slice(0, 8)}`}
+        subtitle={taskId}
         summary={
           suppressResolvedActionSummary
             ? undefined
-            : (session.data?.resolved_action_summary ??
-              preview.data.asset_generation_overview?.resolved_action_summary)
+            : resolvedActionSummary
         }
         recoverySummary={
+          sessionData?.overview?.recovery_summary ??
           session.data?.recovery_summary ??
           preview.data.asset_generation_overview?.recovery_summary
         }
@@ -282,35 +335,30 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         reviewSummary={sessionData.review_summary}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[20rem_minmax(0,1fr)_24rem]">
-        <aside className="space-y-4">
-          <PlatformCardRail
-            cards={platformCards}
-            selectedPlatform={sessionData.selected_platform}
-            onSelect={(card) => {
-              handleDispatch(
-                card.primary_navigation_target ??
-                  card.resolved_action_summary?.navigation_target,
-              );
-              handlePlatformSelect(card.platform);
-            }}
-            onSelectRecovery={(descriptor, card) => {
-              handleRecovery(descriptor);
-              if (shouldSyncPlatformOnRecovery(descriptor)) {
-                handlePlatformSelect(card.platform);
-              }
-            }}
-          />
-          <SlotNavigationList
-            slots={sessionData.slot_navigation}
-            selectedSlot={sessionData.selected_slot}
-            onSelect={(slot: ReviewSlot) =>
-              handleDispatch(slot.review_target?.navigation_target)
-            }
-          />
-        </aside>
+      <PlatformCardRail
+        cards={platformCards}
+        selectedPlatform={sessionData.selected_platform}
+        onSelect={(card) => {
+          handleDispatch(
+            card.primary_navigation_target ??
+              card.resolved_action_summary?.navigation_target,
+          );
+          handlePlatformSelect(card.platform);
+        }}
+        onSelectRecovery={(descriptor, card) => {
+          handleRecovery(descriptor);
+          if (shouldSyncPlatformOnRecovery(descriptor)) {
+            handlePlatformSelect(card.platform);
+          }
+        }}
+      />
 
-        <main className="space-y-4">
+      <div className="grid min-w-0 gap-6 md:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <main className="min-w-0 space-y-4">
+          <WorkspacePreviewSuggestionCard
+            suggestion={previewSuggestion}
+            onSelect={(slot) => handleDispatch(slot.review_target?.navigation_target)}
+          />
           <ReviewSectionTabs
             sections={sessionData.sections}
             selectedKey={sessionData.focused_section_key}
@@ -318,14 +366,32 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
               handleDispatch(section.review_target?.navigation_target)
             }
           />
+          {selectedPlatform === "shein" ? (
+            <SheinSourceProductPanel shein={preview.data?.shein} />
+          ) : null}
+          {selectedPlatform === "shein" ? (
+            <SheinDataImageGallery
+              images={sheinImages}
+              selectedUrl={selectedSheinImage?.url}
+              onSelect={(image) => setSelectedSheinImageUrl(image.url)}
+            />
+          ) : null}
           <PreviewCanvas
-            preview={focusedPreview}
+            preview={sheinFallbackPreview ?? focusedPreview}
             response={reviewPreview.data}
             emptyState={deriveTaskPreviewEmptyState(taskResult.data)}
           />
+          <SlotNavigationList
+            slots={sessionData.slot_navigation}
+            selectedSlot={sessionData.selected_slot}
+            selectedAssetId={focusedPreview?.asset_id}
+            onSelect={(slot: ReviewSlot) =>
+              handleDispatch(slot.review_target?.navigation_target)
+            }
+          />
         </main>
 
-        <aside className="space-y-4">
+        <aside className="min-w-0 space-y-4 md:sticky md:top-6 md:self-start">
           <ReviewToolbar
             toolbar={reviewPreview.data?.toolbar ?? sessionData.focused_toolbar}
             onAction={handleToolbarAction}
@@ -334,35 +400,27 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             <SheinSubmitReadinessPanel
               readiness={preview.data?.shein?.submit_readiness}
               checklist={preview.data?.shein?.submit_checklist}
+              submission={preview.data?.shein?.submission}
+              imageUpload={preview.data?.shein?.image_upload}
+              resolutionCache={preview.data?.shein?.resolution_cache}
               workspaceOverview={preview.data?.shein?.workspace_overview}
               canSelectBlockingItem={canSelectSheinBlockingItem}
               onSelectBlockingItem={handleSelectSheinBlockingItem}
               canRunPrimaryAction={isSheinWorkspaceActionKey}
               onRunPrimaryAction={handleRunSheinPrimaryAction}
+              canSubmit
+              isSubmitting={submitTask.isPending}
+              onSubmit={handleSubmitShein}
+              clearingResolutionCacheKind={
+                clearSheinResolutionCache.isPending
+                  ? clearSheinResolutionCache.variables
+                  : null
+              }
+              onClearResolutionCache={(kind) =>
+                clearSheinResolutionCache.mutate(kind)
+              }
+              compact
             />
-          ) : null}
-          {selectedPlatform === "shein" ? (
-            <div id="shein-category-review-card">
-              <SheinCategoryReviewCard
-                editorContext={preview.data?.shein?.editor_context}
-                isApplying={applyRevision.isPending}
-                onApplySuggestedCategory={handleApplySuggestedSheinCategory}
-              />
-            </div>
-          ) : null}
-          {selectedPlatform === "shein" ? (
-            <div id="shein-attribute-review-card">
-              <SheinAttributeReviewCard
-                editorContext={preview.data?.shein?.editor_context}
-              />
-            </div>
-          ) : null}
-          {selectedPlatform === "shein" ? (
-            <div id="shein-sale-attribute-review-card">
-              <SheinSaleAttributeReviewCard
-                editorContext={preview.data?.shein?.editor_context}
-              />
-            </div>
           ) : null}
           <ScenePresetPanel summary={focusedScenePreset} />
           <RecoveryActionList
@@ -374,6 +432,38 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           />
         </aside>
       </div>
+
+      {selectedPlatform === "shein" ? (
+        <section className="space-y-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
+              SHEIN review details
+            </p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight text-zinc-950">
+              Category and attribute mapping
+            </h2>
+          </div>
+          <div className="grid min-w-0 gap-4 xl:grid-cols-3">
+            <div id="shein-category-review-card" className="min-w-0">
+              <SheinCategoryReviewCard
+                editorContext={preview.data?.shein?.editor_context}
+                isApplying={applyRevision.isPending}
+                onApplySuggestedCategory={handleApplySuggestedSheinCategory}
+              />
+            </div>
+            <div id="shein-attribute-review-card" className="min-w-0">
+              <SheinAttributeReviewCard
+                editorContext={preview.data?.shein?.editor_context}
+              />
+            </div>
+            <div id="shein-sale-attribute-review-card" className="min-w-0">
+              <SheinSaleAttributeReviewCard
+                editorContext={preview.data?.shein?.editor_context}
+              />
+            </div>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -21,6 +21,7 @@ import (
 	"task-processor/internal/productenrich/store"
 	productimage "task-processor/internal/productimage"
 	productimagestore "task-processor/internal/productimage/store"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func newLLMManager(cfg config.OpenAIConfig) (productenrich.LLMManager, error) {
@@ -133,6 +134,25 @@ func newDBListingKitTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Lo
 	repo := listingkitstore.NewTaskRepository(db)
 	closer := func() error { return database.CloseDatabase(db) }
 	return repo, closer, nil
+}
+
+func newDBSheinResolutionCacheStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (sheinpub.ResolutionCacheStore, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := db.AutoMigrate(&sheinpub.SheinResolutionCacheEntry{}); err != nil {
+		return nil, nil, fmt.Errorf("shein resolution cache auto-migrate failed: %w", err)
+	}
+
+	store := sheinpub.NewGormResolutionCacheStore(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return store, closer, nil
 }
 
 func newDBAssetRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (assetrepo.Repository, func() error, error) {

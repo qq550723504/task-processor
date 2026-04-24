@@ -2,7 +2,11 @@ import { Card } from "@/components/shared/card";
 import { Button } from "@/components/shared/button";
 import type {
   SheinChecklistGroupItem,
+  SheinImageUploadPreflight,
   SheinReadinessItem,
+  SheinResolutionCacheInfo,
+  SheinResolutionCacheSummary,
+  SheinSubmissionReport,
   SheinSubmitChecklist,
   SheinSubmitReadiness,
   SheinWorkspaceOverview,
@@ -46,6 +50,113 @@ function fieldPathsLabel(paths?: string[] | null) {
     return null;
   }
   return paths.join(" · ");
+}
+
+function compactSubmissionMessage(message?: string | null) {
+  if (!message) {
+    return null;
+  }
+
+  const status = message.match(/STATUS:\s*([0-9]+)/i)?.[1];
+  const eventId = message.match(/EVENT ID:\s*([0-9]+)/i)?.[1];
+  const url = message.match(/\(URL:\s*([^)]+)\)/i)?.[1];
+  if (status) {
+    return [
+      `SHEIN endpoint returned ${status}.`,
+      eventId ? `Event ID: ${eventId}.` : null,
+      url ? `URL: ${url}` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const text = message
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (text.length <= 320) {
+    return text;
+  }
+  return `${text.slice(0, 320)}...`;
+}
+
+function cacheSourceLabel(source?: string) {
+  switch (source) {
+    case "manual_cache":
+      return "Manual";
+    case "history_cache":
+      return "DB";
+    case "memory_cache":
+      return "Memory";
+    case "live_resolver":
+      return "Live";
+    case "static_fallback":
+      return "Static";
+    case "llm":
+      return "LLM";
+    default:
+      return source ?? "Unknown";
+  }
+}
+
+function cacheUpdatedLabel(value?: string) {
+  if (!value) {
+    return "No timestamp";
+  }
+  return value.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "");
+}
+
+function hasResolutionCache(cache?: SheinResolutionCacheSummary | null) {
+  return Boolean(cache?.category || cache?.attributes || cache?.sale_attributes);
+}
+
+function ResolutionCacheRow({
+  title,
+  item,
+  kind,
+  onClear,
+  isClearing,
+}: {
+  title: string;
+  item?: SheinResolutionCacheInfo | null;
+  kind: "category" | "attribute" | "sale_attribute";
+  onClear?: ((kind: "category" | "attribute" | "sale_attribute") => void) | null;
+  isClearing?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-white/80 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-semibold text-zinc-950">{title}</p>
+          <p className="text-xs leading-5 text-zinc-600">
+            {item
+              ? `${cacheSourceLabel(item.source)} · ${item.short_key ?? "no-key"}`
+              : "No cache metadata yet"}
+          </p>
+          {item ? (
+            <p className="text-[11px] leading-5 text-zinc-500">
+              {item.status ?? "unknown"} · hits {item.hit_count ?? 0} ·{" "}
+              {cacheUpdatedLabel(item.updated_at)}
+              {item.manual ? " · manual" : ""}
+            </p>
+          ) : null}
+        </div>
+        {item?.clearable && onClear ? (
+          <Button
+            className="h-8 shrink-0 px-3 text-xs"
+            disabled={isClearing}
+            tone="secondary"
+            onClick={() => onClear(kind)}
+          >
+            Clear
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function ReadinessItems({
@@ -163,19 +274,39 @@ function ChecklistSection({
 export function SheinSubmitReadinessPanel({
   readiness,
   checklist,
+  submission,
+  imageUpload,
+  resolutionCache,
   workspaceOverview,
   canSelectBlockingItem,
   onSelectBlockingItem,
   canRunPrimaryAction,
   onRunPrimaryAction,
+  canSubmit,
+  onSubmit,
+  isSubmitting,
+  onClearResolutionCache,
+  clearingResolutionCacheKind,
+  compact = false,
 }: {
   readiness?: SheinSubmitReadiness | null;
   checklist?: SheinSubmitChecklist | null;
+  submission?: SheinSubmissionReport | null;
+  imageUpload?: SheinImageUploadPreflight | null;
+  resolutionCache?: SheinResolutionCacheSummary | null;
   workspaceOverview?: SheinWorkspaceOverview | null;
   canSelectBlockingItem?: ((item: SheinReadinessItem) => boolean) | null;
   onSelectBlockingItem?: ((item: SheinReadinessItem) => void) | null;
   canRunPrimaryAction?: ((key?: string | null) => boolean) | null;
   onRunPrimaryAction?: ((key?: string | null) => void) | null;
+  canSubmit?: boolean;
+  onSubmit?: (() => void) | null;
+  isSubmitting?: boolean;
+  onClearResolutionCache?:
+    | ((kind: "category" | "attribute" | "sale_attribute") => void)
+    | null;
+  clearingResolutionCacheKind?: string | null;
+  compact?: boolean;
 }) {
   if (!readiness && !checklist && !workspaceOverview) {
     return null;
@@ -188,6 +319,10 @@ export function SheinSubmitReadinessPanel({
     readiness?.status !== "ready" &&
     Boolean(primaryActionKey) &&
     (canRunPrimaryAction ? canRunPrimaryAction(primaryActionKey) : false);
+  const submitReady = readiness?.ready === true || readiness?.status === "ready";
+  const latestSubmissionMessage = compactSubmissionMessage(
+    submission?.last_error ?? submission?.last_result?.message,
+  );
 
   return (
     <Card className="border-zinc-300 bg-zinc-50/80 p-5">
@@ -225,7 +360,30 @@ export function SheinSubmitReadinessPanel({
           </div>
         </div>
 
-        {workspaceOverview?.primary_action ? (
+        {submitReady ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                  Publish action
+                </p>
+                <p className="text-sm font-semibold text-zinc-950">Submit to SHEIN</p>
+                <p className="text-sm leading-6 text-zinc-700">
+                  当前资料包已满足后端 readiness，可直接提交到 SHEIN。
+                </p>
+              </div>
+              {canSubmit && onSubmit ? (
+                <Button
+                  className="h-8 px-3 text-xs"
+                  disabled={isSubmitting}
+                  onClick={onSubmit}
+                >
+                  {isSubmitting ? "Submitting..." : "Submit to SHEIN"}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : workspaceOverview?.primary_action ? (
           <div className="rounded-2xl border border-zinc-200 bg-white/80 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
@@ -249,7 +407,91 @@ export function SheinSubmitReadinessPanel({
           </div>
         ) : null}
 
-        {readiness?.summary?.length ? (
+        {imageUpload ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  Image upload preflight
+                </p>
+                <p className="text-sm font-semibold text-zinc-950">
+                  {imageUpload.pending_upload_urls ?? 0} unique images will upload to SHEIN before submit
+                </p>
+              </div>
+              <div className="grid gap-2 text-xs text-zinc-700 sm:grid-cols-2">
+                <span>References: {imageUpload.total_image_references ?? 0}</span>
+                <span>Unique URLs: {imageUpload.unique_image_urls ?? 0}</span>
+                <span>SDS mockups: {imageUpload.sds_mockup_urls ?? 0}</span>
+                <span>SHEIN URLs: {imageUpload.shein_uploaded_urls ?? 0}</span>
+              </div>
+              {!compact && imageUpload.summary?.length ? (
+                <div className="space-y-1">
+                  {imageUpload.summary.map((line) => (
+                    <p className="text-xs leading-5 text-zinc-700" key={line}>
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {hasResolutionCache(resolutionCache) ? (
+          <div className="rounded-2xl border border-zinc-200 bg-white/70 p-4">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  Resolution cache
+                </p>
+                <p className="text-sm leading-6 text-zinc-700">
+                  分类、普通属性、销售属性的解析来源和当前缓存状态。
+                </p>
+              </div>
+              <ResolutionCacheRow
+                title="Category"
+                item={resolutionCache?.category}
+                kind="category"
+                isClearing={clearingResolutionCacheKind === "category"}
+                onClear={onClearResolutionCache}
+              />
+              <ResolutionCacheRow
+                title="Attributes"
+                item={resolutionCache?.attributes}
+                kind="attribute"
+                isClearing={clearingResolutionCacheKind === "attribute"}
+                onClear={onClearResolutionCache}
+              />
+              <ResolutionCacheRow
+                title="Sale attributes"
+                item={resolutionCache?.sale_attributes}
+                kind="sale_attribute"
+                isClearing={clearingResolutionCacheKind === "sale_attribute"}
+                onClear={onClearResolutionCache}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        {submission?.last_status ? (
+          <div className="rounded-2xl border border-zinc-200 bg-white/80 p-4">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                Latest submission
+              </p>
+              <p className="text-sm font-semibold text-zinc-950">
+                {submission.last_action === "save_draft" ? "Saved draft" : "Published"} · {submission.last_status}
+              </p>
+              {latestSubmissionMessage ? (
+                <p className="break-words text-sm leading-6 text-rose-700">
+                  {latestSubmissionMessage}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {!compact && readiness?.summary?.length ? (
           <div className="space-y-2">
             {readiness.summary.map((line) => (
               <p className="text-sm leading-6 text-zinc-700" key={line}>
@@ -259,19 +501,23 @@ export function SheinSubmitReadinessPanel({
           </div>
         ) : null}
 
-        <ReadinessItems
-          title="Blocking items"
-          items={readiness?.blocking_items}
-          canSelectItem={canSelectBlockingItem}
-          onSelectItem={onSelectBlockingItem}
-        />
+        {!compact ? (
+          <ReadinessItems
+            title="Blocking items"
+            items={readiness?.blocking_items}
+            canSelectItem={canSelectBlockingItem}
+            onSelectItem={onSelectBlockingItem}
+          />
+        ) : null}
 
-        <ReadinessItems
-          title="Warnings"
-          items={readiness?.warning_items}
-        />
+        {!compact ? (
+          <ReadinessItems
+            title="Warnings"
+            items={readiness?.warning_items}
+          />
+        ) : null}
 
-        {workspaceOverview?.highlights?.length ? (
+        {!compact && workspaceOverview?.highlights?.length ? (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
               Highlights
@@ -286,7 +532,7 @@ export function SheinSubmitReadinessPanel({
           </div>
         ) : null}
 
-        {workspaceOverview?.next_actions?.length ? (
+        {!compact && workspaceOverview?.next_actions?.length ? (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
               Next actions
@@ -304,7 +550,7 @@ export function SheinSubmitReadinessPanel({
           </div>
         ) : null}
 
-        {required || recommended ? (
+        {!compact && (required || recommended) ? (
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
               Checklist

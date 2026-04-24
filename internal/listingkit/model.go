@@ -21,6 +21,9 @@ var ErrTaskNotPending = errors.New("task is not pending")
 var ErrGenerationTaskNotFound = errors.New("generation task not found")
 var ErrGenerationTaskNotRetryable = errors.New("generation task is not retryable")
 var ErrGenerationActionNotFound = errors.New("generation action not found")
+var ErrUnsupportedSubmitPlatform = errors.New("unsupported submit platform")
+var ErrSubmitBlocked = errors.New("submit blocked by readiness")
+var ErrInvalidSheinResolutionCacheKind = errors.New("invalid shein resolution cache kind")
 
 type TaskStatus string
 
@@ -48,6 +51,51 @@ type GenerateRequest struct {
 type GenerateOptions struct {
 	ProcessImages bool                                 `json:"process_images"`
 	Scene         *productimage.SceneGenerationOptions `json:"scene,omitempty"`
+	SDS           *SDSSyncOptions                      `json:"sds,omitempty"`
+}
+
+type SDSSyncOptions struct {
+	VariantID           int64    `json:"variant_id,omitempty"`
+	ParentProductID     int64    `json:"parent_product_id,omitempty"`
+	PrototypeGroupID    int64    `json:"prototype_group_id,omitempty"`
+	LayerID             string   `json:"layer_id,omitempty"`
+	DesignType          string   `json:"design_type,omitempty"`
+	FitLevel            float64  `json:"fit_level,omitempty"`
+	ResizeMode          int      `json:"resize_mode,omitempty"`
+	ProductName         string   `json:"product_name,omitempty"`
+	ProductSKU          string   `json:"product_sku,omitempty"`
+	ProductEnglishName  string   `json:"product_english_name,omitempty"`
+	CategoryPath        []string `json:"category_path,omitempty"`
+	Material            string   `json:"material,omitempty"`
+	MaterialDescription string   `json:"material_description,omitempty"`
+	ProductionProcess   string   `json:"production_process,omitempty"`
+	ProductPerformance  string   `json:"product_performance,omitempty"`
+	ApplicableScenarios string   `json:"applicable_scenarios,omitempty"`
+	WashingInstructions string   `json:"washing_instructions,omitempty"`
+	SpecialDescription  string   `json:"special_description,omitempty"`
+	DesignArea          string   `json:"design_area,omitempty"`
+	PictureRequest      string   `json:"picture_request,omitempty"`
+	VariantSKU          string   `json:"variant_sku,omitempty"`
+	VariantSize         string   `json:"variant_size,omitempty"`
+	VariantColor        string   `json:"variant_color,omitempty"`
+	VariantPrice        float64  `json:"variant_price,omitempty"`
+	VariantWeight       float64  `json:"variant_weight,omitempty"`
+	ProductionCycle     int      `json:"production_cycle,omitempty"`
+	BlankDesignURL      string   `json:"blank_design_url,omitempty"`
+	TemplateImageURL    string   `json:"template_image_url,omitempty"`
+	MaskImageURL        string   `json:"mask_image_url,omitempty"`
+	MockupImageURLs     []string `json:"mockup_image_urls,omitempty"`
+}
+
+type SubmitTaskRequest struct {
+	Platform string `json:"platform,omitempty"`
+	Action   string `json:"action,omitempty"`
+}
+
+type SheinResolutionCacheClearResult struct {
+	TaskID       string   `json:"task_id"`
+	Kind         string   `json:"kind"`
+	DeletedKinds []string `json:"deleted_kinds,omitempty"`
 }
 
 type Task struct {
@@ -69,6 +117,35 @@ type TaskResult struct {
 	ReviewReasons []string          `json:"review_reasons,omitempty"`
 	CreatedAt     time.Time         `json:"created_at"`
 	CompletedAt   *time.Time        `json:"completed_at,omitempty"`
+}
+
+type TaskListQuery struct {
+	Status   string `form:"status" json:"status,omitempty"`
+	Platform string `form:"platform" json:"platform,omitempty"`
+	Page     int    `form:"page" json:"page,omitempty"`
+	PageSize int    `form:"page_size" json:"page_size,omitempty"`
+}
+
+type TaskListItem struct {
+	TaskID        string     `json:"task_id"`
+	Status        TaskStatus `json:"status"`
+	Platforms     []string   `json:"platforms,omitempty"`
+	Title         string     `json:"title,omitempty"`
+	ImageCount    int        `json:"image_count"`
+	ProductName   string     `json:"product_name,omitempty"`
+	VariantLabel  string     `json:"variant_label,omitempty"`
+	SDSSyncStatus string     `json:"sds_sync_status,omitempty"`
+	Error         string     `json:"error,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+}
+
+type TaskListPage struct {
+	Page     int            `json:"page"`
+	PageSize int            `json:"page_size"`
+	Total    int64          `json:"total"`
+	Items    []TaskListItem `json:"items,omitempty"`
 }
 
 type AssetGenerationSummary struct {
@@ -697,6 +774,7 @@ type ListingKitResult struct {
 	ReviewRecords               []GenerationReviewRecord         `json:"review_records,omitempty"`
 	CanonicalProduct            *productenrich.CanonicalProduct  `json:"canonical_product,omitempty"`
 	ImageAssets                 *productimage.ImageProcessResult `json:"image_assets,omitempty"`
+	SDSSync                     *SDSSyncSummary                  `json:"sds_sync,omitempty"`
 	Amazon                      *AmazonPackage                   `json:"amazon,omitempty"`
 	Shein                       *sheinpub.Package                `json:"shein,omitempty"`
 	Temu                        *TemuPackage                     `json:"temu,omitempty"`
@@ -716,6 +794,22 @@ type GenerationSummary struct {
 	VariantCount int      `json:"variant_count"`
 	NeedsReview  bool     `json:"needs_review"`
 	Warnings     []string `json:"warnings,omitempty"`
+}
+
+type SDSSyncSummary struct {
+	VariantID        int64    `json:"variant_id"`
+	ProductID        int64    `json:"product_id,omitempty"`
+	PrototypeGroupID int64    `json:"prototype_group_id,omitempty"`
+	LayerID          string   `json:"layer_id,omitempty"`
+	MaterialID       int64    `json:"material_id,omitempty"`
+	ProductName      string   `json:"product_name,omitempty"`
+	ProductSKU       string   `json:"product_sku,omitempty"`
+	VariantSKU       string   `json:"variant_sku,omitempty"`
+	VariantSize      string   `json:"variant_size,omitempty"`
+	VariantColor     string   `json:"variant_color,omitempty"`
+	MockupImageURLs  []string `json:"mockup_image_urls,omitempty"`
+	Status           string   `json:"status,omitempty"`
+	Error            string   `json:"error,omitempty"`
 }
 
 type GenerationRecoverySummary struct {

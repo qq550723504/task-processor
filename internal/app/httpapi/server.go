@@ -52,6 +52,7 @@ func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHand
 		v1.POST("/generate", listingKitHandler.GenerateListingKit)
 		v1.POST("/uploads/images", listingKitHandler.UploadListingKitImages)
 		v1.GET("/uploads/files/*key", listingKitHandler.GetUploadedListingKitImage)
+		v1.GET("/tasks", listingKitHandler.ListTasks)
 		v1.GET("/tasks/:task_id", listingKitHandler.GetTaskResult)
 		v1.GET("/tasks/:task_id/preview", listingKitHandler.GetTaskPreview)
 		v1.GET("/tasks/:task_id/generation-tasks", listingKitHandler.GetTaskGenerationTasks)
@@ -66,6 +67,8 @@ func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHand
 		v1.GET("/tasks/:task_id/export", listingKitHandler.GetTaskExport)
 		v1.POST("/tasks/:task_id/revision", listingKitHandler.ApplyTaskRevision)
 		v1.POST("/tasks/:task_id/revision/validate", listingKitHandler.ValidateTaskRevision)
+		v1.POST("/tasks/:task_id/submit", listingKitHandler.SubmitTask)
+		v1.DELETE("/tasks/:task_id/shein-resolution-cache", listingKitHandler.ClearSheinResolutionCache)
 	}
 
 	if taskRPCHandler != nil {

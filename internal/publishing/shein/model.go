@@ -2,6 +2,7 @@ package shein
 
 import (
 	common "task-processor/internal/publishing/common"
+	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -15,45 +16,48 @@ type BuildRequest struct {
 }
 
 type Package struct {
-	SpuName                 string                     `json:"spu_name,omitempty"`
-	BrandName               string                     `json:"brand_name,omitempty"`
-	ProductNameEn           string                     `json:"product_name_en,omitempty"`
-	ProductNameMulti        string                     `json:"product_name_multi,omitempty"`
-	CategoryName            string                     `json:"category_name,omitempty"`
-	CategoryPath            []string                   `json:"category_path,omitempty"`
-	CategoryID              int                        `json:"category_id,omitempty"`
-	CategoryIDList          []int                      `json:"category_id_list,omitempty"`
-	ProductTypeID           *int                       `json:"product_type_id,omitempty"`
-	TopCategoryID           int                        `json:"top_category_id,omitempty"`
-	CategoryResolution      *CategoryResolution        `json:"category_resolution,omitempty"`
-	AttributeResolution     *AttributeResolution       `json:"attribute_resolution,omitempty"`
-	SaleAttributeResolution *SaleAttributeResolution   `json:"sale_attribute_resolution,omitempty"`
-	Inspection              *Inspection                `json:"inspection,omitempty"`
-	Description             string                     `json:"description,omitempty"`
-	SellingPoints           []string                   `json:"selling_points,omitempty"`
-	Attributes              map[string]string          `json:"attributes,omitempty"`
-	ProductAttributes       []common.Attribute         `json:"product_attributes,omitempty"`
-	ResolvedAttributes      []ResolvedAttribute        `json:"resolved_attributes,omitempty"`
-	SiteList                []common.Site              `json:"site_list,omitempty"`
-	SkcList                 []SKCPackage               `json:"skc_list,omitempty"`
-	Images                  *common.ImageSet           `json:"images,omitempty"`
-	ImageBundle             *common.PublishImageBundle `json:"image_bundle,omitempty"`
-	RequestDraft            *RequestDraft              `json:"request_draft,omitempty"`
-	PreviewProduct          *sheinproduct.Product      `json:"preview_product,omitempty"`
-	Metadata                map[string]string          `json:"metadata,omitempty"`
-	ReviewNotes             []string                   `json:"review_notes,omitempty"`
+	SpuName                 string                                   `json:"spu_name,omitempty"`
+	BrandName               string                                   `json:"brand_name,omitempty"`
+	ProductNameEn           string                                   `json:"product_name_en,omitempty"`
+	ProductNameMulti        string                                   `json:"product_name_multi,omitempty"`
+	CategoryName            string                                   `json:"category_name,omitempty"`
+	CategoryPath            []string                                 `json:"category_path,omitempty"`
+	CategoryID              int                                      `json:"category_id,omitempty"`
+	CategoryIDList          []int                                    `json:"category_id_list,omitempty"`
+	ProductTypeID           *int                                     `json:"product_type_id,omitempty"`
+	TopCategoryID           int                                      `json:"top_category_id,omitempty"`
+	CategoryResolution      *CategoryResolution                      `json:"category_resolution,omitempty"`
+	AttributeResolution     *AttributeResolution                     `json:"attribute_resolution,omitempty"`
+	SaleAttributeResolution *SaleAttributeResolution                 `json:"sale_attribute_resolution,omitempty"`
+	Inspection              *Inspection                              `json:"inspection,omitempty"`
+	Description             string                                   `json:"description,omitempty"`
+	SellingPoints           []string                                 `json:"selling_points,omitempty"`
+	Attributes              map[string]string                        `json:"attributes,omitempty"`
+	ProductAttributes       []common.Attribute                       `json:"product_attributes,omitempty"`
+	ResolvedAttributes      []ResolvedAttribute                      `json:"resolved_attributes,omitempty"`
+	SiteList                []common.Site                            `json:"site_list,omitempty"`
+	SkcList                 []SKCPackage                             `json:"skc_list,omitempty"`
+	Images                  *common.ImageSet                         `json:"images,omitempty"`
+	ImageBundle             *common.PublishImageBundle               `json:"image_bundle,omitempty"`
+	RequestDraft            *RequestDraft                            `json:"request_draft,omitempty"`
+	PreviewProduct          *sheinproduct.Product                    `json:"preview_product,omitempty"`
+	Submission              *SubmissionReport                        `json:"submission,omitempty"`
+	CustomAttributeRelation []sheinattribute.CustomAttributeRelation `json:"custom_attribute_relation,omitempty"`
+	Metadata                map[string]string                        `json:"metadata,omitempty"`
+	ReviewNotes             []string                                 `json:"review_notes,omitempty"`
 }
 
 type RequestDraft struct {
-	SpuName               string              `json:"spu_name,omitempty"`
-	SupplierCode          string              `json:"supplier_code,omitempty"`
-	MultiLanguageNameList []LocalizedText     `json:"multi_language_name_list,omitempty"`
-	MultiLanguageDescList []LocalizedText     `json:"multi_language_desc_list,omitempty"`
-	ProductAttributeList  []common.Attribute  `json:"product_attribute_list,omitempty"`
-	ResolvedAttributes    []ResolvedAttribute `json:"resolved_attributes,omitempty"`
-	ImageInfo             *ImageDraft         `json:"image_info,omitempty"`
-	SiteList              []common.Site       `json:"site_list,omitempty"`
-	SKCList               []SKCRequestDraft   `json:"skc_list,omitempty"`
+	SpuName                 string                                   `json:"spu_name,omitempty"`
+	SupplierCode            string                                   `json:"supplier_code,omitempty"`
+	MultiLanguageNameList   []LocalizedText                          `json:"multi_language_name_list,omitempty"`
+	MultiLanguageDescList   []LocalizedText                          `json:"multi_language_desc_list,omitempty"`
+	ProductAttributeList    []common.Attribute                       `json:"product_attribute_list,omitempty"`
+	ResolvedAttributes      []ResolvedAttribute                      `json:"resolved_attributes,omitempty"`
+	ImageInfo               *ImageDraft                              `json:"image_info,omitempty"`
+	SiteList                []common.Site                            `json:"site_list,omitempty"`
+	SKCList                 []SKCRequestDraft                        `json:"skc_list,omitempty"`
+	CustomAttributeRelation []sheinattribute.CustomAttributeRelation `json:"custom_attribute_relation,omitempty"`
 }
 
 type ImageDraft struct {
@@ -121,16 +125,18 @@ type StockInfo struct {
 }
 
 type CategoryResolution struct {
-	Status            string                `json:"status,omitempty"`
-	Source            string                `json:"source,omitempty"`
-	QueryText         string                `json:"query_text,omitempty"`
-	MatchedPath       []string              `json:"matched_path,omitempty"`
-	CategoryID        int                   `json:"category_id,omitempty"`
-	CategoryIDList    []int                 `json:"category_id_list,omitempty"`
-	ProductTypeID     int                   `json:"product_type_id,omitempty"`
-	TopCategoryID     int                   `json:"top_category_id,omitempty"`
-	SuggestedCategory *CategorySuggestion   `json:"suggested_category,omitempty"`
-	ReviewNotes       []string              `json:"review_notes,omitempty"`
+	Status             string                      `json:"status,omitempty"`
+	Source             string                      `json:"source,omitempty"`
+	QueryText          string                      `json:"query_text,omitempty"`
+	MatchedPath        []string                    `json:"matched_path,omitempty"`
+	CategoryID         int                         `json:"category_id,omitempty"`
+	CategoryIDList     []int                       `json:"category_id_list,omitempty"`
+	ProductTypeID      int                         `json:"product_type_id,omitempty"`
+	TopCategoryID      int                         `json:"top_category_id,omitempty"`
+	SuggestedCategory  *CategorySuggestion         `json:"suggested_category,omitempty"`
+	SemanticValidation *CategorySemanticValidation `json:"semantic_validation,omitempty"`
+	Cache              *ResolutionCacheInfo        `json:"cache,omitempty"`
+	ReviewNotes        []string                    `json:"review_notes,omitempty"`
 }
 
 type CategorySuggestion struct {
@@ -143,26 +149,39 @@ type CategorySuggestion struct {
 	TopCategoryID  int      `json:"top_category_id,omitempty"`
 }
 
+type CategorySemanticValidation struct {
+	Source       string   `json:"source,omitempty"`
+	ComparedPath []string `json:"compared_path,omitempty"`
+	Verdict      string   `json:"verdict,omitempty"`
+	Reason       string   `json:"reason,omitempty"`
+}
+
 type ResolvedAttribute struct {
 	Name                string `json:"name,omitempty"`
 	Value               string `json:"value,omitempty"`
 	AttributeID         int    `json:"attribute_id,omitempty"`
 	AttributeValueID    *int   `json:"attribute_value_id,omitempty"`
 	AttributeExtraValue string `json:"attribute_extra_value,omitempty"`
+	AttributeType       int    `json:"attribute_type,omitempty"`
+	AttributeMode       int    `json:"attribute_mode,omitempty"`
+	DataDimension       int    `json:"data_dimension,omitempty"`
+	CascadeAttributeID  int    `json:"cascade_attribute_id,omitempty"`
 	MatchedBy           string `json:"matched_by,omitempty"`
 	Required            bool   `json:"required,omitempty"`
 	SKCScope            bool   `json:"skc_scope,omitempty"`
 }
 
 type AttributeResolution struct {
-	Status             string              `json:"status,omitempty"`
-	Source             string              `json:"source,omitempty"`
-	CategoryID         int                 `json:"category_id,omitempty"`
-	TemplateCount      int                 `json:"template_count,omitempty"`
-	ResolvedCount      int                 `json:"resolved_count,omitempty"`
-	UnresolvedCount    int                 `json:"unresolved_count,omitempty"`
-	ResolvedAttributes []ResolvedAttribute `json:"resolved_attributes,omitempty"`
-	ReviewNotes        []string            `json:"review_notes,omitempty"`
+	Status             string               `json:"status,omitempty"`
+	Source             string               `json:"source,omitempty"`
+	CategoryID         int                  `json:"category_id,omitempty"`
+	TemplateCount      int                  `json:"template_count,omitempty"`
+	ResolvedCount      int                  `json:"resolved_count,omitempty"`
+	UnresolvedCount    int                  `json:"unresolved_count,omitempty"`
+	ResolvedAttributes []ResolvedAttribute  `json:"resolved_attributes,omitempty"`
+	PendingAttributes  []common.Attribute   `json:"pending_attributes,omitempty"`
+	Cache              *ResolutionCacheInfo `json:"cache,omitempty"`
+	ReviewNotes        []string             `json:"review_notes,omitempty"`
 }
 
 type ResolvedSaleAttribute struct {
@@ -175,21 +194,23 @@ type ResolvedSaleAttribute struct {
 }
 
 type SaleAttributeResolution struct {
-	Status                   string                       `json:"status,omitempty"`
-	Source                   string                       `json:"source,omitempty"`
-	CategoryID               int                          `json:"category_id,omitempty"`
-	RecommendCategoryReview  bool                         `json:"recommend_category_review,omitempty"`
-	CategoryReviewReason     string                       `json:"category_review_reason,omitempty"`
-	PrimaryAttributeID       int                          `json:"primary_attribute_id,omitempty"`
-	SecondaryAttributeID     int                          `json:"secondary_attribute_id,omitempty"`
-	PrimarySourceDimension   string                       `json:"primary_source_dimension,omitempty"`
-	SecondarySourceDimension string                       `json:"secondary_source_dimension,omitempty"`
-	SourceDimensions         []SourceVariantDimension     `json:"source_dimensions,omitempty"`
-	SKCAttributes            []ResolvedSaleAttribute      `json:"skc_attributes,omitempty"`
-	SKUAttributes            []ResolvedSaleAttribute      `json:"sku_attributes,omitempty"`
-	Candidates               []SaleAttributeCandidateInfo `json:"candidates,omitempty"`
-	SelectionSummary         []string                     `json:"selection_summary,omitempty"`
-	ReviewNotes              []string                     `json:"review_notes,omitempty"`
+	Status                   string                                   `json:"status,omitempty"`
+	Source                   string                                   `json:"source,omitempty"`
+	CategoryID               int                                      `json:"category_id,omitempty"`
+	RecommendCategoryReview  bool                                     `json:"recommend_category_review,omitempty"`
+	CategoryReviewReason     string                                   `json:"category_review_reason,omitempty"`
+	PrimaryAttributeID       int                                      `json:"primary_attribute_id,omitempty"`
+	SecondaryAttributeID     int                                      `json:"secondary_attribute_id,omitempty"`
+	PrimarySourceDimension   string                                   `json:"primary_source_dimension,omitempty"`
+	SecondarySourceDimension string                                   `json:"secondary_source_dimension,omitempty"`
+	SourceDimensions         []SourceVariantDimension                 `json:"source_dimensions,omitempty"`
+	SKCAttributes            []ResolvedSaleAttribute                  `json:"skc_attributes,omitempty"`
+	SKUAttributes            []ResolvedSaleAttribute                  `json:"sku_attributes,omitempty"`
+	Candidates               []SaleAttributeCandidateInfo             `json:"candidates,omitempty"`
+	SelectionSummary         []string                                 `json:"selection_summary,omitempty"`
+	ReviewNotes              []string                                 `json:"review_notes,omitempty"`
+	CustomAttributeRelation  []sheinattribute.CustomAttributeRelation `json:"custom_attribute_relation,omitempty"`
+	Cache                    *ResolutionCacheInfo                     `json:"cache,omitempty"`
 	skcAssignments           map[string]ResolvedSaleAttribute
 	skuAssignments           map[string][]ResolvedSaleAttribute
 	skcValueAssignments      map[string]ResolvedSaleAttribute

@@ -31,8 +31,32 @@ import (
 	productimagepipeline "task-processor/internal/productimage/pipeline"
 	productimagestore "task-processor/internal/productimage/store"
 	sheinpub "task-processor/internal/publishing/shein"
+	sdsclient "task-processor/internal/sds/client"
+	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/taskrpcapi"
 )
+
+var newSDSSyncServiceForHTTPAPI = func(imageSvc productimage.Service) (sdsusecase.Service, *sdsclient.AuthState, error) {
+	sdsHTTPClient, err := sdsclient.New(sdsclient.DefaultConfig())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	authState := sdsHTTPClient.AuthState()
+	if authState == nil || strings.TrimSpace(authState.AccessToken) == "" {
+		return nil, authState, nil
+	}
+
+	svc, err := sdsusecase.NewService(sdsusecase.Config{
+		SDSClient:    sdsHTTPClient,
+		ImageService: imageSvc,
+	})
+	if err != nil {
+		return nil, authState, err
+	}
+
+	return svc, authState, nil
+}
 
 func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, error) {
 	deps, err := buildRuntimeDeps(logger, options.ConfigPath)
@@ -253,6 +277,10 @@ func buildImageModule(logger *logrus.Logger, deps *runtimeDeps) (*imageModule, e
 			}
 		}
 	}
+	resolvedComponents := resolveImagePipelineComponents(modelProvider, subjectExtractor, whiteBgRenderer, sceneRenderer)
+	subjectExtractor = resolvedComponents.subjectExtractor
+	whiteBgRenderer = resolvedComponents.whiteBgRenderer
+	sceneRenderer = resolvedComponents.sceneRenderer
 
 	imageCapabilities := productimage.StrictServiceCapabilities()
 	imageSvc, err := productimage.NewService(&productimage.ServiceConfig{
@@ -458,14 +486,24 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	}
 	deps.closers = append(deps.closers, reviewClosers...)
 
-	sheinCategoryResolver := sheinpub.NewManagedCategoryResolver(deps.managementClient, buildSheinCategoryLLMClient(deps.openaiMgr))
-	sheinAttributeResolver := sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr))
-	sheinSaleAttributeResolver := sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr))
+	resolutionCacheStore, resolutionCacheClosers, err := buildSheinResolutionCacheStore(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, resolutionCacheClosers...)
+
+	sheinCategoryResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewManagedCategoryResolver(deps.managementClient, buildSheinCategoryLLMClient(deps.openaiMgr)), resolutionCacheStore)
+	sheinAttributeResolver := sheinpub.NewCachedAttributeResolver(sheinpub.NewManagedAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)), resolutionCacheStore)
+	sheinSaleAttributeResolver := sheinpub.NewCachedSaleAttributeResolver(sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)), resolutionCacheStore)
+	sheinProductAPIBuilder := sheinpub.NewManagedProductAPIBuilder(deps.managementClient)
+	sheinImageAPIBuilder := sheinpub.NewManagedImageAPIBuilder(deps.managementClient)
+	deps.sdsSyncService = buildSDSSyncService(logger, deps)
 
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
 		Repository:          repo,
 		ProductService:      deps.productService,
 		ImageService:        deps.imageService,
+		SDSSyncService:      deps.sdsSyncService,
 		SheinDefaultStoreID: resolveListingKitDefaultSheinStoreID(deps.cfg.Management.StoreIDs),
 		ImageUploadStore:    buildListingKitImageUploadStore(deps.cfg, logger),
 		AssetRepository:     assetRepository,
@@ -480,6 +518,8 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		SheinCategoryResolver:      sheinCategoryResolver,
 		SheinAttributeResolver:     sheinAttributeResolver,
 		SheinSaleAttributeResolver: sheinSaleAttributeResolver,
+		SheinProductAPIBuilder:     sheinProductAPIBuilder,
+		SheinImageAPIBuilder:       sheinImageAPIBuilder,
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
 			SheinCategoryResolver:      sheinCategoryResolver,
 			SheinAttributeResolver:     sheinAttributeResolver,
@@ -534,6 +574,19 @@ func buildListingKitReviewRepository(cfg *config.Config, logger *logrus.Logger) 
 	return reviewstore.NewMemRepository(), nil, nil
 }
 
+func buildSheinResolutionCacheStore(cfg *config.Config, logger *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		store, closer, err := newDBSheinResolutionCacheStore(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create shein resolution cache store: %w", err)
+		}
+		return store, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, using in-memory SHEIN resolution cache fallback")
+	return nil, nil, nil
+}
+
 func buildAssetRepository(cfg *config.Config, logger *logrus.Logger) (assetrepo.Repository, []func() error, error) {
 	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
 		repo, closer, err := newDBAssetRepository(cfg.Database, logger)
@@ -558,6 +611,25 @@ func buildListingKitTaskRepository(cfg *config.Config, logger *logrus.Logger) (l
 
 	logger.Warn("database not configured, using in-memory listingkit repository")
 	return listingkitstore.NewMemTaskRepository(), nil, nil
+}
+
+func buildSDSSyncService(logger *logrus.Logger, deps *runtimeDeps) sdsusecase.Service {
+	if deps == nil || deps.imageService == nil {
+		return nil
+	}
+
+	svc, authState, err := newSDSSyncServiceForHTTPAPI(deps.imageService)
+	if err != nil {
+		logger.WithError(err).Warn("failed to initialize SDS client; SDS sync disabled")
+		return nil
+	}
+
+	if authState == nil || strings.TrimSpace(authState.AccessToken) == "" {
+		logger.Info("SDS auth state not found; SDS sync disabled")
+		return nil
+	}
+
+	return svc
 }
 
 func buildTaskRPCModule(deps *runtimeDeps, localStatusProvider taskrpcapi.LocalStatusProvider) (taskrpcapi.Handler, error) {

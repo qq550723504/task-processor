@@ -121,12 +121,15 @@ type SheinPreviewPayload struct {
 	BrandName         string                            `json:"brand_name,omitempty"`
 	CategoryPath      []string                          `json:"category_path,omitempty"`
 	CategoryID        int                               `json:"category_id,omitempty"`
+	SourceProduct     *SheinSourceProductSummary        `json:"source_product,omitempty"`
 	NeedsReview       bool                              `json:"needs_review"`
 	Summary           []string                          `json:"summary,omitempty"`
 	ReviewNotes       []string                          `json:"review_notes,omitempty"`
 	Inspection        *sheinpub.Inspection              `json:"inspection,omitempty"`
 	SubmitReadiness   *SheinSubmitReadiness             `json:"submit_readiness,omitempty"`
 	SubmitChecklist   *SheinSubmitChecklist             `json:"submit_checklist,omitempty"`
+	ImageUpload       *SheinImageUploadPreflight        `json:"image_upload,omitempty"`
+	ResolutionCache   *SheinResolutionCacheSummary      `json:"resolution_cache,omitempty"`
 	RepairCenter      *SheinRepairCenter                `json:"repair_center,omitempty"`
 	StatusOverview    *sheinworkspace.StatusOverview    `json:"status_overview,omitempty"`
 	WorkspaceOverview *sheinworkspace.WorkspaceOverview `json:"workspace_overview,omitempty"`
@@ -136,7 +139,39 @@ type SheinPreviewPayload struct {
 	ScenePresets      []PlatformScenePresetSummary      `json:"scene_presets,omitempty"`
 	RequestDraft      *sheinpub.RequestDraft            `json:"request_draft,omitempty"`
 	PreviewProduct    *sheinproduct.Product             `json:"preview_product,omitempty"`
+	Submission        *sheinpub.SubmissionReport        `json:"submission,omitempty"`
 	InspectionData    *sheinpub.Inspection              `json:"inspection_data,omitempty"`
+}
+
+type SheinResolutionCacheSummary struct {
+	Category       *sheinpub.ResolutionCacheInfo `json:"category,omitempty"`
+	Attributes     *sheinpub.ResolutionCacheInfo `json:"attributes,omitempty"`
+	SaleAttributes *sheinpub.ResolutionCacheInfo `json:"sale_attributes,omitempty"`
+}
+
+type SheinImageUploadPreflight struct {
+	TotalImageReferences int      `json:"total_image_references"`
+	UniqueImageURLs      int      `json:"unique_image_urls"`
+	PendingUploadURLs    int      `json:"pending_upload_urls"`
+	SheinUploadedURLs    int      `json:"shein_uploaded_urls"`
+	SDSMockupURLs        int      `json:"sds_mockup_urls"`
+	UsesSDSMockups       bool     `json:"uses_sds_mockups"`
+	ReadyForUpload       bool     `json:"ready_for_upload"`
+	Summary              []string `json:"summary,omitempty"`
+}
+
+type SheinSourceProductSummary struct {
+	Title           string            `json:"title,omitempty"`
+	SKU             string            `json:"sku,omitempty"`
+	CategoryPath    []string          `json:"category_path,omitempty"`
+	Attributes      map[string]string `json:"attributes,omitempty"`
+	VariantSKU      string            `json:"variant_sku,omitempty"`
+	VariantSize     string            `json:"variant_size,omitempty"`
+	VariantColor    string            `json:"variant_color,omitempty"`
+	VariantPrice    float64           `json:"variant_price,omitempty"`
+	VariantWeight   float64           `json:"variant_weight,omitempty"`
+	ProductionCycle string            `json:"production_cycle,omitempty"`
+	ImageURLs       []string          `json:"image_urls,omitempty"`
 }
 
 type TemuPreviewPayload struct {

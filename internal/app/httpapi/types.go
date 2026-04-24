@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/taskrpcapi"
 )
 
@@ -36,6 +37,7 @@ type runtimeDeps struct {
 	managementClient      *management.ClientManager
 	productService        productenrich.ProductService
 	imageService          productimage.Service
+	sdsSyncService        sdsusecase.Service
 	imageSubjectExtractor productimage.SubjectExtractor
 	imageWhiteBgRenderer  productimage.WhiteBackgroundRenderer
 	imageSceneRenderer    productimage.SceneRenderer
@@ -96,6 +98,7 @@ type listingKitRouteHandler interface {
 	GenerateListingKit(c *gin.Context)
 	UploadListingKitImages(c *gin.Context)
 	GetUploadedListingKitImage(c *gin.Context)
+	ListTasks(c *gin.Context)
 	GetTaskResult(c *gin.Context)
 	GetTaskPreview(c *gin.Context)
 	GetTaskGenerationTasks(c *gin.Context)
@@ -110,6 +113,8 @@ type listingKitRouteHandler interface {
 	GetTaskExport(c *gin.Context)
 	ApplyTaskRevision(c *gin.Context)
 	ValidateTaskRevision(c *gin.Context)
+	SubmitTask(c *gin.Context)
+	ClearSheinResolutionCache(c *gin.Context)
 }
 
 type taskRPCRouteHandler interface {

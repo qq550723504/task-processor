@@ -6,6 +6,7 @@ export type ConditionalState = {
 };
 
 export type QueueQuery = {
+  status?: string;
   platform?: string;
   slot?: string;
   from_platform?: string;
@@ -31,6 +32,7 @@ export type QueueQuery = {
   page_size?: number;
   sort_by?: string;
   sort_order?: string;
+  kind?: string;
 };
 
 export type NavigationDispatchPlanStep = {
@@ -270,6 +272,7 @@ export type ToolbarAction = {
 export type PreviewSlot = {
   slot?: string;
   asset_id?: string;
+  asset_url?: string;
   state_label?: string;
   retry_hint?: string;
   template_label?: string;
@@ -422,9 +425,65 @@ export type SheinWorkspaceOverview = {
   submit_state?: SheinWorkspaceSubmitState;
 };
 
+export type SheinResolutionCacheInfo = {
+  status?: string;
+  source?: string;
+  short_key?: string;
+  hit_count?: number;
+  updated_at?: string;
+  manual?: boolean;
+  clearable?: boolean;
+};
+
+export type SheinResolutionCacheSummary = {
+  category?: SheinResolutionCacheInfo;
+  attributes?: SheinResolutionCacheInfo;
+  sale_attributes?: SheinResolutionCacheInfo;
+};
+
 export type PlatformPreviewPayload = {
   render_previews?: unknown;
   scene_presets?: PlatformScenePresetSummary[];
+};
+
+export type SheinImageInfo = {
+  main_image?: string;
+  white_bg?: string;
+  source?: string[];
+  gallery?: string[];
+  image_info_list?: Array<{
+    image_url?: string;
+    imageUrl?: string;
+  }>;
+};
+
+export type SheinSKUDraftPreview = {
+  main_image?: string;
+  image_info?: SheinImageInfo;
+};
+
+export type SheinSKCDraftPreview = {
+  image_info?: SheinImageInfo;
+  sku_list?: SheinSKUDraftPreview[];
+};
+
+export type SheinRequestDraftPreview = {
+  image_info?: SheinImageInfo;
+  skc_list?: SheinSKCDraftPreview[];
+};
+
+export type SheinPreviewProductSKU = {
+  image_info?: SheinImageInfo;
+};
+
+export type SheinPreviewProductSKC = {
+  image_info?: SheinImageInfo;
+  sku_list?: SheinPreviewProductSKU[];
+};
+
+export type SheinPreviewProductPayload = {
+  image_info?: SheinImageInfo;
+  skc_list?: SheinPreviewProductSKC[];
 };
 
 export type SheinCategorySuggestion = {
@@ -528,11 +587,67 @@ export type SheinEditorContext = {
 };
 
 export type SheinPreviewPayload = PlatformPreviewPayload & {
+  source_product?: {
+    title?: string;
+    sku?: string;
+    category_path?: string[];
+    attributes?: Record<string, string>;
+    variant_sku?: string;
+    variant_size?: string;
+    variant_color?: string;
+    variant_price?: number;
+    variant_weight?: number;
+    production_cycle?: string;
+    image_urls?: string[];
+  };
+  request_draft?: SheinRequestDraftPreview;
+  preview_product?: SheinPreviewProductPayload;
   editor_context?: SheinEditorContext;
   submit_readiness?: SheinSubmitReadiness;
   submit_checklist?: SheinSubmitChecklist;
+  image_upload?: SheinImageUploadPreflight;
+  resolution_cache?: SheinResolutionCacheSummary;
   status_overview?: SheinStatusOverview;
   workspace_overview?: SheinWorkspaceOverview;
+  submission?: SheinSubmissionReport;
+};
+
+export type SheinImageUploadPreflight = {
+  total_image_references?: number;
+  unique_image_urls?: number;
+  pending_upload_urls?: number;
+  shein_uploaded_urls?: number;
+  sds_mockup_urls?: number;
+  uses_sds_mockups?: boolean;
+  ready_for_upload?: boolean;
+  summary?: string[];
+};
+
+export type SheinSubmissionResponse = {
+  code?: string;
+  message?: string;
+  success?: boolean;
+  spu_name?: string;
+  version?: string;
+  validation_notes?: string[];
+};
+
+export type SheinSubmissionRecord = {
+  action?: string;
+  status?: string;
+  error?: string;
+  submitted_at?: string;
+  result?: SheinSubmissionResponse;
+};
+
+export type SheinSubmissionReport = {
+  last_action?: string;
+  last_status?: string;
+  last_error?: string;
+  submitted_at?: string;
+  save_draft?: SheinSubmissionRecord;
+  publish?: SheinSubmissionRecord;
+  last_result?: SheinSubmissionResponse;
 };
 
 export type ReviewSlot = {
@@ -543,6 +658,7 @@ export type ReviewSlot = {
   quality_grade?: string;
   quality_grade_label?: string;
   asset_id?: string;
+  template_label?: string;
   render_preview_available?: boolean;
   preview_capabilities?: string[];
   focus_capability?: string;
@@ -756,6 +872,17 @@ export type ListingKitChildTask = {
   error?: string;
 };
 
+export type SDSSyncSummary = {
+  variant_id?: number;
+  product_id?: number;
+  prototype_group_id?: number;
+  layer_id?: string;
+  material_id?: number;
+  mockup_image_urls?: string[];
+  status?: string;
+  error?: string;
+};
+
 export type ListingKitTaskResultData = {
   task_id?: string;
   status?: string;
@@ -768,7 +895,9 @@ export type ListingKitTaskResultData = {
     image_count?: number;
     variant_count?: number;
     needs_review?: boolean;
+    warnings?: string[];
   };
+  sds_sync?: SDSSyncSummary;
   child_tasks?: ListingKitChildTask[];
   created_at?: string;
   updated_at?: string;
@@ -784,6 +913,35 @@ export type ListingKitTaskResult = {
   completed_at?: string;
 };
 
+export type ListingKitTaskListQuery = {
+  status?: string;
+  platform?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export type ListingKitTaskListItem = {
+  task_id: string;
+  status?: string;
+  platforms?: string[];
+  title?: string;
+  image_count?: number;
+  product_name?: string;
+  variant_label?: string;
+  sds_sync_status?: string;
+  error?: string;
+  created_at?: string;
+  updated_at?: string;
+  completed_at?: string;
+};
+
+export type ListingKitTaskListPage = {
+  page: number;
+  page_size: number;
+  total: number;
+  items?: ListingKitTaskListItem[];
+};
+
 export type CreateListingKitTaskRequest = {
   image_urls?: string[];
   text?: string;
@@ -793,6 +951,7 @@ export type CreateListingKitTaskRequest = {
   country?: string;
   language?: string;
   options?: {
+    process_images?: boolean;
     scene?: {
       scene_category?: string;
       scene_style?: string;
@@ -801,6 +960,38 @@ export type CreateListingKitTaskRequest = {
       props_level?: string;
       audience_hint?: string;
       custom_scene_hint?: string;
+    };
+    sds?: {
+      variant_id: number;
+      parent_product_id?: number;
+      prototype_group_id?: number;
+      layer_id?: string;
+      design_type?: string;
+      fit_level?: number;
+      resize_mode?: number;
+      product_name?: string;
+      product_sku?: string;
+      product_english_name?: string;
+      category_path?: string[];
+      material?: string;
+      material_description?: string;
+      production_process?: string;
+      product_performance?: string;
+      applicable_scenarios?: string;
+      washing_instructions?: string;
+      special_description?: string;
+      design_area?: string;
+      picture_request?: string;
+      variant_sku?: string;
+      variant_size?: string;
+      variant_color?: string;
+      variant_price?: number;
+      variant_weight?: number;
+      production_cycle?: number;
+      blank_design_url?: string;
+      template_image_url?: string;
+      mask_image_url?: string;
+      mockup_image_urls?: string[];
     };
   };
 };

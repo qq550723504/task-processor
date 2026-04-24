@@ -117,6 +117,13 @@ export async function POST(
   return proxyRequest(request, context);
 }
 
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return proxyRequest(request, context);
+}
+
 async function readProxyRequestBody(request: NextRequest) {
   const buffer = await request.arrayBuffer();
   if (buffer.byteLength === 0) {

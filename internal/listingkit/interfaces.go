@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sdsusecase "task-processor/internal/sds/usecase"
 )
 
 type TaskSubmitter interface{ Submit(taskID string) error }
@@ -29,6 +30,8 @@ type ImageService interface {
 	ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error)
 }
 
+type SDSSyncService = sdsusecase.Service
+
 type AssetRepository = assetrepo.Repository
 type AssetGenerationService = assetgeneration.Service
 type AssetRecipeResolver = assetrecipe.Resolver
@@ -38,6 +41,7 @@ type GenerationReviewRepository = reviewstore.Repository
 type Repository interface {
 	CreateTask(ctx context.Context, task *Task) error
 	GetTask(ctx context.Context, taskID string) (*Task, error)
+	ListTasks(ctx context.Context, query *TaskListQuery) ([]Task, int64, error)
 	MarkProcessing(ctx context.Context, taskID string) error
 	MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error
 	MarkNeedsReview(ctx context.Context, taskID string, result *ListingKitResult, reason string) error
@@ -57,6 +61,7 @@ type AmazonDraftBuilder interface {
 
 type Service interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
+	ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error)
 	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
 	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
@@ -73,12 +78,15 @@ type Service interface {
 	GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error)
 	ApplyTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*ListingKitPreview, error)
 	ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error)
+	SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error)
+	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error)
 	ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error)
 	SetTaskSubmitter(submitter TaskSubmitter)
 }
 
 type HandlerService interface {
 	CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error)
+	ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error)
 	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
 	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
 	GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error)
@@ -95,10 +103,13 @@ type HandlerService interface {
 	GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error)
 	ApplyTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*ListingKitPreview, error)
 	ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error)
+	SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error)
+	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error)
 }
 
 type Handler interface {
 	GenerateListingKit(c *gin.Context)
+	ListTasks(c *gin.Context)
 	UploadListingKitImages(c *gin.Context)
 	GetUploadedListingKitImage(c *gin.Context)
 	GetTaskResult(c *gin.Context)
@@ -115,4 +126,6 @@ type Handler interface {
 	GetTaskExport(c *gin.Context)
 	ApplyTaskRevision(c *gin.Context)
 	ValidateTaskRevision(c *gin.Context)
+	SubmitTask(c *gin.Context)
+	ClearSheinResolutionCache(c *gin.Context)
 }
