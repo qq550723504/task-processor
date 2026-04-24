@@ -1,0 +1,48 @@
+{
+  "draft": {
+    "prompt": "pig",
+    "styleCount": "1",
+    "sheinStoreId": "869",
+    "selectionVariantId": 245621,
+    "selection": {
+      "productId": 245619,
+      "parentProductId": 245619,
+      "variantId": 245621,
+      "prototypeGroupId": 28902,
+      "layerId": "895442443669102592",
+      "productName": "信封式抱枕套（美国直发不含物流）（平台线上物流专用）",
+      "variantLabel": "18\"×18\" ·  beige",
+      "printableWidth": 3000,
+      "printableHeight": 3000,
+      "templateImageUrl": "https://cdn.sdspod.com/images/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/b290042ab5ea70b91d96ecec22efe33e.jpg",
+      "maskImageUrl": "https://cdn.sdspod.com/images/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/328faa7610157c60d6928dfc66a3ba54.png",
+      "blankDesignUrl": "https://cdn.sdspod.com/images/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/57936b531b4f4faae4021d3d1465a64d.jpg",
+      "mockupImageUrl": "https://cdn.sdspod.com/images/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/a09c0c105df376efa00dc30201ce7324.jpg",
+      "mockupImageUrls": [
+        "https://cdn.sdspod.com/images/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/a09c0c105df376efa00dc30201ce7324.jpg",
+        "https://cdn.sdspod.com/images/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/efad88298da700757a1a0dc21a4e480d.jpg",
+        "https://cdn.sdspod.com/images/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/865b19ffb1467eeddda8d988d0e519ef.jpg",
+        "https://cdn.sdspod.com/images/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/bae532693f87bfa36ec0aee79a6b9f76.jpg"
+      ]
+    },
+    "designs": [
+      {
+        "id": "24f1d61c-8425-4db3-ad18-4fd03b6e0b57",
+        "imageUrl": "http://127.0.0.1:9100/listingkit-assets/20260424/b8d06d9e-ac13-4555-95de-8f54aae9ba7b.png",
+        "revisedPrompt": ""
+      }
+    ],
+    "selectedIds": [
+      "24f1d61c-8425-4db3-ad18-4fd03b6e0b57"
+    ],
+    "createdTasks": [
+      {
+        "id": "7ed7a3d4-98e3-4c11-b507-215f662f2f95",
+        "title": "Style 1",
+        "designId": "24f1d61c-8425-4db3-ad18-4fd03b6e0b57"
+      }
+    ],
+    "updatedAt": "2026-04-24T15:30:07.950Z"
+  },
+  "batches": []
+}

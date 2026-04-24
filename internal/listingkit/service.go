@@ -19,11 +19,14 @@ type service struct {
 	repo                       Repository
 	productSvc                 ProductService
 	imageSvc                   ImageService
+	sdsSyncSvc                 SDSSyncService
 	uploadStore                ImageUploadStore
 	assembler                  Assembler
 	sheinCategoryResolver      sheinpub.CategoryResolver
 	sheinAttributeResolver     sheinpub.AttributeResolver
 	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	sheinProductAPIBuilder     sheinpub.ProductAPIBuilder
+	sheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 	assetRepo                  AssetRepository
 	reviewRepo                 GenerationReviewRepository
 	assetRecipeResolver        AssetRecipeResolver
@@ -37,6 +40,7 @@ type ServiceConfig struct {
 	Repository                 Repository
 	ProductService             ProductService
 	ImageService               ImageService
+	SDSSyncService             SDSSyncService
 	ImageUploadStore           ImageUploadStore
 	Assembler                  Assembler
 	AssetRepository            AssetRepository
@@ -49,6 +53,8 @@ type ServiceConfig struct {
 	SheinCategoryResolver      sheinpub.CategoryResolver
 	SheinAttributeResolver     sheinpub.AttributeResolver
 	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	SheinProductAPIBuilder     sheinpub.ProductAPIBuilder
+	SheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 }
 
 func NewService(config *ServiceConfig) (Service, error) {
@@ -106,11 +112,14 @@ func NewService(config *ServiceConfig) (Service, error) {
 		repo:                       config.Repository,
 		productSvc:                 config.ProductService,
 		imageSvc:                   config.ImageService,
+		sdsSyncSvc:                 config.SDSSyncService,
 		uploadStore:                config.ImageUploadStore,
 		assembler:                  config.Assembler,
 		sheinCategoryResolver:      config.SheinCategoryResolver,
 		sheinAttributeResolver:     config.SheinAttributeResolver,
 		sheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
+		sheinProductAPIBuilder:     config.SheinProductAPIBuilder,
+		sheinImageAPIBuilder:       config.SheinImageAPIBuilder,
 		assetRepo:                  config.AssetRepository,
 		reviewRepo:                 config.ReviewRepository,
 		assetRecipeResolver:        config.AssetRecipeResolver,

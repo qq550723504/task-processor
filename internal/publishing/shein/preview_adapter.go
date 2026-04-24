@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	common "task-processor/internal/publishing/common"
+	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -26,6 +27,7 @@ func BuildPreviewProduct(pkg *Package) *sheinproduct.Product {
 		ImageInfo:              toImageInfo(pkg.RequestDraft.ImageInfo),
 		SiteList:               toSiteInfo(pkg.RequestDraft.SiteList),
 		SKCList:                toSKCs(pkg.RequestDraft.SKCList),
+		CustomAttributeRelation: append([]sheinattribute.CustomAttributeRelation(nil), pkg.CustomAttributeRelation...),
 		Extra:                  sheinproduct.Extra{SwitchToSPUPic: true, UseCVTransformImage: true},
 		ProductCertificateList: []int{},
 		CertificateList:        []int{},

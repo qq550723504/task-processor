@@ -41,6 +41,9 @@ func IsAttributeResolved(pkg *sheinpub.Package) bool {
 	if pkg == nil || pkg.AttributeResolution == nil {
 		return false
 	}
+	if len(pkg.AttributeResolution.PendingAttributes) > 0 {
+		return false
+	}
 	if pkg.AttributeResolution.ResolvedCount <= 0 && len(pkg.ResolvedAttributes) == 0 {
 		return false
 	}
@@ -54,5 +57,41 @@ func IsSaleAttributeResolved(pkg *sheinpub.Package) bool {
 	if pkg.SaleAttributeResolution.PrimaryAttributeID <= 0 {
 		return false
 	}
-	return firstNonEmpty(pkg.SaleAttributeResolution.Status, "unresolved") == "resolved"
+	if firstNonEmpty(pkg.SaleAttributeResolution.Status, "unresolved") == "resolved" {
+		return true
+	}
+	return hasResolvedSaleAttributeDraft(pkg)
+}
+
+func hasResolvedSaleAttributeDraft(pkg *sheinpub.Package) bool {
+	if pkg == nil || pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+		return false
+	}
+	requireSecondary := pkg.SaleAttributeResolution != nil && pkg.SaleAttributeResolution.SecondaryAttributeID > 0
+	for _, skc := range pkg.RequestDraft.SKCList {
+		if skc.SaleAttribute == nil || skc.SaleAttribute.AttributeID <= 0 || skc.SaleAttribute.AttributeValueID == nil || *skc.SaleAttribute.AttributeValueID <= 0 {
+			return false
+		}
+		if requireSecondary {
+			if len(skc.SKUList) == 0 {
+				return false
+			}
+			for _, sku := range skc.SKUList {
+				if len(sku.SaleAttributes) == 0 {
+					return false
+				}
+				resolved := false
+				for _, attr := range sku.SaleAttributes {
+					if attr.AttributeID > 0 && attr.AttributeValueID != nil && *attr.AttributeValueID > 0 {
+						resolved = true
+						break
+					}
+				}
+				if !resolved {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }

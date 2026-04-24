@@ -80,17 +80,11 @@ func TestGetTaskGenerationReviewPreviewIncludesScenePreset(t *testing.T) {
 						"scene_defaults_source": "platform_category",
 						"scene_category":        "bags",
 						"scene_style":           "lifestyle",
+						"draw_preview_format":   "svg",
+						"layout_draw_preview_svg": "<svg/>",
 					},
 				}},
 			},
-			AssetRenderPreviews: []AssetRenderPreview{{
-				AssetID:         "scene-asset-1",
-				AssetRevision:   "asset-rev-1",
-				PreviewRevision: "preview-rev-1",
-				TaskRevision:    "task-rev-1",
-				PreviewFormat:   "svg",
-				PreviewSVG:      "<svg/>",
-			}},
 			Amazon: &AmazonPackage{ImageBundle: &common.PublishImageBundle{
 				Platform: "amazon",
 				Main: &common.BundleSlot{

@@ -1,9 +1,13 @@
+import { deriveRecoveryNavigationTarget } from "@/components/listingkit/workspace-action-routing";
 import type { RecoveryDescriptor } from "@/lib/types/listingkit";
 
 export function shouldSyncPlatformOnRecovery(
-  descriptor: Pick<RecoveryDescriptor, "recovery_target">,
+  descriptor: Pick<
+    RecoveryDescriptor,
+    "descriptor" | "recovery_dispatch_plan" | "recovery_target"
+  >,
 ) {
-  const target = descriptor.recovery_target;
+  const target = deriveRecoveryNavigationTarget(descriptor);
   if (!target) {
     return false;
   }

@@ -43,6 +43,7 @@ func build1688ScrapedData(product *alibaba1688model.Product1688) *productenrich.
 
 	return &productenrich.ScrapedData{
 		Title:             product.Title,
+		Category:          product.Category,
 		Description:       build1688Description(product),
 		Images:            product.Images,
 		Price:             product.MinPrice,

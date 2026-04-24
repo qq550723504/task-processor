@@ -65,6 +65,61 @@ func TestNoopServicePlansOnlyMissingGeneratedAssets(t *testing.T) {
 	}
 }
 
+func TestNoopServicePlansMissingGeneratedAssetForDifferentBundleSlot(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Plan(context.Background(), assetgeneration.Request{
+		TaskID: "task-slot-aware-plan-1",
+		Inventory: &asset.Inventory{
+			Records: []asset.AssetRecord{
+				{
+					ID:       "scene-aux-1",
+					Kind:     asset.KindSellingPointImage,
+					URL:      "https://example.com/scene-aux.jpg",
+					RecipeID: "shein-selling-point",
+					Metadata: map[string]string{
+						"bundle_slot": "auxiliary",
+					},
+				},
+			},
+		},
+		Recipes: []assetrecipe.AssetRecipe{
+			{
+				ID:        "shein-selling-point",
+				Platform:  "shein",
+				AssetKind: asset.KindSellingPointImage,
+				Generated: true,
+				Template: &assetrecipe.Template{
+					BundleSlot:     "auxiliary",
+					Purpose:        "selling_point",
+					PreferredKinds: []asset.Kind{asset.KindSellingPointImage},
+				},
+			},
+			{
+				ID:        "shein-gallery-scene",
+				Platform:  "shein",
+				AssetKind: asset.KindSceneImage,
+				Generated: true,
+				Template: &assetrecipe.Template{
+					BundleSlot:     "gallery",
+					Purpose:        "gallery",
+					PreferredKinds: []asset.Kind{asset.KindSceneImage},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if len(result.Tasks) != 1 {
+		t.Fatalf("tasks = %+v, want one missing gallery task", result.Tasks)
+	}
+	if result.Tasks[0].RecipeID != "shein-gallery-scene" || result.Tasks[0].Slot != "gallery" {
+		t.Fatalf("task = %+v, want shein-gallery-scene/gallery", result.Tasks[0])
+	}
+}
+
 func TestNoopServiceExecuteMaterializesCleanImageFromMainAsset(t *testing.T) {
 	t.Parallel()
 

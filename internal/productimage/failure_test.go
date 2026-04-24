@@ -28,3 +28,19 @@ func TestClassifyProcessFailureKeepsTimeoutRetryable(t *testing.T) {
 		t.Fatalf("ClassifyProcessFailure() = %q, want %q", got, FailureDispositionRetryable)
 	}
 }
+
+func TestClassifyProcessFailureTreatsAPIKeyErrorsAsNoRetry(t *testing.T) {
+	err := fmt.Errorf("render_white_bg failed after 1200ms: apikey error")
+
+	if got := ClassifyProcessFailure(err); got != FailureDispositionNoRetry {
+		t.Fatalf("ClassifyProcessFailure() = %q, want %q", got, FailureDispositionNoRetry)
+	}
+}
+
+func TestClassifyProcessFailureTreatsQuotaErrorsAsNoRetry(t *testing.T) {
+	err := fmt.Errorf("render_gallery failed: provider returned insufficient balance")
+
+	if got := ClassifyProcessFailure(err); got != FailureDispositionNoRetry {
+		t.Fatalf("ClassifyProcessFailure() = %q, want %q", got, FailureDispositionNoRetry)
+	}
+}

@@ -126,6 +126,7 @@ type stubListingKitHandler struct {
 	generateCalled                     bool
 	uploadImagesCalled                 bool
 	getUploadedImageCalled             bool
+	listTasksCalled                    bool
 	getResultCalled                    bool
 	getPreviewCalled                   bool
 	getGenerationCalled                bool
@@ -140,6 +141,7 @@ type stubListingKitHandler struct {
 	getExportCalled                    bool
 	revisionCalled                     bool
 	validateCalled                     bool
+	submitCalled                       bool
 }
 
 func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
@@ -155,6 +157,11 @@ func (s *stubListingKitHandler) UploadListingKitImages(c *gin.Context) {
 func (s *stubListingKitHandler) GetUploadedListingKitImage(c *gin.Context) {
 	s.getUploadedImageCalled = true
 	c.Data(http.StatusOK, "image/jpeg", []byte{0xFF, 0xD8, 0xFF})
+}
+
+func (s *stubListingKitHandler) ListTasks(c *gin.Context) {
+	s.listTasksCalled = true
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
 }
 
 func (s *stubListingKitHandler) GetTaskResult(c *gin.Context) {
@@ -225,6 +232,11 @@ func (s *stubListingKitHandler) ApplyTaskRevision(c *gin.Context) {
 func (s *stubListingKitHandler) ValidateTaskRevision(c *gin.Context) {
 	s.validateCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "valid": false})
+}
+
+func (s *stubListingKitHandler) SubmitTask(c *gin.Context) {
+	s.submitCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "submitted"})
 }
 
 func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {

@@ -23,7 +23,7 @@ export function PlatformCardRail({
   onSelectRecovery?: (descriptor: RecoveryDescriptor, card: PlatformCard) => void;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="grid min-w-0 gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(20rem,100%),1fr))]">
       {(cards ?? []).map((card) => {
         const status = presentPlatformStatus(card);
         const recovery = derivePlatformRecoveryPresentation(card);
@@ -36,13 +36,13 @@ export function PlatformCardRail({
               selectedPlatform === card.platform && "border-zinc-950",
             )}
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
                 <h3 className="text-base font-semibold capitalize text-zinc-950">
                   {card.platform}
                 </h3>
                 {card.summary ? (
-                  <p className="mt-1 text-sm leading-6 text-zinc-600">
+                  <p className="mt-1 break-all text-sm leading-6 text-zinc-600">
                     {card.summary}
                   </p>
                 ) : null}
@@ -52,7 +52,7 @@ export function PlatformCardRail({
                       Next step
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-zinc-900">
+                      <span className="break-words text-sm font-medium text-zinc-900">
                         {card.resolved_action_summary.title}
                       </span>
                       <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
@@ -69,7 +69,7 @@ export function PlatformCardRail({
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
                       Recovery
                     </p>
-                    <p className="text-sm font-medium text-zinc-900">
+                    <p className="break-words text-sm font-medium text-zinc-900">
                       {recovery.presentation.title}
                     </p>
                     <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">
@@ -91,7 +91,9 @@ export function PlatformCardRail({
                   </div>
                 ) : null}
               </div>
-              <Badge tone={status.tone}>{status.label}</Badge>
+              <div className="shrink-0 self-start">
+                <Badge tone={status.tone}>{status.label}</Badge>
+              </div>
             </div>
           </Card>
         );

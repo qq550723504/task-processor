@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	productenrich "task-processor/internal/productenrich"
+	productimage "task-processor/internal/productimage"
 )
 
 type stubLLMClient struct{}
@@ -109,5 +110,49 @@ func TestBuildProductImageModelProviderBuildsNanobananaCapabilities(t *testing.T
 	}
 	if provider.SceneGenerator() == nil {
 		t.Fatal("SceneGenerator() = nil")
+	}
+}
+
+func TestResolveImagePipelineComponentsBackfillsModelBackedDependencies(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.OpenAI.APIKey = "test-key"
+	cfg.OpenAI.Model = "gpt-5.1"
+	cfg.OpenAI.BaseURL = "http://example.com/v1"
+	cfg.OpenAI.Timeout = 30
+	cfg.OpenAI.Clients = map[string]config.OpenAIClientConfig{
+		"image": {
+			APIKey:   "test-key",
+			Model:    "nano-banana-fast",
+			BaseURL:  "https://grsai.dakka.com.cn/v1/draw/nano-banana",
+			Timeout:  30,
+			APIStyle: "nanobanana",
+		},
+	}
+
+	openaiMgr, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients:       cfg.OpenAI.ToClientConfigs(),
+		DefaultClient: "default",
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	provider, err := buildProductImageModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
+	if err != nil {
+		t.Fatalf("buildProductImageModelProvider() error = %v", err)
+	}
+
+	resolved := resolveImagePipelineComponents(provider, nil, nil, nil)
+	if resolved.subjectExtractor == nil {
+		t.Fatal("subjectExtractor = nil")
+	}
+	if resolved.whiteBgRenderer == nil {
+		t.Fatal("whiteBgRenderer = nil")
+	}
+	if resolved.sceneRenderer == nil {
+		t.Fatal("sceneRenderer = nil")
+	}
+	if _, ok := resolved.subjectExtractor.(productimage.SubjectExtractor); !ok {
+		t.Fatal("subjectExtractor does not implement productimage.SubjectExtractor")
 	}
 }

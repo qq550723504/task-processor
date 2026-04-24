@@ -104,6 +104,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 				"duration_ms": time.Since(startedAt).Milliseconds(),
 				"outcome":     "retry_scheduled",
 			}).Warn("productimage task scheduled for retry")
+			return nil
 		}
 		return err
 	}

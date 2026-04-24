@@ -11,8 +11,15 @@ export function useExecuteAction(taskId: string, baseQuery: QueueQuery) {
 
   return useMutation({
     mutationFn: (request: ActionExecutionRequest) => executeAction(taskId, request),
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       applyActionResultToCache(client, taskId, baseQuery, response);
+
+      await client.invalidateQueries({
+        predicate: (query) =>
+          Array.isArray(query.queryKey) &&
+          query.queryKey[0] === "listingkit" &&
+          query.queryKey[1] === taskId,
+      });
     },
   });
 }

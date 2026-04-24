@@ -2,6 +2,7 @@ package generation
 
 import (
 	"fmt"
+	"strings"
 
 	"task-processor/internal/asset"
 	assetrecipe "task-processor/internal/asset/recipe"
@@ -11,16 +12,65 @@ func plannedLineage(item assetrecipe.AssetRecipe) []string {
 	return []string{item.Platform, item.ID}
 }
 
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
 func recipeAlreadySatisfied(inventory *asset.Inventory, item assetrecipe.AssetRecipe) bool {
 	if inventory == nil {
 		return false
 	}
 	kinds := preferredKinds(item)
-	for _, record := range inventory.Records {
-		for _, kind := range kinds {
-			if record.Kind == kind {
+	targetSlot := strings.ToLower(strings.TrimSpace(recipeSlot(item)))
+	targetRecipeID := strings.TrimSpace(item.ID)
+	if targetSlot != "" {
+		for _, record := range inventory.Records {
+			recordSlot := ""
+			if record.Metadata != nil {
+				recordSlot = firstNonEmpty(record.Metadata["bundle_slot"], record.Metadata["slot"])
+			}
+			if strings.ToLower(strings.TrimSpace(recordSlot)) != targetSlot {
+				continue
+			}
+			if len(kinds) == 0 || recordMatchesAnyPreferredKind(record, kinds) {
 				return true
 			}
+		}
+	}
+	if targetRecipeID != "" {
+		for _, record := range inventory.Records {
+			if strings.TrimSpace(record.RecipeID) != targetRecipeID {
+				continue
+			}
+			if len(kinds) == 0 || recordMatchesAnyPreferredKind(record, kinds) {
+				return true
+			}
+		}
+	}
+	if targetSlot != "" || targetRecipeID != "" {
+		return false
+	}
+	for _, record := range inventory.Records {
+		if recordMatchesAnyPreferredKind(record, kinds) {
+			return true
+		}
+	}
+	return false
+}
+
+func recordMatchesAnyPreferredKind(record asset.AssetRecord, kinds []asset.Kind) bool {
+	if len(kinds) == 0 {
+		return false
+	}
+	for _, kind := range kinds {
+		if record.Kind == kind {
+			return true
 		}
 	}
 	return false

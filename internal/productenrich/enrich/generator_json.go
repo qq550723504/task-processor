@@ -123,6 +123,11 @@ func (g *jsonGenerator) fallbackFromAnalysis(analysis *productenrich.ProductAnal
 		if result.Title == "" {
 			result.Title = analysis.ScrapedData.Title
 		}
+		if len(result.Category) == 0 || (len(result.Category) == 2 && result.Category[0] == "General" && result.Category[1] == "Product") {
+			if categoryPath := normalizeScrapedCategoryPath(analysis.ScrapedData.Category); len(categoryPath) > 0 {
+				result.Category = append([]string(nil), categoryPath...)
+			}
+		}
 		if len(result.VariantDimensions) == 0 && len(analysis.ScrapedData.VariantDimensions) > 0 {
 			result.VariantDimensions = append([]productenrich.ScrapedVariantDimension(nil), analysis.ScrapedData.VariantDimensions...)
 		}

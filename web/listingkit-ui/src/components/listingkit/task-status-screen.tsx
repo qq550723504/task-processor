@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { extractTaskFixes, inferTaskDraftFocus } from "@/components/listingkit/task-fixes";
 import { TaskProgressNotice } from "@/components/listingkit/task-progress-notice";
+import { TaskSDSSyncCard } from "@/components/listingkit/task-sds-sync-card";
 import { loadTaskCreateDraft } from "@/components/listingkit/task-create-draft";
 import { TaskSourceSummary } from "@/components/listingkit/task-source-summary";
 import { shouldAutoOpenWorkspace } from "@/components/listingkit/task-status-transition";
@@ -84,6 +85,7 @@ export function TaskStatusScreen({
       </Card>
 
       <TaskStatusPanel task={task} />
+      <TaskSDSSyncCard task={task} />
       <TaskSourceSummary draft={taskDraft} />
       <TaskProgressNotice task={task} />
 

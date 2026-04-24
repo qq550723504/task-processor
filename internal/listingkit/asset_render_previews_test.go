@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"task-processor/internal/asset"
+	common "task-processor/internal/publishing/common"
 )
 
 func TestBuildAssetRenderPreviewsIncludesRenderSummary(t *testing.T) {
@@ -59,5 +60,199 @@ func TestBuildAssetRenderPreviewsIncludesRenderSummary(t *testing.T) {
 	}
 	if len(preview.StyleTokens) != 3 || preview.StyleTokens[2] != "copy-primary" {
 		t.Fatalf("style_tokens = %+v", preview.StyleTokens)
+	}
+}
+
+func TestBuildPlatformAssetRenderPreviewsIncludesRasterAssetFallback(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{
+				{
+					ID:   "gallery-rendered-1",
+					Kind: asset.KindSceneImage,
+					URL:  "http://127.0.0.1:9100/listingkit-assets/gallery-rendered-1.png",
+				},
+			},
+		},
+		Shein: &SheinPackage{
+			ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Gallery: []common.BundleSlot{{
+					Key:           "gallery",
+					Purpose:       "gallery",
+					AssetID:       "gallery-rendered-1",
+					Kind:          string(asset.KindSceneImage),
+					TemplateLabel: "SHEIN Lifestyle Gallery",
+				}},
+			},
+		},
+	}
+
+	previews := buildPlatformAssetRenderPreviews(result)
+	if len(previews) != 1 {
+		t.Fatalf("previews = %+v, want 1 platform group", previews)
+	}
+	if len(previews[0].Gallery) != 1 {
+		t.Fatalf("gallery previews = %+v, want 1 gallery preview", previews[0].Gallery)
+	}
+	if previews[0].Gallery[0].AssetURL != "http://127.0.0.1:9100/listingkit-assets/gallery-rendered-1.png" {
+		t.Fatalf("gallery preview = %+v, want raster asset url fallback", previews[0].Gallery[0])
+	}
+}
+
+func TestBuildPlatformAssetRenderPreviewsMapsBundleSlotURLToPublishedAssetURL(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{
+				{
+					ID:   "gallery-1",
+					Kind: asset.KindSceneImage,
+					URL:  "http://127.0.0.1:9100/listingkit-assets/gallery-1.png",
+					Metadata: map[string]string{
+						"published_path": "tmp\\productimage\\gallery-1.png",
+						"local_path":     "tmp\\productimage\\gallery-1.png",
+					},
+				},
+			},
+		},
+		Shein: &SheinPackage{
+			ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Gallery: []common.BundleSlot{{
+					Key:           "gallery",
+					Purpose:       "gallery",
+					AssetID:       "rendered-scene-image-source-1",
+					URL:           "tmp\\productimage\\gallery-1.png",
+					Kind:          string(asset.KindSceneImage),
+					TemplateLabel: "SHEIN Lifestyle Gallery",
+				}},
+			},
+		},
+	}
+
+	previews := buildPlatformAssetRenderPreviews(result)
+	if len(previews) != 1 {
+		t.Fatalf("previews = %+v, want 1 platform group", previews)
+	}
+	if len(previews[0].Gallery) != 1 {
+		t.Fatalf("gallery previews = %+v, want 1 gallery preview", previews[0].Gallery)
+	}
+	if previews[0].Gallery[0].AssetURL != "http://127.0.0.1:9100/listingkit-assets/gallery-1.png" {
+		t.Fatalf("gallery preview = %+v, want published url resolved from slot url", previews[0].Gallery[0])
+	}
+}
+
+func TestDecorateListingKitResultReviewRefreshesStalePlatformRenderPreviews(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{
+				{
+					ID:   "gallery-1",
+					Kind: asset.KindSceneImage,
+					URL:  "http://127.0.0.1:9100/listingkit-assets/gallery-1.png",
+					Metadata: map[string]string{
+						"published_path": "tmp\\productimage\\gallery-1.png",
+						"local_path":     "tmp\\productimage\\gallery-1.png",
+					},
+				},
+			},
+		},
+		PlatformAssetRenderPreviews: []PlatformAssetRenderPreviews{{
+			Platform: "shein",
+			Summary:  &PlatformAssetRenderPreviewSummary{TotalPreviews: 1},
+			Auxiliary: []AssetRenderPreviewSlot{{
+				Slot:    "auxiliary",
+				AssetID: "stale-preview",
+			}},
+		}},
+		Shein: &SheinPackage{
+			ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Gallery: []common.BundleSlot{{
+					Key:           "gallery",
+					Purpose:       "gallery",
+					AssetID:       "rendered-scene-image-source-1",
+					URL:           "tmp\\productimage\\gallery-1.png",
+					Kind:          string(asset.KindSceneImage),
+					TemplateLabel: "SHEIN Lifestyle Gallery",
+				}},
+			},
+		},
+	}
+
+	decorateListingKitResultReview(result, nil)
+
+	if len(result.PlatformAssetRenderPreviews) != 1 || len(result.PlatformAssetRenderPreviews[0].Gallery) != 1 {
+		t.Fatalf("platform previews = %+v, want refreshed gallery preview", result.PlatformAssetRenderPreviews)
+	}
+	if result.PlatformAssetRenderPreviews[0].Gallery[0].AssetURL != "http://127.0.0.1:9100/listingkit-assets/gallery-1.png" {
+		t.Fatalf("gallery preview = %+v, want refreshed published url", result.PlatformAssetRenderPreviews[0].Gallery[0])
+	}
+}
+
+func TestBuildPlatformAssetRenderPreviewsPrefersPublishedURLOverLocalRendererPath(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{
+		AssetBundle: &asset.Bundle{
+			Assets: []asset.Asset{
+				{
+					ID:   "gallery-1",
+					Kind: asset.KindGalleryImage,
+					URL:  "http://127.0.0.1:9100/listingkit-assets/gallery-1.png",
+					Role: "gallery",
+					SourceAssetIDs: []string{
+						"source-1",
+					},
+					Metadata: map[string]string{
+						"published_url":  "http://127.0.0.1:9100/listingkit-assets/gallery-1.png",
+						"published_path": "tmp\\productimage\\gallery-published.png",
+						"local_path":     "tmp\\productimage\\gallery-published.png",
+					},
+				},
+				{
+					ID:   "rendered-scene-image-source-1",
+					Kind: asset.KindSceneImage,
+					URL:  "tmp\\productimage\\gallery-renderer-output.png",
+					Role: "gallery",
+					SourceAssetIDs: []string{
+						"source-1",
+					},
+					Metadata: map[string]string{
+						"local_path": "tmp\\productimage\\gallery-renderer-output.png",
+					},
+				},
+			},
+		},
+		Shein: &SheinPackage{
+			ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Gallery: []common.BundleSlot{{
+					Key:           "gallery",
+					Purpose:       "gallery",
+					AssetID:       "rendered-scene-image-source-1",
+					URL:           "tmp\\productimage\\gallery-renderer-output.png",
+					Kind:          string(asset.KindSceneImage),
+					TemplateLabel: "SHEIN Lifestyle Gallery",
+					SourceAssetIDs: []string{
+						"source-1",
+					},
+				}},
+			},
+		},
+	}
+
+	previews := buildPlatformAssetRenderPreviews(result)
+	if len(previews) != 1 || len(previews[0].Gallery) != 1 {
+		t.Fatalf("previews = %+v, want gallery preview", previews)
+	}
+	if previews[0].Gallery[0].AssetURL != "http://127.0.0.1:9100/listingkit-assets/gallery-1.png" {
+		t.Fatalf("gallery preview = %+v, want published url preferred over local path", previews[0].Gallery[0])
 	}
 }

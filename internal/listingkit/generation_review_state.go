@@ -50,12 +50,7 @@ func decorateListingKitResultReview(result *ListingKitResult, reviews []Generati
 	if result == nil {
 		return
 	}
-	if len(result.AssetRenderPreviews) == 0 {
-		result.AssetRenderPreviews = attachTaskRevisionToAssetRenderPreviews(buildAssetRenderPreviews(result.AssetBundle), buildTaskRevision(result))
-	}
-	if len(result.PlatformAssetRenderPreviews) == 0 {
-		result.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(result)
-	}
+	syncAssetRenderPreviews(result)
 	result.ReviewRecords = append([]GenerationReviewRecord(nil), reviews...)
 	state := buildGenerationReviewState(result.AssetGenerationQueue, result.PlatformAssetRenderPreviews, reviews)
 	if state == nil {

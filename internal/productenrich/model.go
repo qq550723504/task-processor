@@ -118,6 +118,7 @@ type ParsedInput struct {
 // ScrapedData 网页抓取的数据
 type ScrapedData struct {
 	Title             string                    `json:"title"`
+	Category          string                    `json:"category,omitempty"`
 	Description       string                    `json:"description"`
 	Images            []string                  `json:"images"`
 	Price             float64                   `json:"price"`

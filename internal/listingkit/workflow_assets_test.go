@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"task-processor/internal/asset"
@@ -9,6 +10,10 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sdsadapter "task-processor/internal/sds/adapter"
+	sdsdesign "task-processor/internal/sds/design"
+	sdsusecase "task-processor/internal/sds/usecase"
+	sdsworkflow "task-processor/internal/sds/workflow"
 )
 
 type stubWorkflowProductService struct {
@@ -36,6 +41,12 @@ type stubWorkflowImageService struct {
 	lastReq *productimage.ImageProcessRequest
 }
 
+type stubWorkflowSDSSyncService struct {
+	result    *sdsadapter.SyncResult
+	err       error
+	lastInput sdsusecase.ImageResultInput
+}
+
 func (s *stubWorkflowImageService) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
 	s.lastReq = req
 	return s.task, nil
@@ -47,6 +58,29 @@ func (s *stubWorkflowImageService) GetTaskResult(ctx context.Context, taskID str
 
 func (s *stubWorkflowImageService) ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error) {
 	return s.result, nil
+}
+
+func (s *stubWorkflowSDSSyncService) SyncFromRemoteImage(ctx context.Context, input sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (s *stubWorkflowSDSSyncService) SyncFromLocalFile(ctx context.Context, input sdsusecase.LocalFileInput) (*sdsworkflow.SyncResult, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (s *stubWorkflowSDSSyncService) SyncFromImageResult(ctx context.Context, input sdsusecase.ImageResultInput) (*sdsadapter.SyncResult, error) {
+	s.lastInput = input
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.result != nil {
+		return s.result, nil
+	}
+	return &sdsadapter.SyncResult{}, nil
+}
+
+func (s *stubWorkflowSDSSyncService) SyncFromImageRequest(ctx context.Context, input sdsusecase.ImageRequestInput) (*sdsadapter.SyncResult, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 type stubWorkflowSceneRenderer struct{}
@@ -250,6 +284,187 @@ func TestRunWorkflowSkipsAssetGenerationWhenProcessImagesDisabled(t *testing.T) 
 	if result.Amazon != nil && result.Amazon.ImageBundle != nil {
 		t.Fatalf("amazon image bundle = %+v, want no generated image bundle", result.Amazon)
 	}
+}
+
+func TestRunWorkflowSyncsSDSDesignWhenConfigured(t *testing.T) {
+	t.Parallel()
+
+	productTask := &productenrich.Task{
+		ID: "product-task-sds",
+		Request: &productenrich.GenerateRequest{
+			ImageURLs: []string{"https://example.com/source-sds.jpg"},
+			Text:      "sports bottle",
+		},
+	}
+	productSvc := &stubWorkflowProductService{
+		task: productTask,
+		product: &productenrich.ProductJSON{
+			Title:      "Sports Bottle",
+			Category:   []string{"Sports", "Drinkware"},
+			Images:     []string{"https://example.com/source-sds.jpg"},
+			Attributes: map[string]string{"brand": "DemoBrand"},
+		},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task: &productimage.Task{ID: "image-task-sds"},
+		result: &productimage.ImageProcessResult{
+			WhiteBgImage: &productimage.ImageAsset{URL: "https://cdn.example.com/white-sds.jpg"},
+		},
+	}
+	sdsSvc := &stubWorkflowSDSSyncService{
+		result: &sdsadapter.SyncResult{
+			DesignSync: &sdsworkflow.SyncResult{
+				DesignResult: &sdsdesign.PrepareSyncDesignResult{
+					Page: &sdsdesign.DesignProductPage{
+						Product: sdsdesign.DesignProduct{ID: 89764},
+					},
+					Request: &sdsdesign.SyncDesignRequest{
+						PrototypeGroupID: 14555,
+						Prototypes: []sdsdesign.SyncDesignPrototype{
+							{
+								Layers: []sdsdesign.SyncDesignLayer{
+									{LayerID: "layer-1"},
+								},
+							},
+						},
+					},
+					Material: &sdsdesign.UploadedMaterial{
+						Material: &sdsdesign.Material{ID: 396548287},
+					},
+					RenderedImageURLs: []string{"https://cdn.example.com/rendered-sds.jpg"},
+				},
+			},
+		},
+	}
+
+	svc := &service{
+		productSvc:          productSvc,
+		imageSvc:            imageSvc,
+		sdsSyncSvc:          sdsSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRepo:           assetrepo.NewMemRepository(),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+
+	task := &Task{
+		ID: "listingkit-task-sds",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/source-sds.jpg"},
+			Text:      "sports bottle",
+			Platforms: []string{"amazon"},
+			Country:   "US",
+			Language:  "en_US",
+			Options: &GenerateOptions{
+				ProcessImages: true,
+				SDS: &SDSSyncOptions{
+					VariantID: 89764,
+				},
+			},
+		},
+	}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if result.SDSSync == nil || result.SDSSync.Status != "completed" {
+		t.Fatalf("sds sync = %+v", result.SDSSync)
+	}
+	if result.SDSSync.MaterialID != 396548287 {
+		t.Fatalf("sds sync = %+v, want material id", result.SDSSync)
+	}
+	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(TaskStatusCompleted)) {
+		t.Fatalf("child tasks = %+v, want completed sds_design_sync", result.ChildTasks)
+	}
+	if sdsSvc.lastInput.Sync.VariantID != 89764 {
+		t.Fatalf("sds input = %+v", sdsSvc.lastInput.Sync)
+	}
+}
+
+func TestRunWorkflowKeepsMainFlowWhenSDSSyncFails(t *testing.T) {
+	t.Parallel()
+
+	productTask := &productenrich.Task{
+		ID: "product-task-sds-fail",
+		Request: &productenrich.GenerateRequest{
+			ImageURLs: []string{"https://example.com/source-sds-fail.jpg"},
+			Text:      "sports towel",
+		},
+	}
+	productSvc := &stubWorkflowProductService{
+		task: productTask,
+		product: &productenrich.ProductJSON{
+			Title:      "Sports Towel",
+			Category:   []string{"Sports"},
+			Images:     []string{"https://example.com/source-sds-fail.jpg"},
+			Attributes: map[string]string{"brand": "DemoBrand"},
+		},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task: &productimage.Task{ID: "image-task-sds-fail"},
+		result: &productimage.ImageProcessResult{
+			MainImage: &productimage.ImageAsset{URL: "https://cdn.example.com/main-sds-fail.jpg"},
+		},
+	}
+	sdsSvc := &stubWorkflowSDSSyncService{
+		err: fmt.Errorf("sync failed"),
+	}
+
+	svc := &service{
+		productSvc:          productSvc,
+		imageSvc:            imageSvc,
+		sdsSyncSvc:          sdsSvc,
+		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		assetRepo:           assetrepo.NewMemRepository(),
+		assetRecipeResolver: newDefaultAssetRecipeResolver(),
+		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+		assetGenerator:      newDefaultAssetGenerationService(),
+	}
+
+	task := &Task{
+		ID: "listingkit-task-sds-fail",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/source-sds-fail.jpg"},
+			Text:      "sports towel",
+			Platforms: []string{"amazon"},
+			Country:   "US",
+			Language:  "en_US",
+			Options: &GenerateOptions{
+				ProcessImages: true,
+				SDS: &SDSSyncOptions{
+					VariantID: 89765,
+				},
+			},
+		},
+	}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if result.SDSSync == nil || result.SDSSync.Status != "failed" {
+		t.Fatalf("sds sync = %+v", result.SDSSync)
+	}
+	if len(result.Summary.Warnings) == 0 {
+		t.Fatalf("warnings = %+v, want sds warning", result.Summary)
+	}
+	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(TaskStatusFailed)) {
+		t.Fatalf("child tasks = %+v, want failed sds_design_sync", result.ChildTasks)
+	}
+	if result.ImageAssets == nil {
+		t.Fatal("expected main workflow to continue despite sds sync failure")
+	}
+}
+
+func hasChildTaskStatus(tasks []ChildTaskState, kind string, status string) bool {
+	for _, item := range tasks {
+		if item.Kind == kind && item.Status == status {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRunWorkflowSkipsDeferredGenerationWhenProcessImagesDisabled(t *testing.T) {

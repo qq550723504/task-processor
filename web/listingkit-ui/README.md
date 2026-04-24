@@ -28,6 +28,26 @@ Default:
 LISTINGKIT_API_BASE=http://localhost:8080/api/v1/listing-kits
 ```
 
+For `SHEIN Studio` image generation, also configure:
+
+```bash
+OPENAI_API_KEY=your_api_key
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_IMAGE_MODEL=gpt-image-1
+OPENAI_API_STYLE=openai
+```
+
+`SHEIN Studio` now also falls back to the repo-level backend image settings when present, especially:
+
+```bash
+TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY=...
+TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL=...
+TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE=nanobanana
+TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL=nano-banana-fast
+```
+
+This is useful when the backend is already using a provider-specific image client such as `nanobanana`.
+
 Optional local demo mode:
 
 ```bash

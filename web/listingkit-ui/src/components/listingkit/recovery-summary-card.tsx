@@ -25,16 +25,16 @@ export function RecoverySummaryCard({
 
   return (
     <Card className="border-amber-200 bg-amber-50/70 p-5">
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
           <AlertTriangle className="h-4 w-4" />
         </div>
-        <div className="space-y-1">
-          <h2 className="text-base font-semibold text-zinc-950">
+        <div className="min-w-0 space-y-1">
+          <h2 className="break-words text-base font-semibold text-zinc-950">
             {presentation.title}
           </h2>
           {presentation.summary ? (
-            <p className="text-sm leading-6 text-zinc-700">
+            <p className="break-words text-sm leading-6 text-zinc-700">
               {presentation.summary}
             </p>
           ) : null}

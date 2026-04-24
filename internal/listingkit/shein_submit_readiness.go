@@ -1,6 +1,11 @@
 package listingkit
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import (
+	"strings"
+
+	sheinproduct "task-processor/internal/shein/api/product"
+	sheinworkspace "task-processor/internal/workspace/shein"
+)
 
 func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 	if pkg == nil {
@@ -24,8 +29,7 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 	categoryReady := isSheinCategoryResolved(pkg) &&
 		pkg.CategoryID > 0 &&
 		pkg.ProductTypeID != nil &&
-		*pkg.ProductTypeID > 0 &&
-		!sheinCategoryReviewPending(pkg)
+		*pkg.ProductTypeID > 0
 	addCheck(
 		"category",
 		"类目骨架",
@@ -36,7 +40,17 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 		false,
 	)
 
-	attributeReady := isSheinAttributeResolved(pkg) && len(pkg.ResolvedAttributes) > 0
+	addCheck(
+		"category_review",
+		"类目复核",
+		!categoryReady || !sheinCategoryReviewPending(pkg),
+		"当前类目可用，但系统建议复核候选类目；MVP 流程允许继续，但提交前建议确认",
+		[]string{"shein.category_resolution.suggested_category", "shein.sale_attribute_resolution.category_review_reason"},
+		"复核类目",
+		true,
+	)
+
+	attributeReady := pkg.AttributeResolution != nil && len(pkg.ResolvedAttributes) > 0
 	addCheck(
 		"attributes",
 		"普通属性",
@@ -45,6 +59,16 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 		[]string{"shein.resolved_attributes", "shein.request_draft.resolved_attributes"},
 		"确认属性",
 		false,
+	)
+
+	addCheck(
+		"attribute_review",
+		"属性复核",
+		!attributeReady || isSheinAttributeResolved(pkg),
+		"普通属性已部分映射，但仍有模板必填项未能自动推断；MVP 流程允许继续，提交前建议确认",
+		[]string{"shein.attribute_resolution.pending_attributes", "shein.attribute_resolution.review_notes"},
+		"复核属性",
+		true,
 	)
 
 	saleAttributeReady := isSheinSaleAttributeResolved(pkg)
@@ -80,7 +104,7 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 		false,
 	)
 
-	imageReady := pkg.Images != nil && firstNonEmpty(pkg.Images.MainImage, pkg.Images.WhiteBgImage) != ""
+	imageReady := sheinHasSubmitImage(pkg)
 	addCheck(
 		"images",
 		"主图资产",
@@ -140,4 +164,71 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 	}
 	readiness.Summary = uniqueStrings(readiness.Summary)
 	return readiness
+}
+
+func sheinHasSubmitImage(pkg *SheinPackage) bool {
+	if pkg == nil {
+		return false
+	}
+	if pkg.Images != nil && firstNonEmpty(pkg.Images.MainImage, pkg.Images.WhiteBgImage) != "" {
+		return true
+	}
+	if pkg.RequestDraft != nil {
+		if sheinImageDraftHasImage(pkg.RequestDraft.ImageInfo) {
+			return true
+		}
+		for _, skc := range pkg.RequestDraft.SKCList {
+			if sheinImageDraftHasImage(skc.ImageInfo) {
+				return true
+			}
+			for _, sku := range skc.SKUList {
+				if strings.TrimSpace(sku.MainImage) != "" {
+					return true
+				}
+			}
+		}
+	}
+	if pkg.PreviewProduct != nil {
+		if sheinProductImageInfoHasImage(pkg.PreviewProduct.ImageInfo) {
+			return true
+		}
+		for _, skc := range pkg.PreviewProduct.SKCList {
+			if sheinProductImageInfoHasImage(&skc.ImageInfo) {
+				return true
+			}
+			for _, sku := range skc.SKUS {
+				if sheinProductImageInfoHasImage(sku.ImageInfo) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func sheinImageDraftHasImage(info *SheinImageDraft) bool {
+	if info == nil {
+		return false
+	}
+	if firstNonEmpty(info.MainImage, info.WhiteBg) != "" {
+		return true
+	}
+	for _, image := range append(append([]string(nil), info.Gallery...), info.Source...) {
+		if strings.TrimSpace(image) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func sheinProductImageInfoHasImage(info *sheinproduct.ImageInfo) bool {
+	if info == nil {
+		return false
+	}
+	for _, image := range info.ImageInfoList {
+		if strings.TrimSpace(image.ImageURL) != "" {
+			return true
+		}
+	}
+	return false
 }

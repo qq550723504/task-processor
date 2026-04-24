@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/infra/clients/nanobanana"
 	productimage "task-processor/internal/productimage"
 	"task-processor/internal/productimage/store"
 )
@@ -445,6 +446,73 @@ func TestService_ProcessImages_StillFailsWhenSubjectExtractionFails(t *testing.T
 	}
 	if storedTask.Status != productimage.TaskStatusFailed {
 		t.Fatalf("stored status = %q, want failed", storedTask.Status)
+	}
+}
+
+func TestService_ProcessImages_DowngradesSubjectModerationToNeedsReview(t *testing.T) {
+	repo := store.NewMemTaskRepository()
+	svc, err := productimage.NewService(&productimage.ServiceConfig{
+		TaskRepo:       repo,
+		AssetPublisher: &stubAssetPublisher{},
+		SubjectExtractor: &failingSubjectExtractor{err: &nanobanana.JobError{
+			Reason: "output_moderation",
+			Detail: "blocked by provider moderation",
+		}},
+		ReviewAssessor:  productimage.NewDefaultReviewAssessor(),
+		QualityAssessor: productimage.NewDefaultQualityAssessor(),
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task, err := svc.CreateProcessTask(context.Background(), &productimage.ImageProcessRequest{
+		ImageURLs:   []string{"https://example.com/a.jpg", "https://example.com/b.jpg"},
+		Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessImages(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessImages() error = %v", err)
+	}
+	if result == nil || result.SubjectCutout == nil {
+		t.Fatalf("expected subject cutout fallback, got %+v", result)
+	}
+	if got := result.SubjectCutout.Metadata["fallback_reason"]; got != "subject_extraction_no_retry" {
+		t.Fatalf("fallback_reason = %q, want subject_extraction_no_retry", got)
+	}
+	if result.SubjectCutout.SourceURL != "https://example.com/a.jpg" {
+		t.Fatalf("subject cutout source URL = %q, want primary source", result.SubjectCutout.SourceURL)
+	}
+	if result.MainImage == nil || result.WhiteBgImage == nil {
+		t.Fatalf("expected downstream assets to continue after moderation fallback, got %+v", result)
+	}
+	if result.Review == nil || !result.Review.NeedsReview {
+		t.Fatalf("expected needs_review decision, got %+v", result.Review)
+	}
+	if !containsReviewReason(result.Review.Reasons, "extract_subject degraded") {
+		t.Fatalf("expected extract_subject degradation reason, got %+v", result.Review.Reasons)
+	}
+
+	foundFallback := false
+	for _, trace := range result.ImageTraces {
+		if trace.Stage == "extract_subject" && trace.Outcome == "fallback" {
+			foundFallback = true
+			break
+		}
+	}
+	if !foundFallback {
+		t.Fatalf("expected extract_subject fallback trace, got %+v", result.ImageTraces)
+	}
+
+	storedTask, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if storedTask.Status != productimage.TaskStatusNeedsReview {
+		t.Fatalf("stored status = %q, want needs_review", storedTask.Status)
 	}
 }
 

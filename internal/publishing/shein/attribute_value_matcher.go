@@ -9,6 +9,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
+	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
@@ -21,6 +22,7 @@ func matchTemplateAttributeValue(
 	attr sheinattribute.AttributeInfo,
 	sourceName string,
 	sourceValue string,
+	contextInputs []common.Attribute,
 	llm openaiclient.ChatCompleter,
 ) (ResolvedAttribute, []string) {
 	sourceValue = strings.TrimSpace(sourceValue)
@@ -28,76 +30,49 @@ func matchTemplateAttributeValue(
 		return ResolvedAttribute{}, nil
 	}
 
+	template := classifyDisplayTemplateAttribute(attr)
 	base := ResolvedAttribute{
 		Name:                firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
 		Value:               sourceValue,
 		AttributeID:         attr.AttributeID,
 		AttributeExtraValue: sourceValue,
+		AttributeType:       attr.AttributeType,
+		AttributeMode:       attr.AttributeMode,
+		DataDimension:       attr.DataDimension,
+		CascadeAttributeID:  attr.CascadeAttributeID,
 		MatchedBy:           "attribute_name",
 		Required:            isTemplateRequired(attr),
 		SKCScope:            attr.SKCScope != nil && *attr.SKCScope,
 	}
+	switch template.Kind {
+	case displayAttributeKindNumeric:
+		return base, numericAttributeNotes(attr, sourceValue)
+	case displayAttributeKindComposition:
+		return base, compositionAttributeNotes(attr, sourceValue)
+	}
+
 	if len(attr.AttributeValueInfoList) == 0 {
 		return base, nil
 	}
-
-	if resolved, ok := matchTemplateAttributeValueExact(attr, sourceValue); ok {
-		return resolved, nil
-	}
-	if resolved, ok := matchTemplateAttributeValueNormalized(attr, sourceValue); ok {
-		return resolved, nil
-	}
-	if resolved, reasons, ok := matchTemplateAttributeValueWithLLM(attr, sourceName, sourceValue, llm); ok {
+	if resolved, reasons, ok := matchTemplateAttributeValueWithLLM(attr, sourceName, sourceValue, contextInputs, llm); ok {
 		return resolved, reasons
 	}
+	if llm == nil {
+		if resolved, reasons, ok := matchTemplateAttributeValueStatic(attr, sourceValue, "static_attribute_value"); ok {
+			return resolved, reasons
+		}
+	}
 
-	return base, []string{
+	return ResolvedAttribute{}, []string{
 		fmt.Sprintf("SHEIN 普通属性值未匹配: 属性 %q 的值 %q 无法映射到模板值", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName), sourceValue),
 	}
-}
-
-func matchTemplateAttributeValueExact(attr sheinattribute.AttributeInfo, sourceValue string) (ResolvedAttribute, bool) {
-	sourceValue = strings.TrimSpace(sourceValue)
-	for _, option := range attr.AttributeValueInfoList {
-		if normalizeText(firstNonEmpty(option.AttributeValueEn, option.AttributeValue)) != normalizeText(sourceValue) {
-			continue
-		}
-		return buildResolvedAttribute(attr, option, sourceValue, "attribute_value"), true
-	}
-	return ResolvedAttribute{}, false
-}
-
-func matchTemplateAttributeValueNormalized(attr sheinattribute.AttributeInfo, sourceValue string) (ResolvedAttribute, bool) {
-	normalizedSource := comparableAttributeValueForms(sourceValue)
-	if len(normalizedSource) == 0 {
-		return ResolvedAttribute{}, false
-	}
-	sourceSet := make(map[string]struct{}, len(normalizedSource))
-	for _, value := range normalizedSource {
-		sourceSet[value] = struct{}{}
-	}
-	for _, option := range attr.AttributeValueInfoList {
-		candidates := []string{
-			firstNonEmpty(option.AttributeValueEn, option.AttributeValue),
-			option.AttributeValue,
-			option.AttributeValueEn,
-		}
-		for _, candidate := range candidates {
-			for _, comparable := range comparableAttributeValueForms(candidate) {
-				if _, ok := sourceSet[comparable]; !ok {
-					continue
-				}
-				return buildResolvedAttribute(attr, option, sourceValue, "attribute_value_normalized"), true
-			}
-		}
-	}
-	return ResolvedAttribute{}, false
 }
 
 func matchTemplateAttributeValueWithLLM(
 	attr sheinattribute.AttributeInfo,
 	sourceName string,
 	sourceValue string,
+	contextInputs []common.Attribute,
 	llm openaiclient.ChatCompleter,
 ) (ResolvedAttribute, []string, bool) {
 	if llm == nil || len(attr.AttributeValueInfoList) == 0 {
@@ -106,7 +81,7 @@ func matchTemplateAttributeValueWithLLM(
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	response, err := llm.Generate(ctx, buildTemplateAttributeValueMappingPrompt(attr, sourceName, sourceValue))
+	response, err := llm.Generate(ctx, buildTemplateAttributeValueMappingPrompt(attr, sourceName, sourceValue, contextInputs))
 	if err != nil {
 		return ResolvedAttribute{}, nil, false
 	}
@@ -131,7 +106,12 @@ func matchTemplateAttributeValueWithLLM(
 	return ResolvedAttribute{}, selection.Reasons, false
 }
 
-func buildTemplateAttributeValueMappingPrompt(attr sheinattribute.AttributeInfo, sourceName string, sourceValue string) string {
+func buildTemplateAttributeValueMappingPrompt(
+	attr sheinattribute.AttributeInfo,
+	sourceName string,
+	sourceValue string,
+	contextInputs []common.Attribute,
+) string {
 	var builder strings.Builder
 	builder.WriteString("You map one source product attribute value to one SHEIN template attribute value.\n")
 	builder.WriteString("Choose exactly one candidate attribute_value_id when there is a safe semantic match.\n")
@@ -139,6 +119,20 @@ func buildTemplateAttributeValueMappingPrompt(attr sheinattribute.AttributeInfo,
 	builder.WriteString("Return JSON only with keys attribute_value_id and reasons.\n\n")
 	builder.WriteString(fmt.Sprintf("Source attribute: %q\n", sourceName))
 	builder.WriteString(fmt.Sprintf("Source value: %q\n", sourceValue))
+	if segments := comparableAttributeSegments(sourceValue); len(segments) > 0 {
+		builder.WriteString("Source value segments:\n")
+		for _, segment := range segments {
+			builder.WriteString(fmt.Sprintf("- %q\n", segment))
+		}
+	}
+	if context := buildDisplayAttributeContextLines(contextInputs, sourceName, sourceValue); len(context) > 0 {
+		builder.WriteString("Additional source context:\n")
+		for _, line := range context {
+			builder.WriteString("- ")
+			builder.WriteString(line)
+			builder.WriteString("\n")
+		}
+	}
 	builder.WriteString(fmt.Sprintf("SHEIN template attribute: %q\n", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)))
 	builder.WriteString("Candidates:\n")
 	for _, option := range attr.AttributeValueInfoList {
@@ -152,6 +146,40 @@ func buildTemplateAttributeValueMappingPrompt(attr sheinattribute.AttributeInfo,
 	return builder.String()
 }
 
+func buildDisplayAttributeContextLines(inputs []common.Attribute, sourceName string, sourceValue string) []string {
+	if len(inputs) == 0 {
+		return nil
+	}
+	sourceNameNormalized := normalizeText(sourceName)
+	sourceValueNormalized := normalizeText(sourceValue)
+	lines := make([]string, 0, min(6, len(inputs)))
+	seen := make(map[string]struct{}, len(inputs))
+	for _, item := range inputs {
+		name := strings.TrimSpace(item.Name)
+		value := strings.TrimSpace(item.Value)
+		if name == "" || value == "" {
+			continue
+		}
+		if normalizeText(name) == sourceNameNormalized && normalizeText(value) == sourceValueNormalized {
+			continue
+		}
+		line := fmt.Sprintf("%s=%q", name, value)
+		key := normalizeText(line)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		lines = append(lines, line)
+		if len(lines) >= 6 {
+			break
+		}
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	return lines
+}
+
 func buildResolvedAttribute(
 	attr sheinattribute.AttributeInfo,
 	option sheinattribute.AttributeValue,
@@ -160,12 +188,16 @@ func buildResolvedAttribute(
 ) ResolvedAttribute {
 	valueID := option.AttributeValueID
 	return ResolvedAttribute{
-		Name:             firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
-		Value:            sourceValue,
-		AttributeID:      attr.AttributeID,
-		AttributeValueID: &valueID,
-		MatchedBy:        matchedBy,
-		Required:         isTemplateRequired(attr),
-		SKCScope:         attr.SKCScope != nil && *attr.SKCScope,
+		Name:               firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
+		Value:              sourceValue,
+		AttributeID:        attr.AttributeID,
+		AttributeValueID:   &valueID,
+		AttributeType:      attr.AttributeType,
+		AttributeMode:      attr.AttributeMode,
+		DataDimension:      attr.DataDimension,
+		CascadeAttributeID: attr.CascadeAttributeID,
+		MatchedBy:          matchedBy,
+		Required:           isTemplateRequired(attr),
+		SKCScope:           attr.SKCScope != nil && *attr.SKCScope,
 	}
 }

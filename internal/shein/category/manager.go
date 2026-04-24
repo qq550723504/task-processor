@@ -23,14 +23,21 @@ type CategorySelectionResult struct {
 	Reason     string `json:"reason"`
 }
 
+type CoreItemInput struct {
+	Title        string
+	ProductType  string
+	CategoryPath []string
+	Attributes   map[string]string
+}
+
 // AISelector AI选择器接口
 type AISelector interface {
 	// SelectLevelOneCategoryByAI 通过AI选择一级分类
 	SelectLevelOneCategoryByAI(ctx context.Context, title string, levelOneIDs []int, levelOneMap map[int]string) (int, error)
 	// SelectCategoryByAI 通过AI选择最终分类
 	SelectCategoryByAI(ctx context.Context, title string, leafIDs []int, leafMap map[int]string) (int, error)
-	// ExtractCoreItemByAI 通过AI从Amazon标题中提取核心物品描述（用于SuggestCategoryByText）
-	ExtractCoreItemByAI(ctx context.Context, title string) (string, error)
+	// ExtractCoreItemByAI 通过AI从商品上下文中提取核心物品描述（用于SuggestCategoryByText）
+	ExtractCoreItemByAI(ctx context.Context, input CoreItemInput) (string, error)
 }
 
 // OpenAISelector OpenAI选择器实现
@@ -177,15 +184,18 @@ func (s *OpenAISelector) parseOpenAIResponse(resp *openaiClient.ChatCompletionRe
 	return &result, nil
 }
 
-// ExtractCoreItemByAI 通过AI从Amazon标题中提取核心物品的简短描述，用于SuggestCategoryByText。
-func (s *OpenAISelector) ExtractCoreItemByAI(ctx context.Context, title string) (string, error) {
+// ExtractCoreItemByAI 通过AI从商品上下文中提取适合 SuggestCategoryByText 的核心检索词。
+func (s *OpenAISelector) ExtractCoreItemByAI(ctx context.Context, input CoreItemInput) (string, error) {
 	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinCategorySelectorExtractCoreItemSystem,
-		`你是一个电商产品分析专家。请从Amazon产品标题中提取出该商品的核心物品描述。
+		`你是一个电商产品分类检索专家。请基于输入商品信息，提取一个最适合用于类目检索的核心商品名。
 要求：
-1. 用简洁的中文描述核心物品，例如"环保塑料杯套装"、"不锈钢保温水壶"、"儿童棉质连衣裙"
-2. 保留关键材质、用途、人群等修饰词，但去掉品牌名、数量、尺寸、颜色等无关信息
-3. 长度控制在5-20个汉字
-4. 只返回描述文本，不要任何解释`)
+1. 优先输出标准、通用、最像电商类目词的商品名，而不是标题摘要
+2. 如果输入中有产品类别或类目叶子，优先服从这些更标准的词
+3. 只保留必要的品类本体和少量关键限定词，去掉品牌、数量、营销词、颜色、尺寸等噪音
+4. 输出尽量简短，优先 2-8 个汉字；如中文不自然可输出很短英文商品名
+5. 只返回一个商品名，不要任何解释`)
+
+	userPrompt := buildCoreItemPromptInput(input)
 
 	temperature := float32(0.1)
 	seed := 42
@@ -193,7 +203,7 @@ func (s *OpenAISelector) ExtractCoreItemByAI(ctx context.Context, title string) 
 		Model: s.openaiClient.GetDefaultModel(),
 		Messages: []openaiClient.ChatCompletionMessage{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: title},
+			{Role: "user", Content: userPrompt},
 		},
 		Temperature: &temperature,
 		Seed:        &seed,
@@ -208,6 +218,54 @@ func (s *OpenAISelector) ExtractCoreItemByAI(ctx context.Context, title string) 
 	}
 
 	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+}
+
+func buildCoreItemPromptInput(input CoreItemInput) string {
+	var builder strings.Builder
+	if title := strings.TrimSpace(input.Title); title != "" {
+		builder.WriteString("商品标题: ")
+		builder.WriteString(title)
+		builder.WriteString("\n")
+	}
+	if productType := strings.TrimSpace(input.ProductType); productType != "" {
+		builder.WriteString("产品类别: ")
+		builder.WriteString(productType)
+		builder.WriteString("\n")
+	}
+	if len(input.CategoryPath) > 0 {
+		path := make([]string, 0, len(input.CategoryPath))
+		for _, item := range input.CategoryPath {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			path = append(path, item)
+		}
+		if len(path) > 0 {
+			builder.WriteString("来源类目: ")
+			builder.WriteString(strings.Join(path, " > "))
+			builder.WriteString("\n")
+		}
+	}
+	if len(input.Attributes) > 0 {
+		attrOrder := []string{"产品类别", "品类", "category", "空间", "用途", "材质", "style"}
+		written := 0
+		for _, key := range attrOrder {
+			value := strings.TrimSpace(input.Attributes[key])
+			if value == "" {
+				continue
+			}
+			builder.WriteString(key)
+			builder.WriteString(": ")
+			builder.WriteString(value)
+			builder.WriteString("\n")
+			written++
+			if written >= 4 {
+				break
+			}
+		}
+	}
+	return strings.TrimSpace(builder.String())
 }
 
 // CategoryManager 分类管理器
@@ -347,18 +405,19 @@ func buildFullCategoryPath(node category.CategoryTreeNode) string {
 
 // GetCategoryIDBySuggest 通过SuggestCategoryByText接口推荐分类，返回第一个有效的分类ID。
 // categoryAPI 为 nil 或接口返回空结果时返回 0, nil（调用方应 fallback）。
-func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, title string, categoryAPI interface {
+func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, input CoreItemInput, categoryAPI interface {
 	SuggestCategoryByText(productInfo string) (*category.SuggestCategoryResponse, error)
 }, cache *aicache.Cache) (int, error) {
 	// 1. 用AI提取核心物品描述
 	aiCtx, cancel := timeout.WithAIShortTimeout(ctx)
 	defer cancel()
 
-	coreItem, err := m.aiSelector.ExtractCoreItemByAI(aiCtx, title)
+	coreItem, err := m.aiSelector.ExtractCoreItemByAI(aiCtx, input)
 	if err != nil {
 		return 0, fmt.Errorf("AI提取核心物品失败: %w", err)
 	}
-	logger.GetGlobalLogger("shein/category").Infof("AI提取核心物品: title=%q -> coreItem=%q", title, coreItem)
+	logger.GetGlobalLogger("shein/category").Infof("AI提取核心物品: title=%q, productType=%q, categoryPath=%q -> coreItem=%q",
+		input.Title, input.ProductType, strings.Join(input.CategoryPath, " > "), coreItem)
 
 	// 2. 查缓存（以 coreItem 为 key）
 	cacheKey := aicache.HashKey("suggest:" + coreItem)

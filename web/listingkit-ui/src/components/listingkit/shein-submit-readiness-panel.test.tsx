@@ -103,11 +103,19 @@ describe("SheinSubmitReadinessPanel", () => {
   });
 
   it("renders ready state without blocker lists", () => {
+    const onSubmit = vi.fn();
     render(
       <SheinSubmitReadinessPanel
         readiness={{
           status: "ready",
           summary: ["SHEIN 资料包已具备提交前所需的关键骨架"],
+        }}
+        submission={{
+          last_action: "publish",
+          last_status: "success",
+          last_result: {
+            message: "success",
+          },
         }}
         workspaceOverview={{
           headline: "SHEIN 工作台已就绪",
@@ -119,12 +127,16 @@ describe("SheinSubmitReadinessPanel", () => {
             ready: true,
           },
         }}
+        canSubmit
+        onSubmit={onSubmit}
       />,
     );
 
     expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.getByText("SHEIN 工作台已就绪")).toBeInTheDocument();
-    expect(screen.getByText("Submit to SHEIN")).toBeInTheDocument();
+    expect(screen.getAllByText("Submit to SHEIN")).toHaveLength(2);
+    expect(screen.getByText("Latest submission")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit to SHEIN" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open fix path" })).not.toBeInTheDocument();
     expect(screen.queryByText("Blocking items")).not.toBeInTheDocument();
   });

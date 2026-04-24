@@ -12,11 +12,39 @@ func applySourceBackedAttributes(result *productenrich.ProductJSON, analysis *pr
 		return
 	}
 
+	applySourceBackedCoreFields(result, analysis)
+
 	attributes := buildSourceBackedAttributes(analysis)
 	if len(attributes) == 0 {
 		return
 	}
 	result.Attributes = attributes
+}
+
+func applySourceBackedCoreFields(result *productenrich.ProductJSON, analysis *productenrich.ProductAnalysis) {
+	if result == nil || analysis == nil || analysis.ScrapedData == nil {
+		return
+	}
+
+	scraped := analysis.ScrapedData
+	if title := strings.TrimSpace(scraped.Title); title != "" {
+		result.Title = title
+	}
+	if categoryPath := normalizeScrapedCategoryPath(scraped.Category); len(categoryPath) > 0 {
+		result.Category = append([]string(nil), categoryPath...)
+	}
+	if description := strings.TrimSpace(scraped.Description); description != "" {
+		result.Description = description
+	}
+	if len(scraped.Images) > 0 {
+		result.Images = append([]string(nil), scraped.Images...)
+	}
+	if len(scraped.VariantDimensions) > 0 {
+		result.VariantDimensions = append([]productenrich.ScrapedVariantDimension(nil), scraped.VariantDimensions...)
+	}
+	if len(scraped.Variants) > 0 {
+		result.Variants = append([]productenrich.ProductVariant(nil), scraped.Variants...)
+	}
 }
 
 func buildSourceBackedAttributes(analysis *productenrich.ProductAnalysis) map[string]string {

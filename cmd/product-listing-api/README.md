@@ -364,7 +364,121 @@ productimage:
 - `platforms` 支持：`amazon`、`shein`、`temu`、`walmart`
 - 不传 `platforms` 时默认生成四个平台资料包
 - `options.process_images=true` 时会串联 `productimage` 产出主图、白底图和辅图地址
+- `options.sds` 是可选字段；仅当服务端已配置有效 SDS 登录态，且 `variant_id>0` 时才会在图片处理成功后触发 SDS 设计同步
 - `shein_store_id` 是可选字段；当需要启用 SHEIN 在线类目解析和属性模板加载时应传入有效店铺 ID，否则会降级为离线解析
+
+### 带 SDS 同步的请求示例
+
+下面这条请求会在 `productimage` 成功后，自动把选中的设计图同步到 SDS 设计页：
+
+```json
+{
+  "image_urls": ["https://example.com/hero.jpg"],
+  "text": "Bluetooth headphones with ANC",
+  "platforms": ["amazon"],
+  "options": {
+    "process_images": true,
+    "sds": {
+      "variant_id": 89764,
+      "parent_product_id": 89763,
+      "prototype_group_id": 14555,
+      "layer_id": "698744758333792256",
+      "design_type": "material",
+      "fit_level": 1,
+      "resize_mode": 0
+    }
+  }
+}
+```
+
+字段说明：
+- `variant_id`
+  必填。SDS 子 SKU ID，`listingkit` 只有在这个值大于 `0` 时才会触发同步
+- `parent_product_id`
+  可选。父商品 ID；不传时会由 SDS 设计初始化链路自动补足
+- `prototype_group_id`
+  可选。模板组 ID；不传时会优先使用设计页默认模板组
+- `layer_id`
+  可选。目标印花层 ID；不传时会自动选择当前模板的主设计层
+- `design_type`
+  可选。默认建议传 `material`，与当前 SDS 设计页真实请求保持一致
+- `fit_level`
+  可选。素材缩放级别；默认 `1`
+- `resize_mode`
+  可选。素材缩放模式；默认 `0`
+
+已验证可直接联调的一组参数：
+- `variant_id = 89764`
+- `parent_product_id = 89763`
+- `prototype_group_id = 14555`
+- `layer_id = 698744758333792256`
+
+### 最短联调步骤
+
+启动本地服务后，可以直接用下面两步验证 `listingkit -> SDS` 是否打通。
+
+1. 提交生成任务
+
+```bash
+curl -X POST "http://127.0.0.1:8080/api/v1/listing-kits/generate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_urls": ["https://example.com/hero.jpg"],
+    "text": "Bluetooth headphones with ANC",
+    "platforms": ["amazon"],
+    "options": {
+      "process_images": true,
+      "sds": {
+        "variant_id": 89764,
+        "parent_product_id": 89763,
+        "prototype_group_id": 14555,
+        "layer_id": "698744758333792256",
+        "design_type": "material",
+        "fit_level": 1,
+        "resize_mode": 0
+      }
+    }
+  }'
+```
+
+典型返回：
+
+```json
+{
+  "task_id": "6d4028d9-6a5a-4e1a-9db7-4a1aef7b43b0",
+  "status": "pending"
+}
+```
+
+2. 轮询任务结果
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/listing-kits/tasks/6d4028d9-6a5a-4e1a-9db7-4a1aef7b43b0"
+```
+
+判定是否成功，优先看这几个字段：
+- `status = completed`
+- `result.sds_sync.status = completed`
+- `result.sds_sync.material_id > 0`
+- `result.child_tasks` 里存在 `kind = sds_design_sync` 且 `status = completed`
+
+如果只想看 SDS 结果，最小关注片段大致如下：
+
+```json
+{
+  "status": "completed",
+  "result": {
+    "sds_sync": {
+      "variant_id": 89764,
+      "product_id": 89764,
+      "prototype_group_id": 14555,
+      "layer_id": "698744758333792256",
+      "material_id": 459421935,
+      "status": "completed"
+    }
+  }
+}
+```
 
 ### 状态
 
@@ -379,6 +493,7 @@ productimage:
   返回统一结果，核心字段包括：
   - `canonical_product`
   - `image_assets`
+  - `sds_sync`
   - `amazon`
   - `shein`
   - `temu`
@@ -476,6 +591,39 @@ productimage:
     `presentation.scene=restore_preview`
     适合客户端在执行历史回滚前先做一次确认
   - 适合客户端在真正保存前先做一次表单检查
+
+### SDS 同步结果示例
+
+当 `options.sds` 生效时，`GET /api/v1/listing-kits/tasks/:task_id` 的 `result` 里会多出 `sds_sync`，同时 `child_tasks` 会出现 `kind=sds_design_sync`：
+
+```json
+{
+  "task_id": "6d4028d9-6a5a-4e1a-9db7-4a1aef7b43b0",
+  "status": "completed",
+  "result": {
+    "sds_sync": {
+      "variant_id": 89764,
+      "product_id": 89764,
+      "prototype_group_id": 14555,
+      "layer_id": "698744758333792256",
+      "material_id": 459421935,
+      "status": "completed"
+    },
+    "child_tasks": [
+      {
+        "kind": "sds_design_sync",
+        "status": "completed"
+      }
+    ]
+  }
+}
+```
+
+失败时的行为：
+- 不会打断 `listingkit` 主流程
+- `result.sds_sync.status` 会变成 `failed`
+- `result.sds_sync.error` 会带错误信息
+- `result.summary.warnings` 会追加一条 `sds design sync failed: ...`
 
 ### 编辑稿请求示例
 

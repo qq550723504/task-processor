@@ -57,7 +57,7 @@ func (s *service) runPipeline(ctx context.Context, state *PipelineState) error {
 			durationMS := time.Since(startedAt).Milliseconds()
 			if degraded, ok := asNeedsReviewStageFailure(err); ok {
 				state.markNeedsReviewStage(degraded.stage, durationMS, degraded.reason)
-				return s.runNeedsReviewRecoveryStages(ctx, state)
+				return s.runNeedsReviewRecoveryStages(ctx, state, degraded.stage)
 			}
 			state.ensureResult()
 			state.Result.StageSummaries = append(state.Result.StageSummaries, ImageStageSummary{
@@ -209,6 +209,22 @@ func (s *service) runSubjectStage(ctx context.Context, state *PipelineState) err
 		startedAt := time.Now()
 		asset, err := s.subjectExtractor.Extract(ctx, state.Candidates.PrimarySource, state.Context)
 		if err != nil {
+			if ClassifyProcessFailure(err) == FailureDispositionNoRetry {
+				state.Result.SubjectCutout = &ImageAsset{
+					URL:       state.Candidates.PrimarySource,
+					Type:      AssetTypeSubjectCutout,
+					SourceURL: state.Candidates.PrimarySource,
+					Operations: []string{
+						"pass_through_subject",
+					},
+					Metadata: map[string]string{
+						"fallback_reason": "subject_extraction_no_retry",
+					},
+				}
+				reason := fmt.Sprintf("extract_subject degraded to pass-through subject: %v", err)
+				state.addTrace("extract_subject", state.Candidates.PrimarySource, string(AssetTypeSubjectCutout), "fallback", time.Since(startedAt), reason)
+				return newNeedsReviewStageFailure("extract_subject", err, reason)
+			}
 			state.addTrace("extract_subject", state.Candidates.PrimarySource, string(AssetTypeSubjectCutout), "failed", time.Since(startedAt), err.Error())
 			return err
 		}

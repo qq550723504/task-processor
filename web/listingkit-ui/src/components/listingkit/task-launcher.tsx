@@ -49,6 +49,12 @@ export function TaskLauncher() {
           <Button tone="secondary" onClick={() => router.push("/listing-kits/new")}>
             Create New Task
           </Button>
+          <Button tone="secondary" onClick={() => router.push("/listing-kits/sds")}>
+            Open SDS Sync
+          </Button>
+          <Button tone="secondary" onClick={() => router.push("/listing-kits/shein")}>
+            Open SHEIN Studio
+          </Button>
           <Button
             disabled={!normalizedTaskId}
             onClick={() => openTask("workspace", normalizedTaskId)}

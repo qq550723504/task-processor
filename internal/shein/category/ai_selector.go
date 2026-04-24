@@ -33,7 +33,7 @@ func (h *AICategorySelectorHandler) Handle(ctx *shein.TaskContext) error {
 	categoryManager := NewCategoryManager(aiSelector)
 
 	// 优先尝试：AI提取核心物品 -> SuggestCategoryByText
-	suggestedID, err := categoryManager.GetCategoryIDBySuggest(ctx.Context, productTitle, ctx.CategoryAPI, ctx.AICache)
+	suggestedID, err := categoryManager.GetCategoryIDBySuggest(ctx.Context, CoreItemInput{Title: productTitle}, ctx.CategoryAPI, ctx.AICache)
 	if err != nil {
 		logger.GetGlobalLogger("shein/category").Warnf("SuggestCategory流程失败，降级到AI分类树选择: %v", err)
 	}

@@ -353,7 +353,13 @@ func buildSaleAttributePayloadMap(payload *sheinpub.InspectionSaleAttributePaylo
 
 func buildPendingAttributes(pkg *sheinpub.Package) []common.Attribute {
 	if pkg == nil || len(pkg.ProductAttributes) == 0 {
+		if pkg != nil && pkg.AttributeResolution != nil && len(pkg.AttributeResolution.PendingAttributes) > 0 {
+			return append([]common.Attribute(nil), pkg.AttributeResolution.PendingAttributes...)
+		}
 		return nil
+	}
+	if pkg.AttributeResolution != nil && len(pkg.AttributeResolution.PendingAttributes) > 0 {
+		return append([]common.Attribute(nil), pkg.AttributeResolution.PendingAttributes...)
 	}
 	resolvedNames := map[string]struct{}{}
 	for _, attr := range pkg.ResolvedAttributes {

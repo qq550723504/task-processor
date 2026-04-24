@@ -11,6 +11,8 @@ import (
 
 type stubAttributeAPI struct {
 	templates *sheinattribute.AttributeTemplateInfo
+	validateCustom func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error)
+	addCustom func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error)
 }
 
 type assemblerStubCategoryAPI struct {
@@ -65,6 +67,20 @@ func (assemblerStubCategoryAPI) SuggestCategoryByText(string) (*sheincategory.Su
 
 func (s stubAttributeAPI) GetAttributeTemplates(categoryID int) (*sheinattribute.AttributeTemplateInfo, error) {
 	return s.templates, nil
+}
+
+func (s stubAttributeAPI) ValidateCustomAttributeValue(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+	if s.validateCustom != nil {
+		return s.validateCustom(attributeID, attributeValue, categoryID, spuName)
+	}
+	return nil, nil
+}
+
+func (s stubAttributeAPI) AddCustomAttributeValue(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+	if s.addCustom != nil {
+		return s.addCustom(req)
+	}
+	return nil, nil
 }
 
 func TestBuildRequestSKCsGroupsVariantsByColor(t *testing.T) {

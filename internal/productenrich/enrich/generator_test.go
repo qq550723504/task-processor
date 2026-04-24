@@ -146,6 +146,9 @@ func TestGenerateJSON_LLMFail_FallsBackToAnalysis(t *testing.T) {
 	g := newTestJSONGenerator(t, "", errors.New("llm down"))
 
 	analysis := &productenrich.ProductAnalysis{
+		ScrapedData: &productenrich.ScrapedData{
+			Category: "家居饰品 > 户外用品 > 户外坐垫",
+		},
 		Representation: &productenrich.ProductRepresentation{
 			ProductType: "Gadget",
 			Features:    []string{"durable"},
@@ -161,6 +164,9 @@ func TestGenerateJSON_LLMFail_FallsBackToAnalysis(t *testing.T) {
 	}
 	if result.Description == "" {
 		t.Error("expected fallback path to populate description")
+	}
+	if len(result.Category) != 3 || result.Category[2] != "户外坐垫" {
+		t.Fatalf("Category = %#v", result.Category)
 	}
 }
 

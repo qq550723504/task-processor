@@ -39,6 +39,20 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": task.ID, "status": task.Status, "created_at": task.CreatedAt})
 }
 
+func (h *handler) ListTasks(c *gin.Context) {
+	var query listingkit.TaskListQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	page, err := h.service.ListTasks(c.Request.Context(), &query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "task_list_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, page)
+}
+
 func (h *handler) GetTaskResult(c *gin.Context) {
 	result, err := h.service.GetTaskResult(c.Request.Context(), c.Param("task_id"))
 	if err != nil {

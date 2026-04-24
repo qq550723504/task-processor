@@ -16,6 +16,20 @@ export function PreviewCanvas({
     description: string;
   } | null;
 }) {
+  if (preview?.asset_url) {
+    return (
+      <Card className="min-h-[32rem] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(199,210,254,0.45),_transparent_32%),linear-gradient(180deg,_#fafaf9,_#f4f4f5)] p-6">
+        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-lg shadow-zinc-950/5">
+          <img
+            alt={preview.template_label ?? preview.asset_id ?? "Listing preview"}
+            className="mx-auto max-h-[32rem] w-auto rounded-xl object-contain"
+            src={preview.asset_url}
+          />
+        </div>
+      </Card>
+    );
+  }
+
   if (!preview?.preview_svg) {
     return (
       <EmptyState

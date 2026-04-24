@@ -65,6 +65,7 @@ func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T
 	t.Parallel()
 
 	productTypeID := 901
+	colorValueID := 9001
 	readiness := buildSheinSubmitReadiness(&SheinPackage{
 		CategoryID:    3001,
 		CategoryPath:  []string{"Home", "Kitchen", "Bottle"},
@@ -95,6 +96,13 @@ func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T
 			}},
 			SKCList: []SheinSKCRequestDraft{{
 				SupplierCode: "SKC-1",
+				SaleAttribute: &SheinResolvedSaleAttribute{
+					Scope:            "skc",
+					Name:             "Color",
+					Value:            "Black",
+					AttributeID:      501,
+					AttributeValueID: &colorValueID,
+				},
 				SKUList: []SheinSKUDraft{{
 					SupplierSKU: "SKU-1",
 				}},
@@ -144,10 +152,139 @@ func TestBuildSheinSubmitReadinessReadyWithWarningsAfterManualNotes(t *testing.T
 	}
 }
 
-func TestBuildSheinSubmitReadinessBlockedWhenCategoryReviewStillPending(t *testing.T) {
+func TestBuildSheinSubmitReadinessAcceptsDraftMainImage(t *testing.T) {
 	t.Parallel()
 
 	productTypeID := 901
+	readiness := buildSheinSubmitReadiness(&SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Decor", "Cushions"},
+		ProductTypeID: &productTypeID,
+		ResolvedAttributes: []SheinResolvedAttribute{{
+			Name:        "material",
+			AttributeID: 7001,
+		}},
+		CategoryResolution: &SheinCategoryResolution{
+			Status:     "resolved",
+			CategoryID: 3001,
+		},
+		AttributeResolution: &SheinAttributeResolution{
+			Status:        "resolved",
+			ResolvedCount: 1,
+		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			Status:             "resolved",
+			PrimaryAttributeID: 27,
+		},
+		RequestDraft: &SheinRequestDraft{
+			ImageInfo: &SheinImageDraft{
+				MainImage: "http://localhost:8080/api/v1/listing-kits/uploads/files/20260423/main.png",
+			},
+			SKCList: []SheinSKCRequestDraft{{
+				SupplierCode: "SKC-1",
+				SKUList: []SheinSKUDraft{{
+					SupplierSKU: "SKU-1",
+				}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{},
+		SkcList: []SheinSKCPackage{{
+			SupplierCode: "SKC-1",
+			SKUs: []PlatformVariant{{
+				SKU: "SKU-1",
+			}},
+		}},
+	})
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	for _, item := range readiness.BlockingItems {
+		if item.Key == "images" {
+			t.Fatalf("images should not block when request draft has a main image: %+v", item)
+		}
+	}
+}
+
+func TestBuildSheinSubmitReadinessAcceptsResolvedCustomSaleValuesFromDraft(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	customValueID := 277561282
+	readiness := buildSheinSubmitReadiness(&SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Outdoor", "Cushions"},
+		ProductTypeID: &productTypeID,
+		Images: &PlatformImageSet{
+			MainImage: "https://cdn.example.com/main.jpg",
+		},
+		ResolvedAttributes: []SheinResolvedAttribute{{
+			Name:        "material",
+			AttributeID: 7001,
+		}},
+		CategoryResolution: &SheinCategoryResolution{
+			Status:     "resolved",
+			CategoryID: 3001,
+		},
+		AttributeResolution: &SheinAttributeResolution{
+			Status:        "resolved",
+			ResolvedCount: 1,
+		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			Status:             "partial",
+			PrimaryAttributeID: 27,
+			ReviewNotes: []string{
+				`SHEIN 销售属性值使用自定义值承接: 模板属性 "Color" 的值 "牛津布/防水防晒/深蓝" 已创建为自定义候选`,
+			},
+		},
+		RequestDraft: &SheinRequestDraft{
+			ResolvedAttributes: []SheinResolvedAttribute{{
+				Name:        "material",
+				AttributeID: 7001,
+			}},
+			SKCList: []SheinSKCRequestDraft{{
+				SupplierCode: "SKC-1",
+				SaleAttribute: &SheinResolvedSaleAttribute{
+					Scope:            "skc",
+					Name:             "Color",
+					Value:            "牛津布/防水防晒/深蓝",
+					AttributeID:      27,
+					AttributeValueID: &customValueID,
+					MatchedBy:        "custom_attribute_value",
+				},
+				SKUList: []SheinSKUDraft{{
+					SupplierSKU: "SKU-1",
+				}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{},
+		SkcList: []SheinSKCPackage{{
+			SupplierCode: "SKC-1",
+			SKUs: []PlatformVariant{{
+				SKU: "SKU-1",
+			}},
+		}},
+	})
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if readiness.Ready != true {
+		t.Fatalf("ready = false, want true; readiness=%+v", readiness)
+	}
+	if readiness.Status != "ready" {
+		t.Fatalf("status = %q, want ready", readiness.Status)
+	}
+	for _, item := range readiness.BlockingItems {
+		if item.Key == "sale_attributes" {
+			t.Fatalf("sale_attributes should not block when custom sale values are resolved in draft: %+v", item)
+		}
+	}
+}
+
+func TestBuildSheinSubmitReadinessWarnsWhenCategoryReviewStillPending(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	colorValueID := 9001
 	readiness := buildSheinSubmitReadiness(&SheinPackage{
 		CategoryID:    3001,
 		CategoryPath:  []string{"Home", "Kitchen", "Bottle"},
@@ -180,6 +317,13 @@ func TestBuildSheinSubmitReadinessBlockedWhenCategoryReviewStillPending(t *testi
 			}},
 			SKCList: []SheinSKCRequestDraft{{
 				SupplierCode: "SKC-1",
+				SaleAttribute: &SheinResolvedSaleAttribute{
+					Scope:            "skc",
+					Name:             "Color",
+					Value:            "Black",
+					AttributeID:      501,
+					AttributeValueID: &colorValueID,
+				},
 				SKUList: []SheinSKUDraft{{
 					SupplierSKU: "SKU-1",
 				}},
@@ -196,17 +340,95 @@ func TestBuildSheinSubmitReadinessBlockedWhenCategoryReviewStillPending(t *testi
 	if readiness == nil {
 		t.Fatal("expected readiness")
 	}
-	if readiness.Ready {
-		t.Fatalf("ready = true, want false; readiness=%+v", readiness)
+	if !readiness.Ready {
+		t.Fatalf("ready = false, want true; readiness=%+v", readiness)
 	}
-	if readiness.Status != "blocked" {
-		t.Fatalf("status = %q, want blocked", readiness.Status)
+	if readiness.Status != "ready_with_warnings" {
+		t.Fatalf("status = %q, want ready_with_warnings", readiness.Status)
 	}
-	if len(readiness.BlockingItems) == 0 || readiness.BlockingItems[0].Key != "category" {
-		t.Fatalf("blocking items = %+v, want category blocker first", readiness.BlockingItems)
+	if len(readiness.BlockingItems) != 0 {
+		t.Fatalf("blocking items = %+v, want none", readiness.BlockingItems)
 	}
-	if readiness.BlockingItems[0].Reason == nil || readiness.BlockingItems[0].Reason.Code != "category_unresolved" {
-		t.Fatalf("category blocker reason = %+v", readiness.BlockingItems[0].Reason)
+	found := false
+	for _, item := range readiness.WarningItems {
+		if item.Key == "category_review" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected category_review warning, got %+v", readiness.WarningItems)
+	}
+}
+
+func TestBuildSheinSubmitReadinessWarnsWhenRequiredDisplayAttributesArePending(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	colorValueID := 9001
+	readiness := buildSheinSubmitReadiness(&SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Outdoor", "Cushions"},
+		ProductTypeID: &productTypeID,
+		Images: &PlatformImageSet{
+			MainImage: "https://cdn.example.com/main.jpg",
+		},
+		ResolvedAttributes: []SheinResolvedAttribute{{
+			Name:        "Material",
+			AttributeID: 160,
+		}},
+		CategoryResolution: &SheinCategoryResolution{
+			Status:     "resolved",
+			CategoryID: 3001,
+		},
+		AttributeResolution: &SheinAttributeResolution{
+			Status:            "partial",
+			ResolvedCount:     1,
+			UnresolvedCount:   1,
+			PendingAttributes: []PlatformAttribute{{Name: "Width (cm)"}},
+		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			Status:             "resolved",
+			PrimaryAttributeID: 27,
+		},
+		RequestDraft: &SheinRequestDraft{
+			ResolvedAttributes: []SheinResolvedAttribute{{
+				Name:        "Material",
+				AttributeID: 160,
+			}},
+			SKCList: []SheinSKCRequestDraft{{
+				SupplierCode: "SKC-1",
+				SaleAttribute: &SheinResolvedSaleAttribute{
+					Name:             "Color",
+					AttributeID:      27,
+					AttributeValueID: &colorValueID,
+				},
+				SKUList: []SheinSKUDraft{{
+					SupplierSKU: "SKU-1",
+				}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{},
+		SkcList: []SheinSKCPackage{{
+			SupplierCode: "SKC-1",
+			SKUs:         []PlatformVariant{{SKU: "SKU-1"}},
+		}},
+	})
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if !readiness.Ready {
+		t.Fatalf("ready = false, want true; readiness=%+v", readiness)
+	}
+	found := false
+	for _, item := range readiness.WarningItems {
+		if item.Key == "attribute_review" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected attribute_review warning, got %+v", readiness.WarningItems)
 	}
 }
 

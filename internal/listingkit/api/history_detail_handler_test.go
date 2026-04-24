@@ -23,6 +23,9 @@ type stubHistoryDetailService struct {
 func (s *stubHistoryDetailService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {
 	return nil, errors.New("not implemented")
 }
+func (s *stubHistoryDetailService) ListTasks(ctx context.Context, query *listingkit.TaskListQuery) (*listingkit.TaskListPage, error) {
+	return nil, errors.New("not implemented")
+}
 
 func (s *stubHistoryDetailService) UploadImages(ctx context.Context, req *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
 	return nil, errors.New("not implemented")
@@ -87,6 +90,10 @@ func (s *stubHistoryDetailService) ApplyTaskRevision(ctx context.Context, taskID
 }
 
 func (s *stubHistoryDetailService) ValidateTaskRevision(ctx context.Context, taskID string, req *listingkit.ApplyRevisionRequest) (*listingkit.RevisionValidationResult, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubHistoryDetailService) SubmitTask(ctx context.Context, taskID string, req *listingkit.SubmitTaskRequest) (*listingkit.ListingKitPreview, error) {
 	return nil, errors.New("not implemented")
 }
 

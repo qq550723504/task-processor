@@ -52,3 +52,37 @@ func TestBuildActionPlatformRenderPreviewsFiltersByPlatformAndCapability(t *test
 		t.Fatalf("preview summary = %+v, want detail capability summary", previews[0].Summary)
 	}
 }
+
+func TestBuildActionPlatformRenderPreviewsKeepsRasterGalleryForSubjectPreview(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{
+		PlatformAssetRenderPreviews: []PlatformAssetRenderPreviews{
+			{
+				Platform: "shein",
+				Gallery: []AssetRenderPreviewSlot{
+					{
+						Slot:     "gallery",
+						AssetID:  "asset-gallery-1",
+						AssetURL: "http://127.0.0.1:9100/listingkit-assets/gallery-1.png",
+					},
+				},
+			},
+		},
+		AssetBundle: &asset.Bundle{},
+	}
+
+	previews := buildActionPlatformRenderPreviews(result, &GenerationQueueQuery{
+		Platform:                      "shein",
+		Slot:                          "gallery",
+		PreviewCapability:             "subject_preview",
+		RenderPreviewAvailable:        true,
+		RenderPreviewAvailablePresent: true,
+	})
+	if len(previews) != 1 {
+		t.Fatalf("previews = %+v, want one filtered platform", previews)
+	}
+	if len(previews[0].Gallery) != 1 || previews[0].Gallery[0].AssetID != "asset-gallery-1" {
+		t.Fatalf("gallery previews = %+v, want raster gallery retained for subject preview", previews[0].Gallery)
+	}
+}

@@ -219,8 +219,7 @@ func matchesRenderPreviewSlot(slot AssetRenderPreviewSlot, query *GenerationQueu
 	if query.PreviewCapability == "" {
 		return true
 	}
-	item := GenerationWorkQueueItem{RenderPreviewLayerTypes: append([]string(nil), slot.LayerTypes...)}
-	for _, capability := range buildRenderPreviewCapabilities(item) {
+	for _, capability := range buildRenderPreviewCapabilitiesForSlot(slot) {
 		if capability == query.PreviewCapability {
 			return true
 		}

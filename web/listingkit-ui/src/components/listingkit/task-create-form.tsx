@@ -13,6 +13,7 @@ import {
   type TaskCreateDraft,
 } from "@/components/listingkit/task-create-draft";
 import { TaskInputGuidance } from "@/components/listingkit/task-input-guidance";
+import { TaskSDSOptions } from "@/components/listingkit/task-sds-options";
 import {
   getPlatformSceneDefaults,
   hasAnySceneCustomization,
@@ -84,6 +85,14 @@ const schema = z
     productUrl: z.string().trim(),
     platforms: z.array(z.string()).min(1, "Select at least one platform."),
     sheinStoreId: z.string().trim(),
+    sdsEnabled: z.boolean(),
+    sdsVariantId: z.string().trim(),
+    sdsParentProductId: z.string().trim(),
+    sdsPrototypeGroupId: z.string().trim(),
+    sdsLayerId: z.string().trim(),
+    sdsDesignType: z.string().trim(),
+    sdsFitLevel: z.string().trim(),
+    sdsResizeMode: z.string().trim(),
     sceneCategory: z.string().trim(),
     sceneStyle: z.string().trim(),
     backgroundTone: z.string().trim(),
@@ -112,6 +121,59 @@ function parseOptionalPositiveInt(input: string) {
     return undefined;
   }
   return parsed;
+}
+
+function parseOptionalInt(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function parseOptionalNumber(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function buildSDSOptions(values: FormValues) {
+  if (!values.sdsEnabled) {
+    return undefined;
+  }
+
+  const variantId = parseOptionalPositiveInt(values.sdsVariantId ?? "");
+  if (!variantId) {
+    return undefined;
+  }
+
+  return {
+    variant_id: variantId,
+    ...(parseOptionalPositiveInt(values.sdsParentProductId ?? "")
+      ? { parent_product_id: parseOptionalPositiveInt(values.sdsParentProductId ?? "") }
+      : {}),
+    ...(parseOptionalPositiveInt(values.sdsPrototypeGroupId ?? "")
+      ? { prototype_group_id: parseOptionalPositiveInt(values.sdsPrototypeGroupId ?? "") }
+      : {}),
+    ...(values.sdsLayerId.trim() ? { layer_id: values.sdsLayerId.trim() } : {}),
+    ...(values.sdsDesignType.trim() ? { design_type: values.sdsDesignType.trim() } : {}),
+    ...(parseOptionalNumber(values.sdsFitLevel ?? "") !== undefined
+      ? { fit_level: parseOptionalNumber(values.sdsFitLevel ?? "") }
+      : {}),
+    ...(parseOptionalInt(values.sdsResizeMode ?? "") !== undefined
+      ? { resize_mode: parseOptionalInt(values.sdsResizeMode ?? "") }
+      : {}),
+  };
 }
 
 function buildSceneOptions(values: FormValues) {
@@ -170,10 +232,12 @@ export function TaskCreateForm({
   initialValues,
   initialFocus,
   fieldIssues,
+  variant = "default",
 }: {
   initialValues?: Partial<TaskCreateDraft>;
   initialFocus?: "text" | "imageUrls" | "productUrl";
   fieldIssues?: Array<"text" | "imageUrls" | "productUrl">;
+  variant?: "default" | "sds";
 }) {
   const router = useRouter();
   const createTask = useCreateTask();
@@ -197,6 +261,9 @@ export function TaskCreateForm({
         initialValues?.customSceneHint,
     ),
   );
+  const [sdsEnabled, setSDSEnabled] = useState(() =>
+    variant === "sds" || Boolean(initialValues?.sdsEnabled),
+  );
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const {
     register,
@@ -212,8 +279,21 @@ export function TaskCreateForm({
       text: initialValues?.text ?? "",
       imageUrls: initialValues?.imageUrls ?? "",
       productUrl: initialValues?.productUrl ?? "",
-      platforms: initialValues?.platforms ?? [],
+      platforms:
+        initialValues?.platforms && initialValues.platforms.length > 0
+          ? initialValues.platforms
+          : variant === "sds"
+            ? ["amazon"]
+            : [],
       sheinStoreId: initialValues?.sheinStoreId ?? "",
+      sdsEnabled: variant === "sds" || Boolean(initialValues?.sdsEnabled),
+      sdsVariantId: initialValues?.sdsVariantId ?? "",
+      sdsParentProductId: initialValues?.sdsParentProductId ?? "",
+      sdsPrototypeGroupId: initialValues?.sdsPrototypeGroupId ?? "",
+      sdsLayerId: initialValues?.sdsLayerId ?? "",
+      sdsDesignType: initialValues?.sdsDesignType ?? "material",
+      sdsFitLevel: initialValues?.sdsFitLevel ?? "1",
+      sdsResizeMode: initialValues?.sdsResizeMode ?? "0",
       sceneCategory: initialValues?.sceneCategory ?? "",
       sceneStyle: initialValues?.sceneStyle ?? "",
       backgroundTone: initialValues?.backgroundTone ?? "",
@@ -243,6 +323,38 @@ export function TaskCreateForm({
   const currentSheinStoreId = useWatch({
     control,
     name: "sheinStoreId",
+  });
+  const currentSDSEnabled = useWatch({
+    control,
+    name: "sdsEnabled",
+  });
+  const currentSDSVariantId = useWatch({
+    control,
+    name: "sdsVariantId",
+  });
+  const currentSDSParentProductId = useWatch({
+    control,
+    name: "sdsParentProductId",
+  });
+  const currentSDSPrototypeGroupId = useWatch({
+    control,
+    name: "sdsPrototypeGroupId",
+  });
+  const currentSDSLayerId = useWatch({
+    control,
+    name: "sdsLayerId",
+  });
+  const currentSDSDesignType = useWatch({
+    control,
+    name: "sdsDesignType",
+  });
+  const currentSDSFitLevel = useWatch({
+    control,
+    name: "sdsFitLevel",
+  });
+  const currentSDSResizeMode = useWatch({
+    control,
+    name: "sdsResizeMode",
   });
   const currentSceneCategory = useWatch({
     control,
@@ -286,6 +398,22 @@ export function TaskCreateForm({
   const imageUrlsRegistration = register("imageUrls");
   const productUrlRegistration = register("productUrl");
   const titleCopy = titleFieldCopy(activeSourceTab);
+  const pageCopy =
+    variant === "sds"
+      ? {
+          eyebrow: "SDS Sync",
+          title: "Create ListingKit task with SDS design sync",
+          description:
+            "Use the normal ListingKit pipeline, then automatically push the selected image asset into SDS after product image processing succeeds.",
+          submitLabel: "Create task and sync SDS",
+        }
+      : {
+          eyebrow: "ListingKit UI",
+          title: "Create ListingKit task",
+          description:
+            "Start with a product title, image URLs, or a product URL such as a 1688 listing, then choose the target platforms.",
+          submitLabel: "Create task",
+        };
   const primaryPlatform = selectedPlatforms?.[0];
   const platformSceneDefaults = useMemo(
     () => getPlatformSceneDefaults(primaryPlatform, currentSceneCategory),
@@ -366,7 +494,13 @@ export function TaskCreateForm({
   }, [activeSourceTab]);
 
   return (
-    <Card className="mx-auto max-w-3xl p-8">
+    <Card
+      className={
+        variant === "sds"
+          ? "mx-auto max-w-7xl rounded-[2rem] border-white/70 bg-white/78 p-8 shadow-[0_20px_80px_rgba(24,24,27,0.08)] backdrop-blur"
+          : "mx-auto max-w-3xl p-8"
+      }
+    >
       <form
         className="space-y-6"
         onSubmit={handleSubmit(async (values) => {
@@ -388,6 +522,14 @@ export function TaskCreateForm({
             productUrl,
             platforms: values.platforms,
             sheinStoreId: currentSheinStoreId,
+            sdsEnabled: currentSDSEnabled,
+            sdsVariantId: currentSDSVariantId,
+            sdsParentProductId: currentSDSParentProductId,
+            sdsPrototypeGroupId: currentSDSPrototypeGroupId,
+            sdsLayerId: currentSDSLayerId,
+            sdsDesignType: currentSDSDesignType,
+            sdsFitLevel: currentSDSFitLevel,
+            sdsResizeMode: currentSDSResizeMode,
             sceneCategory: values.sceneCategory,
             sceneStyle: values.sceneStyle,
             backgroundTone: values.backgroundTone,
@@ -397,14 +539,26 @@ export function TaskCreateForm({
             customSceneHint: values.customSceneHint,
           } satisfies TaskCreateDraft;
           const sceneOptions = buildSceneOptions(values);
+          const sdsOptions = buildSDSOptions(values);
+          if (values.sdsEnabled && !sdsOptions) {
+            setError("root", {
+              message: "SDS sync requires a valid positive Variant ID.",
+            });
+            return;
+          }
           const sheinStoreId = parseOptionalPositiveInt(values.sheinStoreId ?? "");
+          const options = {
+            ...(sceneOptions || sdsOptions ? { process_images: true } : {}),
+            ...(sceneOptions ? { scene: sceneOptions } : {}),
+            ...(sdsOptions ? { sds: sdsOptions } : {}),
+          };
           const request = {
             text: draft.text,
             image_urls: parsedImageUrls,
             platforms: values.platforms,
             ...(sheinStoreId ? { shein_store_id: sheinStoreId } : {}),
             ...(draft.productUrl ? { product_url: draft.productUrl } : {}),
-            ...(sceneOptions ? { options: { scene: sceneOptions } } : {}),
+            ...(Object.keys(options).length > 0 ? { options } : {}),
           };
           const task = await createTask.mutateAsync(request);
           saveTaskCreateDraft(task.task_id, draft);
@@ -412,15 +566,26 @@ export function TaskCreateForm({
         })}
       >
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
-            ListingKit UI
+          <p
+            className={
+              variant === "sds"
+                ? "text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-700"
+                : "text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500"
+            }
+          >
+            {pageCopy.eyebrow}
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-zinc-950">
-            Create ListingKit task
+          <h1
+            className={
+              variant === "sds"
+                ? "font-serif text-4xl tracking-[-0.04em] text-zinc-950"
+                : "text-3xl font-semibold tracking-tight text-zinc-950"
+            }
+          >
+            {pageCopy.title}
           </h1>
           <p className="text-sm leading-6 text-zinc-600">
-            Start with a product title, image URLs, or a product URL such as a
-            1688 listing, then choose the target platforms.
+            {pageCopy.description}
           </p>
         </div>
 
@@ -599,6 +764,21 @@ export function TaskCreateForm({
             </p>
           </label>
         ) : null}
+
+        <TaskSDSOptions
+          enabled={sdsEnabled}
+          onEnabledChange={(enabled) => {
+            setSDSEnabled(enabled);
+            setValue("sdsEnabled", enabled, { shouldDirty: true });
+          }}
+          variantIdRegistration={register("sdsVariantId")}
+          parentProductIdRegistration={register("sdsParentProductId")}
+          prototypeGroupIdRegistration={register("sdsPrototypeGroupId")}
+          layerIdRegistration={register("sdsLayerId")}
+          designTypeRegistration={register("sdsDesignType")}
+          fitLevelRegistration={register("sdsFitLevel")}
+          resizeModeRegistration={register("sdsResizeMode")}
+        />
 
         <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -796,7 +976,7 @@ export function TaskCreateForm({
 
         <div className="flex flex-wrap gap-3">
           <Button disabled={createTask.isPending} type="submit">
-            {createTask.isPending ? "Creating..." : "Create task"}
+            {createTask.isPending ? "Creating..." : pageCopy.submitLabel}
           </Button>
           <Button tone="secondary" onClick={() => router.push("/")} type="button">
             Cancel

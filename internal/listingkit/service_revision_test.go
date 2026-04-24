@@ -58,6 +58,12 @@ func (r *stubApplyRevisionRepo) CreateTask(ctx context.Context, task *Task) erro
 func (r *stubApplyRevisionRepo) GetTask(ctx context.Context, taskID string) (*Task, error) {
 	return r.task, nil
 }
+func (r *stubApplyRevisionRepo) ListTasks(ctx context.Context, query *TaskListQuery) ([]Task, int64, error) {
+	if r.task == nil {
+		return []Task{}, 0, nil
+	}
+	return []Task{*r.task}, 1, nil
+}
 func (r *stubApplyRevisionRepo) MarkProcessing(ctx context.Context, taskID string) error { return nil }
 func (r *stubApplyRevisionRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
 	return nil

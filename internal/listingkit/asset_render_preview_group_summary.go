@@ -19,8 +19,7 @@ func buildPlatformAssetRenderPreviewSummary(group PlatformAssetRenderPreviews) *
 	capabilityCounts := map[string]int{}
 	visualModes := make([]string, 0, len(slots))
 	for _, slot := range slots {
-		item := GenerationWorkQueueItem{RenderPreviewLayerTypes: append([]string(nil), slot.LayerTypes...)}
-		for _, capability := range buildRenderPreviewCapabilities(item) {
+		for _, capability := range buildRenderPreviewCapabilitiesForSlot(slot) {
 			capabilityCounts[capability]++
 		}
 		if slot.VisualMode != "" {

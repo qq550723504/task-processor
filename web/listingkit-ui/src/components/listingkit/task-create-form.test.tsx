@@ -74,6 +74,14 @@ describe("TaskCreateForm", () => {
       productUrl: "",
       platforms: ["shein"],
       sheinStoreId: "",
+      sdsEnabled: false,
+      sdsVariantId: "",
+      sdsParentProductId: "",
+      sdsPrototypeGroupId: "",
+      sdsLayerId: "",
+      sdsDesignType: "material",
+      sdsFitLevel: "1",
+      sdsResizeMode: "0",
       sceneCategory: "",
       sceneStyle: "",
       backgroundTone: "",
@@ -123,6 +131,14 @@ describe("TaskCreateForm", () => {
       productUrl: "https://detail.1688.com/offer/123456789.html",
       platforms: ["temu"],
       sheinStoreId: "",
+      sdsEnabled: false,
+      sdsVariantId: "",
+      sdsParentProductId: "",
+      sdsPrototypeGroupId: "",
+      sdsLayerId: "",
+      sdsDesignType: "material",
+      sdsFitLevel: "1",
+      sdsResizeMode: "0",
       sceneCategory: "",
       sceneStyle: "",
       backgroundTone: "",
@@ -251,6 +267,57 @@ describe("TaskCreateForm", () => {
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 
+  it("submits sds options when enabled", async () => {
+    mutateAsync.mockResolvedValue({
+      task_id: "task_sds",
+      status: "pending",
+      created_at: "2026-04-19T00:00:00Z",
+    });
+
+    render(<TaskCreateForm variant="sds" />);
+
+    fireEvent.change(screen.getByLabelText("Product title"), {
+      target: { value: "Women knit cardigan" },
+    });
+    fireEvent.change(screen.getByLabelText("Image URLs"), {
+      target: { value: "https://example.com/1.jpg" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("89764"), {
+      target: { value: "89764" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("89763"), {
+      target: { value: "89763" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("14555"), {
+      target: { value: "14555" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("698744758333792256"), {
+      target: { value: "698744758333792256" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create task and sync SDS" }));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        text: "Women knit cardigan",
+        image_urls: ["https://example.com/1.jpg"],
+        platforms: ["amazon"],
+        options: {
+          process_images: true,
+          sds: {
+            variant_id: 89764,
+            parent_product_id: 89763,
+            prototype_group_id: 14555,
+            layer_id: "698744758333792256",
+            design_type: "material",
+            fit_level: 1,
+            resize_mode: 0,
+          },
+        },
+      });
+    });
+  });
+
   it("uploads local files and appends returned URLs", async () => {
     uploadMutateAsync.mockResolvedValue({
       image_urls: [
@@ -334,6 +401,7 @@ describe("TaskCreateForm", () => {
         ],
         platforms: ["amazon"],
         options: {
+          process_images: true,
           scene: {
             scene_category: "shoes",
             scene_style: "lifestyle",
@@ -354,6 +422,14 @@ describe("TaskCreateForm", () => {
       productUrl: "",
       platforms: ["amazon"],
       sheinStoreId: "",
+      sdsEnabled: false,
+      sdsVariantId: "",
+      sdsParentProductId: "",
+      sdsPrototypeGroupId: "",
+      sdsLayerId: "",
+      sdsDesignType: "material",
+      sdsFitLevel: "1",
+      sdsResizeMode: "0",
       sceneCategory: "shoes",
       sceneStyle: "lifestyle",
       backgroundTone: "warm",
@@ -398,6 +474,14 @@ describe("TaskCreateForm", () => {
       productUrl: "",
       platforms: ["shein"],
       sheinStoreId: "873",
+      sdsEnabled: false,
+      sdsVariantId: "",
+      sdsParentProductId: "",
+      sdsPrototypeGroupId: "",
+      sdsLayerId: "",
+      sdsDesignType: "material",
+      sdsFitLevel: "1",
+      sdsResizeMode: "0",
       sceneCategory: "",
       sceneStyle: "",
       backgroundTone: "",

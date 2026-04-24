@@ -59,8 +59,37 @@ func isNoRetryProviderError(err error) bool {
 	}
 }
 
+func isNoRetryMessage(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if msg == "" {
+		return false
+	}
+
+	noRetrySubstrings := []string{
+		"apikey error",
+		"api key error",
+		"invalid api key",
+		"unauthorized",
+		"forbidden",
+		"insufficient balance",
+		"insufficient quota",
+		"quota exceeded",
+		"insufficient credit",
+		"billing",
+	}
+	for _, token := range noRetrySubstrings {
+		if strings.Contains(msg, token) {
+			return true
+		}
+	}
+	return false
+}
+
 func ClassifyProcessFailure(err error) FailureDisposition {
-	if IsNoRetryError(err) || isNoRetryProviderError(err) {
+	if IsNoRetryError(err) || isNoRetryProviderError(err) || isNoRetryMessage(err) {
 		return FailureDispositionNoRetry
 	}
 	return FailureDispositionRetryable

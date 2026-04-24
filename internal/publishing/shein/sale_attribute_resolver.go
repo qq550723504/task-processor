@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
@@ -23,6 +25,7 @@ func NewSaleAttributeResolver(api AttributeAPI, llm openaiclient.ChatCompleter) 
 
 func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *SaleAttributeResolution {
 	resolution := &SaleAttributeResolution{Status: "unresolved", Source: "fallback", CategoryID: categoryID(pkg)}
+	log := sheinLogger("shein/sale_attribute")
 	sourceDimensions := buildSourceVariantDimensions(canonical, common.BuildVariants(canonical))
 	resolution.SourceDimensions = append([]SourceVariantDimension(nil), sourceDimensions...)
 	if sourceSelection := selectSourceDimensions(sourceDimensions, r.llm); sourceSelection != nil {
@@ -45,19 +48,32 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *productenr
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "缺少 SHEIN AttributeAPI，当前无法加载销售属性模板")
 		return resolution
 	}
+	log.WithFields(logrus.Fields{
+		"category_id":        resolution.CategoryID,
+		"source_dimensions":  len(sourceDimensions),
+		"primary_dimension":  resolution.PrimarySourceDimension,
+		"secondary_dimension": resolution.SecondarySourceDimension,
+	}).Info("loading SHEIN sale attribute templates")
 	templates, err := r.api.GetAttributeTemplates(resolution.CategoryID)
 	if err != nil {
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 销售属性模板加载失败: "+err.Error())
+		log.WithError(err).WithField("category_id", resolution.CategoryID).Warn("failed to load SHEIN sale attribute templates")
 		return resolution
 	}
 	if templates == nil || len(templates.Data) == 0 {
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 销售属性模板为空")
+		log.WithField("category_id", resolution.CategoryID).Warn("SHEIN sale attribute templates are empty")
 		return resolution
 	}
 	saleAttributes := filterSaleScopeAttributes(templates.Data[0].AttributeInfos)
 	index := newTemplateIndex(saleAttributes)
+	log.WithFields(logrus.Fields{
+		"category_id":          resolution.CategoryID,
+		"template_groups":      len(templates.Data),
+		"sale_attribute_count": len(saleAttributes),
+	}).Info("loaded SHEIN sale attribute templates")
 	if len(index.attributes) == 0 {
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "当前类目未识别到可用的销售属性模板")
@@ -103,8 +119,12 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *productenr
 	}
 
 	resolution.Candidates = buildSaleAttributeCandidateInfos(candidates, primaryCandidate, secondaryCandidate)
-	applySelectedCandidate(index, primaryCandidate, "skc", r.llm, resolution)
-	applySelectedCandidate(index, secondaryCandidate, "sku", r.llm, resolution)
+	spuName := ""
+	if pkg != nil {
+		spuName = firstNonEmpty(pkg.SpuName, pkg.ProductNameEn)
+	}
+	applySelectedCandidate(index, primaryCandidate, "skc", r.api, resolution.CategoryID, spuName, r.llm, resolution)
+	applySelectedCandidate(index, secondaryCandidate, "sku", r.api, resolution.CategoryID, spuName, r.llm, resolution)
 	resolution.SelectionSummary = append(resolution.SelectionSummary, buildSelectionSummary(primaryCandidate, secondaryCandidate)...)
 	if primaryCandidate != nil && resolution.Source != "llm_sale_attribute_mapping" {
 		resolution.Source = "sale_attribute_templates"
@@ -130,10 +150,26 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *productenr
 			resolution.ReviewNotes = append(resolution.ReviewNotes, buildCategoryFamilyConflictReviewNotes(canonical, pkg)...)
 		}
 	}
+	log.WithFields(logrus.Fields{
+		"category_id":            resolution.CategoryID,
+		"status":                 resolution.Status,
+		"primary_attribute_id":   resolution.PrimaryAttributeID,
+		"secondary_attribute_id": resolution.SecondaryAttributeID,
+		"candidate_count":        len(resolution.Candidates),
+	}).Info("resolved SHEIN sale attributes")
 	return resolution
 }
 
-func applySelectedCandidate(index *templateIndex, candidate *saleAttributeCandidate, scope string, llm openaiclient.ChatCompleter, resolution *SaleAttributeResolution) {
+func applySelectedCandidate(
+	index *templateIndex,
+	candidate *saleAttributeCandidate,
+	scope string,
+	api AttributeAPI,
+	categoryID int,
+	spuName string,
+	llm openaiclient.ChatCompleter,
+	resolution *SaleAttributeResolution,
+) {
 	if candidate == nil || candidate.Match.AttributeID <= 0 || resolution == nil {
 		return
 	}
@@ -143,26 +179,38 @@ func applySelectedCandidate(index *templateIndex, candidate *saleAttributeCandid
 		resolution.PrimaryAttributeID = resolved.AttributeID
 		resolution.PrimarySourceDimension = candidate.SourceName
 		resolution.SKCAttributes = append(resolution.SKCAttributes, resolved)
-		resolution.skcValueAssignments, resolution.ReviewNotes = buildValueAssignments(
+		assignments, relations, notes := buildValueAssignments(
 			candidate.Values,
 			candidate.SourceName,
 			candidate.TemplateName,
 			"skc",
 			index,
+			api,
+			categoryID,
+			spuName,
 			llm,
 		)
+		resolution.skcValueAssignments = assignments
+		resolution.CustomAttributeRelation = dedupeCustomAttributeRelations(append(resolution.CustomAttributeRelation, relations...))
+		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, notes...))
 	case "sku":
 		resolution.SecondaryAttributeID = resolved.AttributeID
 		resolution.SecondarySourceDimension = candidate.SourceName
 		resolution.SKUAttributes = append(resolution.SKUAttributes, resolved)
-		resolution.skuValueAssignments, resolution.ReviewNotes = buildValueAssignments(
+		assignments, relations, notes := buildValueAssignments(
 			candidate.Values,
 			candidate.SourceName,
 			candidate.TemplateName,
 			"sku",
 			index,
+			api,
+			categoryID,
+			spuName,
 			llm,
 		)
+		resolution.skuValueAssignments = assignments
+		resolution.CustomAttributeRelation = dedupeCustomAttributeRelations(append(resolution.CustomAttributeRelation, relations...))
+		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, notes...))
 	}
 }
 

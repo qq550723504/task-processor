@@ -2,7 +2,7 @@ export function getListingKitUpstreamBase() {
   return (
     process.env.LISTINGKIT_API_BASE ??
     process.env.NEXT_PUBLIC_LISTINGKIT_API_BASE ??
-    "http://localhost:8080/api/v1/listing-kits"
+    "http://localhost:8085/api/v1/listing-kits"
   );
 }
 

@@ -37,6 +37,14 @@ func (r *stubGenerationRepo) GetTask(ctx context.Context, taskID string) (*Task,
 	return &copied, nil
 }
 
+func (r *stubGenerationRepo) ListTasks(ctx context.Context, query *TaskListQuery) ([]Task, int64, error) {
+	if r.task == nil {
+		return []Task{}, 0, nil
+	}
+	copied := *r.task
+	return []Task{copied}, 1, nil
+}
+
 func (r *stubGenerationRepo) MarkProcessing(ctx context.Context, taskID string) error { return nil }
 func (r *stubGenerationRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
 	return r.SaveTaskResult(ctx, taskID, result)
@@ -1592,5 +1600,111 @@ func TestRetryTaskGenerationTasksCanFilterFallbackSlotsOnly(t *testing.T) {
 	}
 	if page.Tasks[1].ExecutionStatus != "completed" {
 		t.Fatalf("gallery task = %+v, want untouched completed task", page.Tasks[1])
+	}
+}
+
+func TestRetryTaskGenerationTasksPlansMissingQueueFallbackSlot(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	renderer := &stubServiceDeferredRenderer{
+		result: &asset.AssetRecord{
+			ID:       "scene-rendered-gallery-1",
+			Kind:     asset.KindSceneImage,
+			Origin:   asset.OriginGenerated,
+			Role:     "scene",
+			URL:      "file:///tmp/scene-rendered-gallery.jpg",
+			RecipeID: "shein-gallery-scene",
+			Metadata: map[string]string{
+				"renderer":    "service-test",
+				"bundle_slot": "gallery",
+			},
+		},
+	}
+	svc := &service{
+		repo:                repo,
+		assetRepo:           assetRepository,
+		assetRecipeResolver: assetrecipe.NewStaticResolver(),
+		assetBundleBuilder:  assetbundle.NewBuilder(),
+		assetGenerator: assetgeneration.NewService(assetgeneration.Config{
+			DeferredRenderer: renderer,
+		}),
+	}
+
+	task := &Task{
+		ID:        "task-generation-retry-plan-missing-1",
+		Status:    TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-plan-missing-1",
+			Platforms:        []string{"shein"},
+			CanonicalProduct: &productenrich.CanonicalProduct{CategoryPath: []string{"Home", "Cushions"}},
+			CatalogProduct:   &catalog.Product{Title: "Bench Cushion", CategoryPath: []string{"Home", "Cushions"}},
+			Shein: &SheinPackage{ImageBundle: &common.PublishImageBundle{
+				Platform: "shein",
+				Gallery: []common.BundleSlot{{
+					Key:             "gallery",
+					Purpose:         "gallery",
+					RecipeID:        "shein-gallery-scene",
+					IdealKind:       string(asset.KindSceneImage),
+					TemplateLabel:   "SHEIN Lifestyle Gallery",
+					StateLabel:      "fallback_in_use",
+					SatisfiedBy:     "fallback_asset",
+					ExecutionStatus: "fallback",
+					AssetID:         "gallery-1",
+				}},
+			}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := assetRepository.SaveInventory(context.Background(), &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: task.ID},
+		Records: []asset.AssetRecord{
+			{
+				ID:     "gallery-1",
+				TaskID: task.ID,
+				Kind:   asset.KindSceneImage,
+				Origin: asset.OriginDerived,
+				URL:    "file:///tmp/gallery-fallback.jpg",
+			},
+		},
+		Summary: &asset.InventorySummary{TotalRecords: 1},
+	}); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+
+	page, err := svc.RetryTaskGenerationTasks(context.Background(), task.ID, &RetryGenerationTasksRequest{
+		FallbackOnly: true,
+		Slots:        []string{"gallery"},
+	})
+	if err != nil {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v", err)
+	}
+	if len(page.Tasks) != 1 {
+		t.Fatalf("tasks = %+v, want one planned-and-executed gallery task", page.Tasks)
+	}
+	if page.Tasks[0].RecipeID != "shein-gallery-scene" || page.Tasks[0].Slot != "gallery" {
+		t.Fatalf("task = %+v, want shein-gallery-scene/gallery", page.Tasks[0])
+	}
+	if page.Tasks[0].ExecutionMode != assetgeneration.ExecutionModeRendererBacked || page.Tasks[0].ExecutionStatus != "completed" {
+		t.Fatalf("task = %+v, want completed renderer-backed gallery task", page.Tasks[0])
+	}
+	if page.ExecutedQueue == nil || page.ExecutedQueue.Summary == nil || page.ExecutedQueue.Summary.TotalItems == 0 {
+		t.Fatalf("executed queue = %+v, want executed gallery queue items", page.ExecutedQueue)
+	}
+	foundCompletedGallery := false
+	for _, item := range page.ExecutedQueue.Items {
+		if item.Slot == "gallery" && item.ExecutionMode == assetgeneration.ExecutionModeRendererBacked && item.ExecutionState == "completed" {
+			foundCompletedGallery = true
+			break
+		}
+	}
+	if !foundCompletedGallery {
+		t.Fatalf("executed queue items = %+v, want completed renderer-backed gallery item", page.ExecutedQueue.Items)
 	}
 }

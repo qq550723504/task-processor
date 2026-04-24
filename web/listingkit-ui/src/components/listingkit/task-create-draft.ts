@@ -4,6 +4,14 @@ export type TaskCreateDraft = {
   productUrl: string;
   platforms: string[];
   sheinStoreId?: string;
+  sdsEnabled?: boolean;
+  sdsVariantId?: string;
+  sdsParentProductId?: string;
+  sdsPrototypeGroupId?: string;
+  sdsLayerId?: string;
+  sdsDesignType?: string;
+  sdsFitLevel?: string;
+  sdsResizeMode?: string;
   sceneCategory?: string;
   sceneStyle?: string;
   backgroundTone?: string;
@@ -40,6 +48,14 @@ export function loadTaskCreateDraft(taskId: string) {
       productUrl: parsed.productUrl ?? "",
       platforms: Array.isArray(parsed.platforms) ? parsed.platforms : [],
       sheinStoreId: parsed.sheinStoreId ?? "",
+      sdsEnabled: Boolean(parsed.sdsEnabled),
+      sdsVariantId: parsed.sdsVariantId ?? "",
+      sdsParentProductId: parsed.sdsParentProductId ?? "",
+      sdsPrototypeGroupId: parsed.sdsPrototypeGroupId ?? "",
+      sdsLayerId: parsed.sdsLayerId ?? "",
+      sdsDesignType: parsed.sdsDesignType ?? "material",
+      sdsFitLevel: parsed.sdsFitLevel ?? "1",
+      sdsResizeMode: parsed.sdsResizeMode ?? "0",
       sceneCategory: parsed.sceneCategory ?? "",
       sceneStyle: parsed.sceneStyle ?? "",
       backgroundTone: parsed.backgroundTone ?? "",

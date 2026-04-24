@@ -22,6 +22,9 @@ type stubRevisionValidateService struct {
 func (s *stubRevisionValidateService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {
 	return nil, errors.New("not implemented")
 }
+func (s *stubRevisionValidateService) ListTasks(ctx context.Context, query *listingkit.TaskListQuery) (*listingkit.TaskListPage, error) {
+	return nil, errors.New("not implemented")
+}
 func (s *stubRevisionValidateService) UploadImages(ctx context.Context, req *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
 	return nil, errors.New("not implemented")
 }
@@ -69,6 +72,10 @@ func (s *stubRevisionValidateService) ApplyTaskRevision(ctx context.Context, tas
 }
 func (s *stubRevisionValidateService) ValidateTaskRevision(ctx context.Context, taskID string, req *listingkit.ApplyRevisionRequest) (*listingkit.RevisionValidationResult, error) {
 	return s.result, s.err
+}
+
+func (s *stubRevisionValidateService) SubmitTask(ctx context.Context, taskID string, req *listingkit.SubmitTaskRequest) (*listingkit.ListingKitPreview, error) {
+	return nil, errors.New("not implemented")
 }
 
 func TestValidateTaskRevisionReturnsValidationPayload(t *testing.T) {

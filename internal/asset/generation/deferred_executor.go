@@ -56,7 +56,7 @@ func preferredDeferredBaseRecord(inventory *asset.Inventory, task Task) (asset.A
 	case asset.KindSellingPointImage, asset.KindSizeSceneImage, asset.KindDetailCrop:
 		return preferredBaseRecord(inventory, asset.KindGalleryImage, asset.KindCleanImage, asset.KindMainImage, asset.KindSourceImage)
 	case asset.KindSceneImage:
-		return preferredBaseRecord(inventory, asset.KindGalleryImage, asset.KindSourceImage, asset.KindMainImage)
+		return preferredBaseRecord(inventory, asset.KindSceneImage, asset.KindGalleryImage, asset.KindSourceImage, asset.KindMainImage)
 	default:
 		return preferredBaseRecord(inventory, asset.KindCleanImage, asset.KindMainImage, asset.KindSourceImage, asset.KindGalleryImage)
 	}

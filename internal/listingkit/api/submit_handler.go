@@ -1,0 +1,33 @@
+package api
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingkit"
+)
+
+func (h *handler) SubmitTask(c *gin.Context) {
+	var req listingkit.SubmitTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+
+	preview, err := h.service.SubmitTask(c.Request.Context(), c.Param("task_id"), &req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, listingkit.ErrTaskNotFound), errors.Is(err, listingkit.ErrTaskResultUnavailable):
+			status = http.StatusNotFound
+		case errors.Is(err, listingkit.ErrUnsupportedSubmitPlatform), errors.Is(err, listingkit.ErrSubmitBlocked):
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": "submit_failed", "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, preview)
+}

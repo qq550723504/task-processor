@@ -5,24 +5,29 @@ import (
 	"strings"
 
 	"task-processor/internal/productenrich"
-	common "task-processor/internal/publishing/common"
 	sheinapi "task-processor/internal/shein/api"
 	sheincategory "task-processor/internal/shein/api/category"
 )
 
 type categoryResolver struct {
-	api          CategoryAPI
-	suggestFallback categorySuggestFallback
-	treeFallback categoryTreeFallback
+	api              CategoryAPI
+	suggestFallback  categorySuggestFallback
+	treeFallback     categoryTreeFallback
+	semanticVerifier categorySemanticVerifier
 }
 
 func NewCategoryResolver(api CategoryAPI) CategoryResolver { return &categoryResolver{api: api} }
 
 func NewCategoryResolverWithFallbacks(api CategoryAPI, suggestFallback categorySuggestFallback, treeFallback categoryTreeFallback) CategoryResolver {
+	return NewCategoryResolverWithSemanticVerifier(api, suggestFallback, treeFallback, nil)
+}
+
+func NewCategoryResolverWithSemanticVerifier(api CategoryAPI, suggestFallback categorySuggestFallback, treeFallback categoryTreeFallback, semanticVerifier categorySemanticVerifier) CategoryResolver {
 	return &categoryResolver{
-		api:             api,
-		suggestFallback: suggestFallback,
-		treeFallback:    treeFallback,
+		api:              api,
+		suggestFallback:  suggestFallback,
+		treeFallback:     treeFallback,
+		semanticVerifier: semanticVerifier,
 	}
 }
 
@@ -31,10 +36,12 @@ func NewCategoryResolverWithTreeFallback(api CategoryAPI, treeFallback categoryT
 }
 
 func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategoryResolution {
+	suggestQuery := buildCategorySuggestionQuery(req, canonical, pkg)
+	treeQuery := buildCategoryQuery(req, canonical, pkg)
 	resolution := &CategoryResolution{
 		Status:      "unresolved",
 		Source:      "fallback",
-		QueryText:   buildCategoryQuery(req, canonical, pkg),
+		QueryText:   firstNonEmptyCategoryQuery(suggestQuery, treeQuery),
 		MatchedPath: append([]string(nil), resolveCategoryPath(canonical, pkg)...),
 	}
 	if hintedID := parseFirstPositiveInt(req.TargetCategoryHint); hintedID > 0 {
@@ -46,55 +53,73 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.C
 			return resolution
 		}
 		if info, err := r.api.GetCategory(hintedID); err == nil && info != nil {
-			return hydrateCategoryResolution(info, resolution.Source, resolution.QueryText)
+			hydrated := hydrateCategoryResolution(info, resolution.Source, resolution.QueryText)
+			hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+			if semanticRejectsCategory(hydrated.SemanticValidation) {
+				hydrated.ReviewNotes = append(hydrated.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
+			}
+			return hydrated
 		}
 		resolution.Status = "partial"
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "target_category_hint 已解析，但未能拉取完整类目层级")
 		return resolution
 	}
-	if r.api != nil && strings.TrimSpace(resolution.QueryText) != "" {
-		resp, err := r.api.SuggestCategoryByText(resolution.QueryText)
-		if err != nil {
-			resolution.Status = "partial"
-			resolution.ReviewNotes = append(resolution.ReviewNotes, formatCategoryResolutionAPIError(err))
-			if r.treeFallback == nil {
-				return resolution
-			}
-		} else if resp != nil && len(resp.Data) > 0 {
-			if suggestedID, convErr := strconv.Atoi(strings.TrimSpace(resp.Data[0].CategoryID)); convErr == nil && suggestedID > 0 {
-				if info, infoErr := r.api.GetCategory(suggestedID); infoErr == nil && info != nil {
-					return hydrateCategoryResolution(info, "suggest_category", resolution.QueryText)
+	if r.api != nil && r.suggestFallback != nil && strings.TrimSpace(suggestQuery) != "" {
+		selectedID, suggestErr := r.suggestFallback.SelectCategoryID(buildCategorySuggestInput(req, canonical, pkg), r.api)
+		if suggestErr == nil && selectedID > 0 {
+			if info, infoErr := r.api.GetCategory(selectedID); infoErr == nil && info != nil {
+				hydrated := hydrateCategoryResolution(info, "suggest_category_by_text", suggestQuery)
+				hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+				if !semanticRejectsCategory(hydrated.SemanticValidation) {
+					return hydrated
 				}
-				resolution.Source = "suggest_category"
 				resolution.Status = "partial"
-				resolution.CategoryID = suggestedID
-				resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 推荐类目已命中，但未能拉取完整类目详情")
-				return resolution
-			}
-		}
-		if r.treeFallback != nil {
-			tree, treeErr := r.api.GetCategoryTree()
-			if treeErr != nil {
+				resolution.QueryText = suggestQuery
+				resolution.ReviewNotes = append(resolution.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
+			} else {
+				resolution.Source = "suggest_category_by_text"
 				resolution.Status = "partial"
-				resolution.ReviewNotes = append(resolution.ReviewNotes, formatCategoryTreeResolutionAPIError(treeErr))
-				return resolution
-			}
-			selectedID, selectErr := r.treeFallback.SelectCategoryID(resolution.QueryText, tree)
-			if selectErr != nil {
-				resolution.Status = "partial"
-				resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 类目树候选重选失败: "+strings.TrimSpace(selectErr.Error()))
-				return resolution
-			}
-			if selectedID > 0 {
-				if info, infoErr := r.api.GetCategory(selectedID); infoErr == nil && info != nil {
-					return hydrateCategoryResolution(info, "ai_category_tree", resolution.QueryText)
-				}
-				resolution.Source = "ai_category_tree"
-				resolution.Status = "partial"
+				resolution.QueryText = suggestQuery
 				resolution.CategoryID = selectedID
-				resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 分类树重选已命中，但未能拉取完整类目详情")
+				resolution.ReviewNotes = append(resolution.ReviewNotes, "SuggestCategoryByText 已命中，但未能拉取完整类目详情")
 				return resolution
 			}
+		} else if suggestErr != nil {
+			resolution.Status = "partial"
+			resolution.QueryText = suggestQuery
+			resolution.ReviewNotes = append(resolution.ReviewNotes, formatCategoryResolutionAPIError(suggestErr))
+		}
+	}
+	if r.api != nil && r.treeFallback != nil && strings.TrimSpace(treeQuery) != "" {
+		tree, treeErr := r.api.GetCategoryTree()
+		if treeErr != nil {
+			resolution.Status = "partial"
+			resolution.ReviewNotes = append(resolution.ReviewNotes, formatCategoryTreeResolutionAPIError(treeErr))
+			return resolution
+		}
+		selectedID, selectErr := r.treeFallback.SelectCategoryID(treeQuery, tree)
+		if selectErr != nil {
+			resolution.Status = "partial"
+			resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 类目树候选重选失败: "+strings.TrimSpace(selectErr.Error()))
+			return resolution
+		}
+		if selectedID > 0 {
+			if info, infoErr := r.api.GetCategory(selectedID); infoErr == nil && info != nil {
+				hydrated := hydrateCategoryResolution(info, "ai_category_tree", treeQuery)
+				hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+				if !semanticRejectsCategory(hydrated.SemanticValidation) {
+					return hydrated
+				}
+				resolution.Status = "partial"
+				resolution.QueryText = treeQuery
+				resolution.ReviewNotes = append(resolution.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
+			}
+			resolution.Source = "ai_category_tree"
+			resolution.Status = "partial"
+			resolution.QueryText = treeQuery
+			resolution.CategoryID = selectedID
+			resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 分类树重选已命中，但未能拉取完整类目详情")
+			return resolution
 		}
 	}
 	if len(resolution.MatchedPath) > 0 {
@@ -103,6 +128,15 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.C
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 类目解析未命中，请补充 target_category_hint 或接入类目接口")
 	}
 	return resolution
+}
+
+func firstNonEmptyCategoryQuery(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func formatCategoryResolutionAPIError(err error) string {
@@ -123,11 +157,12 @@ func (r *categoryResolver) SuggestAlternative(req *BuildRequest, canonical *prod
 	if r == nil || r.api == nil {
 		return nil
 	}
-	query := buildCategorySuggestionQuery(req, canonical, pkg)
-	if strings.TrimSpace(query) == "" {
+	suggestQuery := buildCategorySuggestionQuery(req, canonical, pkg)
+	treeQuery := buildCategoryQuery(req, canonical, pkg)
+	if strings.TrimSpace(suggestQuery) == "" && strings.TrimSpace(treeQuery) == "" {
 		return nil
 	}
-	tryCandidate := func(selectedID int, source, reason string) *CategorySuggestion {
+	tryCandidate := func(selectedID int, source, query, reason string) *CategorySuggestion {
 		if selectedID <= 0 {
 			return nil
 		}
@@ -151,33 +186,32 @@ func (r *categoryResolver) SuggestAlternative(req *BuildRequest, canonical *prod
 			ProductTypeID:  resolution.ProductTypeID,
 			TopCategoryID:  resolution.TopCategoryID,
 		}
-		if !shouldAcceptSuggestedCategory(canonical, pkg, suggestion) {
+		if !shouldAcceptSuggestedCategoryWithSemanticVerifier(canonical, pkg, suggestion, r.semanticVerifier) {
 			return nil
 		}
 		return suggestion
 	}
 
-	if r.suggestFallback != nil {
-		selectedID, err := r.suggestFallback.SelectCategoryID(query, r.api)
+	if r.suggestFallback != nil && strings.TrimSpace(suggestQuery) != "" {
+		selectedID, err := r.suggestFallback.SelectCategoryID(buildCategorySuggestInput(req, canonical, pkg), r.api)
 		if err == nil {
-			if suggestion := tryCandidate(selectedID, "suggest_category", "当前类目模板不适配销售属性结构，建议优先复核该推荐类目"); suggestion != nil {
+			if suggestion := tryCandidate(selectedID, "suggest_category_by_text", suggestQuery, "当前类目模板不适配销售属性结构，建议复核该候选类目"); suggestion != nil {
 				return suggestion
 			}
 		}
 	}
-
-	if r.treeFallback == nil {
+	if r.treeFallback == nil || strings.TrimSpace(treeQuery) == "" {
 		return nil
 	}
 	tree, err := r.api.GetCategoryTree()
 	if err != nil || tree == nil {
 		return nil
 	}
-	selectedID, err := r.treeFallback.SelectCategoryID(query, tree)
+	selectedID, err := r.treeFallback.SelectCategoryID(treeQuery, tree)
 	if err != nil {
 		return nil
 	}
-	return tryCandidate(selectedID, "ai_category_tree", "当前类目模板不适配销售属性结构，建议复核该候选类目")
+	return tryCandidate(selectedID, "ai_category_tree", treeQuery, "当前类目模板不适配销售属性结构，建议复核该候选类目")
 }
 
 func hydrateCategoryResolution(info *sheincategory.CategoryInfo, source, query string) *CategoryResolution {
@@ -200,6 +234,31 @@ func hydrateCategoryResolution(info *sheincategory.CategoryInfo, source, query s
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "类目详情已返回，但类目路径信息不完整")
 	}
 	return resolution
+}
+
+func (r *categoryResolver) semanticValidation(canonical *productenrich.CanonicalProduct, pkg *Package, categoryPath []string) *CategorySemanticValidation {
+	if r == nil || r.semanticVerifier == nil || len(categoryPath) == 0 {
+		return nil
+	}
+	return r.semanticVerifier.ValidateProductCategory(canonical, pkg, categoryPath)
+}
+
+func semanticRejectsCategory(validation *CategorySemanticValidation) bool {
+	return validation != nil && strings.EqualFold(strings.TrimSpace(validation.Verdict), "incompatible")
+}
+
+func buildSemanticCategoryReviewNote(validation *CategorySemanticValidation) string {
+	if validation == nil {
+		return ""
+	}
+	reason := strings.TrimSpace(validation.Reason)
+	if reason == "" {
+		reason = "AI 判断当前类目路径与商品语义不一致"
+	}
+	if len(validation.ComparedPath) == 0 {
+		return reason
+	}
+	return reason + "（候选类目: " + strings.Join(validation.ComparedPath, " > ") + "）"
 }
 
 func buildMatchedPath(info *sheincategory.CategoryInfo) []string {
@@ -232,34 +291,6 @@ func buildCategoryIDList(info *sheincategory.CategoryInfo) []int {
 		idList = append(idList, *info.LevelFourCategoryID)
 	}
 	return idList
-}
-
-func buildCategoryQuery(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) string {
-	candidates := []string{req.TargetCategoryHint, canonical.Title, common.FirstNonEmpty(pkg.CategoryName, common.LastCategory(canonical.CategoryPath)), canonical.Description, req.Text}
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if candidate != "" {
-			return candidate
-		}
-	}
-	return ""
-}
-
-func buildCategorySuggestionQuery(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) string {
-	candidates := []string{
-		canonical.Title,
-		common.FirstNonEmpty(pkg.CategoryName, common.LastCategory(canonical.CategoryPath)),
-		canonical.Description,
-		req.Text,
-		req.TargetCategoryHint,
-	}
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if candidate != "" {
-			return candidate
-		}
-	}
-	return ""
 }
 
 func resolveCategoryPath(canonical *productenrich.CanonicalProduct, pkg *Package) []string {

@@ -18,6 +18,8 @@ type CategoryResolver interface {
 
 type AttributeAPI interface {
 	GetAttributeTemplates(categoryID int) (*sheinattribute.AttributeTemplateInfo, error)
+	ValidateCustomAttributeValue(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error)
+	AddCustomAttributeValue(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error)
 }
 
 type AttributeResolver interface {

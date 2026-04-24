@@ -63,13 +63,8 @@ func (s *PipelineState) markNeedsReviewStage(stage string, durationMS int64, rea
 	})
 }
 
-func (s *service) runNeedsReviewRecoveryStages(ctx context.Context, state *PipelineState) error {
-	followupStages := []Stage{
-		stageFunc{name: "assess_quality", run: s.runQualityStage},
-		stageFunc{name: "assess_ip_risk", run: s.runIPRiskStage},
-		stageFunc{name: "assess_review", run: s.runReviewStage},
-		stageFunc{name: "publish_assets", run: s.runPublishStage},
-	}
+func (s *service) runNeedsReviewRecoveryStages(ctx context.Context, state *PipelineState, failedStage string) error {
+	followupStages := s.needsReviewRecoveryStages(failedStage)
 	for _, stage := range followupStages {
 		startedAt := time.Now()
 		if err := stage.Run(ctx, state); err != nil {
@@ -91,4 +86,29 @@ func (s *service) runNeedsReviewRecoveryStages(ctx context.Context, state *Pipel
 		})
 	}
 	return nil
+}
+
+func (s *service) needsReviewRecoveryStages(failedStage string) []Stage {
+	var followupStages []Stage
+	switch failedStage {
+	case "extract_subject":
+		followupStages = append(followupStages,
+			stageFunc{name: "cleanup_image", run: s.runCleanupStage},
+			stageFunc{name: "render_white_bg", run: s.runWhiteBgStage},
+			stageFunc{name: "render_gallery", run: s.runGalleryStage},
+		)
+	case "render_white_bg":
+		followupStages = append(followupStages,
+			stageFunc{name: "render_gallery", run: s.runGalleryStage},
+		)
+	case "render_gallery":
+	default:
+	}
+	followupStages = append(followupStages,
+		stageFunc{name: "assess_quality", run: s.runQualityStage},
+		stageFunc{name: "assess_ip_risk", run: s.runIPRiskStage},
+		stageFunc{name: "assess_review", run: s.runReviewStage},
+		stageFunc{name: "publish_assets", run: s.runPublishStage},
+	)
+	return followupStages
 }

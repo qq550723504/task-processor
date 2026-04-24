@@ -31,6 +31,8 @@ func ApplySaleAttributeResolution(pkg *Package, resolution *SaleAttributeResolut
 	if pkg == nil || resolution == nil || pkg.RequestDraft == nil {
 		return
 	}
+	pkg.CustomAttributeRelation = dedupeCustomAttributeRelations(append(pkg.CustomAttributeRelation, resolution.CustomAttributeRelation...))
+	pkg.RequestDraft.CustomAttributeRelation = dedupeCustomAttributeRelations(append(pkg.RequestDraft.CustomAttributeRelation, resolution.CustomAttributeRelation...))
 	if len(pkg.RequestDraft.SKCList) == 0 {
 		return
 	}

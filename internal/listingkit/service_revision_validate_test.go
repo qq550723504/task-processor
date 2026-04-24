@@ -20,6 +20,12 @@ func (r *stubValidateRepo) CreateTask(ctx context.Context, task *Task) error {
 func (r *stubValidateRepo) GetTask(ctx context.Context, taskID string) (*Task, error) {
 	return r.task, nil
 }
+func (r *stubValidateRepo) ListTasks(ctx context.Context, query *TaskListQuery) ([]Task, int64, error) {
+	if r.task == nil {
+		return []Task{}, 0, nil
+	}
+	return []Task{*r.task}, 1, nil
+}
 func (r *stubValidateRepo) MarkProcessing(ctx context.Context, taskID string) error { return nil }
 func (r *stubValidateRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
 	return nil

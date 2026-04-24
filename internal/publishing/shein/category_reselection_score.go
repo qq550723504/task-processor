@@ -7,7 +7,6 @@ type categorySuggestionFit struct {
 func evaluateSuggestedCategoryFit(
 	currentPath []string,
 	productTokens []string,
-	productFamilies []string,
 	suggestedPath []string,
 ) categorySuggestionFit {
 	fit := categorySuggestionFit{}
@@ -20,12 +19,6 @@ func evaluateSuggestedCategoryFit(
 	}
 
 	suggestedTokens := normalizedCategoryTokens(suggestedPath)
-	suggestedFamilies := familyLabelsForTokens(suggestedTokens)
-	sharedFamilyCount := sharedFamilyLabelCount(productFamilies, suggestedFamilies)
-	if sharedFamilyCount > 0 {
-		fit.Score += 3
-	}
-
 	sharedSignalCount := sharedSignalTokenCount(productTokens, suggestedTokens)
 	if sharedSignalCount >= 3 {
 		fit.Score += 2

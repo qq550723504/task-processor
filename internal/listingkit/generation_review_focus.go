@@ -33,7 +33,7 @@ func enrichGenerationReviewSlotsWithFocus(slots []GenerationReviewSlot, previews
 		slots[i].FocusLayerTypes = append([]string(nil), preview.LayerTypes...)
 		slots[i].FocusStyleTokens = reviewFocusStyleTokens(*preview, slots[i].FocusCapability)
 		if len(slots[i].PreviewCapabilities) == 0 {
-			slots[i].PreviewCapabilities = buildRenderPreviewCapabilities(GenerationWorkQueueItem{RenderPreviewLayerTypes: append([]string(nil), preview.LayerTypes...)})
+			slots[i].PreviewCapabilities = buildRenderPreviewCapabilitiesForSlot(*preview)
 		}
 		if slots[i].AssetID == "" {
 			slots[i].AssetID = preview.AssetID
@@ -53,7 +53,7 @@ func findGenerationReviewPreview(previews []PlatformAssetRenderPreviews, platfor
 		for _, candidate := range flattenPlatformRenderPreviewSlots(group) {
 			candidate := candidate
 			if slot != "" && candidate.Slot != slot {
-				if platformFallback == nil && matchesReviewPreviewCapability(candidate, capability) {
+				if platformFallback == nil && slot == "" && matchesReviewPreviewCapability(candidate, capability) {
 					platformFallback = &candidate
 				}
 				continue
@@ -73,7 +73,7 @@ func matchesReviewPreviewCapability(slot AssetRenderPreviewSlot, capability stri
 	if capability == "" {
 		return true
 	}
-	for _, item := range buildRenderPreviewCapabilities(GenerationWorkQueueItem{RenderPreviewLayerTypes: append([]string(nil), slot.LayerTypes...)}) {
+	for _, item := range buildRenderPreviewCapabilitiesForSlot(slot) {
 		if item == capability {
 			return true
 		}
@@ -82,7 +82,7 @@ func matchesReviewPreviewCapability(slot AssetRenderPreviewSlot, capability stri
 }
 
 func firstRenderPreviewCapability(slot AssetRenderPreviewSlot) string {
-	capabilities := buildRenderPreviewCapabilities(GenerationWorkQueueItem{RenderPreviewLayerTypes: append([]string(nil), slot.LayerTypes...)})
+	capabilities := buildRenderPreviewCapabilitiesForSlot(slot)
 	if len(capabilities) == 0 {
 		return ""
 	}

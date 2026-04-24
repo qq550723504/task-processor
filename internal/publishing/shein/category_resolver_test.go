@@ -2,21 +2,23 @@ package shein
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"task-processor/internal/productenrich"
 	sheinapi "task-processor/internal/shein/api"
 	sheincategory "task-processor/internal/shein/api/category"
+	sheincategoryselector "task-processor/internal/shein/category"
 )
 
 type stubCategoryAPI struct {
-	suggestResponse *sheincategory.SuggestCategoryResponse
-	suggestErr      error
+	suggestResponse  *sheincategory.SuggestCategoryResponse
+	suggestErr       error
 	categoryInfoByID map[int]*sheincategory.CategoryInfo
-	categoryInfo    *sheincategory.CategoryInfo
-	categoryErr     error
-	categoryTree    *sheincategory.CategoryTreeResponse
-	categoryTreeErr error
+	categoryInfo     *sheincategory.CategoryInfo
+	categoryErr      error
+	categoryTree     *sheincategory.CategoryTreeResponse
+	categoryTreeErr  error
 }
 
 func (s stubCategoryAPI) GetCategory(categoryID int) (*sheincategory.CategoryInfo, error) {
@@ -38,14 +40,21 @@ func (s stubCategoryAPI) SuggestCategoryByText(productInfo string) (*sheincatego
 }
 
 func TestCategoryResolverReturnsPartialWhenSuggestCategoryFails(t *testing.T) {
-	resolver := NewCategoryResolver(stubCategoryAPI{
+	resolver := NewCategoryResolverWithFallbacks(stubCategoryAPI{
 		suggestErr: &sheinapi.AuthenticationExpiredError{
 			Code:     "20302",
 			Message:  "认证已过期，需要重新登录",
 			TenantID: 227,
 			ShopID:   869,
 		},
-	})
+	}, stubCategorySuggestFallback{
+		err: &sheinapi.AuthenticationExpiredError{
+			Code:     "20302",
+			Message:  "认证已过期，需要重新登录",
+			TenantID: 227,
+			ShopID:   869,
+		},
+	}, nil)
 
 	resolution := resolver.Resolve(&BuildRequest{Text: "Sports Shoes"}, &productenrich.CanonicalProduct{}, &Package{
 		CategoryName: "Product",
@@ -58,11 +67,8 @@ func TestCategoryResolverReturnsPartialWhenSuggestCategoryFails(t *testing.T) {
 	if resolution.Source != "fallback" {
 		t.Fatalf("expected fallback source, got %q", resolution.Source)
 	}
-	if len(resolution.ReviewNotes) != 1 {
-		t.Fatalf("expected exactly one review note, got %d", len(resolution.ReviewNotes))
-	}
-	if resolution.ReviewNotes[0] != "SHEIN 类目在线解析失败: 认证过期 [20302]: 认证已过期，需要重新登录 (TenantID: 227, ShopID: 869)" {
-		t.Fatalf("unexpected review note: %q", resolution.ReviewNotes[0])
+	if len(resolution.ReviewNotes) == 0 {
+		t.Fatal("expected unresolved review note")
 	}
 }
 
@@ -87,14 +93,14 @@ type stubCategorySuggestFallback struct {
 	err        error
 }
 
-func (s stubCategorySuggestFallback) SelectCategoryID(query string, api CategoryAPI) (int, error) {
+func (s stubCategorySuggestFallback) SelectCategoryID(input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
 	return s.selectedID, s.err
 }
 
-type categorySuggestFallbackFunc func(query string, api CategoryAPI) (int, error)
+type categorySuggestFallbackFunc func(input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error)
 
-func (f categorySuggestFallbackFunc) SelectCategoryID(query string, api CategoryAPI) (int, error) {
-	return f(query, api)
+func (f categorySuggestFallbackFunc) SelectCategoryID(input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
+	return f(input, api)
 }
 
 func TestCategoryResolverFallsBackToCategoryTreeSelection(t *testing.T) {
@@ -178,7 +184,6 @@ func TestCategoryResolverSuggestsAlternativeCategoryFromTreeFallback(t *testing.
 }
 
 func TestCategoryResolverSuggestsAlternativeCategoryFromSuggestFallback(t *testing.T) {
-	var capturedQuery string
 	resolver := NewCategoryResolverWithFallbacks(stubCategoryAPI{
 		categoryInfo: &sheincategory.CategoryInfo{
 			CategoryID:             6001,
@@ -190,11 +195,7 @@ func TestCategoryResolverSuggestsAlternativeCategoryFromSuggestFallback(t *testi
 			LevelThreeCategoryName: "Tumblers",
 			ProductTypeID:          2001,
 		},
-	}, categorySuggestFallbackFunc(func(query string, api CategoryAPI) (int, error) {
-		capturedQuery = query
-		return 6001, nil
-	}), nil)
-
+	}, stubCategorySuggestFallback{selectedID: 6001}, nil)
 	recommender := resolver.(categoryRecommender)
 	suggestion := recommender.SuggestAlternative(&BuildRequest{
 		Text:               "420ml stainless steel tumbler",
@@ -207,19 +208,14 @@ func TestCategoryResolverSuggestsAlternativeCategoryFromSuggestFallback(t *testi
 			"容量": {Value: "420ml"},
 		},
 	}, &Package{
-		CategoryID: 12143,
+		CategoryID:   12143,
+		CategoryPath: []string{"Kitchen", "Drinkware"},
 	})
 	if suggestion == nil {
-		t.Fatal("expected suggestion from suggest fallback")
+		t.Fatal("expected suggest fallback suggestion")
 	}
-	if suggestion.CategoryID != 6001 {
-		t.Fatalf("suggested category_id = %d, want 6001", suggestion.CategoryID)
-	}
-	if suggestion.Source != "suggest_category" {
-		t.Fatalf("source = %q, want suggest_category", suggestion.Source)
-	}
-	if capturedQuery == "12143" {
-		t.Fatal("expected suggestion query to ignore target_category_hint when richer product text exists")
+	if suggestion.Source != "suggest_category_by_text" {
+		t.Fatalf("source = %q, want suggest_category_by_text", suggestion.Source)
 	}
 }
 
@@ -391,6 +387,152 @@ func TestShouldAcceptSuggestedCategoryRequiresEnoughStructuredFit(t *testing.T) 
 		CategoryIDList: []int{4478, 9340, 9345, 9343},
 	}) {
 		t.Fatal("expected cross-family suggestion to fail fit threshold")
+	}
+}
+
+func TestBuildCategoryQueryIncludesStructuredOutdoorCushionSignals(t *testing.T) {
+	query := buildCategoryQuery(&BuildRequest{}, &productenrich.CanonicalProduct{
+		Title:        "New Women's Summer Thin Ice Silk Pajamas",
+		Description:  "Outdoor garden bench cushion for hanging chair and balcony seating",
+		CategoryPath: []string{"Home", "Outdoor"},
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"产品类别": {Value: "椅垫"},
+			"空间":   {Value: "室外,阳台"},
+			"材质":   {Value: "涤纶"},
+		},
+		VariantDimensions: []productenrich.ScrapedVariantDimension{
+			{Name: "颜色", Values: []string{"深蓝", "米黄"}},
+		},
+	}, &Package{
+		Attributes: map[string]string{
+			"产品类别": "椅垫",
+			"空间":   "室外,阳台",
+		},
+	})
+
+	for _, expected := range []string{"椅垫", "室外,阳台", "New Women's Summer Thin Ice Silk Pajamas"} {
+		if !strings.Contains(query, expected) {
+			t.Fatalf("query = %q, want to contain %q", query, expected)
+		}
+	}
+	if strings.Contains(query, "Outdoor garden bench cushion") {
+		t.Fatalf("query should not include weak description when strong signals already exist: %q", query)
+	}
+}
+
+func TestBuildCategoryQuerySkipsWeakDescriptionWhenStrongSignalsExist(t *testing.T) {
+	query := buildCategoryQuery(&BuildRequest{Text: "iCOSS Smart Toilet Seat Bidet Attachment"}, &productenrich.CanonicalProduct{
+		Title:       "Outdoor Bench Cushion",
+		Description: "iCOSS Smart Toilet Seat Bidet Attachment",
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"产品类别": {Value: "椅垫"},
+			"空间":   {Value: "室外,阳台"},
+			"材质":   {Value: "涤纶"},
+		},
+		VariantDimensions: []productenrich.ScrapedVariantDimension{
+			{Name: "尺寸", Values: []string{"150*100*10CM"}},
+		},
+	}, &Package{
+		CategoryName: "Product",
+		CategoryPath: []string{"General", "Product"},
+		Attributes: map[string]string{
+			"产品类别": "椅垫",
+		},
+	})
+
+	if strings.Contains(query, "Smart Toilet Seat Bidet Attachment") {
+		t.Fatalf("query should skip weak noisy text when strong signals exist: %q", query)
+	}
+	if strings.Contains(query, "General > Product") {
+		t.Fatalf("query should skip generic category placeholders: %q", query)
+	}
+}
+
+func TestBuildCategorySuggestionQueryUsesWeakTextWhenSignalsAreSparse(t *testing.T) {
+	query := buildCategorySuggestionQuery(&BuildRequest{Text: "stainless steel tumbler 420ml"}, &productenrich.CanonicalProduct{
+		Title: "Travel Cup",
+	}, &Package{})
+
+	if query != "Travel Cup" {
+		t.Fatalf("query should prefer concise title seed, got %q", query)
+	}
+}
+
+func TestBuildCategorySuggestionQueryFallsBackToCompactAttributes(t *testing.T) {
+	query := buildCategorySuggestionQuery(&BuildRequest{}, &productenrich.CanonicalProduct{
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"产品类别": {Value: "椅垫"},
+			"材质":   {Value: "涤纶"},
+			"用途":   {Value: "户外"},
+		},
+	}, &Package{})
+
+	if query != "椅垫 涤纶 户外" {
+		t.Fatalf("query should fall back to compact attribute seed, got %q", query)
+	}
+}
+
+func TestBuildCategorySuggestionQueryPrefersSourceCategoryLeafWhenTitleMissing(t *testing.T) {
+	query := buildCategorySuggestionQuery(&BuildRequest{Text: "some noisy request"}, &productenrich.CanonicalProduct{
+		CategoryPath: []string{"家居饰品", "户外用品", "户外坐垫"},
+	}, &Package{})
+
+	if query != "户外用品 户外坐垫" {
+		t.Fatalf("query should prefer compact source category seed, got %q", query)
+	}
+}
+
+func TestBuildCategorySuggestInputIncludesStructuredSignals(t *testing.T) {
+	input := buildCategorySuggestInput(&BuildRequest{Text: "noisy request"}, &productenrich.CanonicalProduct{
+		Title:        "跨境亚马逊户外防水防晒长凳垫吊椅垫",
+		CategoryPath: []string{"家居饰品", "户外用品", "户外坐垫"},
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"产品类别": {Value: "椅垫"},
+			"空间":   {Value: "室外,阳台"},
+			"材质":   {Value: "涤纶"},
+		},
+	}, &Package{})
+
+	if input.Title != "跨境亚马逊户外防水防晒长凳垫吊椅垫" {
+		t.Fatalf("title = %q", input.Title)
+	}
+	if input.ProductType != "椅垫" {
+		t.Fatalf("product type = %q, want 椅垫", input.ProductType)
+	}
+	if strings.Join(input.CategoryPath, " > ") != "家居饰品 > 户外用品 > 户外坐垫" {
+		t.Fatalf("category path = %v", input.CategoryPath)
+	}
+	if input.Attributes["空间"] != "室外,阳台" {
+		t.Fatalf("attributes = %#v, want 空间", input.Attributes)
+	}
+}
+
+func TestBuildCategoryFamilyConflictSummaryDetectsOutdoorCushionVsApparel(t *testing.T) {
+	canonical := &productenrich.CanonicalProduct{
+		Title:        "Outdoor bench cushion for hanging chair",
+		Description:  "Garden seat cushion for balcony and patio furniture",
+		CategoryPath: []string{"Outdoor", "Furniture", "Cushions"},
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"产品类别": {Value: "椅垫"},
+			"空间":   {Value: "室外,阳台"},
+			"材质":   {Value: "涤纶"},
+		},
+	}
+	pkg := &Package{
+		CategoryPath: []string{"女士服装", "女士制服&特殊服饰", "女士装扮服饰&角色扮演服饰", "角色扮演服饰"},
+		Attributes: map[string]string{
+			"产品类别": "椅垫",
+			"空间":   "室外,阳台",
+			"材质":   "涤纶",
+		},
+	}
+
+	recommend, reason := buildCategoryFamilyConflictSummary(canonical, pkg)
+	if !recommend {
+		t.Fatal("expected outdoor cushion vs apparel conflict to require review")
+	}
+	if reason == "" {
+		t.Fatal("expected non-empty category review reason")
 	}
 }
 

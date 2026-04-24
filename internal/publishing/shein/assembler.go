@@ -3,6 +3,8 @@ package shein
 import (
 	"strings"
 
+	"github.com/sirupsen/logrus"
+
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
@@ -36,6 +38,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	if canonical == nil {
 		return &Package{ReviewNotes: []string{"canonical product is empty"}}
 	}
+	log := sheinLogger("shein/assembler")
 
 	images := common.BuildImages(canonical, image)
 	spuName := common.WithBrandHint(canonical.Title, req.BrandHint)
@@ -83,15 +86,46 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 		pkg.Metadata["target_category_hint"] = req.TargetCategoryHint
 	}
 	if a.categoryResolver != nil {
+		log.WithFields(logrus.Fields{
+			"title":         canonical.Title,
+			"category_path": strings.Join(canonical.CategoryPath, " > "),
+		}).Info("starting SHEIN category resolution")
 		pkg.CategoryResolution = a.categoryResolver.Resolve(req, canonical, pkg)
 		ApplyCategoryResolution(pkg, pkg.CategoryResolution)
+		if pkg.CategoryResolution != nil {
+			log.WithFields(logrus.Fields{
+				"status":       pkg.CategoryResolution.Status,
+				"source":       pkg.CategoryResolution.Source,
+				"category_id":  pkg.CategoryResolution.CategoryID,
+				"matched_path": strings.Join(pkg.CategoryResolution.MatchedPath, " > "),
+			}).Info("completed SHEIN category resolution")
+		}
 	}
 	if a.attributeResolver != nil {
+		log.WithField("category_id", pkg.CategoryID).Info("starting SHEIN display attribute resolution")
 		pkg.AttributeResolution = a.attributeResolver.Resolve(req, canonical, pkg)
 		ApplyAttributeResolution(pkg, pkg.AttributeResolution)
+		if pkg.AttributeResolution != nil {
+			log.WithFields(logrus.Fields{
+				"status":           pkg.AttributeResolution.Status,
+				"category_id":      pkg.AttributeResolution.CategoryID,
+				"resolved_count":   pkg.AttributeResolution.ResolvedCount,
+				"unresolved_count": pkg.AttributeResolution.UnresolvedCount,
+				"template_count":   pkg.AttributeResolution.TemplateCount,
+			}).Info("completed SHEIN display attribute resolution")
+		}
 	}
 	if a.saleAttributeResolver != nil {
+		log.WithField("category_id", pkg.CategoryID).Info("starting SHEIN sale attribute resolution")
 		pkg.SaleAttributeResolution = a.saleAttributeResolver.Resolve(req, canonical, pkg)
+		if pkg.SaleAttributeResolution != nil {
+			log.WithFields(logrus.Fields{
+				"status":                 pkg.SaleAttributeResolution.Status,
+				"category_id":            pkg.SaleAttributeResolution.CategoryID,
+				"primary_attribute_id":   pkg.SaleAttributeResolution.PrimaryAttributeID,
+				"secondary_attribute_id": pkg.SaleAttributeResolution.SecondaryAttributeID,
+			}).Info("completed SHEIN sale attribute resolution")
+		}
 	}
 	if pkg.SaleAttributeResolution != nil && pkg.SaleAttributeResolution.RecommendCategoryReview && pkg.CategoryResolution != nil {
 		if recommender, ok := a.categoryResolver.(categoryRecommender); ok {
@@ -108,7 +142,20 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, siteList, canonical)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
 	pkg.PreviewProduct = BuildPreviewProduct(pkg)
+	log.WithFields(logrus.Fields{
+		"category_id": pkg.CategoryID,
+		"skc_count":   len(pkg.SkcList),
+		"sku_count":   countPackageSKUs(pkg.SkcList),
+	}).Info("built SHEIN preview package")
 	return pkg
+}
+
+func countPackageSKUs(skcs []SKCPackage) int {
+	total := 0
+	for _, skc := range skcs {
+		total += len(skc.SKUs)
+	}
+	return total
 }
 
 func buildSKCs(groups []variantGroup) []SKCPackage {

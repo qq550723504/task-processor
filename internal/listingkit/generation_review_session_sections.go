@@ -122,7 +122,7 @@ func buildGenerationReviewSlots(queue *GenerationWorkQueue, selectedPlatform str
 		}
 		for _, slot := range flattenPlatformRenderPreviewSlots(group) {
 			key := group.Platform + ":" + slot.Slot
-			capabilities := buildRenderPreviewCapabilities(GenerationWorkQueueItem{RenderPreviewLayerTypes: append([]string(nil), slot.LayerTypes...)})
+			capabilities := buildRenderPreviewCapabilitiesForSlot(slot)
 			if idx, ok := slotIndex[key]; ok {
 				out[idx].RenderPreviewAvailable = true
 				if out[idx].AssetID == "" {
@@ -274,8 +274,8 @@ func buildGenerationReviewSections(queue *GenerationWorkQueue, selectedPlatform,
 			continue
 		}
 		for _, slot := range flattenPlatformRenderPreviewSlots(group) {
-			item := GenerationWorkQueueItem{RenderPreviewLayerTypes: append([]string(nil), slot.LayerTypes...)}
-			for _, capability := range buildRenderPreviewCapabilities(item) {
+			capabilities := buildRenderPreviewCapabilitiesForSlot(slot)
+			for _, capability := range capabilities {
 				section := sections[capability]
 				if section == nil {
 					order = append(order, capability)
@@ -309,7 +309,7 @@ func buildGenerationReviewSections(queue *GenerationWorkQueue, selectedPlatform,
 					AssetID:                slot.AssetID,
 					TemplateLabel:          slot.TemplateLabel,
 					RenderPreviewAvailable: true,
-					PreviewCapabilities:    buildRenderPreviewCapabilities(item),
+					PreviewCapabilities:    capabilities,
 				})
 			}
 		}

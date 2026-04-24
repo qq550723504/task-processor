@@ -1,21 +1,20 @@
 package shein
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
-	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/pkg/jsonx"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
-type saleAttributeValueSelection struct {
-	AttributeValueID int      `json:"attribute_value_id"`
-	Reasons          []string `json:"reasons,omitempty"`
-}
+var (
+	saleAttributeLeadingScalePattern = regexp.MustCompile(`(?i)\b(eur|eu|us|uk)\s*([0-9])`)
+	saleAttributeNoisePattern        = regexp.MustCompile(`(?i)\b(eur|eu|us|uk|size)\b`)
+	saleAttributeParenContentPattern = regexp.MustCompile(`[(（][^)）]*[)）]`)
+)
 
 func buildValueAssignments(
 	values []string,
@@ -23,38 +22,74 @@ func buildValueAssignments(
 	templateName string,
 	scope string,
 	index *templateIndex,
+	api AttributeAPI,
+	categoryID int,
+	spuName string,
 	llm openaiclient.ChatCompleter,
-) (map[string]ResolvedSaleAttribute, []string) {
+) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string) {
 	if len(values) == 0 || strings.TrimSpace(templateName) == "" || index == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	attr := index.FindAttribute(templateName)
 	if attr == nil {
-		return nil, []string{fmt.Sprintf("SHEIN 销售属性模板 %q 不存在，无法映射源维度 %q", templateName, sourceDimension)}
+		return nil, nil, []string{fmt.Sprintf("SHEIN 销售属性模板 %q 不存在，无法映射源维度 %q", templateName, sourceDimension)}
 	}
 
 	assignments := make(map[string]ResolvedSaleAttribute, len(values))
+	var relations []sheinattribute.CustomAttributeRelation
+	pendingNotes := make(map[string][]string, len(values))
+	unresolved := make([]string, 0, len(values))
 	var notes []string
 	for _, value := range uniqueNormalizedValues(values) {
-		resolved, matchNotes := matchSaleAttributeValue(attr, sourceDimension, value, scope, llm)
-		notes = append(notes, matchNotes...)
+		resolved, matchNotes := matchSaleAttributeValueDeterministic(attr, sourceDimension, value, scope)
 		if resolved.AttributeID <= 0 || resolved.AttributeValueID == nil {
+			if len(matchNotes) > 0 {
+				pendingNotes[normalizeText(value)] = append([]string(nil), matchNotes...)
+			}
+			unresolved = append(unresolved, value)
 			continue
 		}
+		notes = append(notes, matchNotes...)
 		assignments[normalizeText(value)] = resolved
 	}
-	if len(assignments) == 0 {
-		return nil, dedupeStrings(notes)
+	if len(unresolved) > 0 && llm != nil {
+		llmAssignments, llmNotes := matchSaleAttributeValuesWithLLM(*attr, sourceDimension, unresolved, scope, llm)
+		notes = append(notes, llmNotes...)
+		for key, resolved := range llmAssignments {
+			assignments[key] = resolved
+			delete(pendingNotes, key)
+		}
 	}
-	return assignments, dedupeStrings(notes)
+	if len(unresolved) > 0 {
+		stillUnresolved := make([]string, 0, len(unresolved))
+		for _, value := range unresolved {
+			if _, ok := assignments[normalizeText(value)]; ok {
+				continue
+			}
+			stillUnresolved = append(stillUnresolved, value)
+		}
+		customAssignments, customRelations, customNotes := resolveCustomSaleAttributeValues(*attr, sourceDimension, stillUnresolved, scope, api, categoryID, spuName)
+		notes = append(notes, customNotes...)
+		relations = append(relations, customRelations...)
+		for key, resolved := range customAssignments {
+			assignments[key] = resolved
+			delete(pendingNotes, key)
+		}
+	}
+	for _, matchNotes := range pendingNotes {
+		notes = append(notes, matchNotes...)
+	}
+	if len(assignments) == 0 {
+		return nil, dedupeCustomAttributeRelations(relations), dedupeStrings(notes)
+	}
+	return assignments, dedupeCustomAttributeRelations(relations), dedupeStrings(notes)
 }
 
-func matchSaleAttributeValue(
+func matchSaleAttributeValueDeterministic(
 	attr *sheinattribute.AttributeInfo,
 	sourceDimension string,
 	sourceValue string,
 	scope string,
-	llm openaiclient.ChatCompleter,
 ) (ResolvedSaleAttribute, []string) {
 	sourceValue = strings.TrimSpace(sourceValue)
 	if attr == nil || sourceValue == "" {
@@ -65,9 +100,6 @@ func matchSaleAttributeValue(
 	}
 	if resolved, ok := matchSaleAttributeValueNormalized(*attr, sourceValue, scope); ok {
 		return resolved, nil
-	}
-	if resolved, reasons, ok := matchSaleAttributeValueWithLLM(*attr, sourceDimension, sourceValue, scope, llm); ok {
-		return resolved, reasons
 	}
 
 	return ResolvedSaleAttribute{}, []string{
@@ -118,66 +150,164 @@ func matchSaleAttributeValueNormalized(attr sheinattribute.AttributeInfo, source
 			}
 		}
 	}
+	if option, ok := matchSaleAttributeValueByComparableScore(attr, sourceValue); ok {
+		return buildResolvedSaleAttribute(attr, option, sourceValue, scope, "attribute_value_comparable"), true
+	}
 	return ResolvedSaleAttribute{}, false
 }
 
-func matchSaleAttributeValueWithLLM(
-	attr sheinattribute.AttributeInfo,
-	sourceDimension string,
-	sourceValue string,
-	scope string,
-	llm openaiclient.ChatCompleter,
-) (ResolvedSaleAttribute, []string, bool) {
-	if llm == nil || len(attr.AttributeValueInfoList) == 0 {
-		return ResolvedSaleAttribute{}, nil, false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	response, err := llm.Generate(ctx, buildSaleAttributeValueMappingPrompt(attr, sourceDimension, sourceValue))
-	if err != nil {
-		return ResolvedSaleAttribute{}, nil, false
-	}
-	response = jsonx.CleanLLMResponse(response)
-	if strings.TrimSpace(response) == "" {
-		return ResolvedSaleAttribute{}, nil, false
+func matchSaleAttributeValueByComparableScore(attr sheinattribute.AttributeInfo, sourceValue string) (sheinattribute.AttributeValue, bool) {
+	sourceForms := comparableAttributeValueForms(sourceValue)
+	if len(sourceForms) == 0 || len(attr.AttributeValueInfoList) == 0 {
+		return sheinattribute.AttributeValue{}, false
 	}
 
-	var selection saleAttributeValueSelection
-	if err := json.Unmarshal([]byte(response), &selection); err != nil {
-		return ResolvedSaleAttribute{}, nil, false
+	type candidateScore struct {
+		option sheinattribute.AttributeValue
+		score  int
 	}
-	if selection.AttributeValueID <= 0 {
-		return ResolvedSaleAttribute{}, selection.Reasons, false
-	}
+
+	scores := make([]candidateScore, 0, len(attr.AttributeValueInfoList))
 	for _, option := range attr.AttributeValueInfoList {
-		if option.AttributeValueID != selection.AttributeValueID {
+		score := comparableOptionScore(sourceForms, option)
+		if score <= 0 {
 			continue
 		}
-		return buildResolvedSaleAttribute(attr, option, sourceValue, scope, "llm_attribute_value"), selection.Reasons, true
+		scores = append(scores, candidateScore{option: option, score: score})
 	}
-	return ResolvedSaleAttribute{}, selection.Reasons, false
+	if len(scores) == 0 {
+		return sheinattribute.AttributeValue{}, false
+	}
+	sort.SliceStable(scores, func(i, j int) bool {
+		if scores[i].score != scores[j].score {
+			return scores[i].score > scores[j].score
+		}
+		return scores[i].option.AttributeValueID < scores[j].option.AttributeValueID
+	})
+	if scores[0].score < 3 {
+		return sheinattribute.AttributeValue{}, false
+	}
+	if len(scores) > 1 && scores[1].score == scores[0].score {
+		return sheinattribute.AttributeValue{}, false
+	}
+	return scores[0].option, true
 }
 
-func buildSaleAttributeValueMappingPrompt(attr sheinattribute.AttributeInfo, sourceDimension string, sourceValue string) string {
-	var builder strings.Builder
-	builder.WriteString("You map one source sales value to one SHEIN template attribute value.\n")
-	builder.WriteString("Choose exactly one candidate attribute_value_id when there is a safe semantic match.\n")
-	builder.WriteString("If none of the candidates is safe, return attribute_value_id as 0.\n")
-	builder.WriteString("Return JSON only with keys attribute_value_id and reasons.\n\n")
-	builder.WriteString(fmt.Sprintf("Source dimension: %q\n", sourceDimension))
-	builder.WriteString(fmt.Sprintf("Source value: %q\n", sourceValue))
-	builder.WriteString(fmt.Sprintf("SHEIN template attribute: %q\n", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)))
-	builder.WriteString("Candidates:\n")
-	for _, option := range attr.AttributeValueInfoList {
-		builder.WriteString(fmt.Sprintf(
-			"- attribute_value_id=%d value=%q value_en=%q\n",
-			option.AttributeValueID,
-			option.AttributeValue,
-			option.AttributeValueEn,
-		))
+func normalizeSaleAttributeValue(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return ""
 	}
-	return builder.String()
+	value = strings.NewReplacer(
+		"，", ",",
+		"（", "(",
+		"）", ")",
+		"_", " ",
+		"-", " ",
+		"/", " ",
+	).Replace(value)
+	value = saleAttributeLeadingScalePattern.ReplaceAllString(value, `$2`)
+	value = saleAttributeNoisePattern.ReplaceAllString(value, " ")
+	value = trimSaleAttributeCodePrefix(value)
+	value = strings.Join(strings.Fields(value), " ")
+	return value
+}
+
+func comparableAttributeValueForms(value string) []string {
+	rawSegments := comparableAttributeSegments(value)
+	forms := []string{
+		normalizeSaleAttributeValue(value),
+		normalizeText(value),
+		stripComparableSizeAnnotations(value),
+	}
+	for _, segment := range rawSegments {
+		forms = append(forms, normalizeSaleAttributeValue(segment), normalizeText(segment), stripComparableSizeAnnotations(segment))
+	}
+
+	result := make([]string, 0, len(forms))
+	seen := make(map[string]struct{}, len(forms))
+	for _, form := range forms {
+		form = strings.TrimSpace(form)
+		if form == "" {
+			continue
+		}
+		if _, ok := seen[form]; ok {
+			continue
+		}
+		seen[form] = struct{}{}
+		result = append(result, form)
+	}
+	return result
+}
+
+func comparableOptionScore(sourceForms []string, option sheinattribute.AttributeValue) int {
+	best := 0
+	for _, source := range sourceForms {
+		for _, candidate := range comparableAttributeValueForms(firstNonEmpty(option.AttributeValueEn, option.AttributeValue)) {
+			score := compareComparableForm(source, candidate)
+			if score > best {
+				best = score
+			}
+		}
+		for _, candidate := range comparableAttributeValueForms(option.AttributeValue) {
+			score := compareComparableForm(source, candidate)
+			if score > best {
+				best = score
+			}
+		}
+		for _, candidate := range comparableAttributeValueForms(option.AttributeValueEn) {
+			score := compareComparableForm(source, candidate)
+			if score > best {
+				best = score
+			}
+		}
+	}
+	return best
+}
+
+func stripComparableSizeAnnotations(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	value = saleAttributeParenContentPattern.ReplaceAllString(value, " ")
+	value = strings.NewReplacer(
+		"cm", "cm",
+		"厘米", "cm",
+		"*", "x",
+		"×", "x",
+		"x", "x",
+		" ", "",
+	).Replace(strings.ToLower(value))
+	return strings.TrimSpace(value)
+}
+
+func compareComparableForm(source, candidate string) int {
+	source = strings.TrimSpace(source)
+	candidate = strings.TrimSpace(candidate)
+	if source == "" || candidate == "" {
+		return 0
+	}
+	if source == candidate {
+		return 10
+	}
+	if strings.Contains(source, candidate) || strings.Contains(candidate, source) {
+		return 6
+	}
+	sourceTokens := strings.Fields(source)
+	candidateTokens := strings.Fields(candidate)
+	if len(sourceTokens) == 0 || len(candidateTokens) == 0 {
+		return 0
+	}
+	overlap := 0
+	for _, left := range sourceTokens {
+		for _, right := range candidateTokens {
+			if left == right {
+				overlap++
+			}
+		}
+	}
+	return overlap
 }
 
 func buildResolvedSaleAttribute(

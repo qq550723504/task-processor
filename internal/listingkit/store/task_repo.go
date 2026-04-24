@@ -33,6 +33,47 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*listingki
 	return &task, nil
 }
 
+func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, int64, error) {
+	page, pageSize := normalizeTaskListPage(query)
+	db := r.db.WithContext(ctx).Model(&listingkit.Task{})
+	if query != nil && query.Status != "" {
+		db = db.Where("status = ?", query.Status)
+	}
+
+	if query != nil && query.Platform != "" {
+		var all []listingkit.Task
+		if err := db.Order("created_at DESC").Find(&all).Error; err != nil {
+			return nil, 0, err
+		}
+		filtered := make([]listingkit.Task, 0, len(all))
+		for i := range all {
+			if taskHasPlatform(&all[i], query.Platform) {
+				filtered = append(filtered, all[i])
+			}
+		}
+		total := int64(len(filtered))
+		start := (page - 1) * pageSize
+		if start >= len(filtered) {
+			return []listingkit.Task{}, total, nil
+		}
+		end := start + pageSize
+		if end > len(filtered) {
+			end = len(filtered)
+		}
+		return filtered[start:end], total, nil
+	}
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var tasks []listingkit.Task
+	if err := db.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error; err != nil {
+		return nil, 0, err
+	}
+	return tasks, total, nil
+}
+
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
 	result := r.db.WithContext(ctx).
 		Model(&listingkit.Task{}).

@@ -7,6 +7,10 @@ import (
 )
 
 func shouldAcceptSuggestedCategory(canonical *productenrich.CanonicalProduct, current *Package, suggested *CategorySuggestion) bool {
+	return shouldAcceptSuggestedCategoryWithSemanticVerifier(canonical, current, suggested, nil)
+}
+
+func shouldAcceptSuggestedCategoryWithSemanticVerifier(canonical *productenrich.CanonicalProduct, current *Package, suggested *CategorySuggestion, semanticVerifier categorySemanticVerifier) bool {
 	if suggested == nil || suggested.CategoryID <= 0 {
 		return false
 	}
@@ -19,24 +23,30 @@ func shouldAcceptSuggestedCategory(canonical *productenrich.CanonicalProduct, cu
 
 	currentPath := currentCategoryPath(canonical, current)
 	productTokens := productSignalTokens(canonical, current)
-	productFamilies := familyLabelsForTokens(productTokens)
-	suggestedTokens := normalizedCategoryTokens(suggested.MatchedPath)
-	suggestedFamilies := familyLabelsForTokens(suggestedTokens)
 
 	if len(currentPath) > 0 && sharedPathTokenCount(currentPath, suggested.MatchedPath) >= 2 {
 		return true
 	}
 
-	if likelyProductFamilyConflict(currentPath, suggested.MatchedPath) {
-		return false
+	if semanticVerifier != nil {
+		validation := semanticVerifier.ValidateProductCategory(canonical, current, suggested.MatchedPath)
+		switch strings.ToLower(strings.TrimSpace(validationVerdict(validation))) {
+		case "incompatible":
+			return false
+		case "compatible":
+			return true
+		}
 	}
 
-	if likelyTokenFamilyConflict(productFamilies, suggestedFamilies) {
-		return false
-	}
-
-	fit := evaluateSuggestedCategoryFit(currentPath, productTokens, productFamilies, suggested.MatchedPath)
+	fit := evaluateSuggestedCategoryFit(currentPath, productTokens, suggested.MatchedPath)
 	return fit.Score >= 3
+}
+
+func validationVerdict(validation *CategorySemanticValidation) string {
+	if validation == nil {
+		return ""
+	}
+	return validation.Verdict
 }
 
 func currentCategoryPath(canonical *productenrich.CanonicalProduct, current *Package) []string {
@@ -71,52 +81,6 @@ func sharedPathTokenCount(a, b []string) int {
 		}
 	}
 	return count
-}
-
-func likelyProductFamilyConflict(currentPath, suggestedPath []string) bool {
-	currentTokens := normalizedCategoryTokens(currentPath)
-	suggestedTokens := normalizedCategoryTokens(suggestedPath)
-
-	if intersectsAny(currentTokens, []string{"camping", "outdoor", "furniture", "chair", "table", "露营", "户外", "家具", "椅", "桌"}) &&
-		intersectsAny(suggestedTokens, []string{"clothing", "apparel", "dress", "costume", "lolita", "服装", "服饰", "裙", "洛丽塔"}) {
-		return true
-	}
-
-	if intersectsAny(currentTokens, []string{"kitchen", "cup", "bottle", "drinkware", "厨具", "杯", "水壶"}) &&
-		intersectsAny(suggestedTokens, []string{"phone", "electronics", "mobile", "手机", "电子"}) {
-		return true
-	}
-
-	return false
-}
-
-func likelyTokenFamilyConflict(productFamilies, suggestedFamilies []string) bool {
-	if len(productFamilies) == 0 || len(suggestedFamilies) == 0 {
-		return false
-	}
-	if sharedFamilyLabelCount(productFamilies, suggestedFamilies) > 0 {
-		return false
-	}
-
-	conflicts := map[string][]string{
-		"outdoor_furniture": {"apparel", "electronics", "footwear"},
-		"drinkware":         {"apparel", "electronics", "footwear"},
-		"apparel":           {"outdoor_furniture", "drinkware", "electronics"},
-		"electronics":       {"drinkware", "apparel", "footwear"},
-		"footwear":          {"drinkware", "electronics", "outdoor_furniture"},
-	}
-
-	for _, family := range productFamilies {
-		for _, conflict := range conflicts[family] {
-			for _, suggestedFamily := range suggestedFamilies {
-				if suggestedFamily == conflict {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
 }
 
 func normalizedCategoryTokens(path []string) []string {

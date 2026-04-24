@@ -96,7 +96,7 @@ func (s *service) RetryTaskGenerationTasks(ctx context.Context, taskID string, r
 	if err != nil {
 		return nil, err
 	}
-	selectedTasks, err := selectGenerationTasksForRetry(existingTasks, task.Result, req)
+	selectedTasks, err := s.buildRetryGenerationTaskSelection(ctx, task, inventory, existingTasks, req)
 	if err != nil {
 		return nil, err
 	}
