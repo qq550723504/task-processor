@@ -61,5 +61,10 @@ logs
 .update-marker
 .gocache/
 tmp
+.tmp/
 .playwright-cli/
 .tools/
+
+# Local SDS/SHEIN integration state and credentials
+data/sds/
+config/*local*.yaml
