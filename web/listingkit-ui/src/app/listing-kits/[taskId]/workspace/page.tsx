@@ -1,4 +1,4 @@
-import { WorkspaceScreen } from "@/components/listingkit/workspace-screen";
+import { WorkspaceScreen } from "@/components/listingkit/workspace/workspace-screen";
 
 export default async function WorkspacePage({
   params,

@@ -32,6 +32,7 @@ import (
 	productimagestore "task-processor/internal/productimage/store"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsclient "task-processor/internal/sds/client"
+	sdstemplate "task-processor/internal/sds/template"
 	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/taskrpcapi"
 )
@@ -96,17 +97,29 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		return nil, err
 	}
 
-	server := buildHTTPServer(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, taskRPCHandler)
+	sdsCatalogHandler := buildSDSCatalogHandler(logger)
+
+	server := buildHTTPServer(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, taskRPCHandler, sdsCatalogHandler)
 	return &appBootstrap{
 		productHandler:       productModule.handler,
 		imageHandler:         imageModule.handler,
 		amazonListingHandler: amazonListingModule.handler,
 		listingKitHandler:    listingKitModule.handler,
+		sdsCatalogHandler:    sdsCatalogHandler,
 		taskRPCHandler:       taskRPCHandler,
 		server:               server,
 		pools:                []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool, listingKitModule.pool},
 		closers:              deps.closers,
 	}, nil
+}
+
+func buildSDSCatalogHandler(logger *logrus.Logger) sdsCatalogRouteHandler {
+	sdsHTTPClient, err := sdsclient.New(sdsclient.DefaultConfig())
+	if err != nil {
+		logger.WithError(err).Warn("failed to initialize SDS catalog client")
+		return newSDSCatalogHandler(nil)
+	}
+	return newSDSCatalogHandler(sdstemplate.NewService(sdsHTTPClient))
 }
 
 func BuildHandlers(logger *logrus.Logger, options Options) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {

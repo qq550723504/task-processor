@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 
-import { TaskListPage } from "@/components/listingkit/task-list-page";
+import { TaskListPage } from "@/components/listingkit/tasks/task-list-page";
 
 export default function ListingKitTasksPage() {
   return (

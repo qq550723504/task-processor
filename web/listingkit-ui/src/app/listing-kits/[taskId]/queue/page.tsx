@@ -1,4 +1,4 @@
-import { QueueScreen } from "@/components/listingkit/queue-screen";
+import { QueueScreen } from "@/components/listingkit/queue/queue-screen";
 
 export default async function QueuePage({
   params,

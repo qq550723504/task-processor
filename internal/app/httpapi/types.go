@@ -48,6 +48,7 @@ type appBootstrap struct {
 	imageHandler         productimage.Handler
 	amazonListingHandler amazonlisting.Handler
 	listingKitHandler    listingkit.Handler
+	sdsCatalogHandler    sdsCatalogRouteHandler
 	taskRPCHandler       taskrpcapi.Handler
 	server               *http.Server
 	pools                []worker.WorkerPool
@@ -115,6 +116,13 @@ type listingKitRouteHandler interface {
 	ValidateTaskRevision(c *gin.Context)
 	SubmitTask(c *gin.Context)
 	ClearSheinResolutionCache(c *gin.Context)
+}
+
+type sdsCatalogRouteHandler interface {
+	ListSDSProducts(c *gin.Context)
+	GetSDSProduct(c *gin.Context)
+	ListSDSCategories(c *gin.Context)
+	ListSDSShipmentAreas(c *gin.Context)
 }
 
 type taskRPCRouteHandler interface {

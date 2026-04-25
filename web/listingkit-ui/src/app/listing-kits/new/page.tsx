@@ -1,4 +1,4 @@
-import { TaskCreatePage } from "@/components/listingkit/task-create-page";
+import { TaskCreatePage } from "@/components/listingkit/tasks/task-create-page";
 
 export default async function ListingKitNewTaskPage({
   searchParams,

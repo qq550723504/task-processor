@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { shouldPollTaskResult } from "@/components/listingkit/task-status-query";
+import { shouldPollTaskResult } from "@/components/listingkit/tasks/task-status-query";
 import { getListingKitTaskResult } from "@/lib/api/task-result";
 import { listingKitKeys } from "@/lib/query/keys";
 

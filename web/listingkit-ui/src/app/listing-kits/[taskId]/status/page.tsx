@@ -3,7 +3,7 @@
 import { use } from "react";
 import { LoaderCircle } from "lucide-react";
 
-import { TaskStatusScreen } from "@/components/listingkit/task-status-screen";
+import { TaskStatusScreen } from "@/components/listingkit/tasks/task-status-screen";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
 

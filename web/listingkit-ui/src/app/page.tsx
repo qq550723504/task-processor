@@ -1,4 +1,4 @@
-import { TaskLauncher } from "@/components/listingkit/task-launcher";
+import { TaskLauncher } from "@/components/listingkit/tasks/task-launcher";
 
 export default function Home() {
   return (

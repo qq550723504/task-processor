@@ -1,44 +1,24 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+const DEFAULT_SERVICE_API_BASE = "http://localhost:8085/api/v1";
 
-const SDS_API_BASE = "https://mapi.sdspod.com";
-
-type AuthState = {
-  accessToken?: string;
-};
-
-function resolveRepoRoot() {
-  return path.resolve(process.cwd(), "..", "..");
-}
-
-async function loadAuthState() {
-  const authFile = path.join(resolveRepoRoot(), "data", "sds", "auth_state.json");
-  const raw = await readFile(authFile, "utf8");
-  return JSON.parse(raw) as AuthState;
-}
-
-export async function createSDSHeaders() {
-  const auth = await loadAuthState();
-  if (!auth.accessToken) {
-    throw new Error("SDS access token is missing");
+function buildSDSAPIBase() {
+  if (process.env.SDS_API_BASE) {
+    return process.env.SDS_API_BASE;
   }
-
-  return new Headers({
-    Accept: "application/json",
-    "access-token": auth.accessToken,
-  });
+  const serviceBase = process.env.LISTINGKIT_SERVICE_API_BASE ?? DEFAULT_SERVICE_API_BASE;
+  return `${serviceBase.replace(/\/+$/, "")}/sds`;
 }
 
 export function buildSDSURL(pathname: string, query?: URLSearchParams) {
-  const normalized = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  const normalizedBase = buildSDSAPIBase().replace(/\/+$/, "");
+  const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
   const suffix = query && query.toString() ? `?${query.toString()}` : "";
-  return `${SDS_API_BASE}${normalized}${suffix}`;
+  return `${normalizedBase}${normalizedPath}${suffix}`;
 }
 
 export async function fetchSDSJSON<T>(pathname: string, query?: URLSearchParams) {
   const response = await fetch(buildSDSURL(pathname, query), {
     method: "GET",
-    headers: await createSDSHeaders(),
+    headers: { Accept: "application/json" },
     cache: "no-store",
   });
 
@@ -46,7 +26,11 @@ export async function fetchSDSJSON<T>(pathname: string, query?: URLSearchParams)
   const payload = text ? (JSON.parse(text) as unknown) : undefined;
 
   if (!response.ok) {
-    throw new Error(`SDS request failed: ${response.status}`);
+    const message =
+      payload && typeof payload === "object" && "message" in payload
+        ? String((payload as { message?: unknown }).message)
+        : `SDS request failed: ${response.status}`;
+    throw new Error(message);
   }
 
   return payload as T;

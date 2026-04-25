@@ -1,4 +1,4 @@
-import { SheinStudioBatchDetail } from "@/components/listingkit/shein-studio-batch-detail";
+import { SheinStudioBatchDetail } from "@/components/listingkit/shein-studio/shein-studio-batch-detail";
 
 export default async function ListingKitSheinBatchPage({
   params,

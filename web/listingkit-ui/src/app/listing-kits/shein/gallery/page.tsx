@@ -1,4 +1,4 @@
-import { SheinStyleGalleryPage } from "@/components/listingkit/shein-style-gallery-page";
+import { SheinStyleGalleryPage } from "@/components/listingkit/shein-studio/shein-style-gallery-page";
 import { buildSheinStyleGallery } from "@/lib/server/shein-style-gallery";
 
 export const dynamic = "force-dynamic";

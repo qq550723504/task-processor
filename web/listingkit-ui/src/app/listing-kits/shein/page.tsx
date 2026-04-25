@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import { SDSProductBrowser } from "@/components/listingkit/sds-product-browser";
-import { SheinStudioWorkbenchSlot } from "@/components/listingkit/shein-studio-workbench-slot";
+import { SDSProductBrowser } from "@/components/listingkit/sds/sds-product-browser";
+import { SheinStudioWorkbenchSlot } from "@/components/listingkit/shein-studio/shein-studio-workbench-slot";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
 function parseOptionalNumber(value?: string) {

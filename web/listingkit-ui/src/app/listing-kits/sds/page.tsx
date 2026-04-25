@@ -1,5 +1,5 @@
-import { SDSProductBrowser } from "@/components/listingkit/sds-product-browser";
-import { TaskCreateForm } from "@/components/listingkit/task-create-form";
+import { SDSProductBrowser } from "@/components/listingkit/sds/sds-product-browser";
+import { TaskCreateForm } from "@/components/listingkit/tasks/task-create-form";
 
 export default async function ListingKitSDSPage({
   searchParams,
