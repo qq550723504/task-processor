@@ -18,7 +18,7 @@ import type {
 
 const STORAGE_DIR = path.join(process.cwd(), ".data");
 const STORAGE_PATH = path.join(STORAGE_DIR, "shein-studio-storage.json");
-let writeQueue: Promise<void> = Promise.resolve();
+let storageQueue: Promise<unknown> = Promise.resolve();
 
 type SaveDraftInput = {
   prompt: string;
@@ -41,18 +41,31 @@ async function ensureStorageDir() {
 async function writeStorage(data: SheinStudioStorageData) {
   const payload = JSON.stringify(data, null, 2);
 
-  writeQueue = writeQueue
+  await ensureStorageDir();
+  const tempPath = `${STORAGE_PATH}.${process.pid}.${Date.now()}.${Math.random()
+    .toString(16)
+    .slice(2)}.tmp`;
+  await writeFile(tempPath, payload, "utf8");
+  await rename(tempPath, STORAGE_PATH);
+}
+
+function updateStorage<T>(
+  mutate: (storage: SheinStudioStorageData) => Promise<{ next: SheinStudioStorageData; result: T }>,
+) {
+  const operation = storageQueue
     .catch(() => undefined)
     .then(async () => {
-      await ensureStorageDir();
-      const tempPath = `${STORAGE_PATH}.${process.pid}.${Date.now()}.${Math.random()
-        .toString(16)
-        .slice(2)}.tmp`;
-      await writeFile(tempPath, payload, "utf8");
-      await rename(tempPath, STORAGE_PATH);
+      const storage = await readSheinStudioStorage();
+      const { next, result } = await mutate(storage);
+      await writeStorage(next);
+      return result;
     });
 
-  await writeQueue;
+  storageQueue = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  return operation;
 }
 
 export async function readSheinStudioStorage() {
@@ -83,26 +96,27 @@ export async function getSheinStudioDraft(selection?: SDSProductVariantSelection
 }
 
 export async function saveSheinStudioDraft(input: SaveDraftInput) {
-  const storage = await readSheinStudioStorage();
-  const draft = normalizeDraft({
-    prompt: input.prompt,
-    styleCount: input.styleCount,
-    sheinStoreId: input.sheinStoreId,
-    selectionVariantId: input.selection?.variantId,
-    selection: buildSelectionSummary(input.selection),
-    designs: input.designs,
-    selectedIds: input.selectedIds,
-    createdTasks: input.createdTasks,
-    updatedAt: new Date().toISOString(),
+  return updateStorage(async (storage) => {
+    const draft = normalizeDraft({
+      prompt: input.prompt,
+      styleCount: input.styleCount,
+      sheinStoreId: input.sheinStoreId,
+      selectionVariantId: input.selection?.variantId,
+      selection: buildSelectionSummary(input.selection),
+      designs: input.designs,
+      selectedIds: input.selectedIds,
+      createdTasks: input.createdTasks,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return {
+      next: {
+        ...storage,
+        draft,
+      },
+      result: draft,
+    };
   });
-
-  const next = {
-    ...storage,
-    draft,
-  } satisfies SheinStudioStorageData;
-
-  await writeStorage(next);
-  return draft;
 }
 
 export async function listSheinStudioBatches() {
@@ -116,42 +130,48 @@ export async function getSheinStudioBatch(batchId: string) {
 }
 
 export async function saveSheinStudioBatch(input: SaveBatchInput) {
-  const storage = await readSheinStudioStorage();
-  const batch = normalizeBatch({
-    id: input.id ?? crypto.randomUUID(),
-    name: deriveBatchName(input.prompt),
-    prompt: input.prompt,
-    styleCount: input.styleCount,
-    sheinStoreId: input.sheinStoreId,
-    selectionVariantId: input.selection?.variantId,
-    selection: buildSelectionSummary(input.selection),
-    designs: input.designs,
-    selectedIds: input.selectedIds,
-    createdTasks: input.createdTasks,
-    updatedAt: new Date().toISOString(),
+  return updateStorage(async (storage) => {
+    const batch = normalizeBatch({
+      id: input.id ?? crypto.randomUUID(),
+      name: deriveBatchName(input.prompt),
+      prompt: input.prompt,
+      styleCount: input.styleCount,
+      sheinStoreId: input.sheinStoreId,
+      selectionVariantId: input.selection?.variantId,
+      selection: buildSelectionSummary(input.selection),
+      designs: input.designs,
+      selectedIds: input.selectedIds,
+      createdTasks: input.createdTasks,
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (!batch) {
+      return { next: storage, result: null };
+    }
+
+    const nextBatches = [batch, ...storage.batches.filter((item) => item.id !== batch.id)].slice(
+      0,
+      MAX_SHEIN_STUDIO_BATCHES,
+    );
+
+    return {
+      next: {
+        ...storage,
+        batches: nextBatches,
+      },
+      result: batch,
+    };
   });
-
-  if (!batch) {
-    return null;
-  }
-
-  const nextBatches = [batch, ...storage.batches.filter((item) => item.id !== batch.id)].slice(
-    0,
-    MAX_SHEIN_STUDIO_BATCHES,
-  );
-
-  await writeStorage({
-    ...storage,
-    batches: nextBatches,
-  });
-
-  return batch;
 }
 
 export async function deleteSheinStudioBatch(batchId: string) {
-  const storage = await readSheinStudioStorage();
-  await writeStorage({
-    ...storage,
-    batches: storage.batches.filter((item) => item.id !== batchId),
+  await updateStorage(async (storage) => {
+    return {
+      next: {
+        ...storage,
+        batches: storage.batches.filter((item) => item.id !== batchId),
+      },
+      result: undefined,
+    };
   });
 }

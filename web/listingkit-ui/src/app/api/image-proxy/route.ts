@@ -1,8 +1,127 @@
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+const MAX_REDIRECTS = 3;
+const DEFAULT_ALLOWED_HOSTS = [
+  "cdn.sdspod.com",
+  "e.sdspod.com",
+  "img.sdspod.com",
+  "sdspod.com",
+];
+const REQUEST_HEADERS = {
+  Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+  Referer: "https://www.sdsdiy.com/",
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147 Safari/537.36",
+};
+
+function allowedHosts() {
+  const configured = process.env.IMAGE_PROXY_ALLOWED_HOSTS?.split(",") ?? [];
+  return [...DEFAULT_ALLOWED_HOSTS, ...configured]
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function hostMatches(hostname: string, allowedHost: string) {
+  return hostname === allowedHost || hostname.endsWith(`.${allowedHost}`);
+}
+
+function isPrivateIPv4(address: string) {
+  const parts = address.split(".").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return true;
+  }
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function isPrivateIPv6(address: string) {
+  const normalized = address.toLowerCase();
+  return (
+    normalized === "::1" ||
+    normalized === "::" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    normalized.startsWith("fe80:") ||
+    normalized.startsWith("::ffff:127.") ||
+    normalized.startsWith("::ffff:10.") ||
+    normalized.startsWith("::ffff:192.168.")
+  );
+}
+
+function isBlockedAddress(address: string) {
+  const family = isIP(address);
+  if (family === 4) {
+    return isPrivateIPv4(address);
+  }
+  if (family === 6) {
+    return isPrivateIPv6(address);
+  }
+  return true;
+}
+
+async function validateImageURL(url: URL) {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return "unsupported_protocol";
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (!allowedHosts().some((allowedHost) => hostMatches(hostname, allowedHost))) {
+    return "host_not_allowed";
+  }
+
+  const addresses = await lookup(hostname, { all: true, verbatim: true });
+  if (addresses.length === 0 || addresses.some((address) => isBlockedAddress(address.address))) {
+    return "host_not_allowed";
+  }
+
+  return "";
+}
+
+async function fetchValidatedImage(url: URL) {
+  let current = url;
+  for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
+    const validationError = await validateImageURL(current);
+    if (validationError) {
+      return { error: validationError as string, response: null };
+    }
+
+    const response = await fetch(current.toString(), {
+      headers: REQUEST_HEADERS,
+      cache: "no-store",
+      redirect: "manual",
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) {
+        return { error: "invalid_redirect", response: null };
+      }
+      current = new URL(location, current);
+      continue;
+    }
+
+    return { error: "", response };
+  }
+
+  return { error: "too_many_redirects", response: null };
+}
 
 export async function GET(request: NextRequest) {
   const rawUrl = request.nextUrl.searchParams.get("url")?.trim();
@@ -23,22 +142,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
+  const { error: proxyError, response: upstream } = await fetchValidatedImage(url);
+  if (proxyError || !upstream) {
     return NextResponse.json(
-      { error: "unsupported_protocol", message: "Only http and https images are supported." },
+      { error: proxyError || "image_fetch_failed", message: "Image URL is not allowed." },
       { status: 400 },
     );
   }
-
-  const upstream = await fetch(url.toString(), {
-    headers: {
-      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      Referer: "https://www.sdsdiy.com/",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147 Safari/537.36",
-    },
-    cache: "no-store",
-  });
 
   if (!upstream.ok) {
     return NextResponse.json(
