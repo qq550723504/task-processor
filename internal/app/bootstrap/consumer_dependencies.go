@@ -1,26 +1,29 @@
 package bootstrap
 
 import (
+	"task-processor/internal/app/bootstrap/fetchers"
+	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
+	"task-processor/internal/platforms"
 	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
 
-func BuildConsumerDependencies() consumer.PlatformRegistryDependencies {
-	return consumer.PlatformRegistryDependencies{
-		ProcessorCreators: BuildConsumerProcessorCreators(),
+func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies {
+	return consumer.PlatformProcessorRegistryDependencies{
+		PlatformModules: platforms.All(),
 		SharedResourceProvider: func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*consumer.SharedResources, error) {
-			resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{
+			resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{
 				NeedAmazonCrawler: needsAmazon,
 			})
 			if err != nil {
 				return nil, err
 			}
 
-			productFetcher, err := buildSharedProductFetcher(
+			productFetcher, err := fetchers.BuildSharedProductFetcher(
 				cfg,
 				resources.ManagementClient.GetRawJsonDataAdapter(),
 				resources.AmazonCrawler,
@@ -45,7 +48,7 @@ func BuildCrawlerDependencies() consumer.CrawlerRegistryDependencies {
 			return amazon.CreateProcessor(cfg, logger)
 		},
 		ProductFetcherProvider: func(cfg *config.Config, logger *logrus.Logger, crawlSource *amazon.AmazonProcessor) (*product.ProductFetcher, error) {
-			resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{})
+			resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{})
 			if err != nil {
 				return nil, err
 			}

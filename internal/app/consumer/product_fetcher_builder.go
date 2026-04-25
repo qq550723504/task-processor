@@ -11,7 +11,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 )
 
-func buildPlatformProductFetcher(
+func BuildPlatformProductFetcher(
 	cfg *config.Config,
 	platform string,
 	managementClient *management.ClientManager,
@@ -23,7 +23,7 @@ func buildPlatformProductFetcher(
 	}
 
 	factory := appfetcher.NewFetcherFactory()
-	fetcherType, err := resolvePlatformFetcherType(cfg, platform)
+	fetcherType, err := ResolvePlatformFetcherType(cfg, platform)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func buildPlatformProductFetcher(
 	return factory.CreateFetcher(fetcherType, managementClient.GetRawJsonDataAdapter(), &cfg.Amazon, crawlSource, rabbitmqClient)
 }
 
-func resolvePlatformFetcherType(cfg *config.Config, platform string) (appfetcher.FetcherType, error) {
+func ResolvePlatformFetcherType(cfg *config.Config, platform string) (appfetcher.FetcherType, error) {
 	if cfg == nil {
 		return "", nil
 	}
@@ -62,7 +62,7 @@ func resolvePlatformFetcherType(cfg *config.Config, platform string) (appfetcher
 	}
 }
 
-func platformUsesLocalFetcher(cfg *config.Config, platform string) bool {
-	fetcherType, err := resolvePlatformFetcherType(cfg, platform)
+func PlatformUsesLocalFetcher(cfg *config.Config, platform string) bool {
+	fetcherType, err := ResolvePlatformFetcherType(cfg, platform)
 	return err == nil && fetcherType == appfetcher.LocalFetcher
 }

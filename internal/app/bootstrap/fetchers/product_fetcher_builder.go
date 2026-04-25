@@ -1,4 +1,4 @@
-package bootstrap
+package fetchers
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"task-processor/internal/product"
 )
 
-func buildPlatformProductFetcher(
+func BuildPlatformProductFetcher(
 	cfg *config.Config,
 	platform string,
 	rawJsonDataClient product.RawJsonDataClient,
@@ -19,7 +19,7 @@ func buildPlatformProductFetcher(
 	rabbitmqClient *rabbitmq.Client,
 ) (appfetcher.ProductFetcher, error) {
 	factory := appfetcher.NewFetcherFactory()
-	fetcherType, err := resolvePlatformFetcherType(cfg, platform)
+	fetcherType, err := ResolvePlatformFetcherType(cfg, platform)
 	if err != nil {
 		return nil, err
 	}
@@ -31,16 +31,16 @@ func buildPlatformProductFetcher(
 	return factory.CreateFetcher(fetcherType, rawJsonDataClient, &cfg.Amazon, crawlSource, rabbitmqClient)
 }
 
-func buildSharedProductFetcher(
+func BuildSharedProductFetcher(
 	cfg *config.Config,
 	rawJsonDataClient product.RawJsonDataClient,
 	crawlSource *amazon.AmazonProcessor,
 	rabbitmqClient *rabbitmq.Client,
 ) (appfetcher.ProductFetcher, error) {
-	return buildPlatformProductFetcher(cfg, "", rawJsonDataClient, crawlSource, rabbitmqClient)
+	return BuildPlatformProductFetcher(cfg, "", rawJsonDataClient, crawlSource, rabbitmqClient)
 }
 
-func resolvePlatformFetcherType(cfg *config.Config, platform string) (appfetcher.FetcherType, error) {
+func ResolvePlatformFetcherType(cfg *config.Config, platform string) (appfetcher.FetcherType, error) {
 	if cfg == nil {
 		return "", nil
 	}
@@ -67,7 +67,7 @@ func resolvePlatformFetcherType(cfg *config.Config, platform string) (appfetcher
 	}
 }
 
-func platformUsesLocalFetcher(cfg *config.Config, platform string) bool {
-	fetcherType, err := resolvePlatformFetcherType(cfg, platform)
+func PlatformUsesLocalFetcher(cfg *config.Config, platform string) bool {
+	fetcherType, err := ResolvePlatformFetcherType(cfg, platform)
 	return err == nil && fetcherType == appfetcher.LocalFetcher
 }
