@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/bootstrap/fetchers"
+	bootstrapprocessors "task-processor/internal/app/bootstrap/processors"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -15,7 +17,7 @@ func buildTemuProcessor(svc *appServices, logger *logrus.Logger) (*temu.TemuProc
 	if err != nil {
 		return nil, fmt.Errorf("build TEMU processor dependencies: %w", err)
 	}
-	proc, err := createTemuProcessor(context.Background(), svc.cfg, logger, deps)
+	proc, err := bootstrapprocessors.CreateTemuProcessor(context.Background(), svc.cfg, logger, deps)
 	if err != nil {
 		return nil, fmt.Errorf("build TEMU processor: %w", err)
 	}
@@ -27,7 +29,7 @@ func buildSheinProcessor(svc *appServices, logger *logrus.Logger) (*pipeline.She
 	if err != nil {
 		return nil, fmt.Errorf("build SHEIN processor dependencies: %w", err)
 	}
-	proc, err := createSheinProcessor(context.Background(), svc.cfg, logger, deps)
+	proc, err := bootstrapprocessors.CreateSheinProcessor(context.Background(), svc.cfg, logger, deps)
 	if err != nil {
 		return nil, fmt.Errorf("build SHEIN processor: %w", err)
 	}
@@ -35,7 +37,7 @@ func buildSheinProcessor(svc *appServices, logger *logrus.Logger) (*pipeline.She
 }
 
 func buildTemuProcessorDependencies(svc *appServices) (temu.Dependencies, error) {
-	productFetcher, err := buildPlatformProductFetcher(
+	productFetcher, err := fetchers.BuildPlatformProductFetcher(
 		svc.cfg,
 		"temu",
 		svc.managementClient.GetRawJsonDataAdapter(),
@@ -54,7 +56,7 @@ func buildTemuProcessorDependencies(svc *appServices) (temu.Dependencies, error)
 }
 
 func buildSheinProcessorDependencies(svc *appServices) (pipeline.Dependencies, error) {
-	productFetcher, err := buildPlatformProductFetcher(
+	productFetcher, err := fetchers.BuildPlatformProductFetcher(
 		svc.cfg,
 		"shein",
 		svc.managementClient.GetRawJsonDataAdapter(),

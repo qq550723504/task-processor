@@ -1,4 +1,4 @@
-package bootstrap
+package fetchers
 
 import (
 	"testing"
@@ -16,15 +16,15 @@ func TestResolvePlatformFetcherType(t *testing.T) {
 	cfg.Platforms.Shein.FetchMode = "local"
 	cfg.Platforms.Temu.FetchMode = "distributed"
 
-	fetcherType, err := resolvePlatformFetcherType(cfg, "shein")
+	fetcherType, err := ResolvePlatformFetcherType(cfg, "shein")
 	require.NoError(t, err)
 	require.Equal(t, appfetcher.LocalFetcher, fetcherType)
 
-	fetcherType, err = resolvePlatformFetcherType(cfg, "temu")
+	fetcherType, err = ResolvePlatformFetcherType(cfg, "temu")
 	require.NoError(t, err)
 	require.Equal(t, appfetcher.DistributedFetcher, fetcherType)
 
-	fetcherType, err = resolvePlatformFetcherType(cfg, "")
+	fetcherType, err = ResolvePlatformFetcherType(cfg, "")
 	require.NoError(t, err)
 	require.Equal(t, appfetcher.FetcherType(""), fetcherType)
 }
@@ -35,6 +35,6 @@ func TestResolvePlatformFetcherTypeRejectsInvalidMode(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	cfg.Platforms.Shein.FetchMode = "invalid"
 
-	_, err := resolvePlatformFetcherType(cfg, "shein")
+	_, err := ResolvePlatformFetcherType(cfg, "shein")
 	require.Error(t, err)
 }

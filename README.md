@@ -109,11 +109,13 @@
 启动示例：
 
 ```bash
-go run ./cmd/shein-listing -app-config config/config-dev.yaml
-go run ./cmd/temu-listing -app-config config/config-dev.yaml
-go run ./cmd/amazon-listing -app-config config/config-dev.yaml
+go run ./cmd/shein-listing -config config/config-dev.yaml
+go run ./cmd/temu-listing -config config/config-dev.yaml
+go run ./cmd/amazon-listing -config config/config-dev.yaml
 go run ./cmd/amazon-crawler-api -config config/config-amazon-crawler-api.yaml
 ```
+
+`shein-listing` / `temu-listing` / `amazon-listing` 仍兼容旧参数 `-app-config`；同时传入时 `-config` 优先生效。
 
 ### 整体业务架构
 
@@ -268,7 +270,8 @@ task-processor/
 │   └── productenrich-api/       # 兼容入口，复用统一 HTTP API 装配
 ├── internal/                    # 私有业务逻辑（Go 编译器强制不对外暴露）
 │   ├── app/                     # 应用层：启动、调度、消息、任务编排
-│   │   ├── bootstrap/           # 应用启动与依赖组装
+│   │   ├── runtime/             # 服务启动生命周期（listing/crawler/httpapi）
+│   │   ├── bootstrap/           # 应用启动与依赖组装（resources/fetchers/processors/schedulers）
 │   │   ├── consumer/            # RabbitMQ 服务、处理器注册、节点运行时
 │   │   ├── httpapi/             # 统一 HTTP API 装配（productenrich/productimage/amazonlisting）
 │   │   ├── ports/               # 应用层抽象端口
@@ -288,8 +291,7 @@ task-processor/
 │   │   ├── metrics/             # 任务指标采集
 │   │   └── system/              # 系统初始化
 │   ├── domain/                  # 领域模型与核心业务规则
-│   │   ├── model/               # 通用领域模型（Task、AmazonProduct 等）
-│   │   ├── task/                # 任务领域（Job、去重、消息适配）
+│   │   ├── task/                # 任务规范化模型（source/target platform route）
 │   │   ├── product/             # 商品领域（获取、缓存、校验）
 │   │   ├── message/             # 消息类型定义
 │   │   ├── queue/               # 队列命名规范
@@ -300,7 +302,8 @@ task-processor/
 │   ├── platformbase/            # 平台处理器公共基类与任务类型定义
 │   ├── pricing/                 # 通用成本与利润计算
 │   ├── productenrich/           # 商品信息 AI 增强（标题优化、属性补全）
-│   ├── productimage/            # 商品图片处理流水线（审核、白底图、资产发布）
+│   ├── platforms/               # 平台模块注册（SHEIN/TEMU/Amazon）
+│   ├── productimage/            # 商品图片处理流水线（domain/providers/pipeline/store/api）
 │   ├── amazonlisting/           # Amazon Listing 草稿生成、工作台、提交
 │   ├── crawler/                 # 源平台爬虫实现
 │   │   ├── amazon/              # Amazon 爬虫（浏览器+API 双模式）
@@ -375,23 +378,36 @@ task-processor/
 └── examples/                    # 示例代码
 ```
 
+### 重构后边界约定
+
+- `cmd/*-listing` 只保留入口胶水；公共启动逻辑在 `internal/app/runtime/listing`。
+- `internal/app/bootstrap` 只做装配，资源、fetcher、processor、scheduler 分别放在子包里。
+- `internal/app/consumer` 只依赖 `PlatformModule` 接口，不直接 import SHEIN/TEMU/Amazon 实现。
+- 新增平台时优先在 `internal/platforms/{platform}` 增加模块，并加入 `platforms.All()`。
+- RabbitMQ 任务消息先经过 `internal/domain/task.NormalizeTaskMessage`，业务层使用标准化后的 source/target 语义。
+- `productimage` 对外仍保留原包 API，新增领域类型在 `productimage/domain`，provider 接口在 `productimage/providers`。
+
 ### 添加新平台
 
-1. 在 `internal/` 下创建新平台目录（如 `internal/walmart/`）
-2. 实现 `internal/platformbase` 中定义的 `Processor` 接口
-3. 在 `internal/app/bootstrap/platform_modules.go` 中注册平台模块
+1. 在 `internal/platforms/{platform}` 下创建模块目录（如 `internal/platforms/walmart/`）
+2. 实现 `consumer.PlatformModule`，在模块内部装配平台 processor
+3. 在 `internal/platforms/{platform}` 中实现平台模块，并加入 `internal/platforms/modules.go`
 4. 在配置文件中添加平台配置
 
 示例：
 
 ```go
-type Processor struct {
-    *platformbase.BaseFactory
+type Module struct{}
+
+func (Module) Name() string { return "walmart" }
+
+func (Module) Enabled(cfg *config.Config) bool {
+    return cfg.Platforms.Walmart.Enabled
 }
 
-func (p *Processor) ProcessTask(ctx context.Context, task *model.Task) error {
-    // 实现任务处理逻辑
-    return nil
+func (Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntimeContext, registry consumer.ProcessorRegistrar) error {
+    processor := walmart.NewProcessor(ctx, rt.Config, rt.Logger)
+    return registry.RegisterProcessor("walmart", processor)
 }
 ```
 

@@ -16,11 +16,11 @@ func TestResolvePlatformFetcherType(t *testing.T) {
 	cfg.Platforms.Shein.FetchMode = "local"
 	cfg.Platforms.Temu.FetchMode = "remote-api"
 
-	fetcherType, err := resolvePlatformFetcherType(cfg, "shein")
+	fetcherType, err := ResolvePlatformFetcherType(cfg, "shein")
 	require.NoError(t, err)
 	require.Equal(t, appfetcher.LocalFetcher, fetcherType)
 
-	fetcherType, err = resolvePlatformFetcherType(cfg, "temu")
+	fetcherType, err = ResolvePlatformFetcherType(cfg, "temu")
 	require.NoError(t, err)
 	require.Equal(t, appfetcher.RemoteAPIFetcher, fetcherType)
 }

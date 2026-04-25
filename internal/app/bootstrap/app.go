@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/bootstrap/fetchers"
+	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
@@ -128,14 +130,14 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	if err := InitializePrompts(context.Background(), cfg, logger); err != nil {
+	if err := bootstrapresources.InitializePrompts(context.Background(), cfg, logger); err != nil {
 		logger.Warnf("prompt initialization failed, fallback will be used: %v", err)
 	}
 
-	resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{
+	resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{
 		// cmd/task should not initialize the in-process Amazon crawler by default.
 		// Scheduler/processor fetch paths can use remote API or distributed crawl instead.
-		NeedAmazonCrawler: platformUsesLocalFetcher(cfg, "temu") || platformUsesLocalFetcher(cfg, "shein"),
+		NeedAmazonCrawler: fetchers.PlatformUsesLocalFetcher(cfg, "temu") || fetchers.PlatformUsesLocalFetcher(cfg, "shein"),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)
@@ -144,7 +146,7 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 	return buildAppServices(cfg, logger, resources), nil
 }
 
-func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *SharedResources) *appServices {
+func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *bootstrapresources.SharedResources) *appServices {
 	return &appServices{
 		cfg:              cfg,
 		authClient:       resources.AuthClient,
@@ -156,7 +158,7 @@ func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *Shar
 	}
 }
 
-func buildProcessorService(logger *logrus.Logger, resources *SharedResources) runner.ProcessorService {
+func buildProcessorService(logger *logrus.Logger, resources *bootstrapresources.SharedResources) runner.ProcessorService {
 	return runner.NewProcessorServiceWithCreators(
 		logger,
 		resources.ManagementClient,
@@ -166,7 +168,7 @@ func buildProcessorService(logger *logrus.Logger, resources *SharedResources) ru
 	)
 }
 
-func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources *SharedResources) runner.SchedulerService {
+func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources *bootstrapresources.SharedResources) runner.SchedulerService {
 	return runner.NewSchedulerServiceWithDependencies(
 		logger,
 		resources.ManagementClient,

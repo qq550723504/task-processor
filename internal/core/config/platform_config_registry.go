@@ -22,41 +22,41 @@ type PlatformConfigProvider interface {
 	GetDefaultConfig() *PlatformConfig
 }
 
-// PlatformRegistry 平台注册表
+// PlatformConfigRegistry 平台配置注册表
 // 用于管理所有已注册的平台配置提供者
-type PlatformRegistry struct {
+type PlatformConfigRegistry struct {
 	providers map[string]PlatformConfigProvider
 	mu        sync.RWMutex
 }
 
-// 全局平台注册表
-var globalPlatformRegistry = &PlatformRegistry{
+// 全局平台配置注册表
+var globalPlatformConfigRegistry = &PlatformConfigRegistry{
 	providers: make(map[string]PlatformConfigProvider),
 }
 
-// RegisterPlatform 注册平台配置提供者到全局注册表
+// RegisterConfigProvider 注册平台配置提供者到全局配置注册表
 // 通常在 init() 函数中调用
-func RegisterPlatform(provider PlatformConfigProvider) error {
-	return globalPlatformRegistry.Register(provider)
+func RegisterConfigProvider(provider PlatformConfigProvider) error {
+	return globalPlatformConfigRegistry.Register(provider)
 }
 
-// GetPlatform 从全局注册表获取平台配置提供者
-func GetPlatform(name string) (PlatformConfigProvider, error) {
-	return globalPlatformRegistry.Get(name)
+// GetConfigProvider 从全局配置注册表获取平台配置提供者
+func GetConfigProvider(name string) (PlatformConfigProvider, error) {
+	return globalPlatformConfigRegistry.Get(name)
 }
 
-// ListPlatforms 列出所有已注册的平台名称
-func ListPlatforms() []string {
-	return globalPlatformRegistry.List()
+// ListConfigProviders 列出所有已注册的平台配置提供者名称
+func ListConfigProviders() []string {
+	return globalPlatformConfigRegistry.List()
 }
 
-// GetPlatformRegistry 获取全局平台注册表
-func GetPlatformRegistry() *PlatformRegistry {
-	return globalPlatformRegistry
+// GetPlatformConfigRegistry 获取全局平台配置注册表
+func GetPlatformConfigRegistry() *PlatformConfigRegistry {
+	return globalPlatformConfigRegistry
 }
 
 // Register 注册平台配置提供者
-func (r *PlatformRegistry) Register(provider PlatformConfigProvider) error {
+func (r *PlatformConfigRegistry) Register(provider PlatformConfigProvider) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -74,7 +74,7 @@ func (r *PlatformRegistry) Register(provider PlatformConfigProvider) error {
 }
 
 // Get 获取平台配置提供者
-func (r *PlatformRegistry) Get(name string) (PlatformConfigProvider, error) {
+func (r *PlatformConfigRegistry) Get(name string) (PlatformConfigProvider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -87,7 +87,7 @@ func (r *PlatformRegistry) Get(name string) (PlatformConfigProvider, error) {
 }
 
 // List 列出所有已注册的平台名称
-func (r *PlatformRegistry) List() []string {
+func (r *PlatformConfigRegistry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -100,7 +100,7 @@ func (r *PlatformRegistry) List() []string {
 }
 
 // Has 检查平台是否已注册
-func (r *PlatformRegistry) Has(name string) bool {
+func (r *PlatformConfigRegistry) Has(name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -109,7 +109,7 @@ func (r *PlatformRegistry) Has(name string) bool {
 }
 
 // Unregister 注销平台配置提供者
-func (r *PlatformRegistry) Unregister(name string) error {
+func (r *PlatformConfigRegistry) Unregister(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -122,7 +122,7 @@ func (r *PlatformRegistry) Unregister(name string) error {
 }
 
 // Clear 清空所有已注册的平台
-func (r *PlatformRegistry) Clear() {
+func (r *PlatformConfigRegistry) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

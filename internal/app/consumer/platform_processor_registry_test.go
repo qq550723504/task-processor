@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/worker"
 
 	"github.com/sirupsen/logrus"
 )
@@ -15,7 +16,8 @@ func TestRegisterAmazonProcessorSkipsDisabledPlatform(t *testing.T) {
 	logger := logrus.New()
 	sharedResourceCalls := 0
 
-	registry := NewPlatformRegistry(&config.Config{}, logger, "temu", PlatformRegistryDependencies{
+	registry := NewPlatformProcessorRegistry(&config.Config{}, logger, "temu", PlatformProcessorRegistryDependencies{
+		PlatformModules: []PlatformModule{stubPlatformModule{name: "amazon"}},
 		SharedResourceProvider: func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*SharedResources, error) {
 			sharedResourceCalls++
 			return &SharedResources{}, nil
@@ -49,7 +51,8 @@ func TestRegisterAmazonProcessorRegistersEnabledPlatform(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Amazon.Enabled = true
 
-	registry := NewPlatformRegistry(cfg, logger, "amazon", PlatformRegistryDependencies{
+	registry := NewPlatformProcessorRegistry(cfg, logger, "amazon", PlatformProcessorRegistryDependencies{
+		PlatformModules: []PlatformModule{stubPlatformModule{name: "amazon"}},
 		SharedResourceProvider: func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*SharedResources, error) {
 			return &SharedResources{}, nil
 		},
@@ -74,3 +77,35 @@ func TestRegisterAmazonProcessorRegistersEnabledPlatform(t *testing.T) {
 		t.Fatal("expected amazon processor to be registered")
 	}
 }
+
+type stubPlatformModule struct {
+	name string
+}
+
+func (m stubPlatformModule) Name() string {
+	return m.name
+}
+
+func (m stubPlatformModule) Enabled(cfg *config.Config) bool {
+	return true
+}
+
+func (m stubPlatformModule) NeedsAmazon(cfg *config.Config) bool {
+	return false
+}
+
+func (m stubPlatformModule) RegisterConsumer(ctx context.Context, rt PlatformRuntimeContext, registry ProcessorRegistrar) error {
+	return registry.RegisterProcessor(m.name, registryStubProcessor{})
+}
+
+type registryStubProcessor struct{}
+
+func (registryStubProcessor) Start(ctx context.Context) error {
+	return nil
+}
+
+func (registryStubProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
+	return nil
+}
+
+func (registryStubProcessor) Close(ctx context.Context) {}
