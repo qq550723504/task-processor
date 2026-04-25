@@ -78,6 +78,7 @@ func TestMessageAdapter_MessageToTask_CrawlerTaskID(t *testing.T) {
 		Payload: map[string]any{
 			"taskId":         "430604922543791994", // string 格式（正数，掩码后）
 			"sourcePlatform": "amazon",
+			"targetPlatform": "amazon",
 			"region":         "US",
 			"productId":      "B001TEST",
 			"storeId":        float64(2001),
@@ -93,4 +94,54 @@ func TestMessageAdapter_MessageToTask_CrawlerTaskID(t *testing.T) {
 	assert.Equal(t, int64(430604922543791994), task.ID, "Task.ID 应等于 FNV 哈希值（正数）")
 	assert.Equal(t, "B001TEST", task.ProductID)
 	assert.Equal(t, "US", task.Region)
+}
+
+func TestMessageAdapterMessageToTaskUsesLegacyPlatformAtAdapterBoundary(t *testing.T) {
+	adapter := NewMessageAdapter()
+
+	task, err := adapter.MessageToTask(&Message{
+		ID:   "legacy-platform",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":    float64(12345),
+			"platform":  "shein",
+			"productId": "B001TEST",
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "shein", task.Platform)
+	assert.Equal(t, "shein", task.SourcePlatform)
+}
+
+func TestMessageAdapterMessageToTaskRejectsPlatformTargetConflict(t *testing.T) {
+	adapter := NewMessageAdapter()
+
+	_, err := adapter.MessageToTask(&Message{
+		ID:   "conflict",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(12345),
+			"platform":       "shein",
+			"targetPlatform": "temu",
+			"productId":      "B001TEST",
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "conflicts with targetPlatform")
+}
+
+func TestMessageAdapterMessageToTaskRequiresTargetPlatform(t *testing.T) {
+	adapter := NewMessageAdapter()
+
+	_, err := adapter.MessageToTask(&Message{
+		ID:   "missing-target",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(12345),
+			"sourcePlatform": "amazon",
+			"productId":      "B001TEST",
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing target platform")
 }

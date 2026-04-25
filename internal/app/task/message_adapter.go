@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 )
@@ -26,6 +27,7 @@ type TaskMessage struct {
 	TaskID         flexTaskID          `json:"taskId"` // 兼容 JSON string 和 number 两种格式
 	TenantID       int64               `json:"tenantId"`
 	StoreID        int64               `json:"storeId"`
+	Platform       string              `json:"platform"`
 	SourcePlatform string              `json:"sourcePlatform"`
 	TargetPlatform string              `json:"targetPlatform"`
 	Region         string              `json:"region"`
@@ -98,22 +100,22 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 		createTime = taskMsg.CreatedAt.Unix()
 	}
 
-	targetPlatform := taskMsg.TargetPlatform
-	if targetPlatform == "" {
-		targetPlatform = taskMsg.SourcePlatform
-	}
-
-	sourcePlatform := taskMsg.SourcePlatform
-	if sourcePlatform == "" {
-		sourcePlatform = targetPlatform
+	normalizedTask, err := taskdomain.NormalizeTaskMessage(taskdomain.TaskMessage{
+		TaskID:         taskMsg.TaskID.String(),
+		Platform:       taskMsg.Platform,
+		SourcePlatform: taskMsg.SourcePlatform,
+		TargetPlatform: taskMsg.TargetPlatform,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("normalize task message: %w", err)
 	}
 
 	task := &model.Task{
 		ID:             taskMsg.TaskID.Int64(),
 		TenantID:       taskMsg.TenantID,
 		StoreID:        taskMsg.StoreID,
-		Platform:       targetPlatform,
-		SourcePlatform: sourcePlatform,
+		Platform:       string(normalizedTask.Route.Target),
+		SourcePlatform: string(normalizedTask.Route.Source),
 		Region:         taskMsg.Region,
 		CategoryID:     taskMsg.CategoryID,
 		ProductID:      taskMsg.ProductID,
