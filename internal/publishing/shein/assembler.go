@@ -14,6 +14,7 @@ type AssemblerConfig struct {
 	CategoryResolver      CategoryResolver
 	AttributeResolver     AttributeResolver
 	SaleAttributeResolver SaleAttributeResolver
+	PricingPolicy         PricingPolicy
 }
 
 type Assembler interface {
@@ -24,6 +25,7 @@ type assembler struct {
 	categoryResolver      CategoryResolver
 	attributeResolver     AttributeResolver
 	saleAttributeResolver SaleAttributeResolver
+	pricingPolicy         PricingPolicy
 }
 
 func NewAssembler(config AssemblerConfig) Assembler {
@@ -31,6 +33,7 @@ func NewAssembler(config AssemblerConfig) Assembler {
 		categoryResolver:      config.CategoryResolver,
 		attributeResolver:     config.AttributeResolver,
 		saleAttributeResolver: config.SaleAttributeResolver,
+		pricingPolicy:         config.PricingPolicy,
 	}
 }
 
@@ -139,7 +142,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	pkg.SkcList = buildSKCs(groups)
 	supplierCode := firstSupplierCode(pkg.SkcList)
 	pkg.RequestDraft.SupplierCode = supplierCode
-	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, siteList, canonical)
+	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, siteList, canonical, a.pricingPolicy)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
 	pkg.PreviewProduct = BuildPreviewProduct(pkg)
 	log.WithFields(logrus.Fields{
@@ -176,7 +179,7 @@ func buildSKCs(groups []variantGroup) []SKCPackage {
 	return result
 }
 
-func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList []common.Site, canonical *productenrich.CanonicalProduct) []SKCRequestDraft {
+func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList []common.Site, canonical *productenrich.CanonicalProduct, pricingPolicy PricingPolicy) []SKCRequestDraft {
 	if len(groups) == 0 {
 		return nil
 	}
@@ -184,7 +187,7 @@ func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList [
 	for idx, group := range groups {
 		skus := make([]SKUDraft, 0, len(group.skus))
 		for _, variant := range group.skus {
-			skus = append(skus, buildSKUDraft(variant, canonical, common.FirstNonEmpty(variant.Image, group.mainImageURL, images.MainImage), siteList))
+			skus = append(skus, buildSKUDraft(variant, canonical, common.FirstNonEmpty(variant.Image, group.mainImageURL, images.MainImage), siteList, pricingPolicy))
 		}
 		result = append(result, SKCRequestDraft{
 			SkcName:      group.skcName,
@@ -205,7 +208,7 @@ func buildRequestSKCs(groups []variantGroup, images *common.ImageSet, siteList [
 	return result
 }
 
-func buildSKUDraft(variant common.Variant, canonical *productenrich.CanonicalProduct, mainImage string, siteList []common.Site) SKUDraft {
+func buildSKUDraft(variant common.Variant, canonical *productenrich.CanonicalProduct, mainImage string, siteList []common.Site, pricingPolicy PricingPolicy) SKUDraft {
 	draft := SKUDraft{
 		SupplierSKU: variant.SKU,
 		Attributes:  common.CloneMap(variant.Attributes),
@@ -214,11 +217,11 @@ func buildSKUDraft(variant common.Variant, canonical *productenrich.CanonicalPro
 		Barcode:     variant.Barcode,
 		IsDefault:   variant.IsDefault,
 	}
-	if variant.Price != nil {
-		draft.Currency = variant.Price.Currency
-		draft.CostPrice = common.FormatFloat(variant.Price.CostPrice)
-		draft.BasePrice = common.FormatFloat(variant.Price.Amount)
-		draft.SitePriceList = buildSitePrices(variant.Price, siteList)
+	if price := pricingPolicy.Apply(variant.Price); price != nil {
+		draft.Currency = price.Currency
+		draft.CostPrice = common.FormatFloat(price.CostPrice)
+		draft.BasePrice = common.FormatFloat(price.Amount)
+		draft.SitePriceList = buildSitePrices(price, siteList)
 	}
 	if canonical != nil && canonical.Specifications != nil {
 		if canonical.Specifications.Weight != nil {

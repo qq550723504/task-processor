@@ -25,6 +25,7 @@ type service struct {
 	sheinCategoryResolver      sheinpub.CategoryResolver
 	sheinAttributeResolver     sheinpub.AttributeResolver
 	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	sheinPricingPolicy         sheinpub.PricingPolicy
 	sheinProductAPIBuilder     sheinpub.ProductAPIBuilder
 	sheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 	assetRepo                  AssetRepository
@@ -53,6 +54,7 @@ type ServiceConfig struct {
 	SheinCategoryResolver      sheinpub.CategoryResolver
 	SheinAttributeResolver     sheinpub.AttributeResolver
 	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	SheinPricingPolicy         sheinpub.PricingPolicy
 	SheinProductAPIBuilder     sheinpub.ProductAPIBuilder
 	SheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 }
@@ -82,6 +84,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 			SheinCategoryResolver:      config.SheinCategoryResolver,
 			SheinAttributeResolver:     config.SheinAttributeResolver,
 			SheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
+			SheinPricingPolicy:         config.SheinPricingPolicy,
 		})
 	}
 	if config.SheinCategoryResolver == nil {
@@ -118,6 +121,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 		sheinCategoryResolver:      config.SheinCategoryResolver,
 		sheinAttributeResolver:     config.SheinAttributeResolver,
 		sheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
+		sheinPricingPolicy:         config.SheinPricingPolicy,
 		sheinProductAPIBuilder:     config.SheinProductAPIBuilder,
 		sheinImageAPIBuilder:       config.SheinImageAPIBuilder,
 		assetRepo:                  config.AssetRepository,

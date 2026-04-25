@@ -10,9 +10,9 @@ import (
 )
 
 type stubAttributeAPI struct {
-	templates *sheinattribute.AttributeTemplateInfo
+	templates      *sheinattribute.AttributeTemplateInfo
 	validateCustom func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error)
-	addCustom func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error)
+	addCustom      func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error)
 }
 
 type assemblerStubCategoryAPI struct {
@@ -106,7 +106,7 @@ func TestBuildRequestSKCsGroupsVariantsByColor(t *testing.T) {
 		t.Fatalf("expected varying size to be excluded from group-level attributes")
 	}
 
-	requestSKCs := buildRequestSKCs(groups, &common.ImageSet{MainImage: "main.jpg"}, common.DefaultSites("US"), canonical)
+	requestSKCs := buildRequestSKCs(groups, &common.ImageSet{MainImage: "main.jpg"}, common.DefaultSites("US"), canonical, PricingPolicy{})
 	if len(requestSKCs) != 2 {
 		t.Fatalf("request skc count = %d, want 2", len(requestSKCs))
 	}
@@ -126,7 +126,7 @@ func TestSaleAttributeResolutionAppliesAssignmentsAcrossGroupedSKCs(t *testing.T
 		CategoryID: 100,
 		SkcList:    buildSKCs(groups),
 		RequestDraft: &RequestDraft{
-			SKCList: buildRequestSKCs(groups, images, common.DefaultSites("US"), canonical),
+			SKCList: buildRequestSKCs(groups, images, common.DefaultSites("US"), canonical, PricingPolicy{}),
 		},
 	}
 
@@ -209,6 +209,47 @@ func TestAssemblerBuildCreatesDefaultSKCWhenCanonicalVariantsMissing(t *testing.
 	}
 	if pkg.PreviewProduct == nil || len(pkg.PreviewProduct.SKCList) != 1 {
 		t.Fatalf("preview product skc count = %d, want 1", len(pkg.PreviewProduct.SKCList))
+	}
+}
+
+func TestAssemblerBuildAppliesPricingPolicyToRequestDraft(t *testing.T) {
+	assembler := NewAssembler(AssemblerConfig{
+		PricingPolicy: PricingPolicy{
+			Enabled:      true,
+			ShippingCost: 2,
+			MarkupRate:   0.25,
+			RoundTo:      0.01,
+		},
+	})
+	canonical := &productenrich.CanonicalProduct{
+		Title: "Priced Product",
+		Variants: []productenrich.CanonicalVariant{{
+			SKU: "SKU-1",
+			Price: &productenrich.PriceInfo{
+				Currency:  "USD",
+				Amount:    12,
+				CostPrice: 8,
+			},
+			Stock:     5,
+			IsDefault: true,
+		}},
+		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+	}
+
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical, nil)
+
+	if len(pkg.RequestDraft.SKCList) != 1 || len(pkg.RequestDraft.SKCList[0].SKUList) != 1 {
+		t.Fatalf("request draft skus = %+v", pkg.RequestDraft.SKCList)
+	}
+	sku := pkg.RequestDraft.SKCList[0].SKUList[0]
+	if sku.CostPrice != "8" {
+		t.Fatalf("cost price = %q, want 8", sku.CostPrice)
+	}
+	if sku.BasePrice != "12.5" {
+		t.Fatalf("base price = %q, want 12.5", sku.BasePrice)
+	}
+	if len(sku.SitePriceList) != 1 || sku.SitePriceList[0].BasePrice != "12.5" {
+		t.Fatalf("site price list = %+v, want 12.5", sku.SitePriceList)
 	}
 }
 

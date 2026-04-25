@@ -13,6 +13,16 @@ func BuildPlatformConfig(v *viper.Viper, prefix string) PlatformConfig {
 			BatchSize:      v.GetInt(prefix + ".autoPricing.batchSize"),
 			UseAmazonPrice: v.GetBool(prefix + ".autoPricing.useAmazonPrice"),
 		},
+		ListingPricing: ListingPricingConfig{
+			Enabled:        v.GetBool(prefix + ".listingPricing.enabled"),
+			Currency:       v.GetString(prefix + ".listingPricing.currency"),
+			MarkupRate:     v.GetFloat64(prefix + ".listingPricing.markupRate"),
+			FixedMarkup:    v.GetFloat64(prefix + ".listingPricing.fixedMarkup"),
+			ShippingCost:   v.GetFloat64(prefix + ".listingPricing.shippingCost"),
+			CommissionRate: v.GetFloat64(prefix + ".listingPricing.commissionRate"),
+			MinimumPrice:   v.GetFloat64(prefix + ".listingPricing.minimumPrice"),
+			RoundTo:        v.GetFloat64(prefix + ".listingPricing.roundTo"),
+		},
 		ProductSync: ScheduledTaskConfig{
 			Enabled:  v.GetBool(prefix + ".productSync.enabled"),
 			Interval: v.GetInt(prefix + ".productSync.interval"),

@@ -29,6 +29,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		s.sheinCategoryResolver,
 		s.sheinAttributeResolver,
 		s.sheinSaleAttributeResolver,
+		s.sheinPricingPolicy,
 	)
 	syncSheinDraftFromPackage(task.Result.Shein)
 	task.Result.Shein.PreviewProduct = sheinpub.BuildPreviewProduct(task.Result.Shein)

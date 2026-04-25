@@ -9,16 +9,17 @@ type PlatformsConfig struct {
 
 // PlatformConfig 单个平台的完整配置
 type PlatformConfig struct {
-	Enabled              bool                `yaml:"enabled"`              // 是否启用该平台处理器（上架任务处理）
-	SchedulerEnabled     bool                `yaml:"schedulerEnabled"`     // 是否启用调度任务（核价、同步等）
-	FetchMode            string              `yaml:"fetchMode"`            // 商品抓取模式：auto/local/distributed/remote-api
-	AutoPricing          AutoPricingConfig   `yaml:"autoPricing"`          // 自动核价配置
-	ProductSync          ScheduledTaskConfig `yaml:"productSync"`          // 产品同步配置
-	InventorySync        ScheduledTaskConfig `yaml:"inventorySync"`        // 库存同步配置
-	ActivityRegistration ScheduledTaskConfig `yaml:"activityRegistration"` // 活动报名配置
-	SyncProduct          SyncProductConfig   `yaml:"sync"`                 // 旧版产品同步配置，仅保留兼容
-	Monitor              MonitorConfig       `yaml:"monitor"`              // 产品监控配置
-	ConfigPaths          PlatformConfigPaths `yaml:"configPaths"`          // 业务配置文件路径（统一管理）
+	Enabled              bool                 `yaml:"enabled"`              // 是否启用该平台处理器（上架任务处理）
+	SchedulerEnabled     bool                 `yaml:"schedulerEnabled"`     // 是否启用调度任务（核价、同步等）
+	FetchMode            string               `yaml:"fetchMode"`            // 商品抓取模式：auto/local/distributed/remote-api
+	AutoPricing          AutoPricingConfig    `yaml:"autoPricing"`          // 自动核价配置
+	ListingPricing       ListingPricingConfig `yaml:"listingPricing"`       // ListingKit 上架资料定价配置
+	ProductSync          ScheduledTaskConfig  `yaml:"productSync"`          // 产品同步配置
+	InventorySync        ScheduledTaskConfig  `yaml:"inventorySync"`        // 库存同步配置
+	ActivityRegistration ScheduledTaskConfig  `yaml:"activityRegistration"` // 活动报名配置
+	SyncProduct          SyncProductConfig    `yaml:"sync"`                 // 旧版产品同步配置，仅保留兼容
+	Monitor              MonitorConfig        `yaml:"monitor"`              // 产品监控配置
+	ConfigPaths          PlatformConfigPaths  `yaml:"configPaths"`          // 业务配置文件路径（统一管理）
 }
 
 // PlatformConfigPaths 平台业务配置文件路径
@@ -34,6 +35,17 @@ type AutoPricingConfig struct {
 	Interval       int  `yaml:"interval"`       // 定价间隔（秒）
 	BatchSize      int  `yaml:"batchSize"`      // 批量处理大小
 	UseAmazonPrice bool `yaml:"useAmazonPrice"` // 是否使用Amazon价格数据进行定价决策
+}
+
+type ListingPricingConfig struct {
+	Enabled        bool    `yaml:"enabled"`        // 是否启用 ListingKit 上架资料定价规则
+	Currency       string  `yaml:"currency"`       // 上架币种，默认沿用来源价格
+	MarkupRate     float64 `yaml:"markupRate"`     // 毛利加价比例，0.3 表示加 30%
+	FixedMarkup    float64 `yaml:"fixedMarkup"`    // 固定加价
+	ShippingCost   float64 `yaml:"shippingCost"`   // 计入售价的物流/包装成本
+	CommissionRate float64 `yaml:"commissionRate"` // 平台佣金比例，0.1 表示 10%
+	MinimumPrice   float64 `yaml:"minimumPrice"`   // 最低售价
+	RoundTo        float64 `yaml:"roundTo"`        // 向上取整粒度，默认 0.01
 }
 
 // ScheduledTaskConfig 调度任务配置

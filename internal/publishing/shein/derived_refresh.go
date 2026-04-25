@@ -19,6 +19,7 @@ func RefreshDerivedState(
 	categoryResolver CategoryResolver,
 	attributeResolver AttributeResolver,
 	saleAttributeResolver SaleAttributeResolver,
+	pricingPolicy PricingPolicy,
 ) {
 	if pkg == nil || canonical == nil {
 		return
@@ -62,7 +63,7 @@ func RefreshDerivedState(
 	groups := buildVariantGroups(variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
 	pkg.RequestDraft.SupplierCode = firstSupplierCode(pkg.SkcList)
-	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, pkg.SiteList, canonical)
+	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, pkg.SiteList, canonical, pricingPolicy)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
 	pkg.PreviewProduct = BuildPreviewProduct(pkg)
 }

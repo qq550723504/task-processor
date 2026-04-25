@@ -13,6 +13,7 @@ type assembler struct {
 	sheinCategoryResolver      sheinpub.CategoryResolver
 	sheinAttributeResolver     sheinpub.AttributeResolver
 	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	sheinPricingPolicy         sheinpub.PricingPolicy
 }
 
 func NewAssembler(amazonBuilder AmazonDraftBuilder) Assembler {
@@ -24,6 +25,7 @@ type AssemblerConfig struct {
 	SheinCategoryResolver      sheinpub.CategoryResolver
 	SheinAttributeResolver     sheinpub.AttributeResolver
 	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	SheinPricingPolicy         sheinpub.PricingPolicy
 }
 
 func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
@@ -36,6 +38,7 @@ func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
 		sheinCategoryResolver:      config.SheinCategoryResolver,
 		sheinAttributeResolver:     config.SheinAttributeResolver,
 		sheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
+		sheinPricingPolicy:         config.SheinPricingPolicy,
 	}
 }
 
@@ -60,6 +63,7 @@ func (a *assembler) Assemble(task *Task, canonical *productenrich.CanonicalProdu
 				CategoryResolver:      a.sheinCategoryResolver,
 				AttributeResolver:     a.sheinAttributeResolver,
 				SaleAttributeResolver: a.sheinSaleAttributeResolver,
+				PricingPolicy:         a.sheinPricingPolicy,
 			}).Build(buildSheinPublishRequest(task.Request), canonical, image)
 			refreshSheinReviewState(result.Shein, collectReviewNotes(canonical, image)...)
 		case "temu":

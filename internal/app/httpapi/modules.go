@@ -497,6 +497,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	sheinSaleAttributeResolver := sheinpub.NewCachedSaleAttributeResolver(sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)), resolutionCacheStore)
 	sheinProductAPIBuilder := sheinpub.NewManagedProductAPIBuilder(deps.managementClient)
 	sheinImageAPIBuilder := sheinpub.NewManagedImageAPIBuilder(deps.managementClient)
+	sheinPricingPolicy := buildListingKitSheinPricingPolicy(deps.cfg)
 	deps.sdsSyncService = buildSDSSyncService(logger, deps)
 
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
@@ -518,12 +519,14 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		SheinCategoryResolver:      sheinCategoryResolver,
 		SheinAttributeResolver:     sheinAttributeResolver,
 		SheinSaleAttributeResolver: sheinSaleAttributeResolver,
+		SheinPricingPolicy:         sheinPricingPolicy,
 		SheinProductAPIBuilder:     sheinProductAPIBuilder,
 		SheinImageAPIBuilder:       sheinImageAPIBuilder,
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
 			SheinCategoryResolver:      sheinCategoryResolver,
 			SheinAttributeResolver:     sheinAttributeResolver,
 			SheinSaleAttributeResolver: sheinSaleAttributeResolver,
+			SheinPricingPolicy:         sheinPricingPolicy,
 		}),
 	})
 	if err != nil {
@@ -544,6 +547,23 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
 	return &listingKitModule{handler: handler, pool: pool}, nil
+}
+
+func buildListingKitSheinPricingPolicy(cfg *config.Config) sheinpub.PricingPolicy {
+	if cfg == nil {
+		return sheinpub.PricingPolicy{}
+	}
+	pricing := cfg.Platforms.Shein.ListingPricing
+	return sheinpub.PricingPolicy{
+		Enabled:        pricing.Enabled,
+		Currency:       pricing.Currency,
+		MarkupRate:     pricing.MarkupRate,
+		FixedMarkup:    pricing.FixedMarkup,
+		ShippingCost:   pricing.ShippingCost,
+		CommissionRate: pricing.CommissionRate,
+		MinimumPrice:   pricing.MinimumPrice,
+		RoundTo:        pricing.RoundTo,
+	}
 }
 
 func buildListingKitImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingkit.ImageUploadStore {

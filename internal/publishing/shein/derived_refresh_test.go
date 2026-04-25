@@ -71,6 +71,7 @@ func TestRefreshDerivedStateRecomputesSaleAttributesAndClearsSuggestion(t *testi
 		nil,
 		refreshDerivedStubAttributeResolver{},
 		refreshDerivedStubSaleResolver{},
+		PricingPolicy{},
 	)
 
 	if pkg.AttributeResolution == nil || pkg.AttributeResolution.Status != "resolved" {

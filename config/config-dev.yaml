@@ -107,6 +107,16 @@ platforms:
       enabled: false        # 启用自动核价
       interval: 300         # 执行间隔（秒），默认30分钟
       batchSize: 100
+    # ListingKit 上架资料定价配置；关闭时沿用 SDS 成本/价格
+    listingPricing:
+      enabled: false
+      currency: USD
+      shippingCost: 0
+      fixedMarkup: 0
+      markupRate: 0
+      commissionRate: 0
+      minimumPrice: 0
+      roundTo: 0.01
     # 产品同步配置
     productSync:
       enabled: false         # 启用产品同步

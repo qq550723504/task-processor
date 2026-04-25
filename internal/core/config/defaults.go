@@ -180,6 +180,16 @@ func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.temu.autoPricing.batchSize", ap.BatchSize)
 	v.SetDefault("platforms.temu.autoPricing.useAmazonPrice", ap.UseAmazonPrice)
 
+	lp := p.ListingPricing
+	v.SetDefault("platforms.temu.listingPricing.enabled", lp.Enabled)
+	v.SetDefault("platforms.temu.listingPricing.currency", lp.Currency)
+	v.SetDefault("platforms.temu.listingPricing.markupRate", lp.MarkupRate)
+	v.SetDefault("platforms.temu.listingPricing.fixedMarkup", lp.FixedMarkup)
+	v.SetDefault("platforms.temu.listingPricing.shippingCost", lp.ShippingCost)
+	v.SetDefault("platforms.temu.listingPricing.commissionRate", lp.CommissionRate)
+	v.SetDefault("platforms.temu.listingPricing.minimumPrice", lp.MinimumPrice)
+	v.SetDefault("platforms.temu.listingPricing.roundTo", lp.RoundTo)
+
 	ps := p.ProductSync
 	v.SetDefault("platforms.temu.productSync.enabled", ps.Enabled)
 	v.SetDefault("platforms.temu.productSync.interval", ps.Interval)
@@ -212,6 +222,16 @@ func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)
 	v.SetDefault("platforms.shein.autoPricing.interval", ap.Interval)
 	v.SetDefault("platforms.shein.autoPricing.batchSize", ap.BatchSize)
+
+	lp := p.ListingPricing
+	v.SetDefault("platforms.shein.listingPricing.enabled", lp.Enabled)
+	v.SetDefault("platforms.shein.listingPricing.currency", lp.Currency)
+	v.SetDefault("platforms.shein.listingPricing.markupRate", lp.MarkupRate)
+	v.SetDefault("platforms.shein.listingPricing.fixedMarkup", lp.FixedMarkup)
+	v.SetDefault("platforms.shein.listingPricing.shippingCost", lp.ShippingCost)
+	v.SetDefault("platforms.shein.listingPricing.commissionRate", lp.CommissionRate)
+	v.SetDefault("platforms.shein.listingPricing.minimumPrice", lp.MinimumPrice)
+	v.SetDefault("platforms.shein.listingPricing.roundTo", lp.RoundTo)
 
 	ps := p.ProductSync
 	v.SetDefault("platforms.shein.productSync.enabled", ps.Enabled)
