@@ -49,42 +49,130 @@ type GenerateRequest struct {
 }
 
 type GenerateOptions struct {
+	ImageStrategy string                               `json:"image_strategy,omitempty"`
 	ProcessImages bool                                 `json:"process_images"`
 	Scene         *productimage.SceneGenerationOptions `json:"scene,omitempty"`
+	SheinStudio   *SheinStudioOptions                  `json:"shein_studio,omitempty"`
 	SDS           *SDSSyncOptions                      `json:"sds,omitempty"`
 }
 
+type SheinStudioOptions struct {
+	StyleID                string                       `json:"style_id,omitempty"`
+	StyleName              string                       `json:"style_name,omitempty"`
+	SourceDesignURLs       []string                     `json:"source_design_urls,omitempty"`
+	ProductImageURLs       []string                     `json:"product_image_urls,omitempty"`
+	VariantProductImages   []SheinStudioVariantImageSet `json:"variant_product_images,omitempty"`
+	SizeReferenceImageURLs []string                     `json:"size_reference_image_urls,omitempty"`
+}
+
+type SheinStudioVariantImageSet struct {
+	VariantSKU string   `json:"variant_sku,omitempty"`
+	Color      string   `json:"color,omitempty"`
+	ImageURLs  []string `json:"image_urls,omitempty"`
+}
+
+type StudioProductImageRequest struct {
+	Prompt                    string                     `json:"prompt,omitempty"`
+	ProductName               string                     `json:"product_name,omitempty"`
+	CategoryPath              []string                   `json:"category_path,omitempty"`
+	StyleName                 string                     `json:"style_name,omitempty"`
+	SourceDesignURL           string                     `json:"source_design_url,omitempty"`
+	ProductReferenceImageURLs []string                   `json:"product_reference_image_urls,omitempty"`
+	CustomPrompt              string                     `json:"custom_prompt,omitempty"`
+	ImagePrompts              []StudioProductImagePrompt `json:"image_prompts,omitempty"`
+	Count                     int                        `json:"count,omitempty"`
+}
+
+type StudioProductImagePrompt struct {
+	Role   string `json:"role,omitempty"`
+	Prompt string `json:"prompt,omitempty"`
+}
+
+type StudioProductImageResponse struct {
+	Images []StudioGeneratedImage `json:"images,omitempty"`
+}
+
+type StudioGeneratedImage struct {
+	ID            string `json:"id"`
+	ImageURL      string `json:"image_url"`
+	RevisedPrompt string `json:"revised_prompt,omitempty"`
+	Role          string `json:"role,omitempty"`
+	RoleLabel     string `json:"role_label,omitempty"`
+}
+
+type StudioDesignRequest struct {
+	Prompt                    string   `json:"prompt,omitempty"`
+	Count                     int      `json:"count,omitempty"`
+	PrintableWidth            int      `json:"printable_width,omitempty"`
+	PrintableHeight           int      `json:"printable_height,omitempty"`
+	ProductReferenceImageURLs []string `json:"product_reference_image_urls,omitempty"`
+	TransparentBackground     bool     `json:"transparent_background,omitempty"`
+}
+
+type StudioDesignResponse struct {
+	Prompt                string                 `json:"prompt"`
+	PrintableWidth        int                    `json:"printable_width,omitempty"`
+	PrintableHeight       int                    `json:"printable_height,omitempty"`
+	TransparentBackground bool                   `json:"transparent_background"`
+	Images                []StudioGeneratedImage `json:"images,omitempty"`
+}
+
 type SDSSyncOptions struct {
-	VariantID           int64    `json:"variant_id,omitempty"`
-	ParentProductID     int64    `json:"parent_product_id,omitempty"`
-	PrototypeGroupID    int64    `json:"prototype_group_id,omitempty"`
-	LayerID             string   `json:"layer_id,omitempty"`
-	DesignType          string   `json:"design_type,omitempty"`
-	FitLevel            float64  `json:"fit_level,omitempty"`
-	ResizeMode          int      `json:"resize_mode,omitempty"`
-	ProductName         string   `json:"product_name,omitempty"`
-	ProductSKU          string   `json:"product_sku,omitempty"`
-	ProductEnglishName  string   `json:"product_english_name,omitempty"`
-	CategoryPath        []string `json:"category_path,omitempty"`
-	Material            string   `json:"material,omitempty"`
-	MaterialDescription string   `json:"material_description,omitempty"`
-	ProductionProcess   string   `json:"production_process,omitempty"`
-	ProductPerformance  string   `json:"product_performance,omitempty"`
-	ApplicableScenarios string   `json:"applicable_scenarios,omitempty"`
-	WashingInstructions string   `json:"washing_instructions,omitempty"`
-	SpecialDescription  string   `json:"special_description,omitempty"`
-	DesignArea          string   `json:"design_area,omitempty"`
-	PictureRequest      string   `json:"picture_request,omitempty"`
-	VariantSKU          string   `json:"variant_sku,omitempty"`
-	VariantSize         string   `json:"variant_size,omitempty"`
-	VariantColor        string   `json:"variant_color,omitempty"`
-	VariantPrice        float64  `json:"variant_price,omitempty"`
-	VariantWeight       float64  `json:"variant_weight,omitempty"`
-	ProductionCycle     int      `json:"production_cycle,omitempty"`
-	BlankDesignURL      string   `json:"blank_design_url,omitempty"`
-	TemplateImageURL    string   `json:"template_image_url,omitempty"`
-	MaskImageURL        string   `json:"mask_image_url,omitempty"`
-	MockupImageURLs     []string `json:"mockup_image_urls,omitempty"`
+	VariantID           int64                  `json:"variant_id,omitempty"`
+	ParentProductID     int64                  `json:"parent_product_id,omitempty"`
+	PrototypeGroupID    int64                  `json:"prototype_group_id,omitempty"`
+	LayerID             string                 `json:"layer_id,omitempty"`
+	DesignType          string                 `json:"design_type,omitempty"`
+	FitLevel            float64                `json:"fit_level,omitempty"`
+	ResizeMode          int                    `json:"resize_mode,omitempty"`
+	ProductName         string                 `json:"product_name,omitempty"`
+	ProductSKU          string                 `json:"product_sku,omitempty"`
+	ProductEnglishName  string                 `json:"product_english_name,omitempty"`
+	CategoryPath        []string               `json:"category_path,omitempty"`
+	Material            string                 `json:"material,omitempty"`
+	MaterialDescription string                 `json:"material_description,omitempty"`
+	ProductionProcess   string                 `json:"production_process,omitempty"`
+	ProductPerformance  string                 `json:"product_performance,omitempty"`
+	ApplicableScenarios string                 `json:"applicable_scenarios,omitempty"`
+	WashingInstructions string                 `json:"washing_instructions,omitempty"`
+	SpecialDescription  string                 `json:"special_description,omitempty"`
+	DesignArea          string                 `json:"design_area,omitempty"`
+	PictureRequest      string                 `json:"picture_request,omitempty"`
+	IsElectricity       *int                   `json:"is_electricity,omitempty"`
+	VariantSKU          string                 `json:"variant_sku,omitempty"`
+	VariantSize         string                 `json:"variant_size,omitempty"`
+	VariantColor        string                 `json:"variant_color,omitempty"`
+	VariantPrice        float64                `json:"variant_price,omitempty"`
+	VariantWeight       float64                `json:"variant_weight,omitempty"`
+	ProductionCycle     int                    `json:"production_cycle,omitempty"`
+	BlankDesignURL      string                 `json:"blank_design_url,omitempty"`
+	TemplateImageURL    string                 `json:"template_image_url,omitempty"`
+	MaskImageURL        string                 `json:"mask_image_url,omitempty"`
+	MockupImageURLs     []string               `json:"mockup_image_urls,omitempty"`
+	StyleID             string                 `json:"style_id,omitempty"`
+	StyleName           string                 `json:"style_name,omitempty"`
+	Variants            []SDSSyncVariantOption `json:"variants,omitempty"`
+}
+
+type SDSSyncVariantOption struct {
+	VariantID              int64    `json:"variant_id,omitempty"`
+	VariantSKU             string   `json:"variant_sku,omitempty"`
+	Size                   string   `json:"size,omitempty"`
+	Color                  string   `json:"color,omitempty"`
+	Price                  float64  `json:"price,omitempty"`
+	Weight                 float64  `json:"weight,omitempty"`
+	BoxLength              float64  `json:"box_length,omitempty"`
+	BoxWidth               float64  `json:"box_width,omitempty"`
+	BoxHeight              float64  `json:"box_height,omitempty"`
+	ProductionCycle        int      `json:"production_cycle,omitempty"`
+	PrototypeGroupID       int64    `json:"prototype_group_id,omitempty"`
+	LayerID                string   `json:"layer_id,omitempty"`
+	TemplateImageURL       string   `json:"template_image_url,omitempty"`
+	MaskImageURL           string   `json:"mask_image_url,omitempty"`
+	BlankDesignURL         string   `json:"blank_design_url,omitempty"`
+	MockupImageURL         string   `json:"mockup_image_url,omitempty"`
+	MockupImageURLs        []string `json:"mockup_image_urls,omitempty"`
+	SizeReferenceImageURLs []string `json:"size_reference_image_urls,omitempty"`
 }
 
 type SubmitTaskRequest struct {
@@ -797,19 +885,34 @@ type GenerationSummary struct {
 }
 
 type SDSSyncSummary struct {
-	VariantID        int64    `json:"variant_id"`
-	ProductID        int64    `json:"product_id,omitempty"`
-	PrototypeGroupID int64    `json:"prototype_group_id,omitempty"`
-	LayerID          string   `json:"layer_id,omitempty"`
-	MaterialID       int64    `json:"material_id,omitempty"`
-	ProductName      string   `json:"product_name,omitempty"`
-	ProductSKU       string   `json:"product_sku,omitempty"`
-	VariantSKU       string   `json:"variant_sku,omitempty"`
-	VariantSize      string   `json:"variant_size,omitempty"`
-	VariantColor     string   `json:"variant_color,omitempty"`
-	MockupImageURLs  []string `json:"mockup_image_urls,omitempty"`
-	Status           string   `json:"status,omitempty"`
-	Error            string   `json:"error,omitempty"`
+	VariantID        int64               `json:"variant_id"`
+	ProductID        int64               `json:"product_id,omitempty"`
+	PrototypeGroupID int64               `json:"prototype_group_id,omitempty"`
+	LayerID          string              `json:"layer_id,omitempty"`
+	MaterialID       int64               `json:"material_id,omitempty"`
+	ProductName      string              `json:"product_name,omitempty"`
+	ProductSKU       string              `json:"product_sku,omitempty"`
+	VariantSKU       string              `json:"variant_sku,omitempty"`
+	VariantSize      string              `json:"variant_size,omitempty"`
+	VariantColor     string              `json:"variant_color,omitempty"`
+	MockupImageURLs  []string            `json:"mockup_image_urls,omitempty"`
+	VariantResults   []SDSSyncSummary    `json:"variant_results,omitempty"`
+	Status           string              `json:"status,omitempty"`
+	Error            string              `json:"error,omitempty"`
+	Diagnostics      *SDSSyncDiagnostics `json:"diagnostics,omitempty"`
+}
+
+type SDSSyncDiagnostics struct {
+	MaterialImageURL string  `json:"material_image_url,omitempty"`
+	MaterialFileCode string  `json:"material_file_code,omitempty"`
+	MaterialWidth    int     `json:"material_width,omitempty"`
+	MaterialHeight   int     `json:"material_height,omitempty"`
+	LayerContent     string  `json:"layer_content,omitempty"`
+	LayerImgWidth    int     `json:"layer_img_width,omitempty"`
+	LayerImgHeight   int     `json:"layer_img_height,omitempty"`
+	ResizeMode       int     `json:"resize_mode"`
+	FitLevel         float64 `json:"fit_level,omitempty"`
+	RenderedCount    int     `json:"rendered_count"`
 }
 
 type GenerationRecoverySummary struct {

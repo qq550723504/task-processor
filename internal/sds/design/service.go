@@ -405,38 +405,80 @@ func (s *Service) PrepareSyncDesign(ctx context.Context, input PrepareSyncDesign
 		return nil, err
 	}
 
+	prototypes := []SyncDesignPrototype{
+		{
+			PrototypeID: page.Product.PrototypeID,
+			ProductIDs:  []int64{page.Product.ID},
+			PSDIDs:      collectPSDIDs(page.PSDs),
+			Layers: []SyncDesignLayer{
+				{
+					MaterialID:         "",
+					LayerID:            layer.ID,
+					Content:            "",
+					ImgWidth:           layerPrintWidth(*layer),
+					ImgHeight:          layerPrintHeight(*layer),
+					ResizeMode:         input.ResizeMode,
+					FitLevel:           fitLevel,
+					FabricJSON:         fabricJSON,
+					RelatedMaterialIDs: []int64{material.Material.ID},
+				},
+			},
+			Images: buildPreviewImageURLs(page.PSDs, layer.Name, material, input.ResizeMode),
+		},
+	}
+	relatedPages := map[int64]*DesignProductPage{}
+	relatedPages[page.Product.ID] = page
+	for _, relatedVariantID := range input.RelatedVariantIDs {
+		if relatedVariantID <= 0 || relatedVariantID == page.Product.ID {
+			continue
+		}
+		relatedPage, err := s.GetDesignProduct(ctx, relatedVariantID)
+		if err != nil {
+			return nil, err
+		}
+		relatedLayer, err := selectLayer(relatedPage.Layers, "")
+		if err != nil {
+			return nil, err
+		}
+		relatedFabricJSON, err := buildFabricJSON(material, relatedLayer, fitLevel)
+		if err != nil {
+			return nil, err
+		}
+		prototypes = append(prototypes, SyncDesignPrototype{
+			PrototypeID: relatedPage.Product.PrototypeID,
+			ProductIDs:  []int64{relatedPage.Product.ID},
+			PSDIDs:      collectPSDIDs(relatedPage.PSDs),
+			Layers: []SyncDesignLayer{
+				{
+					MaterialID:         "",
+					LayerID:            relatedLayer.ID,
+					Content:            "",
+					ImgWidth:           layerPrintWidth(*relatedLayer),
+					ImgHeight:          layerPrintHeight(*relatedLayer),
+					ResizeMode:         input.ResizeMode,
+					FitLevel:           fitLevel,
+					FabricJSON:         relatedFabricJSON,
+					RelatedMaterialIDs: []int64{material.Material.ID},
+				},
+			},
+			Images: buildPreviewImageURLs(relatedPage.PSDs, relatedLayer.Name, material, input.ResizeMode),
+		})
+		relatedPages[relatedPage.Product.ID] = relatedPage
+	}
+
 	req := &SyncDesignRequest{
 		ProductID:                    page.Product.ID,
 		PrototypeGroupID:             prototypeGroupID,
 		MerchantProductResultGroupID: resultGroupID,
 		DesignType:                   designType,
-		Prototypes: []SyncDesignPrototype{
-			{
-				PrototypeID: page.Product.PrototypeID,
-				ProductIDs:  []int64{page.Product.ID},
-				PSDIDs:      collectPSDIDs(page.PSDs),
-				Layers: []SyncDesignLayer{
-					{
-						MaterialID:         "",
-						LayerID:            layer.ID,
-						Content:            "",
-						ImgWidth:           layerPrintWidth(*layer),
-						ImgHeight:          layerPrintHeight(*layer),
-						ResizeMode:         input.ResizeMode,
-						FitLevel:           fitLevel,
-						FabricJSON:         fabricJSON,
-						RelatedMaterialIDs: []int64{material.Material.ID},
-					},
-				},
-				Images: buildPreviewImageURLs(page.PSDs, layer.Name, material, input.ResizeMode),
-			},
-		},
+		Prototypes:                   prototypes,
 	}
 
 	return &PrepareSyncDesignResult{
-		Page:     page,
-		Request:  req,
-		Material: material,
+		Page:         page,
+		RelatedPages: relatedPages,
+		Request:      req,
+		Material:     material,
 	}, nil
 }
 
@@ -452,10 +494,10 @@ func (s *Service) PrepareAndSyncDesign(ctx context.Context, input PrepareSyncDes
 		return nil, err
 	}
 
-	if _, err := s.SyncDesign(ctx, *result.Request); err != nil {
+	if err := s.syncDesignWithRetry(ctx, *result.Request); err != nil {
 		return nil, err
 	}
-	if err := s.SaveDesign(ctx, buildSaveDesignRequest(result)); err != nil {
+	if err := s.saveDesignWithRetry(ctx, buildSaveDesignRequest(result)); err != nil {
 		result.RenderedImageURLs = s.fetchRenderedImageURLs(ctx, input, result)
 		if len(result.RenderedImageURLs) > 0 {
 			return result, nil
@@ -465,6 +507,65 @@ func (s *Service) PrepareAndSyncDesign(ctx context.Context, input PrepareSyncDes
 
 	result.RenderedImageURLs = s.fetchRenderedImageURLs(ctx, input, result)
 	return result, nil
+}
+
+func (s *Service) syncDesignWithRetry(ctx context.Context, req SyncDesignRequest) error {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				if lastErr != nil {
+					return lastErr
+				}
+				return ctx.Err()
+			case <-time.After(time.Duration(attempt*5) * time.Second):
+			}
+		}
+		_, err := s.SyncDesign(ctx, req)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !isSDSTooFrequentError(err) {
+			return err
+		}
+	}
+	return lastErr
+}
+
+func (s *Service) saveDesignWithRetry(ctx context.Context, req SaveDesignRequest) error {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				if lastErr != nil {
+					return lastErr
+				}
+				return ctx.Err()
+			case <-time.After(time.Duration(attempt*3) * time.Second):
+			}
+		}
+		err := s.SaveDesign(ctx, req)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !isSDSTooFrequentError(err) {
+			return err
+		}
+	}
+	return lastErr
+}
+
+func isSDSTooFrequentError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "太频繁") ||
+		strings.Contains(message, "too frequent")
 }
 
 // CreatePreview 创建预览图任务。

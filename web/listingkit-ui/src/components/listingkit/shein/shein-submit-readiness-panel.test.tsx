@@ -104,6 +104,7 @@ describe("SheinSubmitReadinessPanel", () => {
 
   it("renders ready state without blocker lists", () => {
     const onSubmit = vi.fn();
+    const onSaveDraft = vi.fn();
     render(
       <SheinSubmitReadinessPanel
         readiness={{
@@ -129,15 +130,94 @@ describe("SheinSubmitReadinessPanel", () => {
         }}
         canSubmit
         onSubmit={onSubmit}
+        onSaveDraft={onSaveDraft}
       />,
     );
 
     expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.getByText("SHEIN 工作台已就绪")).toBeInTheDocument();
-    expect(screen.getAllByText("Submit to SHEIN")).toHaveLength(2);
+    expect(screen.getAllByText("Submit to SHEIN")).toHaveLength(1);
+    expect(screen.getByText("Save draft or submit to SHEIN")).toBeInTheDocument();
     expect(screen.getByText("Latest submission")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save to SHEIN draft" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit to SHEIN" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open fix path" })).not.toBeInTheDocument();
     expect(screen.queryByText("Blocking items")).not.toBeInTheDocument();
+  });
+
+  it("renders current submit attempt status and error", () => {
+    const { rerender } = render(
+      <SheinSubmitReadinessPanel
+        readiness={{
+          status: "ready",
+        }}
+        canSubmit
+        isSubmitting
+        submitAction="save_draft"
+        onSubmit={vi.fn()}
+        onSaveDraft={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Current submit attempt")).toBeInTheDocument();
+    expect(screen.getByText("Saving to SHEIN draft...")).toBeInTheDocument();
+
+    rerender(
+      <SheinSubmitReadinessPanel
+        readiness={{
+          status: "ready",
+        }}
+        canSubmit
+        submitAction="save_draft"
+        submitErrorMessage="SHEIN image upload unavailable: token missing"
+        onSubmit={vi.fn()}
+        onSaveDraft={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Save draft failed")).toBeInTheDocument();
+    expect(
+      screen.getByText("SHEIN image upload unavailable: token missing"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps blocker repair entries visible in compact workspace mode", async () => {
+    const user = userEvent.setup();
+    const onSelectBlockingItem = vi.fn();
+
+    render(
+      <SheinSubmitReadinessPanel
+        compact
+        readiness={{
+          status: "blocked",
+          blocking_items: [
+            {
+              key: "attribute_review",
+              label: "属性复核",
+              message: "普通属性仍需要人工确认",
+              suggested_action: "确认属性",
+            },
+          ],
+        }}
+        workspaceOverview={{
+          primary_action: "确认属性",
+          primary_action_key: "attribute_review",
+          submit_state: {
+            status: "blocked",
+            blocking_count: 1,
+          },
+        }}
+        canSelectBlockingItem={(item) => item.key === "attribute_review"}
+        onSelectBlockingItem={onSelectBlockingItem}
+      />,
+    );
+
+    expect(screen.getByText("Blocking items")).toBeInTheDocument();
+    expect(screen.getByText("属性复核")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open fix path" }));
+    expect(onSelectBlockingItem).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "attribute_review" }),
+    );
   });
 });

@@ -47,12 +47,18 @@ func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []str
 	}
 
 	switch key {
-	case "category":
+	case "category", "category_review":
+		code := "category_unresolved"
+		summary := "当前商品还没有确认到可提交的 SHEIN 类目骨架。"
+		if key == "category_review" {
+			code = "category_review_pending"
+			summary = "当前 SHEIN 类目仍被建议复核，不能直接进入提交态。"
+		}
 		return sheinReadinessGuidance{
 			reason: &SheinReadinessReason{
-				Code:     "category_unresolved",
+				Code:     code,
 				Category: "classification",
-				Summary:  "当前商品还没有确认到可提交的 SHEIN 类目骨架。",
+				Summary:  summary,
 			},
 			repairHints: []SheinRepairHint{
 				newHint("high", "editor.category", "category", []string{"category_id", "category_id_list", "product_type_id"}, "shein.category_resolution", "先确认 category_id、category_id_list 和 product_type_id，再继续提交前校验。", &SheinRepairPatchPayload{
@@ -60,12 +66,18 @@ func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []str
 				}),
 			},
 		}
-	case "attributes":
+	case "attributes", "attribute_review":
+		code := "attributes_unmapped"
+		summary := "普通属性还没有稳定映射到真实 attribute_id 或 attribute_value_id。"
+		if key == "attribute_review" {
+			code = "required_attributes_pending"
+			summary = "普通属性仍有模板必填或重要属性未确认，不能直接进入提交态。"
+		}
 		return sheinReadinessGuidance{
 			reason: &SheinReadinessReason{
-				Code:     "attributes_unmapped",
+				Code:     code,
 				Category: "attributes",
-				Summary:  "普通属性还没有稳定映射到真实 attribute_id 或 attribute_value_id。",
+				Summary:  summary,
 			},
 			repairHints: []SheinRepairHint{
 				newHint("high", "editor.attributes", "attributes", []string{"resolved_attributes", "unresolved_count"}, "shein.attribute_resolution", "先补齐未命中的普通属性映射，再重新检查提交状态。", &SheinRepairPatchPayload{

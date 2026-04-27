@@ -42,9 +42,13 @@ type stubWorkflowImageService struct {
 }
 
 type stubWorkflowSDSSyncService struct {
-	result    *sdsadapter.SyncResult
-	err       error
-	lastInput sdsusecase.ImageResultInput
+	result          *sdsadapter.SyncResult
+	remoteResult    *sdsworkflow.SyncResult
+	err             error
+	remoteErr       error
+	lastInput       sdsusecase.ImageResultInput
+	lastRemoteInput sdsusecase.RemoteImageInput
+	remoteCalls     int
 }
 
 func (s *stubWorkflowImageService) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
@@ -61,6 +65,14 @@ func (s *stubWorkflowImageService) ProcessImages(ctx context.Context, task *prod
 }
 
 func (s *stubWorkflowSDSSyncService) SyncFromRemoteImage(ctx context.Context, input sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
+	s.remoteCalls++
+	s.lastRemoteInput = input
+	if s.remoteErr != nil {
+		return nil, s.remoteErr
+	}
+	if s.remoteResult != nil {
+		return s.remoteResult, nil
+	}
 	return nil, fmt.Errorf("not implemented")
 }
 
@@ -380,6 +392,63 @@ func TestRunWorkflowSyncsSDSDesignWhenConfigured(t *testing.T) {
 	}
 	if sdsSvc.lastInput.Sync.VariantID != 89764 {
 		t.Fatalf("sds input = %+v", sdsSvc.lastInput.Sync)
+	}
+}
+
+func TestSyncSDSDesignVariantsDoesNotResubmitMissingVariant(t *testing.T) {
+	t.Parallel()
+
+	sdsSvc := &stubWorkflowSDSSyncService{
+		remoteResult: &sdsworkflow.SyncResult{
+			DesignResult: &sdsdesign.PrepareSyncDesignResult{
+				Page: &sdsdesign.DesignProductPage{
+					Product: sdsdesign.DesignProduct{ID: 101},
+				},
+				Request: &sdsdesign.SyncDesignRequest{
+					PrototypeGroupID: 15506,
+					Prototypes: []sdsdesign.SyncDesignPrototype{
+						{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "layer-101"}}},
+					},
+				},
+				RenderedImageURLsByProduct: map[int64][]string{
+					101: []string{"https://cdn.sdspod.com/out/101-main.jpg"},
+				},
+				RenderedImageURLs: []string{"https://cdn.sdspod.com/out/101-main.jpg"},
+			},
+		},
+	}
+	svc := &service{sdsSyncSvc: sdsSvc}
+	task := &Task{
+		ID: "listingkit-task-variants",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://cdn.example.com/style.png"},
+			Options: &GenerateOptions{
+				SDS: &SDSSyncOptions{
+					ParentProductID:  100,
+					PrototypeGroupID: 15506,
+					Variants: []SDSSyncVariantOption{
+						{VariantID: 101, VariantSKU: "SKU-101", Color: "Black", LayerID: "layer-101"},
+						{VariantID: 102, VariantSKU: "SKU-102", Color: "White", LayerID: "layer-102"},
+					},
+				},
+			},
+		},
+	}
+	result := &ListingKitResult{}
+
+	svc.syncSDSDesignVariantsFromRemote(context.Background(), task, result, task.Request.ImageURLs[0])
+
+	if sdsSvc.remoteCalls != 1 {
+		t.Fatalf("remote calls = %d, want exactly one SDS sync request", sdsSvc.remoteCalls)
+	}
+	if got := sdsSvc.lastRemoteInput.Sync.RelatedVariantIDs; len(got) != 2 || got[0] != 101 || got[1] != 102 {
+		t.Fatalf("related variants = %+v, want both variants in one sync request", got)
+	}
+	if result.SDSSync == nil || result.SDSSync.Status != "failed" {
+		t.Fatalf("sds sync = %+v, want failed when a selected variant render is missing", result.SDSSync)
+	}
+	if result.SDSSync != nil && result.SDSSync.Error == "" {
+		t.Fatalf("sds sync = %+v, want explicit missing-render error", result.SDSSync)
 	}
 }
 

@@ -143,14 +143,16 @@ func (s *Service) sync(ctx context.Context, input SyncInput, upload design.Uploa
 	}
 
 	result, err := s.design.PrepareAndSyncDesign(ctx, design.PrepareSyncDesignInput{
-		VariantID:        input.VariantID,
-		ParentProductID:  input.ParentProductID,
-		PrototypeGroupID: input.PrototypeGroupID,
-		MerchantResultID: input.MerchantResultID,
-		DesignType:       input.DesignType,
-		LayerID:          input.LayerID,
-		FitLevel:         input.FitLevel,
-		ResizeMode:       input.ResizeMode,
+		VariantID:         input.VariantID,
+		RelatedVariantIDs: append([]int64(nil), input.RelatedVariantIDs...),
+		ParentProductID:   input.ParentProductID,
+		PrototypeGroupID:  input.PrototypeGroupID,
+		MerchantResultID:  input.MerchantResultID,
+		DesignType:        input.DesignType,
+		LayerID:           input.LayerID,
+		FitLevel:          input.FitLevel,
+		ResizeMode:        input.ResizeMode,
+		BlankDesignURL:    input.BlankDesignURL,
 	}, upload)
 	if err != nil {
 		return nil, err

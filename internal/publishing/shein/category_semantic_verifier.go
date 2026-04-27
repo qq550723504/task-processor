@@ -79,10 +79,6 @@ func buildCategorySemanticValidationPrompt(canonical *productenrich.CanonicalPro
 	builder.WriteString("\n\n")
 	builder.WriteString("Product summary:\n")
 	builder.WriteString(buildCategorySemanticProductSummary(canonical, pkg))
-	builder.WriteString("\n\nExamples:\n")
-	builder.WriteString("- bench cushion / chair cushion / outdoor seat pad should be home furnishing, not apparel.\n")
-	builder.WriteString("- tumbler / water bottle should be drinkware, not footwear.\n")
-	builder.WriteString("- costume / dress / pajama should be apparel, not furniture.\n")
 	return builder.String()
 }
 

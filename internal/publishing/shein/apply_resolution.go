@@ -43,10 +43,12 @@ func ApplySaleAttributeResolution(pkg *Package, resolution *SaleAttributeResolut
 		if skcIndex < len(pkg.SkcList) {
 			skcPackage = &pkg.SkcList[skcIndex]
 		}
+		skcValueAssignments := effectiveSKCValueAssignments(resolution)
+		skuValueAssignments := effectiveSKUValueAssignments(resolution)
 		if assigned, ok := resolution.skcAssignments[skc.SupplierCode]; ok {
 			assignedCopy := assigned
 			skc.SaleAttribute = &assignedCopy
-		} else if assigned, ok := resolveSaleAttributeValueAssignment(resolution.skcValueAssignments, lookupSKCSourceValue(skcPackage, resolution.PrimarySourceDimension)); ok {
+		} else if assigned, ok := resolveSaleAttributeValueAssignment(skcValueAssignments, lookupSKCSourceValue(skcPackage, resolution.PrimarySourceDimension)); ok {
 			assignedCopy := assigned
 			skc.SaleAttribute = &assignedCopy
 		} else if skcIndex == 0 && len(resolution.SKCAttributes) > 0 && saleAttributeHasResolvedValue(resolution.SKCAttributes[0]) {
@@ -60,7 +62,7 @@ func ApplySaleAttributeResolution(pkg *Package, resolution *SaleAttributeResolut
 				sku.SaleAttributes = append([]ResolvedSaleAttribute(nil), assigned...)
 				continue
 			}
-			if assigned, ok := resolveSaleAttributeValueAssignment(resolution.skuValueAssignments, lookupAttributeValue(sku.Attributes, resolution.SecondarySourceDimension)); ok {
+			if assigned, ok := resolveSaleAttributeValueAssignment(skuValueAssignments, lookupAttributeValue(sku.Attributes, resolution.SecondarySourceDimension)); ok {
 				sku.SaleAttributes = append([]ResolvedSaleAttribute(nil), assigned)
 				continue
 			}
@@ -69,6 +71,26 @@ func ApplySaleAttributeResolution(pkg *Package, resolution *SaleAttributeResolut
 			}
 		}
 	}
+}
+
+func effectiveSKCValueAssignments(resolution *SaleAttributeResolution) map[string]ResolvedSaleAttribute {
+	if resolution == nil {
+		return nil
+	}
+	if len(resolution.skcValueAssignments) > 0 {
+		return resolution.skcValueAssignments
+	}
+	return resolution.SKCValueAssignments
+}
+
+func effectiveSKUValueAssignments(resolution *SaleAttributeResolution) map[string]ResolvedSaleAttribute {
+	if resolution == nil {
+		return nil
+	}
+	if len(resolution.skuValueAssignments) > 0 {
+		return resolution.skuValueAssignments
+	}
+	return resolution.SKUValueAssignments
 }
 
 func resolveSaleAttributeValueAssignment(assignments map[string]ResolvedSaleAttribute, value string) (ResolvedSaleAttribute, bool) {

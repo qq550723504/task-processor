@@ -14,7 +14,7 @@ func buildSheinSubmitChecklist(readiness *SheinSubmitReadiness) *SheinSubmitChec
 
 func checklistGroupForCheck(key string) string {
 	switch key {
-	case "category", "attributes", "sale_attributes", "images", "variants":
+	case "category", "category_review", "attributes", "attribute_review", "sale_attributes", "images", "variants":
 		return "required"
 	case "request_draft", "preview_product":
 		return "recommended"

@@ -68,6 +68,7 @@ type SKU struct {
 	CompetingCostPriceImages []any           `json:"competing_cost_price_images"`
 	SuggestedRetailPrice     *any            `json:"suggested_retail_price"`
 	QuantityInfo             *QuantityInfo   `json:"quantity_info"`
+	PackageType              int             `json:"package_type"`
 	Extra                    SkuExtra        `json:"extra"`
 }
 

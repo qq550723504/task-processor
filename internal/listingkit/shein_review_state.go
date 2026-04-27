@@ -11,7 +11,11 @@ func refreshSheinReviewState(pkg *SheinPackage, extraNotes ...string) {
 	notes = append(notes, extraNotes...)
 
 	if !sheinworkspace.IsCategoryResolved(pkg) {
-		notes = append(notes, "SHEIN 类目解析尚未命中真实 category_id，当前仍需要人工确认类目")
+		if pkg.CategoryID > 0 {
+			notes = append(notes, "SHEIN 类目已解析 category_id，但类目路径、product_type 或语义一致性仍需要人工确认")
+		} else {
+			notes = append(notes, "SHEIN 类目解析尚未命中真实 category_id，当前仍需要人工确认类目")
+		}
 	}
 	if !sheinworkspace.IsAttributeResolved(pkg) {
 		notes = append(notes, "SHEIN 属性模板尚未完成真实 attribute_id 映射，当前仍需要人工确认属性")

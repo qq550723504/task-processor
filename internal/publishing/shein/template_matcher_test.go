@@ -6,7 +6,7 @@ import (
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
-func TestTemplateIndexMatchUsesChineseAliasesForSize(t *testing.T) {
+func TestTemplateIndexMatchDoesNotUseChineseAliasesForSize(t *testing.T) {
 	index := newTemplateIndex([]sheinattribute.AttributeInfo{
 		{
 			AttributeID:     87,
@@ -17,10 +17,7 @@ func TestTemplateIndexMatchUsesChineseAliasesForSize(t *testing.T) {
 	})
 
 	match := index.Match("尺码", "39")
-	if match.AttributeID != 87 {
-		t.Fatalf("expected attribute 87, got %d", match.AttributeID)
-	}
-	if match.Name != "Size" {
-		t.Fatalf("expected matched name Size, got %q", match.Name)
+	if match.AttributeID != 0 {
+		t.Fatalf("expected no alias match, got attribute %d", match.AttributeID)
 	}
 }

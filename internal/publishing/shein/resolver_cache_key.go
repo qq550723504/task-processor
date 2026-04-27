@@ -35,7 +35,7 @@ func attributeResolverCacheKey(req *BuildRequest, pkg *Package) string {
 		return ""
 	}
 	payload := map[string]any{
-		"version":            1,
+		"version":            13,
 		"store_id":           sheinStoreID(req),
 		"category_id":        categoryID(pkg),
 		"category_id_list":   append([]int(nil), pkg.CategoryIDList...),
@@ -49,7 +49,7 @@ func saleAttributeResolverCacheKey(req *BuildRequest, canonical *productenrich.C
 		return ""
 	}
 	payload := map[string]any{
-		"version":           1,
+		"version":           5,
 		"store_id":          sheinStoreID(req),
 		"category_id":       categoryID(pkg),
 		"category_id_list":  append([]int(nil), pkg.CategoryIDList...),

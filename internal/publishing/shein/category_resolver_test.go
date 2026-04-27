@@ -131,6 +131,47 @@ func TestCategoryResolverFallsBackToCategoryTreeSelection(t *testing.T) {
 	}
 }
 
+func TestCategoryResolverHydratesSelectedCategoryFromTreeWhenDetailFails(t *testing.T) {
+	resolver := NewCategoryResolverWithTreeFallback(stubCategoryAPI{
+		suggestResponse: &sheincategory.SuggestCategoryResponse{},
+		categoryErr:     errors.New("detail unavailable"),
+		categoryTree: &sheincategory.CategoryTreeResponse{Data: []sheincategory.CategoryTreeNode{{
+			CategoryID:    10,
+			CategoryName:  "Home",
+			ProductTypeID: 1000,
+			Children: []sheincategory.CategoryTreeNode{{
+				CategoryID:    20,
+				CategoryName:  "Decor",
+				ProductTypeID: 2000,
+				Children: []sheincategory.CategoryTreeNode{{
+					CategoryID:    3105,
+					CategoryName:  "Wall Clocks",
+					ProductTypeID: 9988,
+					LastCategory:  true,
+				}},
+			}},
+		}}},
+	}, stubCategoryTreeFallback{selectedID: 3105})
+
+	resolution := resolver.Resolve(&BuildRequest{Text: "wall clock"}, &productenrich.CanonicalProduct{}, &Package{})
+
+	if resolution.Status != "resolved" {
+		t.Fatalf("status = %q, want resolved", resolution.Status)
+	}
+	if resolution.CategoryID != 3105 {
+		t.Fatalf("category_id = %d, want 3105", resolution.CategoryID)
+	}
+	if resolution.ProductTypeID != 9988 {
+		t.Fatalf("product_type_id = %d, want 9988", resolution.ProductTypeID)
+	}
+	if got := strings.Join(resolution.MatchedPath, " > "); got != "Home > Decor > Wall Clocks" {
+		t.Fatalf("matched path = %q", got)
+	}
+	if got := resolution.CategoryIDList; len(got) != 3 || got[0] != 10 || got[1] != 20 || got[2] != 3105 {
+		t.Fatalf("category id list = %#v, want [10 20 3105]", got)
+	}
+}
+
 func TestCategoryResolverReturnsPartialWhenCategoryTreeLoadFails(t *testing.T) {
 	resolver := NewCategoryResolverWithTreeFallback(stubCategoryAPI{
 		suggestResponse: &sheincategory.SuggestCategoryResponse{},

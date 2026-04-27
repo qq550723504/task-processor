@@ -31,7 +31,6 @@ describe("collectSheinPreviewImages", () => {
       "https://cdn.sdspod.com/out/final-main.jpg",
       "https://cdn.sdspod.com/out/final-gallery.jpg",
       "https://cdn.sdspod.com/out/request-main.jpg",
-      "http://local/source.png",
     ]);
     expect(images[0]?.label).toBe("Preview product image 1");
   });
@@ -48,5 +47,16 @@ describe("collectSheinPreviewImages", () => {
       "SDS mockup 1",
       "SDS mockup 2",
     ]);
+  });
+
+  it("uses source images only when no SHEIN or SDS rendered image exists", () => {
+    const images = collectSheinPreviewImages({
+      source_product: {
+        image_urls: ["http://local/source.png"],
+      },
+    });
+
+    expect(images.map((image) => image.url)).toEqual(["http://local/source.png"]);
+    expect(images[0]?.label).toBe("Source product 1");
   });
 });

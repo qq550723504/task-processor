@@ -76,9 +76,24 @@ func cloneAttributeResolution(resolution *AttributeResolution) *AttributeResolut
 	clone := *resolution
 	clone.ResolvedAttributes = append([]ResolvedAttribute(nil), resolution.ResolvedAttributes...)
 	clone.PendingAttributes = append([]common.Attribute(nil), resolution.PendingAttributes...)
+	clone.PendingAttributeCandidates = clonePendingAttributeCandidates(resolution.PendingAttributeCandidates)
+	clone.RecommendedAttributeCandidates = clonePendingAttributeCandidates(resolution.RecommendedAttributeCandidates)
 	clone.ReviewNotes = append([]string(nil), resolution.ReviewNotes...)
 	clone.Cache = cloneResolutionCacheInfo(resolution.Cache)
 	return &clone
+}
+
+func clonePendingAttributeCandidates(items []PendingAttributeCandidate) []PendingAttributeCandidate {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]PendingAttributeCandidate, 0, len(items))
+	for _, item := range items {
+		clone := item
+		clone.AttributeValueList = append([]AttributeValueCandidate(nil), item.AttributeValueList...)
+		result = append(result, clone)
+	}
+	return result
 }
 
 func cloneSaleAttributeResolution(resolution *SaleAttributeResolution) *SaleAttributeResolution {
@@ -94,6 +109,8 @@ func cloneSaleAttributeResolution(resolution *SaleAttributeResolution) *SaleAttr
 	clone.ReviewNotes = append([]string(nil), resolution.ReviewNotes...)
 	clone.CustomAttributeRelation = append([]sheinattribute.CustomAttributeRelation(nil), resolution.CustomAttributeRelation...)
 	clone.Cache = cloneResolutionCacheInfo(resolution.Cache)
+	clone.SKCValueAssignments = cloneResolvedSaleAttributeMap(resolution.SKCValueAssignments)
+	clone.SKUValueAssignments = cloneResolvedSaleAttributeMap(resolution.SKUValueAssignments)
 	clone.skcAssignments = cloneResolvedSaleAttributeMap(resolution.skcAssignments)
 	clone.skuAssignments = cloneResolvedSaleAttributeSliceMap(resolution.skuAssignments)
 	clone.skcValueAssignments = cloneResolvedSaleAttributeMap(resolution.skcValueAssignments)

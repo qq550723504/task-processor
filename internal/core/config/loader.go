@@ -134,10 +134,10 @@ func NewDefaultConfig() *Config {
 			Timeout: 120,
 		},
 		Management: ManagementConfig{
-			BaseURL:      "http://getway.linkcloudai.com",
+			BaseURL:      "https://api.shuomiai.com",
 			ClientID:     "go-listing",
 			ClientSecret: "",
-			TokenURL:     "http://getway.linkcloudai.com/admin-api/system/oauth2/token",
+			TokenURL:     "https://api.shuomiai.com/admin-api/system/oauth2/token",
 			Scopes:       []string{"user.read"},
 			TenantID:     "1",
 		},

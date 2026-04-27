@@ -13,6 +13,7 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 	}
 
 	checks := make([]sheinworkspace.ReadinessCheckSpec, 0, 8)
+	validation := ValidateSheinPackageAgainstTemplates(pkg)
 
 	addCheck := func(key, label string, ok bool, message string, fieldPaths []string, suggestedAction string, warningOnly bool) {
 		checks = append(checks, sheinworkspace.ReadinessCheckSpec{
@@ -26,15 +27,11 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 		})
 	}
 
-	categoryReady := isSheinCategoryResolved(pkg) &&
-		pkg.CategoryID > 0 &&
-		pkg.ProductTypeID != nil &&
-		*pkg.ProductTypeID > 0
 	addCheck(
 		"category",
 		"类目骨架",
-		categoryReady,
-		"类目、类目层级和 product_type_id 需要确认；如当前类目被建议复核，也不能直接进入提交态",
+		validation.categoryReady,
+		validation.categoryMessage,
 		[]string{"shein.category_id", "shein.category_id_list", "shein.product_type_id", "shein.sale_attribute_resolution.category_review_reason"},
 		"确认类目",
 		false,
@@ -43,19 +40,18 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 	addCheck(
 		"category_review",
 		"类目复核",
-		!categoryReady || !sheinCategoryReviewPending(pkg),
-		"当前类目可用，但系统建议复核候选类目；MVP 流程允许继续，但提交前建议确认",
+		validation.categoryReviewReady,
+		"当前类目仍被建议复核，提交前必须先确认 SHEIN 类目是否匹配",
 		[]string{"shein.category_resolution.suggested_category", "shein.sale_attribute_resolution.category_review_reason"},
 		"复核类目",
-		true,
+		false,
 	)
 
-	attributeReady := pkg.AttributeResolution != nil && len(pkg.ResolvedAttributes) > 0
 	addCheck(
 		"attributes",
 		"普通属性",
-		attributeReady,
-		"普通属性还没有全部映射到真实 attribute_id / attribute_value_id",
+		validation.attributeReady,
+		validation.attributeMessage,
 		[]string{"shein.resolved_attributes", "shein.request_draft.resolved_attributes"},
 		"确认属性",
 		false,
@@ -64,19 +60,18 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 	addCheck(
 		"attribute_review",
 		"属性复核",
-		!attributeReady || isSheinAttributeResolved(pkg),
-		"普通属性已部分映射，但仍有模板必填项未能自动推断；MVP 流程允许继续，提交前建议确认",
+		validation.attributeReady,
+		"普通属性仍有模板必填项未确认，提交前必须补齐或人工确认",
 		[]string{"shein.attribute_resolution.pending_attributes", "shein.attribute_resolution.review_notes"},
 		"复核属性",
-		true,
+		false,
 	)
 
-	saleAttributeReady := isSheinSaleAttributeResolved(pkg)
 	addCheck(
 		"sale_attributes",
 		"销售属性",
-		saleAttributeReady,
-		"销售属性主副规格还没有稳定映射到真实 sale attribute",
+		validation.saleAttributeReady,
+		validation.saleAttributeMessage,
 		[]string{"shein.sale_attribute_resolution", "shein.request_draft.skc_list"},
 		"确认规格",
 		false,
@@ -139,6 +134,7 @@ func buildSheinSubmitReadiness(pkg *SheinPackage) *SheinSubmitReadiness {
 		"处理备注",
 		true,
 	)
+	checks = appendSheinBuildValidationChecks(checks, validation)
 
 	readiness := sheinworkspace.BuildSubmitReadiness(
 		checks,

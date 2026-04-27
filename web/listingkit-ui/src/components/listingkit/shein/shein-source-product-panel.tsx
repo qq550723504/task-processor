@@ -1,4 +1,5 @@
 import { Card } from "@/components/shared/card";
+import { formatSDSPrice } from "@/lib/sds/format";
 import type { SheinPreviewPayload } from "@/lib/types/listingkit";
 
 function joinPath(path?: string[] | null) {
@@ -62,7 +63,7 @@ export function SheinSourceProductPanel({
           <Field label="Color" value={source.variant_color} />
           <Field label="Weight" value={source.variant_weight ? `${source.variant_weight}g` : undefined} />
           <Field label="Production cycle" value={source.production_cycle ? `${source.production_cycle}h` : undefined} />
-          <Field label="Price" value={source.variant_price ? `$${source.variant_price.toFixed(2)}` : undefined} />
+          <Field label="SDS price" value={source.variant_price ? formatSDSPrice(source.variant_price) : undefined} />
           <Field label="Print area" value={source.attributes?.design_area} />
           <Field label="Image request" value={source.attributes?.picture_request} />
         </dl>

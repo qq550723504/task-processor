@@ -232,11 +232,12 @@ func buildAttributePayload(pkg *sheinpub.Package) *sheinpub.InspectionAttributeP
 		return nil
 	}
 	payload := &sheinpub.InspectionAttributePayload{
-		Platform:           "shein",
-		Target:             "attribute_resolution",
-		ProductAttributes:  append([]common.Attribute(nil), pkg.ProductAttributes...),
-		ResolvedAttributes: append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...),
-		PendingAttributes:  buildPendingAttributes(pkg),
+		Platform:                   "shein",
+		Target:                     "attribute_resolution",
+		ProductAttributes:          append([]common.Attribute(nil), pkg.ProductAttributes...),
+		ResolvedAttributes:         append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...),
+		PendingAttributes:          buildPendingAttributes(pkg),
+		PendingAttributeCandidates: buildPendingAttributeCandidates(pkg),
 	}
 	if pkg.AttributeResolution != nil {
 		payload.Status = pkg.AttributeResolution.Status
@@ -244,6 +245,7 @@ func buildAttributePayload(pkg *sheinpub.Package) *sheinpub.InspectionAttributeP
 		payload.TemplateCount = pkg.AttributeResolution.TemplateCount
 		payload.ResolvedCount = pkg.AttributeResolution.ResolvedCount
 		payload.UnresolvedCount = pkg.AttributeResolution.UnresolvedCount
+		payload.RecommendedAttributeCandidates = append([]sheinpub.PendingAttributeCandidate(nil), pkg.AttributeResolution.RecommendedAttributeCandidates...)
 		payload.ReviewNotes = append([]string(nil), pkg.AttributeResolution.ReviewNotes...)
 	}
 	return payload
@@ -275,6 +277,12 @@ func buildAttributePayloadMap(payload *sheinpub.InspectionAttributePayload) map[
 	}
 	if len(payload.PendingAttributes) > 0 {
 		out["pending_attributes"] = append([]common.Attribute(nil), payload.PendingAttributes...)
+	}
+	if len(payload.PendingAttributeCandidates) > 0 {
+		out["pending_attribute_candidates"] = append([]sheinpub.PendingAttributeCandidate(nil), payload.PendingAttributeCandidates...)
+	}
+	if len(payload.RecommendedAttributeCandidates) > 0 {
+		out["recommended_attribute_candidates"] = append([]sheinpub.PendingAttributeCandidate(nil), payload.RecommendedAttributeCandidates...)
 	}
 	if len(payload.ReviewNotes) > 0 {
 		out["review_notes"] = append([]string(nil), payload.ReviewNotes...)
@@ -377,6 +385,19 @@ func buildPendingAttributes(pkg *sheinpub.Package) []common.Attribute {
 		pending = append(pending, attr)
 	}
 	return pending
+}
+
+func buildPendingAttributeCandidates(pkg *sheinpub.Package) []sheinpub.PendingAttributeCandidate {
+	if pkg == nil || pkg.AttributeResolution == nil || len(pkg.AttributeResolution.PendingAttributeCandidates) == 0 {
+		return nil
+	}
+	result := make([]sheinpub.PendingAttributeCandidate, 0, len(pkg.AttributeResolution.PendingAttributeCandidates))
+	for _, item := range pkg.AttributeResolution.PendingAttributeCandidates {
+		clone := item
+		clone.AttributeValueList = append([]sheinpub.AttributeValueCandidate(nil), item.AttributeValueList...)
+		result = append(result, clone)
+	}
+	return result
 }
 
 func buildSKCPatchSuggestions(pkg *sheinpub.Package) []sheinpub.InspectionSKCPatchPayload {

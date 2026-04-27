@@ -29,18 +29,90 @@ func buildSDSSyncSummary(options *SDSSyncOptions, designResult *design.PrepareSy
 			prototype := designResult.Request.Prototypes[0]
 			summary.MockupImageURLs = uniqueNonEmptyStrings(designResult.RenderedImageURLs)
 			if len(prototype.Layers) > 0 {
-				summary.LayerID = prototype.Layers[0].LayerID
+				layer := prototype.Layers[0]
+				summary.LayerID = layer.LayerID
+				summary.Diagnostics = &SDSSyncDiagnostics{
+					LayerContent:   strings.TrimSpace(layer.Content),
+					LayerImgWidth:  layer.ImgWidth,
+					LayerImgHeight: layer.ImgHeight,
+					ResizeMode:     layer.ResizeMode,
+					FitLevel:       layer.FitLevel,
+					RenderedCount:  len(summary.MockupImageURLs),
+				}
 			}
 		}
 	}
 	if designResult.Material != nil && designResult.Material.Material != nil {
-		summary.MaterialID = designResult.Material.Material.ID
+		material := designResult.Material.Material
+		summary.MaterialID = material.ID
+		if summary.Diagnostics == nil {
+			summary.Diagnostics = &SDSSyncDiagnostics{}
+		}
+		summary.Diagnostics.MaterialImageURL = strings.TrimSpace(firstNonEmptyString(material.ImageURL, material.ImageURLAlt))
+		summary.Diagnostics.MaterialFileCode = strings.TrimSpace(material.FileCode)
+		summary.Diagnostics.MaterialWidth = int(material.Width)
+		summary.Diagnostics.MaterialHeight = int(material.Height)
+		if summary.Diagnostics.RenderedCount == 0 {
+			summary.Diagnostics.RenderedCount = len(summary.MockupImageURLs)
+		}
 	}
 	if len(summary.MockupImageURLs) == 0 {
 		summary.Status = "render_unavailable"
 		summary.Error = "SDS did not return current fused mockup images"
 	}
 	return summary
+}
+
+func buildSDSVariantSyncSummaries(options *SDSSyncOptions, variants []SDSSyncVariantOption, designResult *design.PrepareSyncDesignResult) []SDSSyncSummary {
+	if len(variants) == 0 {
+		if summary := buildSDSSyncSummary(options, designResult); summary != nil {
+			return []SDSSyncSummary{*summary}
+		}
+		return nil
+	}
+	base := buildSDSSyncSummary(options, designResult)
+	byProduct := map[int64][]string{}
+	if designResult != nil {
+		byProduct = designResult.RenderedImageURLsByProduct
+	}
+	summaries := make([]SDSSyncSummary, 0, len(variants))
+	for _, variant := range variants {
+		summary := SDSSyncSummary{
+			VariantID:        variant.VariantID,
+			ProductID:        variant.VariantID,
+			PrototypeGroupID: firstNonZeroInt64(variant.PrototypeGroupID, base.PrototypeGroupID),
+			LayerID:          firstNonEmptyString(variant.LayerID, base.LayerID),
+			MaterialID:       base.MaterialID,
+			ProductName:      base.ProductName,
+			ProductSKU:       base.ProductSKU,
+			VariantSKU:       strings.TrimSpace(variant.VariantSKU),
+			VariantSize:      strings.TrimSpace(variant.Size),
+			VariantColor:     strings.TrimSpace(variant.Color),
+			MockupImageURLs:  uniqueNonEmptyStrings(byProduct[variant.VariantID]),
+			Status:           "completed",
+			Diagnostics:      cloneSDSSyncDiagnostics(base.Diagnostics),
+		}
+		if len(summary.MockupImageURLs) == 0 && variant.VariantID == base.ProductID {
+			summary.MockupImageURLs = uniqueNonEmptyStrings(base.MockupImageURLs)
+		}
+		if summary.Diagnostics != nil {
+			summary.Diagnostics.RenderedCount = len(summary.MockupImageURLs)
+		}
+		if len(summary.MockupImageURLs) == 0 {
+			summary.Status = "render_unavailable"
+			summary.Error = "SDS did not return current fused mockup images"
+		}
+		summaries = append(summaries, summary)
+	}
+	return summaries
+}
+
+func cloneSDSSyncDiagnostics(input *SDSSyncDiagnostics) *SDSSyncDiagnostics {
+	if input == nil {
+		return nil
+	}
+	copy := *input
+	return &copy
 }
 
 func uniqueNonEmptyStrings(values []string) []string {

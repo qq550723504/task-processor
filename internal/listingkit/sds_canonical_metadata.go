@@ -10,12 +10,13 @@ func applySDSSyncMetadataToCanonical(canonical *productenrich.CanonicalProduct, 
 	if canonical == nil {
 		return false
 	}
+	changed := applyStudioStyleDimension(canonical, options)
 	title := trustedSDSProductName(summary, options)
 	if title == "" {
-		return false
+		return changed
 	}
 	if strings.TrimSpace(canonical.Title) == title {
-		return false
+		return changed
 	}
 	canonical.Title = title
 	if canonical.FieldTraces == nil {

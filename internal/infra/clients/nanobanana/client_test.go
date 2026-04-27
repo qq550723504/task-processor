@@ -35,7 +35,7 @@ func TestClientEditImageUsesSubmitPollFlow(t *testing.T) {
 			if req.Model != "nano-banana-fast" {
 				t.Fatalf("model = %q", req.Model)
 			}
-			if len(req.URLs) != 1 || req.URLs[0] != "https://example.com/source.png" {
+			if len(req.URLs) != 2 || req.URLs[0] != "https://example.com/source.png" || req.URLs[1] != "https://example.com/side.png" {
 				t.Fatalf("urls = %#v", req.URLs)
 			}
 			if req.WebHook != "-1" {
@@ -97,8 +97,12 @@ func TestClientEditImageUsesSubmitPollFlow(t *testing.T) {
 	})
 
 	resp, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
-		Prompt:   "edit faithfully",
-		ImageURL: "https://example.com/source.png",
+		Prompt: "edit faithfully",
+		ImageURLs: []string{
+			" https://example.com/source.png ",
+			"https://example.com/source.png",
+			"https://example.com/side.png",
+		},
 	})
 	if err != nil {
 		t.Fatalf("EditImage() error = %v", err)

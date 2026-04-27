@@ -103,7 +103,11 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
-	if strings.TrimSpace(req.ImageURL) == "" {
+	imageURLs := cleanImageURLs(req.ImageURLs, 8)
+	if len(imageURLs) == 0 {
+		imageURLs = cleanImageURLs([]string{req.ImageURL}, 1)
+	}
+	if len(imageURLs) == 0 {
 		return nil, fmt.Errorf("nanobanana image edit requires image url")
 	}
 	return c.submitAndPoll(ctx, submitRequest{
@@ -111,10 +115,33 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 		Prompt:       req.Prompt,
 		AspectRatio:  nanoBananaAspectRatio(req.Size),
 		ImageSize:    nanoBananaImageSize(req.Size),
-		URLs:         []string{req.ImageURL},
+		URLs:         imageURLs,
 		WebHook:      "-1",
 		ShutProgress: true,
 	})
+}
+
+func cleanImageURLs(urls []string, max int) []string {
+	if max <= 0 {
+		max = len(urls)
+	}
+	cleaned := make([]string, 0, min(len(urls), max))
+	seen := make(map[string]struct{}, len(urls))
+	for _, raw := range urls {
+		item := strings.TrimSpace(raw)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		cleaned = append(cleaned, item)
+		if len(cleaned) >= max {
+			break
+		}
+	}
+	return cleaned
 }
 
 func (c *Client) submitAndPoll(ctx context.Context, req submitRequest) (*openaiclient.ImageResponse, error) {

@@ -55,9 +55,6 @@ function collectImageInfoUrls(
       image.image_url ?? image.imageUrl,
     );
   });
-  info.source?.forEach((url, index) => {
-    pushImage(images, seen, `${label} source ${index + 1}`, url);
-  });
 }
 
 export function collectSheinPreviewImages(
@@ -72,6 +69,20 @@ export function collectSheinPreviewImages(
   const seen = new Set<string>();
   const requestDraft = shein?.request_draft;
   const previewProduct = shein?.preview_product;
+
+  const appendSourceImages = () => {
+    const appendSourcesFromImageInfo = (label: string, info?: SheinImageInfo | null) => {
+      info?.source?.forEach((url, index) => {
+        pushImage(images, seen, `${label} source ${index + 1}`, url);
+      });
+    };
+
+    shein?.source_product?.image_urls?.forEach((url, index) => {
+      pushImage(images, seen, `Source product ${index + 1}`, url);
+    });
+    appendSourcesFromImageInfo("Preview product", previewProduct?.image_info);
+    appendSourcesFromImageInfo("Request draft", requestDraft?.image_info);
+  };
 
   collectImageInfoUrls(images, seen, "Preview product", previewProduct?.image_info);
   previewProduct?.skc_list?.forEach((skc, skcIndex) => {
@@ -106,9 +117,9 @@ export function collectSheinPreviewImages(
       );
     });
   });
-  shein?.source_product?.image_urls?.forEach((url, index) => {
-    pushImage(images, seen, `Source product ${index + 1}`, url);
-  });
+  if (images.length === 0) {
+    appendSourceImages();
+  }
 
   return images;
 }

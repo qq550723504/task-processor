@@ -83,6 +83,25 @@ function compactSubmissionMessage(message?: string | null) {
   return `${text.slice(0, 320)}...`;
 }
 
+function submissionActionLabel(action?: string | null, status?: string | null) {
+  if (action === "save_draft") {
+    return status === "success" ? "Saved draft" : "Save draft attempt";
+  }
+  return status === "success" ? "Published" : "Publish attempt";
+}
+
+function normalizedSubmissionStatus(submission?: SheinSubmissionReport | null) {
+  const status = submission?.last_status;
+  const result = submission?.last_result;
+  if (
+    status === "unknown" &&
+    (result?.success === false || result?.validation_notes?.length)
+  ) {
+    return "failed";
+  }
+  return status;
+}
+
 function cacheSourceLabel(source?: string) {
   switch (source) {
     case "manual_cache":
@@ -284,7 +303,10 @@ export function SheinSubmitReadinessPanel({
   onRunPrimaryAction,
   canSubmit,
   onSubmit,
+  onSaveDraft,
   isSubmitting,
+  submitAction,
+  submitErrorMessage,
   onClearResolutionCache,
   clearingResolutionCacheKind,
   compact = false,
@@ -301,7 +323,10 @@ export function SheinSubmitReadinessPanel({
   onRunPrimaryAction?: ((key?: string | null) => void) | null;
   canSubmit?: boolean;
   onSubmit?: (() => void) | null;
+  onSaveDraft?: (() => void) | null;
   isSubmitting?: boolean;
+  submitAction?: "publish" | "save_draft" | null;
+  submitErrorMessage?: string | null;
   onClearResolutionCache?:
     | ((kind: "category" | "attribute" | "sale_attribute") => void)
     | null;
@@ -320,9 +345,15 @@ export function SheinSubmitReadinessPanel({
     Boolean(primaryActionKey) &&
     (canRunPrimaryAction ? canRunPrimaryAction(primaryActionKey) : false);
   const submitReady = readiness?.ready === true || readiness?.status === "ready";
+  const latestValidationNotes = submission?.last_result?.validation_notes ?? [];
+  const latestSubmissionStatus = normalizedSubmissionStatus(submission);
   const latestSubmissionMessage = compactSubmissionMessage(
-    submission?.last_error ?? submission?.last_result?.message,
+    submission?.last_error ??
+      (latestValidationNotes.length ? null : submission?.last_result?.message),
   );
+  const isSavingDraft = isSubmitting && submitAction === "save_draft";
+  const isPublishing = isSubmitting && submitAction !== "save_draft";
+  const canRunSubmitActions = canSubmit === true && submitReady;
 
   return (
     <Card className="border-zinc-300 bg-zinc-50/80 p-5">
@@ -367,19 +398,35 @@ export function SheinSubmitReadinessPanel({
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
                   Publish action
                 </p>
-                <p className="text-sm font-semibold text-zinc-950">Submit to SHEIN</p>
+                <p className="text-sm font-semibold text-zinc-950">
+                  Save draft or submit to SHEIN
+                </p>
                 <p className="text-sm leading-6 text-zinc-700">
-                  当前资料包已满足后端 readiness，可直接提交到 SHEIN。
+                  当前资料包已满足后端 readiness，可先发到 SHEIN 草稿箱，确认后再正式提交。
                 </p>
               </div>
-              {canSubmit && onSubmit ? (
-                <Button
-                  className="h-8 px-3 text-xs"
-                  disabled={isSubmitting}
-                  onClick={onSubmit}
-                >
-                  {isSubmitting ? "Submitting..." : "Submit to SHEIN"}
-                </Button>
+              {canRunSubmitActions && (onSaveDraft || onSubmit) ? (
+                <div className="flex flex-wrap gap-2">
+                  {onSaveDraft ? (
+                    <Button
+                      className="h-8 px-3 text-xs"
+                      disabled={isSubmitting}
+                      tone="secondary"
+                      onClick={onSaveDraft}
+                    >
+                      {isSavingDraft ? "Saving draft..." : "Save to SHEIN draft"}
+                    </Button>
+                  ) : null}
+                  {onSubmit ? (
+                    <Button
+                      className="h-8 px-3 text-xs"
+                      disabled={isSubmitting}
+                      onClick={onSubmit}
+                    >
+                      {isPublishing ? "Submitting..." : "Submit to SHEIN"}
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </div>
@@ -403,6 +450,45 @@ export function SheinSubmitReadinessPanel({
                   Open fix path
                 </Button>
               ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {isSubmitting || submitErrorMessage ? (
+          <div
+            className={`rounded-2xl border p-4 ${
+              isSubmitting
+                ? "border-sky-200 bg-sky-50/70"
+                : "border-rose-200 bg-rose-50/70"
+            }`}
+          >
+            <div className="space-y-1">
+              <p
+                className={`text-xs font-semibold uppercase tracking-[0.18em] ${
+                  isSubmitting ? "text-sky-700" : "text-rose-700"
+                }`}
+              >
+                Current submit attempt
+              </p>
+              <p className="text-sm font-semibold text-zinc-950">
+                {isSubmitting
+                  ? isSavingDraft
+                    ? "Saving to SHEIN draft..."
+                    : "Submitting to SHEIN..."
+                  : submitAction === "save_draft"
+                    ? "Save draft failed"
+                    : "Submit failed"}
+              </p>
+              {submitErrorMessage ? (
+                <p className="break-words text-sm leading-6 text-rose-700">
+                  {submitErrorMessage}
+                </p>
+              ) : (
+                <p className="text-sm leading-6 text-zinc-700">
+                  正在上传图片并{submitAction === "save_draft" ? "保存到 SHEIN 草稿箱" : "提交 SHEIN"}。
+                  完成或失败后会刷新 latest submission。
+                </p>
+              )}
             </div>
           </div>
         ) : null}
@@ -473,19 +559,42 @@ export function SheinSubmitReadinessPanel({
           </div>
         ) : null}
 
-        {submission?.last_status ? (
+        {latestSubmissionStatus ? (
           <div className="rounded-2xl border border-zinc-200 bg-white/80 p-4">
-            <div className="space-y-1">
+            <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
                 Latest submission
               </p>
-              <p className="text-sm font-semibold text-zinc-950">
-                {submission.last_action === "save_draft" ? "Saved draft" : "Published"} · {submission.last_status}
-              </p>
-              {latestSubmissionMessage ? (
-                <p className="break-words text-sm leading-6 text-rose-700">
-                  {latestSubmissionMessage}
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-zinc-950">
+                  {submissionActionLabel(
+                    submission?.last_action,
+                    latestSubmissionStatus,
+                  )}{" "}
+                  · {latestSubmissionStatus}
                 </p>
+                {latestSubmissionMessage ? (
+                  <p className="break-words text-sm leading-6 text-rose-700">
+                    {latestSubmissionMessage}
+                  </p>
+                ) : null}
+              </div>
+              {latestValidationNotes.length ? (
+                <div className="space-y-2 rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">
+                    SHEIN validation notes
+                  </p>
+                  <ul className="space-y-1">
+                    {latestValidationNotes.map((note, index) => (
+                      <li
+                        className="break-words text-xs leading-5 text-rose-700"
+                        key={`${index}-${note}`}
+                      >
+                        {note}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
             </div>
           </div>
@@ -499,6 +608,19 @@ export function SheinSubmitReadinessPanel({
               </p>
             ))}
           </div>
+        ) : null}
+
+        {compact ? (
+          <ReadinessItems
+            title="Blocking items"
+            items={readiness?.blocking_items}
+            canSelectItem={canSelectBlockingItem}
+            onSelectItem={onSelectBlockingItem}
+          />
+        ) : null}
+
+        {compact ? (
+          <ReadinessItems title="Warnings" items={readiness?.warning_items} />
         ) : null}
 
         {!compact ? (

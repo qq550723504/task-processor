@@ -16,6 +16,7 @@ type SheinStockInfo = sheinpub.StockInfo
 type SheinCategoryResolution = sheinpub.CategoryResolution
 type SheinResolvedAttribute = sheinpub.ResolvedAttribute
 type SheinAttributeResolution = sheinpub.AttributeResolution
+type SheinPendingAttributeCandidate = sheinpub.PendingAttributeCandidate
 type SheinResolvedSaleAttribute = sheinpub.ResolvedSaleAttribute
 type SheinSaleAttributeResolution = sheinpub.SaleAttributeResolution
 type SheinSaleAttributeCandidateInfo = sheinpub.SaleAttributeCandidateInfo

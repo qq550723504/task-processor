@@ -66,6 +66,44 @@ func TestBuildStudioFallbackCanonicalProductUsesSDSMetadata(t *testing.T) {
 	}
 }
 
+func TestBuildStudioFallbackCanonicalProductExpandsSDSVariantsWithStyleSuffix(t *testing.T) {
+	task := &Task{
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://cdn.example.com/design.png"},
+			Text:      "cute dog print",
+			Options: &GenerateOptions{
+				SDS: &SDSSyncOptions{
+					ProductName: "Adult T-Shirt",
+					ProductSKU:  "NS6001064",
+					StyleID:     "a1b2-c3d4-extra",
+					Variants: []SDSSyncVariantOption{
+						{VariantID: 89764, VariantSKU: "NS6001064001", Size: "S", Color: "Black", Price: 19.8},
+						{VariantID: 89765, VariantSKU: "NS6001064002", Size: "M", Color: "Black", Price: 19.8},
+						{VariantID: 89772, VariantSKU: "NS6001064009", Size: "S", Color: "White", Price: 19.8},
+					},
+				},
+			},
+		},
+	}
+
+	canonical := buildStudioFallbackCanonicalProduct(task)
+	if canonical == nil {
+		t.Fatal("canonical = nil")
+	}
+	if len(canonical.Variants) != 3 {
+		t.Fatalf("variants = %d, want 3", len(canonical.Variants))
+	}
+	if canonical.Variants[0].SKU != "NS6001064001-A1B2C3D4" {
+		t.Fatalf("first sku = %q", canonical.Variants[0].SKU)
+	}
+	if canonical.Variants[0].Attributes["source_sds_sku"].Value != "NS6001064001" {
+		t.Fatalf("source_sds_sku = %+v", canonical.Variants[0].Attributes["source_sds_sku"])
+	}
+	if canonical.Variants[2].Attributes["Color"].Value != "White" || canonical.Variants[2].Attributes["Size"].Value != "S" {
+		t.Fatalf("third attributes = %+v", canonical.Variants[2].Attributes)
+	}
+}
+
 func TestApplySDSSyncMetadataToCanonicalOverridesStaleStudioTitle(t *testing.T) {
 	task := &Task{
 		Request: &GenerateRequest{
@@ -229,6 +267,54 @@ func TestApplySDSTemplateImagesToSheinUsesRenderedMockupsAcrossSheinPayload(t *t
 	}
 }
 
+func TestApplySDSTemplateImagesToSheinUsesColorSpecificRenderedMockups(t *testing.T) {
+	sourceImage := "http://127.0.0.1:9100/listingkit-assets/source.png"
+	blackImages := []string{"https://cdn.sdspod.com/out/black-main.jpg", "https://cdn.sdspod.com/out/black-2.jpg"}
+	whiteImages := []string{"https://cdn.sdspod.com/out/white-main.jpg", "https://cdn.sdspod.com/out/white-2.jpg"}
+	pkg := &sheinpub.Package{
+		Images: sheinImageSet(sourceImage),
+		SkcList: []sheinpub.SKCPackage{
+			{SkcName: "Black", SupplierCode: "BLACK-STYLE"},
+			{SkcName: "White", SupplierCode: "WHITE-STYLE"},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			ImageInfo: sheinpub.BuildImageDraft(sheinImageSet(sourceImage)),
+			SKCList: []sheinpub.SKCRequestDraft{
+				{SkcName: "Black", SupplierCode: "BLACK-STYLE", SKUList: []sheinpub.SKUDraft{{SupplierSKU: "BLACK-S"}}},
+				{SkcName: "White", SupplierCode: "WHITE-STYLE", SKUList: []sheinpub.SKUDraft{{SupplierSKU: "WHITE-S"}}},
+			},
+		},
+	}
+
+	applySDSTemplateImagesToShein(pkg, &SDSSyncSummary{
+		VariantColor:    "Black",
+		MockupImageURLs: blackImages,
+		VariantResults: []SDSSyncSummary{
+			{VariantColor: "Black", Status: "completed", MockupImageURLs: blackImages},
+			{VariantColor: "White", Status: "completed", MockupImageURLs: whiteImages},
+		},
+	}, []string{sourceImage})
+
+	if pkg.Images.MainImage != blackImages[0] {
+		t.Fatalf("spu main image = %q, want black", pkg.Images.MainImage)
+	}
+	if pkg.RequestDraft.SKCList[0].ImageInfo.MainImage != blackImages[0] {
+		t.Fatalf("black skc image = %+v", pkg.RequestDraft.SKCList[0].ImageInfo)
+	}
+	if pkg.RequestDraft.SKCList[1].ImageInfo.MainImage != whiteImages[0] {
+		t.Fatalf("white skc image = %+v", pkg.RequestDraft.SKCList[1].ImageInfo)
+	}
+	if pkg.RequestDraft.SKCList[1].SKUList[0].MainImage != whiteImages[0] {
+		t.Fatalf("white sku main image = %q", pkg.RequestDraft.SKCList[1].SKUList[0].MainImage)
+	}
+	if pkg.PreviewProduct == nil || len(pkg.PreviewProduct.SKCList) != 2 {
+		t.Fatalf("preview product = %+v", pkg.PreviewProduct)
+	}
+	if pkg.PreviewProduct.SKCList[1].ImageInfo.ImageInfoList[0].ImageURL != whiteImages[0] {
+		t.Fatalf("preview white skc image = %+v", pkg.PreviewProduct.SKCList[1].ImageInfo)
+	}
+}
+
 func TestApplySDSTemplateImagesToSheinSkipsWithoutRenderedMockups(t *testing.T) {
 	pkg := &sheinpub.Package{
 		Images:       sheinImageSet("https://cdn.example.com/flat-design.png"),
@@ -244,6 +330,185 @@ func TestApplySDSTemplateImagesToSheinSkipsWithoutRenderedMockups(t *testing.T) 
 	}
 	if pkg.RequestDraft.ImageInfo.MainImage != "https://cdn.example.com/flat-design.png" {
 		t.Fatalf("draft image = %+v", pkg.RequestDraft.ImageInfo)
+	}
+}
+
+func TestShouldRunStudioInlineKeepsAIGeneratedStrategyInline(t *testing.T) {
+	req := &GenerateRequest{
+		ImageURLs: []string{"https://cdn.example.com/source.png"},
+		Platforms: []string{"shein"},
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategyAIGenerated,
+			SDS:           &SDSSyncOptions{VariantID: 212097},
+		},
+	}
+
+	if !shouldRunStudioInline(req) {
+		t.Fatal("shouldRunStudioInline = false, want true for AI generated studio task")
+	}
+}
+
+func TestApplySheinStudioAIImagesToSheinReplacesDraftImages(t *testing.T) {
+	pkg := &sheinpub.Package{
+		Images: sheinImageSet("https://cdn.example.com/flat-design.png"),
+		RequestDraft: &sheinpub.RequestDraft{
+			ImageInfo: sheinpub.BuildImageDraft(sheinImageSet("https://cdn.example.com/flat-design.png")),
+			SKCList: []sheinpub.SKCRequestDraft{
+				{
+					ImageInfo: sheinpub.BuildImageDraft(sheinImageSet("https://cdn.example.com/flat-design.png")),
+					SKUList: []sheinpub.SKUDraft{
+						{MainImage: "https://cdn.example.com/flat-design.png"},
+					},
+				},
+			},
+		},
+	}
+
+	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{
+		ImageURLs: []string{"https://cdn.example.com/source-style.png"},
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategyAIGenerated,
+			SheinStudio: &SheinStudioOptions{
+				SourceDesignURLs: []string{"https://cdn.example.com/source-style.png"},
+				ProductImageURLs: []string{
+					"https://cdn.example.com/ai-main.png",
+					"https://cdn.example.com/ai-gallery-1.png",
+				},
+				SizeReferenceImageURLs: []string{"https://cdn.sdspod.com/size-chart.jpg"},
+			},
+		},
+	})
+
+	if pkg.Images.MainImage != "https://cdn.example.com/ai-main.png" {
+		t.Fatalf("main image = %q", pkg.Images.MainImage)
+	}
+	if len(pkg.Images.Gallery) != 2 || pkg.Images.Gallery[1] != "https://cdn.sdspod.com/size-chart.jpg" {
+		t.Fatalf("gallery = %+v", pkg.Images.Gallery)
+	}
+	if pkg.RequestDraft.SKCList[0].SKUList[0].MainImage != "https://cdn.example.com/ai-main.png" {
+		t.Fatalf("sku main image = %q", pkg.RequestDraft.SKCList[0].SKUList[0].MainImage)
+	}
+	if pkg.PreviewProduct == nil || pkg.PreviewProduct.ImageInfo.ImageInfoList[0].ImageURL != "https://cdn.example.com/ai-main.png" {
+		t.Fatalf("preview image = %+v", pkg.PreviewProduct)
+	}
+}
+
+func TestApplySheinStudioAIImagesToSheinAppendsForHybrid(t *testing.T) {
+	pkg := &sheinpub.Package{
+		Images: &common.ImageSet{
+			MainImage: "https://cdn.sdspod.com/rendered-main.jpg",
+			Gallery:   []string{"https://cdn.sdspod.com/rendered-gallery.jpg"},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			ImageInfo: sheinpub.BuildImageDraft(&common.ImageSet{
+				MainImage: "https://cdn.sdspod.com/rendered-main.jpg",
+				Gallery:   []string{"https://cdn.sdspod.com/rendered-gallery.jpg"},
+			}),
+		},
+	}
+
+	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategyHybrid,
+			SheinStudio: &SheinStudioOptions{
+				ProductImageURLs: []string{"https://cdn.example.com/ai-gallery.png"},
+			},
+		},
+	})
+
+	if pkg.Images.MainImage != "https://cdn.sdspod.com/rendered-main.jpg" {
+		t.Fatalf("main image = %q", pkg.Images.MainImage)
+	}
+	if got := pkg.Images.Gallery; len(got) != 2 || got[1] != "https://cdn.example.com/ai-gallery.png" {
+		t.Fatalf("gallery = %+v", got)
+	}
+	if pkg.PreviewProduct == nil {
+		t.Fatal("preview product missing")
+	}
+	if got := len(pkg.PreviewProduct.ImageInfo.ImageInfoList); got != 3 {
+		t.Fatalf("preview image count = %d", got)
+	}
+}
+
+func TestApplySheinStudioAIImagesToSheinUsesVariantImagesForSKCs(t *testing.T) {
+	pkg := &sheinpub.Package{
+		Images: sheinImageSet("https://cdn.example.com/flat-design.png"),
+		RequestDraft: &sheinpub.RequestDraft{
+			ImageInfo: sheinpub.BuildImageDraft(sheinImageSet("https://cdn.example.com/flat-design.png")),
+			SKCList: []sheinpub.SKCRequestDraft{
+				{
+					SkcName:      "black",
+					SaleName:     "black",
+					SupplierCode: "MG8012004001-STYLE",
+					SaleAttribute: &sheinpub.ResolvedSaleAttribute{
+						Name:  "Color",
+						Value: "black",
+					},
+					SKUList: []sheinpub.SKUDraft{{
+						SupplierSKU: "MG8012004001-STYLE",
+						Attributes: map[string]string{
+							"Color":          "black",
+							"source_sds_sku": "MG8012004001",
+						},
+					}},
+				},
+				{
+					SkcName:      "white",
+					SaleName:     "white",
+					SupplierCode: "MG8012004002-STYLE",
+					SaleAttribute: &sheinpub.ResolvedSaleAttribute{
+						Name:  "Color",
+						Value: "white",
+					},
+					SKUList: []sheinpub.SKUDraft{{
+						SupplierSKU: "MG8012004002-STYLE",
+						Attributes: map[string]string{
+							"Color":          "white",
+							"source_sds_sku": "MG8012004002",
+						},
+					}},
+				},
+			},
+		},
+		SkcList: []sheinpub.SKCPackage{
+			{SupplierCode: "MG8012004001-STYLE", SkcName: "black", SaleName: "black", Attributes: map[string]string{"Color": "black"}},
+			{SupplierCode: "MG8012004002-STYLE", SkcName: "white", SaleName: "white", Attributes: map[string]string{"Color": "white"}},
+		},
+	}
+
+	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{
+		ImageURLs: []string{"https://cdn.example.com/source-style.png"},
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategyAIGenerated,
+			SheinStudio: &SheinStudioOptions{
+				ProductImageURLs: []string{"https://cdn.example.com/black-main.png"},
+				VariantProductImages: []SheinStudioVariantImageSet{
+					{
+						VariantSKU: "MG8012004001",
+						Color:      "black",
+						ImageURLs:  []string{"https://cdn.example.com/black-main.png"},
+					},
+					{
+						VariantSKU: "MG8012004002",
+						Color:      "white",
+						ImageURLs:  []string{"https://cdn.example.com/white-main.png"},
+					},
+				},
+			},
+		},
+	})
+
+	if got := pkg.RequestDraft.SKCList[0].SKUList[0].MainImage; got != "https://cdn.example.com/black-main.png" {
+		t.Fatalf("black sku main image = %q", got)
+	}
+	if got := pkg.RequestDraft.SKCList[1].SKUList[0].MainImage; got != "https://cdn.example.com/white-main.png" {
+		t.Fatalf("white sku main image = %q", got)
+	}
+	if got := pkg.SkcList[1].MainImageURL; got != "https://cdn.example.com/white-main.png" {
+		t.Fatalf("white skc main image = %q", got)
+	}
+	if pkg.PreviewProduct == nil {
+		t.Fatal("preview product missing")
 	}
 }
 

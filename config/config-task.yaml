@@ -32,10 +32,10 @@ worker:
   forceCleanupAfter: 3600
 
 management:
-  baseURL: "http://getway.linkcloudai.com"
+  baseURL: "https://api.shuomiai.com"
   clientID: "go-listing"
   clientSecret: ""
-  tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
+  tokenURL: "https://api.shuomiai.com/admin-api/system/oauth2/token"
   scopes: ["user.read"]
   storeIDs: []
 

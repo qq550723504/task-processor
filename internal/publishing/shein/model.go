@@ -168,20 +168,44 @@ type ResolvedAttribute struct {
 	CascadeAttributeID  int    `json:"cascade_attribute_id,omitempty"`
 	MatchedBy           string `json:"matched_by,omitempty"`
 	Required            bool   `json:"required,omitempty"`
+	Important           bool   `json:"important,omitempty"`
 	SKCScope            bool   `json:"skc_scope,omitempty"`
 }
 
+type AttributeValueCandidate struct {
+	AttributeValueID int    `json:"attribute_value_id,omitempty"`
+	Value            string `json:"value,omitempty"`
+	ValueEn          string `json:"value_en,omitempty"`
+}
+
+type PendingAttributeCandidate struct {
+	Name               string                    `json:"name,omitempty"`
+	AttributeID        int                       `json:"attribute_id,omitempty"`
+	AttributeName      string                    `json:"attribute_name,omitempty"`
+	AttributeNameEn    string                    `json:"attribute_name_en,omitempty"`
+	AttributeType      int                       `json:"attribute_type,omitempty"`
+	AttributeMode      int                       `json:"attribute_mode,omitempty"`
+	DataDimension      int                       `json:"data_dimension,omitempty"`
+	CascadeAttributeID int                       `json:"cascade_attribute_id,omitempty"`
+	Required           bool                      `json:"required,omitempty"`
+	Important          bool                      `json:"important,omitempty"`
+	SKCScope           bool                      `json:"skc_scope,omitempty"`
+	AttributeValueList []AttributeValueCandidate `json:"attribute_value_list,omitempty"`
+}
+
 type AttributeResolution struct {
-	Status             string               `json:"status,omitempty"`
-	Source             string               `json:"source,omitempty"`
-	CategoryID         int                  `json:"category_id,omitempty"`
-	TemplateCount      int                  `json:"template_count,omitempty"`
-	ResolvedCount      int                  `json:"resolved_count,omitempty"`
-	UnresolvedCount    int                  `json:"unresolved_count,omitempty"`
-	ResolvedAttributes []ResolvedAttribute  `json:"resolved_attributes,omitempty"`
-	PendingAttributes  []common.Attribute   `json:"pending_attributes,omitempty"`
-	Cache              *ResolutionCacheInfo `json:"cache,omitempty"`
-	ReviewNotes        []string             `json:"review_notes,omitempty"`
+	Status                         string                      `json:"status,omitempty"`
+	Source                         string                      `json:"source,omitempty"`
+	CategoryID                     int                         `json:"category_id,omitempty"`
+	TemplateCount                  int                         `json:"template_count,omitempty"`
+	ResolvedCount                  int                         `json:"resolved_count,omitempty"`
+	UnresolvedCount                int                         `json:"unresolved_count,omitempty"`
+	ResolvedAttributes             []ResolvedAttribute         `json:"resolved_attributes,omitempty"`
+	PendingAttributes              []common.Attribute          `json:"pending_attributes,omitempty"`
+	PendingAttributeCandidates     []PendingAttributeCandidate `json:"pending_attribute_candidates,omitempty"`
+	RecommendedAttributeCandidates []PendingAttributeCandidate `json:"recommended_attribute_candidates,omitempty"`
+	Cache                          *ResolutionCacheInfo        `json:"cache,omitempty"`
+	ReviewNotes                    []string                    `json:"review_notes,omitempty"`
 }
 
 type ResolvedSaleAttribute struct {
@@ -211,6 +235,8 @@ type SaleAttributeResolution struct {
 	ReviewNotes              []string                                 `json:"review_notes,omitempty"`
 	CustomAttributeRelation  []sheinattribute.CustomAttributeRelation `json:"custom_attribute_relation,omitempty"`
 	Cache                    *ResolutionCacheInfo                     `json:"cache,omitempty"`
+	SKCValueAssignments      map[string]ResolvedSaleAttribute         `json:"skc_value_assignments,omitempty"`
+	SKUValueAssignments      map[string]ResolvedSaleAttribute         `json:"sku_value_assignments,omitempty"`
 	skcAssignments           map[string]ResolvedSaleAttribute
 	skuAssignments           map[string][]ResolvedSaleAttribute
 	skcValueAssignments      map[string]ResolvedSaleAttribute
@@ -223,6 +249,7 @@ type SaleAttributeCandidateInfo struct {
 	AttributeID     int      `json:"attribute_id,omitempty"`
 	SKCScope        bool     `json:"skc_scope,omitempty"`
 	Required        bool     `json:"required,omitempty"`
+	Important       bool     `json:"important,omitempty"`
 	SKCDistinct     int      `json:"skc_distinct,omitempty"`
 	SKUDistinct     int      `json:"sku_distinct,omitempty"`
 	TotalDistinct   int      `json:"total_distinct,omitempty"`
@@ -277,17 +304,19 @@ type InspectionCategoryPayload struct {
 }
 
 type InspectionAttributePayload struct {
-	Platform           string              `json:"platform,omitempty"`
-	Target             string              `json:"target,omitempty"`
-	Status             string              `json:"status,omitempty"`
-	Source             string              `json:"source,omitempty"`
-	TemplateCount      int                 `json:"template_count,omitempty"`
-	ResolvedCount      int                 `json:"resolved_count,omitempty"`
-	UnresolvedCount    int                 `json:"unresolved_count,omitempty"`
-	ProductAttributes  []common.Attribute  `json:"product_attributes,omitempty"`
-	ResolvedAttributes []ResolvedAttribute `json:"resolved_attributes,omitempty"`
-	PendingAttributes  []common.Attribute  `json:"pending_attributes,omitempty"`
-	ReviewNotes        []string            `json:"review_notes,omitempty"`
+	Platform                       string                      `json:"platform,omitempty"`
+	Target                         string                      `json:"target,omitempty"`
+	Status                         string                      `json:"status,omitempty"`
+	Source                         string                      `json:"source,omitempty"`
+	TemplateCount                  int                         `json:"template_count,omitempty"`
+	ResolvedCount                  int                         `json:"resolved_count,omitempty"`
+	UnresolvedCount                int                         `json:"unresolved_count,omitempty"`
+	ProductAttributes              []common.Attribute          `json:"product_attributes,omitempty"`
+	ResolvedAttributes             []ResolvedAttribute         `json:"resolved_attributes,omitempty"`
+	PendingAttributes              []common.Attribute          `json:"pending_attributes,omitempty"`
+	PendingAttributeCandidates     []PendingAttributeCandidate `json:"pending_attribute_candidates,omitempty"`
+	RecommendedAttributeCandidates []PendingAttributeCandidate `json:"recommended_attribute_candidates,omitempty"`
+	ReviewNotes                    []string                    `json:"review_notes,omitempty"`
 }
 
 type InspectionSaleAttributePayload struct {

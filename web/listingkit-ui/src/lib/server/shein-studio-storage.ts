@@ -13,6 +13,7 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
+  SheinStudioImageStrategy,
   SheinStudioStorageData,
 } from "@/lib/types/shein-studio";
 
@@ -23,7 +24,10 @@ let storageQueue: Promise<unknown> = Promise.resolve();
 type SaveDraftInput = {
   prompt: string;
   styleCount: string;
+  productImageCount?: string;
+  productImagePrompt?: string;
   sheinStoreId: string;
+  imageStrategy?: SheinStudioImageStrategy;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
@@ -100,7 +104,10 @@ export async function saveSheinStudioDraft(input: SaveDraftInput) {
     const draft = normalizeDraft({
       prompt: input.prompt,
       styleCount: input.styleCount,
+      productImageCount: input.productImageCount,
+      productImagePrompt: input.productImagePrompt,
       sheinStoreId: input.sheinStoreId,
+      imageStrategy: input.imageStrategy,
       selectionVariantId: input.selection?.variantId,
       selection: buildSelectionSummary(input.selection),
       designs: input.designs,
@@ -136,7 +143,10 @@ export async function saveSheinStudioBatch(input: SaveBatchInput) {
       name: deriveBatchName(input.prompt),
       prompt: input.prompt,
       styleCount: input.styleCount,
+      productImageCount: input.productImageCount,
+      productImagePrompt: input.productImagePrompt,
       sheinStoreId: input.sheinStoreId,
+      imageStrategy: input.imageStrategy,
       selectionVariantId: input.selection?.variantId,
       selection: buildSelectionSummary(input.selection),
       designs: input.designs,

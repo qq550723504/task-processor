@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
+	sheintranslateapi "task-processor/internal/shein/api/translate"
 	sheinpublish "task-processor/internal/shein/publish"
 )
 
@@ -47,18 +48,69 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	}
 
 	if s.sheinProductAPIBuilder == nil {
-		return nil, fmt.Errorf("shein product api builder is not configured")
+		err := fmt.Errorf("shein product api builder is not configured")
+		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
+			return nil, saveErr
+		}
+		return nil, err
 	}
 	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(task.Request.SheinStoreID)
 	if productAPI == nil {
-		return nil, fmt.Errorf("shein submit unavailable: %s", fallback)
+		err := fmt.Errorf("shein submit unavailable: %s", fallback)
+		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
+			return nil, saveErr
+		}
+		return nil, err
 	}
 
 	submitProduct, err := cloneSheinProductForSubmit(pkg.PreviewProduct)
 	if err != nil {
+		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
+			return nil, saveErr
+		}
 		return nil, err
 	}
-	if sheinProductImageURLCount(submitProduct) > 0 {
+	if err := optimizeSheinProductContentForSubmit(ctx, submitProduct, s.sheinContentOptimizer); err != nil {
+		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
+			return nil, saveErr
+		}
+		return nil, err
+	}
+	var translateAPI sheintranslateapi.TranslateAPI
+	if sheinProductNeedsContentTranslation(submitProduct) {
+		if s.sheinTranslateAPIBuilder == nil {
+			err := fmt.Errorf("shein translate api builder is not configured")
+			if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
+				return nil, saveErr
+			}
+			return nil, err
+		}
+		var fallback string
+		translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(task.Request.SheinStoreID)
+		if translateAPI == nil {
+			err := fmt.Errorf("shein translate unavailable: %s", fallback)
+			if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
+				return nil, saveErr
+			}
+			return nil, err
+		}
+	}
+	if err := translateSheinProductContentForSubmit(submitProduct, translateAPI, task.Request.Country); err != nil {
+		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
+			return nil, saveErr
+		}
+		return nil, err
+	}
+	prepareSheinProductForNewSubmit(submitProduct)
+	if action == "publish" {
+		if err := validateSheinProductPublishPayload(submitProduct); err != nil {
+			if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
+				return nil, saveErr
+			}
+			return nil, err
+		}
+	}
+	if sheinProductPendingImageUploadCount(submitProduct) > 0 {
 		if s.sheinImageAPIBuilder == nil {
 			err := fmt.Errorf("shein image upload api builder is not configured")
 			if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
@@ -107,6 +159,9 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 		responseErr = err
 		response = sheinpub.BuildSubmissionResponseSummary(raw)
 	}
+	if responseErr == nil {
+		responseErr = buildSheinSubmitResponseError(action, response)
+	}
 
 	record := buildSheinSubmissionRecord(action, response, responseErr)
 	applySheinSubmissionRecord(pkg, record)
@@ -151,6 +206,26 @@ func saveDraftSucceeded(action string, result *sheinpub.SubmissionResponse) bool
 		return false
 	}
 	return strings.TrimSpace(result.Code) == "0"
+}
+
+func buildSheinSubmitResponseError(action string, result *sheinpub.SubmissionResponse) error {
+	if result == nil || result.Success || saveDraftSucceeded(action, result) {
+		return nil
+	}
+	if action != "publish" {
+		return nil
+	}
+	if len(result.ValidationNotes) > 0 {
+		return fmt.Errorf("SHEIN publish pre-validation failed: %s", strings.Join(result.ValidationNotes, "; "))
+	}
+	message := strings.TrimSpace(result.Message)
+	if message == "" {
+		message = strings.TrimSpace(result.Code)
+	}
+	if message == "" {
+		return fmt.Errorf("SHEIN publish did not complete")
+	}
+	return fmt.Errorf("SHEIN publish did not complete: %s", message)
 }
 
 func applySheinSubmissionRecord(pkg *sheinpub.Package, record *sheinpub.SubmissionRecord) {

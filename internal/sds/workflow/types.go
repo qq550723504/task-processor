@@ -7,14 +7,16 @@ import (
 
 // SyncInput 表示保存 SDS 设计所需的业务参数。
 type SyncInput struct {
-	VariantID        int64
-	ParentProductID  int64
-	PrototypeGroupID int64
-	MerchantResultID int64
-	DesignType       string
-	LayerID          string
-	FitLevel         float64
-	ResizeMode       int
+	VariantID         int64
+	RelatedVariantIDs []int64
+	ParentProductID   int64
+	PrototypeGroupID  int64
+	MerchantResultID  int64
+	DesignType        string
+	LayerID           string
+	FitLevel          float64
+	ResizeMode        int
+	BlankDesignURL    string
 }
 
 // ImageSource 表示一个可下载的远程图片源。

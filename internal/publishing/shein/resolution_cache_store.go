@@ -18,6 +18,7 @@ const (
 type ResolutionCacheInfo struct {
 	Status    string     `json:"status,omitempty"`
 	Source    string     `json:"source,omitempty"`
+	CacheKey  string     `json:"cache_key,omitempty"`
 	ShortKey  string     `json:"short_key,omitempty"`
 	HitCount  int        `json:"hit_count,omitempty"`
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
@@ -45,6 +46,10 @@ type ResolutionCacheStore interface {
 	GetResolutionCache(ctx context.Context, kind string, storeID string, cacheKey string) (*SheinResolutionCacheEntry, error)
 	SaveResolutionCache(ctx context.Context, entry *SheinResolutionCacheEntry) error
 	DeleteResolutionCache(ctx context.Context, kind string, storeID string, cacheKey string) error
+}
+
+type ResolutionCacheShortKeyDeleter interface {
+	DeleteResolutionCacheByShortKey(ctx context.Context, kind string, storeID string, shortKey string) error
 }
 
 type GormResolutionCacheStore struct {
@@ -111,6 +116,15 @@ func (s *GormResolutionCacheStore) SaveResolutionCache(ctx context.Context, entr
 func (s *GormResolutionCacheStore) DeleteResolutionCache(ctx context.Context, kind string, storeID string, cacheKey string) error {
 	query := s.db.WithContext(ctx).
 		Where("store_id = ? AND cache_key = ?", storeID, cacheKey)
+	if kind != "" && kind != "all" {
+		query = query.Where("cache_kind = ?", kind)
+	}
+	return query.Delete(&SheinResolutionCacheEntry{}).Error
+}
+
+func (s *GormResolutionCacheStore) DeleteResolutionCacheByShortKey(ctx context.Context, kind string, storeID string, shortKey string) error {
+	query := s.db.WithContext(ctx).
+		Where("store_id = ? AND short_key = ?", storeID, shortKey)
 	if kind != "" && kind != "all" {
 		query = query.Where("cache_kind = ?", kind)
 	}

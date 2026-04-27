@@ -510,6 +510,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	sheinSaleAttributeResolver := sheinpub.NewCachedSaleAttributeResolver(sheinpub.NewManagedSaleAttributeResolver(deps.managementClient, buildSheinSaleAttributeLLMClient(deps.cfg, deps.openaiMgr)), resolutionCacheStore)
 	sheinProductAPIBuilder := sheinpub.NewManagedProductAPIBuilder(deps.managementClient)
 	sheinImageAPIBuilder := sheinpub.NewManagedImageAPIBuilder(deps.managementClient)
+	sheinTranslateAPIBuilder := sheinpub.NewManagedTranslateAPIBuilder(deps.managementClient)
 	sheinPricingPolicy := buildListingKitSheinPricingPolicy(deps.cfg)
 	deps.sdsSyncService = buildSDSSyncService(logger, deps)
 
@@ -535,6 +536,9 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 		SheinPricingPolicy:         sheinPricingPolicy,
 		SheinProductAPIBuilder:     sheinProductAPIBuilder,
 		SheinImageAPIBuilder:       sheinImageAPIBuilder,
+		SheinTranslateAPIBuilder:   sheinTranslateAPIBuilder,
+		SheinContentOptimizer:      buildSheinCategoryLLMClient(deps.openaiMgr),
+		StudioImageGenerator:       buildStudioImageGenerator(deps.cfg, deps.openaiMgr),
 		Assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
 			SheinCategoryResolver:      sheinCategoryResolver,
 			SheinAttributeResolver:     sheinAttributeResolver,

@@ -14,23 +14,23 @@ func BuildPreviewProduct(pkg *Package) *sheinproduct.Product {
 	}
 	productTypeID := pkg.ProductTypeID
 	return &sheinproduct.Product{
-		SPUName:                pkg.RequestDraft.SpuName,
-		SupplierCode:           pkg.RequestDraft.SupplierCode,
-		CategoryID:             pkg.CategoryID,
-		CategoryIDList:         append([]int(nil), pkg.CategoryIDList...),
-		ProductTypeID:          productTypeID,
-		TopCategoryID:          pkg.TopCategoryID,
-		SourceSystem:           "listingkit",
-		MultiLanguageNameList:  toLanguageContents(pkg.RequestDraft.MultiLanguageNameList),
-		MultiLanguageDescList:  toLanguageContents(pkg.RequestDraft.MultiLanguageDescList),
-		ProductAttributeList:   toResolvedAttributes(pkg),
-		ImageInfo:              toImageInfo(pkg.RequestDraft.ImageInfo),
-		SiteList:               toSiteInfo(pkg.RequestDraft.SiteList),
-		SKCList:                toSKCs(pkg.RequestDraft.SKCList),
+		SPUName:                 pkg.RequestDraft.SpuName,
+		SupplierCode:            pkg.RequestDraft.SupplierCode,
+		CategoryID:              pkg.CategoryID,
+		CategoryIDList:          append([]int(nil), pkg.CategoryIDList...),
+		ProductTypeID:           productTypeID,
+		TopCategoryID:           pkg.TopCategoryID,
+		SourceSystem:            "listingkit",
+		MultiLanguageNameList:   toLanguageContents(pkg.RequestDraft.MultiLanguageNameList),
+		MultiLanguageDescList:   toLanguageContents(pkg.RequestDraft.MultiLanguageDescList),
+		ProductAttributeList:    toResolvedAttributes(pkg),
+		ImageInfo:               toImageInfo(pkg.RequestDraft.ImageInfo),
+		SiteList:                toSiteInfo(pkg.RequestDraft.SiteList),
+		SKCList:                 toSKCs(pkg.RequestDraft.SKCList),
 		CustomAttributeRelation: append([]sheinattribute.CustomAttributeRelation(nil), pkg.CustomAttributeRelation...),
-		Extra:                  sheinproduct.Extra{SwitchToSPUPic: true, UseCVTransformImage: true},
-		ProductCertificateList: []int{},
-		CertificateList:        []int{},
+		Extra:                   sheinproduct.Extra{SwitchToSPUPic: true, UseCVTransformImage: true},
+		ProductCertificateList:  []int{},
+		CertificateList:         []int{},
 	}
 }
 
@@ -178,6 +178,7 @@ func toSKUs(items []SKUDraft) []sheinproduct.SKU {
 			PriceInfoList:     toPriceInfoList(item.SitePriceList),
 			ImageInfo:         toSKUImageInfo(item.MainImage),
 			StockInfoList:     toStockInfoList(item.StockInfoList),
+			PackageType:       3,
 		})
 	}
 	return result

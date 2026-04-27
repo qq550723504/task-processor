@@ -3,14 +3,8 @@
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/shared/button";
+import { formatSDSPrice } from "@/lib/sds/format";
 import type { SDSProductSummary, SDSProductVariant } from "@/lib/types/sds";
-
-function formatPrice(value?: number) {
-  if (!value) {
-    return "-";
-  }
-  return `$${value.toFixed(2)}`;
-}
 
 function formatVariantWeight(value?: number) {
   if (!value) {
@@ -27,7 +21,7 @@ export function SDSVariantPicker({
   isLoading,
   hasError,
   onClose,
-  onSelectVariant,
+  onSelectVariants,
 }: {
   open: boolean;
   product?: SDSProductSummary;
@@ -36,10 +30,14 @@ export function SDSVariantPicker({
   isLoading: boolean;
   hasError: boolean;
   onClose: () => void;
-  onSelectVariant: (variant: SDSProductVariant) => void;
+  onSelectVariants: (primary: SDSProductVariant, variants: SDSProductVariant[]) => void;
 }) {
   const [sizeFilter, setSizeFilter] = useState("");
   const [colorFilter, setColorFilter] = useState("");
+  const [selectionState, setSelectionState] = useState<{
+    key: string;
+    ids: number[];
+  }>({ key: "", ids: [] });
 
   const sizeOptions = useMemo(
     () =>
@@ -68,6 +66,67 @@ export function SDSVariantPicker({
       }),
     [colorFilter, sizeFilter, variants],
   );
+  const variantKey = useMemo(
+    () => variants.map((variant) => variant.id).join(":"),
+    [variants],
+  );
+  const selectedIds =
+    selectionState.key === variantKey
+      ? selectionState.ids
+      : variants.map((variant) => variant.id);
+  const selectedVariants = useMemo(
+    () => variants.filter((variant) => selectedIds.includes(variant.id)),
+    [selectedIds, variants],
+  );
+  const selectedColors = useMemo(
+    () =>
+      Array.from(
+        new Set(selectedVariants.map((variant) => variant.color_name || "default")),
+      ),
+    [selectedVariants],
+  );
+  const selectedSizes = useMemo(
+    () =>
+      Array.from(
+        new Set(selectedVariants.map((variant) => variant.size || "One size")),
+      ),
+    [selectedVariants],
+  );
+
+  function toggleVariant(variantId: number) {
+    setSelectionState({
+      key: variantKey,
+      ids: selectedIds.includes(variantId)
+        ? selectedIds.filter((id) => id !== variantId)
+        : [...selectedIds, variantId],
+    });
+  }
+
+  function selectFilteredVariants() {
+    const filteredIds = filteredVariants.map((variant) => variant.id);
+    setSelectionState({
+      key: variantKey,
+      ids: Array.from(new Set([...selectedIds, ...filteredIds])),
+    });
+  }
+
+  function clearFilteredVariants() {
+    const filteredIds = new Set(filteredVariants.map((variant) => variant.id));
+    setSelectionState({
+      key: variantKey,
+      ids: selectedIds.filter((id) => !filteredIds.has(id)),
+    });
+  }
+
+  function useSelectedVariants() {
+    const selected = selectedVariants.length > 0 ? selectedVariants : variants.slice(0, 1);
+    const primary =
+      selected.find((variant) => variant.id === selectedVariantId) ?? selected[0];
+    if (!primary) {
+      return;
+    }
+    onSelectVariants(primary, selected);
+  }
 
   if (!open) {
     return null;
@@ -88,7 +147,7 @@ export function SDSVariantPicker({
               {product?.sku ? <span>SKU {product.sku}</span> : null}
               {product?.issuingBayArea?.name ? <span>{product.issuingBayArea.name}</span> : null}
               {product?.currentPrice || product?.min_price ? (
-                <span>{formatPrice(product.currentPrice ?? product.min_price)}</span>
+                <span>{formatSDSPrice(product.currentPrice ?? product.min_price)}</span>
               ) : null}
             </div>
           </div>
@@ -141,10 +200,34 @@ export function SDSVariantPicker({
                   {filteredVariants.length} variants
                 </div>
               </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
+                <div>
+                  Selected {selectedVariants.length} SKU
+                  {selectedVariants.length === 1 ? "" : "s"} · {selectedColors.length} color
+                  {selectedColors.length === 1 ? "" : "s"} · {selectedSizes.length} size
+                  {selectedSizes.length === 1 ? "" : "s"}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={selectFilteredVariants} tone="secondary" type="button">
+                    Select filtered
+                  </Button>
+                  <Button onClick={clearFilteredVariants} tone="ghost" type="button">
+                    Clear filtered
+                  </Button>
+                  <Button
+                    disabled={selectedVariants.length === 0}
+                    onClick={useSelectedVariants}
+                    type="button"
+                  >
+                    Use selected variants
+                  </Button>
+                </div>
+              </div>
 
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {filteredVariants.map((variant) => {
-                const active = selectedVariantId === variant.id;
+                const active = selectedIds.includes(variant.id);
+                const primary = selectedVariantId === variant.id;
                 return (
                   <div
                     className={`rounded-[1.5rem] border px-4 py-4 shadow-sm ${
@@ -157,7 +240,17 @@ export function SDSVariantPicker({
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <div className="text-sm font-semibold">
-                          {variant.size || "One size"} · {variant.color_name || "default"}
+                          <label className="flex items-center gap-2">
+                            <input
+                              checked={active}
+                              className="h-4 w-4 rounded border-zinc-300"
+                              onChange={() => toggleVariant(variant.id)}
+                              type="checkbox"
+                            />
+                            <span>
+                              {variant.size || "One size"} · {variant.color_name || "default"}
+                            </span>
+                          </label>
                         </div>
                         <div className={active ? "text-emerald-100" : "text-zinc-500"}>
                           Variant ID {variant.id} · SKU {variant.sku ?? "-"}
@@ -196,18 +289,27 @@ export function SDSVariantPicker({
 
                       <div className={`space-y-1 text-sm ${active ? "text-emerald-100" : "text-zinc-500"}`}>
                         <div>Prototype group {variant.designPrototype?.prototypeGroupId ?? "-"}</div>
-                        <div>Price {formatPrice(variant.currentPrice)}</div>
+                        <div>Price {formatSDSPrice(variant.currentPrice)}</div>
                         <div>Weight {formatVariantWeight(variant.weight)}</div>
                         <div>Cycle {variant.productionCycle ? `${variant.productionCycle}h` : "-"}</div>
                       </div>
 
                       <Button
                         className="w-full"
-                        onClick={() => onSelectVariant(variant)}
-                        tone={active ? "secondary" : "primary"}
+                        onClick={() => {
+                          const selected =
+                            selectedVariants.length > 0 ? selectedVariants : [variant];
+                          onSelectVariants(
+                            variant,
+                            selected.some((item) => item.id === variant.id)
+                              ? selected
+                              : [variant, ...selected],
+                          );
+                        }}
+                        tone={primary ? "secondary" : "primary"}
                         type="button"
                       >
-                        {active ? "Selected" : "Use this variant"}
+                        {primary ? "Primary variant" : "Use as primary"}
                       </Button>
                     </div>
                   </div>

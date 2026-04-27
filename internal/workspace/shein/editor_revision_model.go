@@ -41,14 +41,17 @@ type CategoryResolutionPatch struct {
 }
 
 type AttributeResolutionPatch struct {
-	Status             *string                      `json:"status,omitempty"`
-	Source             *string                      `json:"source,omitempty"`
-	CategoryID         *int                         `json:"category_id,omitempty"`
-	TemplateCount      *int                         `json:"template_count,omitempty"`
-	ResolvedCount      *int                         `json:"resolved_count,omitempty"`
-	UnresolvedCount    *int                         `json:"unresolved_count,omitempty"`
-	ResolvedAttributes []sheinpub.ResolvedAttribute `json:"resolved_attributes,omitempty"`
-	ReviewNotes        []string                     `json:"review_notes,omitempty"`
+	Status                         *string                              `json:"status,omitempty"`
+	Source                         *string                              `json:"source,omitempty"`
+	CategoryID                     *int                                 `json:"category_id,omitempty"`
+	TemplateCount                  *int                                 `json:"template_count,omitempty"`
+	ResolvedCount                  *int                                 `json:"resolved_count,omitempty"`
+	UnresolvedCount                *int                                 `json:"unresolved_count,omitempty"`
+	ResolvedAttributes             []sheinpub.ResolvedAttribute         `json:"resolved_attributes,omitempty"`
+	PendingAttributes              []common.Attribute                   `json:"pending_attributes,omitempty"`
+	PendingAttributeCandidates     []sheinpub.PendingAttributeCandidate `json:"pending_attribute_candidates,omitempty"`
+	RecommendedAttributeCandidates []sheinpub.PendingAttributeCandidate `json:"recommended_attribute_candidates,omitempty"`
+	ReviewNotes                    []string                             `json:"review_notes,omitempty"`
 }
 
 type SaleAttributeResolutionPatch struct {

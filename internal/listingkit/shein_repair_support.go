@@ -1,6 +1,9 @@
 package listingkit
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import (
+	common "task-processor/internal/publishing/common"
+	sheinworkspace "task-processor/internal/workspace/shein"
+)
 
 type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]
 
@@ -44,6 +47,9 @@ func cloneSheinAttributeResolutionPatch(patch *SheinAttributeResolutionPatch) *S
 	}
 	cloned := *patch
 	cloned.ResolvedAttributes = append([]SheinResolvedAttribute(nil), patch.ResolvedAttributes...)
+	cloned.PendingAttributes = append([]common.Attribute(nil), patch.PendingAttributes...)
+	cloned.PendingAttributeCandidates = clonePendingAttributeCandidates(patch.PendingAttributeCandidates)
+	cloned.RecommendedAttributeCandidates = clonePendingAttributeCandidates(patch.RecommendedAttributeCandidates)
 	cloned.ReviewNotes = append([]string(nil), patch.ReviewNotes...)
 	return &cloned
 }

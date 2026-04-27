@@ -112,6 +112,7 @@ type ImageEditRequest struct {
 	Prompt         string
 	Image          []byte
 	ImageURL       string
+	ImageURLs      []string
 	Mask           []byte
 	Size           string
 	Quality        string

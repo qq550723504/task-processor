@@ -2,6 +2,7 @@ package shein
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"task-processor/internal/productenrich"
@@ -106,7 +107,7 @@ func (r *cachedCategoryResolver) ClearCategoryResolution(req *BuildRequest, cano
 		return nil
 	}
 	key := categoryResolverCacheKey(req, canonical, pkg)
-	return r.clearCache(ResolutionCacheKindCategory, req, key)
+	return r.clearCacheWithInfo(ResolutionCacheKindCategory, req, key, categoryResolutionCacheInfo(pkg))
 }
 
 func (r *cachedCategoryResolver) SuggestAlternative(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *CategorySuggestion {
@@ -151,6 +152,10 @@ func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest,
 	if r == nil || resolution == nil {
 		return
 	}
+	existingKey := ""
+	if resolution.Cache != nil {
+		existingKey = strings.TrimSpace(resolution.Cache.CacheKey)
+	}
 	key := attributeResolverCacheKey(req, pkg)
 	if key == "" || !shouldCacheAttributeResolution(resolution) {
 		return
@@ -158,6 +163,12 @@ func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest,
 	attachResolutionCacheInfoToAttribute(resolution, "manual_cache", key, true)
 	r.cache.Store(key, cloneAttributeResolution(resolution))
 	r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, resolution, true)
+	if existingKey != "" && existingKey != key {
+		attachResolutionCacheInfoToAttribute(resolution, "manual_cache", existingKey, true)
+		r.cache.Store(existingKey, cloneAttributeResolution(resolution))
+		r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, existingKey, resolution, true)
+		attachResolutionCacheInfoToAttribute(resolution, "manual_cache", key, true)
+	}
 }
 
 func (r *cachedAttributeResolver) ClearAttributeResolution(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) error {
@@ -165,7 +176,7 @@ func (r *cachedAttributeResolver) ClearAttributeResolution(req *BuildRequest, ca
 		return nil
 	}
 	key := attributeResolverCacheKey(req, pkg)
-	return r.clearCache(ResolutionCacheKindAttribute, req, key)
+	return r.clearCacheWithInfo(ResolutionCacheKindAttribute, req, key, attributeResolutionCacheInfo(pkg))
 }
 
 func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package) *SaleAttributeResolution {
@@ -213,7 +224,7 @@ func (r *cachedSaleAttributeResolver) ClearSaleAttributeResolution(req *BuildReq
 		return nil
 	}
 	key := saleAttributeResolverCacheKey(req, canonical, pkg)
-	return r.clearCache(ResolutionCacheKindSaleAttribute, req, key)
+	return r.clearCacheWithInfo(ResolutionCacheKindSaleAttribute, req, key, saleAttributeResolutionCacheInfo(pkg))
 }
 
 func (r *cachedCategoryResolver) loadPersistentCache(kind string, req *BuildRequest, key string) *SheinResolutionCacheEntry {
@@ -258,6 +269,13 @@ func (r *cachedCategoryResolver) clearCache(kind string, req *BuildRequest, key 
 	return r.store.DeleteResolutionCache(context.Background(), kind, sheinStoreID(req), key)
 }
 
+func (r *cachedCategoryResolver) clearCacheWithInfo(kind string, req *BuildRequest, key string, info *ResolutionCacheInfo) error {
+	if r == nil {
+		return nil
+	}
+	return clearResolutionCacheEntries(&r.cache, r.store, kind, sheinStoreID(req), key, info)
+}
+
 func (r *cachedAttributeResolver) savePersistentCache(kind string, req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, key string, resolution any, manual bool) {
 	if r == nil || r.store == nil {
 		return
@@ -276,6 +294,13 @@ func (r *cachedAttributeResolver) clearCache(kind string, req *BuildRequest, key
 	return r.store.DeleteResolutionCache(context.Background(), kind, sheinStoreID(req), key)
 }
 
+func (r *cachedAttributeResolver) clearCacheWithInfo(kind string, req *BuildRequest, key string, info *ResolutionCacheInfo) error {
+	if r == nil {
+		return nil
+	}
+	return clearResolutionCacheEntries(&r.cache, r.store, kind, sheinStoreID(req), key, info)
+}
+
 func (r *cachedSaleAttributeResolver) savePersistentCache(kind string, req *BuildRequest, canonical *productenrich.CanonicalProduct, pkg *Package, key string, resolution any, manual bool) {
 	if r == nil || r.store == nil {
 		return
@@ -292,4 +317,94 @@ func (r *cachedSaleAttributeResolver) clearCache(kind string, req *BuildRequest,
 		return nil
 	}
 	return r.store.DeleteResolutionCache(context.Background(), kind, sheinStoreID(req), key)
+}
+
+func (r *cachedSaleAttributeResolver) clearCacheWithInfo(kind string, req *BuildRequest, key string, info *ResolutionCacheInfo) error {
+	if r == nil {
+		return nil
+	}
+	return clearResolutionCacheEntries(&r.cache, r.store, kind, sheinStoreID(req), key, info)
+}
+
+func clearResolutionCacheEntries(cache *sync.Map, store ResolutionCacheStore, kind string, storeID string, computedKey string, info *ResolutionCacheInfo) error {
+	keys := uniqueResolutionCacheKeys(computedKey, info)
+	for _, key := range keys {
+		cache.Delete(key)
+	}
+	shortKey := resolutionCacheShortKey(info)
+	if shortKey != "" {
+		cache.Range(func(key, _ any) bool {
+			if text, ok := key.(string); ok && shortResolutionCacheKey(text) == shortKey {
+				cache.Delete(text)
+			}
+			return true
+		})
+	}
+	if store == nil {
+		return nil
+	}
+	for _, key := range keys {
+		if err := store.DeleteResolutionCache(context.Background(), kind, storeID, key); err != nil {
+			return err
+		}
+	}
+	if shortKey != "" {
+		if deleter, ok := store.(ResolutionCacheShortKeyDeleter); ok {
+			if err := deleter.DeleteResolutionCacheByShortKey(context.Background(), kind, storeID, shortKey); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func uniqueResolutionCacheKeys(computedKey string, info *ResolutionCacheInfo) []string {
+	seen := make(map[string]struct{}, 2)
+	keys := make([]string, 0, 2)
+	for _, key := range []string{computedKey, resolutionCacheFullKey(info)} {
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func resolutionCacheFullKey(info *ResolutionCacheInfo) string {
+	if info == nil {
+		return ""
+	}
+	return info.CacheKey
+}
+
+func resolutionCacheShortKey(info *ResolutionCacheInfo) string {
+	if info == nil {
+		return ""
+	}
+	return info.ShortKey
+}
+
+func categoryResolutionCacheInfo(pkg *Package) *ResolutionCacheInfo {
+	if pkg == nil || pkg.CategoryResolution == nil {
+		return nil
+	}
+	return pkg.CategoryResolution.Cache
+}
+
+func attributeResolutionCacheInfo(pkg *Package) *ResolutionCacheInfo {
+	if pkg == nil || pkg.AttributeResolution == nil {
+		return nil
+	}
+	return pkg.AttributeResolution.Cache
+}
+
+func saleAttributeResolutionCacheInfo(pkg *Package) *ResolutionCacheInfo {
+	if pkg == nil || pkg.SaleAttributeResolution == nil {
+		return nil
+	}
+	return pkg.SaleAttributeResolution.Cache
 }

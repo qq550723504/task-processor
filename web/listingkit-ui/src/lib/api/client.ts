@@ -9,6 +9,7 @@ type RequestOptions = {
   query?: QueueQuery;
   body?: unknown;
   conditional?: ConditionalState | null;
+  timeoutMs?: number;
 };
 
 type FormRequestOptions = {
@@ -47,20 +48,41 @@ function buildApiUrl(path: string, query?: QueueQuery) {
 
 export async function apiRequest<T>(
   path: string,
-  { method = "GET", query, body, conditional }: RequestOptions = {},
+  { method = "GET", query, body, conditional, timeoutMs }: RequestOptions = {},
 ): Promise<T> {
   const url = buildApiUrl(path, query);
   const headers = buildHeaders(conditional);
+  const controller = timeoutMs ? new AbortController() : undefined;
+  const timeout =
+    timeoutMs && controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
 
   if (body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller?.signal,
+    });
+  } catch (error) {
+    if (controller?.signal.aborted) {
+      throw new ApiError(
+        `ListingKit API request timed out after ${timeoutMs}ms`,
+        408,
+      );
+    }
+    throw error;
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 
   if (response.status === 304) {
     return {

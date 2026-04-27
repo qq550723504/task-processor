@@ -1,5 +1,12 @@
+import { useState } from "react";
+
+import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
-import type { SheinEditorContext } from "@/lib/types/listingkit";
+import type {
+  SheinEditorContext,
+  SheinPendingAttributeCandidate,
+  SheinResolvedAttribute,
+} from "@/lib/types/listingkit";
 
 function AttributeRow({
   name,
@@ -29,23 +36,68 @@ function AttributeRow({
 
 export function SheinAttributeReviewCard({
   editorContext,
+  isApplying,
+  onConfirmAttributes,
 }: {
   editorContext?: SheinEditorContext | null;
+  isApplying?: boolean;
+  onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
 }) {
   const current = editorContext?.attributes?.current;
+
   if (!current) {
     return null;
   }
 
-  const resolvedAttributes = current.resolved_attributes?.slice(0, 4) ?? [];
+  const resolvedAttributes = current.resolved_attributes ?? [];
+  const pendingCandidates = current.pending_attribute_candidates ?? [];
+  const recommendedCandidates = current.recommended_attribute_candidates ?? [];
   const hasSignal =
     Boolean(current.status) ||
     Boolean(current.review_notes?.length) ||
-    resolvedAttributes.length > 0;
+    resolvedAttributes.length > 0 ||
+    pendingCandidates.length > 0 ||
+    recommendedCandidates.length > 0;
 
   if (!hasSignal) {
     return null;
   }
+
+  return (
+    <SheinAttributeReviewContent
+      current={current}
+      isApplying={isApplying}
+      key={pendingCandidatesSignature([...pendingCandidates, ...recommendedCandidates])}
+      onConfirmAttributes={onConfirmAttributes}
+      pendingCandidates={pendingCandidates}
+      recommendedCandidates={recommendedCandidates}
+      resolvedAttributes={resolvedAttributes}
+    />
+  );
+}
+
+function SheinAttributeReviewContent({
+  current,
+  isApplying,
+  onConfirmAttributes,
+  pendingCandidates,
+  recommendedCandidates,
+  resolvedAttributes,
+}: {
+  current: NonNullable<NonNullable<SheinEditorContext["attributes"]>["current"]>;
+  isApplying?: boolean;
+  onConfirmAttributes?: (attributes: SheinResolvedAttribute[]) => void;
+  pendingCandidates: SheinPendingAttributeCandidate[];
+  recommendedCandidates: SheinPendingAttributeCandidate[];
+  resolvedAttributes: SheinResolvedAttribute[];
+}) {
+  const [selectedValues, setSelectedValues] = useState<Record<string, string>>({});
+  const selectableCandidates = [...pendingCandidates, ...recommendedCandidates];
+  const selectedAttributes = buildSelectedAttributes(
+    selectableCandidates,
+    selectedValues,
+  );
+  const canConfirm = selectedAttributes.length > 0 && Boolean(onConfirmAttributes);
 
   return (
     <Card className="border-zinc-200 bg-white p-5">
@@ -70,10 +122,10 @@ export function SheinAttributeReviewCard({
         </div>
 
         {resolvedAttributes.length > 0 ? (
-          <div className="space-y-2">
+          <div className="grid gap-2 lg:grid-cols-2">
             {resolvedAttributes.map((attribute) => (
               <AttributeRow
-                key={`${attribute.name}-${attribute.value}`}
+                key={`${attribute.attribute_id ?? attribute.name}-${attribute.value}`}
                 name={attribute.name}
                 value={attribute.value}
                 mapped={
@@ -90,6 +142,81 @@ export function SheinAttributeReviewCard({
           </div>
         ) : null}
 
+        {pendingCandidates.length > 0 ? (
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                Pending template attributes
+              </p>
+              <p className="mt-1 text-sm leading-6 text-amber-900">
+                Required fields block submit. Important fields are recommended and improve SHEIN attribute completeness.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {pendingCandidates.map((candidate) => (
+                <PendingCandidateRow
+                  candidate={candidate}
+                  key={`${candidate.attribute_id}-${candidate.name}`}
+                  value={selectedValues[String(candidate.attribute_id ?? candidate.name)] ?? ""}
+                  onChange={(value) =>
+                    setSelectedValues((currentValues) => ({
+                      ...currentValues,
+                      [String(candidate.attribute_id ?? candidate.name)]: value,
+                    }))
+                  }
+                />
+              ))}
+            </div>
+            <Button
+              className="h-9"
+              disabled={!canConfirm || isApplying}
+              onClick={() => onConfirmAttributes?.(selectedAttributes)}
+              tone="secondary"
+            >
+              {isApplying ? "Applying..." : "Apply selected attributes"}
+            </Button>
+          </div>
+        ) : null}
+
+        {recommendedCandidates.length > 0 ? (
+          <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                Recommended optional attributes
+              </p>
+              <p className="mt-1 text-sm leading-6 text-sky-900">
+                These optional SHEIN template fields do not block submit, but filling them can improve listing completeness.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {recommendedCandidates.map((candidate) => (
+                <PendingCandidateRow
+                  candidate={candidate}
+                  key={`${candidate.attribute_id}-${candidate.name}`}
+                  tone="recommended"
+                  value={selectedValues[String(candidate.attribute_id ?? candidate.name)] ?? ""}
+                  onChange={(value) =>
+                    setSelectedValues((currentValues) => ({
+                      ...currentValues,
+                      [String(candidate.attribute_id ?? candidate.name)]: value,
+                    }))
+                  }
+                />
+              ))}
+            </div>
+            {pendingCandidates.length === 0 ? (
+              <Button
+                className="h-9"
+                disabled={!canConfirm || isApplying}
+                onClick={() => onConfirmAttributes?.(selectedAttributes)}
+                tone="secondary"
+              >
+                {isApplying ? "Applying..." : "Apply selected attributes"}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
         {current.review_notes?.length ? (
           <div className="space-y-2">
             {current.review_notes.map((note) => (
@@ -102,4 +229,97 @@ export function SheinAttributeReviewCard({
       </div>
     </Card>
   );
+}
+
+function pendingCandidatesSignature(candidates: SheinPendingAttributeCandidate[]) {
+  return candidates
+    .map((candidate) => `${candidate.attribute_id ?? ""}:${candidate.name ?? ""}`)
+    .join("|");
+}
+
+function PendingCandidateRow({
+  candidate,
+  tone = "pending",
+  value,
+  onChange,
+}: {
+  candidate: SheinPendingAttributeCandidate;
+  tone?: "pending" | "recommended";
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const options = candidate.attribute_value_list ?? [];
+  const borderClass =
+    tone === "recommended"
+      ? "border-sky-200"
+      : "border-amber-200";
+  return (
+    <label className={`block rounded-xl border ${borderClass} bg-white px-3 py-2`}>
+      <span className="block text-sm font-medium text-zinc-950">
+        {candidate.name ?? candidate.attribute_name_en ?? candidate.attribute_name}
+      </span>
+      <span className="mt-1 block text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+        attribute_id {candidate.attribute_id}
+        {candidate.required ? " · required" : ""}
+        {candidate.important ? " · important" : ""}
+      </span>
+      {options.length > 0 ? (
+        <select
+          className="mt-2 h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-800"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">Select a SHEIN value</option>
+          {options.map((option) => (
+            <option
+              key={option.attribute_value_id}
+              value={String(option.attribute_value_id)}
+            >
+              {option.value_en || option.value || option.attribute_value_id}
+              {option.value && option.value_en ? ` / ${option.value}` : ""}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <p className="mt-2 text-sm text-zinc-600">
+          This template field has no enumerable values. Manual text entry is not enabled in this MVP.
+        </p>
+      )}
+    </label>
+  );
+}
+
+function buildSelectedAttributes(
+  candidates: SheinPendingAttributeCandidate[],
+  selectedValues: Record<string, string>,
+): SheinResolvedAttribute[] {
+  return candidates.flatMap((candidate) => {
+    const key = String(candidate.attribute_id ?? candidate.name);
+    const selectedValueID = Number(selectedValues[key]);
+    if (!candidate.attribute_id || !selectedValueID) {
+      return [];
+    }
+    const selectedValue = candidate.attribute_value_list?.find(
+      (option) => option.attribute_value_id === selectedValueID,
+    );
+    return [
+      {
+        name: candidate.name ?? candidate.attribute_name_en ?? candidate.attribute_name,
+        value:
+          selectedValue?.value_en ??
+          selectedValue?.value ??
+          String(selectedValueID),
+        attribute_id: candidate.attribute_id,
+        attribute_value_id: selectedValueID,
+        attribute_type: candidate.attribute_type,
+        attribute_mode: candidate.attribute_mode,
+        data_dimension: candidate.data_dimension,
+        cascade_attribute_id: candidate.cascade_attribute_id,
+        matched_by: "manual_attribute_review",
+        required: candidate.required,
+        important: candidate.important,
+        skc_scope: candidate.skc_scope,
+      },
+    ];
+  });
 }

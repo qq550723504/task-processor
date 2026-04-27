@@ -1,37 +1,14 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { getListingKitUpstreamBase } from "@/app/api/listing-kits/proxy-url";
+import { readSheinStudioStorage } from "@/lib/server/shein-studio-storage";
 import type {
   SheinStyleGalleryItem,
   SheinStyleGalleryResponse,
   SheinStyleGallerySource,
 } from "@/lib/types/shein-style-gallery";
 
-type TaskListResponse = {
-  items?: TaskListItem[];
-};
-
-type TaskListItem = {
-  task_id?: string;
-  status?: string;
-  title?: string;
-  product_name?: string;
-  variant_label?: string;
-  created_at?: string;
-  updated_at?: string;
-};
-
-type TaskDetail = {
-  task_id?: string;
-  status?: string;
-  result?: unknown;
-  created_at?: string;
-  completed_at?: string;
-};
-
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
-const MAX_TASK_DETAILS = 30;
 
 export function getGalleryImageRoots() {
   const workspaceRoot = path.resolve(process.cwd(), "..", "..");
@@ -47,13 +24,14 @@ export function getGalleryImageRoots() {
 }
 
 export async function buildSheinStyleGallery(): Promise<SheinStyleGalleryResponse> {
-  const [legacyItems, publishedItems, taskItems] = await Promise.all([
+  const [storedItems, legacyItems, publishedItems] = await Promise.all([
+    listStoredStudioItems(),
     listLegacyStudioItems(),
     listPublishedInputItems(),
-    listTaskLinkedItems(),
   ]);
 
-  const items = dedupeItems([...taskItems, ...legacyItems, ...publishedItems])
+  const items = dedupeItems([...storedItems, ...legacyItems, ...publishedItems])
+    .filter((item) => isAIGeneratedGallerySource(item.source))
     .sort(compareGalleryItems)
     .slice(0, 240);
 
@@ -62,11 +40,16 @@ export async function buildSheinStyleGallery(): Promise<SheinStyleGalleryRespons
     total: items.length,
     items,
     summary: {
+      studioSaved: storedItems.length,
       studioLegacy: legacyItems.length,
       publishedInputs: publishedItems.length,
-      taskLinked: taskItems.length,
+      taskLinked: 0,
     },
   };
+}
+
+export function isAIGeneratedGallerySource(source: SheinStyleGallerySource) {
+  return source === "studio_saved" || source === "studio_legacy" || source === "published_input";
 }
 
 export function resolveGalleryImagePath(source: string, segments: string[]) {
@@ -101,6 +84,52 @@ async function listLegacyStudioItems(): Promise<SheinStyleGalleryItem[]> {
   }));
 }
 
+async function listStoredStudioItems(): Promise<SheinStyleGalleryItem[]> {
+  const storage = await readSheinStudioStorage();
+  const groups = [
+    storage.draft
+      ? {
+          id: "draft",
+          prompt: storage.draft.prompt,
+          productName: storage.draft.selection?.productName,
+          updatedAt: storage.draft.updatedAt,
+          designs: storage.draft.designs,
+        }
+      : null,
+    ...storage.batches.map((batch) => ({
+      id: batch.id,
+      prompt: batch.prompt,
+      productName: batch.selection?.productName,
+      updatedAt: batch.updatedAt,
+      designs: batch.designs,
+    })),
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  return groups.flatMap((group) =>
+    group.designs.flatMap((design, index) => {
+      const imageUrl = design.imageUrl?.trim() || design.dataUrl?.trim();
+      if (!imageUrl) {
+        return [];
+      }
+      return [
+        {
+          id: `stored:${group.id}:${design.id}`,
+          title: `AI style ${index + 1}`,
+          imageUrl,
+          source: "studio_saved",
+          sourceLabel: "AI style",
+          originalUrl: imageUrl,
+          fileName: design.id,
+          prompt: group.prompt,
+          productName: group.productName,
+          createdAt: group.updatedAt,
+          updatedAt: group.updatedAt,
+        } satisfies SheinStyleGalleryItem,
+      ];
+    }),
+  );
+}
+
 async function listPublishedInputItems(): Promise<SheinStyleGalleryItem[]> {
   const root = getGalleryImageRoots().published;
   const files = await safeListFiles(root, 2);
@@ -118,136 +147,6 @@ async function listPublishedInputItems(): Promise<SheinStyleGalleryItem[]> {
     createdAt: file.mtime,
     updatedAt: file.mtime,
   }));
-}
-
-async function listTaskLinkedItems(): Promise<SheinStyleGalleryItem[]> {
-  const tasks = await fetchTaskList();
-  const details = await Promise.all(
-    tasks.slice(0, MAX_TASK_DETAILS).map((task) => fetchTaskDetail(task.task_id ?? "")),
-  );
-
-  const out: SheinStyleGalleryItem[] = [];
-  details.forEach((detail, index) => {
-    if (!detail?.result) {
-      return;
-    }
-    const task = tasks[index];
-    const context = {
-      taskId: detail.task_id ?? task.task_id,
-      taskStatus: detail.status ?? task.status,
-      prompt: extractString((detail.result as Record<string, unknown>).canonical_product, "description"),
-      productName: task.product_name,
-      variantLabel: task.variant_label,
-      createdAt: detail.created_at ?? task.created_at,
-      updatedAt: detail.completed_at ?? task.updated_at,
-    };
-
-    out.push(...extractTaskImages(detail.result, context));
-  });
-  return out;
-}
-
-function extractTaskImages(
-  result: unknown,
-  context: {
-    taskId?: string;
-    taskStatus?: string;
-    prompt?: string;
-    productName?: string;
-    variantLabel?: string;
-    createdAt?: string;
-    updatedAt?: string;
-  },
-): SheinStyleGalleryItem[] {
-  const root = asRecord(result);
-  if (!root) {
-    return [];
-  }
-
-  const items: SheinStyleGalleryItem[] = [];
-  addUrlGroup(items, root, ["catalog_product", "images"], "task_source", "Source product", context);
-  addUrlGroup(items, root, ["canonical_product", "images"], "task_source", "Source product", context);
-  addUrlGroup(items, root, ["sds_sync", "mockup_image_urls"], "task_mockup", "SDS mockup", context);
-  addUrlGroup(items, root, ["shein", "images", "main_image"], "task_shein", "SHEIN main", context);
-  addUrlGroup(items, root, ["shein", "images", "gallery"], "task_shein", "SHEIN gallery", context);
-  addUrlGroup(items, root, ["shein", "request_draft", "image_info", "main_image"], "task_shein", "SHEIN draft", context);
-  addUrlGroup(items, root, ["shein", "request_draft", "image_info", "gallery"], "task_shein", "SHEIN draft", context);
-
-  return items;
-}
-
-function addUrlGroup(
-  items: SheinStyleGalleryItem[],
-  root: Record<string, unknown>,
-  pathSegments: string[],
-  source: SheinStyleGallerySource,
-  label: string,
-  context: {
-    taskId?: string;
-    taskStatus?: string;
-    prompt?: string;
-    productName?: string;
-    variantLabel?: string;
-    createdAt?: string;
-    updatedAt?: string;
-  },
-) {
-  const urls = collectUrls(readPath(root, pathSegments));
-  urls.forEach((url, index) => {
-    const imageUrl = toDisplayImageUrl(url);
-    const suffix = index > 0 ? ` ${index + 1}` : "";
-    items.push({
-      id: `${context.taskId ?? "task"}:${source}:${pathSegments.join(".")}:${url}`,
-      title: `${label}${suffix}`,
-      imageUrl,
-      source,
-      sourceLabel: label,
-      originalUrl: url,
-      fileName: fileNameFromUrl(url),
-      ...context,
-    });
-  });
-}
-
-function toDisplayImageUrl(url: string) {
-  const uploadMatch = url.match(/\/uploads\/files\/(\d{8})\/([^/?#]+)/);
-  if (uploadMatch) {
-    return `/api/shein-studio/gallery/image/published/${uploadMatch[1]}/${encodeURIComponent(uploadMatch[2])}`;
-  }
-  return url;
-}
-
-async function fetchTaskList(): Promise<TaskListItem[]> {
-  try {
-    const response = await fetch(`${getListingKitUpstreamBase()}/tasks?page=1&page_size=80`, {
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      return [];
-    }
-    const payload = (await response.json()) as TaskListResponse;
-    return payload.items ?? [];
-  } catch {
-    return [];
-  }
-}
-
-async function fetchTaskDetail(taskId: string): Promise<TaskDetail | null> {
-  if (!taskId) {
-    return null;
-  }
-
-  try {
-    const response = await fetch(`${getListingKitUpstreamBase()}/tasks/${encodeURIComponent(taskId)}`, {
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      return null;
-    }
-    return (await response.json()) as TaskDetail;
-  } catch {
-    return null;
-  }
 }
 
 async function safeListFiles(root: string, depth = 1) {
@@ -283,59 +182,6 @@ async function listImageFiles(root: string, current: string, depth: number): Pro
   );
 
   return files.flat();
-}
-
-function collectUrls(value: unknown): string[] {
-  if (typeof value === "string") {
-    return isImageUrl(value) ? [value] : [];
-  }
-  if (Array.isArray(value)) {
-    return value.flatMap(collectUrls);
-  }
-  const record = asRecord(value);
-  if (!record) {
-    return [];
-  }
-  if (typeof record.url === "string") {
-    return collectUrls(record.url);
-  }
-  if (typeof record.image_url === "string") {
-    return collectUrls(record.image_url);
-  }
-  return [];
-}
-
-function readPath(root: Record<string, unknown>, segments: string[]) {
-  let current: unknown = root;
-  for (const segment of segments) {
-    const record = asRecord(current);
-    if (!record) {
-      return undefined;
-    }
-    current = record[segment];
-  }
-  return current;
-}
-
-function extractString(value: unknown, key: string) {
-  const record = asRecord(value);
-  const item = record?.[key];
-  return typeof item === "string" ? item : undefined;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function isImageUrl(value: string) {
-  return /\.(png|jpe?g|webp)(\?|#|$)/i.test(value);
-}
-
-function fileNameFromUrl(value: string) {
-  const clean = value.split("?")[0]?.split("#")[0] ?? value;
-  return decodeURIComponent(clean.split("/").pop() ?? clean);
 }
 
 function dedupeItems(items: SheinStyleGalleryItem[]) {

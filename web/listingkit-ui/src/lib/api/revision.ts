@@ -1,5 +1,10 @@
 import { apiRequest } from "@/lib/api/client";
-import type { ListingKitPreview } from "@/lib/types/listingkit";
+import type {
+  ListingKitPreview,
+  SheinPendingAttributeCandidate,
+  SheinResolvedAttribute,
+  SheinSourceAttribute,
+} from "@/lib/types/listingkit";
 
 export type ApplyRevisionRequest = {
   platform: "shein";
@@ -18,6 +23,19 @@ export type ApplyRevisionRequest = {
     sale_attribute_resolution?: {
       recommend_category_review?: boolean;
       category_review_reason?: string;
+    };
+    attribute_resolution?: {
+      status?: string;
+      source?: string;
+      category_id?: number;
+      template_count?: number;
+      resolved_count?: number;
+      unresolved_count?: number;
+      resolved_attributes?: SheinResolvedAttribute[];
+      pending_attributes?: SheinSourceAttribute[];
+      pending_attribute_candidates?: SheinPendingAttributeCandidate[];
+      recommended_attribute_candidates?: SheinPendingAttributeCandidate[];
+      review_notes?: string[];
     };
   };
 };

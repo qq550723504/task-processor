@@ -1,6 +1,9 @@
 package shein
 
-import sheinpub "task-processor/internal/publishing/shein"
+import (
+	common "task-processor/internal/publishing/common"
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 func BuildEditorContext(pkg *sheinpub.Package) *EditorContext {
 	if pkg == nil {
@@ -120,6 +123,9 @@ func BuildAttributeResolutionPatch(pkg *sheinpub.Package) *AttributeResolutionPa
 		if len(pkg.AttributeResolution.ResolvedAttributes) > 0 {
 			patch.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), pkg.AttributeResolution.ResolvedAttributes...)
 		}
+		patch.PendingAttributes = append([]common.Attribute(nil), pkg.AttributeResolution.PendingAttributes...)
+		patch.PendingAttributeCandidates = clonePendingAttributeCandidates(pkg.AttributeResolution.PendingAttributeCandidates)
+		patch.RecommendedAttributeCandidates = clonePendingAttributeCandidates(pkg.AttributeResolution.RecommendedAttributeCandidates)
 		patch.ReviewNotes = append([]string(nil), pkg.AttributeResolution.ReviewNotes...)
 	}
 	return patch
@@ -162,6 +168,19 @@ func BuildSaleAttributeResolutionPatch(pkg *sheinpub.Package) *SaleAttributeReso
 	patch.SelectionSummary = append([]string(nil), pkg.SaleAttributeResolution.SelectionSummary...)
 	patch.ReviewNotes = append([]string(nil), pkg.SaleAttributeResolution.ReviewNotes...)
 	return patch
+}
+
+func clonePendingAttributeCandidates(items []sheinpub.PendingAttributeCandidate) []sheinpub.PendingAttributeCandidate {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]sheinpub.PendingAttributeCandidate, 0, len(items))
+	for _, item := range items {
+		clone := item
+		clone.AttributeValueList = append([]sheinpub.AttributeValueCandidate(nil), item.AttributeValueList...)
+		result = append(result, clone)
+	}
+	return result
 }
 
 func BuildEditorSKCPatches(pkg *sheinpub.Package) []SKCRevisionPatch {

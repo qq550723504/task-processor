@@ -114,6 +114,7 @@ export type CreateListingKitTaskRequest = {
   country?: string;
   language?: string;
   options?: {
+    image_strategy?: "ai_generated" | "sds_official" | "hybrid";
     process_images?: boolean;
     scene?: {
       scene_category?: string;
@@ -123,6 +124,18 @@ export type CreateListingKitTaskRequest = {
       props_level?: string;
       audience_hint?: string;
       custom_scene_hint?: string;
+    };
+    shein_studio?: {
+      style_id?: string;
+      style_name?: string;
+      source_design_urls?: string[];
+      product_image_urls?: string[];
+      variant_product_images?: Array<{
+        variant_sku?: string;
+        color?: string;
+        image_urls?: string[];
+      }>;
+      size_reference_image_urls?: string[];
     };
     sds?: {
       variant_id: number;
@@ -145,6 +158,7 @@ export type CreateListingKitTaskRequest = {
       special_description?: string;
       design_area?: string;
       picture_request?: string;
+      is_electricity?: number;
       variant_sku?: string;
       variant_size?: string;
       variant_color?: string;
@@ -155,6 +169,27 @@ export type CreateListingKitTaskRequest = {
       template_image_url?: string;
       mask_image_url?: string;
       mockup_image_urls?: string[];
+      style_id?: string;
+      style_name?: string;
+      variants?: Array<{
+        variant_id: number;
+        variant_sku?: string;
+        size?: string;
+        color?: string;
+        price?: number;
+        weight?: number;
+        box_length?: number;
+        box_width?: number;
+        box_height?: number;
+        production_cycle?: number;
+        prototype_group_id?: number;
+        layer_id?: string;
+        template_image_url?: string;
+        mask_image_url?: string;
+        blank_design_url?: string;
+        mockup_image_url?: string;
+        mockup_image_urls?: string[];
+      }>;
     };
   };
 };

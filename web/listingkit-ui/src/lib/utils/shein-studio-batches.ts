@@ -7,6 +7,8 @@ import type {
   SheinStudioCreatedTask,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
+  SheinStudioImageStrategy,
+  SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
 
@@ -14,7 +16,11 @@ type SaveInput = {
   id?: string;
   prompt: string;
   styleCount: string;
+  productImageCount?: string;
+  productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
   sheinStoreId: string;
+  imageStrategy?: SheinStudioImageStrategy;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];

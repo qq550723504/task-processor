@@ -49,9 +49,9 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *productenr
 		return resolution
 	}
 	log.WithFields(logrus.Fields{
-		"category_id":        resolution.CategoryID,
-		"source_dimensions":  len(sourceDimensions),
-		"primary_dimension":  resolution.PrimarySourceDimension,
+		"category_id":         resolution.CategoryID,
+		"source_dimensions":   len(sourceDimensions),
+		"primary_dimension":   resolution.PrimarySourceDimension,
 		"secondary_dimension": resolution.SecondarySourceDimension,
 	}).Info("loading SHEIN sale attribute templates")
 	templates, err := r.api.GetAttributeTemplates(resolution.CategoryID)
@@ -87,11 +87,7 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *productenr
 
 	candidates := buildSaleAttributeCandidates(sourceDimensions, saleAttributes)
 	var primaryCandidate, secondaryCandidate *saleAttributeCandidate
-	primaryCandidate, secondaryCandidate = selectCandidatesBySourceDimensions(
-		candidates,
-		resolution.PrimarySourceDimension,
-		resolution.SecondarySourceDimension,
-	)
+	primaryCandidate, secondaryCandidate = selectPrimarySecondaryCandidates(candidates)
 	if primaryCandidate == nil {
 		if selection, err := selectSaleAttributeMappingWithLLM(r.llm, sourceDimensions, saleAttributes); err == nil && selection != nil {
 			primaryCandidate, secondaryCandidate = matchSelectedCandidates(candidates, selection)
@@ -102,7 +98,11 @@ func (r *saleAttributeResolver) Resolve(req *BuildRequest, canonical *productenr
 		}
 	}
 	if primaryCandidate == nil {
-		primaryCandidate, secondaryCandidate = selectPrimarySecondaryCandidates(candidates)
+		primaryCandidate, secondaryCandidate = selectCandidatesBySourceDimensions(
+			candidates,
+			resolution.PrimarySourceDimension,
+			resolution.SecondarySourceDimension,
+		)
 	}
 	if primaryCandidate == nil && len(candidates) > 0 {
 		resolution.ReviewNotes = append(resolution.ReviewNotes, buildNoFitCandidateReviewNotes(candidates)...)
@@ -191,6 +191,8 @@ func applySelectedCandidate(
 			llm,
 		)
 		resolution.skcValueAssignments = assignments
+		resolution.SKCValueAssignments = cloneResolvedSaleAttributeMap(assignments)
+		resolution.SKCAttributes = resolvedSaleAttributesForPublicView(resolution.SKCAttributes, assignments)
 		resolution.CustomAttributeRelation = dedupeCustomAttributeRelations(append(resolution.CustomAttributeRelation, relations...))
 		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, notes...))
 	case "sku":
@@ -209,9 +211,26 @@ func applySelectedCandidate(
 			llm,
 		)
 		resolution.skuValueAssignments = assignments
+		resolution.SKUValueAssignments = cloneResolvedSaleAttributeMap(assignments)
+		resolution.SKUAttributes = resolvedSaleAttributesForPublicView(resolution.SKUAttributes, assignments)
 		resolution.CustomAttributeRelation = dedupeCustomAttributeRelations(append(resolution.CustomAttributeRelation, relations...))
 		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, notes...))
 	}
+}
+
+func resolvedSaleAttributesForPublicView(current []ResolvedSaleAttribute, assignments map[string]ResolvedSaleAttribute) []ResolvedSaleAttribute {
+	if len(current) == 0 || len(assignments) == 0 {
+		return current
+	}
+	for _, assignment := range assignments {
+		if !saleAttributeHasResolvedValue(assignment) {
+			continue
+		}
+		next := append([]ResolvedSaleAttribute(nil), current...)
+		next[0] = assignment
+		return next
+	}
+	return current
 }
 
 func filterSaleScopeAttributes(attributes []sheinattribute.AttributeInfo) []sheinattribute.AttributeInfo {
@@ -226,7 +245,30 @@ func filterSaleScopeAttributes(attributes []sheinattribute.AttributeInfo) []shei
 			result = append(result, attr)
 		}
 	}
+	if hasPrimarySaleAttribute(result) {
+		sort.SliceStable(result, func(i, j int) bool {
+			left := isPrimarySaleTemplateAttribute(result[i])
+			right := isPrimarySaleTemplateAttribute(result[j])
+			if left != right {
+				return left
+			}
+			return false
+		})
+	}
 	return result
+}
+
+func hasPrimarySaleAttribute(attributes []sheinattribute.AttributeInfo) bool {
+	for _, attr := range attributes {
+		if isPrimarySaleTemplateAttribute(attr) {
+			return true
+		}
+	}
+	return false
+}
+
+func isPrimarySaleTemplateAttribute(attr sheinattribute.AttributeInfo) bool {
+	return attr.AttributeLabel == 1 || (attr.SKCScope != nil && *attr.SKCScope)
 }
 
 func matchSelectedCandidates(candidates []saleAttributeCandidate, selection *saleAttributeMappingSelection) (*saleAttributeCandidate, *saleAttributeCandidate) {
@@ -265,6 +307,18 @@ func selectPrimarySecondaryCandidates(candidates []saleAttributeCandidate) (*sal
 	sorted := append([]saleAttributeCandidate(nil), candidates...)
 	sort.SliceStable(sorted, func(i, j int) bool {
 		a, b := sorted[i], sorted[j]
+		if a.ValueFitCount == 0 || b.ValueFitCount == 0 {
+			return a.ValueFitCount > b.ValueFitCount
+		}
+		if isPromotedPrimarySaleCandidate(a) != isPromotedPrimarySaleCandidate(b) {
+			return isPromotedPrimarySaleCandidate(a)
+		}
+		if a.TemplateOrder != b.TemplateOrder {
+			return a.TemplateOrder < b.TemplateOrder
+		}
+		if saleCandidateMatchQuality(a) != saleCandidateMatchQuality(b) {
+			return saleCandidateMatchQuality(a) > saleCandidateMatchQuality(b)
+		}
 		if a.PrimaryScore != b.PrimaryScore {
 			return a.PrimaryScore > b.PrimaryScore
 		}
@@ -315,6 +369,31 @@ func selectPrimarySecondaryCandidates(candidates []saleAttributeCandidate) (*sal
 	return primary, &secondary
 }
 
+func saleCandidateMatchQuality(candidate saleAttributeCandidate) int {
+	if candidate.Match.MatchedBy == "custom_attribute_value_candidate" {
+		if isAIStyleSourceDimension(candidate.SourceName) {
+			return 1
+		}
+		return 2
+	}
+	return 3
+}
+
+func isPromotedPrimarySaleCandidate(candidate saleAttributeCandidate) bool {
+	if isAIStyleSourceDimension(candidate.SourceName) {
+		return false
+	}
+	if isColorSaleCandidate(candidate) && candidate.Important {
+		return true
+	}
+	return candidate.Required && candidate.DistinctCount > 1
+}
+
+func isColorSaleCandidate(candidate saleAttributeCandidate) bool {
+	return matchesAnyName(candidate.SourceName, []string{"color", "colour", "颜色", "颜色分类"}) ||
+		matchesAnyName(candidate.TemplateName, []string{"color", "colour", "颜色", "颜色分类"})
+}
+
 func primaryPriority(candidate saleAttributeCandidate) int {
 	score := 0
 	if candidate.Required {
@@ -357,6 +436,7 @@ func buildSaleAttributeCandidateInfos(candidates []saleAttributeCandidate, prima
 			AttributeID:     candidate.AttributeID,
 			SKCScope:        candidate.SKCScope,
 			Required:        candidate.Required,
+			Important:       candidate.Important,
 			SKCDistinct:     candidate.DistinctCount,
 			SKUDistinct:     candidate.DistinctCount,
 			TotalDistinct:   candidate.DistinctCount,
@@ -374,6 +454,15 @@ func buildSaleAttributeCandidateInfos(candidates []saleAttributeCandidate, prima
 		result = append(result, info)
 	}
 	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].SelectedScope != result[j].SelectedScope {
+			if result[i].SelectedScope == "" || result[j].SelectedScope == "" {
+				return result[i].SelectedScope != ""
+			}
+			return selectedSaleScopeRank(result[i].SelectedScope) > selectedSaleScopeRank(result[j].SelectedScope)
+		}
+		if result[i].SelectedScope != "" && result[j].SelectedScope != "" {
+			return selectedSaleScopeRank(result[i].SelectedScope) > selectedSaleScopeRank(result[j].SelectedScope)
+		}
 		if result[i].PrimaryScore != result[j].PrimaryScore {
 			return result[i].PrimaryScore > result[j].PrimaryScore
 		}
@@ -383,6 +472,17 @@ func buildSaleAttributeCandidateInfos(candidates []saleAttributeCandidate, prima
 		return result[i].AttributeID < result[j].AttributeID
 	})
 	return result
+}
+
+func selectedSaleScopeRank(scope string) int {
+	switch scope {
+	case "skc":
+		return 2
+	case "sku":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func selectCandidatesBySourceDimensions(candidates []saleAttributeCandidate, primaryName, secondaryName string) (*saleAttributeCandidate, *saleAttributeCandidate) {
@@ -415,6 +515,9 @@ func explainSaleAttributeCandidate(candidate saleAttributeCandidate) []string {
 	reasons = append(reasons, "源维度为 "+candidate.SourceName)
 	if candidate.Required {
 		reasons = append(reasons, "模板标记为必填销售属性")
+	}
+	if candidate.Important {
+		reasons = append(reasons, "模板标记为重要销售属性")
 	}
 	if candidate.SKCScope {
 		reasons = append(reasons, "模板标记为 SKC scope")

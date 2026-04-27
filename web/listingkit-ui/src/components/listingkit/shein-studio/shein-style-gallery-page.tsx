@@ -56,7 +56,7 @@ export function SheinStyleGalleryPage({ initialGallery }: GalleryPageProps) {
               款式图库
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
-              汇总已生成款式图、ListingKit 任务中的源图、SDS mockup 和 SHEIN 草稿图片。用于快速确认哪些图已经生成、哪些已经进入任务流。
+              只展示 AI 生成的原始款式图，不混入 SDS mockup、SHEIN 草稿图或上架资料图。上架资料仍会在任务工作台中使用官方 mockup。
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -75,9 +75,9 @@ export function SheinStyleGalleryPage({ initialGallery }: GalleryPageProps) {
 
         <section className="grid gap-3 md:grid-cols-4">
           <MetricCard label="Total" value={initialGallery.total} />
+          <MetricCard label="AI saved" value={initialGallery.summary.studioSaved} />
+          <MetricCard label="AI uploaded" value={initialGallery.summary.publishedInputs} />
           <MetricCard label="Studio legacy" value={initialGallery.summary.studioLegacy} />
-          <MetricCard label="Published inputs" value={initialGallery.summary.publishedInputs} />
-          <MetricCard label="Task linked" value={initialGallery.summary.taskLinked} />
         </section>
 
         {items.length === 0 ? (

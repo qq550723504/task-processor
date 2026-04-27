@@ -197,9 +197,40 @@ export type SheinResolvedAttribute = {
   attribute_id?: number;
   attribute_value_id?: number;
   attribute_extra_value?: string;
+  attribute_type?: number;
+  attribute_mode?: number;
+  data_dimension?: number;
+  cascade_attribute_id?: number;
   matched_by?: string;
   required?: boolean;
+  important?: boolean;
   skc_scope?: boolean;
+};
+
+export type SheinAttributeValueCandidate = {
+  attribute_value_id?: number;
+  value?: string;
+  value_en?: string;
+};
+
+export type SheinPendingAttributeCandidate = {
+  name?: string;
+  attribute_id?: number;
+  attribute_name?: string;
+  attribute_name_en?: string;
+  attribute_type?: number;
+  attribute_mode?: number;
+  data_dimension?: number;
+  cascade_attribute_id?: number;
+  required?: boolean;
+  important?: boolean;
+  skc_scope?: boolean;
+  attribute_value_list?: SheinAttributeValueCandidate[];
+};
+
+export type SheinSourceAttribute = {
+  name?: string;
+  value?: string;
 };
 
 export type SheinInspectionAttributePayload = {
@@ -209,6 +240,9 @@ export type SheinInspectionAttributePayload = {
   resolved_count?: number;
   unresolved_count?: number;
   resolved_attributes?: SheinResolvedAttribute[];
+  pending_attributes?: SheinSourceAttribute[];
+  pending_attribute_candidates?: SheinPendingAttributeCandidate[];
+  recommended_attribute_candidates?: SheinPendingAttributeCandidate[];
   review_notes?: string[];
 };
 
@@ -269,6 +303,8 @@ export type SheinEditorContext = {
 };
 
 export type SheinPreviewPayload = PlatformPreviewPayload & {
+  category_id?: number;
+  category_path?: string[];
   source_product?: {
     title?: string;
     sku?: string;

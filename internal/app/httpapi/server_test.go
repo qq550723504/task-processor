@@ -124,6 +124,8 @@ func (s *stubImageHandler) ReviewTask(c *gin.Context) {
 
 type stubListingKitHandler struct {
 	generateCalled                     bool
+	generateStudioDesignsCalled        bool
+	generateStudioProductImagesCalled  bool
 	uploadImagesCalled                 bool
 	getUploadedImageCalled             bool
 	listTasksCalled                    bool
@@ -147,6 +149,16 @@ type stubListingKitHandler struct {
 func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
 	s.generateCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": "listing-kit-task"})
+}
+
+func (s *stubListingKitHandler) GenerateStudioDesigns(c *gin.Context) {
+	s.generateStudioDesignsCalled = true
+	c.JSON(http.StatusOK, gin.H{"images": []any{}})
+}
+
+func (s *stubListingKitHandler) GenerateStudioProductImages(c *gin.Context) {
+	s.generateStudioProductImagesCalled = true
+	c.JSON(http.StatusOK, gin.H{"images": []any{}})
 }
 
 func (s *stubListingKitHandler) UploadListingKitImages(c *gin.Context) {
@@ -456,6 +468,30 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	}
 	if !handler.generateCalled {
 		t.Fatal("GenerateListingKit handler was not called")
+	}
+
+	handler.generateStudioDesignsCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/designs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/studio/designs = %d, want 200", resp.Code)
+	}
+	if !handler.generateStudioDesignsCalled {
+		t.Fatal("listing kit GenerateStudioDesigns handler was not called")
+	}
+
+	handler.generateStudioProductImagesCalled = false
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/product-images", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("POST /api/v1/listing-kits/studio/product-images = %d, want 200", resp.Code)
+	}
+	if !handler.generateStudioProductImagesCalled {
+		t.Fatal("listing kit GenerateStudioProductImages handler was not called")
 	}
 
 	handler.uploadImagesCalled = false

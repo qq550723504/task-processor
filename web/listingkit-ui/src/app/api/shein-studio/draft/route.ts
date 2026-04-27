@@ -5,7 +5,11 @@ import {
   saveSheinStudioDraft,
 } from "@/lib/server/shein-studio-storage";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
-import type { SheinStudioCreatedTask, SheinStudioGeneratedDesign } from "@/lib/types/shein-studio";
+import type {
+  SheinStudioCreatedTask,
+  SheinStudioGeneratedDesign,
+  SheinStudioImageStrategy,
+} from "@/lib/types/shein-studio";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +39,11 @@ function parseSelection(searchParams: URLSearchParams): SDSProductVariantSelecti
 type DraftPayload = {
   prompt: string;
   styleCount: string;
+  productImageCount?: string;
+  productImagePrompt?: string;
   sheinStoreId: string;
+  imageStrategy?: SheinStudioImageStrategy;
+  transparentBackground?: boolean;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];

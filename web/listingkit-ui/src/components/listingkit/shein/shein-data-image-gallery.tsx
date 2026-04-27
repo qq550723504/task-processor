@@ -8,12 +8,24 @@ export function SheinDataImageGallery({
   images,
   selectedUrl,
   onSelect,
+  onRegenerate,
+  isRegenerating = false,
+  regenerationError,
 }: {
   images: SheinPreviewImage[];
   selectedUrl?: string;
   onSelect: (image: SheinPreviewImage) => void;
+  onRegenerate?: (image: SheinPreviewImage, prompt: string) => Promise<void> | void;
+  isRegenerating?: boolean;
+  regenerationError?: string | null;
 }) {
   const [activeImage, setActiveImage] = useState<SheinPreviewImage | null>(null);
+  const [regenerationPrompt, setRegenerationPrompt] = useState("");
+
+  const canRegenerate =
+    Boolean(onRegenerate && activeImage) &&
+    regenerationPrompt.trim().length > 0 &&
+    !isRegenerating;
 
   if (images.length === 0) {
     return null;
@@ -28,8 +40,8 @@ export function SheinDataImageGallery({
               SHEIN data images
             </p>
             <p className="mt-1 text-sm leading-6 text-zinc-600">
-              SDS-rendered and SHEIN-ready images are shown first; original source
-              images are kept at the end for traceability.
+              SDS-rendered and SHEIN-ready images are shown here. Source images are
+              shown only when no rendered payload is available.
             </p>
           </div>
           <span className="text-xs font-medium text-zinc-500">
@@ -52,6 +64,7 @@ export function SheinDataImageGallery({
                 onClick={() => {
                   onSelect(image);
                   setActiveImage(image);
+                  setRegenerationPrompt("");
                 }}
                 type="button"
               >
@@ -115,13 +128,59 @@ export function SheinDataImageGallery({
                 </button>
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto bg-zinc-100 p-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                alt={activeImage.label}
-                className="mx-auto max-h-[76vh] max-w-full rounded-2xl bg-white object-contain shadow-sm"
-                src={toImageProxyUrl(activeImage.url)}
-              />
+            <div className="grid min-h-0 flex-1 gap-4 overflow-auto bg-zinc-100 p-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="min-h-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  alt={activeImage.label}
+                  className="mx-auto max-h-[76vh] max-w-full rounded-2xl bg-white object-contain shadow-sm"
+                  src={toImageProxyUrl(activeImage.url)}
+                />
+              </div>
+              {onRegenerate ? (
+                <form
+                  className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (!activeImage || !canRegenerate) return;
+                    try {
+                      await onRegenerate(activeImage, regenerationPrompt.trim());
+                      setRegenerationPrompt("");
+                      setActiveImage(null);
+                    } catch {
+                      // The parent surfaces the API message in this panel.
+                    }
+                  }}
+                >
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                      Regenerate this image
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-zinc-600">
+                      Describe what is wrong. The current image will be sent back
+                      as the problem reference.
+                    </p>
+                  </div>
+                  <textarea
+                    className="min-h-32 w-full resize-y rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
+                    onChange={(event) => setRegenerationPrompt(event.target.value)}
+                    placeholder="Example: keep the same artwork, but remove the extra text, make the product larger, and fix the cropped edge."
+                    value={regenerationPrompt}
+                  />
+                  {regenerationError ? (
+                    <p className="rounded-xl bg-red-50 px-3 py-2 text-xs leading-5 text-red-700">
+                      {regenerationError}
+                    </p>
+                  ) : null}
+                  <button
+                    className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                    disabled={!canRegenerate}
+                    type="submit"
+                  >
+                    {isRegenerating ? "Regenerating..." : "Regenerate and replace"}
+                  </button>
+                </form>
+              ) : null}
             </div>
           </div>
         </div>

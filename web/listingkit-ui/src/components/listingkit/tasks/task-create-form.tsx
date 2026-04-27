@@ -756,7 +756,7 @@ export function TaskCreateForm({
               aria-label="Shein store ID"
               className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
               inputMode="numeric"
-              placeholder="873"
+              placeholder="869"
               {...register("sheinStoreId")}
             />
             <p className="text-sm leading-6 text-zinc-500">

@@ -259,14 +259,6 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 
 	levelFourID := 4004
 	levelFourName := "Wireless Earbuds"
-	llm := &scriptedListingKitLLM{
-		responses: []string{
-			`{"attribute_id":501,"reasons":["color matches template field"]}`,
-			`{"attribute_id":502,"reasons":["size matches template field"]}`,
-			`{"attribute_value_id":90001,"reasons":["black matches template value"]}`,
-			`{"attribute_value_id":90002,"reasons":["m matches template value"]}`,
-		},
-	}
 	assembler := NewAssemblerWithConfig(AssemblerConfig{
 		AmazonBuilder: stubAmazonDraftBuilder{},
 		SheinCategoryResolver: sheinpub.NewCategoryResolver(stubSheinCategoryAPI{
@@ -305,7 +297,7 @@ func TestAssemblerResolvesSheinCategoryIntoPreviewProduct(t *testing.T) {
 					},
 				}},
 			},
-		}, llm),
+		}, nil),
 		SheinSaleAttributeResolver: sheinpub.NewSaleAttributeResolver(stubSheinAttributeAPI{
 			templates: &sheinattribute.AttributeTemplateInfo{
 				Data: []sheinattribute.AttributeTemplate{{

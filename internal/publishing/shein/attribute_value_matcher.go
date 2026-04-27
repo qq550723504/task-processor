@@ -9,6 +9,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/prompt"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
@@ -57,10 +58,8 @@ func matchTemplateAttributeValue(
 	if resolved, reasons, ok := matchTemplateAttributeValueWithLLM(attr, sourceName, sourceValue, contextInputs, llm); ok {
 		return resolved, reasons
 	}
-	if llm == nil {
-		if resolved, reasons, ok := matchTemplateAttributeValueStatic(attr, sourceValue, "static_attribute_value"); ok {
-			return resolved, reasons
-		}
+	if resolved, reasons, ok := matchTemplateAttributeValueExact(attr, sourceValue); ok {
+		return resolved, reasons
 	}
 
 	return ResolvedAttribute{}, []string{
@@ -112,38 +111,46 @@ func buildTemplateAttributeValueMappingPrompt(
 	sourceValue string,
 	contextInputs []common.Attribute,
 ) string {
-	var builder strings.Builder
-	builder.WriteString("You map one source product attribute value to one SHEIN template attribute value.\n")
-	builder.WriteString("Choose exactly one candidate attribute_value_id when there is a safe semantic match.\n")
-	builder.WriteString("If none of the candidates is safe, return attribute_value_id as 0.\n")
-	builder.WriteString("Return JSON only with keys attribute_value_id and reasons.\n\n")
-	builder.WriteString(fmt.Sprintf("Source attribute: %q\n", sourceName))
-	builder.WriteString(fmt.Sprintf("Source value: %q\n", sourceValue))
+	var segmentBlock strings.Builder
 	if segments := comparableAttributeSegments(sourceValue); len(segments) > 0 {
-		builder.WriteString("Source value segments:\n")
+		segmentBlock.WriteString("Source value segments:\n")
 		for _, segment := range segments {
-			builder.WriteString(fmt.Sprintf("- %q\n", segment))
+			segmentBlock.WriteString(fmt.Sprintf("- %q\n", segment))
 		}
 	}
+	contextBlock := ""
 	if context := buildDisplayAttributeContextLines(contextInputs, sourceName, sourceValue); len(context) > 0 {
-		builder.WriteString("Additional source context:\n")
+		contextBlock = "Additional source context:\n"
 		for _, line := range context {
-			builder.WriteString("- ")
-			builder.WriteString(line)
-			builder.WriteString("\n")
+			contextBlock += "- " + line + "\n"
 		}
 	}
-	builder.WriteString(fmt.Sprintf("SHEIN template attribute: %q\n", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)))
-	builder.WriteString("Candidates:\n")
+	var candidateBlock strings.Builder
 	for _, option := range attr.AttributeValueInfoList {
-		builder.WriteString(fmt.Sprintf(
+		candidateBlock.WriteString(fmt.Sprintf(
 			"- attribute_value_id=%d value=%q value_en=%q\n",
 			option.AttributeValueID,
 			option.AttributeValue,
 			option.AttributeValueEn,
 		))
 	}
-	return builder.String()
+	return renderSheinDisplayAttributePrompt(prompt.KSheinDisplayAttributeValueMapping, `You map one source product attribute value to one SHEIN template attribute value.
+Choose exactly one candidate attribute_value_id when there is a safe semantic match.
+If none of the candidates is safe, return attribute_value_id as 0.
+Return JSON only with keys attribute_value_id and reasons.
+
+Source attribute: {{.SourceAttribute}}
+Source value: {{.SourceValue}}
+{{.SourceSegmentsBlock}}{{.AdditionalContextBlock}}SHEIN template attribute: {{.TemplateAttribute}}
+Candidates:
+{{.CandidatesBlock}}`, map[string]any{
+		"SourceAttribute":        fmt.Sprintf("%q", sourceName),
+		"SourceValue":            fmt.Sprintf("%q", sourceValue),
+		"SourceSegmentsBlock":    segmentBlock.String(),
+		"AdditionalContextBlock": contextBlock,
+		"TemplateAttribute":      fmt.Sprintf("%q", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)),
+		"CandidatesBlock":        candidateBlock.String(),
+	})
 }
 
 func buildDisplayAttributeContextLines(inputs []common.Attribute, sourceName string, sourceValue string) []string {

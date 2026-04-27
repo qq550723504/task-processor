@@ -67,20 +67,16 @@ func NewAPIClient(storeID int64, managementClient *management.ClientManager) *AP
 		}
 	}
 
-	// 在初始化时测试管理系统连接并加载Cookie（参考TEMU实现）
-	if err := apiClient.cookieManager.TestConnection(); err != nil {
-		apiClient.logger.WithError(err).Error("管理系统连接测试失败，跳过Cookie加载")
-	} else {
-		// 连接正常，尝试加载Cookie
-		if cookies, err := apiClient.cookieManager.LoadCookies(); err != nil {
-			apiClient.logger.WithError(err).Error("初始化时加载Cookie失败")
-		} else if cookies != nil {
+	// 直接加载 Cookie，避免初始化时额外执行一次 GetStore 探活。
+	// 店铺配置接口不可用时，调用方会在构建期校验里进入 blocked，而不是长时间卡住。
+	if cookies, err := apiClient.cookieManager.LoadCookies(); err != nil {
+		apiClient.logger.WithError(err).Error("初始化时加载Cookie失败")
+	} else if cookies != nil {
 
-			apiClient.SetCookies(cookies)
-			apiClient.logger.Info("成功在初始化时加载Cookie")
-		} else {
-			apiClient.logger.Info("初始化时未找到Cookie数据")
-		}
+		apiClient.SetCookies(cookies)
+		apiClient.logger.Info("成功在初始化时加载Cookie")
+	} else {
+		apiClient.logger.Info("初始化时未找到Cookie数据")
 	}
 
 	return apiClient

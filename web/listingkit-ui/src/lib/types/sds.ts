@@ -33,7 +33,11 @@ export type SDSProductVariant = {
   color_name?: string;
   currentPrice?: number;
   weight?: number;
+  box_length?: number;
+  box_width?: number;
+  box_height?: number;
   productionCycle?: number;
+  isElectricity?: number;
   on_sale_status?: number;
   hotSellStatus?: number;
   issuingBayArea?: {
@@ -65,6 +69,8 @@ export type SDSProductVariantSelection = {
   productId: number;
   parentProductId: number;
   variantId: number;
+  variants?: SDSSelectedProductVariant[];
+  selectedVariantIds?: number[];
   prototypeGroupId: number;
   layerId: string;
   productName: string;
@@ -76,6 +82,28 @@ export type SDSProductVariantSelection = {
   blankDesignUrl?: string;
   mockupImageUrl?: string;
   mockupImageUrls?: string[];
+  sizeReferenceImageUrls?: string[];
+};
+
+export type SDSSelectedProductVariant = {
+  variantId: number;
+  variantSku?: string;
+  size?: string;
+  color?: string;
+  price?: number;
+  weight?: number;
+  boxLength?: number;
+  boxWidth?: number;
+  boxHeight?: number;
+  productionCycle?: number;
+  prototypeGroupId?: number;
+  layerId?: string;
+  templateImageUrl?: string;
+  maskImageUrl?: string;
+  blankDesignUrl?: string;
+  mockupImageUrl?: string;
+  mockupImageUrls?: string[];
+  sizeReferenceImageUrls?: string[];
 };
 
 export type SDSSubproducts = {
@@ -96,6 +124,7 @@ export type SDSProductSummary = {
   weightMax?: number;
   minWeight?: number;
   productionCycle?: number;
+  isElectricity?: number;
   on_sale_status?: number;
   hotSellStatus?: number;
   issuingBayArea?: {

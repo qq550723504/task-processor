@@ -1,4 +1,5 @@
 export type SheinStyleGallerySource =
+  | "studio_saved"
   | "studio_legacy"
   | "published_input"
   | "task_source"
@@ -27,6 +28,7 @@ export type SheinStyleGalleryResponse = {
   total: number;
   items: SheinStyleGalleryItem[];
   summary: {
+    studioSaved: number;
     studioLegacy: number;
     publishedInputs: number;
     taskLinked: number;

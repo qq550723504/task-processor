@@ -38,6 +38,20 @@ func sheinProductImageURLCount(product *sheinproduct.Product) int {
 	return count
 }
 
+func sheinProductPendingImageUploadCount(product *sheinproduct.Product) int {
+	if product == nil {
+		return 0
+	}
+	count := sheinImageInfoPendingUploadCount(product.ImageInfo)
+	for i := range product.SKCList {
+		count += sheinImageInfoPendingUploadCount(&product.SKCList[i].ImageInfo)
+		for j := range product.SKCList[i].SKUS {
+			count += sheinImageInfoPendingUploadCount(product.SKCList[i].SKUS[j].ImageInfo)
+		}
+	}
+	return count
+}
+
 func sheinImageInfoURLCount(info *sheinproduct.ImageInfo) int {
 	if info == nil {
 		return 0
@@ -45,6 +59,20 @@ func sheinImageInfoURLCount(info *sheinproduct.ImageInfo) int {
 	count := 0
 	for _, image := range info.ImageInfoList {
 		if strings.TrimSpace(image.ImageURL) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func sheinImageInfoPendingUploadCount(info *sheinproduct.ImageInfo) int {
+	if info == nil {
+		return 0
+	}
+	count := 0
+	for _, image := range info.ImageInfoList {
+		url := strings.TrimSpace(image.ImageURL)
+		if url != "" && !isSheinUploadedImageURL(url) {
 			count++
 		}
 	}
@@ -176,6 +204,9 @@ func uploadSheinImageInfo(info *sheinproduct.ImageInfo, uploader sheinimage.Imag
 	for i := range info.ImageInfoList {
 		sourceURL := strings.TrimSpace(info.ImageInfoList[i].ImageURL)
 		if sourceURL == "" {
+			continue
+		}
+		if isSheinUploadedImageURL(sourceURL) {
 			continue
 		}
 		uploadedURL, ok := uploaded[sourceURL]

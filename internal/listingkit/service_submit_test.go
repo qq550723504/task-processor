@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
 	sheinimage "task-processor/internal/shein/api/image"
 	sheinproduct "task-processor/internal/shein/api/product"
+	sheintranslateapi "task-processor/internal/shein/api/translate"
 )
 
 type stubSubmitRepo struct {
@@ -93,6 +95,61 @@ type stubSheinImageAPIBuilder struct {
 
 func (s stubSheinImageAPIBuilder) BuildImageAPI(storeID int64) (sheinimage.ImageAPI, string) {
 	return s.api, s.msg
+}
+
+type stubSheinTranslateAPIBuilder struct {
+	api sheintranslateapi.TranslateAPI
+	msg string
+}
+
+func (s stubSheinTranslateAPIBuilder) BuildTranslateAPI(storeID int64) (sheintranslateapi.TranslateAPI, string) {
+	return s.api, s.msg
+}
+
+type stubSheinTranslateAPI struct {
+	calls []string
+}
+
+func (s *stubSheinTranslateAPI) Translate(text string, from, to string) (string, error) {
+	s.calls = append(s.calls, from+"->"+to+":"+text)
+	switch to {
+	case "en":
+		return "English " + text, nil
+	case "es":
+		return "Spanish " + text, nil
+	default:
+		return to + " " + text, nil
+	}
+}
+
+type stubSheinContentAI struct {
+	response string
+	calls    int
+}
+
+func (s *stubSheinContentAI) CreateChatCompletion(context.Context, *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+	s.calls++
+	response := strings.TrimSpace(s.response)
+	if response == "" {
+		response = `{"title":"Optimized English Product Title for SHEIN","description":"Optimized English product description for SHEIN with clear features and customer-friendly wording."}`
+	}
+	return &openaiclient.ChatCompletionResponse{
+		Choices: []openaiclient.ChatCompletionChoice{{
+			Message: openaiclient.ChatCompletionMessage{Content: response},
+		}},
+	}, nil
+}
+
+func (s *stubSheinContentAI) Generate(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (s *stubSheinContentAI) AnalyzeImage(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+func (s *stubSheinContentAI) GetDefaultModel() string {
+	return "test"
 }
 
 type stubSheinImageAPI struct {
@@ -306,6 +363,11 @@ func makeReadySheinTask() *Task {
 							AttributeID:      27,
 							AttributeValueID: valueID,
 						},
+						ImageInfo: sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{{
+							ImageType: 1,
+							ImageSort: 1,
+							ImageURL:  "https://img.shein.com/uploaded/default-main.jpg",
+						}}},
 						SKUS: []sheinproduct.SKU{{
 							SupplierSKU: "SKU-1",
 							CostInfo: &sheinproduct.CostInfo{
@@ -363,7 +425,105 @@ func TestSubmitTaskReturnsBlockedWhenReadinessIsNotReady(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskPersistsSheinSubmissionWhenProductAPIUnavailable(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			msg: "store token missing",
+		},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
+	if err == nil || !strings.Contains(err.Error(), "store token missing") {
+		t.Fatalf("submit err = %v, want store token missing", err)
+	}
+	saved, getErr := repo.GetTask(context.Background(), task.ID)
+	if getErr != nil {
+		t.Fatalf("get task: %v", getErr)
+	}
+	if saved.Result == nil || saved.Result.Shein == nil || saved.Result.Shein.Submission == nil {
+		t.Fatalf("submission was not persisted: %+v", saved.Result)
+	}
+	if saved.Result.Shein.Submission.LastAction != "publish" ||
+		saved.Result.Shein.Submission.LastStatus != "failed" ||
+		!strings.Contains(saved.Result.Shein.Submission.LastError, "store token missing") {
+		t.Fatalf("submission failure = %+v", saved.Result.Shein.Submission)
+	}
+}
+
 func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Result.Shein.PreviewProduct.SPUName = "Display Title Should Not Be Submitted"
+	var submitted *sheinproduct.Product
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{
+						Success: true,
+						SPUName: "SPU-123",
+						Version: "v1",
+					},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	if submitted.SPUName != "" {
+		t.Fatalf("submitted spu_name = %q, want empty for new SHEIN product", submitted.SPUName)
+	}
+	if len(submitted.MultiLanguageNameList) == 0 {
+		t.Fatal("submitted product title is missing from multi_language_name_list")
+	}
+	if preview == nil || preview.Shein == nil || preview.Shein.Submission == nil {
+		t.Fatalf("preview submission = %+v", preview)
+	}
+	if preview.Shein.Submission.LastAction != "publish" || preview.Shein.Submission.LastStatus != "success" {
+		t.Fatalf("submission = %+v", preview.Shein.Submission)
+	}
+	if preview.Shein.Submission.Publish == nil || preview.Shein.Submission.Publish.Result == nil || !preview.Shein.Submission.Publish.Result.Success {
+		t.Fatalf("submission publish = %+v", preview.Shein.Submission.Publish)
+	}
+}
+
+func TestSubmitTaskMarksPublishPreValidationNotesAsFailed(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubSubmitRepo{}
@@ -379,32 +539,39 @@ func TestSubmitTaskPersistsSheinSubmissionOnPublishSuccess(t *testing.T) {
 			api: stubSheinProductAPI{
 				publishResponse: &sheinproduct.SheinResponse{
 					Code: "0",
-					Msg:  "success",
+					Msg:  "OK",
 					Info: sheinproduct.ResponseInfo{
-						Success: true,
-						SPUName: "SPU-123",
-						Version: "v1",
+						Success: false,
+						PreValidResult: []sheinproduct.PreValidResult{{
+							Messages: []string{
+								"数量: 类型下模板属性为必填项",
+								"方形图必须有一个",
+							},
+						}},
 					},
 				},
 			},
 		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
 	})
 	if err != nil {
 		t.Fatalf("new service: %v", err)
 	}
 
-	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
-	if err != nil {
-		t.Fatalf("submit task: %v", err)
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
+	if err == nil || !strings.Contains(err.Error(), "数量: 类型下模板属性为必填项") {
+		t.Fatalf("submit err = %v, want pre-validation note", err)
 	}
-	if preview == nil || preview.Shein == nil || preview.Shein.Submission == nil {
-		t.Fatalf("preview submission = %+v", preview)
+	saved, getErr := repo.GetTask(context.Background(), task.ID)
+	if getErr != nil {
+		t.Fatalf("get task: %v", getErr)
 	}
-	if preview.Shein.Submission.LastAction != "publish" || preview.Shein.Submission.LastStatus != "success" {
-		t.Fatalf("submission = %+v", preview.Shein.Submission)
+	submission := saved.Result.Shein.Submission
+	if submission == nil || submission.LastStatus != "failed" || !strings.Contains(submission.LastError, "方形图必须有一个") {
+		t.Fatalf("submission = %+v", submission)
 	}
-	if preview.Shein.Submission.Publish == nil || preview.Shein.Submission.Publish.Result == nil || !preview.Shein.Submission.Publish.Result.Success {
-		t.Fatalf("submission publish = %+v", preview.Shein.Submission.Publish)
+	if submission.Publish == nil || submission.Publish.Result == nil || len(submission.Publish.Result.ValidationNotes) != 2 {
+		t.Fatalf("publish result = %+v", submission.Publish)
 	}
 }
 
@@ -413,6 +580,8 @@ func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
+	task.Result.Shein.PreviewProduct.SPUName = "Draft Display Title Should Not Be Submitted"
+	var submitted *sheinproduct.Product
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -422,6 +591,9 @@ func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 		ProductService: stubSubmitProductService{},
 		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
 			api: stubSheinProductAPI{
+				saveHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
 				saveResponse: &sheinproduct.SheinResponse{
 					Code: "0",
 					Msg:  "OK",
@@ -440,8 +612,115 @@ func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("submit task: %v", err)
 	}
+	if submitted == nil {
+		t.Fatal("expected save draft payload to be captured")
+	}
+	if submitted.SPUName != "" {
+		t.Fatalf("submitted draft spu_name = %q, want empty for new SHEIN product", submitted.SPUName)
+	}
 	if preview.Shein == nil || preview.Shein.Submission == nil || preview.Shein.Submission.LastStatus != "success" {
 		t.Fatalf("submission = %+v", preview.Shein)
+	}
+}
+
+func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Result.Shein.PreviewProduct.SiteList = nil
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{
+		"https://cdn.example.com/main.jpg",
+		"https://cdn.example.com/gallery-1.jpg",
+	})
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo([]string{
+		"https://cdn.example.com/main.jpg",
+		"https://cdn.example.com/gallery-1.jpg",
+		"https://cdn.example.com/gallery-2.jpg",
+		"https://cdn.example.com/gallery-3.jpg",
+	})
+	sku := &task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0]
+	sku.ImageInfo = sheinImageInfo([]string{"https://cdn.example.com/main.jpg"})
+	sku.Length = ""
+	sku.Width = ""
+	sku.Height = ""
+	sku.LengthUnit = ""
+	sku.StockInfoList = nil
+	stockCount := 999
+	sku.StockCount = &stockCount
+	sku.QuantityInfo = nil
+	sku.PackageType = 0
+	sku.PriceInfoList = []sheinproduct.PriceInfo{{SubSite: "US", BasePrice: 19.99, Currency: "USD"}}
+	var submitted *sheinproduct.Product
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true, SPUName: "SPU-123"},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	if submitted.ImageInfo == nil || len(submitted.ImageInfo.ImageInfoList) != 0 {
+		t.Fatalf("product image_info = %+v, want empty for publish payload", submitted.ImageInfo)
+	}
+	if len(submitted.SKCList[0].ImageInfo.ImageInfoList) != 6 {
+		t.Fatalf("skc image count = %d, want 6", len(submitted.SKCList[0].ImageInfo.ImageInfoList))
+	}
+	if submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageType != 5 {
+		t.Fatalf("skc square image type = %d, want 5", submitted.SKCList[0].ImageInfo.ImageInfoList[4].ImageType)
+	}
+	if submitted.SKCList[0].ImageInfo.ImageInfoList[5].ImageType != 6 {
+		t.Fatalf("skc color block image type = %d, want 6", submitted.SKCList[0].ImageInfo.ImageInfoList[5].ImageType)
+	}
+	if submitted.SKCList[0].SKUS[0].ImageInfo == nil || len(submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList) != 0 {
+		t.Fatalf("sku image_info = %+v, want empty for publish payload", submitted.SKCList[0].SKUS[0].ImageInfo)
+	}
+	if len(submitted.SiteList) != 1 || submitted.SiteList[0].MainSite != "shein" || len(submitted.SiteList[0].SubSiteList) != 1 || submitted.SiteList[0].SubSiteList[0] != "shein-us" {
+		t.Fatalf("site_list = %+v, want shein/shein-us", submitted.SiteList)
+	}
+	submittedSKU := submitted.SKCList[0].SKUS[0]
+	if len(submittedSKU.StockInfoList) != 1 || submittedSKU.StockInfoList[0].MerchantWarehouseCode != defaultSheinWarehouseCode || submittedSKU.StockInfoList[0].InventoryNum != 999 {
+		t.Fatalf("stock_info_list = %+v", submittedSKU.StockInfoList)
+	}
+	if submittedSKU.StockCount != nil {
+		t.Fatalf("stock_count = %v, want nil when stock_info_list is populated", *submittedSKU.StockCount)
+	}
+	if submittedSKU.QuantityInfo == nil || submittedSKU.QuantityInfo.Quantity == nil || *submittedSKU.QuantityInfo.Quantity != 1 ||
+		submittedSKU.QuantityInfo.QuantityType == nil || *submittedSKU.QuantityInfo.QuantityType != 1 ||
+		submittedSKU.QuantityInfo.QuantityUnit == nil || *submittedSKU.QuantityInfo.QuantityUnit != 1 {
+		t.Fatalf("quantity_info = %+v, want 1/1/1", submittedSKU.QuantityInfo)
+	}
+	if submittedSKU.PackageType != 3 {
+		t.Fatalf("package_type = %d, want 3", submittedSKU.PackageType)
+	}
+	if len(submittedSKU.PriceInfoList) != 1 || submittedSKU.PriceInfoList[0].SubSite != "shein-us" {
+		t.Fatalf("price_info_list = %+v, want sub_site shein-us", submittedSKU.PriceInfoList)
+	}
+	if submittedSKU.Length == "" || submittedSKU.Width == "" || submittedSKU.Height == "" || submittedSKU.LengthUnit == "" {
+		t.Fatalf("dimensions not normalized: length=%q width=%q height=%q unit=%q", submittedSKU.Length, submittedSKU.Width, submittedSKU.Height, submittedSKU.LengthUnit)
 	}
 }
 
@@ -528,28 +807,37 @@ func TestSubmitTaskPublishesSDSRenderedImages(t *testing.T) {
 	if submitted == nil {
 		t.Fatal("expected publish payload to be captured")
 	}
-	if submitted.ImageInfo == nil || len(submitted.ImageInfo.ImageInfoList) != len(rendered) {
-		t.Fatalf("submitted image info = %+v, want %d SDS images", submitted.ImageInfo, len(rendered))
+	if submitted.ImageInfo == nil || len(submitted.ImageInfo.ImageInfoList) != 0 {
+		t.Fatalf("submitted SPU image info = %+v, want empty for publish payload", submitted.ImageInfo)
 	}
-	for index, image := range submitted.ImageInfo.ImageInfoList {
-		if image.ImageURL != uploaded[index] {
-			t.Fatalf("submitted SPU image %d = %q, want uploaded %q", index, image.ImageURL, uploaded[index])
-		}
-		if image.ImageURL == sourceImage {
-			t.Fatalf("submitted SPU image still uses source image: %q", sourceImage)
-		}
-	}
-	if len(submitted.SKCList) != 1 || len(submitted.SKCList[0].ImageInfo.ImageInfoList) != len(rendered) {
+	expectedSKCImages := append([]string(nil), uploaded...)
+	expectedSKCImages = append(expectedSKCImages, uploaded[0])
+	expectedSKCImages = append(expectedSKCImages, uploaded[0])
+	if len(submitted.SKCList) != 1 || len(submitted.SKCList[0].ImageInfo.ImageInfoList) != len(expectedSKCImages) {
 		t.Fatalf("submitted SKC image info = %+v", submitted.SKCList)
 	}
-	if submitted.SKCList[0].ImageInfo.ImageInfoList[0].ImageURL != uploaded[0] {
-		t.Fatalf("submitted SKC main image = %q, want uploaded %q", submitted.SKCList[0].ImageInfo.ImageInfoList[0].ImageURL, uploaded[0])
+	for index, image := range submitted.SKCList[0].ImageInfo.ImageInfoList {
+		if image.ImageURL != expectedSKCImages[index] {
+			t.Fatalf("submitted SKC image %d = %q, want uploaded %q", index, image.ImageURL, expectedSKCImages[index])
+		}
+		wantType := 2
+		if index == 0 {
+			wantType = 1
+		}
+		if index == len(expectedSKCImages)-1 {
+			wantType = 6
+		} else if index == len(expectedSKCImages)-2 {
+			wantType = 5
+		}
+		if image.ImageType != wantType {
+			t.Fatalf("submitted SKC image %d type = %d, want %d", index, image.ImageType, wantType)
+		}
+		if image.ImageURL == sourceImage {
+			t.Fatalf("submitted SKC image still uses source image: %q", sourceImage)
+		}
 	}
-	if len(submitted.SKCList[0].SKUS) != 1 || submitted.SKCList[0].SKUS[0].ImageInfo == nil || len(submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList) != 1 {
-		t.Fatalf("submitted SKU image info = %+v", submitted.SKCList[0].SKUS)
-	}
-	if got := submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList[0].ImageURL; got != uploaded[0] {
-		t.Fatalf("submitted SKU main image = %q, want uploaded %q", got, uploaded[0])
+	if len(submitted.SKCList[0].SKUS) != 1 || submitted.SKCList[0].SKUS[0].ImageInfo == nil || len(submitted.SKCList[0].SKUS[0].ImageInfo.ImageInfoList) != 0 {
+		t.Fatalf("submitted SKU image info = %+v, want empty for publish payload", submitted.SKCList[0].SKUS)
 	}
 	if len(imageAPI.calls) != len(rendered) {
 		t.Fatalf("upload calls = %+v, want %d unique uploads", imageAPI.calls, len(rendered))
@@ -640,6 +928,70 @@ func TestSubmitTaskBlocksPublishWhenSheinImageUploadFails(t *testing.T) {
 	}
 	if saved.Result.Shein.Submission.LastStatus != "failed" || !strings.Contains(saved.Result.Shein.Submission.LastError, "upload rejected") {
 		t.Fatalf("submission failure = %+v", saved.Result.Shein.Submission)
+	}
+}
+
+func TestSubmitTaskTranslatesChineseSheinContentBeforePublish(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Request.Country = "US"
+	task.Result.Shein.PreviewProduct.MultiLanguageNameList = []sheinproduct.LanguageContent{{Language: "en", Name: "啤酒盖铁板画"}}
+	task.Result.Shein.PreviewProduct.MultiLanguageDescList = []sheinproduct.LanguageContent{{Language: "en", Name: "适用于酒吧和车库装饰。"}}
+	task.Result.Shein.PreviewProduct.SKCList[0].MultiLanguageName = sheinproduct.LanguageContent{Language: "en", Name: "白色"}
+	task.Result.Shein.PreviewProduct.SKCList[0].MultiLanguageNameList = []sheinproduct.LanguageContent{{Language: "en", Name: "白色"}}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	var submitted *sheinproduct.Product
+	translateAPI := &stubSheinTranslateAPI{}
+	contentAI := &stubSheinContentAI{
+		response: `{"title":"Optimized Bottle Cap Metal Sign for Bar and Garage Decor","description":"A durable decorative metal sign designed for wall display in bars, garages, game rooms, and home spaces."}`,
+	}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				publishResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "success", Info: sheinproduct.ResponseInfo{Success: true}},
+			},
+		},
+		SheinTranslateAPIBuilder: stubSheinTranslateAPIBuilder{api: translateAPI},
+		SheinContentOptimizer:    contentAI,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	if got := findSheinLanguageContent(submitted.MultiLanguageNameList, "en"); got != "Optimized Bottle Cap Metal Sign for Bar and Garage Decor" {
+		t.Fatalf("english product name = %q", got)
+	}
+	if got := findSheinLanguageContent(submitted.MultiLanguageNameList, "es"); got != "Spanish Optimized Bottle Cap Metal Sign for Bar and Garage Decor" {
+		t.Fatalf("spanish product name = %q", got)
+	}
+	if got := findSheinLanguageContent(submitted.MultiLanguageDescList, "en"); got != "A durable decorative metal sign designed for wall display in bars, garages, game rooms, and home spaces." {
+		t.Fatalf("english product description = %q", got)
+	}
+	if got := submitted.SKCList[0].MultiLanguageName.Name; got != "English 白色" {
+		t.Fatalf("skc primary name = %q", got)
+	}
+	if len(translateAPI.calls) == 0 {
+		t.Fatal("expected translate API to be called")
+	}
+	if contentAI.calls == 0 {
+		t.Fatal("expected content optimizer to be called")
 	}
 }
 

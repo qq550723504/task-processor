@@ -56,6 +56,36 @@ func TestGormResolutionCacheStoreCreateGetDelete(t *testing.T) {
 	}
 }
 
+func TestGormResolutionCacheStoreDeleteByShortKey(t *testing.T) {
+	store := newResolutionCacheTestStore(t)
+	deleter, ok := store.(ResolutionCacheShortKeyDeleter)
+	if !ok {
+		t.Fatal("store does not support short key deletion")
+	}
+	ctx := context.Background()
+	entry := &SheinResolutionCacheEntry{
+		StoreID:        "42",
+		CacheKind:      ResolutionCacheKindAttribute,
+		CacheKey:       "abcdef1234567890",
+		ShortKey:       "abcdef123456",
+		Source:         "history_cache",
+		ResolutionJSON: `{"status":"resolved","resolved_count":1}`,
+	}
+	if err := store.SaveResolutionCache(ctx, entry); err != nil {
+		t.Fatalf("save cache: %v", err)
+	}
+	if err := deleter.DeleteResolutionCacheByShortKey(ctx, ResolutionCacheKindAttribute, "42", "abcdef123456"); err != nil {
+		t.Fatalf("delete by short key: %v", err)
+	}
+	got, err := store.GetResolutionCache(ctx, ResolutionCacheKindAttribute, "42", "abcdef1234567890")
+	if err != nil {
+		t.Fatalf("get after delete: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("cache entry after short-key delete = %#v, want nil", got)
+	}
+}
+
 func TestGormResolutionCacheStorePreservesManualEntry(t *testing.T) {
 	store := newResolutionCacheTestStore(t)
 	ctx := context.Background()

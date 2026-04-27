@@ -10,11 +10,7 @@ func buildDerivedAttributeInputs(pkg *Package) []common.Attribute {
 	if pkg == nil {
 		return nil
 	}
-	result := make([]common.Attribute, 0, 6)
-	if pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 || len(pkg.RequestDraft.SKCList[0].SKUList) == 0 {
-		return nil
-	}
-	sku := pkg.RequestDraft.SKCList[0].SKUList[0]
+	result := make([]common.Attribute, 0, 12)
 	appendValue := func(name string, value string) {
 		value = strings.TrimSpace(value)
 		if strings.TrimSpace(name) == "" || value == "" {
@@ -23,6 +19,17 @@ func buildDerivedAttributeInputs(pkg *Package) []common.Attribute {
 		result = append(result, common.Attribute{Name: name, Value: value})
 	}
 
+	appendValue("Product Title", firstNonEmpty(pkg.SpuName, pkg.ProductNameEn, pkg.ProductNameMulti))
+	appendValue("Category Name", pkg.CategoryName)
+	if len(pkg.CategoryPath) > 0 {
+		appendValue("Category Path", strings.Join(pkg.CategoryPath, " > "))
+	}
+	appendValue("Description", pkg.Description)
+
+	if pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 || len(pkg.RequestDraft.SKCList[0].SKUList) == 0 {
+		return dedupeAttributeInputs(result)
+	}
+	sku := pkg.RequestDraft.SKCList[0].SKUList[0]
 	appendValue("Length (cm)", sku.Length)
 	appendValue("Width (cm)", sku.Width)
 	appendValue("Height (cm)", sku.Height)

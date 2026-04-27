@@ -235,6 +235,18 @@ func applySheinAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinAttri
 		resolved := append([]sheinpub.ResolvedAttribute(nil), patch.ResolvedAttributes...)
 		pkg.AttributeResolution.ResolvedAttributes = resolved
 		pkg.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), patch.ResolvedAttributes...)
+		if pkg.RequestDraft != nil {
+			pkg.RequestDraft.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), patch.ResolvedAttributes...)
+		}
+	}
+	if patch.PendingAttributes != nil {
+		pkg.AttributeResolution.PendingAttributes = append([]common.Attribute(nil), patch.PendingAttributes...)
+	}
+	if patch.PendingAttributeCandidates != nil {
+		pkg.AttributeResolution.PendingAttributeCandidates = clonePendingAttributeCandidates(patch.PendingAttributeCandidates)
+	}
+	if patch.RecommendedAttributeCandidates != nil {
+		pkg.AttributeResolution.RecommendedAttributeCandidates = clonePendingAttributeCandidates(patch.RecommendedAttributeCandidates)
 	}
 	if patch.ReviewNotes != nil {
 		pkg.AttributeResolution.ReviewNotes = uniqueStrings(append([]string(nil), patch.ReviewNotes...))
@@ -242,6 +254,19 @@ func applySheinAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinAttri
 	if patch.ResolvedCount == nil && patch.ResolvedAttributes != nil {
 		pkg.AttributeResolution.ResolvedCount = len(patch.ResolvedAttributes)
 	}
+}
+
+func clonePendingAttributeCandidates(items []sheinpub.PendingAttributeCandidate) []sheinpub.PendingAttributeCandidate {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]sheinpub.PendingAttributeCandidate, 0, len(items))
+	for _, item := range items {
+		clone := item
+		clone.AttributeValueList = append([]sheinpub.AttributeValueCandidate(nil), item.AttributeValueList...)
+		result = append(result, clone)
+	}
+	return result
 }
 
 func applySheinSaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinSaleAttributeResolutionPatch) {

@@ -123,15 +123,24 @@ export function SDSProductBrowser({
         selection.mockupImageUrls && selection.mockupImageUrls.length > 0
           ? JSON.stringify(selection.mockupImageUrls)
           : undefined,
+      variantIds:
+        selection.selectedVariantIds && selection.selectedVariantIds.length > 0
+          ? selection.selectedVariantIds.join(",")
+          : selection.variants?.map((variant) => variant.variantId).join(","),
       productName: selection.productName,
       variantLabel: selection.variantLabel,
     });
     saveRecentSDSVariant(selection);
     setPickerProductId(undefined);
+    window.setTimeout(() => {
+      document
+        .getElementById("shein-studio-generator")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
   }
 
-  function applyVariant(variant: SDSProductVariant) {
-    applySelection(buildSDSVariantSelection(detail.data, variant));
+  function applyVariants(primary: SDSProductVariant, selectedVariants: SDSProductVariant[]) {
+    applySelection(buildSDSVariantSelection(detail.data, primary, selectedVariants));
   }
 
   function applySearch(keywordValue: string) {
@@ -159,6 +168,7 @@ export function SDSProductBrowser({
       blankDesignUrl: undefined,
       mockupImageUrl: undefined,
       mockupImageUrls: undefined,
+      variantIds: undefined,
       productName: undefined,
       variantLabel: undefined,
     });
@@ -211,7 +221,7 @@ export function SDSProductBrowser({
         </div>
 
         <form
-          className="grid gap-3 rounded-[1.5rem] border border-zinc-200/80 bg-white px-4 py-4 shadow-sm lg:grid-cols-[200px_220px_180px_180px_220px_minmax(0,1fr)_auto]"
+          className="flex flex-wrap items-center gap-3 rounded-[1.5rem] border border-zinc-200/80 bg-white px-4 py-4 shadow-sm"
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
             const formData = new FormData(event.currentTarget);
@@ -219,7 +229,7 @@ export function SDSProductBrowser({
           }}
         >
           <select
-            className="h-12 min-w-[180px] rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+            className="h-12 min-w-[180px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[200px]"
             disabled={shipmentAreas.isLoading || availableShipmentAreas.length === 0}
             defaultValue={shipmentArea}
             key={shipmentArea}
@@ -253,7 +263,7 @@ export function SDSProductBrowser({
             ))}
           </select>
           <select
-            className="h-12 min-w-[180px] rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+            className="h-12 min-w-[180px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[220px]"
             disabled={categories.isLoading}
             key={`${shipmentArea}:${categoryId ?? 0}`}
             name="categoryId"
@@ -287,7 +297,7 @@ export function SDSProductBrowser({
             ))}
           </select>
           <select
-            className="h-12 min-w-[180px] rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+            className="h-12 min-w-[160px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[180px]"
             defaultValue={sortValue}
             key={`sort:${sortValue || "default"}`}
             name="sort"
@@ -303,7 +313,7 @@ export function SDSProductBrowser({
             <option value="min_price:desc">Price high to low</option>
           </select>
           <select
-            className="h-12 min-w-[160px] rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+            className="h-12 min-w-[150px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[170px]"
             defaultValue={weightBand}
             key={`weight:${weightBand || "all"}`}
             name="weightBand"
@@ -321,7 +331,7 @@ export function SDSProductBrowser({
             ))}
           </select>
           <select
-            className="h-12 min-w-[160px] rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+            className="h-12 min-w-[150px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[190px]"
             defaultValue={cycleBand}
             key={`cycle:${cycleBand || "all"}`}
             name="cycleBand"
@@ -339,13 +349,15 @@ export function SDSProductBrowser({
             ))}
           </select>
           <input
-            className="min-w-[240px] rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:bg-white"
+            className="h-12 min-w-[220px] flex-[2_1_280px] rounded-2xl border border-zinc-200 bg-zinc-50 px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:bg-white"
             defaultValue={queryKeyword}
             key={queryKeyword}
             name="keyword"
             placeholder="Search by name or SKU"
           />
-          <Button type="submit">Search</Button>
+          <div className="shrink-0">
+            <Button type="submit">Search</Button>
+          </div>
         </form>
 
         <div className="flex flex-wrap gap-3">
@@ -463,7 +475,7 @@ export function SDSProductBrowser({
           hasError={Boolean(detail.error)}
           isLoading={detail.isLoading}
           onClose={() => setPickerProductId(undefined)}
-          onSelectVariant={applyVariant}
+          onSelectVariants={applyVariants}
           open={pickerOpen}
           product={
             (products.data?.items ?? []).find((product) => product.id === pickerProductId) ??

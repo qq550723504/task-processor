@@ -18,9 +18,9 @@ func resolveDisplayAttributes(
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	llm openaiclient.ChatCompleter,
-) ([]ResolvedAttribute, []common.Attribute, []string) {
+) ([]ResolvedAttribute, []common.Attribute, []PendingAttributeCandidate, []PendingAttributeCandidate, []string) {
 	if len(attributes) == 0 || len(inputs) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	templateIndex := newDisplayTemplateIndex(attributes)
 	resolved := make([]ResolvedAttribute, 0, len(inputs))
@@ -64,7 +64,7 @@ func resolveDisplayAttributes(
 	}
 
 	for _, entry := range dependent {
-		if !dependencyIsActive(entry.Attr, resolvedByID) {
+		if !dependencyIsActiveWithInputs(entry.Attr, resolvedByID, inputs) {
 			notes = append(notes, fmt.Sprintf(
 				"SHEIN 联动属性暂未生效: 源属性 %q 当前依赖上游属性 %d，暂不纳入展示属性映射",
 				strings.TrimSpace(entry.Source.Name),
@@ -81,9 +81,29 @@ func resolveDisplayAttributes(
 	}
 	notes = append(notes, inferNotes...)
 
-	pending := buildDependencyPendingAttributes(templateIndex.attributes, resolved)
+	batchInferred, batchInferNotes := inferMissingRequiredDisplayAttributesBatch(templateIndex.attributes, inputs, resolvedByID, llm)
+	if len(batchInferred) > 0 {
+		resolved = append(resolved, batchInferred...)
+	}
+	notes = append(notes, batchInferNotes...)
+
+	repairInferred, repairInferNotes := inferMissingRequiredDisplayAttributesRepair(templateIndex.attributes, inputs, resolvedByID, llm)
+	if len(repairInferred) > 0 {
+		resolved = append(resolved, repairInferred...)
+	}
+	notes = append(notes, repairInferNotes...)
+
+	semanticInferred, semanticInferNotes := inferMissingRequiredDisplayAttributesFromCandidateSemantics(templateIndex.attributes, inputs, resolvedByID)
+	if len(semanticInferred) > 0 {
+		resolved = append(resolved, semanticInferred...)
+	}
+	notes = append(notes, semanticInferNotes...)
+
+	pending := buildDependencyPendingAttributes(templateIndex.attributes, resolved, inputs)
+	pendingCandidates := buildPendingAttributeCandidates(templateIndex.attributes, resolved, inputs)
+	recommendedCandidates := buildRecommendedAttributeCandidates(templateIndex.attributes, resolved, inputs)
 	for _, attr := range pending {
 		notes = append(notes, fmt.Sprintf("SHEIN 必填展示属性缺失: 模板属性 %q 当前未从源商品中提取到值", strings.TrimSpace(attr.Name)))
 	}
-	return resolved, pending, dedupeStrings(notes)
+	return resolved, pending, pendingCandidates, recommendedCandidates, dedupeStrings(notes)
 }

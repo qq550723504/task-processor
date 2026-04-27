@@ -53,7 +53,7 @@ func (r *attributeResolver) Resolve(req *BuildRequest, canonical *productenrich.
 	}).Info("loaded SHEIN display attribute templates")
 	resolution.Source = "attribute_templates"
 	resolution.TemplateCount = len(templates.Data)
-	resolution.ResolvedAttributes, resolution.PendingAttributes, resolution.ReviewNotes = matchAttributes(templates, pkg, r.llm)
+	resolution.ResolvedAttributes, resolution.PendingAttributes, resolution.PendingAttributeCandidates, resolution.RecommendedAttributeCandidates, resolution.ReviewNotes = matchAttributes(templates, pkg, r.llm)
 	for _, item := range resolution.ResolvedAttributes {
 		if item.AttributeID > 0 {
 			resolution.ResolvedCount++
@@ -80,13 +80,13 @@ func (r *attributeResolver) Resolve(req *BuildRequest, canonical *productenrich.
 	return resolution
 }
 
-func matchAttributes(templates *sheinattribute.AttributeTemplateInfo, pkg *Package, llm openaiclient.ChatCompleter) ([]ResolvedAttribute, []common.Attribute, []string) {
+func matchAttributes(templates *sheinattribute.AttributeTemplateInfo, pkg *Package, llm openaiclient.ChatCompleter) ([]ResolvedAttribute, []common.Attribute, []PendingAttributeCandidate, []PendingAttributeCandidate, []string) {
 	if templates == nil || len(templates.Data) == 0 || pkg == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	inputs := buildAttributeInputs(pkg)
 	if len(inputs) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 	return resolveDisplayAttributes(templates.Data[0].AttributeInfos, inputs, llm)
 }

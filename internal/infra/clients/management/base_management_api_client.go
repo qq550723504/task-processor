@@ -5,9 +5,12 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/imroc/req/v3"
 )
+
+const defaultManagementAPITimeout = 8 * time.Second
 
 // ManagementAPIClient 管理系统API客户端实现
 type ManagementAPIClient struct {
@@ -23,7 +26,7 @@ type ManagementAPIClient struct {
 func NewManagementAPIClientWithBaseURL(baseURL string) *ManagementAPIClient {
 	return &ManagementAPIClient{
 		baseURL:    baseURL,
-		httpClient: req.C(),
+		httpClient: req.C().SetTimeout(defaultManagementAPITimeout),
 	}
 }
 

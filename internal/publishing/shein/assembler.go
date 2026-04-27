@@ -45,6 +45,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 
 	images := common.BuildImages(canonical, image)
 	spuName := common.WithBrandHint(canonical.Title, req.BrandHint)
+	copy := buildSheinListingCopy(canonical, spuName)
 	brand := common.ResolveBrand(req.BrandHint, canonical)
 	variants := common.BuildVariants(canonical)
 	productAttributes := common.BuildAttributes(canonical.Attributes)
@@ -54,29 +55,23 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 	pkg := &Package{
 		SpuName:           spuName,
 		BrandName:         brand,
-		ProductNameEn:     spuName,
-		ProductNameMulti:  common.FirstNonEmpty(strings.TrimSpace(canonical.Description), spuName),
+		ProductNameEn:     copy.Title,
+		ProductNameMulti:  copy.Title,
 		CategoryName:      categoryName,
 		CategoryPath:      append([]string(nil), canonical.CategoryPath...),
-		Description:       canonical.Description,
+		Description:       copy.Description,
 		SellingPoints:     append([]string(nil), canonical.SellingPoints...),
 		Attributes:        common.FlattenAttributes(canonical.Attributes),
 		ProductAttributes: productAttributes,
 		SiteList:          siteList,
 		Images:            images,
 		RequestDraft: &RequestDraft{
-			SpuName: spuName,
-			MultiLanguageNameList: []LocalizedText{
-				{Language: req.Language, Name: spuName},
-				{Language: "en", Name: spuName},
-			},
-			MultiLanguageDescList: []LocalizedText{
-				{Language: req.Language, Name: canonical.Description},
-				{Language: "en", Name: canonical.Description},
-			},
-			ProductAttributeList: productAttributes,
-			ImageInfo:            BuildImageDraft(images),
-			SiteList:             siteList,
+			SpuName:               spuName,
+			MultiLanguageNameList: localizedEnglishText(req.Language, copy.Title),
+			MultiLanguageDescList: localizedEnglishText(req.Language, copy.Description),
+			ProductAttributeList:  productAttributes,
+			ImageInfo:             BuildImageDraft(images),
+			SiteList:              siteList,
 		},
 		Metadata: map[string]string{
 			"target_platform": "shein",
@@ -138,6 +133,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 			}
 		}
 	}
+	NormalizeListingCopy(pkg, canonical, req.Language)
 	groups := buildVariantGroups(variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
 	supplierCode := firstSupplierCode(pkg.SkcList)

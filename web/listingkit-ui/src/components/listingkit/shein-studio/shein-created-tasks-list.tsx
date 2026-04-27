@@ -45,7 +45,11 @@ export function SheinCreatedTasksList({
                 Open status
               </Button>
               <Button
-                onClick={() => router.push(`/listing-kits/${task.id}/workspace`)}
+                onClick={() =>
+                  router.push(
+                    `/listing-kits/${task.id}/workspace?platform=shein&section_key=general_review`,
+                  )
+                }
                 tone="ghost"
               >
                 Review SHEIN data

@@ -15,6 +15,14 @@ const (
 	KSheinContentOptimizerOptimizeTitleDescriptionSystem = "shein.content_optimizer.optimize_title_description_system"
 	KSheinContentOptimizerOptimizeTitleDescriptionUser   = "shein.content_optimizer.optimize_title_description_user"
 
+	// ── shein/display_attribute.yaml ───────────────────────────────────────
+	KSheinDisplayAttributeFieldSelection = "shein.display_attribute.field_selection"
+	KSheinDisplayAttributeValueMapping   = "shein.display_attribute.value_mapping"
+	KSheinDisplayAttributeMissingText    = "shein.display_attribute.missing_text"
+	KSheinDisplayAttributeMissingValue   = "shein.display_attribute.missing_value"
+	KSheinDisplayAttributeBatchInference = "shein.display_attribute.batch_inference"
+	KSheinDisplayAttributeRequiredRepair = "shein.display_attribute.required_repair"
+
 	// ── shein/translation.yaml ─────────────────────────────────────────────
 	KSheinTranslationBatchOptimizeSystem = "shein.translation.batch_optimize_system"
 
@@ -47,11 +55,13 @@ const (
 	KProductEnrichGenerationExtractWeight     = "productenrich.generation.extract_weight"
 
 	// ── productimage/generation.yaml ───────────────────────────────────────
-	KProductImageSubjectExtract         = "productimage.subject.extract"
-	KProductImageWhiteBackgroundDefault = "productimage.white_background.default"
-	KProductImageSceneDefault           = "productimage.scene.default"
-	KProductImageSceneShoes             = "productimage.scene.shoes"
-	KProductImageSceneJewelry           = "productimage.scene.jewelry"
-	KProductImageSceneBags              = "productimage.scene.bags"
-	KProductImageReviewDefault          = "productimage.review.default"
+	KProductImageSubjectExtract                     = "productimage.subject.extract"
+	KProductImageWhiteBackgroundDefault             = "productimage.white_background.default"
+	KProductImageSceneDefault                       = "productimage.scene.default"
+	KProductImageSceneShoes                         = "productimage.scene.shoes"
+	KProductImageSceneJewelry                       = "productimage.scene.jewelry"
+	KProductImageSceneBags                          = "productimage.scene.bags"
+	KProductImageReviewDefault                      = "productimage.review.default"
+	KProductImageStudioGenerationPodDesign          = "productimage.studio_generation.pod_design"
+	KProductImageStudioGenerationAmazonProductImage = "productimage.studio_generation.amazon_product_image"
 )

@@ -48,14 +48,14 @@ openai:
   # 请求池配置 - 更保守的设置
 # 管理API配置
 management:
-  baseURL: "http://getway.linkcloudai.com"
+  baseURL: "https://api.shuomiai.com"
   clientID: "go-listing"
   clientSecret: ""
-  tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
+  tokenURL: "https://api.shuomiai.com/admin-api/system/oauth2/token"
   scopes: ["user.read"]
   #tenantID: "286"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [873] # 仅用于平台调度任务/legacy fallback，不再用于主上架消费链
+  storeIDs: [869] # 仅用于平台调度任务/legacy fallback，不再用于主上架消费链
 
 platforms:
   # TEMU 平台配置

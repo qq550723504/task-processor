@@ -126,3 +126,21 @@ func TestBuildCategoryFamilyConflictSummaryUsesSemanticValidation(t *testing.T) 
 		t.Fatalf("reason = %q, want semantic mismatch hint", reason)
 	}
 }
+
+func TestBuildCategoryFamilyConflictSummaryTrustsCompatibleSemanticValidation(t *testing.T) {
+	recommend, reason := buildCategoryFamilyConflictSummary(&productenrich.CanonicalProduct{
+		Title: "Washed denim hat",
+	}, &Package{
+		CategoryPath: []string{"服饰装饰品", "女士配饰", "女士帽子", "女士棒球帽"},
+		CategoryResolution: &CategoryResolution{
+			MatchedPath: []string{"服饰装饰品", "女士配饰", "女士帽子", "女士棒球帽"},
+			SemanticValidation: &CategorySemanticValidation{
+				Verdict: "compatible",
+				Reason:  "denim hat semantics fit baseball caps",
+			},
+		},
+	})
+	if recommend {
+		t.Fatalf("recommend = true, reason=%q; compatible semantic validation should not be re-blocked by leaf token mismatch", reason)
+	}
+}

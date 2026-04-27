@@ -49,6 +49,7 @@ func (i *templateIndex) Match(name, value string) ResolvedAttribute {
 		AttributeExtraValue: value,
 		MatchedBy:           "attribute_name",
 		Required:            isTemplateRequired(*attr),
+		Important:           isTemplateImportant(*attr),
 		SKCScope:            attr.SKCScope != nil && *attr.SKCScope,
 	}
 	for _, option := range attr.AttributeValueInfoList {
@@ -80,11 +81,13 @@ func matchesAnyName(name string, candidates []string) bool {
 }
 
 func collectAttributeNames(attr sheinattribute.AttributeInfo) []string {
-	names := []string{attr.AttributeName, attr.AttributeNameEn}
-	names = append(names, attributeAliasesForName(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName))...)
-	return names
+	return []string{attr.AttributeName, attr.AttributeNameEn}
 }
 
 func isTemplateRequired(attr sheinattribute.AttributeInfo) bool {
-	return attr.AttributeInputNum > 0
+	return len(attr.AttributeRemarkList) > 0 || attr.AttributeStatus == 3
+}
+
+func isTemplateImportant(attr sheinattribute.AttributeInfo) bool {
+	return attr.AttributeLabel > 0
 }

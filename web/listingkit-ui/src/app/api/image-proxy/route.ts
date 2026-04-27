@@ -13,6 +13,7 @@ const DEFAULT_ALLOWED_HOSTS = [
   "e.sdspod.com",
   "img.sdspod.com",
   "sdspod.com",
+  "oss.shuomiai.com",
 ];
 const REQUEST_HEADERS = {
   Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
@@ -23,9 +24,19 @@ const REQUEST_HEADERS = {
 
 function allowedHosts() {
   const configured = process.env.IMAGE_PROXY_ALLOWED_HOSTS?.split(",") ?? [];
-  return [...DEFAULT_ALLOWED_HOSTS, ...configured]
+  const privateHosts = allowPrivateHosts()
+    ? ["127.0.0.1", "localhost", "::1"]
+    : [];
+  return [...DEFAULT_ALLOWED_HOSTS, ...privateHosts, ...configured]
     .map((host) => host.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function allowPrivateHosts() {
+  return (
+    process.env.IMAGE_PROXY_ALLOW_PRIVATE === "1" ||
+    process.env.NODE_ENV !== "production"
+  );
 }
 
 function hostMatches(hostname: string, allowedHost: string) {
@@ -87,7 +98,11 @@ async function validateImageURL(url: URL) {
   }
 
   const addresses = await lookup(hostname, { all: true, verbatim: true });
-  if (addresses.length === 0 || addresses.some((address) => isBlockedAddress(address.address))) {
+  if (
+    addresses.length === 0 ||
+    (!allowPrivateHosts() &&
+      addresses.some((address) => isBlockedAddress(address.address)))
+  ) {
     return "host_not_allowed";
   }
 

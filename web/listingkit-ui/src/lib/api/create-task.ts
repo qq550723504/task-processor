@@ -8,5 +8,6 @@ export function createListingKitTask(body: CreateListingKitTaskRequest) {
   return apiRequest<CreateListingKitTaskResponse>("/generate", {
     method: "POST",
     body,
+    timeoutMs: 150_000,
   });
 }

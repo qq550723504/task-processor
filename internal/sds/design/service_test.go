@@ -286,6 +286,97 @@ func TestSelectFinishedProductImageURLsUsesNewestMatchingMaterial(t *testing.T) 
 	}
 }
 
+func TestBuildSaveDesignRequestPreservesPrintableLayerInputs(t *testing.T) {
+	t.Parallel()
+
+	result := &PrepareSyncDesignResult{
+		Page: &DesignProductPage{
+			PSDs: []PSDDocument{
+				{ThumbnailURL: "https://cdn.sdspod.com/images/baseball-cap-thumb.jpg"},
+			},
+		},
+		Material: &UploadedMaterial{
+			Material: &Material{
+				ID:       460264499,
+				ImageURL: "https://cdn.sdspod.com/imagesThumbs/91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/material.png",
+			},
+		},
+		Request: &SyncDesignRequest{
+			ProductID:        96770,
+			PrototypeGroupID: 15508,
+			DesignType:       "material",
+			Prototypes: []SyncDesignPrototype{
+				{
+					PrototypeID: "743672383889936385",
+					ProductIDs:  []int64{96770},
+					PSDIDs:      []string{"743672653353951232"},
+					Images:      []string{"http://e.sdspod.com/builds?content=fused"},
+					Layers: []SyncDesignLayer{
+						{
+							LayerID:            "743672384191926272",
+							Content:            "",
+							ImgWidth:           1000,
+							ImgHeight:          600,
+							ResizeMode:         0,
+							FitLevel:           1,
+							FabricJSON:         `{"objects":[{"src":"https://cdn.sdspod.com/material.png?material_id=460264499"}]}`,
+							RelatedMaterialIDs: []int64{460264499},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	req := buildSaveDesignRequest(result)
+	if len(req.Prototypes) != 1 || len(req.Prototypes[0].Images) != 1 {
+		t.Fatalf("save request images = %+v, want SDS thumbnail urls", req.Prototypes)
+	}
+	if req.Prototypes[0].Images[0] != "https://cdn.sdspod.com/images/baseball-cap-thumb.jpg" {
+		t.Fatalf("save request image = %q, want SDS thumbnail url", req.Prototypes[0].Images[0])
+	}
+	layer := req.Prototypes[0].Layers[0]
+	if layer.ImgWidth != 1000 || layer.ImgHeight != 600 {
+		t.Fatalf("save layer dimensions = %dx%d, want original printable area", layer.ImgWidth, layer.ImgHeight)
+	}
+	if layer.FabricJSON == "" {
+		t.Fatal("save layer lost fabric json")
+	}
+	if layer.Content != "91rr3AHARTasVhdqqVyNm4TGH9ub5wHb8VhZiE45/material.png" {
+		t.Fatalf("save layer content = %q, want material content path", layer.Content)
+	}
+	if layer.MaterialID != int64(460264499) || layer.DesignMaterialID != 460264499 {
+		t.Fatalf("save material ids = %+v/%d, want uploaded material id", layer.MaterialID, layer.DesignMaterialID)
+	}
+}
+
+func TestSelectFinishedProductImageURLsSkipsRejectedCandidate(t *testing.T) {
+	t.Parallel()
+
+	urls := selectFinishedProductImageURLsWithAccept([]DesignProductListItem{
+		{
+			ProductID:         101,
+			BuildFinish:       true,
+			FinishTime:        30,
+			MaterialImageName: "listingkit-studio-design",
+			ImageURLs:         []string{"https://cdn.sdspod.com/out/blank.jpg"},
+		},
+		{
+			ProductID:         101,
+			BuildFinish:       true,
+			FinishTime:        20,
+			MaterialImageName: "listingkit-studio-design",
+			ImageURLs:         []string{"https://cdn.sdspod.com/out/rendered.jpg"},
+		},
+	}, 101, "listingkit-studio-design", func(urls []string) bool {
+		return len(urls) > 0 && !strings.Contains(urls[0], "blank")
+	})
+
+	if strings.Join(urls, "|") != "https://cdn.sdspod.com/out/rendered.jpg" {
+		t.Fatalf("unexpected finished product urls: %+v", urls)
+	}
+}
+
 func TestSelectFinishedProductImageURLsRejectsMismatchedMaterial(t *testing.T) {
 	t.Parallel()
 
@@ -301,6 +392,23 @@ func TestSelectFinishedProductImageURLsRejectsMismatchedMaterial(t *testing.T) {
 
 	if len(urls) != 0 {
 		t.Fatalf("expected mismatched finished product urls to be ignored: %+v", urls)
+	}
+}
+
+func TestSelectFinishedProductImageURLsRejectsMissingMaterialWhenExpected(t *testing.T) {
+	t.Parallel()
+
+	urls := selectFinishedProductImageURLs([]DesignProductListItem{
+		{
+			ProductID:   101,
+			BuildFinish: true,
+			FinishTime:  10,
+			ImageURLs:   []string{"https://cdn.sdspod.com/out/0/202604/rendered.jpg"},
+		},
+	}, 101, "listingkit-studio-design")
+
+	if len(urls) != 0 {
+		t.Fatalf("expected unidentified finished product urls to be ignored: %+v", urls)
 	}
 }
 
@@ -368,6 +476,28 @@ func TestRenderedImageURLsReadyWaitsForExpectedPSDCount(t *testing.T) {
 		t.Fatal("all expected renders should be ready")
 	}
 }
+
+func TestIsSDSTooFrequentError(t *testing.T) {
+	t.Parallel()
+
+	if !isSDSTooFrequentError(assertErr("sds POST /ps/design/add_and_design failed with status 400: {\"msg\":\"您提交得太频繁了，请稍后再试!\"}")) {
+		t.Fatal("expected Chinese SDS rate limit error to be detected")
+	}
+	if !isSDSTooFrequentError(assertErr("too frequent")) {
+		t.Fatal("expected English rate limit error to be detected")
+	}
+	if isSDSTooFrequentError(assertErr("permission denied")) {
+		t.Fatal("unrelated error should not be treated as rate limit")
+	}
+}
+
+func assertErr(message string) error {
+	return errString(message)
+}
+
+type errString string
+
+func (e errString) Error() string { return string(e) }
 
 func TestBuildFabricJSON(t *testing.T) {
 	t.Parallel()

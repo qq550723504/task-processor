@@ -4,8 +4,28 @@ export type SheinStudioGeneratedDesign = {
   id: string;
   dataUrl?: string;
   imageUrl?: string;
+  productImageUrls?: string[];
   revisedPrompt?: string;
+  role?: string;
+  roleLabel?: string;
   reviewNote?: string;
+};
+
+export type SheinStudioImageStrategy =
+  | "ai_generated"
+  | "sds_official"
+  | "hybrid";
+
+export type SheinStudioProductImagePrompt = {
+  role: string;
+  label: string;
+  prompt: string;
+};
+
+export type SheinStudioVariantProductImageSet = {
+  variantSku?: string;
+  color?: string;
+  imageUrls: string[];
 };
 
 export type SheinStudioCreatedTask = {
@@ -19,6 +39,7 @@ export type SheinStudioGenerateRequest = {
   count: number;
   printableWidth?: number;
   printableHeight?: number;
+  productReferenceImageUrls?: string[];
 };
 
 export type SheinStudioGenerateResponse = {
@@ -33,7 +54,11 @@ export type SheinStudioSavedBatch = {
   name: string;
   prompt: string;
   styleCount: string;
+  productImageCount?: string;
+  productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
   sheinStoreId: string;
+  imageStrategy?: SheinStudioImageStrategy;
   selectionVariantId?: number;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];

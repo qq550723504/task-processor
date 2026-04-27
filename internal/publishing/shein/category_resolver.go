@@ -77,6 +77,17 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.C
 				resolution.QueryText = suggestQuery
 				resolution.ReviewNotes = append(resolution.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
 			} else {
+				if tree, treeErr := r.api.GetCategoryTree(); treeErr == nil {
+					if hydrated := hydrateCategoryResolutionFromTree(tree, selectedID, "suggest_category_by_text", suggestQuery); hydrated != nil {
+						hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+						if !semanticRejectsCategory(hydrated.SemanticValidation) {
+							return hydrated
+						}
+						hydrated.Status = "partial"
+						hydrated.ReviewNotes = append(hydrated.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
+						return hydrated
+					}
+				}
 				resolution.Source = "suggest_category_by_text"
 				resolution.Status = "partial"
 				resolution.QueryText = suggestQuery
@@ -114,6 +125,15 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.C
 				resolution.QueryText = treeQuery
 				resolution.ReviewNotes = append(resolution.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
 			}
+			if hydrated := hydrateCategoryResolutionFromTree(tree, selectedID, "ai_category_tree", treeQuery); hydrated != nil {
+				hydrated.SemanticValidation = r.semanticValidation(canonical, pkg, hydrated.MatchedPath)
+				if !semanticRejectsCategory(hydrated.SemanticValidation) {
+					return hydrated
+				}
+				hydrated.Status = "partial"
+				hydrated.ReviewNotes = append(hydrated.ReviewNotes, buildSemanticCategoryReviewNote(hydrated.SemanticValidation))
+				return hydrated
+			}
 			resolution.Source = "ai_category_tree"
 			resolution.Status = "partial"
 			resolution.QueryText = treeQuery
@@ -128,6 +148,57 @@ func (r *categoryResolver) Resolve(req *BuildRequest, canonical *productenrich.C
 		resolution.ReviewNotes = append(resolution.ReviewNotes, "SHEIN 类目解析未命中，请补充 target_category_hint 或接入类目接口")
 	}
 	return resolution
+}
+
+func hydrateCategoryResolutionFromTree(tree *sheincategory.CategoryTreeResponse, categoryID int, source, query string) *CategoryResolution {
+	if tree == nil || categoryID <= 0 {
+		return nil
+	}
+	path, ok := findCategoryTreePath(tree.Data, categoryID, nil)
+	if !ok || len(path) == 0 {
+		return nil
+	}
+	last := path[len(path)-1]
+	matchedPath := make([]string, 0, len(path))
+	idList := make([]int, 0, len(path))
+	for _, node := range path {
+		if strings.TrimSpace(node.CategoryName) != "" {
+			matchedPath = append(matchedPath, node.CategoryName)
+		}
+		if node.CategoryID > 0 {
+			idList = append(idList, node.CategoryID)
+		}
+	}
+	resolution := &CategoryResolution{
+		Status:         "resolved",
+		Source:         source,
+		QueryText:      query,
+		MatchedPath:    matchedPath,
+		CategoryID:     last.CategoryID,
+		CategoryIDList: idList,
+		ProductTypeID:  last.ProductTypeID,
+	}
+	if len(path) > 0 {
+		resolution.TopCategoryID = path[0].CategoryID
+	}
+	if len(matchedPath) == 0 || len(idList) == 0 {
+		resolution.Status = "partial"
+		resolution.ReviewNotes = append(resolution.ReviewNotes, "类目树已命中，但类目路径信息不完整")
+	}
+	return resolution
+}
+
+func findCategoryTreePath(nodes []sheincategory.CategoryTreeNode, categoryID int, parents []sheincategory.CategoryTreeNode) ([]sheincategory.CategoryTreeNode, bool) {
+	for _, node := range nodes {
+		nextPath := append(append([]sheincategory.CategoryTreeNode(nil), parents...), node)
+		if node.CategoryID == categoryID {
+			return nextPath, true
+		}
+		if path, ok := findCategoryTreePath(node.Children, categoryID, nextPath); ok {
+			return path, true
+		}
+	}
+	return nil, false
 }
 
 func firstNonEmptyCategoryQuery(values ...string) string {
@@ -245,6 +316,10 @@ func (r *categoryResolver) semanticValidation(canonical *productenrich.Canonical
 
 func semanticRejectsCategory(validation *CategorySemanticValidation) bool {
 	return validation != nil && strings.EqualFold(strings.TrimSpace(validation.Verdict), "incompatible")
+}
+
+func semanticAcceptsCategory(validation *CategorySemanticValidation) bool {
+	return validation != nil && strings.EqualFold(strings.TrimSpace(validation.Verdict), "compatible")
 }
 
 func buildSemanticCategoryReviewNote(validation *CategorySemanticValidation) string {

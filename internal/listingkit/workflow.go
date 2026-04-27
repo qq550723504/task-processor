@@ -15,7 +15,7 @@ import (
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
-const sdsDesignSyncTimeout = 75 * time.Second
+const sdsDesignSyncTimeout = 130 * time.Second
 
 func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResult, error) {
 	result := initResult(task)
@@ -78,7 +78,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 			}
 		}
 	}
-	if imageResult == nil && shouldRunStudioInline(task.Request) {
+	if imageResult == nil && shouldRunStudioInline(task.Request) && shouldUseSDSOfficialImages(task.Request) {
 		s.syncSDSDesignFromRemote(ctx, task, result)
 	}
 	var sdsOptions *SDSSyncOptions
@@ -158,7 +158,12 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	final.AssetInventorySummary = result.AssetInventorySummary
 	final.SDSSync = result.SDSSync
 	final.ChildTasks = append([]ChildTaskState(nil), result.ChildTasks...)
-	applySDSTemplateImagesToShein(final.Shein, final.SDSSync, task.Request.ImageURLs)
+	if shouldUseSDSOfficialImages(task.Request) {
+		applySDSTemplateImagesToShein(final.Shein, final.SDSSync, task.Request.ImageURLs)
+	}
+	if shouldUseSheinStudioAIImages(task.Request) {
+		applySheinStudioAIImagesToShein(final.Shein, task.Request)
+	}
 	if final.Summary == nil {
 		final.Summary = &GenerationSummary{}
 	}
@@ -263,7 +268,7 @@ func shouldSyncSDS(req *GenerateRequest) bool {
 	return req != nil &&
 		req.Options != nil &&
 		req.Options.SDS != nil &&
-		req.Options.SDS.VariantID > 0
+		(req.Options.SDS.VariantID > 0 || len(req.Options.SDS.Variants) > 0)
 }
 
 func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *ListingKitResult, imageResult *productimage.ImageProcessResult) {
@@ -286,6 +291,7 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 			LayerID:          options.LayerID,
 			FitLevel:         options.FitLevel,
 			ResizeMode:       options.ResizeMode,
+			BlankDesignURL:   options.BlankDesignURL,
 		},
 		ImageResult: imageResult,
 	})
@@ -295,12 +301,7 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 			Status:    "failed",
 			Error:     err.Error(),
 		}
-		s.applyLocalSDSMockupFallback(ctx, result, firstImageResultURL(imageResult), options)
-		if result.SDSSync != nil && result.SDSSync.Status == "local_rendered" {
-			markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "SDS render unavailable; local composite used")
-		} else {
-			markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
-		}
+		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
 		appendWarning(result, "sds design sync failed: "+err.Error())
 		return
 	}
@@ -311,7 +312,13 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 		result.SDSSync = buildSDSSyncSummary(options, nil)
 	}
 	if needsLocalSDSMockupFallback(result.SDSSync, options) {
-		s.applyLocalSDSMockupFallback(ctx, result, firstImageResultURL(imageResult), options)
+		appendWarning(result, "SDS render returned fewer images than expected; local fallback disabled")
+	}
+	if sdsRenderedLooksBlank(ctx, result.SDSSync, options) {
+		result.SDSSync.Status = "failed"
+		result.SDSSync.Error = "SDS render returned blank template"
+		result.SDSSync.MockupImageURLs = nil
+		appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
 }
@@ -324,6 +331,10 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	options := task.Request.Options.SDS
 	imageURL := strings.TrimSpace(task.Request.ImageURLs[0])
 	if imageURL == "" {
+		return
+	}
+	if len(options.Variants) > 0 {
+		s.syncSDSDesignVariantsFromRemote(ctx, task, result, imageURL)
 		return
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
@@ -340,6 +351,7 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 			LayerID:          options.LayerID,
 			FitLevel:         options.FitLevel,
 			ResizeMode:       options.ResizeMode,
+			BlankDesignURL:   options.BlankDesignURL,
 		},
 		Image: sdsusecase.ImageSource{
 			URL:      imageURL,
@@ -352,21 +364,152 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 			Status:    "failed",
 			Error:     err.Error(),
 		}
-		s.applyLocalSDSMockupFallback(ctx, result, imageURL, options)
-		if result.SDSSync != nil && result.SDSSync.Status == "local_rendered" {
-			markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "SDS render unavailable; local composite used")
-		} else {
-			markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
-		}
+		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
 		appendWarning(result, "sds template render failed: "+err.Error())
 		return
 	}
 
 	result.SDSSync = buildSDSSyncSummary(options, syncResult.DesignResult)
 	if needsLocalSDSMockupFallback(result.SDSSync, options) {
-		s.applyLocalSDSMockupFallback(ctx, result, imageURL, options)
+		appendWarning(result, "SDS render returned fewer images than expected; local fallback disabled")
+	}
+	if sdsRenderedLooksBlank(ctx, result.SDSSync, options) {
+		result.SDSSync.Status = "failed"
+		result.SDSSync.Error = "SDS render returned blank template"
+		result.SDSSync.MockupImageURLs = nil
+		appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
+}
+
+func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Task, result *ListingKitResult, imageURL string) {
+	options := task.Request.Options.SDS
+	representatives := representativeSDSVariantsByColor(options.Variants)
+	if len(representatives) == 0 {
+		return
+	}
+	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
+
+	primary := representatives[0]
+	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
+	defer cancel()
+	syncResult, err := s.sdsSyncSvc.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
+		Sync: sdsusecase.SyncInput{
+			VariantID:         firstNonZeroInt64(primary.VariantID, options.VariantID),
+			RelatedVariantIDs: sdsVariantIDs(representatives),
+			ParentProductID:   options.ParentProductID,
+			PrototypeGroupID:  firstNonZeroInt64(primary.PrototypeGroupID, options.PrototypeGroupID),
+			DesignType:        options.DesignType,
+			LayerID:           firstNonEmptyString(primary.LayerID, options.LayerID),
+			FitLevel:          options.FitLevel,
+			ResizeMode:        options.ResizeMode,
+			BlankDesignURL:    firstNonEmptyString(primary.BlankDesignURL, options.BlankDesignURL),
+		},
+		Image: sdsusecase.ImageSource{
+			URL:      imageURL,
+			FileName: studioSDSMaterialFileName(task),
+		},
+	})
+	if err != nil {
+		result.SDSSync = &SDSSyncSummary{
+			VariantID:    primary.VariantID,
+			VariantSKU:   strings.TrimSpace(primary.VariantSKU),
+			VariantSize:  strings.TrimSpace(primary.Size),
+			VariantColor: strings.TrimSpace(primary.Color),
+			Status:       "failed",
+			Error:        err.Error(),
+		}
+		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
+		appendWarning(result, "SDS template render failed: "+err.Error())
+		return
+	}
+
+	summaries := buildSDSVariantSyncSummaries(options, representatives, syncResult.DesignResult)
+	result.SDSSync = mergeSDSVariantSyncSummaries(options, summaries)
+	if result.SDSSync.Status == "failed" {
+		appendWarning(result, result.SDSSync.Error)
+		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), result.SDSSync.Error)
+		return
+	}
+	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
+}
+
+func sdsVariantIDs(variants []SDSSyncVariantOption) []int64 {
+	ids := make([]int64, 0, len(variants))
+	seen := map[int64]struct{}{}
+	for _, variant := range variants {
+		if variant.VariantID <= 0 {
+			continue
+		}
+		if _, ok := seen[variant.VariantID]; ok {
+			continue
+		}
+		seen[variant.VariantID] = struct{}{}
+		ids = append(ids, variant.VariantID)
+	}
+	return ids
+}
+
+func representativeSDSVariantsByColor(variants []SDSSyncVariantOption) []SDSSyncVariantOption {
+	seen := map[string]struct{}{}
+	result := make([]SDSSyncVariantOption, 0, len(variants))
+	for _, variant := range variants {
+		key := strings.ToLower(strings.TrimSpace(variant.Color))
+		if key == "" {
+			key = "__default__"
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, variant)
+	}
+	return result
+}
+
+func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSummary) *SDSSyncSummary {
+	merged := &SDSSyncSummary{Status: "failed", Error: "SDS did not render any selected color variants"}
+	if options != nil {
+		merged.VariantID = options.VariantID
+	}
+	var failedColors []string
+	var primary *SDSSyncSummary
+	for _, summary := range summaries {
+		if summary.Status == "failed" || len(summary.MockupImageURLs) == 0 {
+			label := strings.TrimSpace(summary.VariantColor)
+			if label == "" {
+				label = strings.TrimSpace(summary.VariantSKU)
+			}
+			if label == "" {
+				label = "unknown"
+			}
+			failedColors = append(failedColors, label)
+			continue
+		}
+		if primary == nil {
+			copy := summary
+			primary = &copy
+		}
+	}
+	if primary != nil {
+		*merged = *primary
+		merged.VariantResults = append([]SDSSyncSummary(nil), summaries...)
+	}
+	if len(failedColors) > 0 {
+		merged.Status = "failed"
+		merged.Error = "SDS render failed for selected color variants: " + strings.Join(uniqueNonEmptyStrings(failedColors), ", ")
+		merged.MockupImageURLs = nil
+	}
+	return merged
+}
+
+func firstNonZeroInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value != 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func studioSDSMaterialFileName(task *Task) string {

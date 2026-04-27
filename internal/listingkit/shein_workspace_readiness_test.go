@@ -205,7 +205,7 @@ func TestBuildSheinSubmitReadinessAcceptsDraftMainImage(t *testing.T) {
 	}
 }
 
-func TestBuildSheinSubmitReadinessAcceptsResolvedCustomSaleValuesFromDraft(t *testing.T) {
+func TestBuildSheinSubmitReadinessBlocksPartialCustomSaleValuesFromDraft(t *testing.T) {
 	t.Parallel()
 
 	productTypeID := 901
@@ -267,20 +267,28 @@ func TestBuildSheinSubmitReadinessAcceptsResolvedCustomSaleValuesFromDraft(t *te
 	if readiness == nil {
 		t.Fatal("expected readiness")
 	}
-	if readiness.Ready != true {
-		t.Fatalf("ready = false, want true; readiness=%+v", readiness)
+	if readiness.Ready {
+		t.Fatalf("ready = true, want false; readiness=%+v", readiness)
 	}
-	if readiness.Status != "ready" {
-		t.Fatalf("status = %q, want ready", readiness.Status)
+	if readiness.Status != "blocked" {
+		t.Fatalf("status = %q, want blocked", readiness.Status)
 	}
+	found := false
 	for _, item := range readiness.BlockingItems {
 		if item.Key == "sale_attributes" {
-			t.Fatalf("sale_attributes should not block when custom sale values are resolved in draft: %+v", item)
+			found = true
+			if item.Reason == nil || item.Reason.Code != "sale_attributes_unresolved" {
+				t.Fatalf("sale attribute reason = %+v", item.Reason)
+			}
+			break
 		}
+	}
+	if !found {
+		t.Fatalf("expected sale_attributes blocker, got %+v", readiness.BlockingItems)
 	}
 }
 
-func TestBuildSheinSubmitReadinessWarnsWhenCategoryReviewStillPending(t *testing.T) {
+func TestBuildSheinSubmitReadinessBlocksWhenCategoryReviewStillPending(t *testing.T) {
 	t.Parallel()
 
 	productTypeID := 901
@@ -340,28 +348,28 @@ func TestBuildSheinSubmitReadinessWarnsWhenCategoryReviewStillPending(t *testing
 	if readiness == nil {
 		t.Fatal("expected readiness")
 	}
-	if !readiness.Ready {
-		t.Fatalf("ready = false, want true; readiness=%+v", readiness)
+	if readiness.Ready {
+		t.Fatalf("ready = true, want false; readiness=%+v", readiness)
 	}
-	if readiness.Status != "ready_with_warnings" {
-		t.Fatalf("status = %q, want ready_with_warnings", readiness.Status)
-	}
-	if len(readiness.BlockingItems) != 0 {
-		t.Fatalf("blocking items = %+v, want none", readiness.BlockingItems)
+	if readiness.Status != "blocked" {
+		t.Fatalf("status = %q, want blocked", readiness.Status)
 	}
 	found := false
-	for _, item := range readiness.WarningItems {
+	for _, item := range readiness.BlockingItems {
 		if item.Key == "category_review" {
 			found = true
+			if item.Reason == nil || item.Reason.Code != "category_review_pending" {
+				t.Fatalf("category review reason = %+v", item.Reason)
+			}
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected category_review warning, got %+v", readiness.WarningItems)
+		t.Fatalf("expected category_review blocker, got %+v", readiness.BlockingItems)
 	}
 }
 
-func TestBuildSheinSubmitReadinessWarnsWhenRequiredDisplayAttributesArePending(t *testing.T) {
+func TestBuildSheinSubmitReadinessBlocksWhenRequiredDisplayAttributesArePending(t *testing.T) {
 	t.Parallel()
 
 	productTypeID := 901
@@ -417,18 +425,91 @@ func TestBuildSheinSubmitReadinessWarnsWhenRequiredDisplayAttributesArePending(t
 	if readiness == nil {
 		t.Fatal("expected readiness")
 	}
-	if !readiness.Ready {
-		t.Fatalf("ready = false, want true; readiness=%+v", readiness)
+	if readiness.Ready {
+		t.Fatalf("ready = true, want false; readiness=%+v", readiness)
+	}
+	if readiness.Status != "blocked" {
+		t.Fatalf("status = %q, want blocked", readiness.Status)
 	}
 	found := false
-	for _, item := range readiness.WarningItems {
+	for _, item := range readiness.BlockingItems {
 		if item.Key == "attribute_review" {
 			found = true
+			if item.Reason == nil || item.Reason.Code != "required_attributes_pending" {
+				t.Fatalf("attribute review reason = %+v", item.Reason)
+			}
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected attribute_review warning, got %+v", readiness.WarningItems)
+		t.Fatalf("expected attribute_review blocker, got %+v", readiness.BlockingItems)
+	}
+}
+
+func TestBuildSheinSubmitReadinessDoesNotBlockWhenOnlyImportantDisplayAttributesArePending(t *testing.T) {
+	t.Parallel()
+
+	productTypeID := 901
+	colorValueID := 9001
+	readiness := buildSheinSubmitReadiness(&SheinPackage{
+		CategoryID:    3001,
+		CategoryPath:  []string{"Home", "Decor", "Clocks"},
+		ProductTypeID: &productTypeID,
+		Images: &PlatformImageSet{
+			MainImage: "https://cdn.example.com/main.jpg",
+		},
+		ResolvedAttributes: []SheinResolvedAttribute{{
+			Name:        "Type",
+			AttributeID: 109,
+		}},
+		CategoryResolution: &SheinCategoryResolution{
+			Status:     "resolved",
+			CategoryID: 3001,
+		},
+		AttributeResolution: &SheinAttributeResolution{
+			Status:        "resolved",
+			ResolvedCount: 1,
+			PendingAttributeCandidates: []SheinPendingAttributeCandidate{{
+				Name:        "Product Model",
+				AttributeID: 9001,
+				Important:   true,
+			}},
+		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			Status:             "resolved",
+			PrimaryAttributeID: 27,
+		},
+		RequestDraft: &SheinRequestDraft{
+			ResolvedAttributes: []SheinResolvedAttribute{{
+				Name:        "Type",
+				AttributeID: 109,
+			}},
+			SKCList: []SheinSKCRequestDraft{{
+				SupplierCode: "SKC-1",
+				SaleAttribute: &SheinResolvedSaleAttribute{
+					Name:             "Color",
+					AttributeID:      27,
+					AttributeValueID: &colorValueID,
+				},
+				SKUList: []SheinSKUDraft{{SupplierSKU: "SKU-1"}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{},
+		SkcList: []SheinSKCPackage{{
+			SupplierCode: "SKC-1",
+			SKUs:         []PlatformVariant{{SKU: "SKU-1"}},
+		}},
+	})
+	if readiness == nil {
+		t.Fatal("expected readiness")
+	}
+	if !readiness.Ready {
+		t.Fatalf("ready = false, want true when only important attributes are pending; readiness=%+v", readiness)
+	}
+	for _, item := range readiness.BlockingItems {
+		if item.Key == "attribute_review" {
+			t.Fatalf("unexpected attribute_review blocker for important-only candidate: %+v", readiness.BlockingItems)
+		}
 	}
 }
 

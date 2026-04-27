@@ -179,6 +179,7 @@ func buildResolutionCacheInfo(source string, key string, manual bool) *Resolutio
 	return &ResolutionCacheInfo{
 		Status:    status,
 		Source:    source,
+		CacheKey:  key,
 		ShortKey:  shortResolutionCacheKey(key),
 		UpdatedAt: &now,
 		Manual:    manual,

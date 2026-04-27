@@ -115,6 +115,29 @@ func buildProductImageModelProvider(cfg *config.Config, llmMgr productenrich.LLM
 	})
 }
 
+func buildStudioImageGenerator(cfg *config.Config, openaiMgr *openaiclient.Manager) openaiclient.ImageGenerator {
+	if cfg == nil {
+		return nil
+	}
+	if imageCfg, ok := cfg.OpenAI.Clients["image"]; ok && imageCfg.APIStyle == "nanobanana" {
+		return nanobanana.NewClient(nanobanana.Config{
+			APIKey:       firstNonEmpty(imageCfg.APIKey, cfg.OpenAI.APIKey),
+			Model:        imageCfg.Model,
+			SubmitURL:    firstNonEmpty(imageCfg.BaseURL, cfg.OpenAI.BaseURL),
+			PollInterval: time.Second,
+			Timeout:      time.Duration(firstNonZero(imageCfg.Timeout, cfg.OpenAI.Timeout)) * time.Second,
+		})
+	}
+	if openaiMgr == nil {
+		return nil
+	}
+	imageClient, err := openaiMgr.GetImageClient("image")
+	if err != nil {
+		return nil
+	}
+	return imageClient
+}
+
 func shouldUseModelBackedImagePipeline(provider productimage.ProductImageModelProvider) bool {
 	return provider != nil && (provider.FaithfulEditor() != nil || provider.SceneGenerator() != nil || provider.ReviewModel() != nil)
 }

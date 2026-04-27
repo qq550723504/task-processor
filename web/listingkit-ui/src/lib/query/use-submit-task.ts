@@ -12,7 +12,7 @@ export function useSubmitTask(taskId: string) {
 
   return useMutation({
     mutationFn: (request: SubmitTaskRequest) => submitTask(taskId, request),
-    onSuccess: async () => {
+    onSettled: async () => {
       await client.invalidateQueries({
         predicate: (query) =>
           Array.isArray(query.queryKey) &&

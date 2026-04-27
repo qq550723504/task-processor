@@ -66,14 +66,14 @@ openai:
   # 请求池配置 - 更保守的设置
 # 管理API配置
 management:
-  baseURL: "http://getway.linkcloudai.com"
+  baseURL: "https://api.shuomiai.com"
   clientID: "go-listing"
   clientSecret: ""
-  tokenURL: "http://getway.linkcloudai.com/admin-api/system/oauth2/token"
+  tokenURL: "https://api.shuomiai.com/admin-api/system/oauth2/token"
   scopes: ["user.read"]
   #tenantID: "1"  # 租户ID
   #userID: 1      # 用户ID
-  storeIDs: [873] # 仅用于平台调度任务/legacy fallback，不再用于主上架消费链
+  storeIDs: [869] # 仅用于平台调度任务/legacy fallback，不再用于主上架消费链
 
 platforms:
   # TEMU 平台配置
@@ -360,13 +360,13 @@ productimage:
     enabled: true
     provider: "s3"
     outputDir: "./tmp/productimage-published"
-    publicBase: "http://127.0.0.1:9100/listingkit-assets"
+    publicBase: "https://oss.shuomiai.com/listingkit-assets"
     s3:
       bucket: "listingkit-assets"
       region: "us-east-1"
-      endpoint: "http://127.0.0.1:9100"
-      accessKeyID: "minioadmin"
-      secretAccessKey: "minioadmin"
+      endpoint: "https://oss.shuomiai.com"
+      accessKeyID: "listingkit"
+      secretAccessKey: "JicpLSRFo9QIxZKgAVGq4ymXwMePYbdHv0D3BtTU"
       usePathStyle: true
   lifecycle:
     cleanupTemporaryFiles: true

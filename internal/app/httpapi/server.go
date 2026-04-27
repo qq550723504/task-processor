@@ -50,6 +50,9 @@ func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHand
 	if listingKitHandler != nil {
 		v1 := r.Group("/api/v1/listing-kits")
 		v1.POST("/generate", listingKitHandler.GenerateListingKit)
+		v1.POST("/studio/designs", listingKitHandler.GenerateStudioDesigns)
+		v1.POST("/studio/product-images", listingKitHandler.GenerateStudioProductImages)
+		v1.POST("/tasks/:task_id/shein-images/regenerate", listingKitHandler.RegenerateSheinDataImage)
 		v1.POST("/uploads/images", listingKitHandler.UploadListingKitImages)
 		v1.GET("/uploads/files/*key", listingKitHandler.GetUploadedListingKitImage)
 		v1.GET("/tasks", listingKitHandler.ListTasks)

@@ -1,13 +1,7 @@
 import { Button } from "@/components/shared/button";
+import { formatSDSPrice } from "@/lib/sds/format";
 import { formatProductionCycle, formatWeight } from "@/lib/sds/product-filters";
 import type { SDSProductSummary } from "@/lib/types/sds";
-
-function formatPrice(value?: number) {
-  if (!value) {
-    return "-";
-  }
-  return `$${value.toFixed(2)}`;
-}
 
 function ProductThumb({ imageUrl }: { imageUrl?: string }) {
   if (!imageUrl) {
@@ -81,7 +75,7 @@ export function SDSProductCard({
           </div>
           <div className="line-clamp-2 text-sm font-semibold leading-6">{product.name}</div>
           <div className={isSelected ? "text-emerald-100" : "text-zinc-500"}>
-            SKU {product.sku ?? "-"} · {formatPrice(product.currentPrice ?? product.min_price)}
+            SKU {product.sku ?? "-"} · {formatSDSPrice(product.currentPrice ?? product.min_price)}
           </div>
           <div className={isSelected ? "text-emerald-100" : "text-zinc-500"}>
             Weight {formatWeight(product)} · Cycle {formatProductionCycle(product)}
@@ -107,9 +101,14 @@ export function SDSProductCard({
               tone={isSelected ? "secondary" : "primary"}
               type="button"
             >
-              {isVariantSelected ? "Change variant" : "View specs"}
+              {isVariantSelected ? "Change variant" : "Choose variant"}
             </Button>
           </div>
+          {!isVariantSelected ? (
+            <div className={isSelected ? "text-xs text-emerald-100" : "text-xs text-zinc-400"}>
+              Opens size/color picker and locks the exact SDS child SKU.
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

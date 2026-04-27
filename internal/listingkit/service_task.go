@@ -30,27 +30,45 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 	if shouldRunStudioInline(req) {
-		taskCtx := context.WithoutCancel(ctx)
-		if _, err := s.ProcessListingKit(taskCtx, task); err != nil {
-			refreshed, getErr := s.repo.GetTask(taskCtx, task.ID)
-			if getErr == nil {
-				return refreshed, nil
-			}
-			return task, nil
+		return s.enqueueOrRunStudioTask(ctx, task)
+	}
+	if err := s.enqueueTask(ctx, task); err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+
+func (s *service) enqueueOrRunStudioTask(ctx context.Context, task *Task) (*Task, error) {
+	if s.taskSubmitter != nil {
+		if err := s.enqueueTask(ctx, task); err != nil {
+			return nil, err
 		}
-		refreshed, err := s.repo.GetTask(taskCtx, task.ID)
-		if err == nil {
+		return task, nil
+	}
+
+	if _, err := s.ProcessListingKit(context.WithoutCancel(ctx), task); err != nil {
+		refreshed, getErr := s.repo.GetTask(context.WithoutCancel(ctx), task.ID)
+		if getErr == nil {
 			return refreshed, nil
 		}
 		return task, nil
 	}
-	if s.taskSubmitter != nil {
-		if err := s.taskSubmitter.Submit(task.ID); err != nil {
-			_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to submit task: %v", err))
-			return nil, fmt.Errorf("failed to submit task: %w", err)
-		}
+	refreshed, err := s.repo.GetTask(context.WithoutCancel(ctx), task.ID)
+	if err == nil {
+		return refreshed, nil
 	}
 	return task, nil
+}
+
+func (s *service) enqueueTask(ctx context.Context, task *Task) error {
+	if s.taskSubmitter == nil {
+		return nil
+	}
+	if err := s.taskSubmitter.Submit(task.ID); err != nil {
+		_ = s.repo.MarkFailed(ctx, task.ID, fmt.Sprintf("failed to submit task: %v", err))
+		return fmt.Errorf("failed to submit task: %w", err)
+	}
+	return nil
 }
 
 func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error) {

@@ -1,20 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
-import { Button } from "@/components/shared/button";
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
-import { SheinSavedBatchesPanel } from "@/components/listingkit/shein-studio/shein-saved-batches-panel";
+import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
+import { SheinStudioProgressStrip } from "@/components/listingkit/shein-studio/shein-studio-progress-strip";
+import { SheinStudioSelectionOverview } from "@/components/listingkit/shein-studio/shein-studio-selection-overview";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
 import {
+  DEFAULT_SHEIN_STORE_ID,
   createSheinReviewTasks,
   parsePositiveInt,
 } from "@/lib/shein-studio/create-review-tasks";
+import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import {
+  DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+  DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+} from "@/lib/shein-studio/storage-shared";
 import type {
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
+  SheinStudioImageStrategy,
+  SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
 import {
@@ -32,7 +40,17 @@ export function SheinStudioWorkbench({
 }) {
   const [prompt, setPrompt] = useState("");
   const [styleCount, setStyleCount] = useState("4");
-  const [sheinStoreId, setSheinStoreId] = useState("");
+  const [productImageCount, setProductImageCount] = useState(
+    DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+  );
+  const [productImagePrompt, setProductImagePrompt] = useState("");
+  const [productImagePrompts, setProductImagePrompts] = useState<
+    SheinStudioProductImagePrompt[]
+  >([]);
+  const [sheinStoreId, setSheinStoreId] = useState(DEFAULT_SHEIN_STORE_ID);
+  const [imageStrategy, setImageStrategy] = useState<SheinStudioImageStrategy>(
+    DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+  );
   const [designs, setDesigns] = useState<SheinStudioGeneratedDesign[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [generationError, setGenerationError] = useState<string>("");
@@ -45,17 +63,41 @@ export function SheinStudioWorkbench({
   const [savedBatches, setSavedBatches] = useState<SheinStudioSavedBatch[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [saveMessage, setSaveMessage] = useState("");
+  const promptInputRef = useRef<HTMLTextAreaElement>(null);
 
   const printableAreaLabel =
     selection?.printableWidth && selection?.printableHeight
       ? `${selection.printableWidth} × ${selection.printableHeight}px`
       : "Auto";
+  const selectedVariants =
+    selection?.variants?.length
+      ? selection.variants
+      : selection?.selectedVariantIds?.length
+        ? selection.selectedVariantIds.map((variantId) => ({
+            variantId,
+            size: undefined,
+            color: undefined,
+          }))
+      : selection?.variantId
+        ? [
+            {
+              variantId: selection.variantId,
+              size: selection.variantLabel,
+              color: "Default",
+            },
+          ]
+        : [];
+  const selectedColorCount = new Set(
+    selectedVariants.map((variant) => variant.color || "default"),
+  ).size;
+  const selectedSizeCount = new Set(
+    selectedVariants.map((variant) => variant.size || "One size"),
+  ).size;
   const createActionDisabledReason = !selection?.variantId
     ? "Select an SDS product variant first. Approved artwork needs a product template before SHEIN data can be generated."
     : selectedIds.length === 0
       ? "Approve at least one generated style before creating SHEIN data."
       : undefined;
-
   useEffect(() => {
     let cancelled = false;
 
@@ -73,7 +115,13 @@ export function SheinStudioWorkbench({
 
         setPrompt(draft?.prompt ?? "");
         setStyleCount(draft?.styleCount ?? "4");
-        setSheinStoreId(draft?.sheinStoreId ?? "");
+        setProductImageCount(
+          draft?.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+        );
+        setProductImagePrompt(draft?.productImagePrompt ?? "");
+        setProductImagePrompts(draft?.productImagePrompts ?? []);
+        setSheinStoreId(draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID);
+        setImageStrategy(draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
         setDesigns(draft?.designs ?? []);
         setSelectedIds(draft?.selectedIds ?? []);
         setCreatedTasks(draft?.createdTasks ?? []);
@@ -105,7 +153,11 @@ export function SheinStudioWorkbench({
       void saveSheinStudioDraft({
         prompt,
         styleCount,
+        productImageCount,
+        productImagePrompt,
+        productImagePrompts,
         sheinStoreId,
+        imageStrategy,
         selection,
         designs,
         selectedIds,
@@ -119,8 +171,12 @@ export function SheinStudioWorkbench({
   }, [
     createdTasks,
     designs,
+    imageStrategy,
     isLoadingWorkspace,
     prompt,
+    productImageCount,
+    productImagePrompt,
+    productImagePrompts,
     selectedIds,
     selection,
     sheinStoreId,
@@ -134,6 +190,8 @@ export function SheinStudioWorkbench({
     }
     if (!prompt.trim()) {
       setGenerationError("Theme prompt is required.");
+      promptInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      promptInputRef.current?.focus();
       return;
     }
 
@@ -149,6 +207,7 @@ export function SheinStudioWorkbench({
         count: parsePositiveInt(styleCount) ?? 1,
         printableWidth: selection.printableWidth,
         printableHeight: selection.printableHeight,
+        productReferenceImageUrls: buildSDSProductReferenceImageUrls(selection),
       });
       setDesigns(response.images);
       setSelectedIds(response.images.map((item) => item.id));
@@ -170,6 +229,8 @@ export function SheinStudioWorkbench({
     }
     if (!prompt.trim()) {
       setGenerationError("Theme prompt is required.");
+      promptInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      promptInputRef.current?.focus();
       return;
     }
 
@@ -182,6 +243,7 @@ export function SheinStudioWorkbench({
         count: 1,
         printableWidth: selection.printableWidth,
         printableHeight: selection.printableHeight,
+        productReferenceImageUrls: buildSDSProductReferenceImageUrls(selection),
       });
       const replacement = response.images[0];
       if (!replacement) {
@@ -214,7 +276,11 @@ export function SheinStudioWorkbench({
     const saved = await saveSheinStudioBatch({
       prompt,
       styleCount,
+      productImageCount,
+      productImagePrompt,
+      productImagePrompts,
       sheinStoreId,
+      imageStrategy,
       selection,
       designs,
       selectedIds,
@@ -233,7 +299,13 @@ export function SheinStudioWorkbench({
   function handleLoadBatch(batch: SheinStudioSavedBatch) {
     setPrompt(batch.prompt);
     setStyleCount(batch.styleCount);
+    setProductImageCount(
+      batch.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+    );
+    setProductImagePrompt(batch.productImagePrompt ?? "");
+    setProductImagePrompts(batch.productImagePrompts ?? []);
     setSheinStoreId(batch.sheinStoreId);
+    setImageStrategy(batch.imageStrategy ?? "sds_official");
     setDesigns(batch.designs);
     setSelectedIds(batch.selectedIds);
     setCreatedTasks(batch.createdTasks);
@@ -280,6 +352,10 @@ export function SheinStudioWorkbench({
       const created = await createSheinReviewTasks({
         prompt,
         sheinStoreId,
+        imageStrategy,
+        productImageCount,
+        productImagePrompt,
+        productImagePrompts,
         selection,
         designs: approved,
         selectedIds: approved.map((design) => design.id),
@@ -301,168 +377,65 @@ export function SheinStudioWorkbench({
 
   return (
     <section className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-[0.78fr_1.22fr]">
-        <div className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-              SHEIN Studio
-            </p>
-            <h2 className="font-serif text-3xl leading-tight tracking-[-0.04em] text-zinc-950">
-              Generate multiple design styles from one prompt.
-            </h2>
-            <p className="text-sm leading-7 text-zinc-600">
-              Choose an SDS variant first, then generate a batch of print graphics.
-              Approved styles will be converted into normal SHEIN review tasks.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-                Variant
-              </div>
-              <div className="mt-2 text-lg font-semibold text-zinc-950">
-                {selection?.variantId ?? "Not selected"}
-              </div>
-            </div>
-            <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-                Printable area
-              </div>
-              <div className="mt-2 text-lg font-semibold text-zinc-950">
-                {printableAreaLabel}
-              </div>
-            </div>
-            <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-                Product
-              </div>
-              <div className="mt-2 text-sm font-semibold leading-6 text-zinc-950">
-                {selection?.productName ?? "Choose a product first"}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-700">Theme prompt</span>
-              <textarea
-                className="min-h-32 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:bg-white"
-                onChange={(event) => setPrompt(event.target.value)}
-                placeholder="Retro varsity cherries, bold collegiate typography, spring palette."
-                value={prompt}
-              />
-              <p className="text-xs leading-6 text-zinc-500">
-                Studio will automatically bias generation toward print-safe graphics:
-                larger shapes, cleaner contrast, and fewer tiny details or thin lines.
-              </p>
-            </label>
-
-            <div className="grid gap-4 content-start">
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-zinc-700">
-                  Style count
-                </span>
-                <input
-                  className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:bg-white"
-                  inputMode="numeric"
-                  max={8}
-                  min={1}
-                  onChange={(event) => setStyleCount(event.target.value)}
-                  value={styleCount}
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-zinc-700">
-                  SHEIN store ID
-                </span>
-                <input
-                  className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:bg-white"
-                  inputMode="numeric"
-                  onChange={(event) => setSheinStoreId(event.target.value)}
-                  placeholder="Optional"
-                  value={sheinStoreId}
-                />
-              </label>
-
-              <div className="rounded-[1.25rem] border border-dashed border-zinc-200 bg-zinc-50 px-4 py-4 text-sm leading-7 text-zinc-500">
-                Generated styles are flat print graphics. The right-hand preview uses
-                the SDS template surface only for operator review.
-              </div>
-            </div>
-          </div>
-
-          {generationError ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {generationError}
-            </div>
-          ) : null}
-          {creatingError ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {creatingError}
-            </div>
-          ) : null}
-          {creatingMessage ? (
-            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-              {creatingMessage}
-            </div>
-          ) : null}
-
-          <div className="flex flex-wrap gap-3">
-            <Button disabled={isGenerating} onClick={handleGenerate}>
-              {isGenerating ? "Generating..." : "Generate styles"}
-            </Button>
-            <Button onClick={handleSaveBatch} tone="ghost">
-              Save batch
-            </Button>
-            <Button
-              disabled={
-                isCreatingTasks || selectedIds.length === 0 || !selection?.variantId
-              }
-              onClick={handleCreateTasks}
-              tone="secondary"
-            >
-              {isCreatingTasks
-                ? "Generating SHEIN data..."
-                : "Generate SHEIN data"}
-            </Button>
-          </div>
-          {selectedIds.length > 0 ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              {selectedIds.length} style{selectedIds.length > 1 ? "s" : ""} selected for
-              SHEIN review.
-            </div>
-          ) : null}
-          {saveMessage ? (
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-              {saveMessage}
-            </div>
-          ) : null}
-
-          <SheinCreatedTasksList tasks={createdTasks} />
-          <SheinSavedBatchesPanel
-            batches={savedBatches}
-            onDelete={handleDeleteBatch}
-            onLoad={handleLoadBatch}
-          />
-        </div>
-      </div>
-
-      <SheinDesignPreviewGrid
-        designs={designs}
-        onNoteChange={handleNoteChange}
-        onRegenerate={handleRegenerate}
-        onCreateReviewTasks={handleCreateTasks}
-        onToggle={toggleSelection}
-        createActionDisabledReason={createActionDisabledReason}
-        isCreatingTasks={isCreatingTasks}
-        regeneratingId={regeneratingId || undefined}
-        selectedIds={selectedIds}
+      <SheinStudioSelectionOverview
+        printableAreaLabel={printableAreaLabel}
+        selectedColorCount={selectedColorCount}
+        selectedSizeCount={selectedSizeCount}
+        selectedVariantCount={selectedVariants.length}
         selection={selection}
       />
+
+      <SheinStudioGenerationPanel
+        createdTasks={createdTasks}
+        creatingError={creatingError}
+        creatingMessage={creatingMessage}
+        generationError={generationError}
+        imageStrategy={imageStrategy}
+        isCreatingTasks={isCreatingTasks}
+        isGenerating={isGenerating}
+        onCreateTasks={handleCreateTasks}
+        onDeleteBatch={handleDeleteBatch}
+        onGenerate={handleGenerate}
+        onLoadBatch={handleLoadBatch}
+        onSaveBatch={handleSaveBatch}
+        productImageCount={productImageCount}
+        productImagePrompt={productImagePrompt}
+        productImagePrompts={productImagePrompts}
+        prompt={prompt}
+        promptInputRef={promptInputRef}
+        savedBatches={savedBatches}
+        saveMessage={saveMessage}
+        selectedStyleCount={selectedIds.length}
+        selectionReady={Boolean(selection?.variantId)}
+        setImageStrategy={setImageStrategy}
+        setProductImageCount={setProductImageCount}
+        setProductImagePrompt={setProductImagePrompt}
+        setProductImagePrompts={setProductImagePrompts}
+        setPrompt={setPrompt}
+        setSheinStoreId={setSheinStoreId}
+        setStyleCount={setStyleCount}
+        sheinStoreId={sheinStoreId}
+        styleCount={styleCount}
+      />
+
+      <div id="shein-style-review" className="scroll-mt-6">
+        <SheinStudioProgressStrip
+          createdTaskCount={createdTasks.length}
+          generatedStyleCount={designs.length}
+          selectedStyleCount={selectedIds.length}
+        />
+        <SheinDesignPreviewGrid
+          designs={designs}
+          onNoteChange={handleNoteChange}
+          onRegenerate={handleRegenerate}
+          onToggle={toggleSelection}
+          createActionDisabledReason={createActionDisabledReason}
+          isCreatingTasks={isCreatingTasks}
+          regeneratingId={regeneratingId || undefined}
+          selectedIds={selectedIds}
+          selection={selection}
+        />
+      </div>
     </section>
   );
 }

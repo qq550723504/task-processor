@@ -16,6 +16,9 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	if task.Result.CanonicalProduct == nil {
 		return
 	}
+	if task.Request != nil && task.Request.Options != nil {
+		applyStudioStyleDimension(task.Result.CanonicalProduct, task.Request.Options.SDS)
+	}
 
 	buildReq := buildSheinPublishRequest(task.Request)
 	if task.Result.Shein.CategoryID > 0 {
@@ -31,6 +34,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		s.sheinSaleAttributeResolver,
 		s.sheinPricingPolicy,
 	)
+	sheinpub.NormalizeListingCopy(task.Result.Shein, task.Result.CanonicalProduct, buildReq.Language)
 	syncSheinDraftFromPackage(task.Result.Shein)
 	task.Result.Shein.PreviewProduct = sheinpub.BuildPreviewProduct(task.Result.Shein)
 	refreshSheinReviewState(task.Result.Shein)

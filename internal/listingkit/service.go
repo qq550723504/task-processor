@@ -9,6 +9,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
@@ -28,6 +29,9 @@ type service struct {
 	sheinPricingPolicy         sheinpub.PricingPolicy
 	sheinProductAPIBuilder     sheinpub.ProductAPIBuilder
 	sheinImageAPIBuilder       sheinpub.ImageAPIBuilder
+	sheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
+	sheinContentOptimizer      openaiclient.ChatCompleter
+	studioImageGenerator       openaiclient.ImageGenerator
 	assetRepo                  AssetRepository
 	reviewRepo                 GenerationReviewRepository
 	assetRecipeResolver        AssetRecipeResolver
@@ -57,6 +61,9 @@ type ServiceConfig struct {
 	SheinPricingPolicy         sheinpub.PricingPolicy
 	SheinProductAPIBuilder     sheinpub.ProductAPIBuilder
 	SheinImageAPIBuilder       sheinpub.ImageAPIBuilder
+	SheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
+	SheinContentOptimizer      openaiclient.ChatCompleter
+	StudioImageGenerator       openaiclient.ImageGenerator
 }
 
 func NewService(config *ServiceConfig) (Service, error) {
@@ -124,6 +131,9 @@ func NewService(config *ServiceConfig) (Service, error) {
 		sheinPricingPolicy:         config.SheinPricingPolicy,
 		sheinProductAPIBuilder:     config.SheinProductAPIBuilder,
 		sheinImageAPIBuilder:       config.SheinImageAPIBuilder,
+		sheinTranslateAPIBuilder:   config.SheinTranslateAPIBuilder,
+		sheinContentOptimizer:      config.SheinContentOptimizer,
+		studioImageGenerator:       config.StudioImageGenerator,
 		assetRepo:                  config.AssetRepository,
 		reviewRepo:                 config.ReviewRepository,
 		assetRecipeResolver:        config.AssetRecipeResolver,

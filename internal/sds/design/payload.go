@@ -77,7 +77,6 @@ func buildSaveDesignRequest(result *PrepareSyncDesignResult) SaveDesignRequest {
 	for _, prototype := range result.Request.Prototypes {
 		layers := make([]SyncDesignLayer, 0, len(prototype.Layers))
 		for _, layer := range prototype.Layers {
-			layer.MaterialID = ""
 			if result.Material != nil && result.Material.Material != nil && result.Material.Material.ID > 0 {
 				layer.MaterialID = result.Material.Material.ID
 				layer.DesignMaterialID = result.Material.Material.ID
@@ -85,9 +84,6 @@ func buildSaveDesignRequest(result *PrepareSyncDesignResult) SaveDesignRequest {
 			if content := materialContentPath(result.Material); content != "" {
 				layer.Content = content
 			}
-			layer.ImgWidth = 1
-			layer.ImgHeight = 1
-			layer.ResizeMode = 0
 			layers = append(layers, layer)
 		}
 		prototype.Layers = layers

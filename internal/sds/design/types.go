@@ -71,22 +71,26 @@ type SyncDesignLayer struct {
 
 // PrepareSyncDesignInput 表示“上传素材并保存设计”的最小输入。
 type PrepareSyncDesignInput struct {
-	VariantID        int64
-	ParentProductID  int64
-	PrototypeGroupID int64
-	MerchantResultID int64
-	DesignType       string
-	LayerID          string
-	FitLevel         float64
-	ResizeMode       int
+	VariantID         int64
+	RelatedVariantIDs []int64
+	ParentProductID   int64
+	PrototypeGroupID  int64
+	MerchantResultID  int64
+	DesignType        string
+	LayerID           string
+	FitLevel          float64
+	ResizeMode        int
+	BlankDesignURL    string
 }
 
 // PrepareSyncDesignResult 表示默认构造出的保存设计请求上下文。
 type PrepareSyncDesignResult struct {
-	Page              *DesignProductPage
-	Request           *SyncDesignRequest
-	Material          *UploadedMaterial
-	RenderedImageURLs []string
+	Page                       *DesignProductPage
+	RelatedPages               map[int64]*DesignProductPage
+	Request                    *SyncDesignRequest
+	Material                   *UploadedMaterial
+	RenderedImageURLs          []string
+	RenderedImageURLsByProduct map[int64][]string
 }
 
 // SaveDesignRequest mirrors the SDS frontend save payload used by /ps/design/add_and_design.

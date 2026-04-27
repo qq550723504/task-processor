@@ -1,0 +1,79 @@
+display_attribute:
+  field_selection:
+    description: "SHEIN 展示属性字段选择提示词模板"
+    content: |
+      You map one source product attribute to one SHEIN display attribute field from the current category template.
+      Choose exactly one attribute_id only when the semantic match is safe.
+      If none is safe, return attribute_id as 0.
+      Return JSON only with keys attribute_id and reasons.
+
+      Source attribute: {{.SourceAttribute}}
+      Source value: {{.SourceValue}}
+      {{.AdditionalContextBlock}}Candidate SHEIN display attributes:
+      {{.CandidatesBlock}}
+
+  value_mapping:
+    description: "SHEIN 展示属性枚举值映射提示词模板"
+    content: |
+      You map one source product attribute value to one SHEIN template attribute value.
+      Choose exactly one candidate attribute_value_id when there is a safe semantic match.
+      If none of the candidates is safe, return attribute_value_id as 0.
+      Return JSON only with keys attribute_value_id and reasons.
+
+      Source attribute: {{.SourceAttribute}}
+      Source value: {{.SourceValue}}
+      {{.SourceSegmentsBlock}}{{.AdditionalContextBlock}}SHEIN template attribute: {{.TemplateAttribute}}
+      Candidates:
+      {{.CandidatesBlock}}
+
+  missing_text:
+    description: "SHEIN 缺失文本展示属性推断提示词模板"
+    content: |
+      You infer one missing SHEIN display attribute text value from source product signals.
+      Use only values explicitly present in source attributes. Do not invent marketing copy.
+      If the source product does not clearly support a value, return an empty value.
+      Return JSON only with keys value and reasons.
+
+      Missing SHEIN template attribute: {{.TemplateAttribute}}
+      Template metadata: attribute_id={{.AttributeID}} type={{.AttributeType}} required={{.Required}} important={{.Important}}
+      Source product attributes:
+      {{.SourceAttributesBlock}}
+
+  missing_value:
+    description: "SHEIN 缺失枚举展示属性推断提示词模板"
+    content: |
+      You infer one missing SHEIN display attribute from source product signals and product semantics.
+      For required template attributes, choose the safest candidate attribute_value_id when the product semantics support it and no source evidence contradicts it.
+      Prefer broad or neutral candidates over returning 0 for required fields when the candidate list contains a generic fit.
+      For element, pattern, decoration, or motif attributes, consider artwork, printing, production_process, design_area, and visual theme signals.
+      For season attributes, choose a broad all-season or multi-season candidate when the product is not limited to a specific season.
+      For style attributes, choose the safest everyday/neutral style candidate when the product has no niche style signal.
+      For important-but-not-required attributes, be more conservative and return 0 unless the match is clearly supported.
+      Do not invent unsupported specific claims. Return 0 when all candidates would be misleading.
+      Return JSON only with keys attribute_value_id and reasons.
+
+      Missing SHEIN template attribute: {{.TemplateAttribute}}
+      Template metadata: attribute_id={{.AttributeID}} type={{.AttributeType}} required={{.Required}} important={{.Important}}
+      Source product attributes:
+      {{.SourceAttributesBlock}}
+      Candidates:
+      {{.CandidatesBlock}}
+
+  batch_inference:
+    description: "SHEIN 批量补全缺失展示属性提示词模板"
+    content: |
+      You complete missing required SHEIN display attributes as a batch.
+      Use full product context to make consistent choices across attributes.
+      For each required attribute, choose the safest candidate attribute_value_id when product semantics support it and no source evidence contradicts it.
+      Prefer broad or neutral candidates over 0 when the candidate list contains a generic fit.
+      For element, pattern, decoration, or motif attributes, consider artwork, printing, production_process, design_area, and visual theme signals.
+      For season attributes, choose a broad all-season or multi-season candidate when the product is not limited to a specific season.
+      For style attributes, choose the safest everyday/neutral style candidate when the product has no niche style signal.
+      Return JSON only: {"selections":[{"attribute_id":number,"attribute_value_id":number,"reasons":[string]}]}.
+      Use attribute_value_id 0 only when every candidate would be misleading.
+
+      Source product attributes:
+      {{.SourceAttributesBlock}}
+
+      Missing required SHEIN attributes:
+      {{.AttributesBlock}}

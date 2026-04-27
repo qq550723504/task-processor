@@ -262,6 +262,107 @@ func TestCachedAttributeResolverLoadsPersistentCacheAndRefillsMemory(t *testing.
 	}
 }
 
+func TestCachedAttributeResolverClearUsesStoredCacheMetadata(t *testing.T) {
+	store := newResolutionCacheTestStore(t)
+	req := &BuildRequest{SheinStoreID: 42}
+	cachedPkg := &Package{
+		CategoryID:     8218,
+		CategoryIDList: []int{2030, 6012, 8218},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG8014192"},
+			{Name: "material", Value: "涤纶"},
+		},
+	}
+	storedKey := attributeResolverCacheKey(req, cachedPkg)
+	if err := store.SaveResolutionCache(context.Background(), &SheinResolutionCacheEntry{
+		StoreID:        "42",
+		CacheKind:      ResolutionCacheKindAttribute,
+		CacheKey:       storedKey,
+		ShortKey:       shortResolutionCacheKey(storedKey),
+		Source:         "history_cache",
+		ResolutionJSON: `{"status":"resolved","category_id":8218,"template_count":1,"resolved_count":1,"resolved_attributes":[{"name":"Material","value":"Polyester","attribute_id":160,"attribute_value_id":2001}]}`,
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+	clearPkg := &Package{
+		CategoryID:     8218,
+		CategoryIDList: []int{8218},
+		AttributeResolution: &AttributeResolution{
+			Cache: &ResolutionCacheInfo{
+				ShortKey: shortResolutionCacheKey(storedKey),
+			},
+		},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "changed"},
+		},
+	}
+	resolver := NewCachedAttributeResolver(&countingAttributeResolver{out: &AttributeResolution{Status: "partial"}}, store)
+	cache := resolver.(AttributeResolutionCache)
+	if err := cache.ClearAttributeResolution(req, nil, clearPkg); err != nil {
+		t.Fatalf("clear cache: %v", err)
+	}
+	got, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", storedKey)
+	if err != nil {
+		t.Fatalf("get after clear: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("stored cache after metadata clear = %#v, want nil", got)
+	}
+}
+
+func TestCachedAttributeResolverRememberOverwritesPreviousHitKey(t *testing.T) {
+	store := newResolutionCacheTestStore(t)
+	req := &BuildRequest{SheinStoreID: 42}
+	originalPkg := &Package{
+		CategoryID:     8794,
+		CategoryIDList: []int{2866, 4439, 5548, 8794},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG8012004"},
+			{Name: "material", Value: "100%涤纶"},
+		},
+	}
+	originalKey := attributeResolverCacheKey(req, originalPkg)
+	menValueID := 427
+	resolution := &AttributeResolution{
+		Status:        "resolved",
+		Source:        "manual_review",
+		CategoryID:    8794,
+		TemplateCount: 1,
+		ResolvedCount: 2,
+		Cache: &ResolutionCacheInfo{
+			CacheKey: originalKey,
+		},
+		ResolvedAttributes: []ResolvedAttribute{
+			{Name: "Material", Value: "Polyester", AttributeID: 160, Required: true},
+			{Name: "Gender", Value: "Men", AttributeID: 42, AttributeValueID: &menValueID, Required: true},
+		},
+	}
+	patchedPkg := &Package{
+		CategoryID:     8794,
+		CategoryIDList: []int{2866, 4439, 5548, 8794},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG8012004"},
+			{Name: "material", Value: "100%涤纶"},
+			{Name: "manual attribute", Value: "Gender=Men"},
+		},
+	}
+	resolver := NewCachedAttributeResolver(&countingAttributeResolver{}, store)
+	cache := resolver.(AttributeResolutionCache)
+	cache.RememberAttributeResolution(req, nil, patchedPkg, resolution)
+
+	got, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", originalKey)
+	if err != nil {
+		t.Fatalf("get original key: %v", err)
+	}
+	if got == nil || !got.Manual || got.Source != "manual_cache" {
+		t.Fatalf("original key cache = %#v, want manual_cache", got)
+	}
+	decoded := decodeAttributeCacheEntry(got)
+	if decoded == nil || decoded.Status != "resolved" || decoded.ResolvedCount != 2 {
+		t.Fatalf("decoded original key = %#v", decoded)
+	}
+}
+
 func TestCachedSaleAttributeResolverReusesVariantMatrix(t *testing.T) {
 	valueID := 103
 	inner := &countingSaleAttributeResolver{

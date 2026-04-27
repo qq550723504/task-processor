@@ -67,6 +67,15 @@ func (s *scriptedAttributeLLM) GetDefaultModel() string {
 	return "test"
 }
 
+func findResolvedAttributeForTest(attributes []ResolvedAttribute, attributeID int) *ResolvedAttribute {
+	for i := range attributes {
+		if attributes[i].AttributeID == attributeID {
+			return &attributes[i]
+		}
+	}
+	return nil
+}
+
 func TestAttributeResolverSkipsSaleScopeAttributes(t *testing.T) {
 	resolver := NewAttributeResolver(stubAttributeAPI{
 		templates: &sheinattribute.AttributeTemplateInfo{
@@ -244,18 +253,18 @@ func TestAttributeResolverMarksMissingRequiredDisplayAttributesAsPending(t *test
 			Data: []sheinattribute.AttributeTemplate{{
 				AttributeInfos: []sheinattribute.AttributeInfo{
 					{
-						AttributeID:       118,
-						AttributeName:     "宽度",
-						AttributeNameEn:   "Width (cm)",
-						AttributeType:     2,
-						AttributeInputNum: 1,
+						AttributeID:     118,
+						AttributeName:   "宽度",
+						AttributeNameEn: "Width (cm)",
+						AttributeType:   2,
+						AttributeStatus: 3,
 					},
 					{
-						AttributeID:       160,
-						AttributeName:     "材质",
-						AttributeNameEn:   "Material",
-						AttributeType:     4,
-						AttributeInputNum: 1,
+						AttributeID:     160,
+						AttributeName:   "材质",
+						AttributeNameEn: "Material",
+						AttributeType:   4,
+						AttributeStatus: 3,
 						AttributeValueInfoList: []sheinattribute.AttributeValue{
 							{AttributeValueID: 1001, AttributeValue: "棉", AttributeValueEn: "Cotton"},
 						},
@@ -299,10 +308,10 @@ func TestAttributeResolverOnlyMarksCascadeAttributePendingWhenDependencyIsActive
 			Data: []sheinattribute.AttributeTemplate{{
 				AttributeInfos: []sheinattribute.AttributeInfo{
 					{
-						AttributeID:       160,
-						AttributeNameEn:   "Material",
-						AttributeType:     4,
-						AttributeInputNum: 1,
+						AttributeID:     160,
+						AttributeNameEn: "Material",
+						AttributeType:   4,
+						AttributeStatus: 3,
 						AttributeValueInfoList: []sheinattribute.AttributeValue{
 							{AttributeValueID: 11, AttributeValue: "棉", AttributeValueEn: "Cotton"},
 							{AttributeValueID: 13, AttributeValue: "麻", AttributeValueEn: "Linen"},
@@ -312,7 +321,7 @@ func TestAttributeResolverOnlyMarksCascadeAttributePendingWhenDependencyIsActive
 						AttributeID:                 1000547,
 						AttributeNameEn:             "Other Material",
 						AttributeType:               4,
-						AttributeInputNum:           1,
+						AttributeStatus:             3,
 						CascadeAttributeID:          160,
 						CascadeAttributeValueIDList: &cascadeValues,
 					},
@@ -338,10 +347,10 @@ func TestAttributeResolverOnlyMarksCascadeAttributePendingWhenDependencyIsActive
 				Data: []sheinattribute.AttributeTemplate{{
 					AttributeInfos: []sheinattribute.AttributeInfo{
 						{
-							AttributeID:       160,
-							AttributeNameEn:   "Material",
-							AttributeType:     4,
-							AttributeInputNum: 1,
+							AttributeID:     160,
+							AttributeNameEn: "Material",
+							AttributeType:   4,
+							AttributeStatus: 3,
 							AttributeValueInfoList: []sheinattribute.AttributeValue{
 								{AttributeValueID: 11, AttributeValue: "棉", AttributeValueEn: "Cotton"},
 								{AttributeValueID: 13, AttributeValue: "麻", AttributeValueEn: "Linen"},
@@ -351,7 +360,7 @@ func TestAttributeResolverOnlyMarksCascadeAttributePendingWhenDependencyIsActive
 							AttributeID:                 1000547,
 							AttributeNameEn:             "Other Material",
 							AttributeType:               4,
-							AttributeInputNum:           1,
+							AttributeStatus:             3,
 							CascadeAttributeID:          160,
 							CascadeAttributeValueIDList: &cascadeValues,
 						},
@@ -556,7 +565,7 @@ func TestAttributeResolverMatchesPolyesterAliases(t *testing.T) {
 	}
 }
 
-func TestAttributeResolverMatchesPolyesterAliasesWithoutLLM(t *testing.T) {
+func TestAttributeResolverDoesNotMatchPolyesterAliasesWithoutLLM(t *testing.T) {
 	resolver := NewAttributeResolver(stubAttributeAPI{
 		templates: &sheinattribute.AttributeTemplateInfo{
 			Data: []sheinattribute.AttributeTemplate{{
@@ -583,14 +592,8 @@ func TestAttributeResolverMatchesPolyesterAliasesWithoutLLM(t *testing.T) {
 	}
 
 	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
-	if resolution.ResolvedCount != 1 {
-		t.Fatalf("resolved count = %d, want 1; notes=%#v", resolution.ResolvedCount, resolution.ReviewNotes)
-	}
-	if got := resolution.ResolvedAttributes[0].AttributeValueID; got == nil || *got != 2001 {
-		t.Fatalf("attribute value id = %v, want 2001", got)
-	}
-	if resolution.ResolvedAttributes[0].MatchedBy != "static_attribute_value" {
-		t.Fatalf("matched by = %q, want static_attribute_value", resolution.ResolvedAttributes[0].MatchedBy)
+	if resolution.ResolvedCount != 0 {
+		t.Fatalf("resolved count = %d, want 0; notes=%#v", resolution.ResolvedCount, resolution.ReviewNotes)
 	}
 }
 
@@ -779,9 +782,9 @@ func TestAttributeResolverInfersMissingRequiredDisplayAttributeFromContext(t *te
 			Data: []sheinattribute.AttributeTemplate{{
 				AttributeInfos: []sheinattribute.AttributeInfo{
 					{
-						AttributeID:       3002,
-						AttributeNameEn:   "Hazard Category",
-						AttributeInputNum: 1,
+						AttributeID:     3002,
+						AttributeNameEn: "Hazard Category",
+						AttributeStatus: 3,
 						AttributeValueInfoList: []sheinattribute.AttributeValue{
 							{AttributeValueID: 701, AttributeValue: "Non-Hazardous", AttributeValueEn: "Non-Hazardous"},
 							{AttributeValueID: 702, AttributeValue: "Flammable", AttributeValueEn: "Flammable"},
@@ -823,15 +826,270 @@ func TestAttributeResolverInfersMissingRequiredDisplayAttributeFromContext(t *te
 	}
 }
 
+func TestMissingDisplayAttributeValuePromptAllowsNeutralRequiredInference(t *testing.T) {
+	attr := sheinattribute.AttributeInfo{
+		AttributeID:     77,
+		AttributeNameEn: "Season",
+		AttributeStatus: 3,
+		AttributeValueInfoList: []sheinattribute.AttributeValue{
+			{AttributeValueID: 654, AttributeValue: "夏", AttributeValueEn: "Summer"},
+			{AttributeValueID: 1601, AttributeValue: "ALL/全球/所有", AttributeValueEn: "All"},
+		},
+	}
+	inputs := []common.Attribute{
+		{Name: "product_english_name", Value: "Washed denim hat"},
+		{Name: "material", Value: "100% cotton"},
+		{Name: "sku", Value: "MG8012002"},
+		{Name: "picture_request", Value: "1000 px * 562 px"},
+		{Name: "is_electricity", Value: "0"},
+		{Name: "production_process", Value: "烫画"},
+		{Name: "design_area", Value: "区域印制"},
+		{Name: "applicable_scenarios", Value: "户外,运动,棒球"},
+	}
+
+	prompt := buildMissingDisplayAttributeInferencePrompt(attr, inputs)
+	for _, expected := range []string{
+		"product semantics",
+		"required=true",
+		"Prefer broad or neutral candidates",
+		"For season attributes, choose a broad all-season or multi-season candidate",
+		`product_english_name="Washed denim hat"`,
+		`production_process="烫画"`,
+		`applicable_scenarios="户外,运动,棒球"`,
+		`attribute_value_id=1601 value="ALL/全球/所有" value_en="All"`,
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("prompt = %q, want substring %q", prompt, expected)
+		}
+	}
+}
+
+func TestAttributeResolverBatchInfersRemainingRequiredAttributes(t *testing.T) {
+	attributes := []sheinattribute.AttributeInfo{
+		{
+			AttributeID:     1001519,
+			AttributeNameEn: "Element",
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 8790846, AttributeValue: "印刷", AttributeValueEn: "Printing"},
+			},
+		},
+		{
+			AttributeID:     77,
+			AttributeNameEn: "Season",
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 284, AttributeValue: "秋", AttributeValueEn: "Fall"},
+				{AttributeValueID: 654, AttributeValue: "夏", AttributeValueEn: "Summer"},
+				{AttributeValueID: 1601, AttributeValue: "ALL/全球/所有", AttributeValueEn: "All"},
+			},
+		},
+	}
+	inputs := []common.Attribute{
+		{Name: "material", Value: "100%纯棉"},
+		{Name: "production_process", Value: "烫画"},
+		{Name: "design_area", Value: "区域印制"},
+		{Name: "product_english_name", Value: "Washed denim hat"},
+	}
+	llm := &scriptedAttributeLLM{
+		responses: []string{
+			`{"selections":[{"attribute_id":1001519,"attribute_value_id":8790846,"reasons":["production process and design area support Printing"]},{"attribute_id":77,"attribute_value_id":1601,"reasons":["hat is not season-limited, All is safest"]}]}`,
+		},
+	}
+	resolvedByID := map[int]ResolvedAttribute{}
+
+	resolved, notes := inferMissingRequiredDisplayAttributesBatch(attributes, inputs, resolvedByID, llm)
+	if len(resolved) != 2 {
+		t.Fatalf("resolved = %+v, notes=%+v, want 2", resolved, notes)
+	}
+	if got := findResolvedAttributeForTest(resolved, 1001519); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 8790846 || got.MatchedBy != "llm_attribute_batch_inference" {
+		t.Fatalf("element resolution = %+v, want batch Printing", got)
+	}
+	if got := findResolvedAttributeForTest(resolved, 77); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 1601 || got.MatchedBy != "llm_attribute_batch_inference" {
+		t.Fatalf("season resolution = %+v, want batch All", got)
+	}
+	if !strings.Contains(llm.prompts[0], `production_process="烫画"`) {
+		t.Fatalf("prompt = %q, want production process context", llm.prompts[0])
+	}
+}
+
+func TestAttributeResolverRepairsRemainingRequiredAttributes(t *testing.T) {
+	attributes := []sheinattribute.AttributeInfo{
+		{
+			AttributeID:     101,
+			AttributeNameEn: "Style",
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 167, AttributeValue: "Casual休闲", AttributeValueEn: "Casual"},
+				{AttributeValueID: 2491, AttributeValue: "派对", AttributeValueEn: "Party"},
+			},
+		},
+		{
+			AttributeID:     77,
+			AttributeNameEn: "Season",
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 654, AttributeValue: "夏", AttributeValueEn: "Summer"},
+				{AttributeValueID: 1601, AttributeValue: "ALL/全球/所有", AttributeValueEn: "All"},
+			},
+		},
+	}
+	inputs := []common.Attribute{
+		{Name: "product_english_name", Value: "Washed denim hat"},
+		{Name: "material", Value: "100% cotton"},
+		{Name: "applicable_scenarios", Value: "outdoor, sport, baseball, cycling"},
+	}
+	llm := &scriptedAttributeLLM{
+		responses: []string{
+			`{"attribute_value_id":167,"reasons":["Casual is the broad neutral style candidate"]}`,
+			`{"attribute_value_id":1601,"reasons":["All is the broad all-season candidate"]}`,
+		},
+	}
+	resolvedByID := map[int]ResolvedAttribute{}
+
+	resolved, notes := inferMissingRequiredDisplayAttributesRepair(attributes, inputs, resolvedByID, llm)
+	if len(resolved) != 2 {
+		t.Fatalf("resolved = %+v, notes=%+v, want 2", resolved, notes)
+	}
+	if got := findResolvedAttributeForTest(resolved, 101); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 167 || got.MatchedBy != "llm_required_attribute_repair" {
+		t.Fatalf("style resolution = %+v, want required repair Casual", got)
+	}
+	if got := findResolvedAttributeForTest(resolved, 77); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 1601 || got.MatchedBy != "llm_required_attribute_repair" {
+		t.Fatalf("season resolution = %+v, want required repair All", got)
+	}
+	if len(llm.prompts) != 2 {
+		t.Fatalf("repair prompt count = %d, want 2", len(llm.prompts))
+	}
+	if !strings.Contains(llm.prompts[0], "required by the live SHEIN template") {
+		t.Fatalf("prompt = %q, want required repair framing", llm.prompts[0])
+	}
+}
+
+func TestAttributeResolverUsesTemplateCandidateSemanticsForSafeRequiredValues(t *testing.T) {
+	attributes := []sheinattribute.AttributeInfo{
+		{
+			AttributeID:     1001519,
+			AttributeNameEn: "Element",
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 8790846, AttributeValue: "印花", AttributeValueEn: "Printing"},
+				{AttributeValueID: 900, AttributeValue: "刺绣", AttributeValueEn: "Embroidery"},
+			},
+		},
+		{
+			AttributeID:     101,
+			AttributeNameEn: "Style",
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 167, AttributeValue: "Casual休闲", AttributeValueEn: "Casual"},
+				{AttributeValueID: 2491, AttributeValue: "派对", AttributeValueEn: "Party"},
+			},
+		},
+		{
+			AttributeID:     77,
+			AttributeNameEn: "Season",
+			AttributeStatus: 3,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{
+				{AttributeValueID: 654, AttributeValue: "夏", AttributeValueEn: "Summer"},
+				{AttributeValueID: 1601, AttributeValue: "ALL/全球/所有", AttributeValueEn: "All"},
+			},
+		},
+	}
+	inputs := []common.Attribute{
+		{Name: "product_english_name", Value: "Washed denim hat"},
+		{Name: "production_process", Value: "烫画"},
+		{Name: "design_area", Value: "区域印制"},
+	}
+	resolvedByID := map[int]ResolvedAttribute{}
+
+	resolved, notes := inferMissingRequiredDisplayAttributesFromCandidateSemantics(attributes, inputs, resolvedByID)
+	if len(resolved) != 3 {
+		t.Fatalf("resolved = %+v, notes=%+v, want 3", resolved, notes)
+	}
+	if got := findResolvedAttributeForTest(resolved, 1001519); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 8790846 {
+		t.Fatalf("element resolution = %+v, want Printing", got)
+	}
+	if got := findResolvedAttributeForTest(resolved, 101); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 167 {
+		t.Fatalf("style resolution = %+v, want Casual", got)
+	}
+	if got := findResolvedAttributeForTest(resolved, 77); got == nil || got.AttributeValueID == nil || *got.AttributeValueID != 1601 {
+		t.Fatalf("season resolution = %+v, want All", got)
+	}
+}
+
+func TestAttributeResolverInfersImportantTextAttributeFromContext(t *testing.T) {
+	resolver := NewAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:     1000546,
+						AttributeName:   "产品型号",
+						AttributeNameEn: "Product Model",
+						AttributeLabel:  1,
+					},
+				},
+			}},
+		},
+	}, &scriptedAttributeLLM{
+		responses: []string{
+			`{"attribute_id":0,"reasons":["source sku is not an exact field match"]}`,
+			`{"value":"MG17701062","reasons":["source sku is an explicit product identifier"]}`,
+		},
+	})
+
+	pkg := &Package{
+		CategoryID: 3105,
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG17701062"},
+		},
+	}
+
+	resolution := resolver.Resolve(&BuildRequest{}, &productenrich.CanonicalProduct{}, pkg)
+	if resolution.ResolvedCount != 1 {
+		t.Fatalf("resolved count = %d, want 1; resolution=%+v", resolution.ResolvedCount, resolution)
+	}
+	got := resolution.ResolvedAttributes[0]
+	if got.AttributeID != 1000546 || got.AttributeExtraValue != "MG17701062" {
+		t.Fatalf("resolved attribute = %+v, want product model text value", got)
+	}
+	if got.MatchedBy != "llm_attribute_text_inference" {
+		t.Fatalf("matched by = %q, want llm_attribute_text_inference", got.MatchedBy)
+	}
+}
+
+func TestMissingDisplayAttributeTextPromptIncludesAllSourceAttributes(t *testing.T) {
+	attr := sheinattribute.AttributeInfo{
+		AttributeID:     1000546,
+		AttributeNameEn: "Product Model",
+		AttributeLabel:  1,
+	}
+	inputs := []common.Attribute{
+		{Name: "material", Value: "wood"},
+		{Name: "production_process", Value: "UV"},
+		{Name: "design_area", Value: "full"},
+		{Name: "picture_request", Value: "1500 px * 1500 px"},
+		{Name: "applicable_scenarios", Value: "office"},
+		{Name: "washing_instructions", Value: "wipe clean"},
+		{Name: "is_electricity", Value: "0"},
+		{Name: "sku", Value: "MG17701062"},
+	}
+
+	prompt := buildMissingDisplayAttributeTextPrompt(attr, inputs)
+	if !strings.Contains(prompt, `sku="MG17701062"`) {
+		t.Fatalf("prompt = %q, want sku context", prompt)
+	}
+}
+
 func TestAttributeResolverDoesNotCountEnumeratedAttributeWithoutValueIDAsResolved(t *testing.T) {
 	resolver := NewAttributeResolver(stubAttributeAPI{
 		templates: &sheinattribute.AttributeTemplateInfo{
 			Data: []sheinattribute.AttributeTemplate{{
 				AttributeInfos: []sheinattribute.AttributeInfo{
 					{
-						AttributeID:       3001,
-						AttributeNameEn:   "Occasion",
-						AttributeInputNum: 1,
+						AttributeID:     3001,
+						AttributeNameEn: "Occasion",
+						AttributeStatus: 3,
 						AttributeValueInfoList: []sheinattribute.AttributeValue{
 							{AttributeValueID: 901, AttributeValue: "Daily", AttributeValueEn: "Daily"},
 							{AttributeValueID: 902, AttributeValue: "Party", AttributeValueEn: "Party"},
