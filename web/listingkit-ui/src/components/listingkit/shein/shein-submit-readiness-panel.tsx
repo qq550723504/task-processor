@@ -1,5 +1,14 @@
 import { Card } from "@/components/shared/card";
 import { Button } from "@/components/shared/button";
+import { SheinCustomerIssueSummary } from "@/components/listingkit/shein/shein-customer-issue-summary";
+import {
+  buildSheinCustomerIssues,
+  type CustomerIssue,
+} from "@/lib/shein-studio/shein-customer-issues";
+import {
+  sheinLatestSubmissionSummary,
+  sheinLatestSubmissionTitle,
+} from "@/lib/shein-studio/shein-submission-display";
 import type {
   SheinChecklistGroupItem,
   SheinImageUploadPreflight,
@@ -15,13 +24,13 @@ import type {
 function statusLabel(status?: string) {
   switch (status) {
     case "blocked":
-      return "Blocked";
+      return "有阻断";
     case "ready_with_warnings":
-      return "Ready with warnings";
+      return "可提交但有提醒";
     case "ready":
-      return "Ready";
+      return "可提交";
     default:
-      return "Unknown";
+      return "未知";
   }
 }
 
@@ -83,13 +92,6 @@ function compactSubmissionMessage(message?: string | null) {
   return `${text.slice(0, 320)}...`;
 }
 
-function submissionActionLabel(action?: string | null, status?: string | null) {
-  if (action === "save_draft") {
-    return status === "success" ? "Saved draft" : "Save draft attempt";
-  }
-  return status === "success" ? "Published" : "Publish attempt";
-}
-
 function normalizedSubmissionStatus(submission?: SheinSubmissionReport | null) {
   const status = submission?.last_status;
   const result = submission?.last_result;
@@ -117,13 +119,13 @@ function cacheSourceLabel(source?: string) {
     case "llm":
       return "LLM";
     default:
-      return source ?? "Unknown";
+      return source ?? "未知";
   }
 }
 
 function cacheUpdatedLabel(value?: string) {
   if (!value) {
-    return "No timestamp";
+    return "暂无时间";
   }
   return value.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "");
 }
@@ -152,14 +154,14 @@ function ResolutionCacheRow({
           <p className="text-sm font-semibold text-zinc-950">{title}</p>
           <p className="text-xs leading-5 text-zinc-600">
             {item
-              ? `${cacheSourceLabel(item.source)} · ${item.short_key ?? "no-key"}`
-              : "No cache metadata yet"}
+            ? `${cacheSourceLabel(item.source)} · ${item.short_key ?? "无 key"}`
+              : "暂无缓存信息"}
           </p>
           {item ? (
             <p className="text-[11px] leading-5 text-zinc-500">
-              {item.status ?? "unknown"} · hits {item.hit_count ?? 0} ·{" "}
+              {item.status ?? "未知"} · 命中 {item.hit_count ?? 0} ·{" "}
               {cacheUpdatedLabel(item.updated_at)}
-              {item.manual ? " · manual" : ""}
+              {item.manual ? " · 人工确认" : ""}
             </p>
           ) : null}
         </div>
@@ -170,7 +172,7 @@ function ResolutionCacheRow({
             tone="secondary"
             onClick={() => onClear(kind)}
           >
-            Clear
+            清除
           </Button>
         ) : null}
       </div>
@@ -181,7 +183,7 @@ function ResolutionCacheRow({
 function ReadinessItems({
   title,
   items,
-  actionLabel = "Open fix path",
+  actionLabel = "去处理",
   canSelectItem,
   onSelectItem,
 }: {
@@ -210,7 +212,7 @@ function ReadinessItems({
             >
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-zinc-950">
-                  {item.label ?? item.key ?? "Unnamed item"}
+                  {item.label ?? item.key ?? "未命名问题"}
                 </p>
                 {item.message ? (
                   <p className="text-sm leading-6 text-zinc-700">{item.message}</p>
@@ -274,14 +276,14 @@ function ChecklistSection({
           >
             <div className="space-y-1">
               <p className="text-sm font-medium text-zinc-900">
-                {item.label ?? item.key ?? "Unnamed check"}
+                {item.label ?? item.key ?? "未命名检查项"}
               </p>
               {item.message ? (
                 <p className="text-xs leading-5 text-zinc-600">{item.message}</p>
               ) : null}
             </div>
             <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
-              {item.status ?? "unknown"}
+              {item.status ?? "未知"}
             </span>
           </div>
         ))}
@@ -351,9 +353,34 @@ export function SheinSubmitReadinessPanel({
     submission?.last_error ??
       (latestValidationNotes.length ? null : submission?.last_result?.message),
   );
+  const latestSubmissionTitle = sheinLatestSubmissionTitle(submission);
+  const latestSubmissionSummary = sheinLatestSubmissionSummary(submission);
   const isSavingDraft = isSubmitting && submitAction === "save_draft";
   const isPublishing = isSubmitting && submitAction !== "save_draft";
   const canRunSubmitActions = canSubmit === true && submitReady;
+  const customerIssues = buildSheinCustomerIssues({
+    submit_readiness: readiness ?? undefined,
+    submission: submission ?? undefined,
+  });
+  const canSelectIssue = (issue: CustomerIssue) =>
+    Boolean(
+      issue.actionKey &&
+        canSelectBlockingItem?.({
+          key: issue.actionKey,
+          label: issue.title,
+          message: issue.message,
+        }),
+    );
+  const handleSelectIssue = (issue: CustomerIssue) => {
+    if (!issue.actionKey) {
+      return;
+    }
+    onSelectBlockingItem?.({
+      key: issue.actionKey,
+      label: issue.title,
+      message: issue.message,
+    });
+  };
 
   return (
     <Card className="border-zinc-300 bg-zinc-50/80 p-5">
@@ -361,7 +388,7 @@ export function SheinSubmitReadinessPanel({
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-600">
-              SHEIN publish readiness
+              SHEIN 发布检查
             </p>
             <span
               className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusTone(
@@ -383,26 +410,33 @@ export function SheinSubmitReadinessPanel({
           ) : null}
           <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
             <span>
-              Blocking {readiness?.blocking_items?.length ?? workspaceOverview?.submit_state?.blocking_count ?? 0}
+              阻断 {readiness?.blocking_items?.length ?? workspaceOverview?.submit_state?.blocking_count ?? 0}
             </span>
             <span>
-              Warnings {readiness?.warning_items?.length ?? workspaceOverview?.submit_state?.warning_count ?? 0}
+              提醒 {readiness?.warning_items?.length ?? workspaceOverview?.submit_state?.warning_count ?? 0}
             </span>
           </div>
         </div>
+
+        <SheinCustomerIssueSummary
+          compact={compact}
+          issues={customerIssues}
+          canSelectIssue={canSelectIssue}
+          onSelectIssue={handleSelectIssue}
+        />
 
         {submitReady ? (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                  Publish action
+              发布操作
                 </p>
                 <p className="text-sm font-semibold text-zinc-950">
-                  Save draft or submit to SHEIN
+                  保存草稿或提交到 SHEIN
                 </p>
                 <p className="text-sm leading-6 text-zinc-700">
-                  当前资料包已满足后端 readiness，可先发到 SHEIN 草稿箱，确认后再正式提交。
+                  当前资料包已通过提交前检查。建议先保存到 SHEIN 草稿箱，确认后再正式发布。
                 </p>
               </div>
               {canRunSubmitActions && (onSaveDraft || onSubmit) ? (
@@ -414,7 +448,7 @@ export function SheinSubmitReadinessPanel({
                       tone="secondary"
                       onClick={onSaveDraft}
                     >
-                      {isSavingDraft ? "Saving draft..." : "Save to SHEIN draft"}
+                      {isSavingDraft ? "保存草稿中..." : "保存到 SHEIN 草稿箱"}
                     </Button>
                   ) : null}
                   {onSubmit ? (
@@ -423,7 +457,7 @@ export function SheinSubmitReadinessPanel({
                       disabled={isSubmitting}
                       onClick={onSubmit}
                     >
-                      {isPublishing ? "Submitting..." : "Submit to SHEIN"}
+                      {isPublishing ? "提交中..." : "发布到 SHEIN"}
                     </Button>
                   ) : null}
                 </div>
@@ -435,7 +469,7 @@ export function SheinSubmitReadinessPanel({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                  Primary next step
+                  下一步处理
                 </p>
                 <p className="text-sm font-semibold text-zinc-950">
                   {workspaceOverview.primary_action}
@@ -447,7 +481,7 @@ export function SheinSubmitReadinessPanel({
                   tone="secondary"
                   onClick={() => onRunPrimaryAction(primaryActionKey)}
                 >
-                  Open fix path
+                  去处理
                 </Button>
               ) : null}
             </div>
@@ -468,16 +502,16 @@ export function SheinSubmitReadinessPanel({
                   isSubmitting ? "text-sky-700" : "text-rose-700"
                 }`}
               >
-                Current submit attempt
+                当前提交
               </p>
               <p className="text-sm font-semibold text-zinc-950">
                 {isSubmitting
                   ? isSavingDraft
-                    ? "Saving to SHEIN draft..."
-                    : "Submitting to SHEIN..."
+                    ? "正在保存到 SHEIN 草稿箱..."
+                    : "正在提交到 SHEIN..."
                   : submitAction === "save_draft"
-                    ? "Save draft failed"
-                    : "Submit failed"}
+                    ? "保存草稿失败"
+                    : "提交失败"}
               </p>
               {submitErrorMessage ? (
                 <p className="break-words text-sm leading-6 text-rose-700">
@@ -486,7 +520,7 @@ export function SheinSubmitReadinessPanel({
               ) : (
                 <p className="text-sm leading-6 text-zinc-700">
                   正在上传图片并{submitAction === "save_draft" ? "保存到 SHEIN 草稿箱" : "提交 SHEIN"}。
-                  完成或失败后会刷新 latest submission。
+                  完成或失败后会刷新最新提交记录。
                 </p>
               )}
             </div>
@@ -498,17 +532,17 @@ export function SheinSubmitReadinessPanel({
             <div className="space-y-3">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  Image upload preflight
+                  图片上传检查
                 </p>
                 <p className="text-sm font-semibold text-zinc-950">
-                  {imageUpload.pending_upload_urls ?? 0} unique images will upload to SHEIN before submit
+                  提交前将上传 {imageUpload.pending_upload_urls ?? 0} 张唯一图片到 SHEIN
                 </p>
               </div>
               <div className="grid gap-2 text-xs text-zinc-700 sm:grid-cols-2">
-                <span>References: {imageUpload.total_image_references ?? 0}</span>
-                <span>Unique URLs: {imageUpload.unique_image_urls ?? 0}</span>
-                <span>SDS mockups: {imageUpload.sds_mockup_urls ?? 0}</span>
-                <span>SHEIN URLs: {imageUpload.shein_uploaded_urls ?? 0}</span>
+                <span>图片引用：{imageUpload.total_image_references ?? 0}</span>
+                <span>唯一图片：{imageUpload.unique_image_urls ?? 0}</span>
+                <span>SDS 图：{imageUpload.sds_mockup_urls ?? 0}</span>
+                <span>SHEIN 已上传：{imageUpload.shein_uploaded_urls ?? 0}</span>
               </div>
               {!compact && imageUpload.summary?.length ? (
                 <div className="space-y-1">
@@ -528,28 +562,28 @@ export function SheinSubmitReadinessPanel({
             <div className="space-y-3">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                  Resolution cache
+                  解析缓存
                 </p>
                 <p className="text-sm leading-6 text-zinc-700">
-                  分类、普通属性、销售属性的解析来源和当前缓存状态。
+                  分类、普通属性、销售属性的解析来源和缓存状态。
                 </p>
               </div>
               <ResolutionCacheRow
-                title="Category"
+                title="类目"
                 item={resolutionCache?.category}
                 kind="category"
                 isClearing={clearingResolutionCacheKind === "category"}
                 onClear={onClearResolutionCache}
               />
               <ResolutionCacheRow
-                title="Attributes"
+                title="普通属性"
                 item={resolutionCache?.attributes}
                 kind="attribute"
                 isClearing={clearingResolutionCacheKind === "attribute"}
                 onClear={onClearResolutionCache}
               />
               <ResolutionCacheRow
-                title="Sale attributes"
+                title="销售属性"
                 item={resolutionCache?.sale_attributes}
                 kind="sale_attribute"
                 isClearing={clearingResolutionCacheKind === "sale_attribute"}
@@ -563,27 +597,33 @@ export function SheinSubmitReadinessPanel({
           <div className="rounded-2xl border border-zinc-200 bg-white/80 p-4">
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                Latest submission
+                最新提交记录
               </p>
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-zinc-950">
-                  {submissionActionLabel(
-                    submission?.last_action,
-                    latestSubmissionStatus,
-                  )}{" "}
-                  · {latestSubmissionStatus}
+                  {latestSubmissionTitle}
                 </p>
-                {latestSubmissionMessage ? (
-                  <p className="break-words text-sm leading-6 text-rose-700">
-                    {latestSubmissionMessage}
+                {latestSubmissionSummary ? (
+                  <p className="text-sm leading-6 text-zinc-700">
+                    {latestSubmissionSummary}
                   </p>
+                ) : null}
+                {latestSubmissionMessage ? (
+                  <details className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                    <summary className="cursor-pointer text-xs font-semibold text-zinc-700">
+                      查看原始接口返回
+                    </summary>
+                    <p className="mt-2 break-words text-xs leading-5 text-zinc-600">
+                      {latestSubmissionMessage}
+                    </p>
+                  </details>
                 ) : null}
               </div>
               {latestValidationNotes.length ? (
-                <div className="space-y-2 rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">
-                    SHEIN validation notes
-                  </p>
+                <details className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
+                  <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">
+                    查看原始 SHEIN 校验提示
+                  </summary>
                   <ul className="space-y-1">
                     {latestValidationNotes.map((note, index) => (
                       <li
@@ -594,7 +634,7 @@ export function SheinSubmitReadinessPanel({
                       </li>
                     ))}
                   </ul>
-                </div>
+                </details>
               ) : null}
             </div>
           </div>
@@ -610,22 +650,9 @@ export function SheinSubmitReadinessPanel({
           </div>
         ) : null}
 
-        {compact ? (
-          <ReadinessItems
-            title="Blocking items"
-            items={readiness?.blocking_items}
-            canSelectItem={canSelectBlockingItem}
-            onSelectItem={onSelectBlockingItem}
-          />
-        ) : null}
-
-        {compact ? (
-          <ReadinessItems title="Warnings" items={readiness?.warning_items} />
-        ) : null}
-
         {!compact ? (
           <ReadinessItems
-            title="Blocking items"
+            title="阻断项"
             items={readiness?.blocking_items}
             canSelectItem={canSelectBlockingItem}
             onSelectItem={onSelectBlockingItem}
@@ -634,7 +661,7 @@ export function SheinSubmitReadinessPanel({
 
         {!compact ? (
           <ReadinessItems
-            title="Warnings"
+            title="提醒项"
             items={readiness?.warning_items}
           />
         ) : null}
@@ -642,7 +669,7 @@ export function SheinSubmitReadinessPanel({
         {!compact && workspaceOverview?.highlights?.length ? (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Highlights
+              重点信息
             </p>
             <div className="space-y-2">
               {workspaceOverview.highlights.map((line) => (
@@ -657,7 +684,7 @@ export function SheinSubmitReadinessPanel({
         {!compact && workspaceOverview?.next_actions?.length ? (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Next actions
+              下一步
             </p>
             <div className="flex flex-wrap gap-2">
               {workspaceOverview.next_actions.map((line) => (
@@ -675,10 +702,10 @@ export function SheinSubmitReadinessPanel({
         {!compact && (required || recommended) ? (
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Checklist
+              检查清单
             </p>
-            <ChecklistSection title="Required" items={required} />
-            <ChecklistSection title="Recommended" items={recommended} />
+            <ChecklistSection title="必须完成" items={required} />
+            <ChecklistSection title="建议确认" items={recommended} />
           </div>
         ) : null}
       </div>

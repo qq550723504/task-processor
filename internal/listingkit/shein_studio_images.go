@@ -5,15 +5,16 @@ import (
 
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-func applySheinStudioAIImagesToShein(pkg *sheinpub.Package, req *GenerateRequest) {
+func applySheinStudioAIImagesToShein(pkg *sheinpub.Package, req *GenerateRequest, sdsSummary *SDSSyncSummary) {
 	if pkg == nil || req == nil || req.Options == nil || req.Options.SheinStudio == nil {
 		return
 	}
 	productImages := uniqueNonEmptyStrings(req.Options.SheinStudio.ProductImageURLs)
 	variantImages := normalizeSheinStudioVariantImageSets(req.Options.SheinStudio.VariantProductImages)
-	sizeReferenceImages := uniqueNonEmptyStrings(req.Options.SheinStudio.SizeReferenceImageURLs)
+	sizeReferenceImages := resolveSheinSizeReferenceImages(req, sdsSummary)
 	if len(productImages) == 0 {
 		return
 	}
@@ -26,10 +27,12 @@ func applySheinStudioAIImagesToShein(pkg *sheinpub.Package, req *GenerateRequest
 	if resolveSheinImageStrategy(req) == sheinImageStrategyHybrid {
 		appendAIProductImagesToShein(pkg, productImages, sourceImages)
 		applyVariantProductImagesToShein(pkg, variantImages, sourceImages)
+		applySheinSizeReferenceImages(pkg, sizeReferenceImages)
 		return
 	}
 	replaceSheinImagesWithAIProductImages(pkg, productImages, sourceImages)
 	applyVariantProductImagesToShein(pkg, variantImages, sourceImages)
+	applySheinSizeReferenceImages(pkg, sizeReferenceImages)
 }
 
 func replaceSheinImagesWithAIProductImages(pkg *sheinpub.Package, imageURLs []string, sourceImages []string) {
@@ -127,6 +130,71 @@ func appendUniqueImageURLs(existing []string, additions ...string) []string {
 		result = append(result, imageURL)
 	}
 	return result
+}
+
+func applySheinSizeReferenceImages(pkg *sheinpub.Package, imageURLs []string) {
+	refs := uniqueNonEmptyStrings(imageURLs)
+	if pkg == nil || len(refs) == 0 {
+		return
+	}
+	if pkg.Images != nil {
+		pkg.Images.Gallery = appendUniqueImageURLs(pkg.Images.Gallery, refs...)
+	}
+	if pkg.RequestDraft != nil {
+		if pkg.RequestDraft.ImageInfo != nil {
+			pkg.RequestDraft.ImageInfo.Gallery = appendUniqueImageURLs(pkg.RequestDraft.ImageInfo.Gallery, refs...)
+		}
+		for skcIndex := range pkg.RequestDraft.SKCList {
+			if pkg.RequestDraft.SKCList[skcIndex].ImageInfo != nil {
+				pkg.RequestDraft.SKCList[skcIndex].ImageInfo.Gallery = appendUniqueImageURLs(pkg.RequestDraft.SKCList[skcIndex].ImageInfo.Gallery, refs...)
+			}
+		}
+	}
+	if pkg.PreviewProduct == nil {
+		pkg.PreviewProduct = sheinpub.BuildPreviewProduct(pkg)
+	}
+	if pkg.PreviewProduct != nil {
+		ensureSheinSizeReferenceDetails(pkg.PreviewProduct.ImageInfo, refs)
+		for skcIndex := range pkg.PreviewProduct.SKCList {
+			ensureSheinSizeReferenceDetails(&pkg.PreviewProduct.SKCList[skcIndex].ImageInfo, refs)
+		}
+	}
+}
+
+func ensureSheinSizeReferenceDetails(info *sheinproduct.ImageInfo, refs []string) {
+	if info == nil || len(refs) == 0 {
+		return
+	}
+	maxSort := 0
+	for _, image := range info.ImageInfoList {
+		if image.ImageSort > maxSort {
+			maxSort = image.ImageSort
+		}
+	}
+	for _, ref := range refs {
+		found := false
+		for i := range info.ImageInfoList {
+			if strings.TrimSpace(info.ImageInfoList[i].ImageURL) != ref {
+				continue
+			}
+			info.ImageInfoList[i].SizeImgFlag = true
+			info.ImageInfoList[i].ImageType = 6
+			found = true
+		}
+		if found {
+			continue
+		}
+		maxSort++
+		info.ImageInfoList = append(info.ImageInfoList, sheinproduct.ImageDetail{
+			ImageType:   6,
+			ImageSort:   maxSort,
+			ImageURL:    ref,
+			SizeImgFlag: true,
+			AISStatus:   1,
+			PSTypes:     []string{},
+			ImageItemID: nil,
+		})
+	}
 }
 
 func normalizeSheinStudioVariantImageSets(input []SheinStudioVariantImageSet) []SheinStudioVariantImageSet {

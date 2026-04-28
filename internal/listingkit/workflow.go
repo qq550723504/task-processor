@@ -78,7 +78,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 			}
 		}
 	}
-	if imageResult == nil && shouldRunStudioInline(task.Request) && shouldUseSDSOfficialImages(task.Request) {
+	if imageResult == nil && shouldRunStudioInline(task.Request) && shouldRenderSheinSizeImagesWithSDS(task.Request) {
 		s.syncSDSDesignFromRemote(ctx, task, result)
 	}
 	var sdsOptions *SDSSyncOptions
@@ -160,9 +160,10 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	final.ChildTasks = append([]ChildTaskState(nil), result.ChildTasks...)
 	if shouldUseSDSOfficialImages(task.Request) {
 		applySDSTemplateImagesToShein(final.Shein, final.SDSSync, task.Request.ImageURLs)
+		applySheinSizeReferenceImages(final.Shein, resolveSheinSizeReferenceImages(task.Request, final.SDSSync))
 	}
 	if shouldUseSheinStudioAIImages(task.Request) {
-		applySheinStudioAIImagesToShein(final.Shein, task.Request)
+		applySheinStudioAIImagesToShein(final.Shein, task.Request, final.SDSSync)
 	}
 	if final.Summary == nil {
 		final.Summary = &GenerationSummary{}

@@ -21,6 +21,7 @@ type SaveInput = {
   productImagePrompts?: SheinStudioProductImagePrompt[];
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
+  renderSizeImagesWithSds?: boolean;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];

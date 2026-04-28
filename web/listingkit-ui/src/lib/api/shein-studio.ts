@@ -32,7 +32,7 @@ export async function generateSheinStudioDesigns(
       printable_height: body.printableHeight,
       product_reference_image_urls: body.productReferenceImageUrls,
     },
-    timeoutMs: 180000,
+    timeoutMs: 3600000,
   });
   return {
     prompt: payload.prompt,

@@ -57,12 +57,13 @@ type GenerateOptions struct {
 }
 
 type SheinStudioOptions struct {
-	StyleID                string                       `json:"style_id,omitempty"`
-	StyleName              string                       `json:"style_name,omitempty"`
-	SourceDesignURLs       []string                     `json:"source_design_urls,omitempty"`
-	ProductImageURLs       []string                     `json:"product_image_urls,omitempty"`
-	VariantProductImages   []SheinStudioVariantImageSet `json:"variant_product_images,omitempty"`
-	SizeReferenceImageURLs []string                     `json:"size_reference_image_urls,omitempty"`
+	StyleID                 string                       `json:"style_id,omitempty"`
+	StyleName               string                       `json:"style_name,omitempty"`
+	SourceDesignURLs        []string                     `json:"source_design_urls,omitempty"`
+	ProductImageURLs        []string                     `json:"product_image_urls,omitempty"`
+	VariantProductImages    []SheinStudioVariantImageSet `json:"variant_product_images,omitempty"`
+	SizeReferenceImageURLs  []string                     `json:"size_reference_image_urls,omitempty"`
+	RenderSizeImagesWithSDS bool                         `json:"render_size_images_with_sds,omitempty"`
 }
 
 type SheinStudioVariantImageSet struct {
@@ -176,8 +177,40 @@ type SDSSyncVariantOption struct {
 }
 
 type SubmitTaskRequest struct {
-	Platform string `json:"platform,omitempty"`
-	Action   string `json:"action,omitempty"`
+	Platform       string `json:"platform,omitempty"`
+	Action         string `json:"action,omitempty"`
+	ConfirmedFinal bool   `json:"confirmed_final,omitempty"`
+}
+
+type SheinSettings struct {
+	DefaultStoreID    int64                `json:"default_store_id,omitempty"`
+	Site              string               `json:"site,omitempty"`
+	WarehouseCode     string               `json:"warehouse_code,omitempty"`
+	DefaultStock      int                  `json:"default_stock,omitempty"`
+	DefaultSubmitMode string               `json:"default_submit_mode,omitempty"`
+	Pricing           sheinpub.PricingRule `json:"pricing,omitempty"`
+	UpdatedAt         *time.Time           `json:"updated_at,omitempty"`
+}
+
+type SheinPricePreviewRequest struct {
+	Rule            *sheinpub.PricingRule `json:"rule,omitempty"`
+	ManualOverrides map[string]float64    `json:"manual_price_overrides,omitempty"`
+	ApplyToTask     bool                  `json:"apply_to_task,omitempty"`
+}
+
+type SheinFinalDraftUpdateRequest struct {
+	Confirmed            *bool              `json:"confirmed,omitempty"`
+	SubmitMode           string             `json:"submit_mode,omitempty"`
+	ManualPriceOverrides map[string]float64 `json:"manual_price_overrides,omitempty"`
+	FinalImageOrder      *[]string          `json:"final_image_order,omitempty"`
+	MainImageURL         string             `json:"main_image_url,omitempty"`
+	DeletedImageURLs     *[]string          `json:"deleted_image_urls,omitempty"`
+	ImageRoleOverrides   map[string]string  `json:"image_role_overrides,omitempty"`
+}
+
+type SheinSubmissionEventPage struct {
+	TaskID string                     `json:"task_id"`
+	Items  []sheinpub.SubmissionEvent `json:"items,omitempty"`
 }
 
 type SheinResolutionCacheClearResult struct {
@@ -208,25 +241,29 @@ type TaskResult struct {
 }
 
 type TaskListQuery struct {
-	Status   string `form:"status" json:"status,omitempty"`
-	Platform string `form:"platform" json:"platform,omitempty"`
-	Page     int    `form:"page" json:"page,omitempty"`
-	PageSize int    `form:"page_size" json:"page_size,omitempty"`
+	Status              string `form:"status" json:"status,omitempty"`
+	Platform            string `form:"platform" json:"platform,omitempty"`
+	SheinWorkflowStatus string `form:"shein_workflow_status" json:"shein_workflow_status,omitempty"`
+	Page                int    `form:"page" json:"page,omitempty"`
+	PageSize            int    `form:"page_size" json:"page_size,omitempty"`
 }
 
 type TaskListItem struct {
-	TaskID        string     `json:"task_id"`
-	Status        TaskStatus `json:"status"`
-	Platforms     []string   `json:"platforms,omitempty"`
-	Title         string     `json:"title,omitempty"`
-	ImageCount    int        `json:"image_count"`
-	ProductName   string     `json:"product_name,omitempty"`
-	VariantLabel  string     `json:"variant_label,omitempty"`
-	SDSSyncStatus string     `json:"sds_sync_status,omitempty"`
-	Error         string     `json:"error,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+	TaskID                      string     `json:"task_id"`
+	Status                      TaskStatus `json:"status"`
+	Platforms                   []string   `json:"platforms,omitempty"`
+	Title                       string     `json:"title,omitempty"`
+	ImageCount                  int        `json:"image_count"`
+	ProductName                 string     `json:"product_name,omitempty"`
+	VariantLabel                string     `json:"variant_label,omitempty"`
+	SDSSyncStatus               string     `json:"sds_sync_status,omitempty"`
+	SheinWorkflowStatus         string     `json:"shein_workflow_status,omitempty"`
+	SheinLatestSubmissionStatus string     `json:"shein_latest_submission_status,omitempty"`
+	SheinLatestSubmissionError  string     `json:"shein_latest_submission_error,omitempty"`
+	Error                       string     `json:"error,omitempty"`
+	CreatedAt                   time.Time  `json:"created_at"`
+	UpdatedAt                   time.Time  `json:"updated_at"`
+	CompletedAt                 *time.Time `json:"completed_at,omitempty"`
 }
 
 type TaskListPage struct {

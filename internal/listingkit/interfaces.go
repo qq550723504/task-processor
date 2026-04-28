@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
@@ -82,6 +83,11 @@ type Service interface {
 	ApplyTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*ListingKitPreview, error)
 	ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error)
 	SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error)
+	GetSheinSettings(ctx context.Context) (*SheinSettings, error)
+	UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error)
+	PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error)
+	UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error)
+	GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error)
 	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error)
 	ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error)
 	SetTaskSubmitter(submitter TaskSubmitter)
@@ -110,6 +116,11 @@ type HandlerService interface {
 	ApplyTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*ListingKitPreview, error)
 	ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error)
 	SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error)
+	GetSheinSettings(ctx context.Context) (*SheinSettings, error)
+	UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error)
+	PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error)
+	UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error)
+	GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error)
 	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error)
 }
 
@@ -136,5 +147,10 @@ type Handler interface {
 	ApplyTaskRevision(c *gin.Context)
 	ValidateTaskRevision(c *gin.Context)
 	SubmitTask(c *gin.Context)
+	GetSheinSettings(c *gin.Context)
+	UpdateSheinSettings(c *gin.Context)
+	PreviewSheinPrice(c *gin.Context)
+	UpdateSheinFinalDraft(c *gin.Context)
+	GetSubmissionEvents(c *gin.Context)
 	ClearSheinResolutionCache(c *gin.Context)
 }

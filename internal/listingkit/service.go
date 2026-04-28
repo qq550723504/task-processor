@@ -3,6 +3,8 @@ package listingkit
 import (
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"task-processor/internal/amazonlisting"
 	assetbundle "task-processor/internal/asset/bundle"
@@ -39,6 +41,8 @@ type service struct {
 	assetGenerator             AssetGenerationService
 	taskSubmitter              TaskSubmitter
 	requestDefaults            generateRequestDefaults
+	sheinSettingsMu            sync.RWMutex
+	sheinSettings              SheinSettings
 }
 
 type ServiceConfig struct {
@@ -118,6 +122,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 	if config.AssetGenerationService == nil {
 		config.AssetGenerationService = newDefaultAssetGenerationService()
 	}
+	defaultSettings := defaultSheinSettings(config.SheinDefaultStoreID, config.SheinPricingPolicy)
 	return &service{
 		repo:                       config.Repository,
 		productSvc:                 config.ProductService,
@@ -143,7 +148,41 @@ func NewService(config *ServiceConfig) (Service, error) {
 		requestDefaults: generateRequestDefaults{
 			sheinDefaultStoreID: config.SheinDefaultStoreID,
 		},
+		sheinSettings: defaultSettings,
 	}, nil
+}
+
+func defaultSheinSettings(storeID int64, policy sheinpub.PricingPolicy) SheinSettings {
+	rule := sheinpub.PricingRule{
+		SourceCurrency:   "CNY",
+		TargetCurrency:   "USD",
+		ExchangeRate:     7.2,
+		MarkupMultiplier: 2,
+		MinimumPrice:     9.99,
+		RoundTo:          0.01,
+	}
+	if policy.Currency != "" {
+		rule.TargetCurrency = strings.ToUpper(strings.TrimSpace(policy.Currency))
+	}
+	if policy.MarkupRate > 0 {
+		rule.MarkupMultiplier = policy.MarkupRate
+	}
+	if policy.MinimumPrice > 0 {
+		rule.MinimumPrice = policy.MinimumPrice
+	}
+	if policy.RoundTo > 0 {
+		rule.RoundTo = policy.RoundTo
+	}
+	now := time.Now()
+	return SheinSettings{
+		DefaultStoreID:    storeID,
+		Site:              "US",
+		WarehouseCode:     "DEFAULT",
+		DefaultStock:      100,
+		DefaultSubmitMode: "publish",
+		Pricing:           rule,
+		UpdatedAt:         &now,
+	}
 }
 
 func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {

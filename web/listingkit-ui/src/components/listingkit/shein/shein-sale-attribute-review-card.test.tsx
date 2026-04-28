@@ -21,12 +21,29 @@ describe("SheinSaleAttributeReviewCard", () => {
                   attribute_value_id: 112,
                 },
               ],
+              sku_attributes: [
+                {
+                  scope: "sku",
+                  name: "Size",
+                  value: "One Size",
+                  attribute_id: 87,
+                  attribute_value_id: 991,
+                },
+              ],
               candidates: [
                 {
                   source_dimension: "颜色",
                   name: "Color",
+                  attribute_id: 27,
                   selected_scope: "primary",
                   reasons: ["模板值拟合度 1/2"],
+                },
+                {
+                  source_dimension: "尺码",
+                  name: "Size",
+                  attribute_id: 87,
+                  selected_scope: "secondary",
+                  reasons: ["SKU 维度覆盖 1/1"],
                 },
               ],
               review_notes: ["尺码模板候选仍待确认"],
@@ -36,12 +53,22 @@ describe("SheinSaleAttributeReviewCard", () => {
       />,
     );
 
-    expect(screen.getByText("SHEIN sale attribute review")).toBeInTheDocument();
-    expect(screen.getAllByText("Color")).toHaveLength(2);
-    expect(screen.getByText("Black")).toBeInTheDocument();
-    expect(screen.getByText("attribute_id 27 · value_id 112")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 销售属性确认")).toBeInTheDocument();
+    expect(screen.getByText("状态 partial")).toBeInTheDocument();
+    expect(screen.getByText("主规格 27")).toBeInTheDocument();
+    expect(screen.getByText("主规格确认")).toBeInTheDocument();
+    expect(screen.getByText("其他规格确认")).toBeInTheDocument();
+    expect(screen.getByText("变体覆盖检查")).toBeInTheDocument();
+    expect(screen.getByText("已映射销售属性")).toBeInTheDocument();
+    expect(screen.getAllByText("Color").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText("Black").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("attribute_id 27 · value_id 112").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Size").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText("One Size").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("attribute_id 87 · value_id 991").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("主销售属性已命中，次销售属性仍需确认")).toBeInTheDocument();
-    expect(screen.getByText("模板值拟合度 1/2")).toBeInTheDocument();
+    expect(screen.getAllByText("模板值拟合度 1/2").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("SKU 维度覆盖 1/1").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("尺码模板候选仍待确认")).toBeInTheDocument();
   });
 });

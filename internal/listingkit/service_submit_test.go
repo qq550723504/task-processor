@@ -11,6 +11,7 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinimage "task-processor/internal/shein/api/image"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslateapi "task-processor/internal/shein/api/translate"
@@ -124,11 +125,15 @@ func (s *stubSheinTranslateAPI) Translate(text string, from, to string) (string,
 
 type stubSheinContentAI struct {
 	response string
+	err      error
 	calls    int
 }
 
 func (s *stubSheinContentAI) CreateChatCompletion(context.Context, *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
 	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
 	response := strings.TrimSpace(s.response)
 	if response == "" {
 		response = `{"title":"Optimized English Product Title for SHEIN","description":"Optimized English product description for SHEIN with clear features and customer-friendly wording."}`
@@ -153,13 +158,22 @@ func (s *stubSheinContentAI) GetDefaultModel() string {
 }
 
 type stubSheinImageAPI struct {
-	uploaded map[string]string
-	calls    map[string]int
-	err      error
+	uploaded       map[string]string
+	calls          map[string]int
+	originalCalls  int
+	originalUpload string
+	err            error
 }
 
 func (s *stubSheinImageAPI) UploadOriginalImage(imageData []byte) (string, error) {
-	return "", errors.New("not implemented")
+	s.originalCalls++
+	if s.err != nil {
+		return "", s.err
+	}
+	if s.originalUpload != "" {
+		return s.originalUpload, nil
+	}
+	return fmt.Sprintf("https://img.shein.com/uploaded/color-block-%d.jpg", s.originalCalls), nil
 }
 
 func (s *stubSheinImageAPI) DownloadAndUploadImage(imageURL string) (string, error) {
@@ -623,6 +637,51 @@ func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskSaveDraftDoesNotFailWhenContentOptimizerFails(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	var submitted *sheinproduct.Product
+	contentAI := &stubSheinContentAI{err: errors.New("upstream EOF")}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				saveHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				saveResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "OK",
+				},
+			},
+		},
+		SheinContentOptimizer: contentAI,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	preview, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "save_draft"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected save draft payload to be captured")
+	}
+	if contentAI.calls == 0 {
+		t.Fatal("expected content optimizer to be attempted")
+	}
+	if preview.Shein == nil || preview.Shein.Submission == nil || preview.Shein.Submission.LastStatus != "success" {
+		t.Fatalf("submission = %+v", preview.Shein)
+	}
+}
+
 func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 	t.Parallel()
 
@@ -928,6 +987,161 @@ func TestSubmitTaskBlocksPublishWhenSheinImageUploadFails(t *testing.T) {
 	}
 	if saved.Result.Shein.Submission.LastStatus != "failed" || !strings.Contains(saved.Result.Shein.Submission.LastError, "upload rejected") {
 		t.Fatalf("submission failure = %+v", saved.Result.Shein.Submission)
+	}
+}
+
+func TestSubmitTaskReusesSheinImageUploadCache(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	sourceImage := "https://oss.shuomiai.com/listingkit/source-main.png"
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: sourceImage,
+		Gallery:   []string{sourceImage},
+	}
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{sourceImage})
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo([]string{sourceImage})
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].ImageInfo = sheinImageInfo([]string{sourceImage})
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	imageAPI := &stubSheinImageAPI{}
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				saveResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "OK"},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: imageAPI},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "save_draft", ConfirmedFinal: true})
+		if err != nil {
+			t.Fatalf("submit task %d: %v", i+1, err)
+		}
+	}
+	if imageAPI.calls[sourceImage] != 1 {
+		t.Fatalf("upload calls for source image = %d, want 1", imageAPI.calls[sourceImage])
+	}
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	cache := saved.Result.Shein.FinalDraft.SheinImageUploadCache
+	if cache[sourceImage] == "" || !isSheinUploadedImageURL(cache[sourceImage]) {
+		t.Fatalf("upload cache = %+v, want shein uploaded url for source", cache)
+	}
+}
+
+func TestSubmitTaskSaveDraftAllowsMissingStrictPublishImageRoles(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	sourceImage := "https://oss.shuomiai.com/listingkit/source-main.png"
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		Confirmed:       true,
+		MainImageURL:    sourceImage,
+		FinalImageOrder: []string{sourceImage},
+	}
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: sourceImage,
+		Gallery:   []string{sourceImage},
+	}
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{sourceImage})
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo([]string{sourceImage})
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				saveResponse: &sheinproduct.SheinResponse{Code: "0", Msg: "OK"},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "save_draft"})
+	if err != nil {
+		t.Fatalf("save draft should allow missing strict publish image roles: %v", err)
+	}
+}
+
+func TestSubmitTaskPublishBlocksMissingSizeMapRole(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	sourceImage := "https://oss.shuomiai.com/listingkit/source-main.png"
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		Confirmed:       true,
+		MainImageURL:    sourceImage,
+		FinalImageOrder: []string{sourceImage},
+		ImageRoleOverrides: map[string]string{
+			sourceImage: "swatch",
+		},
+	}
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: sourceImage,
+		Gallery:   []string{sourceImage},
+	}
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{sourceImage})
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo([]string{sourceImage})
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	publishCalled := false
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					publishCalled = true
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
+	if err == nil || !errors.Is(err, ErrSubmitBlocked) {
+		t.Fatalf("publish err = %v, want readiness block", err)
+	}
+	readiness := buildSheinSubmitReadinessForAction(task.Result.Shein, "publish")
+	foundSizeMapBlocker := false
+	if readiness != nil {
+		for _, item := range readiness.BlockingItems {
+			if strings.Contains(item.Message, "尺寸图") {
+				foundSizeMapBlocker = true
+				break
+			}
+		}
+	}
+	if !foundSizeMapBlocker {
+		t.Fatalf("publish readiness = %+v, want size map blocker", readiness)
+	}
+	if publishCalled {
+		t.Fatal("publish should not be called when strict image roles are missing")
 	}
 }
 

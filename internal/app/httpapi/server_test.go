@@ -251,6 +251,26 @@ func (s *stubListingKitHandler) SubmitTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "submitted"})
 }
 
+func (s *stubListingKitHandler) GetSheinSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"default_store_id": 869})
+}
+
+func (s *stubListingKitHandler) UpdateSheinSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"default_store_id": 869})
+}
+
+func (s *stubListingKitHandler) PreviewSheinPrice(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"ready": true})
+}
+
+func (s *stubListingKitHandler) UpdateSheinFinalDraft(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id")})
+}
+
+func (s *stubListingKitHandler) GetSubmissionEvents(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "items": []any{}})
+}
+
 func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 	t.Parallel()
 

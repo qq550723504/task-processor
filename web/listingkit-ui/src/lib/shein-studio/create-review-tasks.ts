@@ -119,6 +119,7 @@ export async function createSheinReviewTasks(input: {
   productImageCount?: string;
   productImagePrompt?: string;
   productImagePrompts?: SheinStudioProductImagePrompt[];
+  renderSizeImagesWithSds?: boolean;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
@@ -132,6 +133,7 @@ export async function createSheinReviewTasks(input: {
     productImagePrompt,
     productImagePrompts,
     prompt,
+    renderSizeImagesWithSds = true,
     selection,
     selectedIds,
     sheinStoreId,
@@ -268,6 +270,7 @@ export async function createSheinReviewTasks(input: {
             image_urls: item.imageUrls,
           })),
           size_reference_image_urls: sdsMetadata.size_reference_image_urls,
+          render_size_images_with_sds: renderSizeImagesWithSds,
         },
         sds: {
           ...sdsMetadata,

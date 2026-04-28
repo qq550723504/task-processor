@@ -50,6 +50,8 @@ func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHand
 	if listingKitHandler != nil {
 		v1 := r.Group("/api/v1/listing-kits")
 		v1.POST("/generate", listingKitHandler.GenerateListingKit)
+		v1.GET("/settings/shein", listingKitHandler.GetSheinSettings)
+		v1.PUT("/settings/shein", listingKitHandler.UpdateSheinSettings)
 		v1.POST("/studio/designs", listingKitHandler.GenerateStudioDesigns)
 		v1.POST("/studio/product-images", listingKitHandler.GenerateStudioProductImages)
 		v1.POST("/tasks/:task_id/shein-images/regenerate", listingKitHandler.RegenerateSheinDataImage)
@@ -70,6 +72,9 @@ func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHand
 		v1.GET("/tasks/:task_id/export", listingKitHandler.GetTaskExport)
 		v1.POST("/tasks/:task_id/revision", listingKitHandler.ApplyTaskRevision)
 		v1.POST("/tasks/:task_id/revision/validate", listingKitHandler.ValidateTaskRevision)
+		v1.POST("/tasks/:task_id/shein/price-preview", listingKitHandler.PreviewSheinPrice)
+		v1.PATCH("/tasks/:task_id/shein/final-draft", listingKitHandler.UpdateSheinFinalDraft)
+		v1.GET("/tasks/:task_id/submission-events", listingKitHandler.GetSubmissionEvents)
 		v1.POST("/tasks/:task_id/submit", listingKitHandler.SubmitTask)
 		v1.DELETE("/tasks/:task_id/shein-resolution-cache", listingKitHandler.ClearSheinResolutionCache)
 	}

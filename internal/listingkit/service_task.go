@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error) {
@@ -109,7 +111,14 @@ func (s *service) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskLis
 
 	items := make([]TaskListItem, 0, len(tasks))
 	for i := range tasks {
-		items = append(items, buildTaskListItem(&tasks[i]))
+		item := buildTaskListItem(&tasks[i])
+		if normalized.SheinWorkflowStatus != "" && item.SheinWorkflowStatus != normalized.SheinWorkflowStatus {
+			continue
+		}
+		items = append(items, item)
+	}
+	if normalized.SheinWorkflowStatus != "" {
+		total = int64(len(items))
 	}
 	return &TaskListPage{
 		Page:     normalized.Page,
@@ -170,11 +179,61 @@ func buildTaskListItem(task *Task) TaskListItem {
 	if task.Result != nil && task.Result.SDSSync != nil {
 		item.SDSSyncStatus = task.Result.SDSSync.Status
 	}
+	if task.Result != nil && task.Result.Shein != nil {
+		item.SheinWorkflowStatus = deriveSheinWorkflowStatus(task.Result.Shein)
+		if latest := latestSheinSubmissionEvent(task.Result.Shein); latest != nil {
+			item.SheinLatestSubmissionStatus = latest.Status
+			item.SheinLatestSubmissionError = latest.ErrorMessage
+		} else if task.Result.Shein.Submission != nil {
+			item.SheinLatestSubmissionStatus = task.Result.Shein.Submission.LastStatus
+			item.SheinLatestSubmissionError = task.Result.Shein.Submission.LastError
+		}
+	}
 	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusFailed {
 		completedAt := task.UpdatedAt
 		item.CompletedAt = &completedAt
 	}
 	return item
+}
+
+func deriveSheinWorkflowStatus(pkg *SheinPackage) string {
+	if pkg == nil {
+		return ""
+	}
+	if latest := latestSheinSubmissionEvent(pkg); latest != nil {
+		if latest.Action == "publish" && latest.Status == "success" {
+			return "published"
+		}
+		if latest.Action == "save_draft" && latest.Status == "success" {
+			return "draft_saved"
+		}
+		if latest.Status == "failed" {
+			return "publish_failed"
+		}
+	}
+	if pkg.Submission != nil {
+		if pkg.Submission.Publish != nil && pkg.Submission.Publish.Status == "success" {
+			return "published"
+		}
+		if pkg.Submission.SaveDraft != nil && pkg.Submission.SaveDraft.Status == "success" {
+			return "draft_saved"
+		}
+		if pkg.Submission.LastStatus == "failed" {
+			return "publish_failed"
+		}
+	}
+	readiness := buildSheinSubmitReadiness(pkg)
+	if readiness != nil && readiness.Ready {
+		return "ready_to_submit"
+	}
+	return "pending_confirmation"
+}
+
+func latestSheinSubmissionEvent(pkg *SheinPackage) *sheinpub.SubmissionEvent {
+	if pkg == nil || len(pkg.SubmissionEvents) == 0 {
+		return nil
+	}
+	return &pkg.SubmissionEvents[0]
 }
 
 func validateRequest(req *GenerateRequest) error {

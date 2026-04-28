@@ -5,7 +5,7 @@ const API_BASE =
   process.env.NEXT_PUBLIC_LISTINGKIT_API_BASE ?? "/api/listing-kits";
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   query?: QueueQuery;
   body?: unknown;
   conditional?: ConditionalState | null;

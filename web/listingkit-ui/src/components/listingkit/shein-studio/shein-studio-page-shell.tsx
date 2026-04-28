@@ -1,65 +1,33 @@
 import Link from "next/link";
 
-import {
-  SheinFlowNav,
-  type SheinFlowStep,
-} from "@/components/listingkit/shein/shein-flow-nav";
 import { SheinProductPickerModal } from "@/components/listingkit/shein-studio/shein-product-picker-modal";
+import {
+  SheinStudioStepTabs,
+  type SheinStudioStepKey,
+} from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { SheinStudioWorkbenchSlot } from "@/components/listingkit/shein-studio/shein-studio-workbench-slot";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
 export function SheinStudioPageShell({
+  activeStep,
   initialKeyword,
   initialPage,
   initialShipmentArea,
   selection,
 }: {
+  activeStep: SheinStudioStepKey;
   initialKeyword: string;
   initialPage: number;
   initialShipmentArea: string;
   selection?: SDSProductVariantSelection;
 }) {
+  const hasSelection = Boolean(selection?.variantId);
+  const visibleStep = hasSelection ? activeStep : "select";
   const selectedVariantKey =
     selection?.selectedVariantIds?.join(",") ??
     selection?.variants?.map((variant) => variant.variantId).join(",") ??
     "";
   const workbenchKey = `${selection?.variantId ?? 0}:${selection?.prototypeGroupId ?? 0}:${selection?.layerId ?? ""}:${selectedVariantKey}`;
-  const studioSteps: SheinFlowStep[] = [
-    {
-      key: "select-product",
-      label: "Select SDS product",
-      description: selection?.variantId
-        ? `${selection.productName} · ${selection.variantLabel}`
-        : "按发货地、分类和价格筛选 SDS 底版商品。",
-      href: "#sds-product-browser",
-      state: selection?.variantId ? "done" : "active",
-      actionLabel: selection?.variantId ? "Product selected" : "Choose variant",
-    },
-    {
-      key: "generate-style",
-      label: "Generate styles",
-      description: "输入主题提示词和款式数量，生成可印刷图案。",
-      href: "#shein-studio-generator",
-      state: selection?.variantId ? "active" : "pending",
-      actionLabel: "Open generator",
-    },
-    {
-      key: "review-style",
-      label: "Review artwork",
-      description: "只审核 AI 款式图，批准后才进入 SHEIN 资料生成。",
-      href: "#shein-style-review",
-      state: "pending",
-      actionLabel: "Review batch",
-    },
-    {
-      key: "create-review-task",
-      label: "Create SHEIN task",
-      description: "把批准的款式转成 ListingKit SHEIN 审核任务。",
-      href: "#shein-created-tasks",
-      state: "pending",
-      actionLabel: "Generate SHEIN data",
-    },
-  ];
 
   return (
     <div className="relative isolate flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(251,146,60,0.18),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(236,72,153,0.14),_transparent_24%),linear-gradient(180deg,_#fffdf9_0%,_#f7f3ee_46%,_#efebe4_100%)]">
@@ -72,11 +40,11 @@ export function SheinStudioPageShell({
             </p>
             <div className="space-y-2">
               <h1 className="max-w-3xl font-serif text-3xl leading-tight tracking-[-0.04em] text-zinc-950 md:text-4xl">
-                SDS product to SHEIN task.
+                从 SDS 商品生成 SHEIN 上架任务
               </h1>
               <p className="max-w-2xl text-sm leading-7 text-zinc-600 md:text-base">
-                Select or change the SDS product in one place. The workbench only
-                handles style generation, approval, and SHEIN data creation.
+                按步骤选择 SDS 商品、生成款式图、审核图片，然后创建 SHEIN
+                资料确认任务。
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -84,15 +52,21 @@ export function SheinStudioPageShell({
                 href="/listing-kits/shein/gallery"
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
               >
-                View style gallery
+                查看款式图库
+              </Link>
+              <Link
+                href="/listing-kits?platform=shein"
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
+              >
+                查看 SHEIN 任务
               </Link>
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
-            <MetricCard label="Shipment area" value={initialShipmentArea} dark />
+            <MetricCard label="发货地" value={initialShipmentArea} dark />
             <MetricCard
-              label="Variants"
+              label="变体数"
               value={
                 selection?.selectedVariantIds?.length
                   ? String(selection.selectedVariantIds.length)
@@ -100,34 +74,37 @@ export function SheinStudioPageShell({
                     ? String(selection.variants.length)
                     : selection?.variantId
                       ? "1"
-                      : "Pending"
+                      : "未选择"
               }
             />
             <MetricCard
-              label="Printable area"
+              label="印刷区域"
               value={
                 selection?.printableWidth && selection?.printableHeight
                   ? `${selection.printableWidth}×${selection.printableHeight}`
-                  : "Auto"
+                  : "自动"
               }
             />
           </div>
         </section>
 
-        <SheinFlowNav
-          steps={studioSteps}
-          title="Create SHEIN listings from SDS products"
+        <SheinStudioStepTabs
+          activeStep={visibleStep}
+          hasSelection={hasSelection}
         />
 
         <div className="space-y-6">
-          <SheinProductPickerModal
-            initialKeyword={initialKeyword}
-            initialPage={initialPage}
-            initialShipmentArea={initialShipmentArea}
-            selection={selection}
-          />
-          {selection?.variantId ? (
+          {visibleStep === "select" ? (
+            <SheinProductPickerModal
+              initialKeyword={initialKeyword}
+              initialPage={initialPage}
+              initialShipmentArea={initialShipmentArea}
+              selection={selection}
+            />
+          ) : null}
+          {hasSelection ? (
             <SheinStudioWorkbenchSlot
+              activeStep={visibleStep}
               selection={selection}
               workbenchKey={workbenchKey}
             />

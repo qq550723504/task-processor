@@ -79,6 +79,7 @@ export type ListingKitTaskResult = {
 export type ListingKitTaskListQuery = {
   status?: string;
   platform?: string;
+  shein_workflow_status?: string;
   page?: number;
   page_size?: number;
 };
@@ -92,6 +93,9 @@ export type ListingKitTaskListItem = {
   product_name?: string;
   variant_label?: string;
   sds_sync_status?: string;
+  shein_workflow_status?: string;
+  shein_latest_submission_status?: string;
+  shein_latest_submission_error?: string;
   error?: string;
   created_at?: string;
   updated_at?: string;
@@ -136,6 +140,7 @@ export type CreateListingKitTaskRequest = {
         image_urls?: string[];
       }>;
       size_reference_image_urls?: string[];
+      render_size_images_with_sds?: boolean;
     };
     sds?: {
       variant_id: number;

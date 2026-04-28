@@ -19,11 +19,10 @@ export function SheinCreatedTasksList({
   return (
     <div className="rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4">
       <div className="text-sm font-semibold text-emerald-900">
-        SHEIN data generated
+        SHEIN 资料任务已创建
       </div>
       <p className="mt-1 text-sm leading-6 text-emerald-800">
-        Open a workspace to review generated SHEIN data, readiness checks, and draft
-        submission actions.
+        打开工作区确认 SHEIN 资料、价格和提交状态；如果需要处理生成/审核队列，可进入队列页。
       </p>
       <div className="mt-3 grid gap-3">
         {tasks.map((task) => (
@@ -42,7 +41,13 @@ export function SheinCreatedTasksList({
                 onClick={() => router.push(`/listing-kits/${task.id}/status`)}
                 tone="secondary"
               >
-                Open status
+                状态
+              </Button>
+              <Button
+                onClick={() => router.push(`/listing-kits/${task.id}/queue?platform=shein`)}
+                tone="secondary"
+              >
+                队列
               </Button>
               <Button
                 onClick={() =>
@@ -52,7 +57,7 @@ export function SheinCreatedTasksList({
                 }
                 tone="ghost"
               >
-                Review SHEIN data
+                审核 SHEIN 资料
               </Button>
             </div>
           </div>

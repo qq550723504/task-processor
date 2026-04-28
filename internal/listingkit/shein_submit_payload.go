@@ -149,10 +149,27 @@ func normalizeSheinSubmitSKCImages(skc *sheinproduct.SKC) {
 	if len(source) == 0 {
 		return
 	}
-	limit := len(source)
+	colorBlockSource := source[0]
+	for _, image := range source {
+		if image.ImageType == 6 && !image.SizeImgFlag && strings.TrimSpace(image.ImageURL) != "" {
+			colorBlockSource = image
+			break
+		}
+	}
+	gallerySource := make([]sheinproduct.ImageDetail, 0, len(source))
+	for _, image := range source {
+		if image.ImageType == 6 && !image.SizeImgFlag {
+			continue
+		}
+		gallerySource = append(gallerySource, image)
+	}
+	if len(gallerySource) == 0 {
+		gallerySource = []sheinproduct.ImageDetail{source[0]}
+	}
+	limit := len(gallerySource)
 	normalized := make([]sheinproduct.ImageDetail, 0, limit+2)
 	for index := 0; index < limit; index++ {
-		image := source[index]
+		image := gallerySource[index]
 		image.ImageType = 2
 		if index == 0 {
 			image.ImageType = 1
@@ -163,14 +180,14 @@ func normalizeSheinSubmitSKCImages(skc *sheinproduct.SKC) {
 		image.TransformCVSizeImage = false
 		normalized = append(normalized, image)
 	}
-	square := source[0]
+	square := gallerySource[0]
 	square.ImageType = 5
 	square.ImageSort = len(normalized) + 1
 	square.MarketingMainImage = false
 	square.SizeImgFlag = false
 	square.TransformCVSizeImage = false
 	normalized = append(normalized, square)
-	colorBlock := source[0]
+	colorBlock := colorBlockSource
 	colorBlock.ImageType = 6
 	colorBlock.ImageSort = len(normalized) + 1
 	colorBlock.MarketingMainImage = false

@@ -28,6 +28,7 @@ export function SheinStudioGenerationPanel({
   productImageCount,
   productImagePrompt,
   productImagePrompts,
+  renderSizeImagesWithSds,
   prompt,
   promptInputRef,
   savedBatches,
@@ -39,6 +40,7 @@ export function SheinStudioGenerationPanel({
   setProductImagePrompt,
   setProductImagePrompts,
   setPrompt,
+  setRenderSizeImagesWithSds,
   setSheinStoreId,
   setStyleCount,
   sheinStoreId,
@@ -59,6 +61,7 @@ export function SheinStudioGenerationPanel({
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  renderSizeImagesWithSds: boolean;
   prompt: string;
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   savedBatches: SheinStudioSavedBatch[];
@@ -70,6 +73,7 @@ export function SheinStudioGenerationPanel({
   setProductImagePrompt: (value: string) => void;
   setProductImagePrompts: (value: SheinStudioProductImagePrompt[]) => void;
   setPrompt: (value: string) => void;
+  setRenderSizeImagesWithSds: (value: boolean) => void;
   setSheinStoreId: (value: string) => void;
   setStyleCount: (value: string) => void;
   sheinStoreId: string;
@@ -83,14 +87,14 @@ export function SheinStudioGenerationPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-            Step 2 · Generate
+            第 2 步 · 生成
           </p>
           <h2 className="mt-1 font-serif text-2xl tracking-[-0.03em] text-zinc-950">
-            Artwork and product-image settings.
+            款式图和商品图设置
           </h2>
         </div>
         <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600">
-          {selectionReady ? "Product ready" : "Select product first"}
+          {selectionReady ? "商品已选择" : "请先选择商品"}
         </div>
       </div>
 
@@ -98,12 +102,12 @@ export function SheinStudioGenerationPanel({
         <div className="space-y-4 rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(135deg,_#ecfdf5,_#f8fafc)] px-4 py-4">
           <SectionHeading
             eyebrow="Artwork"
-            title="Generate POD style artwork"
-            description="This creates the flat design only. Product-image prompts are handled in the next block."
+            title="生成 POD 款式图"
+            description="这里生成的是用于印刷的平面图案。商品场景图在下一块设置。"
           />
           <label className="space-y-2">
             <span className="text-sm font-medium text-zinc-700">
-              Theme prompt <span className="text-rose-600">*</span>
+              主题提示词 <span className="text-rose-600">*</span>
             </span>
             <textarea
               className="min-h-40 w-full rounded-2xl border border-emerald-200 bg-white/80 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-emerald-900 focus:bg-white"
@@ -118,7 +122,7 @@ export function SheinStudioGenerationPanel({
             </p>
           </label>
           <NumberInput
-            label="Style count"
+            label="款式数量"
             max={8}
             min={1}
             setValue={setStyleCount}
@@ -128,20 +132,20 @@ export function SheinStudioGenerationPanel({
 
         <div className="space-y-4 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
           <SectionHeading
-            eyebrow="Product images"
-            title="Configure marketplace image generation"
-            description="These settings are used when approved artwork is turned into SHEIN data."
+            eyebrow="商品图"
+            title="设置上架商品图生成"
+            description="审核通过的款式转成 SHEIN 资料时，会使用这里的商品图设置。"
           />
           <div className="grid gap-4 lg:grid-cols-2">
             <NumberInput
-              label="Product image count"
+              label="商品图数量"
               max={9}
               min={1}
               setValue={setProductImageCount}
               value={productImageCount}
             />
             <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-700">SHEIN store ID</span>
+              <span className="text-sm font-medium text-zinc-700">SHEIN 店铺 ID</span>
               <input
                 className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
                 inputMode="numeric"
@@ -153,7 +157,7 @@ export function SheinStudioGenerationPanel({
           </div>
 
           <label className="space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Image strategy</span>
+            <span className="text-sm font-medium text-zinc-700">图片策略</span>
             <select
               className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
               onChange={(event) =>
@@ -161,28 +165,44 @@ export function SheinStudioGenerationPanel({
               }
               value={imageStrategy}
             >
-              <option value="ai_generated">AI generated product images</option>
-              <option value="sds_official">SDS official render</option>
-              <option value="hybrid">Hybrid: SDS + AI gallery</option>
+              <option value="ai_generated">AI 生成商品图</option>
+              <option value="sds_official">SDS 官方渲染</option>
+              <option value="hybrid">混合：SDS 主图 + AI 图库</option>
             </select>
             <p className="text-xs leading-6 text-zinc-500">
-              AI generated skips SDS designer. SDS official keeps template render.
-              Hybrid uses SDS mockups first and appends AI gallery images.
+              AI 生成模式不调用 SDS 设计器；SDS 官方渲染会使用模板图；
+              混合模式先用 SDS 图，再追加 AI 商品图。
             </p>
+          </label>
+
+          <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <input
+              checked={renderSizeImagesWithSds}
+              className="mt-1 h-4 w-4 rounded border-amber-300 text-zinc-950"
+              onChange={(event) => setRenderSizeImagesWithSds(event.target.checked)}
+              type="checkbox"
+            />
+            <span className="text-sm leading-6 text-amber-950">
+              <span className="block font-semibold">尺寸图也使用 SDS 渲染</span>
+              <span className="block text-xs text-amber-800">
+                AI 商品图模式下也会额外调用 SDS 设计器，只取融合后的尺寸图作为 SHEIN
+                尺寸图，不替换主图和场景图。
+              </span>
+            </span>
           </label>
 
           <label className="space-y-2">
             <span className="text-sm font-medium text-zinc-700">
-              Global product image override
+              全局商品图提示词
             </span>
             <textarea
               className="min-h-24 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
               onChange={(event) => setProductImagePrompt(event.target.value)}
-              placeholder="Optional. Applies to every product image, e.g. keep backgrounds warm and minimal."
+              placeholder="可选。会应用到每一张商品图，例如：背景保持暖色、简洁。"
               value={productImagePrompt}
             />
             <p className="text-xs leading-6 text-zinc-500">
-              Appended to every backend Amazon-compliant image template.
+              会追加到后端默认的亚马逊合规商品图模板中。
             </p>
           </label>
 
@@ -204,17 +224,17 @@ export function SheinStudioGenerationPanel({
 
       <div className="flex flex-wrap gap-3">
         <Button disabled={isGenerating} onClick={onGenerate}>
-          {isGenerating ? "Generating..." : "Generate styles"}
+          {isGenerating ? "生成中..." : "生成款式图"}
         </Button>
         <Button onClick={onSaveBatch} tone="ghost">
-          Save batch
+          保存批次
         </Button>
         <Button
           disabled={isCreatingTasks || selectedStyleCount === 0 || !selectionReady}
           onClick={onCreateTasks}
           tone="secondary"
         >
-          {isCreatingTasks ? "Generating SHEIN data..." : "Generate SHEIN data"}
+          {isCreatingTasks ? "正在生成 SHEIN 资料..." : "生成 SHEIN 资料"}
         </Button>
       </div>
 
@@ -253,9 +273,9 @@ function ProductImagePromptPlanner({
   return (
     <div className="space-y-3 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
       <div>
-        <div className="text-sm font-semibold text-zinc-800">Per-image prompts</div>
+        <div className="text-sm font-semibold text-zinc-800">每张商品图提示词</div>
         <p className="mt-1 text-xs leading-5 text-zinc-500">
-          Optional. Leave blank to use the default role template for that image.
+          可选。留空则使用该图片类型的默认模板。
         </p>
       </div>
       <div className="grid gap-3">
@@ -365,8 +385,7 @@ function GenerationMessages({
       {creatingMessage ? <Message tone="info">{creatingMessage}</Message> : null}
       {selectedStyleCount > 0 ? (
         <Message tone="success">
-          {selectedStyleCount} style{selectedStyleCount > 1 ? "s" : ""} selected
-          for SHEIN review.
+          已选择 {selectedStyleCount} 个款式用于 SHEIN 审核。
         </Message>
       ) : null}
       {saveMessage ? <Message tone="neutral">{saveMessage}</Message> : null}

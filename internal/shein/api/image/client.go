@@ -7,6 +7,8 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"io"
+	"net/http"
 	"time"
 
 	"task-processor/internal/infra/clients/management"
@@ -27,7 +29,7 @@ type Client struct {
 func NewClient(baseClient *client.BaseAPIClient) *Client {
 	return &Client{
 		BaseAPIClient:   baseClient,
-		imageDownloader: management.NewImageDownloader(60 * time.Second),
+		imageDownloader: management.NewImageDownloader(180 * time.Second),
 	}
 }
 
@@ -159,5 +161,37 @@ func (i *Client) DownloadAndUploadImage(imageURL string) (string, error) {
 }
 
 func (i *Client) downloadImageToMemory(imageURL string) ([]byte, error) {
-	return i.imageDownloader.DownloadImage(imageURL)
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		data, err := i.imageDownloader.DownloadImage(imageURL)
+		if err == nil {
+			return data, nil
+		}
+		if data, fallbackErr := downloadImageWithPlainHTTP(imageURL); fallbackErr == nil {
+			return data, nil
+		}
+		lastErr = err
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * time.Second)
+		}
+	}
+	return nil, lastErr
+}
+
+func downloadImageWithPlainHTTP(imageURL string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 ListingKit ImageUploader/1.0")
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP状态码: %d", resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 30<<20))
 }

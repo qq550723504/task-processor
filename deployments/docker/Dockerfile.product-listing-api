@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /src
+
+RUN apk add --no-cache git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-listing-api ./cmd/product-listing-api/main.go
+
+FROM xuwei190/crawler-env:latest
+
+WORKDIR /app
+
+COPY --from=builder /out/product-listing-api /app/product-listing-api
+COPY --from=builder /src/config /app/config
+COPY --from=builder /src/prompts /app/prompts
+
+RUN mkdir -p /app/logs /app/tmp && chmod +x /app/product-listing-api
+
+EXPOSE 8085
+
+CMD ["/app/product-listing-api", "-config", "config/config-prod.yaml", "-log-level", "info", "-port", "8085"]

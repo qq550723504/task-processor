@@ -1,6 +1,8 @@
 package shein
 
 import (
+	"time"
+
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -42,9 +44,54 @@ type Package struct {
 	RequestDraft            *RequestDraft                            `json:"request_draft,omitempty"`
 	PreviewProduct          *sheinproduct.Product                    `json:"preview_product,omitempty"`
 	Submission              *SubmissionReport                        `json:"submission,omitempty"`
+	Pricing                 *PricingReview                           `json:"pricing,omitempty"`
+	FinalDraft              *FinalDraft                              `json:"final_draft,omitempty"`
+	SubmissionEvents        []SubmissionEvent                        `json:"submission_events,omitempty"`
 	CustomAttributeRelation []sheinattribute.CustomAttributeRelation `json:"custom_attribute_relation,omitempty"`
 	Metadata                map[string]string                        `json:"metadata,omitempty"`
 	ReviewNotes             []string                                 `json:"review_notes,omitempty"`
+}
+
+type PricingRule struct {
+	SourceCurrency   string  `json:"source_currency,omitempty"`
+	TargetCurrency   string  `json:"target_currency,omitempty"`
+	ExchangeRate     float64 `json:"exchange_rate,omitempty"`
+	MarkupMultiplier float64 `json:"markup_multiplier,omitempty"`
+	MinimumPrice     float64 `json:"minimum_price,omitempty"`
+	RoundTo          float64 `json:"round_to,omitempty"`
+	PriceEnding      float64 `json:"price_ending,omitempty"`
+}
+
+type PricingReview struct {
+	RuleSnapshot     *PricingRule       `json:"rule_snapshot,omitempty"`
+	SKUPrices        []SKUPriceReview   `json:"sku_prices,omitempty"`
+	ManualOverrides  map[string]float64 `json:"manual_overrides,omitempty"`
+	MissingPriceSKUs []string           `json:"missing_price_skus,omitempty"`
+	Ready            bool               `json:"ready"`
+	UpdatedAt        *time.Time         `json:"updated_at,omitempty"`
+}
+
+type SKUPriceReview struct {
+	SupplierSKU     string  `json:"supplier_sku,omitempty"`
+	SupplierCode    string  `json:"supplier_code,omitempty"`
+	CostCNY         float64 `json:"cost_cny,omitempty"`
+	CalculatedPrice float64 `json:"calculated_price,omitempty"`
+	FinalPrice      float64 `json:"final_price,omitempty"`
+	Currency        string  `json:"currency,omitempty"`
+	Manual          bool    `json:"manual,omitempty"`
+}
+
+type FinalDraft struct {
+	Confirmed             bool               `json:"confirmed"`
+	ConfirmedAt           *time.Time         `json:"confirmed_at,omitempty"`
+	SubmitMode            string             `json:"submit_mode,omitempty"`
+	ManualPriceOverrides  map[string]float64 `json:"manual_price_overrides,omitempty"`
+	FinalImageOrder       []string           `json:"final_image_order,omitempty"`
+	MainImageURL          string             `json:"main_image_url,omitempty"`
+	DeletedImageURLs      []string           `json:"deleted_image_urls,omitempty"`
+	ImageRoleOverrides    map[string]string  `json:"image_role_overrides,omitempty"`
+	SheinImageUploadCache map[string]string  `json:"shein_image_upload_cache,omitempty"`
+	UpdatedAt             *time.Time         `json:"updated_at,omitempty"`
 }
 
 type RequestDraft struct {

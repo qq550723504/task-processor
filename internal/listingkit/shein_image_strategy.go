@@ -27,6 +27,16 @@ func shouldUseSDSOfficialImages(req *GenerateRequest) bool {
 	return strategy == sheinImageStrategySDSOfficial || strategy == sheinImageStrategyHybrid
 }
 
+func shouldRenderSheinSizeImagesWithSDS(req *GenerateRequest) bool {
+	if shouldUseSDSOfficialImages(req) {
+		return true
+	}
+	return req != nil &&
+		req.Options != nil &&
+		req.Options.SheinStudio != nil &&
+		req.Options.SheinStudio.RenderSizeImagesWithSDS
+}
+
 func shouldUseSheinStudioAIImages(req *GenerateRequest) bool {
 	strategy := resolveSheinImageStrategy(req)
 	return strategy == sheinImageStrategyAIGenerated || strategy == sheinImageStrategyHybrid

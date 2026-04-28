@@ -14,6 +14,7 @@ import type {
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
+  SheinStudioProductImagePrompt,
   SheinStudioStorageData,
 } from "@/lib/types/shein-studio";
 
@@ -26,8 +27,10 @@ type SaveDraftInput = {
   styleCount: string;
   productImageCount?: string;
   productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
+  renderSizeImagesWithSds?: boolean;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
@@ -106,8 +109,10 @@ export async function saveSheinStudioDraft(input: SaveDraftInput) {
       styleCount: input.styleCount,
       productImageCount: input.productImageCount,
       productImagePrompt: input.productImagePrompt,
+      productImagePrompts: input.productImagePrompts,
       sheinStoreId: input.sheinStoreId,
       imageStrategy: input.imageStrategy,
+      renderSizeImagesWithSds: input.renderSizeImagesWithSds,
       selectionVariantId: input.selection?.variantId,
       selection: buildSelectionSummary(input.selection),
       designs: input.designs,
@@ -145,8 +150,10 @@ export async function saveSheinStudioBatch(input: SaveBatchInput) {
       styleCount: input.styleCount,
       productImageCount: input.productImageCount,
       productImagePrompt: input.productImagePrompt,
+      productImagePrompts: input.productImagePrompts,
       sheinStoreId: input.sheinStoreId,
       imageStrategy: input.imageStrategy,
+      renderSizeImagesWithSds: input.renderSizeImagesWithSds,
       selectionVariantId: input.selection?.variantId,
       selection: buildSelectionSummary(input.selection),
       designs: input.designs,

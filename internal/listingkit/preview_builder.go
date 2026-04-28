@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/asset"
 	"task-processor/internal/productenrich"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinproduct "task-processor/internal/shein/api/product"
 	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
@@ -251,8 +252,159 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, canonical *productenrich.Ca
 		RequestDraft:      pkg.RequestDraft,
 		PreviewProduct:    pkg.PreviewProduct,
 		Submission:        pkg.Submission,
+		Pricing:           pkg.Pricing,
+		FinalReview:       buildSheinFinalReviewPayload(pkg, canonical, readiness),
+		SubmissionEvents:  append([]sheinpub.SubmissionEvent(nil), pkg.SubmissionEvents...),
 		InspectionData:    pkg.Inspection,
 	}
+}
+
+func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *productenrich.CanonicalProduct, readiness *SheinSubmitReadiness) *SheinFinalReview {
+	if pkg == nil {
+		return nil
+	}
+	final := &SheinFinalReview{
+		SourceProduct: buildSheinSourceProductSummary(canonical),
+		Title:         firstNonEmpty(pkg.ProductNameEn, pkg.SpuName),
+		Description:   pkg.Description,
+		CategoryPath:  append([]string(nil), pkg.CategoryPath...),
+		CategoryID:    pkg.CategoryID,
+		Attributes:    append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...),
+		BlockingItems: cloneSheinReadinessItems(readinessBlockingItems(readiness)),
+	}
+	if pkg.FinalDraft != nil {
+		final.Confirmed = pkg.FinalDraft.Confirmed
+		final.SubmitMode = pkg.FinalDraft.SubmitMode
+	}
+	if pkg.SaleAttributeResolution != nil {
+		final.SaleAttributes = append(final.SaleAttributes, pkg.SaleAttributeResolution.SKCAttributes...)
+		final.SaleAttributes = append(final.SaleAttributes, pkg.SaleAttributeResolution.SKUAttributes...)
+	}
+	if pkg.RequestDraft != nil {
+		final.SKUs = buildSheinFinalReviewSKUs(pkg.RequestDraft)
+		final.Images = buildSheinFinalReviewImages(pkg.RequestDraft, pkg.FinalDraft, pkg.PreviewProduct)
+	}
+	return final
+}
+
+func readinessBlockingItems(readiness *SheinSubmitReadiness) []SheinReadinessItem {
+	if readiness == nil {
+		return nil
+	}
+	return readiness.BlockingItems
+}
+
+func cloneSheinReadinessItems(items []SheinReadinessItem) []SheinReadinessItem {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]SheinReadinessItem, len(items))
+	copy(out, items)
+	return out
+}
+
+func buildSheinFinalReviewSKUs(draft *sheinpub.RequestDraft) []SheinFinalReviewSKU {
+	if draft == nil {
+		return nil
+	}
+	out := []SheinFinalReviewSKU{}
+	for _, skc := range draft.SKCList {
+		for _, sku := range skc.SKUList {
+			item := SheinFinalReviewSKU{
+				SupplierCode: skc.SupplierCode,
+				SupplierSKU:  sku.SupplierSKU,
+				Price:        parseMoney(sku.BasePrice),
+				Currency:     sku.Currency,
+				Stock:        sku.StockCount,
+				Weight:       sku.Weight,
+			}
+			for _, attr := range sku.SaleAttributes {
+				switch strings.ToLower(strings.TrimSpace(attr.Name)) {
+				case "color", "颜色":
+					item.Color = attr.Value
+				case "size", "尺码", "尺寸":
+					item.Size = attr.Value
+				}
+			}
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func buildSheinFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *sheinpub.FinalDraft, product *sheinproduct.Product) []SheinFinalReviewImage {
+	if draft == nil || draft.ImageInfo == nil {
+		return nil
+	}
+	sizeMapURLs := sheinSizeMapImageURLs(product)
+	out := []SheinFinalReviewImage{}
+	add := func(url, role string, sort int, main bool) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+		if finalDraft != nil {
+			if override := strings.TrimSpace(finalDraft.ImageRoleOverrides[url]); override != "" {
+				role = override
+			}
+			if strings.TrimSpace(finalDraft.MainImageURL) == url {
+				main = true
+				role = "main"
+			}
+		}
+		if _, ok := sizeMapURLs[url]; ok && role == "gallery" {
+			role = "size_map"
+		}
+		out = append(out, SheinFinalReviewImage{
+			URL:     url,
+			Role:    role,
+			Sort:    sort,
+			Final:   true,
+			Main:    main || role == "main",
+			Swatch:  role == "swatch" || role == "skc",
+			SizeMap: role == "size_map",
+		})
+	}
+	add(draft.ImageInfo.MainImage, "main", 1, true)
+	for i, image := range draft.ImageInfo.Gallery {
+		add(image, "gallery", i+2, false)
+	}
+	if draft.ImageInfo.WhiteBg != "" {
+		add(draft.ImageInfo.WhiteBg, "white_bg", len(out)+1, false)
+	}
+	for _, skc := range draft.SKCList {
+		if skc.ImageInfo != nil {
+			add(skc.ImageInfo.MainImage, "skc", len(out)+1, false)
+		}
+	}
+	return out
+}
+
+func sheinSizeMapImageURLs(product *sheinproduct.Product) map[string]struct{} {
+	if product == nil {
+		return nil
+	}
+	out := map[string]struct{}{}
+	add := func(info *sheinproduct.ImageInfo) {
+		if info == nil {
+			return
+		}
+		for _, image := range info.ImageInfoList {
+			url := strings.TrimSpace(image.ImageURL)
+			if url == "" || !image.SizeImgFlag {
+				continue
+			}
+			out[url] = struct{}{}
+		}
+	}
+	add(product.ImageInfo)
+	for i := range product.SKCList {
+		add(&product.SKCList[i].ImageInfo)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func buildSheinResolutionCacheSummary(pkg *sheinpub.Package) *SheinResolutionCacheSummary {

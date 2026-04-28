@@ -19,6 +19,9 @@ func GetEndpoint(name string) string {
 		"uploadImage":            uploadImageEndpoint,
 		"translateText":          translateTextEndpoint,
 		"getWarehouses":          getWarehousesEndpoint,
+		"storeAddressList":       storeAddressListEndpoint,
+		"storeAddressAdd":        storeAddressAddEndpoint,
+		"storeAddressCheck":      storeAddressCheckEndpoint,
 		"getAttributeTemplates":  getAttributeTemplatesEndpoint,
 		"getPartInfo":            getPartInfoEndpoint,
 		"batchHandleCostDiscuss": batchHandleCostDiscussEndpoint,
@@ -62,6 +65,9 @@ func GetPublishProductEndpoint() string         { return publishProductEndpoint 
 func GetUploadImageEndpoint() string            { return uploadImageEndpoint }
 func GetTranslateTextEndpoint() string          { return translateTextEndpoint }
 func GetWarehousesEndpoint() string             { return getWarehousesEndpoint }
+func GetStoreAddressListEndpoint() string       { return storeAddressListEndpoint }
+func GetStoreAddressAddEndpoint() string        { return storeAddressAddEndpoint }
+func GetStoreAddressCheckEndpoint() string      { return storeAddressCheckEndpoint }
 func GetAttributeTemplatesEndpoint() string     { return getAttributeTemplatesEndpoint }
 func GetPartInfoEndpoint() string               { return getPartInfoEndpoint }
 func GetBatchHandleCostDiscussEndpoint() string { return batchHandleCostDiscussEndpoint }

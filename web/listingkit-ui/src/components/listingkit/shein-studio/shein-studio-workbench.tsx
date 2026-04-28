@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
+import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import { SheinStudioProgressStrip } from "@/components/listingkit/shein-studio/shein-studio-progress-strip";
 import { SheinStudioSelectionOverview } from "@/components/listingkit/shein-studio/shein-studio-selection-overview";
+import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
 import {
   DEFAULT_SHEIN_STORE_ID,
@@ -34,8 +36,10 @@ import {
 } from "@/lib/utils/shein-studio-batches";
 
 export function SheinStudioWorkbench({
+  activeStep = "generate",
   selection,
 }: {
+  activeStep?: SheinStudioStepKey;
   selection?: SDSProductVariantSelection;
 }) {
   const [prompt, setPrompt] = useState("");
@@ -51,6 +55,7 @@ export function SheinStudioWorkbench({
   const [imageStrategy, setImageStrategy] = useState<SheinStudioImageStrategy>(
     DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
   );
+  const [renderSizeImagesWithSds, setRenderSizeImagesWithSds] = useState(true);
   const [designs, setDesigns] = useState<SheinStudioGeneratedDesign[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [generationError, setGenerationError] = useState<string>("");
@@ -122,6 +127,7 @@ export function SheinStudioWorkbench({
         setProductImagePrompts(draft?.productImagePrompts ?? []);
         setSheinStoreId(draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID);
         setImageStrategy(draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
+        setRenderSizeImagesWithSds(draft?.renderSizeImagesWithSds ?? true);
         setDesigns(draft?.designs ?? []);
         setSelectedIds(draft?.selectedIds ?? []);
         setCreatedTasks(draft?.createdTasks ?? []);
@@ -158,6 +164,7 @@ export function SheinStudioWorkbench({
         productImagePrompts,
         sheinStoreId,
         imageStrategy,
+        renderSizeImagesWithSds,
         selection,
         designs,
         selectedIds,
@@ -177,6 +184,7 @@ export function SheinStudioWorkbench({
     productImageCount,
     productImagePrompt,
     productImagePrompts,
+    renderSizeImagesWithSds,
     selectedIds,
     selection,
     sheinStoreId,
@@ -281,6 +289,7 @@ export function SheinStudioWorkbench({
       productImagePrompts,
       sheinStoreId,
       imageStrategy,
+      renderSizeImagesWithSds,
       selection,
       designs,
       selectedIds,
@@ -306,6 +315,7 @@ export function SheinStudioWorkbench({
     setProductImagePrompts(batch.productImagePrompts ?? []);
     setSheinStoreId(batch.sheinStoreId);
     setImageStrategy(batch.imageStrategy ?? "sds_official");
+    setRenderSizeImagesWithSds(batch.renderSizeImagesWithSds ?? true);
     setDesigns(batch.designs);
     setSelectedIds(batch.selectedIds);
     setCreatedTasks(batch.createdTasks);
@@ -356,6 +366,7 @@ export function SheinStudioWorkbench({
         productImageCount,
         productImagePrompt,
         productImagePrompts,
+        renderSizeImagesWithSds,
         selection,
         designs: approved,
         selectedIds: approved.map((design) => design.id),
@@ -385,39 +396,44 @@ export function SheinStudioWorkbench({
         selection={selection}
       />
 
-      <SheinStudioGenerationPanel
-        createdTasks={createdTasks}
-        creatingError={creatingError}
-        creatingMessage={creatingMessage}
-        generationError={generationError}
-        imageStrategy={imageStrategy}
-        isCreatingTasks={isCreatingTasks}
-        isGenerating={isGenerating}
-        onCreateTasks={handleCreateTasks}
-        onDeleteBatch={handleDeleteBatch}
-        onGenerate={handleGenerate}
-        onLoadBatch={handleLoadBatch}
-        onSaveBatch={handleSaveBatch}
-        productImageCount={productImageCount}
-        productImagePrompt={productImagePrompt}
-        productImagePrompts={productImagePrompts}
-        prompt={prompt}
-        promptInputRef={promptInputRef}
-        savedBatches={savedBatches}
-        saveMessage={saveMessage}
-        selectedStyleCount={selectedIds.length}
-        selectionReady={Boolean(selection?.variantId)}
-        setImageStrategy={setImageStrategy}
-        setProductImageCount={setProductImageCount}
-        setProductImagePrompt={setProductImagePrompt}
-        setProductImagePrompts={setProductImagePrompts}
-        setPrompt={setPrompt}
-        setSheinStoreId={setSheinStoreId}
-        setStyleCount={setStyleCount}
-        sheinStoreId={sheinStoreId}
-        styleCount={styleCount}
-      />
+      {activeStep === "generate" ? (
+        <SheinStudioGenerationPanel
+          createdTasks={createdTasks}
+          creatingError={creatingError}
+          creatingMessage={creatingMessage}
+          generationError={generationError}
+          imageStrategy={imageStrategy}
+          isCreatingTasks={isCreatingTasks}
+          isGenerating={isGenerating}
+          onCreateTasks={handleCreateTasks}
+          onDeleteBatch={handleDeleteBatch}
+          onGenerate={handleGenerate}
+          onLoadBatch={handleLoadBatch}
+          onSaveBatch={handleSaveBatch}
+          productImageCount={productImageCount}
+          productImagePrompt={productImagePrompt}
+          productImagePrompts={productImagePrompts}
+          renderSizeImagesWithSds={renderSizeImagesWithSds}
+          prompt={prompt}
+          promptInputRef={promptInputRef}
+          savedBatches={savedBatches}
+          saveMessage={saveMessage}
+          selectedStyleCount={selectedIds.length}
+          selectionReady={Boolean(selection?.variantId)}
+          setImageStrategy={setImageStrategy}
+          setProductImageCount={setProductImageCount}
+          setProductImagePrompt={setProductImagePrompt}
+          setProductImagePrompts={setProductImagePrompts}
+          setPrompt={setPrompt}
+          setRenderSizeImagesWithSds={setRenderSizeImagesWithSds}
+          setSheinStoreId={setSheinStoreId}
+          setStyleCount={setStyleCount}
+          sheinStoreId={sheinStoreId}
+          styleCount={styleCount}
+        />
+      ) : null}
 
+      {activeStep === "review" ? (
       <div id="shein-style-review" className="scroll-mt-6">
         <SheinStudioProgressStrip
           createdTaskCount={createdTasks.length}
@@ -427,6 +443,7 @@ export function SheinStudioWorkbench({
         <SheinDesignPreviewGrid
           designs={designs}
           onNoteChange={handleNoteChange}
+          onCreateReviewTasks={handleCreateTasks}
           onRegenerate={handleRegenerate}
           onToggle={toggleSelection}
           createActionDisabledReason={createActionDisabledReason}
@@ -436,6 +453,39 @@ export function SheinStudioWorkbench({
           selection={selection}
         />
       </div>
+      ) : null}
+
+      {activeStep === "tasks" ? (
+        <div
+          id="shein-created-tasks"
+          className="scroll-mt-6 rounded-[1.75rem] border border-zinc-200/80 bg-white p-5 shadow-sm"
+        >
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
+                Step 4 · SHEIN tasks
+              </p>
+              <h2 className="mt-1 font-serif text-2xl tracking-[-0.03em] text-zinc-950">
+                Review generated workspaces.
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-600">
+                打开每个任务的 workspace，完成最终图片、价格、属性和提交确认。
+              </p>
+            </div>
+            <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600">
+              {createdTasks.length} tasks
+            </span>
+          </div>
+          {createdTasks.length ? (
+            <SheinCreatedTasksList tasks={createdTasks} />
+          ) : (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
+              还没有创建 SHEIN 任务。先回到 Review 步骤批准款式，再在 Generate
+              步骤点击 Generate SHEIN data。
+            </div>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }

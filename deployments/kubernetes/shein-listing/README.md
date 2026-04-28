@@ -39,6 +39,26 @@ pwsh ./scripts/push-shein-listing-dockerhub.ps1 -DockerHubUser xuwei190 -Tag v20
 pwsh ./scripts/build-push-deploy-shein-listing.ps1 -DockerHubUser xuwei190 -Tag v20260402
 ```
 
+单店专属 pod：
+
+```powershell
+pwsh ./scripts/deploy-single-store-listing.ps1 `
+  -StoreId 801 `
+  -OwnerNodeId ser376996273941-c4e40df6 `
+  -Tier heavy `
+  -ExcludeNode ser376996273941-c4e40df6 `
+  -Apply
+```
+
+说明：
+
+- `OwnerNodeId`
+  - RabbitMQ 店铺队列归属节点标识，必须和店铺当前 owner 绑定保持一致，或配合后台切换 owner 后再部署
+- `Tier`
+  - 默认复用对应 `shein-listing-lite` / `shein-listing-heavy` 的线上镜像和资源档位
+- `ExcludeNode`
+  - 可选；用于避开故障节点，但仍沿用原 owner 节点名接管队列
+
 如果你不用脚本，也可以直接构建：
 
 ```bash

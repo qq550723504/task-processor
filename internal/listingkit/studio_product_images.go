@@ -14,7 +14,6 @@ import (
 )
 
 const maxStudioProductImageCount = 9
-const maxConcurrentStudioProductImages = 3
 
 type studioProductImageRole struct {
 	Key         string
@@ -62,7 +61,7 @@ func (s *service) GenerateStudioProductImages(ctx context.Context, req *StudioPr
 	roles := selectStudioProductImageRoles(count)
 	images := make([]StudioGeneratedImage, len(roles))
 	errs := make([]error, len(roles))
-	sem := make(chan struct{}, min(maxConcurrentStudioProductImages, len(roles)))
+	sem := make(chan struct{}, studioProductImageConcurrencyLimit(len(roles)))
 	var wg sync.WaitGroup
 	for idx, role := range roles {
 		idx, role := idx, role
@@ -114,6 +113,13 @@ func nonNilErrors(errs []error) []error {
 		result = append(result, fmt.Errorf("product image generation returned no usable images"))
 	}
 	return result
+}
+
+func studioProductImageConcurrencyLimit(imageCount int) int {
+	if imageCount <= 0 {
+		return 1
+	}
+	return imageCount
 }
 
 func (s *service) generateOneStudioProductImage(ctx context.Context, req *StudioProductImageRequest, sourceURL string, basePrompt string) (string, error) {

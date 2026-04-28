@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: listingkit-ui
+  labels:
+    app: listingkit-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: listingkit-ui
+  template:
+    metadata:
+      labels:
+        app: listingkit-ui
+    spec:
+      containers:
+        - name: listingkit-ui
+          image: xuwei190/task-processor-listingkit-ui:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: listingkit-workbench-config
+          readinessProbe:
+            httpGet:
+              path: /listing-kits/shein
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /listing-kits/shein
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

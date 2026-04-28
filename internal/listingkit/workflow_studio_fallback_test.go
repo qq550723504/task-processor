@@ -6,6 +6,7 @@ import (
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsdesign "task-processor/internal/sds/design"
+	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 func TestBuildStudioFallbackCanonicalProductUsesSDSMetadata(t *testing.T) {
@@ -377,7 +378,7 @@ func TestApplySheinStudioAIImagesToSheinReplacesDraftImages(t *testing.T) {
 				SizeReferenceImageURLs: []string{"https://cdn.sdspod.com/size-chart.jpg"},
 			},
 		},
-	})
+	}, nil)
 
 	if pkg.Images.MainImage != "https://cdn.example.com/ai-main.png" {
 		t.Fatalf("main image = %q", pkg.Images.MainImage)
@@ -390,6 +391,16 @@ func TestApplySheinStudioAIImagesToSheinReplacesDraftImages(t *testing.T) {
 	}
 	if pkg.PreviewProduct == nil || pkg.PreviewProduct.ImageInfo.ImageInfoList[0].ImageURL != "https://cdn.example.com/ai-main.png" {
 		t.Fatalf("preview image = %+v", pkg.PreviewProduct)
+	}
+	if !hasSizeReferenceImage(pkg.PreviewProduct.ImageInfo.ImageInfoList, "https://cdn.sdspod.com/size-chart.jpg") {
+		t.Fatalf("preview product size map not marked: %+v", pkg.PreviewProduct.ImageInfo.ImageInfoList)
+	}
+	if !hasSizeReferenceImage(pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList, "https://cdn.sdspod.com/size-chart.jpg") {
+		t.Fatalf("preview skc size map not marked: %+v", pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList)
+	}
+	finalImages := buildSheinFinalReviewImages(pkg.RequestDraft, pkg.FinalDraft, pkg.PreviewProduct)
+	if !hasFinalReviewSizeMap(finalImages, "https://cdn.sdspod.com/size-chart.jpg") {
+		t.Fatalf("final review size map not marked: %+v", finalImages)
 	}
 }
 
@@ -414,7 +425,7 @@ func TestApplySheinStudioAIImagesToSheinAppendsForHybrid(t *testing.T) {
 				ProductImageURLs: []string{"https://cdn.example.com/ai-gallery.png"},
 			},
 		},
-	})
+	}, nil)
 
 	if pkg.Images.MainImage != "https://cdn.sdspod.com/rendered-main.jpg" {
 		t.Fatalf("main image = %q", pkg.Images.MainImage)
@@ -496,7 +507,7 @@ func TestApplySheinStudioAIImagesToSheinUsesVariantImagesForSKCs(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, nil)
 
 	if got := pkg.RequestDraft.SKCList[0].SKUList[0].MainImage; got != "https://cdn.example.com/black-main.png" {
 		t.Fatalf("black sku main image = %q", got)
@@ -514,4 +525,22 @@ func TestApplySheinStudioAIImagesToSheinUsesVariantImagesForSKCs(t *testing.T) {
 
 func sheinImageSet(main string) *common.ImageSet {
 	return &common.ImageSet{MainImage: main}
+}
+
+func hasSizeReferenceImage(images []sheinproduct.ImageDetail, imageURL string) bool {
+	for _, image := range images {
+		if image.ImageURL == imageURL && image.SizeImgFlag && image.ImageType == 6 {
+			return true
+		}
+	}
+	return false
+}
+
+func hasFinalReviewSizeMap(images []SheinFinalReviewImage, imageURL string) bool {
+	for _, image := range images {
+		if image.URL == imageURL && image.Role == "size_map" && image.SizeMap {
+			return true
+		}
+	}
+	return false
 }

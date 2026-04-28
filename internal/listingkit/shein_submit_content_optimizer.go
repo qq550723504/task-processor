@@ -21,12 +21,6 @@ func optimizeSheinProductContentForSubmit(ctx context.Context, product *sheinpro
 	if strings.TrimSpace(title) == "" && strings.TrimSpace(description) == "" {
 		return nil
 	}
-	if aiClient == nil {
-		if sheinTextNeedsTranslation(title, "en") || sheinTextNeedsTranslation(description, "en") {
-			return fmt.Errorf("shein content optimizer is not configured")
-		}
-		return nil
-	}
 
 	cleaner := content.NewTextCleaner()
 	title = cleaner.NormalizeText(title)
@@ -37,13 +31,18 @@ func optimizeSheinProductContentForSubmit(ctx context.Context, product *sheinpro
 	if description == "" {
 		description = title
 	}
+	if aiClient == nil {
+		applySheinSubmitContent(product, title, description)
+		return nil
+	}
 
 	aiCtx, cancel := timeout.WithAIShortTimeout(ctx)
 	defer cancel()
 
 	optimizedTitle, optimizedDescription, err := optimizeSheinSubmitContentWithAI(aiCtx, aiClient, title, description, buildSheinSubmitContentFeatures(product))
 	if err != nil {
-		return err
+		applySheinSubmitContent(product, title, description)
+		return nil
 	}
 	optimizedTitle = strings.TrimSpace(cleaner.RemoveForbiddenWords(cleaner.NormalizeText(optimizedTitle)))
 	optimizedDescription = strings.TrimSpace(cleaner.RemoveForbiddenWords(cleaner.NormalizeText(optimizedDescription)))
@@ -53,12 +52,22 @@ func optimizeSheinProductContentForSubmit(ctx context.Context, product *sheinpro
 	if optimizedDescription == "" {
 		optimizedDescription = description
 	}
-	optimizedTitle = truncateSheinSubmitTitle(optimizedTitle, 800)
-	optimizedDescription = truncateSheinSubmitDescription(optimizedDescription, 5000)
-
-	product.MultiLanguageNameList = []sheinproduct.LanguageContent{{Language: "en", Name: optimizedTitle}}
-	product.MultiLanguageDescList = []sheinproduct.LanguageContent{{Language: "en", Name: optimizedDescription}}
+	applySheinSubmitContent(product, optimizedTitle, optimizedDescription)
 	return nil
+}
+
+func applySheinSubmitContent(product *sheinproduct.Product, title, description string) {
+	if product == nil {
+		return
+	}
+	product.MultiLanguageNameList = []sheinproduct.LanguageContent{{
+		Language: "en",
+		Name:     truncateSheinSubmitTitle(strings.TrimSpace(title), 800),
+	}}
+	product.MultiLanguageDescList = []sheinproduct.LanguageContent{{
+		Language: "en",
+		Name:     truncateSheinSubmitDescription(strings.TrimSpace(description), 5000),
+	}}
 }
 
 func optimizeSheinSubmitContentWithAI(ctx context.Context, aiClient openaiclient.ChatCompleter, title, description, features string) (string, string, error) {

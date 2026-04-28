@@ -328,6 +328,76 @@ export type SheinPreviewPayload = PlatformPreviewPayload & {
   status_overview?: SheinStatusOverview;
   workspace_overview?: SheinWorkspaceOverview;
   submission?: SheinSubmissionReport;
+  pricing?: SheinPricingReview;
+  final_review?: SheinFinalReview;
+  submission_events?: SheinSubmissionEvent[];
+};
+
+export type SheinPricingRule = {
+  source_currency?: string;
+  target_currency?: string;
+  exchange_rate?: number;
+  markup_multiplier?: number;
+  minimum_price?: number;
+  round_to?: number;
+  price_ending?: number;
+};
+
+export type SheinSKUPriceReview = {
+  supplier_sku?: string;
+  supplier_code?: string;
+  cost_cny?: number;
+  calculated_price?: number;
+  final_price?: number;
+  currency?: string;
+  manual?: boolean;
+};
+
+export type SheinPricingReview = {
+  rule_snapshot?: SheinPricingRule;
+  sku_prices?: SheinSKUPriceReview[];
+  manual_overrides?: Record<string, number>;
+  missing_price_skus?: string[];
+  ready?: boolean;
+  updated_at?: string;
+};
+
+export type SheinFinalReviewSKU = {
+  supplier_code?: string;
+  supplier_sku?: string;
+  color?: string;
+  size?: string;
+  price?: number;
+  currency?: string;
+  stock?: number;
+  weight?: number;
+};
+
+export type SheinFinalReviewImage = {
+  url?: string;
+  role?: string;
+  sort?: number;
+  final?: boolean;
+  main?: boolean;
+  swatch?: boolean;
+  size_map?: boolean;
+};
+
+export type SheinFinalReview = {
+  confirmed?: boolean;
+  submit_mode?: "publish" | "save_draft";
+  store_id?: number;
+  site?: string;
+  source_product?: SheinPreviewPayload["source_product"];
+  title?: string;
+  description?: string;
+  category_path?: string[];
+  category_id?: number;
+  attributes?: SheinResolvedAttribute[];
+  sale_attributes?: SheinResolvedSaleAttribute[];
+  skus?: SheinFinalReviewSKU[];
+  images?: SheinFinalReviewImage[];
+  blocking_items?: SheinReadinessItem[];
 };
 
 export type SheinImageUploadPreflight = {
@@ -366,4 +436,28 @@ export type SheinSubmissionReport = {
   save_draft?: SheinSubmissionRecord;
   publish?: SheinSubmissionRecord;
   last_result?: SheinSubmissionResponse;
+};
+
+export type SheinSubmissionEvent = {
+  id?: string;
+  task_id?: string;
+  platform?: string;
+  action?: string;
+  status?: string;
+  request_id?: string;
+  started_at?: string;
+  finished_at?: string;
+  error_message?: string;
+  validation_notes?: string[];
+  response?: SheinSubmissionResponse;
+};
+
+export type SheinSettings = {
+  default_store_id?: number;
+  site?: string;
+  warehouse_code?: string;
+  default_stock?: number;
+  default_submit_mode?: "publish" | "save_draft";
+  pricing?: SheinPricingRule;
+  updated_at?: string;
 };

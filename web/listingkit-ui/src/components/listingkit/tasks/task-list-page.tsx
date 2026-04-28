@@ -7,23 +7,37 @@ import { ArrowRight, Boxes, Clock, LoaderCircle, Plus, RefreshCw } from "lucide-
 import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
 import { EmptyState } from "@/components/shared/empty-state";
+import { SheinSettingsCard } from "@/components/listingkit/shein/shein-settings-card";
 import { useListingKitTasks } from "@/lib/query/use-task-list";
+import {
+  sheinSubmissionStatusLabel,
+  sheinWorkflowStatusLabel,
+} from "@/lib/shein-studio/shein-submission-display";
 import type { ListingKitTaskListItem } from "@/lib/types/listingkit";
 
 const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
-  { value: "pending", label: "Pending" },
-  { value: "processing", label: "Processing" },
-  { value: "completed", label: "Completed" },
-  { value: "needs_review", label: "Needs review" },
-  { value: "failed", label: "Failed" },
+  { value: "", label: "全部任务状态" },
+  { value: "pending", label: "待处理" },
+  { value: "processing", label: "处理中" },
+  { value: "completed", label: "已完成" },
+  { value: "needs_review", label: "待审核" },
+  { value: "failed", label: "失败" },
 ];
 
 const PLATFORM_OPTIONS = [
-  { value: "", label: "All platforms" },
+  { value: "", label: "全部平台" },
   { value: "shein", label: "SHEIN" },
   { value: "amazon", label: "Amazon" },
   { value: "temu", label: "Temu" },
+];
+
+const SHEIN_WORKFLOW_OPTIONS = [
+  { value: "", label: "全部 SHEIN 状态" },
+  { value: "pending_confirmation", label: "待确认" },
+  { value: "ready_to_submit", label: "可提交" },
+  { value: "publish_failed", label: "发布失败" },
+  { value: "published", label: "已发布" },
+  { value: "draft_saved", label: "草稿已保存" },
 ];
 
 const primaryLinkClass =
@@ -33,7 +47,7 @@ const secondaryLinkClass =
 
 function formatDate(value?: string) {
   if (!value) {
-    return "Unknown";
+    return "未知";
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -62,6 +76,23 @@ function statusTone(status?: string) {
   }
 }
 
+function taskStatusLabel(status?: string) {
+  switch (status) {
+    case "pending":
+      return "待处理";
+    case "processing":
+      return "处理中";
+    case "completed":
+      return "已完成";
+    case "needs_review":
+      return "待审核";
+    case "failed":
+      return "失败";
+    default:
+      return status ?? "未知";
+  }
+}
+
 function taskTitle(task: ListingKitTaskListItem) {
   return (
     task.product_name ||
@@ -75,12 +106,19 @@ export function TaskListPage() {
   const searchParams = useSearchParams();
   const status = searchParams.get("status") ?? "";
   const platform = searchParams.get("platform") ?? "";
+  const sheinWorkflowStatus = searchParams.get("shein_workflow_status") ?? "";
   const page = Number(searchParams.get("page") ?? "1") || 1;
-  const query = { status: status || undefined, platform: platform || undefined, page, page_size: 20 };
+  const query = {
+    status: status || undefined,
+    platform: platform || undefined,
+    shein_workflow_status: sheinWorkflowStatus || undefined,
+    page,
+    page_size: 20,
+  };
   const tasks = useListingKitTasks(query);
   const items = tasks.data?.items ?? [];
 
-  const updateFilter = (key: "status" | "platform", value: string) => {
+  const updateFilter = (key: "status" | "platform" | "shein_workflow_status", value: string) => {
     const params = new URLSearchParams(searchParams.toString());
     if (value) {
       params.set(key, value);
@@ -110,14 +148,16 @@ export function TaskListPage() {
           <div className="flex flex-wrap gap-3">
             <Button tone="secondary" onClick={() => tasks.refetch()}>
               <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
+              刷新
             </Button>
             <Link href="/listing-kits/shein" className={primaryLinkClass}>
               <Plus className="mr-2 h-4 w-4" />
-              New SHEIN batch
+              新建 SHEIN 批次
             </Link>
           </div>
         </section>
+
+        <SheinSettingsCard />
 
         <Card className="border-white/70 bg-white/82 p-4">
           <div className="flex flex-wrap gap-3">
@@ -127,6 +167,17 @@ export function TaskListPage() {
               onChange={(event) => updateFilter("status", event.target.value)}
             >
               {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-11 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none focus:border-zinc-400"
+              value={sheinWorkflowStatus}
+              onChange={(event) => updateFilter("shein_workflow_status", event.target.value)}
+            >
+              {SHEIN_WORKFLOW_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -145,7 +196,7 @@ export function TaskListPage() {
             </select>
             <div className="ml-auto flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
               <Boxes className="h-4 w-4" />
-              {tasks.data?.total ?? 0} tasks
+              {tasks.data?.total ?? 0} 个任务
             </div>
           </div>
         </Card>
@@ -165,7 +216,7 @@ export function TaskListPage() {
             description="先从 SHEIN Studio 创建一个批次，生成后会出现在这里。"
             action={
               <Link href="/listing-kits/shein" className={primaryLinkClass}>
-                Create SHEIN batch
+                新建 SHEIN 批次
               </Link>
             }
           />
@@ -190,11 +241,16 @@ function TaskRow({ task }: { task: ListingKitTaskListItem }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${statusTone(task.status)}`}>
-              {task.status ?? "unknown"}
+              {taskStatusLabel(task.status)}
             </span>
             {task.sds_sync_status ? (
               <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-700">
                 SDS {task.sds_sync_status}
+              </span>
+            ) : null}
+            {task.shein_workflow_status ? (
+              <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-700">
+                {sheinWorkflowStatusLabel(task.shein_workflow_status)}
               </span>
             ) : null}
             {(task.platforms ?? []).map((platform) => (
@@ -212,6 +268,15 @@ function TaskRow({ task }: { task: ListingKitTaskListItem }) {
           {task.error ? (
             <p className="mt-2 line-clamp-2 text-sm text-rose-600">{task.error}</p>
           ) : null}
+          {task.shein_latest_submission_error ? (
+            <p className="mt-2 line-clamp-2 text-sm text-rose-600">
+              最近提交：发布失败。原始错误：{task.shein_latest_submission_error}
+            </p>
+          ) : task.shein_latest_submission_status ? (
+            <p className="mt-2 text-sm text-zinc-500">
+              最近提交：{sheinSubmissionStatusLabel(task.shein_latest_submission_status)}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-3 lg:justify-end">
@@ -223,10 +288,10 @@ function TaskRow({ task }: { task: ListingKitTaskListItem }) {
             <div className="mt-1 text-xs text-zinc-500">{task.image_count ?? 0} images</div>
           </div>
           <Link href={`/listing-kits/${task.task_id}/status`} className={secondaryLinkClass}>
-            Status
+            状态
           </Link>
           <Link href={workspaceHref} className={primaryLinkClass}>
-            Workspace
+            工作台
             <ArrowRight className="ml-2 h-4 w-4 transition group-hover:translate-x-0.5" />
           </Link>
         </div>

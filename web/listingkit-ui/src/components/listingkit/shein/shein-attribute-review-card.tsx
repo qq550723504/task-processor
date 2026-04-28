@@ -92,7 +92,23 @@ function SheinAttributeReviewContent({
   resolvedAttributes: SheinResolvedAttribute[];
 }) {
   const [selectedValues, setSelectedValues] = useState<Record<string, string>>({});
-  const selectableCandidates = [...pendingCandidates, ...recommendedCandidates];
+  const requiredCandidates = pendingCandidates.filter((candidate) => candidate.required);
+  const nonRequiredPendingCandidates = pendingCandidates.filter(
+    (candidate) => !candidate.required,
+  );
+  const importantCandidates = [
+    ...nonRequiredPendingCandidates.filter((candidate) => candidate.important),
+    ...recommendedCandidates.filter((candidate) => candidate.important),
+  ];
+  const optionalCandidates = [
+    ...nonRequiredPendingCandidates.filter((candidate) => !candidate.important),
+    ...recommendedCandidates.filter((candidate) => !candidate.important),
+  ];
+  const selectableCandidates = [
+    ...requiredCandidates,
+    ...importantCandidates,
+    ...optionalCandidates,
+  ];
   const selectedAttributes = buildSelectedAttributes(
     selectableCandidates,
     selectedValues,
@@ -104,56 +120,38 @@ function SheinAttributeReviewContent({
       <div className="space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            SHEIN attribute review
+            SHEIN 普通属性确认
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-700">
-            Review current attribute mapping status before final submission.
+            先处理必填未完成项；重要建议和其他建议不会阻断提交，但补齐后资料更完整。
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
-          {current.status ? <span>Status {current.status}</span> : null}
+          {current.status ? <span>状态 {current.status}</span> : null}
           {typeof current.resolved_count === "number" ? (
-            <span>Resolved {current.resolved_count}</span>
+            <span>已确认 {current.resolved_count}</span>
           ) : null}
           {typeof current.unresolved_count === "number" ? (
-            <span>Unresolved {current.unresolved_count}</span>
+            <span>未完成 {current.unresolved_count}</span>
           ) : null}
         </div>
 
-        {resolvedAttributes.length > 0 ? (
-          <div className="grid gap-2 lg:grid-cols-2">
-            {resolvedAttributes.map((attribute) => (
-              <AttributeRow
-                key={`${attribute.attribute_id ?? attribute.name}-${attribute.value}`}
-                name={attribute.name}
-                value={attribute.value}
-                mapped={
-                  attribute.attribute_id
-                    ? `attribute_id ${attribute.attribute_id}${
-                        attribute.attribute_value_id
-                          ? ` · value_id ${attribute.attribute_value_id}`
-                          : ""
-                      }`
-                    : undefined
-                }
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {pendingCandidates.length > 0 ? (
-          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+        {requiredCandidates.length > 0 ? (
+          <div
+            className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3"
+            id="shein-attribute-required-group"
+          >
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                Pending template attributes
+                必填未完成
               </p>
               <p className="mt-1 text-sm leading-6 text-amber-900">
-                Required fields block submit. Important fields are recommended and improve SHEIN attribute completeness.
+                这些属性来自 SHEIN 类目模板，未确认前会阻断提交。
               </p>
             </div>
             <div className="space-y-2">
-              {pendingCandidates.map((candidate) => (
+              {requiredCandidates.map((candidate) => (
                 <PendingCandidateRow
                   candidate={candidate}
                   key={`${candidate.attribute_id}-${candidate.name}`}
@@ -173,23 +171,23 @@ function SheinAttributeReviewContent({
               onClick={() => onConfirmAttributes?.(selectedAttributes)}
               tone="secondary"
             >
-              {isApplying ? "Applying..." : "Apply selected attributes"}
+              {isApplying ? "保存中..." : "保存已选择属性"}
             </Button>
           </div>
         ) : null}
 
-        {recommendedCandidates.length > 0 ? (
+        {importantCandidates.length > 0 ? (
           <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                Recommended optional attributes
+                重要建议
               </p>
               <p className="mt-1 text-sm leading-6 text-sky-900">
-                These optional SHEIN template fields do not block submit, but filling them can improve listing completeness.
+                这些不是必填阻断项，但 SHEIN 标记为重要属性，建议客户确认。
               </p>
             </div>
             <div className="space-y-2">
-              {recommendedCandidates.map((candidate) => (
+              {importantCandidates.map((candidate) => (
                 <PendingCandidateRow
                   candidate={candidate}
                   key={`${candidate.attribute_id}-${candidate.name}`}
@@ -204,16 +202,81 @@ function SheinAttributeReviewContent({
                 />
               ))}
             </div>
-            {pendingCandidates.length === 0 ? (
+            {requiredCandidates.length === 0 ? (
               <Button
                 className="h-9"
                 disabled={!canConfirm || isApplying}
                 onClick={() => onConfirmAttributes?.(selectedAttributes)}
                 tone="secondary"
               >
-                {isApplying ? "Applying..." : "Apply selected attributes"}
+                {isApplying ? "保存中..." : "保存已选择属性"}
               </Button>
             ) : null}
+          </div>
+        ) : null}
+
+        {optionalCandidates.length > 0 ? (
+          <details className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-3">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.18em] text-zinc-600">
+              其他建议属性（不阻断提交）
+            </summary>
+            <div className="mt-3 space-y-2">
+              {optionalCandidates.map((candidate) => (
+                <PendingCandidateRow
+                  candidate={candidate}
+                  key={`${candidate.attribute_id}-${candidate.name}`}
+                  tone="recommended"
+                  value={selectedValues[String(candidate.attribute_id ?? candidate.name)] ?? ""}
+                  onChange={(value) =>
+                    setSelectedValues((currentValues) => ({
+                      ...currentValues,
+                      [String(candidate.attribute_id ?? candidate.name)]: value,
+                    }))
+                  }
+                />
+              ))}
+            </div>
+            {requiredCandidates.length === 0 && importantCandidates.length === 0 ? (
+              <Button
+                className="mt-3 h-9"
+                disabled={!canConfirm || isApplying}
+                onClick={() => onConfirmAttributes?.(selectedAttributes)}
+                tone="secondary"
+              >
+                {isApplying ? "保存中..." : "保存已选择属性"}
+              </Button>
+            ) : null}
+          </details>
+        ) : null}
+
+        {resolvedAttributes.length > 0 ? (
+          <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                已确认属性
+              </p>
+              <p className="mt-1 text-sm leading-6 text-emerald-900">
+                这些属性已进入当前 SHEIN 资料。人工确认的同类解析会用于后续缓存命中。
+              </p>
+            </div>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {resolvedAttributes.map((attribute) => (
+                <AttributeRow
+                  key={`${attribute.attribute_id ?? attribute.name}-${attribute.value}`}
+                  name={attribute.name}
+                  value={attribute.value}
+                  mapped={
+                    attribute.attribute_id
+                      ? `attribute_id ${attribute.attribute_id}${
+                          attribute.attribute_value_id
+                            ? ` · value_id ${attribute.attribute_value_id}`
+                            : ""
+                        }`
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -260,8 +323,15 @@ function PendingCandidateRow({
       </span>
       <span className="mt-1 block text-[11px] uppercase tracking-[0.16em] text-zinc-500">
         attribute_id {candidate.attribute_id}
-        {candidate.required ? " · required" : ""}
-        {candidate.important ? " · important" : ""}
+        {candidate.required ? " · 必填" : ""}
+        {candidate.important ? " · 重要" : ""}
+      </span>
+      <span className="mt-1 block text-xs leading-5 text-zinc-600">
+        {candidate.required
+          ? "SHEIN 模板必填，未确认会阻断提交。"
+          : candidate.important
+            ? "SHEIN 重要属性，建议补齐但不作为阻断。"
+            : "建议属性，不影响提交。"}
       </span>
       {options.length > 0 ? (
         <select
@@ -269,7 +339,7 @@ function PendingCandidateRow({
           value={value}
           onChange={(event) => onChange(event.target.value)}
         >
-          <option value="">Select a SHEIN value</option>
+          <option value="">选择 SHEIN 属性值</option>
           {options.map((option) => (
             <option
               key={option.attribute_value_id}
@@ -282,7 +352,7 @@ function PendingCandidateRow({
         </select>
       ) : (
         <p className="mt-2 text-sm text-zinc-600">
-          This template field has no enumerable values. Manual text entry is not enabled in this MVP.
+          这个模板属性没有可选值。当前 MVP 暂不支持手工文本录入。
         </p>
       )}
     </label>

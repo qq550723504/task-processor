@@ -9,6 +9,7 @@ import type {
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
+  SheinStudioProductImagePrompt,
 } from "@/lib/types/shein-studio";
 
 export const dynamic = "force-dynamic";
@@ -41,8 +42,10 @@ type DraftPayload = {
   styleCount: string;
   productImageCount?: string;
   productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
+  renderSizeImagesWithSds?: boolean;
   transparentBackground?: boolean;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];

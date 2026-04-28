@@ -24,6 +24,20 @@ type SubmissionRecord struct {
 	Result      *SubmissionResponse `json:"result,omitempty"`
 }
 
+type SubmissionEvent struct {
+	ID              string              `json:"id,omitempty"`
+	TaskID          string              `json:"task_id,omitempty"`
+	Platform        string              `json:"platform,omitempty"`
+	Action          string              `json:"action,omitempty"`
+	Status          string              `json:"status,omitempty"`
+	RequestID       string              `json:"request_id,omitempty"`
+	StartedAt       time.Time           `json:"started_at"`
+	FinishedAt      *time.Time          `json:"finished_at,omitempty"`
+	ErrorMessage    string              `json:"error_message,omitempty"`
+	ValidationNotes []string            `json:"validation_notes,omitempty"`
+	Response        *SubmissionResponse `json:"response,omitempty"`
+}
+
 type SubmissionResponse struct {
 	Code            string   `json:"code,omitempty"`
 	Message         string   `json:"message,omitempty"`

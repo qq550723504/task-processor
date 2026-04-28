@@ -1,6 +1,8 @@
 import { SheinStudioPageShell } from "@/components/listingkit/shein-studio/shein-studio-page-shell";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
+type SheinStudioStep = "select" | "generate" | "review" | "tasks";
+
 function parseOptionalNumber(value?: string) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
@@ -35,6 +37,18 @@ function parseOptionalNumberArray(value?: string) {
   return items.length > 0 ? Array.from(new Set(items)) : undefined;
 }
 
+function parseStudioStep(value?: string): SheinStudioStep {
+  if (
+    value === "select" ||
+    value === "generate" ||
+    value === "review" ||
+    value === "tasks"
+  ) {
+    return value;
+  }
+  return "select";
+}
+
 export default async function ListingKitSheinStudioPage({
   searchParams,
 }: {
@@ -57,6 +71,7 @@ export default async function ListingKitSheinStudioPage({
     variantIds?: string;
     productName?: string;
     variantLabel?: string;
+    step?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -86,6 +101,9 @@ export default async function ListingKitSheinStudioPage({
 
   return (
     <SheinStudioPageShell
+      activeStep={
+        params.step ? parseStudioStep(params.step) : selection ? "generate" : "select"
+      }
       initialKeyword={params.keyword ?? ""}
       initialPage={Number(params.page ?? "1") || 1}
       initialShipmentArea={params.shipmentArea ?? "US"}

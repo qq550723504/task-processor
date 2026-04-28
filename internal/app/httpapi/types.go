@@ -118,6 +118,11 @@ type listingKitRouteHandler interface {
 	ApplyTaskRevision(c *gin.Context)
 	ValidateTaskRevision(c *gin.Context)
 	SubmitTask(c *gin.Context)
+	GetSheinSettings(c *gin.Context)
+	UpdateSheinSettings(c *gin.Context)
+	PreviewSheinPrice(c *gin.Context)
+	UpdateSheinFinalDraft(c *gin.Context)
+	GetSubmissionEvents(c *gin.Context)
 	ClearSheinResolutionCache(c *gin.Context)
 }
 

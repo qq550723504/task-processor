@@ -117,6 +117,20 @@ export async function POST(
   return proxyRequest(request, context);
 }
 
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return proxyRequest(request, context);
+}
+
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return proxyRequest(request, context);
+}
+
 export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> },

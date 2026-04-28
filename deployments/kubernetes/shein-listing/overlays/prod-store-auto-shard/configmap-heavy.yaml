@@ -44,7 +44,7 @@ data:
       enabled: true
       headless: true
       browserPath: "/opt/fingerprint-chrome/chrome-144/chrome"
-      poolSize: 3
+      poolSize: 4
       viewportWidth: 1920
       viewportHeight: 1080
       proxyServer: ""

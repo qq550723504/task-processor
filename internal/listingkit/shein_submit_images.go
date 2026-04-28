@@ -79,33 +79,33 @@ func sheinImageInfoPendingUploadCount(info *sheinproduct.ImageInfo) int {
 	return count
 }
 
-func uploadSheinProductImages(product *sheinproduct.Product, uploader sheinimage.ImageAPI) (int, error) {
+func uploadSheinProductImages(product *sheinproduct.Product, uploader sheinimage.ImageAPI, cached map[string]string) (int, map[string]string, error) {
 	if product == nil {
-		return 0, nil
+		return 0, cloneSheinImageUploadCache(cached), nil
 	}
 	if uploader == nil {
-		return 0, fmt.Errorf("shein image upload api is not configured")
+		return 0, cloneSheinImageUploadCache(cached), fmt.Errorf("shein image upload api is not configured")
 	}
-	uploaded := map[string]string{}
+	uploaded := cloneSheinImageUploadCache(cached)
 	count, err := uploadSheinImageInfo(product.ImageInfo, uploader, uploaded)
 	if err != nil {
-		return count, err
+		return count, uploaded, err
 	}
 	for i := range product.SKCList {
 		added, err := uploadSheinImageInfo(&product.SKCList[i].ImageInfo, uploader, uploaded)
 		count += added
 		if err != nil {
-			return count, err
+			return count, uploaded, err
 		}
 		for j := range product.SKCList[i].SKUS {
 			added, err := uploadSheinImageInfo(product.SKCList[i].SKUS[j].ImageInfo, uploader, uploaded)
 			count += added
 			if err != nil {
-				return count, err
+				return count, uploaded, err
 			}
 		}
 	}
-	return count, nil
+	return count, uploaded, nil
 }
 
 func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPreflight {
@@ -129,6 +129,8 @@ func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPrefligh
 	for _, url := range uniqueURLs {
 		switch {
 		case isSheinUploadedImageURL(url):
+			report.SheinUploadedURLs++
+		case sheinImageUploadCacheHit(pkg, url):
 			report.SheinUploadedURLs++
 		default:
 			report.PendingUploadURLs++
@@ -171,7 +173,9 @@ func appendSheinImageInfoURLs(urls []string, info *sheinproduct.ImageInfo) []str
 
 func isSheinUploadedImageURL(url string) bool {
 	value := strings.ToLower(strings.TrimSpace(url))
-	return strings.Contains(value, "shein.com") || strings.Contains(value, "sheinimg.com")
+	return strings.Contains(value, "shein.com") ||
+		strings.Contains(value, "sheinimg.com") ||
+		strings.Contains(value, "ltwebstatic.com")
 }
 
 func isSDSImageURL(url string) bool {
@@ -206,20 +210,72 @@ func uploadSheinImageInfo(info *sheinproduct.ImageInfo, uploader sheinimage.Imag
 		if sourceURL == "" {
 			continue
 		}
+		isColorBlock := info.ImageInfoList[i].ImageType == 6 && !info.ImageInfoList[i].SizeImgFlag
 		if isSheinUploadedImageURL(sourceURL) {
 			continue
 		}
-		uploadedURL, ok := uploaded[sourceURL]
+		cacheKey := sourceURL
+		if isColorBlock {
+			cacheKey = "color-block:" + sourceURL
+		}
+		uploadedURL, ok := uploaded[cacheKey]
+		if ok && !isSheinUploadedImageURL(uploadedURL) {
+			ok = false
+		}
 		if !ok {
 			var err error
-			uploadedURL, err = uploader.DownloadAndUploadImage(sourceURL)
+			if isColorBlock {
+				var imageData []byte
+				imageData, err = buildSheinColorBlockImageFromURL(sourceURL)
+				if err == nil {
+					uploadedURL, err = uploader.UploadOriginalImage(imageData)
+				}
+				if err != nil {
+					if existingURL := strings.TrimSpace(uploaded[sourceURL]); isSheinUploadedImageURL(existingURL) {
+						uploadedURL = existingURL
+						err = nil
+					} else {
+						uploadedURL, err = uploader.DownloadAndUploadImage(sourceURL)
+					}
+				}
+			} else {
+				uploadedURL, err = uploader.DownloadAndUploadImage(sourceURL)
+			}
 			if err != nil {
 				return count, fmt.Errorf("upload shein image %q: %w", sourceURL, err)
 			}
-			uploaded[sourceURL] = uploadedURL
+			uploaded[cacheKey] = uploadedURL
 			count++
 		}
 		info.ImageInfoList[i].ImageURL = uploadedURL
 	}
 	return count, nil
+}
+
+func sheinImageUploadCache(pkg *SheinPackage) map[string]string {
+	if pkg == nil || pkg.FinalDraft == nil {
+		return nil
+	}
+	return pkg.FinalDraft.SheinImageUploadCache
+}
+
+func sheinImageUploadCacheHit(pkg *SheinPackage, sourceURL string) bool {
+	uploadedURL := strings.TrimSpace(sheinImageUploadCache(pkg)[strings.TrimSpace(sourceURL)])
+	return uploadedURL != "" && isSheinUploadedImageURL(uploadedURL)
+}
+
+func cloneSheinImageUploadCache(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(input))
+	for sourceURL, uploadedURL := range input {
+		sourceURL = strings.TrimSpace(sourceURL)
+		uploadedURL = strings.TrimSpace(uploadedURL)
+		if sourceURL == "" || uploadedURL == "" || !isSheinUploadedImageURL(uploadedURL) {
+			continue
+		}
+		out[sourceURL] = uploadedURL
+	}
+	return out
 }

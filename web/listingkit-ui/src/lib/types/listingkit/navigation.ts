@@ -8,6 +8,7 @@ export type ConditionalState = {
 export type QueueQuery = {
   status?: string;
   platform?: string;
+  shein_workflow_status?: string;
   slot?: string;
   from_platform?: string;
   from_slot?: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 
@@ -34,6 +35,13 @@ import type {
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { buildWorkspaceSearch } from "@/components/listingkit/workspace/workspace-routing";
 
+const defaultQueuePageSize = 20;
+
+function parsePositiveInt(value: string | null, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
 function initialFilters(searchParams: URLSearchParams): QueueFilterValue {
   return {
     platform: searchParams.get("platform") ?? "",
@@ -49,16 +57,21 @@ export function QueueScreen({ taskId }: { taskId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [filters, setFilters] = useState(() => initialFilters(searchParams));
+  const page = parsePositiveInt(searchParams.get("page"), 1);
+  const pageSize = parsePositiveInt(
+    searchParams.get("page_size"),
+    defaultQueuePageSize,
+  );
 
   const queueQuery = useMemo<QueueQuery>(
     () => ({
       ...filters,
-      page: 1,
-      page_size: 50,
+      page,
+      page_size: pageSize,
       sort_by: "render_preview_available",
       sort_order: "desc",
     }),
-    [filters],
+    [filters, page, pageSize],
   );
 
   const queue = useGenerationQueue(taskId, queueQuery);
@@ -81,6 +94,15 @@ export function QueueScreen({ taskId }: { taskId: string }) {
       if (value === "" || value === false) return;
       params.set(key, String(value));
     });
+    params.set("page", "1");
+    params.set("page_size", String(pageSize));
+    router.replace(`/listing-kits/${taskId}/queue?${params.toString()}`);
+  };
+
+  const updateQueuePage = (nextPage: number, nextPageSize = pageSize) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("page", String(Math.max(1, nextPage)));
+    params.set("page_size", String(nextPageSize));
     router.replace(`/listing-kits/${taskId}/queue?${params.toString()}`);
   };
 
@@ -146,8 +168,32 @@ export function QueueScreen({ taskId }: { taskId: string }) {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+            任务导航
+          </p>
+          <p className="mt-1 text-sm text-zinc-600">
+            队列用于处理生成/审核项；资料确认和提交请回到工作区。
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+            href={`/listing-kits/${taskId}/workspace?platform=shein&section_key=general_review`}
+          >
+            打开工作区
+          </Link>
+          <Link
+            className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+            href="/listing-kits/shein"
+          >
+            返回 SHEIN 工作室
+          </Link>
+        </div>
+      </div>
       <WorkspaceHeader
-        title={`Queue ${taskId}`}
+        title={`任务队列 ${taskId}`}
         summary={
           suppressResolvedActionSummary ? undefined : queue.data.resolved_action_summary
         }
@@ -176,8 +222,76 @@ export function QueueScreen({ taskId }: { taskId: string }) {
           description={queueEmptyState.description}
         />
       ) : (
-        <QueueTable items={queue.data.items} onAction={(item) => handleReview(item)} />
+        <>
+          <QueuePagination
+            page={queue.data.page ?? page}
+            pageSize={queue.data.page_size ?? pageSize}
+            total={queue.data.total ?? 0}
+            onChange={updateQueuePage}
+          />
+          <QueueTable items={queue.data.items} onAction={(item) => handleReview(item)} />
+          <QueuePagination
+            page={queue.data.page ?? page}
+            pageSize={queue.data.page_size ?? pageSize}
+            total={queue.data.total ?? 0}
+            onChange={updateQueuePage}
+          />
+        </>
       )}
+    </div>
+  );
+}
+
+function QueuePagination({
+  page,
+  pageSize,
+  total,
+  onChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onChange: (page: number, pageSize?: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(total, page * pageSize);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">
+      <div>
+        第 {page} / {totalPages} 页 · 显示 {start}-{end} / {total} 条
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2">
+          <span>每页</span>
+          <select
+            className="h-9 rounded-xl border border-zinc-200 bg-white px-2 text-sm"
+            value={pageSize}
+            onChange={(event) => onChange(1, Number(event.target.value))}
+          >
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+          </select>
+        </label>
+        <button
+          className="h-9 rounded-xl border border-zinc-200 px-3 font-medium text-zinc-800 disabled:text-zinc-300"
+          disabled={page <= 1}
+          onClick={() => onChange(page - 1)}
+          type="button"
+        >
+          上一页
+        </button>
+        <button
+          className="h-9 rounded-xl border border-zinc-200 px-3 font-medium text-zinc-800 disabled:text-zinc-300"
+          disabled={page >= totalPages}
+          onClick={() => onChange(page + 1)}
+          type="button"
+        >
+          下一页
+        </button>
+      </div>
     </div>
   );
 }

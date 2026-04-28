@@ -16,13 +16,13 @@ export type SheinFlowStep = {
 function stateLabel(state: SheinFlowStepState) {
   switch (state) {
     case "done":
-      return "Done";
+      return "完成";
     case "active":
-      return "Now";
+      return "当前";
     case "blocked":
-      return "Blocked";
+      return "阻断";
     default:
-      return "Next";
+      return "下一步";
   }
 }
 
@@ -68,7 +68,7 @@ export function SheinFlowNav({
         </p>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {steps.map((step, index) => (
           <a
             className={cn(

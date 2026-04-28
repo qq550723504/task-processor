@@ -59,6 +59,7 @@ export type SheinStudioSavedBatch = {
   productImagePrompts?: SheinStudioProductImagePrompt[];
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
+  renderSizeImagesWithSds?: boolean;
   selectionVariantId?: number;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];

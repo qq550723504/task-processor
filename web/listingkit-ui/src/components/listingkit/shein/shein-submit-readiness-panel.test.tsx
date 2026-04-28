@@ -59,18 +59,18 @@ describe("SheinSubmitReadinessPanel", () => {
       />,
     );
 
-    expect(screen.getByText("SHEIN publish readiness")).toBeInTheDocument();
-    expect(screen.getByText("Blocked")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 发布检查")).toBeInTheDocument();
+    expect(screen.getByText("有阻断")).toBeInTheDocument();
+    expect(screen.getByText("待处理问题")).toBeInTheDocument();
     expect(screen.getAllByText("类目骨架")).toHaveLength(2);
     expect(screen.getByText("当前商品还没有确认到可提交的 SHEIN 类目骨架。")).toBeInTheDocument();
-    expect(screen.getByText("Required")).toBeInTheDocument();
+    expect(screen.getByText("必须完成")).toBeInTheDocument();
 
-    const buttons = screen.getAllByRole("button", { name: "Open fix path" });
-    await user.click(buttons[1]);
+    await user.click(screen.getByRole("button", { name: "去确认类目" }));
     expect(onSelectBlockingItem).toHaveBeenCalledTimes(1);
     expect(onSelectBlockingItem.mock.calls[0][0]).toMatchObject({ key: "category" });
 
-    await user.click(buttons[0]);
+    await user.click(screen.getAllByRole("button", { name: "去处理" })[0]);
     expect(onRunPrimaryAction).toHaveBeenCalled();
   });
 
@@ -97,9 +97,10 @@ describe("SheinSubmitReadinessPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Ready with warnings")).toBeInTheDocument();
-    expect(screen.getByText("人工备注")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open fix path" })).not.toBeInTheDocument();
+    expect(screen.getByText("可提交但有提醒")).toBeInTheDocument();
+    expect(screen.getByText("待处理问题")).toBeInTheDocument();
+    expect(screen.getByText("存在未识别的问题")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "去处理" })).not.toBeInTheDocument();
   });
 
   it("renders ready state without blocker lists", () => {
@@ -120,7 +121,7 @@ describe("SheinSubmitReadinessPanel", () => {
         }}
         workspaceOverview={{
           headline: "SHEIN 工作台已就绪",
-          primary_action: "Submit to SHEIN",
+          primary_action: "提交到 SHEIN",
           primary_action_key: "submit",
           next_actions: ["提交到 SHEIN"],
           submit_state: {
@@ -134,15 +135,65 @@ describe("SheinSubmitReadinessPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.getByText("可提交")).toBeInTheDocument();
     expect(screen.getByText("SHEIN 工作台已就绪")).toBeInTheDocument();
-    expect(screen.getAllByText("Submit to SHEIN")).toHaveLength(1);
-    expect(screen.getByText("Save draft or submit to SHEIN")).toBeInTheDocument();
-    expect(screen.getByText("Latest submission")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save to SHEIN draft" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Submit to SHEIN" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open fix path" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Blocking items")).not.toBeInTheDocument();
+    expect(screen.getAllByText("提交到 SHEIN")).toHaveLength(1);
+    expect(screen.getByText("保存草稿或提交到 SHEIN")).toBeInTheDocument();
+    expect(screen.getByText("最新提交记录")).toBeInTheDocument();
+    expect(screen.getByText("已提交到 SHEIN")).toBeInTheDocument();
+    expect(
+      screen.getByText("商品资料已提交到 SHEIN 发布接口，请以 SHEIN 后台最终状态为准。"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发布到 SHEIN" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "去处理" })).not.toBeInTheDocument();
+    expect(screen.queryByText("阻断项")).not.toBeInTheDocument();
+  });
+
+  it("renders save draft success as a customer-facing Chinese result", () => {
+    render(
+      <SheinSubmitReadinessPanel
+        readiness={{ status: "ready" }}
+        submission={{
+          last_action: "save_draft",
+          last_status: "success",
+          last_result: {
+            message: "OK",
+            success: true,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("最新提交记录")).toBeInTheDocument();
+    expect(screen.getByText("已保存到 SHEIN 草稿箱")).toBeInTheDocument();
+    expect(
+      screen.getByText("商品资料已进入 SHEIN 草稿箱，不会直接上架。"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders publish failure with collapsed raw submission details", () => {
+    render(
+      <SheinSubmitReadinessPanel
+        readiness={{ status: "blocked" }}
+        submission={{
+          last_action: "publish",
+          last_status: "failed",
+          last_error: "raw SHEIN response: square image missing",
+          last_result: {
+            success: false,
+            message: "validation failed",
+            validation_notes: ["方形图必须有一个"],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("发布失败")).toBeInTheDocument();
+    expect(screen.getByText("请根据待处理问题修复后再次提交。")).toBeInTheDocument();
+    expect(screen.getByText("查看原始接口返回")).toBeInTheDocument();
+    expect(screen.getByText("查看原始 SHEIN 校验提示")).toBeInTheDocument();
+    expect(screen.getAllByText("raw SHEIN response: square image missing").length).toBeGreaterThan(0);
   });
 
   it("renders current submit attempt status and error", () => {
@@ -159,8 +210,8 @@ describe("SheinSubmitReadinessPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Current submit attempt")).toBeInTheDocument();
-    expect(screen.getByText("Saving to SHEIN draft...")).toBeInTheDocument();
+    expect(screen.getByText("当前提交")).toBeInTheDocument();
+    expect(screen.getByText("正在保存到 SHEIN 草稿箱...")).toBeInTheDocument();
 
     rerender(
       <SheinSubmitReadinessPanel
@@ -175,7 +226,7 @@ describe("SheinSubmitReadinessPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Save draft failed")).toBeInTheDocument();
+    expect(screen.getByText("保存草稿失败")).toBeInTheDocument();
     expect(
       screen.getByText("SHEIN image upload unavailable: token missing"),
     ).toBeInTheDocument();
@@ -207,17 +258,17 @@ describe("SheinSubmitReadinessPanel", () => {
             blocking_count: 1,
           },
         }}
-        canSelectBlockingItem={(item) => item.key === "attribute_review"}
+        canSelectBlockingItem={(item) => item.key === "attributes"}
         onSelectBlockingItem={onSelectBlockingItem}
       />,
     );
 
-    expect(screen.getByText("Blocking items")).toBeInTheDocument();
-    expect(screen.getByText("属性复核")).toBeInTheDocument();
+    expect(screen.getByText("待处理问题")).toBeInTheDocument();
+    expect(screen.getByText("商品属性需要补齐")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Open fix path" }));
+    await user.click(screen.getByRole("button", { name: "去确认属性" }));
     expect(onSelectBlockingItem).toHaveBeenCalledWith(
-      expect.objectContaining({ key: "attribute_review" }),
+      expect.objectContaining({ key: "attributes" }),
     );
   });
 });

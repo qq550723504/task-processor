@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 
+import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
 const SheinStudioWorkbench = dynamic(
@@ -13,11 +14,19 @@ const SheinStudioWorkbench = dynamic(
 );
 
 export function SheinStudioWorkbenchSlot({
+  activeStep,
   selection,
   workbenchKey,
 }: {
+  activeStep: SheinStudioStepKey;
   selection?: SDSProductVariantSelection;
   workbenchKey: string;
 }) {
-  return <SheinStudioWorkbench key={workbenchKey} selection={selection} />;
+  return (
+    <SheinStudioWorkbench
+      activeStep={activeStep}
+      key={workbenchKey}
+      selection={selection}
+    />
+  );
 }
