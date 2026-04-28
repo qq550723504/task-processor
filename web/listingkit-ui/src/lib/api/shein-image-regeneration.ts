@@ -29,7 +29,7 @@ export function regenerateSheinDataImage(
     {
       method: "POST",
       body,
-      timeoutMs: 180000,
+      timeoutMs: 3_600_000,
     },
   );
 }

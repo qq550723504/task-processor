@@ -129,6 +129,7 @@ export function SDSProductBrowser({
           : selection.variants?.map((variant) => variant.variantId).join(","),
       productName: selection.productName,
       variantLabel: selection.variantLabel,
+      step: "generate",
     });
     saveRecentSDSVariant(selection);
     setPickerProductId(undefined);
@@ -171,6 +172,7 @@ export function SDSProductBrowser({
       variantIds: undefined,
       productName: undefined,
       variantLabel: undefined,
+      step: "select",
     });
   }
 
