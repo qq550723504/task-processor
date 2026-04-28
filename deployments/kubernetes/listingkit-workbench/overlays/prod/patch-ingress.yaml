@@ -4,7 +4,7 @@ metadata:
   name: listingkit-workbench
 spec:
   rules:
-    - host: listingkit.shuomiai.com
+    - host: pod.shuomiai.com
       http:
         paths:
           - path: /
@@ -14,3 +14,7 @@ spec:
                 name: listingkit-ui
                 port:
                   name: http
+  tls:
+    - hosts:
+        - pod.shuomiai.com
+      secretName: pod-shuomiai-com-tls

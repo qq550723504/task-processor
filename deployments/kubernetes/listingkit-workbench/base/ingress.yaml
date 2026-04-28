@@ -3,7 +3,9 @@ kind: Ingress
 metadata:
   name: listingkit-workbench
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    ingress.kubernetes.io/ssl-redirect: "true"
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
 spec:
   ingressClassName: traefik
   rules:
@@ -17,3 +19,7 @@ spec:
                 name: listingkit-ui
                 port:
                   name: http
+  tls:
+    - hosts:
+        - listingkit.example.com
+      secretName: listingkit-workbench-tls
