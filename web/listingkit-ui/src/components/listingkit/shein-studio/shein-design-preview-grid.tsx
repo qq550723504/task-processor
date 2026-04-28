@@ -22,7 +22,7 @@ export function SheinDesignPreviewGrid({
   onNoteChange,
   onCreateReviewTasks,
   isCreatingTasks = false,
-  createActionLabel = "Generate SHEIN data for approved styles",
+  createActionLabel = "为已批准款式生成 SHEIN 资料",
   createActionDisabledReason,
 }: {
   designs: SheinStudioGeneratedDesign[];
@@ -56,14 +56,14 @@ export function SheinDesignPreviewGrid({
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-              Generated styles
+              已生成款式
             </p>
             <h2 className="mt-1 font-serif text-2xl tracking-[-0.03em] text-zinc-950">
-              Review each design before sending it to SHEIN.
+              先审核每个款式，再生成 SHEIN 资料。
             </h2>
           </div>
           <div className="text-sm text-zinc-500">
-            Selected {selectedIds.length} / {designs.length}
+            已选 {selectedIds.length} / {designs.length}
           </div>
         </div>
 
@@ -83,7 +83,7 @@ export function SheinDesignPreviewGrid({
                 <div className="space-y-3 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold text-zinc-900">
-                      Style {index + 1}
+                      款式 {index + 1}
                     </div>
                     <div className="flex items-center gap-2">
                       <div
@@ -93,7 +93,7 @@ export function SheinDesignPreviewGrid({
                             : "bg-zinc-200 text-zinc-600"
                         }`}
                       >
-                        {selected ? "Selected for review" : "Not selected"}
+                        {selected ? "已选中" : "未选中"}
                       </div>
                       {readOnly ? (
                         <div
@@ -103,14 +103,14 @@ export function SheinDesignPreviewGrid({
                               : "bg-zinc-200 text-zinc-700"
                           }`}
                         >
-                          {selected ? "Approved" : "Not approved"}
+                          {selected ? "已批准" : "未批准"}
                         </div>
                       ) : (
                         <Button
                           onClick={() => onToggle(design.id)}
                           tone={selected ? "primary" : "secondary"}
                         >
-                          {selected ? "Approved" : "Approve"}
+                          {selected ? "已批准" : "批准"}
                         </Button>
                       )}
                     </div>
@@ -122,7 +122,7 @@ export function SheinDesignPreviewGrid({
                         onClick={() => onRegenerate(design.id)}
                         tone="ghost"
                       >
-                        {regeneratingId === design.id ? "Regenerating..." : "Regenerate"}
+                        {regeneratingId === design.id ? "重新生成中..." : "重新生成"}
                       </Button>
                     </div>
                   )}
@@ -137,7 +137,7 @@ export function SheinDesignPreviewGrid({
                       type="button"
                     >
                       <Image
-                        alt={`Generated style ${index + 1}`}
+                        alt={`生成款式 ${index + 1}`}
                         className="h-full w-full object-cover"
                         height={1024}
                         src={designSrc}
@@ -154,7 +154,7 @@ export function SheinDesignPreviewGrid({
                         }}
                         tone="secondary"
                       >
-                        Preview full image
+                        查看原图
                       </Button>
                       <Button
                         className="w-full"
@@ -164,12 +164,11 @@ export function SheinDesignPreviewGrid({
                         }}
                         tone="ghost"
                       >
-                        Preview mockups
+                        查看效果图
                       </Button>
                     </div>
                     <div className="rounded-[1rem] border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-xs leading-6 text-zinc-500">
-                      Review cards now focus on the original design. Open mockups to inspect
-                      every SDS result image with the design overlaid on top.
+                      当前卡片只展示原始款式图。打开效果图可检查 SDS 模板上的预览效果。
                     </div>
                     <SheinDesignReviewNote
                       disabled={readOnly}
@@ -191,11 +190,11 @@ export function SheinDesignPreviewGrid({
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-[1.35rem] border border-emerald-200 bg-emerald-50 px-4 py-4">
             <div>
               <div className="text-sm font-semibold text-emerald-950">
-                {selectedIds.length} approved style{selectedIds.length === 1 ? "" : "s"}
+                已批准 {selectedIds.length} 个款式
               </div>
               <div className="mt-1 text-sm leading-6 text-emerald-800">
                 {createActionDisabledReason ||
-                  "Next step: upload the approved artwork, render it through SDS, and build the SHEIN review workspace."}
+                  "下一步：上传已批准款式，生成商品图并创建 SHEIN 审核工作区。"}
               </div>
             </div>
             <Button
@@ -206,7 +205,7 @@ export function SheinDesignPreviewGrid({
               }
               onClick={onCreateReviewTasks}
             >
-              {isCreatingTasks ? "Generating SHEIN data..." : createActionLabel}
+              {isCreatingTasks ? "正在生成 SHEIN 资料..." : createActionLabel}
             </Button>
           </div>
         ) : null}

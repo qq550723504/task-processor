@@ -19,64 +19,64 @@ export const DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL: SheinStudioArtworkModel =
 export const SHEIN_STUDIO_PRODUCT_IMAGE_ROLES = [
   {
     role: "main",
-    label: "Main image",
-    hint: "Amazon primary image, pure white background, centered full product, no text/logo/shadow.",
+    label: "主图",
+    hint: "亚马逊标准主图，纯白背景，商品居中完整展示，无文字、Logo、阴影。",
     defaultPrompt:
       "Amazon primary image standard, 1:1, high-definition, pure white background RGB(255,255,255), product centered, fully displayed, no crop, no shadow, no reflection, no text, no watermark, no logo, soft even lighting, clear material texture, clean and simple, ready to upload.",
   },
   {
     role: "scene",
-    label: "Scene image",
-    hint: "Realistic natural usage scene based on the actual product type, no clutter or text.",
+    label: "场景图",
+    hint: "基于真实产品类型生成自然使用场景，画面干净，不加杂乱文字。",
     defaultPrompt:
       "Realistic natural usage scene based on the actual product, product as visual center, no clutter, soft lighting, unified color tone, clear material texture, no text, no watermark, no brand, no logo, shows product scene compatibility.",
   },
   {
     role: "selling_point",
-    label: "Selling point image",
-    hint: "3-4 short selling points with minimal icons, product visible, no unsupported claims.",
+    label: "卖点图",
+    hint: "展示 3-4 个简短卖点，可带简洁图标，商品清晰可见，不写夸大承诺。",
     defaultPrompt:
       "White or light gray clean background, product centered or left, 3-4 key selling points on right or bottom, each with minimal icon and short text, clear font, high contrast, text/icons do not block product, unified tone, no watermark, no brand, no logo.",
   },
   {
     role: "detail",
-    label: "Detail image",
-    hint: "Close-up for print quality, material texture, or craftsmanship; optional short callout.",
+    label: "细节图",
+    hint: "展示印刷质量、材质纹理或做工细节，可加少量说明。",
     defaultPrompt:
       "Focus on key product details, magnified and sharp, visible material texture, white or light gray background, optional short text 1-2 lines plus small minimal icon, icon does not cover details, unified tone, no clutter, no watermark, no brand, no logo.",
   },
   {
     role: "dimension",
-    label: "Dimension image",
-    hint: "Use SDS size reference or accurate dimensions only. If dimensions are shown, inches only.",
+    label: "尺寸图",
+    hint: "优先使用 SDS 尺寸参考图；如展示尺寸，只允许准确英寸单位。",
     defaultPrompt:
       "Use SDS size reference mockup or accurate SDS dimensions only. Product fully displayed, pure white background, clean high-contrast dimension lines and numbers, no crop, no shadow, no reflection, no clutter, no watermark, no logo. If dimensions are displayed, show inches only and do not invent measurements.",
   },
   {
     role: "angle",
-    label: "Alternate angle",
-    hint: "Second useful angle showing shape, thickness, or construction.",
+    label: "角度图",
+    hint: "从另一个角度展示形状、厚度或结构。",
     defaultPrompt:
       "Second useful product angle showing shape, thickness, or construction, high-definition product photography, clean background, product sharp and central, no text, no watermark, no brand, no logo.",
   },
   {
     role: "multi_scene",
-    label: "Multi-scenario image",
-    hint: "Up to 3 usage scenarios; optional short descriptions/icons if useful.",
+    label: "多场景图",
+    hint: "最多展示 3 个使用场景；必要时可加短描述或图标。",
     defaultPrompt:
       "Multiple usage scenarios combined in one image, clean layout with 3 clear areas, each shows one real usage scenario, product clearly visible, optional minimal icon plus one short description text per scenario, unified color, text/icons do not cover product, clean background, no clutter, no watermark.",
   },
   {
     role: "material",
-    label: "Material image",
-    hint: "Surface finish, fabric, print area, or tactile qualities.",
+    label: "材质图",
+    hint: "展示表面质感、面料、印刷区域或触感特点。",
     defaultPrompt:
       "Highlight material, surface finish, fabric, print area, or tactile quality, macro or close detail, realistic lighting, clean background, optional minimal callout only if useful, no clutter, no watermark, no brand, no logo.",
   },
   {
     role: "character_scene",
-    label: "Character scene image",
-    hint: "Optional. Use a person only if the product naturally supports human use or wearing.",
+    label: "人物场景图",
+    hint: "可选。只有产品适合穿戴、手持或真人演示时才使用人物。",
     defaultPrompt:
       "Optional human usage scene. Use a real person only if the product is naturally worn, held, used, or demonstrated by a person; otherwise create a normal product scene. Natural expression, normal posture, product clear, optional simple 2-3 lines text plus minimal icon, text/icon do not cover product or person, no clutter, no watermark, no brand, no logo.",
   },
@@ -239,7 +239,7 @@ export function buildSelectionSummary(selection?: SDSProductVariantSelection) {
 export function deriveBatchName(prompt: string) {
   const trimmed = prompt.trim();
   if (!trimmed) {
-    return "Untitled batch";
+    return "未命名批次";
   }
   return trimmed.length > 36 ? `${trimmed.slice(0, 36)}...` : trimmed;
 }

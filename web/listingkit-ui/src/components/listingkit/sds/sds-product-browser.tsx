@@ -87,7 +87,7 @@ export function SDSProductBrowser({
   const activeShipmentAreaLabel =
     availableShipmentAreas.find((item) => item.value === shipmentArea)?.label ?? shipmentArea;
   const activeCategoryLabel =
-    availableCategories.find((item) => item.id === categoryId)?.name ?? "All categories";
+    availableCategories.find((item) => item.id === categoryId)?.name ?? "全部分类";
   const currentSelection = useMemo(
     () => recentVariants.find((item) => item.variantId === selectedVariantId),
     [recentVariants, selectedVariantId],
@@ -182,20 +182,19 @@ export function SDSProductBrowser({
         <div className="grid gap-5 rounded-[1.75rem] border border-zinc-200/80 bg-[linear-gradient(135deg,_rgba(250,250,249,0.98),_rgba(244,244,245,0.92))] px-5 py-5 lg:grid-cols-[1.2fr_0.8fr] lg:px-6">
           <div className="space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-700">
-            SDS Catalog
+            SDS 商品库
           </p>
             <h2 className="font-serif text-3xl leading-tight tracking-[-0.04em] text-zinc-950">
-              Pick the product family first, then lock the exact child SKU.
+              先选择 SDS 底版商品，再锁定具体子 SKU。
             </h2>
             <p className="max-w-2xl text-sm leading-7 text-zinc-600">
-              Use shipment area filters and SKU search to narrow the catalog. Once a
-              variant is selected, the SDS sync form below is prefilled automatically.
+              可以按发货地、分类、重量、生产周期和 SKU 搜索筛选商品。选择变体后，下方生成设置会自动带入模板信息。
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
             <div className="rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4">
               <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-                Active market
+                当前发货地
               </div>
               <div className="mt-2 text-lg font-semibold text-zinc-950">
                 {activeShipmentAreaLabel}
@@ -203,7 +202,7 @@ export function SDSProductBrowser({
             </div>
             <div className="rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4">
               <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-                Catalog size
+                商品数量
               </div>
               <div className="mt-2 text-lg font-semibold text-zinc-950">
                 {products.data?.totalCount ?? 0}
@@ -211,10 +210,10 @@ export function SDSProductBrowser({
             </div>
             <div className="rounded-[1.25rem] border border-zinc-200/80 bg-white px-4 py-4">
               <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-                Selected variant
+                已选变体
               </div>
               <div className="mt-2 text-lg font-semibold text-zinc-950">
-                {selectedVariantId > 0 ? selectedVariantId : "Pending"}
+                {selectedVariantId > 0 ? selectedVariantId : "未选择"}
               </div>
             </div>
           </div>
@@ -289,7 +288,7 @@ export function SDSProductBrowser({
             }
             defaultValue={categoryId ? String(categoryId) : ""}
           >
-            <option value="">All categories</option>
+            <option value="">全部分类</option>
             {availableCategories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name} ({category.count})
@@ -308,9 +307,9 @@ export function SDSProductBrowser({
               })
             }
           >
-            <option value="">Default sort</option>
-            <option value="min_price:asc">Price low to high</option>
-            <option value="min_price:desc">Price high to low</option>
+            <option value="">默认排序</option>
+            <option value="min_price:asc">价格从低到高</option>
+            <option value="min_price:desc">价格从高到低</option>
           </select>
           <select
             className="h-12 min-w-[150px] flex-1 rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 md:flex-none md:basis-[170px]"
@@ -353,10 +352,10 @@ export function SDSProductBrowser({
             defaultValue={queryKeyword}
             key={queryKeyword}
             name="keyword"
-            placeholder="Search by name or SKU"
+            placeholder="按商品名或 SKU 搜索"
           />
           <div className="shrink-0">
-            <Button type="submit">Search</Button>
+            <Button type="submit">搜索</Button>
           </div>
         </form>
 
@@ -375,7 +374,7 @@ export function SDSProductBrowser({
             }
             type="button"
           >
-            On sale only
+            只看在售
           </button>
           <button
             className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
@@ -391,7 +390,7 @@ export function SDSProductBrowser({
             }
             type="button"
           >
-            Hot sale only
+            只看热卖
           </button>
         </div>
 
@@ -430,19 +429,19 @@ export function SDSProductBrowser({
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3 px-1">
             <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-              Products
+              商品列表
             </div>
             <div className="text-sm text-zinc-500">
-              {products.data?.totalCount ?? 0} items · {activeShipmentAreaLabel} · {activeCategoryLabel}
+              {products.data?.totalCount ?? 0} 个商品 · {activeShipmentAreaLabel} · {activeCategoryLabel}
             </div>
           </div>
           {products.isLoading ? (
             <div className="rounded-[1.5rem] border border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-600">
-              Loading SDS products...
+              正在加载 SDS 商品...
             </div>
           ) : products.error ? (
             <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 px-4 py-8 text-sm text-amber-900">
-              Failed to load SDS products.
+              SDS 商品加载失败。
             </div>
           ) : (
             <>

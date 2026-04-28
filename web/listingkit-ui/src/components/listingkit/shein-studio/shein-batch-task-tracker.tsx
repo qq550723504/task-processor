@@ -20,6 +20,20 @@ function summarizeStatuses(items: ListingKitTaskResult[]) {
   }, {});
 }
 
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    blocked: "已阻断",
+    completed: "已完成",
+    failed: "失败",
+    loading: "加载中",
+    pending: "待处理",
+    processing: "处理中",
+    queued: "排队中",
+    unknown: "未知",
+  };
+  return labels[status] ?? status;
+}
+
 export function SheinBatchTaskTracker({
   tasks,
 }: {
@@ -62,10 +76,10 @@ export function SheinBatchTaskTracker({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-            Task tracker
+            任务跟踪
           </p>
           <h2 className="mt-1 font-serif text-2xl tracking-[-0.03em] text-zinc-950">
-            Monitor created SHEIN review tasks in one place.
+            集中查看已创建 SHEIN 任务的处理状态。
           </h2>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -74,12 +88,12 @@ export function SheinBatchTaskTracker({
               className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-700"
               key={status}
             >
-              {status}: {count}
+              {statusLabel(status)}：{count}
             </div>
           ))}
           {runningCount > 0 ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-              polling {runningCount}
+              轮询中 {runningCount}
             </div>
           ) : null}
         </div>
@@ -106,11 +120,11 @@ export function SheinBatchTaskTracker({
                 <div className="text-xs text-zinc-500">{task.id}</div>
                 <div className="flex flex-wrap gap-2 text-xs">
                   <span className="rounded-lg bg-white px-2 py-1 font-medium text-zinc-700">
-                    task: {status}
+                    任务：{statusLabel(status)}
                   </span>
                   {sdsStatus ? (
                     <span className="rounded-lg bg-white px-2 py-1 font-medium text-zinc-700">
-                      sds: {sdsStatus}
+                      SDS：{statusLabel(sdsStatus)}
                     </span>
                   ) : null}
                 </div>
@@ -118,10 +132,10 @@ export function SheinBatchTaskTracker({
 
               <div className="flex flex-wrap gap-2">
                 <Link href={`/listing-kits/${task.id}/status`}>
-                  <Button tone="secondary">Open status</Button>
+                  <Button tone="secondary">查看状态</Button>
                 </Link>
                 <Link href={`/listing-kits/${task.id}/workspace`}>
-                  <Button tone="ghost">Open workspace</Button>
+                  <Button tone="ghost">打开工作区</Button>
                 </Link>
               </div>
             </article>

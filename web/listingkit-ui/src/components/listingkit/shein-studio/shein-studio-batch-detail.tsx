@@ -27,9 +27,9 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
     [batch?.selectedIds.length],
   );
   const createActionDisabledReason = !batch?.selection?.variantId
-    ? "Select an SDS product variant first. Approved artwork needs a product template before SHEIN data can be generated."
+    ? "请先选择 SDS 商品变体。生成 SHEIN 资料前需要商品模板。"
     : approvedCount === 0
-      ? "Approve at least one generated style before creating SHEIN data."
+      ? "请至少批准 1 个款式后再生成 SHEIN 资料。"
       : undefined;
 
   useEffect(() => {
@@ -60,13 +60,13 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
     return (
       <section className="rounded-[1.75rem] border border-zinc-200/80 bg-white px-6 py-8 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-          SHEIN batch
+          SHEIN 批次
         </p>
         <h1 className="mt-2 font-serif text-3xl tracking-[-0.04em] text-zinc-950">
-          Loading batch
+          正在加载批次
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-zinc-600">
-          Fetching the saved batch from server storage.
+          正在从服务器读取已保存批次。
         </p>
       </section>
     );
@@ -76,18 +76,17 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
     return (
       <section className="rounded-[1.75rem] border border-zinc-200/80 bg-white px-6 py-8 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-          SHEIN batch
+          SHEIN 批次
         </p>
         <h1 className="mt-2 font-serif text-3xl tracking-[-0.04em] text-zinc-950">
-          Batch not found
+          未找到批次
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-zinc-600">
-          This saved batch is no longer on the server. Go back to the studio and save
-          a new one.
+          这个批次已不在服务器上。请回到工作室重新保存。
         </p>
         <div className="mt-5">
           <Link href="/listing-kits/shein">
-            <Button>Back to SHEIN Studio</Button>
+            <Button>返回 SHEIN 工作室</Button>
           </Link>
         </div>
       </section>
@@ -209,11 +208,11 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
       });
       await updateBatch({ createdTasks });
       setActionMessage(
-        `Generated ${createdTasks.length} SHEIN data task${createdTasks.length === 1 ? "" : "s"}.`,
+        `已生成 ${createdTasks.length} 个 SHEIN 资料任务。`,
       );
     } catch (error) {
       setActionError(
-        error instanceof Error ? error.message : "Failed to create SHEIN tasks.",
+        error instanceof Error ? error.message : "SHEIN 任务创建失败。",
       );
     } finally {
       setIsCreatingTasks(false);
@@ -226,7 +225,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
         <div className="space-y-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-              Saved batch
+              已保存批次
             </p>
             <h1 className="mt-2 font-serif text-4xl tracking-[-0.04em] text-zinc-950">
               {currentBatch.name}
@@ -238,20 +237,20 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
 
           <div className="flex flex-wrap gap-3">
             <Link href="/listing-kits/shein">
-              <Button>Back to studio</Button>
+              <Button>返回工作室</Button>
             </Link>
             <Link href={studioHref}>
-              <Button tone="secondary">Open with current selection</Button>
+              <Button tone="secondary">用当前选择打开</Button>
             </Link>
             <Button
               disabled={isCreatingTasks || Boolean(createActionDisabledReason)}
               onClick={handleCreateTasks}
               tone="secondary"
             >
-              {isCreatingTasks ? "Generating SHEIN data..." : "Generate SHEIN data"}
+              {isCreatingTasks ? "正在生成 SHEIN 资料..." : "生成 SHEIN 资料"}
             </Button>
             <Button onClick={handleDelete} tone="ghost">
-              Delete batch
+              删除批次
             </Button>
           </div>
           {actionError ? (
@@ -269,34 +268,34 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
           <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-              Product
+              商品
             </div>
             <div className="mt-2 text-sm font-semibold leading-6 text-zinc-950">
-              {currentBatch.selection?.productName ?? "Unknown product"}
+              {currentBatch.selection?.productName ?? "未知商品"}
             </div>
           </div>
           <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-              Styles
+              款式
             </div>
             <div className="mt-2 text-lg font-semibold text-zinc-950">
-              {currentBatch.designs.length} total / {approvedCount} approved
+              共 {currentBatch.designs.length} 个 / 已批准 {approvedCount} 个
             </div>
           </div>
           <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-              Printable area
+              印刷区域
             </div>
             <div className="mt-2 text-lg font-semibold text-zinc-950">
               {currentBatch.selection?.printableWidth &&
               currentBatch.selection?.printableHeight
                 ? `${currentBatch.selection.printableWidth} × ${currentBatch.selection.printableHeight}px`
-                : "Auto"}
+                : "自动"}
             </div>
           </div>
           <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-              Updated
+              更新时间
             </div>
             <div className="mt-2 text-sm font-semibold leading-6 text-zinc-950">
               {new Date(currentBatch.updatedAt).toLocaleString()}
@@ -317,7 +316,7 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
         onToggle={handleToggle}
         createActionDisabledReason={createActionDisabledReason}
         isCreatingTasks={isCreatingTasks}
-        createActionLabel="Generate SHEIN data for this batch"
+        createActionLabel="为这个批次生成 SHEIN 资料"
         selectedIds={currentBatch.selectedIds}
         selection={currentBatch.selection}
       />

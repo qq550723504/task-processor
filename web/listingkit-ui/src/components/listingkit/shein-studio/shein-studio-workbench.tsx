@@ -79,7 +79,7 @@ export function SheinStudioWorkbench({
   const printableAreaLabel =
     selection?.printableWidth && selection?.printableHeight
       ? `${selection.printableWidth} × ${selection.printableHeight}px`
-      : "Auto";
+      : "自动";
   const selectedVariants =
     selection?.variants?.length
       ? selection.variants
@@ -94,7 +94,7 @@ export function SheinStudioWorkbench({
             {
               variantId: selection.variantId,
               size: selection.variantLabel,
-              color: "Default",
+              color: "默认",
             },
           ]
         : [];
@@ -105,9 +105,9 @@ export function SheinStudioWorkbench({
     selectedVariants.map((variant) => variant.size || "One size"),
   ).size;
   const createActionDisabledReason = !selection?.variantId
-    ? "Select an SDS product variant first. Approved artwork needs a product template before SHEIN data can be generated."
+    ? "请先选择 SDS 商品变体。生成 SHEIN 资料前需要锁定商品模板。"
     : selectedIds.length === 0
-      ? "Approve at least one generated style before creating SHEIN data."
+      ? "请至少批准 1 个款式后再生成 SHEIN 资料。"
       : undefined;
   useEffect(() => {
     let cancelled = false;
@@ -205,11 +205,11 @@ export function SheinStudioWorkbench({
 
   async function handleGenerate() {
     if (!selection?.variantId) {
-      setGenerationError("Select an SDS variant first.");
+      setGenerationError("请先选择 SDS 变体。");
       return;
     }
     if (!prompt.trim()) {
-      setGenerationError("Theme prompt is required.");
+      setGenerationError("请先填写主题提示词。");
       promptInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       promptInputRef.current?.focus();
       return;
@@ -237,7 +237,7 @@ export function SheinStudioWorkbench({
       setDesigns([]);
       setSelectedIds([]);
       setGenerationError(
-        error instanceof Error ? error.message : "Failed to generate styles.",
+        error instanceof Error ? error.message : "款式图生成失败。",
       );
     } finally {
       setIsGenerating(false);
@@ -246,11 +246,11 @@ export function SheinStudioWorkbench({
 
   async function handleRegenerate(designId: string) {
     if (!selection?.variantId) {
-      setGenerationError("Select an SDS variant first.");
+      setGenerationError("请先选择 SDS 变体。");
       return;
     }
     if (!prompt.trim()) {
-      setGenerationError("Theme prompt is required.");
+      setGenerationError("请先填写主题提示词。");
       promptInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       promptInputRef.current?.focus();
       return;
@@ -271,7 +271,7 @@ export function SheinStudioWorkbench({
       });
       const replacement = response.images[0];
       if (!replacement) {
-        throw new Error("No regenerated design was returned.");
+        throw new Error("没有返回重新生成的图片。");
       }
 
       setDesigns((current) =>
@@ -284,7 +284,7 @@ export function SheinStudioWorkbench({
       );
     } catch (error) {
       setGenerationError(
-        error instanceof Error ? error.message : "Failed to regenerate style.",
+        error instanceof Error ? error.message : "重新生成款式失败。",
       );
     } finally {
       setRegeneratingId("");
@@ -293,7 +293,7 @@ export function SheinStudioWorkbench({
 
   async function handleSaveBatch() {
     if (!prompt.trim()) {
-      setSaveMessage("Theme prompt is required before saving a batch.");
+      setSaveMessage("保存批次前请先填写主题提示词。");
       return;
     }
 
@@ -315,12 +315,12 @@ export function SheinStudioWorkbench({
     });
 
     if (!saved) {
-      setSaveMessage("Failed to save batch.");
+      setSaveMessage("批次保存失败。");
       return;
     }
 
     setSavedBatches(await listSheinStudioBatches());
-    setSaveMessage(`Batch saved: ${saved.name}`);
+    setSaveMessage(`批次已保存：${saved.name}`);
   }
 
   function handleLoadBatch(batch: SheinStudioSavedBatch) {
@@ -339,7 +339,7 @@ export function SheinStudioWorkbench({
     setDesigns(batch.designs);
     setSelectedIds(batch.selectedIds);
     setCreatedTasks(batch.createdTasks);
-    setSaveMessage(`Batch loaded: ${batch.name}`);
+    setSaveMessage(`已载入批次：${batch.name}`);
   }
 
   async function handleDeleteBatch(batchID: string) {
@@ -365,17 +365,17 @@ export function SheinStudioWorkbench({
 
   async function handleCreateTasks() {
     if (!selection?.variantId) {
-      setCreatingError("Select an SDS variant first.");
+      setCreatingError("请先选择 SDS 变体。");
       return;
     }
     const approved = designs.filter((design) => selectedIds.includes(design.id));
     if (approved.length === 0) {
-      setCreatingError("Approve at least one style before creating SHEIN tasks.");
+      setCreatingError("请至少批准 1 个款式后再创建 SHEIN 任务。");
       return;
     }
 
     setCreatingError("");
-    setCreatingMessage("Starting SHEIN data generation...");
+    setCreatingMessage("正在开始生成 SHEIN 资料...");
     setIsCreatingTasks(true);
 
     try {
@@ -394,11 +394,11 @@ export function SheinStudioWorkbench({
       });
       setCreatedTasks(created);
       setCreatingMessage(
-        `Generated ${created.length} SHEIN data task${created.length === 1 ? "" : "s"}. Open Review SHEIN data below.`,
+        `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
       );
     } catch (error) {
       setCreatingError(
-        error instanceof Error ? error.message : "Failed to create SHEIN tasks.",
+        error instanceof Error ? error.message : "SHEIN 任务创建失败。",
       );
       setCreatingMessage("");
     } finally {
@@ -497,25 +497,25 @@ export function SheinStudioWorkbench({
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-                Step 4 · SHEIN tasks
+                第 4 步 · SHEIN 任务
               </p>
               <h2 className="mt-1 font-serif text-2xl tracking-[-0.03em] text-zinc-950">
-                Review generated workspaces.
+                审核已生成的工作区
               </h2>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-600">
-                打开每个任务的 workspace，完成最终图片、价格、属性和提交确认。
+                打开每个任务的工作区，完成最终图片、价格、属性和提交确认。
               </p>
             </div>
             <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600">
-              {createdTasks.length} tasks
+              {createdTasks.length} 个任务
             </span>
           </div>
           {createdTasks.length ? (
             <SheinCreatedTasksList tasks={createdTasks} />
           ) : (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
-              还没有创建 SHEIN 任务。先回到 Review 步骤批准款式，再在 Generate
-              步骤点击 Generate SHEIN data。
+              还没有创建 SHEIN 任务。先回到“审核款式”步骤批准款式，再在“生成图片”
+              步骤点击“生成 SHEIN 资料”。
             </div>
           )}
         </div>

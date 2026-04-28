@@ -23,8 +23,8 @@ export function SheinSavedBatchesPanel({
   return (
     <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-zinc-900">Saved batches</div>
-        <div className="text-xs text-zinc-500">{batches.length} saved</div>
+        <div className="text-sm font-semibold text-zinc-900">已保存批次</div>
+        <div className="text-xs text-zinc-500">{batches.length} 个已保存</div>
       </div>
       <div className="mt-3 grid gap-3">
         {batches.map((batch) => (
@@ -35,8 +35,8 @@ export function SheinSavedBatchesPanel({
             <div className="space-y-1">
               <div className="text-sm font-semibold text-zinc-950">{batch.name}</div>
               <div className="text-xs text-zinc-500">
-                {batch.selection?.productName || "No product"} · {batch.designs.length}{" "}
-                styles · {new Date(batch.updatedAt).toLocaleString()}
+                {batch.selection?.productName || "未选择商品"} · {batch.designs.length}{" "}
+                个款式 · {new Date(batch.updatedAt).toLocaleString()}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -44,13 +44,13 @@ export function SheinSavedBatchesPanel({
                 onClick={() => router.push(`/listing-kits/shein/batches/${batch.id}`)}
                 tone="ghost"
               >
-                Open batch
+                打开批次
               </Button>
               <Button onClick={() => onLoad(batch)} tone="secondary">
-                Load
+                载入
               </Button>
               <Button onClick={() => onDelete(batch.id)} tone="ghost">
-                Delete
+                删除
               </Button>
             </div>
           </div>

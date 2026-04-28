@@ -40,20 +40,20 @@ export function SheinProductPickerModal({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">
-              Selected SDS product
+              已选择 SDS 商品
             </p>
             <h2 className="mt-1 truncate text-lg font-semibold text-zinc-950">
               {selection.productName}
             </h2>
             <p className="mt-1 text-sm text-zinc-600">
-              Variant {selection.variantId} · {selection.variantLabel}
+              变体 {selection.variantId} · {selection.variantLabel}
               {selection.printableWidth && selection.printableHeight
                 ? ` · ${selection.printableWidth}×${selection.printableHeight}px`
                 : ""}
             </p>
           </div>
           <Button onClick={() => setOpen(true)} tone="secondary">
-            Change product
+            更换商品
           </Button>
         </div>
       </section>
@@ -68,14 +68,14 @@ export function SheinProductPickerModal({
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] bg-white px-5 py-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
-                  Change SDS product
+                  更换 SDS 商品
                 </p>
                 <h2 className="mt-1 text-xl font-semibold text-zinc-950">
-                  Pick another product or variant.
+                  选择其他商品或变体。
                 </h2>
               </div>
               <Button onClick={() => setOpen(false)} tone="ghost">
-                Close
+                关闭
               </Button>
             </div>
             <SDSProductBrowser

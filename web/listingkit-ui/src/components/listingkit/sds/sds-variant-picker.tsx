@@ -138,10 +138,10 @@ export function SDSVariantPicker({
         <div className="flex items-start justify-between gap-4 border-b border-zinc-200/80 px-5 py-5 md:px-6">
           <div className="space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-              Variant picker
+              变体选择
             </p>
             <div className="text-xl font-semibold tracking-[-0.03em] text-zinc-950">
-              {product?.name ?? "Choose the exact child SKU"}
+              {product?.name ?? "选择具体子 SKU"}
             </div>
             <div className="flex flex-wrap gap-2 text-sm text-zinc-500">
               {product?.sku ? <span>SKU {product.sku}</span> : null}
@@ -152,22 +152,22 @@ export function SDSVariantPicker({
             </div>
           </div>
           <Button className="shrink-0" onClick={onClose} tone="secondary">
-            Close
+            关闭
           </Button>
         </div>
 
         <div className="overflow-auto px-5 py-5 md:px-6">
           {isLoading ? (
             <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-600">
-              Loading variants...
+              正在加载变体...
             </div>
           ) : hasError ? (
             <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50 px-4 py-8 text-sm text-amber-900">
-              Failed to load SDS product detail.
+              SDS 商品详情加载失败。
             </div>
           ) : variants.length === 0 ? (
             <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-600">
-              This product did not expose child variants.
+              这个商品没有返回子变体。
             </div>
           ) : (
             <div className="space-y-4">
@@ -177,7 +177,7 @@ export function SDSVariantPicker({
                   onChange={(event) => setSizeFilter(event.target.value)}
                   value={sizeFilter}
                 >
-                  <option value="">All sizes</option>
+                  <option value="">全部尺码</option>
                   {sizeOptions.map((size) => (
                     <option key={size} value={size}>
                       {size}
@@ -189,7 +189,7 @@ export function SDSVariantPicker({
                   onChange={(event) => setColorFilter(event.target.value)}
                   value={colorFilter}
                 >
-                  <option value="">All colors</option>
+                  <option value="">全部颜色</option>
                   {colorOptions.map((color) => (
                     <option key={color} value={color}>
                       {color}
@@ -197,29 +197,26 @@ export function SDSVariantPicker({
                   ))}
                 </select>
                 <div className="flex items-center text-sm text-zinc-500">
-                  {filteredVariants.length} variants
+                  {filteredVariants.length} 个变体
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
                 <div>
-                  Selected {selectedVariants.length} SKU
-                  {selectedVariants.length === 1 ? "" : "s"} · {selectedColors.length} color
-                  {selectedColors.length === 1 ? "" : "s"} · {selectedSizes.length} size
-                  {selectedSizes.length === 1 ? "" : "s"}
+                  已选 {selectedVariants.length} 个 SKU · {selectedColors.length} 个颜色 · {selectedSizes.length} 个尺码
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={selectFilteredVariants} tone="secondary" type="button">
-                    Select filtered
+                    选中当前筛选
                   </Button>
                   <Button onClick={clearFilteredVariants} tone="ghost" type="button">
-                    Clear filtered
+                    清除当前筛选
                   </Button>
                   <Button
                     disabled={selectedVariants.length === 0}
                     onClick={useSelectedVariants}
                     type="button"
                   >
-                    Use selected variants
+                    使用已选变体
                   </Button>
                 </div>
               </div>
@@ -248,12 +245,12 @@ export function SDSVariantPicker({
                               type="checkbox"
                             />
                             <span>
-                              {variant.size || "One size"} · {variant.color_name || "default"}
+                              {variant.size || "均码"} · {variant.color_name || "默认"}
                             </span>
                           </label>
                         </div>
                         <div className={active ? "text-emerald-100" : "text-zinc-500"}>
-                          Variant ID {variant.id} · SKU {variant.sku ?? "-"}
+                          变体 ID {variant.id} · SKU {variant.sku ?? "-"}
                         </div>
                       </div>
 
@@ -264,7 +261,7 @@ export function SDSVariantPicker({
                               active ? "bg-white/12 text-white" : "bg-emerald-50 text-emerald-700"
                             }`}
                           >
-                            On sale
+                            在售
                           </span>
                         ) : null}
                         {variant.hotSellStatus === 1 ? (
@@ -273,7 +270,7 @@ export function SDSVariantPicker({
                               active ? "bg-rose-400/20 text-rose-50" : "bg-rose-50 text-rose-700"
                             }`}
                           >
-                            Hot sale
+                            热卖
                           </span>
                         ) : null}
                         {variant.issuingBayArea?.name ? (
@@ -288,10 +285,10 @@ export function SDSVariantPicker({
                       </div>
 
                       <div className={`space-y-1 text-sm ${active ? "text-emerald-100" : "text-zinc-500"}`}>
-                        <div>Prototype group {variant.designPrototype?.prototypeGroupId ?? "-"}</div>
-                        <div>Price {formatSDSPrice(variant.currentPrice)}</div>
-                        <div>Weight {formatVariantWeight(variant.weight)}</div>
-                        <div>Cycle {variant.productionCycle ? `${variant.productionCycle}h` : "-"}</div>
+                        <div>模板组 {variant.designPrototype?.prototypeGroupId ?? "-"}</div>
+                        <div>价格 {formatSDSPrice(variant.currentPrice)}</div>
+                        <div>重量 {formatVariantWeight(variant.weight)}</div>
+                        <div>生产周期 {variant.productionCycle ? `${variant.productionCycle}h` : "-"}</div>
                       </div>
 
                       <Button
@@ -309,7 +306,7 @@ export function SDSVariantPicker({
                         tone={primary ? "secondary" : "primary"}
                         type="button"
                       >
-                        {primary ? "Primary variant" : "Use as primary"}
+                        {primary ? "主变体" : "设为主变体"}
                       </Button>
                     </div>
                   </div>
@@ -318,7 +315,7 @@ export function SDSVariantPicker({
               </div>
               {filteredVariants.length === 0 ? (
                 <div className="rounded-[1.25rem] border border-zinc-200 bg-zinc-50 px-4 py-8 text-sm text-zinc-600">
-                  No variants matched the current size or color filter.
+                  当前尺码或颜色筛选下没有匹配变体。
                 </div>
               ) : null}
             </div>

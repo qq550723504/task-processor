@@ -110,7 +110,7 @@ export function SheinStudioGenerationPanel({
       <div className="grid gap-4">
         <div className="space-y-4 rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(135deg,_#ecfdf5,_#f8fafc)] px-4 py-4">
           <SectionHeading
-            eyebrow="Artwork"
+            eyebrow="款式图"
             title="生成 POD 款式图"
             description="这里生成的是用于印刷的平面图案。商品场景图在下一块设置。"
           />
@@ -121,13 +121,12 @@ export function SheinStudioGenerationPanel({
             <textarea
               className="min-h-40 w-full rounded-2xl border border-emerald-200 bg-white/80 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-emerald-900 focus:bg-white"
               onChange={(event) => setPrompt(event.target.value)}
-              placeholder="Retro varsity cherries, bold collegiate typography, spring palette."
+              placeholder="例如：美国国旗主题，复古学院风，线条清晰，适合印刷。"
               ref={promptInputRef}
               value={prompt}
             />
             <p className="text-xs leading-6 text-zinc-600">
-              Studio biases generation toward print-safe graphics: larger shapes,
-              cleaner contrast, and fewer tiny details or thin lines.
+              系统会优先生成适合 POD 印刷的图案：大面积形状、清晰对比、减少细线和过小文字。
             </p>
           </label>
           <NumberInput
@@ -350,7 +349,7 @@ function ProductImagePromptPlanner({
                 updatePrompt(role.role, role.label, event.target.value)
               }
               placeholder={role.hint}
-              value={promptByRole.get(role.role)?.prompt ?? role.defaultPrompt}
+              value={promptByRole.get(role.role)?.prompt ?? ""}
             />
           </label>
         ))}

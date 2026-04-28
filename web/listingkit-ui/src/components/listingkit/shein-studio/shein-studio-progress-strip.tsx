@@ -10,16 +10,16 @@ export function SheinStudioProgressStrip({
   return (
     <div className="mb-3 grid gap-3 rounded-[1.5rem] border border-zinc-200 bg-white/80 px-4 py-4 text-sm shadow-sm md:grid-cols-3">
       <ProgressMetric
-        label="Generated"
-        value={generatedStyleCount > 0 ? `${generatedStyleCount} styles` : "Not yet"}
+        label="已生成"
+        value={generatedStyleCount > 0 ? `${generatedStyleCount} 个款式` : "未生成"}
       />
       <ProgressMetric
-        label="Approved"
-        value={selectedStyleCount > 0 ? `${selectedStyleCount} selected` : "None"}
+        label="已批准"
+        value={selectedStyleCount > 0 ? `${selectedStyleCount} 个已选` : "无"}
       />
       <ProgressMetric
-        label="SHEIN tasks"
-        value={createdTaskCount > 0 ? `${createdTaskCount} created` : "Pending"}
+        label="SHEIN 任务"
+        value={createdTaskCount > 0 ? `${createdTaskCount} 个已创建` : "待创建"}
       />
     </div>
   );

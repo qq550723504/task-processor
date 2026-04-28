@@ -16,7 +16,7 @@ type GalleryPageProps = {
 
 function formatDate(value?: string) {
   if (!value) {
-    return "Unknown";
+    return "未知";
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -50,7 +50,7 @@ export function SheinStyleGalleryPage({ initialGallery }: GalleryPageProps) {
         <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/80 p-6 shadow-[0_24px_90px_rgba(39,39,42,0.10)] backdrop-blur lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-sky-700">
-              SHEIN Style Gallery
+              SHEIN 款式图库
             </p>
             <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-zinc-950">
               款式图库
@@ -62,22 +62,22 @@ export function SheinStyleGalleryPage({ initialGallery }: GalleryPageProps) {
           <div className="flex flex-wrap gap-3">
             <Button tone="secondary" onClick={() => window.location.reload()}>
               <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
+              刷新
             </Button>
             <Link
               href="/listing-kits/shein"
               className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
             >
-              New SHEIN batch
+              新建 SHEIN 批次
             </Link>
           </div>
         </section>
 
         <section className="grid gap-3 md:grid-cols-4">
-          <MetricCard label="Total" value={initialGallery.total} />
-          <MetricCard label="AI saved" value={initialGallery.summary.studioSaved} />
-          <MetricCard label="AI uploaded" value={initialGallery.summary.publishedInputs} />
-          <MetricCard label="Studio legacy" value={initialGallery.summary.studioLegacy} />
+          <MetricCard label="总数" value={initialGallery.total} />
+          <MetricCard label="已保存 AI 图" value={initialGallery.summary.studioSaved} />
+          <MetricCard label="已上传 AI 图" value={initialGallery.summary.publishedInputs} />
+          <MetricCard label="历史图库" value={initialGallery.summary.studioLegacy} />
         </section>
 
         {items.length === 0 ? (
@@ -85,7 +85,7 @@ export function SheinStyleGalleryPage({ initialGallery }: GalleryPageProps) {
             <ImageIcon className="h-8 w-8 text-zinc-400" />
             <h2 className="mt-4 text-lg font-semibold text-zinc-950">暂无款式图</h2>
             <p className="mt-2 max-w-md text-sm text-zinc-500">
-              先从 SHEIN Studio 生成款式，或创建 ListingKit 任务后再回来查看。
+              先从 SHEIN 工作室生成款式，或创建 ListingKit 任务后再回来查看。
             </p>
           </Card>
         ) : (
@@ -151,7 +151,7 @@ function GalleryCard({ item }: { item: SheinStyleGalleryItem }) {
               href={`/listing-kits/${item.taskId}/workspace?platform=shein`}
               className="inline-flex items-center gap-1 font-medium text-zinc-900 hover:underline"
             >
-              Workspace
+              工作区
               <ExternalLink className="h-3 w-3" />
             </Link>
           ) : null}

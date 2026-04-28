@@ -36,7 +36,7 @@ export function SheinStudioPageShell({
         <section className="grid gap-5 rounded-[2rem] border border-white/70 bg-white/72 px-5 py-5 shadow-[0_20px_80px_rgba(24,24,27,0.08)] backdrop-blur md:grid-cols-[1.25fr_0.75fr] lg:px-6">
           <div className="space-y-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-rose-700">
-              SHEIN Studio
+              SHEIN 工作室
             </p>
             <div className="space-y-2">
               <h1 className="max-w-3xl font-serif text-3xl leading-tight tracking-[-0.04em] text-zinc-950 md:text-4xl">

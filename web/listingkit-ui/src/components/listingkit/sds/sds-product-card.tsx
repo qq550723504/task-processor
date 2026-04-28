@@ -51,7 +51,7 @@ export function SDSProductCard({
                   isSelected ? "bg-white/12 text-white" : "bg-emerald-50 text-emerald-700"
                 }`}
               >
-                On sale
+                在售
               </span>
             ) : null}
             {product.hotSellStatus === 1 ? (
@@ -60,7 +60,7 @@ export function SDSProductCard({
                   isSelected ? "bg-rose-400/20 text-rose-50" : "bg-rose-50 text-rose-700"
                 }`}
               >
-                Hot sale
+                热卖
               </span>
             ) : null}
             {product.issuingBayArea?.name ? (
@@ -78,7 +78,7 @@ export function SDSProductCard({
             SKU {product.sku ?? "-"} · {formatSDSPrice(product.currentPrice ?? product.min_price)}
           </div>
           <div className={isSelected ? "text-emerald-100" : "text-zinc-500"}>
-            Weight {formatWeight(product)} · Cycle {formatProductionCycle(product)}
+            重量 {formatWeight(product)} · 生产周期 {formatProductionCycle(product)}
           </div>
           {product.categories?.length ? (
             <div className={`line-clamp-2 text-sm ${isSelected ? "text-emerald-100" : "text-zinc-500"}`}>
@@ -92,7 +92,7 @@ export function SDSProductCard({
                   isSelected ? "bg-white/12 text-white" : "bg-emerald-50 text-emerald-700"
                 }`}
               >
-                Selected
+                已选择
               </span>
             ) : null}
             <Button
@@ -101,12 +101,12 @@ export function SDSProductCard({
               tone={isSelected ? "secondary" : "primary"}
               type="button"
             >
-              {isVariantSelected ? "Change variant" : "Choose variant"}
+              {isVariantSelected ? "更换变体" : "选择变体"}
             </Button>
           </div>
           {!isVariantSelected ? (
             <div className={isSelected ? "text-xs text-emerald-100" : "text-xs text-zinc-400"}>
-              Opens size/color picker and locks the exact SDS child SKU.
+              打开尺码/颜色选择器，并锁定具体 SDS 子 SKU。
             </div>
           ) : null}
         </div>

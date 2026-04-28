@@ -122,10 +122,10 @@ export function SheinDesignLightbox({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-400">
-              Image preview
+              图片预览
             </p>
             <h3 className="mt-1 font-serif text-2xl tracking-[-0.03em]">
-              Inspect generated art before approval.
+              批准前检查生成图和效果图。
             </h3>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -133,13 +133,13 @@ export function SheinDesignLightbox({
               onClick={() => onViewChange("design")}
               tone={activeView === "design" ? "primary" : "secondary"}
             >
-              Design
+              原图
             </Button>
             <Button
               onClick={() => onViewChange("mockup")}
               tone={activeView === "mockup" ? "primary" : "secondary"}
             >
-              Mockups
+              效果图
             </Button>
             {activeView === "mockup" ? (
               <Button
@@ -148,11 +148,11 @@ export function SheinDesignLightbox({
                 }
                 tone="secondary"
               >
-                {zoomMode === "fit" ? "Detail zoom" : "Fit view"}
+                {zoomMode === "fit" ? "细节放大" : "适应视图"}
               </Button>
             ) : null}
             <Button onClick={onClose} tone="ghost">
-              Close
+              关闭
             </Button>
           </div>
         </div>
@@ -161,7 +161,7 @@ export function SheinDesignLightbox({
           {activeView === "design" ? (
             <div className="relative aspect-square min-h-[60vh]">
               <Image
-                alt="Generated design preview"
+                alt="生成款式预览"
                 className="object-contain"
                 fill
                 src={designSrc}
@@ -173,7 +173,7 @@ export function SheinDesignLightbox({
               <div className="relative aspect-[4/3] min-h-[56vh] rounded-[1.25rem] bg-[radial-gradient(circle_at_top,_rgba(161,161,170,0.14),_transparent_58%),linear-gradient(180deg,_#18181b_0%,_#0f0f13_100%)]">
                 {activeSurfaceUrl ? (
                   <Image
-                    alt="Template mockup"
+                    alt="模板效果图"
                     className={imageFitClass}
                     fill
                     src={activeSurfaceUrl}
@@ -186,7 +186,7 @@ export function SheinDesignLightbox({
                     style={overlayStyle}
                   >
                     <Image
-                      alt="Mockup design preview"
+                      alt="效果图中的款式预览"
                       className={imageFitClass}
                       fill
                       src={designSrc}
@@ -197,7 +197,7 @@ export function SheinDesignLightbox({
                 {hasMultipleSurfaces ? (
                   <>
                     <button
-                      aria-label="Previous mockup view"
+                      aria-label="上一张效果图"
                       className="absolute left-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/12 bg-zinc-950/70 text-lg font-semibold text-white shadow-[0_10px_25px_rgba(0,0,0,0.25)] transition hover:bg-zinc-900"
                       onClick={showPreviousSurface}
                       type="button"
@@ -205,7 +205,7 @@ export function SheinDesignLightbox({
                       ‹
                     </button>
                     <button
-                      aria-label="Next mockup view"
+                      aria-label="下一张效果图"
                       className="absolute right-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/12 bg-zinc-950/70 text-lg font-semibold text-white shadow-[0_10px_25px_rgba(0,0,0,0.25)] transition hover:bg-zinc-900"
                       onClick={showNextSurface}
                       type="button"
@@ -224,7 +224,7 @@ export function SheinDesignLightbox({
               {hasMultipleSurfaces ? (
                 <div className="space-y-2">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-400">
-                    Mockup views
+                    效果图视图
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
                     {surfaces.map((imageUrl, index) => (
@@ -240,7 +240,7 @@ export function SheinDesignLightbox({
                       >
                         <div className="relative aspect-square bg-zinc-900">
                           <Image
-                            alt={`Mockup view ${index + 1}`}
+                            alt={`效果图视图 ${index + 1}`}
                             className="object-cover"
                             fill
                             src={imageUrl}
@@ -248,7 +248,7 @@ export function SheinDesignLightbox({
                           />
                         </div>
                         <div className="border-t border-white/10 bg-zinc-950/90 px-3 py-2 text-left text-xs font-medium text-zinc-200">
-                          View {index + 1}
+                          视图 {index + 1}
                         </div>
                       </button>
                     ))}
@@ -257,8 +257,7 @@ export function SheinDesignLightbox({
               ) : null}
               {activeView === "mockup" ? (
                 <div className="rounded-[1rem] border border-white/10 bg-zinc-950/80 px-4 py-3 text-xs leading-6 text-zinc-300">
-                  Press <span className="font-semibold text-white">Z</span> to switch
-                  between fit view and detail zoom.
+                  按 <span className="font-semibold text-white">Z</span> 可在适应视图和细节放大之间切换。
                 </div>
               ) : null}
             </div>

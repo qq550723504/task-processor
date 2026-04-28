@@ -42,6 +42,18 @@ function deriveGateState(item: GateStatus) {
   };
 }
 
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    blocked: "已阻断",
+    completed: "已完成",
+    failed: "失败",
+    ready: "可发布",
+    ready_with_warnings: "可保存草稿",
+    unknown: "未知",
+  };
+  return labels[status] ?? status;
+}
+
 export function SheinBatchPublishGate({
   tasks,
 }: {
@@ -118,8 +130,8 @@ export function SheinBatchPublishGate({
     if (eligible.length === 0) {
       setError(
         action === "publish"
-          ? "No tasks are ready to publish."
-          : "No tasks are eligible for save draft.",
+          ? "没有可正式发布的任务。"
+          : "没有可保存草稿的任务。",
       );
       setMessage("");
       return;
@@ -144,14 +156,14 @@ export function SheinBatchPublishGate({
 
       setMessage(
         action === "publish"
-          ? `Published ${eligible.length} SHEIN tasks.`
-          : `Saved draft for ${eligible.length} SHEIN tasks.`,
+          ? `已发布 ${eligible.length} 个 SHEIN 任务。`
+          : `已保存 ${eligible.length} 个 SHEIN 草稿。`,
       );
     } catch (submitError) {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : "Failed to submit SHEIN batch action.",
+          : "SHEIN 批量提交失败。",
       );
     } finally {
       setIsPublishing(false);
@@ -165,22 +177,21 @@ export function SheinBatchPublishGate({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              SHEIN publish gate
+              SHEIN 批量提交检查
             </p>
             <h2 className="mt-1 font-serif text-2xl tracking-[-0.03em] text-zinc-950">
-              Submit only tasks that are actually ready.
+              只提交真正可用的任务
             </h2>
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              `Save draft` accepts ready or ready-with-warnings. `Publish` only accepts
-              tasks whose SHEIN readiness is fully `ready`.
+              “保存草稿”允许带提醒的任务；“正式发布”只允许完全通过提交前检查的任务。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700">
-              draft eligible: {draftEligible.length}
+              可保存草稿：{draftEligible.length}
             </div>
             <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700">
-              publish eligible: {publishEligible.length}
+              可正式发布：{publishEligible.length}
             </div>
           </div>
         </div>
@@ -191,24 +202,24 @@ export function SheinBatchPublishGate({
             onClick={() => handleBatchSubmit("save_draft")}
             tone="secondary"
           >
-            {isSavingDrafts ? "Saving drafts..." : "Save draft for eligible"}
+            {isSavingDrafts ? "正在保存草稿..." : "保存可用草稿"}
           </Button>
           <Button
             disabled={isPublishing || publishEligible.length === 0}
             onClick={() => handleBatchSubmit("publish")}
           >
-            {isPublishing ? "Publishing..." : "Publish eligible"}
+            {isPublishing ? "正在发布..." : "发布可用任务"}
           </Button>
         </div>
 
         <div className="flex flex-wrap gap-2">
           {[
-            ["all", `All ${gateStatuses.length}`],
-            ["draft", `Draft eligible ${draftEligible.length}`],
-            ["publish", `Publish eligible ${publishEligible.length}`],
+            ["all", `全部 ${gateStatuses.length}`],
+            ["draft", `可保存草稿 ${draftEligible.length}`],
+            ["publish", `可发布 ${publishEligible.length}`],
             [
               "blocked",
-              `Blocked ${
+              `已阻断 ${
                 gateStatuses.filter((item) => {
                   const gate = deriveGateState(item);
                   return gate.taskStatus === "completed" && !gate.canSaveDraft;
@@ -217,7 +228,7 @@ export function SheinBatchPublishGate({
             ],
             [
               "submitted",
-              `Submitted ${
+              `已提交 ${
                 gateStatuses.filter((item) => deriveGateState(item).lastSubmissionStatus)
                   .length
               }`,
@@ -264,23 +275,23 @@ export function SheinBatchPublishGate({
                   <div className="text-xs text-zinc-500">{item.task.id}</div>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <span className="rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-700">
-                      task: {gate.taskStatus}
+                      任务：{statusLabel(gate.taskStatus)}
                     </span>
                     <span className="rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-700">
-                      readiness: {gate.readiness}
+                      提交检查：{statusLabel(gate.readiness)}
                     </span>
                     {gate.canPublish ? (
                       <span className="rounded-lg bg-emerald-100 px-2 py-1 font-medium text-emerald-700">
-                        publish eligible
+                        可发布
                       </span>
                     ) : gate.canSaveDraft ? (
                       <span className="rounded-lg bg-amber-100 px-2 py-1 font-medium text-amber-700">
-                        draft eligible
+                        可保存草稿
                       </span>
                     ) : null}
                     {gate.lastSubmissionStatus ? (
                       <span className="rounded-lg bg-zinc-100 px-2 py-1 font-medium text-zinc-700">
-                        last: {gate.lastSubmissionAction ?? "submit"} / {gate.lastSubmissionStatus}
+                        最近：{gate.lastSubmissionAction ?? "submit"} / {statusLabel(gate.lastSubmissionStatus)}
                       </span>
                     ) : null}
                   </div>
@@ -291,10 +302,10 @@ export function SheinBatchPublishGate({
 
                 <div className="flex flex-wrap gap-2">
                   <Link href={`/listing-kits/${item.task.id}/status`}>
-                    <Button tone="ghost">Status</Button>
+                    <Button tone="ghost">状态</Button>
                   </Link>
                   <Link href={`/listing-kits/${item.task.id}/workspace`}>
-                    <Button tone="secondary">Workspace</Button>
+                    <Button tone="secondary">工作区</Button>
                   </Link>
                 </div>
               </div>
@@ -302,7 +313,7 @@ export function SheinBatchPublishGate({
           })}
           {visibleStatuses.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-zinc-200 bg-white/70 px-4 py-6 text-sm text-zinc-500">
-              No tasks match the current filter.
+              当前筛选下没有任务。
             </div>
           ) : null}
         </div>

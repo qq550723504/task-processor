@@ -6,10 +6,10 @@ type QuickNote = {
 };
 
 const QUICK_NOTES: QuickNote[] = [
-  { label: "Too busy", value: "Too busy for print." },
-  { label: "Thin lines", value: "Too many thin lines." },
-  { label: "Small text", value: "Text is too small." },
-  { label: "Weak contrast", value: "Contrast is too weak." },
+  { label: "太复杂", value: "图案过于复杂，不适合印刷。" },
+  { label: "线太细", value: "细线太多，建议重新生成。" },
+  { label: "字太小", value: "文字太小，印刷后可能看不清。" },
+  { label: "对比弱", value: "对比度偏弱，建议增强颜色对比。" },
 ];
 
 export function SheinDesignReviewNote({
@@ -24,7 +24,7 @@ export function SheinDesignReviewNote({
   if (!onChange && disabled) {
     return note ? (
       <div className="rounded-[1rem] border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-xs leading-6 text-zinc-500">
-        Review note: {note}
+        审核备注：{note}
       </div>
     ) : null;
   }
@@ -47,7 +47,7 @@ export function SheinDesignReviewNote({
         className="min-h-20 w-full rounded-[1rem] border border-zinc-200 bg-white px-3 py-3 text-xs text-zinc-700 outline-none transition focus:border-zinc-950"
         disabled={disabled}
         onChange={(event) => onChange?.(event.target.value)}
-        placeholder="Optional review note for this style."
+        placeholder="可选：填写这个款式的问题或修改建议。"
         value={note ?? ""}
       />
     </div>
