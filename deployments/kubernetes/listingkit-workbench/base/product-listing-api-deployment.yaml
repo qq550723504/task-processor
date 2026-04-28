@@ -14,6 +14,8 @@ spec:
       labels:
         app: product-listing-api
     spec:
+      nodeSelector:
+        task-processor/crawler-tier: heavy
       containers:
         - name: product-listing-api
           image: xuwei190/task-processor-product-listing-api:latest
@@ -44,10 +46,17 @@ spec:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 30
+            initialDelaySeconds: 900
             periodSeconds: 20
             timeoutSeconds: 3
             failureThreshold: 6
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 90
           resources:
             requests:
               cpu: 250m
