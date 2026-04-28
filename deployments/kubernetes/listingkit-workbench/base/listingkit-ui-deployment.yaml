@@ -24,9 +24,12 @@ spec:
           envFrom:
             - configMapRef:
                 name: listingkit-workbench-config
+            - secretRef:
+                name: listingkit-workbench-secret
+                optional: true
           readinessProbe:
             httpGet:
-              path: /listing-kits/shein
+              path: /healthz
               port: http
             initialDelaySeconds: 20
             periodSeconds: 10
@@ -34,7 +37,7 @@ spec:
             failureThreshold: 6
           livenessProbe:
             httpGet:
-              path: /listing-kits/shein
+              path: /healthz
               port: http
             initialDelaySeconds: 60
             periodSeconds: 20
