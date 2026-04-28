@@ -3,10 +3,12 @@ package listingkit
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -14,7 +16,7 @@ import (
 	"task-processor/internal/prompt"
 )
 
-const maxStudioDesignCount = 8
+const maxStudioDesignCount = 5
 const studioDesignTransparentModel = "gpt-image-2"
 
 func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error) {
@@ -49,20 +51,39 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 		TransparentBackground: req.TransparentBackground && model == studioDesignTransparentModel,
 		Images:                make([]StudioGeneratedImage, 0, count),
 	}
+	images := make([]StudioGeneratedImage, count)
+	errs := make([]error, count)
+	var wg sync.WaitGroup
 	for idx := 0; idx < count; idx++ {
-		generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
-		if err != nil {
-			return nil, fmt.Errorf("generate studio design: %w", err)
+		idx := idx
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
+			if err != nil {
+				errs[idx] = fmt.Errorf("generate studio design %d: %w", idx+1, err)
+				return
+			}
+			imageURL, revisedPrompt, err := s.persistGeneratedStudioImage(ctx, generated, fmt.Sprintf("studio-design-%d.png", idx+1))
+			if err != nil {
+				errs[idx] = fmt.Errorf("persist studio design %d: %w", idx+1, err)
+				return
+			}
+			images[idx] = StudioGeneratedImage{
+				ID:            uuid.NewString(),
+				ImageURL:      imageURL,
+				RevisedPrompt: revisedPrompt,
+			}
+		}()
+	}
+	wg.Wait()
+	for _, image := range images {
+		if strings.TrimSpace(image.ImageURL) != "" {
+			response.Images = append(response.Images, image)
 		}
-		imageURL, revisedPrompt, err := s.persistGeneratedStudioImage(ctx, generated, fmt.Sprintf("studio-design-%d.png", idx+1))
-		if err != nil {
-			return nil, err
-		}
-		response.Images = append(response.Images, StudioGeneratedImage{
-			ID:            uuid.NewString(),
-			ImageURL:      imageURL,
-			RevisedPrompt: revisedPrompt,
-		})
+	}
+	if len(response.Images) == 0 {
+		return nil, errors.Join(nonNilErrors(errs)...)
 	}
 	return response, nil
 }

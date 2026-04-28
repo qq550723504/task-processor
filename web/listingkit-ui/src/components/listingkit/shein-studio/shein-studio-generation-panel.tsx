@@ -132,7 +132,7 @@ export function SheinStudioGenerationPanel({
           </label>
           <NumberInput
             label="款式数量"
-            max={8}
+            max={5}
             min={1}
             setValue={setStyleCount}
             value={styleCount}
@@ -275,11 +275,16 @@ export function SheinStudioGenerationPanel({
         <Button disabled={isGenerating} onClick={onGenerate}>
           {isGenerating ? "生成中..." : "生成款式图"}
         </Button>
-        <Button onClick={onSaveBatch} tone="ghost">
+        <Button disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} tone="ghost">
           保存批次
         </Button>
         <Button
-          disabled={isCreatingTasks || selectedStyleCount === 0 || !selectionReady}
+          disabled={
+            isGenerating ||
+            isCreatingTasks ||
+            selectedStyleCount === 0 ||
+            !selectionReady
+          }
           onClick={onCreateTasks}
           tone="secondary"
         >

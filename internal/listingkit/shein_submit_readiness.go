@@ -275,7 +275,10 @@ func sheinHasSwatchRole(pkg *SheinPackage) bool {
 			return true
 		}
 	}
-	return false
+	// The submit payload normalizer derives a SHEIN color block image from the
+	// first SKC image when no explicit swatch role is selected. Readiness should
+	// match the actual submit path instead of forcing a redundant UI role.
+	return sheinHasSKCImage(pkg)
 }
 
 func sheinHasSizeMapRoleOrFlag(pkg *SheinPackage) bool {

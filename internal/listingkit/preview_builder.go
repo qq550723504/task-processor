@@ -347,7 +347,7 @@ func buildSheinFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *shein
 			if override := strings.TrimSpace(finalDraft.ImageRoleOverrides[url]); override != "" {
 				role = override
 			}
-			if strings.TrimSpace(finalDraft.MainImageURL) == url {
+			if strings.TrimSpace(finalDraft.MainImageURL) == url && role != "skc" && role != "swatch" && role != "size_map" {
 				main = true
 				role = "main"
 			}

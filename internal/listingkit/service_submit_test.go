@@ -1145,6 +1145,37 @@ func TestSubmitTaskPublishBlocksMissingSizeMapRole(t *testing.T) {
 	}
 }
 
+func TestSubmitReadinessDerivesSwatchFromSKCImage(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	mainImage := "https://oss.shuomiai.com/listingkit/main.png"
+	sizeImage := "https://oss.shuomiai.com/listingkit/size.png"
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		Confirmed:       true,
+		MainImageURL:    mainImage,
+		FinalImageOrder: []string{mainImage, sizeImage},
+		ImageRoleOverrides: map[string]string{
+			sizeImage: "size_map",
+		},
+	}
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: mainImage,
+		Gallery:   []string{mainImage, sizeImage},
+	}
+	task.Result.Shein.RequestDraft.SKCList[0].ImageInfo = &SheinImageDraft{
+		MainImage: mainImage,
+		Gallery:   []string{mainImage, sizeImage},
+	}
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{mainImage, sizeImage})
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo([]string{mainImage, sizeImage})
+
+	readiness := buildSheinSubmitReadinessForAction(task.Result.Shein, "publish")
+	if readiness == nil || !readiness.Ready {
+		t.Fatalf("readiness = %+v, want ready because submit derives swatch from SKC image", readiness)
+	}
+}
+
 func TestSubmitTaskTranslatesChineseSheinContentBeforePublish(t *testing.T) {
 	t.Parallel()
 

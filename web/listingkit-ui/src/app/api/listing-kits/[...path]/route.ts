@@ -68,15 +68,28 @@ async function proxyRequest(
     headers.set("Content-Type", contentType);
   }
 
-  const upstream = await fetch(url, {
-    method: request.method,
-    headers,
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await readProxyRequestBody(request),
-    cache: "no-store",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, {
+      method: request.method,
+      headers,
+      body:
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : await readProxyRequestBody(request),
+      cache: "no-store",
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "ListingKit upstream request failed";
+    return NextResponse.json(
+      {
+        error: "listingkit_upstream_unavailable",
+        message,
+      },
+      { status: 504 },
+    );
+  }
 
   const responseHeaders = new Headers();
   const etag = upstream.headers.get("etag");
