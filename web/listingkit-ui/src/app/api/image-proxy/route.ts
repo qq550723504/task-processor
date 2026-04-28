@@ -3,6 +3,11 @@ import { isIP } from "node:net";
 
 import { NextRequest, NextResponse } from "next/server";
 
+import {
+  logRequestWarn,
+  newRequestLogId,
+} from "@/lib/server/request-log";
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -139,6 +144,8 @@ async function fetchValidatedImage(url: URL) {
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = newRequestLogId();
+  const startedAt = Date.now();
   const rawUrl = request.nextUrl.searchParams.get("url")?.trim();
   if (!rawUrl) {
     return NextResponse.json(
@@ -159,6 +166,13 @@ export async function GET(request: NextRequest) {
 
   const { error: proxyError, response: upstream } = await fetchValidatedImage(url);
   if (proxyError || !upstream) {
+    logRequestWarn("image proxy rejected request", {
+      requestId,
+      host: url.hostname,
+      status: 400,
+      durationMs: Date.now() - startedAt,
+      error: proxyError || "image_fetch_failed",
+    });
     return NextResponse.json(
       { error: proxyError || "image_fetch_failed", message: "Image URL is not allowed." },
       { status: 400 },
@@ -166,6 +180,12 @@ export async function GET(request: NextRequest) {
   }
 
   if (!upstream.ok) {
+    logRequestWarn("image proxy upstream failed", {
+      requestId,
+      host: url.hostname,
+      status: upstream.status,
+      durationMs: Date.now() - startedAt,
+    });
     return NextResponse.json(
       {
         error: "image_fetch_failed",
@@ -185,12 +205,39 @@ export async function GET(request: NextRequest) {
   }
 
   const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
-  const body = await upstream.arrayBuffer();
+  let body: ArrayBuffer;
+  try {
+    body = await upstream.arrayBuffer();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "image body read failed";
+    logRequestWarn("image proxy body read failed", {
+      requestId,
+      host: url.hostname,
+      status: 502,
+      durationMs: Date.now() - startedAt,
+      error: message,
+    });
+    return NextResponse.json(
+      { error: "image_body_unavailable", message },
+      { status: 502 },
+    );
+  }
   if (body.byteLength > MAX_IMAGE_BYTES) {
     return NextResponse.json(
       { error: "image_too_large", message: "Image is too large for preview." },
       { status: 413 },
     );
+  }
+
+  const durationMs = Date.now() - startedAt;
+  if (durationMs > 5_000) {
+    logRequestWarn("image proxy slow response", {
+      requestId,
+      host: url.hostname,
+      status: upstream.status,
+      durationMs,
+      bytes: body.byteLength,
+    });
   }
 
   return new NextResponse(body, {
