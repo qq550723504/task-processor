@@ -76,6 +76,11 @@ async function proxyRequest(
     path,
     request.nextUrl.searchParams.toString(),
   );
+  logRequestInfo("listingkit proxy request started", {
+    requestId,
+    method: request.method,
+    path: proxyPath,
+  });
 
   const headers = new Headers();
   headers.set("Accept", request.headers.get("accept") ?? "application/json");

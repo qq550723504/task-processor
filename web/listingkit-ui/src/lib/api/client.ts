@@ -17,6 +17,14 @@ type FormRequestOptions = {
   formData: FormData;
 };
 
+type AsyncJobResponse<T> = {
+  job_id: string;
+  status: "running" | "succeeded" | "failed";
+  result?: T;
+  error?: string;
+  upstream_status?: number;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -109,6 +117,66 @@ export async function apiRequest<T>(
   return payload as T;
 }
 
+export async function apiAsyncRequest<T>(
+  path: string,
+  { body, timeoutMs = 3600000 }: Pick<RequestOptions, "body" | "timeoutMs"> = {},
+): Promise<T> {
+  const started = await fetch("/api/listing-kits/async-jobs", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path, body }),
+  });
+  const startedPayload = (await started.json()) as AsyncJobResponse<T> & {
+    message?: string;
+  };
+  if (!started.ok || !startedPayload.job_id) {
+    throw new ApiError(
+      startedPayload.message ?? `ListingKit async job start failed: ${started.status}`,
+      started.status,
+      startedPayload,
+    );
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await sleep(2000);
+    const response = await fetch(
+      `/api/listing-kits/async-jobs?id=${encodeURIComponent(startedPayload.job_id)}`,
+      {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      },
+    );
+    const payload = (await response.json()) as AsyncJobResponse<T> & {
+      message?: string;
+    };
+    if (!response.ok) {
+      throw new ApiError(
+        payload.message ?? `ListingKit async job poll failed: ${response.status}`,
+        response.status,
+        payload,
+      );
+    }
+    if (payload.status === "succeeded") {
+      return payload.result as T;
+    }
+    if (payload.status === "failed") {
+      throw new ApiError(
+        payload.error ?? "ListingKit async job failed",
+        payload.upstream_status ?? 500,
+        payload,
+      );
+    }
+  }
+  throw new ApiError(
+    `ListingKit async job timed out after ${timeoutMs}ms`,
+    408,
+  );
+}
+
 export async function apiFormRequest<T>(
   path: string,
   { method = "POST", formData }: FormRequestOptions,
@@ -130,4 +198,8 @@ export async function apiFormRequest<T>(
   }
 
   return payload as T;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

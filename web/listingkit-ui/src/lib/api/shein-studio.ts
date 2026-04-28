@@ -4,12 +4,12 @@ import type {
   SheinStudioGenerateResponse,
   SheinStudioProductImagePrompt,
 } from "@/lib/types/shein-studio";
-import { apiRequest } from "@/lib/api/client";
+import { apiAsyncRequest } from "@/lib/api/client";
 
 export async function generateSheinStudioDesigns(
   body: SheinStudioGenerateRequest,
 ) {
-  const payload = await apiRequest<{
+  const payload = await apiAsyncRequest<{
     prompt: string;
     printable_width?: number;
     printable_height?: number;
@@ -24,7 +24,6 @@ export async function generateSheinStudioDesigns(
       roleLabel?: string;
     }>;
   }>("/studio/designs", {
-    method: "POST",
     body: {
       prompt: body.prompt,
       count: body.count,
@@ -62,7 +61,7 @@ export async function generateSheinStudioProductImages(body: {
   imagePrompts?: SheinStudioProductImagePrompt[];
   count?: number;
 }) {
-  const payload = await apiRequest<{
+  const payload = await apiAsyncRequest<{
     images?: Array<{
       id: string;
       image_url?: string;
@@ -74,7 +73,6 @@ export async function generateSheinStudioProductImages(body: {
       roleLabel?: string;
     }>;
   }>("/studio/product-images", {
-    method: "POST",
     body: {
       prompt: body.prompt,
       product_name: body.productName,
