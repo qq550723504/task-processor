@@ -35,7 +35,19 @@ function parseSelection(searchParams: URLSearchParams): SDSProductVariantSelecti
     templateImageUrl: searchParams.get("templateImageUrl") ?? undefined,
     mockupImageUrl: searchParams.get("mockupImageUrl") ?? undefined,
     mockupImageUrls: undefined,
+    selectedVariantIds: parseOptionalNumberArray(searchParams.get("variantIds") ?? undefined),
   };
+}
+
+function parseOptionalNumberArray(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+  const items = value
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item) && item > 0);
+  return items.length > 0 ? Array.from(new Set(items)) : undefined;
 }
 
 type DraftPayload = {

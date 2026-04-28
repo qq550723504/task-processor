@@ -112,32 +112,14 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
     if (currentBatch.selection?.layerId) {
       params.set("layerId", currentBatch.selection.layerId);
     }
-    if (currentBatch.selection?.productName) {
-      params.set("productName", currentBatch.selection.productName);
-    }
-    if (currentBatch.selection?.variantLabel) {
-      params.set("variantLabel", currentBatch.selection.variantLabel);
-    }
     if (currentBatch.selection?.printableWidth) {
       params.set("printWidth", String(currentBatch.selection.printableWidth));
     }
     if (currentBatch.selection?.printableHeight) {
       params.set("printHeight", String(currentBatch.selection.printableHeight));
     }
-    if (currentBatch.selection?.templateImageUrl) {
-      params.set("templateImageUrl", currentBatch.selection.templateImageUrl);
-    }
-    if (currentBatch.selection?.maskImageUrl) {
-      params.set("maskImageUrl", currentBatch.selection.maskImageUrl);
-    }
-    if (currentBatch.selection?.blankDesignUrl) {
-      params.set("blankDesignUrl", currentBatch.selection.blankDesignUrl);
-    }
-    if (currentBatch.selection?.mockupImageUrl) {
-      params.set("mockupImageUrl", currentBatch.selection.mockupImageUrl);
-    }
-    if (currentBatch.selection?.mockupImageUrls?.length) {
-      params.set("mockupImageUrls", JSON.stringify(currentBatch.selection.mockupImageUrls));
+    if (currentBatch.selection?.selectedVariantIds?.length) {
+      params.set("variantIds", currentBatch.selection.selectedVariantIds.join(","));
     }
     const query = params.toString();
     return query ? `/listing-kits/shein?${query}` : "/listing-kits/shein";

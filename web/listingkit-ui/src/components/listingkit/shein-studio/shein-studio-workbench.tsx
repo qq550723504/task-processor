@@ -14,6 +14,7 @@ import {
   createSheinReviewTasks,
   parsePositiveInt,
 } from "@/lib/shein-studio/create-review-tasks";
+import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
@@ -71,29 +72,31 @@ export function SheinStudioWorkbench({
   const [isCreatingTasks, setIsCreatingTasks] = useState(false);
   const [regeneratingId, setRegeneratingId] = useState<string>("");
   const [createdTasks, setCreatedTasks] = useState<SheinStudioCreatedTask[]>([]);
+  const [hydratedSelection, setHydratedSelection] = useState(selection);
   const [savedBatches, setSavedBatches] = useState<SheinStudioSavedBatch[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [saveMessage, setSaveMessage] = useState("");
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
+  const activeSelection = hydratedSelection ?? selection;
 
   const printableAreaLabel =
-    selection?.printableWidth && selection?.printableHeight
-      ? `${selection.printableWidth} × ${selection.printableHeight}px`
+    activeSelection?.printableWidth && activeSelection?.printableHeight
+      ? `${activeSelection.printableWidth} × ${activeSelection.printableHeight}px`
       : "自动";
   const selectedVariants =
-    selection?.variants?.length
-      ? selection.variants
-      : selection?.selectedVariantIds?.length
-        ? selection.selectedVariantIds.map((variantId) => ({
+    activeSelection?.variants?.length
+      ? activeSelection.variants
+      : activeSelection?.selectedVariantIds?.length
+        ? activeSelection.selectedVariantIds.map((variantId) => ({
             variantId,
             size: undefined,
             color: undefined,
           }))
-      : selection?.variantId
+      : activeSelection?.variantId
         ? [
             {
-              variantId: selection.variantId,
-              size: selection.variantLabel,
+              variantId: activeSelection.variantId,
+              size: activeSelection.variantLabel,
               color: "默认",
             },
           ]
@@ -104,11 +107,27 @@ export function SheinStudioWorkbench({
   const selectedSizeCount = new Set(
     selectedVariants.map((variant) => variant.size || "One size"),
   ).size;
-  const createActionDisabledReason = !selection?.variantId
+  const createActionDisabledReason = !activeSelection?.variantId
     ? "请先选择 SDS 商品变体。生成 SHEIN 资料前需要锁定商品模板。"
     : selectedIds.length === 0
       ? "请至少批准 1 个款式后再生成 SHEIN 资料。"
       : undefined;
+
+  useEffect(() => {
+    let cancelled = false;
+    setHydratedSelection(selection);
+
+    void hydrateSDSVariantSelection(selection).then((nextSelection) => {
+      if (!cancelled) {
+        setHydratedSelection(nextSelection);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selection]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -116,7 +135,7 @@ export function SheinStudioWorkbench({
       setIsLoadingWorkspace(true);
       try {
         const [draft, batches] = await Promise.all([
-          loadSheinStudioDraft(selection),
+          loadSheinStudioDraft(activeSelection),
           listSheinStudioBatches(),
         ]);
 
@@ -156,7 +175,7 @@ export function SheinStudioWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [selection]);
+  }, [activeSelection]);
 
   useEffect(() => {
     if (isLoadingWorkspace) {
@@ -175,7 +194,7 @@ export function SheinStudioWorkbench({
         sheinStoreId,
         imageStrategy,
         renderSizeImagesWithSds,
-        selection,
+        selection: activeSelection,
         designs,
         selectedIds,
         createdTasks,
@@ -198,13 +217,13 @@ export function SheinStudioWorkbench({
     transparentBackground,
     renderSizeImagesWithSds,
     selectedIds,
-    selection,
+    activeSelection,
     sheinStoreId,
     styleCount,
   ]);
 
   async function handleGenerate() {
-    if (!selection?.variantId) {
+    if (!activeSelection?.variantId) {
       setGenerationError("请先选择 SDS 变体。");
       return;
     }
@@ -225,9 +244,9 @@ export function SheinStudioWorkbench({
       const response = await generateSheinStudioDesigns({
         prompt: prompt.trim(),
         count: parsePositiveInt(styleCount) ?? 1,
-        printableWidth: selection.printableWidth,
-        printableHeight: selection.printableHeight,
-        productReferenceImageUrls: buildSDSProductReferenceImageUrls(selection),
+        printableWidth: activeSelection.printableWidth,
+        printableHeight: activeSelection.printableHeight,
+        productReferenceImageUrls: buildSDSProductReferenceImageUrls(activeSelection),
         imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
         transparentBackground,
       });
@@ -245,7 +264,7 @@ export function SheinStudioWorkbench({
   }
 
   async function handleRegenerate(designId: string) {
-    if (!selection?.variantId) {
+    if (!activeSelection?.variantId) {
       setGenerationError("请先选择 SDS 变体。");
       return;
     }
@@ -263,9 +282,9 @@ export function SheinStudioWorkbench({
       const response = await generateSheinStudioDesigns({
         prompt: prompt.trim(),
         count: 1,
-        printableWidth: selection.printableWidth,
-        printableHeight: selection.printableHeight,
-        productReferenceImageUrls: buildSDSProductReferenceImageUrls(selection),
+        printableWidth: activeSelection.printableWidth,
+        printableHeight: activeSelection.printableHeight,
+        productReferenceImageUrls: buildSDSProductReferenceImageUrls(activeSelection),
         imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
         transparentBackground,
       });
@@ -308,7 +327,7 @@ export function SheinStudioWorkbench({
       sheinStoreId,
       imageStrategy,
       renderSizeImagesWithSds,
-      selection,
+      selection: activeSelection,
       designs,
       selectedIds,
       createdTasks,
@@ -364,7 +383,7 @@ export function SheinStudioWorkbench({
   }
 
   async function handleCreateTasks() {
-    if (!selection?.variantId) {
+    if (!activeSelection?.variantId) {
       setCreatingError("请先选择 SDS 变体。");
       return;
     }
@@ -387,7 +406,7 @@ export function SheinStudioWorkbench({
         productImagePrompt,
         productImagePrompts,
         renderSizeImagesWithSds,
-        selection,
+        selection: activeSelection,
         designs: approved,
         selectedIds: approved.map((design) => design.id),
         onProgress: setCreatingMessage,
@@ -423,7 +442,7 @@ export function SheinStudioWorkbench({
         selectedColorCount={selectedColorCount}
         selectedSizeCount={selectedSizeCount}
         selectedVariantCount={selectedVariants.length}
-        selection={selection}
+        selection={activeSelection}
       />
 
       {activeStep === "generate" ? (
@@ -451,7 +470,7 @@ export function SheinStudioWorkbench({
           savedBatches={savedBatches}
           saveMessage={saveMessage}
           selectedStyleCount={selectedIds.length}
-          selectionReady={Boolean(selection?.variantId)}
+          selectionReady={Boolean(activeSelection?.variantId)}
           setArtworkModel={setArtworkModel}
           setImageStrategy={setImageStrategy}
           setProductImageCount={setProductImageCount}
@@ -484,7 +503,7 @@ export function SheinStudioWorkbench({
           isCreatingTasks={isCreatingTasks}
           regeneratingId={regeneratingId || undefined}
           selectedIds={selectedIds}
-          selection={selection}
+          selection={activeSelection}
         />
       </div>
       ) : null}

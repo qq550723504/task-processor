@@ -50,19 +50,14 @@ function buildDraftURL(selection?: SDSProductVariantSelection) {
   params.set("variantId", String(selection.variantId));
   params.set("prototypeGroupId", String(selection.prototypeGroupId));
   params.set("layerId", selection.layerId);
-  params.set("productName", selection.productName);
-  params.set("variantLabel", selection.variantLabel);
   if (selection.printableWidth) {
     params.set("printWidth", String(selection.printableWidth));
   }
   if (selection.printableHeight) {
     params.set("printHeight", String(selection.printableHeight));
   }
-  if (selection.templateImageUrl) {
-    params.set("templateImageUrl", selection.templateImageUrl);
-  }
-  if (selection.mockupImageUrl) {
-    params.set("mockupImageUrl", selection.mockupImageUrl);
+  if (selection.selectedVariantIds?.length) {
+    params.set("variantIds", selection.selectedVariantIds.join(","));
   }
 
   return `/api/shein-studio/draft?${params.toString()}`;

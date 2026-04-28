@@ -115,20 +115,17 @@ export function SDSProductBrowser({
       layerId: selection.layerId,
       printWidth: selection.printableWidth ? String(selection.printableWidth) : undefined,
       printHeight: selection.printableHeight ? String(selection.printableHeight) : undefined,
-      templateImageUrl: selection.templateImageUrl,
-      maskImageUrl: selection.maskImageUrl,
-      blankDesignUrl: selection.blankDesignUrl,
-      mockupImageUrl: selection.mockupImageUrl,
-      mockupImageUrls:
-        selection.mockupImageUrls && selection.mockupImageUrls.length > 0
-          ? JSON.stringify(selection.mockupImageUrls)
-          : undefined,
+      templateImageUrl: undefined,
+      maskImageUrl: undefined,
+      blankDesignUrl: undefined,
+      mockupImageUrl: undefined,
+      mockupImageUrls: undefined,
       variantIds:
         selection.selectedVariantIds && selection.selectedVariantIds.length > 0
           ? selection.selectedVariantIds.join(",")
           : selection.variants?.map((variant) => variant.variantId).join(","),
-      productName: selection.productName,
-      variantLabel: selection.variantLabel,
+      productName: undefined,
+      variantLabel: undefined,
       step: "generate",
     });
     saveRecentSDSVariant(selection);
