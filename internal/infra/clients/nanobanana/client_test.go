@@ -139,6 +139,41 @@ func TestClientEditImageRequiresImageURL(t *testing.T) {
 	}
 }
 
+func TestBuildSubmitURLUsesCompletionsEndpointForGPTImage(t *testing.T) {
+	tests := []struct {
+		name string
+		base string
+		want string
+	}{
+		{
+			name: "nano endpoint",
+			base: "https://grsai.dakka.com.cn/v1/draw/nano-banana",
+			want: "https://grsai.dakka.com.cn/v1/draw/completions",
+		},
+		{
+			name: "host only",
+			base: "https://grsai.dakka.com.cn",
+			want: "https://grsai.dakka.com.cn/v1/draw/completions",
+		},
+		{
+			name: "already completions",
+			base: "https://grsai.dakka.com.cn/v1/draw/completions",
+			want: "https://grsai.dakka.com.cn/v1/draw/completions",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := buildSubmitURL(tt.base, "gpt-image-2")
+			if err != nil {
+				t.Fatalf("buildSubmitURL() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("buildSubmitURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClientEditImageReturnsTypedModerationError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

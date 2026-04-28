@@ -7,6 +7,7 @@ import {
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
+  SheinStudioArtworkModel,
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
@@ -21,6 +22,7 @@ type BatchPayload = {
   productImageCount?: string;
   productImagePrompt?: string;
   productImagePrompts?: SheinStudioProductImagePrompt[];
+  artworkModel?: SheinStudioArtworkModel;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   renderSizeImagesWithSds?: boolean;

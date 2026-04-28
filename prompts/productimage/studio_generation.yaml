@@ -10,8 +10,7 @@ studio_generation:
       Use bold, clean shapes and clear silhouette separation.
       Avoid tiny text, dense paragraphs, micro details, thin outlines, delicate line art, halftone noise, and scattered miniature elements.
       Avoid weak low-contrast details, photographic scenes, and edge-to-edge clutter.
-      Do not draw checkerboard patterns, grey-white transparency grids, PNG preview backgrounds, alpha-channel previews, or fake cutout-background indicators.
-      Use an intentional solid or simple clean background if background space is needed; never simulate transparency.
+      {{.TransparentHint}}
       {{.ReferenceHint}}
       If typography is used, keep it minimal, large, legible, and secondary to the main graphic.
       Favor one strong focal concept with simple layering and enough negative space.

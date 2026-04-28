@@ -37,6 +37,8 @@ func TestStudioDesignPromptRendersWithoutTransparencyInstructions(t *testing.T) 
 		"transparent background",
 		"fully transparent",
 		"alpha channel",
+		"checkerboard",
+		"simulate transparency",
 		"apparel",
 		"garment",
 	} {
@@ -45,8 +47,6 @@ func TestStudioDesignPromptRendersWithoutTransparencyInstructions(t *testing.T) 
 		}
 	}
 	for _, required := range []string{
-		"do not draw checkerboard patterns",
-		"never simulate transparency",
 		"customized-product",
 		"target print area: 1000 by 600 pixels",
 		"product color variants",
@@ -81,6 +81,40 @@ func TestStudioDesignReferenceImageURLsDeduplicatesAndCaps(t *testing.T) {
 	}
 }
 
+func TestStudioDesignPromptIncludesTransparencyInstructionsWhenRequested(t *testing.T) {
+	text := buildStudioDesignPrompt(&StudioDesignRequest{
+		Prompt:                "minimal dog badge",
+		TransparentBackground: true,
+	})
+	lower := strings.ToLower(text)
+	for _, required := range []string{
+		"true transparent background",
+		"alpha channel",
+		"do not simulate transparency",
+	} {
+		if !strings.Contains(lower, required) {
+			t.Fatalf("prompt missing %q:\n%s", required, text)
+		}
+	}
+}
+
+func TestResolveStudioDesignImageModelUsesGPTForTransparency(t *testing.T) {
+	got := resolveStudioDesignImageModel(&StudioDesignRequest{
+		ImageModel:            "nano-banana-fast",
+		TransparentBackground: true,
+	}, "fallback-model")
+	if got != studioDesignTransparentModel {
+		t.Fatalf("model = %q, want %q", got, studioDesignTransparentModel)
+	}
+
+	got = resolveStudioDesignImageModel(&StudioDesignRequest{
+		ImageModel: "custom-model",
+	}, "fallback-model")
+	if got != "custom-model" {
+		t.Fatalf("model = %q, want custom-model", got)
+	}
+}
+
 func TestGenerateStudioDesignImageFallsBackWhenMultiReferenceEditFails(t *testing.T) {
 	generator := &stubStudioImageGenerator{
 		editErr: errors.New("provider rejected references"),
@@ -90,7 +124,7 @@ func TestGenerateStudioDesignImageFallsBackWhenMultiReferenceEditFails(t *testin
 	}
 	svc := &service{studioImageGenerator: generator}
 
-	response, err := svc.generateStudioDesignImage(context.Background(), "prompt", "1024x1024", []string{
+	response, err := svc.generateStudioDesignImage(context.Background(), "test-model", "prompt", "1024x1024", []string{
 		"https://example.com/black.png",
 		"https://example.com/white.png",
 	})

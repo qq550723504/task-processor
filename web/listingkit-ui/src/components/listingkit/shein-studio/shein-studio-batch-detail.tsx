@@ -149,7 +149,17 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
       id: currentBatch.id,
       prompt: next.prompt ?? currentBatch.prompt,
       styleCount: next.styleCount ?? currentBatch.styleCount,
+      productImageCount: next.productImageCount ?? currentBatch.productImageCount,
+      productImagePrompt: next.productImagePrompt ?? currentBatch.productImagePrompt,
+      productImagePrompts:
+        next.productImagePrompts ?? currentBatch.productImagePrompts,
+      artworkModel: next.artworkModel ?? currentBatch.artworkModel,
+      transparentBackground:
+        next.transparentBackground ?? currentBatch.transparentBackground,
       sheinStoreId: next.sheinStoreId ?? currentBatch.sheinStoreId,
+      imageStrategy: next.imageStrategy ?? currentBatch.imageStrategy,
+      renderSizeImagesWithSds:
+        next.renderSizeImagesWithSds ?? currentBatch.renderSizeImagesWithSds,
       selection: next.selection ?? currentBatch.selection,
       designs: next.designs ?? currentBatch.designs,
       selectedIds: next.selectedIds ?? currentBatch.selectedIds,

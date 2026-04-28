@@ -12,6 +12,7 @@ import {
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
+  SheinStudioArtworkModel,
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
@@ -28,6 +29,8 @@ type SaveDraftInput = {
   productImageCount?: string;
   productImagePrompt?: string;
   productImagePrompts?: SheinStudioProductImagePrompt[];
+  artworkModel?: SheinStudioArtworkModel;
+  transparentBackground?: boolean;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   renderSizeImagesWithSds?: boolean;
@@ -110,6 +113,8 @@ export async function saveSheinStudioDraft(input: SaveDraftInput) {
       productImageCount: input.productImageCount,
       productImagePrompt: input.productImagePrompt,
       productImagePrompts: input.productImagePrompts,
+      artworkModel: input.artworkModel,
+      transparentBackground: input.transparentBackground,
       sheinStoreId: input.sheinStoreId,
       imageStrategy: input.imageStrategy,
       renderSizeImagesWithSds: input.renderSizeImagesWithSds,
@@ -151,6 +156,8 @@ export async function saveSheinStudioBatch(input: SaveBatchInput) {
       productImageCount: input.productImageCount,
       productImagePrompt: input.productImagePrompt,
       productImagePrompts: input.productImagePrompts,
+      artworkModel: input.artworkModel,
+      transparentBackground: input.transparentBackground,
       sheinStoreId: input.sheinStoreId,
       imageStrategy: input.imageStrategy,
       renderSizeImagesWithSds: input.renderSizeImagesWithSds,

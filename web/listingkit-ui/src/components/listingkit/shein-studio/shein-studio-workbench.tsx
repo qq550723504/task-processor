@@ -17,10 +17,12 @@ import {
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
+  DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
   DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
 } from "@/lib/shein-studio/storage-shared";
 import type {
+  SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
@@ -51,6 +53,10 @@ export function SheinStudioWorkbench({
   const [productImagePrompts, setProductImagePrompts] = useState<
     SheinStudioProductImagePrompt[]
   >([]);
+  const [artworkModel, setArtworkModel] = useState<SheinStudioArtworkModel>(
+    DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+  );
+  const [transparentBackground, setTransparentBackground] = useState(false);
   const [sheinStoreId, setSheinStoreId] = useState(DEFAULT_SHEIN_STORE_ID);
   const [imageStrategy, setImageStrategy] = useState<SheinStudioImageStrategy>(
     DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
@@ -125,6 +131,8 @@ export function SheinStudioWorkbench({
         );
         setProductImagePrompt(draft?.productImagePrompt ?? "");
         setProductImagePrompts(draft?.productImagePrompts ?? []);
+        setArtworkModel(draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL);
+        setTransparentBackground(draft?.transparentBackground ?? false);
         setSheinStoreId(draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID);
         setImageStrategy(draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
         setRenderSizeImagesWithSds(draft?.renderSizeImagesWithSds ?? true);
@@ -162,6 +170,8 @@ export function SheinStudioWorkbench({
         productImageCount,
         productImagePrompt,
         productImagePrompts,
+        artworkModel,
+        transparentBackground,
         sheinStoreId,
         imageStrategy,
         renderSizeImagesWithSds,
@@ -178,12 +188,14 @@ export function SheinStudioWorkbench({
   }, [
     createdTasks,
     designs,
+    artworkModel,
     imageStrategy,
     isLoadingWorkspace,
     prompt,
     productImageCount,
     productImagePrompt,
     productImagePrompts,
+    transparentBackground,
     renderSizeImagesWithSds,
     selectedIds,
     selection,
@@ -216,6 +228,8 @@ export function SheinStudioWorkbench({
         printableWidth: selection.printableWidth,
         printableHeight: selection.printableHeight,
         productReferenceImageUrls: buildSDSProductReferenceImageUrls(selection),
+        imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
+        transparentBackground,
       });
       setDesigns(response.images);
       setSelectedIds(response.images.map((item) => item.id));
@@ -252,6 +266,8 @@ export function SheinStudioWorkbench({
         printableWidth: selection.printableWidth,
         printableHeight: selection.printableHeight,
         productReferenceImageUrls: buildSDSProductReferenceImageUrls(selection),
+        imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
+        transparentBackground,
       });
       const replacement = response.images[0];
       if (!replacement) {
@@ -287,6 +303,8 @@ export function SheinStudioWorkbench({
       productImageCount,
       productImagePrompt,
       productImagePrompts,
+      artworkModel,
+      transparentBackground,
       sheinStoreId,
       imageStrategy,
       renderSizeImagesWithSds,
@@ -313,6 +331,8 @@ export function SheinStudioWorkbench({
     );
     setProductImagePrompt(batch.productImagePrompt ?? "");
     setProductImagePrompts(batch.productImagePrompts ?? []);
+    setArtworkModel(batch.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL);
+    setTransparentBackground(batch.transparentBackground ?? false);
     setSheinStoreId(batch.sheinStoreId);
     setImageStrategy(batch.imageStrategy ?? "sds_official");
     setRenderSizeImagesWithSds(batch.renderSizeImagesWithSds ?? true);
@@ -413,6 +433,8 @@ export function SheinStudioWorkbench({
           productImageCount={productImageCount}
           productImagePrompt={productImagePrompt}
           productImagePrompts={productImagePrompts}
+          artworkModel={artworkModel}
+          transparentBackground={transparentBackground}
           renderSizeImagesWithSds={renderSizeImagesWithSds}
           prompt={prompt}
           promptInputRef={promptInputRef}
@@ -420,6 +442,7 @@ export function SheinStudioWorkbench({
           saveMessage={saveMessage}
           selectedStyleCount={selectedIds.length}
           selectionReady={Boolean(selection?.variantId)}
+          setArtworkModel={setArtworkModel}
           setImageStrategy={setImageStrategy}
           setProductImageCount={setProductImageCount}
           setProductImagePrompt={setProductImagePrompt}
@@ -428,6 +451,7 @@ export function SheinStudioWorkbench({
           setRenderSizeImagesWithSds={setRenderSizeImagesWithSds}
           setSheinStoreId={setSheinStoreId}
           setStyleCount={setStyleCount}
+          setTransparentBackground={setTransparentBackground}
           sheinStoreId={sheinStoreId}
           styleCount={styleCount}
         />

@@ -107,6 +107,7 @@ type StudioDesignRequest struct {
 	PrintableWidth            int      `json:"printable_width,omitempty"`
 	PrintableHeight           int      `json:"printable_height,omitempty"`
 	ProductReferenceImageURLs []string `json:"product_reference_image_urls,omitempty"`
+	ImageModel                string   `json:"image_model,omitempty"`
 	TransparentBackground     bool     `json:"transparent_background,omitempty"`
 }
 
@@ -114,6 +115,7 @@ type StudioDesignResponse struct {
 	Prompt                string                 `json:"prompt"`
 	PrintableWidth        int                    `json:"printable_width,omitempty"`
 	PrintableHeight       int                    `json:"printable_height,omitempty"`
+	ImageModel            string                 `json:"image_model,omitempty"`
 	TransparentBackground bool                   `json:"transparent_background"`
 	Images                []StudioGeneratedImage `json:"images,omitempty"`
 }

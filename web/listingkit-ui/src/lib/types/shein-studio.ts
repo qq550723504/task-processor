@@ -16,6 +16,8 @@ export type SheinStudioImageStrategy =
   | "sds_official"
   | "hybrid";
 
+export type SheinStudioArtworkModel = "nanobanana" | "gpt-image-2";
+
 export type SheinStudioProductImagePrompt = {
   role: string;
   label: string;
@@ -40,6 +42,8 @@ export type SheinStudioGenerateRequest = {
   printableWidth?: number;
   printableHeight?: number;
   productReferenceImageUrls?: string[];
+  imageModel?: SheinStudioArtworkModel;
+  transparentBackground?: boolean;
 };
 
 export type SheinStudioGenerateResponse = {
@@ -57,6 +61,8 @@ export type SheinStudioSavedBatch = {
   productImageCount?: string;
   productImagePrompt?: string;
   productImagePrompts?: SheinStudioProductImagePrompt[];
+  artworkModel?: SheinStudioArtworkModel;
+  transparentBackground?: boolean;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   renderSizeImagesWithSds?: boolean;

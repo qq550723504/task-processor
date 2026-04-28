@@ -15,6 +15,7 @@ import (
 )
 
 const maxStudioDesignCount = 8
+const studioDesignTransparentModel = "gpt-image-2"
 
 func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error) {
 	if req == nil {
@@ -35,6 +36,7 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 	if count > maxStudioDesignCount {
 		count = maxStudioDesignCount
 	}
+	model := resolveStudioDesignImageModel(req, s.studioImageGenerator.GetDefaultModel())
 	promptText := buildStudioDesignPrompt(req)
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
 	referenceURLs := studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)
@@ -43,11 +45,12 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 		Prompt:                theme,
 		PrintableWidth:        req.PrintableWidth,
 		PrintableHeight:       req.PrintableHeight,
-		TransparentBackground: false,
+		ImageModel:            model,
+		TransparentBackground: req.TransparentBackground && model == studioDesignTransparentModel,
 		Images:                make([]StudioGeneratedImage, 0, count),
 	}
 	for idx := 0; idx < count; idx++ {
-		generated, err := s.generateStudioDesignImage(ctx, promptText, size, referenceURLs)
+		generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
 		if err != nil {
 			return nil, fmt.Errorf("generate studio design: %w", err)
 		}
@@ -64,26 +67,26 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 	return response, nil
 }
 
-func (s *service) generateStudioDesignImage(ctx context.Context, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
+func (s *service) generateStudioDesignImage(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
 	if len(referenceURLs) == 0 {
-		return s.generateStudioDesignImageWithoutReferences(ctx, promptText, size)
+		return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
 	}
-	response, err := s.editStudioDesignImageWithReferences(ctx, promptText, size, referenceURLs)
+	response, err := s.editStudioDesignImageWithReferences(ctx, model, promptText, size, referenceURLs)
 	if err == nil {
 		return response, nil
 	}
 	if len(referenceURLs) > 1 {
-		response, singleErr := s.editStudioDesignImageWithReferences(ctx, promptText, size, referenceURLs[:1])
+		response, singleErr := s.editStudioDesignImageWithReferences(ctx, model, promptText, size, referenceURLs[:1])
 		if singleErr == nil {
 			return response, nil
 		}
 	}
-	return s.generateStudioDesignImageWithoutReferences(ctx, promptText, size)
+	return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
 }
 
-func (s *service) editStudioDesignImageWithReferences(ctx context.Context, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
+func (s *service) editStudioDesignImageWithReferences(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
 	return s.studioImageGenerator.EditImage(ctx, &openaiclient.ImageEditRequest{
-		Model:          s.studioImageGenerator.GetDefaultModel(),
+		Model:          model,
 		Prompt:         promptText,
 		ImageURL:       referenceURLs[0],
 		ImageURLs:      referenceURLs,
@@ -93,9 +96,9 @@ func (s *service) editStudioDesignImageWithReferences(ctx context.Context, promp
 	})
 }
 
-func (s *service) generateStudioDesignImageWithoutReferences(ctx context.Context, promptText string, size string) (*openaiclient.ImageResponse, error) {
+func (s *service) generateStudioDesignImageWithoutReferences(ctx context.Context, model string, promptText string, size string) (*openaiclient.ImageResponse, error) {
 	return s.studioImageGenerator.GenerateImage(ctx, &openaiclient.ImageGenerateRequest{
-		Model:          s.studioImageGenerator.GetDefaultModel(),
+		Model:          model,
 		Prompt:         promptText,
 		Size:           size,
 		ResponseFormat: "b64_json",
@@ -112,12 +115,17 @@ func buildStudioDesignPrompt(req *StudioDesignRequest) string {
 	if len(studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)) > 0 {
 		referenceHint = "SDS product mockup/reference images are provided. Use them to understand product color variants, material, print-surface shape, scale, and visual contrast. Generate only the flat artwork/design, not a product photo; make the artwork work across the provided product colors."
 	}
-	vars := map[string]any{
-		"PrintableHint": printableHint,
-		"ReferenceHint": referenceHint,
-		"ThemePrompt":   strings.TrimSpace(req.Prompt),
+	transparentHint := ""
+	if req.TransparentBackground {
+		transparentHint = "Output the artwork on a true transparent background with alpha channel. Do not simulate transparency with checkerboard, paper texture, white fill, colored fill, or any background pattern."
 	}
-	fallback := "Create a single print-ready graphic for ecommerce POD or customized-product use. Return a flat design only, not a product mockup, model photo, scene photo, or physical product rendering. {{PrintableHint}} {{ReferenceHint}} Theme prompt: {{ThemePrompt}}"
+	vars := map[string]any{
+		"PrintableHint":   printableHint,
+		"ReferenceHint":   referenceHint,
+		"TransparentHint": transparentHint,
+		"ThemePrompt":     strings.TrimSpace(req.Prompt),
+	}
+	fallback := "Create a single print-ready graphic for ecommerce POD or customized-product use. Return a flat design only, not a product mockup, model photo, scene photo, or physical product rendering. {{.PrintableHint}} {{.ReferenceHint}} {{.TransparentHint}} Theme prompt: {{.ThemePrompt}}"
 	if prompt.GlobalRegistry == nil {
 		return renderPromptFallback(fallback, vars)
 	}
@@ -126,6 +134,18 @@ func buildStudioDesignPrompt(req *StudioDesignRequest) string {
 		return renderPromptFallback(fallback, vars)
 	}
 	return strings.TrimSpace(rendered)
+}
+
+func resolveStudioDesignImageModel(req *StudioDesignRequest, fallback string) string {
+	if req != nil && req.TransparentBackground {
+		return studioDesignTransparentModel
+	}
+	if req != nil {
+		if model := strings.TrimSpace(req.ImageModel); model != "" {
+			return model
+		}
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func studioDesignReferenceImageURLs(urls []string) []string {

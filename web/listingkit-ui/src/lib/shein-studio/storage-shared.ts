@@ -1,6 +1,7 @@
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
+  SheinStudioArtworkModel,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
@@ -13,6 +14,8 @@ export const MAX_SHEIN_STUDIO_BATCHES = 12;
 export const DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY: SheinStudioImageStrategy =
   "ai_generated";
 export const DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT = "5";
+export const DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL: SheinStudioArtworkModel =
+  "nanobanana";
 export const SHEIN_STUDIO_PRODUCT_IMAGE_ROLES = [
   {
     role: "main",
@@ -85,6 +88,12 @@ export function normalizeImageStrategy(value: unknown): SheinStudioImageStrategy
     : "sds_official";
 }
 
+export function normalizeArtworkModel(value: unknown): SheinStudioArtworkModel {
+  return value === "gpt-image-2" || value === "nanobanana"
+    ? value
+    : DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL;
+}
+
 export function isGeneratedDesign(item: unknown): item is SheinStudioGeneratedDesign {
   return (
     !!item &&
@@ -155,6 +164,8 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: raw.productImagePrompt ?? "",
     productImagePrompts: normalizeProductImagePrompts(raw.productImagePrompts),
+    artworkModel: normalizeArtworkModel(raw.artworkModel),
+    transparentBackground: raw.transparentBackground ?? false,
     sheinStoreId: raw.sheinStoreId ?? "",
     imageStrategy: normalizeImageStrategy(raw.imageStrategy),
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
@@ -184,6 +195,8 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: raw.productImagePrompt ?? "",
     productImagePrompts: normalizeProductImagePrompts(raw.productImagePrompts),
+    artworkModel: normalizeArtworkModel(raw.artworkModel),
+    transparentBackground: raw.transparentBackground ?? false,
     sheinStoreId: raw.sheinStoreId ?? "",
     imageStrategy: normalizeImageStrategy(raw.imageStrategy),
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,

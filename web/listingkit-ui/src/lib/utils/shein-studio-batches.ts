@@ -5,6 +5,7 @@ import {
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
+  SheinStudioArtworkModel,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
@@ -19,6 +20,8 @@ type SaveInput = {
   productImageCount?: string;
   productImagePrompt?: string;
   productImagePrompts?: SheinStudioProductImagePrompt[];
+  artworkModel?: SheinStudioArtworkModel;
+  transparentBackground?: boolean;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   renderSizeImagesWithSds?: boolean;

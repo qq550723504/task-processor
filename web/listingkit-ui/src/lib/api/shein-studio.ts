@@ -31,6 +31,11 @@ export async function generateSheinStudioDesigns(
       printable_width: body.printableWidth,
       printable_height: body.printableHeight,
       product_reference_image_urls: body.productReferenceImageUrls,
+      image_model:
+        body.transparentBackground || body.imageModel === "gpt-image-2"
+          ? "gpt-image-2"
+          : undefined,
+      transparent_background: body.transparentBackground,
     },
     timeoutMs: 3600000,
   });

@@ -6,6 +6,7 @@ import { Button } from "@/components/shared/button";
 import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
 import { SHEIN_STUDIO_PRODUCT_IMAGE_ROLES } from "@/lib/shein-studio/storage-shared";
 import type {
+  SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
@@ -17,6 +18,7 @@ export function SheinStudioGenerationPanel({
   creatingError,
   creatingMessage,
   generationError,
+  artworkModel,
   imageStrategy,
   isCreatingTasks,
   isGenerating,
@@ -29,6 +31,7 @@ export function SheinStudioGenerationPanel({
   productImagePrompt,
   productImagePrompts,
   renderSizeImagesWithSds,
+  transparentBackground,
   prompt,
   promptInputRef,
   savedBatches,
@@ -36,6 +39,7 @@ export function SheinStudioGenerationPanel({
   selectedStyleCount,
   selectionReady,
   setImageStrategy,
+  setArtworkModel,
   setProductImageCount,
   setProductImagePrompt,
   setProductImagePrompts,
@@ -43,6 +47,7 @@ export function SheinStudioGenerationPanel({
   setRenderSizeImagesWithSds,
   setSheinStoreId,
   setStyleCount,
+  setTransparentBackground,
   sheinStoreId,
   styleCount,
 }: {
@@ -50,6 +55,7 @@ export function SheinStudioGenerationPanel({
   creatingError: string;
   creatingMessage: string;
   generationError: string;
+  artworkModel: SheinStudioArtworkModel;
   imageStrategy: SheinStudioImageStrategy;
   isCreatingTasks: boolean;
   isGenerating: boolean;
@@ -62,6 +68,7 @@ export function SheinStudioGenerationPanel({
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
   renderSizeImagesWithSds: boolean;
+  transparentBackground: boolean;
   prompt: string;
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   savedBatches: SheinStudioSavedBatch[];
@@ -69,6 +76,7 @@ export function SheinStudioGenerationPanel({
   selectedStyleCount: number;
   selectionReady: boolean;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
+  setArtworkModel: (value: SheinStudioArtworkModel) => void;
   setProductImageCount: (value: string) => void;
   setProductImagePrompt: (value: string) => void;
   setProductImagePrompts: (value: SheinStudioProductImagePrompt[]) => void;
@@ -76,6 +84,7 @@ export function SheinStudioGenerationPanel({
   setRenderSizeImagesWithSds: (value: boolean) => void;
   setSheinStoreId: (value: string) => void;
   setStyleCount: (value: string) => void;
+  setTransparentBackground: (value: boolean) => void;
   sheinStoreId: string;
   styleCount: string;
 }) {
@@ -128,6 +137,46 @@ export function SheinStudioGenerationPanel({
             setValue={setStyleCount}
             value={styleCount}
           />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-zinc-700">款式图模型</span>
+              <select
+                className="w-full rounded-2xl border border-emerald-200 bg-white/80 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-emerald-900 focus:bg-white"
+                onChange={(event) => {
+                  const nextModel = event.target.value as SheinStudioArtworkModel;
+                  setArtworkModel(nextModel);
+                  if (nextModel !== "gpt-image-2" && transparentBackground) {
+                    setTransparentBackground(false);
+                  }
+                }}
+                value={transparentBackground ? "gpt-image-2" : artworkModel}
+              >
+                <option value="nanobanana">Nano Banana（默认）</option>
+                <option value="gpt-image-2">GPT Image 2（支持透明背景）</option>
+              </select>
+            </label>
+            <label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-white/75 px-4 py-3">
+              <input
+                checked={transparentBackground}
+                className="mt-1 h-4 w-4 rounded border-emerald-300 text-zinc-950"
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setTransparentBackground(checked);
+                  if (checked) {
+                    setArtworkModel("gpt-image-2");
+                  }
+                }}
+                type="checkbox"
+              />
+              <span className="text-sm leading-6 text-emerald-950">
+                <span className="block font-semibold">生成透明背景图案</span>
+                <span className="block text-xs text-emerald-800">
+                  开启后自动切换到 GPT Image 2，并要求输出真正 alpha
+                  透明背景，不再让 Nano Banana 模拟透明。
+                </span>
+              </span>
+            </label>
+          </div>
         </div>
 
         <div className="space-y-4 rounded-[1.5rem] border border-zinc-200 bg-zinc-50 px-4 py-4">

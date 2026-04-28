@@ -152,23 +152,27 @@ func (c *Client) submitAndPoll(ctx context.Context, req submitRequest) (*openaic
 		return nil, fmt.Errorf("nanobanana prompt cannot be empty")
 	}
 
-	jobID, err := c.submit(ctx, req)
+	submitURL, err := buildSubmitURL(c.cfg.SubmitURL, req.Model)
 	if err != nil {
 		return nil, err
 	}
-	result, err := c.poll(ctx, jobID)
+	jobID, err := c.submit(ctx, submitURL, req)
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.poll(ctx, submitURL, jobID)
 	if err != nil {
 		return nil, err
 	}
 	return c.toImageResponse(ctx, result)
 }
 
-func (c *Client) submit(ctx context.Context, req submitRequest) (string, error) {
+func (c *Client) submit(ctx context.Context, submitURL string, req submitRequest) (string, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return "", fmt.Errorf("marshal submit request: %w", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.SubmitURL, strings.NewReader(string(payload)))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, submitURL, strings.NewReader(string(payload)))
 	if err != nil {
 		return "", fmt.Errorf("build submit request: %w", err)
 	}
@@ -198,8 +202,8 @@ func (c *Client) submit(ctx context.Context, req submitRequest) (string, error) 
 	return parsed.Data.ID, nil
 }
 
-func (c *Client) poll(ctx context.Context, id string) (*resultPayload, error) {
-	resultURL, err := buildResultURL(c.cfg.SubmitURL)
+func (c *Client) poll(ctx context.Context, submitURL string, id string) (*resultPayload, error) {
+	resultURL, err := buildResultURL(submitURL)
 	if err != nil {
 		return nil, err
 	}
@@ -297,6 +301,30 @@ func buildResultURL(submitURL string) (string, error) {
 	}
 	parsed.Path = path.Dir(parsed.Path) + "/result"
 	return parsed.String(), nil
+}
+
+func buildSubmitURL(configuredURL string, model string) (string, error) {
+	trimmed := strings.TrimSpace(configuredURL)
+	if trimmed == "" {
+		return "", fmt.Errorf("nanobanana submit url cannot be empty")
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("parse nanobanana submit url: %w", err)
+	}
+	if isGPTImageModel(model) {
+		switch strings.TrimRight(parsed.Path, "/") {
+		case "", "/v1", "/v1/draw/completions":
+			parsed.Path = "/v1/draw/completions"
+		default:
+			parsed.Path = strings.TrimRight(path.Dir(parsed.Path), "/") + "/completions"
+		}
+	}
+	return parsed.String(), nil
+}
+
+func isGPTImageModel(model string) bool {
+	return strings.EqualFold(strings.TrimSpace(model), "gpt-image-2")
 }
 
 func nanoBananaAspectRatio(size string) string {
