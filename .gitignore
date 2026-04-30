@@ -65,6 +65,9 @@ tmp
 .playwright-cli/
 .tools/
 web/listingkit-ui/.data/
+node_modules/
+test-results/
+web/listingkit-ui/test-results/
 
 # Local SDS/SHEIN integration state and credentials
 data/sds/

@@ -149,7 +149,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "kubectl apply failed for $OutputPath"
 }
 
-kubectl -n $Namespace rollout status deployment/$DeploymentName --timeout=([string]::Format("{0}s", $RolloutTimeoutSeconds))
+$rolloutTimeout = [string]::Format("{0}s", $RolloutTimeoutSeconds)
+kubectl -n $Namespace rollout status deployment/$DeploymentName --timeout=$rolloutTimeout
 if ($LASTEXITCODE -ne 0) {
     throw "rollout failed for deployment/$DeploymentName"
 }

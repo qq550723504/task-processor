@@ -1,0 +1,24 @@
+{
+  "stores": [
+    {
+      "storeId": 398,
+      "enabled": true,
+      "tier": "heavy",
+      "ownerNodeId": "dedicated-store-398"
+    },
+    {
+      "storeId": 801,
+      "enabled": true,
+      "tier": "heavy",
+      "ownerNodeId": "ser376996273941-c4e40df6",
+      "excludeNode": "ser376996273941-c4e40df6"
+    },
+    {
+      "storeId": 865,
+      "enabled": true,
+      "tier": "heavy",
+      "ownerNodeId": "ser804638640694-b480450e",
+      "excludeNode": "ser804638640694-b480450e"
+    }
+  ]
+}

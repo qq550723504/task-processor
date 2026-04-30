@@ -59,6 +59,43 @@ pwsh ./scripts/deploy-single-store-listing.ps1 `
 - `ExcludeNode`
   - 可选；用于避开故障节点，但仍沿用原 owner 节点名接管队列
 
+批量按“启用店铺清单”同步独享 Pod：
+
+店铺清单：
+
+- [stores.single-pod.json](D:/code/task-processor/deployments/kubernetes/shein-listing/stores.single-pod.json)
+
+批量同步脚本：
+
+- [sync-single-store-listings.ps1](D:/code/task-processor/scripts/sync-single-store-listings.ps1)
+
+示例：
+
+```powershell
+pwsh ./scripts/sync-single-store-listings.ps1 -Apply
+```
+
+如果希望把清单里已经关闭的店铺对应 Deployment 一并删掉：
+
+```powershell
+pwsh ./scripts/sync-single-store-listings.ps1 -Apply -Prune
+```
+
+清单字段说明：
+
+- `storeId`
+  - 店铺 ID
+- `enabled`
+  - 是否启用独享 Pod；不写时默认视为启用
+- `ownerNodeId`
+  - RabbitMQ 店铺队列 owner 标识
+- `tier`
+  - `lite` / `heavy`
+- `excludeNode`
+  - 可选；继续沿用原 owner 标识，但调度时避开某个节点
+- `deploymentName`
+  - 可选；默认是 `shein-listing-store-<storeId>`
+
 如果你不用脚本，也可以直接构建：
 
 ```bash
