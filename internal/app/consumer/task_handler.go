@@ -273,7 +273,7 @@ func (eth *TaskHandler) resolveClaimFailure(managementClient *management.ClientM
 		"current_status":     statusResp.CanonicalStatus,
 		"current_status_key": statusResp.StatusKey,
 		"processing_node":    statusResp.ProcessingNode,
-	}).Warn("discarding stale task message after claim conflict")
+	}).Info("discarding stale task message after claim conflict")
 
 	return &staleTaskMessageError{
 		taskID:           task.ID,

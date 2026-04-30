@@ -77,10 +77,15 @@ func (s *Service) UpdateAsyncWithInput(input UpdateInput) {
 		)
 
 		if err := s.updateSync(input); err != nil {
-			s.log.WithError(err).WithFields(logrus.Fields{
+			logEntry := s.log.WithError(err).WithFields(logrus.Fields{
 				logger.FieldTaskID: input.TaskID,
 				logger.FieldStatus: input.Status.String(),
-			}).Error("failed to update task status asynchronously")
+			})
+			if isNonRetriableUpdateErr(err) {
+				logEntry.Warn("task status async update rejected without retry")
+				return
+			}
+			logEntry.Error("failed to update task status asynchronously")
 		}
 	}()
 }

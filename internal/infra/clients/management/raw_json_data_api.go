@@ -1,8 +1,11 @@
 package management
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"task-processor/internal/infra/clients/management/api"
 	"time"
 )
@@ -70,9 +73,52 @@ func isDataFresh(createTime, updateTime int64, freshnessDays int) bool {
 // CreateRawJsonData 创建原始JSON数据
 func (m *RawJsonDataAPIClient) CreateRawJsonData(req *api.RawJsonDataCreateReqDTO) (int64, error) {
 	url := fmt.Sprintf("%s/rpc-api/listing/raw-json-data/create", m.baseURL)
-	id, err := getTypedResult[int64](m.ManagementAPIClient, http.MethodPost, url, req)
+	var result struct {
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data,omitempty"`
+	}
+
+	if err := m.apiRequest(http.MethodPost, url, req, &result); err != nil {
+		return 0, fmt.Errorf("创建原始JSON数据失败: %w", err)
+	}
+	if result.Code != 0 {
+		return 0, &ManagementAPIError{
+			Code:    result.Code,
+			Message: result.Message,
+		}
+	}
+
+	id, err := parseInt64Result(result.Data)
 	if err != nil {
 		return 0, fmt.Errorf("创建原始JSON数据失败: %w", err)
 	}
 	return id, nil
+}
+
+func parseInt64Result(data json.RawMessage) (int64, error) {
+	if len(data) == 0 || string(data) == "null" {
+		return 0, fmt.Errorf("响应数据为空")
+	}
+
+	var numeric int64
+	if err := json.Unmarshal(data, &numeric); err == nil {
+		return numeric, nil
+	}
+
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return 0, fmt.Errorf("解析响应数据失败: %w", err)
+	}
+
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return 0, fmt.Errorf("响应数据为空字符串")
+	}
+
+	numeric, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("解析字符串响应数据失败: %w", err)
+	}
+	return numeric, nil
 }

@@ -188,16 +188,16 @@ func (qc *QueueConsumer) handleParseError(delivery amqp.Delivery, err error) {
 
 // handleProcessError 处理业务处理错误
 func (qc *QueueConsumer) handleProcessError(delivery amqp.Delivery, msg *Message, err error) {
+	if isDiscardableError(err) {
+		qc.discardMessage(delivery, msg, err)
+		return
+	}
+
 	qc.logger.Errorf("处理消息失败: ID=%s, Error=%v", msg.ID, err)
 	// 收集错误
 	qc.errorCollector.Collect(ErrorTypeMessage, qc.queueName, msg.ID, err, "处理消息失败")
 	// 更新状态统计
 	qc.stateManager.IncrementMessageCount(false)
-
-	if isDiscardableError(err) {
-		qc.discardMessage(delivery, msg, err)
-		return
-	}
 
 	// 递增重试计数
 	msg.RetryCount++
@@ -211,7 +211,8 @@ func (qc *QueueConsumer) handleProcessError(delivery amqp.Delivery, msg *Message
 }
 
 func (qc *QueueConsumer) discardMessage(delivery amqp.Delivery, msg *Message, err error) {
-	qc.logger.Warnf("消息已丢弃不重试: ID=%s, Queue=%s, Error=%v", msg.ID, qc.queueName, err)
+	qc.logger.Infof("消息已丢弃不重试: ID=%s, Queue=%s, Error=%v", msg.ID, qc.queueName, err)
+	qc.stateManager.IncrementMessageCount(true)
 	if ackErr := delivery.Ack(false); ackErr != nil {
 		if isChannelClosedError(ackErr) {
 			qc.logger.Warnf("丢弃消息确认失败（连接已关闭）: ID=%s", msg.ID)
