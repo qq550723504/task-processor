@@ -51,6 +51,15 @@ func resolveDisplayAttributes(
 			notes = append(notes, matchNotes...)
 			return
 		}
+		if _, exists := resolvedByID[match.AttributeID]; exists {
+			notes = append(notes, matchNotes...)
+			notes = append(notes, fmt.Sprintf(
+				"SHEIN 展示属性去重: 属性 %q 已由更高优先级来源命中，跳过重复来源 %q",
+				strings.TrimSpace(match.Name),
+				strings.TrimSpace(entry.Source.Name),
+			))
+			return
+		}
 		resolved = append(resolved, match)
 		matchedInputs[normalizeText(entry.Source.Name)] = struct{}{}
 		if match.AttributeID > 0 {

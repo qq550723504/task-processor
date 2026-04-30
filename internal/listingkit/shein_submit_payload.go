@@ -12,6 +12,7 @@ const (
 	defaultSheinMainSite      = "shein"
 	defaultSheinSubSite       = "shein-us"
 	defaultSheinWarehouseCode = "PS4833059103"
+	defaultSheinSKCShelfWay   = 1
 	minSheinWeightGrams       = 0.01
 	maxSheinWeightGrams       = 50000000
 )
@@ -59,6 +60,9 @@ func ensureSheinSubmitSKUs(product *sheinproduct.Product) {
 		return
 	}
 	for skcIndex := range product.SKCList {
+		if product.SKCList[skcIndex].ShelfWay == 0 {
+			product.SKCList[skcIndex].ShelfWay = defaultSheinSKCShelfWay
+		}
 		for skuIndex := range product.SKCList[skcIndex].SKUS {
 			sku := &product.SKCList[skcIndex].SKUS[skuIndex]
 			if len(sku.StockInfoList) == 0 {

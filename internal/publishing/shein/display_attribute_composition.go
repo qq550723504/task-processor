@@ -9,7 +9,10 @@ import (
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
-var compositionPercentPattern = regexp.MustCompile(`(?i)([^,;+\n]+?)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*%`)
+var (
+	compositionPercentPattern       = regexp.MustCompile(`(?i)([^,;+\n]+?)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*%`)
+	compositionLeadingPercentPattern = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)\s*%\s*([^,;+\n]+)`)
+)
 
 type compositionItem struct {
 	Name    string
@@ -40,7 +43,15 @@ func compositionAttributeNotes(attr sheinattribute.AttributeInfo, sourceValue st
 }
 
 func parseCompositionItems(value string) []compositionItem {
-	matches := compositionPercentPattern.FindAllStringSubmatch(value, -1)
+	items := collectCompositionItems(value, compositionPercentPattern, false)
+	if len(items) > 0 {
+		return items
+	}
+	return collectCompositionItems(value, compositionLeadingPercentPattern, true)
+}
+
+func collectCompositionItems(value string, pattern *regexp.Regexp, percentFirst bool) []compositionItem {
+	matches := pattern.FindAllStringSubmatch(value, -1)
 	if len(matches) == 0 {
 		return nil
 	}
@@ -49,12 +60,20 @@ func parseCompositionItems(value string) []compositionItem {
 		if len(match) < 3 {
 			continue
 		}
-		name := strings.TrimSpace(strings.Trim(match[1], ",;+/ "))
-		percent, err := strconv.ParseFloat(strings.TrimSpace(match[2]), 64)
-		if err != nil {
-			continue
+		var (
+			nameRaw    string
+			percentRaw string
+		)
+		if percentFirst {
+			percentRaw = match[1]
+			nameRaw = match[2]
+		} else {
+			nameRaw = match[1]
+			percentRaw = match[2]
 		}
-		if name == "" {
+		name := strings.TrimSpace(strings.Trim(nameRaw, ",;+/ "))
+		percent, err := strconv.ParseFloat(strings.TrimSpace(percentRaw), 64)
+		if err != nil || name == "" {
 			continue
 		}
 		items = append(items, compositionItem{Name: name, Percent: percent})

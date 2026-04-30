@@ -23,7 +23,7 @@ func BuildPreviewProduct(pkg *Package) *sheinproduct.Product {
 		SourceSystem:            "listingkit",
 		MultiLanguageNameList:   toLanguageContents(pkg.RequestDraft.MultiLanguageNameList),
 		MultiLanguageDescList:   toLanguageContents(pkg.RequestDraft.MultiLanguageDescList),
-		ProductAttributeList:    toResolvedAttributes(pkg),
+		ProductAttributeList:    BuildProductAttributes(pkg),
 		ImageInfo:               toImageInfo(pkg.RequestDraft.ImageInfo),
 		SiteList:                toSiteInfo(pkg.RequestDraft.SiteList),
 		SKCList:                 toSKCs(pkg.RequestDraft.SKCList),
@@ -32,6 +32,10 @@ func BuildPreviewProduct(pkg *Package) *sheinproduct.Product {
 		ProductCertificateList:  []int{},
 		CertificateList:         []int{},
 	}
+}
+
+func BuildProductAttributes(pkg *Package) []sheinproduct.ProductAttribute {
+	return toResolvedAttributes(pkg)
 }
 
 func toLanguageContents(items []LocalizedText) []sheinproduct.LanguageContent {
@@ -55,14 +59,20 @@ func toLanguageContents(items []LocalizedText) []sheinproduct.LanguageContent {
 func toResolvedAttributes(pkg *Package) []sheinproduct.ProductAttribute {
 	if pkg != nil && len(pkg.ResolvedAttributes) > 0 {
 		result := make([]sheinproduct.ProductAttribute, 0, len(pkg.ResolvedAttributes))
+		compositionCount := countResolvedCompositionAttributes(pkg.ResolvedAttributes)
+		seenAttributeIDs := make(map[int]struct{}, len(pkg.ResolvedAttributes))
 		for _, item := range pkg.ResolvedAttributes {
 			if item.AttributeID <= 0 {
 				continue
 			}
+			if _, exists := seenAttributeIDs[item.AttributeID]; exists {
+				continue
+			}
+			seenAttributeIDs[item.AttributeID] = struct{}{}
 			result = append(result, sheinproduct.ProductAttribute{
 				AttributeID:         item.AttributeID,
 				AttributeValueID:    item.AttributeValueID,
-				AttributeExtraValue: item.AttributeExtraValue,
+				AttributeExtraValue: resolvedAttributeExtraValue(item, compositionCount),
 			})
 		}
 		if len(result) > 0 {
@@ -73,6 +83,40 @@ func toResolvedAttributes(pkg *Package) []sheinproduct.ProductAttribute {
 		return nil
 	}
 	return toProductAttributes(pkg.RequestDraft.ProductAttributeList)
+}
+
+func countResolvedCompositionAttributes(items []ResolvedAttribute) int {
+	count := 0
+	for _, item := range items {
+		if item.AttributeType == 3 {
+			count++
+		}
+	}
+	return count
+}
+
+func resolvedAttributeExtraValue(item ResolvedAttribute, compositionCount int) string {
+	extraValue := strings.TrimSpace(item.AttributeExtraValue)
+	if item.AttributeType != 3 || extraValue != "" {
+		return extraValue
+	}
+	if len(parseCompositionItems(item.Value)) > 0 {
+		if parsed := parseResolvedCompositionPercent(item.Value); parsed != "" {
+			return parsed
+		}
+	}
+	if item.AttributeValueID != nil && compositionCount == 1 {
+		return "100"
+	}
+	return ""
+}
+
+func parseResolvedCompositionPercent(value string) string {
+	items := parseCompositionItems(value)
+	if len(items) != 1 {
+		return ""
+	}
+	return common.FormatFloat(items[0].Percent)
 }
 
 func toProductAttributes(items []common.Attribute) []sheinproduct.ProductAttribute {

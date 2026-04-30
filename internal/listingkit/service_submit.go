@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslateapi "task-processor/internal/shein/api/translate"
 	sheinpublish "task-processor/internal/shein/publish"
 )
@@ -90,6 +91,9 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 			return nil, saveErr
 		}
 		return nil, err
+	}
+	if attrs := sheinpub.BuildProductAttributes(pkg); sheinProductAttributesReadyForSubmit(attrs) {
+		submitProduct.ProductAttributeList = attrs
 	}
 	if err := optimizeSheinProductContentForSubmit(ctx, submitProduct, s.sheinContentOptimizer); err != nil {
 		if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, err); saveErr != nil {
@@ -205,6 +209,21 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 		return nil, responseErr
 	}
 	return buildListingKitPreview(task, "shein")
+}
+
+func sheinProductAttributesReadyForSubmit(attrs []sheinproduct.ProductAttribute) bool {
+	if len(attrs) == 0 {
+		return false
+	}
+	for _, attr := range attrs {
+		if attr.AttributeID <= 0 {
+			return false
+		}
+		if attr.AttributeValueID == nil && strings.TrimSpace(attr.AttributeExtraValue) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *service) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {

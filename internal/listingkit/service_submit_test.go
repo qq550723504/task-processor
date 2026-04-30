@@ -589,6 +589,81 @@ func TestSubmitTaskMarksPublishPreValidationNotesAsFailed(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskRebuildsNormalizedProductAttributesFromPackage(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	compositionValueID := 526
+	materialValueID := 3473050
+	task.Result.Shein.ResolvedAttributes = []SheinResolvedAttribute{
+		{
+			Name:             "Composition",
+			Value:            "Polyester",
+			AttributeID:      62,
+			AttributeValueID: &compositionValueID,
+			AttributeType:    3,
+		},
+		{
+			Name:             "Material",
+			Value:            "100%涤纶",
+			AttributeID:      160,
+			AttributeValueID: &materialValueID,
+			AttributeType:    4,
+		},
+		{
+			Name:             "Material",
+			Value:            "Made with polyester",
+			AttributeID:      160,
+			AttributeValueID: &materialValueID,
+			AttributeType:    4,
+		},
+	}
+	task.Result.Shein.PreviewProduct.ProductAttributeList = []sheinproduct.ProductAttribute{
+		{AttributeID: 160, AttributeValueID: &materialValueID},
+		{AttributeID: 160, AttributeValueID: &materialValueID},
+		{AttributeID: 62, AttributeValueID: &compositionValueID},
+	}
+	var submitted *sheinproduct.Product
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	if len(submitted.ProductAttributeList) != 2 {
+		t.Fatalf("submitted product attributes = %#v, want deduped composition+material", submitted.ProductAttributeList)
+	}
+	if submitted.ProductAttributeList[0].AttributeID != 62 || submitted.ProductAttributeList[0].AttributeExtraValue != "100" {
+		t.Fatalf("submitted composition attribute = %#v, want extra value 100", submitted.ProductAttributeList[0])
+	}
+}
+
 func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 	t.Parallel()
 
