@@ -10,4 +10,5 @@ resources:
   - product-listing-api-service.yaml
   - listingkit-ui-deployment.yaml
   - listingkit-ui-service.yaml
+  - traefik-basic-auth-middleware.yaml
   - ingress.yaml
