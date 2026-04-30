@@ -781,6 +781,59 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 	if submittedSKU.Length == "" || submittedSKU.Width == "" || submittedSKU.Height == "" || submittedSKU.LengthUnit == "" {
 		t.Fatalf("dimensions not normalized: length=%q width=%q height=%q unit=%q", submittedSKU.Length, submittedSKU.Width, submittedSKU.Height, submittedSKU.LengthUnit)
 	}
+	if submittedSKU.WeightUnit != "g" {
+		t.Fatalf("weight_unit = %q, want g", submittedSKU.WeightUnit)
+	}
+}
+
+func TestSubmitTaskNormalizesSheinWeightToGrams(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].Weight = 0.35
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].WeightUnit = "kg"
+	var submitted *sheinproduct.Product
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{
+						Success: true,
+					},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	submittedSKU := submitted.SKCList[0].SKUS[0]
+	if submittedSKU.Weight != 350 {
+		t.Fatalf("weight = %v, want 350g", submittedSKU.Weight)
+	}
+	if submittedSKU.WeightUnit != "g" {
+		t.Fatalf("weight_unit = %q, want g", submittedSKU.WeightUnit)
+	}
 }
 
 func TestSubmitTaskPublishesSDSRenderedImages(t *testing.T) {

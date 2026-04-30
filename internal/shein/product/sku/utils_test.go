@@ -86,10 +86,10 @@ func TestSKUUtils_ParseWeight(t *testing.T) {
 	}{
 		{"empty_string", "", 0},
 		{"grams", "100g", 100},
-		// ParseWeight 先替换 "g" 再替换 "kg"，"2.5kg" → "2.5k" → 解析失败返回 0（实现的已知行为）
-		{"kilograms", "2.5kg", 0},
-		{"pounds", "3lb", 3},
-		{"ounces", "16oz", 16},
+		{"kilograms", "2.5kg", 2500},
+		{"pounds", "3lb", 1360.78},
+		{"ounces", "16oz", 453.59},
+		{"milligrams", "250mg", 0.25},
 		{"plain_number", "50", 50},
 		{"with_spaces", "  75  ", 75},
 		{"invalid", "abc", 0},
@@ -100,6 +100,31 @@ func TestSKUUtils_ParseWeight(t *testing.T) {
 			got := u.ParseWeight(tc.input)
 			if got != tc.want {
 				t.Errorf("ParseWeight(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSKUUtils_NormalizeWeightForShein(t *testing.T) {
+	u := newSKUUtils()
+
+	tests := []struct {
+		name  string
+		input float64
+		want  float64
+	}{
+		{"zero_defaults_to_min", 0, 0.01},
+		{"negative_defaults_to_min", -1, 0.01},
+		{"tiny_clamped_up", 0.001, 0.01},
+		{"valid_kept", 350, 350},
+		{"too_large_clamped_down", 50000001, 50000000},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := u.NormalizeWeightForShein(tc.input)
+			if got != tc.want {
+				t.Errorf("NormalizeWeightForShein(%v) = %v, want %v", tc.input, got, tc.want)
 			}
 		})
 	}

@@ -1,6 +1,7 @@
 package sku
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -12,6 +13,11 @@ import (
 )
 
 type SKUUtils struct{}
+
+const (
+	minSheinWeightGrams = 0.01
+	maxSheinWeightGrams = 50000000
+)
 
 func NewSKUUtils() *SKUUtils {
 	return &SKUUtils{}
@@ -42,18 +48,54 @@ func (u *SKUUtils) ParseWeight(weightStr string) float64 {
 		return 0
 	}
 
-	weightStr = strings.TrimSpace(weightStr)
-	weightStr = strings.ReplaceAll(weightStr, "g", "")
-	weightStr = strings.ReplaceAll(weightStr, "kg", "")
-	weightStr = strings.ReplaceAll(weightStr, "lb", "")
-	weightStr = strings.ReplaceAll(weightStr, "oz", "")
-	weightStr = strings.TrimSpace(weightStr)
-
-	if weight, err := strconv.ParseFloat(weightStr, 64); err == nil {
-		return weight
+	normalized := strings.ToLower(strings.TrimSpace(weightStr))
+	unit := "g"
+	switch {
+	case strings.HasSuffix(normalized, "kg"):
+		unit = "kg"
+		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "kg"))
+	case strings.HasSuffix(normalized, "lb"):
+		unit = "lb"
+		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "lb"))
+	case strings.HasSuffix(normalized, "oz"):
+		unit = "oz"
+		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "oz"))
+	case strings.HasSuffix(normalized, "mg"):
+		unit = "mg"
+		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "mg"))
+	case strings.HasSuffix(normalized, "g"):
+		unit = "g"
+		normalized = strings.TrimSpace(strings.TrimSuffix(normalized, "g"))
 	}
 
-	return 0
+	weight, err := strconv.ParseFloat(normalized, 64)
+	if err != nil {
+		return 0
+	}
+	switch unit {
+	case "kg":
+		weight *= 1000
+	case "lb":
+		weight *= 453.59237
+	case "oz":
+		weight *= 28.349523125
+	case "mg":
+		weight /= 1000
+	}
+	return math.Round(weight*100) / 100
+}
+
+func (u *SKUUtils) NormalizeWeightForShein(weight float64) float64 {
+	if weight <= 0 {
+		return minSheinWeightGrams
+	}
+	if weight < minSheinWeightGrams {
+		weight = minSheinWeightGrams
+	}
+	if weight > maxSheinWeightGrams {
+		weight = maxSheinWeightGrams
+	}
+	return math.Round(weight*100) / 100
 }
 
 func (u *SKUUtils) FormatPriceByCurrency(price float64, currency string) float64 {

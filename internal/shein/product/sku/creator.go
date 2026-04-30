@@ -84,7 +84,7 @@ func (c *SKUCreator) CreateSKUWithRuntime(ctx *shein.TaskContext, runtime *Runti
 		Length:                   params.Variant.Length.String(),
 		Width:                    params.Variant.Width.String(),
 		Height:                   params.Variant.Height.String(),
-		Weight:                   c.utils.ParseWeight(params.Variant.Weight.String()),
+		Weight:                   c.utils.NormalizeWeightForShein(c.utils.ParseWeight(params.Variant.Weight.String())),
 		LengthUnit:               params.Variant.LengthUnit,
 		CompetingCostPriceImages: []any{},
 		WeightUnit:               "g",

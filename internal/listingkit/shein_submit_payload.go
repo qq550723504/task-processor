@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -11,6 +12,8 @@ const (
 	defaultSheinMainSite      = "shein"
 	defaultSheinSubSite       = "shein-us"
 	defaultSheinWarehouseCode = "PS4833059103"
+	minSheinWeightGrams       = 0.01
+	maxSheinWeightGrams       = 50000000
 )
 
 func prepareSheinProductForNewSubmit(product *sheinproduct.Product) {
@@ -122,6 +125,49 @@ func ensureSheinSubmitDimensions(sku *sheinproduct.SKU) {
 	if strings.TrimSpace(sku.WeightUnit) == "" {
 		sku.WeightUnit = "g"
 	}
+	normalizeSheinSubmitWeight(sku)
+}
+
+func normalizeSheinSubmitWeight(sku *sheinproduct.SKU) {
+	if sku == nil {
+		return
+	}
+	weight := convertSheinWeightToGrams(sku.Weight, sku.WeightUnit)
+	if weight <= 0 {
+		weight = minSheinWeightGrams
+	}
+	if weight < minSheinWeightGrams {
+		weight = minSheinWeightGrams
+	}
+	if weight > maxSheinWeightGrams {
+		weight = maxSheinWeightGrams
+	}
+	sku.Weight = roundSheinWeightGrams(weight)
+	sku.WeightUnit = "g"
+}
+
+func convertSheinWeightToGrams(value float64, unit string) float64 {
+	if value <= 0 {
+		return 0
+	}
+	switch strings.ToLower(strings.TrimSpace(unit)) {
+	case "", "g", "gram", "grams":
+		return value
+	case "kg", "kilogram", "kilograms":
+		return value * 1000
+	case "lb", "lbs", "pound", "pounds":
+		return value * 453.59237
+	case "oz", "ounce", "ounces":
+		return value * 28.349523125
+	case "mg", "milligram", "milligrams":
+		return value / 1000
+	default:
+		return value
+	}
+}
+
+func roundSheinWeightGrams(value float64) float64 {
+	return math.Round(value*100) / 100
 }
 
 func normalizeSheinSubmitImages(product *sheinproduct.Product) {
