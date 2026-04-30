@@ -97,6 +97,12 @@ export function SheinStudioGenerationPanel({
   sheinStoreId: string;
   styleCount: string;
 }) {
+  const hasSdsSizeReferenceImages = availableSdsImages.some(
+    (item) => item.kind === "size_reference",
+  );
+  const showRenderSizeImagesWithSdsOption =
+    hasSdsSizeReferenceImages && imageStrategy !== "sds_official";
+
   return (
     <div
       id="shein-studio-generator"
@@ -240,21 +246,22 @@ export function SheinStudioGenerationPanel({
             />
           ) : null}
 
-          <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <input
-              checked={renderSizeImagesWithSds}
-              className="mt-1 h-4 w-4 rounded border-amber-300 text-zinc-950"
-              onChange={(event) => setRenderSizeImagesWithSds(event.target.checked)}
-              type="checkbox"
-            />
-            <span className="text-sm leading-6 text-amber-950">
-              <span className="block font-semibold">尺寸图也使用 SDS 渲染</span>
-              <span className="block text-xs text-amber-800">
-                AI 商品图模式下也会额外调用 SDS 设计器，只取融合后的尺寸图作为 SHEIN
-                尺寸图，不替换主图和场景图。
+          {showRenderSizeImagesWithSdsOption ? (
+            <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <input
+                checked={renderSizeImagesWithSds}
+                className="mt-1 h-4 w-4 rounded border-amber-300 text-zinc-950"
+                onChange={(event) => setRenderSizeImagesWithSds(event.target.checked)}
+                type="checkbox"
+              />
+              <span className="text-sm leading-6 text-amber-950">
+                <span className="block font-semibold">尺寸图也使用 SDS 渲染</span>
+                <span className="block text-xs text-amber-800">
+                  AI 或混合模式下会额外调用 SDS，只取尺寸图用于 SHEIN 尺寸图，不替换主图和场景图。
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          ) : null}
 
           <label className="space-y-2">
             <span className="text-sm font-medium text-zinc-700">
