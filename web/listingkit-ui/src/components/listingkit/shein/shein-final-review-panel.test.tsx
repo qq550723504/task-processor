@@ -93,6 +93,7 @@ describe("SheinFinalReviewPanel", () => {
     );
 
     expect(screen.getByText("资料已通过检查，请先确认最终草稿。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "发布到 SHEIN" })).toBeDisabled();
   });
 
@@ -118,5 +119,31 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByText("可以保存到 SHEIN 草稿箱，也可以正式发布。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: "发布到 SHEIN" })).not.toBeDisabled();
+  });
+
+  it("disables save draft while readiness is blocked", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: {
+            ready: false,
+            blocking_items: [
+              { key: "final_images", label: "最终图片", message: "缺少尺寸图标记" },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [
+              { url: "https://example.com/main.jpg", main: true, final: true },
+              { url: "https://example.com/swatch.jpg", swatch: true, final: true },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).toBeDisabled();
+    expect(screen.getByText("还差 1 个阻断项，修复后才能提交。")).toBeInTheDocument();
   });
 });

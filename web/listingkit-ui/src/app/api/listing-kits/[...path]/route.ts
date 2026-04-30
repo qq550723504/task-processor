@@ -14,6 +14,22 @@ import {
 export const dynamic = "force-dynamic";
 const PROXY_BODY_READ_TIMEOUT_MS = 15_000;
 const PROXY_UPSTREAM_TIMEOUT_MS = 15_000;
+const PROXY_SUBMIT_UPSTREAM_TIMEOUT_MS = 180_000;
+
+export function resolveListingKitProxyTimeoutMs(
+  method: string,
+  path: string[],
+) {
+  if (
+    method.toUpperCase() === "POST" &&
+    path.length === 3 &&
+    path[0] === "tasks" &&
+    path[2] === "submit"
+  ) {
+    return PROXY_SUBMIT_UPSTREAM_TIMEOUT_MS;
+  }
+  return PROXY_UPSTREAM_TIMEOUT_MS;
+}
 
 async function proxyRequest(
   request: NextRequest,
@@ -103,8 +119,12 @@ async function proxyRequest(
       request.method === "GET" || request.method === "HEAD"
         ? undefined
         : await readProxyRequestBody(request, PROXY_BODY_READ_TIMEOUT_MS);
+    const upstreamTimeoutMs = resolveListingKitProxyTimeoutMs(
+      request.method,
+      path,
+    );
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), PROXY_UPSTREAM_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), upstreamTimeoutMs);
     try {
       upstream = await fetch(url, {
         method: request.method,
@@ -126,6 +146,7 @@ async function proxyRequest(
       status: 504,
       durationMs: Date.now() - startedAt,
       error: message,
+      timeoutMs: resolveListingKitProxyTimeoutMs(request.method, path),
     });
     return NextResponse.json(
       {

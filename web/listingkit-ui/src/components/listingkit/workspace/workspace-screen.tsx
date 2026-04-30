@@ -80,6 +80,7 @@ import type {
 } from "@/lib/types/listingkit";
 import { toImageProxyUrl } from "@/lib/utils/image-proxy-url";
 import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
+import { formatSheinSubmitError } from "@/lib/utils/shein-submit-error";
 
 function queryFromSearchParams(searchParams: URLSearchParams): QueueQuery {
   return {
@@ -717,7 +718,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
                 saveErrorMessage={sheinFinalDraftError}
                 saveMessage={sheinFinalDraftMessage}
                 submitAction={sheinSubmitAction}
-                submitErrorMessage={submitErrorMessage(submitTask.error)}
+                submitErrorMessage={formatSheinSubmitError(
+                  submitTask.error,
+                  preview.data?.shein,
+                )}
                 canSelectBlockingItem={canSelectSheinBlockingItem}
                 onSaveFinalDraft={(payload) =>
                   handleSaveSheinFinalDraft(
@@ -750,7 +754,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
                 }
                 isSubmitting={submitTask.isPending}
                 submitAction={sheinSubmitAction}
-                submitErrorMessage={submitErrorMessage(submitTask.error)}
+                submitErrorMessage={formatSheinSubmitError(
+                  submitTask.error,
+                  preview.data?.shein,
+                )}
                 onSubmit={() => handleSubmitShein("publish")}
                 onSaveDraft={handleSaveSheinDraft}
                 clearingResolutionCacheKind={
@@ -819,7 +826,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
                 saveErrorMessage={sheinFinalDraftError}
                 saveMessage={sheinFinalDraftMessage}
                 submitAction={sheinSubmitAction}
-                submitErrorMessage={submitErrorMessage(submitTask.error)}
+                submitErrorMessage={formatSheinSubmitError(
+                  submitTask.error,
+                  preview.data?.shein,
+                )}
                 canSelectBlockingItem={canSelectSheinBlockingItem}
                 onSaveFinalDraft={(payload) =>
                   handleSaveSheinFinalDraft(

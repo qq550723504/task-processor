@@ -580,7 +580,7 @@ export function SheinFinalReviewPanel({
         </Button>
         <Button
           tone="secondary"
-          disabled={!confirmed || isSubmitting}
+          disabled={!confirmed || !ready || isSubmitting}
           onClick={() => onSubmit?.("save_draft")}
         >
           {submitAction === "save_draft" ? "保存中..." : "保存到 SHEIN 草稿箱"}
