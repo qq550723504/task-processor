@@ -12,13 +12,14 @@ function readSearch() {
 }
 
 export function useLiveSearchParams() {
-  const [search, setSearch] = useState(readSearch);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     function handleChange() {
       setSearch(readSearch());
     }
 
+    handleChange();
     window.addEventListener("popstate", handleChange);
     window.addEventListener(BROWSER_HISTORY_EVENT, handleChange);
     return () => {

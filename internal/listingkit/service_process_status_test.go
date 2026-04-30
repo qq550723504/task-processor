@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type stubProcessStatusAssembler struct {
@@ -213,5 +214,83 @@ func TestGetTaskResultFallsBackToSummaryWarningsForReviewReasons(t *testing.T) {
 	}
 	if got, want := result.ReviewReasons, []string{"reason one", "reason two"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("ReviewReasons = %#v, want %#v", got, want)
+	}
+}
+
+func TestProcessListingKitInitializesDefaultSheinPricing(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	productTask := &productenrich.Task{
+		ID:      "product-task-pricing-1",
+		Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"},
+	}
+	productService := &stubWorkflowProductService{
+		task: productTask,
+		product: &productenrich.ProductJSON{
+			Title:      "Travel Bag",
+			Category:   []string{"bags"},
+			Attributes: map[string]string{"color": "black"},
+		},
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: productService,
+		Assembler: &stubProcessStatusAssembler{
+			result: &ListingKitResult{
+				TaskID: "listingkit-pricing-1",
+				Shein: &SheinPackage{
+					RequestDraft: &sheinpub.RequestDraft{
+						SKCList: []sheinpub.SKCRequestDraft{
+							{
+								SupplierCode: "SUP-1",
+								SKUList: []sheinpub.SKUDraft{
+									{
+										SupplierSKU: "SKU-1",
+										CostPrice:   "48.8",
+									},
+								},
+							},
+						},
+					},
+				},
+				Summary: &GenerationSummary{},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task := &Task{
+		ID:        "listingkit-pricing-1",
+		Status:    TaskStatusPending,
+		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessListingKit(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if result.Shein == nil || result.Shein.Pricing == nil {
+		t.Fatalf("result shein pricing = %+v, want initialized pricing", result.Shein)
+	}
+	if !result.Shein.Pricing.Ready {
+		t.Fatalf("pricing ready = false, want true")
+	}
+	if len(result.Shein.Pricing.SKUPrices) != 1 {
+		t.Fatalf("pricing sku prices = %+v, want 1 price review", result.Shein.Pricing.SKUPrices)
+	}
+	if got := result.Shein.Pricing.SKUPrices[0].FinalPrice; got <= 0 {
+		t.Fatalf("final price = %v, want > 0", got)
+	}
+	if got := result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice; got == "" {
+		t.Fatalf("request draft base price = %q, want populated price", got)
 	}
 }

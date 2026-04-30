@@ -10,11 +10,24 @@ function SearchProbe() {
 }
 
 describe("useLiveSearchParams", () => {
+  it("hydrates from the browser location after mount", async () => {
+    window.history.replaceState(null, "", "/listing-kits/shein?keyword=beer&page=1");
+
+    render(<SearchProbe />);
+
+    await waitFor(() =>
+      expect(screen.getByText("keyword:beer")).toBeInTheDocument(),
+    );
+  });
+
   it("updates after replaceBrowserHistory changes the query string", async () => {
     window.history.replaceState(null, "", "/listing-kits/shein?keyword=beer&page=1");
 
     render(<SearchProbe />);
-    expect(screen.getByText("keyword:beer")).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(screen.getByText("keyword:beer")).toBeInTheDocument(),
+    );
 
     replaceBrowserHistory("/listing-kits/shein?keyword=cola&page=1");
 
