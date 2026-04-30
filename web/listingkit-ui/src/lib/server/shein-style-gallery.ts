@@ -1,6 +1,10 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  buildListingKitProxyUrl,
+  getListingKitUpstreamBase,
+} from "@/app/api/listing-kits/proxy-url";
 import { readSheinStudioStorage } from "@/lib/server/shein-studio-storage";
 import type {
   SheinStyleGalleryItem,
@@ -24,13 +28,14 @@ export function getGalleryImageRoots() {
 }
 
 export async function buildSheinStyleGallery(): Promise<SheinStyleGalleryResponse> {
-  const [storedItems, legacyItems, publishedItems] = await Promise.all([
+  const [databaseItems, storedItems, legacyItems, publishedItems] = await Promise.all([
+    listDatabaseStudioItems(),
     listStoredStudioItems(),
     listLegacyStudioItems(),
     listPublishedInputItems(),
   ]);
 
-  const items = dedupeItems([...storedItems, ...legacyItems, ...publishedItems])
+  const items = dedupeItems([...databaseItems, ...storedItems, ...legacyItems, ...publishedItems])
     .filter((item) => isAIGeneratedGallerySource(item.source))
     .sort(compareGalleryItems)
     .slice(0, 240);
@@ -40,7 +45,7 @@ export async function buildSheinStyleGallery(): Promise<SheinStyleGalleryRespons
     total: items.length,
     items,
     summary: {
-      studioSaved: storedItems.length,
+      studioSaved: databaseItems.length,
       studioLegacy: legacyItems.length,
       publishedInputs: publishedItems.length,
       taskLinked: 0,
@@ -128,6 +133,53 @@ async function listStoredStudioItems(): Promise<SheinStyleGalleryItem[]> {
       ];
     }),
   );
+}
+
+async function listDatabaseStudioItems(): Promise<SheinStyleGalleryItem[]> {
+  try {
+    const url = buildListingKitProxyUrl(getListingKitUpstreamBase(), ["studio", "sessions", "gallery"], "limit=240");
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json()) as {
+      items?: Array<{
+        session_id?: string;
+        design_id?: string;
+        image_url?: string;
+        prompt?: string;
+        product_name?: string;
+        status?: string;
+        created_at?: string;
+        updated_at?: string;
+      }>;
+    };
+
+    return (payload.items ?? [])
+      .filter((item) => Boolean(item.design_id && item.image_url))
+      .map((item, index) => ({
+        id: `db:${item.session_id}:${item.design_id}`,
+        title: `AI style ${index + 1}`,
+        imageUrl: item.image_url!,
+        source: "studio_saved",
+        sourceLabel: "AI style",
+        originalUrl: item.image_url,
+        fileName: item.design_id,
+        prompt: item.prompt,
+        productName: item.product_name,
+        taskStatus: item.status,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+      } satisfies SheinStyleGalleryItem));
+  } catch {
+    return [];
+  }
 }
 
 async function listPublishedInputItems(): Promise<SheinStyleGalleryItem[]> {

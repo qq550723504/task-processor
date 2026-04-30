@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useMemo } from "react";
 
 import { SheinProductPickerModal } from "@/components/listingkit/shein-studio/shein-product-picker-modal";
 import {
@@ -6,7 +9,12 @@ import {
   type SheinStudioStepKey,
 } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { SheinStudioWorkbenchSlot } from "@/components/listingkit/shein-studio/shein-studio-workbench-slot";
+import {
+  parseSelectionFromSearchParams,
+  parseSheinStudioStep,
+} from "@/lib/shein-studio/url-state";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 
 export function SheinStudioPageShell({
   activeStep,
@@ -15,19 +23,31 @@ export function SheinStudioPageShell({
   initialShipmentArea,
   selection,
 }: {
-  activeStep: SheinStudioStepKey;
-  initialKeyword: string;
-  initialPage: number;
-  initialShipmentArea: string;
+  activeStep?: SheinStudioStepKey;
+  initialKeyword?: string;
+  initialPage?: number;
+  initialShipmentArea?: string;
   selection?: SDSProductVariantSelection;
-}) {
-  const hasSelection = Boolean(selection?.variantId);
-  const visibleStep = hasSelection ? activeStep : "select";
+} = {}) {
+  const searchParams = useLiveSearchParams();
+  const liveKeyword = searchParams.get("keyword") ?? initialKeyword ?? "";
+  const livePage = Number(searchParams.get("page") ?? initialPage ?? 1) || 1;
+  const liveShipmentArea =
+    searchParams.get("shipmentArea") ?? initialShipmentArea ?? "US";
+  const liveSelection = useMemo(
+    () => parseSelectionFromSearchParams(searchParams) ?? selection,
+    [searchParams, selection],
+  );
+  const liveStep = searchParams.get("step")
+    ? parseSheinStudioStep(searchParams.get("step"))
+    : activeStep ?? (liveSelection ? "generate" : "select");
+  const hasSelection = Boolean(liveSelection?.variantId);
+  const visibleStep = hasSelection ? liveStep : "select";
   const selectedVariantKey =
-    selection?.selectedVariantIds?.join(",") ??
-    selection?.variants?.map((variant) => variant.variantId).join(",") ??
+    liveSelection?.selectedVariantIds?.join(",") ??
+    liveSelection?.variants?.map((variant) => variant.variantId).join(",") ??
     "";
-  const workbenchKey = `${selection?.variantId ?? 0}:${selection?.prototypeGroupId ?? 0}:${selection?.layerId ?? ""}:${selectedVariantKey}`;
+  const workbenchKey = `${liveSelection?.variantId ?? 0}:${liveSelection?.prototypeGroupId ?? 0}:${liveSelection?.layerId ?? ""}:${selectedVariantKey}`;
 
   return (
     <div className="relative isolate flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(251,146,60,0.18),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(236,72,153,0.14),_transparent_24%),linear-gradient(180deg,_#fffdf9_0%,_#f7f3ee_46%,_#efebe4_100%)]">
@@ -51,12 +71,14 @@ export function SheinStudioPageShell({
               <Link
                 href="/listing-kits/shein/gallery"
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
+                prefetch={false}
               >
                 查看款式图库
               </Link>
               <Link
                 href="/listing-kits?platform=shein"
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
+                prefetch={false}
               >
                 查看 SHEIN 任务
               </Link>
@@ -64,15 +86,15 @@ export function SheinStudioPageShell({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
-            <MetricCard label="发货地" value={initialShipmentArea} dark />
+            <MetricCard label="发货地" value={liveShipmentArea} dark />
             <MetricCard
               label="变体数"
               value={
-                selection?.selectedVariantIds?.length
-                  ? String(selection.selectedVariantIds.length)
-                  : selection?.variants?.length
-                    ? String(selection.variants.length)
-                    : selection?.variantId
+                liveSelection?.selectedVariantIds?.length
+                  ? String(liveSelection.selectedVariantIds.length)
+                  : liveSelection?.variants?.length
+                    ? String(liveSelection.variants.length)
+                    : liveSelection?.variantId
                       ? "1"
                       : "未选择"
               }
@@ -80,8 +102,8 @@ export function SheinStudioPageShell({
             <MetricCard
               label="印刷区域"
               value={
-                selection?.printableWidth && selection?.printableHeight
-                  ? `${selection.printableWidth}×${selection.printableHeight}`
+                liveSelection?.printableWidth && liveSelection?.printableHeight
+                  ? `${liveSelection.printableWidth}×${liveSelection.printableHeight}`
                   : "自动"
               }
             />
@@ -96,16 +118,16 @@ export function SheinStudioPageShell({
         <div className="space-y-6">
           {visibleStep === "select" ? (
             <SheinProductPickerModal
-              initialKeyword={initialKeyword}
-              initialPage={initialPage}
-              initialShipmentArea={initialShipmentArea}
-              selection={selection}
+              initialKeyword={liveKeyword}
+              initialPage={livePage}
+              initialShipmentArea={liveShipmentArea}
+              selection={liveSelection}
             />
           ) : null}
           {hasSelection ? (
             <SheinStudioWorkbenchSlot
               activeStep={visibleStep}
-              selection={selection}
+              selection={liveSelection}
               workbenchKey={workbenchKey}
             />
           ) : null}

@@ -1,7 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
+import { replaceBrowserHistory } from "@/lib/utils/browser-history";
+import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 
 export type SheinStudioStepKey = "select" | "generate" | "review" | "tasks";
 
@@ -40,10 +42,10 @@ export function SheinStudioStepTabs({
   hasSelection: boolean;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const searchParams = useLiveSearchParams();
 
   function hrefForStep(step: SheinStudioStepKey) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = sanitizedNavigationSearchParams(searchParams);
     params.set("step", step);
     return `${pathname}?${params.toString()}`;
   }
@@ -53,9 +55,11 @@ export function SheinStudioStepTabs({
       {steps.map((step) => {
         const active = step.key === activeStep;
         const locked = step.key !== "select" && !hasSelection;
+        const href = locked ? hrefForStep("select") : hrefForStep(step.key);
         return (
-          <Link
+          <button
             aria-disabled={locked}
+            aria-current={active ? "step" : undefined}
             className={[
               "rounded-[1.25rem] border px-4 py-3 transition",
               active
@@ -63,8 +67,14 @@ export function SheinStudioStepTabs({
                 : "border-zinc-200 bg-white text-zinc-900 hover:border-zinc-400",
               locked ? "pointer-events-none opacity-45" : "",
             ].join(" ")}
-            href={locked ? hrefForStep("select") : hrefForStep(step.key)}
             key={step.key}
+            onClick={() => {
+              if (locked || active) {
+                return;
+              }
+              replaceBrowserHistory(href);
+            }}
+            type="button"
           >
             <div className="text-sm font-semibold">{step.label}</div>
             <div
@@ -75,7 +85,7 @@ export function SheinStudioStepTabs({
             >
               {locked ? "请先选择商品。" : step.description}
             </div>
-          </Link>
+          </button>
         );
       })}
     </nav>

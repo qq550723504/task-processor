@@ -1,0 +1,39 @@
+package listingkit
+
+import "errors"
+
+var ErrStudioSessionNotFound = errors.New("studio session not found")
+
+type EnsureStudioSessionRequest struct {
+	UserID    string                `json:"user_id,omitempty"`
+	Selection *SheinStudioSelection `json:"selection,omitempty"`
+}
+
+type UpdateStudioSessionRequest struct {
+	Status                  *SheinStudioSessionStatus       `json:"status,omitempty"`
+	Prompt                  *string                         `json:"prompt,omitempty"`
+	StyleCount              *string                         `json:"style_count,omitempty"`
+	ProductImageCount       *string                         `json:"product_image_count,omitempty"`
+	ProductImagePrompt      *string                         `json:"product_image_prompt,omitempty"`
+	ProductImagePrompts     []SheinStudioProductImagePrompt `json:"product_image_prompts,omitempty"`
+	ArtworkModel            *string                         `json:"artwork_model,omitempty"`
+	ImageStrategy           *string                         `json:"image_strategy,omitempty"`
+	TransparentBackground   *bool                           `json:"transparent_background,omitempty"`
+	RenderSizeImagesWithSDS *bool                           `json:"render_size_images_with_sds,omitempty"`
+	SheinStoreID            *string                         `json:"shein_store_id,omitempty"`
+	GenerationJobID         *string                         `json:"generation_job_id,omitempty"`
+	GenerationError         *string                         `json:"generation_error,omitempty"`
+	ApprovedDesignIDs       []string                        `json:"approved_design_ids,omitempty"`
+	CreatedTasks            []SheinStudioCreatedTask        `json:"created_tasks,omitempty"`
+}
+
+type ReplaceStudioSessionDesignsRequest struct {
+	Status            *SheinStudioSessionStatus `json:"status,omitempty"`
+	ApprovedDesignIDs []string                  `json:"approved_design_ids,omitempty"`
+	Designs           []SheinStudioDesign       `json:"designs,omitempty"`
+}
+
+type StudioSessionGalleryResponse struct {
+	Items []SheinStudioSessionGalleryItem `json:"items,omitempty"`
+	Total int                             `json:"total"`
+}

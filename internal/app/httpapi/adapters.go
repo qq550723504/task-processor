@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/reviewstore"
 	listingkitstore "task-processor/internal/listingkit/store"
+	"task-processor/internal/listingkit/studiostore"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productenrich/store"
@@ -189,6 +190,25 @@ func newDBListingKitReviewRepository(cfg *config.DatabaseConfig, logger *logrus.
 	}
 
 	repo := reviewstore.NewGormRepository(db)
+	closer := func() error { return database.CloseDatabase(db) }
+	return repo, closer, nil
+}
+
+func newDBListingKitStudioSessionRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.StudioSessionRepository, func() error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("database config is nil")
+	}
+	db, err := database.NewDatabaseFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
+	}
+	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+
+	if err := db.AutoMigrate(&listingkit.SheinStudioSession{}, &listingkit.SheinStudioDesign{}); err != nil {
+		return nil, nil, fmt.Errorf("listingkit studio session auto-migrate failed: %w", err)
+	}
+
+	repo := studiostore.NewGormRepository(db)
 	closer := func() error { return database.CloseDatabase(db) }
 	return repo, closer, nil
 }

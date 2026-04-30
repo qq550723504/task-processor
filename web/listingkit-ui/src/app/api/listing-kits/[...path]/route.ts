@@ -12,6 +12,8 @@ import {
 } from "@/lib/server/request-log";
 
 export const dynamic = "force-dynamic";
+const PROXY_BODY_READ_TIMEOUT_MS = 15_000;
+const PROXY_UPSTREAM_TIMEOUT_MS = 15_000;
 
 async function proxyRequest(
   request: NextRequest,
@@ -97,15 +99,23 @@ async function proxyRequest(
 
   let upstream: Response;
   try {
-    upstream = await fetch(url, {
-      method: request.method,
-      headers,
-      body:
-        request.method === "GET" || request.method === "HEAD"
-          ? undefined
-          : await readProxyRequestBody(request),
-      cache: "no-store",
-    });
+    const body =
+      request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : await readProxyRequestBody(request, PROXY_BODY_READ_TIMEOUT_MS);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PROXY_UPSTREAM_TIMEOUT_MS);
+    try {
+      upstream = await fetch(url, {
+        method: request.method,
+        headers,
+        body,
+        cache: "no-store",
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "ListingKit upstream request failed";
@@ -227,10 +237,34 @@ export async function DELETE(
   return proxyRequest(request, context);
 }
 
-async function readProxyRequestBody(request: NextRequest) {
-  const buffer = await request.arrayBuffer();
+async function readProxyRequestBody(request: NextRequest, timeoutMs: number) {
+  const buffer = await withTimeout(
+    request.arrayBuffer(),
+    timeoutMs,
+    "ListingKit proxy request body read timed out",
+  );
   if (buffer.byteLength === 0) {
     return undefined;
   }
   return buffer;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+) {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 }

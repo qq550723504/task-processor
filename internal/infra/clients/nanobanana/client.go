@@ -151,6 +151,11 @@ func (c *Client) submitAndPoll(ctx context.Context, req submitRequest) (*openaic
 	if strings.TrimSpace(req.Prompt) == "" {
 		return nil, fmt.Errorf("nanobanana prompt cannot be empty")
 	}
+	if c.cfg.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.cfg.Timeout)
+		defer cancel()
+	}
 
 	submitURL, err := buildSubmitURL(c.cfg.SubmitURL, req.Model)
 	if err != nil {
@@ -252,7 +257,7 @@ func (c *Client) poll(ctx context.Context, submitURL string, id string) (*result
 
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("poll nanobanana job canceled: %w", ctx.Err())
+			return nil, fmt.Errorf("poll nanobanana job %s canceled: %w", id, ctx.Err())
 		case <-ticker.C:
 		}
 	}

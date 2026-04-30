@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
@@ -9,6 +10,10 @@ import { SheinStudioProgressStrip } from "@/components/listingkit/shein-studio/s
 import { SheinStudioSelectionOverview } from "@/components/listingkit/shein-studio/shein-studio-selection-overview";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
+import {
+  ensureSheinStudioSession,
+  updateSheinStudioSession,
+} from "@/lib/api/shein-studio-sessions";
 import {
   DEFAULT_SHEIN_STORE_ID,
   createSheinReviewTasks,
@@ -22,6 +27,9 @@ import {
   DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
 } from "@/lib/shein-studio/storage-shared";
+import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
+import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
+import { resolveSheinStudioEffectiveStep } from "@/lib/shein-studio/workbench-step";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
@@ -30,13 +38,17 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
+import { replaceBrowserHistory } from "@/lib/utils/browser-history";
+import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 import {
   deleteSheinStudioBatch,
   listSheinStudioBatches,
   loadSheinStudioDraft,
   saveSheinStudioBatch,
-  saveSheinStudioDraft,
+  saveSheinStudioDraftWithOptions,
 } from "@/lib/utils/shein-studio-batches";
+
+const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
 
 export function SheinStudioWorkbench({
   activeStep = "generate",
@@ -76,8 +88,27 @@ export function SheinStudioWorkbench({
   const [savedBatches, setSavedBatches] = useState<SheinStudioSavedBatch[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [saveMessage, setSaveMessage] = useState("");
+  const [draftWarning, setDraftWarning] = useState("");
+  const [effectiveStep, setEffectiveStep] = useState<SheinStudioStepKey>(activeStep);
+  const hasLocalWorkflowStateRef = useRef(false);
+  const autosaveAbortRef = useRef<AbortController | null>(null);
+  const autosaveFingerprintRef = useRef("");
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
+  const pathname = usePathname();
+  const searchParams = useLiveSearchParams();
   const activeSelection = hydratedSelection ?? selection;
+  const activeSelectionKey = activeSelection
+    ? JSON.stringify({
+        productId: activeSelection.productId,
+        parentProductId: activeSelection.parentProductId,
+        variantId: activeSelection.variantId,
+        prototypeGroupId: activeSelection.prototypeGroupId,
+        layerId: activeSelection.layerId,
+        printableWidth: activeSelection.printableWidth ?? null,
+        printableHeight: activeSelection.printableHeight ?? null,
+        selectedVariantIds: activeSelection.selectedVariantIds ?? [],
+      })
+    : "none";
 
   const printableAreaLabel =
     activeSelection?.printableWidth && activeSelection?.printableHeight
@@ -114,6 +145,14 @@ export function SheinStudioWorkbench({
       : undefined;
 
   useEffect(() => {
+    setEffectiveStep(activeStep);
+  }, [activeStep]);
+
+  useEffect(() => {
+    hasLocalWorkflowStateRef.current = false;
+  }, [selection?.variantId]);
+
+  useEffect(() => {
     let cancelled = false;
     setHydratedSelection(selection);
 
@@ -143,26 +182,38 @@ export function SheinStudioWorkbench({
           return;
         }
 
-        setPrompt(draft?.prompt ?? "");
-        setStyleCount(draft?.styleCount ?? "1");
-        setProductImageCount(
-          draft?.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
-        );
-        setProductImagePrompt(draft?.productImagePrompt ?? "");
-        setProductImagePrompts(draft?.productImagePrompts ?? []);
-        setArtworkModel(draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL);
-        setTransparentBackground(draft?.transparentBackground ?? false);
-        setSheinStoreId(draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID);
-        setImageStrategy(draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
-        setRenderSizeImagesWithSds(draft?.renderSizeImagesWithSds ?? true);
-        setDesigns(draft?.designs ?? []);
-        setSelectedIds(draft?.selectedIds ?? []);
-        setCreatedTasks(draft?.createdTasks ?? []);
+        if (draft || !hasLocalWorkflowStateRef.current) {
+          setPrompt(draft?.prompt ?? "");
+          setStyleCount(draft?.styleCount ?? "1");
+          setProductImageCount(
+            draft?.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+          );
+          setProductImagePrompt(draft?.productImagePrompt ?? "");
+          setProductImagePrompts(draft?.productImagePrompts ?? []);
+          setArtworkModel(draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL);
+          setTransparentBackground(draft?.transparentBackground ?? false);
+          setSheinStoreId(draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID);
+          setImageStrategy(draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
+          setRenderSizeImagesWithSds(draft?.renderSizeImagesWithSds ?? true);
+          setDesigns(draft?.designs ?? []);
+          setSelectedIds(draft?.selectedIds ?? []);
+          setCreatedTasks(draft?.createdTasks ?? []);
+        }
         setSavedBatches(batches);
+        if (draft) {
+          setEffectiveStep(
+            resolveSheinStudioEffectiveStep({
+              activeStep,
+              createdTaskCount: draft.createdTasks.length,
+              designCount: draft.designs.length,
+            }),
+          );
+        }
         setGenerationError("");
         setCreatingError("");
         setCreatingMessage("");
         setSaveMessage("");
+        setDraftWarning("");
       } finally {
         if (!cancelled) {
           setIsLoadingWorkspace(false);
@@ -175,31 +226,53 @@ export function SheinStudioWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [activeSelection]);
+  }, [activeSelectionKey]);
 
   useEffect(() => {
     if (isLoadingWorkspace) {
       return;
     }
+    if (isGenerating || isCreatingTasks || Boolean(regeneratingId)) {
+      return;
+    }
 
     const timer = window.setTimeout(() => {
-      void saveSheinStudioDraft({
-        prompt,
-        styleCount,
-        productImageCount,
-        productImagePrompt,
-        productImagePrompts,
-        artworkModel,
-        transparentBackground,
-        sheinStoreId,
-        imageStrategy,
-        renderSizeImagesWithSds,
-        selection: activeSelection,
-        designs,
-        selectedIds,
-        createdTasks,
-      });
-    }, 400);
+      const fingerprint = JSON.stringify(buildDraftInput());
+      if (autosaveFingerprintRef.current === fingerprint) {
+        return;
+      }
+
+      autosaveAbortRef.current?.abort("superseded");
+      const controller = new AbortController();
+      autosaveAbortRef.current = controller;
+
+      const timeout = window.setTimeout(() => {
+        controller.abort("timeout");
+      }, 15000);
+
+      void persistDraft(undefined, {
+        signal: controller.signal,
+        source: "autosave",
+      })
+        .then(() => {
+          autosaveFingerprintRef.current = fingerprint;
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) {
+            return;
+          }
+        console.warn(
+          "shein studio draft autosave failed",
+          error instanceof Error ? error.message : error,
+        );
+        })
+        .finally(() => {
+          window.clearTimeout(timeout);
+          if (autosaveAbortRef.current === controller) {
+            autosaveAbortRef.current = null;
+          }
+        });
+    }, 1200);
 
     return () => {
       window.clearTimeout(timer);
@@ -209,6 +282,8 @@ export function SheinStudioWorkbench({
     designs,
     artworkModel,
     imageStrategy,
+    isCreatingTasks,
+    isGenerating,
     isLoadingWorkspace,
     prompt,
     productImageCount,
@@ -218,9 +293,72 @@ export function SheinStudioWorkbench({
     renderSizeImagesWithSds,
     selectedIds,
     activeSelection,
+    regeneratingId,
     sheinStoreId,
     styleCount,
   ]);
+
+  function buildDraftInput(overrides?: Partial<{
+    designs: SheinStudioGeneratedDesign[];
+    selectedIds: string[];
+    createdTasks: SheinStudioCreatedTask[];
+  }>) {
+    return buildSheinStudioDraftInput({
+      prompt,
+      styleCount,
+      productImageCount,
+      productImagePrompt,
+      productImagePrompts,
+      artworkModel,
+      transparentBackground,
+      sheinStoreId,
+      imageStrategy,
+      renderSizeImagesWithSds,
+      selection: activeSelection,
+      designs: overrides?.designs ?? designs,
+      selectedIds: overrides?.selectedIds ?? selectedIds,
+      createdTasks: overrides?.createdTasks ?? createdTasks,
+    });
+  }
+
+  async function persistDraft(
+    overrides?: Partial<{
+      designs: SheinStudioGeneratedDesign[];
+      selectedIds: string[];
+      createdTasks: SheinStudioCreatedTask[];
+    }>,
+    options?: {
+      navigationTriggered?: boolean;
+      source?: string;
+      signal?: AbortSignal;
+    },
+  ) {
+    try {
+      const draft = await saveSheinStudioDraftWithOptions(buildDraftInput(overrides), options);
+      setDraftWarning("");
+      return draft;
+    } catch (error) {
+      if (options?.signal?.aborted) {
+        return null;
+      }
+      setDraftWarning(
+        "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
+      );
+      throw error;
+    }
+  }
+
+  function navigateToStep(step: SheinStudioStepKey) {
+    setEffectiveStep(step);
+    try {
+      replaceBrowserHistory(buildSheinStudioStepHref(pathname, searchParams, step));
+    } catch (error) {
+      console.warn(
+        "shein studio step navigation failed",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
 
   async function handleGenerate() {
     if (!activeSelection?.variantId) {
@@ -238,7 +376,49 @@ export function SheinStudioWorkbench({
     setCreatingError("");
     setCreatingMessage("");
     setCreatedTasks([]);
+    setDraftWarning("");
     setIsGenerating(true);
+
+    const sessionSyncPromise = (async () => {
+      try {
+        const sessionDetail = await ensureSheinStudioSession(activeSelection, {
+          timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
+        });
+        const sessionId = sessionDetail?.session?.id ?? "";
+        if (!sessionId) {
+          return "";
+        }
+        await updateSheinStudioSession(
+          sessionId,
+          {
+            status: "generating",
+            prompt: prompt.trim(),
+            styleCount,
+            productImageCount,
+            productImagePrompt,
+            productImagePrompts,
+            artworkModel,
+            imageStrategy,
+            transparentBackground,
+            renderSizeImagesWithSds,
+            sheinStoreId,
+            generationError: "",
+            approvedDesignIds: [],
+            createdTasks: [],
+          },
+          {
+            timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
+          },
+        );
+        return sessionId;
+      } catch (error) {
+        console.warn(
+          "shein studio generation session sync failed",
+          error instanceof Error ? error.message : error,
+        );
+        return "";
+      }
+    })();
 
     try {
       const response = await generateSheinStudioDesigns({
@@ -249,12 +429,73 @@ export function SheinStudioWorkbench({
         productReferenceImageUrls: buildSDSProductReferenceImageUrls(activeSelection),
         imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
         transparentBackground,
+      }, {
+        onJobStarted: (jobId) => {
+          void sessionSyncPromise
+            .then((sessionId) => {
+              if (!sessionId) {
+                return;
+              }
+              return updateSheinStudioSession(
+                sessionId,
+                {
+                  status: "generating",
+                  generationJobId: jobId,
+                  generationError: "",
+                },
+                {
+                  timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
+                },
+              );
+            })
+            .catch(() => undefined);
+        },
       });
+      if (!response.images.length) {
+        throw new Error("款式图生成完成，但没有返回任何图片。请重试一次；如果持续出现，说明上游生成链路返回了空结果。");
+      }
+      const nextSelectedIds = response.images.map((item) => item.id);
+      console.info("[shein-studio] generation succeeded", {
+        designCount: response.images.length,
+        draftSaveStatus: "pending",
+        selectionVariantId: activeSelection.variantId,
+      });
+      hasLocalWorkflowStateRef.current = true;
       setDesigns(response.images);
-      setSelectedIds(response.images.map((item) => item.id));
+      setSelectedIds(nextSelectedIds);
+      navigateToStep("review");
+      void persistDraft(
+        {
+          designs: response.images,
+          selectedIds: nextSelectedIds,
+          createdTasks: [],
+        },
+        {
+          navigationTriggered: true,
+          source: "generate_success",
+        },
+      ).catch(() => undefined);
     } catch (error) {
       setDesigns([]);
       setSelectedIds([]);
+      void sessionSyncPromise
+        .then((sessionId) => {
+          if (!sessionId) {
+            return;
+          }
+          return updateSheinStudioSession(
+            sessionId,
+            {
+              status: "failed",
+              generationError:
+                error instanceof Error ? error.message : "款式图生成失败。",
+            },
+            {
+              timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
+            },
+          );
+        })
+        .catch(() => undefined);
       setGenerationError(
         error instanceof Error ? error.message : "款式图生成失败。",
       );
@@ -290,17 +531,30 @@ export function SheinStudioWorkbench({
       });
       const replacement = response.images[0];
       if (!replacement) {
-        throw new Error("没有返回重新生成的图片。");
+        throw new Error("重新生成已完成，但没有返回任何图片。");
       }
 
+      hasLocalWorkflowStateRef.current = true;
       setDesigns((current) =>
         current.map((design) =>
           design.id === designId ? { ...replacement, id: designId } : design,
         ),
       );
-      setSelectedIds((current) =>
-        current.includes(designId) ? current : [...current, designId],
-      );
+      const nextSelectedIds = selectedIds.includes(designId)
+        ? selectedIds
+        : [...selectedIds, designId];
+      setSelectedIds(nextSelectedIds);
+      void persistDraft(
+        {
+          designs: designs.map((design) =>
+            design.id === designId ? { ...replacement, id: designId } : design,
+          ),
+          selectedIds: nextSelectedIds,
+        },
+        {
+          source: "regenerate_success",
+        },
+      ).catch(() => undefined);
     } catch (error) {
       setGenerationError(
         error instanceof Error ? error.message : "重新生成款式失败。",
@@ -343,6 +597,7 @@ export function SheinStudioWorkbench({
   }
 
   function handleLoadBatch(batch: SheinStudioSavedBatch) {
+    hasLocalWorkflowStateRef.current = true;
     setPrompt(batch.prompt);
     setStyleCount(batch.styleCount);
     setProductImageCount(
@@ -358,6 +613,13 @@ export function SheinStudioWorkbench({
     setDesigns(batch.designs);
     setSelectedIds(batch.selectedIds);
     setCreatedTasks(batch.createdTasks);
+    setEffectiveStep(
+      resolveSheinStudioEffectiveStep({
+        activeStep,
+        createdTaskCount: batch.createdTasks.length,
+        designCount: batch.designs.length,
+      }),
+    );
     setSaveMessage(`已载入批次：${batch.name}`);
   }
 
@@ -411,10 +673,19 @@ export function SheinStudioWorkbench({
         selectedIds: approved.map((design) => design.id),
         onProgress: setCreatingMessage,
       });
+      hasLocalWorkflowStateRef.current = true;
       setCreatedTasks(created);
       setCreatingMessage(
         `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
       );
+      navigateToStep("tasks");
+      void persistDraft(
+        { createdTasks: created },
+        {
+          navigationTriggered: true,
+          source: "task_creation_success",
+        },
+      ).catch(() => undefined);
     } catch (error) {
       setCreatingError(
         error instanceof Error ? error.message : "SHEIN 任务创建失败。",
@@ -445,7 +716,13 @@ export function SheinStudioWorkbench({
         selection={activeSelection}
       />
 
-      {activeStep === "generate" ? (
+      {draftWarning ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+          {draftWarning}
+        </div>
+      ) : null}
+
+      {effectiveStep === "generate" ? (
         <SheinStudioGenerationPanel
           createdTasks={createdTasks}
           creatingError={creatingError}
@@ -486,7 +763,7 @@ export function SheinStudioWorkbench({
         />
       ) : null}
 
-      {activeStep === "review" ? (
+      {effectiveStep === "review" ? (
       <div id="shein-style-review" className="scroll-mt-6">
         <SheinStudioProgressStrip
           createdTaskCount={createdTasks.length}
@@ -495,6 +772,7 @@ export function SheinStudioWorkbench({
         />
         <SheinDesignPreviewGrid
           designs={designs}
+          onBackToGenerate={() => navigateToStep("generate")}
           onNoteChange={handleNoteChange}
           onCreateReviewTasks={handleCreateTasks}
           onRegenerate={handleRegenerate}
@@ -508,7 +786,7 @@ export function SheinStudioWorkbench({
       </div>
       ) : null}
 
-      {activeStep === "tasks" ? (
+      {effectiveStep === "tasks" ? (
         <div
           id="shein-created-tasks"
           className="scroll-mt-6 rounded-[1.75rem] border border-zinc-200/80 bg-white p-5 shadow-sm"

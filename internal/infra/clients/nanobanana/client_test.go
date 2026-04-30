@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -224,5 +225,66 @@ func TestClientEditImageReturnsTypedModerationError(t *testing.T) {
 	}
 	if jobErr.FailureReason() != "output_moderation" {
 		t.Fatalf("failure reason = %q", jobErr.FailureReason())
+	}
+}
+
+func TestClientEditImageTimesOutStuckRunningJob(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/draw/nano-banana":
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				Code: 0,
+				Msg:  "success",
+				Data: struct {
+					ID string `json:"id"`
+				}{ID: "019db4c4-6d2e-7592-9978-723fc89ef5e9"},
+			})
+		case "/v1/draw/result":
+			_ = json.NewEncoder(w).Encode(resultEnvelope{
+				Code: 0,
+				Msg:  "success",
+				Data: resultPayload{
+					ID:       "019db4c4-6d2e-7592-9978-723fc89ef5e9",
+					Status:   "running",
+					Progress: 80,
+				},
+			})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		APIKey:       "test-key",
+		Model:        "nano-banana-fast",
+		SubmitURL:    server.URL + "/v1/draw/nano-banana",
+		PollInterval: 10 * time.Millisecond,
+		Timeout:      50 * time.Millisecond,
+		HTTPClient:   server.Client(),
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
+			Prompt:   "edit faithfully",
+			ImageURL: "https://example.com/source.png",
+		})
+		errCh <- err
+	}()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("expected timeout error")
+		}
+		if !strings.Contains(err.Error(), "019db4c4-6d2e-7592-9978-723fc89ef5e9") {
+			t.Fatalf("error = %q, want session id", err)
+		}
+		if !strings.Contains(err.Error(), context.DeadlineExceeded.Error()) {
+			t.Fatalf("error = %q, want deadline exceeded", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("EditImage() did not stop polling a stuck running job")
 	}
 }

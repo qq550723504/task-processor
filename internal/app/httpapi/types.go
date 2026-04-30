@@ -48,6 +48,7 @@ type appBootstrap struct {
 	imageHandler         productimage.Handler
 	amazonListingHandler amazonlisting.Handler
 	listingKitHandler    listingkit.Handler
+	studioSessionHandler listingkit.StudioSessionHandler
 	sdsCatalogHandler    sdsCatalogRouteHandler
 	taskRPCHandler       taskrpcapi.Handler
 	server               *http.Server
@@ -71,8 +72,9 @@ type amazonListingModule struct {
 }
 
 type listingKitModule struct {
-	handler listingkit.Handler
-	pool    worker.WorkerPool
+	handler              listingkit.Handler
+	studioSessionHandler listingkit.StudioSessionHandler
+	pool                 worker.WorkerPool
 }
 
 type productRouteHandler interface {
@@ -124,6 +126,14 @@ type listingKitRouteHandler interface {
 	UpdateSheinFinalDraft(c *gin.Context)
 	GetSubmissionEvents(c *gin.Context)
 	ClearSheinResolutionCache(c *gin.Context)
+}
+
+type studioSessionRouteHandler interface {
+	EnsureStudioSession(c *gin.Context)
+	GetStudioSession(c *gin.Context)
+	UpdateStudioSession(c *gin.Context)
+	ReplaceStudioSessionDesigns(c *gin.Context)
+	ListStudioSessionGallery(c *gin.Context)
 }
 
 type sdsCatalogRouteHandler interface {

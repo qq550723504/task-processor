@@ -1,4 +1,16 @@
 import { buildQueryString } from "@/lib/api/query-string";
+import {
+  buildAsyncJobResumeKey,
+  clearAsyncJobResumeEntry,
+  loadAsyncJobResumeEntry,
+  saveAsyncJobResumeEntry,
+} from "@/lib/api/async-job-resume";
+import { stageAsyncJobRequestIfNeeded } from "@/lib/api/async-job-staging";
+import { fetchWithRetry } from "@/lib/api/fetch-retry";
+import {
+  parseJsonResponse,
+  ResponseJsonParseError,
+} from "@/lib/api/response-json";
 import type { ConditionalState, QueueQuery } from "@/lib/types/listingkit";
 
 const API_BASE =
@@ -10,6 +22,8 @@ type RequestOptions = {
   body?: unknown;
   conditional?: ConditionalState | null;
   timeoutMs?: number;
+  signal?: AbortSignal;
+  onJobStarted?: (jobId: string) => void;
 };
 
 type FormRequestOptions = {
@@ -56,11 +70,12 @@ function buildApiUrl(path: string, query?: QueueQuery) {
 
 export async function apiRequest<T>(
   path: string,
-  { method = "GET", query, body, conditional, timeoutMs }: RequestOptions = {},
+  { method = "GET", query, body, conditional, timeoutMs, signal }: RequestOptions = {},
 ): Promise<T> {
   const url = buildApiUrl(path, query);
   const headers = buildHeaders(conditional);
-  const controller = timeoutMs ? new AbortController() : undefined;
+  const controller = timeoutMs && !signal ? new AbortController() : undefined;
+  const activeSignal = signal ?? controller?.signal;
   const timeout =
     timeoutMs && controller
       ? setTimeout(() => controller.abort(), timeoutMs)
@@ -76,7 +91,7 @@ export async function apiRequest<T>(
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: controller?.signal,
+      signal: activeSignal,
     });
   } catch (error) {
     if (controller?.signal.aborted) {
@@ -84,6 +99,9 @@ export async function apiRequest<T>(
         `ListingKit API request timed out after ${timeoutMs}ms`,
         408,
       );
+    }
+    if (signal?.aborted) {
+      throw error;
     }
     throw error;
   } finally {
@@ -117,59 +135,146 @@ export async function apiRequest<T>(
   return payload as T;
 }
 
+function buildEmptyJsonError(status: number, fallbackMessage: string) {
+  return new ApiError(fallbackMessage, status, {
+    message: "Response body was empty",
+  });
+}
+
 export async function apiAsyncRequest<T>(
   path: string,
-  { body, timeoutMs = 3600000 }: Pick<RequestOptions, "body" | "timeoutMs"> = {},
+  {
+    body,
+    timeoutMs = 3600000,
+    onJobStarted,
+  }: Pick<RequestOptions, "body" | "timeoutMs" | "onJobStarted"> = {},
 ): Promise<T> {
-  const started = await fetch("/api/listing-kits/async-jobs", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ path, body }),
-  });
-  const startedPayload = (await started.json()) as AsyncJobResponse<T> & {
-    message?: string;
-  };
-  if (!started.ok || !startedPayload.job_id) {
-    throw new ApiError(
-      startedPayload.message ?? `ListingKit async job start failed: ${started.status}`,
-      started.status,
-      startedPayload,
+  const resumeKey = buildAsyncJobResumeKey(path, body ?? {});
+  const resumed = loadAsyncJobResumeEntry(resumeKey);
+  let startedJobId = resumed?.jobId ?? "";
+  let resumedFromStorage = Boolean(startedJobId);
+
+  if (!startedJobId) {
+    const staged = await stageAsyncJobRequestIfNeeded({ path, body });
+    const started = await fetchWithRetry(
+      staged.staged
+        ? "/api/listing-kits/async-jobs/staged"
+        : "/api/listing-kits/async-jobs",
+      {
+        method: staged.staged ? "PATCH" : "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: staged.staged
+          ? JSON.stringify({ stage_id: staged.stageId })
+          : JSON.stringify({ path, body: JSON.parse(staged.bodyText) }),
+      },
     );
+    let startedPayload: (AsyncJobResponse<T> & { message?: string }) | undefined;
+    try {
+      startedPayload = await parseJsonResponse<AsyncJobResponse<T> & {
+        message?: string;
+      }>(started);
+    } catch (error) {
+      if (error instanceof ResponseJsonParseError) {
+        throw new ApiError(
+          "ListingKit async job start returned invalid JSON",
+          started.status,
+          { message: error.message },
+        );
+      }
+      throw error;
+    }
+    if (!started.ok || !startedPayload?.job_id) {
+      throw new ApiError(
+        startedPayload?.message ?? `ListingKit async job start failed: ${started.status}`,
+        started.status,
+        startedPayload,
+      );
+    }
+    startedJobId = startedPayload.job_id;
+    onJobStarted?.(startedJobId);
+    saveAsyncJobResumeEntry(resumeKey, startedJobId);
   }
 
   const deadline = Date.now() + timeoutMs;
+  let lastPollError: ApiError | Error | undefined;
   while (Date.now() < deadline) {
     await sleep(2000);
-    const response = await fetch(
-      `/api/listing-kits/async-jobs?id=${encodeURIComponent(startedPayload.job_id)}`,
-      {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      },
-    );
-    const payload = (await response.json()) as AsyncJobResponse<T> & {
-      message?: string;
-    };
-    if (!response.ok) {
-      throw new ApiError(
-        payload.message ?? `ListingKit async job poll failed: ${response.status}`,
-        response.status,
-        payload,
+    try {
+      const response = await fetchWithRetry(
+        `/api/listing-kits/async-jobs?id=${encodeURIComponent(startedJobId)}`,
+        {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        },
+        { retries: 1, retryDelayMs: 1200 },
       );
+      let payload: (AsyncJobResponse<T> & { message?: string }) | undefined;
+      try {
+        payload = await parseJsonResponse<AsyncJobResponse<T> & {
+          message?: string;
+        }>(response);
+      } catch (error) {
+        if (error instanceof ResponseJsonParseError) {
+          lastPollError = new ApiError(
+            "ListingKit async job poll returned invalid JSON",
+            response.status,
+            { message: error.message },
+          );
+          continue;
+        }
+        lastPollError = error instanceof Error ? error : new Error(String(error));
+        continue;
+      }
+
+      if (!payload) {
+        lastPollError = buildEmptyJsonError(
+          response.status,
+          `ListingKit async job poll returned empty response: ${response.status}`,
+        );
+        continue;
+      }
+      if (response.status === 404 && resumedFromStorage) {
+        clearAsyncJobResumeEntry(resumeKey);
+        resumedFromStorage = false;
+        startedJobId = "";
+        break;
+      }
+      if (!response.ok) {
+        lastPollError = new ApiError(
+          payload.message ?? `ListingKit async job poll failed: ${response.status}`,
+          response.status,
+          payload,
+        );
+        continue;
+      }
+      if (payload.status === "succeeded") {
+        clearAsyncJobResumeEntry(resumeKey);
+        return payload.result as T;
+      }
+      if (payload.status === "failed") {
+        clearAsyncJobResumeEntry(resumeKey);
+        throw new ApiError(
+          payload.error ?? "ListingKit async job failed",
+          payload.upstream_status ?? 500,
+          payload,
+        );
+      }
+      lastPollError = undefined;
+    } catch (error) {
+      lastPollError = error instanceof Error ? error : new Error(String(error));
     }
-    if (payload.status === "succeeded") {
-      return payload.result as T;
-    }
-    if (payload.status === "failed") {
-      throw new ApiError(
-        payload.error ?? "ListingKit async job failed",
-        payload.upstream_status ?? 500,
-        payload,
-      );
-    }
+  }
+  if (!startedJobId) {
+    return apiAsyncRequest<T>(path, { body, timeoutMs });
+  }
+  if (lastPollError instanceof ApiError) {
+    throw lastPollError;
+  }
+  if (lastPollError) {
+    throw lastPollError;
   }
   throw new ApiError(
     `ListingKit async job timed out after ${timeoutMs}ms`,

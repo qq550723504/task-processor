@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/shared/button";
 import { Card } from "@/components/shared/card";
@@ -21,6 +21,9 @@ import {
 } from "@/lib/sds/product-filters";
 import { buildSDSVariantSelection } from "@/lib/sds/variant-selection";
 import type { SDSProductVariant, SDSProductVariantSelection } from "@/lib/types/sds";
+import { replaceBrowserHistory } from "@/lib/utils/browser-history";
+import { useLiveSearchParams } from "@/lib/utils/live-search-params";
+import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 import { saveRecentSDSVariant } from "@/lib/utils/sds-recent-variants";
 
 export function SDSProductBrowser({
@@ -32,9 +35,8 @@ export function SDSProductBrowser({
   initialPage?: number;
   initialShipmentArea?: string;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const searchParams = useLiveSearchParams();
   const recentVariants = useSDSRecentVariants();
   const [pickerProductId, setPickerProductId] = useState<number | undefined>();
 
@@ -94,7 +96,7 @@ export function SDSProductBrowser({
   );
 
   function updateQuery(next: Record<string, string | undefined>) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = sanitizedNavigationSearchParams(searchParams);
     Object.entries(next).forEach(([key, value]) => {
       if (!value) {
         params.delete(key);
@@ -103,7 +105,7 @@ export function SDSProductBrowser({
       params.set(key, value);
     });
     const suffix = params.toString();
-    router.replace(suffix ? `${pathname}?${suffix}` : pathname);
+    replaceBrowserHistory(suffix ? `${pathname}?${suffix}` : pathname);
   }
 
   function applySelection(selection: SDSProductVariantSelection) {

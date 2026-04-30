@@ -74,11 +74,46 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const startedAt = Date.now();
+  let bodyBytes = 0;
+  let parseDurationMs = 0;
+  let payload: DraftPayload | undefined;
   try {
-    const payload = (await request.json()) as DraftPayload;
+    const rawBody = await request.text();
+    bodyBytes = Buffer.byteLength(rawBody, "utf8");
+    const parseStartedAt = Date.now();
+    payload = JSON.parse(rawBody) as DraftPayload;
+    parseDurationMs = Date.now() - parseStartedAt;
+
+    console.info("[shein-studio-draft] server save started", {
+      bodyBytes,
+      designCount: payload.designs.length,
+      draftSaveStatus: "started",
+      selectionVariantId: payload.selection?.variantId ?? null,
+    });
+
+    const writeStartedAt = Date.now();
     const draft = await saveSheinStudioDraft(payload);
+    console.info("[shein-studio-draft] server save completed", {
+      bodyBytes,
+      designCount: payload.designs.length,
+      draftSaveDurationMs: Date.now() - startedAt,
+      draftSaveStatus: "succeeded",
+      parseDurationMs,
+      selectionVariantId: payload.selection?.variantId ?? null,
+      writeDurationMs: Date.now() - writeStartedAt,
+    });
     return NextResponse.json({ draft });
   } catch (error) {
+    console.warn("[shein-studio-draft] server save failed", {
+      bodyBytes,
+      designCount: payload?.designs.length ?? 0,
+      draftSaveDurationMs: Date.now() - startedAt,
+      draftSaveStatus: "failed",
+      error: error instanceof Error ? error.message : "unknown error",
+      parseDurationMs,
+      selectionVariantId: payload?.selection?.variantId ?? null,
+    });
     return NextResponse.json(
       {
         error: "shein_studio_draft_save_failed",

@@ -15,6 +15,7 @@ export function SheinDesignPreviewGrid({
   selectedIds,
   onToggle,
   onRegenerate,
+  onBackToGenerate,
   regeneratingId,
   selection,
   readOnly = false,
@@ -29,6 +30,7 @@ export function SheinDesignPreviewGrid({
   selectedIds: string[];
   onToggle: (designId: string) => void;
   onRegenerate: (designId: string) => void;
+  onBackToGenerate?: () => void;
   regeneratingId?: string;
   selection?: SDSProductVariantSelection;
   readOnly?: boolean;
@@ -110,7 +112,7 @@ export function SheinDesignPreviewGrid({
                           onClick={() => onToggle(design.id)}
                           tone={selected ? "primary" : "secondary"}
                         >
-                          {selected ? "已批准" : "批准"}
+                          {selected ? "取消批准" : "批准"}
                         </Button>
                       )}
                     </div>
@@ -197,16 +199,23 @@ export function SheinDesignPreviewGrid({
                   "下一步：上传已批准款式，生成商品图并创建 SHEIN 审核工作区。"}
               </div>
             </div>
-            <Button
-              disabled={
-                isCreatingTasks ||
-                selectedIds.length === 0 ||
-                Boolean(createActionDisabledReason)
-              }
-              onClick={onCreateReviewTasks}
-            >
-              {isCreatingTasks ? "正在生成 SHEIN 资料..." : createActionLabel}
-            </Button>
+            <div className="flex flex-wrap gap-3">
+              {onBackToGenerate ? (
+                <Button onClick={onBackToGenerate} tone="ghost">
+                  继续生成款式图
+                </Button>
+              ) : null}
+              <Button
+                disabled={
+                  isCreatingTasks ||
+                  selectedIds.length === 0 ||
+                  Boolean(createActionDisabledReason)
+                }
+                onClick={onCreateReviewTasks}
+              >
+                {isCreatingTasks ? "正在生成 SHEIN 资料..." : createActionLabel}
+              </Button>
+            </div>
           </div>
         ) : null}
       </section>

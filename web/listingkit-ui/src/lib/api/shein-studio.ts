@@ -8,6 +8,9 @@ import { apiAsyncRequest } from "@/lib/api/client";
 
 export async function generateSheinStudioDesigns(
   body: SheinStudioGenerateRequest,
+  options?: {
+    onJobStarted?: (jobId: string) => void;
+  },
 ) {
   const payload = await apiAsyncRequest<{
     prompt: string;
@@ -37,6 +40,7 @@ export async function generateSheinStudioDesigns(
       transparent_background: body.transparentBackground,
     },
     timeoutMs: 3600000,
+    onJobStarted: options?.onJobStarted,
   });
   return {
     prompt: payload.prompt,

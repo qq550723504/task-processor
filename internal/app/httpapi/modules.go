@@ -99,12 +99,13 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 
 	sdsCatalogHandler := buildSDSCatalogHandler(logger)
 
-	server := buildHTTPServer(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, taskRPCHandler, sdsCatalogHandler)
+	server := buildHTTPServerWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, listingKitModule.studioSessionHandler, taskRPCHandler, sdsCatalogHandler)
 	return &appBootstrap{
 		productHandler:       productModule.handler,
 		imageHandler:         imageModule.handler,
 		amazonListingHandler: amazonListingModule.handler,
 		listingKitHandler:    listingKitModule.handler,
+		studioSessionHandler: listingKitModule.studioSessionHandler,
 		sdsCatalogHandler:    sdsCatalogHandler,
 		taskRPCHandler:       taskRPCHandler,
 		server:               server,
@@ -499,6 +500,12 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	}
 	deps.closers = append(deps.closers, reviewClosers...)
 
+	studioSessionRepository, studioSessionClosers, err := buildListingKitStudioSessionRepository(deps.cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	deps.closers = append(deps.closers, studioSessionClosers...)
+
 	resolutionCacheStore, resolutionCacheClosers, err := buildSheinResolutionCacheStore(deps.cfg, logger)
 	if err != nil {
 		return nil, err
@@ -515,16 +522,17 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	deps.sdsSyncService = buildSDSSyncService(logger, deps)
 
 	svc, err := listingkit.NewService(&listingkit.ServiceConfig{
-		Repository:          repo,
-		ProductService:      deps.productService,
-		ImageService:        deps.imageService,
-		SDSSyncService:      deps.sdsSyncService,
-		SheinDefaultStoreID: resolveListingKitDefaultSheinStoreID(deps.cfg.Management.StoreIDs),
-		ImageUploadStore:    buildListingKitImageUploadStore(deps.cfg, logger),
-		AssetRepository:     assetRepository,
-		ReviewRepository:    reviewRepository,
-		AssetRecipeResolver: assetrecipe.NewStaticResolver(),
-		AssetBundleBuilder:  assetbundle.NewBuilder(),
+		Repository:              repo,
+		StudioSessionRepository: studioSessionRepository,
+		ProductService:          deps.productService,
+		ImageService:            deps.imageService,
+		SDSSyncService:          deps.sdsSyncService,
+		SheinDefaultStoreID:     resolveListingKitDefaultSheinStoreID(deps.cfg.Management.StoreIDs),
+		ImageUploadStore:        buildListingKitImageUploadStore(deps.cfg, logger),
+		AssetRepository:         assetRepository,
+		ReviewRepository:        reviewRepository,
+		AssetRecipeResolver:     assetrecipe.NewStaticResolver(),
+		AssetBundleBuilder:      assetbundle.NewBuilder(),
 		AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
 			SubjectExtractor:        deps.imageSubjectExtractor,
 			WhiteBackgroundRenderer: deps.imageWhiteBgRenderer,
@@ -563,7 +571,15 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
-	return &listingKitModule{handler: handler, pool: pool}, nil
+	studioSessionService, ok := svc.(listingkit.StudioSessionHandlerService)
+	if !ok {
+		return nil, fmt.Errorf("listing kit service does not implement studio session handler service")
+	}
+	studioSessionHandler, err := listingkitapi.NewStudioSessionHandler(studioSessionService)
+	if err != nil {
+		return nil, fmt.Errorf("create listing kit studio session handler: %w", err)
+	}
+	return &listingKitModule{handler: handler, studioSessionHandler: studioSessionHandler, pool: pool}, nil
 }
 
 func buildListingKitSheinPricingPolicy(cfg *config.Config) sheinpub.PricingPolicy {
@@ -609,6 +625,19 @@ func buildListingKitReviewRepository(cfg *config.Config, logger *logrus.Logger) 
 
 	logger.Warn("database not configured, using in-memory listingkit review repository")
 	return reviewstore.NewMemRepository(), nil, nil
+}
+
+func buildListingKitStudioSessionRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StudioSessionRepository, []func() error, error) {
+	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
+		repo, closer, err := newDBListingKitStudioSessionRepository(cfg.Database, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create listing kit studio session repository: %w", err)
+		}
+		return repo, []func() error{closer}, nil
+	}
+
+	logger.Warn("database not configured, SHEIN studio session repository disabled")
+	return nil, nil, nil
 }
 
 func buildSheinResolutionCacheStore(cfg *config.Config, logger *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error) {

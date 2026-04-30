@@ -20,6 +20,7 @@ import (
 
 type service struct {
 	repo                       Repository
+	studioSessionRepo          StudioSessionRepository
 	productSvc                 ProductService
 	imageSvc                   ImageService
 	sdsSyncSvc                 SDSSyncService
@@ -47,6 +48,7 @@ type service struct {
 
 type ServiceConfig struct {
 	Repository                 Repository
+	StudioSessionRepository    StudioSessionRepository
 	ProductService             ProductService
 	ImageService               ImageService
 	SDSSyncService             SDSSyncService
@@ -125,6 +127,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 	defaultSettings := defaultSheinSettings(config.SheinDefaultStoreID, config.SheinPricingPolicy)
 	return &service{
 		repo:                       config.Repository,
+		studioSessionRepo:          config.StudioSessionRepository,
 		productSvc:                 config.ProductService,
 		imageSvc:                   config.ImageService,
 		sdsSyncSvc:                 config.SDSSyncService,
