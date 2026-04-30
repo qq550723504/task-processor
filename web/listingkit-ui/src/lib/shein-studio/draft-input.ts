@@ -6,6 +6,7 @@ import type {
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioSelectedSDSImage,
 } from "@/lib/types/shein-studio";
 import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 
@@ -19,6 +20,7 @@ type BuildSheinStudioDraftInputArgs = {
   transparentBackground: boolean;
   sheinStoreId: string;
   imageStrategy: SheinStudioImageStrategy;
+  selectedSdsImages: SheinStudioSelectedSDSImage[];
   renderSizeImagesWithSds: boolean;
   selection?: SDSProductVariantSelection;
   designs: SheinStudioGeneratedDesign[];
@@ -39,6 +41,7 @@ export function buildSheinStudioDraftInput(
     transparentBackground: args.transparentBackground,
     sheinStoreId: args.sheinStoreId,
     imageStrategy: args.imageStrategy,
+    selectedSdsImages: args.selectedSdsImages,
     renderSizeImagesWithSds: args.renderSizeImagesWithSds,
     selection: buildSelectionSummary(args.selection),
     designs: args.designs,

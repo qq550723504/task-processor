@@ -1,19 +1,23 @@
+import Image from "next/image";
 import type { ReactNode, RefObject } from "react";
 
 import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
 import { SheinSavedBatchesPanel } from "@/components/listingkit/shein-studio/shein-saved-batches-panel";
 import { Button } from "@/components/shared/button";
 import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
+import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
 import { SHEIN_STUDIO_PRODUCT_IMAGE_ROLES } from "@/lib/shein-studio/storage-shared";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
 
 export function SheinStudioGenerationPanel({
+  availableSdsImages,
   createdTasks,
   creatingError,
   creatingMessage,
@@ -36,9 +40,11 @@ export function SheinStudioGenerationPanel({
   promptInputRef,
   savedBatches,
   saveMessage,
+  selectedSdsImages,
   selectedStyleCount,
   selectionReady,
   setImageStrategy,
+  setSelectedSdsImages,
   setArtworkModel,
   setProductImageCount,
   setProductImagePrompt,
@@ -51,6 +57,7 @@ export function SheinStudioGenerationPanel({
   sheinStoreId,
   styleCount,
 }: {
+  availableSdsImages: SheinStudioSelectableSDSImage[];
   createdTasks: SheinStudioCreatedTask[];
   creatingError: string;
   creatingMessage: string;
@@ -73,9 +80,11 @@ export function SheinStudioGenerationPanel({
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   savedBatches: SheinStudioSavedBatch[];
   saveMessage: string;
+  selectedSdsImages: SheinStudioSelectedSDSImage[];
   selectedStyleCount: number;
   selectionReady: boolean;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
+  setSelectedSdsImages: (value: SheinStudioSelectedSDSImage[]) => void;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
   setProductImageCount: (value: string) => void;
   setProductImagePrompt: (value: string) => void;
@@ -223,6 +232,14 @@ export function SheinStudioGenerationPanel({
             </p>
           </label>
 
+          {imageStrategy === "hybrid" || imageStrategy === "sds_official" ? (
+            <SDSImagePicker
+              availableImages={availableSdsImages}
+              selectedImages={selectedSdsImages}
+              setSelectedImages={setSelectedSdsImages}
+            />
+          ) : null}
+
           <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
             <input
               checked={renderSizeImagesWithSds}
@@ -299,6 +316,111 @@ export function SheinStudioGenerationPanel({
         onDelete={onDeleteBatch}
         onLoad={onLoadBatch}
       />
+    </div>
+  );
+}
+
+function SDSImagePicker({
+  availableImages,
+  selectedImages,
+  setSelectedImages,
+}: {
+  availableImages: SheinStudioSelectableSDSImage[];
+  selectedImages: SheinStudioSelectedSDSImage[];
+  setSelectedImages: (value: SheinStudioSelectedSDSImage[]) => void;
+}) {
+  const selectedMap = new Map(selectedImages.map((item) => [item.imageUrl, item]));
+
+  function includeImage(image: SheinStudioSelectableSDSImage, asMain = false) {
+    const next = selectedImages.filter((item) => item.imageUrl !== image.imageUrl);
+    const payload = {
+      imageUrl: image.imageUrl,
+      variantSku: image.variantSku,
+      color: image.color,
+    } satisfies SheinStudioSelectedSDSImage;
+    setSelectedImages(asMain ? [payload, ...next] : [...next, payload]);
+  }
+
+  function removeImage(imageUrl: string) {
+    setSelectedImages(selectedImages.filter((item) => item.imageUrl !== imageUrl));
+  }
+
+  if (!availableImages.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-zinc-300 bg-white px-4 py-4 text-sm leading-6 text-zinc-600">
+        当前选中的 SDS 商品还没有可用的官方渲染图。未手动选择时，系统会继续沿用后端自动匹配规则。
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-[1.5rem] border border-zinc-200 bg-white px-4 py-4">
+      <SectionHeading
+        eyebrow="SDS 图片"
+        title="可选官方渲染图"
+        description="可手动指定混合模式优先使用的 SDS 图片。已选第 1 张会作为 SDS 主图，其余按顺序进入 SDS 图库；不手动选择时，继续沿用系统自动匹配。"
+      />
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {availableImages.map((image) => {
+          const selected = selectedMap.get(image.imageUrl);
+          const selectedIndex = selectedImages.findIndex(
+            (item) => item.imageUrl === image.imageUrl,
+          );
+          return (
+            <div
+              key={image.imageUrl}
+              className={`space-y-3 rounded-[1.25rem] border px-3 py-3 ${
+                selected
+                  ? "border-zinc-950 bg-zinc-950/[0.03]"
+                  : "border-zinc-200 bg-zinc-50"
+              }`}
+            >
+              <div className="relative aspect-square overflow-hidden rounded-2xl bg-zinc-100">
+                <Image
+                  alt={image.label}
+                  className="object-cover"
+                  fill
+                  sizes="(max-width: 768px) 100vw, 240px"
+                  src={image.imageUrl}
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-zinc-900">{image.label}</p>
+                {image.description ? (
+                  <p className="text-xs leading-5 text-zinc-600">{image.description}</p>
+                ) : null}
+                <p className="text-xs font-medium text-zinc-500">
+                  {selectedIndex === 0
+                    ? "当前主图"
+                    : selectedIndex > 0
+                      ? `已选第 ${selectedIndex + 1} 张`
+                      : "未手动选择"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className="h-9 px-3 text-xs"
+                  onClick={() => includeImage(image, true)}
+                  tone={selectedIndex === 0 ? "secondary" : "primary"}
+                  type="button"
+                >
+                  {selectedIndex === 0 ? "已设为主图" : "设为主图"}
+                </Button>
+                <Button
+                  className="h-9 px-3 text-xs"
+                  onClick={() =>
+                    selected ? removeImage(image.imageUrl) : includeImage(image, false)
+                  }
+                  tone="secondary"
+                  type="button"
+                >
+                  {selected ? "移除" : "加入图库"}
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -63,6 +63,12 @@ type SheinStudioProductImagePrompt struct {
 	Prompt string `json:"prompt,omitempty"`
 }
 
+type SheinStudioSelectedSDSImageRecord struct {
+	ImageURL   string `json:"image_url,omitempty"`
+	VariantSKU string `json:"variant_sku,omitempty"`
+	Color      string `json:"color,omitempty"`
+}
+
 type SheinStudioCreatedTask struct {
 	ID       string `json:"id,omitempty"`
 	Title    string `json:"title,omitempty"`
@@ -119,6 +125,16 @@ func (value *SheinStudioProductImagePromptList) Scan(input any) error {
 	return unmarshalStudioSessionJSON(input, value)
 }
 
+type SheinStudioSelectedSDSImageList []SheinStudioSelectedSDSImageRecord
+
+func (value SheinStudioSelectedSDSImageList) Value() (driver.Value, error) {
+	return marshalStudioSessionJSON(value)
+}
+
+func (value *SheinStudioSelectedSDSImageList) Scan(input any) error {
+	return unmarshalStudioSessionJSON(input, value)
+}
+
 type SheinStudioCreatedTaskList []SheinStudioCreatedTask
 
 func (value SheinStudioCreatedTaskList) Value() (driver.Value, error) {
@@ -150,6 +166,7 @@ type SheinStudioSession struct {
 	ProductImagePrompts     SheinStudioProductImagePromptList `json:"product_image_prompts,omitempty" gorm:"type:text"`
 	ArtworkModel            string                            `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
 	ImageStrategy           string                            `json:"image_strategy,omitempty" gorm:"type:varchar(32)"`
+	SelectedSDSImages       SheinStudioSelectedSDSImageList   `json:"selected_sds_images,omitempty" gorm:"type:text"`
 	TransparentBackground   bool                              `json:"transparent_background"`
 	RenderSizeImagesWithSDS bool                              `json:"render_size_images_with_sds"`
 	SheinStoreID            string                            `json:"shein_store_id,omitempty" gorm:"type:varchar(64)"`

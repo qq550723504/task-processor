@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/catalog"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
@@ -158,8 +159,11 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	final.AssetInventorySummary = result.AssetInventorySummary
 	final.SDSSync = result.SDSSync
 	final.ChildTasks = append([]ChildTaskState(nil), result.ChildTasks...)
+	s.applyDefaultSheinPricing(final.Shein)
 	if shouldUseSDSOfficialImages(task.Request) {
-		applySDSTemplateImagesToShein(final.Shein, final.SDSSync, task.Request.ImageURLs)
+		if !applySelectedSDSImagesToShein(final.Shein, task.Request, task.Request.ImageURLs) {
+			applySDSTemplateImagesToShein(final.Shein, final.SDSSync, task.Request.ImageURLs)
+		}
 		applySheinSizeReferenceImages(final.Shein, resolveSheinSizeReferenceImages(task.Request, final.SDSSync))
 	}
 	if shouldUseSheinStudioAIImages(task.Request) {
@@ -205,6 +209,18 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 	}
 	syncAssetRenderPreviews(final)
 	return final, nil
+}
+
+func (s *service) applyDefaultSheinPricing(pkg *sheinpub.Package) {
+	if pkg == nil || (pkg.Pricing != nil && pkg.Pricing.Ready) {
+		return
+	}
+	var overrides map[string]float64
+	if pkg.FinalDraft != nil {
+		overrides = pkg.FinalDraft.ManualPriceOverrides
+	}
+	review := buildSheinPricingReview(pkg, s.currentSheinPricingRule(), overrides)
+	applySheinPricingReview(pkg, review)
 }
 
 func initResult(task *Task) *ListingKitResult {

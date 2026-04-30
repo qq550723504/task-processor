@@ -134,6 +134,11 @@ export type CreateListingKitTaskRequest = {
       style_name?: string;
       source_design_urls?: string[];
       product_image_urls?: string[];
+      selected_sds_images?: Array<{
+        image_url?: string;
+        variant_sku?: string;
+        color?: string;
+      }>;
       variant_product_images?: Array<{
         variant_sku?: string;
         color?: string;

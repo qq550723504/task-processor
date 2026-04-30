@@ -14,6 +14,13 @@ describe("buildSheinStudioDraftInput", () => {
       transparentBackground: false,
       sheinStoreId: "7",
       imageStrategy: "ai_generated",
+      selectedSdsImages: [
+        {
+          imageUrl: "https://example.com/sds-main.jpg",
+          color: "Black",
+          variantSku: "SKU-BLK",
+        },
+      ],
       renderSizeImagesWithSds: true,
       selection: {
         productId: 1,
@@ -43,6 +50,13 @@ describe("buildSheinStudioDraftInput", () => {
       { id: "design-1", imageUrl: "https://example.com/design.png" },
     ]);
     expect(payload.selectedIds).toEqual(["design-1"]);
+    expect(payload.selectedSdsImages).toEqual([
+      {
+        imageUrl: "https://example.com/sds-main.jpg",
+        color: "Black",
+        variantSku: "SKU-BLK",
+      },
+    ]);
     expect(payload.selection?.variantId).toBe(2);
     expect(payload.selection?.variants).toEqual([
       {

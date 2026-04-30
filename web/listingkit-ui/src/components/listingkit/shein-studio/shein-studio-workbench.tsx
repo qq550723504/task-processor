@@ -21,6 +21,10 @@ import {
 } from "@/lib/shein-studio/create-review-tasks";
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
+import {
+  buildDefaultSelectedSDSImages,
+  buildSelectableSDSImages,
+} from "@/lib/shein-studio/sds-selectable-images";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
@@ -36,6 +40,7 @@ import type {
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
@@ -74,6 +79,7 @@ export function SheinStudioWorkbench({
   const [imageStrategy, setImageStrategy] = useState<SheinStudioImageStrategy>(
     DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
   );
+  const [selectedSdsImages, setSelectedSdsImages] = useState<SheinStudioSelectedSDSImage[]>([]);
   const [renderSizeImagesWithSds, setRenderSizeImagesWithSds] = useState(true);
   const [designs, setDesigns] = useState<SheinStudioGeneratedDesign[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -91,6 +97,7 @@ export function SheinStudioWorkbench({
   const [draftWarning, setDraftWarning] = useState("");
   const [effectiveStep, setEffectiveStep] = useState<SheinStudioStepKey>(activeStep);
   const hasLocalWorkflowStateRef = useRef(false);
+  const hasCustomizedSdsSelectionRef = useRef(false);
   const autosaveAbortRef = useRef<AbortController | null>(null);
   const autosaveFingerprintRef = useRef("");
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
@@ -138,6 +145,7 @@ export function SheinStudioWorkbench({
   const selectedSizeCount = new Set(
     selectedVariants.map((variant) => variant.size || "One size"),
   ).size;
+  const availableSdsImages = buildSelectableSDSImages(activeSelection);
   const createActionDisabledReason = !activeSelection?.variantId
     ? "请先选择 SDS 商品变体。生成 SHEIN 资料前需要锁定商品模板。"
     : selectedIds.length === 0
@@ -150,6 +158,7 @@ export function SheinStudioWorkbench({
 
   useEffect(() => {
     hasLocalWorkflowStateRef.current = false;
+    hasCustomizedSdsSelectionRef.current = false;
   }, [selection?.variantId]);
 
   useEffect(() => {
@@ -194,6 +203,9 @@ export function SheinStudioWorkbench({
           setTransparentBackground(draft?.transparentBackground ?? false);
           setSheinStoreId(draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID);
           setImageStrategy(draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
+          setSelectedSdsImages(draft?.selectedSdsImages ?? []);
+          hasCustomizedSdsSelectionRef.current =
+            (draft?.selectedSdsImages?.length ?? 0) > 0;
           setRenderSizeImagesWithSds(draft?.renderSizeImagesWithSds ?? true);
           setDesigns(draft?.designs ?? []);
           setSelectedIds(draft?.selectedIds ?? []);
@@ -227,6 +239,32 @@ export function SheinStudioWorkbench({
       cancelled = true;
     };
   }, [activeSelectionKey]);
+
+  useEffect(() => {
+    if (
+      imageStrategy !== "hybrid" &&
+      imageStrategy !== "sds_official"
+    ) {
+      return;
+    }
+    if (hasCustomizedSdsSelectionRef.current) {
+      return;
+    }
+
+    const nextDefaults = buildDefaultSelectedSDSImages(availableSdsImages, {
+      includeSizeReferenceImages: renderSizeImagesWithSds,
+    });
+    const currentSelection = JSON.stringify(selectedSdsImages);
+    const defaultSelection = JSON.stringify(nextDefaults);
+    if (currentSelection !== defaultSelection) {
+      setSelectedSdsImages(nextDefaults);
+    }
+  }, [
+    availableSdsImages,
+    imageStrategy,
+    renderSizeImagesWithSds,
+    selectedSdsImages,
+  ]);
 
   useEffect(() => {
     if (isLoadingWorkspace) {
@@ -291,6 +329,7 @@ export function SheinStudioWorkbench({
     productImagePrompts,
     transparentBackground,
     renderSizeImagesWithSds,
+    selectedSdsImages,
     selectedIds,
     activeSelection,
     regeneratingId,
@@ -308,13 +347,14 @@ export function SheinStudioWorkbench({
       styleCount,
       productImageCount,
       productImagePrompt,
-      productImagePrompts,
-      artworkModel,
-      transparentBackground,
-      sheinStoreId,
-      imageStrategy,
-      renderSizeImagesWithSds,
-      selection: activeSelection,
+    productImagePrompts,
+    artworkModel,
+    transparentBackground,
+    sheinStoreId,
+    imageStrategy,
+    selectedSdsImages,
+    renderSizeImagesWithSds,
+    selection: activeSelection,
       designs: overrides?.designs ?? designs,
       selectedIds: overrides?.selectedIds ?? selectedIds,
       createdTasks: overrides?.createdTasks ?? createdTasks,
@@ -399,6 +439,7 @@ export function SheinStudioWorkbench({
             productImagePrompts,
             artworkModel,
             imageStrategy,
+            selectedSdsImages,
             transparentBackground,
             renderSizeImagesWithSds,
             sheinStoreId,
@@ -580,6 +621,7 @@ export function SheinStudioWorkbench({
       transparentBackground,
       sheinStoreId,
       imageStrategy,
+      selectedSdsImages,
       renderSizeImagesWithSds,
       selection: activeSelection,
       designs,
@@ -609,6 +651,9 @@ export function SheinStudioWorkbench({
     setTransparentBackground(batch.transparentBackground ?? false);
     setSheinStoreId(batch.sheinStoreId);
     setImageStrategy(batch.imageStrategy ?? "sds_official");
+    setSelectedSdsImages(batch.selectedSdsImages ?? []);
+    hasCustomizedSdsSelectionRef.current =
+      (batch.selectedSdsImages?.length ?? 0) > 0;
     setRenderSizeImagesWithSds(batch.renderSizeImagesWithSds ?? true);
     setDesigns(batch.designs);
     setSelectedIds(batch.selectedIds);
@@ -664,6 +709,7 @@ export function SheinStudioWorkbench({
         prompt,
         sheinStoreId,
         imageStrategy,
+        selectedSdsImages,
         productImageCount,
         productImagePrompt,
         productImagePrompts,
@@ -724,6 +770,7 @@ export function SheinStudioWorkbench({
 
       {effectiveStep === "generate" ? (
         <SheinStudioGenerationPanel
+          availableSdsImages={availableSdsImages}
           createdTasks={createdTasks}
           creatingError={creatingError}
           creatingMessage={creatingMessage}
@@ -746,10 +793,15 @@ export function SheinStudioWorkbench({
           promptInputRef={promptInputRef}
           savedBatches={savedBatches}
           saveMessage={saveMessage}
+          selectedSdsImages={selectedSdsImages}
           selectedStyleCount={selectedIds.length}
           selectionReady={Boolean(activeSelection?.variantId)}
           setArtworkModel={setArtworkModel}
           setImageStrategy={setImageStrategy}
+          setSelectedSdsImages={(value) => {
+            hasCustomizedSdsSelectionRef.current = true;
+            setSelectedSdsImages(value);
+          }}
           setProductImageCount={setProductImageCount}
           setProductImagePrompt={setProductImagePrompt}
           setProductImagePrompts={setProductImagePrompts}

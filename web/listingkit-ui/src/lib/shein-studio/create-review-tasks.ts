@@ -16,6 +16,7 @@ import type {
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioSelectedSDSImage,
   SheinStudioVariantProductImageSet,
 } from "@/lib/types/shein-studio";
 
@@ -29,6 +30,22 @@ export function parsePositiveInt(input: string) {
     return undefined;
   }
   return parsed;
+}
+
+export function orderGeneratedProductImageUrls(
+  images: Array<{
+    imageUrl?: string;
+    role?: string;
+  }>,
+) {
+  return [...images]
+    .sort((left, right) => {
+      const leftPriority = left.role === "main" ? 0 : 1;
+      const rightPriority = right.role === "main" ? 0 : 1;
+      return leftPriority - rightPriority;
+    })
+    .map((image) => image.imageUrl?.trim())
+    .filter((url): url is string => Boolean(url));
 }
 
 function buildStyleShortId(design: SheinStudioGeneratedDesign, index: number) {
@@ -116,6 +133,7 @@ export async function createSheinReviewTasks(input: {
   prompt: string;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
+  selectedSdsImages?: SheinStudioSelectedSDSImage[];
   productImageCount?: string;
   productImagePrompt?: string;
   productImagePrompts?: SheinStudioProductImagePrompt[];
@@ -129,6 +147,7 @@ export async function createSheinReviewTasks(input: {
     designs,
     imageStrategy = "ai_generated",
     onProgress,
+    selectedSdsImages = [],
     productImageCount,
     productImagePrompt,
     productImagePrompts,
@@ -190,9 +209,7 @@ export async function createSheinReviewTasks(input: {
         imagePrompts: productImagePrompts,
         count: productImageTotal,
       });
-      productImageURLs = generatedProductImages.images
-        .map((image) => image.imageUrl?.trim())
-        .filter((url): url is string => Boolean(url));
+      productImageURLs = orderGeneratedProductImageUrls(generatedProductImages.images);
       if (productImageURLs.length === 0) {
         throw new Error("AI product image URLs are missing.");
       }
@@ -236,9 +253,7 @@ export async function createSheinReviewTasks(input: {
             imagePrompts: productImagePrompts,
             count: productImageTotal,
           });
-          const imageUrls = generatedVariantImages.images
-            .map((image) => image.imageUrl?.trim())
-            .filter((url): url is string => Boolean(url));
+          const imageUrls = orderGeneratedProductImageUrls(generatedVariantImages.images);
           if (imageUrls.length > 0) {
             variantProductImages.push({
               variantSku: variant.variantSku,
@@ -264,6 +279,11 @@ export async function createSheinReviewTasks(input: {
           style_name: styleName,
           source_design_urls: styleImageURLs,
           product_image_urls: productImageURLs,
+          selected_sds_images: selectedSdsImages.map((item) => ({
+            image_url: item.imageUrl,
+            variant_sku: item.variantSku,
+            color: item.color,
+          })),
           variant_product_images: variantProductImages.map((item) => ({
             variant_sku: item.variantSku,
             color: item.color,

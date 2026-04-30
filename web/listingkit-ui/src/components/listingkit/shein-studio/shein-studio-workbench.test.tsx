@@ -13,6 +13,7 @@ const saveSheinStudioBatch = vi.fn();
 const saveSheinStudioDraftWithOptions = vi.fn();
 const updateSheinStudioSession = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
+let lastGenerationPanelProps: Record<string, unknown> | null = null;
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/listing-kits/shein",
@@ -53,30 +54,37 @@ vi.mock("@/components/listingkit/shein-studio/shein-design-preview-grid", () => 
 }));
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", () => ({
-  SheinStudioGenerationPanel: ({
-    generationError,
-    onGenerate,
-    prompt,
-    setPrompt,
-  }: {
+  SheinStudioGenerationPanel: (props: {
     generationError?: string;
     onGenerate: () => void;
     prompt: string;
     setPrompt: (value: string) => void;
-  }) => (
-    <div>
-      <label htmlFor="prompt">prompt</label>
-      <input
-        id="prompt"
-        onChange={(event) => setPrompt(event.target.value)}
-        value={prompt}
-      />
-      <button onClick={onGenerate} type="button">
-        generate styles
-      </button>
-      {generationError ? <div>{generationError}</div> : null}
-    </div>
-  ),
+    selectedSdsImages?: Array<{
+      imageUrl: string;
+      variantSku?: string;
+      color?: string;
+    }>;
+  }) => {
+    lastGenerationPanelProps = props as Record<string, unknown>;
+    return (
+      <div>
+        <label htmlFor="prompt">prompt</label>
+        <input
+          id="prompt"
+          onChange={(event) => props.setPrompt(event.target.value)}
+          value={props.prompt}
+        />
+        <button onClick={props.onGenerate} type="button">
+          generate styles
+        </button>
+        <div>
+          selected SDS images:{" "}
+          {Array.isArray(props.selectedSdsImages) ? props.selectedSdsImages.length : 0}
+        </div>
+        {props.generationError ? <div>{props.generationError}</div> : null}
+      </div>
+    );
+  },
 }));
 
 vi.mock("@/lib/api/shein-studio", () => ({
@@ -126,6 +134,7 @@ const selection = {
 describe("SheinStudioWorkbench", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    lastGenerationPanelProps = null;
     generateSheinStudioDesigns.mockReset();
     createSheinReviewTasks.mockReset();
     ensureSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
@@ -136,6 +145,51 @@ describe("SheinStudioWorkbench", () => {
     saveSheinStudioDraftWithOptions.mockRejectedValue(new Error("timeout"));
     updateSheinStudioSession.mockResolvedValue({ session: { id: "session-1" } });
     deleteSheinStudioBatch.mockResolvedValue(undefined);
+  });
+
+  it("defaults to one SDS main image plus size references in hybrid and SDS modes", async () => {
+    hydrateSDSVariantSelection.mockResolvedValue({
+      ...selection,
+      mockupImageUrls: ["https://example.com/main-mockup.jpg"],
+      sizeReferenceImageUrls: ["https://example.com/size-reference.jpg"],
+    });
+    loadSheinStudioDraft.mockResolvedValue({
+      prompt: "retro cherries",
+      styleCount: "1",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "1",
+      imageStrategy: "hybrid",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selectionVariantId: 100,
+      selection,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+    });
+
+    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("selected SDS images: 2")).toBeInTheDocument(),
+    );
+    expect(lastGenerationPanelProps?.selectedSdsImages).toEqual([
+      {
+        imageUrl: "https://example.com/main-mockup.jpg",
+        color: undefined,
+        variantSku: undefined,
+      },
+      {
+        imageUrl: "https://example.com/size-reference.jpg",
+        color: undefined,
+        variantSku: undefined,
+      },
+    ]);
   });
 
   it("keeps generated designs visible when draft save fails", async () => {

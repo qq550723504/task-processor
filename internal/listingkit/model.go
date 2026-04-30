@@ -57,13 +57,20 @@ type GenerateOptions struct {
 }
 
 type SheinStudioOptions struct {
-	StyleID                 string                       `json:"style_id,omitempty"`
-	StyleName               string                       `json:"style_name,omitempty"`
-	SourceDesignURLs        []string                     `json:"source_design_urls,omitempty"`
-	ProductImageURLs        []string                     `json:"product_image_urls,omitempty"`
-	VariantProductImages    []SheinStudioVariantImageSet `json:"variant_product_images,omitempty"`
-	SizeReferenceImageURLs  []string                     `json:"size_reference_image_urls,omitempty"`
-	RenderSizeImagesWithSDS bool                         `json:"render_size_images_with_sds,omitempty"`
+	StyleID                 string                        `json:"style_id,omitempty"`
+	StyleName               string                        `json:"style_name,omitempty"`
+	SourceDesignURLs        []string                      `json:"source_design_urls,omitempty"`
+	ProductImageURLs        []string                      `json:"product_image_urls,omitempty"`
+	SelectedSDSImages       []SheinStudioSelectedSDSImage `json:"selected_sds_images,omitempty"`
+	VariantProductImages    []SheinStudioVariantImageSet  `json:"variant_product_images,omitempty"`
+	SizeReferenceImageURLs  []string                      `json:"size_reference_image_urls,omitempty"`
+	RenderSizeImagesWithSDS bool                          `json:"render_size_images_with_sds,omitempty"`
+}
+
+type SheinStudioSelectedSDSImage struct {
+	ImageURL   string `json:"image_url,omitempty"`
+	VariantSKU string `json:"variant_sku,omitempty"`
+	Color      string `json:"color,omitempty"`
 }
 
 type SheinStudioVariantImageSet struct {

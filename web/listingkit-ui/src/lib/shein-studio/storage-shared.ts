@@ -6,9 +6,11 @@ import type {
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
   SheinStudioStorageData,
 } from "@/lib/types/shein-studio";
+import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
 
 export const MAX_SHEIN_STUDIO_BATCHES = 12;
 export const DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY: SheinStudioImageStrategy =
@@ -136,6 +138,10 @@ function normalizeProductImagePrompts(input: unknown): SheinStudioProductImagePr
     .filter((item): item is SheinStudioProductImagePrompt => Boolean(item));
 }
 
+function normalizeSelectedImages(input: unknown): SheinStudioSelectedSDSImage[] {
+  return normalizeSelectedSDSImages(input);
+}
+
 function isSelection(item: unknown): item is SDSProductVariantSelection {
   return (
     !!item &&
@@ -168,6 +174,7 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     transparentBackground: raw.transparentBackground ?? false,
     sheinStoreId: raw.sheinStoreId ?? "",
     imageStrategy: normalizeImageStrategy(raw.imageStrategy),
+    selectedSdsImages: normalizeSelectedImages(raw.selectedSdsImages),
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),
@@ -199,6 +206,7 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     transparentBackground: raw.transparentBackground ?? false,
     sheinStoreId: raw.sheinStoreId ?? "",
     imageStrategy: normalizeImageStrategy(raw.imageStrategy),
+    selectedSdsImages: normalizeSelectedImages(raw.selectedSdsImages),
     renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
     selectionVariantId: raw.selectionVariantId,
     selection: normalizeSelection(raw.selection),

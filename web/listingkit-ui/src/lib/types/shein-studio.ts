@@ -30,6 +30,12 @@ export type SheinStudioVariantProductImageSet = {
   imageUrls: string[];
 };
 
+export type SheinStudioSelectedSDSImage = {
+  imageUrl: string;
+  variantSku?: string;
+  color?: string;
+};
+
 export type SheinStudioCreatedTask = {
   id: string;
   title: string;
@@ -65,6 +71,7 @@ export type SheinStudioSavedBatch = {
   transparentBackground?: boolean;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
+  selectedSdsImages?: SheinStudioSelectedSDSImage[];
   renderSizeImagesWithSds?: boolean;
   selectionVariantId?: number;
   selection?: SDSProductVariantSelection;

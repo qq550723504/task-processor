@@ -316,6 +316,69 @@ func TestApplySDSTemplateImagesToSheinUsesColorSpecificRenderedMockups(t *testin
 	}
 }
 
+func TestApplySelectedSDSImagesToSheinUsesExplicitSelection(t *testing.T) {
+	sourceImage := "http://127.0.0.1:9100/listingkit-assets/source.png"
+	pkg := &sheinpub.Package{
+		Images: sheinImageSet(sourceImage),
+		SkcList: []sheinpub.SKCPackage{
+			{
+				SkcName:    "Running Shoes - Black",
+				SaleName:   "Running Shoes - Black",
+				Attributes: map[string]string{"Color": "Black"},
+				SKUs:       []common.Variant{{SKU: "SKU-BLK"}},
+			},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			ImageInfo: sheinpub.BuildImageDraft(sheinImageSet(sourceImage)),
+			SKCList: []sheinpub.SKCRequestDraft{
+				{
+					SkcName: "Running Shoes - Black",
+					SKUList: []sheinpub.SKUDraft{{
+						SupplierSKU: "SKU-BLK-S",
+						Attributes:  map[string]string{"Color": "Black", "source_sds_sku": "SKU-BLK"},
+					}},
+				},
+			},
+		},
+	}
+
+	applied := applySelectedSDSImagesToShein(pkg, &GenerateRequest{
+		ImageURLs: []string{sourceImage},
+		Options: &GenerateOptions{
+			SheinStudio: &SheinStudioOptions{
+				SelectedSDSImages: []SheinStudioSelectedSDSImage{
+					{
+						ImageURL:   "https://cdn.sdspod.com/out/black-main.jpg",
+						Color:      "Black",
+						VariantSKU: "SKU-BLK",
+					},
+					{
+						ImageURL:   "https://cdn.sdspod.com/out/black-detail.jpg",
+						Color:      "Black",
+						VariantSKU: "SKU-BLK",
+					},
+				},
+			},
+		},
+	}, []string{sourceImage})
+
+	if !applied {
+		t.Fatal("applySelectedSDSImagesToShein = false, want true")
+	}
+	if pkg.Images.MainImage != "https://cdn.sdspod.com/out/black-main.jpg" {
+		t.Fatalf("spu main image = %q", pkg.Images.MainImage)
+	}
+	if len(pkg.Images.Gallery) != 1 || pkg.Images.Gallery[0] != "https://cdn.sdspod.com/out/black-detail.jpg" {
+		t.Fatalf("spu gallery = %+v", pkg.Images.Gallery)
+	}
+	if pkg.RequestDraft.SKCList[0].ImageInfo.MainImage != "https://cdn.sdspod.com/out/black-main.jpg" {
+		t.Fatalf("skc image info = %+v", pkg.RequestDraft.SKCList[0].ImageInfo)
+	}
+	if pkg.RequestDraft.SKCList[0].SKUList[0].MainImage != "https://cdn.sdspod.com/out/black-main.jpg" {
+		t.Fatalf("sku main image = %q", pkg.RequestDraft.SKCList[0].SKUList[0].MainImage)
+	}
+}
+
 func TestApplySDSTemplateImagesToSheinSkipsWithoutRenderedMockups(t *testing.T) {
 	pkg := &sheinpub.Package{
 		Images:       sheinImageSet("https://cdn.example.com/flat-design.png"),

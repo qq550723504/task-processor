@@ -8,7 +8,9 @@ import type {
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioSelectedSDSImage,
 } from "@/lib/types/shein-studio";
+import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
 
 export type StudioSessionStatus =
   | "selecting"
@@ -30,6 +32,7 @@ type StudioSessionDetailResponse = {
     product_image_prompts?: SheinStudioProductImagePrompt[];
     artwork_model?: SheinStudioArtworkModel;
     image_strategy?: SheinStudioImageStrategy;
+    selected_sds_images?: SheinStudioSelectedSDSImage[];
     transparent_background?: boolean;
     render_size_images_with_sds?: boolean;
     shein_store_id?: string;
@@ -115,6 +118,7 @@ export async function updateSheinStudioSession(
     productImagePrompts?: SheinStudioProductImagePrompt[];
     artworkModel?: string;
     imageStrategy?: string;
+    selectedSdsImages?: SheinStudioSelectedSDSImage[];
     transparentBackground?: boolean;
     renderSizeImagesWithSds?: boolean;
     sheinStoreId?: string;
@@ -136,6 +140,7 @@ export async function updateSheinStudioSession(
       product_image_prompts: patch.productImagePrompts,
       artwork_model: patch.artworkModel,
       image_strategy: patch.imageStrategy,
+      selected_sds_images: patch.selectedSdsImages,
       transparent_background: patch.transparentBackground,
       render_size_images_with_sds: patch.renderSizeImagesWithSds,
       shein_store_id: patch.sheinStoreId,
@@ -202,6 +207,7 @@ export function mapStudioSessionDetailToDraft(
     transparentBackground: detail.session.transparent_background ?? false,
     sheinStoreId: detail.session.shein_store_id ?? "",
     imageStrategy: detail.session.image_strategy,
+    selectedSdsImages: normalizeSelectedSDSImages(detail.session.selected_sds_images),
     renderSizeImagesWithSds: detail.session.render_size_images_with_sds ?? true,
     selectionVariantId: normalizeSelectionResponse(detail.session.selection)?.variantId,
     selection: normalizeSelectionResponse(detail.session.selection),
