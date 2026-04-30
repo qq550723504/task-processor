@@ -35,10 +35,28 @@ func TestNormalizeTaskMessageSourceAndTarget(t *testing.T) {
 	}
 }
 
-func TestNormalizeTaskMessageRejectsPlatformTargetConflict(t *testing.T) {
+func TestNormalizeTaskMessageAcceptsLegacySourceWithExplicitTarget(t *testing.T) {
+	task, err := NormalizeTaskMessage(TaskMessage{
+		TaskID:         "1001",
+		Platform:       "amazon",
+		TargetPlatform: "shein",
+	})
+	if err != nil {
+		t.Fatalf("NormalizeTaskMessage returned error: %v", err)
+	}
+	if task.Route.Source != SourcePlatformAmazon {
+		t.Fatalf("expected source amazon, got %q", task.Route.Source)
+	}
+	if task.Route.Target != TargetPlatformShein {
+		t.Fatalf("expected target shein, got %q", task.Route.Target)
+	}
+}
+
+func TestNormalizeTaskMessageRejectsPlatformSourceConflict(t *testing.T) {
 	_, err := NormalizeTaskMessage(TaskMessage{
 		TaskID:         "1001",
 		Platform:       "shein",
+		SourcePlatform: "amazon",
 		TargetPlatform: "temu",
 	})
 	if err == nil {

@@ -113,7 +113,25 @@ func TestMessageAdapterMessageToTaskUsesLegacyPlatformAtAdapterBoundary(t *testi
 	assert.Equal(t, "shein", task.SourcePlatform)
 }
 
-func TestMessageAdapterMessageToTaskRejectsPlatformTargetConflict(t *testing.T) {
+func TestMessageAdapterMessageToTaskAcceptsLegacySourceWithExplicitTarget(t *testing.T) {
+	adapter := NewMessageAdapter()
+
+	task, err := adapter.MessageToTask(&Message{
+		ID:   "legacy-source-explicit-target",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(12345),
+			"platform":       "amazon",
+			"targetPlatform": "shein",
+			"productId":      "B001TEST",
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "shein", task.Platform)
+	assert.Equal(t, "amazon", task.SourcePlatform)
+}
+
+func TestMessageAdapterMessageToTaskRejectsPlatformSourceConflict(t *testing.T) {
 	adapter := NewMessageAdapter()
 
 	_, err := adapter.MessageToTask(&Message{
@@ -122,12 +140,13 @@ func TestMessageAdapterMessageToTaskRejectsPlatformTargetConflict(t *testing.T) 
 		Payload: map[string]any{
 			"taskId":         float64(12345),
 			"platform":       "shein",
+			"sourcePlatform": "amazon",
 			"targetPlatform": "temu",
 			"productId":      "B001TEST",
 		},
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "conflicts with targetPlatform")
+	assert.Contains(t, err.Error(), "conflicts with sourcePlatform")
 }
 
 func TestMessageAdapterMessageToTaskRequiresTargetPlatform(t *testing.T) {

@@ -19,8 +19,11 @@ func NormalizeTaskMessage(msg TaskMessage) (NormalizedTask, error) {
 	if target == "" {
 		return NormalizedTask{}, fmt.Errorf("missing target platform")
 	}
-	if legacyPlatform != "" && msg.TargetPlatform != "" && !strings.EqualFold(legacyPlatform, target) {
-		return NormalizedTask{}, fmt.Errorf("platform %q conflicts with targetPlatform %q", legacyPlatform, target)
+	// Historical messages used platform as the source crawler platform.
+	// Newer messages split sourcePlatform and targetPlatform, so
+	// amazon -> shein must be accepted.
+	if legacyPlatform != "" && msg.SourcePlatform != "" && !strings.EqualFold(legacyPlatform, source) {
+		return NormalizedTask{}, fmt.Errorf("platform %q conflicts with sourcePlatform %q", legacyPlatform, source)
 	}
 
 	return NormalizedTask{
