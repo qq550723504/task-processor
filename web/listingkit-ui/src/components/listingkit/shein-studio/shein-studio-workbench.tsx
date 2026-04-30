@@ -771,15 +771,18 @@ export function SheinStudioWorkbench({
           selectedStyleCount={selectedIds.length}
         />
         <SheinDesignPreviewGrid
+          imageStrategy={imageStrategy}
           designs={designs}
           onBackToGenerate={() => navigateToStep("generate")}
           onNoteChange={handleNoteChange}
           onCreateReviewTasks={handleCreateTasks}
           onRegenerate={handleRegenerate}
           onToggle={toggleSelection}
+          productImageCount={productImageCount}
           createActionDisabledReason={createActionDisabledReason}
           isCreatingTasks={isCreatingTasks}
           regeneratingId={regeneratingId || undefined}
+          renderSizeImagesWithSds={renderSizeImagesWithSds}
           selectedIds={selectedIds}
           selection={activeSelection}
         />

@@ -292,13 +292,16 @@ export function SheinStudioBatchDetail({ batchId }: { batchId: string }) {
       <SheinDesignPreviewGrid
         canRegenerate={false}
         designs={currentBatch.designs}
+        imageStrategy={currentBatch.imageStrategy ?? "sds_official"}
         onNoteChange={handleNoteChange}
         onRegenerate={() => {}}
         onCreateReviewTasks={handleCreateTasks}
         onToggle={handleToggle}
+        productImageCount={currentBatch.productImageCount ?? "1"}
         createActionDisabledReason={createActionDisabledReason}
         isCreatingTasks={isCreatingTasks}
         createActionLabel="为这个批次生成 SHEIN 资料"
+        renderSizeImagesWithSds={currentBatch.renderSizeImagesWithSds ?? true}
         selectedIds={currentBatch.selectedIds}
         selection={currentBatch.selection}
       />

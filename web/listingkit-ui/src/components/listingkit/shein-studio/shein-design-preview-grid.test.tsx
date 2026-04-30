@@ -25,10 +25,13 @@ describe("SheinDesignPreviewGrid", () => {
       <SheinDesignPreviewGrid
         createActionDisabledReason={undefined}
         designs={[{ id: "design-1", imageUrl: "https://example.com/design-1.png" }]}
+        imageStrategy="hybrid"
         onBackToGenerate={onBackToGenerate}
         onCreateReviewTasks={vi.fn()}
         onRegenerate={onRegenerate}
         onToggle={onToggle}
+        productImageCount="3"
+        renderSizeImagesWithSds
         selectedIds={["design-1"]}
       />,
     );
@@ -36,7 +39,12 @@ describe("SheinDesignPreviewGrid", () => {
     fireEvent.click(screen.getByRole("button", { name: "取消批准" }));
     expect(onToggle).toHaveBeenCalledWith("design-1");
 
-    fireEvent.click(screen.getByRole("button", { name: "继续生成款式图" }));
+    expect(screen.getByText("当前商品图设置")).toBeInTheDocument();
+    expect(screen.getByText("商品图方式：混合生成")).toBeInTheDocument();
+    expect(screen.getByText("商品图数量：3 张")).toBeInTheDocument();
+    expect(screen.getByText("尺寸图：使用 SDS 渲染")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "修改商品图设置" }));
     expect(onBackToGenerate).toHaveBeenCalledTimes(1);
   });
 });

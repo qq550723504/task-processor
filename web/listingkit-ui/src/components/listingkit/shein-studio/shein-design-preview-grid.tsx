@@ -8,7 +8,10 @@ import { SheinDesignReviewNote } from "@/components/listingkit/shein-studio/shei
 import { Button } from "@/components/shared/button";
 import { resolveGeneratedDesignSrc } from "@/lib/shein-studio/design-image";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
-import type { SheinStudioGeneratedDesign } from "@/lib/types/shein-studio";
+import type {
+  SheinStudioGeneratedDesign,
+  SheinStudioImageStrategy,
+} from "@/lib/types/shein-studio";
 
 export function SheinDesignPreviewGrid({
   designs,
@@ -25,6 +28,9 @@ export function SheinDesignPreviewGrid({
   isCreatingTasks = false,
   createActionLabel = "为已批准款式生成 SHEIN 资料",
   createActionDisabledReason,
+  imageStrategy,
+  productImageCount,
+  renderSizeImagesWithSds,
 }: {
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
@@ -40,6 +46,9 @@ export function SheinDesignPreviewGrid({
   isCreatingTasks?: boolean;
   createActionLabel?: string;
   createActionDisabledReason?: string;
+  imageStrategy: SheinStudioImageStrategy;
+  productImageCount: string;
+  renderSizeImagesWithSds: boolean;
 }) {
   const [activePreviewId, setActivePreviewId] = useState<string>("");
   const [activePreviewView, setActivePreviewView] = useState<"design" | "mockup">(
@@ -190,7 +199,7 @@ export function SheinDesignPreviewGrid({
 
         {!readOnly && onCreateReviewTasks ? (
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-[1.35rem] border border-emerald-200 bg-emerald-50 px-4 py-4">
-            <div>
+            <div className="space-y-3">
               <div className="text-sm font-semibold text-emerald-950">
                 已批准 {selectedIds.length} 个款式
               </div>
@@ -198,11 +207,21 @@ export function SheinDesignPreviewGrid({
                 {createActionDisabledReason ||
                   "下一步：上传已批准款式，生成商品图并创建 SHEIN 审核工作区。"}
               </div>
+              <div className="rounded-2xl border border-emerald-300/80 bg-white/65 px-3 py-3 text-sm text-emerald-950">
+                <div className="font-semibold">当前商品图设置</div>
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm leading-6 text-emerald-900">
+                  <span>商品图方式：{formatImageStrategyLabel(imageStrategy)}</span>
+                  <span>商品图数量：{productImageCount} 张</span>
+                  <span>
+                    尺寸图：{renderSizeImagesWithSds ? "使用 SDS 渲染" : "不额外使用 SDS 渲染"}
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="flex flex-wrap gap-3">
               {onBackToGenerate ? (
                 <Button onClick={onBackToGenerate} tone="ghost">
-                  继续生成款式图
+                  修改商品图设置
                 </Button>
               ) : null}
               <Button
@@ -229,4 +248,16 @@ export function SheinDesignPreviewGrid({
       />
     </>
   );
+}
+
+function formatImageStrategyLabel(strategy: SheinStudioImageStrategy) {
+  switch (strategy) {
+    case "sds_official":
+      return "SDS 官方渲染";
+    case "hybrid":
+      return "混合生成";
+    case "ai_generated":
+    default:
+      return "AI 生成商品图";
+  }
 }
