@@ -75,6 +75,12 @@ func New(config *Config) (*Client, error) {
 		client.SetCookies(cookies)
 	}
 
+	if client.shouldBootstrapOnInit() {
+		if _, err := client.bootstrapAuth(context.Background(), false); err != nil {
+			client.logBootstrapFailure(err)
+		}
+	}
+
 	return client, nil
 }
 

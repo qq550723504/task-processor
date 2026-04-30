@@ -87,6 +87,7 @@ require (
 	github.com/ashanbrown/makezero v1.2.0 // indirect
 	github.com/aws/aws-sdk-go v1.49.6 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.17.7 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.11.33 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.15 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.15 // indirect

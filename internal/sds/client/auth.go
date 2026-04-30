@@ -3,7 +3,10 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
+
+	"github.com/imroc/req/v3"
 )
 
 // LoginRequest 表示 SDS 登录请求。
@@ -36,6 +39,24 @@ type LoginResultData struct {
 	EnableMFA              int     `json:"enableMfa"`
 	IsZiguang              bool    `json:"is_ziguang"`
 	Username               string  `json:"username"`
+	VerifyCaptcha          *LoginVerifyCaptcha `json:"verifyCaptcha,omitempty"`
+}
+
+// LoginVerifyCaptcha 是 SDS 登录返回的验证码验证结果。
+type LoginVerifyCaptcha struct {
+	Code      string                   `json:"code"`
+	Message   string                   `json:"message"`
+	RequestID string                   `json:"requestId"`
+	Result    LoginVerifyCaptchaResult `json:"result"`
+	Success   bool                     `json:"success"`
+}
+
+// LoginVerifyCaptchaResult 表示验证码校验明细。
+type LoginVerifyCaptchaResult struct {
+	VerifyCode   string `json:"verifyCode"`
+	VerifyResult bool   `json:"verifyResult"`
+	OTT          string `json:"ott,omitempty"`
+	Token        string `json:"token,omitempty"`
 }
 
 // SetAuthState 设置鉴权状态并写入公共请求头。
@@ -75,7 +96,7 @@ func (c *Client) Login(ctx context.Context, req LoginRequest) (*LoginResponse, e
 	}
 
 	result := new(LoginResponse)
-	_, err := c.Do(ctx, "POST", c.config.Endpoints.LoginPath, nil, req, result)
+	resp, err := c.Do(ctx, "POST", c.config.Endpoints.LoginPath, nil, req, result)
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +105,22 @@ func (c *Client) Login(ctx context.Context, req LoginRequest) (*LoginResponse, e
 		return nil, &Error{
 			Op:      "POST /login",
 			Message: result.Msg,
+		}
+	}
+
+	if strings.TrimSpace(result.Data.AccessToken) == "" {
+		if challenge := result.Data.VerifyCaptcha; challenge != nil {
+			return result, &CaptchaRequiredError{
+				Op:          "POST /login",
+				Message:     coalesceNonEmpty(challenge.Message, result.Msg, challenge.Code),
+				RequestID:   strings.TrimSpace(challenge.RequestID),
+				VerifyCode:  strings.TrimSpace(challenge.Result.VerifyCode),
+				VerifyState: challenge.Result.VerifyResult,
+			}
+		}
+		return result, &Error{
+			Op:      "POST /login",
+			Message: "login response did not include access token",
 		}
 	}
 
@@ -98,8 +135,26 @@ func (c *Client) Login(ctx context.Context, req LoginRequest) (*LoginResponse, e
 	if err := c.SaveAuthState(); err != nil {
 		return nil, err
 	}
+	if resp != nil {
+		c.captureResponseCookies(resp)
+	}
+	if len(c.cookies) > 0 {
+		if err := c.SaveCookies(); err != nil {
+			return nil, err
+		}
+	}
 
 	return result, nil
+}
+
+func coalesceNonEmpty(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func (c *Client) applyAuthHeaders() {
@@ -114,4 +169,61 @@ func (c *Client) applyAuthHeaders() {
 	}
 
 	c.httpClient.SetCommonHeaders(headers)
+}
+
+func (c *Client) captureResponseCookies(resp *req.Response) {
+	if resp == nil || resp.Response == nil {
+		return
+	}
+	responseCookies := resp.Cookies()
+	if len(responseCookies) == 0 {
+		return
+	}
+	c.SetCookies(mergeCookies(c.cookies, responseCookies))
+}
+
+func mergeCookies(existing, incoming []*http.Cookie) []*http.Cookie {
+	type cookieKey struct {
+		name   string
+		domain string
+		path   string
+	}
+
+	merged := make(map[cookieKey]*http.Cookie, len(existing)+len(incoming))
+	order := make([]cookieKey, 0, len(existing)+len(incoming))
+
+	for _, item := range existing {
+		if item == nil || item.Name == "" {
+			continue
+		}
+		key := cookieKey{name: item.Name, domain: item.Domain, path: item.Path}
+		copied := *item
+		merged[key] = &copied
+		order = append(order, key)
+	}
+
+	for _, item := range incoming {
+		if item == nil || item.Name == "" {
+			continue
+		}
+		key := cookieKey{name: item.Name, domain: item.Domain, path: item.Path}
+		copied := *item
+		if _, exists := merged[key]; !exists {
+			order = append(order, key)
+		}
+		merged[key] = &copied
+	}
+
+	result := make([]*http.Cookie, 0, len(merged))
+	seen := make(map[cookieKey]struct{}, len(order))
+	for _, key := range order {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		if item, ok := merged[key]; ok {
+			result = append(result, item)
+		}
+	}
+	return result
 }

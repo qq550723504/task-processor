@@ -82,6 +82,49 @@
 - 列表、筛选、详情、推荐、周期接口当前可匿名访问
 - 设计相关接口和素材库动作需要登录态 `access-token`
 
+## 自动获取登录态
+
+当前客户端会按下面顺序自动引导 SDS 登录态：
+
+1. 本地文件
+   - `data/sds/auth_state.json`
+   - `data/sds/session_cookies.json`
+2. 环境变量静态注入
+   - `TASK_PROCESSOR_SDS_ACCESS_TOKEN`
+   - `TASK_PROCESSOR_SDS_OUT_ACCESS_TOKEN`
+   - `TASK_PROCESSOR_SDS_MERCHANT_ID`
+   - `TASK_PROCESSOR_SDS_COOKIE`
+3. management 店铺会话
+   - `TASK_PROCESSOR_SDS_MANAGEMENT_STORE_ID`
+   - 通过 management `store/get-cookie` 拉取 cookie
+   - 若 management 店铺记录带 `username/password`，会继续自动登录换取新 token
+4. 环境变量账号密码自动登录
+   - `TASK_PROCESSOR_SDS_USERNAME`
+   - `TASK_PROCESSOR_SDS_PASSWORD`
+   - 可选：
+     - `TASK_PROCESSOR_SDS_MERCHANT_NAME`
+     - `TASK_PROCESSOR_SDS_DOMAIN_NAME`
+     - `TASK_PROCESSOR_SDS_VERIFY_CAPTCHA_PARAM`
+     - `TASK_PROCESSOR_SDS_EXTRA_INFO`
+
+当 SDS 接口返回 `ret=20001` 或 HTTP `401/403` 时，客户端会自动重拉登录态并重试一次。
+
+可以直接用 CLI 单独验证 `req` 登录：
+
+```bash
+go run ./cmd/test-sds -mode login \
+  -username 你的账号 \
+  -password 你的密码 \
+  -domain-name www.sdsdiy.com
+```
+
+如果 SDS 当前登录链路要求风控字段，再补：
+
+```bash
+-verify-captcha-param '...'
+-extra-info '...'
+```
+
 ## 最小示例
 
 ```go

@@ -20,9 +20,15 @@ import (
 
 func main() {
 	var (
-		mode          = flag.String("mode", "option-groups", "option-groups|list|detail|cycle|recommend|sync-url|sync-file|sync-result-file|process-and-sync")
+		mode          = flag.String("mode", "option-groups", "login|option-groups|list|detail|cycle|recommend|sync-url|sync-file|sync-result-file|process-and-sync")
 		token         = flag.String("token", "", "SDS access-token")
 		merchantID    = flag.Int64("merchant-id", 0, "SDS merchant id")
+		username      = flag.String("username", "", "SDS username")
+		password      = flag.String("password", "", "SDS password")
+		merchantName  = flag.String("merchant-name", "", "SDS merchant name")
+		domainName    = flag.String("domain-name", "www.sdsdiy.com", "SDS login domain name")
+		extraInfo     = flag.String("extra-info", "", "SDS login extraInfo payload")
+		verifyCaptcha = flag.String("verify-captcha-param", "", "SDS login verifyCaptchaParam payload")
 		productID     = flag.String("product-id", "", "SDS product id")
 		variantID     = flag.Int64("variant-id", 0, "SDS variant id")
 		parentID      = flag.Int64("parent-id", 0, "SDS parent product id")
@@ -67,6 +73,17 @@ func main() {
 	var out any
 
 	switch *mode {
+	case "login":
+		requireUsername(*username)
+		requirePassword(*password)
+		out, err = c.Login(ctx, client.LoginRequest{
+			MerchantName:       *merchantName,
+			Username:           *username,
+			Password:           *password,
+			DomainName:         *domainName,
+			VerifyCaptchaParam: *verifyCaptcha,
+			ExtraInfo:          *extraInfo,
+		})
 	case "option-groups":
 		out, err = svc.GetOptionGroups(ctx, template.OptionGroupParams{
 			Size:          *size,
@@ -215,5 +232,17 @@ func requireResultFile(resultFile string) {
 func requireImageFile(imageFile string) {
 	if imageFile == "" {
 		log.Fatal("-image-file is required")
+	}
+}
+
+func requireUsername(username string) {
+	if username == "" {
+		log.Fatal("-username is required")
+	}
+}
+
+func requirePassword(password string) {
+	if password == "" {
+		log.Fatal("-password is required")
 	}
 }
