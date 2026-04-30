@@ -134,7 +134,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 		}
 	}
 	NormalizeListingCopy(pkg, canonical, req.Language)
-	groups := buildVariantGroups(variants, images, pkg.SaleAttributeResolution)
+	groups := buildVariantGroups(pkg.ProductNameEn, variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
 	supplierCode := firstSupplierCode(pkg.SkcList)
 	pkg.RequestDraft.SupplierCode = supplierCode

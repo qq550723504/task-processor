@@ -15,7 +15,7 @@ type variantGroup struct {
 	skus         []common.Variant
 }
 
-func buildVariantGroups(variants []common.Variant, images *common.ImageSet, resolution *SaleAttributeResolution) []variantGroup {
+func buildVariantGroups(baseTitle string, variants []common.Variant, images *common.ImageSet, resolution *SaleAttributeResolution) []variantGroup {
 	if len(variants) == 0 {
 		return nil
 	}
@@ -43,7 +43,7 @@ func buildVariantGroups(variants []common.Variant, images *common.ImageSet, reso
 		}
 		representative := groupVariants[0]
 		groupAttributes := commonAttributes(groupVariants)
-		skcName := resolveSKCName(groupingKey, groupAttributes, representative)
+		skcName := resolveSKCName(baseTitle, groupingKey, groupAttributes, representative)
 		mainImageURL := common.FirstNonEmpty(representative.Image, images.MainImage)
 		result = append(result, variantGroup{
 			skcName:      skcName,
@@ -87,14 +87,21 @@ func commonAttributes(variants []common.Variant) map[string]string {
 	return result
 }
 
-func resolveSKCName(groupingKey string, attributes map[string]string, representative common.Variant) string {
+func resolveSKCName(baseTitle string, groupingKey string, attributes map[string]string, representative common.Variant) string {
+	groupName := ""
 	if groupingKey != "" {
 		if value := strings.TrimSpace(lookupAttributeValue(attributes, groupingKey)); value != "" {
-			return value
+			groupName = value
+		} else if value := strings.TrimSpace(lookupAttributeValue(representative.Attributes, groupingKey)); value != "" {
+			groupName = value
 		}
-		if value := strings.TrimSpace(lookupAttributeValue(representative.Attributes, groupingKey)); value != "" {
-			return value
+	}
+	if groupName != "" {
+		baseTitle = strings.TrimSpace(baseTitle)
+		if baseTitle != "" && !strings.EqualFold(normalizeText(baseTitle), normalizeText(groupName)) {
+			return baseTitle + " - " + groupName
 		}
+		return groupName
 	}
 	return common.FirstNonEmpty(representative.SKU, "DEFAULT-001")
 }

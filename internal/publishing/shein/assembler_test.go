@@ -86,15 +86,15 @@ func (s stubAttributeAPI) AddCustomAttributeValue(req *sheinattribute.AddCustomA
 func TestBuildRequestSKCsGroupsVariantsByColor(t *testing.T) {
 	canonical := testCanonicalProduct()
 	variants := common.BuildVariants(canonical)
-	groups := buildVariantGroups(variants, &common.ImageSet{MainImage: "main.jpg"}, &SaleAttributeResolution{
+	groups := buildVariantGroups("Running Shoes", variants, &common.ImageSet{MainImage: "main.jpg"}, &SaleAttributeResolution{
 		PrimarySourceDimension: "color",
 	})
 
 	if len(groups) != 2 {
 		t.Fatalf("group count = %d, want 2", len(groups))
 	}
-	if groups[0].skcName != "Red" {
-		t.Fatalf("first group skc name = %q, want Red", groups[0].skcName)
+	if groups[0].skcName != "Running Shoes - Red" {
+		t.Fatalf("first group skc name = %q, want Running Shoes - Red", groups[0].skcName)
 	}
 	if len(groups[0].skus) != 2 {
 		t.Fatalf("first group sku count = %d, want 2", len(groups[0].skus))
@@ -119,7 +119,7 @@ func TestSaleAttributeResolutionAppliesAssignmentsAcrossGroupedSKCs(t *testing.T
 	canonical := testCanonicalProduct()
 	variants := common.BuildVariants(canonical)
 	images := &common.ImageSet{MainImage: "main.jpg"}
-	groups := buildVariantGroups(variants, images, &SaleAttributeResolution{
+	groups := buildVariantGroups("Running Shoes", variants, images, &SaleAttributeResolution{
 		PrimarySourceDimension: "color",
 	})
 	pkg := &Package{
@@ -316,8 +316,8 @@ func TestAssemblerBuildCreatesGroupedSKCsWhenSaleAttributeResolverMapsSourceDime
 	if len(pkg.RequestDraft.SKCList[0].SKUList) != 2 {
 		t.Fatalf("first skc sku count = %d, want 2", len(pkg.RequestDraft.SKCList[0].SKUList))
 	}
-	if pkg.RequestDraft.SKCList[0].SkcName != "Red" || pkg.RequestDraft.SKCList[1].SkcName != "Blue" {
-		t.Fatalf("skc names = %q, %q; want Red/Blue", pkg.RequestDraft.SKCList[0].SkcName, pkg.RequestDraft.SKCList[1].SkcName)
+	if pkg.RequestDraft.SKCList[0].SkcName != "Fallback Matrix Product - Red" || pkg.RequestDraft.SKCList[1].SkcName != "Fallback Matrix Product - Blue" {
+		t.Fatalf("skc names = %q, %q; want Fallback Matrix Product - Red/Fallback Matrix Product - Blue", pkg.RequestDraft.SKCList[0].SkcName, pkg.RequestDraft.SKCList[1].SkcName)
 	}
 }
 

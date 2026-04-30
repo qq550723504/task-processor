@@ -60,7 +60,7 @@ func RefreshDerivedState(
 	}
 
 	variants := common.BuildVariants(canonical)
-	groups := buildVariantGroups(variants, images, pkg.SaleAttributeResolution)
+	groups := buildVariantGroups(pkg.ProductNameEn, variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
 	pkg.RequestDraft.SupplierCode = firstSupplierCode(pkg.SkcList)
 	pkg.RequestDraft.SKCList = buildRequestSKCs(groups, images, pkg.SiteList, canonical, pricingPolicy)

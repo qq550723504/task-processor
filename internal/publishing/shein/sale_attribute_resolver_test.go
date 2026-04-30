@@ -116,7 +116,7 @@ func TestSaleAttributeResolverKeepsChosenSourceDimensionOrder(t *testing.T) {
 	}
 
 	variants := common.BuildVariants(canonical)
-	groups := buildVariantGroups(variants, &common.ImageSet{MainImage: "main.jpg"}, resolution)
+	groups := buildVariantGroups("", variants, &common.ImageSet{MainImage: "main.jpg"}, resolution)
 	if len(groups) != 2 {
 		t.Fatalf("group count = %d, want 2", len(groups))
 	}
