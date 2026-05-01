@@ -173,6 +173,7 @@ func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResul
 		final.Summary = &GenerationSummary{}
 	}
 	final.Summary.Warnings = uniqueStrings(append(final.Summary.Warnings, result.Summary.Warnings...))
+	applySheinVariantImageCoverageGuard(task, final.Shein)
 	if inventory != nil {
 		if enableAssetGeneration {
 			attachPlatformImageBundles(final, inventory, recipesByPlatform, generationPlan, s.assetBundleBuilder)

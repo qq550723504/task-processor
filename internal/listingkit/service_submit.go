@@ -59,6 +59,8 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 			pkg.FinalDraft.SubmitMode = action
 		}
 	}
+	applySheinFinalImageDraft(pkg)
+	applySheinVariantImageCoverageGuard(task, pkg)
 
 	readiness := buildSheinSubmitReadinessForAction(pkg, action)
 	if readiness == nil || !readiness.Ready {

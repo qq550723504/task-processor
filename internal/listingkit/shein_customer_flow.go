@@ -139,6 +139,7 @@ func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req 
 	review := buildSheinPricingReview(pkg, rule, pkg.FinalDraft.ManualPriceOverrides)
 	applySheinPricingReview(pkg, review)
 	applySheinFinalImageDraft(pkg)
+	applySheinVariantImageCoverageGuard(task, pkg)
 	task.Result.UpdatedAt = now
 	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
 		return nil, err
@@ -377,6 +378,7 @@ func applySheinFinalImageDraft(pkg *sheinpub.Package) {
 		}
 		pkg.RequestDraft.ImageInfo.Gallery = images
 	}
+	ensureSheinFinalDraftSKCImages(pkg, main, order, deleted)
 	if pkg.RequestDraft != nil {
 		for i := range pkg.RequestDraft.SKCList {
 			if pkg.RequestDraft.SKCList[i].ImageInfo == nil {
@@ -391,10 +393,71 @@ func applySheinFinalImageDraft(pkg *sheinpub.Package) {
 	if pkg.PreviewProduct != nil && pkg.PreviewProduct.ImageInfo != nil {
 		reorderSheinProductImages(pkg.PreviewProduct.ImageInfo, order, main, deleted, pkg.FinalDraft.ImageRoleOverrides)
 	}
+	ensureSheinFinalPreviewSKCImages(pkg)
 	if pkg.PreviewProduct != nil {
 		for i := range pkg.PreviewProduct.SKCList {
 			reorderSheinProductImages(&pkg.PreviewProduct.SKCList[i].ImageInfo, order, main, deleted, pkg.FinalDraft.ImageRoleOverrides)
 		}
+	}
+}
+
+func ensureSheinFinalDraftSKCImages(pkg *sheinpub.Package, main string, order []string, deleted map[string]struct{}) {
+	if pkg == nil || pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+		return
+	}
+	fallback := sheinFinalDraftFallbackImages(pkg, main, deleted)
+	for index := range pkg.RequestDraft.SKCList {
+		skcDraft := &pkg.RequestDraft.SKCList[index]
+		if sheinImageDraftHasImages(skcDraft.ImageInfo) {
+			continue
+		}
+		mainImage := firstNonEmpty(
+			sheinPackageSKCMainImage(pkg, index, skcDraft.SupplierCode),
+			sheinRequestSKCMainImage(skcDraft),
+			main,
+			firstNonEmpty(fallback...),
+		)
+		if strings.TrimSpace(mainImage) == "" {
+			continue
+		}
+		if skcDraft.ImageInfo == nil {
+			skcDraft.ImageInfo = &sheinpub.ImageDraft{}
+		}
+		skcDraft.ImageInfo.MainImage = mainImage
+		skcDraft.ImageInfo.Gallery = sheinGalleryWithoutMain(orderSheinImages(nil, fallback, deleted), mainImage)
+		if pkg.RequestDraft.ImageInfo != nil && strings.TrimSpace(skcDraft.ImageInfo.WhiteBg) == "" {
+			skcDraft.ImageInfo.WhiteBg = strings.TrimSpace(pkg.RequestDraft.ImageInfo.WhiteBg)
+		}
+		for skuIndex := range skcDraft.SKUList {
+			if strings.TrimSpace(skcDraft.SKUList[skuIndex].MainImage) == "" {
+				skcDraft.SKUList[skuIndex].MainImage = mainImage
+			}
+		}
+	}
+}
+
+func ensureSheinFinalPreviewSKCImages(pkg *sheinpub.Package) {
+	if pkg == nil || pkg.PreviewProduct == nil || len(pkg.PreviewProduct.SKCList) == 0 {
+		return
+	}
+	roleOverrides := map[string]string(nil)
+	if pkg.FinalDraft != nil {
+		roleOverrides = pkg.FinalDraft.ImageRoleOverrides
+	}
+	for index := range pkg.PreviewProduct.SKCList {
+		skc := &pkg.PreviewProduct.SKCList[index]
+		if len(skc.ImageInfo.ImageInfoList) > 0 {
+			continue
+		}
+		draft := sheinRequestDraftSKCByIndexOrCode(pkg.RequestDraft, index, sheinPreviewSKCSupplierCode(skc))
+		if draft == nil || !sheinImageDraftHasImages(draft.ImageInfo) {
+			continue
+		}
+		info := sheinProductImageInfoFromDraft(draft.ImageInfo, roleOverrides)
+		if info == nil {
+			continue
+		}
+		skc.ImageInfo = *info
 	}
 }
 
@@ -422,6 +485,176 @@ func orderSheinImages(existing []string, order []string, deleted map[string]stru
 		add(image)
 	}
 	return out
+}
+
+func sheinFinalDraftFallbackImages(pkg *sheinpub.Package, main string, deleted map[string]struct{}) []string {
+	images := make([]string, 0, 16)
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, removed := deleted[value]; removed {
+			return
+		}
+		images = append(images, value)
+	}
+	add(main)
+	if pkg == nil {
+		return uniqueNonEmptyStrings(images)
+	}
+	if pkg.RequestDraft != nil && pkg.RequestDraft.ImageInfo != nil {
+		add(pkg.RequestDraft.ImageInfo.MainImage)
+		for _, image := range pkg.RequestDraft.ImageInfo.Gallery {
+			add(image)
+		}
+		add(pkg.RequestDraft.ImageInfo.WhiteBg)
+	}
+	if pkg.PreviewProduct != nil && pkg.PreviewProduct.ImageInfo != nil {
+		for _, image := range pkg.PreviewProduct.ImageInfo.ImageInfoList {
+			add(image.ImageURL)
+		}
+	}
+	for _, skc := range pkg.SkcList {
+		add(skc.MainImageURL)
+	}
+	return uniqueNonEmptyStrings(images)
+}
+
+func sheinPackageSKCMainImage(pkg *sheinpub.Package, index int, supplierCode string) string {
+	if pkg == nil {
+		return ""
+	}
+	if strings.TrimSpace(supplierCode) != "" {
+		for _, skc := range pkg.SkcList {
+			if strings.EqualFold(strings.TrimSpace(skc.SupplierCode), strings.TrimSpace(supplierCode)) {
+				return strings.TrimSpace(skc.MainImageURL)
+			}
+		}
+	}
+	if index >= 0 && index < len(pkg.SkcList) {
+		return strings.TrimSpace(pkg.SkcList[index].MainImageURL)
+	}
+	return ""
+}
+
+func sheinRequestSKCMainImage(skc *sheinpub.SKCRequestDraft) string {
+	if skc == nil {
+		return ""
+	}
+	if skc.ImageInfo != nil && strings.TrimSpace(skc.ImageInfo.MainImage) != "" {
+		return strings.TrimSpace(skc.ImageInfo.MainImage)
+	}
+	for _, sku := range skc.SKUList {
+		if strings.TrimSpace(sku.MainImage) != "" {
+			return strings.TrimSpace(sku.MainImage)
+		}
+	}
+	return ""
+}
+
+func sheinImageDraftHasImages(info *sheinpub.ImageDraft) bool {
+	if info == nil {
+		return false
+	}
+	if strings.TrimSpace(info.MainImage) != "" || strings.TrimSpace(info.WhiteBg) != "" {
+		return true
+	}
+	for _, image := range info.Gallery {
+		if strings.TrimSpace(image) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func sheinGalleryWithoutMain(images []string, main string) []string {
+	main = strings.TrimSpace(main)
+	if len(images) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(images))
+	for _, image := range images {
+		image = strings.TrimSpace(image)
+		if image == "" || image == main {
+			continue
+		}
+		out = append(out, image)
+	}
+	return out
+}
+
+func sheinRequestDraftSKCByIndexOrCode(draft *sheinpub.RequestDraft, index int, supplierCode string) *sheinpub.SKCRequestDraft {
+	if draft == nil {
+		return nil
+	}
+	if strings.TrimSpace(supplierCode) != "" {
+		for i := range draft.SKCList {
+			if strings.EqualFold(strings.TrimSpace(draft.SKCList[i].SupplierCode), strings.TrimSpace(supplierCode)) {
+				return &draft.SKCList[i]
+			}
+		}
+	}
+	if index >= 0 && index < len(draft.SKCList) {
+		return &draft.SKCList[index]
+	}
+	return nil
+}
+
+func sheinPreviewSKCSupplierCode(skc *sheinproduct.SKC) string {
+	if skc == nil || skc.SupplierCode == nil {
+		return ""
+	}
+	return strings.TrimSpace(*skc.SupplierCode)
+}
+
+func sheinProductImageInfoFromDraft(info *sheinpub.ImageDraft, roles map[string]string) *sheinproduct.ImageInfo {
+	if !sheinImageDraftHasImages(info) {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	images := make([]sheinproduct.ImageDetail, 0, 1+len(info.Gallery)+1)
+	add := func(url string, defaultType int, main bool) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+		if _, ok := seen[url]; ok {
+			return
+		}
+		seen[url] = struct{}{}
+		image := sheinproduct.ImageDetail{
+			ImageURL:           url,
+			ImageType:          defaultType,
+			ImageSort:          len(images) + 1,
+			MarketingMainImage: main,
+		}
+		switch strings.ToLower(strings.TrimSpace(roles[url])) {
+		case "main":
+			image.ImageType = 1
+			image.MarketingMainImage = true
+		case "swatch":
+			image.ImageType = 6
+			image.MarketingMainImage = false
+		case "skc":
+			image.ImageType = 2
+			image.MarketingMainImage = false
+		case "size_map":
+			image.ImageType = 6
+			image.SizeImgFlag = true
+			image.MarketingMainImage = false
+		}
+		images = append(images, image)
+	}
+	add(info.MainImage, 1, true)
+	for _, image := range info.Gallery {
+		add(image, 2, false)
+	}
+	add(info.WhiteBg, 2, false)
+	if len(images) == 0 {
+		return nil
+	}
+	return &sheinproduct.ImageInfo{ImageInfoList: images}
 }
 
 func reorderSheinProductImages(info *sheinproduct.ImageInfo, order []string, main string, deleted map[string]struct{}, roles map[string]string) {

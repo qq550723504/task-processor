@@ -1273,6 +1273,176 @@ func TestSubmitTaskPublishBlocksMissingSizeMapRole(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskPublishRepairsMissingSKCImagesFromFinalDraft(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	sourceImage := "https://oss.shuomiai.com/listingkit/source-main.png"
+	sizeImage := "https://oss.shuomiai.com/listingkit/source-size.png"
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		Confirmed:       true,
+		MainImageURL:    sourceImage,
+		FinalImageOrder: []string{sourceImage, sizeImage},
+		ImageRoleOverrides: map[string]string{
+			sizeImage: "size_map",
+		},
+	}
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: sourceImage,
+		Gallery:   []string{sourceImage, sizeImage},
+	}
+	task.Result.Shein.RequestDraft.SKCList[0].ImageInfo = nil
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].MainImage = sourceImage
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{sourceImage, sizeImage})
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = sheinproduct.ImageInfo{}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	var submitted *sheinproduct.Product
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				publishResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "success",
+					Info: sheinproduct.ResponseInfo{Success: true},
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	if len(submitted.SKCList) == 0 || len(submitted.SKCList[0].ImageInfo.ImageInfoList) == 0 {
+		t.Fatalf("submitted skc images = %+v, want repaired images", submitted.SKCList)
+	}
+
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if saved.Result.Shein.RequestDraft.SKCList[0].ImageInfo == nil || strings.TrimSpace(saved.Result.Shein.RequestDraft.SKCList[0].ImageInfo.MainImage) == "" {
+		t.Fatalf("saved request skc image = %+v, want repaired main image", saved.Result.Shein.RequestDraft.SKCList[0].ImageInfo)
+	}
+	if len(saved.Result.Shein.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList) == 0 {
+		t.Fatalf("saved preview skc images = %+v, want repaired images", saved.Result.Shein.PreviewProduct.SKCList[0].ImageInfo)
+	}
+}
+
+func TestSubmitTaskBlocksSharedSingleImageAcrossMultipleSKCs(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Request.Options = &GenerateOptions{
+		SheinStudio: &SheinStudioOptions{},
+	}
+	mainImage := "https://oss.shuomiai.com/listingkit/shared-main.png"
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: mainImage,
+		Gallery:   []string{mainImage, "https://oss.shuomiai.com/listingkit/size-map.png"},
+	}
+	task.Result.Shein.RequestDraft.SKCList = []sheinpub.SKCRequestDraft{
+		{
+			SkcName:      "black",
+			SaleName:     "black",
+			SupplierCode: "BLACK",
+			ImageInfo:    &SheinImageDraft{MainImage: mainImage},
+			SKUList:      []sheinpub.SKUDraft{{SupplierSKU: "BLACK-20OZ", MainImage: mainImage, Attributes: map[string]string{"Color": "black"}}},
+		},
+		{
+			SkcName:      "gray",
+			SaleName:     "gray",
+			SupplierCode: "GRAY",
+			ImageInfo:    &SheinImageDraft{MainImage: mainImage},
+			SKUList:      []sheinpub.SKUDraft{{SupplierSKU: "GRAY-20OZ", MainImage: mainImage, Attributes: map[string]string{"Color": "gray"}}},
+		},
+		{
+			SkcName:      "Pale pink",
+			SaleName:     "Pale pink",
+			SupplierCode: "PALE-PINK",
+			ImageInfo:    &SheinImageDraft{MainImage: mainImage},
+			SKUList:      []sheinpub.SKUDraft{{SupplierSKU: "PALE-PINK-20OZ", MainImage: mainImage, Attributes: map[string]string{"Color": "Pale pink"}}},
+		},
+	}
+	task.Result.Shein.SkcList = []sheinpub.SKCPackage{
+		{SkcName: "black", SaleName: "black", SupplierCode: "BLACK", MainImageURL: mainImage},
+		{SkcName: "gray", SaleName: "gray", SupplierCode: "GRAY", MainImageURL: mainImage},
+		{SkcName: "Pale pink", SaleName: "Pale pink", SupplierCode: "PALE-PINK", MainImageURL: mainImage},
+	}
+	task.Result.Shein.PreviewProduct = sheinpub.BuildPreviewProduct(task.Result.Shein)
+	task.Result.SDSSync = &SDSSyncSummary{
+		Status: "failed",
+		Error:  "SDS render failed for selected color variants: gray, Pale pink",
+		VariantResults: []SDSSyncSummary{
+			{VariantColor: "black", Status: "completed", MockupImageURLs: []string{mainImage}},
+			{VariantColor: "gray", Status: "failed"},
+			{VariantColor: "Pale pink", Status: "failed"},
+		},
+	}
+	task.Result.Summary = &GenerationSummary{}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	publishCalled := false
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				publishHook: func(product *sheinproduct.Product) {
+					publishCalled = true
+				},
+			},
+		},
+		SheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish"})
+	if err == nil || !errors.Is(err, ErrSubmitBlocked) {
+		t.Fatalf("submit err = %v, want readiness block", err)
+	}
+	if publishCalled {
+		t.Fatal("publish should not be called when variant image coverage is incomplete")
+	}
+
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if saved.Result == nil || saved.Result.Summary == nil || !saved.Result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want needs review", saved.Result.Summary)
+	}
+	if len(saved.Result.ReviewReasons) == 0 || !strings.Contains(saved.Result.ReviewReasons[0], "gray, Pale pink") {
+		t.Fatalf("review reasons = %#v, want failed variant reason", saved.Result.ReviewReasons)
+	}
+	for _, skc := range saved.Result.Shein.RequestDraft.SKCList {
+		if skc.ImageInfo != nil && strings.TrimSpace(skc.ImageInfo.MainImage) != "" {
+			t.Fatalf("skc image info = %+v, want cleared shared images", skc.ImageInfo)
+		}
+	}
+}
+
 func TestSubmitReadinessDerivesSwatchFromSKCImage(t *testing.T) {
 	t.Parallel()
 

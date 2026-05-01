@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"strings"
 	"testing"
 
 	common "task-processor/internal/publishing/common"
@@ -583,6 +584,89 @@ func TestApplySheinStudioAIImagesToSheinUsesVariantImagesForSKCs(t *testing.T) {
 	}
 	if pkg.PreviewProduct == nil {
 		t.Fatal("preview product missing")
+	}
+}
+
+func TestEnforceSheinVariantImageCoverageBlocksSharedSingleImageAcrossMultipleSKCs(t *testing.T) {
+	pkg := &sheinpub.Package{
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{
+				{
+					SkcName:      "black",
+					SupplierCode: "SKU-BLK-STYLE",
+					ImageInfo:    &sheinpub.ImageDraft{MainImage: "https://cdn.example.com/shared.png"},
+					SKUList:      []sheinpub.SKUDraft{{SupplierSKU: "SKU-BLK", MainImage: "https://cdn.example.com/shared.png"}},
+				},
+				{
+					SkcName:      "white",
+					SupplierCode: "SKU-WHT-STYLE",
+					ImageInfo:    &sheinpub.ImageDraft{MainImage: "https://cdn.example.com/shared.png"},
+					SKUList:      []sheinpub.SKUDraft{{SupplierSKU: "SKU-WHT", MainImage: "https://cdn.example.com/shared.png"}},
+				},
+			},
+		},
+		SkcList: []sheinpub.SKCPackage{
+			{SupplierCode: "SKU-BLK-STYLE", MainImageURL: "https://cdn.example.com/shared.png"},
+			{SupplierCode: "SKU-WHT-STYLE", MainImageURL: "https://cdn.example.com/shared.png"},
+		},
+		PreviewProduct: &sheinproduct.Product{
+			SKCList: []sheinproduct.SKC{
+				{ImageInfo: *sheinImageInfo([]string{"https://cdn.example.com/shared.png"}), SKUS: []sheinproduct.SKU{{ImageInfo: sheinImageInfo([]string{"https://cdn.example.com/shared.png"})}}},
+				{ImageInfo: *sheinImageInfo([]string{"https://cdn.example.com/shared.png"}), SKUS: []sheinproduct.SKU{{ImageInfo: sheinImageInfo([]string{"https://cdn.example.com/shared.png"})}}},
+			},
+		},
+	}
+
+	warning, blocked := enforceSheinVariantImageCoverage(pkg, &GenerateRequest{
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategyAIGenerated,
+			SheinStudio: &SheinStudioOptions{
+				ProductImageURLs: []string{"https://cdn.example.com/shared.png"},
+			},
+		},
+	}, &SDSSyncSummary{
+		Status: "failed",
+		Error:  "SDS render failed for selected color variants: white",
+	})
+
+	if !blocked {
+		t.Fatal("blocked = false, want true")
+	}
+	if !strings.Contains(warning, "SDS render failed for selected color variants: white") {
+		t.Fatalf("warning = %q", warning)
+	}
+	if pkg.RequestDraft.SKCList[0].ImageInfo != nil || pkg.RequestDraft.SKCList[1].ImageInfo != nil {
+		t.Fatalf("request draft skc image info should be cleared: %+v", pkg.RequestDraft.SKCList)
+	}
+	if len(pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList) != 0 || len(pkg.PreviewProduct.SKCList[1].ImageInfo.ImageInfoList) != 0 {
+		t.Fatalf("preview skc images should be cleared: %+v", pkg.PreviewProduct.SKCList)
+	}
+}
+
+func TestEnforceSheinVariantImageCoverageAllowsCompleteVariantImages(t *testing.T) {
+	pkg := &sheinpub.Package{
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{
+				{SkcName: "black", SupplierCode: "SKU-BLK-STYLE", ImageInfo: &sheinpub.ImageDraft{MainImage: "https://cdn.example.com/black.png"}},
+				{SkcName: "white", SupplierCode: "SKU-WHT-STYLE", ImageInfo: &sheinpub.ImageDraft{MainImage: "https://cdn.example.com/white.png"}},
+			},
+		},
+	}
+
+	warning, blocked := enforceSheinVariantImageCoverage(pkg, &GenerateRequest{
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategyAIGenerated,
+			SheinStudio: &SheinStudioOptions{
+				VariantProductImages: []SheinStudioVariantImageSet{
+					{VariantSKU: "SKU-BLK", Color: "black", ImageURLs: []string{"https://cdn.example.com/black.png"}},
+					{VariantSKU: "SKU-WHT", Color: "white", ImageURLs: []string{"https://cdn.example.com/white.png"}},
+				},
+			},
+		},
+	}, nil)
+
+	if blocked {
+		t.Fatalf("blocked = true, warning = %q", warning)
 	}
 }
 

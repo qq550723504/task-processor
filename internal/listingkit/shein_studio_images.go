@@ -297,3 +297,138 @@ func saleAttributeValue(attr *sheinpub.ResolvedSaleAttribute) string {
 func normalizeVariantImageKey(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
+
+func applySheinVariantImageCoverageGuard(task *Task, pkg *sheinpub.Package) bool {
+	if task == nil || task.Result == nil || pkg == nil {
+		return false
+	}
+	warning, blocked := enforceSheinVariantImageCoverage(pkg, task.Request, task.Result.SDSSync)
+	if !blocked || strings.TrimSpace(warning) == "" {
+		return false
+	}
+	if task.Result.Summary == nil {
+		task.Result.Summary = &GenerationSummary{}
+	}
+	task.Result.Summary.NeedsReview = true
+	task.Result.Summary.Warnings = uniqueStrings(append(task.Result.Summary.Warnings, warning))
+	task.Result.ReviewReasons = uniqueStrings(append(task.Result.ReviewReasons, warning))
+	pkg.ReviewNotes = uniqueStrings(append(pkg.ReviewNotes, warning))
+	return true
+}
+
+func enforceSheinVariantImageCoverage(pkg *sheinpub.Package, req *GenerateRequest, sdsSummary *SDSSyncSummary) (string, bool) {
+	if pkg == nil || req == nil || req.Options == nil || req.Options.SheinStudio == nil {
+		return "", false
+	}
+	skcCount := len(pkg.RequestDraft.SKCList)
+	if skcCount <= 1 {
+		return "", false
+	}
+	distinctImageCount := sheinDistinctSKCMainImageCount(pkg)
+	if distinctImageCount >= skcCount {
+		return "", false
+	}
+	coverageCount := sheinVariantImageCoverageCount(req, sdsSummary)
+	if coverageCount >= skcCount {
+		return "", false
+	}
+	clearSharedSheinSKCImages(pkg)
+	warning := "变体图片覆盖不完整：当前颜色规格多于可用变体图，已阻止将同一张图复用到所有 SKC，请补齐每个颜色的商品图后再提交"
+	if sdsSummary != nil && strings.TrimSpace(sdsSummary.Error) != "" {
+		warning = warning + "；" + strings.TrimSpace(sdsSummary.Error)
+	}
+	return warning, true
+}
+
+func sheinDistinctSKCMainImageCount(pkg *sheinpub.Package) int {
+	if pkg == nil || pkg.RequestDraft == nil {
+		return 0
+	}
+	seen := map[string]struct{}{}
+	for _, skc := range pkg.RequestDraft.SKCList {
+		url := strings.TrimSpace(skcMainImageURL(skc))
+		if url == "" {
+			continue
+		}
+		seen[url] = struct{}{}
+	}
+	return len(seen)
+}
+
+func skcMainImageURL(skc sheinpub.SKCRequestDraft) string {
+	if skc.ImageInfo != nil && strings.TrimSpace(skc.ImageInfo.MainImage) != "" {
+		return strings.TrimSpace(skc.ImageInfo.MainImage)
+	}
+	for _, sku := range skc.SKUList {
+		if strings.TrimSpace(sku.MainImage) != "" {
+			return strings.TrimSpace(sku.MainImage)
+		}
+	}
+	return ""
+}
+
+func sheinVariantImageCoverageCount(req *GenerateRequest, sdsSummary *SDSSyncSummary) int {
+	counts := []int{
+		len(normalizeSheinStudioVariantImageSets(req.Options.SheinStudio.VariantProductImages)),
+		len(selectedSDSVariantImageCoverage(req.Options.SheinStudio.SelectedSDSImages)),
+		len(completedSDSVariantCoverage(sdsSummary)),
+	}
+	maxCount := 0
+	for _, count := range counts {
+		if count > maxCount {
+			maxCount = count
+		}
+	}
+	return maxCount
+}
+
+func selectedSDSVariantImageCoverage(items []SheinStudioSelectedSDSImage) map[string]struct{} {
+	coverage := map[string]struct{}{}
+	for _, item := range normalizeSelectedSDSImages(items) {
+		if key := normalizeVariantImageKey(firstNonEmptyString(item.VariantSKU, item.Color)); key != "" {
+			coverage[key] = struct{}{}
+		}
+	}
+	return coverage
+}
+
+func completedSDSVariantCoverage(summary *SDSSyncSummary) map[string]struct{} {
+	coverage := map[string]struct{}{}
+	if summary == nil {
+		return coverage
+	}
+	for _, item := range summary.VariantResults {
+		if item.Status == "failed" || len(item.MockupImageURLs) == 0 {
+			continue
+		}
+		if key := normalizeVariantImageKey(firstNonEmptyString(item.VariantSKU, item.VariantColor)); key != "" {
+			coverage[key] = struct{}{}
+		}
+	}
+	return coverage
+}
+
+func clearSharedSheinSKCImages(pkg *sheinpub.Package) {
+	if pkg == nil {
+		return
+	}
+	if pkg.RequestDraft != nil {
+		for skcIndex := range pkg.RequestDraft.SKCList {
+			pkg.RequestDraft.SKCList[skcIndex].ImageInfo = nil
+			for skuIndex := range pkg.RequestDraft.SKCList[skcIndex].SKUList {
+				pkg.RequestDraft.SKCList[skcIndex].SKUList[skuIndex].MainImage = ""
+			}
+		}
+	}
+	for skcIndex := range pkg.SkcList {
+		pkg.SkcList[skcIndex].MainImageURL = ""
+	}
+	if pkg.PreviewProduct != nil {
+		for skcIndex := range pkg.PreviewProduct.SKCList {
+			pkg.PreviewProduct.SKCList[skcIndex].ImageInfo = sheinproduct.ImageInfo{}
+			for skuIndex := range pkg.PreviewProduct.SKCList[skcIndex].SKUS {
+				pkg.PreviewProduct.SKCList[skcIndex].SKUS[skuIndex].ImageInfo = &sheinproduct.ImageInfo{}
+			}
+		}
+	}
+}
