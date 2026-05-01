@@ -33,4 +33,3 @@ func (f *aiCategoryTreeFallback) SelectCategoryID(query string, tree *sheincateg
 	}
 	return f.manager.GetCategoryIDByTitleWithTree(context.Background(), query, tree, nil)
 }
-

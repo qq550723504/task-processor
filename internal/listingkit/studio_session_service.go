@@ -113,11 +113,7 @@ func (s *service) UpdateStudioSession(ctx context.Context, sessionID string, req
 		if req.SelectedSDSImages != nil {
 			selected := make(SheinStudioSelectedSDSImageList, 0, len(req.SelectedSDSImages))
 			for _, item := range req.SelectedSDSImages {
-				selected = append(selected, SheinStudioSelectedSDSImageRecord{
-					ImageURL:   item.ImageURL,
-					VariantSKU: item.VariantSKU,
-					Color:      item.Color,
-				})
+				selected = append(selected, SheinStudioSelectedSDSImageRecord(item))
 			}
 			session.SelectedSDSImages = selected
 		}

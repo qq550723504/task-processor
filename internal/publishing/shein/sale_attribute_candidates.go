@@ -56,9 +56,7 @@ func buildSaleAttributeCandidatesForDimension(
 	if match := index.Match(dimension.Name, dimension.SampleValue); match.AttributeID > 0 {
 		fitCount, fitTotal := countTemplateValueFits(index, match.Name, dimension.Values)
 		if candidate, ok := newSaleAttributeCandidate(dimension, sourceOrder, templateAttributeOrder(attributes, match.AttributeID), match, fitCount, fitTotal); ok {
-			if appendSaleAttributeCandidate(&result, seen, candidate) {
-				// Keep the name-matched candidate even when fit is zero so resolver can explain why it was rejected.
-			}
+			appendSaleAttributeCandidate(&result, seen, candidate)
 		}
 	}
 

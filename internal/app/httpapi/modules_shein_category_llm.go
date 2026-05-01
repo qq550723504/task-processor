@@ -10,4 +10,3 @@ func buildSheinCategoryLLMClient(mgr *openaiclient.Manager) openaiclient.ChatCom
 	}
 	return mgr.GetDefaultClient()
 }
-

@@ -7,15 +7,15 @@ import (
 )
 
 type GenerationScenePresetSummary struct {
-	PromptKey         string `json:"prompt_key,omitempty"`
-	DefaultsSource    string `json:"defaults_source,omitempty"`
-	SceneCategory     string `json:"scene_category,omitempty"`
-	SceneStyle        string `json:"scene_style,omitempty"`
-	BackgroundTone    string `json:"background_tone,omitempty"`
-	Composition       string `json:"composition,omitempty"`
-	PropsLevel        string `json:"props_level,omitempty"`
-	AudienceHint      string `json:"audience_hint,omitempty"`
-	CustomSceneHint   string `json:"custom_scene_hint,omitempty"`
+	PromptKey       string `json:"prompt_key,omitempty"`
+	DefaultsSource  string `json:"defaults_source,omitempty"`
+	SceneCategory   string `json:"scene_category,omitempty"`
+	SceneStyle      string `json:"scene_style,omitempty"`
+	BackgroundTone  string `json:"background_tone,omitempty"`
+	Composition     string `json:"composition,omitempty"`
+	PropsLevel      string `json:"props_level,omitempty"`
+	AudienceHint    string `json:"audience_hint,omitempty"`
+	CustomSceneHint string `json:"custom_scene_hint,omitempty"`
 }
 
 func buildGenerationScenePresetSummary(bundle *asset.Bundle, assetID string) *GenerationScenePresetSummary {

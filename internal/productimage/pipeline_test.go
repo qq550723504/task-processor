@@ -321,12 +321,12 @@ func TestService_ProcessImages_FlagsImageIPRisk(t *testing.T) {
 func TestService_ProcessImages_DowngradesWhiteBackgroundFailureToNeedsReview(t *testing.T) {
 	repo := store.NewMemTaskRepository()
 	svc, err := productimage.NewService(&productimage.ServiceConfig{
-		TaskRepo:         repo,
-		AssetPublisher:   &stubAssetPublisher{},
-		WhiteBgRenderer:  &failingWhiteBackgroundRenderer{err: fmt.Errorf("white background provider timeout")},
-		SceneRenderer:    nil,
-		ReviewAssessor:   productimage.NewDefaultReviewAssessor(),
-		QualityAssessor:  productimage.NewDefaultQualityAssessor(),
+		TaskRepo:        repo,
+		AssetPublisher:  &stubAssetPublisher{},
+		WhiteBgRenderer: &failingWhiteBackgroundRenderer{err: fmt.Errorf("white background provider timeout")},
+		SceneRenderer:   nil,
+		ReviewAssessor:  productimage.NewDefaultReviewAssessor(),
+		QualityAssessor: productimage.NewDefaultQualityAssessor(),
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
@@ -369,10 +369,10 @@ func TestService_ProcessImages_DowngradesWhiteBackgroundFailureToNeedsReview(t *
 func TestService_ProcessImages_DowngradesGalleryFailureToNeedsReview(t *testing.T) {
 	repo := store.NewMemTaskRepository()
 	svc, err := productimage.NewService(&productimage.ServiceConfig{
-		TaskRepo:       repo,
-		AssetPublisher: &stubAssetPublisher{},
-		SceneRenderer:  &failingSceneRenderer{err: fmt.Errorf("scene generation timeout")},
-		ReviewAssessor: productimage.NewDefaultReviewAssessor(),
+		TaskRepo:        repo,
+		AssetPublisher:  &stubAssetPublisher{},
+		SceneRenderer:   &failingSceneRenderer{err: fmt.Errorf("scene generation timeout")},
+		ReviewAssessor:  productimage.NewDefaultReviewAssessor(),
 		QualityAssessor: productimage.NewDefaultQualityAssessor(),
 	})
 	if err != nil {
@@ -416,9 +416,9 @@ func TestService_ProcessImages_DowngradesGalleryFailureToNeedsReview(t *testing.
 func TestService_ProcessImages_StillFailsWhenSubjectExtractionFails(t *testing.T) {
 	repo := store.NewMemTaskRepository()
 	svc, err := productimage.NewService(&productimage.ServiceConfig{
-		TaskRepo:          repo,
-		AssetPublisher:    &stubAssetPublisher{},
-		SubjectExtractor:  &failingSubjectExtractor{err: fmt.Errorf("subject extraction boom")},
+		TaskRepo:         repo,
+		AssetPublisher:   &stubAssetPublisher{},
+		SubjectExtractor: &failingSubjectExtractor{err: fmt.Errorf("subject extraction boom")},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)

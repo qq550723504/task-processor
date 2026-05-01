@@ -18,9 +18,9 @@ type saleAttributeValueBatchSelection struct {
 }
 
 type saleAttributeValueSelection struct {
-	SourceValue       string   `json:"source_value,omitempty"`
-	AttributeValueID  int      `json:"attribute_value_id"`
-	Reasons           []string `json:"reasons,omitempty"`
+	SourceValue      string   `json:"source_value,omitempty"`
+	AttributeValueID int      `json:"attribute_value_id"`
+	Reasons          []string `json:"reasons,omitempty"`
 }
 
 func matchSaleAttributeValuesWithLLM(

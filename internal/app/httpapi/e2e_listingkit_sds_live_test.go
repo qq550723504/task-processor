@@ -14,9 +14,9 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/productimage"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	"task-processor/internal/productimage"
 	sdsclient "task-processor/internal/sds/client"
 	sdsusecase "task-processor/internal/sds/usecase"
 )

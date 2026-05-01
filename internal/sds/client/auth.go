@@ -28,17 +28,17 @@ type LoginResponse struct {
 
 // LoginResultData 是登录成功后的数据结构。
 type LoginResultData struct {
-	AccessToken            string  `json:"access_token"`
-	IsDesigner             bool    `json:"is_designer"`
-	Level                  float64 `json:"level"`
-	IsBoss                 bool    `json:"is_boss"`
-	IsInsider              bool    `json:"is_insider"`
-	PermissionSetMealLevel string  `json:"permission_set_meal_level"`
-	ID                     int64   `json:"id"`
-	MerchantID             int64   `json:"merchant_id"`
-	EnableMFA              int     `json:"enableMfa"`
-	IsZiguang              bool    `json:"is_ziguang"`
-	Username               string  `json:"username"`
+	AccessToken            string              `json:"access_token"`
+	IsDesigner             bool                `json:"is_designer"`
+	Level                  float64             `json:"level"`
+	IsBoss                 bool                `json:"is_boss"`
+	IsInsider              bool                `json:"is_insider"`
+	PermissionSetMealLevel string              `json:"permission_set_meal_level"`
+	ID                     int64               `json:"id"`
+	MerchantID             int64               `json:"merchant_id"`
+	EnableMFA              int                 `json:"enableMfa"`
+	IsZiguang              bool                `json:"is_ziguang"`
+	Username               string              `json:"username"`
 	VerifyCaptcha          *LoginVerifyCaptcha `json:"verifyCaptcha,omitempty"`
 }
 

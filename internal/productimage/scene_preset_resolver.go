@@ -154,4 +154,3 @@ func resolveScenePreset(marketplace, category string) scenePresetResolution {
 	}
 	return scenePresetResolution{Source: "fallback"}
 }
-

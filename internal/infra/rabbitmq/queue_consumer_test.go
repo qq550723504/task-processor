@@ -95,10 +95,10 @@ func (a *stubAcknowledger) Reject(_ uint64, requeue bool) error {
 func TestQueueConsumerHandleProcessError_DiscardableMessageIsAckedWithoutCollection(t *testing.T) {
 	ack := &stubAcknowledger{}
 	qc := &QueueConsumer{
-		queueName:       "shein.tasks.store.838",
-		logger:          logDiscardLogger(),
-		stateManager:    NewConsumerStateManager(),
-		errorCollector:  NewErrorCollector(10),
+		queueName:      "shein.tasks.store.838",
+		logger:         logDiscardLogger(),
+		stateManager:   NewConsumerStateManager(),
+		errorCollector: NewErrorCollector(10),
 	}
 
 	delivery := amqp.Delivery{

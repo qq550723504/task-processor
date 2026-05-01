@@ -39,11 +39,11 @@ type ProductExtractor struct {
 
 // NewProductExtractor 创建新的产品提取器
 func NewProductExtractor() *ProductExtractor {
-		return &ProductExtractor{
-			// 优先使用优化的提取器
-			basicInfoExtractor:     NewBasicInfoExtractor(),
-			categoryExtractor:      NewCategoryExtractor(),
-			shippingExtractor:      NewShippingExtractor(),
+	return &ProductExtractor{
+		// 优先使用优化的提取器
+		basicInfoExtractor:     NewBasicInfoExtractor(),
+		categoryExtractor:      NewCategoryExtractor(),
+		shippingExtractor:      NewShippingExtractor(),
 		variantExtractor:       NewVariantExtractor(),
 		attributeExtractor:     NewAttributeExtractor(),
 		detailExtractor:        NewDetailExtractor(),

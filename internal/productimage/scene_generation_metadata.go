@@ -34,4 +34,3 @@ func sceneGenerationMetadataFromOptions(options scenePromptOptions, resolved res
 		CustomSceneHint:     options.CustomSceneHint,
 	}
 }
-

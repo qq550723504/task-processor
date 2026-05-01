@@ -78,11 +78,9 @@ func buildResolutionCacheEntry(kind string, req *BuildRequest, canonical *produc
 		return nil
 	}
 	now := time.Now()
-	source := "live_resolver"
+	source := resolutionCacheSourceFromValue(resolution)
 	if manual {
 		source = "manual_cache"
-	} else {
-		source = resolutionCacheSourceFromValue(resolution)
 	}
 	return &SheinResolutionCacheEntry{
 		StoreID:        sheinStoreID(req),

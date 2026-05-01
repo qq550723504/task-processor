@@ -23,4 +23,3 @@ func TestPruneSaleAttributeResolutionPatchPreservesCategoryReviewSignal(t *testi
 		t.Fatalf("category_review_reason = %#v", pruned.CategoryReviewReason)
 	}
 }
-
