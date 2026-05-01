@@ -11,6 +11,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
@@ -27,6 +28,7 @@ type service struct {
 	uploadStore                ImageUploadStore
 	assembler                  Assembler
 	sheinCategoryResolver      sheinpub.CategoryResolver
+	sheinManagementClient      *management.ClientManager
 	sheinAttributeResolver     sheinpub.AttributeResolver
 	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 	sheinPricingPolicy         sheinpub.PricingPolicy
@@ -61,6 +63,7 @@ type ServiceConfig struct {
 	AssetGenerationService     AssetGenerationService
 	TaskSubmitter              TaskSubmitter
 	SheinDefaultStoreID        int64
+	SheinManagementClient      *management.ClientManager
 	SheinCategoryResolver      sheinpub.CategoryResolver
 	SheinAttributeResolver     sheinpub.AttributeResolver
 	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
@@ -134,6 +137,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 		uploadStore:                config.ImageUploadStore,
 		assembler:                  config.Assembler,
 		sheinCategoryResolver:      config.SheinCategoryResolver,
+		sheinManagementClient:      config.SheinManagementClient,
 		sheinAttributeResolver:     config.SheinAttributeResolver,
 		sheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
 		sheinPricingPolicy:         config.SheinPricingPolicy,

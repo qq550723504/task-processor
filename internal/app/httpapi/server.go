@@ -93,6 +93,7 @@ func buildRouteDescriptors(productHandler productRouteHandler, imageHandler imag
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/revision", Module: "listing-kit", Handler: listingKitHandler.ApplyTaskRevision},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/revision/validate", Module: "listing-kit", Handler: listingKitHandler.ValidateTaskRevision},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/shein/price-preview", Module: "listing-kit", Handler: listingKitHandler.PreviewSheinPrice},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/shein/categories", Module: "listing-kit", Handler: listingKitHandler.SearchSheinCategories},
 			routeDescriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/tasks/:task_id/shein/final-draft", Module: "listing-kit", Handler: listingKitHandler.UpdateSheinFinalDraft},
 			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/submission-events", Module: "listing-kit", Handler: listingKitHandler.GetSubmissionEvents},
 			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/submit", Module: "listing-kit", Handler: listingKitHandler.SubmitTask},

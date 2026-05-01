@@ -24,6 +24,7 @@ var ErrGenerationActionNotFound = errors.New("generation action not found")
 var ErrUnsupportedSubmitPlatform = errors.New("unsupported submit platform")
 var ErrSubmitBlocked = errors.New("submit blocked by readiness")
 var ErrInvalidSheinResolutionCacheKind = errors.New("invalid shein resolution cache kind")
+var ErrInvalidSheinCategorySearchQuery = errors.New("invalid shein category search query")
 
 type TaskStatus string
 
@@ -226,6 +227,22 @@ type SheinResolutionCacheClearResult struct {
 	TaskID       string   `json:"task_id"`
 	Kind         string   `json:"kind"`
 	DeletedKinds []string `json:"deleted_kinds,omitempty"`
+}
+
+type SheinCategorySearchCandidate struct {
+	CategoryID     int      `json:"category_id"`
+	CategoryIDList []int    `json:"category_id_list,omitempty"`
+	CategoryPath   []string `json:"category_path,omitempty"`
+	ProductTypeID  int      `json:"product_type_id,omitempty"`
+	TopCategoryID  int      `json:"top_category_id,omitempty"`
+	Source         string   `json:"source,omitempty"`
+	MatchReason    string   `json:"match_reason,omitempty"`
+}
+
+type SheinCategorySearchResult struct {
+	TaskID string                         `json:"task_id"`
+	Query  string                         `json:"query"`
+	Items  []SheinCategorySearchCandidate `json:"items,omitempty"`
 }
 
 type Task struct {

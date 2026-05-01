@@ -124,6 +124,7 @@ type listingKitRouteHandler interface {
 	GetSheinSettings(c *gin.Context)
 	UpdateSheinSettings(c *gin.Context)
 	PreviewSheinPrice(c *gin.Context)
+	SearchSheinCategories(c *gin.Context)
 	UpdateSheinFinalDraft(c *gin.Context)
 	GetSubmissionEvents(c *gin.Context)
 	ClearSheinResolutionCache(c *gin.Context)

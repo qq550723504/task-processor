@@ -143,6 +143,7 @@ type stubListingKitHandler struct {
 	getExportCalled                    bool
 	revisionCalled                     bool
 	validateCalled                     bool
+	searchSheinCategoriesCalled        bool
 	submitCalled                       bool
 }
 
@@ -261,6 +262,11 @@ func (s *stubListingKitHandler) UpdateSheinSettings(c *gin.Context) {
 
 func (s *stubListingKitHandler) PreviewSheinPrice(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ready": true})
+}
+
+func (s *stubListingKitHandler) SearchSheinCategories(c *gin.Context) {
+	s.searchSheinCategoriesCalled = true
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "query": c.Query("query"), "items": []any{}})
 }
 
 func (s *stubListingKitHandler) UpdateSheinFinalDraft(c *gin.Context) {
@@ -681,6 +687,17 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 	}
 	if !handler.revisionCalled {
 		t.Fatal("listing kit ApplyTaskRevision handler was not called")
+	}
+
+	handler.searchSheinCategoriesCalled = false
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks/task-123/shein/categories?query=mask", nil)
+	resp = httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/listing-kits/tasks/task-123/shein/categories = %d, want 200", resp.Code)
+	}
+	if !handler.searchSheinCategoriesCalled {
+		t.Fatal("listing kit SearchSheinCategories handler was not called")
 	}
 
 	handler.validateCalled = false

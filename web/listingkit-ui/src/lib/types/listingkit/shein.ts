@@ -178,6 +178,22 @@ export type SheinCategorySuggestion = {
   top_category_id?: number;
 };
 
+export type SheinManualCategoryCandidate = {
+  category_id?: number;
+  category_id_list?: number[];
+  category_path?: string[];
+  product_type_id?: number;
+  top_category_id?: number;
+  source?: string;
+  match_reason?: string;
+};
+
+export type SheinManualCategorySearchResult = {
+  task_id?: string;
+  query?: string;
+  items?: SheinManualCategoryCandidate[];
+};
+
 export type SheinInspectionCategoryPayload = {
   status?: string;
   source?: string;

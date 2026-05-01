@@ -74,6 +74,7 @@ import type {
   ReviewSection,
   ReviewSlot,
   SheinEditorContext,
+  SheinManualCategoryCandidate,
   SheinReadinessItem,
   SheinResolvedAttribute,
   ToolbarAction,
@@ -118,6 +119,8 @@ function hasSheinCategoryReviewSignal(editorContext?: SheinEditorContext | null)
     editorContext?.revision_skeleton?.shein?.sale_attribute_resolution;
 
   return Boolean(
+    currentCategory?.category_id ||
+      currentCategory?.category_path?.length ||
     currentCategory?.suggested_category?.category_id ||
       currentSale?.recommend_category_review ||
       revisionSale?.recommend_category_review,
@@ -412,6 +415,33 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           recommend_category_review: false,
           category_review_reason:
             saleCurrent?.category_review_reason,
+        },
+      },
+    });
+  };
+
+  const handleApplyManualSheinCategory = async (
+    candidate: SheinManualCategoryCandidate,
+  ) => {
+    const sheinPreview = preview.data?.shein;
+    const saleCurrent = sheinPreview?.editor_context?.sale_attributes?.current;
+    await applyRevision.mutateAsync({
+      platform: "shein",
+      actor: "workspace",
+      reason: "Apply manual SHEIN category",
+      shein: {
+        category_resolution: {
+          category_id: candidate.category_id,
+          category_id_list: candidate.category_id_list,
+          product_type_id: candidate.product_type_id,
+          top_category_id: candidate.top_category_id,
+          matched_path: candidate.category_path,
+          source: candidate.source ?? "manual_search",
+          status: "resolved",
+        },
+        sale_attribute_resolution: {
+          recommend_category_review: false,
+          category_review_reason: saleCurrent?.category_review_reason,
         },
       },
     });
@@ -940,9 +970,11 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
             {showSheinCategoryReview ? (
               <div id="shein-category-review-card" className="min-w-0">
                 <SheinCategoryReviewCard
+                  taskId={taskId}
                   editorContext={preview.data?.shein?.editor_context}
                   isApplying={applyRevision.isPending}
                   onApplySuggestedCategory={handleApplySuggestedSheinCategory}
+                  onApplyManualCategory={handleApplyManualSheinCategory}
                 />
               </div>
             ) : null}

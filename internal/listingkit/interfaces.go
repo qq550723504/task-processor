@@ -10,6 +10,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
@@ -38,6 +39,7 @@ type AssetGenerationService = assetgeneration.Service
 type AssetRecipeResolver = assetrecipe.Resolver
 type AssetBundleBuilder = assetbundle.Builder
 type GenerationReviewRepository = reviewstore.Repository
+type SheinManagementClient = management.ClientManager
 
 type Repository interface {
 	CreateTask(ctx context.Context, task *Task) error
@@ -86,6 +88,7 @@ type Service interface {
 	GetSheinSettings(ctx context.Context) (*SheinSettings, error)
 	UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error)
 	PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error)
+	SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error)
 	UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error)
 	GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error)
 	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error)
@@ -119,6 +122,7 @@ type HandlerService interface {
 	GetSheinSettings(ctx context.Context) (*SheinSettings, error)
 	UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error)
 	PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error)
+	SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error)
 	UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error)
 	GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error)
 	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error)
@@ -150,6 +154,7 @@ type Handler interface {
 	GetSheinSettings(c *gin.Context)
 	UpdateSheinSettings(c *gin.Context)
 	PreviewSheinPrice(c *gin.Context)
+	SearchSheinCategories(c *gin.Context)
 	UpdateSheinFinalDraft(c *gin.Context)
 	GetSubmissionEvents(c *gin.Context)
 	ClearSheinResolutionCache(c *gin.Context)

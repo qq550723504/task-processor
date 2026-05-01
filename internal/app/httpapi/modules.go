@@ -539,6 +539,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 			WhiteBackgroundRenderer: deps.imageWhiteBgRenderer,
 			DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(deps.imageSceneRenderer),
 		}),
+		SheinManagementClient:      deps.managementClient,
 		SheinCategoryResolver:      sheinCategoryResolver,
 		SheinAttributeResolver:     sheinAttributeResolver,
 		SheinSaleAttributeResolver: sheinSaleAttributeResolver,
