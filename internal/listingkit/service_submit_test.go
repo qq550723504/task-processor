@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -158,6 +159,7 @@ func (s *stubSheinContentAI) GetDefaultModel() string {
 }
 
 type stubSheinImageAPI struct {
+	mu             sync.Mutex
 	uploaded       map[string]string
 	calls          map[string]int
 	originalCalls  int
@@ -166,6 +168,8 @@ type stubSheinImageAPI struct {
 }
 
 func (s *stubSheinImageAPI) UploadOriginalImage(imageData []byte) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.originalCalls++
 	if s.err != nil {
 		return "", s.err
@@ -177,6 +181,8 @@ func (s *stubSheinImageAPI) UploadOriginalImage(imageData []byte) (string, error
 }
 
 func (s *stubSheinImageAPI) DownloadAndUploadImage(imageURL string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.calls == nil {
 		s.calls = map[string]int{}
 	}
@@ -755,27 +761,27 @@ func TestSubmitTaskNormalizesLegacyStudioSupplierSKUs(t *testing.T) {
 	task.Result.Shein.PreviewProduct.SKCList = []sheinproduct.SKC{
 		{
 			SaleAttribute: sheinproduct.SaleAttribute{AttributeID: 27, AttributeValueID: blackValueID},
-			ImageInfo: sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{{ImageType: 1, ImageSort: 1, ImageURL: "https://img.shein.com/uploaded/black.jpg"}}},
+			ImageInfo:     sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{{ImageType: 1, ImageSort: 1, ImageURL: "https://img.shein.com/uploaded/black.jpg"}}},
 			SKUS: []sheinproduct.SKU{{
 				SupplierSKU: oldSKU,
 				CostInfo:    &sheinproduct.CostInfo{CostPrice: "10.00", Currency: "USD"},
 				PriceInfoList: []sheinproduct.PriceInfo{{
 					SubSite: "US", BasePrice: 19.99, Currency: "USD",
 				}},
-				StockInfoList: []sheinproduct.StockInfo{{MerchantWarehouseCode: "US", InventoryNum: 20}},
+				StockInfoList:     []sheinproduct.StockInfo{{MerchantWarehouseCode: "US", InventoryNum: 20}},
 				SaleAttributeList: []sheinproduct.SaleAttribute{{AttributeID: 87, AttributeValueID: sizeValueID}},
 			}},
 		},
 		{
 			SaleAttribute: sheinproduct.SaleAttribute{AttributeID: 27, AttributeValueID: whiteValueID},
-			ImageInfo: sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{{ImageType: 1, ImageSort: 1, ImageURL: "https://img.shein.com/uploaded/white.jpg"}}},
+			ImageInfo:     sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{{ImageType: 1, ImageSort: 1, ImageURL: "https://img.shein.com/uploaded/white.jpg"}}},
 			SKUS: []sheinproduct.SKU{{
 				SupplierSKU: oldSKU,
 				CostInfo:    &sheinproduct.CostInfo{CostPrice: "11.00", Currency: "USD"},
 				PriceInfoList: []sheinproduct.PriceInfo{{
 					SubSite: "US", BasePrice: 21.99, Currency: "USD",
 				}},
-				StockInfoList: []sheinproduct.StockInfo{{MerchantWarehouseCode: "US", InventoryNum: 20}},
+				StockInfoList:     []sheinproduct.StockInfo{{MerchantWarehouseCode: "US", InventoryNum: 20}},
 				SaleAttributeList: []sheinproduct.SaleAttribute{{AttributeID: 87, AttributeValueID: sizeValueID}},
 			}},
 		},
@@ -868,9 +874,9 @@ func TestSubmitTaskNormalizesSingleStudioSupplierSKUWithTaskDiscriminator(t *tes
 	task.Request.Options = &GenerateOptions{
 		SheinStudio: &SheinStudioOptions{StyleID: "D7E68190"},
 		SDS: &SDSSyncOptions{
-			ProductSKU: "MG8014186001",
-			VariantSKU: "MG8014186001",
-			StyleID:    "D7E68190",
+			ProductSKU:   "MG8014186001",
+			VariantSKU:   "MG8014186001",
+			StyleID:      "D7E68190",
 			VariantColor: "black",
 			VariantSize:  "均码",
 		},
@@ -900,11 +906,11 @@ func TestSubmitTaskNormalizesSingleStudioSupplierSKUWithTaskDiscriminator(t *tes
 		}},
 	}
 	pkg := &sheinpub.Package{
-		RequestDraft: task.Result.Shein.RequestDraft,
+		RequestDraft:   task.Result.Shein.RequestDraft,
 		PreviewProduct: task.Result.Shein.PreviewProduct,
-		SkcList: task.Result.Shein.SkcList,
-		FinalDraft: task.Result.Shein.FinalDraft,
-		Pricing: task.Result.Shein.Pricing,
+		SkcList:        task.Result.Shein.SkcList,
+		FinalDraft:     task.Result.Shein.FinalDraft,
+		Pricing:        task.Result.Shein.Pricing,
 	}
 	changed := normalizeSheinStudioSubmitSupplierSKUs(task, pkg)
 	if !changed {
