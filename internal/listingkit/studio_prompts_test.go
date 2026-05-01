@@ -13,6 +13,64 @@ import (
 	"task-processor/internal/prompt"
 )
 
+func TestParseStudioDesignSiblingThemesParsesPromptObject(t *testing.T) {
+	themes, err := parseStudioDesignSiblingThemes(`{"prompts":["bold vintage badge","dense collage badge","hero emblem badge"]}`, 3)
+	if err != nil {
+		t.Fatalf("parseStudioDesignSiblingThemes() error = %v", err)
+	}
+	if strings.Join(themes, "|") != "bold vintage badge|dense collage badge|hero emblem badge" {
+		t.Fatalf("themes = %#v", themes)
+	}
+}
+
+func TestGenerateStudioDesignSiblingThemesFallsBackWhenLLMResponseInvalid(t *testing.T) {
+	svc := &service{
+		studioPromptDiversifier: &stubStudioChatCompleter{
+			generateText: "not-json",
+		},
+	}
+	req := &StudioDesignRequest{
+		Prompt:             "retro dog college badge",
+		VariationIntensity: studioVariationStrong,
+	}
+
+	themes, err := svc.generateStudioDesignSiblingThemes(context.Background(), req, 3)
+	if err == nil {
+		t.Fatalf("expected error when llm returns invalid payload")
+	}
+	if len(themes) != 3 {
+		t.Fatalf("themes count = %d, want 3", len(themes))
+	}
+	for _, theme := range themes {
+		if theme != req.Prompt {
+			t.Fatalf("fallback theme = %q, want %q", theme, req.Prompt)
+		}
+	}
+}
+
+func TestGenerateStudioDesignSiblingThemesUsesLLMOutput(t *testing.T) {
+	svc := &service{
+		studioPromptDiversifier: &stubStudioChatCompleter{
+			generateText: `{"prompts":["vintage varsity crest with centered mascot","vintage varsity crest with repeating border icons"]}`,
+		},
+	}
+	req := &StudioDesignRequest{
+		Prompt:             "vintage varsity crest mascot",
+		VariationIntensity: studioVariationMedium,
+	}
+
+	themes, err := svc.generateStudioDesignSiblingThemes(context.Background(), req, 2)
+	if err != nil {
+		t.Fatalf("generateStudioDesignSiblingThemes() error = %v", err)
+	}
+	if len(themes) != 2 {
+		t.Fatalf("themes count = %d, want 2", len(themes))
+	}
+	if themes[0] == themes[1] {
+		t.Fatalf("themes should differ: %#v", themes)
+	}
+}
+
 func TestStudioDesignPromptRendersWithoutTransparencyInstructions(t *testing.T) {
 	registry := prompt.NewRegistry(logrus.NewEntry(logrus.New()))
 	if err := registry.Init(context.Background(), filepath.Join("..", "..", "prompts"), false); err != nil {
@@ -147,6 +205,27 @@ type stubStudioImageGenerator struct {
 	editCalls        int
 	generateCalls    int
 	generateResponse *openaiclient.ImageResponse
+}
+
+type stubStudioChatCompleter struct {
+	generateText string
+	generateErr  error
+}
+
+func (s *stubStudioChatCompleter) CreateChatCompletion(context.Context, *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubStudioChatCompleter) Generate(context.Context, string) (string, error) {
+	return s.generateText, s.generateErr
+}
+
+func (s *stubStudioChatCompleter) AnalyzeImage(context.Context, string, string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (s *stubStudioChatCompleter) GetDefaultModel() string {
+	return "test-model"
 }
 
 func (s *stubStudioImageGenerator) GenerateImage(context.Context, *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {

@@ -31,6 +31,7 @@ import {
   DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
   DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+  DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
 } from "@/lib/shein-studio/storage-shared";
 import { resolveSheinStudioEffectiveStep } from "@/lib/shein-studio/workbench-step";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
@@ -42,6 +43,7 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
   SheinStudioSelectedSDSImage,
+  SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
@@ -64,6 +66,10 @@ export function SheinStudioWorkbench({
 }) {
   const [prompt, setPrompt] = useState("");
   const [styleCount, setStyleCount] = useState("1");
+  const [variationIntensity, setVariationIntensity] =
+    useState<SheinStudioVariationIntensity>(
+      DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
+    );
   const [productImageCount, setProductImageCount] = useState(
     DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
   );
@@ -201,6 +207,9 @@ export function SheinStudioWorkbench({
         if (draft || !hasLocalWorkflowStateRef.current) {
           setPrompt(draft?.prompt ?? "");
           setStyleCount(draft?.styleCount ?? "1");
+          setVariationIntensity(
+            draft?.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
+          );
           setProductImageCount(
             draft?.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
           );
@@ -283,6 +292,7 @@ export function SheinStudioWorkbench({
         buildSheinStudioDraftInput({
           prompt,
           styleCount,
+          variationIntensity,
           productImageCount,
           productImagePrompt,
           productImagePrompts,
@@ -314,6 +324,7 @@ export function SheinStudioWorkbench({
         buildSheinStudioDraftInput({
           prompt,
           styleCount,
+          variationIntensity,
           productImageCount,
           productImagePrompt,
           productImagePrompts,
@@ -379,6 +390,7 @@ export function SheinStudioWorkbench({
     selectedSdsImages,
     sheinStoreId,
     styleCount,
+    variationIntensity,
     transparentBackground,
   ]);
 
@@ -390,6 +402,7 @@ export function SheinStudioWorkbench({
     return buildSheinStudioDraftInput({
       prompt,
       styleCount,
+      variationIntensity,
       productImageCount,
       productImagePrompt,
       productImagePrompts,
@@ -479,6 +492,7 @@ export function SheinStudioWorkbench({
             status: "generating",
             prompt: prompt.trim(),
             styleCount,
+            variationIntensity,
             productImageCount,
             productImagePrompt,
             productImagePrompts,
@@ -511,6 +525,7 @@ export function SheinStudioWorkbench({
         {
           prompt: prompt.trim(),
           count: parsePositiveInt(styleCount) ?? 1,
+          variationIntensity,
           printableWidth: activeSelection.printableWidth,
           printableHeight: activeSelection.printableHeight,
           productReferenceImageUrls: buildSDSProductReferenceImageUrls(activeSelection),
@@ -612,6 +627,7 @@ export function SheinStudioWorkbench({
       const response = await generateSheinStudioDesigns({
         prompt: prompt.trim(),
         count: 1,
+        variationIntensity,
         printableWidth: activeSelection.printableWidth,
         printableHeight: activeSelection.printableHeight,
         productReferenceImageUrls: buildSDSProductReferenceImageUrls(activeSelection),
@@ -660,6 +676,7 @@ export function SheinStudioWorkbench({
     const saved = await saveSheinStudioBatch({
       prompt,
       styleCount,
+      variationIntensity,
       productImageCount,
       productImagePrompt,
       productImagePrompts,
@@ -688,6 +705,9 @@ export function SheinStudioWorkbench({
     hasLocalWorkflowStateRef.current = true;
     setPrompt(batch.prompt);
     setStyleCount(batch.styleCount);
+    setVariationIntensity(
+      batch.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
+    );
     setProductImageCount(
       batch.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     );
@@ -850,9 +870,11 @@ export function SheinStudioWorkbench({
           }}
           setSheinStoreId={setSheinStoreId}
           setStyleCount={setStyleCount}
+          setVariationIntensity={setVariationIntensity}
           setTransparentBackground={setTransparentBackground}
           sheinStoreId={sheinStoreId}
           styleCount={styleCount}
+          variationIntensity={variationIntensity}
           transparentBackground={transparentBackground}
         />
       ) : null}

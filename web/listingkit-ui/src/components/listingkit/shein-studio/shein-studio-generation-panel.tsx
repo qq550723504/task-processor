@@ -14,6 +14,7 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
+  SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
 export function SheinStudioGenerationPanel({
@@ -43,6 +44,7 @@ export function SheinStudioGenerationPanel({
   selectedSdsImages,
   selectedStyleCount,
   selectionReady,
+  variationIntensity,
   setImageStrategy,
   setSelectedSdsImages,
   setArtworkModel,
@@ -53,6 +55,7 @@ export function SheinStudioGenerationPanel({
   setRenderSizeImagesWithSds,
   setSheinStoreId,
   setStyleCount,
+  setVariationIntensity,
   setTransparentBackground,
   sheinStoreId,
   styleCount,
@@ -83,6 +86,7 @@ export function SheinStudioGenerationPanel({
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   selectedStyleCount: number;
   selectionReady: boolean;
+  variationIntensity: SheinStudioVariationIntensity;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
   setSelectedSdsImages: (value: SheinStudioSelectedSDSImage[]) => void;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
@@ -93,6 +97,7 @@ export function SheinStudioGenerationPanel({
   setRenderSizeImagesWithSds: (value: boolean) => void;
   setSheinStoreId: (value: string) => void;
   setStyleCount: (value: string) => void;
+  setVariationIntensity: (value: SheinStudioVariationIntensity) => void;
   setTransparentBackground: (value: boolean) => void;
   sheinStoreId: string;
   styleCount: string;
@@ -151,6 +156,25 @@ export function SheinStudioGenerationPanel({
             setValue={setStyleCount}
             value={styleCount}
           />
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-700">变化强度</span>
+            <select
+              className="w-full rounded-2xl border border-emerald-200 bg-white/80 px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-emerald-900 focus:bg-white"
+              onChange={(event) =>
+                setVariationIntensity(
+                  event.target.value as SheinStudioVariationIntensity,
+                )
+              }
+              value={variationIntensity}
+            >
+              <option value="light">轻变化</option>
+              <option value="medium">中变化</option>
+              <option value="strong">强变化</option>
+            </select>
+            <p className="text-xs leading-6 text-zinc-600">
+              只影响款式图批量生成。系统会保持同一核心卖点和视觉风格，同时按强度拉开构图和元素差异。
+            </p>
+          </label>
           <div className="grid gap-4 lg:grid-cols-2">
             <label className="space-y-2">
               <span className="text-sm font-medium text-zinc-700">款式图模型</span>

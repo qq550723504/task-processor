@@ -161,6 +161,7 @@ type SheinStudioSession struct {
 	Selection               SheinStudioSelectionSnapshot      `json:"selection,omitempty" gorm:"type:text"`
 	Prompt                  string                            `json:"prompt,omitempty" gorm:"type:text"`
 	StyleCount              string                            `json:"style_count,omitempty" gorm:"type:varchar(32)"`
+	VariationIntensity      string                            `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
 	ProductImageCount       string                            `json:"product_image_count,omitempty" gorm:"type:varchar(32)"`
 	ProductImagePrompt      string                            `json:"product_image_prompt,omitempty" gorm:"type:text"`
 	ProductImagePrompts     SheinStudioProductImagePromptList `json:"product_image_prompts,omitempty" gorm:"type:text"`

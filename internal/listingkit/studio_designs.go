@@ -3,21 +3,29 @@ package listingkit
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 )
 
 const maxStudioDesignCount = 5
 const studioDesignTransparentModel = "gpt-image-2"
+const (
+	studioVariationLight  = "light"
+	studioVariationMedium = "medium"
+	studioVariationStrong = "strong"
+)
 
 func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error) {
 	if req == nil {
@@ -39,7 +47,10 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 		count = maxStudioDesignCount
 	}
 	model := resolveStudioDesignImageModel(req, s.studioImageGenerator.GetDefaultModel())
-	promptText := buildStudioDesignPrompt(req)
+	themes, diversifyErr := s.generateStudioDesignSiblingThemes(ctx, req, count)
+	if len(themes) != count {
+		themes = buildFallbackStudioDesignThemes(req.Prompt, count)
+	}
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
 	referenceURLs := studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)
 
@@ -59,6 +70,7 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			promptText := buildStudioDesignPromptWithTheme(req, themes[idx])
 			generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
 			if err != nil {
 				errs[idx] = fmt.Errorf("generate studio design %d: %w", idx+1, err)
@@ -83,9 +95,35 @@ func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRe
 		}
 	}
 	if len(response.Images) == 0 {
-		return nil, errors.Join(nonNilErrors(errs)...)
+		errList := nonNilErrors(errs)
+		if diversifyErr != nil {
+			errList = append(errList, diversifyErr)
+		}
+		return nil, errors.Join(errList...)
 	}
 	return response, nil
+}
+
+func (s *service) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {
+	baseTheme := strings.TrimSpace(req.Prompt)
+	if count <= 1 || baseTheme == "" {
+		return buildFallbackStudioDesignThemes(baseTheme, count), nil
+	}
+	if s.studioPromptDiversifier == nil {
+		return buildFallbackStudioDesignThemes(baseTheme, count), nil
+	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	response, err := s.studioPromptDiversifier.Generate(timeoutCtx, buildStudioDesignSiblingPromptRequest(req, count))
+	if err != nil {
+		return buildFallbackStudioDesignThemes(baseTheme, count), fmt.Errorf("diversify studio prompts: %w", err)
+	}
+	themes, parseErr := parseStudioDesignSiblingThemes(response, count)
+	if parseErr != nil {
+		return buildFallbackStudioDesignThemes(baseTheme, count), parseErr
+	}
+	return themes, nil
 }
 
 func (s *service) generateStudioDesignImage(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
@@ -128,6 +166,10 @@ func (s *service) generateStudioDesignImageWithoutReferences(ctx context.Context
 }
 
 func buildStudioDesignPrompt(req *StudioDesignRequest) string {
+	return buildStudioDesignPromptWithTheme(req, strings.TrimSpace(req.Prompt))
+}
+
+func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) string {
 	printableHint := ""
 	if req.PrintableWidth > 0 && req.PrintableHeight > 0 {
 		printableHint = fmt.Sprintf("Target print area: %d by %d pixels.", req.PrintableWidth, req.PrintableHeight)
@@ -144,7 +186,7 @@ func buildStudioDesignPrompt(req *StudioDesignRequest) string {
 		"PrintableHint":   printableHint,
 		"ReferenceHint":   referenceHint,
 		"TransparentHint": transparentHint,
-		"ThemePrompt":     strings.TrimSpace(req.Prompt),
+		"ThemePrompt":     strings.TrimSpace(theme),
 	}
 	fallback := "Create a single print-ready graphic for ecommerce POD or customized-product use. Return a flat design only, not a product mockup, model photo, scene photo, or physical product rendering. {{.PrintableHint}} {{.ReferenceHint}} {{.TransparentHint}} Theme prompt: {{.ThemePrompt}}"
 	if prompt.GlobalRegistry == nil {
@@ -155,6 +197,96 @@ func buildStudioDesignPrompt(req *StudioDesignRequest) string {
 		return renderPromptFallback(fallback, vars)
 	}
 	return strings.TrimSpace(rendered)
+}
+
+func normalizeStudioVariationIntensity(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case studioVariationLight:
+		return studioVariationLight
+	case studioVariationStrong:
+		return studioVariationStrong
+	default:
+		return studioVariationMedium
+	}
+}
+
+func buildFallbackStudioDesignThemes(promptText string, count int) []string {
+	if count <= 0 {
+		return nil
+	}
+	theme := strings.TrimSpace(promptText)
+	themes := make([]string, count)
+	for idx := range themes {
+		themes[idx] = theme
+	}
+	return themes
+}
+
+type studioSiblingPromptResponse struct {
+	Prompts []string `json:"prompts,omitempty"`
+}
+
+func buildStudioDesignSiblingPromptRequest(req *StudioDesignRequest, count int) string {
+	var builder strings.Builder
+	builder.WriteString("You are preparing sibling prompts for POD flat artwork generation.\n")
+	builder.WriteString("Return JSON only.\n")
+	builder.WriteString(fmt.Sprintf("Return exactly %d prompts as {\"prompts\":[\"...\", ...]}.\n", count))
+	builder.WriteString("Each prompt must preserve the same core selling point and the same visual style family as the source prompt.\n")
+	builder.WriteString("Vary composition, motif arrangement, focal hierarchy, negative space, and supporting elements.\n")
+	builder.WriteString("Do not write a sentence about how to design. Do not include product mockup wording, camera wording, copyright disclaimers, or pixel/canvas instructions.\n")
+	builder.WriteString("Each prompt must be concise, production-oriented, and suitable as a direct theme prompt for flat POD artwork.\n")
+	builder.WriteString(fmt.Sprintf("Variation intensity: %s.\n", normalizeStudioVariationIntensity(req.VariationIntensity)))
+	builder.WriteString("Intensity guide:\n")
+	builder.WriteString("- light: same-series small variations\n")
+	builder.WriteString("- medium: clearly different but same series\n")
+	builder.WriteString("- strong: stronger composition and motif variation while keeping the same core selling point and visual style\n")
+	builder.WriteString(fmt.Sprintf("Source prompt: %q\n", strings.TrimSpace(req.Prompt)))
+	if req.PrintableWidth > 0 && req.PrintableHeight > 0 {
+		builder.WriteString(fmt.Sprintf("Print area hint: %d x %d pixels.\n", req.PrintableWidth, req.PrintableHeight))
+	}
+	if req.TransparentBackground {
+		builder.WriteString("Keep the artwork compatible with transparent-background output.\n")
+	}
+	if len(studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)) > 0 {
+		builder.WriteString("Reference product images exist; keep prompts compatible with the same product family and print area.\n")
+	}
+	return builder.String()
+}
+
+func parseStudioDesignSiblingThemes(raw string, count int) ([]string, error) {
+	cleaned := strings.TrimSpace(jsonx.CleanLLMResponse(raw))
+	if cleaned == "" {
+		return nil, fmt.Errorf("diversified prompt response is empty")
+	}
+	var prompts []string
+	if err := json.Unmarshal([]byte(cleaned), &prompts); err != nil {
+		var payload studioSiblingPromptResponse
+		if objectErr := json.Unmarshal([]byte(cleaned), &payload); objectErr != nil {
+			return nil, fmt.Errorf("parse diversified prompts: %w", err)
+		}
+		prompts = payload.Prompts
+	}
+	themes := make([]string, 0, count)
+	seen := make(map[string]struct{}, count)
+	for _, item := range prompts {
+		theme := strings.TrimSpace(item)
+		if theme == "" {
+			continue
+		}
+		key := strings.ToLower(theme)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		themes = append(themes, theme)
+		if len(themes) >= count {
+			break
+		}
+	}
+	if len(themes) != count {
+		return nil, fmt.Errorf("expected %d diversified prompts, got %d", count, len(themes))
+	}
+	return themes, nil
 }
 
 func resolveStudioDesignImageModel(req *StudioDesignRequest, fallback string) string {

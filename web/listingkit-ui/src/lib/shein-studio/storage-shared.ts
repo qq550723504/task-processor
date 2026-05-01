@@ -9,6 +9,7 @@ import type {
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
   SheinStudioStorageData,
+  SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
 
@@ -18,6 +19,8 @@ export const DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY: SheinStudioImageStrategy =
 export const DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT = "5";
 export const DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL: SheinStudioArtworkModel =
   "nanobanana";
+export const DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY: SheinStudioVariationIntensity =
+  "medium";
 export const SHEIN_STUDIO_PRODUCT_IMAGE_ROLES = [
   {
     role: "main",
@@ -96,6 +99,14 @@ export function normalizeArtworkModel(value: unknown): SheinStudioArtworkModel {
     : DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL;
 }
 
+export function normalizeVariationIntensity(
+  value: unknown,
+): SheinStudioVariationIntensity {
+  return value === "light" || value === "medium" || value === "strong"
+    ? value
+    : DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY;
+}
+
 export function isGeneratedDesign(item: unknown): item is SheinStudioGeneratedDesign {
   return (
     !!item &&
@@ -167,6 +178,7 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
   return {
     prompt: raw.prompt,
     styleCount: raw.styleCount ?? "4",
+    variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: raw.productImagePrompt ?? "",
     productImagePrompts: normalizeProductImagePrompts(raw.productImagePrompts),
@@ -199,6 +211,7 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     name: raw.name,
     prompt: raw.prompt,
     styleCount: raw.styleCount ?? "4",
+    variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: raw.productImagePrompt ?? "",
     productImagePrompts: normalizeProductImagePrompts(raw.productImagePrompts),

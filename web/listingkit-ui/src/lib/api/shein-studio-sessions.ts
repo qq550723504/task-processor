@@ -9,6 +9,7 @@ import type {
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
+  SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
 
@@ -27,6 +28,7 @@ type StudioSessionDetailResponse = {
     selection?: Record<string, unknown>;
     prompt?: string;
     style_count?: string;
+    variation_intensity?: SheinStudioVariationIntensity;
     product_image_count?: string;
     product_image_prompt?: string;
     product_image_prompts?: SheinStudioProductImagePrompt[];
@@ -113,6 +115,7 @@ export async function updateSheinStudioSession(
     status?: StudioSessionStatus;
     prompt?: string;
     styleCount?: string;
+    variationIntensity?: SheinStudioVariationIntensity;
     productImageCount?: string;
     productImagePrompt?: string;
     productImagePrompts?: SheinStudioProductImagePrompt[];
@@ -135,6 +138,7 @@ export async function updateSheinStudioSession(
       status: patch.status,
       prompt: patch.prompt,
       style_count: patch.styleCount,
+      variation_intensity: patch.variationIntensity,
       product_image_count: patch.productImageCount,
       product_image_prompt: patch.productImagePrompt,
       product_image_prompts: patch.productImagePrompts,
@@ -200,6 +204,7 @@ export function mapStudioSessionDetailToDraft(
   return normalizeDraft({
     prompt: detail.session.prompt ?? "",
     styleCount: detail.session.style_count ?? "1",
+    variationIntensity: detail.session.variation_intensity ?? "medium",
     productImageCount: detail.session.product_image_count ?? "5",
     productImagePrompt: detail.session.product_image_prompt ?? "",
     productImagePrompts: detail.session.product_image_prompts ?? [],

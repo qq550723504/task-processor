@@ -21,12 +21,14 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
+  SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
 export type SheinStudioSaveInput = {
   id?: string;
   prompt: string;
   styleCount: string;
+  variationIntensity?: SheinStudioVariationIntensity;
   productImageCount?: string;
   productImagePrompt?: string;
   productImagePrompts?: SheinStudioProductImagePrompt[];
@@ -121,6 +123,7 @@ export async function saveSheinStudioDraftWithOptions(
       status,
       prompt: input.prompt,
       styleCount: input.styleCount,
+      variationIntensity: input.variationIntensity,
       productImageCount: input.productImageCount,
       productImagePrompt: input.productImagePrompt,
       productImagePrompts: input.productImagePrompts,

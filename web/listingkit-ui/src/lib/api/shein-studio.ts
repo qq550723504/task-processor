@@ -30,6 +30,7 @@ export async function generateSheinStudioDesigns(
     body: {
       prompt: body.prompt,
       count: body.count,
+      variation_intensity: body.variationIntensity,
       printable_width: body.printableWidth,
       printable_height: body.printableHeight,
       product_reference_image_urls: body.productReferenceImageUrls,

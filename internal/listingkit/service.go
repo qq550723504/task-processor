@@ -36,6 +36,7 @@ type service struct {
 	sheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 	sheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
 	sheinContentOptimizer      openaiclient.ChatCompleter
+	studioPromptDiversifier    openaiclient.ChatCompleter
 	studioImageGenerator       openaiclient.ImageGenerator
 	assetRepo                  AssetRepository
 	reviewRepo                 GenerationReviewRepository
@@ -72,6 +73,7 @@ type ServiceConfig struct {
 	SheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
 	SheinContentOptimizer      openaiclient.ChatCompleter
+	StudioPromptDiversifier    openaiclient.ChatCompleter
 	StudioImageGenerator       openaiclient.ImageGenerator
 }
 
@@ -128,6 +130,9 @@ func NewService(config *ServiceConfig) (Service, error) {
 	if config.AssetGenerationService == nil {
 		config.AssetGenerationService = newDefaultAssetGenerationService()
 	}
+	if config.StudioPromptDiversifier == nil {
+		config.StudioPromptDiversifier = config.SheinContentOptimizer
+	}
 	defaultSettings := defaultSheinSettings(config.SheinDefaultStoreID, config.SheinPricingPolicy)
 	return &service{
 		repo:                       config.Repository,
@@ -146,6 +151,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 		sheinImageAPIBuilder:       config.SheinImageAPIBuilder,
 		sheinTranslateAPIBuilder:   config.SheinTranslateAPIBuilder,
 		sheinContentOptimizer:      config.SheinContentOptimizer,
+		studioPromptDiversifier:    config.StudioPromptDiversifier,
 		studioImageGenerator:       config.StudioImageGenerator,
 		assetRepo:                  config.AssetRepository,
 		reviewRepo:                 config.ReviewRepository,

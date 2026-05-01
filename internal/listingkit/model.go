@@ -112,6 +112,7 @@ type StudioGeneratedImage struct {
 type StudioDesignRequest struct {
 	Prompt                    string   `json:"prompt,omitempty"`
 	Count                     int      `json:"count,omitempty"`
+	VariationIntensity        string   `json:"variation_intensity,omitempty"`
 	PrintableWidth            int      `json:"printable_width,omitempty"`
 	PrintableHeight           int      `json:"printable_height,omitempty"`
 	ProductReferenceImageURLs []string `json:"product_reference_image_urls,omitempty"`

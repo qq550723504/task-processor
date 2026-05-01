@@ -95,6 +95,9 @@ func (s *service) UpdateStudioSession(ctx context.Context, sessionID string, req
 		if req.StyleCount != nil {
 			session.StyleCount = *req.StyleCount
 		}
+		if req.VariationIntensity != nil {
+			session.VariationIntensity = *req.VariationIntensity
+		}
 		if req.ProductImageCount != nil {
 			session.ProductImageCount = *req.ProductImageCount
 		}

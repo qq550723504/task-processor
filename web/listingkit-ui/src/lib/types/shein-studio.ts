@@ -17,6 +17,7 @@ export type SheinStudioImageStrategy =
   | "hybrid";
 
 export type SheinStudioArtworkModel = "nanobanana" | "gpt-image-2";
+export type SheinStudioVariationIntensity = "light" | "medium" | "strong";
 
 export type SheinStudioProductImagePrompt = {
   role: string;
@@ -45,6 +46,7 @@ export type SheinStudioCreatedTask = {
 export type SheinStudioGenerateRequest = {
   prompt: string;
   count: number;
+  variationIntensity?: SheinStudioVariationIntensity;
   printableWidth?: number;
   printableHeight?: number;
   productReferenceImageUrls?: string[];
@@ -64,6 +66,7 @@ export type SheinStudioSavedBatch = {
   name: string;
   prompt: string;
   styleCount: string;
+  variationIntensity?: SheinStudioVariationIntensity;
   productImageCount?: string;
   productImagePrompt?: string;
   productImagePrompts?: SheinStudioProductImagePrompt[];

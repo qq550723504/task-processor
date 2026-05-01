@@ -7,12 +7,14 @@ import type {
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
+  SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 
 type BuildSheinStudioDraftInputArgs = {
   prompt: string;
   styleCount: string;
+  variationIntensity: SheinStudioVariationIntensity;
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
@@ -34,6 +36,7 @@ export function buildSheinStudioDraftInput(
   return {
     prompt: args.prompt,
     styleCount: args.styleCount,
+    variationIntensity: args.variationIntensity,
     productImageCount: args.productImageCount,
     productImagePrompt: args.productImagePrompt,
     productImagePrompts: args.productImagePrompts,
