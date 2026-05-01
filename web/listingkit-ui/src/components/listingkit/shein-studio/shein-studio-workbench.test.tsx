@@ -60,9 +60,9 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
     prompt: string;
     setPrompt: (value: string) => void;
     selectedSdsImages?: Array<{
+      color?: string;
       imageUrl: string;
       variantSku?: string;
-      color?: string;
     }>;
   }) => {
     lastGenerationPanelProps = props as Record<string, unknown>;
@@ -120,15 +120,15 @@ vi.mock("@/lib/utils/shein-studio-batches", () => ({
 }));
 
 const selection = {
-  productId: 1,
-  parentProductId: 1,
-  variantId: 100,
-  prototypeGroupId: 200,
   layerId: "layer-1",
-  productName: "tee",
-  variantLabel: "M / black",
-  printableWidth: 1000,
+  parentProductId: 1,
   printableHeight: 1000,
+  printableWidth: 1000,
+  productId: 1,
+  productName: "tee",
+  prototypeGroupId: 200,
+  variantId: 100,
+  variantLabel: "M / black",
 };
 
 describe("SheinStudioWorkbench", () => {

@@ -1,9 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
+import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
 export type SheinStudioStepKey = "select" | "generate" | "review" | "tasks";
 

@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
-import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
+import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import { SheinStudioProgressStrip } from "@/components/listingkit/shein-studio/shein-studio-progress-strip";
 import { SheinStudioSelectionOverview } from "@/components/listingkit/shein-studio/shein-studio-selection-overview";
@@ -19,29 +19,29 @@ import {
   createSheinReviewTasks,
   parsePositiveInt,
 } from "@/lib/shein-studio/create-review-tasks";
+import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
+import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
 import {
   buildDefaultSelectedSDSImages,
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
-import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
   DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
 } from "@/lib/shein-studio/storage-shared";
-import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
-import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
 import { resolveSheinStudioEffectiveStep } from "@/lib/shein-studio/workbench-step";
+import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
-  SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
+  SheinStudioSelectedSDSImage,
 } from "@/lib/types/shein-studio";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
@@ -132,15 +132,15 @@ export function SheinStudioWorkbench({
             size: undefined,
             color: undefined,
           }))
-      : activeSelection?.variantId
-        ? [
-            {
-              variantId: activeSelection.variantId,
-              size: activeSelection.variantLabel,
-              color: "默认",
-            },
-          ]
-        : [];
+        : activeSelection?.variantId
+          ? [
+              {
+                variantId: activeSelection.variantId,
+                size: activeSelection.variantLabel,
+                color: "默认",
+              },
+            ]
+          : [];
   const selectedColorCount = new Set(
     selectedVariants.map((variant) => variant.color || "default"),
   ).size;
@@ -248,10 +248,7 @@ export function SheinStudioWorkbench({
   }, [activeSelectionKey]);
 
   useEffect(() => {
-    if (
-      imageStrategy !== "hybrid" &&
-      imageStrategy !== "sds_official"
-    ) {
+    if (imageStrategy !== "hybrid" && imageStrategy !== "sds_official") {
       return;
     }
     if (hasCustomizedSdsSelectionRef.current) {
@@ -364,26 +361,26 @@ export function SheinStudioWorkbench({
       window.clearTimeout(timer);
     };
   }, [
+    activeSelection,
+    artworkModel,
     createdTasks,
     designs,
-    artworkModel,
     imageStrategy,
     isCreatingTasks,
     isGenerating,
     isLoadingWorkspace,
-    prompt,
     productImageCount,
     productImagePrompt,
     productImagePrompts,
-    transparentBackground,
-    renderSizeImagesWithSds,
-    selectedSdsImages,
-    selectedIds,
-    activeSelection,
+    prompt,
     regeneratingId,
+    renderSizeImagesWithSds,
+    selectedIds,
+    selectedSdsImages,
     sheinStoreId,
-      styleCount,
-    ]);
+    styleCount,
+    transparentBackground,
+  ]);
 
   function buildDraftInput(overrides?: Partial<{
     designs: SheinStudioGeneratedDesign[];
@@ -510,38 +507,43 @@ export function SheinStudioWorkbench({
     })();
 
     try {
-      const response = await generateSheinStudioDesigns({
-        prompt: prompt.trim(),
-        count: parsePositiveInt(styleCount) ?? 1,
-        printableWidth: activeSelection.printableWidth,
-        printableHeight: activeSelection.printableHeight,
-        productReferenceImageUrls: buildSDSProductReferenceImageUrls(activeSelection),
-        imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
-        transparentBackground,
-      }, {
-        onJobStarted: (jobId) => {
-          void sessionSyncPromise
-            .then((sessionId) => {
-              if (!sessionId) {
-                return;
-              }
-              return updateSheinStudioSession(
-                sessionId,
-                {
-                  status: "generating",
-                  generationJobId: jobId,
-                  generationError: "",
-                },
-                {
-                  timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
-                },
-              );
-            })
-            .catch(() => undefined);
+      const response = await generateSheinStudioDesigns(
+        {
+          prompt: prompt.trim(),
+          count: parsePositiveInt(styleCount) ?? 1,
+          printableWidth: activeSelection.printableWidth,
+          printableHeight: activeSelection.printableHeight,
+          productReferenceImageUrls: buildSDSProductReferenceImageUrls(activeSelection),
+          imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
+          transparentBackground,
         },
-      });
+        {
+          onJobStarted: (jobId) => {
+            void sessionSyncPromise
+              .then((sessionId) => {
+                if (!sessionId) {
+                  return;
+                }
+                return updateSheinStudioSession(
+                  sessionId,
+                  {
+                    status: "generating",
+                    generationJobId: jobId,
+                    generationError: "",
+                  },
+                  {
+                    timeoutMs: STUDIO_SESSION_SYNC_TIMEOUT_MS,
+                  },
+                );
+              })
+              .catch(() => undefined);
+          },
+        },
+      );
       if (!response.images.length) {
-        throw new Error("款式图生成完成，但没有返回任何图片。请重试一次；如果持续出现，说明上游生成链路返回了空结果。");
+        throw new Error(
+          "款式图生成完成，但没有返回任何图片。请重试一次；如果持续出现，说明上游生成链路返回了空结果。",
+        );
       }
       const nextSelectedIds = response.images.map((item) => item.id);
       console.info("[shein-studio] generation succeeded", {
@@ -585,9 +587,7 @@ export function SheinStudioWorkbench({
           );
         })
         .catch(() => undefined);
-      setGenerationError(
-        error instanceof Error ? error.message : "款式图生成失败。",
-      );
+      setGenerationError(error instanceof Error ? error.message : "款式图生成失败。");
     } finally {
       setIsGenerating(false);
     }
@@ -645,9 +645,7 @@ export function SheinStudioWorkbench({
         },
       ).catch(() => undefined);
     } catch (error) {
-      setGenerationError(
-        error instanceof Error ? error.message : "重新生成款式失败。",
-      );
+      setGenerationError(error instanceof Error ? error.message : "重新生成款式失败。");
     } finally {
       setRegeneratingId("");
     }
@@ -769,9 +767,7 @@ export function SheinStudioWorkbench({
       });
       hasLocalWorkflowStateRef.current = true;
       setCreatedTasks(created);
-      setCreatingMessage(
-        `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
-      );
+      setCreatingMessage(`已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`);
       navigateToStep("tasks");
       void persistDraft(
         { createdTasks: created },
@@ -781,9 +777,7 @@ export function SheinStudioWorkbench({
         },
       ).catch(() => undefined);
     } catch (error) {
-      setCreatingError(
-        error instanceof Error ? error.message : "SHEIN 任务创建失败。",
-      );
+      setCreatingError(error instanceof Error ? error.message : "SHEIN 任务创建失败。");
       setCreatingMessage("");
     } finally {
       setIsCreatingTasks(false);
@@ -818,6 +812,7 @@ export function SheinStudioWorkbench({
 
       {effectiveStep === "generate" ? (
         <SheinStudioGenerationPanel
+          artworkModel={artworkModel}
           availableSdsImages={availableSdsImages}
           createdTasks={createdTasks}
           creatingError={creatingError}
@@ -834,59 +829,58 @@ export function SheinStudioWorkbench({
           productImageCount={productImageCount}
           productImagePrompt={productImagePrompt}
           productImagePrompts={productImagePrompts}
-          artworkModel={artworkModel}
-          transparentBackground={transparentBackground}
-          renderSizeImagesWithSds={renderSizeImagesWithSds}
           prompt={prompt}
           promptInputRef={promptInputRef}
-          savedBatches={savedBatches}
+          renderSizeImagesWithSds={renderSizeImagesWithSds}
           saveMessage={saveMessage}
+          savedBatches={savedBatches}
           selectedSdsImages={selectedSdsImages}
           selectedStyleCount={selectedIds.length}
           selectionReady={Boolean(activeSelection?.variantId)}
           setArtworkModel={setArtworkModel}
           setImageStrategy={setImageStrategy}
-          setSelectedSdsImages={(value) => {
-            hasCustomizedSdsSelectionRef.current = true;
-            setSelectedSdsImages(value);
-          }}
           setProductImageCount={setProductImageCount}
           setProductImagePrompt={setProductImagePrompt}
           setProductImagePrompts={setProductImagePrompts}
           setPrompt={setPrompt}
           setRenderSizeImagesWithSds={setRenderSizeImagesWithSds}
+          setSelectedSdsImages={(value) => {
+            hasCustomizedSdsSelectionRef.current = true;
+            setSelectedSdsImages(value);
+          }}
           setSheinStoreId={setSheinStoreId}
           setStyleCount={setStyleCount}
           setTransparentBackground={setTransparentBackground}
           sheinStoreId={sheinStoreId}
           styleCount={styleCount}
+          transparentBackground={transparentBackground}
         />
       ) : null}
 
       {effectiveStep === "review" ? (
-      <div id="shein-style-review" className="scroll-mt-6">
-        <SheinStudioProgressStrip
-          createdTaskCount={createdTasks.length}
-          generatedStyleCount={designs.length}
-          selectedStyleCount={selectedIds.length}
-        />
-        <SheinDesignPreviewGrid
-          imageStrategy={imageStrategy}
-          designs={designs}
-          onBackToGenerate={() => navigateToStep("generate")}
-          onNoteChange={handleNoteChange}
-          onCreateReviewTasks={handleCreateTasks}
-          onRegenerate={handleRegenerate}
-          onToggle={toggleSelection}
-          productImageCount={productImageCount}
-          createActionDisabledReason={createActionDisabledReason}
-          isCreatingTasks={isCreatingTasks}
-          regeneratingId={regeneratingId || undefined}
-          renderSizeImagesWithSds={renderSizeImagesWithSds}
-          selectedIds={selectedIds}
-          selection={activeSelection}
-        />
-      </div>
+        <div id="shein-style-review" className="scroll-mt-6">
+          <SheinStudioProgressStrip
+            createdTaskCount={createdTasks.length}
+            generatedStyleCount={designs.length}
+            selectedStyleCount={selectedIds.length}
+          />
+          <SheinDesignPreviewGrid
+            createActionDisabledReason={createActionDisabledReason}
+            designs={designs}
+            imageStrategy={imageStrategy}
+            isCreatingTasks={isCreatingTasks}
+            onBackToGenerate={() => navigateToStep("generate")}
+            onCreateReviewTasks={handleCreateTasks}
+            onNoteChange={handleNoteChange}
+            onRegenerate={handleRegenerate}
+            onToggle={toggleSelection}
+            productImageCount={productImageCount}
+            regeneratingId={regeneratingId || undefined}
+            renderSizeImagesWithSds={renderSizeImagesWithSds}
+            selectedIds={selectedIds}
+            selection={activeSelection}
+          />
+        </div>
       ) : null}
 
       {effectiveStep === "tasks" ? (
