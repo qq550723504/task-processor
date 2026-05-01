@@ -47,6 +47,10 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	if pkg.Pricing == nil || !pkg.Pricing.Ready {
 		review := buildSheinPricingReview(pkg, s.currentSheinPricingRule(), nil)
 		applySheinPricingReview(pkg, review)
+	} else {
+		// Submit clones PreviewProduct, so ensure any persisted ready pricing is
+		// reapplied after SKU normalization and before submit payload generation.
+		applySheinPricingReview(pkg, pkg.Pricing)
 	}
 	if req != nil && req.ConfirmedFinal {
 		if pkg.FinalDraft == nil {

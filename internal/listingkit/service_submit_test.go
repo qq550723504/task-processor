@@ -979,6 +979,69 @@ func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskReappliesReadyPricingBeforeSubmit(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	task.Result.Shein.Pricing = &sheinpub.PricingReview{
+		Ready: true,
+		SKUPrices: []sheinpub.SKUPriceReview{{
+			SupplierSKU: task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SupplierSKU,
+			FinalPrice:  25.55,
+			Currency:    "USD",
+		}},
+	}
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice = "19.99"
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SitePriceList = []sheinpub.SitePrice{{
+		SubSite:   "US",
+		BasePrice: "19.99",
+		Currency:  "USD",
+	}}
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].PriceInfoList = []sheinproduct.PriceInfo{{
+		SubSite:   "US",
+		BasePrice: 19.99,
+		Currency:  "USD",
+	}}
+
+	var submitted *sheinproduct.Product
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				saveHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				saveResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "OK",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "save_draft"}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected save draft payload to be captured")
+	}
+	if len(submitted.SKCList) == 0 || len(submitted.SKCList[0].SKUS) == 0 || len(submitted.SKCList[0].SKUS[0].PriceInfoList) == 0 {
+		t.Fatalf("submitted price info = %+v", submitted.SKCList)
+	}
+	if submitted.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice != 25.55 {
+		t.Fatalf("submitted base price = %v, want 25.55", submitted.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice)
+	}
+}
+
 func TestSubmitTaskSaveDraftDoesNotFailWhenContentOptimizerFails(t *testing.T) {
 	t.Parallel()
 
