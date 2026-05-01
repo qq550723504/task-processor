@@ -420,6 +420,37 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
     });
   };
 
+  const handleConfirmCurrentSheinCategory = () => {
+    const sheinPreview = preview.data?.shein;
+    const current = sheinPreview?.editor_context?.category?.current;
+    const saleCurrent = sheinPreview?.editor_context?.sale_attributes?.current;
+
+    if (!current?.category_id) {
+      return;
+    }
+
+    applyRevision.mutate({
+      platform: "shein",
+      actor: "workspace",
+      reason: "Confirm current SHEIN category",
+      shein: {
+        category_resolution: {
+          category_id: current.category_id,
+          category_id_list: current.category_id_list,
+          product_type_id: current.product_type_id,
+          top_category_id: current.top_category_id,
+          matched_path: current.category_path,
+          source: current.source ?? "manual_confirm",
+          status: "resolved",
+        },
+        sale_attribute_resolution: {
+          recommend_category_review: false,
+          category_review_reason: saleCurrent?.category_review_reason,
+        },
+      },
+    });
+  };
+
   const handleApplyManualSheinCategory = async (
     candidate: SheinManualCategoryCandidate,
   ) => {
@@ -974,6 +1005,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
                   editorContext={preview.data?.shein?.editor_context}
                   isApplying={applyRevision.isPending}
                   onApplySuggestedCategory={handleApplySuggestedSheinCategory}
+                  onConfirmCurrentCategory={handleConfirmCurrentSheinCategory}
                   onApplyManualCategory={handleApplyManualSheinCategory}
                 />
               </div>

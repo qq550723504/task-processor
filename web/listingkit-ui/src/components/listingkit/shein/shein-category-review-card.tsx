@@ -15,6 +15,23 @@ function joinPath(path?: string[] | null): string {
   return path?.filter(Boolean).join(" > ") ?? "";
 }
 
+function formatCategoryLabel(
+  path?: string[] | null,
+  categoryId?: number | null,
+): string {
+  const pathLabel = joinPath(path);
+  if (pathLabel && categoryId) {
+    return `${pathLabel} (${categoryId})`;
+  }
+  if (pathLabel) {
+    return pathLabel;
+  }
+  if (categoryId) {
+    return String(categoryId);
+  }
+  return "";
+}
+
 function buildSheinCategoryReviewModel(editorContext?: SheinEditorContext | null) {
   if (!editorContext) {
     return null;
@@ -51,6 +68,7 @@ function buildSheinCategoryReviewModel(editorContext?: SheinEditorContext | null
     categoryReviewReason,
     currentPath: joinPath(currentCategory?.category_path),
     currentCategoryId: currentCategory?.category_id,
+    currentCategory: currentCategory ?? null,
     suggestedCategory,
     isSuggestionApplied,
   };
@@ -102,9 +120,11 @@ function SuggestedCategoryBlock({
       <dl className="grid gap-3">
         <SuggestionRow
           label="Category path"
-          value={joinPath(suggestion.matched_path)}
+          value={formatCategoryLabel(
+            suggestion.matched_path,
+            suggestion.category_id,
+          )}
         />
-        <SuggestionRow label="Category ID" value={suggestion.category_id} />
         <SuggestionRow label="Source" value={suggestion.source} />
         <SuggestionRow label="Reason" value={suggestion.reason} />
       </dl>
@@ -140,10 +160,12 @@ function ManualCategorySearchResults({
           >
             <div className="space-y-2">
               <p className="text-sm font-medium text-zinc-900">
-                {joinPath(candidate.category_path)}
+                {formatCategoryLabel(
+                  candidate.category_path,
+                  candidate.category_id,
+                )}
               </p>
               <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
-                <span>Category ID: {candidate.category_id}</span>
                 {candidate.product_type_id ? (
                   <span>Product type: {candidate.product_type_id}</span>
                 ) : null}
@@ -171,12 +193,14 @@ export function SheinCategoryReviewCard({
   editorContext,
   isApplying = false,
   onApplySuggestedCategory,
+  onConfirmCurrentCategory,
   onApplyManualCategory,
 }: {
   taskId: string;
   editorContext?: SheinEditorContext | null;
   isApplying?: boolean;
   onApplySuggestedCategory?: (() => void) | null;
+  onConfirmCurrentCategory?: (() => void) | null;
   onApplyManualCategory?: ((candidate: SheinManualCategoryCandidate) => Promise<void> | void) | null;
 }) {
   const model = buildSheinCategoryReviewModel(editorContext);
@@ -246,8 +270,13 @@ export function SheinCategoryReviewCard({
         </div>
 
         <dl className="grid gap-3">
-          <SuggestionRow label="Current category path" value={model.currentPath} />
-          <SuggestionRow label="Current category ID" value={model.currentCategoryId} />
+          <SuggestionRow
+            label="Current category"
+            value={formatCategoryLabel(
+              model.currentCategory?.category_path,
+              model.currentCategoryId,
+            )}
+          />
           <SuggestionRow label="Review reason" value={model.categoryReviewReason} />
         </dl>
 
@@ -259,13 +288,36 @@ export function SheinCategoryReviewCard({
         {model.suggestedCategory?.category_id &&
         !model.isSuggestionApplied &&
         onApplySuggestedCategory ? (
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-3">
+            {model.currentCategory?.category_id && onConfirmCurrentCategory ? (
+              <Button
+                tone="ghost"
+                disabled={isApplying}
+                onClick={onConfirmCurrentCategory}
+              >
+                {isApplying ? "Applying..." : "确认当前类目"}
+              </Button>
+            ) : null}
             <Button
               tone="secondary"
               disabled={isApplying}
               onClick={onApplySuggestedCategory}
             >
               {isApplying ? "Applying..." : "Apply suggested category"}
+            </Button>
+          </div>
+        ) : null}
+
+        {!model.suggestedCategory?.category_id &&
+        model.currentCategory?.category_id &&
+        onConfirmCurrentCategory ? (
+          <div className="flex justify-end">
+            <Button
+              tone="secondary"
+              disabled={isApplying}
+              onClick={onConfirmCurrentCategory}
+            >
+              {isApplying ? "Applying..." : "确认当前类目"}
             </Button>
           </div>
         ) : null}
