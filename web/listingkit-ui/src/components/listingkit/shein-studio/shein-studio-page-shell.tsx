@@ -51,12 +51,14 @@ export function SheinStudioPageShell({
               <Link
                 href="/listing-kits/shein/gallery"
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800"
+                prefetch={false}
               >
                 查看款式图库
               </Link>
               <Link
                 href="/listing-kits?platform=shein"
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
+                prefetch={false}
               >
                 查看 SHEIN 任务
               </Link>

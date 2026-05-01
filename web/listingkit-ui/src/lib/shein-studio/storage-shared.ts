@@ -233,7 +233,43 @@ export function normalizeStorageData(raw: unknown): SheinStudioStorageData {
 }
 
 export function buildSelectionSummary(selection?: SDSProductVariantSelection) {
-  return selection ? selection : undefined;
+  if (!selection) {
+    return undefined;
+  }
+
+  return {
+    productId: selection.productId,
+    parentProductId: selection.parentProductId,
+    variantId: selection.variantId,
+    prototypeGroupId: selection.prototypeGroupId,
+    layerId: selection.layerId,
+    productName: selection.productName,
+    variantLabel: selection.variantLabel,
+    printableWidth: selection.printableWidth,
+    printableHeight: selection.printableHeight,
+    templateImageUrl: selection.templateImageUrl,
+    maskImageUrl: selection.maskImageUrl,
+    blankDesignUrl: selection.blankDesignUrl,
+    mockupImageUrl: selection.mockupImageUrl,
+    mockupImageUrls: selection.mockupImageUrls,
+    sizeReferenceImageUrls: selection.sizeReferenceImageUrls,
+    selectedVariantIds: selection.selectedVariantIds,
+    variants: selection.variants?.map((variant) => ({
+      variantId: variant.variantId,
+      variantSku: variant.variantSku,
+      size: variant.size,
+      color: variant.color,
+      price: variant.price,
+      weight: variant.weight,
+      boxLength: variant.boxLength,
+      boxWidth: variant.boxWidth,
+      boxHeight: variant.boxHeight,
+      productionCycle: variant.productionCycle,
+      prototypeGroupId: variant.prototypeGroupId,
+      layerId: variant.layerId,
+      mockupImageUrl: variant.mockupImageUrl,
+    })),
+  } satisfies SDSProductVariantSelection;
 }
 
 export function deriveBatchName(prompt: string) {

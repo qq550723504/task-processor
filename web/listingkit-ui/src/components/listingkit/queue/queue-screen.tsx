@@ -34,6 +34,7 @@ import type {
 } from "@/lib/types/listingkit";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { buildWorkspaceSearch } from "@/components/listingkit/workspace/workspace-routing";
+import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
 const defaultQueuePageSize = 20;
 
@@ -100,7 +101,7 @@ export function QueueScreen({ taskId }: { taskId: string }) {
   };
 
   const updateQueuePage = (nextPage: number, nextPageSize = pageSize) => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = sanitizedNavigationSearchParams(searchParams);
     params.set("page", String(Math.max(1, nextPage)));
     params.set("page_size", String(nextPageSize));
     router.replace(`/listing-kits/${taskId}/queue?${params.toString()}`);

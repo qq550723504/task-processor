@@ -21,6 +21,7 @@ import {
 } from "@/lib/sds/product-filters";
 import { buildSDSVariantSelection } from "@/lib/sds/variant-selection";
 import type { SDSProductVariant, SDSProductVariantSelection } from "@/lib/types/sds";
+import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 import { saveRecentSDSVariant } from "@/lib/utils/sds-recent-variants";
 
 export function SDSProductBrowser({
@@ -94,7 +95,7 @@ export function SDSProductBrowser({
   );
 
   function updateQuery(next: Record<string, string | undefined>) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = sanitizedNavigationSearchParams(searchParams);
     Object.entries(next).forEach(([key, value]) => {
       if (!value) {
         params.delete(key);

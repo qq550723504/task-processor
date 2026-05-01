@@ -79,6 +79,7 @@ import type {
   ToolbarAction,
 } from "@/lib/types/listingkit";
 import { toImageProxyUrl } from "@/lib/utils/image-proxy-url";
+import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
 function queryFromSearchParams(searchParams: URLSearchParams): QueueQuery {
   return {
@@ -588,7 +589,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   };
 
   const handlePlatformSelect = (platform: string) => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = sanitizedNavigationSearchParams(searchParams);
     params.set("platform", platform);
     router.replace(`/listing-kits/${taskId}/workspace?${params.toString()}`);
   };

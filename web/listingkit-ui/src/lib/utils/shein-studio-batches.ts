@@ -2,6 +2,10 @@ import {
   normalizeBatch,
   normalizeDraft,
 } from "@/lib/shein-studio/storage-shared";
+import {
+  parseJsonResponse,
+  ResponseJsonParseError,
+} from "@/lib/api/response-json";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
@@ -13,7 +17,7 @@ import type {
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
 
-type SaveInput = {
+export type SheinStudioSaveInput = {
   id?: string;
   prompt: string;
   styleCount: string;
@@ -31,10 +35,26 @@ type SaveInput = {
   createdTasks: SheinStudioCreatedTask[];
 };
 
+type SaveDraftOptions = {
+  navigationTriggered?: boolean;
+  source?: string;
+};
+
 async function parseJSON<T>(response: Response) {
-  const payload = (await response.json()) as T & { message?: string };
+  let payload: (T & { message?: string }) | undefined;
+  try {
+    payload = await parseJsonResponse<T & { message?: string }>(response);
+  } catch (error) {
+    if (error instanceof ResponseJsonParseError) {
+      throw new Error(error.message);
+    }
+    throw error;
+  }
   if (!response.ok) {
-    throw new Error(payload.message || "SHEIN Studio storage request failed");
+    throw new Error(payload?.message || "SHEIN Studio storage request failed");
+  }
+  if (!payload) {
+    throw new Error(`SHEIN Studio storage returned empty response: ${response.status}`);
   }
   return payload;
 }
@@ -71,17 +91,60 @@ export async function loadSheinStudioDraft(selection?: SDSProductVariantSelectio
   return normalizeDraft(payload.draft);
 }
 
-export async function saveSheinStudioDraft(input: SaveInput) {
+export async function saveSheinStudioDraft(input: SheinStudioSaveInput) {
+  return saveSheinStudioDraftWithOptions(input);
+}
+
+export async function saveSheinStudioDraftWithOptions(
+  input: SheinStudioSaveInput,
+  options?: SaveDraftOptions,
+) {
+  const body = JSON.stringify(input);
+  const startedAt = performance.now();
+  const bodyBytes = new TextEncoder().encode(body).byteLength;
+  const source = options?.source ?? "unknown";
+
+  console.info("[shein-studio-draft] client save started", {
+    bodyBytes,
+    designCount: input.designs.length,
+    navigationTriggered: options?.navigationTriggered ?? false,
+    selectionVariantId: input.selection?.variantId ?? null,
+    source,
+  });
+
   const response = await fetch("/api/shein-studio/draft", {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(input),
+    body,
     cache: "no-store",
   });
-  const payload = await parseJSON<{ draft: SheinStudioDraft | null }>(response);
-  return normalizeDraft(payload.draft);
+  try {
+    const payload = await parseJSON<{ draft: SheinStudioDraft | null }>(response);
+    console.info("[shein-studio-draft] client save completed", {
+      bodyBytes,
+      designCount: input.designs.length,
+      draftSaveDurationMs: Math.round(performance.now() - startedAt),
+      draftSaveStatus: "succeeded",
+      navigationTriggered: options?.navigationTriggered ?? false,
+      selectionVariantId: input.selection?.variantId ?? null,
+      source,
+    });
+    return normalizeDraft(payload.draft);
+  } catch (error) {
+    console.warn("[shein-studio-draft] client save failed", {
+      bodyBytes,
+      designCount: input.designs.length,
+      draftSaveDurationMs: Math.round(performance.now() - startedAt),
+      draftSaveStatus: "failed",
+      error: error instanceof Error ? error.message : String(error),
+      navigationTriggered: options?.navigationTriggered ?? false,
+      selectionVariantId: input.selection?.variantId ?? null,
+      source,
+    });
+    throw error;
+  }
 }
 
 export async function listSheinStudioBatches() {
@@ -106,7 +169,7 @@ export async function getSheinStudioBatch(batchID: string) {
   return normalizeBatch(payload.batch);
 }
 
-export async function saveSheinStudioBatch(input: SaveInput) {
+export async function saveSheinStudioBatch(input: SheinStudioSaveInput) {
   const response = await fetch("/api/shein-studio/batches", {
     method: "POST",
     headers: {

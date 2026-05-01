@@ -14,6 +14,7 @@ import {
   sheinWorkflowStatusLabel,
 } from "@/lib/shein-studio/shein-submission-display";
 import type { ListingKitTaskListItem } from "@/lib/types/listingkit";
+import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
 const STATUS_OPTIONS = [
   { value: "", label: "全部任务状态" },
@@ -119,7 +120,7 @@ export function TaskListPage() {
   const items = tasks.data?.items ?? [];
 
   const updateFilter = (key: "status" | "platform" | "shein_workflow_status", value: string) => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = sanitizedNavigationSearchParams(searchParams);
     if (value) {
       params.set(key, value);
     } else {

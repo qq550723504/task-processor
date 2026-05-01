@@ -1,10 +1,13 @@
 import type { ReviewTarget } from "@/lib/types/listingkit";
+import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
 export function buildWorkspaceSearch(
   currentSearch: string,
   target?: ReviewTarget | null,
 ) {
-  const params = new URLSearchParams(currentSearch);
+  const params = sanitizedNavigationSearchParams(
+    new URLSearchParams(currentSearch),
+  );
 
   const nextValues: Record<string, string | undefined> = {
     platform: target?.platform,

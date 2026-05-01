@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
@@ -22,6 +23,9 @@ import {
   DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
 } from "@/lib/shein-studio/storage-shared";
+import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
+import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
+import { resolveSheinStudioEffectiveStep } from "@/lib/shein-studio/workbench-step";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
@@ -35,7 +39,7 @@ import {
   listSheinStudioBatches,
   loadSheinStudioDraft,
   saveSheinStudioBatch,
-  saveSheinStudioDraft,
+  saveSheinStudioDraftWithOptions,
 } from "@/lib/utils/shein-studio-batches";
 
 export function SheinStudioWorkbench({
@@ -76,8 +80,23 @@ export function SheinStudioWorkbench({
   const [savedBatches, setSavedBatches] = useState<SheinStudioSavedBatch[]>([]);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [saveMessage, setSaveMessage] = useState("");
+  const [draftWarning, setDraftWarning] = useState("");
+  const [localStepOverride, setLocalStepOverride] =
+    useState<SheinStudioStepKey | null>(null);
+  const [localWorkflowSelectionId, setLocalWorkflowSelectionId] = useState(
+    selection?.variantId,
+  );
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
-  const activeSelection = hydratedSelection ?? selection;
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeSelection =
+    hydratedSelection?.variantId === selection?.variantId
+      ? hydratedSelection ?? selection
+      : selection;
+  const effectiveStep = localWorkflowSelectionId === selection?.variantId
+    ? localStepOverride ?? activeStep
+    : activeStep;
 
   const printableAreaLabel =
     activeSelection?.printableWidth && activeSelection?.printableHeight
@@ -115,7 +134,6 @@ export function SheinStudioWorkbench({
 
   useEffect(() => {
     let cancelled = false;
-    setHydratedSelection(selection);
 
     void hydrateSDSVariantSelection(selection).then((nextSelection) => {
       if (!cancelled) {
@@ -143,26 +161,39 @@ export function SheinStudioWorkbench({
           return;
         }
 
-        setPrompt(draft?.prompt ?? "");
-        setStyleCount(draft?.styleCount ?? "1");
-        setProductImageCount(
-          draft?.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
-        );
-        setProductImagePrompt(draft?.productImagePrompt ?? "");
-        setProductImagePrompts(draft?.productImagePrompts ?? []);
-        setArtworkModel(draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL);
-        setTransparentBackground(draft?.transparentBackground ?? false);
-        setSheinStoreId(draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID);
-        setImageStrategy(draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
-        setRenderSizeImagesWithSds(draft?.renderSizeImagesWithSds ?? true);
-        setDesigns(draft?.designs ?? []);
-        setSelectedIds(draft?.selectedIds ?? []);
-        setCreatedTasks(draft?.createdTasks ?? []);
+        if (draft || localWorkflowSelectionId !== selection?.variantId) {
+          setPrompt(draft?.prompt ?? "");
+          setStyleCount(draft?.styleCount ?? "1");
+          setProductImageCount(
+            draft?.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+          );
+          setProductImagePrompt(draft?.productImagePrompt ?? "");
+          setProductImagePrompts(draft?.productImagePrompts ?? []);
+          setArtworkModel(draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL);
+          setTransparentBackground(draft?.transparentBackground ?? false);
+          setSheinStoreId(draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID);
+          setImageStrategy(draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY);
+          setRenderSizeImagesWithSds(draft?.renderSizeImagesWithSds ?? true);
+          setDesigns(draft?.designs ?? []);
+          setSelectedIds(draft?.selectedIds ?? []);
+          setCreatedTasks(draft?.createdTasks ?? []);
+        }
         setSavedBatches(batches);
+        if (draft) {
+          setLocalWorkflowSelectionId(selection?.variantId);
+          setLocalStepOverride(
+            resolveSheinStudioEffectiveStep({
+              activeStep,
+              createdTaskCount: draft.createdTasks.length,
+              designCount: draft.designs.length,
+            }),
+          );
+        }
         setGenerationError("");
         setCreatingError("");
         setCreatingMessage("");
         setSaveMessage("");
+        setDraftWarning("");
       } finally {
         if (!cancelled) {
           setIsLoadingWorkspace(false);
@@ -175,15 +206,17 @@ export function SheinStudioWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [activeSelection]);
+  }, [activeSelection, activeStep, localWorkflowSelectionId, selection?.variantId]);
 
-  useEffect(() => {
-    if (isLoadingWorkspace) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      void saveSheinStudioDraft({
+  const buildDraftInput = useCallback(
+    (
+      overrides?: Partial<{
+        designs: SheinStudioGeneratedDesign[];
+        selectedIds: string[];
+        createdTasks: SheinStudioCreatedTask[];
+      }>,
+    ) =>
+      buildSheinStudioDraftInput({
         prompt,
         styleCount,
         productImageCount,
@@ -195,32 +228,99 @@ export function SheinStudioWorkbench({
         imageStrategy,
         renderSizeImagesWithSds,
         selection: activeSelection,
-        designs,
-        selectedIds,
-        createdTasks,
+        designs: overrides?.designs ?? designs,
+        selectedIds: overrides?.selectedIds ?? selectedIds,
+        createdTasks: overrides?.createdTasks ?? createdTasks,
+      }),
+    [
+      activeSelection,
+      artworkModel,
+      createdTasks,
+      designs,
+      imageStrategy,
+      productImageCount,
+      productImagePrompt,
+      productImagePrompts,
+      prompt,
+      renderSizeImagesWithSds,
+      selectedIds,
+      sheinStoreId,
+      styleCount,
+      transparentBackground,
+    ],
+  );
+
+  const persistDraft = useCallback(
+    async (
+      overrides?: Partial<{
+        designs: SheinStudioGeneratedDesign[];
+        selectedIds: string[];
+        createdTasks: SheinStudioCreatedTask[];
+      }>,
+      options?: {
+        navigationTriggered?: boolean;
+        source?: string;
+      },
+    ) => {
+      try {
+        const draft = await saveSheinStudioDraftWithOptions(
+          buildDraftInput(overrides),
+          options,
+        );
+        setDraftWarning("");
+        return draft;
+      } catch (error) {
+        setDraftWarning(
+          "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
+        );
+        throw error;
+      }
+    },
+    [buildDraftInput],
+  );
+
+  useEffect(() => {
+    if (isLoadingWorkspace) {
+      return;
+    }
+    if (isGenerating || isCreatingTasks || Boolean(regeneratingId)) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void persistDraft().catch((error) => {
+        console.warn(
+          "shein studio draft autosave failed",
+          error instanceof Error ? error.message : error,
+        );
       });
-    }, 400);
+    }, 1200);
 
     return () => {
       window.clearTimeout(timer);
     };
   }, [
-    createdTasks,
-    designs,
-    artworkModel,
-    imageStrategy,
     isLoadingWorkspace,
-    prompt,
-    productImageCount,
-    productImagePrompt,
-    productImagePrompts,
-    transparentBackground,
-    renderSizeImagesWithSds,
-    selectedIds,
-    activeSelection,
-    sheinStoreId,
-    styleCount,
+    isGenerating,
+    isCreatingTasks,
+    regeneratingId,
+    persistDraft,
   ]);
+
+  function navigateToStep(step: SheinStudioStepKey) {
+    setLocalWorkflowSelectionId(selection?.variantId);
+    setLocalStepOverride(step);
+    try {
+      router.replace(buildSheinStudioStepHref(pathname, searchParams, step), {
+        scroll: false,
+      });
+    } catch (error) {
+      console.warn(
+        "shein studio step navigation failed",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
 
   async function handleGenerate() {
     if (!activeSelection?.variantId) {
@@ -238,6 +338,7 @@ export function SheinStudioWorkbench({
     setCreatingError("");
     setCreatingMessage("");
     setCreatedTasks([]);
+    setDraftWarning("");
     setIsGenerating(true);
 
     try {
@@ -250,8 +351,27 @@ export function SheinStudioWorkbench({
         imageModel: transparentBackground ? "gpt-image-2" : artworkModel,
         transparentBackground,
       });
+      const nextSelectedIds = response.images.map((item) => item.id);
+      console.info("[shein-studio] generation succeeded", {
+        designCount: response.images.length,
+        draftSaveStatus: "pending",
+        selectionVariantId: activeSelection.variantId,
+      });
+      setLocalWorkflowSelectionId(selection?.variantId);
       setDesigns(response.images);
-      setSelectedIds(response.images.map((item) => item.id));
+      setSelectedIds(nextSelectedIds);
+      navigateToStep("review");
+      void persistDraft(
+        {
+          designs: response.images,
+          selectedIds: nextSelectedIds,
+          createdTasks: [],
+        },
+        {
+          navigationTriggered: true,
+          source: "generate_success",
+        },
+      ).catch(() => undefined);
     } catch (error) {
       setDesigns([]);
       setSelectedIds([]);
@@ -293,14 +413,27 @@ export function SheinStudioWorkbench({
         throw new Error("没有返回重新生成的图片。");
       }
 
+      setLocalWorkflowSelectionId(selection?.variantId);
       setDesigns((current) =>
         current.map((design) =>
           design.id === designId ? { ...replacement, id: designId } : design,
         ),
       );
-      setSelectedIds((current) =>
-        current.includes(designId) ? current : [...current, designId],
-      );
+      const nextSelectedIds = selectedIds.includes(designId)
+        ? selectedIds
+        : [...selectedIds, designId];
+      setSelectedIds(nextSelectedIds);
+      void persistDraft(
+        {
+          designs: designs.map((design) =>
+            design.id === designId ? { ...replacement, id: designId } : design,
+          ),
+          selectedIds: nextSelectedIds,
+        },
+        {
+          source: "regenerate_success",
+        },
+      ).catch(() => undefined);
     } catch (error) {
       setGenerationError(
         error instanceof Error ? error.message : "重新生成款式失败。",
@@ -343,6 +476,7 @@ export function SheinStudioWorkbench({
   }
 
   function handleLoadBatch(batch: SheinStudioSavedBatch) {
+    setLocalWorkflowSelectionId(selection?.variantId);
     setPrompt(batch.prompt);
     setStyleCount(batch.styleCount);
     setProductImageCount(
@@ -358,6 +492,13 @@ export function SheinStudioWorkbench({
     setDesigns(batch.designs);
     setSelectedIds(batch.selectedIds);
     setCreatedTasks(batch.createdTasks);
+    setLocalStepOverride(
+      resolveSheinStudioEffectiveStep({
+        activeStep,
+        createdTaskCount: batch.createdTasks.length,
+        designCount: batch.designs.length,
+      }),
+    );
     setSaveMessage(`已载入批次：${batch.name}`);
   }
 
@@ -411,10 +552,19 @@ export function SheinStudioWorkbench({
         selectedIds: approved.map((design) => design.id),
         onProgress: setCreatingMessage,
       });
+      setLocalWorkflowSelectionId(selection?.variantId);
       setCreatedTasks(created);
       setCreatingMessage(
         `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
       );
+      navigateToStep("tasks");
+      void persistDraft(
+        { createdTasks: created },
+        {
+          navigationTriggered: true,
+          source: "task_creation_success",
+        },
+      ).catch(() => undefined);
     } catch (error) {
       setCreatingError(
         error instanceof Error ? error.message : "SHEIN 任务创建失败。",
@@ -445,7 +595,13 @@ export function SheinStudioWorkbench({
         selection={activeSelection}
       />
 
-      {activeStep === "generate" ? (
+      {draftWarning ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+          {draftWarning}
+        </div>
+      ) : null}
+
+      {effectiveStep === "generate" ? (
         <SheinStudioGenerationPanel
           createdTasks={createdTasks}
           creatingError={creatingError}
@@ -486,7 +642,7 @@ export function SheinStudioWorkbench({
         />
       ) : null}
 
-      {activeStep === "review" ? (
+      {effectiveStep === "review" ? (
       <div id="shein-style-review" className="scroll-mt-6">
         <SheinStudioProgressStrip
           createdTaskCount={createdTasks.length}
@@ -508,7 +664,7 @@ export function SheinStudioWorkbench({
       </div>
       ) : null}
 
-      {activeStep === "tasks" ? (
+      {effectiveStep === "tasks" ? (
         <div
           id="shein-created-tasks"
           className="scroll-mt-6 rounded-[1.75rem] border border-zinc-200/80 bg-white p-5 shadow-sm"

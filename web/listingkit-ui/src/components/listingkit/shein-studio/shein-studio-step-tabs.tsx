@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { sanitizedNavigationSearchParams } from "@/lib/utils/navigation-query";
 
 export type SheinStudioStepKey = "select" | "generate" | "review" | "tasks";
 
@@ -43,7 +44,7 @@ export function SheinStudioStepTabs({
   const searchParams = useSearchParams();
 
   function hrefForStep(step: SheinStudioStepKey) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = sanitizedNavigationSearchParams(searchParams);
     params.set("step", step);
     return `${pathname}?${params.toString()}`;
   }
@@ -65,6 +66,7 @@ export function SheinStudioStepTabs({
             ].join(" ")}
             href={locked ? hrefForStep("select") : hrefForStep(step.key)}
             key={step.key}
+            prefetch={false}
           >
             <div className="text-sm font-semibold">{step.label}</div>
             <div
