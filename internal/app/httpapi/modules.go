@@ -99,7 +99,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 
 	sdsCatalogHandler := buildSDSCatalogHandler(logger)
 
-	server := buildHTTPServerWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, listingKitModule.studioSessionHandler, taskRPCHandler, sdsCatalogHandler)
+	server, routes := buildHTTPServerBundleWithStudio(options.Port, productModule.handler, imageModule.handler, amazonListingModule.handler, listingKitModule.handler, listingKitModule.studioSessionHandler, taskRPCHandler, sdsCatalogHandler)
 	return &appBootstrap{
 		productHandler:       productModule.handler,
 		imageHandler:         imageModule.handler,
@@ -109,6 +109,7 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		sdsCatalogHandler:    sdsCatalogHandler,
 		taskRPCHandler:       taskRPCHandler,
 		server:               server,
+		routes:               routes,
 		pools:                []worker.WorkerPool{productModule.pool, imageModule.pool, amazonListingModule.pool, listingKitModule.pool},
 		closers:              deps.closers,
 	}, nil

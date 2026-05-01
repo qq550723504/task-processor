@@ -802,3 +802,34 @@ func TestRegisterRoutes_TaskRPCEndpoints(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
+	t.Parallel()
+
+	router := gin.New()
+	productHandler := &stubProductHandler{}
+	imageHandler := &stubImageHandler{}
+	amazonHandler := &stubAmazonListingHandler{}
+	listingKitHandler := &stubListingKitHandler{}
+	taskRPCHandler := &stubTaskRPCHandler{}
+
+	routes := buildRouteDescriptors(productHandler, imageHandler, amazonHandler, listingKitHandler, nil, taskRPCHandler)
+	mountRoutes(router, routes)
+
+	registered := router.Routes()
+	if len(registered) != len(routes) {
+		t.Fatalf("registered routes = %d, want %d", len(registered), len(routes))
+	}
+
+	index := make(map[string]struct{}, len(registered))
+	for _, route := range registered {
+		index[route.Method+" "+route.Path] = struct{}{}
+	}
+
+	for _, route := range routes {
+		key := route.Method + " " + route.Path
+		if _, ok := index[key]; !ok {
+			t.Fatalf("expected mounted route %s", key)
+		}
+	}
+}

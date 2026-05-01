@@ -16,25 +16,23 @@ import (
 	"task-processor/internal/prompt"
 )
 
-// buildService 组装 productenrich.ProductService（全内存，无 Worker Pool）。
 func buildService(cfg *config.Config) (productenrich.ProductService, error) {
 	logger := corelogger.GetGlobalLogManager().GetRawLogger()
 
-	// 初始化全局 Prompt Registry
 	_, thisFile, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	projectRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
 	promptsDir := filepath.Join(projectRoot, "prompts")
 	if err := prompt.InitGlobal(context.Background(), promptsDir, false, nil); err != nil {
-		logger.WithError(err).Warn("⚠️ Prompt Registry 初始化失败，将使用内置 fallback 提示词")
+		logger.WithError(err).Warn("Prompt Registry 初始化失败，将使用内置 fallback 提示词")
 	} else {
-		logger.Info("✅ Prompt Registry 已初始化")
+		logger.Info("Prompt Registry 已初始化")
 	}
 
 	llmMgr, err := productenrich.NewLLMManagerAdapter(cfg.OpenAI)
 	if err != nil {
 		return nil, fmt.Errorf("创建 LLMManager 失败: %w", err)
 	}
-	logger.Info("✅ OpenAI LLMManager 已初始化")
+	logger.Info("OpenAI LLMManager 已初始化")
 
 	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
 	if err != nil {
@@ -65,7 +63,7 @@ func buildService(cfg *config.Config) (productenrich.ProductService, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建 InputParser 失败: %w", err)
 	}
-	logger.Info("✅ InputParser（1688爬虫）已初始化")
+	logger.Info("InputParser（1688爬虫）已初始化")
 
 	return productenrich.NewProductService(&productenrich.ProductServiceConfig{
 		QueueName:            "product_enrich_tasks",

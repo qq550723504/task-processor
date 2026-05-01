@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
+	"task-processor/internal/prompt"
 	temuprocessor "task-processor/internal/temu"
 )
 
@@ -51,4 +52,22 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 		return fmt.Errorf("register TEMU processor: %w", err)
 	}
 	return nil
+}
+
+func (Module) ConfigureListingRuntime(ctx context.Context, rt consumer.PlatformRuntimeContext) error {
+	if err := initPrompts(ctx, rt); err != nil {
+		rt.Logger.Warnf("prompt init failed, fallback will be used: %v", err)
+	}
+	return consumer.EnableDynamicStoreAssignment(rt.Config, rt.Logger, rt.ServiceManager)
+}
+
+func initPrompts(ctx context.Context, rt consumer.PlatformRuntimeContext) error {
+	if rt.Config == nil {
+		return nil
+	}
+	promptsDir := rt.Config.Prompts.Dir
+	if promptsDir == "" {
+		promptsDir = "./prompts"
+	}
+	return prompt.InitGlobal(ctx, promptsDir, rt.Config.Prompts.HotReload, rt.Logger.WithField("component", "prompt"))
 }

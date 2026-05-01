@@ -52,6 +52,7 @@ type appBootstrap struct {
 	sdsCatalogHandler    sdsCatalogRouteHandler
 	taskRPCHandler       taskrpcapi.Handler
 	server               *http.Server
+	routes               []routeDescriptor
 	pools                []worker.WorkerPool
 	closers              []func() error
 }
@@ -149,4 +150,11 @@ type taskRPCRouteHandler interface {
 	CancelTask(c *gin.Context)
 	GetQueueStats(c *gin.Context)
 	GetHealth(c *gin.Context)
+}
+
+type routeDescriptor struct {
+	Method  string
+	Path    string
+	Module  string
+	Handler gin.HandlerFunc
 }

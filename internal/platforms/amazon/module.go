@@ -34,3 +34,7 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 	}
 	return nil
 }
+
+func (Module) ConfigureListingRuntime(_ context.Context, rt consumer.PlatformRuntimeContext) error {
+	return consumer.EnableDynamicStoreAssignment(rt.Config, rt.Logger, rt.ServiceManager)
+}

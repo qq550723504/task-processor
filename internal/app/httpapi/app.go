@@ -29,7 +29,7 @@ func Run(logger *logrus.Logger, options Options) error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- serveHTTP(logger, bootstrap.server, options.Port)
+		serverErr <- serveHTTP(logger, bootstrap.server, bootstrap.routes, options.Port)
 	}()
 
 	sigChan := options.ShutdownSignal
@@ -62,28 +62,12 @@ func Run(logger *logrus.Logger, options Options) error {
 	return nil
 }
 
-func serveHTTP(logger *logrus.Logger, server *http.Server, port int) error {
+func serveHTTP(logger *logrus.Logger, server *http.Server, routes []routeDescriptor, port int) error {
 	logger.Infof("API service listening on port %d", port)
 	logger.Info("available endpoints:")
-	logger.Info("  - POST /api/v1/products/generate")
-	logger.Info("  - GET  /api/v1/products/tasks/:task_id")
-	logger.Info("  - POST /api/v1/images/process")
-	logger.Info("  - GET  /api/v1/images/tasks/:task_id")
-	logger.Info("  - POST /api/v1/images/tasks/:task_id/review")
-	logger.Info("  - POST /api/v1/amazon/listings/generate")
-	logger.Info("  - GET  /api/v1/amazon/listings/tasks")
-	logger.Info("  - GET  /api/v1/amazon/listings/tasks/:task_id")
-	logger.Info("  - GET  /api/v1/amazon/listings/tasks/:task_id/workbench")
-	logger.Info("  - POST /api/v1/amazon/listings/tasks/:task_id/review")
-	logger.Info("  - POST /api/v1/amazon/listings/tasks/:task_id/submit")
-	logger.Info("  - POST /api/v1/listing-kits/generate")
-	logger.Info("  - GET  /api/v1/listing-kits/tasks/:task_id")
-	logger.Info("  - GET  /api/v1/management/tasks/:task_id/status")
-	logger.Info("  - POST /api/v1/management/tasks/:task_id/retry")
-	logger.Info("  - POST /api/v1/management/tasks/:task_id/cancel")
-	logger.Info("  - GET  /api/v1/management/tasks/queue-stats")
-	logger.Info("  - GET  /api/v1/management/tasks/health")
-	logger.Info("  - GET  /health")
+	for _, route := range routes {
+		logger.Infof("  - %-6s %s", route.Method, route.Path)
+	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("HTTP server exited unexpectedly: %w", err)

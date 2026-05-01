@@ -373,12 +373,17 @@ task-processor/
 ├── data/                        # 静态数据（敏感词、禁售品列表）
 ├── deployments/                 # 部署配置（Docker、Kubernetes）
 ├── docs/                        # 文档
+├── tools/                       # 工具模块与非生产调试程序
+│   ├── go.mod                   # 工具依赖模块
+│   ├── json-simplifier/         # 独立工具
+│   └── debug/                   # 非生产调试入口（不纳入 cmd 发布面）
 └── examples/                    # 示例代码
 ```
 
 ### 重构后边界约定
 
 - `cmd/*-listing` 只保留入口胶水；公共启动逻辑在 `internal/app/runtime/listing`。
+- `cmd/` 只保留正式服务入口；调试可执行程序统一放在 `tools/debug/`。
 - `internal/app/bootstrap` 只做装配，资源、fetcher、processor、scheduler 分别放在子包里。
 - `internal/app/consumer` 只依赖 `PlatformModule` 接口，不直接 import SHEIN/TEMU/Amazon 实现。
 - 新增平台时优先在 `internal/platforms/{platform}` 增加模块，并加入 `platforms.All()`。

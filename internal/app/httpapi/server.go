@@ -9,91 +9,105 @@ import (
 )
 
 func buildHTTPServer(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) *http.Server {
-	return buildHTTPServerWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, taskRPCHandler, sdsCatalogHandlers...)
+	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, taskRPCHandler, sdsCatalogHandlers...)
+	return server
 }
 
 func buildHTTPServerWithStudio(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) *http.Server {
+	server, _ := buildHTTPServerBundleWithStudio(port, productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, taskRPCHandler, sdsCatalogHandlers...)
+	return server
+}
+
+func buildHTTPServerBundleWithStudio(port int, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) (*http.Server, []routeDescriptor) {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	registerRoutesWithStudio(router, productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, taskRPCHandler, sdsCatalogHandlers...)
+	routes := buildRouteDescriptors(productHandler, imageHandler, amazonListingHandler, listingKitHandler, studioSessionHandler, taskRPCHandler, sdsCatalogHandlers...)
+	mountRoutes(router, routes)
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
-	}
+	}, routes
 }
 
 func RegisterRoutes(r *gin.Engine, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) {
-	registerRoutesWithStudio(r, productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, taskRPCHandler, sdsCatalogHandlers...)
+	mountRoutes(r, buildRouteDescriptors(productHandler, imageHandler, amazonListingHandler, listingKitHandler, nil, taskRPCHandler, sdsCatalogHandlers...))
 }
 
-func registerRoutesWithStudio(r *gin.Engine, productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) {
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+func buildRouteDescriptors(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, studioSessionHandler studioSessionRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
+	routes := []routeDescriptor{
+		{Method: http.MethodGet, Path: "/health", Module: "system", Handler: func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		}},
+	}
 
 	if productHandler != nil {
-		v1 := r.Group("/api/v1/products")
-		v1.POST("/generate", productHandler.GenerateProduct)
-		v1.GET("/tasks/:task_id", productHandler.GetTaskResult)
+		routes = append(routes,
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/products/generate", Module: "products", Handler: productHandler.GenerateProduct},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/products/tasks/:task_id", Module: "products", Handler: productHandler.GetTaskResult},
+		)
 	}
 
 	if imageHandler != nil {
-		v1 := r.Group("/api/v1/images")
-		v1.POST("/process", imageHandler.ProcessImages)
-		v1.GET("/tasks/:task_id", imageHandler.GetTaskResult)
-		v1.POST("/tasks/:task_id/review", imageHandler.ReviewTask)
+		routes = append(routes,
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/images/process", Module: "images", Handler: imageHandler.ProcessImages},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/images/tasks/:task_id", Module: "images", Handler: imageHandler.GetTaskResult},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/images/tasks/:task_id/review", Module: "images", Handler: imageHandler.ReviewTask},
+		)
 	}
 
 	if amazonListingHandler != nil {
-		v1 := r.Group("/api/v1/amazon/listings")
-		v1.POST("/generate", amazonListingHandler.GenerateListing)
-		v1.GET("/tasks", amazonListingHandler.ListTaskQueue)
-		v1.GET("/tasks/:task_id", amazonListingHandler.GetTaskResult)
-		v1.GET("/tasks/:task_id/workbench", amazonListingHandler.GetTaskWorkbench)
-		v1.POST("/tasks/:task_id/review", amazonListingHandler.ReviewTask)
-		v1.POST("/tasks/:task_id/submit", amazonListingHandler.SubmitTask)
+		routes = append(routes,
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/amazon/listings/generate", Module: "amazon-listing", Handler: amazonListingHandler.GenerateListing},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/amazon/listings/tasks", Module: "amazon-listing", Handler: amazonListingHandler.ListTaskQueue},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/amazon/listings/tasks/:task_id", Module: "amazon-listing", Handler: amazonListingHandler.GetTaskResult},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/amazon/listings/tasks/:task_id/workbench", Module: "amazon-listing", Handler: amazonListingHandler.GetTaskWorkbench},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/amazon/listings/tasks/:task_id/review", Module: "amazon-listing", Handler: amazonListingHandler.ReviewTask},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/amazon/listings/tasks/:task_id/submit", Module: "amazon-listing", Handler: amazonListingHandler.SubmitTask},
+		)
 	}
 
 	if listingKitHandler != nil {
-		v1 := r.Group("/api/v1/listing-kits")
-		v1.POST("/generate", listingKitHandler.GenerateListingKit)
-		v1.GET("/settings/shein", listingKitHandler.GetSheinSettings)
-		v1.PUT("/settings/shein", listingKitHandler.UpdateSheinSettings)
-		v1.POST("/studio/designs", listingKitHandler.GenerateStudioDesigns)
-		v1.POST("/studio/product-images", listingKitHandler.GenerateStudioProductImages)
-		v1.POST("/tasks/:task_id/shein-images/regenerate", listingKitHandler.RegenerateSheinDataImage)
-		v1.POST("/uploads/images", listingKitHandler.UploadListingKitImages)
-		v1.GET("/uploads/files/*key", listingKitHandler.GetUploadedListingKitImage)
-		v1.GET("/tasks", listingKitHandler.ListTasks)
-		v1.GET("/tasks/:task_id", listingKitHandler.GetTaskResult)
-		v1.GET("/tasks/:task_id/preview", listingKitHandler.GetTaskPreview)
-		v1.GET("/tasks/:task_id/generation-tasks", listingKitHandler.GetTaskGenerationTasks)
-		v1.GET("/tasks/:task_id/generation-queue", listingKitHandler.GetTaskGenerationQueue)
-		v1.GET("/tasks/:task_id/generation-review-session", listingKitHandler.GetTaskGenerationReviewSession)
-		v1.GET("/tasks/:task_id/generation-review-preview", listingKitHandler.GetTaskGenerationReviewPreview)
-		v1.POST("/tasks/:task_id/generation-navigation/dispatch", listingKitHandler.DispatchTaskGenerationNavigation)
-		v1.POST("/tasks/:task_id/generation-tasks/retry", listingKitHandler.RetryTaskGenerationTasks)
-		v1.POST("/tasks/:task_id/generation-actions/execute", listingKitHandler.ExecuteTaskGenerationAction)
-		v1.GET("/tasks/:task_id/revision-history", listingKitHandler.GetTaskRevisionHistory)
-		v1.GET("/tasks/:task_id/revision-history/:revision_id", listingKitHandler.GetTaskRevisionHistoryDetail)
-		v1.GET("/tasks/:task_id/export", listingKitHandler.GetTaskExport)
-		v1.POST("/tasks/:task_id/revision", listingKitHandler.ApplyTaskRevision)
-		v1.POST("/tasks/:task_id/revision/validate", listingKitHandler.ValidateTaskRevision)
-		v1.POST("/tasks/:task_id/shein/price-preview", listingKitHandler.PreviewSheinPrice)
-		v1.PATCH("/tasks/:task_id/shein/final-draft", listingKitHandler.UpdateSheinFinalDraft)
-		v1.GET("/tasks/:task_id/submission-events", listingKitHandler.GetSubmissionEvents)
-		v1.POST("/tasks/:task_id/submit", listingKitHandler.SubmitTask)
-		v1.DELETE("/tasks/:task_id/shein-resolution-cache", listingKitHandler.ClearSheinResolutionCache)
+		routes = append(routes,
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/generate", Module: "listing-kit", Handler: listingKitHandler.GenerateListingKit},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/shein", Module: "listing-kit", Handler: listingKitHandler.GetSheinSettings},
+			routeDescriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/settings/shein", Module: "listing-kit", Handler: listingKitHandler.UpdateSheinSettings},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/designs", Module: "listing-kit", Handler: listingKitHandler.GenerateStudioDesigns},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/product-images", Module: "listing-kit", Handler: listingKitHandler.GenerateStudioProductImages},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/shein-images/regenerate", Module: "listing-kit", Handler: listingKitHandler.RegenerateSheinDataImage},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/uploads/images", Module: "listing-kit", Handler: listingKitHandler.UploadListingKitImages},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/uploads/files/*key", Module: "listing-kit", Handler: listingKitHandler.GetUploadedListingKitImage},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks", Module: "listing-kit", Handler: listingKitHandler.ListTasks},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id", Module: "listing-kit", Handler: listingKitHandler.GetTaskResult},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/preview", Module: "listing-kit", Handler: listingKitHandler.GetTaskPreview},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-tasks", Module: "listing-kit", Handler: listingKitHandler.GetTaskGenerationTasks},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-queue", Module: "listing-kit", Handler: listingKitHandler.GetTaskGenerationQueue},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-review-session", Module: "listing-kit", Handler: listingKitHandler.GetTaskGenerationReviewSession},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/generation-review-preview", Module: "listing-kit", Handler: listingKitHandler.GetTaskGenerationReviewPreview},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/generation-navigation/dispatch", Module: "listing-kit", Handler: listingKitHandler.DispatchTaskGenerationNavigation},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/generation-tasks/retry", Module: "listing-kit", Handler: listingKitHandler.RetryTaskGenerationTasks},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/generation-actions/execute", Module: "listing-kit", Handler: listingKitHandler.ExecuteTaskGenerationAction},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/revision-history", Module: "listing-kit", Handler: listingKitHandler.GetTaskRevisionHistory},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/revision-history/:revision_id", Module: "listing-kit", Handler: listingKitHandler.GetTaskRevisionHistoryDetail},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/export", Module: "listing-kit", Handler: listingKitHandler.GetTaskExport},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/revision", Module: "listing-kit", Handler: listingKitHandler.ApplyTaskRevision},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/revision/validate", Module: "listing-kit", Handler: listingKitHandler.ValidateTaskRevision},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/shein/price-preview", Module: "listing-kit", Handler: listingKitHandler.PreviewSheinPrice},
+			routeDescriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/tasks/:task_id/shein/final-draft", Module: "listing-kit", Handler: listingKitHandler.UpdateSheinFinalDraft},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks/:task_id/submission-events", Module: "listing-kit", Handler: listingKitHandler.GetSubmissionEvents},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/tasks/:task_id/submit", Module: "listing-kit", Handler: listingKitHandler.SubmitTask},
+			routeDescriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/tasks/:task_id/shein-resolution-cache", Module: "listing-kit", Handler: listingKitHandler.ClearSheinResolutionCache},
+		)
 	}
 
 	if studioSessionHandler != nil {
-		v1 := r.Group("/api/v1/listing-kits/studio")
-		v1.GET("/sessions/gallery", studioSessionHandler.ListStudioSessionGallery)
-		v1.POST("/sessions", studioSessionHandler.EnsureStudioSession)
-		v1.GET("/sessions/:session_id", studioSessionHandler.GetStudioSession)
-		v1.PATCH("/sessions/:session_id", studioSessionHandler.UpdateStudioSession)
-		v1.POST("/sessions/:session_id/designs", studioSessionHandler.ReplaceStudioSessionDesigns)
+		routes = append(routes,
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/sessions/gallery", Module: "listing-kit-studio", Handler: studioSessionHandler.ListStudioSessionGallery},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/sessions", Module: "listing-kit-studio", Handler: studioSessionHandler.EnsureStudioSession},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: studioSessionHandler.GetStudioSession},
+			routeDescriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/studio/sessions/:session_id", Module: "listing-kit-studio", Handler: studioSessionHandler.UpdateStudioSession},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/sessions/:session_id/designs", Module: "listing-kit-studio", Handler: studioSessionHandler.ReplaceStudioSessionDesigns},
+		)
 	}
 
 	var sdsCatalogHandler sdsCatalogRouteHandler
@@ -101,19 +115,29 @@ func registerRoutesWithStudio(r *gin.Engine, productHandler productRouteHandler,
 		sdsCatalogHandler = sdsCatalogHandlers[0]
 	}
 	if sdsCatalogHandler != nil {
-		v1 := r.Group("/api/v1/sds")
-		v1.GET("/products", sdsCatalogHandler.ListSDSProducts)
-		v1.GET("/products/:product_id", sdsCatalogHandler.GetSDSProduct)
-		v1.GET("/categories", sdsCatalogHandler.ListSDSCategories)
-		v1.GET("/shipment-areas", sdsCatalogHandler.ListSDSShipmentAreas)
+		routes = append(routes,
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/sds/products", Module: "sds", Handler: sdsCatalogHandler.ListSDSProducts},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/sds/products/:product_id", Module: "sds", Handler: sdsCatalogHandler.GetSDSProduct},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/sds/categories", Module: "sds", Handler: sdsCatalogHandler.ListSDSCategories},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/sds/shipment-areas", Module: "sds", Handler: sdsCatalogHandler.ListSDSShipmentAreas},
+		)
 	}
 
 	if taskRPCHandler != nil {
-		v1 := r.Group("/api/v1/management/tasks")
-		v1.GET("/health", taskRPCHandler.GetHealth)
-		v1.GET("/:task_id/status", taskRPCHandler.GetTaskStatus)
-		v1.POST("/:task_id/retry", taskRPCHandler.RetryTask)
-		v1.POST("/:task_id/cancel", taskRPCHandler.CancelTask)
-		v1.GET("/queue-stats", taskRPCHandler.GetQueueStats)
+		routes = append(routes,
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/health", Module: "management", Handler: taskRPCHandler.GetHealth},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/:task_id/status", Module: "management", Handler: taskRPCHandler.GetTaskStatus},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/management/tasks/:task_id/retry", Module: "management", Handler: taskRPCHandler.RetryTask},
+			routeDescriptor{Method: http.MethodPost, Path: "/api/v1/management/tasks/:task_id/cancel", Module: "management", Handler: taskRPCHandler.CancelTask},
+			routeDescriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/queue-stats", Module: "management", Handler: taskRPCHandler.GetQueueStats},
+		)
+	}
+
+	return routes
+}
+
+func mountRoutes(r *gin.Engine, routes []routeDescriptor) {
+	for _, route := range routes {
+		r.Handle(route.Method, route.Path, route.Handler)
 	}
 }

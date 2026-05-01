@@ -112,7 +112,7 @@
 可以直接用 CLI 单独验证 `req` 登录：
 
 ```bash
-go run ./cmd/test-sds -mode login \
+cd tools/debug && go run ./test-sds -mode login \
   -username 你的账号 \
   -password 你的密码 \
   -domain-name www.sdsdiy.com
@@ -221,7 +221,7 @@ func main() {
 
 ## 联调建议
 
-- 优先用 `cmd/test-sds -mode sync-file`
+- 优先在 `tools/debug` 目录下执行 `go run ./test-sds -mode sync-file`
   - 这条链路最短，最适合确认 SDS 登录态、素材上传和设计保存是否正常
 - 如果本地已有 `data/sds/auth_state.json`
   - 可以不再显式传 `-token`

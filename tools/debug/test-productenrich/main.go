@@ -1,4 +1,4 @@
-// Package main 提供 productenrich 商品信息增强调试测试程序
+// Package main 提供 productenrich 商品信息增强调试测试程序。
 package main
 
 import (
@@ -31,16 +31,10 @@ func main() {
 		log.Fatalf("load config failed: %v", err)
 	}
 
-	// 默认测试数据：1688 商品 URL
 	req := &productenrich.GenerateRequest{
 		ProductURL: "https://detail.1688.com/offer/722899324071.html",
 	}
 
-	// 解析命令行参数
-	// 用法：
-	//   ./test-productenrich                          # 使用默认1688 URL
-	//   ./test-productenrich <url>                    # 指定商品URL或文本
-	//   ./test-productenrich <image_url> <text>       # 图片URL + 文本描述
 	switch len(os.Args) {
 	case 2:
 		arg := os.Args[1]
@@ -61,15 +55,13 @@ func main() {
 
 	svc, err := buildService(cfg)
 	if err != nil {
-		log.Fatalf("❌ 初始化服务失败: %v", err)
+		log.Fatalf("初始化服务失败: %v", err)
 	}
 
 	ctx := context.Background()
-
-	// 创建任务（不设置 workerPool，所以不会自动提交，只存入内存 repo）
 	task, err := svc.CreateGenerateTask(ctx, req)
 	if err != nil {
-		log.Fatalf("❌ 创建任务失败: %v", err)
+		log.Fatalf("创建任务失败: %v", err)
 	}
 	fmt.Printf("任务ID: %s\n", task.ID)
 	fmt.Println("开始处理，请稍候（LLM 调用可能需要数十秒）...")
@@ -80,11 +72,11 @@ func main() {
 	elapsed := time.Since(start)
 
 	if err != nil {
-		log.Printf("❌ 处理失败 (耗时 %.1fs): %v", elapsed.Seconds(), err)
+		log.Printf("处理失败 (耗时 %.1fs): %v", elapsed.Seconds(), err)
 		return
 	}
 
-	fmt.Printf("✅ 处理成功！(耗时 %.1fs)\n", elapsed.Seconds())
+	fmt.Printf("处理成功 (耗时 %.1fs)\n", elapsed.Seconds())
 	fmt.Printf("标题: %s\n", result.Title)
 	fmt.Printf("分类: %v\n", result.Category)
 	fmt.Printf("属性数量: %d\n", len(result.Attributes))
@@ -102,13 +94,10 @@ func main() {
 
 	outputFile := fmt.Sprintf("productenrich_result_%s.json", time.Now().Format("20060102_150405"))
 	if err := saveToFile(result, outputFile); err != nil {
-		log.Printf("⚠️ 保存文件失败: %v", err)
+		log.Printf("保存文件失败: %v", err)
 	} else {
-		fmt.Printf("\n📁 完整结果已保存到: %s\n", outputFile)
+		fmt.Printf("\n完整结果已保存到: %s\n", outputFile)
 	}
-
-	fmt.Println()
-	fmt.Println("🎉 测试完成！")
 }
 
 func describeRequest(req *productenrich.GenerateRequest) string {

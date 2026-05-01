@@ -15,7 +15,7 @@ import (
 )
 
 type processorRegistration struct {
-	name        string
+	module      PlatformModule
 	needsAmazon bool
 	register    func(context.Context, *PlatformProcessorRegistry, *ServiceManager) error
 }
@@ -52,32 +52,7 @@ func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, pla
 }
 
 func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager) error {
-	r.logger.Info("registering platform processors")
-
-	r.rabbitmqClient = serviceManager.GetClient()
-	if r.rabbitmqClient != nil {
-		r.logger.Info("RabbitMQ client available for distributed fetching")
-	} else {
-		r.logger.Warn("RabbitMQ client unavailable; distributed fetching is unavailable")
-	}
-
-	registrations := r.buildProcessorRegistrations()
-	if err := r.initializeSharedResources(r.anyRegistrationNeedsAmazon(registrations)); err != nil {
-		return fmt.Errorf("initialize shared resources: %w", err)
-	}
-
-	for _, registration := range registrations {
-		if !r.isPlatformEnabled(registration.name) {
-			r.logger.Debugf("skipping %s platform registration", strings.ToUpper(registration.name))
-			continue
-		}
-		if err := registration.register(ctx, r, serviceManager); err != nil {
-			return err
-		}
-	}
-
-	r.logger.Info("platform processors registered")
-	return nil
+	return r.RegisterPlatforms(ctx, serviceManager, r.enabledPlatforms...)
 }
 
 func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorRegistration {
@@ -85,11 +60,11 @@ func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorReg
 	for _, module := range r.platformModules {
 		module := module
 		registrations = append(registrations, processorRegistration{
-			name:        module.Name(),
+			module:      module,
 			needsAmazon: module.NeedsAmazon(r.config),
 			register: func(ctx context.Context, registry *PlatformProcessorRegistry, serviceManager *ServiceManager) error {
 				registry.logger.Infof("registering %s processor", strings.ToUpper(module.Name()))
-				if err := module.RegisterConsumer(ctx, registry.runtimeContext(), serviceManager); err != nil {
+				if err := module.RegisterConsumer(ctx, registry.runtimeContext(serviceManager, nil), serviceManager); err != nil {
 					return err
 				}
 				registry.logger.Infof("%s processor registered", strings.ToUpper(module.Name()))
@@ -116,43 +91,39 @@ func (r *PlatformProcessorRegistry) initializeSharedResources(needsAmazon bool) 
 	return nil
 }
 
-func (r *PlatformProcessorRegistry) RegisterTemuProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	return r.registerSinglePlatform(ctx, serviceManager, "temu")
-}
-
-func (r *PlatformProcessorRegistry) RegisterSheinProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	return r.registerSinglePlatform(ctx, serviceManager, "shein")
-}
-
-func (r *PlatformProcessorRegistry) RegisterAmazonProcessor(ctx context.Context, serviceManager *ServiceManager) error {
-	return r.registerSinglePlatform(ctx, serviceManager, "amazon")
-}
-
-func (r *PlatformProcessorRegistry) registerSinglePlatform(ctx context.Context, serviceManager *ServiceManager, platform string) error {
-	r.rabbitmqClient = serviceManager.GetClient()
-
-	if !r.isPlatformEnabled(platform) {
-		r.logger.Debugf("skipping %s platform registration", strings.ToUpper(platform))
-		return nil
+func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, platforms ...string) error {
+	modules, err := r.resolveModules(platforms)
+	if err != nil {
+		return err
 	}
 
-	for _, registration := range r.buildProcessorRegistrations() {
-		if registration.name != platform {
-			continue
-		}
-		needsAmazon := registration.needsAmazon || PlatformUsesLocalFetcher(r.config, platform)
-		if err := r.initializeSharedResources(needsAmazon); err != nil {
+	r.logger.Infof("registering platform processors: %v", moduleNames(modules))
+	r.rabbitmqClient = serviceManager.GetClient()
+	if r.rabbitmqClient != nil {
+		r.logger.Info("RabbitMQ client available for distributed fetching")
+	} else {
+		r.logger.Warn("RabbitMQ client unavailable; distributed fetching is unavailable")
+	}
+
+	registrations := r.buildProcessorRegistrationsForModules(modules)
+	if err := r.initializeSharedResources(r.anyRegistrationNeedsAmazon(registrations)); err != nil {
+		return fmt.Errorf("initialize shared resources: %w", err)
+	}
+
+	for _, registration := range registrations {
+		if err := registration.register(ctx, r, serviceManager); err != nil {
 			return err
 		}
-		return registration.register(ctx, r, serviceManager)
 	}
 
-	return fmt.Errorf("unsupported platform: %s", platform)
+	r.logger.Info("platform processors registered")
+	return nil
 }
 
 func (r *PlatformProcessorRegistry) anyRegistrationNeedsAmazon(registrations []processorRegistration) bool {
 	for _, registration := range registrations {
-		if r.isPlatformEnabled(registration.name) && (registration.needsAmazon || PlatformUsesLocalFetcher(r.config, registration.name)) {
+		name := registration.module.Name()
+		if r.isPlatformEnabled(name) && (registration.needsAmazon || PlatformUsesLocalFetcher(r.config, name)) {
 			return true
 		}
 	}
@@ -163,7 +134,10 @@ func (r *PlatformProcessorRegistry) isPlatformEnabled(platform string) bool {
 	return containsPlatform(r.enabledPlatforms, platform)
 }
 
-func (r *PlatformProcessorRegistry) runtimeContext() PlatformRuntimeContext {
+func (r *PlatformProcessorRegistry) runtimeContext(
+	serviceManager *ServiceManager,
+	schedulerBuilder SchedulerDependenciesBuilder,
+) PlatformRuntimeContext {
 	return PlatformRuntimeContext{
 		Config:           r.config,
 		Logger:           r.logger,
@@ -171,7 +145,92 @@ func (r *PlatformProcessorRegistry) runtimeContext() PlatformRuntimeContext {
 		CrawlSource:      r.sharedCrawlSource,
 		ProductFetcher:   r.sharedProductFetcher,
 		RabbitMQClient:   r.rabbitmqClient,
+		ServiceManager:   serviceManager,
+		SchedulerBuilder: schedulerBuilder,
 	}
+}
+
+func (r *PlatformProcessorRegistry) RuntimeContext(
+	serviceManager *ServiceManager,
+	schedulerBuilder SchedulerDependenciesBuilder,
+) PlatformRuntimeContext {
+	return r.runtimeContext(serviceManager, schedulerBuilder)
+}
+
+func (r *PlatformProcessorRegistry) ResolvePlatformModule(platform string) (PlatformModule, error) {
+	module, ok := r.findModule(platform)
+	if !ok {
+		return nil, fmt.Errorf("unsupported platform: %s", platform)
+	}
+	if !r.isPlatformEnabled(platform) {
+		return nil, fmt.Errorf("%s platform is not enabled", strings.ToUpper(platform))
+	}
+	return module, nil
+}
+
+func (r *PlatformProcessorRegistry) buildProcessorRegistrationsForModules(modules []PlatformModule) []processorRegistration {
+	registrations := make([]processorRegistration, 0, len(modules))
+	for _, registration := range r.buildProcessorRegistrations() {
+		for _, module := range modules {
+			if registration.module.Name() == module.Name() {
+				registrations = append(registrations, registration)
+				break
+			}
+		}
+	}
+	return registrations
+}
+
+func (r *PlatformProcessorRegistry) resolveModules(platforms []string) ([]PlatformModule, error) {
+	if len(platforms) == 0 {
+		return r.enabledModules(), nil
+	}
+
+	modules := make([]PlatformModule, 0, len(platforms))
+	seen := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		normalized := strings.ToLower(strings.TrimSpace(platform))
+		if normalized == "" {
+			continue
+		}
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		module, err := r.ResolvePlatformModule(normalized)
+		if err != nil {
+			return nil, err
+		}
+		modules = append(modules, module)
+		seen[normalized] = struct{}{}
+	}
+	return modules, nil
+}
+
+func (r *PlatformProcessorRegistry) enabledModules() []PlatformModule {
+	modules := make([]PlatformModule, 0, len(r.platformModules))
+	for _, module := range r.platformModules {
+		if r.isPlatformEnabled(module.Name()) {
+			modules = append(modules, module)
+		}
+	}
+	return modules
+}
+
+func (r *PlatformProcessorRegistry) findModule(platform string) (PlatformModule, bool) {
+	for _, module := range r.platformModules {
+		if strings.EqualFold(module.Name(), platform) {
+			return module, true
+		}
+	}
+	return nil, false
+}
+
+func moduleNames(modules []PlatformModule) []string {
+	names := make([]string, 0, len(modules))
+	for _, module := range modules {
+		names = append(names, module.Name())
+	}
+	return names
 }
 
 func parsePlatformList(platformsStr string) []string {

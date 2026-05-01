@@ -102,14 +102,14 @@ func main() {
 
 func printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("  go run ./cmd/test-analyzeimage <image_url>")
-	fmt.Println("  go run ./cmd/test-analyzeimage <image_url> <prompt>")
+	fmt.Println("  go run ./tools/debug/test-analyzeimage <image_url>")
+	fmt.Println("  go run ./tools/debug/test-analyzeimage <image_url> <prompt>")
 }
 
 func loadPrompt() string {
 	logger := corelogger.GetGlobalLogManager().GetRawLogger()
 	_, thisFile, _, _ := runtime.Caller(0)
-	projectRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	projectRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
 	promptsDir := filepath.Join(projectRoot, "prompts")
 
 	if err := prompt.InitGlobal(context.Background(), promptsDir, false, nil); err != nil {
