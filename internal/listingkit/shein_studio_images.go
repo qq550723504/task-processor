@@ -15,15 +15,18 @@ func applySheinStudioAIImagesToShein(pkg *sheinpub.Package, req *GenerateRequest
 	productImages := uniqueNonEmptyStrings(req.Options.SheinStudio.ProductImageURLs)
 	variantImages := normalizeSheinStudioVariantImageSets(req.Options.SheinStudio.VariantProductImages)
 	sizeReferenceImages := resolveSheinSizeReferenceImages(req, sdsSummary)
-	if len(productImages) == 0 {
-		return
-	}
-	productImages = appendUniqueImageURLs(productImages, sizeReferenceImages...)
-
 	sourceImages := uniqueNonEmptyStrings(append(
 		append([]string(nil), req.Options.SheinStudio.SourceDesignURLs...),
 		req.ImageURLs...,
 	))
+	if len(productImages) == 0 {
+		if sdsSummary != nil && len(sdsSummary.MockupImageURLs) > 0 {
+			applySDSTemplateImagesToShein(pkg, sdsSummary, sourceImages)
+			applySheinSizeReferenceImages(pkg, sizeReferenceImages)
+		}
+		return
+	}
+	productImages = appendUniqueImageURLs(productImages, sizeReferenceImages...)
 	if resolveSheinImageStrategy(req) == sheinImageStrategyHybrid {
 		appendAIProductImagesToShein(pkg, productImages, sourceImages)
 		applyVariantProductImagesToShein(pkg, variantImages, sourceImages)

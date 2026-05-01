@@ -560,6 +560,63 @@ func TestApplySheinStudioAIImagesToSheinAppendsForHybrid(t *testing.T) {
 	}
 }
 
+func TestApplySheinStudioAIImagesToSheinFallsBackToSDSMockupsWhenNoProductImages(t *testing.T) {
+	sourceImage := "https://cdn.sdspod.com/images/preview-source.jpg"
+	sdsImages := []string{
+		"https://cdn.sdspod.com/out/36811/202605/rendered-main.jpg",
+		"https://cdn.sdspod.com/out/36811/202605/rendered-gallery.jpg",
+	}
+	pkg := &sheinpub.Package{
+		Images: sheinImageSet(sourceImage),
+		RequestDraft: &sheinpub.RequestDraft{
+			ImageInfo: sheinpub.BuildImageDraft(sheinImageSet(sourceImage)),
+			SKCList: []sheinpub.SKCRequestDraft{
+				{
+					ImageInfo: sheinpub.BuildImageDraft(sheinImageSet(sourceImage)),
+					SKUList: []sheinpub.SKUDraft{
+						{MainImage: sourceImage},
+					},
+				},
+			},
+		},
+	}
+
+	applySheinStudioAIImagesToShein(pkg, &GenerateRequest{
+		ImageURLs: []string{sourceImage},
+		Options: &GenerateOptions{
+			ImageStrategy: sheinImageStrategyAIGenerated,
+			SheinStudio: &SheinStudioOptions{
+				SourceDesignURLs: []string{sourceImage},
+			},
+		},
+	}, &SDSSyncSummary{
+		Status:          "completed",
+		MockupImageURLs: sdsImages,
+	})
+
+	if pkg.Images.MainImage != sdsImages[0] {
+		t.Fatalf("main image = %q, want %q", pkg.Images.MainImage, sdsImages[0])
+	}
+	if len(pkg.Images.Gallery) != 1 || pkg.Images.Gallery[0] != sdsImages[1] {
+		t.Fatalf("gallery = %+v", pkg.Images.Gallery)
+	}
+	if pkg.RequestDraft.ImageInfo.MainImage != sdsImages[0] {
+		t.Fatalf("draft image info = %+v", pkg.RequestDraft.ImageInfo)
+	}
+	if pkg.RequestDraft.SKCList[0].SKUList[0].MainImage != sdsImages[0] {
+		t.Fatalf("sku main image = %q", pkg.RequestDraft.SKCList[0].SKUList[0].MainImage)
+	}
+	if pkg.PreviewProduct == nil || pkg.PreviewProduct.ImageInfo == nil {
+		t.Fatalf("preview product missing image info: %+v", pkg.PreviewProduct)
+	}
+	if pkg.PreviewProduct.ImageInfo.ImageInfoList[0].ImageURL != sdsImages[0] {
+		t.Fatalf("preview main image = %q, want %q", pkg.PreviewProduct.ImageInfo.ImageInfoList[0].ImageURL, sdsImages[0])
+	}
+	if pkg.PreviewProduct.ImageInfo.ImageInfoList[0].ImageURL == sourceImage {
+		t.Fatalf("preview product still uses source image: %q", sourceImage)
+	}
+}
+
 func TestApplySheinStudioAIImagesToSheinUsesVariantImagesForSKCs(t *testing.T) {
 	pkg := &sheinpub.Package{
 		Images: sheinImageSet("https://cdn.example.com/flat-design.png"),
