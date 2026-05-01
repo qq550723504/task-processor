@@ -118,11 +118,11 @@ func studioVariants(sds *SDSSyncOptions, images []productenrich.CanonicalImage, 
 	styleName := studioStyleName(sds)
 	if len(sds.Variants) > 0 {
 		variants := make([]productenrich.CanonicalVariant, 0, len(sds.Variants))
+		baseSKUCounts := studioVariantBaseSKUCounts(sds)
+		seenSKUs := map[string]int{}
 		for index, item := range sds.Variants {
-			sku := firstNonEmptyString(item.VariantSKU, sds.VariantSKU, sds.ProductSKU)
-			if suffix := normalizeStyleIDSuffix(sds.StyleID); suffix != "" && sku != "" {
-				sku = sku + "-" + suffix
-			}
+			baseSKU := firstNonEmptyString(item.VariantSKU, sds.VariantSKU, sds.ProductSKU)
+			sku := buildStudioVariantSKU(baseSKU, sds.StyleID, studioVariantDiscriminator(item, index), baseSKUCounts[baseSKU] > 1, seenSKUs)
 			attrs := map[string]productenrich.CanonicalAttribute{}
 			addAttribute(attrs, "Size", item.Size, trace)
 			addAttribute(attrs, "Color", item.Color, trace)
@@ -145,10 +145,7 @@ func studioVariants(sds *SDSSyncOptions, images []productenrich.CanonicalImage, 
 		}
 		return variants
 	}
-	sku := firstNonEmptyString(sds.VariantSKU, sds.ProductSKU)
-	if suffix := normalizeStyleIDSuffix(sds.StyleID); suffix != "" && sku != "" {
-		sku = sku + "-" + suffix
-	}
+	sku := buildStudioVariantSKU(firstNonEmptyString(sds.VariantSKU, sds.ProductSKU), sds.StyleID, studioFallbackVariantDiscriminator(sds), strings.TrimSpace(sds.VariantSKU) == "", nil)
 	if sku == "" && strings.TrimSpace(sds.VariantSize) == "" && strings.TrimSpace(sds.VariantColor) == "" {
 		return nil
 	}
@@ -239,6 +236,126 @@ func normalizeStyleIDSuffix(value string) string {
 		}
 	}
 	return b.String()
+}
+
+func buildStudioVariantSKU(baseSKU, styleID, variantDiscriminator string, requireVariantDiscriminator bool, seen map[string]int) string {
+	baseSKU = strings.TrimSpace(baseSKU)
+	styleSuffix := normalizeStyleIDSuffix(styleID)
+	variantDiscriminator = normalizeStudioVariantDiscriminator(variantDiscriminator)
+
+	parts := make([]string, 0, 2)
+	if baseSKU != "" {
+		parts = append(parts, baseSKU)
+	}
+	if styleSuffix != "" {
+		parts = append(parts, styleSuffix)
+	}
+	baseCandidate := strings.Join(parts, "-")
+	if baseCandidate == "" {
+		baseCandidate = "SDS-STUDIO-001"
+	}
+	if !requireVariantDiscriminator && seen == nil {
+		return baseCandidate
+	}
+	if !requireVariantDiscriminator {
+		if _, exists := seen[baseCandidate]; !exists {
+			seen[baseCandidate] = 1
+			return baseCandidate
+		}
+	}
+	parts = parts[:0]
+	if baseSKU != "" {
+		parts = append(parts, baseSKU)
+	}
+	if variantDiscriminator != "" {
+		parts = append(parts, variantDiscriminator)
+	}
+	if styleSuffix != "" {
+		parts = append(parts, styleSuffix)
+	}
+	candidate := strings.Join(parts, "-")
+	if candidate == "" {
+		candidate = baseCandidate
+	}
+	if seen == nil {
+		return candidate
+	}
+	if _, exists := seen[candidate]; !exists {
+		seen[candidate] = 1
+		return candidate
+	}
+	seen[candidate]++
+	return candidate + "-" + strconv.Itoa(seen[candidate])
+}
+
+func studioVariantDiscriminator(item SDSSyncVariantOption, index int) string {
+	if item.VariantID > 0 {
+		return "V" + strconv.FormatInt(item.VariantID, 10)
+	}
+	return strings.Join([]string{
+		strings.TrimSpace(item.Color),
+		strings.TrimSpace(item.Size),
+		"V" + strconv.Itoa(index+1),
+	}, "-")
+}
+
+func studioFallbackVariantDiscriminator(sds *SDSSyncOptions) string {
+	if sds == nil {
+		return ""
+	}
+	if sds.VariantID > 0 {
+		return "V" + strconv.FormatInt(sds.VariantID, 10)
+	}
+	if strings.TrimSpace(sds.VariantSKU) != "" {
+		return ""
+	}
+	return strings.Join([]string{
+		strings.TrimSpace(sds.VariantColor),
+		strings.TrimSpace(sds.VariantSize),
+	}, "-")
+}
+
+func normalizeStudioVariantDiscriminator(value string) string {
+	value = strings.TrimSpace(strings.ToUpper(value))
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case r == '-' || r == '_' || r == ' ' || r == '/':
+			if b.Len() == 0 || lastDash {
+				continue
+			}
+			b.WriteRune('-')
+			lastDash = true
+		}
+	}
+	result := strings.Trim(b.String(), "-")
+	if len(result) > 24 {
+		result = result[:24]
+		result = strings.TrimRight(result, "-")
+	}
+	return result
+}
+
+func studioVariantBaseSKUCounts(sds *SDSSyncOptions) map[string]int {
+	counts := map[string]int{}
+	if sds == nil {
+		return counts
+	}
+	for _, item := range sds.Variants {
+		key := firstNonEmptyString(item.VariantSKU, sds.VariantSKU, sds.ProductSKU)
+		if strings.TrimSpace(key) == "" {
+			key = "__empty__"
+		}
+		counts[key]++
+	}
+	return counts
 }
 
 func studioSellingPoints(sds *SDSSyncOptions) []string {
