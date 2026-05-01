@@ -5,6 +5,7 @@ namespace: task-processor
 
 resources:
   - ../../base
+  - external-secret.yaml
 
 images:
   - name: xuwei190/task-processor-amazon-crawler-api

@@ -5,7 +5,7 @@ namespace: task-processor
 
 resources:
   - ../../base
-  - secret.yaml
+  - external-secret.yaml
 
 images:
   - name: xuwei190/task-processor-temu-listing

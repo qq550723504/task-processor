@@ -104,6 +104,8 @@ export function SheinStudioWorkbench({
   const pathname = usePathname();
   const searchParams = useLiveSearchParams();
   const activeSelection = hydratedSelection ?? selection;
+  const activeSelectionRef = useRef(activeSelection);
+  const activeStepRef = useRef(activeStep);
   const activeSelectionKey = activeSelection
     ? JSON.stringify({
         productId: activeSelection.productId,
@@ -154,7 +156,12 @@ export function SheinStudioWorkbench({
 
   useEffect(() => {
     setEffectiveStep(activeStep);
+    activeStepRef.current = activeStep;
   }, [activeStep]);
+
+  useEffect(() => {
+    activeSelectionRef.current = activeSelection;
+  }, [activeSelection]);
 
   useEffect(() => {
     hasLocalWorkflowStateRef.current = false;
@@ -183,7 +190,7 @@ export function SheinStudioWorkbench({
       setIsLoadingWorkspace(true);
       try {
         const [draft, batches] = await Promise.all([
-          loadSheinStudioDraft(activeSelection),
+          loadSheinStudioDraft(activeSelectionRef.current),
           listSheinStudioBatches(),
         ]);
 
@@ -215,7 +222,7 @@ export function SheinStudioWorkbench({
         if (draft) {
           setEffectiveStep(
             resolveSheinStudioEffectiveStep({
-              activeStep,
+              activeStep: activeStepRef.current,
               createdTaskCount: draft.createdTasks.length,
               designCount: draft.designs.length,
             }),
@@ -275,7 +282,25 @@ export function SheinStudioWorkbench({
     }
 
     const timer = window.setTimeout(() => {
-      const fingerprint = JSON.stringify(buildDraftInput());
+      const fingerprint = JSON.stringify(
+        buildSheinStudioDraftInput({
+          prompt,
+          styleCount,
+          productImageCount,
+          productImagePrompt,
+          productImagePrompts,
+          artworkModel,
+          transparentBackground,
+          sheinStoreId,
+          imageStrategy,
+          selectedSdsImages,
+          renderSizeImagesWithSds,
+          selection: activeSelection,
+          designs,
+          selectedIds,
+          createdTasks,
+        }),
+      );
       if (autosaveFingerprintRef.current === fingerprint) {
         return;
       }
@@ -288,21 +313,44 @@ export function SheinStudioWorkbench({
         controller.abort("timeout");
       }, 15000);
 
-      void persistDraft(undefined, {
-        signal: controller.signal,
-        source: "autosave",
-      })
+      void saveSheinStudioDraftWithOptions(
+        buildSheinStudioDraftInput({
+          prompt,
+          styleCount,
+          productImageCount,
+          productImagePrompt,
+          productImagePrompts,
+          artworkModel,
+          transparentBackground,
+          sheinStoreId,
+          imageStrategy,
+          selectedSdsImages,
+          renderSizeImagesWithSds,
+          selection: activeSelection,
+          designs,
+          selectedIds,
+          createdTasks,
+        }),
+        {
+          signal: controller.signal,
+          source: "autosave",
+        },
+      )
         .then(() => {
+          setDraftWarning("");
           autosaveFingerprintRef.current = fingerprint;
         })
         .catch((error) => {
           if (controller.signal.aborted) {
             return;
           }
-        console.warn(
-          "shein studio draft autosave failed",
-          error instanceof Error ? error.message : error,
-        );
+          setDraftWarning(
+            "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
+          );
+          console.warn(
+            "shein studio draft autosave failed",
+            error instanceof Error ? error.message : error,
+          );
         })
         .finally(() => {
           window.clearTimeout(timeout);
@@ -334,8 +382,8 @@ export function SheinStudioWorkbench({
     activeSelection,
     regeneratingId,
     sheinStoreId,
-    styleCount,
-  ]);
+      styleCount,
+    ]);
 
   function buildDraftInput(overrides?: Partial<{
     designs: SheinStudioGeneratedDesign[];
@@ -347,14 +395,14 @@ export function SheinStudioWorkbench({
       styleCount,
       productImageCount,
       productImagePrompt,
-    productImagePrompts,
-    artworkModel,
-    transparentBackground,
-    sheinStoreId,
-    imageStrategy,
-    selectedSdsImages,
-    renderSizeImagesWithSds,
-    selection: activeSelection,
+      productImagePrompts,
+      artworkModel,
+      transparentBackground,
+      sheinStoreId,
+      imageStrategy,
+      selectedSdsImages,
+      renderSizeImagesWithSds,
+      selection: activeSelection,
       designs: overrides?.designs ?? designs,
       selectedIds: overrides?.selectedIds ?? selectedIds,
       createdTasks: overrides?.createdTasks ?? createdTasks,

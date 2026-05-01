@@ -130,7 +130,7 @@ browser:
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:
   enabled: true  # 启用RabbitMQ连接
-  url: "amqp://admin:RabbitMQ%402026%23Prod@101.33.34.102:30567/"  # 通过NodePort连接到k3s中的RabbitMQ
+  url: "amqp://task-processor:replace-me@rabbitmq.example.internal:5672/"  # 示例值，生产凭据请通过部署环境注入
   reconnectInterval: 5s   # 重连间隔（秒）
   maxReconnectTries: 10  # 最大重连次数
   node:
@@ -238,10 +238,10 @@ updater:
 
 # 数据库配置（AI 缓存持久化使用）
 database:
-  host: "101.33.34.102"
+  host: "postgres.example.internal"
   port: 30432
   user: "root"
-  password: "postgresql2026Zone$"
+  password: "replace-me"
   database: "ruoyi-vue-pro"
   max_connections: 10
   max_idle_connections: 5

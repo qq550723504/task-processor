@@ -20,6 +20,8 @@ export function PreviewCanvas({
     return (
       <Card className="min-h-[32rem] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(199,210,254,0.45),_transparent_32%),linear-gradient(180deg,_#fafaf9,_#f4f4f5)] p-6">
         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-lg shadow-zinc-950/5">
+          {/* Dynamic remote asset URLs are not covered by the app image config. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt={preview.template_label ?? preview.asset_id ?? "Listing preview"}
             className="mx-auto max-h-[32rem] w-auto rounded-xl object-contain"

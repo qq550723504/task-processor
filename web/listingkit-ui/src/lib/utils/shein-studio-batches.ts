@@ -7,7 +7,6 @@ import {
 } from "@/lib/api/shein-studio-sessions";
 import {
   normalizeBatch,
-  normalizeDraft,
 } from "@/lib/shein-studio/storage-shared";
 import {
   parseJsonResponse,
@@ -17,7 +16,6 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioCreatedTask,
   SheinStudioArtworkModel,
-  SheinStudioDraft,
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,

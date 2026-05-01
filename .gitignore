@@ -60,7 +60,9 @@ logs
 .new
 .update-marker
 .gocache/
-tmp
+tmp/*
+!tmp/go.mod
+!tmp/README.md
 .tmp/
 .playwright-cli/
 .tools/
@@ -68,6 +70,9 @@ web/listingkit-ui/.data/
 node_modules/
 test-results/
 web/listingkit-ui/test-results/
+web/listingkit-ui/.next/
+web/listingkit-ui/node_modules/
+web/listingkit-ui/tsconfig.tsbuildinfo
 
 # Local SDS/SHEIN integration state and credentials
 data/sds/

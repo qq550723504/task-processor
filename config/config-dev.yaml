@@ -158,7 +158,7 @@ browser:
 rabbitmq:
   enabled: true  # 启用RabbitMQ连接
   #url: "amqp://admin:admin123@localhost:5672/"  # 连接到unified的RabbitMQ
-  url: "amqp://admin:RabbitMQ%402026%23Prod@101.33.34.102:30567/"  # 通过NodePort连接到k3s中的RabbitMQ
+  url: "amqp://task-processor:replace-me@rabbitmq.example.internal:5672/"  # 示例值，生产凭据请通过部署环境注入
   reconnectInterval: "5s"   # 重连间隔
   maxReconnectTries: 10  # 最大重连次数
   
@@ -258,10 +258,10 @@ amazon:
 
 # 数据库配置（productenrich-api 使用）
 database:
-  host: "101.33.34.102"
+  host: "postgres.example.internal"
   port: 30432 
   user: "root"
-  password: "postgresql2026Zone$"
+  password: "replace-me"
   database: "ruoyi-vue-pro"
   max_connections: 10
   max_idle_connections: 5
@@ -365,8 +365,8 @@ productimage:
       bucket: "listingkit-assets"
       region: "us-east-1"
       endpoint: "https://oss.shuomiai.com"
-      accessKeyID: "listingkit"
-      secretAccessKey: "JicpLSRFo9QIxZKgAVGq4ymXwMePYbdHv0D3BtTU"
+      accessKeyID: "replace-me"
+      secretAccessKey: "replace-me"
       usePathStyle: true
   lifecycle:
     cleanupTemporaryFiles: true

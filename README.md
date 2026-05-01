@@ -258,16 +258,14 @@ go run ./cmd/amazon-crawler-api -config config/config-amazon-crawler-api.yaml
 task-processor/
 ├── cmd/                          # 应用入口（每个子目录一个 main.go）
 │   ├── task/                    # 已废弃的 legacy polling 入口（仅应急回滚）
-│   ├── rabbitmq-consumer/       # RabbitMQ 消费者模式（上架任务）
-│   ├── crawler-consumer/        # 爬虫专用消费者
-│   ├── 1688-crawler/            # 1688 爬虫独立入口
 │   ├── 1688-crawler-api/        # 1688 爬虫 HTTP API 服务
-│   ├── amazon-crawler/          # Amazon 爬虫独立入口
 │   ├── amazon-crawler-api/      # Amazon 爬虫 HTTP API 服务
+│   ├── amazon-listing/          # Amazon 上架独立入口
 │   ├── shein-listing/           # SHEIN 上架独立入口
 │   ├── temu-listing/            # TEMU 上架独立入口
 │   ├── product-listing-api/     # 商品增强/图片处理/Amazon Listing 统一 HTTP API
-│   └── productenrich-api/       # 兼容入口，复用统一 HTTP API 装配
+│   ├── productenrich-api/       # 兼容入口，复用统一 HTTP API 装配
+│   └── shein-address-copy/      # SHEIN 地址复制工具
 ├── internal/                    # 私有业务逻辑（Go 编译器强制不对外暴露）
 │   ├── app/                     # 应用层：启动、调度、消息、任务编排
 │   │   ├── runtime/             # 服务启动生命周期（listing/crawler/httpapi）

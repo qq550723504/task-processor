@@ -144,10 +144,10 @@ docker build \
 
 生产 overlay 已经预置了可编辑模板：
 
-- [secret.yaml](D:/code/task-processor/deployments/kubernetes/shein-listing/overlays/prod/secret.yaml)
+- [external-secret.yaml](D:/code/task-processor/deployments/kubernetes/shein-listing/overlays/prod/external-secret.yaml)
 - [secret.example.yaml](D:/code/task-processor/deployments/kubernetes/shein-listing/overlays/prod/secret.example.yaml)
 
-现在只需要直接修改 `secret.yaml` 里的占位值即可，不需要再额外改 `kustomization.yaml`。
+生产环境通过 `external-secret.yaml` 从集群密钥管理系统同步值；不要再把真实值写回仓库。
 
 最低需要替换：
 

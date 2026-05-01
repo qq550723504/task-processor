@@ -140,9 +140,10 @@ task -> ProductFetcher -> RemoteAPIProductFetcher -> amazon-crawler-api
 - 分布式爬虫客户端
 - 调度器分布式锁入口
 - 多入口模式
-  - `cmd/rabbitmq-consumer`
-  - `cmd/crawler-consumer`
   - `cmd/task`
+  - `cmd/shein-listing`
+  - `cmd/temu-listing`
+  - `cmd/amazon-listing`
 
 ### 4.2 需要逐步收口的部分
 

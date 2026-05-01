@@ -14,14 +14,15 @@ vi.mock("@/components/listingkit/shein-studio/shein-saved-batches-panel", () => 
 }));
 
 vi.mock("next/image", () => ({
-  default: ({
-    fill: _fill,
-    alt,
-    src,
-    ...rest
-  }: ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; src: string }) => (
-    <img alt={alt} src={src} {...rest} />
-  ),
+  default: (props: ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; src: string }) => {
+    const { fill, alt, src, ...rest } = props;
+    void fill;
+
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img alt={alt ?? ""} src={src} {...rest} />
+    );
+  },
 }));
 
 function renderPanel(options?: {

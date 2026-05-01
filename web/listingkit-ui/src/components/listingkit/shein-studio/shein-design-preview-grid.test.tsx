@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 
 vi.mock("next/image", () => ({
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} />,
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img alt={props.alt ?? ""} {...props} />
+  ),
 }));
 
 vi.mock("@/components/listingkit/shein-studio/shein-design-lightbox", () => ({
