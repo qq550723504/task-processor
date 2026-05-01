@@ -1,18 +1,22 @@
 package common
 
+import "task-processor/internal/productenrich"
+
 import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 )
 
 type Variant struct {
-	SKU        string            `json:"sku,omitempty"`
-	Attributes map[string]string `json:"attributes,omitempty"`
-	Price      *Price            `json:"price,omitempty"`
-	Stock      int               `json:"stock,omitempty"`
-	Image      string            `json:"image,omitempty"`
-	Barcode    string            `json:"barcode,omitempty"`
-	IsDefault  bool              `json:"is_default,omitempty"`
+	SKU        string                    `json:"sku,omitempty"`
+	Attributes map[string]string         `json:"attributes,omitempty"`
+	Price      *Price                    `json:"price,omitempty"`
+	Stock      int                       `json:"stock,omitempty"`
+	Image      string                    `json:"image,omitempty"`
+	Dimensions *productenrich.Dimensions `json:"dimensions,omitempty"`
+	Weight     *productenrich.Weight     `json:"weight,omitempty"`
+	Barcode    string                    `json:"barcode,omitempty"`
+	IsDefault  bool                      `json:"is_default,omitempty"`
 }
 
 type Price struct {

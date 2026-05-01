@@ -29,6 +29,8 @@ func BuildVariants(canonical *productenrich.CanonicalProduct) []Variant {
 			Stock:      variant.Stock,
 			Barcode:    variant.Barcode,
 			IsDefault:  variant.IsDefault,
+			Dimensions: variant.Dimensions,
+			Weight:     variant.Weight,
 		}
 		if variant.Price != nil {
 			item.Price = &Price{

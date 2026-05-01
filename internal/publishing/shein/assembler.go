@@ -236,17 +236,23 @@ func buildSKUDraft(variant common.Variant, canonical *productenrich.CanonicalPro
 		draft.BasePrice = common.FormatFloat(price.Amount)
 		draft.SitePriceList = buildSitePrices(price, siteList)
 	}
-	if canonical != nil && canonical.Specifications != nil {
-		if canonical.Specifications.Weight != nil {
-			draft.Weight = canonical.Specifications.Weight.Value
-			draft.WeightUnit = canonical.Specifications.Weight.Unit
-		}
-		if canonical.Specifications.Dimensions != nil {
-			draft.Length = common.FormatFloat(canonical.Specifications.Dimensions.Length)
-			draft.Width = common.FormatFloat(canonical.Specifications.Dimensions.Width)
-			draft.Height = common.FormatFloat(canonical.Specifications.Dimensions.Height)
-			draft.LengthUnit = canonical.Specifications.Dimensions.Unit
-		}
+	if variant.Weight != nil {
+		draft.Weight = variant.Weight.Value
+		draft.WeightUnit = variant.Weight.Unit
+	} else if canonical != nil && canonical.Specifications != nil && canonical.Specifications.Weight != nil {
+		draft.Weight = canonical.Specifications.Weight.Value
+		draft.WeightUnit = canonical.Specifications.Weight.Unit
+	}
+	if variant.Dimensions != nil {
+		draft.Length = common.FormatFloat(variant.Dimensions.Length)
+		draft.Width = common.FormatFloat(variant.Dimensions.Width)
+		draft.Height = common.FormatFloat(variant.Dimensions.Height)
+		draft.LengthUnit = variant.Dimensions.Unit
+	} else if canonical != nil && canonical.Specifications != nil && canonical.Specifications.Dimensions != nil {
+		draft.Length = common.FormatFloat(canonical.Specifications.Dimensions.Length)
+		draft.Width = common.FormatFloat(canonical.Specifications.Dimensions.Width)
+		draft.Height = common.FormatFloat(canonical.Specifications.Dimensions.Height)
+		draft.LengthUnit = canonical.Specifications.Dimensions.Unit
 	}
 	draft.StockInfoList = []StockInfo{{WarehouseCode: "DEFAULT", InventoryNum: variant.Stock}}
 	return draft

@@ -45,6 +45,8 @@ type CanonicalVariant struct {
 	Price      *PriceInfo                    `json:"price,omitempty"`
 	Stock      int                           `json:"stock,omitempty"`
 	Images     []CanonicalImage              `json:"images,omitempty"`
+	Dimensions *Dimensions                   `json:"dimensions,omitempty"`
+	Weight     *Weight                       `json:"weight,omitempty"`
 	Barcode    string                        `json:"barcode,omitempty"`
 	IsDefault  bool                          `json:"is_default,omitempty"`
 	Trace      FieldTrace                    `json:"trace"`

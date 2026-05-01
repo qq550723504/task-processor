@@ -77,3 +77,34 @@ func TestStudioVariantsPreservesDistinctVariantSKUs(t *testing.T) {
 		t.Fatalf("second sku = %q", variants[1].SKU)
 	}
 }
+
+func TestStudioVariantsPreserveVariantDimensionsAndWeight(t *testing.T) {
+	sds := &SDSSyncOptions{
+		ProductSKU: "MG8014186001",
+		StyleID:    "d7e6-8190-abcdef",
+		Variants: []SDSSyncVariantOption{
+			{VariantID: 101, Color: "Black", Size: "40x60cm", Weight: 120, BoxLength: 40, BoxWidth: 30, BoxHeight: 2},
+			{VariantID: 102, Color: "Black", Size: "50x80cm", Weight: 180, BoxLength: 50, BoxWidth: 40, BoxHeight: 3},
+		},
+	}
+
+	variants := studioVariants(sds, nil, productenrich.FieldTrace{})
+	if len(variants) != 2 {
+		t.Fatalf("variant count = %d, want 2", len(variants))
+	}
+	if variants[0].Dimensions == nil || variants[1].Dimensions == nil {
+		t.Fatalf("expected variant dimensions to be preserved: %+v", variants)
+	}
+	if variants[0].Dimensions.Length != 40 || variants[0].Dimensions.Width != 30 || variants[0].Dimensions.Height != 2 {
+		t.Fatalf("first dimensions = %+v", variants[0].Dimensions)
+	}
+	if variants[1].Dimensions.Length != 50 || variants[1].Dimensions.Width != 40 || variants[1].Dimensions.Height != 3 {
+		t.Fatalf("second dimensions = %+v", variants[1].Dimensions)
+	}
+	if variants[0].Weight == nil || variants[1].Weight == nil {
+		t.Fatalf("expected variant weight to be preserved: %+v", variants)
+	}
+	if variants[0].Weight.Value != 120 || variants[1].Weight.Value != 180 {
+		t.Fatalf("weights = %+v / %+v", variants[0].Weight, variants[1].Weight)
+	}
+}

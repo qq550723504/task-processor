@@ -133,12 +133,27 @@ func studioVariants(sds *SDSSyncOptions, images []productenrich.CanonicalImage, 
 			if item.Price > 0 {
 				price = &productenrich.PriceInfo{Currency: "USD", Amount: item.Price, CostPrice: item.Price}
 			}
+			var dimensions *productenrich.Dimensions
+			if item.BoxLength > 0 && item.BoxWidth > 0 && item.BoxHeight > 0 {
+				dimensions = &productenrich.Dimensions{
+					Length: item.BoxLength,
+					Width:  item.BoxWidth,
+					Height: item.BoxHeight,
+					Unit:   "cm",
+				}
+			}
+			var weight *productenrich.Weight
+			if item.Weight > 0 {
+				weight = &productenrich.Weight{Value: item.Weight, Unit: "g"}
+			}
 			variants = append(variants, productenrich.CanonicalVariant{
 				SKU:        firstNonEmptyString(sku, "SDS-STUDIO-001"),
 				Attributes: attrs,
 				Price:      price,
 				Stock:      999,
 				Images:     append([]productenrich.CanonicalImage(nil), images...),
+				Dimensions: dimensions,
+				Weight:     weight,
 				IsDefault:  index == 0,
 				Trace:      trace,
 			})
