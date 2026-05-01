@@ -46,19 +46,46 @@ func (s *Service) fetchRenderedImageURLsByProduct(ctx context.Context, input Pre
 	expectedCount := expectedRenderedImageCount(result)
 	targetIDs := renderedTargetVariantIDs(input, variantID)
 	var best map[int64][]string
+	bestObservations := make(map[int64]RenderedImageObservation, len(targetIDs))
+	sensitiveWordRepairAttempted := false
 	expectedMaterialName := finishedProductMaterialName(result)
+	finalize := func(current map[int64][]string) map[int64][]string {
+		if result != nil {
+			if len(current) > 0 {
+				result.RenderedImageURLsByProduct = current
+			}
+			if len(bestObservations) > 0 {
+				result.RenderedImageObservations = cloneRenderedImageObservations(bestObservations)
+				result.RenderedSensitiveWords = s.fetchRenderedSensitiveWords(ctx, bestObservations)
+			}
+		}
+		return current
+	}
 	for attempt := 0; attempt < maxRenderedImagePollAttempts; attempt++ {
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
-				return best
+				return finalize(best)
 			case <-time.After(renderedImagePollInterval):
 			}
 		}
-		if urlsByProduct := s.fetchFinishedProductImageURLsByProduct(ctx, input, result, parentProductID, targetIDs); len(urlsByProduct) > 0 {
+		urlsByProduct, observations, sensitiveWords := s.fetchFinishedProductImageURLsByProduct(ctx, input, result, parentProductID, targetIDs)
+		for productID, observation := range observations {
+			bestObservations[productID] = observation
+		}
+		if len(sensitiveWords) > 0 {
+			if result != nil {
+				result.RenderedSensitiveWords = sensitiveWords
+			}
+			if !sensitiveWordRepairAttempted && s.repairSensitiveDesignProductExportNames(ctx, input, result, sensitiveWords) {
+				sensitiveWordRepairAttempted = true
+				continue
+			}
+		}
+		if len(urlsByProduct) > 0 {
 			best = preferredRenderedImageURLsByProduct(best, urlsByProduct)
 			if renderedImageURLsByProductReady(urlsByProduct, targetIDs, expectedCount) {
-				return urlsByProduct
+				return finalize(urlsByProduct)
 			}
 		}
 		if expectedMaterialName != "" {
@@ -78,26 +105,26 @@ func (s *Service) fetchRenderedImageURLsByProduct(ctx context.Context, input Pre
 			}
 			best[variantID] = preferredRenderedImageURLs(best[variantID], urls)
 			if renderedImageURLsReady(urls, expectedCount) {
-				return best
+				return finalize(best)
 			}
 		}
 	}
-	return best
+	return finalize(best)
 }
 
 func (s *Service) fetchFinishedProductImageURLs(ctx context.Context, input PrepareSyncDesignInput, result *PrepareSyncDesignResult, variantID int64, parentProductID int64) []string {
-	if urls := s.fetchFinishedProductImageURLsByProduct(ctx, input, result, parentProductID, []int64{variantID}); len(urls) > 0 {
+	if urls, _, _ := s.fetchFinishedProductImageURLsByProduct(ctx, input, result, parentProductID, []int64{variantID}); len(urls) > 0 {
 		return urls[variantID]
 	}
 	return nil
 }
 
-func (s *Service) fetchFinishedProductImageURLsByProduct(ctx context.Context, input PrepareSyncDesignInput, result *PrepareSyncDesignResult, parentProductID int64, targetIDs []int64) map[int64][]string {
+func (s *Service) fetchFinishedProductImageURLsByProduct(ctx context.Context, input PrepareSyncDesignInput, result *PrepareSyncDesignResult, parentProductID int64, targetIDs []int64) (map[int64][]string, map[int64]RenderedImageObservation, map[string][]SensitiveWordHit) {
 	if parentProductID <= 0 {
-		return nil
+		return nil, nil, nil
 	}
 	if len(targetIDs) == 0 {
-		return nil
+		return nil, nil, nil
 	}
 	list, err := s.ListDesignProducts(ctx, ListDesignProductsRequest{
 		ParentProductID: parentProductID,
@@ -106,17 +133,19 @@ func (s *Service) fetchFinishedProductImageURLsByProduct(ctx context.Context, in
 		Size:            50,
 	})
 	if err != nil || list == nil || len(list.Items) == 0 {
-		return nil
+		return nil, nil, nil
 	}
 
+	observations := collectRenderedImageObservations(list.Items, targetIDs)
+	sensitiveWords := s.fetchRenderedSensitiveWords(ctx, observations)
 	expectedMaterialName := finishedProductMaterialName(result)
 	accept := func(urls []string) bool {
 		return !s.renderedCandidateLooksBlank(ctx, urls, input.BlankDesignURL)
 	}
 	if urls := selectFinishedProductImageURLsByProductWithAccept(list.Items, targetIDs, expectedMaterialName, accept); len(urls) > 0 {
-		return urls
+		return urls, observations, sensitiveWords
 	}
-	return selectFinishedProductImageURLsByProductWithAccept(list.Items, targetIDs, expectedMaterialName, nil)
+	return selectFinishedProductImageURLsByProductWithAccept(list.Items, targetIDs, expectedMaterialName, nil), observations, sensitiveWords
 }
 
 func resolvedDesignVariantID(input PrepareSyncDesignInput, result *PrepareSyncDesignResult) int64 {
@@ -211,6 +240,115 @@ func selectFinishedProductImageURLsByProductWithAccept(items []DesignProductList
 		return nil
 	}
 	return result
+}
+
+func collectRenderedImageObservations(items []DesignProductListItem, targetIDs []int64) map[int64]RenderedImageObservation {
+	targetSet := make(map[int64]struct{}, len(targetIDs))
+	for _, id := range targetIDs {
+		if id > 0 {
+			targetSet[id] = struct{}{}
+		}
+	}
+	if len(targetSet) == 0 {
+		return nil
+	}
+	candidates := append([]DesignProductListItem(nil), items...)
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].FinishTime > candidates[j].FinishTime
+	})
+	result := make(map[int64]RenderedImageObservation, len(targetSet))
+	for _, item := range candidates {
+		if _, ok := targetSet[item.ProductID]; !ok {
+			continue
+		}
+		if _, exists := result[item.ProductID]; exists {
+			continue
+		}
+		result[item.ProductID] = RenderedImageObservation{
+			ProductID:         item.ProductID,
+			Found:             true,
+			BuildFinish:       item.BuildFinish,
+			Status:            item.Status,
+			MaterialImageName: strings.TrimSpace(item.MaterialImageName),
+			TaskID:            strings.TrimSpace(item.TaskID),
+			DesignTaskID:      strings.TrimSpace(item.DesignTaskID),
+			ItemID:            strings.TrimSpace(item.ID),
+			ImageCount:        len(item.ImageURLs),
+			ThumbnailCount:    len(item.ThumbnailImageURLs),
+		}
+	}
+	return result
+}
+
+func cloneRenderedImageObservations(input map[int64]RenderedImageObservation) map[int64]RenderedImageObservation {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make(map[int64]RenderedImageObservation, len(input))
+	for key, value := range input {
+		result[key] = value
+	}
+	return result
+}
+
+func (s *Service) fetchRenderedSensitiveWords(ctx context.Context, observations map[int64]RenderedImageObservation) map[string][]SensitiveWordHit {
+	if len(observations) == 0 || s == nil || s.client == nil {
+		return nil
+	}
+	state := s.client.AuthState()
+	if state == nil || state.MerchantID <= 0 {
+		return nil
+	}
+	itemIDs := make([]string, 0, len(observations))
+	seen := make(map[string]struct{}, len(observations))
+	for _, observation := range observations {
+		itemID := strings.TrimSpace(observation.ItemID)
+		if itemID == "" {
+			continue
+		}
+		if _, ok := seen[itemID]; ok {
+			continue
+		}
+		seen[itemID] = struct{}{}
+		itemIDs = append(itemIDs, itemID)
+	}
+	if len(itemIDs) == 0 {
+		return nil
+	}
+	return s.ListSensitiveWordsByItemIDs(ctx, state.MerchantID, itemIDs)
+}
+
+func (s *Service) repairSensitiveDesignProductExportNames(ctx context.Context, input PrepareSyncDesignInput, result *PrepareSyncDesignResult, sensitiveWords map[string][]SensitiveWordHit) bool {
+	if len(sensitiveWords) == 0 || s == nil {
+		return false
+	}
+	parentProductID := input.ParentProductID
+	if parentProductID <= 0 && result != nil && result.Page != nil {
+		parentProductID = result.Page.Product.ParentID
+		if parentProductID <= 0 {
+			parentProductID = result.Page.MerchantProductParentID
+		}
+	}
+	if parentProductID <= 0 {
+		return false
+	}
+	list, err := s.ListDesignProducts(ctx, ListDesignProductsRequest{
+		ParentProductID: parentProductID,
+		DesignType:      input.DesignType,
+		Page:            1,
+		Size:            50,
+	})
+	if err != nil || list == nil || len(list.Items) == 0 {
+		return false
+	}
+	updates := buildSensitiveDesignProductUpdates(list.Items, sensitiveWords)
+	if len(updates) == 0 {
+		return false
+	}
+	if err := s.UpdateDesignProducts(ctx, updates); err != nil {
+		return false
+	}
+	return true
 }
 
 func finishedProductItemImageURLs(item DesignProductListItem, variantID int64, expectedMaterialName string) []string {

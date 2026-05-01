@@ -338,6 +338,7 @@ func buildSheinFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *shein
 	}
 	sizeMapURLs := sheinSizeMapImageURLs(product)
 	out := []SheinFinalReviewImage{}
+	seen := map[string]int{}
 	add := func(url, role string, sort int, main bool) {
 		url = strings.TrimSpace(url)
 		if url == "" {
@@ -355,6 +356,24 @@ func buildSheinFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *shein
 		if _, ok := sizeMapURLs[url]; ok && role == "gallery" {
 			role = "size_map"
 		}
+		if existingIndex, ok := seen[url]; ok {
+			existing := &out[existingIndex]
+			if main || role == "main" {
+				existing.Role = "main"
+				existing.Main = true
+				existing.SizeMap = false
+				existing.Swatch = false
+			} else if role == "size_map" && existing.Role != "main" {
+				existing.Role = "size_map"
+				existing.SizeMap = true
+				existing.Swatch = false
+			} else if (role == "skc" || role == "swatch") && existing.Role != "main" && existing.Role != "size_map" {
+				existing.Role = role
+				existing.Swatch = true
+			}
+			return
+		}
+		seen[url] = len(out)
 		out = append(out, SheinFinalReviewImage{
 			URL:     url,
 			Role:    role,

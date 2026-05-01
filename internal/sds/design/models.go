@@ -89,19 +89,25 @@ type DesignProductListResponse struct {
 
 // DesignProductListItem contains the rendered output images from 成品库.
 type DesignProductListItem struct {
-	ID                 string   `json:"id"`
-	ProductID          int64    `json:"product_id"`
-	ProductParentID    int64    `json:"product_parent_id"`
-	DesignTaskID       string   `json:"design_task_id"`
-	TaskID             string   `json:"task_id"`
-	PrototypeID        string   `json:"prototype_id"`
-	BuildFinish        bool     `json:"buildFinish"`
-	Status             int      `json:"status"`
-	MaterialImageName  string   `json:"material_img_name"`
-	FinishTime         int64    `json:"finish_time"`
-	GMTFinish          string   `json:"gmt_finish"`
-	ImageURLs          []string `json:"img_urls"`
-	ThumbnailImageURLs []string `json:"thumb_img_urls"`
+	ID                 string                  `json:"id"`
+	ProductID          int64                   `json:"product_id"`
+	ProductParentID    int64                   `json:"product_parent_id"`
+	DesignTaskID       string                  `json:"design_task_id"`
+	TaskID             string                  `json:"task_id"`
+	PrototypeID        string                  `json:"prototype_id"`
+	BuildFinish        bool                    `json:"buildFinish"`
+	Status             int                     `json:"status"`
+	ExportName         string                  `json:"export_name"`
+	MaterialImageName  string                  `json:"material_img_name"`
+	MaterialColor      string                  `json:"material_color"`
+	Keyword            string                  `json:"keyword"`
+	ParentAttribute    int                     `json:"parent_attribute"`
+	Attributes         []any                   `json:"attributes"`
+	MaterialVariant    []DesignProductListItem `json:"material_variant"`
+	FinishTime         int64                   `json:"finish_time"`
+	GMTFinish          string                  `json:"gmt_finish"`
+	ImageURLs          []string                `json:"img_urls"`
+	ThumbnailImageURLs []string                `json:"thumb_img_urls"`
 }
 
 // DesignProductPage 表示设计页初始化接口 `/ps/design/products/{variantId}`。

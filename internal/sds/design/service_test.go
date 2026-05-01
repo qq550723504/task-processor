@@ -1,11 +1,16 @@
 package design
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
+	sdsclient "task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
 )
 
@@ -520,5 +525,89 @@ func TestBuildFabricJSON(t *testing.T) {
 	}
 	if !strings.Contains(raw, `"scaleX"`) {
 		t.Fatalf("expected scale in fabric json: %s", raw)
+	}
+}
+
+func TestBuildSensitiveDesignProductUpdatesRemovesBlockedExportWords(t *testing.T) {
+	t.Parallel()
+
+	updates := buildSensitiveDesignProductUpdates([]DesignProductListItem{
+		{
+			ID:                "904272754285088768",
+			ExportName:        "Simulated Silk Sleep Masks",
+			MaterialImageName: "listingkit-studio-design-91e86def",
+			MaterialColor:     "style",
+			ParentAttribute:   2,
+			MaterialVariant: []DesignProductListItem{
+				{
+					ID:                "904272754280894464",
+					ExportName:        "Simulated Silk Sleep Masks",
+					MaterialImageName: "listingkit-studio-design-91e86def",
+					ParentAttribute:   2,
+				},
+			},
+		},
+	}, map[string][]SensitiveWordHit{
+		"904272754285088768": {{SensitiveWord: "Mask", PositionStrs: "导出名称"}},
+		"904272754280894464": {{SensitiveWord: "Mask", PositionStrs: "导出名称"}},
+	})
+
+	if len(updates) != 2 {
+		t.Fatalf("updates = %d, want 2", len(updates))
+	}
+	for _, update := range updates {
+		if strings.Contains(strings.ToLower(update.Name), "mask") {
+			t.Fatalf("sanitized name still contains blocked word: %+v", update)
+		}
+		if update.Name != "Simulated Silk Sleep" {
+			t.Fatalf("sanitized name = %q, want %q", update.Name, "Simulated Silk Sleep")
+		}
+	}
+}
+
+func TestUpdateDesignProductsUsesConfiguredEndpoint(t *testing.T) {
+	t.Parallel()
+
+	var method string
+	var body []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		if r.URL.Path != "/design_products" {
+			t.Fatalf("path = %s, want /design_products", r.URL.Path)
+		}
+		defer r.Body.Close()
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		body = payload
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ret":0,"msg":"ok"}`))
+	}))
+	defer server.Close()
+
+	cfg := sdsclient.DefaultConfig()
+	cfg.BaseURL = server.URL
+	cfg.Endpoints.DesignProductsUpdatePath = server.URL + "/design_products"
+	cfg.AuthBootstrap = sdsclient.AuthBootstrapConfig{}
+	client, err := sdsclient.New(cfg)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	service := NewService(client)
+	err = service.UpdateDesignProducts(context.Background(), []UpdateDesignProductRequest{{
+		ID:                "904272754285088768",
+		Name:              "Simulated Silk Sleep",
+		MaterialImageName: "listingkit-studio-design-91e86def",
+	}})
+	if err != nil {
+		t.Fatalf("update design products: %v", err)
+	}
+	if method != http.MethodPut {
+		t.Fatalf("method = %s, want PUT", method)
+	}
+	if !strings.Contains(string(body), `"name":"Simulated Silk Sleep"`) {
+		t.Fatalf("unexpected body: %s", string(body))
 	}
 }

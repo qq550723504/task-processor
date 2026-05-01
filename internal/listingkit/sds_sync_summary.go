@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"fmt"
 	"strings"
 
 	"task-processor/internal/sds/design"
@@ -56,9 +57,10 @@ func buildSDSSyncSummary(options *SDSSyncOptions, designResult *design.PrepareSy
 			summary.Diagnostics.RenderedCount = len(summary.MockupImageURLs)
 		}
 	}
+	attachRenderedDiagnostics(summary, designResult)
 	if len(summary.MockupImageURLs) == 0 {
 		summary.Status = "render_unavailable"
-		summary.Error = "SDS did not return current fused mockup images"
+		summary.Error = buildRenderedImageUnavailableError(summary.Diagnostics)
 	}
 	return summary
 }
@@ -98,9 +100,10 @@ func buildSDSVariantSyncSummaries(options *SDSSyncOptions, variants []SDSSyncVar
 		if summary.Diagnostics != nil {
 			summary.Diagnostics.RenderedCount = len(summary.MockupImageURLs)
 		}
+		attachRenderedVariantDiagnostics(&summary, designResult, variant.VariantID)
 		if len(summary.MockupImageURLs) == 0 {
 			summary.Status = "render_unavailable"
-			summary.Error = "SDS did not return current fused mockup images"
+			summary.Error = buildRenderedImageUnavailableError(summary.Diagnostics)
 		}
 		summaries = append(summaries, summary)
 	}
@@ -113,6 +116,104 @@ func cloneSDSSyncDiagnostics(input *SDSSyncDiagnostics) *SDSSyncDiagnostics {
 	}
 	copy := *input
 	return &copy
+}
+
+func attachRenderedDiagnostics(summary *SDSSyncSummary, designResult *design.PrepareSyncDesignResult) {
+	if summary == nil || designResult == nil {
+		return
+	}
+	attachRenderedVariantDiagnostics(summary, designResult, summary.ProductID)
+	if summary.Diagnostics == nil {
+		return
+	}
+	if len(summary.Diagnostics.SensitiveWords) == 0 {
+		for _, hits := range designResult.RenderedSensitiveWords {
+			if len(hits) == 0 {
+				continue
+			}
+			summary.Diagnostics.SensitiveWords = convertSensitiveWordHits(hits)
+			break
+		}
+	}
+}
+
+func attachRenderedVariantDiagnostics(summary *SDSSyncSummary, designResult *design.PrepareSyncDesignResult, variantID int64) {
+	if summary == nil || designResult == nil || variantID <= 0 {
+		return
+	}
+	observation, ok := designResult.RenderedImageObservations[variantID]
+	if !ok {
+		return
+	}
+	if summary.Diagnostics == nil {
+		summary.Diagnostics = &SDSSyncDiagnostics{}
+	}
+	summary.Diagnostics.FinishedProduct = &SDSSyncFinishedProductObservation{
+		Found:             observation.Found,
+		BuildFinish:       observation.BuildFinish,
+		Status:            observation.Status,
+		MaterialImageName: observation.MaterialImageName,
+		TaskID:            observation.TaskID,
+		DesignTaskID:      observation.DesignTaskID,
+		ItemID:            observation.ItemID,
+		ImageCount:        observation.ImageCount,
+		ThumbnailCount:    observation.ThumbnailCount,
+	}
+	if hits := designResult.RenderedSensitiveWords[observation.ItemID]; len(hits) > 0 {
+		summary.Diagnostics.SensitiveWords = convertSensitiveWordHits(hits)
+	}
+}
+
+func convertSensitiveWordHits(hits []design.SensitiveWordHit) []SDSSyncSensitiveWordHit {
+	if len(hits) == 0 {
+		return nil
+	}
+	result := make([]SDSSyncSensitiveWordHit, 0, len(hits))
+	for _, hit := range hits {
+		result = append(result, SDSSyncSensitiveWordHit{
+			SensitiveWord: strings.TrimSpace(hit.SensitiveWord),
+			Type:          hit.Type,
+			TypeStrs:      strings.TrimSpace(hit.TypeStrs),
+			ImgURL:        strings.TrimSpace(hit.ImgURL),
+			IsParent:      hit.IsParent,
+			PositionStrs:  strings.TrimSpace(hit.PositionStrs),
+		})
+	}
+	return result
+}
+
+func buildRenderedImageUnavailableError(diagnostics *SDSSyncDiagnostics) string {
+	if diagnostics == nil {
+		return "SDS did not create finished product records for the current variant"
+	}
+	if len(diagnostics.SensitiveWords) > 0 {
+		parts := make([]string, 0, len(diagnostics.SensitiveWords))
+		for _, hit := range diagnostics.SensitiveWords {
+			word := strings.TrimSpace(hit.SensitiveWord)
+			position := strings.TrimSpace(hit.PositionStrs)
+			if word == "" && position == "" {
+				continue
+			}
+			if position != "" {
+				parts = append(parts, fmt.Sprintf("%s（%s）", word, position))
+			} else {
+				parts = append(parts, word)
+			}
+		}
+		if len(parts) > 0 {
+			return "SDS sensitive-word check blocked rendered product export: " + strings.Join(uniqueNonEmptyStrings(parts), ", ")
+		}
+	}
+	if diagnostics.FinishedProduct == nil || !diagnostics.FinishedProduct.Found {
+		return "SDS did not create finished product records for the current variant"
+	}
+	if !diagnostics.FinishedProduct.BuildFinish {
+		return "SDS finished product record exists but is not built yet"
+	}
+	if diagnostics.FinishedProduct.ImageCount == 0 {
+		return "SDS finished product record exists but returned no fused mockup images"
+	}
+	return "SDS did not return current fused mockup images"
 }
 
 func uniqueNonEmptyStrings(values []string) []string {

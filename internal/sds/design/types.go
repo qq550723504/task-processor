@@ -37,6 +37,17 @@ type ListDesignProductsRequest struct {
 	Size            int
 }
 
+// UpdateDesignProductRequest updates SDS finished-product export metadata.
+type UpdateDesignProductRequest struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	MaterialImageName string `json:"material_img_name,omitempty"`
+	MaterialColor     string `json:"material_color,omitempty"`
+	Keyword           string `json:"keyword,omitempty"`
+	Attributes        []any  `json:"attributes,omitempty"`
+	ParentAttribute   int    `json:"parent_attribute,omitempty"`
+}
+
 // SyncDesignRequest 表示 SDS 保存设计请求。
 type SyncDesignRequest struct {
 	ProductID                    int64                 `json:"product_id"`
@@ -91,6 +102,35 @@ type PrepareSyncDesignResult struct {
 	Material                   *UploadedMaterial
 	RenderedImageURLs          []string
 	RenderedImageURLsByProduct map[int64][]string
+	RenderedImageObservations  map[int64]RenderedImageObservation
+	RenderedSensitiveWords     map[string][]SensitiveWordHit
+}
+
+// RenderedImageObservation captures the latest finished-product-library
+// observation for a target variant, even when no usable fused mockup URLs are
+// available yet.
+type RenderedImageObservation struct {
+	ProductID         int64  `json:"product_id,omitempty"`
+	Found             bool   `json:"found,omitempty"`
+	BuildFinish       bool   `json:"build_finish,omitempty"`
+	Status            int    `json:"status,omitempty"`
+	MaterialImageName string `json:"material_image_name,omitempty"`
+	TaskID            string `json:"task_id,omitempty"`
+	DesignTaskID      string `json:"design_task_id,omitempty"`
+	ItemID            string `json:"item_id,omitempty"`
+	ImageCount        int    `json:"image_count,omitempty"`
+	ThumbnailCount    int    `json:"thumbnail_count,omitempty"`
+}
+
+// SensitiveWordHit mirrors the SDS sensitive-word response for a rendered
+// design product item.
+type SensitiveWordHit struct {
+	SensitiveWord string `json:"sensitiveWord"`
+	Type          int    `json:"type"`
+	TypeStrs      string `json:"typeStrs"`
+	ImgURL        string `json:"imgUrl"`
+	IsParent      int    `json:"isParent"`
+	PositionStrs  string `json:"positionStrs"`
 }
 
 // SaveDesignRequest mirrors the SDS frontend save payload used by /ps/design/add_and_design.

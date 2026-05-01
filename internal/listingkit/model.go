@@ -949,16 +949,39 @@ type SDSSyncSummary struct {
 }
 
 type SDSSyncDiagnostics struct {
-	MaterialImageURL string  `json:"material_image_url,omitempty"`
-	MaterialFileCode string  `json:"material_file_code,omitempty"`
-	MaterialWidth    int     `json:"material_width,omitempty"`
-	MaterialHeight   int     `json:"material_height,omitempty"`
-	LayerContent     string  `json:"layer_content,omitempty"`
-	LayerImgWidth    int     `json:"layer_img_width,omitempty"`
-	LayerImgHeight   int     `json:"layer_img_height,omitempty"`
-	ResizeMode       int     `json:"resize_mode"`
-	FitLevel         float64 `json:"fit_level,omitempty"`
-	RenderedCount    int     `json:"rendered_count"`
+	MaterialImageURL string                             `json:"material_image_url,omitempty"`
+	MaterialFileCode string                             `json:"material_file_code,omitempty"`
+	MaterialWidth    int                                `json:"material_width,omitempty"`
+	MaterialHeight   int                                `json:"material_height,omitempty"`
+	LayerContent     string                             `json:"layer_content,omitempty"`
+	LayerImgWidth    int                                `json:"layer_img_width,omitempty"`
+	LayerImgHeight   int                                `json:"layer_img_height,omitempty"`
+	ResizeMode       int                                `json:"resize_mode"`
+	FitLevel         float64                            `json:"fit_level,omitempty"`
+	RenderedCount    int                                `json:"rendered_count"`
+	FinishedProduct  *SDSSyncFinishedProductObservation `json:"finished_product,omitempty"`
+	SensitiveWords   []SDSSyncSensitiveWordHit          `json:"sensitive_words,omitempty"`
+}
+
+type SDSSyncFinishedProductObservation struct {
+	Found             bool   `json:"found,omitempty"`
+	BuildFinish       bool   `json:"build_finish,omitempty"`
+	Status            int    `json:"status,omitempty"`
+	MaterialImageName string `json:"material_image_name,omitempty"`
+	TaskID            string `json:"task_id,omitempty"`
+	DesignTaskID      string `json:"design_task_id,omitempty"`
+	ItemID            string `json:"item_id,omitempty"`
+	ImageCount        int    `json:"image_count,omitempty"`
+	ThumbnailCount    int    `json:"thumbnail_count,omitempty"`
+}
+
+type SDSSyncSensitiveWordHit struct {
+	SensitiveWord string `json:"sensitive_word,omitempty"`
+	Type          int    `json:"type,omitempty"`
+	TypeStrs      string `json:"type_strs,omitempty"`
+	ImgURL        string `json:"img_url,omitempty"`
+	IsParent      int    `json:"is_parent,omitempty"`
+	PositionStrs  string `json:"position_strs,omitempty"`
 }
 
 type GenerationRecoverySummary struct {

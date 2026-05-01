@@ -153,6 +153,61 @@ func TestApplySDSSyncMetadataToCanonicalOverridesStaleStudioTitle(t *testing.T) 
 	}
 }
 
+func TestBuildSDSVariantSyncSummariesCapturesMissingFinishedProductObservation(t *testing.T) {
+	options := &SDSSyncOptions{VariantID: 252086}
+	summaries := buildSDSVariantSyncSummaries(options, []SDSSyncVariantOption{
+		{VariantID: 252087, VariantSKU: "SKU-GRAY", Color: "gray"},
+	}, &sdsdesign.PrepareSyncDesignResult{})
+	if len(summaries) != 1 {
+		t.Fatalf("summaries = %d, want 1", len(summaries))
+	}
+	summary := summaries[0]
+	if summary.Status != "render_unavailable" {
+		t.Fatalf("status = %q", summary.Status)
+	}
+	if !strings.Contains(summary.Error, "did not create finished product records") {
+		t.Fatalf("error = %q", summary.Error)
+	}
+}
+
+func TestBuildSDSVariantSyncSummariesPrefersSensitiveWordFailureReason(t *testing.T) {
+	options := &SDSSyncOptions{VariantID: 252086}
+	summaries := buildSDSVariantSyncSummaries(options, []SDSSyncVariantOption{
+		{VariantID: 252086, VariantSKU: "SKU-BLACK", Color: "black"},
+	}, &sdsdesign.PrepareSyncDesignResult{
+		RenderedImageObservations: map[int64]sdsdesign.RenderedImageObservation{
+			252086: {
+				ProductID:   252086,
+				Found:       true,
+				BuildFinish: true,
+				ItemID:      "904265725796831232",
+				ImageCount:  8,
+			},
+		},
+		RenderedSensitiveWords: map[string][]sdsdesign.SensitiveWordHit{
+			"904265725796831232": {
+				{
+					SensitiveWord: "Mask",
+					PositionStrs:  "导出名称",
+				},
+			},
+		},
+	})
+	if len(summaries) != 1 {
+		t.Fatalf("summaries = %d, want 1", len(summaries))
+	}
+	summary := summaries[0]
+	if summary.Diagnostics == nil || len(summary.Diagnostics.SensitiveWords) != 1 {
+		t.Fatalf("sensitive words = %+v", summary.Diagnostics)
+	}
+	if summary.Diagnostics.SensitiveWords[0].SensitiveWord != "Mask" {
+		t.Fatalf("sensitive word = %+v", summary.Diagnostics.SensitiveWords[0])
+	}
+	if !strings.Contains(summary.Error, "Mask") {
+		t.Fatalf("error = %q", summary.Error)
+	}
+}
+
 func TestApplySDSTemplateImagesToSheinReplacesFlatDesignImages(t *testing.T) {
 	pkg := &sheinpub.Package{
 		Images: sheinImageSet("https://cdn.example.com/flat-design.png"),
@@ -690,4 +745,33 @@ func hasFinalReviewSizeMap(images []SheinFinalReviewImage, imageURL string) bool
 		}
 	}
 	return false
+}
+
+func TestBuildSheinFinalReviewImagesDeduplicatesRepeatedMainImage(t *testing.T) {
+	mainImage := "https://cdn.sdspod.com/out/main.jpg"
+	draft := &sheinpub.RequestDraft{
+		ImageInfo: &sheinpub.ImageDraft{
+			MainImage: mainImage,
+			Gallery: []string{
+				mainImage,
+				"https://cdn.sdspod.com/out/detail-1.jpg",
+			},
+		},
+		SKCList: []sheinpub.SKCRequestDraft{{
+			ImageInfo: &sheinpub.ImageDraft{
+				MainImage: mainImage,
+			},
+		}},
+	}
+
+	images := buildSheinFinalReviewImages(draft, &sheinpub.FinalDraft{MainImageURL: mainImage}, nil)
+	if len(images) != 2 {
+		t.Fatalf("final review image count = %d, want 2: %+v", len(images), images)
+	}
+	if images[0].URL != mainImage || images[0].Role != "main" || !images[0].Main {
+		t.Fatalf("first image = %+v", images[0])
+	}
+	if images[1].URL != "https://cdn.sdspod.com/out/detail-1.jpg" || images[1].Role != "gallery" {
+		t.Fatalf("second image = %+v", images[1])
+	}
 }

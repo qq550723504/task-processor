@@ -49,3 +49,53 @@ func TestUploadSheinImageInfoGeneratesColorBlockForSwatch(t *testing.T) {
 		t.Fatalf("image url = %q, want generated color block URL", got)
 	}
 }
+
+func TestUploadSheinProductImagesDeduplicatesSharedURLs(t *testing.T) {
+	t.Parallel()
+
+	sourceURL := "https://cdn.example.com/shared.jpg"
+	uploadedURL := "https://img.shein.com/uploaded/shared.jpg"
+	product := &sheinproduct.Product{
+		ImageInfo: &sheinproduct.ImageInfo{
+			ImageInfoList: []sheinproduct.ImageDetail{{ImageURL: sourceURL}},
+		},
+		SKCList: []sheinproduct.SKC{{
+			ImageInfo: sheinproduct.ImageInfo{
+				ImageInfoList: []sheinproduct.ImageDetail{{ImageURL: sourceURL}},
+			},
+			SKUS: []sheinproduct.SKU{{
+				ImageInfo: &sheinproduct.ImageInfo{
+					ImageInfoList: []sheinproduct.ImageDetail{{ImageURL: sourceURL}},
+				},
+			}},
+		}},
+	}
+	api := &stubSheinImageAPI{
+		uploaded: map[string]string{
+			sourceURL: uploadedURL,
+		},
+	}
+
+	count, cache, err := uploadSheinProductImages(product, api, nil)
+	if err != nil {
+		t.Fatalf("uploadSheinProductImages: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("upload count = %d, want 1 unique upload", count)
+	}
+	if got := api.calls[sourceURL]; got != 1 {
+		t.Fatalf("upload calls = %d, want 1", got)
+	}
+	if cache[sourceURL] != uploadedURL {
+		t.Fatalf("cache[%q] = %q, want %q", sourceURL, cache[sourceURL], uploadedURL)
+	}
+	if got := product.ImageInfo.ImageInfoList[0].ImageURL; got != uploadedURL {
+		t.Fatalf("spu image url = %q, want %q", got, uploadedURL)
+	}
+	if got := product.SKCList[0].ImageInfo.ImageInfoList[0].ImageURL; got != uploadedURL {
+		t.Fatalf("skc image url = %q, want %q", got, uploadedURL)
+	}
+	if got := product.SKCList[0].SKUS[0].ImageInfo.ImageInfoList[0].ImageURL; got != uploadedURL {
+		t.Fatalf("sku image url = %q, want %q", got, uploadedURL)
+	}
+}

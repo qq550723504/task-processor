@@ -664,6 +664,273 @@ func TestSubmitTaskRebuildsNormalizedProductAttributesFromPackage(t *testing.T) 
 	}
 }
 
+func TestSubmitTaskNormalizesLegacyStudioSupplierSKUs(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	oldSKU := "MG8014186001-D7E68190"
+	sizeImage := "https://img.shein.com/uploaded/size-map.jpg"
+	blackValueID := 2493
+	whiteValueID := 2494
+	sizeValueID := 267
+	task.Request.Options = &GenerateOptions{
+		SheinStudio: &SheinStudioOptions{StyleID: "D7E68190"},
+		SDS: &SDSSyncOptions{
+			ProductSKU: "MG8014186001",
+			StyleID:    "D7E68190",
+			Variants: []SDSSyncVariantOption{
+				{VariantID: 101, Color: "black", Size: "均码"},
+				{VariantID: 102, Color: "white", Size: "均码"},
+			},
+		},
+	}
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: "https://img.shein.com/uploaded/default-main.jpg",
+		Gallery: []string{
+			"https://img.shein.com/uploaded/default-main.jpg",
+			"https://img.shein.com/uploaded/default-gallery.jpg",
+			sizeImage,
+		},
+	}
+	task.Result.Shein.RequestDraft.SKCList = []SheinSKCRequestDraft{
+		{
+			SupplierCode: "BLACK",
+			SaleAttribute: &SheinResolvedSaleAttribute{
+				Scope: "skc", Name: "Color", Value: "black", AttributeID: 27, AttributeValueID: &blackValueID,
+			},
+			ImageInfo: &SheinImageDraft{MainImage: "https://img.shein.com/uploaded/black.jpg"},
+			SKUList: []SheinSKUDraft{{
+				SupplierSKU: oldSKU,
+				Currency:    "USD",
+				CostPrice:   "10.00",
+				BasePrice:   "19.99",
+				StockCount:  20,
+				SitePriceList: []sheinpub.SitePrice{{
+					SubSite: "US", BasePrice: "19.99", Currency: "USD",
+				}},
+				SaleAttributes: []SheinResolvedSaleAttribute{{
+					Scope: "sku", Name: "Size", Value: "均码", AttributeID: 87, AttributeValueID: &sizeValueID,
+				}},
+				Attributes: map[string]string{
+					"Color": "black",
+					"Size":  "均码",
+				},
+			}},
+		},
+		{
+			SupplierCode: "WHITE",
+			SaleAttribute: &SheinResolvedSaleAttribute{
+				Scope: "skc", Name: "Color", Value: "white", AttributeID: 27, AttributeValueID: &whiteValueID,
+			},
+			ImageInfo: &SheinImageDraft{MainImage: "https://img.shein.com/uploaded/white.jpg"},
+			SKUList: []SheinSKUDraft{{
+				SupplierSKU: oldSKU,
+				Currency:    "USD",
+				CostPrice:   "11.00",
+				BasePrice:   "21.99",
+				StockCount:  20,
+				SitePriceList: []sheinpub.SitePrice{{
+					SubSite: "US", BasePrice: "21.99", Currency: "USD",
+				}},
+				SaleAttributes: []SheinResolvedSaleAttribute{{
+					Scope: "sku", Name: "Size", Value: "均码", AttributeID: 87, AttributeValueID: &sizeValueID,
+				}},
+				Attributes: map[string]string{
+					"Color": "white",
+					"Size":  "均码",
+				},
+			}},
+		},
+	}
+	task.Result.Shein.SkcList = []SheinSKCPackage{
+		{SupplierCode: "BLACK", SkcName: "black", SaleName: "black", MainImageURL: "https://img.shein.com/uploaded/black.jpg", SKUs: []common.Variant{{SKU: oldSKU, Attributes: map[string]string{"Color": "black", "Size": "均码"}}}},
+		{SupplierCode: "WHITE", SkcName: "white", SaleName: "white", MainImageURL: "https://img.shein.com/uploaded/white.jpg", SKUs: []common.Variant{{SKU: oldSKU, Attributes: map[string]string{"Color": "white", "Size": "均码"}}}},
+	}
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{
+		"https://img.shein.com/uploaded/default-main.jpg",
+		"https://img.shein.com/uploaded/default-gallery.jpg",
+		sizeImage,
+	})
+	task.Result.Shein.PreviewProduct.SKCList = []sheinproduct.SKC{
+		{
+			SaleAttribute: sheinproduct.SaleAttribute{AttributeID: 27, AttributeValueID: blackValueID},
+			ImageInfo: sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{{ImageType: 1, ImageSort: 1, ImageURL: "https://img.shein.com/uploaded/black.jpg"}}},
+			SKUS: []sheinproduct.SKU{{
+				SupplierSKU: oldSKU,
+				CostInfo:    &sheinproduct.CostInfo{CostPrice: "10.00", Currency: "USD"},
+				PriceInfoList: []sheinproduct.PriceInfo{{
+					SubSite: "US", BasePrice: 19.99, Currency: "USD",
+				}},
+				StockInfoList: []sheinproduct.StockInfo{{MerchantWarehouseCode: "US", InventoryNum: 20}},
+				SaleAttributeList: []sheinproduct.SaleAttribute{{AttributeID: 87, AttributeValueID: sizeValueID}},
+			}},
+		},
+		{
+			SaleAttribute: sheinproduct.SaleAttribute{AttributeID: 27, AttributeValueID: whiteValueID},
+			ImageInfo: sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{{ImageType: 1, ImageSort: 1, ImageURL: "https://img.shein.com/uploaded/white.jpg"}}},
+			SKUS: []sheinproduct.SKU{{
+				SupplierSKU: oldSKU,
+				CostInfo:    &sheinproduct.CostInfo{CostPrice: "11.00", Currency: "USD"},
+				PriceInfoList: []sheinproduct.PriceInfo{{
+					SubSite: "US", BasePrice: 21.99, Currency: "USD",
+				}},
+				StockInfoList: []sheinproduct.StockInfo{{MerchantWarehouseCode: "US", InventoryNum: 20}},
+				SaleAttributeList: []sheinproduct.SaleAttribute{{AttributeID: 87, AttributeValueID: sizeValueID}},
+			}},
+		},
+	}
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		Confirmed:       true,
+		MainImageURL:    "https://img.shein.com/uploaded/default-main.jpg",
+		FinalImageOrder: []string{"https://img.shein.com/uploaded/default-main.jpg", "https://img.shein.com/uploaded/default-gallery.jpg", sizeImage},
+		ImageRoleOverrides: map[string]string{
+			sizeImage: "size_map",
+		},
+		ManualPriceOverrides: map[string]float64{oldSKU: 25.55},
+	}
+	task.Result.Shein.Pricing = &sheinpub.PricingReview{
+		Ready:           true,
+		ManualOverrides: map[string]float64{oldSKU: 25.55},
+		SKUPrices: []sheinpub.SKUPriceReview{
+			{SupplierSKU: oldSKU, FinalPrice: 25.55, Currency: "USD"},
+			{SupplierSKU: oldSKU, FinalPrice: 25.55, Currency: "USD"},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	var submitted *sheinproduct.Product
+	svc, err := NewService(&ServiceConfig{
+		Repository:     repo,
+		ProductService: stubSubmitProductService{},
+		SheinProductAPIBuilder: stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				saveHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				saveResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "OK",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "save_draft"}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected publish payload to be captured")
+	}
+	got := []string{
+		submitted.SKCList[0].SKUS[0].SupplierSKU,
+		submitted.SKCList[1].SKUS[0].SupplierSKU,
+	}
+	want := []string{
+		"MG8014186001-V101-TSUBMITTA-D7E68190",
+		"MG8014186001-V102-TSUBMITTA-D7E68190",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("submitted supplier skus = %#v, want %#v", got, want)
+	}
+
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if saved.Result == nil || saved.Result.Shein == nil || saved.Result.Shein.FinalDraft == nil {
+		t.Fatalf("saved shein final draft = %+v", saved.Result)
+	}
+	overrides := saved.Result.Shein.FinalDraft.ManualPriceOverrides
+	if len(overrides) != 2 || overrides[want[0]] != 25.55 || overrides[want[1]] != 25.55 {
+		t.Fatalf("final draft overrides = %#v, want fan-out to both new skus", overrides)
+	}
+	if _, exists := overrides[oldSKU]; exists {
+		t.Fatalf("final draft overrides still contains legacy sku %q", oldSKU)
+	}
+	if saved.Result.Shein.Pricing == nil || len(saved.Result.Shein.Pricing.SKUPrices) != 2 {
+		t.Fatalf("saved pricing = %+v", saved.Result.Shein.Pricing)
+	}
+	if saved.Result.Shein.Pricing.SKUPrices[0].SupplierSKU != want[0] || saved.Result.Shein.Pricing.SKUPrices[1].SupplierSKU != want[1] {
+		t.Fatalf("pricing sku prices = %#v, want normalized sku order", saved.Result.Shein.Pricing.SKUPrices)
+	}
+}
+
+func TestSubmitTaskNormalizesSingleStudioSupplierSKUWithTaskDiscriminator(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	task.ID = "fe7413d2-ac75-4c97-be0f-800a40dffa00"
+	task.Request.Options = &GenerateOptions{
+		SheinStudio: &SheinStudioOptions{StyleID: "D7E68190"},
+		SDS: &SDSSyncOptions{
+			ProductSKU: "MG8014186001",
+			VariantSKU: "MG8014186001",
+			StyleID:    "D7E68190",
+			VariantColor: "black",
+			VariantSize:  "均码",
+		},
+	}
+	task.Result.TaskID = task.ID
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SupplierSKU = "MG8014186001-D7E68190"
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].Attributes = map[string]string{
+		"Color":          "black",
+		"Size":           "均码",
+		"source_sds_sku": "MG8014186001",
+	}
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].SupplierSKU = "MG8014186001-D7E68190"
+	task.Result.Shein.SkcList[0].SKUs[0].SKU = "MG8014186001-D7E68190"
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		Confirmed:            true,
+		MainImageURL:         "https://img.shein.com/uploaded/default-main.jpg",
+		FinalImageOrder:      []string{"https://img.shein.com/uploaded/default-main.jpg"},
+		ManualPriceOverrides: map[string]float64{"MG8014186001-D7E68190": 13.56},
+	}
+	task.Result.Shein.Pricing = &sheinpub.PricingReview{
+		Ready:           true,
+		ManualOverrides: map[string]float64{"MG8014186001-D7E68190": 13.56},
+		SKUPrices: []sheinpub.SKUPriceReview{{
+			SupplierSKU: "MG8014186001-D7E68190",
+			FinalPrice:  13.56,
+			Currency:    "USD",
+		}},
+	}
+	pkg := &sheinpub.Package{
+		RequestDraft: task.Result.Shein.RequestDraft,
+		PreviewProduct: task.Result.Shein.PreviewProduct,
+		SkcList: task.Result.Shein.SkcList,
+		FinalDraft: task.Result.Shein.FinalDraft,
+		Pricing: task.Result.Shein.Pricing,
+	}
+	changed := normalizeSheinStudioSubmitSupplierSKUs(task, pkg)
+	if !changed {
+		t.Fatal("expected single-variant supplier sku normalization to change payload")
+	}
+	wantSKU := "MG8014186001-BLACK-V1-TFE7413D2-D7E68190"
+	if got := pkg.RequestDraft.SKCList[0].SKUList[0].SupplierSKU; got != wantSKU {
+		t.Fatalf("request draft supplier sku = %q, want %q", got, wantSKU)
+	}
+	if got := pkg.PreviewProduct.SKCList[0].SKUS[0].SupplierSKU; got != wantSKU {
+		t.Fatalf("preview supplier sku = %q, want %q", got, wantSKU)
+	}
+	if got := pkg.SkcList[0].SKUs[0].SKU; got != wantSKU {
+		t.Fatalf("package supplier sku = %q, want %q", got, wantSKU)
+	}
+	if pkg.FinalDraft.ManualPriceOverrides[wantSKU] != 13.56 {
+		t.Fatalf("final draft overrides = %#v, want remapped key %q", pkg.FinalDraft.ManualPriceOverrides, wantSKU)
+	}
+	if _, exists := pkg.FinalDraft.ManualPriceOverrides["MG8014186001-D7E68190"]; exists {
+		t.Fatalf("final draft overrides still contains legacy sku")
+	}
+	if len(pkg.Pricing.SKUPrices) != 1 || pkg.Pricing.SKUPrices[0].SupplierSKU != wantSKU {
+		t.Fatalf("pricing sku prices = %#v, want remapped single sku", pkg.Pricing.SKUPrices)
+	}
+}
+
 func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -1299,7 +1566,6 @@ func TestSubmitTaskPublishRepairsMissingSKCImagesFromFinalDraft(t *testing.T) {
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-
 	var submitted *sheinproduct.Product
 	svc, err := NewService(&ServiceConfig{
 		Repository:     repo,

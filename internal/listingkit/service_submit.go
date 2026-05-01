@@ -43,6 +43,7 @@ func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTask
 	if pkg == nil || pkg.PreviewProduct == nil {
 		return nil, fmt.Errorf("%w: shein preview_product is not available", ErrSubmitBlocked)
 	}
+	normalizeSheinStudioSubmitSupplierSKUs(task, pkg)
 	if pkg.Pricing == nil || !pkg.Pricing.Ready {
 		review := buildSheinPricingReview(pkg, s.currentSheinPricingRule(), nil)
 		applySheinPricingReview(pkg, review)

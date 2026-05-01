@@ -630,3 +630,63 @@ func (s *Service) ListDesignProducts(ctx context.Context, req ListDesignProducts
 	}
 	return result, nil
 }
+
+// ListSensitiveWordsByItemIDs queries SDS for sensitive-word hits on rendered
+// design product items.
+func (s *Service) ListSensitiveWordsByItemIDs(ctx context.Context, merchantID int64, itemIDs []string) map[string][]SensitiveWordHit {
+	if merchantID <= 0 || len(itemIDs) == 0 || s == nil || s.client == nil {
+		return nil
+	}
+	trimmedIDs := make([]string, 0, len(itemIDs))
+	seen := make(map[string]struct{}, len(itemIDs))
+	for _, itemID := range itemIDs {
+		itemID = strings.TrimSpace(itemID)
+		if itemID == "" {
+			continue
+		}
+		if _, ok := seen[itemID]; ok {
+			continue
+		}
+		seen[itemID] = struct{}{}
+		trimmedIDs = append(trimmedIDs, itemID)
+	}
+	if len(trimmedIDs) == 0 {
+		return nil
+	}
+
+	path := fmt.Sprintf("/merchants/%d/designProducts/sensitiveWordsByIds", merchantID)
+	var response []struct {
+		ID     string             `json:"id"`
+		Result []SensitiveWordHit `json:"result"`
+	}
+	_, err := s.client.Do(ctx, "POST", path, nil, trimmedIDs, &response)
+	if err != nil || len(response) == 0 {
+		return nil
+	}
+	result := make(map[string][]SensitiveWordHit, len(response))
+	for _, item := range response {
+		itemID := strings.TrimSpace(item.ID)
+		if itemID == "" || len(item.Result) == 0 {
+			continue
+		}
+		result[itemID] = append([]SensitiveWordHit(nil), item.Result...)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// UpdateDesignProducts rewrites SDS finished-product export metadata, such as
+// export names blocked by sensitive-word checks.
+func (s *Service) UpdateDesignProducts(ctx context.Context, updates []UpdateDesignProductRequest) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	path := s.client.Config().Endpoints.DesignProductsUpdatePath
+	if path == "" {
+		return fmt.Errorf("design products update endpoint is not configured")
+	}
+	_, err := s.client.Do(ctx, "PUT", path, nil, updates, nil)
+	return err
+}

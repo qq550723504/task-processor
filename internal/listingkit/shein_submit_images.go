@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	sheinimage "task-processor/internal/shein/api/image"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -87,22 +88,32 @@ func uploadSheinProductImages(product *sheinproduct.Product, uploader sheinimage
 		return 0, cloneSheinImageUploadCache(cached), fmt.Errorf("shein image upload api is not configured")
 	}
 	uploaded := cloneSheinImageUploadCache(cached)
-	count, err := uploadSheinImageInfo(product.ImageInfo, uploader, uploaded)
+	refs := collectSheinProductImageRefs(product)
+	pending := map[string]sheinImageUploadJob{}
+	for _, ref := range refs {
+		uploadedURL, ok := uploaded[ref.cacheKey]
+		if ok && !isSheinUploadedImageURL(uploadedURL) {
+			ok = false
+		}
+		if ok {
+			continue
+		}
+		if _, exists := pending[ref.cacheKey]; exists {
+			continue
+		}
+		pending[ref.cacheKey] = sheinImageUploadJob{
+			cacheKey:     ref.cacheKey,
+			sourceURL:    ref.sourceURL,
+			isColorBlock: ref.isColorBlock,
+		}
+	}
+	count, err := uploadSheinImageJobs(pending, uploader, uploaded)
 	if err != nil {
 		return count, uploaded, err
 	}
-	for i := range product.SKCList {
-		added, err := uploadSheinImageInfo(&product.SKCList[i].ImageInfo, uploader, uploaded)
-		count += added
-		if err != nil {
-			return count, uploaded, err
-		}
-		for j := range product.SKCList[i].SKUS {
-			added, err := uploadSheinImageInfo(product.SKCList[i].SKUS[j].ImageInfo, uploader, uploaded)
-			count += added
-			if err != nil {
-				return count, uploaded, err
-			}
+	for _, ref := range refs {
+		if uploadedURL := strings.TrimSpace(uploaded[ref.cacheKey]); isSheinUploadedImageURL(uploadedURL) {
+			ref.image.ImageURL = uploadedURL
 		}
 	}
 	return count, uploaded, nil
@@ -144,6 +155,27 @@ func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPrefligh
 	return report
 }
 
+const sheinSubmitImageUploadConcurrency = 3
+
+type sheinImageUploadRef struct {
+	image        *sheinproduct.ImageDetail
+	sourceURL    string
+	cacheKey     string
+	isColorBlock bool
+}
+
+type sheinImageUploadJob struct {
+	cacheKey     string
+	sourceURL    string
+	isColorBlock bool
+}
+
+type sheinImageUploadResult struct {
+	cacheKey    string
+	uploadedURL string
+	err         error
+}
+
 func collectSheinProductImageURLs(product *sheinproduct.Product) []string {
 	if product == nil {
 		return nil
@@ -169,6 +201,45 @@ func appendSheinImageInfoURLs(urls []string, info *sheinproduct.ImageInfo) []str
 		}
 	}
 	return urls
+}
+
+func collectSheinProductImageRefs(product *sheinproduct.Product) []sheinImageUploadRef {
+	if product == nil {
+		return nil
+	}
+	refs := make([]sheinImageUploadRef, 0, sheinProductImageURLCount(product))
+	refs = appendSheinImageInfoRefs(refs, product.ImageInfo)
+	for i := range product.SKCList {
+		refs = appendSheinImageInfoRefs(refs, &product.SKCList[i].ImageInfo)
+		for j := range product.SKCList[i].SKUS {
+			refs = appendSheinImageInfoRefs(refs, product.SKCList[i].SKUS[j].ImageInfo)
+		}
+	}
+	return refs
+}
+
+func appendSheinImageInfoRefs(refs []sheinImageUploadRef, info *sheinproduct.ImageInfo) []sheinImageUploadRef {
+	if info == nil {
+		return refs
+	}
+	for i := range info.ImageInfoList {
+		sourceURL := strings.TrimSpace(info.ImageInfoList[i].ImageURL)
+		if sourceURL == "" || isSheinUploadedImageURL(sourceURL) {
+			continue
+		}
+		isColorBlock := info.ImageInfoList[i].ImageType == 6 && !info.ImageInfoList[i].SizeImgFlag
+		cacheKey := sourceURL
+		if isColorBlock {
+			cacheKey = "color-block:" + sourceURL
+		}
+		refs = append(refs, sheinImageUploadRef{
+			image:        &info.ImageInfoList[i],
+			sourceURL:    sourceURL,
+			cacheKey:     cacheKey,
+			isColorBlock: isColorBlock,
+		})
+	}
+	return refs
 }
 
 func isSheinUploadedImageURL(url string) bool {
@@ -198,6 +269,108 @@ func buildSheinImageUploadPreflightSummary(report *SheinImageUploadPreflight) []
 		summary = append(summary, fmt.Sprintf("%d unique SDS rendered mockup URLs are present in the SHEIN payload.", report.SDSMockupURLs))
 	}
 	return summary
+}
+
+func uploadSheinImageJobs(jobs map[string]sheinImageUploadJob, uploader sheinimage.ImageAPI, uploaded map[string]string) (int, error) {
+	if len(jobs) == 0 {
+		return 0, nil
+	}
+	normalJobs := make(map[string]sheinImageUploadJob, len(jobs))
+	colorBlockJobs := make(map[string]sheinImageUploadJob)
+	for key, job := range jobs {
+		if job.isColorBlock {
+			colorBlockJobs[key] = job
+			continue
+		}
+		normalJobs[key] = job
+	}
+	count := 0
+	if len(normalJobs) > 0 {
+		added, err := runSheinImageUploadJobs(normalJobs, uploader, uploaded, cloneSheinImageUploadCache(uploaded))
+		count += added
+		if err != nil {
+			return count, err
+		}
+	}
+	if len(colorBlockJobs) > 0 {
+		added, err := runSheinImageUploadJobs(colorBlockJobs, uploader, uploaded, cloneSheinImageUploadCache(uploaded))
+		count += added
+		if err != nil {
+			return count, err
+		}
+	}
+	return count, nil
+}
+
+func runSheinImageUploadJobs(jobs map[string]sheinImageUploadJob, uploader sheinimage.ImageAPI, uploaded map[string]string, existing map[string]string) (int, error) {
+	if len(jobs) == 0 {
+		return 0, nil
+	}
+	work := make(chan sheinImageUploadJob)
+	results := make(chan sheinImageUploadResult, len(jobs))
+	workerCount := sheinSubmitImageUploadConcurrency
+	if len(jobs) < workerCount {
+		workerCount = len(jobs)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range work {
+				uploadedURL, err := uploadSingleSheinImage(job, uploader, existing)
+				results <- sheinImageUploadResult{
+					cacheKey:    job.cacheKey,
+					uploadedURL: uploadedURL,
+					err:         err,
+				}
+			}
+		}()
+	}
+	go func() {
+		for _, job := range jobs {
+			work <- job
+		}
+		close(work)
+		wg.Wait()
+		close(results)
+	}()
+
+	count := 0
+	for result := range results {
+		if result.err != nil {
+			return count, result.err
+		}
+		uploaded[result.cacheKey] = result.uploadedURL
+		count++
+	}
+	return count, nil
+}
+
+func uploadSingleSheinImage(job sheinImageUploadJob, uploader sheinimage.ImageAPI, existing map[string]string) (string, error) {
+	if job.isColorBlock {
+		imageData, err := buildSheinColorBlockImageFromURL(job.sourceURL)
+		if err == nil {
+			uploadedURL, uploadErr := uploader.UploadOriginalImage(imageData)
+			if uploadErr == nil {
+				return uploadedURL, nil
+			}
+			err = uploadErr
+		}
+		if existingURL := strings.TrimSpace(existing[job.sourceURL]); isSheinUploadedImageURL(existingURL) {
+			return existingURL, nil
+		}
+		uploadedURL, uploadErr := uploader.DownloadAndUploadImage(job.sourceURL)
+		if uploadErr != nil {
+			return "", fmt.Errorf("upload shein image %q: %w", job.sourceURL, uploadErr)
+		}
+		return uploadedURL, nil
+	}
+	uploadedURL, err := uploader.DownloadAndUploadImage(job.sourceURL)
+	if err != nil {
+		return "", fmt.Errorf("upload shein image %q: %w", job.sourceURL, err)
+	}
+	return uploadedURL, nil
 }
 
 func uploadSheinImageInfo(info *sheinproduct.ImageInfo, uploader sheinimage.ImageAPI, uploaded map[string]string) (int, error) {
