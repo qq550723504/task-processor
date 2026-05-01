@@ -26,22 +26,32 @@ func buildValueAssignments(
 	categoryID int,
 	spuName string,
 	llm openaiclient.ChatCompleter,
-) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string) {
+) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, saleAttributeValueSummary) {
 	if len(values) == 0 || strings.TrimSpace(templateName) == "" || index == nil {
-		return nil, nil, nil
+		return nil, nil, nil, saleAttributeValueSummary{}
 	}
 	attr := index.FindAttribute(templateName)
 	if attr == nil {
-		return nil, nil, []string{fmt.Sprintf("SHEIN 销售属性模板 %q 不存在，无法映射源维度 %q", templateName, sourceDimension)}
+		return nil, nil, []string{fmt.Sprintf("SHEIN 销售属性模板 %q 不存在，无法映射源维度 %q", templateName, sourceDimension)}, saleAttributeValueSummary{}
 	}
 
 	assignments := make(map[string]ResolvedSaleAttribute, len(values))
 	var relations []sheinattribute.CustomAttributeRelation
 	pendingNotes := make(map[string][]string, len(values))
 	unresolved := make([]string, 0, len(values))
+	preparedValues := make(map[string]saleAttributeValuePreparation, len(values))
+	summary := saleAttributeValueSummary{}
 	var notes []string
 	for _, value := range uniqueNormalizedValues(values) {
-		resolved, matchNotes := matchSaleAttributeValueDeterministic(attr, sourceDimension, value, scope)
+		prepared := prepareSaleAttributeSourceValue(attr, sourceDimension, value, spuName, llm)
+		preparedValues[normalizeText(value)] = prepared
+		mergeSaleAttributeValueSummary(&summary, prepared)
+		if prepared.NeedsManualReview {
+			notes = append(notes, buildBlockedSaleAttributeValueNote(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName), sourceDimension, prepared.Original))
+			continue
+		}
+		effectiveValue := firstNonEmpty(prepared.Effective, value)
+		resolved, matchNotes := matchSaleAttributeValueDeterministic(attr, sourceDimension, effectiveValue, scope)
 		if resolved.AttributeID <= 0 || resolved.AttributeValueID == nil {
 			if len(matchNotes) > 0 {
 				pendingNotes[normalizeText(value)] = append([]string(nil), matchNotes...)
@@ -53,36 +63,66 @@ func buildValueAssignments(
 		assignments[normalizeText(value)] = resolved
 	}
 	if len(unresolved) > 0 && llm != nil {
-		llmAssignments, llmNotes := matchSaleAttributeValuesWithLLM(*attr, sourceDimension, unresolved, scope, llm)
+		llmInput := make([]string, 0, len(unresolved))
+		for _, value := range unresolved {
+			prepared := preparedValues[normalizeText(value)]
+			llmInput = append(llmInput, firstNonEmpty(prepared.Effective, value))
+		}
+		llmAssignments, llmNotes := matchSaleAttributeValuesWithLLM(*attr, sourceDimension, llmInput, scope, llm)
 		notes = append(notes, llmNotes...)
-		for key, resolved := range llmAssignments {
-			assignments[key] = resolved
-			delete(pendingNotes, key)
+		for _, value := range unresolved {
+			prepared := preparedValues[normalizeText(value)]
+			effectiveKey := normalizeText(firstNonEmpty(prepared.Effective, value))
+			resolved, ok := llmAssignments[effectiveKey]
+			if !ok {
+				continue
+			}
+			assignments[normalizeText(value)] = resolved
+			delete(pendingNotes, normalizeText(value))
 		}
 	}
 	if len(unresolved) > 0 {
 		stillUnresolved := make([]string, 0, len(unresolved))
+		originalByEffective := make(map[string][]string, len(unresolved))
 		for _, value := range unresolved {
 			if _, ok := assignments[normalizeText(value)]; ok {
 				continue
 			}
-			stillUnresolved = append(stillUnresolved, value)
+			prepared := preparedValues[normalizeText(value)]
+			effective := firstNonEmpty(prepared.Effective, value)
+			stillUnresolved = append(stillUnresolved, effective)
+			effectiveKey := normalizeText(effective)
+			originalByEffective[effectiveKey] = append(originalByEffective[effectiveKey], normalizeText(value))
 		}
 		customAssignments, customRelations, customNotes := resolveCustomSaleAttributeValues(*attr, sourceDimension, stillUnresolved, scope, api, categoryID, spuName)
 		notes = append(notes, customNotes...)
 		relations = append(relations, customRelations...)
 		for key, resolved := range customAssignments {
-			assignments[key] = resolved
-			delete(pendingNotes, key)
+			originalKeys := originalByEffective[key]
+			if len(originalKeys) == 0 {
+				assignments[key] = resolved
+				delete(pendingNotes, key)
+				continue
+			}
+			for _, originalKey := range originalKeys {
+				assignments[originalKey] = resolved
+				delete(pendingNotes, originalKey)
+			}
 		}
 	}
 	for _, matchNotes := range pendingNotes {
 		notes = append(notes, matchNotes...)
 	}
 	if len(assignments) == 0 {
-		return nil, dedupeCustomAttributeRelations(relations), dedupeStrings(notes)
+		if hasBlockedSaleAttributeValue(summary) {
+			notes = append(notes, buildSaleAttributeManualReviewNote(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName), sourceDimension))
+		}
+		return nil, dedupeCustomAttributeRelations(relations), dedupeStrings(notes), summary
 	}
-	return assignments, dedupeCustomAttributeRelations(relations), dedupeStrings(notes)
+	if hasBlockedSaleAttributeValue(summary) {
+		notes = append(notes, buildSaleAttributeManualReviewNote(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName), sourceDimension))
+	}
+	return assignments, dedupeCustomAttributeRelations(relations), dedupeStrings(notes), summary
 }
 
 func matchSaleAttributeValueDeterministic(

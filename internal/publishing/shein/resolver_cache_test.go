@@ -472,6 +472,88 @@ func TestCachedSaleAttributeResolverSeparatesDifferentVariantMatrices(t *testing
 	}
 }
 
+func TestCachedSaleAttributeResolverRejectsPromptLikeManualCacheAndRecomputes(t *testing.T) {
+	badValueID := 103
+	goodValueID := 104
+	inner := &countingSaleAttributeResolver{
+		out: &SaleAttributeResolution{
+			Status:                  "resolved",
+			Source:                  "sale_attribute_templates",
+			CategoryID:              12014,
+			PrimaryAttributeID:      1001184,
+			PrimarySourceDimension:  "ai_style",
+			ValueSanitized:          true,
+			ValueSanitizationSource: "rule_trimmed",
+			ValuePromptContaminated: true,
+			ValueResolutionNote:     "prompt-like ai_style replaced by rule-trimmed style value",
+			SKCAttributes: []ResolvedSaleAttribute{{
+				Scope:            "skc",
+				Name:             "Style Type",
+				Value:            "Blue Dog Graphic",
+				AttributeID:      1001184,
+				AttributeValueID: &goodValueID,
+			}},
+			skcValueAssignments: map[string]ResolvedSaleAttribute{
+				"please design an image with suitable text and graphics, 3000 pixels wide": {
+					Scope:            "skc",
+					Name:             "Style Type",
+					Value:            "Blue Dog Graphic",
+					AttributeID:      1001184,
+					AttributeValueID: &goodValueID,
+				},
+			},
+		},
+	}
+	resolver := NewCachedSaleAttributeResolver(inner)
+	cache := resolver.(SaleAttributeResolutionCache)
+	req := &BuildRequest{SheinStoreID: 42}
+	canonical := &productenrich.CanonicalProduct{
+		Title: "Flannel non slip floor mat",
+		Variants: []productenrich.CanonicalVariant{{
+			SKU: "SKU-1",
+			Attributes: map[string]productenrich.CanonicalAttribute{
+				"ai_style": {Value: "Please design an image with suitable text and graphics, 3000 pixels wide"},
+				"Size":     {Value: "40x60cm"},
+			},
+		}},
+	}
+	pkg := &Package{CategoryID: 12014, CategoryIDList: []int{2030, 1952, 8144, 12014}}
+	cache.RememberSaleAttributeResolution(req, canonical, pkg, &SaleAttributeResolution{
+		Status:                 "resolved",
+		Source:                 "manual",
+		CategoryID:             12014,
+		PrimaryAttributeID:     1001184,
+		PrimarySourceDimension: "ai_style",
+		SKCAttributes: []ResolvedSaleAttribute{{
+			Scope:            "skc",
+			Name:             "Style Type",
+			Value:            "Please design an image with suitable text and graphics, 3000 pixels wide",
+			AttributeID:      1001184,
+			AttributeValueID: &badValueID,
+		}},
+		SKCValueAssignments: map[string]ResolvedSaleAttribute{
+			"please design an image with suitable text and graphics, 3000 pixels wide": {
+				Scope:            "skc",
+				Name:             "Style Type",
+				Value:            "Please design an image with suitable text and graphics, 3000 pixels wide",
+				AttributeID:      1001184,
+				AttributeValueID: &badValueID,
+			},
+		},
+	})
+
+	next := resolver.Resolve(req, canonical, pkg)
+	if inner.calls != 1 {
+		t.Fatalf("inner calls = %d, want 1 after rejecting dirty cache", inner.calls)
+	}
+	if next.CacheRejectedReason == "" {
+		t.Fatal("expected cache rejected reason to be recorded")
+	}
+	if next.SKCAttributes[0].Value != "Blue Dog Graphic" {
+		t.Fatalf("resolved SKC value = %q, want recomputed safe value", next.SKCAttributes[0].Value)
+	}
+}
+
 func saleCacheCanonical() *productenrich.CanonicalProduct {
 	return &productenrich.CanonicalProduct{
 		Title: "Envelope Pillow Cover",

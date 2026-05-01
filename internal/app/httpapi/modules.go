@@ -554,6 +554,7 @@ func buildListingKitModule(logger *logrus.Logger, deps *runtimeDeps) (*listingKi
 			SheinAttributeResolver:     sheinAttributeResolver,
 			SheinSaleAttributeResolver: sheinSaleAttributeResolver,
 			SheinPricingPolicy:         sheinPricingPolicy,
+			SheinTitleOptimizer:        buildSheinCategoryLLMClient(deps.openaiMgr),
 		}),
 	})
 	if err != nil {

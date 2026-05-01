@@ -3,6 +3,7 @@ package listingkit
 import (
 	"time"
 
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -14,6 +15,7 @@ type assembler struct {
 	sheinAttributeResolver     sheinpub.AttributeResolver
 	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 	sheinPricingPolicy         sheinpub.PricingPolicy
+	sheinTitleOptimizer        openaiclient.ChatCompleter
 }
 
 func NewAssembler(amazonBuilder AmazonDraftBuilder) Assembler {
@@ -26,6 +28,7 @@ type AssemblerConfig struct {
 	SheinAttributeResolver     sheinpub.AttributeResolver
 	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 	SheinPricingPolicy         sheinpub.PricingPolicy
+	SheinTitleOptimizer        openaiclient.ChatCompleter
 }
 
 func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
@@ -39,6 +42,7 @@ func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
 		sheinAttributeResolver:     config.SheinAttributeResolver,
 		sheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
 		sheinPricingPolicy:         config.SheinPricingPolicy,
+		sheinTitleOptimizer:        config.SheinTitleOptimizer,
 	}
 }
 
@@ -64,6 +68,7 @@ func (a *assembler) Assemble(task *Task, canonical *productenrich.CanonicalProdu
 				AttributeResolver:     a.sheinAttributeResolver,
 				SaleAttributeResolver: a.sheinSaleAttributeResolver,
 				PricingPolicy:         a.sheinPricingPolicy,
+				TitleOptimizer:        a.sheinTitleOptimizer,
 			}).Build(buildSheinPublishRequest(task.Request), canonical, image)
 			refreshSheinReviewState(result.Shein, collectReviewNotes(canonical, image)...)
 		case "temu":

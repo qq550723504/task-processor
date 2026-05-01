@@ -22,6 +22,7 @@ type Package struct {
 	BrandName               string                                   `json:"brand_name,omitempty"`
 	ProductNameEn           string                                   `json:"product_name_en,omitempty"`
 	ProductNameMulti        string                                   `json:"product_name_multi,omitempty"`
+	TitleDiagnostics        *TitleDiagnostics                        `json:"title_diagnostics,omitempty"`
 	CategoryName            string                                   `json:"category_name,omitempty"`
 	CategoryPath            []string                                 `json:"category_path,omitempty"`
 	CategoryID              int                                      `json:"category_id,omitempty"`
@@ -60,6 +61,13 @@ type PricingRule struct {
 	MinimumPrice     float64 `json:"minimum_price,omitempty"`
 	RoundTo          float64 `json:"round_to,omitempty"`
 	PriceEnding      float64 `json:"price_ending,omitempty"`
+}
+
+type TitleDiagnostics struct {
+	Source             string `json:"source,omitempty"`
+	PromptContaminated bool   `json:"prompt_contaminated,omitempty"`
+	ResolutionNote     string `json:"resolution_note,omitempty"`
+	SKCBaseTitle       string `json:"skc_base_title,omitempty"`
 }
 
 type PricingReview struct {
@@ -282,6 +290,11 @@ type SaleAttributeResolution struct {
 	ReviewNotes              []string                                 `json:"review_notes,omitempty"`
 	CustomAttributeRelation  []sheinattribute.CustomAttributeRelation `json:"custom_attribute_relation,omitempty"`
 	Cache                    *ResolutionCacheInfo                     `json:"cache,omitempty"`
+	ValueSanitized           bool                                     `json:"value_sanitized,omitempty"`
+	ValueSanitizationSource  string                                   `json:"value_sanitization_source,omitempty"`
+	ValuePromptContaminated  bool                                     `json:"value_prompt_contaminated,omitempty"`
+	ValueResolutionNote      string                                   `json:"value_resolution_note,omitempty"`
+	CacheRejectedReason      string                                   `json:"cache_rejected_reason,omitempty"`
 	SKCValueAssignments      map[string]ResolvedSaleAttribute         `json:"skc_value_assignments,omitempty"`
 	SKUValueAssignments      map[string]ResolvedSaleAttribute         `json:"sku_value_assignments,omitempty"`
 	skcAssignments           map[string]ResolvedSaleAttribute

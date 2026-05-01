@@ -5,6 +5,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
@@ -15,6 +16,7 @@ type AssemblerConfig struct {
 	AttributeResolver     AttributeResolver
 	SaleAttributeResolver SaleAttributeResolver
 	PricingPolicy         PricingPolicy
+	TitleOptimizer        openaiclient.ChatCompleter
 }
 
 type Assembler interface {
@@ -26,6 +28,7 @@ type assembler struct {
 	attributeResolver     AttributeResolver
 	saleAttributeResolver SaleAttributeResolver
 	pricingPolicy         PricingPolicy
+	titleOptimizer        openaiclient.ChatCompleter
 }
 
 func NewAssembler(config AssemblerConfig) Assembler {
@@ -34,6 +37,7 @@ func NewAssembler(config AssemblerConfig) Assembler {
 		attributeResolver:     config.AttributeResolver,
 		saleAttributeResolver: config.SaleAttributeResolver,
 		pricingPolicy:         config.PricingPolicy,
+		titleOptimizer:        config.TitleOptimizer,
 	}
 }
 
@@ -45,7 +49,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 
 	images := common.BuildImages(canonical, image)
 	spuName := common.WithBrandHint(canonical.Title, req.BrandHint)
-	copy := buildSheinListingCopy(canonical, spuName)
+	copy := buildSheinListingCopy(canonical, spuName, a.titleOptimizer)
 	brand := common.ResolveBrand(req.BrandHint, canonical)
 	variants := common.BuildVariants(canonical)
 	productAttributes := common.BuildAttributes(canonical.Attributes)
@@ -57,6 +61,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 		BrandName:         brand,
 		ProductNameEn:     copy.Title,
 		ProductNameMulti:  copy.Title,
+		TitleDiagnostics:  copy.TitleDiagnostics,
 		CategoryName:      categoryName,
 		CategoryPath:      append([]string(nil), canonical.CategoryPath...),
 		Description:       copy.Description,
@@ -79,6 +84,18 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 			"language":        req.Language,
 			"category_name":   categoryName,
 		},
+	}
+	if copy.TitleDiagnostics != nil {
+		pkg.Metadata["title_source"] = copy.TitleDiagnostics.Source
+		if copy.TitleDiagnostics.PromptContaminated {
+			pkg.Metadata["title_prompt_contaminated"] = "true"
+		}
+		if note := strings.TrimSpace(copy.TitleDiagnostics.ResolutionNote); note != "" {
+			pkg.Metadata["title_resolution_note"] = note
+		}
+		if base := strings.TrimSpace(copy.TitleDiagnostics.SKCBaseTitle); base != "" {
+			pkg.Metadata["title_skc_base"] = base
+		}
 	}
 	if strings.TrimSpace(req.TargetCategoryHint) != "" {
 		pkg.Metadata["target_category_hint"] = req.TargetCategoryHint
@@ -134,7 +151,7 @@ func (a *assembler) Build(req *BuildRequest, canonical *productenrich.CanonicalP
 		}
 	}
 	NormalizeListingCopy(pkg, canonical, req.Language)
-	groups := buildVariantGroups(pkg.ProductNameEn, variants, images, pkg.SaleAttributeResolution)
+	groups := buildVariantGroups(copy.SKCTitleBase, variants, images, pkg.SaleAttributeResolution)
 	pkg.SkcList = buildSKCs(groups)
 	supplierCode := firstSupplierCode(pkg.SkcList)
 	pkg.RequestDraft.SupplierCode = supplierCode

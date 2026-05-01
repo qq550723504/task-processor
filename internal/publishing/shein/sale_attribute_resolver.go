@@ -179,7 +179,7 @@ func applySelectedCandidate(
 		resolution.PrimaryAttributeID = resolved.AttributeID
 		resolution.PrimarySourceDimension = candidate.SourceName
 		resolution.SKCAttributes = append(resolution.SKCAttributes, resolved)
-		assignments, relations, notes := buildValueAssignments(
+		assignments, relations, notes, summary := buildValueAssignments(
 			candidate.Values,
 			candidate.SourceName,
 			candidate.TemplateName,
@@ -195,11 +195,12 @@ func applySelectedCandidate(
 		resolution.SKCAttributes = resolvedSaleAttributesForPublicView(resolution.SKCAttributes, assignments)
 		resolution.CustomAttributeRelation = dedupeCustomAttributeRelations(append(resolution.CustomAttributeRelation, relations...))
 		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, notes...))
+		applySaleAttributeValueSummary(resolution, summary)
 	case "sku":
 		resolution.SecondaryAttributeID = resolved.AttributeID
 		resolution.SecondarySourceDimension = candidate.SourceName
 		resolution.SKUAttributes = append(resolution.SKUAttributes, resolved)
-		assignments, relations, notes := buildValueAssignments(
+		assignments, relations, notes, summary := buildValueAssignments(
 			candidate.Values,
 			candidate.SourceName,
 			candidate.TemplateName,
@@ -215,6 +216,7 @@ func applySelectedCandidate(
 		resolution.SKUAttributes = resolvedSaleAttributesForPublicView(resolution.SKUAttributes, assignments)
 		resolution.CustomAttributeRelation = dedupeCustomAttributeRelations(append(resolution.CustomAttributeRelation, relations...))
 		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, notes...))
+		applySaleAttributeValueSummary(resolution, summary)
 	}
 }
 

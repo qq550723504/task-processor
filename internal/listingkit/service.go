@@ -101,6 +101,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 			SheinAttributeResolver:     config.SheinAttributeResolver,
 			SheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
 			SheinPricingPolicy:         config.SheinPricingPolicy,
+			SheinTitleOptimizer:        config.SheinContentOptimizer,
 		})
 	}
 	if config.SheinCategoryResolver == nil {

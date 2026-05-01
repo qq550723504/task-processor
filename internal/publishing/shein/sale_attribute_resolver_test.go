@@ -470,6 +470,223 @@ func TestSaleAttributeResolverUsesAIStyleForPrimaryStyleTypeWithoutMisusingColor
 	}
 }
 
+func TestSaleAttributeResolverSanitizesPromptLikeStyleTypeValueWithRules(t *testing.T) {
+	canonical := &productenrich.CanonicalProduct{
+		VariantDimensions: []productenrich.ScrapedVariantDimension{
+			{Name: "ai_style", Values: []string{"Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2"}},
+			{Name: "Size", Values: []string{"40x60cm", "50x80cm"}},
+		},
+		Variants: []productenrich.CanonicalVariant{
+			{SKU: "SKU-40", Attributes: map[string]productenrich.CanonicalAttribute{
+				"ai_style": {Value: "Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2"},
+				"Size":     {Value: "40x60cm"},
+			}},
+			{SKU: "SKU-50", Attributes: map[string]productenrich.CanonicalAttribute{
+				"ai_style": {Value: "Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2"},
+				"Size":     {Value: "50x80cm"},
+			}},
+		},
+	}
+	pkg := &Package{CategoryID: 12014, SpuName: "Flannel non slip floor mat"}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 2, AttributeValue: "默认", AttributeValueEn: "Default"},
+						},
+					},
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 1916605, AttributeValue: "40x60cm", AttributeValueEn: "40x60cm"},
+							{AttributeValueID: 11115576, AttributeValue: "50x80cm", AttributeValueEn: "50x80cm"},
+						},
+					},
+				},
+			}},
+		},
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			if attributeID != 1001184 {
+				t.Fatalf("custom validation attribute id = %d, want Style Type", attributeID)
+			}
+			if attributeValue != "Blue Dog Graphic" {
+				t.Fatalf("custom validation value = %q, want Blue Dog Graphic", attributeValue)
+			}
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.PreAttributeValueID = 3001
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: 3001,
+				AttributeValueID:    9001,
+			}}
+			return resp, nil
+		},
+	}, nil)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if resolution.PrimaryAttributeID != 1001184 {
+		t.Fatalf("primary attribute id = %d, want Style Type 1001184", resolution.PrimaryAttributeID)
+	}
+	if !resolution.ValueSanitized || resolution.ValueSanitizationSource != "rule_trimmed" {
+		t.Fatalf("sanitization = (%v, %q), want rule_trimmed", resolution.ValueSanitized, resolution.ValueSanitizationSource)
+	}
+	if assignment := resolution.skcValueAssignments[normalizeText("Blue Dog Graphic - please design printable artwork with suitable English text, 3000 px * 2")]; assignment.Value != "Blue Dog Graphic" {
+		t.Fatalf("sanitized ai_style assignment = %+v, want value Blue Dog Graphic", assignment)
+	}
+}
+
+func TestSaleAttributeResolverUsesLLMToSanitizePromptLikeStyleTypeValue(t *testing.T) {
+	canonical := &productenrich.CanonicalProduct{
+		VariantDimensions: []productenrich.ScrapedVariantDimension{
+			{Name: "ai_style", Values: []string{"Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide."}},
+			{Name: "Size", Values: []string{"10x10in", "12x12in"}},
+		},
+		Variants: []productenrich.CanonicalVariant{
+			{SKU: "SKU-10", Attributes: map[string]productenrich.CanonicalAttribute{
+				"ai_style": {Value: "Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide."},
+				"Size":     {Value: "10x10in"},
+			}},
+			{SKU: "SKU-12", Attributes: map[string]productenrich.CanonicalAttribute{
+				"ai_style": {Value: "Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide."},
+				"Size":     {Value: "12x12in"},
+			}},
+		},
+	}
+	pkg := &Package{CategoryID: 3105, SpuName: "Wall clock"}
+	llm := &stubSequentialSaleLLM{responses: []string{"", `{"value":"Mystic Graphic","reasons":["short style value extracted"]}`}}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 2, AttributeValue: "默认", AttributeValueEn: "Default"},
+						},
+					},
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 101, AttributeValue: "10x10in", AttributeValueEn: "10x10in"},
+							{AttributeValueID: 102, AttributeValue: "12x12in", AttributeValueEn: "12x12in"},
+						},
+					},
+				},
+			}},
+		},
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			if attributeValue != "Mystic Graphic" {
+				t.Fatalf("custom validation value = %q, want Mystic Graphic", attributeValue)
+			}
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.PreAttributeValueID = 4001
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: 4001,
+				AttributeValueID:    9002,
+			}}
+			return resp, nil
+		},
+	}, llm)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if !resolution.ValueSanitized || resolution.ValueSanitizationSource != "llm_extracted" {
+		t.Fatalf("sanitization = (%v, %q), want llm_extracted", resolution.ValueSanitized, resolution.ValueSanitizationSource)
+	}
+	if assignment := resolution.skcValueAssignments[normalizeText("Please design something amazing for my wall clock with suitable English text and graphics for printing, 3000 pixels wide.")]; assignment.Value != "Mystic Graphic" {
+		t.Fatalf("llm-sanitized assignment = %+v, want value Mystic Graphic", assignment)
+	}
+}
+
+func TestSaleAttributeResolverRequiresManualReviewWhenLLMReturnsPromptLikeText(t *testing.T) {
+	canonical := &productenrich.CanonicalProduct{
+		VariantDimensions: []productenrich.ScrapedVariantDimension{
+			{Name: "ai_style", Values: []string{"Please design a printable style with suitable English text and graphics for the product, 3000 pixels wide."}},
+			{Name: "Size", Values: []string{"One size", "Travel size"}},
+		},
+		Variants: []productenrich.CanonicalVariant{
+			{SKU: "SKU-1", Attributes: map[string]productenrich.CanonicalAttribute{
+				"ai_style": {Value: "Please design a printable style with suitable English text and graphics for the product, 3000 pixels wide."},
+				"Size":     {Value: "One size"},
+			}},
+			{SKU: "SKU-2", Attributes: map[string]productenrich.CanonicalAttribute{
+				"ai_style": {Value: "Please design a printable style with suitable English text and graphics for the product, 3000 pixels wide."},
+				"Size":     {Value: "Travel size"},
+			}},
+		},
+	}
+	pkg := &Package{CategoryID: 8218, SpuName: "Travel tumbler"}
+	llm := &stubSequentialSaleLLM{responses: []string{"", `{"value":"Please design an image with suitable text"}`}}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       1001184,
+						AttributeName:     "款式",
+						AttributeNameEn:   "Style Type",
+						AttributeType:     1,
+						AttributeLabel:    1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 2, AttributeValue: "默认", AttributeValueEn: "Default"},
+						},
+					},
+				},
+			}},
+		},
+	}, llm)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if resolution.ValueSanitized {
+		t.Fatalf("value sanitized = true, want false when manual review is required")
+	}
+	if resolution.ValueSanitizationSource != "" {
+		t.Fatalf("sanitization source = %q, want empty", resolution.ValueSanitizationSource)
+	}
+	if len(resolution.skcValueAssignments) != 0 {
+		t.Fatalf("skc value assignments = %+v, want none when manual review is required", resolution.skcValueAssignments)
+	}
+	if resolution.Status != "partial" {
+		t.Fatalf("status = %q, want partial", resolution.Status)
+	}
+	if !resolution.ValuePromptContaminated {
+		t.Fatalf("value_prompt_contaminated = false, want true")
+	}
+	if !strings.Contains(resolution.ValueResolutionNote, "manual review required") {
+		t.Fatalf("value resolution note = %q, want manual review hint", resolution.ValueResolutionNote)
+	}
+}
+
 func TestSaleAttributeResolverKeepsClothingColorPrimaryOverAIStyle(t *testing.T) {
 	canonical := &productenrich.CanonicalProduct{
 		VariantDimensions: []productenrich.ScrapedVariantDimension{

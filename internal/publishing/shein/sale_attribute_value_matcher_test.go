@@ -43,7 +43,7 @@ func TestBuildValueAssignmentsMatchesNormalizedNumericValues(t *testing.T) {
 		},
 	}})
 
-	assignments, _, notes := buildValueAssignments([]string{"40码"}, "尺码", "Size", "sku", index, nil, 0, "", nil)
+	assignments, _, notes, _ := buildValueAssignments([]string{"40码"}, "尺码", "Size", "sku", index, nil, 0, "", nil)
 	if len(notes) != 0 {
 		t.Fatalf("notes = %v, want empty", notes)
 	}
@@ -71,7 +71,7 @@ func TestBuildValueAssignmentsMatchesEURSizeValues(t *testing.T) {
 		},
 	}})
 
-	assignments, _, notes := buildValueAssignments([]string{"39", "42"}, "尺码", "Size", "sku", index, nil, 0, "", nil)
+	assignments, _, notes, _ := buildValueAssignments([]string{"39", "42"}, "尺码", "Size", "sku", index, nil, 0, "", nil)
 	if len(notes) != 0 {
 		t.Fatalf("notes = %v, want empty", notes)
 	}
@@ -96,7 +96,7 @@ func TestBuildValueAssignmentsStripsSourceCodePrefixForColor(t *testing.T) {
 		},
 	}})
 
-	assignments, _, notes := buildValueAssignments([]string{"B-2601黑色"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
+	assignments, _, notes, _ := buildValueAssignments([]string{"B-2601黑色"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
 	if len(notes) != 0 {
 		t.Fatalf("notes = %v, want empty", notes)
 	}
@@ -125,7 +125,7 @@ func TestBuildValueAssignmentsUsesLastSegmentForCompositeColor(t *testing.T) {
 		},
 	}})
 
-	assignments, _, notes := buildValueAssignments([]string{"牛津布/防水防晒/深蓝"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
+	assignments, _, notes, _ := buildValueAssignments([]string{"牛津布/防水防晒/深蓝"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
 	if len(notes) != 0 {
 		t.Fatalf("notes = %v, want empty", notes)
 	}
@@ -150,7 +150,7 @@ func TestBuildValueAssignmentsStripsWeightAnnotationForSize(t *testing.T) {
 		},
 	}})
 
-	assignments, _, notes := buildValueAssignments([]string{"150*100*10CM（4kg）"}, "尺寸", "Size", "sku", index, nil, 0, "", nil)
+	assignments, _, notes, _ := buildValueAssignments([]string{"150*100*10CM（4kg）"}, "尺寸", "Size", "sku", index, nil, 0, "", nil)
 	if len(notes) != 0 {
 		t.Fatalf("notes = %v, want empty", notes)
 	}
@@ -176,7 +176,7 @@ func TestBuildValueAssignmentsMatchesSegmentedCandidateWithoutExactWholeValueMat
 		},
 	}})
 
-	assignments, _, notes := buildValueAssignments([]string{"牛津布/防水深蓝"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
+	assignments, _, notes, _ := buildValueAssignments([]string{"牛津布/防水深蓝"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
 	if len(notes) != 0 {
 		t.Fatalf("notes = %v, want empty", notes)
 	}
@@ -205,7 +205,7 @@ func TestBuildValueAssignmentsUsesLLMFallback(t *testing.T) {
 		},
 	}})
 
-	assignments, _, notes := buildValueAssignments(
+	assignments, _, notes, _ := buildValueAssignments(
 		[]string{"B-2601黑灰色"},
 		"颜色",
 		"Color",
@@ -244,7 +244,7 @@ func TestBuildValueAssignmentsUsesTemplateBoundLLMForUnseenColorValue(t *testing
 		},
 	}})
 
-	assignments, _, notes := buildValueAssignments(
+	assignments, _, notes, _ := buildValueAssignments(
 		[]string{"雾霾蓝"},
 		"颜色",
 		"Color",
@@ -283,7 +283,7 @@ func TestBuildValueAssignmentsReturnsReviewNoteWhenNoMatch(t *testing.T) {
 		},
 	}})
 
-	assignments, _, notes := buildValueAssignments([]string{"未知色"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
+	assignments, _, notes, _ := buildValueAssignments([]string{"未知色"}, "颜色", "Color", "skc", index, nil, 0, "", nil)
 	if assignments != nil {
 		t.Fatalf("assignments = %+v, want nil", assignments)
 	}
@@ -325,7 +325,7 @@ func TestBuildValueAssignmentsCreatesCustomSaleAttributeValueAfterValidation(t *
 		},
 	}
 
-	assignments, relations, notes := buildValueAssignments([]string{"米驼"}, "颜色", "Color", "skc", index, api, 12143, "Bench Cushion", nil)
+	assignments, relations, notes, _ := buildValueAssignments([]string{"米驼"}, "颜色", "Color", "skc", index, api, 12143, "Bench Cushion", nil)
 	assignment, ok := assignments[normalizeText("米驼")]
 	if !ok {
 		t.Fatalf("missing custom assignment for 米驼")

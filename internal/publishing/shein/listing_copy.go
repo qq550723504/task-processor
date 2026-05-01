@@ -5,30 +5,34 @@ import (
 	"strings"
 	"unicode"
 
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 )
 
 type listingCopy struct {
-	Title       string
-	Description string
+	Title            string
+	Description      string
+	SKCTitleBase     string
+	TitleDiagnostics *TitleDiagnostics
 }
 
-func buildSheinListingCopy(canonical *productenrich.CanonicalProduct, fallbackTitle string) listingCopy {
-	title := firstEnglishCandidate(
-		lookupCanonicalAttribute(canonical, "product_english_name"),
-		lookupCanonicalAttribute(canonical, "english_name"),
-		fallbackTitle,
-	)
-	if title == "" || containsCJK(title) {
-		title = synthesizeEnglishTitle(canonical, fallbackTitle)
-	}
+func buildSheinListingCopy(canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) listingCopy {
+	titleResolution := resolveListingTitle(canonical, fallbackTitle, aiClient)
+	title := titleResolution.title
 	description := firstEnglishCandidate(canonicalDescription(canonical))
 	if description == "" || containsCJK(description) {
 		description = synthesizeEnglishDescription(canonical, title)
 	}
 	return listingCopy{
-		Title:       cleanListingText(title),
-		Description: cleanListingText(description),
+		Title:        cleanListingText(title),
+		Description:  cleanListingText(description),
+		SKCTitleBase: titleResolution.skcBase,
+		TitleDiagnostics: &TitleDiagnostics{
+			Source:             titleResolution.source,
+			PromptContaminated: titleResolution.contaminate,
+			ResolutionNote:     titleResolution.note,
+			SKCBaseTitle:       titleResolution.skcBase,
+		},
 	}
 }
 
@@ -36,7 +40,7 @@ func NormalizeListingCopy(pkg *Package, canonical *productenrich.CanonicalProduc
 	if pkg == nil {
 		return false
 	}
-	copy := buildSheinListingCopy(canonical, firstNonEmpty(pkg.ProductNameEn, pkg.SpuName))
+	copy := buildSheinListingCopy(canonical, firstNonEmpty(pkg.ProductNameEn, pkg.SpuName), nil)
 	changed := false
 	if copy.Title != "" && (strings.TrimSpace(pkg.ProductNameEn) == "" || containsCJK(pkg.ProductNameEn)) {
 		pkg.ProductNameEn = copy.Title
@@ -84,7 +88,11 @@ func synthesizeEnglishTitle(canonical *productenrich.CanonicalProduct, fallbackT
 		lookupTechnicalSpec(canonical, "material"),
 	))
 	parts := []string{"Custom"}
-	if style != "" && !containsCJK(style) && !strings.HasPrefix(normalizeText(style), "style ") {
+	if style != "" &&
+		!containsCJK(style) &&
+		!strings.HasPrefix(normalizeText(style), "style ") &&
+		!isPromptLikeTitle(style) &&
+		!isPromptLikeSaleAttributeValue(style) {
 		parts = append(parts, style)
 	}
 	if material != "" {
@@ -134,12 +142,16 @@ func inferEnglishProductType(canonical *productenrich.CanonicalProduct, fallback
 	}
 	for _, signal := range signals {
 		value := cleanListingText(signal)
-		if value == "" || containsCJK(value) {
+		if value == "" || containsCJK(value) || isPromptLikeTitle(value) {
 			continue
 		}
 		return titleCaseWords(value)
 	}
-	return "Product"
+	fallback = cleanListingText(fallback)
+	if fallback == "" || containsCJK(fallback) || isPromptLikeTitle(fallback) {
+		return ""
+	}
+	return titleCaseWords(fallback)
 }
 
 func normalizeEnglishMaterial(value string) string {

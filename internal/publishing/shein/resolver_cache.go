@@ -184,20 +184,35 @@ func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *prod
 		return nil
 	}
 	key := saleAttributeResolverCacheKey(req, canonical, pkg)
+	cacheRejectedReason := ""
 	if key != "" {
 		if cached, ok := r.cache.Load(key); ok {
 			if resolution, ok := cached.(*SaleAttributeResolution); ok {
-				return cloneSaleAttributeResolutionWithCacheNote(resolution)
+				if reason, invalid := saleAttributeResolutionHasPromptLikeValues(resolution); invalid {
+					cacheRejectedReason = reason
+					r.cache.Delete(key)
+				} else {
+					return cloneSaleAttributeResolutionWithCacheNote(resolution)
+				}
 			}
 		}
 		if entry := r.loadPersistentCache(ResolutionCacheKindSaleAttribute, req, key); entry != nil {
 			if resolution := decodeSaleAttributeCacheEntry(entry); resolution != nil {
-				r.cache.Store(key, cloneSaleAttributeResolution(resolution))
-				return resolution
+				if reason, invalid := saleAttributeResolutionHasPromptLikeValues(resolution); invalid {
+					cacheRejectedReason = reason
+					_ = r.clearCache(ResolutionCacheKindSaleAttribute, req, key)
+				} else {
+					r.cache.Store(key, cloneSaleAttributeResolution(resolution))
+					return resolution
+				}
 			}
 		}
 	}
 	resolution := r.inner.Resolve(req, canonical, pkg)
+	if resolution != nil && strings.TrimSpace(cacheRejectedReason) != "" {
+		resolution.CacheRejectedReason = cacheRejectedReason
+		resolution.ReviewNotes = dedupeStrings(append(resolution.ReviewNotes, "SHEIN 销售属性缓存已失效: "+cacheRejectedReason))
+	}
 	if key != "" && shouldCacheSaleAttributeResolution(resolution) {
 		attachResolutionCacheInfoToSaleAttribute(resolution, normalizedResolutionSource(resolution.Source, "live_resolver"), key, false)
 		r.cache.Store(key, cloneSaleAttributeResolution(resolution))

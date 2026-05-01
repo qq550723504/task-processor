@@ -321,6 +321,53 @@ func TestAssemblerBuildCreatesGroupedSKCsWhenSaleAttributeResolverMapsSourceDime
 	}
 }
 
+func TestAssemblerBuildDoesNotPropagatePromptTextIntoSKCNames(t *testing.T) {
+	assembler := NewAssembler(AssemblerConfig{
+		SaleAttributeResolver: NewSaleAttributeResolver(stubAttributeAPI{
+			templates: &sheinattribute.AttributeTemplateInfo{
+				Data: []sheinattribute.AttributeTemplate{{
+					AttributeInfos: []sheinattribute.AttributeInfo{{
+						AttributeID:       27,
+						AttributeName:     "颜色",
+						AttributeNameEn:   "Color",
+						AttributeType:     1,
+						SKCScope:          boolPointer(true),
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 11, AttributeValue: "Black", AttributeValueEn: "Black"},
+						},
+					}},
+				}},
+			},
+		}, nil),
+	})
+	canonical := &productenrich.CanonicalProduct{
+		Title: "Flannel non-slip floor mat",
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"product_english_name": {Value: "Flannel non-slip floor mat - Please design an image that can be printed on my non-slip floor mat. The image should include suitable English text and graphics, and the graphics and text should have a 3D visual effect. Please ensure it does not infringe on copyright. 3000 pixels * 2"},
+		},
+		VariantDimensions: []productenrich.ScrapedVariantDimension{{Name: "color", Values: []string{"Black"}}},
+		Variants: []productenrich.CanonicalVariant{
+			{SKU: "SKU-BLACK", Attributes: map[string]productenrich.CanonicalAttribute{"color": {Value: "Black"}}},
+		},
+		Images: []productenrich.CanonicalImage{{URL: "main.jpg"}},
+	}
+
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en"}, canonical, nil)
+	if pkg.ProductNameEn != "Flannel non-slip floor mat" {
+		t.Fatalf("product title = %q, want sanitized title", pkg.ProductNameEn)
+	}
+	if len(pkg.SkcList) != 1 {
+		t.Fatalf("skc count = %d, want 1", len(pkg.SkcList))
+	}
+	if pkg.SkcList[0].SkcName != "Flannel non-slip floor mat - Black" {
+		t.Fatalf("skc title = %q, want sanitized short title", pkg.SkcList[0].SkcName)
+	}
+	if pkg.TitleDiagnostics == nil || !pkg.TitleDiagnostics.PromptContaminated {
+		t.Fatalf("title diagnostics = %+v, want contamination recorded", pkg.TitleDiagnostics)
+	}
+}
+
 func TestAssemblerBuildTriggersCategoryReviewWhenCategoryFamilyConflicts(t *testing.T) {
 	assembler := NewAssembler(AssemblerConfig{
 		CategoryResolver: assemblerStubCategoryRecommender{

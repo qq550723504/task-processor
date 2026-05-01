@@ -88,6 +88,10 @@ func commonAttributes(variants []common.Variant) map[string]string {
 }
 
 func resolveSKCName(baseTitle string, groupingKey string, attributes map[string]string, representative common.Variant) string {
+	baseTitle = strings.TrimSpace(baseTitle)
+	if baseTitle != "" {
+		baseTitle = trimShortTitle(buildSKCBaseTitle(baseTitle, nil, baseTitle), 70, 8)
+	}
 	groupName := ""
 	if groupingKey != "" {
 		if value := strings.TrimSpace(lookupAttributeValue(attributes, groupingKey)); value != "" {
