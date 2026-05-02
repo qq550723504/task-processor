@@ -1,5 +1,6 @@
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { SheinStudioSelectedSDSImage } from "@/lib/types/shein-studio";
+import { isUsableSDSMockupImageUrl } from "@/lib/sds/mockup-urls";
 
 export type SheinStudioSelectableSDSImage = SheinStudioSelectedSDSImage & {
   label: string;
@@ -62,7 +63,7 @@ export function normalizeSelectedSDSImages(
     }
     const image = item as Partial<SheinStudioSelectedSDSImage>;
     const imageUrl = image.imageUrl?.trim();
-    if (!imageUrl || seen.has(imageUrl)) {
+    if (!imageUrl || !isUsableSelectedSDSImageUrl(imageUrl) || seen.has(imageUrl)) {
       continue;
     }
     seen.add(imageUrl);
@@ -111,6 +112,9 @@ function addSelectableImages(
 ) {
   for (const [index, rawUrl] of (imageUrls ?? []).entries()) {
     const imageUrl = rawUrl?.trim();
+    if (metadata.kind === "mockup" && !isUsableSDSMockupImageUrl(imageUrl ?? "")) {
+      continue;
+    }
     if (!imageUrl || seen.has(imageUrl)) {
       continue;
     }
@@ -126,4 +130,8 @@ function addSelectableImages(
         : metadata.color,
     });
   }
+}
+
+function isUsableSelectedSDSImageUrl(url: string) {
+  return isUsableSDSMockupImageUrl(url) || !url.includes("/images/");
 }

@@ -1,3 +1,4 @@
+import { sanitizeSDSMockupImageUrls } from "@/lib/sds/mockup-urls";
 import type { SDSProductDetail, SDSProductVariant, SDSSelectedProductVariant } from "@/lib/types/sds";
 
 export type SDSListingKitMetadata = {
@@ -86,10 +87,12 @@ function buildSDSListingKitMetadata(
   const productDetails = detail.product_details;
   const layers = variant?.designPrototype?.prototypeLayerList ?? [];
   const primaryLayer = layers.find((layer) => layer.isMasterMap === 1) ?? layers[0];
-  const mockups = [...(variant?.designPrototype?.prototypeResultGroups ?? [])]
+  const mockups = sanitizeSDSMockupImageUrls(
+    [...(variant?.designPrototype?.prototypeResultGroups ?? [])]
     .sort((left, right) => (left.sort ?? 0) - (right.sort ?? 0))
     .map((group) => group.resultImage)
-    .filter((image): image is string => Boolean(image));
+    .filter((image): image is string => Boolean(image)),
+  );
   const sizeReferences = resolveSizeReferenceImages(variant);
   const detailVariants = detail.subproducts?.items ?? [];
   const variantsFromIds =
@@ -186,10 +189,12 @@ function toSelectedVariantMetadata(
 ): SDSSelectedProductVariant {
   const layers = variant.designPrototype?.prototypeLayerList ?? [];
   const primaryLayer = layers.find((layer) => layer.isMasterMap === 1) ?? layers[0];
-  const mockups = [...(variant.designPrototype?.prototypeResultGroups ?? [])]
+  const mockups = sanitizeSDSMockupImageUrls(
+    [...(variant.designPrototype?.prototypeResultGroups ?? [])]
     .sort((left, right) => (left.sort ?? 0) - (right.sort ?? 0))
     .map((group) => group.resultImage)
-    .filter((image): image is string => Boolean(image));
+    .filter((image): image is string => Boolean(image)),
+  );
 
   return {
     variantId: variant.id,

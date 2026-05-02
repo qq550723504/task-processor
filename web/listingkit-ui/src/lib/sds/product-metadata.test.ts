@@ -29,6 +29,10 @@ describe("loadSDSListingKitMetadata", () => {
                 prototypeGroupId: 10,
                 prototypeResultGroups: [
                   {
+                    resultImage: "https://cdn.sdspod.com/images/preview-black.jpg",
+                    sort: 0,
+                  },
+                  {
                     resultImage: "https://cdn.example.com/black-main.jpg",
                     sort: 1,
                   },
@@ -57,6 +61,10 @@ describe("loadSDSListingKitMetadata", () => {
               designPrototype: {
                 prototypeGroupId: 11,
                 prototypeResultGroups: [
+                  {
+                    resultImage: "https://cdn.sdspod.com/images/preview-white.jpg",
+                    sort: 0,
+                  },
                   {
                     resultImage: "https://cdn.example.com/white-main.jpg",
                     sort: 1,
@@ -97,7 +105,12 @@ describe("loadSDSListingKitMetadata", () => {
       color: "White",
       layer_id: "layer-white",
       template_image_url: "https://cdn.example.com/white-template.jpg",
+      mockup_image_urls: ["https://cdn.example.com/white-main.jpg", "https://cdn.example.com/white-size-chart.jpg"],
       size_reference_image_urls: ["https://cdn.example.com/white-size-chart.jpg"],
     });
+    expect(metadata.variants?.[0]?.mockup_image_urls).toEqual([
+      "https://cdn.example.com/black-main.jpg",
+      "https://cdn.example.com/black-size-chart.jpg",
+    ]);
   });
 });

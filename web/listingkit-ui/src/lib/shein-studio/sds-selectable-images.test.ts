@@ -48,6 +48,29 @@ describe("buildSelectableSDSImages", () => {
       kind: "size_reference",
     });
   });
+
+  it("filters SDS preview images from mockup candidates", () => {
+    const items = buildSelectableSDSImages({
+      productId: 1,
+      parentProductId: 1,
+      variantId: 2,
+      prototypeGroupId: 3,
+      layerId: "layer-1",
+      productName: "tee",
+      variantLabel: "M / black",
+      mockupImageUrls: [
+        "https://cdn.sdspod.com/images/preview.jpg",
+        "https://cdn.sdspod.com/out/rendered-main.jpg",
+      ],
+    });
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        imageUrl: "https://cdn.sdspod.com/out/rendered-main.jpg",
+        kind: "mockup",
+      }),
+    ]);
+  });
 });
 
 describe("buildDefaultSelectedSDSImages", () => {
@@ -114,6 +137,7 @@ describe("normalizeSelectedSDSImages", () => {
       normalizeSelectedSDSImages([
         { imageUrl: "https://example.com/a.jpg", color: "Black" },
         { imageUrl: "https://example.com/a.jpg", color: "White" },
+        { imageUrl: "https://cdn.sdspod.com/images/preview.jpg", color: "Preview" },
         { imageUrl: "   " },
         { imageUrl: "https://example.com/b.jpg", variantSku: "SKU-B" },
       ]),
