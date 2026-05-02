@@ -408,6 +408,40 @@ func TestAssemblerBuildDoesNotPropagatePromptTextIntoSKCNames(t *testing.T) {
 	}
 }
 
+func TestBuildVariantGroupsUsesSanitizedSKCValueAssignmentsForPromptLikeGroupNames(t *testing.T) {
+	sanitizedID := 1443
+	rawPrompt := "帮我设计一个印在门帘上的图案，图案要有英文跟图案，元素多样，图片有3d视觉效果，摇滚风格，2277 × 4500px"
+	variants := []common.Variant{
+		{
+			SKU: "MG8014104001-F0509EE2",
+			Attributes: map[string]string{
+				"ai_style": rawPrompt,
+				"Size":     "90x180cm",
+				"Color":    "white",
+			},
+		},
+	}
+	groups := buildVariantGroups("Door curtain", variants, &common.ImageSet{MainImage: "main.jpg"}, &SaleAttributeResolution{
+		PrimarySourceDimension: "ai_style",
+		skcValueAssignments: map[string]ResolvedSaleAttribute{
+			normalizeText(rawPrompt): {
+				Scope:            "skc",
+				Name:             "Style Type",
+				Value:            "rock style",
+				AttributeID:      1001184,
+				AttributeValueID: &sanitizedID,
+				MatchedBy:        "attribute_value_comparable",
+			},
+		},
+	})
+	if len(groups) != 1 {
+		t.Fatalf("group count = %d, want 1", len(groups))
+	}
+	if groups[0].skcName != "Door curtain - rock style" {
+		t.Fatalf("skc title = %q, want sanitized sale attribute value", groups[0].skcName)
+	}
+}
+
 func TestAssemblerBuildTriggersCategoryReviewWhenCategoryFamilyConflicts(t *testing.T) {
 	assembler := NewAssembler(AssemblerConfig{
 		CategoryResolver: assemblerStubCategoryRecommender{

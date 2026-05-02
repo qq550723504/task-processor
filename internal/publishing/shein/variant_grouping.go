@@ -43,7 +43,7 @@ func buildVariantGroups(baseTitle string, variants []common.Variant, images *com
 		}
 		representative := groupVariants[0]
 		groupAttributes := commonAttributes(groupVariants)
-		skcName := resolveSKCName(baseTitle, groupingKey, groupAttributes, representative)
+		skcName := resolveSKCNameWithResolution(baseTitle, groupingKey, groupAttributes, representative, resolution)
 		mainImageURL := common.FirstNonEmpty(representative.Image, images.MainImage)
 		result = append(result, variantGroup{
 			skcName:      skcName,
@@ -55,6 +55,22 @@ func buildVariantGroups(baseTitle string, variants []common.Variant, images *com
 		})
 	}
 	return result
+}
+
+func resolveSKCNameWithResolution(baseTitle string, groupingKey string, attributes map[string]string, representative common.Variant, resolution *SaleAttributeResolution) string {
+	baseTitle = strings.TrimSpace(baseTitle)
+	if baseTitle != "" {
+		baseTitle = trimShortTitle(buildSKCBaseTitle(baseTitle, nil, baseTitle), 70, 8)
+	}
+	groupName := resolveSKCGroupName(groupingKey, attributes, representative, resolution)
+	if groupName != "" {
+		baseTitle = strings.TrimSpace(baseTitle)
+		if baseTitle != "" && !strings.EqualFold(normalizeText(baseTitle), normalizeText(groupName)) {
+			return baseTitle + " - " + groupName
+		}
+		return groupName
+	}
+	return common.FirstNonEmpty(representative.SKU, "DEFAULT-001")
 }
 
 func buildVariantGroupKey(groupingKey string, variant common.Variant) string {
@@ -94,11 +110,7 @@ func resolveSKCName(baseTitle string, groupingKey string, attributes map[string]
 	}
 	groupName := ""
 	if groupingKey != "" {
-		if value := strings.TrimSpace(lookupAttributeValue(attributes, groupingKey)); value != "" {
-			groupName = value
-		} else if value := strings.TrimSpace(lookupAttributeValue(representative.Attributes, groupingKey)); value != "" {
-			groupName = value
-		}
+		groupName = resolveSKCGroupName(groupingKey, attributes, representative, nil)
 	}
 	if groupName != "" {
 		baseTitle = strings.TrimSpace(baseTitle)
@@ -108,4 +120,23 @@ func resolveSKCName(baseTitle string, groupingKey string, attributes map[string]
 		return groupName
 	}
 	return common.FirstNonEmpty(representative.SKU, "DEFAULT-001")
+}
+
+func resolveSKCGroupName(groupingKey string, attributes map[string]string, representative common.Variant, resolution *SaleAttributeResolution) string {
+	if groupingKey == "" {
+		return ""
+	}
+	rawValue := strings.TrimSpace(lookupAttributeValue(attributes, groupingKey))
+	if rawValue == "" {
+		rawValue = strings.TrimSpace(lookupAttributeValue(representative.Attributes, groupingKey))
+	}
+	if rawValue == "" {
+		return ""
+	}
+	if assigned, ok := resolveSaleAttributeValueAssignment(effectiveSKCValueAssignments(resolution), rawValue); ok {
+		if value := strings.TrimSpace(assigned.Value); value != "" {
+			return value
+		}
+	}
+	return rawValue
 }
