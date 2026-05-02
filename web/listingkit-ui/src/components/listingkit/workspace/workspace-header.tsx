@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { RecoverySummaryCard } from "@/components/listingkit/review/recovery-summary-card";
 import { ResolvedActionCard } from "@/components/listingkit/review/resolved-action-card";
 import type {
@@ -13,6 +15,7 @@ export function WorkspaceHeader({
   subtitle,
   summary,
   recoverySummary,
+  showSheinStudioLink = false,
   onSelectAction,
   onSelectRecovery,
 }: {
@@ -20,6 +23,7 @@ export function WorkspaceHeader({
   subtitle?: string;
   summary?: ResolvedActionSummary | null;
   recoverySummary?: RecoverySummary | null;
+  showSheinStudioLink?: boolean;
   onSelectAction?: (summary: ResolvedActionSummary) => void;
   onSelectRecovery?: (descriptor: RecoveryDescriptor) => void;
 }) {
@@ -30,6 +34,22 @@ export function WorkspaceHeader({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
             ListingKit Workspace
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <Link
+              href="/listing-kits/tasks"
+              className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
+            >
+              返回任务列表
+            </Link>
+            {showSheinStudioLink ? (
+              <Link
+                href="/listing-kits/shein"
+                className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
+              >
+                返回 SHEIN 工作室
+              </Link>
+            ) : null}
+          </div>
           <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
             {title}
           </h1>

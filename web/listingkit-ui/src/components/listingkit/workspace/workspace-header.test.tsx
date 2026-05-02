@@ -34,4 +34,20 @@ describe("WorkspaceHeader", () => {
       }),
     );
   });
+
+  it("shows navigation links for tasks and shein studio", () => {
+    render(
+      <WorkspaceHeader
+        title="Queue task-123"
+        showSheinStudioLink
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "返回任务列表" }),
+    ).toHaveAttribute("href", "/listing-kits/tasks");
+    expect(
+      screen.getByRole("link", { name: "返回 SHEIN 工作室" }),
+    ).toHaveAttribute("href", "/listing-kits/shein");
+  });
 });

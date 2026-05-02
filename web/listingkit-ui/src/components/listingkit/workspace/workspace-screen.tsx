@@ -688,6 +688,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
           session.data?.recovery_summary ??
           preview.data.asset_generation_overview?.recovery_summary
         }
+        showSheinStudioLink={selectedPlatform === "shein"}
         onSelectAction={(summary) => handleAction(summary)}
         onSelectRecovery={handleRecovery}
       />
