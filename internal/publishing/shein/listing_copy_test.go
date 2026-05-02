@@ -2,6 +2,7 @@ package shein
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
@@ -108,5 +109,78 @@ func TestBuildSheinListingCopyFallsBackWhenLLMReturnsPromptLikeTitle(t *testing.
 	}
 	if copy.TitleDiagnostics == nil || !copy.TitleDiagnostics.PromptContaminated {
 		t.Fatalf("title diagnostics = %+v, want contamination note", copy.TitleDiagnostics)
+	}
+}
+
+func TestBuildSheinListingCopyEnrichesShortStructuredTitleWithLLMAddition(t *testing.T) {
+	canonical := &productenrich.CanonicalProduct{
+		Title: "Door curtain",
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"product_english_name": {Value: "Door curtain"},
+			"picture_request":      {Value: "Please design a door curtain print with a rock style graphic theme and dramatic lettering, 2277 x 4500px"},
+		},
+		Variants: []productenrich.CanonicalVariant{{
+			Attributes: map[string]productenrich.CanonicalAttribute{
+				"ai_style": {Value: "Please design a door curtain print with a rock style graphic theme and dramatic lettering, 2277 x 4500px"},
+			},
+		}},
+	}
+
+	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
+		response: `{"addition":"Rock Style Graphic"}`,
+	})
+	if copy.Title != "Door curtain with Rock Style Graphic" {
+		t.Fatalf("title = %q, want enriched ecommerce title", copy.Title)
+	}
+	if copy.SKCTitleBase != "Door curtain with Rock Style Graphic" {
+		t.Fatalf("skc base title = %q, want enriched short title", copy.SKCTitleBase)
+	}
+	if copy.TitleDiagnostics == nil || !strings.Contains(copy.TitleDiagnostics.ResolutionNote, "llm-extracted prompt elements") {
+		t.Fatalf("title diagnostics = %+v, want enrichment note", copy.TitleDiagnostics)
+	}
+}
+
+func TestBuildSheinListingCopyKeepsLongStructuredTitleWithoutLLMAddition(t *testing.T) {
+	canonical := &productenrich.CanonicalProduct{
+		Title: "Flannel non-slip floor mat",
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"product_english_name": {Value: "Flannel Non-slip Floor Mat"},
+			"picture_request":      {Value: "Please design a floral print with inspirational words, 3000 pixels"},
+		},
+	}
+
+	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
+		response: `{"addition":"Floral Theme"}`,
+	})
+	if copy.Title != "Flannel Non-slip Floor Mat" {
+		t.Fatalf("title = %q, want original long structured title", copy.Title)
+	}
+}
+
+func TestBuildSheinListingCopyEnrichesRealDoorCurtainTaskTitle(t *testing.T) {
+	canonical := &productenrich.CanonicalProduct{
+		Title: "Door curtain",
+		Attributes: map[string]productenrich.CanonicalAttribute{
+			"product_english_name": {Value: "Door curtain"},
+			"picture_request":      {Value: "2277 px * 4500 px"},
+		},
+		Variants: []productenrich.CanonicalVariant{{
+			Attributes: map[string]productenrich.CanonicalAttribute{
+				"ai_style": {Value: "帮我设计一个印在门帘上的图案，图案要有英文跟图案，元素多样，图片有3d视觉效果，摇滚风格，2277 × 4500px"},
+			},
+		}},
+	}
+
+	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
+		response: `{"addition":"Rock Style Graphic"}`,
+	})
+	if copy.Title != "Door curtain with Rock Style Graphic" {
+		t.Fatalf("title = %q, want enriched title from real task prompt", copy.Title)
+	}
+	if copy.TitleDiagnostics == nil || copy.TitleDiagnostics.Source != "product_english_name" {
+		t.Fatalf("title diagnostics = %+v, want structured source retained", copy.TitleDiagnostics)
+	}
+	if copy.SKCTitleBase != "Door curtain with Rock Style Graphic" {
+		t.Fatalf("skc base title = %q, want enriched skc base title", copy.SKCTitleBase)
 	}
 }

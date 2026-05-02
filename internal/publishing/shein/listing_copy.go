@@ -18,6 +18,7 @@ type listingCopy struct {
 
 func buildSheinListingCopy(canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) listingCopy {
 	titleResolution := resolveListingTitle(canonical, fallbackTitle, aiClient)
+	titleResolution = enrichResolvedListingTitle(titleResolution, canonical, fallbackTitle, aiClient)
 	title := titleResolution.title
 	description := firstEnglishCandidate(canonicalDescription(canonical))
 	if description == "" || containsCJK(description) {

@@ -25,6 +25,10 @@ type titleResolution struct {
 	skcBase     string
 }
 
+type titleAdditionExtraction struct {
+	Addition string `json:"addition"`
+}
+
 var (
 	titlePromptCuePatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\bplease\s+(design|create|generate)\b`),
@@ -73,6 +77,28 @@ func resolveListingTitle(canonical *productenrich.CanonicalProduct, fallbackTitl
 	return buildResolvedTitle(title, "structured_fallback", note, contaminated, canonical, fallbackTitle)
 }
 
+func enrichResolvedListingTitle(resolution titleResolution, canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
+	if !shouldEnrichListingTitle(resolution.title) {
+		return resolution
+	}
+	addition := extractListingTitleAdditionWithLLM(resolution.title, canonical, fallbackTitle, aiClient)
+	if addition == "" {
+		return resolution
+	}
+	enrichedTitle := mergeListingTitleWithAddition(resolution.title, addition)
+	if enrichedTitle == "" || isPromptLikeTitle(enrichedTitle) || containsCJK(enrichedTitle) {
+		return resolution
+	}
+	resolution.title = enrichedTitle
+	resolution.skcBase = buildSKCBaseTitle(enrichedTitle, canonical, fallbackTitle)
+	if strings.TrimSpace(resolution.note) == "" {
+		resolution.note = "short structured title enriched with llm-extracted prompt elements"
+	} else {
+		resolution.note = strings.TrimSpace(resolution.note) + "; short structured title enriched with llm-extracted prompt elements"
+	}
+	return resolution
+}
+
 func buildResolvedTitle(title, source, note string, contaminated bool, canonical *productenrich.CanonicalProduct, fallbackTitle string) titleResolution {
 	title = sanitizeResolvedTitle(title)
 	if title == "" || containsCJK(title) || isPromptLikeTitle(title) {
@@ -91,9 +117,39 @@ func buildResolvedTitle(title, source, note string, contaminated bool, canonical
 	}
 }
 
+func shouldEnrichListingTitle(title string) bool {
+	title = cleanListingText(title)
+	if title == "" || isPromptLikeTitle(title) {
+		return false
+	}
+	if strings.Contains(strings.ToLower(title), " with ") {
+		return false
+	}
+	words := strings.Fields(title)
+	return len(words) > 0 && len(words) <= 3
+}
+
 func sanitizeResolvedTitle(value string) string {
 	value = sanitizeListingCopy(cleanListingText(value))
 	value = strings.Trim(value, " -_,.;:/")
+	return cleanListingText(value)
+}
+
+func sanitizeListingTitleAddition(value string) string {
+	value = sanitizeResolvedTitle(value)
+	if value == "" || containsCJK(value) || isPromptLikeTitle(value) {
+		return ""
+	}
+	if strings.Count(value, ".") > 0 || strings.ContainsAny(value, "\n\r\t") {
+		return ""
+	}
+	words := strings.Fields(value)
+	if len(words) == 0 || len(words) > 6 {
+		return ""
+	}
+	if len(value) > 48 {
+		return ""
+	}
 	return cleanListingText(value)
 }
 
@@ -169,6 +225,110 @@ func trimShortTitle(value string, maxChars int, maxWords int) string {
 		truncated = truncated[:idx]
 	}
 	return cleanListingText(truncated)
+}
+
+func collectListingTitlePromptSignals(canonical *productenrich.CanonicalProduct) []string {
+	values := []string{
+		lookupVariantAttribute(canonical, "ai_style"),
+		lookupCanonicalAttribute(canonical, "picture_request"),
+		lookupTechnicalSpec(canonical, "picture_request"),
+		lookupCanonicalAttribute(canonical, "product_english_name"),
+		lookupCanonicalAttribute(canonical, "english_name"),
+	}
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = cleanListingText(value)
+		if value == "" {
+			continue
+		}
+		key := normalizeText(value)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func extractListingTitleAdditionWithLLM(baseTitle string, canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
+	if aiClient == nil {
+		return ""
+	}
+	signals := collectListingTitlePromptSignals(canonical)
+	if len(signals) == 0 {
+		return ""
+	}
+	ctx, cancel := timeout.WithAIShortTimeout(context.Background())
+	defer cancel()
+	productType := inferEnglishProductType(canonical, fallbackTitle)
+	systemPrompt := `You improve concise e-commerce product titles by extracting a short title addition from print-design instructions.
+Return strict JSON only: {"addition":"..."}.
+Rules:
+1. "addition" must be 2-6 English words and under 48 characters.
+2. Keep only design/theme/style/pattern elements that help an e-commerce title.
+3. Do not repeat the base product type, material, or size.
+4. Do not include sentences, prompt instructions, dimensions, pixels, copyright notes, or platform filler words.
+5. Leave "addition" empty if there is no safe concise addition.`
+	userPrompt := fmt.Sprintf(
+		"Base title: %s\nFallback product type: %s\nPrompt-like or style signals:\n- %s\nExtract one short addition that makes the base title more suitable for e-commerce.",
+		cleanListingText(baseTitle),
+		cleanListingText(productType),
+		strings.Join(signals, "\n- "),
+	)
+	temperature := float32(0.2)
+	resp, err := aiClient.CreateChatCompletion(ctx, &openaiclient.ChatCompletionRequest{
+		Model:       aiClient.GetDefaultModel(),
+		Temperature: &temperature,
+		Messages: []openaiclient.ChatCompletionMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+	})
+	if err != nil || resp == nil || len(resp.Choices) == 0 {
+		return ""
+	}
+	var parsed titleAdditionExtraction
+	if err := jsonx.UnmarshalString(jsonx.CleanLLMResponse(resp.Choices[0].Message.Content), &parsed, "parse SHEIN title addition extraction"); err != nil {
+		return ""
+	}
+	addition := sanitizeListingTitleAddition(parsed.Addition)
+	if addition == "" {
+		return ""
+	}
+	if titleAdditionRedundantWithBase(baseTitle, addition) {
+		return ""
+	}
+	return addition
+}
+
+func titleAdditionRedundantWithBase(baseTitle string, addition string) bool {
+	baseWords := map[string]struct{}{}
+	for _, word := range strings.Fields(normalizeText(baseTitle)) {
+		if word != "" {
+			baseWords[word] = struct{}{}
+		}
+	}
+	additionWords := strings.Fields(normalizeText(addition))
+	if len(additionWords) == 0 {
+		return true
+	}
+	for _, word := range additionWords {
+		if _, exists := baseWords[word]; !exists {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeListingTitleWithAddition(baseTitle string, addition string) string {
+	baseTitle = cleanListingText(baseTitle)
+	addition = sanitizeListingTitleAddition(addition)
+	if baseTitle == "" || addition == "" {
+		return baseTitle
+	}
+	return trimShortTitle(cleanListingText(baseTitle+" with "+addition), 90, 12)
 }
 
 func extractPromptTitleWithLLM(promptText string, canonical *productenrich.CanonicalProduct, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
