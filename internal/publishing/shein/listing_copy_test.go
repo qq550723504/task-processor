@@ -127,12 +127,12 @@ func TestBuildSheinListingCopyEnrichesShortStructuredTitleWithLLMAddition(t *tes
 	}
 
 	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
-		response: `{"addition":"Rock Style Graphic"}`,
+		response: `{"addition":"Rock Typography Graphic Print"}`,
 	})
-	if copy.Title != "Door curtain with Rock Style Graphic" {
+	if copy.Title != "Door curtain with Rock Typography Graphic Print" {
 		t.Fatalf("title = %q, want enriched ecommerce title", copy.Title)
 	}
-	if copy.SKCTitleBase != "Door curtain with Rock Style Graphic" {
+	if copy.SKCTitleBase != "Door curtain with Rock Typography Graphic Print" {
 		t.Fatalf("skc base title = %q, want enriched short title", copy.SKCTitleBase)
 	}
 	if copy.TitleDiagnostics == nil || !strings.Contains(copy.TitleDiagnostics.ResolutionNote, "llm-extracted prompt elements") {
@@ -172,15 +172,15 @@ func TestBuildSheinListingCopyEnrichesRealDoorCurtainTaskTitle(t *testing.T) {
 	}
 
 	copy := buildSheinListingCopy(canonical, canonical.Title, stubTitleAIClient{
-		response: `{"addition":"Rock Style Graphic"}`,
+		response: `{"addition":"Rock Typography Graphic Print"}`,
 	})
-	if copy.Title != "Door curtain with Rock Style Graphic" {
+	if copy.Title != "Door curtain with Rock Typography Graphic Print" {
 		t.Fatalf("title = %q, want enriched title from real task prompt", copy.Title)
 	}
 	if copy.TitleDiagnostics == nil || copy.TitleDiagnostics.Source != "product_english_name" {
 		t.Fatalf("title diagnostics = %+v, want structured source retained", copy.TitleDiagnostics)
 	}
-	if copy.SKCTitleBase != "Door curtain with Rock Style Graphic" {
+	if copy.SKCTitleBase != "Door curtain with Rock Typography Graphic Print" {
 		t.Fatalf("skc base title = %q, want enriched skc base title", copy.SKCTitleBase)
 	}
 }

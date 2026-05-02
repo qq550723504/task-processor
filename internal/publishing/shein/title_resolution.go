@@ -144,10 +144,10 @@ func sanitizeListingTitleAddition(value string) string {
 		return ""
 	}
 	words := strings.Fields(value)
-	if len(words) == 0 || len(words) > 6 {
+	if len(words) == 0 || len(words) > 8 {
 		return ""
 	}
-	if len(value) > 48 {
+	if len(value) > 64 {
 		return ""
 	}
 	return cleanListingText(value)
@@ -266,10 +266,11 @@ func extractListingTitleAdditionWithLLM(baseTitle string, canonical *productenri
 	systemPrompt := `You improve concise e-commerce product titles by extracting a short title addition from print-design instructions.
 Return strict JSON only: {"addition":"..."}.
 Rules:
-1. "addition" must be 2-6 English words and under 48 characters.
-2. Keep only design/theme/style/pattern elements that help an e-commerce title.
-3. Do not repeat the base product type, material, or size.
-4. Do not include sentences, prompt instructions, dimensions, pixels, copyright notes, or platform filler words.
+1. "addition" must be 3-8 English words and under 64 characters.
+2. Keep only concise design/theme/style/pattern elements that help an e-commerce title.
+3. Prefer a richer but still compact phrase, combining theme plus visual/pattern cue when obvious.
+4. Do not repeat the base product type, material, or size.
+5. Do not include sentences, prompt instructions, dimensions, pixels, copyright notes, or platform filler words.
 5. Leave "addition" empty if there is no safe concise addition.`
 	userPrompt := fmt.Sprintf(
 		"Base title: %s\nFallback product type: %s\nPrompt-like or style signals:\n- %s\nExtract one short addition that makes the base title more suitable for e-commerce.",
