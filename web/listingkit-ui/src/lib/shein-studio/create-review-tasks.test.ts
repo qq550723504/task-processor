@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { orderGeneratedProductImageUrls } from "@/lib/shein-studio/create-review-tasks";
+import {
+  orderGeneratedProductImageUrls,
+  sanitizeReviewTaskProductImageUrls,
+} from "@/lib/shein-studio/create-review-tasks";
 
 describe("orderGeneratedProductImageUrls", () => {
   it("keeps the main white-background image first when present", () => {
@@ -28,5 +31,48 @@ describe("orderGeneratedProductImageUrls", () => {
       "https://example.com/scene.jpg",
       "https://example.com/detail.jpg",
     ]);
+  });
+});
+
+describe("sanitizeReviewTaskProductImageUrls", () => {
+  it("drops SDS preview product images before creating review tasks", () => {
+    expect(
+      sanitizeReviewTaskProductImageUrls(
+        [
+          "https://cdn.sdspod.com/images/path/to/preview.jpg",
+          "https://oss.shuomiai.com/listingkit-assets/20260502/generated-main.png",
+          "https://cdn.sdspod.com/out/36811/202605/mockup.jpg",
+        ],
+        "ai_generated",
+      ),
+    ).toEqual([
+      "https://oss.shuomiai.com/listingkit-assets/20260502/generated-main.png",
+      "https://cdn.sdspod.com/out/36811/202605/mockup.jpg",
+    ]);
+  });
+
+  it("clears product image urls for the SDS official strategy", () => {
+    expect(
+      sanitizeReviewTaskProductImageUrls(
+        [
+          "https://cdn.sdspod.com/images/path/to/preview.jpg",
+          "https://oss.shuomiai.com/listingkit-assets/20260502/generated-main.png",
+        ],
+        "sds_official",
+      ),
+    ).toEqual([]);
+  });
+
+  it("deduplicates and trims remaining urls", () => {
+    expect(
+      sanitizeReviewTaskProductImageUrls(
+        [
+          "  https://oss.shuomiai.com/listingkit-assets/20260502/generated-main.png  ",
+          "https://oss.shuomiai.com/listingkit-assets/20260502/generated-main.png",
+          "",
+        ],
+        "hybrid",
+      ),
+    ).toEqual(["https://oss.shuomiai.com/listingkit-assets/20260502/generated-main.png"]);
   });
 });

@@ -48,6 +48,36 @@ export function orderGeneratedProductImageUrls(
     .filter((url): url is string => Boolean(url));
 }
 
+function isSDSPreviewProductImageUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.toLowerCase().endsWith("sdspod.com") && parsed.pathname.includes("/images/");
+  } catch {
+    return false;
+  }
+}
+
+export function sanitizeReviewTaskProductImageUrls(
+  urls: string[] | undefined,
+  imageStrategy: SheinStudioImageStrategy,
+) {
+  if (imageStrategy === "sds_official") {
+    return [];
+  }
+
+  const sanitized: string[] = [];
+  const seen = new Set<string>();
+  for (const rawUrl of urls ?? []) {
+    const trimmed = rawUrl.trim();
+    if (!trimmed || seen.has(trimmed) || isSDSPreviewProductImageUrl(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    sanitized.push(trimmed);
+  }
+  return sanitized;
+}
+
 function buildStyleShortId(design: SheinStudioGeneratedDesign, index: number) {
   const source = design.id || `style-${index + 1}`;
   const token = source.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase();
@@ -192,7 +222,10 @@ export async function createSheinReviewTasks(input: {
     if (styleImageURLs.length === 0) {
       throw new Error("Uploaded review image URLs are missing.");
     }
-    let productImageURLs = approved[index].productImageUrls ?? [];
+    let productImageURLs = sanitizeReviewTaskProductImageUrls(
+      approved[index].productImageUrls,
+      imageStrategy,
+    );
     let variantProductImages: SheinStudioVariantProductImageSet[] = [];
     if (imageStrategy === "ai_generated" || imageStrategy === "hybrid") {
       onProgress?.(
@@ -209,7 +242,10 @@ export async function createSheinReviewTasks(input: {
         imagePrompts: productImagePrompts,
         count: productImageTotal,
       });
-      productImageURLs = orderGeneratedProductImageUrls(generatedProductImages.images);
+      productImageURLs = sanitizeReviewTaskProductImageUrls(
+        orderGeneratedProductImageUrls(generatedProductImages.images),
+        imageStrategy,
+      );
       if (productImageURLs.length === 0) {
         throw new Error("AI product image URLs are missing.");
       }
