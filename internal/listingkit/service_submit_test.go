@@ -1054,8 +1054,11 @@ func TestSubmitTaskReappliesReadyPricingBeforeSubmit(t *testing.T) {
 	if submitted.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice != 25.55 {
 		t.Fatalf("submitted base price = %v, want 25.55", submitted.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice)
 	}
-	if submitted.SKCList[0].SKUS[0].CostInfo == nil || submitted.SKCList[0].SKUS[0].CostInfo.Currency != "CNY" {
-		t.Fatalf("submitted cost info = %+v, want currency CNY", submitted.SKCList[0].SKUS[0].CostInfo)
+	if submitted.SKCList[0].SKUS[0].CostInfo == nil || submitted.SKCList[0].SKUS[0].CostInfo.Currency != "USD" {
+		t.Fatalf("submitted cost info = %+v, want currency USD", submitted.SKCList[0].SKUS[0].CostInfo)
+	}
+	if submitted.SKCList[0].SKUS[0].CostInfo.CostPrice != "10.25" {
+		t.Fatalf("submitted cost price = %q, want 10.25", submitted.SKCList[0].SKUS[0].CostInfo.CostPrice)
 	}
 }
 

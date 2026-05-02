@@ -280,21 +280,21 @@ func applySheinPricingReview(pkg *sheinpub.Package, review *sheinpub.PricingRevi
 		}
 	}
 	if pkg.PreviewProduct != nil {
-		sourceCurrency := "CNY"
-		if review.RuleSnapshot != nil && strings.TrimSpace(review.RuleSnapshot.SourceCurrency) != "" {
-			sourceCurrency = strings.ToUpper(strings.TrimSpace(review.RuleSnapshot.SourceCurrency))
+		rule := sheinpub.PricingRule{SourceCurrency: "CNY", TargetCurrency: "USD", ExchangeRate: 7.2}
+		if review.RuleSnapshot != nil {
+			rule = *review.RuleSnapshot
 		}
-		applySheinPreviewProductPrices(pkg.PreviewProduct, priceBySKU, sourceCurrency)
+		applySheinPreviewProductPrices(pkg.PreviewProduct, priceBySKU, rule)
 	}
 }
 
-func applySheinPreviewProductPrices(product *sheinproduct.Product, prices map[string]sheinpub.SKUPriceReview, sourceCurrency string) {
+func applySheinPreviewProductPrices(product *sheinproduct.Product, prices map[string]sheinpub.SKUPriceReview, rule sheinpub.PricingRule) {
 	if product == nil {
 		return
 	}
-	sourceCurrency = strings.ToUpper(strings.TrimSpace(sourceCurrency))
-	if sourceCurrency == "" {
-		sourceCurrency = "CNY"
+	targetCurrency := strings.ToUpper(strings.TrimSpace(rule.TargetCurrency))
+	if targetCurrency == "" {
+		targetCurrency = "USD"
 	}
 	for skcIndex := range product.SKCList {
 		for skuIndex := range product.SKCList[skcIndex].SKUS {
@@ -313,9 +313,28 @@ func applySheinPreviewProductPrices(product *sheinproduct.Product, prices map[st
 			if sku.CostInfo == nil {
 				sku.CostInfo = &sheinproduct.CostInfo{}
 			}
-			sku.CostInfo.Currency = sourceCurrency
+			costSource := price.CostCNY
+			if costSource <= 0 && sku.CostInfo != nil {
+				costSource = parseMoney(sku.CostInfo.CostPrice)
+			}
+			costPrice := sheinConvertedSubmitCostPrice(costSource, rule)
+			if costPrice > 0 {
+				sku.CostInfo.CostPrice = formatMoney(costPrice)
+			}
+			sku.CostInfo.Currency = targetCurrency
 		}
 	}
+}
+
+func sheinConvertedSubmitCostPrice(costCNY float64, rule sheinpub.PricingRule) float64 {
+	if costCNY <= 0 {
+		return 0
+	}
+	exchangeRate := rule.ExchangeRate
+	if exchangeRate <= 0 {
+		exchangeRate = 7.2
+	}
+	return math.Round((costCNY/exchangeRate)*100) / 100
 }
 
 func calculateSheinPrice(costCNY float64, rule sheinpub.PricingRule) float64 {
