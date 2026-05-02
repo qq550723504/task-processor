@@ -131,7 +131,7 @@ func studioVariants(sds *SDSSyncOptions, images []productenrich.CanonicalImage, 
 
 			var price *productenrich.PriceInfo
 			if item.Price > 0 {
-				price = &productenrich.PriceInfo{Currency: "USD", Amount: item.Price, CostPrice: item.Price}
+				price = &productenrich.PriceInfo{Currency: "CNY", Amount: item.Price, CostPrice: item.Price}
 			}
 			var dimensions *productenrich.Dimensions
 			if item.BoxLength > 0 && item.BoxWidth > 0 && item.BoxHeight > 0 {
@@ -173,7 +173,7 @@ func studioVariants(sds *SDSSyncOptions, images []productenrich.CanonicalImage, 
 
 	var price *productenrich.PriceInfo
 	if sds.VariantPrice > 0 {
-		price = &productenrich.PriceInfo{Currency: "USD", Amount: sds.VariantPrice, CostPrice: sds.VariantPrice}
+		price = &productenrich.PriceInfo{Currency: "CNY", Amount: sds.VariantPrice, CostPrice: sds.VariantPrice}
 	}
 
 	return []productenrich.CanonicalVariant{{

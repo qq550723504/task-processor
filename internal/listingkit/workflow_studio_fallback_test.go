@@ -66,6 +66,9 @@ func TestBuildStudioFallbackCanonicalProductUsesSDSMetadata(t *testing.T) {
 	if variant.Price == nil || variant.Price.Amount != 12.8 {
 		t.Fatalf("variant price = %+v", variant.Price)
 	}
+	if variant.Price == nil || variant.Price.Currency != "CNY" {
+		t.Fatalf("variant price currency = %+v, want CNY", variant.Price)
+	}
 }
 
 func TestBuildStudioFallbackCanonicalProductExpandsSDSVariantsWithStyleSuffix(t *testing.T) {

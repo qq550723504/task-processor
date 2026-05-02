@@ -991,6 +991,10 @@ func TestSubmitTaskReappliesReadyPricingBeforeSubmit(t *testing.T) {
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	task.Result.Shein.Pricing = &sheinpub.PricingReview{
+		RuleSnapshot: &sheinpub.PricingRule{
+			SourceCurrency: "CNY",
+			TargetCurrency: "USD",
+		},
 		Ready: true,
 		SKUPrices: []sheinpub.SKUPriceReview{{
 			SupplierSKU: task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SupplierSKU,
@@ -1009,6 +1013,10 @@ func TestSubmitTaskReappliesReadyPricingBeforeSubmit(t *testing.T) {
 		BasePrice: 19.99,
 		Currency:  "USD",
 	}}
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].CostInfo = &sheinproduct.CostInfo{
+		CostPrice: "73.8",
+		Currency:  "USD",
+	}
 
 	var submitted *sheinproduct.Product
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -1045,6 +1053,9 @@ func TestSubmitTaskReappliesReadyPricingBeforeSubmit(t *testing.T) {
 	}
 	if submitted.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice != 25.55 {
 		t.Fatalf("submitted base price = %v, want 25.55", submitted.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice)
+	}
+	if submitted.SKCList[0].SKUS[0].CostInfo == nil || submitted.SKCList[0].SKUS[0].CostInfo.Currency != "CNY" {
+		t.Fatalf("submitted cost info = %+v, want currency CNY", submitted.SKCList[0].SKUS[0].CostInfo)
 	}
 }
 

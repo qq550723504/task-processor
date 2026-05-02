@@ -280,13 +280,21 @@ func applySheinPricingReview(pkg *sheinpub.Package, review *sheinpub.PricingRevi
 		}
 	}
 	if pkg.PreviewProduct != nil {
-		applySheinPreviewProductPrices(pkg.PreviewProduct, priceBySKU)
+		sourceCurrency := "CNY"
+		if review.RuleSnapshot != nil && strings.TrimSpace(review.RuleSnapshot.SourceCurrency) != "" {
+			sourceCurrency = strings.ToUpper(strings.TrimSpace(review.RuleSnapshot.SourceCurrency))
+		}
+		applySheinPreviewProductPrices(pkg.PreviewProduct, priceBySKU, sourceCurrency)
 	}
 }
 
-func applySheinPreviewProductPrices(product *sheinproduct.Product, prices map[string]sheinpub.SKUPriceReview) {
+func applySheinPreviewProductPrices(product *sheinproduct.Product, prices map[string]sheinpub.SKUPriceReview, sourceCurrency string) {
 	if product == nil {
 		return
+	}
+	sourceCurrency = strings.ToUpper(strings.TrimSpace(sourceCurrency))
+	if sourceCurrency == "" {
+		sourceCurrency = "CNY"
 	}
 	for skcIndex := range product.SKCList {
 		for skuIndex := range product.SKCList[skcIndex].SKUS {
@@ -305,7 +313,7 @@ func applySheinPreviewProductPrices(product *sheinproduct.Product, prices map[st
 			if sku.CostInfo == nil {
 				sku.CostInfo = &sheinproduct.CostInfo{}
 			}
-			sku.CostInfo.Currency = price.Currency
+			sku.CostInfo.Currency = sourceCurrency
 		}
 	}
 }
