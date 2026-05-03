@@ -17,6 +17,18 @@ import (
 )
 
 const sdsDesignSyncTimeout = 130 * time.Second
+const sdsDesignSyncExtraPollCap = 24
+
+func sdsDesignSyncTimeoutForVariantCount(targetCount int) time.Duration {
+	if targetCount <= 1 {
+		return sdsDesignSyncTimeout
+	}
+	extraPolls := (targetCount - 1) * 8
+	if extraPolls > sdsDesignSyncExtraPollCap {
+		extraPolls = sdsDesignSyncExtraPollCap
+	}
+	return sdsDesignSyncTimeout + time.Duration(extraPolls)*5*time.Second
+}
 
 func (s *service) runWorkflow(ctx context.Context, task *Task) (*ListingKitResult, error) {
 	result := initResult(task)
@@ -409,7 +421,7 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
 
 	primary := representatives[0]
-	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
+	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeoutForVariantCount(len(representatives)))
 	defer cancel()
 	syncResult, err := s.sdsSyncSvc.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
 		Sync: sdsusecase.SyncInput{
