@@ -124,9 +124,24 @@ func studioProductImageConcurrencyLimit(imageCount int) int {
 
 func (s *service) generateOneStudioProductImage(ctx context.Context, req *StudioProductImageRequest, sourceURL string, basePrompt string) (string, error) {
 	inputImages := studioProductImageInputURLs(sourceURL, req.ProductReferenceImageURLs)
+	generated, err := s.tryGenerateStudioProductImage(ctx, inputImages, strings.TrimSpace(basePrompt))
+	if err != nil && isStudioInputFormatError(err) {
+		sanitizedURLs, sanitizeErr := s.sanitizeStudioImageInputURLs(ctx, inputImages)
+		if sanitizeErr == nil {
+			generated, err = s.tryGenerateStudioProductImage(ctx, sanitizedURLs, strings.TrimSpace(basePrompt))
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("generate product image: %w", err)
+	}
+	imageURL, _, err := s.persistGeneratedStudioImage(ctx, generated, "studio-product-image.png")
+	return imageURL, err
+}
+
+func (s *service) tryGenerateStudioProductImage(ctx context.Context, inputImages []string, promptText string) (*openaiclient.ImageResponse, error) {
 	generated, err := s.studioImageGenerator.EditImage(ctx, &openaiclient.ImageEditRequest{
 		Model:          s.studioImageGenerator.GetDefaultModel(),
-		Prompt:         strings.TrimSpace(basePrompt),
+		Prompt:         promptText,
 		ImageURL:       inputImages[0],
 		ImageURLs:      inputImages,
 		Size:           "1024x1024",
@@ -136,7 +151,7 @@ func (s *service) generateOneStudioProductImage(ctx context.Context, req *Studio
 	if err != nil {
 		generated, err = s.studioImageGenerator.EditImage(ctx, &openaiclient.ImageEditRequest{
 			Model:          s.studioImageGenerator.GetDefaultModel(),
-			Prompt:         strings.TrimSpace(basePrompt),
+			Prompt:         promptText,
 			ImageURL:       inputImages[0],
 			ImageURLs:      inputImages[:1],
 			Size:           "1024x1024",
@@ -144,11 +159,10 @@ func (s *service) generateOneStudioProductImage(ctx context.Context, req *Studio
 			N:              1,
 		})
 		if err != nil {
-			return "", fmt.Errorf("generate product image: %w", err)
+			return nil, err
 		}
 	}
-	imageURL, _, err := s.persistGeneratedStudioImage(ctx, generated, "studio-product-image.png")
-	return imageURL, err
+	return generated, nil
 }
 
 func buildStudioProductImagePrompt(req *StudioProductImageRequest, role studioProductImageRole, imageIndex int, imageTotal int) string {

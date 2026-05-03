@@ -288,3 +288,138 @@ func TestClientEditImageTimesOutStuckRunningJob(t *testing.T) {
 		t.Fatal("EditImage() did not stop polling a stuck running job")
 	}
 }
+
+func TestClientGenerateImageRetriesTransientJobFailure(t *testing.T) {
+	var submitCount int32
+	var resultCount int32
+	imageBytes := []byte("generated-image")
+	var serverURL string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/draw/nano-banana":
+			id := "job-1"
+			if atomic.AddInt32(&submitCount, 1) > 1 {
+				id = "job-2"
+			}
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				Code: 0,
+				Msg:  "success",
+				Data: struct {
+					ID string `json:"id"`
+				}{ID: id},
+			})
+		case "/v1/draw/result":
+			current := atomic.AddInt32(&resultCount, 1)
+			if current == 1 {
+				_ = json.NewEncoder(w).Encode(resultEnvelope{
+					Code: 0,
+					Msg:  "success",
+					Data: resultPayload{
+						ID:            "job-1",
+						Status:        "failed",
+						FailureReason: "error",
+						Error:         "google gemini timeout...",
+					},
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(resultEnvelope{
+				Code: 0,
+				Msg:  "success",
+				Data: resultPayload{
+					ID:       "job-2",
+					Status:   "succeeded",
+					Progress: 100,
+					Results: []resultItem{
+						{URL: serverURL + "/generated.png", Content: "done"},
+					},
+				},
+			})
+		case "/generated.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(imageBytes)
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client := NewClient(Config{
+		APIKey:       "test-key",
+		Model:        "nano-banana-fast",
+		SubmitURL:    server.URL + "/v1/draw/nano-banana",
+		PollInterval: 10 * time.Millisecond,
+		Timeout:      time.Second,
+		MaxAttempts:  2,
+		HTTPClient:   server.Client(),
+	})
+
+	resp, err := client.GenerateImage(context.Background(), &openaiclient.ImageGenerateRequest{
+		Prompt: "flat pod artwork",
+		Size:   "1024x1024",
+	})
+	if err != nil {
+		t.Fatalf("GenerateImage() error = %v", err)
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("data len = %d", len(resp.Data))
+	}
+	if atomic.LoadInt32(&submitCount) != 2 {
+		t.Fatalf("submit count = %d, want 2", submitCount)
+	}
+}
+
+func TestClientGenerateImageDoesNotRetryModerationFailure(t *testing.T) {
+	var submitCount int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/draw/nano-banana":
+			atomic.AddInt32(&submitCount, 1)
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				Code: 0,
+				Msg:  "success",
+				Data: struct {
+					ID string `json:"id"`
+				}{ID: "job-1"},
+			})
+		case "/v1/draw/result":
+			_ = json.NewEncoder(w).Encode(resultEnvelope{
+				Code: 0,
+				Msg:  "success",
+				Data: resultPayload{
+					ID:            "job-1",
+					Status:        "failed",
+					FailureReason: "output_moderation",
+					Error:         "blocked by provider moderation",
+				},
+			})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		APIKey:       "test-key",
+		Model:        "nano-banana-fast",
+		SubmitURL:    server.URL + "/v1/draw/nano-banana",
+		PollInterval: 10 * time.Millisecond,
+		Timeout:      time.Second,
+		MaxAttempts:  3,
+		HTTPClient:   server.Client(),
+	})
+
+	_, err := client.GenerateImage(context.Background(), &openaiclient.ImageGenerateRequest{
+		Prompt: "flat pod artwork",
+		Size:   "1024x1024",
+	})
+	if err == nil {
+		t.Fatal("expected moderation error")
+	}
+	if atomic.LoadInt32(&submitCount) != 1 {
+		t.Fatalf("submit count = %d, want 1", submitCount)
+	}
+}

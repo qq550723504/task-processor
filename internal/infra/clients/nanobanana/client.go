@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,7 @@ type Config struct {
 	SubmitURL    string
 	PollInterval time.Duration
 	Timeout      time.Duration
+	MaxAttempts  int
 	HTTPClient   *http.Client
 }
 
@@ -77,6 +79,9 @@ func NewClient(cfg Config) *Client {
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = time.Second
+	}
+	if cfg.MaxAttempts <= 0 {
+		cfg.MaxAttempts = 3
 	}
 	return &Client{cfg: cfg, httpClient: httpClient}
 }
@@ -161,15 +166,29 @@ func (c *Client) submitAndPoll(ctx context.Context, req submitRequest) (*openaic
 	if err != nil {
 		return nil, err
 	}
-	jobID, err := c.submit(ctx, submitURL, req)
-	if err != nil {
-		return nil, err
+
+	var lastErr error
+	for attempt := 1; attempt <= c.cfg.MaxAttempts; attempt++ {
+		jobID, err := c.submit(ctx, submitURL, req)
+		if err != nil {
+			lastErr = err
+		} else {
+			result, pollErr := c.poll(ctx, submitURL, jobID)
+			if pollErr == nil {
+				return c.toImageResponse(ctx, result)
+			}
+			lastErr = pollErr
+		}
+		if !shouldRetryNanobananaError(lastErr) || attempt == c.cfg.MaxAttempts || ctx.Err() != nil {
+			return nil, lastErr
+		}
+		select {
+		case <-time.After(time.Duration(attempt) * c.cfg.PollInterval):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
-	result, err := c.poll(ctx, submitURL, jobID)
-	if err != nil {
-		return nil, err
-	}
-	return c.toImageResponse(ctx, result)
+	return nil, lastErr
 }
 
 func (c *Client) submit(ctx context.Context, submitURL string, req submitRequest) (string, error) {
@@ -357,4 +376,38 @@ func defaultString(value string, fallback string) string {
 		return value
 	}
 	return strings.TrimSpace(fallback)
+}
+
+func shouldRetryNanobananaError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	var jobErr *JobError
+	if !strings.Contains(message, "output_moderation") &&
+		!strings.Contains(message, "input_moderation") {
+		if strings.Contains(message, "timeout") ||
+			strings.Contains(message, "deadline exceeded") ||
+			strings.Contains(message, "temporarily unavailable") ||
+			strings.Contains(message, "connection reset") ||
+			strings.Contains(message, "unexpected eof") ||
+			strings.Contains(message, "internal error") {
+			return true
+		}
+	}
+	if !errors.As(err, &jobErr) {
+		return false
+	}
+	reason := strings.ToLower(strings.TrimSpace(jobErr.Reason))
+	detail := strings.ToLower(strings.TrimSpace(jobErr.Detail))
+	if reason == "input_moderation" || reason == "output_moderation" {
+		return false
+	}
+	return reason == "error" ||
+		reason == "timeout" ||
+		strings.Contains(detail, "timeout") ||
+		strings.Contains(detail, "deadline exceeded") ||
+		strings.Contains(detail, "temporarily unavailable") ||
+		strings.Contains(detail, "overloaded") ||
+		strings.Contains(detail, "internal error")
 }

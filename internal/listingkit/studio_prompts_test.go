@@ -1,8 +1,15 @@
 package listingkit
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -202,7 +209,9 @@ func TestGenerateStudioDesignImageFallsBackWhenMultiReferenceEditFails(t *testin
 
 type stubStudioImageGenerator struct {
 	editErr          error
+	editErrs         []error
 	editCalls        int
+	editRequests     []*openaiclient.ImageEditRequest
 	generateCalls    int
 	generateResponse *openaiclient.ImageResponse
 }
@@ -233,9 +242,23 @@ func (s *stubStudioImageGenerator) GenerateImage(context.Context, *openaiclient.
 	return s.generateResponse, nil
 }
 
-func (s *stubStudioImageGenerator) EditImage(context.Context, *openaiclient.ImageEditRequest) (*openaiclient.ImageResponse, error) {
+func (s *stubStudioImageGenerator) EditImage(_ context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageResponse, error) {
 	s.editCalls++
-	return nil, s.editErr
+	reqCopy := *req
+	s.editRequests = append(s.editRequests, &reqCopy)
+	if len(s.editErrs) > 0 {
+		idx := s.editCalls - 1
+		if idx < len(s.editErrs) {
+			if s.editErrs[idx] != nil {
+				return nil, s.editErrs[idx]
+			}
+			return s.generateResponse, nil
+		}
+	}
+	if s.editErr != nil {
+		return nil, s.editErr
+	}
+	return s.generateResponse, nil
 }
 
 func (s *stubStudioImageGenerator) GetDefaultModel() string {
@@ -285,5 +308,76 @@ func TestStudioProductImagePromptRendersManagedTemplate(t *testing.T) {
 		if !strings.Contains(strings.ToLower(text), required) {
 			t.Fatalf("prompt missing %q:\n%s", required, text)
 		}
+	}
+}
+
+type stubImageUploadStore struct {
+	saved []*ImageUploadInput
+}
+
+func (s *stubImageUploadStore) Save(_ context.Context, input *ImageUploadInput) (*StoredUploadedImage, error) {
+	s.saved = append(s.saved, input)
+	return &StoredUploadedImage{
+		Key:         "compat/sanitized.jpg",
+		Filename:    input.Filename,
+		PublicURL:   "https://example.com/compat/sanitized.jpg",
+		ContentType: input.ContentType,
+		Size:        int64(len(input.Data)),
+	}, nil
+}
+
+func (s *stubImageUploadStore) Open(context.Context, string) (*StoredUploadedImage, error) {
+	return nil, ErrUploadedImageNotFound
+}
+
+func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.NRGBA{R: 255, G: 0, B: 0, A: 255})
+	img.Set(1, 0, color.NRGBA{R: 0, G: 0, B: 0, A: 0})
+	img.Set(0, 1, color.NRGBA{R: 0, G: 255, B: 0, A: 255})
+	img.Set(1, 1, color.NRGBA{R: 0, G: 0, B: 255, A: 255})
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, img); err != nil {
+		t.Fatalf("png encode: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBuf.Bytes())
+	}))
+	defer server.Close()
+
+	generator := &stubStudioImageGenerator{
+		editErrs: []error{
+			errors.New("nanobanana job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
+			errors.New("nanobanana job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
+			nil,
+		},
+		generateResponse: &openaiclient.ImageResponse{
+			Data: []openaiclient.ImageData{{
+				B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
+			}},
+		},
+	}
+	store := &stubImageUploadStore{}
+	svc := &service{
+		studioImageGenerator: generator,
+		uploadStore:          store,
+	}
+
+	_, err := svc.generateOneStudioProductImage(context.Background(), &StudioProductImageRequest{}, server.URL+"/input.png", "prompt")
+	if err != nil {
+		t.Fatalf("generateOneStudioProductImage() error = %v", err)
+	}
+	if generator.editCalls != 3 {
+		t.Fatalf("editCalls = %d, want 3", generator.editCalls)
+	}
+	if len(store.saved) < 2 {
+		t.Fatalf("saved images = %d, want at least 2", len(store.saved))
+	}
+	if got := store.saved[0].ContentType; got != "image/jpeg" {
+		t.Fatalf("content type = %q, want image/jpeg", got)
+	}
+	if len(generator.editRequests) < 3 || generator.editRequests[2].ImageURLs[0] != "https://example.com/compat/sanitized.jpg" {
+		t.Fatalf("sanitized retry did not use uploaded jpeg URL: %#v", generator.editRequests)
 	}
 }
