@@ -83,7 +83,8 @@ func buildSaleAttributeCandidatesForDimension(
 			continue
 		}
 		if fitCount == 0 {
-			if order == 0 && len(uniqueNormalizedValues(dimension.Values)) > 0 &&
+			if shouldAllowZeroFitCustomSaleCandidate(dimension, attr, order) &&
+				len(uniqueNormalizedValues(dimension.Values)) > 0 &&
 				canUseCustomSaleAttributeCandidate(dimension, attr, sourceDimensionNames) {
 				match := buildTemplateAttributeMatch(attr, dimension.SampleValue)
 				match.MatchedBy = "custom_attribute_value_candidate"
@@ -104,6 +105,13 @@ func buildSaleAttributeCandidatesForDimension(
 	}
 
 	return result
+}
+
+func shouldAllowZeroFitCustomSaleCandidate(dimension SourceVariantDimension, attr sheinattribute.AttributeInfo, order int) bool {
+	if order == 0 {
+		return true
+	}
+	return isGenericSecondaryName(dimension.Name) || isGenericSecondaryName(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName))
 }
 
 func sourceSaleDimensionNames(dimensions []SourceVariantDimension) []string {

@@ -1064,6 +1064,105 @@ func TestSaleAttributeResolverRejectsTemplateCandidateWithZeroValueFit(t *testin
 	}
 }
 
+func TestSaleAttributeResolverAllowsGenericSecondaryCandidateWithZeroValueFitForCustomValues(t *testing.T) {
+	canonical := &productenrich.CanonicalProduct{
+		VariantDimensions: []productenrich.ScrapedVariantDimension{
+			{Name: "Color", Values: []string{"white"}},
+			{Name: "Size", Values: []string{`30"×40"`, `40"×50"`}},
+		},
+		Variants: []productenrich.CanonicalVariant{
+			{SKU: "SKU-30", Attributes: map[string]productenrich.CanonicalAttribute{"Color": {Value: "white"}, "Size": {Value: `30"×40"`}}},
+			{SKU: "SKU-40", Attributes: map[string]productenrich.CanonicalAttribute{"Color": {Value: "white"}, "Size": {Value: `40"×50"`}}},
+		},
+	}
+	pkg := &Package{CategoryID: 3086, SpuName: "Blanket cover"}
+	resolver := NewSaleAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{
+					{
+						AttributeID:       27,
+						AttributeName:     "颜色",
+						AttributeNameEn:   "Color",
+						AttributeType:     1,
+						SKCScope:          boolPointer(true),
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 739, AttributeValue: "白色", AttributeValueEn: "White"},
+						},
+					},
+					{
+						AttributeID:       87,
+						AttributeName:     "尺寸",
+						AttributeNameEn:   "Size",
+						AttributeType:     1,
+						AttributeInputNum: 1,
+						AttributeValueInfoList: []sheinattribute.AttributeValue{
+							{AttributeValueID: 1, AttributeValue: "One Size", AttributeValueEn: "One Size"},
+						},
+					},
+				},
+			}},
+		},
+		validateCustom: func(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+			resp := &sheinattribute.ValidateAttributeResponse{}
+			resp.Data.AttributeID = attributeID
+			resp.Data.AttributeValueNameMultis = []struct {
+				Language                string `json:"language"`
+				AttributeValueNameMulti string `json:"attribute_value_name_multi"`
+				WarningType             int    `json:"warning_type"`
+			}{
+				{Language: "en", AttributeValueNameMulti: attributeValue},
+			}
+			if attributeValue == "30 inch by 40 inch" {
+				resp.Data.PreAttributeValueID = 3001
+			} else if attributeValue == "40 inch by 50 inch" {
+				resp.Data.PreAttributeValueID = 3002
+			}
+			return resp, nil
+		},
+		addCustom: func(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+			resp := &sheinattribute.AddCustomAttributeValueResponse{}
+			valueID := int64(9101)
+			if len(req.PreAttributeValueList) == 0 {
+				t.Fatal("expected pre attribute value list")
+			}
+			if req.PreAttributeValueList[0].AttributeValue == "40 inch by 50 inch" {
+				valueID = 9102
+			}
+			resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
+				PreAttributeValueID: req.PreAttributeValueList[0].PreAttributeValueID,
+				AttributeValueID:    valueID,
+			}}
+			return resp, nil
+		},
+	}, nil)
+
+	resolution := resolver.Resolve(&BuildRequest{}, canonical, pkg)
+	if resolution.PrimaryAttributeID != 27 {
+		t.Fatalf("primary attribute id = %d, want 27", resolution.PrimaryAttributeID)
+	}
+	if resolution.SecondaryAttributeID != 87 {
+		t.Fatalf("secondary attribute id = %d, want 87", resolution.SecondaryAttributeID)
+	}
+	if assignment := resolution.skuValueAssignments[normalizeText(`30"×40"`)]; assignment.AttributeValueID == nil || *assignment.AttributeValueID != 9101 {
+		t.Fatalf("first size assignment = %+v, want custom 9101", assignment)
+	}
+	if assignment := resolution.skuValueAssignments[normalizeText(`40"×50"`)]; assignment.AttributeValueID == nil || *assignment.AttributeValueID != 9102 {
+		t.Fatalf("second size assignment = %+v, want custom 9102", assignment)
+	}
+	foundSecondary := false
+	for _, item := range resolution.SelectionSummary {
+		if strings.Contains(item, "次销售属性使用源维度 Size 映射到 Size") {
+			foundSecondary = true
+			break
+		}
+	}
+	if !foundSecondary {
+		t.Fatalf("selection summary = %v, want secondary size selection", resolution.SelectionSummary)
+	}
+}
+
 func TestSaleAttributeResolverDoesNotSelectMismatchedStyleCandidateWhenColorHasZeroFit(t *testing.T) {
 	canonical := &productenrich.CanonicalProduct{
 		VariantDimensions: []productenrich.ScrapedVariantDimension{

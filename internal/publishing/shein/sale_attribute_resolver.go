@@ -343,7 +343,7 @@ func selectPrimarySecondaryCandidates(candidates []saleAttributeCandidate) (*sal
 
 	secondaryPool := make([]saleAttributeCandidate, 0, len(sorted))
 	for _, candidate := range sorted[1:] {
-		if candidate.ValueFitCount == 0 {
+		if candidate.ValueFitCount == 0 && !canUseFallbackSecondaryCandidate(candidate) {
 			continue
 		}
 		if candidate.SourceName == primary.SourceName || candidate.AttributeID == primary.AttributeID {
@@ -364,7 +364,7 @@ func selectPrimarySecondaryCandidates(candidates []saleAttributeCandidate) (*sal
 		}
 		return a.SourceOrder < b.SourceOrder
 	})
-	if secondaryPool[0].SecondaryScore == 0 {
+	if secondaryPool[0].SecondaryScore == 0 && !canUseFallbackSecondaryCandidate(secondaryPool[0]) {
 		return primary, nil
 	}
 	secondary := secondaryPool[0]
@@ -496,7 +496,7 @@ func selectCandidatesBySourceDimensions(candidates []saleAttributeCandidate, pri
 	var secondaryCandidate *saleAttributeCandidate
 	for i := range candidates {
 		candidate := &candidates[i]
-		if candidate.ValueFitCount == 0 {
+		if candidate.ValueFitCount == 0 && !canUseFallbackSecondaryCandidate(*candidate) {
 			continue
 		}
 		switch {
@@ -643,6 +643,19 @@ func isGenericSecondaryName(name string) bool {
 		return true
 	}
 	return false
+}
+
+func canUseFallbackSecondaryCandidate(candidate saleAttributeCandidate) bool {
+	if candidate.ValueFitCount > 0 {
+		return true
+	}
+	if candidate.DistinctCount <= 1 {
+		return false
+	}
+	if isAIStyleSourceDimension(candidate.SourceName) {
+		return false
+	}
+	return isGenericSecondaryName(candidate.TemplateName) || isGenericSecondaryName(candidate.SourceName)
 }
 
 func uniqueNormalizedValues(values []string) []string {
