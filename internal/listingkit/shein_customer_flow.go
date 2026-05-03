@@ -473,9 +473,6 @@ func ensureSheinFinalPreviewSKCImages(pkg *sheinpub.Package) {
 	}
 	for index := range pkg.PreviewProduct.SKCList {
 		skc := &pkg.PreviewProduct.SKCList[index]
-		if len(skc.ImageInfo.ImageInfoList) > 0 {
-			continue
-		}
 		draft := sheinRequestDraftSKCByIndexOrCode(pkg.RequestDraft, index, sheinPreviewSKCSupplierCode(skc))
 		if draft == nil || !sheinImageDraftHasImages(draft.ImageInfo) {
 			continue
@@ -484,8 +481,41 @@ func ensureSheinFinalPreviewSKCImages(pkg *sheinpub.Package) {
 		if info == nil {
 			continue
 		}
+		if len(skc.ImageInfo.ImageInfoList) > 0 && sheinPreviewSKCImagesCoverDraft(skc.ImageInfo.ImageInfoList, draft.ImageInfo) {
+			continue
+		}
 		skc.ImageInfo = *info
 	}
+}
+
+func sheinPreviewSKCImagesCoverDraft(existing []sheinproduct.ImageDetail, draft *sheinpub.ImageDraft) bool {
+	if len(existing) == 0 || !sheinImageDraftHasImages(draft) {
+		return false
+	}
+	expected := make(map[string]struct{}, 1+len(draft.Gallery)+1)
+	addExpected := func(url string) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+		expected[url] = struct{}{}
+	}
+	addExpected(draft.MainImage)
+	for _, image := range draft.Gallery {
+		addExpected(image)
+	}
+	addExpected(draft.WhiteBg)
+	if len(expected) == 0 {
+		return false
+	}
+	for _, image := range existing {
+		url := strings.TrimSpace(image.ImageURL)
+		if url == "" {
+			continue
+		}
+		delete(expected, url)
+	}
+	return len(expected) == 0
 }
 
 func orderSheinImages(existing []string, order []string, deleted map[string]struct{}) []string {
