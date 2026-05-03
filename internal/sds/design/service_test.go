@@ -482,6 +482,20 @@ func TestRenderedImageURLsReadyWaitsForExpectedPSDCount(t *testing.T) {
 	}
 }
 
+func TestRenderedImagePollAttemptsScalesForVariantTargets(t *testing.T) {
+	t.Parallel()
+
+	if got := renderedImagePollAttempts(1); got != maxRenderedImagePollAttempts {
+		t.Fatalf("single target attempts = %d, want %d", got, maxRenderedImagePollAttempts)
+	}
+	if got := renderedImagePollAttempts(3); got != maxRenderedImagePollAttempts+16 {
+		t.Fatalf("three target attempts = %d, want %d", got, maxRenderedImagePollAttempts+16)
+	}
+	if got := renderedImagePollAttempts(10); got != maxRenderedImagePollAttempts+maxRenderedImagePollExtra {
+		t.Fatalf("capped attempts = %d, want %d", got, maxRenderedImagePollAttempts+maxRenderedImagePollExtra)
+	}
+}
+
 func TestIsSDSTooFrequentError(t *testing.T) {
 	t.Parallel()
 
