@@ -65,6 +65,13 @@ func toResolvedAttributes(pkg *Package) []sheinproduct.ProductAttribute {
 			if item.AttributeID <= 0 {
 				continue
 			}
+			if item.AttributeType == 2 {
+				// Numeric display attributes such as length/width/height are
+				// submitted through SKU dimension fields. Sending them again as
+				// generic product attributes causes SHEIN pre-validation type
+				// mismatches for attribute_type=2 templates.
+				continue
+			}
 			if _, exists := seenAttributeIDs[item.AttributeID]; exists {
 				continue
 			}
