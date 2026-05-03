@@ -53,11 +53,10 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
                 {presentation.title}
               </div>
               <p className="text-sm leading-6 text-zinc-600">
-                Current task status is
+                当前状态：
                 <span className="ml-1 font-medium text-zinc-900">
                   {presentation.label}
                 </span>
-                .
               </p>
             </div>
           </div>
@@ -71,7 +70,7 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
         {task.status === "needs_review" && reviewReasons.length > 0 ? (
           <div className="space-y-2">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-              Review reasons
+              需要人工确认的原因
             </div>
             <ul className="space-y-2">
               {reviewReasons.map((reason) => (
@@ -93,7 +92,7 @@ export function TaskStatusPanel({ task }: { task?: ListingKitTaskResult | null }
         {failedChildren.length > 0 ? (
           <div className="space-y-2">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-              Failed child tasks
+              失败的子任务
             </div>
             <div className="space-y-2">
               {failedChildren.map((child) => (

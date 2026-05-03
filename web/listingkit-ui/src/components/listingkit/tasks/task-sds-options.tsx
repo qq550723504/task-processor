@@ -51,10 +51,9 @@ export function TaskSDSOptions({
     <section className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="text-sm font-medium text-zinc-900">SDS design sync</h2>
+          <h2 className="text-sm font-medium text-zinc-900">SDS 同步设置</h2>
           <p className="text-sm leading-6 text-zinc-500">
-            After image processing succeeds, ListingKit can push the selected design
-            asset into SDS and save it against a target variant.
+            如果你需要把设计素材回写到 SDS，可以在这里补充对应的商品和图层信息。
           </p>
         </div>
         <label className="inline-flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900">
@@ -64,7 +63,7 @@ export function TaskSDSOptions({
             onChange={(event) => onEnabledChange(event.target.checked)}
             type="checkbox"
           />
-          <span>Enable SDS sync</span>
+          <span>启用 SDS 同步</span>
         </label>
       </div>
 

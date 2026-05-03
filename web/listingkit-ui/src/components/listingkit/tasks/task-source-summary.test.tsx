@@ -16,11 +16,11 @@ describe("TaskSourceSummary", () => {
       />,
     );
 
-    expect(screen.getByText("Task source")).toBeInTheDocument();
-    expect(screen.getByText("Created from product URL")).toBeInTheDocument();
+    expect(screen.getByText("任务来源")).toBeInTheDocument();
+    expect(screen.getByText("来自商品链接")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "This task started from a product listing URL. A 1688 link is supported in this flow.",
+        "这个任务从商品页链接开始创建，适合已经有明确原始商品来源的场景。",
       ),
     ).toBeInTheDocument();
   });
@@ -37,9 +37,9 @@ describe("TaskSourceSummary", () => {
       />,
     );
 
-    expect(screen.getByText("Created from image URLs")).toBeInTheDocument();
+    expect(screen.getByText("来自图片素材")).toBeInTheDocument();
     expect(
-      screen.getByText("2 image URLs were submitted for this task."),
+      screen.getByText("这个任务提交了 2 张图片，系统会根据图片内容继续生成和审核。"),
     ).toBeInTheDocument();
   });
 });

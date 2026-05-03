@@ -36,7 +36,7 @@ export function WorkspaceHeader({
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <Link
-              href="/listing-kits/tasks"
+              href="/listing-kits"
               className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 font-medium text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-950"
             >
               返回任务列表

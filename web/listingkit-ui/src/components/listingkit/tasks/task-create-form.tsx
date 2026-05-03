@@ -28,54 +28,54 @@ import { useUploadImages } from "@/lib/query/use-upload-images";
 
 const platformOptions = [
   { value: "amazon", label: "Amazon" },
-  { value: "shein", label: "Shein" },
+  { value: "shein", label: "SHEIN" },
   { value: "temu", label: "Temu" },
   { value: "walmart", label: "Walmart" },
 ] as const;
 
 const sceneCategoryOptions = [
-  { value: "", label: "Auto" },
-  { value: "shoes", label: "Shoes" },
-  { value: "jewelry", label: "Jewelry" },
-  { value: "bags", label: "Bags" },
+  { value: "", label: "自动" },
+  { value: "shoes", label: "鞋履" },
+  { value: "jewelry", label: "饰品" },
+  { value: "bags", label: "箱包" },
 ] as const;
 
 const sceneStyleOptions = [
-  { value: "", label: "Auto" },
-  { value: "studio", label: "Studio" },
-  { value: "lifestyle", label: "Lifestyle" },
-  { value: "outdoor", label: "Outdoor" },
-  { value: "minimal", label: "Minimal" },
+  { value: "", label: "自动" },
+  { value: "studio", label: "棚拍" },
+  { value: "lifestyle", label: "生活方式" },
+  { value: "outdoor", label: "户外" },
+  { value: "minimal", label: "极简" },
 ] as const;
 
 const backgroundToneOptions = [
-  { value: "", label: "Auto" },
-  { value: "warm", label: "Warm" },
-  { value: "cool", label: "Cool" },
-  { value: "neutral", label: "Neutral" },
-  { value: "bright", label: "Bright" },
+  { value: "", label: "自动" },
+  { value: "warm", label: "暖色" },
+  { value: "cool", label: "冷色" },
+  { value: "neutral", label: "中性" },
+  { value: "bright", label: "明亮" },
 ] as const;
 
 const compositionOptions = [
-  { value: "", label: "Auto" },
-  { value: "centered", label: "Centered" },
-  { value: "close_up", label: "Close up" },
-  { value: "multi_angle", label: "Multi-angle" },
+  { value: "", label: "自动" },
+  { value: "centered", label: "居中" },
+  { value: "close_up", label: "特写" },
+  { value: "multi_angle", label: "多角度" },
 ] as const;
 
 const propsLevelOptions = [
-  { value: "", label: "Auto" },
-  { value: "none", label: "None" },
-  { value: "light", label: "Light" },
-  { value: "moderate", label: "Moderate" },
+  { value: "", label: "自动" },
+  { value: "none", label: "无" },
+  { value: "light", label: "轻量" },
+  { value: "moderate", label: "适中" },
 ] as const;
 
 const audienceHintOptions = [
-  { value: "", label: "Auto" },
-  { value: "premium", label: "Premium" },
-  { value: "youthful", label: "Youthful" },
-  { value: "sporty", label: "Sporty" },
-  { value: "homey", label: "Homey" },
+  { value: "", label: "自动" },
+  { value: "premium", label: "高端" },
+  { value: "youthful", label: "年轻化" },
+  { value: "sporty", label: "运动感" },
+  { value: "homey", label: "居家感" },
 ] as const;
 
 const schema = z
@@ -83,7 +83,7 @@ const schema = z
     text: z.string().trim(),
     imageUrls: z.string().trim(),
     productUrl: z.string().trim(),
-    platforms: z.array(z.string()).min(1, "Select at least one platform."),
+    platforms: z.array(z.string()).min(1, "请至少选择一个平台。"),
     sheinStoreId: z.string().trim(),
     sdsEnabled: z.boolean(),
     sdsVariantId: z.string().trim(),
@@ -215,16 +215,14 @@ function inferInitialSourceTab({
 function titleFieldCopy(activeSourceTab: TaskSourceTab) {
   if (activeSourceTab === "productUrl") {
     return {
-      label: "Optional title",
-      helper:
-        "Not required when you provide a product URL. Add it only if you want to override or improve the listing title.",
+      label: "选填标题",
+      helper: "如果已经提供商品链接，这里不是必填；只有想覆盖原始标题时再填写。",
     };
   }
 
   return {
-    label: "Product title",
-    helper:
-      "Recommended for image-driven creation. Stronger title text helps ListingKit pass the current quality gate.",
+    label: "商品标题",
+    helper: "适合从图片开始创建任务。标题越完整，生成质量通常越稳定。",
   };
 }
 
@@ -253,6 +251,23 @@ export function TaskCreateForm({
   const [showSceneCustomization, setShowSceneCustomization] = useState(() =>
     Boolean(
       initialValues?.sceneCategory ||
+        initialValues?.sceneStyle ||
+        initialValues?.backgroundTone ||
+        initialValues?.composition ||
+        initialValues?.propsLevel ||
+        initialValues?.audienceHint ||
+        initialValues?.customSceneHint,
+    ),
+  );
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(() =>
+    variant === "sds" ||
+    Boolean(
+      initialValues?.sdsEnabled ||
+        initialValues?.sdsVariantId ||
+        initialValues?.sdsParentProductId ||
+        initialValues?.sdsPrototypeGroupId ||
+        initialValues?.sdsLayerId ||
+        initialValues?.sceneCategory ||
         initialValues?.sceneStyle ||
         initialValues?.backgroundTone ||
         initialValues?.composition ||
@@ -385,8 +400,7 @@ export function TaskCreateForm({
     name: "customSceneHint",
   });
   const helperText = useMemo(
-    () =>
-      "Use public image URLs, upload local image files, or paste a product URL such as a 1688 listing.",
+    () => "可以直接粘贴公网图片链接、上传本地图片，或改用商品链接开始。",
     [],
   );
   const imageCount = useMemo(
@@ -401,18 +415,18 @@ export function TaskCreateForm({
   const pageCopy =
     variant === "sds"
       ? {
-          eyebrow: "SDS Sync",
-          title: "Create ListingKit task with SDS design sync",
+          eyebrow: "SDS 同步",
+          title: "创建带 SDS 同步的任务",
           description:
-            "Use the normal ListingKit pipeline, then automatically push the selected image asset into SDS after product image processing succeeds.",
-          submitLabel: "Create task and sync SDS",
+            "先完成正常生成流程，再把选中的设计素材同步回 SDS。",
+          submitLabel: "创建任务并同步 SDS",
         }
       : {
-          eyebrow: "ListingKit UI",
-          title: "Create ListingKit task",
+          eyebrow: "ListingKit",
+          title: "创建新任务",
           description:
-            "Start with a product title, image URLs, or a product URL such as a 1688 listing, then choose the target platforms.",
-          submitLabel: "Create task",
+            "先提供标题、图片或商品链接，再选择要生成的平台。",
+          submitLabel: "创建任务",
         };
   const primaryPlatform = selectedPlatforms?.[0];
   const platformSceneDefaults = useMemo(
@@ -428,7 +442,7 @@ export function TaskCreateForm({
       platformSceneDefaults.backgroundTone,
       platformSceneDefaults.composition,
     ].filter(Boolean);
-    return `${primaryPlatform} defaults: ${parts.join(" / ")}`;
+    return `${primaryPlatform} 默认场景：${parts.join(" / ")}`;
   }, [platformSceneDefaults, primaryPlatform]);
 
   useEffect(() => {
@@ -511,7 +525,7 @@ export function TaskCreateForm({
           if (!text && parsedImageUrls.length === 0 && !productUrl) {
             setError("root", {
               message:
-                "Provide at least one of product title, image URLs, or product URL.",
+                "请至少提供商品标题、图片链接或商品链接中的一种。",
             });
             return;
           }
@@ -542,7 +556,7 @@ export function TaskCreateForm({
           const sdsOptions = buildSDSOptions(values);
           if (values.sdsEnabled && !sdsOptions) {
             setError("root", {
-              message: "SDS sync requires a valid positive Variant ID.",
+              message: "启用 SDS 同步时，必须填写有效的 Variant ID。",
             });
             return;
           }
@@ -599,9 +613,9 @@ export function TaskCreateForm({
         <label className="block space-y-2">
           <span className="text-sm font-medium text-zinc-700">{titleCopy.label}</span>
           <input
-            aria-label="Product title"
+            aria-label="商品标题"
             className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-            placeholder="Women knit cardigan"
+            placeholder="例如：女士针织开衫"
             {...textRegistration}
             ref={(element) => {
               textRef.current = element;
@@ -614,19 +628,18 @@ export function TaskCreateForm({
           ) : null}
           {fieldIssues?.includes("text") ? (
             <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-              The previous task failed on product copy quality. Expand the title or
-              description input.
+              上一次任务失败在文案质量不足，请补充更完整的标题或描述。
             </p>
           ) : null}
         </label>
 
         {activeSourceTab === "imageUrls" ? (
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Image URLs</span>
+            <span className="text-sm font-medium text-zinc-700">图片链接</span>
             <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-4">
               <div className="flex flex-wrap items-center gap-3">
                 <input
-                  aria-label="Upload images"
+                  aria-label="上传图片"
                   className="block text-sm text-zinc-600 file:mr-4 file:rounded-xl file:border-0 file:bg-zinc-950 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
                   multiple
                   onChange={(event) => {
@@ -655,23 +668,21 @@ export function TaskCreateForm({
                   }}
                   type="button"
                 >
-                  {uploadImages.isPending ? "Uploading..." : "Upload selected images"}
+                  {uploadImages.isPending ? "上传中..." : "上传所选图片"}
                 </Button>
               </div>
               <p className="mt-3 text-sm leading-6 text-zinc-500">
-                Choose local image files, upload them first, then ListingKit will
-                append the returned URLs into the field below.
+                可以先上传本地图片，系统会把返回的图片链接自动补到下方输入框里。
               </p>
               {selectedFiles.length > 0 ? (
                 <p className="mt-2 text-sm text-zinc-700">
-                  Selected {selectedFiles.length} file
-                  {selectedFiles.length > 1 ? "s" : ""}:{" "}
+                  已选择 {selectedFiles.length} 个文件：
                   {selectedFiles.map((file) => file.name).join(", ")}
                 </p>
               ) : null}
             </div>
             <textarea
-              aria-label="Image URLs"
+              aria-label="图片链接"
               className="min-h-40 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
               placeholder={"https://example.com/1.jpg\nhttps://example.com/2.jpg"}
               {...imageUrlsRegistration}
@@ -689,8 +700,7 @@ export function TaskCreateForm({
             ) : null}
             {fieldIssues?.includes("imageUrls") ? (
               <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                The previous task failed on image coverage. Add at least 3 strong
-                product images.
+                上一次任务失败在图片覆盖不足，请至少补充 3 张清晰商品图。
               </p>
             ) : null}
           </label>
@@ -698,9 +708,9 @@ export function TaskCreateForm({
 
         {activeSourceTab === "productUrl" ? (
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Product URL</span>
+            <span className="text-sm font-medium text-zinc-700">商品链接</span>
             <input
-              aria-label="Product URL"
+              aria-label="商品链接"
               className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
               placeholder="https://detail.1688.com/offer/123456789.html"
               {...productUrlRegistration}
@@ -710,20 +720,18 @@ export function TaskCreateForm({
               }}
             />
             <p className="text-sm leading-6 text-zinc-500">
-              Optional. Paste a 1688 or other product page URL when you want
-              ListingKit to start from the original listing.
+              适合已有原始商品页的场景。支持 1688 等商品链接，系统会从原始商品资料开始处理。
             </p>
             {fieldIssues?.includes("productUrl") ? (
               <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                The previous task needs a stronger product source. Add a product URL
-                so the next run can start from the original listing.
+                上一次任务缺少足够强的商品来源，建议补充商品链接后再重试。
               </p>
             ) : null}
           </label>
         ) : null}
 
         <fieldset className="space-y-3">
-          <legend className="text-sm font-medium text-zinc-700">Platforms</legend>
+          <legend className="text-sm font-medium text-zinc-700">目标平台</legend>
           <div className="grid gap-3 md:grid-cols-2">
             {platformOptions.map((platform) => (
               <label
@@ -742,7 +750,7 @@ export function TaskCreateForm({
             ))}
           </div>
           <p className="text-sm text-zinc-500">
-            Selected: {selectedPlatforms?.length ?? 0}
+            已选择 {selectedPlatforms?.length ?? 0} 个平台
           </p>
           {errors.platforms ? (
             <p className="text-sm text-red-600">{errors.platforms.message}</p>
@@ -751,216 +759,219 @@ export function TaskCreateForm({
 
         {selectedPlatforms?.includes("shein") ? (
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Shein store ID</span>
+            <span className="text-sm font-medium text-zinc-700">SHEIN 店铺 ID</span>
             <input
-              aria-label="Shein store ID"
+              aria-label="SHEIN 店铺 ID"
               className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
               inputMode="numeric"
               placeholder="869"
               {...register("sheinStoreId")}
             />
             <p className="text-sm leading-6 text-zinc-500">
-              Optional when this runtime serves a single Shein store. Fill it when multiple Shein stores share the same backend.
+              如果当前环境只对应一个店铺，可以先留空；多个 SHEIN 店铺共用时再填写。
             </p>
           </label>
         ) : null}
 
-        <TaskSDSOptions
-          enabled={sdsEnabled}
-          onEnabledChange={(enabled) => {
-            setSDSEnabled(enabled);
-            setValue("sdsEnabled", enabled, { shouldDirty: true });
-          }}
-          variantIdRegistration={register("sdsVariantId")}
-          parentProductIdRegistration={register("sdsParentProductId")}
-          prototypeGroupIdRegistration={register("sdsPrototypeGroupId")}
-          layerIdRegistration={register("sdsLayerId")}
-          designTypeRegistration={register("sdsDesignType")}
-          fitLevelRegistration={register("sdsFitLevel")}
-          resizeModeRegistration={register("sdsResizeMode")}
-        />
-
         <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1">
-              <h2 className="text-sm font-medium text-zinc-900">
-                Scene generation
-              </h2>
+              <h2 className="text-sm font-medium text-zinc-900">高级设置</h2>
               <p className="text-sm leading-6 text-zinc-500">
-                Optional. Override the default category scene template with
-                structured style controls.
+                先填写基础信息；SDS 和场景等高级配置可以稍后再补充。
               </p>
             </div>
             <Button
-              onClick={() => {
-                setShowSceneCustomization((current) => {
-                  const next = !current;
-                  if (
-                    next &&
-                    platformSceneDefaults &&
-                    !hasAnySceneCustomization({
-                      sceneCategory: currentSceneCategory,
-                      sceneStyle: currentSceneStyle,
-                      backgroundTone: currentBackgroundTone,
-                      composition: currentComposition,
-                      propsLevel: currentPropsLevel,
-                      audienceHint: currentAudienceHint,
-                      customSceneHint: currentCustomSceneHint,
-                    })
-                  ) {
-                    setValue("sceneCategory", platformSceneDefaults.sceneCategory ?? "", {
-                      shouldDirty: true,
-                    });
-                    setValue("sceneStyle", platformSceneDefaults.sceneStyle ?? "", {
-                      shouldDirty: true,
-                    });
-                    setValue(
-                      "backgroundTone",
-                      platformSceneDefaults.backgroundTone ?? "",
-                      { shouldDirty: true },
-                    );
-                    setValue("composition", platformSceneDefaults.composition ?? "", {
-                      shouldDirty: true,
-                    });
-                    setValue("propsLevel", platformSceneDefaults.propsLevel ?? "", {
-                      shouldDirty: true,
-                    });
-                    setValue("audienceHint", platformSceneDefaults.audienceHint ?? "", {
-                      shouldDirty: true,
-                    });
-                    lastAppliedSceneDefaultsRef.current = platformSceneDefaults;
-                  }
-                  return next;
-                });
-              }}
+              onClick={() => setShowAdvancedSettings((current) => !current)}
               tone="secondary"
               type="button"
             >
-              Customize scene generation
+              {showAdvancedSettings ? "收起高级设置" : "显示高级设置"}
             </Button>
           </div>
-          {sceneSummary ? (
-            <p className="text-sm leading-6 text-zinc-500">{sceneSummary}</p>
-          ) : null}
-
-          {showSceneCustomization ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-zinc-700">
-                  Scene category
-                </span>
-                <select
-                  aria-label="Scene category"
-                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                  {...register("sceneCategory")}
-                >
-                  {sceneCategoryOptions.map((option) => (
-                    <option key={option.value || "auto"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-zinc-700">
-                  Scene style
-                </span>
-                <select
-                  aria-label="Scene style"
-                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                  {...register("sceneStyle")}
-                >
-                  {sceneStyleOptions.map((option) => (
-                    <option key={option.value || "auto"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-zinc-700">
-                  Background tone
-                </span>
-                <select
-                  aria-label="Background tone"
-                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                  {...register("backgroundTone")}
-                >
-                  {backgroundToneOptions.map((option) => (
-                    <option key={option.value || "auto"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-zinc-700">
-                  Composition
-                </span>
-                <select
-                  aria-label="Composition"
-                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                  {...register("composition")}
-                >
-                  {compositionOptions.map((option) => (
-                    <option key={option.value || "auto"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-zinc-700">
-                  Props level
-                </span>
-                <select
-                  aria-label="Props level"
-                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                  {...register("propsLevel")}
-                >
-                  {propsLevelOptions.map((option) => (
-                    <option key={option.value || "auto"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-zinc-700">
-                  Audience hint
-                </span>
-                <select
-                  aria-label="Audience hint"
-                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                  {...register("audienceHint")}
-                >
-                  {audienceHintOptions.map((option) => (
-                    <option key={option.value || "auto"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-2 md:col-span-2">
-                <span className="text-sm font-medium text-zinc-700">
-                  Custom scene hint
-                </span>
-                <textarea
-                  aria-label="Custom scene hint"
-                  className="min-h-28 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
-                  placeholder="Add a short scene preference that complements the category template."
-                  {...register("customSceneHint")}
-                />
-              </label>
-            </div>
-          ) : null}
         </section>
+
+        {showAdvancedSettings ? (
+          <>
+            <TaskSDSOptions
+              enabled={sdsEnabled}
+              onEnabledChange={(enabled) => {
+                setSDSEnabled(enabled);
+                setValue("sdsEnabled", enabled, { shouldDirty: true });
+              }}
+              variantIdRegistration={register("sdsVariantId")}
+              parentProductIdRegistration={register("sdsParentProductId")}
+              prototypeGroupIdRegistration={register("sdsPrototypeGroupId")}
+              layerIdRegistration={register("sdsLayerId")}
+              designTypeRegistration={register("sdsDesignType")}
+              fitLevelRegistration={register("sdsFitLevel")}
+              resizeModeRegistration={register("sdsResizeMode")}
+            />
+
+            <section className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <h2 className="text-sm font-medium text-zinc-900">场景生成设置</h2>
+                  <p className="text-sm leading-6 text-zinc-500">
+                    如果你希望更精细地控制画面风格，可以在这里补充场景偏好。
+                  </p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setShowSceneCustomization((current) => {
+                      const next = !current;
+                      if (
+                        next &&
+                        platformSceneDefaults &&
+                        !hasAnySceneCustomization({
+                          sceneCategory: currentSceneCategory,
+                          sceneStyle: currentSceneStyle,
+                          backgroundTone: currentBackgroundTone,
+                          composition: currentComposition,
+                          propsLevel: currentPropsLevel,
+                          audienceHint: currentAudienceHint,
+                          customSceneHint: currentCustomSceneHint,
+                        })
+                      ) {
+                        setValue("sceneCategory", platformSceneDefaults.sceneCategory ?? "", {
+                          shouldDirty: true,
+                        });
+                        setValue("sceneStyle", platformSceneDefaults.sceneStyle ?? "", {
+                          shouldDirty: true,
+                        });
+                        setValue("backgroundTone", platformSceneDefaults.backgroundTone ?? "", {
+                          shouldDirty: true,
+                        });
+                        setValue("composition", platformSceneDefaults.composition ?? "", {
+                          shouldDirty: true,
+                        });
+                        setValue("propsLevel", platformSceneDefaults.propsLevel ?? "", {
+                          shouldDirty: true,
+                        });
+                        setValue("audienceHint", platformSceneDefaults.audienceHint ?? "", {
+                          shouldDirty: true,
+                        });
+                        lastAppliedSceneDefaultsRef.current = platformSceneDefaults;
+                      }
+                      return next;
+                    });
+                  }}
+                  tone="secondary"
+                  type="button"
+                >
+                  {showSceneCustomization ? "收起场景设置" : "显示场景设置"}
+                </Button>
+              </div>
+              {sceneSummary ? (
+                <p className="text-sm leading-6 text-zinc-500">{sceneSummary}</p>
+              ) : null}
+
+              {showSceneCustomization ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-zinc-700">场景类目</span>
+                    <select
+                      aria-label="场景类目"
+                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                      {...register("sceneCategory")}
+                    >
+                      {sceneCategoryOptions.map((option) => (
+                        <option key={option.value || "auto"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-zinc-700">场景风格</span>
+                    <select
+                      aria-label="场景风格"
+                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                      {...register("sceneStyle")}
+                    >
+                      {sceneStyleOptions.map((option) => (
+                        <option key={option.value || "auto"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-zinc-700">背景色调</span>
+                    <select
+                      aria-label="背景色调"
+                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                      {...register("backgroundTone")}
+                    >
+                      {backgroundToneOptions.map((option) => (
+                        <option key={option.value || "auto"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-zinc-700">构图方式</span>
+                    <select
+                      aria-label="构图方式"
+                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                      {...register("composition")}
+                    >
+                      {compositionOptions.map((option) => (
+                        <option key={option.value || "auto"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-zinc-700">道具强度</span>
+                    <select
+                      aria-label="道具强度"
+                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                      {...register("propsLevel")}
+                    >
+                      {propsLevelOptions.map((option) => (
+                        <option key={option.value || "auto"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-zinc-700">风格倾向</span>
+                    <select
+                      aria-label="风格倾向"
+                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                      {...register("audienceHint")}
+                    >
+                      {audienceHintOptions.map((option) => (
+                        <option key={option.value || "auto"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block space-y-2 md:col-span-2">
+                    <span className="text-sm font-medium text-zinc-700">自定义场景说明</span>
+                    <textarea
+                      aria-label="自定义场景说明"
+                      className="min-h-28 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-950"
+                      placeholder="补充一句你希望系统遵循的画面要求。"
+                      {...register("customSceneHint")}
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </section>
+          </>
+        ) : null}
 
         {errors.root?.message ? (
           <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
@@ -976,10 +987,10 @@ export function TaskCreateForm({
 
         <div className="flex flex-wrap gap-3">
           <Button disabled={createTask.isPending} type="submit">
-            {createTask.isPending ? "Creating..." : pageCopy.submitLabel}
+            {createTask.isPending ? "创建中..." : pageCopy.submitLabel}
           </Button>
           <Button tone="secondary" onClick={() => router.push("/")} type="button">
-            Cancel
+            返回首页
           </Button>
         </div>
       </form>

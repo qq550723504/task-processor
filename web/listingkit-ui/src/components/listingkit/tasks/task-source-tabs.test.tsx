@@ -9,14 +9,14 @@ describe("TaskSourceTabs", () => {
       <TaskSourceTabs activeTab="productUrl" onTabChange={() => {}} />,
     );
 
-    expect(screen.getByText("Source mode")).toBeInTheDocument();
+    expect(screen.getByText("任务来源")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Paste a 1688 or other product URL when you want ListingKit to start from the original listing.",
+        "适合已有商品来源时使用。粘贴 1688 或其他商品页链接，系统会按原始商品资料继续处理。",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "1688 / Product URL" }),
+      screen.getByRole("tab", { name: "商品链接" }),
     ).toHaveAttribute("aria-selected", "true");
   });
 
@@ -25,7 +25,7 @@ describe("TaskSourceTabs", () => {
 
     render(<TaskSourceTabs activeTab="imageUrls" onTabChange={onTabChange} />);
 
-    fireEvent.click(screen.getByRole("tab", { name: "1688 / Product URL" }));
+    fireEvent.click(screen.getByRole("tab", { name: "商品链接" }));
 
     expect(onTabChange).toHaveBeenCalledWith("productUrl");
   });

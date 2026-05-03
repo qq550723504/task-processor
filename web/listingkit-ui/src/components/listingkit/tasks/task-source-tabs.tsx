@@ -7,10 +7,10 @@ export type TaskSourceTab = "imageUrls" | "productUrl";
 
 function sourceCopy(activeTab: TaskSourceTab) {
   if (activeTab === "productUrl") {
-    return "Paste a 1688 or other product URL when you want ListingKit to start from the original listing.";
+    return "适合已有商品来源时使用。粘贴 1688 或其他商品页链接，系统会按原始商品资料继续处理。";
   }
 
-  return "Paste public image URLs when you want to drive generation from product images.";
+  return "适合只有图片素材时使用。支持直接粘贴公网图片链接，或先上传本地图片再继续。";
 }
 
 export function TaskSourceTabs({
@@ -25,19 +25,19 @@ export function TaskSourceTabs({
       <div className="space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-            Source mode
+            任务来源
           </h2>
           <p className="text-sm leading-6 text-zinc-600">{sourceCopy(activeTab)}</p>
         </div>
 
         <div
-          aria-label="Source mode"
+          aria-label="任务来源"
           className="inline-flex rounded-2xl border border-zinc-200 bg-white p-1"
           role="tablist"
         >
           {[
-            { key: "productUrl", label: "1688 / Product URL" },
-            { key: "imageUrls", label: "Image URLs" },
+            { key: "productUrl", label: "商品链接" },
+            { key: "imageUrls", label: "图片素材" },
           ].map((tab) => {
             const selected = activeTab === tab.key;
             return (

@@ -125,6 +125,7 @@ export function SheinFinalReviewPanel({
   onSaveFinalDraft,
   onSubmit,
 }: Props) {
+  const [isPublishConfirming, setIsPublishConfirming] = useState(false);
   const finalReview = shein?.final_review;
   const pricing = shein?.pricing;
   const [priceOverrides, setPriceOverrides] = useState<Record<string, string>>(
@@ -295,7 +296,7 @@ export function SheinFinalReviewPanel({
                 ready ? "text-emerald-700" : "text-amber-700"
               }`}
             >
-              提交状态
+              提交前检查
             </div>
             <div className="mt-1 text-sm font-semibold text-zinc-950">
               {ready
@@ -329,7 +330,7 @@ export function SheinFinalReviewPanel({
       <div className="space-y-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
-            提交前检查
+            检查项概览
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-600">
             只显示客户提交前需要确认的关键项。
@@ -557,6 +558,46 @@ export function SheinFinalReviewPanel({
           {saveErrorMessage}
         </div>
       ) : null}
+      {isPublishConfirming ? (
+        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold text-zinc-950">确认发布到 SHEIN</h3>
+            <p className="text-sm leading-6 text-zinc-600">
+              这会把当前已确认资料正式提交到 SHEIN，请先核对类目、图片和 SKU。
+            </p>
+            <div className="grid gap-2 text-sm text-zinc-700 sm:grid-cols-3">
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
+                类目：{finalReview?.category_id ?? "未确认"}
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
+                图片：{finalImages.length} 张
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
+                SKU：{finalReview?.skus?.length ?? 0} 个
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                tone="secondary"
+                onClick={() => setIsPublishConfirming(false)}
+                type="button"
+              >
+                取消
+              </Button>
+              <Button
+                disabled={isSubmitting}
+                onClick={() => {
+                  setIsPublishConfirming(false);
+                  onSubmit?.("publish");
+                }}
+                type="button"
+              >
+                确认发布
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <div className="basis-full rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm leading-6 text-zinc-700">
@@ -587,7 +628,7 @@ export function SheinFinalReviewPanel({
         </Button>
         <Button
           disabled={!confirmed || !ready || isSubmitting}
-          onClick={() => onSubmit?.("publish")}
+          onClick={() => setIsPublishConfirming(true)}
         >
           {submitAction === "publish" ? "发布中..." : "发布到 SHEIN"}
         </Button>

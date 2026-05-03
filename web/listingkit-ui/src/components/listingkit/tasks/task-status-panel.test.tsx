@@ -31,9 +31,9 @@ describe("TaskStatusPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Task failed")).toBeInTheDocument();
+    expect(screen.getByText("任务处理失败")).toBeInTheDocument();
     expect(screen.getByText("product enrichment failed")).toBeInTheDocument();
-    expect(screen.getByText("Failed child tasks")).toBeInTheDocument();
+    expect(screen.getByText("失败的子任务")).toBeInTheDocument();
     expect(screen.getByText("product_enrich")).toBeInTheDocument();
     expect(screen.getByText("child-1")).toBeInTheDocument();
   });
@@ -53,8 +53,8 @@ describe("TaskStatusPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Task requires review")).toBeInTheDocument();
-    expect(screen.getByText("Review reasons")).toBeInTheDocument();
+    expect(screen.getByText("任务需要人工确认")).toBeInTheDocument();
+    expect(screen.getByText("需要人工确认的原因")).toBeInTheDocument();
     expect(
       screen.getByText("The product type is 'Unknown Product'."),
     ).toBeInTheDocument();

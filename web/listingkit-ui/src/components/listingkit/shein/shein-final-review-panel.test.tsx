@@ -121,6 +121,42 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByRole("button", { name: "发布到 SHEIN" })).not.toBeDisabled();
   });
 
+  it("requires publish confirmation before final submit", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            attributes: [{ name: "Material", value: "Cotton" }],
+            sale_attributes: [{ name: "Color", value: "Black" }],
+            images: [
+              { url: "https://example.com/main.jpg", main: true, final: true },
+              { url: "https://example.com/swatch.jpg", swatch: true, final: true },
+            ],
+            skus: [{ supplier_sku: "SKU-1" }],
+          },
+        }}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "发布到 SHEIN" }));
+
+    expect(screen.getByText("确认发布到 SHEIN")).toBeInTheDocument();
+    expect(
+      screen.getByText("这会把当前已确认资料正式提交到 SHEIN，请先核对类目、图片和 SKU。"),
+    ).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "确认发布" }));
+    expect(onSubmit).toHaveBeenCalledWith("publish");
+  });
+
   it("disables save draft while readiness is blocked", () => {
     render(
       <SheinFinalReviewPanel

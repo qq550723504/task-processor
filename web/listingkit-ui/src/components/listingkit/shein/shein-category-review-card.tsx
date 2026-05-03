@@ -56,9 +56,8 @@ function buildSheinCategoryReviewModel(editorContext?: SheinEditorContext | null
 
   if (
     !recommendCategoryReview &&
-    !suggestedCategory?.category_id &&
-    !currentCategory?.category_id &&
-    !currentCategory?.category_path?.length
+    !categoryReviewReason &&
+    !suggestedCategory?.category_id
   ) {
     return null;
   }
@@ -109,24 +108,24 @@ function SuggestedCategoryBlock({
     <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
       <div className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-          {isApplied ? "Applied category" : "Suggested category"}
+          {isApplied ? "已应用类目" : "建议类目"}
         </p>
         <p className="text-sm leading-6 text-zinc-700">
           {isApplied
-            ? "The suggested category has already been applied to the current SHEIN draft."
-            : "Safe alternate candidate accepted by the reselection guardrail."}
+            ? "建议类目已经应用到当前 SHEIN 草稿。"
+            : "这是通过重选保护规则筛出的更稳妥候选类目。"}
         </p>
       </div>
       <dl className="grid gap-3">
         <SuggestionRow
-          label="Category path"
+          label="类目路径"
           value={formatCategoryLabel(
             suggestion.matched_path,
             suggestion.category_id,
           )}
         />
-        <SuggestionRow label="Source" value={suggestion.source} />
-        <SuggestionRow label="Reason" value={suggestion.reason} />
+        <SuggestionRow label="来源" value={suggestion.source} />
+        <SuggestionRow label="原因" value={suggestion.reason} />
       </dl>
     </div>
   );
@@ -167,9 +166,9 @@ function ManualCategorySearchResults({
               </p>
               <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
                 {candidate.product_type_id ? (
-                  <span>Product type: {candidate.product_type_id}</span>
+                  <span>商品类型: {candidate.product_type_id}</span>
                 ) : null}
-                {candidate.source ? <span>Source: {candidate.source}</span> : null}
+                {candidate.source ? <span>来源: {candidate.source}</span> : null}
               </div>
             </div>
             <div className="mt-3 flex justify-end">
@@ -178,7 +177,7 @@ function ManualCategorySearchResults({
                 disabled={!candidate.category_id || applyingCategoryId === categoryId}
                 onClick={() => onApply(candidate)}
               >
-                {applyingCategoryId === categoryId ? "Applying..." : "使用这个类目"}
+                {applyingCategoryId === categoryId ? "应用中..." : "使用这个类目"}
               </Button>
             </div>
           </div>
@@ -260,24 +259,24 @@ export function SheinCategoryReviewCard({
       <div className="space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-            SHEIN category review
+            SHEIN 类目审核
           </p>
           <p className="mt-1 text-sm leading-6 text-zinc-700">
             {model.isSuggestionApplied
-              ? "The current category already matches the accepted suggestion."
-              : "Current category mapping needs review before final submission."}
+              ? "当前类目已经与接受的建议类目一致。"
+              : "当前类目映射需要在最终提交前再确认一次。"}
           </p>
         </div>
 
         <dl className="grid gap-3">
           <SuggestionRow
-            label="Current category"
+            label="当前类目"
             value={formatCategoryLabel(
               model.currentCategory?.category_path,
               model.currentCategoryId,
             )}
           />
-          <SuggestionRow label="Review reason" value={model.categoryReviewReason} />
+          <SuggestionRow label="复核原因" value={model.categoryReviewReason} />
         </dl>
 
         <SuggestedCategoryBlock
@@ -295,7 +294,7 @@ export function SheinCategoryReviewCard({
                 disabled={isApplying}
                 onClick={onConfirmCurrentCategory}
               >
-                {isApplying ? "Applying..." : "确认当前类目"}
+                {isApplying ? "应用中..." : "确认当前类目"}
               </Button>
             ) : null}
             <Button
@@ -303,7 +302,7 @@ export function SheinCategoryReviewCard({
               disabled={isApplying}
               onClick={onApplySuggestedCategory}
             >
-              {isApplying ? "Applying..." : "Apply suggested category"}
+              {isApplying ? "应用中..." : "应用建议类目"}
             </Button>
           </div>
         ) : null}
@@ -317,7 +316,7 @@ export function SheinCategoryReviewCard({
               disabled={isApplying}
               onClick={onConfirmCurrentCategory}
             >
-              {isApplying ? "Applying..." : "确认当前类目"}
+              {isApplying ? "应用中..." : "确认当前类目"}
             </Button>
           </div>
         ) : null}
@@ -350,7 +349,7 @@ export function SheinCategoryReviewCard({
               disabled={manualSearchLoading}
               onClick={() => void handleSearch()}
             >
-              {manualSearchLoading ? "Searching..." : "搜索类目"}
+              {manualSearchLoading ? "搜索中..." : "搜索类目"}
             </Button>
           </div>
 

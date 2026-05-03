@@ -94,4 +94,30 @@ describe("TaskListPage", () => {
       screen.getByText("最近提交：发布失败。原始错误：方形图必须有一个"),
     ).toBeInTheDocument();
   });
+
+  it("renders the full task id in each row", () => {
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        items: [
+          {
+            task_id: "10856aa8-7e11-4257-ac11-dd095ed1593d",
+            status: "completed",
+            platforms: ["shein"],
+            title: "完整任务 ID",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(screen.getByText("任务 ID")).toBeInTheDocument();
+    expect(screen.getByText("10856aa8-7e11-4257-ac11-dd095ed1593d")).toBeInTheDocument();
+  });
 });

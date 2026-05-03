@@ -8,16 +8,16 @@ import {
 describe("status-presentation", () => {
   it("maps failed task status to a danger presentation", () => {
     expect(presentTaskStatus("failed")).toEqual({
-      label: "Failed",
-      title: "Task failed",
+      label: "失败",
+      title: "任务处理失败",
       tone: "danger",
     });
   });
 
   it("maps processing task status to an in-progress presentation", () => {
     expect(presentTaskStatus("processing")).toEqual({
-      label: "In progress",
-      title: "Task in progress",
+      label: "处理中",
+      title: "任务处理中",
       tone: "warning",
     });
   });

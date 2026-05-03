@@ -22,23 +22,23 @@ function titleCaseWords(value: string) {
 export function presentTaskStatus(status?: string): TaskStatusPresentation {
   switch (status) {
     case "failed":
-      return { label: "Failed", title: "Task failed", tone: "danger" };
+      return { label: "失败", title: "任务处理失败", tone: "danger" };
     case "needs_review":
       return {
-        label: "Needs Review",
-        title: "Task requires review",
+        label: "待确认",
+        title: "任务需要人工确认",
         tone: "warning",
       };
     case "processing":
-      return { label: "In progress", title: "Task in progress", tone: "warning" };
+      return { label: "处理中", title: "任务处理中", tone: "warning" };
     case "pending":
-      return { label: "Pending", title: "Task pending", tone: "neutral" };
+      return { label: "待开始", title: "任务已创建", tone: "neutral" };
     case "completed":
-      return { label: "Completed", title: "Task completed", tone: "success" };
+      return { label: "已完成", title: "任务已处理完成", tone: "success" };
     default:
       return {
         label: titleCaseWords(status ?? "unknown"),
-        title: "Task status",
+        title: "任务状态",
         tone: "neutral",
       };
   }

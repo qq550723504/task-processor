@@ -6,9 +6,9 @@ import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 function noticeCopy(status?: string) {
   if (status === "processing") {
     return {
-      title: "Generation is still running",
+      title: "正在生成图片",
       description:
-        "Preview, queue, and review actions will fill in as child tasks finish. Status refreshes automatically every 5 seconds.",
+        "系统正在补齐预览、审核和提交所需结果。你可以留在这里等待，也可以稍后回到任务列表继续。",
       icon: LoaderCircle,
       iconClassName: "animate-spin text-sky-600",
     };
@@ -16,9 +16,9 @@ function noticeCopy(status?: string) {
 
   if (status === "pending") {
     return {
-      title: "Waiting to start",
+      title: "正在等待开始",
       description:
-        "The task has been accepted, but generation planning has not started yet. Status refreshes automatically every 5 seconds.",
+        "任务已经创建成功，系统正在排队准备处理。现在可以离开页面，稍后从任务列表继续。",
       icon: Clock3,
       iconClassName: "text-zinc-500",
     };

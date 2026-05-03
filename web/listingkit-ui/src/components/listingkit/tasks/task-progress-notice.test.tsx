@@ -12,10 +12,10 @@ describe("TaskProgressNotice", () => {
   it("renders processing guidance", () => {
     render(<TaskProgressNotice task={{ status: "processing" }} />);
 
-    expect(screen.getByText("Generation is still running")).toBeInTheDocument();
+    expect(screen.getByText("正在生成图片")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Preview, queue, and review actions will fill in as child tasks finish. Status refreshes automatically every 5 seconds.",
+        "系统正在补齐预览、审核和提交所需结果。你可以留在这里等待，也可以稍后回到任务列表继续。",
       ),
     ).toBeInTheDocument();
   });
@@ -23,10 +23,10 @@ describe("TaskProgressNotice", () => {
   it("renders pending guidance", () => {
     render(<TaskProgressNotice task={{ status: "pending" }} />);
 
-    expect(screen.getByText("Waiting to start")).toBeInTheDocument();
+    expect(screen.getByText("正在等待开始")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "The task has been accepted, but generation planning has not started yet. Status refreshes automatically every 5 seconds.",
+        "任务已经创建成功，系统正在排队准备处理。现在可以离开页面，稍后从任务列表继续。",
       ),
     ).toBeInTheDocument();
   });

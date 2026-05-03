@@ -263,9 +263,13 @@ function TaskRow({ task }: { task: ListingKitTaskListItem }) {
           <h2 className="mt-3 truncate text-xl font-semibold tracking-tight text-zinc-950">
             {taskTitle(task)}
           </h2>
-          <p className="mt-1 truncate text-sm text-zinc-500">
-            {task.variant_label || task.task_id}
+          <p className="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">
+            任务 ID
           </p>
+          <p className="mt-1 break-all text-sm text-zinc-500">{task.task_id}</p>
+          {task.variant_label ? (
+            <p className="mt-1 truncate text-sm text-zinc-500">{task.variant_label}</p>
+          ) : null}
           {task.error ? (
             <p className="mt-2 line-clamp-2 text-sm text-rose-600">{task.error}</p>
           ) : null}

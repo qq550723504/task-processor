@@ -48,6 +48,28 @@ export function SheinStudioPageShell({
     liveSelection?.variants?.map((variant) => variant.variantId).join(",") ??
     "";
   const workbenchKey = `${liveSelection?.variantId ?? 0}:${liveSelection?.prototypeGroupId ?? 0}:${liveSelection?.layerId ?? ""}:${selectedVariantKey}`;
+  const stepCopy = {
+    select: {
+      title: "先选择要处理的 SDS 商品",
+      description:
+        "完成选品后，系统会带着模板和变体信息进入图片生成。",
+    },
+    generate: {
+      title: "生成并整理图片结果",
+      description:
+        "这里会根据选中的 SDS 商品生成图片，完成后继续进入审核步骤。",
+    },
+    review: {
+      title: "确认图片和资料是否可用",
+      description:
+        "审核通过后，系统会把当前结果带入 SHEIN 资料确认工作台。",
+    },
+    create: {
+      title: "创建 SHEIN 上架任务",
+      description:
+        "这一步会把已确认的资料转成正式任务，后续可继续保存草稿或提交发布。",
+    },
+  }[visibleStep];
 
   return (
     <div className="relative isolate flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(251,146,60,0.18),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(236,72,153,0.14),_transparent_24%),linear-gradient(180deg,_#fffdf9_0%,_#f7f3ee_46%,_#efebe4_100%)]">
@@ -114,6 +136,18 @@ export function SheinStudioPageShell({
           activeStep={visibleStep}
           hasSelection={hasSelection}
         />
+
+        <section className="rounded-[1.75rem] border border-white/70 bg-white/78 p-5 shadow-[0_18px_60px_rgba(24,24,27,0.06)] backdrop-blur">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
+            当前步骤
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-zinc-950">
+            {stepCopy.title}
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-7 text-zinc-600">
+            {stepCopy.description}
+          </p>
+        </section>
 
         <div className="space-y-6">
           {visibleStep === "select" ? (

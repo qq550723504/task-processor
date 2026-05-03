@@ -72,14 +72,13 @@ export function TaskStatusScreen({
       <Card className="p-6">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
-            ListingKit Task
+            ListingKit 任务
           </p>
           <h1 className="text-3xl font-semibold tracking-tight text-zinc-950">
-            Status {taskId}
+            查看当前任务进度
           </h1>
           <p className="text-sm leading-6 text-zinc-600">
-            Use this page as the handoff after task creation. Once the task is ready,
-            continue into queue or workspace.
+            创建任务后，可以先在这里查看当前进度，再决定进入工作台、队列或返回修改。
           </p>
         </div>
       </Card>
@@ -92,7 +91,7 @@ export function TaskStatusScreen({
       {task.status === "failed" && taskFixes.length > 0 ? (
         <Card className="p-6">
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-950">Recommended fixes</h2>
+            <h2 className="text-lg font-semibold text-zinc-950">建议先处理这些问题</h2>
             <ul className="space-y-2 text-sm leading-6 text-zinc-700">
               {taskFixes.map((fix) => (
                 <li
@@ -112,7 +111,7 @@ export function TaskStatusScreen({
                   )
                 }
               >
-                Create improved task
+                基于当前内容重新创建任务
               </Button>
             </div>
           </div>
@@ -124,24 +123,24 @@ export function TaskStatusScreen({
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-zinc-950">
               {task.status === "completed"
-                ? "Task completed"
+                ? "任务已处理完成"
                 : task.status === "needs_review"
-                  ? "Task requires review"
-                  : "Inspect task output"}
+                  ? "任务需要人工确认"
+                  : "查看结果并继续"}
             </h2>
             <p className="text-sm leading-6 text-zinc-600">
               {task.status === "completed"
-                ? "Review the generated queue or go straight into the workspace."
+                ? "建议先查看工作台和结果，再决定继续提交还是回退修改。"
                 : task.status === "needs_review"
-                  ? "Review the generated queue and workspace before approving or revising the output."
-                  : "Review the queue and workspace to inspect the failure details and any partial output."}
+                  ? "建议先查看工作台和结果，再决定继续提交还是回退修改。"
+                  : "建议先进入工作台或队列查看失败详情，再决定是否重新创建任务。"}
             </p>
             {task.status === "completed" || task.status === "needs_review" ? (
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-sm leading-6 text-zinc-500">
                   {autoOpenEnabled
-                    ? "Opening workspace automatically in 1.5 seconds."
-                    : "Auto-open paused."}
+                    ? "1.5 秒后会自动进入工作台，你也可以先留在这里查看状态。"
+                    : "已暂停自动跳转。"}
                 </p>
                 {autoOpenEnabled ? (
                   <Button
@@ -149,20 +148,20 @@ export function TaskStatusScreen({
                     onClick={() => setAutoOpenEnabled(false)}
                     type="button"
                   >
-                    Cancel auto-open
+                    取消自动跳转
                   </Button>
                 ) : null}
               </div>
             ) : null}
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => router.push(`/listing-kits/${taskId}/workspace`)}>
-                Open workspace
+                打开工作台
               </Button>
               <Button
                 tone="secondary"
                 onClick={() => router.push(`/listing-kits/${taskId}/queue`)}
               >
-                Open queue
+                打开队列
               </Button>
             </div>
           </div>

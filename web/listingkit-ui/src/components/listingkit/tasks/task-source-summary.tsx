@@ -13,23 +13,22 @@ function summarizeSource(draft?: Partial<TaskCreateDraft> | null) {
 
   if (hasProductUrl && imageCount > 0) {
     return {
-      title: "Created from product URL and image URLs",
-      summary: `${imageCount} image URL${imageCount === 1 ? "" : "s"} plus a product listing URL were submitted for this task.`,
+      title: "来自商品链接和图片素材",
+      summary: `本次任务同时提交了商品链接和 ${imageCount} 张图片，用于补充来源信息和生成素材。`,
     };
   }
 
   if (hasProductUrl) {
     return {
-      title: "Created from product URL",
-      summary:
-        "This task started from a product listing URL. A 1688 link is supported in this flow.",
+      title: "来自商品链接",
+      summary: "这个任务从商品页链接开始创建，适合已经有明确原始商品来源的场景。",
     };
   }
 
   if (imageCount > 0) {
     return {
-      title: "Created from image URLs",
-      summary: `${imageCount} image URL${imageCount === 1 ? "" : "s"} were submitted for this task.`,
+      title: "来自图片素材",
+      summary: `这个任务提交了 ${imageCount} 张图片，系统会根据图片内容继续生成和审核。`,
     };
   }
 
@@ -50,7 +49,7 @@ export function TaskSourceSummary({
     <Card className="p-6">
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">
-          Task source
+          任务来源
         </p>
         <h2 className="text-lg font-semibold text-zinc-950">{source.title}</h2>
         <p className="text-sm leading-6 text-zinc-600">{source.summary}</p>

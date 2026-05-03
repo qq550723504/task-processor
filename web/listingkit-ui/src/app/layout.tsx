@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { ListingKitAppShell } from "@/components/listingkit/shared/listingkit-app-shell";
 import { QueryProvider } from "@/components/providers/query-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ListingKit UI",
-  description: "ListingKit review workspace and generation queue console",
+  title: "ListingKit",
+  description: "ListingKit 上架任务工作台",
 };
 
 export default function RootLayout({
@@ -16,11 +17,7 @@ export default function RootLayout({
     <html lang="zh-CN" className="h-full antialiased">
       <body className="min-h-full bg-zinc-100 text-zinc-950">
         <QueryProvider>
-          <div className="min-h-full">
-            <main className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col px-4 py-6 sm:px-6 lg:px-8">
-              {children}
-            </main>
-          </div>
+          <ListingKitAppShell>{children}</ListingKitAppShell>
         </QueryProvider>
       </body>
     </html>

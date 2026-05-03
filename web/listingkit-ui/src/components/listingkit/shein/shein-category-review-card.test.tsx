@@ -30,12 +30,15 @@ describe("SheinCategoryReviewCard", () => {
       />,
     );
 
-    expect(screen.getByText("SHEIN category review")).toBeInTheDocument();
-    expect(screen.getByText("家居&生活 > 家庭用品 > 鞋用品 > 鞋配饰")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 类目审核")).toBeInTheDocument();
+    expect(
+      screen.getByText("家居&生活 > 家庭用品 > 鞋用品 > 鞋配饰 (12143)"),
+    ).toBeInTheDocument();
     expect(screen.getByText("当前类目路径与商品语义明显不一致")).toBeInTheDocument();
-    expect(screen.getByText("Suggested category")).toBeInTheDocument();
-    expect(screen.getByText("家居&生活 > 厨房&餐厅 > 饮具 > 真空瓶和保温杯")).toBeInTheDocument();
-    expect(screen.getByText("3221")).toBeInTheDocument();
+    expect(screen.getByText("建议类目")).toBeInTheDocument();
+    expect(
+      screen.getByText("家居&生活 > 厨房&餐厅 > 饮具 > 真空瓶和保温杯 (3221)"),
+    ).toBeInTheDocument();
   });
 
   it("renders review-only state without suggested category", () => {
@@ -58,8 +61,8 @@ describe("SheinCategoryReviewCard", () => {
       />,
     );
 
-    expect(screen.getByText("SHEIN category review")).toBeInTheDocument();
-    expect(screen.queryByText("Suggested category")).not.toBeInTheDocument();
+    expect(screen.getByText("SHEIN 类目审核")).toBeInTheDocument();
+    expect(screen.queryByText("建议类目")).not.toBeInTheDocument();
   });
 
   it("returns null when there is no category review signal", () => {
@@ -109,7 +112,7 @@ describe("SheinCategoryReviewCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Apply suggested category" }));
+    await user.click(screen.getByRole("button", { name: "应用建议类目" }));
     expect(onApplySuggestedCategory).toHaveBeenCalledTimes(1);
   });
 
@@ -139,10 +142,10 @@ describe("SheinCategoryReviewCard", () => {
       />,
     );
 
-    expect(screen.getByText("Applied category")).toBeInTheDocument();
+    expect(screen.getByText("已应用类目")).toBeInTheDocument();
     expect(
-      screen.getByText("The suggested category has already been applied to the current SHEIN draft."),
+      screen.getByText("建议类目已经应用到当前 SHEIN 草稿。"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Apply suggested category" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "应用建议类目" })).not.toBeInTheDocument();
   });
 });

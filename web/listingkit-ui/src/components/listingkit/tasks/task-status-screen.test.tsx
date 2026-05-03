@@ -30,9 +30,9 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
-    expect(screen.getByText("Task completed")).toBeInTheDocument();
+    expect(screen.getByText("任务已处理完成")).toBeInTheDocument();
     expect(
-      screen.getByText("Opening workspace automatically in 1.5 seconds."),
+      screen.getByText("1.5 秒后会自动进入工作台，你也可以先留在这里查看状态。"),
     ).toBeInTheDocument();
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1500);
     const callback = setTimeoutSpy.mock.calls[0]?.[0] as (() => void) | undefined;
@@ -55,12 +55,12 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
-    expect(screen.getAllByText("Task requires review")).toHaveLength(2);
+    expect(screen.getAllByText("任务需要人工确认")).toHaveLength(2);
     expect(
-      screen.getByText("Review the generated queue and workspace before approving or revising the output."),
+      screen.getByText("建议先查看工作台和结果，再决定继续提交还是回退修改。"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Opening workspace automatically in 1.5 seconds."),
+      screen.getByText("1.5 秒后会自动进入工作台，你也可以先留在这里查看状态。"),
     ).toBeInTheDocument();
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1500);
     setTimeoutSpy.mockRestore();
@@ -77,7 +77,7 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开工作台" }));
     expect(push).toHaveBeenCalledWith("/listing-kits/task_123/workspace");
   });
 
@@ -93,9 +93,9 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel auto-open" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消自动跳转" }));
 
-    expect(screen.getByText("Auto-open paused.")).toBeInTheDocument();
+    expect(screen.getByText("已暂停自动跳转。")).toBeInTheDocument();
     expect(clearTimeoutSpy).toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
     clearTimeoutSpy.mockRestore();
@@ -112,10 +112,10 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
-    expect(screen.getByText("Task in progress")).toBeInTheDocument();
-    expect(screen.getByText("Generation is still running")).toBeInTheDocument();
+    expect(screen.getByText("任务处理中")).toBeInTheDocument();
+    expect(screen.getByText("正在生成图片")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Open workspace" }),
+      screen.queryByRole("button", { name: "打开工作台" }),
     ).not.toBeInTheDocument();
   });
 
@@ -132,17 +132,17 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
-    expect(screen.getByText("Task failed")).toBeInTheDocument();
-    expect(screen.getByText("Recommended fixes")).toBeInTheDocument();
+    expect(screen.getByText("任务处理失败")).toBeInTheDocument();
+    expect(screen.getByText("建议先处理这些问题")).toBeInTheDocument();
     expect(screen.getByText("添加至少 3 张高质量产品图片")).toBeInTheDocument();
     expect(screen.getByText("提供至少 50 字符的产品描述")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Create improved task" }),
+      screen.getByRole("button", { name: "基于当前内容重新创建任务" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open workspace" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open queue" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开队列" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Create improved task" }));
+    fireEvent.click(screen.getByRole("button", { name: "基于当前内容重新创建任务" }));
     expect(push).toHaveBeenCalledWith(
       "/listing-kits/new?fromTask=task_123&focus=imageUrls&issues=imageUrls,text",
     );
@@ -166,7 +166,7 @@ describe("TaskStatusScreen", () => {
       />,
     );
 
-    expect(screen.getByText("Task source")).toBeInTheDocument();
-    expect(screen.getByText("Created from product URL")).toBeInTheDocument();
+    expect(screen.getByText("任务来源")).toBeInTheDocument();
+    expect(screen.getByText("来自商品链接")).toBeInTheDocument();
   });
 });
