@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/database"
+	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -79,6 +80,14 @@ func (p *LocalDataProvider) Close() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (p *LocalDataProvider) HasDB() bool {
+	return p != nil && p.db != nil
+}
+
+func (p *LocalDataProvider) HasRedis() bool {
+	return p != nil && p.redis != nil
 }
 
 type localListingStore struct {
@@ -782,4 +791,398 @@ func (p *LocalDataProvider) BatchUpdateProductAttributes(req *api.ProductDataBat
 		updated += int(res.RowsAffected)
 	}
 	return updated, nil
+}
+
+type localProductImportMappingRow struct {
+	ID                      int64      `gorm:"column:id"`
+	TenantID                int64      `gorm:"column:tenant_id"`
+	ImportTaskID            int64      `gorm:"column:import_task_id"`
+	StoreID                 int64      `gorm:"column:store_id"`
+	Platform                string     `gorm:"column:platform"`
+	Region                  string     `gorm:"column:region"`
+	ProductID               string     `gorm:"column:product_id"`
+	SKU                     *string    `gorm:"column:sku"`
+	CostPrice               *float64   `gorm:"column:cost_price"`
+	PlatformProductID       *string    `gorm:"column:platform_product_id"`
+	ProfitRuleID            *int64     `gorm:"column:profit_rule_id"`
+	SalePriceMultiplierRaw  *string    `gorm:"column:sale_price_multiplier"`
+	DiscountPriceMultRaw    *string    `gorm:"column:discount_price_multiplier"`
+	Status                  int16      `gorm:"column:status"`
+	Remark                  *string    `gorm:"column:remark"`
+	ParentProductID         *string    `gorm:"column:parent_product_id"`
+	PlatformParentProductID *string    `gorm:"column:platform_parent_product_id"`
+	FilterRuleID            *int64     `gorm:"column:filter_rule_id"`
+	FilterRuleRange         *string    `gorm:"column:filter_rule_range"`
+	CreateTime              *time.Time `gorm:"column:create_time"`
+	UpdateTime              *time.Time `gorm:"column:update_time"`
+}
+
+func parseOptionalFloat(raw *string) *float64 {
+	if raw == nil || strings.TrimSpace(*raw) == "" {
+		return nil
+	}
+	value, err := strconv.ParseFloat(strings.TrimSpace(*raw), 64)
+	if err != nil {
+		return nil
+	}
+	return &value
+}
+
+func formatOptionalFloat(raw *float64) *string {
+	if raw == nil {
+		return nil
+	}
+	value := strconv.FormatFloat(*raw, 'f', -1, 64)
+	return &value
+}
+
+func (r localProductImportMappingRow) toDTO() *api.ProductImportMappingRespDTO {
+	return &api.ProductImportMappingRespDTO{
+		ID:                      r.ID,
+		ImportTaskId:            r.ImportTaskID,
+		StoreId:                 r.StoreID,
+		Platform:                r.Platform,
+		Region:                  r.Region,
+		ProductId:               r.ProductID,
+		ParentProductId:         r.ParentProductID,
+		PlatformProductId:       r.PlatformProductID,
+		PlatformParentProductId: r.PlatformParentProductID,
+		Sku:                     r.SKU,
+		CostPrice:               r.CostPrice,
+		FilterRuleId:            r.FilterRuleID,
+		FilterRuleRange:         r.FilterRuleRange,
+		ProfitRuleId:            r.ProfitRuleID,
+		SalePriceMultiplier:     parseOptionalFloat(r.SalePriceMultiplierRaw),
+		DiscountPriceMultiplier: parseOptionalFloat(r.DiscountPriceMultRaw),
+		Status:                  r.Status,
+		Remark:                  r.Remark,
+		TenantId:                r.TenantID,
+	}
+}
+
+func (p *LocalDataProvider) CreateProductImportMapping(req *api.ProductImportMappingCreateReqDTO) (int64, error) {
+	if p == nil || p.db == nil || req == nil {
+		return 0, nil
+	}
+	row := localProductImportMappingRow{
+		TenantID:                req.TenantID,
+		ImportTaskID:            req.ImportTaskId,
+		StoreID:                 req.StoreId,
+		Platform:                req.Platform,
+		Region:                  req.Region,
+		ProductID:               req.ProductId,
+		SKU:                     req.Sku,
+		CostPrice:               req.CostPrice,
+		PlatformProductID:       req.PlatformProductId,
+		ProfitRuleID:            req.ProfitRuleId,
+		SalePriceMultiplierRaw:  req.SalePriceMultiplier,
+		DiscountPriceMultRaw:    req.DiscountPriceMultiplier,
+		ParentProductID:         req.ParentProductId,
+		PlatformParentProductID: req.PlatformParentProductId,
+		FilterRuleID:            req.FilterRuleId,
+		FilterRuleRange:         req.FilterRuleRange,
+		CreateTime:              ptrTime(time.Now()),
+		UpdateTime:              ptrTime(time.Now()),
+	}
+	if req.ID != nil {
+		row.ID = *req.ID
+	}
+	if req.Status != nil {
+		row.Status = *req.Status
+	}
+	if req.Remark != nil {
+		row.Remark = req.Remark
+	}
+	if err := p.db.Table("listing_product_import_mapping").Create(&row).Error; err != nil {
+		return 0, err
+	}
+	return row.ID, nil
+}
+
+func (p *LocalDataProvider) UpdateProductImportMapping(req *api.ProductImportMappingCreateReqDTO) (bool, error) {
+	if p == nil || p.db == nil || req == nil {
+		return false, nil
+	}
+	var id int64
+	if req.ID != nil {
+		id = *req.ID
+	}
+	if id == 0 {
+		return false, nil
+	}
+	updates := map[string]any{
+		"tenant_id":                  req.TenantID,
+		"import_task_id":             req.ImportTaskId,
+		"store_id":                   req.StoreId,
+		"platform":                   req.Platform,
+		"region":                     req.Region,
+		"product_id":                 req.ProductId,
+		"sku":                        req.Sku,
+		"cost_price":                 req.CostPrice,
+		"platform_product_id":        req.PlatformProductId,
+		"profit_rule_id":             req.ProfitRuleId,
+		"sale_price_multiplier":      req.SalePriceMultiplier,
+		"discount_price_multiplier":  req.DiscountPriceMultiplier,
+		"parent_product_id":          req.ParentProductId,
+		"platform_parent_product_id": req.PlatformParentProductId,
+		"filter_rule_id":             req.FilterRuleId,
+		"filter_rule_range":          req.FilterRuleRange,
+		"remark":                     req.Remark,
+		"update_time":                time.Now(),
+	}
+	if req.Status != nil {
+		updates["status"] = *req.Status
+	}
+	res := p.db.Table("listing_product_import_mapping").Where("id = ?", id).Updates(updates)
+	return res.RowsAffected > 0, res.Error
+}
+
+func (p *LocalDataProvider) GetProductImportMappingByPlatformProductID(platformProductID string) (*api.ProductImportMappingRespDTO, bool, error) {
+	return p.findProductImportMapping("platform_product_id = ?", platformProductID)
+}
+
+func (p *LocalDataProvider) GetProductImportMappingByTaskAndSKU(importTaskID int64, sku string) (*api.ProductImportMappingRespDTO, bool, error) {
+	return p.findProductImportMapping("import_task_id = ? AND sku = ?", importTaskID, sku)
+}
+
+func (p *LocalDataProvider) GetProductImportMappingBySKU(sku string, storeID int64) (*api.ProductImportMappingRespDTO, bool, error) {
+	return p.findProductImportMapping("sku = ? AND store_id = ?", sku, storeID)
+}
+
+func (p *LocalDataProvider) GetProductImportMappingByPlatformProductIDAndStore(platformProductID string, storeID int64) (*api.ProductImportMappingRespDTO, bool, error) {
+	return p.findProductImportMapping("platform_product_id = ? AND store_id = ?", platformProductID, storeID)
+}
+
+func (p *LocalDataProvider) findProductImportMapping(query string, args ...any) (*api.ProductImportMappingRespDTO, bool, error) {
+	if p == nil || p.db == nil {
+		return nil, false, nil
+	}
+	var row localProductImportMappingRow
+	err := p.db.Table("listing_product_import_mapping").Where(query, args...).Order("id desc").Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return row.toDTO(), true, nil
+}
+
+func (p *LocalDataProvider) CheckProductExists(req *api.ProductImportMappingCheckReqDTO) (bool, bool, error) {
+	if p == nil || p.db == nil || req == nil {
+		return false, false, nil
+	}
+	var count int64
+	err := p.db.Table("listing_product_import_mapping").
+		Where("store_id = ? AND platform = ? AND region = ? AND product_id = ?", req.StoreId, req.Platform, req.Region, req.ProductId).
+		Where("platform_product_id IS NOT NULL AND platform_product_id <> ''").
+		Count(&count).Error
+	return count > 0, true, err
+}
+
+type localInventoryRecordRow struct {
+	ID                 int64     `gorm:"column:id"`
+	Platform           string    `gorm:"column:platform"`
+	ProductID          string    `gorm:"column:product_id"`
+	Region             string    `gorm:"column:region"`
+	Stock              *int      `gorm:"column:stock"`
+	StockStatus        string    `gorm:"column:stock_status"`
+	IsAvailable        bool      `gorm:"column:is_available"`
+	OriginalPrice      *float64  `gorm:"column:original_price"`
+	CurrentPrice       *float64  `gorm:"column:current_price"`
+	Currency           string    `gorm:"column:currency"`
+	PriceChangePercent *float64  `gorm:"column:price_change_percent"`
+	SyncSource         string    `gorm:"column:sync_source"`
+	Remark             string    `gorm:"column:remark"`
+	CreateTime         time.Time `gorm:"column:create_time"`
+}
+
+func (r localInventoryRecordRow) toDTO() *api.InventoryRecordRespDTO {
+	return &api.InventoryRecordRespDTO{
+		ID:                 r.ID,
+		Platform:           r.Platform,
+		ProductId:          r.ProductID,
+		Region:             r.Region,
+		Stock:              r.Stock,
+		StockStatus:        r.StockStatus,
+		IsAvailable:        r.IsAvailable,
+		OriginalPrice:      r.OriginalPrice,
+		CurrentPrice:       r.CurrentPrice,
+		Currency:           r.Currency,
+		PriceChangePercent: r.PriceChangePercent,
+		SyncSource:         r.SyncSource,
+		Remark:             r.Remark,
+		CreateTime:         types.FlexibleTime{Time: r.CreateTime},
+	}
+}
+
+func (p *LocalDataProvider) CreateInventoryRecord(req *api.InventoryRecordCreateReqDTO) (int64, error) {
+	if p == nil || p.db == nil || req == nil {
+		return 0, nil
+	}
+	row := localInventoryRecordRow{
+		Platform:           req.Platform,
+		ProductID:          req.ProductId,
+		Region:             req.Region,
+		Stock:              req.Stock,
+		StockStatus:        req.StockStatus,
+		IsAvailable:        req.IsAvailable,
+		OriginalPrice:      req.OriginalPrice,
+		CurrentPrice:       req.CurrentPrice,
+		Currency:           req.Currency,
+		PriceChangePercent: req.PriceChangePercent,
+		SyncSource:         req.SyncSource,
+		Remark:             req.Remark,
+		CreateTime:         time.Now(),
+	}
+	if err := p.db.Table("listing_inventory_record").Create(&row).Error; err != nil {
+		return 0, err
+	}
+	return row.ID, nil
+}
+
+func (p *LocalDataProvider) GetLatestInventoryRecord(platform, productID, region string) (*api.InventoryRecordRespDTO, bool, error) {
+	if p == nil || p.db == nil {
+		return nil, false, nil
+	}
+	var row localInventoryRecordRow
+	err := p.db.Table("listing_inventory_record").
+		Where("platform = ? AND product_id = ? AND region = ?", platform, productID, region).
+		Order("create_time desc, id desc").
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return row.toDTO(), true, nil
+}
+
+type localImportTaskRow struct {
+	ID            int64     `gorm:"column:id"`
+	TenantID      int64     `gorm:"column:tenant_id"`
+	StoreID       int64     `gorm:"column:store_id"`
+	Platform      string    `gorm:"column:platform"`
+	Region        string    `gorm:"column:region"`
+	CategoryID    int64     `gorm:"column:category_id"`
+	ProductID     string    `gorm:"column:product_id"`
+	Status        int16     `gorm:"column:status"`
+	ErrorMessage  string    `gorm:"column:error_message"`
+	ReasonCode    string    `gorm:"column:reason_code"`
+	Stage         string    `gorm:"column:stage"`
+	RetryCount    int       `gorm:"column:retry_count"`
+	MaxRetryCount int       `gorm:"column:max_retry_count"`
+	Remark        string    `gorm:"column:remark"`
+	Priority      int       `gorm:"column:priority"`
+	CreateTime    time.Time `gorm:"column:create_time"`
+	UpdateTime    time.Time `gorm:"column:update_time"`
+	Creator       string    `gorm:"column:creator"`
+	Updater       string    `gorm:"column:updater"`
+}
+
+func (r localImportTaskRow) toDTO() api.ProductImportTaskRespDTO {
+	meta := localTaskStatusMetadata(r.Status)
+	return api.ProductImportTaskRespDTO{
+		ID:              r.ID,
+		TenantID:        r.TenantID,
+		StoreID:         r.StoreID,
+		Platform:        r.Platform,
+		Region:          r.Region,
+		CategoryID:      r.CategoryID,
+		ProductID:       r.ProductID,
+		Status:          r.Status,
+		ErrorMessage:    r.ErrorMessage,
+		ReasonCode:      r.ReasonCode,
+		Stage:           r.Stage,
+		RetryCount:      r.RetryCount,
+		MaxRetryCount:   r.MaxRetryCount,
+		Remark:          r.Remark,
+		Priority:        r.Priority,
+		CreateTime:      r.CreateTime.UnixMilli(),
+		UpdateTime:      r.UpdateTime.UnixMilli(),
+		Creator:         r.Creator,
+		Updater:         r.Updater,
+		StatusKey:       meta.Key,
+		StatusName:      meta.Name,
+		CanonicalStatus: meta.Canonical,
+	}
+}
+
+func (p *LocalDataProvider) GetPendingAndRetryTasks(limit int, userID int64, storeIDs []int64) ([]api.ProductImportTaskRespDTO, bool, error) {
+	if p == nil || p.db == nil {
+		return nil, false, nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	statuses := []int16{
+		model.TaskStatusPending.Int16(),
+		model.TaskStatusPendingRetry.Int16(),
+		model.TaskStatusCrawled.Int16(),
+	}
+	query := p.db.Table("listing_product_import_task").Where("status IN ?", statuses)
+	if userID > 0 {
+		query = query.Where("tenant_id = ?", userID)
+	}
+	if len(storeIDs) > 0 {
+		query = query.Where("store_id IN ?", storeIDs)
+	}
+	var rows []localImportTaskRow
+	if err := query.Order("priority asc, update_time asc, id asc").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, true, err
+	}
+	result := make([]api.ProductImportTaskRespDTO, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, row.toDTO())
+	}
+	return result, true, nil
+}
+
+func (p *LocalDataProvider) UpdateImportTaskStatus(req *api.ProductImportTaskUpdateReqDTO) (bool, error) {
+	if p == nil || p.db == nil || req == nil {
+		return false, nil
+	}
+	var row localImportTaskRow
+	err := p.db.Table("listing_product_import_task").Where("id = ?", req.ID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return true, err
+	}
+	if req.ExpectedCurrentStatus != nil && row.Status != *req.ExpectedCurrentStatus {
+		return true, fmt.Errorf("管理端拒绝更新任务状态: taskId=%d, currentStatus=%d, expectedCurrentStatus=%d", req.ID, row.Status, *req.ExpectedCurrentStatus)
+	}
+	current, parseErr := model.ParseTaskStatus(row.Status)
+	if parseErr == nil {
+		target := model.TaskStatus(req.Status)
+		if current != target {
+			if err := model.ValidateTaskStatusTransition(current, target); err != nil {
+				return true, fmt.Errorf("管理端拒绝更新任务状态: taskId=%d, invalid transition %d -> %d", req.ID, row.Status, req.Status)
+			}
+		}
+	}
+	updates := map[string]any{
+		"status":        req.Status,
+		"error_message": req.ErrorMessage,
+		"reason_code":   req.ReasonCode,
+		"stage":         req.Stage,
+		"update_time":   time.Now(),
+	}
+	if req.RetryCount != nil {
+		updates["retry_count"] = *req.RetryCount
+	}
+	if req.Priority != nil {
+		updates["priority"] = *req.Priority
+	}
+	res := p.db.Table("listing_product_import_task").Where("id = ?", req.ID).Updates(updates)
+	if res.Error != nil {
+		return true, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+func ptrTime(ts time.Time) *time.Time {
+	return &ts
 }

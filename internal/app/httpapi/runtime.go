@@ -51,6 +51,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 
 	shared, err := appbootstrap.BuildSharedResources(cfg, logger, appbootstrap.SharedResourceOptions{
 		AllowMissingManagementAuth: true,
+		SkipManagementAuth:         true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)

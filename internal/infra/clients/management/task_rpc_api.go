@@ -10,10 +10,19 @@ import (
 // TaskRPCAPIClient 任务 RPC 客户端。
 type TaskRPCAPIClient struct {
 	*ManagementAPIClient
+	localProvider *LocalTaskRPCProvider
 }
 
 // SubmitTask 提交单个任务。
 func (c *TaskRPCAPIClient) SubmitTask(req *api.TaskSubmitReqDTO) (*api.TaskSubmitRespDTO, error) {
+	if c.localProvider != nil {
+		if resp, handled, err := c.localProvider.SubmitTask(req, false); err != nil || handled {
+			if err != nil {
+				return nil, fmt.Errorf("提交任务失败: %w", err)
+			}
+			return resp, nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/task/submit", c.baseURL)
 
 	resp, err := getTypedResult[api.TaskSubmitRespDTO](c.ManagementAPIClient, http.MethodPost, url, req)
@@ -34,6 +43,14 @@ func (c *TaskRPCAPIClient) SubmitTask(req *api.TaskSubmitReqDTO) (*api.TaskSubmi
 
 // SubmitBatchTasks 批量提交任务。
 func (c *TaskRPCAPIClient) SubmitBatchTasks(req *api.TaskBatchSubmitReqDTO) (*api.TaskBatchSubmitRespDTO, error) {
+	if c.localProvider != nil {
+		if resp, handled, err := c.localProvider.SubmitBatchTasks(req); err != nil || handled {
+			if err != nil {
+				return nil, fmt.Errorf("批量提交任务失败: %w", err)
+			}
+			return resp, nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/task/submit-batch", c.baseURL)
 
 	resp, err := getTypedResult[api.TaskBatchSubmitRespDTO](c.ManagementAPIClient, http.MethodPost, url, req)
@@ -55,6 +72,14 @@ func (c *TaskRPCAPIClient) SubmitBatchTasks(req *api.TaskBatchSubmitReqDTO) (*ap
 
 // SubmitUrgentTask 提交紧急任务。
 func (c *TaskRPCAPIClient) SubmitUrgentTask(req *api.TaskSubmitReqDTO) (*api.TaskSubmitRespDTO, error) {
+	if c.localProvider != nil {
+		if resp, handled, err := c.localProvider.SubmitTask(req, true); err != nil || handled {
+			if err != nil {
+				return nil, fmt.Errorf("提交紧急任务失败: %w", err)
+			}
+			return resp, nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/task/submit-urgent", c.baseURL)
 
 	resp, err := getTypedResult[api.TaskSubmitRespDTO](c.ManagementAPIClient, http.MethodPost, url, req)
@@ -75,6 +100,14 @@ func (c *TaskRPCAPIClient) SubmitUrgentTask(req *api.TaskSubmitReqDTO) (*api.Tas
 
 // GetTaskStatus 查询单个任务状态。
 func (c *TaskRPCAPIClient) GetTaskStatus(taskID int64) (*api.TaskStatusRespDTO, error) {
+	if c.localProvider != nil {
+		if resp, handled, err := c.localProvider.GetTaskStatus(taskID); err != nil || handled {
+			if err != nil {
+				return nil, fmt.Errorf("查询任务状态失败: %w", err)
+			}
+			return resp, nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/task/status", c.baseURL)
 	req := &api.TaskStatusReqDTO{TaskID: taskID}
 
@@ -95,6 +128,14 @@ func (c *TaskRPCAPIClient) GetTaskStatus(taskID int64) (*api.TaskStatusRespDTO, 
 
 // GetBatchTaskStatus 批量查询任务状态。
 func (c *TaskRPCAPIClient) GetBatchTaskStatus(taskIDs []int64) ([]api.TaskStatusRespDTO, error) {
+	if c.localProvider != nil {
+		if resp, handled, err := c.localProvider.GetBatchTaskStatus(taskIDs); err != nil || handled {
+			if err != nil {
+				return nil, fmt.Errorf("批量查询任务状态失败: %w", err)
+			}
+			return resp, nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/task/status-batch", c.baseURL)
 
 	var result APIResponse
@@ -118,6 +159,14 @@ func (c *TaskRPCAPIClient) GetBatchTaskStatus(taskIDs []int64) ([]api.TaskStatus
 
 // CancelTask 取消任务。
 func (c *TaskRPCAPIClient) CancelTask(taskID int64) (*api.TaskActionRespDTO, error) {
+	if c.localProvider != nil {
+		if resp, handled, err := c.localProvider.CancelTask(taskID); err != nil || handled {
+			if err != nil {
+				return nil, fmt.Errorf("取消任务失败: %w", err)
+			}
+			return resp, nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/task/cancel/%d", c.baseURL, taskID)
 
 	resp, err := getTypedResult[api.TaskActionRespDTO](c.ManagementAPIClient, http.MethodPost, url, nil)
@@ -137,6 +186,14 @@ func (c *TaskRPCAPIClient) CancelTask(taskID int64) (*api.TaskActionRespDTO, err
 
 // RetryTask 重试任务。
 func (c *TaskRPCAPIClient) RetryTask(taskID int64) (*api.TaskActionRespDTO, error) {
+	if c.localProvider != nil {
+		if resp, handled, err := c.localProvider.RetryTask(taskID); err != nil || handled {
+			if err != nil {
+				return nil, fmt.Errorf("重试任务失败: %w", err)
+			}
+			return resp, nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/task/retry/%d", c.baseURL, taskID)
 
 	resp, err := getTypedResult[api.TaskActionRespDTO](c.ManagementAPIClient, http.MethodPost, url, nil)
@@ -156,6 +213,14 @@ func (c *TaskRPCAPIClient) RetryTask(taskID int64) (*api.TaskActionRespDTO, erro
 
 // GetQueueStats 获取队列统计。
 func (c *TaskRPCAPIClient) GetQueueStats() (string, error) {
+	if c.localProvider != nil {
+		if resp, handled, err := c.localProvider.GetQueueStats(); err != nil || handled {
+			if err != nil {
+				return "", fmt.Errorf("获取队列统计失败: %w", err)
+			}
+			return resp, nil
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/task/queue-stats", c.baseURL)
 
 	resp, err := getTypedResult[string](c.ManagementAPIClient, http.MethodGet, url, nil)

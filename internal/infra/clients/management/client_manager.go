@@ -27,6 +27,7 @@ type ClientManager struct {
 
 	sheinCookieProvider SheinCookieProvider
 	localDataProvider   *LocalDataProvider
+	localTaskRPC        *LocalTaskRPCProvider
 }
 
 // NewClientManager 创建新的客户端管理器
@@ -158,6 +159,7 @@ func (cm *ClientManager) GetImportTaskClient() *ImportTaskAPIClient {
 	baseClient := cm.GetClient()
 	return &ImportTaskAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -176,6 +178,7 @@ func (cm *ClientManager) GetTaskRPCClient() *TaskRPCAPIClient {
 	baseClient := cm.GetClient()
 	return &TaskRPCAPIClient{
 		ManagementAPIClient: baseClient,
+		localProvider:       cm.localTaskRPC,
 	}
 }
 
@@ -185,6 +188,7 @@ func (cm *ClientManager) GetProductImportMappingClient() *ProductImportMappingAP
 	baseClient := cm.GetClient()
 	return &ProductImportMappingAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -224,6 +228,7 @@ func (cm *ClientManager) GetInventoryRecordClient() *InventoryRecordAPIClient {
 	baseClient := cm.GetClient()
 	return &InventoryRecordAPIClient{
 		ManagementAPIClient: baseClient,
+		localDataProvider:   cm.localDataProvider,
 	}
 }
 
@@ -298,6 +303,11 @@ func (cm *ClientManager) SetLocalDataProvider(provider *LocalDataProvider) {
 	cm.mutex.Lock()
 	defer cm.mutex.Unlock()
 	cm.localDataProvider = provider
+	if provider != nil {
+		cm.localTaskRPC = NewLocalTaskRPCProvider(provider)
+	} else {
+		cm.localTaskRPC = nil
+	}
 }
 
 func (cm *ClientManager) SetSheinCookieRedisConfig(cfg *config.RedisConfig) error {

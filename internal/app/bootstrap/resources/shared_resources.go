@@ -19,6 +19,7 @@ import (
 type SharedResourceOptions struct {
 	NeedAmazonCrawler          bool
 	AllowMissingManagementAuth bool
+	SkipManagementAuth         bool
 }
 
 // SharedResources groups dependencies that were previously assembled in multiple places.
@@ -58,15 +59,21 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	runtime, err := buildManagementRuntime(cfg, logger)
-	if err != nil {
-		if !options.AllowMissingManagementAuth {
-			return nil, err
-		}
+	runtime := &managementRuntime{
+		managementClient: newConfiguredManagementClient(cfg, logger),
+	}
+	if !options.SkipManagementAuth {
+		var err error
+		runtime, err = buildManagementRuntime(cfg, logger)
+		if err != nil {
+			if !options.AllowMissingManagementAuth {
+				return nil, err
+			}
 
-		logger.WithError(err).Warn("management runtime unavailable, continuing without management client")
-		runtime = &managementRuntime{
-			managementClient: newConfiguredManagementClient(cfg, logger),
+			logger.WithError(err).Warn("management runtime unavailable, continuing without management client")
+			runtime = &managementRuntime{
+				managementClient: newConfiguredManagementClient(cfg, logger),
+			}
 		}
 	}
 

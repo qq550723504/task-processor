@@ -13,6 +13,7 @@ import (
 // ProductImportMappingAPIClient 产品导入映射API客户端实现
 type ProductImportMappingAPIClient struct {
 	*ManagementAPIClient
+	localDataProvider *LocalDataProvider
 }
 
 const productImportMappingCacheTTL = 30 * time.Second
@@ -194,6 +195,15 @@ func loadProductImportMappingBool(cacheKey string, load func() (bool, error)) (b
 
 // CreateProductImportMapping 创建产品导入映射关系
 func (m *ProductImportMappingAPIClient) CreateProductImportMapping(createReqDTO *api.ProductImportMappingCreateReqDTO) (int64, error) {
+	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+		id, err := m.localDataProvider.CreateProductImportMapping(createReqDTO)
+		if err != nil || id > 0 {
+			if err == nil {
+				clearProductImportMappingCache()
+			}
+			return id, err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/create", m.baseURL)
 
 	var result APIResponse
@@ -227,6 +237,11 @@ func (m *ProductImportMappingAPIClient) GetProductImportMappingByPlatformProduct
 		cacheKey,
 		NewNonRetryableError("产品导入映射关系数据为空: 可能不存在对应的映射关系", nil),
 		func() (*api.ProductImportMappingRespDTO, error) {
+			if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+				if mapping, found, err := m.localDataProvider.GetProductImportMappingByPlatformProductID(req.PlatformProductId); err != nil || found {
+					return mapping, err
+				}
+			}
 			url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/get", m.baseURL)
 
 			params := map[string]any{
@@ -262,6 +277,11 @@ func (m *ProductImportMappingAPIClient) GetProductImportMappingByPlatformProduct
 func (m *ProductImportMappingAPIClient) GetProductImportMappingByTaskAndSku(importTaskId int64, sku string) (*api.ProductImportMappingRespDTO, error) {
 	cacheKey := fmt.Sprintf("task-sku:%d:%s", importTaskId, sku)
 	return loadProductImportMapping(cacheKey, nil, func() (*api.ProductImportMappingRespDTO, error) {
+		if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+			if mapping, found, err := m.localDataProvider.GetProductImportMappingByTaskAndSKU(importTaskId, sku); err != nil || found {
+				return mapping, err
+			}
+		}
 		url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/get-by-task-and-sku?importTaskId=%d&sku=%s",
 			m.baseURL, importTaskId, sku)
 
@@ -291,6 +311,15 @@ func (m *ProductImportMappingAPIClient) GetProductImportMappingByTaskAndSku(impo
 
 // UpdateProductImportMapping 更新产品导入映射关系
 func (m *ProductImportMappingAPIClient) UpdateProductImportMapping(updateReqDTO *api.ProductImportMappingCreateReqDTO) error {
+	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+		ok, err := m.localDataProvider.UpdateProductImportMapping(updateReqDTO)
+		if err != nil || ok {
+			if err == nil {
+				clearProductImportMappingCache()
+			}
+			return err
+		}
+	}
 	url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/update", m.baseURL)
 
 	var result APIResponse
@@ -312,6 +341,11 @@ func (m *ProductImportMappingAPIClient) UpdateProductImportMapping(updateReqDTO 
 func (m *ProductImportMappingAPIClient) CheckProductExists(req *api.ProductImportMappingCheckReqDTO) (bool, error) {
 	cacheKey := fmt.Sprintf("exists:%d:%s:%s:%s", req.StoreId, req.Platform, req.Region, req.ProductId)
 	return loadProductImportMappingBool(cacheKey, func() (bool, error) {
+		if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+			if exists, handled, err := m.localDataProvider.CheckProductExists(req); err != nil || handled {
+				return exists, err
+			}
+		}
 		url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/check-exists?storeId=%d&platform=%s&region=%s&productId=%s",
 			m.baseURL, req.StoreId, req.Platform, req.Region, req.ProductId)
 
@@ -346,6 +380,11 @@ func (m *ProductImportMappingAPIClient) GetProductImportMappingBySku(req *api.Pr
 		cacheKey,
 		NewNonRetryableError("产品导入映射关系数据为空: 可能不存在对应的SKU映射关系", nil),
 		func() (*api.ProductImportMappingRespDTO, error) {
+			if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+				if mapping, found, err := m.localDataProvider.GetProductImportMappingBySKU(req.Sku, req.StoreId); err != nil || found {
+					return mapping, err
+				}
+			}
 			url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/get-by-sku", m.baseURL)
 
 			params := map[string]any{
@@ -382,6 +421,11 @@ func (m *ProductImportMappingAPIClient) GetProductImportMappingBySku(req *api.Pr
 func (m *ProductImportMappingAPIClient) GetProductImportMappingByPlatformProductIdAndStore(req *api.ProductImportMappingGetByPlatformProductIdAndStoreReqDTO) (*api.ProductImportMappingRespDTO, error) {
 	cacheKey := fmt.Sprintf("platform-product-store:%s:%d", req.PlatformProductId, req.StoreId)
 	return loadProductImportMapping(cacheKey, nil, func() (*api.ProductImportMappingRespDTO, error) {
+		if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+			if mapping, found, err := m.localDataProvider.GetProductImportMappingByPlatformProductIDAndStore(req.PlatformProductId, req.StoreId); err != nil || found {
+				return mapping, err
+			}
+		}
 		url := fmt.Sprintf("%s/rpc-api/listing/product-import-mapping/get-by-platform-product-id-and-store", m.baseURL)
 
 		params := map[string]any{
